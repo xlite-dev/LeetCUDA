@@ -231,7 +231,7 @@ __device__ __forceinline__ float block_reduce_sum(float val) {
   if (lane == 0) shared[warp] = val;
   __syncthreads();
   val = (lane < NUM_WARPS) ? shared[lane] : 0.0f;
-  val = warp_reduce_sum<NUM_WARPS>(val);
+  if (warp == 0) val = warp_reduce_sum<NUM_WARPS>(val);
   return val;
 }
 
@@ -247,7 +247,7 @@ __device__ __forceinline__ float block_reduce_max(float val) {
   if (lane == 0) shared[warp] = val;
   __syncthreads();
   val = (lane < NUM_WARPS) ? shared[lane] : -FLT_MAX;
-  val = warp_reduce_max<NUM_WARPS>(val);
+  if (warp == 0) val = warp_reduce_max<NUM_WARPS>(val);
   return val;
 }
 ```
