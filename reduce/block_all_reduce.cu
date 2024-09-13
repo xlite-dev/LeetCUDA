@@ -36,7 +36,7 @@ __device__ __forceinline__ float warp_reduce_sum_f32(float val) {
 // grid(N/256), block(256)
 // a: Nx1, y=sum(a)
 template<const int NUM_THREADS = 256>
-__global__ void block_all_reduce_sum_f32_acc_with_f32_kernel(float* a, float* y, int N) {
+__global__ void block_all_reduce_sum_f32_f32_kernel(float* a, float* y, int N) {
   int tid = threadIdx.x;
   int idx = blockIdx.x * NUM_THREADS + tid;
   constexpr int NUM_WARPS = (NUM_THREADS + WARP_SIZE - 1) / WARP_SIZE;
@@ -60,7 +60,7 @@ __global__ void block_all_reduce_sum_f32_acc_with_f32_kernel(float* a, float* y,
 // grid(N/256), block(256/4)
 // a: Nx1, y=sum(a)
 template<const int NUM_THREADS = 256/4>
-__global__ void block_all_reduce_sum_f32x4_acc_with_f32_kernel(float* a, float* y, int N) {
+__global__ void block_all_reduce_sum_f32x4_f32_kernel(float* a, float* y, int N) {
   int tid = threadIdx.x;
   int idx = (blockIdx.x * NUM_THREADS + tid) * 4;
   constexpr int NUM_WARPS = (NUM_THREADS + WARP_SIZE - 1) / WARP_SIZE;
@@ -85,7 +85,7 @@ __global__ void block_all_reduce_sum_f32x4_acc_with_f32_kernel(float* a, float* 
 // -------------------------------------- FP16 -------------------------------------- 
 // Warp Reduce Sum: Half
 template<const int kWarpSize = WARP_SIZE>
-__device__ __forceinline__ half warp_reduce_sum_f16_acc_with_f16(half val) {
+__device__ __forceinline__ half warp_reduce_sum_f16_f16(half val) {
   #pragma unroll
   for (int mask = kWarpSize >> 1; mask >= 1; mask >>= 1) {
     val = __hadd(val, __shfl_xor_sync(0xffffffff, val, mask));
@@ -95,7 +95,7 @@ __device__ __forceinline__ half warp_reduce_sum_f16_acc_with_f16(half val) {
 }
 
 template<const int kWarpSize = WARP_SIZE>
-__device__ __forceinline__ float warp_reduce_sum_f16_acc_with_f32(half val) {
+__device__ __forceinline__ float warp_reduce_sum_f16_f32(half val) {
   float val_f32 = __half2float(val);
   #pragma unroll
   for (int mask = kWarpSize >> 1; mask >= 1; mask >>= 1) {
@@ -108,7 +108,7 @@ __device__ __forceinline__ float warp_reduce_sum_f16_acc_with_f32(half val) {
 // grid(N/256), block(256)
 // a: Nx1, y=sum(a)
 template<const int NUM_THREADS = 256>
-__global__ void block_all_reduce_sum_f16_acc_with_f16_kernel(half* a, float* y, int N) {
+__global__ void block_all_reduce_sum_f16_f16_kernel(half* a, float* y, int N) {
   int tid = threadIdx.x;
   int idx = blockIdx.x * NUM_THREADS + tid;
   constexpr int NUM_WARPS = (NUM_THREADS + WARP_SIZE - 1) / WARP_SIZE;
@@ -118,7 +118,7 @@ __global__ void block_all_reduce_sum_f16_acc_with_f16_kernel(half* a, float* y, 
   int warp = tid / WARP_SIZE;
   int lane = tid % WARP_SIZE;
   // perform warp sync reduce.
-  sum_f16 = warp_reduce_sum_f16_acc_with_f16<WARP_SIZE>(sum_f16);
+  sum_f16 = warp_reduce_sum_f16_f16<WARP_SIZE>(sum_f16);
   // warp leaders store the data to shared memory.
   // use float to keep sum from each block and reduce 
   // with fp32 inter warps.
@@ -131,7 +131,7 @@ __global__ void block_all_reduce_sum_f16_acc_with_f16_kernel(half* a, float* y, 
 }
 
 template<const int NUM_THREADS = 256>
-__global__ void block_all_reduce_sum_f16_acc_with_f32_kernel(half* a, float* y, int N) {
+__global__ void block_all_reduce_sum_f16_f32_kernel(half* a, float* y, int N) {
   int tid = threadIdx.x;
   int idx = blockIdx.x * NUM_THREADS + tid;
   constexpr int NUM_WARPS = (NUM_THREADS + WARP_SIZE - 1) / WARP_SIZE;
@@ -141,7 +141,7 @@ __global__ void block_all_reduce_sum_f16_acc_with_f32_kernel(half* a, float* y, 
   int warp = tid / WARP_SIZE;
   int lane = tid % WARP_SIZE;
   // perform warp sync reduce.
-  float sum_f32 = warp_reduce_sum_f16_acc_with_f32<WARP_SIZE>(sum_f16);
+  float sum_f32 = warp_reduce_sum_f16_f32<WARP_SIZE>(sum_f16);
   // warp leaders store the data to shared memory.
   // use float to keep sum from each block and reduce 
   // with fp32 inter warps.
@@ -154,7 +154,7 @@ __global__ void block_all_reduce_sum_f16_acc_with_f32_kernel(half* a, float* y, 
 }
 
 template<const int NUM_THREADS = 256/2>
-__global__ void block_all_reduce_sum_f16x2_acc_with_f32_kernel(half* a, float* y, int N) {
+__global__ void block_all_reduce_sum_f16x2_f32_kernel(half* a, float* y, int N) {
   int tid = threadIdx.x;
   int idx = (blockIdx.x * NUM_THREADS + tid) * 2; // 2 half elements per thread
   constexpr int NUM_WARPS = (NUM_THREADS + WARP_SIZE - 1) / WARP_SIZE;
@@ -166,7 +166,7 @@ __global__ void block_all_reduce_sum_f16x2_acc_with_f32_kernel(half* a, float* y
   int warp = tid / WARP_SIZE;
   int lane = tid % WARP_SIZE;
   // perform warp sync reduce.
-  float sum_f32 = warp_reduce_sum_f16_acc_with_f32<WARP_SIZE>(sum_f16);
+  float sum_f32 = warp_reduce_sum_f16_f32<WARP_SIZE>(sum_f16);
   // warp leaders store the data to shared memory.
   // use float to keep sum from each block and reduce 
   // with fp32 inter warps.
@@ -179,7 +179,7 @@ __global__ void block_all_reduce_sum_f16x2_acc_with_f32_kernel(half* a, float* y
 }
 
 template<const int NUM_THREADS = 256/2>
-__global__ void block_all_reduce_sum_f16x2_acc_with_f16_kernel(half* a, float* y, int N) {
+__global__ void block_all_reduce_sum_f16x2_f16_kernel(half* a, float* y, int N) {
   int tid = threadIdx.x;
   int idx = (blockIdx.x * NUM_THREADS + tid) * 2; // 2 half elements per thread
   constexpr int NUM_WARPS = (NUM_THREADS + WARP_SIZE - 1) / WARP_SIZE;
@@ -191,7 +191,7 @@ __global__ void block_all_reduce_sum_f16x2_acc_with_f16_kernel(half* a, float* y
   int warp = tid / WARP_SIZE;
   int lane = tid % WARP_SIZE;
   // perform warp sync reduce.
-  sum_f16 = warp_reduce_sum_f16_acc_with_f16<WARP_SIZE>(sum_f16);
+  sum_f16 = warp_reduce_sum_f16_f16<WARP_SIZE>(sum_f16);
   // warp leaders store the data to shared memory.
   // use float to keep sum from each block and reduce 
   // with fp32 inter warps.
@@ -206,7 +206,7 @@ __global__ void block_all_reduce_sum_f16x2_acc_with_f16_kernel(half* a, float* y
 // -------------------------------------- BF16 -------------------------------------- 
 // Warp Reduce Sum: Half
 template<const int kWarpSize = WARP_SIZE>
-__device__ __forceinline__ __nv_bfloat16 warp_reduce_sum_bf16_acc_with_bf16(
+__device__ __forceinline__ __nv_bfloat16 warp_reduce_sum_bf16_bf16(
   __nv_bfloat16 val) {
   #pragma unroll
   for (int mask = kWarpSize >> 1; mask >= 1; mask >>= 1) {
@@ -216,7 +216,7 @@ __device__ __forceinline__ __nv_bfloat16 warp_reduce_sum_bf16_acc_with_bf16(
 }
 
 template<const int kWarpSize = WARP_SIZE>
-__device__ __forceinline__ float warp_reduce_sum_bf16_acc_with_f32(
+__device__ __forceinline__ float warp_reduce_sum_bf16_f32(
   __nv_bfloat16 val) {
   float val_f32 = __bfloat162float(val);
   #pragma unroll
@@ -230,7 +230,7 @@ __device__ __forceinline__ float warp_reduce_sum_bf16_acc_with_f32(
 // grid(N/256), block(256)
 // a: Nx1, y=sum(a)
 template<const int NUM_THREADS = 256>
-__global__ void block_all_reduce_sum_bf16_acc_with_bf16_kernel(
+__global__ void block_all_reduce_sum_bf16_bf16_kernel(
   __nv_bfloat16* a, float* y, int N) {
   int tid = threadIdx.x;
   int idx = blockIdx.x * NUM_THREADS + tid;
@@ -242,7 +242,7 @@ __global__ void block_all_reduce_sum_bf16_acc_with_bf16_kernel(
   int warp = tid / WARP_SIZE;
   int lane = tid % WARP_SIZE;
   // perform warp sync reduce.
-  sum_bf16 = warp_reduce_sum_bf16_acc_with_bf16<WARP_SIZE>(sum_bf16);
+  sum_bf16 = warp_reduce_sum_bf16_bf16<WARP_SIZE>(sum_bf16);
   // warp leaders store the data to shared memory.
   // use float to keep sum from each block and reduce 
   // with fp32 inter warps.
@@ -250,12 +250,12 @@ __global__ void block_all_reduce_sum_bf16_acc_with_bf16_kernel(
   __syncthreads(); // make sure the data is in shared memory.
   // the first warp compute the final sum.
   __nv_bfloat16 sum = (lane < NUM_WARPS) ? reduce_smem[lane] : __float2bfloat16(0.0f);
-  if (warp == 0) sum = warp_reduce_sum_bf16_acc_with_bf16<NUM_WARPS>(sum);
+  if (warp == 0) sum = warp_reduce_sum_bf16_bf16<NUM_WARPS>(sum);
   if (tid == 0) atomicAdd(y, __bfloat162float(sum));
 }
 
 template<const int NUM_THREADS = 256>
-__global__ void block_all_reduce_sum_bf16_acc_with_f32_kernel(
+__global__ void block_all_reduce_sum_bf16_f32_kernel(
   __nv_bfloat16* a, float* y, int N) {
   int tid = threadIdx.x;
   int idx = blockIdx.x * NUM_THREADS + tid;
@@ -267,7 +267,7 @@ __global__ void block_all_reduce_sum_bf16_acc_with_f32_kernel(
   int warp = tid / WARP_SIZE;
   int lane = tid % WARP_SIZE;
   // perform warp sync reduce.
-  float sum_f32 = warp_reduce_sum_bf16_acc_with_f32<WARP_SIZE>(sum_bf16);
+  float sum_f32 = warp_reduce_sum_bf16_f32<WARP_SIZE>(sum_bf16);
   // warp leaders store the data to shared memory.
   // use float to keep sum from each block and reduce 
   // with fp32 inter warps.
@@ -280,7 +280,7 @@ __global__ void block_all_reduce_sum_bf16_acc_with_f32_kernel(
 }
 
 template<const int NUM_THREADS = 256/2>
-__global__ void block_all_reduce_sum_bf16x2_acc_with_bf16_kernel(
+__global__ void block_all_reduce_sum_bf16x2_bf16_kernel(
   __nv_bfloat16* a, float* y, int N) {
   int tid = threadIdx.x;
   int idx = (blockIdx.x * NUM_THREADS + tid) * 2; // 2 bf16 elements per thread
@@ -293,7 +293,7 @@ __global__ void block_all_reduce_sum_bf16x2_acc_with_bf16_kernel(
   int warp = tid / WARP_SIZE;
   int lane = tid % WARP_SIZE;
   // perform warp sync reduce.
-  sum_bf16 = warp_reduce_sum_bf16_acc_with_bf16<WARP_SIZE>(sum_bf16);
+  sum_bf16 = warp_reduce_sum_bf16_bf16<WARP_SIZE>(sum_bf16);
   // warp leaders store the data to shared memory.
   // use float to keep sum from each block and reduce 
   // with fp32 inter warps.
@@ -301,12 +301,12 @@ __global__ void block_all_reduce_sum_bf16x2_acc_with_bf16_kernel(
   __syncthreads(); // make sure the data is in shared memory.
   // the first warp compute the final sum.
   __nv_bfloat16 sum = (lane < NUM_WARPS) ? reduce_smem[lane] : __float2bfloat16(0.0f);
-  if (warp == 0) sum = warp_reduce_sum_bf16_acc_with_bf16<NUM_WARPS>(sum);
+  if (warp == 0) sum = warp_reduce_sum_bf16_bf16<NUM_WARPS>(sum);
   if (tid == 0) atomicAdd(y, __bfloat162float(sum));
 }
 
 template<const int NUM_THREADS = 256>
-__global__ void block_all_reduce_sum_bf16x2_acc_with_f32_kernel(
+__global__ void block_all_reduce_sum_bf16x2_f32_kernel(
   __nv_bfloat16* a, float* y, int N) {
   int tid = threadIdx.x;
   int idx = (blockIdx.x * NUM_THREADS + tid) * 2; // 2 bf16 elements per thread
@@ -319,7 +319,7 @@ __global__ void block_all_reduce_sum_bf16x2_acc_with_f32_kernel(
   int warp = tid / WARP_SIZE;
   int lane = tid % WARP_SIZE;
   // perform warp sync reduce.
-  float sum_f32 = warp_reduce_sum_bf16_acc_with_f32<WARP_SIZE>(sum_bf16);
+  float sum_f32 = warp_reduce_sum_bf16_f32<WARP_SIZE>(sum_bf16);
   // warp leaders store the data to shared memory.
   // use float to keep sum from each block and reduce 
   // with fp32 inter warps.
@@ -333,7 +333,7 @@ __global__ void block_all_reduce_sum_bf16x2_acc_with_f32_kernel(
 
 // -------------------------------------- FP8 -------------------------------------- 
 template<const int kWarpSize = WARP_SIZE>
-__device__ __forceinline__ half warp_reduce_sum_fp8_e4m3_acc_with_f16(
+__device__ __forceinline__ half warp_reduce_sum_fp8_e4m3_f16(
   __nv_fp8_storage_t val) {
   // typedef unsigned char __nv_fp8_storage_t;
   // __half &operator=(const __half_raw &hr);
@@ -346,7 +346,7 @@ __device__ __forceinline__ half warp_reduce_sum_fp8_e4m3_acc_with_f16(
 }
 
 template<const int kWarpSize = WARP_SIZE>
-__device__ __forceinline__ half warp_reduce_sum_fp8_e5m2_acc_with_f16(
+__device__ __forceinline__ half warp_reduce_sum_fp8_e5m2_f16(
   __nv_fp8_storage_t val) {
   // typedef unsigned char __nv_fp8_storage_t;
   // __half &operator=(const __half_raw &hr);
@@ -359,7 +359,7 @@ __device__ __forceinline__ half warp_reduce_sum_fp8_e5m2_acc_with_f16(
 }
 
 template<const int NUM_THREADS = 256>
-__global__ void block_all_reduce_sum_fp8_e4m3_acc_with_f16_kernel(
+__global__ void block_all_reduce_sum_fp8_e4m3_f16_kernel(
   __nv_fp8_storage_t* a, float* y, int N) {
   int tid = threadIdx.x;
   int idx = blockIdx.x * NUM_THREADS + tid;
@@ -372,7 +372,7 @@ __global__ void block_all_reduce_sum_fp8_e4m3_acc_with_f16_kernel(
   int warp = tid / WARP_SIZE;
   int lane = tid % WARP_SIZE;
   // perform warp sync reduce.
-  half sum_f16 = warp_reduce_sum_fp8_e4m3_acc_with_f16<WARP_SIZE>(sum_f8);
+  half sum_f16 = warp_reduce_sum_fp8_e4m3_f16<WARP_SIZE>(sum_f8);
   // warp leaders store the data to shared memory.
   // use float to keep sum from each block and reduce 
   // with fp16 inter warps.
@@ -380,12 +380,12 @@ __global__ void block_all_reduce_sum_fp8_e4m3_acc_with_f16_kernel(
   __syncthreads(); // make sure the data is in shared memory.
   // the first warp compute the final sum.
   half sum = (lane < NUM_WARPS) ? reduce_smem[lane] : __float2half(0.0f);
-  if (warp == 0) sum = warp_reduce_sum_f16_acc_with_f16<NUM_WARPS>(sum);
+  if (warp == 0) sum = warp_reduce_sum_f16_f16<NUM_WARPS>(sum);
   if (tid == 0) atomicAdd(y, __half2float(sum));
 }
 
 template<const int NUM_THREADS = 256>
-__global__ void block_all_reduce_sum_fp8_e5m2_acc_with_f16_kernel(
+__global__ void block_all_reduce_sum_fp8_e5m2_f16_kernel(
   __nv_fp8_storage_t* a, float* y, int N) {
   int tid = threadIdx.x;
   int idx = blockIdx.x * NUM_THREADS + tid;
@@ -398,7 +398,7 @@ __global__ void block_all_reduce_sum_fp8_e5m2_acc_with_f16_kernel(
   int warp = tid / WARP_SIZE;
   int lane = tid % WARP_SIZE;
   // perform warp sync reduce.
-  half sum_f16 = warp_reduce_sum_fp8_e5m2_acc_with_f16<WARP_SIZE>(sum_f8);
+  half sum_f16 = warp_reduce_sum_fp8_e5m2_f16<WARP_SIZE>(sum_f8);
   // warp leaders store the data to shared memory.
   // use float to keep sum from each block and reduce 
   // with fp16 inter warps.
@@ -406,13 +406,13 @@ __global__ void block_all_reduce_sum_fp8_e5m2_acc_with_f16_kernel(
   __syncthreads(); // make sure the data is in shared memory.
   // the first warp compute the final sum.
   half sum = (lane < NUM_WARPS) ? reduce_smem[lane] : __float2half(0.0f);
-  if (warp == 0) sum = warp_reduce_sum_f16_acc_with_f16<NUM_WARPS>(sum);
+  if (warp == 0) sum = warp_reduce_sum_f16_f16<NUM_WARPS>(sum);
   if (tid == 0) atomicAdd(y, __half2float(sum));
 }
 
 // -------------------------------------- INT8 -------------------------------------- 
 template<const int kWarpSize = WARP_SIZE>
-__device__ __forceinline__ int32_t warp_reduce_sum_i8_acc_with_i32(int8_t val) {
+__device__ __forceinline__ int32_t warp_reduce_sum_i8_i32(int8_t val) {
   int32_t val_i32 = static_cast<int32_t>(val);
   #pragma unroll
   for (int mask = kWarpSize >> 1; mask >= 1; mask >>= 1) {
@@ -422,7 +422,7 @@ __device__ __forceinline__ int32_t warp_reduce_sum_i8_acc_with_i32(int8_t val) {
 }
 
 template<const int kWarpSize = WARP_SIZE>
-__device__ __forceinline__ int32_t warp_reduce_sum_i32_acc_with_i32(int32_t val) {
+__device__ __forceinline__ int32_t warp_reduce_sum_i32_i32(int32_t val) {
   #pragma unroll
   for (int mask = kWarpSize >> 1; mask >= 1; mask >>= 1) {
     val += __shfl_xor_sync(0xffffffff, val, mask);
@@ -431,7 +431,7 @@ __device__ __forceinline__ int32_t warp_reduce_sum_i32_acc_with_i32(int32_t val)
 }
 
 template<const int NUM_THREADS = 256>
-__global__ void block_all_reduce_sum_i8_acc_with_i32_kernel(
+__global__ void block_all_reduce_sum_i8_i32_kernel(
   int8_t* a, int32_t* y, int N) {
   int tid = threadIdx.x;
   int idx = blockIdx.x * NUM_THREADS + tid;
@@ -443,12 +443,12 @@ __global__ void block_all_reduce_sum_i8_acc_with_i32_kernel(
   int warp = tid / WARP_SIZE;
   int lane = tid % WARP_SIZE;
   // perform warp sync reduce.
-  int32_t sum_i32 = warp_reduce_sum_i8_acc_with_i32<WARP_SIZE>(sum_i8);
+  int32_t sum_i32 = warp_reduce_sum_i8_i32<WARP_SIZE>(sum_i8);
   if (lane == 0) reduce_smem[warp] = sum_i32;
   __syncthreads(); // make sure the data is in shared memory.
   // the first warp compute the final sum.
   int32_t sum = (lane < NUM_WARPS) ? reduce_smem[lane] : 0;
-  if (warp == 0) sum = warp_reduce_sum_i32_acc_with_i32<NUM_WARPS>(sum);
+  if (warp == 0) sum = warp_reduce_sum_i32_i32<NUM_WARPS>(sum);
   if (tid == 0) atomicAdd(y, sum);
 }
 
@@ -467,7 +467,7 @@ if(((T).options().dtype() != (th_type))) {                   \
 if (((T).size(0) != (S0))) { throw std::runtime_error("Tensor size mismatch!"); }
 
 #define TORCH_BINDING_BLOCK_ALL_REDUCE(packed_type, acc_type, th_type, element_type, n_elements) \
-torch::Tensor block_all_reduce_sum_##packed_type##_acc_with_##acc_type(torch::Tensor a) {        \
+torch::Tensor block_all_reduce_sum_##packed_type##_##acc_type(torch::Tensor a) {                 \
   CHECK_TORCH_TENSOR_DTYPE(a, (th_type))                                                         \
   auto options = torch::TensorOptions().dtype(torch::kFloat32).device(                           \
     torch::kCUDA, 0);                                                                            \
@@ -477,14 +477,14 @@ torch::Tensor block_all_reduce_sum_##packed_type##_acc_with_##acc_type(torch::Te
   const int NUM_BLOCKS = (N + NUM_THREADS_PER_BLOCK - 1) / NUM_THREADS_PER_BLOCK;                \
   dim3 block(NUM_THREADS_PER_BLOCK);                                                             \
   dim3 grid(NUM_BLOCKS);                                                                         \
-  block_all_reduce_sum_##packed_type##_acc_with_##acc_type##_kernel<                             \
+  block_all_reduce_sum_##packed_type##_##acc_type##_kernel<                                      \
     NUM_THREADS_PER_BLOCK><<<grid, block>>>(                                                     \
       reinterpret_cast<element_type*>(a.data_ptr()), sum.data_ptr<float>(), N);                  \
   return sum;                                                                                    \
 }
 
 #define TORCH_BINDING_BLOCK_ALL_REDUCE_I(packed_type, acc_type, th_type, element_type, n_elements) \
-torch::Tensor block_all_reduce_sum_##packed_type##_acc_with_##acc_type(torch::Tensor a) {          \
+torch::Tensor block_all_reduce_sum_##packed_type##_##acc_type(torch::Tensor a) {                   \
   CHECK_TORCH_TENSOR_DTYPE(a, (th_type))                                                           \
   auto options = torch::TensorOptions().dtype(torch::kInt32).device(                               \
     torch::kCUDA, 0);                                                                              \
@@ -494,7 +494,7 @@ torch::Tensor block_all_reduce_sum_##packed_type##_acc_with_##acc_type(torch::Te
   const int NUM_BLOCKS = (N + NUM_THREADS_PER_BLOCK - 1) / NUM_THREADS_PER_BLOCK;                  \
   dim3 block(NUM_THREADS_PER_BLOCK);                                                               \
   dim3 grid(NUM_BLOCKS);                                                                           \
-  block_all_reduce_sum_##packed_type##_acc_with_##acc_type##_kernel<                               \
+  block_all_reduce_sum_##packed_type##_##acc_type##_kernel<                                        \
     NUM_THREADS_PER_BLOCK><<<grid, block>>>(                                                       \
       reinterpret_cast<element_type*>(a.data_ptr()), sum.data_ptr<int32_t>(), N);                  \
   return sum;                                                                                      \
@@ -516,17 +516,17 @@ TORCH_BINDING_BLOCK_ALL_REDUCE(fp8_e5m2, f16,  torch::kFloat8_e5m2,   __nv_fp8_s
 TORCH_BINDING_BLOCK_ALL_REDUCE_I(i8,     i32,  torch::kInt8,          int8_t,             1)
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-  TORCH_BINDING_COMMON_EXTENSION(block_all_reduce_sum_f32_acc_with_f32)
-  TORCH_BINDING_COMMON_EXTENSION(block_all_reduce_sum_f32x4_acc_with_f32)
-  TORCH_BINDING_COMMON_EXTENSION(block_all_reduce_sum_f16_acc_with_f16)
-  TORCH_BINDING_COMMON_EXTENSION(block_all_reduce_sum_f16_acc_with_f32)
-  TORCH_BINDING_COMMON_EXTENSION(block_all_reduce_sum_f16x2_acc_with_f16)
-  TORCH_BINDING_COMMON_EXTENSION(block_all_reduce_sum_f16x2_acc_with_f32)
-  TORCH_BINDING_COMMON_EXTENSION(block_all_reduce_sum_bf16_acc_with_bf16)
-  TORCH_BINDING_COMMON_EXTENSION(block_all_reduce_sum_bf16_acc_with_f32)
-  TORCH_BINDING_COMMON_EXTENSION(block_all_reduce_sum_bf16x2_acc_with_bf16)
-  TORCH_BINDING_COMMON_EXTENSION(block_all_reduce_sum_bf16x2_acc_with_f32)
-  TORCH_BINDING_COMMON_EXTENSION(block_all_reduce_sum_fp8_e4m3_acc_with_f16)
-  TORCH_BINDING_COMMON_EXTENSION(block_all_reduce_sum_fp8_e5m2_acc_with_f16)
-  TORCH_BINDING_COMMON_EXTENSION(block_all_reduce_sum_i8_acc_with_i32)
+  TORCH_BINDING_COMMON_EXTENSION(block_all_reduce_sum_f32_f32)
+  TORCH_BINDING_COMMON_EXTENSION(block_all_reduce_sum_f32x4_f32)
+  TORCH_BINDING_COMMON_EXTENSION(block_all_reduce_sum_f16_f16)
+  TORCH_BINDING_COMMON_EXTENSION(block_all_reduce_sum_f16_f32)
+  TORCH_BINDING_COMMON_EXTENSION(block_all_reduce_sum_f16x2_f16)
+  TORCH_BINDING_COMMON_EXTENSION(block_all_reduce_sum_f16x2_f32)
+  TORCH_BINDING_COMMON_EXTENSION(block_all_reduce_sum_bf16_bf16)
+  TORCH_BINDING_COMMON_EXTENSION(block_all_reduce_sum_bf16_f32)
+  TORCH_BINDING_COMMON_EXTENSION(block_all_reduce_sum_bf16x2_bf16)
+  TORCH_BINDING_COMMON_EXTENSION(block_all_reduce_sum_bf16x2_f32)
+  TORCH_BINDING_COMMON_EXTENSION(block_all_reduce_sum_fp8_e4m3_f16)
+  TORCH_BINDING_COMMON_EXTENSION(block_all_reduce_sum_fp8_e5m2_f16)
+  TORCH_BINDING_COMMON_EXTENSION(block_all_reduce_sum_i8_i32)
 }
