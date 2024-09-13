@@ -13,6 +13,9 @@
 #define WARP_SIZE 32
 #define INT4(value) (reinterpret_cast<int4*>(&(value))[0])
 #define FLOAT4(value) (reinterpret_cast<float4*>(&(value))[0])
+#define HALF2(value) (reinterpret_cast<half2*>(&(value))[0])
+#define BFLOAT2(value) (reinterpret_cast<__nv_bfloat162*>(&(value))[0])
+
 // FP16/BF16 CUDA Cores/Tensor Cores: 
 // https://resources.nvidia.com/en-us-tensor-core 
 // Non MatMul FP16/BF16 -> CUDA Cores
@@ -161,7 +164,7 @@ __global__ void block_all_reduce_sum_f16x2_f32_kernel(half* a, float* y, int N) 
   __shared__ float reduce_smem[NUM_WARPS];
 
   // keep the data in register is enougth for warp operaion.
-  half2 reg_a = (reinterpret_cast<half2*>(&(a[idx]))[0]);
+  half2 reg_a = HALF2(a[idx]);
   half sum_f16 = (idx < N) ? __hadd(reg_a.x, reg_a.y) : __float2half(0.0f);
   int warp = tid / WARP_SIZE;
   int lane = tid % WARP_SIZE;
@@ -186,7 +189,7 @@ __global__ void block_all_reduce_sum_f16x2_f16_kernel(half* a, float* y, int N) 
   __shared__ float reduce_smem[NUM_WARPS];
 
   // keep the data in register is enougth for warp operaion.
-  half2 reg_a = (reinterpret_cast<half2*>(&(a[idx]))[0]);
+  half2 reg_a = HALF2(a[idx]);
   half sum_f16 = (idx < N) ? __hadd(reg_a.x, reg_a.y) : __float2half(0.0f);
   int warp = tid / WARP_SIZE;
   int lane = tid % WARP_SIZE;
@@ -288,7 +291,7 @@ __global__ void block_all_reduce_sum_bf16x2_bf16_kernel(
   __shared__ __nv_bfloat16 reduce_smem[NUM_WARPS];
 
   // keep the data in register is enougth for warp operaion.
-  __nv_bfloat162 reg_a = (reinterpret_cast<__nv_bfloat162*>(&(a[idx]))[0]);
+  __nv_bfloat162 reg_a = BFLOAT2(a[idx]);
   __nv_bfloat16 sum_bf16 = (idx < N) ? __hadd(reg_a.x, reg_a.y) : __float2bfloat16(0.0f);
   int warp = tid / WARP_SIZE;
   int lane = tid % WARP_SIZE;
@@ -314,7 +317,7 @@ __global__ void block_all_reduce_sum_bf16x2_f32_kernel(
   __shared__ float reduce_smem[NUM_WARPS];
 
   // keep the data in register is enougth for warp operaion.
-  __nv_bfloat162 reg_a = (reinterpret_cast<__nv_bfloat162*>(&(a[idx]))[0]);
+  __nv_bfloat162 reg_a = BFLOAT2(a[idx]);
   __nv_bfloat16 sum_bf16 = (idx < N) ? __hadd(reg_a.x, reg_a.y) : __float2bfloat16(0.0f);
   int warp = tid / WARP_SIZE;
   int lane = tid % WARP_SIZE;
