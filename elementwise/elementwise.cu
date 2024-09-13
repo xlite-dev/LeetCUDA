@@ -60,7 +60,7 @@ __global__ void elementwise_add_f16x2_kernel(half* a, half* b, half* c, int N) {
     half2 reg_c;
     reg_c.x = __hadd(reg_a.x, reg_b.x);
     reg_c.y = __hadd(reg_a.y, reg_b.y);
-    (reinterpret_cast<half2*>(&(c[idx]))[0]) = reg_c;
+    HALF2(c[idx]) = reg_c;
   }
 }
 
