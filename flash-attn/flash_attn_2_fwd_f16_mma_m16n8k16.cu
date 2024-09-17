@@ -271,6 +271,7 @@ __global__  void flash_attn_2_fwd_f16_mma_m16n8k16_kernel(
   }
 }
 
+// --------------------- PyTorch bindings for custom kernel -----------------------
 #define STRINGFY(str) #str
 #define TORCH_BINDING_COMMON_EXTENSION(func) \
   m.def(STRINGFY(func), &func, STRINGFY(func));

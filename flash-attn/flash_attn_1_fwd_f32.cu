@@ -116,6 +116,7 @@ __global__ void flash_attn_1_fwd_f32_kernel(
   }
 }
 
+// --------------------- PyTorch bindings for custom kernel -----------------------
 #define STRINGFY(str) #str
 #define TORCH_BINDING_COMMON_EXTENSION(func) \
   m.def(STRINGFY(func), &func, STRINGFY(func));
@@ -193,10 +194,10 @@ void flash_attn_1_fwd_f32_v2(
   torch::Tensor K, 
   torch::Tensor V,
   torch::Tensor O) {
-//   CHECK_TORCH_TENSOR_DTYPE(Q, torch::kFloat32)
-//   CHECK_TORCH_TENSOR_DTYPE(K, torch::kFloat32)
-//   CHECK_TORCH_TENSOR_DTYPE(V, torch::kFloat32)
-//   CHECK_TORCH_TENSOR_DTYPE(O, torch::kFloat32)
+  CHECK_TORCH_TENSOR_DTYPE(Q, torch::kFloat32)
+  CHECK_TORCH_TENSOR_DTYPE(K, torch::kFloat32)
+  CHECK_TORCH_TENSOR_DTYPE(V, torch::kFloat32)
+  CHECK_TORCH_TENSOR_DTYPE(O, torch::kFloat32)
   // TODO: determine Bc, Br dynamically
   const int Bc = 32; 
   const int Br = 32;
@@ -205,9 +206,9 @@ void flash_attn_1_fwd_f32_v2(
   const int nh = Q.size(1);
   const int N = Q.size(2); 
   const int d = Q.size(3);
-//   CHECK_TORCH_TENSOR_SHAPE(K, Q)
-//   CHECK_TORCH_TENSOR_SHAPE(V, Q)
-//   CHECK_TORCH_TENSOR_SHAPE(O, Q)
+  CHECK_TORCH_TENSOR_SHAPE(K, Q)
+  CHECK_TORCH_TENSOR_SHAPE(V, Q)
+  CHECK_TORCH_TENSOR_SHAPE(O, Q)
   const int Tc = ceil((float) N / Bc); 
   const int Tr = ceil((float) N / Br);
   const float scale = 1.0 / sqrt(d);
