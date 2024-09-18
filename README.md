@@ -88,7 +88,7 @@
 | ✔️ [flash_attn_1_fwd_f32](./flash-attn/flash_attn_1_fwd_f32.cu)|f32|f32|[link](./flash-attn)|⭐️⭐️⭐️|  
 | ❔ [flash_attn_2_fwd_f32](./flash-attn/flash_attn_2_fwd_f32.cu)|f32|f32|[link](./flash-attn)|⭐️⭐️⭐️|  
 | ❔ [flash_attn_2_fwd_f16](./flash-attn/flash_attn_2_fwd_f32.cu)|f16|f16|[link](./flash-attn)|⭐️⭐️⭐️|  
-| ✔️ [flash_attn_2_fwd_f16_m16n8k16*](./flash-attn/flash_attn_2_fwd_f16_mma_m16n8k16.cu)|f16|f16|[link](./flash-attn)|⭐️⭐️⭐️|  
+| ✔️ [flash_attn_2_fwd_f16_mma_m16n8k16*](./flash-attn/flash_attn_2_fwd_f16_mma_m16n8k16.cu)|f16|f16|[link](./flash-attn)|⭐️⭐️⭐️|  
 | ✔️ [hard_nms cpp only](./nms/nms.cc)|f32|/|/|⭐️|  
 | ✔️ [notes v1(deprecated)](./notes-v1.cu)|f32|f32|/|⭐️|  
 
