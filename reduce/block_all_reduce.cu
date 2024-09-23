@@ -577,10 +577,10 @@ torch::Tensor block_all_reduce_sum_##packed_type##_##acc_type(torch::Tensor x) {
   if (ndim != 2) {                                                                               \
     int N = 1;                                                                                   \
     for (int i = 0; i < ndim; ++i) { N *= x.size(i); }                                           \
-    dim3 block(256 / (n_elements));                                                              \
-    dim3 grid((N + 256 - 1) / 256);                                                              \
+    dim3 block(1024 / (n_elements));                                                             \
+    dim3 grid((N + 1024 - 1) / 1024);                                                            \
     block_all_reduce_sum_##packed_type##_##acc_type##_kernel<                                    \
-      256 / (n_elements)><<<grid, block>>>(                                                      \
+      1024 / (n_elements)><<<grid, block>>>(                                                     \
       reinterpret_cast<element_type*>(x.data_ptr()),                                             \
       reinterpret_cast<out_type*>(y.data_ptr()), N);                                             \
   } else {                                                                                       \
@@ -592,10 +592,10 @@ torch::Tensor block_all_reduce_sum_##packed_type##_##acc_type(torch::Tensor x) {
     } else {                                                                                     \
       int N = 1;                                                                                 \
       for (int i = 0; i < ndim; ++i) { N *= x.size(i); }                                         \
-      dim3 block(256 / (n_elements));                                                            \
-      dim3 grid((N + 256 - 1) / 256);                                                            \
+      dim3 block(1024 / (n_elements));                                                           \
+      dim3 grid((N + 1024 - 1) / 1024);                                                          \
       block_all_reduce_sum_##packed_type##_##acc_type##_kernel<                                  \
-        256 / (n_elements)><<<grid, block>>>(                                                    \
+        1024 / (n_elements)><<<grid, block>>>(                                                   \
         reinterpret_cast<element_type*>(x.data_ptr()),                                           \
         reinterpret_cast<out_type*>(y.data_ptr()), N);                                           \
     }                                                                                            \
