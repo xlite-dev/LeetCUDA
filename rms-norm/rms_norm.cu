@@ -336,6 +336,40 @@ __global__ void rms_norm_f16x8_pack_f16_kernel(half* x, half* y, float g, int N,
   // TODO: support non 8-multiple K here
 }
 
+template<const int NUM_THREADS=256>
+__global__ void rms_norm_f16x8_pack_f32_kernel(half* x, half* y, float g, int N, int K) {
+  int tid = threadIdx.x; // 0..K-1
+  int bid = blockIdx.x; // 0..N-1
+  int idx = (bid * blockDim.x + threadIdx.x) * 8;
+  const float epsilon = 1e-5f;
+  __shared__ float s_variance; // shared within block
+  // temporary register(memory), .local space in ptx, addressable
+  half pack_x[8], pack_y[8]; // 8x16 bits=128 bits.
+  // reinterpret as float4 and load 128 bits in 1 memory issue.
+  LDST128BITS(pack_x[0]) = LDST128BITS(x[idx]); // load 128 bits
+
+  float variance = 0.0f;
+  #pragma unroll
+  for (int i = 0; i < 8; ++i) {
+    float v = __half2float(pack_x[i]);
+    variance += ((idx + i) < N * K ? v * v : 0.0f);
+  }
+  variance = block_reduce_sum_f32<NUM_THREADS>(variance);
+  if (tid == 0) s_variance = rsqrtf(variance / ((float) K + epsilon));
+  // wait for s_variance in shared memory to be ready for all threads
+  __syncthreads(); 
+
+  #pragma unroll
+  for (int i = 0; i < 8; i += 2) {
+    float2 v2 = __half22float2(HALF2(pack_x[i]));
+    float2 y2 = {v2.x * s_variance * g, v2.y * s_variance * g};
+    HALF2(pack_y[i]) = __float22half2_rn(y2);
+  }
+  // reinterpret as float4 and store 128 bits in 1 memory issue.
+  if ((idx + 7) < N * K) { LDST128BITS(y[idx]) = LDST128BITS(pack_y[0]); }
+  // TODO: support non 8-multiple K here
+}
+
 
 // --------------------- PyTorch bindings for custom kernel -----------------------
 #define STRINGFY(str) #str
@@ -664,6 +698,47 @@ rms_norm_f16x8_pack_f16_kernel<(K)/8><<<grid, block>>>( \
     break;                                            \
   } 
 
+#define LANUCH_RMS_NORM_F16x8_PACK_F32_KERNEL(K)        \
+rms_norm_f16x8_pack_f32_kernel<(K)/8><<<grid, block>>>( \
+  reinterpret_cast<half*>(x.data_ptr()),                \
+  reinterpret_cast<half*>(y.data_ptr()),                \
+  g, N, (K));  
+
+#define DISPATCH_RMS_NORM_F16x8_PACK_F32_KERNEL(N, K) \
+  dim3 block((K)/8);                                  \
+  dim3 grid((N));                                     \
+  switch ((K))                                        \
+  {                                                   \
+  case 64:                                            \
+    LANUCH_RMS_NORM_F16x8_PACK_F32_KERNEL(64)         \
+    break;                                            \
+  case 128:                                           \
+    LANUCH_RMS_NORM_F16x8_PACK_F32_KERNEL(128)        \
+    break;                                            \
+  case 256:                                           \
+    LANUCH_RMS_NORM_F16x8_PACK_F32_KERNEL(256)        \
+    break;                                            \
+  case 512:                                           \
+    LANUCH_RMS_NORM_F16x8_PACK_F32_KERNEL(512)        \
+    break;                                            \
+  case 1024:                                          \
+    LANUCH_RMS_NORM_F16x8_PACK_F32_KERNEL(1024)       \
+    break;                                            \
+  case 2048:                                          \
+    LANUCH_RMS_NORM_F16x8_PACK_F32_KERNEL(2048)       \
+    break;                                            \
+  case 4096:                                          \
+    LANUCH_RMS_NORM_F16x8_PACK_F32_KERNEL(4096)       \
+    break;                                            \
+  case 8192:                                          \
+    LANUCH_RMS_NORM_F16x8_PACK_F32_KERNEL(8192)       \
+    break;                                            \
+  default:                                            \
+    throw std::runtime_error(                         \
+      "only support K: 64/128/.../1024*8");           \
+    break;                                            \
+  } 
+
 void rms_norm_f16_f16(torch::Tensor x, torch::Tensor y, float g) {
   CHECK_TORCH_TENSOR_DTYPE(x, torch::kHalf)       
   CHECK_TORCH_TENSOR_DTYPE(y, torch::kHalf)
@@ -719,6 +794,15 @@ void rms_norm_f16x8_pack_f16(torch::Tensor x, torch::Tensor y, float g) {
   DISPATCH_RMS_NORM_F16x8_PACK_F16_KERNEL(N, K)
 }
 
+void rms_norm_f16x8_pack_f32(torch::Tensor x, torch::Tensor y, float g) {
+  CHECK_TORCH_TENSOR_DTYPE(x, torch::kHalf)       
+  CHECK_TORCH_TENSOR_DTYPE(y, torch::kHalf)
+  CHECK_TORCH_TENSOR_SHAPE(x, y)
+  const int N = x.size(0);
+  const int K = x.size(1);
+  DISPATCH_RMS_NORM_F16x8_PACK_F32_KERNEL(N, K)
+}
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   TORCH_BINDING_COMMON_EXTENSION(rms_norm_f32)
   TORCH_BINDING_COMMON_EXTENSION(rms_norm_f32x4)
@@ -727,5 +811,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   TORCH_BINDING_COMMON_EXTENSION(rms_norm_f16x8_f16)
   TORCH_BINDING_COMMON_EXTENSION(rms_norm_f16x8_pack_f16)
   TORCH_BINDING_COMMON_EXTENSION(rms_norm_f16x8_f32)
+  TORCH_BINDING_COMMON_EXTENSION(rms_norm_f16x8_pack_f32)
   TORCH_BINDING_COMMON_EXTENSION(rms_norm_f16_f32)
 }
