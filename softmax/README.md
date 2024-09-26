@@ -5,14 +5,14 @@
 包含以下内容：
 
 - [X] softmax_f32_kernel (grid level memory fence)
-- [X] softmax_f32x4_kernel(grid level memory fence, float4向量化版本)
+- [X] softmax_f32x4_kernel(grid level memory fence)
 - [X] softmax_f32_per_token_kernel(per token)
-- [X] softmax_f32x4_per_token_kernel(per token, float4向量化版本)
+- [X] softmax_f32x4_per_token_kernel(per token)
 - [X] safe_softmax_f32_per_token_kernel(per token)
-- [X] safe_softmax_f32x4_per_token_kernel(per token, float4向量化版本)
+- [X] safe_softmax_f32x4_per_token_kernel(per token)
 - [X] safe_softmax_f16_f32_per_token_kernel(per token)
-- [X] safe_softmax_f16x2_f32_per_token_kernel(per token, half2向量化版本)
-- [X] safe_softmax_f16x8_pack_f32_per_token_kernel(per token, 向量化版本, pack)
+- [X] safe_softmax_f16x2_f32_per_token_kernel(per token)
+- [X] safe_softmax_f16x8_pack_f32_per_token_kernel(per token)
 - [X] PyTorch bindings
 
 
