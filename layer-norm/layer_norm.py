@@ -82,7 +82,7 @@ run_benchmark(lib.layer_norm_f16_f32,        x_f16, "f16f32",       out_f16)
 run_benchmark(lib.layer_norm_f16x2_f16,      x_f16, "f16x2f16",     out_f16)
 run_benchmark(lib.layer_norm_f16x8_f16,      x_f16, "f16x8f16",     out_f16)
 run_benchmark(lib.layer_norm_f16x8_pack_f16, x_f16, "f16x8packf16", out_f16)
-run_benchmark(lib.layer_norm_f16x8_pack_f32, x_f16, "f16x8packf16", out_f16)
+run_benchmark(lib.layer_norm_f16x8_pack_f32, x_f16, "f16x8packf32", out_f16)
 run_benchmark(naive_layer_norm,              x_f16, "f16_th")
 print("-" * 85)
 
