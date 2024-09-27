@@ -52,14 +52,14 @@ def run_benchmark(perf_func: callable,
     out_info = f"out_{tag}"
     out_val = out.flatten().detach().cpu().numpy().tolist()[:3]
     out_val = [round(v, 8) for v in out_val]
-    print(f"{out_info:>20}: {out_val}, time:{mean_time:.8f}ms")
+    print(f"{out_info:>20}: {out_val}, time:{mean_time:.6f}ms")
     if show_all: print(out)
     return out.clone(), mean_time
 
 
-Ms = [128, 256, 512, 1024, 2048, 4096]
-Ns = [128, 256, 512, 1024, 2048, 4096]
-Ks = [128, 256, 512, 1024, 2048, 4096]
+Ms = [2048, 4096]
+Ns = [2048, 4096]
+Ks = [1024, 2048]
 MNKs = [(M, N, K) for M in Ms for N in Ns for K in Ks]
 for (M, N, K) in MNKs:
     print("-" * 85)
