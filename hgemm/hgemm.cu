@@ -15,8 +15,28 @@
 #define FLOAT4(value) (reinterpret_cast<float4*>(&(value))[0])
 #define HALF2(value) (reinterpret_cast<half2*>(&(value))[0])
 #define BFLOAT2(value) (reinterpret_cast<__nv_bfloat162*>(&(value))[0])
+#define LDST64BITS(value) (reinterpret_cast<float2*>(&(value))[0])
+#define LDST128BITS(value) (reinterpret_cast<float4*>(&(value))[0])
+
 
 // -------------------------------------- FP16 -------------------------------------- 
+// HGEMM naive: compute one c[i,j] element per threads, all row major
+__global__ void hgemm_naive_f16_kernel(half* a, half* b, half* c, int M, int N, int K) {
+
+  int n = blockIdx.x * blockDim.x + threadIdx.x;
+  int m = blockIdx.y * blockDim.y + threadIdx.y;
+
+  if (m < M && n < N) {
+    half psum = 0.0;
+    #pragma unroll
+    for (int k = 0; k < K; k++) {
+      // m row in a matrix, n col in b matrix
+      psum += a[m * K + k] * b[k * N + n];
+    }
+    c[m * N + n] = psum; // c[m,n]
+  }
+}
+
 // HGEMM: Block Tile + K Tile, with smem
 // Block Tile (BM, BN) + K Tile (BK=32)
 // grid((N + BN - 1) / BN, (M + BM - 1) / BM), block(BN, BM)
@@ -68,7 +88,7 @@ __global__ void hgemm_sliced_k_f16_kernel(half* a, half* b, half* c, int M, int 
   c[store_gmem_c_addr] = sum;
 }
 
-// HGEMM: Block Tile + Thread Tile + K Tile + Vec4, with smem
+// HGEMM: Block Tile + Thread Tile + K Tile + half2x2, with smem
 // BK:TILE_K=8 BM=BN=128
 // TM=TN=8 增加计算密度 BM/TM=16 BN/TN=16
 // dim3 blockDim(BN/TN, BM/TM);
@@ -146,6 +166,207 @@ __global__ void hgemm_t_8x8_sliced_k_f16x4_kernel(half* a, half* b, half* c, int
   }
 }
 
+template<const int BM=128, const int BN=128, const int BK=8, const int TM=8, const int TN=8>
+__global__ void hgemm_t_8x8_sliced_k_f16x4_bcf_kernel(
+  half* a, half* b, half* c, const int M, const int N, const int K) {
+  
+  const int bx = blockIdx.x;
+  const int by = blockIdx.y;
+  const int tx = threadIdx.x;
+  const int ty = threadIdx.y;
+  const int tid = ty * blockDim.x + tx;
+
+  __shared__ half s_a[BK][BM];
+  __shared__ half s_b[BK][BN];
+
+  half r_load_a[TM/2]; // 4
+  half r_load_b[TN/2]; // 4
+  half r_comp_a[TM];
+  half r_comp_b[TN];
+  half r_c[TM][TN] = {__float2half(0.0f)};
+
+  // TODO: 增加注释
+  int load_a_smem_m = tid >> 1;
+  int load_a_smem_k = (tid & 1) << 2;
+  int load_b_smem_k = tid >> 5;
+  int load_b_smem_n = (tid & 31) << 2;
+
+  int load_a_gmem_m = by * BM + load_a_smem_m;
+  int load_b_gmem_n = bx * BN + load_b_smem_n;
+
+  for (int bk = 0; bk < (K + BK - 1) / BK; bk++) {
+
+    int load_a_gmem_k = bk * BK + load_a_smem_k;
+    int load_a_gmem_addr = load_a_gmem_m * K + load_a_gmem_k;
+    int load_b_gmem_k = bk * BK + load_b_smem_k;
+    int load_b_gmem_addr = load_b_gmem_k * N + load_b_gmem_n;
+    HALF2(r_load_a[0]) = HALF2(a[load_a_gmem_addr + 0]);
+    HALF2(r_load_a[2]) = HALF2(a[load_a_gmem_addr + 2]);
+    HALF2(r_load_b[0]) = HALF2(b[load_b_gmem_addr + 0]);
+    HALF2(r_load_b[2]) = HALF2(b[load_b_gmem_addr + 2]);
+
+    s_a[load_a_smem_k    ][load_a_smem_m] = r_load_a[0];
+    s_a[load_a_smem_k + 1][load_a_smem_m] = r_load_a[1];
+    s_a[load_a_smem_k + 2][load_a_smem_m] = r_load_a[2];
+    s_a[load_a_smem_k + 3][load_a_smem_m] = r_load_a[3];
+    HALF2(s_b[load_b_smem_k][load_b_smem_n + 0]) = HALF2(r_load_b[0]);
+    HALF2(s_b[load_b_smem_k][load_b_smem_n + 2]) = HALF2(r_load_b[2]);
+
+    __syncthreads();
+
+    #pragma unroll
+    for (int tk = 0; tk < BK; tk++) {
+      HALF2(r_comp_a[0]) = HALF2(s_a[tk][ty * TM / 2             ]);
+      HALF2(r_comp_a[2]) = HALF2(s_a[tk][ty * TM / 2      + 2    ]);
+      HALF2(r_comp_a[4]) = HALF2(s_a[tk][ty * TM / 2 + BM / 2    ]);
+      HALF2(r_comp_a[6]) = HALF2(s_a[tk][ty * TM / 2 + BM / 2 + 2]);
+
+      HALF2(r_comp_b[0]) = HALF2(s_b[tk][tx * TN / 2             ]);
+      HALF2(r_comp_b[2]) = HALF2(s_b[tk][tx * TN / 2      + 2    ]);
+      HALF2(r_comp_b[4]) = HALF2(s_b[tk][tx * TN / 2 + BN / 2    ]);
+      HALF2(r_comp_b[6]) = HALF2(s_b[tk][tx * TN / 2 + BN / 2 + 2]);
+
+      #pragma unroll
+      for (int tm = 0; tm < TM; tm++) {
+        #pragma unroll
+        for (int tn = 0; tn < TN; tn++) {
+          r_c[tm][tn] += r_comp_a[tm] * r_comp_b[tn];
+        }
+      }
+    }
+    __syncthreads();
+  }
+
+  #pragma unroll
+  for (int i = 0; i < TM / 2; i++) {
+    int store_c_gmem_m = by * BM + ty * TM / 2 + i;
+    int store_c_gmem_n = bx * BN + tx * TN / 2;
+    int store_c_gmem_addr = store_c_gmem_m * N + store_c_gmem_n;
+    HALF2(c[store_c_gmem_addr + 0]) = HALF2(r_c[i][0]);
+    HALF2(c[store_c_gmem_addr + 2]) = HALF2(r_c[i][2]);
+    HALF2(c[store_c_gmem_addr + BN / 2 + 0]) = HALF2(r_c[i][4]);
+    HALF2(c[store_c_gmem_addr + BN / 2 + 2]) = HALF2(r_c[i][6]);
+  }
+  #pragma unroll
+  for (int i = 0; i < TM / 2; i++) {
+    int store_c_gmem_m = by * BM + BM / 2 + ty * TM / 2 + i;
+    int store_c_gmem_n = bx * BN + tx * TN / 2;
+    int store_c_gmem_addr = store_c_gmem_m * N + store_c_gmem_n;
+    HALF2(c[store_c_gmem_addr + 0]) = HALF2(r_c[i + TM / 2][0]);
+    HALF2(c[store_c_gmem_addr + 2]) = HALF2(r_c[i + TM / 2][2]);
+    HALF2(c[store_c_gmem_addr + BN / 2 + 0]) = HALF2(r_c[i + TM / 2][4]);
+    HALF2(c[store_c_gmem_addr + BN / 2 + 2]) = HALF2(r_c[i + TM / 2][6]);
+  }
+}
+
+template<const int BM=256, const int BN=256, const int BK=8, const int TM=16, const int TN=16>
+__global__ void hgemm_t_16x16_sliced_k_f16x8_pack_bcf_kernel(
+  half* a, half* b, half* c, const int M, const int N, const int K) {
+  // threads: 256/16 * 256/16 = 256
+  const int bx = blockIdx.x;
+  const int by = blockIdx.y;
+  const int tx = threadIdx.x;
+  const int ty = threadIdx.y;
+  const int tid = ty * blockDim.x + tx;
+
+  __shared__ half s_a[BK][BM]; // 8*256*2=4KB
+  __shared__ half s_b[BK][BN]; // 8*256*2=4KB
+
+  half r_load_a[TM/2]; // 8
+  half r_load_b[TN/2]; // 8
+  half r_comp_a[TM]; // 16
+  half r_comp_b[TN]; // 16
+  half r_c[TM][TN] = {__float2half(0.0f)}; // 16x16
+
+  // TODO: 增加注释 每个线程读取数据的逻辑
+  int load_a_smem_m = tid >> 1; // tid / 2
+  int load_a_smem_k = (tid & 1) << 2; // 
+  int load_b_smem_k = tid >> 5;
+  int load_b_smem_n = (tid & 31) << 2;
+
+  int load_a_gmem_m = by * BM + load_a_smem_m;
+  int load_b_gmem_n = bx * BN + load_b_smem_n;
+
+  for (int bk = 0; bk < (K + BK - 1) / BK; bk++) {
+
+    int load_a_gmem_k = bk * BK + load_a_smem_k;
+    int load_a_gmem_addr = load_a_gmem_m * K + load_a_gmem_k;
+    int load_b_gmem_k = bk * BK + load_b_smem_k;
+    int load_b_gmem_addr = load_b_gmem_k * N + load_b_gmem_n;
+    LDST128BITS(r_load_a[0]) = LDST128BITS(a[load_a_gmem_addr]);
+    LDST128BITS(r_load_b[0]) = LDST128BITS(b[load_b_gmem_addr]);
+    // HALF2(r_load_a[0]) = HALF2(a[load_a_gmem_addr + 0]);
+    // HALF2(r_load_a[2]) = HALF2(a[load_a_gmem_addr + 2]);
+    // HALF2(r_load_b[0]) = HALF2(b[load_b_gmem_addr + 0]);
+    // HALF2(r_load_b[2]) = HALF2(b[load_b_gmem_addr + 2]);
+
+    s_a[load_a_smem_k    ][load_a_smem_m] = r_load_a[0];
+    s_a[load_a_smem_k + 1][load_a_smem_m] = r_load_a[1];
+    s_a[load_a_smem_k + 2][load_a_smem_m] = r_load_a[2];
+    s_a[load_a_smem_k + 3][load_a_smem_m] = r_load_a[3];
+    s_a[load_a_smem_k + 4][load_a_smem_m] = r_load_a[4];
+    s_a[load_a_smem_k + 5][load_a_smem_m] = r_load_a[5];
+    s_a[load_a_smem_k + 6][load_a_smem_m] = r_load_a[6];
+    s_a[load_a_smem_k + 7][load_a_smem_m] = r_load_a[7];
+    LDST128BITS(s_b[load_b_smem_k][load_b_smem_n]) = LDST128BITS(r_load_b[0]);
+    // HALF2(s_b[load_b_smem_k][load_b_smem_n + 0]) = HALF2(r_load_b[0]);
+    // HALF2(s_b[load_b_smem_k][load_b_smem_n + 2]) = HALF2(r_load_b[2]);
+
+    __syncthreads();
+
+    #pragma unroll
+    for (int tk = 0; tk < BK; tk++) {
+      // HALF2(r_comp_a[0]) = HALF2(s_a[tk][ty * TM / 2             ]);
+      // HALF2(r_comp_a[2]) = HALF2(s_a[tk][ty * TM / 2      + 2    ]);
+      // HALF2(r_comp_a[4]) = HALF2(s_a[tk][ty * TM / 2 + BM / 2    ]);
+      // HALF2(r_comp_a[6]) = HALF2(s_a[tk][ty * TM / 2 + BM / 2 + 2]);
+      LDST128BITS(r_comp_a[0]) = LDST128BITS(s_a[tk][ty * TM / 2         ]);
+      LDST128BITS(r_comp_a[8]) = LDST128BITS(s_a[tk][ty * TM / 2 + BM / 2]);
+
+      // HALF2(r_comp_b[0]) = HALF2(s_b[tk][tx * TN / 2             ]);
+      // HALF2(r_comp_b[2]) = HALF2(s_b[tk][tx * TN / 2      + 2    ]);
+      // HALF2(r_comp_b[4]) = HALF2(s_b[tk][tx * TN / 2 + BN / 2    ]);
+      // HALF2(r_comp_b[6]) = HALF2(s_b[tk][tx * TN / 2 + BN / 2 + 2]);
+      LDST128BITS(r_comp_b[0]) = LDST128BITS(s_b[tk][tx * TN / 2         ]);
+      LDST128BITS(r_comp_b[8]) = LDST128BITS(s_b[tk][tx * TN / 2 + BN / 2]);
+
+      #pragma unroll
+      for (int tm = 0; tm < TM; tm++) {
+        #pragma unroll
+        for (int tn = 0; tn < TN; tn++) {
+          r_c[tm][tn] += r_comp_a[tm] * r_comp_b[tn];
+        }
+      }
+    }
+    __syncthreads();
+  }
+
+  #pragma unroll
+  for (int i = 0; i < TM / 2; i++) {
+    int store_c_gmem_m = by * BM + ty * TM / 2 + i;
+    int store_c_gmem_n = bx * BN + tx * TN / 2;
+    int store_c_gmem_addr = store_c_gmem_m * N + store_c_gmem_n;
+    // HALF2(c[store_c_gmem_addr + 0]) = HALF2(r_c[i][0]);
+    // HALF2(c[store_c_gmem_addr + 2]) = HALF2(r_c[i][2]);
+    // HALF2(c[store_c_gmem_addr + BN / 2 + 0]) = HALF2(r_c[i][4]);
+    // HALF2(c[store_c_gmem_addr + BN / 2 + 2]) = HALF2(r_c[i][6]);
+    LDST128BITS(c[store_c_gmem_addr         ]) = LDST128BITS(r_c[i][0]);
+    LDST128BITS(c[store_c_gmem_addr + BN / 2]) = LDST128BITS(r_c[i][8]);
+  }
+  #pragma unroll
+  for (int i = 0; i < TM / 2; i++) {
+    int store_c_gmem_m = by * BM + BM / 2 + ty * TM / 2 + i;
+    int store_c_gmem_n = bx * BN + tx * TN / 2;
+    int store_c_gmem_addr = store_c_gmem_m * N + store_c_gmem_n;
+    // HALF2(c[store_c_gmem_addr + 0]) = HALF2(r_c[i + TM / 2][0]);
+    // HALF2(c[store_c_gmem_addr + 2]) = HALF2(r_c[i + TM / 2][2]);
+    // HALF2(c[store_c_gmem_addr + BN / 2 + 0]) = HALF2(r_c[i + TM / 2][4]);
+    // HALF2(c[store_c_gmem_addr + BN / 2 + 2]) = HALF2(r_c[i + TM / 2][6]);
+    LDST128BITS(c[store_c_gmem_addr         ]) = LDST128BITS(r_c[i + TM / 2][0]);
+    LDST128BITS(c[store_c_gmem_addr + BN / 2]) = LDST128BITS(r_c[i + TM / 2][8]);
+  }
+}
+
 // --------------------- PyTorch bindings for custom kernel -----------------------
 #define STRINGFY(str) #str
 #define TORCH_BINDING_COMMON_EXTENSION(func) \
@@ -160,6 +381,31 @@ if(((T).options().dtype() != (th_type))) {                   \
 #define CHECK_TORCH_TENSOR_SHAPE(T, S0, S1)           \
 if (((T).size(0) != (S0)) || ((T).size(1) != (S1))) { \
   throw std::runtime_error("Tensor size mismatch!");  \
+}
+
+// HGEMM naive: compute one c[i,j] element per threads, all row major
+void hgemm_naive_f16(torch::Tensor a, torch::Tensor b, torch::Tensor c) {
+  CHECK_TORCH_TENSOR_DTYPE(a, torch::kHalf)
+  CHECK_TORCH_TENSOR_DTYPE(b, torch::kHalf)
+  CHECK_TORCH_TENSOR_DTYPE(c, torch::kHalf)
+  const int M = a.size(0);
+  const int K = a.size(1);
+  const int N = b.size(1); 
+  CHECK_TORCH_TENSOR_SHAPE(a, M, K)
+  CHECK_TORCH_TENSOR_SHAPE(b, K, N)
+  CHECK_TORCH_TENSOR_SHAPE(c, M, N)
+  constexpr int BM = 32;
+  constexpr int BN = 32;
+
+  dim3 block(BN, BM);
+  dim3 grid((N + BN - 1) / BN, (M + BM - 1) / BM);
+
+  hgemm_naive_f16_kernel<<<grid, block>>>(
+    reinterpret_cast<half*>(a.data_ptr()),
+    reinterpret_cast<half*>(b.data_ptr()),
+    reinterpret_cast<half*>(c.data_ptr()),
+    M, N, K
+  );
 }
 
 // HGEMM: Block Tile + K Tile, with smem
@@ -223,7 +469,64 @@ void hgemm_t_8x8_sliced_k_f16x4(torch::Tensor a, torch::Tensor b, torch::Tensor 
   );
 }
 
+void hgemm_t_8x8_sliced_k_f16x4_bcf(torch::Tensor a, torch::Tensor b, torch::Tensor c) {
+  CHECK_TORCH_TENSOR_DTYPE(a, torch::kHalf)
+  CHECK_TORCH_TENSOR_DTYPE(b, torch::kHalf)
+  CHECK_TORCH_TENSOR_DTYPE(c, torch::kHalf)
+  const int M = a.size(0);
+  const int K = a.size(1);
+  const int N = b.size(1); 
+  CHECK_TORCH_TENSOR_SHAPE(a, M, K)
+  CHECK_TORCH_TENSOR_SHAPE(b, K, N)
+  CHECK_TORCH_TENSOR_SHAPE(c, M, N)
+  constexpr int BM = 128;
+  constexpr int BN = 128;
+  constexpr int BK = 8; 
+  constexpr int TM = 8;
+  constexpr int TN = 8;
+
+  dim3 block(BN/TN, BM/TM);
+  dim3 grid((N + BN - 1) / BN, (M + BM - 1) / BM);
+
+  hgemm_t_8x8_sliced_k_f16x4_bcf_kernel<BM, BN, BK, TM, TN><<<grid, block>>>(
+    reinterpret_cast<half*>(a.data_ptr()),
+    reinterpret_cast<half*>(b.data_ptr()),
+    reinterpret_cast<half*>(c.data_ptr()),
+    M, N, K
+  );
+}
+
+void hgemm_t_16x16_sliced_k_f16x8_pack_bcf(torch::Tensor a, torch::Tensor b, torch::Tensor c) {
+  CHECK_TORCH_TENSOR_DTYPE(a, torch::kHalf)
+  CHECK_TORCH_TENSOR_DTYPE(b, torch::kHalf)
+  CHECK_TORCH_TENSOR_DTYPE(c, torch::kHalf)
+  const int M = a.size(0);
+  const int K = a.size(1);
+  const int N = b.size(1); 
+  CHECK_TORCH_TENSOR_SHAPE(a, M, K)
+  CHECK_TORCH_TENSOR_SHAPE(b, K, N)
+  CHECK_TORCH_TENSOR_SHAPE(c, M, N)
+  constexpr int BM = 256;
+  constexpr int BN = 256;
+  constexpr int BK = 8; 
+  constexpr int TM = 16;
+  constexpr int TN = 16;
+
+  dim3 block(BN/TN, BM/TM);
+  dim3 grid((N + BN - 1) / BN, (M + BM - 1) / BM);
+
+  hgemm_t_16x16_sliced_k_f16x8_pack_bcf_kernel<BM, BN, BK, TM, TN><<<grid, block>>>(
+    reinterpret_cast<half*>(a.data_ptr()),
+    reinterpret_cast<half*>(b.data_ptr()),
+    reinterpret_cast<half*>(c.data_ptr()),
+    M, N, K
+  );
+}
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+  TORCH_BINDING_COMMON_EXTENSION(hgemm_naive_f16)
   TORCH_BINDING_COMMON_EXTENSION(hgemm_sliced_k_f16)
   TORCH_BINDING_COMMON_EXTENSION(hgemm_t_8x8_sliced_k_f16x4)
+  TORCH_BINDING_COMMON_EXTENSION(hgemm_t_8x8_sliced_k_f16x4_bcf)
+  TORCH_BINDING_COMMON_EXTENSION(hgemm_t_16x16_sliced_k_f16x8_pack_bcf)
 }
