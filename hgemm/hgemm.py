@@ -72,7 +72,7 @@ for (M, N, K) in MNKs:
     run_benchmark(lib.hgemm_sliced_k_f16,             a, b, "f16(sk)",       c)
     run_benchmark(lib.hgemm_t_8x8_sliced_k_f16x4,     a, b, "f16x4(t8x8sk)", c)
     run_benchmark(lib.hgemm_t_8x8_sliced_k_f16x4_bcf, a, b, "f16x4(t8x8bcf)", c)
-    run_benchmark(lib.hgemm_t_16x16_sliced_k_f16x8_pack_bcf, a, b, "f16x8pack(bcf)", c)
+    run_benchmark(lib.hgemm_t_8x8_sliced_k_f16x4_pack_bcf, a, b, "f16x4pack(bcf)", c)
     run_benchmark(partial(torch.matmul, out=c),       a, b, "f16_th")
     print("-" * 85)
 
