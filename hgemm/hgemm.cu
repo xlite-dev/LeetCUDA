@@ -260,11 +260,22 @@ __global__ void hgemm_t_8x8_sliced_k_f16x4_bcf_kernel(
   half r_comp_b[TN];
   half r_c[TM][TN] = {__float2half(0.0f)};
 
-  // TODO: 增加注释
-  int load_a_smem_m = tid >> 1;
-  int load_a_smem_k = (tid & 1) << 2;
-  int load_b_smem_k = tid >> 5;
-  int load_b_smem_n = (tid & 31) << 2;
+  // mapping tid to s_a[BK][BM], for each orginal m-th row, load 4 + 4 K-dim 
+  // row major values from A matrix, and store it in COL major s_a[BK][BM].
+  int load_a_smem_m = tid / 2; // tid / 2，(0,1,2,...,128)
+  // (0b00000000 & 0b00000001) << 2 = 0
+  // (0b00000001 & 0b00000001) << 2 = 4
+  // (0b00000010 & 0b00000001) << 2 = 0
+  // (0b00000011 & 0b00000001) << 2 = 4
+  int load_a_smem_k = (tid & 1) << 2; // (0,4)
+  // mapping tid to s_b[BK][BN], for each orginal k-th row, load 4 + 4 N-dim 
+  // row major values from B matrix, and store it in ROW major s_b[BK][BN].
+  int load_b_smem_k = tid / 32; // 0~8
+  // (0b00000000 & 0b00011111) << 2 = 0
+  // (0b00000001 & 0b00011111) << 2 = 4
+  // (0b00000010 & 0b00011111) << 2 = 8
+  // (0b00000011 & 0b00011111) << 2 = 12
+  int load_b_smem_n = (tid & 31) << 2; // (0,4,8,12,...,124)
 
   int load_a_gmem_m = by * BM + load_a_smem_m;
   int load_b_gmem_n = bx * BN + load_b_smem_n;
@@ -442,23 +453,30 @@ __global__ void hgemm_t_8x8_sliced_k_f16x4_pack_bcf_kernel(
 
     #pragma unroll
     for (int tk = 0; tk < BK; tk++) {
-      // bank conflicts analysis, tx 0~15, ty 0~15
-      // tk 0, tid 0~15  -> ty 0 -> [0][0+0~3],[0][64+0~3] -> bank 0&1(layer_0), 0&1(layer_1)
-      // tk 0, tid 16~31 -> ty 1 -> [0][0+4~7],[0][64+4~7] -> bank 2&3(layer_0), 2&3(layer_1)
+      // bank conflicts analysis, tx/ty 0~15, 0~7 bank 4*8=32 bytes
+      // tid 0~15 access bank 0~1,  tid 16~31 access bank 2~3, etc.
+      // tid 0,  tk 0 -> ty 0 -> [0][0+0~3],[0][64+0~3] -> bank 0~1(layer_0/1),   same address
+      // tid 0,  tk 7 -> ty 0 -> [7][0+0~3],[0][64+0~3] -> bank 0~1(layer_14/15), same address
+      // tid 15, tk 0 -> ty 0 -> [0][0+0~3],[0][64+0~3] -> bank 0~1(layer_0/1),   same address
+      // tid 15, tk 7 -> ty 0 -> [7][0+0~3],[0][64+0~3] -> bank 0~1(layer_14/15), same address
+      // tid 16, tk 0 -> ty 1 -> [0][0+4~7],[0][64+4~7] -> bank 2~3(layer_0/1),   same address
+      // tid 16, tk 7 -> ty 1 -> [7][0+4~7],[0][64+4~7] -> bank 2~3(layer_14/15), same address
+      // tid 31, tk 0 -> ty 1 -> [0][0+4~7],[0][64+4~7] -> bank 2~3(layer_0/1),   same address
+      // tid 31, tk 7 -> ty 1 -> [7][0+4~7],[0][64+4~7] -> bank 2~3(layer_14/15), same address
       LDST64BITS(r_comp_a[0]) = LDST64BITS(s_a[tk][ty * TM / 2         ]);
       LDST64BITS(r_comp_a[4]) = LDST64BITS(s_a[tk][ty * TM / 2 + BM / 2]);
-      // conclusion: s_a still have many bank conflicts within warp.
+      // conclusion: still have bank conflicts.
       
-      // tk 0, tid 0  -> tx 0  -> [0][0+0~3],  [0][64+0~3]   -> bank 0&1(layer_0),   0&1(layer_1)
-      // tk 0, tid 1  -> tx 1  -> [0][0+4~7],  [0][64+4~7]   -> bank 2&3(layer_0),   2&3(layer_1)
-      // tk 0, tid 2  -> tx 2  -> [0][0+8~11], [0][64+8~11]  -> bank 4&5(layer_0),   4&5(layer_1)
-      // tk 0, tid 15 -> tx 15 -> [0][0+60~63],[0][64+60~63] -> bank 30&31(layer_0), 30&31(layer_1)
-      // tk 0, tid 16 -> tx 0  -> [0][0+0~3],  [0][64+0~3]   -> bank 0&1(layer_0),   0&1(layer_1)
-      // tk 0, tid 31 -> tx 15 -> [0][0+60~63],[0][64+60~63] -> bank 30&31(layer_0), 30&31(layer_1)
+      // tid 0/16 access bank 0~1, tid 1/17 access bank 2~3, tid 15/31 access bank 30~31.
+      // tid 2/10/18/26 access bank 8~11, tid 7/15/23/31 access bank 28~31, etc.
+      // tid 0, tk 0 -> tx 0 -> [0][0+0~3],[0][64+0~3] -> bank 0~1(layer_0/1),   same address
+      // tid 0, tk 7 -> tx 0 -> [7][0+0~3],[0][64+0~3] -> bank 0~1(layer_14/15), same address
+      // tid 1, tk 0 -> tx 1 -> [0][0+4~7],[0][64+4~7] -> bank 2~3(layer_0/1),   same address
+      // tid 1, tk 7 -> tx 1 -> [7][0+4~7],[0][64+4~7] -> bank 2~3(layer_14/15), same address
       LDST64BITS(r_comp_b[0]) = LDST64BITS(s_b[tk][tx * TN / 2         ]);
       LDST64BITS(r_comp_b[4]) = LDST64BITS(s_b[tk][tx * TN / 2 + BN / 2]);
       // conclusion: s_b still have many bank conflicts within warp, 
-      // tid 0/16 access same bank 0&1, etc.
+      // tid 0/16 access same bank 0&1, etc. need 2 memory issues.
 
       #pragma unroll
       for (int tm = 0; tm < TM; tm++) {
