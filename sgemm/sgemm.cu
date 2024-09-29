@@ -171,6 +171,8 @@ __global__ void sgemm_t_8x8_sliced_k_f32x4_bcf_kernel(
 
   __shared__ float s_a[BK][BM];
   __shared__ float s_b[BK][BN];
+  // __shared__ float s_a[BK][BM + 4];
+  // __shared__ float s_b[BK][BN + 4];
 
   float r_load_a[TM/2]; // 4
   float r_load_b[TN/2]; // 4
@@ -198,8 +200,9 @@ __global__ void sgemm_t_8x8_sliced_k_f32x4_bcf_kernel(
   int load_a_gmem_m = by * BM + load_a_smem_m;
   int load_b_gmem_n = bx * BN + load_b_smem_n;
 
-  for (int bk = 0; bk < (K + BK - 1) / BK; bk++) {
+  if (load_a_gmem_m >= M || load_b_gmem_n >= N) return;
 
+  for (int bk = 0; bk < (K + BK - 1) / BK; bk++) {
     int load_a_gmem_k = bk * BK + load_a_smem_k;
     int load_a_gmem_addr = load_a_gmem_m * K + load_a_gmem_k;
     int load_b_gmem_k = bk * BK + load_b_smem_k;
@@ -272,24 +275,30 @@ __global__ void sgemm_t_8x8_sliced_k_f32x4_bcf_kernel(
     for (int tk = 0; tk < BK; tk++) {
       // bank conflicts analysis, tx/ty 0~15, 0~7 bank 4*8=32 bytes
       // tid 0~15 access bank 0~3,  tid 16~31 access bank 4~7, etc.
-      // tid 0,  tk 0 -> ty 0 -> [0][0+0~3],[0][64+0~3] -> bank 0~3(layer_0/2),   same address
-      // tid 0,  tk 7 -> ty 0 -> [7][0+0~3],[0][64+0~3] -> bank 0~3(layer_28/30), same address
-      // tid 15, tk 0 -> ty 0 -> [0][0+0~3],[0][64+0~3] -> bank 0~3(layer_0/2),   same address
-      // tid 15, tk 7 -> ty 0 -> [7][0+0~3],[0][64+0~3] -> bank 0~3(layer_28/30), same address
-      // tid 16, tk 0 -> ty 1 -> [0][0+4~7],[0][64+4~7] -> bank 4~7(layer_0/2),   same address
-      // tid 16, tk 7 -> ty 1 -> [7][0+4~7],[0][64+4~7] -> bank 4~7(layer_28/30), same address
-      // tid 31, tk 0 -> ty 1 -> [0][0+4~7],[0][64+4~7] -> bank 4~7(layer_0/2),   same address
-      // tid 31, tk 7 -> ty 1 -> [7][0+4~7],[0][64+4~7] -> bank 4~7(layer_28/30), same address
+      // tid 0,  tk 0 -> ty 0 -> [0][0+0~3],[0][64+0~3] -> bank 0~3(layer_0/2),   
+      // tid 0,  tk 7 -> ty 0 -> [7][0+0~3],[0][64+0~3] -> bank 0~3(layer_28/30), 
+      // tid 15, tk 0 -> ty 0 -> [0][0+0~3],[0][64+0~3] -> bank 0~3(layer_0/2),   
+      // tid 15, tk 7 -> ty 0 -> [7][0+0~3],[0][64+0~3] -> bank 0~3(layer_28/30), 
+      // tid 16, tk 0 -> ty 1 -> [0][0+4~7],[0][64+4~7] -> bank 4~7(layer_0/2),   
+      // tid 16, tk 7 -> ty 1 -> [7][0+4~7],[0][64+4~7] -> bank 4~7(layer_28/30), 
+      // tid 31, tk 0 -> ty 1 -> [0][0+4~7],[0][64+4~7] -> bank 4~7(layer_0/2),   
+      // tid 31, tk 7 -> ty 1 -> [7][0+4~7],[0][64+4~7] -> bank 4~7(layer_28/30), 
+      // tid 255,tk 0 -> ty 15 -> [0][0+60~63],[0][64+60~63] -> bank 28~31(layer_1/3),   
+      // tid 255,tk 7 -> ty 15 -> [7][0+60~63],[0][64+60~63] -> bank 28~31(layer_29/31), 
       FLOAT4(r_comp_a[0]) = FLOAT4(s_a[tk][ty * TM / 2         ]);
       FLOAT4(r_comp_a[4]) = FLOAT4(s_a[tk][ty * TM / 2 + BM / 2]);
-      // conclusion: still have bank conflicts.
+      // if (tid == < 32 && bx == 0 && by == 0) {
+      //   printf("tid: %d, tx: %d, ty: %d, [%d][%d]\n", tid, tx, ty, tk, ty * TM / 2);
+      //   printf("tid: %d, tx: %d, ty: %d, [%d][%d]\n", tid, tx, ty, tk, ty * TM / 2 + BM / 2);
+      // }
+      // conclusion: still have bank conflicts, need 16 memory issues ?
 
       // tid 0/8/16/24  access bank 0~3,  tid 1/9/17/25  access bank 4~7, 
       // tid 2/10/18/26 access bank 8~11, tid 7/15/23/31 access bank 28~31, etc.
-      // tid 0, tk 0 -> tx 0 -> [0][0+0~3],[0][64+0~3] -> bank 0~3(layer_0/2),    same address
-      // tid 0, tk 7 -> tx 0 -> [7][0+0~3],[0][64+0~3] -> bank 0~3(layer_28/30), same address
-      // tid 1, tk 0 -> tx 1 -> [0][0+4~7],[0][64+4~7] -> bank 4~7(layer_0/2),    same address
-      // tid 1, tk 7 -> tx 1 -> [7][0+4~7],[0][64+4~7] -> bank 4~7(layer_28/30), same address
+      // tid 0, tk 0 -> tx 0 -> [0][0+0~3],[0][64+0~3] -> bank 0~3(layer_0/2),    
+      // tid 0, tk 7 -> tx 0 -> [7][0+0~3],[0][64+0~3] -> bank 0~3(layer_28/30), 
+      // tid 1, tk 0 -> tx 1 -> [0][0+4~7],[0][64+4~7] -> bank 4~7(layer_0/2),    
+      // tid 1, tk 7 -> tx 1 -> [7][0+4~7],[0][64+4~7] -> bank 4~7(layer_28/30), 
       FLOAT4(r_comp_b[0]) = FLOAT4(s_b[tk][tx * TN / 2         ]);
       FLOAT4(r_comp_b[4]) = FLOAT4(s_b[tk][tx * TN / 2 + BN / 2]);
       // conclusion: still have some bank conflicts, need 4 memory issues.
@@ -303,6 +312,7 @@ __global__ void sgemm_t_8x8_sliced_k_f32x4_bcf_kernel(
         }
       }
     }
+    // sync per BK.
     __syncthreads();
   }
 
@@ -581,6 +591,7 @@ void sgemm_t_8x8_sliced_k_f32x4_bcf(torch::Tensor a, torch::Tensor b, torch::Ten
     M, N, K
   );
 }
+
 void sgemm_t_8x8_sliced_k_f32x4_bcf_dbuf(torch::Tensor a, torch::Tensor b, torch::Tensor c) {
   CHECK_TORCH_TENSOR_DTYPE(a, torch::kFloat32)
   CHECK_TORCH_TENSOR_DTYPE(b, torch::kFloat32)
