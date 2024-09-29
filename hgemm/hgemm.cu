@@ -18,7 +18,6 @@
 #define LDST64BITS(value) (reinterpret_cast<float2*>(&(value))[0])
 #define LDST128BITS(value) (reinterpret_cast<float4*>(&(value))[0])
 
-
 // -------------------------------------- FP16 -------------------------------------- 
 // HGEMM naive: compute one c[i,j] element per threads, all row major
 __global__ void hgemm_naive_f16_kernel(half* a, half* b, half* c, int M, int N, int K) {
@@ -167,6 +166,82 @@ __global__ void hgemm_t_8x8_sliced_k_f16x4_kernel(half* a, half* b, half* c, int
 }
 
 template<const int BM=128, const int BN=128, const int BK=8, const int TM=8, const int TN=8>
+__global__ void hgemm_t_8x8_sliced_k_f16x4_pack_kernel(
+  half* a, half* b, half* c, int M, int N, int K) {
+  // [1]  Block Tile: 一个16x16的block处理C上大小为128X128的一个目标块
+  // [2] Thread Tile: 每个thread负责计算TM*TN(8*8)个元素，增加计算密度
+  // [3]      K Tile: 将K分块，每块BK大小，迭代(K+BK-1/BK)次，
+  //                  每次计算TM*TN个元素各自的部分乘累加
+  // [4]   Vectorize: 减少load和store指令，使用half2
+
+  // 线程总数16x16=256，每个线程负责计算8x8的元素
+  int bx = blockIdx.x;
+  int by = blockIdx.y;
+  int tx = threadIdx.x;
+  int ty = threadIdx.y;
+  int tid = threadIdx.y * blockDim.x + tx; // tid within the block
+  __shared__ half s_a[BM][BK], s_b[BK][BN]; // 2*128*8*2=4KB
+  
+  // 0. 先计算shared memory中的索引
+  // tid和需要加载的smem s_a[BM][BK] 之间的索引关系 BM=128 BK=8 按行读取 A行主序
+  // 对于s_a每行8个数据，每个线程读取4个，需要2个线程；总共128行，需要128x2刚好256线程
+  int load_smem_a_m = tid / 2; // tid/2 (128/8)*(128/8)=256 threads per block, tid/2->[0,128), BM=128 0~127
+  int load_smem_a_k = (tid % 2 == 0) ? 0 : 4;  // (tid%2 == 0) ? 0 : 4, col of s_a 0,4
+  // tid和需要加载的smem s_b[BK][BN] 之间的索引关系 BK=8 BN=128 按行读取 B行主序
+  // 对于s_b每行128个数据，每个线程读4个数据，需要32个线程；总共8行，需要32x8=256个线程
+  int load_smem_b_k = tid / 32; // tid/32, row of s_b 256/32=8 行 0~7
+  int load_smem_b_n = (tid % 32) * 4;  // (tid % 32) * 4, col of s_b 0,4,...,124
+  // 1. 再计算全局内存中的索引
+  // 要加载到s_a中的元素对应到A全局内存中的行数 每个block负责出C中大小为BM*BN的块
+  int load_gmem_a_m = by * BM + load_smem_a_m; // global row of a and c
+  int load_gmem_b_n = bx * BN + load_smem_b_n; // global col of b and c
+
+  half r_c[TM][TN] = {__float2half(0.0f)}; // 8x8
+  // 2. 先对K进行分块，每块BK大小
+  for (int bk = 0; bk < (K + BK - 1) / BK; ++bk) {
+    // 加载数据到共享内存smem s_a BM*BK 128*8 vectorize float4
+    int load_gmem_a_k = bk * BK + load_smem_a_k; // global col of a
+    int load_gmem_a_addr = load_gmem_a_m * K + load_gmem_a_k;
+    LDST64BITS(s_a[load_smem_a_m][load_smem_a_k]) = LDST64BITS(a[load_gmem_a_addr]);
+    // 加载数据到共享内存smem s_b BK*BN 8*128 vectorize float4
+    int load_gmem_b_k = bk * BK + load_smem_b_k; // global row of b
+    int load_gmem_b_addr = load_gmem_b_k * N + load_gmem_b_n; 
+    LDST64BITS(s_b[load_smem_b_k][load_smem_b_n]) = LDST64BITS(b[load_gmem_b_addr]);
+
+    __syncthreads();
+
+    #pragma unroll
+    for (int k = 0; k < BK; k++) {
+      // 3. 每个线程负责计算BM*BN(12x128)中的TM*TN(8x8)个元素
+      #pragma unroll
+      for (int m = 0; m < TM; m++) {
+        #pragma unroll
+        for (int n = 0; n < TN; n++) {
+          // k from 0~7，0 ~ BK, ty and tx range from 0 to 15, 16x8=128
+          int comp_smem_a_m = ty * TM + m;  // 128*8 128/TM(8)=16 M方向 16线程
+          int comp_smem_b_n = tx * TN + n;  // 8*128 128/TN(8)=16 N方向 16线程
+          // r_c[m][n] += s_a[comp_smem_a_m][k] * s_b[k][comp_smem_b_n];
+          r_c[m][n] = __hfma(s_a[comp_smem_a_m][k], s_b[k][comp_smem_b_n], 
+                             r_c[m][n]); // HFMA(x,y,z)=x*y+z 
+        }
+      }
+    }
+    __syncthreads();
+  }
+  
+  #pragma unroll
+  for (int m = 0; m < TM; ++m) {
+    int store_gmem_c_m = by * BM + ty * TM + m;
+    #pragma unroll
+    for (int n = 0; n < TN; n += 4) {
+      int store_gmem_c_n = bx * BN + tx * TN + n;
+      int store_gmem_c_addr = store_gmem_c_m * N + store_gmem_c_n;
+      LDST64BITS(c[store_gmem_c_addr]) = LDST64BITS(r_c[m][n]);
+    }
+  }
+}
+
+template<const int BM=128, const int BN=128, const int BK=8, const int TM=8, const int TN=8>
 __global__ void hgemm_t_8x8_sliced_k_f16x4_bcf_kernel(
   half* a, half* b, half* c, const int M, const int N, const int K) {
   
@@ -277,12 +352,23 @@ __global__ void hgemm_t_8x8_sliced_k_f16x4_pack_bcf_kernel(
   half r_comp_a[TM]; // 8
   half r_comp_b[TN]; // 8
   half r_c[TM][TN] = {__float2half(0.0f)}; // 8x8
-
-  // TODO: 增加注释 每个线程读取数据的逻辑
-  int load_a_smem_m = tid >> 1; // tid / 2
-  int load_a_smem_k = (tid & 1) << 2; // 
-  int load_b_smem_k = tid >> 5;
-  int load_b_smem_n = (tid & 31) << 2;
+  
+  // mapping tid to s_a[BK][BM], for each orginal m-th row, load 4 + 4 K-dim 
+  // row major values from A matrix, and store it in COL major s_a[BK][BM].
+  int load_a_smem_m = tid / 2; // tid / 2，(0,1,2,...,128)
+  // (0b00000000 & 0b00000001) << 2 = 0
+  // (0b00000001 & 0b00000001) << 2 = 4
+  // (0b00000010 & 0b00000001) << 2 = 0
+  // (0b00000011 & 0b00000001) << 2 = 4
+  int load_a_smem_k = (tid & 1) << 2; // (0,4)
+  // mapping tid to s_b[BK][BN], for each orginal k-th row, load 4 + 4 N-dim 
+  // row major values from B matrix, and store it in ROW major s_b[BK][BN].
+  int load_b_smem_k = tid / 32; // 0~8
+  // (0b00000000 & 0b00011111) << 2 = 0
+  // (0b00000001 & 0b00011111) << 2 = 4
+  // (0b00000010 & 0b00011111) << 2 = 8
+  // (0b00000011 & 0b00011111) << 2 = 12
+  int load_b_smem_n = (tid & 31) << 2; // (0,4,8,12,...,124)
 
   int load_a_gmem_m = by * BM + load_a_smem_m;
   int load_b_gmem_n = bx * BN + load_b_smem_n;
@@ -295,32 +381,91 @@ __global__ void hgemm_t_8x8_sliced_k_f16x4_pack_bcf_kernel(
     int load_b_gmem_addr = load_b_gmem_k * N + load_b_gmem_n;
     LDST64BITS(r_load_a[0]) = LDST64BITS(a[load_a_gmem_addr]);
     LDST64BITS(r_load_b[0]) = LDST64BITS(b[load_b_gmem_addr]);
-
-    s_a[load_a_smem_k    ][load_a_smem_m] = r_load_a[0];
-    s_a[load_a_smem_k + 1][load_a_smem_m] = r_load_a[1];
-    s_a[load_a_smem_k + 2][load_a_smem_m] = r_load_a[2];
-    s_a[load_a_smem_k + 3][load_a_smem_m] = r_load_a[3];
-    s_a[load_a_smem_k + 4][load_a_smem_m] = r_load_a[4];
-    s_a[load_a_smem_k + 5][load_a_smem_m] = r_load_a[5];
-    s_a[load_a_smem_k + 6][load_a_smem_m] = r_load_a[6];
-    s_a[load_a_smem_k + 7][load_a_smem_m] = r_load_a[7];
+    
+    // 0. bank layout analysis: s_a[8][128]
+    // 4 bytes per bank(32 banks, total 128 bytes, 64 half values), 
+    // 2 half per bank. smem banks layout for s_a[8][128]:
+    // [k=0][m=  [0,1],   [2,3],   [4,5],...,   [62,63]]
+    // layer_0   [ b0],   [ b1],   [ b2],...,    [ b31]
+    // [k=0][m=[64,65], [66,67], [68,69],..., [126,127]]
+    // layer_1   [ b0],   [ b1],   [ b2],...,    [ b31] 
+    // [k=1][m=  [0,1],   [2,3],   [4,5],...,   [62,63]]
+    // layer_2   [ b0],   [ b1],   [ b2],...,    [ b31]
+    // [k=1][m=[64,65], [66,67], [68,69],..., [126,127]]
+    // layer_3   [ b0],   [ b1],   [ b2],...,    [ b31] 
+    // ...       ...      ...      ...           ...
+    // [k=7][m=  [0,1],   [2,3],   [4,5],...,   [62,63]]
+    // layer_14  [ b0],   [ b1],   [ b2],...,    [ b31]
+    // [k=7][m=[64,65], [66,67], [68,69],..., [126,127]]
+    // layer_15  [ b0],   [ b1],   [ b2],...,    [ b31] 
+    // 1. bank conficts analysis: s_a[8][128]
+    // tid 0   -> m 0,   k 0 -> all access bank 0  (layer_0/2/4/6)
+    // tid 1   -> m 0,   k 4 -> all access bank 0  (layer_8/10/12/14)
+    // tid 2   -> m 1,   k 0 -> all access bank 0  (layer_0/2/4/6)
+    // tid 3   -> m 1,   k 4 -> all access bank 0  (layer_8/10/12/14)
+    // tid 4   -> m 2,   k 0 -> all access bank 1  (layer_0/2/4/6)
+    // tid 5   -> m 2,   k 4 -> all access bank 1  (layer_8/10/12/14)
+    // tid 6   -> m 3,   k 0 -> all access bank 1  (layer_0/2/4/6)
+    // tid 7   -> m 3,   k 4 -> all access bank 1  (layer_8/10/12/14)
+    // ...        ...           ...                ...
+    // tid 28  -> m 14,  k 0 -> all access bank 7  (layer_0/2/4/6)
+    // tid 29  -> m 14,  k 4 -> all access bank 7  (layer_8/10/12/14)
+    // tid 30  -> m 15,  k 0 -> all access bank 7  (layer_0/2/4/6)
+    // tid 31  -> m 15,  k 4 -> all access bank 7  (layer_8/10/12/14)
+    // ...        ...           ...                ...
+    // tid 252 -> m 126, k 0 -> all access bank 30 (layer_1/3/5/7)
+    // tid 253 -> m 126, k 4 -> all access bank 30 (layer_9/11/13/15)
+    // tid 254 -> m 127, k 0 -> all access bank 31 (layer_1/3/5/7)
+    // tid 255 -> m 127, k 4 -> all access bank 31 (layer_9/11/13/15)
+    // conclusion: we still have bank conflicts for smem_a write access, 
+    // each 4 consecutive threads within warp access the same bank! 
+    // thus, we still need 4 memory issues as least per warp.
+    s_a[load_a_smem_k    ][load_a_smem_m] = r_load_a[0]; // e.g layer_0 b0
+    s_a[load_a_smem_k + 1][load_a_smem_m] = r_load_a[1]; // e.g layer_2 b0
+    s_a[load_a_smem_k + 2][load_a_smem_m] = r_load_a[2]; // e.g layer_4 b0
+    s_a[load_a_smem_k + 3][load_a_smem_m] = r_load_a[3]; // e.g layer_6 b0
+    // 2. bank layout analysis: s_b[8][128] same as s_a[8][128]
+    // 3. bank conficts analysis: s_b[8][128]
+    // tid 0   -> k 0, n 0   -> all access bank 0&1   (layer_0)
+    // tid 1   -> k 0, n 4   -> all access bank 2&3   (layer_0)
+    // tid 2   -> k 0, n 8   -> all access bank 4&5   (layer_0)
+    // ...        ...         ...                 ...
+    // tid 15  -> k 0, n 60  -> all access bank 30&31 (layer_0)
+    // tid 16  -> k 0, n 64  -> all access bank 0&1   (layer_1)
+    // ...        ...         ...                 ...
+    // tid 31  -> k 0, n 124 -> all access bank 30&31 (layer_1)
+    // conclusion: we still have bank conflicts within warp, 0&16 -> bank 0, 
+    // 1&17 -> bank 1, etc. we still need 2 memory issues at least per warp.
     LDST64BITS(s_b[load_b_smem_k][load_b_smem_n]) = LDST64BITS(r_load_b[0]);
   
     __syncthreads();
 
     #pragma unroll
     for (int tk = 0; tk < BK; tk++) {
+      // bank conflicts analysis, tx 0~15, ty 0~15
+      // tk 0, tid 0~15  -> ty 0 -> [0][0+0~3],[0][64+0~3] -> bank 0&1(layer_0), 0&1(layer_1)
+      // tk 0, tid 16~31 -> ty 1 -> [0][0+4~7],[0][64+4~7] -> bank 2&3(layer_0), 2&3(layer_1)
       LDST64BITS(r_comp_a[0]) = LDST64BITS(s_a[tk][ty * TM / 2         ]);
       LDST64BITS(r_comp_a[4]) = LDST64BITS(s_a[tk][ty * TM / 2 + BM / 2]);
-
+      // conclusion: s_a still have many bank conflicts within warp.
+      
+      // tk 0, tid 0  -> tx 0  -> [0][0+0~3],  [0][64+0~3]   -> bank 0&1(layer_0),   0&1(layer_1)
+      // tk 0, tid 1  -> tx 1  -> [0][0+4~7],  [0][64+4~7]   -> bank 2&3(layer_0),   2&3(layer_1)
+      // tk 0, tid 2  -> tx 2  -> [0][0+8~11], [0][64+8~11]  -> bank 4&5(layer_0),   4&5(layer_1)
+      // tk 0, tid 15 -> tx 15 -> [0][0+60~63],[0][64+60~63] -> bank 30&31(layer_0), 30&31(layer_1)
+      // tk 0, tid 16 -> tx 0  -> [0][0+0~3],  [0][64+0~3]   -> bank 0&1(layer_0),   0&1(layer_1)
+      // tk 0, tid 31 -> tx 15 -> [0][0+60~63],[0][64+60~63] -> bank 30&31(layer_0), 30&31(layer_1)
       LDST64BITS(r_comp_b[0]) = LDST64BITS(s_b[tk][tx * TN / 2         ]);
-      LDST64BITS(r_comp_b[8]) = LDST64BITS(s_b[tk][tx * TN / 2 + BN / 2]);
+      LDST64BITS(r_comp_b[4]) = LDST64BITS(s_b[tk][tx * TN / 2 + BN / 2]);
+      // conclusion: s_b still have many bank conflicts within warp, 
+      // tid 0/16 access same bank 0&1, etc.
 
       #pragma unroll
       for (int tm = 0; tm < TM; tm++) {
         #pragma unroll
         for (int tn = 0; tn < TN; tn++) {
-          r_c[tm][tn] += r_comp_a[tm] * r_comp_b[tn];
+          // r_c[tm][tn] += r_comp_a[tm] * r_comp_b[tn];
+          r_c[tm][tn] = __hfma(r_comp_a[tm], r_comp_b[tn], r_c[tm][tn]);
         }
       }
     }
@@ -447,6 +592,33 @@ void hgemm_t_8x8_sliced_k_f16x4(torch::Tensor a, torch::Tensor b, torch::Tensor 
   );
 }
 
+void hgemm_t_8x8_sliced_k_f16x4_pack(torch::Tensor a, torch::Tensor b, torch::Tensor c) {
+  CHECK_TORCH_TENSOR_DTYPE(a, torch::kHalf)
+  CHECK_TORCH_TENSOR_DTYPE(b, torch::kHalf)
+  CHECK_TORCH_TENSOR_DTYPE(c, torch::kHalf)
+  const int M = a.size(0);
+  const int K = a.size(1);
+  const int N = b.size(1); 
+  CHECK_TORCH_TENSOR_SHAPE(a, M, K)
+  CHECK_TORCH_TENSOR_SHAPE(b, K, N)
+  CHECK_TORCH_TENSOR_SHAPE(c, M, N)
+  constexpr int BM = 128;
+  constexpr int BN = 128;
+  constexpr int BK = 8; 
+  constexpr int TM = 8;
+  constexpr int TN = 8;
+
+  dim3 block(BN/TN, BM/TM);
+  dim3 grid((N + BN - 1) / BN, (M + BM - 1) / BM);
+
+  hgemm_t_8x8_sliced_k_f16x4_pack_kernel<BM, BN, BK, TM, TN><<<grid, block>>>(
+    reinterpret_cast<half*>(a.data_ptr()),
+    reinterpret_cast<half*>(b.data_ptr()),
+    reinterpret_cast<half*>(c.data_ptr()),
+    M, N, K
+  );
+}
+
 void hgemm_t_8x8_sliced_k_f16x4_bcf(torch::Tensor a, torch::Tensor b, torch::Tensor c) {
   CHECK_TORCH_TENSOR_DTYPE(a, torch::kHalf)
   CHECK_TORCH_TENSOR_DTYPE(b, torch::kHalf)
@@ -505,6 +677,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   TORCH_BINDING_COMMON_EXTENSION(hgemm_naive_f16)
   TORCH_BINDING_COMMON_EXTENSION(hgemm_sliced_k_f16)
   TORCH_BINDING_COMMON_EXTENSION(hgemm_t_8x8_sliced_k_f16x4)
+  TORCH_BINDING_COMMON_EXTENSION(hgemm_t_8x8_sliced_k_f16x4_pack)
   TORCH_BINDING_COMMON_EXTENSION(hgemm_t_8x8_sliced_k_f16x4_bcf)
   TORCH_BINDING_COMMON_EXTENSION(hgemm_t_8x8_sliced_k_f16x4_pack_bcf)
 }
