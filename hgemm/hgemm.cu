@@ -465,6 +465,10 @@ __global__ void hgemm_t_8x8_sliced_k_f16x4_pack_bcf_kernel(
       // tid 31, tk 7 -> ty 1 -> [7][0+4~7],[0][64+4~7] -> bank 2~3(layer_14/15), same address
       LDST64BITS(r_comp_a[0]) = LDST64BITS(s_a[tk][ty * TM / 2         ]);
       LDST64BITS(r_comp_a[4]) = LDST64BITS(s_a[tk][ty * TM / 2 + BM / 2]);
+      // if (tid == < 32 && bx == 0 && by == 0) {
+      //   printf("tid: %d, tx: %d, ty: %d, [%d][%d]\n", tid, tx, ty, tk, ty * TM / 2);
+      //   printf("tid: %d, tx: %d, ty: %d, [%d][%d]\n", tid, tx, ty, tk, ty * TM / 2 + BM / 2);
+      // }
       // conclusion: still have bank conflicts.
       
       // tid 0/16 access bank 0~1, tid 1/17 access bank 2~3, tid 15/31 access bank 30~31.
