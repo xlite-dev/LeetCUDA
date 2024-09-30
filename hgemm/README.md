@@ -26,7 +26,12 @@ SM调度单位为一个warp（一个warp内32个Thread），shared_memory 可以
 - 多个线程读同一个数据时，仅有一个线程读，然后broadcast到其他线程
 - 多个线程写同一个数据时，仅会有一个线程写成功
 
-[Using Shared Memory in CUDA C/C++](https://developer.nvidia.com/blog/using-shared-memory-cuda-cc/)中指出，我们还可以通过 `cudaDeviceSetSharedMemConfig()` 函数设置默认Bank Size（默认为4 bytes）来避免bank conflicts，可设置为cudaSharedMemBankSizeFourByte或者cudaSharedMemBankSizeEightByte。对于某些场景来说，设置cudaSharedMemBankSizeEightByte或许更合格式。
+NVIDIA的[文章](https://developer.nvidia.com/blog/using-shared-memory-cuda-cc/)中指出，我们还可以通过 `cudaDeviceSetSharedMemConfig()` 函数设置默认Bank Size（默认为4 bytes）来避免bank conflicts，可设置为cudaSharedMemBankSizeFourByte或者cudaSharedMemBankSizeEightByte。对于某些场景来说，设置cudaSharedMemBankSizeEightByte或许更加合适，比如使用double数据类型时。 
+
+```C
+cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte);
+```
+
 
 ## 参考文献 
 
