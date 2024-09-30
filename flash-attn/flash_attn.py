@@ -9,8 +9,8 @@ from typing import Optional
 torch.set_grad_enabled(False)
 # Load the CUDA kernel as a python module
 lib = load(name='flash_attn_lib', 
-           sources=['flash_attn_1_fwd_f32.cu', 
-                    'flash_attn_2_fwd_f16_mma_m16n8k16.cu',
+           sources=['flash_attn_1.cu', 
+                    'flash_attn_2_mma.cu',
                     'flash_attn.cc'], 
            extra_cuda_cflags=[
                "-O3",
@@ -63,7 +63,7 @@ def run_benchmark(perf_func: callable,
     out_val = out.flatten().detach().cpu().numpy().tolist()[:3]
     out_val = [round(v, 8) for v in out_val]
     out_val = [f"{v:<12}" for v in out_val]
-    print(f"{out_info:>24}: {out_val}, time:{mean_time:.6f}ms")
+    print(f"{out_info:>20}: {out_val}, time:{mean_time:.6f}ms")
     if show_all: print(out[0, 0, 0, :])
     return out.clone(), mean_time
 
@@ -84,10 +84,8 @@ for (B, H, N, D) in BHNDs:
     v = torch.randn(B, H, N, D).float().cuda().contiguous()
     o = torch.randn(B, H, N, D).float().cuda().contiguous()
     if D <= 64:
-        run_benchmark(lib.flash_attn_1_fwd_f32,    
-                      q, k, v, "FA1f32")
-        run_benchmark(lib.flash_attn_1_fwd_f32_nocopy, 
-                      q, k, v, "FA1f32(nocopy)", o)
+        run_benchmark(lib.flash_attn_1_fwd_f32, 
+                      q, k, v, "FA1f32", o)
         run_benchmark(naive_attn,                  
                       q, k, v, "f32_th(naive)")
     
@@ -98,10 +96,8 @@ for (B, H, N, D) in BHNDs:
         k_f16 = k.half().contiguous()
         v_f16 = v.half().contiguous()
         o_f16 = o.half().contiguous()
-        run_benchmark(lib.flash_attn_2_fwd_f16_mma_m16n8k16,    
-                      q_f16, k_f16, v_f16, "FA2MMAf16")
-        run_benchmark(lib.flash_attn_2_fwd_f16_mma_m16n8k16_nocopy, 
-                      q_f16, k_f16, v_f16, "FA2MMAf16(nocopy)", o_f16)
-        run_benchmark(naive_attn,                               
+        run_benchmark(lib.flash_attn_2_fwd_f16_mma_m16n8k16, 
+                      q_f16, k_f16, v_f16, "FA2MMAf16", o_f16)
+        run_benchmark(naive_attn, 
                       q_f16, k_f16, v_f16, "f16_th(naive)")
     print("-" * 100)
