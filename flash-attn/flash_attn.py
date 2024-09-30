@@ -70,7 +70,7 @@ def run_benchmark(perf_func: callable,
 Bs = [4, 8]
 Hs = [8]
 Ns = [256, 512, 1024]
-Ds = [64, 128] # only support [64, 128]
+Ds = [64, 128] # only support [64, 128] now
 # batch_size, n_head, seq_len, head_dim (B,nh,N,d)
 BHNDs = [(B, H, N, D) for B in Bs for H in Hs for N in Ns for D in Ds]
 
@@ -84,21 +84,24 @@ for (B, H, N, D) in BHNDs:
     v = torch.randn(B, H, N, D).float().cuda().contiguous()
     o = torch.randn(B, H, N, D).float().cuda().contiguous()
     if D <= 64:
-        run_benchmark(lib.flash_attn_1_fwd_f32,    q, k, v, "FA1f32")
-        run_benchmark(lib.flash_attn_1_fwd_f32_v2, q, k, v, "FA1f32(nocopy)", o)
-        run_benchmark(naive_attn,                  q, k, v, "f32_th")
+        run_benchmark(lib.flash_attn_1_fwd_f32,    
+                      q, k, v, "FA1f32")
+        run_benchmark(lib.flash_attn_1_fwd_f32_nocopy, 
+                      q, k, v, "FA1f32(nocopy)", o)
+        run_benchmark(naive_attn,                  
+                      q, k, v, "f32_th(naive)")
     
     if D in (64, 128):
         print("-" * 100)
         # using fp16 Tesor Core MMA instruction
-        q_f16 = q.half()
-        k_f16 = k.half()
-        v_f16 = v.half()
-        o_f16 = o.half()
+        q_f16 = q.half().contiguous()
+        k_f16 = k.half().contiguous()
+        v_f16 = v.half().contiguous()
+        o_f16 = o.half().contiguous()
         run_benchmark(lib.flash_attn_2_fwd_f16_mma_m16n8k16,    
                       q_f16, k_f16, v_f16, "FA2MMAf16")
-        run_benchmark(lib.flash_attn_2_fwd_f16_mma_m16n8k16_v2, 
+        run_benchmark(lib.flash_attn_2_fwd_f16_mma_m16n8k16_nocopy, 
                       q_f16, k_f16, v_f16, "FA2MMAf16(nocopy)", o_f16)
         run_benchmark(naive_attn,                               
-                      q_f16, k_f16, v_f16, "f16_th")
+                      q_f16, k_f16, v_f16, "f16_th(naive)")
     print("-" * 100)
