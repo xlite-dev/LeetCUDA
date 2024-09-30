@@ -124,6 +124,14 @@ cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte);
   }
 ```
 
+## 参考文献 
+
+- [CUDA编程概念】一、什么是bank conflict？](https://zhuanlan.zhihu.com/p/659142274)
+- [解决 bank conflict](https://github.com/PaddleJitLab/CUDATutorial/blob/develop/docs/09_optimize_reduce/02_bank_conflict/README.md)
+- [Bank Conflict free 的几种方式](https://zhuanlan.zhihu.com/p/722286440)
+- [Using Shared Memory in CUDA C/C++](https://developer.nvidia.com/blog/using-shared-memory-cuda-cc/)
+- [CUDA（三）：通用矩阵乘法：从入门到熟练](https://zhuanlan.zhihu.com/p/657632577)
+  
 ## 测试
 
 ```bash
