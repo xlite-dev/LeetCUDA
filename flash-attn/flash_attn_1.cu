@@ -189,7 +189,7 @@ torch::Tensor flash_attn_1_fwd_f32(
   return O;
 }
 
-void flash_attn_1_fwd_f32_v2(
+void flash_attn_1_fwd_f32_nocopy(
   torch::Tensor Q, 
   torch::Tensor K, 
   torch::Tensor V,
