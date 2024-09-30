@@ -1165,6 +1165,7 @@ void hgemm_t_8x8_sliced_k_f16x8_pack_bcf_dbuf(torch::Tensor a, torch::Tensor b, 
   constexpr int BK = 8; 
   constexpr int TM = 8;
   constexpr int TN = 8;
+  // cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte);
 
   dim3 block(BN/TN, BM/TM);
   dim3 grid((N + BN - 1) / BN, (M + BM - 1) / BM);
