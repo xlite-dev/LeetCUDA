@@ -9,9 +9,7 @@ from typing import Optional
 torch.set_grad_enabled(False)
 # Load the CUDA kernel as a python module
 lib = load(name='flash_attn_lib', 
-           sources=['flash_attn_1.cu', 
-                    'flash_attn_2_mma.cu',
-                    'flash_attn.cc'], 
+           sources=['flash_attn.cu', 'flash_attn_mma.cu', 'flash_attn.cc'], 
            extra_cuda_cflags=[
                "-O3",
                 "-U__CUDA_NO_HALF_OPERATORS__",
