@@ -35,7 +35,7 @@ def naive_attn(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor):
 def run_benchmark(perf_func: callable, 
                   q: torch.Tensor, k: torch.Tensor, v: torch.Tensor,
                   tag: str, out: Optional[torch.Tensor] = None, 
-                  warmup: int = 2, iters: int = 20,
+                  warmup: int = 10, iters: int = 100,
                   show_all: bool = False):
     if out is not None: 
         out.fill_(0)      
@@ -67,8 +67,8 @@ def run_benchmark(perf_func: callable,
     if show_all: print(out[0, 0, 0, :])
     return out.clone(), mean_time
 
-Bs = [4, 8]
-Hs = [8]
+Bs = [8, 16]
+Hs = [8, 16]
 Ns = [256, 512, 1024]
 Ds = [64, 128] # only support [64, 128] now
 # batch_size, n_head, seq_len, head_dim (B,nh,N,d)
