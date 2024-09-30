@@ -5,9 +5,7 @@
 包含以下内容：
 
 - [X] flash_attn_1_fwd_f32_kernel 
-- [ ] flash_attn_2_fwd_f32_kernel
-- [ ] flash_attn_2_fwd_f16_kernel
-- [x] flash_attn_2_fwd_f16_mma_m16n8k16_kernel
+- [x] flash_attn_2_fwd_f16_mma_m16n8k16_kernel (ldmatrix + MMA)
 - [X] PyTorch bindings
 
 本仓库FlashAttention仅用于学习CUDA编程，考虑性能最优请使用FlashAttention官方版本：[flash-attention](https://github.com/Dao-AILab/flash-attention)
