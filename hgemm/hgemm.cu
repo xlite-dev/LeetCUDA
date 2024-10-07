@@ -1202,6 +1202,12 @@ void hgemm_t_8x8_sliced_k_f16x8_pack_bcf_dbuf(torch::Tensor a, torch::Tensor b, 
   );
 }
 
+// from hgemm_async.cu
+void hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf(torch::Tensor a, torch::Tensor b, torch::Tensor c);
+void hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf_offset(torch::Tensor a, torch::Tensor b, torch::Tensor c);
+void hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf_async(torch::Tensor a, torch::Tensor b, torch::Tensor c);
+void hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf_async_offset(torch::Tensor a, torch::Tensor b, torch::Tensor c);
+
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   TORCH_BINDING_COMMON_EXTENSION(hgemm_naive_f16)
@@ -1216,4 +1222,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   TORCH_BINDING_COMMON_EXTENSION(hgemm_t_8x8_sliced_k_f16x8_pack_bcf)
   TORCH_BINDING_COMMON_EXTENSION(hgemm_t_8x8_sliced_k_f16x8_pack_bcf_offset)
   TORCH_BINDING_COMMON_EXTENSION(hgemm_t_8x8_sliced_k_f16x8_pack_bcf_dbuf)
+  TORCH_BINDING_COMMON_EXTENSION(hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf)
+  TORCH_BINDING_COMMON_EXTENSION(hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf_offset)
+  TORCH_BINDING_COMMON_EXTENSION(hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf_async)
+  TORCH_BINDING_COMMON_EXTENSION(hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf_async_offset)
 }
