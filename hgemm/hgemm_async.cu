@@ -66,9 +66,6 @@ __global__ void hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf_kernel(
     int load_gmem_a_addr = load_gmem_a_m * K + load_gmem_a_k;
     int load_gmem_b_k = load_smem_b_k; // global row of b
     int load_gmem_b_addr = load_gmem_b_k * N + load_gmem_b_n;   
-    // TODO: cp.async load b 16 bytes first, then sync load a.
-    // wait smem b ready after sync load a.
-    // s_b: global -> shared, s_a: global -> tmp registers -> shared
     LDST128BITS(s_b[0][load_smem_b_k][load_smem_b_n]) = (
       LDST128BITS(b[load_gmem_b_addr]));
     LDST128BITS(r_load_a[0]) = LDST128BITS(a[load_gmem_a_addr]);
@@ -76,16 +73,7 @@ __global__ void hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf_kernel(
     for (int i = 0; i < 8; ++i) {
       s_a[0][load_smem_a_k + i][load_smem_a_m] = r_load_a[i];
     }
-    // s_a[0][load_smem_a_k + 0][load_smem_a_m] = r_load_a[0];
-    // s_a[0][load_smem_a_k + 1][load_smem_a_m] = r_load_a[1];
-    // s_a[0][load_smem_a_k + 2][load_smem_a_m] = r_load_a[2];
-    // s_a[0][load_smem_a_k + 3][load_smem_a_m] = r_load_a[3];
-    // s_a[0][load_smem_a_k + 4][load_smem_a_m] = r_load_a[4];
-    // s_a[0][load_smem_a_k + 5][load_smem_a_m] = r_load_a[5];
-    // s_a[0][load_smem_a_k + 6][load_smem_a_m] = r_load_a[6];
-    // s_a[0][load_smem_a_k + 7][load_smem_a_m] = r_load_a[7];
   }
-  // Without this synchronization, accuracy may occasionally be abnormal.
   __syncthreads(); 
 
   // bk start from 1，需要注意的是，虽然 bk 从 1 开始，但实际上 bk=1时，使用的是
@@ -116,17 +104,6 @@ __global__ void hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf_kernel(
       }
     }
 
-    // TODO: cp.async load b 16 bytes first, then sync load a.
-    // wait smem b ready after sync load a.
-    // s_b: global -> shared, s_a: global -> tmp registers -> shared  
-    // s_a[smem_sel_next][load_smem_a_k + 0][load_smem_a_m] = r_load_a[0];
-    // s_a[smem_sel_next][load_smem_a_k + 1][load_smem_a_m] = r_load_a[1];
-    // s_a[smem_sel_next][load_smem_a_k + 2][load_smem_a_m] = r_load_a[2];
-    // s_a[smem_sel_next][load_smem_a_k + 3][load_smem_a_m] = r_load_a[3];
-    // s_a[smem_sel_next][load_smem_a_k + 4][load_smem_a_m] = r_load_a[4];
-    // s_a[smem_sel_next][load_smem_a_k + 5][load_smem_a_m] = r_load_a[5];
-    // s_a[smem_sel_next][load_smem_a_k + 6][load_smem_a_m] = r_load_a[6];
-    // s_a[smem_sel_next][load_smem_a_k + 7][load_smem_a_m] = r_load_a[7];
     #pragma unroll
     for (int i = 0; i < 8; ++i) {
       s_a[smem_sel_next][load_smem_a_k + i][load_smem_a_m] = r_load_a[i];
@@ -414,4 +391,3 @@ void hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf_async_offset(torch::Tensor a, torch:
     M, N, K
   );
 }
-
