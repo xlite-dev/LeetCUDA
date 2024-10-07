@@ -485,6 +485,8 @@ __global__ void hgemm_t_8x8_sliced_k32_f16x8_pack_dbuf_async_kernel(
   }
 }
 
+// TODO: t 16x8, 128x128, k 32, 8x16=128 threads per block, w/o cp.async
+
 // --------------------- PyTorch bindings for custom kernel -----------------------
 #define STRINGFY(str) #str
 #define TORCH_BINDING_COMMON_EXTENSION(func) \
