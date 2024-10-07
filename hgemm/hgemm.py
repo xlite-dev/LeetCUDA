@@ -92,6 +92,7 @@ for (M, N, K) in MNKs:
                   a, b, "f16x8pack(bcf+offset)",             c)
     run_benchmark(lib.hgemm_t_8x8_sliced_k_f16x8_pack_bcf_dbuf,            
                   a, b, "f16x8pack(bcf+dbuf)",               c)
+    print("-" * 50 + "  Async   " + "-" * 50)
     run_benchmark(lib.hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf,              
                   a, b, "f16x8pack(k16+dbuf)",               c)
     run_benchmark(lib.hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf_offset,       
@@ -100,6 +101,8 @@ for (M, N, K) in MNKs:
                   a, b, "f16x8pack(k16+dbuf+async)",         c)
     run_benchmark(lib.hgemm_t_8x8_sliced_k32_f16x8_pack_dbuf,              
                   a, b, "f16x8pack(k32+dbuf)",               c)
+    run_benchmark(lib.hgemm_t_8x8_sliced_k32_f16x8_pack_dbuf_async,              
+                  a, b, "f16x8pack(k32+dbuf+async)",         c)
     run_benchmark(partial(torch.matmul, out=c),                            
                   a, b, "f16_th")
     print("-" * 110)
