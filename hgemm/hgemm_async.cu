@@ -171,10 +171,10 @@ __global__ void hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf_async_kernel(
       &s_b[0][load_smem_b_k][load_smem_b_n]);
 
     CP_ASYNC_CG(load_smem_a_ptr, &a[load_gmem_a_addr], 16);
-    CP_ASYNC_CG(load_smem_b_ptr, &b[load_gmem_b_addr], 16);
-    
     CP_ASYNC_COMMIT_GROUP();
-    CP_ASYNC_WAIT_GROUP(0);
+    CP_ASYNC_CG(load_smem_b_ptr, &b[load_gmem_b_addr], 16);
+    CP_ASYNC_COMMIT_GROUP();
+    CP_ASYNC_WAIT_GROUP(1);
     
     // load 8 half in 1 memory issue.
     LDST128BITS(r_load_a[0]) = LDST128BITS(s_a_pre[
@@ -183,6 +183,7 @@ __global__ void hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf_async_kernel(
     for (int i = 0; i < 8; ++i) {
       s_a[0][load_smem_a_k + i][load_smem_a_m] = r_load_a[i];
     }
+    CP_ASYNC_WAIT_GROUP(0);
   }
   __syncthreads(); 
 
@@ -194,6 +195,15 @@ __global__ void hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf_async_kernel(
     int load_gmem_a_addr = load_gmem_a_m * K + load_gmem_a_k;
     int load_gmem_b_k = bk * BK + load_smem_b_k; // global row of b
     int load_gmem_b_addr = load_gmem_b_k * N + load_gmem_b_n;
+    uint32_t load_smem_a_ptr = __cvta_generic_to_shared(
+      &s_a_pre[load_smem_a_m][load_smem_a_k]);
+    uint32_t load_smem_b_ptr = __cvta_generic_to_shared(
+      &s_b[smem_sel_next][load_smem_b_k][load_smem_b_n]);
+    
+    CP_ASYNC_CG(load_smem_a_ptr, &a[load_gmem_a_addr], 16);
+    CP_ASYNC_COMMIT_GROUP();
+    CP_ASYNC_CG(load_smem_b_ptr, &b[load_gmem_b_addr], 16);
+    CP_ASYNC_COMMIT_GROUP();
 
     #pragma unroll
     for (int tk = 0; tk < BK; tk++) {
@@ -209,17 +219,7 @@ __global__ void hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf_async_kernel(
       }
     }
  
-    uint32_t load_smem_a_ptr = __cvta_generic_to_shared(
-      &s_a_pre[load_smem_a_m][load_smem_a_k]);
-    uint32_t load_smem_b_ptr = __cvta_generic_to_shared(
-      &s_b[smem_sel_next][load_smem_b_k][load_smem_b_n]);
-    
-    CP_ASYNC_CG(load_smem_a_ptr, &a[load_gmem_a_addr], 16);
-    CP_ASYNC_CG(load_smem_b_ptr, &b[load_gmem_b_addr], 16);
-    
-    CP_ASYNC_COMMIT_GROUP();
-    CP_ASYNC_WAIT_GROUP(0);
-
+    CP_ASYNC_WAIT_GROUP(1);
     // transpload 8 half in 1 memory issue.
     LDST128BITS(r_load_a[0]) = LDST128BITS(s_a_pre[
       load_smem_a_m][load_smem_a_k]);
@@ -227,6 +227,7 @@ __global__ void hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf_async_kernel(
     for (int i = 0; i < 8; ++i) {
       s_a[smem_sel_next][load_smem_a_k + i][load_smem_a_m] = r_load_a[i];
     }
+    CP_ASYNC_WAIT_GROUP(0);
     __syncthreads();
   }
 
@@ -253,6 +254,7 @@ __global__ void hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf_async_kernel(
   }
 }
 
+// compare w/o cp.async
 template<const int BM=128, const int BN=128, const int BK=32, 
          const int TM=8, const int TN=8, const int OFFSET=0>
 __global__ void hgemm_t_8x8_sliced_k32_f16x8_pack_dbuf_kernel(
@@ -288,13 +290,14 @@ __global__ void hgemm_t_8x8_sliced_k32_f16x8_pack_dbuf_kernel(
     int load_gmem_a_k = load_smem_a_k; // global col of a
     int load_gmem_a_addr = load_gmem_a_m * K + load_gmem_a_k;
     int load_gmem_b_k = load_smem_b_k; // global row of b
-    int load_gmem_b_addr = load_gmem_b_k * N + load_gmem_b_n;   
-    LDST128BITS(s_b[0][load_smem_b_k][load_smem_b_n + 0]) = (
-      LDST128BITS(b[load_gmem_b_addr + 0]));
-    LDST128BITS(s_b[0][load_smem_b_k][load_smem_b_n + 8]) = (
-      LDST128BITS(b[load_gmem_b_addr + 8]));
-    LDST128BITS(r_load_a[0]) = LDST128BITS(a[load_gmem_a_addr + 0]);
-    LDST128BITS(r_load_a[8]) = LDST128BITS(a[load_gmem_a_addr + 8]);
+    int load_gmem_b_addr = load_gmem_b_k * N + load_gmem_b_n; 
+    // load 16 half per threads
+    #pragma unroll
+    for (int i = 0; i < 16; i += 4) {
+      LDST64BITS(s_b[0][load_smem_b_k][load_smem_b_n + i]) = (
+        LDST64BITS(b[load_gmem_b_addr + i]));
+      LDST64BITS(r_load_a[i]) = LDST64BITS(a[load_gmem_a_addr + i]);
+    }  
     #pragma unroll
     for (int i = 0; i < 16; ++i) {
       s_a[0][load_smem_a_k + i][load_smem_a_m] = r_load_a[i];
@@ -313,9 +316,7 @@ __global__ void hgemm_t_8x8_sliced_k32_f16x8_pack_dbuf_kernel(
     int load_gmem_a_addr = load_gmem_a_m * K + load_gmem_a_k;
     int load_gmem_b_k = bk * BK + load_smem_b_k; // global row of b
     int load_gmem_b_addr = load_gmem_b_k * N + load_gmem_b_n;
-    LDST128BITS(r_load_a[0]) = LDST128BITS(a[load_gmem_a_addr + 0]);
-    LDST128BITS(r_load_a[8]) = LDST128BITS(a[load_gmem_a_addr + 8]);
-    
+   
     #pragma unroll
     for (int tk = 0; tk < BK; tk++) {
       LDST128BITS(r_comp_a[0]) = LDST128BITS(s_a[smem_sel][tk][ty * TM]);
@@ -329,16 +330,135 @@ __global__ void hgemm_t_8x8_sliced_k32_f16x8_pack_dbuf_kernel(
         }
       }
     }
-
+    // load 16 half per threads
+    #pragma unroll
+    for (int i = 0; i < 16; i += 4) {
+      LDST64BITS(s_b[smem_sel_next][load_smem_b_k][load_smem_b_n + i]) = (
+        LDST64BITS(b[load_gmem_b_addr + i]));
+      LDST64BITS(r_load_a[i]) = LDST64BITS(a[load_gmem_a_addr + i]);
+    }  
     #pragma unroll
     for (int i = 0; i < 16; ++i) {
       s_a[smem_sel_next][load_smem_a_k + i][load_smem_a_m] = r_load_a[i];
     }
-    LDST128BITS(s_b[smem_sel_next][load_smem_b_k][load_smem_b_n + 0]) = (
-      LDST128BITS(b[load_gmem_b_addr + 0]));
-    LDST128BITS(s_b[smem_sel_next][load_smem_b_k][load_smem_b_n + 8]) = (
-      LDST128BITS(b[load_gmem_b_addr + 8]));
+    __syncthreads();
+  }
 
+  #pragma unroll
+  for (int tk = 0; tk < BK; tk++) {
+    LDST128BITS(r_comp_a[0]) = LDST128BITS(s_a[1][tk][ty * TM]);
+    LDST128BITS(r_comp_b[0]) = LDST128BITS(s_b[1][tk][tx * TN]);
+    
+    #pragma unroll
+    for (int tm = 0; tm < TM; tm++) {
+      #pragma unroll
+      for (int tn = 0; tn < TN; tn++) {
+        r_c[tm][tn] = __hfma(r_comp_a[tm], r_comp_b[tn], r_c[tm][tn]);
+      }
+    }
+  }
+  
+  #pragma unroll
+  for (int i = 0; i < TM; ++i) {
+    int store_gmem_c_m = by * BM + ty * TM + i;
+    int store_gmem_c_n = bx * BN + tx * TN;
+    int store_gmem_c_addr = store_gmem_c_m * N + store_gmem_c_n;
+    LDST128BITS(c[store_gmem_c_addr]) = LDST128BITS(r_c[i][0]);
+  }
+}
+
+template<const int BM=128, const int BN=128, const int BK=32, 
+         const int TM=8, const int TN=8, const int OFFSET=0>
+__global__ void hgemm_t_8x8_sliced_k32_f16x8_pack_dbuf_async_kernel(
+  half* a, half* b, half* c, int M, int N, int K) {
+  int bx = blockIdx.x;
+  int by = blockIdx.y;
+  int tx = threadIdx.x;
+  int ty = threadIdx.y;
+  int tid = threadIdx.y * blockDim.x + tx; // tid within the block
+  // 2*128*32*2=16KB, 2*32*128*2=16KB
+  __shared__ half s_a[2][BK][BM+OFFSET], s_b[2][BK][BN+OFFSET]; 
+  half r_load_a[16]; // 16
+  half r_comp_a[TM]; // 8
+  half r_comp_b[TN]; // 8
+  half r_c[TM][TN] = {__float2half(0.0f)}; // 8x8
+  
+  int load_smem_a_m = tid / 2; // row 0~127
+  int load_smem_a_k = (tid % 2 == 0) ? 0 : 16; // col 0,16
+  int load_smem_b_k = tid / 8; // row 0~32
+  int load_smem_b_n = (tid % 8) * 16; // col 0,16,...,
+  int load_gmem_a_m = by * BM + load_smem_a_m; // global row of a and c
+  int load_gmem_b_n = bx * BN + load_smem_b_n; // global col of b and c
+
+  // bk = 0 is loading here, buffer 0 
+  {
+    int load_gmem_a_k = load_smem_a_k; // global col of a
+    int load_gmem_a_addr = load_gmem_a_m * K + load_gmem_a_k;
+    int load_gmem_b_k = load_smem_b_k; // global row of b
+    int load_gmem_b_addr = load_gmem_b_k * N + load_gmem_b_n; 
+    // load 16 half per threads
+    uint32_t load_smem_b_ptr = __cvta_generic_to_shared(
+      &s_b[0][load_smem_b_k][load_smem_b_n]);
+    #pragma unroll
+    for (int i = 0; i < 16; i += 4) {
+      CP_ASYNC_CA(load_smem_b_ptr + i * 2, &b[load_gmem_b_addr + i], 8);
+    }
+    CP_ASYNC_COMMIT_GROUP();
+
+    #pragma unroll
+    for (int i = 0; i < 16; i += 4) {
+      LDST64BITS(r_load_a[i]) = LDST64BITS(a[load_gmem_a_addr + i]);
+    }  
+
+    #pragma unroll
+    for (int i = 0; i < 16; ++i) {
+      s_a[0][load_smem_a_k + i][load_smem_a_m] = r_load_a[i];
+    }
+    CP_ASYNC_WAIT_GROUP(0);
+  }
+  __syncthreads(); 
+
+  for (int bk = 1; bk < (K + BK - 1) / BK; ++bk) {
+    int smem_sel = (bk - 1) & 1; // bk 1->0, bk 2->1, bk 3->0, ...
+    int smem_sel_next = bk & 1;  // bk 1->1, bk 2->0, bk 3->1, ...
+
+    int load_gmem_a_k = bk * BK + load_smem_a_k; // global col of a
+    int load_gmem_a_addr = load_gmem_a_m * K + load_gmem_a_k;
+    int load_gmem_b_k = bk * BK + load_smem_b_k; // global row of b
+    int load_gmem_b_addr = load_gmem_b_k * N + load_gmem_b_n;
+    // load 16 half per threads
+    uint32_t load_smem_b_ptr = __cvta_generic_to_shared(
+      &s_b[smem_sel_next][load_smem_b_k][load_smem_b_n]);
+    #pragma unroll
+    for (int i = 0; i < 16; i += 4) {
+      CP_ASYNC_CA(load_smem_b_ptr + i * 2, &b[load_gmem_b_addr + i], 8);
+    }
+    CP_ASYNC_COMMIT_GROUP();
+
+    #pragma unroll
+    for (int tk = 0; tk < BK; tk++) {
+      LDST128BITS(r_comp_a[0]) = LDST128BITS(s_a[smem_sel][tk][ty * TM]);
+      LDST128BITS(r_comp_b[0]) = LDST128BITS(s_b[smem_sel][tk][tx * TN]);
+
+      #pragma unroll
+      for (int tm = 0; tm < TM; tm++) {
+        #pragma unroll
+        for (int tn = 0; tn < TN; tn++) {
+          r_c[tm][tn] = __hfma(r_comp_a[tm], r_comp_b[tn], r_c[tm][tn]);
+        }
+      }
+    }
+    
+    #pragma unroll
+    for (int i = 0; i < 16; i += 4) {
+      LDST64BITS(r_load_a[i]) = LDST64BITS(a[load_gmem_a_addr + i]);
+    }  
+    #pragma unroll
+    for (int i = 0; i < 16; ++i) {
+      s_a[smem_sel_next][load_smem_a_k + i][load_smem_a_m] = r_load_a[i];
+    }
+
+    CP_ASYNC_WAIT_GROUP(0);
     __syncthreads();
   }
 
@@ -382,7 +502,8 @@ if (((T).size(0) != (S0)) || ((T).size(1) != (S1))) { \
 }
 
 // t 8x8 fp16x8 pack, double buffers, k 16
-void hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf(torch::Tensor a, torch::Tensor b, torch::Tensor c) {
+void hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf(
+  torch::Tensor a, torch::Tensor b, torch::Tensor c) {
   CHECK_TORCH_TENSOR_DTYPE(a, torch::kHalf)
   CHECK_TORCH_TENSOR_DTYPE(b, torch::kHalf)
   CHECK_TORCH_TENSOR_DTYPE(c, torch::kHalf)
@@ -401,7 +522,8 @@ void hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf(torch::Tensor a, torch::Tensor b, to
   dim3 block(BN/TN, BM/TM);
   dim3 grid((N + BN - 1) / BN, (M + BM - 1) / BM);
 
-  hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf_kernel<BM, BN, BK, TM, TN><<<grid, block>>>(
+  hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf_kernel<
+    BM, BN, BK, TM, TN><<<grid, block>>>(
     reinterpret_cast<half*>(a.data_ptr()),
     reinterpret_cast<half*>(b.data_ptr()),
     reinterpret_cast<half*>(c.data_ptr()),
@@ -409,7 +531,8 @@ void hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf(torch::Tensor a, torch::Tensor b, to
   );
 }
 
-void hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf_offset(torch::Tensor a, torch::Tensor b, torch::Tensor c) {
+void hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf_offset(
+  torch::Tensor a, torch::Tensor b, torch::Tensor c) {
   CHECK_TORCH_TENSOR_DTYPE(a, torch::kHalf)
   CHECK_TORCH_TENSOR_DTYPE(b, torch::kHalf)
   CHECK_TORCH_TENSOR_DTYPE(c, torch::kHalf)
@@ -428,7 +551,8 @@ void hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf_offset(torch::Tensor a, torch::Tenso
   dim3 block(BN/TN, BM/TM);
   dim3 grid((N + BN - 1) / BN, (M + BM - 1) / BM);
 
-  hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf_kernel<BM, BN, BK, TM, TN, 8><<<grid, block>>>(
+  hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf_kernel<
+    BM, BN, BK, TM, TN, 8><<<grid, block>>>(
     reinterpret_cast<half*>(a.data_ptr()),
     reinterpret_cast<half*>(b.data_ptr()),
     reinterpret_cast<half*>(c.data_ptr()),
@@ -437,7 +561,8 @@ void hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf_offset(torch::Tensor a, torch::Tenso
 }
 
 // t 8x8 fp16x8 pack, double buffers, k 16, copy async
-void hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf_async(torch::Tensor a, torch::Tensor b, torch::Tensor c) {
+void hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf_async(
+  torch::Tensor a, torch::Tensor b, torch::Tensor c) {
   CHECK_TORCH_TENSOR_DTYPE(a, torch::kHalf)
   CHECK_TORCH_TENSOR_DTYPE(b, torch::kHalf)
   CHECK_TORCH_TENSOR_DTYPE(c, torch::kHalf)
@@ -465,7 +590,8 @@ void hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf_async(torch::Tensor a, torch::Tensor
   );
 }
 
-void hgemm_t_8x8_sliced_k32_f16x8_pack_dbuf(torch::Tensor a, torch::Tensor b, torch::Tensor c) {
+void hgemm_t_8x8_sliced_k32_f16x8_pack_dbuf(
+  torch::Tensor a, torch::Tensor b, torch::Tensor c) {
   CHECK_TORCH_TENSOR_DTYPE(a, torch::kHalf)
   CHECK_TORCH_TENSOR_DTYPE(b, torch::kHalf)
   CHECK_TORCH_TENSOR_DTYPE(c, torch::kHalf)
@@ -485,6 +611,35 @@ void hgemm_t_8x8_sliced_k32_f16x8_pack_dbuf(torch::Tensor a, torch::Tensor b, to
   dim3 grid((N + BN - 1) / BN, (M + BM - 1) / BM);
 
   hgemm_t_8x8_sliced_k32_f16x8_pack_dbuf_kernel<
+    BM, BN, BK, TM, TN><<<grid, block>>>(
+    reinterpret_cast<half*>(a.data_ptr()),
+    reinterpret_cast<half*>(b.data_ptr()),
+    reinterpret_cast<half*>(c.data_ptr()),
+    M, N, K
+  );
+}
+
+void hgemm_t_8x8_sliced_k32_f16x8_pack_dbuf_async(
+  torch::Tensor a, torch::Tensor b, torch::Tensor c) {
+  CHECK_TORCH_TENSOR_DTYPE(a, torch::kHalf)
+  CHECK_TORCH_TENSOR_DTYPE(b, torch::kHalf)
+  CHECK_TORCH_TENSOR_DTYPE(c, torch::kHalf)
+  const int M = a.size(0);
+  const int K = a.size(1);
+  const int N = b.size(1); 
+  CHECK_TORCH_TENSOR_SHAPE(a, M, K)
+  CHECK_TORCH_TENSOR_SHAPE(b, K, N)
+  CHECK_TORCH_TENSOR_SHAPE(c, M, N)
+  constexpr int BM = 128;
+  constexpr int BN = 128;
+  constexpr int BK = 32; 
+  constexpr int TM = 8;
+  constexpr int TN = 8;
+
+  dim3 block(BN/TN, BM/TM);
+  dim3 grid((N + BN - 1) / BN, (M + BM - 1) / BM);
+
+  hgemm_t_8x8_sliced_k32_f16x8_pack_dbuf_async_kernel<
     BM, BN, BK, TM, TN><<<grid, block>>>(
     reinterpret_cast<half*>(a.data_ptr()),
     reinterpret_cast<half*>(b.data_ptr()),
