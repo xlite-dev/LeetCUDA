@@ -25,8 +25,13 @@ lib = load(name='hgemm_lib',
 def run_benchmark(perf_func: callable, 
                   a: torch.Tensor, b: torch.Tensor,
                   tag: str, out: Optional[torch.Tensor] = None, 
-                  warmup: int = 10, iters: int = 200,
+                  warmup: int = 5, iters: int = 100,
                   show_all: bool = False):
+    
+    if (a.size(0) > 1024 or a.size(1) >= 1024 
+        or b.size(1) > 1024):
+        iters = 50
+
     if out is not None: 
         out.fill_(0)      
     if out is not None:
@@ -92,7 +97,7 @@ for (M, N, K) in MNKs:
                   a, b, "f16x8pack(bcf+offset)",             c)
     run_benchmark(lib.hgemm_t_8x8_sliced_k_f16x8_pack_bcf_dbuf,            
                   a, b, "f16x8pack(bcf+dbuf)",               c)
-    print("-" * 50 + "--Async---" + "-" * 50)
+    print("-" * 52 + "Async" + "-" * 53)
     run_benchmark(lib.hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf,              
                   a, b, "f16x8pack(k16+dbuf)",               c)
     run_benchmark(lib.hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf_offset,       
@@ -103,6 +108,10 @@ for (M, N, K) in MNKs:
                   a, b, "f16x8pack(k32+dbuf)",               c)
     run_benchmark(lib.hgemm_t_8x8_sliced_k32_f16x8_pack_dbuf_async,              
                   a, b, "f16x8pack(k32+dbuf+async)",         c)
+    run_benchmark(lib.hgemm_t_16x8_sliced_k32_f16x8_pack_dbuf,              
+                  a, b, "f16x8pack(k32+dbuf+t16x8)",         c)
+    run_benchmark(lib.hgemm_t_16x8_sliced_k32_f16x8_pack_dbuf_async,              
+                  a, b, "f16x8pack(k32+dbuf+t16x8+async)",   c)
     run_benchmark(partial(torch.matmul, out=c),                            
                   a, b, "f16_th")
     print("-" * 110)
