@@ -38,7 +38,6 @@ __device__ __forceinline__ MD warp_reduce_md_op(MD value) {
     value.m = bigger_m.m;
   }
   return value;
-}
 
 // Warp Reduce Sum
 template<const int kWarpSize = WARP_SIZE>
