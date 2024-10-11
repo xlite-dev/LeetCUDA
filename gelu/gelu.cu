@@ -36,18 +36,16 @@
 // But ops above will introduce error. 
 // pytorch transform type while do tanh operator which include in the [pytorch/c10/util/BFloat16-math.h](https://github.com/pytorch/pytorch/blob/main/c10/util/BFloat16-math.h)
 __inline__ __device__ half gelu_tanh_approximate(half x){
-  
-    half x_cube = x * x * x;
-    // compute mid value : inner = 0.7978845608 * (x + 0.044715 * x * x * x)
-    half inner = HALF_SQRT_2_PI * (x + HALF_V_APP * x_cube);
-    // compute tanh
-    return HALF_DIV2 * x * (HALF_1 + ((hexp(inner * HALF_2) - HALF_1) / (hexp(inner * HALF_2) + HALF_1))); 
+  half x_cube = x * x * x;
+  // compute mid value : inner = 0.7978845608 * (x + 0.044715 * x * x * x)
+  half inner = HALF_SQRT_2_PI * (x + HALF_V_APP * x_cube);
+  // compute tanh
+  return HALF_DIV2 * x * (HALF_1 + ((hexp(inner * HALF_2) - HALF_1) / (hexp(inner * HALF_2) + HALF_1))); 
 }
 
 __inline__ __device__ float gelu_tanh_approximate(float x){
-    return 0.5f * x * (1.0f + tanhf(SQRT_2_PI * (x + 0.044715f * x * x * x)));
+  return 0.5f * x * (1.0f + tanhf(SQRT_2_PI * (x + 0.044715f * x * x * x)));
 }
-
 
 __inline__ __device__ float gelu_none_approximate(float x){
   return x * 0.5 * (1 + erff(x  * M_SQRT1_2));
@@ -56,7 +54,6 @@ __inline__ __device__ float gelu_none_approximate(float x){
 // -------------------------------------- FP32 -------------------------------------- 
 // GELU tanh approximate: x, y:x 0.5 * x * (1.0 + tanh(0.7978845608 * x * (1.0 + 0.044715 * x * x)))
 // grid(N/256), block(K=256) 
-
 __global__ void gelu_f32_kernel(float* x, float* y, int N) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx < N) {
@@ -99,7 +96,6 @@ __global__ void gelu_f16_kernel(half* x, half* y, int N) {
 
 __global__ void gelu_f16x2_kernel(half* x, half* y, int N) {
   int idx = (blockIdx.x * blockDim.x + threadIdx.x) * 2;
-
 
   half2 reg_x = HALF2(x[idx]);
   half2 reg_y;
@@ -175,8 +171,8 @@ if(((T).options().dtype() != (th_type))) {                   \
   throw std::runtime_error("values must be "#th_type);       \
 }
 
-#define TORCH_BINDING_GELU(packed_type, th_type, element_type, n_elements)    \
-void gelu_##packed_type(torch::Tensor x, torch::Tensor y) {                   \
+#define TORCH_BINDING_GELU(packed_type, th_type, element_type, n_elements)       \
+void gelu_##packed_type(torch::Tensor x, torch::Tensor y) {                      \
   CHECK_TORCH_TENSOR_DTYPE(x, (th_type))                                         \
   CHECK_TORCH_TENSOR_DTYPE(y, (th_type))                                         \
   const int ndim = x.dim();                                                      \
@@ -185,7 +181,7 @@ void gelu_##packed_type(torch::Tensor x, torch::Tensor y) {                   \
     for (int i = 0; i < ndim; ++i) { N *= x.size(i); }                           \
     dim3 block(256 / (n_elements));                                              \
     dim3 grid((N + 256 - 1) / 256);                                              \
-    gelu_##packed_type##_kernel<<<grid, block>>>(                             \
+    gelu_##packed_type##_kernel<<<grid, block>>>(                                \
       reinterpret_cast<element_type*>(x.data_ptr()),                             \
       reinterpret_cast<element_type*>(y.data_ptr()), N);                         \
   } else {                                                                       \
@@ -195,7 +191,7 @@ void gelu_##packed_type(torch::Tensor x, torch::Tensor y) {                   \
     if ((K/(n_elements)) <= 1024) {                                              \
       dim3 block(K/(n_elements));                                                \
       dim3 grid(S);                                                              \
-      gelu_##packed_type##_kernel<<<grid, block>>>(                           \
+      gelu_##packed_type##_kernel<<<grid, block>>>(                              \
         reinterpret_cast<element_type*>(x.data_ptr()),                           \
         reinterpret_cast<element_type*>(y.data_ptr()), N);                       \
     } else {                                                                     \
@@ -203,7 +199,7 @@ void gelu_##packed_type(torch::Tensor x, torch::Tensor y) {                   \
       for (int i = 0; i < ndim; ++i) { N *= x.size(i); }                         \
       dim3 block(256 / (n_elements));                                            \
       dim3 grid((N + 256 - 1) / 256);                                            \
-      gelu_##packed_type##_kernel<<<grid, block>>>(                           \
+      gelu_##packed_type##_kernel<<<grid, block>>>(                              \
         reinterpret_cast<element_type*>(x.data_ptr()),                           \
         reinterpret_cast<element_type*>(y.data_ptr()), N);                       \
     }                                                                            \
