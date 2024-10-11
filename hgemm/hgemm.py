@@ -114,7 +114,15 @@ for (M, N, K) in MNKs:
                   a, b, "f16x8pack(k32+dbuf+t16x8+async)",   c)
     print("-" * 53 + "WMMA" + "-" * 53)
     run_benchmark(lib.hgemm_wmma_m16n16k16_naive,              
-                  a, b, "f16wmma(m16n16k16+naive)",          c)
+                  a, b, "f16wmma(+naive)",                      c)
+    run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2,              
+                  a, b, "f16wmma(mma4x2)",                      c)
+    run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4,              
+                  a, b, "f16wmma(mma4x2+warp2x4)",              c)
+    run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_async,              
+                  a, b, "f16wmma(mma4x2+warp2x4+async)",        c)
+    run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_async_offset,              
+                  a, b, "f16wmma(mma4x2+warp2x4+async+offset)", c)
     run_benchmark(partial(torch.matmul, out=c),
                   a, b, "f16_th")
     print("-" * 110)
