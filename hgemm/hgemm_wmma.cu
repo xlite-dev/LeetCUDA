@@ -28,10 +28,8 @@ using namespace nvcuda;
 // ca(cache all, L1 + L2): support 4, 8, 16 bytes, cg(cache global, L2): only support 16 bytes.
 #define CP_ASYNC_CA(dst, src, bytes) asm volatile("cp.async.ca.shared.global.L2::128B [%0], [%1], %2;\n" ::"r"(dst), "l"(src), "n"(bytes))
 #define CP_ASYNC_CG(dst, src, bytes) asm volatile("cp.async.cg.shared.global.L2::128B [%0], [%1], %2;\n" ::"r"(dst), "l"(src), "n"(bytes))
-// NOTE: naive wmma kernels here are modified from: https://github.com/Bruce-Lee-LY/cuda_hgemm, many thanks~
-// I have changed all kernels to support A and B matrix with row-major support inorder to compare with
+// Support A and B matrix with row-major support inorder to compare with
 // the kernels using CUDA Cores in hgemm.cu and hgemm_async.cu. reference: 
-// https://github.com/Bruce-Lee-LY/cuda_hgemm
 // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#warp-matrix-functions
 // https://github.com/NVIDIA/cuda-samples/tree/master/Samples/3_CUDA_Features/cudaTensorCoreGemm
 
