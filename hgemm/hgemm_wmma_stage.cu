@@ -203,7 +203,7 @@ __global__ void hgemm_wmma_m16n16k16_mma4x2_warp2x4_stage3_kernel(
         wmma::mma_sync(C_frag[i][j], A_frag[i], B_frag[j], C_frag[i][j]);
       }
     }
-    __syncthreads(); 
+    // __syncthreads(); 
 
     int stage_sel_next = ((NUM_K_TILES - 1) % 3);
     #pragma unroll
@@ -227,7 +227,6 @@ __global__ void hgemm_wmma_m16n16k16_mma4x2_warp2x4_stage3_kernel(
         wmma::mma_sync(C_frag[i][j], A_frag[i], B_frag[j], C_frag[i][j]);
       }
     }
-    // __syncthreads() is not required.
   }
 
   // finally, store back to C matrix.
@@ -427,7 +426,7 @@ __global__ void hgemm_wmma_m16n16k16_mma4x2_warp2x4_stage4_kernel(
         wmma::mma_sync(C_frag[i][j], A_frag[i], B_frag[j], C_frag[i][j]);
       }
     }
-    __syncthreads(); 
+    // __syncthreads(); 
 
     int stage_sel_next = ((NUM_K_TILES - 2) % 4);
     #pragma unroll
@@ -451,7 +450,7 @@ __global__ void hgemm_wmma_m16n16k16_mma4x2_warp2x4_stage4_kernel(
         wmma::mma_sync(C_frag[i][j], A_frag[i], B_frag[j], C_frag[i][j]);
       }
     }
-    __syncthreads();
+    // __syncthreads();
 
     int stage_sel_last = ((NUM_K_TILES - 1) % 4);
     #pragma unroll
