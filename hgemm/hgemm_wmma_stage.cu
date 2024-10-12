@@ -42,6 +42,7 @@ template<const int WMMA_M=16, const int WMMA_N=16, const int WMMA_K=16,
          const int OFFSET=0>
 __global__ void hgemm_wmma_m16n16k16_mma4x2_warp2x4_stage3_kernel(
   half* A, half* B, half* C, int M, int N, int K) {
+  // reference: https://zhuanlan.zhihu.com/p/712451053
   // 256 threads(8 warps) per block.
   const int bx = blockIdx.x;
   const int by = blockIdx.y;
@@ -77,6 +78,12 @@ __global__ void hgemm_wmma_m16n16k16_mma4x2_warp2x4_stage3_kernel(
                  WMMA_M, WMMA_N, WMMA_K, 
                  half> C_frag[WARP_TILE_M][WARP_TILE_N];
   
+  // fragment reuse.
+  wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half, 
+                 wmma::row_major> A_frag[WARP_TILE_M];
+  wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half, 
+                 wmma::row_major> B_frag[WARP_TILE_N];
+
   #pragma unroll
   for (int i = 0; i < WARP_TILE_M; ++i) {
     #pragma unroll
@@ -145,11 +152,6 @@ __global__ void hgemm_wmma_m16n16k16_mma4x2_warp2x4_stage3_kernel(
     CP_ASYNC_COMMIT_GROUP();
     
     // compute stage 0
-    wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half, 
-                   wmma::row_major> A_frag[WARP_TILE_M];
-    wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half, 
-                   wmma::row_major> B_frag[WARP_TILE_N];
-
     #pragma unroll
     for (int i = 0; i < WARP_TILE_M; ++i) {
       // load 2 tiles -> reg, smem a -> frags a, warp_m 0~3
@@ -172,18 +174,13 @@ __global__ void hgemm_wmma_m16n16k16_mma4x2_warp2x4_stage3_kernel(
       }
     }
 
-    CP_ASYNC_WAIT_GROUP(0);
+    CP_ASYNC_WAIT_GROUP(1);
 
     __syncthreads(); 
   }
 
   // processing last 2 stage(k)
   {
-    wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half, 
-                   wmma::row_major> A_frag[WARP_TILE_M];
-    wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half, 
-                   wmma::row_major> B_frag[WARP_TILE_N];
-
     int stage_sel = ((NUM_K_TILES - 2) % 3);
     #pragma unroll
     for (int i = 0; i < WARP_TILE_M; ++i) {
@@ -288,6 +285,11 @@ __global__ void hgemm_wmma_m16n16k16_mma4x2_warp2x4_stage4_kernel(
                  WMMA_M, WMMA_N, WMMA_K, 
                  half> C_frag[WARP_TILE_M][WARP_TILE_N];
   
+  wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half, 
+                 wmma::row_major> A_frag[WARP_TILE_M];
+  wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half, 
+                 wmma::row_major> B_frag[WARP_TILE_N];
+  
   #pragma unroll
   for (int i = 0; i < WARP_TILE_M; ++i) {
     #pragma unroll
@@ -374,11 +376,6 @@ __global__ void hgemm_wmma_m16n16k16_mma4x2_warp2x4_stage4_kernel(
     CP_ASYNC_COMMIT_GROUP();
     
     // compute stage 0
-    wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half, 
-                   wmma::row_major> A_frag[WARP_TILE_M];
-    wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half, 
-                   wmma::row_major> B_frag[WARP_TILE_N];
-
     #pragma unroll
     for (int i = 0; i < WARP_TILE_M; ++i) {
       // load 2 tiles -> reg, smem a -> frags a, warp_m 0~3
@@ -401,18 +398,13 @@ __global__ void hgemm_wmma_m16n16k16_mma4x2_warp2x4_stage4_kernel(
       }
     }
 
-    CP_ASYNC_WAIT_GROUP(0);
+    CP_ASYNC_WAIT_GROUP(2);
 
     __syncthreads(); 
   }
 
-  // processing last 2 stage(k)
+  // processing last 3 stage(k)
   {
-    wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half, 
-                   wmma::row_major> A_frag[WARP_TILE_M];
-    wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half, 
-                   wmma::row_major> B_frag[WARP_TILE_N];
-
     int stage_sel = ((NUM_K_TILES - 3) % 4);
     #pragma unroll
     for (int i = 0; i < WARP_TILE_M; ++i) {
