@@ -130,4 +130,3 @@ for (M, N, K) in MNKs:
     run_benchmark(partial(torch.matmul, out=c),
                   a, b, "f16_th")
     print("-" * 110)
-
