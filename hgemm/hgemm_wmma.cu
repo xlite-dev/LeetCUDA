@@ -520,16 +520,15 @@ __global__ void hgemm_wmma_m16n16k16_mma4x2_warp2x4_dbuf_async_kernel(
   }
 }
 
+// TODO: regristers double buffers
 // TODO: Chunk K(WARP_TILE_K): 减少__syncthreads同步次数，由于m16n16k16要求必须k=16
 // 因此可以通过chunk方式，支持更大的k，比如k=32, chunk=2
 // hgemm_wmma_m16n16k16_mma4x2_warp2x4x2_dbuf_async_kernel
-
-// TODO: regristers double buffers
 // TODO: stage2, stage3, stage4
 
 // --------------------- PyTorch bindings for custom kernel -----------------------
 #define STRINGFY(str) #str
-#define TORCH_BINDING_COMMON_EXTENSION(func) \
+#define TORCH_BINDING_COMMON_EXTENSION(func)   \
   m.def(STRINGFY(func), &func, STRINGFY(func));
 
 #define CHECK_TORCH_TENSOR_DTYPE(T, th_type)                 \
