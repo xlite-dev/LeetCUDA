@@ -30,7 +30,7 @@ def run_benchmark(perf_func: callable,
     
     if (a.size(0) > 1024 or a.size(1) >= 1024 
         or b.size(1) > 1024):
-        iters = 50
+        iters = 10
 
     if out is not None: 
         out.fill_(0)      
