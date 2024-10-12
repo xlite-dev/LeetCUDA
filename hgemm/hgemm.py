@@ -131,10 +131,14 @@ for (M, N, K) in MNKs:
                   a, b, "f16wmma(mma4x4+warp2x2x2+dbuf)",                c)
     run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4x2_dbuf_async,              
                   a, b, "f16wmma(mma4x2+warp2x4x2+dbuf)",                c)
+    run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4x2_rbuf_async,              
+                  a, b, "f16wmma(mma4x2+warp2x4x2+rbuf)",                c)
     run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_dbuf_async,              
                   a, b, "f16wmma(mma4x2+warp2x4+dbuf)",                  c)
     run_benchmark(lib.hgemm_wmma_m32n8k16_mma2x4_warp2x4_dbuf_async,              
                   a, b, "f16wmma(m32n8k16+mma2x4+warp2x4+dbuf)",         c)
+    run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4x2_rbuf_async_offset,              
+                  a, b, "f16wmma(mma4x2+warp2x4x2+rbuf+offset)",         c)
     run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4x2_dbuf_async_offset,              
                   a, b, "f16wmma(mma4x2+warp2x4x2+dbuf+offset)",         c)
     run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x4_warp2x2x2_dbuf_async_offset,              
