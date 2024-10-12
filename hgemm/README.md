@@ -18,7 +18,9 @@
 - [X] hgemm_wmma_m16n16k16_mma4x2(WMMA API, Tensor Cores, Tile MMA) 
 - [X] hgemm_wmma_m16n16k16_mma4x2_warp2x4(WMMA API, Tensor Cores, Tile MMA, Tile Warp, pack) 
 - [X] hgemm_wmma_m16n16k16_mma4x2_warp2x4_async(WMMA API, Tensor Cores, Tile MMA, Tile Warp, Copy Async) 
-- [X] hgemm_wmma_m16n16k16_mma4x2_warp2x4_async_offset(WMMA API, Tensor Cores, Tile MMA, Tile Warp, Copy Async, Pad(bank conflicts reduce)) 
+- [X] hgemm_wmma_m16n16k16_mma4x2_warp2x4_async_offset(WMMA API, Tensor Cores, Tile MMA, Tile Warp, Copy Async, Pad)
+- [X] hgemm_wmma_m16n16k16_mma4x2_warp2x4_dbuf_async(WMMA API, Tensor Cores, Tile MMA, Tile Warp, Copy Async, Double Buffers)
+- [X] hgemm_wmma_m16n16k16_mma4x2_warp2x4_dbuf_async_offset(WMMA API, Tensor Cores, Tile MMA, Tile Warp, Copy Async, Double Buffers, Pad)  
 - [X] PyTorch bindings
 
 ## 共享内存 Bank Conflicts
