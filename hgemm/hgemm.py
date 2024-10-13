@@ -9,7 +9,7 @@ torch.set_grad_enabled(False)
 # Load the CUDA kernel as a python module
 lib = load(name='hgemm_lib', 
            sources=['hgemm.cu', 'hgemm_async.cu', 'hgemm_wmma.cu', 
-                    'hgemm_wmma_stage.cu'], 
+                    'hgemm_wmma_stage.cu', 'hgemm_cublas.cu'], 
            extra_cuda_cflags=[
                "-O3",
                 "-U__CUDA_NO_HALF_OPERATORS__",
@@ -114,6 +114,8 @@ for (M, N, K) in MNKs:
     run_benchmark(lib.hgemm_t_16x8_sliced_k32_f16x8_pack_dbuf_async,              
                   a, b, "f16x8pack(k32+dbuf+t16x8+async)",   c)
     print("-" * 58 + "WMMA" + "-" * 58)
+    run_benchmark(lib.hgemm_cublas_tensor_op,              
+                  a, b, "f16(cublas_tensor_op)",                         c)
     run_benchmark(lib.hgemm_wmma_m16n16k16_naive,              
                   a, b, "f16wmma(+naive)",                               c)
     run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2,              
@@ -138,6 +140,8 @@ for (M, N, K) in MNKs:
                   a, b, "f16wmma(mma4x2+warp2x4+dbuf)",                  c)
     run_benchmark(lib.hgemm_wmma_m32n8k16_mma2x4_warp2x4_dbuf_async,              
                   a, b, "f16wmma(m32n8k16+mma2x4+warp2x4+dbuf)",         c)
+    run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_stage2,              
+                  a, b, "f16wmma(mma2x4+warp2x4+stage2)",                c)
     run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_stage3,              
                   a, b, "f16wmma(mma2x4+warp2x4+stage3)",                c)
     run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_stage4,              
@@ -150,10 +154,12 @@ for (M, N, K) in MNKs:
                   a, b, "f16wmma(mma4x4+warp2x2x2+dbuf+offset)",         c)
     run_benchmark(lib.hgemm_wmma_m32n8k16_mma2x4_warp2x4_dbuf_async_offset,              
                   a, b, "f16wmma(m32n8k16+mma2x4+warp2x4+dbuf+offset)",  c)
-    run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_stage4_offset,              
-                  a, b, "f16wmma(mma4x2+warp2x4+stage4+offset)",         c)
     run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_dbuf_async_offset,              
                   a, b, "f16wmma(mma4x2+warp2x4+dbuf+offset)",           c)
+    run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_stage4_offset,              
+                  a, b, "f16wmma(mma4x2+warp2x4+stage4+offset)",         c)
+    run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_stage2_offset,              
+                  a, b, "f16wmma(mma4x2+warp2x4+stage2+offset)",         c)
     run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_stage3_offset,              
                   a, b, "f16wmma(mma4x2+warp2x4+stage3+offset)",         c)
     run_benchmark(partial(torch.matmul, out=c),
