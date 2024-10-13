@@ -111,13 +111,13 @@ __global__ void hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages_kernel(
     CP_ASYNC_COMMIT_GROUP();
   }
 
-  CP_ASYNC_WAIT_GROUP(0);
+  CP_ASYNC_WAIT_GROUP(K_STAGE-2); // s2->0, s3->1, s4->2
   __syncthreads(); 
 
   #pragma unroll
   for (int k = (K_STAGE - 1); k < NUM_K_TILES; k++) { // start from 2
-    int smem_sel = (k + 1) % K_STAGE; // k 2->0, k 3->1, k 4->2...
-    int smem_sel_next = k % K_STAGE;  // k 2->2, k 3->0, k 4->1...
+    int smem_sel = (k + 1) % K_STAGE; // s3 k 2->0, k 3->1, k 4->2...
+    int smem_sel_next = k % K_STAGE;  // s3 k 2->2, k 3->0, k 4->1...
 
     int load_gmem_a_k = k * WMMA_K + load_smem_a_k; // global col of a
     int load_gmem_a_addr = load_gmem_a_m * K + load_gmem_a_k;

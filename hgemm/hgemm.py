@@ -98,7 +98,7 @@ for (M, N, K) in MNKs:
                   a, b, "f16x8pack(bcf+offset)",             c)
     run_benchmark(lib.hgemm_t_8x8_sliced_k_f16x8_pack_bcf_dbuf,            
                   a, b, "f16x8pack(bcf+dbuf)",               c)
-    print("-" * 57 + "Async" + "-" * 58)
+    print("-" * 58 + "Async" + "-" * 57)
     run_benchmark(lib.hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf,              
                   a, b, "f16x8pack(k16+dbuf)",               c)
     run_benchmark(lib.hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf_offset,       
@@ -114,8 +114,6 @@ for (M, N, K) in MNKs:
     run_benchmark(lib.hgemm_t_16x8_sliced_k32_f16x8_pack_dbuf_async,              
                   a, b, "f16x8pack(k32+dbuf+t16x8+async)",   c)
     print("-" * 58 + "WMMA" + "-" * 58)
-    run_benchmark(lib.hgemm_cublas_tensor_op,              
-                  a, b, "f16(cublas_tensor_op)",                         c)
     run_benchmark(lib.hgemm_wmma_m16n16k16_naive,              
                   a, b, "f16wmma(+naive)",                               c)
     run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2,              
@@ -162,7 +160,7 @@ for (M, N, K) in MNKs:
                   a, b, "f16wmma(mma4x2+warp2x4+stage2+offset)",         c)
     run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_stage3_offset,              
                   a, b, "f16wmma(mma4x2+warp2x4+stage3+offset)",         c)
-    run_benchmark(partial(torch.matmul, out=c),
-                  a, b, "f16_th")
+    run_benchmark(partial(torch.matmul, out=c),             a, b, "f16_th")
+    run_benchmark(lib.hgemm_cublas_tensor_op, a, b, "f16(cublas)",       c)
     print("-" * 120)
 
