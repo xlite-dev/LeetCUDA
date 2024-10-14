@@ -35,7 +35,6 @@ using namespace nvcuda;
 HOST_DEVICE_INLINE 
 int div_ceil(int a, int b) { return (a % b != 0) ? (a / b + 1) : (a / b); }
 
-
 // stage2/3/4 (stage2=double buffers+copy async)
 template<const int WMMA_M=16, const int WMMA_N=16, const int WMMA_K=16, 
          const int WMMA_TILE_M=4, const int WMMA_TILE_N=2, 
@@ -57,7 +56,6 @@ __global__ void hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages_kernel(
   // 要保证相同的warp下thread执行相同的指令
   const int tid = threadIdx.y * blockDim.x + threadIdx.x;
   const int warp_id = tid / WARP_SIZE; // 0~7 warp_id within block
-  const int lane_id = tid % WARP_SIZE; // 0~31
   const int warp_m = warp_id / 2; // 0,1,2,3
   const int warp_n = warp_id % 2; // 0,1
   
@@ -75,16 +73,9 @@ __global__ void hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages_kernel(
   int load_gmem_a_m = by * BM + load_smem_a_m; // global row of a and c
   int load_gmem_b_n = bx * BN + load_smem_b_n; // global col of b and c
 
-  wmma::fragment<wmma::accumulator, 
-                 WMMA_M, WMMA_N, WMMA_K, 
-                 half> C_frag[WARP_TILE_M][WARP_TILE_N];
+  wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, half> 
+  C_frag[WARP_TILE_M][WARP_TILE_N];
   
-  // fragment reuse.
-  wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half, 
-                 wmma::row_major> A_frag[WARP_TILE_M];
-  wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half, 
-                 wmma::row_major> B_frag[WARP_TILE_N];
-
   #pragma unroll
   for (int i = 0; i < WARP_TILE_M; ++i) {
     #pragma unroll
@@ -95,6 +86,7 @@ __global__ void hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages_kernel(
 
   #pragma unroll
   for (int k = 0; k < (K_STAGE - 1); ++k) { // 0, 1
+    // k * WMMA_K, WMMA_K=16 -> (k << 4)
     int load_gmem_a_k = k * WMMA_K + load_smem_a_k; // global col of a
     int load_gmem_a_addr = load_gmem_a_m * K + load_gmem_a_k;
     int load_gmem_b_k = k * WMMA_K + load_smem_b_k; // global row of b
@@ -115,10 +107,14 @@ __global__ void hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages_kernel(
   __syncthreads(); 
 
   #pragma unroll
-  for (int k = (K_STAGE - 1); k < NUM_K_TILES; k++) { // start from 2
+  for (int k = (K_STAGE - 1); k < NUM_K_TILES; k++) { 
+    // s2/4 can use bitwise ops but s3 can not, so, we use mod
+    // ops for all stages kernel. s2: (k + 1)&1, s4: (k + 1)&3
+    // s3: (k + 1) % 3
     int smem_sel = (k + 1) % K_STAGE; // s3 k 2->0, k 3->1, k 4->2...
     int smem_sel_next = k % K_STAGE;  // s3 k 2->2, k 3->0, k 4->1...
 
+    // k * WMMA_K, WMMA_K=16 -> (k << 4)
     int load_gmem_a_k = k * WMMA_K + load_smem_a_k; // global col of a
     int load_gmem_a_addr = load_gmem_a_m * K + load_gmem_a_k;
     int load_gmem_b_k = k * WMMA_K + load_smem_b_k; // global row of b
@@ -133,6 +129,11 @@ __global__ void hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages_kernel(
       &s_b[smem_sel_next][load_smem_b_k][load_smem_b_n]);
     CP_ASYNC_CG(load_smem_b_ptr, &B[load_gmem_b_addr], 16);
     CP_ASYNC_COMMIT_GROUP();
+
+    wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half, 
+                   wmma::row_major> A_frag[WARP_TILE_M];
+    wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half, 
+                   wmma::row_major> B_frag[WARP_TILE_N];
     
     // compute stage 0
     #pragma unroll
@@ -145,7 +146,7 @@ __global__ void hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages_kernel(
     #pragma unroll
     for (int j = 0; j < WARP_TILE_N; ++j) {
       // load 4 tiles -> reg, smem b -> frags b, warp_n 0~2
-      const int warp_smem_b_n = warp_n * (WMMA_N * WARP_TILE_M) + j * WMMA_N;
+      const int warp_smem_b_n = warp_n * (WMMA_N * WARP_TILE_N) + j * WMMA_N;
       wmma::load_matrix_sync(B_frag[j], &s_b[smem_sel][0][warp_smem_b_n], BN+OFFSET);
     }
 
@@ -157,20 +158,23 @@ __global__ void hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages_kernel(
       }
     }
 
-    // make sure all memory issues ready, for final k iters.
-    if (k == (NUM_K_TILES - 1)) {
-      CP_ASYNC_WAIT_GROUP(0);
-    } else {
-      CP_ASYNC_WAIT_GROUP(K_STAGE-2); // s2->0, s3->1, s4->2
-    }
+    CP_ASYNC_WAIT_GROUP(K_STAGE-2);
     __syncthreads(); 
   }
   
-  // processing last (K_STAGE-1) stage(k)
+  // make sure all memory issues ready.
+  CP_ASYNC_WAIT_GROUP(0);
+  __syncthreads(); 
+  // processing last (K_STAGE-1) k iters.
   {
     #pragma unroll
     for (int k = 0; k < (K_STAGE - 1); k++) {
-      int stage_sel = ((NUM_K_TILES - (K_STAGE - 1) + k) % K_STAGE);
+      const int stage_sel = ((NUM_K_TILES - (K_STAGE - 1) + k) % K_STAGE);
+      wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half, 
+                     wmma::row_major> A_frag[WARP_TILE_M];
+      wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half, 
+                     wmma::row_major> B_frag[WARP_TILE_N];
+    
       #pragma unroll
       for (int i = 0; i < WARP_TILE_M; ++i) {
         // load 2 tiles -> reg, smem a -> frags a, warp_m 0~3
@@ -181,7 +185,7 @@ __global__ void hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages_kernel(
       #pragma unroll
       for (int j = 0; j < WARP_TILE_N; ++j) {
         // load 4 tiles -> reg, smem b -> frags b, warp_n 0~2
-        const int warp_smem_b_n = warp_n * (WMMA_N * WARP_TILE_M) + j * WMMA_N;
+        const int warp_smem_b_n = warp_n * (WMMA_N * WARP_TILE_N) + j * WMMA_N;
         wmma::load_matrix_sync(B_frag[j], &s_b[stage_sel][0][warp_smem_b_n], BN+OFFSET);
       }
       
