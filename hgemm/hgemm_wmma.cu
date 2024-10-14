@@ -1504,8 +1504,8 @@ void hgemm_wmma_m16n16k16_mma4x2_warp2x4(
     WMMA_TILE_M * WMMA_TILE_N * WARP_SIZE); // 4 * 2 * 32 = 256
 
   dim3 block(NUM_THREADS);
-  dim3 grid(div_ceil(N, WMMA_M * WMMA_TILE_M * WARP_TILE_M), 
-            div_ceil(M, WMMA_N * WMMA_TILE_N * WARP_TILE_N));
+  dim3 grid(div_ceil(N, WMMA_N * WMMA_TILE_N * WARP_TILE_N), 
+            div_ceil(M, WMMA_M * WMMA_TILE_M * WARP_TILE_M));
  
   hgemm_wmma_m16n16k16_mma4x2_warp2x4_kernel<
     WMMA_M, WMMA_N, WMMA_K, WMMA_TILE_M, WMMA_TILE_N, 
@@ -1540,8 +1540,8 @@ void hgemm_wmma_m16n16k16_mma4x2_warp2x4_async(
     WMMA_TILE_M * WMMA_TILE_N * WARP_SIZE); // 4 * 2 * 32 = 256
 
   dim3 block(NUM_THREADS);
-  dim3 grid(div_ceil(N, WMMA_M * WMMA_TILE_M * WARP_TILE_M), 
-            div_ceil(M, WMMA_N * WMMA_TILE_N * WARP_TILE_N));
+  dim3 grid(div_ceil(N, WMMA_N * WMMA_TILE_N * WARP_TILE_N), 
+            div_ceil(M, WMMA_M * WMMA_TILE_M * WARP_TILE_M));
  
   hgemm_wmma_m16n16k16_mma4x2_warp2x4_async_kernel<
     WMMA_M, WMMA_N, WMMA_K, WMMA_TILE_M, WMMA_TILE_N, 
@@ -1576,8 +1576,8 @@ void hgemm_wmma_m16n16k16_mma4x2_warp2x4_async_offset(
     WMMA_TILE_M * WMMA_TILE_N * WARP_SIZE); // 4 * 2 * 32 = 256
 
   dim3 block(NUM_THREADS);
-  dim3 grid(div_ceil(N, WMMA_M * WMMA_TILE_M * WARP_TILE_M), 
-            div_ceil(M, WMMA_N * WMMA_TILE_N * WARP_TILE_N));
+  dim3 grid(div_ceil(N, WMMA_N * WMMA_TILE_N * WARP_TILE_N), 
+            div_ceil(M, WMMA_M * WMMA_TILE_M * WARP_TILE_M));
   
   // padding offset 8
   hgemm_wmma_m16n16k16_mma4x2_warp2x4_async_kernel<
@@ -1613,8 +1613,8 @@ void hgemm_wmma_m16n16k16_mma4x2_warp2x4_dbuf_async(
     WMMA_TILE_M * WMMA_TILE_N * WARP_SIZE); // 4 * 2 * 32 = 256
 
   dim3 block(NUM_THREADS);
-  dim3 grid(div_ceil(N, WMMA_M * WMMA_TILE_M * WARP_TILE_M), 
-            div_ceil(M, WMMA_N * WMMA_TILE_N * WARP_TILE_N));
+  dim3 grid(div_ceil(N, WMMA_N * WMMA_TILE_N * WARP_TILE_N), 
+            div_ceil(M, WMMA_M * WMMA_TILE_M * WARP_TILE_M));
  
   hgemm_wmma_m16n16k16_mma4x2_warp2x4_dbuf_async_kernel<
     WMMA_M, WMMA_N, WMMA_K, WMMA_TILE_M, WMMA_TILE_N, 
@@ -1649,8 +1649,8 @@ void hgemm_wmma_m16n16k16_mma4x2_warp2x4_dbuf_async_offset(
     WMMA_TILE_M * WMMA_TILE_N * WARP_SIZE); // 4 * 2 * 32 = 256
 
   dim3 block(NUM_THREADS);
-  dim3 grid(div_ceil(N, WMMA_M * WMMA_TILE_M * WARP_TILE_M), 
-            div_ceil(M, WMMA_N * WMMA_TILE_N * WARP_TILE_N));
+  dim3 grid(div_ceil(N, WMMA_N * WMMA_TILE_N * WARP_TILE_N), 
+            div_ceil(M, WMMA_M * WMMA_TILE_M * WARP_TILE_M));
  
   hgemm_wmma_m16n16k16_mma4x2_warp2x4_dbuf_async_kernel<
     WMMA_M, WMMA_N, WMMA_K, WMMA_TILE_M, WMMA_TILE_N, 
@@ -1686,8 +1686,8 @@ void hgemm_wmma_m16n16k16_mma4x2_warp2x4x2_async(
     WMMA_TILE_M * WMMA_TILE_N * WARP_SIZE); // 4 * 2 * 32 = 256
 
   dim3 block(NUM_THREADS);
-  dim3 grid(div_ceil(N, WMMA_M * WMMA_TILE_M * WARP_TILE_M), 
-            div_ceil(M, WMMA_N * WMMA_TILE_N * WARP_TILE_N));
+  dim3 grid(div_ceil(N, WMMA_N * WMMA_TILE_N * WARP_TILE_N), 
+            div_ceil(M, WMMA_M * WMMA_TILE_M * WARP_TILE_M));
  
   hgemm_wmma_m16n16k16_mma4x2_warp2x4x2_async_kernel<
     WMMA_M, WMMA_N, WMMA_K, WMMA_TILE_M, WMMA_TILE_N, 
@@ -1722,8 +1722,8 @@ void hgemm_wmma_m16n16k16_mma4x2_warp2x4x2_async_offset(
     WMMA_TILE_M * WMMA_TILE_N * WARP_SIZE); // 4 * 2 * 32 = 256
 
   dim3 block(NUM_THREADS);
-  dim3 grid(div_ceil(N, WMMA_M * WMMA_TILE_M * WARP_TILE_M), 
-            div_ceil(M, WMMA_N * WMMA_TILE_N * WARP_TILE_N));
+  dim3 grid(div_ceil(N, WMMA_N * WMMA_TILE_N * WARP_TILE_N), 
+            div_ceil(M, WMMA_M * WMMA_TILE_M * WARP_TILE_M));
  
   hgemm_wmma_m16n16k16_mma4x2_warp2x4x2_async_kernel<
     WMMA_M, WMMA_N, WMMA_K, WMMA_TILE_M, WMMA_TILE_N, 
@@ -1759,8 +1759,8 @@ void hgemm_wmma_m16n16k16_mma4x2_warp2x4x2_dbuf_async(
     WMMA_TILE_M * WMMA_TILE_N * WARP_SIZE); // 4 * 2 * 32 = 256
 
   dim3 block(NUM_THREADS);
-  dim3 grid(div_ceil(N, WMMA_M * WMMA_TILE_M * WARP_TILE_M), 
-            div_ceil(M, WMMA_N * WMMA_TILE_N * WARP_TILE_N));
+  dim3 grid(div_ceil(N, WMMA_N * WMMA_TILE_N * WARP_TILE_N), 
+            div_ceil(M, WMMA_M * WMMA_TILE_M * WARP_TILE_M));
  
   hgemm_wmma_m16n16k16_mma4x2_warp2x4x2_dbuf_async_kernel<
     WMMA_M, WMMA_N, WMMA_K, WMMA_TILE_M, WMMA_TILE_N, 
@@ -1795,8 +1795,8 @@ void hgemm_wmma_m16n16k16_mma4x2_warp2x4x2_dbuf_async_offset(
     WMMA_TILE_M * WMMA_TILE_N * WARP_SIZE); // 4 * 2 * 32 = 256
 
   dim3 block(NUM_THREADS);
-  dim3 grid(div_ceil(N, WMMA_M * WMMA_TILE_M * WARP_TILE_M), 
-            div_ceil(M, WMMA_N * WMMA_TILE_N * WARP_TILE_N));
+  dim3 grid(div_ceil(N, WMMA_N * WMMA_TILE_N * WARP_TILE_N), 
+            div_ceil(M, WMMA_M * WMMA_TILE_M * WARP_TILE_M));
  
   hgemm_wmma_m16n16k16_mma4x2_warp2x4x2_dbuf_async_kernel<
     WMMA_M, WMMA_N, WMMA_K, WMMA_TILE_M, WMMA_TILE_N, 
@@ -1832,8 +1832,8 @@ void hgemm_wmma_m16n16k16_mma4x4_warp2x2x2_dbuf_async(
     WMMA_TILE_M * WMMA_TILE_N * WARP_SIZE); // 4 * 4 * 32 = 512
 
   dim3 block(NUM_THREADS);
-  dim3 grid(div_ceil(N, WMMA_M * WMMA_TILE_M * WARP_TILE_M), 
-            div_ceil(M, WMMA_N * WMMA_TILE_N * WARP_TILE_N));
+  dim3 grid(div_ceil(N, WMMA_N * WMMA_TILE_N * WARP_TILE_N), 
+            div_ceil(M, WMMA_M * WMMA_TILE_M * WARP_TILE_M));
  
   hgemm_wmma_m16n16k16_mma4x4_warp2x2x2_dbuf_async_kernel<
     WMMA_M, WMMA_N, WMMA_K, WMMA_TILE_M, WMMA_TILE_N, 
@@ -1868,8 +1868,8 @@ void hgemm_wmma_m16n16k16_mma4x4_warp2x2x2_dbuf_async_offset(
     WMMA_TILE_M * WMMA_TILE_N * WARP_SIZE); // 4 * 4 * 32 = 512
 
   dim3 block(NUM_THREADS);
-  dim3 grid(div_ceil(N, WMMA_M * WMMA_TILE_M * WARP_TILE_M), 
-            div_ceil(M, WMMA_N * WMMA_TILE_N * WARP_TILE_N));
+  dim3 grid(div_ceil(N, WMMA_N * WMMA_TILE_N * WARP_TILE_N), 
+            div_ceil(M, WMMA_M * WMMA_TILE_M * WARP_TILE_M));
  
   hgemm_wmma_m16n16k16_mma4x4_warp2x2x2_dbuf_async_kernel<
     WMMA_M, WMMA_N, WMMA_K, WMMA_TILE_M, WMMA_TILE_N, 
@@ -1904,8 +1904,8 @@ void hgemm_wmma_m32n8k16_mma2x4_warp2x4_dbuf_async(
     WMMA_TILE_M * WMMA_TILE_N * WARP_SIZE); // 2 * 4 * 32 = 256
 
   dim3 block(NUM_THREADS);
-  dim3 grid(div_ceil(N, WMMA_M * WMMA_TILE_M * WARP_TILE_M), 
-            div_ceil(M, WMMA_N * WMMA_TILE_N * WARP_TILE_N));
+  dim3 grid(div_ceil(N, WMMA_N * WMMA_TILE_N * WARP_TILE_N), 
+            div_ceil(M, WMMA_M * WMMA_TILE_M * WARP_TILE_M));
  
   hgemm_wmma_m32n8k16_mma2x4_warp2x4_dbuf_async_kernel<
     WMMA_M, WMMA_N, WMMA_K, WMMA_TILE_M, WMMA_TILE_N, 
@@ -1939,8 +1939,8 @@ void hgemm_wmma_m32n8k16_mma2x4_warp2x4_dbuf_async_offset(
     WMMA_TILE_M * WMMA_TILE_N * WARP_SIZE); // 2 * 4 * 32 = 256
 
   dim3 block(NUM_THREADS);
-  dim3 grid(div_ceil(N, WMMA_M * WMMA_TILE_M * WARP_TILE_M), 
-            div_ceil(M, WMMA_N * WMMA_TILE_N * WARP_TILE_N));
+  dim3 grid(div_ceil(N, WMMA_N * WMMA_TILE_N * WARP_TILE_N), 
+            div_ceil(M, WMMA_M * WMMA_TILE_M * WARP_TILE_M));
  
   hgemm_wmma_m32n8k16_mma2x4_warp2x4_dbuf_async_kernel<
     WMMA_M, WMMA_N, WMMA_K, WMMA_TILE_M, WMMA_TILE_N, 
@@ -1976,8 +1976,8 @@ void hgemm_wmma_m16n16k16_mma4x2_warp2x4x2_rbuf_async(
     WMMA_TILE_M * WMMA_TILE_N * WARP_SIZE); // 4 * 2 * 32 = 256
 
   dim3 block(NUM_THREADS);
-  dim3 grid(div_ceil(N, WMMA_M * WMMA_TILE_M * WARP_TILE_M), 
-            div_ceil(M, WMMA_N * WMMA_TILE_N * WARP_TILE_N));
+  dim3 grid(div_ceil(N, WMMA_N * WMMA_TILE_N * WARP_TILE_N), 
+            div_ceil(M, WMMA_M * WMMA_TILE_M * WARP_TILE_M));
  
   hgemm_wmma_m16n16k16_mma4x2_warp2x4x2_rbuf_async_kernel<
     WMMA_M, WMMA_N, WMMA_K, WMMA_TILE_M, WMMA_TILE_N, 
@@ -2012,8 +2012,8 @@ void hgemm_wmma_m16n16k16_mma4x2_warp2x4x2_rbuf_async_offset(
     WMMA_TILE_M * WMMA_TILE_N * WARP_SIZE); // 4 * 2 * 32 = 256
 
   dim3 block(NUM_THREADS);
-  dim3 grid(div_ceil(N, WMMA_M * WMMA_TILE_M * WARP_TILE_M), 
-            div_ceil(M, WMMA_N * WMMA_TILE_N * WARP_TILE_N));
+  dim3 grid(div_ceil(N, WMMA_N * WMMA_TILE_N * WARP_TILE_N), 
+            div_ceil(M, WMMA_M * WMMA_TILE_M * WARP_TILE_M));
  
   hgemm_wmma_m16n16k16_mma4x2_warp2x4x2_rbuf_async_kernel<
     WMMA_M, WMMA_N, WMMA_K, WMMA_TILE_M, WMMA_TILE_N, 
