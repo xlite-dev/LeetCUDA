@@ -214,7 +214,7 @@ __global__ void hgemm_wmma_m16n16k16_mma4x2_warp2x4_kernel(
     #pragma unroll
     for (int j = 0; j < WARP_TILE_N; ++j) {
       // load 4 tiles -> reg, smem b -> frags b, warp_n 0~2
-      const int warp_smem_b_n = warp_n * (WMMA_N * WARP_TILE_M) + j * WMMA_N;
+      const int warp_smem_b_n = warp_n * (WMMA_N * WARP_TILE_N) + j * WMMA_N;
       wmma::load_matrix_sync(B_frag[j], &s_b[0][warp_smem_b_n], BN); // BM*BK, BK=WMMA_K
     }
 
@@ -330,7 +330,7 @@ __global__ void hgemm_wmma_m16n16k16_mma4x2_warp2x4_async_kernel(
     #pragma unroll
     for (int j = 0; j < WARP_TILE_N; ++j) {
       // load 4 tiles -> reg, smem b -> frags b, warp_n 0~2
-      const int warp_smem_b_n = warp_n * (WMMA_N * WARP_TILE_M) + j * WMMA_N;
+      const int warp_smem_b_n = warp_n * (WMMA_N * WARP_TILE_N) + j * WMMA_N;
       wmma::load_matrix_sync(B_frag[j], &s_b[0][warp_smem_b_n], BN+OFFSET); // BM*BK, BK=WMMA_K
     }
 
@@ -616,7 +616,7 @@ __global__ void hgemm_wmma_m16n16k16_mma4x2_warp2x4x2_async_kernel(
       #pragma unroll
       for (int j = 0; j < WARP_TILE_N; ++j) {
         // load 4 tiles -> reg, smem b -> frags b, warp_n 0~2
-        const int warp_smem_b_n = warp_n * (WMMA_N * WARP_TILE_M) + j * WMMA_N;
+        const int warp_smem_b_n = warp_n * (WMMA_N * WARP_TILE_N) + j * WMMA_N;
         wmma::load_matrix_sync(B_frag[j], &s_b[warp_smem_k][warp_smem_b_n], BN+OFFSET); 
       }
 
@@ -753,7 +753,7 @@ __global__ void hgemm_wmma_m16n16k16_mma4x2_warp2x4x2_dbuf_async_kernel(
       #pragma unroll
       for (int j = 0; j < WARP_TILE_N; ++j) {
         // load 4 tiles -> reg, smem b -> frags b, warp_n 0~2
-        const int warp_smem_b_n = warp_n * (WMMA_N * WARP_TILE_M) + j * WMMA_N;
+        const int warp_smem_b_n = warp_n * (WMMA_N * WARP_TILE_N) + j * WMMA_N;
         wmma::load_matrix_sync(B_frag[j], &s_b[smem_sel][warp_smem_k][warp_smem_b_n], BN+OFFSET); 
       }
 
@@ -790,7 +790,7 @@ __global__ void hgemm_wmma_m16n16k16_mma4x2_warp2x4x2_dbuf_async_kernel(
       #pragma unroll
       for (int j = 0; j < WARP_TILE_N; ++j) {
         // load 4 tiles -> reg, smem b -> frags b, warp_n 0~2
-        const int warp_smem_b_n = warp_n * (WMMA_N * WARP_TILE_M) + j * WMMA_N;
+        const int warp_smem_b_n = warp_n * (WMMA_N * WARP_TILE_N) + j * WMMA_N;
         wmma::load_matrix_sync(B_frag[j], &s_b[1][warp_smem_k][warp_smem_b_n], BN+OFFSET); 
       }
 
@@ -923,7 +923,7 @@ __global__ void hgemm_wmma_m16n16k16_mma4x4_warp2x2x2_dbuf_async_kernel(
       #pragma unroll
       for (int j = 0; j < WARP_TILE_N; ++j) {
         // load 4 tiles -> reg, smem b -> frags b, warp_n 0~2
-        const int warp_smem_b_n = warp_n * (WMMA_N * WARP_TILE_M) + j * WMMA_N;
+        const int warp_smem_b_n = warp_n * (WMMA_N * WARP_TILE_N) + j * WMMA_N;
         wmma::load_matrix_sync(B_frag[j], &s_b[smem_sel][warp_smem_k][warp_smem_b_n], BN+OFFSET); 
       }
 
@@ -960,7 +960,7 @@ __global__ void hgemm_wmma_m16n16k16_mma4x4_warp2x2x2_dbuf_async_kernel(
       #pragma unroll
       for (int j = 0; j < WARP_TILE_N; ++j) {
         // load 4 tiles -> reg, smem b -> frags b, warp_n 0~2
-        const int warp_smem_b_n = warp_n * (WMMA_N * WARP_TILE_M) + j * WMMA_N;
+        const int warp_smem_b_n = warp_n * (WMMA_N * WARP_TILE_N) + j * WMMA_N;
         wmma::load_matrix_sync(B_frag[j], &s_b[1][warp_smem_k][warp_smem_b_n], BN+OFFSET); 
       }
 
@@ -1090,7 +1090,7 @@ __global__ void hgemm_wmma_m32n8k16_mma2x4_warp2x4_dbuf_async_kernel(
     #pragma unroll
     for (int j = 0; j < WARP_TILE_N; ++j) {
       // load 4 tiles -> reg, smem b -> frags b, warp_n 0~2
-      const int warp_smem_b_n = warp_n * (WMMA_N * WARP_TILE_M) + j * WMMA_N;
+      const int warp_smem_b_n = warp_n * (WMMA_N * WARP_TILE_N) + j * WMMA_N;
       wmma::load_matrix_sync(B_frag[j], &s_b[smem_sel][0][warp_smem_b_n], BN+OFFSET);
     }
 
@@ -1125,7 +1125,7 @@ __global__ void hgemm_wmma_m32n8k16_mma2x4_warp2x4_dbuf_async_kernel(
     #pragma unroll
     for (int j = 0; j < WARP_TILE_N; ++j) {
       // load 4 tiles -> reg, smem b -> frags b, warp_n 0~2
-      const int warp_smem_b_n = warp_n * (WMMA_N * WARP_TILE_M) + j * WMMA_N;
+      const int warp_smem_b_n = warp_n * (WMMA_N * WARP_TILE_N) + j * WMMA_N;
       wmma::load_matrix_sync(B_frag[j], &s_b[1][0][warp_smem_b_n], BN+OFFSET);
     }
 
@@ -1263,7 +1263,7 @@ __global__ void hgemm_wmma_m16n16k16_mma4x2_warp2x4x2_rbuf_async_kernel(
     #pragma unroll
     for (int j = 0; j < WARP_TILE_N; ++j) {
       // load 4 tiles -> reg, smem b -> frags b, warp_n 0~2
-      const int warp_smem_b_n = warp_n * (WMMA_N * WARP_TILE_M) + j * WMMA_N;
+      const int warp_smem_b_n = warp_n * (WMMA_N * WARP_TILE_N) + j * WMMA_N;
       wmma::load_matrix_sync(B_frag[reg_store_idx][j], &s_b[smem_sel][0][warp_smem_b_n], 
                              BN+OFFSET); 
     }
@@ -1288,7 +1288,7 @@ __global__ void hgemm_wmma_m16n16k16_mma4x2_warp2x4x2_rbuf_async_kernel(
       #pragma unroll
       for (int j = 0; j < WARP_TILE_N; ++j) {
         // load 4 tiles -> reg, smem b -> frags b, warp_n 0~2
-        const int warp_smem_b_n = warp_n * (WMMA_N * WARP_TILE_M) + j * WMMA_N;
+        const int warp_smem_b_n = warp_n * (WMMA_N * WARP_TILE_N) + j * WMMA_N;
         wmma::load_matrix_sync(B_frag[reg_store_idx][j], 
                                &s_b[smem_sel][warp_smem_k][warp_smem_b_n], 
                                BN+OFFSET); 
@@ -1340,7 +1340,7 @@ __global__ void hgemm_wmma_m16n16k16_mma4x2_warp2x4x2_rbuf_async_kernel(
     #pragma unroll
     for (int j = 0; j < WARP_TILE_N; ++j) {
       // load 4 tiles -> reg, smem b -> frags b, warp_n 0~2
-      const int warp_smem_b_n = warp_n * (WMMA_N * WARP_TILE_M) + j * WMMA_N;
+      const int warp_smem_b_n = warp_n * (WMMA_N * WARP_TILE_N) + j * WMMA_N;
       wmma::load_matrix_sync(B_frag[reg_store_idx][j], &s_b[1][0][warp_smem_b_n], 
                              BN+OFFSET); 
     }
@@ -1365,7 +1365,7 @@ __global__ void hgemm_wmma_m16n16k16_mma4x2_warp2x4x2_rbuf_async_kernel(
       #pragma unroll
       for (int j = 0; j < WARP_TILE_N; ++j) {
         // load 4 tiles -> reg, smem b -> frags b, warp_n 0~2
-        const int warp_smem_b_n = warp_n * (WMMA_N * WARP_TILE_M) + j * WMMA_N;
+        const int warp_smem_b_n = warp_n * (WMMA_N * WARP_TILE_N) + j * WMMA_N;
         wmma::load_matrix_sync(B_frag[reg_store_idx][j], 
                                &s_b[1][warp_smem_k][warp_smem_b_n], 
                                BN+OFFSET); 
