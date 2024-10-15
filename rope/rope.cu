@@ -15,21 +15,7 @@
 #define HALF2(value) (reinterpret_cast<half2*>(&(value))[0])
 #define BFLOAT2(value) (reinterpret_cast<__nv_bfloat162*>(&(value))[0])
 #define BLOCK_SIZE 256
-#define STRINGFY(str) #str
-#define TORCH_BINDING_COMMON_EXTENSION(func) \
-    m.def(STRINGFY(func), &func, STRINGFY(func));
-
-#define CHECK_TORCH_TENSOR_DTYPE(T, th_type)                       \
-    if (((T).options().dtype() != (th_type)))                      \
-    {                                                              \
-        std::cout << "Tensor Info:" << (T).options() << std::endl; \
-        throw std::runtime_error("values must be " #th_type);      \
-    }
 #define theta 10000.0f
-
-
-
-
 
 __global__ void rope_f32_kernel(float* x, float* out, int token_len, int N){ 
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -111,6 +97,13 @@ void rope_f32x4_pack(torch::Tensor x, torch::Tensor out){
 #define STRINGFY(str) #str
 #define TORCH_BINDING_COMMON_EXTENSION(func) \
   m.def(STRINGFY(func), &func, STRINGFY(func));
+
+#define CHECK_TORCH_TENSOR_DTYPE(T, th_type)                 \
+if (((T).options().dtype() != (th_type)))                    \
+{                                                            \
+  std::cout << "Tensor Info:" << (T).options() << std::endl; \
+  throw std::runtime_error("values must be " #th_type);      \
+}
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   TORCH_BINDING_COMMON_EXTENSION(_rope_f32)
