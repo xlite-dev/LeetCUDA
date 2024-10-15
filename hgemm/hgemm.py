@@ -27,15 +27,15 @@ def run_benchmark(perf_func: callable,
                   a: torch.Tensor, b: torch.Tensor,
                   tag: str, out: Optional[torch.Tensor] = None, 
                   stages: int = -1, swizzle: bool = False,
-                  swizzle_stride: int = 1024,
-                  warmup: int = 5, iters: int = 20,
+                  swizzle_stride: int = 4096,
+                  warmup: int = 5, iters: int = 50,
                   show_all: bool = False):
     M = a.size(0)
     K = a.size(1)
     N = b.size(1)
     if (a.size(0) > 1024 or a.size(1) >= 1024 
         or b.size(1) > 1024):
-        iters = 10
+        iters = 20
 
     if out is not None: 
         out.fill_(0)      
@@ -79,13 +79,19 @@ def run_benchmark(perf_func: callable,
 Ms = [4096, 8192, 16384]
 Ns = [4096, 8192, 16384]
 Ks = [512,  1024, 2048]
+# pre allocate for fast profiling.
+A = torch.randn((16384,  2048), dtype=torch.half).cuda()
+B = torch.randn((2048,  16384), dtype=torch.half).cuda()
+C = torch.randn((16384, 16384), dtype=torch.half).cuda()
+torch.cuda.synchronize()
+
 MNKs = [(M, N, K) for M in Ms for N in Ns for K in Ks]
 for (M, N, K) in MNKs:
     print("-" * 130)
     print(" " * 55 + f"M={M}, N={N}, K={K}")
-    a = torch.randn((M, K)).cuda().half().contiguous() 
-    b = torch.randn((K, N)).cuda().half().contiguous() 
-    c = torch.randn((M, N)).cuda().half().contiguous() 
+    a = A[:M, :K].contiguous()
+    b = B[:K, :N].contiguous()
+    c = C[:M, :N].contiguous()
     torch.cuda.synchronize()
 
     # CUDA Cores FP16
@@ -100,7 +106,7 @@ for (M, N, K) in MNKs:
     run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4, a, b, "f16wmma(mma4x2+warp2x4)", c)
     run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_dbuf_async_offset, a, b, "f16wmma(m16n16k16+mma2x4+warp2x4+dbuf)", c)
     run_benchmark(lib.hgemm_wmma_m32n8k16_mma2x4_warp2x4_dbuf_async_offset, a, b, "f16wmma(m32n8k16+mma2x4+warp2x4+dbuf)", c)
-    
+
     # stage, thread block swizzle, dsmem
     run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages, a, b, "f16wmma(mma2x4+warp2x4+stage3)", c, stages=3)
     run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages, a, b, "f16wmma(mma2x4+warp2x4+stage2)", c, stages=2)
