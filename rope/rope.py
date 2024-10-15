@@ -80,12 +80,11 @@ def naive_rope(
     # x_: [batch_size, seq_len, dim//2, 2]
     x_ = torch.view_as_complex(x_)
     # pack neibored element into a complex
-    # x_: [batch_size, seq_len, dim//2, 1]. eg: tensor([(1.6116-0.5772j), (-1.4606-0.9120j), (0.0786-1.7497j), (-0.6561-1.6623j), ...]
+    # x_: [batch_size, seq_len, dim//2, 1]. eg: tensor([(1.6116-0.5772j), ...]
     freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))
     t = torch.arange(seq_len , device=freqs.device)
     freqs = torch.outer(t, freqs).float().cuda()
     freqs_cis = torch.polar(torch.ones_like(freqs), freqs) 
-    # torch.polar = torch.ones_like(freqs) * torch.cos(freqs) + torch.ones_like(freqs) * torch.sin(freqs) j
     # get rotate angle
     xq_out = torch.view_as_real(x_ * freqs_cis).flatten(1)
     # do rotate
