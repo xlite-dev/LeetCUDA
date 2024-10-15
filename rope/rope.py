@@ -68,7 +68,7 @@ def run_benchmark(
     return out.clone(), mean_time
 
 
-def RoPE(
+def naive_rope(
     x: torch.Tensor,
     theta: float = 10000.0,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -100,8 +100,7 @@ for M,N in MN:
     print("-" * 100)
     x = torch.randn((M, N)).cuda().float().contiguous()
     out = torch.zeros_like(x).cuda().float().contiguous()
-    run_benchmark(lib.rope_f32,   x, "f32",   out)
-    # run_benchmark(lib.rope_block,   x, "f32",   out)
+    run_benchmark(lib.rope_f32,          x, "f32",          out)
     run_benchmark(lib.rope_f32x4_pack,   x, "f32x4_pack",   out)
-    run_benchmark(RoPE,     x, "f32_th")
+    run_benchmark(naive_rope,            x, "f32_th")
     print("-" * 100)     
