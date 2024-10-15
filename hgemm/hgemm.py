@@ -27,7 +27,7 @@ def run_benchmark(perf_func: callable,
                   a: torch.Tensor, b: torch.Tensor,
                   tag: str, out: Optional[torch.Tensor] = None, 
                   stages: int = -1, swizzle: bool = False,
-                  swizzle_stride: int = 4096,
+                  swizzle_stride: int = 1024,
                   warmup: int = 5, iters: int = 50,
                   show_all: bool = False):
     M = a.size(0)
