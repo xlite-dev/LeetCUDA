@@ -594,7 +594,7 @@ void sgemm_wmma_m16n16k8_mma4x2_warp2x4_stages(
   constexpr int WMMA_TILE_N = 2; 
   constexpr int WARP_TILE_M = 2;
   constexpr int WARP_TILE_N = 4;
-  constexpr int OFFSET = 4;
+  constexpr int OFFSET = 0;
   constexpr int NUM_THREADS= (
     WMMA_TILE_M * WMMA_TILE_N * WARP_SIZE); // 2 * 4 * 32 = 256
   constexpr int BM = WMMA_M * WMMA_TILE_M * WARP_TILE_M;    
@@ -673,7 +673,7 @@ void sgemm_wmma_m16n16k8_mma4x2_warp2x4_stages_dsmem(
   constexpr int WMMA_TILE_N = 2; 
   constexpr int WARP_TILE_M = 2;
   constexpr int WARP_TILE_N = 4;
-  constexpr int OFFSET = 4;
+  constexpr int OFFSET = 0;
   constexpr int NUM_THREADS= (
     WMMA_TILE_M * WMMA_TILE_N * WARP_SIZE); // 2 * 4 * 32 = 256
   constexpr int BM = WMMA_M * WMMA_TILE_M * WARP_TILE_M;    
