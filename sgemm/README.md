@@ -11,7 +11,7 @@
 - [X] sgemm_t_8x8_sliced_k_f32x4_bcf_dbuf_kernel (bank conflicts free, double buffers)
 - [X] sgemm_t_8x8_sliced_k16_f32x4_bcf_dbuf_kernel (double buffers, k16)
 - [X] sgemm_t_8x8_sliced_k16_f32x4_bcf_dbuf_async_kernel (double buffers, k16, copy async)
-- [X] sgemm_wmma_m16n16k8_mma4x2_warp2x4_stages (Tensor Cores, Tile MMA/Warp, Copy Async, Stage, Block swizzle)
+- [X] sgemm_wmma_m16n16k8_mma4x2_warp2x4_stages (WMMA, Tile MMA/Warp, Copy Async, Stage, Pad, Block swizzle)
 - [X] PyTorch bindings
 
 ## 目前性能
