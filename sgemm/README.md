@@ -11,10 +11,11 @@
 - [X] sgemm_t_8x8_sliced_k_f32x4_bcf_dbuf_kernel (bank conflicts free, double buffers)
 - [X] sgemm_t_8x8_sliced_k16_f32x4_bcf_dbuf_kernel (double buffers, k16)
 - [X] sgemm_t_8x8_sliced_k16_f32x4_bcf_dbuf_async_kernel (double buffers, k16, copy async)
-- [X] sgemm_wmma_m16n16k8_mma4x2_warp2x4_stage2/3/4 (Tensor Cores, Tile MMA/Warp, Copy Async, Stage, Thread block swizzle)
+- [X] sgemm_wmma_m16n16k8_mma4x2_warp2x4_stages (Tensor Cores, Tile MMA/Warp, Copy Async, Stage, Block swizzle)
 - [X] PyTorch bindings
 
-目前在L20上，CUDA Cores FP32的实现能达到cuBLAS大概90%~95%左右的性能(TFLOPS)，部分size下会超过cuBLAS。已知问题为bank conflicts没有完全消除，目前通过padding的方式缓解bank conflicts会导致shared memory浪费，也会影响SM occupancy。而Tensor Cores TF32的实现，只能达到cuBLAS TF32大概80%左右的性能，尚有较大差距。目前未手工实现Warp swizzle(受限于WMMA API的灵活性以及本人的能力)，后续将会尝试通过MMA PTX实现warp swizzle。
+## 目前性能
+目前在L20上，CUDA Cores FP32(L20 FP32/TF32理论算力为59.8 TFLOPS) 的实现能达到cuBLAS大概90%~95%左右的性能(TFLOPS)，部分size下会超过cuBLAS。已知问题为bank conflicts没有完全消除，目前通过padding的方式缓解bank conflicts会导致shared memory浪费，也会影响SM occupancy。而Tensor Cores TF32的实现，只能达到cuBLAS TF32大概80%左右的性能，尚有较大差距。目前未手工实现Warp swizzle(受限于WMMA API的灵活性以及本人的能力)，后续将会尝试通过MMA PTX实现warp swizzle。另外，当前TF32的实现依赖额外的FP32转TF32的kernel，对整体性能有影响。
 
 ## 共享内存 Bank Conflicts
 
