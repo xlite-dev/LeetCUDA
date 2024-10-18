@@ -732,21 +732,21 @@ python3 hgemm.py
 ----------------------------------------------------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------------------------------------
                                                        M=16384, N=16384, K=8192
-                     f16x8pack(t8x8+bcf): ['-27.078125', '-48.875   '], time:103.9028ms, swizzle: NOOP, TFLOPS: 42.33 (+0.00%)
-                f16x8pack(t8x8+bcf+dbuf): ['-27.078125', '-48.875   '], time:104.3092ms, swizzle: NOOP, TFLOPS: 42.16
-                f16x8pack(t8x8+k16+dbuf): ['-27.078125', '-48.875   '], time:102.5626ms, swizzle: NOOP, TFLOPS: 42.88 (+1.31%)
+                     f16x8pack(t8x8+bcf): ['-7.0742187', '-78.3125  '], time:103.2896ms, swizzle: NOOP, TFLOPS: 42.58 (+0.00%)
+                f16x8pack(t8x8+bcf+dbuf): ['-7.0742187', '-78.3125  '], time:103.9499ms, swizzle: NOOP, TFLOPS: 42.31
+                f16x8pack(t8x8+k16+dbuf): ['-7.0742187', '-78.3125  '], time:102.3885ms, swizzle: NOOP, TFLOPS: 42.95 (+0.88%)
 --------------------------------------------------------------------WMMA----------------------------------------------------------
-                         f16wmma(mma4x2): ['-27.125   ', '-48.5625  '], time:124.1843ms, swizzle: NOOP, TFLOPS: 35.42
-                 f16wmma(mma4x2+warp2x4): ['-27.125   ', '-48.5625  '], time:55.96730ms, swizzle: NOOP, TFLOPS: 78.58 (+83.25%)
-          f16wmma(mma2x4+warp2x4+stage3): ['-27.125   ', '-48.5625  '], time:49.86588ms, swizzle: NOOP, TFLOPS: 88.20 (+12.24%)
-          f16wmma(mma2x4+warp2x4+stage2): ['-27.125   ', '-48.5625  '], time:50.08533ms, swizzle: NOOP, TFLOPS: 87.81
-        f16wmma(mma2x4+...+stage3+dsmem): ['-27.125   ', '-48.5625  '], time:49.86846ms, swizzle: NOOP, TFLOPS: 88.19
-        f16wmma(mma2x4+...+stage2+dsmem): ['-27.125   ', '-48.5625  '], time:50.05228ms, swizzle: NOOP, TFLOPS: 87.87
-      f16wmma(mma2x4+...+stage3+swizzle): ['-27.125   ', '-48.5625  '], time:40.41364ms, swizzle: 4096, TFLOPS: 108.83(+23.39%)
-      f16wmma(mma2x4+...+stage2+swizzle): ['-27.125   ', '-48.5625  '], time:39.83242ms, swizzle: 4096, TFLOPS: 110.41(+1.46%)
-       f16wmma(...+stage3+dsmem+swizzle): ['-27.125   ', '-48.5625  '], time:40.77544ms, swizzle: 4096, TFLOPS: 107.86
-       f16wmma(...+stage2+dsmem+swizzle): ['-27.125   ', '-48.5625  '], time:40.16792ms, swizzle: 4096, TFLOPS: 109.49
-                             f16(cublas): ['-27.125   ', '-48.5625  '], time:38.48695ms, swizzle: NOOP, TFLOPS: 114.27(+3.50%)
-                                  f16_th: ['-27.203125', '-48.90625 '], time:38.51611ms, swizzle: NOOP, TFLOPS: 114.19
+                         f16wmma(mma4x2): ['-7.0546875', '-80.4375  '], time:124.1894ms, swizzle: NOOP, TFLOPS: 35.41
+                 f16wmma(mma4x2+warp2x4): ['-7.0546875', '-80.4375  '], time:55.97629ms, swizzle: NOOP, TFLOPS: 78.57 (+82.91%)
+          f16wmma(mma2x4+warp2x4+stage3): ['-7.0546875', '-80.4375  '], time:49.90615ms, swizzle: NOOP, TFLOPS: 88.13 (+12.16%)
+          f16wmma(mma2x4+warp2x4+stage2): ['-7.0546875', '-80.4375  '], time:50.10385ms, swizzle: NOOP, TFLOPS: 87.78
+        f16wmma(mma2x4+...+stage3+dsmem): ['-7.0546875', '-80.4375  '], time:49.86991ms, swizzle: NOOP, TFLOPS: 88.19 (+0.07%)
+        f16wmma(mma2x4+...+stage2+dsmem): ['-7.0546875', '-80.4375  '], time:50.06759ms, swizzle: NOOP, TFLOPS: 87.84
+      f16wmma(mma2x4+...+stage3+swizzle): ['-7.0546875', '-80.4375  '], time:40.56155ms, swizzle: 4096, TFLOPS: 108.43(+22.95%)
+      f16wmma(mma2x4+...+stage2+swizzle): ['-7.0546875', '-80.4375  '], time:39.84785ms, swizzle: 4096, TFLOPS: 110.37(+1.79%)
+       f16wmma(...+stage3+dsmem+swizzle): ['-7.0546875', '-80.4375  '], time:40.76685ms, swizzle: 4096, TFLOPS: 107.88
+       f16wmma(...+stage2+dsmem+swizzle): ['-7.0546875', '-80.4375  '], time:39.97714ms, swizzle: 4096, TFLOPS: 110.01
+                             f16(cublas): ['-7.0546875', '-80.4375  '], time:38.90087ms, swizzle: NOOP, TFLOPS: 113.06(+2.43%)
+                                  f16_th: ['-7.0742187', '-80.875   '], time:38.52620ms, swizzle: NOOP, TFLOPS: 114.16(+0.97%)
 ----------------------------------------------------------------------------------------------------------------------------------
 ```
