@@ -1,96 +1,166 @@
-import torch
-import time 
-from torch.utils.cpp_extension import load
-from functools import partial
-from typing import Optional
+Skip to content
+Navigation Menu
+DefTruth
+/
+CUDA-Learn-Notes
 
-torch.set_grad_enabled(False)
+Type / to search
+Code
+Issues
+4
+Pull requests
+Actions
+Projects
+Wiki
+Security
+Insights
+Settings
+Files
+Go to file
+t
+.github
+cuda-slides
+cutlass
+dot-product
+elementwise
+embedding
+flash-attn
+gelu
+hgemm
+.gitignore
+README.md
+hgemm.cu
+hgemm.py
+hgemm_async.cu
+hgemm_cublas.cu
+hgemm_mma.cu
+hgemm_mma_stage.cu
+hgemm_wmma.cu
+hgemm_wmma_stage.cu
+prof.py
+hgemv
+histogram
+layer-norm
+mat_transpose
+nms
+nvidia-nsight
+openai-triton
+pytorch
+reduce
+relu
+rms-norm
+rope
+sgemm
+sgemv
+sigmoid
+softmax
+swish
+tensorrt
+third-party
+transformer
+vllm-slides
+.gitignore
+.gitmodules
+LICENSE
+README.md
+notes-v1.cu
+Editing hgemm.py in CUDA-Learn-Notes
+BreadcrumbsCUDA-Learn-Notes/hgemm
+/
+hgemm.py
+in
+main
 
-# Load the CUDA kernel as a python module
-lib = load(name='hgemm_lib', 
-           sources=['hgemm.cu', 'hgemm_async.cu', 'hgemm_wmma.cu', 
-                    'hgemm_wmma_stage.cu', 'hgemm_cublas.cu'], 
-           extra_cuda_cflags=[
-               "-O3",
-                "-U__CUDA_NO_HALF_OPERATORS__",
-                "-U__CUDA_NO_HALF_CONVERSIONS__",
-                "-U__CUDA_NO_HALF2_OPERATORS__",
-                "-U__CUDA_NO_BFLOAT16_CONVERSIONS__",
-                "--expt-relaxed-constexpr",
-                "--expt-extended-lambda",
-                "--use_fast_math"
-            ], 
-           extra_cflags=['-std=c++17'])
+Edit
 
-MAX_TFLOPS = -1
+Preview
+Indent mode
 
-def run_benchmark(perf_func: callable, 
-                  a: torch.Tensor, b: torch.Tensor,
-                  tag: str, out: Optional[torch.Tensor] = None, 
-                  stages: int = -1, swizzle: bool = False,
-                  swizzle_stride: int = 1,
-                  warmup: int = 5, iters: int = 20,
-                  show_all: bool = False):
-    global MAX_TFLOPS
+Spaces
+Indent size
 
-    M = a.size(0)
-    K = a.size(1)
-    N = b.size(1)
-    if (a.size(0) > 1024 or a.size(1) >= 1024 
-        or b.size(1) > 1024):
-        iters = 10
-    
-    if swizzle:
-        # make swizzle stride as N/4 and multiples of 256
-        swizzle_stride = int((int(N / 4) // 256) * 256)
-        swizzle_stride = swizzle_stride if swizzle_stride >= 256 else 1
-        swizzle = swizzle if swizzle_stride >= 256 else False
-    else:
-        swizzle_stride = 1 # means no thread block swizzle
-    
-    if stages:
-        assert swizzle_stride is not None
+2
+Line wrap mode
 
-    if out is not None: 
-        out.fill_(0)      
-    if out is not None:
-        for i in range(warmup):
-            if stages > 1:
-                perf_func(a, b, out, stages, swizzle, swizzle_stride)
-            else:
-                perf_func(a, b, out)
-    else:
-        for i in range(warmup):
-            _ = perf_func(a, b) 
-    
-    torch.cuda.synchronize()
-    start = time.time()
-    # iters
-    if out is not None:
-        for i in range(iters):
-            if stages > 1:
-                perf_func(a, b, out, stages, swizzle, swizzle_stride)
-            else:
-                perf_func(a, b, out)
-    else:
-        for i in range(iters):
-            out = perf_func(a, b) 
-    torch.cuda.synchronize()
-    end = time.time()
-    total_time = (end - start) * 1000 # ms
-    mean_time = total_time / iters
-    out_info = f"{tag}"
-    out_val = out.flatten()[:2].detach().cpu().numpy().tolist()
-    out_val = [round(v, 8) for v in out_val]
-    out_val = [f"{v:<12}"[:10] for v in out_val]
-    TFLOPS = (2 * M * N * K) * 1e-9 / (mean_time)
-    mean_time = str(f"{mean_time:<12}")[:8]
-    swizzle_stride = 'NOOP' if swizzle_stride == 1 else swizzle_stride
-
-    # caculate TFLOPS improved.
-    if TFLOPS > MAX_TFLOPS:
-        if MAX_TFLOPS > 0:
-            improve = ((TFLOPS - MAX_TFLOPS) / MAX_TFLOPS) * 100
+No wrap
+Editing hgemm.py file contents
+94
+95
+96
+97
+98
+99
+100
+101
+102
+103
+104
+105
+106
+107
+108
+109
+110
+111
+112
+113
+114
+115
+116
+117
+118
+119
+120
+121
+122
+123
+124
+125
+126
+127
+128
+129
+130
+131
+132
+133
+134
+135
+136
+137
+138
+139
+140
+141
+142
+143
+144
+145
+146
+147
+148
+149
+150
+151
+152
+153
+154
+155
+156
+157
+158
+159
+160
+161
+162
+163
+164
+165
+166
+167
+168
+169
+170
             improve = round(improve, 2)
         else:
             improve = 0
@@ -135,14 +205,14 @@ for (M, N, K) in MNKs:
     # run_benchmark(lib.hgemm_wmma_m16n16k16_naive, a, b, "f16wmma(naive)", c)
     run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2, a, b, "f16wmma(mma4x2)", c)
     run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4, a, b, "f16wmma(mma4x2+warp2x4)", c)
-    run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_dbuf_async_offset, a, b, "f16wmma(mma2x4+warp2x4+dbuf)", c)
+    # run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_dbuf_async_offset, a, b, "f16wmma(mma2x4+warp2x4+dbuf)", c)
 
     # Stages, dsmem
-    run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages, a, b, "f16wmma(mma2x4+warp2x4+stage4)", c, stages=4)
+    # run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages, a, b, "f16wmma(mma2x4+warp2x4+stage4)", c, stages=4)
     run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages, a, b, "f16wmma(mma2x4+warp2x4+stage3)", c, stages=3)
     run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages, a, b, "f16wmma(mma2x4+warp2x4+stage2)", c, stages=2)
 
-    run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages_dsmem, a, b, "f16wmma(mma2x4+...+stage4+dsmem)", c, stages=4)
+    # run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages_dsmem, a, b, "f16wmma(mma2x4+...+stage4+dsmem)", c, stages=4)
     run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages_dsmem, a, b, "f16wmma(mma2x4+...+stage3+dsmem)", c, stages=3)
     run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages_dsmem, a, b, "f16wmma(mma2x4+...+stage2+dsmem)", c, stages=2)
 
@@ -151,11 +221,11 @@ for (M, N, K) in MNKs:
     # run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x4_warp4x4_stages_dsmem, a, b, "f16wmma(mma4x4+...+stage2+dsmem)", c, stages=2)
     
     # Thread block swizzle
-    run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages, a, b, "f16wmma(mma2x4+...+stage4+swizzle)", c, stages=4, swizzle=True)
+    # run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages, a, b, "f16wmma(mma2x4+...+stage4+swizzle)", c, stages=4, swizzle=True)
     run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages, a, b, "f16wmma(mma2x4+...+stage3+swizzle)", c, stages=3, swizzle=True)
     run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages, a, b, "f16wmma(mma2x4+...+stage2+swizzle)", c, stages=2, swizzle=True)
 
-    run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages_dsmem, a, b, "f16wmma(...+stage4+dsmem+swizzle)", c, stages=4, swizzle=True)
+    # run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages_dsmem, a, b, "f16wmma(...+stage4+dsmem+swizzle)", c, stages=4, swizzle=True)
     run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages_dsmem, a, b, "f16wmma(...+stage3+dsmem+swizzle)", c, stages=3, swizzle=True)
     run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages_dsmem, a, b, "f16wmma(...+stage2+dsmem+swizzle)", c, stages=2, swizzle=True)
 
@@ -167,3 +237,6 @@ for (M, N, K) in MNKs:
     run_benchmark(partial(torch.matmul, out=c), a, b, "f16_th")
     torch.cuda.synchronize()
     print("-" * 130)
+
+Use Control + Shift + m to toggle the tab key moving focus. Alternatively, use esc then tab to move to the next interactive element on the page.
+Editing CUDA-Learn-Notes/hgemm/hgemm.py at main · DefTruth/CUDA-Learn-Notes 
