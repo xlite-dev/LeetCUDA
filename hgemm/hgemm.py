@@ -127,8 +127,8 @@ for (M, N, K) in MNKs:
     # CUDA Cores FP16
     # run_benchmark(lib.hgemm_naive_f16, a, b, "f16(naive)",  c)
     # run_benchmark(lib.hgemm_t_8x8_sliced_k_f16x8_pack_bcf, a, b, "f16x8pack(t8x8+bcf)", c)
-    # run_benchmark(lib.hgemm_t_8x8_sliced_k_f16x8_pack_bcf_dbuf, a, b, "f16x8pack(t8x8+dbuf)", c)
-    # run_benchmark(lib.hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf, a, b, "f16x8pack(t8x8+k16+dbuf)", c)
+    run_benchmark(lib.hgemm_t_8x8_sliced_k_f16x8_pack_bcf_dbuf, a, b, "f16x8pack(t8x8+dbuf)", c)
+    run_benchmark(lib.hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf, a, b, "f16x8pack(t8x8+k16+dbuf)", c)
 
     print("-" * 68 + "WMMA" + "-" * 58)
     # run_benchmark(lib.hgemm_wmma_m16n16k16_naive, a, b, "(naive)", c)
