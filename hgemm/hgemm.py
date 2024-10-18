@@ -101,7 +101,6 @@ def run_benchmark(perf_func: callable,
         print(f"{out_info:>40}: {out_val}, time:{mean_time}ms, "
               f"swizzle: {swizzle_stride:<4}, TFLOPS: {TFLOPS:<6.2f}")
     if show_all: print(out)
-    time.sleep(0.05)
     return out, mean_time
 
 
@@ -127,8 +126,8 @@ for (M, N, K) in MNKs:
 
     # CUDA Cores FP16
     # run_benchmark(lib.hgemm_naive_f16, a, b, "f16(naive)",  c)
-    run_benchmark(lib.hgemm_t_8x8_sliced_k_f16x8_pack_bcf, a, b, "f16x8pack(t8x8+bcf)", c)
-    run_benchmark(lib.hgemm_t_8x8_sliced_k_f16x8_pack_bcf_dbuf, a, b, "f16x8pack(t8x8+bcf+dbuf)", c)
+    # run_benchmark(lib.hgemm_t_8x8_sliced_k_f16x8_pack_bcf, a, b, "f16x8pack(t8x8+bcf)", c)
+    run_benchmark(lib.hgemm_t_8x8_sliced_k_f16x8_pack_bcf_dbuf, a, b, "f16x8pack(t8x8+dbuf)", c)
     run_benchmark(lib.hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf, a, b, "f16x8pack(t8x8+k16+dbuf)", c)
 
     print("-" * 68 + "WMMA" + "-" * 58)
