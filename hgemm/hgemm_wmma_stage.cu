@@ -267,7 +267,7 @@ template<const int WMMA_M=16,
          const int A_PAD=0, 
          const int B_PAD=0, 
          const int K_STAGE=2,
-         const int BLOCK_SWIZZLE=false>
+         const bool BLOCK_SWIZZLE=false>
 __global__ void __launch_bounds__(256) 
 hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages_dsmem_kernel(
   half* A, half* B, half* C, int M, int N, int K) {
@@ -493,7 +493,7 @@ template<const int WMMA_M=16,
          const int A_PAD=0, 
          const int B_PAD=0, 
          const int K_STAGE=2, 
-         const int BLOCK_SWIZZLE=false>
+         const bool BLOCK_SWIZZLE=false>
 __global__ void __launch_bounds__(512) 
 hgemm_wmma_m16n16k16_mma4x4_warp4x4_stages_dsmem_kernel(
   half* A, half* B, half* C, int M, int N, int K) {
@@ -722,7 +722,7 @@ template<const int WMMA_M=16,
          const int A_PAD=0, 
          const int B_PAD=0, 
          const int K_STAGE=2,
-         const int BLOCK_SWIZZLE=false>
+         const bool BLOCK_SWIZZLE=false>
 __global__ void __launch_bounds__(256) 
 hgemm_wmma_m16n16k16_mma4x2_warp2x4x2_stages_dsmem_kernel(
   half* A, half* B, half* C, int M, int N, int K) {
