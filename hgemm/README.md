@@ -229,7 +229,9 @@ nsys profile --stats=true -t cuda,osrt,nvtx -o hgemm.prof --force-overwrite true
 ```bash
 # 只测试Ada架构 不指定默认编译所有架构 耗时较长: Volta, Ampere, Ada, Hopper, ...
 export TORCH_CUDA_ARCH_LIST=Ada 
-python3 hgemm.py
+python3 hgemm.py # default, test some wmma kernels for all MNK
+python3 hgemm.py --wmma # test all wmma kernels for all MNK
+python3 hgemm.py --M 16384 --N 16384 --K 8192 --i 10 --wmma # test all wmma kernels for specific MNK
 ```
 
 输出:
