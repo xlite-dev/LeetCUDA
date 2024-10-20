@@ -206,7 +206,7 @@ for (M, N, K) in MNKs:
         print("-" * 68 + "MMA" + "-" * 59)
         pass
     if not args.disable_cublas:
-        run_benchmark(lib.hgemm_cublas_tensor_op, a, b, "(cublas)", c)
+        run_benchmark(lib.hgemm_cublas_tensor_op_row_major, a, b, "(cublas)", c)
     if args.enable_torch:
         run_benchmark(partial(torch.matmul, out=c), a, b, "(torch)")
     torch.cuda.synchronize()
