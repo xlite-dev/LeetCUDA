@@ -29,11 +29,11 @@
 
 - NVIDIA L20  
 
-目前最优的实现，在L20上（理论Tensor Cores FP16算力为 119.5 TFLOPS），能达到cuBLAS大概95%~98%左右的性能(105-113 TFLOPS vs 105-115 TFLOPS)，部分case会超越cuBLAS。已知问题为bank conflicts没有完全消除，目前通过padding的方式缓解bank conflicts会导致shared memory浪费，也会影响SM occupancy。并且尚未手工实现Warp swizzle(受限于WMMA API的灵活性以及本人的能力)，后续将会尝试通过MMA PTX实现warp swizzle，[查看性能benchmark](#测试)。
+目前最优的实现，在L20上（理论Tensor Cores FP16算力为 119.5 TFLOPS），能达到cuBLAS大概95%~98%左右的性能(105-113 TFLOPS vs 105-115 TFLOPS)，部分case会超越cuBLAS。已知问题为bank conflicts没有完全消除，目前通过padding的方式缓解bank conflicts会导致shared memory浪费，也会影响SM occupancy。并且尚未手工实现Warp swizzle(受限于WMMA API的灵活性以及本人的能力)，后续将会尝试通过MMA PTX实现warp swizzle，[点击查看性能数据](#NV-L20)。
 
 - NVIDIA GeForce RTX 3080 Laptop   
 
-在NVIDIA GeForce RTX 3080 Laptop上测试，使用mma4x4_warp4x4（16 MMA m16n16k16 ops, warp tile 64x64）以及Thread block swizzle，大部分case能持平甚至超过cuBLAS，[查看性能benchmark](#测试)。
+在NVIDIA GeForce RTX 3080 Laptop上测试，使用mma4x4_warp4x4（16 MMA m16n16k16 ops, warp tile 64x64）以及Thread block swizzle，大部分case能持平甚至超过cuBLAS，[点击查看性能数据](#NV-RTX-3080)。
 
 ## 共享内存 Bank Conflicts
 
@@ -219,7 +219,6 @@ nsys profile --stats=true -t cuda,osrt,nvtx -o hgemm.prof --force-overwrite true
 ```
 
 
-
 ## 参考文献 
 
 - [CUDA编程概念】一、什么是bank conflict？](https://zhuanlan.zhihu.com/p/659142274)
@@ -228,7 +227,7 @@ nsys profile --stats=true -t cuda,osrt,nvtx -o hgemm.prof --force-overwrite true
 - [Using Shared Memory in CUDA C/C++](https://developer.nvidia.com/blog/using-shared-memory-cuda-cc/)
 - [CUDA（三）：通用矩阵乘法：从入门到熟练](https://zhuanlan.zhihu.com/p/657632577)
 
-## 测试
+## 测试命令
 
 ```bash
 # 只测试Ada架构 不指定默认编译所有架构 耗时较长: Volta, Ampere, Ada, Hopper, ...
@@ -239,11 +238,17 @@ python3 hgemm.py --M 16384 --N 16384 --K 8192 --i 10 --wmma # test all wmma kern
 python3 hgemm.py --wmma --no-default # test all wmma kernels, but exclude the default part.
 ```
 
-输出:
 
-- NVIDIA L20 (Up to 113.76 TFLOPS, 113.76/119.5=95.19% TFLOPS utilization)
+## NVIDIA L20 
+<div id="NV-L20"></div>
+
+Up to 113.76 TFLOPS, 113.76/119.5=95.19% TFLOPS utilization.
+
 ```bash
 python3 hgemm.py
+```
+输出：
+```bash
 ----------------------------------------------------------------------------------------------------------------------------------
                                         M=4096, N=4096, K=2048, Warmup=5, Iters=20, 1/27
 ----------------------------------------------------------------------------------------------------------------------------------
@@ -732,9 +737,14 @@ python3 hgemm.py
 ----------------------------------------------------------------------------------------------------------------------------------
 ```
 
-- NVIDIA GeForce RTX 3080 Laptop
+## NVIDIA GeForce RTX 3080 Laptop 
+<div id="NV-RTX-3080"></div>
+
 ```bash
 python3 hgemm.py --wmma --no-default
+```
+输出：
+```bash
 ----------------------------------------------------------------------------------------------------------------------------------
                               M=4096, N=4096, K=2048, Warmup=5, Iters=20, 1/27
 ----------------------------------------------------------------------------------------------------------------------------------
