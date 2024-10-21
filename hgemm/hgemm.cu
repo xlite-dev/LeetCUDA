@@ -1013,7 +1013,7 @@ void hgemm_wmma_m16n16k16_mma4x2_warp4x4_stages_dsmem(torch::Tensor a, torch::Te
 void hgemm_wmma_m16n16k16_mma4x4_warp4x4_stages_dsmem(torch::Tensor a, torch::Tensor b, torch::Tensor c, int stages, bool swizzle, int swizzle_stride);
 // from hgemm_mma.cu
 void hgemm_mma_m16n8k16_naive(torch::Tensor a, torch::Tensor b, torch::Tensor c);
-void hgemm_wmma_m16n8k16_mma2x4_warp4x4(torch::Tensor a, torch::Tensor b, torch::Tensor c);
+void hgemm_mma_m16n8k16_mma2x4_warp4x4(torch::Tensor a, torch::Tensor b, torch::Tensor c);
 
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
@@ -1048,6 +1048,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   TORCH_BINDING_COMMON_EXTENSION(hgemm_wmma_m16n16k16_mma4x4_warp4x4_stages_dsmem)
   // MMA API Tensor Cores
   TORCH_BINDING_COMMON_EXTENSION(hgemm_mma_m16n8k16_naive)
-  TORCH_BINDING_COMMON_EXTENSION(hgemm_wmma_m16n8k16_mma2x4_warp4x4)
+  TORCH_BINDING_COMMON_EXTENSION(hgemm_mma_m16n8k16_mma2x4_warp4x4)
 }
 
