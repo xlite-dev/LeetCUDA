@@ -158,7 +158,7 @@
 | ✔️ [hard_nms cpp only](./nms/nms.cc)|f32|/|/|⭐️|  
 | ✔️ [notes v1(deprecated)](./notes-v1.cu)|f32|f32|/|⭐️|  
 
-👉TIPS: * means using **Tensor Cores(MMA PTX)**, otherwise, using CUDA Cores by default.
+👉TIPS: * means using **Tensor Cores(MMA/WMMA)**, otherwise, using CUDA Cores by default.
 
 ## 0x01 📖 博客目录
 
