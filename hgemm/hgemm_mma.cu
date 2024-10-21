@@ -133,7 +133,7 @@ template<const int MMA_M=16,
          const int A_PAD=0, 
          const int B_PAD=0>
 __global__ void  __launch_bounds__(256) 
-hgemm_wmma_m16n8k16_mma2x4_warp4x4_kernel(
+hgemm_mma_m16n8k16_mma2x4_warp4x4_kernel(
   half* A, half* B, half* C, int M, int N, int K) {
   const int bx = blockIdx.x;
   const int by = blockIdx.y;
@@ -145,7 +145,7 @@ hgemm_wmma_m16n8k16_mma2x4_warp4x4_kernel(
   __shared__ half s_a[BM][BK+A_PAD]; // 128*16*2=4KB
   __shared__ half s_b[BK][BN+B_PAD]; // 16*128*2=4KB, 16*(128+16)*2=4.5KB
   // TODO: reduce smem cost of s_c tile.
-  __shared__ half s_c[BM][BN+B_PAD]; // 128x128=32KB 
+  __shared__ half s_c[BM][BN]; // 128x128=32KB 
 
   const int tid = threadIdx.y * blockDim.x + threadIdx.x; // within block
   const int warp_id = tid / WARP_SIZE; // 0~7 warp_id within block
@@ -305,7 +305,7 @@ void hgemm_mma_m16n8k16_naive(
 }
 
 // 128x128, mma2x4, warp4x4(64,32,16)
-void hgemm_wmma_m16n8k16_mma2x4_warp4x4(
+void hgemm_mma_m16n8k16_mma2x4_warp4x4(
   torch::Tensor a, torch::Tensor b, torch::Tensor c) {
   CHECK_TORCH_TENSOR_DTYPE(a, torch::kHalf)
   CHECK_TORCH_TENSOR_DTYPE(b, torch::kHalf)
@@ -332,7 +332,7 @@ void hgemm_wmma_m16n8k16_mma2x4_warp4x4(
   dim3 grid(div_ceil(N, MMA_N * MMA_TILE_N * WARP_TILE_N), 
             div_ceil(M, MMA_M * MMA_TILE_M * WARP_TILE_M));
 
-  hgemm_wmma_m16n8k16_mma2x4_warp4x4_kernel<
+  hgemm_mma_m16n8k16_mma2x4_warp4x4_kernel<
     MMA_M, MMA_N, MMA_K, MMA_TILE_M, MMA_TILE_N, 
     WARP_TILE_M, WARP_TILE_N, A_PAD, B_PAD><<<grid, block>>>(
     reinterpret_cast<half*>(a.data_ptr()),
