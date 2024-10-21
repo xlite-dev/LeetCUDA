@@ -199,7 +199,7 @@ for (M, N, K) in MNKs:
     if args.enable_mma_all: # more mma kernel tests.
         print("-" * 68 + "MMA" + "-" * 59)
         # run_benchmark(lib.hgemm_mma_m16n8k16_naive, a, b, "(naive)", c)
-        run_benchmark(lib.hgemm_wmma_m16n8k16_mma2x4_warp4x4, a, b, "(mma2x4+warp4x4)", c)
+        run_benchmark(lib.hgemm_mma_m16n8k16_mma2x4_warp4x4, a, b, "(mma2x4+warp4x4)", c)
     if not args.disable_cublas:
         run_benchmark(lib.hgemm_cublas_tensor_op_row_major, a, b, "(cublas)", c)
     if args.enable_torch:
