@@ -264,7 +264,7 @@ hgemm_mma_m16n8k16_mma2x4_warp4x4_stages_kernel(
       int store_lane_gmem_c_n = bx * BN + store_warp_smem_c_n + (lane_id % 4) * 2;
       int store_gmem_c_addr_0 = store_lane_gmem_c_m * N + store_lane_gmem_c_n;
       int store_gmem_c_addr_1 = (store_lane_gmem_c_m + 8) * N + store_lane_gmem_c_n;
-      // TODO: how to use LDST128BITS here ? reverse the loop order ?
+      // TODO: how to use LDST128BITS here ?
       LDST32BITS(C[store_gmem_c_addr_0]) = LDST32BITS(RC[i][j][0]); 
       LDST32BITS(C[store_gmem_c_addr_1]) = LDST32BITS(RC[i][j][1]); 
     }
@@ -509,7 +509,7 @@ hgemm_mma_m16n8k16_mma2x4_warp4x4_stages_dsmem_kernel(
       int store_lane_gmem_c_n = bx * BN + store_warp_smem_c_n + (lane_id % 4) * 2;
       int store_gmem_c_addr_0 = store_lane_gmem_c_m * N + store_lane_gmem_c_n;
       int store_gmem_c_addr_1 = (store_lane_gmem_c_m + 8) * N + store_lane_gmem_c_n;
-      // TODO: how to use LDST128BITS here ? reverse the loop order ?
+      // TODO: how to use LDST128BITS here ?
       LDST32BITS(C[store_gmem_c_addr_0]) = LDST32BITS(RC[i][j][0]); 
       LDST32BITS(C[store_gmem_c_addr_1]) = LDST32BITS(RC[i][j][1]); 
     }
