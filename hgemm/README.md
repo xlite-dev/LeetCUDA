@@ -247,9 +247,8 @@ python3 hgemm.py --mma --mma-all # test all mma kernels for all MNK
 ## NVIDIA L20 
 <div id="NV-L20"></div>
 
-Up to 113.76 TFLOPS, 113.76/119.5=95.19% TFLOPS utilization.
 
-- WMMA & CUDA
+### WMMA & CUDA: Up to 113.76 TFLOPS, 113.76/119.5=95.19% TFLOPS utilization.
 
 ```bash
 python3 hgemm.py --cuda --wmma
@@ -744,8 +743,7 @@ python3 hgemm.py --cuda --wmma
 ----------------------------------------------------------------------------------------------------------------------------------
 ```
 
-- MMA   
-Up to 115 TFLOPS, 115/119.5=96.23% TFLOPS utilization.
+### MMA: Up to 115 TFLOPS, 115/119.5=96.23% TFLOPS utilization.
 
 ```bash
 python3 hgemm.py --mma
