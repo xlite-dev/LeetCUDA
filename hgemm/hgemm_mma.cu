@@ -144,8 +144,6 @@ hgemm_mma_m16n8k16_mma2x4_warp4x4_kernel(
 
   __shared__ half s_a[BM][BK+A_PAD]; // 128*16*2=4KB
   __shared__ half s_b[BK][BN+B_PAD]; // 16*128*2=4KB, 16*(128+16)*2=4.5KB
-  // TODO: reduce smem cost of s_c tile.
-  __shared__ half s_c[BM][BN]; // 128x128=32KB 
 
   const int tid = threadIdx.y * blockDim.x + threadIdx.x; // within block
   const int warp_id = tid / WARP_SIZE; // 0~7 warp_id within block
@@ -229,33 +227,25 @@ hgemm_mma_m16n8k16_mma2x4_warp4x4_kernel(
     __syncthreads(); 
   }
 
-  // reg -> smem
+  // reg -> gmem, MMA_MxMMA_N=16x8
   #pragma unroll
   for (int i = 0; i < WARP_TILE_M; ++i) {
     #pragma unroll
     for (int j = 0; j < WARP_TILE_N; ++j) {
-      // MMA_MxMMA_N=16x16
       int store_warp_smem_c_m = warp_m * (MMA_M * WARP_TILE_M) + i * MMA_M;
       int store_warp_smem_c_n = warp_n * (MMA_N * WARP_TILE_N) + j * MMA_N;
-      int store_lane_smem_c_m = store_warp_smem_c_m + lane_id / 4;
-      int store_lane_smem_c_n = store_warp_smem_c_n + (lane_id % 4) * 2;
-      LDST32BITS(s_c[store_lane_smem_c_m    ][store_lane_smem_c_n]) = LDST32BITS(RC[i][j][0]); 
-      LDST32BITS(s_c[store_lane_smem_c_m + 8][store_lane_smem_c_n]) = LDST32BITS(RC[i][j][1]);
+      // mapping lane smem index -> global index.
+      // [16][8], https://docs.nvidia.com/cuda/parallel-thread-execution/index.html
+      // #matrix-fragments-for-mma-m16n8k16-with-floating-point-type
+      // [0~7][0~3 u32 -> 0~7 f16], [8~15][0~3 u32 -> 0~7 f16]
+      int store_lane_gmem_c_m = by * BM + store_warp_smem_c_m + lane_id / 4;
+      int store_lane_gmem_c_n = bx * BN + store_warp_smem_c_n + (lane_id % 4) * 2;
+      int store_gmem_c_addr_0 = store_lane_gmem_c_m * N + store_lane_gmem_c_n;
+      int store_gmem_c_addr_1 = (store_lane_gmem_c_m + 8) * N + store_lane_gmem_c_n;
+      // TODO: how to use LDST128BITS here ? reverse the loop order ?
+      LDST32BITS(C[store_gmem_c_addr_0]) = LDST32BITS(RC[i][j][0]); 
+      LDST32BITS(C[store_gmem_c_addr_1]) = LDST32BITS(RC[i][j][1]); 
     }
-  }
-  __syncthreads();
-
-  // smem -> gmem, 256 threads, store 128*128/256=64 values per threads.
-  int store_gmem_c_m = by * BM + tid / 2; // 0~127
-  #pragma unroll 
-  for (int i = 0; i < 8; ++i) {
-    int store_gmem_c_n = bx * BN + (tid % 2) * 64 + i * 8;
-    int store_gmem_c_addr = store_gmem_c_m * N + store_gmem_c_n;
-    // tid 0,   s_c[0][(0~63)],   tid 1,   s_c[0][(64~127)]
-    // tid 2,   s_c[1][(0~63)],   tid 3,   s_c[1][(64~127)]
-    // ...      ...               ...      ...
-    // tid 254, s_c[127][(0~63)], tid 255, s_c[127][(64~127)]
-    LDST128BITS(C[store_gmem_c_addr]) = LDST128BITS(s_c[tid / 2][(tid % 2) * 64 + i * 8]);
   }
 }
 
