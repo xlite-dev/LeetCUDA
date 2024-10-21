@@ -24,14 +24,15 @@
 - [X] hgemm_wmma_m16n16k16_mma4x4_warp4x4_stages(WMMA, Tile MMA/Warp, Copy Async, Stages, Pad, Block swizzle) 
 - [X] hgemm_wmma_m32n8k16_mma2x4_warp2x4_dbuf_async(WMMA, Tile MMA/Warp, Copy Async, Double Buffers, Pad)
 - [X] hgemm_mma_m16n8k16_naive(MMA)
-- [X] hgemm_mma_m16n8k16_mma2x4_warp4x4(MMA, Tile MMA/Warp, pack)  
+- [X] hgemm_mma_m16n8k16_mma2x4_warp4x4(MMA, Tile MMA/Warp, pack)
+- [X] hgemm_mma_m16n8k16_mma2x4_warp4x4_stages(MMA, Tile MMA/Warp, Copy Async, Stages, Pad, Block swizzle) 
 - [X] PyTorch bindings
 
 ## 目前性能  
 
 - NVIDIA L20  
 
-目前最优的实现，在L20上（理论Tensor Cores FP16算力为 119.5 TFLOPS），能达到cuBLAS大概95%~98%左右的性能(105-113 TFLOPS vs 105-115 TFLOPS)，部分case会超越cuBLAS。已知问题为bank conflicts没有完全消除，目前通过padding的方式缓解bank conflicts会导致shared memory浪费，也会影响SM occupancy。并且尚未手工实现Warp swizzle(受限于WMMA API的灵活性以及本人的能力)，后续将会尝试通过MMA PTX实现warp swizzle，[点击查看性能数据](#NV-L20)。
+目前最优的实现，在L20上（理论Tensor Cores FP16算力为 119.5 TFLOPS），使用WMMA API能达到cuBLAS大概95%~98%左右的性能(105-113 TFLOPS vs 105-115 TFLOPS)，使用MMA API能达到115 TFLOPS，部分case会超越cuBLAS。已知问题为bank conflicts没有完全消除，目前通过padding的方式缓解bank conflicts会导致shared memory浪费，也会影响SM occupancy。并且尚未手工实现Warp swizzle(受限于WMMA API的灵活性以及本人的能力)，后续将会尝试通过MMA PTX实现warp swizzle，[点击查看性能数据](#NV-L20)。
 
 - NVIDIA GeForce RTX 3080 Laptop   
 
@@ -234,10 +235,12 @@ nsys profile --stats=true -t cuda,osrt,nvtx -o hgemm.prof --force-overwrite true
 ```bash
 # 只测试Ada架构 不指定默认编译所有架构 耗时较长: Volta, Ampere, Ada, Hopper, ...
 export TORCH_CUDA_ARCH_LIST=Ada 
-python3 hgemm.py # default, test some wmma kernels for all MNK
-python3 hgemm.py --wmma # test all wmma kernels for all MNK
-python3 hgemm.py --M 16384 --N 16384 --K 8192 --i 10 --wmma # test all wmma kernels for specific MNK
-python3 hgemm.py --wmma --no-default # test all wmma kernels, but exclude the default part.
+python3 hgemm.py --wmma # test defalut wmma kernels for all MNK
+python3 hgemm.py --mma  # test defalut mma kernels for all MNK
+python3 hgemm.py --M 16384 --N 16384 --K 8192 --i 10 --wmma # test default wmma kernels for specific MNK
+python3 hgemm.py --M 16384 --N 16384 --K 8192 --i 10 --mma # test default mma kernels for specific MNK
+python3 hgemm.py --wmma --wmma-all # test all wmma kernels for all MNK
+python3 hgemm.py --mma --mma-all # test all mma kernels for all MNK
 ```
 
 
@@ -246,8 +249,10 @@ python3 hgemm.py --wmma --no-default # test all wmma kernels, but exclude the de
 
 Up to 113.76 TFLOPS, 113.76/119.5=95.19% TFLOPS utilization.
 
+- WMMA & CUDA
+
 ```bash
-python3 hgemm.py
+python3 hgemm.py --cuda --wmma
 ```
 输出：
 ```bash
@@ -739,11 +744,130 @@ python3 hgemm.py
 ----------------------------------------------------------------------------------------------------------------------------------
 ```
 
+- MMA   
+Up to 115 TFLOPS, 115/119.5=96.23% TFLOPS utilization.
+
+```bash
+python3 hgemm.py --mma
+```
+
+输出：
+```bash
+----------------------------------------------------------------------------------------------------------------------------------
+                                        M=16384, N=4096, K=8192, Warmup=5, Iters=20, 21/27
+----------------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------MMA-----------------------------------------------------------
+                        (mma2x4+warp4x4): ['21.984375 ', '58.0      '], time:10.29069ms, swizzle: NOOP, TFLOPS: 106.85(+0.00%)
+                 (mma2x4+warp4x4+stage3): ['21.984375 ', '58.0      '], time:9.866333ms, swizzle: NOOP, TFLOPS: 111.44(+4.30%)
+                 (mma2x4+warp4x4+stage2): ['21.984375 ', '58.0      '], time:9.776329ms, swizzle: NOOP, TFLOPS: 112.47(+0.92%)
+           (mma2x4+warp4x4+stage3+dsmem): ['21.984375 ', '58.0      '], time:9.924983ms, swizzle: NOOP, TFLOPS: 110.78
+           (mma2x4+warp4x4+stage2+dsmem): ['21.984375 ', '58.0      '], time:9.772467ms, swizzle: NOOP, TFLOPS: 112.51(+0.04%)
+         (mma2x4+warp4x4+stage3+swizzle): ['21.984375 ', '58.0      '], time:9.879112ms, swizzle: 1024, TFLOPS: 111.30
+         (mma2x4+warp4x4+stage2+swizzle): ['21.984375 ', '58.0      '], time:9.752583ms, swizzle: 1024, TFLOPS: 112.74(+0.20%)
+   (mma2x4+warp4x4+stage3+dsmem+swizzle): ['21.984375 ', '58.0      '], time:9.922742ms, swizzle: 1024, TFLOPS: 110.81
+   (mma2x4+warp4x4+stage2+dsmem+swizzle): ['21.984375 ', '58.0      '], time:9.673309ms, swizzle: 1024, TFLOPS: 113.66(+0.82%)
+                                (cublas): ['21.984375 ', '58.0      '], time:9.443545ms, swizzle: NOOP, TFLOPS: 116.43(+2.43%)
+----------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------
+                                        M=16384, N=8192, K=2048, Warmup=5, Iters=20, 22/27
+----------------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------MMA-----------------------------------------------------------
+                        (mma2x4+warp4x4): ['32.40625  ', '-4.0039062'], time:5.229425ms, swizzle: NOOP, TFLOPS: 105.13(+0.00%)
+                 (mma2x4+warp4x4+stage3): ['32.40625  ', '-4.0039062'], time:5.009818ms, swizzle: NOOP, TFLOPS: 109.74(+4.38%)
+                 (mma2x4+warp4x4+stage2): ['32.40625  ', '-4.0039062'], time:4.968261ms, swizzle: NOOP, TFLOPS: 110.65(+0.84%)
+           (mma2x4+warp4x4+stage3+dsmem): ['32.40625  ', '-4.0039062'], time:5.031824ms, swizzle: NOOP, TFLOPS: 109.26
+           (mma2x4+warp4x4+stage2+dsmem): ['32.40625  ', '-4.0039062'], time:4.965233ms, swizzle: NOOP, TFLOPS: 110.72(+0.06%)
+         (mma2x4+warp4x4+stage3+swizzle): ['32.40625  ', '-4.0039062'], time:5.021595ms, swizzle: 2048, TFLOPS: 109.48
+         (mma2x4+warp4x4+stage2+swizzle): ['32.40625  ', '-4.0039062'], time:4.914212ms, swizzle: 2048, TFLOPS: 111.87(+1.04%)
+   (mma2x4+warp4x4+stage3+dsmem+swizzle): ['32.40625  ', '-4.0039062'], time:5.039000ms, swizzle: 2048, TFLOPS: 109.10
+   (mma2x4+warp4x4+stage2+dsmem+swizzle): ['32.40625  ', '-4.0039062'], time:4.895591ms, swizzle: 2048, TFLOPS: 112.30(+0.38%)
+                                (cublas): ['32.40625  ', '-4.0039062'], time:4.766654ms, swizzle: NOOP, TFLOPS: 115.33(+2.70%)
+----------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------
+                                        M=16384, N=8192, K=4096, Warmup=5, Iters=20, 23/27
+----------------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------MMA-----------------------------------------------------------
+                        (mma2x4+warp4x4): ['99.125    ', '22.8125   '], time:10.30406ms, swizzle: NOOP, TFLOPS: 106.71(+0.00%)
+                 (mma2x4+warp4x4+stage3): ['99.125    ', '22.8125   '], time:9.895300ms, swizzle: NOOP, TFLOPS: 111.11(+4.13%)
+                 (mma2x4+warp4x4+stage2): ['99.125    ', '22.8125   '], time:9.813237ms, swizzle: NOOP, TFLOPS: 112.04(+0.84%)
+           (mma2x4+warp4x4+stage3+dsmem): ['99.125    ', '22.8125   '], time:9.948658ms, swizzle: NOOP, TFLOPS: 110.52
+           (mma2x4+warp4x4+stage2+dsmem): ['99.125    ', '22.8125   '], time:9.798026ms, swizzle: NOOP, TFLOPS: 112.22(+0.16%)
+         (mma2x4+warp4x4+stage3+swizzle): ['99.125    ', '22.8125   '], time:9.914517ms, swizzle: 2048, TFLOPS: 110.90
+         (mma2x4+warp4x4+stage2+swizzle): ['99.125    ', '22.8125   '], time:9.733128ms, swizzle: 2048, TFLOPS: 112.97(+0.67%)
+   (mma2x4+warp4x4+stage3+dsmem+swizzle): ['99.125    ', '22.8125   '], time:9.941744ms, swizzle: 2048, TFLOPS: 110.60
+   (mma2x4+warp4x4+stage2+dsmem+swizzle): ['99.125    ', '22.8125   '], time:9.670472ms, swizzle: 2048, TFLOPS: 113.70(+0.65%)
+                                (cublas): ['99.125    ', '22.8125   '], time:9.453558ms, swizzle: NOOP, TFLOPS: 116.31(+2.29%)
+----------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------
+                                        M=16384, N=8192, K=8192, Warmup=5, Iters=20, 24/27
+----------------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------MMA-----------------------------------------------------------
+                        (mma2x4+warp4x4): ['21.984375 ', '58.0      '], time:21.51823ms, swizzle: NOOP, TFLOPS: 102.19(+0.00%)
+                 (mma2x4+warp4x4+stage3): ['21.984375 ', '58.0      '], time:20.90017ms, swizzle: NOOP, TFLOPS: 105.22(+2.96%)
+                 (mma2x4+warp4x4+stage2): ['21.984375 ', '58.0      '], time:20.75178ms, swizzle: NOOP, TFLOPS: 105.97(+0.72%)
+           (mma2x4+warp4x4+stage3+dsmem): ['21.984375 ', '58.0      '], time:20.97730ms, swizzle: NOOP, TFLOPS: 104.83
+           (mma2x4+warp4x4+stage2+dsmem): ['21.984375 ', '58.0      '], time:20.83809ms, swizzle: NOOP, TFLOPS: 105.53
+         (mma2x4+warp4x4+stage3+swizzle): ['21.984375 ', '58.0      '], time:19.78309ms, swizzle: 2048, TFLOPS: 111.16(+4.90%)
+         (mma2x4+warp4x4+stage2+swizzle): ['21.984375 ', '58.0      '], time:19.33062ms, swizzle: 2048, TFLOPS: 113.76(+2.34%)
+   (mma2x4+warp4x4+stage3+dsmem+swizzle): ['21.984375 ', '58.0      '], time:19.74017ms, swizzle: 2048, TFLOPS: 111.40
+   (mma2x4+warp4x4+stage2+dsmem+swizzle): ['21.984375 ', '58.0      '], time:19.22986ms, swizzle: 2048, TFLOPS: 114.35(+0.52%)
+                                (cublas): ['21.984375 ', '58.0      '], time:18.83535ms, swizzle: NOOP, TFLOPS: 116.75(+2.09%)
+----------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------
+                                        M=16384, N=16384, K=2048, Warmup=5, Iters=20, 25/27
+----------------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------MMA-----------------------------------------------------------
+                        (mma2x4+warp4x4): ['32.40625  ', '-4.0039062'], time:10.34352ms, swizzle: NOOP, TFLOPS: 106.30(+0.00%)
+                 (mma2x4+warp4x4+stage3): ['32.40625  ', '-4.0039062'], time:9.953904ms, swizzle: NOOP, TFLOPS: 110.46(+3.91%)
+                 (mma2x4+warp4x4+stage2): ['32.40625  ', '-4.0039062'], time:9.861850ms, swizzle: NOOP, TFLOPS: 111.49(+0.93%)
+           (mma2x4+warp4x4+stage3+dsmem): ['32.40625  ', '-4.0039062'], time:9.998512ms, swizzle: NOOP, TFLOPS: 109.97
+           (mma2x4+warp4x4+stage2+dsmem): ['32.40625  ', '-4.0039062'], time:9.855365ms, swizzle: NOOP, TFLOPS: 111.56(+0.07%)
+         (mma2x4+warp4x4+stage3+swizzle): ['32.40625  ', '-4.0039062'], time:9.974408ms, swizzle: 4096, TFLOPS: 110.23
+         (mma2x4+warp4x4+stage2+swizzle): ['32.40625  ', '-4.0039062'], time:9.743142ms, swizzle: 4096, TFLOPS: 112.85(+1.15%)
+   (mma2x4+warp4x4+stage3+dsmem+swizzle): ['32.40625  ', '-4.0039062'], time:9.995770ms, swizzle: 4096, TFLOPS: 110.00
+   (mma2x4+warp4x4+stage2+dsmem+swizzle): ['32.40625  ', '-4.0039062'], time:9.701442ms, swizzle: 4096, TFLOPS: 113.33(+0.43%)
+                                (cublas): ['32.40625  ', '-4.0039062'], time:9.485888ms, swizzle: NOOP, TFLOPS: 115.91(+2.27%)
+----------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------
+                                        M=16384, N=16384, K=4096, Warmup=5, Iters=20, 26/27
+----------------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------MMA-----------------------------------------------------------
+                        (mma2x4+warp4x4): ['99.125    ', '22.8125   '], time:22.18379ms, swizzle: NOOP, TFLOPS: 99.13 (+0.00%)
+                 (mma2x4+warp4x4+stage3): ['99.125    ', '22.8125   '], time:21.83485ms, swizzle: NOOP, TFLOPS: 100.71(+1.60%)
+                 (mma2x4+warp4x4+stage2): ['99.125    ', '22.8125   '], time:21.14553ms, swizzle: NOOP, TFLOPS: 103.99(+3.26%)
+           (mma2x4+warp4x4+stage3+dsmem): ['99.125    ', '22.8125   '], time:21.59111ms, swizzle: NOOP, TFLOPS: 101.85
+           (mma2x4+warp4x4+stage2+dsmem): ['99.125    ', '22.8125   '], time:20.96095ms, swizzle: NOOP, TFLOPS: 104.91(+0.88%)
+         (mma2x4+warp4x4+stage3+swizzle): ['99.125    ', '22.8125   '], time:19.78907ms, swizzle: 4096, TFLOPS: 111.12(+5.92%)
+         (mma2x4+warp4x4+stage2+swizzle): ['99.125    ', '22.8125   '], time:19.28851ms, swizzle: 4096, TFLOPS: 114.01(+2.60%)
+   (mma2x4+warp4x4+stage3+dsmem+swizzle): ['99.125    ', '22.8125   '], time:19.74153ms, swizzle: 4096, TFLOPS: 111.39
+   (mma2x4+warp4x4+stage2+dsmem+swizzle): ['99.125    ', '22.8125   '], time:19.19734ms, swizzle: 4096, TFLOPS: 114.55(+0.47%)
+                                (cublas): ['99.125    ', '22.8125   '], time:18.88573ms, swizzle: NOOP, TFLOPS: 116.44(+1.65%)
+----------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------
+                                        M=16384, N=16384, K=8192, Warmup=5, Iters=20, 27/27
+----------------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------MMA-----------------------------------------------------------
+                        (mma2x4+warp4x4): ['21.984375 ', '58.0      '], time:45.41800ms, swizzle: NOOP, TFLOPS: 96.83 (+0.00%)
+                 (mma2x4+warp4x4+stage3): ['21.984375 ', '58.0      '], time:49.64394ms, swizzle: NOOP, TFLOPS: 88.59
+                 (mma2x4+warp4x4+stage2): ['21.984375 ', '58.0      '], time:49.82240ms, swizzle: NOOP, TFLOPS: 88.27
+           (mma2x4+warp4x4+stage3+dsmem): ['21.984375 ', '58.0      '], time:49.68290ms, swizzle: NOOP, TFLOPS: 88.52
+           (mma2x4+warp4x4+stage2+dsmem): ['21.984375 ', '58.0      '], time:49.83477ms, swizzle: NOOP, TFLOPS: 88.25
+         (mma2x4+warp4x4+stage3+swizzle): ['21.984375 ', '58.0      '], time:39.11197ms, swizzle: 4096, TFLOPS: 112.45(+16.12%)
+         (mma2x4+warp4x4+stage2+swizzle): ['21.984375 ', '58.0      '], time:38.40293ms, swizzle: 4096, TFLOPS: 114.52(+1.85%)
+   (mma2x4+warp4x4+stage3+dsmem+swizzle): ['21.984375 ', '58.0      '], time:39.23041ms, swizzle: 4096, TFLOPS: 112.11
+   (mma2x4+warp4x4+stage2+dsmem+swizzle): ['21.984375 ', '58.0      '], time:38.21511ms, swizzle: 4096, TFLOPS: 115.09(+0.49%)
+                                (cublas): ['21.984375 ', '58.0      '], time:37.87384ms, swizzle: NOOP, TFLOPS: 116.12(+0.90%)
+----------------------------------------------------------------------------------------------------------------------------------
+```
+
+
 ## NVIDIA GeForce RTX 3080 Laptop 
 <div id="NV-RTX-3080"></div>
 
+- WMMA
+
 ```bash
-python3 hgemm.py --wmma --no-default
+python3 hgemm.py --wmma --wmma-all
 ```
 输出：
 ```bash
