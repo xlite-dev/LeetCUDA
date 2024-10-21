@@ -14,6 +14,7 @@ def get_args():
     parser.add_argument("--K", type=int, default=None, help="Matrix K size")
     parser.add_argument("--warmup", "--w", type=int, default=5, help="Warmup iters")
     parser.add_argument("--iters", "--i", type=int, default=20, help="Benchmark iters")
+    parser.add_argument("--show-all", "--show", action="store_true", help="Show all matrix values ")
     parser.add_argument("--enable-mma-all", "--mma", action="store_true", help="Enable all MMA kernel tests")
     parser.add_argument("--enable-wmma-all", "--wmma", action="store_true", help="Enable all WMMA kernel tests")
     parser.add_argument("--enable-cuda-all", "--cuda", action="store_true", help="Enable all CUDA kernel tests")
@@ -54,7 +55,7 @@ def run_benchmark(perf_func: callable,
                   swizzle_stride: int = 1,
                   warmup: int = args.warmup, 
                   iters: int = args.iters,
-                  show_all: bool = False):
+                  show_all: bool = args.show_all):
     global MAX_TFLOPS
 
     M = a.size(0)
@@ -197,7 +198,8 @@ for (M, N, K) in MNKs:
         run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp4x4_stages_dsmem, a, b, "(mma4x2+warp4x4+stage2+dsmem+swizzle)", c, stages=2, swizzle=True)
     if args.enable_mma_all: # more mma kernel tests.
         print("-" * 68 + "MMA" + "-" * 59)
-        run_benchmark(lib.hgemm_mma_m16n8k16_naive, a, b, "(naive)", c)
+        # run_benchmark(lib.hgemm_mma_m16n8k16_naive, a, b, "(naive)", c)
+        run_benchmark(lib.hgemm_wmma_m16n8k16_mma2x4_warp4x4, a, b, "(mma2x4+warp4x4)", c)
     if not args.disable_cublas:
         run_benchmark(lib.hgemm_cublas_tensor_op_row_major, a, b, "(cublas)", c)
     if args.enable_torch:
