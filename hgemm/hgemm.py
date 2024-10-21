@@ -29,7 +29,8 @@ print(args)
 print("Loading hgemm lib ...")
 lib = load(name='hgemm_lib', 
            sources=['hgemm.cu', 'hgemm_async.cu', 'hgemm_wmma.cu', 
-                    'hgemm_wmma_stage.cu', 'hgemm_cublas.cu'], 
+                    'hgemm_wmma_stage.cu', 'hgemm_cublas.cu',
+                    'hgemm_mma.cu'], 
            extra_cuda_cflags=[
                "-O3",
                 "-U__CUDA_NO_HALF_OPERATORS__",
@@ -40,7 +41,8 @@ lib = load(name='hgemm_lib',
                 "--expt-extended-lambda",
                 "--use_fast_math"
             ], 
-           extra_cflags=['-std=c++17'])
+           extra_cflags=['-std=c++17'],
+           verbose=False)
 
 
 MAX_TFLOPS = -1
@@ -195,7 +197,7 @@ for (M, N, K) in MNKs:
         run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp4x4_stages_dsmem, a, b, "(mma4x2+warp4x4+stage2+dsmem+swizzle)", c, stages=2, swizzle=True)
     if args.enable_mma_all: # more mma kernel tests.
         print("-" * 68 + "MMA" + "-" * 59)
-        pass
+        run_benchmark(lib.hgemm_mma_m16n8k16_naive, a, b, "(naive)", c)
     if not args.disable_cublas:
         run_benchmark(lib.hgemm_cublas_tensor_op_row_major, a, b, "(cublas)", c)
     if args.enable_torch:
