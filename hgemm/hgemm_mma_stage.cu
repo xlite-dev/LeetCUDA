@@ -22,18 +22,33 @@ using namespace nvcuda;
 #define LDST32BITS(value) (reinterpret_cast<half2*>(&(value))[0])
 #define LDST64BITS(value) (reinterpret_cast<float2*>(&(value))[0])
 #define LDST128BITS(value) (reinterpret_cast<float4*>(&(value))[0])
+// gmem -> smem
 #define CP_ASYNC_COMMIT_GROUP() asm volatile("cp.async.commit_group;\n" ::)
 #define CP_ASYNC_WAIT_ALL() asm volatile("cp.async.wait_all;\n" ::)
 #define CP_ASYNC_WAIT_GROUP(n) asm volatile("cp.async.wait_group %0;\n" ::"n"(n))
 // ca(cache all, L1 + L2): support 4, 8, 16 bytes, cg(cache global, L2): only support 16 bytes.
 #define CP_ASYNC_CA(dst, src, bytes) asm volatile("cp.async.ca.shared.global.L2::128B [%0], [%1], %2;\n" ::"r"(dst), "l"(src), "n"(bytes))
 #define CP_ASYNC_CG(dst, src, bytes) asm volatile("cp.async.cg.shared.global.L2::128B [%0], [%1], %2;\n" ::"r"(dst), "l"(src), "n"(bytes))
+// smem -> gmem: requires sm_90 or higher.
+#define CP_ASYNC_BULK_COMMIT_GROUP() asm volatile("cp.async.bulk.commit_group;\n" ::)
+#define CP_ASYNC_BULK_WAIT_ALL() asm volatile("cp.async.bulk.wait_all;\n" ::)
+#define CP_ASYNC_BULK_WAIT_GROUP(n) asm volatile("cp.async.bulk.wait_group %0;\n" ::"n"(n))
+#define CP_ASYNC_BULK(dst, src, bytes) asm volatile("cp.async.bulk.global.shared::cta.bulk_group.L2::128B [%0], [%1], %2;\n" ::"r"(dst), "l"(src), "n"(bytes))
+// ldmatrix
 #define LDMATRIX_X1(R, addr) asm volatile("ldmatrix.sync.aligned.x1.m8n8.shared.b16 {%0}, [%1];\n" : "=r"(R) : "r"(addr))
 #define LDMATRIX_X2(R0, R1, addr) asm volatile("ldmatrix.sync.aligned.x2.m8n8.shared.b16 {%0, %1}, [%2];\n" : "=r"(R0), "=r"(R1) : "r"(addr))
 #define LDMATRIX_X4(R0, R1, R2, R3, addr) asm volatile("ldmatrix.sync.aligned.x4.m8n8.shared.b16 {%0, %1, %2, %3}, [%4];\n" : "=r"(R0), "=r"(R1), "=r"(R2), "=r"(R3) : "r"(addr))
 #define LDMATRIX_X1_T(R, addr) asm volatile("ldmatrix.sync.aligned.x1.trans.m8n8.shared.b16 {%0}, [%1];\n" : "=r"(R) : "r"(addr))
 #define LDMATRIX_X2_T(R0, R1, addr) asm volatile("ldmatrix.sync.aligned.x2.trans.m8n8.shared.b16 {%0, %1}, [%2];\n" : "=r"(R0), "=r"(R1) : "r"(addr))
 #define LDMATRIX_X4_T(R0, R1, R2, R3, addr) asm volatile("ldmatrix.sync.aligned.x4.trans.m8n8.shared.b16 {%0, %1, %2, %3}, [%4];\n" : "=r"(R0), "=r"(R1), "=r"(R2), "=r"(R3) : "r"(addr))
+// stmatrix: requires sm_90 or higher.
+#define STMATRIX_X1(addr, R) asm volatile("stmatrix.sync.aligned.x1.m8n8.shared.b16 [%0], {%1};\n" :: "r"(addr), "r"(R))
+#define STMATRIX_X2(addr, R0, R1) asm volatile("stmatrix.sync.aligned.x2.m8n8.shared.b16 [%0], {%1, %2};\n" :: "r"(addr), "r"(R0), "r"(R1))
+#define STMATRIX_X4(addr, R0, R1, R2, R3) asm volatile("stmatrix.sync.aligned.x4.m8n8.shared.b16 [%0], {%1, %2, %3, %4};\n" :: "r"(addr), "r"(R0), "r"(R1), "r"(R2), "r"(R3))
+#define STMATRIX_X1_T(addr, R) asm volatile("stmatrix.sync.aligned.x1.trans.m8n8.shared.b16 [%0], {%1};\n" :: "r"(addr), "r"(R))
+#define STMATRIX_X2_T(addr, R0, R1) asm volatile("stmatrix.sync.aligned.x2.trans.m8n8.shared.b16 [%0], {%1, %2};\n" :: "r"(addr), "r"(R0), "r"(R1))
+#define STMATRIX_X4_T(addr, R0, R1, R2, R3) asm volatile("stmatrix.sync.aligned.x4.trans.m8n8.shared.b16 [%0], {%1, %2, %3, %4};\n" :: "r"(addr), "r"(R0), "r"(R1), "r"(R2), "r"(R3))
+// mma m16n8k16
 #define HMMA16816(RD0, RD1, RA0, RA1, RA2, RA3, RB0, RB1, RC0, RC1) asm volatile("mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16 {%0, %1}, {%2, %3, %4, %5}, {%6, %7}, {%8, %9};\n" : "=r"(RD0), "=r"(RD1) : "r"(RA0), "r"(RA1), "r"(RA2), "r"(RA3), "r"(RB0), "r"(RB1), "r"(RC0), "r"(RC1))
 
 HOST_DEVICE_INLINE 
@@ -264,7 +279,7 @@ hgemm_mma_m16n8k16_mma2x4_warp4x4_stages_kernel(
       int store_lane_gmem_c_n = bx * BN + store_warp_smem_c_n + (lane_id % 4) * 2;
       int store_gmem_c_addr_0 = store_lane_gmem_c_m * N + store_lane_gmem_c_n;
       int store_gmem_c_addr_1 = (store_lane_gmem_c_m + 8) * N + store_lane_gmem_c_n;
-      // TODO: how to use LDST128BITS here ?
+      // how to use LDST128BITS here ? stmatrix -> store 128 bits per memory issue.
       LDST32BITS(C[store_gmem_c_addr_0]) = LDST32BITS(RC[i][j][0]); 
       LDST32BITS(C[store_gmem_c_addr_1]) = LDST32BITS(RC[i][j][1]); 
     }
@@ -282,11 +297,13 @@ template<const int MMA_M=16,
          const int A_PAD=0, 
          const int B_PAD=0,
          const int K_STAGE=2, 
-         const bool BLOCK_SWIZZLE=false>
+         const bool BLOCK_SWIZZLE=false,
+         const bool COLLECTIVE_STORE=false>
 __global__ void  __launch_bounds__(256) 
 hgemm_mma_m16n8k16_mma2x4_warp4x4_stages_dsmem_kernel(
   half* A, half* B, half* C, int M, int N, int K) {
   // BLOCK_SWIZZLE 0/1 control use block swizzle or not.
+  // COLLECTIVE_STORE true/false control use stmatrix or not.
   const int bx = ((int) BLOCK_SWIZZLE) * blockIdx.z * gridDim.x + blockIdx.x;
   const int by = blockIdx.y;
   const int NUM_K_TILES = div_ceil(K, MMA_K);
@@ -494,7 +511,53 @@ hgemm_mma_m16n8k16_mma2x4_warp4x4_stages_dsmem_kernel(
     }
   }
 
-  // reg -> gmem, MMA_MxMMA_N=16x8
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 90)
+  if (COLLECTIVE_STORE) {
+    // reg -> smem(stmatrix) -> gmem(cp.async.bulk), MMA_MxMMA_N=16x8
+    // NOTE: need [MMA_M][MMA_N] per warp to avoid overlap between warps.
+    __shared__ half s_c[MMA_TILE_M][MMA_TILE_N][MMA_M][MMA_N]; // (2*4)*16*8*2=2KB
+    uint32_t smem_c_base_ptr = __cvta_generic_to_shared(&s_c[warp_m][warp_n]);
+    #pragma unroll
+    for (int i = 0; i < WARP_TILE_M; ++i) {
+      #pragma unroll
+      for (int j = 0; j < WARP_TILE_N; ++j) {
+        // store (i,j) warp tile -> smem c, 16x8
+        uint32_t lane_smem_c_ptr = (
+          smem_c_base_ptr + (lane_id % 16) * MMA_N * sizeof(half)); // (0~15)*8
+        STMATRIX_X2(lane_smem_c_ptr, RC[i][j][0], RC[i][j][1]);
+        // smem -> gmem, may use cp.async.bulk.global.share::cta?
+        int store_warp_gmem_c_m = warp_m * (MMA_M * WARP_TILE_M) + i * MMA_M;
+        int store_warp_gmem_c_n = warp_n * (MMA_N * WARP_TILE_N) + j * MMA_N;
+        int store_lane_gmem_c_m = by * BM + store_warp_gmem_c_m;
+        int store_lane_gmem_c_n = bx * BN + store_warp_gmem_c_n;
+        int store_gmem_c_addr = store_lane_gmem_c_m * N + store_lane_gmem_c_n;
+        // send 16 memory issues with 128 bits within lower half lanes.
+        // TODO: use cp.async.bulk and wait outside the inner loop.
+        if (lane_id < 16) {
+          LDST128BITS(C[store_gmem_c_addr]) = LDST128BITS(
+            s_c[warp_m][warp_n][lane_id][0]);
+        }
+      }
+    }
+  } else {
+    // reg -> gmem, MMA_MxMMA_N=16x8
+    #pragma unroll
+    for (int i = 0; i < WARP_TILE_M; ++i) {
+      #pragma unroll
+      for (int j = 0; j < WARP_TILE_N; ++j) {
+        int store_warp_smem_c_m = warp_m * (MMA_M * WARP_TILE_M) + i * MMA_M;
+        int store_warp_smem_c_n = warp_n * (MMA_N * WARP_TILE_N) + j * MMA_N;
+        int store_lane_gmem_c_m = by * BM + store_warp_smem_c_m + lane_id / 4;
+        int store_lane_gmem_c_n = bx * BN + store_warp_smem_c_n + (lane_id % 4) * 2;
+        int store_gmem_c_addr_0 = store_lane_gmem_c_m * N + store_lane_gmem_c_n;
+        int store_gmem_c_addr_1 = (store_lane_gmem_c_m + 8) * N + store_lane_gmem_c_n;
+        LDST32BITS(C[store_gmem_c_addr_0]) = LDST32BITS(RC[i][j][0]); 
+        LDST32BITS(C[store_gmem_c_addr_1]) = LDST32BITS(RC[i][j][1]); 
+      }
+    }
+  }
+#else 
+#warning "for sm<90, can not use stmatrix, force disable collective store!"
   #pragma unroll
   for (int i = 0; i < WARP_TILE_M; ++i) {
     #pragma unroll
@@ -509,11 +572,11 @@ hgemm_mma_m16n8k16_mma2x4_warp4x4_stages_dsmem_kernel(
       int store_lane_gmem_c_n = bx * BN + store_warp_smem_c_n + (lane_id % 4) * 2;
       int store_gmem_c_addr_0 = store_lane_gmem_c_m * N + store_lane_gmem_c_n;
       int store_gmem_c_addr_1 = (store_lane_gmem_c_m + 8) * N + store_lane_gmem_c_n;
-      // TODO: how to use LDST128BITS here ?
       LDST32BITS(C[store_gmem_c_addr_0]) = LDST32BITS(RC[i][j][0]); 
       LDST32BITS(C[store_gmem_c_addr_1]) = LDST32BITS(RC[i][j][1]); 
     }
   }
+#endif
 }
 
 // TODO: Warp swizzle/permute support ? (MMA, not WMMA)
@@ -599,7 +662,7 @@ void hgemm_mma_m16n8k16_mma2x4_warp4x4_stages(
     MMA_TILE_M * MMA_TILE_N * WARP_SIZE); // 2 * 4 * 32 = 256
   constexpr int BM = MMA_M * MMA_TILE_M * WARP_TILE_M;    
   constexpr int BN = MMA_N * MMA_TILE_N * WARP_TILE_N;    
-  constexpr int BK = MMA_K;   
+  // constexpr int BK = MMA_K;   
   // s2: 2*128*(16)*2=8KB,  2*16*(128+16)*2=9KB,    ~17KB
   // s3: 3*128*(16)*2=12KB, 3*16*(128+16)*2=13.5KB, ~26KB
   // s4: 4*128*(16)*2=16KB, 4*16*(128+16)*2=18KB,   ~34KB                            
