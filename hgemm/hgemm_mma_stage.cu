@@ -537,6 +537,7 @@ hgemm_mma_m16n8k16_mma2x4_warp4x4_stages_dsmem_kernel(
           LDST128BITS(C[store_gmem_c_addr]) = LDST128BITS(
             s_c[warp_m][warp_n][lane_id][0]);
         }
+        __syncwarp();
       }
     }
   } else {
@@ -579,7 +580,7 @@ hgemm_mma_m16n8k16_mma2x4_warp4x4_stages_dsmem_kernel(
 #endif
 }
 
-// TODO: Warp swizzle/permute support ? (MMA, not WMMA)
+// TODO: K32 with Reg double buffers ?
 
 // --------------------- PyTorch bindings for custom kernel -----------------------
 #define STRINGFY(str) #str
