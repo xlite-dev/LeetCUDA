@@ -581,6 +581,7 @@ hgemm_mma_m16n8k16_mma2x4_warp4x4_stages_dsmem_kernel(
 }
 
 // TODO: K32 with Reg double buffers ?
+// TODO: Stages 4 optimze with 2 tile copy async within 1 k iter.
 
 // --------------------- PyTorch bindings for custom kernel -----------------------
 #define STRINGFY(str) #str
