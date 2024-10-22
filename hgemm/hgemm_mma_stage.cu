@@ -530,12 +530,13 @@ hgemm_mma_m16n8k16_mma2x4_warp4x4_stages_dsmem_kernel(
         int store_warp_gmem_c_n = warp_n * (MMA_N * WARP_TILE_N) + j * MMA_N;
         int store_lane_gmem_c_m = by * BM + store_warp_gmem_c_m;
         int store_lane_gmem_c_n = bx * BN + store_warp_gmem_c_n;
-        int store_gmem_c_addr = store_lane_gmem_c_m * N + store_lane_gmem_c_n;
         // send 16 memory issues with 128 bits within lower half lanes.
         // TODO: use cp.async.bulk and wait outside the inner loop.
         if (lane_id < 16) {
+          int store_gmem_c_addr = (store_lane_gmem_c_m + lane_id) * N + store_lane_gmem_c_n;
           LDST128BITS(C[store_gmem_c_addr]) = LDST128BITS(
             s_c[warp_m][warp_n][lane_id][0]);
+          __syncwarp();
         }
       }
     }
