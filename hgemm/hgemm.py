@@ -23,6 +23,7 @@ def get_args():
     parser.add_argument("--enable-cuda-all", "--cuda-all", action="store_true", help="Enable all CUDA kernel tests")
     parser.add_argument("--enable-torch", "--torch", action="store_true", help="Enable torch matmul")
     parser.add_argument("--disable-cublas", "--no-cublas", action="store_true", help="Disable cublas hgemm")
+    parser.add_argument("--sleep-duration", "--sleep", type=float, default=0.2, help="Sleep duration")
     return parser.parse_args()
 
 args = get_args()
@@ -129,7 +130,7 @@ def run_benchmark(perf_func: callable,
         print(f"{out_info:>40}: {out_val}, time:{mean_time}ms, "
               f"swizzle: {swizzle_stride:<4}, TFLOPS: {TFLOPS:<6.2f}")
     if show_all: print(out)
-    time.sleep(0.1)
+    time.sleep(args.sleep_duration)
     return out, mean_time
 
 
