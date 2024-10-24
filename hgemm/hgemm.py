@@ -23,7 +23,7 @@ def get_args():
     parser.add_argument("--enable-cuda-all", "--cuda-all", action="store_true", help="Enable all CUDA kernel tests")
     parser.add_argument("--enable-torch", "--torch", action="store_true", help="Enable torch matmul")
     parser.add_argument("--disable-cublas", "--no-cublas", action="store_true", help="Disable cublas hgemm")
-    parser.add_argument("--sleep-duration", "--sleep", type=float, default=0.2, help="Sleep duration")
+    parser.add_argument("--sleep-duration", "--sleep", type=float, default=0.1, help="Sleep duration")
     return parser.parse_args()
 
 args = get_args()
@@ -134,9 +134,9 @@ def run_benchmark(perf_func: callable,
     return out, mean_time
 
 
-Ms = [4096, 8192, 16384]
-Ns = [4096, 8192, 16384]
-Ks = [2048, 4096, 8192]
+Ms = [1024, 2048, 4096, 8192, 16384]
+Ns = [1024, 2048, 4096, 8192, 16384]
+Ks = [512,  1024, 2048, 4096, 8192]
 if args.M and args.N and args.K:
     Ms = [args.M]
     Ns = [args.N]
