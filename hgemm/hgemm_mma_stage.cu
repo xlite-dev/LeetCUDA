@@ -272,9 +272,22 @@ hgemm_mma_m16n8k16_mma2x4_warp4x4_stages_kernel(
       int store_lane_gmem_c_n = bx * BN + store_warp_smem_c_n + (lane_id % 4) * 2;
       int store_gmem_c_addr_0 = store_lane_gmem_c_m * N + store_lane_gmem_c_n;
       int store_gmem_c_addr_1 = (store_lane_gmem_c_m + 8) * N + store_lane_gmem_c_n;
-      // how to use LDST128BITS here ? stmatrix -> store 128 bits per memory issue.
       LDST32BITS(C[store_gmem_c_addr_0]) = LDST32BITS(RC[i][j][0]); 
       LDST32BITS(C[store_gmem_c_addr_1]) = LDST32BITS(RC[i][j][1]); 
+      // TODO: How to use LDST128BITS here? __shfl_sync -> lane 0 -> store 8 half.
+      // thus, we only need 8 memory issues with 128 bits after shfl_sync.
+      // uint32_t r_store_c_0[4], r_store_c_1[4];
+      // r_store_c_0[0] = RC[i][j][0]; r_store_c_1[0] = RC[i][j][1];
+      // r_store_c_0[1] = __shfl_sync((0xffffffff), RC[i][j][0], lane_id + 1);
+      // r_store_c_0[2] = __shfl_sync((0xffffffff), RC[i][j][0], lane_id + 2);
+      // r_store_c_0[3] = __shfl_sync((0xffffffff), RC[i][j][0], lane_id + 3);
+      // r_store_c_1[1] = __shfl_sync((0xffffffff), RC[i][j][1], lane_id + 1);
+      // r_store_c_1[2] = __shfl_sync((0xffffffff), RC[i][j][1], lane_id + 2);
+      // r_store_c_1[3] = __shfl_sync((0xffffffff), RC[i][j][1], lane_id + 3);
+      // if (lane_id % 4 == 0) {
+      //   LDST128BITS(C[store_gmem_c_addr_0]) = LDST128BITS(r_store_c_0[0]); 
+      //   LDST128BITS(C[store_gmem_c_addr_1]) = LDST128BITS(r_store_c_1[0]); 
+      // } 
     }
   }
 }
@@ -540,6 +553,20 @@ hgemm_mma_m16n8k16_mma2x4_warp4x4_stages_dsmem_kernel(
         int store_gmem_c_addr_1 = (store_lane_gmem_c_m + 8) * N + store_lane_gmem_c_n;
         LDST32BITS(C[store_gmem_c_addr_0]) = LDST32BITS(RC[i][j][0]); 
         LDST32BITS(C[store_gmem_c_addr_1]) = LDST32BITS(RC[i][j][1]); 
+        // TODO: How to use LDST128BITS here? __shfl_sync -> lane 0 -> store 8 half.
+        // thus, we only need 8 memory issues with 128 bits after shfl_sync.
+        // uint32_t r_store_c_0[4], r_store_c_1[4];
+        // r_store_c_0[0] = RC[i][j][0]; r_store_c_1[0] = RC[i][j][1];
+        // r_store_c_0[1] = __shfl_sync((0xffffffff), RC[i][j][0], lane_id + 1);
+        // r_store_c_0[2] = __shfl_sync((0xffffffff), RC[i][j][0], lane_id + 2);
+        // r_store_c_0[3] = __shfl_sync((0xffffffff), RC[i][j][0], lane_id + 3);
+        // r_store_c_1[1] = __shfl_sync((0xffffffff), RC[i][j][1], lane_id + 1);
+        // r_store_c_1[2] = __shfl_sync((0xffffffff), RC[i][j][1], lane_id + 2);
+        // r_store_c_1[3] = __shfl_sync((0xffffffff), RC[i][j][1], lane_id + 3);
+        // if (lane_id % 4 == 0) {
+        //   LDST128BITS(C[store_gmem_c_addr_0]) = LDST128BITS(r_store_c_0[0]); 
+        //   LDST128BITS(C[store_gmem_c_addr_1]) = LDST128BITS(r_store_c_1[0]); 
+        // } 
       }
     }
   }
@@ -561,6 +588,20 @@ hgemm_mma_m16n8k16_mma2x4_warp4x4_stages_dsmem_kernel(
       int store_gmem_c_addr_1 = (store_lane_gmem_c_m + 8) * N + store_lane_gmem_c_n;
       LDST32BITS(C[store_gmem_c_addr_0]) = LDST32BITS(RC[i][j][0]); 
       LDST32BITS(C[store_gmem_c_addr_1]) = LDST32BITS(RC[i][j][1]); 
+      // TODO: How to use LDST128BITS here? __shfl_sync -> lane 0 -> store 8 half.
+      // thus, we only need 8 memory issues with 128 bits after shfl_sync.
+      // uint32_t r_store_c_0[4], r_store_c_1[4];
+      // r_store_c_0[0] = RC[i][j][0]; r_store_c_1[0] = RC[i][j][1];
+      // r_store_c_0[1] = __shfl_sync((0xffffffff), RC[i][j][0], lane_id + 1);
+      // r_store_c_0[2] = __shfl_sync((0xffffffff), RC[i][j][0], lane_id + 2);
+      // r_store_c_0[3] = __shfl_sync((0xffffffff), RC[i][j][0], lane_id + 3);
+      // r_store_c_1[1] = __shfl_sync((0xffffffff), RC[i][j][1], lane_id + 1);
+      // r_store_c_1[2] = __shfl_sync((0xffffffff), RC[i][j][1], lane_id + 2);
+      // r_store_c_1[3] = __shfl_sync((0xffffffff), RC[i][j][1], lane_id + 3);
+      // if (lane_id % 4 == 0) {
+      //   LDST128BITS(C[store_gmem_c_addr_0]) = LDST128BITS(r_store_c_0[0]); 
+      //   LDST128BITS(C[store_gmem_c_addr_1]) = LDST128BITS(r_store_c_1[0]); 
+      // } 
     }
   }
 #endif
@@ -979,9 +1020,22 @@ hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_kernel(
       int store_lane_gmem_c_n = bx * BN + store_warp_smem_c_n + (lane_id % 4) * 2;
       int store_gmem_c_addr_0 = store_lane_gmem_c_m * N + store_lane_gmem_c_n;
       int store_gmem_c_addr_1 = (store_lane_gmem_c_m + 8) * N + store_lane_gmem_c_n;
-      // TODO: How to use LDST128BITS here? __shfl_down_sync -> lane 0 -> store 8 half.
-      LDST32BITS(C[store_gmem_c_addr_0]) = LDST32BITS(RC[i][j][0]); 
-      LDST32BITS(C[store_gmem_c_addr_1]) = LDST32BITS(RC[i][j][1]); 
+      // LDST32BITS(C[store_gmem_c_addr_0]) = LDST32BITS(RC[i][j][0]); 
+      // LDST32BITS(C[store_gmem_c_addr_1]) = LDST32BITS(RC[i][j][1]); 
+      // TODO: How to use LDST128BITS here? __shfl_sync -> lane 0 -> store 8 half.
+      // thus, we only need 8 memory issues with 128 bits after shfl_sync.
+      uint32_t r_store_c_0[4], r_store_c_1[4];
+      r_store_c_0[0] = RC[i][j][0]; r_store_c_1[0] = RC[i][j][1];
+      r_store_c_0[1] = __shfl_sync((0xffffffff), RC[i][j][0], lane_id + 1);
+      r_store_c_0[2] = __shfl_sync((0xffffffff), RC[i][j][0], lane_id + 2);
+      r_store_c_0[3] = __shfl_sync((0xffffffff), RC[i][j][0], lane_id + 3);
+      r_store_c_1[1] = __shfl_sync((0xffffffff), RC[i][j][1], lane_id + 1);
+      r_store_c_1[2] = __shfl_sync((0xffffffff), RC[i][j][1], lane_id + 2);
+      r_store_c_1[3] = __shfl_sync((0xffffffff), RC[i][j][1], lane_id + 3);
+      if (lane_id % 4 == 0) {
+        LDST128BITS(C[store_gmem_c_addr_0]) = LDST128BITS(r_store_c_0[0]); 
+        LDST128BITS(C[store_gmem_c_addr_1]) = LDST128BITS(r_store_c_1[0]); 
+      } 
     }
   }
 }
