@@ -12,8 +12,8 @@ def get_args():
     parser.add_argument("--M", type=int, default=None, help="Matrix M size")
     parser.add_argument("--N", type=int, default=None, help="Matrix N size")
     parser.add_argument("--K", type=int, default=None, help="Matrix K size")
-    parser.add_argument("--warmup", "--w", type=int, default=5, help="Warmup iters")
-    parser.add_argument("--iters", "--i", type=int, default=20, help="Benchmark iters")
+    parser.add_argument("--warmup", "--w", type=int, default=2, help="Warmup iters")
+    parser.add_argument("--iters", "--i", type=int, default=10, help="Benchmark iters")
     parser.add_argument("--show-all", "--show", action="store_true", help="Show all matrix values ")
     parser.add_argument("--enable-mma", "--mma", action="store_true", help="Enable MMA kernel tests")
     parser.add_argument("--enable-wmma", "--wmma", action="store_true", help="Enable WMMA kernel tests")
@@ -64,10 +64,6 @@ def run_benchmark(perf_func: callable,
     M = a.size(0)
     K = a.size(1)
     N = b.size(1)
-    if (a.size(0) > 1024 or a.size(1) >= 1024 
-        or b.size(1) > 1024):
-        iters = 10
-    
     if swizzle:
         # make swizzle stride as N/4 and multiples of 256
         swizzle_stride = int((int(N / 4) // 256) * 256)
