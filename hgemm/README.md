@@ -244,6 +244,57 @@ python3 hgemm.py --wmma --wmma-all # test all wmma kernels for all MNK
 python3 hgemm.py --mma --mma-all # test all mma kernels for all MNK
 ```
 
+示例1:
+```bash
+python3 hgemm.py --M 16384 --N 16384 --K 8192 --i 10 --mma
+Namespace(M=16384, N=16384, K=8192, warmup=2, iters=10, show_all=False, enable_mma=True, enable_wmma=False, enable_cuda=False, enable_mma_all=False, enable_wmma_all=False, enable_cuda_all=False, enable_torch=False, disable_cublas=False, sleep_duration=0.1, swizzle_factor=0.25)
+Loading hgemm lib ...
+pre allocate for fast profiling start, MAX_M=16384, MAX_N=16384, MAX_K=8192
+pre allocate for fast profiling done, time: 21829.665184020996 ms
+----------------------------------------------------------------------------------------------------------------------------------
+                                        M=16384, N=16384, K=8192, Warmup=2, Iters=10, 1/1
+----------------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------MMA-----------------------------------------------------------
+         (mma2x4+warp4x4+stage3+swizzle): ['55.53125  ', '-34.4375  '], time:39.08894ms, swizzle: 4096, TFLOPS: 112.51(+0.00%)
+         (mma2x4+warp4x4+stage2+swizzle): ['55.53125  ', '-34.4375  '], time:38.40720ms, swizzle: 4096, TFLOPS: 114.51(+1.78%)
+   (mma2x4+warp4x4+stage3+dsmem+swizzle): ['55.53125  ', '-34.4375  '], time:39.23299ms, swizzle: 4096, TFLOPS: 112.10
+   (mma2x4+warp4x4+stage2+dsmem+swizzle): ['55.53125  ', '-34.4375  '], time:38.20564ms, swizzle: 4096, TFLOPS: 115.12(+0.53%)
+ (mma2x4+warp4x4x2+stage4+dsmem+swizzle): ['55.53125  ', '-34.4375  '], time:38.67657ms, swizzle: 4096, TFLOPS: 113.71
+ (mma2x4+warp4x4x2+stage3+dsmem+swizzle): ['55.53125  ', '-34.4375  '], time:40.10882ms, swizzle: 4096, TFLOPS: 109.65
+ (mma2x4+warp4x4x2+stage2+dsmem+swizzle): ['55.53125  ', '-34.4375  '], time:38.44747ms, swizzle: 4096, TFLOPS: 114.39
+                                (cublas): ['55.53125  ', '-34.4375  '], time:37.43820ms, swizzle: NOOP, TFLOPS: 117.47(+2.05%)
+----------------------------------------------------------------------------------------------------------------------------------
+```
+示例2:
+```bash
+python3 hgemm.py --M 4096 --N 4096 --K 4096 --mma-all
+Namespace(M=4096, N=4096, K=4096, warmup=2, iters=10, show_all=False, enable_mma=False, enable_wmma=False, enable_cuda=False, enable_mma_all=True, enable_wmma_all=False, enable_cuda_all=False, enable_torch=False, disable_cublas=False, sleep_duration=0.1, swizzle_factor=0.25)
+Loading hgemm lib ...
+pre allocate for fast profiling start, MAX_M=4096, MAX_N=4096, MAX_K=4096
+pre allocate for fast profiling done, time: 2056.009292602539 ms
+----------------------------------------------------------------------------------------------------------------------------------
+                                        M=4096, N=4096, K=4096, Warmup=2, Iters=10, 1/1
+----------------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------MMA-----------------------------------------------------------
+                        (mma2x4+warp4x4): ['131.625   ', '23.59375  '], time:1.412987ms, swizzle: NOOP, TFLOPS: 97.27 (+0.00%)
+                 (mma2x4+warp4x4+stage3): ['131.625   ', '23.59375  '], time:1.343512ms, swizzle: NOOP, TFLOPS: 102.30(+5.17%)
+                 (mma2x4+warp4x4+stage2): ['131.625   ', '23.59375  '], time:1.326799ms, swizzle: NOOP, TFLOPS: 103.59(+1.26%)
+           (mma2x4+warp4x4+stage3+dsmem): ['131.625   ', '23.59375  '], time:1.350784ms, swizzle: NOOP, TFLOPS: 101.75
+           (mma2x4+warp4x4+stage2+dsmem): ['131.625   ', '23.59375  '], time:1.326084ms, swizzle: NOOP, TFLOPS: 103.64(+0.05%)
+         (mma2x4+warp4x4x2+stage4+dsmem): ['131.625   ', '23.59375  '], time:1.324439ms, swizzle: NOOP, TFLOPS: 103.77(+0.12%)
+         (mma2x4+warp4x4x2+stage3+dsmem): ['131.625   ', '23.59375  '], time:1.369738ms, swizzle: NOOP, TFLOPS: 100.34
+         (mma2x4+warp4x4x2+stage2+dsmem): ['131.625   ', '23.59375  '], time:1.299858ms, swizzle: NOOP, TFLOPS: 105.73(+1.89%)
+         (mma2x4+warp4x4+stage3+swizzle): ['131.625   ', '23.59375  '], time:1.344513ms, swizzle: 1024, TFLOPS: 102.22
+         (mma2x4+warp4x4+stage2+swizzle): ['131.625   ', '23.59375  '], time:1.324009ms, swizzle: 1024, TFLOPS: 103.81
+   (mma2x4+warp4x4+stage3+dsmem+swizzle): ['131.625   ', '23.59375  '], time:1.349854ms, swizzle: 1024, TFLOPS: 101.82
+   (mma2x4+warp4x4+stage2+dsmem+swizzle): ['131.625   ', '23.59375  '], time:1.318955ms, swizzle: 1024, TFLOPS: 104.20
+ (mma2x4+warp4x4x2+stage4+dsmem+swizzle): ['131.625   ', '23.59375  '], time:1.318430ms, swizzle: 1024, TFLOPS: 104.24
+ (mma2x4+warp4x4x2+stage3+dsmem+swizzle): ['131.625   ', '23.59375  '], time:1.371240ms, swizzle: 1024, TFLOPS: 100.23
+ (mma2x4+warp4x4x2+stage2+dsmem+swizzle): ['131.625   ', '23.59375  '], time:1.300096ms, swizzle: 1024, TFLOPS: 105.71
+                                (cublas): ['131.625   ', '23.59375  '], time:1.289224ms, swizzle: NOOP, TFLOPS: 106.61(+0.82%)
+----------------------------------------------------------------------------------------------------------------------------------
+```
+
 
 ## NVIDIA L20 
 <div id="NV-L20"></div>
