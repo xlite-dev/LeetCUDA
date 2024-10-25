@@ -397,8 +397,8 @@ void hgemm_mma_m16n8k16_mma2x4_warp4x4_stages_dsmem_tn(
   constexpr int MMA_TILE_N = 4; 
   constexpr int WARP_TILE_M = 4;
   constexpr int WARP_TILE_N = 4;
-  constexpr int A_PAD = 8; // 0,8,16
-  constexpr int B_PAD = 8; // 0,8,16
+  constexpr int A_PAD = 0; // 0,8,16
+  constexpr int B_PAD = 16; // 0,8,16
   constexpr int NUM_THREADS= (
     MMA_TILE_M * MMA_TILE_N * WARP_SIZE); // 2 * 4 * 32 = 256
   constexpr int BM = MMA_M * MMA_TILE_M * WARP_TILE_M;    
