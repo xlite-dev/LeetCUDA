@@ -602,7 +602,8 @@ template<const int MMA_M=16,
          const bool BLOCK_SWIZZLE=false>
 __global__ void  __launch_bounds__(256) 
 hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_kernel(
-  half* A, half* B, half* C, int M, int N, int K) {
+  const half* __restrict__ A, const half* __restrict__ B, half* __restrict__ C, 
+  int M, int N, int K) {
   // BLOCK_SWIZZLE 0/1 control use block swizzle or not.
   const int bx = ((int) BLOCK_SWIZZLE) * blockIdx.z * gridDim.x + blockIdx.x;
   const int by = blockIdx.y;
