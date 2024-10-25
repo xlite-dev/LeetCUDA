@@ -24,6 +24,7 @@ def get_args():
     parser.add_argument("--enable-torch", "--torch", action="store_true", help="Enable torch matmul")
     parser.add_argument("--disable-cublas", "--no-cublas", action="store_true", help="Disable cublas hgemm")
     parser.add_argument("--sleep-duration", "--sleep", type=float, default=0.1, help="Sleep duration")
+    parser.add_argument("--swizzle-factor", "--swizzle", type=float, default=0.25, help="Swizzle factor")
     return parser.parse_args()
 
 args = get_args()
@@ -65,8 +66,8 @@ def run_benchmark(perf_func: callable,
     K = a.size(1)
     N = b.size(1)
     if swizzle:
-        # make swizzle stride as N/4 and multiples of 256
-        swizzle_stride = int((int(N / 4) // 256) * 256)
+        # make swizzle stride as N/4 or N/2 and multiples of 256
+        swizzle_stride = int((int(N * args.swizzle_factor) // 256) * 256)
         swizzle_stride = swizzle_stride if swizzle_stride >= 256 else 1
         swizzle = swizzle if swizzle_stride >= 256 else False
     else:
