@@ -54,7 +54,7 @@ void cublas_tensor_op_tn(half *A, half *B, half *C,  size_t M, size_t N, size_t 
                CUBLAS_OP_N, 
                N, M, K, 
                &alpha, 
-               B, CUDA_R_16F, N, 
+               B, CUDA_R_16F, K, 
                A, CUDA_R_16F, K, 
                &beta,  
                C, CUDA_R_16F, N, 
