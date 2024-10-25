@@ -294,7 +294,58 @@ pre allocate for fast profiling done, time: 2056.009292602539 ms
                                 (cublas): ['131.625   ', '23.59375  '], time:1.289224ms, swizzle: NOOP, TFLOPS: 106.61(+0.82%)
 ----------------------------------------------------------------------------------------------------------------------------------
 ```
-
+示例3：
+```bash
+python3 hgemm.py --M 4096 --N 4096 --K 4096 --mma-all --wmma-all --cuda-all
+Namespace(M=4096, N=4096, K=4096, warmup=2, iters=10, show_all=False, enable_mma=False, enable_wmma=False, enable_cuda=False, enable_mma_all=True, enable_wmma_all=True, enable_cuda_all=True, enable_torch=False, disable_cublas=False, sleep_duration=0.1, swizzle_factor=0.25)
+Loading hgemm lib ...
+pre allocate for fast profiling start, MAX_M=4096, MAX_N=4096, MAX_K=4096
+pre allocate for fast profiling done, time: 2048.0010509490967 ms
+----------------------------------------------------------------------------------------------------------------------------------
+                                        M=4096, N=4096, K=4096, Warmup=2, Iters=10, 1/1
+----------------------------------------------------------------------------------------------------------------------------------
+                                 (naive): ['-3.5371093', '-101.0    '], time:37.66887ms, swizzle: NOOP, TFLOPS: 3.65  (+0.00%)
+                    (f16x8pack+t8x8+bcf): ['-3.5371093', '-101.0    '], time:2.811360ms, swizzle: NOOP, TFLOPS: 48.89 (+1239.88%)
+                   (f16x8pack+t8x8+dbuf): ['-3.5371093', '-101.0    '], time:2.815437ms, swizzle: NOOP, TFLOPS: 48.82
+               (f16x8pack+t8x8+k16+dbuf): ['-3.5371093', '-101.0    '], time:2.634835ms, swizzle: NOOP, TFLOPS: 52.16 (+6.70%)
+--------------------------------------------------------------------WMMA----------------------------------------------------------
+                                (mma4x2): ['-3.3847656', '-101.375  '], time:2.942705ms, swizzle: NOOP, TFLOPS: 46.70
+                        (mma4x2+warp2x4): ['-3.3847656', '-101.375  '], time:1.817488ms, swizzle: NOOP, TFLOPS: 75.62 (+44.97%)
+                 (mma4x2+warp2x4+stage3): ['-3.3847656', '-101.375  '], time:1.355123ms, swizzle: NOOP, TFLOPS: 101.42(+34.12%)
+                 (mma4x2+warp2x4+stage2): ['-3.3847656', '-101.375  '], time:1.343965ms, swizzle: NOOP, TFLOPS: 102.26(+0.83%)
+           (mma4x2+warp2x4+stage3+dsmem): ['-3.3847656', '-101.375  '], time:1.342964ms, swizzle: NOOP, TFLOPS: 102.34(+0.07%)
+           (mma4x2+warp2x4+stage2+dsmem): ['-3.3847656', '-101.375  '], time:1.343178ms, swizzle: NOOP, TFLOPS: 102.32
+         (mma4x2+warp2x4+stage3+swizzle): ['-3.3847656', '-101.375  '], time:1.345729ms, swizzle: 1024, TFLOPS: 102.13
+         (mma4x2+warp2x4+stage2+swizzle): ['-3.3847656', '-101.375  '], time:1.324367ms, swizzle: 1024, TFLOPS: 103.78(+1.40%)
+   (mma4x2+warp2x4+stage3+dsmem+swizzle): ['-3.3847656', '-101.375  '], time:1.351284ms, swizzle: 1024, TFLOPS: 101.71
+   (mma4x2+warp2x4+stage2+dsmem+swizzle): ['-3.3847656', '-101.375  '], time:1.324582ms, swizzle: 1024, TFLOPS: 103.76
+           (mma4x4+warp4x4+stage3+dsmem): ['-3.3847656', '-101.375  '], time:1.387619ms, swizzle: NOOP, TFLOPS: 99.05
+           (mma4x4+warp4x4+stage2+dsmem): ['-3.3847656', '-101.375  '], time:1.490569ms, swizzle: NOOP, TFLOPS: 92.21
+           (mma4x2+warp4x4+stage3+dsmem): ['-3.3847656', '-101.375  '], time:1.376056ms, swizzle: NOOP, TFLOPS: 99.88
+           (mma4x2+warp4x4+stage2+dsmem): ['-3.3847656', '-101.375  '], time:1.425576ms, swizzle: NOOP, TFLOPS: 96.41
+   (mma4x4+warp4x4+stage3+dsmem+swizzle): ['-3.3847656', '-101.375  '], time:1.395106ms, swizzle: 1024, TFLOPS: 98.52
+   (mma4x4+warp4x4+stage2+dsmem+swizzle): ['-3.3847656', '-101.375  '], time:1.414942ms, swizzle: 1024, TFLOPS: 97.13
+   (mma4x2+warp4x4+stage3+dsmem+swizzle): ['-3.3847656', '-101.375  '], time:1.377010ms, swizzle: 1024, TFLOPS: 99.81
+   (mma4x2+warp4x4+stage2+dsmem+swizzle): ['-3.3847656', '-101.375  '], time:1.604509ms, swizzle: 1024, TFLOPS: 85.66
+--------------------------------------------------------------------MMA-----------------------------------------------------------
+                        (mma2x4+warp4x4): ['-3.3847656', '-101.375  '], time:1.412653ms, swizzle: NOOP, TFLOPS: 97.29
+                 (mma2x4+warp4x4+stage3): ['-3.3847656', '-101.375  '], time:1.343774ms, swizzle: NOOP, TFLOPS: 102.28
+                 (mma2x4+warp4x4+stage2): ['-3.3847656', '-101.375  '], time:1.326417ms, swizzle: NOOP, TFLOPS: 103.62
+           (mma2x4+warp4x4+stage3+dsmem): ['-3.3847656', '-101.375  '], time:1.351308ms, swizzle: NOOP, TFLOPS: 101.71
+           (mma2x4+warp4x4+stage2+dsmem): ['-3.3847656', '-101.375  '], time:1.326489ms, swizzle: NOOP, TFLOPS: 103.61
+         (mma2x4+warp4x4x2+stage4+dsmem): ['-3.3847656', '-101.375  '], time:1.324319ms, swizzle: NOOP, TFLOPS: 103.78(+0.00%)
+         (mma2x4+warp4x4x2+stage3+dsmem): ['-3.3847656', '-101.375  '], time:1.369786ms, swizzle: NOOP, TFLOPS: 100.34
+         (mma2x4+warp4x4x2+stage2+dsmem): ['-3.3847656', '-101.375  '], time:1.299762ms, swizzle: NOOP, TFLOPS: 105.74(+1.89%)
+         (mma2x4+warp4x4+stage3+swizzle): ['-3.3847656', '-101.375  '], time:1.344013ms, swizzle: 1024, TFLOPS: 102.26
+         (mma2x4+warp4x4+stage2+swizzle): ['-3.3847656', '-101.375  '], time:1.324701ms, swizzle: 1024, TFLOPS: 103.75
+   (mma2x4+warp4x4+stage3+dsmem+swizzle): ['-3.3847656', '-101.375  '], time:1.348972ms, swizzle: 1024, TFLOPS: 101.88
+   (mma2x4+warp4x4+stage2+dsmem+swizzle): ['-3.3847656', '-101.375  '], time:1.318597ms, swizzle: 1024, TFLOPS: 104.23
+ (mma2x4+warp4x4x2+stage4+dsmem+swizzle): ['-3.3847656', '-101.375  '], time:1.318240ms, swizzle: 1024, TFLOPS: 104.26
+ (mma2x4+warp4x4x2+stage3+dsmem+swizzle): ['-3.3847656', '-101.375  '], time:1.370477ms, swizzle: 1024, TFLOPS: 100.29
+ (mma2x4+warp4x4x2+stage2+dsmem+swizzle): ['-3.3847656', '-101.375  '], time:1.300477ms, swizzle: 1024, TFLOPS: 105.68
+                                (cublas): ['-3.3847656', '-101.375  '], time:1.289367ms, swizzle: NOOP, TFLOPS: 106.59(+0.81%)
+----------------------------------------------------------------------------------------------------------------------------------
+```
 
 ## NVIDIA L20 
 <div id="NV-L20"></div>
