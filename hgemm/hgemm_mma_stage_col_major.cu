@@ -53,3 +53,5 @@ using namespace nvcuda;
 
 HOST_DEVICE_INLINE 
 int div_ceil(int a, int b) { return (a % b != 0) ? (a / b + 1) : (a / b); }
+
+// TODO: Add col major kernel support.
