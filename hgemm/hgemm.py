@@ -222,9 +222,9 @@ for (M, N, K) in MNKs:
         run_benchmark(lib.hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem, a, b, "(mma2x4+warp4x4x2+stage4+dsmem+swizzle)", c, stages=4, swizzle=True)
         run_benchmark(lib.hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem, a, b, "(mma2x4+warp4x4x2+stage3+dsmem+swizzle)", c, stages=3, swizzle=True)
         run_benchmark(lib.hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem, a, b, "(mma2x4+warp4x4x2+stage2+dsmem+swizzle)", c, stages=2, swizzle=True)
-    if (not args.disable_cublas) and any(
+    if (not args.disable_cublas) and any((
         args.enable_mma, args.enable_mma_all, args.enable_wmma, args.enable_wmma_all, 
-        args.enable_cuda, args.enable_cuda_all, args.enable_torch):
+        args.enable_cuda, args.enable_cuda_all, args.enable_torch)):
         run_benchmark(lib.hgemm_cublas_tensor_op_nn, a, b, "(cublas)", c)
     if args.enable_mma_tn:
         run_benchmark(lib.hgemm_mma_m16n8k16_mma2x4_warp4x4_stages_dsmem_tn, a, b.transpose(1, 0), "tn(mma2x4+warp4x4+stage3+dsmem)", c, stages=3)
