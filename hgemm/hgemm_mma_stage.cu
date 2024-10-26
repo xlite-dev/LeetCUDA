@@ -1054,6 +1054,7 @@ hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_kernel(
 // reference:
 // https://zhuanlan.zhihu.com/p/638522893
 // https://zhuanlan.zhihu.com/p/696231622
+// https://www.zhihu.com/question/600927104/answer/3029266372
 // https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#warp-level-matrix-load-instruction-ldmatrix
 
 
