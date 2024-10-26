@@ -1049,6 +1049,14 @@ hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_kernel(
   }
 }
 
+// TODO: smem swizzle per 8x8 submatrix(not per line, 8 half values per line) 
+// A matrix smem, MMA_MxMMA_K=16x16; B matrix smem, MMA_KxMMA_N=16x8; PTX layout.
+// reference:
+// https://zhuanlan.zhihu.com/p/638522893
+// https://zhuanlan.zhihu.com/p/696231622
+// https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#warp-level-matrix-load-instruction-ldmatrix
+
+
 // --------------------- PyTorch bindings for custom kernel -----------------------
 #define STRINGFY(str) #str
 #define TORCH_BINDING_COMMON_EXTENSION(func)   \
