@@ -50,7 +50,7 @@ lib = load(name='hgemm_lib',
                 "--use_fast_math",
                 # diag 177: variable was declared but never referenced
                 "-diag-suppress 177",
-                # show registers, smem, lmem, gmem usage
+                # show registers, smem, cmem, lmem, gmem usage
                 "-Xptxas -v",
             ], 
            extra_cflags=['-std=c++17'],
