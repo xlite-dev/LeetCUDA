@@ -47,10 +47,14 @@ lib = load(name='hgemm_lib',
                 "-U__CUDA_NO_BFLOAT16_CONVERSIONS__",
                 "--expt-relaxed-constexpr",
                 "--expt-extended-lambda",
-                "--use_fast_math"
+                "--use_fast_math",
+                # diag 177: variable was declared but never referenced
+                "-diag-suppress 177",
+                # show registers, smem, lmem, gmem usage
+                "-Xptxas -v",
             ], 
            extra_cflags=['-std=c++17'],
-           verbose=False)
+           verbose=True)
 
 
 MAX_TFLOPS = -1
