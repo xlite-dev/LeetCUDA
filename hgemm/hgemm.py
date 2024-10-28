@@ -51,7 +51,21 @@ lib = load(name='hgemm_lib',
                 "--use_fast_math",
                 # diag 177: variable was declared but never referenced
                 "-diag-suppress 177",
-                # show registers, smem, cmem, lmem, gmem usage
+                # registers, smem, cmem, stack, gmem usage
+                # registers: 寄存器，访问速度最快。Ada Lovelace架构每个SM的寄存器文件大小
+                # 为256KB，这相当于65536个32位寄存器，65536/256=256。一个SM可以同时执行多
+                # 个block，对一个Kernel，同时存在于一个SM中的Block和Warp数量取决于SM中可用
+                # 且所需的寄存器和共享内存数量。每个Thread需要的寄存器越多，那么SM中的Warp就
+                # 越少。即减少Thread所需寄存器数量，即可增加SM中的Warp数。每个Block需要的共
+                # 享内存越多，那么SM中可以被同时处理的Block就会变少。即减少每个Block所需的共
+                # 享内存，即可同时处理更多Block。SM内的资源没办法处理一个完整Block，Kernel
+                # 将无法启动。
+                # cmem: 常量内存，被缓存，访问速度快。
+                # stack frame: 由于寄存器的数量有限，当需要使用的变量数量超过可用寄存器数量时，
+                # 编译器会将某些变量从寄存器“溢出”到栈上，这个过程称为spill。访问栈上的数据比
+                # 访问寄存器慢得多。
+                # spill stores: 指的是在执行过程中，数据因为寄存器不足而被存储到了栈上。
+                # spill loads: 则是指将之前溢出到栈上的数据重新加载回寄存器。
                 "-Xptxas -v",
             ], 
            extra_cflags=['-std=c++17'],
