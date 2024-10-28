@@ -16,7 +16,8 @@ def get_args():
     parser.add_argument("--iters", "--i", type=int, default=10, help="Benchmark iters")
     parser.add_argument("--verbose", "--v", action="store_true", help="Verbose")
     parser.add_argument("--reduce-reg", "--rr", action="store_true", help="Reduce registers")
-    parser.add_argument("--show-all", "--show", action="store_true", help="Show all matrix values ")
+    parser.add_argument("--show-matrix", "--show-m", action="store_true", help="Show output matrix values")
+    parser.add_argument("--show-all-info", "--show-a", action="store_true", help="Show all the profile info")
     parser.add_argument("--enable-mma", "--mma", action="store_true", help="Enable MMA kernel tests")
     parser.add_argument("--enable-mma-tn", "--mma-tn", action="store_true", help="Enable TN MMA kernel tests")
     parser.add_argument("--enable-wmma", "--wmma", action="store_true", help="Enable WMMA kernel tests")
@@ -28,7 +29,7 @@ def get_args():
     parser.add_argument("--disable-cublas", "--no-cublas", action="store_true", help="Disable cublas hgemm")
     parser.add_argument("--disable-cublas-tn", "--no-cublas-tn", action="store_true", help="Disable cublas TN hgemm")
     parser.add_argument("--sleep-duration", "--sleep", type=float, default=0.1, help="Sleep duration")
-    parser.add_argument("--swizzle-factor", "--swizzle", type=float, default=0.25, help="Swizzle factor")
+    parser.add_argument("--swizzle-factor", "--swizzle", type=float, default=None, help="Swizzle factor")
     return parser.parse_args()
 
 args = get_args()
@@ -83,7 +84,8 @@ def run_benchmark(perf_func: callable,
                   swizzle_stride: int = 1,
                   warmup: int = args.warmup, 
                   iters: int = args.iters,
-                  show_all: bool = args.show_all):
+                  show_matrix: bool = args.show_matrix,
+                  only_show_improved: bool = not args.show_all_info):
     global MAX_TFLOPS
 
     M = a.size(0)
@@ -93,7 +95,11 @@ def run_benchmark(perf_func: callable,
         N = b.size(0)
     if swizzle:
         # make swizzle stride as N/4 or N/2 and multiples of 256
-        swizzle_stride = int((int(N * args.swizzle_factor) // 256) * 256)
+        if args.swizzle_factor is None:
+            swizzle_factor = 0.5 if N <= 4096 else 0.25
+        else:
+            swizzle_factor = args.swizzle_factor
+        swizzle_stride = int((int(N * swizzle_factor) // 256) * 256)
         swizzle_stride = swizzle_stride if swizzle_stride >= 256 else 1
         swizzle = swizzle if swizzle_stride >= 256 else False
     else:
@@ -150,9 +156,10 @@ def run_benchmark(perf_func: callable,
         print(f"{out_info:>42}: {out_val}, time:{mean_time}ms, "
               f"swizzle: {swizzle_stride:<4}, TFLOPS: {TFLOPS:<6.2f}(+{improve:.2f}%)")
     else:
-        print(f"{out_info:>42}: {out_val}, time:{mean_time}ms, "
-              f"swizzle: {swizzle_stride:<4}, TFLOPS: {TFLOPS:<6.2f}")
-    if show_all: print(out)
+        if not only_show_improved or "cublas" in tag:
+            print(f"{out_info:>42}: {out_val}, time:{mean_time}ms, "
+                  f"swizzle: {swizzle_stride:<4}, TFLOPS: {TFLOPS:<6.2f}")
+    if show_matrix: print(out)
     time.sleep(args.sleep_duration)
     return out, mean_time
 
