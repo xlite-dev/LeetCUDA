@@ -240,8 +240,9 @@ python3 hgemm.py --wmma # test defalut wmma kernels for all MNK
 python3 hgemm.py --mma  # test defalut mma kernels for all MNK
 python3 hgemm.py --M 16384 --N 16384 --K 8192 --i 10 --wmma # test default wmma kernels for specific MNK
 python3 hgemm.py --M 16384 --N 16384 --K 8192 --i 10 --mma # test default mma kernels for specific MNK
-python3 hgemm.py --wmma --wmma-all # test all wmma kernels for all MNK
-python3 hgemm.py --mma --mma-all # test all mma kernels for all MNK
+python3 hgemm.py --wmma-all # test all wmma kernels for all MNK
+python3 hgemm.py --mma-all # test all mma kernels for all MNK
+python3 hgemm.py --cuda-all --wmma-all --mma-all # test all kernels for all MNK
 ```
 以下测试示例数据机器为NVIDIA L20。
 
