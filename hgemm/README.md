@@ -13,8 +13,6 @@
 <details>
 <summary> 🔑️ 点击查看所有支持的HGEMM Kernels! </summary>  
   
-包含以下内容：
-
 - [X] hgemm_sliced_k_f16_kernel 
 - [X] hgemm_t_8x8_sliced_k_f16x4_kernel(unpack)
 - [X] hgemm_t_8x8_sliced_k_f16x4_pack_kernel(pack 16x4)
