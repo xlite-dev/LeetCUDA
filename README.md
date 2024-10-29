@@ -13,7 +13,7 @@
 
 <img width="1438" alt="image" src="https://github.com/user-attachments/assets/0c5e5125-586f-43fa-8e8b-e2c61c1afbbe">
 
-## HGEMM Supported Matrix
+## HGEMM/SGEMM Supported Matrix
 
 |CUDA Cores|Sliced K(Loop over K)|Tile Block|Tile Thread|
 |:---:|:---:|:---:|:---:|
@@ -24,8 +24,8 @@
 |✔️|✔️|✔️|✔️|
 |**Reg Double Buffers**|**Block Swizzle**|**Warp Swizzle**|**Collective Store(Shuffle)**|
 |✔️|✔️|✔️|✔️|
-|**Row Major(NN)**|**Col Major(TN)**|**SMEM Swizzle**|...|
-|✔️|✔️|❔|...|
+|**Row Major(NN)**|**Col Major(TN)**|**SGEMM TF32**|**SMEM Swizzle**|
+|✔️|✔️|✔️|❔|
 
 Welcome to 🌟👆🏻star & submit a PR to this repo to support me!
 
