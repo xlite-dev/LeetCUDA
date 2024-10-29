@@ -1,14 +1,18 @@
 # HGEMM 
 
-## 目前支持
+## HGEMM Supported Matrix
 
-|CUDA Cores(naive)|Sliced K(Loop over K)|Tile Block|Tile Thread|WMMA(m16n16k16)|MMA(m16n8k16)|
-|:---:|:---:|:---:|:---:|:---:|:---:|
-|✅|✅|✅|✅|✅|✅|
-|**Pack LDST(128 bits)**|**SMEM Padding**|**Copy Async**|**Tile MMA(More Threads)**|**Tile Warp(More Values)**|**Multi Stages(2/3/4/5)**|  
-|✅|✅|✅|✅|✅|✅|
-|**Reg Double Buffers**|**Block Swizzle**|**Warp Swizzle**|**Collective Store(Reg Reuse&Warp Shfl)**|**Row/Col Major(NN&TN)**|**SMEM Swizzle**|
-|✅|✅|✅|✅|✅|?|
+|CUDA Cores|Sliced K(Loop over K)|Tile Block|Tile Thread|
+|:---:|:---:|:---:|:---:|
+|✅|✅|✅|✅|
+|**WMMA(m16n16k16)**|**MMA(m16n8k16)**|**Pack LDST**|**SMEM Padding**|
+|✅|✅|✅|✅|
+|**Copy Async**|**Tile MMA(More Threads)**|**Tile Warp(More Values)**|**Multi Stages**|  
+|✅|✅|✅|✅|
+|**Reg Double Buffers**|**Block Swizzle**|**Warp Swizzle**|**Collective Store(Shuffle)**|
+|✅|✅|✅|✅|
+|**Row Major(NN)**|**Col Major(TN)**|**SMEM Swizzle**|...|
+|✅|✅|❔|...|
 
 <details>
 <summary> 🔑️ 点击查看所有支持的HGEMM Kernels! </summary>  
