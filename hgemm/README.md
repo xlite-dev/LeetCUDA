@@ -31,13 +31,56 @@
 
 ## 目前性能  
 
-- NVIDIA L20  
+### NVIDIA L20  
 
-目前最优的实现，在L20上（理论Tensor Cores FP16算力为 119.5 TFLOPS），使用WMMA API能达到cuBLAS大概95%~98%左右的性能(105-113 TFLOPS vs 105-115 TFLOPS)，使用MMA API能达到115 TFLOPS，部分case会超越cuBLAS。已知问题为bank conflicts没有完全消除，目前通过padding的方式缓解bank conflicts会导致shared memory浪费，也会影响SM occupancy。并且尚未手工实现smem swizzle/permute(受限于WMMA API的灵活性以及row major的layout)，后续将会尝试通过MMA PTX实现smem swizzle/permute，[点击查看性能数据](#NV-L20)。
+目前最优的实现，在L20上（理论Tensor Cores FP16算力为 119.5 TFLOPS），使用WMMA API能达到cuBLAS大概95%~98%左右的性能(105-113 TFLOPS vs 105-115 TFLOPS)，使用MMA API能达到115 TFLOPS，部分case会超越cuBLAS。已知问题为bank conflicts没有完全消除，目前通过padding的方式缓解bank conflicts会导致shared memory浪费，也会影响SM occupancy。并且尚未手工实现smem swizzle/permute(受限于WMMA API的灵活性以及row major的layout)，后续将会尝试通过MMA PTX实现smem swizzle/permute。
 
-- NVIDIA GeForce RTX 3080 Laptop   
+<div id="NV-L20"></div>
 
-在NVIDIA GeForce RTX 3080 Laptop上测试，使用mma4x4_warp4x4（16 WMMA m16n16k16 ops, warp tile 64x64）以及Thread block swizzle，大部分case能持平甚至超过cuBLAS，[点击查看性能数据](#NV-RTX-3080)。
+- WMMA: Up to 113.76 TFLOPS, 113.83/119.5=95.25% TFLOPS utilization, 113.83/116.25=97.91% cuBLAS performance.
+- MMA: Up to 115.12 TFLOPS, 115.12/119.5=96.33% TFLOPS utilization, 115.12/116.25=99.03% cuBLAS performance.
+
+```bash
+python3 hgemm.py --M 16384 --N 16384 --K 8192 --mma-all --wmma-all --cuda-all
+----------------------------------------------------------------------------------------------------------------------------------
+                                        M=16384, N=16384, K=8192, Warmup=2, Iters=10, 1/1
+----------------------------------------------------------------------------------------------------------------------------------
+                                   (naive): ['-236.75   ', '176.0     '], time:1835.537ms, swizzle: NOOP, TFLOPS: 2.40  (+0.00%)
+                      (f16x8pack+t8x8+bcf): ['-236.75   ', '176.0     '], time:99.63080ms, swizzle: NOOP, TFLOPS: 44.14 (+1742.34%)
+                 (f16x8pack+t8x8+k16+dbuf): ['-236.75   ', '176.0     '], time:98.20067ms, swizzle: NOOP, TFLOPS: 44.79 (+1.46%)
+--------------------------------------------------------------------WMMA----------------------------------------------------------
+                         (wmma4x2+warp2x4): ['-234.0    ', '181.0     '], time:55.99505ms, swizzle: NOOP, TFLOPS: 78.54 (+75.37%)
+                  (wmma4x2+warp2x4+stage3): ['-234.0    ', '181.0     '], time:49.62856ms, swizzle: NOOP, TFLOPS: 88.62 (+12.83%)
+            (wmma4x2+warp2x4+stage3+dsmem): ['-234.0    ', '181.0     '], time:49.62389ms, swizzle: NOOP, TFLOPS: 88.63 (+0.01%)
+          (wmma4x2+warp2x4+stage3+swizzle): ['-234.0    ', '181.0     '], time:39.11254ms, swizzle: 4096, TFLOPS: 112.45(+26.87%)
+          (wmma4x2+warp2x4+stage2+swizzle): ['-234.0    ', '181.0     '], time:38.63754ms, swizzle: 4096, TFLOPS: 113.83(+1.23%)
+--------------------------------------------------------------------MMA-----------------------------------------------------------
+           (mma2x4+warp4x4+stage2+swizzle): ['-234.0    ', '181.0     '], time:38.40544ms, swizzle: 4096, TFLOPS: 114.52(+0.60%)
+     (mma2x4+warp4x4+stage2+dsmem+swizzle): ['-234.0    ', '181.0     '], time:38.20540ms, swizzle: 4096, TFLOPS: 115.12(+0.52%)
+                                  (cublas): ['-234.0    ', '181.0     '], time:37.83144ms, swizzle: NOOP, TFLOPS: 116.25(+0.99%)
+----------------------------------------------------------------------------------------------------------------------------------
+```
+全量MNK测试命令（提示: 每个MNK单独测试的性能数据更准确）
+```bash
+python3 hgemm.py --mma-all --wmma-all --cuda-all
+```
+
+### NVIDIA GeForce RTX 3080 Laptop   
+
+在NVIDIA GeForce RTX 3080 Laptop上测试，使用mma4x4_warp4x4（16 WMMA m16n16k16 ops, warp tile 64x64）以及Thread block swizzle，大部分case能持平甚至超过cuBLAS，不过Laptop测试的性能数据不稳定，这部分看看就好，别太当真。
+
+```bash
+python3 hgemm.py --wmma-all
+----------------------------------------------------------------------------------------------------------------------------------
+                              M=16384, N=16384, K=8192, Warmup=5, Iters=20, 27/27
+----------------------------------------------------------------------------------------------------------------------------------
+           (wmma4x4+warp4x4+stage3+dsmem): ['68.375    ', '-2.234375 '], time:96.91984ms, swizzle: NOOP, TFLOPS: 45.38 (+0.00%)
+           (wmma4x4+warp4x4+stage2+dsmem): ['68.375    ', '-2.234375 '], time:102.8722ms, swizzle: NOOP, TFLOPS: 42.75
+   (wmma4x4+warp4x4+stage3+dsmem+swizzle): ['68.375    ', '-2.234375 '], time:85.65800ms, swizzle: 4096, TFLOPS: 51.34 (+13.15%)
+   (wmma4x4+warp4x4+stage2+dsmem+swizzle): ['68.375    ', '-2.234375 '], time:95.70884ms, swizzle: 4096, TFLOPS: 45.95
+                                 (cublas): ['68.375    ', '-2.234375 '], time:104.2092ms, swizzle: NOOP, TFLOPS: 42.20
+----------------------------------------------------------------------------------------------------------------------------------
+```
 
 ## 共享内存 Bank Conflicts
 
@@ -161,64 +204,6 @@ python3 hgemm.py --M 4096 --N 4096 --K 4096 --mma-all --wmma-all --cuda-all
 ----------------------------------------------------------------------------------------------------------------------------------
 ```
 
-## NVIDIA L20 
-<div id="NV-L20"></div>
-
-- WMMA: Up to 113.76 TFLOPS, 113.83/119.5=95.25% TFLOPS utilization, 113.83/116.25=97.91% cuBLAS performance.
-- MMA: Up to 115.12 TFLOPS, 115.12/119.5=96.33% TFLOPS utilization, 115.12/116.25=99.03% cuBLAS performance.
-
-```bash
-python3 hgemm.py --M 16384 --N 16384 --K 8192 --mma-all --wmma-all --cuda-all
-----------------------------------------------------------------------------------------------------------------------------------
-                                        M=16384, N=16384, K=8192, Warmup=2, Iters=10, 1/1
-----------------------------------------------------------------------------------------------------------------------------------
-                                   (naive): ['-236.75   ', '176.0     '], time:1835.537ms, swizzle: NOOP, TFLOPS: 2.40  (+0.00%)
-                      (f16x8pack+t8x8+bcf): ['-236.75   ', '176.0     '], time:99.63080ms, swizzle: NOOP, TFLOPS: 44.14 (+1742.34%)
-                 (f16x8pack+t8x8+k16+dbuf): ['-236.75   ', '176.0     '], time:98.20067ms, swizzle: NOOP, TFLOPS: 44.79 (+1.46%)
---------------------------------------------------------------------WMMA----------------------------------------------------------
-                         (wmma4x2+warp2x4): ['-234.0    ', '181.0     '], time:55.99505ms, swizzle: NOOP, TFLOPS: 78.54 (+75.37%)
-                  (wmma4x2+warp2x4+stage3): ['-234.0    ', '181.0     '], time:49.62856ms, swizzle: NOOP, TFLOPS: 88.62 (+12.83%)
-            (wmma4x2+warp2x4+stage3+dsmem): ['-234.0    ', '181.0     '], time:49.62389ms, swizzle: NOOP, TFLOPS: 88.63 (+0.01%)
-          (wmma4x2+warp2x4+stage3+swizzle): ['-234.0    ', '181.0     '], time:39.11254ms, swizzle: 4096, TFLOPS: 112.45(+26.87%)
-          (wmma4x2+warp2x4+stage2+swizzle): ['-234.0    ', '181.0     '], time:38.63754ms, swizzle: 4096, TFLOPS: 113.83(+1.23%)
---------------------------------------------------------------------MMA-----------------------------------------------------------
-           (mma2x4+warp4x4+stage2+swizzle): ['-234.0    ', '181.0     '], time:38.40544ms, swizzle: 4096, TFLOPS: 114.52(+0.60%)
-     (mma2x4+warp4x4+stage2+dsmem+swizzle): ['-234.0    ', '181.0     '], time:38.20540ms, swizzle: 4096, TFLOPS: 115.12(+0.52%)
-                                  (cublas): ['-234.0    ', '181.0     '], time:37.83144ms, swizzle: NOOP, TFLOPS: 116.25(+0.99%)
-----------------------------------------------------------------------------------------------------------------------------------
-```
-全量MNK测试命令（提示: 每个MNK单独测试的性能数据更准确）
-```bash
-python3 hgemm.py --mma-all --wmma-all --cuda-all
-```
-
-## NVIDIA GeForce RTX 3080 Laptop 
-<div id="NV-RTX-3080"></div>
-
-```bash
-python3 hgemm.py --wmma-all
-```
-输出：
-```bash
-----------------------------------------------------------------------------------------------------------------------------------
-                              M=4096, N=4096, K=2048, Warmup=5, Iters=20, 1/27
-----------------------------------------------------------------------------------------------------------------------------------
-           (mma4x4+warp4x4+stage3+dsmem): ['-34.9375  ', '2.25585938'], time:1.397085ms, swizzle: NOOP, TFLOPS: 49.19 (+0.00%)
-           (mma4x4+warp4x4+stage2+dsmem): ['-34.9375  ', '2.25585938'], time:1.632452ms, swizzle: NOOP, TFLOPS: 42.10
-   (mma4x4+warp4x4+stage3+dsmem+swizzle): ['-34.9375  ', '2.25585938'], time:1.392316ms, swizzle: 1024, TFLOPS: 49.36 (+0.34%)
-   (mma4x4+warp4x4+stage2+dsmem+swizzle): ['-34.9375  ', '2.25585938'], time:1.537656ms, swizzle: 1024, TFLOPS: 44.69
-                                (cublas): ['-34.90625 ', '2.21875   '], time:1.072788ms, swizzle: NOOP, TFLOPS: 64.06 (+29.78%)
-----------------------------------------------------------------------------------------------------------------------------------
-----------------------------------------------------------------------------------------------------------------------------------
-                              M=16384, N=16384, K=8192, Warmup=5, Iters=20, 27/27
-----------------------------------------------------------------------------------------------------------------------------------
-           (mma4x4+warp4x4+stage3+dsmem): ['68.375    ', '-2.234375 '], time:96.91984ms, swizzle: NOOP, TFLOPS: 45.38 (+0.00%)
-           (mma4x4+warp4x4+stage2+dsmem): ['68.375    ', '-2.234375 '], time:102.8722ms, swizzle: NOOP, TFLOPS: 42.75
-   (mma4x4+warp4x4+stage3+dsmem+swizzle): ['68.375    ', '-2.234375 '], time:85.65800ms, swizzle: 4096, TFLOPS: 51.34 (+13.15%)
-   (mma4x4+warp4x4+stage2+dsmem+swizzle): ['68.375    ', '-2.234375 '], time:95.70884ms, swizzle: 4096, TFLOPS: 45.95
-                                (cublas): ['68.375    ', '-2.234375 '], time:104.2092ms, swizzle: NOOP, TFLOPS: 42.20
-----------------------------------------------------------------------------------------------------------------------------------
-```
 
 ## 参考文献 
 
