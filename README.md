@@ -13,6 +13,7 @@
 
 <img width="1438" alt="image" src="https://github.com/user-attachments/assets/0c5e5125-586f-43fa-8e8b-e2c61c1afbbe">
 
+----
 <h3 align="center">📖 HGEMM/SGEMM Supported Matrix </h3>
 
 |CUDA Cores|Sliced K(Loop over K)|Tile Block|Tile Thread|
@@ -30,8 +31,9 @@
 
 <p align="center">🎉 Welcome to 🌟👆🏻star & submit a PR to this repo, as it is the simplest way to support me. </p>
 
+----
 
-## 0x00 📖 CUDA Kernel目录 (面试常考题目)   
+## 📖 CUDA Kernel目录 (面试常考题目)   
 - / = not supported now.  
 - ✔️ = known work and already supported now.
 - ❔ = in my plan, but not coming soon, maybe a few weeks later.
@@ -182,7 +184,7 @@
 
 👉TIPS: * means using **Tensor Cores(MMA/WMMA)**, otherwise, using CUDA Cores by default.
 
-## 0x01 📖 博客目录
+## 📖 博客目录
 
 ### 📖 大模型|多模态|Diffusion|推理优化 (本人作者)
 
