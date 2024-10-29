@@ -13,12 +13,27 @@
 
 <img width="1438" alt="image" src="https://github.com/user-attachments/assets/0c5e5125-586f-43fa-8e8b-e2c61c1afbbe">
 
+### HGEMM Supported Matrix
+
+|CUDA Cores|Sliced K(Loop over K)|Tile Block|Tile Thread|
+|:---:|:---:|:---:|:---:|
+|✅|✅|✅|✅|
+|**WMMA(m16n16k16)**|**MMA(m16n8k16)**|**Pack LDST**|**SMEM Padding**|
+|✅|✅|✅|✅|
+|**Copy Async**|**Tile MMA(More Threads)**|**Tile Warp(More Values)**|**Multi Stages**|  
+|✅|✅|✅|✅|
+|**Reg Double Buffers**|**Block Swizzle**|**Warp Swizzle**|**Collective Store**|
+|✅|✅|✅|✅|
+|**Row Major(NN)**|**Col Major(TN)**|**SMEM Swizzle**|...|
+|✅|✅|❔|...|
+
 ## 0x00 📖 CUDA Kernel目录 (面试常考题目)  
 - / = not supported now.  
 - ✔️ = known work and already supported now.
 - ❔ = in my plan, but not coming soon, maybe a few weeks later.
 - **workflow**: custom **CUDA** kernel impl -> **PyTorch** python binding -> Run tests.
 - How to contribute? please check [🌤🌤Kernel Trace & 目标 & 代码规范 & 致谢🎉🎉](https://github.com/DefTruth/CUDA-Learn-Notes/issues/50) 
+
 
 |📖 cuda kernel| 📖 elem dtype| 📖 acc dtype| 📖 docs | 📖 level |
 |:---|:---|:---|:---|:---|  
@@ -163,20 +178,6 @@
 | ✔️ [notes v1(deprecated)](./notes-v1.cu)|f32|f32|/|⭐️|  
 
 👉TIPS: * means using **Tensor Cores(MMA/WMMA)**, otherwise, using CUDA Cores by default.
-
-### HGEMM Supported Matrix
-
-|CUDA Cores|Sliced K(Loop over K)|Tile Block|Tile Thread|
-|:---:|:---:|:---:|:---:|
-|✅|✅|✅|✅|
-|**WMMA(m16n16k16)**|**MMA(m16n8k16)**|**Pack LDST**|**SMEM Padding**|
-|✅|✅|✅|✅|
-|**Copy Async**|**Tile MMA(More Threads)**|**Tile Warp(More Values)**|**Multi Stages**|  
-|✅|✅|✅|✅|
-|**Reg Double Buffers**|**Block Swizzle**|**Warp Swizzle**|**Collective Store**|
-|✅|✅|✅|✅|
-|**Row Major(NN)**|**Col Major(TN)**|**SMEM Swizzle**|...|
-|✅|✅|❔|...|
 
 ## 0x01 📖 博客目录
 
