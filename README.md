@@ -17,15 +17,15 @@
 
 |CUDA Cores|Sliced K(Loop over K)|Tile Block|Tile Thread|
 |:---:|:---:|:---:|:---:|
-|✅|✅|✅|✅|
+|✔️|✔️|✔️|✔️|
 |**WMMA(m16n16k16)**|**MMA(m16n8k16)**|**Pack LDST**|**SMEM Padding**|
-|✅|✅|✅|✅|
+|✔️|✔️|✔️|✔️|  
 |**Copy Async**|**Tile MMA(More Threads)**|**Tile Warp(More Values)**|**Multi Stages**|  
-|✅|✅|✅|✅|
+|✔️|✔️|✔️|✔️|
 |**Reg Double Buffers**|**Block Swizzle**|**Warp Swizzle**|**Collective Store(Shuffle)**|
-|✅|✅|✅|✅|
+|✔️|✔️|✔️|✔️|
 |**Row Major(NN)**|**Col Major(TN)**|**SMEM Swizzle**|...|
-|✅|✅|❔|...|
+|✔️|✔️|❔|...|
 
 Welcome to 🌟👆🏻star & submit a PR to this repo to support me!
 
