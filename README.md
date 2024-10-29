@@ -169,18 +169,6 @@
 |CUDA Cores|Sliced K(Loop over K)|Tile Block|Tile Thread|
 |:---:|:---:|:---:|:---:|
 |✅|✅|✅|✅|
-|**WMMA(m16n16k16)**|**MMA(m16n8k16)**|**Pack LDST(128 bits)**|**SMEM Padding**|
-|✅|✅|✅|✅|
-|**Copy Async**|**Tile MMA(More Threads)**|**Tile Warp(More Values)**|**Multi Stages(2/3/4/5)**|  
-|✅|✅|✅|✅|
-|**Reg Double Buffers**|**Block Swizzle**|**Warp Swizzle**|**Collective Store(Reg reuse&Warp shfl)**|
-|✅|✅|✅|✅|
-|**Row Major(NN)**|**Col Major(TN)**|**SMEM Swizzle**|...|
-|✅|✅|❔|...|
-
-|CUDA Cores|Sliced K(Loop over K)|Tile Block|Tile Thread|
-|:---:|:---:|:---:|:---:|
-|✅|✅|✅|✅|
 |**WMMA(m16n16k16)**|**MMA(m16n8k16)**|**Pack LDST**|**SMEM Padding**|
 |✅|✅|✅|✅|
 |**Copy Async**|**Tile MMA(More Threads)**|**Tile Warp(More Values)**|**Multi Stages**|  
