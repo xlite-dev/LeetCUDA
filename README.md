@@ -164,7 +164,7 @@
 
 👉TIPS: * means using **Tensor Cores(MMA/WMMA)**, otherwise, using CUDA Cores by default.
 
-### HGEMM Supported
+### HGEMM Supported Matrix
 
 |CUDA Cores|Sliced K(Loop over K)|Tile Block|Tile Thread|
 |:---:|:---:|:---:|:---:|
