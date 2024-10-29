@@ -1,7 +1,18 @@
 # HGEMM 
 
-## 0x00 说明
+## 目前支持
 
+|CUDA Cores|Sliced K|Tile Block|Tile Thread|WMMA(m16n16k16)|MMA(m16n8k16)|
+|:---:|:---:|:---:|:---:|:---:|:---:|
+|✅|✅|✅|✅|✅|✅|
+|Pack LDST|SMEM Padding|Copy Async|Tile MMA(More Threads)|Tile Warp(More Values)|Multi Stages(2/3/4/5)|  
+|✅|✅|✅|✅|✅|✅|
+|Reg Double Buffers|Block Swizzle|Warp Swizzle|Collective Store(Reg Reuse&Shfl)|SMEM Swizzle|...|
+|✅|✅|✅|✅|?|...|
+
+<details>
+<summary> 🔑️ 点击查看所有支持的HGEMM Kernels! </summary>  
+  
 包含以下内容：
 
 - [X] hgemm_sliced_k_f16_kernel 
@@ -28,6 +39,8 @@
 - [X] hgemm_mma_m16n8k16_mma2x4_warp4x4_stages(MMA, Tile MMA/Warp, Copy Async, Stages, Pad, Block swizzle)
 - [X] hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages(MMA, Tile MMA/Warp, Copy Async, Stages, Pad, Block swizzle, Warp swizzle, Reg Double Buffers, Collective Store with Reg Reuse & Warp Shuffle) 
 - [X] PyTorch bindings
+
+</details>
 
 ## 目前性能  
 
@@ -81,62 +94,6 @@ python3 hgemm.py --wmma-all
                                  (cublas): ['68.375    ', '-2.234375 '], time:104.2092ms, swizzle: NOOP, TFLOPS: 42.20
 ----------------------------------------------------------------------------------------------------------------------------------
 ```
-
-## 共享内存 Bank Conflicts
-
-含义：在访问shared memory时，因多个线程读写同一个Bank中的不同数据地址时，导致shared memory 并发读写 退化 成顺序读写的现象叫做Bank Conflict；
-
-![](https://github.com/PaddleJitLab/CUDATutorial/blob/develop/docs/09_optimize_reduce/02_bank_conflict/images/ef322be7c3e5b6b9be69d2b90e88083f50569a58a97129f348e483b946ab4edf.png)
-
-SM调度单位为一个warp（一个warp内32个Thread），shared_memory 可以 被一个warp中的所有（32个）线程进行访问，shared_memory 映射到大小相等的32个Bank上，Bank的数据读取带宽为32bit / cycle (4 bytes)，因此，主要需要考虑一个Warp内32线程的访问共享内存时的bank冲突。
-对于多个线程读取同一个Bank数据时（不同地址），硬件把内存读写请求，拆分成 conflict-free requests，进行顺序读写，此时将会触发多次内存事务。特别地，当一个warp中的所有线程读写同一个地址时，会触发broadcast机制，此时不会退化成顺序读写。上面提到触发broadcast机制的条件是all threads acess same address，但在翻阅cuda-c-programming-guide以及最新版本的[NVProfGuide](https://docs.nvidia.com/nsight-compute/ProfilingGuide/index.html) 时，发现只要是多个thread 读写就会触发broadcast（不需要All）。
-  
-- 多个线程读同一个数据时，仅有一个线程读，然后broadcast到其他线程
-- 多个线程写同一个数据时，仅会有一个线程写成功
-
-NVIDIA的[文章](https://developer.nvidia.com/blog/using-shared-memory-cuda-cc/)中指出，我们还可以通过 `cudaDeviceSetSharedMemConfig()` 函数设置默认Bank Size（默认为4 bytes）来避免bank conflicts，可设置为cudaSharedMemBankSizeFourByte或者cudaSharedMemBankSizeEightByte。对于某些场景来说，设置cudaSharedMemBankSizeEightByte或许更加合适，比如使用double数据类型时。 
-
-```C
-cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte);
-```
-
-## 双缓冲 Double Buffers
-
-本仓库实现的HGEMM Double Buffers策略如下：1）主循环从bk = 1 开始，第一次数据加载在主循环之前，最后一次计算在主循环之后，这是pipeline 的特点决定的；2）由于计算和下一次访存使用的Shared Memory不同，因此主循环中每次循环只需要一次__syncthreads()即可，对比非double buffers版本，总共节省了 ((K + BK - 1) / BK) - 1 次block内的同步操作。比如，bk=1时，HFMA计算使用的是s_a[0]和s_b[0]，因此，和s_a[1]和s_b[1]的加载是没有依赖关系的。HFMA计算，从global内存到s_a[1]和s_b[1]和HFMA计算可以并行。s_a[1]和s_b[1]用于加载下一块BK需要的数据到共享内存；3）由于GPU不能向CPU那样支持乱序执行，主循环中需要先将下一次循环计算需要的Gloabal Memory中的数据load 到寄存器，然后进行本次计算，之后再将load到寄存器中的数据写到Shared Memory，这样在LDG指令向Global Memory做load时，不会影响后续HFMA及其它运算指令的 launch 执行，也就达到了Double Buffers的目的，具体代码见[hgemm.cu](./hgemm.cu)。
-
-## PyTorch HGEMM Profile
-
-在Ada架构下，PyTorch 2.4对FP16使用matmul时，会调用ampere_fp16_s1688gemm_fp16_128x128_ldg8_f2f_stages_32x1_nn kernel，内部实际使用HMMA(Tensor Cores)进行计算。
-
-```bash
-ncu -o hgemm.prof -f python3 prof.py
-nsys profile --stats=true -t cuda,osrt,nvtx -o hgemm.prof --force-overwrite true python3 prof.py
-```
-- 日志
-
-```bash
-==PROF== Profiling "ampere_fp16_s1688gemm_fp16_12..." - 3: 0%....50%....100% - 8 passes
-...
-```
-
-- SASS (L20)
-
-```C
-// ampere_fp16_s1688gemm_fp16_128x128_ldg8_f2f_stages_32x1_nn_kernel
-310	00007f41 37d5b850	      LDSM.16.M88.4 R192, [R169+UR8+0x2000] 
-311	00007f41 37d5b860	      LDSM.16.M88.4 R196, [R169+UR8+0x2800]
-336	00007f41 37d5b9f0	      HMMA.1688.F32 R112, R182, R196, R112
-...
-```
-- SASS (RTX 3080)
-
-```C
-// sm80_xmma_gemm_f16f16_f16f32_f32_nn_n_tilesize96x64x32_stage3_warpsize2x2x1_tensor16x8x16_kernel
-344	00000007 44ff6370	      LDSM.16.M88.4 R52, [R92+UR8] 
-345	00000007 44ff6380	      HMMA.16816.F32 R24, R84, R78, R24 
-...
-```
-
 ## 测试命令
 
 ```bash
@@ -203,6 +160,51 @@ python3 hgemm.py --M 4096 --N 4096 --K 4096 --mma-all --wmma-all --cuda-all
                                   (cublas): ['56.03125  ', '-129.125  '], time:1.289367ms, swizzle: NOOP, TFLOPS: 106.59(+0.77%)
 ----------------------------------------------------------------------------------------------------------------------------------
 ```
+
+## 性能优化笔记
+
+### PyTorch HGEMM Profile
+
+在Ada架构下，PyTorch 2.4对FP16使用matmul时，会调用ampere_fp16_s1688gemm_fp16_128x128_ldg8_f2f_stages_32x1_nn kernel，内部实际使用HMMA(Tensor Cores)进行计算，在3080上profile发现使用sm80_xmma_gemm_f16f16_f16f32_f32_nn_n_tilesize96x64x32_stage3_warpsize2x2x1_tensor16x8x16_kernel。因此，只有实现使用Tensor Cores的HGEMM，才有可能接近PyTorch/cuBLAS的性能。
+
+```bash
+ncu -o hgemm.prof -f python3 prof.py
+nsys profile --stats=true -t cuda,osrt,nvtx -o hgemm.prof --force-overwrite true python3 prof.py
+```
+- SASS (L20)
+
+```C
+// ampere_fp16_s1688gemm_fp16_128x128_ldg8_f2f_stages_32x1_nn_kernel
+310	00007f41 37d5b850	      LDSM.16.M88.4 R192, [R169+UR8+0x2000] 
+311	00007f41 37d5b860	      LDSM.16.M88.4 R196, [R169+UR8+0x2800]
+336	00007f41 37d5b9f0	      HMMA.1688.F32 R112, R182, R196, R112
+...
+```
+
+### 共享内存 Bank Conflicts
+
+含义：在访问shared memory时，因多个线程读写同一个Bank中的不同数据地址时，导致shared memory 并发读写 退化 成顺序读写的现象叫做Bank Conflict；
+
+![](https://github.com/PaddleJitLab/CUDATutorial/blob/develop/docs/09_optimize_reduce/02_bank_conflict/images/ef322be7c3e5b6b9be69d2b90e88083f50569a58a97129f348e483b946ab4edf.png)
+
+SM调度单位为一个warp（一个warp内32个Thread），shared_memory 可以 被一个warp中的所有（32个）线程进行访问，shared_memory 映射到大小相等的32个Bank上，Bank的数据读取带宽为32bit / cycle (4 bytes)，因此，主要需要考虑一个Warp内32线程的访问共享内存时的bank冲突。
+对于多个线程读取同一个Bank数据时（不同地址），硬件把内存读写请求，拆分成 conflict-free requests，进行顺序读写，此时将会触发多次内存事务。特别地，当一个warp中的所有线程读写同一个地址时，会触发broadcast机制，此时不会退化成顺序读写。上面提到触发broadcast机制的条件是all threads acess same address，但在翻阅cuda-c-programming-guide以及最新版本的[NVProfGuide](https://docs.nvidia.com/nsight-compute/ProfilingGuide/index.html) 时，发现只要是多个thread 读写就会触发broadcast（不需要All）。
+  
+- 多个线程读同一个数据时，仅有一个线程读，然后broadcast到其他线程
+- 多个线程写同一个数据时，仅会有一个线程写成功
+
+NVIDIA的[文章](https://developer.nvidia.com/blog/using-shared-memory-cuda-cc/)中指出，我们还可以通过 `cudaDeviceSetSharedMemConfig()` 函数设置默认Bank Size（默认为4 bytes）来避免bank conflicts，可设置为cudaSharedMemBankSizeFourByte或者cudaSharedMemBankSizeEightByte。对于某些场景来说，设置cudaSharedMemBankSizeEightByte或许更加合适，比如使用double数据类型时。 
+
+```C
+cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte);
+```
+本项目目前通过padding的方式缓解bank conflicts会导致shared memory浪费，也会影响SM occupancy。并且尚未手工实现smem swizzle/permute(受限于WMMA API的灵活性以及row major的layout)，后续将会尝试通过MMA PTX实现smem swizzle/permute。
+
+### 双缓冲 Double Buffers
+
+本仓库实现的HGEMM Double Buffers策略如下：1）主循环从bk = 1 开始，第一次数据加载在主循环之前，最后一次计算在主循环之后，这是pipeline 的特点决定的；2）由于计算和下一次访存使用的Shared Memory不同，因此主循环中每次循环只需要一次__syncthreads()即可，对比非double buffers版本，总共节省了 ((K + BK - 1) / BK) - 1 次block内的同步操作。比如，bk=1时，HFMA计算使用的是s_a[0]和s_b[0]，因此，和s_a[1]和s_b[1]的加载是没有依赖关系的。HFMA计算，从global内存到s_a[1]和s_b[1]和HFMA计算可以并行。s_a[1]和s_b[1]用于加载下一块BK需要的数据到共享内存；3）由于GPU不能向CPU那样支持乱序执行，主循环中需要先将下一次循环计算需要的Gloabal Memory中的数据load 到寄存器，然后进行本次计算，之后再将load到寄存器中的数据写到Shared Memory，这样在LDG指令向Global Memory做load时，不会影响后续HFMA及其它运算指令的 launch 执行，也就达到了Double Buffers的目的，具体代码见[hgemm.cu](./hgemm.cu)。
+
+
 
 
 ## 参考文献 
