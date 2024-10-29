@@ -164,12 +164,12 @@
 
 ## HGEMM Supported
 
-|CUDA Cores(naive)|Sliced K(Loop over K)|Tile Block|Tile Thread|WMMA(m16n16k16)|MMA(m16n8k16)|
+|CUDA Cores|Sliced K(Loop over K)|Tile Block|Tile Thread|WMMA(m16n16k16)|MMA(m16n8k16)|
 |:---:|:---:|:---:|:---:|:---:|:---:|
 |✅|✅|✅|✅|✅|✅|
 |**Pack LDST(128 bits)**|**SMEM Padding**|**Copy Async**|**Tile MMA(More Threads)**|**Tile Warp(More Values)**|**Multi Stages(2/3/4/5)**|  
 |✅|✅|✅|✅|✅|✅|
-|**Reg Double Buffers**|**Block Swizzle**|**Warp Swizzle**|**Collective Store(Reg Reuse&Warp Shfl)**|**Row/Col Major(NN&TN)**|**SMEM Swizzle**|
+|**Reg Double Buffers**|**Block Swizzle**|**Warp Swizzle**|**Collective Store**|**Row/Col Major(NN&TN)**|**SMEM Swizzle**|
 |✅|✅|✅|✅|✅|?|
 
 👉TIPS: * means using **Tensor Cores(MMA/WMMA)**, otherwise, using CUDA Cores by default.
