@@ -22,7 +22,7 @@
 |✔️|✔️|✔️|✔️|
 |**Copy Async**|**Tile MMA(More Threads)**|**Tile Warp(More Values)**|**Multi Stages**|  
 |✔️|✔️|✔️|✔️|
-|**Reg Double Buffers**|**Block Swizzle**|**Warp Swizzle**|**Collective Store**|
+|**Reg Double Buffers**|**Block Swizzle**|**Warp Swizzle**|**Collective Store(Shfl)**|
 |✔️|✔️|✔️|✔️|
 |**Row Major(NN)**|**Col Major(TN)**|**SGEMM TF32**|**SMEM Swizzle/Permuted**|
 |✔️|✔️|✔️|❔|
