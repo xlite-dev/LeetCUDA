@@ -1,6 +1,6 @@
 # HGEMM 
 
-## HGEMM Supported Matrix
+## HGEMM/SGEMM Supported Matrix
 
 |CUDA Cores|Sliced K(Loop over K)|Tile Block|Tile Thread|
 |:---:|:---:|:---:|:---:|
@@ -11,8 +11,8 @@
 |✔️|✔️|✔️|✔️|
 |**Reg Double Buffers**|**Block Swizzle**|**Warp Swizzle**|**Collective Store(Reg Reuse&Warp Shuffle)**|
 |✔️|✔️|✔️|✔️|
-|**Row Major(NN)**|**Col Major(TN)**|**SMEM Swizzle**|...|
-|✔️|✔️|❔|...|
+|**Row Major(NN)**|**Col Major(TN)**|**SGEMM TF32**|**SMEM Swizzle**|
+|✔️|✔️|✔️|❔|
 
 <details>
 <summary> 🔑️ 点击查看所有支持的HGEMM Kernels! </summary>  
