@@ -9,10 +9,11 @@
 |✔️|✔️|✔️|✔️|
 |**Copy Async**|**Tile MMA(More Threads)**|**Tile Warp(More Values)**|**Multi Stages**|  
 |✔️|✔️|✔️|✔️|
-|**Reg Double Buffers**|**Block Swizzle**|**Warp Swizzle**|**Collective Store(Reg Reuse&Warp Shuffle)**|
+|**Reg Double Buffers**|**Block Swizzle**|**Warp Swizzle**|**Collective Store(Reg Reuse&Warp Shfl)**|
 |✔️|✔️|✔️|✔️|
-|**Row Major(NN)**|**Col Major(TN)**|**SGEMM TF32**|**SMEM Swizzle**|
+|**Row Major(NN)**|**Col Major(TN)**|**SGEMM TF32**|**SMEM Swizzle/Permuted**|
 |✔️|✔️|✔️|❔|
+
 
 <details>
 <summary> 🔑️ 点击查看所有支持的HGEMM Kernels! </summary>  
