@@ -14,7 +14,6 @@
 |**Row Major(NN)**|**Col Major(TN)**|**SGEMM TF32**|**SMEM Swizzle/Permuted**|
 |✔️|✔️|✔️|❔|
 
-
 <details>
 <summary> 🔑️ 点击查看所有支持的HGEMM Kernels! </summary>  
   
