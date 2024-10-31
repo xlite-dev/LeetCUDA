@@ -80,24 +80,7 @@ python3 hgemm.py --M 16384 --N 16384 --K 8192 --mma-all --wmma-all --cuda-all
 python3 hgemm.py --mma-all --wmma-all --cuda-all
 ```
 
-### NVIDIA GeForce RTX 3080 Laptop   
-
-在NVIDIA GeForce RTX 3080 Laptop上测试，使用mma4x4_warp4x4（16 WMMA m16n16k16 ops, warp tile 64x64）以及Thread block swizzle，大部分case能持平甚至超过cuBLAS，不过Laptop测试的性能数据不稳定，这部分看看就好，别太当真。
-
-```bash
-python3 hgemm.py --wmma-all
-----------------------------------------------------------------------------------------------------------------------------------
-                              M=16384, N=16384, K=8192, Warmup=5, Iters=20, 27/27
-----------------------------------------------------------------------------------------------------------------------------------
-           (wmma4x4+warp4x4+stage3+dsmem): ['68.375    ', '-2.234375 '], time:96.91984ms, swizzle: NOOP, TFLOPS: 45.38 (+0.00%)
-           (wmma4x4+warp4x4+stage2+dsmem): ['68.375    ', '-2.234375 '], time:102.8722ms, swizzle: NOOP, TFLOPS: 42.75
-   (wmma4x4+warp4x4+stage3+dsmem+swizzle): ['68.375    ', '-2.234375 '], time:85.65800ms, swizzle: 4096, TFLOPS: 51.34 (+13.15%)
-   (wmma4x4+warp4x4+stage2+dsmem+swizzle): ['68.375    ', '-2.234375 '], time:95.70884ms, swizzle: 4096, TFLOPS: 45.95
-                                 (cublas): ['68.375    ', '-2.234375 '], time:104.2092ms, swizzle: NOOP, TFLOPS: 42.20
-----------------------------------------------------------------------------------------------------------------------------------
-```
-
-### NVIDIA RTX 4090
+### NVIDIA GeForce RTX 4090
 在NVIDIA RTX 4090上(FP16 Tensor Cores算力为330 TFLOPS)，WMMA(m16n16k16)性能表现比MMA(m16n8k16)要更好，大分部MNK下，本仓库的实现能达到cuBLAS 95%~99%的性能，某些case能超过cuBLAS。就本仓库的实现而言，在RTX 4090上，大规模矩阵乘(MNK>=8192)，WMMA表现更优，小规模矩阵乘，MMA表现更优。
 ```bash
 ----------------------------------------------------------------------------------------------------------------------------------
@@ -141,6 +124,23 @@ python3 hgemm.py --wmma-all
     (wmma4x2+warp2x4+stage3+dsmem+swizzle): ['-9.0      ', '-144.875  '], time:0.702190ms, swizzle: 2048, TFLOPS: 195.73(+0.05%)
             (wmma4x4+warp4x4+stage3+dsmem): ['-9.0      ', '-144.875  '], time:0.556564ms, swizzle: NOOP, TFLOPS: 246.94(+26.17%)
                                   (cublas): ['-9.0      ', '-144.875  '], time:0.539851ms, swizzle: NOOP, TFLOPS: 254.59(+3.10%)
+----------------------------------------------------------------------------------------------------------------------------------
+```
+
+### NVIDIA GeForce RTX 3080 Laptop   
+
+在NVIDIA GeForce RTX 3080 Laptop上测试，使用mma4x4_warp4x4（16 WMMA m16n16k16 ops, warp tile 64x64）以及Thread block swizzle，大部分case能持平甚至超过cuBLAS，不过Laptop测试的性能数据不稳定，这部分看看就好，别太当真。
+
+```bash
+python3 hgemm.py --wmma-all
+----------------------------------------------------------------------------------------------------------------------------------
+                              M=16384, N=16384, K=8192, Warmup=5, Iters=20, 27/27
+----------------------------------------------------------------------------------------------------------------------------------
+           (wmma4x4+warp4x4+stage3+dsmem): ['68.375    ', '-2.234375 '], time:96.91984ms, swizzle: NOOP, TFLOPS: 45.38 (+0.00%)
+           (wmma4x4+warp4x4+stage2+dsmem): ['68.375    ', '-2.234375 '], time:102.8722ms, swizzle: NOOP, TFLOPS: 42.75
+   (wmma4x4+warp4x4+stage3+dsmem+swizzle): ['68.375    ', '-2.234375 '], time:85.65800ms, swizzle: 4096, TFLOPS: 51.34 (+13.15%)
+   (wmma4x4+warp4x4+stage2+dsmem+swizzle): ['68.375    ', '-2.234375 '], time:95.70884ms, swizzle: 4096, TFLOPS: 45.95
+                                 (cublas): ['68.375    ', '-2.234375 '], time:104.2092ms, swizzle: NOOP, TFLOPS: 42.20
 ----------------------------------------------------------------------------------------------------------------------------------
 ```
 
