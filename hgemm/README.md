@@ -57,11 +57,11 @@ python3 hgemm.py --wmma-all # test all wmma kernels for all MNK
 python3 hgemm.py --mma-all # test all mma kernels for all MNK
 python3 hgemm.py --cuda-all --wmma-all --mma-all # test all kernels for all MNK
 ```
-如果需要绘制TFLOPS曲线图，需要先安装matplotlib，并指定--plot-tflops（或--plot）选项:
+如果需要绘制TFLOPS曲线图，需要先安装matplotlib，并指定--plot-flops（或--plot）选项:
 ```bash
 python3 -m pip install matplotlib
 # topk指定只绘制性能最好的topk个kernel
-python3 hgemm.py --mma-all --plot-tflops --topk 8 
+python3 hgemm.py --mma-all --plot --topk 8 
 ```
 
 ## 目前性能  

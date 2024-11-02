@@ -36,6 +36,7 @@ def get_args():
     parser.add_argument("--no-default", action="store_true", help="Disable default tests")
     parser.add_argument("--plot-flops", "--plot", action="store_true", help="Plot TFLOPS")
     parser.add_argument("--plot-topk", "--topk", type=int, default=8, help="Plot top k TFLOPS")
+    parser.add_argument("--no-hint-top1", "--no-hint", action="store_true", help="Hint top 1 TFLOPS")
     parser.add_argument("--exclude-tags", "--exclude", type=str, default=None, help="Exclude tag for plot, sperated by comma")
     parser.add_argument("--save-tag", "--tag", type=str, default=None, help="Save tag for plot")
     return parser.parse_args()
@@ -208,6 +209,7 @@ def plot_tflops():
     import matplotlib.pyplot as plt
     import numpy as np
     _, ax = plt.subplots(figsize=(16, 9))
+    plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.05)
     ax.set_title(f"My HGEMM, {get_device_name()}, Warmup={args.warmup}, Iters={args.iters}")
     ax.set_xlabel("M=N=K")
     ax.set_ylabel("TFLOPS")
@@ -233,7 +235,7 @@ def plot_tflops():
         if "cublas" in tag:
             ax.plot(tflops, label=tag, linewidth=3)
         else:
-            if is_top_1:
+            if is_top_1 and not args.no_hint_top1:
                 ax.plot(tflops, label=tag, linewidth=4)
                 is_top_1 = False
             else:
