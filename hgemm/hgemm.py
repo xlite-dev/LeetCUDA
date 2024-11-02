@@ -213,8 +213,8 @@ def plot_tflops():
     import matplotlib.pyplot as plt
     import numpy as np
     _, ax = plt.subplots(figsize=(16, 9))
-    plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.05)
-    ax.set_title(f"My HGEMM, {get_device_name()}, Warmup={args.warmup}, Iters={args.iters}")
+    plt.subplots_adjust(left=0.03, right=0.99, top=0.95, bottom=0.05)
+    ax.set_title(f"My HGEMM vs cuBLAS, {get_device_name()}, Warmup={args.warmup}, Iters={args.iters}")
     ax.set_xlabel("M=N=K")
     ax.set_ylabel("TFLOPS")
     ax.grid(True)
