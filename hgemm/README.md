@@ -151,7 +151,7 @@ python3 hgemm.py --mma-all --wmma-all --cuda-all
 
 在NVIDIA GeForce RTX 3080 Laptop上测试，使用mma4x4_warp4x4（16 WMMA m16n16k16 ops, warp tile 64x64）以及Thread block swizzle，大部分case能持平甚至超过cuBLAS，不过Laptop由于我是在WSL测试的，性能数据不稳定，这部分看看就好，别太当真。
 
-![](./NVIDIA_GeForce_RTX_3080_Laptop_GPU.png)
+![](./NVIDIA_GeForce_RTX_3080_Laptop_GPU_WSL2.png)
 
 ```bash
 python3 hgemm.py --wmma-all

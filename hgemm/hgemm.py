@@ -185,7 +185,11 @@ def run_benchmark(perf_func: callable,
 
 
 def get_device_name():
-    return torch.cuda.get_device_name(torch.cuda.current_device())
+    device_name = torch.cuda.get_device_name(torch.cuda.current_device())
+    # we will run GPU on WSL2, so add WSL2 tag.
+    if "Laptop" in device_name:
+        device_name += " WSL2"
+    return device_name
 
 
 def get_device_capability():
