@@ -39,7 +39,7 @@ def get_args():
     parser.add_argument("--plot-topk", "--topk", type=int, default=8, help="Plot top k TFLOPS")
     parser.add_argument("--no-plot-best", "--no-best", action="store_true", help="Not Plot best TFLOPS")
     parser.add_argument("--exclude-tags", "--exclude", type=str, default=None, help="Exclude tag for plot, sperated by comma")
-    parser.add_argument("--save-tag", "--tag", type=str, default=None, help="Save tag for plot")
+    parser.add_argument("--save-dir", "--dir", type=str, default="./", help="Save dir for plot")
     return parser.parse_args()
 
 args = get_args()
@@ -265,14 +265,10 @@ def plot_tflops():
                 ax.plot(tflops, label=tag, linestyle='--')
 
     ax.legend()
-    if args.save_tag:
-        plt.savefig(f"{args.save_tag}", dpi=300)
-        print(f"plot hgemm TFLOPS done, saved as {args.save_tag}")
-    else:
-        device_name = get_device_name().replace(" ", "_")
-        save_tag = f"{device_name}.png"
-        plt.savefig(save_tag, dpi=300)
-        print(f"plot hgemm TFLOPS done, saved as {save_tag}")
+    device_name = get_device_name().replace(" ", "_")
+    save_tag = f"{args.save_dir}/{device_name}.png"
+    plt.savefig(save_tag, dpi=300)
+    print(f"plot hgemm TFLOPS done, saved as {save_tag}")
 
 
 def get_mnk(sep: int = args.SEP):
