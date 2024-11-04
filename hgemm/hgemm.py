@@ -15,7 +15,7 @@ def get_args():
     parser.add_argument("--K", type=int, default=None, help="Matrix K size")
     parser.add_argument("--MNK", type=int, default=None, help="Matrix M=N=K size")
     parser.add_argument("--MMNK", type=int, default=12800, help="Matrix MAX M=M=N=K size")
-    parser.add_argument("--SEP", '--sep', type=int, default=512, help="Matrix SEP M=M=N=K size")
+    parser.add_argument("--SEP", '--sep', type=int, default=256, help="Matrix SEP M=M=N=K size")
     parser.add_argument("--warmup", "--w", type=int, default=2, help="Warmup iters")
     parser.add_argument("--iters", "--i", type=int, default=10, help="Benchmark iters")
     parser.add_argument("--verbose", "--v", action="store_true", help="Verbose")
