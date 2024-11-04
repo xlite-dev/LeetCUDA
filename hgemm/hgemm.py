@@ -232,7 +232,8 @@ def plot_tflops():
     
     topk_tflops = get_topk_tflops()
     is_top_1 = lambda tag: tag == topk_tflops[0]
-    for tag, tflops in STATIS_INFO.items():
+    for tag in topk_tflops:
+        tflops = STATIS_INFO[tag]
         if (should_exclude(tag)) or (tag not in topk_tflops 
                                      and "cublas" not in tag):
             continue
