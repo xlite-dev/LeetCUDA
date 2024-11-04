@@ -11,7 +11,9 @@
 
 🎉 **Modern CUDA Learn Notes with PyTorch** for **Beginners**: **fp32/tf32, fp16/bf16, fp8/int8, Tensor/CUDA Cores**, flash_attn, rope, embedding, sgemm, sgemv, hgemm, hgemv, warp/block reduce, dot prod, elementwise, sigmoid, relu, gelu, softmax, layernorm, rmsnorm, hist and some CUDA optimization techniques (pack LDST, cp.async, warp gemv, sliced_k/split_k/pipeline gemm, bank conflicts reduce, WMMA/MMA, block/warp swizzle, etc).
 
+<!---
 <img width="1438" alt="image" src="https://github.com/user-attachments/assets/0c5e5125-586f-43fa-8e8b-e2c61c1afbbe">
+--->
 
 ### 📖 HGEMM/SGEMM Supported Matrix
 
