@@ -14,7 +14,7 @@ def get_args():
     parser.add_argument("--K", type=int, default=None, help="Matrix K size")
     parser.add_argument("--MNK", type=int, default=None, help="Matrix M=N=K size")
     parser.add_argument("--MMNK", type=int, default=16384, help="Matrix MAX M=M=N=K size")
-    parser.add_argument("--SEP", type=int, default=512, help="Matrix MAX M=M=N=K size")
+    parser.add_argument("--SEP", '--sep', type=int, default=512, help="Matrix SEP M=M=N=K size")
     parser.add_argument("--warmup", "--w", type=int, default=2, help="Warmup iters")
     parser.add_argument("--iters", "--i", type=int, default=10, help="Benchmark iters")
     parser.add_argument("--verbose", "--v", action="store_true", help="Verbose")
@@ -206,14 +206,14 @@ def get_topk_tflops():
         print(f"{tag:>42}: {tflops:<10.2f} TFLOPS")
     print(f"{'(cublas)':>42}: {CUBLAS_TOTAL_TFLOPS:<10.2f} TFLOPS")    
     print("-" * 130)
-    return dict(topk_tflops[:args.plot_topk]).keys()
+    return list(dict(topk_tflops[:args.plot_topk]).keys())
 
 
 def plot_tflops():
     import matplotlib.pyplot as plt
     import numpy as np
     _, ax = plt.subplots(figsize=(16, 9))
-    plt.subplots_adjust(left=0.03, right=0.99, top=0.95, bottom=0.05)
+    plt.subplots_adjust(left=0.04, right=0.99, top=0.95, bottom=0.05)
     ax.set_title(f"My HGEMM vs cuBLAS, {get_device_name()}, Warmup={args.warmup}, Iters={args.iters}")
     ax.set_xlabel("M=N=K")
     ax.set_ylabel("TFLOPS")
@@ -231,7 +231,7 @@ def plot_tflops():
         return False
     
     topk_tflops = get_topk_tflops()
-    is_top_1 = True
+    is_top_1 = lambda tag: tag == topk_tflops[0]
     for tag, tflops in STATIS_INFO.items():
         if (should_exclude(tag)) or (tag not in topk_tflops 
                                      and "cublas" not in tag):
@@ -239,9 +239,8 @@ def plot_tflops():
         if "cublas" in tag:
             ax.plot(tflops, label=tag, linewidth=3)
         else:
-            if is_top_1 and not args.no_hint_top1:
+            if is_top_1(tag) and not args.no_hint_top1:
                 ax.plot(tflops, label=tag, linewidth=4)
-                is_top_1 = False
             else:
                 ax.plot(tflops, label=tag, linestyle='--')
 
