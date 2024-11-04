@@ -33,8 +33,6 @@ Currently, on NVIDIA L20, RTX 4090 and RTX 3090 Laptop, compared with cuBLAS's d
 
 ![4090](https://github.com/user-attachments/assets/c7d65fe5-9fb9-49a8-b962-a6c09bcc030a)
 
-![3080](./hgemm/NVIDIA_GeForce_RTX_3080_Laptop_GPU_WSL2.png)
-
 ## 📖 CUDA Kernel目录 (面试常考题目)   
 - / = not supported now.  
 - ✔️ = known work and already supported now.
