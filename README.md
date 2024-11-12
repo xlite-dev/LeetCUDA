@@ -17,6 +17,8 @@
 
 ### 📖 HGEMM/SGEMM Supported Matrix
 
+<div id="hgemm-sgemm"></div>  
+
 |CUDA Cores|Sliced K(Loop over K)|Tile Block|Tile Thread|
 |:---:|:---:|:---:|:---:|
 |✔️|✔️|✔️|✔️|
@@ -37,12 +39,21 @@ Currently, on NVIDIA L20, RTX 4090 and RTX 3090 Laptop, compared with cuBLAS's d
 ![4090](https://github.com/user-attachments/assets/c7d65fe5-9fb9-49a8-b962-a6c09bcc030a)
 --->
 
+## 📖 Contents  
+- [📖 HGEMM/SGEMM Supported Matrix](#hgemm-sgemm)
+- [📖 CUDA Kernel目录 (面试常考题目)](#cuda-kernel)
+- [📖 大模型|多模态|Diffusion|推理优化 (本人作者)](#my-blogs-part-1)
+- [📖 CV推理部署|C++|算法|技术随笔 (本人作者)](#my-blogs-part-2)
+- [📖 CUTLASS|CuTe|NCCL|CUDA|文章推荐 (其他作者)](#other-blogs)
+
 ## 📖 CUDA Kernel目录 (面试常考题目)   
 - / = not supported now.  
 - ✔️ = known work and already supported now.
 - ❔ = in my plan, but not coming soon, maybe a few weeks later.
 - **workflow**: custom **CUDA** kernel impl -> **PyTorch** python binding -> Run tests.
 - How to contribute? please check [🌤🌤Kernel Trace & 目标 & 代码规范 & 致谢🎉🎉](https://github.com/DefTruth/CUDA-Learn-Notes/issues/50) 
+
+<div id="cuda-kernel"></div>  
 
 |📖 cuda kernel| 📖 elem dtype| 📖 acc dtype| 📖 docs | 📖 level |
 |:---|:---|:---|:---|:---|  
@@ -190,11 +201,13 @@ Currently, on NVIDIA L20, RTX 4090 and RTX 3090 Laptop, compared with cuBLAS's d
 
 ## 📖 博客目录
 
+<div id="my-blogs-part-1"></div>  
+
 ### 📖 大模型|多模态|Diffusion|推理优化 (本人作者)
 
 |📖 类型-标题|📖 作者|
 |:---|:---| 
-|[[分布式训推][张量/序列并行]📖图解DeepSpeed-Ulysses & Megatron-LM TP/SP](https://zhuanlan.zhihu.com/p/5750410146)|@DefTruth|
+|[[分布式训推][张量/序列并行]📖图解DeepSpeed-Ulysses&Megatron-LM TP/SP](https://zhuanlan.zhihu.com/p/5750410146)|@DefTruth|
 |[[VLM推理优化][InternVL系列]📖InternLM2/.../InternVL1.5系列笔记: 核心点解析](https://zhuanlan.zhihu.com/p/702481058)|@DefTruth|
 |[[LLM推理优化][TensorRT-LLM][5w字]📖TensorRT-LLM部署调优-指北](https://zhuanlan.zhihu.com/p/699333691)|@DefTruth|
 |[[LLM推理优化][KV Cache优化]📖GQA/YOCO/CLA/MLKV: 层内和层间KV Cache共享](https://zhuanlan.zhihu.com/p/697311739)|@DefTruth|
@@ -220,6 +233,8 @@ Currently, on NVIDIA L20, RTX 4090 and RTX 3090 Laptop, compared with cuBLAS's d
 
 
 ### 📖 CV推理部署|C++|算法|技术随笔 (本人作者)
+
+<div id="my-blogs-part-2"></div>  
 
 |📖 类型-标题|📖 作者|
 |:---|:---| 
@@ -270,6 +285,8 @@ Currently, on NVIDIA L20, RTX 4090 and RTX 3090 Laptop, compared with cuBLAS's d
 
 
 ### 📖 CUTLASS|CuTe|NCCL|CUDA|文章推荐 (其他作者)
+
+<div id="other-blogs"></div>  
 
 |📖 类型-标题|📖 作者|
 |:---|:---| 
