@@ -40,13 +40,13 @@ Currently, on NVIDIA L20, RTX 4090 and RTX 3090 Laptop, compared with cuBLAS's d
 --->
 
 ## 📖 Contents  
-- [📖 HGEMM/SGEMM Supported Matrix](#hgemm-sgemm)
-- [📖 CUDA Kernel目录 (面试常考题目)](#cuda-kernel)
-- [📖 大模型|多模态|Diffusion|推理优化 (本人作者)](#my-blogs-part-1)
-- [📖 CV推理部署|C++|算法|技术随笔 (本人作者)](#my-blogs-part-2)
-- [📖 CUTLASS|CuTe|NCCL|CUDA|文章推荐 (其他作者)](#other-blogs)
+- [📖HGEMM/SGEMM Supported Matrix🔥🔥](#hgemm-sgemm)
+- [📖必看100+ CUDA Kernel(面试常考题目)🔥🔥🔥](#cuda-kernel)
+- [📖大模型|多模态|Diffusion|推理优化(本人作者)🔥🔥](#my-blogs-part-1)
+- [📖CV推理部署|C++|算法|技术随笔(本人作者)🔥🔥](#my-blogs-part-2)
+- [📖CUTLASS|CuTe|NCCL|CUDA|文章推荐(其他作者)🔥🔥](#other-blogs)
 
-## 📖 CUDA Kernel目录 (面试常考题目)   
+## 📖 100+ CUDA Kernel (面试常考题目)   
 - / = not supported now.  
 - ✔️ = known work and already supported now.
 - ❔ = in my plan, but not coming soon, maybe a few weeks later.
