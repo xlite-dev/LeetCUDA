@@ -9,13 +9,12 @@
   <img src=https://img.shields.io/badge/License-GPLv3.0-turquoise.svg >
  </div>   
 
-## 📒 Introduction
-
 <div id="contents"></div>  
 
-🎉 **Modern CUDA Learn Notes with PyTorch** for **Beginners**: **Tensor/CUDA Cores, fp16/bf16, fp8, tf32**, flash_attn, rope, embedding, sgemm, sgemv, hgemm, hgemv, warp/block reduce, dot, elementwise, softmax, layernorm, rmsnorm, hist and some CUDA optimization techniques (pack LDST, cp.async, warp gemv, sliced_k, bank conflicts reduce, WMMA/MMA, block/warp swizzle, etc). Please check [📖HGEMM/SGEMM🔥🔥](#hgemm-sgemm), [📖100+ CUDA Kernels🔥🔥](#cuda-kernel), [📖30+ LLM/VLM/SD Blogs🔥](#my-blogs-part-1), [📖40+ CV/C++/...Blogs🔥](#my-blogs-part-2) and [📖50+ CUTLASS/CuTe/...Blogs🔥](#other-blogs) for more details.
+🎉 This repo aims to build a **Modern CUDA Learn Notes with PyTorch** for **Beginners**, including the usages of **Tensor/CUDA Cores, fp32/tf32, fp16/bf16, fp8/int8**, [📖100+ CUDA Kernels🔥🔥](#cuda-kernel), [📖30+ LLM/VLM Blogs🔥](#my-blogs-part-1), [📖40+ CV/C++/...Blogs🔥](#my-blogs-part-2), [📖50+ CUDA/CuTe/...Blogs🔥](#other-blogs) and [📖HGEMM/SGEMM🔥🔥](#hgemm-sgemm) which has been fully optimized by some CUDA techs (pack LDST, tiling, cp.async, MMA, swizzle, etc).
 
 <!---
+## 📒 Introduction
 
 ## 📒 Contents
 <div id="contents"></div>  
@@ -29,7 +28,7 @@
 <img width="1438" alt="image" src="https://github.com/user-attachments/assets/0c5e5125-586f-43fa-8e8b-e2c61c1afbbe">
 --->
 
-## 📖 HGEMM/SGEMM Supported Matrix [©️back](#contents)
+### 📖 HGEMM/SGEMM Supported Matrix [©️back](#contents)
 
 <div id="hgemm-sgemm"></div>  
 
