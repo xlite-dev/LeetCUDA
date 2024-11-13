@@ -11,7 +11,7 @@
 
 <div id="contents"></div>  
 
-🎉 This repo aims to build a **Modern CUDA Learn Notes with PyTorch** for **Beginners**, including the usages of **Tensor/CUDA Cores, tf32, fp16/bf16, fp8/int8**, [📖100+ CUDA Kernels🔥](#cuda-kernel), [📖30+ LLM/VLM Blogs🔥](#my-blogs-part-1), [📖40+ CV/C++/...Blogs🔥](#my-blogs-part-2), [📖50+ CUDA/CuTe/...Blogs🔥](#other-blogs) and [📖HGEMM/SGEMM🔥](#hgemm-sgemm) which has been fully optimized with some CUDA techs (pack, tiling, cp.async, MMA, swizzle, etc). Welcome to 🌟👆🏻star this repo to support me!
+🎉 This repo aims to build a **Modern CUDA Learn Notes with PyTorch** for **Beginners**, including **Tensor/CUDA Cores, tf32, fp16/bf16, fp8/int8**, [📖100+ CUDA Kernels🔥](#cuda-kernel), [📖30+ LLM/VLM Blogs🔥](#my-blogs-part-1), [📖40+ CV/C++/...Blogs🔥](#my-blogs-part-2), [📖50+ CUDA/CuTe/...Blogs🔥](#other-blogs) and [📖HGEMM/SGEMM🔥](#hgemm-sgemm) which has been fully optimized with some CUDA techs (pack, tiling, cp.async, MMA, swizzle, etc). Welcome to 🌟👆🏻star this repo to support me!
 
 <!---
 ## 📒 Introduction
