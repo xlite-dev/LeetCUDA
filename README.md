@@ -9,13 +9,27 @@
   <img src=https://img.shields.io/badge/License-GPLv3.0-turquoise.svg >
  </div>   
 
-🎉 **Modern CUDA Learn Notes with PyTorch** for **Beginners**: **fp32/tf32, fp16/bf16, fp8/int8, Tensor/CUDA Cores**, flash_attn, rope, embedding, sgemm, sgemv, hgemm, hgemv, warp/block reduce, dot prod, elementwise, sigmoid, relu, gelu, softmax, layernorm, rmsnorm, hist and some CUDA optimization techniques (pack LDST, cp.async, warp gemv, sliced_k/split_k/pipeline gemm, bank conflicts reduce, WMMA/MMA, block/warp swizzle, etc).
+## 📒 Introduction
+
+<div id="contents"></div>  
+
+🎉 **Modern CUDA Learn Notes with PyTorch** for **Beginners**: **Tensor/CUDA Cores, fp16/bf16, fp8, tf32**, flash_attn, rope, embedding, sgemm, sgemv, hgemm, hgemv, warp/block reduce, dot, elementwise, softmax, layernorm, rmsnorm, hist and some CUDA optimization techniques (pack LDST, cp.async, warp gemv, sliced_k, bank conflicts reduce, WMMA/MMA, block/warp swizzle, etc). Please check [📖HGEMM/SGEMM🔥🔥](#hgemm-sgemm), [📖100+ CUDA Kernels🔥🔥](#cuda-kernel), [📖30+ LLM/VLM/SD Blogs🔥](#my-blogs-part-1), [📖40+ CV/C++/...Blogs🔥](#my-blogs-part-2) and [📖50+ CUTLASS/CuTe/...Blogs🔥](#other-blogs) for more details.
 
 <!---
+
+## 📒 Contents
+<div id="contents"></div>  
+
+- [📖HGEMM/SGEMM Supported Matrix🔥🔥🔥🔥](#hgemm-sgemm)
+- [📖100+ 必看CUDA Kernel(面试常考题目)🔥🔥🔥🔥](#cuda-kernel)
+- [📖20+ 大模型|多模态|Diffusion|推理优化文章(本人作者)🔥🔥](#my-blogs-part-1)
+- [📖40+ CV推理部署|C++|算法|技术随笔文章(本人作者)🔥🔥](#my-blogs-part-2)
+- [📖50+ CUTLASS|CuTe|NCCL|CUDA|文章推荐(其他作者)🔥🔥](#other-blogs)
+
 <img width="1438" alt="image" src="https://github.com/user-attachments/assets/0c5e5125-586f-43fa-8e8b-e2c61c1afbbe">
 --->
 
-### 📖 HGEMM/SGEMM Supported Matrix [©️back](#contents)
+## 📖 HGEMM/SGEMM Supported Matrix [©️back](#contents)
 
 <div id="hgemm-sgemm"></div>  
 
@@ -38,16 +52,6 @@ Currently, on NVIDIA L20, RTX 4090 and RTX 3090 Laptop, compared with cuBLAS's d
 <!---
 ![4090](https://github.com/user-attachments/assets/c7d65fe5-9fb9-49a8-b962-a6c09bcc030a)
 --->
-
-## 📖 Contents [©️back](#contents)
-
-<div id="contents"></div>  
-
-- [📖HGEMM/SGEMM Supported Matrix🔥🔥🔥🔥](#hgemm-sgemm)
-- [📖100+ 必看CUDA Kernel(面试常考题目)🔥🔥🔥🔥](#cuda-kernel)
-- [📖20+ 大模型|多模态|Diffusion|推理优化文章(本人作者)🔥🔥](#my-blogs-part-1)
-- [📖40+ CV推理部署|C++|算法|技术随笔文章(本人作者)🔥🔥](#my-blogs-part-2)
-- [📖50+ CUTLASS|CuTe|NCCL|CUDA|文章推荐(其他作者)🔥🔥](#other-blogs)
 
 ## 📖 100+ CUDA Kernel (面试常考题目) [©️back](#contents)
 - / = not supported now.  
