@@ -47,7 +47,7 @@
 
 ## 测试命令
 
-**CUTLASS**: 更新CUTLASS依赖库，用到CuTe
+**CUTLASS**: 更新CUTLASS依赖库
 ```bash
 git submodule update --init --recursive --force
 ```
