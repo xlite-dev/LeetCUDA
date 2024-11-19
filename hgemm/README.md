@@ -68,7 +68,7 @@ python3 -m pip install matplotlib
 # topk指定只绘制性能最好的topk个kernel
 python3 hgemm.py --mma-all --plot --topk 8
 # test default mma kernels & cute hgemm kernels with smem swizzle for all MNK
-python3 hgemm.py --cute-tn --mma --no-default --plot 
+python3 hgemm.py --cute-tn --mma --plot 
 ```
 
 **C++**: C++测试目前仅支持CuTe HGEMM，C++ bin方式测试的性能数据会略优于python测试方式，可能是torch binding引入了一定的开销。
