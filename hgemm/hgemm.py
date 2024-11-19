@@ -321,6 +321,13 @@ def get_mnk(sep: int = args.SEP):
     return Ms, Ns, Ks
 
 
+def trans_b_row2col(b: torch.Tensor):
+    # convert a row major tensor to col major with contiguous storage
+    b_trans = b.t()
+    b_col_major = b_trans.reshape(b.shape)
+    return b_col_major.contiguous() # must be a contiguous tensor
+
+
 Ms, Ns, Ks = get_mnk()
 STATIS_INFO["MNK"] = Ms
 if args.MNK:
@@ -354,6 +361,7 @@ for (M, N, K) in zip(Ms, Ns, Ks):
     a = A[:M, :K].contiguous()
     b = B[:K, :N].contiguous()
     c = C[:M, :N].contiguous()
+    b_col_major = trans_b_row2col(b)
     torch.cuda.synchronize()
     if args.enable_cuda_all: # more cuda cores kernel tests.
         # CUDA Cores FP16
@@ -425,27 +433,28 @@ for (M, N, K) in zip(Ms, Ns, Ks):
         run_benchmark(lib.hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_x4, a, b, "(mma2x4+warp4x4x2+stage4+dsmem+swizzle+x4)", c, stages=4, swizzle=True)
         run_benchmark(lib.hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_x4, a, b, "(mma2x4+warp4x4x2+stage3+dsmem+swizzle+x4)", c, stages=3, swizzle=True)
         run_benchmark(lib.hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_x4, a, b, "(mma2x4+warp4x4x2+stage2+dsmem+swizzle+x4)", c, stages=2, swizzle=True)
+    # TN layout: A row major with shape [M,K], B col major with shape [K,N]
+    if any((args.enable_mma_tn, args.enable_cute_tn)):
+        print("-" * 68 + "TN" + "-" * 60)
+    if args.enable_mma_tn:
+        run_benchmark(lib.hgemm_mma_m16n8k16_mma2x4_warp4x4_stages_dsmem_tn, a, b_col_major, "tn(mma2x4+warp4x4+stage3+dsmem)", c, stages=3)
+        run_benchmark(lib.hgemm_mma_m16n8k16_mma2x4_warp4x4_stages_dsmem_tn, a, b_col_major, "tn(mma2x4+warp4x4+stage2+dsmem)", c, stages=2)
+        run_benchmark(lib.hgemm_mma_m16n8k16_mma2x4_warp4x4_stages_dsmem_tn, a, b_col_major, "tn(mma2x4+warp4x4+stage3+dsmem+swizzle)", c, stages=3, swizzle=True)
+        run_benchmark(lib.hgemm_mma_m16n8k16_mma2x4_warp4x4_stages_dsmem_tn, a, b_col_major, "tn(mma2x4+warp4x4+stage2+dsmem+swizzle)", c, stages=2, swizzle=True)
+    if args.enable_cute_tn:
+        run_benchmark(lib.hgemm_mma_stages_tn_cute, a, b_col_major, "tn(cute+swizzle<smem>+stage4)", c, stages=4)
+        run_benchmark(lib.hgemm_mma_stages_tn_cute, a, b_col_major, "tn(cute+swizzle<smem>+stage3)", c, stages=3)
+        run_benchmark(lib.hgemm_mma_stages_tn_cute, a, b_col_major, "tn(cute+swizzle<smem>+stage2)", c, stages=2)
+    # TN layout cublas
+    if not args.disable_cublas_tn and any((args.enable_mma_tn, args.enable_cute_tn)):
+        run_benchmark(lib.hgemm_cublas_tensor_op_tn, a, b_col_major, "tn(cublas)", c)
+    # NN layout cublas
     if (not args.disable_cublas) and any((
         args.enable_mma, args.enable_mma_all, args.enable_wmma, args.enable_wmma_all, 
         args.enable_cuda, args.enable_cuda_all, args.enable_torch)):
         run_benchmark(lib.hgemm_cublas_tensor_op_nn, a, b, "(cublas)", c)
     if args.enable_torch:
         run_benchmark(partial(torch.matmul, out=c), a, b, "(torch)")
-    # TN layout: A row major with shape [M,K], B col major with shape [N,K]
-    if any((args.enable_mma_tn, args.enable_cute_tn)):
-        MAX_TFLOPS = -1
-        print("-" * 68 + "TN" + "-" * 60)
-    if args.enable_mma_tn:
-        run_benchmark(lib.hgemm_mma_m16n8k16_mma2x4_warp4x4_stages_dsmem_tn, a, b.transpose(1, 0), "tn(mma2x4+warp4x4+stage3+dsmem)", c, stages=3)
-        run_benchmark(lib.hgemm_mma_m16n8k16_mma2x4_warp4x4_stages_dsmem_tn, a, b.transpose(1, 0), "tn(mma2x4+warp4x4+stage2+dsmem)", c, stages=2)
-        run_benchmark(lib.hgemm_mma_m16n8k16_mma2x4_warp4x4_stages_dsmem_tn, a, b.transpose(1, 0), "tn(mma2x4+warp4x4+stage3+dsmem+swizzle)", c, stages=3, swizzle=True)
-        run_benchmark(lib.hgemm_mma_m16n8k16_mma2x4_warp4x4_stages_dsmem_tn, a, b.transpose(1, 0), "tn(mma2x4+warp4x4+stage2+dsmem+swizzle)", c, stages=2, swizzle=True)
-    if args.enable_cute_tn:
-        run_benchmark(lib.hgemm_mma_stages_tn_cute, a, b.transpose(1, 0), "tn(cute+swizzle<smem>+stage4)", c, stages=4)
-        run_benchmark(lib.hgemm_mma_stages_tn_cute, a, b.transpose(1, 0), "tn(cute+swizzle<smem>+stage3)", c, stages=3)
-        run_benchmark(lib.hgemm_mma_stages_tn_cute, a, b.transpose(1, 0), "tn(cute+swizzle<smem>+stage2)", c, stages=2)
-    if not args.disable_cublas_tn and any((args.enable_mma_tn, args.enable_cute_tn)):
-        run_benchmark(lib.hgemm_cublas_tensor_op_tn, a, b.transpose(1, 0), "tn(cublas)", c)
     torch.cuda.synchronize()
     print("-" * 130)
 
