@@ -109,12 +109,12 @@ def make_block_swizzle_stride(N: int, K: int):
     # make swizzle stride as N/8,N/4,N/2 and multiples of 256
     if args.swizzle_factor is None:
         swizzle_factor = 0.5 if N <= 4096 else 0.25
-        if all((N >= 13056, K > 8192, (int(N*0.125) % 256) == 0)):
+        if all((N >= 14848, K > 8192, N % 8 == 0)):
             swizzle_factor = 0.125
     else:
         swizzle_factor = args.swizzle_factor
 
-    swizzle_stride = int((int(N * swizzle_factor) // 256) * 256)
+    swizzle_stride = int(N * swizzle_factor)
     swizzle_stride = swizzle_stride if swizzle_stride >= 256 else 1
 
     return swizzle_stride
@@ -197,7 +197,6 @@ def run_benchmark(perf_func: callable,
             print(f"{out_info:>42}: {out_val}, time:{mean_time}ms, "
                   f"swizzle: {swizzle_stride:<4}, TFLOPS: {TFLOPS:<6.2f}")
     if show_matrix: print(out)
-    time.sleep(args.sleep_duration)
     if args.plot_flops:
         STATIS_INFO[tag] = STATIS_INFO.get(tag, [])
         STATIS_INFO[tag].append(TFLOPS)
@@ -206,6 +205,9 @@ def run_benchmark(perf_func: callable,
         else:
             global CUBLAS_TOTAL_TFLOPS
             CUBLAS_TOTAL_TFLOPS += TFLOPS
+
+    torch.cuda.synchronize()
+    time.sleep(args.sleep_duration)
     return out, mean_time
 
 
