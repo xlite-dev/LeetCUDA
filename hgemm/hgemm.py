@@ -104,6 +104,22 @@ STATIS_INFO["MNK"] = []
 TOATL_TFLOPS: dict[str, float] = {}
 CUBLAS_TOTAL_TFLOPS = 0
 
+
+def make_block_swizzle_stride(N: int, K: int):
+    # make swizzle stride as N/8,N/4,N/2 and multiples of 256
+    if args.swizzle_factor is None:
+        swizzle_factor = 0.5 if N <= 4096 else 0.25
+        if all((N >= 12800, K > 8196)):
+            swizzle_factor = 0.125
+    else:
+        swizzle_factor = args.swizzle_factor
+
+    swizzle_stride = int((int(N * swizzle_factor) // 256) * 256)
+    swizzle_stride = swizzle_stride if swizzle_stride >= 256 else 1
+
+    return swizzle_stride
+
+
 def run_benchmark(perf_func: callable, 
                   a: torch.Tensor, b: torch.Tensor,
                   tag: str, out: Optional[torch.Tensor] = None, 
@@ -121,13 +137,7 @@ def run_benchmark(perf_func: callable,
     if 'tn' in tag:
         N = b.size(0)
     if swizzle:
-        # make swizzle stride as N/4 or N/2 and multiples of 256
-        if args.swizzle_factor is None:
-            swizzle_factor = 0.5 if N <= 4096 else 0.25
-        else:
-            swizzle_factor = args.swizzle_factor
-        swizzle_stride = int((int(N * swizzle_factor) // 256) * 256)
-        swizzle_stride = swizzle_stride if swizzle_stride >= 256 else 1
+        swizzle_stride = make_block_swizzle_stride(N, K)
         swizzle = swizzle if swizzle_stride >= 256 else False
     else:
         swizzle_stride = 1 # means no thread block swizzle
