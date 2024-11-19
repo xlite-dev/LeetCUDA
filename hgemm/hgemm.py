@@ -332,11 +332,11 @@ def get_mnk(sep: int = args.SEP):
     return Ms, Ns, Ks
 
 
-def trans_b_row2col(b: torch.Tensor):
+def row2col(x: torch.Tensor):
     # convert a row major tensor -> col major with contiguous storage
-    b_trans = b.t()
-    b_col_major = b_trans.reshape(b.shape)
-    return b_col_major.contiguous() # must be a contiguous tensor
+    x_trans = x.t()
+    x_col_major = x_trans.reshape(b.shape)
+    return x_col_major.contiguous() # must be a contiguous tensor
 
 
 Ms, Ns, Ks = get_mnk()
@@ -372,7 +372,7 @@ for (M, N, K) in zip(Ms, Ns, Ks):
     a = A[:M, :K].contiguous()
     b = B[:K, :N].contiguous()
     c = C[:M, :N].contiguous()
-    b_col_major = trans_b_row2col(b)
+    b_col_major = row2col(b)
     torch.cuda.synchronize()
     if args.enable_cuda_all: # more cuda cores kernel tests.
         # CUDA Cores FP16
