@@ -36,8 +36,8 @@ Currently, on NVIDIA L20, RTX 4090 and RTX 3090 Laptop, compared with cuBLAS's d
 |✔️|✔️|✔️|✔️|
 |Reg Double Buffers|Block Swizzle|Warp Swizzle|Collective Store(Warp Shfl)|
 |✔️|✔️|✔️|✔️|
-|Row Major(NN)|Col Major(TN)|SGEMM TF32|SMEM Swizzle(Permuted)|
-|✔️|✔️|✔️|...|
+|Row Major(NN)|Col Major(TN)|SGEMM TF32|SMEM Swizzle(CuTe)|
+|✔️|✔️|✔️|✔️|
 
 
 
