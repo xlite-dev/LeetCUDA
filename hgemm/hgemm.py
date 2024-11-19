@@ -165,9 +165,7 @@ def run_benchmark(perf_func: callable,
 
     M = a.size(0)
     K = a.size(1)
-    N = b.size(1)
-    if 'tn' in tag:
-        N = b.size(0)
+    N = b.size(1) # TN still has shape [K,N]
     if swizzle:
         swizzle_stride = make_block_swizzle_stride(N, K)
         swizzle = swizzle if swizzle_stride >= 256 else False
