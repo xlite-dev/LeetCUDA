@@ -398,5 +398,6 @@ How to contribute? please check [🌤🌤CONTRIBUTE🎉🎉](https://github.com/
 - [cuda_hgemm](https://github.com/Bruce-Lee-LY/cuda_hgemm)
 - [cuda-tensorcore-hgemm](https://github.com/nicolaswilde/cuda-tensorcore-hgemm)
 - [How_to_optimize_in_GPU](https://github.com/Liu-xiandong/How_to_optimize_in_GPU/tree/master/sgemv)
-  
+- [cute_gemm](https://github.com/weishengying/cute_gemm)
+
 </details>
