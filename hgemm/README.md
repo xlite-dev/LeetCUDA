@@ -109,7 +109,7 @@ M N K =  16128  16128  16128, Time =   0.07299379   0.07302472   0.07304806 s, A
 
 ### NVIDIA L20  
 
-目前最优的实现，在L20上（理论Tensor Cores FP16算力为 119.5 TFLOPS），使用WMMA API能达到cuBLAS大概95%~98%左右的性能(105-113 TFLOPS vs 105-115 TFLOPS)，使用MMA API能达到115 TFLOPS，部分case会超越cuBLAS。CuTe版本的HGEMM性能基本持平或略优于cuBLAS，能达到116 TFLOPS。目前通过padding和smem swizzle的方式缓解bank conflicts。对于NN layout，使用smem padding缓解bank conflicts；对于TN layout，通过cutlass cute的smem swizzle/permuted消除bank conflicts。
+目前最优的实现，在L20上（理论Tensor Cores FP16算力为 119.5 TFLOPS），使用WMMA API能达到cuBLAS大概95%~98%左右的性能(105-113 TFLOPS vs 105-115 TFLOPS)，使用MMA API能达到115 TFLOPS，部分case会超越cuBLAS，整体能达到cuBLAS大概95%~99%左右的性能。CuTe版本的HGEMM性能基本持平cuBLAS，部分case会超越cuBLAS，能达到116~117 TFLOPS。目前通过padding和smem swizzle的方式缓解bank conflicts。对于NN layout，使用smem padding缓解bank conflicts；对于TN layout，通过cutlass cute的smem swizzle/permuted消除bank conflicts。
 
 <div id="NV-L20"></div>
 
