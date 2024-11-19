@@ -43,6 +43,7 @@ def get_args():
     parser.add_argument("--no-plot-best", "--no-best", action="store_true", help="Not Plot best TFLOPS")
     parser.add_argument("--exclude-tags", "--exclude", type=str, default=None, help="Exclude tag for plot, sperated by comma")
     parser.add_argument("--save-dir", "--dir", type=str, default="./", help="Save dir for plot")
+    parser.add_argument("--save-tag", "--tag", type=str, default=None, help="Save name for plot")
     return parser.parse_args()
 
 
@@ -133,6 +134,7 @@ STATIS_INFO: dict[str, list[float]] = {}
 STATIS_INFO["MNK"] = []
 TOATL_TFLOPS: dict[str, float] = {}
 CUBLAS_TOTAL_TFLOPS = 0
+CUBLAS_TN_TOTAL_TFLOPS = 0
 
 
 def make_block_swizzle_stride(N: int, K: int):
@@ -234,7 +236,11 @@ def run_benchmark(perf_func: callable,
             TOATL_TFLOPS[tag] = TOATL_TFLOPS.get(tag, 0) + TFLOPS
         else:
             global CUBLAS_TOTAL_TFLOPS
-            CUBLAS_TOTAL_TFLOPS += TFLOPS
+            global CUBLAS_TN_TOTAL_TFLOPS
+            if tag == "tn(cublas)":
+                CUBLAS_TN_TOTAL_TFLOPS += TFLOPS
+            else:
+                CUBLAS_TOTAL_TFLOPS += TFLOPS
 
     torch.cuda.synchronize()
     time.sleep(args.sleep_duration)
@@ -249,6 +255,7 @@ def get_topk_tflops():
     print("-" * 130)
     for tag, tflops in list(topk_tflops)[::-1]:
         print(f"{tag:>45}: {tflops:>20.2f} TFLOPS")
+    print(f"{'tn(cublas)':>45}: {CUBLAS_TN_TOTAL_TFLOPS:>20.2f} TFLOPS")    
     print(f"{'(cublas)':>45}: {CUBLAS_TOTAL_TFLOPS:>20.2f} TFLOPS")    
     print("-" * 130)
     return list(dict(topk_tflops[:args.plot_topk]).keys())
@@ -295,12 +302,13 @@ def plot_tflops():
             return True
         return False
     
-    # draw by topk order
     for tag, tflops in STATIS_INFO.items():
         if skip_it(tag): 
             continue
-        if "cublas" in tag:
+        if tag == "cublas":
             ax.plot(tflops, label=tag, linewidth=3, color='orange')
+        elif tag == "tn(cublas)":
+            ax.plot(tflops, label=tag, linewidth=1, color='green')
         else:
             if "best" in tag and not args.no_plot_best:
                 ax.plot(tflops, label=tag, linewidth=4, color='blue')
@@ -309,7 +317,10 @@ def plot_tflops():
 
     ax.legend()
     device_name = get_device_name().replace(" ", "_")
-    save_tag = f"{args.save_dir}/{device_name}.png"
+    if args.save_tag:
+        save_tag = f"{args.save_dir}/{device_name}_{args.save_tag}.png"
+    else:
+        save_tag = f"{args.save_dir}/{device_name}.png"
     plt.savefig(save_tag, dpi=300)
     print(f"plot hgemm TFLOPS done, saved as {save_tag}")
 
@@ -322,7 +333,7 @@ def get_mnk(sep: int = args.SEP):
 
 
 def trans_b_row2col(b: torch.Tensor):
-    # convert a row major tensor to col major with contiguous storage
+    # convert a row major tensor -> col major with contiguous storage
     b_trans = b.t()
     b_col_major = b_trans.reshape(b.shape)
     return b_col_major.contiguous() # must be a contiguous tensor
@@ -448,7 +459,7 @@ for (M, N, K) in zip(Ms, Ns, Ks):
     # TN layout cublas
     if not args.disable_cublas_tn and any((args.enable_mma_tn, args.enable_cute_tn)):
         run_benchmark(lib.hgemm_cublas_tensor_op_tn, a, b_col_major, "tn(cublas)", c)
-    # NN layout cublas
+    # NN layout cublas/torch
     if (not args.disable_cublas) and any((
         args.enable_mma, args.enable_mma_all, args.enable_wmma, args.enable_wmma_all, 
         args.enable_cuda, args.enable_cuda_all, args.enable_torch)):
