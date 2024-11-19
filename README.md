@@ -218,7 +218,7 @@ Currently, on NVIDIA L20, RTX 4090 and RTX 3090 Laptop, compared with cuBLAS's d
 
 <div id="my-blogs-part-1"></div>  
 
-### 📖 大模型|多模态|Diffusion|推理优化 (本人作者) ([©️back👆🏻](#contents))
+### 📖 大模型|多模态|Diffusion|推理优化 (My blogs) ([©️back👆🏻](#contents))
 
 |📖 类型-标题|📖 作者|
 |:---|:---| 
@@ -247,11 +247,11 @@ Currently, on NVIDIA L20, RTX 4090 and RTX 3090 Laptop, compared with cuBLAS's d
 |[[LLM推理优化][LLM Infra整理]📖PagedAttention论文新鲜出炉](https://zhuanlan.zhihu.com/p/617015570)|@DefTruth|
 
 
-### 📖 CV推理部署|C++|算法|技术随笔 (本人作者) ([©️back👆🏻](#contents))
+### 📖 CV推理部署|C++|算法|技术随笔 (My blogs) ([©️back👆🏻](#contents))
 
 <div id="my-blogs-part-2"></div>  
 
-|📖 类型-标题|📖 作者|
+|📖 Type-Title|📖 Author|
 |:---|:---| 
 | [[推理部署][CV/NLP]📖FastDeploy三行代码搞定150+ CV、NLP模型部署](https://zhuanlan.zhihu.com/p/581326442)|@DefTruth|  
 | [[推理部署][CV]📖如何在lite.ai.toolkit(3.6k+ stars)中增加您的模型？](https://zhuanlan.zhihu.com/p/523876625)|@DefTruth|  
@@ -299,13 +299,13 @@ Currently, on NVIDIA L20, RTX 4090 and RTX 3090 Laptop, compared with cuBLAS's d
 | [[技术随笔][ML]📖200页:《统计学习方法：李航》笔记 -从原理到实现](https://zhuanlan.zhihu.com/p/461520847)|@DefTruth|  
 
 
-### 📖 CUTLASS|CuTe|NCCL|CUDA|文章推荐 (其他作者) ([©️back👆🏻](#contents))
+### 📖 CUTLASS|CuTe|NCCL|CUDA (Other authors) ([©️back👆🏻](#contents))
 
 <div id="other-blogs"></div>  
 
-💡说明: 本小节整理一些自己比较喜欢的文章。欢迎大家提PR推荐更多优秀的文章！
+💡Note: This section compiles some of my favorite articles. Everyone is welcome to submit PR and recommend more excellent articles!
 
-|📖 类型-标题|📖 作者|
+|📖 Type-Title|📖 Author|
 |:---|:---| 
 | [[cute系列详解][入门]📖cutlass cute 101](https://zhuanlan.zhihu.com/p/660379052)|@朱小霖|
 | [[cute系列详解][入门]📖CUTLASS 2.x & CUTLASS 3.x Intro 学习笔记](https://zhuanlan.zhihu.com/p/710516489)|@BBuf|
