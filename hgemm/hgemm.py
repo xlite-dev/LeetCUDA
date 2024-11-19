@@ -305,13 +305,13 @@ def plot_tflops():
     for tag, tflops in STATIS_INFO.items():
         if skip_it(tag): 
             continue
-        if tag == "cublas":
+        if tag == "(cublas)":
             ax.plot(tflops, label=tag, linewidth=3, color='orange')
         elif tag == "tn(cublas)":
-            ax.plot(tflops, label=tag, linewidth=1, color='green')
+            ax.plot(tflops, label=tag, linewidth=2, color='green')
         else:
             if "best" in tag and not args.no_plot_best:
-                ax.plot(tflops, label=tag, linewidth=4, color='blue')
+                ax.plot(tflops, label=tag, linewidth=3, color='blue')
             else:
                 ax.plot(tflops, label=tag, linestyle='--')
 
