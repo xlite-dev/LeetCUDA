@@ -253,8 +253,10 @@ def get_topk_tflops():
     print("-" * 140)
     for tag, tflops in list(topk_tflops)[::-1]:
         print(f"{tag:>45}: {tflops:>20.2f} TFLOPS")
-    print(f"{'tn(cublas)':>45}: {CUBLAS_TN_TOTAL_TFLOPS:>20.2f} TFLOPS")    
-    print(f"{'(cublas)':>45}: {CUBLAS_TOTAL_TFLOPS:>20.2f} TFLOPS")    
+    if CUBLAS_TN_TOTAL_TFLOPS > 1:
+        print(f"{'tn(cublas)':>45}: {CUBLAS_TN_TOTAL_TFLOPS:>20.2f} TFLOPS")    
+    if CUBLAS_TOTAL_TFLOPS > 1:
+        print(f"{'(cublas)':>45}: {CUBLAS_TOTAL_TFLOPS:>20.2f} TFLOPS")    
     print("-" * 140)
     return list(dict(topk_tflops[:args.plot_topk]).keys())
 
