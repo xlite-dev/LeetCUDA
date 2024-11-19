@@ -386,10 +386,7 @@ How to contribute? please check [🌤🌤CONTRIBUTE🎉🎉](https://github.com/
 </a>  
 </div>
 
-<details>
-<summary>📖 References </summary>
-
-## References ([©️back👆🏻](#contents))
+## 📖 References ([©️back👆🏻](#contents))
 - [flash-attention-minimal](https://github.com/tspeterkim/flash-attention-minimal)
 - [tiny-flash-attention](https://github.com/66RING/tiny-flash-attention)
 - [cute-gemm](https://github.com/reed-lau/cute-gemm)
@@ -399,5 +396,3 @@ How to contribute? please check [🌤🌤CONTRIBUTE🎉🎉](https://github.com/
 - [cuda-tensorcore-hgemm](https://github.com/nicolaswilde/cuda-tensorcore-hgemm)
 - [How_to_optimize_in_GPU](https://github.com/Liu-xiandong/How_to_optimize_in_GPU/tree/master/sgemv)
 - [cute_gemm](https://github.com/weishengying/cute_gemm)
-
-</details>
