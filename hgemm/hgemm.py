@@ -109,7 +109,7 @@ def make_block_swizzle_stride(N: int, K: int):
     # make swizzle stride as N/8,N/4,N/2 and multiples of 256
     if args.swizzle_factor is None:
         swizzle_factor = 0.5 if N <= 4096 else 0.25
-        if all((N >= 12800, K > 8196)):
+        if all((N >= 16384, K > 8192, (int(N*0.125) % 256) == 0)):
             swizzle_factor = 0.125
     else:
         swizzle_factor = args.swizzle_factor
