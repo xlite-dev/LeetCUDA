@@ -335,7 +335,7 @@ def get_mnk(sep: int = args.SEP):
 def row2col(x: torch.Tensor):
     # convert a row major tensor -> col major with contiguous storage
     x_trans = x.t()
-    x_col_major = x_trans.reshape(b.shape)
+    x_col_major = x_trans.reshape(x.shape)
     return x_col_major.contiguous() # must be a contiguous tensor
 
 
