@@ -413,7 +413,8 @@ if (((T).size(0) != (S0)) || ((T).size(1) != (S1))) { \
     M, N, K                                         \
   );
 
-// TODO: add stages param
+
+// TODO: support thread block swizzle
 void hgemm_mma_stages_tn_cute(
   torch::Tensor a, torch::Tensor b, torch::Tensor c,
   int stages, bool swizzle, int swizzle_stride) {
