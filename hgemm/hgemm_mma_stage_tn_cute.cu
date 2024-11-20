@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <cute/tensor.hpp>
 #include <float.h>
-// modifide from: https://github.com/weishengying/cute_gemm/blob/main/gemm_4/gemm.cu
 
 // TODO: thread block swizzle, cute hgemm nn
 template <
