@@ -52,7 +52,7 @@
 git submodule update --init --recursive --force
 ```
 
-**Python**: 支持python脚本直接测试
+**Python**: 支持Python脚本直接测试
 
 ```bash
 # 只测试Ada架构 不指定默认编译所有架构 耗时较长: Volta, Ampere, Ada, Hopper, ...
@@ -75,7 +75,7 @@ python3 hgemm.py --mma-all --plot --topk 8
 python3 hgemm.py --cute-tn --mma --plot 
 ```
 
-**C++**: C++测试目前仅支持CuTe HGEMM和cuBLAS HGEMM，C++ bin方式测试的性能数据会略优于python测试方式，可能是torch binding引入了一定的开销。
+**C++**: HGEMM benchmark也支持C++测试，但目前仅支持本仓库实现的CuTe HGEMM TN 和cuBLAS HGEMM TN 进行对比，C++ bin方式测试的性能数据会略优于Python测试方式，可能是PyTorch Python binding引入了一定的额外开销。
 ```bash
 make
 ./hgemm_cute.bin
@@ -132,16 +132,18 @@ M N K =  12800  12800  12800, Time =   0.03695514   0.03705610   0.03711386 s, A
 
 ### NVIDIA L20  
 
-目前最优的实现，在L20上（理论Tensor Cores FP16算力为 119.5 TFLOPS），整体上能达到cuBLAS大概99%左右的性能。使用WMMA API能达到cuBLAS大概95%~98%左右的性能(105-113 TFLOPS vs 105-115 TFLOPS)，使用MMA API能达到115 TFLOPS，部分case会超越cuBLAS。CuTe版本的HGEMM性能基本持平cuBLAS，部分case会超越cuBLAS，能达到116-117 TFLOPS。目前通过padding和smem swizzle的方式缓解bank conflicts。对于NN layout，使用smem padding缓解bank conflicts；对于TN layout，通过cutlass cute的smem swizzle/permuted消除bank conflicts。
+目前最优的实现，在L20上（理论Tensor Cores FP16算力为 119.5 TFLOPS），整体上能达到cuBLAS大概99%左右的性能。使用WMMA API能达到cuBLAS大概95%~98%左右的性能(105-113 TFLOPS vs 105-115 TFLOPS)，使用MMA API能达到115 TFLOPS，部分case会超越cuBLAS。CuTe版本的HGEMM性能基本持平cuBLAS，部分case会超越cuBLAS，能达到 116-117 TFLOPS。目前通过 SMEM Padding 和 SMEM swizzle的方式缓解bank conflicts。对于 NN layout，使用 SMEM Padding 缓解 bank conflicts；对于 TN layout，通过cutlass cute的 SMEM Swizzle 消除 bank conflicts。
 
 <div id="NV-L20"></div>
 
 
 <!---
 ![L20](https://github.com/user-attachments/assets/a0039200-cd9e-4ae6-be13-422fff75dd2b)
---->
-
 ![L20](./NVIDIA_L20.png)
+
+--->
+![NVIDIA_L20_NN+TN](https://github.com/user-attachments/assets/89bac543-7272-44cd-b616-54df8ca23a91)
+
 
 - WMMA: Up to 113.76 TFLOPS, 113.83/119.5=95.25% TFLOPS utilization, 113.83/116.25=97.91% cuBLAS performance.
 - MMA: Up to 115.12 TFLOPS, 115.12/119.5=96.33% TFLOPS utilization, 115.12/116.25=99.03% cuBLAS performance.
@@ -291,7 +293,7 @@ NVIDIA的[文章](https://developer.nvidia.com/blog/using-shared-memory-cuda-cc/
 ```C
 cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte);
 ```
-目前通过padding和smem swizzle的方式缓解bank conflicts。对于NN layout，使用smem padding缓解bank conflicts；对于TN layout，通过cutlass cute的smem swizzle/permuted消除bank conflicts。
+目前通过 SMEM Padding 和 SMEM swizzle的方式缓解bank conflicts。对于 NN layout，使用 SMEM Padding 缓解 bank conflicts；对于 TN layout，通过cutlass cute的 SMEM Swizzle 消除 bank conflicts。
 
 ### 双缓冲 Double Buffers
 
