@@ -464,6 +464,9 @@ for (M, N, K) in zip(Ms, Ns, Ks):
         run_benchmark(lib.hgemm_mma_stages_tn_cute, a, b_col_major, "tn(cute+stage4+swizzle<smem>)", c, stages=4)
         run_benchmark(lib.hgemm_mma_stages_tn_cute, a, b_col_major, "tn(cute+stage3+swizzle<smem>)", c, stages=3)
         run_benchmark(lib.hgemm_mma_stages_tn_cute, a, b_col_major, "tn(cute+stage2+swizzle<smem>)", c, stages=2)
+        run_benchmark(lib.hgemm_mma_stages_tn_cute, a, b_col_major, "tn(cute+stage4+swizzle<smem+block>)", c, stages=4, swizzle=True)
+        run_benchmark(lib.hgemm_mma_stages_tn_cute, a, b_col_major, "tn(cute+stage3+swizzle<smem+block>)", c, stages=3, swizzle=True)
+        run_benchmark(lib.hgemm_mma_stages_tn_cute, a, b_col_major, "tn(cute+stage2+swizzle<smem+block>)", c, stages=2, swizzle=True)
     # TN layout: cublas
     if not args.disable_cublas_tn and any((args.enable_mma_tn, args.enable_cute_tn)):
         run_benchmark(lib.hgemm_cublas_tensor_op_tn, a, b_col_major, "tn(cublas)", c)
