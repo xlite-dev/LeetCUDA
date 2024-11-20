@@ -80,7 +80,7 @@ python3 hgemm.py --cute-tn --mma --plot
 make
 ./hgemm_mma_stage.bin
 # NVIDIA L20
-ALGO = MMA16816 HGEMM MMA=2x4 WARP=4x4x2 STAGES=2 BLOCK SWIZZLE=2048
+ALGO = MMA16816 HGEMM NN MMA=2x4 WARP=4x4x2 STAGES=2 BLOCK SWIZZLE=2048
 M N K =  12544  12544  12544, Time =   0.03445555   0.03446098   0.03447399 s, AVG Performance =   114.5541 Tflops
 M N K =  12800  12800  12800, Time =   0.03651175   0.03652291   0.03653325 s, AVG Performance =   114.8404 Tflops
 M N K =  13056  13056  13056, Time =   0.03893658   0.03893934   0.03894375 s, AVG Performance =   114.3067 Tflops
