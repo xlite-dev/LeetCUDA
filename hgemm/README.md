@@ -193,16 +193,7 @@ python3 hgemm.py --cute-tn --mma --plot --dir tmp --tag NN+TN --i 20 --wmma-all
 ![](./NVIDIA_GeForce_RTX_3080_Laptop_GPU_WSL2.png)
 
 ```bash
-python3 hgemm.py --wmma-all
-----------------------------------------------------------------------------------------------------------------------------------
-                              M=16384, N=16384, K=8192, Warmup=5, Iters=20, 27/27
-----------------------------------------------------------------------------------------------------------------------------------
-           (wmma4x4+warp4x4+stage3+dsmem): ['68.375    ', '-2.234375 '], time:96.91984ms, swizzle: NOOP, TFLOPS: 45.38 (+0.00%)
-           (wmma4x4+warp4x4+stage2+dsmem): ['68.375    ', '-2.234375 '], time:102.8722ms, swizzle: NOOP, TFLOPS: 42.75
-   (wmma4x4+warp4x4+stage3+dsmem+swizzle): ['68.375    ', '-2.234375 '], time:85.65800ms, swizzle: 4096, TFLOPS: 51.34 (+13.15%)
-   (wmma4x4+warp4x4+stage2+dsmem+swizzle): ['68.375    ', '-2.234375 '], time:95.70884ms, swizzle: 4096, TFLOPS: 45.95
-                                 (cublas): ['68.375    ', '-2.234375 '], time:104.2092ms, swizzle: NOOP, TFLOPS: 42.20
-----------------------------------------------------------------------------------------------------------------------------------
+python3 hgemm.py --wmma-all --plot --dir tmp 
 ```
 
 
