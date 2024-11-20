@@ -21,7 +21,8 @@
 <div id="hgemm-sgemm"></div>  
 
 <div align='left'>
-  <img src='https://github.com/user-attachments/assets/89bac543-7272-44cd-b616-54df8ca23a91' width="805px">
+  <img src='https://github.com/user-attachments/assets/89bac543-7272-44cd-b616-54df8ca23a91' height="225px" width="403px">
+  <img src='https://github.com/user-attachments/assets/c7d65fe5-9fb9-49a8-b962-a6c09bcc030a' height="225px" width="403px">
 </div> 
 
 Currently, on NVIDIA L20, RTX 4090 and RTX 3090 Laptop, compared with cuBLAS's default Tensor Cores math algorithm `CUBLAS_GEMM_DEFAULT_TENSOR_OP`, the `HGEMM (WMMA/MMA)` implemented in this repo (`blue`🔵) can achieve `95%~99%` of its (`orange`🟠) performance. Please check [hgemm benchmark](./hgemm) for more details.
