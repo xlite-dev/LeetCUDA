@@ -46,8 +46,18 @@ def get_args():
     return parser.parse_args()
 
 
+def pretty_print_line(m: str = "", sep: str = "-", width: int = 150):
+    res_len = width - len(m)
+    left_len = int(res_len / 2)
+    right_len = res_len - left_len
+    pretty_line = sep * left_len + m + sep * right_len
+    print(pretty_line)
+
+
 args = get_args()
+pretty_print_line()
 print(args)
+pretty_print_line()
 
 
 def get_device_name():
@@ -122,13 +132,12 @@ def get_build_cuda_cflags():
     extra_cuda_cflags.append('-lcublas')
     return extra_cuda_cflags
 
-# Load the CUDA kernel as a python module
-print(f"Loading hgemm lib on device: {get_device_name()}, capability: {get_device_capability()} ...")
 
-lib = load(name='hgemm_lib', sources=get_build_sources(), 
-           extra_cuda_cflags=get_build_cuda_cflags(), 
-           extra_cflags=['-std=c++17'], 
-           verbose=args.verbose)
+# Load the CUDA kernel as a python module
+pretty_print_line(f"Loading hgemm lib on device: {get_device_name()}, capability: {get_device_capability()}")
+
+lib = load(name='hgemm_lib', sources=get_build_sources(), extra_cuda_cflags=get_build_cuda_cflags(), 
+           extra_cflags=['-std=c++17'], verbose=args.verbose)
 
 MAX_TFLOPS = -1
 STATIS_INFO: dict[str, list[float]] = {}
@@ -249,16 +258,16 @@ def run_benchmark(perf_func: callable,
 def get_topk_tflops():
     topk_tflops = sorted(TOATL_TFLOPS.items(), key=lambda x: x[1], 
                          reverse=True)
-    print("-" * 150)
-    print(" " * 42 + f"THE TOTAL TFLOPS OF {len(topk_tflops)} HGEMM ALGO ON {get_device_name()} DEVICE")
-    print("-" * 150)
+    pretty_print_line()
+    pretty_print_line(f"THE TOTAL TFLOPS OF {len(topk_tflops)} HGEMM ALGO ON {get_device_name()} DEVICE", " ")
+    pretty_print_line()
     for tag, tflops in list(topk_tflops)[::-1]:
         print(f"{tag:>50}: {tflops:>20.2f} TFLOPS")
     if CUBLAS_TN_TOTAL_TFLOPS > 1:
         print(f"{'tn(cublas)':>50}: {CUBLAS_TN_TOTAL_TFLOPS:>20.2f} TFLOPS")    
     if CUBLAS_TOTAL_TFLOPS > 1:
         print(f"{'(cublas)':>50}: {CUBLAS_TOTAL_TFLOPS:>20.2f} TFLOPS")    
-    print("-" * 150)
+    pretty_print_line()
     return list(dict(topk_tflops[:args.plot_topk]).keys())
 
 
@@ -309,21 +318,21 @@ def plot_tflops():
         if tag == "(cublas)":
             ax.plot(tflops, label=tag, linewidth=3, color='orange')
         elif tag == "tn(cublas)":
-            ax.plot(tflops, label=tag, linewidth=2, color='green')
+            ax.plot(tflops, label=tag, linewidth=3, color='green')
         else:
             if "best" in tag and not args.no_plot_best:
-                ax.plot(tflops, label=tag, linewidth=3, color='blue')
+                ax.plot(tflops, label=tag, linewidth=4, color='blue')
             else:
                 ax.plot(tflops, label=tag, linestyle='--')
 
     ax.legend()
     device_name = get_device_name().replace(" ", "_")
     if args.save_tag:
-        save_tag = f"{args.save_dir}/{device_name}_{args.save_tag}.png"
+        save_path = f"{args.save_dir}/{device_name}_{args.save_tag}.png"
     else:
-        save_tag = f"{args.save_dir}/{device_name}.png"
-    plt.savefig(save_tag, dpi=300)
-    print(f"plot hgemm TFLOPS done, saved as {save_tag}")
+        save_path = f"{args.save_dir}/{device_name}.png"
+    plt.savefig(save_path, dpi=300)
+    pretty_print_line(f"plot hgemm TFLOPS done, saved as {save_path}")
 
 
 def get_mnk(sep: int = args.SEP):
@@ -338,14 +347,6 @@ def row2col(x: torch.Tensor):
     x_trans = x.t()
     x_col_major = x_trans.reshape(x.shape)
     return x_col_major.contiguous() # must be a contiguous tensor
-
-
-def pretty_print_line(m: str = "", sep: str = "-", width: int = 150):
-    res_len = width - len(m)
-    left_len = int(res_len / 2)
-    right_len = res_len - left_len
-    pretty_line = sep * left_len + m + sep * right_len
-    print(pretty_line)
 
 
 Ms, Ns, Ks = get_mnk()
@@ -363,63 +364,57 @@ MAX_M, MAX_N, MAX_K = max(Ms), max(Ns), max(Ks)
 # pre allocate for fast profiling.
 torch.cuda.synchronize()
 start = time.time()
-print(f"pre allocate for fast profiling start, MAX_M={MAX_M}, MAX_N={MAX_N}, MAX_K={MAX_K}")
+pretty_print_line(f"pre allocate for fast profiling start, MAX_M={MAX_M}, MAX_N={MAX_N}, MAX_K={MAX_K}")
 A = torch.randn((MAX_M, MAX_K), dtype=torch.half).cuda()
 B = torch.randn((MAX_K, MAX_N), dtype=torch.half).cuda()
 C = torch.randn((MAX_M, MAX_N), dtype=torch.half).cuda()
 torch.cuda.synchronize()
 end = time.time()
-print(f"pre allocate for fast profiling done, time: {(end - start) * 1000} ms")
+pretty_print_line(f"pre allocate for fast profiling done, time: {(end - start) * 1000} ms")
 
 PERF_COUNT = 0
 for (M, N, K) in zip(Ms, Ns, Ks):
     MAX_TFLOPS = -1
     PERF_COUNT += 1
     pretty_print_line()
-    pretty_print_line(f"M={M}, N={N}, K={K}, Warmup={args.warmup}, "
-                      f"Iters={args.iters}, {PERF_COUNT}/{len(Ms)}", 
-                      sep=" ")
+    pretty_print_line(f"M={M}, N={N}, K={K}, Warmup={args.warmup}, Iters={args.iters}, {PERF_COUNT}/{len(Ms)}", sep=" ")
     pretty_print_line()
     a = A[:M, :K].contiguous()
     b = B[:K, :N].contiguous()
     c = C[:M, :N].contiguous()
     b_col_major = row2col(b)
     torch.cuda.synchronize()
-    if args.enable_cuda_all: # more cuda cores kernel tests.
-        # CUDA Cores FP16
+    # CUDA Cores FP16, NN
+    if args.enable_cuda_all: # more cuda cores kernel tests
         run_benchmark(lib.hgemm_naive_f16, a, b, "(naive)",  c)
         run_benchmark(lib.hgemm_t_8x8_sliced_k_f16x8_pack_bcf, a, b, "(f16x8pack+t8x8+bcf)", c)
     if (args.enable_cuda or args.enable_cuda_all) and (not args.no_default):
         run_benchmark(lib.hgemm_t_8x8_sliced_k_f16x8_pack_bcf_dbuf, a, b, "(f16x8pack+t8x8+dbuf)", c)
         run_benchmark(lib.hgemm_t_8x8_sliced_k16_f16x8_pack_dbuf, a, b, "(f16x8pack+t8x8+k16+dbuf)", c)
+    # WMMA API, stages, dsmem, swizzle, NN
     if (args.enable_wmma or args.enable_wmma_all) and (not args.no_default):
         pretty_print_line("WMMA")
-        # wmma api, stages, dsmem, swizzle
         run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2, a, b, "(wmma4x2)", c)
         run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4, a, b, "(wmma4x2+warp2x4)", c)
-        # prefer on NVIDIA L20 device.
-        run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages, a, b, "(wmma4x2+warp2x4+stage3)", c, stages=3)
-        run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages, a, b, "(wmma4x2+warp2x4+stage2)", c, stages=2)
         run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages_dsmem, a, b, "(wmma4x2+warp2x4+stage3+dsmem)", c, stages=3)
         run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages_dsmem, a, b, "(wmma4x2+warp2x4+stage2+dsmem)", c, stages=2)
-        # thread block swizzle
-        run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages, a, b, "(wmma4x2+warp2x4+stage3+swizzle<block>)", c, stages=3, swizzle=True)
-        run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages, a, b, "(wmma4x2+warp2x4+stage2+swizzle<block>)", c, stages=2, swizzle=True)
         run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages_dsmem, a, b, "(wmma4x2+warp2x4+stage3+dsmem+swizzle<block>)", c, stages=3, swizzle=True)
         run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages_dsmem, a, b, "(wmma4x2+warp2x4+stage2+dsmem+swizzle<block>)", c, stages=2, swizzle=True)
-        # TODO: add MMA PTX kernel tests.
     if args.enable_wmma_all: # more wmma kernel tests.
-        # TODO: add more stages tests for mma2x4/mma4x4, 4,5 etc.
-        # prefer on NVIDIA TRX 3080 Laptop 16GB GDDR6 device.
+        run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages, a, b, "(wmma4x2+warp2x4+stage3)", c, stages=3)
+        run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages, a, b, "(wmma4x2+warp2x4+stage2)", c, stages=2)
+        run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages, a, b, "(wmma4x2+warp2x4+stage3+swizzle<block>)", c, stages=3, swizzle=True)
+        run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp2x4_stages, a, b, "(wmma4x2+warp2x4+stage2+swizzle<block>)", c, stages=2, swizzle=True)
+        # Prefer on NVIDIA TRX 3080 Laptop 16GB GDDR6 device.
         run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x4_warp4x4_stages_dsmem, a, b, "(wmma4x4+warp4x4+stage3+dsmem)", c, stages=3)
         run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x4_warp4x4_stages_dsmem, a, b, "(wmma4x4+warp4x4+stage2+dsmem)", c, stages=2)
         run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp4x4_stages_dsmem, a, b, "(wmma4x2+warp4x4+stage3+dsmem)", c, stages=3)
         run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp4x4_stages_dsmem, a, b, "(wmma4x2+warp4x4+stage2+dsmem)", c, stages=2)
-        # thread block swizzle
         run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x4_warp4x4_stages_dsmem, a, b, "(wmma4x4+warp4x4+stage3+dsmem+swizzle<block>)", c, stages=3, swizzle=True)
         run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x4_warp4x4_stages_dsmem, a, b, "(wmma4x4+warp4x4+stage2+dsmem+swizzle<block>)", c, stages=2, swizzle=True)
         run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp4x4_stages_dsmem, a, b, "(wmma4x2+warp4x4+stage3+dsmem+swizzle<block>)", c, stages=3, swizzle=True)
         run_benchmark(lib.hgemm_wmma_m16n16k16_mma4x2_warp4x4_stages_dsmem, a, b, "(wmma4x2+warp4x4+stage2+dsmem+swizzle<block>)", c, stages=2, swizzle=True)
+    # MMA API, stages, dsmem, swizzle, NN
     if (args.enable_mma or args.enable_mma_all) and (not args.no_default):
         pretty_print_line("MMA")
     if args.enable_mma_all: # more mma kernel tests.
@@ -440,24 +435,24 @@ for (M, N, K) in zip(Ms, Ns, Ks):
         run_benchmark(lib.hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_x4, a, b, "(mma2x4+warp4x4x2+stage3+dsmem+x4)", c, stages=3)
         run_benchmark(lib.hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_x4, a, b, "(mma2x4+warp4x4x2+stage2+dsmem+x4)", c, stages=2)
     if (args.enable_mma or args.enable_mma_all) and (not args.no_default):
-        # thread block swizzle
-        run_benchmark(lib.hgemm_mma_m16n8k16_mma2x4_warp4x4_stages, a, b, "(mma2x4+warp4x4+stage3+swizzle<block>)", c, stages=3, swizzle=True)
-        run_benchmark(lib.hgemm_mma_m16n8k16_mma2x4_warp4x4_stages, a, b, "(mma2x4+warp4x4+stage2+swizzle<block>)", c, stages=2, swizzle=True)
+        # Thread block swizzle
         run_benchmark(lib.hgemm_mma_m16n8k16_mma2x4_warp4x4_stages_dsmem, a, b, "(mma2x4+warp4x4+stage3+dsmem+swizzle<block>)", c, stages=3, swizzle=True)
         run_benchmark(lib.hgemm_mma_m16n8k16_mma2x4_warp4x4_stages_dsmem, a, b, "(mma2x4+warp4x4+stage2+dsmem+swizzle<block>)", c, stages=2, swizzle=True)
         run_benchmark(lib.hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem, a, b, "(mma2x4+warp4x4x2+stage4+dsmem+swizzle<block>)", c, stages=4, swizzle=True)
         run_benchmark(lib.hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem, a, b, "(mma2x4+warp4x4x2+stage3+dsmem+swizzle<block>)", c, stages=3, swizzle=True)
         run_benchmark(lib.hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem, a, b, "(mma2x4+warp4x4x2+stage2+dsmem+swizzle<block>)", c, stages=2, swizzle=True)
     if args.enable_mma_all:
+        run_benchmark(lib.hgemm_mma_m16n8k16_mma2x4_warp4x4_stages, a, b, "(mma2x4+warp4x4+stage3+swizzle<block>)", c, stages=3, swizzle=True)
+        run_benchmark(lib.hgemm_mma_m16n8k16_mma2x4_warp4x4_stages, a, b, "(mma2x4+warp4x4+stage2+swizzle<block>)", c, stages=2, swizzle=True)
         run_benchmark(lib.hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_rr, a, b, "(mma2x4+warp4x4x2+stage4+dsmem+swizzle<block>+rr)", c, stages=4, swizzle=True)
         run_benchmark(lib.hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_rr, a, b, "(mma2x4+warp4x4x2+stage3+dsmem+swizzle<block>+rr)", c, stages=3, swizzle=True)
         run_benchmark(lib.hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_rr, a, b, "(mma2x4+warp4x4x2+stage2+dsmem+swizzle<block>+rr)", c, stages=2, swizzle=True)
         run_benchmark(lib.hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_x4, a, b, "(mma2x4+warp4x4x2+stage4+dsmem+swizzle<block>+x4)", c, stages=4, swizzle=True)
         run_benchmark(lib.hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_x4, a, b, "(mma2x4+warp4x4x2+stage3+dsmem+swizzle<block>+x4)", c, stages=3, swizzle=True)
         run_benchmark(lib.hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_x4, a, b, "(mma2x4+warp4x4x2+stage2+dsmem+swizzle<block>+x4)", c, stages=2, swizzle=True)
-    # TN layout: A row major with shape [M,K], B col major with shape [K,N]
+    # TN(MMA/CuTe), TN layout: A row major with shape [M,K], B col major with shape [K,N]
     if any((args.enable_mma_tn, args.enable_cute_tn)):
-        pretty_print_line("TN")
+        pretty_print_line("TN(MMA/CuTe)")
     if args.enable_mma_tn:
         run_benchmark(lib.hgemm_mma_m16n8k16_mma2x4_warp4x4_stages_dsmem_tn, a, b_col_major, "tn(mma2x4+warp4x4+stage3+dsmem)", c, stages=3)
         run_benchmark(lib.hgemm_mma_m16n8k16_mma2x4_warp4x4_stages_dsmem_tn, a, b_col_major, "tn(mma2x4+warp4x4+stage2+dsmem)", c, stages=2)
@@ -467,10 +462,10 @@ for (M, N, K) in zip(Ms, Ns, Ks):
         run_benchmark(lib.hgemm_mma_stages_tn_cute, a, b_col_major, "tn(cute+stage4+swizzle<smem>)", c, stages=4)
         run_benchmark(lib.hgemm_mma_stages_tn_cute, a, b_col_major, "tn(cute+stage3+swizzle<smem>)", c, stages=3)
         run_benchmark(lib.hgemm_mma_stages_tn_cute, a, b_col_major, "tn(cute+stage2+swizzle<smem>)", c, stages=2)
-    # TN layout cublas
+    # TN layout: cublas
     if not args.disable_cublas_tn and any((args.enable_mma_tn, args.enable_cute_tn)):
         run_benchmark(lib.hgemm_cublas_tensor_op_tn, a, b_col_major, "tn(cublas)", c)
-    # NN layout cublas/torch
+    # NN layout: cublas/torch
     if (not args.disable_cublas) and any((
         args.enable_mma, args.enable_mma_all, args.enable_wmma, args.enable_wmma_all, 
         args.enable_cuda, args.enable_cuda_all, args.enable_torch)):
