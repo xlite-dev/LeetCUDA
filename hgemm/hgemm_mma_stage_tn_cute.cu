@@ -349,7 +349,7 @@ int main() {
   using T = cute::half_t;
   using namespace cute;
 
-  const int test_num = 50;
+  const int test_num = 64;
   int M_list[test_num];
   int N_list[test_num];
   int K_list[test_num];
