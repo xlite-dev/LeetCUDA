@@ -145,7 +145,7 @@ int main(int argc, char *argv[]) {
 
   const int outer_repeat = 10, inner_repeat = 1;
 
-  printf("\nalgo = cuBLAS CUBLAS_GEMM_DEFAULT_TENSOR_OP TN\n");
+  printf("ALGO = cuBLAS CUBLAS_GEMM_DEFAULT_TENSOR_OP TN\n");
 
   for (int j = 0; j < test_num; j++) {
     int M = M_list[j], N = N_list[j], K = K_list[j];
