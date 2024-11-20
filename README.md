@@ -20,7 +20,7 @@
 
 <div id="hgemm-sgemm"></div>  
 
-<div align='center'>
+<div align='left'>
   <img src='https://github.com/user-attachments/assets/89bac543-7272-44cd-b616-54df8ca23a91' width="805px">
 </div> 
 
