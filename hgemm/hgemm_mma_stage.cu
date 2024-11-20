@@ -2007,7 +2007,7 @@ int main() {
 
   const int outer_repeat = 10, inner_repeat = 1;
 
-  printf("ALGO = MMA16816 HGEMM MMA=2x4 WARP=4x4x2 STAGES=2 BLOCK SWIZZLE=2048\n");
+  printf("ALGO = MMA16816 HGEMM NN MMA=2x4 WARP=4x4x2 STAGES=2 BLOCK SWIZZLE=2048\n");
   for (int j = 0; j < 5; j++) {
     int M = M_list[j], N = N_list[j], K = K_list[j];
     float max_error = gemm_error_check_nn<half>(
