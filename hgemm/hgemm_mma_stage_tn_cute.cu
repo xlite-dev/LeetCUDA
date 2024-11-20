@@ -361,7 +361,7 @@ int main() {
 
   const int outer_repeat = 10, inner_repeat = 1;
 
-  printf("\nalgo = CuTe HGEMM Stages 2\n");
+  printf("ALGO = CuTe HGEMM Stages 2\n");
   for (int j = 0; j < 5; j++) {
     int M = M_list[j], N = N_list[j], K = K_list[j];
     float max_error = gemm_error_check<T>(
