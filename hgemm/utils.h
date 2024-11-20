@@ -2,7 +2,6 @@
 #include <cstdlib>
 #include <cuda.h>
 #include <cublas_v2.h>
-// modified from: https://github.com/weishengying/cute_gemm/blob/main/utils.h
 
 #define OFFSET(row_idx, col_idx, stride_0, stride_1) \
   row_idx*stride_0 + col_idx*stride_1
@@ -170,14 +169,14 @@ float gemm_error_check_v2(
   cudaMemcpy(d_b, h_b, size_b, cudaMemcpyHostToDevice);
   
   cublasHgemm(handle, 
-        CUBLAS_OP_T, 
-        CUBLAS_OP_N, 
-        N, M, K,
-        &alpha, 
-        (half *)d_b, K, 
-        (half *)d_a, K, 
-        &beta, 
-        (half *)d_c_ref, N);
+              CUBLAS_OP_T, 
+              CUBLAS_OP_N, 
+              N, M, K,
+              &alpha, 
+              (half *)d_b, K, 
+              (half *)d_a, K, 
+              &beta, 
+              (half *)d_c_ref, N);
         
   gpu_hgemm(d_a, d_b, d_c, M, N, K);
 
