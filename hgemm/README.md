@@ -100,7 +100,7 @@ M N K =  16384  16384  16384, Time =   0.07663001   0.07663534   0.07664947 s, A
 
 ./hgemm_cute.bin
 # NVIDIA L20
-ALGO = CuTe HGEMM Stages 2
+ALGO = CuTe HGEMM TN STAGES=2
 M N K =  12544  12544  12544, Time =   0.03410432   0.03411466   0.03412787 s, AVG Performance =   115.7170 Tflops
 M N K =  12800  12800  12800, Time =   0.03612774   0.03613839   0.03614515 s, AVG Performance =   116.0623 Tflops
 M N K =  13056  13056  13056, Time =   0.03820646   0.03821117   0.03821466 s, AVG Performance =   116.4850 Tflops
