@@ -364,7 +364,7 @@ int main() {
   printf("\nalgo = CuTe HGEMM Stages 2\n");
   for (int j = 0; j < 5; j++) {
     int M = M_list[j], N = N_list[j], K = K_list[j];
-    float max_error = gemm_error_check_v2<T>(
+    float max_error = gemm_error_check<T>(
       launch_hgemm_mma_stages_tn_cute, M, N, K);
     printf("M N K = %6d %6d %6d, ", M, N, K);
     printf("Max Error = %f\n", max_error);
