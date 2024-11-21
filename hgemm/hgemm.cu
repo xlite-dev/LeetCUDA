@@ -1005,6 +1005,8 @@ void hgemm_t_8x8_sliced_k32_f16x8_pack_dbuf_async(torch::Tensor a, torch::Tensor
 void hgemm_t_16x8_sliced_k32_f16x8_pack_dbuf(torch::Tensor a, torch::Tensor b, torch::Tensor c);
 void hgemm_t_16x8_sliced_k32_f16x8_pack_dbuf_async(torch::Tensor a, torch::Tensor b, torch::Tensor c);
 // from hgemm_cublas.cu
+void init_cublas_handle();
+void destroy_cublas_handle();
 void hgemm_cublas_tensor_op_nn(torch::Tensor a, torch::Tensor b, torch::Tensor c); 
 void hgemm_cublas_tensor_op_tn(torch::Tensor a, torch::Tensor b, torch::Tensor c);
 // from hgemm_wmma.cu
@@ -1052,6 +1054,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   TORCH_BINDING_COMMON_EXTENSION(hgemm_t_16x8_sliced_k32_f16x8_pack_dbuf)
   TORCH_BINDING_COMMON_EXTENSION(hgemm_t_16x8_sliced_k32_f16x8_pack_dbuf_async)
   // cuBLAS Tensor Cores
+  TORCH_BINDING_COMMON_EXTENSION(init_cublas_handle)
+  TORCH_BINDING_COMMON_EXTENSION(destroy_cublas_handle)
   TORCH_BINDING_COMMON_EXTENSION(hgemm_cublas_tensor_op_nn)
   TORCH_BINDING_COMMON_EXTENSION(hgemm_cublas_tensor_op_tn)
   // WMMA API Tensor Cores
