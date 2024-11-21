@@ -108,18 +108,17 @@ def get_build_cuda_cflags():
     # spill stores: 指的是在执行过程中，数据因为寄存器不足而被存储到了栈上。
     # spill loads: 则是指将之前溢出到栈上的数据重新加载回寄存器。
     # diag 177: variable was declared but never referenced
-    extra_cuda_cflags=[
-               "-O2",
-                "-U__CUDA_NO_HALF_OPERATORS__",
-                "-U__CUDA_NO_HALF_CONVERSIONS__",
-                "-U__CUDA_NO_HALF2_OPERATORS__",
-                "-U__CUDA_NO_BFLOAT16_CONVERSIONS__",
-                "--expt-relaxed-constexpr",
-                "--expt-extended-lambda",
-                "--use_fast_math",
-                "-diag-suppress 177",
-                "-Xptxas -v",
-    ]
+    extra_cuda_cflags = []
+    extra_cuda_cflags.append("-O3")
+    extra_cuda_cflags.append("-U__CUDA_NO_HALF_OPERATORS__")
+    extra_cuda_cflags.append("-U__CUDA_NO_HALF_CONVERSIONS__")
+    extra_cuda_cflags.append("-U__CUDA_NO_HALF2_OPERATORS__")
+    extra_cuda_cflags.append("-U__CUDA_NO_BFLOAT16_CONVERSIONS__")
+    extra_cuda_cflags.append("--expt-relaxed-constexpr")
+    extra_cuda_cflags.append("--expt-extended-lambda")
+    extra_cuda_cflags.append("--use_fast_math")
+    extra_cuda_cflags.append("-diag-suppress 177")
+    extra_cuda_cflags.append("-Xptxas -v")
     # extra cuda flags for cute hgemm
     project_dir = get_project_dir()
     extra_cuda_cflags.append('-DENBLE_CUTE_HGEMM')
