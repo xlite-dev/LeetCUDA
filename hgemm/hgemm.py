@@ -279,6 +279,7 @@ def get_topk_tflops():
     return list(dict(topk_tflops[:args.plot_topk]).keys())
 
 
+@torch.no_grad
 def get_best_tflops():
     all_tflops = []
     for tag, tflops in STATIS_INFO.items():
@@ -350,6 +351,7 @@ def get_mnk(sep: int = args.SEP):
     return Ms, Ns, Ks
 
 
+@torch.no_grad
 def row2col(x: torch.Tensor):
     # convert a row major tensor -> col major with contiguous storage
     x_trans = x.t()
