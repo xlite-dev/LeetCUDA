@@ -140,9 +140,11 @@ python3 hgemm.py --cute-tn --mma --plot
 
 <!---
 ![4090](https://github.com/user-attachments/assets/c7d65fe5-9fb9-49a8-b962-a6c09bcc030a)
+![NVIDIA_GeForce_RTX_4090_NN+TN](https://github.com/user-attachments/assets/d8d7380b-4271-41f6-964a-ac3fa81f7f4c)
+
 --->
 
-![NVIDIA_GeForce_RTX_4090_NN+TN](https://github.com/user-attachments/assets/d8d7380b-4271-41f6-964a-ac3fa81f7f4c)
+![NVIDIA_GeForce_RTX_4090_NN+TN+v4](https://github.com/user-attachments/assets/05ef4f5e-d999-48ea-b58e-782cffb24e85)
 
 ```bash
 python3 hgemm.py --cute-tn --mma --wmma-all --plot
