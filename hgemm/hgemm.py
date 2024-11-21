@@ -217,7 +217,9 @@ def run_benchmark(perf_func: callable,
     total_time = (end - start) * 1000 # ms
     mean_time = total_time / iters
     out_info = f"{tag}"
-    out_val = out.flatten()[:2].detach().cpu().numpy().tolist()
+    out_val_first = out.flatten()[:2].detach().cpu().numpy().tolist()
+    out_val_last = out.flatten()[-2:].detach().cpu().numpy().tolist()
+    out_val = [out_val_first[0], out_val_last[-1]]
     out_val = [round(v, 8) for v in out_val]
     out_val = [f"{v:<12}"[:10] for v in out_val]
     TFLOPS = (2 * M * N * K) * 1e-9 / (mean_time)
