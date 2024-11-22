@@ -33,7 +33,7 @@ def get_project_dir():
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def get_build_cuda_cflags():
+def get_build_cuda_cflags(build_pkg: bool = False):
     # -Xptxas -v:
     # registers, smem, cmem, stack, gmem usage
     # registers: 寄存器，访问速度最快。Ada Lovelace架构每个SM的寄存器文件大小
@@ -61,8 +61,12 @@ def get_build_cuda_cflags():
     extra_cuda_cflags.append("--expt-relaxed-constexpr")
     extra_cuda_cflags.append("--expt-extended-lambda")
     extra_cuda_cflags.append("--use_fast_math")
-    extra_cuda_cflags.append("-diag-suppress 177")
-    extra_cuda_cflags.append("-Xptxas -v")
+    if not build_pkg:
+      extra_cuda_cflags.append("-diag-suppress 177")
+      extra_cuda_cflags.append("-Xptxas -v")
+    else:
+      extra_cuda_cflags.append("--ptxas-options=-v")
+      extra_cuda_cflags.append("--ptxas-options=-O2")
     # extra cuda flags for cute hgemm
     project_dir = get_project_dir()
     extra_cuda_cflags.append('-DNO_MMA_HGEMM_BIN')
