@@ -40,6 +40,7 @@ if CUDA_HOME is not None:
 this_dir = os.path.dirname(os.path.abspath(__file__))
 
 # cuda module
+# may need export LD_LIBRARY_PATH=/usr/local/lib/python3.10/dist-packages/torch/lib:$LD_LIBRARY_PATH
 ext_modules.append(
     CUDAExtension(
         # package name for import
@@ -49,7 +50,7 @@ ext_modules.append(
             # add c compile flags
             "cxx": ["-O3", "-std=c++17"] + generator_flag,
             # add nvcc compile flags
-            "nvcc": get_build_cuda_cflags() + generator_flag + cc_flag,
+            "nvcc": get_build_cuda_cflags(build_pkg=True) + generator_flag + cc_flag,
         },
         include_dirs=[
             Path(this_dir) / "naive",
@@ -65,6 +66,7 @@ ext_modules.append(
 
 setup(
     name=PACKAGE_NAME,
+    version="0.1.0",
     packages=find_packages(
         exclude=(
             "build",
