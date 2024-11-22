@@ -11,7 +11,7 @@ from torch.utils.cpp_extension import (
 from utils import (get_build_sources, get_build_cuda_cflags)
 
 # package name managed by pip, which can be remove by `pip uninstall tiny_pkg`
-PACKAGE_NAME = "toy_hgemm"
+PACKAGE_NAME = "toy-hgemm"
 
 ext_modules = []
 generator_flag = []
@@ -40,7 +40,7 @@ if CUDA_HOME is not None:
 this_dir = os.path.dirname(os.path.abspath(__file__))
 
 # cuda module
-# may need export LD_LIBRARY_PATH=/usr/local/lib/python3.10/dist-packages/torch/lib:$LD_LIBRARY_PATH
+# may need export LD_LIBRARY_PATH=PATH-TO/torch/lib:$LD_LIBRARY_PATH
 ext_modules.append(
     CUDAExtension(
         # package name for import
