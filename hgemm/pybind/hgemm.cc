@@ -1,6 +1,9 @@
 #include <torch/types.h>
 #include <torch/extension.h>
 
+#define STRINGFY(str) #str
+#define TORCH_BINDING_COMMON_EXTENSION(func) m.def(STRINGFY(func), &func, STRINGFY(func));
+
 // from hgemm.cu
 void hgemm_naive_f16(torch::Tensor a, torch::Tensor b, torch::Tensor c);
 void hgemm_sliced_k_f16(torch::Tensor a, torch::Tensor b, torch::Tensor c);
@@ -44,10 +47,9 @@ void hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_x4(torch::Tensor a, torch:
 void hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_rr(torch::Tensor a, torch::Tensor b, torch::Tensor c, int stages, bool swizzle, int swizzle_stride);
 // from hgemm_mma_stage_tn.cu
 void hgemm_mma_m16n8k16_mma2x4_warp4x4_stages_dsmem_tn(torch::Tensor a, torch::Tensor b, torch::Tensor c, int stages, bool swizzle, int swizzle_stride);
-#ifdef ENBLE_CUTE_HGEMM
 // from hgemm_mma_stage_tn_cute.cu
 void hgemm_mma_stages_tn_cute(torch::Tensor a, torch::Tensor b, torch::Tensor c, int stages, bool swizzle, int swizzle_stride);
-#endif
+
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   // CUDA Cores FP16
@@ -93,9 +95,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   TORCH_BINDING_COMMON_EXTENSION(hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_rr)
   // TN: A row major MxK, B col major NxK, C row major MxN
   TORCH_BINDING_COMMON_EXTENSION(hgemm_mma_m16n8k16_mma2x4_warp4x4_stages_dsmem_tn)
-  // cute hgemm
-#ifdef ENBLE_CUTE_HGEMM
+  // TN: cute hgemm with smem & block swizzle
   TORCH_BINDING_COMMON_EXTENSION(hgemm_mma_stages_tn_cute)
-#endif
 }
 
