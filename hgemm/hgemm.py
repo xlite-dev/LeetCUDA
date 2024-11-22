@@ -76,15 +76,16 @@ def get_device_capability():
 
 def get_build_sources():
     build_sources = []
-    build_sources.append('hgemm.cu')
-    build_sources.append('hgemm_async.cu')
-    build_sources.append('hgemm_cublas.cu')
-    build_sources.append('hgemm_wmma.cu')
-    build_sources.append('hgemm_wmma_stage.cu')
-    build_sources.append('hgemm_mma.cu')
-    build_sources.append('hgemm_mma_stage.cu')
-    build_sources.append('hgemm_mma_stage_tn.cu')
-    build_sources.append('hgemm_mma_stage_tn_cute.cu')
+    build_sources.append('naive/hgemm.cu')
+    build_sources.append('naive/hgemm_async.cu')
+    build_sources.append('cublas/hgemm_cublas.cu')
+    build_sources.append('wmma/hgemm_wmma.cu')
+    build_sources.append('wmma/hgemm_wmma_stage.cu')
+    build_sources.append('mma/hgemm_mma.cu')
+    build_sources.append('mma/hgemm_mma_stage.cu')
+    build_sources.append('mma/hgemm_mma_stage_tn.cu')
+    build_sources.append('cutlass/hgemm_mma_stage_tn_cute.cu')
+    build_sources.append('pybind/hgemm.cc')
     return build_sources
 
 
@@ -130,6 +131,12 @@ def get_build_cuda_cflags():
     extra_cuda_cflags.append('-DNO_CUBLAS_HGEMM_BIN')
     # add cutlass headers and link cublas.
     extra_cuda_cflags.append(f'-I {project_dir}')
+    extra_cuda_cflags.append(f'-I {project_dir}/utils')
+    extra_cuda_cflags.append(f'-I {project_dir}/naive')
+    extra_cuda_cflags.append(f'-I {project_dir}/wmma')
+    extra_cuda_cflags.append(f'-I {project_dir}/mma')
+    extra_cuda_cflags.append(f'-I {project_dir}/cutlass')
+    extra_cuda_cflags.append(f'-I {project_dir}/pybind')
     extra_cuda_cflags.append(f'-I {project_dir}/third-party/cutlass/include')
     extra_cuda_cflags.append(f'-I {project_dir}/third-party/cutlass/tools/util/include')
     extra_cuda_cflags.append('-lcublas')
