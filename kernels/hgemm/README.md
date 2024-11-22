@@ -1,4 +1,4 @@
-# 🔥🔥Toy-HGEMM Library: Achieve the performance of cuBLAS
+# 🔥 Toy-HGEMM Library: Achieve the performance of cuBLAS
 
 |CUDA Cores|Sliced K(Loop over K)|Tile Block|Tile Thread|
 |:---:|:---:|:---:|:---:|
@@ -12,10 +12,8 @@
 |Row Major(NN)|Col Major(TN)|SGEMM TF32|SMEM Swizzle(CuTe)|
 |✔️|✔️|✔️|✔️|
 
-<details open>
-<summary> </summary>  
 
-## 📖 All HGEMM CUDA Kernels in Toy-HGEMM Library 
+## 📖 HGEMM CUDA Kernels in Toy-HGEMM Library 
 
 ```C++  
 void hgemm_naive_f16(torch::Tensor a, torch::Tensor b, torch::Tensor c);
@@ -54,7 +52,6 @@ void hgemm_mma_m16n8k16_mma2x4_warp4x4_stages_dsmem_tn(torch::Tensor a, torch::T
 void hgemm_mma_stages_tn_cute(torch::Tensor a, torch::Tensor b, torch::Tensor c, int stages, bool swizzle, int swizzle_stride);
 ```
 
-</details>
 
 ## 安装toy-hgemm
 本仓库实现的HGEMM可以作为一个python库使用（可选）
