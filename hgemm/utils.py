@@ -108,7 +108,7 @@ def build_hgemm_lib_from_sources(verbose: bool = False):
 
 
 @torch.no_grad
-def row2col(x: torch.Tensor):
+def as_col_major(x: torch.Tensor):
     # convert a row major tensor -> col major with contiguous storage
     x_trans = x.t()
     x_col_major = x_trans.reshape(x.shape)
