@@ -5,10 +5,10 @@ import time
 from functools import partial
 from typing import Optional
 import argparse
-from utils import (get_device_name, 
-                   pretty_print_line,
-                   build_hgemm_lib_from_sources,
-                   as_col_major)
+from tools.utils import (get_device_name, 
+                         pretty_print_line,
+                         try_load_hgemm_library,
+                         as_col_major)
 
 torch.set_grad_enabled(False)
 
@@ -58,20 +58,8 @@ print(args)
 pretty_print_line()
 
 
-if not args.force_build:
-    # check if can import toy_hgemm
-    try:
-        import toy_hgemm as hgemm
-        pretty_print_line(f"Import toy-hgemm library done, use it!")
-    except Exception:
-        pretty_print_line(f"Can't import toy-hgemm, force build from source or "
-                          f"run <python3 setup.py bdist_wheel> & <pip install dist/*whl>")
-        pretty_print_line(f"Also may need export LD_LIBRARY_PATH=PATH-TO/torch/lib:$LD_LIBRARY_PATH")
-        hgemm = build_hgemm_lib_from_sources(verbose=args.verbose)
-else:
-    pretty_print_line("Force hgemm lib build from sources")
-    hgemm = build_hgemm_lib_from_sources(verbose=args.verbose)
-
+hgemm = try_load_hgemm_library(force_build=args.force_build, 
+                               verbose=args.verbose)
 
 MAX_TFLOPS = -1
 STATIS_INFO: dict[str, list[float]] = {}
