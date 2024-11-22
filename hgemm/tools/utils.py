@@ -31,7 +31,8 @@ def get_build_sources():
 
 
 def get_project_dir():
-    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def get_build_cuda_cflags(build_pkg: bool = False):
