@@ -2,6 +2,20 @@
 
 ![NVIDIA_L20_NN+TN+v2](https://github.com/user-attachments/assets/71927ac9-72b3-4ce9-b0e2-788b5885bc99)
 
+## 📖 HGEMM Supported Matrix 🎉🎉 
+
+|CUDA Cores|Sliced K(Loop over K)|Tile Block|Tile Thread|
+|:---:|:---:|:---:|:---:|
+|✔️|✔️|✔️|✔️|
+|WMMA(m16n16k16)|MMA(m16n8k16)|Pack LDST(128 bits)|SMEM Padding|
+|✔️|✔️|✔️|✔️|
+|Copy Async|Tile MMA(More Threads)|Tile Warp(More Values)|Multi Stages|  
+|✔️|✔️|✔️|✔️|
+|Reg Double Buffers|Block Swizzle|Warp Swizzle|Collective Store(Warp Shfl)|
+|✔️|✔️|✔️|✔️|
+|Row Major(NN)|Col Major(TN)|SGEMM TF32|SMEM Swizzle(CuTe)|
+|✔️|✔️|✔️|✔️|
+
 
 ## 📖 HGEMM CUDA Kernels in Toy-HGEMM Library 🎉🎉 
 
@@ -41,21 +55,6 @@ void hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_rr(torch::Tensor a, torch:
 void hgemm_mma_m16n8k16_mma2x4_warp4x4_stages_dsmem_tn(torch::Tensor a, torch::Tensor b, torch::Tensor c, int stages, bool swizzle, int swizzle_stride);
 void hgemm_mma_stages_tn_cute(torch::Tensor a, torch::Tensor b, torch::Tensor c, int stages, bool swizzle, int swizzle_stride);
 ```
-
-## 📖 HGEMM Supported Matrix 🎉🎉 
-
-|CUDA Cores|Sliced K(Loop over K)|Tile Block|Tile Thread|
-|:---:|:---:|:---:|:---:|
-|✔️|✔️|✔️|✔️|
-|WMMA(m16n16k16)|MMA(m16n8k16)|Pack LDST(128 bits)|SMEM Padding|
-|✔️|✔️|✔️|✔️|
-|Copy Async|Tile MMA(More Threads)|Tile Warp(More Values)|Multi Stages|  
-|✔️|✔️|✔️|✔️|
-|Reg Double Buffers|Block Swizzle|Warp Swizzle|Collective Store(Warp Shfl)|
-|✔️|✔️|✔️|✔️|
-|Row Major(NN)|Col Major(TN)|SGEMM TF32|SMEM Swizzle(CuTe)|
-|✔️|✔️|✔️|✔️|
-
 
 ## 📖 安装
 本仓库实现的HGEMM可以作为一个python库使用（可选）
