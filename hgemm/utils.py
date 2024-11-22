@@ -1,5 +1,6 @@
 import os
 import torch
+from torch.utils.cpp_extension import load
 
 
 def get_device_name():
@@ -86,6 +87,24 @@ def get_build_cuda_cflags(build_pkg: bool = False):
     extra_cuda_cflags.append(f'-I {project_dir}/third-party/cutlass/tools/util/include')
     extra_cuda_cflags.append('-lcublas')
     return extra_cuda_cflags
+
+
+def pretty_print_line(m: str = "", sep: str = "-", width: int = 150):
+    res_len = width - len(m)
+    left_len = int(res_len / 2)
+    right_len = res_len - left_len
+    pretty_line = sep * left_len + m + sep * right_len
+    print(pretty_line)
+
+
+def build_hgemm_lib_from_sources(verbose: bool = False):
+    # Load the CUDA kernel as a python module
+    pretty_print_line(f"Loading hgemm lib on device: {get_device_name()}, "
+                      f"capability: {get_device_capability()}")
+    return load(name='hgemm_lib', sources=get_build_sources(),
+                extra_cuda_cflags=get_build_cuda_cflags(), 
+                extra_cflags=['-std=c++17'], 
+                verbose=verbose)
 
 
 @torch.no_grad
