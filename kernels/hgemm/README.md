@@ -1,8 +1,4 @@
-# 🔥🔥Toy-HGEMM Library: Achieve the performance of cuBLAS
-
-Currently, on NVIDIA L20, RTX 4090 and RTX 3090 Laptop, compared with cuBLAS's default Tensor Cores math algorithm CUBLAS_GEMM_DEFAULT_TENSOR_OP, the HGEMM (WMMA/MMA) implemented in this repo (blue🔵) can achieve 95%~99% of its (orange🟠) performance.
-
-## 📖 HGEMM Supported Matrix 🎉🎉 
+## 🔥🔥Toy-HGEMM Library: Achieve the performance of cuBLAS
 
 |CUDA Cores|Sliced K(Loop over K)|Tile Block|Tile Thread|
 |:---:|:---:|:---:|:---:|
