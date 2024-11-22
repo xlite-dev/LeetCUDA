@@ -81,7 +81,7 @@ setup(
             "tmp",
         )
     ),
-    description="Toy HGEMM implement by CUDA",
+    description="My Toy HGEMM implement by CUDA",
     ext_modules=ext_modules,
     cmdclass={ "build_ext": BuildExtension},
     python_requires=">=3.10",
