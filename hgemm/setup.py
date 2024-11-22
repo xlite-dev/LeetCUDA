@@ -8,7 +8,7 @@ from torch.utils.cpp_extension import (
     CUDAExtension,
     CUDA_HOME,
 )
-from utils import (get_build_sources, get_build_cuda_cflags)
+from tools.utils import (get_build_sources, get_build_cuda_cflags)
 
 # package name managed by pip, which can be remove by `pip uninstall tiny_pkg`
 PACKAGE_NAME = "toy-hgemm"
