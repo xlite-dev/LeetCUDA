@@ -1,6 +1,4 @@
-# HGEMM 🔥🔥: Achieve the performance of cuBLAS 
-
-## HGEMM/SGEMM Supported Matrix
+# 🔥🔥Toy HGEMM - Achieve the performance of cuBLAS
 
 |CUDA Cores|Sliced K(Loop over K)|Tile Block|Tile Thread|
 |:---:|:---:|:---:|:---:|
@@ -44,6 +42,13 @@
 - [X] PyTorch bindings
 
 </details>
+
+## 安装
+本仓库实现的HGEMM Kernels可以作为一个python库toy-hgemm使用，安装命令如下。（可选）
+```bash
+git submodule update --init --recursive --force
+bash tools/install.sh # pip uninstall toy-hgemm 卸载
+```
 
 ## 测试命令
 
