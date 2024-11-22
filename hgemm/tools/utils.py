@@ -115,7 +115,7 @@ def try_load_hgemm_library(force_build: bool = False, verbose: bool = False):
             pretty_print_line(f"Import toy-hgemm library done, use it!")
         except Exception:
             pretty_print_line(f"Can't import toy-hgemm, force build "
-                              f"from source or run <bash install.sh>")
+                              f"from source or run <bash tools/install.sh>")
             pretty_print_line(f"Also may need export LD_LIBRARY_PATH="
                               f"PATH-TO/torch/lib:$LD_LIBRARY_PATH")
             hgemm = build_hgemm_lib_from_sources(verbose=verbose)
