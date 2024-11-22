@@ -5,7 +5,7 @@
 
 ## 📖 HGEMM CUDA Kernels in Toy-HGEMM Library 
 
-- HGEMM Supported Matrix  
+- HGEMM Supported Matrix 🎉🎉 
 
 |CUDA Cores|Sliced K(Loop over K)|Tile Block|Tile Thread|
 |:---:|:---:|:---:|:---:|
@@ -19,7 +19,7 @@
 |Row Major(NN)|Col Major(TN)|SGEMM TF32|SMEM Swizzle(CuTe)|
 |✔️|✔️|✔️|✔️|
 
-- All Kernels  
+- All Kernels 🎉🎉
 
 ```C++  
 void hgemm_naive_f16(torch::Tensor a, torch::Tensor b, torch::Tensor c);
@@ -59,14 +59,14 @@ void hgemm_mma_stages_tn_cute(torch::Tensor a, torch::Tensor b, torch::Tensor c,
 ```
 
 
-## 安装
+## 📖 安装
 本仓库实现的HGEMM可以作为一个python库使用（可选）
 ```bash
 git submodule update --init --recursive --force # 更新cutlass, 必须
 python3 setup.py bdist_wheel && cd dist && python3 -m pip install *.whl # pip uninstall toy-hgemm -y 卸载
 ```
 
-## 测试
+## 📖 测试
 
 **CUTLASS**: 更新CUTLASS依赖库
 ```bash
@@ -130,7 +130,7 @@ M N K =  16128  16128  16128, Time =   0.07319142   0.07320709   0.07326925 s, A
 M N K =  16384  16384  16384, Time =   0.07668429   0.07669371   0.07670784 s, AVG Performance =   114.6912 Tflops
 ```
 
-## 目前性能  
+## 📖 目前性能  
 
 ### NVIDIA L20  
 
@@ -148,8 +148,6 @@ M N K =  16384  16384  16384, Time =   0.07668429   0.07669371   0.07670784 s, A
 
 ![NVIDIA_L20_NN+TN+v2](https://github.com/user-attachments/assets/71927ac9-72b3-4ce9-b0e2-788b5885bc99)
 
-- WMMA: Up to 113.76 TFLOPS, 113.83/119.5=95.25% TFLOPS utilization, 113.83/116.25=97.91% cuBLAS performance.
-- MMA: Up to 115.12 TFLOPS, 115.12/119.5=96.33% TFLOPS utilization, 115.12/116.25=99.03% cuBLAS performance.
   
 全量MNK测试命令（提示: 每个MNK单独测试的性能数据更准确）
 ```bash
@@ -182,7 +180,7 @@ python3 hgemm.py --wmma-all --plot
 ```
 
 
-## 性能优化笔记
+## 📖 性能优化笔记
 
 ### PyTorch HGEMM Profile
 
