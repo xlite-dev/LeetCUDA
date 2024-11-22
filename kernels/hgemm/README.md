@@ -1,5 +1,12 @@
 # 🔥🔥Toy-HGEMM Library: Achieve the performance of cuBLAS
 
+![NVIDIA_L20_NN+TN+v2](https://github.com/user-attachments/assets/71927ac9-72b3-4ce9-b0e2-788b5885bc99)
+
+
+## 📖 HGEMM CUDA Kernels in Toy-HGEMM Library 
+
+- HGEMM Supported Matrix  
+
 |CUDA Cores|Sliced K(Loop over K)|Tile Block|Tile Thread|
 |:---:|:---:|:---:|:---:|
 |✔️|✔️|✔️|✔️|
@@ -12,9 +19,7 @@
 |Row Major(NN)|Col Major(TN)|SGEMM TF32|SMEM Swizzle(CuTe)|
 |✔️|✔️|✔️|✔️|
 
-
-## 📖 HGEMM CUDA Kernels in Toy-HGEMM Library 
-
+- All Kernels  
 
 ```C++  
 void hgemm_naive_f16(torch::Tensor a, torch::Tensor b, torch::Tensor c);
@@ -54,14 +59,14 @@ void hgemm_mma_stages_tn_cute(torch::Tensor a, torch::Tensor b, torch::Tensor c,
 ```
 
 
-## 安装toy-hgemm
+## 安装
 本仓库实现的HGEMM可以作为一个python库使用（可选）
 ```bash
-git submodule update --init --recursive --force
-bash tools/install.sh # pip uninstall toy-hgemm 卸载
+git submodule update --init --recursive --force # 更新cutlass, 必须
+python3 setup.py bdist_wheel && cd dist && python3 -m pip install *.whl # pip uninstall toy-hgemm -y 卸载
 ```
 
-## 测试toy-hgemm
+## 测试
 
 **CUTLASS**: 更新CUTLASS依赖库
 ```bash
