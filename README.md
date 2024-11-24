@@ -43,7 +43,7 @@ Currently, on NVIDIA L20, RTX 4090 and RTX 3080 Laptop, compared with cuBLAS's d
 
 ```BibTeX
 @misc{CUDA-Learn-Notes@2024,
-  title={CUDA-Learn-Notes: A Modern CUDA Learn Notes with PyTorch},
+  title={CUDA-Learn-Notes: A Modern CUDA Learn Notes with PyTorch for Beginners},
   url={https://github.com/DefTruth/CUDA-Learn-Notes},
   note={Open-source software available at https://github.com/DefTruth/CUDA-Learn-Notes},
   author={DefTruth etc},
