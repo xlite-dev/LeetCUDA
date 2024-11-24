@@ -34,9 +34,9 @@ Currently, on NVIDIA L20, RTX 4090 and RTX 3090 Laptop, compared with cuBLAS's d
 |✔️|✔️|✔️|✔️|
 |Copy Async|Tile MMA(More Threads)|Tile Warp(More Values)|Multi Stages|  
 |✔️|✔️|✔️|✔️|
-|Reg Double Buffers|Block Swizzle|Warp Swizzle|Collective Store(Warp Shfl)|
+|Reg Double Buffers|Block Swizzle|Warp Swizzle|Collective Store(Warp Shuffle)|
 |✔️|✔️|✔️|✔️|
-|Row Major(NN)|Col Major(TN)|SGEMM TF32|SMEM Swizzle(CuTe)|
+|Row Major(NN)|Col Major(TN)|SGEMM TF32|SMEM Swizzle(CUTLASS CuTe)|
 |✔️|✔️|✔️|✔️|
 
 ## ©️Citations🎉🎉
