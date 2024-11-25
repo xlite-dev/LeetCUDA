@@ -7,7 +7,7 @@
 |✔️|✔️|✔️|✔️|
 |Copy Async|Tile MMA(More Threads)|Tile Warp(More Values)|Multi Stages(2/3/4/5)|  
 |✔️|✔️|✔️|✔️|
-|Reg Double Buffers|Block Swizzle|Warp Swizzle|SMEM Swizzle(CUTLASS/CuTe)|
+|Register Double Buffers|Block Swizzle(Zigzag N)|Warp Swizzle(Zigzag N)|SMEM Swizzle(CUTLASS/CuTe)|
 |✔️|✔️|✔️|✔️|
 |Collective Store(Warp Shuffle & Reg Reuse)|Row Major(NN)|Col Major(TN)|SGEMM TF32|
 |✔️|✔️|✔️|✔️|
