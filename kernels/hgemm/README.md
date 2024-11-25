@@ -1,15 +1,15 @@
 # 🔥🔥Toy-HGEMM Library: Achieve the performance of cuBLAS
 
-|CUDA Cores|Sliced K(Loop over K)|Tile Block|Tile Thread|
+|CUDA Cores|Sliced K(Loop over K)|Tile Block(BMxBN)|Tile Thread(t 8x8)|
 |:---:|:---:|:---:|:---:|
 |✔️|✔️|✔️|✔️|
 |WMMA(m16n16k16)|MMA(m16n8k16)|Pack LDST(128 bits)|SMEM Padding|
 |✔️|✔️|✔️|✔️|
-|Copy Async|Tile MMA(More Threads)|Tile Warp(More Values)|Multi Stages(2/3/4/5)|  
+|Copy Async(cp.async.cg/ca)|Tile MMA(More Threads)|Tile Warp(More Values)|Multi Stages(2/3/4/5)|  
 |✔️|✔️|✔️|✔️|
 |Register Double Buffers|Block Swizzle(Zigzag N)|Warp Swizzle(Zigzag N)|SMEM Swizzle(CUTLASS/CuTe)|
 |✔️|✔️|✔️|✔️|
-|Collective Store(Warp Shuffle & Reg Reuse)|Row Major(NN)|Col Major(TN)|SGEMM TF32|
+|Collective Store(Warp Shuffle & Reg Reuse)|Row Major(NN)|Col Major(TN)|SGEMM FP32/TF32|
 |✔️|✔️|✔️|✔️|
 
 
