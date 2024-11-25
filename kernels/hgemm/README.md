@@ -5,11 +5,11 @@
 |✔️|✔️|✔️|✔️|
 |WMMA(m16n16k16)|MMA(m16n8k16)|Pack LDST(128 bits)|SMEM Padding|
 |✔️|✔️|✔️|✔️|
-|Copy Async|Tile MMA(More Threads)|Tile Warp(More Values)|Multi Stages|  
+|Copy Async|Tile MMA(More Threads)|Tile Warp(More Values)|Multi Stages(2/3/4/5)|  
 |✔️|✔️|✔️|✔️|
-|Reg Double Buffers|Block Swizzle|Warp Swizzle|SMEM Swizzle(CuTe)|
+|Reg Double Buffers|Block Swizzle|Warp Swizzle|SMEM Swizzle(CUTLASS/CuTe)|
 |✔️|✔️|✔️|✔️|
-|Collective Store(Warp Shfl)|Row Major(NN)|Col Major(TN)|SGEMM TF32|
+|Collective Store(Warp Shuffle & Reg Reuse)|Row Major(NN)|Col Major(TN)|SGEMM TF32|
 |✔️|✔️|✔️|✔️|
 
 
