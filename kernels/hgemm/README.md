@@ -1,4 +1,4 @@
-## 🔥🔥Toy-HGEMM Library: Achieve the performance of cuBLAS
+# 🔥🔥Toy-HGEMM Library: Achieve the performance of cuBLAS
 
 |CUDA Cores|Sliced K(Loop over K)|Tile Block|Tile Thread|
 |:---:|:---:|:---:|:---:|
@@ -7,9 +7,9 @@
 |✔️|✔️|✔️|✔️|
 |Copy Async|Tile MMA(More Threads)|Tile Warp(More Values)|Multi Stages|  
 |✔️|✔️|✔️|✔️|
-|Reg Double Buffers|Block Swizzle|Warp Swizzle|Collective Store(Warp Shfl)|
+|Reg Double Buffers|Block Swizzle|Warp Swizzle|SMEM Swizzle(CuTe)|
 |✔️|✔️|✔️|✔️|
-|Row Major(NN)|Col Major(TN)|SGEMM TF32|SMEM Swizzle(CuTe)|
+|Collective Store(Warp Shfl)|Row Major(NN)|Col Major(TN)|SGEMM TF32|
 |✔️|✔️|✔️|✔️|
 
 
@@ -49,7 +49,7 @@ void hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem(torch::Tensor a, torch::Te
 void hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_x4(torch::Tensor a, torch::Tensor b, torch::Tensor c, int stages, bool swizzle, int swizzle_stride);
 void hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_rr(torch::Tensor a, torch::Tensor b, torch::Tensor c, int stages, bool swizzle, int swizzle_stride);
 void hgemm_mma_m16n8k16_mma2x4_warp4x4_stages_dsmem_tn(torch::Tensor a, torch::Tensor b, torch::Tensor c, int stages, bool swizzle, int swizzle_stride);
-void hgemm_mma_stages_tn_cute(torch::Tensor a, torch::Tensor b, torch::Tensor c, int stages, bool swizzle, int swizzle_stride);
+void hgemm_mma_stages_block_swizzle_tn_cute(torch::Tensor a, torch::Tensor b, torch::Tensor c, int stages, bool swizzle, int swizzle_stride);
 ```
 
 ## 📖 安装
