@@ -266,6 +266,7 @@ def plot_tflops():
         save_path = f"{args.save_dir}/{device_name}_{args.save_tag}.png"
     else:
         save_path = f"{args.save_dir}/{device_name}.png"
+    os.makedirs(args.save_dir, exist_ok=True)
     plt.savefig(save_path, dpi=300)
     pretty_print_line(f"plot hgemm TFLOPS done, saved as {save_path}")
 
