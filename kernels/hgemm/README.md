@@ -12,8 +12,9 @@
 |Collective Store(Warp Shuffle & Reg Reuse)|Row Major(NN)|Col Major(TN)|SGEMM FP32/TF32|
 |✔️|✔️|✔️|✔️|
 
-
 ## 📖 HGEMM CUDA Kernels in Toy-HGEMM Library 🎉🎉 
+
+<div id="kernels"></div>  
 
 ```C++  
 void hgemm_naive_f16(torch::Tensor a, torch::Tensor b, torch::Tensor c);
@@ -52,7 +53,20 @@ void hgemm_mma_m16n8k16_mma2x4_warp4x4_stages_dsmem_tn(torch::Tensor a, torch::T
 void hgemm_mma_stages_block_swizzle_tn_cute(torch::Tensor a, torch::Tensor b, torch::Tensor c, int stages, bool swizzle, int swizzle_stride);
 ```
 
-## 📖 安装
+## 📖 目录
+
+- [📖 安装](#install)
+- [📖 测试](#test)
+- [📖 NVIDIA L20 性能数据](#perf-l20)
+- [📖 NVIDIA RTX 4090 性能数据](#perf-4090)
+- [📖 NVIDIA RTX 3080 Laptop 性能数据](#perf-3080)
+- [📖 性能优化笔记](#opt-docs)
+- [📖 参考文献](#ref)
+
+## 📖 安装  
+
+<div id="install"></div>  
+
 本仓库实现的HGEMM可以作为一个python库使用（可选）
 ```bash
 git submodule update --init --recursive --force # 更新cutlass, 必须
@@ -60,6 +74,8 @@ python3 setup.py bdist_wheel && cd dist && python3 -m pip install *.whl # pip un
 ```
 
 ## 📖 测试
+
+<div id="test"></div>  
 
 **CUTLASS**: 更新CUTLASS依赖库
 ```bash
@@ -125,6 +141,8 @@ M N K =  16384  16384  16384, Time =   0.07668429   0.07669371   0.07670784 s, A
 
 ## 📖 目前性能  
 
+<div id="perf-l20"></div>  
+
 ### NVIDIA L20  
 
 目前最优的实现，在L20上（理论Tensor Cores FP16算力为 119.5 TFLOPS），整体上能达到cuBLAS大概`99~100+%`左右的性能。使用WMMA API能达到cuBLAS大概`95%~98%`左右的性能(105-113 TFLOPS vs 105-115 TFLOPS)，使用MMA API能达到115 TFLOPS，部分 case 会超越 cuBLAS。CuTe 版本的 HGEMM 实现了 Block Swizzle（L2 Cache friendly）和 SMEM Swizzle（bank conflicts free），性能最优，大规模矩阵乘能达到 116-117 TFLOPS，是 cuBLAS 大概`98%~100%+`左右的性能，很多case会超越cuBLAS。目前通过 SMEM Padding 和 SMEM Swizzle 的方式缓解 bank conflicts。对于 NN layout，使用 SMEM Padding 缓解 bank conflicts；对于 TN layout，通过 CUTLASS/CuTe 的 SMEM Swizzle 消除 bank conflicts。
@@ -148,6 +166,9 @@ python3 hgemm.py --cute-tn --mma --plot
 ```
 
 ### NVIDIA GeForce RTX 4090
+
+<div id="perf-4090"></div>  
+
 在NVIDIA RTX 4090上(FP16 Tensor Cores算力为330 TFLOPS)，WMMA(m16n16k16)性能表现比MMA(m16n8k16)要更好，大分部MNK下，本仓库的实现能达到cuBLAS 95%~99%的性能，某些case能超过cuBLAS。就本仓库的实现而言，在RTX 4090上，大规模矩阵乘(MNK>=8192)，WMMA表现更优，小规模矩阵乘，MMA表现更优。
 
 <!---
@@ -164,6 +185,8 @@ python3 hgemm.py --cute-tn --mma --wmma-all --plot
 
 ### NVIDIA GeForce RTX 3080 Laptop   
 
+<div id="perf-3080"></div>  
+
 在NVIDIA GeForce RTX 3080 Laptop上测试，使用mma4x4_warp4x4（16 WMMA m16n16k16 ops, warp tile 64x64）以及Thread block swizzle，大部分case能持平甚至超过cuBLAS，使用Windows WSL2 + RTX 3080 Laptop进行测试。
 
 <!--
@@ -178,6 +201,9 @@ python3 hgemm.py --wmma-all --plot
 
 
 ## 📖 性能优化笔记
+
+<div id="opt-docs"></div>  
+
 
 ### PyTorch HGEMM Profile
 
@@ -283,6 +309,8 @@ TODO
 </details>
 
 ## 参考文献 
+
+<div id="ref"></div>  
 
 - [CUDA编程概念】一、什么是bank conflict？](https://zhuanlan.zhihu.com/p/659142274)
 - [解决 bank conflict](https://github.com/PaddleJitLab/CUDATutorial/blob/develop/docs/09_optimize_reduce/02_bank_conflict/README.md)
