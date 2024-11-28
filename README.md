@@ -28,16 +28,16 @@
 
 Currently, on NVIDIA L20, RTX 4090 and RTX 3080 Laptop, compared with cuBLAS's default Tensor Cores math algorithm `CUBLAS_GEMM_DEFAULT_TENSOR_OP`, the `HGEMM (WMMA/MMA)` implemented in this repo (`blue`🔵) can achieve `98%~100%` of its (`orange`🟠) performance. Please check [toy-hgemm library🚀🚀](./kernels/hgemm) for more details.
 
-|CUDA Cores|Sliced K(Loop over K)|Tile Block(BMxBK)|Tile Thread(t 8x8)|
+|CUDA Cores|Sliced K (Loop over K)|Tile Block (BMxBK)|Tile Thread (t 8x8)|
 |:---:|:---:|:---:|:---:|
 |✔️|✔️|✔️|✔️|
-|WMMA(m16n16k16)|MMA(m16n8k16)|Pack LDST(128 bits)|SMEM Padding|
+|WMMA (m16n16k16)|MMA (m16n8k16)|Pack LDST (128 bits)|SMEM Padding|
 |✔️|✔️|✔️|✔️|
-|Copy Async|Tile MMA(More Threads)|Tile Warp(More Values)|Multi Stages(2/3/4)|  
+|Copy Async|Tile MMA (More Threads)|Tile Warp (More Values)|Multi Stages (2/3/4)|  
 |✔️|✔️|✔️|✔️|
-|Reg Double Buffers|Block Swizzle|Warp Swizzle|SMEM Swizzle(CuTe)|
+|Reg Double Buffers|Block Swizzle|Warp Swizzle|SMEM Swizzle (CuTe)|
 |✔️|✔️|✔️|✔️|
-|Collective Store(Warp Shfl)|Row Major (NN)|Col Major (TN)|SGEMM FP32/TF32|
+|Collective Store (Warp Shfl)|Row Major (NN)|Col Major (TN)| SGEMM FP32/TF32|
 |✔️|✔️|✔️|✔️|
 
 ## ©️Citations🎉🎉
