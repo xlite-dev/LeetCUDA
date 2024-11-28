@@ -218,7 +218,9 @@ void launch_hgemm_mma_stages_block_swizzle_tn_cute(const T *a,
   auto KStage = Int<Stages>{}; // default 2
   auto kSmemLayoutCBatch = Int<4>{};
 
-  // Define the smem layouts
+  // Define the smem layouts, Swizzle<3, 3, 3> and 
+  // Swizzle<2, 3, 3> will get the same results.
+  // reference: https://zhuanlan.zhihu.com/p/671419093
   using SmemLayoutAtom = decltype(
     composition(
       Swizzle<3, 3, 3>{}, 
