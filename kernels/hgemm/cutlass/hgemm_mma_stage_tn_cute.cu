@@ -57,9 +57,7 @@ __global__ void hgemm_mma_stages_block_swizzle_tn_cute_kernel(
   // dispatch TileA/TileB/TileC mma tensor into thread fragment via partition
   TiledMMA tiled_mma;
   auto thr_mma = tiled_mma.get_slice(threadIdx.x);
-  // auto tCsA = thr_mma.partition_A(sA); // (MMA,MMA_M,MMA_K,kStage)
-  // auto tCsB = thr_mma.partition_B(sB); // (MMA,MMA_N,MMA_K,kStage)
-  auto tCgD = thr_mma.partition_C(gD);    // (MMA, MMA_M, MMA_N)
+  auto tCgD = thr_mma.partition_C(gD);    // (MMA,MMA_M, MMA_N)
 
   auto tCrA = thr_mma.partition_fragment_A(gA(_, _, 0)); // (MMA, MMA_M, MMA_K)
   auto tCrB = thr_mma.partition_fragment_B(gB(_, _, 0)); // (MMA, MMA_N, MMA_K)
@@ -241,29 +239,60 @@ void launch_hgemm_mma_stages_block_swizzle_tn_cute(const T *a,
   using mma_op = SM80_16x8x16_F16F16F16F16_TN;
   using mma_traits = MMA_Traits<mma_op>;
   using mma_atom = MMA_Atom<mma_traits>;
-  static constexpr int kMmaEURepeatM = 2;
-  static constexpr int kMmaEURepeatN = 2;
-  static constexpr int kMmaEURepeatK = 1;
+  static constexpr int kMmaEURepeatM = 2; // MMA repeat 2 times across M
+  static constexpr int kMmaEURepeatN = 2; // MMA repeat 2 times across N
+  static constexpr int kMmaEURepeatK = 1; // MMA no repeat across K
 
-  using mma_atom_shape = mma_traits::Shape_MNK;
-  static constexpr int kMmaPM = 1 * kMmaEURepeatM * get<0>(mma_atom_shape{});
-  static constexpr int kMmaPN = 2 * kMmaEURepeatN * get<1>(mma_atom_shape{});
-  static constexpr int kMmaPK = 1 * kMmaEURepeatK * get<2>(mma_atom_shape{});
+  using mma_atom_shape = mma_traits::Shape_MNK; // M,N,K 16,8,16
+  static constexpr int kMmaPM = 1 * kMmaEURepeatM * get<0>(mma_atom_shape{}); // 1*2*16=32
+  static constexpr int kMmaPN = 2 * kMmaEURepeatN * get<1>(mma_atom_shape{}); // 2*2*8 =32
+  static constexpr int kMmaPK = 1 * kMmaEURepeatK * get<2>(mma_atom_shape{}); // 1*1*8 =8
+  // TiledMMA, more threads, MMAThrLayout(2,2,1), 4 MMA = 4 warps = 32x4 threads.
   using MMA_EU_RepeatT = decltype(make_layout(make_shape(
     Int<kMmaEURepeatM>{}, Int<kMmaEURepeatN>{}, Int<kMmaEURepeatK>{})));
+  // TiledMMA, more values, Permutations(32,32,8)
   using MMA_P_T = Tile<Int<kMmaPM>, Int<kMmaPN>, Int<kMmaPK>>;
   using MMA = decltype(make_tiled_mma(mma_atom{}, MMA_EU_RepeatT{}, MMA_P_T{}));
+  // print(MMA{});
+  // TiledMMA
+  // ThrLayoutVMNK:  (_32,_2,_2,_1):(_1,_32,_64,_0)
+  // PermutationMNK: (_32,_32,_16)
+  // MMA_Atom
+  //   ThrID:      _32:_1
+  //   Shape_MNK:  (_16,_8,_16)
+  //   LayoutA_TV: ((_4,_8),(_2,_2,_2)):((_32,_1),(_16,_8,_128))
+  //   LayoutB_TV: ((_4,_8),(_2,_2)):((_16,_1),(_8,_64))
+  //   LayoutC_TV: ((_4,_8),(_2,_2)):((_32,_1),(_16,_8))
   
   // copy from global memory to shared memory
   using g2s_copy_op = SM80_CP_ASYNC_CACHEGLOBAL<cute::uint128_t>;
   using g2s_copy_traits = Copy_Traits<g2s_copy_op>;
   using g2s_copy_atom = Copy_Atom<g2s_copy_traits, T>;
+
+  // method 0: make TiledCopy according to ThrLayout and ValLayout.
+  // 32x4 threads, each thread load 1x8 values (128 bits) once.
+  /** Produce a TiledCopy from logical thread and values layouts.
+  * The thread and value layouts map coordinates to thr_idx and val_idx.
+  *    The product of these layouts is taken to produce the TV layout and the Tiler.
+  * Useful when threads and values need very specific mappings onto coordinates
+  *    in the target tensors.
+  */
   using G2SCopyA =
     decltype(make_tiled_copy(g2s_copy_atom{},
              make_layout(make_shape(Int<32>{}, Int<4>{}), // Thr layout 32x4 k-major
                          make_stride(Int<4>{}, Int<1>{})),
              make_layout(make_shape(Int<1>{}, Int<8>{})))); // Val layout 1x8
   using G2SCopyB = G2SCopyA;
+  // print(G2SCopyA{});
+  // TiledCopy
+  //   Tiler_MN:       (_32,_32)
+  //   TiledLayout_TV: ((_4,_32),_8):((_256,_1),_32)
+  // Copy_Atom
+  //   ThrID:        _1:_0
+  //   ValLayoutSrc: (_1,_8):(_0,_1)
+  //   ValLayoutDst: (_1,_8):(_0,_1)
+  //   ValLayoutRef: (_1,_8):(_0,_1)
+  //   ValueType:    16b
 
   // copy from shared memory to register
   // use mma tiled ,so no tiled here
@@ -277,7 +306,7 @@ void launch_hgemm_mma_stages_block_swizzle_tn_cute(const T *a,
   using SmemLayoutAtomC = decltype(
     composition(
       Swizzle<3, 3, 3>{}, 
-      make_layout(make_shape(Int<kMmaPM>{}, Int<kMmaPN>{}), 
+      make_layout(make_shape(Int<kMmaPM>{}, Int<kMmaPN>{}), // 32*32
                   make_stride(Int<kMmaPN>{}, Int<1>{})))
     );
   using SmemLayoutC = decltype(
@@ -387,7 +416,8 @@ int main() {
   const int thread_block_swizzle_stride = 2048; // thread block swizzle stride
 
   printf("ALGO = CuTe HGEMM, TN, STAGES=2, SMEM SWIZZLE=<3, 3, 3>, BLOCK SWIZZLE=2048\n");
-  for (int j = 0; j < 5; j++) {
+  int check_num = test_num > 5 ? 5 : 1;
+  for (int j = 0; j < check_num; j++) {
     int M = M_list[j], N = N_list[j], K = K_list[j];
     float max_error = gemm_error_check_tn_swizzle<T>(
       launch_hgemm_mma_stages_block_swizzle_tn_cute<T, 2, true>, 
