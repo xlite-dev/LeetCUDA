@@ -21,19 +21,19 @@
 <div id="hgemm-sgemm"></div>  
 
 <div align='center'>
-  <img src='https://github.com/user-attachments/assets/71927ac9-72b3-4ce9-b0e2-788b5885bc99' height="150px" width="268px">
-  <img src='https://github.com/user-attachments/assets/05ef4f5e-d999-48ea-b58e-782cffb24e85' height="150px" width="268px">
-  <img src='https://github.com/user-attachments/assets/9472e970-c083-4b31-9252-3eeecc761078' height="150px" width="268px">
+  <img src='https://github.com/user-attachments/assets/71927ac9-72b3-4ce9-b0e2-788b5885bc99' height="170px" width="270px">
+  <img src='https://github.com/user-attachments/assets/05ef4f5e-d999-48ea-b58e-782cffb24e85' height="170px" width="270px">
+  <img src='https://github.com/user-attachments/assets/9472e970-c083-4b31-9252-3eeecc761078' height="170px" width="270px">
 </div> 
 
 Currently, on NVIDIA L20, RTX 4090 and RTX 3080 Laptop, compared with cuBLAS's default Tensor Cores math algorithm `CUBLAS_GEMM_DEFAULT_TENSOR_OP`, the `HGEMM (WMMA/MMA)` implemented in this repo (`blue`🔵) can achieve `98%~100%` of its (`orange`🟠) performance. Please check [toy-hgemm library🚀🚀](./kernels/hgemm) for more details.
 
-|CUDA Cores|Sliced K(Loop over K)|Tile Block|Tile Thread|
+|CUDA Cores|Sliced K(Loop over K)|Tile Block(BMxBK)|Tile Thread(t 8x8)|
 |:---:|:---:|:---:|:---:|
 |✔️|✔️|✔️|✔️|
 |WMMA(m16n16k16)|MMA(m16n8k16)|Pack LDST(128 bits)|SMEM Padding|
 |✔️|✔️|✔️|✔️|
-|Copy Async|Tile MMA(More Threads)|Tile Warp(More Values)|Multi Stages|  
+|Copy Async|Tile MMA(More Threads)|Tile Warp(More Values)|Multi Stages(2/3/4)|  
 |✔️|✔️|✔️|✔️|
 |Reg Double Buffers|Block Swizzle|Warp Swizzle|SMEM Swizzle(CuTe)|
 |✔️|✔️|✔️|✔️|
