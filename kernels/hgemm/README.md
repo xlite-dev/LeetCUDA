@@ -1,4 +1,4 @@
-# ⚡️⚡️Toy-HGEMM Library: Achieve the TFLOPS of cuBLAS
+# ⚡️⚡️Toy-HGEMM Library: Achieve the performance of cuBLAS
 
 |CUDA Cores|Sliced K(Loop over K)|Tile Block(BMxBN)|Tile Thread(t 8x8)|
 |:---:|:---:|:---:|:---:|
