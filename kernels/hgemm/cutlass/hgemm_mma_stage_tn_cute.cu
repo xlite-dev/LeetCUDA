@@ -214,7 +214,7 @@ void launch_hgemm_mma_stages_block_swizzle_tn_cute(const T *a,
   auto BN = Int<256>{};
   auto BK = Int<32>{};
   auto KStage = Int<Stages>{}; // default 2
-  auto kSmemLayoutCBatch = Int<4>{};
+  auto kSmemLayoutCBatch = Int<4>{}; // namely, stages.
 
   // Define the smem layouts, Swizzle<3, 3, 3> and 
   // Swizzle<2, 3, 3> will get the same results.
@@ -234,6 +234,10 @@ void launch_hgemm_mma_stages_block_swizzle_tn_cute(const T *a,
     tile_to_shape(SmemLayoutAtom{}, 
                   make_shape(Int<BN>{}, Int<BK>{}, Int<KStage>{}))
   ); // (m,n) -> smem_idx
+#ifdef CUTE_HGEMM_DEBUG  
+  print(SmemLayoutA{}); print("\n");
+  print(SmemLayoutB{}); print("\n");
+#endif
   
   // mma
   using mma_op = SM80_16x8x16_F16F16F16F16_TN;
@@ -253,16 +257,9 @@ void launch_hgemm_mma_stages_block_swizzle_tn_cute(const T *a,
   // TiledMMA, more values, Permutations(32,32,16)
   using MMA_P_T = Tile<Int<kMmaPM>, Int<kMmaPN>, Int<kMmaPK>>;
   using MMA = decltype(make_tiled_mma(mma_atom{}, MMA_EU_RepeatT{}, MMA_P_T{}));
-  // print(MMA{});
-  // TiledMMA
-  // ThrLayoutVMNK:  (_32,_2,_2,_1):(_1,_32,_64,_0)
-  // PermutationMNK: (_32,_32,_16)
-  // MMA_Atom
-  //   ThrID:      _32:_1
-  //   Shape_MNK:  (_16,_8,_16)
-  //   LayoutA_TV: ((_4,_8),(_2,_2,_2)):((_32,_1),(_16,_8,_128))
-  //   LayoutB_TV: ((_4,_8),(_2,_2)):((_16,_1),(_8,_64))
-  //   LayoutC_TV: ((_4,_8),(_2,_2)):((_32,_1),(_16,_8))
+#ifdef CUTE_HGEMM_DEBUG  
+  print(MMA{}); print("\n");
+#endif
   
   // copy from global memory to shared memory
   using g2s_copy_op = SM80_CP_ASYNC_CACHEGLOBAL<cute::uint128_t>;
@@ -281,17 +278,10 @@ void launch_hgemm_mma_stages_block_swizzle_tn_cute(const T *a,
                          make_stride(Int<4>{}, Int<1>{})),
              make_layout(make_shape(Int<1>{}, Int<8>{})))); // Val layout 1x8
   using G2SCopyB = G2SCopyA;
-  // print(G2SCopyA{});
-  // TiledCopy
-  //   Tiler_MN:       (_32,_32)
-  //   TiledLayout_TV: ((_4,_32),_8):((_256,_1),_32)
-  // Copy_Atom
-  //   ThrID:        _1:_0
-  //   ValLayoutSrc: (_1,_8):(_0,_1)
-  //   ValLayoutDst: (_1,_8):(_0,_1)
-  //   ValLayoutRef: (_1,_8):(_0,_1)
-  //   ValueType:    16b
-
+#ifdef CUTE_HGEMM_DEBUG  
+  print("G2SCopyA: "); print(G2SCopyA{}); print("\n");
+  print("G2SCopyB: "); print(G2SCopyB{}); print("\n");
+#endif
   // copy from shared memory to register
   // use mma tiled ,so no tiled here
   using s2r_copy_op = SM75_U32x4_LDSM_N;
@@ -316,13 +306,22 @@ void launch_hgemm_mma_stages_block_swizzle_tn_cute(const T *a,
       make_shape(Int<kMmaPM>{}, Int<kMmaPN>{}, Int<kSmemLayoutCBatch>{})
     )
   );
-  print(SmemLayoutC{});
-  print(size(SmemLayoutC{}));
 
   static_assert(
     size<0>(SmemLayoutA{}) * size<1>(SmemLayoutA{}) >= size(SmemLayoutC{}),
     "C shared memory request is large than A's one pipe"
   );
+#ifdef CUTE_HGEMM_DEBUG  
+  print(SmemLayoutC{}); print("\n");
+  static constexpr int tmp_sizeC   = size(SmemLayoutC{});
+  static constexpr int tmp_sizeA_0 = size<0>(SmemLayoutA{});
+  static constexpr int tmp_sizeA_1 = size<1>(SmemLayoutA{});
+  static constexpr int tmp_sizeA = tmp_sizeA_0 * tmp_sizeA_1;
+  print("size SmemLayoutC: %d", tmp_sizeC);     print("\n");
+  print("size SmemLayoutA: %d", tmp_sizeA);     print("\n");
+  print("size 0 SmemLayoutA: %d", tmp_sizeA_0); print("\n");
+  print("size 1 SmemLayoutA: %d", tmp_sizeA_1); print("\n");
+#endif 
 
   using R2SCopyAtomC = Copy_Atom<UniversalCopy<int>, T>;
 
@@ -346,6 +345,8 @@ void launch_hgemm_mma_stages_block_swizzle_tn_cute(const T *a,
   dim3 grid(BX, BY, BZ);
 
   // C_shm is shared with A_shm and B_shm
+  // we don't allocate new smem for C_shm.
+  // (128 * 32 * 2) * 2 + (256 * 32 * 2) * 2 = 49152 bytes, stages=2
   static constexpr int shm_size_AB =
     cute::cosize(SmemLayoutA{}) + cute::cosize(SmemLayoutB{});
   static constexpr int shm_size_C = cute::cosize(SmemLayoutC{});
@@ -353,6 +354,10 @@ void launch_hgemm_mma_stages_block_swizzle_tn_cute(const T *a,
     cute::max(shm_size_AB, shm_size_C) * sizeof(T);
 
   int shm_size = kShmSize;
+#ifdef CUTE_HGEMM_DEBUG 
+  print("shm_size: %d bytes, shm_size_AB: %d bytes, shm_size_C: %d bytes\n", 
+         shm_size, shm_size_AB * (int) sizeof(T), shm_size_C * (int) sizeof(T));
+#endif
 
   cudaFuncSetAttribute(
     hgemm_mma_stages_block_swizzle_tn_cute_kernel<
@@ -403,8 +408,11 @@ void launch_hgemm_mma_stages_block_swizzle_tn_cute(const T *a,
 int main() {
   using T = cute::half_t;
   using namespace cute;
-
+#ifdef CUTE_HGEMM_DEBUG
+  const int test_num = 1;
+#else
   const int test_num = 64;
+#endif
   int M_list[test_num];
   int N_list[test_num];
   int K_list[test_num];
@@ -415,9 +423,7 @@ int main() {
     K_list[i] = (i + 1) * 256;
   }
 
-  const int outer_repeat = 10, inner_repeat = 1;
   const int thread_block_swizzle_stride = 2048; // thread block swizzle stride
-
   printf("ALGO = CuTe HGEMM, NN, STAGES=2, SMEM SWIZZLE=<3, 3, 3>, BLOCK SWIZZLE=2048\n");
   int check_num = test_num > 5 ? 5 : 1;
   for (int j = 0; j < check_num; j++) {
@@ -429,6 +435,8 @@ int main() {
     printf("Max Error = %f\n", max_error);
   }
 
+#ifndef CUTE_HGEMM_DEBUG
+  const int outer_repeat = 10, inner_repeat = 1;
   for (int j = 0; j < test_num; j++) {
     int M = M_list[j], N = N_list[j], K = K_list[j];
  
@@ -454,6 +462,7 @@ int main() {
     printf("Time = %12.8lf %12.8lf %12.8lf s, ", min_sec, avg_sec, max_sec);
     printf("AVG Performance = %10.4lf Tflops\n", avg_Tflops);
   }
+#endif
 
   return 0;
 }
