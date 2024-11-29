@@ -424,7 +424,7 @@ int main() {
   }
 
   const int thread_block_swizzle_stride = 2048; // thread block swizzle stride
-  printf("ALGO = CuTe HGEMM, NN, STAGES=2, SMEM SWIZZLE=<3, 3, 3>, BLOCK SWIZZLE=2048\n");
+  printf("ALGO = CuTe HGEMM, TN, STAGES=2, SMEM SWIZZLE=<3, 3, 3>, BLOCK SWIZZLE=2048\n");
   int check_num = test_num > 5 ? 5 : 1;
   for (int j = 0; j < check_num; j++) {
     int M = M_list[j], N = N_list[j], K = K_list[j];
