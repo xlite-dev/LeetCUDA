@@ -246,11 +246,11 @@ void launch_hgemm_mma_stages_block_swizzle_tn_cute(const T *a,
   using mma_atom_shape = mma_traits::Shape_MNK; // M,N,K 16,8,16
   static constexpr int kMmaPM = 1 * kMmaEURepeatM * get<0>(mma_atom_shape{}); // 1*2*16=32
   static constexpr int kMmaPN = 2 * kMmaEURepeatN * get<1>(mma_atom_shape{}); // 2*2*8 =32
-  static constexpr int kMmaPK = 1 * kMmaEURepeatK * get<2>(mma_atom_shape{}); // 1*1*8 =8
+  static constexpr int kMmaPK = 1 * kMmaEURepeatK * get<2>(mma_atom_shape{}); // 1*1*16=16
   // TiledMMA, more threads, MMAThrLayout(2,2,1), 4 MMA = 4 warps = 32x4 threads.
   using MMA_EU_RepeatT = decltype(make_layout(make_shape(
     Int<kMmaEURepeatM>{}, Int<kMmaEURepeatN>{}, Int<kMmaEURepeatK>{})));
-  // TiledMMA, more values, Permutations(32,32,8)
+  // TiledMMA, more values, Permutations(32,32,16)
   using MMA_P_T = Tile<Int<kMmaPM>, Int<kMmaPN>, Int<kMmaPK>>;
   using MMA = decltype(make_tiled_mma(mma_atom{}, MMA_EU_RepeatT{}, MMA_P_T{}));
   // print(MMA{});
@@ -268,15 +268,13 @@ void launch_hgemm_mma_stages_block_swizzle_tn_cute(const T *a,
   using g2s_copy_op = SM80_CP_ASYNC_CACHEGLOBAL<cute::uint128_t>;
   using g2s_copy_traits = Copy_Traits<g2s_copy_op>;
   using g2s_copy_atom = Copy_Atom<g2s_copy_traits, T>;
-
-  // method 0: make TiledCopy according to ThrLayout and ValLayout.
-  // 32x4 threads, each thread load 1x8 values (128 bits) once.
-  /** Produce a TiledCopy from logical thread and values layouts.
-  * The thread and value layouts map coordinates to thr_idx and val_idx.
-  *    The product of these layouts is taken to produce the TV layout and the Tiler.
-  * Useful when threads and values need very specific mappings onto coordinates
-  *    in the target tensors.
-  */
+  // Make TiledCopy according to ThrLayout and ValLayout.
+  // 32x4 threads, each thread load 1x8 values (128 bits) once ?
+  //   Produce a TiledCopy from logical thread and values layouts.
+  // The thread and value layouts map coordinates to thr_idx and val_idx.
+  //   The product of these layouts is taken to produce the TV layout and the Tiler.
+  // Useful when threads and values need very specific mappings onto coordinates
+  //   in the target tensors.
   using G2SCopyA =
     decltype(make_tiled_copy(g2s_copy_atom{},
              make_layout(make_shape(Int<32>{}, Int<4>{}), // Thr layout 32x4 k-major
@@ -303,18 +301,23 @@ void launch_hgemm_mma_stages_block_swizzle_tn_cute(const T *a,
   using S2RCopyAtomB = s2r_copy_atom;
 
   // epilogue: register to global via shared memory
+  // Swizzle<3, 3, 3>=BxMxS=(2^3)*(2^3)*(2^3)=512 values=1024 bytes.
+  // reference: https://zhuanlan.zhihu.com/p/671419093
   using SmemLayoutAtomC = decltype(
     composition(
       Swizzle<3, 3, 3>{}, 
       make_layout(make_shape(Int<kMmaPM>{}, Int<kMmaPN>{}), // 32*32
                   make_stride(Int<kMmaPN>{}, Int<1>{})))
     );
+  // kSmemLayoutCBatch=4, 32x32x4=4096 values=8192 bytes
   using SmemLayoutC = decltype(
     tile_to_shape(
       SmemLayoutAtomC{}, 
       make_shape(Int<kMmaPM>{}, Int<kMmaPN>{}, Int<kSmemLayoutCBatch>{})
     )
   );
+  print(SmemLayoutC{});
+  print(size(SmemLayoutC{}));
 
   static_assert(
     size<0>(SmemLayoutA{}) * size<1>(SmemLayoutA{}) >= size(SmemLayoutC{}),
@@ -415,7 +418,7 @@ int main() {
   const int outer_repeat = 10, inner_repeat = 1;
   const int thread_block_swizzle_stride = 2048; // thread block swizzle stride
 
-  printf("ALGO = CuTe HGEMM, TN, STAGES=2, SMEM SWIZZLE=<3, 3, 3>, BLOCK SWIZZLE=2048\n");
+  printf("ALGO = CuTe HGEMM, NN, STAGES=2, SMEM SWIZZLE=<3, 3, 3>, BLOCK SWIZZLE=2048\n");
   int check_num = test_num > 5 ? 5 : 1;
   for (int j = 0; j < check_num; j++) {
     int M = M_list[j], N = N_list[j], K = K_list[j];
