@@ -45,6 +45,18 @@ Currently, on NVIDIA L20, RTX 4090 and RTX 3080 Laptop, compared with cuBLAS's d
 
 <div id="cuda-kernel"></div>  
 
+## ©️Citations🎉🎉
+
+```BibTeX
+@misc{CUDA-Learn-Notes@2024,
+  title={CUDA-Learn-Notes: A Modern CUDA Learn Notes with PyTorch for Beginners},
+  url={https://github.com/DefTruth/CUDA-Learn-Notes},
+  note={Open-source software available at https://github.com/DefTruth/CUDA-Learn-Notes},
+  author={DefTruth etc},
+  year={2024}
+}
+```
+
 |📖 cuda kernel| 📖 elem dtype| 📖 acc dtype| 📖 docs | 📖 level |
 |:---|:---|:---|:---|:---|  
 | ✔️ [nsys/ncu(timeline/ptx/sass)](./kernels/nvidia-nsight/)|/|/|[link](./kernels/nvidia-nsight/)|⭐️|  
@@ -362,18 +374,6 @@ How to contribute? please check [🌤🌤CONTRIBUTE🎉🎉](https://github.com/
   </picture>
 </a>  
 </div>
-
-## ©️Citations🎉🎉
-
-```BibTeX
-@misc{CUDA-Learn-Notes@2024,
-  title={CUDA-Learn-Notes: A Modern CUDA Learn Notes with PyTorch for Beginners},
-  url={https://github.com/DefTruth/CUDA-Learn-Notes},
-  note={Open-source software available at https://github.com/DefTruth/CUDA-Learn-Notes},
-  author={DefTruth etc},
-  year={2024}
-}
-```
 
 ## 📖 References ([©️back👆🏻](#contents))
 - [flash-attention-minimal](https://github.com/tspeterkim/flash-attention-minimal)
