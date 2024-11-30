@@ -37,20 +37,8 @@ Currently, on NVIDIA L20, RTX 4090 and RTX 3080 Laptop, compared with cuBLAS's d
 |✔️|✔️|✔️|✔️|
 |Reg Double Buffers|Block Swizzle|Warp Swizzle|SMEM Swizzle (CuTe)|
 |✔️|✔️|✔️|✔️|
-|Collective Store (Warp Shfl)|Row Major (NN)|Col Major (TN)| SGEMM FP32/TF32|
+|Collective Store (Warp Shuffle)|Row Major (NN)|Col Major (TN)| SGEMM FP32/TF32|
 |✔️|✔️|✔️|✔️|
-
-## ©️Citations🎉🎉
-
-```BibTeX
-@misc{CUDA-Learn-Notes@2024,
-  title={CUDA-Learn-Notes: A Modern CUDA Learn Notes with PyTorch for Beginners},
-  url={https://github.com/DefTruth/CUDA-Learn-Notes},
-  note={Open-source software available at https://github.com/DefTruth/CUDA-Learn-Notes},
-  author={DefTruth etc},
-  year={2024}
-}
-```
 
 ## 📖 150+ CUDA Kernels 🔥🔥 (面试常考题目) ([©️back👆🏻](#contents))
 **Workflow**: custom **CUDA** kernel impl -> **PyTorch** Python bindings -> Run tests. 👉TIPS: `*` = **Tensor Cores(WMMA/MMA)**, otherwise, CUDA Cores; `/` = not supported; `✔️` = supported; `❔` = in my plan.
@@ -374,6 +362,18 @@ How to contribute? please check [🌤🌤CONTRIBUTE🎉🎉](https://github.com/
   </picture>
 </a>  
 </div>
+
+## ©️Citations🎉🎉
+
+```BibTeX
+@misc{CUDA-Learn-Notes@2024,
+  title={CUDA-Learn-Notes: A Modern CUDA Learn Notes with PyTorch for Beginners},
+  url={https://github.com/DefTruth/CUDA-Learn-Notes},
+  note={Open-source software available at https://github.com/DefTruth/CUDA-Learn-Notes},
+  author={DefTruth etc},
+  year={2024}
+}
+```
 
 ## 📖 References ([©️back👆🏻](#contents))
 - [flash-attention-minimal](https://github.com/tspeterkim/flash-attention-minimal)
