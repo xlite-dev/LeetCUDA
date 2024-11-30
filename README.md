@@ -40,11 +40,6 @@ Currently, on NVIDIA L20, RTX 4090 and RTX 3080 Laptop, compared with cuBLAS's d
 |Collective Store (Warp Shuffle)|Row Major (NN)|Col Major (TN)| SGEMM FP32/TF32|
 |✔️|✔️|✔️|✔️|
 
-## 📖 150+ CUDA Kernels 🔥🔥 (面试常考题目) ([©️back👆🏻](#contents))
-**Workflow**: custom **CUDA** kernel impl -> **PyTorch** Python bindings -> Run tests. 👉TIPS: `*` = **Tensor Cores(WMMA/MMA)**, otherwise, CUDA Cores; `/` = not supported; `✔️` = supported; `❔` = in my plan.
-
-<div id="cuda-kernel"></div>  
-
 ## ©️Citations🎉🎉
 
 ```BibTeX
@@ -56,6 +51,11 @@ Currently, on NVIDIA L20, RTX 4090 and RTX 3080 Laptop, compared with cuBLAS's d
   year={2024}
 }
 ```
+
+## 📖 150+ CUDA Kernels 🔥🔥 (面试常考题目) ([©️back👆🏻](#contents))
+**Workflow**: custom **CUDA** kernel impl -> **PyTorch** Python bindings -> Run tests. 👉TIPS: `*` = **Tensor Cores(WMMA/MMA)**, otherwise, CUDA Cores; `/` = not supported; `✔️` = supported; `❔` = in my plan.
+
+<div id="cuda-kernel"></div>  
 
 |📖 cuda kernel| 📖 elem dtype| 📖 acc dtype| 📖 docs | 📖 level |
 |:---|:---|:---|:---|:---|  
