@@ -84,6 +84,7 @@ for (B, H, N, D) in BHNDs:
     k = torch.randn(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
     v = torch.randn(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
     o = torch.randn(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
+    torch.cuda.synchronize()
   
     if D in (64, 128):
         print("-" * 100)
