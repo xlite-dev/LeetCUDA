@@ -86,9 +86,7 @@ for (B, H, N, D) in BHNDs:
     o = torch.randn(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
     torch.cuda.synchronize()
   
-    if D in (64, 128):
-        print("-" * 100)
-        # using fp16 Tesor Core MMA instruction
-        run_benchmark(lib.flash_attn_2_fwd_f16_mma_m16n8k16, q, k, v, "FA2MMAf16", o)
-        run_benchmark(naive_attn, q, k, v, "f16_th(naive)")
+    # using fp16 Tesor Core MMA instruction
+    run_benchmark(lib.flash_attn_2_fwd_f16_mma_m16n8k16, q, k, v, "FA2MMAf16", o)
+    run_benchmark(naive_attn, q, k, v, "f16_th(naive)")
     print("-" * 100)
