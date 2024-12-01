@@ -2,16 +2,29 @@
 
 ![toy-hgemm-library](https://github.com/user-attachments/assets/d604f4c1-72d5-49da-b046-2b3856ddf164)
 
-|CUDA Cores|Sliced K(Loop over K)|Tile Block(BMxBN)|Tile Thread(t 8x8)|
+[📖toy-hgemm library⚡️⚡️](./kernels/hgemm) is library that write HGEMM kernels from scratch using Tensor Cores with WMMA, MMA PTX and CuTe API, and can achieve `98%~100%` performance of **cuBLAS**.
+
+<div id="hgemm-sgemm"></div>  
+
+<div align='center'>
+  <img src='https://github.com/user-attachments/assets/71927ac9-72b3-4ce9-b0e2-788b5885bc99' height="170px" width="270px">
+  <img src='https://github.com/user-attachments/assets/05ef4f5e-d999-48ea-b58e-782cffb24e85' height="170px" width="270px">
+  <img src='https://github.com/user-attachments/assets/9472e970-c083-4b31-9252-3eeecc761078' height="170px" width="270px">
+</div> 
+
+
+Currently, on NVIDIA L20, RTX 4090 and RTX 3080 Laptop, compared with cuBLAS's default Tensor Cores math algorithm `CUBLAS_GEMM_DEFAULT_TENSOR_OP`, the `HGEMM (WMMA/MMA/CuTe)` implemented in this repo (`blue`🔵) can achieve `98%~100%` of its (`orange`🟠) performance. Please check [toy-hgemm library⚡️⚡️](./kernels/hgemm) for more details.
+
+|CUDA Cores|Sliced K (Loop over K)|Tile Block (BMxBN)|Tile Thread (t 8x8)|
 |:---:|:---:|:---:|:---:|
 |✔️|✔️|✔️|✔️|
-|WMMA(m16n16k16)|MMA(m16n8k16)|Pack LDST(128 bits)|SMEM Padding|
+|WMMA (m16n16k16)|MMA (m16n8k16)|Pack LDS T(pack 128 bits)|SMEM Padding|
 |✔️|✔️|✔️|✔️|
-|Copy Async(cp.async.cg/ca)|Tile MMA(More Threads)|Tile Warp(More Values)|Multi Stages(2/3/4/5)|  
+|Copy Async (cp.async.cg/ca)|Tile MMA (More Threads)|Tile Warp (More Values)|Multi Stages(2/3/4/5)|  
 |✔️|✔️|✔️|✔️|
-|Register Double Buffers|Block Swizzle(Zigzag N)|Warp Swizzle(Zigzag N)|SMEM Swizzle(CUTLASS/CuTe)|
+|Register Double Buffers|Block Swizzle (Zigzag N)|Warp Swizzle (Zigzag N)| SMEM Swizzle (CUTLASS/CuTe)|
 |✔️|✔️|✔️|✔️|
-|Collective Store(Warp Shuffle & Reg Reuse)|Row Major(NN)|Col Major(TN)|SGEMM FP32/TF32|
+|Collective Store (Warp Shuffle & Reg Reuse)|Row Major (NN)|Col Major (TN)|SGEMM FP32/TF32|
 |✔️|✔️|✔️|✔️|
 
 ## 📖 HGEMM CUDA Kernels in Toy-HGEMM Library 🎉🎉 
