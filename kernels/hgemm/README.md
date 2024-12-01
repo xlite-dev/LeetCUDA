@@ -1,5 +1,7 @@
 # ⚡️⚡️Toy-HGEMM Library: Achieve the performance of cuBLAS
 
+![toy-hgemm-library](https://github.com/user-attachments/assets/d604f4c1-72d5-49da-b046-2b3856ddf164)
+
 |CUDA Cores|Sliced K(Loop over K)|Tile Block(BMxBN)|Tile Thread(t 8x8)|
 |:---:|:---:|:---:|:---:|
 |✔️|✔️|✔️|✔️|
@@ -69,6 +71,7 @@ void hgemm_mma_stages_block_swizzle_tn_cute(torch::Tensor a, torch::Tensor b, to
 
 本仓库实现的HGEMM可以作为一个python库使用（可选）
 ```bash
+cd kernels/hgemm
 git submodule update --init --recursive --force # 更新cutlass, 必须
 python3 setup.py bdist_wheel && cd dist && python3 -m pip install *.whl # pip uninstall toy-hgemm -y 卸载
 ```
