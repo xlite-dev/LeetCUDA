@@ -2,7 +2,7 @@
 
 ![toy-hgemm-library](https://github.com/user-attachments/assets/d604f4c1-72d5-49da-b046-2b3856ddf164)
 
-[📖toy-hgemm library⚡️⚡️](./kernels/hgemm) is library that write HGEMM kernels from scratch using Tensor Cores with WMMA, MMA PTX and CuTe API, and can achieve `98%~100%` performance of **cuBLAS**.
+[📖toy-hgemm library⚡️⚡️](./kernels/hgemm) is library that write HGEMM kernels from scratch using Tensor Cores with WMMA, MMA PTX and CuTe API, thus, can achieve `98%~100%` performance of **cuBLAS**.
 
 <div id="hgemm-sgemm"></div>  
 
@@ -324,7 +324,7 @@ TODO
 
 </details>
 
-## 📖 参考文献 
+## 📖 References 
 
 <div id="ref"></div>  
 
@@ -333,4 +333,10 @@ TODO
 - [Bank Conflict free 的几种方式](https://zhuanlan.zhihu.com/p/722286440)
 - [Using Shared Memory in CUDA C/C++](https://developer.nvidia.com/blog/using-shared-memory-cuda-cc/)
 - [CUDA（三）：通用矩阵乘法：从入门到熟练](https://zhuanlan.zhihu.com/p/657632577)
-
+- [flash-attention-minimal](https://github.com/tspeterkim/flash-attention-minimal)
+- [tiny-flash-attention](https://github.com/66RING/tiny-flash-attention)
+- [cute-gemm](https://github.com/reed-lau/cute-gemm)
+- [cutlass_flash_atten_fp8](https://github.com/weishengying/cutlass_flash_atten_fp8)
+- [cuda_learning](https://github.com/ifromeast/cuda_learning)
+- [cuda_hgemm](https://github.com/Bruce-Lee-LY/cuda_hgemm)
+- [cuda-tensorcore-hgemm](https://github.com/nicolaswilde/cuda-tensorcore-hgemm)
