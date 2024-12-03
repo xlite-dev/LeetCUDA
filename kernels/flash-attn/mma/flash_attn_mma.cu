@@ -64,7 +64,8 @@ int div_ceil(int a, int b) { return (a % b != 0) ? (a / b + 1) : (a / b); }
 // each block processes Q_tile with shape [Br,d] and full K,V with shape [N,d]
 // Br or Bc = 64,128,256, etc.
 
-// m16n8k16, mma2x4, warp2x2(32,16,16), 256 threads, 8 warps.
+// [64,64], m16n8k16, mma2x4, warp2x2(32,16,16)
+// (32x2,16x4,16)=(64,64,16), 256 threads, 8 warps.
 // default: Br=128|64, Bc=128|64, d=64|128, kStage=2, kPad=0
 // tiling: Q_tile[Br,d]=[128,64], K/V_tile[Bc,d]=[128,64]
 // outputs: O_tile[Br,d], lse=logsumexp[Br] per thread block.
@@ -97,6 +98,7 @@ __global__  void flash_attn_mma_kernel(
   constexpr int Tn = WARP_SIZE * kMmaTileQP * kMmaTileKV; // 32*2*4=256
   const int Tr = div_ceil(N, Br); // Tr Q_tile[Br,d]
   const int Tc = div_ceil(N, Bc); // Tc K/V_tile[Bc,d]
+  const int Td = div_ceil(d, Bd); // Td K_tile_d[Bc,Bd], e.g [64,16]
   const float scale = 1.0 / sqrt((float)d);
   
   // grid(batch, head_num, N/Br=Tr), block(256=8*mma or 128=4*mma)
@@ -207,7 +209,8 @@ __global__  void flash_attn_mma_kernel(
   uint32_t R_QP[kWarpTileQP][4];
   uint32_t R_KV[kWarpTileKV][2];
 
-  // WIP: compute S = Q @ K, loop over N for K[N,d] with K_tile[Bc,d]
+  // WIP: compute S = Q @ K^T
+  // loop over N: for K[N,d] with K_tile[Bc,d]
   #pragma unroll
   for (int tile_n = (kStage - 1); tile_n < Tc; ++tile_n) {
     // multi stages pipeling gmem -> smem
@@ -232,15 +235,32 @@ __global__  void flash_attn_mma_kernel(
     }
     CP_ASYNC_COMMIT_GROUP();
 
-    // ldmatrix.x4 for Q_tile_smem, ldmatrix.x2 for K_tile_smem
-    // smem -> reg
-    
+    // loop over d: Bd=16, K_tile_d[Bc,Bd]
+    #pragma unroll
+    for (int tile_d = 0; tile_d < Td; ++tile_d) {
+      // smem -> reg
+      // ldmatrix.x4 for Q_tile_smem, ldmatrix.x2 for K_tile_smem
+      #pragma unroll
+      for (int i = 0; i < kWarpTileQP; ++i) {
+        // LDMATRIX_X4
+        
+      }
 
+      #pragma unroll
+      for (int j = 0; j < kWarpTileKV; ++i) {
+        // LDMATRIX_X2
+        
+      }
+
+
+    }
+
+    
   }
    
 
 }
 
 
-// TODO: may tile Bd for d dim, slice d
+// TODO: only tile Bd for d dim, slice d
 // flash_attn_mma_slice_d_kernel
