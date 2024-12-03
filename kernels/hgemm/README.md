@@ -19,7 +19,7 @@ Currently, on NVIDIA L20, RTX 4090 and RTX 3080 Laptop, compared with cuBLAS's d
 |CUDA Cores|Sliced K (Loop over K)|Tile Block (BMxBN)|Tile Thread (t 8x8)|
 |:---:|:---:|:---:|:---:|
 |✔️|✔️|✔️|✔️|
-|WMMA (m16n16k16)|MMA (m16n8k16)|Pack LDS T(pack 128 bits)|SMEM Padding|
+|WMMA (m16n16k16)|MMA (m16n8k16)|Pack LDST (pack 128 bits)|SMEM Padding|
 |✔️|✔️|✔️|✔️|
 |Copy Async (cp.async.cg/ca)|Tile MMA (More Threads)|Tile Warp (More Values)|Multi Stages(2/3/4/5)|  
 |✔️|✔️|✔️|✔️|
