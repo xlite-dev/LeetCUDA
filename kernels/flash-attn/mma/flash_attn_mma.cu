@@ -249,26 +249,25 @@ __global__  void flash_attn_mma_kernel(
       CP_ASYNC_WAIT_GROUP(0);
     }
     
-    // smem -> reg, load smem Q -> regs, once. 
-    // ldmatrix.x4 for Q_tile_smem, ldmatrix.x2 for K_tile_smem
-    #pragma unroll
-    for (int i = 0; i < kWarpTileQP; ++i) {
-      int warp_smem_Q_n = warp_QP * (kMmaQP * kWarpTileQP) + i * kMmaQP;
-      int lane_smem_Q_n = warp_smem_Q_n + lane_id % 16; // 0~15
-      int lane_smem_Q_d = (lane_id / 16) * 8; // 0,8
-      uint32_t lane_smem_Q_ptr = (
-          smem_Q_base_ptr + (lane_smem_Q_n * (d + kPad) + 
-                             lane_smem_Q_d) * sizeof(half)
-      );
-      LDMATRIX_X4(R_QP[i][0], R_QP[i][1], R_QP[i][2], R_QP[i][3], 
-                  lane_smem_Q_ptr); // R_Q
-    }
-
     // <loop over d>: Bd=16, K_tile_d[Bc,Bd]
     #pragma unroll
     for (int tile_d = 0; tile_d < Td; ++tile_d) {
-
       // offset d according tile_d
+      // smem -> reg, load smem Q
+      // ldmatrix.x4 for Q_tile_smem, ldmatrix.x2 for K_tile_smem
+      #pragma unroll
+      for (int i = 0; i < kWarpTileQP; ++i) {
+        int warp_smem_Q_n = warp_QP * (kMmaQP * kWarpTileQP) + i * kMmaQP;
+        int lane_smem_Q_n = warp_smem_Q_n + lane_id % 16; // 0~15
+        int lane_smem_Q_d = tile_d + (lane_id / 16) * 8; // 0,8
+        uint32_t lane_smem_Q_ptr = (
+            smem_Q_base_ptr + (lane_smem_Q_n * (d + kPad) + 
+                               lane_smem_Q_d) * sizeof(half)
+        );
+        LDMATRIX_X4(R_QP[i][0], R_QP[i][1], R_QP[i][2], R_QP[i][3], 
+                    lane_smem_Q_ptr); // R_Q
+      }
+
       #pragma unroll
       for (int j = 0; j < kWarpTileKV; ++j) {
         int warp_smem_K_n = warp_KV * (kMmaKV * kWarpTileKV) + j * kMmaKV;
@@ -294,6 +293,9 @@ __global__  void flash_attn_mma_kernel(
         }
       }
     } // end loop over d
+
+    // now, we get a computed tile of P[Br,N], P_tile_n[Br,Bc]
+    // TODO: online softmax
 
     if constexpr (kStage - 2 >= 0) {
       CP_ASYNC_WAIT_GROUP(kStage - 2); // s2->0, s3->1, s4->2
