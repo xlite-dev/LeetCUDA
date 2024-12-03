@@ -139,14 +139,14 @@ __global__  void flash_attn_mma_kernel(
 
   // registers for S_tile[Br,N] = Q_tile[Br,d] * K[N,d], tile head_dim with Bd=16
   // loop over N dim, S_tile_iter[Br,Bc]=[64,64], each thread hold 2x32 bits regs.
-  // S, P and O shared the same registers.
-  uint32_t R_SPO[kWarpTileQP][kWarpTileKV][2]; // [2][2][2]
+  // S, P shared the same registers.
+  uint32_t R_SP[kWarpTileQP][kWarpTileKV][2]; // [2][2][2]
   #pragma unroll
   for (int i = 0; i < WARP_TILE_M; ++i) {
     #pragma unroll
     for (int j = 0; j < WARP_TILE_N; ++j) {
-      R_SPO[i][j][0] = 0;
-      R_SPO[i][j][1] = 0;
+      R_SP[i][j][0] = 0;
+      R_SP[i][j][1] = 0;
     }
   }
 
