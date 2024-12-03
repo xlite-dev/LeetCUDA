@@ -278,7 +278,7 @@ __global__  void flash_attn_mma_kernel(
       for (int i = 0; i < kWarpTileQP; ++i) {
         int warp_smem_Q_n = warp_QP * (kMmaQP * kWarpTileQP) + i * kMmaQP;
         int lane_smem_Q_n = warp_smem_Q_n + lane_id % 16; // 0~15
-        int lane_smem_Q_d = tile_d + (lane_id / 16) * 8; // 0,8
+        int lane_smem_Q_d = tile_d * Bd + (lane_id / 16) * 8; // 0,8
         uint32_t lane_smem_Q_ptr = (
             smem_Q_base_ptr + (lane_smem_Q_n * (d + kPad) + 
                                lane_smem_Q_d) * sizeof(half)
@@ -291,7 +291,7 @@ __global__  void flash_attn_mma_kernel(
       for (int j = 0; j < kWarpTileKV; ++j) {
         int warp_smem_K_n = warp_KV * (kMmaKV * kWarpTileKV) + j * kMmaKV;
         int lane_smem_K_n = warp_smem_K_n + lane_id % 8; // 0~7, MMA_N=8
-        int lane_smem_K_d = tile_d + ((lane_id / 8) % 2) * 8; // 0,8
+        int lane_smem_K_d = tile_d * Bd + ((lane_id / 8) % 2) * 8; // 0,8
         uint32_t lane_smem_K_ptr = (
             smem_K_base_ptr + (smem_sel * KV_tile_size + 
                                warp_smem_K_n * (d + kPad) + 
