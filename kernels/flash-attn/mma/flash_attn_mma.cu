@@ -90,7 +90,12 @@ __global__  void flash_attn_mma_kernel(
   // across K's N dim, each K_tile/V_tile inner loop has shape [Bc,d].
   // step 1: P_tile[Br,N] = softmax(S_tile[Br,N]), row wise.
   // step 2: O_tile[Br,d] = P_tile[Br,N] * V[N,d], matmul.
-  static_assert(kStage > 0 && kStage < 3); static_assert(kPad >= 0);
+  static_assert(kHeadDim % 32 == 0);
+  static_assert(kMmaQP == 16 && kMmaKV == 8 && kMmaHeadDim == 16); // m16n8k16
+  static_assert(kMmaTileQP  == 2 && kMmaTileKV  == 4);
+  static_assert(kWarpTileQP == 2 && kWarpTileKV == 2);
+  static_assert(kStage > 0 && kStage < 3); // 1,2
+  static_assert(kPad >= 0 && kPad % 8 == 0); // 0,8,16
   constexpr int d  = kHeadDim; // alias
   constexpr int Br = kMmaQP * kMmaTileQP * kWarpTileQP; // 16*2*2=64
   constexpr int Bc = kMmaKV * kMmaTileKV * kWarpTileKV; // 8*4*2=64
@@ -103,11 +108,13 @@ __global__  void flash_attn_mma_kernel(
   
   // grid(batch, head_num, N/Br=Tr), block(256=8*mma or 128=4*mma)
   const int QKV_batch_id = blockIdx.x; // B, bx
-  const int  QKV_head_id = blockIdx.y; // H, by
-  const int   QO_tile_id = blockIdx.z; // Q/O_tile_id, range [0, Tr), bz  
+  const int QKV_head_id  = blockIdx.y; // H, by
+  const int QO_tile_id   = blockIdx.z; // Q/O_tile_id, range [0, Tr), bz  
   const int tid = threadIdx.y * blockDim.x + threadIdx.x; // within block
   const int warp_id = tid / WARP_SIZE; // 0~7 warp_id within block
   const int lane_id = tid % WARP_SIZE; // 0~31
+  const int warp_QP = warp_id % 2; // 0,1
+  const int warp_KV = warp_id / 2; // 0,1,2,3
   // gridDim.y = head_num, gridDim.z = N/Br = Tr.
   const int KV_gmem_offset = ((QKV_batch_id * gridDim.y * N * d) + (QKV_head_id * N * d)); 
   const int QO_gmem_offset = ((QKV_batch_id * gridDim.y * N * d) + (QKV_head_id * N * d));
@@ -142,9 +149,9 @@ __global__  void flash_attn_mma_kernel(
   // S, P shared the same registers.
   uint32_t R_SP[kWarpTileQP][kWarpTileKV][2]; // [2][2][2]
   #pragma unroll
-  for (int i = 0; i < WARP_TILE_M; ++i) {
+  for (int i = 0; i < kWarpTileQP; ++i) {
     #pragma unroll
-    for (int j = 0; j < WARP_TILE_N; ++j) {
+    for (int j = 0; j < kWarpTileKV; ++j) {
       R_SP[i][j][0] = 0;
       R_SP[i][j][1] = 0;
     }
@@ -161,7 +168,7 @@ __global__  void flash_attn_mma_kernel(
     int load_gmem_Q_addr = (
       QO_gmem_offset + load_gmem_Q_n * d + load_gmem_Q_d);
     uint32_t load_smem_Q_ptr = (
-      smem_Q_base_ptr + (load_smem_Q_n * (Br + kPad) + 
+      smem_Q_base_ptr + (load_smem_Q_n * (d + kPad) + 
                          load_smem_Q_d) * sizeof(half)
     );
     // load d / (Tn / Br) vals, 64 or 128 div 4, 16 or 32, 
@@ -184,7 +191,7 @@ __global__  void flash_attn_mma_kernel(
       KV_gmem_offset + load_gmem_K_n * d + load_gmem_K_d);
      uint32_t load_smem_K_ptr = (
       smem_K_base_ptr + (tile_n * KV_tile_size + 
-                         load_smem_K_n * (Bc + kPad) + 
+                         load_smem_K_n * (d + kPad) + 
                          load_smem_K_d) * sizeof(half)
     );
     // load d / (Tn / Bc) vals, 64 or 128 div 4, 16 or 32, 
@@ -210,53 +217,91 @@ __global__  void flash_attn_mma_kernel(
   uint32_t R_KV[kWarpTileKV][2];
 
   // WIP: compute S = Q @ K^T
-  // loop over N: for K[N,d] with K_tile[Bc,d]
+  // <loop over N>: for K[N,d] with K_tile[Bc,d]
   #pragma unroll
-  for (int tile_n = (kStage - 1); tile_n < Tc; ++tile_n) {
+  for (int tile_n = 0; tile_n < Tc; ++tile_n) { 
+    // s2 tn 0->0, 1->1, 2->0; s3 tn 0->0, 1->1, 2->2, 3->0;
+    int smem_sel      = (tile_n) % kStage;   
+    // s2 tn 0->1, 1->0, 2->1; s3 tn 0->2, 1->0, 2->1, 3->2;  
+    int smem_sel_next = (tile_n + (kStage - 1)) % kStage;
+
     // multi stages pipeling gmem -> smem
-    int smem_sel = (tile_n + 1) % kStage; // s3 k 2->0, k 3->1, k 4->2...
-    int smem_sel_next = tile_n % kStage;  // s3 k 2->2, k 3->0, k 4->1...
-
-    load_gmem_K_n += tile_n * Bc;
-    int load_gmem_K_d = load_smem_K_d;
-    int load_gmem_K_addr = (
-      KV_gmem_offset + load_gmem_K_n * d + load_gmem_K_d);
-     uint32_t load_smem_K_ptr = (
-      smem_K_base_ptr + (smem_sel_next * KV_tile_size + 
-                         load_smem_K_n * (Bc + kPad) + 
-                         load_smem_K_d) * sizeof(half)
-    );
-    // load d / (Tn / Bc) vals, 64 or 128 div 4, 16 or 32, 
-    // need 2 or 4 128 bits memory issues.
-    #pragma unroll
-    for (int i = 0; i < (d / (Tn / Bc)); i += 8) {
-      CP_ASYNC_CG(load_smem_K_ptr + i * sizeof(half), 
-                  &K[load_smem_K_ptr + i], 16);
+    if (tile_n < (Tc - 1)) {
+      load_gmem_K_n += tile_n * Bc;
+      int load_gmem_K_d = load_smem_K_d;
+      int load_gmem_K_addr = (
+        KV_gmem_offset + load_gmem_K_n * d + load_gmem_K_d);
+      uint32_t load_smem_K_ptr = (
+        smem_K_base_ptr + (smem_sel_next * KV_tile_size + 
+                           load_smem_K_n * (d + kPad) + 
+                           load_smem_K_d) * sizeof(half)
+      );
+      // load d / (Tn / Bc) vals, 64 or 128 div 4, 16 or 32, 
+      // need 2 or 4 128 bits memory issues.
+      #pragma unroll
+      for (int i = 0; i < (d / (Tn / Bc)); i += 8) {
+        CP_ASYNC_CG(load_smem_K_ptr + i * sizeof(half), 
+                    &K[load_smem_K_ptr + i], 16);
+      }
+      CP_ASYNC_COMMIT_GROUP();
+    } else {
+      // wait all memory issues ready for last tile.
+      CP_ASYNC_WAIT_GROUP(0);
     }
-    CP_ASYNC_COMMIT_GROUP();
+    
+    // smem -> reg, load smem Q -> regs, once. 
+    // ldmatrix.x4 for Q_tile_smem, ldmatrix.x2 for K_tile_smem
+    #pragma unroll
+    for (int i = 0; i < kWarpTileQP; ++i) {
+      int warp_smem_Q_n = warp_QP * (kMmaQP * kWarpTileQP) + i * kMmaQP;
+      int lane_smem_Q_n = warp_smem_Q_n + lane_id % 16; // 0~15
+      int lane_smem_Q_d = (lane_id / 16) * 8; // 0,8
+      uint32_t lane_smem_Q_ptr = (
+          smem_Q_base_ptr + (lane_smem_Q_n * (d + kPad) + 
+                             lane_smem_Q_d) * sizeof(half)
+      );
+      LDMATRIX_X4(R_QP[i][0], R_QP[i][1], R_QP[i][2], R_QP[i][3], 
+                  lane_smem_Q_ptr); // R_Q
+    }
 
-    // loop over d: Bd=16, K_tile_d[Bc,Bd]
+    // <loop over d>: Bd=16, K_tile_d[Bc,Bd]
     #pragma unroll
     for (int tile_d = 0; tile_d < Td; ++tile_d) {
-      // smem -> reg
-      // ldmatrix.x4 for Q_tile_smem, ldmatrix.x2 for K_tile_smem
+
+      // offset d according tile_d
+      #pragma unroll
+      for (int j = 0; j < kWarpTileKV; ++j) {
+        int warp_smem_K_n = warp_KV * (kMmaKV * kWarpTileKV) + j * kMmaKV;
+        int lane_smem_K_n = warp_smem_K_n + lane_id % 8; // 0~7, MMA_N=8
+        int lane_smem_K_d = tile_d + ((lane_id / 8) % 2) * 8; // 0,8
+        uint32_t lane_smem_K_ptr = (
+            smem_K_base_ptr + (smem_sel * KV_tile_size + 
+                               warp_smem_K_n * (d + kPad) + 
+                               lane_smem_K_d) * sizeof(half)
+        );
+        LDMATRIX_X2(R_KV[j][0], R_KV[j][1], lane_smem_K_ptr); // R_K
+      }
+
+      // MMA compute
       #pragma unroll
       for (int i = 0; i < kWarpTileQP; ++i) {
-        // LDMATRIX_X4
-        
+        #pragma unroll
+        for (int j = 0; j < kWarpTileKV; ++j) {
+          HMMA16816(R_SP[i][j][0], R_SP[i][j][1], 
+                    R_QP[i][0],    R_QP[i][1],    R_QP[i][2], R_QP[i][3], 
+                    R_KV[j][0],    R_KV[j][1], 
+                    R_SP[i][j][0], R_SP[i][j][1]);
+        }
       }
+    } // end loop over d
 
-      #pragma unroll
-      for (int j = 0; j < kWarpTileKV; ++i) {
-        // LDMATRIX_X2
-        
-      }
-
-
+    if constexpr (kStage - 2 >= 0) {
+      CP_ASYNC_WAIT_GROUP(kStage - 2); // s2->0, s3->1, s4->2
+    } else {
+      CP_ASYNC_WAIT_GROUP(0);
     }
-
-    
-  }
+    __syncthreads(); 
+  } // end loop over N
    
 
 }
