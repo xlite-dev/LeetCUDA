@@ -216,7 +216,7 @@ __global__  void flash_attn_mma_kernel(
   // or perform as each thread keep one part of m_i, because we will 
   // keep two 32 bits each thread for S/P.
 
-  // m_old, l_old, use float to keep precision
+  // m_old, l_old, may use float to keep precision ?
   float thread_max_old[2] = { -INFINITY, -INFINITY }; 
   float thread_sum_old[2] = { 0, 0 };
 
@@ -264,7 +264,7 @@ __global__  void flash_attn_mma_kernel(
     uint32_t R_QP[kWarpTileQP][4];
     uint32_t R_KV[kWarpTileKV][2];
 
-    // m, l, use float to keep precision
+    // m, l, may use float to keep precision ?
     float thread_max[2] = { -INFINITY, -INFINITY }; 
     float thread_sum[2] = { 0, 0 };
     
