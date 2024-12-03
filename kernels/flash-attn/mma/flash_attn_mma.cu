@@ -53,6 +53,18 @@ using namespace nvcuda;
 HOST_DEVICE_INLINE 
 int div_ceil(int a, int b) { return (a % b != 0) ? (a / b + 1) : (a / b); }
 
+template<const int kWarpTileQP, const int kWarpTileKV>
+HOST_DEVICE_INLINE void clear_SP_regs(
+  uint32_t (&R_SP)[kWarpTileQP][kWarpTileKV][2]) {
+  #pragma unroll
+  for (int i = 0; i < kWarpTileQP; ++i) {
+    #pragma unroll
+    for (int j = 0; j < kWarpTileKV; ++j) {
+      R_SP[i][j][0] = 0;
+      R_SP[i][j][1] = 0;
+    }
+  }
+}
 // Write FlashAttention-2 from scratch using Tensor Cores with MMA PTX instruction.
 // The input is Q,K,V, 4D tensor with shape [batch_size, num_heads, seq_len, head_dim].
 // The output is O, a 4D tensor with shape [batch_size, num_heads, seq_len, head_dim].
@@ -142,20 +154,8 @@ __global__  void flash_attn_mma_kernel(
   if (load_gmem_Q_n >= N) return;
   // KV tile gmem load index starts from 0 and increments with 
   // each iteration as we loop over N.
-  int load_gmem_K_n = 0; int load_gmem_V_n = 0; 
-
-  // registers for S_tile[Br,N] = Q_tile[Br,d] * K[N,d], tile head_dim with Bd=16
-  // loop over N dim, S_tile_iter[Br,Bc]=[64,64], each thread hold 2x32 bits regs.
-  // S, P shared the same registers.
-  uint32_t R_SP[kWarpTileQP][kWarpTileKV][2]; // [2][2][2]
-  #pragma unroll
-  for (int i = 0; i < kWarpTileQP; ++i) {
-    #pragma unroll
-    for (int j = 0; j < kWarpTileKV; ++j) {
-      R_SP[i][j][0] = 0;
-      R_SP[i][j][1] = 0;
-    }
-  }
+  int load_gmem_K_n = 0; 
+  int load_gmem_V_n = 0; 
 
   uint32_t smem_Q_base_ptr = __cvta_generic_to_shared(Q_tile_smem);
   uint32_t smem_K_base_ptr = __cvta_generic_to_shared(K_tile_smem);
@@ -212,12 +212,16 @@ __global__  void flash_attn_mma_kernel(
   }
   __syncthreads(); 
 
-  // registers for Q, K(V reuse)
-  uint32_t R_QP[kWarpTileQP][4];
-  uint32_t R_KV[kWarpTileKV][2];
+  // NOTE: Init registers/smem for m_i[Br], l_i[Br] and O_i[Br,d] ?
+  // or perform as each thread keep one part of m_i, because we will 
+  // keep two 32 bits each thread for S/P.
 
-  // WIP: compute S = Q @ K^T
+  // m_old, l_old, use float to keep precision
+  float thread_max_old[2] = { -INFINITY, -INFINITY }; 
+  float thread_sum_old[2] = { 0, 0 };
+
   // <loop over N>: for K[N,d] with K_tile[Bc,d]
+  // tile_n: compute S_tile[Br,Bc] = Q @ K^T = Q_tile[Br,d] * K[Bc,d]
   #pragma unroll
   for (int tile_n = 0; tile_n < Tc; ++tile_n) { 
     // s2 tn 0->0, 1->1, 2->0; s3 tn 0->0, 1->1, 2->2, 3->0;
@@ -248,8 +252,23 @@ __global__  void flash_attn_mma_kernel(
       // wait all memory issues ready for last tile.
       CP_ASYNC_WAIT_GROUP(0);
     }
+
+    // registers for current tile_n within <loop over N>, 
+    // [64,64] = S_tile[Br,Bc] = Q_tile[Br,d] * K[Bc,d]
+    // each thread hold 2x32 bits regs. S,P may shared 
+    // the same registers.
+    uint32_t R_SP[kWarpTileQP][kWarpTileKV][2]; // [2][2][2]
+    clear_SP_regs<kWarpTileQP, kWarpTileKV>(R_SP);
+
+    // registers for Q, K(V reuse)
+    uint32_t R_QP[kWarpTileQP][4];
+    uint32_t R_KV[kWarpTileKV][2];
+
+    // m, l, use float to keep precision
+    float thread_max[2] = { -INFINITY, -INFINITY }; 
+    float thread_sum[2] = { 0, 0 };
     
-    // <loop over d>: Bd=16, K_tile_d[Bc,Bd]
+    // <loop over d>: tile_d, Bd = 16, K_tile_d[Bc,Bd]
     #pragma unroll
     for (int tile_d = 0; tile_d < Td; ++tile_d) {
       // offset d according tile_d
@@ -294,8 +313,8 @@ __global__  void flash_attn_mma_kernel(
       }
     } // end loop over d
 
-    // now, we get a computed tile of P[Br,N], P_tile_n[Br,Bc]
-    // TODO: online softmax
+    // Now, we got a computed tile of S[Br,N], S_tile_nd[Br,Bc]
+    // TODO: online safe softmax, warp/block reduce max/sum
 
     if constexpr (kStage - 2 >= 0) {
       CP_ASYNC_WAIT_GROUP(kStage - 2); // s2->0, s3->1, s4->2
