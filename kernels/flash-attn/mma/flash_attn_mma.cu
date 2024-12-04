@@ -172,6 +172,7 @@ __global__  void flash_attn_mma_kernel(
   constexpr int Bc = kMmaKV * kMmaTileKV * kWarpTileKV; // 8*4*2=64
   constexpr int Bd = kMmaHeadDim; // 16, tile head_dim(d) according MMA
   constexpr int Tn = WARP_SIZE * kMmaTileQP * kMmaTileKV; // 32*2*4=256
+  // NOTE: Now, N must be mutliples of Bc(32/64) for KV tiling across N.
   const int Tr = div_ceil(N, Br); // Tr Q_tile[Br,d]
   const int Tc = div_ceil(N, Bc); // Tc K/V_tile[Bc,d]
   const int Td = div_ceil(d, Bd); // Td K_tile_d[Bc,Bd], e.g [64,16]
@@ -287,6 +288,8 @@ __global__  void flash_attn_mma_kernel(
   // tile_n: compute S_tile[Br,Bc] = Q @ K^T = Q_tile[Br,d] * K[Bc,d]
   #pragma unroll
   for (int tile_n = 0; tile_n < Tc; ++tile_n) { 
+    // TODO: process last tile_n ?
+
     // s2 tn 0->0, 1->1, 2->0; s3 tn 0->0, 1->1, 2->2, 3->0;
     int smem_sel      = (tile_n) % kStage;   
     // s2 tn 0->1, 1->0, 2->1; s3 tn 0->2, 1->0, 2->1, 3->2;  
