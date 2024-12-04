@@ -50,21 +50,80 @@ using namespace nvcuda;
 // mma m16n8k16
 #define HMMA16816(RD0, RD1, RA0, RA1, RA2, RA3, RB0, RB1, RC0, RC1) asm volatile("mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16 {%0, %1}, {%2, %3, %4, %5}, {%6, %7}, {%8, %9};\n" : "=r"(RD0), "=r"(RD1) : "r"(RA0), "r"(RA1), "r"(RA2), "r"(RA3), "r"(RB0), "r"(RB1), "r"(RC0), "r"(RC1))
 
-HOST_DEVICE_INLINE 
-int div_ceil(int a, int b) { return (a % b != 0) ? (a / b + 1) : (a / b); }
+__device__ inline int div_ceil(int a, int b) { 
+  return (a % b != 0) ? (a / b + 1) : (a / b); 
+}
+
+template<typename T, const int kWarpSize = WARP_SIZE>
+__device__ inline T warp_reduce_sum(T val) {
+  #pragma unroll
+  for (int mask = kWarpSize >> 1; mask >= 1; mask >>= 1) {
+    val += __shfl_xor_sync(0xffffffff, val, mask);
+  }
+  return val;
+}
+
+template<typename T, const int kWarpSize = WARP_SIZE>
+__device__ inline T warp_reduce_max(T val) {
+  #pragma unroll
+  for (int mask = kWarpSize >> 1; mask >= 1; mask >>= 1) {
+    T val_compare = __shfl_xor_sync(0xffffffff, val, mask);
+    val = val > val_compare ? val : val_compare;
+  }
+  return val;
+}
+
+template<typename T, const int kNumThreads = 256, const int kWarpSize = WARP_SIZE>
+__device__ T block_reduce_sum(T val) {
+  static_assert(kWarpSize == 32, "only support warp size = 32.");
+  // always <= 32 warps per block (limited by 1024 threads per block)
+  constexpr int kNumWarps = (kNumThreads + kWarpSize - 1) / kWarpSize;
+  int warp = threadIdx.x / kWarpSize;
+  int lane = threadIdx.x % kWarpSize;
+  static __shared__ T shared[kNumWarps];
+  
+  T value = warp_reduce_sum<T, kWarpSize>(val);
+  if (lane == 0) shared[warp] = value;
+  __syncthreads();
+  value = (lane < kNumWarps) ? shared[lane] : 0.0f;
+  value = warp_reduce_sum<T, kNumWarps>(value);  
+  // WRAN: need to broadcast value to all threads within warp
+  value = __shfl_sync(0xffffffff, value, 0);
+  return value;
+}
+
+template<typename T, const int kNumThreads = 256, const int kWarpSize = WARP_SIZE>
+__device__ T block_reduce_max(T val) {
+  static_assert(kWarpSize == 32, "only support warp size = 32.");
+  // always <= 32 warps per block (limited by 1024 threads per block)
+  constexpr int kNumWarps = (kNumThreads + kWarpSize - 1) / kWarpSize;
+  int warp = threadIdx.x / kWarpSize;
+  int lane = threadIdx.x % kWarpSize;
+  static __shared__ T shared[kNumWarps];
+  
+  T value = warp_reduce_max<T, kWarpSize>(val);
+  if (lane == 0) shared[warp] = value;
+  __syncthreads();
+  value = (lane < kNumWarps) ? shared[lane] : -FLT_MAX;
+  value = warp_reduce_max<T, kNumWarps>(value);
+  // WRAN: need to broadcast value to all threads within warp
+  value = __shfl_sync(0xffffffff, value, 0);
+  return value;
+}
 
 template<const int kWarpTileQP, const int kWarpTileKV>
-HOST_DEVICE_INLINE void clear_SP_regs(
-  uint32_t (&R_SP)[kWarpTileQP][kWarpTileKV][2]) {
+__device__ inline void clear_SPO_regs(
+  uint32_t (&R_SPO)[kWarpTileQP][kWarpTileKV][2]) {
   #pragma unroll
   for (int i = 0; i < kWarpTileQP; ++i) {
     #pragma unroll
     for (int j = 0; j < kWarpTileKV; ++j) {
-      R_SP[i][j][0] = 0;
-      R_SP[i][j][1] = 0;
+      R_SPO[i][j][0] = 0;
+      R_SPO[i][j][1] = 0;
     }
   }
 }
+
 // Write FlashAttention-2 from scratch using Tensor Cores with MMA PTX instruction.
 // The input is Q,K,V, 4D tensor with shape [batch_size, num_heads, seq_len, head_dim].
 // The output is O, a 4D tensor with shape [batch_size, num_heads, seq_len, head_dim].
@@ -102,7 +161,7 @@ __global__  void flash_attn_mma_kernel(
   // across K's N dim, each K_tile/V_tile inner loop has shape [Bc,d].
   // step 1: P_tile[Br,N] = softmax(S_tile[Br,N]), row wise.
   // step 2: O_tile[Br,d] = P_tile[Br,N] * V[N,d], matmul.
-  static_assert(kHeadDim % 32 == 0);
+  static_assert(kHeadDim % 32 == 0); // may relax for 16 ?
   static_assert(kMmaQP == 16 && kMmaKV == 8 && kMmaHeadDim == 16); // m16n8k16
   static_assert(kMmaTileQP  == 2 && kMmaTileKV  == 4);
   static_assert(kWarpTileQP == 2 && kWarpTileKV == 2);
@@ -133,14 +192,18 @@ __global__  void flash_attn_mma_kernel(
   
   // Shared memory for Q,K,V,O, d=64->24M, d=128=48M
   extern __shared__ half smem[];
-  constexpr int QO_tile_size = Br * (d + kPad); // 64*64=4096, ~8192 bytes=8M, Q+O=16M
-  constexpr int KV_tile_size = Bc * (d + kPad); // 64*64=4096, ~8192 bytes=8M, KV shared 8M
-  // Only apply multi stages for K/V across N(seq_len) dim.
+  constexpr int QO_tile_size = Br * (d + kPad); // 64*64=4096, ~8192 bytes=8M
+  constexpr int KV_tile_size = Bc * (d + kPad); // 64*64=4096, ~8192 bytes=8M, KV may shared 8M
+  // Only apply multi stages for K across N(seq_len) dim, not for Q,V.
   half* Q_tile_smem = smem; // 8M/16M
   half* K_tile_smem = Q_tile_smem + QO_tile_size; // 8M/16M
-  half* V_tile_smem = K_tile_smem; // KV shared same smem 8M/16M
-  // Allocate smem buffer O_tile[Br,d] for collective store.
-  half* O_tile_smem = Q_tile_smem + kStage * KV_tile_size; // 8M/16M
+  half* V_tile_smem = K_tile_smem + kStage * KV_tile_size; // no shared smem for KV
+  // TODO: KV may shared same smem to reduce smem usage for headdim>=256
+  // half* V_tile_smem = K_tile_smem; // KV may shared same smem 8M/16M
+  // stage 2, no shared KV smem, Br=Bc=64,  d=64: 8M+(8M)*2+8M   =32M,  shared KV smem: 24M
+  // stage 2, no shared KV smem, Br=Bc=64, d=128: 16M+(16M)*2+16M=64M,  shared KV smem: 48M
+  // stage 2, no shared KV smem, Br=Bc=64, d=256: 32M+(32M)*2+32M=128M, shared KV smem: 96M
+  // stage 1, no shared KV smem, Br=Bc=64, d=256: 32M+(32M)*1+32M=96M,  shared KV smem: 64M
  
   // Mapping gmem -> tid -> smem, Q[Br,d]=[64,64 or 128], 256 threads.
   int load_smem_Q_n = (tid / (Tn / Br)); // Br 64, tid / 4, row 0~64
@@ -183,14 +246,14 @@ __global__  void flash_attn_mma_kernel(
 
   // load K from gmem -> smem, (kStage - 1) K tiles, [Bc,d]
   #pragma unroll
-  for (int tile_n = 0; tile_n < (kStage - 1); ++k) {
+  for (int stage = 0; stage < (kStage - 1); ++k) {
     // update the offset of n according to stages
-    load_gmem_K_n += tile_n * Bc;
+    load_gmem_K_n += stage * Bc; // s2, +offset 0
     int load_gmem_K_d = load_smem_K_d;
     int load_gmem_K_addr = (
       KV_gmem_offset + load_gmem_K_n * d + load_gmem_K_d);
      uint32_t load_smem_K_ptr = (
-      smem_K_base_ptr + (tile_n * KV_tile_size + 
+      smem_K_base_ptr + (stage * KV_tile_size + 
                          load_smem_K_n * (d + kPad) + 
                          load_smem_K_d) * sizeof(half)
     );
@@ -199,7 +262,7 @@ __global__  void flash_attn_mma_kernel(
     #pragma unroll
     for (int i = 0; i < (d / (Tn / Bc)); i += 8) {
       CP_ASYNC_CG(load_smem_K_ptr + i * sizeof(half), 
-                  &K[load_smem_K_ptr + i], 16);
+                  &K[load_gmem_K_addr + i], 16);
     }
     CP_ASYNC_COMMIT_GROUP();
   }
@@ -228,37 +291,63 @@ __global__  void flash_attn_mma_kernel(
     int smem_sel      = (tile_n) % kStage;   
     // s2 tn 0->1, 1->0, 2->1; s3 tn 0->2, 1->0, 2->1, 3->2;  
     int smem_sel_next = (tile_n + (kStage - 1)) % kStage;
-
     // multi stages pipeling gmem -> smem
-    if (tile_n < (Tc - 1)) {
-      load_gmem_K_n += tile_n * Bc;
-      int load_gmem_K_d = load_smem_K_d;
-      int load_gmem_K_addr = (
-        KV_gmem_offset + load_gmem_K_n * d + load_gmem_K_d);
-      uint32_t load_smem_K_ptr = (
-        smem_K_base_ptr + (smem_sel_next * KV_tile_size + 
-                           load_smem_K_n * (d + kPad) + 
-                           load_smem_K_d) * sizeof(half)
+    // NOTE: kStage must be > 1 for pipeling. For s1, smem_sel 
+    // and smem_sel_next will always equal 0, thus, we can not 
+    // prefetch KV from gmem to smem before tile_n MMA done.
+
+    // Prefetch curr V tile_n (no stages)
+    {
+      load_gmem_V_n += tile_n * Bc;
+      int load_gmem_V_d = load_smem_V_d;
+      int load_gmem_V_addr = (
+        KV_gmem_offset + load_gmem_V_n * d + load_gmem_V_d);
+      uint32_t load_smem_V_ptr = (
+        smem_V_base_ptr + (load_smem_V_n * (d + kPad) + 
+                           load_smem_V_d) * sizeof(half)
       );
       // load d / (Tn / Bc) vals, 64 or 128 div 4, 16 or 32, 
       // need 2 or 4 128 bits memory issues.
       #pragma unroll
       for (int i = 0; i < (d / (Tn / Bc)); i += 8) {
-        CP_ASYNC_CG(load_smem_K_ptr + i * sizeof(half), 
-                    &K[load_smem_K_ptr + i], 16);
+        CP_ASYNC_CG(load_smem_V_ptr + i * sizeof(half), 
+                    &K[load_gmem_V_addr + i], 16);
       }
       CP_ASYNC_COMMIT_GROUP();
-    } else {
-      // wait all memory issues ready for last tile.
-      CP_ASYNC_WAIT_GROUP(0);
     }
 
+    // Prefetch next stage K tile_n + 1
+    if constexpr (kStage > 1) {
+      if ((tile_n + 1) < Tc) {
+        load_gmem_K_n += (tile_n + 1) * Bc;
+        int load_gmem_K_d = load_smem_K_d;
+        int load_gmem_K_addr = (
+          KV_gmem_offset + load_gmem_K_n * d + load_gmem_K_d);
+        uint32_t load_smem_K_ptr = (
+          smem_K_base_ptr + (smem_sel_next * KV_tile_size + 
+                             load_smem_K_n * (d + kPad) + 
+                             load_smem_K_d) * sizeof(half)
+        );
+        // load d / (Tn / Bc) vals, 64 or 128 div 4, 16 or 32, 
+        // need 2 or 4 128 bits memory issues.
+        #pragma unroll
+        for (int i = 0; i < (d / (Tn / Bc)); i += 8) {
+          CP_ASYNC_CG(load_smem_K_ptr + i * sizeof(half), 
+                      &K[load_gmem_K_addr + i], 16);
+        }
+        CP_ASYNC_COMMIT_GROUP();
+      } else {
+        // wait all memory issues ready for last tile.
+        CP_ASYNC_WAIT_GROUP(0);
+      }
+    }
+    
     // registers for current tile_n within <loop over N>, 
     // [64,64] = S_tile[Br,Bc] = Q_tile[Br,d] * K[Bc,d]
-    // each thread hold 2x32 bits regs. S,P may shared 
+    // each thread hold 2x32 bits regs. S,P,O may shared 
     // the same registers.
-    uint32_t R_SP[kWarpTileQP][kWarpTileKV][2]; // [2][2][2]
-    clear_SP_regs<kWarpTileQP, kWarpTileKV>(R_SP);
+    uint32_t R_SPO[kWarpTileQP][kWarpTileKV][2]; // [2][2][2]
+    clear_SPO_regs<kWarpTileQP, kWarpTileKV>(R_SPO);
 
     // registers for Q, K(V reuse)
     uint32_t R_QP[kWarpTileQP][4];
@@ -305,28 +394,31 @@ __global__  void flash_attn_mma_kernel(
       for (int i = 0; i < kWarpTileQP; ++i) {
         #pragma unroll
         for (int j = 0; j < kWarpTileKV; ++j) {
-          HMMA16816(R_SP[i][j][0], R_SP[i][j][1], 
-                    R_QP[i][0],    R_QP[i][1],    R_QP[i][2], R_QP[i][3], 
-                    R_KV[j][0],    R_KV[j][1], 
-                    R_SP[i][j][0], R_SP[i][j][1]);
+          HMMA16816(R_SPO[i][j][0], R_SPO[i][j][1], 
+                    R_QP[i][0],     R_QP[i][1],    R_QP[i][2], R_QP[i][3], 
+                    R_KV[j][0],     R_KV[j][1], 
+                    R_SPO[i][j][0], R_SPO[i][j][1]);
         }
       }
     } // end loop over d
 
     // Now, we got a computed tile of S[Br,N], S_tile_nd[Br,Bc]
     // TODO: online safe softmax, warp/block reduce max/sum
+    
 
+    // TODO: Prefetch here V from gmem -> smem using cp.async to overlap 
+    // softmax computation and memory issues. For example, stages 2, 
+    // stage 1 K smem is prefilling by previous copy issues and stage
+    // 0 K smem can be reuse as V smem 0.
+    // Here, we have to wait V ready before compute O = P @ V
     if constexpr (kStage - 2 >= 0) {
-      CP_ASYNC_WAIT_GROUP(kStage - 2); // s2->0, s3->1, s4->2
+      CP_ASYNC_WAIT_GROUP(kStage - 2); // s1->-1, s2->0, s3->1, s4->2
     } else {
       CP_ASYNC_WAIT_GROUP(0);
     }
     __syncthreads(); 
+
   } // end loop over N
    
 
 }
-
-
-// TODO: only tile Bd for d dim, slice d
-// flash_attn_mma_slice_d_kernel
