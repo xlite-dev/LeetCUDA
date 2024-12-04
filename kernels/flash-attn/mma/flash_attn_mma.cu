@@ -450,6 +450,7 @@ __global__  void flash_attn_mma_kernel(
     for (int i = 0; i < kWarpTileQP; ++i) {
       #pragma unroll
       for (int j = 0; j < kWarpTileKV; ++j) {
+        // 聚焦到一次MMA的结果上
       }
     }
 
