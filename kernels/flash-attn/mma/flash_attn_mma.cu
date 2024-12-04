@@ -246,7 +246,7 @@ __global__  void flash_attn_mma_kernel(
 
   // load K from gmem -> smem, (kStage - 1) K tiles, [Bc,d]
   #pragma unroll
-  for (int stage = 0; stage < (kStage - 1); ++k) {
+  for (int stage = 0; stage < (kStage - 1); ++stage) {
     // update the offset of n according to stages
     load_gmem_K_n += stage * Bc; // s2, +offset 0
     int load_gmem_K_d = load_smem_K_d;
@@ -316,7 +316,7 @@ __global__  void flash_attn_mma_kernel(
       CP_ASYNC_COMMIT_GROUP();
     }
 
-    // Prefetch next stage K tile_n + 1
+    // Prefetch next stage K (tile_n + 1)
     if constexpr (kStage > 1) {
       if ((tile_n + 1) < Tc) {
         load_gmem_K_n += (tile_n + 1) * Bc;
@@ -404,19 +404,27 @@ __global__  void flash_attn_mma_kernel(
 
     // Now, we got a computed tile of S[Br,N], S_tile_nd[Br,Bc]
     // TODO: online safe softmax, warp/block reduce max/sum
-    
+
 
     // TODO: Prefetch here V from gmem -> smem using cp.async to overlap 
     // softmax computation and memory issues. For example, stages 2, 
     // stage 1 K smem is prefilling by previous copy issues and stage
     // 0 K smem can be reuse as V smem 0.
     // Here, we have to wait V ready before compute O = P @ V
-    if constexpr (kStage - 2 >= 0) {
-      CP_ASYNC_WAIT_GROUP(kStage - 2); // s1->-1, s2->0, s3->1, s4->2
+    if constexpr (kStage == 2) {
+      // NOTE: we have send V mem issues before K
+      CP_ASYNC_WAIT_GROUP(1); // s1->-1, s2->0, s3->1, s4->2
     } else {
       CP_ASYNC_WAIT_GROUP(0);
     }
     __syncthreads(); 
+
+    // NOTE: After online P @ V, we have to wait next K tile ready in smem.
+    // do not need to wait any things if kStage == 1.
+    if constexpr (kStage == 2) {
+      CP_ASYNC_WAIT_GROUP(0);
+      __syncthreads(); 
+    }
 
   } // end loop over N
    
