@@ -339,6 +339,7 @@ __global__  void flash_attn_mma_kernel(
       } else {
         // wait all memory issues ready for last tile.
         CP_ASYNC_WAIT_GROUP(0);
+        __syncthreads(); 
       }
     }
     
