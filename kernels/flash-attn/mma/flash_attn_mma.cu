@@ -112,18 +112,21 @@ __device__ T block_reduce_max(T val) {
 }
 
 template<const int kWarpTileQP, const int kWarpTileKV>
-__device__ inline void clear_SPO_regs(
-  uint32_t (&R_SPO)[kWarpTileQP][kWarpTileKV][2]) {
+__device__ inline void fill_SPO_regs(
+  uint32_t (&R_SPO)[kWarpTileQP][kWarpTileKV][2], 
+  const uint32_t val = 0) {
   #pragma unroll
   for (int i = 0; i < kWarpTileQP; ++i) {
     #pragma unroll
     for (int j = 0; j < kWarpTileKV; ++j) {
-      R_SPO[i][j][0] = 0;
-      R_SPO[i][j][1] = 0;
+      R_SPO[i][j][0] = val;
+      R_SPO[i][j][1] = val;
     }
   }
 }
 
+#define INFHALF  = __float2half(65536.0f)
+#define ZEROHALF = __float2half(0.0f)
 // Write FlashAttention-2 from scratch using Tensor Cores with MMA PTX instruction.
 // The input is Q,K,V, 4D tensor with shape [batch_size, num_heads, seq_len, head_dim].
 // The output is O, a 4D tensor with shape [batch_size, num_heads, seq_len, head_dim].
@@ -187,6 +190,16 @@ __global__  void flash_attn_mma_kernel(
   const int lane_id = tid % WARP_SIZE; // 0~31
   const int warp_QP = warp_id % 2; // 0,1
   const int warp_KV = warp_id / 2; // 0,1,2,3
+  // The layout of 8 MMA(2x4) [before] kWarpTileQPxkWarpTileKV(2x2) -> 16x2,8x4=32x32:
+  // |  [32,32]  | warp_KV 0 | warp_KV 1 | warp_KV 2 | warp_KV 3 |
+  // | warp_QP 0 |-- MMA 0 --|-- MMA 2 --|-- MMA 4 --|-- MMA 6 --|
+  // | warp_QP 1 |-- MMA 1 --|-- MMA 3 --|-- MMA 5 --|-- MMA 7 --|
+  // The layout of 8 MMA(2x4)  [after] kWarpTileQPxkWarpTileKV(2x2) -> 32x2,32x2=64x64: 
+  // |  [64,64]  |    warp_KV 0    |    warp_KV 1    |    warp_KV 2    |    warp_KV 3    |
+  // | warp_QP 0 |-- MMA 0,MMA 0 --|-- MMA 2,MMA 2 --|-- MMA 4,MMA 4 --|-- MMA 6,MMA 6 --|
+  // | warp_QP 0 |-- MMA 0,MMA 0 --|-- MMA 2,MMA 2 --|-- MMA 4,MMA 4 --|-- MMA 6,MMA 6 --|
+  // | warp_QP 1 |-- MMA 1,MMA 1 --|-- MMA 3,MMA 2 --|-- MMA 5,MMA 5 --|-- MMA 7,MMA 7 --|
+  // | warp_QP 1 |-- MMA 1,MMA 1 --|-- MMA 3,MMA 2 --|-- MMA 5,MMA 5 --|-- MMA 7,MMA 7 --|
   // gridDim.y = head_num, gridDim.z = N/Br = Tr.
   const int KV_gmem_offset = ((QKV_batch_id * gridDim.y * N * d) + (QKV_head_id * N * d)); 
   const int QO_gmem_offset = ((QKV_batch_id * gridDim.y * N * d) + (QKV_head_id * N * d));
@@ -281,14 +294,14 @@ __global__  void flash_attn_mma_kernel(
   // keep two 32 bits each thread for S/P.
 
   // m_old, l_old, may use float to keep precision ?
-  float thread_max_old[2] = { -INFINITY, -INFINITY }; 
-  float thread_sum_old[2] = { 0, 0 };
+  half thread_max_old[2] = {-INFHALF, -INFHALF}; 
+  half thread_sum_old[2] = {ZEROHALF, ZEROHALF};
 
   // <loop over N>: for K[N,d] with K_tile[Bc,d]
   // tile_n: compute S_tile[Br,Bc] = Q @ K^T = Q_tile[Br,d] * K[Bc,d]
   #pragma unroll
   for (int tile_n = 0; tile_n < Tc; ++tile_n) { 
-    // TODO: process last tile_n ?
+    // TODO: process last tile_n ? pad to multiple of 8.
 
     // s2 tn 0->0, 1->1, 2->0; s3 tn 0->0, 1->1, 2->2, 3->0;
     int smem_sel      = (tile_n) % kStage;   
@@ -351,15 +364,11 @@ __global__  void flash_attn_mma_kernel(
     // each thread hold 2x32 bits regs. S,P,O may shared 
     // the same registers.
     uint32_t R_SPO[kWarpTileQP][kWarpTileKV][2]; // [2][2][2]
-    clear_SPO_regs<kWarpTileQP, kWarpTileKV>(R_SPO);
+    fill_SPO_regs<kWarpTileQP, kWarpTileKV>(R_SPO, 0);
 
     // registers for Q, K(V reuse)
     uint32_t R_QP[kWarpTileQP][4];
     uint32_t R_KV[kWarpTileKV][2];
-
-    // m, l, may use float to keep precision ?
-    float thread_max[2] = { -INFINITY, -INFINITY }; 
-    float thread_sum[2] = { 0, 0 };
     
     // <loop over d>: tile_d, Bd = 16, K_tile_d[Bc,Bd]
     #pragma unroll
@@ -406,14 +415,33 @@ __global__  void flash_attn_mma_kernel(
       }
     } // end loop over d
 
-    // Now, we got a computed tile of S[Br,N], S_tile_nd[Br,Bc]
-    // TODO: online safe softmax, warp/block reduce max/sum
+    // TODO: May reuse K smem for V, for example, stages 2, stage
+    // 0 K smem can be reuse as V smem 0 because we do not need 
+    // K values on stage 0 K smem anymore.
 
+    // Now, we got a computed tile of S[Br,N], tile with shape [Br,Bc].
+    // Assume [Br, Bc] = [64, 64] = 64x64 = 4096 values. Each thread holds
+    // a portion of this [Br, Bc] block, specifically, R_S = R_SPO[2][2][2]. 
+    // This means that each Warp (MMA) repeats 2 times in the N direction 
+    // for both Q and K, resulting in 2x2 = 4 sets of MMA results. Each set 
+    // of results is stored in 2 32-bit registers, with each register holding 
+    // 2 half-precision values. In other words, each thread stores (4x2)x2 = 16 
+    // half-precision values. With a total of 256 threads, the total number of 
+    // half-precision values is 256x16 = 4096, which exactly matches the total 
+    // [Br, Bc] = [64, 64] values.
+    // reference: https://docs.nvidia.com/cuda/parallel-thread-execution/index.html
+    // #matrix-fragments-for-mma-m16n8k16-with-floating-point-type
+    // The layout of 8 MMA(2x4)  [after] kWarpTileQPxkWarpTileKV(2x2) -> 32x2,32x2=64x64: 
+    // |  [64,64]  |    warp_KV 0    |    warp_KV 1    |    warp_KV 2    |    warp_KV 3    |
+    // | warp_QP 0 |-- MMA 0,MMA 0 --|-- MMA 2,MMA 2 --|-- MMA 4,MMA 4 --|-- MMA 6,MMA 6 --| row max
+    // | warp_QP 0 |-- MMA 0,MMA 0 --|-- MMA 2,MMA 2 --|-- MMA 4,MMA 4 --|-- MMA 6,MMA 6 --| row max
+    // | warp_QP 1 |-- MMA 1,MMA 1 --|-- MMA 3,MMA 2 --|-- MMA 5,MMA 5 --|-- MMA 7,MMA 7 --| row max
+    // | warp_QP 1 |-- MMA 1,MMA 1 --|-- MMA 3,MMA 2 --|-- MMA 5,MMA 5 --|-- MMA 7,MMA 7 --| row max
+    // TODO: online safe softmax, warp/block reduce max/sum, row wise
+    // m, l, may use float to keep precision ? rowmax总共有Br=64个值
+    half thread_max[2] = {-INFHALF, -INFHALF}; 
+    half thread_sum[2] = {ZEROHALF, ZEROHALF};
 
-    // TODO: Prefetch here V from gmem -> smem using cp.async to overlap 
-    // softmax computation and memory issues. For example, stages 2, 
-    // stage 1 K smem is prefilling by previous copy issues and stage
-    // 0 K smem can be reuse as V smem 0.
     // Here, we have to wait V ready before compute O = P @ V
     if constexpr (kStage == 2) {
       // NOTE: we have send V mem issues before K
@@ -423,7 +451,7 @@ __global__  void flash_attn_mma_kernel(
     }
     __syncthreads(); 
 
-    // NOTE: After online P @ V, we have to wait next K tile ready in smem.
+    // NOTE: After compute P @ V, we have to wait next K tile ready in smem.
     // do not need to wait any things if kStage == 1.
     if constexpr (kStage == 2) {
       CP_ASYNC_WAIT_GROUP(0);
