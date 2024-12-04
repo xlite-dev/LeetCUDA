@@ -294,16 +294,17 @@ __global__  void flash_attn_mma_kernel(
   // keep two 32 bits each thread for S/P.
 
   // m_old, l_old, may use float to keep precision ?
-  half lane_max_old[2] = {-INFHALF, -INFHALF}; 
-  half lane_sum_old[2] = {ZEROHALF, ZEROHALF};
+  float lane_max_old[2] = {-INFINITY, -INFINITY};
+  float lane_sum_old[2] = {0.0f, 0.0f};
   // Retile warp for [Br,d], kWarpTileD: 2 = 64/(4*8); 4 = 128/(4*8).
   // Compute P[Br,Bc] @ V[Bc,d] = [Br,d] = [64, 64/128], partion Attention.
   constexpr int kWarpTileD = kHeadDim / (kMmaTileKV * kMmaKV);
   uint32_t R_O[kWarpTileQP][kWarpTileD][2]; // [2][2/4][2]
   fill_SPO_regs<kWarpTileQP, kWarpTileD>(R_O, 0);
-  // Mi [Br], Li[Br], 64x(4)x4=1024 bytes, 1M+1M=2M.
+  // Mi [Br], Li[Br], 64x(4)x4=1024 bytes, 1M+1M=2M, 4M.
+  // TODO: 64x4=256, 用每个线程保存一个max/sum val替代线程id和行数进行映射。
   static __shared__ float block_max_smem[Br][kMmaTileKV]; 
-  static __shared__ float block_sum_smem[Br][kMmaTileKV]; 
+  static __shared__ float block_sum_smem[Br][kMmaTileKV];
 
   // <loop over N>: for K[N,d] with K_tile[Bc,d]
   // tile_n: compute S_tile[Br,Bc] = Q @ K^T = Q_tile[Br,d] * K[Bc,d]
@@ -587,10 +588,7 @@ __global__  void flash_attn_mma_kernel(
     }
 
     // TODO: scaling O
-    if (tile_n > 0) {
-      
-    }
-
+  
     // NOTE: After compute P @ V, we have to wait next K tile ready in smem.
     // do not need to wait any things if kStage == 1.
     if constexpr (kStage == 2) {
