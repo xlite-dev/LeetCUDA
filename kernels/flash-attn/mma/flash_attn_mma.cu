@@ -58,7 +58,7 @@ template<typename T, const int kWarpSize = WARP_SIZE>
 __device__ inline T warp_reduce_sum(T val) {
   #pragma unroll
   for (int mask = kWarpSize >> 1; mask >= 1; mask >>= 1) {
-    val += __shfl_xor_sync(0xffffffff, val, mask);
+    val += __shfl_xor_sync(0xffffffff, val, mask, kWarpSize);
   }
   return val;
 }
@@ -67,7 +67,7 @@ template<typename T, const int kWarpSize = WARP_SIZE>
 __device__ inline T warp_reduce_max(T val) {
   #pragma unroll
   for (int mask = kWarpSize >> 1; mask >= 1; mask >>= 1) {
-    T val_compare = __shfl_xor_sync(0xffffffff, val, mask);
+    T val_compare = __shfl_xor_sync(0xffffffff, val, mask, kWarpSize);
     val = val > val_compare ? val : val_compare;
   }
   return val;
@@ -170,11 +170,13 @@ __global__  void flash_attn_mma_kernel(
   static_assert(kWarpTileQP == 2 && kWarpTileKV == 2);
   static_assert(kStage > 0 && kStage < 3); // 1,2
   static_assert(kPad >= 0 && kPad % 8 == 0); // 0,8,16
+  constexpr int kNumThreads = kMmaTileQP * kMmaTileKV * 32; // 2 * 4 * 32 = 256
   constexpr int d  = kHeadDim; // alias
   constexpr int Br = kMmaQP * kMmaTileQP * kWarpTileQP; // 16*2*2=64
   constexpr int Bc = kMmaKV * kMmaTileKV * kWarpTileKV; // 8*4*2=64
   constexpr int Bd = kMmaHeadDim; // 16, tile head_dim(d) according MMA
   constexpr int Tn = WARP_SIZE * kMmaTileQP * kMmaTileKV; // 32*2*4=256
+  // static_assert(Br == 64);
   // NOTE: Now, N must be mutliples of Bc(32/64) for KV tiling across N.
   const int Tr = div_ceil(N, Br); // Tr Q_tile[Br,d]
   const int Tc = div_ceil(N, Bc); // Tc K/V_tile[Bc,d]
@@ -433,26 +435,26 @@ __global__  void flash_attn_mma_kernel(
     // |  [64,64]  |    warp_KV 0    |    warp_KV 1    |    warp_KV 2    |    warp_KV 3    |
     // | warp_QP 0 |-- MMA 0,MMA 0 --|-- MMA 2,MMA 2 --|-- MMA 4,MMA 4 --|-- MMA 6,MMA 6 --| row max
     // | warp_QP 0 |-- MMA 0,MMA 0 --|-- MMA 2,MMA 2 --|-- MMA 4,MMA 4 --|-- MMA 6,MMA 6 --| row max
-    // | warp_QP 1 |-- MMA 1,MMA 1 --|-- MMA 3,MMA 2 --|-- MMA 5,MMA 5 --|-- MMA 7,MMA 7 --| row max
-    // | warp_QP 1 |-- MMA 1,MMA 1 --|-- MMA 3,MMA 2 --|-- MMA 5,MMA 5 --|-- MMA 7,MMA 7 --| row max
-    // TODO: online safe softmax, warp/block reduce max/sum, row wise
-    // m, l, may use float to keep precision ? rowmax总共有Br=64个值
-    // 首先，对于每一个MMA持有的结果计算warp row max
-    // warp 0/2/4/6 包含了前[Br/2=32,Bc=64]的值，因此需要前32个rowmax值
-    // warp 1/3/5/7 包含了后[Br/2=32,Bc=64]的值，因此需要后32个rowmax值
-    // 一个warp=32线程，刚好每个线程保存一个max
-    // half lane_row_max = -INFHALF; // m, 第i个lane保存第i行的max, 32行
-    // half lane_row_sum = ZEROHALF; // l, 第i个lane保存第i行的sum, 32行
-    // 每个warp(MMA)处理(16x2)*(8x2)=32x16的大小，row=32, col=16
+    // | warp_QP 1 |-- MMA 1,MMA 1 --|-- MMA 3,MMA 3 --|-- MMA 5,MMA 5 --|-- MMA 7,MMA 7 --| row max
+    // | warp_QP 1 |-- MMA 1,MMA 1 --|-- MMA 3,MMA 3 --|-- MMA 5,MMA 5 --|-- MMA 7,MMA 7 --| row max
+
+    // WIP: online safe softmax, warp/block reduce max/sum, row wise
+    // warp 0/2/4/6, [0][2] row 0~15,  col 0/8/16/32, max, [1][2] row 16~31, col 0/8/16/32, max
+    // warp 1/3/5/7, [0][2] row 32~47, col 0/8/16/32, max, [1][2] row 48~61, col 0/8/16/32, max
+    float lane_row_max[kWarpTileQP][2] = {-INFINITY, }; 
+    float lane_row_sum[kWarpTileQP][2] = {0.0f, }; 
+
+    static __shared__ float block_max_smem[Br][kMmaTileKV]; // e.g 64x(4)x4=1024 bytes, 1M
+    static __shared__ float block_sum_smem[Br][kMmaTileKV]; // e.g 64x(4)x4=1024 bytes, 1M
+
     #pragma unroll
     for (int i = 0; i < kWarpTileQP; ++i) {
-      float lane_max[2] = {-INFINITY, -INFINITY};
+      // Thread reduce max across kWarpTileKV dim, namely Bc.
       #pragma unroll
       for (int j = 0; j < kWarpTileKV; ++j) {
-        // 聚焦到一次MMA的结果上 m16n8
         // reference: https://docs.nvidia.com/cuda/parallel-thread-execution/index.html
         // #matrix-fragments-for-mma-m16n8k16-with-floating-point-type
-        // The layout of the fragments held by different threads for C.
+        // The layout of the fragments held by different threads for C. (m16n8k16)
         // Row\Col  0    1    2    3    4    5    6    7
         // 0        T0: {c0, c1}  T1: {c0, c1}  T2: {c0, c1}  T3: {c0, c1}
         // 1        T4: {c0, c1}  T5: {c0, c1}  T6: {c0, c1}  T7: {c0, c1}
@@ -466,12 +468,38 @@ __global__  void flash_attn_mma_kernel(
         // 15       T28: {c2, c3}  T29: {c2, c3}  T30: {c2, c3}  T31: {c2, c3}
         half2 t_reg_0 = HALF2(R_SPO[i][j][0]); // 0~7  {c0, c1}
         half2 t_reg_1 = HALF2(R_SPO[i][j][1]); // 8~15 {c2, c3}
-        float tmp_max_0 = max(__half2float(t_reg_0.x), __half2float(t_reg_0.y));
-        float tmp_max_1 = max(__half2float(t_reg_1.x), __half2float(t_reg_1.y));
-        lane_max[0] = max(lane_tile_max[0], tmp_max_0);
-        lane_max[1] = max(lane_tile_max[1], tmp_max_1);
+        float tmp_max_0 = max(__half2float(t_reg_0.x), __half2float(t_reg_0.y)) * scale;
+        float tmp_max_1 = max(__half2float(t_reg_1.x), __half2float(t_reg_1.y)) * scale;
+        lane_row_max[i][0] = max(lane_row_max[i][0], tmp_max_0);
+        lane_row_max[i][1] = max(lane_row_max[i][1], tmp_max_1);
+      } // end for kWarpTileKV
+
+      // Warp reduce max, warp_size = 4
+      // Each thread contains the maximum of 2 rows of Br, 
+      // and only the values of T0, T4, ..., T28 are used.
+      // Br, row_id = warp_QP<0|1> * 32 + i<0|1> * 16 + 0 * 8 + (lane / 4) <0~7>
+      lane_row_max[i][0] = warp_reduce_max<float, 4>(lane_row_max[i][0]);
+      // Br, row_id = warp_QP<0|1> * 32 + i<0|1> * 16 + 1 * 8 + (lane / 4) <8~15>
+      lane_row_max[i][1] = warp_reduce_max<float, 4>(lane_row_max[i][1]);
+
+      if (lane_id % 4 == 0) { // only need T0,T4,...,T28
+        // Br, row_id, 0~7,  16~23, 32~39, 48~55
+        block_max_smem[
+          warp_QP * 32 + i * 16 + 0 * 8 + (lane_id / 4)][warp_KV] = lane_row_max[i][0];
+        // Br, row_id, 8~15, 24~31, 40~47, 56~63
+        block_max_smem[
+          warp_QP * 32 + i * 16 + 1 * 8 + (lane_id / 4)][warp_KV] = lane_row_max[i][1];
       }
-    }
+    } // end for kWarpTileQP
+    __syncthreads();
+    
+    // Block reduce max, row wise, 64x4=256
+    float max_val = block_max_smem[tid / kMmaTileKV][tid % kMmaTileKV]; // [0~63][0~4]
+    max_val = warp_reduce_max<float, 4>(max_val)
+    block_max_smem[tid / kMmaTileKV][tid % kMmaTileKV] = max_val;
+    __syncthreads();
+
+    // TODO: Thread reduce sum
 
     // Here, we have to wait V ready before compute O = P @ V
     if constexpr (kStage == 2) {
