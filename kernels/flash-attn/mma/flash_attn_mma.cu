@@ -443,14 +443,21 @@ __global__  void flash_attn_mma_kernel(
     // warp 0/2/4/6 包含了前[Br/2=32,Bc=64]的值，因此需要前32个rowmax值
     // warp 1/3/5/7 包含了后[Br/2=32,Bc=64]的值，因此需要后32个rowmax值
     // 一个warp=32线程，刚好每个线程保存一个max
-    half lane_row_max = -INFHALF; // m, 第i个lane保存第i行的max, 32行
-    half lane_row_sum = ZEROHALF; // l, 第i个lane保存第i行的sum, 32行
+    // half lane_row_max = -INFHALF; // m, 第i个lane保存第i行的max, 32行
+    // half lane_row_sum = ZEROHALF; // l, 第i个lane保存第i行的sum, 32行
     // 每个warp(MMA)处理(16x2)*(8x2)=32x16的大小，row=32, col=16
     #pragma unroll
     for (int i = 0; i < kWarpTileQP; ++i) {
+      float lane_max[2] = {-INFINITY, -INFINITY};
       #pragma unroll
       for (int j = 0; j < kWarpTileKV; ++j) {
-        // 聚焦到一次MMA的结果上
+        // 聚焦到一次MMA的结果上 m16n8
+        half2 t_reg_0 = HALF2(R_SPO[i][j][0]); // 0~7  {c0, c1}
+        half2 t_reg_1 = HALF2(R_SPO[i][j][1]); // 8~15 {c2, c3}
+        float tmp_max_0 = max(__half2float(t_reg_0.x), __half2float(t_reg_0.y));
+        float tmp_max_1 = max(__half2float(t_reg_1.x), __half2float(t_reg_1.y));
+        lane_max[0] = max(lane_tile_max[0], tmp_max_0);
+        lane_max[1] = max(lane_tile_max[1], tmp_max_1);
       }
     }
 
