@@ -440,8 +440,18 @@ __global__  void flash_attn_mma_kernel(
     // TODO: online safe softmax, warp/block reduce max/sum, row wise
     // m, l, may use float to keep precision ? rowmax总共有Br=64个值
     // 首先，对于每一个MMA持有的结果计算warp row max
-    half thread_max[2] = {-INFHALF, -INFHALF}; 
-    half thread_sum[2] = {ZEROHALF, ZEROHALF};
+    // warp 0/2/4/6 包含了前[Br/2=32,Bc=64]的值，因此需要前32个rowmax值
+    // warp 1/3/5/7 包含了后[Br/2=32,Bc=64]的值，因此需要后32个rowmax值
+    // 一个warp=32线程，刚好每个线程保存一个max
+    half lane_row_max = -INFHALF; // m, 第i个lane保存第i行的max, 32行
+    half lane_row_sum = ZEROHALF; // l, 第i个lane保存第i行的sum, 32行
+    // 每个warp(MMA)处理(16x2)*(8x2)=32x16的大小，row=32, col=16
+    #pragma unroll
+    for (int i = 0; i < kWarpTileQP; ++i) {
+      #pragma unroll
+      for (int j = 0; j < kWarpTileKV; ++j) {
+      }
+    }
 
     // Here, we have to wait V ready before compute O = P @ V
     if constexpr (kStage == 2) {
