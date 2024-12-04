@@ -429,8 +429,6 @@ __global__  void flash_attn_mma_kernel(
     // half-precision values. With a total of 256 threads, the total number of 
     // half-precision values is 256x16 = 4096, which exactly matches the total 
     // [Br, Bc] = [64, 64] values.
-    // reference: https://docs.nvidia.com/cuda/parallel-thread-execution/index.html
-    // #matrix-fragments-for-mma-m16n8k16-with-floating-point-type
     // The layout of 8 MMA m16n8k16 (2x4)  [after] kWarpTileQPxkWarpTileKV(2x2) -> 32x2,32x2=64x64: 
     // |  [64,64]  |    warp_KV 0    |    warp_KV 1    |    warp_KV 2    |    warp_KV 3    |
     // | warp_QP 0 |-- MMA 0,MMA 0 --|-- MMA 2,MMA 2 --|-- MMA 4,MMA 4 --|-- MMA 6,MMA 6 --| row max
@@ -452,6 +450,20 @@ __global__  void flash_attn_mma_kernel(
       #pragma unroll
       for (int j = 0; j < kWarpTileKV; ++j) {
         // 聚焦到一次MMA的结果上 m16n8
+        // reference: https://docs.nvidia.com/cuda/parallel-thread-execution/index.html
+        // #matrix-fragments-for-mma-m16n8k16-with-floating-point-type
+        // The layout of the fragments held by different threads for C.
+        // Row\Col  0    1    2    3    4    5    6    7
+        // 0        T0: {c0, c1}  T1: {c0, c1}  T2: {c0, c1}  T3: {c0, c1}
+        // 1        T4: {c0, c1}  T5: {c0, c1}  T6: {c0, c1}  T7: {c0, c1}
+        // 2        ...
+        // ...
+        // 7        T28: {c0, c1}  T29: {c0, c1}  T30: {c0, c1}  T31: {c0, c1}
+        // 8        T0: {c2, c3}   T1: {c2, c3}   T2: {c2, c3}   T3: {c2, c3}
+        // 9        T4: {c2, c3}   T5: {c2, c3}   T6: {c2, c3}   T7: {c2, c3}
+        // 10       ...
+        // ...
+        // 15       T28: {c2, c3}  T29: {c2, c3}  T30: {c2, c3}  T31: {c2, c3}
         half2 t_reg_0 = HALF2(R_SPO[i][j][0]); // 0~7  {c0, c1}
         half2 t_reg_1 = HALF2(R_SPO[i][j][1]); // 8~15 {c2, c3}
         float tmp_max_0 = max(__half2float(t_reg_0.x), __half2float(t_reg_0.y));
