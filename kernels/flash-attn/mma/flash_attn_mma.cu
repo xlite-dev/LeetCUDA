@@ -439,6 +439,7 @@ __global__  void flash_attn_mma_kernel(
     // | warp_QP 1 |-- MMA 1,MMA 1 --|-- MMA 3,MMA 2 --|-- MMA 5,MMA 5 --|-- MMA 7,MMA 7 --| row max
     // TODO: online safe softmax, warp/block reduce max/sum, row wise
     // m, l, may use float to keep precision ? rowmax总共有Br=64个值
+    // 首先，对于每一个MMA持有的结果计算warp max
     half thread_max[2] = {-INFHALF, -INFHALF}; 
     half thread_sum[2] = {ZEROHALF, ZEROHALF};
 
