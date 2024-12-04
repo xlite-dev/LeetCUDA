@@ -431,7 +431,7 @@ __global__  void flash_attn_mma_kernel(
     // [Br, Bc] = [64, 64] values.
     // reference: https://docs.nvidia.com/cuda/parallel-thread-execution/index.html
     // #matrix-fragments-for-mma-m16n8k16-with-floating-point-type
-    // The layout of 8 MMA(2x4)  [after] kWarpTileQPxkWarpTileKV(2x2) -> 32x2,32x2=64x64: 
+    // The layout of 8 MMA m16n8k16 (2x4)  [after] kWarpTileQPxkWarpTileKV(2x2) -> 32x2,32x2=64x64: 
     // |  [64,64]  |    warp_KV 0    |    warp_KV 1    |    warp_KV 2    |    warp_KV 3    |
     // | warp_QP 0 |-- MMA 0,MMA 0 --|-- MMA 2,MMA 2 --|-- MMA 4,MMA 4 --|-- MMA 6,MMA 6 --| row max
     // | warp_QP 0 |-- MMA 0,MMA 0 --|-- MMA 2,MMA 2 --|-- MMA 4,MMA 4 --|-- MMA 6,MMA 6 --| row max
@@ -439,7 +439,7 @@ __global__  void flash_attn_mma_kernel(
     // | warp_QP 1 |-- MMA 1,MMA 1 --|-- MMA 3,MMA 2 --|-- MMA 5,MMA 5 --|-- MMA 7,MMA 7 --| row max
     // TODO: online safe softmax, warp/block reduce max/sum, row wise
     // m, l, may use float to keep precision ? rowmax总共有Br=64个值
-    // 首先，对于每一个MMA持有的结果计算warp max
+    // 首先，对于每一个MMA持有的结果计算warp row max
     half thread_max[2] = {-INFHALF, -INFHALF}; 
     half thread_sum[2] = {ZEROHALF, ZEROHALF};
 
