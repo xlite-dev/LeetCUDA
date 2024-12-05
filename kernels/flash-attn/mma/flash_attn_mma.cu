@@ -294,8 +294,8 @@ __global__  void flash_attn_mma_kernel(
   // keep two 32 bits each thread for S/P.
 
   // block m_old, l_old, store in lane, use float to keep precision.
-  float block_row_max_old_store_lane[kWarpTileQP][2] = {-INFINITY, };
-  float block_row_sum_old_store_lane[kWarpTileQP][2] = {0.0f, };
+  float lane_block_row_max_old[kWarpTileQP][2] = {-INFINITY, };
+  float lane_block_row_sum_old[kWarpTileQP][2] = {0.0f, };
   // Mi [Br], Li[Br], 64x(4)x4=1024 bytes, 1M+1M=2M, 4M.
   // TODO: 64x4=256, use each thread to store a max/sum value 
   // instead of using shared memory and mapping based on thread
@@ -506,21 +506,18 @@ __global__  void flash_attn_mma_kernel(
     block_row_max_new_smem[tid / kMmaTileKV][tid % kMmaTileKV] = blk_row_max_new;
     __syncthreads();
 
-    // Exp sum and scale for [Br,Bc] tile, Thread -> Warp -> Block.
+    // Exp sum and mul scale_factor for [Br,Bc] tile, Thread -> Warp -> Block.
     #pragma unroll
     for (int i = 0; i < kWarpTileQP; ++i) {
-      // Thread level reduce exp_sum
-      float block_row_max_new_0 = block_row_max_new_smem[ // Br, row_id, 0~7,  16~23, 32~39, 48~55
-        warp_QP * 32 + i * 16 + 0 * 8 + (lane_id / 4)][0]  
-      float block_row_max_new_1 = block_row_max_new_smem[ // Br, row_id, 8~15, 24~31, 40~47, 56~63
-        warp_QP * 32 + i * 16 + 1 * 8 + (lane_id / 4)][0]  
-      // compare with block row max old for this row(lane) and update it.
-      block_row_max_old_store_lane[i][0] = max(
-        block_row_max_old_store_lane[i][0], block_row_max_new_0); 
-      block_row_max_old_store_lane[i][1] = max(
-        block_row_max_old_store_lane[i][1], block_row_max_new_1);
-      block_row_max_new_0 = block_row_max_old_store_lane[i][0]; // use latest row max
-      block_row_max_new_1 = block_row_max_old_store_lane[i][1]; // use latest row max
+      // Use latest global row max without update.
+      // Br 0, row_id, 0~7,  16~23, 32~39, 48~55; 
+      float block_row_max_new_0 = max(
+        lane_block_row_sum_old[i][0], 
+        block_row_sum_new_smem[warp_QP * 32 + i * 16 + 0 * 8 + (lane_id / 4)][0]); 
+      // Br 1, row_id, 8~15, 24~31, 40~47, 56~63;
+      float block_row_max_new_1 = max(
+        lane_block_row_sum_old[i][1], 
+        block_row_sum_new_smem[warp_QP * 32 + i * 16 + 1 * 8 + (lane_id / 4)][0]);; 
       #pragma unroll
       for (int j = 0; j < kWarpTileKV; ++j) {
         float2 t_reg_0 = __half22float2(HALF2(R_SP[i][j][0])); // 0~7  {c0, c1}
@@ -622,7 +619,38 @@ __global__  void flash_attn_mma_kernel(
       }
     } // end for iter D, O=P@V
 
-    // TODO: Online rescaling O
+    // TODO: Online rescaling O each tile_n step, need m_new, m_old.
+
+    // Now, we can update m, l after O has been scaled.
+    // First, update block row sum Exp for each lane which need both m_new and m_old.
+    #pragma unroll
+    for (int i = 0; i < kWarpTileQP; ++i) {
+      // m = max(m_old, m_new), l = exp(m_old - m) * l_old + l_new
+      // Br 0, row_id, 0~7,  16~23, 32~39, 48~55; Br 1, row_id, 8~15, 24~31, 40~47, 56~63
+      float block_row_max_new_0 = block_row_max_new_smem[
+        warp_QP * 32 + i * 16 + 0 * 8 + (lane_id / 4)][0];
+      float block_row_max_new_1 = block_row_max_new_smem[
+        warp_QP * 32 + i * 16 + 1 * 8 + (lane_id / 4)][0];
+      float block_row_sum_new_0 = block_row_sum_new_smem[
+        warp_QP * 32 + i * 16 + 0 * 8 + (lane_id / 4)][0];
+      float block_row_sum_new_1 = block_row_sum_new_smem[
+        warp_QP * 32 + i * 16 + 1 * 8 + (lane_id / 4)][0];
+      float block_row_sum_old_0 = lane_block_row_sum_old[i][0];
+      float block_row_sum_old_1 = lane_block_row_sum_old[i][1];
+      float block_row_max_old_0 = lane_block_row_max_old[i][0];
+      float block_row_max_old_1 = lane_block_row_max_old[i][1];
+      block_row_max_new_0 = max(block_row_max_old_0, block_row_max_new_0);
+      block_row_max_new_1 = max(block_row_max_old_1, block_row_max_new_1);
+      lane_block_row_sum_old[i][0] = (
+        __expf(block_row_max_old_0 - block_row_max_new_0) * 
+        block_row_sum_old_0 + block_row_sum_new_0);
+      lane_block_row_sum_old[i][1] = (
+        __expf(block_row_max_old_1 - block_row_max_new_1) * 
+        block_row_sum_old_1 + block_row_sum_new_1);
+      // Now, update block row max for each lane.
+      lane_block_row_max_old[i][0] = block_row_max_new_0;
+      lane_block_row_max_old[i][1] = block_row_max_new_1;
+    }
   
     // NOTE: After compute P @ V, we have to wait next K tile ready in smem.
     // do not need to wait any things if kStage == 1.
@@ -632,6 +660,8 @@ __global__  void flash_attn_mma_kernel(
     }
 
   } // end loop over N
-   
 
+  // TODO: Finaly, we still have to rescale O once more.
+
+  // TODO: Write O[Br,d] from regs -> gmem, collective store with reg reuse & warp shuffle
 }
