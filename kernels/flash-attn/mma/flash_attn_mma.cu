@@ -526,8 +526,9 @@ flash_attn_mma_kernel(
     }
     __syncthreads(); 
     
-    // R_QP[kWarpTileQP][4], [2][4]; R_KV[kWarpTileKV][2], [2][2];
-    // R_SP[kWarpTileQP][kWarpTileKV][2], [2][2][2]; R_O[kWarpTileQP][kWarpTileD][2], [2][2/4][2].
+    // R_QP[kWarpTileQP][4], [2][4]; R_KV[kWarpTileKV][2], [2][2], 8+4=12 regs;
+    // R_SP[kWarpTileQP][kWarpTileKV][2], [2][2][2], 8 regs; 
+    // R_O[kWarpTileQP][kWarpTileD][2], [2][2/4][2], 8 or 16 regs. total 28~36 regs.
     // Since we want to reuse the R_KV registers for V[Br,d], and kWarpTileD in P@V might be 
     // larger than kWarpTileKV, it is necessary to compute kWarpTileD in segments of size 
     // kWarpTileKV. kWarpTileD needs to be an integer multiple of kWarpTileKV.
