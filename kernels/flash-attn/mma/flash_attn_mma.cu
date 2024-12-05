@@ -120,8 +120,10 @@ template<
          const int kStage,      // 1,2
          const int kPad,        // 0,8,16
          >
-__global__  void flash_attn_mma_kernel(
-  half* Q, half* K, half* V,  half* O, int N) {
+__global__  void  __launch_bounds__(
+  WARP_SIZE * kMmaTileQP * kMmaTileKV) // 32 * 2 * 4 = 256
+flash_attn_mma_kernel(
+  half* Q, half* K, half* V, half* O, int N) {
   // step 0: S_tile[Br,N] = Q_tile[Br,d] * K[N,d], slice-k manner matmul
   // across K's N dim, each K_tile/V_tile inner loop has shape [Bc,d].
   // step 1: P_tile[Br,N] = softmax(S_tile[Br,N]), row wise.
@@ -627,3 +629,5 @@ __global__  void flash_attn_mma_kernel(
 
   // TODO: Write O[Br,d] from regs -> gmem, collective store with reg reuse & warp shuffle
 }
+
+// TODO: flash_attn_mma_kv_smem_shared_kernel
