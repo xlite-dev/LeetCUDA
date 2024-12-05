@@ -238,7 +238,6 @@ __global__  void flash_attn_mma_kernel(
   uint32_t smem_Q_base_ptr = __cvta_generic_to_shared(Q_tile_smem);
   uint32_t smem_K_base_ptr = __cvta_generic_to_shared(K_tile_smem);
   uint32_t smem_V_base_ptr = __cvta_generic_to_shared(V_tile_smem);
-  uint32_t smem_O_base_ptr = __cvta_generic_to_shared(O_tile_smem);
 
   // load Q from gmem -> smem, only load once.
   {
