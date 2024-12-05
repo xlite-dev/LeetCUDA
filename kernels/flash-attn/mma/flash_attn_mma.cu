@@ -73,44 +73,6 @@ __device__ inline T warp_reduce_max(T val) {
   return val;
 }
 
-template<typename T, const int kNumThreads = 256, const int kWarpSize = WARP_SIZE>
-__device__ T block_reduce_sum(T val) {
-  static_assert(kWarpSize == 32, "only support warp size = 32.");
-  // always <= 32 warps per block (limited by 1024 threads per block)
-  constexpr int kNumWarps = (kNumThreads + kWarpSize - 1) / kWarpSize;
-  int warp = threadIdx.x / kWarpSize;
-  int lane = threadIdx.x % kWarpSize;
-  static __shared__ T shared[kNumWarps];
-  
-  T value = warp_reduce_sum<T, kWarpSize>(val);
-  if (lane == 0) shared[warp] = value;
-  __syncthreads();
-  value = (lane < kNumWarps) ? shared[lane] : 0.0f;
-  value = warp_reduce_sum<T, kNumWarps>(value);  
-  // WRAN: need to broadcast value to all threads within warp
-  value = __shfl_sync(0xffffffff, value, 0);
-  return value;
-}
-
-template<typename T, const int kNumThreads = 256, const int kWarpSize = WARP_SIZE>
-__device__ T block_reduce_max(T val) {
-  static_assert(kWarpSize == 32, "only support warp size = 32.");
-  // always <= 32 warps per block (limited by 1024 threads per block)
-  constexpr int kNumWarps = (kNumThreads + kWarpSize - 1) / kWarpSize;
-  int warp = threadIdx.x / kWarpSize;
-  int lane = threadIdx.x % kWarpSize;
-  static __shared__ T shared[kNumWarps];
-  
-  T value = warp_reduce_max<T, kWarpSize>(val);
-  if (lane == 0) shared[warp] = value;
-  __syncthreads();
-  value = (lane < kNumWarps) ? shared[lane] : -FLT_MAX;
-  value = warp_reduce_max<T, kNumWarps>(value);
-  // WRAN: need to broadcast value to all threads within warp
-  value = __shfl_sync(0xffffffff, value, 0);
-  return value;
-}
-
 template<const int M, const int N>
 __device__ inline void fill_SPO_regs(uint32_t (&R_SP)[M][N][2], uint32_t val) {
   #pragma unroll
