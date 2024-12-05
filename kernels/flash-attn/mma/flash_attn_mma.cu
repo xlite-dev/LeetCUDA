@@ -295,14 +295,14 @@ __global__  void flash_attn_mma_kernel(
   // keep two 32 bits each thread for S/P.
 
   // block m_old, l_old, use float to keep precision.
-  float block_max_old_store_lane[2] = {-INFINITY, -INFINITY};
-  float block_sum_old_store_lane[2] = {0.0f, 0.0f};
+  float block_row_max_old_store_lane[2] = {-INFINITY, -INFINITY};
+  float block_row_sum_old_store_lane[2] = {0.0f, 0.0f};
   // Mi [Br], Li[Br], 64x(4)x4=1024 bytes, 1M+1M=2M, 4M.
   // TODO: 64x4=256, use each thread to store a max/sum value 
   // instead of using shared memory and mapping based on thread
   // ID and row number in Br.
-  static __shared__ float block_max_new_smem[Br][kMmaTileKV]; 
-  static __shared__ float block_sum_new_smem[Br][kMmaTileKV];
+  static __shared__ float block_row_max_new_smem[Br][kMmaTileKV]; 
+  static __shared__ float block_row_sum_new_smem[Br][kMmaTileKV];
   // Retile warp for [Br,d], kWarpTileD: 2 = 64/(4*8); 4 = 128/(4*8).
   // Compute P[Br,Bc] @ V[Bc,d] = [Br,d] = [64, 64/128], partion Attention.
   constexpr int kWarpTileD = kHeadDim / (kMmaTileKV * kMmaKV);
@@ -453,8 +453,8 @@ __global__  void flash_attn_mma_kernel(
     // WIP: online safe softmax, warp/block reduce max/sum, row wise
     // warp 0/2/4/6, [0][2] row 0~15,  col 0/8/16/32, max, [1][2] row 16~31, col 0/8/16/32, max
     // warp 1/3/5/7, [0][2] row 32~47, col 0/8/16/32, max, [1][2] row 48~61, col 0/8/16/32, max
-    float lane_row_max[kWarpTileQP][2] = {-INFINITY, }; 
-    float lane_row_sum[kWarpTileQP][2] = {0.0f, }; 
+    float lane_row_max_new[kWarpTileQP][2] = {-INFINITY, }; 
+    float lane_row_sum_new[kWarpTileQP][2] = {0.0f, }; 
 
     // Row max for [Br,Bc] tile, Thread -> Warp -> Block.
     #pragma unroll
@@ -480,73 +480,73 @@ __global__  void flash_attn_mma_kernel(
         float2 t_reg_1 = __half22float2(HALF2(R_SP[i][j][1])); // 8~15 {c2, c3}
         float tmp_max_0 = max(t_reg_0.x, t_reg_0.y);
         float tmp_max_1 = max(t_reg_1.x, t_reg_1.y);
-        lane_row_max[i][0] = max(lane_row_max[i][0], tmp_max_0);
-        lane_row_max[i][1] = max(lane_row_max[i][1], tmp_max_1);
+        lane_row_max_new[i][0] = max(lane_row_max_new[i][0], tmp_max_0);
+        lane_row_max_new[i][1] = max(lane_row_max_new[i][1], tmp_max_1);
       } // end for kWarpTileKV
 
       // Warp level reduce max, warp_size = 4
       // Each thread contains the maximum of 2 rows of Br, 
       // and only the values of T0, T4, ..., T28 are used.
       // Br, row_id = warp_QP<0|1> * 32 + i<0|1> * 16 + 0 * 8 + (lane / 4) <0~7>
-      lane_row_max[i][0] = warp_reduce_max<float, 4>(lane_row_max[i][0]);
+      lane_row_max_new[i][0] = warp_reduce_max<float, 4>(lane_row_max_new[i][0]);
       // Br, row_id = warp_QP<0|1> * 32 + i<0|1> * 16 + 1 * 8 + (lane / 4) <8~15>
-      lane_row_max[i][1] = warp_reduce_max<float, 4>(lane_row_max[i][1]);
+      lane_row_max_new[i][1] = warp_reduce_max<float, 4>(lane_row_max_new[i][1]);
 
       if (lane_id % 4 == 0) { // only need T0,T4,...,T28
-        block_max_new_smem[ // Br, row_id, 0~7,  16~23, 32~39, 48~55
-          warp_QP * 32 + i * 16 + 0 * 8 + (lane_id / 4)][warp_KV] = lane_row_max[i][0];
-        block_max_new_smem[ // Br, row_id, 8~15, 24~31, 40~47, 56~63
-          warp_QP * 32 + i * 16 + 1 * 8 + (lane_id / 4)][warp_KV] = lane_row_max[i][1];
+        block_row_max_new_smem[ // Br, row_id, 0~7,  16~23, 32~39, 48~55
+          warp_QP * 32 + i * 16 + 0 * 8 + (lane_id / 4)][warp_KV] = lane_row_max_new[i][0];
+        block_row_max_new_smem[ // Br, row_id, 8~15, 24~31, 40~47, 56~63
+          warp_QP * 32 + i * 16 + 1 * 8 + (lane_id / 4)][warp_KV] = lane_row_max_new[i][1];
       }
     } // end for kWarpTileQP
     __syncthreads();
     
     // Block level reduce max, row wise, 64x4=256
-    float max_val = block_max_new_smem[tid / kMmaTileKV][tid % kMmaTileKV]; // [0~63][0~4]
-    max_val = warp_reduce_max<float, 4>(max_val)
-    block_max_new_smem[tid / kMmaTileKV][tid % kMmaTileKV] = max_val;
+    float block_row_max = block_row_max_new_smem[tid / kMmaTileKV][tid % kMmaTileKV]; // [0~63][0~4]
+    block_row_max = warp_reduce_max<float, 4>(block_row_max)
+    block_row_max_new_smem[tid / kMmaTileKV][tid % kMmaTileKV] = block_row_max;
     __syncthreads();
 
     // Exp sum and scale for [Br,Bc] tile, Thread -> Warp -> Block.
     #pragma unroll
     for (int i = 0; i < kWarpTileQP; ++i) {
       // Thread level reduce exp_sum
-      float block_row_max_0 = block_max_new_smem[ // Br, row_id, 0~7,  16~23, 32~39, 48~55
+      float block_row_max_new_0 = block_row_max_new_smem[ // Br, row_id, 0~7,  16~23, 32~39, 48~55
         warp_QP * 32 + i * 16 + 0 * 8 + (lane_id / 4)][0]  
-      float block_row_max_1 = block_max_new_smem[ // Br, row_id, 8~15, 24~31, 40~47, 56~63
+      float block_row_max_new_1 = block_row_max_new_smem[ // Br, row_id, 8~15, 24~31, 40~47, 56~63
         warp_QP * 32 + i * 16 + 1 * 8 + (lane_id / 4)][0]  
       #pragma unroll
       for (int j = 0; j < kWarpTileKV; ++j) {
         float2 t_reg_0 = __half22float2(HALF2(R_SP[i][j][0])); // 0~7  {c0, c1}
         float2 t_reg_1 = __half22float2(HALF2(R_SP[i][j][1])); // 8~15 {c2, c3}
-        t_reg_0.x = __expf(t_reg_0.x * scale - block_row_max_0 * scale);
-        t_reg_0.y = __expf(t_reg_0.y * scale - block_row_max_0 * scale);
-        t_reg_1.x = __expf(t_reg_1.x * scale - block_row_max_1 * scale);
-        t_reg_1.y = __expf(t_reg_1.y * scale - block_row_max_1 * scale);
-        lane_row_sum[i][0] += (t_reg_0.x + t_reg_0.y);
-        lane_row_sum[i][1] += (t_reg_1.x + t_reg_1.y);
+        t_reg_0.x = __expf(t_reg_0.x * scale - block_row_max_new_0 * scale);
+        t_reg_0.y = __expf(t_reg_0.y * scale - block_row_max_new_0 * scale);
+        t_reg_1.x = __expf(t_reg_1.x * scale - block_row_max_new_1 * scale);
+        t_reg_1.y = __expf(t_reg_1.y * scale - block_row_max_new_1 * scale);
+        lane_row_sum_new[i][0] += (t_reg_0.x + t_reg_0.y);
+        lane_row_sum_new[i][1] += (t_reg_1.x + t_reg_1.y);
         // Update R_SP for P[Br,Bc] = Exp(S-m), point wise.
         HALF2(R_SP[i][j][0]) = __float22half2_rn(t_reg_0);
         HALF2(R_SP[i][j][1]) = __float22half2_rn(t_reg_1);
       } // end for kWarpTileKV
 
       // Warp level reduce sum, warp_size = 4
-      lane_row_sum[i][0] = warp_reduce_sum<float, 4>(lane_row_sum[i][0]);
-      lane_row_sum[i][1] = warp_reduce_sum<float, 4>(lane_row_sum[i][1]);
+      lane_row_sum_new[i][0] = warp_reduce_sum<float, 4>(lane_row_sum_new[i][0]);
+      lane_row_sum_new[i][1] = warp_reduce_sum<float, 4>(lane_row_sum_new[i][1]);
 
       if (lane_id % 4 == 0) { // only need T0,T4,...,T28
-        block_sum_new_smem[ // Br, row_id, 0~7,  16~23, 32~39, 48~55
-          warp_QP * 32 + i * 16 + 0 * 8 + (lane_id / 4)][warp_KV] = lane_row_sum[i][0];
-        block_sum_new_smem[ // Br, row_id, 8~15, 24~31, 40~47, 56~63
-          warp_QP * 32 + i * 16 + 1 * 8 + (lane_id / 4)][warp_KV] = lane_row_sum[i][1];
+        block_row_sum_new_smem[ // Br, row_id, 0~7,  16~23, 32~39, 48~55
+          warp_QP * 32 + i * 16 + 0 * 8 + (lane_id / 4)][warp_KV] = lane_row_sum_new[i][0];
+        block_row_sum_new_smem[ // Br, row_id, 8~15, 24~31, 40~47, 56~63
+          warp_QP * 32 + i * 16 + 1 * 8 + (lane_id / 4)][warp_KV] = lane_row_sum_new[i][1];
       }
     } // end for kWarpTileQP
     __syncthreads();
 
     // Block level reduce sum, row wise, 64x4=256
-    float sum_val = block_sum_new_smem[tid / kMmaTileKV][tid % kMmaTileKV]; // [0~63][0~4]
-    sum_val = warp_reduce_sum<float, 4>(sum_val)
-    block_sum_new_smem[tid / kMmaTileKV][tid % kMmaTileKV] = sum_val;
+    float block_row_sum = block_row_sum_new_smem[tid / kMmaTileKV][tid % kMmaTileKV]; // [0~63][0~4]
+    block_row_sum = warp_reduce_sum<float, 4>(block_row_sum)
+    block_row_sum_new_smem[tid / kMmaTileKV][tid % kMmaTileKV] = block_row_sum;
     __syncthreads();
 
     // Compute P[Br,Bc] @ V[Bc,d] = [Br,d] = [64, 64/128], partion Attention.
