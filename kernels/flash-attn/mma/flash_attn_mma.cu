@@ -584,12 +584,13 @@ flash_attn_mma_kernel(
     } // end for iter D, O=P@V
 
     // TODO: Online rescaling O each tile_n step, need m_new, m_old.
+    // m = max(m_old, m_new), O_new = ( 1/exp(m_old - m) ) * O_old + P@V (FA2 paper)
 
     // Now, we can update m, l after O has been scaled.
     // First, update block row sum Exp for each lane which need both m_new and m_old.
     #pragma unroll
     for (int i = 0; i < kWarpTileQP; ++i) {
-      // m = max(m_old, m_new), l = exp(m_old - m) * l_old + l_new
+      // m = max(m_old, m_new), l = exp(m_old - m) * l_old + l_new (FA2 paper)
       // Br 0, row_id, 0~7,  16~23, 32~39, 48~55; Br 1, row_id, 8~15, 24~31, 40~47, 56~63
       float block_row_max_new_0 = block_row_max_new_smem[
         warp_QP * 32 + i * 16 + 0 * 8 + (lane_id / 4)][0];
@@ -626,6 +627,7 @@ flash_attn_mma_kernel(
   } // end loop over N
 
   // TODO: Finaly, we still have to rescale O once more.
+  // O_output = ( 1/l_final ) * O_final (FA2 paper)
 
   // TODO: Write O[Br,d] from regs -> gmem, collective store with reg reuse & warp shuffle
 }
