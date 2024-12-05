@@ -616,7 +616,7 @@ __global__  void flash_attn_mma_kernel(
       }
     } // end for iter D, O=P@V
 
-    // TODO: Online Scaling O
+    // TODO: Online rescaling O
   
     // NOTE: After compute P @ V, we have to wait next K tile ready in smem.
     // do not need to wait any things if kStage == 1.
