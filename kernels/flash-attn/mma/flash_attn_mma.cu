@@ -293,9 +293,9 @@ __global__  void flash_attn_mma_kernel(
   // or perform as each thread keep one part of m_i, because we will 
   // keep two 32 bits each thread for S/P.
 
-  // block m_old, l_old, use float to keep precision.
-  float block_row_max_old_store_lane[2] = {-INFINITY, -INFINITY};
-  float block_row_sum_old_store_lane[2] = {0.0f, 0.0f};
+  // block m_old, l_old, store in lane, use float to keep precision.
+  float block_row_max_old_store_lane[kWarpTileQP][2] = {-INFINITY, };
+  float block_row_sum_old_store_lane[kWarpTileQP][2] = {0.0f, };
   // Mi [Br], Li[Br], 64x(4)x4=1024 bytes, 1M+1M=2M, 4M.
   // TODO: 64x4=256, use each thread to store a max/sum value 
   // instead of using shared memory and mapping based on thread
@@ -501,9 +501,9 @@ __global__  void flash_attn_mma_kernel(
     __syncthreads();
     
     // Block level reduce max, row wise, 64x4=256
-    float block_row_max = block_row_max_new_smem[tid / kMmaTileKV][tid % kMmaTileKV]; // [0~63][0~4]
-    block_row_max = warp_reduce_max<float, 4>(block_row_max)
-    block_row_max_new_smem[tid / kMmaTileKV][tid % kMmaTileKV] = block_row_max;
+    float wrp_row_max_new = block_row_max_new_smem[tid / kMmaTileKV][tid % kMmaTileKV]; // [0~63][0~4]
+    float blk_row_max_new = warp_reduce_max<float, 4>(wrp_row_max_new);
+    block_row_max_new_smem[tid / kMmaTileKV][tid % kMmaTileKV] = blk_row_max_new;
     __syncthreads();
 
     // Exp sum and scale for [Br,Bc] tile, Thread -> Warp -> Block.
@@ -514,6 +514,13 @@ __global__  void flash_attn_mma_kernel(
         warp_QP * 32 + i * 16 + 0 * 8 + (lane_id / 4)][0]  
       float block_row_max_new_1 = block_row_max_new_smem[ // Br, row_id, 8~15, 24~31, 40~47, 56~63
         warp_QP * 32 + i * 16 + 1 * 8 + (lane_id / 4)][0]  
+      // compare with block row max old for this row(lane) and update it.
+      block_row_max_old_store_lane[i][0] = max(
+        block_row_max_old_store_lane[i][0], block_row_max_new_0); 
+      block_row_max_old_store_lane[i][1] = max(
+        block_row_max_old_store_lane[i][1], block_row_max_new_1);
+      block_row_max_new_0 = block_row_max_old_store_lane[i][0]; // use latest row max
+      block_row_max_new_1 = block_row_max_old_store_lane[i][1]; // use latest row max
       #pragma unroll
       for (int j = 0; j < kWarpTileKV; ++j) {
         float2 t_reg_0 = __half22float2(HALF2(R_SP[i][j][0])); // 0~7  {c0, c1}
@@ -543,9 +550,9 @@ __global__  void flash_attn_mma_kernel(
     __syncthreads();
 
     // Block level reduce sum, row wise, 64x4=256
-    float block_row_sum = block_row_sum_new_smem[tid / kMmaTileKV][tid % kMmaTileKV]; // [0~63][0~4]
-    block_row_sum = warp_reduce_sum<float, 4>(block_row_sum)
-    block_row_sum_new_smem[tid / kMmaTileKV][tid % kMmaTileKV] = block_row_sum;
+    float wrp_row_sum_new = block_row_sum_new_smem[tid / kMmaTileKV][tid % kMmaTileKV]; // [0~63][0~4]
+    float blk_row_sum_new = warp_reduce_sum<float, 4>(wrp_row_sum_new);
+    block_row_sum_new_smem[tid / kMmaTileKV][tid % kMmaTileKV] = blk_row_sum_new;
     __syncthreads();
 
     // Compute P[Br,Bc] @ V[Bc,d] = [Br,d] = [64, 64/128], partion Attention.
