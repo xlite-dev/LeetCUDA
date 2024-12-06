@@ -165,7 +165,6 @@ flash_attn_mma_kernel(half* Q, half* K, half* V, half* O, int N) {
   constexpr int Bv = kMmaN * kMmaTileV * kWarpTileV; // 8*4*2=64, 8*4*4=128, ...
   constexpr int Bd = kMmaK; // 16, tile head_dim(d) according MMA
   constexpr int Tn = WARP_SIZE * kMmaTileQ * kMmaTileK; // 32*2*4=256, num threads
-  // static_assert(Br == 64);
   // NOTE: Now, N must be mutliples of Bc(32/64) for KV tiling across N.
   const int Tr = div_ceil(N, Br); // Tr Q_tile[Br,d]
   const int Tc = div_ceil(N, Bc); // Tc K/V_tile[Bc,d]
@@ -746,3 +745,161 @@ flash_attn_mma_kernel(half* Q, half* K, half* V, half* O, int N) {
 }
 
 // TODO: flash_attn_mma_kv_smem_shared_kernel
+// --------------------- PyTorch bindings for custom kernel -----------------------
+#define STRINGFY(str) #str
+#define TORCH_BINDING_COMMON_EXTENSION(func) \
+  m.def(STRINGFY(func), &func, STRINGFY(func));
+
+#define CHECK_TORCH_TENSOR_DTYPE(T, th_type)                 \
+if(((T).options().dtype() != (th_type))) {                   \
+  std::cout << "Tensor Info:" << (T).options() << std::endl; \
+  throw std::runtime_error("values must be "#th_type);       \
+}
+
+#define CHECK_TORCH_TENSOR_SHAPE(T1, T2)             \
+if (((T2).size(0) != (T1).size(0)) ||                \
+    ((T2).size(1) != (T1).size(1)) ||                \
+    ((T2).size(2) != (T1).size(2)) ||                \
+    ((T2).size(3) != (T1).size(3))) {                \
+  throw std::runtime_error("Tensor size mismatch!"); \
+}
+
+void flash_attn_mma(
+  torch::Tensor Q, torch::Tensor K, torch::Tensor V, torch::Tensor O) {
+  CHECK_TORCH_TENSOR_DTYPE(Q, torch::kHalf)
+  CHECK_TORCH_TENSOR_DTYPE(K, torch::kHalf)
+  CHECK_TORCH_TENSOR_DTYPE(V, torch::kHalf)
+  CHECK_TORCH_TENSOR_DTYPE(O, torch::kHalf)
+  const int B = Q.size(0); 
+  const int H = Q.size(1);
+  const int N = Q.size(2); 
+  const int d = Q.size(3);
+
+  constexpr int kMmaM = 16;
+  constexpr int kMmaN = 8;
+  constexpr int kMmaK = 16;
+  constexpr int kMmaTileQ = 2;
+  constexpr int kMmaTileP = 2;
+  constexpr int kMmaTileK = 4;
+  constexpr int kMmaTileV = 4;
+  constexpr int kWarpTileQ = 2;
+  constexpr int kWarpTileP = 2;
+  constexpr int kWarpTileK = 2;
+  constexpr int kStage = 2; // 2 for d <= 128, 1 for d > 128.
+  constexpr int kPad = 0;
+
+  // Calculate SRAM size needed per block
+  constexpr int Br = kMmaM * kMmaTileQ * kWarpTileQ; // 16*2*2=64
+  constexpr int Bc = kMmaN * kMmaTileK * kWarpTileK; // 8*4*2=64
+  const int Tr = div_ceil(N, Br); // Tr Q_tile[Br,d]
+  const int Tc = div_ceil(N, Bc); // Tc K/V_tile[Bc,d]
+  assert(N % Bc == 0, "Now, N must be multiple of Bc"); // multiple of Bc=64
+
+  // Q,K,V smem size
+  const int smem_max_size = (Br * (d + kPad) + 
+                            (kStage * Bc * (d + kPad)) + 
+                            (Bc * (d + kPad))) * sizeof(half); 
+
+  dim3 grid(B, H, Tr); // batch_size x num_heads x Tr(=N/Br)
+  dim3 block(WARP_SIZE * kMmaTileQ * kMmaTileK); // 8 Warps per block
+
+  // cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+
+  if (d == 64) {
+    constexpr int kHeadDim = 64;
+    constexpr int kWarpTileV = (kHeadDim / (kMmaN*kMmaTileV));
+
+    cudaFuncSetAttribute(
+      flash_attn_mma_kernel<
+        kHeadDim, 
+        kMmaM, 
+        kMmaN, 
+        kMmaK, 
+        kMmaTileQ, 
+        kMmaTileP, 
+        kMmaTileK, 
+        kMmaTileV, 
+        kWarpTileQ, 
+        kWarpTileP, 
+        kWarpTileK, 
+        kWarpTileV, 
+        kStage, 
+        kPad
+        >,
+        cudaFuncAttributeMaxDynamicSharedMemorySize,
+        98304
+    );
+
+    flash_attn_mma_kernel<
+      kHeadDim, 
+      kMmaM, 
+      kMmaN, 
+      kMmaK, 
+      kMmaTileQ, 
+      kMmaTileP, 
+      kMmaTileK, 
+      kMmaTileV, 
+      kWarpTileQ, 
+      kWarpTileP, 
+      kWarpTileK, 
+      kWarpTileV, 
+      kStage, 
+      kPad
+    ><<<grid, block, smem_max_size>>>(
+      reinterpret_cast<half*>(Q.data_ptr()),
+      reinterpret_cast<half*>(K.data_ptr()),
+      reinterpret_cast<half*>(V.data_ptr()),
+      reinterpret_cast<half*>(O.data_ptr()),
+      N
+    );
+  }
+
+  if (d == 128) {
+    constexpr int kHeadDim = 128;
+    constexpr int kWarpTileV = (kHeadDim / (kMmaN*kMmaTileV));
+
+    cudaFuncSetAttribute(
+      flash_attn_mma_kernel<
+        kHeadDim, 
+        kMmaM, 
+        kMmaN, 
+        kMmaK, 
+        kMmaTileQ, 
+        kMmaTileP, 
+        kMmaTileK, 
+        kMmaTileV, 
+        kWarpTileQ, 
+        kWarpTileP, 
+        kWarpTileK, 
+        kWarpTileV, 
+        kStage, 
+        kPad
+        >,
+        cudaFuncAttributeMaxDynamicSharedMemorySize,
+        98304
+    );
+
+    flash_attn_mma_kernel<
+      kHeadDim, 
+      kMmaM, 
+      kMmaN, 
+      kMmaK, 
+      kMmaTileQ, 
+      kMmaTileP, 
+      kMmaTileK, 
+      kMmaTileV, 
+      kWarpTileQ, 
+      kWarpTileP, 
+      kWarpTileK, 
+      kWarpTileV, 
+      kStage, 
+      kPad
+    ><<<grid, block, smem_max_size>>>(
+      reinterpret_cast<half*>(Q.data_ptr()),
+      reinterpret_cast<half*>(K.data_ptr()),
+      reinterpret_cast<half*>(V.data_ptr()),
+      reinterpret_cast<half*>(O.data_ptr()),
+      N
+    );
+  }
+}
