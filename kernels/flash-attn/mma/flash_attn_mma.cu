@@ -229,8 +229,10 @@ flash_attn_mma_kernel(half* Q, half* K, half* V, half* O, int N) {
 
   // --------------------- Regristers/SMEM for Br ---------------------
   // block m_old, l_old, store in lane, use float to keep precision.
-  float lane_block_row_max_old[kWarpTileQ][2] = {-INFINITY, };
-  float lane_block_row_sum_old[kWarpTileQ][2] = {0.0f, };
+  float lane_block_row_max_old[kWarpTileQ][2];
+  float lane_block_row_sum_old[kWarpTileQ][2];
+  fill_2D_regs<float, kWarpTileQ, 2>(lane_block_row_max_old, -INFINITY);
+  fill_2D_regs<float, kWarpTileQ, 2>(lane_block_row_sum_old, 0.0f);
   // Mi [Br], Li[Br], 64x(4)x4=1024 bytes, 1M+1M=2M, 4M.
   // TODO: 64x4=256, use each thread to store a max/sum value 
   // instead of using shared memory and mapping based on thread
@@ -446,8 +448,10 @@ flash_attn_mma_kernel(half* Q, half* K, half* V, half* O, int N) {
     // WIP: online safe softmax, warp/block reduce max/sum, row wise
     // warp 0/2/4/6, [0][2] row 0~15,  col 0/8/16/32, max, [1][2] row 16~31, col 0/8/16/32, max
     // warp 1/3/5/7, [0][2] row 32~47, col 0/8/16/32, max, [1][2] row 48~61, col 0/8/16/32, max
-    float lane_row_max_new[kWarpTileQ][2] = {-INFINITY, }; 
-    float lane_row_sum_new[kWarpTileQ][2] = {0.0f, }; 
+    float lane_row_max_new[kWarpTileQ][2]; 
+    float lane_row_sum_new[kWarpTileQ][2]; 
+    fill_2D_regs<float, kWarpTileQ, 2>(lane_row_max_new, -INFINITY);
+    fill_2D_regs<float, kWarpTileQ, 2>(lane_row_sum_new, 0.0f);
 
     // Row max for [Br,Bc] tile, Thread -> Warp -> Block.
     #pragma unroll
@@ -718,12 +722,12 @@ flash_attn_mma_kernel(half* Q, half* K, half* V, half* O, int N) {
     #pragma unroll
     for (int j = 0; j < kWarpTileV; ++j) {
       R_QP[0][0] = R_OO[i][j][0]; R_QP[1][0] = R_OO[i][j][1]; // warp_size 4
-      R_QP[0][1] = __shfl_sync((0xffffffff), R_OO[i][j][0], lane_id + 1, 4);
-      R_QP[0][2] = __shfl_sync((0xffffffff), R_OO[i][j][0], lane_id + 2, 4);
-      R_QP[0][3] = __shfl_sync((0xffffffff), R_OO[i][j][0], lane_id + 3, 4);
-      R_QP[1][1] = __shfl_sync((0xffffffff), R_OO[i][j][1], lane_id + 1, 4);
-      R_QP[1][2] = __shfl_sync((0xffffffff), R_OO[i][j][1], lane_id + 2, 4);
-      R_QP[1][3] = __shfl_sync((0xffffffff), R_OO[i][j][1], lane_id + 3, 4);
+      R_QP[0][1] = __shfl_sync((0xffffffff), R_OO[i][j][0], lane_id + 1);
+      R_QP[0][2] = __shfl_sync((0xffffffff), R_OO[i][j][0], lane_id + 2);
+      R_QP[0][3] = __shfl_sync((0xffffffff), R_OO[i][j][0], lane_id + 3);
+      R_QP[1][1] = __shfl_sync((0xffffffff), R_OO[i][j][1], lane_id + 1);
+      R_QP[1][2] = __shfl_sync((0xffffffff), R_OO[i][j][1], lane_id + 2);
+      R_QP[1][3] = __shfl_sync((0xffffffff), R_OO[i][j][1], lane_id + 3);
       // st.global.v4 128 bits.
       if (lane_id % 4 == 0) {
         int store_warp_regs_O_n = warp_QP * (kMmaM * kWarpTileQ) + i * kMmaM;
