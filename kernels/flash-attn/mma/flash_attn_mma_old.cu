@@ -292,7 +292,7 @@ if (((T2).size(0) != (T1).size(0)) ||                \
   throw std::runtime_error("Tensor size mismatch!"); \
 }
 
-void flash_attn_2_fwd_f16_mma_m16n8k16(
+void flash_attn_mma_naive(
   torch::Tensor Q, torch::Tensor K, torch::Tensor V, torch::Tensor O) {
   // TODO: determine Bc, Br dynamically
   CHECK_TORCH_TENSOR_DTYPE(Q, torch::kHalf)
