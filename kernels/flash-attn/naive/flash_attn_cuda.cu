@@ -135,7 +135,7 @@ if (((T2).size(0) != (T1).size(0)) ||                \
   throw std::runtime_error("Tensor size mismatch!"); \
 }
 
-void flash_attn_1_fwd_f32(
+void flash_attn_cuda(
   torch::Tensor Q, 
   torch::Tensor K, 
   torch::Tensor V,
