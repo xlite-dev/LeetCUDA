@@ -764,17 +764,9 @@ if (((T2).size(0) != (T1).size(0)) ||                \
   throw std::runtime_error("Tensor size mismatch!"); \
 }
 
-void flash_attn_mma(
+template<const int kHeadDim, const int kStage>
+void launch_flash_attn_mma(
   torch::Tensor Q, torch::Tensor K, torch::Tensor V, torch::Tensor O) {
-  CHECK_TORCH_TENSOR_DTYPE(Q, torch::kHalf)
-  CHECK_TORCH_TENSOR_DTYPE(K, torch::kHalf)
-  CHECK_TORCH_TENSOR_DTYPE(V, torch::kHalf)
-  CHECK_TORCH_TENSOR_DTYPE(O, torch::kHalf)
-  const int B = Q.size(0); 
-  const int H = Q.size(1);
-  const int N = Q.size(2); 
-  const int d = Q.size(3);
-
   constexpr int kMmaM = 16;
   constexpr int kMmaN = 8;
   constexpr int kMmaK = 16;
@@ -785,51 +777,27 @@ void flash_attn_mma(
   constexpr int kWarpTileQ = 2;
   constexpr int kWarpTileP = 2;
   constexpr int kWarpTileK = 2;
-  constexpr int kStage = 2; // 2 for d <= 128, 1 for d > 128.
+  constexpr int kWarpTileV = (kHeadDim / (kMmaN*kMmaTileV));
   constexpr int kPad = 0;
-
-  // Calculate SRAM size needed per block
   constexpr int Br = kMmaM * kMmaTileQ * kWarpTileQ; // 16*2*2=64
   constexpr int Bc = kMmaN * kMmaTileK * kWarpTileK; // 8*4*2=64
+
+  // Calculate SRAM size needed per block, Q,K,V smem size
+  const int smem_max_size = (Br * (kHeadDim + kPad) + 
+                            (kStage * Bc * (kHeadDim + kPad)) + 
+                            (Bc * (kHeadDim + kPad))) * sizeof(half); 
+
+  const int B  = Q.size(0); 
+  const int H  = Q.size(1);
+  const int N  = Q.size(2); 
   const int Tr = div_ceil(N, Br); // Tr Q_tile[Br,d]
   const int Tc = div_ceil(N, Bc); // Tc K/V_tile[Bc,d]
   assert(N % Bc == 0, "Now, N must be multiple of Bc"); // multiple of Bc=64
 
-  // Q,K,V smem size
-  const int smem_max_size = (Br * (d + kPad) + 
-                            (kStage * Bc * (d + kPad)) + 
-                            (Bc * (d + kPad))) * sizeof(half); 
-
   dim3 grid(B, H, Tr); // batch_size x num_heads x Tr(=N/Br)
   dim3 block(WARP_SIZE * kMmaTileQ * kMmaTileK); // 8 Warps per block
 
-  // cudaStream_t stream = at::cuda::getCurrentCUDAStream();
-
-  if (d == 64) {
-    constexpr int kHeadDim = 64;
-    constexpr int kWarpTileV = (kHeadDim / (kMmaN*kMmaTileV));
-
-    cudaFuncSetAttribute(
-      flash_attn_mma_kernel<
-        kHeadDim, 
-        kMmaM, 
-        kMmaN, 
-        kMmaK, 
-        kMmaTileQ, 
-        kMmaTileP, 
-        kMmaTileK, 
-        kMmaTileV, 
-        kWarpTileQ, 
-        kWarpTileP, 
-        kWarpTileK, 
-        kWarpTileV, 
-        kStage, 
-        kPad
-        >,
-        cudaFuncAttributeMaxDynamicSharedMemorySize,
-        98304
-    );
-
+  cudaFuncSetAttribute(
     flash_attn_mma_kernel<
       kHeadDim, 
       kMmaM, 
@@ -845,61 +813,75 @@ void flash_attn_mma(
       kWarpTileV, 
       kStage, 
       kPad
-    ><<<grid, block, smem_max_size>>>(
-      reinterpret_cast<half*>(Q.data_ptr()),
-      reinterpret_cast<half*>(K.data_ptr()),
-      reinterpret_cast<half*>(V.data_ptr()),
-      reinterpret_cast<half*>(O.data_ptr()),
-      N
-    );
-  }
+    >,
+    cudaFuncAttributeMaxDynamicSharedMemorySize,
+    98304
+  );
 
-  if (d == 128) {
-    constexpr int kHeadDim = 128;
-    constexpr int kWarpTileV = (kHeadDim / (kMmaN*kMmaTileV));
+  flash_attn_mma_kernel<
+    kHeadDim, 
+    kMmaM, 
+    kMmaN, 
+    kMmaK, 
+    kMmaTileQ, 
+    kMmaTileP, 
+    kMmaTileK, 
+    kMmaTileV, 
+    kWarpTileQ, 
+    kWarpTileP, 
+    kWarpTileK, 
+    kWarpTileV, 
+    kStage, 
+    kPad
+  ><<<grid, block, smem_max_size>>>(
+    reinterpret_cast<half*>(Q.data_ptr()),
+    reinterpret_cast<half*>(K.data_ptr()),
+    reinterpret_cast<half*>(V.data_ptr()),
+    reinterpret_cast<half*>(O.data_ptr()),
+    N
+  );
+}
 
-    cudaFuncSetAttribute(
-      flash_attn_mma_kernel<
-        kHeadDim, 
-        kMmaM, 
-        kMmaN, 
-        kMmaK, 
-        kMmaTileQ, 
-        kMmaTileP, 
-        kMmaTileK, 
-        kMmaTileV, 
-        kWarpTileQ, 
-        kWarpTileP, 
-        kWarpTileK, 
-        kWarpTileV, 
-        kStage, 
-        kPad
-        >,
-        cudaFuncAttributeMaxDynamicSharedMemorySize,
-        98304
-    );
+void flash_attn_mma(torch::Tensor Q, torch::Tensor K, 
+                    torch::Tensor V, torch::Tensor O, 
+                    int stages) {
+  CHECK_TORCH_TENSOR_DTYPE(Q, torch::kHalf)
+  CHECK_TORCH_TENSOR_DTYPE(K, torch::kHalf)
+  CHECK_TORCH_TENSOR_DTYPE(V, torch::kHalf)
+  CHECK_TORCH_TENSOR_DTYPE(O, torch::kHalf)
+  const int d = Q.size(3); // B, H, N, d
 
-    flash_attn_mma_kernel<
-      kHeadDim, 
-      kMmaM, 
-      kMmaN, 
-      kMmaK, 
-      kMmaTileQ, 
-      kMmaTileP, 
-      kMmaTileK, 
-      kMmaTileV, 
-      kWarpTileQ, 
-      kWarpTileP, 
-      kWarpTileK, 
-      kWarpTileV, 
-      kStage, 
-      kPad
-    ><<<grid, block, smem_max_size>>>(
-      reinterpret_cast<half*>(Q.data_ptr()),
-      reinterpret_cast<half*>(K.data_ptr()),
-      reinterpret_cast<half*>(V.data_ptr()),
-      reinterpret_cast<half*>(O.data_ptr()),
-      N
-    );
+  if (stages == 2) {
+    switch (d)
+    {
+    case 64:
+      launch_flash_attn_mma<64,  2>(Q, K, V, O);
+      break;
+    case 96:
+      launch_flash_attn_mma<96,  2>(Q, K, V, O);
+      break;
+    case 128:
+      launch_flash_attn_mma<128, 2>(Q, K, V, O);
+      break;
+    default:
+      throw std::runtime_error("headdim not support!");
+      break;
+    }
+  } else {
+    switch (d)
+    {
+    case 64:
+      launch_flash_attn_mma<64,  1>(Q, K, V, O);
+      break;
+    case 96:
+      launch_flash_attn_mma<96,  1>(Q, K, V, O);
+      break;
+    case 128:
+      launch_flash_attn_mma<128, 1>(Q, K, V, O);
+      break;
+    default:
+      throw std::runtime_error("headdim not support!");
+      break;
+    }
   }
 }
