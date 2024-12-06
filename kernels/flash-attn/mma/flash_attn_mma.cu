@@ -141,7 +141,7 @@ template<
          const int kWarpTileV, // 2, Bv=32*2=64, N, Must satisfy d=kWarpTileV*(kMmaN*kMmaTileV=32), 
                                // e.g, 1->d 32, 2->d 64, 3->d 96, 4-> d 128, ...
          const int kStage,     // 1,2, not support >= 3. 
-         const int kPad,       // 0,8,16
+         const int kPad        // 0,8,16
          >
 __global__ void __launch_bounds__(
   WARP_SIZE * kMmaTileQ * kMmaTileK) // 32 * 2 * 4 = 256
@@ -162,7 +162,6 @@ flash_attn_mma_kernel(half* Q, half* K, half* V, half* O, int N) {
   constexpr int d  = kHeadDim; // alias
   constexpr int Br = kMmaM * kMmaTileQ * kWarpTileQ; // 16*2*2=64
   constexpr int Bc = kMmaN * kMmaTileK * kWarpTileK; // 8*4*2=64
-  constexpr int Bv = kMmaN * kMmaTileV * kWarpTileV; // 8*4*2=64, 8*4*4=128, ...
   constexpr int Bd = kMmaK; // 16, tile head_dim(d) according MMA
   constexpr int Tn = WARP_SIZE * kMmaTileQ * kMmaTileK; // 32*2*4=256, num threads
   // NOTE: Now, N must be mutliples of Bc(32/64) for KV tiling across N.
@@ -277,7 +276,7 @@ flash_attn_mma_kernel(half* Q, half* K, half* V, half* O, int N) {
     // need 2 or 4 128 bits memory issues.
     #pragma unroll
     for (int i = 0; i < (d / (Tn / Br)); i += 8) {
-      CP_ASYNC_CG(load_smem_Q_ptr + i * sizeof(half), 
+      CP_ASYNC_CG(load_smem_Q_ptr + i * 2, 
                   &Q[load_gmem_Q_addr + i], 16);
     }
     CP_ASYNC_COMMIT_GROUP();
@@ -300,7 +299,7 @@ flash_attn_mma_kernel(half* Q, half* K, half* V, half* O, int N) {
     // need 2 or 4 128 bits memory issues.
     #pragma unroll
     for (int i = 0; i < (d / (Tn / Bc)); i += 8) {
-      CP_ASYNC_CG(load_smem_K_ptr + i * sizeof(half), 
+      CP_ASYNC_CG(load_smem_K_ptr + i * 2, 
                   &K[load_gmem_K_addr + i], 16);
     }
     CP_ASYNC_COMMIT_GROUP();
@@ -343,7 +342,7 @@ flash_attn_mma_kernel(half* Q, half* K, half* V, half* O, int N) {
       // need 2 or 4 128 bits memory issues.
       #pragma unroll
       for (int i = 0; i < (d / (Tn / Bc)); i += 8) {
-        CP_ASYNC_CG(load_smem_V_ptr + i * sizeof(half), 
+        CP_ASYNC_CG(load_smem_V_ptr + i * 2, 
                     &K[load_gmem_V_addr + i], 16);
       }
       CP_ASYNC_COMMIT_GROUP();
@@ -365,7 +364,7 @@ flash_attn_mma_kernel(half* Q, half* K, half* V, half* O, int N) {
         // need 2 or 4 128 bits memory issues.
         #pragma unroll
         for (int i = 0; i < (d / (Tn / Bc)); i += 8) {
-          CP_ASYNC_CG(load_smem_K_ptr + i * sizeof(half), 
+          CP_ASYNC_CG(load_smem_K_ptr + i * 2, 
                       &K[load_gmem_K_addr + i], 16);
         }
         CP_ASYNC_COMMIT_GROUP();
@@ -538,6 +537,7 @@ flash_attn_mma_kernel(half* Q, half* K, half* V, half* O, int N) {
         block_row_sum_new_smem[ // Br, row_id, 8~15, 24~31, 40~47, 56~63
           warp_QP * 32 + i * 16 + 1 * 8 + (lane_id / 4)][warp_KV] = lane_row_sum_new[i][1];
       }
+      __syncthreads(); 
     } // end for kWarpTileQ
     __syncthreads();
 
@@ -596,10 +596,10 @@ flash_attn_mma_kernel(half* Q, half* K, half* V, half* O, int N) {
         int lane_smem_V_n = lane_id % 16; // 0~15;
         int lane_smem_V_d = warp_smem_V_d; // 0
         uint32_t lane_smem_V_ptr = (
-            smem_V_base_ptr + (warp_smem_V_n * (d + kPad) + 
+            smem_V_base_ptr + (lane_smem_V_n * (d + kPad) + 
                                lane_smem_V_d) * sizeof(half)
         );
-        LDMATRIX_X2_T(R_KV[j][0], R_KV[j][1], lane_smem_V_ptr); // R_V
+        LDMATRIX_X2_T(R_KV[i][0], R_KV[i][1], lane_smem_V_ptr); // R_V
       }
       // MMA compute
       // FIXME(DefTruth): May need to reorder R_SP[2][2][2] to [2][4=2x2] ?
@@ -745,7 +745,10 @@ flash_attn_mma_kernel(half* Q, half* K, half* V, half* O, int N) {
 }
 
 // TODO: flash_attn_mma_kv_smem_shared_kernel
+
 // --------------------- PyTorch bindings for custom kernel -----------------------
+#include <torch/types.h>
+#include <torch/extension.h>
 #define STRINGFY(str) #str
 #define TORCH_BINDING_COMMON_EXTENSION(func) \
   m.def(STRINGFY(func), &func, STRINGFY(func));
@@ -792,7 +795,7 @@ void launch_flash_attn_mma(
   const int N  = Q.size(2); 
   const int Tr = div_ceil(N, Br); // Tr Q_tile[Br,d]
   const int Tc = div_ceil(N, Bc); // Tc K/V_tile[Bc,d]
-  assert(N % Bc == 0, "Now, N must be multiple of Bc"); // multiple of Bc=64
+  assert(N % Bc == 0); // multiple of Bc=64
 
   dim3 grid(B, H, Tr); // batch_size x num_heads x Tr(=N/Br)
   dim3 block(WARP_SIZE * kMmaTileQ * kMmaTileK); // 8 Warps per block
@@ -842,9 +845,9 @@ void launch_flash_attn_mma(
   );
 }
 
-void flash_attn_mma(torch::Tensor Q, torch::Tensor K, 
-                    torch::Tensor V, torch::Tensor O, 
-                    int stages) {
+void flash_attn_mma_stages(torch::Tensor Q, torch::Tensor K, 
+                           torch::Tensor V, torch::Tensor O, 
+                           int stages) {
   CHECK_TORCH_TENSOR_DTYPE(Q, torch::kHalf)
   CHECK_TORCH_TENSOR_DTYPE(K, torch::kHalf)
   CHECK_TORCH_TENSOR_DTYPE(V, torch::kHalf)
