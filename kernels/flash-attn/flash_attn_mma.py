@@ -71,7 +71,7 @@ def run_benchmark(perf_func: callable,
     total_time = (end - start) * 1000 # ms
     mean_time = total_time / iters
     out_info = f"{tag}"
-    out_val = out.flatten().detach().cpu().numpy().tolist()[:3]
+    out_val = out.flatten()[:3].detach().cpu().numpy().tolist()
     out_val = [round(v, 8) for v in out_val]
     out_val = [f"{v:<12}" for v in out_val]
     print(f"{out_info:>20}: {out_val}, time:{mean_time:.6f}ms")
@@ -103,18 +103,17 @@ print(" "* 25 + "B: batch_size, H: n_head, N: seq_len, D: head_dim")
 for (B, H, N, D) in BHNDs:
     print("-" * 100)
     print(" " * 40 + f"B={B}, H={H}, N={N}, D={D}")
+    # q = torch.ones(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
+    # k = torch.ones(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
+    # v = torch.ones(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
+    # o = torch.ones(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
     q = torch.ones(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
-    k = torch.ones(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
+    k = torch.randn(B, H, N, D, device="cuda", dtype=torch.half).contiguous() # 为randn是结果错误
     v = torch.ones(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
-    o = torch.ones(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
-    # q = torch.randn(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
-    # k = torch.randn(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
-    # v = torch.randn(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
-    # o = torch.randn(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
-    for i in range(N):
-        q[:, :, i, :] = q[:, :, i, :] / (i + 1)
-        k[:, :, i, :] = k[:, :, i, :] / (i + 1)
-        v[:, :, i, :] = v[:, :, i, :] / (i + 1)
+    o = torch.randn(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
+    # for i in range(N):
+    #     k[:, :, i, :] = k[:, :, i, :] / (i + 2)
+    #     # v[:, :, i, :] = v[:, :, i, :] / (i + 2)
     q = q.contiguous()
     k = k.contiguous()
     v = v.contiguous()
@@ -122,18 +121,21 @@ for (B, H, N, D) in BHNDs:
     fk = k.transpose(1, 2)
     fv = v.transpose(1, 2)
     torch.cuda.synchronize()
-    print("-" * 100)
-    print(q)
-    print("-" * 100)
-    print(k)
-    print("-" * 100)
-    print(v)
-    print("-" * 100)
+    # print("-" * 100)
+    # print(q)
+    # print("-" * 100)
+    # print(k)
+    # print("-" * 100)
+    # print(v)
+    # print(v[:, :, :, 0])
+    # print("-" * 100)
   
     # using fp16 Tesor Core MMA instruction
-    run_benchmark(lib.flash_attn_mma_naive, q, k, v, "mma(naive)", o)
     run_benchmark(lib.flash_attn_mma_stages, q, k, v, "mma(stage)", o, stages=1)
     # run_benchmark(lib.flash_attn_mma_stages, q, as_col_major(k), v, "mma(stage)", o, stages=1)
     run_benchmark(flash_attn_func, fq, fk, fv, "(flash)")
     run_benchmark(F.scaled_dot_product_attention, q, k, v, "(sdpa)")
+    run_benchmark(lib.flash_attn_mma_naive, q, k, v, "mma(naive)", o)
     print("-" * 100)
+    # print(q @ v)
+    

@@ -118,12 +118,12 @@ DEVICE_INLINE void fill_2D_regs(T (&R)[M][N], T val) {
     printf(", V0=%f, V1=%f\n", v_reg.x, v_reg.y);\
   }                                              \
 }
-#define FA_MMA_PRINT_REG(R, format, ...)      \
+#define FA_MMA_PRINT_REG(R, format, ...)         \
 {                                                \
   {                                              \
     float2 v_reg = __half22float2(HALF2(R));     \
     printf(format, ##__VA_ARGS__);               \
-    printf("V0=%f, V1=%f\n", v_reg.x, v_reg.y);\
+    printf("V0=%f, V1=%f\n", v_reg.x, v_reg.y);  \
   }                                              \
 }
 #define FA_MMA_PRINT_T0_REG_V2(R, format, ...)   \
@@ -150,7 +150,7 @@ DEVICE_INLINE void fill_2D_regs(T (&R)[M][N], T val) {
     printf(", V0=%f, V1=%f\n", v_reg.x, v_reg.y); \
   }                                               \
 }
-#define FA_MMA_PRINT_L0_(format, ...)           \
+#define FA_MMA_PRINT_L0(format, ...)            \
 {                                               \
   if (lane_id == 0) {                           \
     printf("[L0] ");                            \
@@ -158,7 +158,9 @@ DEVICE_INLINE void fill_2D_regs(T (&R)[M][N], T val) {
   }                                             \
 }
 #else
+#define FA_MMA_PRINT_REG(R, format, ...) {}
 #define FA_MMA_PRINT_T0_REG(R, format, ...) {}
+#define FA_MMA_PRINT_T0_REG_V2(R, format, ...) {}
 #define FA_MMA_PRINT_L0_REG(R, format, ...) {}
 #define FA_MMA_PRINT_T0(format, ...) {}
 #define FA_MMA_PRINT_L0(format, ...) {}
@@ -195,8 +197,7 @@ template<
          const int kWarpTileQ, // 2, Br=32*2=64, M
          const int kWarpTileP, // 2, Br=32*2=64, M
          const int kWarpTileK, // 2, Bc=32*2=64, N
-         const int kWarpTileV, // 2, Bv=32*2=64, N, Must satisfy d=kWarpTileV*(kMmaN*kMmaTileV=32), 
-                               // e.g, 1->d 32, 2->d 64, 3->d 96, 4-> d 128, ...
+         const int kWarpTileV, // 2, Bv=32*2=64, N, Must satisfy d=kWarpTileV*(kMmaN*kMmaTileV=32), e.g, 1->d 32, 2->d 64, 3->d 96, 4-> d 128, ...
          const int kStage,     // 1,2, not support >= 3. 
          const int kPad        // 0,8,16
          >
@@ -268,16 +269,22 @@ flash_attn_mma_kernel(half* Q, half* K, half* V, half* O, int N) {
   // Mapping gmem -> tid -> smem, Q[Br,d]=[64,64 or 128], 256 threads.
   int load_smem_Q_n = (tid / (Tn / Br)); // Br 64, tid / 4, row 0~64
   int load_smem_Q_d = (tid % (Tn / Br)) * (d / (Tn / Br)); // (tid % 4) * 16, 0,16,32,48
+  // Mapping gmem -> tid -> smem, K[d,Bc]=[64 or 128,64], 256 threads.
+  // TODO: 按照非转置的K[Bc,d]进行加载，会影响后续ldmatrix和MMA逻辑，参考flash_attn_mma_old.cu
+  // int load_smem_K_d = (tid / (Tn / d)); // d 64, tid / 4, row 0~64
+  // int load_smem_K_n = (tid % (Tn / d)) * (Bc / (Tn / d)); // (tid % 4) * 16, 0,16,32,48
   int load_smem_K_n = (tid / (Tn / Bc)); // Bc 64, tid / 4, row 0~64
-  int load_smem_K_d = (tid % (Tn / Bc)) * (d / (Tn / Bc)); // (tid % 4) * 16, 0,16,32,48
-  int load_smem_V_n = load_smem_K_n;
-  int load_smem_V_d = load_smem_K_d;
+  int load_smem_K_d = (tid % (Tn / Bc)) * (d / (Tn / Bc)); 
+  // Mapping gmem -> tid -> smem, V[Br,d]=[64,64 or 128], 256 threads.
+  int load_smem_V_n = (tid / (Tn / Bc)); // Bc 64, tid / 4, row 0~64
+  int load_smem_V_d = (tid % (Tn / Bc)) * (d / (Tn / Bc)); 
   // global Q row of current head with tile [Br,d] per block.
   int load_gmem_Q_n = QO_tile_id * Br + load_smem_Q_n; 
   if (load_gmem_Q_n >= N) return;
   // KV tile gmem load index starts from 0 and increments with 
   // each iteration as we loop over N.
   int load_gmem_K_n_offset = 0; 
+  int load_gmem_K_d_offset = 0; 
   int load_gmem_V_n_offset = 0; 
 
   uint32_t smem_Q_base_ptr = __cvta_generic_to_shared(Q_tile_smem);
@@ -322,7 +329,8 @@ flash_attn_mma_kernel(half* Q, half* K, half* V, half* O, int N) {
   constexpr int kMaxWarpTileKV = (
     kWarpTileK > kWarpTileV ? kWarpTileK : kWarpTileV);
   uint32_t R_QP[kWarpTileQ][4]; // kWarpTileP=kWarpTileQ.
-  uint32_t R_KV[kMaxWarpTileKV][2];
+  uint32_t R_KV[kWarpTileK][2];
+  uint32_t R_VV[kWarpTileV][2];
 
   // load Q from gmem -> smem, only load once.
   {
@@ -365,8 +373,10 @@ flash_attn_mma_kernel(half* Q, half* K, half* V, half* O, int N) {
         CP_ASYNC_CG(load_smem_K_ptr + i * 2, 
                     &K[load_gmem_K_addr + i], 16);
       }
-      printf("tid %d, load_gmem_K_n %d, load_gmem_K_d %d, load_smem_K_n %d, load_smem_K_d %d\n", 
-              tid, load_gmem_K_n, load_gmem_K_d, load_smem_K_n, load_smem_K_d);
+      printf("tid %d, load_gmem_K_n %d, load_gmem_K_d %d, "
+             "load_smem_K_n %d, load_smem_K_d %d\n", 
+              tid, load_gmem_K_n, load_gmem_K_d, 
+              load_smem_K_n, load_smem_K_d);
       CP_ASYNC_COMMIT_GROUP();
     }
   } else {
@@ -376,20 +386,39 @@ flash_attn_mma_kernel(half* Q, half* K, half* V, half* O, int N) {
     int load_gmem_K_d = load_smem_K_d;
     int load_gmem_K_addr = (
       KV_gmem_offset + load_gmem_K_n * d + load_gmem_K_d);
-     uint32_t load_smem_K_ptr = (
+    uint32_t load_smem_K_ptr = (
       smem_K_base_ptr + (0 * KV_tile_size + 
                          load_smem_K_n * (d + kPad) + 
                          load_smem_K_d) * sizeof(half)
     );
-    // load d / (Tn / Bc) vals, 64 or 128 div 4, 16 or 32, 
-    // need 2 or 4 128 bits memory issues.
     #pragma unroll
     for (int i = 0; i < (d / (Tn / Bc)); i += 8) {
+      printf("tid %d, load_gmem_K_n %d, load_gmem_K_d %d, load_smem_K_n %d, "
+             "load_smem_K_d %d, stage %d, i %d, g addr %d, s addr %d\n", 
+              tid, load_gmem_K_n, load_gmem_K_d, load_smem_K_n, load_smem_K_d, 
+              kStage, i, load_gmem_K_addr, load_smem_K_ptr);
       CP_ASYNC_CG(load_smem_K_ptr + i * 2, 
                   &K[load_gmem_K_addr + i], 16);
     }
-    printf("tid %d, load_gmem_K_n %d, load_gmem_K_d %d, load_smem_K_n %d, load_smem_K_d %d, stage %d\n", 
-            tid, load_gmem_K_n, load_gmem_K_d, load_smem_K_n, load_smem_K_d, kStage);
+    // load_gmem_K_n_offset += 0 * Bc; // s2, +offset 0
+    // int load_gmem_K_d = load_smem_K_d; // [d,Bc], row, d
+    // int load_gmem_K_n = load_gmem_K_n_offset + load_smem_K_n; // col, Bc
+    // int load_gmem_K_addr = (
+    //   KV_gmem_offset + load_gmem_K_d * N + load_gmem_K_n);
+    // uint32_t load_smem_K_ptr = (
+    //   smem_K_base_ptr + (0 * KV_tile_size + 
+    //                      load_smem_K_d * (Bc + kPad) + 
+    //                      load_smem_K_n) * sizeof(half)
+    // );
+    // // load d / (Tn / Bc) vals, 64 or 128 div 4, 16 or 32, 
+    // // need 2 or 4 128 bits memory issues.
+    // #pragma unroll
+    // for (int i = 0; i < (Bc / (Tn / d)); i += 8) {
+    //   printf("tid %d, load_gmem_K_n %d, load_gmem_K_d %d, load_smem_K_n %d, load_smem_K_d %d, stage %d, i %d, g addr %d, s addr %d\n", 
+    //           tid, load_gmem_K_n, load_gmem_K_d, load_smem_K_n, load_smem_K_d, kStage, i, load_gmem_K_addr, load_smem_K_ptr);
+    //   CP_ASYNC_CG(load_smem_K_ptr + i * 2, 
+    //               &K[load_gmem_K_addr + i], 16);
+    // }
     CP_ASYNC_COMMIT_GROUP();
   }
 
@@ -401,23 +430,23 @@ flash_attn_mma_kernel(half* Q, half* K, half* V, half* O, int N) {
   }
   CP_ASYNC_WAIT_GROUP(0);
   __syncthreads(); 
-  // 48~63的结果为0
-  if (tid == 0) {
-    int st_i = -1;
-    int st_j = -1;
-    for (int i = 0; i < Bc; ++i) {
-      for (int j = 0; j < d; ++j) {
-        float v = __half2float(*(K_tile_smem + i * d + j));
-        if (v < 1.0f) {
-          // printf("(%d, %d); ", i, j);
-          if (st_i < 0) st_i = i;
-          if (st_j < 0) st_j = j;
-        }
-      }
-      // printf("\n");
-    }
-    printf("st i=%d, j=%d\n", st_i, st_j); // 48
-  }
+  // // 48~63的结果为0
+  // if (tid == 0) {
+  //   int st_i = -1;
+  //   int st_j = -1;
+  //   for (int i = 0; i < Bc; ++i) {
+  //     for (int j = 0; j < d; ++j) {
+  //       float v = __half2float(*(K_tile_smem + i * d + j));
+  //       if (v < 1.0f) {
+  //         // printf("(%d, %d); ", i, j);
+  //         if (st_i < 0) st_i = i;
+  //         if (st_j < 0) st_j = j;
+  //       }
+  //     }
+  //     // printf("\n");
+  //   }
+  //   printf("st i=%d, j=%d\n", st_i, st_j); // 48
+  // }
 
   // <loop over N>: for K[N,d] with K_tile[Bc,d]
   // tile_n: compute S_tile[Br,Bc] = Q @ K^T = Q_tile[Br,d] * K[Bc,d]
@@ -450,7 +479,7 @@ flash_attn_mma_kernel(half* Q, half* K, half* V, half* O, int N) {
       #pragma unroll
       for (int i = 0; i < (d / (Tn / Bc)); i += 8) {
         CP_ASYNC_CG(load_smem_V_ptr + i * 2, 
-                    &K[load_gmem_V_addr + i], 16);
+                    &V[load_gmem_V_addr + i], 16);
       }
       CP_ASYNC_COMMIT_GROUP();
     }
@@ -514,23 +543,58 @@ flash_attn_mma_kernel(half* Q, half* K, half* V, half* O, int N) {
 
       #pragma unroll
       for (int j = 0; j < kWarpTileK; ++j) {
-        int warp_smem_K_n = warp_KV * (kMmaN * kWarpTileK) + j * kMmaN;
+        // int warp_smem_V_d = warp_KV * (kMmaN * kWarpTileV) + i * kMmaN; // Bc=K，d=N
+        // int lane_smem_V_n = tile_Bc * kMmaK + lane_id % 16; // 0~15; n->Bc, matmul K
+        // int lane_smem_V_d = warp_smem_V_d; // 0
+        // uint32_t lane_smem_V_ptr = (
+        //     smem_V_base_ptr + (lane_smem_V_n * (d + kPad) + 
+        //                        lane_smem_V_d) * sizeof(half)
+        // );
+        // // Q@K^T=[Br,d]x[d,Bc]
+        int warp_smem_K_n = warp_KV * (kMmaN * kWarpTileK) + j * kMmaN; // Bc->n matmul N
+        // int lane_smem_K_d = tile_d * kMmaK + lane_id % 16; // d -> matmul K
+        // int lane_smem_K_n = warp_smem_K_n; // 0
+        // TODO: 这里线程id和地址的匹配要修改一下，现在是t0,t8获取同一行不同列8 half的地址
+        // 可能需要改成t0,t8获取不同行的地址，这样才能保证正确的数据加载
+        int lane_smem_K_d = tile_d * kMmaK + ((lane_id / 8) % 2) * 8; // d -> matmul K, 0,8
         int lane_smem_K_n = warp_smem_K_n + lane_id % 8; // 0~7, MMA_N=8
-        int lane_smem_K_d = tile_d * kMmaK + ((lane_id / 8) % 2) * 8; // 0,8, Bd=16
         uint32_t lane_smem_K_ptr = (
             smem_K_base_ptr + (smem_sel * KV_tile_size + 
                                lane_smem_K_n * (d + kPad) + 
                                lane_smem_K_d) * sizeof(half)
         );
+        // uint32_t lane_smem_K_ptr = (
+        //   smem_K_base_ptr + (smem_sel * KV_tile_size + 
+        //                      lane_smem_K_d * (d + kPad) + 
+        //                      lane_smem_K_n) * sizeof(half)
+        // );
+        // int warp_smem_K_n = warp_KV * (kMmaN * kWarpTileK) + j * kMmaN;
+        // int lane_smem_K_n = warp_smem_K_n + lane_id % 8; // 0~7, MMA_N=8
+        // int lane_smem_K_d = tile_d * kMmaK + ((lane_id / 8) % 2) * 8; // 0,8, Bd=16
+        // uint32_t lane_smem_K_ptr = (
+        //     smem_K_base_ptr + (smem_sel * KV_tile_size + 
+        //                        lane_smem_K_n * (d + kPad) + 
+        //                        lane_smem_K_d) * sizeof(half)
+        // );
+        printf("[Before] Load K s->r, tile_n: %d, tile_d: %d, lane_id: %d, "
+               "warp_smem_K_n: %d, lane_smem_K_n: %d, lane_smem_K_d: %d, "
+               "lane_smem_K_ptr: %d, addr off: %d, j: %d\n", 
+               tile_n, tile_d, lane_id, warp_smem_K_n, lane_smem_K_n, 
+               lane_smem_K_d, lane_smem_K_ptr, lane_smem_K_ptr - smem_K_base_ptr, j);
+        if ((lane_smem_K_ptr - smem_K_base_ptr) % 16 != 0) {
+          printf("lane_smem_K_ptr not aligned, warp_smem_K_n: %d, lane_smem_K_n: %d, "
+                  "lane_smem_K_d: %d, lane_smem_K_ptr: %d\n", warp_smem_K_n, lane_smem_K_n,
+                  lane_smem_K_d, lane_smem_K_ptr);
+        }
         LDMATRIX_X2(R_KV[j][0], R_KV[j][1], lane_smem_K_ptr); // R_K
-        // FA_MMA_PRINT_REG(R_KV[j][0], "R_QP[%d][0]", j);
-        // FA_MMA_PRINT_REG(R_KV[j][1], "R_QP[%d][1]", j);
-        // float2 v_reg = __half22float2(HALF2(R_KV[j][0]));
-        // if (v_reg.x < 1.0f) {
-        //   printf("tid %d, R_KV[%d][0], V0=%f, V1=%f, n=%d, d=%d, ptr=%d\n", 
-        //           tid, j, v_reg.x, v_reg.y, lane_smem_K_n, lane_smem_K_d,
-        //           lane_smem_K_ptr);
-        // }
+        if (tile_d == 0) {
+          float2 v_reg_0 = __half22float2(HALF2(R_KV[j][0]));
+          float2 v_reg_1 = __half22float2(HALF2(R_KV[j][1]));
+          printf("[After] Load K s->r, Q@K^T tid %d, lane %d, R_KV[%d][0], "
+                  "V0=%f, V1=%f, R_KV[%d][0], V0=%f, V1=%f, n=%d, d=%d, ptr=%d\n", 
+                  tid, lane_id, j, v_reg_0.x, v_reg_0.y, j, v_reg_1.x, v_reg_1.y, 
+                  lane_smem_K_n, lane_smem_K_d, lane_smem_K_ptr);
+        }
       }
       FA_MMA_PRINT_T0_REG(R_KV[0][0], "Load K s->r, tile_n: %d, tile_d: %d", tile_n, tile_d);
 
@@ -803,31 +867,42 @@ flash_attn_mma_kernel(half* Q, half* K, half* V, half* O, int N) {
     
     // Make sure to clear the states in R_PV before MMA for P@V.
     fill_3D_regs<uint32_t, kWarpTileP, kWarpTileV, 2>(R_PV, 0);
+    fill_2D_regs<uint32_t, kWarpTileV, 2>(R_VV, 0);
     for (int tile_Bc = 0; tile_Bc < (Bc / kMmaK); ++tile_Bc) {
       // Load V from smem -> regs, R_KV, ldmatrix.trans, M=Br,N=d,K=Bc.
       // Matmul with NN layout: O[Br,d]=P[Br,Bc]@V[Bc,d], A=P[Br,Bc], B=V[Bc,d]
       #pragma unroll
       for (int i = 0; i < kWarpTileV; ++i) {
-        // FIXME: P[Br,Bc] @ V[Bc=K,d] = [Br,d] = [64, 64/128]
+        // FIXME: P[Br,Bc] @ V[Bc=K,d=N] = [Br,d] = [64, 64/128]
         // int warp_smem_V_d = warp_KV * (kMmaN * kWarpTileV) + i * kMmaN;
         // int lane_smem_V_n = lane_id % 16; // 0~15;
         // int lane_smem_V_d = warp_smem_V_d; // 0
-        int warp_smem_V_d = tile_Bc * kMmaK + warp_KV * (kMmaN * kWarpTileV) + i * kMmaN;
-        int lane_smem_V_n = lane_id % 16; // 0~15;
+        int warp_smem_V_d = warp_KV * (kMmaN * kWarpTileV) + i * kMmaN; // d -> matmaul N
+        int lane_smem_V_n = tile_Bc * kMmaK + lane_id % 16; // 0~15; n->Bc, matmul K
         int lane_smem_V_d = warp_smem_V_d; // 0
         uint32_t lane_smem_V_ptr = (
             smem_V_base_ptr + (lane_smem_V_n * (d + kPad) + 
                                lane_smem_V_d) * sizeof(half)
         );
-        LDMATRIX_X2_T(R_KV[i][0], R_KV[i][1], lane_smem_V_ptr); // R_V
+        if (tile_Bc == 0) {
+          float2 v_reg_0 = __half22float2(HALF2(R_VV[i][0]));
+          float2 v_reg_1 = __half22float2(HALF2(R_VV[i][1]));
+          printf("[Before] Load V s->r, P@V tid %d, lane %d, R_VV[%d][0], "
+                 "V0=%f, V1=%f, R_VV[%d][0], V0=%f, V1=%f, n=%d, d=%d, ptr=%d\n", 
+                  tid, lane_id, i, v_reg_0.x, v_reg_0.y, i, v_reg_1.x, v_reg_1.y, 
+                  lane_smem_V_n, lane_smem_V_d, lane_smem_V_ptr);
+        }
+        LDMATRIX_X2_T(R_VV[i][0], R_VV[i][1], lane_smem_V_ptr); // R_V
         // FA_MMA_PRINT_REG(R_KV[i][0], "R_QP[%d][0]", i);
         // FA_MMA_PRINT_REG(R_KV[i][1], "R_QP[%d][1]", i);
         // float2 v_reg = __half22float2(HALF2(R_KV[i][0]));
-        float2 v_reg = __half22float2(HALF2(R_KV[i][0]));
-        if (v_reg.x < 1.f) {
-          printf("P@V tid %d, R_KV[%d][0], V0=%f, V1=%f, n=%d, d=%d, ptr=%d\n", 
-                  tid, i, v_reg.x, v_reg.y, lane_smem_V_n, lane_smem_V_d,
-                  lane_smem_V_ptr);
+        if (tile_Bc == 0) {
+          float2 v_reg_0 = __half22float2(HALF2(R_VV[i][0]));
+          float2 v_reg_1 = __half22float2(HALF2(R_VV[i][1]));
+          printf("[After] Load V s->r, P@V tid %d, lane %d, R_VV[%d][0], "
+                  "V0=%f, V1=%f, R_VV[%d][0], V0=%f, V1=%f, n=%d, d=%d, ptr=%d\n", 
+                  tid, lane_id, i, v_reg_0.x, v_reg_0.y, i, v_reg_1.x, v_reg_1.y, 
+                  lane_smem_V_n, lane_smem_V_d, lane_smem_V_ptr);
         }
       }
       
@@ -855,15 +930,18 @@ flash_attn_mma_kernel(half* Q, half* K, half* V, half* O, int N) {
       for (int i = 0; i < kWarpTileQ; ++i) {
         #pragma unroll
         for (int j = 0; j < kWarpTileV; ++j) {
-          FA_MMA_PRINT_T0_REG(R_SP[i][0][0], "before R_SP[%d][0][0] MMA P@V, tile_n: %d", i, tile_n); 
-          FA_MMA_PRINT_T0_REG(R_SP[i][0][1], "before R_SP[%d][0][1] MMA P@V, tile_n: %d", i, tile_n); 
-          FA_MMA_PRINT_T0_REG(R_SP[i][1][0], "before R_SP[%d][1][0] MMA P@V, tile_n: %d", i, tile_n); 
-          FA_MMA_PRINT_T0_REG(R_SP[i][1][1], "before R_SP[%d][1][1] MMA P@V, tile_n: %d", i, tile_n); 
-          FA_MMA_PRINT_T0_REG(R_KV[j][0], "before R_KV[%d][0] MMA P@V, tile_n: %d", j, tile_n); 
-          FA_MMA_PRINT_T0_REG(R_KV[j][1], "before R_KV[%d][1] MMA P@V, tile_n: %d", j, tile_n); 
+          FA_MMA_PRINT_T0_REG(R_SP[i][0][0], "[Before] R_SP[%d][0][0] MMA P@V, tile_n: %d", i, tile_n); 
+          FA_MMA_PRINT_T0_REG(R_SP[i][0][1], "[Before] R_SP[%d][0][1] MMA P@V, tile_n: %d", i, tile_n); 
+          FA_MMA_PRINT_T0_REG(R_SP[i][1][0], "[Before] R_SP[%d][1][0] MMA P@V, tile_n: %d", i, tile_n); 
+          FA_MMA_PRINT_T0_REG(R_SP[i][1][1], "[Before] R_SP[%d][1][1] MMA P@V, tile_n: %d", i, tile_n); 
+          FA_MMA_PRINT_T0_REG(R_KV[j][0], "[Before] R_KV[%d][0] MMA P@V, tile_n: %d", j, tile_n); 
+          FA_MMA_PRINT_T0_REG(R_KV[j][1], "[Before] R_KV[%d][1] MMA P@V, tile_n: %d", j, tile_n); 
+          FA_MMA_PRINT_T0_REG(R_VV[j][0], "[Before] R_VV[%d][0] MMA P@V, tile_n: %d", j, tile_n); 
+          FA_MMA_PRINT_T0_REG(R_VV[j][1], "[Before] R_VV[%d][1] MMA P@V, tile_n: %d", j, tile_n); 
           HMMA16816(R_PV[i][j][0], R_PV[i][j][1], 
                     R_SP[i][0][0], R_SP[i][0][1], R_SP[i][1][0], R_SP[i][1][1], 
-                    R_KV[j][0],    R_KV[j][1], 
+                    // R_KV[j][0],    R_KV[j][1], 
+                    R_VV[j][1],    R_VV[j][0],
                     R_PV[i][j][0], R_PV[i][j][1]);
         }
       }
