@@ -127,7 +127,7 @@ for (B, H, N, D) in BHNDs:
         k = torch.ones(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
         if args.range_k:
             for i in range(N):
-                k[:, :, i, :] = i
+                k[:, :, i, :] = (i + 1) / 64
             k = k.cuda().half().contiguous()
     if args.rand_v:
         v = torch.randn(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
