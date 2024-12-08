@@ -540,62 +540,75 @@ flash_attn_mma_kernel(half* Q, half* K, half* V, half* O, int N) {
         // FA_MMA_PRINT_REG(R_QP[i][3], "R_QP[%d][3]", i);
       }
       FA_MMA_PRINT_T0_REG(R_QP[0][0], "Load Q s->r, tile_n: %d, tile_d: %d", tile_n, tile_d);
+      
+      static_assert(kWarpTileK == 2);
 
-      #pragma unroll
-      for (int j = 0; j < kWarpTileK; ++j) {
-        // int warp_smem_V_d = warp_KV * (kMmaN * kWarpTileV) + i * kMmaN; // Bc=K，d=N
-        // int lane_smem_V_n = tile_Bc * kMmaK + lane_id % 16; // 0~15; n->Bc, matmul K
-        // int lane_smem_V_d = warp_smem_V_d; // 0
-        // uint32_t lane_smem_V_ptr = (
-        //     smem_V_base_ptr + (lane_smem_V_n * (d + kPad) + 
-        //                        lane_smem_V_d) * sizeof(half)
-        // );
-        // // Q@K^T=[Br,d]x[d,Bc]
-        int warp_smem_K_n = warp_KV * (kMmaN * kWarpTileK) + j * kMmaN; // Bc->n matmul N
-        // int lane_smem_K_d = tile_d * kMmaK + lane_id % 16; // d -> matmul K
-        // int lane_smem_K_n = warp_smem_K_n; // 0
-        // TODO: 这里线程id和地址的匹配要修改一下，现在是t0,t8获取同一行不同列8 half的地址
-        // 可能需要改成t0,t8获取不同行的地址，这样才能保证正确的数据加载
-        int lane_smem_K_d = tile_d * kMmaK + ((lane_id / 8) % 2) * 8; // d -> matmul K, 0,8
-        int lane_smem_K_n = warp_smem_K_n + lane_id % 8; // 0~7, MMA_N=8
-        uint32_t lane_smem_K_ptr = (
-            smem_K_base_ptr + (smem_sel * KV_tile_size + 
-                               lane_smem_K_n * (d + kPad) + 
-                               lane_smem_K_d) * sizeof(half)
-        );
-        // uint32_t lane_smem_K_ptr = (
-        //   smem_K_base_ptr + (smem_sel * KV_tile_size + 
-        //                      lane_smem_K_d * (d + kPad) + 
-        //                      lane_smem_K_n) * sizeof(half)
-        // );
-        // int warp_smem_K_n = warp_KV * (kMmaN * kWarpTileK) + j * kMmaN;
-        // int lane_smem_K_n = warp_smem_K_n + lane_id % 8; // 0~7, MMA_N=8
-        // int lane_smem_K_d = tile_d * kMmaK + ((lane_id / 8) % 2) * 8; // 0,8, Bd=16
-        // uint32_t lane_smem_K_ptr = (
-        //     smem_K_base_ptr + (smem_sel * KV_tile_size + 
-        //                        lane_smem_K_n * (d + kPad) + 
-        //                        lane_smem_K_d) * sizeof(half)
-        // );
-        printf("[Before] Load K s->r, tile_n: %d, tile_d: %d, lane_id: %d, "
-               "warp_smem_K_n: %d, lane_smem_K_n: %d, lane_smem_K_d: %d, "
-               "lane_smem_K_ptr: %d, addr off: %d, j: %d\n", 
-               tile_n, tile_d, lane_id, warp_smem_K_n, lane_smem_K_n, 
-               lane_smem_K_d, lane_smem_K_ptr, lane_smem_K_ptr - smem_K_base_ptr, j);
-        if ((lane_smem_K_ptr - smem_K_base_ptr) % 16 != 0) {
-          printf("lane_smem_K_ptr not aligned, warp_smem_K_n: %d, lane_smem_K_n: %d, "
-                  "lane_smem_K_d: %d, lane_smem_K_ptr: %d\n", warp_smem_K_n, lane_smem_K_n,
-                  lane_smem_K_d, lane_smem_K_ptr);
-        }
-        LDMATRIX_X2(R_KV[j][0], R_KV[j][1], lane_smem_K_ptr); // R_K
-        if (tile_d == 0) {
-          float2 v_reg_0 = __half22float2(HALF2(R_KV[j][0]));
-          float2 v_reg_1 = __half22float2(HALF2(R_KV[j][1]));
-          printf("[After] Load K s->r, Q@K^T tid %d, lane %d, R_KV[%d][0], "
-                  "V0=%f, V1=%f, R_KV[%d][0], V0=%f, V1=%f, n=%d, d=%d, ptr=%d\n", 
-                  tid, lane_id, j, v_reg_0.x, v_reg_0.y, j, v_reg_1.x, v_reg_1.y, 
-                  lane_smem_K_n, lane_smem_K_d, lane_smem_K_ptr);
-        }
-      }
+      // 相当于tile_Bc=2*8=16
+      // #pragma unroll
+      // for (int j = 0; j < kWarpTileK; ++j) {
+      //   // int warp_smem_V_d = warp_KV * (kMmaN * kWarpTileV) + i * kMmaN; // Bc=K，d=N
+      //   // int lane_smem_V_n = tile_Bc * kMmaK + lane_id % 16; // 0~15; n->Bc, matmul K
+      //   // int lane_smem_V_d = warp_smem_V_d; // 0
+      //   // uint32_t lane_smem_V_ptr = (
+      //   //     smem_V_base_ptr + (lane_smem_V_n * (d + kPad) + 
+      //   //                        lane_smem_V_d) * sizeof(half)
+      //   // );
+      //   // // Q@K^T=[Br,d]x[d,Bc]
+      //   int warp_smem_K_n = warp_KV * (kMmaN * kWarpTileK) + j * kMmaN; // Bc->n matmul N
+      //   // int lane_smem_K_d = tile_d * kMmaK + lane_id % 16; // d -> matmul K
+      //   // int lane_smem_K_n = warp_smem_K_n; // 0
+      //   // TODO: 这里线程id和地址的匹配要修改一下，现在是t0,t8获取同一行不同列8 half的地址
+      //   // 可能需要改成t0,t8获取不同行的地址，这样才能保证正确的数据加载
+      //   int lane_smem_K_n = warp_smem_K_n + lane_id % 8; // 0~7, MMA_N=8
+      //   int lane_smem_K_d = tile_d * kMmaK + ((lane_id / 8) % 2) * 8; // d -> matmul K, 0,8
+      //   uint32_t lane_smem_K_ptr = (
+      //       smem_K_base_ptr + (smem_sel * KV_tile_size + 
+      //                          lane_smem_K_n * (d + kPad) + 
+      //                          lane_smem_K_d) * sizeof(half)
+      //   );
+      //   // uint32_t lane_smem_K_ptr = (
+      //   //   smem_K_base_ptr + (smem_sel * KV_tile_size + 
+      //   //                      lane_smem_K_d * (d + kPad) + 
+      //   //                      lane_smem_K_n) * sizeof(half)
+      //   // );
+      //   // int warp_smem_K_n = warp_KV * (kMmaN * kWarpTileK) + j * kMmaN;
+      //   // int lane_smem_K_n = warp_smem_K_n + lane_id % 8; // 0~7, MMA_N=8
+      //   // int lane_smem_K_d = tile_d * kMmaK + ((lane_id / 8) % 2) * 8; // 0,8, Bd=16
+      //   // uint32_t lane_smem_K_ptr = (
+      //   //     smem_K_base_ptr + (smem_sel * KV_tile_size + 
+      //   //                        lane_smem_K_n * (d + kPad) + 
+      //   //                        lane_smem_K_d) * sizeof(half)
+      //   // );
+      //   printf("[Before] Load K s->r, tile_n: %d, tile_d: %d, lane_id: %d, "
+      //          "warp_smem_K_n: %d, lane_smem_K_n: %d, lane_smem_K_d: %d, "
+      //          "lane_smem_K_ptr: %d, addr off: %d, j: %d\n", 
+      //          tile_n, tile_d, lane_id, warp_smem_K_n, lane_smem_K_n, 
+      //          lane_smem_K_d, lane_smem_K_ptr, lane_smem_K_ptr - smem_K_base_ptr, j);
+      //   if ((lane_smem_K_ptr - smem_K_base_ptr) % 16 != 0) {
+      //     printf("lane_smem_K_ptr not aligned, warp_smem_K_n: %d, lane_smem_K_n: %d, "
+      //             "lane_smem_K_d: %d, lane_smem_K_ptr: %d\n", warp_smem_K_n, lane_smem_K_n,
+      //             lane_smem_K_d, lane_smem_K_ptr);
+      //   }
+      //   LDMATRIX_X2(R_KV[j][0], R_KV[j][1], lane_smem_K_ptr); // R_K
+      //   if (tile_d == 0) {
+      //     float2 v_reg_0 = __half22float2(HALF2(R_KV[j][0]));
+      //     float2 v_reg_1 = __half22float2(HALF2(R_KV[j][1]));
+      //     printf("[After] Load K s->r, Q@K^T tid %d, lane %d, R_KV[%d][0], "
+      //             "V0=%f, V1=%f, R_KV[%d][0], V0=%f, V1=%f, n=%d, d=%d, ptr=%d\n", 
+      //             tid, lane_id, j, v_reg_0.x, v_reg_0.y, j, v_reg_1.x, v_reg_1.y, 
+      //             lane_smem_K_n, lane_smem_K_d, lane_smem_K_ptr);
+      //   }
+      // } // end for kWarpTileK
+
+      int warp_smem_K_n = warp_KV * (kMmaN * kWarpTileK); // 一次性处理n=16=2x8
+      int lane_smem_K_n = warp_smem_K_n + lane_id % 16; // 0~15
+      int lane_smem_K_d = tile_d * kMmaK + (lane_id / 16) * 8; // 0,8 ; // d -> matmul K, 0,8
+      uint32_t lane_smem_K_ptr = (
+        smem_K_base_ptr + (smem_sel * KV_tile_size + 
+                           lane_smem_K_n * (d + kPad) + 
+                           lane_smem_K_d) * sizeof(half)
+      );
+      LDMATRIX_X4(R_KV[0][0], R_KV[0][1], R_KV[1][0], R_KV[1][1], lane_smem_K_ptr);
       FA_MMA_PRINT_T0_REG(R_KV[0][0], "Load K s->r, tile_n: %d, tile_d: %d", tile_n, tile_d);
 
       // MMA compute

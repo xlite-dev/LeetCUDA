@@ -85,26 +85,45 @@ __global__  void flash_attn_2_fwd_f16_mma_m16n8k16_kernel(
       uint32_t RB[4];
       uint32_t RD[4];
 
-      // Read K from global memory to shared memory
+      // Read K from global memory to shared memory, 8*128=1024
       for (int x = threadIdx.x * 8; x < tile_size; x += 1024) {
-        int dim_x = x % d;
-        int dim_y = x / d;
+        int dim_x = x % d; // d=64, 0~63, col
+        int dim_y = x / d; // x=(0~127=64x2)*8,d=64 or 128
+        // shared memory: Br*d=64x64, reshape [256,16]
+        // [Naive] Load K, g->s, tid: 0, x:0, (row,col):(0,0)->(0,0)
+        // [Naive] Load K, g->s, tid: 1, x:8, (row,col):(0,8)->(0,8)
+        // [Naive] Load K, g->s, tid: 2, x:16, (row,col):(0,16)->(16,0)
+        // [Naive] Load K, g->s, tid: 3, x:24, (row,col):(0,24)->(16,8)
+        // [Naive] Load K, g->s, tid: 4, x:32, (row,col):(0,32)->(32,0)
+        // [Naive] Load K, g->s, tid: 5, x:40, (row,col):(0,40)->(32,8)
+        // [Naive] Load K, g->s, tid: 6, x:48, (row,col):(0,48)->(48,0)
+        // [Naive] Load K, g->s, tid: 7, x:56, (row,col):(0,56)->(48,8)
+        // [Naive] Load K, g->s, tid: 8, x:64, (row,col):(1,0)->(1,0)
+        // [Naive] Load K, g->s, tid: 0, x:1024, (row,col):(16,0)->(64,0)
+        // x是8的倍数，因此这里结果为 0,8
+        int new_dim_x = dim_x % 16; 
+        int new_dim_y = ((dim_y / 16) * (d / 16) * 16) + (dim_x / 16 * 16) + (dim_y % 16);
+        {
+          printf("[Naive] Load K, g->s, tid: %d, x:%d, (row,col):(%d,%d)->(%d,%d)\n", 
+                  threadIdx.x, x, dim_y, dim_x, new_dim_y, new_dim_x);
+        }
 
-        int new_dim_x = dim_x % 16;
-        int new_dim_y = (dim_y / 16 * (d / 16) * 16) + (dim_x / 16 * 16) + (dim_y % 16);
-
-        LDST128BITS(Kj[new_dim_y * 16 + new_dim_x]) = LDST128BITS(K[qkv_offset + (j * tile_size) + x]);
+        LDST128BITS(Kj[new_dim_y * 16 + new_dim_x]) = LDST128BITS(
+          K[qkv_offset + (j * tile_size) + x]);
       }
       __syncthreads();
 
-      // Q @ K^T
+      // Q @ K^T, tile_d=16, matmul K=16
       for (int k = 0; k < d / 16; k++) {
         // Bc x d to Bc / 4 x d (4 is warp size)
-        uint32_t Qi_lane_addr = __cvta_generic_to_shared(&Qi[(warpId * 16 * d) + (laneId % 16) * 16 + (laneId / 16) * 8 + (k * 16 * 16)]);
+        uint32_t Qi_lane_addr = __cvta_generic_to_shared(
+          &Qi[(warpId * 16 * d) + (laneId % 16) * 16 + (laneId / 16) * 8 + (k * 16 * 16)]);
         LDMATRIX_X4(RA[0], RA[1], RA[2], RA[3], Qi_lane_addr);
-
+        
+        // tile_Bc=16=2x8, matmul N=8
         for (int len = 0; len < Bc; len += 16) {
-          uint32_t Kj_lane_addr = __cvta_generic_to_shared(&Kj[(len * d) + (laneId % 16) * 16 + (laneId / 16) * 8 + (k * 16 * 16)]);
+          uint32_t Kj_lane_addr = __cvta_generic_to_shared(
+            &Kj[(len * d) + (laneId % 16) * 16 + (laneId / 16) * 8 + (k * 16 * 16)]);
           // be careful "not 0 1 2 3"
           LDMATRIX_X4(RB[0], RB[2], RB[1], RB[3], Kj_lane_addr);
 

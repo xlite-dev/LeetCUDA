@@ -131,11 +131,11 @@ for (B, H, N, D) in BHNDs:
     # print("-" * 100)
   
     # using fp16 Tesor Core MMA instruction
+    run_benchmark(lib.flash_attn_mma_naive, q, k, v, "mma(naive)", o)
     run_benchmark(lib.flash_attn_mma_stages, q, k, v, "mma(stage)", o, stages=1)
     # run_benchmark(lib.flash_attn_mma_stages, q, as_col_major(k), v, "mma(stage)", o, stages=1)
     run_benchmark(flash_attn_func, fq, fk, fv, "(flash)")
     run_benchmark(F.scaled_dot_product_attention, q, k, v, "(sdpa)")
-    run_benchmark(lib.flash_attn_mma_naive, q, k, v, "mma(naive)", o)
     print("-" * 100)
     # print(q @ v)
     
