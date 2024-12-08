@@ -89,7 +89,9 @@ __global__  void flash_attn_2_fwd_f16_mma_m16n8k16_kernel(
       for (int x = threadIdx.x * 8; x < tile_size; x += 1024) {
         int dim_x = x % d; // d=64, 0~63, col
         int dim_y = x / d; // x=(0~127=64x2)*8,d=64 or 128
-        // shared memory: Br*d=64x64, reshape [256,16]
+        // shared memory: Br*d=64x64, reshape [256,16], 变换后的row按照16递增
+        // 变换后的col，则为0和8，表示两个MMA需要的8x8矩阵，按照N=16=2x8来布局。
+        // 满足ldmatrix.x4的加载要求的布局，加载4个8x8，也就是一个16x16的矩阵。
         // [Naive] Load K, g->s, tid: 0, x:0, (row,col):(0,0)->(0,0)
         // [Naive] Load K, g->s, tid: 1, x:8, (row,col):(0,8)->(0,8)
         // [Naive] Load K, g->s, tid: 2, x:16, (row,col):(0,16)->(16,0)

@@ -5,6 +5,20 @@ from torch.nn import functional as F
 from torch.utils.cpp_extension import load
 from typing import Optional
 from flash_attn import flash_attn_func
+import argparse
+
+
+def get_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--rand-q", '--rq', action="store_true")
+    parser.add_argument("--rand-k", '--rk', action="store_true")
+    parser.add_argument("--rand-v", '--rv', action="store_true")
+    parser.add_argument("--range-k", '--gk', action="store_true")
+    parser.add_argument("--naive", action="store_true")
+    parser.add_argument("--show-more", '--show', action="store_true")
+    return parser.parse_args()
+
+args = get_args()
 
 
 torch.set_grad_enabled(False)
@@ -103,39 +117,42 @@ print(" "* 25 + "B: batch_size, H: n_head, N: seq_len, D: head_dim")
 for (B, H, N, D) in BHNDs:
     print("-" * 100)
     print(" " * 40 + f"B={B}, H={H}, N={N}, D={D}")
-    # q = torch.ones(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
-    # k = torch.ones(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
-    # v = torch.ones(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
-    # o = torch.ones(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
-    q = torch.ones(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
-    k = torch.randn(B, H, N, D, device="cuda", dtype=torch.half).contiguous() # 为randn是结果错误
-    v = torch.ones(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
-    o = torch.randn(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
-    # for i in range(N):
-    #     k[:, :, i, :] = k[:, :, i, :] / (i + 2)
-    #     # v[:, :, i, :] = v[:, :, i, :] / (i + 2)
-    q = q.contiguous()
-    k = k.contiguous()
-    v = v.contiguous()
+    if args.rand_q:
+        q = torch.randn(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
+    else:
+        q = torch.ones(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
+    if args.rand_k:
+        k = torch.randn(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
+    else:
+        k = torch.ones(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
+        if args.range_k:
+            for i in range(N):
+                k[:, :, i, :] = i
+            k = k.cuda().half().contiguous()
+    if args.rand_v:
+        v = torch.randn(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
+    else:
+        v = torch.ones(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
+
+    o = torch.zeros(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
     fq = q.transpose(1, 2)
     fk = k.transpose(1, 2)
     fv = v.transpose(1, 2)
     torch.cuda.synchronize()
-    # print("-" * 100)
-    # print(q)
-    # print("-" * 100)
-    # print(k)
-    # print("-" * 100)
-    # print(v)
-    # print(v[:, :, :, 0])
-    # print("-" * 100)
-  
+    
     # using fp16 Tesor Core MMA instruction
-    run_benchmark(lib.flash_attn_mma_naive, q, k, v, "mma(naive)", o)
+    if args.naive:
+        run_benchmark(lib.flash_attn_mma_naive, q, k, v, "mma(naive)", o)
     run_benchmark(lib.flash_attn_mma_stages, q, k, v, "mma(stage)", o, stages=1)
-    # run_benchmark(lib.flash_attn_mma_stages, q, as_col_major(k), v, "mma(stage)", o, stages=1)
     run_benchmark(flash_attn_func, fq, fk, fv, "(flash)")
     run_benchmark(F.scaled_dot_product_attention, q, k, v, "(sdpa)")
     print("-" * 100)
-    # print(q @ v)
-    
+    if args.show_more:
+        print("------------------------------ Q ---------------------------")
+        print(q)
+        print("------------------------------ K ---------------------------")
+        print(k)
+        print("------------------------------ K^T -------------------------")
+        print(k.transpose(-2, -1))
+        print("------------------------------ Q@K^T -----------------------")
+        print(q @ k.transpose(-2, -1))
