@@ -395,7 +395,7 @@ flash_attn_mma_kernel(half* Q, half* K, half* V, half* O, half* S,
           V_gmem_offset + load_gmem_V_Bc * kHeadDim + load_gmem_V_d);
         uint32_t load_smem_V_ptr = (
           smem_V_base_ptr + (load_smem_V_Bc * (kHeadDim + kPad) + 
-                            load_smem_V_d) * sizeof(half)
+                             load_smem_V_d) * sizeof(half)
         );
         #pragma unroll
         for (int i = 0; i < (kHeadDim / (KNumThreads / Bc)); i += 8) {
@@ -438,7 +438,7 @@ flash_attn_mma_kernel(half* Q, half* K, half* V, half* O, half* S,
         int load_gmem_K_addr = (K_gmem_offset + load_gmem_K_d * QKV_seqlen + load_gmem_K_Bc);
         uint32_t load_smem_K_ptr = (
           smem_K_base_ptr + (load_smem_K_d * (Bc + kPad) + 
-                            load_smem_K_Bc) * sizeof(half));
+                             load_smem_K_Bc) * sizeof(half));
         #pragma unroll
         for (int i = 0; i < (Bc / (KNumThreads / kHeadDim)); i += 8) {
           CP_ASYNC_CG(load_smem_K_ptr + i * 2, &K[load_gmem_K_addr + i], 16);
@@ -455,7 +455,7 @@ flash_attn_mma_kernel(half* Q, half* K, half* V, half* O, half* S,
           V_gmem_offset + load_gmem_V_Bc * kHeadDim + load_gmem_V_d);
         uint32_t load_smem_V_ptr = (
           smem_V_base_ptr + (load_smem_V_Bc * (kHeadDim + kPad) + 
-                            load_smem_V_d) * sizeof(half)
+                             load_smem_V_d) * sizeof(half)
         );
         #pragma unroll
         for (int i = 0; i < (kHeadDim / (KNumThreads / Bc)); i += 8) {
@@ -464,7 +464,7 @@ flash_attn_mma_kernel(half* Q, half* K, half* V, half* O, half* S,
         CP_ASYNC_COMMIT_GROUP();
       }
 
-      // Wait K tile ready and let V tile copy acync.
+      // Wait K tile ready and let V tile copy async.
       CP_ASYNC_WAIT_GROUP(1); 
       __syncthreads(); 
     }
@@ -832,6 +832,7 @@ flash_attn_mma_kernel(half* Q, half* K, half* V, half* O, half* S,
         }
       }
     } // end for V Bc.
+    __syncthreads(); 
 
 #if defined(FLASH_ATTN_MMA_DEBUG) && defined(FLASH_ATTN_MMA_DEBUG_MORE)
     if (tid < 32) {
