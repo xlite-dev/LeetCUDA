@@ -1,3 +1,4 @@
+import os
 import math
 import time
 import torch
@@ -17,6 +18,7 @@ def get_args():
     parser.add_argument("--rand-qkv", '--rqkv', action="store_true")
     parser.add_argument("--range-k", '--gk', action="store_true")
     parser.add_argument("--naive", action="store_true")
+    parser.add_argument("--sdpa", action="store_true")
     parser.add_argument("--check", '--ch', action="store_true")
     parser.add_argument("--B", type=int, default=None)
     parser.add_argument("--H", type=int, default=None)
@@ -24,12 +26,22 @@ def get_args():
     parser.add_argument("--D", type=int, default=None)
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--debug", action="store_true")
-    parser.add_argument("--warmup", type=int, default=0)
-    parser.add_argument("--iters", type=int, default=1)
+    parser.add_argument("--warmup", type=int, default=2)
+    parser.add_argument("--iters", type=int, default=10)
     return parser.parse_args()
+
 
 args = get_args()
 print(args)
+
+
+def get_project_dir():
+    return os.path.dirname(os.path.dirname(
+        os.path.dirname(os.path.abspath(__file__))))
+
+
+project_dir = get_project_dir()
+
 
 def set_rand_seed(seed:int=1):
     random.seed(seed)
@@ -37,13 +49,14 @@ def set_rand_seed(seed:int=1):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
 
+
 torch.set_grad_enabled(False)
 # Load the CUDA kernel as a python module
 lib = load(name='flash_attn_lib', 
            sources=[
                './naive/flash_attn_cuda.cu',
-               './mma/flash_attn_mma_old.cu',
-               './mma/flash_attn_mma.cu',
+               './mma/flash_attn_mma_naive.cu',
+               './mma/flash_attn_mma_stage.cu',
                './pybind/flash_attn.cc'], 
            extra_cuda_cflags=[
                "-O3",
@@ -54,6 +67,7 @@ lib = load(name='flash_attn_lib',
                 "--expt-relaxed-constexpr",
                 "--expt-extended-lambda",
                 "--use_fast_math",
+                f"-I {project_dir}/kernels/flash-attn/utils",
                 "-DFLASH_ATTN_MMA_DEBUG" if args.debug else ""
             ], 
            extra_cflags=['-std=c++17'])
@@ -123,31 +137,19 @@ def run_benchmark(perf_func: callable,
         print(out)
     return out.clone(), mean_time
 
-@torch.no_grad
-def as_col_major(x: torch.Tensor):
-    B, H, N, D = x.size()
-    x_col_major = x.clone()
-    # convert a row major tensor -> col major with contiguous storage
-    for i in range(B):
-        for j in range(H):
-            x_head = x[i, j, ...]
-            x_head_trans = x_head.t()
-            x_head_trans = x_head_trans.reshape(x_head.shape).contiguous()
-            x_col_major[i, j, ...] = x_head_trans
-    return x_col_major.contiguous() # must be a contiguous tensor
 
 Bs = [1] if not args.B else [args.B]
 Hs = [1] if not args.H else [args.H]
-Ns = [64] if not args.N else [args.N]
+Ns = [1024] if not args.N else [args.N]
 Ds = [64] if not args.D else [args.D] 
 # batch_size, n_head, seq_len, head_dim (B,H,N,D)
 BHNDs = [(B, H, N, D) for B in Bs for H in Hs for N in Ns for D in Ds]
 
 seed = args.seed if args.seed else random.choice(range(10000))
 set_rand_seed(seed)
-print(f"seed: {seed}")
 print("-" * 100)
-print(" "* 25 + "B: batch_size, H: n_head, N: seq_len, D: head_dim")
+print(" "* 10 + f"B: batch_size, H: n_head, N: seq_len, D: head_dim, "
+      f"seed: {seed}, Warmup: {args.warmup}, Iters: {args.iters}")
 for (B, H, N, D) in BHNDs:
     print("-" * 100)
     print(" " * 40 + f"B={B}, H={H}, N={N}, D={D}")
@@ -174,15 +176,19 @@ for (B, H, N, D) in BHNDs:
     fv = v.transpose(1, 2)
     torch.cuda.synchronize()
     
-    # using fp16 Tesor Core MMA instruction
-    out_mma, _ = run_benchmark(lib.flash_attn_mma_stages, q, tk, v, "mma(stage2)", o, stages=2)
-    out_flash, _ = run_benchmark(flash_attn_func, fq, fk, fv, "(flash)")
-    out_sdpa, _ = run_benchmark(F.scaled_dot_product_attention, q, k, v, "(sdpa)")
     if args.naive:
-        out_mma_naive, _ = run_benchmark(lib.flash_attn_mma_naive, q, k, v, "mma(naive)", o)
+        out_naive, _ = run_benchmark(naive_attn, q, k, v, "(naive)")
+    # using fp16 Tesor Core MMA instruction
+    out_mma_naive, _ = run_benchmark(lib.flash_attn_mma_naive, q, k, v, "mma(naive)", o)
+    out_mma_stage1, _ = run_benchmark(lib.flash_attn_mma_stages, q, tk, v, "mma(stage1)", o, stages=1)
+    out_mma_stage2, _ = run_benchmark(lib.flash_attn_mma_stages, q, tk, v, "mma(stage2)", o, stages=2)
+    out_flash, _ = run_benchmark(flash_attn_func, fq, fk, fv, "(flash)")
+    if args.sdpa:
+        out_sdpa, _ = run_benchmark(F.scaled_dot_product_attention, q, k, v, "(sdpa)")
+    
     if args.check:
         print("-" * 100)
-        print(f"all close(mma vs flash): {torch.allclose(out_mma, out_flash)}")
+        print(f"all close(mma vs flash): {torch.allclose(out_mma_stage1, out_flash)}")
       
 
         
