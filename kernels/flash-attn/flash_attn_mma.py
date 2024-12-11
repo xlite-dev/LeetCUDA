@@ -138,7 +138,7 @@ def as_col_major(x: torch.Tensor):
 
 Bs = [1] if not args.B else [args.B]
 Hs = [1] if not args.H else [args.H]
-Ns = [64*3] if not args.N else [args.N]
+Ns = [64] if not args.N else [args.N]
 Ds = [64] if not args.D else [args.D] 
 # batch_size, n_head, seq_len, head_dim (B,H,N,D)
 BHNDs = [(B, H, N, D) for B in Bs for H in Hs for N in Ns for D in Ds]
@@ -152,12 +152,10 @@ for (B, H, N, D) in BHNDs:
     print("-" * 100)
     print(" " * 40 + f"B={B}, H={H}, N={N}, D={D}")
     if args.rand_q or args.rand_qkv:
-        # q = torch.empty((B, H, N, D), dtype=torch.half, device="cuda").normal_(mean=0.0, std=0.5)
         q = torch.randn((B, H, N, D), dtype=torch.half, device="cuda")
     else:
         q = torch.ones(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
     if args.rand_k or args.rand_qkv:
-        # k = torch.empty((B, H, N, D), dtype=torch.half, device="cuda").normal_(mean=0.0, std=0.5)
         k = torch.randn((B, H, N, D), dtype=torch.half, device="cuda")
     else:
         k = torch.ones(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
@@ -166,7 +164,6 @@ for (B, H, N, D) in BHNDs:
                 k[:, :, i, :] = (i + 1) / N
             k = k.cuda().half().contiguous()
     if args.rand_v or args.rand_qkv:
-        # v = torch.empty((B, H, N, D), dtype=torch.half, device="cuda").normal_(mean=0.0, std=0.5)
         v = torch.randn((B, H, N, D), dtype=torch.half, device="cuda")
     else:
         v = torch.ones(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
@@ -175,46 +172,17 @@ for (B, H, N, D) in BHNDs:
     fq = q.transpose(1, 2)
     fk = k.transpose(1, 2)
     fv = v.transpose(1, 2)
-    s = torch.zeros((B, H, N, N), device="cuda", dtype=torch.half).contiguous()
     torch.cuda.synchronize()
     
     # using fp16 Tesor Core MMA instruction
-    out, _ = run_benchmark(lib.flash_attn_mma_stages, q, tk, v, "mma(stage)", o, s, stages=1)
-    out, _ = run_benchmark(flash_attn_func, fq, fk, fv, "(flash)")
-    out, _ = run_benchmark(F.scaled_dot_product_attention, q, k, v, "(sdpa)")
+    out_mma, _ = run_benchmark(lib.flash_attn_mma_stages, q, tk, v, "mma(stage2)", o, stages=2)
+    out_flash, _ = run_benchmark(flash_attn_func, fq, fk, fv, "(flash)")
+    out_sdpa, _ = run_benchmark(F.scaled_dot_product_attention, q, k, v, "(sdpa)")
     if args.naive:
-        out, _ = run_benchmark(lib.flash_attn_mma_naive, q, k, v, "mma(naive)", o)
-    print("-" * 100)
+        out_mma_naive, _ = run_benchmark(lib.flash_attn_mma_naive, q, k, v, "mma(naive)", o)
     if args.check:
-        print("------------------------------ Q ---------------------------")
-        print(q)
-        print("------------------------------ K ---------------------------")
-        print(k)
-        print("------------------------------ K^T -------------------------")
-        print(tk)
-        print("------------------------------ s, Q@K^T -----------------------")
-        print("s:\n")
-        print(s)
-        print(s.shape)
-        print(s[:, :, :, int(N/2):])
-        print("\nq @ tk:\n")
-        # qk = q @ tk
-        qk = torch.matmul(q, tk)
-        print(qk)
-        print(qk.shape)
-        print(qk[:, :, :, int(N/2):])
-        print((s - qk).max())
-        print(f"\nall close: {torch.allclose(s, qk, atol=1e-1)}")
-        diff = s - qk
-        print("\ndiff:\n")
-        print(diff.float())
-        print(f"diff min: {diff.min()}, max: {diff.max()}")
-        for i in range(int(N/64)):
-            print("*" * 100)
-            diff_slice = diff[:, :, :, (i*64):(i+1)*64].float()
-            print(f"\ndiff_slice[:, :, :, {(i*64)}:{(i+1)*64}]:\n")
-            print(diff_slice)
-            print(f"\ndiff_slice min: {diff_slice.min()}, max: {diff_slice.max()}\n")
+        print("-" * 100)
+        print(f"all close(mma vs flash): {torch.allclose(out_mma, out_flash)}")
+      
 
-       
         
