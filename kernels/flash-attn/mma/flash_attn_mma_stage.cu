@@ -653,7 +653,7 @@ flash_attn_mma_stages_kernel(half* Q,
                                                      block_row_max_new_1);
       block_row_max_old_0 = (tile_K_seqlen > 0 ? block_row_max_old_0 : 
                                                  block_row_max_new_0);                                       
-      block_row_max_old_1 = (tile_K_seqlen > 0 ? block_row_max_old_0 : 
+      block_row_max_old_1 = (tile_K_seqlen > 0 ? block_row_max_old_1 : 
                                                  block_row_max_new_1);  
 
       // rescale factor for O and l, exp(m_old - m)
