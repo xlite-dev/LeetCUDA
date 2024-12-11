@@ -138,8 +138,8 @@ def run_benchmark(perf_func: callable,
     return out.clone(), mean_time
 
 
-Bs = [1] if not args.B else [args.B]
-Hs = [1] if not args.H else [args.H]
+Bs = [4] if not args.B else [args.B]
+Hs = [4] if not args.H else [args.H]
 Ns = [1024] if not args.N else [args.N]
 Ds = [64] if not args.D else [args.D] 
 # batch_size, n_head, seq_len, head_dim (B,H,N,D)
