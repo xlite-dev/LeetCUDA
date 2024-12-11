@@ -91,7 +91,7 @@ def run_benchmark(perf_func: callable,
                   stages: int = -1,
                   warmup: int = args.warmup, 
                   iters: int = args.iters,
-                  show_all: bool = False):
+                  show_all: bool = args.check):
     if out is not None: 
         out.fill_(0)
     if s is not None:
@@ -191,10 +191,25 @@ for (B, H, N, D) in BHNDs:
         out_sdpa, _ = run_benchmark(F.scaled_dot_product_attention, q, k, v, "(sdpa)")
     
     if args.check:
+        torch.set_printoptions(
+            precision=6,        # 设置浮点数的小数位数
+            threshold=8,     # 当张量元素超过这个值时，会使用省略号表示
+            edgeitems=3,        # 控制每行显示的首尾元素数量
+            linewidth=120,      # 每行的最大宽度
+            sci_mode=False  # 禁用科学计数法
+        )
+        # 从行>8开始结果不一致，当N>64时；每隔8行结果是一致的
+        print("-" * 100)
+        print(out_mma_naive[:, :, :8, :].float())
+        print(out_mma_stage1[:, :, :8, :].float())
+        print("-" * 100)
+        print(out_mma_naive[:, :, 8:16, :].float())
+        print(out_mma_stage1[:, :, 8:16, :].float())
+        print("-" * 100)
+        print(out_mma_naive[:, :, 16:24, :].float())
+        print(out_mma_stage1[:, :, 16:24, :].float())
+        print("-" * 100)
+        print(out_mma_naive[:, :, 24:32, :].float())
+        print(out_mma_stage1[:, :, 24:32, :].float())
         print("-" * 100)
         print(f"{torch.allclose(out_mma_stage1.float(), out_mma_naive.float(), atol=1e-2)}")
-        print((out_mma_stage1.float() - out_mma_naive.float()).min())
-        print((out_mma_stage1.float() - out_mma_naive.float()).max())
-      
-
-        
