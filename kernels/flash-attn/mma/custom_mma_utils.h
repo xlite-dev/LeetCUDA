@@ -186,7 +186,7 @@ DEVICE_INLINE void fill_2D_regs(T (&R)[M][N], T val) {
       for (int j = 0; j < kMmaTileSeqLenK; ++j) {                       \
         printf("[%d][%d]=%f", i, j, (B)[i][j]);                         \
       }                                                                 \
-      printf("\n")                                                      \
+      printf("\n");                                                     \
     }                                                                   \
     printf("----------------------------------------\n");               \
   }                                                                     \
