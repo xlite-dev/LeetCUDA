@@ -22,6 +22,7 @@ def get_args():
     parser.add_argument("--H", type=int, default=None)
     parser.add_argument("--N", type=int, default=None)
     parser.add_argument("--D", type=int, default=None)
+    parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--warmup", type=int, default=0)
     parser.add_argument("--iters", type=int, default=1)
@@ -142,18 +143,22 @@ Ds = [64] if not args.D else [args.D]
 # batch_size, n_head, seq_len, head_dim (B,H,N,D)
 BHNDs = [(B, H, N, D) for B in Bs for H in Hs for N in Ns for D in Ds]
 
-set_rand_seed(random.choice(range(10000)))
+seed = args.seed if args.seed else random.choice(range(10000))
+set_rand_seed(seed)
+print(f"seed: {seed}")
 print("-" * 100)
 print(" "* 25 + "B: batch_size, H: n_head, N: seq_len, D: head_dim")
 for (B, H, N, D) in BHNDs:
     print("-" * 100)
     print(" " * 40 + f"B={B}, H={H}, N={N}, D={D}")
     if args.rand_q or args.rand_qkv:
-        q = torch.empty((B, H, N, D), dtype=torch.half, device="cuda").normal_(mean=0.0, std=0.1)
+        # q = torch.empty((B, H, N, D), dtype=torch.half, device="cuda").normal_(mean=0.0, std=0.5)
+        q = torch.randn((B, H, N, D), dtype=torch.half, device="cuda")
     else:
         q = torch.ones(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
     if args.rand_k or args.rand_qkv:
-        k = torch.empty((B, H, N, D), dtype=torch.half, device="cuda").normal_(mean=0.0, std=0.1)
+        # k = torch.empty((B, H, N, D), dtype=torch.half, device="cuda").normal_(mean=0.0, std=0.5)
+        k = torch.randn((B, H, N, D), dtype=torch.half, device="cuda")
     else:
         k = torch.ones(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
         if args.range_k:
@@ -161,7 +166,8 @@ for (B, H, N, D) in BHNDs:
                 k[:, :, i, :] = (i + 1) / N
             k = k.cuda().half().contiguous()
     if args.rand_v or args.rand_qkv:
-        v = torch.empty((B, H, N, D), dtype=torch.half, device="cuda").normal_(mean=0.0, std=0.5)
+        # v = torch.empty((B, H, N, D), dtype=torch.half, device="cuda").normal_(mean=0.0, std=0.5)
+        v = torch.randn((B, H, N, D), dtype=torch.half, device="cuda")
     else:
         v = torch.ones(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
     o = torch.zeros(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
@@ -173,12 +179,9 @@ for (B, H, N, D) in BHNDs:
     torch.cuda.synchronize()
     
     # using fp16 Tesor Core MMA instruction
-    # NOTE: 数值稳定性，如果不限制normal(0.0, 0.5), 精度偶发异常。
-    # 表现为: random q, N>64, 结果依然有问题; 当 rk+rv, N>640结果也有问题
-    # 和不同的随机数种子也有关系。
     out, _ = run_benchmark(lib.flash_attn_mma_stages, q, tk, v, "mma(stage)", o, s, stages=1)
-    # run_benchmark(flash_attn_func, fq, fk, fv, "(flash)")
-    out, _  = run_benchmark(F.scaled_dot_product_attention, q, k, v, "(sdpa)")
+    out, _ = run_benchmark(flash_attn_func, fq, fk, fv, "(flash)")
+    out, _ = run_benchmark(F.scaled_dot_product_attention, q, k, v, "(sdpa)")
     if args.naive:
         out, _ = run_benchmark(lib.flash_attn_mma_naive, q, k, v, "mma(naive)", o)
     print("-" * 100)
