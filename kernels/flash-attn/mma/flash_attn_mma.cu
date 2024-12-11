@@ -10,162 +10,8 @@
 #include <cuda_fp8.h>
 #include <mma.h>
 using namespace nvcuda;
+#include "custom_mma_utils.h"
 
-#define WARP_SIZE 32
-#define DEVICE_INLINE __device__ inline
-#define HOST_DEVICE_INLINE __device__ __host__ inline
-#define INT4(value) (reinterpret_cast<int4*>(&(value))[0])
-#define FLOAT4(value) (reinterpret_cast<float4*>(&(value))[0])
-#define HALF2(value) (reinterpret_cast<half2*>(&(value))[0])
-#define BFLOAT2(value) (reinterpret_cast<__nv_bfloat162*>(&(value))[0])
-#define LDST32BITS(value) (reinterpret_cast<half2*>(&(value))[0])
-#define LDST64BITS(value) (reinterpret_cast<float2*>(&(value))[0])
-#define LDST128BITS(value) (reinterpret_cast<float4*>(&(value))[0])
-// gmem -> smem
-#define CP_ASYNC_COMMIT_GROUP() asm volatile("cp.async.commit_group;\n" ::)
-#define CP_ASYNC_WAIT_ALL() asm volatile("cp.async.wait_all;\n" ::)
-#define CP_ASYNC_WAIT_GROUP(n) asm volatile("cp.async.wait_group %0;\n" ::"n"(n))
-// ca(cache all, L1 + L2): support 4, 8, 16 bytes, cg(cache global, L2): only support 16 bytes.
-#define CP_ASYNC_CA(dst, src, bytes) asm volatile("cp.async.ca.shared.global.L2::128B [%0], [%1], %2;\n" ::"r"(dst), "l"(src), "n"(bytes))
-#define CP_ASYNC_CG(dst, src, bytes) asm volatile("cp.async.cg.shared.global.L2::128B [%0], [%1], %2;\n" ::"r"(dst), "l"(src), "n"(bytes))
-// smem -> gmem: requires sm_90 or higher.
-#define CP_ASYNC_BULK_COMMIT_GROUP() asm volatile("cp.async.bulk.commit_group;\n" ::)
-#define CP_ASYNC_BULK_WAIT_ALL() asm volatile("cp.async.bulk.wait_all;\n" ::)
-#define CP_ASYNC_BULK_WAIT_GROUP(n) asm volatile("cp.async.bulk.wait_group %0;\n" ::"n"(n))
-#define CP_ASYNC_BULK(dst, src, bytes) asm volatile("cp.async.bulk.global.shared::cta.bulk_group.L2::128B [%0], [%1], %2;\n" ::"r"(dst), "l"(src), "n"(bytes))
-// ldmatrix
-#define LDMATRIX_X1(R, addr) asm volatile("ldmatrix.sync.aligned.x1.m8n8.shared.b16 {%0}, [%1];\n" : "=r"(R) : "r"(addr))
-#define LDMATRIX_X2(R0, R1, addr) asm volatile("ldmatrix.sync.aligned.x2.m8n8.shared.b16 {%0, %1}, [%2];\n" : "=r"(R0), "=r"(R1) : "r"(addr))
-#define LDMATRIX_X4(R0, R1, R2, R3, addr) asm volatile("ldmatrix.sync.aligned.x4.m8n8.shared.b16 {%0, %1, %2, %3}, [%4];\n" : "=r"(R0), "=r"(R1), "=r"(R2), "=r"(R3) : "r"(addr))
-#define LDMATRIX_X1_T(R, addr) asm volatile("ldmatrix.sync.aligned.x1.trans.m8n8.shared.b16 {%0}, [%1];\n" : "=r"(R) : "r"(addr))
-#define LDMATRIX_X2_T(R0, R1, addr) asm volatile("ldmatrix.sync.aligned.x2.trans.m8n8.shared.b16 {%0, %1}, [%2];\n" : "=r"(R0), "=r"(R1) : "r"(addr))
-#define LDMATRIX_X4_T(R0, R1, R2, R3, addr) asm volatile("ldmatrix.sync.aligned.x4.trans.m8n8.shared.b16 {%0, %1, %2, %3}, [%4];\n" : "=r"(R0), "=r"(R1), "=r"(R2), "=r"(R3) : "r"(addr))
-// stmatrix: requires sm_90 or higher.
-#define STMATRIX_X1(addr, R) asm volatile("stmatrix.sync.aligned.x1.m8n8.shared.b16 [%0], {%1};\n" :: "r"(addr), "r"(R))
-#define STMATRIX_X2(addr, R0, R1) asm volatile("stmatrix.sync.aligned.x2.m8n8.shared.b16 [%0], {%1, %2};\n" :: "r"(addr), "r"(R0), "r"(R1))
-#define STMATRIX_X4(addr, R0, R1, R2, R3) asm volatile("stmatrix.sync.aligned.x4.m8n8.shared.b16 [%0], {%1, %2, %3, %4};\n" :: "r"(addr), "r"(R0), "r"(R1), "r"(R2), "r"(R3))
-#define STMATRIX_X1_T(addr, R) asm volatile("stmatrix.sync.aligned.x1.trans.m8n8.shared.b16 [%0], {%1};\n" :: "r"(addr), "r"(R))
-#define STMATRIX_X2_T(addr, R0, R1) asm volatile("stmatrix.sync.aligned.x2.trans.m8n8.shared.b16 [%0], {%1, %2};\n" :: "r"(addr), "r"(R0), "r"(R1))
-#define STMATRIX_X4_T(addr, R0, R1, R2, R3) asm volatile("stmatrix.sync.aligned.x4.trans.m8n8.shared.b16 [%0], {%1, %2, %3, %4};\n" :: "r"(addr), "r"(R0), "r"(R1), "r"(R2), "r"(R3))
-// mma m16n8k16
-#define HMMA16816(RD0, RD1, RA0, RA1, RA2, RA3, RB0, RB1, RC0, RC1) asm volatile("mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16 {%0, %1}, {%2, %3, %4, %5}, {%6, %7}, {%8, %9};\n" : "=r"(RD0), "=r"(RD1) : "r"(RA0), "r"(RA1), "r"(RA2), "r"(RA3), "r"(RB0), "r"(RB1), "r"(RC0), "r"(RC1))
-#define HMMA16816F32(RD0, RD1, RD2, RD3, RA0, RA1, RA2, RA3, RB0, RB1, RC0, RC1, RC2, RC3) asm volatile("mma.sync.aligned.m16n8k16.row.col.f32.f16.f16.f32 {%0,  %1,  %2,  %3}, {%4, %5, %6, %7}, {%8, %9}, {%10, %11, %12, %13};\n" : "=r"(RD0), "=r"(RD1), "=r"(RD2), "=r"(RD3): "r"(RA0), "r"(RA1), "r"(RA2), "r"(RA3), "r"(RB0), "r"(RB1), "r"(RC0), "r"(RC1), "r"(RC2), "r"(RC3))
-
-
-HOST_DEVICE_INLINE 
-int div_ceil(int a, int b) { return (a % b != 0) ? (a / b + 1) : (a / b); }
-
-
-template<typename T, const int kWarpSize = WARP_SIZE>
-DEVICE_INLINE T warp_reduce_sum(T val) {
-  #pragma unroll
-  for (int mask = kWarpSize >> 1; mask >= 1; mask >>= 1) {
-    val += __shfl_xor_sync(0xffffffff, val, mask);
-  }
-  return val;
-}
-
-
-template<typename T, const int kWarpSize = WARP_SIZE>
-DEVICE_INLINE T warp_reduce_max(T val) {
-  #pragma unroll
-  for (int mask = kWarpSize >> 1; mask >= 1; mask >>= 1) {
-    T val_compare = __shfl_xor_sync(0xffffffff, val, mask);
-    val = val > val_compare ? val : val_compare;
-  }
-  return val;
-}
-
-
-template<typename T, int M, const int N, const int K = 2>
-DEVICE_INLINE void fill_3D_regs(T (&R)[M][N][K], T val) {
-  #pragma unroll
-  for (int i = 0; i < M; ++i) {
-    #pragma unroll
-    for (int j = 0; j < N; ++j) {
-      #pragma unroll
-      for (int k = 0; k < K; ++k) {
-        R[i][j][k] = val;
-      }
-    }
-  }
-}
-
-
-template<typename T, int M, const int N = 2>
-DEVICE_INLINE void fill_2D_regs(T (&R)[M][N], T val) {
-  #pragma unroll
-  for (int i = 0; i < M; ++i) {
-    #pragma unroll
-    for (int j = 0; j < N; ++j) {
-      R[i][j] = val;
-    }
-  }
-}
-
-#define INFHALF __float2half(65536.0f)
-#define ZEROHALF __float2half(0.0f)
-
-#define FLASH_ATTN_MMA_DEBUG
-#define FLASH_ATTN_MMA_DEBUG_MORE
-
-#ifdef FLASH_ATTN_MMA_DEBUG
-#define FA_MMA_PRINT_T0_REG(R, format, ...)      \
-{                                                \
-  if (tid == 0) {                                \
-    float2 v_reg = __half22float2(HALF2(R));     \
-    printf("[T0] " format ", V0=%f, V1=%f\n",    \
-           ##__VA_ARGS__, v_reg.x, v_reg.y);     \
-  }                                              \
-}
-#define FA_MMA_PRINT_REG(R, format, ...)         \
-{                                                \
-  {                                              \
-    float2 v_reg = __half22float2(HALF2(R));     \
-    printf(format", V0=%f, V1=%f\n",             \
-           ##__VA_ARGS__, v_reg.x, v_reg.y);     \
-  }                                              \
-}
-#define FA_MMA_CHECK_PRINT_REG(R0, R1, format, ...)                       \
-{                                                                         \
-  {                                                                       \
-    float2 v_reg_0 = __half22float2(HALF2(R0));                           \
-    float2 v_reg_1 = __half22float2(HALF2(R1));                           \
-    if ((fabs(v_reg_0.x - v_reg_1.x) > 0.01f) ||                          \
-        (fabs(v_reg_0.y - v_reg_1.y) > 0.01f)) {                          \
-      printf(format", R0, V0=%f, V1=%f, R1, V0=%f, V1=%f\n",              \
-             ##__VA_ARGS__, v_reg_0.x, v_reg_0.y, v_reg_1.x, v_reg_1.y);  \
-    }                                                                     \
-  }                                                                       \
-}
-#define FA_MMA_PRINT_T0(format, ...)            \
-{                                               \
-  if (tid == 0) {                               \
-    printf("[T0] " format, ##__VA_ARGS__);      \
-  }                                             \
-}
-#define FA_MMA_PRINT_L0_REG(R, format, ...)       \
-{                                                 \
-  if (lane_id == 0) {                             \
-    float2 v_reg = __half22float2(HALF2(R));      \
-    printf("[L0] " format", V0=%f, V1=%f\n",      \
-           ##__VA_ARGS__, v_reg.x, v_reg.y);      \
-  }                                               \
-}
-#define FA_MMA_PRINT_L0(format, ...)            \
-{                                               \
-  if (lane_id == 0) {                           \
-    printf("[L0] " format, ##__VA_ARGS__);      \
-  }                                             \
-}
-#else
-#define FA_MMA_PRINT_REG(R, format, ...) {}
-#define FA_MMA_CHECK_PRINT_REG(R0, R1, format, ...) {}
-#define FA_MMA_PRINT_T0_REG(R, format, ...) {}
-#define FA_MMA_PRINT_L0_REG(R, format, ...) {}
-#define FA_MMA_PRINT_T0(format, ...) {}
-#define FA_MMA_PRINT_L0(format, ...) {}
-#endif
 // Write FlashAttention-2 from scratch using Tensor Cores with MMA PTX instruction.
 // The input is Q,K,V, 4D tensor with shape [batch_size, num_heads, seq_len, head_dim].
 // The output is O, a 4D tensor with shape [batch_size, num_heads, seq_len, head_dim].
@@ -176,7 +22,6 @@ DEVICE_INLINE void fill_2D_regs(T (&R)[M][N], T val) {
 // Q,K,V,O: [batch_size, num_heads, seq_len, head_dim], [B,H,N,d]
 // each block processes Q_tile with shape [Br,d] and full K,V with shape [N,d]
 // Currently, we only support Br = Bc = 64.
-
 template<
          const int kHeadDim,          // Headdim, 32,64,128     
          const int kMmaAtomM,         // MMA Atom M, 16
@@ -444,7 +289,7 @@ flash_attn_mma_kernel(half* Q,
 
       // Then, prefetch curr K tile_K_seqlen [d,Bc] (no stages)
       {
-        load_gmem_V_Bc_offset += tile_K_seqlen * Bc;
+        load_gmem_V_Bc_offset == tile_K_seqlen * Bc; // e.g (0~3)*64=(0,64,128,192,...)
         int load_gmem_V_Bc = load_gmem_V_Bc_offset + load_smem_V_Bc;
         int load_gmem_V_d  = load_smem_V_d;
         int load_gmem_V_addr = (
@@ -488,7 +333,6 @@ flash_attn_mma_kernel(half* Q,
 
       // smem -> reg, load k16n8 from smem K, offset d according tile_K_d.
       // ldmatrix.x2.trans for K_tile_smem, [kMmaAtomK,Bc] from [d,Bc]=[K,N]
-      // TODO: if N>128, the values load by ldmatrix from K smem is wrong, why ?
       #pragma unroll
       for (int j = 0; j < kWarpTileSeqLenK; ++j) {
         int warp_smem_K_Bc = warp_KV * (kMmaAtomN * kWarpTileSeqLenK) + j * kMmaAtomN;  // (N)
@@ -505,18 +349,14 @@ flash_attn_mma_kernel(half* Q,
       // MMA compute
       #pragma unroll
       for (int i = 0; i < kWarpTileSeqLenQ; ++i) {
-#if defined(FLASH_ATTN_MMA_DEBUG) && defined(FLASH_ATTN_MMA_DEBUG_MORE)
         FA_MMA_PRINT_REG(R_Q[i][0], "[Before] MMA Q@K^T, R_Q[%d][0], tile_K_seqlen: %d, tile_K_d: %d, tid: %d, lane: %d", i, tile_K_seqlen, tile_K_d, tid, lane_id);
         FA_MMA_PRINT_REG(R_Q[i][1], "[Before] MMA Q@K^T, R_Q[%d][1], tile_K_seqlen: %d, tile_K_d: %d, tid: %d, lane: %d", i, tile_K_seqlen, tile_K_d, tid, lane_id);
         FA_MMA_PRINT_REG(R_Q[i][2], "[Before] MMA Q@K^T, R_Q[%d][2], tile_K_seqlen: %d, tile_K_d: %d, tid: %d, lane: %d", i, tile_K_seqlen, tile_K_d, tid, lane_id);
         FA_MMA_PRINT_REG(R_Q[i][3], "[Before] MMA Q@K^T, R_Q[%d][3], tile_K_seqlen: %d, tile_K_d: %d, tid: %d, lane: %d", i, tile_K_seqlen, tile_K_d, tid, lane_id);
-#endif
         #pragma unroll
         for (int j = 0; j < kWarpTileSeqLenK; ++j) {
-#if defined(FLASH_ATTN_MMA_DEBUG) && defined(FLASH_ATTN_MMA_DEBUG_MORE)
           FA_MMA_PRINT_REG(R_K[j][0], "[Before] MMA Q@K^T, R_K[%d][0], tile_K_seqlen: %d, tile_K_d: %d, tid: %d, lane: %d", j, tile_K_seqlen, tile_K_d, tid, lane_id);
           FA_MMA_PRINT_REG(R_K[j][1], "[Before] MMA Q@K^T, R_K[%d][1], tile_K_seqlen: %d, tile_K_d: %d, tid: %d, lane: %d", j, tile_K_seqlen, tile_K_d, tid, lane_id);
-#endif
           HMMA16816(R_S[i][j][0], R_S[i][j][1], 
                     R_Q[i][0],    R_Q[i][1],    R_Q[i][2], R_Q[i][3], 
                     R_K[j][0],    R_K[j][1], 
@@ -642,6 +482,8 @@ flash_attn_mma_kernel(half* Q,
     } // end for kWarpTileSeqLenQ
     __syncthreads();
 
+    FA_MMA_PRINT_T0("lane_row_max_new %f, %f\n", lane_row_max_new[0][0], lane_row_max_new[0][1]);
+    FA_MMA_PRINT_T0_B0_MATRIX(block_row_max_new_smem, "[warp][block_row_max_new_smem]\n");
     // Block level reduce max, row wise, 64x4=256
     float wrp_row_max_new = (
       block_row_max_new_smem[tid / kMmaTileSeqLenK][tid % kMmaTileSeqLenK]); // [0~63][0~4]
@@ -649,6 +491,8 @@ flash_attn_mma_kernel(half* Q,
     block_row_max_new_smem[tid / kMmaTileSeqLenK][tid % kMmaTileSeqLenK] = (
       blk_row_max_new);
     __syncthreads();
+    FA_MMA_PRINT_T0_B0_MATRIX(block_row_max_new_smem, "[block][block_row_max_new_smem]\n");
+
     // Exp sum and mul scale_factor for [Br,Bc] tile, Thread -> Warp -> Block.
     #pragma unroll
     for (int i = 0; i < kWarpTileSeqLenQ; ++i) {
@@ -669,6 +513,10 @@ flash_attn_mma_kernel(half* Q,
       for (int j = 0; j < kWarpTileSeqLenK; ++j) {
         float2 t_reg_S_0 = __half22float2(HALF2(R_S[i][j][0])); // 0~7  {c0, c1}
         float2 t_reg_S_1 = __half22float2(HALF2(R_S[i][j][1])); // 8~15 {c2, c3}
+        FA_MMA_PRINT_T32_REG(R_S[i][j][0], "[Exp sum][Before] R_S[%d][%d][0], "
+                             "scale: %f, block_row_max_new_0: %f", 
+                             i, j, scale, block_row_max_new_0);
+
         t_reg_S_0.x = __expf(t_reg_S_0.x * scale - block_row_max_new_0);
         t_reg_S_0.y = __expf(t_reg_S_0.y * scale - block_row_max_new_0);
         t_reg_S_1.x = __expf(t_reg_S_1.x * scale - block_row_max_new_1);
@@ -678,6 +526,13 @@ flash_attn_mma_kernel(half* Q,
         // Update R_S for P[Br,Bc] = Exp(S-m), point wise.
         HALF2(R_S[i][j][0]) = __float22half2_rn(t_reg_S_0);
         HALF2(R_S[i][j][1]) = __float22half2_rn(t_reg_S_1);
+
+        FA_MMA_PRINT_T32_REG(R_S[i][j][0], "[Exp sum][After] R_S[%d][%d][0], "
+                             "scale: %f, tile_K_seqlen: %d, tid: %d, lane: %d", 
+                             i, j, scale, tile_K_seqlen, tid, lane_id);
+        FA_MMA_PRINT_T32_REG(R_S[i][j][1], "[Exp sum][After] R_S[%d][%d][1], "
+                             "scale: %f, tile_K_seqlen: %d, tid: %d, lane: %d", 
+                             i, j, scale, tile_K_seqlen, tid, lane_id);
       } // end for kWarpTileSeqLenK
 
       // Warp level reduce sum, warp_size = 4
@@ -693,6 +548,9 @@ flash_attn_mma_kernel(half* Q,
     } // end for kWarpTileSeqLenQ
     __syncthreads();
 
+    FA_MMA_PRINT_T0("lane_row_sum_new %f, %f\n", lane_row_sum_new[0][0], lane_row_sum_new[0][1])
+    FA_MMA_PRINT_T0_B0_MATRIX(block_row_sum_new_smem, "[warp][block_row_sum_new_smem]\n");
+
     // Block level reduce sum, row wise, 64x4=256
     float wrp_row_sum_new = (
       block_row_sum_new_smem[tid / kMmaTileSeqLenK][tid % kMmaTileSeqLenK]); // [0~63][0~4]
@@ -701,6 +559,8 @@ flash_attn_mma_kernel(half* Q,
       blk_row_sum_new);
     __syncthreads();
 
+    FA_MMA_PRINT_T0_B0_MATRIX(block_row_sum_new_smem, "[block][block_row_sum_new_smem]\n");
+    
     // Compute P[Br,Bc] @ V[Bc,d] = [Br,d] = [64, 64/128], partion Attention.
     // Here, we have to wait V ready before compute O = P @ V
     if constexpr (kStage == 2) {
@@ -740,9 +600,9 @@ flash_attn_mma_kernel(half* Q,
     
     // Write R_P(R_S) to P_smem [Br,Bc]
     // store S(for DEBUG now) [Br,Bc] of [seqlen,seqlen] [64,64]
-    #pragma unroll 1
+    #pragma unroll 
     for (int i = 0; i < kWarpTileSeqLenQ; ++i) {
-      #pragma unroll 1
+      #pragma unroll 
       for (int j = 0; j < kWarpTileSeqLenK; ++j) {
         R_Q[0][0] = R_S[i][j][0]; R_Q[1][0] = R_S[i][j][1]; // warp_size 4
         R_Q[0][1] = __shfl_sync((0xffffffff), R_S[i][j][0], lane_id + 1, 4);
@@ -822,14 +682,14 @@ flash_attn_mma_kernel(half* Q,
       // 15   T28: {a2, a3}  T29: {a2, a3}  T30: {a2, a3}  T31: {a2, a3}  T28: {a6, a7}  T29: {a6, a7}  T30: {a6, a7}  T31: {a6, a7}
       #pragma unroll
       for (int i = 0; i < kWarpTileSeqLenP; ++i) { // kWarpTileSeqLenQ=2
+        FA_MMA_CHECK_PRINT_REG(R_S[i][0][0], R_Q[i][0], "Check failed, R_S[%d][0][0], R_Q[%d][0], tile_V_Bc: %d, tid: %d, lane: %d", i, i, tile_V_Bc, tid, lane_id);
+        FA_MMA_CHECK_PRINT_REG(R_S[i][0][1], R_Q[i][1], "Check failed, R_S[%d][0][1], R_Q[%d][1], tile_V_Bc: %d, tid: %d, lane: %d", i, i, tile_V_Bc, tid, lane_id);
+        FA_MMA_CHECK_PRINT_REG(R_S[i][1][0], R_Q[i][2], "Check failed, R_S[%d][1][0], R_Q[%d][2], tile_V_Bc: %d, tid: %d, lane: %d", i, i, tile_V_Bc, tid, lane_id);
+        FA_MMA_CHECK_PRINT_REG(R_S[i][1][1], R_Q[i][3], "Check failed, R_S[%d][1][1], R_Q[%d][3], tile_V_Bc: %d, tid: %d, lane: %d", i, i, tile_V_Bc, tid, lane_id);
         #pragma unroll
         for (int j = 0; j < kWarpTileHeadDimV; ++j) { // kWarpTileHeadDimV=1,2,3,4,...
-#if defined(FLASH_ATTN_MMA_DEBUG) && defined(FLASH_ATTN_MMA_DEBUG_MORE)
-          FA_MMA_CHECK_PRINT_REG(R_S[i][0][0], R_Q[i][0], "Check failed, R_S[%d][0][0], R_Q[%d][0], tile_V_Bc: %d, tid: %d, lane: %d", i, i, tile_V_Bc, tid, lane_id);
-          FA_MMA_CHECK_PRINT_REG(R_S[i][0][1], R_Q[i][1], "Check failed, R_S[%d][0][1], R_Q[%d][1], tile_V_Bc: %d, tid: %d, lane: %d", i, i, tile_V_Bc, tid, lane_id);
-          FA_MMA_CHECK_PRINT_REG(R_S[i][1][0], R_Q[i][2], "Check failed, R_S[%d][1][0], R_Q[%d][2], tile_V_Bc: %d, tid: %d, lane: %d", i, i, tile_V_Bc, tid, lane_id);
-          FA_MMA_CHECK_PRINT_REG(R_S[i][1][1], R_Q[i][3], "Check failed, R_S[%d][1][1], R_Q[%d][3], tile_V_Bc: %d, tid: %d, lane: %d", i, i, tile_V_Bc, tid, lane_id);
-#endif
+          FA_MMA_PRINT_REG(R_V[j][0], "[Before] MMA P@V, R_V[%d][0], tile_V_Bc: %d, tid: %d, lane: %d", j, tile_V_Bc, tid, lane_id);
+          FA_MMA_PRINT_REG(R_V[j][1], "[Before] MMA P@V, R_V[%d][1], tile_V_Bc: %d, tid: %d, lane: %d", j, tile_V_Bc, tid, lane_id);
           HMMA16816(R_O[i][j][0], R_O[i][j][1], 
                     // FIXME(DefTruth): Still have some error while using R_S 
                     // as registers for P(A) matrix directly. I will remove this 
@@ -843,19 +703,15 @@ flash_attn_mma_kernel(half* Q,
     } // end for V Bc.
     __syncthreads(); 
 
-#if defined(FLASH_ATTN_MMA_DEBUG) && defined(FLASH_ATTN_MMA_DEBUG_MORE)
-    if (tid < 32) {
-      FA_MMA_PRINT_REG(R_O[0][0][0], "MMA P@V, R_O[0][0][0], tile_K_seqlen: %d, tid: %d, lane: %d", tile_K_seqlen, tid, lane_id);
-      FA_MMA_PRINT_REG(R_O[0][0][1], "MMA P@V, R_O[0][0][1], tile_K_seqlen: %d, tid: %d, lane: %d", tile_K_seqlen, tid, lane_id);
-      FA_MMA_PRINT_REG(R_O[0][1][0], "MMA P@V, R_O[0][1][0], tile_K_seqlen: %d, tid: %d, lane: %d", tile_K_seqlen, tid, lane_id);
-      FA_MMA_PRINT_REG(R_O[0][1][1], "MMA P@V, R_O[0][1][1], tile_K_seqlen: %d, tid: %d, lane: %d", tile_K_seqlen, tid, lane_id);
-      FA_MMA_PRINT_REG(R_O[1][0][0], "MMA P@V, R_O[1][0][0], tile_K_seqlen: %d, tid: %d, lane: %d", tile_K_seqlen, tid, lane_id);
-      FA_MMA_PRINT_REG(R_O[1][0][1], "MMA P@V, R_O[1][0][1], tile_K_seqlen: %d, tid: %d, lane: %d", tile_K_seqlen, tid, lane_id);
-      FA_MMA_PRINT_REG(R_O[1][1][0], "MMA P@V, R_O[1][1][0], tile_K_seqlen: %d, tid: %d, lane: %d", tile_K_seqlen, tid, lane_id);
-      FA_MMA_PRINT_REG(R_O[1][1][1], "MMA P@V, R_O[1][1][1], tile_K_seqlen: %d, tid: %d, lane: %d", tile_K_seqlen, tid, lane_id);
-    }
-#endif
-
+    FA_MMA_PRINT_T32_REG(R_O[0][0][0], "MMA P@V, R_O[0][0][0], tile_K_seqlen: %d, tid: %d, lane: %d", tile_K_seqlen, tid, lane_id);
+    FA_MMA_PRINT_T32_REG(R_O[0][0][1], "MMA P@V, R_O[0][0][1], tile_K_seqlen: %d, tid: %d, lane: %d", tile_K_seqlen, tid, lane_id);
+    FA_MMA_PRINT_T32_REG(R_O[0][1][0], "MMA P@V, R_O[0][1][0], tile_K_seqlen: %d, tid: %d, lane: %d", tile_K_seqlen, tid, lane_id);
+    FA_MMA_PRINT_T32_REG(R_O[0][1][1], "MMA P@V, R_O[0][1][1], tile_K_seqlen: %d, tid: %d, lane: %d", tile_K_seqlen, tid, lane_id);
+    FA_MMA_PRINT_T32_REG(R_O[1][0][0], "MMA P@V, R_O[1][0][0], tile_K_seqlen: %d, tid: %d, lane: %d", tile_K_seqlen, tid, lane_id);
+    FA_MMA_PRINT_T32_REG(R_O[1][0][1], "MMA P@V, R_O[1][0][1], tile_K_seqlen: %d, tid: %d, lane: %d", tile_K_seqlen, tid, lane_id);
+    FA_MMA_PRINT_T32_REG(R_O[1][1][0], "MMA P@V, R_O[1][1][0], tile_K_seqlen: %d, tid: %d, lane: %d", tile_K_seqlen, tid, lane_id);
+    FA_MMA_PRINT_T32_REG(R_O[1][1][1], "MMA P@V, R_O[1][1][1], tile_K_seqlen: %d, tid: %d, lane: %d", tile_K_seqlen, tid, lane_id);
+ 
     // Rescale O -> Update row sum Exp -> then, Update row max.
     #pragma unroll
     for (int i = 0; i < kWarpTileSeqLenP; ++i) { // kWarpTileSeqLenQ=kWarpTileSeqLenP
@@ -886,6 +742,9 @@ flash_attn_mma_kernel(half* Q,
         float2 t_reg_O_1 = __half22float2(HALF2(R_O[i][j][1])); // 8~15 {c2, c3}
         float2 t_reg_D_0 = __half22float2(HALF2(R_D[i][j][0])); // 0~7  {c0, c1}
         float2 t_reg_D_1 = __half22float2(HALF2(R_D[i][j][1])); // 8~15 {c2, c3}
+        FA_MMA_PRINT_T0_REG(R_D[i][j][0], "[Before] Scale O tile t_reg_D_0, tile_K_seqlen: %d", 
+                            tile_K_seqlen);
+
         float rescale_o_factor_0 = __expf(block_row_max_new_0 - block_row_max_old_0);
         float rescale_o_factor_1 = __expf(block_row_max_new_1 - block_row_max_old_1);
         t_reg_D_0.x = rescale_o_factor_0 * t_reg_D_0.x + t_reg_O_0.x;
@@ -894,6 +753,14 @@ flash_attn_mma_kernel(half* Q,
         t_reg_D_1.y = rescale_o_factor_1 * t_reg_D_1.y + t_reg_O_1.y;
         HALF2(R_D[i][j][0]) = __float22half2_rn(t_reg_D_0);
         HALF2(R_D[i][j][1]) = __float22half2_rn(t_reg_D_1);
+        FA_MMA_PRINT_T0("Scale O tile block_row_max 0 old/new %f, %f\n", 
+                         block_row_max_old_0, block_row_max_new_0);
+        FA_MMA_PRINT_T0("Scale O tile block_row_max 1 old/new %f, %f\n", 
+                         block_row_max_old_1, block_row_max_new_1);
+        FA_MMA_PRINT_T0("Scale O tile rescale_o_factor %f, %f\n", 
+                         rescale_o_factor_0, rescale_o_factor_1);
+        FA_MMA_PRINT_T0_REG(R_D[i][j][0], "[After] Scale O tile t_reg_D_0, tile_K_seqlen: %d", 
+                            tile_K_seqlen);
       } // end for kWarpTileHeadDimV.
 
       // Now, we can update m, l after O has been scaled.
@@ -912,7 +779,8 @@ flash_attn_mma_kernel(half* Q,
       lane_block_row_max_old[i][1] = block_row_max_new_1;
     }
 
-    FA_MMA_PRINT_T0_REG(R_D[0][0][0], "After Scale O tile, R_D[0][0][0]");
+    FA_MMA_PRINT_T0_REG(R_D[0][0][0], "After Scale O tile, R_D[0][0][0], tile_K_seqlen: %d", 
+                        tile_K_seqlen);
   
     // NOTE: After compute P @ V, we have to wait next K tile ready in smem.
     // do not need to wait any things if kStage == 1.
@@ -920,8 +788,6 @@ flash_attn_mma_kernel(half* Q,
       CP_ASYNC_WAIT_GROUP(0);
       __syncthreads(); 
     }
-    CP_ASYNC_WAIT_GROUP(0);
-    __syncthreads(); 
 
   } // end loop over N
   __syncthreads();
@@ -934,12 +800,18 @@ flash_attn_mma_kernel(half* Q,
     for (int j = 0; j < kWarpTileHeadDimV; ++j) {
       float2 t_reg_D_0 = __half22float2(HALF2(R_D[i][j][0])); // 0~7  {c0, c1}
       float2 t_reg_D_1 = __half22float2(HALF2(R_D[i][j][1])); // 8~15 {c2, c3}
-      t_reg_D_0.x = __frcp_rn(lane_block_row_sum_old[i][0]) * t_reg_D_0.x;
-      t_reg_D_0.y = __frcp_rn(lane_block_row_sum_old[i][0]) * t_reg_D_0.y;
-      t_reg_D_1.x = __frcp_rn(lane_block_row_sum_old[i][1]) * t_reg_D_1.x;
-      t_reg_D_1.y = __frcp_rn(lane_block_row_sum_old[i][1]) * t_reg_D_1.y;
+      float rescale_factor_0 = __frcp_rn(lane_block_row_sum_old[i][0]);
+      float rescale_factor_1 = __frcp_rn(lane_block_row_sum_old[i][1]);
+      FA_MMA_PRINT_T0_REG(R_D[i][j][0], "[Before] Finale Scale O tile R_D[%d][%d][0], rescale_factor_0: %f", i, j, rescale_factor_0);
+      FA_MMA_PRINT_T0_REG(R_D[i][j][1], "[Before] Finale Scale O tile R_D[%d][%d][1], rescale_factor_1: %f", i, j, rescale_factor_1);
+      t_reg_D_0.x = rescale_factor_0 * t_reg_D_0.x;
+      t_reg_D_0.y = rescale_factor_0 * t_reg_D_0.y;
+      t_reg_D_1.x = rescale_factor_1 * t_reg_D_1.x;
+      t_reg_D_1.y = rescale_factor_1 * t_reg_D_1.y;
       HALF2(R_D[i][j][0]) = __float22half2_rn(t_reg_D_0);
       HALF2(R_D[i][j][1]) = __float22half2_rn(t_reg_D_1);
+      FA_MMA_PRINT_T0_REG(R_D[i][j][0], "[After] Finale Scale O tile R_D[%d][%d][0]", i, j);
+      FA_MMA_PRINT_T0_REG(R_D[i][j][1], "[After] Finale Scale O tile R_D[%d][%d][1]", i, j);
     }
   }
 
