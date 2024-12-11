@@ -738,10 +738,13 @@ flash_attn_mma_kernel(half* Q,
       block_row_max_old_0 = (tile_K_seqlen > 0 ? block_row_max_old_0 : 
                                                  block_row_max_new_0);                                       
       block_row_max_old_1 = (tile_K_seqlen > 0 ? block_row_max_old_0 : 
-                                                 block_row_max_new_1);                                       
+                                                 block_row_max_new_1);  
 
+      // rescale factor for O and l, exp(m_old - m)
+      float rescale_o_factor_0 = __expf(block_row_max_old_0 - block_row_max_new_0);
+      float rescale_o_factor_1 = __expf(block_row_max_old_1 - block_row_max_new_1);
       // 0. Rescale O: Online rescaling O each tile_K_seqlen step, need m_new, m_old.
-      // m = max(m_old, m_new), O_new[Br,d] = ( 1/exp(m_old - m) ) * O_old + P@V (FA2 paper)
+      // m = max(m_old, m_new), O_new[Br,d] = exp(m_old - m) * O_old + P@V
       #pragma unroll
       for (int j = 0; j < kWarpTileHeadDimV; ++j) {
         float2 t_reg_O_0 = __half22float2(HALF2(R_O[i][j][0])); // 0~7  {c0, c1}
@@ -751,10 +754,11 @@ flash_attn_mma_kernel(half* Q,
         FA_MMA_PRINT_T0_REG(R_D[i][j][0], "[Before] Scale O tile t_reg_D_0, tile_K_seqlen: %d", 
                             tile_K_seqlen);
 
-        // float rescale_o_factor_0 = __expf(block_row_max_new_0 - block_row_max_old_0);
-        // float rescale_o_factor_1 = __expf(block_row_max_new_1 - block_row_max_old_1);
-        float rescale_o_factor_0 = __frcp_rn(__expf(block_row_max_old_0 - block_row_max_new_0));
-        float rescale_o_factor_1 = __frcp_rn(__expf(block_row_max_old_1 - block_row_max_new_1));
+        // Note that the formula in the FA2 paper is incorrect; here, 
+        // the inverse of the exp function should not be taken, as it 
+        // would result in an error during rescaling, namely, you have
+        // use exp(m_old - m_new), not 1/(m_old - m_new).
+        // m_new = max(m_old, m_new), O_new[Br,d] = exp(m_old - m_new) * O_old + P@V
         t_reg_D_0.x = rescale_o_factor_0 * t_reg_D_0.x + t_reg_O_0.x;
         t_reg_D_0.y = rescale_o_factor_0 * t_reg_D_0.y + t_reg_O_0.y;
         t_reg_D_1.x = rescale_o_factor_1 * t_reg_D_1.x + t_reg_O_1.x;
@@ -776,18 +780,11 @@ flash_attn_mma_kernel(half* Q,
       // need both m_new and m_old.
       float block_row_sum_old_0 = lane_block_row_sum_old[i][0];
       float block_row_sum_old_1 = lane_block_row_sum_old[i][1];
-      // lane_block_row_sum_old[i][0] = (
-      //   __expf(block_row_max_new_0 - block_row_max_old_0) * block_row_sum_old_0 
-      //   + block_row_sum_new_0);
-      // lane_block_row_sum_old[i][1] = (
-      //   __expf(block_row_max_new_1 - block_row_max_old_1) * block_row_sum_old_1 
-      //   + block_row_sum_new_1);
+      // Update l = exp(m_old - m_new) * l_old + row_sum(P).
       lane_block_row_sum_old[i][0] = (
-        __expf(block_row_max_old_0 - block_row_max_new_0) * block_row_sum_old_0 
-        + block_row_sum_new_0);
+        rescale_o_factor_0 * block_row_sum_old_0 + block_row_sum_new_0);
       lane_block_row_sum_old[i][1] = (
-        __expf(block_row_max_old_1 - block_row_max_new_1) * block_row_sum_old_1 
-        + block_row_sum_new_1);
+        rescale_o_factor_0 * block_row_sum_old_1 + block_row_sum_new_1);
       // 2. Then, update block row max for each lane.
       lane_block_row_max_old[i][0] = block_row_max_new_0;
       lane_block_row_max_old[i][1] = block_row_max_new_1;
