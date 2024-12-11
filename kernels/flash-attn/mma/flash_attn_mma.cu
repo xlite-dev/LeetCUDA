@@ -60,7 +60,6 @@ flash_attn_mma_kernel(half* Q,
   constexpr int Bc = kMmaAtomN * kMmaTileSeqLenK * kWarpTileSeqLenK; // 8*4*2=64
   constexpr int KNumThreads = WARP_SIZE * kMmaTileSeqLenQ * kMmaTileSeqLenK; // 32*2*4=256, num threads
   // Now, N must be mutliples of Bc(32/64) for KV tiling across seqlen.
-  const int Tr = div_ceil(QKV_seqlen, Br); // Tr Q_tile[Br,d]
   const int Tc = div_ceil(QKV_seqlen, Bc); // Tc K^T_tile[d,Bc]
   const float scale = 1.0f / sqrt((float) kHeadDim);
   
@@ -289,7 +288,7 @@ flash_attn_mma_kernel(half* Q,
 
       // Then, prefetch curr K tile_K_seqlen [d,Bc] (no stages)
       {
-        load_gmem_V_Bc_offset == tile_K_seqlen * Bc; // e.g (0~3)*64=(0,64,128,192,...)
+        load_gmem_V_Bc_offset = tile_K_seqlen * Bc; // e.g (0~3)*64=(0,64,128,192,...)
         int load_gmem_V_Bc = load_gmem_V_Bc_offset + load_smem_V_Bc;
         int load_gmem_V_d  = load_smem_V_d;
         int load_gmem_V_addr = (
@@ -314,6 +313,7 @@ flash_attn_mma_kernel(half* Q,
     // Matmul with NN layout, Q row major, K row major. 
     // S_tile[Br,Bc]=Q_tile[Br,d]@K[d,Bc]
     fill_3D_regs<uint32_t, kWarpTileSeqLenQ, kWarpTileSeqLenK, 2>(R_S, 0);
+    fill_2D_regs<uint32_t, kWarpTileSeqLenQ, 4>(R_Q, 0);
     #pragma unroll
     for (int tile_K_d = 0; tile_K_d < (kHeadDim / kMmaAtomK); ++tile_K_d) {
       // smem -> reg, load m16k16 smem Q, offset d according tile_K_d.
@@ -349,10 +349,10 @@ flash_attn_mma_kernel(half* Q,
       // MMA compute
       #pragma unroll
       for (int i = 0; i < kWarpTileSeqLenQ; ++i) {
-        FA_MMA_PRINT_REG(R_Q[i][0], "[Before] MMA Q@K^T, R_Q[%d][0], tile_K_seqlen: %d, tile_K_d: %d, tid: %d, lane: %d", i, tile_K_seqlen, tile_K_d, tid, lane_id);
-        FA_MMA_PRINT_REG(R_Q[i][1], "[Before] MMA Q@K^T, R_Q[%d][1], tile_K_seqlen: %d, tile_K_d: %d, tid: %d, lane: %d", i, tile_K_seqlen, tile_K_d, tid, lane_id);
-        FA_MMA_PRINT_REG(R_Q[i][2], "[Before] MMA Q@K^T, R_Q[%d][2], tile_K_seqlen: %d, tile_K_d: %d, tid: %d, lane: %d", i, tile_K_seqlen, tile_K_d, tid, lane_id);
-        FA_MMA_PRINT_REG(R_Q[i][3], "[Before] MMA Q@K^T, R_Q[%d][3], tile_K_seqlen: %d, tile_K_d: %d, tid: %d, lane: %d", i, tile_K_seqlen, tile_K_d, tid, lane_id);
+        FA_MMA_PRINT_REG(R_Q[i][0], "[Before] MMA Q@K^T, R_Q[%d][0], Q_tile_id: %d, tile_K_seqlen: %d, tile_K_d: %d, tid: %d, lane: %d", i, Q_tile_id, tile_K_seqlen, tile_K_d, tid, lane_id);
+        FA_MMA_PRINT_REG(R_Q[i][1], "[Before] MMA Q@K^T, R_Q[%d][1], Q_tile_id: %d, tile_K_seqlen: %d, tile_K_d: %d, tid: %d, lane: %d", i, Q_tile_id, tile_K_seqlen, tile_K_d, tid, lane_id);
+        FA_MMA_PRINT_REG(R_Q[i][2], "[Before] MMA Q@K^T, R_Q[%d][2], Q_tile_id: %d, tile_K_seqlen: %d, tile_K_d: %d, tid: %d, lane: %d", i, Q_tile_id, tile_K_seqlen, tile_K_d, tid, lane_id);
+        FA_MMA_PRINT_REG(R_Q[i][3], "[Before] MMA Q@K^T, R_Q[%d][3], Q_tile_id: %d, tile_K_seqlen: %d, tile_K_d: %d, tid: %d, lane: %d", i, Q_tile_id, tile_K_seqlen, tile_K_d, tid, lane_id);
         #pragma unroll
         for (int j = 0; j < kWarpTileSeqLenK; ++j) {
           FA_MMA_PRINT_REG(R_K[j][0], "[Before] MMA Q@K^T, R_K[%d][0], tile_K_seqlen: %d, tile_K_d: %d, tid: %d, lane: %d", j, tile_K_seqlen, tile_K_d, tid, lane_id);
@@ -605,12 +605,12 @@ flash_attn_mma_kernel(half* Q,
       #pragma unroll 
       for (int j = 0; j < kWarpTileSeqLenK; ++j) {
         R_Q[0][0] = R_S[i][j][0]; R_Q[1][0] = R_S[i][j][1]; // warp_size 4
-        R_Q[0][1] = __shfl_sync((0xffffffff), R_S[i][j][0], lane_id + 1, 4);
-        R_Q[0][2] = __shfl_sync((0xffffffff), R_S[i][j][0], lane_id + 2, 4);
-        R_Q[0][3] = __shfl_sync((0xffffffff), R_S[i][j][0], lane_id + 3, 4);
-        R_Q[1][1] = __shfl_sync((0xffffffff), R_S[i][j][1], lane_id + 1, 4);
-        R_Q[1][2] = __shfl_sync((0xffffffff), R_S[i][j][1], lane_id + 2, 4);
-        R_Q[1][3] = __shfl_sync((0xffffffff), R_S[i][j][1], lane_id + 3, 4);
+        R_Q[0][1] = __shfl_sync((0xffffffff), R_S[i][j][0], lane_id + 1);
+        R_Q[0][2] = __shfl_sync((0xffffffff), R_S[i][j][0], lane_id + 2);
+        R_Q[0][3] = __shfl_sync((0xffffffff), R_S[i][j][0], lane_id + 3);
+        R_Q[1][1] = __shfl_sync((0xffffffff), R_S[i][j][1], lane_id + 1);
+        R_Q[1][2] = __shfl_sync((0xffffffff), R_S[i][j][1], lane_id + 2);
+        R_Q[1][3] = __shfl_sync((0xffffffff), R_S[i][j][1], lane_id + 3);
   
         // st.global.v4 128 bits.
         if (lane_id % 4 == 0) {
@@ -633,6 +633,7 @@ flash_attn_mma_kernel(half* Q,
     // Matmul with NN layout: P[Br,Bc] row major, V[Bc,d] row major.
     // Make sure to clear the states in R_O before MMA for P@V for each step.
     fill_3D_regs<uint32_t, kWarpTileSeqLenP, kWarpTileHeadDimV, 2>(R_O, 0);
+    fill_2D_regs<uint32_t, kWarpTileSeqLenP, 4>(R_Q, 0);
     #pragma unroll
     for (int tile_V_Bc = 0; tile_V_Bc < (Bc / kMmaAtomK); ++tile_V_Bc) {
       // smem -> reg, load m16k16 smem Q, offset d according tile_K_d.
@@ -820,27 +821,26 @@ flash_attn_mma_kernel(half* Q,
   // Store O(D): Write O[Br,d] from regs -> gmem, collective store 
   // with reg reuse & warp shuffle. need R[2][4], may reuse 
   // R_Q[kWarpTileSeqLenQ][4]=[2][4].
-  #pragma unroll 1
+  #pragma unroll
   for (int i = 0; i < kWarpTileSeqLenP; ++i) {
-    #pragma unroll 1
+    #pragma unroll
     for (int j = 0; j < kWarpTileHeadDimV; ++j) {
       R_Q[0][0] = R_D[i][j][0]; R_Q[1][0] = R_D[i][j][1]; // warp_size 4
-      R_Q[0][1] = __shfl_sync((0xffffffff), R_D[i][j][0], lane_id + 1, 4);
-      R_Q[0][2] = __shfl_sync((0xffffffff), R_D[i][j][0], lane_id + 2, 4);
-      R_Q[0][3] = __shfl_sync((0xffffffff), R_D[i][j][0], lane_id + 3, 4);
-      R_Q[1][1] = __shfl_sync((0xffffffff), R_D[i][j][1], lane_id + 1, 4);
-      R_Q[1][2] = __shfl_sync((0xffffffff), R_D[i][j][1], lane_id + 2, 4);
-      R_Q[1][3] = __shfl_sync((0xffffffff), R_D[i][j][1], lane_id + 3, 4);
+      R_Q[0][1] = __shfl_sync((0xffffffff), R_D[i][j][0], lane_id + 1);
+      R_Q[0][2] = __shfl_sync((0xffffffff), R_D[i][j][0], lane_id + 2);
+      R_Q[0][3] = __shfl_sync((0xffffffff), R_D[i][j][0], lane_id + 3);
+      R_Q[1][1] = __shfl_sync((0xffffffff), R_D[i][j][1], lane_id + 1);
+      R_Q[1][2] = __shfl_sync((0xffffffff), R_D[i][j][1], lane_id + 2);
+      R_Q[1][3] = __shfl_sync((0xffffffff), R_D[i][j][1], lane_id + 3);
 
-      // st.global.v4 128 bits.
+      // st.global.v4 128 bits. [Br,d]
       if (lane_id % 4 == 0) {
+        // (0/1)*32 + (0/1)*16=(0,16,32,48), + 0~7 -> 0~56
         int store_warp_regs_O_Br = warp_QP * (kMmaAtomM * kWarpTileSeqLenP ) + i * kMmaAtomM;
-        int store_lane_gmem_O_Br = O_tile_id * Br + store_warp_regs_O_Br + lane_id / 4;
+        int store_lane_gmem_O_Br = O_tile_id * Br + store_warp_regs_O_Br + lane_id / 4; // 0~7
+        // (0~3)*16 + (0/1)*8=(0,8,16,24,...,48,56)
         int store_warp_regs_O_d  = warp_KV * (kMmaAtomN * kWarpTileHeadDimV) + j * kMmaAtomN;
-        // The current tile actually covers all values in dimension d, therefore, 
-        // there is no need to add a bx*BN term to calculate the offset, as you 
-        // would in matrix multiplication.
-        int store_lane_gmem_O_d = store_warp_regs_O_d;
+        int store_lane_gmem_O_d = store_warp_regs_O_d; // (0~3)*16+(0/8)
         int store_gmem_O_addr_0 = (O_gmem_offset + (store_lane_gmem_O_Br + 0) * kHeadDim + 
                                    store_lane_gmem_O_d);
         int store_gmem_O_addr_1 = (O_gmem_offset + (store_lane_gmem_O_Br + 8) * kHeadDim + 
