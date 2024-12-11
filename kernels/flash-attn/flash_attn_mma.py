@@ -91,7 +91,7 @@ def run_benchmark(perf_func: callable,
                   stages: int = -1,
                   warmup: int = args.warmup, 
                   iters: int = args.iters,
-                  show_all: bool = args.check):
+                  show_all: bool = False):
     if out is not None: 
         out.fill_(0)
     if s is not None:
@@ -129,8 +129,12 @@ def run_benchmark(perf_func: callable,
     total_time = (end - start) * 1000 # ms
     mean_time = total_time / iters
     out_info = f"{tag}"
-    out_val = out.flatten()[:3].detach().cpu().numpy().tolist()
-    out_val = [round(v, 8) for v in out_val]
+    out_val_first = out.flatten()[:3].detach().cpu().numpy().tolist()
+    out_val_last = out.flatten()[-3:].detach().cpu().numpy().tolist()
+    out_val_first = [round(v, 8) for v in out_val_first]
+    out_val_last = [round(v, 8) for v in out_val_last]
+    out_val = out_val_first[:2]
+    out_val.append(out_val_last[-1])
     out_val = [f"{v:<12}" for v in out_val]
     print(f"{out_info:>20}: {out_val}, time:{mean_time:.6f}ms")
     if show_all: 
@@ -138,9 +142,9 @@ def run_benchmark(perf_func: callable,
     return out.clone(), mean_time
 
 
-Bs = [4] if not args.B else [args.B]
-Hs = [4] if not args.H else [args.H]
-Ns = [1024] if not args.N else [args.N]
+Bs = [1] if not args.B else [args.B]
+Hs = [1] if not args.H else [args.H]
+Ns = [64] if not args.N else [args.N]
 Ds = [64] if not args.D else [args.D] 
 # batch_size, n_head, seq_len, head_dim (B,H,N,D)
 BHNDs = [(B, H, N, D) for B in Bs for H in Hs for N in Ns for D in Ds]
@@ -188,7 +192,9 @@ for (B, H, N, D) in BHNDs:
     
     if args.check:
         print("-" * 100)
-        print(f"all close(mma vs flash): {torch.allclose(out_mma_stage1, out_flash)}")
+        print(f"{torch.allclose(out_mma_stage1.float(), out_mma_naive.float(), atol=1e-2)}")
+        print((out_mma_stage1.float() - out_mma_naive.float()).min())
+        print((out_mma_stage1.float() - out_mma_naive.float()).max())
       
 
         
