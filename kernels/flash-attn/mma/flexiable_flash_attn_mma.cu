@@ -449,7 +449,7 @@ flexiable_flash_attn_mma_stages_kernel(half* Q,
                              max(lane_block_row_max_old[i][0], block_row_max_new_0) : 
                              block_row_max_new_0);
       block_row_max_new_1 = (tile_K_seqlen > 0 ? 
-                             max(lane_block_row_max_old[i][1],  block_row_max_new_1) : 
+                             max(lane_block_row_max_old[i][1], block_row_max_new_1) : 
                              block_row_max_new_1);
       #pragma unroll
       for (int j = 0; j < kWarpTileSeqLenK; ++j) {
