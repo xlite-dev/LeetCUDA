@@ -79,12 +79,6 @@ __global__  void flash_attn_mma_naive_kernel(
         // 满足ldmatrix.x4的加载要求的布局，加载4个8x8，也就是一个16x16的矩阵。
         // [Naive] Load K, g->s, tid: 0, x:0, (row,col):(0,0)->(0,0)
         // [Naive] Load K, g->s, tid: 1, x:8, (row,col):(0,8)->(0,8)
-        // [Naive] Load K, g->s, tid: 2, x:16, (row,col):(0,16)->(16,0)
-        // [Naive] Load K, g->s, tid: 3, x:24, (row,col):(0,24)->(16,8)
-        // [Naive] Load K, g->s, tid: 4, x:32, (row,col):(0,32)->(32,0)
-        // [Naive] Load K, g->s, tid: 5, x:40, (row,col):(0,40)->(32,8)
-        // [Naive] Load K, g->s, tid: 6, x:48, (row,col):(0,48)->(48,0)
-        // [Naive] Load K, g->s, tid: 7, x:56, (row,col):(0,56)->(48,8)
         // [Naive] Load K, g->s, tid: 8, x:64, (row,col):(1,0)->(1,0)
         // [Naive] Load K, g->s, tid: 9, x:72, (row,col):(1,8)->(1,8)
         // [Naive] Load K, g->s, tid: 10, x:80, (row,col):(1,16)->(17,0)
@@ -92,11 +86,6 @@ __global__  void flash_attn_mma_naive_kernel(
         // x是8的倍数，因此这里结果为 0,8
         int new_dim_x = dim_x % 16; 
         int new_dim_y = ((dim_y / 16) * (d / 16) * 16) + (dim_x / 16 * 16) + (dim_y % 16);
-        // {
-        //   printf("[Naive] Load K, g->s, tid: %d, x:%d, (row,col):(%d,%d)->(%d,%d)\n", 
-        //           threadIdx.x, x, dim_y, dim_x, new_dim_y, new_dim_x);
-        // }
-
         LDST128BITS(Kj[new_dim_y * 16 + new_dim_x]) = LDST128BITS(
           K[qkv_offset + (j * tile_size) + x]);
       }
@@ -131,15 +120,6 @@ __global__  void flash_attn_mma_naive_kernel(
             &Kj[(len * d) + (laneId % 16) * 16 + (laneId / 16) * 8 + (k * 16 * 16)]);
           // be careful "not 0 1 2 3"
           LDMATRIX_X4(RB[0], RB[2], RB[1], RB[3], Kj_lane_addr);
-
-          float2 v_reg_0 = __half22float2(HALF2(RB[0]));
-          float2 v_reg_1 = __half22float2(HALF2(RB[1]));
-          float2 v_reg_2 = __half22float2(HALF2(RB[2]));
-          float2 v_reg_3 = __half22float2(HALF2(RB[3]));
-          int row_0 = int(v_reg_0.x * 64.f) - 1;
-          int row_1 = int(v_reg_1.x * 64.f) - 1;
-          int row_2 = int(v_reg_2.x * 64.f) - 1;
-          int row_3 = int(v_reg_3.x * 64.f) - 1;
 
           // 16x16x16 wmma *(16x8x16 mma 0)
           HMMA16816(RC[(len / 16) * 2 + 0][0], RC[(len / 16) * 2 + 0][1],
@@ -364,8 +344,6 @@ void flash_attn_mma_naive(
 
   dim3 grid(B, nh);  // batch_size x num_heads
   dim3 block(128);   // 4 Warps per block
-
-  // cudaStream_t stream = at::cuda::getCurrentCUDAStream();
 
   if (d == 64) {
     flash_attn_mma_naive_kernel<Bc, Br, 64><<<
