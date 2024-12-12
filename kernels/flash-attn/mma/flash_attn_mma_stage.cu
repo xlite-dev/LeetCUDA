@@ -57,7 +57,7 @@ flash_attn_mma_stages_kernel(half* Q,
   static_assert(kPad >= 0 && kPad % 8 == 0); // 0,8,16
   constexpr int Br = kMmaAtomM * kMmaTileSeqLenQ * kWarpTileSeqLenQ; // 16*2*2=64
   constexpr int Bc = kMmaAtomN * kMmaTileSeqLenK * kWarpTileSeqLenK; // 8*4*2=64
-  constexpr int KNumThreads = WARP_SIZE * kMmaTileSeqLenQ * kMmaTileSeqLenK; // 32*2*4=256, num threads
+  constexpr int kNumThreads = WARP_SIZE * kMmaTileSeqLenQ * kMmaTileSeqLenK; // 32*2*4=256, num threads
   // Now, N must be mutliples of Bc(32/64) for KV tiling across seqlen.
   const int Tc = div_ceil(QKV_seqlen, Bc); // Tc K^T_tile[d,Bc]
   const float scale = 1.0f / sqrt((float) kHeadDim);
@@ -91,14 +91,14 @@ flash_attn_mma_stages_kernel(half* Q,
   const int O_gmem_offset = Q_gmem_offset; // O [seqlen,d]
 
   // Mapping Q gmem -> tid -> smem, Q[Br,d]=[64,64 or 128], 256 threads.
-  int load_smem_Q_Br = (tid / (KNumThreads / Br)); // Br 64, tid / 4, row 0~64
-  int load_smem_Q_d  = (tid % (KNumThreads / Br)) * (kHeadDim / (KNumThreads / Br)); // (tid % 4) * 16, 0,16,32,48
+  int load_smem_Q_Br = (tid / (kNumThreads / Br)); // Br 64, tid / 4, row 0~64
+  int load_smem_Q_d  = (tid % (kNumThreads / Br)) * (kHeadDim / (kNumThreads / Br)); // (tid % 4) * 16, 0,16,32,48
   // Mapping K gmem -> tid -> smem, K^T[d,Bc]=[64 or 128,64], 256 threads.
-  int load_smem_K_d  = (tid / (KNumThreads / kHeadDim)); // d 64, tid / 4, row 0~64
-  int load_smem_K_Bc = (tid % (KNumThreads / kHeadDim)) * (Bc / (KNumThreads / kHeadDim)); // (tid % 4) * 16, 0,16,32,48
+  int load_smem_K_d  = (tid / (kNumThreads / kHeadDim)); // d 64, tid / 4, row 0~64
+  int load_smem_K_Bc = (tid % (kNumThreads / kHeadDim)) * (Bc / (kNumThreads / kHeadDim)); // (tid % 4) * 16, 0,16,32,48
   // Mapping V gmem -> tid -> smem, V[Bc,d]=[64,64 or 128], 256 threads.
-  int load_smem_V_Bc = (tid / (KNumThreads / Bc)); // Bc 64, tid / 4, row 0~64
-  int load_smem_V_d  = (tid % (KNumThreads / Bc)) * (kHeadDim / (KNumThreads / Bc)); // (tid % 4) * 16, 0,16,32,48
+  int load_smem_V_Bc = (tid / (kNumThreads / Bc)); // Bc 64, tid / 4, row 0~64
+  int load_smem_V_d  = (tid % (kNumThreads / Bc)) * (kHeadDim / (kNumThreads / Bc)); // (tid % 4) * 16, 0,16,32,48
   // global Q row of current head for tile [Br,d] per block.
   int load_gmem_Q_Br = Q_tile_id * Br + load_smem_Q_Br; 
   if (load_gmem_Q_Br >= QKV_seqlen) return;
@@ -167,7 +167,7 @@ flash_attn_mma_stages_kernel(half* Q,
     uint32_t load_smem_Q_ptr = (smem_Q_base_ptr + (
       load_smem_Q_Br * (kHeadDim + kPad) + load_smem_Q_d) * sizeof(half));
     #pragma unroll
-    for (int i = 0; i < (kHeadDim / (KNumThreads / Br)); i += 8) {
+    for (int i = 0; i < (kHeadDim / (kNumThreads / Br)); i += 8) {
       CP_ASYNC_CG(load_smem_Q_ptr + i * 2, &Q[load_gmem_Q_addr + i], 16);
     }
     CP_ASYNC_COMMIT_GROUP();
@@ -187,7 +187,7 @@ flash_attn_mma_stages_kernel(half* Q,
                            load_smem_K_d * (Bc + kPad) + 
                            load_smem_K_Bc) * sizeof(half));
       #pragma unroll
-      for (int i = 0; i < (Bc / (KNumThreads / kHeadDim)); i += 8) {
+      for (int i = 0; i < (Bc / (kNumThreads / kHeadDim)); i += 8) {
         CP_ASYNC_CG(load_smem_K_ptr + i * 2, &K[load_gmem_K_addr + i], 16);
       }
       CP_ASYNC_COMMIT_GROUP();
@@ -228,7 +228,7 @@ flash_attn_mma_stages_kernel(half* Q,
                              load_smem_V_d) * sizeof(half)
         );
         #pragma unroll
-        for (int i = 0; i < (kHeadDim / (KNumThreads / Bc)); i += 8) {
+        for (int i = 0; i < (kHeadDim / (kNumThreads / Bc)); i += 8) {
           CP_ASYNC_CG(load_smem_V_ptr + i * 2, &V[load_gmem_V_addr + i], 16);
         }
         CP_ASYNC_COMMIT_GROUP();
@@ -247,7 +247,7 @@ flash_attn_mma_stages_kernel(half* Q,
                              load_smem_K_Bc) * sizeof(half)
         );
         #pragma unroll
-        for (int i = 0; i < (Bc / (KNumThreads / kHeadDim)); i += 8) {
+        for (int i = 0; i < (Bc / (kNumThreads / kHeadDim)); i += 8) {
           CP_ASYNC_CG(load_smem_K_ptr + i * 2, &K[load_gmem_K_addr + i], 16);
         }
         CP_ASYNC_COMMIT_GROUP();
@@ -271,7 +271,7 @@ flash_attn_mma_stages_kernel(half* Q,
                              load_smem_K_d * (Bc + kPad) + 
                              load_smem_K_Bc) * sizeof(half));
         #pragma unroll
-        for (int i = 0; i < (Bc / (KNumThreads / kHeadDim)); i += 8) {
+        for (int i = 0; i < (Bc / (kNumThreads / kHeadDim)); i += 8) {
           CP_ASYNC_CG(load_smem_K_ptr + i * 2, &K[load_gmem_K_addr + i], 16);
         }
         CP_ASYNC_COMMIT_GROUP();
@@ -289,7 +289,7 @@ flash_attn_mma_stages_kernel(half* Q,
                              load_smem_V_d) * sizeof(half)
         );
         #pragma unroll
-        for (int i = 0; i < (kHeadDim / (KNumThreads / Bc)); i += 8) {
+        for (int i = 0; i < (kHeadDim / (kNumThreads / Bc)); i += 8) {
           CP_ASYNC_CG(load_smem_V_ptr + i * 2, &V[load_gmem_V_addr + i], 16);
         }
         CP_ASYNC_COMMIT_GROUP();
