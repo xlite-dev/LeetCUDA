@@ -789,7 +789,7 @@ void launch_flash_attn_mma_stages(
   constexpr int kWarpTileHeadDimV = (kHeadDim / (kMmaAtomN*kMmaTileHeadDimV));
   constexpr int Br = kMmaAtomM * kMmaTileSeqLenQ * kWarpTileSeqLenQ; // 16*2*2=64
   constexpr int Bc = kMmaAtomN * kMmaTileSeqLenK * kWarpTileSeqLenK; // 8*4*2=64
-  constexpr int kPad = 0;
+  constexpr int kPad = 8;
 
   // Calculate SRAM size needed per block, Q,K,V,S smem size
   const int smem_max_size = ((Br * (kHeadDim + kPad)) + 
