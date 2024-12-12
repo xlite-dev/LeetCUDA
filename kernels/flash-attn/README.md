@@ -6,11 +6,41 @@
 
 - [X] flash_attn_cuda_kernel (F32)
 - [x] flash_attn_mma_naive_kernel (ldmatrix + MMA)
-- [X] flash_attn_mma_stage_kernel (ldmatrix + MMA, Multi-Stages, Tile MMA, Tile Warp, Copy Async, Collective Store)
+- [X] flash_attn_mma_stage_kernel (ldmatrix + MMA, Stages, Tile MMA/Warp, Copy Async, Collective Store, SMEM Padding)
+
+## Kernel 示例
+- flash_attn_mma_stage_kernel:
+```C++
+template<
+         const int kHeadDim,          // Headdim, 32,64,128     
+         const int kMmaAtomM,         // MMA Atom M, 16
+         const int kMmaAtomN,         // MMA Atom N, 8
+         const int kMmaAtomK,         // MMA Atom K, 16
+         const int kMmaTileSeqLenQ,   // 2, more MMA(warp), M=16*2=32, Q@K^T=[Br(M), d(K)]@[d(K),  Bc(N)]  
+         const int kMmaTileSeqLenK,   // 4, more MMA(warp), N=8*4= 32, Q@K^T=[Br(M), d(K)]@[d(K),  Bc(N)]    
+         const int kMmaTileSeqLenP,   // 2, more MMA(warp), M=16*2=32, P@V  =[Br(M),Bc(K)]@[Bc(K), d(N) ]
+         const int kMmaTileHeadDimV,  // 4, more MMA(warp), N=8*4= 32, P@V  =[Br(M),Bc(K)]@[Bc(K), d(N) ]       
+         const int kWarpTileSeqLenQ,  // 2, more values, M, Br=32*2=64, matmul M 
+         const int kWarpTileSeqLenK,  // 2, more values, N, Bc=32*2=64, matmul N
+         const int kWarpTileSeqLenP,  // 2, more values, M, Br=32*2=64, matmul M
+         const int kWarpTileHeadDimV, // 2, more values, N, d=32*(1|2|3|4|...)=32|64|96|128|...
+         const int kStage,            // Multi-Stages, only support 1/2.
+         const int kPad               // 0,8
+         >
+__global__ void __launch_bounds__(
+  WARP_SIZE * kMmaTileSeqLenQ * kMmaTileSeqLenK) 
+flash_attn_mma_stages_kernel(half* Q, 
+                             half* K, 
+                             half* V, 
+                             half* O, 
+                             int QKV_seqlen) {
+}
+```
+
 
 本仓库FlashAttention仅用于学习CUDA编程，考虑性能最优请使用FlashAttention官方版本：[flash-attention](https://github.com/Dao-AILab/flash-attention)
 
-### 运行测试   
+## 运行测试   
 ```bash
 # 只测试Ada架构 不指定默认编译所有架构 耗时较长: Volta, Ampere, Ada, Hopper, ...
 export TORCH_CUDA_ARCH_LIST=Ada 
