@@ -1,4 +1,12 @@
-# FlashAttention
+# FlashAttention-2 MMA
+
+|CUDA Cores|Sliced K (Loop over K)|Tile Block (Br,Bc)|MMA (m16n8k16)|
+|:---:|:---:|:---:|:---:|
+|✔️|✔️|✔️|✔️|
+|Pack LDST (pack 128 bits)|SMEM Padding|Copy Async (cp.async.cg/ca)|Tile MMA (More Threads)
+|✔️|✔️|✔️|✔️|
+|Tile Warp (More Values)|Multi Stages(1/2)|Collective Store (Warp Shuffle & Reg Reuse)|Row Major (NN)|
+|✔️|✔️|✔️|✔️|
 
 ## 0x00 说明
 
