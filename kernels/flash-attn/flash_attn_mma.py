@@ -209,6 +209,19 @@ def naive_attn(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor):
     return y
 
 
+def check_all_close(out_flash: torch.Tensor, out_mma: torch.Tensor):
+    out_flash = out_flash.transpose(1, 2)
+    for i in range(int(N/8)):
+        if i < 4:
+            print("-" * 120)
+            print(f"out_flash[:, :,  {(i*8)}:{(i+1)*8}, :]:\n")
+            print(out_flash[:, :,  (i*8):(i+1)*8, :].float())
+            print(f"out_mma[:, :, {(i*8)}:{(i+1)*8}, :]:\n")
+            print(out_mma[:, :, (i*8):(i+1)*8, :].float())
+    print("-" * 120)
+    print(f"{torch.allclose(out_flash.float(), out_mma.float(), atol=1e-2)}")
+
+
 Bs = [1, 2, 4] if not args.B else [args.B]
 Hs = [1, 4, 8] if not args.H else [args.H]
 Ns = [1024, 2048] if not args.N else [args.N]
@@ -237,8 +250,6 @@ for (B, H, N, D) in BHNDs:
 
     # using fp16 Tesor Core MMA instruction
     out_mma_naive,     _ = run_benchmark(lib.flash_attn_mma_naive, q, k, v, "mma(naive)", o)
-    out_mma_stage1,    _ = run_benchmark(lib.flash_attn_mma_stages, q, tk, v, "mma(stage1)", o, stages=1)
-    out_mma_stage2,    _ = run_benchmark(lib.flash_attn_mma_stages, q, tk, v, "mma(stage2)", o, stages=2)
     out_mma_split_kv1, _ = run_benchmark(lib.flexiable_flash_attn_mma_stages_split_kv, q, tk, v, "mma(split-kv+stage1)", o, stages=1)
     out_mma_split_kv2, _ = run_benchmark(lib.flexiable_flash_attn_mma_stages_split_kv, q, tk, v, "mma(split-kv+stage2)", o, stages=2)
     out_flash,         _ = run_benchmark(flash_attn_func, fq, fk, fv, "(flash)")
@@ -249,13 +260,4 @@ for (B, H, N, D) in BHNDs:
     
     torch.cuda.synchronize()
     if args.check:
-        out_flash = out_flash.transpose(1, 2)
-        for i in range(int(N/8)):
-            if i < 4:
-                print("-" * 120)
-                print(f"out_flash[:, :,  {(i*8)}:{(i+1)*8}, :]:\n")
-                print(out_flash[:, :,  (i*8):(i+1)*8, :].float())
-                print(f"out_mma_stage1[:, :, {(i*8)}:{(i+1)*8}, :]:\n")
-                print(out_mma_stage1[:, :, (i*8):(i+1)*8, :].float())
-        print("-" * 120)
-        print(f"{torch.allclose(out_flash.float(), out_mma_naive.float(), atol=1e-2)}")
+        check_all_close(out_flash, out_mma_split_kv1)
