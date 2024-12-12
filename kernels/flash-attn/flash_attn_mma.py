@@ -62,7 +62,7 @@ lib = load(name='flash_attn_lib',
                './naive/flash_attn_cuda.cu',
                './mma/flash_attn_mma_naive.cu',
                './mma/flash_attn_mma_stage.cu',
-               './mma/flexiable_flash_attn_mma.cu',
+               './mma/flexiable_flash_attn_mma_split_kv.cu',
                './pybind/flash_attn.cc'
             ], 
            extra_cuda_cflags=[
@@ -236,15 +236,15 @@ for (B, H, N, D) in BHNDs:
         out_naive,  _ = run_benchmark(naive_attn, q, k, v, "naive(unfused)")
 
     # using fp16 Tesor Core MMA instruction
-    out_mma_naive,  _ = run_benchmark(lib.flash_attn_mma_naive, q, k, v, "mma(naive)", o)
-    out_mma_stage1, _ = run_benchmark(lib.flash_attn_mma_stages, q, tk, v, "mma(stage1)", o, stages=1)
-    out_mma_stage2, _ = run_benchmark(lib.flash_attn_mma_stages, q, tk, v, "mma(stage2)", o, stages=2)
-    out_mma_flex1,  _ = run_benchmark(lib.flexiable_flash_attn_mma_stages, q, tk, v, "mma(flex+stage1)", o, stages=1)
-    out_mma_flex2,  _ = run_benchmark(lib.flexiable_flash_attn_mma_stages, q, tk, v, "mma(flex+stage2)", o, stages=2)
-    out_flash,      _ = run_benchmark(flash_attn_func, fq, fk, fv, "(flash)")
+    out_mma_naive,     _ = run_benchmark(lib.flash_attn_mma_naive, q, k, v, "mma(naive)", o)
+    out_mma_stage1,    _ = run_benchmark(lib.flash_attn_mma_stages, q, tk, v, "mma(stage1)", o, stages=1)
+    out_mma_stage2,    _ = run_benchmark(lib.flash_attn_mma_stages, q, tk, v, "mma(stage2)", o, stages=2)
+    out_mma_split_kv1, _ = run_benchmark(lib.flexiable_flash_attn_mma_stages_split_kv, q, tk, v, "mma(split-kv+stage1)", o, stages=1)
+    out_mma_split_kv2, _ = run_benchmark(lib.flexiable_flash_attn_mma_stages_split_kv, q, tk, v, "mma(split-kv+stage2)", o, stages=2)
+    out_flash,         _ = run_benchmark(flash_attn_func, fq, fk, fv, "(flash)")
 
     if args.sdpa:
-        out_sdpa,   _ = run_benchmark(F.scaled_dot_product_attention, q, k, v, "(sdpa)")
+        out_sdpa,      _ = run_benchmark(F.scaled_dot_product_attention, q, k, v, "(sdpa)")
     print("-" * 120)
     
     torch.cuda.synchronize()
