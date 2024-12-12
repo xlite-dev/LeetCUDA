@@ -1,16 +1,16 @@
 ## ⚡️⚡️FlashAttention-2 MMA: Write FlashAttention using Tensor Cores with pure MMA PTX 
 
-|CUDA Cores|Sliced K (Loop over N/D)|Tile Block (Br,Bc)|MMA (m16n8k16)|
+|CUDA Cores|Sliced K (Loop over N/D)|Tile Block (Br, Bc, Bd)|MMA (m16n8k16)|
 |:---:|:---:|:---:|:---:|
 |✔️|✔️|✔️|✔️|
 |Pack LDST (pack 128 bits)|SMEM Padding|Copy Async (cp.async.cg/ca)|Tile MMA (More Threads)
 |✔️|✔️|✔️|✔️|
-|Tile Warp (More Values)|Multi Stages(1/2)|Collective Store (Warp Shuffle & Reg Reuse)|Row Major (NN)|
+|Tile Warp (More Values)|Multi Stages (1/2)|Collective Store (Warp Shuffle & Reg Reuse)|Row Major (NN)|
 |✔️|✔️|✔️|✔️|
 
 ## 📖 说明
 
-包含以下内容：
+包含以下内容：(持续优化中)
 
 - [X] flash_attn_cuda_kernel (F32)
 - [x] flash_attn_mma_naive_kernel (ldmatrix + MMA)
