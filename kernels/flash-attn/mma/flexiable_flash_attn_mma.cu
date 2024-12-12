@@ -195,14 +195,14 @@ flexiable_flash_attn_mma_stages_kernel(half* Q,
   }
 
   // wait Q and at least (kStage - 1) for K ready.
-  if constexpr (kStage > 1) {
-    CP_ASYNC_WAIT_GROUP(kStage - 2); // s2->0, s3->1, s4->2
-    __syncthreads(); 
-  }
+  // if constexpr (kStage > 1) {
+  //   CP_ASYNC_WAIT_GROUP(kStage - 2); // s2->0, s3->1, s4->2
+  //   __syncthreads(); 
+  // }
 
   // <loop over K seqlen>: for K^T[d,seqlen] with K^T_tile[d,Bc]
   // tile_K_seqlen: compute S_tile[Br,Bc] = Q@K^T = Q_tile[Br,d] * K^T[d,Bc]
-  #pragma unroll 1
+  #pragma unroll
   for (int tile_K_seqlen = 0; tile_K_seqlen < Tc; ++tile_K_seqlen) { 
     // TODO: process last tile_K_seqlen ? pad to multiple of 8.
     // s2 tn 0->0, 1->1, 2->0; s3 tn 0->0, 1->1, 2->2, 3->0;
@@ -251,9 +251,9 @@ flexiable_flash_attn_mma_stages_kernel(half* Q,
           CP_ASYNC_CG(load_smem_K_ptr + i * 2, &K[load_gmem_K_addr + i], 16);
         }
         CP_ASYNC_COMMIT_GROUP();
-      } else {
-        // wait all memory issues ready for last tile. (may not need)
-        CP_ASYNC_WAIT_GROUP(0);
+
+        // Wait curr Q and K tile ready, let curr V tile and next K tile copy async.
+        CP_ASYNC_WAIT_GROUP(kStage);
         __syncthreads(); 
       }
     } else {
@@ -295,7 +295,7 @@ flexiable_flash_attn_mma_stages_kernel(half* Q,
         CP_ASYNC_COMMIT_GROUP();
       }
 
-      // Wait K tile ready and let V tile copy async.
+      // Wait curr Q and K tile ready and let curr V tile copy async.
       CP_ASYNC_WAIT_GROUP(1); 
       __syncthreads(); 
     }
@@ -548,9 +548,9 @@ flexiable_flash_attn_mma_stages_kernel(half* Q,
 
     // Compute P[Br,Bc] @ V[Bc,d] = [Br,d] = [64, 64/128], partion Attention.
     // Here, we have to wait V ready before compute O = P @ V
-    if constexpr (kStage == 2) {
+    if constexpr (kStage > 1) {
       // NOTE: For kStage > 1, we have send V mem issues before K
-      CP_ASYNC_WAIT_GROUP(1); // s1->-1, s2->0, s3->1, s4->2
+      CP_ASYNC_WAIT_GROUP(1); 
     } else {
       CP_ASYNC_WAIT_GROUP(0);
     }
@@ -691,7 +691,7 @@ flexiable_flash_attn_mma_stages_kernel(half* Q,
 
     // NOTE: After compute P @ V, we have to wait next K tile ready in smem.
     // do not need to wait any things if kStage == 1.
-    if constexpr (kStage == 2) {
+    if constexpr (kStage > 1) {
       CP_ASYNC_WAIT_GROUP(0);
       __syncthreads(); 
     }
