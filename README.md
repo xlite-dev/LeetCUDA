@@ -42,6 +42,16 @@ Currently, on NVIDIA L20, RTX 4090 and RTX 3080 Laptop, compared with cuBLAS's d
 |Collective Store (Warp Shfl)|Row Major (NN)|Col Major (TN)| SGEMM FP32/TF32|
 |✔️|✔️|✔️|✔️|
 
+![flash-attn-mma](https://github.com/user-attachments/assets/3e20fdaa-9b31-4dcd-91d5-204905842dce)
+
+|CUDA Cores|Sliced K (Loop over N/D)|Tile Block (Br, Bc)|MMA (m16n8k16)|
+|:---:|:---:|:---:|:---:|
+|✔️|✔️|✔️|✔️|
+|Pack LDST (128 bits)|SMEM Padding|Copy Async |Tile MMA (More Threads)
+|✔️|✔️|✔️|✔️|
+|Tile Warp (More Values)|Multi Stages (1/2)|Collective Store (Shuffle)|Row Major (NN)|
+|✔️|✔️|✔️|✔️|
+
 ## ©️Citations🎉🎉
 
 ```BibTeX
