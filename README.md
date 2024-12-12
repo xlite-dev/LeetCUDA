@@ -49,7 +49,7 @@ Currently, on NVIDIA L20, RTX 4090 and RTX 3080 Laptop, compared with cuBLAS's d
 |✔️|✔️|✔️|✔️|
 |Pack LDST (128 bits)|SMEM Padding|Copy Async |Tile MMA (More Threads)
 |✔️|✔️|✔️|✔️|
-|Tile Warp (More Values)|Multi Stages (1/2)|Collective Store (Shuffle)|Row Major (NN)|
+|Tile Warp (More Values)|Multi Stages (1/2)|Collective Store (Shfl)|Row Major (NN)|
 |✔️|✔️|✔️|✔️|
 
 ## ©️Citations🎉🎉
