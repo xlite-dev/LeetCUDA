@@ -81,20 +81,6 @@ lib = load(name='flash_attn_lib',
 
 
 def get_mha_tflops(B, H, N, D, T=1.0):
-    """
-    计算标准多头注意力 MHA 机制的TFLOPS。
-    
-    参数:
-    B (int): 批次大小 (Batch size)
-    H (int): 头的数量 (Head num)
-    N (int): 序列长度 (Seq len)
-    D (int): 每个头的维度 (Head dim)
-    T (float): 执行时间 (秒)，默认为 1 秒
-    
-    返回:
-    float: 计算的TFLOPS
-    """
-    
     # 计算 Q @ K^T 的 FLOPs
     flops_qk = B * H * N * N * (2 * D - 1)
     
