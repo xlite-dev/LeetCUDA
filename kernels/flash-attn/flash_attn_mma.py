@@ -205,6 +205,7 @@ for (B, H, N, D) in BHNDs:
 
     if args.sdpa:
         out_sdpa,   _ = run_benchmark(F.scaled_dot_product_attention, q, k, v, "(sdpa)")
+    print("-" * 100)
     
     torch.cuda.synchronize()
     if args.check:
