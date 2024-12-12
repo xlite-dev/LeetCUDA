@@ -171,7 +171,7 @@ def run_benchmark(perf_func: callable,
     out_val = out_val_first[:2]
     out_val.append(out_val_last[-1])
     out_val = [f"{v:<12}" for v in out_val]
-    print(f"{out_info:>20}: {out_val}, time:{mean_time:<.6f}ms, TFLOPS:{TFLOPS:<6.2f}")
+    print(f"{out_info:>25}: {out_val}, time:{mean_time:<.6f}ms, TFLOPS:{TFLOPS:<6.2f}")
     if show_all: 
         print(out)
     time.sleep(0.05)
@@ -232,12 +232,12 @@ BHNDs = [(B, H, N, D) for B in Bs for H in Hs for N in Ns for D in Ds]
 seed = args.seed if args.seed else random.choice(range(10000))
 set_rand_seed(seed)
 print("-" * 120)
-print(" "* 10 + f"B: batch_size, H: n_head, N: seq_len, D: head_dim, "
+print(" "* 20 + f"B: batch_size, H: n_head, N: seq_len, D: head_dim, "
       f"seed: {seed}, Warmup: {args.warmup}, Iters: {args.iters}")
 
 for (B, H, N, D) in BHNDs:
     print("-" * 120)
-    print(" " * 25 + f"B={B}, H={H}, N={N}, D={D}, Warmup: {args.warmup}, Iters: {args.iters}")
+    print(" " * 30 + f"B={B}, H={H}, N={N}, D={D}, Warmup: {args.warmup}, Iters: {args.iters}")
     q, k, v, o = get_qkvo(B, H, N, D)
     tk = k.transpose(-2, -1).contiguous()
     fq = q.transpose(1,   2).contiguous()
