@@ -1,4 +1,4 @@
-# FlashAttention-2 MMA
+## ⚡️⚡️FlashAttention-2 MMA: Write FlashAttention using Tensor Cores with pure MMA PTX 
 
 |CUDA Cores|Sliced K (Loop over N/D)|Tile Block (Br,Bc)|MMA (m16n8k16)|
 |:---:|:---:|:---:|:---:|
@@ -8,7 +8,7 @@
 |Tile Warp (More Values)|Multi Stages(1/2)|Collective Store (Warp Shuffle & Reg Reuse)|Row Major (NN)|
 |✔️|✔️|✔️|✔️|
 
-## 0x00 说明
+## 📖 说明
 
 包含以下内容：
 
@@ -16,7 +16,7 @@
 - [x] flash_attn_mma_naive_kernel (ldmatrix + MMA)
 - [X] flash_attn_mma_stage_kernel (ldmatrix + MMA, Stages, Tile MMA/Warp, Copy Async, Collective Store, SMEM Padding)
 
-## Kernel 示例
+## 📖 Kernel 调用
 - flash_attn_mma_stage_kernel:
 ```C++
 template<
@@ -48,9 +48,10 @@ flash_attn_mma_stages_kernel(half* Q,
 
 本仓库FlashAttention仅用于学习CUDA编程，考虑性能最优请使用FlashAttention官方版本：[flash-attention](https://github.com/Dao-AILab/flash-attention)
 
-## 运行测试   
+## 📖 运行测试   
 ```bash
 # 只测试Ada架构 不指定默认编译所有架构 耗时较长: Volta, Ampere, Ada, Hopper, ...
+pip install flash-attn
 export TORCH_CUDA_ARCH_LIST=Ada 
 python3 flash_attn_mma.py
 ```
