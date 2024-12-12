@@ -40,11 +40,11 @@ template<
          >
 __global__ void __launch_bounds__(
   WARP_SIZE * kMmaTileSeqLenQ * kMmaTileSeqLenK) 
-flexiable_flash_attn_mma_stages_kernel(half* Q, 
-                                       half* K, 
-                                       half* V, 
-                                       half* O, 
-                                       int QKV_seqlen) {
+flexiable_flash_attn_mma_stages_split_kv_kernel(half* Q, 
+                                                half* K, 
+                                                half* V, 
+                                                half* O, 
+                                                int QKV_seqlen) {
   // Matmul Layout: Q[Br,d]@K^T[d,Bc] NN, P[Br,Bc]@V[Bc,d] NN, all row major.
   static_assert(kMmaAtomM == 16 && kMmaAtomN == 8 && kMmaAtomK == 16); // m16n8k16
   static_assert(kMmaTileSeqLenQ  == 2 && kMmaTileSeqLenK  == 4); // Q@K^T
@@ -193,12 +193,6 @@ flexiable_flash_attn_mma_stages_kernel(half* Q,
       CP_ASYNC_COMMIT_GROUP();
     }
   }
-
-  // wait Q and at least (kStage - 1) for K ready.
-  // if constexpr (kStage > 1) {
-  //   CP_ASYNC_WAIT_GROUP(kStage - 2); // s2->0, s3->1, s4->2
-  //   __syncthreads(); 
-  // }
 
   // <loop over K seqlen>: for K^T[d,seqlen] with K^T_tile[d,Bc]
   // tile_K_seqlen: compute S_tile[Br,Bc] = Q@K^T = Q_tile[Br,d] * K^T[d,Bc]
@@ -774,7 +768,7 @@ if (((T2).size(0) != (T1).size(0)) ||                \
 }
 
 template<const int kHeadDim, const int kStage>
-void launch_flexiable_flash_attn_mma_stages(
+void launch_flexiable_flash_attn_mma_stages_split_kv(
   torch::Tensor Q, torch::Tensor K, torch::Tensor V, torch::Tensor O) {
   constexpr int kMmaAtomM = 16;
   constexpr int kMmaAtomN = 8;
@@ -806,7 +800,7 @@ void launch_flexiable_flash_attn_mma_stages(
   dim3 block(WARP_SIZE * kMmaTileSeqLenQ * kMmaTileSeqLenK); // 8 warps per block
 
   cudaFuncSetAttribute(
-    flexiable_flash_attn_mma_stages_kernel<
+    flexiable_flash_attn_mma_stages_split_kv_kernel<
       kHeadDim, 
       kMmaAtomM, 
       kMmaAtomN, 
@@ -826,7 +820,7 @@ void launch_flexiable_flash_attn_mma_stages(
     98304
   );
 
-  flexiable_flash_attn_mma_stages_kernel<
+  flexiable_flash_attn_mma_stages_split_kv_kernel<
     kHeadDim, 
     kMmaAtomM, 
     kMmaAtomN, 
@@ -850,9 +844,11 @@ void launch_flexiable_flash_attn_mma_stages(
   );
 }
 
-void flexiable_flash_attn_mma_stages(torch::Tensor Q, torch::Tensor K, 
-                                     torch::Tensor V, torch::Tensor O, 
-                                     int stages) {
+void flexiable_flash_attn_mma_stages_split_kv(torch::Tensor Q, 
+                                              torch::Tensor K, 
+                                              torch::Tensor V, 
+                                              torch::Tensor O, 
+                                              int stages) {
   CHECK_TORCH_TENSOR_DTYPE(Q, torch::kHalf) // Q   [B,H,N,D]
   CHECK_TORCH_TENSOR_DTYPE(K, torch::kHalf) // K^T [B,H,D,N], transposed.
   CHECK_TORCH_TENSOR_DTYPE(V, torch::kHalf) // V   [B,H,N,D]
@@ -863,13 +859,13 @@ void flexiable_flash_attn_mma_stages(torch::Tensor Q, torch::Tensor K,
     switch (d)
     {
     case 64:
-      launch_flexiable_flash_attn_mma_stages<64,  2>(Q, K, V, O);
+      launch_flexiable_flash_attn_mma_stages_split_kv<64,  2>(Q, K, V, O);
       break;
     case 96:
-      launch_flexiable_flash_attn_mma_stages<96,  2>(Q, K, V, O);
+      launch_flexiable_flash_attn_mma_stages_split_kv<96,  2>(Q, K, V, O);
       break;
     case 128:
-      launch_flexiable_flash_attn_mma_stages<128, 2>(Q, K, V, O);
+      launch_flexiable_flash_attn_mma_stages_split_kv<128, 2>(Q, K, V, O);
       break;
     default:
       throw std::runtime_error("headdim not support!");
@@ -879,13 +875,13 @@ void flexiable_flash_attn_mma_stages(torch::Tensor Q, torch::Tensor K,
     switch (d)
     {
     case 64:
-      launch_flexiable_flash_attn_mma_stages<64,  1>(Q, K, V, O);
+      launch_flexiable_flash_attn_mma_stages_split_kv<64,  1>(Q, K, V, O);
       break;
     case 96:
-      launch_flexiable_flash_attn_mma_stages<96,  1>(Q, K, V, O);
+      launch_flexiable_flash_attn_mma_stages_split_kv<96,  1>(Q, K, V, O);
       break;
     case 128:
-      launch_flexiable_flash_attn_mma_stages<128, 1>(Q, K, V, O);
+      launch_flexiable_flash_attn_mma_stages_split_kv<128, 1>(Q, K, V, O);
       break;
     default:
       throw std::runtime_error("headdim not support!");
