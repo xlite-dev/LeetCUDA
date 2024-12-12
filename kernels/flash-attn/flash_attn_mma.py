@@ -62,7 +62,9 @@ lib = load(name='flash_attn_lib',
                './naive/flash_attn_cuda.cu',
                './mma/flash_attn_mma_naive.cu',
                './mma/flash_attn_mma_stage.cu',
-               './pybind/flash_attn.cc'], 
+               './mma/flexiable_flash_attn_mma.cu',
+               './pybind/flash_attn.cc'
+            ], 
            extra_cuda_cflags=[
                "-O3",
                 "-U__CUDA_NO_HALF_OPERATORS__",
@@ -201,6 +203,8 @@ for (B, H, N, D) in BHNDs:
     out_mma_naive,  _ = run_benchmark(lib.flash_attn_mma_naive, q, k, v, "mma(naive)", o)
     out_mma_stage1, _ = run_benchmark(lib.flash_attn_mma_stages, q, tk, v, "mma(stage1)", o, stages=1)
     out_mma_stage2, _ = run_benchmark(lib.flash_attn_mma_stages, q, tk, v, "mma(stage2)", o, stages=2)
+    out_mma_flex1,  _ = run_benchmark(lib.flexiable_flash_attn_mma_stages, q, tk, v, "mma(flex+stage1)", o, stages=1)
+    out_mma_flex2,  _ = run_benchmark(lib.flexiable_flash_attn_mma_stages, q, tk, v, "mma(flex+stage2)", o, stages=2)
     out_flash,      _ = run_benchmark(flash_attn_func, fq, fk, fv, "(flash)")
 
     if args.sdpa:
