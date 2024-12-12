@@ -198,8 +198,9 @@ Currently, on NVIDIA L20, RTX 4090 and RTX 3080 Laptop, compared with cuBLAS's d
 | ✔️ [hgemv_k32_f16](./kernels/hgemv/hgemv.cu)|f16|f16|[link](./kernels/hgemv/)|⭐️⭐️⭐️|  
 | ✔️ [hgemv_k128_f16x4](./kernels/hgemv/hgemv.cu)|f16|f16|[link](./kernels/hgemv/)|⭐️⭐️⭐️|  
 | ✔️ [hgemv_k16_f16](./kernels/hgemv/hgemv.cu)|f16|f16|[link](./kernels/hgemv/)|⭐️⭐️⭐️|  
-| ✔️ [flash_attn_f32](./kernels/flash-attn/flash_attn.cu)|f32|f32|[link](./kernels/flash-attn)|⭐️⭐️⭐️|  
-| ✔️ [flash_attn_mma_m16n8k16*](./kernels/flash-attn/flash_attn_mma.cu)|f16|f16|[link](./kernels/flash-attn)|⭐️⭐️⭐️|  
+| ✔️ [flash_attn_cuda](./kernels/flash-attn/naive/flash_attn_cuda.cu)|f32|f32|[link](./kernels/flash-attn)|⭐️⭐️⭐️|  
+| ✔️ [flash_attn_mma_naive*](./kernels/flash-attn/mma/flash_attn_mma_naive.cu)|f16|f16|[link](./kernels/flash-attn)|⭐️⭐️⭐️|  
+| ✔️ [flash_attn_mma_stage*](./kernels/flash-attn/mma/flash_attn_mma_stage.cu)|f16|f16|[link](./kernels/flash-attn)|⭐️⭐️⭐️|  
 | ✔️ [nms_f32](./kernels/nms/nms.cu)|f32|/|[link](./kernels/nms)|⭐️⭐️|  
 | ✔️ [notes v1(deprecated)](./kernels/notes-v1.cu)|f32|f32|/|⭐️|  
 
