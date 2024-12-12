@@ -12,8 +12,6 @@
 
 本仓库FlashAttention仅用于学习CUDA编程，考虑性能最优请使用FlashAttention官方版本：[flash-attention](https://github.com/Dao-AILab/flash-attention)
 
-## 📖 Kernel 调用
-- flash_attn_mma_stage_kernel:
 ```C++
 template<
          const int kHeadDim,          // Headdim, 32,64,128     
