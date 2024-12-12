@@ -22,6 +22,28 @@ using namespace nvcuda;
 // Q,K,V,O: [batch_size, num_heads, seq_len, head_dim], [B,H,N,d]
 // each block processes Q_tile with shape [Br,d] and full K,V with shape [N,d]
 // Currently, we only support Br = Bc = 64.
+
+// Split Q across MMA(Warps) and keep access KV for all MMA(Warps),
+// in order to reduce the comm between warps via smem and warp shuffle.
+
+// MMA = m16n8k16, Br=16x4=64, Bc=8x8=64, layout: 4 warps
+// |   64x64   |      warp_KV 0       |
+// | warp_QP 0 | MMA 0 ... MMA 0 (x8) |
+// | warp_QP 1 | MMA 1 ... MMA 1 (x8) |
+// | warp_QP 2 | MMA 2 ... MMA 2 (x8) |
+// | warp_QP 3 | MMA 3 ... MMA 3 (x8) |
+
+// MMA = m16n8k16, Br=16x8=128, Bc=8x16=128, layout: 8 warps
+// |  128x128  |      warp_KV 0        |
+// | warp_QP 0 | MMA 0 ... MMA 0 (x16) |
+// | warp_QP 1 | MMA 1 ... MMA 1 (x16) |
+// | warp_QP 2 | MMA 2 ... MMA 2 (x16) |
+// | warp_QP 3 | MMA 3 ... MMA 3 (x16) |
+// | warp_QP 4 | MMA 4 ... MMA 4 (x16) |
+// | warp_QP 5 | MMA 5 ... MMA 5 (x16) |
+// | warp_QP 6 | MMA 6 ... MMA 6 (x16) |
+// | warp_QP 7 | MMA 7 ... MMA 7 (x16) |
+
 template<
          const int kHeadDim,          // Headdim, 32,64,128     
          const int kMmaAtomM,         // MMA Atom M, 16
