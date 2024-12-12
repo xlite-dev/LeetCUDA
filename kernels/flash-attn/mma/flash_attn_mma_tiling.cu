@@ -653,7 +653,7 @@ flash_attn_mma_stages_kernel(half* Q,
                                                      block_row_max_new_1);
       block_row_max_old_0 = (tile_K_seqlen > 0 ? block_row_max_old_0 : 
                                                  block_row_max_new_0);                                       
-      block_row_max_old_1 = (tile_K_seqlen > 0 ? block_row_max_old_0 : 
+      block_row_max_old_1 = (tile_K_seqlen > 0 ? block_row_max_old_1 : 
                                                  block_row_max_new_1);  
 
       // rescale factor for O and l, exp(m_old - m)
@@ -689,7 +689,7 @@ flash_attn_mma_stages_kernel(half* Q,
       lane_block_row_sum_old[i][0] = (
         rescale_o_factor_0 * block_row_sum_old_0 + block_row_sum_new_0);
       lane_block_row_sum_old[i][1] = (
-        rescale_o_factor_0 * block_row_sum_old_1 + block_row_sum_new_1);
+        rescale_o_factor_1 * block_row_sum_old_1 + block_row_sum_new_1);
       // 2. Then, update block row max for each lane.
       lane_block_row_max_old[i][0] = block_row_max_new_0;
       lane_block_row_max_old[i][1] = block_row_max_new_1;
