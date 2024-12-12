@@ -8,8 +8,6 @@
 |Tile Warp (More Values)|Multi Stages (1/2)|Collective Store (Warp Shuffle & Reg Reuse)|Row Major (NN)|
 |✔️|✔️|✔️|✔️|
 
-## 📖 说明
-
 本仓库FlashAttention仅用于学习CUDA编程，考虑性能最优请使用FlashAttention官方版本：[flash-attention](https://github.com/Dao-AILab/flash-attention)
 
 ```C++
