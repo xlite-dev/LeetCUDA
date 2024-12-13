@@ -21,7 +21,6 @@ using namespace nvcuda;
 
 // Q,K,V,O: [batch_size, num_heads, seq_len, head_dim], [B,H,N,d]
 // each block processes Q_tile with shape [Br,d] and full K,V with shape [N,d]
-// Currently, we only support Br = Bc = 64.
 
 // Split Q across MMA(Warps) and keep access KV for all MMA(Warps),
 // in order to reduce the comm between warps via smem and warp shuffle.
@@ -49,14 +48,14 @@ template<
          const int kMmaAtomM,         // MMA Atom M, 16
          const int kMmaAtomN,         // MMA Atom N, 8
          const int kMmaAtomK,         // MMA Atom K, 16
-         const int kMmaTileSeqLenQ,   // 2, more MMA(warp), M=16*2=32, Q@K^T=[Br(M), d(K)]@[d(K),  Bc(N)]  
-         const int kMmaTileSeqLenK,   // 4, more MMA(warp), N=8*4= 32, Q@K^T=[Br(M), d(K)]@[d(K),  Bc(N)]    
-         const int kMmaTileSeqLenP,   // 2, more MMA(warp), M=16*2=32, P@V  =[Br(M),Bc(K)]@[Bc(K), d(N) ]
-         const int kMmaTileHeadDimV,  // 4, more MMA(warp), N=8*4= 32, P@V  =[Br(M),Bc(K)]@[Bc(K), d(N) ]       
-         const int kWarpTileSeqLenQ,  // 2, more values, M, Br=32*2=64, matmul M 
-         const int kWarpTileSeqLenK,  // 2, more values, N, Bc=32*2=64, matmul N
-         const int kWarpTileSeqLenP,  // 2, more values, M, Br=32*2=64, matmul M
-         const int kWarpTileHeadDimV, // 2, more values, N, d=32*(1|2|3|4|...)=32|64|96|128|...
+         const int kMmaTileSeqLenQ,   // 4, more MMA(warp), M=16*4=64, Q@K^T=[Br(M), d(K)]@[d(K),  Bc(N)]  
+         const int kMmaTileSeqLenK,   // 1, more MMA(warp), N=8*1 =8,  Q@K^T=[Br(M), d(K)]@[d(K),  Bc(N)]    
+         const int kMmaTileSeqLenP,   // 4, more MMA(warp), M=16*4=64, P@V  =[Br(M),Bc(K)]@[Bc(K), d(N) ]
+         const int kMmaTileHeadDimV,  // 1, more MMA(warp), N=8*1 =8,  P@V  =[Br(M),Bc(K)]@[Bc(K), d(N) ]       
+         const int kWarpTileSeqLenQ,  // 1, more values, M, Br=64*1=64, matmul M 
+         const int kWarpTileSeqLenK,  // 8, more values, N, Bc=8*8 =64, matmul N
+         const int kWarpTileSeqLenP,  // 1, more values, M, Br=64*1=64, matmul M
+         const int kWarpTileHeadDimV, // 8, more values, N, d=8*(1|2|3|4|...)=8|...|32|64|96|128|...
          const int kStage, 
          const int kPad
          >
@@ -69,17 +68,18 @@ flexiable_flash_attn_mma_stages_split_q_kernel(half* Q,
                                                int QKV_seqlen) {
   // Matmul Layout: Q[Br,d]@K^T[d,Bc] NN, P[Br,Bc]@V[Bc,d] NN, all row major.
   static_assert(kMmaAtomM == 16 && kMmaAtomN == 8 && kMmaAtomK == 16); // m16n8k16
-  static_assert(kMmaTileSeqLenQ  == 2 && kMmaTileSeqLenK  == 4); // Q@K^T
-  static_assert(kMmaTileSeqLenP  == 2 && kMmaTileHeadDimV == 4); // P@V
-  static_assert(kWarpTileSeqLenQ == 2 && kWarpTileSeqLenK == 2); // Q@K^T
-  // e.g, kWarpTileHeadDimV: 1->d 32, 2->d 64, 3->d 96, 4-> d 128, ..., etc.
-  static_assert(kWarpTileSeqLenP == 2 && kWarpTileHeadDimV == (
+  static_assert(kMmaTileSeqLenQ  == 4 && kMmaTileSeqLenK  == 1); // Q@K^T
+  static_assert(kMmaTileSeqLenP  == 4 && kMmaTileHeadDimV == 1); // P@V
+  static_assert(kWarpTileSeqLenQ == 1 && kWarpTileSeqLenK == 8); // Q@K^T
+  // kWarpTileHeadDimV: d=8*(1|2|3|4|...) = 8|...|32|64|96|128|..., etc.
+  // e.g, kWarpTileHeadDimV = 8 -> d = 8*8 = 64; 16 -> d = 8*16 = 128.
+  static_assert(kWarpTileSeqLenP == 1 && kWarpTileHeadDimV == (
     kHeadDim / (kMmaAtomN * kMmaTileHeadDimV))); // P@V
   static_assert(kStage > 0 && kStage < 3); // 1,2
   static_assert(kPad >= 0 && kPad % 8 == 0); // 0,8,16
-  constexpr int Br = kMmaAtomM * kMmaTileSeqLenQ * kWarpTileSeqLenQ; // 16*2*2=64
-  constexpr int Bc = kMmaAtomN * kMmaTileSeqLenK * kWarpTileSeqLenK; // 8*4*2=64
-  constexpr int kNumThreads = WARP_SIZE * kMmaTileSeqLenQ * kMmaTileSeqLenK; // 32*2*4=256, num threads
+  constexpr int Br = kMmaAtomM * kMmaTileSeqLenQ * kWarpTileSeqLenQ; // 16*4*1=64
+  constexpr int Bc = kMmaAtomN * kMmaTileSeqLenK * kWarpTileSeqLenK; //  8*1*8=64
+  constexpr int kNumThreads = WARP_SIZE * kMmaTileSeqLenQ * kMmaTileSeqLenK; // 32*4*1=128, num threads
   // Now, N must be mutliples of Bc(32/64) for KV tiling across seqlen.
   const int Tc = div_ceil(QKV_seqlen, Bc); // Tc K^T_tile[d,Bc]
   const float scale = 1.0f / sqrt((float) kHeadDim);
@@ -92,19 +92,24 @@ flexiable_flash_attn_mma_stages_split_q_kernel(half* Q,
   const int tid          = threadIdx.x;     // within block
   const int warp_id      = tid / WARP_SIZE; // 0~7 warp_id within block
   const int lane_id      = tid % WARP_SIZE; // 0~31
-  const int warp_QP      = warp_id % 2;     // 0,1
-  const int warp_KV      = warp_id / 2;     // 0,1,2,3
-  // The layout of 8 MMA(2x4) [before] kWarpTileSeqLenQxkWarpTileSeqLenK(2x2) -> 16x2,8x4=32x32:
-  // |  [32,32]  | warp_KV 0 | warp_KV 1 | warp_KV 2 | warp_KV 3 |
-  // | warp_QP 0 |-- MMA 0 --|-- MMA 2 --|-- MMA 4 --|-- MMA 6 --|
-  // | warp_QP 1 |-- MMA 1 --|-- MMA 3 --|-- MMA 5 --|-- MMA 7 --|
-  // The layout of 8 MMA(2x4)  [after] kWarpTileSeqLenQxkWarpTileSeqLenK(2x2) -> 32x2,32x2=64x64: 
-  // |  [64,64]  |    warp_KV 0    |    warp_KV 1    |    warp_KV 2    |    warp_KV 3    |
-  // | warp_QP 0 |-- MMA 0,MMA 0 --|-- MMA 2,MMA 2 --|-- MMA 4,MMA 4 --|-- MMA 6,MMA 6 --|
-  // | warp_QP 0 |-- MMA 0,MMA 0 --|-- MMA 2,MMA 2 --|-- MMA 4,MMA 4 --|-- MMA 6,MMA 6 --|
-  // | warp_QP 1 |-- MMA 1,MMA 1 --|-- MMA 3,MMA 2 --|-- MMA 5,MMA 5 --|-- MMA 7,MMA 7 --|
-  // | warp_QP 1 |-- MMA 1,MMA 1 --|-- MMA 3,MMA 2 --|-- MMA 5,MMA 5 --|-- MMA 7,MMA 7 --|
-  // gridDim.y = head_num, gridDim.z = N/Br = Tr.
+  const int warp_QP      = warp_id;         // 0,1,2,3
+  const int warp_KV      = 0;               // 0
+  // MMA Layout [Br,Bc]=[64,64], MMA = m16n8k16, Br=16x4=64, Bc=8x8=64, layout: 4 warps
+  // |   64x64   |      warp_KV 0       |
+  // | warp_QP 0 | MMA 0 ... MMA 0 (x8) |
+  // | warp_QP 1 | MMA 1 ... MMA 1 (x8) |
+  // | warp_QP 2 | MMA 2 ... MMA 2 (x8) |
+  // | warp_QP 3 | MMA 3 ... MMA 3 (x8) |
+  // MMA Layout [Br,Bc]=[128,128], MMA = m16n8k16, Br=16x8=128, Bc=8x16=128, layout: 8 warps
+  // |  128x128  |      warp_KV 0        |
+  // | warp_QP 0 | MMA 0 ... MMA 0 (x16) |
+  // | warp_QP 1 | MMA 1 ... MMA 1 (x16) |
+  // | warp_QP 2 | MMA 2 ... MMA 2 (x16) |
+  // | warp_QP 3 | MMA 3 ... MMA 3 (x16) |
+  // | warp_QP 4 | MMA 4 ... MMA 4 (x16) |
+  // | warp_QP 5 | MMA 5 ... MMA 5 (x16) |
+  // | warp_QP 6 | MMA 6 ... MMA 6 (x16) |
+  // | warp_QP 7 | MMA 7 ... MMA 7 (x16) |
   const int Q_gmem_offset = ((QKV_batch_id * gridDim.y * QKV_seqlen * kHeadDim) + 
                              (QKV_head_id * QKV_seqlen * kHeadDim)); // Q [seqlen,d]
   const int K_gmem_offset = ((QKV_batch_id * gridDim.y * kHeadDim * QKV_seqlen) + 
@@ -112,15 +117,15 @@ flexiable_flash_attn_mma_stages_split_q_kernel(half* Q,
   const int V_gmem_offset = Q_gmem_offset; // V [seqlen,d]
   const int O_gmem_offset = Q_gmem_offset; // O [seqlen,d]
 
-  // Mapping Q gmem -> tid -> smem, Q[Br,d]=[64,64 or 128], 256 threads.
-  int load_smem_Q_Br = (tid / (kNumThreads / Br)); // Br 64, tid / 4, row 0~64
-  int load_smem_Q_d  = (tid % (kNumThreads / Br)) * (kHeadDim / (kNumThreads / Br)); // (tid % 4) * 16, 0,16,32,48
-  // Mapping K gmem -> tid -> smem, K^T[d,Bc]=[64 or 128,64], 256 threads.
-  int load_smem_K_d  = (tid / (kNumThreads / kHeadDim)); // d 64, tid / 4, row 0~64
-  int load_smem_K_Bc = (tid % (kNumThreads / kHeadDim)) * (Bc / (kNumThreads / kHeadDim)); // (tid % 4) * 16, 0,16,32,48
-  // Mapping V gmem -> tid -> smem, V[Bc,d]=[64,64 or 128], 256 threads.
-  int load_smem_V_Bc = (tid / (kNumThreads / Bc)); // Bc 64, tid / 4, row 0~64
-  int load_smem_V_d  = (tid % (kNumThreads / Bc)) * (kHeadDim / (kNumThreads / Bc)); // (tid % 4) * 16, 0,16,32,48
+  // Mapping Q gmem -> tid -> smem, Q[Br,d]=[64,64 or 128], 128 threads.
+  int load_smem_Q_Br = (tid / (kNumThreads / Br)); // Br 64, tid / 2, row 0~64
+  int load_smem_Q_d  = (tid % (kNumThreads / Br)) * (kHeadDim / (kNumThreads / Br)); // (tid % 2) * 32, 0,32,...
+  // Mapping K gmem -> tid -> smem, K^T[d,Bc]=[64 or 128,64], 128 threads.
+  int load_smem_K_d  = (tid / (kNumThreads / kHeadDim)); // d 64, tid / 2, row 0~64
+  int load_smem_K_Bc = (tid % (kNumThreads / kHeadDim)) * (Bc / (kNumThreads / kHeadDim)); // (tid % 2) * 32, 0,32,...
+  // Mapping V gmem -> tid -> smem, V[Bc,d]=[64,64 or 128], 128 threads.
+  int load_smem_V_Bc = (tid / (kNumThreads / Bc)); // Bc 64, tid / 2, row 0~64
+  int load_smem_V_d  = (tid % (kNumThreads / Bc)) * (kHeadDim / (kNumThreads / Bc)); // (tid % 2) * 32, 0,32,...
   // global Q row of current head for tile [Br,d] per block.
   int load_gmem_Q_Br = Q_tile_id * Br + load_smem_Q_Br; 
   if (load_gmem_Q_Br >= QKV_seqlen) return;
@@ -142,10 +147,10 @@ flexiable_flash_attn_mma_stages_split_q_kernel(half* Q,
   half* S_tile_smem = V_tile_smem + V_tile_size; // for temp S=Q@K^T
   // TODO: KV may shared same smem to reduce smem usage for headdim>=256
   // half* V_tile_smem = K_tile_smem; // KV may shared same smem 8M/16M
-  // stage 2, no shared KV smem, Br=Bc=64,  d=64: 8M+(8M)*2+8M   =32M,  shared KV smem: 24M
-  // stage 2, no shared KV smem, Br=Bc=64, d=128: 16M+(16M)*2+16M=64M,  shared KV smem: 48M
-  // stage 2, no shared KV smem, Br=Bc=64, d=256: 32M+(32M)*2+32M=128M, shared KV smem: 96M
-  // stage 1, no shared KV smem, Br=Bc=64, d=256: 32M+(32M)*1+32M=96M,  shared KV smem: 64M
+  // stage 2, no shared KV smem, Br=Bc=64,  d=64: 8M+(8M)*2+8M+8M    =40M 
+  // stage 2, no shared KV smem, Br=Bc=64, d=128: 16M+(16M)*2+16M+16M=80M 
+  // stage 2, no shared KV smem, Br=Bc=64, d=256: 32M+(32M)*2+32M+32M=160M (not supported)
+  // stage 1, no shared KV smem, Br=Bc=64, d=256: 32M+(32M)*1+32M+32M=128M (not supported)
  
   uint32_t smem_Q_base_ptr = __cvta_generic_to_shared(Q_tile_smem);
   uint32_t smem_K_base_ptr = __cvta_generic_to_shared(K_tile_smem);
@@ -154,30 +159,27 @@ flexiable_flash_attn_mma_stages_split_q_kernel(half* Q,
 
   // --------------------- Registers/SMEM for thread block -------------------------
   // block m_old, l_old, store in lane, use float to keep precision.
-  float lane_block_row_max_old[kWarpTileSeqLenQ][2];
-  float lane_block_row_sum_old[kWarpTileSeqLenQ][2];
+  float lane_block_row_max_old[kWarpTileSeqLenQ][2]; // [1][2]
+  float lane_block_row_sum_old[kWarpTileSeqLenQ][2]; // [1][2]
   fill_2D_regs<float, kWarpTileSeqLenQ, 2>(lane_block_row_max_old, -INFINITY);
   fill_2D_regs<float, kWarpTileSeqLenQ, 2>(lane_block_row_sum_old, 0.0f);
-  // m[Br], l[Br], for the output of P[Br,Bc]=Q[Br,d]@K^T[d,Bc],
-  // 64x(4)x4=1024 bytes, 1M+1M=2M. TODO: 64x4=256, may use each 
-  // thread to store a max/sum value instead of using shared memory 
-  // and mapping based on thread ID and row number in Br.
-  __shared__ float block_row_max_new_smem[Br][kMmaTileSeqLenK]; 
-  __shared__ float block_row_sum_new_smem[Br][kMmaTileSeqLenK];
-  
+  // m[Br], l[Br], for the output of P[Br,Bc]=Q[Br,d]@K^T[d,Bc].
+  __shared__ float block_row_max_new_smem[Br][kMmaTileSeqLenK]; // [64][1]
+  __shared__ float block_row_sum_new_smem[Br][kMmaTileSeqLenK]; // [64][1]
+
   // ---------------------- Registers for S=Q@K^T/O=P@V ----------------------------
   // registers for QKV, S=Q[Br,d]@K[Bc,d]=[Br,Bc] and O=P[Br,Bc]@V[Bc,d]=[Br,d].
-  uint32_t R_Q[kWarpTileSeqLenQ][ 4];
-  uint32_t R_K[kWarpTileSeqLenK][ 2];
-  uint32_t R_V[kWarpTileHeadDimV][2];
+  uint32_t R_Q[kWarpTileSeqLenQ][ 4]; // [1][4]
+  uint32_t R_K[kWarpTileSeqLenK][ 2]; // [8][2]
+  uint32_t R_V[kWarpTileHeadDimV][2]; // [8][2]
   // registers for current tile_K_seqlen within, [64,64] = S_tile[Br,Bc]
   // = Q_tile[Br,d] * K[Bc,d], each thread hold 2x32 bits regs.
-  uint32_t R_S[kWarpTileSeqLenQ][kWarpTileSeqLenK][ 2]; // [2][2][2]
+  uint32_t R_S[kWarpTileSeqLenQ][kWarpTileSeqLenK][ 2]; // [1][8][2]
   // registers for tile_K_seqlen O=PV[Br,d]=P@V, [2][2/4][2], 8 or 16 regs.
   // TODO: may reuse R_D as R_O? kWarpTileSeqLenP=kWarpTileSeqLenQ.
-  uint32_t R_O[kWarpTileSeqLenP][kWarpTileHeadDimV][2]; // [2][2/4][2]
+  uint32_t R_O[kWarpTileSeqLenP][kWarpTileHeadDimV][2]; // [1][8][2]
   // registers final Output [D]=final rescale(R_O), [2][2/4][2], 8 or 16 regs.
-  uint32_t R_D[kWarpTileSeqLenP][kWarpTileHeadDimV][2]; // [2][2/4][2]
+  uint32_t R_D[kWarpTileSeqLenP][kWarpTileHeadDimV][2]; // [1][8][2]
   fill_3D_regs<uint32_t, kWarpTileSeqLenQ, kWarpTileSeqLenK,  2>(R_S, 0);
   fill_3D_regs<uint32_t, kWarpTileSeqLenP, kWarpTileHeadDimV, 2>(R_D, 0);
   fill_3D_regs<uint32_t, kWarpTileSeqLenP, kWarpTileHeadDimV, 2>(R_O, 0);
@@ -217,14 +219,14 @@ flexiable_flash_attn_mma_stages_split_q_kernel(half* Q,
   }
 
   // wait Q and at least (kStage - 1) for K ready.
-  // if constexpr (kStage > 1) {
-  //   CP_ASYNC_WAIT_GROUP(kStage - 2); // s2->0, s3->1, s4->2
-  //   __syncthreads(); 
-  // }
+  if constexpr (kStage > 1) {
+    CP_ASYNC_WAIT_GROUP(kStage - 2); // s2->0, s3->1, s4->2
+    __syncthreads(); 
+  }
 
   // <loop over K seqlen>: for K^T[d,seqlen] with K^T_tile[d,Bc]
   // tile_K_seqlen: compute S_tile[Br,Bc] = Q@K^T = Q_tile[Br,d] * K^T[d,Bc]
-  #pragma unroll
+  #pragma unroll 1
   for (int tile_K_seqlen = 0; tile_K_seqlen < Tc; ++tile_K_seqlen) { 
     // TODO: process last tile_K_seqlen ? pad to multiple of 8.
     // s2 tn 0->0, 1->1, 2->0; s3 tn 0->0, 1->1, 2->2, 3->0;
@@ -273,10 +275,6 @@ flexiable_flash_attn_mma_stages_split_q_kernel(half* Q,
           CP_ASYNC_CG(load_smem_K_ptr + i * 2, &K[load_gmem_K_addr + i], 16);
         }
         CP_ASYNC_COMMIT_GROUP();
-
-        // Wait curr Q and K tile ready, let curr V tile and next K tile copy async.
-        CP_ASYNC_WAIT_GROUP(kStage);
-        __syncthreads(); 
       }
     } else {
       // If no stages, kStage = 1, we have to load current K tile
@@ -345,8 +343,8 @@ flexiable_flash_attn_mma_stages_split_q_kernel(half* Q,
 
       // smem -> reg, load k16n8 from smem K, offset d according tile_K_d.
       // ldmatrix.x2.trans for K_tile_smem, [kMmaAtomK,Bc] from [d,Bc]=[K,N]
-      #pragma unroll
-      for (int j = 0; j < kWarpTileSeqLenK; ++j) {
+     #pragma unroll
+     for (int j = 0; j < kWarpTileSeqLenK; ++j) {
         int warp_smem_K_Bc = warp_KV * (kMmaAtomN * kWarpTileSeqLenK) + j * kMmaAtomN;  // (N)
         int lane_smem_K_d  = tile_K_d * kMmaAtomK + lane_id % 16; // 0~15 (K);
         int lane_smem_K_Bc = warp_smem_K_Bc; // 0(N)
@@ -372,33 +370,16 @@ flexiable_flash_attn_mma_stages_split_q_kernel(half* Q,
     } // end loop over d, S=Q@K^T
     __syncthreads();
 
-    // TODO: May reuse K smem for V, for example, stages 2, stage
-    // 0 K smem can be reuse as V smem 0 because we do not need 
-    // K values on stage 0 K smem anymore.
+    // MMA = m16n8k16, Br=16x4=64, Bc=8x8=64, layout: 4 warps
+    // |   64x64   |      warp_KV 0       |
+    // | warp_QP 0 | MMA 0 ... MMA 0 (x8) |
+    // | warp_QP 1 | MMA 1 ... MMA 1 (x8) |
+    // | warp_QP 2 | MMA 2 ... MMA 2 (x8) |
+    // | warp_QP 3 | MMA 3 ... MMA 3 (x8) |
 
-    // Now, we got a computed tile of S[Br,N], tile with shape [Br,Bc].
-    // Assume [Br, Bc] = [64, 64] = 64x64 = 4096 values. Each thread holds
-    // a portion of this [Br, Bc] block, specifically, R_S = R_S[2][2][2]. 
-    // This means that each Warp (MMA) repeats 2 times in the N direction 
-    // for both Q and K, resulting in 2x2 = 4 sets of MMA results. Each set 
-    // of results is stored in 2 32-bit registers, with each register holding 
-    // 2 half-precision values. In other words, each thread stores (4x2)x2 = 16 
-    // half-precision values. With a total of 256 threads, the total number of 
-    // half-precision values is 256x16 = 4096, which exactly matches the total 
-    // [Br, Bc] = [64, 64] values.
-
-    // The layout of 8 MMA m16n8k16 (2x4)  [after] kWarpTileQPxkWarpTileKV(2x2) -> 32x2,32x2=64x64: 
-    // |  [64,64]  |    warp_KV 0    |    warp_KV 1    |    warp_KV 2    |    warp_KV 3    |
-    // | warp_QP 0 |-- MMA 0,MMA 0 --|-- MMA 2,MMA 2 --|-- MMA 4,MMA 4 --|-- MMA 6,MMA 6 --| row max
-    // | warp_QP 0 |-- MMA 0,MMA 0 --|-- MMA 2,MMA 2 --|-- MMA 4,MMA 4 --|-- MMA 6,MMA 6 --| row max
-    // | warp_QP 1 |-- MMA 1,MMA 1 --|-- MMA 3,MMA 3 --|-- MMA 5,MMA 5 --|-- MMA 7,MMA 7 --| row max
-    // | warp_QP 1 |-- MMA 1,MMA 1 --|-- MMA 3,MMA 3 --|-- MMA 5,MMA 5 --|-- MMA 7,MMA 7 --| row max
-
-    // WIP: online safe softmax, warp/block reduce max/sum, row wise
-    // warp 0/2/4/6, [0][2] row 0~15,  col 0/8/16/32, max, [1][2] row 16~31, col 0/8/16/32, max
-    // warp 1/3/5/7, [0][2] row 32~47, col 0/8/16/32, max, [1][2] row 48~61, col 0/8/16/32, max
-    float lane_row_max_new[kWarpTileSeqLenQ][2]; 
-    float lane_row_sum_new[kWarpTileSeqLenQ][2]; 
+    // Online safe softmax, warp/block reduce max/sum, row wise
+    float lane_row_max_new[kWarpTileSeqLenQ][2]; // [1][2]
+    float lane_row_sum_new[kWarpTileSeqLenQ][2]; // [1][2]
     fill_2D_regs<float, kWarpTileSeqLenQ, 2>(lane_row_max_new, -INFINITY);
     fill_2D_regs<float, kWarpTileSeqLenQ, 2>(lane_row_sum_new, 0.0f);
 
@@ -434,9 +415,9 @@ flexiable_flash_attn_mma_stages_split_q_kernel(half* Q,
       // Warp level reduce max, warp_size = 4
       // Each thread contains the maximum of 2 rows of Br, 
       // and only the values of T0, T4, ..., T28 are used.
-      // Br, row_id = warp_QP<0|1> * 32 + i<0|1> * 16 + 0 * 8 + (lane / 4) <0~7>
+      // Br, row_id = warp_QP<0~3> * 32 + i<0> * 16 + 0 * 8 + (lane / 4) <0~7>
       lane_row_max_new[i][0] = warp_reduce_max<float, 4>(lane_row_max_new[i][0]);
-      // Br, row_id = warp_QP<0|1> * 32 + i<0|1> * 16 + 1 * 8 + (lane / 4) <8~15>
+      // Br, row_id = warp_QP<0~3> * 32 + i<0> * 16 + 1 * 8 + (lane / 4) <8~15>
       lane_row_max_new[i][1] = warp_reduce_max<float, 4>(lane_row_max_new[i][1]);
 
       if (lane_id % 4 == 0) { // only need T0,T4,...,T28
@@ -448,13 +429,14 @@ flexiable_flash_attn_mma_stages_split_q_kernel(half* Q,
     } // end for kWarpTileSeqLenQ
     __syncthreads();
 
-    // Block level reduce max, row wise, 64x4=256
-    float wrp_row_max_new = (
-      block_row_max_new_smem[tid / kMmaTileSeqLenK][tid % kMmaTileSeqLenK]); // [0~63][0~4]
-    float blk_row_max_new = warp_reduce_max<float, 4>(wrp_row_max_new);
-    block_row_max_new_smem[tid / kMmaTileSeqLenK][tid % kMmaTileSeqLenK] = (
-      blk_row_max_new);
-    __syncthreads();
+    // // Block level reduce max, row wise, 64x4=256. Warp reduce operation
+    // // is faster than atomaicMaxFloat in my tests.
+    // float wrp_row_max_new = (
+    //   block_row_max_new_smem[tid / kMmaTileSeqLenK][tid % kMmaTileSeqLenK]); // [0~63][0~4]
+    // float blk_row_max_new = warp_reduce_max<float, 4>(wrp_row_max_new);
+    // block_row_max_new_smem[tid / kMmaTileSeqLenK][tid % kMmaTileSeqLenK] = (
+    //   blk_row_max_new);
+    // __syncthreads();
 
     // Exp sum and mul scale_factor for [Br,Bc] tile, Thread -> Warp -> Block.
     #pragma unroll
@@ -466,22 +448,22 @@ flexiable_flash_attn_mma_stages_split_q_kernel(half* Q,
       // Br 1, row_id, 8~15, 24~31, 40~47, 56~63;
       float block_row_max_new_1 = block_row_max_new_smem[
         warp_QP * 32 + i * 16 + 1 * 8 + (lane_id / 4)][0];
-      // m_new = max(m_old, m_new)
-      block_row_max_new_0 = (tile_K_seqlen > 0 ?
-                             max(lane_block_row_max_old[i][0], block_row_max_new_0) : 
-                             block_row_max_new_0);
-      block_row_max_new_1 = (tile_K_seqlen > 0 ? 
-                             max(lane_block_row_max_old[i][1], block_row_max_new_1) : 
-                             block_row_max_new_1);
+  
+      float block_row_max_old_0 = lane_block_row_max_old[i][0];
+      float block_row_max_old_1 = lane_block_row_max_old[i][1];
+      // Apply m_new = max(m_old, m_new) here.
+      block_row_max_new_0 = max(block_row_max_old_0, block_row_max_new_0);
+      block_row_max_new_1 = max(block_row_max_old_1, block_row_max_new_1);
+
       #pragma unroll
       for (int j = 0; j < kWarpTileSeqLenK; ++j) {
         float2 t_reg_S_0 = __half22float2(HALF2(R_S[i][j][0])); // 0~7  {c0, c1}
         float2 t_reg_S_1 = __half22float2(HALF2(R_S[i][j][1])); // 8~15 {c2, c3}
-        // P = Exp(S - m_new)
-        t_reg_S_0.x = __expf(t_reg_S_0.x * scale - block_row_max_new_0);
-        t_reg_S_0.y = __expf(t_reg_S_0.y * scale - block_row_max_new_0);
-        t_reg_S_1.x = __expf(t_reg_S_1.x * scale - block_row_max_new_1);
-        t_reg_S_1.y = __expf(t_reg_S_1.y * scale - block_row_max_new_1);
+        // P = Exp(S - m_new), fmaf(x, y, z) = x * y + z;
+        t_reg_S_0.x = __expf(__fmaf_rn(t_reg_S_0.x, scale, - block_row_max_new_0));
+        t_reg_S_0.y = __expf(__fmaf_rn(t_reg_S_0.y, scale, - block_row_max_new_0));
+        t_reg_S_1.x = __expf(__fmaf_rn(t_reg_S_1.x, scale, - block_row_max_new_1));
+        t_reg_S_1.y = __expf(__fmaf_rn(t_reg_S_1.y, scale, - block_row_max_new_1));
         lane_row_sum_new[i][0] += (t_reg_S_0.x + t_reg_S_0.y);
         lane_row_sum_new[i][1] += (t_reg_S_1.x + t_reg_S_1.y);
         // Update R_S for P[Br,Bc] = Exp(S-m), point wise.
@@ -502,71 +484,54 @@ flexiable_flash_attn_mma_stages_split_q_kernel(half* Q,
     } // end for kWarpTileSeqLenQ
     __syncthreads();
 
-    // Block level reduce sum, row wise, 64x4=256
-    float wrp_row_sum_new = (
-      block_row_sum_new_smem[tid / kMmaTileSeqLenK][tid % kMmaTileSeqLenK]); // [0~63][0~4]
-    float blk_row_sum_new = warp_reduce_sum<float, 4>(wrp_row_sum_new);
-    block_row_sum_new_smem[tid / kMmaTileSeqLenK][tid % kMmaTileSeqLenK] = (
-      blk_row_sum_new);
-    __syncthreads();
+    // // Block level reduce sum, row wise, 64x4=256. Warp reduce operation
+    // // is faster than atomaicAdd float in my tests.
+    // float wrp_row_sum_new = (
+    //   block_row_sum_new_smem[tid / kMmaTileSeqLenK][tid % kMmaTileSeqLenK]); // [0~63][0~4]
+    // float blk_row_sum_new = warp_reduce_sum<float, 4>(wrp_row_sum_new);
+    // block_row_sum_new_smem[tid / kMmaTileSeqLenK][tid % kMmaTileSeqLenK] = (
+    //   blk_row_sum_new);
+    // __syncthreads();
     
     // Retile warp for [Br,d], kWarpTileHeadDimV: 1=32/(4*8); 2=64/(4*8); 4=128/(4*8).
     // Compute P[Br,Bc] @ V[Bc,d] = [Br,d] = [64, 64/128], partion Attention.
+    // MMA = m16n8k16, Br=16x4=64, Bc=8x8=64, layout: 4 warps
+    // |   64x64   |      warp_KV 0       |
+    // | warp_QP 0 | MMA 0 ... MMA 0 (x8) |
+    // | warp_QP 1 | MMA 1 ... MMA 1 (x8) |
+    // | warp_QP 2 | MMA 2 ... MMA 2 (x8) |
+    // | warp_QP 3 | MMA 3 ... MMA 3 (x8) |
 
-    // If headdim=<32>, then, kWarpTileHeadDimV = 1, the layout of 8 MMA m16n8k16 (2x4) after 
-    // kWarpTileSeqLenPxkWarpTileHeadDimV(2x1) tiling to (32x2,32x1)=(64x32), will look like: 
-    // |  [64,32]  | warp_KV 0 | warp_KV 1 | warp_KV 2 | warp_KV 3 |
-    // | warp_QP 0 |-- MMA 0 --|-- MMA 2 --|-- MMA 4 --|-- MMA 6 --|
-    // | warp_QP 0 |-- MMA 0 --|-- MMA 2 --|-- MMA 4 --|-- MMA 6 --|
-    // | warp_QP 1 |-- MMA 1 --|-- MMA 3 --|-- MMA 5 --|-- MMA 7 --|
-    // | warp_QP 1 |-- MMA 1 --|-- MMA 3 --|-- MMA 5 --|-- MMA 7 --|
-
-    // If headdim=<64>, then, kWarpTileHeadDimV = 2, the layout of 8 MMA m16n8k16 (2x4) after 
-    // kWarpTileSeqLenPxkWarpTileHeadDimV(2x2) tiling to (32x2,32x2)=(64x64), will look like: 
-    // |  [64,64]  |    warp_KV 0    |    warp_KV 1    |    warp_KV 2    |    warp_KV 3    |
-    // | warp_QP 0 |-- MMA 0,MMA 0 --|-- MMA 2,MMA 2 --|-- MMA 4,MMA 4 --|-- MMA 6,MMA 6 --|
-    // | warp_QP 0 |-- MMA 0,MMA 0 --|-- MMA 2,MMA 2 --|-- MMA 4,MMA 4 --|-- MMA 6,MMA 6 --|
-    // | warp_QP 1 |-- MMA 1,MMA 1 --|-- MMA 3,MMA 3 --|-- MMA 5,MMA 5 --|-- MMA 7,MMA 7 --|
-    // | warp_QP 1 |-- MMA 1,MMA 1 --|-- MMA 3,MMA 3 --|-- MMA 5,MMA 5 --|-- MMA 7,MMA 7 --|
-
-    // If headdim=<128>, then, kWarpTileHeadDimV = 4, the layout of 8 MMA m16n8k16 (2x4) after 
-    // kWarpTileSeqLenPxkWarpTileHeadDimV(2x2x2) tiling to (32x2,32x2x2)=(64x64x2), will look like: 
-    // | [64,64x2] |         warp_KV 0           |           warp_KV 1         |           warp_KV 2         |          warp_KV 3          |
-    // | warp_QP 0 |-- MMA 0,MMA 0,MMA 0,MMA 0 --|-- MMA 2,MMA 2,MMA 2,MMA 2 --|-- MMA 4,MMA 4,MMA 4,MMA 4 --|-- MMA 6,MMA 6,MMA 6,MMA 6 --|
-    // | warp_QP 0 |-- MMA 0,MMA 0,MMA 0,MMA 0 --|-- MMA 2,MMA 2,MMA 2,MMA 2 --|-- MMA 4,MMA 4,MMA 4,MMA 4 --|-- MMA 6,MMA 6,MMA 6,MMA 6 --|
-    // | warp_QP 1 |-- MMA 1,MMA 1,MMA 1,MMA 1 --|-- MMA 3,MMA 3,MMA 3,MMA 3 --|-- MMA 5,MMA 5,MMA 5,MMA 5 --|-- MMA 7,MMA 7,MMA 7,MMA 7 --|
-    // | warp_QP 1 |-- MMA 1,MMA 1,MMA 1,MMA 1 --|-- MMA 3,MMA 3,MMA 3,MMA 3 --|-- MMA 5,MMA 5,MMA 5,MMA 5 --|-- MMA 7,MMA 7,MMA 7,MMA 7 --|
-    
-    // Write R_P(R_S) to P_smem [Br,Bc]
-    // store S(for DEBUG now) [Br,Bc] of [seqlen,seqlen] [64,64]
-    #pragma unroll 
-    for (int i = 0; i < kWarpTileSeqLenQ; ++i) {
-      #pragma unroll 
-      for (int j = 0; j < kWarpTileSeqLenK; ++j) {
-        R_Q[0][0] = R_S[i][j][0]; R_Q[1][0] = R_S[i][j][1]; // warp_size 4
-        R_Q[0][1] = __shfl_sync((0xffffffff), R_S[i][j][0], lane_id + 1, 4);
-        R_Q[0][2] = __shfl_sync((0xffffffff), R_S[i][j][0], lane_id + 2, 4);
-        R_Q[0][3] = __shfl_sync((0xffffffff), R_S[i][j][0], lane_id + 3, 4);
-        R_Q[1][1] = __shfl_sync((0xffffffff), R_S[i][j][1], lane_id + 1, 4);
-        R_Q[1][2] = __shfl_sync((0xffffffff), R_S[i][j][1], lane_id + 2, 4);
-        R_Q[1][3] = __shfl_sync((0xffffffff), R_S[i][j][1], lane_id + 3, 4);
+    // // Write R_P(R_S) to P_smem [Br,Bc]
+    // // store S[Br,Bc] of [seqlen,seqlen] [64,64]
+    // #pragma unroll 
+    // for (int i = 0; i < kWarpTileSeqLenQ; ++i) {
+    //   #pragma unroll 
+    //   for (int j = 0; j < kWarpTileSeqLenK; ++j) {
+    //     R_Q[0][0] = R_S[i][j][0]; R_Q[1][0] = R_S[i][j][1]; // warp_size 4
+    //     R_Q[0][1] = __shfl_sync((0xffffffff), R_S[i][j][0], lane_id + 1, 4);
+    //     R_Q[0][2] = __shfl_sync((0xffffffff), R_S[i][j][0], lane_id + 2, 4);
+    //     R_Q[0][3] = __shfl_sync((0xffffffff), R_S[i][j][0], lane_id + 3, 4);
+    //     R_Q[1][1] = __shfl_sync((0xffffffff), R_S[i][j][1], lane_id + 1, 4);
+    //     R_Q[1][2] = __shfl_sync((0xffffffff), R_S[i][j][1], lane_id + 2, 4);
+    //     R_Q[1][3] = __shfl_sync((0xffffffff), R_S[i][j][1], lane_id + 3, 4);
   
-        // st.global.v4 128 bits.
-        if (lane_id % 4 == 0) {
-          // (0/1)*32 + (0/1)*16=(0,16,32,48), + 0~7 -> 0~56
-          int store_warp_regs_S_Br = warp_QP * (kMmaAtomM * kWarpTileSeqLenQ) + i * kMmaAtomM;
-          int store_lane_smem_S_Br = store_warp_regs_S_Br + lane_id / 4; // 0~7
-          // (0~3)*16 + (0/1)*8=(0,8,16,24,...,48,56)
-          int store_warp_regs_S_Bc = warp_KV * (kMmaAtomN * kWarpTileSeqLenK) + j * kMmaAtomN;
-          int store_lane_smem_S_Bc = store_warp_regs_S_Bc; // (0~3)*16+(0/8)
-          int store_smem_S_addr_0 = ((store_lane_smem_S_Br + 0) * (Bc + kPad) + store_lane_smem_S_Bc);
-          int store_smem_S_addr_1 = ((store_lane_smem_S_Br + 8) * (Bc + kPad) + store_lane_smem_S_Bc);
-          LDST128BITS(S_tile_smem[store_smem_S_addr_0]) = LDST128BITS(R_Q[0][0]);
-          LDST128BITS(S_tile_smem[store_smem_S_addr_1]) = LDST128BITS(R_Q[1][0]);
-        }
-      } // end for kWarpTileHeadDimV
-    } // end for kWarpTileSeqLenQ
-    __syncthreads(); 
+    //     // st.global.v4 128 bits.
+    //     if (lane_id % 4 == 0) {
+    //       // (0/1)*32 + (0/1)*16=(0,16,32,48), + 0~7 -> 0~56
+    //       int store_warp_regs_S_Br = warp_QP * (kMmaAtomM * kWarpTileSeqLenQ) + i * kMmaAtomM;
+    //       int store_lane_smem_S_Br = store_warp_regs_S_Br + lane_id / 4; // 0~7
+    //       // (0~3)*16 + (0/1)*8=(0,8,16,24,...,48,56)
+    //       int store_warp_regs_S_Bc = warp_KV * (kMmaAtomN * kWarpTileSeqLenK) + j * kMmaAtomN;
+    //       int store_lane_smem_S_Bc = store_warp_regs_S_Bc; // (0~3)*16+(0/8)
+    //       int store_smem_S_addr_0 = ((store_lane_smem_S_Br + 0) * (Bc + kPad) + store_lane_smem_S_Bc);
+    //       int store_smem_S_addr_1 = ((store_lane_smem_S_Br + 8) * (Bc + kPad) + store_lane_smem_S_Bc);
+    //       LDST128BITS(S_tile_smem[store_smem_S_addr_0]) = LDST128BITS(R_Q[0][0]);
+    //       LDST128BITS(S_tile_smem[store_smem_S_addr_1]) = LDST128BITS(R_Q[1][0]);
+    //     }
+    //   } // end for kWarpTileHeadDimV
+    // } // end for kWarpTileSeqLenQ
+    // __syncthreads(); 
 
     // Compute P[Br,Bc] @ V[Bc,d] = [Br,d] = [64, 64/128], partion Attention.
     // Here, we have to wait V ready before compute O = P @ V
@@ -585,7 +550,7 @@ flexiable_flash_attn_mma_stages_split_q_kernel(half* Q,
     #pragma unroll
     for (int tile_V_Bc = 0; tile_V_Bc < (Bc / kMmaAtomK); ++tile_V_Bc) {
       // smem -> reg, load m16k16 smem Q, offset d according tile_K_d.
-      // ldmatrix.x4 for S_tile_smem.
+      // ldmatrix.x4 from S_tile_smem.
       #pragma unroll
       for (int i = 0; i < kWarpTileSeqLenP; ++i) { // S[Br,Bc]=[M,K]
         int warp_smem_S_Br = warp_QP * (kMmaAtomM * kWarpTileSeqLenP) + i * kMmaAtomM;
@@ -598,7 +563,7 @@ flexiable_flash_attn_mma_stages_split_q_kernel(half* Q,
         LDMATRIX_X4(R_Q[i][0], R_Q[i][1], R_Q[i][2], R_Q[i][3], 
                     lane_smem_S_ptr); // now, R_P
       }
- 
+
       // Load k16n8 V from smem -> regs, R_KV, ldmatrix.x2.trans.
       #pragma unroll
       for (int j = 0; j < kWarpTileHeadDimV; ++j) { 
@@ -606,8 +571,8 @@ flexiable_flash_attn_mma_stages_split_q_kernel(half* Q,
         int lane_smem_V_Bc = tile_V_Bc * kMmaAtomK + lane_id % 16; // 0~15; Bc, matmul K
         int lane_smem_V_d  = warp_smem_V_d; // 0
         uint32_t lane_smem_V_ptr = (
-            smem_V_base_ptr + (lane_smem_V_Bc * (kHeadDim + kPad) + 
-                               lane_smem_V_d) * sizeof(half)
+          smem_V_base_ptr + (lane_smem_V_Bc * (kHeadDim + kPad) + 
+                             lane_smem_V_d) * sizeof(half)
         );
         LDMATRIX_X2_T(R_V[j][0], R_V[j][1], lane_smem_V_ptr); // R_V
       }
@@ -633,10 +598,14 @@ flexiable_flash_attn_mma_stages_split_q_kernel(half* Q,
       for (int i = 0; i < kWarpTileSeqLenP; ++i) { // kWarpTileSeqLenQ=2
         #pragma unroll
         for (int j = 0; j < kWarpTileHeadDimV; ++j) { // kWarpTileHeadDimV=1,2,3,4,...
+          // tile_V_Bc = 0, all curr MMAs(0~7) need P[:,  0:16]; but only stored in MMA 0, MMA 1, S_P
+          // tile_V_Bc = 1, all curr MMAs(0~7) need P[:, 16:32]; but only stored in MMA 2, MMA 3, S_P 
+          // tile_V_Bc = 2, all curr MMAs(0~7) need P[:, 32:48]; but only stored in MMA 4, MMA 5, S_P 
+          // tile_V_Bc = 3, all curr MMAs(0~7) need P[:, 48:64]; but only stored in MMA 6, MMA 7, S_P 
+          // We have to comm across warps to get right values for MMA inner loop, namely,
+          // we have to use shared memory to collect values from other warps. Thus, S_P
+          // can not use as A matrix in MMA in split_kv mode.
           HMMA16816(R_O[i][j][0], R_O[i][j][1], 
-                    // FIXME(DefTruth): Still have some error while using R_S 
-                    // as registers for P(A) matrix directly. I will remove this 
-                    // comments when I have fixed it.
                     // R_S[i][0][0], R_S[i][0][1], R_S[i][1][0],  R_S[i][1][1], 
                     R_Q[i][0],    R_Q[i][1],    R_Q[i][2], R_Q[i][3], 
                     R_V[j][0],    R_V[j][1],
@@ -659,14 +628,13 @@ flexiable_flash_attn_mma_stages_split_q_kernel(half* Q,
         warp_QP * 32 + i * 16 + 0 * 8 + (lane_id / 4)][0];
       float block_row_sum_new_1 = block_row_sum_new_smem[
         warp_QP * 32 + i * 16 + 1 * 8 + (lane_id / 4)][0];
+      
       float block_row_max_old_0 = lane_block_row_max_old[i][0];
       float block_row_max_old_1 = lane_block_row_max_old[i][1];
-      block_row_max_new_0 = (tile_K_seqlen > 0 ? max(block_row_max_old_0, 
-                                                     block_row_max_new_0) : 
-                                                     block_row_max_new_0);
-      block_row_max_new_1 = (tile_K_seqlen > 0 ? max(block_row_max_old_1, 
-                                                     block_row_max_new_1) : 
-                                                     block_row_max_new_1);
+      // NOTE: max(-inf, val) = val.
+      block_row_max_new_0 = max(block_row_max_old_0, block_row_max_new_0);
+      block_row_max_new_1 = max(block_row_max_old_1, block_row_max_new_1);   
+      // Avoid inf value while using m_old for rescaling O.
       block_row_max_old_0 = (tile_K_seqlen > 0 ? block_row_max_old_0 : 
                                                  block_row_max_new_0);                                       
       block_row_max_old_1 = (tile_K_seqlen > 0 ? block_row_max_old_1 : 
@@ -688,10 +656,10 @@ flexiable_flash_attn_mma_stages_split_q_kernel(half* Q,
         // would result in an error during rescaling, namely, you have
         // use exp(m_old - m_new), not 1/(m_old - m_new).
         // O_new[Br,d] = exp(m_old - m_new) * O_old + P@V
-        t_reg_D_0.x = rescale_o_factor_0 * t_reg_D_0.x + t_reg_O_0.x;
-        t_reg_D_0.y = rescale_o_factor_0 * t_reg_D_0.y + t_reg_O_0.y;
-        t_reg_D_1.x = rescale_o_factor_1 * t_reg_D_1.x + t_reg_O_1.x;
-        t_reg_D_1.y = rescale_o_factor_1 * t_reg_D_1.y + t_reg_O_1.y;
+        t_reg_D_0.x = __fmaf_rn(rescale_o_factor_0, t_reg_D_0.x, t_reg_O_0.x);
+        t_reg_D_0.y = __fmaf_rn(rescale_o_factor_0, t_reg_D_0.y, t_reg_O_0.y);
+        t_reg_D_1.x = __fmaf_rn(rescale_o_factor_1, t_reg_D_1.x, t_reg_O_1.x);
+        t_reg_D_1.y = __fmaf_rn(rescale_o_factor_1, t_reg_D_1.y, t_reg_O_1.y);
         HALF2(R_D[i][j][0]) = __float22half2_rn(t_reg_D_0);
         HALF2(R_D[i][j][1]) = __float22half2_rn(t_reg_D_1);
       } // end for kWarpTileHeadDimV.
@@ -702,10 +670,10 @@ flexiable_flash_attn_mma_stages_split_q_kernel(half* Q,
       float block_row_sum_old_0 = lane_block_row_sum_old[i][0];
       float block_row_sum_old_1 = lane_block_row_sum_old[i][1];
       // Update l = exp(m_old - m_new) * l_old + row_sum(P).
-      lane_block_row_sum_old[i][0] = (
-        rescale_o_factor_0 * block_row_sum_old_0 + block_row_sum_new_0);
-      lane_block_row_sum_old[i][1] = (
-        rescale_o_factor_1 * block_row_sum_old_1 + block_row_sum_new_1);
+      lane_block_row_sum_old[i][0] = (__fmaf_rn(
+        rescale_o_factor_0, block_row_sum_old_0, block_row_sum_new_0));
+      lane_block_row_sum_old[i][1] = (__fmaf_rn(
+        rescale_o_factor_1, block_row_sum_old_1, block_row_sum_new_1));
       // 2. Then, update block row max for each lane.
       lane_block_row_max_old[i][0] = block_row_max_new_0;
       lane_block_row_max_old[i][1] = block_row_max_new_1;
@@ -725,12 +693,12 @@ flexiable_flash_attn_mma_stages_split_q_kernel(half* Q,
   // O_output(D) = ( 1/l_final ) * O_final (FA2 paper)
   #pragma unroll
   for (int i = 0; i < kWarpTileSeqLenP; ++i) {
+    float rescale_factor_0 = __frcp_rn(lane_block_row_sum_old[i][0]);
+    float rescale_factor_1 = __frcp_rn(lane_block_row_sum_old[i][1]);
     #pragma unroll
     for (int j = 0; j < kWarpTileHeadDimV; ++j) {
       float2 t_reg_D_0 = __half22float2(HALF2(R_D[i][j][0])); // 0~7  {c0, c1}
       float2 t_reg_D_1 = __half22float2(HALF2(R_D[i][j][1])); // 8~15 {c2, c3}
-      float rescale_factor_0 = __frcp_rn(lane_block_row_sum_old[i][0]);
-      float rescale_factor_1 = __frcp_rn(lane_block_row_sum_old[i][1]);
       t_reg_D_0.x = rescale_factor_0 * t_reg_D_0.x;
       t_reg_D_0.y = rescale_factor_0 * t_reg_D_0.y;
       t_reg_D_1.x = rescale_factor_1 * t_reg_D_1.x;
