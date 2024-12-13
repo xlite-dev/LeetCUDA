@@ -72,8 +72,7 @@ template<typename T, const int kWarpSize = WARP_SIZE>
 DEVICE_INLINE T warp_reduce_max(T val) {
   #pragma unroll
   for (int mask = kWarpSize >> 1; mask >= 1; mask >>= 1) {
-    T val_compare = __shfl_xor_sync(0xffffffff, val, mask, kWarpSize);
-    val = val > val_compare ? val : val_compare;
+    val = max(val, __shfl_xor_sync(0xffffffff, val, mask, kWarpSize));
   }
   return val;
 }
@@ -102,6 +101,33 @@ DEVICE_INLINE void fill_2D_regs(T (&R)[M][N], T val) {
     }
   }
 }
+
+template<typename T, int M>
+DEVICE_INLINE void fill_1D_regs(T (&S)[M], T val) {
+  #pragma unroll
+  for (int i = 0; i < M; ++i) {
+    S[i] = val;
+  }
+}
+
+template<typename T, int M>
+DEVICE_INLINE void fill_1D_smem(T (&R)[M], T val, int tid) {
+  if (tid == 0) {
+    #pragma unroll
+    for (int i = 0; i < M; ++i) {
+      R[i] = val;
+    }
+  }
+}
+
+// Copy from: https://github.com/NVIDIA/cutlass/blob/e1cd8c7866dd6de02b66a89879795e7d7301aacc/examples/41_fused_multi_head_attention/kernel_forward.h#L87
+static DEVICE_INLINE float atomicMaxFloat(float* addr, float value) {
+  // source: https://stackoverflow.com/a/51549250
+  return (value >= 0)
+      ? __int_as_float(atomicMax((int*)addr, __float_as_int(value)))
+      : __uint_as_float(atomicMin((unsigned int*)addr, __float_as_uint(value)));
+}
+
 
 #define INFHALF __float2half(65536.0f)
 #define ZEROHALF __float2half(0.0f)
@@ -137,6 +163,19 @@ DEVICE_INLINE void fill_2D_regs(T (&R)[M][N], T val) {
 #define FA_MMA_CHECK_PRINT_REG(R0, R1, format, ...)                       \
 {                                                                         \
   {                                                                       \
+    float2 v_reg_0 = __half22float2(HALF2(R0));                           \
+    float2 v_reg_1 = __half22float2(HALF2(R1));                           \
+    if ((fabs(v_reg_0.x - v_reg_1.x) > 0.01f) ||                          \
+        (fabs(v_reg_0.y - v_reg_1.y) > 0.01f)) {                          \
+      printf(format", R0, V0=%f, V1=%f, R1, V0=%f, V1=%f\n",              \
+             ##__VA_ARGS__, v_reg_0.x, v_reg_0.y, v_reg_1.x, v_reg_1.y);  \
+    }                                                                     \
+  }                                                                       \
+}
+
+#define FA_MMA_CHECK_PRINT_T32_REG(R0, R1, format, ...)                   \
+{                                                                         \
+  if (tid < 32){                                                          \
     float2 v_reg_0 = __half22float2(HALF2(R0));                           \
     float2 v_reg_1 = __half22float2(HALF2(R1));                           \
     if ((fabs(v_reg_0.x - v_reg_1.x) > 0.01f) ||                          \
