@@ -36,8 +36,9 @@ def get_args():
     parser.add_argument("--no-rand-k", '--no-rk', action="store_true")
     parser.add_argument("--no-rand-v", '--no-rv', action="store_true")
     parser.add_argument("--no-rand-qkv", '--no-rqkv', action="store_true")
-    parser.add_argument("--naive", action="store_true")
-    parser.add_argument("--sdpa", action="store_true")
+    parser.add_argument("--run-mma-naive", "--naive", action="store_true")
+    parser.add_argument("--run-torch-unfused", '--torch', action="store_true")
+    parser.add_argument("--run-torch-sdpa", '--sdpa', action="store_true")
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--show-all", '--show', action="store_true")
     parser.add_argument("--B", type=int, default=None)
@@ -46,6 +47,7 @@ def get_args():
     parser.add_argument("--D", type=int, default=None)
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--debug", action="store_true")
+    parser.add_argument("--verbose", '--v', action="store_true")
     parser.add_argument("--warmup", type=int, default=2)
     parser.add_argument("--iters", type=int, default=10)
     parser.add_argument("--range-k", '--gk', action="store_true")
@@ -74,35 +76,38 @@ lib = load(name='flash_attn_lib',
                 "--expt-relaxed-constexpr",
                 "--expt-extended-lambda",
                 "--use_fast_math",
+                "-Xptxas -v",
+                "-diag-suppress 177",
                 f"-I {project_dir}/kernels/flash-attn/utils",
                 "-DFLASH_ATTN_MMA_DEBUG" if args.debug else ""
             ], 
-           extra_cflags=['-std=c++17'])
+           extra_cflags=['-std=c++17'],
+           verbose=args.verbose)
 
 
 def get_mha_tflops(B, H, N, D, T=1.0):
-    # 计算 Q @ K^T 的 FLOPs
+    # Q @ K^T FLOPs
     flops_qk = B * H * N * N * (2 * D - 1)
     
-    # 计算缩放因子的 FLOPs
+    # Scaling FLOPs
     flops_scaling = B * H * N * N
     
-    # 计算 Safe_Softmax 的 FLOPs
-    flops_row_max = B * H * N * (N - 1)   # 找到每行的最大值
-    flops_subtract_max = B * H * N * N    # 减去每行的最大值
-    flops_exp = B * H * N * N             # 计算指数值
-    flops_row_sum = B * H * N * (N - 1)   # 计算每行的和
+    # Safe_Softmax FLOPs
+    flops_row_max = B * H * N * (N - 1)   # row max
+    flops_subtract_max = B * H * N * N    # sub max
+    flops_exp = B * H * N * N             # pointwise exp
+    flops_row_sum = B * H * N * (N - 1)   # row sum
     flops_normalization = B * H * N * N   # 归一化
     
     flops_safe_softmax = flops_row_max + flops_subtract_max + flops_exp + flops_row_sum + flops_normalization
     
-    # 计算 P @ V 的 FLOPs
+    # P @ V FLOPs
     flops_pv = B * H * N * D * (2 * N - 1)
     
-    # 总的 FLOPs
+    # Total FLOPs
     total_flops = flops_qk + flops_scaling + flops_safe_softmax + flops_pv
     
-    # 转换为 TFLOPS
+    # Convert to TFLOPS
     # 1 TFLOPS = 10^12 FLOPS
     # ref: https://imgtec.eetrend.com/blog/2021/100062210.html.
     tflops = total_flops * 1e-12 / (T)
@@ -175,6 +180,7 @@ def run_benchmark(perf_func: callable,
     if show_all: 
         print(out)
     time.sleep(0.05)
+    torch.cuda.synchronize()
     return out.clone(), mean_time
 
 
@@ -197,12 +203,16 @@ def get_qkvo(B, H, N, D):
         v = torch.ones(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
 
     o = torch.zeros(B, H, N, D, device="cuda", dtype=torch.half).contiguous()
+    tk = k.transpose(-2, -1).contiguous()
+    fq = q.transpose(1,   2).contiguous()
+    fk = k.transpose(1,   2).contiguous()
+    fv = v.transpose(1,   2).contiguous()
 
-    return q, k, v, o
+    return q, k, v, o, tk, fq, fk, fv
 
 
 # un-fused naive attn
-def naive_attn(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor):
+def unfused_standard_attn(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor):
     att = (q @ k.transpose(-2, -1) * (1.0 / math.sqrt(k.size(-1))))
     att = F.softmax(att, dim=-1)
     y = att @ v
@@ -238,23 +248,19 @@ print(" "* 20 + f"B: batch_size, H: n_head, N: seq_len, D: head_dim, "
 for (B, H, N, D) in BHNDs:
     print("-" * 120)
     print(" " * 30 + f"B={B}, H={H}, N={N}, D={D}, Warmup: {args.warmup}, Iters: {args.iters}")
-    q, k, v, o = get_qkvo(B, H, N, D)
-    tk = k.transpose(-2, -1).contiguous()
-    fq = q.transpose(1,   2).contiguous()
-    fk = k.transpose(1,   2).contiguous()
-    fv = v.transpose(1,   2).contiguous()
+    q, k, v, o, tk, fq, fk, fv = get_qkvo(B, H, N, D)
     torch.cuda.synchronize()
     
-    if args.naive:
-        out_naive,  _ = run_benchmark(naive_attn, q, k, v, "naive(unfused)")
-
-    # using fp16 Tesor Core MMA instruction
-    out_mma_naive,     _ = run_benchmark(lib.flash_attn_mma_naive, q, k, v, "mma(naive)", o)
+    if args.run_torch_unfused:
+        out_naive,     _ = run_benchmark(unfused_standard_attn, q, k, v, "torch(unfused)")
+    if args.run_mma_naive:
+        out_mma_naive, _ = run_benchmark(lib.flash_attn_mma_naive, q, k, v, "mma(naive)", o)
+    out_mma_stage1,    _ = run_benchmark(lib.flash_attn_mma_stages, q, tk, v, "mma(stage1)", o, stages=1)
+    out_mma_stage2,    _ = run_benchmark(lib.flash_attn_mma_stages, q, tk, v, "mma(stage2)", o, stages=2)
     out_mma_split_kv1, _ = run_benchmark(lib.flexiable_flash_attn_mma_stages_split_kv, q, tk, v, "mma(split-kv+stage1)", o, stages=1)
     out_mma_split_kv2, _ = run_benchmark(lib.flexiable_flash_attn_mma_stages_split_kv, q, tk, v, "mma(split-kv+stage2)", o, stages=2)
     out_flash,         _ = run_benchmark(flash_attn_func, fq, fk, fv, "(flash)")
-
-    if args.sdpa:
+    if args.run_torch_sdpa:
         out_sdpa,      _ = run_benchmark(F.scaled_dot_product_attention, q, k, v, "(sdpa)")
     print("-" * 120)
     
