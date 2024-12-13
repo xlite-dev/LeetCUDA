@@ -224,7 +224,8 @@ __global__  void flash_attn_mma_naive_kernel(
         RD[0] = RD[1] = RD[2] = RD[3] = 0;
         // 再 loop over K(Bc)
         for (int len = 0; len < Bc; len += 16) {
-          uint32_t Vj_lane_addr = __cvta_generic_to_shared(&Vj[(k * 16 * Bc) + (len * 16) + (laneId % 16) * 16 + (laneId / 16) * 8]);
+          uint32_t Vj_lane_addr = __cvta_generic_to_shared(
+            &Vj[(k * 16 * Bc) + (len * 16) + (laneId % 16) * 16 + (laneId / 16) * 8]);
           LDMATRIX_X4(RB[0], RB[2], RB[1], RB[3], Vj_lane_addr);
 
           // RC[8][2] {0,1|2,3|4,5|6,7}[0|1] 
