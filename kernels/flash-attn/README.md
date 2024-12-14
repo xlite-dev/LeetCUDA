@@ -90,7 +90,7 @@ urrently, for small-scale attention (SeqLen <= 4096), the flash-attention-mma im
 - B=2, H=2, N=4096, D=64
   
 ```bash
-python3 flash_attn_mma.py --naive --B 2 --H 2 --D 64 --N 4096
+python3 flash_attn_mma.py --B 2 --H 2 --D 64 --N 4096
 ----------------------------------------------------------------------------------------------------
           B: batch_size, H: n_head, N: seq_len, D: head_dim, seed: 8942, Warmup: 2, Iters: 10
 ----------------------------------------------------------------------------------------------------
@@ -106,7 +106,7 @@ python3 flash_attn_mma.py --naive --B 2 --H 2 --D 64 --N 4096
 - B=2, H=2, N=4096, D=128
   
 ```bash
-python3 flash_attn_mma.py --naive --B 2 --H 2 --D 128 --N 4096
+python3 flash_attn_mma.py --B 2 --H 2 --D 128 --N 4096
 ----------------------------------------------------------------------------------------------------
           B: batch_size, H: n_head, N: seq_len, D: head_dim, seed: 2806, Warmup: 2, Iters: 10
 ----------------------------------------------------------------------------------------------------
@@ -122,7 +122,7 @@ python3 flash_attn_mma.py --naive --B 2 --H 2 --D 128 --N 4096
 - B=2, H=2, N=1024, D=128
   
 ```bash
-python3 flash_attn_mma.py --naive --B 2 --H 2 --D 128 --N 1024
+python3 flash_attn_mma.py --B 2 --H 2 --D 128 --N 1024
 ----------------------------------------------------------------------------------------------------
           B: batch_size, H: n_head, N: seq_len, D: head_dim, seed: 4166, Warmup: 2, Iters: 10
 ----------------------------------------------------------------------------------------------------
@@ -137,7 +137,7 @@ python3 flash_attn_mma.py --naive --B 2 --H 2 --D 128 --N 1024
 
 - B=2, H=2, N=8192, D=64
 ```bash
-python3 flash_attn_mma.py --naive --B 2 --H 2 --D 64 --N 8192
+python3 flash_attn_mma.py --B 2 --H 2 --D 64 --N 8192
 ----------------------------------------------------------------------------------------------------
           B: batch_size, H: n_head, N: seq_len, D: head_dim, seed: 434, Warmup: 2, Iters: 10
 ----------------------------------------------------------------------------------------------------
@@ -160,7 +160,7 @@ python3 flash_attn_mma.py
 
 - NVIDIA L20
 ```bash
-python3 flash_attn_mma.py --naive --N 4096 --B 2 --H 2 --D 128
+python3 flash_attn_mma.py --N 4096 --B 2 --H 2 --D 128
 ----------------------------------------------------------------------------------------------------
           B: batch_size, H: n_head, N: seq_len, D: head_dim, seed: 762, Warmup: 2, Iters: 10
 ----------------------------------------------------------------------------------------------------
