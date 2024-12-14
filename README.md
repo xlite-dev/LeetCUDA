@@ -54,7 +54,7 @@ I have also implemented **FlashAttention-2** using pure MMA PTX instructions, wh
 |Tile Warp (More Values)|Multi Stages (1/2)| Collective Store (Shfl)| Split KV/Q |
 |✔️|✔️|✔️|✔️|
 
-The `Split KV` (Basic, FlashAttention-1) and `Split Q` (Faster, FlashAttention-2) implementations have been carried out in [flash-attention-mma⚡️⚡️](./kernels/flash-attn) for performance comparison. The `Split KV` method, which involves splitting all QKV across MMA (Warps) using a naive matmul (MMA) and Warp tiling policy, is slower compared to the approach that uses the `Split Q` policy, which splitting Q across MMA(Warps) and keep access KV for all MMA(Warps), as described in the FA2 arXiv paper.
+The `Split KV` and `Split Q` implementations have been carried out in [flash-attention-mma⚡️⚡️](./kernels/flash-attn) for performance comparison. The `Split KV` method, which involves splitting all QKV across MMA (Warps) using a naive matmul (MMA) and Warp tiling policy, is slower compared to the `Split Q` policy, which splitting Q across MMA(Warps) and keep access KV for all MMA(Warps).
 
 - Split KV (Basic, FlashAttention-1)
 
