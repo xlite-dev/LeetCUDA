@@ -38,14 +38,13 @@ template<
          const int kWarpTileSeqLenP,  // 2, more values, M, Br=32*2=64, matmul M
          const int kWarpTileHeadDimV, // 2, more values, N, d=32*(1|2|3|4|...)=32|64|96|128|...
          const int kStage,            // only support 1 or 2 now.
-         const int kPad               
+         const int kPad               // 0,8              
          >
-__global__ void __launch_bounds__(
-  WARP_SIZE * kMmaTileSeqLenQ * kMmaTileSeqLenK) 
-flash_attn_mma_stages_split_kv_kernel(half* Q, 
-                                      half* K, 
-                                      half* V, 
-                                      half* O, 
+__global__ void 
+flash_attn_mma_stages_split_kv_kernel(half* Q, // [B, H, N, D]
+                                      half* K, // [B, H, D, N] K^T transposed 
+                                      half* V, // [B, H, N, D] 
+                                      half* O, // [B, H, N, D] 
                                       int QKV_seqlen);
 ```
 
@@ -84,14 +83,13 @@ template<
          const int kWarpTileSeqLenP,  // 1, more values, M, Br=64*1=64, matmul M
          const int kWarpTileHeadDimV, // 8, more values, N, d=8*(1|2|3|4|...)=8|...|32|64|96|128|...
          const int kStage,            // only support 1 or 2 now.
-         const int kPad
+         const int kPad               // 0,8           
          >
-__global__ void __launch_bounds__(
-  WARP_SIZE * kMmaTileSeqLenQ * kMmaTileSeqLenK) 
-flash_attn_mma_stages_split_q_kernel(half* Q, 
-                                     half* K, 
-                                     half* V, 
-                                     half* O, 
+__global__ void
+flash_attn_mma_stages_split_q_kernel(half* Q, // [B, H, N, D]
+                                     half* K, // [B, H, D, N] K^T transposed 
+                                     half* V, // [B, H, N, D] 
+                                     half* O, // [B, H, N, D] 
                                      int QKV_seqlen);
 ```
 
