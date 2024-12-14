@@ -5,12 +5,12 @@
 |✔️|✔️|✔️|✔️|
 |Pack LDST (pack 128 bits)|SMEM Padding|Copy Async (cp.async.cg/ca)|Tile MMA (More Threads)
 |✔️|✔️|✔️|✔️|
-|Tile Warp (More Values)|Multi Stages (1/2)|Collective Store (Warp Shuffle & Reg Reuse)|Row Major (NN)|
+|Tile Warp (More Values)|Multi Stages (1/2)|Collective Store (Warp Shuffle & Reg Reuse)|Split KV/Q|
 |✔️|✔️|✔️|✔️|
 
 本仓库FlashAttention仅用于学习CUDA编程，考虑性能最优请使用FlashAttention官方版本：[flash-attention](https://github.com/Dao-AILab/flash-attention)
 
-- Split KV
+- Split KV (basic)
 
 ```C++
 // Split QKV across MMA(Warps) using matmul MMA&Warp tiling policy.
@@ -49,7 +49,7 @@ flash_attn_mma_stages_split_kv_kernel(half* Q,
                                       int QKV_seqlen);
 ```
 
-- Split Q
+- Split Q (faster)
 
 ```C++
 // Split Q across MMA(Warps) and keep access KV for all MMA(Warps),
