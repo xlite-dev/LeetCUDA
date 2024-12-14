@@ -36,7 +36,6 @@ def get_args():
     parser.add_argument("--no-rand-k", '--no-rk', action="store_true")
     parser.add_argument("--no-rand-v", '--no-rv', action="store_true")
     parser.add_argument("--no-rand-qkv", '--no-rqkv', action="store_true")
-    parser.add_argument("--run-mma-naive", "--naive", action="store_true")
     parser.add_argument("--run-torch-unfused", '--torch', action="store_true")
     parser.add_argument("--run-torch-sdpa", '--sdpa', action="store_true")
     parser.add_argument("--check", action="store_true")
@@ -61,10 +60,8 @@ print(args)
 # Load the CUDA kernel as a python module
 lib = load(name='flash_attn_lib', 
            sources=[
-               './naive/flash_attn_cuda.cu',
-               './mma/flash_attn_mma_naive.cu',
-               './mma/flash_attn_mma_stage.cu',
-               './mma/flexiable_flash_attn_mma_split_kv.cu',
+               './mma/flash_attn_mma_split_kv.cu',
+               './mma/flash_attn_mma_split_q.cu',
                './pybind/flash_attn.cc'
             ], 
            extra_cuda_cflags=[
@@ -252,13 +249,11 @@ for (B, H, N, D) in BHNDs:
     torch.cuda.synchronize()
     
     if args.run_torch_unfused:
-        out_naive,     _ = run_benchmark(unfused_standard_attn, q, k, v, "torch(unfused)")
-    if args.run_mma_naive:
-        out_mma_naive, _ = run_benchmark(lib.flash_attn_mma_naive, q, k, v, "mma(naive)", o)
-    out_mma_stage1,    _ = run_benchmark(lib.flash_attn_mma_stages, q, tk, v, "mma(stage1)", o, stages=1)
-    out_mma_stage2,    _ = run_benchmark(lib.flash_attn_mma_stages, q, tk, v, "mma(stage2)", o, stages=2)
-    out_mma_split_kv1, _ = run_benchmark(lib.flexiable_flash_attn_mma_stages_split_kv, q, tk, v, "mma(split-kv+stage1)", o, stages=1)
-    out_mma_split_kv2, _ = run_benchmark(lib.flexiable_flash_attn_mma_stages_split_kv, q, tk, v, "mma(split-kv+stage2)", o, stages=2)
+        out_unfused,   _ = run_benchmark(unfused_standard_attn, q, k, v, "torch(unfused)")
+    out_mma_split_kv1, _ = run_benchmark(lib.flash_attn_mma_stages_split_kv, q, tk, v, "mma(split-kv+stage1)", o, stages=1)
+    out_mma_split_kv2, _ = run_benchmark(lib.flash_attn_mma_stages_split_kv, q, tk, v, "mma(split-kv+stage2)", o, stages=2)
+    out_mma_split_q1,  _ = run_benchmark(lib.flash_attn_mma_stages_split_q, q, tk, v, "mma(split-q+stage1)", o, stages=1)
+    out_mma_split_q2,  _ = run_benchmark(lib.flash_attn_mma_stages_split_q, q, tk, v, "mma(split-q+stage2)", o, stages=2)
     out_flash,         _ = run_benchmark(flash_attn_func, fq, fk, fv, "(flash)")
     if args.run_torch_sdpa:
         out_sdpa,      _ = run_benchmark(F.scaled_dot_product_attention, q, k, v, "(sdpa)")

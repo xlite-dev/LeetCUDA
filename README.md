@@ -51,7 +51,7 @@ I have also implemented **FlashAttention-2** using pure MMA PTX instructions, wh
 |✔️|✔️|✔️|✔️|
 |Pack LDST (128 bits)|SMEM Padding|Copy Async |Tile MMA (More Threads)
 |✔️|✔️|✔️|✔️|
-|Tile Warps (More Values)|Multi Stages (1/2)| Collective Store (Shfl)|Row Major (NN)|
+|Tile Warp (More Values)|Multi Stages (1/2)| Collective Store (Warp Shfl)| Split KV/Q |
 |✔️|✔️|✔️|✔️|
 
 ## ©️Citations🎉🎉
@@ -210,9 +210,8 @@ I have also implemented **FlashAttention-2** using pure MMA PTX instructions, wh
 | ✔️ [hgemv_k32_f16](./kernels/hgemv/hgemv.cu)|f16|f16|[link](./kernels/hgemv/)|⭐️⭐️⭐️|  
 | ✔️ [hgemv_k128_f16x4](./kernels/hgemv/hgemv.cu)|f16|f16|[link](./kernels/hgemv/)|⭐️⭐️⭐️|  
 | ✔️ [hgemv_k16_f16](./kernels/hgemv/hgemv.cu)|f16|f16|[link](./kernels/hgemv/)|⭐️⭐️⭐️|  
-| ✔️ [flash_attn_cuda](./kernels/flash-attn/naive/flash_attn_cuda.cu)|f32|f32|[link](./kernels/flash-attn)|⭐️⭐️⭐️|  
-| ✔️ [flash_attn_mma_naive*](./kernels/flash-attn/mma/flash_attn_mma_naive.cu)|f16|f16|[link](./kernels/flash-attn)|⭐️⭐️⭐️|  
-| ✔️ [flash_attn_mma_stage*](./kernels/flash-attn/mma/flash_attn_mma_stage.cu)|f16|f16|[link](./kernels/flash-attn)|⭐️⭐️⭐️|  
+| ✔️ [flash_attn_mma_stages_split_kv*](./kernels/flash-attn/mma/flash_attn_mma_stages_split_kv.cu)|f16|f16|[link](./kernels/flash-attn)|⭐️⭐️⭐️| 
+| ✔️ [flash_attn_mma_stages_split_q*](./kernels/flash-attn/mma/flash_attn_mma_stages_split_q.cu)|f16|f16|[link](./kernels/flash-attn)|⭐️⭐️⭐️|   
 | ✔️ [nms_f32](./kernels/nms/nms.cu)|f32|/|[link](./kernels/nms)|⭐️⭐️|  
 | ✔️ [notes v1(deprecated)](./kernels/notes-v1.cu)|f32|f32|/|⭐️|  
 
