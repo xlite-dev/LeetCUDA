@@ -51,7 +51,7 @@ I have also implemented **FlashAttention-2** using pure MMA PTX instructions, wh
 |✔️|✔️|✔️|✔️|
 |Pack LDST (128 bits)|SMEM Padding|Copy Async |Tile MMA (More Threads)
 |✔️|✔️|✔️|✔️|
-|Tile Warp (More Values)|Multi Stages (1/2)| Collective Store (Shfl)| Split KV/Q |
+|Tile Warp (More Values)|Multi Stages (1/2)| Collective Store (Shfl)| **Split KV/Q** |
 |✔️|✔️|✔️|✔️|
 
 The `Split KV` and `Split Q` implementations have been carried out in [flash-attention-mma⚡️⚡️](./kernels/flash-attn) for performance comparison. The `Split KV` method, which involves splitting all QKV across MMA (Warps) using a naive matmul (MMA) and Warp tiling policy, is slower compared to the `Split Q` policy, which splitting Q across MMA(Warps) and keep access KV for all MMA(Warps).
