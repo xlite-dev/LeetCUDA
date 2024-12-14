@@ -8,9 +8,11 @@
 |Tile Warp (More Values)|Multi Stages (1/2)|Collective Store (Warp Shuffle & Reg Reuse)|Split KV/Q|
 |✔️|✔️|✔️|✔️|
 
-本仓库FlashAttention仅用于学习CUDA编程，考虑性能最优请使用FlashAttention官方版本：[flash-attention](https://github.com/Dao-AILab/flash-attention)
+本仓库FlashAttention仅用于学习CUDA编程，考虑性能最优请使用FlashAttention官方版本：[flash-attention](https://github.com/Dao-AILab/flash-attention)。目前，在小规模Attention(SeqLen<=4096)的情形，本仓库实现的flash-atttenion-mma基本持平FA官方的性能，但在大规模Attention计算，仍然有较大的性能差距。性能持续优化中，敬请期待~ 
 
-- Split KV (basic)
+## 📖 FlashAttetion MMA Kernels
+
+- Split KV (Basic, FlashAttention-1)
 
 ```C++
 // Split QKV across MMA(Warps) using matmul MMA&Warp tiling policy.
@@ -48,7 +50,7 @@ flash_attn_mma_stages_split_kv_kernel(half* Q, // [B, H, N, D]
                                       int QKV_seqlen);
 ```
 
-- Split Q (faster)
+- Split Q (Faster, FlashAttention-2)
 
 ```C++
 // Split Q across MMA(Warps) and keep access KV for all MMA(Warps),
