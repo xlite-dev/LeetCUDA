@@ -49,11 +49,11 @@ template<
          >
 __global__ void __launch_bounds__(
   WARP_SIZE * kMmaTileSeqLenQ * kMmaTileSeqLenK) 
-flash_attn_mma_stages_split_q_kernel(half* Q, 
-                                     half* K, 
-                                     half* V, 
-                                     half* O, 
-                                     int QKV_seqlen) {
+flash_attn_mma_stages_split_q_shared_kv_kernel(half* Q, 
+                                               half* K, 
+                                               half* V, 
+                                               half* O, 
+                                               int QKV_seqlen) {
   // Matmul Layout: Q[Br,d]@K^T[d,Bc] NN, P[Br,Bc]@V[Bc,d] NN, all row major.
   static_assert(kMmaAtomM == 16 && kMmaAtomN == 8 && kMmaAtomK == 16); // m16n8k16
   static_assert(kMmaTileSeqLenQ  == 4 && kMmaTileSeqLenK  == 1); // Q@K^T
@@ -643,7 +643,7 @@ flash_attn_mma_stages_split_q_kernel(half* Q,
 
 // Launch kernel for flash_attn_mma_stages_split_q
 template<const int kHeadDim, const int kStage>
-void launch_flash_attn_mma_stages_split_q(
+void launch_flash_attn_mma_stages_split_q_shared_kv(
   torch::Tensor Q, torch::Tensor K, torch::Tensor V, torch::Tensor O) {
   constexpr int kMmaAtomM = 16;
   constexpr int kMmaAtomN = 8;
@@ -675,7 +675,7 @@ void launch_flash_attn_mma_stages_split_q(
   dim3 block(kNumThreads); // 4 warps per block
 
   cudaFuncSetAttribute(
-    flash_attn_mma_stages_split_q_kernel<
+    flash_attn_mma_stages_split_q_shared_kv_kernel<
       kHeadDim, 
       kMmaAtomM, 
       kMmaAtomN, 
@@ -695,7 +695,7 @@ void launch_flash_attn_mma_stages_split_q(
     98304
   );
 
-  flash_attn_mma_stages_split_q_kernel<
+  flash_attn_mma_stages_split_q_shared_kv_kernel<
     kHeadDim, 
     kMmaAtomM, 
     kMmaAtomN, 
@@ -719,11 +719,11 @@ void launch_flash_attn_mma_stages_split_q(
   );
 }
 
-void flash_attn_mma_stages_split_q(torch::Tensor Q, 
-                                   torch::Tensor K, 
-                                   torch::Tensor V, 
-                                   torch::Tensor O, 
-                                   int stages) {
+void flash_attn_mma_stages_split_q_shared_kv(torch::Tensor Q, 
+                                             torch::Tensor K, 
+                                             torch::Tensor V, 
+                                             torch::Tensor O, 
+                                             int stages) {
   CHECK_TORCH_TENSOR_DTYPE(Q, torch::kHalf) // Q   [B,H,N,D]
   CHECK_TORCH_TENSOR_DTYPE(K, torch::kHalf) // K^T [B,H,D,N], transposed.
   CHECK_TORCH_TENSOR_DTYPE(V, torch::kHalf) // V   [B,H,N,D]
@@ -734,13 +734,13 @@ void flash_attn_mma_stages_split_q(torch::Tensor Q,
     switch (d)
     {
     case 64:
-      launch_flash_attn_mma_stages_split_q<64,  2>(Q, K, V, O);
+      launch_flash_attn_mma_stages_split_q_shared_kv<64,  2>(Q, K, V, O);
       break;
     case 96:
-      launch_flash_attn_mma_stages_split_q<96,  2>(Q, K, V, O);
+      launch_flash_attn_mma_stages_split_q_shared_kv<96,  2>(Q, K, V, O);
       break;
     case 128:
-      launch_flash_attn_mma_stages_split_q<128, 2>(Q, K, V, O);
+      launch_flash_attn_mma_stages_split_q_shared_kv<128, 2>(Q, K, V, O);
       break;
     default:
       throw std::runtime_error("headdim not support!");
@@ -750,13 +750,13 @@ void flash_attn_mma_stages_split_q(torch::Tensor Q,
     switch (d)
     {
     case 64:
-      launch_flash_attn_mma_stages_split_q<64,  1>(Q, K, V, O);
+      launch_flash_attn_mma_stages_split_q_shared_kv<64,  1>(Q, K, V, O);
       break;
     case 96:
-      launch_flash_attn_mma_stages_split_q<96,  1>(Q, K, V, O);
+      launch_flash_attn_mma_stages_split_q_shared_kv<96,  1>(Q, K, V, O);
       break;
     case 128:
-      launch_flash_attn_mma_stages_split_q<128, 1>(Q, K, V, O);
+      launch_flash_attn_mma_stages_split_q_shared_kv<128, 1>(Q, K, V, O);
       break;
     default:
       throw std::runtime_error("headdim not support!");
