@@ -54,6 +54,88 @@ I have also implemented **FlashAttention-2** using pure MMA PTX instructions, wh
 |Tile Warp (More Values)|Multi Stages (1/2)| Collective Store (Shfl)| Split KV/Q |
 |✔️|✔️|✔️|✔️|
 
+- Split KV (Basic, FlashAttention-1)
+
+```C++
+// Split QKV across MMA(Warps) using matmul MMA&Warp tiling policy.
+// case 0: The layout of 8 MMA(2x4) [before] kWarpTileSeqLenQxkWarpTileSeqLenK(2x2) -> 16x2,8x4=32x32:
+// |  [32,32]  | warp_KV 0 | warp_KV 1 | warp_KV 2 | warp_KV 3 |
+// | warp_QP 0 |-- MMA 0 --|-- MMA 2 --|-- MMA 4 --|-- MMA 6 --|
+// | warp_QP 1 |-- MMA 1 --|-- MMA 3 --|-- MMA 5 --|-- MMA 7 --|
+// case 1: The layout of 8 MMA(2x4)  [after] kWarpTileSeqLenQxkWarpTileSeqLenK(2x2) -> 32x2,32x2=64x64: 
+// |  [64,64]  |    warp_KV 0    |    warp_KV 1    |    warp_KV 2    |    warp_KV 3    |
+// | warp_QP 0 |-- MMA 0,MMA 0 --|-- MMA 2,MMA 2 --|-- MMA 4,MMA 4 --|-- MMA 6,MMA 6 --|
+// | warp_QP 0 |-- MMA 0,MMA 0 --|-- MMA 2,MMA 2 --|-- MMA 4,MMA 4 --|-- MMA 6,MMA 6 --|
+// | warp_QP 1 |-- MMA 1,MMA 1 --|-- MMA 3,MMA 2 --|-- MMA 5,MMA 5 --|-- MMA 7,MMA 7 --|
+// | warp_QP 1 |-- MMA 1,MMA 1 --|-- MMA 3,MMA 2 --|-- MMA 5,MMA 5 --|-- MMA 7,MMA 7 --|
+template<
+         const int kHeadDim,          // Headdim, 32,64,128     
+         const int kMmaAtomM,         // MMA Atom M, 16
+         const int kMmaAtomN,         // MMA Atom N, 8
+         const int kMmaAtomK,         // MMA Atom K, 16
+         const int kMmaTileSeqLenQ,   // 2, more MMA(warp), M=16*2=32, Q@K^T=[Br(M), d(K)]@[d(K),  Bc(N)]  
+         const int kMmaTileSeqLenK,   // 4, more MMA(warp), N=8*4= 32, Q@K^T=[Br(M), d(K)]@[d(K),  Bc(N)]    
+         const int kMmaTileSeqLenP,   // 2, more MMA(warp), M=16*2=32, P@V  =[Br(M),Bc(K)]@[Bc(K), d(N) ]
+         const int kMmaTileHeadDimV,  // 4, more MMA(warp), N=8*4= 32, P@V  =[Br(M),Bc(K)]@[Bc(K), d(N) ]       
+         const int kWarpTileSeqLenQ,  // 2, more values, M, Br=32*2=64, matmul M 
+         const int kWarpTileSeqLenK,  // 2, more values, N, Bc=32*2=64, matmul N
+         const int kWarpTileSeqLenP,  // 2, more values, M, Br=32*2=64, matmul M
+         const int kWarpTileHeadDimV, // 2, more values, N, d=32*(1|2|3|4|...)=32|64|96|128|...
+         const int kStage,            // only support 1 or 2 now.
+         const int kPad               // 0,8              
+         >
+__global__ void 
+flash_attn_mma_stages_split_kv_kernel(half* Q, // [B, H, N, D]
+                                      half* K, // [B, H, D, N] K^T transposed 
+                                      half* V, // [B, H, N, D] 
+                                      half* O, // [B, H, N, D] 
+                                      int QKV_seqlen);
+```
+
+- Split Q (Faster, FlashAttention-2)
+
+```C++
+// Split Q across MMA(Warps) and keep access KV for all MMA(Warps),
+// in order to reduce the comm between warps via smem and warp shuffle.
+// case 0: MMA = m16n8k16, Br=16x4=64, Bc=8x8=64, layout: 4 warps
+// |   64x64   |      warp_KV 0       |
+// | warp_QP 0 | MMA 0 ... MMA 0 (x8) |
+// | warp_QP 1 | MMA 1 ... MMA 1 (x8) |
+// | warp_QP 2 | MMA 2 ... MMA 2 (x8) |
+// | warp_QP 3 | MMA 3 ... MMA 3 (x8) |
+// case 1: MMA = m16n8k16, Br=16x8=128, Bc=8x16=128, layout: 8 warps
+// |  128x128  |      warp_KV 0        |
+// | warp_QP 0 | MMA 0 ... MMA 0 (x16) |
+// | warp_QP 1 | MMA 1 ... MMA 1 (x16) |
+// | warp_QP 2 | MMA 2 ... MMA 2 (x16) |
+// | warp_QP 3 | MMA 3 ... MMA 3 (x16) |
+// | warp_QP 4 | MMA 4 ... MMA 4 (x16) |
+// | warp_QP 5 | MMA 5 ... MMA 5 (x16) |
+// | warp_QP 6 | MMA 6 ... MMA 6 (x16) |
+// | warp_QP 7 | MMA 7 ... MMA 7 (x16) |
+template<
+         const int kHeadDim,          // Headdim, 32,64,128     
+         const int kMmaAtomM,         // MMA Atom M, 16
+         const int kMmaAtomN,         // MMA Atom N, 8
+         const int kMmaAtomK,         // MMA Atom K, 16
+         const int kMmaTileSeqLenQ,   // 4, more MMA(warp), M=16*4=64, Q@K^T=[Br(M), d(K)]@[d(K),  Bc(N)]  
+         const int kMmaTileSeqLenK,   // 1, more MMA(warp), N=8*1 =8,  Q@K^T=[Br(M), d(K)]@[d(K),  Bc(N)]    
+         const int kMmaTileSeqLenP,   // 4, more MMA(warp), M=16*4=64, P@V  =[Br(M),Bc(K)]@[Bc(K), d(N) ]
+         const int kMmaTileHeadDimV,  // 1, more MMA(warp), N=8*1 =8,  P@V  =[Br(M),Bc(K)]@[Bc(K), d(N) ]       
+         const int kWarpTileSeqLenQ,  // 1, more values, M, Br=64*1=64, matmul M 
+         const int kWarpTileSeqLenK,  // 8, more values, N, Bc=8*8 =64, matmul N
+         const int kWarpTileSeqLenP,  // 1, more values, M, Br=64*1=64, matmul M
+         const int kWarpTileHeadDimV, // 8, more values, N, d=8*(1|2|3|4|...)=8|...|32|64|96|128|...
+         const int kStage,            // only support 1 or 2 now.
+         const int kPad               // 0,8           
+         >
+__global__ void
+flash_attn_mma_stages_split_q_kernel(half* Q, // [B, H, N, D]
+                                     half* K, // [B, H, D, N] K^T transposed 
+                                     half* V, // [B, H, N, D] 
+                                     half* O, // [B, H, N, D] 
+                                     int QKV_seqlen);
+```
 ## ©️Citations🎉🎉
 
 ```BibTeX
