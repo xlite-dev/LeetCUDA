@@ -51,7 +51,7 @@ I have also implemented **FlashAttention-2** using pure MMA PTX instructions, wh
 |✔️|✔️|✔️|✔️|
 |Pack LDST (128 bits)|SMEM Padding|Copy Async |Tile MMA (More Threads)
 |✔️|✔️|✔️|✔️|
-|Tile Warp (More Values)|Multi Stages (1/2)| Collective Store (Warp Shfl)| Split KV/Q |
+|Tile Warp (More Values)|Multi Stages (1/2)| Collective Store (Shfl)| Split KV/Q |
 |✔️|✔️|✔️|✔️|
 
 ## ©️Citations🎉🎉
