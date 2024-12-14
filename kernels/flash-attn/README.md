@@ -11,16 +11,13 @@
 本仓库FlashAttention仅用于学习CUDA编程，考虑性能最优请使用FlashAttention官方版本：[flash-attention](https://github.com/Dao-AILab/flash-attention)。目前，在小规模Attention(SeqLen<=4096)的情形，本仓库实现的flash-atttenion-mma基本持平FA官方的性能，但在大规模Attention计算，仍然有较大的性能差距。性能持续优化中，敬请期待~ 
 
 ## 📖 FlashAttetion MMA Kernels
+The `Split KV` and `Split Q` implementations have been carried out in [flash-attention-mma⚡️⚡️](.) for performance comparison. The `Split KV` method, which involves splitting all QKV across MMA (Warps) using a naive matmul (MMA) and Warp tiling policy, is slower compared to the `Split Q` policy, which splitting Q across MMA(Warps) and keep access KV for all MMA(Warps).
 
 - Split KV (Basic, FlashAttention-1)
 
 ```C++
-// Split QKV across MMA(Warps) using matmul MMA&Warp tiling policy.
-// case 0: The layout of 8 MMA(2x4) [before] kWarpTileSeqLenQxkWarpTileSeqLenK(2x2) -> 16x2,8x4=32x32:
-// |  [32,32]  | warp_KV 0 | warp_KV 1 | warp_KV 2 | warp_KV 3 |
-// | warp_QP 0 |-- MMA 0 --|-- MMA 2 --|-- MMA 4 --|-- MMA 6 --|
-// | warp_QP 1 |-- MMA 1 --|-- MMA 3 --|-- MMA 5 --|-- MMA 7 --|
-// case 1: The layout of 8 MMA(2x4)  [after] kWarpTileSeqLenQxkWarpTileSeqLenK(2x2) -> 32x2,32x2=64x64: 
+// Split QKV across MMA(Warps) using naive matmul MMA&Warp tiling policy.
+// case: The layout of 8 MMA(2x4)  [after] kWarpTileSeqLenQxkWarpTileSeqLenK(2x2) -> 32x2,32x2=64x64: 
 // |  [64,64]  |    warp_KV 0    |    warp_KV 1    |    warp_KV 2    |    warp_KV 3    |
 // | warp_QP 0 |-- MMA 0,MMA 0 --|-- MMA 2,MMA 2 --|-- MMA 4,MMA 4 --|-- MMA 6,MMA 6 --|
 // | warp_QP 0 |-- MMA 0,MMA 0 --|-- MMA 2,MMA 2 --|-- MMA 4,MMA 4 --|-- MMA 6,MMA 6 --|
@@ -55,22 +52,12 @@ flash_attn_mma_stages_split_kv_kernel(half* Q, // [B, H, N, D]
 ```C++
 // Split Q across MMA(Warps) and keep access KV for all MMA(Warps),
 // in order to reduce the comm between warps via smem and warp shuffle.
-// case 0: MMA = m16n8k16, Br=16x4=64, Bc=8x8=64, layout: 4 warps
+// case: MMA = m16n8k16, Br=16x4=64, Bc=8x8=64, layout: 4 warps
 // |   64x64   |      warp_KV 0       |
 // | warp_QP 0 | MMA 0 ... MMA 0 (x8) |
 // | warp_QP 1 | MMA 1 ... MMA 1 (x8) |
 // | warp_QP 2 | MMA 2 ... MMA 2 (x8) |
 // | warp_QP 3 | MMA 3 ... MMA 3 (x8) |
-// case 1: MMA = m16n8k16, Br=16x8=128, Bc=8x16=128, layout: 8 warps
-// |  128x128  |      warp_KV 0        |
-// | warp_QP 0 | MMA 0 ... MMA 0 (x16) |
-// | warp_QP 1 | MMA 1 ... MMA 1 (x16) |
-// | warp_QP 2 | MMA 2 ... MMA 2 (x16) |
-// | warp_QP 3 | MMA 3 ... MMA 3 (x16) |
-// | warp_QP 4 | MMA 4 ... MMA 4 (x16) |
-// | warp_QP 5 | MMA 5 ... MMA 5 (x16) |
-// | warp_QP 6 | MMA 6 ... MMA 6 (x16) |
-// | warp_QP 7 | MMA 7 ... MMA 7 (x16) |
 template<
          const int kHeadDim,          // Headdim, 32,64,128     
          const int kMmaAtomM,         // MMA Atom M, 16
