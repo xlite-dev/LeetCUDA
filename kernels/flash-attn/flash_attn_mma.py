@@ -216,17 +216,20 @@ def unfused_standard_attn(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor):
     return y
 
 
-def check_all_close(out_flash: torch.Tensor, out_mma: torch.Tensor):
+def check_all_close(out_flash: torch.Tensor, out_mma: torch.Tensor, 
+                    tag: str = "out_mma", show_all: bool = False):
     out_flash = out_flash.transpose(1, 2)
-    for i in range(int(N/8)):
-        if i < 4:
-            print("-" * 120)
-            print(f"out_flash[:, :,  {(i*8)}:{(i+1)*8}, :]:\n")
-            print(out_flash[:, :,  (i*8):(i+1)*8, :].float())
-            print(f"out_mma[:, :, {(i*8)}:{(i+1)*8}, :]:\n")
-            print(out_mma[:, :, (i*8):(i+1)*8, :].float())
-    print("-" * 120)
-    print(f"{torch.allclose(out_flash.float(), out_mma.float(), atol=1e-2)}")
+    if show_all:
+        for i in range(int(N/8)):
+            if i < 4:
+                print("-" * 120)
+                print(f"out_flash[:, :,  {(i*8)}:{(i+1)*8}, :]:\n")
+                print(out_flash[:, :,  (i*8):(i+1)*8, :].float())
+                print(f"{tag}[:, :, {(i*8)}:{(i+1)*8}, :]:\n")
+                print(out_mma[:, :, (i*8):(i+1)*8, :].float())
+        print("-" * 120)
+    all_close = torch.allclose(out_flash.float(), out_mma.float(), atol=1e-2)
+    print(f"out_flash vs {tag}: {all_close}")
 
 
 Bs = [1, 2, 4] if not args.B else [args.B]
@@ -252,8 +255,8 @@ for (B, H, N, D) in BHNDs:
         out_unfused,   _ = run_benchmark(unfused_standard_attn, q, k, v, "torch(unfused)")
     out_mma_split_kv1, _ = run_benchmark(lib.flash_attn_mma_stages_split_kv, q, tk, v, "mma(split-kv+stage1)", o, stages=1)
     out_mma_split_kv2, _ = run_benchmark(lib.flash_attn_mma_stages_split_kv, q, tk, v, "mma(split-kv+stage2)", o, stages=2)
-    out_mma_split_q1,  _ = run_benchmark(lib.flash_attn_mma_stages_split_q, q, tk, v, "mma(split-q+stage1)", o, stages=1)
-    out_mma_split_q2,  _ = run_benchmark(lib.flash_attn_mma_stages_split_q, q, tk, v, "mma(split-q+stage2)", o, stages=2)
+    out_mma_split_q1,  _ = run_benchmark(lib.flash_attn_mma_stages_split_q,  q, tk, v, "mma(split-q+stage1)",  o, stages=1)
+    out_mma_split_q2,  _ = run_benchmark(lib.flash_attn_mma_stages_split_q,  q, tk, v, "mma(split-q+stage2)",  o, stages=2)
     out_flash,         _ = run_benchmark(flash_attn_func, fq, fk, fv, "(flash)")
     if args.run_torch_sdpa:
         out_sdpa,      _ = run_benchmark(F.scaled_dot_product_attention, q, k, v, "(sdpa)")
@@ -261,4 +264,5 @@ for (B, H, N, D) in BHNDs:
     
     torch.cuda.synchronize()
     if args.check:
-        check_all_close(out_flash, out_mma_split_kv1)
+        check_all_close(out_flash, out_mma_split_kv1, "out_mma_split_kv1", args.show_all)
+        check_all_close(out_flash, out_mma_split_q1,   "out_mma_split_q1", args.show_all)

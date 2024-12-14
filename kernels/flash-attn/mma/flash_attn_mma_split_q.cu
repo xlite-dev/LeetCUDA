@@ -93,7 +93,7 @@ flash_attn_mma_stages_split_q_kernel(half* Q,
   const int tid          = threadIdx.x;     // within block
   const int warp_id      = tid / WARP_SIZE; // 0~7 warp_id within block
   const int lane_id      = tid % WARP_SIZE; // 0~31
-  const int warp_QP      = warp_id;         // 0,1,2,3
+  const int warp_QP      = warp_id;         // 0,1,2,3 or 0~7
   const int warp_KV      = 0;               // 0
   // MMA Layout [Br,Bc]=[64,64], MMA = m16n8k16, Br=16x4=64, Bc=8x8=64, layout: 4 warps
   // |   64x64   |      warp_KV 0       |
@@ -114,7 +114,7 @@ flash_attn_mma_stages_split_q_kernel(half* Q,
   const int Q_gmem_offset = ((QKV_batch_id * gridDim.y * QKV_seqlen * kHeadDim) + 
                              (QKV_head_id * QKV_seqlen * kHeadDim)); // Q [seqlen,d]
   const int K_gmem_offset = ((QKV_batch_id * gridDim.y * kHeadDim * QKV_seqlen) + 
-                             (QKV_head_id * kHeadDim * QKV_seqlen)); // transpose K, [d,seqlen]
+                             (QKV_head_id * kHeadDim * QKV_seqlen)); // transposed K, [d,seqlen]
   const int V_gmem_offset = Q_gmem_offset; // V [seqlen,d]
   const int O_gmem_offset = Q_gmem_offset; // O [seqlen,d]
 
@@ -135,7 +135,7 @@ flash_attn_mma_stages_split_q_kernel(half* Q,
   int load_gmem_K_Bc_offset = 0; 
   int load_gmem_V_Bc_offset = 0; 
 
-  // Shared memory for Q,K,V,O, d=64->24M, d=128=48M
+  // Shared memory for Q,K,V,O, d=64->24M, d=128=48M, kStage 1
   extern __shared__ half smem[];
   constexpr int Q_tile_size = Br * (kHeadDim + kPad); // 64*64=4096, ~8192 bytes=8M
   constexpr int K_tile_size = kHeadDim * (Bc + kPad); // 64*64=4096, ~8192 bytes=8M, KV may shared 8M
@@ -144,11 +144,13 @@ flash_attn_mma_stages_split_q_kernel(half* Q,
   half* Q_tile_smem = smem; // 8M/16M
   half* K_tile_smem = Q_tile_smem + Q_tile_size; // 8M/16M
   half* V_tile_smem = K_tile_smem + kStage * K_tile_size; 
-  // TODO: KV may shared same smem to reduce smem usage for headdim>=256
-  // stage 2, no shared KV smem, Br=Bc=64,  d=64: 8M+(8M)*2+8M+8M    =40M 
-  // stage 2, no shared KV smem, Br=Bc=64, d=128: 16M+(16M)*2+16M+16M=80M 
-  // stage 2, no shared KV smem, Br=Bc=64, d=256: 32M+(32M)*2+32M+32M=160M (not supported)
-  // stage 1, no shared KV smem, Br=Bc=64, d=256: 32M+(32M)*1+32M+32M=128M (not supported)
+  // TODO: KV may shared same smem to reduce smem usage for kStage 1
+  // stage 2, no shared KV smem, Br=Bc=64,  d=64: 8M+(8M)*2+8M    =32M
+  // stage 2, no shared KV smem, Br=Bc=64, d=128: 16M+(16M)*2+16M =64M
+  // stage 2, no shared KV smem, Br=Bc=64, d=256: 32M+(32M)*2+32M =128M
+  // stage 1, no shared KV smem, Br=Bc=64,  d=64: 8M+(8M)+8M      =24M
+  // stage 1, no shared KV smem, Br=Bc=64, d=128: 16M+(16M)*1+16M =48M
+  // stage 1, no shared KV smem, Br=Bc=32, d=256: 16M+(16M)*1+16M =48M
  
   uint32_t smem_Q_base_ptr = __cvta_generic_to_shared(Q_tile_smem);
   uint32_t smem_K_base_ptr = __cvta_generic_to_shared(K_tile_smem);
@@ -511,10 +513,10 @@ flash_attn_mma_stages_split_q_kernel(half* Q,
       // | warp_QP 1 | MMA 1 ... MMA 1 (x8) |
       // | warp_QP 2 | MMA 2 ... MMA 2 (x8) |
       // | warp_QP 3 | MMA 3 ... MMA 3 (x8) |
-      // tile_V_Bc = 0, all curr MMAs(0~4) need P[:,  0:16], 0, 1; stored in all MMAs.
-      // tile_V_Bc = 1, all curr MMAs(0~4) need P[:, 16:32], 2, 3; stored in all MMAs.
-      // tile_V_Bc = 2, all curr MMAs(0~4) need P[:, 32:48], 4, 5; stored in all MMAs. 
-      // tile_V_Bc = 3, all curr MMAs(0~4) need P[:, 48:64], 6, 7; stored in all MMAs. 
+      // tile_V_Bc = 0, all curr MMAs(0~4) need slice P[:,  0:16], 0, 1; stored in all MMAs.
+      // tile_V_Bc = 1, all curr MMAs(0~4) need slice P[:, 16:32], 2, 3; stored in all MMAs.
+      // tile_V_Bc = 2, all curr MMAs(0~4) need slice P[:, 32:48], 4, 5; stored in all MMAs. 
+      // tile_V_Bc = 3, all curr MMAs(0~4) need slice P[:, 48:64], 6, 7; stored in all MMAs. 
       int w = tile_V_Bc * 2; // MMA(Warp) selected, 0, 2, 4, 6
       #pragma unroll
       for (int i = 0; i < kWarpTileSeqLenP; ++i) { // 1

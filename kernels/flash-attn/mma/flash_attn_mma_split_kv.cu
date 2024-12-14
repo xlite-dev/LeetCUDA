@@ -118,8 +118,6 @@ flash_attn_mma_stages_split_kv_kernel(half* Q,
   half* K_tile_smem = Q_tile_smem + Q_tile_size; // 8M/16M
   half* V_tile_smem = K_tile_smem + kStage * K_tile_size; 
   half* S_tile_smem = V_tile_smem + V_tile_size; // for temp S=Q@K^T
-  // TODO: KV may shared same smem to reduce smem usage for headdim>=256
-  // half* V_tile_smem = K_tile_smem; // KV may shared same smem 8M/16M
   // stage 2, no shared KV smem, Br=Bc=64,  d=64: 8M+(8M)*2+8M   =32M,  shared KV smem: 24M
   // stage 2, no shared KV smem, Br=Bc=64, d=128: 16M+(16M)*2+16M=64M,  shared KV smem: 48M
   // stage 2, no shared KV smem, Br=Bc=64, d=256: 32M+(32M)*2+32M=128M, shared KV smem: 96M
