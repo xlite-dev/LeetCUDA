@@ -1,15 +1,3 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <float.h>
-#include <vector>
-#include <algorithm>
-#include <cuda_runtime.h>
-#include <cuda_fp16.h>
-#include <cuda_bf16.h>
-#include <cuda_fp8.h>
-#include <mma.h>
-using namespace nvcuda;
 #include "utils.h"
 
 // Write FlashAttention-2 from scratch using Tensor Cores with MMA PTX instruction.
@@ -735,27 +723,8 @@ flash_attn_mma_stages_split_kv_kernel(half* Q,
   } // end for kWarpTileSeqLenQ
 }
 
-// --------------------- PyTorch bindings for custom kernel -----------------------
-#include <torch/types.h>
-#include <torch/extension.h>
-#define STRINGFY(str) #str
-#define TORCH_BINDING_COMMON_EXTENSION(func) \
-  m.def(STRINGFY(func), &func, STRINGFY(func));
 
-#define CHECK_TORCH_TENSOR_DTYPE(T, th_type)                 \
-if(((T).options().dtype() != (th_type))) {                   \
-  std::cout << "Tensor Info:" << (T).options() << std::endl; \
-  throw std::runtime_error("values must be "#th_type);       \
-}
-
-#define CHECK_TORCH_TENSOR_SHAPE(T1, T2)             \
-if (((T2).size(0) != (T1).size(0)) ||                \
-    ((T2).size(1) != (T1).size(1)) ||                \
-    ((T2).size(2) != (T1).size(2)) ||                \
-    ((T2).size(3) != (T1).size(3))) {                \
-  throw std::runtime_error("Tensor size mismatch!"); \
-}
-
+// Launch kernel for flash_attn_mma_stages_split_kv
 template<const int kHeadDim, const int kStage>
 void launch_flash_attn_mma_stages_split_kv(
   torch::Tensor Q, torch::Tensor K, torch::Tensor V, torch::Tensor O) {
