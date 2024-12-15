@@ -49,9 +49,9 @@ I have also implemented **FlashAttention-2** using pure MMA PTX instructions, wh
 |CUDA Cores|Sliced K (Loop over N/D)|Tile Block (Br, Bc, Bd)|MMA (m16n8k16)|
 |:---:|:---:|:---:|:---:|
 |✔️|✔️|✔️|✔️|
-|Pack LDST (128 bits)|SMEM Padding|Copy Async |Tile MMA (More Threads)
+|Pack LDST (128 bits)|SMEM Padding|Copy Async |Tile MMAs (More Threads)
 |✔️|✔️|✔️|✔️|
-|Tile WarpS (More Values)|Multi Stages (1/2)| Collective Store (Shfl)| **Split KV/Q** |
+|Tile Warps (More Values)|Multi Stages (1/2)| Collective Store (Shfl)| **Split KV/Q** |
 |✔️|✔️|✔️|✔️|
 
 The `Split KV` and `Split Q` implementations have been carried out in [flash-attention-mma⚡️⚡️](./kernels/flash-attn) for performance comparison. The `Split KV` method, which involves splitting all QKV across MMA (Warps), is slower than `Split Q` policy, which splitting Q across MMA(Warps) and keep access KV for all MMA(Warps).
