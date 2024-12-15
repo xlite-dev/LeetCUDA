@@ -1,6 +1,6 @@
 ## ⚡️⚡️FlashAttention-2 MMA: Write FlashAttention using Tensor Cores with pure MMA PTX 
 
-![flash-attn-mma](https://github.com/user-attachments/assets/4c1d807e-a857-470a-829e-3b83c05707ed)
+![flash-attn-mma](https://github.com/user-attachments/assets/6f66796d-44d5-4ec1-b224-af997bd152b2)
 
 |CUDA Cores|Loop over Seqlen/HeadDim |Tile Block (Br, Bc, Bd)|MMA (m16n8k16)|
 |:---:|:---:|:---:|:---:|
