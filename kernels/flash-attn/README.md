@@ -121,6 +121,7 @@ Currently, for small-scale attention (SeqLen <= 4096), the flash-attention-mma i
 <div id="test"></div>  
 
 ```bash
+cd kernels/flash-attn
 # Volta, Ampere, Ada, Hopper, ...
 python3 -m pip install flash-attn --no-build-isolation
 export TORCH_CUDA_ARCH_LIST=Ada # for Ada only
