@@ -117,7 +117,8 @@ Currently, for small-scale attention (SeqLen <= 4096), the flash-attention-mma i
 ```bash
 # Volta, Ampere, Ada, Hopper, ...
 python3 -m pip install flash-attn --no-build-isolation
-export TORCH_CUDA_ARCH_LIST=Ada 
+export TORCH_CUDA_ARCH_LIST=Ada # for Ada only
+export TORCH_CUDA_ARCH_LIST=Ampere # for Ampere only 
 python3 flash_attn_mma.py --D 64 # test all default settings for D=64
 ```
 
