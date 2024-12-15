@@ -89,8 +89,8 @@ flash_attn_mma_stages_split_q_kernel(half* Q, // [B, H, N, D]
 
 - [📖 Prerequisites](#prerequisites)
 - [📖 Installation](#install)
-- [📖 Python Testing](#test)
 - [📖 Performance](#perf)
+- [📖 Python Testing](#test)
 
 ## 📖 Prerequisites
 <div id="prerequisites"></div>  
