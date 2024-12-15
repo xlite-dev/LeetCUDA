@@ -10,7 +10,7 @@
 |Tile Warp (More Values)|Multi Stages (1/2)|Collective Store (Warp Shuffle & Reg Reuse)|**Split KV/Q**|
 |✔️|✔️|✔️|✔️|
 
-This repository's implementation of FlashAttention is intended solely for learning CUDA programming. For optimal performance, please use the official [flash-attention](https://github.com/Dao-AILab/flash-attention). Currently, for small-scale attention (SeqLen <= 4096), the flash-attention-mma implemented in this repository matches the performance of the official FA version. However, for large-scale attention computations, there remains a significant performance gap. Performance optimizations are ongoing; stay tuned for updates.
+This repository's implementation of FlashAttention is intended solely for learning CUDA programming. For optimal performance, please use the official [flash-attention](https://github.com/Dao-AILab/flash-attention). Currently, for small-scale attention (SeqLen <= 4096), the flash-attention-mma implemented in this repository matches the performance of the official FA. However, for large-scale attention computations, there remains a significant performance gap. Performance optimizations are ongoing; stay tuned for updates.
 
 ## 📖 FlashAttetion MMA Kernels
 
@@ -85,92 +85,61 @@ flash_attn_mma_stages_split_q_kernel(half* Q, // [B, H, N, D]
                                      int QKV_seqlen);
 ```
 
-## 📖 Performance
+## 📖 Contents
 
-urrently, for small-scale attention (SeqLen <= 4096), the flash-attention-mma implemented in this repository matches the performance of the official FA version. However, for large-scale attention computations, there remains a significant performance gap. Performance optimizations are ongoing; stay tuned for updates.
+- [📖 Prerequisites](#prerequisites)
+- [📖 Installation](#install)
+- [📖 Python Testing](#test)
+- [📖 Performance](#perf)
+
+## 📖 Prerequisites
+<div id="prerequisites"></div>  
+
+- flash-attention >= 2.6
+- PyTorch >= 2.0, CUDA >= 12.0
+- Recommended: PyTorch 2.5.1, CUDA 12.5
+
+## 📖 Installation  
+<div id="install"></div>    
+
+```bash
+pip install flash-attn --no-build-isolation # need offical flash-attention for comparison
+```
+
+## 📖 Performance
+<div id="perf"></div>  
+
+Currently, for small-scale attention (SeqLen <= 4096), the flash-attention-mma implemented in this repository matches the performance of the official FA version. However, for large-scale attention computations, there remains a significant performance gap. Performance optimizations are ongoing; stay tuned for updates.
+
+## 📖 Python Testing  
+<div id="test"></div>  
+
+```bash
+# Volta, Ampere, Ada, Hopper, ...
+python3 -m pip install flash-attn --no-build-isolation
+export TORCH_CUDA_ARCH_LIST=Ada 
+python3 flash_attn_mma.py --D 64 # test all default settings for D=64
+```
 
 - B=2, H=2, N=4096, D=64
   
 ```bash
 python3 flash_attn_mma.py --B 2 --H 2 --D 64 --N 4096
-----------------------------------------------------------------------------------------------------
-          B: batch_size, H: n_head, N: seq_len, D: head_dim, seed: 8942, Warmup: 2, Iters: 10
-----------------------------------------------------------------------------------------------------
-                         B=2, H=2, N=4096, D=64, Warmup: 2, Iters: 10
-      naive(unfused): ['-0.03945923 ', '0.01776123  ', '0.02627563  '], time:1.318264ms
-          mma(naive): ['-0.03945923 ', '0.01774597  ', '0.02626038  '], time:9.853077ms
-         mma(stage1): ['-0.03945923 ', '0.01776123  ', '0.02624512  '], time:0.336719ms
-         mma(stage2): ['-0.03945923 ', '0.01776123  ', '0.02624512  '], time:0.304818ms
-             (flash): ['-0.03945923 ', '0.01776123  ', '0.02626038  '], time:0.328016ms
-----------------------------------------------------------------------------------------------------
 ```
 
 - B=2, H=2, N=4096, D=128
   
 ```bash
 python3 flash_attn_mma.py --B 2 --H 2 --D 128 --N 4096
-----------------------------------------------------------------------------------------------------
-          B: batch_size, H: n_head, N: seq_len, D: head_dim, seed: 2806, Warmup: 2, Iters: 10
-----------------------------------------------------------------------------------------------------
-                         B=2, H=2, N=4096, D=128, Warmup: 2, Iters: 10
-      naive(unfused): ['0.00286484  ', '-0.00598907 ', '-0.02156067 '], time:1.377940ms
-          mma(naive): ['0.00284004  ', '-0.00598526 ', '-0.02157593 '], time:19.166064ms
-         mma(stage1): ['0.00284004  ', '-0.00598526 ', '-0.02156067 '], time:0.678110ms
-         mma(stage2): ['0.00284004  ', '-0.00598526 ', '-0.02156067 '], time:0.659609ms
-             (flash): ['0.0028553   ', '-0.00598145 ', '-0.02156067 '], time:0.548506ms
-----------------------------------------------------------------------------------------------------
 ```
 
 - B=2, H=2, N=1024, D=128
   
 ```bash
 python3 flash_attn_mma.py --B 2 --H 2 --D 128 --N 1024
-----------------------------------------------------------------------------------------------------
-          B: batch_size, H: n_head, N: seq_len, D: head_dim, seed: 4166, Warmup: 2, Iters: 10
-----------------------------------------------------------------------------------------------------
-                         B=2, H=2, N=1024, D=128, Warmup: 2, Iters: 10
-      naive(unfused): ['-0.02110291 ', '0.04946899  ', '-0.04928589 '], time:0.145769ms
-          mma(naive): ['-0.02116394 ', '0.04946899  ', '-0.04946899 '], time:1.236653ms
-         mma(stage1): ['-0.02114868 ', '0.04943848  ', '-0.04943848 '], time:0.070930ms
-         mma(stage2): ['-0.02114868 ', '0.04943848  ', '-0.04943848 '], time:0.069165ms
-             (flash): ['-0.02113342 ', '0.04949951  ', '-0.04931641 '], time:0.151205ms
-----------------------------------------------------------------------------------------------------
 ```
 
 - B=2, H=2, N=8192, D=64
 ```bash
 python3 flash_attn_mma.py --B 2 --H 2 --D 64 --N 8192
-----------------------------------------------------------------------------------------------------
-          B: batch_size, H: n_head, N: seq_len, D: head_dim, seed: 434, Warmup: 2, Iters: 10
-----------------------------------------------------------------------------------------------------
-                         B=2, H=2, N=8192, D=64, Warmup: 2, Iters: 10
-      naive(unfused): ['-0.00259781 ', '-0.00584412 ', '-0.00161552 '], time:5.139947ms
-          mma(naive): ['-0.00258827 ', '-0.00583267 ', '-0.00162792 '], time:39.265347ms
-         mma(stage1): ['-0.00261307 ', '-0.00583267 ', '-0.00162888 '], time:1.131415ms
-         mma(stage2): ['-0.00261307 ', '-0.00583267 ', '-0.00162888 '], time:1.082253ms
-             (flash): ['-0.00259209 ', '-0.00584793 ', '-0.00160122 '], time:0.786042ms
-----------------------------------------------------------------------------------------------------
-```
-
-## 📖 More tests   
-```bash
-# Volta, Ampere, Ada, Hopper, ...
-pip install flash-attn
-export TORCH_CUDA_ARCH_LIST=Ada 
-python3 flash_attn_mma.py
-```
-
-- NVIDIA L20
-```bash
-python3 flash_attn_mma.py --N 4096 --B 2 --H 2 --D 128
-----------------------------------------------------------------------------------------------------
-          B: batch_size, H: n_head, N: seq_len, D: head_dim, seed: 762, Warmup: 2, Iters: 10
-----------------------------------------------------------------------------------------------------
-                         B=2, H=2, N=4096, D=128, Warmup: 2, Iters: 10
-      naive(unfused): ['0.06402588  ', '0.01030731  ', '0.02693176  '], time:1.380467ms
-          mma(naive): ['0.06408691  ', '0.01036835  ', '0.0269165   '], time:19.160128ms
-         mma(stage1): ['0.06390381  ', '0.01038361  ', '0.02685547  '], time:0.681663ms
-         mma(stage2): ['0.06390381  ', '0.01038361  ', '0.02685547  '], time:0.661945ms
-             (flash): ['0.06402588  ', '0.01029968  ', '0.02694702  '], time:0.550222ms
-----------------------------------------------------------------------------------------------------
 ```
