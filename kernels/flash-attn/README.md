@@ -12,11 +12,22 @@
 
 This repository's implementation of FlashAttention is intended solely for learning CUDA programming. For optimal performance, please use the official [flash-attention](https://github.com/Dao-AILab/flash-attention). Currently, for small-scale attention (SeqLen <= 4096), the flash-attention-mma implemented in this repository matches the performance of the official FA. However, for large-scale attention computations, there remains a significant performance gap. Performance optimizations are ongoing; stay tuned for updates.
 
+## 📖 Contents
+
+- [📖 Split KV](#mma-split-kv)
+- [📖 Split Q](#mma)
+- [📖 Prerequisites](#prerequisites)
+- [📖 Installation](#install)
+- [📖 Performance](#perf)
+- [📖 Python Testing](#test)
+
 ## 📖 FlashAttetion MMA Kernels
+<div id="mma"></div>  
 
 The `Split KV` and `Split Q` implementations have been carried out in [flash-attention-mma⚡️⚡️](.) for performance comparison. The `Split KV` method, which involves splitting all QKV across MMA (Warps) using a naive matmul (MMA) and Warp tiling policy, is slower compared to the `Split Q` policy, which splitting Q across MMA(Warps) and keep access KV for all MMA(Warps).
 
-- Split KV (Basic, FlashAttention-1)
+## 📖 Split KV (Basic, FlashAttention-1)
+<div id="mma-split-kv"></div>  
 
 ```C++
 // Split QKV across MMA(Warps) using naive matmul MMA&Warp tiling policy.
@@ -50,7 +61,8 @@ flash_attn_mma_stages_split_kv_kernel(half* Q, // [B, H, N, D]
                                       int QKV_seqlen);
 ```
 
-- Split Q (Faster, FlashAttention-2)
+## 📖 Split Q (Faster, FlashAttention-2)
+<div id="mma-split-q"></div>  
 
 ```C++
 // Split Q across MMA(Warps) and keep access KV for all MMA(Warps),
@@ -85,12 +97,6 @@ flash_attn_mma_stages_split_q_kernel(half* Q, // [B, H, N, D]
                                      int QKV_seqlen);
 ```
 
-## 📖 Contents
-
-- [📖 Prerequisites](#prerequisites)
-- [📖 Installation](#install)
-- [📖 Performance](#perf)
-- [📖 Python Testing](#test)
 
 ## 📖 Prerequisites
 <div id="prerequisites"></div>  
