@@ -47,7 +47,7 @@ I have also implemented **FlashAttention-2** using pure MMA PTX instructions, wh
 ![flash-attn-mma](https://github.com/user-attachments/assets/6f66796d-44d5-4ec1-b224-af997bd152b2)
 
 
-|CUDA Cores|Sliced K (Loop over N/D)|Tile Block (Br, Bc, Bd)|MMA (m16n8k16)|
+|Tensor Cores|Sliced K (Loop over N/D)|Tile Block (Br, Bc)|MMA (m16n8k16)|
 |:---:|:---:|:---:|:---:|
 |✔️|✔️|✔️|✔️|
 |Pack LDST (128 bits)|SMEM Padding|Copy Async |Tile MMAs (More Threads)
