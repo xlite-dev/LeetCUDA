@@ -120,7 +120,7 @@ def run_benchmark(perf_func: callable,
                   v: torch.Tensor,
                   tag: str, 
                   out: Optional[torch.Tensor] = None, 
-                  s: Optional[torch.Tensor] = None, # BUDEG
+                  s: Optional[torch.Tensor] = None, # DEBUG
                   stages: int = -1,
                   warmup: int = args.warmup, 
                   iters: int = args.iters,
