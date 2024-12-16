@@ -259,7 +259,7 @@ for (B, H, N, D) in BHNDs:
     out_mma_split_kv2,  _ = run_benchmark(lib.flash_attn_mma_stages_split_kv, q, tk, v, "mma(split-kv+stage2)", o, stages=2)
     out_mma_split_q1,   _ = run_benchmark(lib.flash_attn_mma_stages_split_q,  q, tk, v, "mma(split-q+stage1)",  o, stages=1)
     out_mma_split_q2,   _ = run_benchmark(lib.flash_attn_mma_stages_split_q,  q, tk, v, "mma(split-q+stage2)",  o, stages=2)
-    out_mma_share_kv,   _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv,  q, tk, v, "mma(split-q+share-kv)",  o, stages=1)
+    out_mma_share_kv,   _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv,  q, tk, v, "mma(split-q+share-kv+stage1)",  o, stages=1)
     out_mma_share_qkv1, _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_qkv,  q, tk, v, "mma(split-q+share-qkv+stage1)",  o, stages=1)
     out_mma_share_qkv2, _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_qkv,  q, tk, v, "mma(split-q+share-qkv+stage2)",  o, stages=2)
     out_flash,          _ = run_benchmark(flash_attn_func, fq, fk, fv, "(flash)")
