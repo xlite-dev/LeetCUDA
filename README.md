@@ -60,6 +60,7 @@ The `Split KV` and `Split Q` implementations have been carried out in [flash-att
 ![flash-attn](https://github.com/user-attachments/assets/11490fbc-2a4a-4630-abe8-91a9d1251cba)
 -->
 - 📚 Split KV (Basic, FlashAttention-1)
+<div id="mma-split-kv"></div>  
 
 ```C++
 // Split QKV across MMA(Warps) using naive matmul MMA&Warp tiling policy.
@@ -69,22 +70,6 @@ The `Split KV` and `Split Q` implementations have been carried out in [flash-att
 // | warp_QP 0 |-- MMA 0,MMA 0 --|-- MMA 2,MMA 2 --|-- MMA 4,MMA 4 --|-- MMA 6,MMA 6 --|
 // | warp_QP 1 |-- MMA 1,MMA 1 --|-- MMA 3,MMA 2 --|-- MMA 5,MMA 5 --|-- MMA 7,MMA 7 --|
 // | warp_QP 1 |-- MMA 1,MMA 1 --|-- MMA 3,MMA 2 --|-- MMA 5,MMA 5 --|-- MMA 7,MMA 7 --|
-template<
-         const int kHeadDim,          // Headdim, 32,64,128     
-         const int kMmaAtomM,         // MMA Atom M, 16
-         const int kMmaAtomN,         // MMA Atom N, 8
-         const int kMmaAtomK,         // MMA Atom K, 16
-         const int kMmaTileSeqLenQ,   // 2, more MMA(warp), M=16*2=32, Q@K^T=[Br(M), d(K)]@[d(K),  Bc(N)]  
-         const int kMmaTileSeqLenK,   // 4, more MMA(warp), N=8*4= 32, Q@K^T=[Br(M), d(K)]@[d(K),  Bc(N)]    
-         const int kMmaTileSeqLenP,   // 2, more MMA(warp), M=16*2=32, P@V  =[Br(M),Bc(K)]@[Bc(K), d(N) ]
-         const int kMmaTileHeadDimV,  // 4, more MMA(warp), N=8*4= 32, P@V  =[Br(M),Bc(K)]@[Bc(K), d(N) ]       
-         const int kWarpTileSeqLenQ,  // 2, more values, M, Br=32*2=64, matmul M 
-         const int kWarpTileSeqLenK,  // 2, more values, N, Bc=32*2=64, matmul N
-         const int kWarpTileSeqLenP,  // 2, more values, M, Br=32*2=64, matmul M
-         const int kWarpTileHeadDimV, // 2, more values, N, d=32*(1|2|3|4|...)=32|64|96|128|...
-         const int kStage,            // only support 1 or 2 now.
-         const int kPad               // 0,8              
-         >
 __global__ void 
 flash_attn_mma_stages_split_kv_kernel(half* Q, // [B, H, N, D]
                                       half* K, // [B, H, D, N] K^T transposed 
@@ -94,6 +79,7 @@ flash_attn_mma_stages_split_kv_kernel(half* Q, // [B, H, N, D]
 ```
 
 - 📚 Split Q (Faster, FlashAttention-2)
+<div id="mma-split-q"></div>  
 
 ```C++
 // Split Q across MMA(Warps) and keep access KV for all MMA(Warps),
@@ -104,22 +90,6 @@ flash_attn_mma_stages_split_kv_kernel(half* Q, // [B, H, N, D]
 // | warp_QP 1 | MMA 1 ... MMA 1 (x8) |
 // | warp_QP 2 | MMA 2 ... MMA 2 (x8) |
 // | warp_QP 3 | MMA 3 ... MMA 3 (x8) |
-template<
-         const int kHeadDim,          // Headdim, 32,64,128     
-         const int kMmaAtomM,         // MMA Atom M, 16
-         const int kMmaAtomN,         // MMA Atom N, 8
-         const int kMmaAtomK,         // MMA Atom K, 16
-         const int kMmaTileSeqLenQ,   // 4, more MMA(warp), M=16*4=64, Q@K^T=[Br(M), d(K)]@[d(K),  Bc(N)]  
-         const int kMmaTileSeqLenK,   // 1, more MMA(warp), N=8*1 =8,  Q@K^T=[Br(M), d(K)]@[d(K),  Bc(N)]    
-         const int kMmaTileSeqLenP,   // 4, more MMA(warp), M=16*4=64, P@V  =[Br(M),Bc(K)]@[Bc(K), d(N) ]
-         const int kMmaTileHeadDimV,  // 1, more MMA(warp), N=8*1 =8,  P@V  =[Br(M),Bc(K)]@[Bc(K), d(N) ]       
-         const int kWarpTileSeqLenQ,  // 1, more values, M, Br=64*1=64, matmul M 
-         const int kWarpTileSeqLenK,  // 8, more values, N, Bc=8*8 =64, matmul N
-         const int kWarpTileSeqLenP,  // 1, more values, M, Br=64*1=64, matmul M
-         const int kWarpTileHeadDimV, // 8, more values, N, d=8*(1|2|3|4|...)=8|...|32|64|96|128|...
-         const int kStage,            // only support 1 or 2 now.
-         const int kPad               // 0,8           
-         >
 __global__ void
 flash_attn_mma_stages_split_q_kernel(half* Q, // [B, H, N, D]
                                      half* K, // [B, H, D, N] K^T transposed 
@@ -127,6 +97,33 @@ flash_attn_mma_stages_split_q_kernel(half* Q, // [B, H, N, D]
                                      half* O, // [B, H, N, D] 
                                      int QKV_seqlen);
 ```
+
+- 📚 Split Q + Shared KV SMEM (Faster+)
+<div id="mma-share-kv"></div>  
+
+```C++
+// K, V shared the same shared memory, improve block occupancy.
+__global__ void 
+flash_attn_mma_stages_split_q_shared_kv_kernel(half* Q, 
+                                               half* K, 
+                                               half* V, 
+                                               half* O, 
+                                               int QKV_seqlen);
+```
+- 📚 Split Q + Fully Shared QKV SMEM (Faster++)
+
+<div id="mma-share-qkv"></div>  
+
+```C++
+// Q, K, V fully shared the same shared memory, improve block occupancy.
+__global__ void 
+flash_attn_mma_stages_split_q_shared_qkv_kernel(half* Q, 
+                                                half* K, 
+                                                half* V, 
+                                                half* O, 
+                                                int QKV_seqlen);
+```
+
 ## ©️Citations🎉🎉
 
 ```BibTeX
