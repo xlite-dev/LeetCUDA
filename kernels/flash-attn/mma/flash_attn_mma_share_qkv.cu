@@ -704,8 +704,8 @@ void launch_flash_attn_mma_stages_split_q_shared_qkv(
   // static int kMaxSramPerBlock;
   // cudaDeviceGetAttribute(&kMaxSramPerBlock, cudaDevAttrMaxSharedMemoryPerBlock, 0);
 
-  // Calculate SRAM size needed per block, Q,K/V smem size, KV shared the same smem.
-  const int smem_max_size = (Br * (kHeadDim + kPad)) * sizeof(half);
+  // Calculate SRAM size needed per block, QKV smem size, QKV fully shared the same smem.
+  const int smem_max_size = (Br * (kHeadDim + kPad)) * sizeof(half); // 128x(32/64/128)x2/1024=8/16/32M
 
   const int QKV_batch  = Q.size(0); 
   const int QKV_head   = Q.size(1);
