@@ -56,9 +56,9 @@ I have also implemented **FlashAttention-2** using pure MMA PTX instructions, wh
 |✔️|✔️|✔️|✔️|
 
 The `Split KV` and `Split Q` implementations have been carried out in [flash-attention-mma⚡️⚡️](./kernels/flash-attn) for performance comparison. The `Split KV` method, which involves splitting all QKV across MMA (Warps), is slower than `Split Q` policy, which splitting Q across MMA(Warps) and keep access KV for all MMA(Warps).
-
+<!--
 ![flash-attn](https://github.com/user-attachments/assets/11490fbc-2a4a-4630-abe8-91a9d1251cba)
-
+-->
 - 📚 Split KV (Basic, FlashAttention-1)
 
 ```C++
