@@ -42,18 +42,20 @@ Currently, on NVIDIA L20, RTX 4090 and RTX 3080 Laptop, compared with cuBLAS's d
 |Collective Store (Warp Shfl)|Row Major (NN)|Col Major (TN)| SGEMM FP32/TF32|
 |✔️|✔️|✔️|✔️|
 
-I have also implemented **FlashAttention-2** using pure MMA PTX instructions, which supports features such as Multi-Stages, Tile MMA, Tile Warp and Collective Store. Performance is continuously being optimized. Stay tuned for updates ~ Please refer to [flash-attention-mma⚡️⚡️](./kernels/flash-attn) for more details.
+I have also implemented **FlashAttention-2** using pure MMA PTX instructions, which supports features such as Multi-Stages, Tile MMA, Tile Warp and Collective Store.  Currently, for small-scale attention (B<=4, H <=48, SeqLen <= 8192), the flash-attention-mma implemented in this repository matches the performance of the official FA. However, for large-scale attention computations, there remains a performance gap. Performance is continuously being optimized. Stay tuned for updates ~ Please refer to [flash-attention-mma⚡️⚡️](./kernels/flash-attn) for more details.
 
 ![flash-attn-mma](https://github.com/user-attachments/assets/6f66796d-44d5-4ec1-b224-af997bd152b2)
 
 
-|Tensor Cores|Sliced K (Loop over N/D)|Tile Block (Br, Bc)|MMA (m16n8k16)|
+|Tensor Cores|Loop over Seqlen/Headdim |Tile Block (Br, Bc)|MMA (m16n8k16)|
 |:---:|:---:|:---:|:---:|
 |✔️|✔️|✔️|✔️|
-|Pack LDST (128 bits)|SMEM Padding|Copy Async |Tile MMAs (More Threads)
+|Pack LDST (128 bits)|SMEM Padding|Copy Async|Tile MMA (More Threads)
 |✔️|✔️|✔️|✔️|
-|Tile Warps (More Values)|Multi Stages (1/2)| Collective Store (Shfl)| **Split KV/Q** |
+|Tile Warp (More Values)|Multi Stages (1/2)|Collective Store (Shfl)|**Split KV/Q**|
 |✔️|✔️|✔️|✔️|
+|**Shared KV** SMEM|Fully **Shared QKV** SMEM|**Prefetch Q** s2r|SMEM Swizzle|
+|✔️|✔️|✔️|?|
 
 The `Split KV` and `Split Q` implementations have been carried out in [flash-attention-mma⚡️⚡️](./kernels/flash-attn) for performance comparison. The `Split KV` method, which involves splitting all QKV across MMA (Warps), is slower than `Split Q` policy, which splitting Q across MMA(Warps) and keep access KV for all MMA(Warps).
 <!--
@@ -115,7 +117,7 @@ flash_attn_mma_stages_split_q_shared_kv_kernel(half* Q,
 <div id="mma-share-qkv"></div>  
 
 ```C++
-// Q, K, V fully shared the same shared memory, improve block occupancy.
+// Q, K, V fully shared the same shared memory and prefetch Q s2r, improve block occupancy.
 __global__ void 
 flash_attn_mma_stages_split_q_shared_qkv_kernel(half* Q, 
                                                 half* K, 
