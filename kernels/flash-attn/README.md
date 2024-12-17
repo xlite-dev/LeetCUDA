@@ -9,10 +9,28 @@
 |✔️|✔️|✔️|✔️|
 |Tile Warp (More Values)|Multi Stages (1/2)|Collective Store (Warp Shuffle & Reg Reuse)|**Split KV/Q**|
 |✔️|✔️|✔️|✔️|
-|Shared KV SMEM|Fully Shared QKV SMEM|Prefetch Q s2r|SMEM Swizzle|
+|Shared KV SMEM|Fully Shared QKV SMEM|Prefetch Q s2r|SMEM/Block Swizzle|
 |✔️|✔️|✔️|?|
 
 This repository's implementation of FlashAttention is intended solely for learning CUDA programming. For optimal performance, please use the official [flash-attention](https://github.com/Dao-AILab/flash-attention). Currently, for small-scale attention (B<=4, H <=48, SeqLen <= 8192), the flash-attention-mma implemented in this repository matches the performance of the official FA. However, for large-scale attention computations, there remains a significant performance gap. Performance optimizations are ongoing; stay tuned for updates.
+
+- Example: B=1, H=8, N=8192, D=64 (NVIDIA RTX 3080 Laptop)
+```bash
+python3 flash_attn_mma.py --B 1 --H 8 --D 64 --N 8192 --iters 10 # NVIDIA RTX 3080 Laptop
+------------------------------------------------------------------------------------------------------------------------
+                    B: batch_size, H: n_head, N: seq_len, D: head_dim, seed: 1617, Warmup: 1, Iters: 10
+------------------------------------------------------------------------------------------------------------------------
+                              B=1, H=8, N=8192, D=64, Warmup: 1, Iters: 10
+          mma(split-kv+stage1): ['0.01960754  ', '0.01452637  ', '-0.02592468 '], time:5.586338ms, TFLOPS:25.08
+          mma(split-kv+stage2): ['0.01960754  ', '0.01452637  ', '-0.02592468 '], time:5.326223ms, TFLOPS:26.31
+           mma(split-q+stage1): ['0.01960754  ', '0.01452637  ', '-0.02592468 '], time:3.834152ms, TFLOPS:36.54
+           mma(split-q+stage2): ['0.01960754  ', '0.01452637  ', '-0.02592468 '], time:4.328346ms, TFLOPS:32.37
+  mma(split-q+share-kv+stage1): ['0.01960754  ', '0.01452637  ', '-0.02592468 '], time:2.636528ms, TFLOPS:53.15
+ mma(split-q+share-qkv+stage1): ['0.01960754  ', '0.01452637  ', '-0.02592468 '], time:2.594471ms, TFLOPS:54.01
+ mma(split-q+share-qkv+stage2): ['0.01960754  ', '0.01452637  ', '-0.02592468 '], time:2.574611ms, TFLOPS:54.42
+                       (flash): ['0.01963806  ', '0.0145874   ', '-0.02593994 '], time:3.764462ms, TFLOPS:37.22
+-----------------------------------------------------------------------------------------------------------------------
+```
 
 ## 📖 Contents
 
@@ -132,61 +150,91 @@ python3 flash_attn_mma.py --D 64 # test all default settings for D=64
 - B=2, H=2, N=4096, D=64
   
 ```bash
-python3 flash_attn_mma.py --B 2 --H 2 --D 64 --N 4096 # NVIDIA L20
+python3 flash_attn_mma.py --B 2 --H 2 --D 64 --N 4096 --iters 10 # NVIDIA RTX 3080 Laptop
 ------------------------------------------------------------------------------------------------------------------------
-                    B: batch_size, H: n_head, N: seq_len, D: head_dim, seed: 3268, Warmup: 2, Iters: 10
+                    B: batch_size, H: n_head, N: seq_len, D: head_dim, seed: 9655, Warmup: 1, Iters: 10
 ------------------------------------------------------------------------------------------------------------------------
-                              B=2, H=2, N=4096, D=64, Warmup: 2, Iters: 10
-     mma(split-kv+stage1): ['-0.04187012 ', '0.05764771  ', '-0.00485992 '], time:0.323963ms, TFLOPS:54.06
-     mma(split-kv+stage2): ['-0.04187012 ', '0.05764771  ', '-0.00485992 '], time:0.284553ms, TFLOPS:61.55
-      mma(split-q+stage1): ['-0.04187012 ', '0.05764771  ', '-0.00485992 '], time:0.225067ms, TFLOPS:77.82
-      mma(split-q+stage2): ['-0.04187012 ', '0.05764771  ', '-0.00485992 '], time:0.256133ms, TFLOPS:68.38
-                  (flash): ['-0.04190063 ', '0.05761719  ', '-0.0049057  '], time:0.244427ms, TFLOPS:71.65
+                              B=2, H=2, N=4096, D=64, Warmup: 1, Iters: 10
+          mma(split-kv+stage1): ['0.01901245  ', '-0.02037048 ', '-0.01722717 '], time:0.765753ms, TFLOPS:22.87
+          mma(split-kv+stage2): ['0.01901245  ', '-0.02037048 ', '-0.01722717 '], time:0.731516ms, TFLOPS:23.94
+           mma(split-q+stage1): ['0.01901245  ', '-0.02037048 ', '-0.01722717 '], time:0.526834ms, TFLOPS:33.24
+           mma(split-q+stage2): ['0.01901245  ', '-0.02037048 ', '-0.01722717 '], time:0.660753ms, TFLOPS:26.51
+  mma(split-q+share-kv+stage1): ['0.01901245  ', '-0.02037048 ', '-0.01722717 '], time:0.460815ms, TFLOPS:38.01
+ mma(split-q+share-qkv+stage1): ['0.01901245  ', '-0.02037048 ', '-0.01722717 '], time:0.465345ms, TFLOPS:37.64
+ mma(split-q+share-qkv+stage2): ['0.01901245  ', '-0.02037048 ', '-0.01722717 '], time:0.474334ms, TFLOPS:36.92
+                       (flash): ['0.01904297  ', '-0.02037048 ', '-0.01724243 '], time:0.596189ms, TFLOPS:29.38
 ------------------------------------------------------------------------------------------------------------------------
 ```
 
 
 - B=2, H=2, N=8192, D=64
 ```bash
-python3 flash_attn_mma.py --B 2 --H 2 --D 64 --N 8192 # NVIDIA L20
+ python3 flash_attn_mma.py --B 1 --H 8 --D 64 --N 8192 --iters 10 # NVIDIA RTX 3080 Laptop
 ------------------------------------------------------------------------------------------------------------------------
-                    B: batch_size, H: n_head, N: seq_len, D: head_dim, seed: 2981, Warmup: 2, Iters: 10
+                    B: batch_size, H: n_head, N: seq_len, D: head_dim, seed: 5669, Warmup: 1, Iters: 10
 ------------------------------------------------------------------------------------------------------------------------
-                              B=2, H=2, N=8192, D=64, Warmup: 2, Iters: 10
-     mma(split-kv+stage1): ['-0.02342224 ', '0.0209198   ', '0.02729797  '], time:1.094031ms, TFLOPS:64.04
-     mma(split-kv+stage2): ['-0.02342224 ', '0.0209198   ', '0.02729797  '], time:1.036191ms, TFLOPS:67.61
-      mma(split-q+stage1): ['-0.02342224 ', '0.0209198   ', '0.02729797  '], time:0.909352ms, TFLOPS:77.04
-      mma(split-q+stage2): ['-0.02342224 ', '0.0209198   ', '0.02729797  '], time:0.943947ms, TFLOPS:74.22
-                  (flash): ['-0.02340698 ', '0.0209198   ', '0.02728271  '], time:0.703907ms, TFLOPS:99.53
+                              B=1, H=8, N=8192, D=64, Warmup: 1, Iters: 10
+          mma(split-kv+stage1): ['-0.0087738  ', '0.012146    ', '-0.01319122 '], time:5.572367ms, TFLOPS:25.15
+          mma(split-kv+stage2): ['-0.0087738  ', '0.012146    ', '-0.01319122 '], time:5.295920ms, TFLOPS:26.46
+           mma(split-q+stage1): ['-0.0087738  ', '0.012146    ', '-0.01319122 '], time:3.607082ms, TFLOPS:38.85
+           mma(split-q+stage2): ['-0.0087738  ', '0.012146    ', '-0.01319122 '], time:4.600883ms, TFLOPS:30.45
+  mma(split-q+share-kv+stage1): ['-0.0087738  ', '0.012146    ', '-0.01319122 '], time:2.744508ms, TFLOPS:51.05
+ mma(split-q+share-qkv+stage1): ['-0.0087738  ', '0.012146    ', '-0.01319122 '], time:2.700114ms, TFLOPS:51.89
+ mma(split-q+share-qkv+stage2): ['-0.0087738  ', '0.012146    ', '-0.01319122 '], time:2.692103ms, TFLOPS:52.05
+                       (flash): ['-0.00882721 ', '0.01213074  ', '-0.01314545 '], time:3.778219ms, TFLOPS:37.09
 ------------------------------------------------------------------------------------------------------------------------
 ```
 
 - B=1, H=8, N=8192, D=64
 ```bash
-python3 flash_attn_mma.py --B 1 --H 8 --D 64 --N 8192 # NVIDIA L20
+python3 flash_attn_mma.py --B 1 --H 8 --D 64 --N 8192 --iters 10 # NVIDIA RTX 3080 Laptop
 ------------------------------------------------------------------------------------------------------------------------
-                    B: batch_size, H: n_head, N: seq_len, D: head_dim, seed: 3279, Warmup: 2, Iters: 10
+                    B: batch_size, H: n_head, N: seq_len, D: head_dim, seed: 1617, Warmup: 1, Iters: 10
 ------------------------------------------------------------------------------------------------------------------------
-                              B=1, H=8, N=8192, D=64, Warmup: 2, Iters: 10
-     mma(split-kv+stage1): ['0.0181427   ', '-0.01678467 ', '-0.02586365 '], time:2.160978ms, TFLOPS:64.84
-     mma(split-kv+stage2): ['0.0181427   ', '-0.01678467 ', '-0.02586365 '], time:2.053237ms, TFLOPS:68.24
-      mma(split-q+stage1): ['0.0181427   ', '-0.01678467 ', '-0.02586365 '], time:1.690006ms, TFLOPS:82.91
-      mma(split-q+stage2): ['0.0181427   ', '-0.01678467 ', '-0.02586365 '], time:1.858854ms, TFLOPS:75.38
-                  (flash): ['0.01815796  ', '-0.01675415 ', '-0.02584839 '], time:1.366282ms, TFLOPS:102.55
-------------------------------------------------------------------------------------------------------------------------
+                              B=1, H=8, N=8192, D=64, Warmup: 1, Iters: 10
+          mma(split-kv+stage1): ['0.01960754  ', '0.01452637  ', '-0.02592468 '], time:5.586338ms, TFLOPS:25.08
+          mma(split-kv+stage2): ['0.01960754  ', '0.01452637  ', '-0.02592468 '], time:5.326223ms, TFLOPS:26.31
+           mma(split-q+stage1): ['0.01960754  ', '0.01452637  ', '-0.02592468 '], time:3.834152ms, TFLOPS:36.54
+           mma(split-q+stage2): ['0.01960754  ', '0.01452637  ', '-0.02592468 '], time:4.328346ms, TFLOPS:32.37
+  mma(split-q+share-kv+stage1): ['0.01960754  ', '0.01452637  ', '-0.02592468 '], time:2.636528ms, TFLOPS:53.15
+ mma(split-q+share-qkv+stage1): ['0.01960754  ', '0.01452637  ', '-0.02592468 '], time:2.594471ms, TFLOPS:54.01
+ mma(split-q+share-qkv+stage2): ['0.01960754  ', '0.01452637  ', '-0.02592468 '], time:2.574611ms, TFLOPS:54.42
+                       (flash): ['0.01963806  ', '0.0145874   ', '-0.02593994 '], time:3.764462ms, TFLOPS:37.22
+-----------------------------------------------------------------------------------------------------------------------
 ```
 
 - B=1, H=48, N=8192, D=64  
 ```bash
-python3 flash_attn_mma.py --B 1 --H 48 --D 64 --N 8192  # NVIDIA L20
+python3 flash_attn_mma.py --B 1 --H 48 --D 64 --N 8192 --iters 10 # NVIDIA RTX 3080 Laptop
 ------------------------------------------------------------------------------------------------------------------------
-                    B: batch_size, H: n_head, N: seq_len, D: head_dim, seed: 2491, Warmup: 2, Iters: 10
+                    B: batch_size, H: n_head, N: seq_len, D: head_dim, seed: 4669, Warmup: 1, Iters: 10
 ------------------------------------------------------------------------------------------------------------------------
-                              B=1, H=48, N=8192, D=64, Warmup: 2, Iters: 10
-     mma(split-kv+stage1): ['-0.00775146 ', '0.01187897  ', '0.02755737  '], time:12.174153ms, TFLOPS:69.06
-     mma(split-kv+stage2): ['-0.00775146 ', '0.01187897  ', '0.02755737  '], time:11.572266ms, TFLOPS:72.65
-      mma(split-q+stage1): ['-0.00775146 ', '0.01187897  ', '0.02755737  '], time:9.648752ms,  TFLOPS:87.13
-      mma(split-q+stage2): ['-0.00775146 ', '0.01187897  ', '0.02755737  '], time:10.584569ms, TFLOPS:79.43
-                  (flash): ['-0.00776672 ', '0.0118866   ', '0.02757263  '], time:7.596278ms,  TFLOPS:110.67
+                              B=1, H=48, N=8192, D=64, Warmup: 1, Iters: 10
+          mma(split-kv+stage1): ['-0.01280212 ', '-0.02825928 ', '0.0146637   '], time:42.534423ms, TFLOPS:19.77
+          mma(split-kv+stage2): ['-0.01280212 ', '-0.02825928 ', '0.0146637   '], time:42.349815ms, TFLOPS:19.85
+           mma(split-q+stage1): ['-0.01280212 ', '-0.02825928 ', '0.0146637   '], time:35.657477ms, TFLOPS:23.58
+           mma(split-q+stage2): ['-0.01280212 ', '-0.02825928 ', '0.0146637   '], time:36.065412ms, TFLOPS:23.31
+  mma(split-q+share-kv+stage1): ['-0.01280212 ', '-0.02825928 ', '0.0146637   '], time:23.619652ms, TFLOPS:35.59
+ mma(split-q+share-qkv+stage1): ['-0.01280212 ', '-0.02825928 ', '0.0146637   '], time:23.893070ms, TFLOPS:35.19
+ mma(split-q+share-qkv+stage2): ['-0.01280212 ', '-0.02825928 ', '0.0146637   '], time:23.590446ms, TFLOPS:35.64
+                       (flash): ['-0.01280212 ', '-0.02825928 ', '0.0146637   '], time:22.385812ms, TFLOPS:37.56
+------------------------------------------------------------------------------------------------------------------------
+```
+
+- B=1, H=8, N=8192, D=32  
+```bash
+python3 flash_attn_mma.py --B 1 --H 8 --D 32 --N 8192 --iters 10 # NVIDIA RTX 3080 Laptop
+------------------------------------------------------------------------------------------------------------------------
+                    B: batch_size, H: n_head, N: seq_len, D: head_dim, seed: 2322, Warmup: 1, Iters: 10
+------------------------------------------------------------------------------------------------------------------------
+                              B=1, H=8, N=8192, D=32, Warmup: 1, Iters: 10
+          mma(split-kv+stage1): ['-0.00616074 ', '-0.00230789 ', '0.02029419  '], time:3.930807ms, TFLOPS:18.16
+          mma(split-kv+stage2): ['-0.00616074 ', '-0.00230789 ', '0.02029419  '], time:3.901839ms, TFLOPS:18.30
+           mma(split-q+stage1): ['-0.00616074 ', '-0.00230789 ', '0.02029419  '], time:1.839685ms, TFLOPS:38.81
+           mma(split-q+stage2): ['-0.00607681 ', '-0.00229454 ', '0.02029419  '], time:1.511669ms, TFLOPS:47.23
+  mma(split-q+share-kv+stage1): ['-0.00616074 ', '-0.00230789 ', '0.02029419  '], time:1.400948ms, TFLOPS:50.97
+ mma(split-q+share-qkv+stage1): ['-0.00616074 ', '-0.00230789 ', '0.02029419  '], time:1.393318ms, TFLOPS:51.25
+ mma(split-q+share-qkv+stage2): ['-0.00616074 ', '-0.00230789 ', '0.02029419  '], time:1.322961ms, TFLOPS:53.97
+                       (flash): ['-0.00617599 ', '-0.00231934 ', '0.02029419  '], time:1.810646ms, TFLOPS:39.43
 ------------------------------------------------------------------------------------------------------------------------
 ```
