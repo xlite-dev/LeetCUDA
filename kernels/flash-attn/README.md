@@ -30,7 +30,7 @@ The `Split KV` and `Split Q` implementations have been carried out in [flash-att
 <!--
 ![flash-attn](https://github.com/user-attachments/assets/11490fbc-2a4a-4630-abe8-91a9d1251cba)
 -->
-## 📖 Split KV (Basic, FlashAttention-1)
+## 📚 Split KV (Basic, FlashAttention-1)
 <div id="mma-split-kv"></div>  
 
 ```C++
@@ -49,7 +49,7 @@ flash_attn_mma_stages_split_kv_kernel(half* Q, // [B, H, N, D]
                                       int QKV_seqlen);
 ```
 
-## 📖 Split Q (Faster, FlashAttention-2)
+## 📚 Split Q (Faster, FlashAttention-2)
 <div id="mma-split-q"></div>  
 
 ```C++
@@ -69,11 +69,11 @@ flash_attn_mma_stages_split_q_kernel(half* Q, // [B, H, N, D]
                                      int QKV_seqlen);
 ```
 
-## 📖 Split Q + Shared KV SMEM (Faster+)
+## 📚 Split Q + Shared KV SMEM (Faster+)
 <div id="mma-share-kv"></div>  
 
 ```C++
-// K, V shared the same shared memory.
+// K, V shared the same shared memory, improve block occupancy.
 __global__ void 
 flash_attn_mma_stages_split_q_shared_kv_kernel(half* Q, 
                                                half* K, 
@@ -81,12 +81,12 @@ flash_attn_mma_stages_split_q_shared_kv_kernel(half* Q,
                                                half* O, 
                                                int QKV_seqlen);
 ```
-## 📖 Split Q + Fully Shared QKV SMEM (Faster++)
+## 📚 Split Q + Fully Shared QKV SMEM (Faster++)
 
 <div id="mma-share-qkv"></div>  
 
 ```C++
-// Q, K, V fully shared the same shared memory.
+// Q, K, V fully shared the same shared memory, improve block occupancy.
 __global__ void 
 flash_attn_mma_stages_split_q_shared_qkv_kernel(half* Q, 
                                                 half* K, 
