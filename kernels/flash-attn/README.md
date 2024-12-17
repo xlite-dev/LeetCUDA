@@ -14,15 +14,16 @@ This repository's implementation of FlashAttention is intended solely for learni
 
 ## 📖 Contents
 
-- [📖 Split KV](#mma-split-kv)
-- [📖 Split Q](#mma-split-q)
-- [📖 Split Q + Shared KV SMEM](#mma-share-kv)
-- [📖 Split Q + Fully Shared QKV SMEM](#mma-share-qkv)
+- [📖 FlashAttetion MMA Kernels](#mma)
+  - [📚 Split KV](#mma-split-kv)
+  - [📚 Split Q ](#mma-split-q)
+  - [📚 Shared KV SMEM](#mma-share-kv)
+  - [📚 Fully Shared QKV SMEM](#mma-share-qkv)
 - [📖 Prerequisites](#prerequisites)
 - [📖 Installation](#install)
 - [📖 Performance](#perf)
 - [📖 Python Testing](#test)
-
+  
 ## 📖 FlashAttetion MMA Kernels
 <div id="mma"></div>  
 
@@ -30,7 +31,7 @@ The `Split KV` and `Split Q` implementations have been carried out in [flash-att
 <!--
 ![flash-attn](https://github.com/user-attachments/assets/11490fbc-2a4a-4630-abe8-91a9d1251cba)
 -->
-## 📚 Split KV (Basic, FlashAttention-1)
+- 📚 Split KV (Basic, FlashAttention-1)
 <div id="mma-split-kv"></div>  
 
 ```C++
@@ -49,7 +50,7 @@ flash_attn_mma_stages_split_kv_kernel(half* Q, // [B, H, N, D]
                                       int QKV_seqlen);
 ```
 
-## 📚 Split Q (Faster, FlashAttention-2)
+- 📚 Split Q (Faster, FlashAttention-2)
 <div id="mma-split-q"></div>  
 
 ```C++
@@ -69,7 +70,7 @@ flash_attn_mma_stages_split_q_kernel(half* Q, // [B, H, N, D]
                                      int QKV_seqlen);
 ```
 
-## 📚 Split Q + Shared KV SMEM (Faster+)
+- 📚 Split Q + Shared KV SMEM (Faster+)
 <div id="mma-share-kv"></div>  
 
 ```C++
@@ -81,7 +82,7 @@ flash_attn_mma_stages_split_q_shared_kv_kernel(half* Q,
                                                half* O, 
                                                int QKV_seqlen);
 ```
-## 📚 Split Q + Fully Shared QKV SMEM (Faster++)
+- 📚 Split Q + Fully Shared QKV SMEM (Faster++)
 
 <div id="mma-share-qkv"></div>  
 
