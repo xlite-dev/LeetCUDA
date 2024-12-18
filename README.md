@@ -133,7 +133,7 @@ flash_attn_mma_stages_split_q_shared_kv_kernel(half* Q,
 <div id="mma-share-qkv"></div>  
 
 ```C++
-// Q, K, V fully shared the same shared memory and prefetch Q s2r, improve block occupancy.
+// Q, K, V fully shared the same shared memory and prefetch Q s2r, improve block occupancy & reduce Q SMEM IO-Access.
 __global__ void 
 flash_attn_mma_stages_split_q_shared_qkv_kernel(half* Q, 
                                                 half* K, 
