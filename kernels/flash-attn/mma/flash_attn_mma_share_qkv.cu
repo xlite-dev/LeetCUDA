@@ -233,7 +233,7 @@ flash_attn_mma_stages_split_q_shared_qkv_kernel(half* Q,
             int lane_smem_Q_d  = tile_K_d * kMmaAtomK + (lane_id / 16) * 8; // 0,8
             uint32_t lane_smem_Q_ptr = (
               smem_Q_base_ptr + (lane_smem_Q_Br * (kHeadDim + kPad) + 
-                                lane_smem_Q_d) * sizeof(half)
+                                 lane_smem_Q_d) * sizeof(half)
             );
             LDMATRIX_X4(R_Q[tile_K_d][i][0], R_Q[tile_K_d][i][1], 
                         R_Q[tile_K_d][i][2], R_Q[tile_K_d][i][3], 
