@@ -241,6 +241,7 @@ flash_attn_mma_stages_split_q_shared_kv_kernel(half* Q,
                         lane_smem_Q_ptr); // now, R_Q[1/2/4/8][1][4]
           }
         }
+        __syncthreads(); // wait all warps ready.
       } // end if tile_K_seqlen == 0
     } // end if kCanPrefetchQs2r
 
