@@ -67,7 +67,7 @@ The `Split KV` and `Split Q` implementations have been carried out in [flash-att
 // | warp_QP 1 |-- MMA 1,MMA 1 --|-- MMA 3,MMA 2 --|-- MMA 5,MMA 5 --|-- MMA 7,MMA 7 --|
 __global__ void 
 flash_attn_mma_stages_split_kv_kernel(half* Q, // [B, H, N, D]
-                                      half* K, // [B, H, D, N] K^T transposed 
+                                      half* K, // [B, H, N, D]
                                       half* V, // [B, H, N, D] 
                                       half* O, // [B, H, N, D] 
                                       int QKV_seqlen);
@@ -87,7 +87,7 @@ flash_attn_mma_stages_split_kv_kernel(half* Q, // [B, H, N, D]
 // | warp_QP 3 | MMA 3 ... MMA 3 (x8) |
 __global__ void
 flash_attn_mma_stages_split_q_kernel(half* Q, // [B, H, N, D]
-                                     half* K, // [B, H, D, N] K^T transposed 
+                                     half* K, // [B, H, N, D]
                                      half* V, // [B, H, N, D] 
                                      half* O, // [B, H, N, D] 
                                      int QKV_seqlen);
@@ -99,10 +99,10 @@ flash_attn_mma_stages_split_q_kernel(half* Q, // [B, H, N, D]
 ```C++
 // K, V shared the same shared memory, improve block occupancy.
 __global__ void 
-flash_attn_mma_stages_split_q_shared_kv_kernel(half* Q, 
-                                               half* K, 
-                                               half* V, 
-                                               half* O, 
+flash_attn_mma_stages_split_q_shared_kv_kernel(half* Q, // [B, H, N, D]
+                                               half* K, // [B, H, N, D]
+                                               half* V, // [B, H, N, D]
+                                               half* O, // [B, H, N, D]
                                                int QKV_seqlen);
 ```
 - 📚 Split Q + Fully Shared QKV SMEM (**1/4 SRAM** vs FA2)
@@ -110,12 +110,13 @@ flash_attn_mma_stages_split_q_shared_kv_kernel(half* Q,
 <div id="mma-share-qkv"></div>  
 
 ```C++
-// Q, K, V fully shared the same shared memory and prefetch Q s2r, improve block occupancy & reduce Q SMEM IO-Access.
+// Q, K, V fully shared the same shared memory and prefetch Q s2r, improve block occupancy
+// and reduce Q SMEM IO-Access.
 __global__ void 
-flash_attn_mma_stages_split_q_shared_qkv_kernel(half* Q, 
-                                                half* K, 
-                                                half* V, 
-                                                half* O, 
+flash_attn_mma_stages_split_q_shared_qkv_kernel(half* Q, // [B, H, N, D]
+                                                half* K, // [B, H, N, D]
+                                                half* V, // [B, H, N, D]
+                                                half* O, // [B, H, N, D]
                                                 int QKV_seqlen);
 ```
 
