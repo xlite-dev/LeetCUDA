@@ -47,6 +47,7 @@ def get_args():
     parser.add_argument("--run-torch-unfused", '--torch', action="store_true")
     parser.add_argument("--run-torch-sdpa", '--sdpa', action="store_true")
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--check-all", action="store_true")
     parser.add_argument("--show-all", '--show', action="store_true")
     parser.add_argument("--show-matrix", action="store_true")
     parser.add_argument("--only-flops-matmul", "--flops-mm", action="store_true")
@@ -260,9 +261,9 @@ def unfused_standard_attn(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor):
 
 
 def check_all_close(out_flash: torch.Tensor, out_mma: torch.Tensor, 
-                    tag: str = "out_mma", show_all: bool = False):
+                    tag: str = "out_mma", check_all: bool = False):
     out_flash = out_flash.transpose(1, 2)
-    if show_all:
+    if check_all:
         for i in range(int(N/8)):
             if i < 4:
                 pretty_print_line()
@@ -318,12 +319,12 @@ for (B, H, N, D) in BHNDs:
     torch.cuda.synchronize()
     if args.check:
         pretty_print_line()
-        check_all_close(out_flash, out_mma_split_kv1,  "out_mma_split_kv1",  args.show_all)
-        check_all_close(out_flash, out_mma_split_q1,   "out_mma_split_q1",   args.show_all)
-        check_all_close(out_flash, out_mma_share_kv1,  "out_mma_share_kv1",  args.show_all)
-        check_all_close(out_flash, out_mma_share_qkv1, "out_mma_share_qkv1", args.show_all)
-        check_all_close(out_flash, out_mma_split_kv2,  "out_mma_split_kv2",  args.show_all)
-        check_all_close(out_flash, out_mma_split_q2,   "out_mma_split_q2",   args.show_all)
-        check_all_close(out_flash, out_mma_share_kv2,  "out_mma_share_kv2",  args.show_all)
-        check_all_close(out_flash, out_mma_share_qkv2, "out_mma_share_qkv2", args.show_all)
+        check_all_close(out_flash, out_mma_split_kv1,  "out_mma_split_kv1",  args.check_all)
+        check_all_close(out_flash, out_mma_split_q1,   "out_mma_split_q1",   args.check_all)
+        check_all_close(out_flash, out_mma_share_kv1,  "out_mma_share_kv1",  args.check_all)
+        check_all_close(out_flash, out_mma_share_qkv1, "out_mma_share_qkv1", args.check_all)
+        check_all_close(out_flash, out_mma_split_kv2,  "out_mma_split_kv2",  args.check_all)
+        check_all_close(out_flash, out_mma_split_q2,   "out_mma_split_q2",   args.check_all)
+        check_all_close(out_flash, out_mma_share_kv2,  "out_mma_share_kv2",  args.check_all)
+        check_all_close(out_flash, out_mma_share_qkv2, "out_mma_share_qkv2", args.check_all)
         pretty_print_line()
