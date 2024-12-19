@@ -50,9 +50,7 @@ python3 flash_attn_mma.py --B 1 --H 8 --D 64 --N 8192 --iters 10 --torch # NVIDI
 <div id="mma"></div>  
 
 The `Split KV` and `Split Q` implementations have been carried out in [flash-attention-mma⚡️⚡️](.) for performance comparison. The `Split KV` method, which involves splitting all QKV across MMA (Warps) using a naive matmul (MMA) and Warp tiling policy, is slower compared to the `Split Q` policy, which splitting Q across MMA(Warps) and keep access KV for all MMA(Warps).
-<!--
-![flash-attn](https://github.com/user-attachments/assets/11490fbc-2a4a-4630-abe8-91a9d1251cba)
--->
+
 - 📚 Split KV (Basic, FlashAttention-1)
 <div id="mma-split-kv"></div>  
 
@@ -69,7 +67,7 @@ flash_attn_mma_stages_split_kv_kernel(half* Q, // [B, H, N, D]
                                       half* K, // [B, H, N, D]
                                       half* V, // [B, H, N, D] 
                                       half* O, // [B, H, N, D] 
-                                      int QKV_seqlen);
+                                      ...);
 ```
 
 - 📚 Split Q (Faster, FlashAttention-2)
@@ -89,7 +87,7 @@ flash_attn_mma_stages_split_q_kernel(half* Q, // [B, H, N, D]
                                      half* K, // [B, H, N, D]
                                      half* V, // [B, H, N, D] 
                                      half* O, // [B, H, N, D] 
-                                     int QKV_seqlen);
+                                     ...);
 ```
 
 - 📚 Split Q + Shared KV SMEM (**1/2 SRAM** vs FA2)
@@ -102,7 +100,7 @@ flash_attn_mma_stages_split_q_shared_kv_kernel(half* Q, // [B, H, N, D]
                                                half* K, // [B, H, N, D]
                                                half* V, // [B, H, N, D]
                                                half* O, // [B, H, N, D]
-                                               int QKV_seqlen);
+                                               ...);
 ```
 - 📚 Split Q + Fully Shared QKV SMEM (**1/4 SRAM** vs FA2)
 
@@ -116,9 +114,8 @@ flash_attn_mma_stages_split_q_shared_qkv_kernel(half* Q, // [B, H, N, D]
                                                 half* K, // [B, H, N, D]
                                                 half* V, // [B, H, N, D]
                                                 half* O, // [B, H, N, D]
-                                                int QKV_seqlen);
+                                                ...);
 ```
-
 
 ## 📖 Prerequisites
 <div id="prerequisites"></div>  
