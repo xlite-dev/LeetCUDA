@@ -83,9 +83,6 @@ The `Split KV` and `Split Q` implementations have been carried out in [flash-att
 - 📚 Split KV (Basic, FlashAttention-1)
 <div id="mma-split-kv"></div>  
 
-- 📚 Split KV (Basic, FlashAttention-1)
-<div id="mma-split-kv"></div>  
-
 ```C++
 // Split QKV across MMA(Warps) using naive matmul MMA&Warp tiling policy.
 // case: The layout of 8 MMA(2x4)  [after] kWarpTileSeqLenQxkWarpTileSeqLenK(2x2) -> 32x2,32x2=64x64: 
