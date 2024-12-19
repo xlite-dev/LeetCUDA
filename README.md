@@ -95,7 +95,7 @@ flash_attn_mma_stages_split_kv_kernel(half* Q, // [B, H, N, D]
                                       half* K, // [B, H, N, D]
                                       half* V, // [B, H, N, D] 
                                       half* O, // [B, H, N, D] 
-                                      int QKV_seqlen);
+                                      ...);
 ```
 
 - 📚 Split Q (Faster, FlashAttention-2)
@@ -115,7 +115,7 @@ flash_attn_mma_stages_split_q_kernel(half* Q, // [B, H, N, D]
                                      half* K, // [B, H, N, D]
                                      half* V, // [B, H, N, D] 
                                      half* O, // [B, H, N, D] 
-                                     int QKV_seqlen);
+                                     ...);
 ```
 
 - 📚 Split Q + Shared KV SMEM (**1/2 SRAM** vs FA2)
@@ -128,7 +128,7 @@ flash_attn_mma_stages_split_q_shared_kv_kernel(half* Q, // [B, H, N, D]
                                                half* K, // [B, H, N, D]
                                                half* V, // [B, H, N, D]
                                                half* O, // [B, H, N, D]
-                                               int QKV_seqlen);
+                                               ...);
 ```
 - 📚 Split Q + Fully Shared QKV SMEM (**1/4 SRAM** vs FA2)
 
@@ -142,7 +142,7 @@ flash_attn_mma_stages_split_q_shared_qkv_kernel(half* Q, // [B, H, N, D]
                                                 half* K, // [B, H, N, D]
                                                 half* V, // [B, H, N, D]
                                                 half* O, // [B, H, N, D]
-                                                int QKV_seqlen);
+                                                ...);
 ```
 
 ## ©️Citations🎉🎉
