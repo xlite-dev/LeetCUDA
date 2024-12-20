@@ -784,6 +784,7 @@ void launch_flash_attn_mma_stages_split_q_tiling(
   // Tr(=N/Br), batch_size x num_heads
   dim3 grid(div_ceil(QKV_seqlen, Br), QKV_batch * QKV_head); 
   dim3 block(kNumThreads); // 4/8 warps per block
+  // when N >= 6016, stage 1 will have precision gap, why?
 
   cudaFuncSetAttribute(
     flash_attn_mma_stages_split_q_tiling_kernel<
