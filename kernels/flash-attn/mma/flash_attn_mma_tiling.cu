@@ -587,7 +587,6 @@ flash_attn_mma_stages_split_q_tiling_kernel(half* Q,
         );
         LDMATRIX_X2_T(R_V[j][0], R_V[j][1], lane_smem_V_ptr); // R_V
       }
-      __syncthreads();
       
       // For R_S[1][8][2], mapping the layout below of P matrix.
       // MMA = m16n8k16, Br=16x4=64, Bc=8x8=64, layout: 4 warps
