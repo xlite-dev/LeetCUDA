@@ -143,7 +143,7 @@ flash_attn_mma_stages_split_q_tiling_kernel(half* Q,
   constexpr int V_tile_size = kMmaAtomK * (kHeadDim + kPad); // V[16,d], 2M
   half* Q_tile_smem = smem; // 8M/16M
   half* K_tile_smem = Q_tile_smem + kStage * Q_tile_size; // 8M/16M
-  half* V_tile_smem = Q_tile_smem; // V reuse all Q+K smem after Q@K^T.
+  half* V_tile_smem = Q_tile_smem; // V may reuse all Q+K smem after Q@K^T.
   // NOTE: KV may shared same smem to reduce smem usage for kStage 1
   // stage 1, w shared KV smem, Br=Bc=64,  d>=16:  2M+(2M) =4M,  +Pad(2M) = 6M
   // stage 1, w shared KV smem, Br=Bc=128, d>=16:  4M+4M   =8M,  +Pad(2M) = 10M
@@ -587,6 +587,7 @@ flash_attn_mma_stages_split_q_tiling_kernel(half* Q,
         );
         LDMATRIX_X2_T(R_V[j][0], R_V[j][1], lane_smem_V_ptr); // R_V
       }
+      __syncthreads();
       
       // For R_S[1][8][2], mapping the layout below of P matrix.
       // MMA = m16n8k16, Br=16x4=64, Bc=8x8=64, layout: 4 warps
