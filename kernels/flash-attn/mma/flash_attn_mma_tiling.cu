@@ -670,7 +670,8 @@ flash_attn_mma_stages_split_q_tiling_kernel(half* Q,
   }
 
   // Store O(D): Write O[Br,d] from regs -> gmem, collective store 
-  // with reg reuse & warp shuffle. need R_Z[2][4].
+  // with reg reuse & warp shuffle. need R_Z[2][4]. 
+  // TODO: reuse Q smem for collective store: regs -> smem -> gmem
   #pragma unroll
   for (int i = 0; i < kWarpTileSeqLenP; ++i) { // 1
     #pragma unroll
