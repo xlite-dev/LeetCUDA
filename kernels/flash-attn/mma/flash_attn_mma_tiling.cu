@@ -489,7 +489,7 @@ flash_attn_mma_stages_split_q_tiling_kernel(half* Q,
       CP_ASYNC_WAIT_GROUP(kStage - 2); // s2->0, s3->1, s4->2
       __syncthreads(); 
     }
-    
+
     // <HGEMM in registers>
     fill_3D_regs<uint32_t, kWarpTileSeqLenP, kWarpTileHeadDimV, 2>(R_O, 0);
     #pragma unroll
@@ -575,6 +575,13 @@ flash_attn_mma_stages_split_q_tiling_kernel(half* Q,
                     R_O[i][j][0], R_O[i][j][1]);
         }
       }
+
+      if constexpr (kStage > 1) {
+        // Wait next V tile g2s ready.
+        CP_ASYNC_WAIT_GROUP(kStage - 2);
+        __syncthreads(); 
+      }
+
     } // end for V Bc.
     __syncthreads(); 
 
@@ -637,15 +644,6 @@ flash_attn_mma_stages_split_q_tiling_kernel(half* Q,
       lane_block_row_max_old[i][0] = block_row_max_new_0;
       lane_block_row_max_old[i][1] = block_row_max_new_1;
     }
-
-    if constexpr (kCanPrefetchKVg2s) {
-      if ((tile_K_seqlen + 1) < Tc) {
-        // now, we have to wait next K tile ready in smem.
-        CP_ASYNC_WAIT_GROUP(0); 
-        __syncthreads();
-      }
-    }
-
   } // end loop over N
   __syncthreads();
 
