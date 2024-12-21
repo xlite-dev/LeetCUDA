@@ -307,9 +307,9 @@ for (B, H, N, D) in BHNDs:
     q, k, v, o, fq, fk, fv = get_qkvo(B, H, N, D)
     torch.cuda.synchronize()
     
+    if args.run_torch_unfused:
+        out_unfused,            _ = run_benchmark(unfused_standard_attn, q, k, v, "torch(unfused)")
     if D <= 256:
-        if args.run_torch_unfused:
-            out_unfused,        _ = run_benchmark(unfused_standard_attn, q, k, v, "torch(unfused)")
         if D <= 128:
             out_mma_split_kv1,  _ = run_benchmark(lib.flash_attn_mma_stages_split_kv, q, k, v, "mma(split-kv+stage1)", o, stages=1)
             out_mma_split_kv2,  _ = run_benchmark(lib.flash_attn_mma_stages_split_kv, q, k, v, "mma(split-kv+stage2)", o, stages=2)

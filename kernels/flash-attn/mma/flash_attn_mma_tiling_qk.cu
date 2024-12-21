@@ -172,6 +172,9 @@ flash_attn_mma_stages_split_q_tiling_qk_kernel(half* Q,
   uint32_t R_Q[kWarpTileSeqLenQ][ 4]; // [1][4]
   uint32_t R_K[kWarpTileSeqLenK][ 2]; // [8][2]
   uint32_t R_V[kWarpTileHeadDimV][2]; // [8][2]
+  // NOTE: For R_V[kWarpTileHeadDimV][2], kWarpTileHeadDimV will increase with d.
+  // so, for large d, R_V will need more registers and cause performance down.
+  // We have to find a way to apply MMA level tiling for V(R_V) for large d.
   // registers for current tile_K_seqlen within, [64,64] = S_tile[Br,Bc]
   // = Q_tile[Br,d] * K[Bc,d], each thread hold 2x32 bits regs.
   uint32_t R_S[kWarpTileSeqLenQ][kWarpTileSeqLenK][ 2]; // [1][8][2]
