@@ -141,6 +141,7 @@ flash_attn_mma_stages_split_q_tiling_kernel(half* Q,
   constexpr int Q_tile_size = Br * (kMmaAtomK + kPad); // Q[Br,16], 64*16*2=2048 bytes, 2M
   constexpr int K_tile_size = Bc * (kMmaAtomK + kPad); // K[Bc,16], 2M
   constexpr int V_tile_size = kMmaAtomK * (kHeadDim + kPad); // V[16,d], 2M
+  // TODO: optimize QKV kStage smem store layout as I do in hgemm.
   half* Q_tile_smem = smem; // 8M/16M
   half* K_tile_smem = Q_tile_smem + kStage * Q_tile_size; // 8M/16M
   half* V_tile_smem = Q_tile_smem; // V may reuse all Q+K smem after Q@K^T.
@@ -333,6 +334,11 @@ flash_attn_mma_stages_split_q_tiling_kernel(half* Q,
         );
         LDMATRIX_X2(R_K[j][0], R_K[j][1], lane_smem_K_ptr); // R_K
       } // end for kWarpTileSeqLenK
+      if constexpr (kStage < 2) {
+        // Wait Q, K s2r ready if kStage < 2 in order to avoid 
+        // the next Q, K tile g2s overwrite.
+        __syncthreads();
+      }
       
       // MMA compute
       #pragma unroll
@@ -586,6 +592,11 @@ flash_attn_mma_stages_split_q_tiling_kernel(half* Q,
                              lane_smem_V_d) * sizeof(half)
         );
         LDMATRIX_X2_T(R_V[j][0], R_V[j][1], lane_smem_V_ptr); // R_V
+      }
+      if constexpr (kStage < 2) {
+        // Wait V s2r ready if kStage < 2 in order to avoid 
+        // the next V tile g2s overwrite.
+        __syncthreads();
       }
       
       // For R_S[1][8][2], mapping the layout below of P matrix.

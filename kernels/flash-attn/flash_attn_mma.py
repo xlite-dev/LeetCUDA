@@ -320,7 +320,7 @@ for (B, H, N, D) in BHNDs:
         out_mma_share_kv2,  _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv,  q, k, v, "mma(split-q+share-kv+stage2)",  o, stages=2)
     out_mma_tiling1,    _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling,  q, k, v, "mma(split-q+tiling+stage1)",  o, stages=1)
     out_mma_tiling2,    _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling,  q, k, v, "mma(split-q+tiling+stage2)",  o, stages=2)
-    if D <= 128:
+    if D <= 256:
         out_flash,          _ = run_benchmark(flash_attn_func, fq, fk, fv, "(flash)")
     if args.run_torch_sdpa:
         out_sdpa,       _ = run_benchmark(F.scaled_dot_product_attention, q, k, v, "(sdpa)")
@@ -338,11 +338,11 @@ for (B, H, N, D) in BHNDs:
             check_all_close(out_flash, out_mma_share_kv2,  "out_mma_share_kv2",  args.check_all)
             check_all_close(out_flash, out_mma_share_qkv1, "out_mma_share_qkv1", args.check_all)
             check_all_close(out_flash, out_mma_share_qkv2, "out_mma_share_qkv2", args.check_all)
-            check_all_close(out_flash, out_mma_tiling1,    "out_mma_tiling1",   args.check_all)
-            check_all_close(out_flash, out_mma_tiling2,    "out_mma_tiling2",   args.check_all)
+            check_all_close(out_flash, out_mma_tiling1,    "out_mma_tiling1",    args.check_all)
+            check_all_close(out_flash, out_mma_tiling2,    "out_mma_tiling2",    args.check_all)
             pretty_print_line()
         elif args.run_torch_sdpa:
             pretty_print_line()
-            check_all_close(out_sdpa, out_mma_tiling1,    "out_mma_tiling1",   args.check_all, False)
-            check_all_close(out_sdpa, out_mma_tiling2,    "out_mma_tiling2",   args.check_all, False)
+            check_all_close(out_sdpa, out_mma_tiling1,    "out_mma_tiling1",    args.check_all, False)
+            check_all_close(out_sdpa, out_mma_tiling2,    "out_mma_tiling2",    args.check_all, False)
             pretty_print_line()
