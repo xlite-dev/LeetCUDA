@@ -1,1 +1,0 @@
-// TODO: Apply smem swizzle to the mma kernel
