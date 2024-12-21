@@ -42,6 +42,11 @@
 // | warp_QP 6 | MMA 6 ... MMA 6 (x8) |
 // | warp_QP 7 | MMA 7 ... MMA 7 (x8) |
 
+// Fine grain tiling (MMA level) for Q, K the cause constant SRAM size 64*kMmaAtomK, 
+// and O(kMmaAtomK*d) SRAM complexity for V, thus, the SRAM complexity is O(kMmaAtomK*d).
+// Thus, this kernel can extend D(headdim) to 1024. Performance is continuously being 
+// optimized. Stay tuned for updates ~
+
 template<
          const int kHeadDim,          // Headdim, 32,64,128     
          const int kMmaAtomM,         // MMA Atom M, 16
@@ -60,12 +65,12 @@ template<
          >
 __global__ void __launch_bounds__(
   WARP_SIZE * kMmaTileSeqLenQ * kMmaTileSeqLenK) 
-flash_attn_mma_stages_split_q_tiling_kernel(half* Q, 
-                                            half* K, 
-                                            half* V, 
-                                            half* O, 
-                                            int QKV_seqlen,
-                                            int QKV_head) {
+flash_attn_mma_stages_split_q_tiling_qk_kernel(half* Q, 
+                                               half* K, 
+                                               half* V, 
+                                               half* O, 
+                                               int QKV_seqlen,
+                                               int QKV_head) {
   // Matmul Layout: Q[Br,d]@K^T[d,Bc] NT, P[Br,Bc]@V[Bc,d] NN.
   // NOTE: K[Bc,d] with row major means K^T[d,Bc] in col major.
   static_assert(kMmaAtomM == 16 && kMmaAtomN == 8 && kMmaAtomK == 16); // m16n8k16
@@ -141,14 +146,16 @@ flash_attn_mma_stages_split_q_tiling_kernel(half* Q,
   constexpr int Q_tile_size = Br * (kMmaAtomK + kPad); // Q[Br,16], 64*16*2=2048 bytes, 2M
   constexpr int K_tile_size = Bc * (kMmaAtomK + kPad); // K[Bc,16], 2M
   constexpr int V_tile_size = kMmaAtomK * (kHeadDim + kPad); // V[16,d], 2M
-  // TODO: optimize QKV kStage smem store layout as I do in hgemm.
+  // TODO: optimize QKV kStage smem store layout as in HGEMM.
   half* Q_tile_smem = smem; // 8M/16M
   half* K_tile_smem = Q_tile_smem + kStage * Q_tile_size; // 8M/16M
   half* V_tile_smem = Q_tile_smem; // V may reuse all Q+K smem after Q@K^T.
-  // NOTE: KV may shared same smem to reduce smem usage for kStage 1
-  // stage 1, w shared KV smem, Br=Bc=64,  d>=16:  2M+(2M) =4M,  +Pad(2M) = 6M
-  // stage 1, w shared KV smem, Br=Bc=128, d>=16:  4M+4M   =8M,  +Pad(2M) = 10M
- 
+  // stage 1, Q/K smem = 64*16*2/1024=2M, V smem =16*d(64|128|...)*2/1024=2M/4M/..
+  // stage 1, total smem = max(QK_smem, V_smem) = 4M if d <= 64 else V_smem.
+  // stage 1, V shared QK smem, Br=Bc=64,  d=64:  2M+(2M) =4M,  +Pad(2M)  = 6M
+  // stage 1, V shared QK smem, Br=Bc=128, d=64:  4M+4M   =8M,  +Pad(2M)  = 10M
+  // stage 2, V shared QK smem, Br=Bc=64,  d=64:  4M+(4M) =8M,  +Pad(2M)  = 10M
+  // stage 2, V shared QK smem, Br=Bc=128, d=64:  8M+8M   =16M,  +Pad(2M) = 18M
   uint32_t smem_Q_base_ptr = __cvta_generic_to_shared(Q_tile_smem);
   uint32_t smem_K_base_ptr = __cvta_generic_to_shared(K_tile_smem);
   uint32_t smem_V_base_ptr = __cvta_generic_to_shared(V_tile_smem);
@@ -749,9 +756,9 @@ flash_attn_mma_stages_split_q_tiling_kernel(half* Q,
   } // end for kWarpTileSeqLenQ
 }
 
-// Launch kernel for flash_attn_mma_stages_split_q
+// Launch kernel for flash_attn_mma_stages_split_q_tiling_qk
 template<const int kHeadDim, const int kStage>
-void launch_flash_attn_mma_stages_split_q_tiling(
+void launch_flash_attn_mma_stages_split_q_tiling_qk(
   torch::Tensor Q, torch::Tensor K, torch::Tensor V, torch::Tensor O) {
   // Now: fixed tile BrxBc=64x64
   // TODO: dynamic tile size for Br, Bc according to kHeadDim and shared memory size.
@@ -798,7 +805,7 @@ void launch_flash_attn_mma_stages_split_q_tiling(
   // when N >= 6016, stage 1 will have precision gap, why?
 
   cudaFuncSetAttribute(
-    flash_attn_mma_stages_split_q_tiling_kernel<
+    flash_attn_mma_stages_split_q_tiling_qk_kernel<
       kHeadDim, 
       kMmaAtomM, 
       kMmaAtomN, 
@@ -819,7 +826,7 @@ void launch_flash_attn_mma_stages_split_q_tiling(
     98304
   );
 
-  flash_attn_mma_stages_split_q_tiling_kernel<
+  flash_attn_mma_stages_split_q_tiling_qk_kernel<
     kHeadDim, 
     kMmaAtomM, 
     kMmaAtomN, 
@@ -844,11 +851,11 @@ void launch_flash_attn_mma_stages_split_q_tiling(
   );
 }
 
-void flash_attn_mma_stages_split_q_tiling(torch::Tensor Q, 
-                                          torch::Tensor K, 
-                                          torch::Tensor V, 
-                                          torch::Tensor O, 
-                                          int stages) {
+void flash_attn_mma_stages_split_q_tiling_qk(torch::Tensor Q, 
+                                             torch::Tensor K, 
+                                             torch::Tensor V, 
+                                             torch::Tensor O, 
+                                             int stages) {
   CHECK_TORCH_TENSOR_DTYPE(Q, torch::kHalf) // Q [B,H,N,D]
   CHECK_TORCH_TENSOR_DTYPE(K, torch::kHalf) // K [B,H,N,D]
   CHECK_TORCH_TENSOR_DTYPE(V, torch::kHalf) // V [B,H,N,D]
@@ -859,25 +866,25 @@ void flash_attn_mma_stages_split_q_tiling(torch::Tensor Q,
     switch (d)
     {
     case 32:
-      launch_flash_attn_mma_stages_split_q_tiling<32,  2>(Q, K, V, O);
+      launch_flash_attn_mma_stages_split_q_tiling_qk<32,   2>(Q, K, V, O);
       break;
     case 64:
-      launch_flash_attn_mma_stages_split_q_tiling<64,  2>(Q, K, V, O);
+      launch_flash_attn_mma_stages_split_q_tiling_qk<64,   2>(Q, K, V, O);
       break;
     case 96:
-      launch_flash_attn_mma_stages_split_q_tiling<96,  2>(Q, K, V, O);
+      launch_flash_attn_mma_stages_split_q_tiling_qk<96,   2>(Q, K, V, O);
       break;
     case 128:
-      launch_flash_attn_mma_stages_split_q_tiling<128, 2>(Q, K, V, O);
+      launch_flash_attn_mma_stages_split_q_tiling_qk<128,  2>(Q, K, V, O);
       break;
     case 256:
-      launch_flash_attn_mma_stages_split_q_tiling<256, 2>(Q, K, V, O);
+      launch_flash_attn_mma_stages_split_q_tiling_qk<256,  2>(Q, K, V, O);
       break;
     case 512:
-      launch_flash_attn_mma_stages_split_q_tiling<512, 2>(Q, K, V, O);
+      launch_flash_attn_mma_stages_split_q_tiling_qk<512,  2>(Q, K, V, O);
       break;
     case 1024:
-      launch_flash_attn_mma_stages_split_q_tiling<1024, 2>(Q, K, V, O);
+      launch_flash_attn_mma_stages_split_q_tiling_qk<1024, 2>(Q, K, V, O);
       break;
     default:
       throw std::runtime_error("headdim not support!");
@@ -887,25 +894,25 @@ void flash_attn_mma_stages_split_q_tiling(torch::Tensor Q,
     switch (d)
     {
     case 32:
-      launch_flash_attn_mma_stages_split_q_tiling<32,  1>(Q, K, V, O);
+      launch_flash_attn_mma_stages_split_q_tiling_qk<32,   1>(Q, K, V, O);
       break;
     case 64:
-      launch_flash_attn_mma_stages_split_q_tiling<64,  1>(Q, K, V, O);
+      launch_flash_attn_mma_stages_split_q_tiling_qk<64,   1>(Q, K, V, O);
       break;
     case 96:
-      launch_flash_attn_mma_stages_split_q_tiling<96,  1>(Q, K, V, O);
+      launch_flash_attn_mma_stages_split_q_tiling_qk<96,   1>(Q, K, V, O);
       break;
     case 128:
-      launch_flash_attn_mma_stages_split_q_tiling<128, 1>(Q, K, V, O);
+      launch_flash_attn_mma_stages_split_q_tiling_qk<128,  1>(Q, K, V, O);
       break;
     case 256:
-      launch_flash_attn_mma_stages_split_q_tiling<256, 1>(Q, K, V, O);
+      launch_flash_attn_mma_stages_split_q_tiling_qk<256,  1>(Q, K, V, O);
       break;
     case 512:
-      launch_flash_attn_mma_stages_split_q_tiling<512, 1>(Q, K, V, O);
+      launch_flash_attn_mma_stages_split_q_tiling_qk<512,  1>(Q, K, V, O);
       break;
     case 1024:
-      launch_flash_attn_mma_stages_split_q_tiling<1024, 1>(Q, K, V, O);
+      launch_flash_attn_mma_stages_split_q_tiling_qk<1024, 1>(Q, K, V, O);
       break;
     default:
       throw std::runtime_error("headdim not support!");

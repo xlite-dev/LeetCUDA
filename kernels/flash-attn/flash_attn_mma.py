@@ -77,7 +77,7 @@ lib = load(name='flash_attn_lib',
                './mma/flash_attn_mma_split_q.cu',
                './mma/flash_attn_mma_share_kv.cu',
                './mma/flash_attn_mma_share_qkv.cu',
-               './mma/flash_attn_mma_tiling.cu',
+               './mma/flash_attn_mma_tiling_qk.cu',
                './pybind/flash_attn.cc'
             ], 
            extra_cuda_cflags=[
@@ -307,23 +307,28 @@ for (B, H, N, D) in BHNDs:
     q, k, v, o, fq, fk, fv = get_qkvo(B, H, N, D)
     torch.cuda.synchronize()
     
-    if D <= 128:
-        if args.run_torch_unfused:
-            out_unfused,    _ = run_benchmark(unfused_standard_attn, q, k, v, "torch(unfused)")
-        out_mma_split_kv1,  _ = run_benchmark(lib.flash_attn_mma_stages_split_kv, q, k, v, "mma(split-kv+stage1)", o, stages=1)
-        out_mma_split_kv2,  _ = run_benchmark(lib.flash_attn_mma_stages_split_kv, q, k, v, "mma(split-kv+stage2)", o, stages=2)
-        out_mma_split_q1,   _ = run_benchmark(lib.flash_attn_mma_stages_split_q,  q, k, v, "mma(split-q+stage1)",  o, stages=1)
-        out_mma_split_q2,   _ = run_benchmark(lib.flash_attn_mma_stages_split_q,  q, k, v, "mma(split-q+stage2)",  o, stages=2)
-        out_mma_share_qkv1, _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_qkv, q, k, v, "mma(split-q+share-qkv+stage1)", o, stages=1)
-        out_mma_share_qkv2, _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_qkv, q, k, v, "mma(split-q+share-qkv+stage2)", o, stages=2)
-        out_mma_share_kv1,  _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv,  q, k, v, "mma(split-q+share-kv+stage1)",  o, stages=1)
-        out_mma_share_kv2,  _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv,  q, k, v, "mma(split-q+share-kv+stage2)",  o, stages=2)
-    out_mma_tiling1,    _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling,  q, k, v, "mma(split-q+tiling+stage1)",  o, stages=1)
-    out_mma_tiling2,    _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling,  q, k, v, "mma(split-q+tiling+stage2)",  o, stages=2)
     if D <= 256:
-        out_flash,          _ = run_benchmark(flash_attn_func, fq, fk, fv, "(flash)")
+        if args.run_torch_unfused:
+            out_unfused,        _ = run_benchmark(unfused_standard_attn, q, k, v, "torch(unfused)")
+        if D <= 128:
+            out_mma_split_kv1,  _ = run_benchmark(lib.flash_attn_mma_stages_split_kv, q, k, v, "mma(split-kv+stage1)", o, stages=1)
+            out_mma_split_kv2,  _ = run_benchmark(lib.flash_attn_mma_stages_split_kv, q, k, v, "mma(split-kv+stage2)", o, stages=2)
+            out_mma_split_q1,   _ = run_benchmark(lib.flash_attn_mma_stages_split_q,  q, k, v, "mma(split-q+stage1)",  o, stages=1)
+            out_mma_split_q2,   _ = run_benchmark(lib.flash_attn_mma_stages_split_q,  q, k, v, "mma(split-q+stage2)",  o, stages=2)
+        if D <= 256:
+            out_mma_share_qkv1, _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_qkv, q, k, v, "mma(split-q+share-qkv+stage1)", o, stages=1)
+        if D <= 128:
+            out_mma_share_qkv2, _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_qkv, q, k, v, "mma(split-q+share-qkv+stage2)", o, stages=2)
+        if D <= 256:
+            out_mma_share_kv1,  _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv,  q, k, v, "mma(split-q+share-kv+stage1)",  o, stages=1)
+        if D <= 128:
+            out_mma_share_kv2,  _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv,  q, k, v, "mma(split-q+share-kv+stage2)",  o, stages=2)
+    out_mma_tiling_qk1,         _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qk,  q, k, v, "mma(split-q+tiling-qk+stage1)",  o, stages=1)
+    out_mma_tiling_qk2,         _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qk,  q, k, v, "mma(split-q+tiling-qk+stage2)",  o, stages=2)
+    if D <= 256:
+        out_flash,              _ = run_benchmark(flash_attn_func, fq, fk, fv, "(flash)")
     if args.run_torch_sdpa:
-        out_sdpa,       _ = run_benchmark(F.scaled_dot_product_attention, q, k, v, "(sdpa)")
+        out_sdpa,               _ = run_benchmark(F.scaled_dot_product_attention, q, k, v, "(sdpa)")
     pretty_print_line()
     
     torch.cuda.synchronize()
@@ -338,11 +343,11 @@ for (B, H, N, D) in BHNDs:
             check_all_close(out_flash, out_mma_share_kv2,  "out_mma_share_kv2",  args.check_all)
             check_all_close(out_flash, out_mma_share_qkv1, "out_mma_share_qkv1", args.check_all)
             check_all_close(out_flash, out_mma_share_qkv2, "out_mma_share_qkv2", args.check_all)
-            check_all_close(out_flash, out_mma_tiling1,    "out_mma_tiling1",    args.check_all)
-            check_all_close(out_flash, out_mma_tiling2,    "out_mma_tiling2",    args.check_all)
+            check_all_close(out_flash, out_mma_tiling_qk1, "out_mma_tiling_qk1", args.check_all)
+            check_all_close(out_flash, out_mma_tiling_qk2, "out_mma_tiling_qk2", args.check_all)
             pretty_print_line()
         elif args.run_torch_sdpa:
             pretty_print_line()
-            check_all_close(out_sdpa, out_mma_tiling1,    "out_mma_tiling1",    args.check_all, False)
-            check_all_close(out_sdpa, out_mma_tiling2,    "out_mma_tiling2",    args.check_all, False)
+            check_all_close(out_sdpa, out_mma_tiling_qk1,  "out_mma_tiling_qk1", args.check_all, False)
+            check_all_close(out_sdpa, out_mma_tiling_qk2,  "out_mma_tiling_qk2", args.check_all, False)
             pretty_print_line()

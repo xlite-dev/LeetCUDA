@@ -873,6 +873,9 @@ void flash_attn_mma_stages_split_q_shared_qkv(torch::Tensor Q,
     case 128:
       launch_flash_attn_mma_stages_split_q_shared_qkv<128, 1>(Q, K, V, O);
       break;
+    case 256:
+      launch_flash_attn_mma_stages_split_q_shared_qkv<256, 1>(Q, K, V, O);
+      break;
     default:
       throw std::runtime_error("headdim not support!");
       break;
