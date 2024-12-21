@@ -763,17 +763,17 @@ flash_attn_mma_stages_split_q_tiling_qk_kernel(half* Q,
 template<const int kHeadDim, const int kStage>
 void launch_flash_attn_mma_stages_split_q_tiling_qk(
   torch::Tensor Q, torch::Tensor K, torch::Tensor V, torch::Tensor O) {
-  // Now: fixed tile BrxBc=64x64
+  // Now: fixed tile BrxBc=128x128
   // TODO: dynamic tile size for Br, Bc according to kHeadDim and shared memory size.
   constexpr int kMmaAtomM = 16;
   constexpr int kMmaAtomN = 8;
   constexpr int kMmaAtomK = 16;
-  constexpr int kMmaTileSeqLenQ  = 4;
+  constexpr int kMmaTileSeqLenQ  = 8;
   constexpr int kMmaTileSeqLenK  = 1;
-  constexpr int kMmaTileSeqLenP  = 4;
+  constexpr int kMmaTileSeqLenP  = 8;
   constexpr int kMmaTileHeadDimV = 1;
   constexpr int kWarpTileSeqLenQ = 1;
-  constexpr int kWarpTileSeqLenK = 8;
+  constexpr int kWarpTileSeqLenK = 16;
   constexpr int kWarpTileSeqLenP = 1;
   constexpr int kWarpTileHeadDimV = (kHeadDim / (kMmaAtomN * kMmaTileHeadDimV)); // (d=64)8,(d=128)16,32,....
   constexpr int Br = kMmaAtomM * kMmaTileSeqLenQ * kWarpTileSeqLenQ; // 16*4*1=64
@@ -786,7 +786,8 @@ void launch_flash_attn_mma_stages_split_q_tiling_qk(
   // Calculate SRAM size needed per block, Q,K,V smem size, V shared the QK smem.
   constexpr int QK_smem_size = (kStage * (Br * (kMmaAtomK + kPad)) + 
                                 kStage * (Bc * (kMmaAtomK + kPad)));
-  // Now, for s=2, d=64, 2*(16*64*2)=4M; d=128, 8M; d=256, 16M; d=512, 32M;
+  // Now, for V_smem_size, s=2, d=4M, 16 regs; d=128, 8M, 32 regs; 
+  // d=256, 16M, 64 regs; d=512, 32M, 128 regs; d=1024, 64M, 256 regs;
   // TODO: sub-tiling for d while perform P@V, kMmaAtomK * (kMmaAtomN)
   constexpr int V_smem_size  = (kStage * (kMmaAtomK * (kHeadDim + kPad))); 
   // try to let V reuse all Q+K smem after Q@K^T, reduce smem usage.
