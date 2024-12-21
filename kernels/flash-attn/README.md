@@ -100,7 +100,7 @@ flash_attn_mma_stages_split_q_shared_kv_kernel(half* Q, half* K, half* V, half* 
 __global__ void // Q, K, V, O -> [B, H, N, D]
 flash_attn_mma_stages_split_q_shared_qkv_kernel(half* Q, half* K, half* V, half* O, ...);
 ```  
-- 📚 Split Q + QK Fine grain Tiling (**O(16xd) SRAM** vs FA2 **O(4xBrxd) SRAM**, extend `D` to 1024)
+- 📚 Split Q + QK Fine grain Tiling (**O(16xd) SRAM** vs FA2 **O(4xBrxd) SRAM**, `Headdim -> 1024`)
 
 <div id="mma-tiling-qk"></div>  
 
