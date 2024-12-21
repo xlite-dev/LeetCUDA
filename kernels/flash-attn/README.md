@@ -55,7 +55,7 @@ python3 flash_attn_mma.py --B 1 --H 48 --D 64 --N 8192 --iters 10 --torch  # NVI
   - [📚 Split Q ](#mma-split-q)
   - [📚 Shared KV SMEM](#mma-share-kv)
   - [📚 Fully Shared QKV SMEM](#mma-share-qkv)
-  - [📚 QK Fine grain Tiling](#mma-tiling-qk)
+  - [📚 QK Fine-grained Tiling](#mma-tiling-qk)
 - [📖 Prerequisites](#prerequisites)
 - [📖 Installation](#install)
 - [📖 Performance](#perf)
@@ -100,12 +100,12 @@ flash_attn_mma_stages_split_q_shared_kv_kernel(half* Q, half* K, half* V, half* 
 __global__ void // Q, K, V, O -> [B, H, N, D]
 flash_attn_mma_stages_split_q_shared_qkv_kernel(half* Q, half* K, half* V, half* O, ...);
 ```  
-- 📚 Split Q + QK Fine grain Tiling (**O(16xd) SRAM** vs FA2 **O(4xBrxd) SRAM**, `Headdim -> 1024`)
+- 📚 Split Q + QK Fine-grained Tiling (**O(16xd) SRAM** vs FA2 **O(4xBrxd) SRAM**, `Headdim -> 1024`)
 
 <div id="mma-tiling-qk"></div>  
 
 ```C++
-// Fine grain tiling (MMA level) for Q, K the cause constant SRAM size 64*kMmaAtomK, 
+// Fine-grained tiling (MMA level) for Q, K the cause constant SRAM size 64*kMmaAtomK, 
 // and O(kMmaAtomK*d) SRAM complexity for V, thus, the SRAM complexity is O(kMmaAtomK*d).
 // Thus, we can extend D(headdim) to 1024. Performance is stay tuned for updates ~
 __global__ void // Q, K, V, O -> [B, H, N, D]
