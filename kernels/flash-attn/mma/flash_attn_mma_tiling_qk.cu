@@ -139,7 +139,7 @@ flash_attn_mma_stages_split_q_tiling_qk_kernel(half* Q,
   if (load_gmem_Q_Br >= QKV_seqlen) return;
   constexpr bool kIsVCanLoadIn128b = (kHeadDim / (kNumThreads / kMmaAtomK)) % 8 == 0;
   constexpr bool kIsVCanLoadIn64b  = (kHeadDim / (kNumThreads / kMmaAtomK)) % 4 == 0;
-  static_assert(kIsVCanLoadIn128b || kIsVCanLoadIn64b); // 32,64,128,192,256,...
+  static_assert(kIsVCanLoadIn128b || kIsVCanLoadIn64b, "V can't load in 128b or 64b."); // 32,64,128,192,256,...
 
   // Shared memory for Q,K,V, we don not need additional smem for O 
   // collective store which perform via registers reuse and warp shuffle.
