@@ -148,14 +148,14 @@ flash_attn_mma_stages_split_q_tiling_qk_kernel(half* Q, half* K, half* V, half* 
 
 ## 📖 150+ CUDA Kernels 🔥🔥 (Easy -> Hard++) ([©️back👆🏻](#contents))  
 
+<div id="cuda-kernel"></div>    
+
 **Workflow**: custom **CUDA** kernel impl -> **PyTorch** Python bindings -> Run tests. 👉TIPS: `*` = Tensor Cores (WMMA, MMA, CuTe), otherwise, CUDA Cores; `/` = not supported; `✔️` = supported; `❔` = TODO. [📚 Easy](#cuda-kernel-easy-medium) and [📚 Medium](#cuda-kernel-easy-medium) includes element-wise, mat_trans, warp/block reduce, online-softmax, nms, layer-norm, rms-norm, dot-prod etc. [📚 Hard](#cuda-kernel-hard) and [📚 Hard++](#cuda-kernel-hard) mainly focus on `sgemv, sgemm, hgemv, hgemm and flash-attention`.
 
 - [📚 Easy ⭐️](#cuda-kernel-easy-medium)
 - [📚 Medium ⭐️⭐️](#cuda-kernel-easy-medium)
 - [📚 Hard ⭐️⭐️⭐️](#cuda-kernel-hard)
 - [📚 Hard++ ⭐⭐⭐️⭐️⭐️](#cuda-kernel-hard)
-
-<div id="cuda-kernel"></div>    
 
 ### 📚 Easy ⭐️ & Medium ⭐️⭐️  ([©️back👆🏻](#cuda-kernel))  
 <div id="cuda-kernel-easy-medium"></div>  
