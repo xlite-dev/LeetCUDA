@@ -157,7 +157,7 @@ flash_attn_mma_stages_split_q_tiling_qk_kernel(half* Q, half* K, half* V, half* 
 - [📚 Hard ⭐️⭐️⭐️](#cuda-kernel-hard)
 - [📚 Hard++ ⭐⭐⭐️⭐️⭐️](#cuda-kernel-hard)
 
-### 📚 Easy ⭐️ & Medium ⭐️⭐️  ([©️back👆🏻](#cuda-kernel))  
+- 📚 Easy ⭐️ & Medium ⭐️⭐️  ([©️back👆🏻](#cuda-kernel))  
 <div id="cuda-kernel-easy-medium"></div>  
 
 |📖 CUDA Kernel| 📖 Elem DType| 📖 Acc DType| 📖 Docs | 📖 Level |
@@ -266,7 +266,7 @@ flash_attn_mma_stages_split_q_tiling_qk_kernel(half* Q, half* K, half* V, half* 
 | ✔️ [nms_f32](./kernels/nms/nms.cu)|f32|/|[link](./kernels/nms)|⭐️⭐️|  
 | ✔️ [notes v1(deprecated)](./kernels/notes-v1.cu)|f32|f32|/|⭐️|  
 
-### 📚 Hard ⭐⭐⭐️⭐️ & Hard++ ⭐️⭐️⭐️⭐️⭐️ ([©️back👆🏻](#cuda-kernel))  
+- 📚 Hard ⭐⭐⭐️⭐️ & Hard++ ⭐️⭐️⭐️⭐️⭐️ ([©️back👆🏻](#cuda-kernel))  
 
 <div id="cuda-kernel-hard"></div>  
 
@@ -467,7 +467,7 @@ flash_attn_mma_stages_split_q_tiling_qk_kernel(half* Q, half* K, half* V, half* 
 
 <div id="my-blogs-part-1"></div>  
 
-### 📖 大模型|多模态|Diffusion|推理优化 (本人作者) ([©️back👆🏻](#contents))
+- 📚 大模型|多模态|Diffusion|推理优化 (本人作者) ([©️back👆🏻](#contents))
 
 |📖 类型-标题|📖 作者|
 |:---|:---| 
@@ -496,7 +496,7 @@ flash_attn_mma_stages_split_q_tiling_qk_kernel(half* Q, half* K, half* V, half* 
 |[[LLM推理优化][LLM Infra整理]📖PagedAttention论文新鲜出炉](https://zhuanlan.zhihu.com/p/617015570)|@DefTruth|
 
 
-### 📖 CV推理部署|C++|算法|技术随笔 (本人作者) ([©️back👆🏻](#contents))
+- 📚 CV推理部署|C++|算法|技术随笔 (本人作者) ([©️back👆🏻](#contents))
 
 <div id="my-blogs-part-2"></div>  
 
@@ -548,7 +548,7 @@ flash_attn_mma_stages_split_q_tiling_qk_kernel(half* Q, half* K, half* V, half* 
 | [[技术随笔][ML]📖200页:《统计学习方法：李航》笔记 -从原理到实现](https://zhuanlan.zhihu.com/p/461520847)|@DefTruth|  
 
 
-### 📖 CUTLASS|CuTe|NCCL|CUDA|文章推荐 (其他作者) ([©️back👆🏻](#contents))
+- 📚 CUTLASS|CuTe|NCCL|CUDA|文章推荐 (其他作者) ([©️back👆🏻](#contents))
 
 <div id="other-blogs"></div>  
 
