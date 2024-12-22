@@ -16,7 +16,7 @@
 
 <div id="contents"></div>  
 
-📚 **Modern CUDA Learn Notes with PyTorch** for Beginners: It includes **Tensor/CUDA Cores, TF32/F16/BF16/F8**, [📖150+ CUDA Kernels🔥🔥](#cuda-kernel) with PyTorch bindings, [📖100+ LLM/VLM/CV/CUDA/CuTe🔥](#my-blogs-part-1) blogs, [📖toy-hgemm⚡️⚡️](./kernels/hgemm) which can achieve `98%~100%` performance of **cuBLAS**, and [📖flash-attention-mma⚡️⚡️](./kernels/flash-attn) using Tensor Cores with pure MMA PTX. Welcome to 🌟👆🏻star this repo to support me, many thanks ~ 🎉🎉
+📚 **Modern CUDA Learn Notes with PyTorch** for Beginners: It includes **Tensor/CUDA Cores, TF32/F16/BF16/F8**, [📖150+ CUDA Kernels🔥🔥(Step by step, from Easy -> Hard++)](#cuda-kernel) with PyTorch bindings, [📖100+ LLM/VLM/CV/CUDA/CuTe🔥](#my-blogs-part-1) blogs, [📖toy-hgemm⚡️⚡️](./kernels/hgemm) which can achieve `98%~100%` performance of **cuBLAS**, and [📖flash-attention-mma⚡️⚡️](./kernels/flash-attn) using Tensor Cores with pure MMA PTX. Welcome to 🌟👆🏻star this repo to support me, many thanks ~ 🎉🎉
 
 <div id="hgemm-sgemm"></div>  
 
@@ -148,9 +148,9 @@ flash_attn_mma_stages_split_q_tiling_qk_kernel(half* Q, half* K, half* V, half* 
 }
 ```
 
-## 📖 150+ CUDA Kernels 🔥🔥 (面试常考题目) ([©️back👆🏻](#contents))  
+## 📖 150+ CUDA Kernels 🔥🔥 (Step by step, from Easy -> Hard++) ([©️back👆🏻](#contents))  
 
-**Workflow**: custom **CUDA** kernel impl -> **PyTorch** Python bindings -> Run tests. 👉TIPS: `*` = **Tensor Cores(WMMA/MMA)**, otherwise, CUDA Cores; `/` = not supported; `✔️` = supported; `❔` = in my plan. [📚 Easy ⭐️](#cuda-kernel-easy-medium) and [📚 Medium ⭐️⭐️](#cuda-kernel-easy-medium) include element-wise, relu, embedding, mat_trans, warp/block reduce, online-softmax, nms, layer-norm, rms-norm, dot etc. [📚 Hard ⭐️⭐️⭐️](#cuda-kernel-hard) and [📚 Hard++ ⭐⭐⭐️⭐️⭐️](#cuda-kernel-hard) mainly focus on sgemv, sgemm, hgemv, hgemm and flash-attention.
+**Workflow**: custom **CUDA** kernel impl -> **PyTorch** Python bindings -> Run tests. 👉TIPS: `*` = **Tensor Cores(WMMA/MMA)**, otherwise, CUDA Cores; `/` = not supported; `✔️` = supported; `❔` = in my plan. [📚 Easy](#cuda-kernel-easy-medium) and [📚 Medium](#cuda-kernel-easy-medium) include element-wise, relu, embedding, mat_trans, warp/block reduce, online-softmax, nms, layer-norm, rms-norm, dot etc. [📚 Hard](#cuda-kernel-hard) and [📚 Hard++](#cuda-kernel-hard) mainly focus on sgemv, sgemm, hgemv, hgemm and flash-attention.
 
 - [📚 Easy ⭐️](#cuda-kernel-easy-medium)
 - [📚 Medium ⭐️⭐️](#cuda-kernel-easy-medium)
