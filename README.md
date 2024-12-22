@@ -498,7 +498,7 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 |[[LLM推理优化][LLM Infra整理]📖PagedAttention论文新鲜出炉](https://zhuanlan.zhihu.com/p/617015570)|@DefTruth|
 
 
-- 📚 CV推理部署|C++|算法|技术随笔 (本人作者) ([©️back👆🏻](#contents))
+### 📚 CV推理部署|C++|算法|技术随笔 (本人作者) ([©️back👆🏻](#contents))
 
 <div id="my-blogs-part-2"></div>  
 
