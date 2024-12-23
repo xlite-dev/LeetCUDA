@@ -57,14 +57,14 @@ I have also implemented **FlashAttention-2** using pure MMA PTX instructions, wh
 
 Currently, for small-scale attention `(B<=4, H <=48, SeqLen <= 8192)` it can run faster than FA2/SDPA on some Devices. For example, on NVIDIA RTX 3080 Laptop, [📚 Split Q + Fully Shared QKV SMEM](#mma-share-qkv) can achieve **55 TFLOPS (D=64)** that almost **~1.5x** 🎉 faster than FA2. On NVIDIA L20, [📚 Split Q + QK Fine-grained Tiling](#mma-tiling-qk) can achieve **81 TFLOPS (D=512)** that almost **~1.4x** 🎉 faster than SDPA (EFFICIENT ATTENTION). However, for large-scale attention, there remains a performance gap. Stay tuned for updates ~ (👇T: TFLOPS)
 
-|Algorithm| (B,H,N,D) | NVIDIA RTX 3080 | NVIDIA L20 | NVIDIA RTX 4090 |   
+|Algorithm| (B,H,N,D) | RTX 3080 Laptop | L20 | RTX 4090 |   
 |:---:|:---:|:---:|:---:|:---:|  
-|FlashAttention-2|(1,8,8192,64)|37.10 T|99.86 T|149.94 T|  
-|split-q+share-qkv+stage2|(1,8,8192,64)|55.34 T|96.22 T|218.42 T|  
-|FlashAttention-2|(1,48,8192,64)|37.56 T|109.77 T|163.36 T|
-|split-q+share-qkv+stage2|(1,48,8192,64)|35.64 T|104.43 T|223.88 T|
-|SDPA(EFFICIENT ATTENTION)|(1,48,8192,512)|16.58 T|58.51 T|85.52 T|
-|split-q+tiling-qk+stage2|(1,48,8192,512)|23.20 T|81.24 T|120.26 T|
+|FlashAttention-2|(1,8,8192,64)|37 TFLOPS|100 TFLOPS|145 TFLOPS|  
+|mma(split-q+share-qkv+stage2)|(1,8,8192,64)|**55 TFLOPS**|96 TFLOPS|**218 TFLOPS**|  
+|FlashAttention-2|(1,48,8192,64)|37 TFLOPS|109 TFLOPS|163 TFLOPS|
+|mma(split-q+share-qkv+stage2)|(1,48,8192,64)|35 TFLOPS|104 TFLOPS|**223 TFLOPS**|
+|SDPA(EFFICIENT ATTENTION)|(1,48,8192,512)|16 TFLOPS|58 TFLOPS|85 TFLOPS|
+|mma(split-q+tiling-qk+stage2)|(1,48,8192,512)|**23 TFLOPS**|**81 TFLOPS**|**120 TFLOPS**|
 
 The `Split KV` and `Split Q` implementations have been carried out in [flash-attention-mma⚡️⚡️](./kernels/flash-attn) for performance comparison. The `Split KV` method, which involves splitting all QKV across MMA (Warps), is slower than `Split Q` policy, which splitting Q across MMA(Warps) and keep access KV for all MMA(Warps). 
 
