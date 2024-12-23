@@ -74,7 +74,7 @@ python3 flash_attn_mma.py --B 1 --H 8 --D 64 --N 8192 --iters 10 --torch # NVIDI
 ----------------------------------------------------------------------------------------------------------------------------------
 ```
 
-- Example: B=1, H=48, N=8192, `D=512` (NVIDIA RTX 3080 Laptop), FA2 not supported, `QK Tiling` Faster than SDPA~🎉🎉
+- Example: B=1, H=48, N=8192, `D=512` (RTX 3080 Laptop), FA2 not supported, `QK Tiling` Faster than SDPA~🎉🎉
 ```bash
 python3 flash_attn_mma.py --B 1 --H 8 --N 8192 --iters 10 --show-all --sdpa --D 512 # NVIDIA RTX 3080 Laptop, Faster than SDPA
 ------------------------------------------B=1, H=8, N=8192, D=512, Warmup: 1, Iters: 10-------------------------------------------
