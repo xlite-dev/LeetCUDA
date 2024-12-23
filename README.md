@@ -128,9 +128,10 @@ flash_attn_mma_stages_split_q_shared_qkv_kernel(half* Q, half* K, half* V, half*
 <div id="mma-tiling-qk"></div>  
 
 ```C++
-// Fine-grained tiling (MMA level) for Q/K, it cause constant SRAM size 64*kMmaAtomK for Q/K, 
-// and O(kMmaAtomK*d) SRAM complexity for V, thus, the SRAM complexity is O(kMmaAtomK*d).
-// Thus, we can extend D(headdim) to 1024. Performance is stay tuned for updates ~
+// Fine-grained tiling at the MMA (Matrix Multiply-Accumulate) level for Q and K results in
+// a constant SRAM usage of 64 * kMmaAtomK for Q and K. For V, the SRAM complexity is O(kMmaAtomK * d),
+// leading to an overall SRAM complexity of O(kMmaAtomK * d). Consequently, this approach allows us to
+// extend D (head dimension) up to 1024. Performance is stay tuned for updates ~
 __global__ void // Q, K, V, O -> [B, H, N, D]
 flash_attn_mma_stages_split_q_tiling_qk_kernel(half* Q, half* K, half* V, half* O, ...);
 ```
