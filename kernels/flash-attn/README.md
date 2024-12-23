@@ -14,7 +14,7 @@
 
 This repository's implementation of FlashAttention is intended solely for learning CUDA programming. For optimal performance, please use the official [flash-attention](https://github.com/Dao-AILab/flash-attention). Currently, for small-scale attention `(B<=4, H <=48, SeqLen <= 8192)` can run faster than offical FA2 on some Devices, for example, NVIDIA RTX 3080 Laptop. However, for large-scale attention computations, there remains a performance gap. Performance optimizations are ongoing; stay tuned for updates.
 
-- Example: B=1, H=8, N=8192, D=64 (NVIDIA RTX 3080 Laptop), Faster than FA2~🎉🎉
+- Example: B=1, H=8, N=8192, `D=64` (NVIDIA RTX 3080 Laptop), Faster than FA2~🎉🎉
 ```bash
 python3 flash_attn_mma.py --B 1 --H 8 --D 64 --N 8192 --iters 10 --torch # NVIDIA RTX 3080 Laptop
 -------------------------------------------B=1, H=8, N=8192, D=64, Warmup: 1, Iters: 10-------------------------------------------
@@ -31,7 +31,7 @@ python3 flash_attn_mma.py --B 1 --H 8 --D 64 --N 8192 --iters 10 --torch # NVIDI
 ----------------------------------------------------------------------------------------------------------------------------------
 ```
 
-- Example: B=1, H=48, N=8192, D=64 (NVIDIA RTX 3080 Laptop), Faster than FA2~🎉🎉
+- Example: B=1, H=48, N=8192, `D=64` (NVIDIA RTX 3080 Laptop), Faster than FA2~🎉🎉
 ```bash
 python3 flash_attn_mma.py --B 1 --H 48 --D 64 --N 8192 --iters 10 --torch  # NVIDIA RTX 3080 Laptop
 ------------------------------------------B=1, H=48, N=8192, D=64, Warmup: 1, Iters: 10-------------------------------------------
@@ -47,7 +47,7 @@ python3 flash_attn_mma.py --B 1 --H 48 --D 64 --N 8192 --iters 10 --torch  # NVI
                          (flash): ['-0.00041986 ', '0.03292847  ', '0.01330566  '], time:22.468138ms, TFLOPS:37.42
 ----------------------------------------------------------------------------------------------------------------------------------
 ```
-- Example: B=1, H=48, N=8192, D=512 (NVIDIA RTX 3080 Laptop), FA2 not supported, `QK Tiling` Faster than SDPA~🎉🎉
+- Example: B=1, H=48, N=8192, `D=512` (NVIDIA RTX 3080 Laptop), FA2 not supported, `QK Tiling` Faster than SDPA~🎉🎉
 ```bash
 python3 flash_attn_mma.py --B 1 --H 8 --N 8192 --iters 10 --show-all --sdpa --D 512 # NVIDIA RTX 3080 Laptop, Faster than SDPA
 ------------------------------------------B=1, H=8, N=8192, D=512, Warmup: 1, Iters: 10-------------------------------------------
@@ -57,7 +57,7 @@ python3 flash_attn_mma.py --B 1 --H 8 --N 8192 --iters 10 --show-all --sdpa --D 
 ----------------------------------------------------------------------------------------------------------------------------------
 ```
 
-- Example: B=1, H=48, N=8192, D=512 (NVIDIA L20), FA2 not supported, `QK Tiling` Faster than SDPA~🎉🎉
+- Example: B=1, H=48, N=8192, `D=512` (NVIDIA L20), FA2 not supported, `QK Tiling` Faster than SDPA~🎉🎉
 ```bash
 python3 flash_attn_mma.py --B 1 --H 48 --D 512 --N 16384 --show-all --check --iters 10 --sdpa
 -----------------------------------------B=1, H=48, N=16384, D=512, Warmup: 1, Iters: 10------------------------------------------
