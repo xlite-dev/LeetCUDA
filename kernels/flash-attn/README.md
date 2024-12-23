@@ -14,7 +14,7 @@
 
 This repository's implementation of FlashAttention is intended solely for learning CUDA programming. For optimal performance, please use the official [flash-attention](https://github.com/Dao-AILab/flash-attention). Currently, for small-scale attention `(B<=4, H <=48, SeqLen <= 8192)` it can run faster than offical FA2/SDPA on some Devices. However, for large-scale attention, there remains a performance gap. Performance is continuously being optimized. Stay tuned for updates ~  (👇Benchmark)
 
-|Algorithm| (B,H,N,D) | RTX 3080 Laptop | L20 | RTX 4090 |   
+|Algorithm| (B,H,N,D) | NVIDIA GeForce RTX 3080 Laptop | NVIDIA L20 | NVIDIA RTX 4090 |   
 |:---:|:---:|:---:|:---:|:---:|  
 |FlashAttention-2|(1,8,8192,64)|37 TFLOPS|100 TFLOPS|145 TFLOPS|  
 |mma(split-q+share-qkv+stage2)|(1,8,8192,64)|**55 TFLOPS**|96 TFLOPS|**218 TFLOPS**|  
