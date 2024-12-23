@@ -1,3 +1,17 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <float.h>
+#include <vector>
+#include <algorithm>
+#include <cuda_runtime.h>
+#include <cuda_fp16.h>
+#include <cuda_bf16.h>
+#include <cuda_fp8.h>
+#include <mma.h>
+#include <torch/types.h>
+#include <torch/extension.h>
+using namespace nvcuda;
+
 // reference: https://zhuanlan.zhihu.com/p/4746910252
 __global__ void matrix_trans_swizzling(int* dev_A, int M, int N, int* dev_B) {
   int row = blockIdx.y * blockDim.y + threadIdx.y;
