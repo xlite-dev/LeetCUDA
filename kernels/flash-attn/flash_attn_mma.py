@@ -221,7 +221,7 @@ def run_benchmark(perf_func: callable,
         print(f"{out_info:>32}: {out_val}, time:{mean_time:<.6f}ms, "
               f"TFLOPS:{TFLOPS:<6.2f}(+{improve:.2f}%)")
     else:
-        if not only_show_improved or "flash" in tag:
+        if not only_show_improved or "flash" in tag or "sdpa" in tag:
             print(f"{out_info:>32}: {out_val}, time:{mean_time:<.6f}ms, "
                   f"TFLOPS:{TFLOPS:<6.2f}")
             
