@@ -47,6 +47,19 @@ ncu --metrics l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum hgemm_cut
 ncu --metrics l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld \
     python3 flash_attn_mma.py --B 1 --H 1 --D 64 --N 4096 --w 0 --i 1
 ```
+log:  
+```bash
+void flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<64, 64, 256, 4, 0, 0, cutlass::half_t, Flash_kernel_traits<64, 64, 256, 4, cutlass::half_t>>, 8, 3, 1>(Flash_fwd_params) (512, 1, 1)x(128, 1, 1), Context 1, Stream 7, Device 0, CC 8.9
+    Section: Command line profiler metrics
+    -------------------------------------------------------- ----------- ------------
+    Metric Name                                              Metric Unit Metric Value
+    -------------------------------------------------------- ----------- ------------
+    l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.avg                    11.18
+    l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.max                       13
+    l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.min                       10
+    l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum                     1029
+    -------------------------------------------------------- ----------- ------------
+```
 
 - 由LDSM指令产生的bank conflicts
 
@@ -56,4 +69,17 @@ ncu --metrics sm__sass_l1tex_data_bank_conflicts_pipe_lsu_mem_shared_op_ldsm \
     python3 flash_attn_mma.py --B 1 --H 1 --D 64 --N 4096 --w 0 --i 1
 ncu --metrics smsp__sass_l1tex_data_bank_conflicts_pipe_lsu_mem_shared_op_ldsm \
     python3 flash_attn_mma.py --B 1 --H 1 --D 64 --N 4096 --w 0 --i 1
+```
+log:
+```bash
+void flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<64, 64, 256, 4, 0, 0, cutlass::half_t, Flash_kernel_traits<64, 64, 256, 4, cutlass::half_t>>, 8, 3, 1>(Flash_fwd_params) (512, 1, 1)x(128, 1, 1), Context 1, Stream 7, Device 0, CC 8.9
+    Section: Command line profiler metrics
+    ------------------------------------------------------------------ ----------- ------------
+    Metric Name                                                        Metric Unit Metric Value
+    ------------------------------------------------------------------ ----------- ------------
+    sm__sass_l1tex_data_bank_conflicts_pipe_lsu_mem_shared_op_ldsm.avg                        0
+    sm__sass_l1tex_data_bank_conflicts_pipe_lsu_mem_shared_op_ldsm.max                        0
+    sm__sass_l1tex_data_bank_conflicts_pipe_lsu_mem_shared_op_ldsm.min                        0
+    sm__sass_l1tex_data_bank_conflicts_pipe_lsu_mem_shared_op_ldsm.sum                        0
+    ------------------------------------------------------------------ ----------- ------------
 ```
