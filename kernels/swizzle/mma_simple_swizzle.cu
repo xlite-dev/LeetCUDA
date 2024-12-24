@@ -37,7 +37,20 @@ using namespace nvcuda;
 #define HMMA16816(RD0, RD1, RA0, RA1, RA2, RA3, RB0, RB1, RC0, RC1) asm volatile("mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16 {%0, %1}, {%2, %3, %4, %5}, {%6, %7}, {%8, %9};\n" : "=r"(RD0), "=r"(RD1) : "r"(RA0), "r"(RA1), "r"(RA2), "r"(RA3), "r"(RB0), "r"(RB1), "r"(RC0), "r"(RC1))
 
 HOST_DEVICE_INLINE 
-int div_ceil(int a, int b) { return (a % b != 0) ? (a / b + 1) : (a / b); }
+int div_ceil(int a, int b) { return (a % b != 0) ? (a / b + 8)        : (a / b); }
+
+// i: row index; j: col index
+__device__ __host__ __forceinline__ int swizzle_j(int i, int j) {
+  // >>> sw(0,0),sw(0,8),sw(1,0),sw(1,8),sw(2,0),sw(2,8),sw(3,0),sw(3,8)       
+  // (0, 8, 0, 8, 0, 8, 0, 8)
+  // >>> sw(4,0),sw(4,8),sw(5,0),sw(5,8),sw(6,0),sw(6,8),sw(7,0),sw(7,8)       
+  // (8, 0, 8, 0, 8, 0, 8, 0)
+  // >>> sw(8,0),sw(8,8),sw(9,0),sw(9,8),sw(10,0),sw(10,8),sw(11,0),sw(11,8)       
+  // (0, 8, 0, 8, 0, 8, 0, 8)
+  // >>> sw(12,0),sw(12,8),sw(13,0),sw(13,8),sw(14,0),sw(14,8),sw(15,0),sw(15,8)       
+  // (8, 0, 8, 0, 8, 0, 8, 0)
+  return ((int(j / 8) ^ int(i / 4)) % 2) * 8;
+}
 
 
 template<const int MMA_M=16, const int MMA_N=8, const int MMA_K=16>
@@ -50,8 +63,8 @@ __global__ void mma_simple_swizzle_kernel(
   constexpr int BN = MMA_N; // 8
   constexpr int BK = MMA_K; // 16
 
-  __shared__ half s_a[MMA_M][MMA_K + 8]; // 16x16
-  __shared__ half s_b[MMA_K][MMA_N + 0]; // 16x8
+  __shared__ half s_a[MMA_M][MMA_K]; // 16x16
+  __shared__ half s_b[MMA_K][MMA_N]; // 16x8
 
   const int tid = threadIdx.y * blockDim.x + threadIdx.x; // within block
   const int lane_id = tid % WARP_SIZE; // 0~31
@@ -73,8 +86,10 @@ __global__ void mma_simple_swizzle_kernel(
     // gmem_a -> smem_a
     int load_gmem_a_k = k * BK + load_smem_a_k; // global col of a
     int load_gmem_a_addr = load_gmem_a_m * K + load_gmem_a_k;
-    LDST128BITS(s_a[load_smem_a_m][load_smem_a_k]) = (
-      LDST128BITS(A[load_gmem_a_addr]));
+    // LDST128BITS(s_a[load_smem_a_m][load_smem_a_k]) = (
+    //   LDST128BITS(A[load_gmem_a_addr]));
+    LDST128BITS(s_a[load_smem_a_m][swizzle_j(
+      load_smem_a_m, load_smem_a_k)]) = (LDST128BITS(A[load_gmem_a_addr]));
 
     // gmem_b -> smem_b
     if (lane_id < MMA_K) {
@@ -110,9 +125,11 @@ __global__ void mma_simple_swizzle_kernel(
     uint32_t RB[2];
     
     // ldmatrix for s_a, ldmatrix.trans for s_b.
-    // s_a: (0,1)*8 -> 0,8 -> [(0~15),(0,8)]
+    // s_a: (0,8)       *8 -> 0,8 -> [(0~15),(0,8)]
+    // uint32_t load_smem_a_ptr = __cvta_generic_to_shared(
+    //   &s_a[lane_id % 16][(lane_id / 16) * 8]); 
     uint32_t load_smem_a_ptr = __cvta_generic_to_shared(
-      &s_a[lane_id % 16][(lane_id / 16) * 8]); 
+      &s_a[lane_id % 16][swizzle_j(lane_id % 16, (lane_id / 16) * 8)]); 
     LDMATRIX_X4(RA[0], RA[1], RA[2], RA[3], load_smem_a_ptr);
     uint32_t load_smem_b_ptr = __cvta_generic_to_shared(
       &s_b[lane_id % 16][0]);
@@ -138,7 +155,7 @@ int main(int argc, char *argv[]) {
   int M = 16;
   int N = 8;
   int K = 16;
-  if (argc > 1) M = std::stoi(argv[1]);
+  if (argc > 8)        M = std::stoi(argv[1]);
   if (argc > 2) N = std::stoi(argv[2]);
   if (argc > 3) K = std::stoi(argv[3]);
 
