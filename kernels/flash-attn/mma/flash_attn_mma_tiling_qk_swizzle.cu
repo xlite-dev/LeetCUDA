@@ -77,7 +77,35 @@ __device__ __host__ __forceinline__ int swizzle_K_j(int i, int j) {
   return ((int(j / 8) ^ int(i / 4)) % 2) * 8;
 }
 
-// TODO: swizzle_V_j
+// i: row index; j: col index. 
+// e.g kColStride = kHeadDim, kStep = 8 -> load 8 half as 128 bits memory issue.
+template<const int kColStride = 64, const int kStep = 8>
+__device__ __host__ __forceinline__ int swizzle_V_j(int i, int j) {
+  // >>> swv(0,0),swv(0,8),swv(0,16),swv(0,24),swv(0,32),swv(0,40),swv(0,48),swv(0,56)
+  // (0, 8, 16, 24, 32, 40, 48, 56)
+  // >>> swv(4,0),swv(4,8),swv(4,16),swv(4,24),swv(4,32),swv(4,40),swv(4,48),swv(4,56)
+  // (8, 0, 24, 16, 40, 32, 56, 48)
+  // ------------ swizzle layout ------------
+  // --------------- col 0~56 ---------------
+  // row 0  (0, 8, 16, 24, 32, 40, 48, 56)
+  // row 1  (0, 8, 16, 24, 32, 40, 48, 56)
+  // row 2  (0, 8, 16, 24, 32, 40, 48, 56)
+  // row 3  (0, 8, 16, 24, 32, 40, 48, 56)
+  // row 4  (8, 0, 24, 16, 40, 32, 56, 48)
+  // row 5  (8, 0, 24, 16, 40, 32, 56, 48)
+  // row 6  (8, 0, 24, 16, 40, 32, 56, 48)
+  // row 7  (8, 0, 24, 16, 40, 32, 56, 48)
+  // row 8  (16, 24, 0, 8, 48, 56, 32, 40)
+  // row 9  (16, 24, 0, 8, 48, 56, 32, 40)
+  // row 10 (16, 24, 0, 8, 48, 56, 32, 40)
+  // row 11 (16, 24, 0, 8, 48, 56, 32, 40)
+  // row 12 (24, 16, 8, 0, 56, 48, 40, 32)
+  // row 13 (24, 16, 8, 0, 56, 48, 40, 32)
+  // row 14 (24, 16, 8, 0, 56, 48, 40, 32)
+  // row 15 (24, 16, 8, 0, 56, 48, 40, 32)
+  return ((int(j / kStep) ^ int(i / 4)) % int(kColStride / kStep)) * kStep;
+}
+
 
 template<
          const int kHeadDim,          // Headdim, 32,64,128     
