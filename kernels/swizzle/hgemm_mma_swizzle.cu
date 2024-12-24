@@ -306,7 +306,7 @@ float perf_gemm(
   cudaMalloc(&d_c, size_c);
   
   // warmup
-  for (int i = 0; i < 1; ++i){
+  for (int i = 0; i < warmup; ++i){
     gpu_hgemm(d_a, d_b, d_c, M, N, K);
   }
   cudaDeviceSynchronize();
