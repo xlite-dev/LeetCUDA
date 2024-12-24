@@ -11,7 +11,7 @@
 
 // reference: https://zhuanlan.zhihu.com/p/4746910252
 // 转置前的矩阵存储在dev_A中，矩阵大小为M*N，转置后的数据存储在dev_B中
-__global__ void mat_trans_smem_kernel(int* dev_A, int M, int N, int* dev_B) {
+__global__ void mat_trans_smem_naive_kernel(int* dev_A, int M, int N, int* dev_B) {
   int row = blockIdx.y * blockDim.y + threadIdx.y;
   int col = blockIdx.x * blockDim.x + threadIdx.x;
   
@@ -51,7 +51,7 @@ __global__ void mat_trans_smem_padding_kernel(int* dev_A, int M, int N, int* dev
 }
 
 // reference: https://zhuanlan.zhihu.com/p/4746910252
-__global__ void mat_trans_swizzle_kernel(int* dev_A, int M, int N, int* dev_B) {
+__global__ void mat_trans_smem_swizzle_kernel(int* dev_A, int M, int N, int* dev_B) {
   int row = blockIdx.y * blockDim.y + threadIdx.y;
   int col = blockIdx.x * blockDim.x + threadIdx.x;
 
