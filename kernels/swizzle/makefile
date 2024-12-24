@@ -6,8 +6,11 @@ DEFAULT_FLAGS_89=-O2 $(ARCHS_89) -std=c++17 $(INCLUDE_DIRS) --expt-relaxed-const
 default:
 	nvcc hgemm_mma_swizzle.cu -o hgemm_mma_swizzle.bin $(DEFAULT_FLAGS)
 	nvcc mat_trans_swizzle.cu -o mat_trans_swizzle.bin $(DEFAULT_FLAGS)
+	nvcc mma_simple_swizzle.cu -o mma_simple_swizzle.bin $(DEFAULT_FLAGS)
 hgemm_89:
 	nvcc hgemm_mma_swizzle.cu -o hgemm_mma_swizzle.89.bin $(DEFAULT_FLAGS_89)
+mma_89:
+	nvcc mma_simple_swizzle.cu -o mma_simple_swizzle.89.bin $(DEFAULT_FLAGS_89)
 mat_89:
 	nvcc mat_trans_swizzle.cu -o mat_trans_swizzle.89.bin $(DEFAULT_FLAGS_89)
 clean:
