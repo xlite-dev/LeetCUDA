@@ -5,8 +5,11 @@ DEFAULT_FLAGS=-O2 $(ARCHS) -std=c++17 $(INCLUDE_DIRS) --expt-relaxed-constexpr -
 DEFAULT_FLAGS_89=-O2 $(ARCHS_89) -std=c++17 $(INCLUDE_DIRS) --expt-relaxed-constexpr -lcublas
 default:
 	nvcc hgemm_mma_swizzle.cu -o hgemm_mma_swizzle.bin $(DEFAULT_FLAGS)
+	nvcc mat_trans_swizzle.cu -o mat_trans_swizzle.bin $(DEFAULT_FLAGS)
 hgemm_89:
 	nvcc hgemm_mma_swizzle.cu -o hgemm_mma_swizzle.89.bin $(DEFAULT_FLAGS_89)
+mat_89:
+	nvcc mat_trans_swizzle.cu -o mat_trans_swizzle.89.bin $(DEFAULT_FLAGS_89)
 clean:
 	rm -rf *.bin
 
