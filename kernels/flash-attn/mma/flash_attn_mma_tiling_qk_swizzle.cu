@@ -52,6 +52,8 @@
 // Split-Q kernels to reduce bank conflicts.
 
 // i: row index; j: col index
+// e.g kColStride = kMmaAtomK = 16, kStep = 8 -> load 8 half as 128 bits memory issue.
+template<const int kColStride = 16, const int kStep = 8>
 __device__ __host__ __forceinline__ int swizzle_Q_j(int i, int j) {
   // >>> sw(0,0),sw(0,8),sw(1,0),sw(1,8),sw(2,0),sw(2,8),sw(3,0),sw(3,8)       
   // (0, 8, 0, 8, 0, 8, 0, 8)
@@ -61,10 +63,12 @@ __device__ __host__ __forceinline__ int swizzle_Q_j(int i, int j) {
   // (0, 8, 0, 8, 0, 8, 0, 8)
   // >>> sw(12,0),sw(12,8),sw(13,0),sw(13,8),sw(14,0),sw(14,8),sw(15,0),sw(15,8)       
   // (8, 0, 8, 0, 8, 0, 8, 0)
-  return ((int(j / 8) ^ int(i / 4)) % 2) * 8;
+  return ((int(j / kStep) ^ int(i / 4)) % int(kColStride / kStep)) * kStep;
 }
 
 // i: row index; j: col index
+// e.g kColStride = kMmaAtomK = 16, kStep = 8 -> load 8 half as 128 bits memory issue.
+template<const int kColStride = 16, const int kStep = 8>
 __device__ __host__ __forceinline__ int swizzle_K_j(int i, int j) {
   // >>> sw(0,0),sw(0,8),sw(1,0),sw(1,8),sw(2,0),sw(2,8),sw(3,0),sw(3,8)       
   // (0, 8, 0, 8, 0, 8, 0, 8)
@@ -74,11 +78,11 @@ __device__ __host__ __forceinline__ int swizzle_K_j(int i, int j) {
   // (0, 8, 0, 8, 0, 8, 0, 8)
   // >>> sw(12,0),sw(12,8),sw(13,0),sw(13,8),sw(14,0),sw(14,8),sw(15,0),sw(15,8)       
   // (8, 0, 8, 0, 8, 0, 8, 0)
-  return ((int(j / 8) ^ int(i / 4)) % 2) * 8;
+  return ((int(j / kStep) ^ int(i / 4)) % int(kColStride / kStep)) * kStep;
 }
 
 // i: row index; j: col index. 
-// e.g kColStride = kHeadDim, kStep = 8 -> load 8 half as 128 bits memory issue.
+// e.g kColStride = kHeadDim = 64, kStep = 8 -> load 8 half as 128 bits memory issue.
 template<const int kColStride = 64, const int kStep = 8>
 __device__ __host__ __forceinline__ int swizzle_V_j(int i, int j) {
   // >>> swv(0,0),swv(0,8),swv(0,16),swv(0,24),swv(0,32),swv(0,40),swv(0,48),swv(0,56)
