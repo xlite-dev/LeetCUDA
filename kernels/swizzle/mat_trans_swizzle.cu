@@ -76,7 +76,7 @@ __global__ void mat_trans_smem_swizzle_kernel(int* dev_A, int M, int N, int* dev
 
 int main(int argc, char *argv[]) {
   int M = 1024; 
-  int N = 2048; 
+  int N = 1024; 
   if (argc > 1) M = std::stoi(argv[1]);
   if (argc > 2) N = std::stoi(argv[2]);
   size_t size_a = M * N * sizeof(int);
