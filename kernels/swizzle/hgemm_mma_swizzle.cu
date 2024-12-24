@@ -8,8 +8,6 @@
 #include <cuda_bf16.h>
 #include <cuda_fp8.h>
 #include <mma.h>
-#include <torch/types.h>
-#include <torch/extension.h>
 using namespace nvcuda;
 
 #define WARP_SIZE 32
@@ -249,85 +247,5 @@ hgemm_mma_m16n8k16_mma2x4_warp4x4_kernel(
   }
 }
 
+// TODO: hgemm_mma_m16n8k16_naive_smem_swizzle_kernel
 
-// --------------------- PyTorch bindings for custom kernel -----------------------
-#define STRINGFY(str) #str
-#define TORCH_BINDING_COMMON_EXTENSION(func)   \
-  m.def(STRINGFY(func), &func, STRINGFY(func));
-
-#define CHECK_TORCH_TENSOR_DTYPE(T, th_type)                 \
-if(((T).options().dtype() != (th_type))) {                   \
-  std::cout << "Tensor Info:" << (T).options() << std::endl; \
-  throw std::runtime_error("values must be "#th_type);       \
-}
-
-#define CHECK_TORCH_TENSOR_SHAPE(T, S0, S1)           \
-if (((T).size(0) != (S0)) || ((T).size(1) != (S1))) { \
-  throw std::runtime_error("Tensor size mismatch!");  \
-}
-
-// only 1 warp per block(32 threads), m16n8k16. A, B, C: all row_major.
-void hgemm_mma_m16n8k16_naive(
-  torch::Tensor a, torch::Tensor b, torch::Tensor c) {
-  CHECK_TORCH_TENSOR_DTYPE(a, torch::kHalf)
-  CHECK_TORCH_TENSOR_DTYPE(b, torch::kHalf)
-  CHECK_TORCH_TENSOR_DTYPE(c, torch::kHalf)
-  const int M = a.size(0);
-  const int K = a.size(1);
-  const int N = b.size(1); 
-  CHECK_TORCH_TENSOR_SHAPE(a, M, K)
-  CHECK_TORCH_TENSOR_SHAPE(b, K, N)
-  CHECK_TORCH_TENSOR_SHAPE(c, M, N)
-  constexpr int MMA_M = 16;
-  constexpr int MMA_N = 8;
-  constexpr int MMA_K = 16; 
-
-  dim3 block(WARP_SIZE);
-  dim3 grid(div_ceil(N, MMA_N), div_ceil(M, MMA_M));
- 
-  hgemm_mma_m16n8k16_naive_kernel<
-    MMA_M, MMA_N, MMA_K><<<grid, block>>>(
-    reinterpret_cast<half*>(a.data_ptr()),
-    reinterpret_cast<half*>(b.data_ptr()),
-    reinterpret_cast<half*>(c.data_ptr()),
-    M, N, K
-  );
-}
-
-// 128x128, mma2x4, warp4x4(64,32,16)
-void hgemm_mma_m16n8k16_mma2x4_warp4x4(
-  torch::Tensor a, torch::Tensor b, torch::Tensor c) {
-  CHECK_TORCH_TENSOR_DTYPE(a, torch::kHalf)
-  CHECK_TORCH_TENSOR_DTYPE(b, torch::kHalf)
-  CHECK_TORCH_TENSOR_DTYPE(c, torch::kHalf)
-  const int M = a.size(0);
-  const int K = a.size(1);
-  const int N = b.size(1); 
-  CHECK_TORCH_TENSOR_SHAPE(a, M, K)
-  CHECK_TORCH_TENSOR_SHAPE(b, K, N)
-  CHECK_TORCH_TENSOR_SHAPE(c, M, N)
-  constexpr int MMA_M = 16;
-  constexpr int MMA_N = 8;
-  constexpr int MMA_K = 16; 
-  constexpr int MMA_TILE_M = 2;
-  constexpr int MMA_TILE_N = 4; 
-  constexpr int WARP_TILE_M = 4;
-  constexpr int WARP_TILE_N = 4;
-  constexpr int A_PAD = 0;
-  constexpr int B_PAD = 16;
-  constexpr int NUM_THREADS= (
-    MMA_TILE_M * MMA_TILE_N * WARP_SIZE); // 2 * 4 * 32 = 256
-
-  dim3 block(NUM_THREADS);
-  dim3 grid(div_ceil(N, MMA_N * MMA_TILE_N * WARP_TILE_N), 
-            div_ceil(M, MMA_M * MMA_TILE_M * WARP_TILE_M));
-
-  hgemm_mma_m16n8k16_mma2x4_warp4x4_kernel<
-    MMA_M, MMA_N, MMA_K, MMA_TILE_M, MMA_TILE_N, 
-    WARP_TILE_M, WARP_TILE_N, A_PAD, B_PAD><<<grid, block>>>(
-    reinterpret_cast<half*>(a.data_ptr()),
-    reinterpret_cast<half*>(b.data_ptr()),
-    reinterpret_cast<half*>(c.data_ptr()),
-    M, N, K
-  );
-}
