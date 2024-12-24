@@ -297,7 +297,7 @@ def check_all_close(out_flash_or_sdpa: torch.Tensor, out_mma: torch.Tensor,
     diff = torch.abs(out_flash_or_sdpa.float() - out_mma.float())
     all_close = str(torch.allclose(out_flash_or_sdpa.float(), out_mma.float(), atol=1e-2))
     pretty_print_line(
-        f"{true_tag} vs {tag:<18}, all close: {all_close:<6}, "
+        f"{true_tag} vs {tag:<22}, all close: {all_close:<6}, "
         f"max diff: {diff.max().item():.6f}, min diff: {diff.min().item():.6f}, "
         f"mean diff: {diff.mean().item():.6f}"
     )
