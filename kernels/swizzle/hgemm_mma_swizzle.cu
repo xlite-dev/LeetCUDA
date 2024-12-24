@@ -1,8 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <float.h>
 #include <vector>
 #include <algorithm>
+#include <iostream>
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
 #include <cuda_bf16.h>
@@ -249,3 +251,113 @@ hgemm_mma_m16n8k16_mma2x4_warp4x4_kernel(
 
 // TODO: hgemm_mma_m16n8k16_naive_smem_swizzle_kernel
 
+void launch_hgemm_mma_m16n8k16_naive(
+  half* a, half* b, half* c, int M, int N, int K) {
+  constexpr int MMA_M = 16;
+  constexpr int MMA_N = 8;
+  constexpr int MMA_K = 16;                                     
+  dim3 block(WARP_SIZE);
+  dim3 grid(div_ceil(N, MMA_N), div_ceil(M, MMA_M));
+ 
+  hgemm_mma_m16n8k16_naive_kernel<
+    MMA_M, MMA_N, MMA_K><<<grid, block>>>(
+    a, b, c, M, N, K
+  );
+}
+
+void launch_hgemm_mma_m16n8k16_mma2x4_warp4x4(
+  half* a, half* b, half* c, int M, int N, int K) {
+  constexpr int MMA_M = 16;
+  constexpr int MMA_N = 8;
+  constexpr int MMA_K = 16; 
+  constexpr int MMA_TILE_M = 2;
+  constexpr int MMA_TILE_N = 4; 
+  constexpr int WARP_TILE_M = 4;
+  constexpr int WARP_TILE_N = 4;
+  constexpr int A_PAD = 0;
+  constexpr int B_PAD = 16;
+  constexpr int NUM_THREADS= (
+    MMA_TILE_M * MMA_TILE_N * WARP_SIZE); // 2 * 4 * 32 = 256                                  
+  dim3 block(NUM_THREADS);
+  dim3 grid(div_ceil(N, MMA_N * MMA_TILE_N * WARP_TILE_N), 
+            div_ceil(M, MMA_M * MMA_TILE_M * WARP_TILE_M));
+ 
+  hgemm_mma_m16n8k16_mma2x4_warp4x4_kernel<
+    MMA_M, MMA_N, MMA_K, MMA_TILE_M, MMA_TILE_N, 
+    WARP_TILE_M, WARP_TILE_N, A_PAD, B_PAD><<<
+    grid, block>>>(
+    a, b, c, M, N, K
+  );
+}
+
+template <typename T>
+float perf_gemm(
+  void (*gpu_hgemm) (T *, T *, T *, int, int, int),
+  int M, int N, int K, int warmup, int repeat) {
+
+  size_t size_a = M * K * sizeof(T);
+  size_t size_b = K * N * sizeof(T);
+  size_t size_c = M * N * sizeof(T);
+
+  T *d_a, *d_b;
+  T *d_c;
+  cudaMalloc(&d_a, size_a);
+  cudaMalloc(&d_b, size_b);
+  cudaMalloc(&d_c, size_c);
+  
+  // warmup
+  for (int i = 0; i < 1; ++i){
+    gpu_hgemm(d_a, d_b, d_c, M, N, K);
+  }
+  cudaDeviceSynchronize();
+
+  cudaEvent_t start, end;
+  cudaEventCreate(&start);
+  cudaEventCreate(&end);
+  cudaEventRecord(start);
+  for (int i = 0; i < repeat; i++) {
+    gpu_hgemm(d_a, d_b, d_c, M, N, K);
+  }
+  cudaEventRecord(end);
+  cudaDeviceSynchronize();
+  cudaEventSynchronize(end);
+
+  float msec, sec;
+  cudaEventElapsedTime(&msec, start, end);
+  sec = msec / 1000.0 / repeat;
+
+  cudaFree(d_a);
+  cudaFree(d_b);
+  cudaFree(d_c);
+  cudaEventDestroy(start);
+  cudaEventDestroy(end);
+
+  return sec;
+}
+
+int main(int argc, char *argv[]) {
+  int M = 1024;
+  int N = 1024;
+  int K = 1024;
+  int W = 1;
+  int R = 10;
+  if (argc > 1) M = std::stoi(argv[1]);
+  if (argc > 2) N = std::stoi(argv[2]);
+  if (argc > 3) K = std::stoi(argv[3]);
+  if (argc > 4) W = std::stoi(argv[4]);
+  if (argc > 5) R = std::stoi(argv[5]);
+  double avg_sec, avg_Tflops;
+  printf("\nALGO = HGEMM MMA NAIVE\n");
+  avg_sec = perf_gemm<half>(launch_hgemm_mma_m16n8k16_naive, 
+                                   M, N, K, W, R);
+  avg_Tflops = ((double)M) * N * K * 2 * 1e-12 / avg_sec;      
+  printf("M N K = %6d %6d %6d, W = %d, R = %d, ", M, N, K, W, R);
+  printf("Time = %12.8lf s, AVG Performance = %10.4lf Tflops\n", avg_sec, avg_Tflops);    
+  printf("\nALGO = HGEMM mma2x4_warp4x4\n");
+  avg_sec = perf_gemm<half>(launch_hgemm_mma_m16n8k16_mma2x4_warp4x4, 
+                                   M, N, K, W, R);
+  avg_Tflops = ((double)M) * N * K * 2 * 1e-12 / avg_sec;      
+  printf("M N K = %6d %6d %6d, W = %d, R = %d, ", M, N, K, W, R);
+  printf("Time = %12.8lf s, AVG Performance = %10.4lf Tflops\n", avg_sec, avg_Tflops);                           
+  return 0;
+}
