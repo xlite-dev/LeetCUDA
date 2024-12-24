@@ -15,5 +15,3 @@ mat_89:
 	nvcc mat_trans_swizzle.cu -o mat_trans_swizzle.89.bin $(DEFAULT_FLAGS_89)
 clean:
 	rm -rf *.bin
-
-
