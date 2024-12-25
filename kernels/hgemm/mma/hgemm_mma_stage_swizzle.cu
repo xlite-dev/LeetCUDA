@@ -53,17 +53,72 @@ using namespace nvcuda;
 HOST_DEVICE_INLINE 
 int div_ceil(int a, int b) { return (a % b != 0) ? (a / b + 1) : (a / b); }
 
+// i: row index; j: col index. 
+// e.g kColStride = 64, kStep = 8 -> load 8 half as 128 bits memory issue.
+template<const int kColStride = 64, const int kStep = 8>
+static __device__ __forceinline__ int swizzle_permuted_j(int i, int j) {
+  // -------------------------------------------
+  // --------------swizzle layout---------------
+  // -------------col 0~64, step 8--------------
+  // -------------------------------------------
+  // | row 0  | (0, 8, 16, 24, 32, 40, 48, 56) |
+  // | row 1  | (0, 8, 16, 24, 32, 40, 48, 56) |
+  // | row 2  | (0, 8, 16, 24, 32, 40, 48, 56) |
+  // | row 3  | (0, 8, 16, 24, 32, 40, 48, 56) |
+  // -------------------------------------------
+  // | row 4  | (8, 0, 24, 16, 40, 32, 56, 48) |
+  // | row 5  | (8, 0, 24, 16, 40, 32, 56, 48) |
+  // | row 6  | (8, 0, 24, 16, 40, 32, 56, 48) |
+  // | row 7  | (8, 0, 24, 16, 40, 32, 56, 48) |
+  // -------------------------------------------
+  // | row 8  | (16, 24, 0, 8, 48, 56, 32, 40) |
+  // | row 9  | (16, 24, 0, 8, 48, 56, 32, 40) |
+  // | row 10 | (16, 24, 0, 8, 48, 56, 32, 40) |
+  // | row 11 | (16, 24, 0, 8, 48, 56, 32, 40) |
+  // -------------------------------------------
+  // | row 12 | (24, 16, 8, 0, 56, 48, 40, 32) |
+  // | row 13 | (24, 16, 8, 0, 56, 48, 40, 32) |
+  // | row 14 | (24, 16, 8, 0, 56, 48, 40, 32) |
+  // | row 15 | (24, 16, 8, 0, 56, 48, 40, 32) |
+  // -------------------------------------------
+  // swizzle: ((int(j / kStep) ^ int(i / 4)) % int(kColStride / kStep)) * kStep;
+  static_assert(kStep == 4 || kStep == 8, "kStep must be 8 or 4.");
+  static_assert(kColStride % kStep == 0, "kColStride must be multiple of kStep.");
+  if constexpr (kStep == 8) {
+    return (((j >> 3) ^ (i >> 2)) % (kColStride >> 3)) << 3;
+  } else {
+    static_assert(kStep == 4);
+    return (((j >> 2) ^ (i >> 2)) % (kColStride >> 2)) << 2;
+  }
+}
+
 // i: row index; j: col index
-__device__ __host__ __forceinline__ int swizzle_A_j(int i, int j) {
-  // >>> sw(0,0),sw(0,8),sw(1,0),sw(1,8),sw(2,0),sw(2,8),sw(3,0),sw(3,8)       
-  // (0, 8, 0, 8, 0, 8, 0, 8)
-  // >>> sw(4,0),sw(4,8),sw(5,0),sw(5,8),sw(6,0),sw(6,8),sw(7,0),sw(7,8)       
-  // (8, 0, 8, 0, 8, 0, 8, 0)
-  // >>> sw(8,0),sw(8,8),sw(9,0),sw(9,8),sw(10,0),sw(10,8),sw(11,0),sw(11,8)       
-  // (0, 8, 0, 8, 0, 8, 0, 8)
-  // >>> sw(12,0),sw(12,8),sw(13,0),sw(13,8),sw(14,0),sw(14,8),sw(15,0),sw(15,8)       
-  // (8, 0, 8, 0, 8, 0, 8, 0)
-  return ((int(j / 8) ^ int(i / 4)) % 2) * 8;
+template<const int kMmaAtomK = 16>
+static __device__ __forceinline__ int swizzle_permuted_A_j(int i, int j) {
+  // -------------------
+  // -col 0~16, step 8--
+  // -------------------
+  // | row 0  | (0, 8) |
+  // | row 1  | (0, 8) |
+  // | row 2  | (0, 8) |
+  // | row 3  | (0, 8) |
+  // -------------------
+  // | row 4  | (8, 0) |
+  // | row 5  | (8, 0) |
+  // | row 6  | (8, 0) |
+  // | row 7  | (8, 0) |
+  // -------------------
+  // | row 8  | (0, 8) |
+  // | row 9  | (0, 8) |
+  // | row 10 | (0, 8) |
+  // | row 11 | (0, 8) |
+  // -------------------
+  // | row 12 | (8, 0) |
+  // | row 13 | (8, 0) |
+  // | row 14 | (8, 0) |
+  // | row 15 | (8, 0) |
+  // -------------------
+  return swizzle_permuted_j<kMmaAtomK, 8>(i, j);
 }
 
 // In order to reduce bank conflicts, we will save the K(16x2=32) 
@@ -142,13 +197,14 @@ hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_swizzle_kernel(
     uint32_t load_smem_a_ptr = (
       smem_a_base_ptr + (k * s_a_stage_offset + 
                          load_smem_a_m * (BK + A_PAD) + 
-                         swizzle_A_j(load_smem_a_m, load_smem_a_k)) * sizeof(half)
+                         swizzle_permuted_A_j<MMA_K>(
+                          load_smem_a_m, load_smem_a_k)) * sizeof(half)
     );
     CP_ASYNC_CG(load_smem_a_ptr, &A[load_gmem_a_addr], 16); // MMA_K 0
     uint32_t load_smem_a_mma_k_ptr = (
       smem_a_base_ptr + s_a_mma_k_store_offset * sizeof(half) + 
       (k * s_a_stage_offset + load_smem_a_m * (BK + A_PAD) + 
-      swizzle_A_j(load_smem_a_m, load_smem_a_k)) * sizeof(half)
+      swizzle_permuted_A_j<MMA_K>(load_smem_a_m, load_smem_a_k)) * sizeof(half)
     );
     CP_ASYNC_CG(load_smem_a_mma_k_ptr, &A[load_gmem_a_addr + 16], 16); // MMA_K 1
 
@@ -191,7 +247,7 @@ hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_swizzle_kernel(
       uint32_t lane_smem_a_ptr = (
         smem_a_base_ptr + 
         (0 * s_a_stage_offset + lane_smem_a_m * (BK + A_PAD) + 
-        swizzle_A_j(lane_smem_a_m, lane_smem_a_k)) * sizeof(half)
+        swizzle_permuted_A_j<MMA_K>(lane_smem_a_m, lane_smem_a_k)) * sizeof(half)
       );
       LDMATRIX_X4(RA[reg_store_idx][i][0], RA[reg_store_idx][i][1], 
                   RA[reg_store_idx][i][2], RA[reg_store_idx][i][3], 
@@ -230,13 +286,14 @@ hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_swizzle_kernel(
     uint32_t load_smem_a_ptr = (
       smem_a_base_ptr + (smem_sel_next * s_a_stage_offset + 
                          load_smem_a_m * (BK + A_PAD) + 
-                         swizzle_A_j(load_smem_a_m, load_smem_a_k)) * sizeof(half)
+                         swizzle_permuted_A_j<MMA_K>(
+                          load_smem_a_m, load_smem_a_k)) * sizeof(half)
     );
     CP_ASYNC_CG(load_smem_a_ptr, &A[load_gmem_a_addr], 16); // MMA_K 0
     uint32_t load_smem_a_mma_k_ptr = (
       smem_a_base_ptr + s_a_mma_k_store_offset * sizeof(half) + 
       (smem_sel_next * s_a_stage_offset + load_smem_a_m * (BK + A_PAD) + 
-      swizzle_A_j(load_smem_a_m, load_smem_a_k)) * sizeof(half)
+      swizzle_permuted_A_j<MMA_K>(load_smem_a_m, load_smem_a_k)) * sizeof(half)
     );
     CP_ASYNC_CG(load_smem_a_mma_k_ptr, &A[load_gmem_a_addr + 16], 16); // MMA_K 1
 
@@ -267,7 +324,7 @@ hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_swizzle_kernel(
       uint32_t lane_smem_a_ptr = (
         smem_a_base_ptr + s_a_mma_k_store_offset * sizeof(half) + 
         (smem_sel * s_a_stage_offset + lane_smem_a_m * (BK + A_PAD) + 
-        swizzle_A_j(lane_smem_a_m, lane_smem_a_k)) * sizeof(half)
+        swizzle_permuted_A_j<MMA_K>(lane_smem_a_m, lane_smem_a_k)) * sizeof(half)
       );
       LDMATRIX_X4(RA[reg_store_idx][i][0], RA[reg_store_idx][i][1], 
                   RA[reg_store_idx][i][2], RA[reg_store_idx][i][3], 
@@ -336,7 +393,8 @@ hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_swizzle_kernel(
       uint32_t lane_smem_a_ptr = (
         smem_a_base_ptr + (smem_sel_reg * s_a_stage_offset + 
                            lane_smem_a_m * (BK + A_PAD) + 
-                           swizzle_A_j(lane_smem_a_m, lane_smem_a_k)) * sizeof(half)
+                           swizzle_permuted_A_j<MMA_K>(
+                            lane_smem_a_m, lane_smem_a_k)) * sizeof(half)
       );
       LDMATRIX_X4(RA[reg_store_idx][i][0], RA[reg_store_idx][i][1], 
                   RA[reg_store_idx][i][2], RA[reg_store_idx][i][3], 
@@ -383,7 +441,7 @@ hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_swizzle_kernel(
         uint32_t lane_smem_a_ptr = (
           smem_a_base_ptr + s_a_mma_k_store_offset * sizeof(half) +
           (stage_sel * s_a_stage_offset + lane_smem_a_m * (BK + A_PAD) + 
-          swizzle_A_j(lane_smem_a_m, lane_smem_a_k)) * sizeof(half)
+          swizzle_permuted_A_j<MMA_K>(lane_smem_a_m, lane_smem_a_k)) * sizeof(half)
         );
         LDMATRIX_X4(RA[reg_store_idx][i][0], RA[reg_store_idx][i][1], 
                     RA[reg_store_idx][i][2], RA[reg_store_idx][i][3], 
@@ -449,7 +507,8 @@ hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_swizzle_kernel(
         uint32_t lane_smem_a_ptr = (
           smem_a_base_ptr + (stage_sel_reg * s_a_stage_offset + 
                              lane_smem_a_m * (BK + A_PAD) + 
-                             swizzle_A_j(lane_smem_a_m, lane_smem_a_k)) * sizeof(half)
+                             swizzle_permuted_A_j<MMA_K>(
+                              lane_smem_a_m, lane_smem_a_k)) * sizeof(half)
         );
         LDMATRIX_X4(RA[reg_store_idx][i][0], RA[reg_store_idx][i][1], 
                     RA[reg_store_idx][i][2], RA[reg_store_idx][i][3], 
