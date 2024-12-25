@@ -46,32 +46,57 @@
 // Split-Q kernels to reduce bank conflicts.
 
 // i: row index; j: col index. 
-// e.g kColStride = kHeadDim = 64, kStep = 8 -> load 8 half as 128 bits memory issue.
+// e.g kColStride = 64, kStep = 8 -> load 8 half as 128 bits memory issue.
 template<const int kColStride = 64, const int kStep = 8>
-__device__ __host__ __forceinline__ int swizzle_QKV_j(int i, int j) {
-  // >>> swv(0,0),swv(0,8),swv(0,16),swv(0,24),swv(0,32),swv(0,40),swv(0,48),swv(0,56)
-  // (0, 8, 16, 24, 32, 40, 48, 56)
-  // >>> swv(4,0),swv(4,8),swv(4,16),swv(4,24),swv(4,32),swv(4,40),swv(4,48),swv(4,56)
-  // (8, 0, 24, 16, 40, 32, 56, 48)
-  // ------------ swizzle layout ------------
-  // --------------- col 0~56 ---------------
-  // row 0  (0, 8, 16, 24, 32, 40, 48, 56)
-  // row 1  (0, 8, 16, 24, 32, 40, 48, 56)
-  // row 2  (0, 8, 16, 24, 32, 40, 48, 56)
-  // row 3  (0, 8, 16, 24, 32, 40, 48, 56)
-  // row 4  (8, 0, 24, 16, 40, 32, 56, 48)
-  // row 5  (8, 0, 24, 16, 40, 32, 56, 48)
-  // row 6  (8, 0, 24, 16, 40, 32, 56, 48)
-  // row 7  (8, 0, 24, 16, 40, 32, 56, 48)
-  // row 8  (16, 24, 0, 8, 48, 56, 32, 40)
-  // row 9  (16, 24, 0, 8, 48, 56, 32, 40)
-  // row 10 (16, 24, 0, 8, 48, 56, 32, 40)
-  // row 11 (16, 24, 0, 8, 48, 56, 32, 40)
-  // row 12 (24, 16, 8, 0, 56, 48, 40, 32)
-  // row 13 (24, 16, 8, 0, 56, 48, 40, 32)
-  // row 14 (24, 16, 8, 0, 56, 48, 40, 32)
-  // row 15 (24, 16, 8, 0, 56, 48, 40, 32)
-  return ((int(j / kStep) ^ int(i / 4)) % int(kColStride / kStep)) * kStep;
+static __device__ __forceinline__ int swizzle_permuted_j(int i, int j) {
+  // -------------------------------------------
+  // --------------swizzle layout---------------
+  // -------------col 0~64, step 8--------------
+  // -------------------------------------------
+  // | row 0  | (0, 8, 16, 24, 32, 40, 48, 56) |
+  // | row 1  | (0, 8, 16, 24, 32, 40, 48, 56) |
+  // | row 2  | (0, 8, 16, 24, 32, 40, 48, 56) |
+  // | row 3  | (0, 8, 16, 24, 32, 40, 48, 56) |
+  // -------------------------------------------
+  // | row 4  | (8, 0, 24, 16, 40, 32, 56, 48) |
+  // | row 5  | (8, 0, 24, 16, 40, 32, 56, 48) |
+  // | row 6  | (8, 0, 24, 16, 40, 32, 56, 48) |
+  // | row 7  | (8, 0, 24, 16, 40, 32, 56, 48) |
+  // -------------------------------------------
+  // | row 8  | (16, 24, 0, 8, 48, 56, 32, 40) |
+  // | row 9  | (16, 24, 0, 8, 48, 56, 32, 40) |
+  // | row 10 | (16, 24, 0, 8, 48, 56, 32, 40) |
+  // | row 11 | (16, 24, 0, 8, 48, 56, 32, 40) |
+  // -------------------------------------------
+  // | row 12 | (24, 16, 8, 0, 56, 48, 40, 32) |
+  // | row 13 | (24, 16, 8, 0, 56, 48, 40, 32) |
+  // | row 14 | (24, 16, 8, 0, 56, 48, 40, 32) |
+  // | row 15 | (24, 16, 8, 0, 56, 48, 40, 32) |
+  // -------------------------------------------
+  // swizzle: ((int(j / kStep) ^ int(i / 4)) % int(kColStride / kStep)) * kStep;
+  static_assert(kStep == 4 || kStep == 8, "kStep must be 8 or 4.");
+  static_assert(kColStride % kStep == 0, "kColStride must be multiple of kStep.");
+  if constexpr (kStep == 8) {
+    return (((j >> 3) ^ (i >> 2)) % (kColStride >> 3)) << 3;
+  } else {
+    static_assert(kStep == 4);
+    return (((j >> 2) ^ (i >> 2)) % (kColStride >> 2)) << 2;
+  }
+}
+
+template<const int kHeadDim = 64>
+static __device__ __forceinline__ int swizzle_permuted_Q_j(int i, int j) {
+  return swizzle_permuted_j<kHeadDim, 8>(i, j);
+}
+
+template<const int kHeadDim = 64>
+static __device__ __forceinline__ int swizzle_permuted_K_j(int i, int j) {
+  return swizzle_permuted_j<kHeadDim, 8>(i, j);
+}
+
+template<const int kHeadDim = 64>
+static __device__ __forceinline__ int swizzle_permuted_V_j(int i, int j) {
+  return swizzle_permuted_j<kHeadDim, 8>(i, j);
 }
 
 template<
