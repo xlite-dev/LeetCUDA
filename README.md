@@ -48,7 +48,7 @@ I have also implemented **FlashAttention-2** using pure MMA PTX instructions, wh
 |Tensor Cores|Loop over Seqlen/Headdim |Tile Block (Br, Bc)|MMA (m16n8k16)|
 |:---:|:---:|:---:|:---:|
 |✔️|✔️|✔️|✔️|
-|Pack LDST (128 bits)|SMEM Swizzle/Pad |Copy Async|Tile MMA (More Threads)|
+|Pack LDST (128 bits)|SMEM **Swizzle**/Pad |Copy Async|Tile MMA (More Threads)|
 |✔️|✔️|✔️|✔️|
 |Tile Warp (More Values)|Multi Stages (1/2)|Collective Store (Shfl)|**Split KV/Q**|
 |✔️|✔️|✔️|✔️|
