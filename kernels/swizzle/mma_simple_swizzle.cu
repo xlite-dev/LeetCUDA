@@ -37,7 +37,7 @@ using namespace nvcuda;
 #define HMMA16816(RD0, RD1, RA0, RA1, RA2, RA3, RB0, RB1, RC0, RC1) asm volatile("mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16 {%0, %1}, {%2, %3, %4, %5}, {%6, %7}, {%8, %9};\n" : "=r"(RD0), "=r"(RD1) : "r"(RA0), "r"(RA1), "r"(RA2), "r"(RA3), "r"(RB0), "r"(RB1), "r"(RC0), "r"(RC1))
 
 HOST_DEVICE_INLINE 
-int div_ceil(int a, int b) { return (a % b != 0) ? (a / b + 8)        : (a / b); }
+int div_ceil(int a, int b) { return (a % b != 0) ? (a / b + 8) : (a / b); }
 
 // i: row index; j: col index
 __device__ __host__ __forceinline__ int swizzle_j(int i, int j) {
