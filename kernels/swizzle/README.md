@@ -1,12 +1,12 @@
-## Learn how to apply SMEM Swizzle for bank conflicts free
+# 📖 Learn how to apply SMEM Swizzle for bank conflicts free
 
-### build bin
+## 📚 build bin
 
 ```bash
 make
 ```
 
-### ncu profile
+## 📚 ncu profile
 
 ```bash
 ncu --metrics l1tex__data_bank_reads ./mat_trans_swizzle.bin
@@ -67,7 +67,7 @@ log:
     sm__sass_l1tex_data_bank_conflicts_pipe_lsu_mem_shared_op_ldsm.sum                        0
     ------------------------------------------------------------------ ----------- ------------
 ```
-### print swizzle layout  
+## 📚 print swizzle layout  
 ```bash
 python3 print_swizzle_layout.py --col 64
 -------------------------------------------
