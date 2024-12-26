@@ -898,12 +898,12 @@ void launch_flash_attn_mma_stages_split_q_shared_kv_fully_swizzle(
   constexpr int kMmaAtomM = 16;
   constexpr int kMmaAtomN = 8;
   constexpr int kMmaAtomK = 16;
-  constexpr int kMmaTileSeqLenQ  = 4;
+  constexpr int kMmaTileSeqLenQ  = (kHeadDim < 256) ? 4 : 8;
   constexpr int kMmaTileSeqLenK  = 1;
-  constexpr int kMmaTileSeqLenP  = 4;
+  constexpr int kMmaTileSeqLenP  = (kHeadDim < 256) ? 4 : 8;
   constexpr int kMmaTileHeadDimV = 1;
   constexpr int kWarpTileSeqLenQ = 1;
-  constexpr int kWarpTileSeqLenK = (kStage > 1) ? 4 : 8;
+  constexpr int kWarpTileSeqLenK = (kHeadDim < 256) ? ((kStage > 1) ? 4 : 8) : 8;
   constexpr int kWarpTileSeqLenP = 1;
   constexpr int kWarpTileHeadDimV = (kHeadDim / (kMmaAtomN * kMmaTileHeadDimV)); // 8,16,32,....
   constexpr int Br = kMmaAtomM * kMmaTileSeqLenQ * kWarpTileSeqLenQ; // 16*4*1=64
