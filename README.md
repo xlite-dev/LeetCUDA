@@ -60,11 +60,11 @@ Currently, for small-scale attention `(B<=4, H <=48, SeqLen <= 8192)` it can run
 |Algorithm| (B,H,N,D) | RTX 3080 Laptop | L20 | RTX 4090 |   
 |:---:|:---:|:---:|:---:|:---:|  
 |FlashAttention-2|(1,8,8192,64)|37 TFLOPS|100 TFLOPS|145 TFLOPS|  
-|mma(split-q+share-qkv+stage2)|(1,8,8192,64)|**55 TFLOPS**|99 TFLOPS|**218 TFLOPS**|  
+|split-q+share-qkv+stage2|(1,8,8192,64)|**55 TFLOPS**|99 TFLOPS|**218 TFLOPS**|  
 |FlashAttention-2|(1,48,8192,64)|37 TFLOPS|109 TFLOPS|163 TFLOPS|
-|mma(split-q+share-qkv+stage2)|(1,48,8192,64)|35 TFLOPS|107 TFLOPS|**220 TFLOPS**|
+|split-q+share-qkv+stage2|(1,48,8192,64)|35 TFLOPS|107 TFLOPS|**220 TFLOPS**|
 |SDPA(EFFICIENT ATTENTION)|(1,48,8192,512)|16 TFLOPS|58 TFLOPS|85 TFLOPS|
-|mma(split-q+tiling-qk+stage2)|(1,48,8192,512)|**23 TFLOPS**|**81 TFLOPS**|**127 TFLOPS**|
+|split-q+tiling-qk+swizzle+stage2|(1,48,8192,512)|**23 TFLOPS**|**81 TFLOPS**|**127 TFLOPS**|
 
 The `Split KV` and `Split Q` implementations have been carried out in [flash-attention-mma⚡️⚡️](./kernels/flash-attn) for performance comparison. The `Split KV` method, which involves splitting all QKV across MMA (Warps), is slower than `Split Q` method, which splitting Q across MMA(Warps) and keep access KV for all MMA(Warps). 
 
