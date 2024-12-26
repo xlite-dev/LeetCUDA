@@ -56,7 +56,9 @@ template<
          const int kWarpTileSeqLenP,  // 1, more values, M, Br=64*1=64, matmul M
          const int kWarpTileHeadDimV, // 8, more values, N, d=8*(1|2|3|4|...)=8|...|32|64|96|128|...
          const int kStage, 
-         const int kPad
+         const int kPadQ,
+         const int kPadK,
+         const int kPadV
          >
 __global__ void __launch_bounds__(
   WARP_SIZE * kMmaTileSeqLenQ * kMmaTileSeqLenK) 
@@ -77,7 +79,9 @@ flash_attn_mma_stages_split_q_shared_qkv_kernel(half* Q,
   static_assert(kWarpTileSeqLenP == 1 && kWarpTileHeadDimV == (
     kHeadDim / (kMmaAtomN * kMmaTileHeadDimV))); // P@V
   static_assert(kStage > 0 && kStage < 3); // 1 or 2
-  static_assert(kPad >= 0 && kPad % 8 == 0); // 0,8,16
+  static_assert(kPadQ >= 0 && kPadQ % 8 == 0); // 0,8,16
+  static_assert(kPadK >= 0 && kPadK % 8 == 0); // 0,8,16
+  static_assert(kPadV >= 0 && kPadV % 8 == 0); // 0,8,16
   constexpr int Br = kMmaAtomM * kMmaTileSeqLenQ * kWarpTileSeqLenQ; // 16*4*1=64
   constexpr int Bc = kMmaAtomN * kMmaTileSeqLenK * kWarpTileSeqLenK; //  8*1*8=64
   static_assert(Br >= Bc); // for shared memory reuse.
@@ -139,8 +143,9 @@ flash_attn_mma_stages_split_q_shared_qkv_kernel(half* Q,
   // Shared memory for Q,K,V, we don not need additional smem for O 
   // collective store which perform via registers reuse and warp shuffle.
   extern __shared__ half smem[];
-  constexpr int Q_tile_size  = Br * (kHeadDim + kPad); // 64*64=4096, ~8192 bytes=8M
-  constexpr int KV_tile_size = Bc * (kHeadDim + kPad); // K[Bc,d]
+  constexpr int Q_tile_size = Br * (kHeadDim + kPadQ); // 64*64=4096, ~8192 bytes=8M
+  constexpr int K_tile_size = Bc * (kHeadDim + kPadK); // K[Bc,d]
+  constexpr int V_tile_size = Bc * (kHeadDim + kPadV); // V[Bc,d]
   half* Q_tile_smem = smem; // 8M/16M
   half* K_tile_smem = Q_tile_smem; // QKV shared the same smem
   half* V_tile_smem = Q_tile_smem; // QKV shared the same smem
@@ -171,9 +176,13 @@ flash_attn_mma_stages_split_q_shared_qkv_kernel(half* Q,
   // prefetch Q s2r will reduce large io-access for Q smem while N is large, 
   // but cost more registers, so, we only prefetch Q s2r for d<=256.
   constexpr bool kCanPrefetchQs2r = ((kHeadDim / kMmaAtomK) <= 16); // always true.
-  // Use kStage and(Q_tile_size / KV_tile_size) to control multi-stage policy for K/V g2s.
+  constexpr bool kDelayPrefetchQs2r = (true && kCanPrefetchQs2r); // TODO: make it optional.
+  // Use kStage and(Q_tile_size / max(K_tile_size, V_tile_size)) to control 
+  // multi-stage policy for K/V g2s.
   constexpr bool kCanPrefetchKVg2s = ( 
-    ((Q_tile_size / KV_tile_size) >= 2) && (kStage >= 2)); // for d<=64 is true.
+    ((Q_tile_size / (K_tile_size > V_tile_size ? K_tile_size : V_tile_size)) >= 2) 
+    && (kStage >= 2)
+  );
   constexpr int kPrefetchKg2sSmemId = 0; // smem id for K g2s, 0.
   constexpr int kPrefetchVg2sSmemId = kCanPrefetchKVg2s ? 1 : 0; // smem id for V g2s, 1.
   constexpr int kNumPrefetchQs2r = (kCanPrefetchQs2r) ? (kHeadDim / kMmaAtomK) : 1;
@@ -196,7 +205,7 @@ flash_attn_mma_stages_split_q_shared_qkv_kernel(half* Q,
     int load_gmem_Q_d = load_smem_Q_d;
     int load_gmem_Q_addr = (Q_gmem_offset + load_gmem_Q_Br * kHeadDim + load_gmem_Q_d);
     uint32_t load_smem_Q_ptr = (smem_Q_base_ptr + (
-      load_smem_Q_Br * (kHeadDim + kPad) + load_smem_Q_d) * sizeof(half));
+      load_smem_Q_Br * (kHeadDim + kPadQ) + load_smem_Q_d) * sizeof(half));
     #pragma unroll
     for (int i = 0; i < (kHeadDim / (kNumThreads / Br)); i += 8) {
       CP_ASYNC_CG(load_smem_Q_ptr + i * 2, &Q[load_gmem_Q_addr + i], 16);
@@ -204,45 +213,42 @@ flash_attn_mma_stages_split_q_shared_qkv_kernel(half* Q,
     CP_ASYNC_COMMIT_GROUP();
   }
 
+  // <Prefetch Q s2r>: Load Q tile from smem -> regs, before Q@K^T.
+  static_assert(kCanPrefetchQs2r); // always prefetch Q s2r.
+  if constexpr (kCanPrefetchQs2r) {
+    // Wait Q ready and let K copy async, then prefetch Q from smem -> regs.
+    // NOTE: we only need to load Q once from smem -> regs, and then reuse it.
+    CP_ASYNC_WAIT_GROUP(0); 
+    __syncthreads(); 
+
+    #pragma unroll
+    for (int tile_K_d = 0; tile_K_d < (kHeadDim / kMmaAtomK); ++tile_K_d) {
+      // Allocate R_Q[(kHeadDim / kMmaAtomK)][1][4], e.g R_Q[4][1][4] 16 regs. 
+      // By the way, we have to reduce R_Z to 0 regs and reuse R_Q for collective store.
+      // Then we can load Q from smem only once and reuse it for <loop over K seqlen>
+      // processes. This will reduce large io-access for Q smem while N is large.
+      #pragma unroll
+      for (int i = 0; i < kWarpTileSeqLenQ; ++i) { // Q[Br,d]=[M,K]
+        int warp_smem_Q_Br = warp_QP * (kMmaAtomM * kWarpTileSeqLenQ) + i * kMmaAtomM;
+        int lane_smem_Q_Br = warp_smem_Q_Br + lane_id % 16; // 0~15
+        int lane_smem_Q_d  = tile_K_d * kMmaAtomK + (lane_id / 16) * 8; // 0,8
+        uint32_t lane_smem_Q_ptr = (
+          smem_Q_base_ptr + (lane_smem_Q_Br * (kHeadDim + kPadQ) + 
+                             lane_smem_Q_d) * sizeof(half)
+        );
+        LDMATRIX_X4(R_Q[tile_K_d][i][0], R_Q[tile_K_d][i][1], 
+                    R_Q[tile_K_d][i][2], R_Q[tile_K_d][i][3], 
+                    lane_smem_Q_ptr); // now, R_Q[1/2/4/8][1][4]
+      }
+    }
+    __syncthreads(); // wait all warps ready.
+  } // end if kCanPrefetchQs2r
+
   // <loop over K seqlen>: for K^T[d,seqlen] with K^T_tile[d,Bc]
   // tile_K_seqlen: compute S_tile[Br,Bc] = Q@K^T = Q_tile[Br,d] * K^T[d,Bc]
   #pragma unroll 1
   for (int tile_K_seqlen = 0; tile_K_seqlen < Tc; ++tile_K_seqlen) { 
     // TODO: process last tile_K_seqlen ? pad to multiple of 8.
-    
-    // <Prefetch Q s2r>: Load Q tile from smem -> regs, before Q@K^T.
-    static_assert(kCanPrefetchQs2r); // always prefetch Q s2r.
-    if constexpr (kCanPrefetchQs2r) {
-      // Wait Q ready and let K copy async, then prefetch Q from smem -> regs.
-      // NOTE: we only need to load Q once from smem -> regs, and then reuse it.
-      if (tile_K_seqlen == 0) { 
-        CP_ASYNC_WAIT_GROUP(0); 
-        __syncthreads(); 
-
-        #pragma unroll
-        for (int tile_K_d = 0; tile_K_d < (kHeadDim / kMmaAtomK); ++tile_K_d) {
-          // Allocate R_Q[(kHeadDim / kMmaAtomK)][1][4], e.g R_Q[4][1][4] 16 regs. 
-          // By the way, we have to reduce R_Z to 0 regs and reuse R_Q for collective store.
-          // Then we can load Q from smem only once and reuse it for <loop over K seqlen>
-          // processes. This will reduce large io-access for Q smem while N is large.
-          #pragma unroll
-          for (int i = 0; i < kWarpTileSeqLenQ; ++i) { // Q[Br,d]=[M,K]
-            int warp_smem_Q_Br = warp_QP * (kMmaAtomM * kWarpTileSeqLenQ) + i * kMmaAtomM;
-            int lane_smem_Q_Br = warp_smem_Q_Br + lane_id % 16; // 0~15
-            int lane_smem_Q_d  = tile_K_d * kMmaAtomK + (lane_id / 16) * 8; // 0,8
-            uint32_t lane_smem_Q_ptr = (
-              smem_Q_base_ptr + (lane_smem_Q_Br * (kHeadDim + kPad) + 
-                                 lane_smem_Q_d) * sizeof(half)
-            );
-            LDMATRIX_X4(R_Q[tile_K_d][i][0], R_Q[tile_K_d][i][1], 
-                        R_Q[tile_K_d][i][2], R_Q[tile_K_d][i][3], 
-                        lane_smem_Q_ptr); // now, R_Q[1/2/4/8][1][4]
-          }
-        }
-        __syncthreads(); // wait all warps ready.
-      } // end if tile_K_seqlen == 0
-    } // end if kCanPrefetchQs2r
-
     // Load K tile from gmem -> smem, always use smem part 0. 
     // must after prefetch Q s2r in order to reuse Q smem.
     if constexpr (kCanPrefetchKVg2s) {
@@ -253,8 +259,8 @@ flash_attn_mma_stages_split_q_shared_qkv_kernel(half* Q,
         int load_gmem_K_addr = (
           K_gmem_offset + load_gmem_K_Bc * kHeadDim + load_gmem_K_d);
         uint32_t load_smem_K_ptr = (
-          smem_K_base_ptr + (kPrefetchKg2sSmemId * KV_tile_size + 
-                             load_smem_K_Bc * (kHeadDim + kPad) + 
+          smem_K_base_ptr + (kPrefetchKg2sSmemId * K_tile_size + 
+                             load_smem_K_Bc * (kHeadDim + kPadK) + 
                              load_smem_K_d) * sizeof(half)
         );
         #pragma unroll
@@ -275,8 +281,8 @@ flash_attn_mma_stages_split_q_shared_qkv_kernel(half* Q,
         int load_gmem_V_addr = (
           V_gmem_offset + load_gmem_V_Bc * kHeadDim + load_gmem_V_d);
         uint32_t load_smem_V_ptr = (
-          smem_V_base_ptr + (kPrefetchVg2sSmemId * KV_tile_size + 
-                             load_smem_V_Bc * (kHeadDim + kPad) + 
+          smem_V_base_ptr + (kPrefetchVg2sSmemId * V_tile_size + 
+                             load_smem_V_Bc * (kHeadDim + kPadV) + 
                              load_smem_V_d) * sizeof(half)
         );
         #pragma unroll
@@ -292,8 +298,8 @@ flash_attn_mma_stages_split_q_shared_qkv_kernel(half* Q,
       int load_gmem_K_addr = (
         K_gmem_offset + load_gmem_K_Bc * kHeadDim + load_gmem_K_d);
       uint32_t load_smem_K_ptr = (
-        smem_K_base_ptr + (kPrefetchKg2sSmemId * KV_tile_size + 
-                           load_smem_K_Bc * (kHeadDim + kPad) + 
+        smem_K_base_ptr + (kPrefetchKg2sSmemId * K_tile_size + 
+                           load_smem_K_Bc * (kHeadDim + kPadK) + 
                            load_smem_K_d) * sizeof(half)
       );
       #pragma unroll
@@ -324,7 +330,7 @@ flash_attn_mma_stages_split_q_shared_qkv_kernel(half* Q,
           int lane_smem_Q_Br = warp_smem_Q_Br + lane_id % 16; // 0~15
           int lane_smem_Q_d  = tile_K_d * kMmaAtomK + (lane_id / 16) * 8; // 0,8
           uint32_t lane_smem_Q_ptr = (
-              smem_Q_base_ptr + (lane_smem_Q_Br * (kHeadDim + kPad) + 
+              smem_Q_base_ptr + (lane_smem_Q_Br * (kHeadDim + kPadQ) + 
                                  lane_smem_Q_d) * sizeof(half)
           );
           LDMATRIX_X4(R_Q[0][i][0], R_Q[0][i][1], R_Q[0][i][2], R_Q[0][i][3], 
@@ -342,8 +348,8 @@ flash_attn_mma_stages_split_q_shared_qkv_kernel(half* Q,
         int lane_smem_K_Bc = warp_smem_K_Bc + lane_id % 8; // 0~7
         int lane_smem_K_d = tile_K_d * kMmaAtomK + ((lane_id / 8) % 2) * 8; // 0,8
         uint32_t lane_smem_K_ptr = (
-            smem_K_base_ptr + (kPrefetchKg2sSmemId * KV_tile_size + 
-                               lane_smem_K_Bc * (kHeadDim + kPad) + 
+            smem_K_base_ptr + (kPrefetchKg2sSmemId * K_tile_size + 
+                               lane_smem_K_Bc * (kHeadDim + kPadK) + 
                                lane_smem_K_d) * sizeof(half)
         );
         LDMATRIX_X2(R_K[j][0], R_K[j][1], lane_smem_K_ptr); // R_K
@@ -387,8 +393,8 @@ flash_attn_mma_stages_split_q_shared_qkv_kernel(half* Q,
       int load_gmem_V_addr = (
         V_gmem_offset + load_gmem_V_Bc * kHeadDim + load_gmem_V_d);
       uint32_t load_smem_V_ptr = (
-        smem_V_base_ptr + (kPrefetchVg2sSmemId * KV_tile_size + 
-                           load_smem_V_Bc * (kHeadDim + kPad) + 
+        smem_V_base_ptr + (kPrefetchVg2sSmemId * V_tile_size + 
+                           load_smem_V_Bc * (kHeadDim + kPadV) + 
                            load_smem_V_d) * sizeof(half)
       );
       #pragma unroll
@@ -407,8 +413,8 @@ flash_attn_mma_stages_split_q_shared_qkv_kernel(half* Q,
         int load_gmem_K_addr = (
           K_gmem_offset + load_gmem_K_Bc * kHeadDim + load_gmem_K_d);
         uint32_t load_smem_K_ptr = (
-          smem_K_base_ptr + (kPrefetchKg2sSmemId * KV_tile_size + 
-                             load_smem_K_Bc * (kHeadDim + kPad) + 
+          smem_K_base_ptr + (kPrefetchKg2sSmemId * K_tile_size + 
+                             load_smem_K_Bc * (kHeadDim + kPadK) + 
                              load_smem_K_d) * sizeof(half)
         );
         #pragma unroll
@@ -549,8 +555,8 @@ flash_attn_mma_stages_split_q_shared_qkv_kernel(half* Q,
         int lane_smem_V_Bc = tile_V_Bc * kMmaAtomK + lane_id % 16; // 0~15; Bc, matmul K
         int lane_smem_V_d  = warp_smem_V_d; // 0
         uint32_t lane_smem_V_ptr = (
-          smem_V_base_ptr + (kPrefetchVg2sSmemId * KV_tile_size + 
-                             lane_smem_V_Bc * (kHeadDim + kPad) + 
+          smem_V_base_ptr + (kPrefetchVg2sSmemId * V_tile_size + 
+                             lane_smem_V_Bc * (kHeadDim + kPadV) + 
                              lane_smem_V_d) * sizeof(half)
         );
         LDMATRIX_X2_T(R_V[j][0], R_V[j][1], lane_smem_V_ptr); // R_V
@@ -738,23 +744,26 @@ flash_attn_mma_stages_split_q_shared_qkv_kernel(half* Q,
 template<const int kHeadDim, const int kStage>
 void launch_flash_attn_mma_stages_split_q_shared_qkv(
   torch::Tensor Q, torch::Tensor K, torch::Tensor V, torch::Tensor O) {
-  // Now: fixed tile BrxBc=128x64 for d < 128, 128x16 for d >= 128
-  // TODO: dynamic tile size for Br, Bc according to kHeadDim and shared memory size.
+  // Now: fixed tile BrxBc=64x32 kStage > 1, 64x64 for kStage = 1,
+  // more threads will need more registers per block, thus, it may 
+  // cause occupancy to decrease. (tuning)
   constexpr int kMmaAtomM = 16;
   constexpr int kMmaAtomN = 8;
   constexpr int kMmaAtomK = 16;
-  constexpr int kMmaTileSeqLenQ  = (kHeadDim < 128) ? 8 : 8;
+  constexpr int kMmaTileSeqLenQ  = 4;
   constexpr int kMmaTileSeqLenK  = 1;
-  constexpr int kMmaTileSeqLenP  = (kHeadDim < 128) ? 8 : 8;
+  constexpr int kMmaTileSeqLenP  = 4;
   constexpr int kMmaTileHeadDimV = 1;
   constexpr int kWarpTileSeqLenQ = 1;
-  constexpr int kWarpTileSeqLenK = (kHeadDim < 128) ? 8 : 2;
+  constexpr int kWarpTileSeqLenK = (kStage > 1) ? 4 : 8;
   constexpr int kWarpTileSeqLenP = 1;
   constexpr int kWarpTileHeadDimV = (kHeadDim / (kMmaAtomN * kMmaTileHeadDimV)); // 8,16,32,....
   constexpr int Br = kMmaAtomM * kMmaTileSeqLenQ * kWarpTileSeqLenQ; // 16*4*1=64
   constexpr int Bc = kMmaAtomN * kMmaTileSeqLenK * kWarpTileSeqLenK; //  8*1*8=64
   constexpr int kNumThreads = WARP_SIZE * kMmaTileSeqLenQ * kMmaTileSeqLenK; // 32*4*1=128, num threads
-  constexpr int kPad = 8;
+  constexpr int kPadQ = 8;
+  constexpr int kPadK = 8;
+  constexpr int kPadV = 8;
   if constexpr (kStage > 1) {
     static_assert(((Br / Bc) >= 2));
   }
@@ -762,11 +771,14 @@ void launch_flash_attn_mma_stages_split_q_shared_qkv(
   // static int kMaxSramPerBlock;
   // cudaDeviceGetAttribute(&kMaxSramPerBlock, cudaDevAttrMaxSharedMemoryPerBlock, 0);
   // Calculate SRAM size needed per block, QKV smem size, QKV fully shared the same smem.
-  constexpr int KV_tile_size = Bc * (kHeadDim + kPad);
-  int smem_max_size = (Br * (kHeadDim + kPad)) * sizeof(half); // 128x(32/64/128)x2/1024=8/16/32M
+  constexpr int Q_tile_size = (Br * (kHeadDim + kPadQ));
+  constexpr int K_tile_size = (Bc * (kHeadDim + kPadK));
+  constexpr int V_tile_size = (Bc * (kHeadDim + kPadV));
+  // 128x(32/64/128)x2/1024=8/16/32M
+  int smem_max_size = max(Q_tile_size, max(K_tile_size, V_tile_size)) * sizeof(half); 
   if constexpr (kStage > 1) { // make sure kStage > 1 work
-    smem_max_size = smem_max_size > 2 * KV_tile_size * sizeof(half) ? 
-                    smem_max_size : 2 * KV_tile_size * sizeof(half);
+    smem_max_size = smem_max_size > kStage * max(K_tile_size, V_tile_size) * sizeof(half) ? 
+                    smem_max_size : kStage * max(K_tile_size, V_tile_size) * sizeof(half);
   }
 
   const int QKV_batch  = Q.size(0); 
@@ -798,7 +810,9 @@ void launch_flash_attn_mma_stages_split_q_shared_qkv(
       kWarpTileSeqLenP, 
       kWarpTileHeadDimV, 
       kStage, 
-      kPad
+      kPadQ,
+      kPadK,
+      kPadV
     >,
     cudaFuncAttributeMaxDynamicSharedMemorySize,
     // kMaxSramPerBlock
@@ -819,7 +833,9 @@ void launch_flash_attn_mma_stages_split_q_shared_qkv(
     kWarpTileSeqLenP, 
     kWarpTileHeadDimV, 
     kStage, 
-    kPad
+    kPadQ,
+    kPadK,
+    kPadV
   ><<<grid, block, smem_max_size>>>(
     reinterpret_cast<half*>(Q.data_ptr()),
     reinterpret_cast<half*>(K.data_ptr()),
