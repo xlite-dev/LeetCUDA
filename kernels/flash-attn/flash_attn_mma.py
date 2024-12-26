@@ -333,10 +333,6 @@ for (B, H, N, D) in BHNDs:
             out_mma_split_q1,     _ = run_benchmark(lib.flash_attn_mma_stages_split_q,  q, k, v, "mma(split-q+stage1)",  o, stages=1)
             out_mma_split_q2,     _ = run_benchmark(lib.flash_attn_mma_stages_split_q,  q, k, v, "mma(split-q+stage2)",  o, stages=2)
         if D <= 256:
-            out_mma_share_qkv1,   _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_qkv, q, k, v, "mma(split-q+share-qkv+stage1)", o, stages=1)
-        if D <= 128:
-            out_mma_share_qkv2,   _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_qkv, q, k, v, "mma(split-q+share-qkv+stage2)", o, stages=2)
-        if D <= 256:
             out_mma_share_kv1,    _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv,  q, k, v, "mma(split-q+share-kv+stage1)",  o, stages=1)
         if D <= 128:
             out_mma_share_kv2,    _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv,  q, k, v, "mma(split-q+share-kv+stage2)",  o, stages=2)
@@ -344,6 +340,10 @@ for (B, H, N, D) in BHNDs:
             out_mma_share_kv_sw1, _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv_swizzle,  q, k, v, "mma(split-q+share-kv+swizzle+stage1)",  o, stages=1)
         if D <= 128:
             out_mma_share_kv_sw2, _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv_swizzle,  q, k, v, "mma(split-q+share-kv+swizzle+stage2)",  o, stages=2)
+        if D <= 256:
+            out_mma_share_qkv1,   _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_qkv, q, k, v, "mma(split-q+share-qkv+stage1)", o, stages=1)
+        if D <= 128:
+            out_mma_share_qkv2,   _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_qkv, q, k, v, "mma(split-q+share-qkv+stage2)", o, stages=2)
     out_mma_tiling_qk1,           _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qk,  q, k, v, "mma(split-q+tiling-qk+stage1)",  o, stages=1)
     out_mma_tiling_qk2,           _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qk,  q, k, v, "mma(split-q+tiling-qk+stage2)",  o, stages=2)
     out_mma_tiling_qk_sw1,        _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qk_swizzle,  q, k, v, "mma(split-q+tiling-qk+swizzle+stage1)",  o, stages=1)
