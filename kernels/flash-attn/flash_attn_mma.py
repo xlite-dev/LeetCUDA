@@ -30,7 +30,7 @@ def get_project_dir():
         os.path.dirname(os.path.abspath(__file__))))
 
 
-def pretty_print_line(m: str = "", sep: str = "-", width: int = 130):
+def pretty_print_line(m: str = "", sep: str = "-", width: int = 150):
     res_len = width - len(m)
     left_len = int(res_len / 2)
     right_len = res_len - left_len
@@ -85,6 +85,7 @@ lib = load(name='flash_attn_lib',
                './mma/flash_attn_mma_tiling_qk.cu',
                './mma/flash_attn_mma_tiling_qk_swizzle.cu',
                './mma/flash_attn_mma_share_kv_swizzle.cu',
+               './mma/flash_attn_mma_share_kv_fully_swizzle.cu',
                './pybind/flash_attn.cc'
             ], 
            extra_cuda_cflags=[
@@ -220,11 +221,11 @@ def run_benchmark(perf_func: callable,
         else:
             improve = 0
         MAX_TFLOPS = TFLOPS
-        print(f"{out_info:>38}: {out_val}, time:{mean_time:<.6f}ms, "
+        print(f"{out_info:>43}: {out_val}, time:{mean_time:<.6f}ms, "
               f"TFLOPS:{TFLOPS:<6.2f}(+{improve:.2f}%)")
     else:
         if not only_show_improved or "flash" in tag or "sdpa" in tag:
-            print(f"{out_info:>38}: {out_val}, time:{mean_time:<.6f}ms, "
+            print(f"{out_info:>43}: {out_val}, time:{mean_time:<.6f}ms, "
                   f"TFLOPS:{TFLOPS:<6.2f}")
             
     if show_matrix: print(out)
@@ -256,8 +257,11 @@ def get_qkvo(B, H, N, D):
     fq = q.transpose(1,   2).contiguous()
     fk = k.transpose(1,   2).contiguous()
     fv = v.transpose(1,   2).contiguous()
+    # transpose (N,D) -> (D,N) for swizzle.
+    tk = k.transpose(-2, -1).contiguous() # [B,H,N,D] -> [B,H,D,N]
+    tv = v.transpose(-2, -1).contiguous() # [B,H,N,D] -> [B,H,D,N]
 
-    return q, k, v, o, fq, fk, fv
+    return q, k, v, o, fq, fk, fv, tk, tv
 
 
 # un-fused naive attn
@@ -321,7 +325,7 @@ for (B, H, N, D) in BHNDs:
     MAX_TFLOPS = -1
     pretty_print_line()
     pretty_print_line(f"B={B}, H={H}, N={N}, D={D}, Warmup: {args.warmup}, Iters: {args.iters}")
-    q, k, v, o, fq, fk, fv = get_qkvo(B, H, N, D)
+    q, k, v, o, fq, fk, fv, tk, tv = get_qkvo(B, H, N, D)
     torch.cuda.synchronize()
     
     if args.run_torch_unfused:
@@ -340,6 +344,10 @@ for (B, H, N, D) in BHNDs:
             out_mma_share_kv_sw1, _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv_swizzle,  q, k, v, "mma(split-q+share-kv+swizzle+stage1)",  o, stages=1)
         if D <= 128:
             out_mma_share_kv_sw2, _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv_swizzle,  q, k, v, "mma(split-q+share-kv+swizzle+stage2)",  o, stages=2)
+        if D <= 256:
+            out_mma_share_kv_fs1, _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv_fully_swizzle,  q, k, tv, "mma(split-q+share-kv+fully-swizzle+stage1)",  o, stages=1)
+        if D <= 128:
+            out_mma_share_kv_fs2, _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv_fully_swizzle,  q, k, tv, "mma(split-q+share-kv+fully-swizzle+stage2)",  o, stages=2)
         if D <= 256:
             out_mma_share_qkv1,   _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_qkv, q, k, v, "mma(split-q+share-qkv+stage1)", o, stages=1)
         if D <= 128:
@@ -372,6 +380,8 @@ for (B, H, N, D) in BHNDs:
             check_all_close(out_flash, out_mma_tiling_qk_sw2, "out_mma_tiling_qk_sw2", args.check_all)
             check_all_close(out_flash, out_mma_share_kv_sw1, "out_mma_share_kv_sw1", args.check_all)
             check_all_close(out_flash, out_mma_share_kv_sw2, "out_mma_share_kv_sw2", args.check_all)
+            check_all_close(out_flash, out_mma_share_kv_fs1, "out_mma_share_kv_fs1", args.check_all)
+            check_all_close(out_flash, out_mma_share_kv_fs2, "out_mma_share_kv_fs2", args.check_all)
             pretty_print_line()
         elif args.run_torch_sdpa:
             pretty_print_line()
