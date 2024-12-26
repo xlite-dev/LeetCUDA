@@ -210,9 +210,9 @@ flash_attn_mma_stages_split_q_tiling_qk_fully_swizzle_kernel(half* Q,
   // Matmul Layout: Q[Br,d]@K^T[d,Bc] NT, P[Br,Bc]@V[Bc,d] NN.
   // NOTE: K[Bc,d] with row major means K^T[d,Bc] in col major.
   static_assert(kMmaAtomM == 16 && kMmaAtomN == 8 && kMmaAtomK == 16); // m16n8k16
-  static_assert(kMmaTileSeqLenQ  <= 8 && kMmaTileSeqLenK  == 1);  // Q@K^T
-  static_assert(kMmaTileSeqLenP  <= 8 && kMmaTileHeadDimV == 1);  // P@V
-  static_assert(kWarpTileSeqLenQ == 1 && kWarpTileSeqLenK <= 16); // Q@K^T
+  static_assert(kMmaTileSeqLenQ  <= 16 && kMmaTileSeqLenK  == 1);  // Q@K^T
+  static_assert(kMmaTileSeqLenP  <= 16 && kMmaTileHeadDimV == 1);  // P@V
+  static_assert(kWarpTileSeqLenQ == 1 && kWarpTileSeqLenK <= 32); // Q@K^T
   // kWarpTileHeadDimV: d=8*(1|2|3|4|...) = 8|...|32|64|96|128|..., etc.
   // e.g, kWarpTileHeadDimV = 8 -> d = 8*8 = 64; 16 -> d = 8*16 = 128.
   static_assert(kWarpTileSeqLenP == 1 && kWarpTileHeadDimV == (
@@ -915,7 +915,7 @@ void launch_flash_attn_mma_stages_split_q_tiling_qk_fully_swizzle(
   constexpr int kMmaTileSeqLenP  = (2 * kHeadDim) / WARP_SIZE;
   constexpr int kMmaTileHeadDimV = 1;
   constexpr int kWarpTileSeqLenQ = 1;
-  // 2 * kMmaTileSeqLenQ  = kWarpTileSeqLenK, d=64, 8; d=128, 16; d=32, 4.
+  // 2 * kMmaTileSeqLenQ = kWarpTileSeqLenK, d=64, 8; d=128, 16; d=32, 4, d=256, 32.
   constexpr int kWarpTileSeqLenK = 2 * kMmaTileSeqLenQ;
   constexpr int kWarpTileSeqLenP = 1;
   constexpr int kWarpTileHeadDimV = (kHeadDim / (kMmaAtomN * kMmaTileHeadDimV)); // (d=64)8,(d=128)16,32,....
