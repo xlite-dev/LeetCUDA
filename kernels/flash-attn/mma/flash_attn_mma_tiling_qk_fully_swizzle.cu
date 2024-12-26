@@ -924,7 +924,7 @@ void launch_flash_attn_mma_stages_split_q_tiling_qk_fully_swizzle(
   constexpr int kNumThreads = WARP_SIZE * kMmaTileSeqLenQ * kMmaTileSeqLenK; // 32*4*1=128, num threads
   constexpr int kPadQ = 0;
   constexpr int kPadK = 0;
-  constexpr int kPadV = 0; // 0.25~0.5M
+  constexpr int kPadV = 0;
   
   // static int kMaxSramPerBlock;
   // cudaDeviceGetAttribute(&kMaxSramPerBlock, cudaDevAttrMaxSharedMemoryPerBlock, 0);
@@ -1023,8 +1023,14 @@ void flash_attn_mma_stages_split_q_tiling_qk_fully_swizzle(torch::Tensor Q,
     case 64:
       launch_flash_attn_mma_stages_split_q_tiling_qk_fully_swizzle<64,   2>(Q, K, V, O);
       break;
+    case 96:
+      launch_flash_attn_mma_stages_split_q_tiling_qk_fully_swizzle<96,   2>(Q, K, V, O);
+      break;
     case 128:
       launch_flash_attn_mma_stages_split_q_tiling_qk_fully_swizzle<128,  2>(Q, K, V, O);
+      break;
+    case 256:
+      launch_flash_attn_mma_stages_split_q_tiling_qk_fully_swizzle<256,  2>(Q, K, V, O);
       break;
     default:
       throw std::runtime_error("headdim not support!");
@@ -1039,8 +1045,14 @@ void flash_attn_mma_stages_split_q_tiling_qk_fully_swizzle(torch::Tensor Q,
     case 64:
       launch_flash_attn_mma_stages_split_q_tiling_qk_fully_swizzle<64,   1>(Q, K, V, O);
       break;
+    case 96:
+      launch_flash_attn_mma_stages_split_q_tiling_qk_fully_swizzle<96,   1>(Q, K, V, O);
+      break;
     case 128:
       launch_flash_attn_mma_stages_split_q_tiling_qk_fully_swizzle<128,  1>(Q, K, V, O);
+      break;
+    case 256:
+      launch_flash_attn_mma_stages_split_q_tiling_qk_fully_swizzle<256,  1>(Q, K, V, O);
       break;
     default:
       throw std::runtime_error("headdim not support!");
