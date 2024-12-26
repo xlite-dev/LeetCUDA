@@ -224,7 +224,7 @@ def run_benchmark(perf_func: callable,
         print(f"{out_info:>43}: {out_val}, time:{mean_time:<.6f}ms, "
               f"TFLOPS:{TFLOPS:<6.2f}(+{improve:.2f}%)")
     else:
-        if not only_show_improved or "flash" in tag or "sdpa" in tag:
+        if (not only_show_improved) or (("flash" in tag) or ("sdpa" in tag)):
             print(f"{out_info:>43}: {out_val}, time:{mean_time:<.6f}ms, "
                   f"TFLOPS:{TFLOPS:<6.2f}")
             
@@ -321,11 +321,16 @@ pretty_print_line()
 pretty_print_line(f"B: batch_size, H: n_head, N: seq_len, D: head_dim, "
                   f"seed: {seed}, Warmup: {args.warmup}, Iters: {args.iters}")
 
+run_torch_sdpa = args.run_torch_sdpa
 for (B, H, N, D) in BHNDs:
     MAX_TFLOPS = -1
     pretty_print_line()
     pretty_print_line(f"B={B}, H={H}, N={N}, D={D}, Warmup: {args.warmup}, Iters: {args.iters}")
     q, k, v, o, fq, fk, fv, tk, tv = get_qkvo(B, H, N, D)
+    if D > 256:
+        args.run_torch_sdpa = True
+    else:
+        args.run_torch_sdpa = run_torch_sdpa
     torch.cuda.synchronize()
     
     if args.run_torch_unfused:
