@@ -396,7 +396,7 @@ Ns = [1024, 2048, 4096, 8192] if not args.N else [args.N]
 Ds = [64, 128, 256, 512] if not args.D else [args.D] 
 # batch_size, n_head, seq_len, head_dim (B,H,N,D)
 BHNDs = [(B, H, N, D) for B in Bs for H in Hs for N in Ns for D in Ds]
-# max headdim supported for different methods.
+# max headdim supported for different methods. skip if D > max_D.
 MAX_HEADDIM_CFG: dict[str, int] = {
     "(flash)":                                      256, 
     "(sdpa)":                                       4096, # may no limit
