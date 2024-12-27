@@ -775,13 +775,14 @@ flash_attn_mma_stages_split_q_shared_kv_kernel(half* Q,
 template<const int kHeadDim, const int kStage>
 void launch_flash_attn_mma_stages_split_q_shared_kv(
   torch::Tensor Q, torch::Tensor K, torch::Tensor V, torch::Tensor O) {
-  // Now: fixed tile BrxBc=64x32 kStage > 1, 64x64 for kStage = 1,
-  // more threads will need more registers per block, thus, it may 
-  // cause occupancy to decrease. (tuning)
+
   constexpr int kMmaAtomM = 16;
   constexpr int kMmaAtomN = 8;
   constexpr int kMmaAtomK = 16;
-#ifdef BUILD_FLASH_ATTN_MMA_L20
+#ifdef BUILD_FLASH_ATTN_MMA_L20 
+  // Now: fixed tile BrxBc=64x32 kStage > 1, 64x64 for kStage = 1,
+  // more threads will need more registers per block, thus, it may 
+  // cause occupancy to decrease. (tuning)
   constexpr int kMmaTileSeqLenQ  = 4;
   constexpr int kMmaTileSeqLenK  = 1;
   constexpr int kMmaTileSeqLenP  = 4;
@@ -795,7 +796,7 @@ void launch_flash_attn_mma_stages_split_q_shared_kv(
   constexpr int kMmaTileSeqLenP  = (kHeadDim < 128) ? 8 : 8;
   constexpr int kMmaTileHeadDimV = 1;
   constexpr int kWarpTileSeqLenQ = 1;
-  constexpr int kWarpTileSeqLenK = (kHeadDim < 128) ? 8 : 2;
+  constexpr int kWarpTileSeqLenK = (kHeadDim < 128) ? 8 : 8;
   constexpr int kWarpTileSeqLenP = 1;
 #endif
   constexpr int kWarpTileHeadDimV = (kHeadDim / (kMmaAtomN * kMmaTileHeadDimV)); // 8,16,32,....
