@@ -77,6 +77,7 @@ def get_build_sources():
     build_sources.append('./mma/basic/flash_attn_mma_tiling_qk.cu')
     build_sources.append('./mma/swizzle/flash_attn_mma_tiling_qk_swizzle.cu')
     build_sources.append('./mma/swizzle/flash_attn_mma_share_kv_swizzle.cu')
+    build_sources.append('./mma/swizzle/flash_attn_mma_share_qkv_swizzle.cu')
     build_sources.append('./mma/swizzle/flash_attn_mma_share_kv_fully_swizzle.cu')
     build_sources.append('./mma/swizzle/flash_attn_mma_tiling_qk_fully_swizzle.cu')
     build_sources.append('./pybind/flash_attn.cc')
@@ -211,7 +212,6 @@ STATIS_INFO: dict[str, list[float]] = {}
 STATIS_INFO["MNK"] = []
 TOATL_TFLOPS: dict[str, float] = {}
 
-
 def run_benchmark(perf_func: callable, 
                   q: torch.Tensor, 
                   k: torch.Tensor, 
@@ -226,6 +226,22 @@ def run_benchmark(perf_func: callable,
                   only_show_improved: bool = not args.show_all):
     
     global MAX_TFLOPS
+    global MAX_HEADDIM_CFG
+
+    if "sdpa" in tag and (not args.run_torch_sdpa):
+        return None, None
+    if "unfused" in tag and (not args.run_torch_unfused):
+        return None, None
+    
+    B, H, N, D = q.size()
+    if "flash" in tag:
+        B, N, H, D = q.size()
+
+    max_supported_D = MAX_HEADDIM_CFG.get(tag, None)
+    # skip if headdim not supported.
+    if max_supported_D is not None:
+        if D > max_supported_D:
+            return None, None
 
     if out is not None: 
         out.fill_(0)
@@ -265,9 +281,7 @@ def run_benchmark(perf_func: callable,
     total_time = (end - start) * 1000 # ms
     mean_time = total_time / iters
     mean_secs = total_secs / iters
-    B, H, N, D = q.size()
-    if "flash" in tag:
-        B, N, H, D = q.size()
+    
     TFLOPS = get_mha_tflops(B, H, N, D, mean_secs, 
                             only_matmul=args.only_flops_matmul)
     out_info = f"{tag}"
@@ -287,11 +301,11 @@ def run_benchmark(perf_func: callable,
         else:
             improve = 0
         MAX_TFLOPS = TFLOPS
-        print(f"{out_info:>43}: {out_val}, time:{mean_time:<.6f}ms, "
+        print(f"{out_info:>45}: {out_val}, time:{str(mean_time)[:8]}ms, "
               f"TFLOPS:{TFLOPS:<6.2f}(+{improve:.2f}%)")
     else:
         if (not only_show_improved) or (("flash" in tag) or ("sdpa" in tag)):
-            print(f"{out_info:>43}: {out_val}, time:{mean_time:<.6f}ms, "
+            print(f"{out_info:>45}: {out_val}, time:{str(mean_time)[:8]}ms, "
                   f"TFLOPS:{TFLOPS:<6.2f}")
             
     if show_matrix: print(out)
@@ -351,6 +365,8 @@ def sdpa(q: Tensor, k: Tensor, v: Tensor, use_flash: bool = False):
 def check_all_close(out_flash_or_sdpa: torch.Tensor, out_mma: torch.Tensor, 
                     tag: str = "out_mma", check_all: bool = False, 
                     is_flash: bool = True):
+    if any((out_flash_or_sdpa is None, out_mma is None)):
+        return
     if is_flash:
         true_tag = "out_flash"
         out_flash_or_sdpa = out_flash_or_sdpa.transpose(1, 2)
@@ -380,6 +396,34 @@ Ns = [1024, 2048, 4096, 8192] if not args.N else [args.N]
 Ds = [64, 128, 256, 512] if not args.D else [args.D] 
 # batch_size, n_head, seq_len, head_dim (B,H,N,D)
 BHNDs = [(B, H, N, D) for B in Bs for H in Hs for N in Ns for D in Ds]
+# max headdim supported for different methods.
+MAX_HEADDIM_CFG: dict[str, int] = {
+    "(flash)":                                      256, 
+    "(sdpa)":                                       4096, # may no limit
+    "torch(unfused)":                               4096, # may no limit
+    "mma(split-kv+stage1)":                         128,
+    "mma(split-kv+stage2)":                         128,
+    "mma(split-q+stage1)":                          128,
+    "mma(split-q+stage2)":                          128,
+    "mma(split-q+share-kv+stage1)":                 256,
+    "mma(split-q+share-kv+stage2)":                 128,
+    "mma(split-q+share-kv+swizzle+stage1)":         256,
+    "mma(split-q+share-kv+swizzle+stage2)":         128,
+    "mma(split-q+share-kv+fully-swizzle+stage1)":   256,
+    "mma(split-q+share-kv+fully-swizzle+stage2)":   128,
+    "mma(split-q+share-qkv+stage1)":                256,
+    "mma(split-q+share-qkv+stage2)":                128,
+    "mma(split-q+share-qkv+swizzle+stage1)":        256,
+    "mma(split-q+share-qkv+swizzle+stage2)":        128,
+    "mma(split-q+share-qkv+fully-swizzle+stage1)":  256,
+    "mma(split-q+share-qkv+fully-swizzle+stage2)":  128,
+    "mma(split-q+tiling-qk+stage1)":                1024,
+    "mma(split-q+tiling-qk+stage2)":                1024,
+    "mma(split-q+tiling-qk+swizzle+stage1)":        1024,
+    "mma(split-q+tiling-qk+swizzle+stage2)":        1024,
+    "mma(split-q+tiling-qk+fully-swizzle+stage1)":  256,
+    "mma(split-q+tiling-qk+fully-swizzle+stage2)":  256,
+}
 
 seed = args.seed if args.seed else random.choice(range(10000))
 set_rand_seed(seed)
@@ -390,79 +434,64 @@ pretty_print_line(f"B: batch_size, H: n_head, N: seq_len, D: head_dim, "
 run_torch_sdpa = args.run_torch_sdpa
 for (B, H, N, D) in BHNDs:
     MAX_TFLOPS = -1
-    pretty_print_line()
-    pretty_print_line(f"B={B}, H={H}, N={N}, D={D}, Warmup: {args.warmup}, Iters: {args.iters}")
     q, k, v, o, fq, fk, fv, tk, tv = get_qkvo(B, H, N, D)
     if D > 256:
         args.run_torch_sdpa = True
     else:
         args.run_torch_sdpa = run_torch_sdpa
     torch.cuda.synchronize()
-    
-    if args.run_torch_unfused:
-        out_unfused,              _ = run_benchmark(unfused_standard_attn, q, k, v, "torch(unfused)")
-    if D <= 256:
-        if D <= 128:
-            out_mma_split_kv1,    _ = run_benchmark(lib.flash_attn_mma_stages_split_kv, q, k, v, "mma(split-kv+stage1)", o, stages=1)
-            out_mma_split_kv2,    _ = run_benchmark(lib.flash_attn_mma_stages_split_kv, q, k, v, "mma(split-kv+stage2)", o, stages=2)
-            out_mma_split_q1,     _ = run_benchmark(lib.flash_attn_mma_stages_split_q,  q, k, v, "mma(split-q+stage1)",  o, stages=1)
-            out_mma_split_q2,     _ = run_benchmark(lib.flash_attn_mma_stages_split_q,  q, k, v, "mma(split-q+stage2)",  o, stages=2)
-        if D <= 256:
-            out_mma_share_kv1,    _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv,  q, k, v, "mma(split-q+share-kv+stage1)",  o, stages=1)
-        if D <= 128:
-            out_mma_share_kv2,    _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv,  q, k, v, "mma(split-q+share-kv+stage2)",  o, stages=2)
-        if D <= 256:
-            out_mma_share_kv_sw1, _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv_swizzle,  q, k, v, "mma(split-q+share-kv+swizzle+stage1)",  o, stages=1)
-        if D <= 128:
-            out_mma_share_kv_sw2, _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv_swizzle,  q, k, v, "mma(split-q+share-kv+swizzle+stage2)",  o, stages=2)
-        if D <= 256:
-            out_mma_share_kv_fs1, _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv_fully_swizzle,  q, k, tv, "mma(split-q+share-kv+fully-swizzle+stage1)",  o, stages=1)
-        if D <= 128:
-            out_mma_share_kv_fs2, _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv_fully_swizzle,  q, k, tv, "mma(split-q+share-kv+fully-swizzle+stage2)",  o, stages=2)
-        if D <= 256:
-            out_mma_share_qkv1,   _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_qkv, q, k, v, "mma(split-q+share-qkv+stage1)", o, stages=1)
-        if D <= 128:
-            out_mma_share_qkv2,   _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_qkv, q, k, v, "mma(split-q+share-qkv+stage2)", o, stages=2)
-    out_mma_tiling_qk1,           _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qk,  q, k, v, "mma(split-q+tiling-qk+stage1)",  o, stages=1)
-    out_mma_tiling_qk2,           _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qk,  q, k, v, "mma(split-q+tiling-qk+stage2)",  o, stages=2)
-    out_mma_tiling_qk_sw1,        _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qk_swizzle,  q, k, v, "mma(split-q+tiling-qk+swizzle+stage1)",  o, stages=1)
-    out_mma_tiling_qk_sw2,        _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qk_swizzle,  q, k, v, "mma(split-q+tiling-qk+swizzle+stage2)",  o, stages=2)
-    if D <= 256:
-        out_mma_tiling_qk_fs1,        _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qk_fully_swizzle,  q, k, tv, "mma(split-q+tiling-qk+fully+swizzle+stage1)",  o, stages=1)
-        out_mma_tiling_qk_fs2,        _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qk_fully_swizzle,  q, k, tv, "mma(split-q+tiling-qk+fully+swizzle+stage2)",  o, stages=2)
-    if D <= 256:
-        out_flash,                _ = run_benchmark(flash_attn_func, fq, fk, fv, "(flash)")
-    if args.run_torch_sdpa:
-        out_sdpa,                 _ = run_benchmark(partial(sdpa, use_flash=(D<=256)), q, k, v, "(sdpa)")
+    pretty_print_line()
+    pretty_print_line(f"B={B}, H={H}, N={N}, D={D}, Warmup: {args.warmup}, Iters: {args.iters}")
+    out_unfused,           _ = run_benchmark(unfused_standard_attn, q, k, v, "torch(unfused)")
+    out_mma_split_kv1,     _ = run_benchmark(lib.flash_attn_mma_stages_split_kv, q, k, v, "mma(split-kv+stage1)", o, stages=1)
+    out_mma_split_kv2,     _ = run_benchmark(lib.flash_attn_mma_stages_split_kv, q, k, v, "mma(split-kv+stage2)", o, stages=2)
+    out_mma_split_q1,      _ = run_benchmark(lib.flash_attn_mma_stages_split_q, q, k, v, "mma(split-q+stage1)",  o, stages=1)
+    out_mma_split_q2,      _ = run_benchmark(lib.flash_attn_mma_stages_split_q, q, k, v, "mma(split-q+stage2)",  o, stages=2)
+    out_mma_share_kv1,     _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv, q, k, v, "mma(split-q+share-kv+stage1)",  o, stages=1)
+    out_mma_share_kv2,     _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv, q, k, v, "mma(split-q+share-kv+stage2)",  o, stages=2)
+    out_mma_share_kv_sw1,  _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv_swizzle, q, k, v, "mma(split-q+share-kv+swizzle+stage1)",  o, stages=1)
+    out_mma_share_kv_sw2,  _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv_swizzle, q, k, v, "mma(split-q+share-kv+swizzle+stage2)",  o, stages=2)
+    out_mma_share_kv_fs1,  _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv_fully_swizzle, q, k, tv, "mma(split-q+share-kv+fully-swizzle+stage1)",  o, stages=1)
+    out_mma_share_kv_fs2,  _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv_fully_swizzle, q, k, tv, "mma(split-q+share-kv+fully-swizzle+stage2)",  o, stages=2)
+    out_mma_share_qkv1,    _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_qkv, q, k, v, "mma(split-q+share-qkv+stage1)", o, stages=1)
+    out_mma_share_qkv2,    _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_qkv, q, k, v, "mma(split-q+share-qkv+stage2)", o, stages=2)
+    out_mma_tiling_qk1,    _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qk, q, k, v, "mma(split-q+tiling-qk+stage1)",  o, stages=1)
+    out_mma_tiling_qk2,    _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qk, q, k, v, "mma(split-q+tiling-qk+stage2)",  o, stages=2)
+    out_mma_tiling_qk_sw1, _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qk_swizzle, q, k, v, "mma(split-q+tiling-qk+swizzle+stage1)",  o, stages=1)
+    out_mma_tiling_qk_sw2, _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qk_swizzle, q, k, v, "mma(split-q+tiling-qk+swizzle+stage2)",  o, stages=2)
+    out_mma_tiling_qk_fs1, _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qk_fully_swizzle, q, k, tv, "mma(split-q+tiling-qk+fully-swizzle+stage1)",  o, stages=1)
+    out_mma_tiling_qk_fs2, _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qk_fully_swizzle, q, k, tv, "mma(split-q+tiling-qk+fully-swizzle+stage2)",  o, stages=2)
+    out_flash,             _ = run_benchmark(flash_attn_func, fq, fk, fv, "(flash)")
+    out_sdpa,              _ = run_benchmark(partial(sdpa, use_flash=(D<=256)), q, k, v, "(sdpa)")
     pretty_print_line()
     
     torch.cuda.synchronize()
     if args.check:
         if D <= 128:
             pretty_print_line()
-            check_all_close(out_flash, out_mma_split_kv1,  "out_mma_split_kv1",  args.check_all)
-            check_all_close(out_flash, out_mma_split_kv2,  "out_mma_split_kv2",  args.check_all)
-            check_all_close(out_flash, out_mma_split_q1,   "out_mma_split_q1",   args.check_all)
-            check_all_close(out_flash, out_mma_split_q2,   "out_mma_split_q2",   args.check_all)
-            check_all_close(out_flash, out_mma_share_kv1,  "out_mma_share_kv1",  args.check_all)
-            check_all_close(out_flash, out_mma_share_kv2,  "out_mma_share_kv2",  args.check_all)
-            check_all_close(out_flash, out_mma_share_qkv1, "out_mma_share_qkv1", args.check_all)
-            check_all_close(out_flash, out_mma_share_qkv2, "out_mma_share_qkv2", args.check_all)
-            check_all_close(out_flash, out_mma_tiling_qk1, "out_mma_tiling_qk1", args.check_all)
-            check_all_close(out_flash, out_mma_tiling_qk2, "out_mma_tiling_qk2", args.check_all)
-            check_all_close(out_flash, out_mma_tiling_qk_sw1, "out_mma_tiling_qk_sw1", args.check_all)
-            check_all_close(out_flash, out_mma_tiling_qk_sw2, "out_mma_tiling_qk_sw2", args.check_all)
-            check_all_close(out_flash, out_mma_share_kv_sw1, "out_mma_share_kv_sw1", args.check_all)
-            check_all_close(out_flash, out_mma_share_kv_sw2, "out_mma_share_kv_sw2", args.check_all)
-            check_all_close(out_flash, out_mma_share_kv_fs1, "out_mma_share_kv_fs1", args.check_all)
-            check_all_close(out_flash, out_mma_share_kv_fs2, "out_mma_share_kv_fs2", args.check_all)
-            check_all_close(out_flash, out_mma_tiling_qk_fs1, "out_mma_tiling_qk_fs1", args.check_all)
-            check_all_close(out_flash, out_mma_tiling_qk_fs2, "out_mma_tiling_qk_fs2", args.check_all)
+            check_all_close(out_flash, out_mma_split_kv1,      "out_mma_split_kv1",     args.check_all)
+            check_all_close(out_flash, out_mma_split_kv2,      "out_mma_split_kv2",     args.check_all)
+            check_all_close(out_flash, out_mma_split_q1,       "out_mma_split_q1",      args.check_all)
+            check_all_close(out_flash, out_mma_split_q2,       "out_mma_split_q2",      args.check_all)
+            check_all_close(out_flash, out_mma_share_kv1,      "out_mma_share_kv1",     args.check_all)
+            check_all_close(out_flash, out_mma_share_kv2,      "out_mma_share_kv2",     args.check_all)
+            check_all_close(out_flash, out_mma_share_qkv1,     "out_mma_share_qkv1",    args.check_all)
+            check_all_close(out_flash, out_mma_share_qkv2,     "out_mma_share_qkv2",    args.check_all)
+            check_all_close(out_flash, out_mma_tiling_qk1,     "out_mma_tiling_qk1",    args.check_all)
+            check_all_close(out_flash, out_mma_tiling_qk2,     "out_mma_tiling_qk2",    args.check_all)
+            check_all_close(out_flash, out_mma_tiling_qk_sw1,  "out_mma_tiling_qk_sw1", args.check_all)
+            check_all_close(out_flash, out_mma_tiling_qk_sw2,  "out_mma_tiling_qk_sw2", args.check_all)
+            check_all_close(out_flash, out_mma_share_kv_sw1,   "out_mma_share_kv_sw1",  args.check_all)
+            check_all_close(out_flash, out_mma_share_kv_sw2,   "out_mma_share_kv_sw2",  args.check_all)
+            check_all_close(out_flash, out_mma_share_kv_fs1,   "out_mma_share_kv_fs1",  args.check_all)
+            check_all_close(out_flash, out_mma_share_kv_fs2,   "out_mma_share_kv_fs2",  args.check_all)
+            check_all_close(out_flash, out_mma_tiling_qk_fs1,  "out_mma_tiling_qk_fs1", args.check_all)
+            check_all_close(out_flash, out_mma_tiling_qk_fs2,  "out_mma_tiling_qk_fs2", args.check_all)
             pretty_print_line()
         elif args.run_torch_sdpa:
             pretty_print_line()
-            check_all_close(out_sdpa, out_mma_tiling_qk1,  "out_mma_tiling_qk1", args.check_all, False)
-            check_all_close(out_sdpa, out_mma_tiling_qk2,  "out_mma_tiling_qk2", args.check_all, False)
+            check_all_close(out_sdpa, out_mma_tiling_qk1,     "out_mma_tiling_qk1",    args.check_all, False)
+            check_all_close(out_sdpa, out_mma_tiling_qk2,     "out_mma_tiling_qk2",    args.check_all, False)
             check_all_close(out_sdpa, out_mma_tiling_qk_sw1,  "out_mma_tiling_qk_sw1", args.check_all, False)
             check_all_close(out_sdpa, out_mma_tiling_qk_sw2,  "out_mma_tiling_qk_sw2", args.check_all, False)
             pretty_print_line()
