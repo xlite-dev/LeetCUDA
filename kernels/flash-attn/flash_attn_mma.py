@@ -80,6 +80,7 @@ def get_build_sources():
     build_sources.append('./mma/swizzle/flash_attn_mma_share_kv_swizzle_qkv.cu')
     build_sources.append('./mma/swizzle/flash_attn_mma_share_qkv_swizzle_q.cu')
     build_sources.append('./mma/swizzle/flash_attn_mma_share_qkv_swizzle_qk.cu')
+    build_sources.append('./mma/swizzle/flash_attn_mma_share_qkv_swizzle_qkv.cu')
     build_sources.append('./mma/swizzle/flash_attn_mma_tiling_qk_swizzle_qk.cu')
     build_sources.append('./mma/swizzle/flash_attn_mma_tiling_qk_swizzle_qkv.cu')
     build_sources.append('./pybind/flash_attn.cc')
@@ -112,6 +113,8 @@ def get_build_cuda_cflags(build_pkg: bool = False):
     # spill stores: 指的是在执行过程中，数据因为寄存器不足而被存储到了栈上。
     # spill loads: 则是指将之前溢出到栈上的数据重新加载回寄存器。
     # diag 177: variable was declared but never referenced
+    device_name = get_device_name()
+    project_dir = get_project_dir()
     extra_cuda_cflags = []
     extra_cuda_cflags.append("-O3")
     extra_cuda_cflags.append("-std=c++17")
@@ -123,22 +126,11 @@ def get_build_cuda_cflags(build_pkg: bool = False):
     extra_cuda_cflags.append("--expt-extended-lambda")
     extra_cuda_cflags.append("--use_fast_math")
     extra_cuda_cflags.append("-DFLASH_ATTN_MMA_DEBUG" if args.debug else "")
-    device_name = get_device_name()
-    if "L20" in device_name:
-        extra_cuda_cflags.append("-DBUILD_FLASH_ATTN_MMA_L20")
-    if "4090" in device_name:
-        extra_cuda_cflags.append("-DBUILD_FLASH_ATTN_MMA_4090")
-    if "3080" in device_name:
-        extra_cuda_cflags.append("-DBUILD_FLASH_ATTN_MMA_3080")
-    if not build_pkg:
-      extra_cuda_cflags.append("-diag-suppress 177")
-      extra_cuda_cflags.append("-Xptxas -v")
-    else:
-      extra_cuda_cflags.append("--ptxas-options=-v")
-      extra_cuda_cflags.append("--ptxas-options=-O3")
-    # extra cuda flags for cute hgemm
-    project_dir = get_project_dir()
-    # add cutlass headers and link cublas.
+    extra_cuda_cflags.append("-DBUILD_FLASH_ATTN_MMA_L20"  if "L20"  in device_name else "")
+    extra_cuda_cflags.append("-DBUILD_FLASH_ATTN_MMA_4090" if "4090" in device_name else "")
+    extra_cuda_cflags.append("-DBUILD_FLASH_ATTN_MMA_3080" if "3080" in device_name else "")
+    extra_cuda_cflags.append("-diag-suppress 177" if not build_pkg else "--ptxas-options=-v")
+    extra_cuda_cflags.append("-Xptxas -v" if not build_pkg else "--ptxas-options=-O3")
     extra_cuda_cflags.append(f'-I {project_dir}/kernels/flash-attn')
     extra_cuda_cflags.append(f'-I {project_dir}/kernels/flash-attn/utils')
     extra_cuda_cflags.append(f'-I {project_dir}/kernels/flash-attn/mma')
@@ -491,6 +483,8 @@ for (B, H, N, D) in BHNDs:
     out_mma_share_qkv_sq2,     _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_qkv_swizzle_q, q, k, v, "mma(split-q+share-qkv+swizzle-q+stage2)", o, stages=2)
     out_mma_share_qkv_sqk1,    _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_qkv_swizzle_qk, q, k, v, "mma(split-q+share-qkv+swizzle-qk+stage1)", o, stages=1)
     out_mma_share_qkv_sqk2,    _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_qkv_swizzle_qk, q, k, v, "mma(split-q+share-qkv+swizzle-qk+stage2)", o, stages=2)
+    out_mma_share_qkv_sqkv1,   _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_qkv_swizzle_qkv, q, k, tv, "mma(split-q+share-qkv+swizzle-qkv+stage1)", o, stages=1)
+    out_mma_share_qkv_sqkv2,   _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_qkv_swizzle_qkv, q, k, tv, "mma(split-q+share-qkv+swizzle-qkv+stage2)", o, stages=2)
     # Split-Q + QK Fine-grained Tiling + Swizzle
     out_mma_tiling_qk1,        _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qk, q, k, v, "mma(split-q+tiling-qk+stage1)",  o, stages=1)
     out_mma_tiling_qk2,        _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qk, q, k, v, "mma(split-q+tiling-qk+stage2)",  o, stages=2)
@@ -527,6 +521,8 @@ for (B, H, N, D) in BHNDs:
             check_all_close(out_flash, out_mma_share_qkv_sq2,     "out_mma_share_qkv_sq2",    args.check_all)
             check_all_close(out_flash, out_mma_share_qkv_sqk1,    "out_mma_share_qkv_sqk1",   args.check_all)
             check_all_close(out_flash, out_mma_share_qkv_sqk2,    "out_mma_share_qkv_sqk2",   args.check_all)
+            check_all_close(out_flash, out_mma_share_qkv_sqkv1,   "out_mma_share_qkv_sqkv1",  args.check_all)
+            check_all_close(out_flash, out_mma_share_qkv_sqkv2,   "out_mma_share_qkv_sqkv2",  args.check_all)
             # Split-Q + QK Fine-grained Tiling
             check_all_close(out_flash, out_mma_tiling_qk1,        "out_mma_tiling_qk1",       args.check_all)
             check_all_close(out_flash, out_mma_tiling_qk2,        "out_mma_tiling_qk2",       args.check_all)
