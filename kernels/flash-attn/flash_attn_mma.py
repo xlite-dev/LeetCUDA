@@ -76,6 +76,7 @@ def get_build_sources():
     build_sources.append('./mma/basic/flash_attn_mma_share_kv.cu')
     build_sources.append('./mma/basic/flash_attn_mma_share_qkv.cu')
     build_sources.append('./mma/basic/flash_attn_mma_tiling_qk.cu')
+    build_sources.append('./mma/swizzle/flash_attn_mma_share_kv_swizzle_q.cu')
     build_sources.append('./mma/swizzle/flash_attn_mma_share_kv_swizzle_qk.cu')
     build_sources.append('./mma/swizzle/flash_attn_mma_share_kv_swizzle_qkv.cu')
     build_sources.append('./mma/swizzle/flash_attn_mma_share_qkv_swizzle_q.cu')
@@ -472,6 +473,8 @@ for (B, H, N, D) in BHNDs:
     # Split-Q + Shared KV SMEM + Swizzle
     out_mma_share_kv1,         _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv, q, k, v, "mma(split-q+share-kv+stage1)",  o, stages=1)
     out_mma_share_kv2,         _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv, q, k, v, "mma(split-q+share-kv+stage2)",  o, stages=2)
+    out_mma_share_kv_sq1,      _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv_swizzle_q, q, k, v, "mma(split-q+share-kv+swizzle-q+stage1)",  o, stages=1)
+    out_mma_share_kv_sq2,      _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv_swizzle_q, q, k, v, "mma(split-q+share-kv+swizzle-q+stage2)",  o, stages=2)
     out_mma_share_kv_sqk1,     _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv_swizzle_qk, q, k, v, "mma(split-q+share-kv+swizzle-qk+stage1)",  o, stages=1)
     out_mma_share_kv_sqk2,     _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv_swizzle_qk, q, k, v, "mma(split-q+share-kv+swizzle-qk+stage2)",  o, stages=2)
     out_mma_share_kv_sqkv1,    _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv_swizzle_qkv, q, k, tv, "mma(split-q+share-kv+swizzle-qkv+stage1)",  o, stages=1)
@@ -510,6 +513,8 @@ for (B, H, N, D) in BHNDs:
             # Split-Q + Shared KV SMEM
             check_all_close(out_flash, out_mma_share_kv1,         "out_mma_share_kv1",        args.check_all)
             check_all_close(out_flash, out_mma_share_kv2,         "out_mma_share_kv2",        args.check_all)
+            check_all_close(out_flash, out_mma_share_kv_sq1,      "out_mma_share_kv_sq1",     args.check_all)
+            check_all_close(out_flash, out_mma_share_kv_sq2,      "out_mma_share_kv_sq2",     args.check_all)
             check_all_close(out_flash, out_mma_share_kv_sqk1,     "out_mma_share_kv_sqk1",    args.check_all)
             check_all_close(out_flash, out_mma_share_kv_sqk2,     "out_mma_share_kv_sqk2",    args.check_all)
             check_all_close(out_flash, out_mma_share_kv_sqkv1,    "out_mma_share_kv_sqkv1",   args.check_all)
