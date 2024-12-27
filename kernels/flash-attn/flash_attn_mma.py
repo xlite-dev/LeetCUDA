@@ -49,7 +49,7 @@ def get_args():
 args = get_args()
 
 
-def set_rand_seed(seed:int=1):
+def set_rand_seed(seed: int = 1):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -70,15 +70,15 @@ def get_device_capability():
 
 def get_build_sources():
     build_sources = []
-    build_sources.append('./mma/flash_attn_mma_split_kv.cu')
-    build_sources.append('./mma/flash_attn_mma_split_q.cu')
-    build_sources.append('./mma/flash_attn_mma_share_kv.cu')
-    build_sources.append('./mma/flash_attn_mma_share_qkv.cu')
-    build_sources.append('./mma/flash_attn_mma_tiling_qk.cu')
-    build_sources.append('./mma/flash_attn_mma_tiling_qk_swizzle.cu')
-    build_sources.append('./mma/flash_attn_mma_share_kv_swizzle.cu')
-    build_sources.append('./mma/flash_attn_mma_share_kv_fully_swizzle.cu')
-    build_sources.append('./mma/flash_attn_mma_tiling_qk_fully_swizzle.cu')
+    build_sources.append('./mma/basic/flash_attn_mma_split_kv.cu')
+    build_sources.append('./mma/basic/flash_attn_mma_split_q.cu')
+    build_sources.append('./mma/basic/flash_attn_mma_share_kv.cu')
+    build_sources.append('./mma/basic/flash_attn_mma_share_qkv.cu')
+    build_sources.append('./mma/basic/flash_attn_mma_tiling_qk.cu')
+    build_sources.append('./mma/swizzle/flash_attn_mma_tiling_qk_swizzle.cu')
+    build_sources.append('./mma/swizzle/flash_attn_mma_share_kv_swizzle.cu')
+    build_sources.append('./mma/swizzle/flash_attn_mma_share_kv_fully_swizzle.cu')
+    build_sources.append('./mma/swizzle/flash_attn_mma_tiling_qk_fully_swizzle.cu')
     build_sources.append('./pybind/flash_attn.cc')
     return build_sources
 
@@ -125,6 +125,8 @@ def get_build_cuda_cflags(build_pkg: bool = False):
         extra_cuda_cflags.append("-DBUILD_FLASH_ATTN_MMA_L20")
     if "4090" in device_name:
         extra_cuda_cflags.append("-DBUILD_FLASH_ATTN_MMA_4090")
+    if "3080" in device_name:
+        extra_cuda_cflags.append("-DBUILD_FLASH_ATTN_MMA_3080")
     if not build_pkg:
       extra_cuda_cflags.append("-diag-suppress 177")
       extra_cuda_cflags.append("-Xptxas -v")
@@ -137,11 +139,14 @@ def get_build_cuda_cflags(build_pkg: bool = False):
     extra_cuda_cflags.append(f'-I {project_dir}/kernels/flash-attn')
     extra_cuda_cflags.append(f'-I {project_dir}/kernels/flash-attn/utils')
     extra_cuda_cflags.append(f'-I {project_dir}/kernels/flash-attn/mma')
+    extra_cuda_cflags.append(f'-I {project_dir}/kernels/flash-attn/mma/basic')
+    extra_cuda_cflags.append(f'-I {project_dir}/kernels/flash-attn/mma/swizzle')
     extra_cuda_cflags.append(f'-I {project_dir}/kernels/flash-attn/cutlass')
     extra_cuda_cflags.append(f'-I {project_dir}/kernels/flash-attn/pybind')
     extra_cuda_cflags.append(f'-I {project_dir}/third-party/cutlass/include')
     extra_cuda_cflags.append(f'-I {project_dir}/third-party/cutlass/tools/util/include')
     return extra_cuda_cflags
+
 
 def pretty_print_line(m: str = "", sep: str = "-", width: int = 150):
     res_len = width - len(m)
