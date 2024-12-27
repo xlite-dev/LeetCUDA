@@ -814,9 +814,9 @@ void launch_flash_attn_mma_stages_split_q_shared_qkv_swizzle_qkv(
   // Now: fixed tile BrxBc=64x32 kStage > 1, 64x64 for kStage = 1,
   // more threads will need more registers per block, thus, it may 
   // cause occupancy to decrease. (tuning)
-  constexpr int kMmaTileSeqLenQ  = 4;
+  constexpr int kMmaTileSeqLenQ  = (kHeadDim < 256) ? 4 : 8;
   constexpr int kMmaTileSeqLenK  = 1;
-  constexpr int kMmaTileSeqLenP  = 4;
+  constexpr int kMmaTileSeqLenP  = (kHeadDim < 256) ? 4 : 8;
   constexpr int kMmaTileHeadDimV = 1;
   constexpr int kWarpTileSeqLenQ = 1;
   constexpr int kWarpTileSeqLenK = (kHeadDim < 256) ? ((kStage > 1) ? 4 : 8) : 8;
