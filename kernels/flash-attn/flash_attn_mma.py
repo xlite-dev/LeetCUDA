@@ -18,7 +18,6 @@ torch.set_printoptions(precision=6, threshold=8, edgeitems=3,
                        linewidth=120, sci_mode=False)
 
 
-
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--no-rand-q", '--no-rq', action="store_true")
@@ -154,7 +153,7 @@ def pretty_print_line(m: str = "", sep: str = "-", width: int = 150):
 
 
 
-if args.D and args.D >= 256:
+if args.D and args.D > 256:
     args.run_torch_sdpa = True
 pretty_print_line()
 print(args)
