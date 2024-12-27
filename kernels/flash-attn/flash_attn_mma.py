@@ -505,7 +505,7 @@ for (B, H, N, D) in BHNDs:
     
     torch.cuda.synchronize()
     if args.check:
-        if D <= 128:
+        if D <= 256:
             pretty_print_line()
             # Split-KV
             check_all_close(out_flash, out_mma_split_kv1,         "out_mma_split_kv1",        args.check_all)
