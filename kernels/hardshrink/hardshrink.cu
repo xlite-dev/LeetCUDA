@@ -32,7 +32,7 @@
 
 
 
-// ELU 计算函数
+// HARDSHRINK 计算函数
 // -------------------------------------- FP32 --------------------------------------
 __device__ __forceinline__ float hardshrink(float x) {
   if (x > LAMBD || x < -LAMBD) {
