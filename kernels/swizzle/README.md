@@ -71,7 +71,15 @@ ncu --metrics sm__sass_l1tex_data_bank_conflicts_pipe_lsu_mem_shared_op_ldsm ./h
 ```
 ## 📚 print swizzle layout  
 ```bash
-python3 print_swizzle_layout.py --col 64 --show-col
+python3 print_swizzle_layout.py --logical-col 64 --show-logical-col
+----------------------------------------------------------------
+[INFO] Assert smem store layout col_stride <= 16, prefer 16.   |
+[INFO] For logical_col_stride > 16, we have to permute the     |
+[INFO] smem store layout using col major ZigZag method:        |
+[INFO] e.g, --> Q smem logical layout [Br][64].                |
+[INFO]      --> col major ZigZag permuted -->                  |
+[INFO]      --> Q smem store layout [4][Br][16].               |
+----------------------------------------------------------------
 ----------------------------------------------------------------
 -------------------------swizzle layout-------------------------
 --------------------logical col 0~64, step 8--------------------
@@ -114,7 +122,15 @@ python3 print_swizzle_layout.py --col 64 --show-col
 |row 15| 0:8  | 8:0  |16:8  |24:0  |32:8  |40:0  |48:8  |56:0  |
 ----------------------------------------------------------------
 
-python3 print_swizzle_layout.py --col 16 --show-col
+python3 print_swizzle_layout.py --logical-col 64 --show-logical-col
+----------------------------------------------------------------
+[INFO] Assert smem store layout col_stride <= 16, prefer 16.   |
+[INFO] For logical_col_stride > 16, we have to permute the     |
+[INFO] smem store layout using col major ZigZag method:        |
+[INFO] e.g, --> Q smem logical layout [Br][64].                |
+[INFO]      --> col major ZigZag permuted -->                  |
+[INFO]      --> Q smem store layout [4][Br][16].               |
+----------------------------------------------------------------
 ----------------------
 ----swizzle layout----
 logical col 0~16, step 8
