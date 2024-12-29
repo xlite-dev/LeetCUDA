@@ -219,15 +219,13 @@ hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_tn_swizzle_x4_kernel(
                          load_smem_b_k) * sizeof(half)
     );
     CP_ASYNC_CG(load_smem_b_ptr, &B[load_gmem_b_addr], 16);
-    
-    int load_gmem_b_k_mma_k = k * BK * WARP_TILE_K + MMA_K + load_smem_b_k;
-    int load_gmem_b_addr_mma_k = load_gmem_b_n * K + load_gmem_b_k_mma_k; 
+
     uint32_t load_smem_b_mma_k_ptr = (
       smem_b_base_ptr + s_b_mma_k_store_offset * sizeof(half) + 
       (k * s_b_stage_offset + load_smem_b_n * (BK + B_PAD) + 
       load_smem_b_k) * sizeof(half)
     );
-    CP_ASYNC_CG(load_smem_b_mma_k_ptr, &B[load_gmem_b_addr_mma_k], 16);
+    CP_ASYNC_CG(load_smem_b_mma_k_ptr, &B[load_gmem_b_addr + 16], 16);
 
     CP_ASYNC_COMMIT_GROUP();
   }
@@ -309,14 +307,12 @@ hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_tn_swizzle_x4_kernel(
     );
     CP_ASYNC_CG(load_smem_b_ptr, &B[load_gmem_b_addr], 16);
     
-    int load_gmem_b_k_mma_k = k * BK * WARP_TILE_K + MMA_K + load_smem_b_k;
-    int load_gmem_b_addr_mma_k = load_gmem_b_n * K + load_gmem_b_k_mma_k; 
     uint32_t load_smem_b_mma_k_ptr = (
       smem_b_base_ptr + s_b_mma_k_store_offset * sizeof(half) + 
       (smem_sel_next * s_b_stage_offset + load_smem_b_n * (BK + B_PAD) + 
       load_smem_b_k) * sizeof(half)
     );
-    CP_ASYNC_CG(load_smem_b_mma_k_ptr, &B[load_gmem_b_addr_mma_k], 16);
+    CP_ASYNC_CG(load_smem_b_mma_k_ptr, &B[load_gmem_b_addr + 16], 16);
     CP_ASYNC_COMMIT_GROUP();
     
     // ldmatrix for s_a, ldmatrix.trans for s_b.
@@ -346,7 +342,7 @@ hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_tn_swizzle_x4_kernel(
         (smem_sel * s_b_stage_offset + lane_smem_b_n * (BK + B_PAD) + 
         lane_smem_b_k) * sizeof(half)
       );
-      // may use .x4.trans to load 4 matrix for reg double buffers at once?
+      // TODO: use .x4.trans to load 4 matrix for reg double buffers at once?
       LDMATRIX_X2(RB[reg_store_idx][j][0], RB[reg_store_idx][j][1], 
                   lane_smem_b_ptr);
     }
@@ -578,28 +574,28 @@ hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_tn_swizzle_x4_kernel(
 
 // 128x128, mma2x4, warp4x4(64,32,16), stages, block&smem swizzle, dsmem, TN
 #define LAUNCH_16816_STAGE_SWIZZLE_MMA2x4_WARP4x4x2_DSMEM_TN_X4_KERNEL(stages, stride) \
-{                                                                                   \
-  const int smem_max_size = (                                                       \
-    (stages) * BM * (BK + A_PAD) * sizeof(half) +                                   \
-    (stages) * BN * (BK + B_PAD) * sizeof(half));                                   \
-  cudaFuncSetAttribute(                                                             \
-    hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_tn_swizzle_x4_kernel<          \
-      MMA_M, MMA_N, MMA_K, MMA_TILE_M, MMA_TILE_N,                                  \
-      WARP_TILE_M, WARP_TILE_N, WARP_TILE_K, A_PAD, B_PAD, (stages), true>,         \
-    cudaFuncAttributeMaxDynamicSharedMemorySize,                                    \
-    98304);                                                                         \
-  const int N_SWIZZLE = (N + (stride) - 1) / (stride);                              \
-  dim3 block(NUM_THREADS);                                                          \
-  dim3 grid((div_ceil(N, BN) + N_SWIZZLE - 1) / N_SWIZZLE,                          \
-             div_ceil(M, BM),                                                       \
-             N_SWIZZLE);                                                            \
-  hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_tn_swizzle_x4_kernel<            \
-    MMA_M, MMA_N, MMA_K, MMA_TILE_M, MMA_TILE_N,                                    \
-    WARP_TILE_M, WARP_TILE_N, WARP_TILE_K, A_PAD, B_PAD, (stages), true><<<         \
-    grid, block, smem_max_size>>>(                                                  \
-    a, b, c,                                                                        \
-    M, N, K                                                                         \
-  );                                                                                \
+{                                                                                      \
+  const int smem_max_size = (                                                          \
+    (stages) * BM * (BK + A_PAD) * WARP_TILE_K * sizeof(half) +                        \
+    (stages) * BN * (BK + B_PAD) * WARP_TILE_K * sizeof(half));                        \
+  cudaFuncSetAttribute(                                                                \
+    hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_tn_swizzle_x4_kernel<             \
+      MMA_M, MMA_N, MMA_K, MMA_TILE_M, MMA_TILE_N,                                     \
+      WARP_TILE_M, WARP_TILE_N, WARP_TILE_K, A_PAD, B_PAD, (stages), true>,            \
+    cudaFuncAttributeMaxDynamicSharedMemorySize,                                       \
+    98304);                                                                            \
+  const int N_SWIZZLE = (N + (stride) - 1) / (stride);                                 \
+  dim3 block(NUM_THREADS);                                                             \
+  dim3 grid((div_ceil(N, BN) + N_SWIZZLE - 1) / N_SWIZZLE,                             \
+             div_ceil(M, BM),                                                          \
+             N_SWIZZLE);                                                               \
+  hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_tn_swizzle_x4_kernel<               \
+    MMA_M, MMA_N, MMA_K, MMA_TILE_M, MMA_TILE_N,                                       \
+    WARP_TILE_M, WARP_TILE_N, WARP_TILE_K, A_PAD, B_PAD, (stages), true><<<            \
+    grid, block, smem_max_size>>>(                                                     \
+    a, b, c,                                                                           \
+    M, N, K                                                                            \
+  );                                                                                   \
 }
 
 template <const int K_STAGE = 2, 
@@ -615,16 +611,12 @@ void lanunch_hgemm_mma_m16n8k16_swizzle_tn_x4(
   constexpr int WARP_TILE_N = 4;
   constexpr int WARP_TILE_K = 2;
   constexpr int A_PAD = 0; // apply smem swizzle
-  constexpr int B_PAD = 8; 
+  constexpr int B_PAD = 8;
   constexpr int NUM_THREADS= (
     MMA_TILE_M * MMA_TILE_N * WARP_SIZE); // 2 * 4 * 32 = 256
   constexpr int BM = MMA_M * MMA_TILE_M * WARP_TILE_M;    
   constexpr int BN = MMA_N * MMA_TILE_N * WARP_TILE_N;    
   constexpr int BK = MMA_K;   
-  // s2: 2*128*(32)*2=16KB, 2*32*(128+16)*2=18KB, ~35KB
-  // s3: 3*128*(32)*2=24KB, 3*32*(128+16)*2=27KB, ~51KB
-  // s4: 4*128*(32)*2=32KB, 4*32*(128+16)*2=36KB, ~68KB                            
-  // s5: 5*128*(32)*2=40KB, 5*32*(128+16)*2=45KB, ~85KB    
   LAUNCH_16816_STAGE_SWIZZLE_MMA2x4_WARP4x4x2_DSMEM_TN_X4_KERNEL(
     K_STAGE, BLOCK_SWIZZLE_STRIDE);
 }
@@ -726,54 +718,54 @@ if (((T).size(0) != (S0)) || ((T).size(1) != (S1))) { \
 
 // 128x128, mma2x4, warp4x4(64,32,16), stages, block&smem swizzle, dsmem, TN
 #define LAUNCH_16816_STAGE_SWIZZLE_MMA2x4_WARP4x4x2_DSMEM_TN_X4_KERNEL(stages, stride)\
-{                                                                                   \
-  const int smem_max_size = (                                                       \
-    (stages) * BM * (BK + A_PAD) * sizeof(half) +                                   \
-    (stages) * BN * (BK + B_PAD) * sizeof(half));                                   \
-  cudaFuncSetAttribute(                                                             \
-    hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_tn_swizzle_x4_kernel<          \
-      MMA_M, MMA_N, MMA_K, MMA_TILE_M, MMA_TILE_N,                                  \
-      WARP_TILE_M, WARP_TILE_N, WARP_TILE_K, A_PAD, B_PAD, (stages), true>,         \
-    cudaFuncAttributeMaxDynamicSharedMemorySize,                                    \
-  98304);                                                                           \
-  const int N_SWIZZLE = (N + (stride) - 1) / (stride);                              \
-  dim3 block(NUM_THREADS);                                                          \
-  dim3 grid((div_ceil(N, BN) + N_SWIZZLE - 1) / N_SWIZZLE,                          \
-             div_ceil(M, BM),                                                       \
-             N_SWIZZLE);                                                            \
-  hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_tn_swizzle_x4_kernel<            \
-    MMA_M, MMA_N, MMA_K, MMA_TILE_M, MMA_TILE_N,                                    \
-    WARP_TILE_M, WARP_TILE_N, WARP_TILE_K, A_PAD, B_PAD, (stages), true><<<         \
-    grid, block, smem_max_size>>>(                                                  \
-    reinterpret_cast<half*>(a.data_ptr()),                                          \
-    reinterpret_cast<half*>(b.data_ptr()),                                          \
-    reinterpret_cast<half*>(c.data_ptr()),                                          \
-    M, N, K                                                                         \
-  );                                                                                \
+{                                                                                     \
+  const int smem_max_size = (                                                         \
+    (stages) * BM * (BK + A_PAD) * WARP_TILE_K * sizeof(half) +                       \
+    (stages) * BN * (BK + B_PAD) * WARP_TILE_K * sizeof(half));                       \
+  cudaFuncSetAttribute(                                                               \
+    hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_tn_swizzle_x4_kernel<            \
+      MMA_M, MMA_N, MMA_K, MMA_TILE_M, MMA_TILE_N,                                    \
+      WARP_TILE_M, WARP_TILE_N, WARP_TILE_K, A_PAD, B_PAD, (stages), true>,           \
+    cudaFuncAttributeMaxDynamicSharedMemorySize,                                      \
+  98304);                                                                             \
+  const int N_SWIZZLE = (N + (stride) - 1) / (stride);                                \
+  dim3 block(NUM_THREADS);                                                            \
+  dim3 grid((div_ceil(N, BN) + N_SWIZZLE - 1) / N_SWIZZLE,                            \
+             div_ceil(M, BM),                                                         \
+             N_SWIZZLE);                                                              \
+  hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_tn_swizzle_x4_kernel<              \
+    MMA_M, MMA_N, MMA_K, MMA_TILE_M, MMA_TILE_N,                                      \
+    WARP_TILE_M, WARP_TILE_N, WARP_TILE_K, A_PAD, B_PAD, (stages), true><<<           \
+    grid, block, smem_max_size>>>(                                                    \
+    reinterpret_cast<half*>(a.data_ptr()),                                            \
+    reinterpret_cast<half*>(b.data_ptr()),                                            \
+    reinterpret_cast<half*>(c.data_ptr()),                                            \
+    M, N, K                                                                           \
+  );                                                                                  \
 }
 
 #define LAUNCH_16816_STAGE_NO_SWIZZLE_MMA2x4_WARP4x4x2_DSMEM_TN_X4_KERNEL(stages)\
-{                                                                             \
-  const int smem_max_size = (                                                 \
-    (stages) * BM * (BK + A_PAD) * sizeof(half) +                             \
-    (stages) * BN * (BK + B_PAD) * sizeof(half));                             \
-  cudaFuncSetAttribute(                                                       \
-    hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_tn_swizzle_x4_kernel<    \
-      MMA_M, MMA_N, MMA_K, MMA_TILE_M, MMA_TILE_N,                            \
-      WARP_TILE_M, WARP_TILE_N, WARP_TILE_K, A_PAD, B_PAD, (stages), true>,   \
-    cudaFuncAttributeMaxDynamicSharedMemorySize,                              \
-  98304);                                                                     \
-  dim3 block(NUM_THREADS);                                                    \
-  dim3 grid(div_ceil(N, BN), div_ceil(M, BM));                                \
-  hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_tn_swizzle_x4_kernel<      \
-    MMA_M, MMA_N, MMA_K, MMA_TILE_M, MMA_TILE_N,                              \
-    WARP_TILE_M, WARP_TILE_N, WARP_TILE_K, A_PAD, B_PAD, (stages), false><<<  \
-    grid, block, smem_max_size>>>(                                            \
-    reinterpret_cast<half*>(a.data_ptr()),                                    \
-    reinterpret_cast<half*>(b.data_ptr()),                                    \
-    reinterpret_cast<half*>(c.data_ptr()),                                    \
-    M, N, K                                                                   \
-  );                                                                          \
+{                                                                                \
+  const int smem_max_size = (                                                    \
+    (stages) * BM * (BK + A_PAD) * WARP_TILE_K * sizeof(half) +                  \
+    (stages) * BN * (BK + B_PAD) * WARP_TILE_K * sizeof(half));                  \
+  cudaFuncSetAttribute(                                                          \
+    hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_tn_swizzle_x4_kernel<       \
+      MMA_M, MMA_N, MMA_K, MMA_TILE_M, MMA_TILE_N,                               \
+      WARP_TILE_M, WARP_TILE_N, WARP_TILE_K, A_PAD, B_PAD, (stages), true>,      \
+    cudaFuncAttributeMaxDynamicSharedMemorySize,                                 \
+  98304);                                                                        \
+  dim3 block(NUM_THREADS);                                                       \
+  dim3 grid(div_ceil(N, BN), div_ceil(M, BM));                                   \
+  hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_tn_swizzle_x4_kernel<         \
+    MMA_M, MMA_N, MMA_K, MMA_TILE_M, MMA_TILE_N,                                 \
+    WARP_TILE_M, WARP_TILE_N, WARP_TILE_K, A_PAD, B_PAD, (stages), false><<<     \
+    grid, block, smem_max_size>>>(                                               \
+    reinterpret_cast<half*>(a.data_ptr()),                                       \
+    reinterpret_cast<half*>(b.data_ptr()),                                       \
+    reinterpret_cast<half*>(c.data_ptr()),                                       \
+    M, N, K                                                                      \
+  );                                                                             \
 }
 
 // 128x128, mma2x4, warp4x4(64,32,16), stages, block&smem swizzle, dsmem
