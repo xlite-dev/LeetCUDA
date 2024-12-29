@@ -249,8 +249,8 @@ hgemm_mma_m16n8k16_mma2x4_warp4x4_stages_dsmem_tn_kernel(
         int lane_smem_b_k = ((lane_id / 8) % 2) * 8; // 0,8
         uint32_t lane_smem_b_ptr = (
           smem_b_base_ptr + (stage_sel * s_b_stage_offset + 
-                            lane_smem_b_n * (BK + B_PAD) + 
-                            lane_smem_b_k) * sizeof(half)
+                             lane_smem_b_n * (BK + B_PAD) + 
+                             lane_smem_b_k) * sizeof(half)
         );
         LDMATRIX_X2(RB[j][0], RB[j][1], lane_smem_b_ptr);
       }
