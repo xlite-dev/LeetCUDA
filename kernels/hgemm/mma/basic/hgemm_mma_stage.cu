@@ -2167,9 +2167,9 @@ void hgemm_mma_m16n8k16_mma2x4_warp4x4_stages(
     case 4: // ~34KB
       LAUNCH_16816_STAGE_SWIZZLE_MMA2x4_WARP4x4_KERNEL(4, swizzle_stride);
       break;
-    case 5: // ~43KB
-      LAUNCH_16816_STAGE_SWIZZLE_MMA2x4_WARP4x4_KERNEL(5, swizzle_stride);
-      break;
+    // case 5: // ~43KB
+    //   LAUNCH_16816_STAGE_SWIZZLE_MMA2x4_WARP4x4_KERNEL(5, swizzle_stride);
+    //   break;
     default:
       LAUNCH_16816_STAGE_SWIZZLE_MMA2x4_WARP4x4_KERNEL(2, swizzle_stride);
       break;
@@ -2186,9 +2186,9 @@ void hgemm_mma_m16n8k16_mma2x4_warp4x4_stages(
     case 4:
       LAUNCH_16816_STAGE_NO_SWIZZLE_MMA2x4_WARP4x4_KERNEL(4);
       break;
-    case 5:
-      LAUNCH_16816_STAGE_NO_SWIZZLE_MMA2x4_WARP4x4_KERNEL(5);
-      break;
+    // case 5:
+    //   LAUNCH_16816_STAGE_NO_SWIZZLE_MMA2x4_WARP4x4_KERNEL(5);
+    //   break;
     default:
       LAUNCH_16816_STAGE_NO_SWIZZLE_MMA2x4_WARP4x4_KERNEL(2);
       break;
