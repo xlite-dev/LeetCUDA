@@ -1965,7 +1965,7 @@ hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_rr_kernel(
 // 128x128, mma2x4, warp4x4x2(64,32,32), stages, block swizzle, dsmem, reg double buffers
 template <const int K_STAGE = 2, const int BLOCK_SWIZZLE_STRIDE = 2048>
 void lanunch_hgemm_mma_m16n8k16_nn(
-  const half* a, const half* b, half* c, int M, int N, int K) {
+  half* a, half* b, half* c, int M, int N, int K) {
   constexpr int MMA_M = 16;
   constexpr int MMA_N = 8;
   constexpr int MMA_K = 16;

@@ -578,7 +578,7 @@ hgemm_mma_m16n8k16_mma2x4_warp4x4x2_stages_dsmem_swizzle_kernel(
 // 128x128, mma2x4, warp4x4x2(64,32,32), stages, block&smem swizzle, dsmem, reg double buffers
 template <const int K_STAGE = 2, const int BLOCK_SWIZZLE_STRIDE = 2048>
 void lanunch_hgemm_mma_m16n8k16_swizzle_nn(
-  const half* a, const half* b, half* c, int M, int N, int K) {
+  half* a, half* b, half* c, int M, int N, int K) {
   constexpr int MMA_M = 16;
   constexpr int MMA_N = 8;
   constexpr int MMA_K = 16;
@@ -601,7 +601,8 @@ void lanunch_hgemm_mma_m16n8k16_swizzle_nn(
   // s3: 3*128*(32)*2=24KB, 3*32*(128+16)*2=27KB, ~51KB
   // s4: 4*128*(32)*2=32KB, 4*32*(128+16)*2=36KB, ~68KB                            
   // s5: 5*128*(32)*2=40KB, 5*32*(128+16)*2=45KB, ~85KB    
-  LAUNCH_16816_STAGE_MMA2x4_WARP4x4x2_DSMEM_SWIZZLE_KERNEL(K_STAGE, BLOCK_SWIZZLE_STRIDE);
+  LAUNCH_16816_STAGE_MMA2x4_WARP4x4x2_DSMEM_SWIZZLE_KERNEL(
+    K_STAGE, BLOCK_SWIZZLE_STRIDE);
 }
 
 #ifdef HGEMM_MMA_DEBUG  
