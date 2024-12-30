@@ -168,7 +168,7 @@ flash_attn_mma_stages_split_q_shared_qkv_acc_f32_tOsO_kernel(half* Q,
   // By the way, we have to reduce R_Z to 0 regs and reuse R_Q for collective store.
   // Then we can load Q from smem only once and reuse it for <loop over K seqlen>
   // processes. This will reduce large io-access for Q smem while N is large.
-  static_assert(kHeadDim <= 256, "shared_qkv only support headdim<=512");
+  static_assert(kHeadDim <= 512, "shared_qkv only support headdim<=512");
   static_assert(kHeadDim >= 32,  "shared_qkv only support headdim>=32");
   // prefetch Q s2r will reduce large io-access for Q smem while N is large, 
   // but cost more registers, so, we only prefetch Q s2r for d<=256.
