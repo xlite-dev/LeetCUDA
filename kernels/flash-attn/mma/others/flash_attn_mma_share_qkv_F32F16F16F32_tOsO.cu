@@ -172,7 +172,7 @@ flash_attn_mma_stages_split_q_shared_qkv_acc_f32_tOsO_kernel(half* Q,
   static_assert(kHeadDim >= 32,  "shared_qkv only support headdim>=32");
   // prefetch Q s2r will reduce large io-access for Q smem while N is large, 
   // but cost more registers, so, we only prefetch Q s2r for d<=256.
-  constexpr bool kCanPrefetchQs2r = ((kHeadDim / kMmaAtomK) <= 16); // always true.
+  constexpr bool kCanPrefetchQs2r = ((kHeadDim / kMmaAtomK) <= 32); // always true.
   constexpr bool kDelayPrefetchQs2r = (true && kCanPrefetchQs2r); // TODO: make it optional.
   // Use kStage and(Q_tile_size / max(K_tile_size, V_tile_size)) to control 
   // multi-stage policy for K/V g2s.
@@ -739,7 +739,7 @@ void launch_flash_attn_mma_stages_split_q_shared_qkv_acc_f32_tOsO(
   if constexpr (kStage > 1) {
     static_assert(((Br / Bc) >= 2));
   }
-  constexpr bool kOAccFloat32 = false;
+  constexpr bool kOAccFloat32 = true;
   
   // static int kMaxSramPerBlock;
   // cudaDeviceGetAttribute(&kMaxSramPerBlock, cudaDevAttrMaxSharedMemoryPerBlock, 0);
