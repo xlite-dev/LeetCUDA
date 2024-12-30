@@ -311,7 +311,7 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 | ✔️ [hgemm_mma_m16n8k16...stages*](./kernels/hgemm/mma/basic/hgemm_mma_stage.cu)|f16|f16|[link](./kernels/hgemm/)|⭐️⭐️⭐️|  
 | ✔️ [hgemm_mma_m16n8k16...swizzle*](./kernels/hgemm/mma/basic/hgemm_mma_stage.cu)|f16|f16|[link](./kernels/hgemm/)|⭐️⭐️⭐️|  
 | ✔️ [hgemm_mma_m16n8k16...swizzle{smem}*](./kernels/hgemm/mma/swizzle/hgemm_mma_stage_swizzle.cu)|f16|f16|[link](./kernels/hgemm/)|⭐️⭐️⭐️|  
-| ✔️ [hgemm_mma_m16n8k16...swizzle{tn}{smem}*](./kernels/hgemm/mma/swizzle/hgemm_mma_stage_tn_swizzle.cu)|f16|f16|[link](./kernels/hgemm/)|⭐️⭐️⭐️|  
+| ✔️ [hgemm_mma_m16n8k16...swizzle{tn}{smem}*](./kernels/hgemm/mma/swizzle/hgemm_mma_stage_tn_swizzle_x4.cu)|f16|f16|[link](./kernels/hgemm/)|⭐️⭐️⭐️|  
 | ✔️ [hgemm_mma_stages_swizzle{smem}...cute*](./kernels/hgemm/cutlass/hgemm_mma_stage_tn_cute.cu)|f16|f16|[link](./kernels/hgemm/)|⭐️⭐️⭐️|  
 | ✔️ [hgemm_mma_cublas*](./kernels/hgemm/cublas/hgemm_cublas.cu)|f16|f16|[link](./kernels/hgemm/)|⭐️⭐️|   
 
