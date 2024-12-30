@@ -168,7 +168,7 @@ flash_attn_mma_stages_split_q_shared_qkv_acc_f32_tOsO_kernel(half* Q,
   // By the way, we have to reduce R_Z to 0 regs and reuse R_Q for collective store.
   // Then we can load Q from smem only once and reuse it for <loop over K seqlen>
   // processes. This will reduce large io-access for Q smem while N is large.
-  static_assert(kHeadDim <= 256, "shared_qkv only support headdim<=256");
+  static_assert(kHeadDim <= 256, "shared_qkv only support headdim<=512");
   static_assert(kHeadDim >= 32,  "shared_qkv only support headdim>=32");
   // prefetch Q s2r will reduce large io-access for Q smem while N is large, 
   // but cost more registers, so, we only prefetch Q s2r for d<=256.
@@ -739,7 +739,7 @@ void launch_flash_attn_mma_stages_split_q_shared_qkv_acc_f32_tOsO(
   if constexpr (kStage > 1) {
     static_assert(((Br / Bc) >= 2));
   }
-  constexpr bool kOAccFloat32 = true;
+  constexpr bool kOAccFloat32 = false;
   
   // static int kMaxSramPerBlock;
   // cudaDeviceGetAttribute(&kMaxSramPerBlock, cudaDevAttrMaxSharedMemoryPerBlock, 0);
@@ -850,6 +850,9 @@ void flash_attn_mma_stages_split_q_shared_qkv_acc_f32_tOsO(torch::Tensor Q,
     case 256:
       launch_flash_attn_mma_stages_split_q_shared_qkv_acc_f32_tOsO<256, 2>(Q, K, V, O);
       break;
+    case 512:
+      launch_flash_attn_mma_stages_split_q_shared_qkv_acc_f32_tOsO<512, 2>(Q, K, V, O);
+      break;
     default:
       throw std::runtime_error("headdim not support!");
       break;
@@ -871,6 +874,9 @@ void flash_attn_mma_stages_split_q_shared_qkv_acc_f32_tOsO(torch::Tensor Q,
       break;
     case 256:
       launch_flash_attn_mma_stages_split_q_shared_qkv_acc_f32_tOsO<256, 1>(Q, K, V, O);
+      break;
+    case 512:
+      launch_flash_attn_mma_stages_split_q_shared_qkv_acc_f32_tOsO<512, 1>(Q, K, V, O);
       break;
     default:
       throw std::runtime_error("headdim not support!");
