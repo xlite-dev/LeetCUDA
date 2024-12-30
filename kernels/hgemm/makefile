@@ -39,6 +39,10 @@ mma_tn_89_swizzle:
 	nvcc mma/swizzle/hgemm_mma_stage_tn_swizzle.cu -o hgemm_mma_stage_tn_swizzle.89.bin $(DEFAULT_FLAGS_89)
 mma_tn_89_swizzle_debug:
 	nvcc mma/swizzle/hgemm_mma_stage_tn_swizzle.cu -o hgemm_mma_stage_tn_swizzle.89.debug.bin $(DEFAULT_FLAGS_89) -DHGEMM_MMA_DEBUG
+mma_tn_89_swizzle_x2:
+	nvcc mma/swizzle/hgemm_mma_stage_tn_swizzle_x2.cu -o hgemm_mma_stage_tn_swizzle_x2.89.bin $(DEFAULT_FLAGS_89)
+mma_tn_89_swizzle_x2_debug:
+	nvcc mma/swizzle/hgemm_mma_stage_tn_swizzle_x2.cu -o hgemm_mma_stage_tn_swizzle_x2.89.debug.bin $(DEFAULT_FLAGS_89) -DHGEMM_MMA_DEBUG
 mma_tn_89_swizzle_x4:
 	nvcc mma/swizzle/hgemm_mma_stage_tn_swizzle_x4.cu -o hgemm_mma_stage_tn_swizzle_x4.89.bin $(DEFAULT_FLAGS_89)
 mma_tn_89_swizzle_x4_debug:
