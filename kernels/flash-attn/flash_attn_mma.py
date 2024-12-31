@@ -78,6 +78,7 @@ def get_build_sources():
     build_sources.append('./mma/basic/flash_attn_mma_share_kv.cu')
     build_sources.append('./mma/basic/flash_attn_mma_share_qkv.cu')
     build_sources.append('./mma/basic/flash_attn_mma_tiling_qk.cu')
+    build_sources.append('./mma/basic/flash_attn_mma_share_kv_F32F16F16F32.cu')
     build_sources.append('./mma/basic/flash_attn_mma_share_qkv_F32F16F16F32.cu')
     # Swizzle
     build_sources.append('./mma/swizzle/flash_attn_mma_share_kv_swizzle_q.cu')
@@ -441,8 +442,8 @@ MAX_HEADDIM_CFG: dict[str, int] = {
     "mma(split-q+share-kv+swizzle-qk+stage2)":      128,
     "mma(split-q+share-kv+swizzle-qkv+stage1)":     256,
     "mma(split-q+share-kv+swizzle-qkv+stage2)":     128,
-    "mma(split-q+share-qkv+acc-f32+stage1)":        256,
-    "mma(split-q+share-qkv+acc-f32+stage2)":        128,
+    "mma(split-q+share-kv+acc-f32+stage1)":         256,
+    "mma(split-q+share-kv+acc-f32+stage2)":         128,
     # Split-Q + Fully Shared QKV SMEM
     "mma(split-q+share-qkv+stage1)":                256, 
     "mma(split-q+share-qkv+stage2)":                128, 
@@ -452,6 +453,8 @@ MAX_HEADDIM_CFG: dict[str, int] = {
     "mma(split-q+share-qkv+swizzle-qk+stage2)":     128,
     "mma(split-q+share-qkv+swizzle-qkv+stage1)":    256,
     "mma(split-q+share-qkv+swizzle-qkv+stage2)":    128,
+    "mma(split-q+share-qkv+acc-f32+stage1)":        256,
+    "mma(split-q+share-qkv+acc-f32+stage2)":        128,
     # Split-Q + QK Fine-grained Tiling
     "mma(split-q+tiling-qk+stage1)":                1024,
     "mma(split-q+tiling-qk+stage2)":                1024,
@@ -496,6 +499,8 @@ for (B, H, N, D) in BHNDs:
     # Split-Q + Shared KV SMEM + Swizzle
     out_mma_share_kv1,         _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv, q, k, v, "mma(split-q+share-kv+stage1)",  o, stages=1)
     out_mma_share_kv2,         _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv, q, k, v, "mma(split-q+share-kv+stage2)",  o, stages=2)
+    out_mma_share_kv_f321,     _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv_acc_f32, q, k, v, "mma(split-q+share-kv+acc-f32+stage1)", o, stages=1)
+    out_mma_share_kv_f322,     _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv_acc_f32, q, k, v, "mma(split-q+share-kv+acc-f32+stage2)", o, stages=2)
     out_mma_share_kv_sq1,      _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv_swizzle_q, q, k, v, "mma(split-q+share-kv+swizzle-q+stage1)",  o, stages=1)
     out_mma_share_kv_sq2,      _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv_swizzle_q, q, k, v, "mma(split-q+share-kv+swizzle-q+stage2)",  o, stages=2)
     out_mma_share_kv_sqk1,     _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv_swizzle_qk, q, k, v, "mma(split-q+share-kv+swizzle-qk+stage1)",  o, stages=1)
@@ -545,6 +550,8 @@ for (B, H, N, D) in BHNDs:
             # Split-Q + Shared KV SMEM
             check_all_close(out_flash, out_mma_share_kv1,         "out_mma_share_kv1",        args.check_all)
             check_all_close(out_flash, out_mma_share_kv2,         "out_mma_share_kv2",        args.check_all)
+            check_all_close(out_flash, out_mma_share_kv_f321,     "out_mma_share_kv_f321",    args.check_all)
+            check_all_close(out_flash, out_mma_share_kv_f322,     "out_mma_share_kv_f322",    args.check_all)
             check_all_close(out_flash, out_mma_share_kv_sq1,      "out_mma_share_kv_sq1",     args.check_all)
             check_all_close(out_flash, out_mma_share_kv_sq2,      "out_mma_share_kv_sq2",     args.check_all)
             check_all_close(out_flash, out_mma_share_kv_sqk1,     "out_mma_share_kv_sqk1",    args.check_all)
