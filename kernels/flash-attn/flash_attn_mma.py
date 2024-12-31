@@ -441,8 +441,8 @@ MAX_HEADDIM_CFG: dict[str, int] = {
     "mma(split-q+share-kv+swizzle-qk+stage2)":      128,
     "mma(split-q+share-kv+swizzle-qkv+stage1)":     256,
     "mma(split-q+share-kv+swizzle-qkv+stage2)":     128,
-    "mma(split-q+share-qkv+acc-f32+stage1)":        256,
-    "mma(split-q+share-qkv+acc-f32+stage2)":        128,
+    "mma(split-q+share-qkv+acc-f32+stage1)":        512,
+    "mma(split-q+share-qkv+acc-f32+stage2)":        512,
     # Split-Q + Fully Shared QKV SMEM
     "mma(split-q+share-qkv+stage1)":                256,
     "mma(split-q+share-qkv+stage2)":                128,
