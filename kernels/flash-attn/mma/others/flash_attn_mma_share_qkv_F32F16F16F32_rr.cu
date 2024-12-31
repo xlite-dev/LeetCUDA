@@ -190,7 +190,9 @@ flash_attn_mma_stages_split_q_shared_qkv_acc_f32_rr_kernel(half* Q,
   uint32_t R_V[2]; // [2], S=Q@K, only use 2 32bits registers.
   uint32_t R_S[kWarpTileSeqLenQ][kWarpTileSeqLenK][ 4]; // [1][8][4], acc f32.
   uint32_t R_O[4]; // [4], O=P@V, only use 4 32bits registers.
-  // O storage, R_D[1][?][2/4], MMA Acc always be fp32, but O storage can be fp32 or half.
+  // 0/1, MMA Acc always be fp32, but O storage(R_D) can be fp32 or half.
+  // FP16 can provide precision to approximately 3-4 decimal places. Thus, if the 
+  // error does not exceed 1e-3, using FP16 storage is sufficient for most applications.
   uint32_t R_D[kWarpTileSeqLenP][kWarpTileHeadDimV][(kOStorageAccFloat32) ? 4 : 2]; 
   fill_3D_regs<uint32_t, kWarpTileSeqLenP, kWarpTileHeadDimV, 
                ((kOStorageAccFloat32) ? 4 : 2)>(R_D, 0);
@@ -717,7 +719,10 @@ void launch_flash_attn_mma_stages_split_q_shared_qkv_acc_f32_rr(
     static_assert(((Br / Bc) >= 2));
   }
   // 0/1, MMA Acc always be fp32, but O storage can be fp32 or half.
-  constexpr int kOStorageAccFloat32 = 1;
+  // FP16 can provide precision to approximately 3-4 decimal places.
+  // Thus, if the error does not exceed 1e-3, using FP16 storage is 
+  // sufficient for most applications.
+  constexpr int kOStorageAccFloat32 = 0;
   
   // static int kMaxSramPerBlock;
   // cudaDeviceGetAttribute(&kMaxSramPerBlock, cudaDevAttrMaxSharedMemoryPerBlock, 0);
