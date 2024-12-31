@@ -175,8 +175,7 @@ flash_attn_mma_stages_split_q_shared_qkv_acc_f32_rr_kernel(half* Q,
   // prefetch Q s2r will reduce large io-access for Q smem while N is large, 
   // but cost more registers, so, we only prefetch Q s2r for d<=512.
   constexpr bool kCanPrefetchQs2r = ((kHeadDim / kMmaAtomK) <= 32); // always true.
-  constexpr bool kDelayPrefetchQs2r = (true && kCanPrefetchQs2r); // TODO: make it optional.
-  // Use kStage and(Q_tile_size / max(K_tile_size, V_tile_size)) to control 
+  // Use kStage and (Q_tile_size / max(K_tile_size, V_tile_size)) to control 
   // multi-stage policy for K/V g2s.
   constexpr bool kCanPrefetchKVg2s = ( 
     ((Q_tile_size / (K_tile_size > V_tile_size ? K_tile_size : V_tile_size)) >= 2) 
@@ -188,14 +187,16 @@ flash_attn_mma_stages_split_q_shared_qkv_acc_f32_rr_kernel(half* Q,
   uint32_t R_Q[kNumPrefetchQs2r][kWarpTileSeqLenQ][4]; // [4/8/1][1][4]
   uint32_t R_K[kWarpTileSeqLenK][2]; // [8][2]
   uint32_t R_V[2]; // [2], S=Q@K, only use 2 32bits registers.
+  // registers for current tile_K_seqlen within, [64,64] = S_tile[Br,Bc]
+  // = Q_tile[Br,d] * K[Bc,d], each thread hold 2x32 bits regs.
   uint32_t R_S[kWarpTileSeqLenQ][kWarpTileSeqLenK][ 4]; // [1][8][4], acc f32.
-  uint32_t R_O[4]; // [4], O=P@V, only use 4 32bits registers.
+  uint32_t R_O[4]; // registers for O=PV[Br,d]=P@V, [4], only use 4 32bits registers.
+  // registers final Output [D]=final rescale(R_O), [2][2/4][2], 8 or 16 regs.
   // 0/1, MMA Acc always be fp32, but O storage(R_D) can be fp32 or half.
   // FP16 can provide precision to approximately 3-4 decimal places. Thus, if the 
   // error does not exceed 1e-3, using FP16 storage is sufficient for most applications.
   uint32_t R_D[kWarpTileSeqLenP][kWarpTileHeadDimV][(kOStorageAccFloat32) ? 4 : 2]; 
-  fill_3D_regs<uint32_t, kWarpTileSeqLenP, kWarpTileHeadDimV, 
-               ((kOStorageAccFloat32) ? 4 : 2)>(R_D, 0);
+  fill_3D_regs<uint32_t, kWarpTileSeqLenP, kWarpTileHeadDimV, ((kOStorageAccFloat32) ? 4 : 2)>(R_D, 0);
   
   // load Q from gmem -> smem, only load once.
   {
@@ -544,6 +545,18 @@ flash_attn_mma_stages_split_q_shared_qkv_acc_f32_rr_kernel(half* Q,
       float rescale_o_factor_1 = __expf(block_row_max_old_1 - block_row_max_new_1);
       
       // Compute P[Br,Bc]@V[Bc,d] = O[Br,d]
+      // For R_S[1][8][2], mapping the layout below of P matrix.
+      // MMA = m16n8k16, Br=16x4=64, Bc=8x8=64, layout: 4 warps
+      // |   64x64   |      warp_KV 0       |
+      // | warp_QP 0 | MMA 0 ... MMA 0 (x8) |
+      // | warp_QP 1 | MMA 1 ... MMA 1 (x8) |
+      // | warp_QP 2 | MMA 2 ... MMA 2 (x8) |
+      // | warp_QP 3 | MMA 3 ... MMA 3 (x8) |
+      // tile_V_Bc = 0, all curr MMAs(0~4) need slice P[:,  0:16], 0, 1; stored in all MMAs.
+      // tile_V_Bc = 1, all curr MMAs(0~4) need slice P[:, 16:32], 2, 3; stored in all MMAs.
+      // tile_V_Bc = 2, all curr MMAs(0~4) need slice P[:, 32:48], 4, 5; stored in all MMAs. 
+      // tile_V_Bc = 3, all curr MMAs(0~4) need slice P[:, 48:64], 6, 7; stored in all MMAs. 
+      // <HGEMM in registers>
       #pragma unroll
       for (int j = 0; j < kWarpTileHeadDimV; ++j) { // 8, 16, 32, ...
         // Compute d tile, P[Br,Bc]@V[Bc,16] = O[Br,16]
@@ -560,9 +573,8 @@ flash_attn_mma_stages_split_q_shared_qkv_acc_f32_rr_kernel(half* Q,
                                lane_smem_V_d) * sizeof(half)
           );
           LDMATRIX_X2_T(R_V[0], R_V[1], lane_smem_V_ptr); // R_V
-
-          // <HGEMM in registers>
           int w = tile_V_Bc * 2; // MMA(Warp) selected, 0, 2, 4, 6
+          // MMA always accumulate with F32 dtype for high precision.
           HMMA16816F32(R_O[0], R_O[1], R_O[2], R_O[3],
                        R_S[0][w][0], R_S[0][w][1], R_S[0][w + 1][0],  R_S[0][w + 1][1], 
                        R_V[0], R_V[1],
