@@ -444,8 +444,8 @@ MAX_HEADDIM_CFG: dict[str, int] = {
     "mma(split-q+share-qkv+acc-f32+stage1)":        512,
     "mma(split-q+share-qkv+acc-f32+stage2)":        512,
     # Split-Q + Fully Shared QKV SMEM
-    "mma(split-q+share-qkv+stage1)":                256,
-    "mma(split-q+share-qkv+stage2)":                128,
+    "mma(split-q+share-qkv+stage1)":                512, 
+    "mma(split-q+share-qkv+stage2)":                512, 
     "mma(split-q+share-qkv+swizzle-q+stage1)":      256,
     "mma(split-q+share-qkv+swizzle-q+stage2)":      128,
     "mma(split-q+share-qkv+swizzle-qk+stage1)":     256,
@@ -580,6 +580,8 @@ for (B, H, N, D) in BHNDs:
         elif args.run_torch_sdpa:
             pretty_print_line()
             # Split-Q + Fully Shared QKV SMEM
+            check_all_close(out_sdpa, out_mma_share_qkv1,         "out_mma_share_qkv1",       args.check_all, False)
+            check_all_close(out_sdpa, out_mma_share_qkv2,         "out_mma_share_qkv2",       args.check_all, False)
             check_all_close(out_sdpa, out_mma_share_qkv_f321,     "out_mma_share_qkv_f321",   args.check_all, False)
             check_all_close(out_sdpa, out_mma_share_qkv_f322,     "out_mma_share_qkv_f322",   args.check_all, False)
             # Split-Q + QK Fine-grained Tiling
