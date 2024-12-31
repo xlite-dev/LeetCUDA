@@ -722,7 +722,7 @@ void launch_flash_attn_mma_stages_split_q_shared_qkv_acc_f32_rr(
   // FP16 can provide precision to approximately 3-4 decimal places.
   // Thus, if the error does not exceed 1e-3, using FP16 storage is 
   // sufficient for most applications.
-  constexpr int kOStorageAccFloat32 = 0;
+  constexpr int kOStorageAccFloat32 = 1;
   
   // static int kMaxSramPerBlock;
   // cudaDeviceGetAttribute(&kMaxSramPerBlock, cudaDevAttrMaxSharedMemoryPerBlock, 0);
