@@ -873,8 +873,6 @@ flash_attn_mma_stages_split_q_tiling_qk_swizzle_q_kernel(half* Q,
 
   // Finaly, we still have to rescale O once more.
   // O_output(D) = ( 1/l_final ) * O_final (FA2 paper)
-  // NOTE: Here, we choose to reuse R_O as final output 
-  // in order to reduce regs usage.
   static_assert(kWarpTileSeqLenP == 1);
   { // kWarpTileSeqLenP = 1
     float rescale_factor_0 = __frcp_rn(lane_block_row_sum_old[0][0]);
