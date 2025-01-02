@@ -80,6 +80,7 @@ def get_build_sources():
     build_sources.append('./mma/basic/flash_attn_mma_tiling_qk.cu')
     build_sources.append('./mma/basic/flash_attn_mma_share_kv_F32F16F16F32.cu')
     build_sources.append('./mma/basic/flash_attn_mma_share_qkv_F32F16F16F32.cu')
+    build_sources.append('./mma/basic/flash_attn_mma_tiling_qk_F32F16F16F32.cu')
     # Swizzle
     build_sources.append('./mma/swizzle/flash_attn_mma_share_kv_swizzle_q.cu')
     build_sources.append('./mma/swizzle/flash_attn_mma_share_kv_swizzle_qk.cu')
@@ -466,6 +467,8 @@ MAX_HEADDIM_CFG: dict[str, int] = {
     "mma(split-q+tiling-qk+swizzle-qk+stage2)":     1024,
     "mma(split-q+tiling-qk+swizzle-qkv+stage1)":    256,
     "mma(split-q+tiling-qk+swizzle-qkv+stage2)":    256,
+    "mma(split-q+tiling-qk+acc-f32+stage1)":        1024,
+    "mma(split-q+tiling-qk+acc-f32+stage2)":        1024,
     # Others, O s2g, etc.
     "mma(split-q+share-qkv+o-s2g+stage1)":          256,
     "mma(split-q+share-qkv+o-s2g+stage2)":          128,
@@ -525,6 +528,8 @@ for (B, H, N, D) in BHNDs:
     # Split-Q + QK Fine-grained Tiling + Swizzle
     out_mma_tiling_qk1,        _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qk, q, k, v, "mma(split-q+tiling-qk+stage1)",  o, stages=1)
     out_mma_tiling_qk2,        _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qk, q, k, v, "mma(split-q+tiling-qk+stage2)",  o, stages=2)
+    out_mma_tiling_qk_f321,    _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qk_acc_f32, q, k, v, "mma(split-q+tiling-qk+acc-f32+stage1)",  o, stages=1)
+    out_mma_tiling_qk_f322,    _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qk_acc_f32, q, k, v, "mma(split-q+tiling-qk+acc-f32+stage2)",  o, stages=2)
     out_mma_tiling_qk_sq1,     _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qk_swizzle_q, q, k, v, "mma(split-q+tiling-qk+swizzle-q+stage1)",  o, stages=1)
     out_mma_tiling_qk_sq2,     _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qk_swizzle_q, q, k, v, "mma(split-q+tiling-qk+swizzle-q+stage2)",  o, stages=2)
     out_mma_tiling_qk_sqk1,    _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qk_swizzle_qk, q, k, v, "mma(split-q+tiling-qk+swizzle-qk+stage1)",  o, stages=1)
@@ -578,6 +583,8 @@ for (B, H, N, D) in BHNDs:
             # Split-Q + QK Fine-grained Tiling
             check_all_close(out_flash, out_mma_tiling_qk1,        "out_mma_tiling_qk1",       args.check_all)
             check_all_close(out_flash, out_mma_tiling_qk2,        "out_mma_tiling_qk2",       args.check_all)
+            check_all_close(out_flash, out_mma_tiling_qk_f321,    "out_mma_tiling_qk_f321",   args.check_all)
+            check_all_close(out_flash, out_mma_tiling_qk_f322,    "out_mma_tiling_qk_f322",   args.check_all)
             check_all_close(out_flash, out_mma_tiling_qk_sq1,     "out_mma_tiling_qk_sq1",    args.check_all)
             check_all_close(out_flash, out_mma_tiling_qk_sq2,     "out_mma_tiling_qk_sq2",    args.check_all)
             check_all_close(out_flash, out_mma_tiling_qk_sqk1,    "out_mma_tiling_qk_sqk1",   args.check_all)
@@ -602,6 +609,8 @@ for (B, H, N, D) in BHNDs:
             # Split-Q + QK Fine-grained Tiling
             check_all_close(out_sdpa, out_mma_tiling_qk1,         "out_mma_tiling_qk1",       args.check_all, False)
             check_all_close(out_sdpa, out_mma_tiling_qk2,         "out_mma_tiling_qk2",       args.check_all, False)
+            check_all_close(out_sdpa, out_mma_tiling_qk_f321,     "out_mma_tiling_qk_f321",   args.check_all, False)
+            check_all_close(out_sdpa, out_mma_tiling_qk_f322,     "out_mma_tiling_qk_f322",   args.check_all, False)
             check_all_close(out_sdpa, out_mma_tiling_qk_sq1,      "out_mma_tiling_qk_sq1",    args.check_all, False)
             check_all_close(out_sdpa, out_mma_tiling_qk_sq2,      "out_mma_tiling_qk_sq2",    args.check_all, False)
             check_all_close(out_sdpa, out_mma_tiling_qk_sqk1,     "out_mma_tiling_qk_sqk1",   args.check_all, False)
