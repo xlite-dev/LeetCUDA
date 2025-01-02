@@ -297,7 +297,7 @@ flash_attn_mma_stages_split_q_tiling_qk_swizzle_q_kernel(half* Q,
   // stage 1, V shared QK smem, Br=Bc=64,  d=64:  2M+(2M) =4M,  +Pad(2M)  = 6M
   // stage 1, V shared QK smem, Br=Bc=128, d=64:  4M+4M   =8M,  +Pad(2M)  = 10M
   // stage 2, V shared QK smem, Br=Bc=64,  d=64:  4M+(4M) =8M,  +Pad(2M)  = 10M
-  // stage 2, V shared QK smem, Br=Bc=128, d=64:  8M+8M   =16M, +Pad(2M) = 18M
+  // stage 2, V shared QK smem, Br=Bc=128, d=64:  8M+8M   =16M, +Pad(2M)  = 18M
   uint32_t smem_Q_base_ptr = __cvta_generic_to_shared(Q_tile_smem);
   uint32_t smem_K_base_ptr = __cvta_generic_to_shared(K_tile_smem);
   uint32_t smem_V_base_ptr = __cvta_generic_to_shared(V_tile_smem);
