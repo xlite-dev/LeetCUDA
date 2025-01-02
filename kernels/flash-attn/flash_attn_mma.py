@@ -92,7 +92,7 @@ def get_build_sources():
     build_sources.append('./mma/swizzle/flash_attn_mma_tiling_qk_swizzle_qkv.cu')
     # Others
     if args.build_others:
-        build_sources.append('./mma/others/flash_attn_mma_share_qkv_s2g_o.cu')
+        build_sources.append('./mma/others/flash_attn_mma_share_qkv_Os2g.cu')
         build_sources.append('./mma/others/flash_attn_mma_share_kv_F32F16F16F32_rr.cu')
         build_sources.append('./mma/others/flash_attn_mma_share_qkv_F32F16F16F32_rr.cu')
     # Pybind
@@ -174,7 +174,7 @@ lib = load(name='flash_attn_lib',
 
 if not args.build_others:
     fake_fa_func = lambda q, k, v, o, s: o # fake FA func
-    setattr(lib, "flash_attn_mma_stages_split_q_shared_qkv_s2g_o", fake_fa_func)
+    setattr(lib, "flash_attn_mma_stages_split_q_shared_qkv_Os2g", fake_fa_func)
     setattr(lib, "flash_attn_mma_stages_split_q_shared_kv_acc_f32_rr", fake_fa_func)
     setattr(lib, "flash_attn_mma_stages_split_q_shared_qkv_acc_f32_rr", fake_fa_func)
 
@@ -467,8 +467,8 @@ MAX_HEADDIM_CFG: dict[str, int] = {
     "mma(split-q+tiling-qk+swizzle-qkv+stage1)":    256,
     "mma(split-q+tiling-qk+swizzle-qkv+stage2)":    256,
     # Others, O s2g, etc.
-    "mma(split-q+share-qkv+s2g-o+stage1)":          256,
-    "mma(split-q+share-qkv+s2g-o+stage2)":          128,
+    "mma(split-q+share-qkv+o-s2g+stage1)":          256,
+    "mma(split-q+share-qkv+o-s2g+stage2)":          128,
     "mma(split-q+share-kv+acc-f32+rr+stage1)":      256,
     "mma(split-q+share-kv+acc-f32+rr+stage2)":      128,
     "mma(split-q+share-qkv+acc-f32+rr+stage1)":     256,
@@ -534,8 +534,8 @@ for (B, H, N, D) in BHNDs:
     # Others, O s2g, etc.
     out_mma_share_kv_rr1,      _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv_acc_f32_rr, q, k, v, "mma(split-q+share-kv+acc-f32+rr+stage1)", o, stages=1)
     out_mma_share_kv_rr2,      _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv_acc_f32_rr, q, k, v, "mma(split-q+share-kv+acc-f32+rr+stage2)", o, stages=2)
-    out_mma_share_qkv_s2g1,    _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_qkv_s2g_o, q, k, v, "mma(split-q+share-qkv+s2g-o+stage1)", o, stages=1)
-    out_mma_share_qkv_s2g2,    _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_qkv_s2g_o, q, k, v, "mma(split-q+share-qkv+s2g-o+stage2)", o, stages=2)
+    out_mma_share_qkv_s2g1,    _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_qkv_Os2g, q, k, v, "mma(split-q+share-qkv+o-s2g+stage1)", o, stages=1)
+    out_mma_share_qkv_s2g2,    _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_qkv_Os2g, q, k, v, "mma(split-q+share-qkv+o-s2g+stage2)", o, stages=2)
     out_mma_share_qkv_rr1,     _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_qkv_acc_f32_rr, q, k, v, "mma(split-q+share-qkv+acc-f32+rr+stage1)", o, stages=1)
     out_mma_share_qkv_rr2,     _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_qkv_acc_f32_rr, q, k, v, "mma(split-q+share-qkv+acc-f32+rr+stage2)", o, stages=2)
     # FA2, SDPA official
