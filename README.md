@@ -52,19 +52,19 @@ I have also implemented **FlashAttention-2** using pure MMA PTX instructions, wh
 |✔️|✔️|✔️|✔️|
 |Tile Warp (More Values)|Multi Stages (1/2)|Collective Store (Shfl)|**Split KV/Q**|
 |✔️|✔️|✔️|✔️|
-|**Shared QKV/KV** SMEM|**Prefetch Q** s2r|**Prefetch K/V** g2s|**QK Fine-grained Tiling**|
+|**Shared QKV/KV** SMEM|**Prefetch Q** s2r|**Prefetch K/V** g2s|**QKV Fine-grained Tiling**|
 |✔️|✔️|✔️|✔️|
 
-Currently, for small-scale attention `(B<=4, H <=48, SeqLen <= 8192, D <= 64)` it can run faster than FA2/SDPA on some Devices. For example, on NVIDIA RTX 3080 Laptop, [📚 Split Q + Fully Shared QKV SMEM](#mma-share-qkv) method can achieve **55 TFLOPS (D=64)** that almost **~1.5x** 🎉 faster than FA2. On NVIDIA L20, [📚 Split Q + QK Fine-grained Tiling](#mma-tiling-qk) method can achieve **81 TFLOPS (D=512)** that almost **~1.4x** 🎉 faster than SDPA (EFFICIENT ATTENTION). However, for large-scale attention, there remains a performance gap. Stay tuned for updates ~ (MMA Acc F16, softmax Acc F32 vs FA2 MMA/softmax Acc F32, 👇Benchmark)
+Currently, for small-scale attention `(B<=4, H <=48, SeqLen <= 8192, D <= 64)` it can run faster than FA2/SDPA on some Devices. For example, on NVIDIA RTX 3080 Laptop, [📚 Split Q + Fully Shared QKV SMEM](#mma-share-qkv) method can achieve **55 TFLOPS (D=64)** that almost **~1.5x** 🎉 faster than FA2. On NVIDIA L20, [📚 Split Q + QKV Fully Fine-grained Tiling](#mma-tiling-qkv) method can achieve **90 TFLOPS (D=512)** that almost **~1.55x** 🎉 faster than SDPA (EFFICIENT ATTENTION). However, for large-scale attention, there remains a performance gap. Stay tuned for updates ~ (MMA Acc F16, softmax Acc F32 vs FA2 MMA/softmax Acc F32, 👇Benchmark)
 
-|Algorithm| (B,H,N,D) | 3080 Laptop | L20 | RTX 4090 |   
+|Algorithm| (B,H,N,D) | RTX 3080 Laptop | L20 | RTX 4090 |   
 |:---:|:---:|:---:|:---:|:---:|  
 |FlashAttention-2|(1,8,8192,64)|37 TFLOPS|100 TFLOPS|145 TFLOPS|  
 |split-q+share-qkv+stage2|(1,8,8192,64)|**55 TFLOPS**|99 TFLOPS|**221 TFLOPS**|  
 |FlashAttention-2|(1,48,8192,64)|37 TFLOPS|109 TFLOPS|163 TFLOPS|
 |split-q+share-qkv+stage2|(1,48,8192,64)|**48 TFLOPS**|107 TFLOPS|**224 TFLOPS**|
 |SDPA(EFFICIENT ATTENTION)|(1,48,8192,512)|16 TFLOPS|58 TFLOPS|85 TFLOPS|
-|split-q+tiling-qk+swizzle-qk+stage2|(1,48,8192,512)|**23 TFLOPS**|**81 TFLOPS**|**127 TFLOPS**|
+|split-q+tiling-qkv+stage2|(1,48,8192,512)|**23 TFLOPS**|**90 TFLOPS**|**135 TFLOPS**|
 |Precision Errors vs FA2/SDPA| / | max: < ~1e-3 | min: ~0.0 | mean: < ~1e-5 |
 
 The `Split KV` and `Split Q` implementations have been carried out in [flash-attention-mma⚡️⚡️](./kernels/flash-attn) for performance comparison. The `Split KV` method, which involves splitting all QKV across MMA (Warps), is slower than `Split Q` method, which splitting Q across MMA(Warps) and keep access KV for all MMA(Warps). 
@@ -123,13 +123,26 @@ flash_attn_mma_stages_split_q_shared_qkv_kernel(half* Q, half* K, half* V, half*
 <div id="mma-tiling-qk"></div>  
 
 ```C++
-// Fine-grained tiling at the MMA level for Q and K results in a constant SRAM usage of
+// Fine-grained tiling at the MMA level for Q@K^T results in a constant SRAM usage of
 // 64 * kMmaAtomK for Q and K. For V, the SRAM complexity is O(kMmaAtomK * d), leading to
 // an overall SRAM complexity of O(kMmaAtomK * d). Consequently, this approach allows us to
-// extend D (head dimension) up to 1024. Stay tuned for updates ~
+// extend D (head dimension) up to 1024.
 __global__ void // Q, K, V, O -> [B, H, N, D]
 flash_attn_mma_stages_split_q_tiling_qk_kernel(half* Q, half* K, half* V, half* O, ...);
 ```
+
+- 📚 Split Q + QKV Fully Fine-grained Tiling (**O(Brx16)~O(1) SRAM** vs FA2 **O(4xBrxd) SRAM**)
+
+<div id="mma-tiling-qkv"></div>  
+
+```C++
+// Fine-grained tiling at the MMA level for all Q@K^T and P@V results in a constant SRAM usage of
+// 64 * kMmaAtomK for Q, K, V, leading to an overall SRAM complexity of O(Br * 16). Consequently,
+// this approach allows us to run faster than SDPA w or w/o MMA Acc F32. 
+__global__ void // Q, K, V, O -> [B, H, N, D]
+flash_attn_mma_stages_split_q_tiling_qkv_kernel(half* Q, half* K, half* V, half* O, ...);
+```
+
 ## ©️Citations🎉🎉
 
 ```BibTeX
