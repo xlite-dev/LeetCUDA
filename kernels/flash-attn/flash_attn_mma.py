@@ -97,7 +97,6 @@ def get_build_sources():
         build_sources.append('./mma/others/flash_attn_mma_share_qkv_Os2g.cu')
         build_sources.append('./mma/others/flash_attn_mma_share_kv_F32F16F16F32_rr.cu')
         build_sources.append('./mma/others/flash_attn_mma_share_qkv_F32F16F16F32_rr.cu')
-        build_sources.append('./mma/others/flash_attn_mma_tiling_qk_F32F16F16F32_rr.cu')
     # Pybind
     build_sources.append('./pybind/flash_attn.cc')
     return build_sources
@@ -180,7 +179,6 @@ if not args.build_others:
     setattr(lib, "flash_attn_mma_stages_split_q_shared_qkv_Os2g", fake_fa_func)
     setattr(lib, "flash_attn_mma_stages_split_q_shared_kv_acc_f32_rr", fake_fa_func)
     setattr(lib, "flash_attn_mma_stages_split_q_shared_qkv_acc_f32_rr", fake_fa_func)
-    setattr(lib, "flash_attn_mma_stages_split_q_tiling_qk_acc_f32_rr", fake_fa_func)
 
 
 def get_mha_tflops(B: int, H: int, N: int, D: int, secs: float=1.0, 
@@ -556,8 +554,6 @@ for (B, H, N, D) in BHNDs:
     out_mma_share_qkv_s2g2,    _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_qkv_Os2g, q, k, v, "mma(split-q+share-qkv+o-s2g+stage2)", o, stages=2)
     out_mma_share_qkv_rr1,     _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_qkv_acc_f32_rr, q, k, v, "mma(split-q+share-qkv+acc-f32+rr+stage1)", o, stages=1)
     out_mma_share_qkv_rr2,     _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_qkv_acc_f32_rr, q, k, v, "mma(split-q+share-qkv+acc-f32+rr+stage2)", o, stages=2)
-    out_mma_tiling_qk_rr1,     _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qk_acc_f32_rr, q, k, v, "mma(split-q+tiling-qk+acc-f32+rr+stage1)",  o, stages=1)
-    out_mma_tiling_qk_rr2,     _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qk_acc_f32_rr, q, k, v, "mma(split-q+tiling-qk+acc-f32+rr+stage2)",  o, stages=2)
     # FA2, SDPA official
     out_flash,                 _ = run_benchmark(flash_attn_func, fq, fk, fv, "(flash)")
     out_sdpa,                  _ = run_benchmark(partial(sdpa, use_flash=(D<=256)), q, k, v, "(sdpa)")
@@ -616,8 +612,6 @@ for (B, H, N, D) in BHNDs:
             check_all_close(out_flash, out_mma_share_qkv_s2g2,    "out_mma_share_qkv_s2g2",   args.check_all)
             check_all_close(out_flash, out_mma_share_qkv_rr1,     "out_mma_share_qkv_rr1",    args.check_all)
             check_all_close(out_flash, out_mma_share_qkv_rr2,     "out_mma_share_qkv_rr2",    args.check_all)
-            check_all_close(out_flash, out_mma_tiling_qk_rr1,     "out_mma_tiling_qk_rr1",    args.check_all)
-            check_all_close(out_flash, out_mma_tiling_qk_rr2,     "out_mma_tiling_qk_rr2",    args.check_all)
             pretty_print_line()
         elif args.run_torch_sdpa:
             pretty_print_line()
@@ -643,6 +637,4 @@ for (B, H, N, D) in BHNDs:
             # Others, O s2g, etc.
             check_all_close(out_sdpa, out_mma_share_qkv_rr1,      "out_mma_share_qkv_rr1",    args.check_all, False)
             check_all_close(out_sdpa, out_mma_share_qkv_rr2,      "out_mma_share_qkv_rr2",    args.check_all, False)
-            check_all_close(out_sdpa, out_mma_tiling_qk_rr1,      "out_mma_tiling_qk_rr1",    args.check_all, False)
-            check_all_close(out_sdpa, out_mma_tiling_qk_rr2,      "out_mma_tiling_qk_rr2",    args.check_all, False)
             pretty_print_line()
