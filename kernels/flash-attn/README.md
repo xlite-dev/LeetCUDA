@@ -24,7 +24,7 @@ This repository's implementation of FlashAttention is intended solely for learni
 |split-q+tiling-qkv+stage2|(1,48,8192,512)|**23 TFLOPS**|**90 TFLOPS**|**135 TFLOPS**|
 |Precision Errors vs FA2/SDPA| / | max: < ~1e-3 | min: ~0.0 | mean: < ~1e-5 |
 
-For example, currently, for small-scale attention `(B<=4, H <=48, SeqLen <= 8192, D <= 64)` it can run faster than FA2/SDPA on some Devices. For example, on NVIDIA RTX 3080 Laptop, [📚 Split Q + Fully Shared QKV SMEM](#mma-share-qkv) method can achieve **55 TFLOPS (D=64)** that almost **~1.5x** 🎉 faster than FA2. On NVIDIA L20, [📚 Split Q + QKV Fully Fine-grained Tiling](#mma-tiling-qkv) method can achieve **90 TFLOPS (D=512)** that almost **~1.6x** 🎉 faster than SDPA (EFFICIENT ATTENTION). However, for large-scale attention, there remains a performance gap. Stay tuned for updates ~ 
+For example, on NVIDIA RTX 3080 Laptop, [📚 Split Q + Fully Shared QKV SMEM](#mma-share-qkv) method can achieve **55 TFLOPS (D=64)** that almost **~1.5x** 🎉 faster than FA2. On NVIDIA L20, [📚 Split Q + QKV Fully Fine-grained Tiling](#mma-tiling-qkv) method can achieve **90 TFLOPS (D=512)** that almost **~1.6x** 🎉 faster than SDPA (EFFICIENT ATTENTION). However, for large-scale attention, there remains a performance gap. Stay tuned for updates ~ 
 
 ## 📖 Contents
 
