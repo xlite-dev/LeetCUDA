@@ -131,6 +131,12 @@ void flash_attn_mma_stages_split_q_shared_kv_acc_f32_rr(torch::Tensor Q,
                                                         torch::Tensor V, 
                                                         torch::Tensor O, 
                                                         int stages);
+
+void flash_attn_mma_stages_split_q_tiling_qk_acc_f32_rr(torch::Tensor Q, 
+                                                        torch::Tensor K, 
+                                                        torch::Tensor V, 
+                                                        torch::Tensor O, 
+                                                        int stages);
 #endif 
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
@@ -158,5 +164,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   TORCH_BINDING_COMMON_EXTENSION(flash_attn_mma_stages_split_q_shared_qkv_Os2g)
   TORCH_BINDING_COMMON_EXTENSION(flash_attn_mma_stages_split_q_shared_kv_acc_f32_rr)
   TORCH_BINDING_COMMON_EXTENSION(flash_attn_mma_stages_split_q_shared_qkv_acc_f32_rr)
+  TORCH_BINDING_COMMON_EXTENSION(flash_attn_mma_stages_split_q_tiling_qk_acc_f32_rr)
 #endif
 }
