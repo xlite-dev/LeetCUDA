@@ -434,12 +434,6 @@ flash_attn_mma_stages_split_q_tiling_qkv_swizzle_qk_kernel(half* Q,
         int load_gmem_K_d  = (tile_K_d * kMmaAtomK) + load_smem_K_d; // K [Bc,16] from [seqlen,d]
         int load_gmem_K_addr = (
           K_gmem_offset + load_gmem_K_Bc * kHeadDim + load_gmem_K_d);
-        uint32_t load_smem_K_ptr = (
-          smem_K_base_ptr + (smem_sel * K_tile_size + 
-                             load_smem_K_Bc * (kMmaAtomK + kPadK) + 
-                             swizzle_permuted_K_j<kMmaAtomK>(
-                              load_smem_K_Bc, load_smem_K_d)) * sizeof(half)
-        );
         #pragma unroll
         for (int i = 0; i < (kMmaAtomK / (kNumThreads / Bc)); i += 8) {
           uint32_t load_smem_K_ptr = (
