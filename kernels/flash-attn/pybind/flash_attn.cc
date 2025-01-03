@@ -139,6 +139,18 @@ void flash_attn_mma_stages_split_q_tiling_qkv_swizzle_qkv(torch::Tensor Q,
                                                           torch::Tensor V, 
                                                           torch::Tensor O, 
                                                           int stages);
+
+void flash_attn_mma_stages_split_q_tiling_qkv_acc_f32_swizzle_q(torch::Tensor Q, 
+                                                                torch::Tensor K, 
+                                                                torch::Tensor V, 
+                                                                torch::Tensor O, 
+                                                                int stages);
+
+void flash_attn_mma_stages_split_q_tiling_qkv_acc_f32_swizzle_qk(torch::Tensor Q, 
+                                                                 torch::Tensor K, 
+                                                                 torch::Tensor V, 
+                                                                 torch::Tensor O, 
+                                                                 int stages);
 // Others
 #ifdef BUILD_FLASH_ATTN_MMA_OTHERS
 // O collective store using shared memory, O s2g.
@@ -186,6 +198,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   TORCH_BINDING_COMMON_EXTENSION(flash_attn_mma_stages_split_q_tiling_qkv_swizzle_q)
   TORCH_BINDING_COMMON_EXTENSION(flash_attn_mma_stages_split_q_tiling_qkv_swizzle_qk)
   TORCH_BINDING_COMMON_EXTENSION(flash_attn_mma_stages_split_q_tiling_qkv_swizzle_qkv)
+  TORCH_BINDING_COMMON_EXTENSION(flash_attn_mma_stages_split_q_tiling_qkv_acc_f32_swizzle_q)
+  TORCH_BINDING_COMMON_EXTENSION(flash_attn_mma_stages_split_q_tiling_qkv_acc_f32_swizzle_qk)
   // Others
 #ifdef BUILD_FLASH_ATTN_MMA_OTHERS
   TORCH_BINDING_COMMON_EXTENSION(flash_attn_mma_stages_split_q_shared_qkv_Os2g)
