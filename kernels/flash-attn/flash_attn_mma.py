@@ -94,6 +94,7 @@ def get_build_sources():
     build_sources.append('./mma/swizzle/flash_attn_mma_tiling_qk_swizzle_qk.cu')
     build_sources.append('./mma/swizzle/flash_attn_mma_tiling_qk_swizzle_qkv.cu')
     build_sources.append('./mma/swizzle/flash_attn_mma_tiling_qkv_swizzle_q.cu')
+    build_sources.append('./mma/swizzle/flash_attn_mma_tiling_qkv_swizzle_qk.cu')
     # Others
     if args.build_others:
         build_sources.append('./mma/others/flash_attn_mma_share_qkv_Os2g.cu')
@@ -557,6 +558,8 @@ for (B, H, N, D) in BHNDs:
     out_mma_tiling_qkv2,       _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qkv, q, k, v, "mma(split-q+tiling-qkv+stage2)",  o, stages=2)
     out_mma_tiling_qkv_sq1,    _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qkv_swizzle_q, q, k, v, "mma(split-q+tiling-qkv+swizzle-q+stage1)",  o, stages=1)
     out_mma_tiling_qkv_sq2,    _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qkv_swizzle_q, q, k, v, "mma(split-q+tiling-qkv+swizzle-q+stage2)",  o, stages=2)
+    out_mma_tiling_qkv_sqk1,   _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qkv_swizzle_qk, q, k, v, "mma(split-q+tiling-qkv+swizzle-qk+stage1)",  o, stages=1)
+    out_mma_tiling_qkv_sqk2,   _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qkv_swizzle_qk, q, k, v, "mma(split-q+tiling-qkv+swizzle-qk+stage2)",  o, stages=2)
     out_mma_tiling_qkv_f321,   _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qkv_acc_f32, q, k, v, "mma(split-q+tiling-qkv+acc-f32+stage1)",  o, stages=1)
     out_mma_tiling_qkv_f322,   _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qkv_acc_f32, q, k, v, "mma(split-q+tiling-qkv+acc-f32+stage2)",  o, stages=2)
     # Others, O s2g, etc.
@@ -619,6 +622,8 @@ for (B, H, N, D) in BHNDs:
             check_all_close(out_flash, out_mma_tiling_qkv2,       "out_mma_tiling_qkv2",      args.check_all)
             check_all_close(out_flash, out_mma_tiling_qkv_sq1,    "out_mma_tiling_qkv_sq1",   args.check_all)
             check_all_close(out_flash, out_mma_tiling_qkv_sq2,    "out_mma_tiling_qkv_sq2",   args.check_all)
+            check_all_close(out_flash, out_mma_tiling_qkv_sqk1,   "out_mma_tiling_qkv_sqk1",  args.check_all)
+            check_all_close(out_flash, out_mma_tiling_qkv_sqk2,   "out_mma_tiling_qkv_sqk2",  args.check_all)
             check_all_close(out_flash, out_mma_tiling_qkv_f321,   "out_mma_tiling_qkv_f321",  args.check_all)
             check_all_close(out_flash, out_mma_tiling_qkv_f322,   "out_mma_tiling_qkv_f322",  args.check_all)
             # Others, O s2g, etc.
@@ -652,6 +657,8 @@ for (B, H, N, D) in BHNDs:
             check_all_close(out_sdpa, out_mma_tiling_qkv2,        "out_mma_tiling_qkv2",      args.check_all, False)
             check_all_close(out_sdpa, out_mma_tiling_qkv_sq1,     "out_mma_tiling_qkv_sq1",   args.check_all, False)
             check_all_close(out_sdpa, out_mma_tiling_qkv_sq2,     "out_mma_tiling_qkv_sq2",   args.check_all, False)
+            check_all_close(out_sdpa, out_mma_tiling_qkv_sqk1,    "out_mma_tiling_qkv_sqk1",  args.check_all, False)
+            check_all_close(out_sdpa, out_mma_tiling_qkv_sqk2,    "out_mma_tiling_qkv_sqk2",  args.check_all, False)
             check_all_close(out_sdpa, out_mma_tiling_qkv_f321,    "out_mma_tiling_qkv_f321",  args.check_all, False)
             check_all_close(out_sdpa, out_mma_tiling_qkv_f322,    "out_mma_tiling_qkv_f322",  args.check_all, False)
             # Others, O s2g, etc.
