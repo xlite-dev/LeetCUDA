@@ -96,6 +96,8 @@ def get_build_sources():
     build_sources.append('./mma/swizzle/flash_attn_mma_tiling_qkv_swizzle_q.cu')
     build_sources.append('./mma/swizzle/flash_attn_mma_tiling_qkv_swizzle_qk.cu')
     build_sources.append('./mma/swizzle/flash_attn_mma_tiling_qkv_swizzle_qkv.cu')
+    build_sources.append('./mma/swizzle/flash_attn_mma_tiling_qkv_swizzle_q_F32F16F16F32.cu')
+    build_sources.append('./mma/swizzle/flash_attn_mma_tiling_qkv_swizzle_qk_F32F16F16F32.cu')
     # Others
     if args.build_others:
         build_sources.append('./mma/others/flash_attn_mma_share_qkv_Os2g.cu')
@@ -432,68 +434,74 @@ BHNDs = [(B, H, N, D) for B in Bs for H in Hs for N in Ns for D in Ds]
 # max headdim supported for different methods. skip if D > max_D.
 MAX_HEADDIM_CFG: dict[str, int] = {
     # FA2, SDPA, Naive MHA.
-    "(flash)":                                      256, 
-    "(sdpa)":                                       4096, # may no limit
-    "(unfused)":                                    4096, # may no limit
+    "(flash)":                                              256, 
+    "(sdpa)":                                               4096, # may no limit
+    "(unfused)":                                            4096, # may no limit
     # Split-KV
-    "mma(split-kv+stage1)":                         128,
-    "mma(split-kv+stage2)":                         128,
+    "mma(split-kv+stage1)":                                 128,
+    "mma(split-kv+stage2)":                                 128,
     # Split-Q
-    "mma(split-q+stage1)":                          128,
-    "mma(split-q+stage2)":                          128,
+    "mma(split-q+stage1)":                                  128,
+    "mma(split-q+stage2)":                                  128,
     # Split-Q + Shared KV SMEM
-    "mma(split-q+share-kv+stage1)":                 256,
-    "mma(split-q+share-kv+stage2)":                 128,
-    "mma(split-q+share-kv+swizzle-q+stage1)":       256,
-    "mma(split-q+share-kv+swizzle-q+stage2)":       128,
-    "mma(split-q+share-kv+swizzle-qk+stage1)":      256,
-    "mma(split-q+share-kv+swizzle-qk+stage2)":      128,
-    "mma(split-q+share-kv+swizzle-qkv+stage1)":     256,
-    "mma(split-q+share-kv+swizzle-qkv+stage2)":     128,
-    "mma(split-q+share-kv+acc-f32+stage1)":         256,
-    "mma(split-q+share-kv+acc-f32+stage2)":         128,
+    "mma(split-q+share-kv+stage1)":                         256,
+    "mma(split-q+share-kv+stage2)":                         128,
+    "mma(split-q+share-kv+swizzle-q+stage1)":               256,
+    "mma(split-q+share-kv+swizzle-q+stage2)":               128,
+    "mma(split-q+share-kv+swizzle-qk+stage1)":              256,
+    "mma(split-q+share-kv+swizzle-qk+stage2)":              128,
+    "mma(split-q+share-kv+swizzle-qkv+stage1)":             256,
+    "mma(split-q+share-kv+swizzle-qkv+stage2)":             128,
+    "mma(split-q+share-kv+acc-f32+stage1)":                 256,
+    "mma(split-q+share-kv+acc-f32+stage2)":                 128,
     # Split-Q + Fully Shared QKV SMEM
-    "mma(split-q+share-qkv+stage1)":                256, 
-    "mma(split-q+share-qkv+stage2)":                128, 
-    "mma(split-q+share-qkv+swizzle-q+stage1)":      256,
-    "mma(split-q+share-qkv+swizzle-q+stage2)":      128,
-    "mma(split-q+share-qkv+swizzle-qk+stage1)":     256,
-    "mma(split-q+share-qkv+swizzle-qk+stage2)":     128,
-    "mma(split-q+share-qkv+swizzle-qkv+stage1)":    256,
-    "mma(split-q+share-qkv+swizzle-qkv+stage2)":    128,
-    "mma(split-q+share-qkv+acc-f32+stage1)":        256,
-    "mma(split-q+share-qkv+acc-f32+stage2)":        128,
+    "mma(split-q+share-qkv+stage1)":                        256, 
+    "mma(split-q+share-qkv+stage2)":                        128, 
+    "mma(split-q+share-qkv+swizzle-q+stage1)":              256,
+    "mma(split-q+share-qkv+swizzle-q+stage2)":              128,
+    "mma(split-q+share-qkv+swizzle-qk+stage1)":             256,
+    "mma(split-q+share-qkv+swizzle-qk+stage2)":             128,
+    "mma(split-q+share-qkv+swizzle-qkv+stage1)":            256,
+    "mma(split-q+share-qkv+swizzle-qkv+stage2)":            128,
+    "mma(split-q+share-qkv+acc-f32+stage1)":                256,
+    "mma(split-q+share-qkv+acc-f32+stage2)":                128,
     # Split-Q + QK Fine-grained Tiling
-    "mma(split-q+tiling-qk+stage1)":                1024,
-    "mma(split-q+tiling-qk+stage2)":                1024,
-    "mma(split-q+tiling-qk+swizzle-q+stage1)":      1024,
-    "mma(split-q+tiling-qk+swizzle-q+stage2)":      1024,
-    "mma(split-q+tiling-qk+swizzle-qk+stage1)":     1024,
-    "mma(split-q+tiling-qk+swizzle-qk+stage2)":     1024,
-    "mma(split-q+tiling-qk+swizzle-qkv+stage1)":    256,
-    "mma(split-q+tiling-qk+swizzle-qkv+stage2)":    256,
-    "mma(split-q+tiling-qk+acc-f32+stage1)":        1024,
-    "mma(split-q+tiling-qk+acc-f32+stage2)":        1024,
+    "mma(split-q+tiling-qk+stage1)":                        1024,
+    "mma(split-q+tiling-qk+stage2)":                        1024,
+    "mma(split-q+tiling-qk+swizzle-q+stage1)":              1024,
+    "mma(split-q+tiling-qk+swizzle-q+stage2)":              1024,
+    "mma(split-q+tiling-qk+swizzle-qk+stage1)":             1024,
+    "mma(split-q+tiling-qk+swizzle-qk+stage2)":             1024,
+    "mma(split-q+tiling-qk+swizzle-qkv+stage1)":            256,
+    "mma(split-q+tiling-qk+swizzle-qkv+stage2)":            256,
+    "mma(split-q+tiling-qk+acc-f32+stage1)":                1024,
+    "mma(split-q+tiling-qk+acc-f32+stage2)":                1024,
     # Split-Q + Fully QKV Fine-grained Tiling
-    "mma(split-q+tiling-qkv+stage1)":               1024,
-    "mma(split-q+tiling-qkv+stage2)":               1024,
-    "mma(split-q+tiling-qkv+acc-f32+stage1)":       1024,
-    "mma(split-q+tiling-qkv+acc-f32+stage2)":       1024,
-    "mma(split-q+tiling-qkv+swizzle-q+stage1)":     1024,
-    "mma(split-q+tiling-qkv+swizzle-q+stage2)":     1024,
-    "mma(split-q+tiling-qkv+swizzle-qk+stage1)":    1024,
-    "mma(split-q+tiling-qkv+swizzle-qk+stage2)":    1024,
-    "mma(split-q+tiling-qkv+swizzle-qkv+stage1)":   1024,
-    "mma(split-q+tiling-qkv+swizzle-qkv+stage2)":   1024,
+    "mma(split-q+tiling-qkv+stage1)":                       1024,
+    "mma(split-q+tiling-qkv+stage2)":                       1024,
+    "mma(split-q+tiling-qkv+acc-f32+stage1)":               1024,
+    "mma(split-q+tiling-qkv+acc-f32+stage2)":               1024,
+    "mma(split-q+tiling-qkv+swizzle-q+stage1)":             1024,
+    "mma(split-q+tiling-qkv+swizzle-q+stage2)":             1024,
+    "mma(split-q+tiling-qkv+swizzle-qk+stage1)":            1024,
+    "mma(split-q+tiling-qkv+swizzle-qk+stage2)":            1024,
+    "mma(split-q+tiling-qkv+swizzle-qkv+stage1)":           1024,
+    "mma(split-q+tiling-qkv+swizzle-qkv+stage2)":           1024,
+    "mma(split-q+tiling-qkv+acc-f32+swizzle-q+stage1)":     1024,
+    "mma(split-q+tiling-qkv+acc-f32+swizzle-q+stage2)":     1024,
+    "mma(split-q+tiling-qkv+acc-f32+swizzle-qk+stage1)":    1024,
+    "mma(split-q+tiling-qkv+acc-f32+swizzle-qk+stage2)":    1024,
+    "mma(split-q+tiling-qkv+acc-f32+swizzle-qkv+stage1)":   1024,
+    "mma(split-q+tiling-qkv+acc-f32+swizzle-qkv+stage2)":   1024,
     # Others, O s2g, etc.
-    "mma(split-q+share-qkv+o-s2g+stage1)":          256,
-    "mma(split-q+share-qkv+o-s2g+stage2)":          128,
-    "mma(split-q+share-kv+acc-f32+rr+stage1)":      256,
-    "mma(split-q+share-kv+acc-f32+rr+stage2)":      128,
-    "mma(split-q+share-qkv+acc-f32+rr+stage1)":     256,
-    "mma(split-q+share-qkv+acc-f32+rr+stage2)":     256,
-    "mma(split-q+tiling-qk+acc-f32+rr+stage1)":     1024,
-    "mma(split-q+tiling-qk+acc-f32+rr+stage2)":     1024,
+    "mma(split-q+share-qkv+o-s2g+stage1)":                  256,
+    "mma(split-q+share-qkv+o-s2g+stage2)":                  128,
+    "mma(split-q+share-kv+acc-f32+rr+stage1)":              256,
+    "mma(split-q+share-kv+acc-f32+rr+stage2)":              128,
+    "mma(split-q+share-qkv+acc-f32+rr+stage1)":             256,
+    "mma(split-q+share-qkv+acc-f32+rr+stage2)":             256,
+    "mma(split-q+tiling-qk+acc-f32+rr+stage1)":             1024,
+    "mma(split-q+tiling-qk+acc-f32+rr+stage2)":             1024,
 }
 
 seed = args.seed if args.seed else random.choice(range(10000))
@@ -565,6 +573,10 @@ for (B, H, N, D) in BHNDs:
     out_mma_tiling_qkv_sqkv2,  _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qkv_swizzle_qkv, q, k, v, "mma(split-q+tiling-qkv+swizzle-qkv+stage2)",  o, stages=2)
     out_mma_tiling_qkv_f321,   _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qkv_acc_f32, q, k, v, "mma(split-q+tiling-qkv+acc-f32+stage1)",  o, stages=1)
     out_mma_tiling_qkv_f322,   _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qkv_acc_f32, q, k, v, "mma(split-q+tiling-qkv+acc-f32+stage2)",  o, stages=2)
+    out_mma_tiling_qkv_fsq1,   _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qkv_acc_f32_swizzle_q, q, k, v, "mma(split-q+tiling-qkv+acc-f32+swizzle-q+stage1)",  o, stages=1)
+    out_mma_tiling_qkv_fsq2,   _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qkv_acc_f32_swizzle_q, q, k, v, "mma(split-q+tiling-qkv+acc-f32+swizzle-q+stage2)",  o, stages=2)
+    out_mma_tiling_qkv_fsqk1,  _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qkv_acc_f32_swizzle_qk, q, k, v, "mma(split-q+tiling-qkv+acc-f32+swizzle-qk+stage1)",  o, stages=1)
+    out_mma_tiling_qkv_fsqk2,  _ = run_benchmark(lib.flash_attn_mma_stages_split_q_tiling_qkv_acc_f32_swizzle_qk, q, k, v, "mma(split-q+tiling-qkv+acc-f32+swizzle-qk+stage2)",  o, stages=2)
     # Others, O s2g, etc.
     out_mma_share_kv_rr1,      _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv_acc_f32_rr, q, k, v, "mma(split-q+share-kv+acc-f32+rr+stage1)", o, stages=1)
     out_mma_share_kv_rr2,      _ = run_benchmark(lib.flash_attn_mma_stages_split_q_shared_kv_acc_f32_rr, q, k, v, "mma(split-q+share-kv+acc-f32+rr+stage2)", o, stages=2)
@@ -631,6 +643,10 @@ for (B, H, N, D) in BHNDs:
             check_all_close(out_flash, out_mma_tiling_qkv_sqkv2,  "out_mma_tiling_qkv_sqkv2", args.check_all)
             check_all_close(out_flash, out_mma_tiling_qkv_f321,   "out_mma_tiling_qkv_f321",  args.check_all)
             check_all_close(out_flash, out_mma_tiling_qkv_f322,   "out_mma_tiling_qkv_f322",  args.check_all)
+            check_all_close(out_flash, out_mma_tiling_qkv_fsq1,   "out_mma_tiling_qkv_fsq1",  args.check_all)
+            check_all_close(out_flash, out_mma_tiling_qkv_fsq2,   "out_mma_tiling_qkv_fsq2",  args.check_all)
+            check_all_close(out_flash, out_mma_tiling_qkv_fsqk1,  "out_mma_tiling_qkv_fsqk1", args.check_all)
+            check_all_close(out_flash, out_mma_tiling_qkv_fsqk2,  "out_mma_tiling_qkv_fsqk2", args.check_all)
             # Others, O s2g, etc.
             check_all_close(out_flash, out_mma_share_kv_rr1,      "out_mma_share_kv_rr1",     args.check_all)
             check_all_close(out_flash, out_mma_share_kv_rr2,      "out_mma_share_kv_rr2",     args.check_all)
@@ -668,6 +684,10 @@ for (B, H, N, D) in BHNDs:
             check_all_close(out_sdpa, out_mma_tiling_qkv_sqkv2,   "out_mma_tiling_qkv_sqkv2", args.check_all, False)
             check_all_close(out_sdpa, out_mma_tiling_qkv_f321,    "out_mma_tiling_qkv_f321",  args.check_all, False)
             check_all_close(out_sdpa, out_mma_tiling_qkv_f322,    "out_mma_tiling_qkv_f322",  args.check_all, False)
+            check_all_close(out_sdpa, out_mma_tiling_qkv_fsq1,    "out_mma_tiling_qkv_fsq1",  args.check_all, False)
+            check_all_close(out_sdpa, out_mma_tiling_qkv_fsq2,    "out_mma_tiling_qkv_fsq2",  args.check_all, False)
+            check_all_close(out_sdpa, out_mma_tiling_qkv_fsqk1,   "out_mma_tiling_qkv_fsqk1", args.check_all, False)
+            check_all_close(out_sdpa, out_mma_tiling_qkv_fsqk2,   "out_mma_tiling_qkv_fsqk2", args.check_all, False)
             # Others, O s2g, etc.
             check_all_close(out_sdpa, out_mma_share_qkv_rr1,      "out_mma_share_qkv_rr1",    args.check_all, False)
             check_all_close(out_sdpa, out_mma_share_qkv_rr2,      "out_mma_share_qkv_rr2",    args.check_all, False)
