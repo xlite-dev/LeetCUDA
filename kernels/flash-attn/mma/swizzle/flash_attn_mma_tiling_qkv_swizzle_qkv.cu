@@ -326,14 +326,15 @@ flash_attn_mma_stages_split_q_tiling_qkv_swizzle_qkv_kernel(half* Q,
         int load_gmem_Q_d = (stage * kMmaAtomK) + load_smem_Q_d; // 0,8
         int load_gmem_Q_addr = (
           Q_gmem_offset + load_gmem_Q_Br * kHeadDim + load_gmem_Q_d);
-        uint32_t load_smem_Q_ptr = (
-          smem_Q_base_ptr + (stage * Q_tile_size + 
-                             load_smem_Q_Br * (kMmaAtomK + kPadQ) + 
-                             swizzle_permuted_Q_j<kMmaAtomK>(
-                              load_smem_Q_Br, load_smem_Q_d)) * sizeof(half));
         #pragma unroll
         for (int i = 0; i < (kMmaAtomK / (kNumThreads / Br)); i += 8) {
-          CP_ASYNC_CG(load_smem_Q_ptr + i * 2, &Q[load_gmem_Q_addr + i], 16);
+          uint32_t load_smem_Q_ptr = (
+            smem_Q_base_ptr + (stage * Q_tile_size + 
+                               load_smem_Q_Br * (kMmaAtomK + kPadQ) + 
+                               swizzle_permuted_Q_j<kMmaAtomK>(
+                                load_smem_Q_Br, load_smem_Q_d + i)
+                              ) * sizeof(half));
+          CP_ASYNC_CG(load_smem_Q_ptr, &Q[load_gmem_Q_addr + i], 16);
         }
         CP_ASYNC_COMMIT_GROUP();
         
@@ -342,15 +343,16 @@ flash_attn_mma_stages_split_q_tiling_qkv_swizzle_qkv_kernel(half* Q,
         int load_gmem_K_d  = (stage * kMmaAtomK) + load_smem_K_d; // K [Bc,16] from [seqlen,d]
         int load_gmem_K_addr = (
           K_gmem_offset + load_gmem_K_Bc * kHeadDim + load_gmem_K_d);
-        uint32_t load_smem_K_ptr = (
-          smem_K_base_ptr + (stage * K_tile_size + 
-                             load_smem_K_Bc * (kMmaAtomK + kPadK) + 
-                             swizzle_permuted_K_j<kMmaAtomK>(
-                              load_smem_K_Bc, load_smem_K_d)) * sizeof(half)
-        );
         #pragma unroll
         for (int i = 0; i < (kMmaAtomK / (kNumThreads / Bc)); i += 8) {
-          CP_ASYNC_CG(load_smem_K_ptr + i * 2, &K[load_gmem_K_addr + i], 16);
+          uint32_t load_smem_K_ptr = (
+            smem_K_base_ptr + (stage * K_tile_size + 
+                               load_smem_K_Bc * (kMmaAtomK + kPadK) + 
+                               swizzle_permuted_K_j<kMmaAtomK>(
+                                load_smem_K_Bc, load_smem_K_d + i)
+                              ) * sizeof(half)
+          );
+          CP_ASYNC_CG(load_smem_K_ptr, &K[load_gmem_K_addr + i], 16);
         }
         CP_ASYNC_COMMIT_GROUP();
       } // end for stage
@@ -379,14 +381,16 @@ flash_attn_mma_stages_split_q_tiling_qkv_swizzle_qkv_kernel(half* Q,
           int load_gmem_Q_d = ((tile_K_d + 1) * kMmaAtomK) + load_smem_Q_d;
           int load_gmem_Q_addr = (
             Q_gmem_offset + load_gmem_Q_Br * kHeadDim + load_gmem_Q_d);
-          uint32_t load_smem_Q_ptr = (
-            smem_Q_base_ptr + (smem_sel_next * Q_tile_size + 
-                               load_smem_Q_Br * (kMmaAtomK + kPadQ) + 
-                               swizzle_permuted_Q_j<kMmaAtomK>(
-                                load_smem_Q_Br, load_smem_Q_d)) * sizeof(half));
           #pragma unroll
           for (int i = 0; i < (kMmaAtomK / (kNumThreads / Br)); i += 8) {
-            CP_ASYNC_CG(load_smem_Q_ptr + i * 2, &Q[load_gmem_Q_addr + i], 16);
+            uint32_t load_smem_Q_ptr = (
+              smem_Q_base_ptr + (smem_sel_next * Q_tile_size + 
+                                 load_smem_Q_Br * (kMmaAtomK + kPadQ) + 
+                                 swizzle_permuted_Q_j<kMmaAtomK>(
+                                  load_smem_Q_Br, load_smem_Q_d + i)
+                                ) * sizeof(half)
+            );
+            CP_ASYNC_CG(load_smem_Q_ptr, &Q[load_gmem_Q_addr + i], 16);
           }
           CP_ASYNC_COMMIT_GROUP();
 
@@ -395,15 +399,16 @@ flash_attn_mma_stages_split_q_tiling_qkv_swizzle_qkv_kernel(half* Q,
           int load_gmem_K_d  = ((tile_K_d + 1) * kMmaAtomK) + load_smem_K_d; // K [Bc,16] from [seqlen,d]
           int load_gmem_K_addr = (
             K_gmem_offset + load_gmem_K_Bc * kHeadDim + load_gmem_K_d);
-          uint32_t load_smem_K_ptr = (
-            smem_K_base_ptr + (smem_sel_next * K_tile_size + 
-                               load_smem_K_Bc * (kMmaAtomK + kPadK) + 
-                               swizzle_permuted_K_j<kMmaAtomK>(
-                                load_smem_K_Bc, load_smem_K_d)) * sizeof(half)
-          );
           #pragma unroll
           for (int i = 0; i < (kMmaAtomK / (kNumThreads / Bc)); i += 8) {
-            CP_ASYNC_CG(load_smem_K_ptr + i * 2, &K[load_gmem_K_addr + i], 16);
+            uint32_t load_smem_K_ptr = (
+              smem_K_base_ptr + (smem_sel_next * K_tile_size + 
+                                 load_smem_K_Bc * (kMmaAtomK + kPadK) + 
+                                 swizzle_permuted_K_j<kMmaAtomK>(
+                                  load_smem_K_Bc, load_smem_K_d + i)
+                                ) * sizeof(half)
+            );
+            CP_ASYNC_CG(load_smem_K_ptr, &K[load_gmem_K_addr + i], 16);
           }
           CP_ASYNC_COMMIT_GROUP();
         } 
@@ -413,14 +418,16 @@ flash_attn_mma_stages_split_q_tiling_qkv_swizzle_qkv_kernel(half* Q,
         int load_gmem_Q_d = (tile_K_d * kMmaAtomK) + load_smem_Q_d;
         int load_gmem_Q_addr = (
           Q_gmem_offset + load_gmem_Q_Br * kHeadDim + load_gmem_Q_d);
-        uint32_t load_smem_Q_ptr = (
-          smem_Q_base_ptr + (smem_sel * Q_tile_size + 
-                             load_smem_Q_Br * (kMmaAtomK + kPadQ) + 
-                             swizzle_permuted_Q_j<kMmaAtomK>(
-                              load_smem_Q_Br, load_smem_Q_d)) * sizeof(half));
         #pragma unroll
         for (int i = 0; i < (kMmaAtomK / (kNumThreads / Br)); i += 8) {
-          CP_ASYNC_CG(load_smem_Q_ptr + i * 2, &Q[load_gmem_Q_addr + i], 16);
+          uint32_t load_smem_Q_ptr = (
+            smem_Q_base_ptr + (smem_sel * Q_tile_size + 
+                               load_smem_Q_Br * (kMmaAtomK + kPadQ) + 
+                               swizzle_permuted_Q_j<kMmaAtomK>(
+                                load_smem_Q_Br, load_smem_Q_d + i)
+                              ) * sizeof(half)
+          );
+          CP_ASYNC_CG(load_smem_Q_ptr, &Q[load_gmem_Q_addr + i], 16);
         }
         CP_ASYNC_COMMIT_GROUP();
 
@@ -429,15 +436,15 @@ flash_attn_mma_stages_split_q_tiling_qkv_swizzle_qkv_kernel(half* Q,
         int load_gmem_K_d  = (tile_K_d * kMmaAtomK) + load_smem_K_d; // K [Bc,16] from [seqlen,d]
         int load_gmem_K_addr = (
           K_gmem_offset + load_gmem_K_Bc * kHeadDim + load_gmem_K_d);
-        uint32_t load_smem_K_ptr = (
-          smem_K_base_ptr + (smem_sel * K_tile_size + 
-                             load_smem_K_Bc * (kMmaAtomK + kPadK) + 
-                             swizzle_permuted_K_j<kMmaAtomK>(
-                              load_smem_K_Bc, load_smem_K_d)) * sizeof(half)
-        );
         #pragma unroll
         for (int i = 0; i < (kMmaAtomK / (kNumThreads / Bc)); i += 8) {
-          CP_ASYNC_CG(load_smem_K_ptr + i * 2, &K[load_gmem_K_addr + i], 16);
+          uint32_t load_smem_K_ptr = (
+            smem_K_base_ptr + (smem_sel * K_tile_size + 
+                               load_smem_K_Bc * (kMmaAtomK + kPadK) + 
+                               swizzle_permuted_K_j<kMmaAtomK>(
+                                load_smem_K_Bc, load_smem_K_d + i)) * sizeof(half)
+          );
+          CP_ASYNC_CG(load_smem_K_ptr, &K[load_gmem_K_addr + i], 16);
         }
         CP_ASYNC_COMMIT_GROUP();
         // Wait curr Q, K tile ready.
@@ -602,17 +609,19 @@ flash_attn_mma_stages_split_q_tiling_qkv_swizzle_qkv_kernel(half* Q,
         #pragma unroll
         for (int stage = 0; stage < (kStage - 1); ++stage) {
           int load_gmem_V_Bc = (tile_K_seqlen * Bc) + load_smem_V_Bc; // < seqlen
-          int load_gmem_V_d  = (stage * kMmaAtomN * 2) + load_smem_V_d; // V [Bc,16] from [seqlen,d]
+          int load_gmem_V_d  = (stage * kMmaAtomN * 2) + load_smem_V_d; // V [Bc,16] 0,8
           int load_gmem_V_addr = (
             V_gmem_offset + load_gmem_V_Bc * kHeadDim + load_gmem_V_d);
-          uint32_t load_smem_V_ptr = (
-            smem_V_base_ptr + (stage * V_tile_size + 
-                               load_smem_V_Bc * (kMmaAtomN * 2 + kPadV) + 
-                               load_smem_V_d) * sizeof(half)
-          );
           #pragma unroll
           for (int i = 0; i < (kMmaAtomN * 2 / (kNumThreads / Bc)); i += 8) {
-            CP_ASYNC_CG(load_smem_V_ptr + i * 2, &V[load_gmem_V_addr + i], 16);
+            uint32_t load_smem_V_ptr = (
+              smem_V_base_ptr + (stage * V_tile_size + 
+                                 load_smem_V_Bc * (kMmaAtomN * 2 + kPadV) + 
+                                 swizzle_permuted_V_j<kMmaAtomN * 2>(
+                                  load_smem_V_Bc, load_smem_V_d + i)
+                                ) * sizeof(half)
+            );
+            CP_ASYNC_CG(load_smem_V_ptr, &V[load_gmem_V_addr + i], 16);
           }
           CP_ASYNC_COMMIT_GROUP();
         }
@@ -681,14 +690,16 @@ flash_attn_mma_stages_split_q_tiling_qkv_swizzle_qkv_kernel(half* Q,
               int load_gmem_V_d  = (((j / 2) + 1) * kMmaAtomN * 2) + load_smem_V_d; // V [Bc,16] from [seqlen,d]
               int load_gmem_V_addr = (
                 V_gmem_offset + load_gmem_V_Bc * kHeadDim + load_gmem_V_d);
-              uint32_t load_smem_V_ptr = (
-                smem_V_base_ptr + (smem_sel_v_next * V_tile_size + 
-                                   load_smem_V_Bc * (kMmaAtomN * 2 + kPadV) + 
-                                   load_smem_V_d) * sizeof(half)
-              );
               #pragma unroll
               for (int i = 0; i < (kMmaAtomN * 2 / (kNumThreads / Bc)); i += 8) {
-                CP_ASYNC_CG(load_smem_V_ptr + i * 2, &V[load_gmem_V_addr + i], 16);
+                uint32_t load_smem_V_ptr = (
+                  smem_V_base_ptr + (smem_sel_v_next * V_tile_size + 
+                                     load_smem_V_Bc * (kMmaAtomN * 2 + kPadV) + 
+                                     swizzle_permuted_V_j<kMmaAtomN * 2>(
+                                      load_smem_V_Bc, load_smem_V_d + i)
+                                    ) * sizeof(half)
+                );
+                CP_ASYNC_CG(load_smem_V_ptr, &V[load_gmem_V_addr + i], 16);
               }
               CP_ASYNC_COMMIT_GROUP();
             } // end if < (kWarpTileHeadDimV / 2)
@@ -698,14 +709,16 @@ flash_attn_mma_stages_split_q_tiling_qkv_swizzle_qkv_kernel(half* Q,
             int load_gmem_V_d  = ((j / 2) * kMmaAtomN * 2) + load_smem_V_d; // V [Bc,16] from [seqlen,d]
             int load_gmem_V_addr = (
               V_gmem_offset + load_gmem_V_Bc * kHeadDim + load_gmem_V_d);
-            uint32_t load_smem_V_ptr = (
-              smem_V_base_ptr + (smem_sel_v * V_tile_size + 
-                                 load_smem_V_Bc * (kMmaAtomN * 2 + kPadV) + 
-                                 load_smem_V_d) * sizeof(half)
-            );
             #pragma unroll
             for (int i = 0; i < (kMmaAtomN * 2 / (kNumThreads / Bc)); i += 8) {
-              CP_ASYNC_CG(load_smem_V_ptr + i * 2, &V[load_gmem_V_addr + i], 16);
+              uint32_t load_smem_V_ptr = (
+                smem_V_base_ptr + (smem_sel_v * V_tile_size + 
+                                   load_smem_V_Bc * (kMmaAtomN * 2 + kPadV) + 
+                                   swizzle_permuted_V_j<kMmaAtomN * 2>(
+                                      load_smem_V_Bc, load_smem_V_d + i)
+                                  ) * sizeof(half)
+              );
+              CP_ASYNC_CG(load_smem_V_ptr, &V[load_gmem_V_addr + i], 16);
             }
             CP_ASYNC_COMMIT_GROUP();
             // Wait curr V tile g2s ready.
@@ -719,11 +732,12 @@ flash_attn_mma_stages_split_q_tiling_qkv_swizzle_qkv_kernel(half* Q,
           // Load k16n8 V from smem [Bc,8*2] -> regs, R_V, ldmatrix.x2.trans.
           int warp_smem_V_d  = warp_KV * (kMmaAtomN * kWarpTileHeadDimV) + (j % 2) * kMmaAtomN; // d, matmaul N
           int lane_smem_V_Bc = tile_V_Bc * kMmaAtomK + lane_id % 16; // 0~15; Bc, matmul K
-          int lane_smem_V_d  = warp_smem_V_d; // 0
+          int lane_smem_V_d  = warp_smem_V_d; // (j % 2) * kMmaAtomN = 0,8
           uint32_t lane_smem_V_ptr = (
             smem_V_base_ptr + (smem_sel_v * V_tile_size + 
                                lane_smem_V_Bc * (kMmaAtomN * 2 + kPadV) + 
-                               lane_smem_V_d) * sizeof(half)
+                               swizzle_permuted_V_j<kMmaAtomN * 2>(
+                                lane_smem_V_Bc, lane_smem_V_d)) * sizeof(half)
           );
           LDMATRIX_X2_T(R_V[0], R_V[1], lane_smem_V_ptr); // R_V
           // Compute P[Br,Bc]@V[Bc,d] = O[Br,d]
@@ -869,7 +883,6 @@ flash_attn_mma_stages_split_q_tiling_qkv_swizzle_qkv_kernel(half* Q,
   } // kWarpTileSeqLenP = 1
 }
 
-// Launch kernel for flash_attn_mma_stages_split_q_tiling_qk
 template<const int kHeadDim, const int kStage>
 void launch_flash_attn_mma_stages_split_q_tiling_qkv_swizzle_qkv(
   torch::Tensor Q, torch::Tensor K, torch::Tensor V, torch::Tensor O) {
@@ -890,7 +903,7 @@ void launch_flash_attn_mma_stages_split_q_tiling_qkv_swizzle_qkv(
   constexpr int kNumThreads = WARP_SIZE * kMmaTileSeqLenQ * kMmaTileSeqLenK; // 32*4*1=128, num threads
   constexpr int kPadQ = 0;
   constexpr int kPadK = 0; 
-  constexpr int kPadV = 8;
+  constexpr int kPadV = 0;
   // 0/1, MMA Acc always be fp16, but O storage can be fp32 or half.
   // FP16 can provide precision to approximately 3-4 decimal places.
   // Thus, if the error does not exceed 1e-3, using FP16 storage is 
