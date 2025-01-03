@@ -956,7 +956,7 @@ void flash_attn_mma_stages_split_q_tiling_qkv_acc_f32_swizzle_qk(torch::Tensor Q
                                                                  torch::Tensor K, 
                                                                  torch::Tensor V, 
                                                                  torch::Tensor O, 
-                                                                int stages) {
+                                                                 int stages) {
   CHECK_TORCH_TENSOR_DTYPE(Q, torch::kHalf) // Q [B,H,N,D]
   CHECK_TORCH_TENSOR_DTYPE(K, torch::kHalf) // K [B,H,N,D]
   CHECK_TORCH_TENSOR_DTYPE(V, torch::kHalf) // V [B,H,N,D]
