@@ -748,7 +748,7 @@ void launch_flash_attn_mma_stages_split_q_tiling_qkv_acc_f32(
   constexpr int kPadQ = 8;
   constexpr int kPadK = 8; 
   constexpr int kPadV = 8;
-  // 0/1, MMA Acc always be fp16, but O storage can be fp32 or half.
+  // 0/1, MMA Acc always be fp32, but O storage can be fp32 or half.
   // FP16 can provide precision to approximately 3-4 decimal places.
   // Thus, if the error does not exceed 1e-3, using FP16 storage is 
   // sufficient for most applications.
