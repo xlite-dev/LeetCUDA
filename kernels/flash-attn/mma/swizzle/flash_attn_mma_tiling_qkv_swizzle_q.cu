@@ -870,6 +870,7 @@ flash_attn_mma_stages_split_q_tiling_qkv_swizzle_q_kernel(half* Q,
   } // kWarpTileSeqLenP = 1
 }
 
+// Launch kernel for flash_attn_mma_stages_split_q_tiling_qk
 template<const int kHeadDim, const int kStage>
 void launch_flash_attn_mma_stages_split_q_tiling_qkv_swizzle_q(
   torch::Tensor Q, torch::Tensor K, torch::Tensor V, torch::Tensor O) {
