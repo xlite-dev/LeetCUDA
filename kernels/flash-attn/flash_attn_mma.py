@@ -414,8 +414,8 @@ def check_all_close(out_flash_or_sdpa: torch.Tensor, out_mma: torch.Tensor,
                 print(f"{tag}[:, :, {(i*8)}:{(i+1)*8}, :]:\n")
                 print(out_mma[:, :, (i*8):(i+1)*8, :].float())
         pretty_print_line()
-    diff = torch.abs(out_flash_or_sdpa.float() - out_mma.float())
-    all_close = str(torch.allclose(out_flash_or_sdpa.float(), out_mma.float(), atol=1e-2))
+    diff = torch.abs(out_flash_or_sdpa - out_mma)
+    all_close = str(torch.allclose(out_flash_or_sdpa, out_mma, atol=1e-2))
     pretty_print_line(
         f"{true_tag} vs {tag:<25}, all close: {all_close:<6}, "
         f"max diff: {diff.max().item():.6f}, min diff: {diff.min().item():.6f}, "
