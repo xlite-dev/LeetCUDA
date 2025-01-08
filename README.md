@@ -16,11 +16,11 @@
 
 📚 **Modern CUDA Learn Notes with PyTorch** for Beginners: It includes **Tensor/CUDA Cores, TF32/F16/BF16/F8**, [📖150+ CUDA Kernels🔥🔥(Easy -> Hard++)](#cuda-kernel) with PyTorch bindings, [📖100+ LLM/VLM/CV/CUDA/CuTe🔥](#my-blogs-part-1) blogs, [📖toy-hgemm⚡️⚡️](./kernels/hgemm) which can achieve `98%~100%` performance of **cuBLAS**, and [📖flash-attention-mma⚡️⚡️](./kernels/flash-attn) using Tensor Cores with pure MMA PTX. Welcome to 🌟👆🏻star this repo to support me, many thanks ~ 🎉🎉
 
-## News 🔥🔥
-- [2025-01-08]: [📚Fully QKV Fine-grained Tiling](#mma-tiling-qkv) has been refactored into 🤖[cuffpa-py](https://github.com/DefTruth/cuffpa-py) lib: 📚FFPA - Yet another Faster Flash Prefill Attention with O(1)🎉SRAM complexity for headdim > 256, 1.5x🎉faster vs SDPA EA.
-- [2024-12-02]: HGEMM MMA kernels has been refactored into 🤖[hgemm-tensorcores-mma](https://github.com/DefTruth/hgemm-tensorcores-mma) lib: ⚡️Write HGEMM from scratch using Tensor Cores with WMMA, MMA PTX and CuTe API.
+## 📖 News 🔥🔥
+- [2025-01-08]: [📚Fully QKV Fine-grained Tiling](#mma-tiling-qkv) has been refactored into 🤖[cuffpa-py](https://github.com/DefTruth/cuffpa-py) library: 📚FFPA - Yet another Faster Flash Prefill Attention with O(1)🎉SRAM complexity for headdim > 256, ~1.5x🎉faster vs SDPA EA.
+- [2024-12-02]: HGEMM MMA kernels has been refactored into 🤖[hgemm-tensorcores-mma](https://github.com/DefTruth/hgemm-tensorcores-mma) library: ⚡️Write HGEMM from scratch using Tensor Cores with WMMA, MMA PTX and CuTe API.
 
-## HGEMM/FA2-MMA Benchmark 🔥🔥 
+## 📖 HGEMM/FA2-MMA Benchmark 🎉🎉
 
 <div id="hgemm-sgemm"></div>  
 
