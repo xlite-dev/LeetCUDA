@@ -16,6 +16,12 @@
 
 📚 **Modern CUDA Learn Notes with PyTorch** for Beginners: It includes **Tensor/CUDA Cores, TF32/F16/BF16/F8**, [📖150+ CUDA Kernels🔥🔥(Easy -> Hard++)](#cuda-kernel) with PyTorch bindings, [📖100+ LLM/VLM/CV/CUDA/CuTe🔥](#my-blogs-part-1) blogs, [📖toy-hgemm⚡️⚡️](./kernels/hgemm) which can achieve `98%~100%` performance of **cuBLAS**, and [📖flash-attention-mma⚡️⚡️](./kernels/flash-attn) using Tensor Cores with pure MMA PTX. Welcome to 🌟👆🏻star this repo to support me, many thanks ~ 🎉🎉
 
+## News 🔥🔥
+- [2025-01-08]: [📚 Split Q + Fully QKV Fine-grained Tiling](#mma-tiling-qkv) have refactor as 🤖[cuffpa-py](https://github.com/DefTruth/cuffpa-py) library: 📚[WIP] FFPA - Yet another Faster Flash Prefill Attention with O(1)🎉GPU SRAM complexity for headdim > 256, ~1.5x🎉faster than SDPA EA.
+- [2024-12-02]: HGEMM MMA kernels have refactor as 🤖[hgemm-tensorcores-mma](https://github.com/DefTruth/hgemm-tensorcores-mma) library: ⚡️Write HGEMM from scratch using Tensor Cores with WMMA, MMA PTX and CuTe API (Write for Fun 👀~)
+
+## HGEMM/FA2-MMA Benchmark 🔥🔥 
+
 <div id="hgemm-sgemm"></div>  
 
 <div align='center'>
@@ -23,6 +29,7 @@
   <img src='https://github.com/user-attachments/assets/05ef4f5e-d999-48ea-b58e-782cffb24e85' height="170px" width="270px">
   <img src='https://github.com/user-attachments/assets/9472e970-c083-4b31-9252-3eeecc761078' height="170px" width="270px">
 </div> 
+
 
 Currently, on NVIDIA L20, RTX 4090 and RTX 3080 Laptop, compared with cuBLAS's default Tensor Cores algorithm, the `HGEMM (WMMA/MMA/CuTe)` in this repo (`blue`🔵) can achieve `98%~100%` of its (`orange`🟠) performance. Please check [toy-hgemm library⚡️⚡️](./kernels/hgemm) or [hgemm-tensorcores-mma⚡️⚡️](https://github.com/DefTruth/hgemm-tensorcores-mma) repo for more details.
 
@@ -131,7 +138,7 @@ __global__ void // Q, K, V, O -> [B, H, N, D]
 flash_attn_mma_stages_split_q_tiling_qk_kernel(half* Q, half* K, half* V, half* O, ...);
 ```
 
-- 📚 Split Q + Fully QKV Fine-grained Tiling (**O(Brx16)~O(1) SRAM** vs FA2 **O(4xBrxd) SRAM**)
+- 📚 Split Q + Fully QKV Fine-grained Tiling (**O(2xBrx16)~O(1) SRAM** vs FA2 **O(4xBrxd) SRAM**)
 
 <div id="mma-tiling-qkv"></div>  
 
@@ -142,7 +149,6 @@ flash_attn_mma_stages_split_q_tiling_qk_kernel(half* Q, half* K, half* V, half* 
 __global__ void // Q, K, V, O -> [B, H, N, D]
 flash_attn_mma_stages_split_q_tiling_qkv_kernel(half* Q, half* K, half* V, half* O, ...);
 ```
-
 ## ©️Citations🎉🎉
 
 ```BibTeX
