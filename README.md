@@ -12,17 +12,28 @@
   <img src=https://img.shields.io/badge/License-GPLv3.0-turquoise.svg >
  </div>   
 
-<div id="contents"></div>  
 
 📚 **Modern CUDA Learn Notes with PyTorch** for Beginners: It includes **Tensor/CUDA Cores, TF32/F16/BF16/F8**, [📖150+ CUDA Kernels🔥🔥(Easy -> Hard++)](#cuda-kernel) with PyTorch bindings, [📖100+ LLM/VLM/CV/CUDA/CuTe🔥](#my-blogs-part-1) blogs, [📖toy-hgemm⚡️⚡️](./kernels/hgemm) which can achieve `98%~100%` performance of **cuBLAS**, and [📖flash-attention-mma⚡️⚡️](./kernels/flash-attn) using Tensor Cores with pure MMA PTX. Welcome to 🌟👆🏻star this repo to support me, many thanks ~ 🎉🎉
 
 ## 📖 News 🔥🔥
+<div id="news"></div>  
+
 - [2025-01-08]: [📚Fully QKV Fine-grained Tiling](#mma-tiling-qkv) has been refactored into 🤖[cuffpa-py](https://github.com/DefTruth/cuffpa-py): 📚FFPA - Yet another Faster Flash Prefill Attention with O(1)🎉SRAM complexity for headdim > 256, ~1.5x🎉faster vs SDPA EA.
 - [2024-12-02]: HGEMM MMA kernels has been refactored into 🤖[hgemm-tensorcores-mma](https://github.com/DefTruth/hgemm-tensorcores-mma): ⚡️Write HGEMM from scratch using Tensor Cores with WMMA, MMA PTX and CuTe API.
 
-## 📖 HGEMM/FA2-MMA Benchmark 🎉🎉
+## 📖 Contents
 
-<div id="hgemm-sgemm"></div>  
+<div id="contents"></div>  
+
+- [📖 News](#news)
+- [📖 HGEMM Benchmark](#hgemm-mma-bench)
+- [📖 FA2-MMA Benchmark](#fa-mma-bench)
+- [📖 150+ CUDA Kernels](#cuda-kernel)
+- [📖 100+ LLM/CUDA Blogs](#my-blogs-part-1)
+
+## 📖 HGEMM-MMA Benchmark 🎉🎉
+
+<div id="hgemm-mma-bench"></div>  
 
 <div align='center'>
   <img src='https://github.com/user-attachments/assets/71927ac9-72b3-4ce9-b0e2-788b5885bc99' height="170px" width="270px">
@@ -47,6 +58,9 @@ Currently, on NVIDIA L20, RTX 4090 and RTX 3080 Laptop, compared with cuBLAS's d
 |Collective Store (Shfl)|Row Major (NN)|Col Major (TN)| SGEMM FP32/TF32|
 |✔️|✔️|✔️|✔️|
 
+## 📖 FA2-MMA Benchmark 🎉🎉 
+
+<div id="fa-mma-bench"></div>  
 
 I have also implemented **FlashAttention-2** using pure MMA PTX instructions, which supports features such as Multi-Stages, Tile MMA, Tile Warp, Shared KV SMEM, **Fully Shared QKV SMEM**, **Prefetch Q s2r**, **Prefetch K/V g2s**, **QKV Fine-grained Tiling**, Collective Store, etc. Please refer to [flash-attention-mma⚡️⚡️](./kernels/flash-attn) for more details.
 
@@ -544,7 +558,7 @@ GNU General Public License v3.0
 
 ## 🎉Contribute ([©️back👆🏻](#contents))
 
-<div id="Contribute"></div>  
+<div id="contribute"></div>  
 
 How to contribute? Star this repo or check [🌤🌤CONTRIBUTE🎉🎉](https://github.com/DefTruth/CUDA-Learn-Notes/issues/50). 
 
@@ -558,7 +572,9 @@ How to contribute? Star this repo or check [🌤🌤CONTRIBUTE🎉🎉](https://
 </a>
 </div>
 
-## 📖 References ([©️back👆🏻](#contents))
+## 📖 References ([©️back👆🏻](#contents)) 
+<div id="ref"></div>  
+
 - [flash-attention-minimal](https://github.com/tspeterkim/flash-attention-minimal)
 - [tiny-flash-attention](https://github.com/66RING/tiny-flash-attention)
 - [cute-gemm](https://github.com/reed-lau/cute-gemm)
