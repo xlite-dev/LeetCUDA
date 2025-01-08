@@ -33,7 +33,7 @@
 
 -->
 
-## 📖 HGEMM-MMA Benchmark 🎉🎉
+## 📖 HGEMM Benchmark 🎉🎉
 
 <div id="hgemm-mma-bench"></div>  
 
