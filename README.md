@@ -25,11 +25,10 @@
 
 <div id="contents"></div>  
 
-- [📖 News](#news)
 - [📖 HGEMM Benchmark](#hgemm-mma-bench)
 - [📖 FA2-MMA Benchmark](#fa-mma-bench)
 - [📖 150+ CUDA Kernels](#cuda-kernel)
-- [📖 100+ LLM/CUDA Blogs](#my-blogs-part-1)
+- [📖 100+ Blogs(LLM/CUDA)](#my-blogs-part-1)
 
 ## 📖 HGEMM-MMA Benchmark 🎉🎉
 
