@@ -23,8 +23,9 @@
 - [2025-01-08]: [📚Split Q + Fully QKV Fine-grained Tiling](#mma-tiling-qkv) has been refactored into 🤖[ffpa-attn-mma](https://github.com/DefTruth/ffpa-attn-mma): 📚FFPA - Yet another Faster Flash Prefill Attention with O(1)🎉SRAM complexity for headdim > 256, **1.5x~2x**🎉faster than SDPA EA: [📈L20 ~1.9x↑🎉](https://github.com/DefTruth/ffpa-attn-mma?tab=readme-ov-file#L1-bench-l20), [📈 A30 ~1.8x↑🎉](https://github.com/DefTruth/ffpa-attn-mma?tab=readme-ov-file#L1-bench-a30), [📈3080 ~2.9x↑🎉](https://github.com/DefTruth/ffpa-attn-mma?tab=readme-ov-file#L1-bench-3080), [📈4090 ~2.1x↑🎉](https://github.com/DefTruth/ffpa-attn-mma?tab=readme-ov-file#L1-bench-4090).  
 
 <div align='center'>
-  <img src='https://github.com/user-attachments/assets/447e2937-f7c8-47c8-8550-8c0c71b910e6' width="407px">
-  <img src='https://github.com/user-attachments/assets/65a8d564-8fa7-4d66-86b9-e238feb86143' width="407px">
+  <img src='https://github.com/user-attachments/assets/cba2edce-ac0d-412e-823c-7eea2cc63f83' height="170px" width="270px">
+  <img src='https://github.com/user-attachments/assets/447e2937-f7c8-47c8-8550-8c0c71b910e6' height="170px" width="270px">
+  <img src='https://github.com/user-attachments/assets/65a8d564-8fa7-4d66-86b9-e238feb86143' height="170px" width="270px">
 </div> 
 
 - [2024-12-02]: HGEMM MMA kernels has been refactored into 🤖[hgemm-tensorcores-mma](https://github.com/DefTruth/hgemm-tensorcores-mma): ⚡️Write HGEMM from scratch using Tensor Cores with WMMA, MMA and CuTe API, achieve peak⚡️ performance.
