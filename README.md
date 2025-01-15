@@ -398,15 +398,15 @@ NOTE: **rr**: means reduce registers usage (for `d>128`); **f32**: means MMA acc
 
 |📖 CUDA Kernel| 📖 Elem DType| 📖 Acc DType| 📖 Docs | 📖 Level |
 |:---|:---|:---|:---|:---|   
-| ✔️ [ffpa_mma_stages_split_q_L1_F16F16F16](https://github.com/DefTruth/ffpa-attn-mma/blob/main/csrc/cuffpa/ffpa_attn_F16F16F16_L1.cu)|f16|f16|[link](https://github.com/DefTruth/ffpa-attn-mma)|⭐️⭐️⭐️⭐️⭐️| 
-| ✔️ [ffpa_mma_stages_split_q_L1_F16F16F32](https://github.com/DefTruth/ffpa-attn-mma/blob/main/csrc/cuffpa/ffpa_attn_F16F16F32_L1.cu)|f16|f32|[link](https://github.com/DefTruth/ffpa-attn-mma)|⭐️⭐️⭐️⭐️⭐️| 
-| ✔️ [ffpa_mma_stages_split_q_L1_mixed_acc](https://github.com/DefTruth/ffpa-attn-mma/blob/main/csrc/cuffpa/ffpa_attn_F16F16F32_L1.cu)|f16|QK f32, PV f16|[link](https://github.com/DefTruth/ffpa-attn-mma)|⭐️⭐️⭐️⭐️⭐️| 
-| ⚠️ [ffpa_mma_stages_split_q_L2_F16F16F16](https://github.com/DefTruth/ffpa-attn-mma/blob/main/csrc/cuffpa/ffpa_attn_F16F16F16_L2.cu)|f16|f16|[link](https://github.com/DefTruth/ffpa-attn-mma)|⭐️⭐️⭐️⭐️⭐️| 
-| ⚠️ [ffpa_mma_stages_split_q_L2_F16F16F32](https://github.com/DefTruth/ffpa-attn-mma/blob/main/csrc/cuffpa/ffpa_attn_F16F16F32_L2.cu)|f16|f32|[link](https://github.com/DefTruth/ffpa-attn-mma)|⭐️⭐️⭐️⭐️⭐️| 
-| ⚠️ [ffpa_mma_stages_split_q_L2_mixed_acc](https://github.com/DefTruth/ffpa-attn-mma/blob/main/csrc/cuffpa/ffpa_attn_F16F16F32_L2.cu)|f16|QK f32, PV f16|[link](https://github.com/DefTruth/ffpa-attn-mma)|⭐️⭐️⭐️⭐️⭐️| 
-| ⚠️ [ffpa_mma_stages_split_q_L3_F16F16F16](https://github.com/DefTruth/ffpa-attn-mma/blob/main/csrc/cuffpa/ffpa_attn_F16F16F16_L3.cu)|f16|f16|[link](https://github.com/DefTruth/ffpa-attn-mma)|⭐️⭐️⭐️⭐️⭐️| 
-| ⚠️ [ffpa_mma_stages_split_q_L3_F16F16F32](https://github.com/DefTruth/ffpa-attn-mma/blob/main/csrc/cuffpa/ffpa_attn_F16F16F32_L3.cu)|f16|f32|[link](https://github.com/DefTruth/ffpa-attn-mma)|⭐️⭐️⭐️⭐️⭐️| 
-| ⚠️ [ffpa_mma_stages_split_q_L3_mixed_acc](https://github.com/DefTruth/ffpa-attn-mma/blob/main/csrc/cuffpa/ffpa_attn_F16F16F32_L3.cu)|f16|QK f32, PV f16|[link](https://github.com/DefTruth/ffpa-attn-mma)|⭐️⭐️⭐️⭐️⭐️| 
+| ✔️ [ffpa_mma_stages_split_q_L1_F16F16F16](https://github.com/DefTruth/ffpa-attn-mma/blob/main/csrc/cuffpa/ffpa_attn_F16F16F16_L1.cu)|f16|f16|[link](https://github.com/DefTruth/ffpa-attn-mma)|⭐️⭐️⭐️⭐️| 
+| ✔️ [ffpa_mma_stages_split_q_L1_F16F16F32](https://github.com/DefTruth/ffpa-attn-mma/blob/main/csrc/cuffpa/ffpa_attn_F16F16F32_L1.cu)|f16|f32|[link](https://github.com/DefTruth/ffpa-attn-mma)|⭐️⭐️⭐️⭐️| 
+| ✔️ [ffpa_mma_stages_split_q_L1_mixed_acc](https://github.com/DefTruth/ffpa-attn-mma/blob/main/csrc/cuffpa/ffpa_attn_F16F16F32_L1.cu)|f16|QK f32, PV f16|[link](https://github.com/DefTruth/ffpa-attn-mma)|⭐️⭐️⭐️⭐️| 
+| ⚠️ [ffpa_mma_stages_split_q_L2_F16F16F16](https://github.com/DefTruth/ffpa-attn-mma/blob/main/csrc/cuffpa/ffpa_attn_F16F16F16_L2.cu)|f16|f16|[link](https://github.com/DefTruth/ffpa-attn-mma)|⭐️⭐️⭐️⭐️| 
+| ⚠️ [ffpa_mma_stages_split_q_L2_F16F16F32](https://github.com/DefTruth/ffpa-attn-mma/blob/main/csrc/cuffpa/ffpa_attn_F16F16F32_L2.cu)|f16|f32|[link](https://github.com/DefTruth/ffpa-attn-mma)|⭐️⭐️⭐️⭐️| 
+| ⚠️ [ffpa_mma_stages_split_q_L2_mixed_acc](https://github.com/DefTruth/ffpa-attn-mma/blob/main/csrc/cuffpa/ffpa_attn_F16F16F32_L2.cu)|f16|QK f32, PV f16|[link](https://github.com/DefTruth/ffpa-attn-mma)|⭐️⭐️⭐️⭐️| 
+| ⚠️ [ffpa_mma_stages_split_q_L3_F16F16F16](https://github.com/DefTruth/ffpa-attn-mma/blob/main/csrc/cuffpa/ffpa_attn_F16F16F16_L3.cu)|f16|f16|[link](https://github.com/DefTruth/ffpa-attn-mma)|⭐️⭐️⭐️⭐️| 
+| ⚠️ [ffpa_mma_stages_split_q_L3_F16F16F32](https://github.com/DefTruth/ffpa-attn-mma/blob/main/csrc/cuffpa/ffpa_attn_F16F16F32_L3.cu)|f16|f32|[link](https://github.com/DefTruth/ffpa-attn-mma)|⭐️⭐️⭐️⭐️| 
+| ⚠️ [ffpa_mma_stages_split_q_L3_mixed_acc](https://github.com/DefTruth/ffpa-attn-mma/blob/main/csrc/cuffpa/ffpa_attn_F16F16F32_L3.cu)|f16|QK f32, PV f16|[link](https://github.com/DefTruth/ffpa-attn-mma)|⭐️⭐️⭐️⭐️| 
 
 NOTE: 🤖[ffpa-attn-mma](https://github.com/DefTruth/ffpa-attn-mma): 📚FFPA - Yet another Faster Flash Prefill Attention with O(1)🎉SRAM complexity for headdim > 256, **1.8x~3x**🎉faster than SDPA EA: [📈L20 ~1.9x↑🎉](https://github.com/DefTruth/ffpa-attn-mma?tab=readme-ov-file#L1-bench-l20), [📈 A30 ~1.8x↑🎉](https://github.com/DefTruth/ffpa-attn-mma?tab=readme-ov-file#L1-bench-a30), [📈3080 ~2.9x↑🎉](https://github.com/DefTruth/ffpa-attn-mma?tab=readme-ov-file#L1-bench-3080), [📈4090 ~2.1x↑🎉](https://github.com/DefTruth/ffpa-attn-mma?tab=readme-ov-file#L1-bench-4090).  
 
