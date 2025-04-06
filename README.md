@@ -1,7 +1,7 @@
 <div align="center">
   <p align="center">
     <h2>📚 Modern CUDA Learn Notes with PyTorch for Beginners 🐑</h2>
-    <a href="#cuda-kernel">📚200+ CUDA Kernels</a> | <a href="#my-blogs-part-1"> 📚100+ Blogs</a> | <a href="#hgemm-mma-bench"> ⚡️HGEMM MMA</a> | <a href="#fa-mma-bench"> ⚡️FA-2 MMA </a> <p>
+    <a href="#cuda-kernel">📚200+ CUDA Kernels</a> | <a href="#my-blogs-part-1"> 📚100+ Blogs</a> | <a href="#hgemm-tensorcores-mma-bench"> ⚡️HGEMM MMA</a> | <a href="#fa-mma-bench"> ⚡️FA-2 MMA </a> <p>
   </p>
   <img src='https://github.com/user-attachments/assets/9306862b-2a30-4a87-bb33-0fde9e9d7cea' width=250 >
   <div align='center'>
@@ -30,7 +30,7 @@
   <img src='https://github.com/user-attachments/assets/65a8d564-8fa7-4d66-86b9-e238feb86143' height="170px" width="270px">
 </div> 
 
-- [2024-12-02]: HGEMM MMA kernels has been refactored into 🤖[hgemm-mma](https://github.com/xlite-dev/hgemm-mma.git): ⚡️Write HGEMM from scratch using Tensor Cores with WMMA, MMA and CuTe API, achieve peak⚡️ performance.
+- [2024-12-02]: HGEMM MMA kernels has been refactored into 🤖[hgemm-tensorcores-mma](https://github.com/xlite-dev/hgemm-tensorcores-mma.git): ⚡️Write HGEMM from scratch using Tensor Cores with WMMA, MMA and CuTe API, achieve peak⚡️ performance.
 
 <div align='center'>
   <img src='https://github.com/user-attachments/assets/71927ac9-72b3-4ce9-b0e2-788b5885bc99' height="170px" width="270px">
@@ -41,9 +41,9 @@
 
 ## 📖 HGEMM Benchmark 🎉🎉
 
-<div id="hgemm-mma-bench"></div>  
+<div id="hgemm-tensorcores-mma-bench"></div>  
 
-Currently, on NVIDIA L20, RTX 4090 and RTX 3080 Laptop, compared with cuBLAS's default Tensor Cores algorithm, the `HGEMM (WMMA/MMA/CuTe)` in this repo (`blue`🔵) can achieve `98%~100%` of its (`orange`🟠) performance. Please check [toy-hgemm library⚡️⚡️](./kernels/hgemm) or [hgemm-mma⚡️⚡️](https://github.com/xlite-dev/hgemm-mma) repo for more details.
+Currently, on NVIDIA L20, RTX 4090 and RTX 3080 Laptop, compared with cuBLAS's default Tensor Cores algorithm, the `HGEMM (WMMA/MMA/CuTe)` in this repo (`blue`🔵) can achieve `98%~100%` of its (`orange`🟠) performance. Please check [toy-hgemm library⚡️⚡️](./kernels/hgemm) or [hgemm-tensorcores-mma⚡️⚡️](https://github.com/xlite-dev/hgemm-tensorcores-mma) repo for more details.
 
 ![toy-hgemm-library](https://github.com/user-attachments/assets/962bda14-b494-4423-b8eb-775da9f5503d)
 
