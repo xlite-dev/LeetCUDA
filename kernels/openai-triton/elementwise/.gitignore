@@ -19,3 +19,4 @@ tmp
 *.nsys*
 *.sqlite
 *.csv
+cache

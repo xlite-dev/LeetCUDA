@@ -125,7 +125,7 @@ def merge_attn_states_kernel_opt(
 
 def test_merge_attn_states(verbose: bool = False):
     # Set test parameters
-    NUM_TOKENS = 4096
+    NUM_TOKENS = 1024
     NUM_QUERY_HEADS = 128
     OUTPUT_LSE = verbose
     # Set HEAD_SIZE to a power of 2 in the test code
@@ -263,8 +263,8 @@ def test_merge_attn_states(verbose: bool = False):
     print(f"Average time taken by merge_attn_states_kernel: {avg_time_kernel} ms")
     print(f"Average time taken by merge_attn_states_kernel_opt: {avg_time_kernel_opt} ms")
     best_config = merge_attn_states_kernel_opt.best_config
-    best_num_warps = best_config.kwargs['num_warps']
-    print(f"Optimal num_warps for merge_attn_states_kernel_opt: {best_num_warps}")
+    print(f"Optimal config for merge_attn_states_kernel_opt: {best_config}, "
+          f"keys: {merge_attn_states_kernel_opt.keys}")
     # Verify the results: Check if the inf values in output_lse are replaced with -inf
     if verbose:
       for h in range(NUM_QUERY_HEADS):

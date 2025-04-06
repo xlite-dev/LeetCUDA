@@ -18,3 +18,4 @@ tmp
 *.nvvp
 *.nsys*
 *.sqlite
+cache
