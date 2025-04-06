@@ -55,16 +55,16 @@ def run_benchmark(perf_func: callable, x: torch.Tensor,
     if show_all: print(out)
     return out, mean_time
 
-# grid memory fence
-print("-" * 100)
-N = 128 * 128
-print(" " * 45 + f"N={N}")
-print("-" * 100)
-x = torch.randn((N), device="cuda").cuda().float()
-out = torch.zeros_like(x).cuda().float().contiguous()
-run_benchmark(lib.softmax_f32,                        x, "f32(fence)",   out)
-run_benchmark(lib.softmax_f32x4,                      x, "f32x4(fence)", out)
-run_benchmark(partial(torch.softmax, dim=0, out=out), x, "f32_th")
+# # grid memory fence
+# print("-" * 100)
+# N = 128 * 128
+# print(" " * 45 + f"N={N}")
+# print("-" * 100)
+# x = torch.randn((N), device="cuda").cuda().float()
+# out = torch.zeros_like(x).cuda().float().contiguous()
+# run_benchmark(lib.softmax_f32,                        x, "f32(fence)",   out)
+# run_benchmark(lib.softmax_f32x4,                      x, "f32x4(fence)", out)
+# run_benchmark(partial(torch.softmax, dim=0, out=out), x, "f32_th")
 
 # per token softmax
 print("-" * 100)

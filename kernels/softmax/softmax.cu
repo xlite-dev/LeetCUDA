@@ -97,53 +97,53 @@ __device__ float block_reduce_max_f32(float val) {
   return value;
 }
 
-// Softmax x: N, y: N
-// grid(N/256), block(K=256)
-template<const int NUM_THREADS = 256>
-__global__ void softmax_f32_kernel(float* x, float* y, float* total, int N) {
+// // Softmax x: N, y: N
+// // grid(N/256), block(K=256)
+// template<const int NUM_THREADS = 256>
+// __global__ void softmax_f32_kernel(float* x, float* y, float* total, int N) {
   
-  const int tid = threadIdx.x;
-  const int idx = blockIdx.x * blockDim.x + tid; 
+//   const int tid = threadIdx.x;
+//   const int idx = blockIdx.x * blockDim.x + tid; 
   
-  float exp_val = (idx < N) ? expf(x[idx]) : 0.0f;
-  float exp_sum = block_reduce_sum_f32<NUM_THREADS>(exp_val);
-  // get the total sum of all blocks.
-  if (tid == 0) atomicAdd(total, exp_sum);
-  __threadfence(); // grid level memory fence
-  // e^x_i/sum(e^x_0,...,e^x_n-1) 
-  // printf("N: %d, idx: %d, bid: %d, tid: %d, exp_val: %f, exp_sum: %f, total: %f\n", 
-  //         N,     idx, blockIdx.x,  tid,     exp_val,     exp_sum,     *total);
-  if (idx < N) y[idx] = exp_val / (*total); 
-}
+//   float exp_val = (idx < N) ? expf(x[idx]) : 0.0f;
+//   float exp_sum = block_reduce_sum_f32<NUM_THREADS>(exp_val);
+//   // get the total sum of all blocks.
+//   if (tid == 0) atomicAdd(total, exp_sum);
+//   __threadfence(); // grid level memory fence
+//   // e^x_i/sum(e^x_0,...,e^x_n-1) 
+//   // printf("N: %d, idx: %d, bid: %d, tid: %d, exp_val: %f, exp_sum: %f, total: %f\n", 
+//   //         N,     idx, blockIdx.x,  tid,     exp_val,     exp_sum,     *total);
+//   if (idx < N) y[idx] = exp_val / (*total); 
+// }
 
-// Softmax Vec4 x: N, y: N
-// grid(N/256), block(256/4)
-template<const int NUM_THREADS = 256/4>
-__global__ void softmax_f32x4_kernel(float* x, float* y, float* total, int N) {
-  const int tid = threadIdx.x;
-  const int idx = (blockIdx.x * blockDim.x + tid) * 4; 
+// // Softmax Vec4 x: N, y: N
+// // grid(N/256), block(256/4)
+// template<const int NUM_THREADS = 256/4>
+// __global__ void softmax_f32x4_kernel(float* x, float* y, float* total, int N) {
+//   const int tid = threadIdx.x;
+//   const int idx = (blockIdx.x * blockDim.x + tid) * 4; 
   
-  float4 reg_x = FLOAT4(x[idx]);
-  float4 reg_exp;
-  reg_exp.x = (idx + 0 < N) ? expf(reg_x.x) : 0.0f;
-  reg_exp.y = (idx + 1 < N) ? expf(reg_x.y) : 0.0f;
-  reg_exp.z = (idx + 2 < N) ? expf(reg_x.z) : 0.0f;
-  reg_exp.w = (idx + 3 < N) ? expf(reg_x.w) : 0.0f;
-  float exp_val = (reg_exp.x + reg_exp.y + reg_exp.z + reg_exp.w);
-  float exp_sum = block_reduce_sum_f32<NUM_THREADS>(exp_val);
-  // get the total sum of all blocks.
-  if (tid == 0) atomicAdd(total, exp_sum);
-  __threadfence(); // grid level memory fence
-  // e^x_i/sum(e^x_0,...,e^x_n-1) 
-  if (idx + 3 < N) {
-    float4 reg_y;
-    reg_y.x = reg_exp.x / (*total);
-    reg_y.y = reg_exp.y / (*total);
-    reg_y.z = reg_exp.z / (*total);
-    reg_y.w = reg_exp.w / (*total);
-    FLOAT4(y[idx]) = reg_y; 
-  }
-}
+//   float4 reg_x = FLOAT4(x[idx]);
+//   float4 reg_exp;
+//   reg_exp.x = (idx + 0 < N) ? expf(reg_x.x) : 0.0f;
+//   reg_exp.y = (idx + 1 < N) ? expf(reg_x.y) : 0.0f;
+//   reg_exp.z = (idx + 2 < N) ? expf(reg_x.z) : 0.0f;
+//   reg_exp.w = (idx + 3 < N) ? expf(reg_x.w) : 0.0f;
+//   float exp_val = (reg_exp.x + reg_exp.y + reg_exp.z + reg_exp.w);
+//   float exp_sum = block_reduce_sum_f32<NUM_THREADS>(exp_val);
+//   // get the total sum of all blocks.
+//   if (tid == 0) atomicAdd(total, exp_sum);
+//   __threadfence(); // grid level memory fence
+//   // e^x_i/sum(e^x_0,...,e^x_n-1) 
+//   if (idx + 3 < N) {
+//     float4 reg_y;
+//     reg_y.x = reg_exp.x / (*total);
+//     reg_y.y = reg_exp.y / (*total);
+//     reg_y.z = reg_exp.z / (*total);
+//     reg_y.w = reg_exp.w / (*total);
+//     FLOAT4(y[idx]) = reg_y; 
+//   }
+// }
 
 // NOTE: softmax per-token
 // Softmax x: (S,h), y: (S,h)
@@ -867,12 +867,12 @@ void online_safe_softmax_f32x4_pack_per_token(torch::Tensor x, torch::Tensor y) 
 }
 
 // grid memory fence fp32
-TORCH_BINDING_SOFTMAX(f32,   torch::kFloat32, float, 1)
-TORCH_BINDING_SOFTMAX(f32x4, torch::kFloat32, float, 4)
+// TORCH_BINDING_SOFTMAX(f32,   torch::kFloat32, float, 1)
+// TORCH_BINDING_SOFTMAX(f32x4, torch::kFloat32, float, 4)
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-  TORCH_BINDING_COMMON_EXTENSION(softmax_f32)
-  TORCH_BINDING_COMMON_EXTENSION(softmax_f32x4)
+  // TORCH_BINDING_COMMON_EXTENSION(softmax_f32)
+  // TORCH_BINDING_COMMON_EXTENSION(softmax_f32x4)
   TORCH_BINDING_COMMON_EXTENSION(softmax_f32_per_token)
   TORCH_BINDING_COMMON_EXTENSION(softmax_f32x4_per_token)
   TORCH_BINDING_COMMON_EXTENSION(safe_softmax_f32_per_token)
