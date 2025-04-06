@@ -1,0 +1,115 @@
+; ModuleID = 'LLVMDialectModule'
+source_filename = "LLVMDialectModule"
+target datalayout = "e-p6:32:32-i64:64-i128:128-v16:16-v32:32-n16:32:64"
+
+define ptx_kernel void @add_kernel(ptr addrspace(1) %0, ptr addrspace(1) %1, ptr addrspace(1) %2, i32 %3, ptr addrspace(1) readnone captures(none) %4) local_unnamed_addr !dbg !6 {
+  %6 = tail call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !dbg !9
+  %7 = shl i32 %6, 10, !dbg !10
+  %8 = tail call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !dbg !11
+  %9 = shl i32 %8, 2, !dbg !11
+  %10 = and i32 %9, 508, !dbg !11
+  %11 = or disjoint i32 %10, %7, !dbg !12
+  %12 = or disjoint i32 %11, 512, !dbg !12
+  %13 = icmp slt i32 %11, %3, !dbg !13
+  %14 = icmp slt i32 %12, %3, !dbg !13
+  %15 = sext i32 %11 to i64, !dbg !14
+  %16 = getelementptr float, ptr addrspace(1) %0, i64 %15, !dbg !14
+  %17 = sext i32 %12 to i64, !dbg !14
+  %18 = getelementptr float, ptr addrspace(1) %0, i64 %17, !dbg !14
+  %19 = tail call { i32, i32, i32, i32 } asm sideeffect "mov.u32 $0, 0x0;\0A\09mov.u32 $1, 0x0;\0A\09mov.u32 $2, 0x0;\0A\09mov.u32 $3, 0x0;\0A\09@$5 ld.global.v4.b32 { $0, $1, $2, $3 }, [ $4 + 0 ];", "=r,=r,=r,=r,l,b"(ptr addrspace(1) %16, i1 %13) #1, !dbg !15
+  %20 = extractvalue { i32, i32, i32, i32 } %19, 0, !dbg !15
+  %21 = extractvalue { i32, i32, i32, i32 } %19, 1, !dbg !15
+  %22 = extractvalue { i32, i32, i32, i32 } %19, 2, !dbg !15
+  %23 = extractvalue { i32, i32, i32, i32 } %19, 3, !dbg !15
+  %24 = bitcast i32 %20 to float, !dbg !15
+  %25 = bitcast i32 %21 to float, !dbg !15
+  %26 = bitcast i32 %22 to float, !dbg !15
+  %27 = bitcast i32 %23 to float, !dbg !15
+  %28 = tail call { i32, i32, i32, i32 } asm sideeffect "mov.u32 $0, 0x0;\0A\09mov.u32 $1, 0x0;\0A\09mov.u32 $2, 0x0;\0A\09mov.u32 $3, 0x0;\0A\09@$5 ld.global.v4.b32 { $0, $1, $2, $3 }, [ $4 + 0 ];", "=r,=r,=r,=r,l,b"(ptr addrspace(1) %18, i1 %14) #1, !dbg !15
+  %29 = extractvalue { i32, i32, i32, i32 } %28, 0, !dbg !15
+  %30 = extractvalue { i32, i32, i32, i32 } %28, 1, !dbg !15
+  %31 = extractvalue { i32, i32, i32, i32 } %28, 2, !dbg !15
+  %32 = extractvalue { i32, i32, i32, i32 } %28, 3, !dbg !15
+  %33 = bitcast i32 %29 to float, !dbg !15
+  %34 = bitcast i32 %30 to float, !dbg !15
+  %35 = bitcast i32 %31 to float, !dbg !15
+  %36 = bitcast i32 %32 to float, !dbg !15
+  %37 = getelementptr float, ptr addrspace(1) %1, i64 %15, !dbg !16
+  %38 = getelementptr float, ptr addrspace(1) %1, i64 %17, !dbg !16
+  %39 = tail call { i32, i32, i32, i32 } asm sideeffect "mov.u32 $0, 0x0;\0A\09mov.u32 $1, 0x0;\0A\09mov.u32 $2, 0x0;\0A\09mov.u32 $3, 0x0;\0A\09@$5 ld.global.v4.b32 { $0, $1, $2, $3 }, [ $4 + 0 ];", "=r,=r,=r,=r,l,b"(ptr addrspace(1) %37, i1 %13) #1, !dbg !17
+  %40 = extractvalue { i32, i32, i32, i32 } %39, 0, !dbg !17
+  %41 = extractvalue { i32, i32, i32, i32 } %39, 1, !dbg !17
+  %42 = extractvalue { i32, i32, i32, i32 } %39, 2, !dbg !17
+  %43 = extractvalue { i32, i32, i32, i32 } %39, 3, !dbg !17
+  %44 = bitcast i32 %40 to float, !dbg !17
+  %45 = bitcast i32 %41 to float, !dbg !17
+  %46 = bitcast i32 %42 to float, !dbg !17
+  %47 = bitcast i32 %43 to float, !dbg !17
+  %48 = tail call { i32, i32, i32, i32 } asm sideeffect "mov.u32 $0, 0x0;\0A\09mov.u32 $1, 0x0;\0A\09mov.u32 $2, 0x0;\0A\09mov.u32 $3, 0x0;\0A\09@$5 ld.global.v4.b32 { $0, $1, $2, $3 }, [ $4 + 0 ];", "=r,=r,=r,=r,l,b"(ptr addrspace(1) %38, i1 %14) #1, !dbg !17
+  %49 = extractvalue { i32, i32, i32, i32 } %48, 0, !dbg !17
+  %50 = extractvalue { i32, i32, i32, i32 } %48, 1, !dbg !17
+  %51 = extractvalue { i32, i32, i32, i32 } %48, 2, !dbg !17
+  %52 = extractvalue { i32, i32, i32, i32 } %48, 3, !dbg !17
+  %53 = bitcast i32 %49 to float, !dbg !17
+  %54 = bitcast i32 %50 to float, !dbg !17
+  %55 = bitcast i32 %51 to float, !dbg !17
+  %56 = bitcast i32 %52 to float, !dbg !17
+  %57 = fadd float %24, %44, !dbg !18
+  %58 = fadd float %25, %45, !dbg !18
+  %59 = fadd float %26, %46, !dbg !18
+  %60 = fadd float %27, %47, !dbg !18
+  %61 = fadd float %33, %53, !dbg !18
+  %62 = fadd float %34, %54, !dbg !18
+  %63 = fadd float %35, %55, !dbg !18
+  %64 = fadd float %36, %56, !dbg !18
+  %65 = getelementptr float, ptr addrspace(1) %2, i64 %15, !dbg !19
+  %66 = getelementptr float, ptr addrspace(1) %2, i64 %17, !dbg !19
+  %67 = bitcast float %57 to i32, !dbg !20
+  %68 = bitcast float %58 to i32, !dbg !20
+  %69 = bitcast float %59 to i32, !dbg !20
+  %70 = bitcast float %60 to i32, !dbg !20
+  tail call void asm sideeffect "@$5 st.global.v4.b32 [ $4 + 0 ], { $0, $1, $2, $3 };", "r,r,r,r,l,b"(i32 %67, i32 %68, i32 %69, i32 %70, ptr addrspace(1) %65, i1 %13) #1, !dbg !20
+  %71 = bitcast float %61 to i32, !dbg !20
+  %72 = bitcast float %62 to i32, !dbg !20
+  %73 = bitcast float %63 to i32, !dbg !20
+  %74 = bitcast float %64 to i32, !dbg !20
+  tail call void asm sideeffect "@$5 st.global.v4.b32 [ $4 + 0 ], { $0, $1, $2, $3 };", "r,r,r,r,l,b"(i32 %71, i32 %72, i32 %73, i32 %74, ptr addrspace(1) %66, i1 %14) #1, !dbg !20
+  ret void, !dbg !21
+}
+
+; Function Attrs: mustprogress nocallback nofree nosync nounwind speculatable willreturn memory(none)
+declare noundef i32 @llvm.nvvm.read.ptx.sreg.ctaid.x() #0
+
+; Function Attrs: mustprogress nocallback nofree nosync nounwind speculatable willreturn memory(none)
+declare noundef i32 @llvm.nvvm.read.ptx.sreg.tid.x() #0
+
+attributes #0 = { mustprogress nocallback nofree nosync nounwind speculatable willreturn memory(none) }
+attributes #1 = { nounwind }
+
+!llvm.module.flags = !{!0, !1}
+!llvm.dbg.cu = !{!2}
+!nvvm.annotations = !{!4}
+!llvm.ident = !{!5}
+
+!0 = !{i32 2, !"Debug Info Version", i32 3}
+!1 = !{i32 4, !"nvvm-reflect-ftz", i32 1}
+!2 = distinct !DICompileUnit(language: DW_LANG_C, file: !3, producer: "triton", isOptimized: true, runtimeVersion: 0, emissionKind: LineTablesOnly)
+!3 = !DIFile(filename: "triton_vector_add.py", directory: "/workspace/dev/openllm/dev/CUDA-Learn-Notes/kernels/openai-triton/elementwise")
+!4 = !{ptr @add_kernel, !"reqntidx", i32 128}
+!5 = !{!"clang version 3.8.0 (tags/RELEASE_380/final)"}
+!6 = distinct !DISubprogram(name: "add_kernel", linkageName: "add_kernel", scope: !3, file: !3, line: 32, type: !7, scopeLine: 32, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !2)
+!7 = !DISubroutineType(cc: DW_CC_normal, types: !8)
+!8 = !{}
+!9 = !DILocation(line: 41, column: 24, scope: !6)
+!10 = !DILocation(line: 46, column: 24, scope: !6)
+!11 = !DILocation(line: 47, column: 41, scope: !6)
+!12 = !DILocation(line: 47, column: 28, scope: !6)
+!13 = !DILocation(line: 49, column: 21, scope: !6)
+!14 = !DILocation(line: 52, column: 24, scope: !6)
+!15 = !DILocation(line: 52, column: 16, scope: !6)
+!16 = !DILocation(line: 53, column: 24, scope: !6)
+!17 = !DILocation(line: 53, column: 16, scope: !6)
+!18 = !DILocation(line: 54, column: 17, scope: !6)
+!19 = !DILocation(line: 56, column: 26, scope: !6)
+!20 = !DILocation(line: 56, column: 35, scope: !6)
+!21 = !DILocation(line: 56, column: 4, scope: !6)
