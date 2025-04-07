@@ -128,7 +128,7 @@ void merge_attn_states_cuda(
     if (OUTPUT_LSE) {
       merge_attn_states_kernel_cuda<
       false /*LOOP_OVER_HEAD*/, 
-      true /*OUTPUT_LSE*/><<<
+      true  /*OUTPUT_LSE*/><<<
       grid, block>>>(
         output.data_ptr<float>(),
         output_lse.data_ptr<float>(),
