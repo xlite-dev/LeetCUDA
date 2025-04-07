@@ -14,7 +14,7 @@ __global__ void merge_attn_states_kernel_cuda(
   const float* __restrict__ suffix_lse,    // [NUM_HEADS, NUM_TOKENS]
   const uint NUM_TOKENS,                   // NUM_TOKENS
   const uint NUM_HEADS,                    // NUM QUERY HEADS
-  const uint HEAD_SIZE                    // HEAD_SIZE, 32,48,64,...,512,etc
+  const uint HEAD_SIZE                     // HEAD_SIZE, 32,48,64,...,512,etc
 ) {
   if constexpr (LOOP_OVER_HEAD) {
     const uint token_idx = blockIdx.x;

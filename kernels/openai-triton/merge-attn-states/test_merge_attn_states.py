@@ -11,7 +11,7 @@ def get_args():
     parser.add_argument("--head-size", "-d", type=int, default=512, help="headsize per head")
     parser.add_argument("--num-tokens", "-n", type=int, default=1024, help="num tokens")
     parser.add_argument("--verbose", "-v", action="store_true", help="verbose")
-    parser.add_argument("--loop-over-head", "-loop", action="store_true", help="verbose")
+    parser.add_argument("--loop-over-head", "-loop", "-l", action="store_true", help="verbose")
     parser.add_argument("--warmup", "-w", type=int, default=2, help="warmup")
     parser.add_argument("--repeat", "-r", type=int, default=20, help="repeat")
     return parser.parse_args()
