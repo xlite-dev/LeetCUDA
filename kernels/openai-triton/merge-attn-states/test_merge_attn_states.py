@@ -12,6 +12,7 @@ def get_args():
     parser.add_argument("--num-tokens", "-n", type=int, default=1024, help="num tokens")
     parser.add_argument("--verbose", "-v", action="store_true", help="verbose")
     parser.add_argument("--loop-over-head", "-loop", "-l", action="store_true", help="verbose")
+    parser.add_argument("--output-lse", "-lse", action="store_true", help="check output lse")
     parser.add_argument("--warmup", "-w", type=int, default=2, help="warmup")
     parser.add_argument("--repeat", "-r", type=int, default=20, help="repeat")
     return parser.parse_args()
@@ -26,7 +27,7 @@ def test_merge_attn_states():
     NUM_TOKENS = args.num_tokens
     # Num query heads
     NUM_HEADS = args.num_query_heads 
-    OUTPUT_LSE = False
+    OUTPUT_LSE = args.output_lse
     # Set HEAD_SIZE to a power of 2 in the test code
     HEAD_SIZE = args.head_size 
     PADDED_HEAD_SIZE = triton.next_power_of_2(HEAD_SIZE)
@@ -119,7 +120,7 @@ def test_merge_attn_states():
     # Warmup and measure performance of merge_attn_states_cuda
     total_time_kernel_cuda = 0
     output_cuda = output.clone()
-    output_lse_cuda = output_lse.clone()
+    output_lse_cuda = output_lse.clone() if OUTPUT_LSE else None
     LOOP_OVER_HEAD = args.loop_over_head
 
     # Warmup
@@ -166,15 +167,18 @@ def test_merge_attn_states():
         print(f"Triton output at max diff index: {output_ref.flatten()[max_diff_index]}")
         print(f"CUDA output at max diff index: {output_cuda.flatten()[max_diff_index]}")
     assert torch.allclose(output_ref, output_cuda, rtol=1e-3, atol=1e-3), "Output of Triton and CUDA do not match."
+    print("Output of Triton and CUDA all match.")
 
-    if not torch.allclose(output_lse_ref, output_lse_cuda, rtol=1e-3, atol=1e-3):
-        diff = torch.abs(output_lse_ref - output_lse_cuda)
-        max_diff = torch.max(diff)
-        max_diff_index = torch.argmax(diff)
-        print(f"Max difference in output_lse: {max_diff} at index {max_diff_index}")
-        print(f"Triton output_lse at max diff index: {output_lse_ref.flatten()[max_diff_index]}")
-        print(f"CUDA output_lse at max diff index: {output_lse_cuda.flatten()[max_diff_index]}")
-    assert torch.allclose(output_lse_ref, output_lse_cuda, rtol=1e-3, atol=1e-3), "Output_lse of Triton and CUDA do not match."
+    if OUTPUT_LSE:
+      if not torch.allclose(output_lse_ref, output_lse_cuda, rtol=1e-3, atol=1e-3):
+          diff = torch.abs(output_lse_ref - output_lse_cuda)
+          max_diff = torch.max(diff)
+          max_diff_index = torch.argmax(diff)
+          print(f"Max difference in output_lse: {max_diff} at index {max_diff_index}")
+          print(f"Triton output_lse at max diff index: {output_lse_ref.flatten()[max_diff_index]}")
+          print(f"CUDA output_lse at max diff index: {output_lse_cuda.flatten()[max_diff_index]}")
+      assert torch.allclose(output_lse_ref, output_lse_cuda, rtol=1e-3, atol=1e-3), "Output_lse of Triton and CUDA do not match."
+      print("Output LSE of Triton and CUDA all match.")
 
     print("All output values test passed! All inf values are correctly replaced with -inf.")
     print("-" * 100)

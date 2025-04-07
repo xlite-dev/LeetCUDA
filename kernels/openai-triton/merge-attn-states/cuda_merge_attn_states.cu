@@ -1,4 +1,5 @@
 #include <torch/extension.h>
+#include <optional>
 #include <cuda_runtime.h>
 #include <cmath>
 
@@ -35,8 +36,10 @@ __global__ void merge_attn_states_kernel_cuda(
       const float out_se = p_se + s_se;
 
       if constexpr (OUTPUT_LSE) {
-        float out_lse = logf(out_se) + max_lse;
-        output_lse[head_idx * NUM_TOKENS + token_idx] = out_lse;
+        if (output_lse != nullptr) {
+          float out_lse = logf(out_se) + max_lse;
+          output_lse[head_idx * NUM_TOKENS + token_idx] = out_lse;
+        }
       }
       
       const uint blk_offset = token_idx * NUM_HEADS * HEAD_SIZE + head_idx * HEAD_SIZE;
@@ -78,8 +81,10 @@ __global__ void merge_attn_states_kernel_cuda(
     const float out_se = p_se + s_se;
 
     if constexpr (OUTPUT_LSE) {
-      float out_lse = logf(out_se) + max_lse;
-      output_lse[head_idx * NUM_TOKENS + token_idx] = out_lse;
+      if (output_lse != nullptr) {
+        float out_lse = logf(out_se) + max_lse;
+        output_lse[head_idx * NUM_TOKENS + token_idx] = out_lse;
+      }
     }
     
     const uint blk_offset = token_idx * NUM_HEADS * HEAD_SIZE + head_idx * HEAD_SIZE;
@@ -107,13 +112,30 @@ __global__ void merge_attn_states_kernel_cuda(
 }
 
 
+#define LAUNCHE_MERGE_ATTN_STATES_KERNEL(LOOP_OVER_HEAD, OUTPUT_LSE) \
+{                                                                    \
+  merge_attn_states_kernel_cuda<LOOP_OVER_HEAD, OUTPUT_LSE><<<       \
+    grid, block>>>(                                                  \
+      output.data_ptr<float>(),                                      \
+      output_lse_maybe_nullptr,                                      \
+      prefix_output.data_ptr<float>(),                               \
+      prefix_lse.data_ptr<float>(),                                  \
+      suffix_output.data_ptr<float>(),                               \
+      suffix_lse.data_ptr<float>(),                                  \
+      NUM_TOKENS,                                                    \
+      NUM_HEADS,                                                     \
+      HEAD_SIZE                                                      \
+  );                                                                 \
+}
+
+
 void merge_attn_states_cuda(
-  torch::Tensor output,        // [NUM_TOKENS, NUM_HEADS, HEAD_SIZE]
-  torch::Tensor output_lse,    // [NUM_HEADS, NUM_TOKENS]
-  torch::Tensor prefix_output, // [NUM_TOKENS, NUM_HEADS, HEAD_SIZE]
-  torch::Tensor prefix_lse,    // [NUM_HEADS, NUM_TOKENS]
-  torch::Tensor suffix_output, // [NUM_TOKENS, NUM_HEADS, HEAD_SIZE]
-  torch::Tensor suffix_lse,    // [NUM_HEADS, NUM_TOKENS]
+  torch::Tensor& output,        // [NUM_TOKENS, NUM_HEADS, HEAD_SIZE]
+  std::optional<torch::Tensor> output_lse, // [NUM_HEADS, NUM_TOKENS]
+  torch::Tensor& prefix_output, // [NUM_TOKENS, NUM_HEADS, HEAD_SIZE]
+  torch::Tensor& prefix_lse,    // [NUM_HEADS, NUM_TOKENS]
+  torch::Tensor& suffix_output, // [NUM_TOKENS, NUM_HEADS, HEAD_SIZE]
+  torch::Tensor& suffix_lse,    // [NUM_HEADS, NUM_TOKENS]
   const bool OUTPUT_LSE,
   const bool LOOP_OVER_HEAD
 ) {
@@ -122,78 +144,41 @@ void merge_attn_states_cuda(
   const uint HEAD_SIZE = output.size(2);
   assert(HEAD_SIZE % 4 == 0); // headsize must be multiple of 4
   assert(HEAD_SIZE / 4 <= 1024); // headsize must be <= of 4096
+  float* output_lse_maybe_nullptr = nullptr;
+  if (output_lse.has_value()) {
+    output_lse_maybe_nullptr = output_lse.value().data_ptr<float>();
+  }
+
   if (NUM_TOKENS <= 1024 || NUM_HEADS >= 64 || !(LOOP_OVER_HEAD)) {
     dim3 grid(NUM_TOKENS, NUM_HEADS);
     dim3 block(HEAD_SIZE / 4);
-    if (OUTPUT_LSE) {
-      merge_attn_states_kernel_cuda<
-      false /*LOOP_OVER_HEAD*/, 
-      true  /*OUTPUT_LSE*/><<<
-      grid, block>>>(
-        output.data_ptr<float>(),
-        output_lse.data_ptr<float>(),
-        prefix_output.data_ptr<float>(),
-        prefix_lse.data_ptr<float>(),
-        suffix_output.data_ptr<float>(),
-        suffix_lse.data_ptr<float>(),
-        NUM_TOKENS,
-        NUM_HEADS,
-        HEAD_SIZE
-      );
+    if (OUTPUT_LSE && output_lse_maybe_nullptr != nullptr) {
+      LAUNCHE_MERGE_ATTN_STATES_KERNEL(false, true);
     } else {
-      merge_attn_states_kernel_cuda<
-      false /*LOOP_OVER_HEAD*/, 
-      false /*OUTPUT_LSE*/><<<
-      grid, block>>>(
-        output.data_ptr<float>(),
-        output_lse.data_ptr<float>(),
-        prefix_output.data_ptr<float>(),
-        prefix_lse.data_ptr<float>(),
-        suffix_output.data_ptr<float>(),
-        suffix_lse.data_ptr<float>(),
-        NUM_TOKENS,
-        NUM_HEADS,
-        HEAD_SIZE
-      );
+      LAUNCHE_MERGE_ATTN_STATES_KERNEL(false, false);
     }
   } else {
     // try loop over num heads for large NUM_TOKENS
     dim3 grid(NUM_TOKENS);
     dim3 block(HEAD_SIZE / 4);
-    if (OUTPUT_LSE) {
-      merge_attn_states_kernel_cuda<
-      true /*LOOP_OVER_HEAD*/, 
-      true /*OUTPUT_LSE*/><<<
-      grid, block>>>(
-        output.data_ptr<float>(),
-        output_lse.data_ptr<float>(),
-        prefix_output.data_ptr<float>(),
-        prefix_lse.data_ptr<float>(),
-        suffix_output.data_ptr<float>(),
-        suffix_lse.data_ptr<float>(),
-        NUM_TOKENS,
-        NUM_HEADS,
-        HEAD_SIZE
-      );
+    if (OUTPUT_LSE && output_lse_maybe_nullptr != nullptr) {
+      LAUNCHE_MERGE_ATTN_STATES_KERNEL(true, true);
     } else {
-      merge_attn_states_kernel_cuda<
-      true  /*LOOP_OVER_HEAD*/, 
-      false /*OUTPUT_LSE*/><<<
-      grid, block>>>(
-        output.data_ptr<float>(),
-        output_lse.data_ptr<float>(),
-        prefix_output.data_ptr<float>(),
-        prefix_lse.data_ptr<float>(),
-        suffix_output.data_ptr<float>(),
-        suffix_lse.data_ptr<float>(),
-        NUM_TOKENS,
-        NUM_HEADS,
-        HEAD_SIZE
-      );
+      LAUNCHE_MERGE_ATTN_STATES_KERNEL(true, false);
     }
   }
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-  m.def("merge_attn_states_cuda", &merge_attn_states_cuda, "Merge attention states (CUDA)");
+  m.def("merge_attn_states_cuda", 
+        &merge_attn_states_cuda, 
+        py::arg("output"),
+        py::arg("output_lse").none(true),
+        py::arg("prefix_output"),
+        py::arg("prefix_lse"),
+        py::arg("suffix_output"),
+        py::arg("suffix_lse"),
+        py::arg("OUTPUT_LSE"),
+        py::arg("LOOP_OVER_HEAD"),
+        "Merge attention states (CUDA)");
 }
