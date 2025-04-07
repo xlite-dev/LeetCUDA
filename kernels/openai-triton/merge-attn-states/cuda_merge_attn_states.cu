@@ -122,7 +122,7 @@ void merge_attn_states_cuda(
   const uint HEAD_SIZE = output.size(2);
   assert(HEAD_SIZE % 4 == 0); // headsize must be multiple of 4
   assert(HEAD_SIZE / 4 <= 1024); // headsize must be <= of 4096
-  if (NUM_TOKENS <= 256 || !(LOOP_OVER_HEAD)) {
+  if (NUM_TOKENS <= 1024 || NUM_HEADS >= 64 || !(LOOP_OVER_HEAD)) {
     dim3 grid(NUM_TOKENS, NUM_HEADS);
     dim3 block(HEAD_SIZE / 4);
     if (OUTPUT_LSE) {
