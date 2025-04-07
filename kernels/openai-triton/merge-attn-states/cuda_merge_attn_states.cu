@@ -117,7 +117,7 @@ __global__ void merge_attn_states_kernel_cuda(
   merge_attn_states_kernel_cuda<LOOP_OVER_HEAD, OUTPUT_LSE><<<       \
     grid, block>>>(                                                  \
       output.data_ptr<float>(),                                      \
-      output_lse_maybe_nullptr,                                      \
+      output_lse_ptr,                                                \
       prefix_output.data_ptr<float>(),                               \
       prefix_lse.data_ptr<float>(),                                  \
       suffix_output.data_ptr<float>(),                               \
@@ -144,15 +144,15 @@ void merge_attn_states_cuda(
   const uint HEAD_SIZE = output.size(2);
   assert(HEAD_SIZE % 4 == 0); // headsize must be multiple of 4
   assert(HEAD_SIZE / 4 <= 1024); // headsize must be <= of 4096
-  float* output_lse_maybe_nullptr = nullptr;
+  float* output_lse_ptr = nullptr;
   if (output_lse.has_value()) {
-    output_lse_maybe_nullptr = output_lse.value().data_ptr<float>();
+    output_lse_ptr = output_lse.value().data_ptr<float>();
   }
 
   if (NUM_TOKENS <= 1024 || NUM_HEADS >= 64 || !(LOOP_OVER_HEAD)) {
     dim3 grid(NUM_TOKENS, NUM_HEADS);
     dim3 block(HEAD_SIZE / 4);
-    if (OUTPUT_LSE && output_lse_maybe_nullptr != nullptr) {
+    if (OUTPUT_LSE && output_lse_ptr != nullptr) {
       LAUNCHE_MERGE_ATTN_STATES_KERNEL(false, true);
     } else {
       LAUNCHE_MERGE_ATTN_STATES_KERNEL(false, false);
@@ -161,7 +161,7 @@ void merge_attn_states_cuda(
     // try loop over num heads for large NUM_TOKENS
     dim3 grid(NUM_TOKENS);
     dim3 block(HEAD_SIZE / 4);
-    if (OUTPUT_LSE && output_lse_maybe_nullptr != nullptr) {
+    if (OUTPUT_LSE && output_lse_ptr != nullptr) {
       LAUNCHE_MERGE_ATTN_STATES_KERNEL(true, true);
     } else {
       LAUNCHE_MERGE_ATTN_STATES_KERNEL(true, false);
@@ -169,16 +169,19 @@ void merge_attn_states_cuda(
   }
 }
 
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-  m.def("merge_attn_states_cuda", 
-        &merge_attn_states_cuda, 
-        py::arg("output"),
-        py::arg("output_lse").none(true),
-        py::arg("prefix_output"),
-        py::arg("prefix_lse"),
-        py::arg("suffix_output"),
-        py::arg("suffix_lse"),
-        py::arg("OUTPUT_LSE"),
-        py::arg("LOOP_OVER_HEAD"),
-        "Merge attention states (CUDA)");
+  m.def(
+    "merge_attn_states_cuda", 
+    &merge_attn_states_cuda, 
+    py::arg("output"),
+    py::arg("output_lse").none(true),
+    py::arg("prefix_output"),
+    py::arg("prefix_lse"),
+    py::arg("suffix_output"),
+    py::arg("suffix_lse"),
+    py::arg("OUTPUT_LSE"),
+    py::arg("LOOP_OVER_HEAD"),
+    "Merge attention states (CUDA)"
+  );
 }
