@@ -1,4 +1,3 @@
-import torch
 from torch.utils.cpp_extension import load
 
 
@@ -18,5 +17,4 @@ lib = load(
     extra_cflags=['-std=c++17'],
 )
 
-# merge_attn_states_cuda: callable = lib.merge_attn_states_cuda
 merge_attn_states_cuda: callable = lib.merge_attn_states_cuda
