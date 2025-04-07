@@ -11,6 +11,7 @@ def get_args():
     parser.add_argument("--head-size", "-d", type=int, default=512, help="headsize per head")
     parser.add_argument("--num-tokens", "-n", type=int, default=1024, help="num tokens")
     parser.add_argument("--verbose", "-v", action="store_true", help="verbose")
+    parser.add_argument("--loop-over-head", "-loop", action="store_true", help="verbose")
     parser.add_argument("--warmup", "-w", type=int, default=2, help="warmup")
     parser.add_argument("--repeat", "-r", type=int, default=20, help="repeat")
     return parser.parse_args()
@@ -119,6 +120,7 @@ def test_merge_attn_states():
     total_time_kernel_cuda = 0
     output_cuda = output.clone()
     output_lse_cuda = output_lse.clone()
+    LOOP_OVER_HEAD = args.loop_over_head
 
     # Warmup
     for _ in range(warmup_times):
@@ -129,7 +131,8 @@ def test_merge_attn_states():
             prefix_lse,
             suffix_output,
             suffix_lse,
-            OUTPUT_LSE
+            OUTPUT_LSE,
+            LOOP_OVER_HEAD
         )
     torch.cuda.synchronize()
 
@@ -143,7 +146,8 @@ def test_merge_attn_states():
             prefix_lse,
             suffix_output,
             suffix_lse,
-            OUTPUT_LSE
+            OUTPUT_LSE,
+            LOOP_OVER_HEAD
         )
         end.record()
         torch.cuda.synchronize()
