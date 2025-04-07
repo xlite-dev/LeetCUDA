@@ -121,7 +121,7 @@ def test_merge_attn_states():
     total_time_kernel_cuda = 0
     output_cuda = output.clone()
     output_lse_cuda = output_lse.clone() if OUTPUT_LSE else None
-    LOOP_OVER_HEAD = args.loop_over_head
+    disable_loop_over_head = (not args.loop_over_head)
 
     # Warmup
     for _ in range(warmup_times):
@@ -132,8 +132,7 @@ def test_merge_attn_states():
             prefix_lse,
             suffix_output,
             suffix_lse,
-            OUTPUT_LSE,
-            LOOP_OVER_HEAD
+            disable_loop_over_head
         )
     torch.cuda.synchronize()
 
@@ -147,8 +146,7 @@ def test_merge_attn_states():
             prefix_lse,
             suffix_output,
             suffix_lse,
-            OUTPUT_LSE,
-            LOOP_OVER_HEAD
+            disable_loop_over_head
         )
         end.record()
         torch.cuda.synchronize()

@@ -132,12 +132,11 @@ __global__ void merge_attn_states_kernel_cuda(
 void merge_attn_states_cuda(
   torch::Tensor& output,        // [NUM_TOKENS, NUM_HEADS, HEAD_SIZE]
   std::optional<torch::Tensor> output_lse, // [NUM_HEADS, NUM_TOKENS]
-  torch::Tensor& prefix_output, // [NUM_TOKENS, NUM_HEADS, HEAD_SIZE]
-  torch::Tensor& prefix_lse,    // [NUM_HEADS, NUM_TOKENS]
-  torch::Tensor& suffix_output, // [NUM_TOKENS, NUM_HEADS, HEAD_SIZE]
-  torch::Tensor& suffix_lse,    // [NUM_HEADS, NUM_TOKENS]
-  const bool OUTPUT_LSE,
-  const bool LOOP_OVER_HEAD
+  const torch::Tensor& prefix_output, // [NUM_TOKENS, NUM_HEADS, HEAD_SIZE]
+  const torch::Tensor& prefix_lse,    // [NUM_HEADS, NUM_TOKENS]
+  const torch::Tensor& suffix_output, // [NUM_TOKENS, NUM_HEADS, HEAD_SIZE]
+  const torch::Tensor& suffix_lse,    // [NUM_HEADS, NUM_TOKENS]
+  const bool disable_loop_over_head
 ) {
   const uint NUM_TOKENS = output.size(0);
   const uint NUM_HEADS = output.size(1); // num query heads
@@ -149,10 +148,11 @@ void merge_attn_states_cuda(
     output_lse_ptr = output_lse.value().data_ptr<float>();
   }
 
-  if (NUM_TOKENS <= 1024 || NUM_HEADS >= 64 || !(LOOP_OVER_HEAD)) {
+  if (NUM_TOKENS <= 1024 || NUM_HEADS >= 64 || 
+      disable_loop_over_head) {
     dim3 grid(NUM_TOKENS, NUM_HEADS);
     dim3 block(HEAD_SIZE / 4);
-    if (OUTPUT_LSE && output_lse_ptr != nullptr) {
+    if (output_lse_ptr != nullptr) {
       LAUNCHE_MERGE_ATTN_STATES_KERNEL(false, true);
     } else {
       LAUNCHE_MERGE_ATTN_STATES_KERNEL(false, false);
@@ -161,7 +161,7 @@ void merge_attn_states_cuda(
     // try loop over num heads for large NUM_TOKENS
     dim3 grid(NUM_TOKENS);
     dim3 block(HEAD_SIZE / 4);
-    if (OUTPUT_LSE && output_lse_ptr != nullptr) {
+    if (output_lse_ptr != nullptr) {
       LAUNCHE_MERGE_ATTN_STATES_KERNEL(true, true);
     } else {
       LAUNCHE_MERGE_ATTN_STATES_KERNEL(true, false);
@@ -180,8 +180,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     py::arg("prefix_lse"),
     py::arg("suffix_output"),
     py::arg("suffix_lse"),
-    py::arg("OUTPUT_LSE"),
-    py::arg("LOOP_OVER_HEAD"),
+    py::arg("disable_loop_over_head"),
     "Merge attention states (CUDA)"
   );
 }
