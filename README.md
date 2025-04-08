@@ -414,8 +414,8 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 
 |📖 Triton Kernel| 📖 Elem DType| 📖 Acc DType| 📖 Docs | 📖 Level |
 |:---|:---|:---|:---|:---|   
-| ✔️ [trion_vector_add](./kernels/openai-triton/elementwise/)|all|all|[link](./kernels/openai-triton/elementwise/)|⭐️⭐️|
-| ✔️ [trion_merge_attn_states](./kernels/openai-triton/merge-attn-states/)|f16/bf16/f32|f32|[link](./kernels/openai-triton/merge-attn-states/)|⭐️⭐️| 
+| ✔️ [triton_vector_add](./kernels/openai-triton/elementwise/)|all|all|[link](./kernels/openai-triton/elementwise/)|⭐️⭐️|
+| ✔️ [triton_merge_attn_states](./kernels/openai-triton/merge-attn-states/)|f16/bf16/f32|f32|[link](./kernels/openai-triton/merge-attn-states/)|⭐️⭐️| 
 
 
 ## 📖 100+ LLM/VLM/CV/CUDA/CuTe Tech Blogs
