@@ -1,41 +1,80 @@
+# SPDX-License-Identifier: Apache-2.0
+from typing import Optional
+
+import pytest
 import torch
-import triton
-import argparse
-from cuda_merge_attn_states import merge_attn_states_cuda
-from triton_merge_attn_states import merge_attn_states_triton
+
+from cuda_merge_attn_states import (merge_attn_states_cuda)
+from triton_merge_attn_states import (merge_attn_states_triton)
 
 
-def get_args():
-    parser = argparse.ArgumentParser(description="hgemm benchmark")
-    parser.add_argument("--num-query-heads", "-q", type=int, default=128, help="num query heads")
-    parser.add_argument("--head-size", "-d", type=int, default=512, help="headsize per head")
-    parser.add_argument("--num-tokens", "-n", type=int, default=1024, help="num tokens")
-    parser.add_argument("--verbose", "-v", action="store_true", help="verbose")
-    parser.add_argument("--loop-over-head", "-loop", "-l", action="store_true", help="verbose")
-    parser.add_argument("--output-lse", "-lse", action="store_true", help="check output lse")
-    parser.add_argument("--warmup", "-w", type=int, default=2, help="warmup")
-    parser.add_argument("--repeat", "-r", type=int, default=20, help="repeat")
-    return parser.parse_args()
+# Naive PyTorch Implements section 2.2 of https://www.arxiv.org/pdf/2501.01005
+# can be used to combine partial attention results (in the split-KV case)
+def merge_attn_states_torch(
+        output: torch.Tensor,  # [NUM_TOKENS, NUM_HEADS, HEAD_SIZE]
+        prefix_output: torch.Tensor,  # [NUM_TOKENS, NUM_HEADS, HEAD_SIZE]
+        prefix_lse: torch.Tensor,  # [NUM_HEADS, NUM_TOKENS]
+        suffix_output: torch.Tensor,  # [NUM_TOKENS, NUM_HEADS, HEAD_SIZE]
+        suffix_lse: torch.Tensor,  # [NUM_HEADS, NUM_TOKENS]
+        output_lse: Optional[torch.Tensor] = None,  # [NUM_HEADS, NUM_TOKENS]
+):
+    p_lse = prefix_lse
+    s_lse = suffix_lse
+    # inf -> -inf
+    p_lse[p_lse == torch.inf] = -torch.inf
+    s_lse[s_lse == torch.inf] = -torch.inf
+    # max_lse [NUM_HEADS, NUM_TOKENS]
+    max_lse = torch.maximum(p_lse, s_lse)
+    p_lse = p_lse - max_lse
+    s_lse = s_lse - max_lse
+    p_lse_exp = torch.exp(p_lse)
+    s_lse_exp = torch.exp(s_lse)
+    out_se = (p_lse_exp + s_lse_exp)
+    if output_lse is not None:
+        output_lse = torch.log(out_se) + max_lse
+    p_scale = p_lse_exp / out_se  # [NUM_HEADS, NUM_TOKENS]
+    s_scale = s_lse_exp / out_se  # [NUM_HEADS, NUM_TOKENS]
+    p_scale = torch.transpose(p_scale, 0,
+                              1).unsqueeze(2)  # [NUM_TOKENS, NUM_HEADS, 1]
+    s_scale = torch.transpose(s_scale, 0,
+                              1).unsqueeze(2)  # [NUM_TOKENS, NUM_HEADS, 1]
+    output = prefix_output * p_scale + suffix_output * s_scale
+    return output, output_lse
 
 
-def test_merge_attn_states():
-    args = get_args()
-    print("-" * 100)
-    print(args)
-    print("-" * 100)
-    # Set test parameters
-    NUM_TOKENS = args.num_tokens
-    # Num query heads
-    NUM_HEADS = args.num_query_heads 
-    OUTPUT_LSE = args.output_lse
-    # Set HEAD_SIZE to a power of 2 in the test code
-    HEAD_SIZE = args.head_size 
-    PADDED_HEAD_SIZE = triton.next_power_of_2(HEAD_SIZE)
+NUM_TOKENS = [256, 512, 613, 1024, 1536, 4096]
+NUM_QUERY_HEADS = [4, 8, 16, 32]
+HEAD_SIZES = [64, 96, 128]
+DTYPES = [torch.float32, torch.half, torch.bfloat16]
 
-    # Generate test inputs
+@pytest.mark.parametrize("num_tokens", NUM_TOKENS)
+@pytest.mark.parametrize("num_query_heads", NUM_QUERY_HEADS)
+@pytest.mark.parametrize("head_size", HEAD_SIZES)
+@pytest.mark.parametrize("output_dtype", DTYPES)
+@torch.inference_mode()
+def test_merge_attn_states(num_tokens: int, num_query_heads: int,
+                           head_size: int, output_dtype: torch.dtype):
+    if not torch.cuda.is_available():
+        pytest.skip('Currently only support compare triton merge_attn_states '
+                    'with custom cuda merge_attn_states kernel')
+
+    NUM_TOKENS = num_tokens
+    NUM_HEADS = num_query_heads
+    HEAD_SIZE = head_size
+
+    print(f"\nNUM_TOKENS:{NUM_TOKENS}, NUM_HEADS:{NUM_HEADS}, "
+          f"HEAD_SIZE:{HEAD_SIZE}, DTYPE: {output_dtype}, "
+          f"Device: {torch.cuda.get_device_name()}")
+
     # prefix_lse and suffix_lse contain inf and normal values
-    prefix_lse = torch.randn(NUM_HEADS, NUM_TOKENS, dtype=torch.float32, device="cuda")
-    suffix_lse = torch.randn(NUM_HEADS, NUM_TOKENS, dtype=torch.float32, device="cuda")
+    prefix_lse = torch.randn(NUM_HEADS,
+                             NUM_TOKENS,
+                             dtype=torch.float32,
+                             device="cuda")
+    suffix_lse = torch.randn(NUM_HEADS,
+                             NUM_TOKENS,
+                             dtype=torch.float32,
+                             device="cuda")
 
     # Generate boolean masks
     mask_prefix = torch.rand(NUM_HEADS, NUM_TOKENS) < 0.1
@@ -48,145 +87,137 @@ def test_merge_attn_states():
     prefix_lse[mask_prefix] = float('inf')
     suffix_lse[mask_suffix] = float('inf')
 
-    # Other input tensors (need to be initialized but no actual calculation needed)
-    output = torch.zeros(
-        (NUM_TOKENS, NUM_HEADS, HEAD_SIZE),
-        dtype=torch.float32,
-        device="cuda"
-    )
-    output_lse = torch.zeros(
-        (NUM_HEADS, NUM_TOKENS),
-        dtype=torch.float32,
-        device="cuda"
-    )
-    prefix_output = torch.randn(
-        (NUM_TOKENS, NUM_HEADS, HEAD_SIZE),
-        dtype=torch.float32,
-        device="cuda"
-    )
-    suffix_output = torch.randn(
-        (NUM_TOKENS, NUM_HEADS, HEAD_SIZE),
-        dtype=torch.float32,
-        device="cuda"
-    )
+    # Other input tensors (need to be initialized but
+    # no actual calculation needed)
+    output = torch.zeros((NUM_TOKENS, NUM_HEADS, HEAD_SIZE),
+                         dtype=output_dtype,
+                         device="cuda")
+    output_lse = torch.zeros((NUM_HEADS, NUM_TOKENS),
+                             dtype=torch.float32,
+                             device="cuda")
+    prefix_output = torch.randn((NUM_TOKENS, NUM_HEADS, HEAD_SIZE),
+                                dtype=output_dtype,
+                                device="cuda")
+    suffix_output = torch.randn((NUM_TOKENS, NUM_HEADS, HEAD_SIZE),
+                                dtype=output_dtype,
+                                device="cuda")
 
-    output_ref = output.clone()
-    output_lse_ref = output_lse.clone()
+    warmup_times = 2
+    repeat_times = 20
 
-    # Run the Triton kernel
-    grid = (NUM_TOKENS, NUM_HEADS)
-    # Warmup and measure performance of merge_attn_states_kernel
-    warmup_times = args.warmup
-    repeat_times = args.repeat
-    total_time_kernel = 0
+    output_torch = output.clone()
+    output_lse_torch = output_lse.clone()
+    total_time_torch_kernel = 0
     start = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
 
-    # Warmup
+    # 0. Run the Torch kernel
+    prefix_lse_torch = prefix_lse.clone()
+    suffix_lse_torch = suffix_lse.clone()
     for _ in range(warmup_times):
-        merge_attn_states_triton[grid](
-            output_ref,
-            output_lse_ref,
-            prefix_output,
-            prefix_lse,
-            suffix_output,
-            suffix_lse,
-            HEAD_SIZE,
-            PADDED_HEAD_SIZE,
-            OUTPUT_LSE,
-        )
+        output_torch, output_lse_torch = merge_attn_states_torch(
+            output_torch, prefix_output, prefix_lse_torch, suffix_output,
+            suffix_lse_torch, output_lse_torch)
     torch.cuda.synchronize()
 
-    # Repeat and measure
     for _ in range(repeat_times):
         start.record()
-        merge_attn_states_triton[grid](
-            output_ref,
-            output_lse_ref,
-            prefix_output,
-            prefix_lse,
-            suffix_output,
-            suffix_lse,
-            HEAD_SIZE,
-            PADDED_HEAD_SIZE,
-            OUTPUT_LSE,
-        )
+        output_torch, output_lse_torch = merge_attn_states_torch(
+            output_torch, prefix_output, prefix_lse_torch, suffix_output,
+            suffix_lse_torch, output_lse_torch)
         end.record()
         torch.cuda.synchronize()
-        total_time_kernel += start.elapsed_time(end)
+        total_time_torch_kernel += start.elapsed_time(end)
 
-    avg_time_kernel = total_time_kernel / repeat_times
+    avg_time_torch_kernel = total_time_torch_kernel / repeat_times
 
-    # Warmup and measure performance of merge_attn_states_cuda
-    total_time_kernel_cuda = 0
+    # 1. Run the Triton kernel
+    output_ref_triton = output.clone()
+    output_lse_ref_triton = output_lse.clone()
+
+    total_time_triton_kernel = 0
+    start = torch.cuda.Event(enable_timing=True)
+    end = torch.cuda.Event(enable_timing=True)
+
+    for _ in range(warmup_times):
+        merge_attn_states_triton(output_ref_triton, prefix_output, prefix_lse,
+                                 suffix_output, suffix_lse,
+                                 output_lse_ref_triton)
+    torch.cuda.synchronize()
+
+    for _ in range(repeat_times):
+        start.record()
+        merge_attn_states_triton(output_ref_triton, prefix_output, prefix_lse,
+                                 suffix_output, suffix_lse,
+                                 output_lse_ref_triton)
+        end.record()
+        torch.cuda.synchronize()
+        total_time_triton_kernel += start.elapsed_time(end)
+
+    avg_time_triton_kernel = total_time_triton_kernel / repeat_times
+
+    # 2. Run the CUDA kernel
+    total_time_cuda_kernel = 0
     output_cuda = output.clone()
-    output_lse_cuda = output_lse.clone() if OUTPUT_LSE else None
-    disable_loop_over_head = (not args.loop_over_head)
+    output_lse_cuda = output_lse.clone()
 
-    # Warmup
     for _ in range(warmup_times):
-        merge_attn_states_cuda(
-            output_cuda,
-            output_lse_cuda,
-            prefix_output,
-            prefix_lse,
-            suffix_output,
-            suffix_lse,
-            disable_loop_over_head
-        )
+        merge_attn_states_cuda(output_cuda, prefix_output, prefix_lse,
+                               suffix_output, suffix_lse, output_lse_cuda)
     torch.cuda.synchronize()
 
-    # Repeat and measure
     for _ in range(repeat_times):
         start.record()
-        merge_attn_states_cuda(
-            output_cuda,
-            output_lse_cuda,
-            prefix_output,
-            prefix_lse,
-            suffix_output,
-            suffix_lse,
-            disable_loop_over_head
-        )
+        merge_attn_states_cuda(output_cuda, prefix_output, prefix_lse,
+                               suffix_output, suffix_lse, output_lse_cuda)
         end.record()
         torch.cuda.synchronize()
-        total_time_kernel_cuda += start.elapsed_time(end)
+        total_time_cuda_kernel += start.elapsed_time(end)
 
-    avg_time_kernel_cuda = total_time_kernel_cuda / repeat_times
-    print(f"Average time taken by Triton merge_attn_states kernel: {avg_time_kernel} ms")
-    print(f"Average time taken by   CUDA merge_attn_states kernel: {avg_time_kernel_cuda} ms")
+    avg_time_cuda_kernel = total_time_cuda_kernel / repeat_times
+    # 3. Performance compare
+    performance_improved = avg_time_triton_kernel / avg_time_cuda_kernel
+    print(f" Torch time: {avg_time_torch_kernel:.6f}ms")
+    print(f"Triton time: {avg_time_triton_kernel:.6f}ms")
+    print(f"  CUDA time: {avg_time_cuda_kernel:.6f}ms, "
+          f"Performance: {performance_improved:.5f}x")
     print("-" * 100)
 
-    if not torch.allclose(output_ref, output_cuda, rtol=1e-3, atol=1e-3):
-        diff = torch.abs(output_ref - output_cuda)
-        max_diff = torch.max(diff)
-        max_diff_index = torch.argmax(diff)
-        print(f"Max difference in output: {max_diff} at index {max_diff_index}")
-        print(f"Triton output at max diff index: {output_ref.flatten()[max_diff_index]}")
-        print(f"CUDA output at max diff index: {output_cuda.flatten()[max_diff_index]}")
-    assert torch.allclose(output_ref, output_cuda, rtol=1e-3, atol=1e-3), "Output of Triton and CUDA do not match."
-    print("Output of Triton and CUDA all match.")
+    # 4. Correctness compare
+    # Liger Kernel: Efficient Triton Kernels for LLM Training
+    # https://arxiv.org/pdf/2410.10989, 3.3 Correctness
+    # use rtol = 1e-2 for bfloat16.
+    rtol = 1e-2 if output_dtype == torch.bfloat16 else 1e-3
 
-    if OUTPUT_LSE:
-      if not torch.allclose(output_lse_ref, output_lse_cuda, rtol=1e-3, atol=1e-3):
-          diff = torch.abs(output_lse_ref - output_lse_cuda)
-          max_diff = torch.max(diff)
-          max_diff_index = torch.argmax(diff)
-          print(f"Max difference in output_lse: {max_diff} at index {max_diff_index}")
-          print(f"Triton output_lse at max diff index: {output_lse_ref.flatten()[max_diff_index]}")
-          print(f"CUDA output_lse at max diff index: {output_lse_cuda.flatten()[max_diff_index]}")
-      assert torch.allclose(output_lse_ref, output_lse_cuda, rtol=1e-3, atol=1e-3), "Output_lse of Triton and CUDA do not match."
-      print("Output LSE of Triton and CUDA all match.")
+    def diff(a: torch.Tensor, b: torch.Tensor):
+        max_diff = torch.max(torch.abs(a.float() - b.float()))
+        return max_diff
 
-    print("All output values test passed! All inf values are correctly replaced with -inf.")
+    # Use Triton output as reference because we want to replace
+    # the Triton kernel with custom CUDA kernel for merge attn
+    # states operation.
+    output_ref = output_ref_triton
+    output_lse_ref = output_lse_ref_triton
+    torch.testing.assert_close(output_cuda.float(),
+                               output_ref.float(),
+                               atol=1e-3,
+                               rtol=rtol)
+    print("Output all match, max abs diff:")
+    print(f" (CUDA  vs Triton): {diff(output_ref, output_cuda)}")
+    print(f"(Triton vs Torch) : {diff(output_torch, output_ref)}")
+    print(f"  (CUDA vs Torch) : {diff(output_torch, output_cuda)}")
     print("-" * 100)
-    
-    if args.verbose:
-        print(prefix_lse)
-        print(suffix_lse)
-        print(output_lse)
 
+    torch.testing.assert_close(output_lse_cuda.float(),
+                               output_lse_ref.float(),
+                               atol=1e-3,
+                               rtol=rtol)
+    print("Output LSE all match, max abs diff:")
+    print(f"(Triton vs Torch) : {diff(output_lse_torch, output_lse_ref)}")
+    print(f"  (CUDA vs Torch) : {diff(output_lse_torch, output_lse_cuda)}")
+    print(f" (CUDA  vs Triton): {diff(output_lse_ref, output_lse_cuda)}")
+    print("-" * 100)
 
-if __name__ == "__main__":
-    test_merge_attn_states()
-    
+    print("All output values test passed! All inf values "
+          "are correctly replaced with -inf.")
+    print("-" * 100)

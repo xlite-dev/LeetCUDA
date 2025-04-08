@@ -1,12 +1,41 @@
 """Adapted from: https://github.com/vllm-project/vllm/blob/main/vllm/attention/ops/triton_merge_attn_states.py"""
+from typing import Optional
+
+import torch
 import triton
 import triton.language as tl
 
 
 # Implements section 2.2 of https://www.arxiv.org/pdf/2501.01005
 # can be used to combine partial attention results (in the split-KV case)
-@triton.jit
 def merge_attn_states_triton(
+    output: torch.Tensor,
+    prefix_output: torch.Tensor,
+    prefix_lse: torch.Tensor,
+    suffix_output: torch.Tensor,
+    suffix_lse: torch.Tensor,
+    output_lse: Optional[torch.Tensor] = None,
+) -> None:
+    num_tokens = output.shape[0]
+    num_query_heads = output.shape[1]
+    head_size = output.shape[2]
+    padded_head_size = triton.next_power_of_2(head_size)
+
+    merge_attn_states_kernel[(num_tokens, num_query_heads)](
+        output,
+        output_lse,
+        prefix_output,
+        prefix_lse,
+        suffix_output,
+        suffix_lse,
+        head_size,
+        padded_head_size,
+        output_lse is not None,
+    )
+
+
+@triton.jit
+def merge_attn_states_kernel(
     output,  # [NUM_TOKENS, NUM_HEADS, HEAD_SIZE]
     output_lse,  # [NUM_HEADS, NUM_TOKENS]
     prefix_output,  # [NUM_TOKENS, NUM_HEADS, HEAD_SIZE]
@@ -24,6 +53,11 @@ def merge_attn_states_triton(
 
     p_lse = tl.load(prefix_lse + head_idx * num_tokens + token_idx)
     s_lse = tl.load(suffix_lse + head_idx * num_tokens + token_idx)
+    # FA2 and FA3 have different behavior for when the sum-exp is 0, this namely
+    # arises with 0 len seqlens. FA3 returns -inf here while FA2 returns inf.
+    # If we see an inf assume FA2 and convert inf to -inf for consistency
+    # and correctness. Inf generally doesn't make sense in this context outside
+    # of undefined-behavior/FA2-case, so I think this a safe assumption.
     p_lse = float('-inf') if p_lse == float('inf') else p_lse
     s_lse = float('-inf') if s_lse == float('inf') else s_lse
 
@@ -69,7 +103,7 @@ def merge_attn_states_triton(
     use_cuda_graph=False,
 )
 @triton.jit
-def merge_attn_states_triton_opt(
+def merge_attn_states_kernel_opt(
     output,  # [NUM_TOKENS, NUM_HEADS, HEAD_SIZE]
     output_lse,  # [NUM_HEADS, NUM_TOKENS]
     prefix_output,  # [NUM_TOKENS, NUM_HEADS, HEAD_SIZE]
