@@ -410,6 +410,14 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 
 💡NOTE: 🤖[ffpa-attn-mma](https://github.com/xlite-dev/ffpa-attn-mma): 📚FFPA - Yet another Faster Flash Prefill Attention with O(1)🎉SRAM complexity for headdim > 256, **1.8x~3x**🎉faster than SDPA EA: [📈L20 ~1.9x↑🎉](https://github.com/xlite-dev/ffpa-attn-mma?tab=readme-ov-file#L1-bench-l20), [📈 A30 ~1.8x↑🎉](https://github.com/xlite-dev/ffpa-attn-mma?tab=readme-ov-file#L1-bench-a30), [📈3080 ~2.9x↑🎉](https://github.com/xlite-dev/ffpa-attn-mma?tab=readme-ov-file#L1-bench-3080), [📈4090 ~2.1x↑🎉](https://github.com/xlite-dev/ffpa-attn-mma?tab=readme-ov-file#L1-bench-4090).  
 
+- 📚 Triton Kernel (OpenAI Triton)
+
+|📖 Triton Kernel| 📖 Elem DType| 📖 Acc DType| 📖 Docs | 📖 Level |
+|:---|:---|:---|:---|:---|   
+| ✔️ [trion_vector_add](./kernels/openai-triton/elementwise/)|all|all|[link](./kernels/openai-triton/elementwise/)|⭐️⭐️|
+| ✔️ [trion_merge_attn_states](./kernels/openai-triton/merge-attn-states/)|f16/bf16/f32|f32|[link](./kernels/openai-triton/merge-attn-states/)|⭐️⭐️| 
+
+
 ## 📖 100+ LLM/VLM/CV/CUDA/CuTe Tech Blogs
 
 <div id="my-blogs-part-1"></div>  
