@@ -307,7 +307,7 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 | ✔️ [rms_norm_f16x8_pack_f32](./kernels/rms-norm/rms_norm.cu)|f16|f32|[link](./kernels/rms-norm/)|⭐️⭐️|  
 | ✔️ [rms_norm_f16_f32](./kernels/rms-norm/rms_norm.cu)|f16|f32|[link](./kernels/rms-norm/)|⭐️⭐️| 
 | ✔️ [nms_f32](./kernels/nms/nms.cu)|f32|/|[link](./kernels/nms)|⭐️⭐️|  
-| ✔️ [merge_attn_states](./kernels/openai-triton/merge-attn-states/cuda_merge_attn_states.cu)|f32|/|[link](./kernels/openai-triton/merge-attn-states)|⭐️⭐️|  
+| ✔️ [merge_attn_states](./kernels/openai-triton/merge-attn-states/cuda_merge_attn_states.cu)|f16/bf16/f32|f32|[link](./kernels/openai-triton/merge-attn-states)|⭐️⭐️|  
 | ✔️ [notes v1(deprecated)](./kernels/notes-v1.cu)|f32|f32|/|⭐️⭐️|  
 | ✔️ [How to use nsys/ncu(timeline/ptx/sass)](./kernels/nvidia-nsight/)|/|/|[link](./kernels/nvidia-nsight/)|⭐️⭐️| 
 
