@@ -217,9 +217,12 @@ void merge_attn_states_launcher(
   if (output_lse.has_value()) {
     output_lse_ptr = output_lse.value().data_ptr<float>();
   }
+  const bool skip_loop_over_head = (
+    num_tokens <= 1024 || num_heads >= 64 
+    || disable_loop_over_head
+  );
 
-  if (num_tokens <= 1024 || num_heads >= 64 
-      || disable_loop_over_head) {
+  if (skip_loop_over_head) {
     dim3 grid(num_tokens, num_heads);
     dim3 block(head_size / pack_size);
     LAUNCH_MERGE_ATTN_STATES(SCALAR_T, false);
