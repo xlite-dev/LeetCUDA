@@ -15,7 +15,7 @@ lib = load(
         "-U__CUDA_NO_BFLOAT16_CONVERSIONS__",
         "--expt-relaxed-constexpr",
         "--expt-extended-lambda",
-        "--use_fast_math"
+        # "--use_fast_math"
     ], 
     extra_cflags=['-std=c++17'],
     verbose=True
