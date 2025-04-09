@@ -40,9 +40,19 @@ __global__ void merge_attn_states_kernel(
     // May loop over num heads for large NUM_TOKENS
     const uint token_idx = blockIdx.x;
     const uint thread_idx = threadIdx.x;
+    // float -> 4, half/bf16 -> 8
+    using pack_128b_t = uint4;
+    constexpr uint pack_size = 16 / sizeof(scalar_t);
+    const uint thr_offset = thread_idx * pack_size;
 
 #pragma unroll
     for (uint head_idx = 0; head_idx < num_heads; ++head_idx) {
+      const uint blk_offset =
+          token_idx * num_heads * head_size + head_idx * head_size;
+      const scalar_t* prefix_output_blk = prefix_output + blk_offset;
+      const scalar_t* suffix_output_blk = suffix_output + blk_offset;
+      scalar_t* output_blk = output + blk_offset;
+
       float p_lse = prefix_lse[head_idx * num_tokens + token_idx];
       float s_lse = suffix_lse[head_idx * num_tokens + token_idx];
       p_lse =
@@ -56,25 +66,14 @@ __global__ void merge_attn_states_kernel(
       const float p_se = expf(p_lse);
       const float s_se = expf(s_lse);
       const float out_se = p_se + s_se;
+      const float p_scale = p_se / out_se;
+      const float s_scale = s_se / out_se;
 
-      if (output_lse != nullptr) {
+      // We only need to write to output_lse once per head.
+      if (output_lse != nullptr && thread_idx == 0) {
         float out_lse = logf(out_se) + max_lse;
         output_lse[head_idx * num_tokens + token_idx] = out_lse;
       }
-
-      const uint blk_offset =
-          token_idx * num_heads * head_size + head_idx * head_size;
-      const scalar_t* prefix_output_blk = prefix_output + blk_offset;
-      const scalar_t* suffix_output_blk = suffix_output + blk_offset;
-      scalar_t* output_blk = output + blk_offset;
-
-      // float -> 4, half/bf16 -> 8
-      using pack_128b_t = uint4;
-      constexpr uint pack_size = 16 / sizeof(scalar_t);
-
-      const uint thr_offset = thread_idx * pack_size;
-      const float p_scale = p_se / out_se;
-      const float s_scale = s_se / out_se;
 
       if (thr_offset < head_size) {
         // Pack 128b load
@@ -108,6 +107,15 @@ __global__ void merge_attn_states_kernel(
     const uint token_idx = blockIdx.x;
     const uint head_idx = blockIdx.y;
     const uint thread_idx = threadIdx.x;
+    // float -> 4, half/bf16 -> 8
+    using pack_128b_t = uint4;  // 16 bytes
+    constexpr uint pack_size = 16 / sizeof(scalar_t);
+    const uint thr_offset = thread_idx * pack_size;
+    const uint blk_offset =
+        token_idx * num_heads * head_size + head_idx * head_size;
+    const scalar_t* prefix_output_blk = prefix_output + blk_offset;
+    const scalar_t* suffix_output_blk = suffix_output + blk_offset;
+    scalar_t* output_blk = output + blk_offset;
 
     float p_lse = prefix_lse[head_idx * num_tokens + token_idx];
     float s_lse = suffix_lse[head_idx * num_tokens + token_idx];
@@ -120,25 +128,14 @@ __global__ void merge_attn_states_kernel(
     const float p_se = expf(p_lse);
     const float s_se = expf(s_lse);
     const float out_se = p_se + s_se;
+    const float p_scale = p_se / out_se;
+    const float s_scale = s_se / out_se;
 
-    if (output_lse != nullptr) {
+    // We only need to write to output_lse once per head.
+    if (output_lse != nullptr && thread_idx == 0) {
       float out_lse = logf(out_se) + max_lse;
       output_lse[head_idx * num_tokens + token_idx] = out_lse;
     }
-
-    const uint blk_offset =
-        token_idx * num_heads * head_size + head_idx * head_size;
-    const scalar_t* prefix_output_blk = prefix_output + blk_offset;
-    const scalar_t* suffix_output_blk = suffix_output + blk_offset;
-    scalar_t* output_blk = output + blk_offset;
-
-    // float -> 4, half/bf16 -> 8
-    using pack_128b_t = uint4;  // 16 bytes
-    constexpr uint pack_size = 16 / sizeof(scalar_t);
-
-    const uint thr_offset = thread_idx * pack_size;
-    const float p_scale = p_se / out_se;
-    const float s_scale = s_se / out_se;
 
     if (thr_offset < head_size) {
       // Pack 128b load
