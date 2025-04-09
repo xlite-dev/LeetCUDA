@@ -2,7 +2,7 @@
 
 ## Introduction
 
-Implements section 2.2 of https://www.arxiv.org/pdf/2501.01005, can be used to combine partial attention results (in the split-KV case). The Triton and CUDA kernels here are modified from [vllm/attention/ops/triton_merge_attn_states.py](https://github.com/vllm-project/vllm/blob/main/vllm/attention/ops/triton_merge_attn_states.py) and [vllm/pull/16173](https://github.com/vllm-project/vllm/pull/16173). Use CUDA kernel instead of Triton to minimize CPU overhead. Compared to the Triton kernel, the CUDA kernel implemented in this PR can achieve a maximum speedup of over `3x`. End2End (vLLM) performance improved for R1 with PP=3 + TP=8 on L20,  4K IN:1K OUT (TTFT 5687.80 ms -> 5654.02 ms), 8K IN:64 OUT (TTFT  17673.93ms -> 14785.00ms).
+Implements section 2.2 of https://www.arxiv.org/pdf/2501.01005, can be used to combine partial attention results (in the split-KV case). The Triton and CUDA kernels here are modified from [vllm/attention/ops/triton_merge_attn_states.py](https://github.com/vllm-project/vllm/blob/main/vllm/attention/ops/triton_merge_attn_states.py) and [vllm/pull/16173](https://github.com/vllm-project/vllm/pull/16173). Use CUDA kernel instead of Triton to minimize CPU overhead. Compared to the Triton kernel, the CUDA kernel implemented in this PR can achieve a maximum speedup of over `3x`. End2End performance improved for R1 with PP=3 + TP=8 on L20,  4K IN:1K OUT (TTFT 5687.80 ms -> 5654.02 ms), 8K IN:64 OUT (TTFT  15188.70ms -> 14534.50ms).
 
 - [x] float32
 - [x] float16
@@ -11,14 +11,14 @@ Implements section 2.2 of https://www.arxiv.org/pdf/2501.01005, can be used to c
 - [x] fallback strategy 
 - [x] unit tests (performance & correctness)
 - [x] end2end test   
+- [x] CEval benchmark 
 
- 
 ## Performance
 
 - float32 (performance & correctness)
 
 ```bash
-pytest -s test_merge_attn_states.py # please install pytest via `pip install pytest`
+pytest -s test_merge_attn_states.py
 ----------------------------------------------------------------------------------------------------
 .
 NUM_TOKENS:512, NUM_HEADS:16, HEAD_SIZE:128, DTYPE: torch.float32, Device: NVIDIA L20
@@ -86,9 +86,9 @@ All output values test passed! All inf values are correctly replaced with -inf.
 ----------------------------------------------------------------------------------------------------
 ```
 
-## End2End test with vLLM
+## End2End test  
 
-R1 671B with L20x3, PP=3, TP=8, vLLM with [vllm/pull/16173](https://github.com/vllm-project/vllm/pull/16173)
+R1 671B with L20x3, PP=3, TP=8
 
 - launch cmd
 
@@ -169,7 +169,7 @@ P99 ITL (ms):                            96.89
 ==================================================
 ```
 
-### 8K IN:64 OUT (TTFT  17673.93ms -> 14785.00ms)
+### 8K IN:64 OUT (TTFT 15188.70ms -> 14534.50ms)
 
 - w/o this opt, 8K IN:64 OUT
 
@@ -177,50 +177,177 @@ P99 ITL (ms):                            96.89
 Maximum request concurrency: 16
 ============ Serving Benchmark Result ============
 Successful requests:                     16
-Benchmark duration (s):                  61.38
+Benchmark duration (s):                  42.55
 Total input tokens:                      131072
 Total generated tokens:                  1024
-Request throughput (req/s):              0.26
-Output token throughput (tok/s):         16.68
-Total Token throughput (tok/s):          2152.14
+Request throughput (req/s):              0.38
+Output token throughput (tok/s):         24.07
+Total Token throughput (tok/s):          3104.52
 ---------------Time to First Token----------------
-Mean TTFT (ms):                          17673.93
-Median TTFT (ms):                        16260.86
-P99 TTFT (ms):                           33269.41
+Mean TTFT (ms):                          15188.70
+Median TTFT (ms):                        15051.09
+P99 TTFT (ms):                           24925.20
 -----Time per Output Token (excl. 1st token)------
-Mean TPOT (ms):                          540.71
-Median TPOT (ms):                        558.80
-P99 TPOT (ms):                           613.13
+Mean TPOT (ms):                          383.59
+Median TPOT (ms):                        385.05
+P99 TPOT (ms):                           495.82
 ---------------Inter-token Latency----------------
-Mean ITL (ms):                           540.71
-Median ITL (ms):                         268.09
-P99 ITL (ms):                            6782.42
+Mean ITL (ms):                           383.59
+Median ITL (ms):                         268.32
+P99 ITL (ms):                            1057.60
 ==================================================
 ```
 
-- w/ this opt, 8K IN:64 OUT (TTFT  17673.93ms -> 14785.00ms)
+- w/ this opt, 8K IN:64 OUT (TTFT  15188.70ms -> 14534.50ms)
 
 ```bash
 Maximum request concurrency: 16
 ============ Serving Benchmark Result ============
 Successful requests:                     16
-Benchmark duration (s):                  42.52
+Benchmark duration (s):                  41.58
 Total input tokens:                      131072
 Total generated tokens:                  1024
 Request throughput (req/s):              0.38
-Output token throughput (tok/s):         24.08
-Total Token throughput (tok/s):          3106.85
+Output token throughput (tok/s):         24.63
+Total Token throughput (tok/s):          3177.20
 ---------------Time to First Token----------------
-Mean TTFT (ms):                          14785.00
-Median TTFT (ms):                        14644.31
-P99 TTFT (ms):                           24556.74
+Mean TTFT (ms):                          14534.50
+Median TTFT (ms):                        14393.85
+P99 TTFT (ms):                           24302.77
 -----Time per Output Token (excl. 1st token)------
-Mean TPOT (ms):                          387.38
-Median TPOT (ms):                        388.55
-P99 TPOT (ms):                           499.89
+Mean TPOT (ms):                          385.79
+Median TPOT (ms):                        387.44
+P99 TPOT (ms):                           498.96
 ---------------Inter-token Latency----------------
-Mean ITL (ms):                           387.38
-Median ITL (ms):                         271.57
-P99 ITL (ms):                            1056.03
+Mean ITL (ms):                           385.79
+Median ITL (ms):                         270.91
+P99 ITL (ms):                            1055.40
 ==================================================
+```
+
+## CEval benchmark  (0.90197884615385)
+
+We use [evalscope](https://github.com/modelscope/evalscope) to run benchmark on `CEval` dataset.
+
+```bash
+evalscope eval \
+ --model /workspace/dev/hf_models/DeepSeek-R1 \
+ --api-url http://0.0.0.0:8862/v1/chat/completions \
+ --api-key EMPTY \
+ --eval-batch-size 32 \
+ --eval-type service \
+ --datasets ceval \
+ --dataset-args '{"ceval": {"local_path": "/workspace/dev/openllm/benchmarks/data/ceval"}}'
+```
+
+Total AverageAccuracy: 0.90197884615385
+```bash
+2025-04-08 23:22:21,580 - evalscope - INFO - Report table:
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| Model       | Dataset   | Metric          | Subset                                   |   Num |   Score | Cat.0          |
++=============+===========+=================+==========================================+=======+=========+================+
+| DeepSeek-R1 | ceval     | AverageAccuracy | modern_chinese_history                   |    23 |  0.8696 | Humanities     |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | ideological_and_moral_cultivation        |    19 |  1      | Humanities     |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | logic                                    |    22 |  0.9091 | Humanities     |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | law                                      |    24 |  0.875  | Humanities     |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | chinese_language_and_literature          |    23 |  0.8261 | Humanities     |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | art_studies                              |    33 |  0.9091 | Humanities     |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | professional_tour_guide                  |    29 |  0.9655 | Humanities     |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | legal_professional                       |    23 |  0.913  | Humanities     |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | high_school_chinese                      |    19 |  0.7895 | Humanities     |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | high_school_history                      |    20 |  0.95   | Humanities     |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | middle_school_history                    |    22 |  0.9545 | Humanities     |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | civil_servant                            |    47 |  0.8723 | Other          |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | sports_science                           |    19 |  0.8947 | Other          |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | plant_protection                         |    22 |  1      | Other          |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | basic_medicine                           |    19 |  1      | Other          |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | clinical_medicine                        |    22 |  0.9091 | Other          |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | urban_and_rural_planner                  |    46 |  0.8913 | Other          |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | accountant                               |    49 |  0.9184 | Other          |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | fire_engineer                            |    31 |  1      | Other          |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | environmental_impact_assessment_engineer |    31 |  0.9032 | Other          |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | tax_accountant                           |    49 |  0.9184 | Other          |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | physician                                |    49 |  0.9184 | Other          |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | computer_network                         |    19 |  0.7895 | STEM           |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | operating_system                         |    19 |  0.8947 | STEM           |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | computer_architecture                    |    21 |  1      | STEM           |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | college_programming                      |    37 |  0.9189 | STEM           |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | college_physics                          |    19 |  0.8947 | STEM           |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | college_chemistry                        |    24 |  0.9167 | STEM           |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | advanced_mathematics                     |    19 |  0.9474 | STEM           |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | probability_and_statistics               |    18 |  0.7778 | STEM           |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | discrete_mathematics                     |    16 |  0.5625 | STEM           |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | electrical_engineer                      |    37 |  0.7027 | STEM           |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | metrology_engineer                       |    24 |  0.9583 | STEM           |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | high_school_mathematics                  |    18 |  0.7778 | STEM           |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | high_school_physics                      |    19 |  1      | STEM           |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | high_school_chemistry                    |    19 |  0.9474 | STEM           |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | high_school_biology                      |    19 |  0.9474 | STEM           |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | middle_school_mathematics                |    19 |  1      | STEM           |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | middle_school_biology                    |    21 |  0.8571 | STEM           |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | middle_school_physics                    |    19 |  1      | STEM           |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | middle_school_chemistry                  |    20 |  1      | STEM           |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | veterinary_medicine                      |    23 |  0.8696 | STEM           |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | college_economics                        |    55 |  0.8727 | Social Science |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | business_administration                  |    33 |  0.8182 | Social Science |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | marxism                                  |    19 |  0.9474 | Social Science |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | mao_zedong_thought                       |    24 |  1      | Social Science |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | education_science                        |    29 |  0.931  | Social Science |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | teacher_qualification                    |    44 |  0.9318 | Social Science |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | high_school_politics                     |    19 |  1      | Social Science |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | high_school_geography                    |    19 |  0.9474 | Social Science |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | middle_school_politics                   |    21 |  1      | Social Science |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+| DeepSeek-R1 | ceval     | AverageAccuracy | middle_school_geography                  |    12 |  0.9167 | Social Science |
++-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
 ```

@@ -6,16 +6,22 @@
 #include <algorithm>
 
 
-inline __device__ float to_float(float u) { return u; }
-inline __device__ float to_float(half u) { return __half2float(u); }
-inline __device__ float to_float(__nv_bfloat16 u) { return __bfloat162float(u); }
-inline __device__ void from_float(float& d, float s) { d = s; }
-inline __device__ void from_float(half& d, float s) { d = __float2half(s); }
-inline __device__ void from_float(__nv_bfloat16& d, float s) { d = __float2bfloat16(s); }
+static __forceinline__ __device__ float 
+to_float(float u) { return u; }
+static __forceinline__ __device__ float 
+to_float(half u) { return __half2float(u); }
+static __forceinline__ __device__ float 
+to_float(__nv_bfloat16 u) { return __bfloat162float(u); }
+static __forceinline__ __device__ void 
+from_float(float& d, float s) { d = s; }
+static __forceinline__ __device__ void 
+from_float(half& d, float s) { d = __float2half(s); }
+static __forceinline__ __device__ void 
+from_float(__nv_bfloat16& d, float s) { d = __float2bfloat16(s); }
 
 // Implements section 2.2 of https://www.arxiv.org/pdf/2501.01005
 // can be used to combine partial attention results (in the split-KV case)
-template <typename scalar_t, bool LOOP_OVER_HEAD>
+template <typename scalar_t, bool kLoopOverHead>
 __global__ void merge_attn_states_kernel(
     scalar_t* output,   // [NUM_TOKENS, NUM_HEADS, HEAD_SIZE]
     float* output_lse,  // [NUM_HEADS, NUM_TOKENS]
@@ -30,7 +36,7 @@ __global__ void merge_attn_states_kernel(
     const uint head_size  // HEAD_SIZE, 32,48,64,...,512,etc
 ) {
   // TODO(DefTruth): may need to support fp8?
-  if constexpr (LOOP_OVER_HEAD) {
+  if constexpr (kLoopOverHead) {
     // May loop over num heads for large NUM_TOKENS
     const uint token_idx = blockIdx.x;
     const uint thread_idx = threadIdx.x;
@@ -177,9 +183,9 @@ __global__ void merge_attn_states_kernel(
     }                                                                         \
   }
 
-#define LAUNCH_MERGE_ATTN_STATES(SCALAR_T, LOOP_OVER_HEAD)                  \
+#define LAUNCH_MERGE_ATTN_STATES(SCALAR_T, kLoopOverHead)                   \
   {                                                                         \
-    merge_attn_states_kernel<SCALAR_T, LOOP_OVER_HEAD>                      \
+    merge_attn_states_kernel<SCALAR_T, kLoopOverHead>                       \
         <<<grid, block>>>(                                                  \
             reinterpret_cast<SCALAR_T*>(output.data_ptr()), output_lse_ptr, \
             reinterpret_cast<SCALAR_T*>(prefix_output.data_ptr()),          \
