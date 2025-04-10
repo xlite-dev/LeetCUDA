@@ -2,7 +2,7 @@
 
 ## Introduction
 
-Implements section 2.2 of https://www.arxiv.org/pdf/2501.01005, can be used to combine partial attention results (in the split-KV case). The Triton and CUDA kernels here are modified from [vllm/attention/ops/triton_merge_attn_states.py](https://github.com/vllm-project/vllm/blob/main/vllm/attention/ops/triton_merge_attn_states.py) and [vllm/pull/16173](https://github.com/vllm-project/vllm/pull/16173). Use CUDA kernel instead of Triton to minimize CPU overhead. Compared to the Triton kernel, the CUDA kernel implemented in this PR can achieve a maximum speedup of over `3x`. End2End performance improved for R1 with PP=3 + TP=8 on L20,  4K IN:1K OUT (TTFT 5687.80 ms -> 5654.02 ms), 8K IN:64 OUT (TTFT  15188.70ms -> 14534.50ms).
+Implements section 2.2 of https://www.arxiv.org/pdf/2501.01005, can be used to combine partial attention results (in the split-KV case). The Triton and CUDA kernels here are modified from [vllm/attention/ops/triton_merge_attn_states.py](https://github.com/vllm-project/vllm/blob/main/vllm/attention/ops/triton_merge_attn_states.py) and [vllm/pull/16173](https://github.com/vllm-project/vllm/pull/16173). Use CUDA kernel instead of Triton to minimize CPU overhead. Compared to the Triton kernel, the CUDA kernel implemented in this PR can achieve a maximum speedup of over `3x`. @WoosukKwon, End2End performance improved for R1 with PP=3 + TP=8 on L20,  4K IN:1K OUT (TTFT 5687.80 ms -> 5654.02 ms). The performance of reasoning will not degrade.
 
 - [x] float32
 - [x] float16
@@ -12,9 +12,70 @@ Implements section 2.2 of https://www.arxiv.org/pdf/2501.01005, can be used to c
 - [x] unit tests (performance & correctness)
 - [x] end2end test   
 - [x] CEval benchmark 
+- [x] test cascade_flash_attn (used merge_attn_states), passed
 
 ## Performance
 
+| tokens | heads | headsize | dtype | Device | torch | triton | cuda | speedup |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| 256 | 16 | 128 | float16 | NVIDIA L20 | 0.15288ms | 0.04977ms | 0.01648ms | 3.0196x |
+| 512 | 16 | 128 | float16 | NVIDIA L20 | 0.15355ms | 0.05237ms | 0.01659ms | 3.1563x |
+| 613 | 16 | 128 | float16 | NVIDIA L20 | 0.15304ms | 0.05099ms | 0.01710ms | 2.9818x |
+| 1024 | 16 | 128 | float16 | NVIDIA L20 | 0.15236ms | 0.05207ms | 0.01720ms | 3.0267x |
+| 1536 | 16 | 128 | float16 | NVIDIA L20 | 0.16123ms | 0.05714ms | 0.01664ms | 3.4346x |
+| 4096 | 16 | 128 | float16 | NVIDIA L20 | 0.32471ms | 0.08289ms | 0.01981ms | 4.1841x |
+| 256 | 32 | 128 | float16 | NVIDIA L20 | 0.15212ms | 0.05094ms | 0.01653ms | 3.0810x |
+| 512 | 32 | 128 | float16 | NVIDIA L20 | 0.15273ms | 0.05120ms | 0.01731ms | 2.9580x |
+| 613 | 32 | 128 | float16 | NVIDIA L20 | 0.15344ms | 0.05269ms | 0.01879ms | 2.8040x |
+| 1024 | 32 | 128 | float16 | NVIDIA L20 | 0.17060ms | 0.06185ms | 0.02596ms | 2.3829x |
+| 1536 | 32 | 128 | float16 | NVIDIA L20 | 0.21955ms | 0.07167ms | 0.01720ms | 4.1659x |
+| 4096 | 32 | 128 | float16 | NVIDIA L20 | 0.71306ms | 0.15442ms | 0.06354ms | 2.4304x |
+| 256 | 48 | 128 | float16 | NVIDIA L20 | 0.15206ms | 0.04945ms | 0.01673ms | 2.9554x |
+| 512 | 48 | 128 | float16 | NVIDIA L20 | 0.15944ms | 0.05663ms | 0.02166ms | 2.6149x |
+| 613 | 48 | 128 | float16 | NVIDIA L20 | 0.16748ms | 0.05924ms | 0.02458ms | 2.4103x |
+| 1024 | 48 | 128 | float16 | NVIDIA L20 | 0.21939ms | 0.07404ms | 0.03450ms | 2.1458x |
+| 1536 | 48 | 128 | float16 | NVIDIA L20 | 0.38421ms | 0.08924ms | 0.03441ms | 2.5937x |
+| 4096 | 48 | 128 | float16 | NVIDIA L20 | 1.02671ms | 0.30397ms | 0.23511ms | 1.2929x |
+| 256 | 16 | 128 | bfloat16 | NVIDIA L20 | 0.15253ms | 0.05180ms | 0.01633ms | 3.1715x |
+| 512 | 16 | 128 | bfloat16 | NVIDIA L20 | 0.15237ms | 0.05146ms | 0.01643ms | 3.1312x |
+| 613 | 16 | 128 | bfloat16 | NVIDIA L20 | 0.15304ms | 0.05243ms | 0.01736ms | 3.0206x |
+| 1024 | 16 | 128 | bfloat16 | NVIDIA L20 | 0.15350ms | 0.05191ms | 0.01715ms | 3.0272x |
+| 1536 | 16 | 128 | bfloat16 | NVIDIA L20 | 0.16072ms | 0.05668ms | 0.01648ms | 3.4391x |
+| 4096 | 16 | 128 | bfloat16 | NVIDIA L20 | 0.32445ms | 0.08197ms | 0.01986ms | 4.1272x |
+| 256 | 32 | 128 | bfloat16 | NVIDIA L20 | 0.15314ms | 0.05023ms | 0.01643ms | 3.0571x |
+| 512 | 32 | 128 | bfloat16 | NVIDIA L20 | 0.15253ms | 0.05146ms | 0.01720ms | 2.9913x |
+| 613 | 32 | 128 | bfloat16 | NVIDIA L20 | 0.15467ms | 0.05417ms | 0.01884ms | 2.8744x |
+| 1024 | 32 | 128 | bfloat16 | NVIDIA L20 | 0.17224ms | 0.06221ms | 0.02595ms | 2.3973x |
+| 1536 | 32 | 128 | bfloat16 | NVIDIA L20 | 0.22102ms | 0.07240ms | 0.01751ms | 4.1349x |
+| 4096 | 32 | 128 | bfloat16 | NVIDIA L20 | 0.71388ms | 0.15248ms | 0.06359ms | 2.3978x |
+
+## Correctness 
+
+- float16 (performance & correctness)
+
+```bash
+pytest -s test_merge_attn_states.py
+----------------------------------------------------------------------------------------------------
+NUM_TOKENS:512, NUM_HEADS:16, HEAD_SIZE:128, DTYPE: torch.float16, Device: NVIDIA L20
+ Torch time: 0.149299ms
+Triton time: 0.050995ms
+  CUDA time: 0.015722ms, Performance: 3.24364x
+----------------------------------------------------------------------------------------------------
+Output all match, max abs diff:
+ (CUDA  vs Triton): 0.0009765625
+(Triton vs Torch) : 0.0015368461608886719
+  (CUDA vs Torch) : 0.0015368461608886719
+----------------------------------------------------------------------------------------------------
+Output LSE all match, max abs diff:
+(Triton vs Torch) : 2.384185791015625e-07
+  (CUDA vs Torch) : 0.0
+ (CUDA  vs Triton): 2.384185791015625e-07
+----------------------------------------------------------------------------------------------------
+All output values test passed! All inf values are correctly replaced with -inf.
+----------------------------------------------------------------------------------------------------
+```
+<details>
+<summary> show more details </summary>
 - float32 (performance & correctness)
 
 ```bash
@@ -35,29 +96,6 @@ Output LSE all match, max abs diff:
 (Triton vs Torch) : 4.76837158203125e-07
   (CUDA vs Torch) : 0.0
  (CUDA  vs Triton): 4.76837158203125e-07
-----------------------------------------------------------------------------------------------------
-All output values test passed! All inf values are correctly replaced with -inf.
-----------------------------------------------------------------------------------------------------
-```
-
-- float16 (performance & correctness)
-
-```bash
-----------------------------------------------------------------------------------------------------
-NUM_TOKENS:512, NUM_HEADS:16, HEAD_SIZE:128, DTYPE: torch.float16, Device: NVIDIA L20
- Torch time: 0.149299ms
-Triton time: 0.050995ms
-  CUDA time: 0.015722ms, Performance: 3.24364x
-----------------------------------------------------------------------------------------------------
-Output all match, max abs diff:
- (CUDA  vs Triton): 0.0009765625
-(Triton vs Torch) : 0.0015368461608886719
-  (CUDA vs Torch) : 0.0015368461608886719
-----------------------------------------------------------------------------------------------------
-Output LSE all match, max abs diff:
-(Triton vs Torch) : 2.384185791015625e-07
-  (CUDA vs Torch) : 0.0
- (CUDA  vs Triton): 2.384185791015625e-07
 ----------------------------------------------------------------------------------------------------
 All output values test passed! All inf values are correctly replaced with -inf.
 ----------------------------------------------------------------------------------------------------
@@ -85,6 +123,7 @@ Output LSE all match, max abs diff:
 All output values test passed! All inf values are correctly replaced with -inf.
 ----------------------------------------------------------------------------------------------------
 ```
+</details>
 
 ## End2End test  
 
@@ -112,7 +151,10 @@ nohup python3 -m vllm.entrypoints.openai.api_server \
         --disable-custom-all-reduce \
         --port 8862 > vllm.R1.log.3 2>&1 &
 ```
+4K IN:1K OUT (TTFT 5687.80 ms -> 5654.02 ms), The performance of reasoning will not degrade.
 
+<details>
+<summary> show more details </summary>
 ### 4K IN:1K OUT (TTFT 5687.80 ms -> 5654.02 ms)
 
 - w/o this opt, 4K IN:1K OUT
@@ -169,65 +211,65 @@ P99 ITL (ms):                            96.89
 ==================================================
 ```
 
-### 8K IN:64 OUT (TTFT 15188.70ms -> 14534.50ms)
+### 8K IN:64 OUT (TTFT 8861.07ms -> 8767.16ms)
 
 - w/o this opt, 8K IN:64 OUT
 
 ```bash
 Maximum request concurrency: 16
 ============ Serving Benchmark Result ============
-Successful requests:                     16
-Benchmark duration (s):                  42.55
-Total input tokens:                      131072
-Total generated tokens:                  1024
-Request throughput (req/s):              0.38
-Output token throughput (tok/s):         24.07
-Total Token throughput (tok/s):          3104.52
+Successful requests:                     48
+Benchmark duration (s):                  115.37
+Total input tokens:                      393216
+Total generated tokens:                  3072
+Request throughput (req/s):              0.42
+Output token throughput (tok/s):         26.63
+Total Token throughput (tok/s):          3434.90
 ---------------Time to First Token----------------
-Mean TTFT (ms):                          15188.70
-Median TTFT (ms):                        15051.09
-P99 TTFT (ms):                           24925.20
+Mean TTFT (ms):                          8861.07
+Median TTFT (ms):                        6167.50
+P99 TTFT (ms):                           23576.12
 -----Time per Output Token (excl. 1st token)------
-Mean TPOT (ms):                          383.59
-Median TPOT (ms):                        385.05
-P99 TPOT (ms):                           495.82
+Mean TPOT (ms):                          454.74
+Median TPOT (ms):                        484.97
+P99 TPOT (ms):                           504.62
 ---------------Inter-token Latency----------------
-Mean ITL (ms):                           383.59
-Median ITL (ms):                         268.32
-P99 ITL (ms):                            1057.60
+Mean ITL (ms):                           454.74
+Median ITL (ms):                         273.69
+P99 ITL (ms):                            1065.00
 ==================================================
 ```
 
-- w/ this opt, 8K IN:64 OUT (TTFT  15188.70ms -> 14534.50ms)
-
+- w/ this opt, 8K IN:64 OUT (TTFT 8861.07ms -> 8767.16ms)
 ```bash
 Maximum request concurrency: 16
 ============ Serving Benchmark Result ============
-Successful requests:                     16
-Benchmark duration (s):                  41.58
-Total input tokens:                      131072
-Total generated tokens:                  1024
-Request throughput (req/s):              0.38
-Output token throughput (tok/s):         24.63
-Total Token throughput (tok/s):          3177.20
+Successful requests:                     48
+Benchmark duration (s):                  115.19
+Total input tokens:                      393216
+Total generated tokens:                  3072
+Request throughput (req/s):              0.42
+Output token throughput (tok/s):         26.67
+Total Token throughput (tok/s):          3440.28
 ---------------Time to First Token----------------
-Mean TTFT (ms):                          14534.50
-Median TTFT (ms):                        14393.85
-P99 TTFT (ms):                           24302.77
+Mean TTFT (ms):                          8767.16
+Median TTFT (ms):                        6170.44
+P99 TTFT (ms):                           23594.15
 -----Time per Output Token (excl. 1st token)------
-Mean TPOT (ms):                          385.79
-Median TPOT (ms):                        387.44
-P99 TPOT (ms):                           498.96
+Mean TPOT (ms):                          455.34
+Median TPOT (ms):                        483.54
+P99 TPOT (ms):                           504.48
 ---------------Inter-token Latency----------------
-Mean ITL (ms):                           385.79
-Median ITL (ms):                         270.91
-P99 ITL (ms):                            1055.40
+Mean ITL (ms):                           455.34
+Median ITL (ms):                         270.61
+P99 ITL (ms):                            1066.51
 ==================================================
 ```
+</details>
 
-## CEval benchmark  (0.90197884615385)
+## CEval benchmark
 
-We use [evalscope](https://github.com/modelscope/evalscope) to run benchmark on `CEval` dataset.
+We use [evalscope](https://github.com/modelscope/evalscope) to run benchmark on `CEval` dataset. Total AverageAccuracy: 0.90197884615385
 
 ```bash
 evalscope eval \
@@ -240,9 +282,11 @@ evalscope eval \
  --dataset-args '{"ceval": {"local_path": "/workspace/dev/openllm/benchmarks/data/ceval"}}'
 ```
 
-Total AverageAccuracy: 0.90197884615385
+
+<details>
+<summary> show more details </summary>
+
 ```bash
-2025-04-08 23:22:21,580 - evalscope - INFO - Report table:
 +-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
 | Model       | Dataset   | Metric          | Subset                                   |   Num |   Score | Cat.0          |
 +=============+===========+=================+==========================================+=======+=========+================+
@@ -350,4 +394,18 @@ Total AverageAccuracy: 0.90197884615385
 +-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
 | DeepSeek-R1 | ceval     | AverageAccuracy | middle_school_geography                  |    12 |  0.9167 | Social Science |
 +-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
+```
+</details>
+
+## Test cascade_flash_attn
+
+```bash
+pytest -s test_cascade_flash_attn.py
+================================================================================== test session starts ===================================================================================
+collected 198 items
+Running 198 items in this shard
+
+test_cascade_flash_attn.py ..............................................................................................................................ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss
+
+============================================================================ 126 passed, 72 skipped in 1.05s =============================================================================
 ```
