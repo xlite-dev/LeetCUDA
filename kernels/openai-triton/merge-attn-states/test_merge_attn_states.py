@@ -58,12 +58,10 @@ def generate_markdown_table():
     table_separator = "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"
 
     def shortly_dtype(dtype: torch.dtype) -> str:
-        if dtype == torch.float16: return "fp16"
-        if dtype == torch.bfloat16: return "bf16"
-        return "fp32"
+        return str(dtype).removeprefix("torch.")
     
     def shortly_device(device: str) -> str:
-        return device.replace("NVIDIA", "").strip()
+        return device.removeprefix("NVIDIA").strip()
 
     print(table_header)
     print(table_separator)

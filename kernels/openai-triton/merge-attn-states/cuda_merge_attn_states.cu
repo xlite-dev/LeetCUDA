@@ -5,7 +5,6 @@
 #include <torch/extension.h>
 #include <algorithm>
 
-
 static __forceinline__ __device__ float 
 to_float(float u) { return u; }
 static __forceinline__ __device__ float 
@@ -19,20 +18,17 @@ from_float(half& d, float s) { d = __float2half(s); }
 static __forceinline__ __device__ void 
 from_float(__nv_bfloat16& d, float s) { d = __float2bfloat16(s); }
 
-
 template <typename scalar_t>
 __device__ __forceinline__ void merge_attn_states_common(
-    scalar_t* output,   // [NUM_TOKENS, NUM_HEADS, HEAD_SIZE]
-    float* output_lse,  // [NUM_HEADS, NUM_TOKENS]
-    const scalar_t* __restrict__ prefix_output,  // [NUM_TOKENS, NUM_HEADS,
-                                                 // HEAD_SIZE]
-    const float* __restrict__ prefix_lse,        // [NUM_HEADS, NUM_TOKENS]
-    const scalar_t* __restrict__ suffix_output,  // [NUM_TOKENS, NUM_HEADS,
-                                                 // HEAD_SIZE]
-    const float* __restrict__ suffix_lse,        // [NUM_HEADS, NUM_TOKENS]
-    const uint num_tokens,                       // NUM_TOKENS
-    const uint num_heads,                        // NUM QUERY HEADS
-    const uint head_size,  // HEAD_SIZE, 32,48,64,...,512,etc
+    scalar_t* output,
+    float* output_lse,
+    const scalar_t* __restrict__ prefix_output,
+    const float* __restrict__ prefix_lse,
+    const scalar_t* __restrict__ suffix_output,
+    const float* __restrict__ suffix_lse,
+    const uint num_tokens,
+    const uint num_heads,
+    const uint head_size,
     const uint token_idx,
     const uint head_idx,
     const uint thr_idx
@@ -61,12 +57,6 @@ __device__ __forceinline__ void merge_attn_states_common(
   const float p_scale = p_se / out_se;
   const float s_scale = s_se / out_se;
 
-  // We only need to write to output_lse once per head.
-  if (output_lse != nullptr && thr_idx == 0) {
-    float out_lse = logf(out_se) + max_lse;
-    output_lse[head_idx * num_tokens + token_idx] = out_lse;
-  }
-
   if (thr_offset < head_size) {
     // Pack 128b load
     pack_128b_t p_out_pack = reinterpret_cast<const pack_128b_t*>(
@@ -94,153 +84,102 @@ __device__ __forceinline__ void merge_attn_states_common(
     reinterpret_cast<pack_128b_t*>(output_blk)[
       thr_offset / pack_size] = o_out_pack;
   }
+  // We only need to write to output_lse once per head.
+  if (output_lse != nullptr && thr_idx == 0) {
+    float out_lse = logf(out_se) + max_lse;
+    output_lse[head_idx * num_tokens + token_idx] = out_lse;
+  }
 }
 
-// Implements section 2.2 of https://www.arxiv.org/pdf/2501.01005
-// can be used to combine partial attention results (in the split-KV case)
-template <typename scalar_t, bool kLoopOverHead, bool kFlattenOverHead = false>
+template <typename scalar_t>
 __global__ void merge_attn_states_kernel(
-    scalar_t* output,   // [NUM_TOKENS, NUM_HEADS, HEAD_SIZE]
-    float* output_lse,  // [NUM_HEADS, NUM_TOKENS]
-    const scalar_t* __restrict__ prefix_output,  // [NUM_TOKENS, NUM_HEADS,
-                                                 // HEAD_SIZE]
-    const float* __restrict__ prefix_lse,        // [NUM_HEADS, NUM_TOKENS]
-    const scalar_t* __restrict__ suffix_output,  // [NUM_TOKENS, NUM_HEADS,
-                                                 // HEAD_SIZE]
-    const float* __restrict__ suffix_lse,        // [NUM_HEADS, NUM_TOKENS]
-    const uint num_tokens,                       // NUM_TOKENS
-    const uint num_heads,                        // NUM QUERY HEADS
-    const uint head_size  // HEAD_SIZE, 32,48,64,...,512,etc
+  scalar_t* output, float* output_lse,
+  const scalar_t* prefix_output, const float* prefix_lse,
+  const scalar_t* suffix_output, const float* suffix_lse,
+  const uint num_tokens, const uint num_heads, const uint head_size
 ) {
-  if constexpr (kLoopOverHead) {
-    // May loop over num heads for large num_tokens
-    const uint token_idx = blockIdx.x;
-    const uint thread_idx = threadIdx.x;
+  constexpr uint BLOCK_SIZE = 128;
+  const uint pack_size = 16 / sizeof(scalar_t);
+  const uint threads_per_head = head_size / pack_size;
     
-    if constexpr (kFlattenOverHead) {
-      // thread num = (num_heads * head_size) / pack_size 
-      // = num_heads * (head_size / pack_size), 16 * (128 / 8)
-      // tid: 0~255, 0~15->head 0, 16~31->head 1, ..., etc.
-      constexpr uint pack_size = 16 / sizeof(scalar_t);
-      const uint head_idx = thread_idx / (head_size / pack_size);
-      const uint thr_idx = thread_idx % (head_size / pack_size);
-      merge_attn_states_common<scalar_t>(
-        output, output_lse, prefix_output, 
-        prefix_lse, suffix_output, suffix_lse, 
-        num_tokens, num_heads, head_size,
-        token_idx, head_idx, thr_idx
-      );
-    } else {
-      const uint thr_idx = thread_idx;
-      #pragma unroll
-      for (uint head_idx = 0; head_idx < num_heads; ++head_idx) {
-        merge_attn_states_common<scalar_t>(
-          output, output_lse, prefix_output, 
-          prefix_lse, suffix_output, suffix_lse, 
-          num_tokens, num_heads, head_size,
-          token_idx, head_idx, thr_idx
-        );
-      }  // End loop over heads
-    } // End kFlattenOverHead
-
-  } else {
-    const uint token_idx = blockIdx.x;
-    const uint head_idx = blockIdx.y;
-    const uint thread_idx = threadIdx.x;
-    const uint thr_idx = thread_idx;
-
-    merge_attn_states_common<scalar_t>(
-      output, output_lse, prefix_output, 
-      prefix_lse, suffix_output, suffix_lse, 
-      num_tokens, num_heads, head_size,
-      token_idx, head_idx, thr_idx
-    );
-  }
+  const uint global_idx = blockIdx.x * BLOCK_SIZE + threadIdx.x;
+  const uint token_head_threads = num_tokens * num_heads * threads_per_head;
+    
+  if (global_idx >= token_head_threads) return;
+    
+  // global_idx -> token_idx + head_idx + thr_idx
+  const uint token_head_idx = global_idx / threads_per_head;
+  const uint thr_idx = global_idx % threads_per_head;
+    
+  const uint token_idx = token_head_idx / num_heads;
+  const uint head_idx = token_head_idx % num_heads;
+    
+  merge_attn_states_common<scalar_t>(
+    output, output_lse, prefix_output, 
+    prefix_lse, suffix_output, suffix_lse, 
+    num_tokens, num_heads, head_size,
+    token_idx, head_idx, thr_idx
+  );
 }
 
 // The following macro is used to dispatch the conversion function based on
 // the output data type. The FN is a macro that calls a function with
-// template<typename SCALAR_T>.
-#define DISPATCH_BY_SCALAR_DTYPE(SCALAR_DTYPE, FN)                            \
+// template<typename scalar_t>.
+#define DISPATCH_BY_SCALAR_DTYPE(scalar_dtype, fn)                            \
   {                                                                           \
-    if (SCALAR_DTYPE == at::ScalarType::Float) { FN(float); }                 \
-    else if (SCALAR_DTYPE == at::ScalarType::Half) { FN(half); }              \
-    else if (SCALAR_DTYPE == at::ScalarType::BFloat16) { FN(__nv_bfloat16); } \
+    if (scalar_dtype == at::ScalarType::Float) { fn(float); }                 \
+    else if (scalar_dtype == at::ScalarType::Half) { fn(half); }              \
+    else if (scalar_dtype == at::ScalarType::BFloat16) { fn(__nv_bfloat16); } \
     else {                                                                    \
-      TORCH_CHECK(false, "Unsupported data type of O: ", SCALAR_DTYPE);       \
+      TORCH_CHECK(false, "Unsupported data type of O: ", scalar_dtype);       \
     }                                                                         \
   }
 
-#define LAUNCH_MERGE_ATTN_STATES(SCALAR_T, kLoopOverHead, kFlattenOverHead) \
+#define LAUNCH_MERGE_ATTN_STATES(scalar_t)                                  \
   {                                                                         \
-    merge_attn_states_kernel<SCALAR_T, kLoopOverHead, kFlattenOverHead>     \
+    merge_attn_states_kernel<scalar_t>                                      \
         <<<grid, block>>>(                                                  \
-            reinterpret_cast<SCALAR_T*>(output.data_ptr()), output_lse_ptr, \
-            reinterpret_cast<SCALAR_T*>(prefix_output.data_ptr()),          \
+            reinterpret_cast<scalar_t*>(output.data_ptr()), output_lse_ptr, \
+            reinterpret_cast<scalar_t*>(prefix_output.data_ptr()),          \
             reinterpret_cast<float*>(prefix_lse.data_ptr()),                \
-            reinterpret_cast<SCALAR_T*>(suffix_output.data_ptr()),          \
+            reinterpret_cast<scalar_t*>(suffix_output.data_ptr()),          \
             reinterpret_cast<float*>(suffix_lse.data_ptr()), num_tokens,    \
             num_heads, head_size);                                          \
   }
 
-template <typename SCALAR_T>
+template <typename scalar_t>
 void merge_attn_states_launcher(
     torch::Tensor& output,  // [NUM_TOKENS, NUM_HEADS, HEAD_SIZE]
     std::optional<torch::Tensor> output_lse,  // [NUM_HEADS, NUM_TOKENS]
     const torch::Tensor& prefix_output,  // [NUM_TOKENS, NUM_HEADS, HEAD_SIZE]
     const torch::Tensor& prefix_lse,     // [NUM_HEADS, NUM_TOKENS]
     const torch::Tensor& suffix_output,  // [NUM_TOKENS, NUM_HEADS, HEAD_SIZE]
-    const torch::Tensor& suffix_lse,     // [NUM_HEADS, NUM_TOKENS]
-    const bool disable_loop_over_head) {
+    const torch::Tensor& suffix_lse      // [NUM_HEADS, NUM_TOKENS]
+) {
+
   const uint num_tokens = output.size(0);
-  const uint num_heads = output.size(1);  // num query heads
+  const uint num_heads = output.size(1);
   const uint head_size = output.size(2);
-  // float -> 4, half/bf16 -> 8, 128b = 16 bytes.
-  constexpr uint pack_size = 16 / sizeof(SCALAR_T);
+  const uint pack_size = 16 / sizeof(scalar_t);
   TORCH_CHECK(head_size % pack_size == 0,
               "headsize must be multiple of pack_size:", pack_size);
-  TORCH_CHECK(head_size / pack_size <= 1024,
-              "headsize/pack_size must be <= of 1024, pack_size: ", pack_size);
+  const uint threads_per_head = head_size / pack_size;
+  const uint total_threads = num_tokens * num_heads * threads_per_head;
   float* output_lse_ptr = nullptr;
   if (output_lse.has_value()) {
     output_lse_ptr = output_lse.value().data_ptr<float>();
   }
-  // Keep threads num <= 512 per thread block.
-  const bool skip_flatten_over_head = (
-    (num_heads * head_size) / pack_size > 512);
-
-  const bool skip_loop_over_head = (
-    disable_loop_over_head || num_tokens <= 1024 || 
-    (num_heads >= 64 && skip_flatten_over_head)
-  );
-
-  if (skip_loop_over_head) {
-    dim3 grid(num_tokens, num_heads);
-    dim3 block(head_size / pack_size);
-    LAUNCH_MERGE_ATTN_STATES(SCALAR_T, false, false);
-  } else {
-    // try loop over num heads for large num_tokens
-    if (skip_flatten_over_head) {
-      dim3 grid(num_tokens);
-      dim3 block(head_size / pack_size);
-      LAUNCH_MERGE_ATTN_STATES(SCALAR_T, true, false);
-    } else {
-      // cases:
-      // num_tokens 8192, num_heads 16, head_size 128
-      // num_tokens 4096, num_heads 16, head_size 128
-      dim3 grid(num_tokens);
-      dim3 block((num_heads * head_size) / pack_size);
-      LAUNCH_MERGE_ATTN_STATES(SCALAR_T, true, true);
-    }
-  }
+    
+  dim3 block(128);
+  dim3 grid((total_threads + block.x - 1) / block.x);
+  LAUNCH_MERGE_ATTN_STATES(scalar_t);
 }
 
-#define CALL_MERGE_ATTN_STATES_LAUNCHER(SCALAR_T) \
+#define CALL_MERGE_ATTN_STATES_LAUNCHER(scalar_t) \
   {                                               \
-    merge_attn_states_launcher<SCALAR_T>(         \
-        output, output_lse, prefix_output,        \
-        prefix_lse, suffix_output,                \
-        suffix_lse, disable_loop_over_head);      \
+    merge_attn_states_launcher<scalar_t>(         \
+      output, output_lse, prefix_output,          \
+      prefix_lse, suffix_output, suffix_lse);     \
   }
 
 void merge_attn_states_cuda(
@@ -249,8 +188,8 @@ void merge_attn_states_cuda(
     const torch::Tensor& prefix_output,  // [NUM_TOKENS, NUM_HEADS, HEAD_SIZE]
     const torch::Tensor& prefix_lse,     // [NUM_HEADS, NUM_TOKENS]
     const torch::Tensor& suffix_output,  // [NUM_TOKENS, NUM_HEADS, HEAD_SIZE]
-    const torch::Tensor& suffix_lse,     // [NUM_HEADS, NUM_TOKENS]
-    const bool disable_loop_over_head) {
+    const torch::Tensor& suffix_lse      // [NUM_HEADS, NUM_TOKENS]
+) {
   DISPATCH_BY_SCALAR_DTYPE(output.dtype(), CALL_MERGE_ATTN_STATES_LAUNCHER);
 }
 
@@ -264,7 +203,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     py::arg("prefix_lse"),
     py::arg("suffix_output"),
     py::arg("suffix_lse"),
-    py::arg("disable_loop_over_head"),
     "Merge attention states (CUDA)"
   );
 }

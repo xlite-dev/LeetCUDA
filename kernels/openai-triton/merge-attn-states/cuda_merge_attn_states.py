@@ -22,13 +22,13 @@ lib = load(
 )
 
 
-def merge_attn_states_cuda(output: torch.Tensor,
-                      prefix_output: torch.Tensor,
-                      prefix_lse: torch.Tensor,
-                      suffix_output: torch.Tensor,
-                      suffix_lse: torch.Tensor,
-                      output_lse: Optional[torch.Tensor] = None,
-                      disable_loop_over_head: bool = False) -> None:
+def merge_attn_states_cuda(
+    output: torch.Tensor,
+    prefix_output: torch.Tensor,
+    prefix_lse: torch.Tensor,
+    suffix_output: torch.Tensor,
+    suffix_lse: torch.Tensor,
+    output_lse: Optional[torch.Tensor] = None,
+) -> None:
    lib.merge_attn_states_cuda(output, output_lse, prefix_output,
-                              prefix_lse, suffix_output, suffix_lse,
-                              disable_loop_over_head)
+                              prefix_lse, suffix_output, suffix_lse)
