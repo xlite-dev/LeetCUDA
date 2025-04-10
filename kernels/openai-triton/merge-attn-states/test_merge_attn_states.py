@@ -53,7 +53,7 @@ all_case_info: list[tuple] = []
 
 def generate_markdown_table():
     global all_case_info, OUTPUT_LSE
-    table_header = ("| tokens | heads | headsize | dtype | "
+    table_header = ("| tokens | heads | headsize | dtype "
                     "| device | torch | triton | cuda | speedup |")
     table_separator = "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"
 
