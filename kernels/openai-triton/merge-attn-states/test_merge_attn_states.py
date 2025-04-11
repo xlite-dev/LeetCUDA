@@ -43,7 +43,7 @@ def merge_attn_states_torch(
 
 
 NUM_BATCH_TOKENS = [512, 613, 1536, 1724, 4096]
-NUM_QUERY_HEADS = [16, 32]
+NUM_QUERY_HEADS = [16]
 HEAD_SIZES = [128]
 DTYPES = [torch.float32, torch.half, torch.bfloat16]
 

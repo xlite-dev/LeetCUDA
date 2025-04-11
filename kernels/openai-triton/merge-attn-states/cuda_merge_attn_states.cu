@@ -5,19 +5,12 @@
 #include <torch/extension.h>
 #include <algorithm>
 
-static __forceinline__ __device__ float 
-to_float(float u) { return u; }
-static __forceinline__ __device__ float 
-to_float(half u) { return __half2float(u); }
-static __forceinline__ __device__ float 
-to_float(__nv_bfloat16 u) { return __bfloat162float(u); }
-static __forceinline__ __device__ void 
-from_float(float& d, float s) { d = s; }
-static __forceinline__ __device__ void 
-from_float(half& d, float s) { d = __float2half(s); }
-static __forceinline__ __device__ void 
-from_float(__nv_bfloat16& d, float s) { d = __float2bfloat16(s); }
-
+inline __device__ float to_float(float u) { return u; }
+inline __device__ float to_float(half u) { return __half2float(u); }
+inline __device__ float to_float(__nv_bfloat16 u) { return __bfloat162float(u); }
+inline __device__ void from_float(float& d, float s) { d = s; }
+inline __device__ void from_float(half& d, float s) { d = __float2half(s); }
+inline __device__ void from_float(__nv_bfloat16& d, float s) { d = __float2bfloat16(s); }
 
 // Implements section 2.2 of https://www.arxiv.org/pdf/2501.01005
 // can be used to combine partial attention results (in the split-KV case)
