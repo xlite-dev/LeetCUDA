@@ -427,6 +427,7 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 
 |📖 类型-标题|📖 作者| 📖 推荐 |  
 |:---|:---|:---|    
+|[[vLLM实践][算子]📚vLLM算子开发流程详细记录](https://zhuanlan.zhihu.com/p/1892966682634473987)|@xlite-dev|⭐️⭐️⭐⭐️| 
 |[[vLLM实践][万字]📚vLLM + DeepSeek-R1 671B 多机部署及修Bug笔记](https://zhuanlan.zhihu.com/p/29950052712)|@xlite-dev|⭐️⭐️⭐⭐️| 
 |[[Attention优化]📚FFPA(Split-D): FA2无限HeadDim扩展，2x↑🎉 vs SDPA EA](https://zhuanlan.zhihu.com/p/13975660308)|@xlite-dev|⭐️⭐️⭐⭐️| 
 |[[CUDA基础][开篇]📖CUDA-Learn-Notes: v3.0 大升级-面试刷题不迷路](https://zhuanlan.zhihu.com/p/19862356369)|@xlite-dev|⭐️⭐️⭐⭐️| 
