@@ -15,6 +15,7 @@ lib = load(
         "-U__CUDA_NO_BFLOAT16_CONVERSIONS__",
         "--expt-relaxed-constexpr",
         "--expt-extended-lambda",
+        "--generate-line-info -g", # for NCU debugging
         # "--use_fast_math"
     ], 
     extra_cflags=['-std=c++17'],
