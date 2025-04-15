@@ -1,15 +1,17 @@
 import torch
 import time
+import os
 from torch.utils.cpp_extension import load
 from typing import Optional
 from functools import partial
 
 torch.set_grad_enabled(False)
 
+CUTLASS_REPO_PATH = os.environ.get("CUTLASS_REPO_PATH", os.path.expanduser("~/cutlass"))
 # Load the CUDA kernel as a python module
 lib = load(
     name="mat_transpose_lib",
-    sources=["mat_transpose.cu"],
+    sources=["mat_transpose.cu", "mat_transpose_cute.cu"],
     extra_cuda_cflags=[
         "-O3",
         "-U__CUDA_NO_HALF_OPERATORS__",
@@ -21,6 +23,7 @@ lib = load(
         "--use_fast_math",
     ],
     extra_cflags=["-std=c++17"],
+    extra_include_paths=[os.path.join(CUTLASS_REPO_PATH, "include")],
 )
 
 
@@ -91,5 +94,6 @@ for M, N in MNs:
     run_benchmark(lib.mat_transpose_f32x4_shared_row2col2d, x, "f32x4_shared_row2col(2d)", y)
     run_benchmark(lib.mat_transpose_f32x4_shared_bcf_col2row2d, x, "f32x4_shared_bcf_col2row(2d)", y)
     run_benchmark(lib.mat_transpose_f32x4_shared_bcf_row2col2d, x, "f32x4_shared_bcf_row2col(2d)", y)
+    run_benchmark(lib.mat_transpose_cute, x, "mat_transpose_cute", y)
     run_benchmark(partial(torch.transpose_copy, dim0=0, dim1=1, out=y), x, "f32_th")
     print("-" * 130)

@@ -337,6 +337,7 @@ TORCH_BINDING_MAT_TRANSPOSE2D(f32x4_shared_bcf_row2col, torch::kFloat32, float, 
 // TODO: may support double buffer pipeline mat transpose ?
 // TODO: may support fp16 mat transpose ?
 
+extern void mat_transpose_cute(torch::Tensor x, torch::Tensor y);
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   // 1d index
@@ -357,4 +358,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   //shared memory optimize with bcf
   TORCH_BINDING_COMMON_EXTENSION(mat_transpose_f32x4_shared_bcf_col2row2d)
   TORCH_BINDING_COMMON_EXTENSION(mat_transpose_f32x4_shared_bcf_row2col2d)
+  // cute
+  TORCH_BINDING_COMMON_EXTENSION(mat_transpose_cute)
 }
