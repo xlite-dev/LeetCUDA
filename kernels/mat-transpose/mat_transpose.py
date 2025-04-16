@@ -68,6 +68,9 @@ def run_benchmark(
         print(out)
     return out, mean_time
 
+@torch.compile(mode='max-autotune-no-cudagraphs')
+def transpose_copy_compiled(input: torch.Tensor, out: torch.Tensor):
+    return torch.transpose_copy(input, dim0=0, dim1=1, out=out)
 
 Ms = [1024, 2048, 4096]
 Ns = [1024, 2048, 4096]
@@ -77,7 +80,7 @@ copy_x = lambda x: x
 for M, N in MNs:
     print("-" * 130)
     print(" " * 55 + f"M={M}, N={N}")
-    x = torch.randn((M, N)).cuda().float().contiguous()
+    x = torch.arange(0, M * N).reshape(M, N).cuda().float().contiguous()
     y = torch.randn((N, M)).cuda().float().contiguous()
     run_benchmark(partial(copy_x), x, "original")
     run_benchmark(lib.mat_transpose_f32_col2row, x, "f32_col2row", y)
@@ -94,6 +97,8 @@ for M, N in MNs:
     run_benchmark(lib.mat_transpose_f32x4_shared_row2col2d, x, "f32x4_shared_row2col(2d)", y)
     run_benchmark(lib.mat_transpose_f32x4_shared_bcf_col2row2d, x, "f32x4_shared_bcf_col2row(2d)", y)
     run_benchmark(lib.mat_transpose_f32x4_shared_bcf_row2col2d, x, "f32x4_shared_bcf_row2col(2d)", y)
-    run_benchmark(lib.mat_transpose_cute, x, "mat_transpose_cute", y)
+    run_benchmark(lib.mat_transpose_cute_row2col_naive, x, "mat_transpose_cute_row2col_naive", y)
+    run_benchmark(lib.mat_transpose_cute_row2col_vectorized, x, "mat_transpose_cute_row2col_vectorized", y)
     run_benchmark(partial(torch.transpose_copy, dim0=0, dim1=1, out=y), x, "f32_th")
+    run_benchmark(partial(transpose_copy_compiled, out=y), x, "f32_th_compiled")
     print("-" * 130)
