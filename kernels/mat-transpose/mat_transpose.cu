@@ -338,9 +338,17 @@ TORCH_BINDING_MAT_TRANSPOSE2D(f32x4_shared_bcf_row2col, torch::kFloat32, float, 
 // TODO: may support fp16 mat transpose ?
 
 // CuTe implentations
-extern void mat_transpose_cute_row2col_naive(torch::Tensor, torch::Tensor);
-extern void mat_transpose_cute_row2col_vectorized(torch::Tensor, torch::Tensor);
-extern void mat_transpose_cute_row2col_swizzled(torch::Tensor, torch::Tensor);
+extern void mat_transpose_cute_col2row_reg(torch::Tensor, torch::Tensor);
+extern void mat_transpose_cute_row2col_reg(torch::Tensor, torch::Tensor);
+extern void mat_transpose_cute_col_smem(torch::Tensor, torch::Tensor);
+extern void mat_transpose_cute_row_smem(torch::Tensor, torch::Tensor);
+extern void mat_transpose_cute_col_smem_swizzled(torch::Tensor, torch::Tensor);
+extern void mat_transpose_cute_row_smem_swizzled(torch::Tensor, torch::Tensor);
+extern void mat_transpose_cute_row_cvectorized(torch::Tensor, torch::Tensor);
+extern void mat_transpose_cute_row_rvectorized(torch::Tensor, torch::Tensor);
+extern void mat_transpose_cute_row_cvectorized_swizzled(torch::Tensor, torch::Tensor);
+extern void mat_transpose_cute_row_rvectorized_swizzled(torch::Tensor, torch::Tensor);
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   // 1d index
   TORCH_BINDING_COMMON_EXTENSION(mat_transpose_f32_col2row)
@@ -360,8 +368,15 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   //shared memory optimize with bcf
   TORCH_BINDING_COMMON_EXTENSION(mat_transpose_f32x4_shared_bcf_col2row2d)
   TORCH_BINDING_COMMON_EXTENSION(mat_transpose_f32x4_shared_bcf_row2col2d)
-  // cute
-  TORCH_BINDING_COMMON_EXTENSION(mat_transpose_cute_row2col_naive)
-  TORCH_BINDING_COMMON_EXTENSION(mat_transpose_cute_row2col_swizzled)
-  TORCH_BINDING_COMMON_EXTENSION(mat_transpose_cute_row2col_vectorized)
+  // CuTe implentations
+  TORCH_BINDING_COMMON_EXTENSION(mat_transpose_cute_col2row_reg)
+  TORCH_BINDING_COMMON_EXTENSION(mat_transpose_cute_row2col_reg)
+  TORCH_BINDING_COMMON_EXTENSION(mat_transpose_cute_row_smem)
+  TORCH_BINDING_COMMON_EXTENSION(mat_transpose_cute_col_smem)
+  TORCH_BINDING_COMMON_EXTENSION(mat_transpose_cute_col_smem_swizzled)
+  TORCH_BINDING_COMMON_EXTENSION(mat_transpose_cute_row_smem_swizzled)
+  TORCH_BINDING_COMMON_EXTENSION(mat_transpose_cute_row_cvectorized)
+  TORCH_BINDING_COMMON_EXTENSION(mat_transpose_cute_row_rvectorized)
+  TORCH_BINDING_COMMON_EXTENSION(mat_transpose_cute_row_cvectorized_swizzled)
+  TORCH_BINDING_COMMON_EXTENSION(mat_transpose_cute_row_rvectorized_swizzled)
 }
