@@ -92,6 +92,85 @@ void mat_transpose_cute_row2col_naive(torch::Tensor x, torch::Tensor y) {
   CUDA_CHECK(cudaGetLastError());
 }
 
+template <typename T, int BLK_M, int BLK_N, typename ThreadLayout, typename SmemLayout>
+__global__ void mat_transpose_cute_row2col_swizzled_kernel(const T *pA, T *pB,
+                                                        int M, int N,
+                                                        ThreadLayout tAB, SmemLayout smem_layout) {
+  int tx = threadIdx.x;
+  int bx = blockIdx.x, by = blockIdx.y;
+
+  auto mA =
+      make_tensor(make_gmem_ptr(pA),
+                  make_layout(make_shape(M, N), GenRowMajor{}));  // (M, N)
+  auto mB =
+      make_tensor(make_gmem_ptr(pB),
+                  make_layout(make_shape(N, M), GenRowMajor{}));  // (N, M)
+
+  auto gA = local_tile(mA, make_shape(Int<BLK_M>{}, Int<BLK_N>{}),
+                       make_coord(bx, by));  // (BM, BN)
+  auto gB = local_tile(mB, make_shape(Int<BLK_N>{}, Int<BLK_M>{}),
+                       make_coord(by, bx));  // (BN, BM)
+  auto cA = local_tile(make_identity_tensor(mA.shape()),
+                       make_shape(Int<BLK_M>{}, Int<BLK_N>{}),
+                       make_coord(bx, by));  // (BM, BN)
+  auto cB = local_tile(make_identity_tensor(mB.shape()),
+                       make_shape(Int<BLK_N>{}, Int<BLK_M>{}),
+                       make_coord(by, bx));  // (BN, BM)
+
+  __shared__ T smem[BLK_M * BLK_N];
+  auto sA = make_tensor(
+      make_smem_ptr(smem),
+      smem_layout);  // (BM, BN)
+  auto sB = make_tensor(
+      make_smem_ptr(smem),
+      smem_layout);  // (BN, BM)
+
+  Tensor tAgA = local_partition(gA, tAB, tx);
+  Tensor tBgB = local_partition(gB, tAB, tx);
+  Tensor tAsA = local_partition(sA, tAB, tx);
+  Tensor tBsB = local_partition(sB, tAB, tx);
+  Tensor tAcA = local_partition(cA, tAB, tx);
+  Tensor tBcB = local_partition(cB, tAB, tx);
+
+  Tensor tApA = make_tensor<bool>(tAcA.shape(), tAcA.stride());
+  Tensor tBpB = make_tensor<bool>(tBcB.shape(), tBcB.stride());
+  CUTE_UNROLL
+  for (int i = 0; i < size<0>(tApA); i++) {
+    CUTE_UNROLL
+    for (int j = 0; j < size<1>(tApA); j++) {
+      tApA(i, j) = get<0>(tAcA(i, j)) < M && get<1>(tAcA(i, j)) < N;
+    }
+  }
+  CUTE_UNROLL
+  for (int i = 0; i < size<0>(tBpB); i++) {
+    CUTE_UNROLL
+    for (int j = 0; j < size<1>(tBpB); j++) {
+      tBpB(i, j) = get<0>(tBcB(i, j)) < N && get<1>(tBcB(i, j)) < M;
+    }
+  }
+  copy_if(tApA, tAgA, tAsA);
+  __syncthreads();
+  copy_if(tBpB, tBsB, tBgB);
+}
+
+void mat_transpose_cute_row2col_swizzled(torch::Tensor x, torch::Tensor y) {
+  const int BM = 16;
+  const int BN = 16;
+  const int M = x.size(0);
+  const int N = x.size(1);
+  auto tAB = make_layout(make_shape(Int<BM>{}, Int<BN>{}), GenRowMajor{});
+  dim3 block(size(tAB));
+  dim3 grid((M + BM - 1) / BM, (N + BN - 1) / BN);
+  auto smem_layout = composition(
+    Swizzle<4, 0, 4>{},
+    make_layout(make_shape(Int<BN>{}, Int<BM>{}),
+                                         GenColMajor{}));
+  mat_transpose_cute_row2col_swizzled_kernel<float, BM, BN, decltype(tAB)>
+      <<<grid, block>>>(x.data_ptr<float>(), y.data_ptr<float>(), M, N, tAB, smem_layout);
+  CUDA_CHECK(cudaGetLastError());
+}
+
+
 __host__ __device__ inline bool is_aligned_128(const void *ptr) {
   return (reinterpret_cast<uintptr_t>(ptr) & 0xF) == 0;
 }
