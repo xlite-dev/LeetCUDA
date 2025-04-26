@@ -13,20 +13,16 @@
 - [X] mat_transpose_f32x4_shared_row2col_kernel(float4向量化版本，共享内存)
 - [X] mat_transpose_f32x4_shared_bcf_col2row_kernel(float4向量化版本，共享内存，去bank conflict)
 - [X] mat_transpose_f32x4_shared_bcf_row2col_kernel(float4向量化版本，共享内存，去bank conflict)
-- CuTe kernel and configurations
-    - mat_transpose_cute_reg_kernel
-        - [X] mat_transpose_cute_row2col_reg
-        - [X] mat_transpose_cute_col2row_reg
-    - mat_transpose_cute_smem_kernel (smem)
-        - [X] mat_transpose_cute_col_smem
-        - [X] mat_transpose_cute_row_smem
-        - [X] mat_transpose_cute_col_smem_swizzled (bank conflict free)
-        - [X] mat_transpose_cute_row_smem_swizzled
-    - mat_transpose_cute_smem_vectorized_kernel (float4)
-        - [X] mat_transpose_cute_row_cvectorized
-        - [X] mat_transpose_cute_row_cvectorized_swizzled
-        - [X] mat_transpose_cute_row_rvectorized
-        - [X] mat_transpose_cute_row_rvectorized_swizzled
+- [X] mat_transpose_cute_row2col_reg
+- [X] mat_transpose_cute_col2row_reg
+- [X] mat_transpose_cute_col_smem
+- [X] mat_transpose_cute_row_smem
+- [X] mat_transpose_cute_col_smem_swizzled (bank conflict free)
+- [X] mat_transpose_cute_row_smem_swizzled
+- [X] mat_transpose_cute_row_cvectorized
+- [X] mat_transpose_cute_row_cvectorized_swizzled
+- [X] mat_transpose_cute_row_rvectorized
+- [X] mat_transpose_cute_row_rvectorized_swizzled
 - [X] PyTorch bindings
 
 虽然是基础操作但是很适合练手，比矩阵乘法难度低一点但是可以其中可以用到的优化技巧都可以想办法用到这里来。
