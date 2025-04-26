@@ -1,7 +1,7 @@
 <div align="center">
   <p align="center">
     <h2>📚 Modern CUDA Learn Notes with PyTorch for Beginners 🐑</h2>
-    <a href="#cuda-kernel">📚200+ CUDA Kernels</a> | <a href="#my-blogs-part-1"> 📚100+ Blogs</a> | <a href="#hgemm-tensorcores-mma-bench"> ⚡️HGEMM MMA</a> | <a href="#fa-mma-bench"> ⚡️FA-2 MMA </a> <p>
+    <a href="#cuda-kernel">📚200+ CUDA Kernels</a> | <a href="#my-blogs-part-1"> 📚100+ LLM/VLM/CUDA Blogs</a> | <a href="#hgemm-tensorcores-mma-bench"> ⚡️HGEMM MMA</a> | <a href="#fa-mma-bench"> ⚡️FA-2 MMA </a> <p>
   </p>
   <img src='https://github.com/user-attachments/assets/9306862b-2a30-4a87-bb33-0fde9e9d7cea' width=250 >
   <div align='center'>
@@ -252,6 +252,7 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 | ✔️ [mat_trans_f32_diagonal2d](./kernels/mat-transpose/mat_transpose.cu)|f32|/|[link](./kernels/mat-transpose/)|⭐️⭐️|  
 | ✔️ [mat_trans_f32x4_col2row{2d}](./kernels/mat-transpose/mat_transpose.cu)|f32|/|[link](./kernels/mat-transpose/)|⭐️⭐️|  
 | ✔️ [mat_trans_f32x4_row2col{2d}](./kernels/mat-transpose/mat_transpose.cu)|f32|/|[link](./kernels/mat-transpose/)|⭐️⭐️|  
+| ✔️ [mat_trans_cute](./kernels/mat-transpose/mat_transpose_cute.cu)|f32|/|[link](./kernels/mat-transpose/)|⭐️⭐️|  
 | ✔️ [warp_reduce_{all}](./kernels/reduce/block_all_reduce.cu)|all|all|[link](./kernels/reduce/)|⭐️⭐️|  
 | ✔️ [block_all_reduce_f32_f32](./kernels/reduce/block_all_reduce.cu)|f32|f32|[link](./kernels/reduce/)|⭐️⭐️|  
 | ✔️ [block_all_reduce_f32x4_f32](./kernels/reduce/block_all_reduce.cu)|f32|f32|[link](./kernels/reduce/)|⭐️⭐️|  
@@ -411,19 +412,27 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 
 💡NOTE: 🤖[ffpa-attn-mma](https://github.com/xlite-dev/ffpa-attn-mma): 📚FFPA - Yet another Faster Flash Prefill Attention with O(1)🎉SRAM complexity for headdim > 256, **1.8x~3x**🎉faster than SDPA EA: [📈L20 ~1.9x↑🎉](https://github.com/xlite-dev/ffpa-attn-mma?tab=readme-ov-file#L1-bench-l20), [📈 A30 ~1.8x↑🎉](https://github.com/xlite-dev/ffpa-attn-mma?tab=readme-ov-file#L1-bench-a30), [📈3080 ~2.9x↑🎉](https://github.com/xlite-dev/ffpa-attn-mma?tab=readme-ov-file#L1-bench-3080), [📈4090 ~2.1x↑🎉](https://github.com/xlite-dev/ffpa-attn-mma?tab=readme-ov-file#L1-bench-4090).  
 
-- 📚 Triton Kernel (OpenAI Triton)
+### 📚 Triton Kernel (OpenAI Triton)
 
 |📖 Triton Kernel| 📖 Elem DType| 📖 Acc DType| 📖 Docs | 📖 Level |
 |:---|:---|:---|:---|:---|   
-| ✔️ [triton_vector_add](./kernels/openai-triton/elementwise/)|all|all|[link](./kernels/openai-triton/elementwise/)|⭐️⭐️|
-| ✔️ [triton_merge_attn_states](./kernels/openai-triton/merge-attn-states/)|f16/bf16/f32|f32|[link](./kernels/openai-triton/merge-attn-states/)|⭐️⭐️| 
+| ✔️ [triton_vector_add_kernel](./kernels/openai-triton/elementwise/)|all|all|[link](./kernels/openai-triton/elementwise/)|⭐️⭐️|
+| ✔️ [triton_merge_attention_states_kernel](./kernels/openai-triton/merge-attn-states/)|f16/bf16/f32|f32|[link](./kernels/openai-triton/merge-attn-states/)|⭐️⭐️⭐️| 
 
 
-## 📖 100+ LLM/VLM/CV/CUDA/CuTe Tech Blogs
+### 📚 CUTLASS/CuTe Kernel
+
+|📖 CUTLASS/CuTe Kernel| 📖 Elem DType| 📖 Acc DType| 📖 Docs | 📖 Level |
+|:---|:---|:---|:---|:---|   
+| ✔️ [mat_transpose_cute](./kernels/mat-transpose/mat_transpose_cute.cu)|f32|/|[link](./kernels/mat-transpose/)|⭐️⭐️|  
+| ✔️ [hgemm_mma_stages_swizzle{smem}...cute*](./kernels/hgemm/cutlass/hgemm_mma_stage_tn_cute.cu)|f16|f16|[link](./kernels/hgemm/)|⭐️⭐️⭐️|  
+
+
+## 📖 100+ 高性能计算与分布式-技术博客
 
 <div id="my-blogs-part-1"></div>  
 
-### 📚 大模型|多模态|Diffusion|推理优化 (本人作者) ([©️back👆🏻](#contents))
+### 📚 高性能计算与分布式-个人技术专栏 ([©️back👆🏻](#contents))
 
 |📖 类型-标题|📖 作者| 📖 推荐 |  
 |:---|:---|:---|    
@@ -455,14 +464,6 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 |[[LLM推理优化][LLM Infra整理]📖TensorRT-LLM开源，TensorRT 9.1也来了](https://zhuanlan.zhihu.com/p/662361469)|@xlite-dev|⭐️| 
 |[[LLM推理优化][LLM Infra整理]📖20+篇: LLM推理论文集-300页PDF](https://zhuanlan.zhihu.com/p/658091768)|@xlite-dev|⭐️⭐️| 
 |[[LLM推理优化][LLM Infra整理]📖PagedAttention论文新鲜出炉](https://zhuanlan.zhihu.com/p/617015570)|@xlite-dev|⭐️| 
-
-
-### 📚 CV推理部署|C++|算法|技术随笔 (本人作者) ([©️back👆🏻](#contents))
-
-<div id="my-blogs-part-2"></div>  
-
-|📖 类型-标题|📖 作者| 📖 推荐 |  
-|:---|:---|:---|   
 | [[推理部署][CV/NLP]📖FastDeploy三行代码搞定150+ CV、NLP模型部署](https://zhuanlan.zhihu.com/p/581326442)|@xlite-dev|⭐️|   
 | [[推理部署][CV]📖如何在lite.ai.toolkit(3.6k+ stars)中增加您的模型？](https://zhuanlan.zhihu.com/p/523876625)|@xlite-dev|⭐️⭐️|   
 | [[推理部署][CV]📖美团 YOLOv6 ORT/MNN/TNN/NCNN C++推理部署](https://zhuanlan.zhihu.com/p/533643238)|@xlite-dev|⭐️⭐️|   
@@ -509,7 +510,7 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 | [[技术随笔][ML]📖200页:《统计学习方法：李航》笔记 -从原理到实现](https://zhuanlan.zhihu.com/p/461520847)|@xlite-dev|⭐️⭐️|   
 
 
-### 📚 CUTLASS|CuTe|NCCL|CUDA|文章推荐 (其他作者) ([©️back👆🏻](#contents))
+### 📚 高性能计算与分布式-技术博客推荐 ([©️back👆🏻](#contents))
 
 <div id="other-blogs"></div>  
 
