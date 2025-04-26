@@ -40,6 +40,16 @@
 <div id="contents"></div>    
 
 - [📖 HGEMM-MMA 🎉🎉](#hgemm-tensorcores-mma-bench)
+  - [📚 CUDA/Tensor Cores](#hgemm-tensorcores-mma-bench)
+  - [📚 Tile Block(Br, Bc)](#hgemm-tensorcores-mma-bench)
+  - [📚 Tile MMAs/Warps](#hgemm-tensorcores-mma-bench)
+  - [📚 Pack LDST(128 bits)](#hgemm-tensorcores-mma-bench)
+  - [📚 Multi Stages(2~4](#hgemm-tensorcores-mma-bench)
+  - [📚 Block/Warp Swizzle](#hgemm-tensorcores-mma-bench)
+  - [📚 SMEM Swizzle](#hgemm-tensorcores-mma-bench)
+  - [📚 Register Double Buffers](#hgemm-tensorcores-mma-bench)
+  - [📚 Collective Store(Shfl)](#hgemm-tensorcores-mma-bench)
+  - [📚 Layout NN/TN](#hgemm-tensorcores-mma-bench)
 - [📖 FlashAttention-MMA 🎉🎉](#fa-mma-bench)
   - [📚 Split KV (Basic, FA-1)](#mma-split-kv)
   - [📚 Split Q (Faster, FA-2)](#mma-split-q)
@@ -56,16 +66,14 @@
   - [📚 Triton Kernel ⭐⭐⭐️](#triton-kernel)
   - [📚 CUTLASS Kernel ⭐⭐⭐️](#cutlass-kernel)
 - [📖 100+ 高性能计算与分布式文章 🎉🎉](#my-blogs-part-1)
-  - [📚 个人技术专栏 🎉🎉](#my-blogs-part-1)
-    - [📚 LLM/VLM大模型推理优化](#my-blogs-part-1)
-    - [📚 大模型分布式训推原理解析](#my-blogs-part-1)
-    - [📚 CV/C++/模型部署优化笔记](#my-blogs-part-1)
-  - [📚 技术博客推荐 🎉🎉](#other-blogs)
-    - [📚 CUDA优化入门与实践](#other-blogs)
-    - [📚 Tensor Core教程](#other-blogs)
-    - [📚 CuTe系列详解/教程](#other-blogs)
-    - [📚 GPU指令集架构精解](#other-blogs)
-    - [📚 GPU通信架构精解](#other-blogs)
+  - [📚 LLM/VLM大模型推理优化](#my-blogs-part-1)
+  - [📚 大模型分布式训推原理](#my-blogs-part-1)
+  - [📚 CV/C++/模型部署优化](#my-blogs-part-1)
+  - [📚 CUDA优化入门与实践](#other-blogs)
+  - [📚 Tensor Core教程](#other-blogs)
+  - [📚 CuTe系列详解/教程](#other-blogs)
+  - [📚 GPU指令集架构精解](#other-blogs)
+  - [📚 GPU通信架构精解](#other-blogs)
 
 ## 📖 HGEMM Benchmark 🎉🎉
 
@@ -447,7 +455,7 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 |📖 Triton Kernel| 📖 Elem DType| 📖 Acc DType| 📖 Docs | 📖 Level |
 |:---|:---|:---|:---|:---|   
 | ✔️ [triton_vector_add_kernel](./kernels/openai-triton/elementwise/)|all|all|[link](./kernels/openai-triton/elementwise/)|⭐️⭐️|
-| ✔️ [triton_merge_attention_states_kernel(verctorize)](./kernels/openai-triton/merge-attn-states/)|f16/bf16/f32|f32|[link](./kernels/openai-triton/merge-attn-states/)|⭐️⭐️⭐️| 
+| ✔️ [triton_merge_attn_states_kernel(w/ CUDA kernel)](./kernels/openai-triton/merge-attn-states/)|f16/bf16/f32|f32|[link](./kernels/openai-triton/merge-attn-states/)|⭐️⭐️⭐️| 
 
 
 ### 📚 CUTLASS/CuTe Kernel
