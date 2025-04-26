@@ -17,8 +17,6 @@
 
 📚 **Modern CUDA Learn Notes with PyTorch** for Beginners: It includes **Tensor/CUDA Cores, TF32/F16/BF16/F8**, [📖200+ CUDA Kernels🔥🔥(Easy -> Hard++)](#cuda-kernel) with PyTorch bindings, [📖100+ LLM/VLM/CV/CUDA/CuTe🔥](#my-blogs-part-1) blogs, [📖toy-hgemm⚡️⚡️](./kernels/hgemm) which can achieve `98%~100%` performance of **cuBLAS**, and [📖flash-attention-mma⚡️⚡️](./kernels/flash-attn) using Tensor Cores with pure MMA PTX. Welcome to 🌟👆🏻star this repo to support me, many thanks ~ 🎉🎉
 
-<div id="contents"></div>    
-
 ## 📖 News 🔥🔥
 <div id="news"></div>  
 
@@ -38,6 +36,36 @@
   <img src='https://github.com/user-attachments/assets/9472e970-c083-4b31-9252-3eeecc761078' height="170px" width="270px">
 </div> 
 
+## 📖 Contents
+<div id="contents"></div>    
+
+- [📖 HGEMM-MMA 🎉🎉](#hgemm-tensorcores-mma-bench)
+- [📖 FlashAttention-MMA 🎉🎉](#fa-mma-bench)
+  - [📚 Split KV (Basic, FA-1)](#mma-split-kv)
+  - [📚 Split Q (Faster, FA-2)](#mma-split-q)
+  - [📚 Split Q + Shared KV](#mma-share-kv)
+  - [📚 Split Q + Shared QKV](#mma-share-qkv)
+  - [📚 Split Q + QK Tiling](#mma-tiling-qk)
+  - [📚 Split Q + QKV Tiling](#mma-tiling-qkv)
+- [📖 200+ CUDA Kernels 🔥🔥](#cuda-kernel)
+  - [📚 Easy ⭐️](#cuda-kernel-easy-medium)
+  - [📚 Medium ⭐️⭐️](#cuda-kernel-easy-medium)
+  - [📚 Hard ⭐️⭐️⭐️](#cuda-kernel-hard)
+  - [📚 Hard+ ⭐️⭐️⭐️⭐️](#cuda-kernel-hard-plus)
+  - [📚 Hard++ ⭐⭐⭐️⭐️⭐️](#cuda-kernel-hard-plus)
+  - [📚 Triton Kernel ⭐⭐⭐️](#triton-kernel)
+  - [📚 CUTLASS Kernel ⭐⭐⭐️](#cutlass-kernel)
+- [📖 100+ 高性能计算与分布式文章 🎉🎉](#my-blogs-part-1)
+  - [📚 个人技术专栏 🎉🎉](#my-blogs-part-1)
+    - [📚 LLM/VLM大模型推理优化](#my-blogs-part-1)
+    - [📚 大模型分布式训推原理解析](#my-blogs-part-1)
+    - [📚 CV/C++/模型部署优化笔记](#my-blogs-part-1)
+  - [📚 技术博客推荐 🎉🎉](#other-blogs)
+    - [📚 CUDA优化入门与实践](#other-blogs)
+    - [📚 Tensor Core教程](#other-blogs)
+    - [📚 CuTe系列详解/教程](#other-blogs)
+    - [📚 GPU指令集架构精解](#other-blogs)
+    - [📚 GPU通信架构精解](#other-blogs)
 
 ## 📖 HGEMM Benchmark 🎉🎉
 
@@ -414,13 +442,17 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 
 ### 📚 Triton Kernel (OpenAI Triton)
 
+<div id="triton-kernel"></div>  
+
 |📖 Triton Kernel| 📖 Elem DType| 📖 Acc DType| 📖 Docs | 📖 Level |
 |:---|:---|:---|:---|:---|   
 | ✔️ [triton_vector_add_kernel](./kernels/openai-triton/elementwise/)|all|all|[link](./kernels/openai-triton/elementwise/)|⭐️⭐️|
-| ✔️ [triton_merge_attention_states_kernel](./kernels/openai-triton/merge-attn-states/)|f16/bf16/f32|f32|[link](./kernels/openai-triton/merge-attn-states/)|⭐️⭐️⭐️| 
+| ✔️ [triton_merge_attention_states_kernel(verctorize)](./kernels/openai-triton/merge-attn-states/)|f16/bf16/f32|f32|[link](./kernels/openai-triton/merge-attn-states/)|⭐️⭐️⭐️| 
 
 
 ### 📚 CUTLASS/CuTe Kernel
+
+<div id="cutlass-kernel"></div>  
 
 |📖 CUTLASS/CuTe Kernel| 📖 Elem DType| 📖 Acc DType| 📖 Docs | 📖 Level |
 |:---|:---|:---|:---|:---|   
