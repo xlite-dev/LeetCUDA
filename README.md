@@ -7,9 +7,9 @@
   <div align='center'>
       <img src=https://cdn.rawgit.com/sindresorhus/awesome/d7305f38d29fed78fa85652e3a63e154dd8e8829/media/badge.svg >
       <img src=https://img.shields.io/badge/Language-CUDA-brightgreen.svg >
-      <img src=https://img.shields.io/github/watchers/xlite-dev/CUDA-Learn-Notes?color=9cc >
-      <img src=https://img.shields.io/github/forks/xlite-dev/CUDA-Learn-Notes.svg?style=social >
-      <img src=https://img.shields.io/github/stars/xlite-dev/CUDA-Learn-Notes.svg?style=social >
+      <img src=https://img.shields.io/github/watchers/xlite-dev/LeetCUDA?color=9cc >
+      <img src=https://img.shields.io/github/forks/xlite-dev/LeetCUDA.svg?style=social >
+      <img src=https://img.shields.io/github/stars/xlite-dev/LeetCUDA.svg?style=social >
       <img src=https://img.shields.io/badge/Release-v3.0.0-brightgreen.svg >
       <img src=https://img.shields.io/badge/License-GPLv3.0-turquoise.svg >
  </div>
@@ -198,10 +198,10 @@ flash_attn_mma_stages_split_q_tiling_qkv_kernel(half* Q, half* K, half* V, half*
 ## ©️Citations🎉🎉
 
 ```BibTeX
-@misc{CUDA-Learn-Notes@2024,
-  title={CUDA-Learn-Notes: A Modern CUDA Learn Notes with PyTorch for Beginners},
-  url={https://github.com/xlite-dev/CUDA-Learn-Notes},
-  note={Open-source software available at https://github.com/xlite-dev/CUDA-Learn-Notes},
+@misc{LeetCUDA@2024,
+  title={LeetCUDA: A Modern CUDA Learn Notes with PyTorch for Beginners},
+  url={https://github.com/xlite-dev/LeetCUDA},
+  note={Open-source software available at https://github.com/xlite-dev/LeetCUDA},
   author={xlite-dev etc},
   year={2024}
 }
@@ -482,7 +482,7 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 |[[vLLM实践][算子]📚vLLM算子开发流程：”保姆级“详细记录](https://zhuanlan.zhihu.com/p/1892966682634473987)|@xlite-dev|⭐️⭐️⭐| 
 |[[vLLM实践][万字]📚vLLM + DeepSeek-R1 671B 多机部署及修Bug笔记](https://zhuanlan.zhihu.com/p/29950052712)|@xlite-dev|⭐️⭐️⭐| 
 |[[Attention优化]📚FFPA(Split-D): FA2无限HeadDim扩展，2x↑🎉 vs SDPA EA](https://zhuanlan.zhihu.com/p/13975660308)|@xlite-dev|⭐️⭐️⭐️| 
-|[[CUDA基础][开篇]📖CUDA-Learn-Notes: v3.0 大升级-面试刷题不迷路](https://zhuanlan.zhihu.com/p/19862356369)|@xlite-dev|⭐️⭐️⭐⭐️| 
+|[[CUDA基础][开篇]📖LeetCUDA: v3.0 大升级-面试刷题不迷路](https://zhuanlan.zhihu.com/p/19862356369)|@xlite-dev|⭐️⭐️⭐⭐️| 
 |[[分布式训推][张量/序列并行]📖图解DeepSpeed-Ulysses&Megatron-LM TP/SP](https://zhuanlan.zhihu.com/p/5750410146)|@xlite-dev|⭐️⭐️| 
 |[[VLM推理优化][InternVL系列]📖InternLM2/.../InternVL1.5系列笔记: 核心点解析](https://zhuanlan.zhihu.com/p/702481058)|@xlite-dev|⭐️⭐️| 
 |[[LLM推理优化][TensorRT-LLM][5w字]📖TensorRT-LLM部署调优-指北](https://zhuanlan.zhihu.com/p/699333691)|@xlite-dev|⭐️⭐️⭐️| 
@@ -631,14 +631,14 @@ GNU General Public License v3.0
 
 <div id="contribute"></div>  
 
-How to contribute? Star this repo or check [🌤🌤CONTRIBUTE🎉🎉](https://github.com/xlite-dev/CUDA-Learn-Notes/issues/50). 
+How to contribute? Star this repo or check [🌤🌤CONTRIBUTE🎉🎉](https://github.com/xlite-dev/LeetCUDA/issues/50). 
 
 <div align='center'>
-<a href="https://star-history.com/#xlite-dev/CUDA-Learn-Notes&Date">
+<a href="https://star-history.com/#xlite-dev/LeetCUDA&Date">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=xlite-dev/CUDA-Learn-Notes&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=xlite-dev/CUDA-Learn-Notes&type=Date" />
-   <img width=400 height=300 alt="Star History Chart" src="https://api.star-history.com/svg?repos=xlite-dev/CUDA-Learn-Notes&type=Date" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=xlite-dev/LeetCUDA&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=xlite-dev/LeetCUDA&type=Date" />
+   <img width=400 height=300 alt="Star History Chart" src="https://api.star-history.com/svg?repos=xlite-dev/LeetCUDA&type=Date" />
  </picture>
 </a>
 </div>
