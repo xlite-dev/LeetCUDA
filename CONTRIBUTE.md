@@ -8,7 +8,8 @@ Any kernel implementation is welcome. This repository is primarily for learning/
 Before submitting code, configure pre-commit, for example:
 
 ```bash
-git@github.com:your-github-page/your-fork-LeetCUDA.git
+# fork xlite-dev/LeetCUDA to your own github page, then:
+git clone git@github.com:your-github-page/your-fork-LeetCUDA.git
 cd your-fork-LeetCUDA && git checkout -b test
 # install pre-commit
 pip3 install pre-commit
