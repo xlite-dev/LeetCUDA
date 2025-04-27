@@ -25,7 +25,7 @@
 
 <div align="center">
   <p align="center">
-    <a href="#cuda-kernel">📚200+ CUDA Kernels</a> | <a href="#my-blogs-part-1"> 📚100+ LLM/CUDA Blogs</a> | <a href="#hgemm-tensorcores-mma-bench"> ⚡️HGEMM MMA</a> | <a href="#fa-mma-bench"> ⚡️FA-2 MMA </a> <p>
+    <a href="#contribute">🔥🔥 PR Welcome: Add Your Kernel to LeetCUDA! Let's make LeetCUDA Awesome together! 🎉🎉</a>
   </p>
 </div>
 
