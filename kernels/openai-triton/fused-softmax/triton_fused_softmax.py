@@ -4,7 +4,6 @@ https://triton-lang.org/main/getting-started/tutorials/02-fused-softmax.html#sph
 """
 
 import torch
-
 import triton
 import triton.language as tl
 
@@ -31,13 +30,16 @@ def naive_softmax(x: torch.Tensor) -> torch.Tensor:
 
 
 @triton.jit
-def softmax_kernel(output_ptr, 
-                   input_ptr, 
-                   input_row_stride, 
-                   output_row_stride, 
-                   n_rows, n_cols, 
-                   BLOCK_SIZE: tl.constexpr,
-                   k_stages: tl.constexpr):
+def softmax_kernel(
+    output_ptr,
+    input_ptr,
+    input_row_stride,
+    output_row_stride,
+    n_rows,
+    n_cols,
+    BLOCK_SIZE: tl.constexpr,
+    k_stages: tl.constexpr,
+):
     # starting row of the program
     row_start = tl.program_id(0)
     row_step = tl.num_programs(0)
@@ -50,7 +52,7 @@ def softmax_kernel(output_ptr,
         input_ptrs = row_start_ptr + col_offsets
         # Load the row into SRAM, using a mask since BLOCK_SIZE may be > than n_cols
         mask = col_offsets < n_cols
-        row = tl.load(input_ptrs, mask=mask, other=-float('inf'))
+        row = tl.load(input_ptrs, mask=mask, other=-float("inf"))
         # Subtract maximum for numerical stability
         row_minus_max = row - tl.max(row, axis=0)
         # Note that exponentiation in Triton is fast but approximate (i.e., think __expf in CUDA)
@@ -65,24 +67,23 @@ def softmax_kernel(output_ptr,
 
 def get_device_properties(device_id=None):
     import pycuda.driver as cuda
-    import pycuda.autoinit
-    device = (cuda.Device(device_id) if device_id is not None 
-              else torch.cuda.current_device())
-    NUM_SM = device.get_attribute(
-        cuda.device_attribute.MULTIPROCESSOR_COUNT)
-    NUM_REGS = device.get_attribute(
-        cuda.device_attribute.MAX_REGISTERS_PER_BLOCK)
-    SIZE_SMEM = device.get_attribute(
-        cuda.device_attribute.MAX_SHARED_MEMORY_PER_BLOCK)
-    WARP_SIZE = device.get_attribute(
-        cuda.device_attribute.WARP_SIZE)
+
+    device = (
+        cuda.Device(device_id) if device_id is not None else torch.cuda.current_device()
+    )
+    NUM_SM = device.get_attribute(cuda.device_attribute.MULTIPROCESSOR_COUNT)
+    NUM_REGS = device.get_attribute(cuda.device_attribute.MAX_REGISTERS_PER_BLOCK)
+    SIZE_SMEM = device.get_attribute(cuda.device_attribute.MAX_SHARED_MEMORY_PER_BLOCK)
+    WARP_SIZE = device.get_attribute(cuda.device_attribute.WARP_SIZE)
     return NUM_SM, NUM_REGS, SIZE_SMEM, WARP_SIZE
 
 
 DEVICE = torch.cuda.current_device()
 NUM_SM, NUM_REGS, SIZE_SMEM, WARP_SIZE = get_device_properties(DEVICE)
-print(f"NUM_SM: {NUM_SM}, NUM_REGS: {NUM_REGS}, "
-      f"SIZE_SMEM: {SIZE_SMEM}, WARP_SIZE: {WARP_SIZE}")
+print(
+    f"NUM_SM: {NUM_SM}, NUM_REGS: {NUM_REGS}, "
+    f"SIZE_SMEM: {SIZE_SMEM}, WARP_SIZE: {WARP_SIZE}"
+)
 
 
 def get_num_programs(x):
@@ -96,16 +97,21 @@ def get_num_programs(x):
     y = torch.empty_like(x)
     # pre-compile kernel to get register usage and compute thread occupancy.
     kernel = softmax_kernel.warmup(
-        y, x, x.stride(0), y.stride(0), 
-        n_rows, n_cols, 
+        y,
+        x,
+        x.stride(0),
+        y.stride(0),
+        n_rows,
+        n_cols,
         BLOCK_SIZE=BLOCK_SIZE,
-        k_stages=k_stages, 
-        num_warps=num_warps, 
-        grid=(1, ))
+        k_stages=k_stages,
+        num_warps=num_warps,
+        grid=(1,),
+    )
     kernel._init_handles()
     n_regs = kernel.n_regs
     # shared > 0 if k_stages is not 0
-    size_smem = kernel.metadata.shared 
+    size_smem = kernel.metadata.shared
     occupancy = NUM_REGS // (n_regs * WARP_SIZE * num_warps)
     occupancy = min(occupancy, SIZE_SMEM // size_smem)
     num_programs = NUM_SM * occupancy
@@ -129,11 +135,16 @@ def triton_softmax(x: torch.Tensor):
 
     # Create a number of persistent programs.
     softmax_kernel[(num_programs, 1, 1)](
-        y, x, x.stride(0), y.stride(0), 
-        n_rows, n_cols, 
+        y,
+        x,
+        x.stride(0),
+        y.stride(0),
+        n_rows,
+        n_cols,
         BLOCK_SIZE=BLOCK_SIZE,
-        k_stages=k_stages, 
-        num_warps=num_warps)
+        k_stages=k_stages,
+        num_warps=num_warps,
+    )
     return y
 
 
@@ -146,34 +157,40 @@ assert torch.allclose(y_triton, y_torch), (y_triton, y_torch)
 
 @triton.testing.perf_report(
     triton.testing.Benchmark(
-        x_names=['M'],  # argument names to use as an x-axis for the plot
-        x_vals=[256 * i for i in range(1, 64)],  # different possible values for `x_name`
-        line_arg='provider',  # argument name whose value corresponds to a different line in the plot
-        line_vals=['triton-fused-softmax', 'torch-fused-softmax', "torch-naive-softmax"],  # possible values for `line_arg``
+        x_names=["M"],  # argument names to use as an x-axis for the plot
+        x_vals=[
+            256 * i for i in range(1, 64)
+        ],  # different possible values for `x_name`
+        line_arg="provider",  # argument name whose value corresponds to a different line in the plot
+        line_vals=[
+            "triton-fused-softmax",
+            "torch-fused-softmax",
+            "torch-naive-softmax",
+        ],  # possible values for `line_arg``
         line_names=[
             "Triton Fused Softmax",
             "Torch Fused Softmax",
-            "Torch Naive Softmax"
+            "Torch Naive Softmax",
         ],  # label name for the lines
-        styles=[('blue', '-'), ('green', '-'), ('red', '-')],  # line styles
+        styles=[("blue", "-"), ("green", "-"), ("red", "-")],  # line styles
         ylabel="GB/s",  # label name for the y-axis
         xlabel=f"M, {torch.cuda.get_device_name(DEVICE)}",  # label name for the x-axis
         plot_name="softmax-performance",  # name for the plot. Used also as a file name for saving the plot.
-        args={'N': 2048},  # values for function arguments not in `x_names` and `y_name`
-    ))
+        args={"N": 2048},  # values for function arguments not in `x_names` and `y_name`
+    )
+)
 def benchmark(M, N, provider):
     x = torch.randn(M, N, device=DEVICE, dtype=torch.float32)
     stream = torch.cuda.Stream()
     torch.cuda.set_stream(stream)
-    if provider == 'torch-naive-softmax':
+    if provider == "torch-naive-softmax":
         ms = triton.testing.do_bench(lambda: naive_softmax(x))
-    if provider == 'triton-fused-softmax':
+    if provider == "triton-fused-softmax":
         ms = triton.testing.do_bench(lambda: triton_softmax(x))
-    if provider == 'torch-fused-softmax':
+    if provider == "torch-fused-softmax":
         ms = triton.testing.do_bench(lambda: torch.softmax(x, dim=-1))
     gbps = lambda ms: 2 * x.numel() * x.element_size() * 1e-9 / (ms * 1e-3)
     return gbps(ms)
 
 
-benchmark.run(show_plots=True, print_data=True, 
-              save_path="./")
+benchmark.run(show_plots=True, print_data=True, save_path="./")

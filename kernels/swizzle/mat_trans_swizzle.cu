@@ -1,22 +1,22 @@
+#include <algorithm>
+#include <cuda_bf16.h>
+#include <cuda_fp16.h>
+#include <cuda_fp8.h>
+#include <cuda_runtime.h>
+#include <float.h>
+#include <iostream>
+#include <mma.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <float.h>
 #include <vector>
-#include <algorithm>
-#include <cuda_runtime.h>
-#include <cuda_fp16.h>
-#include <cuda_bf16.h>
-#include <cuda_fp8.h>
-#include <mma.h>
-#include <iostream>
-
 
 // reference: https://zhuanlan.zhihu.com/p/4746910252
 // 转置前的矩阵存储在dev_A中，矩阵大小为M*N，转置后的数据存储在dev_B中
-__global__ void mat_trans_smem_naive_kernel(int* dev_A, int M, int N, int* dev_B) {
+__global__ void mat_trans_smem_naive_kernel(int *dev_A, int M, int N,
+                                            int *dev_B) {
   int row = blockIdx.y * blockDim.y + threadIdx.y;
   int col = blockIdx.x * blockDim.x + threadIdx.x;
-  
+
   // 每个block处理32*32的矩阵块
   __shared__ int s_data[32][32];
 
@@ -34,7 +34,8 @@ __global__ void mat_trans_smem_naive_kernel(int* dev_A, int M, int N, int* dev_B
 }
 
 // reference: https://zhuanlan.zhihu.com/p/4746910252
-__global__ void mat_trans_smem_padding_kernel(int* dev_A, int M, int N, int* dev_B) {
+__global__ void mat_trans_smem_padding_kernel(int *dev_A, int M, int N,
+                                              int *dev_B) {
   int row = blockIdx.y * blockDim.y + threadIdx.y;
   int col = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -53,7 +54,8 @@ __global__ void mat_trans_smem_padding_kernel(int* dev_A, int M, int N, int* dev
 }
 
 // reference: https://zhuanlan.zhihu.com/p/4746910252
-__global__ void mat_trans_smem_swizzle_kernel(int* dev_A, int M, int N, int* dev_B) {
+__global__ void mat_trans_smem_swizzle_kernel(int *dev_A, int M, int N,
+                                              int *dev_B) {
   int row = blockIdx.y * blockDim.y + threadIdx.y;
   int col = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -75,21 +77,23 @@ __global__ void mat_trans_smem_swizzle_kernel(int* dev_A, int M, int N, int* dev
 }
 
 int main(int argc, char *argv[]) {
-  int M = 1024; 
-  int N = 1024; 
-  if (argc > 1) M = std::stoi(argv[1]);
-  if (argc > 2) N = std::stoi(argv[2]);
+  int M = 1024;
+  int N = 1024;
+  if (argc > 1)
+    M = std::stoi(argv[1]);
+  if (argc > 2)
+    N = std::stoi(argv[2]);
   size_t size_a = M * N * sizeof(int);
   size_t size_b = M * N * sizeof(int);
 
-  int* dev_A;
-  int* dev_B;
+  int *dev_A;
+  int *dev_B;
   cudaMalloc(&dev_A, size_a);
   cudaMalloc(&dev_B, size_b);
   cudaDeviceSynchronize();
 
   dim3 block(32, 32);
-  dim3 grid(N/32, M/32);
+  dim3 grid(N / 32, M / 32);
 
   mat_trans_smem_naive_kernel<<<grid, block>>>(dev_A, M, N, dev_B);
   cudaDeviceSynchronize();

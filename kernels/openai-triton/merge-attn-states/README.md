@@ -8,10 +8,10 @@ Implements section 2.2 of https://www.arxiv.org/pdf/2501.01005, can be used to c
 - [x] float16
 - [x] bfloat16
 - [x] dispatch by scalar_t
-- [x] fallback strategy 
+- [x] fallback strategy
 - [x] unit tests (performance & correctness)
-- [x] end2end test   
-- [x] CEval benchmark 
+- [x] end2end test
+- [x] CEval benchmark
 - [x] test cascade_flash_attn (used merge_attn_states), passed
 
 ## Performance
@@ -49,7 +49,7 @@ Implements section 2.2 of https://www.arxiv.org/pdf/2501.01005, can be used to c
 | 1536 | 32 | 128 | bfloat16 | NVIDIA L20 | 0.22102ms | 0.07240ms | 0.01751ms | 4.1349x |
 | 4096 | 32 | 128 | bfloat16 | NVIDIA L20 | 0.71388ms | 0.15248ms | 0.06359ms | 2.3978x |
 
-## Correctness 
+## Correctness
 
 - float16 (performance & correctness)
 
@@ -74,6 +74,7 @@ Output LSE all match, max abs diff:
 All output values test passed! All inf values are correctly replaced with -inf.
 ----------------------------------------------------------------------------------------------------
 ```
+
 <details>
 <summary> show more details </summary>
 - float32 (performance & correctness)
@@ -123,9 +124,10 @@ Output LSE all match, max abs diff:
 All output values test passed! All inf values are correctly replaced with -inf.
 ----------------------------------------------------------------------------------------------------
 ```
+
 </details>
 
-## End2End test  
+## End2End test
 
 R1 671B with L20x3, PP=3, TP=8
 
@@ -151,6 +153,7 @@ nohup python3 -m vllm.entrypoints.openai.api_server \
         --disable-custom-all-reduce \
         --port 8862 > vllm.R1.log.3 2>&1 &
 ```
+
 4K IN:1K OUT (TTFT 5687.80 ms -> 5654.02 ms), The performance of reasoning will not degrade.
 
 <details>
@@ -186,6 +189,7 @@ P99 ITL (ms):                            97.03
 ```
 
 - w/ this opt, 4K IN:1K OUT (TTFT 5687.80 ms -> 5654.02 ms)
+
 ```bash
 Maximum request concurrency: 16
 ============ Serving Benchmark Result ============
@@ -241,6 +245,7 @@ P99 ITL (ms):                            1065.00
 ```
 
 - w/ this opt, 8K IN:64 OUT (TTFT 8861.07ms -> 8767.16ms)
+
 ```bash
 Maximum request concurrency: 16
 ============ Serving Benchmark Result ============
@@ -265,6 +270,7 @@ Median ITL (ms):                         270.61
 P99 ITL (ms):                            1066.51
 ==================================================
 ```
+
 </details>
 
 ## CEval benchmark
@@ -281,7 +287,6 @@ evalscope eval \
  --datasets ceval \
  --dataset-args '{"ceval": {"local_path": "/workspace/dev/openllm/benchmarks/data/ceval"}}'
 ```
-
 
 <details>
 <summary> show more details </summary>
@@ -395,6 +400,7 @@ evalscope eval \
 | DeepSeek-R1 | ceval     | AverageAccuracy | middle_school_geography                  |    12 |  0.9167 | Social Science |
 +-------------+-----------+-----------------+------------------------------------------+-------+---------+----------------+
 ```
+
 </details>
 
 ## Test cascade_flash_attn

@@ -1,13 +1,11 @@
-#include <cuda_fp16.h>
 #include <cstdlib>
-#include <cuda.h>
 #include <cublas_v2.h>
+#include <cuda.h>
+#include <cuda_fp16.h>
 
 template <typename T>
-float perf_gemm(
-  void (*gpu_hgemm) (T *, T *, T *, int, int, int),
-  int M, int N, int K, int repeat, int warmup = 1) {
-
+float perf_gemm(void (*gpu_hgemm)(T *, T *, T *, int, int, int), int M, int N,
+                int K, int repeat, int warmup = 1) {
   size_t size_a = M * K * sizeof(T);
   size_t size_b = K * N * sizeof(T);
   size_t size_c = M * N * sizeof(T);
@@ -17,9 +15,9 @@ float perf_gemm(
   cudaMalloc(&d_a, size_a);
   cudaMalloc(&d_b, size_b);
   cudaMalloc(&d_c, size_c);
-  
+
   // warmup
-  for (int i = 0; i < warmup; ++i){
+  for (int i = 0; i < warmup; ++i) {
     gpu_hgemm(d_a, d_b, d_c, M, N, K);
   }
   cudaDeviceSynchronize();
@@ -48,12 +46,10 @@ float perf_gemm(
   return sec;
 }
 
-
 template <typename T>
-float perf_gemm_swizzle(
-  void (*gpu_hgemm) (T *, T *, T *, int, int, int, int),
-  int M, int N, int K, int swizzle_stride, int repeat, int warmup = 1) {
-
+float perf_gemm_swizzle(void (*gpu_hgemm)(T *, T *, T *, int, int, int, int),
+                        int M, int N, int K, int swizzle_stride, int repeat,
+                        int warmup = 1) {
   size_t size_a = M * K * sizeof(T);
   size_t size_b = K * N * sizeof(T);
   size_t size_c = M * N * sizeof(T);
@@ -63,9 +59,9 @@ float perf_gemm_swizzle(
   cudaMalloc(&d_a, size_a);
   cudaMalloc(&d_b, size_b);
   cudaMalloc(&d_c, size_c);
-  
+
   // warmup
-  for (int i = 0; i < warmup; ++i){
+  for (int i = 0; i < warmup; ++i) {
     gpu_hgemm(d_a, d_b, d_c, M, N, K, swizzle_stride);
   }
   cudaDeviceSynchronize();
@@ -94,12 +90,9 @@ float perf_gemm_swizzle(
   return sec;
 }
 
-
 template <typename T>
-float gemm_error_check_tn(
-  void (*gpu_hgemm) (T *, T *, T *, int, int, int),
-  int M, int N, int K) {
-
+float gemm_error_check_tn(void (*gpu_hgemm)(T *, T *, T *, int, int, int),
+                          int M, int N, int K) {
   size_t size_a = M * K * sizeof(T);
   size_t size_b = K * N * sizeof(T);
   size_t size_c = M * N * sizeof(T);
@@ -130,17 +123,10 @@ float gemm_error_check_tn(
 
   cudaMemcpy(d_a, h_a, size_a, cudaMemcpyHostToDevice);
   cudaMemcpy(d_b, h_b, size_b, cudaMemcpyHostToDevice);
-  
-  cublasHgemm(handle, 
-              CUBLAS_OP_T, 
-              CUBLAS_OP_N, 
-              N, M, K,
-              &alpha, 
-              (half *)d_b, K, 
-              (half *)d_a, K, 
-              &beta, 
-              (half *)d_c_ref, N);
-        
+
+  cublasHgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, N, M, K, &alpha, (half *)d_b, K,
+              (half *)d_a, K, &beta, (half *)d_c_ref, N);
+
   gpu_hgemm(d_a, d_b, d_c, M, N, K);
 
   cudaMemcpy(h_c, d_c, size_c, cudaMemcpyDeviceToHost);
@@ -152,24 +138,23 @@ float gemm_error_check_tn(
     max_error = max(max_error, this_error);
   }
 
-  free(h_a); 
-  free(h_b); 
-  free(h_c); 
+  free(h_a);
+  free(h_b);
+  free(h_c);
   free(h_c_ref);
-  cudaFree(d_a); 
-  cudaFree(d_b); 
-  cudaFree(d_c); 
+  cudaFree(d_a);
+  cudaFree(d_b);
+  cudaFree(d_c);
   cudaFree(d_c_ref);
   cublasDestroy(handle);
-  
+
   return max_error;
 }
 
 template <typename T>
-float gemm_error_check_tn_swizzle(
-  void (*gpu_hgemm) (T *, T *, T *, int, int, int, int),
-  int M, int N, int K, int swizzle_stride) {
-
+float gemm_error_check_tn_swizzle(void (*gpu_hgemm)(T *, T *, T *, int, int,
+                                                    int, int),
+                                  int M, int N, int K, int swizzle_stride) {
   size_t size_a = M * K * sizeof(T);
   size_t size_b = K * N * sizeof(T);
   size_t size_c = M * N * sizeof(T);
@@ -200,17 +185,10 @@ float gemm_error_check_tn_swizzle(
 
   cudaMemcpy(d_a, h_a, size_a, cudaMemcpyHostToDevice);
   cudaMemcpy(d_b, h_b, size_b, cudaMemcpyHostToDevice);
-  
-  cublasHgemm(handle, 
-              CUBLAS_OP_T, 
-              CUBLAS_OP_N, 
-              N, M, K,
-              &alpha, 
-              (half *)d_b, K, 
-              (half *)d_a, K, 
-              &beta, 
-              (half *)d_c_ref, N);
-        
+
+  cublasHgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, N, M, K, &alpha, (half *)d_b, K,
+              (half *)d_a, K, &beta, (half *)d_c_ref, N);
+
   gpu_hgemm(d_a, d_b, d_c, M, N, K, swizzle_stride);
 
   cudaMemcpy(h_c, d_c, size_c, cudaMemcpyDeviceToHost);
@@ -222,24 +200,22 @@ float gemm_error_check_tn_swizzle(
     max_error = max(max_error, this_error);
   }
 
-  free(h_a); 
-  free(h_b); 
-  free(h_c); 
+  free(h_a);
+  free(h_b);
+  free(h_c);
   free(h_c_ref);
-  cudaFree(d_a); 
-  cudaFree(d_b); 
-  cudaFree(d_c); 
+  cudaFree(d_a);
+  cudaFree(d_b);
+  cudaFree(d_c);
   cudaFree(d_c_ref);
   cublasDestroy(handle);
-  
+
   return max_error;
 }
 
 template <typename T>
-float gemm_error_check_nn(
-  void (*gpu_hgemm) (T *, T *, T *, int, int, int),
-  int M, int N, int K) {
-
+float gemm_error_check_nn(void (*gpu_hgemm)(T *, T *, T *, int, int, int),
+                          int M, int N, int K) {
   size_t size_a = M * K * sizeof(T);
   size_t size_b = K * N * sizeof(T);
   size_t size_c = M * N * sizeof(T);
@@ -271,19 +247,12 @@ float gemm_error_check_nn(
 
   cudaMemcpy(d_a, h_a, size_a, cudaMemcpyHostToDevice);
   cudaMemcpy(d_b, h_b, size_b, cudaMemcpyHostToDevice);
-  
-  cublasGemmEx(handle, 
-               CUBLAS_OP_N, 
-               CUBLAS_OP_N, 
-               N, M, K, 
-               &alpha, 
-               (half *)d_b, CUDA_R_16F, N, 
-               (half *)d_a, CUDA_R_16F, K, 
-               &beta,  
-               (half *)d_c_ref, CUDA_R_16F, N, 
-               CUBLAS_COMPUTE_16F,
+
+  cublasGemmEx(handle, CUBLAS_OP_N, CUBLAS_OP_N, N, M, K, &alpha, (half *)d_b,
+               CUDA_R_16F, N, (half *)d_a, CUDA_R_16F, K, &beta,
+               (half *)d_c_ref, CUDA_R_16F, N, CUBLAS_COMPUTE_16F,
                CUBLAS_GEMM_DEFAULT_TENSOR_OP);
-        
+
   gpu_hgemm(d_a, d_b, d_c, M, N, K);
 
   cudaMemcpy(h_c, d_c, size_c, cudaMemcpyDeviceToHost);
@@ -295,15 +264,15 @@ float gemm_error_check_nn(
     max_error = max(max_error, this_error);
   }
 
-  free(h_a); 
-  free(h_b); 
-  free(h_c); 
+  free(h_a);
+  free(h_b);
+  free(h_c);
   free(h_c_ref);
-  cudaFree(d_a); 
-  cudaFree(d_b); 
-  cudaFree(d_c); 
+  cudaFree(d_a);
+  cudaFree(d_b);
+  cudaFree(d_c);
   cudaFree(d_c_ref);
   cublasDestroy(handle);
-  
+
   return max_error;
 }

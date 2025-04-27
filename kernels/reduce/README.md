@@ -58,7 +58,7 @@ TORCH_BINDING_REDUCE(i8x16_pack,       i32,  torch::kInt8,          int8_t,     
 
 ```bash
 # 只测试Ada架构 不指定默认编译所有架构 耗时较长: Volta, Ampere, Ada, Hopper, ...
-export TORCH_CUDA_ARCH_LIST=Ada 
+export TORCH_CUDA_ARCH_LIST=Ada
 python3 block_all_reduce.py
 ```
 

@@ -1,60 +1,73 @@
-import torch
-import time 
-from torch.utils.cpp_extension import load
+import time
 from functools import partial
 from typing import Optional
+
+import torch
+from torch.utils.cpp_extension import load
 
 torch.set_grad_enabled(False)
 
 # Load the CUDA kernel as a python module
-lib = load(name='sgemm_lib', 
-           sources=['sgemm.cu', 'sgemm_async.cu', 
-                    'sgemm_wmma_tf32_stage.cu', 'sgemm_cublas.cu'], 
-           extra_cuda_cflags=[
-               "-O3",
-                "-U__CUDA_NO_HALF_OPERATORS__",
-                "-U__CUDA_NO_HALF_CONVERSIONS__",
-                "-U__CUDA_NO_HALF2_OPERATORS__",
-                "-U__CUDA_NO_BFLOAT16_CONVERSIONS__",
-                "--expt-relaxed-constexpr",
-                "--expt-extended-lambda",
-                "--use_fast_math"
-            ], 
-           extra_cflags=['-std=c++17'])
+lib = load(
+    name="sgemm_lib",
+    sources=[
+        "sgemm.cu",
+        "sgemm_async.cu",
+        "sgemm_wmma_tf32_stage.cu",
+        "sgemm_cublas.cu",
+    ],
+    extra_cuda_cflags=[
+        "-O3",
+        "-U__CUDA_NO_HALF_OPERATORS__",
+        "-U__CUDA_NO_HALF_CONVERSIONS__",
+        "-U__CUDA_NO_HALF2_OPERATORS__",
+        "-U__CUDA_NO_BFLOAT16_CONVERSIONS__",
+        "--expt-relaxed-constexpr",
+        "--expt-extended-lambda",
+        "--use_fast_math",
+    ],
+    extra_cflags=["-std=c++17"],
+)
 
 MAX_TFLOPS = -1
 
-def run_benchmark(perf_func: callable, 
-                  a: torch.Tensor, b: torch.Tensor,
-                  tag: str, out: Optional[torch.Tensor] = None, 
-                  stages: int = -1, swizzle: bool = False,
-                  swizzle_stride: int = 1,
-                  warmup: int = 2, iters: int = 20,
-                  show_all: bool = False):
-    
+
+def run_benchmark(
+    perf_func: callable,
+    a: torch.Tensor,
+    b: torch.Tensor,
+    tag: str,
+    out: Optional[torch.Tensor] = None,
+    stages: int = -1,
+    swizzle: bool = False,
+    swizzle_stride: int = 1,
+    warmup: int = 2,
+    iters: int = 20,
+    show_all: bool = False,
+):
+
     global MAX_TFLOPS
 
     M = a.size(0)
     K = a.size(1)
     N = b.size(1)
 
-    if (a.size(0) > 1024 or a.size(1) >= 1024 
-        or b.size(1) > 1024):
+    if a.size(0) > 1024 or a.size(1) >= 1024 or b.size(1) > 1024:
         iters = 10
-    
+
     if swizzle:
         # make swizzle stride as N/4 and multiples of 256
         swizzle_stride = int((int(N / 8) // 256) * 256)
         swizzle_stride = swizzle_stride if swizzle_stride >= 256 else 1
         swizzle = swizzle if swizzle_stride >= 256 else False
     else:
-        swizzle_stride = 1 # means no thread block swizzle
-    
+        swizzle_stride = 1  # means no thread block swizzle
+
     if stages:
         assert swizzle_stride is not None
 
-    if out is not None: 
-        out.fill_(0)      
+    if out is not None:
+        out.fill_(0)
     if out is not None:
         for i in range(warmup):
             if stages > 1:
@@ -63,8 +76,8 @@ def run_benchmark(perf_func: callable,
                 perf_func(a, b, out)
     else:
         for i in range(warmup):
-            _ = perf_func(a, b) 
-    
+            _ = perf_func(a, b)
+
     torch.cuda.synchronize()
     start = time.time()
     # iters
@@ -76,10 +89,10 @@ def run_benchmark(perf_func: callable,
                 perf_func(a, b, out)
     else:
         for i in range(iters):
-            out = perf_func(a, b) 
+            out = perf_func(a, b)
     torch.cuda.synchronize()
     end = time.time()
-    total_time = (end - start) * 1000 # ms
+    total_time = (end - start) * 1000  # ms
     mean_time = total_time / iters
     out_info = f"out_{tag}"
     out_val = out.flatten()[:2].detach().cpu().numpy().tolist()[:3]
@@ -87,7 +100,7 @@ def run_benchmark(perf_func: callable,
     out_val = [f"{v:<12}"[:10] for v in out_val]
     TFLOPS = (2 * M * N * K) * 1e-9 / (mean_time)
     mean_time = str(f"{mean_time:<12}")[:8]
-    swizzle_stride = 'NOOP' if swizzle_stride == 1 else swizzle_stride
+    swizzle_stride = "NOOP" if swizzle_stride == 1 else swizzle_stride
 
     # caculate TFLOPS improved.
     if TFLOPS > MAX_TFLOPS:
@@ -97,12 +110,17 @@ def run_benchmark(perf_func: callable,
         else:
             improve = 0
         MAX_TFLOPS = TFLOPS
-        print(f"{out_info:>35}: {out_val}, time:{mean_time}ms, "
-              f"swizzle: {swizzle_stride:<4}, TFLOPS: {TFLOPS:<6.2f}(+{improve:.2f}%)")
+        print(
+            f"{out_info:>35}: {out_val}, time:{mean_time}ms, "
+            f"swizzle: {swizzle_stride:<4}, TFLOPS: {TFLOPS:<6.2f}(+{improve:.2f}%)"
+        )
     else:
-        print(f"{out_info:>35}: {out_val}, time:{mean_time}ms, "
-              f"swizzle: {swizzle_stride:<4}, TFLOPS: {TFLOPS:<6.2f}")
-    if show_all: print(out)
+        print(
+            f"{out_info:>35}: {out_val}, time:{mean_time}ms, "
+            f"swizzle: {swizzle_stride:<4}, TFLOPS: {TFLOPS:<6.2f}"
+        )
+    if show_all:
+        print(out)
     return out, mean_time
 
 
@@ -117,7 +135,7 @@ C = torch.randn((MAX_M, MAX_N), dtype=torch.float).cuda()
 torch.cuda.synchronize()
 
 MNKs = [(M, N, K) for M in Ms for N in Ns for K in Ks]
-for (M, N, K) in MNKs:
+for M, N, K in MNKs:
     MAX_TFLOPS = -1
     print("-" * 130)
     print(" " * 55 + f"M={M}, N={N}, K={K}")
@@ -136,18 +154,78 @@ for (M, N, K) in MNKs:
 
     print("-" * 62 + "WMMA" + "-" * 64)
     # stage, thread block swizzle, dsmem
-    run_benchmark(lib.sgemm_wmma_m16n16k8_mma4x2_warp2x4_stages, a, b, "tf32(mma2x4+warp2x4+stage3)", c, stages=3)
-    run_benchmark(lib.sgemm_wmma_m16n16k8_mma4x2_warp2x4_stages, a, b, "tf32(mma2x4+warp2x4+stage2)", c, stages=2)
+    run_benchmark(
+        lib.sgemm_wmma_m16n16k8_mma4x2_warp2x4_stages,
+        a,
+        b,
+        "tf32(mma2x4+warp2x4+stage3)",
+        c,
+        stages=3,
+    )
+    run_benchmark(
+        lib.sgemm_wmma_m16n16k8_mma4x2_warp2x4_stages,
+        a,
+        b,
+        "tf32(mma2x4+warp2x4+stage2)",
+        c,
+        stages=2,
+    )
 
-    run_benchmark(lib.sgemm_wmma_m16n16k8_mma4x2_warp2x4_stages_dsmem, a, b, "tf32(mma2x4+...+stage3+dsmem)", c, stages=3)
-    run_benchmark(lib.sgemm_wmma_m16n16k8_mma4x2_warp2x4_stages_dsmem, a, b, "tf32(mma2x4+...+stage2+dsmem)", c, stages=2)
+    run_benchmark(
+        lib.sgemm_wmma_m16n16k8_mma4x2_warp2x4_stages_dsmem,
+        a,
+        b,
+        "tf32(mma2x4+...+stage3+dsmem)",
+        c,
+        stages=3,
+    )
+    run_benchmark(
+        lib.sgemm_wmma_m16n16k8_mma4x2_warp2x4_stages_dsmem,
+        a,
+        b,
+        "tf32(mma2x4+...+stage2+dsmem)",
+        c,
+        stages=2,
+    )
 
-    run_benchmark(lib.sgemm_wmma_m16n16k8_mma4x2_warp2x4_stages, a, b, "tf32(mma2x4+...+stage3+swizzle)", c, stages=3, swizzle=True)
-    run_benchmark(lib.sgemm_wmma_m16n16k8_mma4x2_warp2x4_stages, a, b, "tf32(mma2x4+...+stage2+swizzle)", c, stages=2, swizzle=True)
+    run_benchmark(
+        lib.sgemm_wmma_m16n16k8_mma4x2_warp2x4_stages,
+        a,
+        b,
+        "tf32(mma2x4+...+stage3+swizzle)",
+        c,
+        stages=3,
+        swizzle=True,
+    )
+    run_benchmark(
+        lib.sgemm_wmma_m16n16k8_mma4x2_warp2x4_stages,
+        a,
+        b,
+        "tf32(mma2x4+...+stage2+swizzle)",
+        c,
+        stages=2,
+        swizzle=True,
+    )
 
-    run_benchmark(lib.sgemm_wmma_m16n16k8_mma4x2_warp2x4_stages_dsmem, a, b, "tf32(...+stage3+dsmem+swizzle)", c, stages=3, swizzle=True)
-    run_benchmark(lib.sgemm_wmma_m16n16k8_mma4x2_warp2x4_stages_dsmem, a, b, "tf32(...+stage2+dsmem+swizzle)", c, stages=2, swizzle=True)
-    
+    run_benchmark(
+        lib.sgemm_wmma_m16n16k8_mma4x2_warp2x4_stages_dsmem,
+        a,
+        b,
+        "tf32(...+stage3+dsmem+swizzle)",
+        c,
+        stages=3,
+        swizzle=True,
+    )
+    run_benchmark(
+        lib.sgemm_wmma_m16n16k8_mma4x2_warp2x4_stages_dsmem,
+        a,
+        b,
+        "tf32(...+stage2+dsmem+swizzle)",
+        c,
+        stages=2,
+        swizzle=True,
+    )
+
     run_benchmark(lib.sgemm_cublas_tf32, a, b, "tf32(cublas+tf32)", c)
     torch.cuda.synchronize()
     print("-" * 130)

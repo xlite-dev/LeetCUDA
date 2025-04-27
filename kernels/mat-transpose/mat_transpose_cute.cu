@@ -8,15 +8,15 @@ using namespace cute;
 
 #define UNIT_BLK_SIZE 16
 
-#define CUDA_CHECK(call)                                               \
-  do {                                                                 \
-    cudaError_t err = call;                                            \
-    if (err != cudaSuccess) {                                          \
-      fprintf(stderr, "CUDA error at %s:%d: %s\n", __FILE__, __LINE__, \
-              cudaGetErrorString(err));                                \
-      /* Optionally, you could also call cudaDeviceReset here */       \
-      exit(EXIT_FAILURE);                                              \
-    }                                                                  \
+#define CUDA_CHECK(call)                                                       \
+  do {                                                                         \
+    cudaError_t err = call;                                                    \
+    if (err != cudaSuccess) {                                                  \
+      fprintf(stderr, "CUDA error at %s:%d: %s\n", __FILE__, __LINE__,         \
+              cudaGetErrorString(err));                                        \
+      /* Optionally, you could also call cudaDeviceReset here */               \
+      exit(EXIT_FAILURE);                                                      \
+    }                                                                          \
   } while (0)
 
 template <typename T, int BLK_M, int BLK_N, typename ThreadLayoutA,
@@ -27,20 +27,18 @@ __global__ void mat_transpose_cute_reg_kernel(const T *pA, T *pB, int M, int N,
   int tx = threadIdx.x;
   int bx = blockIdx.x, by = blockIdx.y;
 
-  auto mA =
-      make_tensor(make_gmem_ptr(pA),
-                  make_layout(make_shape(M, N), GenRowMajor{}));  // (M, N)
-  auto mB =
-      make_tensor(make_gmem_ptr(pB),
-                  make_layout(make_shape(N, M), GenRowMajor{}));  // (N, M)
+  auto mA = make_tensor(make_gmem_ptr(pA),
+                        make_layout(make_shape(M, N), GenRowMajor{})); // (M, N)
+  auto mB = make_tensor(make_gmem_ptr(pB),
+                        make_layout(make_shape(N, M), GenRowMajor{})); // (N, M)
 
   auto gA = local_tile(mA, make_shape(Int<BLK_M>{}, Int<BLK_N>{}),
-                       make_coord(bx, by));  // (BM, BN)
+                       make_coord(bx, by)); // (BM, BN)
   auto gB = local_tile(mB, make_shape(Int<BLK_N>{}, Int<BLK_M>{}),
-                       make_coord(by, bx));  // (BN, BM)
+                       make_coord(by, bx)); // (BN, BM)
   auto cA = local_tile(make_identity_tensor(mA.shape()),
                        make_shape(Int<BLK_M>{}, Int<BLK_N>{}),
-                       make_coord(bx, by));  // (BM, BN)
+                       make_coord(bx, by)); // (BM, BN)
 
   Tensor tAgA = local_partition(gA, tA, tx);
   Tensor tBgB = local_partition(gB, tB, tx);
@@ -89,37 +87,34 @@ void mat_transpose_cute_col2row_reg(torch::Tensor x, torch::Tensor y) {
 
 template <typename T, int BLK_M, int BLK_N, typename ThreadLayoutA,
           typename ThreadLayoutB, typename SmemLayoutA, typename SmemLayoutB>
-__global__ void mat_transpose_cute_smem_kernel(const T *pA, T *pB, int M, int N,
-                                               ThreadLayoutA tA,
-                                               ThreadLayoutB tB,
-                                               SmemLayoutA sA_layout,
-                                               SmemLayoutB sB_layout) {
+__global__ void
+mat_transpose_cute_smem_kernel(const T *pA, T *pB, int M, int N,
+                               ThreadLayoutA tA, ThreadLayoutB tB,
+                               SmemLayoutA sA_layout, SmemLayoutB sB_layout) {
   int tx = threadIdx.x;
   int bx = blockIdx.x, by = blockIdx.y;
 
-  auto mA =
-      make_tensor(make_gmem_ptr(pA),
-                  make_layout(make_shape(M, N), GenRowMajor{}));  // (M, N)
-  auto mB =
-      make_tensor(make_gmem_ptr(pB),
-                  make_layout(make_shape(N, M), GenRowMajor{}));  // (N, M)
+  auto mA = make_tensor(make_gmem_ptr(pA),
+                        make_layout(make_shape(M, N), GenRowMajor{})); // (M, N)
+  auto mB = make_tensor(make_gmem_ptr(pB),
+                        make_layout(make_shape(N, M), GenRowMajor{})); // (N, M)
 
   auto gA = local_tile(mA, make_shape(Int<BLK_M>{}, Int<BLK_N>{}),
-                       make_coord(bx, by));  // (BM, BN)
+                       make_coord(bx, by)); // (BM, BN)
   auto gB = local_tile(mB, make_shape(Int<BLK_N>{}, Int<BLK_M>{}),
-                       make_coord(by, bx));  // (BN, BM)
+                       make_coord(by, bx)); // (BN, BM)
   auto cA = local_tile(make_identity_tensor(mA.shape()),
                        make_shape(Int<BLK_M>{}, Int<BLK_N>{}),
-                       make_coord(bx, by));  // (BM, BN)
+                       make_coord(bx, by)); // (BM, BN)
   auto cB = local_tile(make_identity_tensor(mB.shape()),
                        make_shape(Int<BLK_N>{}, Int<BLK_M>{}),
-                       make_coord(by, bx));  // (BN, BM)
+                       make_coord(by, bx)); // (BN, BM)
 
   __shared__ T smem[BLK_M * BLK_N];
   auto sA = make_tensor(make_smem_ptr(smem),
-                        sA_layout);  // (BM, BN)
+                        sA_layout); // (BM, BN)
   auto sB = make_tensor(make_smem_ptr(smem),
-                        sB_layout);  // (BN, BM)
+                        sB_layout); // (BN, BM)
 
   Tensor tAgA = local_partition(gA, tA, tx);
   Tensor tBgB = local_partition(gB, tB, tx);
@@ -255,23 +250,21 @@ __global__ void mat_transpose_cute_smem_vectorized_kernel(
   int tx = threadIdx.x;
   int bx = blockIdx.x, by = blockIdx.y;
 
-  auto mA =
-      make_tensor(make_gmem_ptr(pA),
-                  make_layout(make_shape(M, N), GenRowMajor{}));  // (M, N)
-  auto mB =
-      make_tensor(make_gmem_ptr(pB),
-                  make_layout(make_shape(N, M), GenRowMajor{}));  // (N, N)
+  auto mA = make_tensor(make_gmem_ptr(pA),
+                        make_layout(make_shape(M, N), GenRowMajor{})); // (M, N)
+  auto mB = make_tensor(make_gmem_ptr(pB),
+                        make_layout(make_shape(N, M), GenRowMajor{})); // (N, N)
 
   auto gA = local_tile(mA, make_shape(Int<BLK_M>{}, Int<BLK_N>{}),
-                       make_coord(bx, by));  // (BM, BN)
+                       make_coord(bx, by)); // (BM, BN)
   auto gB = local_tile(mB, make_shape(Int<BLK_N>{}, Int<BLK_M>{}),
-                       make_coord(by, bx));  // (BN, BM)
+                       make_coord(by, bx)); // (BN, BM)
 
   __shared__ T smem[BLK_M * BLK_N];
   auto sA = make_tensor(make_smem_ptr(smem),
-                        sA_layout);  // (BM, BN)
+                        sA_layout); // (BM, BN)
   auto sB = make_tensor(make_smem_ptr(smem),
-                        sB_layout);  // (BN, BM)
+                        sB_layout); // (BN, BM)
 
   auto thr_copy_a = copy_a.get_slice(tx);
   Tensor tAgA = thr_copy_a.partition_S(gA);

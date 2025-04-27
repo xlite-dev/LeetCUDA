@@ -1,10 +1,10 @@
-# HGEMV 
+# HGEMV
 
 ## 0x00 说明
 
 包含以下内容：
 
-- [X] hgemv_k32_f16_kernel 
+- [X] hgemv_k32_f16_kernel
 - [X] hgemv_k128_f16x4_kernel
 - [X] hgemv_k16_f16_kernel
 - [X] PyTorch bindings
@@ -13,7 +13,7 @@
 
 ```bash
 # 只测试Ada架构 不指定默认编译所有架构 耗时较长: Volta, Ampere, Ada, Hopper, ...
-export TORCH_CUDA_ARCH_LIST=Ada 
+export TORCH_CUDA_ARCH_LIST=Ada
 python3 hgemv.py
 ```
 

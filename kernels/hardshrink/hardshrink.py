@@ -1,29 +1,39 @@
-import torch
 import time
-from torch.utils.cpp_extension import load
 from typing import Optional
+
+import torch
 import torch.nn.functional as F
+from torch.utils.cpp_extension import load
 
 torch.set_grad_enabled(False)
 
 # Load the CUDA kernel as a Python module
-lib = load(name='hardshrink_lib',
-           sources=['hardshrink.cu'],
-           extra_cuda_cflags=[
-               "-O3",
-               "-U__CUDA_NO_HALF_OPERATORS__",
-               "-U__CUDA_NO_HALF_CONVERSIONS__",
-               "-U__CUDA_NO_HALF2_OPERATORS__",
-               "-U__CUDA_NO_BFLOAT16_CONVERSIONS__",
-               "--expt-relaxed-constexpr",
-               "--expt-extended-lambda",
-               "--use_fast_math",
-           ],
-           extra_cflags=['-std=c++17'])
+lib = load(
+    name="hardshrink_lib",
+    sources=["hardshrink.cu"],
+    extra_cuda_cflags=[
+        "-O3",
+        "-U__CUDA_NO_HALF_OPERATORS__",
+        "-U__CUDA_NO_HALF_CONVERSIONS__",
+        "-U__CUDA_NO_HALF2_OPERATORS__",
+        "-U__CUDA_NO_BFLOAT16_CONVERSIONS__",
+        "--expt-relaxed-constexpr",
+        "--expt-extended-lambda",
+        "--use_fast_math",
+    ],
+    extra_cflags=["-std=c++17"],
+)
 
-def run_benchmark(perf_func: callable, x: torch.Tensor, tag: str,
-                  out: Optional[torch.Tensor] = None, warmup: int = 10,
-                  iters: int = 1000, show_all: bool = False):
+
+def run_benchmark(
+    perf_func: callable,
+    x: torch.Tensor,
+    tag: str,
+    out: Optional[torch.Tensor] = None,
+    warmup: int = 10,
+    iters: int = 1000,
+    show_all: bool = False,
+):
     if out is not None:
         out.fill_(0)
     # warmup
@@ -43,8 +53,10 @@ def run_benchmark(perf_func: callable, x: torch.Tensor, tag: str,
     out_val = [round(v, 8) for v in out_val]
     out_val = [f"{v:<12}" for v in out_val]
     print(f"{out_info:>18}: {out_val}, time:{mean_time:.8f}ms")
-    if show_all: print(out)
+    if show_all:
+        print(out)
     return out, mean_time
+
 
 def torch_hardshrink(x, out=None):
     if out is None:
@@ -53,13 +65,14 @@ def torch_hardshrink(x, out=None):
         out.copy_(F.hardshrink(x, lambd=0.5))
         return out
 
+
 # Define input sizes
 Ss = [1024, 2048, 4096]
 Ks = [1024, 2048, 4096]
 SKs = [(S, K) for S in Ss for K in Ks]
 
 # Run benchmarks
-for (S, K) in SKs:
+for S, K in SKs:
     print("-" * 85)
     print(" " * 40 + f"S={S}, K={K}")
     x = torch.randn((S, K)).cuda().float().contiguous()

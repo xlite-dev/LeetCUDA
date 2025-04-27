@@ -70,9 +70,10 @@ ncu --metrics sm__sass_l1tex_data_bank_conflicts_pipe_lsu_mem_shared_op_ldsm ./h
     ------------------------------------------------------------------ ----------- ------------
 ```
 
-## 📚 performance  
+## 📚 performance
 
 - 📚 NVIDIA RTX 3080 Laptop
+
 ```bash
  ./hgemm_mma_swizzle.bin 4096 4096 4096 1 10
 
@@ -83,10 +84,9 @@ ALGO = HGEMM mma2x4_warp4x4 + SMEM SWIZZLE
 M N K =   4096   4096   4096, W = 1, R = 10, Time =   0.00234496 s, AVG Performance =    58.6104 Tflops
 ```
 
+## 📚 print swizzle layout
 
-## 📚 print swizzle layout  
-
-- 📚 M16K16  
+- 📚 M16K16
 
 ```bash
 python3 print_swizzle_layout.py --logical-col 64 --show-logical-col
@@ -195,4 +195,3 @@ python3 print_swizzle_layout.py --logical-col 64 --show-logical-col
 |row 15| 0:8  | 8:0  |16:8  |24:0  |32:8  |40:0  |48:8  |56:0  |
 ----------------------------------------------------------------
 ```
-

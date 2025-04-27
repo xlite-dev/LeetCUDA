@@ -1,4 +1,4 @@
-# SGEMM 
+# SGEMM
 
 ## HGEMM/SGEMM Supported Matrix
 
@@ -7,7 +7,7 @@
 |✔️|✔️|✔️|✔️|
 |**WMMA(m16n16k16)**|**MMA(m16n8k16)**|**Pack LDST(128 bits)**|**SMEM Padding**|
 |✔️|✔️|✔️|✔️|
-|**Copy Async**|**Tile MMA(More Threads)**|**Tile Warp(More Values)**|**Multi Stages**|  
+|**Copy Async**|**Tile MMA(More Threads)**|**Tile Warp(More Values)**|**Multi Stages**|
 |✔️|✔️|✔️|✔️|
 |**Reg Double Buffers**|**Block Swizzle**|**Warp Swizzle**|**Collective Store(Reg Reuse&Warp Shfl)**|
 |✔️|✔️|✔️|✔️|
@@ -40,11 +40,11 @@
 
 SM调度单位为一个warp（一个warp内32个Thread），shared_memory 可以 被一个warp中的所有（32个）线程进行访问，shared_memory 映射到大小相等的32个Bank上，Bank的数据读取带宽为32bit / cycle (4 bytes)，因此，主要需要考虑一个Warp内32线程的访问共享内存时的bank冲突。
 对于多个线程读取同一个Bank数据时（不同地址），硬件把内存读写请求，拆分成 conflict-free requests，进行顺序读写，此时将会触发多次内存事务。特别地，当一个warp中的所有线程读写同一个地址时，会触发broadcast机制，此时不会退化成顺序读写。上面提到触发broadcast机制的条件是all threads acess same address，但在翻阅cuda-c-programming-guide以及最新版本的[NVProfGuide](https://docs.nvidia.com/nsight-compute/ProfilingGuide/index.html) 时，发现只要是多个thread 读写就会触发broadcast（不需要All）。
-  
+
 - 多个线程读同一个数据时，仅有一个线程读，然后broadcast到其他线程
 - 多个线程写同一个数据时，仅会有一个线程写成功
 
-NVIDIA的[文章](https://developer.nvidia.com/blog/using-shared-memory-cuda-cc/)中指出，我们还可以通过 `cudaDeviceSetSharedMemConfig()` 函数设置默认Bank Size（默认为4 bytes）来避免bank conflicts，可设置为cudaSharedMemBankSizeFourByte或者cudaSharedMemBankSizeEightByte。对于某些场景来说，设置cudaSharedMemBankSizeEightByte或许更加合适，比如使用double数据类型时。 
+NVIDIA的[文章](https://developer.nvidia.com/blog/using-shared-memory-cuda-cc/)中指出，我们还可以通过 `cudaDeviceSetSharedMemConfig()` 函数设置默认Bank Size（默认为4 bytes）来避免bank conflicts，可设置为cudaSharedMemBankSizeFourByte或者cudaSharedMemBankSizeEightByte。对于某些场景来说，设置cudaSharedMemBankSizeEightByte或许更加合适，比如使用double数据类型时。
 
 ```C
 cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte);
@@ -57,10 +57,10 @@ cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte);
 ```C
   // 1）主循环从bk = 1 开始，第一次数据加载在主循环之前，最后一次计算在主循环之后，这是pipeline 的特点决定的；
   // 2）由于计算和下一次访存使用的Shared Memory不同，因此主循环中每次循环只需要一次__syncthreads()即可
-  // 3）由于GPU不能向CPU那样支持乱序执行，主循环中需要先将下一次循环计算需要的Gloabal Memory中的数据load 
-  // 到寄存器，然后进行本次计算，之后再将load到寄存器中的数据写到Shared Memory，这样在LDG指令向Global 
+  // 3）由于GPU不能向CPU那样支持乱序执行，主循环中需要先将下一次循环计算需要的Gloabal Memory中的数据load
+  // 到寄存器，然后进行本次计算，之后再将load到寄存器中的数据写到Shared Memory，这样在LDG指令向Global
   // Memory做load时，不会影响后续FFMA及其它运算指令的 launch 执行，也就达到了Double Buffering的目的。
-  
+
   // bk = 0 is loading here, buffer 0
 
   {
@@ -78,7 +78,7 @@ cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte);
     FLOAT4(s_b[0][load_b_smem_k][load_b_smem_n]) = FLOAT4(r_load_b[0]);
   }
   // Without this synchronization, accuracy may occasionally be abnormal.
-  __syncthreads(); 
+  __syncthreads();
 
   // bk start from 1，需要注意的是，虽然 bk 从 1 开始，但实际上 bk=1时，使用的是
   // 第0块BK中的数据（已经加载到共享内存s_a[0]和s_b[0]）；bk=2时，实际计算的是第1块
@@ -111,7 +111,7 @@ cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte);
         }
       }
     }
-    
+
     // 对比非double buffers版本，此处不需要__syncthreads()，总共节省了
     // ((K + BK - 1) / BK) - 1 次block内的同步操作。比如，bk=1时，HFMA计算
     // 使用的是s_a[0]和s_b[0]，因此，和s_a[1]和s_b[1]的加载是没有依赖关系的。
@@ -125,7 +125,7 @@ cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte);
 
     __syncthreads();
   }
-  
+
   // 计算剩下最后一块BK
   #pragma unroll
   for (int tk = 0; tk < BK; tk++) {
@@ -145,19 +145,19 @@ cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte);
   }
 ```
 
-## 参考文献 
+## 参考文献
 
 - [CUDA编程概念】一、什么是bank conflict？](https://zhuanlan.zhihu.com/p/659142274)
 - [解决 bank conflict](https://github.com/PaddleJitLab/CUDATutorial/blob/develop/docs/09_optimize_reduce/02_bank_conflict/README.md)
 - [Bank Conflict free 的几种方式](https://zhuanlan.zhihu.com/p/722286440)
 - [Using Shared Memory in CUDA C/C++](https://developer.nvidia.com/blog/using-shared-memory-cuda-cc/)
 - [CUDA（三）：通用矩阵乘法：从入门到熟练](https://zhuanlan.zhihu.com/p/657632577)
-  
+
 ## 测试
 
 ```bash
 # 只测试Ada架构 不指定默认编译所有架构 耗时较长: Volta, Ampere, Ada, Hopper, ...
-export TORCH_CUDA_ARCH_LIST=Ada 
+export TORCH_CUDA_ARCH_LIST=Ada
 python3 sgemm.py
 ```
 输出:

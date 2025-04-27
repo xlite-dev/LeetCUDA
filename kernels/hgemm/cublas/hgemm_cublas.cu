@@ -1,14 +1,14 @@
+#include "cublas_v2.h"
+#include <algorithm>
+#include <cuda_bf16.h>
+#include <cuda_fp16.h>
+#include <cuda_fp8.h>
+#include <cuda_runtime.h>
+#include <float.h>
+#include <mma.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <float.h>
 #include <vector>
-#include <algorithm>
-#include <cuda_runtime.h>
-#include <cuda_fp16.h>
-#include <cuda_bf16.h>
-#include <cuda_fp8.h>
-#include <mma.h>
-#include "cublas_v2.h"
 
 static cublasHandle_t g_handle = nullptr;
 
@@ -38,8 +38,8 @@ void destroy_cublas_handle() {
 }
 
 // NN: A/B/C All row major
-void cublas_tensor_op_nn(half *A, half *B, half *C,  size_t M, size_t N, size_t K) {
-
+void cublas_tensor_op_nn(half *A, half *B, half *C, size_t M, size_t N,
+                         size_t K) {
   static half alpha = 1.0;
   static half beta = 0.0;
 
@@ -47,22 +47,14 @@ void cublas_tensor_op_nn(half *A, half *B, half *C,  size_t M, size_t N, size_t 
     init_cublas_handle();
   }
 
-  cublasGemmEx(g_handle, 
-               CUBLAS_OP_N, 
-               CUBLAS_OP_N, 
-               N, M, K, 
-               &alpha, 
-               B, CUDA_R_16F, N, 
-               A, CUDA_R_16F, K, 
-               &beta,  
-               C, CUDA_R_16F, N, 
-               CUBLAS_COMPUTE_16F,
-               CUBLAS_GEMM_DEFAULT_TENSOR_OP);
+  cublasGemmEx(g_handle, CUBLAS_OP_N, CUBLAS_OP_N, N, M, K, &alpha, B,
+               CUDA_R_16F, N, A, CUDA_R_16F, K, &beta, C, CUDA_R_16F, N,
+               CUBLAS_COMPUTE_16F, CUBLAS_GEMM_DEFAULT_TENSOR_OP);
 }
 
 // TN: A row major MxK, B col major NxK, C row major MxN
-void cublas_tensor_op_tn(half *A, half *B, half *C,  size_t M, size_t N, size_t K) {
-
+void cublas_tensor_op_tn(half *A, half *B, half *C, size_t M, size_t N,
+                         size_t K) {
   static half alpha = 1.0;
   static half beta = 0.0;
 
@@ -70,39 +62,22 @@ void cublas_tensor_op_tn(half *A, half *B, half *C,  size_t M, size_t N, size_t 
     init_cublas_handle();
   }
 
-  cublasGemmEx(g_handle, 
-               CUBLAS_OP_T, 
-               CUBLAS_OP_N, 
-               N, M, K, 
-               &alpha, 
-               B, CUDA_R_16F, K, 
-               A, CUDA_R_16F, K, 
-               &beta,  
-               C, CUDA_R_16F, N, 
-               CUBLAS_COMPUTE_16F,
-               CUBLAS_GEMM_DEFAULT_TENSOR_OP);
+  cublasGemmEx(g_handle, CUBLAS_OP_T, CUBLAS_OP_N, N, M, K, &alpha, B,
+               CUDA_R_16F, K, A, CUDA_R_16F, K, &beta, C, CUDA_R_16F, N,
+               CUBLAS_COMPUTE_16F, CUBLAS_GEMM_DEFAULT_TENSOR_OP);
 }
 
 // build cpp binary
 #ifndef NO_CUBLAS_HGEMM_BIN
 
 // pass the cuBLAS handle from outside to avoid error.
-void cublas_tensor_op_tn_v2(cublasHandle_t handle, 
-                            half *A, half *B, half *C,  
+void cublas_tensor_op_tn_v2(cublasHandle_t handle, half *A, half *B, half *C,
                             size_t M, size_t N, size_t K) {
   half alpha = 1.0;
   half beta = 0.0;
 
-  cublasGemmEx(handle, 
-               CUBLAS_OP_T, 
-               CUBLAS_OP_N, 
-               N, M, K, 
-               &alpha, 
-               B, CUDA_R_16F, K, 
-               A, CUDA_R_16F, K, 
-               &beta,  
-               C, CUDA_R_16F, N, 
-               CUBLAS_COMPUTE_16F,
+  cublasGemmEx(handle, CUBLAS_OP_T, CUBLAS_OP_N, N, M, K, &alpha, B, CUDA_R_16F,
+               K, A, CUDA_R_16F, K, &beta, C, CUDA_R_16F, N, CUBLAS_COMPUTE_16F,
                CUBLAS_GEMM_DEFAULT_TENSOR_OP);
 }
 
@@ -198,64 +173,59 @@ int main(int argc, char *argv[]) {
 }
 // build torch python binding
 #else
-// --------------------- PyTorch bindings for custom kernel -----------------------
-#include <torch/types.h>
+// --------------------- PyTorch bindings for custom kernel
+// -----------------------
 #include <torch/extension.h>
+#include <torch/types.h>
 
 #define STRINGFY(str) #str
-#define TORCH_BINDING_COMMON_EXTENSION(func)   \
+#define TORCH_BINDING_COMMON_EXTENSION(func)                                   \
   m.def(STRINGFY(func), &func, STRINGFY(func));
 
-#define CHECK_TORCH_TENSOR_DTYPE(T, th_type)                 \
-if(((T).options().dtype() != (th_type))) {                   \
-  std::cout << "Tensor Info:" << (T).options() << std::endl; \
-  throw std::runtime_error("values must be "#th_type);       \
-}
+#define CHECK_TORCH_TENSOR_DTYPE(T, th_type)                                   \
+  if (((T).options().dtype() != (th_type))) {                                  \
+    std::cout << "Tensor Info:" << (T).options() << std::endl;                 \
+    throw std::runtime_error("values must be " #th_type);                      \
+  }
 
-#define CHECK_TORCH_TENSOR_SHAPE(T, S0, S1)           \
-if (((T).size(0) != (S0)) || ((T).size(1) != (S1))) { \
-  throw std::runtime_error("Tensor size mismatch!");  \
-}
+#define CHECK_TORCH_TENSOR_SHAPE(T, S0, S1)                                    \
+  if (((T).size(0) != (S0)) || ((T).size(1) != (S1))) {                        \
+    throw std::runtime_error("Tensor size mismatch!");                         \
+  }
 
 // NN: A/B/C All row major
-void hgemm_cublas_tensor_op_nn(
-  torch::Tensor a, torch::Tensor b, torch::Tensor c) {
+void hgemm_cublas_tensor_op_nn(torch::Tensor a, torch::Tensor b,
+                               torch::Tensor c) {
   CHECK_TORCH_TENSOR_DTYPE(a, torch::kHalf)
   CHECK_TORCH_TENSOR_DTYPE(b, torch::kHalf)
   CHECK_TORCH_TENSOR_DTYPE(c, torch::kHalf)
   const int M = a.size(0);
   const int K = a.size(1);
-  const int N = b.size(1); 
+  const int N = b.size(1);
   CHECK_TORCH_TENSOR_SHAPE(a, M, K)
   CHECK_TORCH_TENSOR_SHAPE(b, K, N)
   CHECK_TORCH_TENSOR_SHAPE(c, M, N)
 
-  cublas_tensor_op_nn(
-    reinterpret_cast<half*>(a.data_ptr()),
-    reinterpret_cast<half*>(b.data_ptr()),
-    reinterpret_cast<half*>(c.data_ptr()),
-    M, N, K
-  );
+  cublas_tensor_op_nn(reinterpret_cast<half *>(a.data_ptr()),
+                      reinterpret_cast<half *>(b.data_ptr()),
+                      reinterpret_cast<half *>(c.data_ptr()), M, N, K);
 }
 
 // TN: A row major MxK, B col major KxN, C row major MxN
-void hgemm_cublas_tensor_op_tn(
-  torch::Tensor a, torch::Tensor b, torch::Tensor c) {
+void hgemm_cublas_tensor_op_tn(torch::Tensor a, torch::Tensor b,
+                               torch::Tensor c) {
   CHECK_TORCH_TENSOR_DTYPE(a, torch::kHalf)
   CHECK_TORCH_TENSOR_DTYPE(b, torch::kHalf)
   CHECK_TORCH_TENSOR_DTYPE(c, torch::kHalf)
   const int M = a.size(0);
   const int K = a.size(1);
-  const int N = b.size(1); 
+  const int N = b.size(1);
   CHECK_TORCH_TENSOR_SHAPE(a, M, K)
   CHECK_TORCH_TENSOR_SHAPE(b, K, N)
   CHECK_TORCH_TENSOR_SHAPE(c, M, N)
 
-  cublas_tensor_op_tn(
-    reinterpret_cast<half*>(a.data_ptr()),
-    reinterpret_cast<half*>(b.data_ptr()),
-    reinterpret_cast<half*>(c.data_ptr()),
-    M, N, K
-  );
+  cublas_tensor_op_tn(reinterpret_cast<half *>(a.data_ptr()),
+                      reinterpret_cast<half *>(b.data_ptr()),
+                      reinterpret_cast<half *>(c.data_ptr()), M, N, K);
 }
 #endif

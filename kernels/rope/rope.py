@@ -1,12 +1,9 @@
-import torch
 import time
-import math
+from typing import Optional, Tuple
+
+import torch
 from torch.utils.cpp_extension import load
-from functools import partial
-from typing import Optional
-from typing import Tuple
-import torch.nn as nn
-import torch.nn.functional as F
+
 torch.set_grad_enabled(False)
 
 # Load the CUDA kernel as a python module
@@ -74,7 +71,7 @@ def naive_rope(
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     dim = x.shape[-1]
     seq_len = x.shape[-2]
-    # get the shape of x (ignore the head dimension). 
+    # get the shape of x (ignore the head dimension).
     # x: [batch_size, seq_len, dim]
     x_ = x.float().reshape(*x.shape[:-1], -1, 2)
     # x_: [batch_size, seq_len, dim//2, 2]
@@ -82,24 +79,25 @@ def naive_rope(
     # pack neibored element into a complex
     # x_: [batch_size, seq_len, dim//2, 1]. eg: tensor([(1.6116-0.5772j), ...]
     freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))
-    t = torch.arange(seq_len , device=freqs.device)
+    t = torch.arange(seq_len, device=freqs.device)
     freqs = torch.outer(t, freqs).float().cuda()
-    freqs_cis = torch.polar(torch.ones_like(freqs), freqs) 
+    freqs_cis = torch.polar(torch.ones_like(freqs), freqs)
     # get rotate angle
     xq_out = torch.view_as_real(x_ * freqs_cis).flatten(1)
     # do rotate
     return xq_out.type_as(x)
 
+
 print("-" * 100)
 M = [4096, 8192]
 N = [512, 1024]
 MN = [[m, n] for m in M for n in N]
-for M,N in MN:
+for M, N in MN:
     print(" " * 40 + f"M={M}, N={N}")
     print("-" * 100)
     x = torch.randn((M, N)).cuda().float().contiguous()
     out = torch.zeros_like(x).cuda().float().contiguous()
-    run_benchmark(lib.rope_f32,          x, "f32",          out)
-    run_benchmark(lib.rope_f32x4_pack,   x, "f32x4_pack",   out)
-    run_benchmark(naive_rope,            x, "f32_th")
-    print("-" * 100)     
+    run_benchmark(lib.rope_f32, x, "f32", out)
+    run_benchmark(lib.rope_f32x4_pack, x, "f32x4_pack", out)
+    run_benchmark(naive_rope, x, "f32_th")
+    print("-" * 100)

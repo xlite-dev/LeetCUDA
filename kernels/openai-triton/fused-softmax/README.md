@@ -88,70 +88,71 @@ softmax-performance: (GB/s)
 61  15872.0            609.665642           621.071773           172.623526
 62  16128.0            610.741546           625.835582           172.361260
 ```
+
 ## PTX gen code
 check [softmax_kernel.ptx](./softmax_kernel.ptx) for more details.
 
 ```NASM
 // begin inline asm
-	@%p2 cp.async.ca.shared.global [ %r82 + 0 ], [ %rd4 + 0 ], 0x4, %r34;
-	// end inline asm
-	selp.b32 	%r36, %r45, 0, %p7;
-	// begin inline asm
-	@%p2 cp.async.ca.shared.global [ %r84 + 0 ], [ %rd5 + 0 ], 0x4, %r36;
-	// end inline asm
-	selp.b32 	%r38, %r45, 0, %p8;
-	// begin inline asm
-	@%p2 cp.async.ca.shared.global [ %r86 + 0 ], [ %rd6 + 0 ], 0x4, %r38;
-	// end inline asm
-	selp.b32 	%r40, %r45, 0, %p9;
-	// begin inline asm
-	@%p2 cp.async.ca.shared.global [ %r88 + 0 ], [ %rd7 + 0 ], 0x4, %r40;
-	// end inline asm
-	// begin inline asm
-	cp.async.commit_group ;
-	// end inline asm
-	.loc	1 44 57                         // triton_fused_softmax.py:44:57
-	@%p10 bra 	$L__BB0_3;
+    @%p2 cp.async.ca.shared.global [ %r82 + 0 ], [ %rd4 + 0 ], 0x4, %r34;
+    // end inline asm
+    selp.b32    %r36, %r45, 0, %p7;
+    // begin inline asm
+    @%p2 cp.async.ca.shared.global [ %r84 + 0 ], [ %rd5 + 0 ], 0x4, %r36;
+    // end inline asm
+    selp.b32    %r38, %r45, 0, %p8;
+    // begin inline asm
+    @%p2 cp.async.ca.shared.global [ %r86 + 0 ], [ %rd6 + 0 ], 0x4, %r38;
+    // end inline asm
+    selp.b32    %r40, %r45, 0, %p9;
+    // begin inline asm
+    @%p2 cp.async.ca.shared.global [ %r88 + 0 ], [ %rd7 + 0 ], 0x4, %r40;
+    // end inline asm
+    // begin inline asm
+    cp.async.commit_group ;
+    // end inline asm
+    .loc    1 44 57                         // triton_fused_softmax.py:44:57
+    @%p10 bra   $L__BB0_3;
 // %bb.1:                               // %.lr.ph
-	.loc	1 0 57                          // triton_fused_softmax.py:0:57
-	ld.param.u32 	%r28, [softmax_kernel_param_3];
-	ld.param.u64 	%rd2, [softmax_kernel_param_0];
-	// begin inline asm
-	mov.u32 %r32, %nctaid.x;
-	// end inline asm
-	cvt.u64.u32 	%rd1, %r41;
-	.loc	1 49 35                         // triton_fused_softmax.py:49:35
-	and.b32  	%r11, %r3, 31;
-	sub.s32 	%r12, %r29, %r32;
-	add.s32 	%r48, %r44, 4096;
-	shr.u32 	%r49, %r3, 3;
-	and.b32  	%r50, %r49, 28;
-	add.s32 	%r54, %r48, %r50;
-	setp.lt.s32 	%p15, %r3, 8;
-	shl.b32 	%r51, %r3, 2;
-	add.s32 	%r57, %r48, %r51;
-	and.b32  	%r52, %r3, 7;
-	setp.eq.s32 	%p13, %r52, 0;
-	and.pred  	%p16, %p15, %p13;
-	.loc	1 44 57                         // triton_fused_softmax.py:44:57
-	add.s32 	%r53, %r131, %r32;
-	mul.lo.s32 	%r129, %r27, %r53;
-	mul.lo.s32 	%r16, %r32, %r27;
-	mul.lo.s32 	%r128, %r131, %r28;
-	mul.lo.s32 	%r18, %r32, %r28;
-	mov.b32 	%r130, -1;
+    .loc    1 0 57                          // triton_fused_softmax.py:0:57
+    ld.param.u32    %r28, [softmax_kernel_param_3];
+    ld.param.u64    %rd2, [softmax_kernel_param_0];
+    // begin inline asm
+    mov.u32 %r32, %nctaid.x;
+    // end inline asm
+    cvt.u64.u32     %rd1, %r41;
+    .loc    1 49 35                         // triton_fused_softmax.py:49:35
+    and.b32     %r11, %r3, 31;
+    sub.s32     %r12, %r29, %r32;
+    add.s32     %r48, %r44, 4096;
+    shr.u32     %r49, %r3, 3;
+    and.b32     %r50, %r49, 28;
+    add.s32     %r54, %r48, %r50;
+    setp.lt.s32     %p15, %r3, 8;
+    shl.b32     %r51, %r3, 2;
+    add.s32     %r57, %r48, %r51;
+    and.b32     %r52, %r3, 7;
+    setp.eq.s32     %p13, %r52, 0;
+    and.pred    %p16, %p15, %p13;
+    .loc    1 44 57                         // triton_fused_softmax.py:44:57
+    add.s32     %r53, %r131, %r32;
+    mul.lo.s32  %r129, %r27, %r53;
+    mul.lo.s32  %r16, %r32, %r27;
+    mul.lo.s32  %r128, %r131, %r28;
+    mul.lo.s32  %r18, %r32, %r28;
+    mov.b32     %r130, -1;
 $L__BB0_2:                              // =>This Inner Loop Header: Depth=1
-	.loc	1 0 57                          // triton_fused_softmax.py:0:57
-	cvt.u32.u64 	%r90, %rd1;
-	setp.eq.s32 	%p14, %r11, 0;
-	.loc	1 52 29                         // triton_fused_softmax.py:52:29
-	setp.lt.s32 	%p20, %r90, %r30;
-	.loc	1 44 57                         // triton_fused_softmax.py:44:57
-	setp.lt.s32 	%p28, %r131, %r12;
-	add.s32 	%r91, %r130, 1;
-	setp.gt.u32 	%p29, %r130, 2147483646;
-	selp.b32 	%r130, %r91, 0, %p29;
-	.loc	1 53 22                         // triton_fused_softmax.py:53:22
-	// begin inline asm
-	cp.async.wait_group 0x0;
+    .loc    1 0 57                          // triton_fused_softmax.py:0:57
+    cvt.u32.u64     %r90, %rd1;
+    setp.eq.s32     %p14, %r11, 0;
+    .loc    1 52 29                         // triton_fused_softmax.py:52:29
+    setp.lt.s32     %p20, %r90, %r30;
+    .loc    1 44 57                         // triton_fused_softmax.py:44:57
+    setp.lt.s32     %p28, %r131, %r12;
+    add.s32     %r91, %r130, 1;
+    setp.gt.u32     %p29, %r130, 2147483646;
+    selp.b32    %r130, %r91, 0, %p29;
+    .loc    1 53 22                         // triton_fused_softmax.py:53:22
+    // begin inline asm
+    cp.async.wait_group 0x0;
 ```

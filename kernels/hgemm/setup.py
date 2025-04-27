@@ -1,14 +1,11 @@
-import subprocess
 import os
-from packaging.version import parse, Version
+import subprocess
 from pathlib import Path
-from setuptools import setup, find_packages
-from torch.utils.cpp_extension import (
-    BuildExtension,
-    CUDAExtension,
-    CUDA_HOME,
-)
-from tools.utils import (get_build_sources, get_build_cuda_cflags)
+
+from packaging.version import Version, parse
+from setuptools import find_packages, setup
+from tools.utils import get_build_cuda_cflags, get_build_sources
+from torch.utils.cpp_extension import CUDA_HOME, BuildExtension, CUDAExtension
 
 # package name managed by pip, which can be remove by `pip uninstall toy-hgemm`
 PACKAGE_NAME = "toy-hgemm"
@@ -24,7 +21,9 @@ cc_flag.append("arch=compute_89,code=sm_89")
 
 # helper function to get cuda version
 def get_cuda_bare_metal_version(cuda_dir):
-    raw_output = subprocess.check_output([cuda_dir + "/bin/nvcc", "-V"], universal_newlines=True)
+    raw_output = subprocess.check_output(
+        [cuda_dir + "/bin/nvcc", "-V"], universal_newlines=True
+    )
     output = raw_output.split()
     release_idx = output.index("release") + 1
     bare_metal_version = parse(output[release_idx].split(",")[0])
@@ -58,10 +57,10 @@ ext_modules.append(
             Path(this_dir) / "naive",
             Path(this_dir) / "utils",
             Path(this_dir) / "wmma",
-            Path(this_dir) / "mma" ,
-            Path(this_dir) / "cutlass" ,
-            Path(this_dir) / "cublas" ,
-            Path(this_dir) / "pybind" ,
+            Path(this_dir) / "mma",
+            Path(this_dir) / "cutlass",
+            Path(this_dir) / "cublas",
+            Path(this_dir) / "pybind",
         ],
     )
 )
@@ -85,7 +84,7 @@ setup(
     ),
     description="My Toy HGEMM implement by CUDA",
     ext_modules=ext_modules,
-    cmdclass={ "build_ext": BuildExtension},
+    cmdclass={"build_ext": BuildExtension},
     python_requires=">=3.10",
     install_requires=[
         "torch",
@@ -93,6 +92,3 @@ setup(
         "ninja",
     ],
 )
-
-
-

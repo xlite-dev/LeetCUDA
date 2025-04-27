@@ -1,9 +1,10 @@
-import torch
 import time
-from torch.utils.cpp_extension import load
 from functools import partial
 from typing import Optional
+
+import torch
 from torch.nn.functional import embedding
+from torch.utils.cpp_extension import load
 
 torch.set_grad_enabled(False)
 

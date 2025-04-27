@@ -1,9 +1,10 @@
-import torch
-import time
 import os
-from torch.utils.cpp_extension import load
-from typing import Optional
+import time
 from functools import partial
+from typing import Optional
+
+import torch
+from torch.utils.cpp_extension import load
 
 torch.set_grad_enabled(False)
 
@@ -68,9 +69,11 @@ def run_benchmark(
         print(out)
     return out, mean_time
 
-@torch.compile(mode='max-autotune-no-cudagraphs')
+
+@torch.compile(mode="max-autotune-no-cudagraphs")
 def transpose_copy_compiled(input: torch.Tensor, out: torch.Tensor):
     return torch.transpose_copy(input, dim0=0, dim1=1, out=out)
+
 
 Ms = [1024, 2048, 4096, 8192]
 Ns = [1024, 2048, 4096, 8192]
@@ -93,20 +96,68 @@ for M, N in MNs:
     run_benchmark(lib.mat_transpose_f32x4_row2col, x, "f32x4_row2col", y)
     run_benchmark(lib.mat_transpose_f32x4_col2row2d, x, "f32x4_col2row(2d)", y)
     run_benchmark(lib.mat_transpose_f32x4_row2col2d, x, "f32x4_row2col(2d)", y)
-    run_benchmark(lib.mat_transpose_f32x4_shared_col2row2d, x, "f32x4_shared_col2row(2d)", y)
-    run_benchmark(lib.mat_transpose_f32x4_shared_row2col2d, x, "f32x4_shared_row2col(2d)", y)
-    run_benchmark(lib.mat_transpose_f32x4_shared_bcf_col2row2d, x, "f32x4_shared_bcf_col2row(2d)", y)
-    run_benchmark(lib.mat_transpose_f32x4_shared_bcf_row2col2d, x, "f32x4_shared_bcf_row2col(2d)", y)
-    run_benchmark(lib.mat_transpose_cute_col2row_reg, x, "mat_transpose_cute_col2row_reg", y)
-    run_benchmark(lib.mat_transpose_cute_row2col_reg, x, "mat_transpose_cute_row2col_reg", y)
+    run_benchmark(
+        lib.mat_transpose_f32x4_shared_col2row2d, x, "f32x4_shared_col2row(2d)", y
+    )
+    run_benchmark(
+        lib.mat_transpose_f32x4_shared_row2col2d, x, "f32x4_shared_row2col(2d)", y
+    )
+    run_benchmark(
+        lib.mat_transpose_f32x4_shared_bcf_col2row2d,
+        x,
+        "f32x4_shared_bcf_col2row(2d)",
+        y,
+    )
+    run_benchmark(
+        lib.mat_transpose_f32x4_shared_bcf_row2col2d,
+        x,
+        "f32x4_shared_bcf_row2col(2d)",
+        y,
+    )
+    run_benchmark(
+        lib.mat_transpose_cute_col2row_reg, x, "mat_transpose_cute_col2row_reg", y
+    )
+    run_benchmark(
+        lib.mat_transpose_cute_row2col_reg, x, "mat_transpose_cute_row2col_reg", y
+    )
     run_benchmark(lib.mat_transpose_cute_col_smem, x, "mat_transpose_cute_col_smem", y)
     run_benchmark(lib.mat_transpose_cute_row_smem, x, "mat_transpose_cute_row_smem", y)
-    run_benchmark(lib.mat_transpose_cute_col_smem_swizzled, x, "mat_transpose_cute_col_smem_swizzled", y)
-    run_benchmark(lib.mat_transpose_cute_row_smem_swizzled, x, "mat_transpose_cute_row_smem_swizzled", y)
-    run_benchmark(lib.mat_transpose_cute_row_cvectorized, x, "mat_transpose_cute_row_cvectorized", y)
-    run_benchmark(lib.mat_transpose_cute_row_rvectorized, x, "mat_transpose_cute_row_rvectorized", y)
-    run_benchmark(lib.mat_transpose_cute_row_cvectorized_swizzled, x, "mat_transpose_cute_row_cvectorized_swizzled", y)
-    run_benchmark(lib.mat_transpose_cute_row_rvectorized_swizzled, x, "mat_transpose_cute_row_rvectorized_swizzled", y)
+    run_benchmark(
+        lib.mat_transpose_cute_col_smem_swizzled,
+        x,
+        "mat_transpose_cute_col_smem_swizzled",
+        y,
+    )
+    run_benchmark(
+        lib.mat_transpose_cute_row_smem_swizzled,
+        x,
+        "mat_transpose_cute_row_smem_swizzled",
+        y,
+    )
+    run_benchmark(
+        lib.mat_transpose_cute_row_cvectorized,
+        x,
+        "mat_transpose_cute_row_cvectorized",
+        y,
+    )
+    run_benchmark(
+        lib.mat_transpose_cute_row_rvectorized,
+        x,
+        "mat_transpose_cute_row_rvectorized",
+        y,
+    )
+    run_benchmark(
+        lib.mat_transpose_cute_row_cvectorized_swizzled,
+        x,
+        "mat_transpose_cute_row_cvectorized_swizzled",
+        y,
+    )
+    run_benchmark(
+        lib.mat_transpose_cute_row_rvectorized_swizzled,
+        x,
+        "mat_transpose_cute_row_rvectorized_swizzled",
+        y,
+    )
     run_benchmark(partial(torch.transpose_copy, dim0=0, dim1=1, out=y), x, "f32_th")
     run_benchmark(partial(transpose_copy_compiled, out=y), x, "f32_th_compiled")
     print("-" * 130)

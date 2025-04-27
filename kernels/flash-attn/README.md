@@ -1,4 +1,4 @@
-## ⚡️⚡️FlashAttention-2 MMA: Write FlashAttention using Tensor Cores with pure MMA PTX 
+## ⚡️⚡️FlashAttention-2 MMA: Write FlashAttention using Tensor Cores with pure MMA PTX
 
 ![flash-attn-mma](https://github.com/user-attachments/assets/6f66796d-44d5-4ec1-b224-af997bd152b2)
 
@@ -14,17 +14,17 @@
 
 This repository's implementation of FlashAttention is intended solely for learning CUDA programming. For optimal performance, please use the official [flash-attention](https://github.com/Dao-AILab/flash-attention). Currently, for small-scale attention `(B<=4, H <=48, SeqLen <= 8192, D <= 64)` it can run faster than offical FA2/SDPA on some Devices. However, for large-scale attention, there remains a performance gap. Performance is continuously being optimized. Stay tuned for updates ~  (MMA Acc F16/F32, softmax Acc F32 vs FA2 MMA/softmax Acc F32, 👇Benchmark)
 
-|Algorithm| (B,H,N,D) | NVIDIA RTX 3080 Laptop | NVIDIA L20 | NVIDIA GeForce RTX 4090 |   
-|:---:|:---:|:---:|:---:|:---:|  
-|FlashAttention-2|(1,8,8192,64)|37 TFLOPS|100 TFLOPS|145 TFLOPS|  
-|share-qkv+stage2|(1,8,8192,64)|**55 TFLOPS**|99 TFLOPS|**221 TFLOPS**|  
+|Algorithm| (B,H,N,D) | NVIDIA RTX 3080 Laptop | NVIDIA L20 | NVIDIA GeForce RTX 4090 |
+|:---:|:---:|:---:|:---:|:---:|
+|FlashAttention-2|(1,8,8192,64)|37 TFLOPS|100 TFLOPS|145 TFLOPS|
+|share-qkv+stage2|(1,8,8192,64)|**55 TFLOPS**|99 TFLOPS|**221 TFLOPS**|
 |FlashAttention-2|(1,48,8192,64)|37 TFLOPS|109 TFLOPS|163 TFLOPS|
 |share-qkv+stage2|(1,48,8192,64)|**48 TFLOPS**|107 TFLOPS|**224 TFLOPS**|
 |SDPA(EFFICIENT ATTENTION)|(1,48,8192,512)|16 TFLOPS|58 TFLOPS|85 TFLOPS|
 |🤖[ffpa-attn-mma](https://github.com/DefTruth/ffpa-attn-mma)|(1,48,8192,512)|**39 TFLOPS**|**104 TFLOPS**|**200 TFLOPS**|
 |Precision Errors vs FA2/SDPA| / | max: < ~1e-3 | min: ~0.0 | mean: < ~1e-5 |
 
-For example, on NVIDIA RTX 3080 Laptop, [📚 Split Q + Fully Shared QKV SMEM](#mma-share-qkv) method can achieve **55 TFLOPS (D=64)** that almost **~1.5x** 🎉 faster than FA2. On NVIDIA L20, 🤖ffpa-attn-mma method can achieve 104 TFLOPS (D=512) that almost ~1.8x 🎉 faster than SDPA (EFFICIENT ATTENTION). However, for large-scale attention, there remains a performance gap. Stay tuned for updates ~ 
+For example, on NVIDIA RTX 3080 Laptop, [📚 Split Q + Fully Shared QKV SMEM](#mma-share-qkv) method can achieve **55 TFLOPS (D=64)** that almost **~1.5x** 🎉 faster than FA2. On NVIDIA L20, 🤖ffpa-attn-mma method can achieve 104 TFLOPS (D=512) that almost ~1.8x 🎉 faster than SDPA (EFFICIENT ATTENTION). However, for large-scale attention, there remains a performance gap. Stay tuned for updates ~
 
 ## 📖 Contents
 
@@ -39,14 +39,14 @@ For example, on NVIDIA RTX 3080 Laptop, [📚 Split Q + Fully Shared QKV SMEM](#
 - [📖 Installation](#install)
 - [📖 Performance](#perf)
 - [📖 Python Testing](#test)
-  
+
 ## 📖 FlashAttetion MMA Kernels
-<div id="mma"></div>  
+<div id="mma"></div>
 
 The `Split KV` and `Split Q` implementations have been carried out in [flash-attention-mma⚡️⚡️](.) for performance comparison. The `Split KV` method, which involves splitting all QKV across MMA (Warps) using a naive matmul (MMA) and Warp tiling policy, is slower compared to the `Split Q` policy, which splitting Q across MMA(Warps) and keep access KV for all MMA(Warps).
 
 - 📚 Split Q (Faster, FlashAttention-2)
-<div id="mma-split-q"></div>  
+<div id="mma-split-q"></div>
 
 ```C++
 // Split Q across MMA(Warps) and keep access KV for all MMA(Warps),
@@ -62,7 +62,7 @@ flash_attn_mma_stages_split_q_kernel(half* Q, half* K, half* V, half* O, ...);
 ```
 
 - 📚 Split Q + Shared KV SMEM (**1/2 SRAM** vs FA2)
-<div id="mma-share-kv"></div>  
+<div id="mma-share-kv"></div>
 
 ```C++
 // K, V shared the same shared memory, improve block occupancy.
@@ -71,17 +71,17 @@ flash_attn_mma_stages_split_q_shared_kv_kernel(half* Q, half* K, half* V, half* 
 ```
 - 📚 Split Q + Fully Shared QKV SMEM (**1/4 SRAM** vs FA2)
 
-<div id="mma-share-qkv"></div>  
+<div id="mma-share-qkv"></div>
 
 ```C++
 // Q, K, V fully shared the same shared memory and prefetch Q s2r, improve block occupancy
 // and reduce Q SMEM IO-Access.
 __global__ void // Q, K, V, O -> [B, H, N, D]
 flash_attn_mma_stages_split_q_shared_qkv_kernel(half* Q, half* K, half* V, half* O, ...);
-```  
+```
 - 📚 Split Q + QK Fine-grained Tiling (**O(16xd) SRAM** vs FA2 **O(4xBrxd) SRAM**, `Headdim -> 1024`)
 
-<div id="mma-tiling-qk"></div>  
+<div id="mma-tiling-qk"></div>
 
 ```C++
 // Fine-grained tiling at the MMA level for Q and K results in a constant SRAM usage of
@@ -94,44 +94,44 @@ flash_attn_mma_stages_split_q_tiling_qk_kernel(half* Q, half* K, half* V, half* 
 
 - 📚 Split Q + Fully QKV Fine-grained Tiling (**O(Brx16)~O(1) SRAM** vs FA2 **O(4xBrxd) SRAM**)
 
-<div id="mma-tiling-qkv"></div>  
+<div id="mma-tiling-qkv"></div>
 
 ```C++
 // Fine-grained tiling at the MMA level for all Q@K^T and P@V results in a constant SRAM usage of
 // Br * 16 or Bc * 16 for Q, K, V, leading to an overall SRAM complexity of O(Br * 16). Consequently,
-// this approach allows us to run faster than SDPA w or w/o MMA Acc F32, e.g d>=512. 
+// this approach allows us to run faster than SDPA w or w/o MMA Acc F32, e.g d>=512.
 __global__ void // Q, K, V, O -> [B, H, N, D]
 flash_attn_mma_stages_split_q_tiling_qkv_kernel(half* Q, half* K, half* V, half* O, ...);
 ```
 
 ## 📖 Prerequisites
-<div id="prerequisites"></div>  
+<div id="prerequisites"></div>
 
 - flash-attention >= 2.6
 - PyTorch >= 2.0, CUDA >= 12.0
 - Recommended: PyTorch 2.5.1, CUDA 12.5
 
-## 📖 Installation  
-<div id="install"></div>    
+## 📖 Installation
+<div id="install"></div>
 
 ```bash
 pip install flash-attn --no-build-isolation # need offical flash-attention for comparison
 ```
 
 ## 📖 Performance
-<div id="perf"></div>  
+<div id="perf"></div>
 
 Currently, for small-scale attention (B<=4, H <=48, SeqLen <= 8192), the flash-attention-mma implemented in this repository matches the performance of the official FA version. However, for large-scale attention computations, there remains a performance gap. Performance optimizations are ongoing; stay tuned for updates.
 
-## 📖 Python Testing  
-<div id="test"></div>  
+## 📖 Python Testing
+<div id="test"></div>
 
 ```bash
 cd kernels/flash-attn
 # Volta, Ampere, Ada, Hopper, ...
 python3 -m pip install flash-attn --no-build-isolation
 export TORCH_CUDA_ARCH_LIST=Ada # for Ada only
-export TORCH_CUDA_ARCH_LIST=Ampere # for Ampere only 
+export TORCH_CUDA_ARCH_LIST=Ampere # for Ampere only
 python3 flash_attn_mma.py --D 64 # test all default settings for D=64
 ```
 

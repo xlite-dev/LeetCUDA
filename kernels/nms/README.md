@@ -13,7 +13,7 @@ nms cuda实现是最基础的版本，根据[官方源码](https://github.com/py
 
 ```bash
 # 只测试Ada架构 不指定默认编译所有架构 耗时较长: Volta, Ampere, Ada, Hopper, ...
-export TORCH_CUDA_ARCH_LIST=Ada 
+export TORCH_CUDA_ARCH_LIST=Ada
 python3 nms.py
 ```
 

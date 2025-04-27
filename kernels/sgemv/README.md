@@ -1,10 +1,10 @@
-# SGEMV 
+# SGEMV
 
 ## 0x00 说明
 
 包含以下内容：
 
-- [X] sgemv_k32_f32_kernel 
+- [X] sgemv_k32_f32_kernel
 - [X] sgemv_k128_f32x4_kernel
 - [X] sgemv_k16_f32_kernel
 - [X] PyTorch bindings
@@ -13,7 +13,7 @@
 
 ```bash
 # 只测试Ada架构 不指定默认编译所有架构 耗时较长: Volta, Ampere, Ada, Hopper, ...
-export TORCH_CUDA_ARCH_LIST=Ada 
+export TORCH_CUDA_ARCH_LIST=Ada
 python3 sgemv.py
 ```
 

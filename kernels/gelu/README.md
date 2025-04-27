@@ -20,7 +20,7 @@
 ```c++
 y[idx]  = HALF_GELU_OPS(__half2float(v)); // line 96
 reg_y.x = HALF_GELU_OPS(__half2float(reg_x.x)); // line 109 , line 110
-reg_y.y = HALF_GELU_OPS(__half2float(reg_x.y)); 
+reg_y.y = HALF_GELU_OPS(__half2float(reg_x.y));
 ```
 测试结果如下（由于不是所有数据都会掉误差所以取了会有误差的情况，可见修改后out_f16和out_f16x2的结果和torch相同了）：
 ```bash
@@ -45,7 +45,7 @@ reg_y.y = HALF_GELU_OPS(__half2float(reg_x.y));
 
 ```bash
 # 只测试Ada架构 不指定默认编译所有架构 耗时较长: Volta, Ampere, Ada, Hopper, ...
-export TORCH_CUDA_ARCH_LIST=Ada 
+export TORCH_CUDA_ARCH_LIST=Ada
 python3 gelu.py
 ```
 

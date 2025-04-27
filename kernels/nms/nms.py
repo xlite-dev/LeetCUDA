@@ -1,9 +1,9 @@
-import torch
 import time
+
+import torch
 from torch.utils.cpp_extension import load
-from typing import Optional
-from functools import partial
 from torchvision.ops import nms
+
 torch.set_grad_enabled(False)
 
 # Load the CUDA kernel as a python module
@@ -71,7 +71,6 @@ def run_benchmark(
 
 Nboxes = [1024, 2048, 4096, 8192]
 thresholds = 0.5
-
 
 for nboxes in Nboxes:
     print("-" * 85)

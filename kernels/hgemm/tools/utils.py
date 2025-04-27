@@ -1,4 +1,5 @@
 import os
+
 import torch
 from torch.utils.cpp_extension import load
 
@@ -17,24 +18,25 @@ def get_device_capability():
 
 def get_build_sources():
     build_sources = []
-    build_sources.append('naive/hgemm.cu')
-    build_sources.append('naive/hgemm_async.cu')
-    build_sources.append('cublas/hgemm_cublas.cu')
-    build_sources.append('wmma/hgemm_wmma.cu')
-    build_sources.append('wmma/hgemm_wmma_stage.cu')
-    build_sources.append('mma/basic/hgemm_mma.cu')
-    build_sources.append('mma/basic/hgemm_mma_stage.cu')
-    build_sources.append('mma/basic/hgemm_mma_stage_tn.cu')
-    build_sources.append('mma/swizzle/hgemm_mma_stage_swizzle.cu')
-    build_sources.append('mma/swizzle/hgemm_mma_stage_tn_swizzle_x4.cu')
-    build_sources.append('cutlass/hgemm_mma_stage_tn_cute.cu')
-    build_sources.append('pybind/hgemm.cc')
+    build_sources.append("naive/hgemm.cu")
+    build_sources.append("naive/hgemm_async.cu")
+    build_sources.append("cublas/hgemm_cublas.cu")
+    build_sources.append("wmma/hgemm_wmma.cu")
+    build_sources.append("wmma/hgemm_wmma_stage.cu")
+    build_sources.append("mma/basic/hgemm_mma.cu")
+    build_sources.append("mma/basic/hgemm_mma_stage.cu")
+    build_sources.append("mma/basic/hgemm_mma_stage_tn.cu")
+    build_sources.append("mma/swizzle/hgemm_mma_stage_swizzle.cu")
+    build_sources.append("mma/swizzle/hgemm_mma_stage_tn_swizzle_x4.cu")
+    build_sources.append("cutlass/hgemm_mma_stage_tn_cute.cu")
+    build_sources.append("pybind/hgemm.cc")
     return build_sources
 
 
 def get_project_dir():
-    return os.path.dirname(os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    return os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    )
 
 
 def get_build_cuda_cflags(build_pkg: bool = False):
@@ -66,30 +68,30 @@ def get_build_cuda_cflags(build_pkg: bool = False):
     extra_cuda_cflags.append("--expt-extended-lambda")
     extra_cuda_cflags.append("--use_fast_math")
     if not build_pkg:
-      extra_cuda_cflags.append("-diag-suppress 177")
-      extra_cuda_cflags.append("-Xptxas -v")
+        extra_cuda_cflags.append("-diag-suppress 177")
+        extra_cuda_cflags.append("-Xptxas -v")
     else:
-      extra_cuda_cflags.append("--ptxas-options=-v")
-      extra_cuda_cflags.append("--ptxas-options=-O3")
+        extra_cuda_cflags.append("--ptxas-options=-v")
+        extra_cuda_cflags.append("--ptxas-options=-O3")
     # extra cuda flags for cute hgemm
     project_dir = get_project_dir()
-    extra_cuda_cflags.append('-DNO_MMA_HGEMM_BIN')
-    extra_cuda_cflags.append('-DNO_WMMA_HGEMM_BIN')
-    extra_cuda_cflags.append('-DNO_CUTE_HGEMM_BIN')
-    extra_cuda_cflags.append('-DNO_CUBLAS_HGEMM_BIN')
+    extra_cuda_cflags.append("-DNO_MMA_HGEMM_BIN")
+    extra_cuda_cflags.append("-DNO_WMMA_HGEMM_BIN")
+    extra_cuda_cflags.append("-DNO_CUTE_HGEMM_BIN")
+    extra_cuda_cflags.append("-DNO_CUBLAS_HGEMM_BIN")
     # add cutlass headers and link cublas.
-    extra_cuda_cflags.append(f'-I {project_dir}/kernels/hgemm')
-    extra_cuda_cflags.append(f'-I {project_dir}/kernels/hgemm/utils')
-    extra_cuda_cflags.append(f'-I {project_dir}/kernels/hgemm/naive')
-    extra_cuda_cflags.append(f'-I {project_dir}/kernels/hgemm/wmma')
-    extra_cuda_cflags.append(f'-I {project_dir}/kernels/hgemm/mma/basic')
-    extra_cuda_cflags.append(f'-I {project_dir}/kernels/hgemm/mma/swizzle')
-    extra_cuda_cflags.append(f'-I {project_dir}/kernels/hgemm/cutlass')
-    extra_cuda_cflags.append(f'-I {project_dir}/kernels/hgemm/cublas')
-    extra_cuda_cflags.append(f'-I {project_dir}/kernels/hgemm/pybind')
-    extra_cuda_cflags.append(f'-I {project_dir}/third-party/cutlass/include')
-    extra_cuda_cflags.append(f'-I {project_dir}/third-party/cutlass/tools/util/include')
-    extra_cuda_cflags.append('-lcublas')
+    extra_cuda_cflags.append(f"-I {project_dir}/kernels/hgemm")
+    extra_cuda_cflags.append(f"-I {project_dir}/kernels/hgemm/utils")
+    extra_cuda_cflags.append(f"-I {project_dir}/kernels/hgemm/naive")
+    extra_cuda_cflags.append(f"-I {project_dir}/kernels/hgemm/wmma")
+    extra_cuda_cflags.append(f"-I {project_dir}/kernels/hgemm/mma/basic")
+    extra_cuda_cflags.append(f"-I {project_dir}/kernels/hgemm/mma/swizzle")
+    extra_cuda_cflags.append(f"-I {project_dir}/kernels/hgemm/cutlass")
+    extra_cuda_cflags.append(f"-I {project_dir}/kernels/hgemm/cublas")
+    extra_cuda_cflags.append(f"-I {project_dir}/kernels/hgemm/pybind")
+    extra_cuda_cflags.append(f"-I {project_dir}/third-party/cutlass/include")
+    extra_cuda_cflags.append(f"-I {project_dir}/third-party/cutlass/tools/util/include")
+    extra_cuda_cflags.append("-lcublas")
     return extra_cuda_cflags
 
 
@@ -102,15 +104,20 @@ def pretty_print_line(m: str = "", sep: str = "-", width: int = 150):
 
 
 def build_from_sources(verbose: bool = False):
-    torch_arch_list_env = os.environ.get("TORCH_CUDA_ARCH_LIST", None)         
+    torch_arch_list_env = os.environ.get("TORCH_CUDA_ARCH_LIST", None)
     # Load the CUDA kernel as a python module
-    pretty_print_line(f"Loading hgemm lib on device: {get_device_name()}, "
-                      f"capability: {get_device_capability()}, "
-                      f"Arch ENV: {torch_arch_list_env}")
-    return load(name='hgemm_lib', sources=get_build_sources(),
-                extra_cuda_cflags=get_build_cuda_cflags(), 
-                extra_cflags=['-std=c++17'], 
-                verbose=verbose)
+    pretty_print_line(
+        f"Loading hgemm lib on device: {get_device_name()}, "
+        f"capability: {get_device_capability()}, "
+        f"Arch ENV: {torch_arch_list_env}"
+    )
+    return load(
+        name="hgemm_lib",
+        sources=get_build_sources(),
+        extra_cuda_cflags=get_build_cuda_cflags(),
+        extra_cflags=["-std=c++17"],
+        verbose=verbose,
+    )
 
 
 def try_load_hgemm_library(force_build: bool = False, verbose: bool = False):
@@ -118,12 +125,17 @@ def try_load_hgemm_library(force_build: bool = False, verbose: bool = False):
         # check if can import toy_hgemm
         try:
             import toy_hgemm as hgemm
-            pretty_print_line(f"Import toy-hgemm library done, use it!")
+
+            pretty_print_line("Import toy-hgemm library done, use it!")
         except Exception:
-            pretty_print_line(f"Can't import toy-hgemm, force build "
-                              f"from source or run <bash tools/install.sh>")
-            pretty_print_line(f"Also may need export LD_LIBRARY_PATH="
-                              f"PATH-TO/torch/lib:$LD_LIBRARY_PATH")
+            pretty_print_line(
+                "Can't import toy-hgemm, force build "
+                "from source or run <bash tools/install.sh>"
+            )
+            pretty_print_line(
+                "Also may need export LD_LIBRARY_PATH="
+                "PATH-TO/torch/lib:$LD_LIBRARY_PATH"
+            )
             hgemm = build_from_sources(verbose=verbose)
     else:
         pretty_print_line("Force hgemm lib build from sources")
@@ -137,4 +149,4 @@ def as_col_major(x: torch.Tensor):
     # convert a row major tensor -> col major with contiguous storage
     x_trans = x.t()
     x_col_major = x_trans.reshape(x.shape)
-    return x_col_major.contiguous() # must be a contiguous tensor
+    return x_col_major.contiguous()  # must be a contiguous tensor
