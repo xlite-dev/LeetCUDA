@@ -51,6 +51,7 @@
 ## 📖 Contents
 <div id="contents"></div>
 
+- [📖 How to contribute? 👉](#contribute)
 - [📖 HGEMM-MMA 🎉🎉](#hgemm-tensorcores-mma-bench)
   - [📚 CUDA/Tensor Cores](#hgemm-tensorcores-mma-bench)
   - [📚 Tile Block(Br, Bc)](#hgemm-tensorcores-mma-bench)
@@ -644,7 +645,7 @@ GNU General Public License v3.0
 
 <div id="contribute"></div>
 
-How to contribute? Star this repo or check [🌤🌤CONTRIBUTE🎉🎉](https://github.com/xlite-dev/LeetCUDA/issues/50).
+How to contribute? Star this repo or check [🌤🌤CONTRIBUTE🎉🎉](./CONTRIBUTE.md).
 
 <div align='center'>
 <a href="https://star-history.com/#xlite-dev/LeetCUDA&Date">

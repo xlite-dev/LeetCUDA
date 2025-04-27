@@ -1,1 +1,4 @@
-sgl-kernel/3rdparty/tensorrt_llm/*
+ffpa-attn-mma/*
+hgemm-tensorscores-mma/*
+third-party/*
+slides/*
