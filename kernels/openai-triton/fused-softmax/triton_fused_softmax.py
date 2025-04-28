@@ -68,22 +68,34 @@ def softmax_kernel(
 def get_device_properties(device_id=None):
     import pycuda.driver as cuda
 
-    device = cuda.Device(device_id) if device_id is not None else torch.cuda.current_device()
+    device = (
+        cuda.Device(device_id)
+        if device_id is not None
+        else torch.cuda.current_device()
+    )
     NUM_SM = device.get_attribute(cuda.device_attribute.MULTIPROCESSOR_COUNT)
-    NUM_REGS = device.get_attribute(cuda.device_attribute.MAX_REGISTERS_PER_BLOCK)
-    SIZE_SMEM = device.get_attribute(cuda.device_attribute.MAX_SHARED_MEMORY_PER_BLOCK)
+    NUM_REGS = device.get_attribute(
+        cuda.device_attribute.MAX_REGISTERS_PER_BLOCK
+    )
+    SIZE_SMEM = device.get_attribute(
+        cuda.device_attribute.MAX_SHARED_MEMORY_PER_BLOCK
+    )
     WARP_SIZE = device.get_attribute(cuda.device_attribute.WARP_SIZE)
     return NUM_SM, NUM_REGS, SIZE_SMEM, WARP_SIZE
 
 
 DEVICE = torch.cuda.current_device()
 NUM_SM, NUM_REGS, SIZE_SMEM, WARP_SIZE = get_device_properties(DEVICE)
-print(f"NUM_SM: {NUM_SM}, NUM_REGS: {NUM_REGS}, " f"SIZE_SMEM: {SIZE_SMEM}, WARP_SIZE: {WARP_SIZE}")
+print(
+    f"NUM_SM: {NUM_SM}, NUM_REGS: {NUM_REGS}, "
+    f"SIZE_SMEM: {SIZE_SMEM}, WARP_SIZE: {WARP_SIZE}"
+)
 
 
 def get_num_programs(x):
     n_rows, n_cols = x.shape
-    # The block size of each loop iteration is the smallest power of two greater than the number of columns in `x`
+    # The block size of each loop iteration is the smallest power
+    # of two greater than the number of columns in `x`
     BLOCK_SIZE = triton.next_power_of_2(n_cols)
     num_warps = 8
     # Number of software pipelining stages.
@@ -119,7 +131,8 @@ NUM_PROGRAMS = get_num_programs(torch.randn(4096, 2048, device="cuda"))
 def triton_softmax(x: torch.Tensor):
     """Compute row-wise softmax of X using Triton"""
     n_rows, n_cols = x.shape
-    # The block size of each loop iteration is the smallest power of two greater than the number of columns in `x`
+    # The block size of each loop iteration is the smallest power of
+    # two greater than the number of columns in `x`
     BLOCK_SIZE = triton.next_power_of_2(n_cols)
     num_warps = 8
     # Number of software pipelining stages.
@@ -153,7 +166,9 @@ assert torch.allclose(y_triton, y_torch), (y_triton, y_torch)
 @triton.testing.perf_report(
     triton.testing.Benchmark(
         x_names=["M"],  # argument names to use as an x-axis for the plot
-        x_vals=[256 * i for i in range(1, 64)],  # different possible values for `x_name`
+        x_vals=[
+            256 * i for i in range(1, 64)
+        ],  # different possible values for `x_name`
         line_arg="provider",  # argument name whose value corresponds to a different line in the plot
         line_vals=[
             "triton-fused-softmax",
@@ -169,7 +184,9 @@ assert torch.allclose(y_triton, y_torch), (y_triton, y_torch)
         ylabel="GB/s",  # label name for the y-axis
         xlabel=f"M, {torch.cuda.get_device_name(DEVICE)}",  # label name for the x-axis
         plot_name="softmax-performance",  # name for the plot. Used also as a file name for saving the plot.
-        args={"N": 2048},  # values for function arguments not in `x_names` and `y_name`
+        args={
+            "N": 2048
+        },  # values for function arguments not in `x_names` and `y_name`
     )
 )
 def benchmark(M, N, provider):

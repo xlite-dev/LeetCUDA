@@ -74,11 +74,17 @@ def merge_attn_states_kernel(
     head_arange = tl.arange(0, PADDED_HEAD_SIZE)
     head_mask = head_arange < HEAD_SIZE
     p_out = tl.load(
-        prefix_output + token_idx * num_heads * HEAD_SIZE + head_idx * HEAD_SIZE + head_arange,
+        prefix_output
+        + token_idx * num_heads * HEAD_SIZE
+        + head_idx * HEAD_SIZE
+        + head_arange,
         mask=head_mask,
     )
     s_out = tl.load(
-        suffix_output + token_idx * num_heads * HEAD_SIZE + head_idx * HEAD_SIZE + head_arange,
+        suffix_output
+        + token_idx * num_heads * HEAD_SIZE
+        + head_idx * HEAD_SIZE
+        + head_arange,
         mask=head_mask,
     )
 
@@ -89,7 +95,10 @@ def merge_attn_states_kernel(
     s_scale = tl.exp(s_lse) / out_se
     out = p_out * p_scale + s_out * s_scale
     tl.store(
-        output + token_idx * num_heads * HEAD_SIZE + head_idx * HEAD_SIZE + head_arange,
+        output
+        + token_idx * num_heads * HEAD_SIZE
+        + head_idx * HEAD_SIZE
+        + head_arange,
         out,
         mask=head_mask,
     )
@@ -123,8 +132,12 @@ def merge_attn_states_kernel_opt(
     head_idx = tl.program_id(1)
     num_heads = tl.num_programs(1)
 
-    p_lse = tl.load(prefix_lse + head_idx * num_tokens + token_idx, cache_modifier=".cg")
-    s_lse = tl.load(suffix_lse + head_idx * num_tokens + token_idx, cache_modifier=".cg")
+    p_lse = tl.load(
+        prefix_lse + head_idx * num_tokens + token_idx, cache_modifier=".cg"
+    )
+    s_lse = tl.load(
+        suffix_lse + head_idx * num_tokens + token_idx, cache_modifier=".cg"
+    )
     p_lse = float("-inf") if p_lse == float("inf") else p_lse
     s_lse = float("-inf") if s_lse == float("inf") else s_lse
 
@@ -142,12 +155,18 @@ def merge_attn_states_kernel_opt(
     head_arange = tl.arange(0, PADDED_HEAD_SIZE)
     head_mask = head_arange < HEAD_SIZE
     p_out = tl.load(
-        prefix_output + token_idx * num_heads * HEAD_SIZE + head_idx * HEAD_SIZE + head_arange,
+        prefix_output
+        + token_idx * num_heads * HEAD_SIZE
+        + head_idx * HEAD_SIZE
+        + head_arange,
         mask=head_mask,
         cache_modifier=".cg",
     )
     s_out = tl.load(
-        suffix_output + token_idx * num_heads * HEAD_SIZE + head_idx * HEAD_SIZE + head_arange,
+        suffix_output
+        + token_idx * num_heads * HEAD_SIZE
+        + head_idx * HEAD_SIZE
+        + head_arange,
         mask=head_mask,
         cache_modifier=".cg",
     )
@@ -158,7 +177,10 @@ def merge_attn_states_kernel_opt(
     s_scale = s_se / out_se
     out = p_out * p_scale + s_out * s_scale
     tl.store(
-        output + token_idx * num_heads * HEAD_SIZE + head_idx * HEAD_SIZE + head_arange,
+        output
+        + token_idx * num_heads * HEAD_SIZE
+        + head_idx * HEAD_SIZE
+        + head_arange,
         out,
         mask=head_mask,
     )

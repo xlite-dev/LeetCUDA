@@ -88,6 +88,8 @@ for S, K in SKs:
     run_benchmark(lib.elementwise_add_f16, a_f16, b_f16, "f16", c_f16)
     run_benchmark(lib.elementwise_add_f16x2, a_f16, b_f16, "f16x2", c_f16)
     run_benchmark(lib.elementwise_add_f16x8, a_f16, b_f16, "f16x8", c_f16)
-    run_benchmark(lib.elementwise_add_f16x8_pack, a_f16, b_f16, "f16x8pack", c_f16)
+    run_benchmark(
+        lib.elementwise_add_f16x8_pack, a_f16, b_f16, "f16x8pack", c_f16
+    )
     run_benchmark(partial(torch.add, out=c_f16), a_f16, b_f16, "f16_th")
     print("-" * 85)

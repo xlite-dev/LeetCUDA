@@ -34,7 +34,11 @@ def get_build_sources():
 
 
 def get_project_dir():
-    return os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    return os.path.dirname(
+        os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        )
+    )
 
 
 def get_build_cuda_cflags(build_pkg: bool = False):
@@ -88,7 +92,9 @@ def get_build_cuda_cflags(build_pkg: bool = False):
     extra_cuda_cflags.append(f"-I {project_dir}/kernels/hgemm/cublas")
     extra_cuda_cflags.append(f"-I {project_dir}/kernels/hgemm/pybind")
     extra_cuda_cflags.append(f"-I {project_dir}/third-party/cutlass/include")
-    extra_cuda_cflags.append(f"-I {project_dir}/third-party/cutlass/tools/util/include")
+    extra_cuda_cflags.append(
+        f"-I {project_dir}/third-party/cutlass/tools/util/include"
+    )
     extra_cuda_cflags.append("-lcublas")
     return extra_cuda_cflags
 
@@ -126,8 +132,14 @@ def try_load_hgemm_library(force_build: bool = False, verbose: bool = False):
 
             pretty_print_line("Import toy-hgemm library done, use it!")
         except Exception:
-            pretty_print_line("Can't import toy-hgemm, force build " "from source or run <bash tools/install.sh>")
-            pretty_print_line("Also may need export LD_LIBRARY_PATH=" "PATH-TO/torch/lib:$LD_LIBRARY_PATH")
+            pretty_print_line(
+                "Can't import toy-hgemm, force build "
+                "from source or run <bash tools/install.sh>"
+            )
+            pretty_print_line(
+                "Also may need export LD_LIBRARY_PATH="
+                "PATH-TO/torch/lib:$LD_LIBRARY_PATH"
+            )
             hgemm = build_from_sources(verbose=verbose)
     else:
         pretty_print_line("Force hgemm lib build from sources")

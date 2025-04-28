@@ -63,7 +63,9 @@ def run_benchmark(
     len_val = len(out_val)
     out_val = out_val[-min(3, len_val) :]
     out_val = [f"{v:<5}" for v in out_val]
-    print(f"{out_info:>14}: {out_val}, len of keep: {len_val}, time:{mean_time:.8f}ms")
+    print(
+        f"{out_info:>14}: {out_val}, len of keep: {len_val}, time:{mean_time:.8f}ms"
+    )
     if show_all:
         print(out)
     return out, mean_time

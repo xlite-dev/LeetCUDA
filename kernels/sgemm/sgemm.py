@@ -116,7 +116,8 @@ def run_benchmark(
         )
     else:
         print(
-            f"{out_info:>35}: {out_val}, time:{mean_time}ms, " f"swizzle: {swizzle_stride:<4}, TFLOPS: {TFLOPS:<6.2f}"
+            f"{out_info:>35}: {out_val}, time:{mean_time}ms, "
+            f"swizzle: {swizzle_stride:<4}, TFLOPS: {TFLOPS:<6.2f}"
         )
     if show_all:
         print(out)
@@ -147,7 +148,9 @@ for M, N, K in MNKs:
     # run_benchmark(lib.sgemm_naive_f32, a, b, "f32(naive)", c)
     run_benchmark(lib.sgemm_t_8x8_sliced_k_f32x4, a, b, "f32x4(t8x8sk)", c)
     run_benchmark(lib.sgemm_t_8x8_sliced_k_f32x4_bcf, a, b, "f32x4(t8x8bcf)", c)
-    run_benchmark(lib.sgemm_t_8x8_sliced_k_f32x4_bcf_dbuf, a, b, "f32x4(t8x8dbuf)", c)
+    run_benchmark(
+        lib.sgemm_t_8x8_sliced_k_f32x4_bcf_dbuf, a, b, "f32x4(t8x8dbuf)", c
+    )
     run_benchmark(lib.sgemm_cublas, a, b, "f32(cublas)", c)
     run_benchmark(partial(torch.matmul, out=c), a, b, "f32_th")
 
