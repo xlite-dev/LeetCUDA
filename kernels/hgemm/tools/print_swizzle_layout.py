@@ -1,9 +1,7 @@
 import argparse
 
 
-def pretty_print_line(
-    m: str = "", sep: str = "-", width: int = 130, return_str: bool = False
-):
+def pretty_print_line(m: str = "", sep: str = "-", width: int = 130, return_str: bool = False):
     res_len = width - len(m)
     left_len = int(res_len / 2)
     right_len = res_len - left_len
@@ -24,17 +22,12 @@ PERMUTED_DOCS_STRING = """------------------------------------------------------
 ----------------------------------------------------------------"""
 
 
-def swizzle_permuted_j(
-    i: int, j: int, col_stride: int = 16, num_elems_per_128b: int = 8
-):
+def swizzle_permuted_j(i: int, j: int, col_stride: int = 16, num_elems_per_128b: int = 8):
     # i: row index; j: col index. col_stride <= 16.
     # assert col_stride <= 16, f"col_stride must <= 16, but got {col_stride}"
     # for col_stride > 16, we have to permute it using col major ZigZag order.
     # e.g, Q smem logical layout [Br,d]=[Br,64] -> store layout [4][Br][16].
-    return (
-        (int(j / num_elems_per_128b) ^ int(i / 4))
-        % (int(col_stride / num_elems_per_128b))
-    ) * num_elems_per_128b
+    return ((int(j / num_elems_per_128b) ^ int(i / 4)) % (int(col_stride / num_elems_per_128b))) * num_elems_per_128b
 
 
 def print_smem_swizzle_layout(
@@ -105,9 +98,7 @@ def print_smem_swizzle_layout(
             print(f"[WARN] col_stride must <= 16, but got {logical_col_stride}")
     if smem_pading == 8:
         banks_per_col += 4
-        print(
-            f"[INFO] smem padding 8 half values, 4 banks, banks_per_col: {banks_per_col}"
-        )
+        print(f"[INFO] smem padding 8 half values, 4 banks, banks_per_col: {banks_per_col}")
 
     banks_per_num_elems_per_128b = int((num_elems_per_128b * 2) / 4)
     for i in range(rows):
@@ -122,9 +113,7 @@ def print_smem_swizzle_layout(
         if logical_col_stride >= 16 and (not use_logical_col_stride):
             for k in range(int(logical_col_stride / 16)):
                 for j in range(banks_start, banks_end, banks_per_num_elems_per_128b):
-                    curr_bank_str = (
-                        f"b{j:>2}~{j + banks_per_num_elems_per_128b - 1:<2}|"
-                    )
+                    curr_bank_str = f"b{j:>2}~{j + banks_per_num_elems_per_128b - 1:<2}|"
                     max_bank_str_len = max(max_bank_str_len, len(curr_bank_str))
                     bank_layout_str += curr_bank_str
         else:
@@ -144,9 +133,7 @@ def print_smem_swizzle_layout(
                     smem_layout_col_ids.append(layout_j)
         else:
             for j in range(0, logical_col_stride, num_elems_per_128b):
-                layout_j = swizzle_permuted_j(
-                    i, j, logical_col_stride, num_elems_per_128b
-                )
+                layout_j = swizzle_permuted_j(i, j, logical_col_stride, num_elems_per_128b)
                 logical_col_ids.append(j)
                 smem_layout_col_ids.append(layout_j)
 
@@ -220,15 +207,9 @@ def get_args():
     parser.add_argument("--rows", type=int, default=16)
     parser.add_argument("--smem-padding", "--pad", type=int, default=0)
     parser.add_argument("--num-elems-per-128b", "--num-elems", type=int, default=8)
-    parser.add_argument(
-        "--logical-col-stride", "--logical-col", "--col", type=int, default=64
-    )
-    parser.add_argument(
-        "--use-logical-col-stride", "--use-logical-col", action="store_true"
-    )
-    parser.add_argument(
-        "--show-logical-col-id", "--show-logical-col", action="store_true"
-    )
+    parser.add_argument("--logical-col-stride", "--logical-col", "--col", type=int, default=64)
+    parser.add_argument("--use-logical-col-stride", "--use-logical-col", action="store_true")
+    parser.add_argument("--show-logical-col-id", "--show-logical-col", action="store_true")
     return parser.parse_args()
 
 

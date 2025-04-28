@@ -30,6 +30,4 @@ def merge_attn_states_cuda(
     suffix_lse: torch.Tensor,
     output_lse: Optional[torch.Tensor] = None,
 ) -> None:
-    lib.merge_attn_states_cuda(
-        output, output_lse, prefix_output, prefix_lse, suffix_output, suffix_lse
-    )
+    lib.merge_attn_states_cuda(output, output_lse, prefix_output, prefix_lse, suffix_output, suffix_lse)

@@ -96,12 +96,8 @@ for M, N in MNs:
     run_benchmark(lib.mat_transpose_f32x4_row2col, x, "f32x4_row2col", y)
     run_benchmark(lib.mat_transpose_f32x4_col2row2d, x, "f32x4_col2row(2d)", y)
     run_benchmark(lib.mat_transpose_f32x4_row2col2d, x, "f32x4_row2col(2d)", y)
-    run_benchmark(
-        lib.mat_transpose_f32x4_shared_col2row2d, x, "f32x4_shared_col2row(2d)", y
-    )
-    run_benchmark(
-        lib.mat_transpose_f32x4_shared_row2col2d, x, "f32x4_shared_row2col(2d)", y
-    )
+    run_benchmark(lib.mat_transpose_f32x4_shared_col2row2d, x, "f32x4_shared_col2row(2d)", y)
+    run_benchmark(lib.mat_transpose_f32x4_shared_row2col2d, x, "f32x4_shared_row2col(2d)", y)
     run_benchmark(
         lib.mat_transpose_f32x4_shared_bcf_col2row2d,
         x,
@@ -114,12 +110,8 @@ for M, N in MNs:
         "f32x4_shared_bcf_row2col(2d)",
         y,
     )
-    run_benchmark(
-        lib.mat_transpose_cute_col2row_reg, x, "mat_transpose_cute_col2row_reg", y
-    )
-    run_benchmark(
-        lib.mat_transpose_cute_row2col_reg, x, "mat_transpose_cute_row2col_reg", y
-    )
+    run_benchmark(lib.mat_transpose_cute_col2row_reg, x, "mat_transpose_cute_col2row_reg", y)
+    run_benchmark(lib.mat_transpose_cute_row2col_reg, x, "mat_transpose_cute_row2col_reg", y)
     run_benchmark(lib.mat_transpose_cute_col_smem, x, "mat_transpose_cute_col_smem", y)
     run_benchmark(lib.mat_transpose_cute_row_smem, x, "mat_transpose_cute_row_smem", y)
     run_benchmark(

@@ -68,9 +68,7 @@ def softmax_kernel(
 def get_device_properties(device_id=None):
     import pycuda.driver as cuda
 
-    device = (
-        cuda.Device(device_id) if device_id is not None else torch.cuda.current_device()
-    )
+    device = cuda.Device(device_id) if device_id is not None else torch.cuda.current_device()
     NUM_SM = device.get_attribute(cuda.device_attribute.MULTIPROCESSOR_COUNT)
     NUM_REGS = device.get_attribute(cuda.device_attribute.MAX_REGISTERS_PER_BLOCK)
     SIZE_SMEM = device.get_attribute(cuda.device_attribute.MAX_SHARED_MEMORY_PER_BLOCK)
@@ -80,10 +78,7 @@ def get_device_properties(device_id=None):
 
 DEVICE = torch.cuda.current_device()
 NUM_SM, NUM_REGS, SIZE_SMEM, WARP_SIZE = get_device_properties(DEVICE)
-print(
-    f"NUM_SM: {NUM_SM}, NUM_REGS: {NUM_REGS}, "
-    f"SIZE_SMEM: {SIZE_SMEM}, WARP_SIZE: {WARP_SIZE}"
-)
+print(f"NUM_SM: {NUM_SM}, NUM_REGS: {NUM_REGS}, " f"SIZE_SMEM: {SIZE_SMEM}, WARP_SIZE: {WARP_SIZE}")
 
 
 def get_num_programs(x):
@@ -158,9 +153,7 @@ assert torch.allclose(y_triton, y_torch), (y_triton, y_torch)
 @triton.testing.perf_report(
     triton.testing.Benchmark(
         x_names=["M"],  # argument names to use as an x-axis for the plot
-        x_vals=[
-            256 * i for i in range(1, 64)
-        ],  # different possible values for `x_name`
+        x_vals=[256 * i for i in range(1, 64)],  # different possible values for `x_name`
         line_arg="provider",  # argument name whose value corresponds to a different line in the plot
         line_vals=[
             "triton-fused-softmax",

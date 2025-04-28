@@ -26,6 +26,8 @@ repos:
     rev: 24.10.0
     hooks:
       - id: black-jupyter
+        args:
+          - --line-length=120
   - repo: https://github.com/pre-commit/mirrors-clang-format
     rev: v18.1.8
     hooks:

@@ -116,8 +116,7 @@ def run_benchmark(
         )
     else:
         print(
-            f"{out_info:>35}: {out_val}, time:{mean_time}ms, "
-            f"swizzle: {swizzle_stride:<4}, TFLOPS: {TFLOPS:<6.2f}"
+            f"{out_info:>35}: {out_val}, time:{mean_time}ms, " f"swizzle: {swizzle_stride:<4}, TFLOPS: {TFLOPS:<6.2f}"
         )
     if show_all:
         print(out)
