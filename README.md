@@ -494,6 +494,7 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 |:---|:---|:---|
 | [[Triton编程][基础]📖Triton极简入门: Triton Vector Add](https://zhuanlan.zhihu.com/p/1902778199261291694)|@xlite-dev|⭐️⭐️⭐|
 | [[Triton编程][基础]📖Triton Fused Softmax Kernel详解: 从Python源码到PTX分析](https://zhuanlan.zhihu.com/p/1899562146477609112)|@xlite-dev|⭐️⭐️⭐|
+| [[Triton编程][进阶]📖图解vLLM Prefix Prefill Triton Kernel](https://zhuanlan.zhihu.com/p/695799736)|@xlite-dev|⭐️⭐️⭐️|
 | [[张量/序列并行]📖序列并行: BPT、Ring-Attention及Striped-Attention笔记](https://zhuanlan.zhihu.com/p/6456708235)|@xlite-dev|⭐️⭐️⭐|
 | [[vLLM实践][算子]📖vLLM算子开发流程：”保姆级“详细记录](https://zhuanlan.zhihu.com/p/1892966682634473987)|@xlite-dev|⭐️⭐️⭐|
 | [[vLLM实践][万字]📖vLLM + DeepSeek-R1 671B 多机部署及修Bug笔记](https://zhuanlan.zhihu.com/p/29950052712)|@xlite-dev|⭐️⭐️⭐|
@@ -503,7 +504,6 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 | [[VLM推理优化][InternVL系列]📖InternLM2/.../InternVL1.5系列笔记: 核心点解析](https://zhuanlan.zhihu.com/p/702481058)|@xlite-dev|⭐️⭐️|
 | [[LLM推理优化][TensorRT-LLM][5w字]📖TensorRT-LLM部署调优-指北](https://zhuanlan.zhihu.com/p/699333691)|@xlite-dev|⭐️⭐️⭐️|
 | [[LLM推理优化][KV Cache优化]📖GQA/YOCO/CLA/MLKV: 层内和层间KV Cache共享](https://zhuanlan.zhihu.com/p/697311739)|@xlite-dev|⭐️⭐️|
-| [[LLM推理优化][Prefill优化]📖图解vLLM Prefix Prefill Triton Kernel](https://zhuanlan.zhihu.com/p/695799736)|@xlite-dev|⭐️⭐️⭐️|
 | [[LLM推理优化][Prefill优化][万字]📖图解vLLM Automatic Prefix Caching: TTFT优化](https://zhuanlan.zhihu.com/p/693556044)|@xlite-dev|⭐️⭐️⭐️|
 | [[LLM推理优化][Attention优化]📖图解:从Online-Softmax到FlashAttention V1/V2/V3](https://zhuanlan.zhihu.com/p/668888063)|@xlite-dev|⭐️⭐️⭐️|
 | [[LLM推理优化][Decoding优化]📖原理&图解FlashDecoding/FlashDecoding++](https://zhuanlan.zhihu.com/p/696075602)|@xlite-dev|⭐️⭐️|
