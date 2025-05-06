@@ -19,14 +19,6 @@ torch.set_printoptions(
     precision=6, threshold=8, edgeitems=3, linewidth=120, sci_mode=False
 )
 
-CUTLASS_REPO_PATH = os.environ.get(
-    "CUTLASS_REPO_PATH", os.path.expanduser("~/cutlass")
-)
-
-CUTLASS_REPO_PATH = os.environ.get(
-    "CUTLASS_REPO_PATH", os.path.expanduser("~/cutlass")
-)
-
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -198,7 +190,6 @@ def get_build_cuda_cflags(build_pkg: bool = False):
     extra_cuda_cflags.append(
         f"-I {project_dir}/third-party/cutlass/tools/util/include"
     )
-    extra_cuda_cflags.append(f"-I {CUTLASS_REPO_PATH}/include")
     return extra_cuda_cflags
 
 
