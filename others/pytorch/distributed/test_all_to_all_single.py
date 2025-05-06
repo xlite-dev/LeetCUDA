@@ -1,6 +1,5 @@
 import logging
 import os
-from datetime import datetime
 
 import torch
 import torch.distributed as dist
@@ -40,7 +39,7 @@ def run(rank, world_size):
         input = torch.arange(4, device=device) + rank * 4
         output = torch.empty([4], dtype=torch.int64, device=device)
         dist.all_to_all_single(output, input)
-        logger.info(f"All_to_all_single output at Rank {rank}:\n {output}")
+        logger.info(f"All-to-All Single output at Rank {rank}:\n {output}")
 
         # All-to-All Single UnEven
         if rank == 0:
@@ -76,7 +75,7 @@ def run(rank, world_size):
             input_split_sizes=input_splits[rank],
         )
         logger.info(
-            f"All_to_all_single UnEven output at Rank {rank}:\n {output}"
+            f"All-to-All Single <UnEven> output at Rank {rank}:\n {output}"
         )
 
     except Exception as e:
