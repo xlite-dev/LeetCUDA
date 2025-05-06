@@ -9,14 +9,14 @@
 
 using namespace cute;
 
-#define CUDA_CHECK(call)                                               \
-  do {                                                                 \
-    cudaError_t err = call;                                            \
-    if (err != cudaSuccess) {                                          \
-      fprintf(stderr, "CUDA error at %s:%d: %s\n", __FILE__, __LINE__, \
-              cudaGetErrorString(err));                                \
-      exit(EXIT_FAILURE);                                              \
-    }                                                                  \
+#define CUDA_CHECK(call)                                                       \
+  do {                                                                         \
+    cudaError_t err = call;                                                    \
+    if (err != cudaSuccess) {                                                  \
+      fprintf(stderr, "CUDA error at %s:%d: %s\n", __FILE__, __LINE__,         \
+              cudaGetErrorString(err));                                        \
+      exit(EXIT_FAILURE);                                                      \
+    }                                                                          \
   } while (0)
 
 // ref:
@@ -32,15 +32,15 @@ struct FlashAttnConfig {
   static constexpr int BlockQO = BlockQO_;
   static constexpr int BlockKV = BlockKV_;
   static constexpr int HeadDim =
-      HeadDim_;  // we don't tile on block dim dimension, otherwise we run into
-                 // a split k implementation
+      HeadDim_; // we don't tile on block dim dimension, otherwise we run into
+                // a split k implementation
 
   // Gmem2Smem config
   using GmemCopyAtom =
       Copy_Atom<AutoVectorizingCopyWithAssumedAlignment<sizeof(uint128_t)>, T>;
   static constexpr int GmemValsPerLoad = sizeof(uint128_t) / sizeof(T);
   static constexpr int GmemThreadsPerRow =
-      HeadDim / GmemValsPerLoad;  // each thread reads 128 bit
+      HeadDim / GmemValsPerLoad; // each thread reads 128 bit
   using TiledCopyQKVO = decltype(make_tiled_copy(
       GmemCopyAtom{},
       make_layout(
@@ -50,16 +50,15 @@ struct FlashAttnConfig {
   static_assert(Int<NumThreads / GmemThreadsPerRow>::value <= BlockQO,
                 "NumThreads must be less than or equal to BlockQO");
   // Smem to Rmem config
-  using SmemCopyAtom =
-      Copy_Atom<SM75_U32x4_LDSM_N,
-                T>;  // LDSM will fit in the MMA_Atom, note that we do not
-                     // handle bank conflict here
+  using SmemCopyAtom = Copy_Atom<SM75_U32x4_LDSM_N,
+                                 T>; // LDSM will fit in the MMA_Atom, note that
+                                     // we do not handle bank conflict here
   using SmemCopyAtomTransposed =
-      Copy_Atom<SM75_U16x8_LDSM_T, T>;  // for column major load
+      Copy_Atom<SM75_U16x8_LDSM_T, T>; // for column major load
   using SmemCopyAtomO =
       Copy_Atom<AutoVectorizingCopyWithAssumedAlignment<sizeof(uint128_t)>,
-                T>;  // NOTE: stmatrix is only available after sm90, we use a
-                     // vectorized copy instead
+                T>; // NOTE: stmatrix is only available after sm90, we use a
+                    // vectorized copy instead
 
   // MMA config
   static_assert(std::is_same_v<T, half_t> || std::is_same_v<T, bfloat16_t>);
@@ -123,16 +122,16 @@ __global__ void flash_attn_cute_kernel(typename FlashAttnConfig_::T *pQ,
 
   auto gQ =
       local_tile(Q, make_shape(_1{}, _1{}, Int<BlockQO>{}, Int<HeadDim>{}),
-                 make_coord(bx, by, bz, 0))(0, 0, _, _);  // (BlockQO, HeadDim)
+                 make_coord(bx, by, bz, 0))(0, 0, _, _); // (BlockQO, HeadDim)
   auto gO =
       local_tile(O, make_shape(_1{}, _1{}, Int<BlockQO>{}, Int<HeadDim>{}),
-                 make_coord(bx, by, bz, 0))(0, 0, _, _);  // (BlockQO, HeadDim)
+                 make_coord(bx, by, bz, 0))(0, 0, _, _); // (BlockQO, HeadDim)
   auto gK = local_tile(
       K, make_shape(_1{}, _1{}, Int<BlockKV>{}, Int<HeadDim>{}),
-      make_coord(bx, by, _, 0))(0, 0, _, _, _);  // (BlockKV, HeadDim, RestKV)
+      make_coord(bx, by, _, 0))(0, 0, _, _, _); // (BlockKV, HeadDim, RestKV)
   auto gV = local_tile(
       V, make_shape(_1{}, _1{}, Int<BlockKV>{}, Int<HeadDim>{}),
-      make_coord(bx, by, _, 0))(0, 0, _, _, _);  // (BlockKV, HeadDim, RestKV)
+      make_coord(bx, by, _, 0))(0, 0, _, _, _); // (BlockKV, HeadDim, RestKV)
 
   __shared__ T psQ[BlockQO * HeadDim], psK[BlockKV * HeadDim],
       psV[BlockKV * HeadDim];
@@ -152,43 +151,43 @@ __global__ void flash_attn_cute_kernel(typename FlashAttnConfig_::T *pQ,
 
   TiledCopy tiled_copy;
   auto thr_copy = tiled_copy.get_slice(tx);
-  auto tQgQ = thr_copy.partition_S(gQ);  // (Copy, BlockQOCopy, HeadDimCopy)
-  auto tQsQ = thr_copy.partition_D(sQ);  // (Copy, BlockQOCopy, HeadDimCopy)
-  auto tKsK = thr_copy.partition_D(sK);  // (Copy, BlockKVCopy, HeadDimCopy)
+  auto tQgQ = thr_copy.partition_S(gQ); // (Copy, BlockQOCopy, HeadDimCopy)
+  auto tQsQ = thr_copy.partition_D(sQ); // (Copy, BlockQOCopy, HeadDimCopy)
+  auto tKsK = thr_copy.partition_D(sK); // (Copy, BlockKVCopy, HeadDimCopy)
   auto tKgK =
-      thr_copy.partition_S(gK);  // (Copy, BlockKVCopy, HeadDimCopy, RestKV)
+      thr_copy.partition_S(gK); // (Copy, BlockKVCopy, HeadDimCopy, RestKV)
   auto tVsV = thr_copy.partition_D(sV);
   auto tVgV =
-      thr_copy.partition_S(gV);  // (Copy, BlockKVCopy, HeadDimCopy, RestKV)
+      thr_copy.partition_S(gV); // (Copy, BlockKVCopy, HeadDimCopy, RestKV)
 
   TiledMMA tiled_mma;
   auto thr_mma = tiled_mma.get_slice(tx);
-  auto tSrQ = thr_mma.partition_fragment_A(sQ);  // (MMA, MMA_QO, MMA_HEAD)
-  auto tSrK = thr_mma.partition_fragment_B(sK);  // (MMA, MMA_KV, MMA_HEAD)
+  auto tSrQ = thr_mma.partition_fragment_A(sQ); // (MMA, MMA_QO, MMA_HEAD)
+  auto tSrK = thr_mma.partition_fragment_B(sK); // (MMA, MMA_KV, MMA_HEAD)
   auto tSrS = partition_fragment_C(
-      tiled_mma, Shape<Int<BlockQO>, Int<BlockKV>>{});  // (MMA, MMA_QO, MMA_KV)
-  auto tOrVt = thr_mma.partition_fragment_B(sVt);  // (MMA, MMA_Headdim, MMA_KV)
+      tiled_mma, Shape<Int<BlockQO>, Int<BlockKV>>{}); // (MMA, MMA_QO, MMA_KV)
+  auto tOrVt = thr_mma.partition_fragment_B(sVt); // (MMA, MMA_Headdim, MMA_KV)
   auto tOrO = partition_fragment_C(
       tiled_mma,
-      Shape<Int<BlockQO>, Int<HeadDim>>{});  // (MMA, MMA_QO, MMA_Headdim)
+      Shape<Int<BlockQO>, Int<HeadDim>>{}); // (MMA, MMA_QO, MMA_Headdim)
   clear(tOrO);
 
   auto tiled_s2r_copy_Q = make_tiled_copy_A(SmemCopyAtom{}, tiled_mma);
   auto thr_s2r_copy_Q = tiled_s2r_copy_Q.get_slice(tx);
   auto tXsQ = thr_s2r_copy_Q.partition_S(sQ);
-  auto tXrQ = thr_s2r_copy_Q.retile_D(tSrQ);  // (CPY, MMA_QO, MMA_HEAD)
+  auto tXrQ = thr_s2r_copy_Q.retile_D(tSrQ); // (CPY, MMA_QO, MMA_HEAD)
   auto tiled_s2r_copy_K = make_tiled_copy_B(SmemCopyAtom{}, tiled_mma);
   auto thr_s2r_copy_K = tiled_s2r_copy_K.get_slice(tx);
   auto tXsK = thr_s2r_copy_K.partition_S(sK);
-  auto tXrK = thr_s2r_copy_K.retile_D(tSrK);  // (CPY, MMA_KV, MMA_HEAD)
+  auto tXrK = thr_s2r_copy_K.retile_D(tSrK); // (CPY, MMA_KV, MMA_HEAD)
   auto tiled_s2r_copy_V =
       make_tiled_copy_B(SmemCopyAtomTransposed{}, tiled_mma);
   auto thr_s2r_copy_V = tiled_s2r_copy_V.get_slice(tx);
   auto tXsVt = thr_s2r_copy_V.partition_S(sVt);
-  auto tXrVt = thr_s2r_copy_V.retile_D(tOrVt);  // (CPY, MMA_Headdim, MMA_QO)
+  auto tXrVt = thr_s2r_copy_V.retile_D(tOrVt); // (CPY, MMA_Headdim, MMA_QO)
 
 #ifdef FLASH_ATTN_MMA_DEBUG
-  if (thread0()) {  // clang-format off
+  if (thread0()) { // clang-format off
     print("NumThreads: "); print(FlashAttnConfig_::NumThreads); print("\n");
     print("tiled_mma: "); print(tiled_mma); print("\n");
     print("tiled_copy: "); print(tiled_copy); print("\n");
@@ -222,7 +221,7 @@ __global__ void flash_attn_cute_kernel(typename FlashAttnConfig_::T *pQ,
     print("tiled_s2r_copy_V: "); print(tiled_s2r_copy_V); print("\n");
     print("tXsVt: "); print(tXsVt.layout()); print("\n");
     print("tXrVt: "); print(tXrVt.layout()); print("\n");
-  }  // clang-format on
+  } // clang-format on
 #endif
   // NOTE: for sm80 MMA, each thread owns 2 rows of C matrix, they are
   // [v0, v1]
@@ -251,21 +250,21 @@ __global__ void flash_attn_cute_kernel(typename FlashAttnConfig_::T *pQ,
     // copy K into rmem
     copy(tiled_s2r_copy_K, tXsK, tXrK);
 #ifdef FLASH_ATTN_MMA_DEBUG
-    if (thread0()) {  // clang-format off
+    if (thread0()) { // clang-format off
       print("blkKVIdx: "); print(blkKVIdx); print("\n");
       print("tXrQ: "); print_tensor(tXrQ); print("\n");
       print("tSrQ: "); print_tensor(tSrQ); print("\n");
       print("tXrK: "); print_tensor(tXrK); print("\n");
       print("tSrK: "); print_tensor(tSrK); print("\n");
-    }  // clang-format on
+    } // clang-format on
 #endif
     clear(tSrS);
     gemm(tiled_mma, tSrQ, tSrK, tSrS);
 
 #ifdef FLASH_ATTN_MMA_DEBUG
-    if (thread0()) {  // clang-format off
+    if (thread0()) { // clang-format off
       print("tSrS: "); print_tensor(tSrS); print("\n");
-    }  // clang-format on
+    } // clang-format on
 #endif
     auto new_row_max = make_fragment_like(prev_row_max);
     fill(new_row_max, -1e20);
@@ -282,9 +281,9 @@ __global__ void flash_attn_cute_kernel(typename FlashAttnConfig_::T *pQ,
       }
     }
 #ifdef FLASH_ATTN_MMA_DEBUG
-    if (thread0()) {  // clang-format off
+    if (thread0()) { // clang-format off
       print("local new_row_max: "); print_tensor(new_row_max); print("\n");
-    }  // clang-format on
+    } // clang-format on
 #endif
     // max quad-reduce (4 threads span one row of MMA C matrix for this
     // MMA_Atom)
@@ -293,17 +292,17 @@ __global__ void flash_attn_cute_kernel(typename FlashAttnConfig_::T *pQ,
         new_row_max(row_idx, row_rep_idx) = max(
             new_row_max(row_idx, row_rep_idx),
             __shfl_xor_sync(0xffffffff, new_row_max(row_idx, row_rep_idx),
-                            1));  // shuffle reduce order shouldn't matter here
+                            1)); // shuffle reduce order shouldn't matter here
         new_row_max(row_idx, row_rep_idx) = max(
             new_row_max(row_idx, row_rep_idx),
             __shfl_xor_sync(0xffffffff, new_row_max(row_idx, row_rep_idx),
-                            2));  // shuffle reduce order shouldn't matter here
+                            2)); // shuffle reduce order shouldn't matter here
       }
     }
 #ifdef FLASH_ATTN_MMA_DEBUG
-    if (thread0()) {  // clang-format off
+    if (thread0()) { // clang-format off
       print("quad new_row_max: "); print_tensor(new_row_max); print("\n");
-    }  // clang-format on
+    } // clang-format on
 #endif
     // calculate new max
     for (int row_idx = 0; row_idx < size<0>(new_row_max); ++row_idx) {
@@ -315,9 +314,9 @@ __global__ void flash_attn_cute_kernel(typename FlashAttnConfig_::T *pQ,
       }
     }
 #ifdef FLASH_ATTN_MMA_DEBUG
-    if (thread0()) {  // clang-format off
+    if (thread0()) { // clang-format off
       print("new_row_max: "); print_tensor(new_row_max); print("\n");
-    }  // clang-format on
+    } // clang-format on
 #endif
     // scale nuemrator
     for (int val_idx = 0; val_idx < size<0>(tOrO); ++val_idx) {
@@ -354,10 +353,10 @@ __global__ void flash_attn_cute_kernel(typename FlashAttnConfig_::T *pQ,
       }
     }
 #ifdef FLASH_ATTN_MMA_DEBUG
-    if (thread0()) {  // clang-format off
+    if (thread0()) { // clang-format off
       print("scaled tSrS: "); print_tensor(tSrS); print("\n");
       print("global_row_denominator: "); print_tensor(global_row_denominator); print("\n");
-    }  // clang-format on
+    } // clang-format on
 #endif
     // update global max
     for (int row_idx = 0; row_idx < size<0, 0>(tSrS); ++row_idx) {
@@ -380,16 +379,16 @@ __global__ void flash_attn_cute_kernel(typename FlashAttnConfig_::T *pQ,
 
     copy(tiled_s2r_copy_V, tXsVt, tXrVt);
 #ifdef FLASH_ATTN_MMA_DEBUG
-    if (thread0()) {  // clang-format off
+    if (thread0()) { // clang-format off
       print("tOrVt: "); print_tensor(tOrVt); print("\n");
-    }  // clang-format on
+    } // clang-format on
 #endif
     gemm(tiled_mma, tOrS, tOrVt, tOrO);
 
 #ifdef FLASH_ATTN_MMA_DEBUG
-    if (thread0()) {  // clang-format off
+    if (thread0()) { // clang-format off
       print("tOrO: "); print_tensor(tOrO); print("\n");
-    }  // clang-format on
+    } // clang-format on
 #endif
   }
   // denominator quad-reduce
@@ -412,10 +411,10 @@ __global__ void flash_attn_cute_kernel(typename FlashAttnConfig_::T *pQ,
     }
   }
 #ifdef FLASH_ATTN_MMA_DEBUG
-  if (thread0()) {  // clang-format off
+  if (thread0()) { // clang-format off
     print("global_row_denominator: "); print_tensor(global_row_denominator); print("\n");
     print("tOrO: "); print_tensor(tOrO); print("\n");
-  }  // clang-format on
+  } // clang-format on
 #endif
   // copy O back to gmem
   auto tiled_r2s_copy_O = make_tiled_copy_C(SmemCopyAtomO{}, tiled_mma);
@@ -428,19 +427,19 @@ __global__ void flash_attn_cute_kernel(typename FlashAttnConfig_::T *pQ,
 // this kernel only implement limited functionality
 static bool sanity_check(torch::Tensor Q, torch::Tensor K, torch::Tensor V,
                          torch::Tensor O) {
-  const int bq = Q.size(0);  // B, H, N, d
+  const int bq = Q.size(0); // B, H, N, d
   const int hq = Q.size(1);
   const int nq = Q.size(2);
   const int dq = Q.size(3);
-  const int bk = K.size(0);  // B, H, N, d
+  const int bk = K.size(0); // B, H, N, d
   const int hk = K.size(1);
   const int nk = K.size(2);
   const int dk = K.size(3);
-  const int bv = V.size(0);  // B, H, N, d
+  const int bv = V.size(0); // B, H, N, d
   const int hv = V.size(1);
   const int nv = V.size(2);
   const int dv = V.size(3);
-  const int bo = O.size(0);  // B, H, N, d
+  const int bo = O.size(0); // B, H, N, d
   const int ho = O.size(1);
   const int no = O.size(2);
   const int do_ = O.size(3);
@@ -475,7 +474,7 @@ static void launch_kernel(torch::Tensor Q, torch::Tensor K, torch::Tensor V,
       FlashAttnConfig<half_t, BlockQO, BlockKV, HeadDim, NWarpsPerSM>;
 
   assert(sanity_check(Q, K, V, O));
-  const int b = Q.size(0);  // B, H, N, d
+  const int b = Q.size(0); // B, H, N, d
   const int h = Q.size(1);
   const int n = Q.size(2);
   const int d = Q.size(3);
@@ -495,30 +494,30 @@ static void launch_kernel(torch::Tensor Q, torch::Tensor K, torch::Tensor V,
 
 void flash_attn_cute(torch::Tensor Q, torch::Tensor K, torch::Tensor V,
                      torch::Tensor O) {
-  CHECK_TORCH_TENSOR_DTYPE(Q, torch::kHalf)  // Q [B,H,N,D]
-  CHECK_TORCH_TENSOR_DTYPE(K, torch::kHalf)  // K [B,H,N,D]
-  CHECK_TORCH_TENSOR_DTYPE(V, torch::kHalf)  // V [B,H,N,D]
-  CHECK_TORCH_TENSOR_DTYPE(O, torch::kHalf)  // O [B,H,N,D]
+  CHECK_TORCH_TENSOR_DTYPE(Q, torch::kHalf) // Q [B,H,N,D]
+  CHECK_TORCH_TENSOR_DTYPE(K, torch::kHalf) // K [B,H,N,D]
+  CHECK_TORCH_TENSOR_DTYPE(V, torch::kHalf) // V [B,H,N,D]
+  CHECK_TORCH_TENSOR_DTYPE(O, torch::kHalf) // O [B,H,N,D]
   const int d = Q.size(3);
 
-  switch (d) {  // NOTE: just naive heuristic, need tuning to find the best
-                // configuration
-    case 16:
-      launch_kernel<128, 128, 16, 8>(Q, K, V, O);
-      break;
-    case 32:
-      launch_kernel<128, 128, 32, 8>(Q, K, V, O);
-      break;
-    case 64:
-      launch_kernel<128, 128, 64, 8>(Q, K, V, O);
-      break;
-    case 128:
-      launch_kernel<64, 64, 128, 4>(Q, K, V, O);
-      break;
-    case 256:
-      launch_kernel<32, 32, 256, 2>(Q, K, V, O);
-      break;
-    default:
-      throw std::runtime_error("Unsupported headdim");
+  switch (d) { // NOTE: just naive heuristic, need tuning to find the best
+               // configuration
+  case 16:
+    launch_kernel<128, 128, 16, 8>(Q, K, V, O);
+    break;
+  case 32:
+    launch_kernel<128, 128, 32, 8>(Q, K, V, O);
+    break;
+  case 64:
+    launch_kernel<128, 128, 64, 8>(Q, K, V, O);
+    break;
+  case 128:
+    launch_kernel<64, 64, 128, 4>(Q, K, V, O);
+    break;
+  case 256:
+    launch_kernel<32, 32, 256, 2>(Q, K, V, O);
+    break;
+  default:
+    throw std::runtime_error("Unsupported headdim");
   }
 }

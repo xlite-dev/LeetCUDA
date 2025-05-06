@@ -19,9 +19,13 @@ torch.set_printoptions(
     precision=6, threshold=8, edgeitems=3, linewidth=120, sci_mode=False
 )
 
-CUTLASS_REPO_PATH = os.environ.get("CUTLASS_REPO_PATH", os.path.expanduser("~/cutlass"))
+CUTLASS_REPO_PATH = os.environ.get(
+    "CUTLASS_REPO_PATH", os.path.expanduser("~/cutlass")
+)
 
-CUTLASS_REPO_PATH = os.environ.get("CUTLASS_REPO_PATH", os.path.expanduser("~/cutlass"))
+CUTLASS_REPO_PATH = os.environ.get(
+    "CUTLASS_REPO_PATH", os.path.expanduser("~/cutlass")
+)
 
 
 def get_args():
@@ -566,7 +570,7 @@ MAX_HEADDIM_CFG: dict[str, int] = {
     "mma(split-q+tiling-qkv+acc-f32+swizzle-qkv+stage1)": 1024,
     "mma(split-q+tiling-qkv+acc-f32+swizzle-qkv+stage2)": 1024,
     # CuTe
-    "(cute)":                                               256,
+    "(cute)": 256,
     # Others, O s2g, etc.
     "mma(split-q+share-qkv+o-s2g+stage1)": 256,
     "mma(split-q+share-qkv+o-s2g+stage2)": 128,
@@ -1426,7 +1430,7 @@ for B, H, N, D in BHNDs:
                 args.check_all,
             )
             # CuTe
-            check_all_close(out_flash, out_cute,     "out_cute",      args.check_all)
+            check_all_close(out_flash, out_cute, "out_cute", args.check_all)
             # Others, O s2g, etc.
             check_all_close(
                 out_flash,
@@ -1680,8 +1684,10 @@ for B, H, N, D in BHNDs:
                 args.check_all,
                 False,
             )
-            #CuTe
-            check_all_close(out_sdpa, out_cute,  "out_cute",  args.check_all, False)
+            # CuTe
+            check_all_close(
+                out_sdpa, out_cute, "out_cute", args.check_all, False
+            )
             # Others, O s2g, etc.
             check_all_close(
                 out_sdpa,
