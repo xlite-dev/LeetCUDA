@@ -119,6 +119,7 @@ class RayAll2AllWorker:
 
 
 if __name__ == "__main__":
+    # export RAY_DEDUP_LOGS=0
     world_size = torch.cuda.device_count()
     print(f"world_size: {world_size}")
     if not ray.is_initialized():
