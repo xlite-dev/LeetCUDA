@@ -122,7 +122,7 @@ class RayAll2AllWorker:
 
 
 if __name__ == "__main__":
-    world_size = 4
+    world_size = torch.cuda.device_count()
     if not ray.is_initialized():
         ray.init()
     workers = [
