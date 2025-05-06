@@ -26,6 +26,7 @@ template <typename T_, int BlockQO_, int BlockKV_, int HeadDim_,
           int NWarpsPerSM_>
 struct FlashAttnConfig {
   using T = T_;
+  // https://github.com/Dao-AILab/flash-attention/issues/1512#issuecomment-2688567176
   static constexpr int NWarpsPerSM = NWarpsPerSM_;
   static constexpr int NumThreads = NWarpsPerSM * 32;
   // Tiling config
@@ -34,13 +35,12 @@ struct FlashAttnConfig {
   static constexpr int HeadDim =
       HeadDim_;  // we don't tile on block dim dimension, otherwise we run into
                  // a split k implementation
-  static constexpr int BlockHeaddim = 16;  // HeadDim % 64 == 0 ? 64 : 32;
 
   // Gmem2Smem config
   using GmemCopyAtom =
       Copy_Atom<AutoVectorizingCopyWithAssumedAlignment<sizeof(uint128_t)>, T>;
   static constexpr int GmemValsPerLoad = sizeof(uint128_t) / sizeof(T);
-  static constexpr int GmemThreadsPerRow = BlockHeaddim / GmemValsPerLoad;
+  static constexpr int GmemThreadsPerRow = HeadDim / GmemValsPerLoad;
   using TiledCopyQKVO = decltype(make_tiled_copy(
       GmemCopyAtom{},
       make_layout(
@@ -58,7 +58,8 @@ struct FlashAttnConfig {
 
   // MMA config
   static_assert(std::is_same_v<T, half_t> || std::is_same_v<T, bfloat16_t>);
-  // two atom has the same layout
+  // For simplicity, mnk == (16, 8, 8) is used: two MMAs will have the same
+  // layout
   using MMA_Atom = std::conditional_t<std::is_same_v<T, half_t>,
                                       MMA_Atom<SM80_16x8x8_F32F16F16F32_TN>,
                                       MMA_Atom<SM80_16x8x8_F32BF16BF16F32_TN>>;
@@ -68,15 +69,13 @@ struct FlashAttnConfig {
       Tile<Int<16 * NWarpsPerSM>, _16, _16>{}
       // for SM75_U32x4_LDSM_N, we need at least 4 * 8x8 matrix, which is 16x16
       ));
+  static_assert(
+      16 * NWarpsPerSM <= BlockQO && 16 <= BlockKV && 16 <= HeadDim,
+      "BlockQO, BlockKV, and HeadDim must be greater than or equal to "
+      "16 * NWarpsPerSM, 16, and 16 respectively");
   // sanity checks
   static_assert(size(TiledMMA{}) == NumThreads &&
                 size(TiledMMA{}) == size(TiledCopyQKVO{}));
-  // static_assert(
-  //     NWarpsPerSM == 4 ||
-  //     NWarpsPerSM ==
-  //         8);  // as indicated in flash-attn v2 paper and
-  //              //
-  //              https://github.com/Dao-AILab/flash-attention/issues/1512#issuecomment-2688567176
 };
 
 template <typename FlashAttnConfig_>
@@ -230,9 +229,9 @@ __global__ void flash_attn_cute_kernel(typename FlashAttnConfig_::T *pQ,
   // copy Q into smem
   copy(tiled_copy, tQgQ, tQsQ);
   // scale Q
-  // for (int i = 0; i < size(tQsQ); i++) {
-  //   tQsQ(i) = static_cast<T>(scaler) * tQsQ(i);
-  // }
+  for (int i = 0; i < size(tQsQ); i++) {
+    tQsQ(i) = static_cast<T>(scaler) * tQsQ(i);
+  }
   __syncthreads();
   // copy Q into rmem
   copy(tiled_s2r_copy_Q, tXsQ, tXrQ);
@@ -441,25 +440,51 @@ static bool sanity_check(torch::Tensor Q, torch::Tensor K, torch::Tensor V,
   const int do_ = O.size(3);
   if (!(bq == bk && bq == bv && bq == bo)) {
     printf("batch size mismatch: %d %d %d %d\n", bq, bk, bv, bo);
+    fflush(stdout);
     return false;
   }
   if (!(hq == hk && hq == hv && hq == ho)) {
     printf("head size mismatch: %d %d %d %d\n", hq, hk, hv, ho);
+    fflush(stdout);
     return false;
   }
   if (!(nq == nk && nq == nv && nq == no)) {
-    printf("sequence length mismatch: %d %d %d %d\n", nq, nk, nv, no);
+    printf("sequence length mismatch: %d %d %d %d, only self-attn is tested\n",
+           nq, nk, nv, no);
+    fflush(stdout);
     return false;
   }
   if (!(dq == dk && dq == dv && dq == do_)) {
     printf("hidden size mismatch: %d %d %d %d\n", dq, dk, dv, do_);
-    return false;
-  }
-  if (!(dq == 16)) {
-    printf("hidden size should be 128, but got %d\n", dq);
+    fflush(stdout);
     return false;
   }
   return true;
+}
+
+template <int BlockQO, int BlockKV, int HeadDim, int NWarpsPerSM>
+static void launch_kernel(torch::Tensor Q, torch::Tensor K, torch::Tensor V,
+                          torch::Tensor O) {
+  using config =
+      FlashAttnConfig<half_t, BlockQO, BlockKV, HeadDim, NWarpsPerSM>;
+
+  assert(sanity_check(Q, K, V, O));
+  const int b = Q.size(0);  // B, H, N, d
+  const int h = Q.size(1);
+  const int n = Q.size(2);
+  const int d = Q.size(3);
+
+  float scaler = 1.0 / sqrt(d);
+
+  assert(n % BlockQO == 0);
+  dim3 block(size(config::NumThreads));
+  dim3 grid(b, h, n / BlockQO);
+  flash_attn_cute_kernel<config><<<grid, block>>>(
+      reinterpret_cast<half_t *>(Q.data_ptr()),
+      reinterpret_cast<half_t *>(K.data_ptr()),
+      reinterpret_cast<half_t *>(V.data_ptr()),
+      reinterpret_cast<half_t *>(O.data_ptr()), b, h, n, n, d, scaler);
+  CUDA_CHECK(cudaGetLastError());
 }
 
 void flash_attn_cute(torch::Tensor Q, torch::Tensor K, torch::Tensor V,
@@ -468,29 +493,26 @@ void flash_attn_cute(torch::Tensor Q, torch::Tensor K, torch::Tensor V,
   CHECK_TORCH_TENSOR_DTYPE(K, torch::kHalf)  // K [B,H,N,D]
   CHECK_TORCH_TENSOR_DTYPE(V, torch::kHalf)  // V [B,H,N,D]
   CHECK_TORCH_TENSOR_DTYPE(O, torch::kHalf)  // O [B,H,N,D]
-  assert(sanity_check(Q, K, V, O));
-
-  const int b = Q.size(0);  // B, H, N, d
-  const int h = Q.size(1);
-  const int n = Q.size(2);
   const int d = Q.size(3);
-  float scaler = 1.0 / sqrt(h);
 
-  const int BlockQO = 16;
-  const int BlockKV = 16;
-  using config = FlashAttnConfig<half_t, BlockQO, BlockKV, 16, 1>;
-
-  dim3 block(size(config::NumThreads));
-  dim3 grid(b, h, n / BlockQO);
-#ifdef DEBUG
-  printf("grid: %d %d %d\n", grid.x, grid.y, grid.z);
-  printf("block: %d\n", block.x);
-  printf("params: %d %d %d %d %d\n", b, h, n, n, d);
-#endif
-  flash_attn_cute_kernel<config><<<grid, block>>>(
-      reinterpret_cast<half_t *>(Q.data_ptr()),
-      reinterpret_cast<half_t *>(K.data_ptr()),
-      reinterpret_cast<half_t *>(V.data_ptr()),
-      reinterpret_cast<half_t *>(O.data_ptr()), b, h, n, n, d, scaler);
-  CUDA_CHECK(cudaGetLastError());
+  switch (d) {  // NOTE: just naive heuristic, need tuning to find the best
+                // configuration
+    case 16:
+      launch_kernel<128, 128, 16, 8>(Q, K, V, O);
+      break;
+    case 32:
+      launch_kernel<128, 128, 32, 8>(Q, K, V, O);
+      break;
+    case 64:
+      launch_kernel<128, 128, 64, 8>(Q, K, V, O);
+      break;
+    case 128:
+      launch_kernel<64, 64, 128, 4>(Q, K, V, O);
+      break;
+    case 256:
+      launch_kernel<32, 32, 256, 2>(Q, K, V, O);
+      break;
+    default:
+      throw std::runtime_error("Unsupported headdim");
+  }
 }

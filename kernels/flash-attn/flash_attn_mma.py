@@ -565,6 +565,8 @@ MAX_HEADDIM_CFG: dict[str, int] = {
     "mma(split-q+tiling-qkv+acc-f32+swizzle-qk+stage2)": 1024,
     "mma(split-q+tiling-qkv+acc-f32+swizzle-qkv+stage1)": 1024,
     "mma(split-q+tiling-qkv+acc-f32+swizzle-qkv+stage2)": 1024,
+    # CuTe
+    "(cute)":                                               256,
     # Others, O s2g, etc.
     "mma(split-q+share-qkv+o-s2g+stage1)": 256,
     "mma(split-q+share-qkv+o-s2g+stage2)": 128,
@@ -1110,6 +1112,8 @@ for B, H, N, D in BHNDs:
         o,
         stages=2,
     )
+    # CuTe
+    out_cute, _ = run_benchmark(lib.flash_attn_cute, q, k, v, "(cute)", o)
     # FA2, SDPA official
     out_flash, _ = run_benchmark(flash_attn_func, fq, fk, fv, "(flash)")
     out_sdpa, _ = run_benchmark(
@@ -1421,6 +1425,8 @@ for B, H, N, D in BHNDs:
                 "out_mma_tiling_qkv_fsqkv2",
                 args.check_all,
             )
+            # CuTe
+            check_all_close(out_flash, out_cute,     "out_cute",      args.check_all)
             # Others, O s2g, etc.
             check_all_close(
                 out_flash,
@@ -1674,6 +1680,8 @@ for B, H, N, D in BHNDs:
                 args.check_all,
                 False,
             )
+            #CuTe
+            check_all_close(out_sdpa, out_cute,  "out_cute",  args.check_all, False)
             # Others, O s2g, etc.
             check_all_close(
                 out_sdpa,
