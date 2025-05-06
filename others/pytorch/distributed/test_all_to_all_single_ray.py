@@ -49,38 +49,38 @@ class RayAll2AllWorker:
 
         try:
             # All-to-All Single
-            input = torch.arange(4, device=self.device) + self.rank * 4
-            output = torch.empty([4], dtype=torch.int64, device=self.device)
-            dist.all_to_all_single(output, input)
+            input_t = torch.arange(4, device=self.device) + self.rank * 4
+            output_t = torch.empty([4], dtype=torch.int64, device=self.device)
+            dist.all_to_all_single(output_t, input_t)
             self.logger.info(
-                f"All-to-All Single output at Rank {self.rank}:\n {output}"
+                f"All-to-All Single output_t at Rank {self.rank}:\n {output_t}"
             )
 
             # All-to-All Single UnEven
             if self.rank == 0:
-                input = torch.tensor(
+                input_t = torch.tensor(
                     [0, 1, 2, 3, 4, 5], dtype=torch.int64, device=self.device
                 )
             elif self.rank == 1:
-                input = torch.tensor(
+                input_t = torch.tensor(
                     [10, 11, 12, 13, 14, 15, 16, 17, 18],
                     dtype=torch.int64,
                     device=self.device,
                 )
             elif self.rank == 2:
-                input = torch.tensor(
+                input_t = torch.tensor(
                     [20, 21, 22, 23, 24], dtype=torch.int64, device=self.device
                 )
             elif self.rank == 3:
-                input = torch.tensor(
+                input_t = torch.tensor(
                     [30, 31, 32, 33, 34, 35, 36],
                     dtype=torch.int64,
                     device=self.device,
                 )
             else:
-                input = None
+                input_t = None
 
-            assert input is not None, "Input tensor should not be None"
+            assert input_t is not None, "Input tensor should not be None"
 
             input_splits = [
                 [2, 2, 1, 1],
@@ -96,19 +96,19 @@ class RayAll2AllWorker:
                 [1, 2, 1, 1],
             ]
 
-            output = torch.empty(
+            output_t = torch.empty(
                 sum(output_splits[self.rank]),
                 dtype=torch.int64,
                 device=self.device,
             )
             dist.all_to_all_single(
-                output,
-                input,
+                output_t,
+                input_t,
                 output_split_sizes=output_splits[self.rank],
                 input_split_sizes=input_splits[self.rank],
             )
             self.logger.info(
-                f"All-to-All Single <UnEven> output at Rank {self.rank}:\n {output}"
+                f"All-to-All Single <UnEven> output_t at Rank {self.rank}:\n {output_t}"
             )
 
         except Exception as e:
