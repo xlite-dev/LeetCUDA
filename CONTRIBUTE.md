@@ -11,6 +11,8 @@ Before submitting code, configure pre-commit, for example:
 # fork xlite-dev/LeetCUDA to your own github page, then:
 git clone git@github.com:your-github-page/your-fork-LeetCUDA.git
 cd your-fork-LeetCUDA && git checkout -b test
+# update submodule
+git submodule update --init --recursive --force
 # install pre-commit
 pip3 install pre-commit
 pre-commit install
