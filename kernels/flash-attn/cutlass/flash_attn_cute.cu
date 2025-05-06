@@ -15,7 +15,6 @@ using namespace cute;
     if (err != cudaSuccess) {                                          \
       fprintf(stderr, "CUDA error at %s:%d: %s\n", __FILE__, __LINE__, \
               cudaGetErrorString(err));                                \
-      /* Optionally, you could also call cudaDeviceReset here */       \
       exit(EXIT_FAILURE);                                              \
     }                                                                  \
   } while (0)
@@ -40,7 +39,8 @@ struct FlashAttnConfig {
   using GmemCopyAtom =
       Copy_Atom<AutoVectorizingCopyWithAssumedAlignment<sizeof(uint128_t)>, T>;
   static constexpr int GmemValsPerLoad = sizeof(uint128_t) / sizeof(T);
-  static constexpr int GmemThreadsPerRow = HeadDim / GmemValsPerLoad;
+  static constexpr int GmemThreadsPerRow =
+      HeadDim / GmemValsPerLoad;  // each thread reads 128 bit
   using TiledCopyQKVO = decltype(make_tiled_copy(
       GmemCopyAtom{},
       make_layout(
@@ -50,16 +50,21 @@ struct FlashAttnConfig {
   static_assert(Int<NumThreads / GmemThreadsPerRow>::value <= BlockQO,
                 "NumThreads must be less than or equal to BlockQO");
   // Smem to Rmem config
-  using SmemCopyAtom = Copy_Atom<SM75_U32x4_LDSM_N, T>;
-  using SmemCopyAtomTransposed = Copy_Atom<SM75_U16x8_LDSM_T, T>;
+  using SmemCopyAtom =
+      Copy_Atom<SM75_U32x4_LDSM_N,
+                T>;  // LDSM will fit in the MMA_Atom, note that we do not
+                     // handle bank conflict here
+  using SmemCopyAtomTransposed =
+      Copy_Atom<SM75_U16x8_LDSM_T, T>;  // for column major load
   using SmemCopyAtomO =
       Copy_Atom<AutoVectorizingCopyWithAssumedAlignment<sizeof(uint128_t)>,
-                T>;  // NOTE: stmatrix is only available after sm90
+                T>;  // NOTE: stmatrix is only available after sm90, we use a
+                     // vectorized copy instead
 
   // MMA config
   static_assert(std::is_same_v<T, half_t> || std::is_same_v<T, bfloat16_t>);
   // For simplicity, mnk == (16, 8, 8) is used: two MMAs will have the same
-  // layout
+  // layout so that we don't need to adjust tSrS to fit in tOrS
   using MMA_Atom = std::conditional_t<std::is_same_v<T, half_t>,
                                       MMA_Atom<SM80_16x8x8_F32F16F16F32_TN>,
                                       MMA_Atom<SM80_16x8x8_F32BF16BF16F32_TN>>;
@@ -182,7 +187,7 @@ __global__ void flash_attn_cute_kernel(typename FlashAttnConfig_::T *pQ,
   auto tXsVt = thr_s2r_copy_V.partition_S(sVt);
   auto tXrVt = thr_s2r_copy_V.retile_D(tOrVt);  // (CPY, MMA_Headdim, MMA_QO)
 
-#ifdef DEBUG
+#ifdef FLASH_ATTN_MMA_DEBUG
   if (thread0()) {  // clang-format off
     print("NumThreads: "); print(FlashAttnConfig_::NumThreads); print("\n");
     print("tiled_mma: "); print(tiled_mma); print("\n");
@@ -219,7 +224,10 @@ __global__ void flash_attn_cute_kernel(typename FlashAttnConfig_::T *pQ,
     print("tXrVt: "); print(tXrVt.layout()); print("\n");
   }  // clang-format on
 #endif
-  // NOTE: for sm80 MMA, each thread owns 2 rows of C matrix
+  // NOTE: for sm80 MMA, each thread owns 2 rows of C matrix, they are
+  // [v0, v1]
+  // ......
+  // [v2, v3]
   auto prev_row_max =
       make_tensor<float>(make_shape(_2{}, Int<size<1>(tSrS)>{}));
   fill(prev_row_max, -1e20);
@@ -228,7 +236,7 @@ __global__ void flash_attn_cute_kernel(typename FlashAttnConfig_::T *pQ,
   fill(global_row_denominator, 0);
   // copy Q into smem
   copy(tiled_copy, tQgQ, tQsQ);
-  // scale Q
+  // scale Q first
   for (int i = 0; i < size(tQsQ); i++) {
     tQsQ(i) = static_cast<T>(scaler) * tQsQ(i);
   }
@@ -242,7 +250,7 @@ __global__ void flash_attn_cute_kernel(typename FlashAttnConfig_::T *pQ,
     __syncthreads();
     // copy K into rmem
     copy(tiled_s2r_copy_K, tXsK, tXrK);
-#ifdef DEBUG
+#ifdef FLASH_ATTN_MMA_DEBUG
     if (thread0()) {  // clang-format off
       print("blkKVIdx: "); print(blkKVIdx); print("\n");
       print("tXrQ: "); print_tensor(tXrQ); print("\n");
@@ -254,7 +262,7 @@ __global__ void flash_attn_cute_kernel(typename FlashAttnConfig_::T *pQ,
     clear(tSrS);
     gemm(tiled_mma, tSrQ, tSrK, tSrS);
 
-#ifdef DEBUG
+#ifdef FLASH_ATTN_MMA_DEBUG
     if (thread0()) {  // clang-format off
       print("tSrS: "); print_tensor(tSrS); print("\n");
     }  // clang-format on
@@ -273,12 +281,12 @@ __global__ void flash_attn_cute_kernel(typename FlashAttnConfig_::T *pQ,
         }
       }
     }
-#ifdef DEBUG
+#ifdef FLASH_ATTN_MMA_DEBUG
     if (thread0()) {  // clang-format off
       print("local new_row_max: "); print_tensor(new_row_max); print("\n");
     }  // clang-format on
 #endif
-    // max quad-reduce (4 threads share one row of MMA C matrix for this
+    // max quad-reduce (4 threads span one row of MMA C matrix for this
     // MMA_Atom)
     for (int row_idx = 0; row_idx < size<0>(new_row_max); ++row_idx) {
       for (int row_rep_idx = 0; row_rep_idx < size<1>(tSrS); ++row_rep_idx) {
@@ -292,7 +300,7 @@ __global__ void flash_attn_cute_kernel(typename FlashAttnConfig_::T *pQ,
                             2));  // shuffle reduce order shouldn't matter here
       }
     }
-#ifdef DEBUG
+#ifdef FLASH_ATTN_MMA_DEBUG
     if (thread0()) {  // clang-format off
       print("quad new_row_max: "); print_tensor(new_row_max); print("\n");
     }  // clang-format on
@@ -306,14 +314,12 @@ __global__ void flash_attn_cute_kernel(typename FlashAttnConfig_::T *pQ,
                 new_row_max(row_idx, row_rep_idx));
       }
     }
-
-#ifdef DEBUG
+#ifdef FLASH_ATTN_MMA_DEBUG
     if (thread0()) {  // clang-format off
       print("new_row_max: "); print_tensor(new_row_max); print("\n");
     }  // clang-format on
 #endif
     // scale nuemrator
-    // if (blkKVIdx != 0) {
     for (int val_idx = 0; val_idx < size<0>(tOrO); ++val_idx) {
       for (int row_rep_idx = 0; row_rep_idx < size<1>(tOrO); ++row_rep_idx) {
         for (int col_rep_idx = 0; col_rep_idx < size<2>(tOrO); ++col_rep_idx) {
@@ -333,7 +339,6 @@ __global__ void flash_attn_cute_kernel(typename FlashAttnConfig_::T *pQ,
                 new_row_max(row_idx, row_rep_idx));
       }
     }
-    // }
 
     // apply new max and exp and accumulate to denominator
     for (int val_idx = 0; val_idx < size<0>(tSrS); ++val_idx) {
@@ -348,7 +353,7 @@ __global__ void flash_attn_cute_kernel(typename FlashAttnConfig_::T *pQ,
         }
       }
     }
-#ifdef DEBUG
+#ifdef FLASH_ATTN_MMA_DEBUG
     if (thread0()) {  // clang-format off
       print("scaled tSrS: "); print_tensor(tSrS); print("\n");
       print("global_row_denominator: "); print_tensor(global_row_denominator); print("\n");
@@ -374,14 +379,14 @@ __global__ void flash_attn_cute_kernel(typename FlashAttnConfig_::T *pQ,
     __syncthreads();
 
     copy(tiled_s2r_copy_V, tXsVt, tXrVt);
-#ifdef DEBUG
+#ifdef FLASH_ATTN_MMA_DEBUG
     if (thread0()) {  // clang-format off
       print("tOrVt: "); print_tensor(tOrVt); print("\n");
     }  // clang-format on
 #endif
     gemm(tiled_mma, tOrS, tOrVt, tOrO);
 
-#ifdef DEBUG
+#ifdef FLASH_ATTN_MMA_DEBUG
     if (thread0()) {  // clang-format off
       print("tOrO: "); print_tensor(tOrO); print("\n");
     }  // clang-format on
@@ -406,12 +411,13 @@ __global__ void flash_attn_cute_kernel(typename FlashAttnConfig_::T *pQ,
       }
     }
   }
-#ifdef DEBUG
+#ifdef FLASH_ATTN_MMA_DEBUG
   if (thread0()) {  // clang-format off
     print("global_row_denominator: "); print_tensor(global_row_denominator); print("\n");
     print("tOrO: "); print_tensor(tOrO); print("\n");
   }  // clang-format on
 #endif
+  // copy O back to gmem
   auto tiled_r2s_copy_O = make_tiled_copy_C(SmemCopyAtomO{}, tiled_mma);
   auto thr_r2s_copy_O = tiled_r2s_copy_O.get_slice(tx);
   auto tXrO = thr_r2s_copy_O.retile_S(tOrO);
