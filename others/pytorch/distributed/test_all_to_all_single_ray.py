@@ -23,14 +23,15 @@ class RayAll2AllWorker:
         self.world_size = world_size
         setup_logger(rank)
         self.logger = logging.getLogger()
+        os.environ["RANK"] = str(rank)
+        os.environ["WORLD_SIZE"] = str(world_size)
         os.environ["MASTER_ADDR"] = "localhost"
         os.environ["MASTER_PORT"] = "29500"
 
         if torch.cuda.is_available():
-            num_gpus = torch.cuda.device_count()
-            torch.cuda.set_device(rank % num_gpus)
-            self.device = torch.device(f"cuda:{rank % num_gpus}")
-            self.backend = "nccl" if num_gpus >= world_size else "gloo"
+            self.device = f"cuda:{torch.cuda.current_device()}"
+            self.backend = "nccl"
+            self.logger.info(f"Using GPU: {self.device}")
         else:
             self.device = torch.device("cpu")
             self.backend = "gloo"
@@ -45,7 +46,7 @@ class RayAll2AllWorker:
             f"Initialized with backend: {self.backend}, device: {self.device}"
         )
 
-    def run(self) -> None:
+    def run(self) -> torch.Tensor:
 
         try:
             # All-to-All Single
@@ -110,19 +111,16 @@ class RayAll2AllWorker:
             self.logger.info(
                 f"All-to-All Single <UnEven> output_t at Rank {self.rank}:\n {output_t}"
             )
+            return output_t
 
         except Exception as e:
             self.logger.error(f"Process failed: {str(e)}")
             raise e
 
-    def __exit__(self):
-        if dist.is_initialized():
-            dist.destroy_process_group()
-            self.logger.info("Process group destroyed")
-
 
 if __name__ == "__main__":
     world_size = torch.cuda.device_count()
+    print(f"world_size: {world_size}")
     if not ray.is_initialized():
         ray.init()
     workers = [
@@ -130,3 +128,7 @@ if __name__ == "__main__":
     ]
     results = ray.get([worker.run.remote() for worker in workers])
     ray.shutdown()
+    if dist.is_initialized():
+        dist.destroy_process_group()
+        print("Process group destroyed")
+    print("All processes completed successfully")
