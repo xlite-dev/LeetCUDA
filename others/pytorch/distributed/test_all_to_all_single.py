@@ -56,10 +56,14 @@ def run(rank, world_size):
             input = torch.tensor(
                 [20, 21, 22, 23, 24], dtype=torch.int64, device=device
             )
-        else:
+        elif rank == 3:
             input = torch.tensor(
                 [30, 31, 32, 33, 34, 35, 36], dtype=torch.int64, device=device
             )
+        else:
+            input = None
+
+        assert input is not None, "Input tensor should not be None"
 
         input_splits = [[2, 2, 1, 1], [3, 2, 2, 2], [2, 1, 1, 1], [2, 2, 2, 1]]
 
