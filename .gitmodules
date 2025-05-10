@@ -1,9 +1,9 @@
 [submodule "third-party/cutlass"]
 	path = third-party/cutlass
 	url = https://github.com/NVIDIA/cutlass.git
-[submodule "ffpa-attn-mma"]
-	path = ffpa-attn-mma
-	url = https://github.com/xlite-dev/ffpa-attn-mma.git
-[submodule "hgemm-tensorcores-mma"]
-	path = hgemm-tensorcores-mma
-	url = https://github.com/xlite-dev/hgemm-tensorcores-mma
+[submodule "ffpa-attn"]
+	path = ffpa-attn
+	url = https://github.com/xlite-dev/ffpa-attn.git
+[submodule "HGEMM"]
+	path = HGEMM
+	url = https://github.com/xlite-dev/HGEMM
