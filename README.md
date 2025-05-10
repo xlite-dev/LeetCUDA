@@ -21,7 +21,8 @@
  </div>
 </div>
 
-📚 **LeetCUDA**: It includes **Tensor/CUDA Cores, TF32/F16/BF16/F8**, [📖200+ CUDA Kernels🔥](#cuda-kernel) with PyTorch, [📖100+ LLM/CUDA🔥](#my-blogs-part-1) blogs, [📖HGEMM⚡️](./kernels/hgemm) which can achieve `98%~100%` TFLOPS of **cuBLAS**, and [📖flash-attn-mma⚡️](./kernels/flash-attn) using Tensor Cores with pure MMA PTX.
+📚 **LeetCUDA**: It includes **Tensor/CUDA Cores, TF32/F16/BF16/F8**, [📖200+ CUDA Kernels🔥](#cuda-kernel) with PyTorch, [📖100+ LLM/CUDA🔥](#my-blogs-part-1) blogs, [📖HGEMM⚡️](./kernels/hgemm) which can achieve `98%~100%` TFLOPS of **cuBLAS**, and [📖flash-attn-mma⚡️](./kernels/flash-attn) using Tensor Cores with pure MMA PTX. ♥️ Please consider to leave a ⭐️ Star to support me, my bro ~ ♥️
+
 <div align="center">
   <p align="center">
     <a href="#contribute">🔥🔥 PR Welcome: Add Your Kernel to LeetCUDA! Let's make it Awesome together! 🎉🎉</a>
@@ -50,6 +51,14 @@
 ## 📖 Contents
 <div id="contents"></div>
 <!---
+- [📖 HGEMM-MMA 🎉🎉](#HGEMM-bench)
+- [📖 FlashAttention-MMA 🎉🎉](#fa-mma-bench)
+- [📖 200+ CUDA Kernels 🔥🔥](#cuda-kernel)
+- [📖 100+ 高性能计算文章 💡💡](#my-blogs-part-1)
+- [📖 How to Contribute 👀👇](#contribute)
+--->
+
+- [📖 HGEMM-MMA 🎉🎉](#HGEMM-bench)
   - [📚 CUDA/Tensor Cores](#HGEMM-bench)
   - [📚 Tile Block(Br, Bc)](#HGEMM-bench)
   - [📚 Tile MMAs/Warps](#HGEMM-bench)
@@ -67,9 +76,6 @@
   - [📚 Split Q + Shared QKV](#mma-share-qkv)
   - [📚 Split Q + QK Tiling](#mma-tiling-qk)
   - [📚 Split Q + QKV Tiling](#mma-tiling-qkv)
-- [📖 How to Contribute? 👀👇](#contribute)
-- [📖 HGEMM-MMA 🎉🎉](#HGEMM-bench)
-- [📖 FlashAttention-MMA 🎉🎉](#fa-mma-bench)
 - [📖 200+ CUDA Kernels 🔥🔥](#cuda-kernel)
   - [📚 Easy ⭐️](#cuda-kernel-easy-medium)
   - [📚 Medium ⭐️⭐️](#cuda-kernel-easy-medium)
@@ -87,13 +93,8 @@
   - [📚 CuTe系列详解与实践](#other-blogs)
   - [📚 GPU指令集架构精解](#other-blogs)
   - [📚 GPU通信架构精解](#other-blogs)
--->  
-
-- [📖 HGEMM-MMA 🎉🎉](#HGEMM-bench)
-- [📖 FlashAttention-MMA 🎉🎉](#fa-mma-bench)
-- [📖 200+ CUDA Kernels 🔥🔥](#cuda-kernel)
-- [📖 100+ 高性能计算文章 💡💡](#my-blogs-part-1)
 - [📖 How to Contribute 👀👇](#contribute)
+
 
 ## 📖 HGEMM Benchmark 🎉🎉
 
@@ -490,6 +491,7 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 |📖 CUTLASS/CuTe Kernel| 📖 Elem DType| 📖 Acc DType| 📖 Docs | 📖 Level |
 |:---|:---|:---|:---|:---|
 | ✔️ [mat_transpose_cute](./kernels/mat-transpose/mat_transpose_cute.cu)|f32|/|[link](./kernels/mat-transpose/)|⭐️⭐️|
+| ✔️ [flash_attn_cute(naive)](./kernels/flash-attn/flash_attn_cute.cu)|f16|f32|[link](./kernels/flash-attn/)|⭐️⭐️⭐️|
 | ✔️ [hgemm_mma_stages_swizzle{smem}...cute*](./kernels/hgemm/cutlass/hgemm_mma_stage_tn_cute.cu)|f16|f16|[link](./kernels/hgemm/)|⭐️⭐️⭐️|
 
 ## 📖 100+ 高性能计算与分布式-技术博客
