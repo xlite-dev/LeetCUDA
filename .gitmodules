@@ -6,4 +6,4 @@
 	url = https://github.com/xlite-dev/ffpa-attn.git
 [submodule "HGEMM"]
 	path = HGEMM
-	url = https://github.com/xlite-dev/HGEMM
+	url = https://github.com/xlite-dev/HGEMM.git
