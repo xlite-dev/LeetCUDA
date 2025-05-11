@@ -21,7 +21,7 @@
  </div>
 </div>
 
-📚 **LeetCUDA**: It includes **Tensor/CUDA Cores, TF32/F16/BF16/F8**, [📖200+ CUDA Kernels🔥](#cuda-kernel) with PyTorch, [📖100+ LLM/CUDA🔥](#my-blogs-part-1) blogs, [📖HGEMM⚡️](./kernels/hgemm) which can achieve `98%~100%` TFLOPS of **cuBLAS**, and [📖flash-attn-mma⚡️](./kernels/flash-attn) using Tensor Cores with pure MMA PTX. ♥️ Please consider to leave a ⭐️ Star to support me, my bro ~ ♥️
+📚 **LeetCUDA**: It includes **Tensor/CUDA Cores, TF32/F16/BF16/F8**, [📖200+ CUDA Kernels🔥](#cuda-kernel) with PyTorch, [📖100+ LLM/CUDA🔥](#my-blogs-part-1) blogs, [📖HGEMM⚡️](./kernels/hgemm) which can achieve `98%~100%` TFLOPS of **cuBLAS**, and [📖flash-attn⚡️](./kernels/flash-attn) using Tensor Cores with pure MMA PTX. ♥️ Please consider to leave a ⭐️ Star to support me, my bro ~ ♥️
 
 <div align="center">
   <p align="center">
@@ -116,7 +116,7 @@ Currently, on NVIDIA L20, RTX 4090 and RTX 3080 Laptop, compared with cuBLAS's d
 
 <div id="fa-mma-bench"></div>
 
-I have also implemented **FlashAttention-2** using pure MMA PTX instructions, which supports features such as Multi-Stages, Tile MMA, Tile Warp, Shared KV SMEM, **Fully Shared QKV SMEM**, **Prefetch Q s2r**, **Prefetch K/V g2s**, **QKV Fine-grained Tiling**, Collective Store, etc. Please refer to [flash-attention-mma⚡️⚡️](./kernels/flash-attn) for more details.
+I have also implemented **FlashAttention-2** using pure MMA PTX instructions, which supports features such as Multi-Stages, Tile MMA, Tile Warp, Shared KV SMEM, **Fully Shared QKV SMEM**, **Prefetch Q s2r**, **Prefetch K/V g2s**, **QKV Fine-grained Tiling**, Collective Store, etc. Please refer to [flash-attn⚡️⚡️](./kernels/flash-attn) for more details.
 
 ![flash-attn-mma](https://github.com/user-attachments/assets/6f66796d-44d5-4ec1-b224-af997bd152b2)
 
@@ -139,7 +139,7 @@ Currently, for small-scale attention `(B<=4, H <=48, SeqLen <= 8192, D <= 64)` i
 |🤖[ffpa-attn](https://github.com/xlite-dev/ffpa-attn)|(1,48,8192,512)|**39 TFLOPS**|**104 TFLOPS**|**200 TFLOPS**|
 |Precision Errors vs FA2/SDPA| / | max: < ~1e-3 | min: ~0.0 | mean: < ~1e-5 |
 
-The `Split KV` and `Split Q` implementations have been carried out in [flash-attention-mma⚡️⚡️](./kernels/flash-attn) for performance comparison. The `Split KV` method, which involves splitting all QKV across MMA (Warps), is slower than `Split Q` method, which splitting Q across MMA(Warps) and keep access KV for all MMA(Warps).
+The `Split KV` and `Split Q` implementations have been carried out in [flash-attn⚡️⚡️](./kernels/flash-attn) for performance comparison. The `Split KV` method, which involves splitting all QKV across MMA (Warps), is slower than `Split Q` method, which splitting Q across MMA(Warps) and keep access KV for all MMA(Warps).
 
 - 📚 Split KV (Basic, FlashAttention-1)
 <div id="mma-split-kv"></div>
@@ -427,6 +427,7 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 
 |📖 CUDA Kernel| 📖 Elem DType| 📖 Acc DType| 📖 Docs | 📖 Level |
 |:---|:---|:---|:---|:---|
+| ✔️ [flash_attn_cute(naive)](./kernels/flash-attn/cutlass/flash_attn_cute.cu)|f16|f32|[link](./kernels/flash-attn/)|⭐️⭐️⭐️|
 | ✔️ [How to implement MMA smem swizzle*](./kernels/swizzle/mma_simple_swizzle.cu)|f16|f16|[link](./kernels/swizzle)|⭐️⭐️⭐️|
 | ✔️ [flash_attn_mma_stages_split_kv*](./kernels/flash-attn/mma/basic/flash_attn_mma_split_kv.cu)|f16|f16|[link](./kernels/flash-attn)|⭐️⭐️⭐️⭐️|
 | ✔️ [flash_attn_mma_stages_split_q*](./kernels/flash-attn/mma/basic/flash_attn_mma_split_q.cu)|f16|f16|[link](./kernels/flash-attn)|⭐️⭐️⭐️⭐️|
@@ -491,7 +492,7 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 |📖 CUTLASS/CuTe Kernel| 📖 Elem DType| 📖 Acc DType| 📖 Docs | 📖 Level |
 |:---|:---|:---|:---|:---|
 | ✔️ [mat_transpose_cute](./kernels/mat-transpose/mat_transpose_cute.cu)|f32|/|[link](./kernels/mat-transpose/)|⭐️⭐️|
-| ✔️ [flash_attn_cute(naive)](./kernels/flash-attn/flash_attn_cute.cu)|f16|f32|[link](./kernels/flash-attn/)|⭐️⭐️⭐️|
+| ✔️ [flash_attn_cute(naive)](./kernels/flash-attn/cutlass/flash_attn_cute.cu)|f16|f32|[link](./kernels/flash-attn/)|⭐️⭐️⭐️|
 | ✔️ [hgemm_mma_stages_swizzle{smem}...cute*](./kernels/hgemm/cutlass/hgemm_mma_stage_tn_cute.cu)|f16|f16|[link](./kernels/hgemm/)|⭐️⭐️⭐️|
 
 ## 📖 100+ 高性能计算与分布式-技术博客
