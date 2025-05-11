@@ -505,7 +505,8 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 |:---|:---|:---|
 | [[Triton编程][基础]📖Triton极简入门: Triton Vector Add](https://zhuanlan.zhihu.com/p/1902778199261291694)|@xlite-dev|⭐️⭐️⭐|
 | [[Triton编程][基础]📖Triton Fused Softmax Kernel详解: 从Python源码到PTX分析](https://zhuanlan.zhihu.com/p/1899562146477609112)|@xlite-dev|⭐️⭐️⭐|
-| [[Triton编程][进阶]📖图解vLLM Prefix Prefill Triton Kernel](https://zhuanlan.zhihu.com/p/695799736)|@xlite-dev|⭐️⭐️⭐️|
+| [[Triton编程][基础]📖vLLM Triton Merge Attention States Kernel详解](https://zhuanlan.zhihu.com/p/1904937907703243110)|@xlite-dev|⭐️⭐️⭐|
+| [[Triton编程][进阶]📖vLLM Prefix Prefill Triton Kernel图解](https://zhuanlan.zhihu.com/p/695799736)|@xlite-dev|⭐️⭐️⭐️|
 | [[张量/序列并行]📖序列并行: BPT、Ring-Attention及Striped-Attention笔记](https://zhuanlan.zhihu.com/p/6456708235)|@xlite-dev|⭐️⭐️⭐|
 | [[vLLM实践][算子]📖vLLM算子开发流程：”保姆级“详细记录](https://zhuanlan.zhihu.com/p/1892966682634473987)|@xlite-dev|⭐️⭐️⭐|
 | [[vLLM实践][万字]📖vLLM + DeepSeek-R1 671B 多机部署及修Bug笔记](https://zhuanlan.zhihu.com/p/29950052712)|@xlite-dev|⭐️⭐️⭐|
