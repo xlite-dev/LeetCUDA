@@ -25,9 +25,16 @@
 
 <div align="center">
   <p align="center">
-    <a href="#contribute">🔥🔥 PR Welcome: Add Your Kernel to LeetCUDA! Let's make it Awesome together! 🎉🎉</a>
+    <a href="#contribute">🔥🔥 PR Welcome: Add Your Kernel to LeetCUDA! Let's make LeetCUDA Awesome together! 🎉🎉</a>
   </p>
 </div>
+
+<div align="center">
+  <p align="center">
+    <a href="#contribute">愿以青衿涉险苦，为君先踏棘荆途。他年若览通衢阔，莫忘初逢问路吾。</a>
+  </p>
+</div>
+
 
 ## 📖 News 🔥🔥
 <div id="news"></div>
