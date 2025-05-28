@@ -123,6 +123,8 @@ def get_build_sources():
     build_sources.append(
         "./mma/swizzle/flash_attn_mma_tiling_qkv_swizzle_qkv_F32F16F16F32.cu"
     )
+    # CuTe
+    build_sources.append("./cutlass/flash_attn_cute.cu")
     # Others
     if args.build_others:
         build_sources.append("./mma/others/flash_attn_mma_share_qkv_Os2g.cu")
