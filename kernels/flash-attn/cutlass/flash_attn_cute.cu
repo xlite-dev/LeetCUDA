@@ -37,7 +37,7 @@ struct FlashAttnConfig {
 
   // Gmem2Smem config
   using GmemCopyAtom =
-      Copy_Atom<AutoVectorizingCopyWithAssumedAlignment<sizeof(uint128_t)>, T>;
+      Copy_Atom<AutoVectorizingCopyWithAssumedAlignment<sizeof(uint128_t)*8>, T>;
   static constexpr int GmemValsPerLoad = sizeof(uint128_t) / sizeof(T);
   static constexpr int GmemThreadsPerRow =
       HeadDim / GmemValsPerLoad; // each thread reads 128 bit
@@ -56,7 +56,7 @@ struct FlashAttnConfig {
   using SmemCopyAtomTransposed =
       Copy_Atom<SM75_U16x8_LDSM_T, T>; // for column major load
   using SmemCopyAtomO =
-      Copy_Atom<AutoVectorizingCopyWithAssumedAlignment<sizeof(uint128_t)>,
+      Copy_Atom<AutoVectorizingCopyWithAssumedAlignment<sizeof(uint128_t)*8>,
                 T>; // NOTE: stmatrix is only available after sm90, we use a
                     // vectorized copy instead
 
