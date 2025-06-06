@@ -201,8 +201,15 @@ void hgemv_k16_f16(torch::Tensor a, torch::Tensor x, torch::Tensor y) {
                         reinterpret_cast<half *>(y.data_ptr()), M, K);
 }
 
+extern void hgemv_f16_cute(torch::Tensor, torch::Tensor, torch::Tensor);
+extern void hgemv_f16x8_cute(torch::Tensor, torch::Tensor, torch::Tensor);
+extern void hgemv_tensor_core_cute(torch::Tensor, torch::Tensor, torch::Tensor);
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   TORCH_BINDING_COMMON_EXTENSION(hgemv_k32_f16)
   TORCH_BINDING_COMMON_EXTENSION(hgemv_k128_f16x4)
   TORCH_BINDING_COMMON_EXTENSION(hgemv_k16_f16)
+  TORCH_BINDING_COMMON_EXTENSION(hgemv_f16_cute)
+  TORCH_BINDING_COMMON_EXTENSION(hgemv_f16x8_cute)
+  TORCH_BINDING_COMMON_EXTENSION(hgemv_tensor_core_cute)
 }

@@ -1,3 +1,4 @@
+import os
 import time
 from functools import partial
 from typing import Optional
@@ -7,10 +8,14 @@ from torch.utils.cpp_extension import load
 
 torch.set_grad_enabled(False)
 
+CUTLASS_REPO_PATH = os.environ.get(
+    "CUTLASS_REPO_PATH", os.path.expanduser("../../third-party/cutlass")
+)
+
 # Load the CUDA kernel as a python module
 lib = load(
     name="hgemv_lib",
-    sources=["hgemv.cu"],
+    sources=["hgemv.cu", "hgemv_cute.cu"],
     extra_cuda_cflags=[
         "-O3",
         "-U__CUDA_NO_HALF_OPERATORS__",
@@ -22,6 +27,7 @@ lib = load(
         "--use_fast_math",
     ],
     extra_cflags=["-std=c++17"],
+    extra_include_paths=[os.path.join(CUTLASS_REPO_PATH, "include")],
 )
 
 
@@ -73,6 +79,9 @@ b = torch.randn((K, N)).cuda().half().contiguous()
 c = torch.randn((M, N)).cuda().half().contiguous()
 run_benchmark(lib.hgemv_k32_f16, a, b, "k32f16", c)
 run_benchmark(lib.hgemv_k128_f16x4, a, b, "k128f16x4", c)
+run_benchmark(lib.hgemv_f16_cute, a, b, "hgemv_f16_cute", c)
+run_benchmark(lib.hgemv_f16x8_cute, a, b, "hgemv_f16x8_cute", c)
+run_benchmark(lib.hgemv_tensor_core_cute, a, b, "hgemv_tensor_core_cute", c)
 run_benchmark(partial(torch.matmul, out=c), a, b, "f16_th")
 print("-" * 80)
 
@@ -81,5 +90,8 @@ a = torch.randn((M, K)).cuda().half().contiguous()
 b = torch.randn((K, N)).cuda().half().contiguous()
 c = torch.randn((M, N)).cuda().half().contiguous()
 run_benchmark(lib.hgemv_k16_f16, a, b, "k16f16", c)
+run_benchmark(lib.hgemv_f16_cute, a, b, "hgemv_f16_cute", c)
+run_benchmark(lib.hgemv_f16x8_cute, a, b, "hgemv_f16x8_cute", c)
+run_benchmark(lib.hgemv_tensor_core_cute, a, b, "hgemv_tensor_core_cute", c)
 run_benchmark(partial(torch.matmul, out=c), a, b, "f16_th")
 print("-" * 80)
