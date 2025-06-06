@@ -30,8 +30,10 @@
 <div align="center">
   <p align="center">
     <a href="#contribute">🔥🔥 PR Welcome: Add Your Kernel to LeetCUDA! Let's make it Awesome together! 🎉🎉</a>
+    <a href=https://github.com/xlite-dev/LeetCUDA/graphs/contributors > <img src=https://opencollective.com/leetcuda/contributors.svg height=40px > </a>
   </p>
 </div>
+
 
 ## 📖 News 🔥🔥
 <div id="news"></div>
