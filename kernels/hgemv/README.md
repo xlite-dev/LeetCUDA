@@ -12,7 +12,6 @@
 - [X] hgemv_tensor_core_cute_kernel
 - [X] PyTorch bindings
 
-> 目前 hgemv_tensor_core_cute_kernel 只是一个基础版本的实现，后续还可以将矩阵乘法用到一些优化技巧加入进来。
 
 ## 测试
 
