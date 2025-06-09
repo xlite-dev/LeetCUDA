@@ -40,455 +40,471 @@ python3 mat_transpose.py
 ```bash
 ----------------------------------------------------------------------------------------------------------------------------------
                                                        M=1024, N=1024
-                       out_original: [0.0, 1.0, 1024.0], validate False, time:0.00667048ms
-                    out_f32_col2row: [0.0, 1024.0, 1.0], validate True , time:0.01761174ms
-                    out_f32_row2col: [0.0, 1024.0, 1.0], validate True , time:0.01008821ms
-                out_f32_col2row(2d): [0.0, 1024.0, 1.0], validate True , time:0.00852585ms
-                out_f32_row2col(2d): [0.0, 1024.0, 1.0], validate True , time:0.00851846ms
-                  out_f32_diagnonal: [0.0, 1024.0, 1.0], validate True , time:0.00641012ms
-                  out_f32x4_col2row: [0.0, 1024.0, 1.0], validate True , time:0.01742840ms
-                  out_f32x4_row2col: [0.0, 1024.0, 1.0], validate True , time:0.00943899ms
-              out_f32x4_col2row(2d): [0.0, 1024.0, 1.0], validate True , time:0.00987363ms
-              out_f32x4_row2col(2d): [0.0, 1024.0, 1.0], validate True , time:0.00499630ms
-       out_f32x4_shared_col2row(2d): [0.0, 1024.0, 1.0], validate True , time:0.00524426ms
-       out_f32x4_shared_row2col(2d): [0.0, 1024.0, 1.0], validate True , time:0.00670385ms
-   out_f32x4_shared_bcf_col2row(2d): [0.0, 1024.0, 1.0], validate True , time:0.00536251ms
-   out_f32x4_shared_bcf_row2col(2d): [0.0, 1024.0, 1.0], validate True , time:0.00580740ms
- out_mat_transpose_cute_col2row_reg: [0.0, 1024.0, 1.0], validate True , time:0.00747943ms
- out_mat_transpose_cute_row2col_reg: [0.0, 1024.0, 1.0], validate True , time:0.00599384ms
-    out_mat_transpose_cute_col_smem: [0.0, 1024.0, 1.0], validate True , time:0.00989509ms
-    out_mat_transpose_cute_row_smem: [0.0, 1024.0, 1.0], validate True , time:0.00534320ms
-out_mat_transpose_cute_col_smem_swizzled: [0.0, 1024.0, 1.0], validate True , time:0.00869393ms
-out_mat_transpose_cute_row_smem_swizzled: [0.0, 1024.0, 1.0], validate True , time:0.00555682ms
-out_mat_transpose_cute_row_cvectorized: [0.0, 1024.0, 1.0], validate True , time:0.00727987ms
-out_mat_transpose_cute_row_rvectorized: [0.0, 1024.0, 1.0], validate True , time:0.00493646ms
-out_mat_transpose_cute_row_cvectorized_swizzled: [0.0, 1024.0, 1.0], validate True , time:0.00592184ms
-out_mat_transpose_cute_row_rvectorized_swizzled: [0.0, 1024.0, 1.0], validate True , time:0.00563526ms
-                         out_f32_th: [0.0, 1024.0, 1.0], validate True , time:0.01460934ms
-                out_f32_th_compiled: [0.0, 1024.0, 1.0], validate True , time:0.03173113ms
+                       out_original: [0.0, 1.0, 1024.0], validate False, time:0.01322293ms
+                    out_f32_col2row: [0.0, 1024.0, 1.0], validate True , time:0.03734207ms
+                    out_f32_row2col: [0.0, 1024.0, 1.0], validate True , time:0.02030921ms
+                out_f32_col2row(2d): [0.0, 1024.0, 1.0], validate True , time:0.01762843ms
+                out_f32_row2col(2d): [0.0, 1024.0, 1.0], validate True , time:0.01770711ms
+                  out_f32_diagnonal: [0.0, 1024.0, 1.0], validate True , time:0.01362014ms
+                  out_f32x4_col2row: [0.0, 1024.0, 1.0], validate True , time:0.03673577ms
+                  out_f32x4_row2col: [0.0, 1024.0, 1.0], validate True , time:0.01884627ms
+              out_f32x4_col2row(2d): [0.0, 1024.0, 1.0], validate True , time:0.01892900ms
+              out_f32x4_row2col(2d): [0.0, 1024.0, 1.0], validate True , time:0.01024675ms
+       out_f32x4_shared_col2row(2d): [0.0, 1024.0, 1.0], validate True , time:0.01027608ms
+       out_f32x4_shared_row2col(2d): [0.0, 1024.0, 1.0], validate True , time:0.01155329ms
+   out_f32x4_shared_bcf_col2row(2d): [0.0, 1024.0, 1.0], validate True , time:0.01036501ms
+   out_f32x4_shared_bcf_row2col(2d): [0.0, 1024.0, 1.0], validate True , time:0.01045060ms
+ out_mat_transpose_cute_col2row_reg: [0.0, 1024.0, 1.0], validate True , time:0.01586843ms
+ out_mat_transpose_cute_row2col_reg: [0.0, 1024.0, 1.0], validate True , time:0.01302576ms
+    out_mat_transpose_cute_col_smem: [0.0, 1024.0, 1.0], validate True , time:0.01425385ms
+    out_mat_transpose_cute_row_smem: [0.0, 1024.0, 1.0], validate True , time:0.01313591ms
+out_mat_transpose_cute_col_smem_swizzled: [0.0, 1024.0, 1.0], validate True , time:0.01398778ms
+out_mat_transpose_cute_row_smem_swizzled: [0.0, 1024.0, 1.0], validate True , time:0.01285744ms
+out_mat_transpose_cute_row_cvectorized: [0.0, 1024.0, 1.0], validate True , time:0.01234102ms
+out_mat_transpose_cute_row_rvectorized: [0.0, 1024.0, 1.0], validate True , time:0.01036048ms
+out_mat_transpose_cute_row_cvectorized_swizzled: [0.0, 1024.0, 1.0], validate True , time:0.01147723ms
+out_mat_transpose_cute_row_rvectorized_swizzled: [0.0, 1024.0, 1.0], validate True , time:0.01037669ms
+out_mat_transpose_cute_row_rvectorized_swizzled_optimized: [0.0, 1024.0, 1.0], validate True , time:0.01087165ms
+                         out_f32_th: [0.0, 1024.0, 1.0], validate True , time:0.03082085ms
+                out_f32_th_compiled: [0.0, 1024.0, 1.0], validate True , time:0.07333684ms
 ----------------------------------------------------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------------------------------------
                                                        M=1024, N=2048
-                       out_original: [0.0, 1.0, 2048.0], validate False, time:0.00685191ms
-                    out_f32_col2row: [0.0, 2048.0, 1.0], validate True , time:0.03323030ms
-                    out_f32_row2col: [0.0, 2048.0, 1.0], validate True , time:0.01826382ms
-                out_f32_col2row(2d): [0.0, 2048.0, 1.0], validate True , time:0.01468587ms
-                out_f32_row2col(2d): [0.0, 2048.0, 1.0], validate True , time:0.01467657ms
-                  out_f32x4_col2row: [0.0, 2048.0, 1.0], validate True , time:0.03329539ms
-                  out_f32x4_row2col: [0.0, 2048.0, 1.0], validate True , time:0.01831269ms
-              out_f32x4_col2row(2d): [0.0, 2048.0, 1.0], validate True , time:0.01730418ms
-              out_f32x4_row2col(2d): [0.0, 2048.0, 1.0], validate True , time:0.00699377ms
-       out_f32x4_shared_col2row(2d): [0.0, 2048.0, 1.0], validate True , time:0.00813270ms
-       out_f32x4_shared_row2col(2d): [0.0, 2048.0, 1.0], validate True , time:0.01007080ms
-   out_f32x4_shared_bcf_col2row(2d): [0.0, 2048.0, 1.0], validate True , time:0.00836945ms
-   out_f32x4_shared_bcf_row2col(2d): [0.0, 2048.0, 1.0], validate True , time:0.00849128ms
- out_mat_transpose_cute_col2row_reg: [0.0, 2048.0, 1.0], validate True , time:0.01324391ms
- out_mat_transpose_cute_row2col_reg: [0.0, 2048.0, 1.0], validate True , time:0.00926590ms
-    out_mat_transpose_cute_col_smem: [0.0, 2048.0, 1.0], validate True , time:0.01706100ms
-    out_mat_transpose_cute_row_smem: [0.0, 2048.0, 1.0], validate True , time:0.00816727ms
-out_mat_transpose_cute_col_smem_swizzled: [0.0, 2048.0, 1.0], validate True , time:0.01489687ms
-out_mat_transpose_cute_row_smem_swizzled: [0.0, 2048.0, 1.0], validate True , time:0.00876975ms
-out_mat_transpose_cute_row_cvectorized: [0.0, 2048.0, 1.0], validate True , time:0.01191163ms
-out_mat_transpose_cute_row_rvectorized: [0.0, 2048.0, 1.0], validate True , time:0.00748754ms
-out_mat_transpose_cute_row_cvectorized_swizzled: [0.0, 2048.0, 1.0], validate True , time:0.00862432ms
-out_mat_transpose_cute_row_rvectorized_swizzled: [0.0, 2048.0, 1.0], validate True , time:0.00858784ms
-                         out_f32_th: [0.0, 2048.0, 1.0], validate True , time:0.02438354ms
-                out_f32_th_compiled: [0.0, 2048.0, 1.0], validate True , time:0.04902887ms
+                       out_original: [0.0, 1.0, 2048.0], validate False, time:0.02374721ms
+                    out_f32_col2row: [0.0, 2048.0, 1.0], validate True , time:0.07149410ms
+                    out_f32_row2col: [0.0, 2048.0, 1.0], validate True , time:0.03805780ms
+                out_f32_col2row(2d): [0.0, 2048.0, 1.0], validate True , time:0.03402877ms
+                out_f32_row2col(2d): [0.0, 2048.0, 1.0], validate True , time:0.03385830ms
+                  out_f32x4_col2row: [0.0, 2048.0, 1.0], validate True , time:0.06924939ms
+                  out_f32x4_row2col: [0.0, 2048.0, 1.0], validate True , time:0.03661728ms
+              out_f32x4_col2row(2d): [0.0, 2048.0, 1.0], validate True , time:0.03592300ms
+              out_f32x4_row2col(2d): [0.0, 2048.0, 1.0], validate True , time:0.02259111ms
+       out_f32x4_shared_col2row(2d): [0.0, 2048.0, 1.0], validate True , time:0.02224588ms
+       out_f32x4_shared_row2col(2d): [0.0, 2048.0, 1.0], validate True , time:0.02293062ms
+   out_f32x4_shared_bcf_col2row(2d): [0.0, 2048.0, 1.0], validate True , time:0.02227783ms
+   out_f32x4_shared_bcf_row2col(2d): [0.0, 2048.0, 1.0], validate True , time:0.02276349ms
+ out_mat_transpose_cute_col2row_reg: [0.0, 2048.0, 1.0], validate True , time:0.03074288ms
+ out_mat_transpose_cute_row2col_reg: [0.0, 2048.0, 1.0], validate True , time:0.02413964ms
+    out_mat_transpose_cute_col_smem: [0.0, 2048.0, 1.0], validate True , time:0.02684236ms
+    out_mat_transpose_cute_row_smem: [0.0, 2048.0, 1.0], validate True , time:0.02411056ms
+out_mat_transpose_cute_col_smem_swizzled: [0.0, 2048.0, 1.0], validate True , time:0.02621555ms
+out_mat_transpose_cute_row_smem_swizzled: [0.0, 2048.0, 1.0], validate True , time:0.02390814ms
+out_mat_transpose_cute_row_cvectorized: [0.0, 2048.0, 1.0], validate True , time:0.02338839ms
+out_mat_transpose_cute_row_rvectorized: [0.0, 2048.0, 1.0], validate True , time:0.02213287ms
+out_mat_transpose_cute_row_cvectorized_swizzled: [0.0, 2048.0, 1.0], validate True , time:0.02302265ms
+out_mat_transpose_cute_row_rvectorized_swizzled: [0.0, 2048.0, 1.0], validate True , time:0.02224278ms
+out_mat_transpose_cute_row_rvectorized_swizzled_optimized: [0.0, 2048.0, 1.0], validate True , time:0.02258778ms
+                         out_f32_th: [0.0, 2048.0, 1.0], validate True , time:0.06115103ms
+                out_f32_th_compiled: [0.0, 2048.0, 1.0], validate True , time:0.05778503ms
 ----------------------------------------------------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------------------------------------
                                                        M=1024, N=4096
-                       out_original: [0.0, 1.0, 4096.0], validate False, time:0.01132798ms
-                    out_f32_col2row: [0.0, 4096.0, 1.0], validate True , time:0.06182218ms
-                    out_f32_row2col: [0.0, 4096.0, 1.0], validate True , time:0.03392482ms
-                out_f32_col2row(2d): [0.0, 4096.0, 1.0], validate True , time:0.02772188ms
-                out_f32_row2col(2d): [0.0, 4096.0, 1.0], validate True , time:0.02774906ms
-                  out_f32x4_col2row: [0.0, 4096.0, 1.0], validate True , time:0.06245613ms
-                  out_f32x4_row2col: [0.0, 4096.0, 1.0], validate True , time:0.03352976ms
-              out_f32x4_col2row(2d): [0.0, 4096.0, 1.0], validate True , time:0.03137302ms
-              out_f32x4_row2col(2d): [0.0, 4096.0, 1.0], validate True , time:0.01143122ms
-       out_f32x4_shared_col2row(2d): [0.0, 4096.0, 1.0], validate True , time:0.01373696ms
-       out_f32x4_shared_row2col(2d): [0.0, 4096.0, 1.0], validate True , time:0.01705766ms
-   out_f32x4_shared_bcf_col2row(2d): [0.0, 4096.0, 1.0], validate True , time:0.01421714ms
-   out_f32x4_shared_bcf_row2col(2d): [0.0, 4096.0, 1.0], validate True , time:0.01388431ms
- out_mat_transpose_cute_col2row_reg: [0.0, 4096.0, 1.0], validate True , time:0.02740574ms
- out_mat_transpose_cute_row2col_reg: [0.0, 4096.0, 1.0], validate True , time:0.01666737ms
-    out_mat_transpose_cute_col_smem: [0.0, 4096.0, 1.0], validate True , time:0.03182530ms
-    out_mat_transpose_cute_row_smem: [0.0, 4096.0, 1.0], validate True , time:0.01621008ms
-out_mat_transpose_cute_col_smem_swizzled: [0.0, 4096.0, 1.0], validate True , time:0.02744722ms
-out_mat_transpose_cute_row_smem_swizzled: [0.0, 4096.0, 1.0], validate True , time:0.01582789ms
-out_mat_transpose_cute_row_cvectorized: [0.0, 4096.0, 1.0], validate True , time:0.02123284ms
-out_mat_transpose_cute_row_rvectorized: [0.0, 4096.0, 1.0], validate True , time:0.01262116ms
-out_mat_transpose_cute_row_cvectorized_swizzled: [0.0, 4096.0, 1.0], validate True , time:0.01439214ms
-out_mat_transpose_cute_row_rvectorized_swizzled: [0.0, 4096.0, 1.0], validate True , time:0.01478362ms
-                         out_f32_th: [0.0, 4096.0, 1.0], validate True , time:0.04604459ms
-                out_f32_th_compiled: [0.0, 4096.0, 1.0], validate True , time:0.04802442ms
+                       out_original: [0.0, 1.0, 4096.0], validate False, time:0.04392624ms
+                    out_f32_col2row: [0.0, 4096.0, 1.0], validate True , time:0.12588978ms
+                    out_f32_row2col: [0.0, 4096.0, 1.0], validate True , time:0.07158637ms
+                out_f32_col2row(2d): [0.0, 4096.0, 1.0], validate True , time:0.06782699ms
+                out_f32_row2col(2d): [0.0, 4096.0, 1.0], validate True , time:0.06651688ms
+                  out_f32x4_col2row: [0.0, 4096.0, 1.0], validate True , time:0.13267922ms
+                  out_f32x4_row2col: [0.0, 4096.0, 1.0], validate True , time:0.07224798ms
+              out_f32x4_col2row(2d): [0.0, 4096.0, 1.0], validate True , time:0.06865716ms
+              out_f32x4_row2col(2d): [0.0, 4096.0, 1.0], validate True , time:0.04291391ms
+       out_f32x4_shared_col2row(2d): [0.0, 4096.0, 1.0], validate True , time:0.04286146ms
+       out_f32x4_shared_row2col(2d): [0.0, 4096.0, 1.0], validate True , time:0.04337263ms
+   out_f32x4_shared_bcf_col2row(2d): [0.0, 4096.0, 1.0], validate True , time:0.04302001ms
+   out_f32x4_shared_bcf_row2col(2d): [0.0, 4096.0, 1.0], validate True , time:0.04323077ms
+ out_mat_transpose_cute_col2row_reg: [0.0, 4096.0, 1.0], validate True , time:0.06857824ms
+ out_mat_transpose_cute_row2col_reg: [0.0, 4096.0, 1.0], validate True , time:0.04765439ms
+    out_mat_transpose_cute_col_smem: [0.0, 4096.0, 1.0], validate True , time:0.05450273ms
+    out_mat_transpose_cute_row_smem: [0.0, 4096.0, 1.0], validate True , time:0.04703522ms
+out_mat_transpose_cute_col_smem_swizzled: [0.0, 4096.0, 1.0], validate True , time:0.05180621ms
+out_mat_transpose_cute_row_smem_swizzled: [0.0, 4096.0, 1.0], validate True , time:0.04637504ms
+out_mat_transpose_cute_row_cvectorized: [0.0, 4096.0, 1.0], validate True , time:0.04552484ms
+out_mat_transpose_cute_row_rvectorized: [0.0, 4096.0, 1.0], validate True , time:0.04266071ms
+out_mat_transpose_cute_row_cvectorized_swizzled: [0.0, 4096.0, 1.0], validate True , time:0.04476309ms
+out_mat_transpose_cute_row_rvectorized_swizzled: [0.0, 4096.0, 1.0], validate True , time:0.04267573ms
+out_mat_transpose_cute_row_rvectorized_swizzled_optimized: [0.0, 4096.0, 1.0], validate True , time:0.04308534ms
+                         out_f32_th: [0.0, 4096.0, 1.0], validate True , time:0.11653090ms
+                out_f32_th_compiled: [0.0, 4096.0, 1.0], validate True , time:0.11728549ms
 ----------------------------------------------------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------------------------------------
                                                        M=1024, N=8192
-                       out_original: [0.0, 1.0, 8192.0], validate False, time:0.02622271ms
-                    out_f32_col2row: [0.0, 8192.0, 1.0], validate True , time:0.13227582ms
-                    out_f32_row2col: [0.0, 8192.0, 1.0], validate True , time:0.06796670ms
-                out_f32_col2row(2d): [0.0, 8192.0, 1.0], validate True , time:0.06429243ms
-                out_f32_row2col(2d): [0.0, 8192.0, 1.0], validate True , time:0.06427002ms
-                  out_f32x4_col2row: [0.0, 8192.0, 1.0], validate True , time:0.13971567ms
-                  out_f32x4_row2col: [0.0, 8192.0, 1.0], validate True , time:0.06687403ms
-              out_f32x4_col2row(2d): [0.0, 8192.0, 1.0], validate True , time:0.08264017ms
-              out_f32x4_row2col(2d): [0.0, 8192.0, 1.0], validate True , time:0.02314472ms
-       out_f32x4_shared_col2row(2d): [0.0, 8192.0, 1.0], validate True , time:0.02923679ms
-       out_f32x4_shared_row2col(2d): [0.0, 8192.0, 1.0], validate True , time:0.03703094ms
-   out_f32x4_shared_bcf_col2row(2d): [0.0, 8192.0, 1.0], validate True , time:0.02966428ms
-   out_f32x4_shared_bcf_row2col(2d): [0.0, 8192.0, 1.0], validate True , time:0.03264546ms
- out_mat_transpose_cute_col2row_reg: [0.0, 8192.0, 1.0], validate True , time:0.05948019ms
- out_mat_transpose_cute_row2col_reg: [0.0, 8192.0, 1.0], validate True , time:0.04069352ms
-    out_mat_transpose_cute_col_smem: [0.0, 8192.0, 1.0], validate True , time:0.06174302ms
-    out_mat_transpose_cute_row_smem: [0.0, 8192.0, 1.0], validate True , time:0.04106617ms
-out_mat_transpose_cute_col_smem_swizzled: [0.0, 8192.0, 1.0], validate True , time:0.05320787ms
-out_mat_transpose_cute_row_smem_swizzled: [0.0, 8192.0, 1.0], validate True , time:0.03881240ms
-out_mat_transpose_cute_row_cvectorized: [0.0, 8192.0, 1.0], validate True , time:0.04451799ms
-out_mat_transpose_cute_row_rvectorized: [0.0, 8192.0, 1.0], validate True , time:0.02818966ms
-out_mat_transpose_cute_row_cvectorized_swizzled: [0.0, 8192.0, 1.0], validate True , time:0.03275704ms
-out_mat_transpose_cute_row_rvectorized_swizzled: [0.0, 8192.0, 1.0], validate True , time:0.03005648ms
-                         out_f32_th: [0.0, 8192.0, 1.0], validate True , time:0.09130526ms
-                out_f32_th_compiled: [0.0, 8192.0, 1.0], validate True , time:0.04808426ms
+                       out_original: [0.0, 1.0, 8192.0], validate False, time:0.08478189ms
+                    out_f32_col2row: [0.0, 8192.0, 1.0], validate True , time:0.25058746ms
+                    out_f32_row2col: [0.0, 8192.0, 1.0], validate True , time:0.14558482ms
+                out_f32_col2row(2d): [0.0, 8192.0, 1.0], validate True , time:0.13590932ms
+                out_f32_row2col(2d): [0.0, 8192.0, 1.0], validate True , time:0.13259697ms
+                  out_f32x4_col2row: [0.0, 8192.0, 1.0], validate True , time:0.26455188ms
+                  out_f32x4_row2col: [0.0, 8192.0, 1.0], validate True , time:0.16565704ms
+              out_f32x4_col2row(2d): [0.0, 8192.0, 1.0], validate True , time:0.13458133ms
+              out_f32x4_row2col(2d): [0.0, 8192.0, 1.0], validate True , time:0.08459783ms
+       out_f32x4_shared_col2row(2d): [0.0, 8192.0, 1.0], validate True , time:0.08723879ms
+       out_f32x4_shared_row2col(2d): [0.0, 8192.0, 1.0], validate True , time:0.08400655ms
+   out_f32x4_shared_bcf_col2row(2d): [0.0, 8192.0, 1.0], validate True , time:0.08733034ms
+   out_f32x4_shared_bcf_row2col(2d): [0.0, 8192.0, 1.0], validate True , time:0.08398318ms
+ out_mat_transpose_cute_col2row_reg: [0.0, 8192.0, 1.0], validate True , time:0.13130641ms
+ out_mat_transpose_cute_row2col_reg: [0.0, 8192.0, 1.0], validate True , time:0.09233975ms
+    out_mat_transpose_cute_col_smem: [0.0, 8192.0, 1.0], validate True , time:0.10645866ms
+    out_mat_transpose_cute_row_smem: [0.0, 8192.0, 1.0], validate True , time:0.09159970ms
+out_mat_transpose_cute_col_smem_swizzled: [0.0, 8192.0, 1.0], validate True , time:0.10360169ms
+out_mat_transpose_cute_row_smem_swizzled: [0.0, 8192.0, 1.0], validate True , time:0.09012818ms
+out_mat_transpose_cute_row_cvectorized: [0.0, 8192.0, 1.0], validate True , time:0.09122086ms
+out_mat_transpose_cute_row_rvectorized: [0.0, 8192.0, 1.0], validate True , time:0.08314061ms
+out_mat_transpose_cute_row_cvectorized_swizzled: [0.0, 8192.0, 1.0], validate True , time:0.08987474ms
+out_mat_transpose_cute_row_rvectorized_swizzled: [0.0, 8192.0, 1.0], validate True , time:0.08318615ms
+out_mat_transpose_cute_row_rvectorized_swizzled_optimized: [0.0, 8192.0, 1.0], validate True , time:0.08382916ms
+                         out_f32_th: [0.0, 8192.0, 1.0], validate True , time:0.23323345ms
+                out_f32_th_compiled: [0.0, 8192.0, 1.0], validate True , time:0.23502731ms
 ----------------------------------------------------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------------------------------------
                                                        M=2048, N=1024
-                       out_original: [0.0, 1.0, 1024.0], validate False, time:0.00638318ms
-                    out_f32_col2row: [0.0, 1024.0, 1.0], validate True , time:0.03563547ms
-                    out_f32_row2col: [0.0, 1024.0, 1.0], validate True , time:0.01650119ms
-                out_f32_col2row(2d): [0.0, 1024.0, 1.0], validate True , time:0.01620793ms
-                out_f32_row2col(2d): [0.0, 1024.0, 1.0], validate True , time:0.01620555ms
-                  out_f32x4_col2row: [0.0, 1024.0, 1.0], validate True , time:0.03585052ms
-                  out_f32x4_row2col: [0.0, 1024.0, 1.0], validate True , time:0.01708913ms
-              out_f32x4_col2row(2d): [0.0, 1024.0, 1.0], validate True , time:0.01859522ms
-              out_f32x4_row2col(2d): [0.0, 1024.0, 1.0], validate True , time:0.00708890ms
-       out_f32x4_shared_col2row(2d): [0.0, 1024.0, 1.0], validate True , time:0.00807047ms
-       out_f32x4_shared_row2col(2d): [0.0, 1024.0, 1.0], validate True , time:0.01017618ms
-   out_f32x4_shared_bcf_col2row(2d): [0.0, 1024.0, 1.0], validate True , time:0.00838590ms
-   out_f32x4_shared_bcf_row2col(2d): [0.0, 1024.0, 1.0], validate True , time:0.00867391ms
- out_mat_transpose_cute_col2row_reg: [0.0, 1024.0, 1.0], validate True , time:0.01354027ms
- out_mat_transpose_cute_row2col_reg: [0.0, 1024.0, 1.0], validate True , time:0.00928712ms
-    out_mat_transpose_cute_col_smem: [0.0, 1024.0, 1.0], validate True , time:0.01707125ms
-    out_mat_transpose_cute_row_smem: [0.0, 1024.0, 1.0], validate True , time:0.00816989ms
-out_mat_transpose_cute_col_smem_swizzled: [0.0, 1024.0, 1.0], validate True , time:0.01489687ms
-out_mat_transpose_cute_row_smem_swizzled: [0.0, 1024.0, 1.0], validate True , time:0.00876665ms
-out_mat_transpose_cute_row_cvectorized: [0.0, 1024.0, 1.0], validate True , time:0.01165247ms
-out_mat_transpose_cute_row_rvectorized: [0.0, 1024.0, 1.0], validate True , time:0.00741124ms
-out_mat_transpose_cute_row_cvectorized_swizzled: [0.0, 1024.0, 1.0], validate True , time:0.00810361ms
-out_mat_transpose_cute_row_rvectorized_swizzled: [0.0, 1024.0, 1.0], validate True , time:0.00862789ms
-                         out_f32_th: [0.0, 1024.0, 1.0], validate True , time:0.02319264ms
-                out_f32_th_compiled: [0.0, 1024.0, 1.0], validate True , time:0.05861235ms
+                       out_original: [0.0, 1.0, 1024.0], validate False, time:0.02391768ms
+                    out_f32_col2row: [0.0, 1024.0, 1.0], validate True , time:0.06568789ms
+                    out_f32_row2col: [0.0, 1024.0, 1.0], validate True , time:0.03711987ms
+                out_f32_col2row(2d): [0.0, 1024.0, 1.0], validate True , time:0.03264403ms
+                out_f32_row2col(2d): [0.0, 1024.0, 1.0], validate True , time:0.03245735ms
+                  out_f32x4_col2row: [0.0, 1024.0, 1.0], validate True , time:0.06936216ms
+                  out_f32x4_row2col: [0.0, 1024.0, 1.0], validate True , time:0.03759336ms
+              out_f32x4_col2row(2d): [0.0, 1024.0, 1.0], validate True , time:0.03599405ms
+              out_f32x4_row2col(2d): [0.0, 1024.0, 1.0], validate True , time:0.02248406ms
+       out_f32x4_shared_col2row(2d): [0.0, 1024.0, 1.0], validate True , time:0.02231026ms
+       out_f32x4_shared_row2col(2d): [0.0, 1024.0, 1.0], validate True , time:0.02310872ms
+   out_f32x4_shared_bcf_col2row(2d): [0.0, 1024.0, 1.0], validate True , time:0.02236223ms
+   out_f32x4_shared_bcf_row2col(2d): [0.0, 1024.0, 1.0], validate True , time:0.02289176ms
+ out_mat_transpose_cute_col2row_reg: [0.0, 1024.0, 1.0], validate True , time:0.03009558ms
+ out_mat_transpose_cute_row2col_reg: [0.0, 1024.0, 1.0], validate True , time:0.02510953ms
+    out_mat_transpose_cute_col_smem: [0.0, 1024.0, 1.0], validate True , time:0.02802110ms
+    out_mat_transpose_cute_row_smem: [0.0, 1024.0, 1.0], validate True , time:0.02494168ms
+out_mat_transpose_cute_col_smem_swizzled: [0.0, 1024.0, 1.0], validate True , time:0.02729082ms
+out_mat_transpose_cute_row_smem_swizzled: [0.0, 1024.0, 1.0], validate True , time:0.02456188ms
+out_mat_transpose_cute_row_cvectorized: [0.0, 1024.0, 1.0], validate True , time:0.02376342ms
+out_mat_transpose_cute_row_rvectorized: [0.0, 1024.0, 1.0], validate True , time:0.02220488ms
+out_mat_transpose_cute_row_cvectorized_swizzled: [0.0, 1024.0, 1.0], validate True , time:0.02344656ms
+out_mat_transpose_cute_row_rvectorized_swizzled: [0.0, 1024.0, 1.0], validate True , time:0.02236819ms
+out_mat_transpose_cute_row_rvectorized_swizzled_optimized: [0.0, 1024.0, 1.0], validate True , time:0.02258658ms
+                         out_f32_th: [0.0, 1024.0, 1.0], validate True , time:0.06107378ms
+                out_f32_th_compiled: [0.0, 1024.0, 1.0], validate True , time:0.06182599ms
 ----------------------------------------------------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------------------------------------
                                                        M=2048, N=2048
-                       out_original: [0.0, 1.0, 2048.0], validate False, time:0.01117110ms
-                    out_f32_col2row: [0.0, 2048.0, 1.0], validate True , time:0.06950235ms
-                    out_f32_row2col: [0.0, 2048.0, 1.0], validate True , time:0.03485703ms
-                out_f32_col2row(2d): [0.0, 2048.0, 1.0], validate True , time:0.03005457ms
-                out_f32_row2col(2d): [0.0, 2048.0, 1.0], validate True , time:0.03008485ms
-                  out_f32_diagnonal: [0.0, 2048.0, 1.0], validate True , time:0.01830244ms
-                  out_f32x4_col2row: [0.0, 2048.0, 1.0], validate True , time:0.07024670ms
-                  out_f32x4_row2col: [0.0, 2048.0, 1.0], validate True , time:0.03537869ms
-              out_f32x4_col2row(2d): [0.0, 2048.0, 1.0], validate True , time:0.03516817ms
-              out_f32x4_row2col(2d): [0.0, 2048.0, 1.0], validate True , time:0.01145554ms
-       out_f32x4_shared_col2row(2d): [0.0, 2048.0, 1.0], validate True , time:0.01382899ms
-       out_f32x4_shared_row2col(2d): [0.0, 2048.0, 1.0], validate True , time:0.01729012ms
-   out_f32x4_shared_bcf_col2row(2d): [0.0, 2048.0, 1.0], validate True , time:0.01426935ms
-   out_f32x4_shared_bcf_row2col(2d): [0.0, 2048.0, 1.0], validate True , time:0.01422572ms
- out_mat_transpose_cute_col2row_reg: [0.0, 2048.0, 1.0], validate True , time:0.02737832ms
- out_mat_transpose_cute_row2col_reg: [0.0, 2048.0, 1.0], validate True , time:0.01676321ms
-    out_mat_transpose_cute_col_smem: [0.0, 2048.0, 1.0], validate True , time:0.03183579ms
-    out_mat_transpose_cute_row_smem: [0.0, 2048.0, 1.0], validate True , time:0.01636028ms
-out_mat_transpose_cute_col_smem_swizzled: [0.0, 2048.0, 1.0], validate True , time:0.02742934ms
-out_mat_transpose_cute_row_smem_swizzled: [0.0, 2048.0, 1.0], validate True , time:0.01592755ms
-out_mat_transpose_cute_row_cvectorized: [0.0, 2048.0, 1.0], validate True , time:0.02093101ms
-out_mat_transpose_cute_row_rvectorized: [0.0, 2048.0, 1.0], validate True , time:0.01259851ms
-out_mat_transpose_cute_row_cvectorized_swizzled: [0.0, 2048.0, 1.0], validate True , time:0.01370025ms
-out_mat_transpose_cute_row_rvectorized_swizzled: [0.0, 2048.0, 1.0], validate True , time:0.01482153ms
-                         out_f32_th: [0.0, 2048.0, 1.0], validate True , time:0.04773760ms
-                out_f32_th_compiled: [0.0, 2048.0, 1.0], validate True , time:0.05919909ms
+                       out_original: [0.0, 1.0, 2048.0], validate False, time:0.04422760ms
+                    out_f32_col2row: [0.0, 2048.0, 1.0], validate True , time:0.12561965ms
+                    out_f32_row2col: [0.0, 2048.0, 1.0], validate True , time:0.07676911ms
+                out_f32_col2row(2d): [0.0, 2048.0, 1.0], validate True , time:0.06741023ms
+                out_f32_row2col(2d): [0.0, 2048.0, 1.0], validate True , time:0.06514311ms
+                  out_f32_diagnonal: [0.0, 2048.0, 1.0], validate True , time:0.05187368ms
+                  out_f32x4_col2row: [0.0, 2048.0, 1.0], validate True , time:0.13291311ms
+                  out_f32x4_row2col: [0.0, 2048.0, 1.0], validate True , time:0.07298565ms
+              out_f32x4_col2row(2d): [0.0, 2048.0, 1.0], validate True , time:0.06908822ms
+              out_f32x4_row2col(2d): [0.0, 2048.0, 1.0], validate True , time:0.04279065ms
+       out_f32x4_shared_col2row(2d): [0.0, 2048.0, 1.0], validate True , time:0.04279661ms
+       out_f32x4_shared_row2col(2d): [0.0, 2048.0, 1.0], validate True , time:0.04364467ms
+   out_f32x4_shared_bcf_col2row(2d): [0.0, 2048.0, 1.0], validate True , time:0.04293537ms
+   out_f32x4_shared_bcf_row2col(2d): [0.0, 2048.0, 1.0], validate True , time:0.04339409ms
+ out_mat_transpose_cute_col2row_reg: [0.0, 2048.0, 1.0], validate True , time:0.06557107ms
+ out_mat_transpose_cute_row2col_reg: [0.0, 2048.0, 1.0], validate True , time:0.05029869ms
+    out_mat_transpose_cute_col_smem: [0.0, 2048.0, 1.0], validate True , time:0.05644822ms
+    out_mat_transpose_cute_row_smem: [0.0, 2048.0, 1.0], validate True , time:0.04912710ms
+out_mat_transpose_cute_col_smem_swizzled: [0.0, 2048.0, 1.0], validate True , time:0.05456066ms
+out_mat_transpose_cute_row_smem_swizzled: [0.0, 2048.0, 1.0], validate True , time:0.04846501ms
+out_mat_transpose_cute_row_cvectorized: [0.0, 2048.0, 1.0], validate True , time:0.04663944ms
+out_mat_transpose_cute_row_rvectorized: [0.0, 2048.0, 1.0], validate True , time:0.04294229ms
+out_mat_transpose_cute_row_cvectorized_swizzled: [0.0, 2048.0, 1.0], validate True , time:0.04629183ms
+out_mat_transpose_cute_row_rvectorized_swizzled: [0.0, 2048.0, 1.0], validate True , time:0.04302597ms
+out_mat_transpose_cute_row_rvectorized_swizzled_optimized: [0.0, 2048.0, 1.0], validate True , time:0.04354882ms
+                         out_f32_th: [0.0, 2048.0, 1.0], validate True , time:0.11834693ms
+                out_f32_th_compiled: [0.0, 2048.0, 1.0], validate True , time:0.11902070ms
 ----------------------------------------------------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------------------------------------
                                                        M=2048, N=4096
-                       out_original: [0.0, 1.0, 4096.0], validate False, time:0.02612376ms
-                    out_f32_col2row: [0.0, 4096.0, 1.0], validate True , time:0.13792729ms
-                    out_f32_row2col: [0.0, 4096.0, 1.0], validate True , time:0.06782484ms
-                out_f32_col2row(2d): [0.0, 4096.0, 1.0], validate True , time:0.06800270ms
-                out_f32_row2col(2d): [0.0, 4096.0, 1.0], validate True , time:0.06801772ms
-                  out_f32x4_col2row: [0.0, 4096.0, 1.0], validate True , time:0.14473867ms
-                  out_f32x4_row2col: [0.0, 4096.0, 1.0], validate True , time:0.06878757ms
-              out_f32x4_col2row(2d): [0.0, 4096.0, 1.0], validate True , time:0.08687305ms
-              out_f32x4_row2col(2d): [0.0, 4096.0, 1.0], validate True , time:0.02311611ms
-       out_f32x4_shared_col2row(2d): [0.0, 4096.0, 1.0], validate True , time:0.02917051ms
-       out_f32x4_shared_row2col(2d): [0.0, 4096.0, 1.0], validate True , time:0.03698635ms
-   out_f32x4_shared_bcf_col2row(2d): [0.0, 4096.0, 1.0], validate True , time:0.02948761ms
-   out_f32x4_shared_bcf_row2col(2d): [0.0, 4096.0, 1.0], validate True , time:0.03269577ms
- out_mat_transpose_cute_col2row_reg: [0.0, 4096.0, 1.0], validate True , time:0.05988336ms
- out_mat_transpose_cute_row2col_reg: [0.0, 4096.0, 1.0], validate True , time:0.04102373ms
-    out_mat_transpose_cute_col_smem: [0.0, 4096.0, 1.0], validate True , time:0.06177592ms
-    out_mat_transpose_cute_row_smem: [0.0, 4096.0, 1.0], validate True , time:0.04124475ms
-out_mat_transpose_cute_col_smem_swizzled: [0.0, 4096.0, 1.0], validate True , time:0.05327010ms
-out_mat_transpose_cute_row_smem_swizzled: [0.0, 4096.0, 1.0], validate True , time:0.03905988ms
-out_mat_transpose_cute_row_cvectorized: [0.0, 4096.0, 1.0], validate True , time:0.04370165ms
-out_mat_transpose_cute_row_rvectorized: [0.0, 4096.0, 1.0], validate True , time:0.02813411ms
-out_mat_transpose_cute_row_cvectorized_swizzled: [0.0, 4096.0, 1.0], validate True , time:0.03098154ms
-out_mat_transpose_cute_row_rvectorized_swizzled: [0.0, 4096.0, 1.0], validate True , time:0.03004074ms
-                         out_f32_th: [0.0, 4096.0, 1.0], validate True , time:0.09264803ms
-                out_f32_th_compiled: [0.0, 4096.0, 1.0], validate True , time:0.05882740ms
+                       out_original: [0.0, 1.0, 4096.0], validate False, time:0.08467579ms
+                    out_f32_col2row: [0.0, 4096.0, 1.0], validate True , time:0.24970269ms
+                    out_f32_row2col: [0.0, 4096.0, 1.0], validate True , time:0.15055704ms
+                out_f32_col2row(2d): [0.0, 4096.0, 1.0], validate True , time:0.13335991ms
+                out_f32_row2col(2d): [0.0, 4096.0, 1.0], validate True , time:0.13127899ms
+                  out_f32x4_col2row: [0.0, 4096.0, 1.0], validate True , time:0.26483536ms
+                  out_f32x4_row2col: [0.0, 4096.0, 1.0], validate True , time:0.15927362ms
+              out_f32x4_col2row(2d): [0.0, 4096.0, 1.0], validate True , time:0.13693118ms
+              out_f32x4_row2col(2d): [0.0, 4096.0, 1.0], validate True , time:0.08926201ms
+       out_f32x4_shared_col2row(2d): [0.0, 4096.0, 1.0], validate True , time:0.09092736ms
+       out_f32x4_shared_row2col(2d): [0.0, 4096.0, 1.0], validate True , time:0.08591580ms
+   out_f32x4_shared_bcf_col2row(2d): [0.0, 4096.0, 1.0], validate True , time:0.09117699ms
+   out_f32x4_shared_bcf_row2col(2d): [0.0, 4096.0, 1.0], validate True , time:0.08632779ms
+ out_mat_transpose_cute_col2row_reg: [0.0, 4096.0, 1.0], validate True , time:0.12909770ms
+ out_mat_transpose_cute_row2col_reg: [0.0, 4096.0, 1.0], validate True , time:0.09749031ms
+    out_mat_transpose_cute_col_smem: [0.0, 4096.0, 1.0], validate True , time:0.11034966ms
+    out_mat_transpose_cute_row_smem: [0.0, 4096.0, 1.0], validate True , time:0.09659719ms
+out_mat_transpose_cute_col_smem_swizzled: [0.0, 4096.0, 1.0], validate True , time:0.10805702ms
+out_mat_transpose_cute_row_smem_swizzled: [0.0, 4096.0, 1.0], validate True , time:0.09507823ms
+out_mat_transpose_cute_row_cvectorized: [0.0, 4096.0, 1.0], validate True , time:0.09092307ms
+out_mat_transpose_cute_row_rvectorized: [0.0, 4096.0, 1.0], validate True , time:0.08320594ms
+out_mat_transpose_cute_row_cvectorized_swizzled: [0.0, 4096.0, 1.0], validate True , time:0.09008026ms
+out_mat_transpose_cute_row_rvectorized_swizzled: [0.0, 4096.0, 1.0], validate True , time:0.08336163ms
+out_mat_transpose_cute_row_rvectorized_swizzled_optimized: [0.0, 4096.0, 1.0], validate True , time:0.08401752ms
+                         out_f32_th: [0.0, 4096.0, 1.0], validate True , time:0.23449445ms
+                out_f32_th_compiled: [0.0, 4096.0, 1.0], validate True , time:0.23755503ms
 ----------------------------------------------------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------------------------------------
                                                        M=2048, N=8192
-                       out_original: [0.0, 1.0, 8192.0], validate False, time:0.04788351ms
-                    out_f32_col2row: [0.0, 8192.0, 1.0], validate True , time:0.26702380ms
-                    out_f32_row2col: [0.0, 8192.0, 1.0], validate True , time:0.12641311ms
-                out_f32_col2row(2d): [0.0, 8192.0, 1.0], validate True , time:0.12766623ms
-                out_f32_row2col(2d): [0.0, 8192.0, 1.0], validate True , time:0.12762928ms
-                  out_f32x4_col2row: [0.0, 8192.0, 1.0], validate True , time:0.27893376ms
-                  out_f32x4_row2col: [0.0, 8192.0, 1.0], validate True , time:0.12813592ms
-              out_f32x4_col2row(2d): [0.0, 8192.0, 1.0], validate True , time:0.16845822ms
-              out_f32x4_row2col(2d): [0.0, 8192.0, 1.0], validate True , time:0.04240894ms
-       out_f32x4_shared_col2row(2d): [0.0, 8192.0, 1.0], validate True , time:0.05404329ms
-       out_f32x4_shared_row2col(2d): [0.0, 8192.0, 1.0], validate True , time:0.06824255ms
-   out_f32x4_shared_bcf_col2row(2d): [0.0, 8192.0, 1.0], validate True , time:0.05481243ms
-   out_f32x4_shared_bcf_row2col(2d): [0.0, 8192.0, 1.0], validate True , time:0.06005955ms
- out_mat_transpose_cute_col2row_reg: [0.0, 8192.0, 1.0], validate True , time:0.11488175ms
- out_mat_transpose_cute_row2col_reg: [0.0, 8192.0, 1.0], validate True , time:0.07866359ms
-    out_mat_transpose_cute_col_smem: [0.0, 8192.0, 1.0], validate True , time:0.11966443ms
-    out_mat_transpose_cute_row_smem: [0.0, 8192.0, 1.0], validate True , time:0.07921481ms
-out_mat_transpose_cute_col_smem_swizzled: [0.0, 8192.0, 1.0], validate True , time:0.10269117ms
-out_mat_transpose_cute_row_smem_swizzled: [0.0, 8192.0, 1.0], validate True , time:0.07479906ms
-out_mat_transpose_cute_row_cvectorized: [0.0, 8192.0, 1.0], validate True , time:0.08218861ms
-out_mat_transpose_cute_row_rvectorized: [0.0, 8192.0, 1.0], validate True , time:0.05100894ms
-out_mat_transpose_cute_row_cvectorized_swizzled: [0.0, 8192.0, 1.0], validate True , time:0.05682635ms
-out_mat_transpose_cute_row_rvectorized_swizzled: [0.0, 8192.0, 1.0], validate True , time:0.05597353ms
-                         out_f32_th: [0.0, 8192.0, 1.0], validate True , time:0.17199111ms
-                out_f32_th_compiled: [0.0, 8192.0, 1.0], validate True , time:0.05846906ms
+                       out_original: [0.0, 1.0, 8192.0], validate False, time:0.16631269ms
+                    out_f32_col2row: [0.0, 8192.0, 1.0], validate True , time:0.50284362ms
+                    out_f32_row2col: [0.0, 8192.0, 1.0], validate True , time:0.32336164ms
+                out_f32_col2row(2d): [0.0, 8192.0, 1.0], validate True , time:0.27494860ms
+                out_f32_row2col(2d): [0.0, 8192.0, 1.0], validate True , time:0.26218605ms
+                  out_f32x4_col2row: [0.0, 8192.0, 1.0], validate True , time:0.51392102ms
+                  out_f32x4_row2col: [0.0, 8192.0, 1.0], validate True , time:0.37878942ms
+              out_f32x4_col2row(2d): [0.0, 8192.0, 1.0], validate True , time:0.26178098ms
+              out_f32x4_row2col(2d): [0.0, 8192.0, 1.0], validate True , time:0.16887903ms
+       out_f32x4_shared_col2row(2d): [0.0, 8192.0, 1.0], validate True , time:0.17632246ms
+       out_f32x4_shared_row2col(2d): [0.0, 8192.0, 1.0], validate True , time:0.16928768ms
+   out_f32x4_shared_bcf_col2row(2d): [0.0, 8192.0, 1.0], validate True , time:0.17651772ms
+   out_f32x4_shared_bcf_row2col(2d): [0.0, 8192.0, 1.0], validate True , time:0.16609192ms
+ out_mat_transpose_cute_col2row_reg: [0.0, 8192.0, 1.0], validate True , time:0.25982738ms
+ out_mat_transpose_cute_row2col_reg: [0.0, 8192.0, 1.0], validate True , time:0.19544315ms
+    out_mat_transpose_cute_col_smem: [0.0, 8192.0, 1.0], validate True , time:0.21964002ms
+    out_mat_transpose_cute_row_smem: [0.0, 8192.0, 1.0], validate True , time:0.19438195ms
+out_mat_transpose_cute_col_smem_swizzled: [0.0, 8192.0, 1.0], validate True , time:0.21328235ms
+out_mat_transpose_cute_row_smem_swizzled: [0.0, 8192.0, 1.0], validate True , time:0.19120145ms
+out_mat_transpose_cute_row_cvectorized: [0.0, 8192.0, 1.0], validate True , time:0.19285893ms
+out_mat_transpose_cute_row_rvectorized: [0.0, 8192.0, 1.0], validate True , time:0.16419482ms
+out_mat_transpose_cute_row_cvectorized_swizzled: [0.0, 8192.0, 1.0], validate True , time:0.19116139ms
+out_mat_transpose_cute_row_rvectorized_swizzled: [0.0, 8192.0, 1.0], validate True , time:0.16445112ms
+out_mat_transpose_cute_row_rvectorized_swizzled_optimized: [0.0, 8192.0, 1.0], validate True , time:0.16537309ms
+                         out_f32_th: [0.0, 8192.0, 1.0], validate True , time:0.46839619ms
+                out_f32_th_compiled: [0.0, 8192.0, 1.0], validate True , time:0.46951747ms
 ----------------------------------------------------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------------------------------------
                                                        M=4096, N=1024
-                       out_original: [0.0, 1.0, 1024.0], validate False, time:0.01135612ms
-                    out_f32_col2row: [0.0, 1024.0, 1.0], validate True , time:0.06473422ms
-                    out_f32_row2col: [0.0, 1024.0, 1.0], validate True , time:0.03022242ms
-                out_f32_col2row(2d): [0.0, 1024.0, 1.0], validate True , time:0.02885413ms
-                out_f32_row2col(2d): [0.0, 1024.0, 1.0], validate True , time:0.02884769ms
-                  out_f32x4_col2row: [0.0, 1024.0, 1.0], validate True , time:0.06478477ms
-                  out_f32x4_row2col: [0.0, 1024.0, 1.0], validate True , time:0.03187799ms
-              out_f32x4_col2row(2d): [0.0, 1024.0, 1.0], validate True , time:0.03276491ms
-              out_f32x4_row2col(2d): [0.0, 1024.0, 1.0], validate True , time:0.01148319ms
-       out_f32x4_shared_col2row(2d): [0.0, 1024.0, 1.0], validate True , time:0.01368475ms
-       out_f32x4_shared_row2col(2d): [0.0, 1024.0, 1.0], validate True , time:0.01800251ms
-   out_f32x4_shared_bcf_col2row(2d): [0.0, 1024.0, 1.0], validate True , time:0.01427579ms
-   out_f32x4_shared_bcf_row2col(2d): [0.0, 1024.0, 1.0], validate True , time:0.01484346ms
- out_mat_transpose_cute_col2row_reg: [0.0, 1024.0, 1.0], validate True , time:0.02777314ms
- out_mat_transpose_cute_row2col_reg: [0.0, 1024.0, 1.0], validate True , time:0.01661682ms
-    out_mat_transpose_cute_col_smem: [0.0, 1024.0, 1.0], validate True , time:0.03186488ms
-    out_mat_transpose_cute_row_smem: [0.0, 1024.0, 1.0], validate True , time:0.01607609ms
-out_mat_transpose_cute_col_smem_swizzled: [0.0, 1024.0, 1.0], validate True , time:0.02742004ms
-out_mat_transpose_cute_row_smem_swizzled: [0.0, 1024.0, 1.0], validate True , time:0.01581359ms
-out_mat_transpose_cute_row_cvectorized: [0.0, 1024.0, 1.0], validate True , time:0.02088809ms
-out_mat_transpose_cute_row_rvectorized: [0.0, 1024.0, 1.0], validate True , time:0.01251507ms
-out_mat_transpose_cute_row_cvectorized_swizzled: [0.0, 1024.0, 1.0], validate True , time:0.01367640ms
-out_mat_transpose_cute_row_rvectorized_swizzled: [0.0, 1024.0, 1.0], validate True , time:0.01482892ms
-                         out_f32_th: [0.0, 1024.0, 1.0], validate True , time:0.04351592ms
-                out_f32_th_compiled: [0.0, 1024.0, 1.0], validate True , time:0.06099153ms
+                       out_original: [0.0, 1.0, 1024.0], validate False, time:0.04421234ms
+                    out_f32_col2row: [0.0, 1024.0, 1.0], validate True , time:0.12696767ms
+                    out_f32_row2col: [0.0, 1024.0, 1.0], validate True , time:0.07942963ms
+                out_f32_col2row(2d): [0.0, 1024.0, 1.0], validate True , time:0.06330681ms
+                out_f32_row2col(2d): [0.0, 1024.0, 1.0], validate True , time:0.06264949ms
+                  out_f32x4_col2row: [0.0, 1024.0, 1.0], validate True , time:0.13269401ms
+                  out_f32x4_row2col: [0.0, 1024.0, 1.0], validate True , time:0.07409143ms
+              out_f32x4_col2row(2d): [0.0, 1024.0, 1.0], validate True , time:0.07032919ms
+              out_f32x4_row2col(2d): [0.0, 1024.0, 1.0], validate True , time:0.04281425ms
+       out_f32x4_shared_col2row(2d): [0.0, 1024.0, 1.0], validate True , time:0.04285693ms
+       out_f32x4_shared_row2col(2d): [0.0, 1024.0, 1.0], validate True , time:0.04353714ms
+   out_f32x4_shared_bcf_col2row(2d): [0.0, 1024.0, 1.0], validate True , time:0.04288602ms
+   out_f32x4_shared_bcf_row2col(2d): [0.0, 1024.0, 1.0], validate True , time:0.04316950ms
+ out_mat_transpose_cute_col2row_reg: [0.0, 1024.0, 1.0], validate True , time:0.06419706ms
+ out_mat_transpose_cute_row2col_reg: [0.0, 1024.0, 1.0], validate True , time:0.05924821ms
+    out_mat_transpose_cute_col_smem: [0.0, 1024.0, 1.0], validate True , time:0.06122255ms
+    out_mat_transpose_cute_row_smem: [0.0, 1024.0, 1.0], validate True , time:0.05818987ms
+out_mat_transpose_cute_col_smem_swizzled: [0.0, 1024.0, 1.0], validate True , time:0.06006002ms
+out_mat_transpose_cute_row_smem_swizzled: [0.0, 1024.0, 1.0], validate True , time:0.05800104ms
+out_mat_transpose_cute_row_cvectorized: [0.0, 1024.0, 1.0], validate True , time:0.04861760ms
+out_mat_transpose_cute_row_rvectorized: [0.0, 1024.0, 1.0], validate True , time:0.04257965ms
+out_mat_transpose_cute_row_cvectorized_swizzled: [0.0, 1024.0, 1.0], validate True , time:0.04820013ms
+out_mat_transpose_cute_row_rvectorized_swizzled: [0.0, 1024.0, 1.0], validate True , time:0.04268837ms
+out_mat_transpose_cute_row_rvectorized_swizzled_optimized: [0.0, 1024.0, 1.0], validate True , time:0.04290032ms
+                         out_f32_th: [0.0, 1024.0, 1.0], validate True , time:0.12000775ms
+                out_f32_th_compiled: [0.0, 1024.0, 1.0], validate True , time:0.12048841ms
 ----------------------------------------------------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------------------------------------
                                                        M=4096, N=2048
-                       out_original: [0.0, 1.0, 2048.0], validate False, time:0.02611160ms
-                    out_f32_col2row: [0.0, 2048.0, 1.0], validate True , time:0.14095616ms
-                    out_f32_row2col: [0.0, 2048.0, 1.0], validate True , time:0.06800532ms
-                out_f32_col2row(2d): [0.0, 2048.0, 1.0], validate True , time:0.06891775ms
-                out_f32_row2col(2d): [0.0, 2048.0, 1.0], validate True , time:0.06890607ms
-                  out_f32x4_col2row: [0.0, 2048.0, 1.0], validate True , time:0.14629245ms
-                  out_f32x4_row2col: [0.0, 2048.0, 1.0], validate True , time:0.07073379ms
-              out_f32x4_col2row(2d): [0.0, 2048.0, 1.0], validate True , time:0.08693480ms
-              out_f32x4_row2col(2d): [0.0, 2048.0, 1.0], validate True , time:0.02308369ms
-       out_f32x4_shared_col2row(2d): [0.0, 2048.0, 1.0], validate True , time:0.02914500ms
-       out_f32x4_shared_row2col(2d): [0.0, 2048.0, 1.0], validate True , time:0.03913331ms
-   out_f32x4_shared_bcf_col2row(2d): [0.0, 2048.0, 1.0], validate True , time:0.02951288ms
-   out_f32x4_shared_bcf_row2col(2d): [0.0, 2048.0, 1.0], validate True , time:0.03415990ms
- out_mat_transpose_cute_col2row_reg: [0.0, 2048.0, 1.0], validate True , time:0.05992270ms
- out_mat_transpose_cute_row2col_reg: [0.0, 2048.0, 1.0], validate True , time:0.04137969ms
-    out_mat_transpose_cute_col_smem: [0.0, 2048.0, 1.0], validate True , time:0.06176162ms
-    out_mat_transpose_cute_row_smem: [0.0, 2048.0, 1.0], validate True , time:0.04155755ms
-out_mat_transpose_cute_col_smem_swizzled: [0.0, 2048.0, 1.0], validate True , time:0.05330944ms
-out_mat_transpose_cute_row_smem_swizzled: [0.0, 2048.0, 1.0], validate True , time:0.03944159ms
-out_mat_transpose_cute_row_cvectorized: [0.0, 2048.0, 1.0], validate True , time:0.04380369ms
-out_mat_transpose_cute_row_rvectorized: [0.0, 2048.0, 1.0], validate True , time:0.02814078ms
-out_mat_transpose_cute_row_cvectorized_swizzled: [0.0, 2048.0, 1.0], validate True , time:0.03094649ms
-out_mat_transpose_cute_row_rvectorized_swizzled: [0.0, 2048.0, 1.0], validate True , time:0.03010845ms
-                         out_f32_th: [0.0, 2048.0, 1.0], validate True , time:0.09364438ms
-                out_f32_th_compiled: [0.0, 2048.0, 1.0], validate True , time:0.05807614ms
+                       out_original: [0.0, 1.0, 2048.0], validate False, time:0.08468652ms
+                    out_f32_col2row: [0.0, 2048.0, 1.0], validate True , time:0.25145221ms
+                    out_f32_row2col: [0.0, 2048.0, 1.0], validate True , time:0.16740918ms
+                out_f32_col2row(2d): [0.0, 2048.0, 1.0], validate True , time:0.12791324ms
+                out_f32_row2col(2d): [0.0, 2048.0, 1.0], validate True , time:0.12523937ms
+                  out_f32x4_col2row: [0.0, 2048.0, 1.0], validate True , time:0.26657438ms
+                  out_f32x4_row2col: [0.0, 2048.0, 1.0], validate True , time:0.15698409ms
+              out_f32x4_col2row(2d): [0.0, 2048.0, 1.0], validate True , time:0.13683271ms
+              out_f32x4_row2col(2d): [0.0, 2048.0, 1.0], validate True , time:0.08711052ms
+       out_f32x4_shared_col2row(2d): [0.0, 2048.0, 1.0], validate True , time:0.08722329ms
+       out_f32x4_shared_row2col(2d): [0.0, 2048.0, 1.0], validate True , time:0.08619714ms
+   out_f32x4_shared_bcf_col2row(2d): [0.0, 2048.0, 1.0], validate True , time:0.08731914ms
+   out_f32x4_shared_bcf_row2col(2d): [0.0, 2048.0, 1.0], validate True , time:0.08600688ms
+ out_mat_transpose_cute_col2row_reg: [0.0, 2048.0, 1.0], validate True , time:0.12273955ms
+ out_mat_transpose_cute_row2col_reg: [0.0, 2048.0, 1.0], validate True , time:0.12345028ms
+    out_mat_transpose_cute_col_smem: [0.0, 2048.0, 1.0], validate True , time:0.12603784ms
+    out_mat_transpose_cute_row_smem: [0.0, 2048.0, 1.0], validate True , time:0.12179136ms
+out_mat_transpose_cute_col_smem_swizzled: [0.0, 2048.0, 1.0], validate True , time:0.12539601ms
+out_mat_transpose_cute_row_smem_swizzled: [0.0, 2048.0, 1.0], validate True , time:0.12133408ms
+out_mat_transpose_cute_row_cvectorized: [0.0, 2048.0, 1.0], validate True , time:0.09775424ms
+out_mat_transpose_cute_row_rvectorized: [0.0, 2048.0, 1.0], validate True , time:0.08309197ms
+out_mat_transpose_cute_row_cvectorized_swizzled: [0.0, 2048.0, 1.0], validate True , time:0.09721851ms
+out_mat_transpose_cute_row_rvectorized_swizzled: [0.0, 2048.0, 1.0], validate True , time:0.08333635ms
+out_mat_transpose_cute_row_rvectorized_swizzled_optimized: [0.0, 2048.0, 1.0], validate True , time:0.08407569ms
+                         out_f32_th: [0.0, 2048.0, 1.0], validate True , time:0.24632931ms
+                out_f32_th_compiled: [0.0, 2048.0, 1.0], validate True , time:0.24452114ms
 ----------------------------------------------------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------------------------------------
                                                        M=4096, N=4096
-                       out_original: [0.0, 1.0, 4096.0], validate False, time:0.04761362ms
-                    out_f32_col2row: [0.0, 4096.0, 1.0], validate True , time:0.26551914ms
-                    out_f32_row2col: [0.0, 4096.0, 1.0], validate True , time:0.12826180ms
-                out_f32_col2row(2d): [0.0, 4096.0, 1.0], validate True , time:0.12965775ms
-                out_f32_row2col(2d): [0.0, 4096.0, 1.0], validate True , time:0.12970257ms
-                  out_f32_diagnonal: [0.0, 4096.0, 1.0], validate True , time:0.08692741ms
-                  out_f32x4_col2row: [0.0, 4096.0, 1.0], validate True , time:0.27640176ms
-                  out_f32x4_row2col: [0.0, 4096.0, 1.0], validate True , time:0.13386226ms
-              out_f32x4_col2row(2d): [0.0, 4096.0, 1.0], validate True , time:0.16657877ms
-              out_f32x4_row2col(2d): [0.0, 4096.0, 1.0], validate True , time:0.04246473ms
-       out_f32x4_shared_col2row(2d): [0.0, 4096.0, 1.0], validate True , time:0.05401349ms
-       out_f32x4_shared_row2col(2d): [0.0, 4096.0, 1.0], validate True , time:0.07208681ms
-   out_f32x4_shared_bcf_col2row(2d): [0.0, 4096.0, 1.0], validate True , time:0.05456352ms
-   out_f32x4_shared_bcf_row2col(2d): [0.0, 4096.0, 1.0], validate True , time:0.06306529ms
- out_mat_transpose_cute_col2row_reg: [0.0, 4096.0, 1.0], validate True , time:0.11687827ms
- out_mat_transpose_cute_row2col_reg: [0.0, 4096.0, 1.0], validate True , time:0.07934999ms
-    out_mat_transpose_cute_col_smem: [0.0, 4096.0, 1.0], validate True , time:0.11962628ms
-    out_mat_transpose_cute_row_smem: [0.0, 4096.0, 1.0], validate True , time:0.07979536ms
-out_mat_transpose_cute_col_smem_swizzled: [0.0, 4096.0, 1.0], validate True , time:0.10279226ms
-out_mat_transpose_cute_row_smem_swizzled: [0.0, 4096.0, 1.0], validate True , time:0.07552862ms
-out_mat_transpose_cute_row_cvectorized: [0.0, 4096.0, 1.0], validate True , time:0.08200026ms
-out_mat_transpose_cute_row_rvectorized: [0.0, 4096.0, 1.0], validate True , time:0.05083799ms
-out_mat_transpose_cute_row_cvectorized_swizzled: [0.0, 4096.0, 1.0], validate True , time:0.05675173ms
-out_mat_transpose_cute_row_rvectorized_swizzled: [0.0, 4096.0, 1.0], validate True , time:0.05572939ms
-                         out_f32_th: [0.0, 4096.0, 1.0], validate True , time:0.17590189ms
-                out_f32_th_compiled: [0.0, 4096.0, 1.0], validate True , time:0.05817580ms
+                       out_original: [0.0, 1.0, 4096.0], validate False, time:0.16618252ms
+                    out_f32_col2row: [0.0, 4096.0, 1.0], validate True , time:0.50097990ms
+                    out_f32_row2col: [0.0, 4096.0, 1.0], validate True , time:0.35535216ms
+                out_f32_col2row(2d): [0.0, 4096.0, 1.0], validate True , time:0.27060771ms
+                out_f32_row2col(2d): [0.0, 4096.0, 1.0], validate True , time:0.25861597ms
+                  out_f32_diagnonal: [0.0, 4096.0, 1.0], validate True , time:0.26617074ms
+                  out_f32x4_col2row: [0.0, 4096.0, 1.0], validate True , time:0.51177859ms
+                  out_f32x4_row2col: [0.0, 4096.0, 1.0], validate True , time:0.31568432ms
+              out_f32x4_col2row(2d): [0.0, 4096.0, 1.0], validate True , time:0.26652837ms
+              out_f32x4_row2col(2d): [0.0, 4096.0, 1.0], validate True , time:0.17010331ms
+       out_f32x4_shared_col2row(2d): [0.0, 4096.0, 1.0], validate True , time:0.17163038ms
+       out_f32x4_shared_row2col(2d): [0.0, 4096.0, 1.0], validate True , time:0.16799879ms
+   out_f32x4_shared_bcf_col2row(2d): [0.0, 4096.0, 1.0], validate True , time:0.17183828ms
+   out_f32x4_shared_bcf_row2col(2d): [0.0, 4096.0, 1.0], validate True , time:0.16800833ms
+ out_mat_transpose_cute_col2row_reg: [0.0, 4096.0, 1.0], validate True , time:0.26187921ms
+ out_mat_transpose_cute_row2col_reg: [0.0, 4096.0, 1.0], validate True , time:0.24576879ms
+    out_mat_transpose_cute_col_smem: [0.0, 4096.0, 1.0], validate True , time:0.25347733ms
+    out_mat_transpose_cute_row_smem: [0.0, 4096.0, 1.0], validate True , time:0.24340343ms
+out_mat_transpose_cute_col_smem_swizzled: [0.0, 4096.0, 1.0], validate True , time:0.25243449ms
+out_mat_transpose_cute_row_smem_swizzled: [0.0, 4096.0, 1.0], validate True , time:0.24239349ms
+out_mat_transpose_cute_row_cvectorized: [0.0, 4096.0, 1.0], validate True , time:0.19701624ms
+out_mat_transpose_cute_row_rvectorized: [0.0, 4096.0, 1.0], validate True , time:0.16537905ms
+out_mat_transpose_cute_row_cvectorized_swizzled: [0.0, 4096.0, 1.0], validate True , time:0.19600892ms
+out_mat_transpose_cute_row_rvectorized_swizzled: [0.0, 4096.0, 1.0], validate True , time:0.16557527ms
+out_mat_transpose_cute_row_rvectorized_swizzled_optimized: [0.0, 4096.0, 1.0], validate True , time:0.16697907ms
+                         out_f32_th: [0.0, 4096.0, 1.0], validate True , time:0.49465632ms
+                out_f32_th_compiled: [0.0, 4096.0, 1.0], validate True , time:0.49463820ms
 ----------------------------------------------------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------------------------------------
                                                        M=4096, N=8192
-                       out_original: [0.0, 1.0, 8192.0], validate False, time:0.09065676ms
-                    out_f32_col2row: [0.0, 8192.0, 1.0], validate True , time:0.52875924ms
-                    out_f32_row2col: [0.0, 8192.0, 1.0], validate True , time:0.24883223ms
-                out_f32_col2row(2d): [0.0, 8192.0, 1.0], validate True , time:0.25138545ms
-                out_f32_row2col(2d): [0.0, 8192.0, 1.0], validate True , time:0.25151587ms
-                  out_f32x4_col2row: [0.0, 8192.0, 1.0], validate True , time:0.55523229ms
-                  out_f32x4_row2col: [0.0, 8192.0, 1.0], validate True , time:0.25797868ms
-              out_f32x4_col2row(2d): [0.0, 8192.0, 1.0], validate True , time:0.33464503ms
-              out_f32x4_row2col(2d): [0.0, 8192.0, 1.0], validate True , time:0.08137870ms
-       out_f32x4_shared_col2row(2d): [0.0, 8192.0, 1.0], validate True , time:0.10357594ms
-       out_f32x4_shared_row2col(2d): [0.0, 8192.0, 1.0], validate True , time:0.13923311ms
-   out_f32x4_shared_bcf_col2row(2d): [0.0, 8192.0, 1.0], validate True , time:0.10485888ms
-   out_f32x4_shared_bcf_row2col(2d): [0.0, 8192.0, 1.0], validate True , time:0.12177515ms
- out_mat_transpose_cute_col2row_reg: [0.0, 8192.0, 1.0], validate True , time:0.22806001ms
- out_mat_transpose_cute_row2col_reg: [0.0, 8192.0, 1.0], validate True , time:0.15632129ms
-    out_mat_transpose_cute_col_smem: [0.0, 8192.0, 1.0], validate True , time:0.23541665ms
-    out_mat_transpose_cute_row_smem: [0.0, 8192.0, 1.0], validate True , time:0.15710807ms
-out_mat_transpose_cute_col_smem_swizzled: [0.0, 8192.0, 1.0], validate True , time:0.20194674ms
-out_mat_transpose_cute_row_smem_swizzled: [0.0, 8192.0, 1.0], validate True , time:0.14867640ms
-out_mat_transpose_cute_row_cvectorized: [0.0, 8192.0, 1.0], validate True , time:0.15857029ms
-out_mat_transpose_cute_row_rvectorized: [0.0, 8192.0, 1.0], validate True , time:0.09695339ms
-out_mat_transpose_cute_row_cvectorized_swizzled: [0.0, 8192.0, 1.0], validate True , time:0.10866976ms
-out_mat_transpose_cute_row_rvectorized_swizzled: [0.0, 8192.0, 1.0], validate True , time:0.10696220ms
-                         out_f32_th: [0.0, 8192.0, 1.0], validate True , time:0.33883190ms
-                out_f32_th_compiled: [0.0, 8192.0, 1.0], validate True , time:0.07038069ms
+                       out_original: [0.0, 1.0, 8192.0], validate False, time:0.32828760ms
+                    out_f32_col2row: [0.0, 8192.0, 1.0], validate True , time:1.02160501ms
+                    out_f32_row2col: [0.0, 8192.0, 1.0], validate True , time:0.72063184ms
+                out_f32_col2row(2d): [0.0, 8192.0, 1.0], validate True , time:0.53131676ms
+                out_f32_row2col(2d): [0.0, 8192.0, 1.0], validate True , time:0.52935743ms
+                  out_f32x4_col2row: [0.0, 8192.0, 1.0], validate True , time:1.03164721ms
+                  out_f32x4_row2col: [0.0, 8192.0, 1.0], validate True , time:0.80112934ms
+              out_f32x4_col2row(2d): [0.0, 8192.0, 1.0], validate True , time:0.53537488ms
+              out_f32x4_row2col(2d): [0.0, 8192.0, 1.0], validate True , time:0.34326696ms
+       out_f32x4_shared_col2row(2d): [0.0, 8192.0, 1.0], validate True , time:0.35909820ms
+       out_f32x4_shared_row2col(2d): [0.0, 8192.0, 1.0], validate True , time:0.33556294ms
+   out_f32x4_shared_bcf_col2row(2d): [0.0, 8192.0, 1.0], validate True , time:0.35932803ms
+   out_f32x4_shared_bcf_row2col(2d): [0.0, 8192.0, 1.0], validate True , time:0.33499861ms
+ out_mat_transpose_cute_col2row_reg: [0.0, 8192.0, 1.0], validate True , time:0.54176092ms
+ out_mat_transpose_cute_row2col_reg: [0.0, 8192.0, 1.0], validate True , time:0.48399639ms
+    out_mat_transpose_cute_col_smem: [0.0, 8192.0, 1.0], validate True , time:0.49951982ms
+    out_mat_transpose_cute_row_smem: [0.0, 8192.0, 1.0], validate True , time:0.48039985ms
+out_mat_transpose_cute_col_smem_swizzled: [0.0, 8192.0, 1.0], validate True , time:0.49459934ms
+out_mat_transpose_cute_row_smem_swizzled: [0.0, 8192.0, 1.0], validate True , time:0.47925377ms
+out_mat_transpose_cute_row_cvectorized: [0.0, 8192.0, 1.0], validate True , time:0.42132831ms
+out_mat_transpose_cute_row_rvectorized: [0.0, 8192.0, 1.0], validate True , time:0.32764554ms
+out_mat_transpose_cute_row_cvectorized_swizzled: [0.0, 8192.0, 1.0], validate True , time:0.41889501ms
+out_mat_transpose_cute_row_rvectorized_swizzled: [0.0, 8192.0, 1.0], validate True , time:0.32755017ms
+out_mat_transpose_cute_row_rvectorized_swizzled_optimized: [0.0, 8192.0, 1.0], validate True , time:0.33102536ms
+                         out_f32_th: [0.0, 8192.0, 1.0], validate True , time:0.99227643ms
+                out_f32_th_compiled: [0.0, 8192.0, 1.0], validate True , time:0.99217844ms
 ----------------------------------------------------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------------------------------------
                                                        M=8192, N=1024
-                       out_original: [0.0, 1.0, 1024.0], validate False, time:0.02613044ms
-                    out_f32_col2row: [0.0, 1024.0, 1.0], validate True , time:0.14240122ms
-                    out_f32_row2col: [0.0, 1024.0, 1.0], validate True , time:0.06301308ms
-                out_f32_col2row(2d): [0.0, 1024.0, 1.0], validate True , time:0.06837869ms
-                out_f32_row2col(2d): [0.0, 1024.0, 1.0], validate True , time:0.06840038ms
-                  out_f32x4_col2row: [0.0, 1024.0, 1.0], validate True , time:0.14549279ms
-                  out_f32x4_row2col: [0.0, 1024.0, 1.0], validate True , time:0.06775117ms
-              out_f32x4_col2row(2d): [0.0, 1024.0, 1.0], validate True , time:0.08498430ms
-              out_f32x4_row2col(2d): [0.0, 1024.0, 1.0], validate True , time:0.02311444ms
-       out_f32x4_shared_col2row(2d): [0.0, 1024.0, 1.0], validate True , time:0.02915359ms
-       out_f32x4_shared_row2col(2d): [0.0, 1024.0, 1.0], validate True , time:0.03713298ms
-   out_f32x4_shared_bcf_col2row(2d): [0.0, 1024.0, 1.0], validate True , time:0.02951527ms
-   out_f32x4_shared_bcf_row2col(2d): [0.0, 1024.0, 1.0], validate True , time:0.03300023ms
- out_mat_transpose_cute_col2row_reg: [0.0, 1024.0, 1.0], validate True , time:0.05988598ms
- out_mat_transpose_cute_row2col_reg: [0.0, 1024.0, 1.0], validate True , time:0.04108763ms
-    out_mat_transpose_cute_col_smem: [0.0, 1024.0, 1.0], validate True , time:0.06168962ms
-    out_mat_transpose_cute_row_smem: [0.0, 1024.0, 1.0], validate True , time:0.04137659ms
-out_mat_transpose_cute_col_smem_swizzled: [0.0, 1024.0, 1.0], validate True , time:0.05313158ms
-out_mat_transpose_cute_row_smem_swizzled: [0.0, 1024.0, 1.0], validate True , time:0.03937101ms
-out_mat_transpose_cute_row_cvectorized: [0.0, 1024.0, 1.0], validate True , time:0.04361272ms
-out_mat_transpose_cute_row_rvectorized: [0.0, 1024.0, 1.0], validate True , time:0.02782607ms
-out_mat_transpose_cute_row_cvectorized_swizzled: [0.0, 1024.0, 1.0], validate True , time:0.03081965ms
-out_mat_transpose_cute_row_rvectorized_swizzled: [0.0, 1024.0, 1.0], validate True , time:0.02822685ms
-                         out_f32_th: [0.0, 1024.0, 1.0], validate True , time:0.08901119ms
-                out_f32_th_compiled: [0.0, 1024.0, 1.0], validate True , time:0.05782843ms
+                       out_original: [0.0, 1.0, 1024.0], validate False, time:0.08466172ms
+                    out_f32_col2row: [0.0, 1024.0, 1.0], validate True , time:0.25207758ms
+                    out_f32_row2col: [0.0, 1024.0, 1.0], validate True , time:0.18354273ms
+                out_f32_col2row(2d): [0.0, 1024.0, 1.0], validate True , time:0.12594485ms
+                out_f32_row2col(2d): [0.0, 1024.0, 1.0], validate True , time:0.12563300ms
+                  out_f32x4_col2row: [0.0, 1024.0, 1.0], validate True , time:0.27044630ms
+                  out_f32x4_row2col: [0.0, 1024.0, 1.0], validate True , time:0.16568422ms
+              out_f32x4_col2row(2d): [0.0, 1024.0, 1.0], validate True , time:0.13587356ms
+              out_f32x4_row2col(2d): [0.0, 1024.0, 1.0], validate True , time:0.08572435ms
+       out_f32x4_shared_col2row(2d): [0.0, 1024.0, 1.0], validate True , time:0.08661747ms
+       out_f32x4_shared_row2col(2d): [0.0, 1024.0, 1.0], validate True , time:0.08503509ms
+   out_f32x4_shared_bcf_col2row(2d): [0.0, 1024.0, 1.0], validate True , time:0.08664989ms
+   out_f32x4_shared_bcf_row2col(2d): [0.0, 1024.0, 1.0], validate True , time:0.08469391ms
+ out_mat_transpose_cute_col2row_reg: [0.0, 1024.0, 1.0], validate True , time:0.12477684ms
+ out_mat_transpose_cute_row2col_reg: [0.0, 1024.0, 1.0], validate True , time:0.11948586ms
+    out_mat_transpose_cute_col_smem: [0.0, 1024.0, 1.0], validate True , time:0.12046981ms
+    out_mat_transpose_cute_row_smem: [0.0, 1024.0, 1.0], validate True , time:0.11931205ms
+out_mat_transpose_cute_col_smem_swizzled: [0.0, 1024.0, 1.0], validate True , time:0.11980653ms
+out_mat_transpose_cute_row_smem_swizzled: [0.0, 1024.0, 1.0], validate True , time:0.11914992ms
+out_mat_transpose_cute_row_cvectorized: [0.0, 1024.0, 1.0], validate True , time:0.10827446ms
+out_mat_transpose_cute_row_rvectorized: [0.0, 1024.0, 1.0], validate True , time:0.08326149ms
+out_mat_transpose_cute_row_cvectorized_swizzled: [0.0, 1024.0, 1.0], validate True , time:0.10820341ms
+out_mat_transpose_cute_row_rvectorized_swizzled: [0.0, 1024.0, 1.0], validate True , time:0.08342290ms
+out_mat_transpose_cute_row_rvectorized_swizzled_optimized: [0.0, 1024.0, 1.0], validate True , time:0.08371043ms
+                         out_f32_th: [0.0, 1024.0, 1.0], validate True , time:0.27149653ms
+                out_f32_th_compiled: [0.0, 1024.0, 1.0], validate True , time:0.27161312ms
 ----------------------------------------------------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------------------------------------
                                                        M=8192, N=2048
-                       out_original: [0.0, 1.0, 2048.0], validate False, time:0.04759407ms
-                    out_f32_col2row: [0.0, 2048.0, 1.0], validate True , time:0.27500105ms
-                    out_f32_row2col: [0.0, 2048.0, 1.0], validate True , time:0.12144923ms
-                out_f32_col2row(2d): [0.0, 2048.0, 1.0], validate True , time:0.13192320ms
-                out_f32_row2col(2d): [0.0, 2048.0, 1.0], validate True , time:0.13188601ms
-                  out_f32x4_col2row: [0.0, 2048.0, 1.0], validate True , time:0.29046535ms
-                  out_f32x4_row2col: [0.0, 2048.0, 1.0], validate True , time:0.13048077ms
-              out_f32x4_col2row(2d): [0.0, 2048.0, 1.0], validate True , time:0.17475128ms
-              out_f32x4_row2col(2d): [0.0, 2048.0, 1.0], validate True , time:0.04228449ms
-       out_f32x4_shared_col2row(2d): [0.0, 2048.0, 1.0], validate True , time:0.05392790ms
-       out_f32x4_shared_row2col(2d): [0.0, 2048.0, 1.0], validate True , time:0.06848621ms
-   out_f32x4_shared_bcf_col2row(2d): [0.0, 2048.0, 1.0], validate True , time:0.05463552ms
-   out_f32x4_shared_bcf_row2col(2d): [0.0, 2048.0, 1.0], validate True , time:0.06046867ms
- out_mat_transpose_cute_col2row_reg: [0.0, 2048.0, 1.0], validate True , time:0.11590195ms
- out_mat_transpose_cute_row2col_reg: [0.0, 2048.0, 1.0], validate True , time:0.07939339ms
-    out_mat_transpose_cute_col_smem: [0.0, 2048.0, 1.0], validate True , time:0.11953950ms
-    out_mat_transpose_cute_row_smem: [0.0, 2048.0, 1.0], validate True , time:0.07990146ms
-out_mat_transpose_cute_col_smem_swizzled: [0.0, 2048.0, 1.0], validate True , time:0.10252953ms
-out_mat_transpose_cute_row_smem_swizzled: [0.0, 2048.0, 1.0], validate True , time:0.07594895ms
-out_mat_transpose_cute_row_cvectorized: [0.0, 2048.0, 1.0], validate True , time:0.08208942ms
-out_mat_transpose_cute_row_rvectorized: [0.0, 2048.0, 1.0], validate True , time:0.05093598ms
-out_mat_transpose_cute_row_cvectorized_swizzled: [0.0, 2048.0, 1.0], validate True , time:0.05676866ms
-out_mat_transpose_cute_row_rvectorized_swizzled: [0.0, 2048.0, 1.0], validate True , time:0.05595016ms
-                         out_f32_th: [0.0, 2048.0, 1.0], validate True , time:0.17065334ms
-                out_f32_th_compiled: [0.0, 2048.0, 1.0], validate True , time:0.05812144ms
+                       out_original: [0.0, 1.0, 2048.0], validate False, time:0.16627026ms
+                    out_f32_col2row: [0.0, 2048.0, 1.0], validate True , time:0.50467086ms
+                    out_f32_row2col: [0.0, 2048.0, 1.0], validate True , time:0.39958572ms
+                out_f32_col2row(2d): [0.0, 2048.0, 1.0], validate True , time:0.26184535ms
+                out_f32_row2col(2d): [0.0, 2048.0, 1.0], validate True , time:0.25405502ms
+                  out_f32x4_col2row: [0.0, 2048.0, 1.0], validate True , time:0.51482177ms
+                  out_f32x4_row2col: [0.0, 2048.0, 1.0], validate True , time:0.35543489ms
+              out_f32x4_col2row(2d): [0.0, 2048.0, 1.0], validate True , time:0.26602769ms
+              out_f32x4_row2col(2d): [0.0, 2048.0, 1.0], validate True , time:0.16936231ms
+       out_f32x4_shared_col2row(2d): [0.0, 2048.0, 1.0], validate True , time:0.17157674ms
+       out_f32x4_shared_row2col(2d): [0.0, 2048.0, 1.0], validate True , time:0.16717434ms
+   out_f32x4_shared_bcf_col2row(2d): [0.0, 2048.0, 1.0], validate True , time:0.17186403ms
+   out_f32x4_shared_bcf_row2col(2d): [0.0, 2048.0, 1.0], validate True , time:0.16655135ms
+ out_mat_transpose_cute_col2row_reg: [0.0, 2048.0, 1.0], validate True , time:0.24904299ms
+ out_mat_transpose_cute_row2col_reg: [0.0, 2048.0, 1.0], validate True , time:0.24884462ms
+    out_mat_transpose_cute_col_smem: [0.0, 2048.0, 1.0], validate True , time:0.25050330ms
+    out_mat_transpose_cute_row_smem: [0.0, 2048.0, 1.0], validate True , time:0.24837542ms
+out_mat_transpose_cute_col_smem_swizzled: [0.0, 2048.0, 1.0], validate True , time:0.25063992ms
+out_mat_transpose_cute_row_smem_swizzled: [0.0, 2048.0, 1.0], validate True , time:0.24788022ms
+out_mat_transpose_cute_row_cvectorized: [0.0, 2048.0, 1.0], validate True , time:0.22211933ms
+out_mat_transpose_cute_row_rvectorized: [0.0, 2048.0, 1.0], validate True , time:0.16454816ms
+out_mat_transpose_cute_row_cvectorized_swizzled: [0.0, 2048.0, 1.0], validate True , time:0.22272992ms
+out_mat_transpose_cute_row_rvectorized_swizzled: [0.0, 2048.0, 1.0], validate True , time:0.16480446ms
+out_mat_transpose_cute_row_rvectorized_swizzled_optimized: [0.0, 2048.0, 1.0], validate True , time:0.16556239ms
+                         out_f32_th: [0.0, 2048.0, 1.0], validate True , time:0.56485367ms
+                out_f32_th_compiled: [0.0, 2048.0, 1.0], validate True , time:0.56441379ms
 ----------------------------------------------------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------------------------------------
                                                        M=8192, N=4096
-                       out_original: [0.0, 1.0, 4096.0], validate False, time:0.09060454ms
-                    out_f32_col2row: [0.0, 4096.0, 1.0], validate True , time:0.53396153ms
-                    out_f32_row2col: [0.0, 4096.0, 1.0], validate True , time:0.23736954ms
-                out_f32_col2row(2d): [0.0, 4096.0, 1.0], validate True , time:0.25855660ms
-                out_f32_row2col(2d): [0.0, 4096.0, 1.0], validate True , time:0.25850701ms
-                  out_f32x4_col2row: [0.0, 4096.0, 1.0], validate True , time:0.56433153ms
-                  out_f32x4_row2col: [0.0, 4096.0, 1.0], validate True , time:0.25520277ms
-              out_f32x4_col2row(2d): [0.0, 4096.0, 1.0], validate True , time:0.34376645ms
-              out_f32x4_row2col(2d): [0.0, 4096.0, 1.0], validate True , time:0.08140516ms
-       out_f32x4_shared_col2row(2d): [0.0, 4096.0, 1.0], validate True , time:0.10327840ms
-       out_f32x4_shared_row2col(2d): [0.0, 4096.0, 1.0], validate True , time:0.13143134ms
-   out_f32x4_shared_bcf_col2row(2d): [0.0, 4096.0, 1.0], validate True , time:0.10436797ms
-   out_f32x4_shared_bcf_row2col(2d): [0.0, 4096.0, 1.0], validate True , time:0.11549497ms
- out_mat_transpose_cute_col2row_reg: [0.0, 4096.0, 1.0], validate True , time:0.22957921ms
- out_mat_transpose_cute_row2col_reg: [0.0, 4096.0, 1.0], validate True , time:0.15648627ms
-    out_mat_transpose_cute_col_smem: [0.0, 4096.0, 1.0], validate True , time:0.23523784ms
-    out_mat_transpose_cute_row_smem: [0.0, 4096.0, 1.0], validate True , time:0.15738535ms
-out_mat_transpose_cute_col_smem_swizzled: [0.0, 4096.0, 1.0], validate True , time:0.20139265ms
-out_mat_transpose_cute_row_smem_swizzled: [0.0, 4096.0, 1.0], validate True , time:0.14952707ms
-out_mat_transpose_cute_row_cvectorized: [0.0, 4096.0, 1.0], validate True , time:0.15815616ms
-out_mat_transpose_cute_row_rvectorized: [0.0, 4096.0, 1.0], validate True , time:0.09657621ms
-out_mat_transpose_cute_row_cvectorized_swizzled: [0.0, 4096.0, 1.0], validate True , time:0.10863233ms
-out_mat_transpose_cute_row_rvectorized_swizzled: [0.0, 4096.0, 1.0], validate True , time:0.10682678ms
-                         out_f32_th: [0.0, 4096.0, 1.0], validate True , time:0.33217621ms
-                out_f32_th_compiled: [0.0, 4096.0, 1.0], validate True , time:0.07057214ms
+                       out_original: [0.0, 1.0, 4096.0], validate False, time:0.32855296ms
+                    out_f32_col2row: [0.0, 4096.0, 1.0], validate True , time:1.02771664ms
+                    out_f32_row2col: [0.0, 4096.0, 1.0], validate True , time:0.82746363ms
+                out_f32_col2row(2d): [0.0, 4096.0, 1.0], validate True , time:0.52390122ms
+                out_f32_row2col(2d): [0.0, 4096.0, 1.0], validate True , time:0.53260994ms
+                  out_f32x4_col2row: [0.0, 4096.0, 1.0], validate True , time:1.02764344ms
+                  out_f32x4_row2col: [0.0, 4096.0, 1.0], validate True , time:0.73395181ms
+              out_f32x4_col2row(2d): [0.0, 4096.0, 1.0], validate True , time:0.53176832ms
+              out_f32x4_row2col(2d): [0.0, 4096.0, 1.0], validate True , time:0.33959198ms
+       out_f32x4_shared_col2row(2d): [0.0, 4096.0, 1.0], validate True , time:0.35376525ms
+       out_f32x4_shared_row2col(2d): [0.0, 4096.0, 1.0], validate True , time:0.33685756ms
+   out_f32x4_shared_bcf_col2row(2d): [0.0, 4096.0, 1.0], validate True , time:0.35392237ms
+   out_f32x4_shared_bcf_row2col(2d): [0.0, 4096.0, 1.0], validate True , time:0.33208728ms
+ out_mat_transpose_cute_col2row_reg: [0.0, 4096.0, 1.0], validate True , time:0.53561139ms
+ out_mat_transpose_cute_row2col_reg: [0.0, 4096.0, 1.0], validate True , time:0.50565004ms
+    out_mat_transpose_cute_col_smem: [0.0, 4096.0, 1.0], validate True , time:0.51027036ms
+    out_mat_transpose_cute_row_smem: [0.0, 4096.0, 1.0], validate True , time:0.50410295ms
+out_mat_transpose_cute_col_smem_swizzled: [0.0, 4096.0, 1.0], validate True , time:0.50999451ms
+out_mat_transpose_cute_row_smem_swizzled: [0.0, 4096.0, 1.0], validate True , time:0.50347900ms
+out_mat_transpose_cute_row_cvectorized: [0.0, 4096.0, 1.0], validate True , time:0.44723439ms
+out_mat_transpose_cute_row_rvectorized: [0.0, 4096.0, 1.0], validate True , time:0.33080840ms
+out_mat_transpose_cute_row_cvectorized_swizzled: [0.0, 4096.0, 1.0], validate True , time:0.44853663ms
+out_mat_transpose_cute_row_rvectorized_swizzled: [0.0, 4096.0, 1.0], validate True , time:0.33074450ms
+out_mat_transpose_cute_row_rvectorized_swizzled_optimized: [0.0, 4096.0, 1.0], validate True , time:0.33293080ms
+                         out_f32_th: [0.0, 4096.0, 1.0], validate True , time:1.16223931ms
+                out_f32_th_compiled: [0.0, 4096.0, 1.0], validate True , time:1.16229939ms
 ----------------------------------------------------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------------------------------------
                                                        M=8192, N=8192
-                       out_original: [0.0, 1.0, 8192.0], validate False, time:0.17657781ms
-                    out_f32_col2row: [0.0, 8192.0, 1.0], validate True , time:1.05990601ms
-                    out_f32_row2col: [0.0, 8192.0, 1.0], validate True , time:0.46211433ms
-                out_f32_col2row(2d): [0.0, 8192.0, 1.0], validate True , time:0.50515103ms
-                out_f32_row2col(2d): [0.0, 8192.0, 1.0], validate True , time:0.50519037ms
-                  out_f32_diagnonal: [0.0, 8192.0, 1.0], validate True , time:0.34358025ms
-                  out_f32x4_col2row: [0.0, 8192.0, 1.0], validate True , time:1.10640693ms
-                  out_f32x4_row2col: [0.0, 8192.0, 1.0], validate True , time:0.49680948ms
-              out_f32x4_col2row(2d): [0.0, 8192.0, 1.0], validate True , time:0.67155337ms
-              out_f32x4_row2col(2d): [0.0, 8192.0, 1.0], validate True , time:0.15931034ms
-       out_f32x4_shared_col2row(2d): [0.0, 8192.0, 1.0], validate True , time:0.20235109ms
-       out_f32x4_shared_row2col(2d): [0.0, 8192.0, 1.0], validate True , time:0.25867033ms
-   out_f32x4_shared_bcf_col2row(2d): [0.0, 8192.0, 1.0], validate True , time:0.20493627ms
-   out_f32x4_shared_bcf_row2col(2d): [0.0, 8192.0, 1.0], validate True , time:0.22880530ms
- out_mat_transpose_cute_col2row_reg: [0.0, 8192.0, 1.0], validate True , time:0.45240569ms
- out_mat_transpose_cute_row2col_reg: [0.0, 8192.0, 1.0], validate True , time:0.31271243ms
-    out_mat_transpose_cute_col_smem: [0.0, 8192.0, 1.0], validate True , time:0.46673679ms
-    out_mat_transpose_cute_row_smem: [0.0, 8192.0, 1.0], validate True , time:0.31364536ms
-out_mat_transpose_cute_col_smem_swizzled: [0.0, 8192.0, 1.0], validate True , time:0.39961338ms
-out_mat_transpose_cute_row_smem_swizzled: [0.0, 8192.0, 1.0], validate True , time:0.29810309ms
-out_mat_transpose_cute_row_cvectorized: [0.0, 8192.0, 1.0], validate True , time:0.31140137ms
-out_mat_transpose_cute_row_rvectorized: [0.0, 8192.0, 1.0], validate True , time:0.18832517ms
-out_mat_transpose_cute_row_cvectorized_swizzled: [0.0, 8192.0, 1.0], validate True , time:0.21277142ms
-out_mat_transpose_cute_row_rvectorized_swizzled: [0.0, 8192.0, 1.0], validate True , time:0.20939684ms
-                         out_f32_th: [0.0, 8192.0, 1.0], validate True , time:0.64468265ms
-                out_f32_th_compiled: [0.0, 8192.0, 1.0], validate True , time:0.13783288ms
+                       out_original: [0.0, 1.0, 8192.0], validate False, time:0.65326476ms
+                    out_f32_col2row: [0.0, 8192.0, 1.0], validate True , time:2.06266975ms
+                    out_f32_row2col: [0.0, 8192.0, 1.0], validate True , time:1.63385463ms
+                out_f32_col2row(2d): [0.0, 8192.0, 1.0], validate True , time:1.06545210ms
+                out_f32_row2col(2d): [0.0, 8192.0, 1.0], validate True , time:1.06657267ms
+                  out_f32_diagnonal: [0.0, 8192.0, 1.0], validate True , time:1.11862946ms
+                  out_f32x4_col2row: [0.0, 8192.0, 1.0], validate True , time:2.06704783ms
+                  out_f32x4_row2col: [0.0, 8192.0, 1.0], validate True , time:1.67259908ms
+              out_f32x4_col2row(2d): [0.0, 8192.0, 1.0], validate True , time:1.06197333ms
+              out_f32x4_row2col(2d): [0.0, 8192.0, 1.0], validate True , time:0.69753051ms
+       out_f32x4_shared_col2row(2d): [0.0, 8192.0, 1.0], validate True , time:0.75325727ms
+       out_f32x4_shared_row2col(2d): [0.0, 8192.0, 1.0], validate True , time:0.66890717ms
+   out_f32x4_shared_bcf_col2row(2d): [0.0, 8192.0, 1.0], validate True , time:0.75367093ms
+   out_f32x4_shared_bcf_row2col(2d): [0.0, 8192.0, 1.0], validate True , time:0.66564393ms
+ out_mat_transpose_cute_col2row_reg: [0.0, 8192.0, 1.0], validate True , time:1.04156613ms
+ out_mat_transpose_cute_row2col_reg: [0.0, 8192.0, 1.0], validate True , time:0.98622823ms
+    out_mat_transpose_cute_col_smem: [0.0, 8192.0, 1.0], validate True , time:1.01331401ms
+    out_mat_transpose_cute_row_smem: [0.0, 8192.0, 1.0], validate True , time:0.98386550ms
+out_mat_transpose_cute_col_smem_swizzled: [0.0, 8192.0, 1.0], validate True , time:1.00588274ms
+out_mat_transpose_cute_row_smem_swizzled: [0.0, 8192.0, 1.0], validate True , time:0.98301244ms
+out_mat_transpose_cute_row_cvectorized: [0.0, 8192.0, 1.0], validate True , time:0.90383577ms
+out_mat_transpose_cute_row_rvectorized: [0.0, 8192.0, 1.0], validate True , time:0.65374827ms
+out_mat_transpose_cute_row_cvectorized_swizzled: [0.0, 8192.0, 1.0], validate True , time:0.90814710ms
+out_mat_transpose_cute_row_rvectorized_swizzled: [0.0, 8192.0, 1.0], validate True , time:0.65394568ms
+out_mat_transpose_cute_row_rvectorized_swizzled_optimized: [0.0, 8192.0, 1.0], validate True , time:0.65754938ms
+                         out_f32_th: [0.0, 8192.0, 1.0], validate True , time:2.29676986ms
+                out_f32_th_compiled: [0.0, 8192.0, 1.0], validate True , time:2.29685950ms
 ----------------------------------------------------------------------------------------------------------------------------------
 
 ```

@@ -377,6 +377,9 @@ extern void mat_transpose_cute_row_cvectorized_swizzled(torch::Tensor,
                                                         torch::Tensor);
 extern void mat_transpose_cute_row_rvectorized_swizzled(torch::Tensor,
                                                         torch::Tensor);
+extern void
+    mat_transpose_cute_row_rvectorized_swizzled_optimized(torch::Tensor,
+                                                          torch::Tensor);
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   // 1d index
@@ -408,4 +411,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   TORCH_BINDING_COMMON_EXTENSION(mat_transpose_cute_row_rvectorized)
   TORCH_BINDING_COMMON_EXTENSION(mat_transpose_cute_row_cvectorized_swizzled)
   TORCH_BINDING_COMMON_EXTENSION(mat_transpose_cute_row_rvectorized_swizzled)
+  TORCH_BINDING_COMMON_EXTENSION(
+      mat_transpose_cute_row_rvectorized_swizzled_optimized)
 }

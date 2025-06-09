@@ -4,12 +4,15 @@ from functools import partial
 from typing import Optional
 
 import torch
+import torch._dynamo
 from torch.utils.cpp_extension import load
+
+torch._dynamo.config.suppress_errors = True
 
 torch.set_grad_enabled(False)
 
 CUTLASS_REPO_PATH = os.environ.get(
-    "CUTLASS_REPO_PATH", os.path.expanduser("~/cutlass")
+    "CUTLASS_REPO_PATH", os.path.expanduser("../../third-party/cutlass")
 )
 # Load the CUDA kernel as a python module
 lib = load(
@@ -176,6 +179,12 @@ for M, N in MNs:
         lib.mat_transpose_cute_row_rvectorized_swizzled,
         x,
         "mat_transpose_cute_row_rvectorized_swizzled",
+        y,
+    )
+    run_benchmark(
+        lib.mat_transpose_cute_row_rvectorized_swizzled_optimized,
+        x,
+        "mat_transpose_cute_row_rvectorized_swizzled_optimized",
         y,
     )
     run_benchmark(
