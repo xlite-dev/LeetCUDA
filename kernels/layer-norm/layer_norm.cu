@@ -197,7 +197,7 @@ __global__ void layer_norm_f16_f16_kernel(half *x, half *y, float g, float b,
   half variance = (value - s_mean) * (value - s_mean);
   variance = block_reduce_sum_f16_f16<NUM_THREADS>(variance);
   if (tid == 0)
-    s_variance = hrsqrt(variance / (K_ + epsilon));
+    s_variance = hrsqrt(variance / K_ + epsilon);
   // wait for s_variance in shared memory to be ready for all threads
   __syncthreads();
   if (idx < N * K) {
@@ -232,7 +232,7 @@ __global__ void layer_norm_f16x2_f16_kernel(half *x, half *y, float g, float b,
   half variance = reg_x_hat.x * reg_x_hat.x + reg_x_hat.y * reg_x_hat.y;
   variance = block_reduce_sum_f16_f16<NUM_THREADS>(variance);
   if (tid == 0)
-    s_variance = hrsqrt(variance / (K_ + epsilon));
+    s_variance = hrsqrt(variance / K_ + epsilon);
   // wait for s_variance in shared memory to be ready for all threads
   __syncthreads();
   if (idx < N * K) {
@@ -300,7 +300,7 @@ __global__ void layer_norm_f16x8_f16_kernel(half *x, half *y, float g, float b,
 
   variance = block_reduce_sum_f16_f16<NUM_THREADS>(variance);
   if (tid == 0)
-    s_variance = hrsqrt(variance / (K_ + epsilon));
+    s_variance = hrsqrt(variance / K_ + epsilon);
   // wait for s_variance in shared memory to be ready for all threads
   __syncthreads();
   // manual unroll
@@ -390,7 +390,7 @@ __global__ void layer_norm_f16x8_pack_f16_kernel(half *x, half *y, float g,
   }
   variance = block_reduce_sum_f16_f16<NUM_THREADS>(variance);
   if (tid == 0)
-    s_variance = hrsqrt(variance / (K_ + epsilon));
+    s_variance = hrsqrt(variance / K_ + epsilon);
   // wait for s_variance in shared memory to be ready for all threads
   __syncthreads();
 

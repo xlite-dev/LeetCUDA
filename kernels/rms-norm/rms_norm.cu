@@ -172,7 +172,7 @@ __global__ void rms_norm_f16_f16_kernel(half *x, half *y, float g, int N,
   half variance = value * value;
   variance = block_reduce_sum_f16_f16<NUM_THREADS>(variance);
   if (tid == 0)
-    s_variance = hrsqrt(variance / (K_ + epsilon));
+    s_variance = hrsqrt(variance / K_ + epsilon);
   // wait for s_variance in shared memory to be ready for all threads
   __syncthreads();
   if (idx < N * K)
@@ -195,7 +195,7 @@ __global__ void rms_norm_f16x2_f16_kernel(half *x, half *y, float g, int N,
                                 : __float2half(0.0f);
   variance = block_reduce_sum_f16_f16<NUM_THREADS>(variance);
   if (tid == 0)
-    s_variance = hrsqrt(variance / (K_ + epsilon));
+    s_variance = hrsqrt(variance / K_ + epsilon);
   // wait for s_variance in shared memory to be ready for all threads
   __syncthreads();
   half2 reg_y;
@@ -241,7 +241,7 @@ __global__ void rms_norm_f16x8_f16_kernel(half *x, half *y, float g, int N,
   variance += HALF2_VARIANCE(reg_x_3, 6);
   variance = block_reduce_sum_f16_f16<NUM_THREADS>(variance);
   if (tid == 0)
-    s_variance = hrsqrt(variance / (K_ + epsilon));
+    s_variance = hrsqrt(variance / K_ + epsilon);
   // wait for s_variance in shared memory to be ready for all threads
   __syncthreads();
   // manual unroll
@@ -292,7 +292,7 @@ __global__ void rms_norm_f16x8_f32_kernel(half *x, half *y, float g, int N,
 
   variance = block_reduce_sum_f32<NUM_THREADS>(variance);
   if (tid == 0)
-    s_variance = rsqrtf(variance / ((float)K + epsilon));
+    s_variance = rsqrtf(variance / (float)K + epsilon);
   // wait for s_variance in shared memory to be ready for all threads
   __syncthreads();
   // manual unroll
@@ -328,7 +328,7 @@ __global__ void rms_norm_f16_f32_kernel(half *x, half *y, float g, int N,
   float variance = value * value;
   variance = block_reduce_sum_f32<NUM_THREADS>(variance);
   if (tid == 0)
-    s_variance = rsqrtf(variance / ((float)K + epsilon));
+    s_variance = rsqrtf(variance / (float)K + epsilon);
   // wait for s_variance in shared memory to be ready for all threads
   __syncthreads();
   if (idx < N * K) {
@@ -360,7 +360,7 @@ __global__ void rms_norm_f16x8_pack_f16_kernel(half *x, half *y, float g, int N,
   }
   variance = block_reduce_sum_f16_f16<NUM_THREADS>(variance);
   if (tid == 0)
-    s_variance = hrsqrt(variance / (K_ + epsilon));
+    s_variance = hrsqrt(variance / K_ + epsilon);
   // wait for s_variance in shared memory to be ready for all threads
   __syncthreads();
 
@@ -396,7 +396,7 @@ __global__ void rms_norm_f16x8_pack_f32_kernel(half *x, half *y, float g, int N,
   }
   variance = block_reduce_sum_f32<NUM_THREADS>(variance);
   if (tid == 0)
-    s_variance = rsqrtf(variance / ((float)K + epsilon));
+    s_variance = rsqrtf(variance / (float)K + epsilon);
   // wait for s_variance in shared memory to be ready for all threads
   __syncthreads();
 
@@ -626,7 +626,7 @@ void rms_norm_f32x4(torch::Tensor x, torch::Tensor y, float g) {
   }
 
 #define LANUCH_RMS_NORM_F16x8F32_KERNEL(K)                                     \
-  rms_norm_f16x8_f16_kernel<(K) / 8>                                           \
+  rms_norm_f16x8_f32_kernel<(K) / 8>                                           \
       <<<grid, block>>>(reinterpret_cast<half *>(x.data_ptr()),                \
                         reinterpret_cast<half *>(y.data_ptr()), g, N, (K));
 
