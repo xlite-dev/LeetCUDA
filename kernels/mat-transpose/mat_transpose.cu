@@ -334,7 +334,7 @@ __global__ void mat_transpose_f32x4_shared_bcf_row2col2d_kernel(float *x,
     dim3 block(WARP_SIZE_S, WARP_SIZE_S);                                      \
     dim3 grid((N + WARP_SIZE_S - 1) / (WARP_SIZE_S * n_element_col),           \
               (M + WARP_SIZE_S - 1) / (WARP_SIZE_S * n_element_row));          \
-    mat_transpose_##tag##2d_kernel < < < grid,                                 \
+    mat_transpose_##tag##2d_kernel <<< grid,                                   \
         block >>> (reinterpret_cast<element_type *>(x.data_ptr()),             \
                    reinterpret_cast<element_type *>(y.data_ptr()), M, N);      \
   }
