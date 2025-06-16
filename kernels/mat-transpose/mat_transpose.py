@@ -128,6 +128,12 @@ for M, N in MNs:
         y,
     )
     run_benchmark(
+        lib.mat_transpose_f32x4_shared_bcf_merge_write_row2col2d,
+        x,
+        "f32x4_shared_bcf_merge_write_row2col(2d)",
+        y,
+    )
+    run_benchmark(
         lib.mat_transpose_cute_col2row_reg,
         x,
         "mat_transpose_cute_col2row_reg",
