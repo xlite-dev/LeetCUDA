@@ -17,8 +17,8 @@
 #define BFLOAT2(value) (reinterpret_cast<__nv_bfloat162 *>(&(value))[0])
 #define LDST128BITS(value) (reinterpret_cast<float4 *>(&(value))[0])
 
-// -------------------------------------- FP32
-// -------------------------------------- DS required for Online Softmax
+//  FP32
+//  DS required for Online Softmax
 struct __align__(8) MD {
   float m;
   float d;

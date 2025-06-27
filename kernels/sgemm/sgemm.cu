@@ -15,8 +15,8 @@
 #define FLOAT4(value) (reinterpret_cast<float4 *>(&(value))[0])
 
 // modified from: https://zhuanlan.zhihu.com/p/657632577
-// -------------------------------------- FP32
-// -------------------------------------- SGEMM naive: compute one c[i,j]
+//  FP32
+//  SGEMM naive: compute one c[i,j]
 // element per threads, all row major
 __global__ void sgemm_naive_f32_kernel(float *a, float *b, float *c, int M,
                                        int N, int K) {

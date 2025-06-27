@@ -57,8 +57,8 @@ __inline__ __device__ float gelu_none_approximate(float x) {
   return x * 0.5 * (1 + erff(x * M_SQRT1_2));
 }
 
-// -------------------------------------- FP32
-// -------------------------------------- GELU tanh approximate: x, y:x 0.5 * x
+// FP32
+// GELU tanh approximate: x, y:x 0.5 * x
 // * (1.0 + tanh(0.7978845608 * x * (1.0 + 0.044715 * x * x))) grid(N/256),
 // block(K=256)
 __global__ void gelu_f32_kernel(float *x, float *y, int N) {
@@ -91,8 +91,8 @@ __global__ void gelu_f32x4_kernel(float *x, float *y, int N) {
   }
 }
 
-// -------------------------------------- FP16
-// -------------------------------------- GELU approximate: x, y:x 0.5 * x *
+// FP16
+// GELU approximate: x, y:x 0.5 * x *
 // (1.0 + tanh(0.7978845608 (x + 0.044715 * x * x * x))) Vec4
 __global__ void gelu_f16_kernel(half *x, half *y, int N) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;

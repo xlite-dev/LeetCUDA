@@ -25,8 +25,8 @@
 //           MatMul FP8 -> Tensor Cores
 
 // CUDA温故(0x00): 一步步学习block all reduce: 从FP32到FP16/BF16，再到FP8
-// -------------------------------------- FP32
-// -------------------------------------- Warp Reduce Sum
+//  FP32
+//  Warp Reduce Sum
 template <const int kWarpSize = WARP_SIZE>
 __device__ __forceinline__ float warp_reduce_sum_f32(float val) {
 #pragma unroll
@@ -93,8 +93,8 @@ __global__ void block_all_reduce_sum_f32x4_f32_kernel(float *a, float *y,
     atomicAdd(y, sum);
 }
 
-// -------------------------------------- FP16
-// -------------------------------------- Warp Reduce Sum: Half
+//  FP16
+//  Warp Reduce Sum: Half
 template <const int kWarpSize = WARP_SIZE>
 __device__ __forceinline__ half warp_reduce_sum_f16_f16(half val) {
 #pragma unroll
@@ -301,8 +301,8 @@ __global__ void block_all_reduce_sum_f16x8_pack_f32_kernel(half *a, float *y,
     atomicAdd(y, sum);
 }
 
-// -------------------------------------- BF16
-// -------------------------------------- Warp Reduce Sum: Half
+//  BF16
+//  Warp Reduce Sum: Half
 template <const int kWarpSize = WARP_SIZE>
 __device__ __forceinline__ __nv_bfloat16
 warp_reduce_sum_bf16_bf16(__nv_bfloat16 val) {
@@ -520,8 +520,8 @@ __global__ void block_all_reduce_sum_bf16x8_pack_f32_kernel(__nv_bfloat16 *a,
     atomicAdd(y, sum);
 }
 
-// -------------------------------------- FP8
-// --------------------------------------
+//  FP8
+//
 template <const int kWarpSize = WARP_SIZE>
 __device__ __forceinline__ half
 warp_reduce_sum_fp8_e4m3_f16(__nv_fp8_storage_t val) {
@@ -680,8 +680,8 @@ block_all_reduce_sum_fp8_e5m2x16_pack_f16_kernel(__nv_fp8_storage_t *a,
     atomicAdd(y, __half2float(sum));
 }
 
-// -------------------------------------- INT8
-// --------------------------------------
+//  INT8
+//
 template <const int kWarpSize = WARP_SIZE>
 __device__ __forceinline__ int32_t warp_reduce_sum_i8_i32(int8_t val) {
   int32_t val_i32 = static_cast<int32_t>(val);

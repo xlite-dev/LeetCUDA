@@ -17,8 +17,8 @@
 #define BFLOAT2(value) (reinterpret_cast<__nv_bfloat162 *>(&(value))[0])
 #define LDST128BITS(value) (reinterpret_cast<float4 *>(&(value))[0])
 
-// -------------------------------------- FP32
-// -------------------------------------- Warp Reduce Sum
+//  FP32
+//  Warp Reduce Sum
 template <const int kWarpSize = WARP_SIZE>
 __device__ __forceinline__ float warp_reduce_sum_f32(float val) {
 #pragma unroll
@@ -119,8 +119,8 @@ __global__ void layer_norm_f32x4_kernel(float *x, float *y, float g, float b,
     FLOAT4(y[idx]) = reg_y;
 }
 
-// -------------------------------------- FP16
-// -------------------------------------- Warp Reduce Sum: Half
+//  FP16
+//  Warp Reduce Sum: Half
 template <const int kWarpSize = WARP_SIZE>
 __device__ __forceinline__ half warp_reduce_sum_f16_f16(half val) {
 #pragma unroll

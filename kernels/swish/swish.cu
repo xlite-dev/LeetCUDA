@@ -15,8 +15,8 @@
 #define BFLOAT2(value) (reinterpret_cast<__nv_bfloat162 *>(&(value))[0])
 #define LDST128BITS(value) (reinterpret_cast<float4 *>(&(value))[0])
 
-// -------------------------------------- FP32
-// -------------------------------------- Swish x: N, y: N y=x*sigmoid(x)
+//  FP32
+//  Swish x: N, y: N y=x*sigmoid(x)
 __device__ __forceinline__ float swish(float x) {
   return x / (1.0f + expf(-x));
 }
@@ -40,8 +40,7 @@ __global__ void swish_f32x4_kernel(float *x, float *y, int N) {
   }
 }
 
-// -------------------------------------- FP16
-// --------------------------------------
+//  FP16
 __device__ __forceinline__ half swish_half(half x) {
   return __hmul(x, __hdiv(__float2half(1.0f),
                           __hadd(__float2half(1.0f), hexp(__hneg(x)))));
@@ -107,8 +106,6 @@ __global__ void swish_f16x8_pack_kernel(half *x, half *y, int N) {
   }
 }
 
-// --------------------- PyTorch bindings for custom kernel
-// -----------------------
 #define STRINGFY(str) #str
 #define TORCH_BINDING_COMMON_EXTENSION(func)                                   \
   m.def(STRINGFY(func), &func, STRINGFY(func));

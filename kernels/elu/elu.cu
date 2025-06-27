@@ -31,13 +31,13 @@
   m.def(STRINGFY(func), &func, STRINGFY(func));
 
 // ELU 计算函数
-// -------------------------------------- FP32
+// FP32
 // --------------------------------------
 __device__ __forceinline__ float elu(float x) {
   return x > 0.f ? x : ALPHA * (expf(x) - 1.f);
 }
 
-// -------------------------------------- FP16
+// FP16
 // --------------------------------------
 __device__ __forceinline__ half elu_half(half x) {
   return __hgt(x, __float2half(0.f))
@@ -46,7 +46,7 @@ __device__ __forceinline__ half elu_half(half x) {
 }
 
 // CUDA 核函数
-// -------------------------------------- FP32
+// FP32
 // --------------------------------------
 __global__ void elu_f32_kernel(float *x, float *y, int N) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -67,7 +67,7 @@ __global__ void elu_f32x4_kernel(float *x, float *y, int N) {
   }
 }
 
-// -------------------------------------- FP16
+// FP16
 // --------------------------------------
 __global__ void elu_f16_kernel(half *x, half *y, int N) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;

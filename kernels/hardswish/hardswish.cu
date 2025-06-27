@@ -32,8 +32,7 @@
   m.def(STRINGFY(func), &func, STRINGFY(func));
 
 // HARDSWISH 计算函数
-// -------------------------------------- FP32
-// --------------------------------------
+//  FP32
 __device__ __forceinline__ float hardswish(float x) {
   if (x >= THRESHOLD_A) {
     return x;
@@ -44,8 +43,7 @@ __device__ __forceinline__ float hardswish(float x) {
   }
 }
 
-// -------------------------------------- FP16
-// --------------------------------------
+//  FP16
 __device__ __forceinline__ half hardswish_half(half x) {
   if (x > __float2half(THRESHOLD_A)) {
     return x;
@@ -57,8 +55,7 @@ __device__ __forceinline__ half hardswish_half(half x) {
 }
 
 // CUDA 核函数
-// -------------------------------------- FP32
-// --------------------------------------
+//  FP32
 __global__ void hardswish_f32_kernel(float *x, float *y, int N) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx < N)
@@ -78,8 +75,7 @@ __global__ void hardswish_f32x4_kernel(float *x, float *y, int N) {
   }
 }
 
-// -------------------------------------- FP16
-// --------------------------------------
+//  FP16
 __global__ void hardswish_f16_kernel(half *x, half *y, int N) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx < N)

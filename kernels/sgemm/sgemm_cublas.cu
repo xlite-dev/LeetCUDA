@@ -41,8 +41,6 @@ void cublas_sgemm_tf32(float *A, float *B, float *C, size_t M, size_t N,
                CUBLAS_GEMM_DEFAULT_TENSOR_OP);
 }
 
-// --------------------- PyTorch bindings for custom kernel
-// -----------------------
 #define STRINGFY(str) #str
 #define TORCH_BINDING_COMMON_EXTENSION(func)                                   \
   m.def(STRINGFY(func), &func, STRINGFY(func));

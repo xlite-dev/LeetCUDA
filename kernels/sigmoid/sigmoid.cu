@@ -21,8 +21,8 @@
 #define MAX_EXP_F16 __float2half(11.089866488461016f)
 #define MIN_EXP_F16 __float2half(-9.704060527839234f)
 
-// -------------------------------------- FP32
-// -------------------------------------- Sigmoid x: N, y: N y=1/(1+exp(-x))
+//  FP32
+//  Sigmoid x: N, y: N y=1/(1+exp(-x))
 // grid(N/256), block(K=256)
 __global__ void sigmoid_f32_kernel(float *x, float *y, int N) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -55,8 +55,7 @@ __global__ void sigmoid_f32x4_kernel(float *x, float *y, int N) {
   }
 }
 
-// -------------------------------------- FP16
-// --------------------------------------
+//  FP16
 __global__ void sigmoid_f16_kernel(half *x, half *y, int N) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   const half f = __float2half(1.0f);
