@@ -456,8 +456,6 @@ __global__ void layer_norm_f16x8_pack_f32_kernel(half *x, half *y, float g,
   // TODO: support non 8-multiple K here
 }
 
-// --------------------- PyTorch bindings for custom kernel
-// -----------------------
 #define STRINGFY(str) #str
 #define TORCH_BINDING_COMMON_EXTENSION(func)                                   \
   m.def(STRINGFY(func), &func, STRINGFY(func));

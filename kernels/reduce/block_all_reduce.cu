@@ -17,14 +17,6 @@
 #define BFLOAT2(value) (reinterpret_cast<__nv_bfloat162 *>(&(value))[0])
 #define LDST128BITS(value) (reinterpret_cast<float4 *>(&(value))[0])
 
-// FP16/BF16 CUDA Cores/Tensor Cores:
-// https://resources.nvidia.com/en-us-tensor-core
-// Non MatMul FP16/BF16 -> CUDA Cores
-//     MatMul FP16/BF16 -> Tensor Cores
-//       Non MatMul FP8 -> Not supported
-//           MatMul FP8 -> Tensor Cores
-
-// CUDA温故(0x00): 一步步学习block all reduce: 从FP32到FP16/BF16，再到FP8
 //  FP32
 //  Warp Reduce Sum
 template <const int kWarpSize = WARP_SIZE>

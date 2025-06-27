@@ -131,7 +131,6 @@ __global__ void hardshrink_f16x8_pack_kernel(half *x, half *y, int N) {
   }
 }
 
-// PyTorch 绑定代码
 #define TORCH_BINDING_HARDSHRINK(packed_type, th_type, element_type,           \
                                  n_elements)                                   \
   void hardshrink_##packed_type(torch::Tensor x, torch::Tensor y) {            \

@@ -35,7 +35,6 @@ __global__ void histogram_i32x4_kernel(int *a, int *y, int N) {
   }
 }
 
-// PyTorch bindings for custom kernel
 #define STRINGFY(str) #str
 #define TORCH_BINDING_COMMON_EXTENSION(func)                                   \
   m.def(STRINGFY(func), &func, STRINGFY(func));

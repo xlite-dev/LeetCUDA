@@ -136,7 +136,6 @@ __global__ void hardswish_f16x8_pack_kernel(half *x, half *y, int N) {
   }
 }
 
-// PyTorch 绑定代码
 #define TORCH_BINDING_HARDSWISH(packed_type, th_type, element_type,            \
                                 n_elements)                                    \
   void hardswish_##packed_type(torch::Tensor x, torch::Tensor y) {             \

@@ -78,8 +78,6 @@ __global__ void embedding_f16x8_pack_kernel(const int *idx, half *weight,
       LDST128BITS(weight[offset + 8 * tx]);
 }
 
-// --------------------- PyTorch bindings for custom kernel
-// -----------------------
 #define STRINGFY(str) #str
 #define TORCH_BINDING_COMMON_EXTENSION(func)                                   \
   m.def(STRINGFY(func), &func, STRINGFY(func));

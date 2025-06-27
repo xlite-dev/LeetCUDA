@@ -182,8 +182,6 @@ __global__ void gelu_f16x8_pack_kernel(half *x, half *y, int N) {
   }
 }
 
-// --------------------- PyTorch bindings for custom kernel
-// -----------------------
 #define STRINGFY(str) #str
 #define TORCH_BINDING_COMMON_EXTENSION(func)                                   \
   m.def(STRINGFY(func), &func, STRINGFY(func));

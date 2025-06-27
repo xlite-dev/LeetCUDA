@@ -120,8 +120,6 @@ __global__ void elementwise_add_f16x8_pack_kernel(half *a, half *b, half *c,
   }
 }
 
-// --------------------- PyTorch bindings for custom kernel
-// -----------------------
 #define STRINGFY(str) #str
 #define TORCH_BINDING_COMMON_EXTENSION(func)                                   \
   m.def(STRINGFY(func), &func, STRINGFY(func));
