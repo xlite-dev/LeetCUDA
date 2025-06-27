@@ -17,8 +17,8 @@
 #define BFLOAT2(value) (reinterpret_cast<__nv_bfloat162 *>(&(value))[0])
 #define LDST128BITS(value) (reinterpret_cast<float4 *>(&(value))[0])
 
-//  FP32
-//  DS required for Online Softmax
+// FP32
+// DS required for Online Softmax
 struct __align__(8) MD {
   float m;
   float d;
@@ -102,8 +102,8 @@ __device__ float block_reduce_max_f32(float val) {
   return value;
 }
 
-// // Softmax x: N, y: N
-// // grid(N/256), block(K=256)
+// Softmax x: N, y: N
+// grid(N/256), block(K=256)
 // template<const int NUM_THREADS = 256>
 // __global__ void softmax_f32_kernel(float* x, float* y, float* total, int N) {
 
@@ -408,8 +408,6 @@ online_safe_softmax_f32x4_pack_per_token_kernel(float *x, float *y, int N) {
   }
 }
 
-// --------------------- PyTorch bindings for custom kernel
-// -----------------------
 #define STRINGFY(str) #str
 #define TORCH_BINDING_COMMON_EXTENSION(func)                                   \
   m.def(STRINGFY(func), &func, STRINGFY(func));
