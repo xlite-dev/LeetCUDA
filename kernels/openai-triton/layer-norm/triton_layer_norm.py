@@ -13,22 +13,8 @@ In doing so, you will learn about:
 """
 
 # Adapted from: https://github.com/triton-lang/triton/tree/main/python/turorials/05-layer-norm.py
-# %%
-# Motivations
-# -----------
-#
-# The *LayerNorm* operator was first introduced in [BA2016]_ as a way to improve the performance
-# of sequential models (e.g., Transformers) or neural networks with small batch size.
-# It takes a vector :math:`x` as input and produces a vector :math:`y` of the same shape as output.
-# The normalization is performed by subtracting the mean and dividing by the standard deviation of :math:`x`.
-# After the normalization, a learnable linear transformation with weights :math:`w` and biases :math:`b` is applied.
-# The forward pass can be expressed as follows:
-#
-# .. math::
-#    y = \frac{ x - \text{E}[x] }{ \sqrt{\text{Var}(x) + \epsilon} } * w + b
-#
-# where :math:`\epsilon` is a small constant added to the denominator for numerical stability.
-# Let’s first take a look at the forward pass implementation.
+
+import argparse
 
 import torch
 import triton
@@ -94,40 +80,6 @@ def _layer_norm_fwd_fused(
         y = x_hat * w + b
         # Write output
         tl.store(Y + cols, y, mask=mask)
-
-
-# %%
-# Backward pass
-# -------------
-#
-# The backward pass for the layer normalization operator is a bit more involved than the forward pass.
-# Let :math:`\hat{x}` be the normalized inputs :math:`\frac{ x - \text{E}[x] }{ \sqrt{\text{Var}(x) + \epsilon} }` before the linear transformation,
-# the Vector-Jacobian Products (VJP) :math:`\nabla_{x}` of :math:`x` are given by:
-#
-# .. math::
-#    \nabla_{x} = \frac{1}{\sigma}\Big( \nabla_{y} \odot w - \underbrace{ \big( \frac{1}{N} \hat{x} \cdot (\nabla_{y} \odot w) \big) }_{c_1} \odot \hat{x} - \underbrace{ \frac{1}{N} \nabla_{y} \cdot w }_{c_2} \Big)
-#
-# where :math:`\odot` denotes the element-wise multiplication, :math:`\cdot` denotes the dot product, and :math:`\sigma` is the standard deviation.
-# :math:`c_1` and :math:`c_2` are intermediate constants that improve the readability of the following implementation.
-#
-# For the weights :math:`w` and biases :math:`b`, the VJPs :math:`\nabla_{w}` and :math:`\nabla_{b}` are more straightforward:
-#
-# .. math::
-#    \nabla_{w} = \nabla_{y} \odot \hat{x} \quad \text{and} \quad \nabla_{b} = \nabla_{y}
-#
-# Since the same weights :math:`w` and biases :math:`b` are used for all rows in the same batch, their gradients need to sum up.
-# To perform this step efficiently, we use a parallel reduction strategy: each kernel instance accumulates
-# partial :math:`\nabla_{w}` and :math:`\nabla_{b}` across certain rows into one of :math:`\text{GROUP_SIZE_M}` independent buffers.
-# These buffers stay in the L2 cache and then are further reduced by another function to compute the actual :math:`\nabla_{w}` and :math:`\nabla_{b}`.
-#
-# Let the number of input rows :math:`M = 4` and :math:`\text{GROUP_SIZE_M} = 2`,
-# here's a diagram of the parallel reduction strategy for :math:`\nabla_{w}` (:math:`\nabla_{b}` is omitted for brevity):
-#
-#   .. image:: parallel_reduction.png
-#
-# In Stage 1, the rows of X that have the same color share the same buffer and thus a lock is used to ensure that only one kernel instance writes to the buffer at a time.
-# In Stage 2, the buffers are further reduced to compute the final :math:`\nabla_{w}` and :math:`\nabla_{b}`.
-# In the following implementation, Stage 1 is implemented by the function :code:`_layer_norm_bwd_dx_fused` and Stage 2 is implemented by the function :code:`_layer_norm_bwd_dwdb`.
 
 
 @triton.jit
@@ -366,7 +318,27 @@ def test_layer_norm(M, N, dtype, eps=1e-5, device=DEVICE):
     assert torch.allclose(dw_tri, dw_ref, atol=1e-2, rtol=0)
 
 
-bench_mode = "backward"
+def get_args():
+    parser = argparse.ArgumentParser(
+        description="Run layer norm benchmark",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        "--mode",
+        type=str,
+        default="forward",
+        choices=["forward", "backward"],
+        help="Benchmark mode",
+    )
+    return parser.parse_args()
+
+
+args = get_args()
+if args.mode not in ["forward", "backward"]:
+    raise ValueError(
+        f"Invalid mode: {args.mode}. Choose 'forward' or 'backward'."
+    )
+bench_mode = args.mode
 
 
 @triton.testing.perf_report(
@@ -436,9 +408,3 @@ def bench_layer_norm(
 
 test_layer_norm(1151, 8192, torch.float16)
 bench_layer_norm.run(save_path=".", print_data=True)
-
-# %%
-# References
-# ----------
-#
-# .. [BA2016] Jimmy Lei Ba and Jamie Ryan Kiros and Geoffrey E. Hinton, "Layer Normalization", Arxiv 2016
