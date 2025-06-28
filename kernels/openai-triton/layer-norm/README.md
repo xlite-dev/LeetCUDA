@@ -2,12 +2,7 @@
 
 ## Forward pass
 
-The *LayerNorm* operator was first introduced is a way to improve the performance of sequential models (e.g., Transformers) or neural networks with small batch size.
-It takes a vector $x$ as input and produces a vector $y$ of the same shape as output.
-The normalization is performed by subtracting the mean and dividing by the standard deviation of $x$.
-After the normalization, a learnable linear transformation with weights $w$ and biases $b$ is applied.
-
-The forward pass can be expressed as follows:
+The *LayerNorm* operator was first introduced is a way to improve the performance of sequential models (e.g., Transformers) or neural networks with small batch size. It takes a vector $x$ as input and produces a vector $y$ of the same shape as output. The normalization is performed by subtracting the mean and dividing by the standard deviation of $x$. After the normalization, a learnable linear transformation with weights $w$ and biases $b$ is applied. The forward pass can be expressed as follows:
 
 $$y = \frac{ x - \text{E}[x] }{ \sqrt{\text{Var}(x) + \epsilon} } * w + b$$
 
@@ -67,9 +62,7 @@ def _layer_norm_fwd_fused(
 
 ## Backward pass
 
-The backward pass for the layer normalization operator is a bit more involved than the forward pass.
-Let $\hat{x}$ be the normalized inputs $\frac{ x - \text{E}[x] }{ \sqrt{\text{Var}(x) + \epsilon} }$ before the linear transformation,
-the Vector-Jacobian Products (VJP) $\nabla_{x}$ of $x$ are given by:
+The backward pass for the layer normalization operator is a bit more involved than the forward pass. Let $\hat{x}$ be the normalized inputs $\frac{ x - \text{E}[x] }{ \sqrt{\text{Var}(x) + \epsilon} }$ before the linear transformation, the Vector-Jacobian Products (VJP) $\nabla_{x}$ of $x$ are given by:
 
 
 $$\nabla_{x}=\frac{1}{\sigma}\Big( \nabla_{y} \odot w - \underbrace{ \big( \frac{1}{N} \hat{x} \cdot (\nabla_{y} \odot w) \big) }\_{ c_1 } \odot \hat{x} - \underbrace{ \frac{1}{N} \nabla_{y} \cdot w }_{c_2} \Big)$$
@@ -78,26 +71,18 @@ $$\nabla_{x}=\frac{1}{\sigma}\Big( \nabla_{y} \odot w - \underbrace{ \big( \frac
 ![alt text](bwd-math.png)
 -->
 
-where $\odot$ denotes the element-wise multiplication, $\cdot$ denotes the dot product, and $\sigma$ is the standard deviation.
-$c_1$ and $c_2$ are intermediate constants that improve the readability of the following implementation.
-
-For the weights $w$ and biases $b$, the VJPs $\nabla_{w}$ and $\nabla_{b}$ are more straightforward:
+where $\odot$ denotes the element-wise multiplication, $\cdot$ denotes the dot product, and $\sigma$ is the standard deviation. $c_1$ and $c_2$ are intermediate constants that improve the readability of the following implementation. For the weights $w$ and biases $b$, the VJPs $\nabla_{w}$ and $\nabla_{b}$ are more straightforward:
 
 $$\nabla_{w} = \nabla_{y} \odot \hat{x} \quad \text{and} \quad \nabla_{b} = \nabla_{y}$$
 
-Since the same weights $w$ and biases $b$ are used for all rows in the same batch, their gradients need to sum up.
-To perform this step efficiently, we use a parallel reduction strategy: each kernel instance accumulates
-partial $\nabla_{w}$ and $\nabla_{b}$ across certain rows into one of `GROUP_SIZE_M` independent buffers.
-
-These buffers stay in the L2 cache and then are further reduced by another function to compute the actual $\nabla_{w}$ and $\nabla_{b}$.
+Since the same weights $w$ and biases $b$ are used for all rows in the same batch, their gradients need to sum up. To perform this step efficiently, we use a parallel reduction strategy: each kernel instance accumulates
+partial $\nabla_{w}$ and $\nabla_{b}$ across certain rows into one of `GROUP_SIZE_M` independent buffers. These buffers stay in the L2 cache and then are further reduced by another function to compute the actual $\nabla_{w}$ and $\nabla_{b}$.
 
 Let the number of input rows $M = 4$ and GROUP_SIZE_M = 2, here's a diagram of the parallel reduction strategy for $\nabla_{w}$ ($\nabla_{b}$ is omitted for brevity):
 
 ![](./bwd.png)
 
-In Stage 1, the rows of X that have the same color share the same buffer and thus a lock is used to ensure that only one kernel instance writes to the buffer at a time.
-In Stage 2, the buffers are further reduced to compute the final $\nabla_{w}$ and $\nabla_{b}$.
-In the following implementation, Stage 1 is implemented by the function `_layer_norm_bwd_dx_fused` and Stage 2 is implemented by the function `_layer_norm_bwd_dwdb$`
+In Stage 1, the rows of X that have the same color share the same buffer and thus a lock is used to ensure that only one kernel instance writes to the buffer at a time. In Stage 2, the buffers are further reduced to compute the final $\nabla_{w}$ and $\nabla_{b}$. In the following implementation, Stage 1 is implemented by the function `_layer_norm_bwd_dx_fused` and Stage 2 is implemented by the function `_layer_norm_bwd_dwdb`
 
 ```python
 @triton.jit
