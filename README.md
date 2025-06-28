@@ -1,15 +1,3 @@
-<!---
-  <img src='https://github.com/user-attachments/assets/9306862b-2a30-4a87-bb33-0fde9e9d7cea' width=250 >
-      <a href="#cuda-kernel">📚200+ CUDA Kernels</a> | <a href="#my-blogs-part-1"> 📚100+ LLM/CUDA Blogs</a> | <a href="#HGEMM-bench"> ⚡️HGEMM MMA</a> | <a href="#fa-mma-bench"> ⚡️FA-2 MMA </a> <p>
-<img src='https://github.com/user-attachments/assets/b2578723-b7a7-4d8f-bcd1-5008947b808a' >
-<div align="center">
-  <p align="center">
-    <a href="#contribute">愿以青衿涉险苦，为君先踏棘荆途。他年若览通衢阔，莫忘初逢问路吾。</a>
-  </p>
-</div>
---->
-
-
 <div align="center">
   <p align="center">
     <h2>📚 LeetCUDA: Modern CUDA Learn Notes with PyTorch for Beginners 🐑</h2>
@@ -24,10 +12,11 @@
       <img src=https://img.shields.io/github/stars/xlite-dev/LeetCUDA.svg?style=social >
       <img src=https://img.shields.io/badge/Release-v3.0.6-brightgreen.svg >
       <img src=https://img.shields.io/badge/License-GPLv3.0-turquoise.svg >
- </div>
+  </div>
+  <p align="center">
+    📚 **LeetCUDA**: It includes **Tensor/CUDA Cores, TF32/F16/BF16/F8**, [📖200+ CUDA Kernels🔥](#cuda-kernel) with PyTorch, [📖100+ LLM/CUDA🔥](#my-blogs-part-1) blogs, [📖HGEMM⚡️](./kernels/hgemm) which can achieve `98%~100%` TFLOPS of **cuBLAS**, and [📖flash-attn⚡️](./kernels/flash-attn) using Tensor Cores with pure MMA PTX. ♥️ Please consider to leave a ⭐️ Star to support me, my bro ~ ♥️
+  </p>
 </div>
-
-📚 **LeetCUDA**: It includes **Tensor/CUDA Cores, TF32/F16/BF16/F8**, [📖200+ CUDA Kernels🔥](#cuda-kernel) with PyTorch, [📖100+ LLM/CUDA🔥](#my-blogs-part-1) blogs, [📖HGEMM⚡️](./kernels/hgemm) which can achieve `98%~100%` TFLOPS of **cuBLAS**, and [📖flash-attn⚡️](./kernels/flash-attn) using Tensor Cores with pure MMA PTX. ♥️ Please consider to leave a ⭐️ Star to support me, my bro ~ ♥️
 
 <div align="center">
   <p align="center">
@@ -52,7 +41,7 @@
 ## 📖 News 🔥🔥
 <div id="news"></div>
 
-- [2025-06-16]: [🤗CacheDiT](https://github.com/vipshop/cache-dit) is release! A **Training-free** and **Easy-to-use** Cache Acceleration Toolbox for Diffusion Transformers (**DBCache**, **DBPrune**, **FBCache**, etc)🔥. Feel free to take a try!  
+- [2025-06-16]: [🤗CacheDiT](https://github.com/vipshop/cache-dit) is release! A **Training-free** and **Easy-to-use** Cache Acceleration Toolbox for Diffusion Transformers (**DBCache**, **DBPrune**, **FBCache**, etc)🔥. Feel free to take a try!
 
 <div align='center'>
   <img src='https://github.com/user-attachments/assets/a5ec4320-d2f9-4254-888a-170b2d9e3784' height=170px>
@@ -521,7 +510,7 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 
 |📖 类型-标题|📖 作者| 📖 推荐 |
 |:---|:---|:---|
-| [[Diffusion推理]📖DiT推理加速综述: Caching](https://zhuanlan.zhihu.com/p/711223667)|@DefTruth|⭐️⭐️⭐|  
+| [[Diffusion推理]📖DiT推理加速综述: Caching](https://zhuanlan.zhihu.com/p/711223667)|@DefTruth|⭐️⭐️⭐|
 | [[Triton编程][基础]📖Triton极简入门: Triton Vector Add](https://zhuanlan.zhihu.com/p/1902778199261291694)|@DefTruth|⭐️⭐️⭐|
 | [[Triton编程][基础]📖Triton Fused Softmax Kernel详解: 从Python源码到PTX](https://zhuanlan.zhihu.com/p/1899562146477609112)|@DefTruth|⭐️⭐️⭐|
 | [[Triton编程][基础]📖vLLM Triton Merge Attention States Kernel详解](https://zhuanlan.zhihu.com/p/1904937907703243110)|@DefTruth|⭐️⭐️⭐|
