@@ -180,15 +180,6 @@ def _layer_norm_bwd_dwdb(
     tl.store(FINAL_DB + cols, sum_db, mask=cols < N)
 
 
-# %%
-# Benchmark
-# ---------
-#
-# We can now compare the performance of our kernel against that of PyTorch.
-# Here we focus on inputs that have Less than 64KB per feature.
-# Specifically, one can set :code:`'mode': 'backward'` to benchmark the backward pass.
-
-
 class LayerNorm(torch.autograd.Function):
 
     @staticmethod
