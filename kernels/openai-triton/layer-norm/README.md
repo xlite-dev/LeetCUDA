@@ -71,9 +71,12 @@ The backward pass for the layer normalization operator is a bit more involved th
 Let $\hat{x}$ be the normalized inputs $\frac{ x - \text{E}[x] }{ \sqrt{\text{Var}(x) + \epsilon} }$ before the linear transformation,
 the Vector-Jacobian Products (VJP) $\nabla_{x}$ of $x$ are given by:
 
-$$\nabla_{x}=\frac{1}{\sigma}\Big( \nabla_{y}\odot w - \underbrace{ \big( \frac{1}{N} \hat{x}\cdot(\nabla_{y}\odot w) \big) }_{c_1}\odot \hat{x} - \underbrace{ \frac{1}{N} \nabla_{y}\cdot w }_{c_2} \Big)$$
 
+$$\nabla_{x}=\frac{1}{\sigma}\Big( \nabla_{y} \odot w - \underbrace{ \big( \frac{1}{N} \hat{x} \cdot (\nabla_{y} \odot w) \big) }\_{ c_1 } \odot \hat{x} - \underbrace{ \frac{1}{N} \nabla_{y} \cdot w }_{c_2} \Big)$$
+
+<!--
 ![alt text](bwd-math.png)
+-->
 
 where $\odot$ denotes the element-wise multiplication, $\cdot$ denotes the dot product, and $\sigma$ is the standard deviation.
 $c_1$ and $c_2$ are intermediate constants that improve the readability of the following implementation.
