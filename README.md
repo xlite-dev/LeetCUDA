@@ -65,31 +65,6 @@
 
 ## 📖 Contents
 <div id="contents"></div>
-<!---
-- [📖 HGEMM-MMA 🎉🎉](#HGEMM-bench)
-  - [📚 CUDA/Tensor Cores](#HGEMM-bench)
-  - [📚 Tile Block(Br, Bc)](#HGEMM-bench)
-  - [📚 Tile MMAs/Warps](#HGEMM-bench)
-  - [📚 Pack LDST(128 bits)](#HGEMM-bench)
-  - [📚 Multi Stages(2~4)](#HGEMM-bench)
-  - [📚 Block/Warp Swizzle](#HGEMM-bench)
-  - [📚 SMEM Swizzle](#HGEMM-bench)
-  - [📚 Register Double Buffers](#HGEMM-bench)
-  - [📚 Collective Store(Shfl)](#HGEMM-bench)
-  - [📚 Layout NN/TN](#HGEMM-bench)
-- [📖 FlashAttention-MMA 🎉🎉](#fa-mma-bench)
-- [📖 200+ CUDA Kernels 🔥🔥](#cuda-kernel)
-- [📖 100+ 高性能计算文章 💡💡](#my-blogs-part-1)
-  - [📚 大模型推理优化原理](#my-blogs-part-1)
-  - [📚 大模型分布式训推原理](#my-blogs-part-1)
-  - [📚 CV/C++/模型部署优化](#my-blogs-part-1)
-  - [📚 CUDA优化入门与实践](#other-blogs)
-  - [📚 Tensor Cores入门教程](#other-blogs)
-  - [📚 CuTe系列详解与实践](#other-blogs)
-  - [📚 GPU指令集架构精解](#other-blogs)
-  - [📚 GPU通信架构精解](#other-blogs)
-- [📖 How to Contribute 👀👇](#contribute)
---->
 
 - [📖 HGEMM-MMA 🎉🎉](#HGEMM-bench)
 - [📖 FlashAttention-MMA 🎉🎉](#fa-mma-bench)
