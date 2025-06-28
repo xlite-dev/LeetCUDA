@@ -366,6 +366,9 @@ def test_layer_norm(M, N, dtype, eps=1e-5, device=DEVICE):
     assert torch.allclose(dw_tri, dw_ref, atol=1e-2, rtol=0)
 
 
+bench_mode = "backward"
+
+
 @triton.testing.perf_report(
     triton.testing.Benchmark(
         x_names=["N"],
@@ -375,12 +378,12 @@ def test_layer_norm(M, N, dtype, eps=1e-5, device=DEVICE):
         line_names=["Triton", "Torch"] + (["Apex"] if HAS_APEX else []),
         styles=[("blue", "-"), ("green", "-"), ("orange", "-")],
         ylabel="GB/s",
-        plot_name="layer-norm-backward",
-        args={"M": 4096, "dtype": torch.float16, "mode": "backward"},
+        plot_name=f"layer-norm-{bench_mode}",
+        args={"M": 4096, "dtype": torch.float16, "mode": bench_mode},
     )
 )
 def bench_layer_norm(
-    M, N, dtype, provider, mode="backward", eps=1e-5, device=DEVICE
+    M, N, dtype, provider, mode="forward", eps=1e-5, device=DEVICE
 ):
     # create data
     x_shape = (M, N)
