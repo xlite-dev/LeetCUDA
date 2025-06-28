@@ -469,8 +469,7 @@ int main() {
 
 #include <torch/extension.h>
 #include <torch/types.h>
-// --------------------- PyTorch bindings for custom kernel
-// -----------------------
+
 #define STRINGFY(str) #str
 #define TORCH_BINDING_COMMON_EXTENSION(func)                                   \
   m.def(STRINGFY(func), &func, STRINGFY(func));

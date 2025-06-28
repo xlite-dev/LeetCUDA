@@ -15,8 +15,8 @@
 #define FLOAT4(value) (reinterpret_cast<float4 *>(&(value))[0])
 
 // modified from: https://zhuanlan.zhihu.com/p/657632577
-//  FP32
-//  SGEMM naive: compute one c[i,j]
+// FP32
+// SGEMM naive: compute one c[i,j]
 // element per threads, all row major
 __global__ void sgemm_naive_f32_kernel(float *a, float *b, float *c, int M,
                                        int N, int K) {
@@ -496,8 +496,6 @@ __global__ void sgemm_t_8x8_sliced_k_f32x4_bcf_dbuf_kernel(
   }
 }
 
-// --------------------- PyTorch bindings for custom kernel
-// -----------------------
 #define STRINGFY(str) #str
 #define TORCH_BINDING_COMMON_EXTENSION(func)                                   \
   m.def(STRINGFY(func), &func, STRINGFY(func));

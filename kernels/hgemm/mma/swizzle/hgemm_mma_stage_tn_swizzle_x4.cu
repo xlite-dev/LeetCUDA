@@ -823,8 +823,7 @@ int main(int argc, char *argv[]) {
 }
 
 #else
-// --------------------- PyTorch bindings for custom kernel
-// -----------------------
+
 #include <torch/extension.h>
 #include <torch/types.h>
 #define STRINGFY(str) #str

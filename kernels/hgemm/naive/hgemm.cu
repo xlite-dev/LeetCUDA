@@ -18,8 +18,8 @@
 #define LDST64BITS(value) (reinterpret_cast<float2 *>(&(value))[0])
 #define LDST128BITS(value) (reinterpret_cast<float4 *>(&(value))[0])
 
-// -------------------------------------- FP16
-// -------------------------------------- HGEMM naive: compute one c[i,j]
+// FP16
+// HGEMM naive: compute one c[i,j]
 // element per threads, all row major
 __global__ void hgemm_naive_f16_kernel(half *a, half *b, half *c, int M, int N,
                                        int K) {
@@ -789,8 +789,6 @@ __global__ void hgemm_t_8x8_sliced_k_f16x8_pack_bcf_dbuf_kernel(
   }
 }
 
-// --------------------- PyTorch bindings for custom kernel
-// -----------------------
 #define STRINGFY(str) #str
 #define TORCH_BINDING_COMMON_EXTENSION(func)                                   \
   m.def(STRINGFY(func), &func, STRINGFY(func));

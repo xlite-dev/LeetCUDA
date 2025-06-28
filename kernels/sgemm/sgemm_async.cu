@@ -812,8 +812,6 @@ __global__ void sgemm_t_8x16_sliced_k16_f32x4_bcf_dbuf_async_kernel(
   }
 }
 
-// --------------------- PyTorch bindings for custom kernel
-// -----------------------
 #define STRINGFY(str) #str
 #define TORCH_BINDING_COMMON_EXTENSION(func)                                   \
   m.def(STRINGFY(func), &func, STRINGFY(func));

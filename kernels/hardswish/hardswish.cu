@@ -19,20 +19,17 @@
 #define BFLOAT2(value) (reinterpret_cast<__nv_bfloat162 *>(&(value))[0])
 #define LDST128BITS(value) (reinterpret_cast<float4 *>(&(value))[0])
 
-// 定义 CHECK_TORCH_TENSOR_DTYPE 宏
 #define CHECK_TORCH_TENSOR_DTYPE(T, th_type)                                   \
   if (((T).options().dtype() != (th_type))) {                                  \
     std::cout << "Tensor Info:" << (T).options() << std::endl;                 \
     throw std::runtime_error("Tensor dtype must be " #th_type);                \
   }
 
-// 定义 TORCH_BINDING_COMMON_EXTENSION 宏
 #define STRINGFY(str) #str
 #define TORCH_BINDING_COMMON_EXTENSION(func)                                   \
   m.def(STRINGFY(func), &func, STRINGFY(func));
 
-// HARDSWISH 计算函数
-//  FP32
+// FP32
 __device__ __forceinline__ float hardswish(float x) {
   if (x >= THRESHOLD_A) {
     return x;
@@ -43,7 +40,7 @@ __device__ __forceinline__ float hardswish(float x) {
   }
 }
 
-//  FP16
+// FP16
 __device__ __forceinline__ half hardswish_half(half x) {
   if (x > __float2half(THRESHOLD_A)) {
     return x;
@@ -54,8 +51,7 @@ __device__ __forceinline__ half hardswish_half(half x) {
   }
 }
 
-// CUDA 核函数
-//  FP32
+// FP32
 __global__ void hardswish_f32_kernel(float *x, float *y, int N) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx < N)
@@ -75,7 +71,7 @@ __global__ void hardswish_f32x4_kernel(float *x, float *y, int N) {
   }
 }
 
-//  FP16
+// FP16
 __global__ void hardswish_f16_kernel(half *x, half *y, int N) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx < N)

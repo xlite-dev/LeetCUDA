@@ -21,8 +21,8 @@
 #define MAX_EXP_F16 __float2half(11.089866488461016f)
 #define MIN_EXP_F16 __float2half(-9.704060527839234f)
 
-//  FP32
-//  Sigmoid x: N, y: N y=1/(1+exp(-x))
+// FP32
+// Sigmoid x: N, y: N y=1/(1+exp(-x))
 // grid(N/256), block(K=256)
 __global__ void sigmoid_f32_kernel(float *x, float *y, int N) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -146,8 +146,6 @@ __global__ void sigmoid_f16x8_pack_kernel(half *x, half *y, int N) {
   }
 }
 
-// --------------------- PyTorch bindings for custom kernel
-// -----------------------
 #define STRINGFY(str) #str
 #define TORCH_BINDING_COMMON_EXTENSION(func)                                   \
   m.def(STRINGFY(func), &func, STRINGFY(func));

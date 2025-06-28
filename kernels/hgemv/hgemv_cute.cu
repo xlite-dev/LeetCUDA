@@ -284,8 +284,6 @@ __global__ void hgemv_tensor_core_cute_kernel(typename HgemvConfig_::T *Aptr,
   copy_if(elem_pred2, sum, gC(elem_index2, _));
 }
 
-// --------------------- PyTorch bindings for custom kernel
-// -----------------------
 #define STRINGFY(str) #str
 #define TORCH_BINDING_COMMON_EXTENSION(func)                                   \
   m.def(STRINGFY(func), &func, STRINGFY(func));

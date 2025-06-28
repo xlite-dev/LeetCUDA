@@ -15,8 +15,8 @@
 #define BFLOAT2(value) (reinterpret_cast<__nv_bfloat162 *>(&(value))[0])
 #define LDST128BITS(value) (reinterpret_cast<float4 *>(&(value))[0])
 
-//  FP32
-//  Swish x: N, y: N y=x*sigmoid(x)
+// FP32
+// Swish x: N, y: N y=x*sigmoid(x)
 __device__ __forceinline__ float swish(float x) {
   return x / (1.0f + expf(-x));
 }

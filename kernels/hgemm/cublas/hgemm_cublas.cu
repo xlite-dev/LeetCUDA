@@ -173,8 +173,7 @@ int main(int argc, char *argv[]) {
 }
 // build torch python binding
 #else
-// --------------------- PyTorch bindings for custom kernel
-// -----------------------
+
 #include <torch/extension.h>
 #include <torch/types.h>
 

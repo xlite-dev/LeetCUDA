@@ -743,8 +743,6 @@ hgemm_t_16x8_sliced_k32_f16x8_pack_dbuf_async_kernel(half *a, half *b, half *c,
   }
 }
 
-// --------------------- PyTorch bindings for custom kernel
-// -----------------------
 #define STRINGFY(str) #str
 #define TORCH_BINDING_COMMON_EXTENSION(func)                                   \
   m.def(STRINGFY(func), &func, STRINGFY(func));

@@ -23,8 +23,8 @@
 #define MAX_EXP_F16 __float2half(11.089866488461016f)
 #define MIN_EXP_F16 __float2half(-9.704060527839234f)
 
-//  FP32
-//  col2row means read x[row][col] and
+// FP32
+// col2row means read x[row][col] and
 // write y[col][row] row2col means read x[col][row] and write y[row][col]
 __global__ void mat_transpose_f32_col2row_kernel(float *x, float *y,
                                                  const int row, const int col) {
