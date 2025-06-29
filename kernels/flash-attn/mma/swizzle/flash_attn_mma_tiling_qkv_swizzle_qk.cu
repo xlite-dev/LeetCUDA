@@ -307,16 +307,16 @@ __global__ void __launch_bounds__(WARP_SIZE *kMmaTileSeqLenQ *kMmaTileSeqLenK)
   uint32_t smem_K_base_ptr = __cvta_generic_to_shared(K_tile_smem);
   uint32_t smem_V_base_ptr = __cvta_generic_to_shared(V_tile_smem);
 
-  // --------------------- Registers/SMEM for thread block
-  // ------------------------- block m_old, l_old, store in lane, use float to
+  // Registers/SMEM for thread block
+  // block m_old, l_old, store in lane, use float to
   // keep precision.
   float lane_block_row_max_old[kWarpTileSeqLenQ][2]; // [1][2]
   float lane_block_row_sum_old[kWarpTileSeqLenQ][2]; // [1][2]
   fill_2D_regs<float, kWarpTileSeqLenQ, 2>(lane_block_row_max_old, -INFINITY);
   fill_2D_regs<float, kWarpTileSeqLenQ, 2>(lane_block_row_sum_old, 0.0f);
 
-  // ---------------------- Registers for S=Q@K^T/O=P@V
-  // ---------------------------- registers for QKV, S=Q[Br,d]@K[Bc,d]=[Br,Bc]
+  // Registers for S=Q@K^T/O=P@V
+  // registers for QKV, S=Q[Br,d]@K[Bc,d]=[Br,Bc]
   // and O=P[Br,Bc]@V[Bc,d]=[Br,d].
   uint32_t R_Q[kWarpTileSeqLenQ][4]; // [1][4]
   uint32_t R_K[kWarpTileSeqLenK][2]; // [8][2]
