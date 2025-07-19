@@ -129,7 +129,4 @@ if __name__ == "__main__":
     ]
     results = ray.get([worker.run.remote() for worker in workers])
     ray.shutdown()
-    if dist.is_initialized():
-        dist.destroy_process_group()
-        print("Process group destroyed")
     print("All processes completed successfully")

@@ -96,6 +96,18 @@ run_benchmark(lib.layer_norm_f16x8_pack_f32, x_f16, "f16x8packf32", out_f16)
 run_benchmark(naive_layer_norm, x_f16, "f16_th")
 print("-" * 85)
 
+print(" " * 40 + f"f16 overflow without f32")
+print("-" * 85)
+x_f16 = x.half() * 100 # this will cause overflow for kernels without `f32`
+run_benchmark(lib.layer_norm_f16_f16, x_f16, "f16f16", out_f16)
+run_benchmark(lib.layer_norm_f16_f32, x_f16, "f16f32", out_f16)
+run_benchmark(lib.layer_norm_f16x2_f16, x_f16, "f16x2f16", out_f16)
+run_benchmark(lib.layer_norm_f16x8_f16, x_f16, "f16x8f16", out_f16)
+run_benchmark(lib.layer_norm_f16x8_pack_f16, x_f16, "f16x8packf16", out_f16)
+run_benchmark(lib.layer_norm_f16x8_pack_f32, x_f16, "f16x8packf32", out_f16)
+run_benchmark(naive_layer_norm, x_f16, "f16_th")
+print("-" * 85)
+
 print("-" * 85)
 N, K = 4096, 1024
 print(" " * 40 + f"N={N}, K={K}")

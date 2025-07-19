@@ -1,7 +1,7 @@
 # Developer Guide
 
 ## 🌤🌤 Goals
-Any kernel implementation is welcome. This repository is primarily for learning/practice, and achieving optimal performance is not the final goal here—focus on "using first, then using well". For optimal performance, it is recommended to directly use official implementations such as cuBLAS, cuDNN, FlashAttention, TensorRT, etc. If you are interested in implementing a specific kernel in this repository, feel free to send a new PR to LeetCUDA, for example:
+Any kernel implementation is welcome. This repository is primarily for learning/practice, and achieving optimal performance is not the final goal. LeetCUDA focus on "using first, then using well". For optimal performance, it is recommended to directly use official implementations such as cuBLAS, cuDNN, FlashAttention, TensorRT, etc. If you are interested in implementing a specific kernel in this repository, feel free to send a new PR to LeetCUDA, for example:
 
 ## 👨‍💻👨‍💻 Pre-commit
 

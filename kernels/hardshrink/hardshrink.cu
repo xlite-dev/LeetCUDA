@@ -31,8 +31,7 @@
   m.def(STRINGFY(func), &func, STRINGFY(func));
 
 // HARDSHRINK 计算函数
-// -------------------------------------- FP32
-// --------------------------------------
+// FP32
 __device__ __forceinline__ float hardshrink(float x) {
   if (x > LAMBD || x < -LAMBD) {
     return x;
@@ -41,8 +40,7 @@ __device__ __forceinline__ float hardshrink(float x) {
   }
 }
 
-// -------------------------------------- FP16
-// --------------------------------------
+// FP16
 __device__ __forceinline__ half hardshrink_half(half x) {
   if (x > __float2half(LAMBD) || x < __float2half(-LAMBD)) {
     return x;
@@ -52,8 +50,7 @@ __device__ __forceinline__ half hardshrink_half(half x) {
 }
 
 // CUDA 核函数
-// -------------------------------------- FP32
-// --------------------------------------
+// FP32
 __global__ void hardshrink_f32_kernel(float *x, float *y, int N) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx < N)
@@ -73,8 +70,7 @@ __global__ void hardshrink_f32x4_kernel(float *x, float *y, int N) {
   }
 }
 
-// -------------------------------------- FP16
-// --------------------------------------
+// FP16
 __global__ void hardshrink_f16_kernel(half *x, half *y, int N) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx < N)
@@ -135,7 +131,6 @@ __global__ void hardshrink_f16x8_pack_kernel(half *x, half *y, int N) {
   }
 }
 
-// PyTorch 绑定代码
 #define TORCH_BINDING_HARDSHRINK(packed_type, th_type, element_type,           \
                                  n_elements)                                   \
   void hardshrink_##packed_type(torch::Tensor x, torch::Tensor y) {            \

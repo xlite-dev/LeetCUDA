@@ -484,8 +484,6 @@ __global__ void sgemm_wmma_m16n16k8_mma4x2_warp2x4_stages_dsmem_kernel(
   }
 }
 
-// --------------------- PyTorch bindings for custom kernel
-// -----------------------
 #define STRINGFY(str) #str
 #define TORCH_BINDING_COMMON_EXTENSION(func)                                   \
   m.def(STRINGFY(func), &func, STRINGFY(func));

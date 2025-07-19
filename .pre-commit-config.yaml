@@ -10,8 +10,6 @@ repos:
       - id: end-of-file-fixer
       - id: check-yaml
         args: [--allow-multiple-documents]
-      - id: check-toml
-      - id: check-ast
       - id: check-added-large-files
       - id: check-merge-conflict
       - id: check-shebang-scripts-are-executable

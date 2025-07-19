@@ -17,8 +17,8 @@
 #define BFLOAT2(value) (reinterpret_cast<__nv_bfloat162 *>(&(value))[0])
 #define LDST128BITS(value) (reinterpret_cast<float4 *>(&(value))[0])
 
-// -------------------------------------- FP32
-// -------------------------------------- Warp Reduce Sum
+// FP32
+// Warp Reduce Sum
 template <const int kWarpSize = WARP_SIZE>
 __device__ __forceinline__ float warp_reduce_sum_f32(float val) {
 #pragma unroll
@@ -87,8 +87,8 @@ __global__ void dot_prod_f32x4_f32_kernel(float *a, float *b, float *y, int N) {
     atomicAdd(y, prod);
 }
 
-// -------------------------------------- FP16
-// -------------------------------------- Warp Reduce Sum: Half
+// FP16
+// Warp Reduce Sum: Half
 template <const int kWarpSize = WARP_SIZE>
 __device__ __forceinline__ half warp_reduce_sum_f16_f16(half val) {
 #pragma unroll
@@ -199,8 +199,6 @@ __global__ void dot_prod_f16x8_pack_f32_kernel(half *a, half *b, float *y,
     atomicAdd(y, prod);
 }
 
-// --------------------- PyTorch bindings for custom kernel
-// -----------------------
 #define STRINGFY(str) #str
 #define TORCH_BINDING_COMMON_EXTENSION(func)                                   \
   m.def(STRINGFY(func), &func, STRINGFY(func));

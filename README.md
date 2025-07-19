@@ -1,35 +1,23 @@
-<!---
-  <img src='https://github.com/user-attachments/assets/9306862b-2a30-4a87-bb33-0fde9e9d7cea' width=250 >
-      <a href="#cuda-kernel">📚200+ CUDA Kernels</a> | <a href="#my-blogs-part-1"> 📚100+ LLM/CUDA Blogs</a> | <a href="#HGEMM-bench"> ⚡️HGEMM MMA</a> | <a href="#fa-mma-bench"> ⚡️FA-2 MMA </a> <p>
-<img src='https://github.com/user-attachments/assets/b2578723-b7a7-4d8f-bcd1-5008947b808a' >
-<div align="center">
-  <p align="center">
-    <a href="#contribute">愿以青衿涉险苦，为君先踏棘荆途。他年若览通衢阔，莫忘初逢问路吾。</a>
-  </p>
-</div>
---->
-
 <div align="center">
   <p align="center">
     <h2>📚 LeetCUDA: Modern CUDA Learn Notes with PyTorch for Beginners 🐑</h2>
-    <img src='https://github.com/user-attachments/assets/b2578723-b7a7-4d8f-bcd1-5008947b808a' >
+    <img src='https://github.com/user-attachments/assets/b2578723-b7a7-4d8f-bcd1-5008947b808a' width="360" height="56" >
+    <a href="https://hellogithub.com/repository/98348655a96640ca8ddcbc298edc901d" target="_blank"><img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=98348655a96640ca8ddcbc298edc901d&claim_uid=ofSCbzTmdeQk3FD&theme=dark" alt="Featured｜HelloGitHub" style="width: 250px; height: 54px;" width="250" height="54" /></a>
   </p>
   <div align='center'>
       <img src=https://cdn.rawgit.com/sindresorhus/awesome/d7305f38d29fed78fa85652e3a63e154dd8e8829/media/badge.svg >
       <img src=https://img.shields.io/badge/Language-CUDA-brightgreen.svg >
-      <img src=https://img.shields.io/github/watchers/xlite-dev/LeetCUDA?color=9cc >
-      <img src=https://img.shields.io/github/forks/xlite-dev/LeetCUDA.svg?style=social >
-      <img src=https://img.shields.io/github/stars/xlite-dev/LeetCUDA.svg?style=social >
-      <img src=https://img.shields.io/badge/Release-v3.0.6-brightgreen.svg >
+      <img src=https://img.shields.io/github/forks/xlite-dev/LeetCUDA.svg?style=dark >
+      <img src=https://img.shields.io/github/stars/xlite-dev/LeetCUDA.svg?style=dark >
       <img src=https://img.shields.io/badge/License-GPLv3.0-turquoise.svg >
- </div>
+  </div>
 </div>
 
 📚 **LeetCUDA**: It includes **Tensor/CUDA Cores, TF32/F16/BF16/F8**, [📖200+ CUDA Kernels🔥](#cuda-kernel) with PyTorch, [📖100+ LLM/CUDA🔥](#my-blogs-part-1) blogs, [📖HGEMM⚡️](./kernels/hgemm) which can achieve `98%~100%` TFLOPS of **cuBLAS**, and [📖flash-attn⚡️](./kernels/flash-attn) using Tensor Cores with pure MMA PTX. ♥️ Please consider to leave a ⭐️ Star to support me, my bro ~ ♥️
 
 <div align="center">
   <p align="center">
-    <a href="#contribute">🔥🔥 PR Welcome: Add Your Kernel to LeetCUDA! Let's make it Awesome together! 🎉🎉</a>
+    <a href="#contribute">🔥🔥 PR Welcome: Add Your Kernel to LeetCUDA! Let's make it Awesome together! 🎉🎉</a> <br>
     <a href=https://github.com/xlite-dev/LeetCUDA/graphs/contributors > <img src=https://opencollective.com/leetcuda/contributors.svg height=40px > </a>
   </p>
 </div>
@@ -50,50 +38,33 @@
 ## 📖 News 🔥🔥
 <div id="news"></div>
 
+- [2025-07-13] **[🤗flux-faster](https://github.com/xlite-dev/flux-faster)** is released! A forked version of [huggingface/flux-fast](https://github.com/huggingface/flux-fast) that **makes flux-fast even faster** with **[cache-dit](https://github.com/vipshop/cache-dit)**, **3.3x** speedup on NVIDIA L20 while still maintaining **high precision**.
+  
+- [2025-06-16]: [🤗CacheDiT](https://github.com/vipshop/cache-dit) is released! A **Training-free** and **Easy-to-use** Cache Acceleration Toolbox for Diffusion Transformers (**DBCache**, **DBPrune**, **TaylorSeer**, **FBCache**, etc)🔥. Feel free to take a try!
+
+<div align='center'>
+  <img src='https://github.com/user-attachments/assets/a5ec4320-d2f9-4254-888a-170b2d9e3784' height=170px>
+</div>
+
 - [2025-01-08]: [📚Split Q + Fully QKV Fine-grained Tiling](#mma-tiling-qkv) has been refactored into 🤖[ffpa-attn](https://github.com/xlite-dev/ffpa-attn.git): 📚FFPA - Yet another Faster Flash Prefill Attention with O(1)🎉SRAM complexity for headdim > 256, **1.8x~3x**🎉faster than SDPA EA: [📈L20 ~1.9x↑🎉](https://github.com/xlite-dev/ffpa-attn?tab=readme-ov-file#L1-bench-l20), [📈 A30 ~1.8x↑🎉](https://github.com/xlite-dev/ffpa-attn?tab=readme-ov-file#L1-bench-a30), [📈3080 ~2.9x↑🎉](https://github.com/xlite-dev/ffpa-attn?tab=readme-ov-file#L1-bench-3080), [📈4090 ~2.1x↑🎉](https://github.com/xlite-dev/ffpa-attn?tab=readme-ov-file#L1-bench-4090).
 
 <div align='center'>
-  <img src='https://github.com/user-attachments/assets/cba2edce-ac0d-412e-823c-7eea2cc63f83' height="170px" width="270px">
-  <img src='https://github.com/user-attachments/assets/447e2937-f7c8-47c8-8550-8c0c71b910e6' height="170px" width="270px">
-  <img src='https://github.com/user-attachments/assets/65a8d564-8fa7-4d66-86b9-e238feb86143' height="170px" width="270px">
+  <img src='https://github.com/user-attachments/assets/cba2edce-ac0d-412e-823c-7eea2cc63f83' height="170px" width="229px">
+  <img src='https://github.com/user-attachments/assets/447e2937-f7c8-47c8-8550-8c0c71b910e6' height="170px" width="229px">
+  <img src='https://github.com/user-attachments/assets/65a8d564-8fa7-4d66-86b9-e238feb86143' height="170px" width="229px">
 </div>
 
 - [2024-12-02]: HGEMM MMA kernels has been refactored into 🤖[HGEMM](https://github.com/xlite-dev/HGEMM.git): ⚡️Write HGEMM from scratch using Tensor Cores with WMMA, MMA and CuTe API, achieve peak⚡️ performance.
 
 <div align='center'>
-  <img src='https://github.com/user-attachments/assets/71927ac9-72b3-4ce9-b0e2-788b5885bc99' height="170px" width="270px">
-  <img src='https://github.com/user-attachments/assets/05ef4f5e-d999-48ea-b58e-782cffb24e85' height="170px" width="270px">
-  <img src='https://github.com/user-attachments/assets/9472e970-c083-4b31-9252-3eeecc761078' height="170px" width="270px">
+  <img src='https://github.com/user-attachments/assets/71927ac9-72b3-4ce9-b0e2-788b5885bc99' height="170px" width="229px">
+  <img src='https://github.com/user-attachments/assets/05ef4f5e-d999-48ea-b58e-782cffb24e85' height="170px" width="229px">
+  <img src='https://github.com/user-attachments/assets/9472e970-c083-4b31-9252-3eeecc761078' height="170px" width="229px">
 </div>
 
 
 ## 📖 Contents
 <div id="contents"></div>
-<!---
-- [📖 HGEMM-MMA 🎉🎉](#HGEMM-bench)
-  - [📚 CUDA/Tensor Cores](#HGEMM-bench)
-  - [📚 Tile Block(Br, Bc)](#HGEMM-bench)
-  - [📚 Tile MMAs/Warps](#HGEMM-bench)
-  - [📚 Pack LDST(128 bits)](#HGEMM-bench)
-  - [📚 Multi Stages(2~4)](#HGEMM-bench)
-  - [📚 Block/Warp Swizzle](#HGEMM-bench)
-  - [📚 SMEM Swizzle](#HGEMM-bench)
-  - [📚 Register Double Buffers](#HGEMM-bench)
-  - [📚 Collective Store(Shfl)](#HGEMM-bench)
-  - [📚 Layout NN/TN](#HGEMM-bench)
-- [📖 FlashAttention-MMA 🎉🎉](#fa-mma-bench)
-- [📖 200+ CUDA Kernels 🔥🔥](#cuda-kernel)
-- [📖 100+ 高性能计算文章 💡💡](#my-blogs-part-1)
-  - [📚 大模型推理优化原理](#my-blogs-part-1)
-  - [📚 大模型分布式训推原理](#my-blogs-part-1)
-  - [📚 CV/C++/模型部署优化](#my-blogs-part-1)
-  - [📚 CUDA优化入门与实践](#other-blogs)
-  - [📚 Tensor Cores入门教程](#other-blogs)
-  - [📚 CuTe系列详解与实践](#other-blogs)
-  - [📚 GPU指令集架构精解](#other-blogs)
-  - [📚 GPU通信架构精解](#other-blogs)
-- [📖 How to Contribute 👀👇](#contribute)
---->
 
 - [📖 HGEMM-MMA 🎉🎉](#HGEMM-bench)
 - [📖 FlashAttention-MMA 🎉🎉](#fa-mma-bench)
@@ -488,8 +459,10 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 
 |📖 Triton Kernel| 📖 Elem DType| 📖 Acc DType| 📖 Docs | 📖 Level |
 |:---|:---|:---|:---|:---|
-| ✔️ [triton_vector_add_kernel](./kernels/openai-triton/elementwise/)|all|all|[link](./kernels/openai-triton/elementwise/)|⭐️⭐️|
-| ✔️ [triton_fused_softmax(multi-stages)](./kernels/openai-triton/fused-softmax/)|f16/bf16/f32|f32|[link](./kernels/openai-triton/fused-softmax//)|⭐️⭐️⭐️|
+| ✔️ [triton_vector_add_kernel](./kernels/openai-triton/vector-add/)|all|all|[link](./kernels/openai-triton/vector-add/)|⭐️⭐️|
+| ✔️ [triton_fused_softmax(multi-stages)](./kernels/openai-triton/fused-softmax/)|f16/bf16/f32|f32|[link](./kernels/openai-triton/fused-softmax/)|⭐️⭐️⭐️|
+| ✔️ [triton_fused_layer_norm(forward-pass)](./kernels/openai-triton/layer-norm/)|f16/bf16/f32|f32|[link](./kernels/openai-triton/layer-norm/)|⭐️⭐️⭐️|
+| ✔️ [triton_fused_layer_norm(backward-pass)](./kernels/openai-triton/layer-norm/)|f16/bf16/f32|f32|[link](./kernels/openai-triton/layer-norm/)|⭐️⭐️⭐️|
 | ✔️ [triton_merge_attn_states_kernel(w/ CUDA)](./kernels/openai-triton/merge-attn-states/)|f16/bf16/f32|f32|[link](./kernels/openai-triton/merge-attn-states/)|⭐️⭐️⭐️|
 
 ### 📚 CUTLASS/CuTe Kernel ⭐️⭐️⭐️ ([©️back👆🏻](#cuda-kernel))
@@ -513,6 +486,7 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 
 |📖 类型-标题|📖 作者| 📖 推荐 |
 |:---|:---|:---|
+| [[Diffusion推理]📖DiT推理加速综述: Caching](https://zhuanlan.zhihu.com/p/711223667)|@DefTruth|⭐️⭐️⭐|
 | [[Triton编程][基础]📖Triton极简入门: Triton Vector Add](https://zhuanlan.zhihu.com/p/1902778199261291694)|@DefTruth|⭐️⭐️⭐|
 | [[Triton编程][基础]📖Triton Fused Softmax Kernel详解: 从Python源码到PTX](https://zhuanlan.zhihu.com/p/1899562146477609112)|@DefTruth|⭐️⭐️⭐|
 | [[Triton编程][基础]📖vLLM Triton Merge Attention States Kernel详解](https://zhuanlan.zhihu.com/p/1904937907703243110)|@DefTruth|⭐️⭐️⭐|
@@ -656,6 +630,15 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 | [[Tensor Cores]📖Nvidia Tensor Core-MMA PTX编程入门](https://zhuanlan.zhihu.com/p/621855199)|@木子知|⭐️⭐️⭐️|
 | [[Tensor Cores]📖CUDA Ampere Tensor Core HGEMM 矩阵乘法优化](https://zhuanlan.zhihu.com/p/555339335)|@nicholaswilde|⭐️⭐️⭐️|
 | [[GPU通信架构][精解]📖NVIDIA GPGPU（四）- 通信架构](https://zhuanlan.zhihu.com/p/680262016)|@Bruce|⭐️⭐️⭐️|
+| [[torch.compile][原理]📖Torch.compile流程解析: 介绍](https://zhuanlan.zhihu.com/p/9418379234)|@StarCap|⭐️⭐️⭐️|
+| [[torch.compile][原理]📖Torch.compile流程解析: TorchDynamo](https://zhuanlan.zhihu.com/p/9640728231)|@StarCap|⭐️⭐️⭐️|
+| [[torch.compile][原理]📖Torch.compile流程解析: AOTAutograd](https://zhuanlan.zhihu.com/p/9997263922)|@StarCap|⭐️⭐️⭐️|
+| [[torch.compile][原理]📖Torch.compile流程解析: TorchInductor](https://zhuanlan.zhihu.com/p/11224299472)|@StarCap|⭐️⭐️⭐️|
+| [[torch.compile][原理]📖Torch.compile流程解析: 算子融合](https://zhuanlan.zhihu.com/p/21053905491)|@StarCap|⭐️⭐️⭐️|
+| [[torch.compile][实践]📖Torch.compile使用指南](https://zhuanlan.zhihu.com/p/620163218)|@jhang|⭐️⭐️⭐️|
+| [[torch.compile][实践]📖Torch.compile详细示例解析教程](https://zhuanlan.zhihu.com/p/855291863)|@Bbuf|⭐️⭐️⭐️|
+| [[torch.compile][原理]📖一文搞懂TorchDynamo原理](https://zhuanlan.zhihu.com/p/630933479)|@吾乃阿尔法|⭐️⭐️⭐️|
+| [[torch.compile][原理]📖理解torch.compile基本原理和使用方式](https://zhuanlan.zhihu.com/p/12712224407)|@俯仰|⭐️⭐️⭐️|
 
 ## ©️License ([©️back👆🏻](#contents))
 

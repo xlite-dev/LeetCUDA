@@ -58,8 +58,6 @@ __global__ void nms_kernel(const float *boxes, const float *scores, int *keep,
   return;
 }
 
-// --------------------- PyTorch bindings for custom kernel
-// -----------------------
 #define STRINGFY(str) #str
 #define TORCH_BINDING_COMMON_EXTENSION(func)                                   \
   m.def(STRINGFY(func), &func, STRINGFY(func));

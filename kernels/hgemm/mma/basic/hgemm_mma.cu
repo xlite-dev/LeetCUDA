@@ -288,8 +288,6 @@ __global__ void __launch_bounds__(256)
   }
 }
 
-// --------------------- PyTorch bindings for custom kernel
-// -----------------------
 #define STRINGFY(str) #str
 #define TORCH_BINDING_COMMON_EXTENSION(func)                                   \
   m.def(STRINGFY(func), &func, STRINGFY(func));

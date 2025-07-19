@@ -67,8 +67,6 @@ __global__ void rope_f32x4_pack_kernel(float *x, float *out, int seq_len,
   FLOAT4(out[idx * 4]) = out_v;
 }
 
-// --------------------- PyTorch bindings for custom kernel
-// -----------------------
 #define STRINGFY(str) #str
 #define TORCH_BINDING_COMMON_EXTENSION(func)                                   \
   m.def(STRINGFY(func), &func, STRINGFY(func));

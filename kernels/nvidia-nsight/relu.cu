@@ -14,8 +14,8 @@
 #define BFLOAT2(value) (reinterpret_cast<__nv_bfloat162 *>(&(value))[0])
 #define LDST128BITS(value) (reinterpret_cast<float4 *>(&(value))[0])
 
-// -------------------------------------- FP32
-// -------------------------------------- Relu x: N, y: N y=max(0,x)
+// FP32
+// Relu x: N, y: N y=max(0,x)
 // grid(N/256), block(K=256)
 __global__ void relu_f32_kernel(float *x, float *y, int N) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -38,8 +38,7 @@ __global__ void relu_f32x4_kernel(float *x, float *y, int N) {
   }
 }
 
-// -------------------------------------- FP16
-// --------------------------------------
+// FP16
 __global__ void relu_f16_kernel(half *x, half *y, int N) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx < N)

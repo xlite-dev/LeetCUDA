@@ -17,8 +17,8 @@
 #define BFLOAT2(value) (reinterpret_cast<__nv_bfloat162 *>(&(value))[0])
 #define LDST128BITS(value) (reinterpret_cast<float4 *>(&(value))[0])
 
-// -------------------------------------- FP32
-// -------------------------------------- ElementWise Add grid(N/256),
+// FP32
+// ElementWise Add grid(N/256),
 // block(256) a: Nx1, b: Nx1, c: Nx1, c = elementwise_add(a, b)
 __global__ void elementwise_add_f32_kernel(float *a, float *b, float *c,
                                            int N) {
@@ -45,8 +45,8 @@ __global__ void elementwise_add_f32x4_kernel(float *a, float *b, float *c,
   }
 }
 
-// -------------------------------------- FP16
-// -------------------------------------- ElementWise Add grid(N/256),
+// FP16
+// ElementWise Add grid(N/256),
 // block(256) a: Nx1, b: Nx1, c: Nx1, c = elementwise_add(a, b)
 __global__ void elementwise_add_f16_kernel(half *a, half *b, half *c, int N) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -120,8 +120,6 @@ __global__ void elementwise_add_f16x8_pack_kernel(half *a, half *b, half *c,
   }
 }
 
-// --------------------- PyTorch bindings for custom kernel
-// -----------------------
 #define STRINGFY(str) #str
 #define TORCH_BINDING_COMMON_EXTENSION(func)                                   \
   m.def(STRINGFY(func), &func, STRINGFY(func));

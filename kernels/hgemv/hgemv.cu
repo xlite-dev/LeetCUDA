@@ -16,8 +16,8 @@
 #define HALF2(value) (reinterpret_cast<half2 *>(&(value))[0])
 #define BFLOAT2(value) (reinterpret_cast<__nv_bfloat162 *>(&(value))[0])
 
-// -------------------------------------- FP16
-// -------------------------------------- Warp Reduce Sum
+// FP16
+// Warp Reduce Sum
 template <const int kWarpSize = WARP_SIZE>
 __device__ __forceinline__ half warp_reduce_sum_f16(half val) {
 #pragma unroll
@@ -109,8 +109,6 @@ __global__ void hgemv_k16_f16_kernel(half *A, half *x, half *y, int M, int K) {
   }
 }
 
-// --------------------- PyTorch bindings for custom kernel
-// -----------------------
 #define STRINGFY(str) #str
 #define TORCH_BINDING_COMMON_EXTENSION(func)                                   \
   m.def(STRINGFY(func), &func, STRINGFY(func));
