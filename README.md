@@ -477,6 +477,7 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 | ✔️ [hgemv_f16x8_cute_kernel](./kernels/hgemv/hgemv_cute.cu)|f16|f16|[link](./kernels/hgemv/)|⭐️⭐️⭐️|
 | ✔️ [hgemv_tensor_core_cute_kernel](./kernels/hgemv/hgemv_cute.cu)|f16|f16|[link](./kernels/hgemv/)|⭐️⭐️⭐️|
 | ✔️ [hgemm_mma_stages_swizzle{smem}...cute*](./kernels/hgemm/cutlass/hgemm_mma_stage_tn_cute.cu)|f16|f16|[link](./kernels/hgemm/)|⭐️⭐️⭐️|
+| ✔️ [ws_hgemm_naive_cute_kernel](./kernels/ws-hgemm/naive_ws_hgemm_sm8x.cu)|f16|f16|[link](./kernels/ws-hgemm/)|⭐️⭐️⭐️|
 
 ## 📖 100+ 高性能计算与分布式-技术博客
 
