@@ -19,16 +19,19 @@
 
 // FP32
 // DS required for Online Softmax
-struct __align__(8) MD {
+struct __align__(8) MD
+{
   float m;
   float d;
 };
 // Warp Reduce for Online Softmax
 template <const int kWarpSize = WARP_SIZE>
-__device__ __forceinline__ MD warp_reduce_md_op(MD value) {
+__device__ __forceinline__ MD warp_reduce_md_op(MD value)
+{
   unsigned int mask = 0xffffffff;
 #pragma unroll
-  for (int stride = kWarpSize >> 1; stride >= 1; stride >>= 1) {
+  for (int stride = kWarpSize >> 1; stride >= 1; stride >>= 1)
+  {
     MD other;
     other.m = __shfl_xor_sync(mask, value.m, stride);
     other.d = __shfl_xor_sync(mask, value.d, stride);
@@ -45,9 +48,11 @@ __device__ __forceinline__ MD warp_reduce_md_op(MD value) {
 
 // Warp Reduce Sum
 template <const int kWarpSize = WARP_SIZE>
-__device__ __forceinline__ float warp_reduce_sum_f32(float val) {
+__device__ __forceinline__ float warp_reduce_sum_f32(float val)
+{
 #pragma unroll
-  for (int mask = kWarpSize >> 1; mask >= 1; mask >>= 1) {
+  for (int mask = kWarpSize >> 1; mask >= 1; mask >>= 1)
+  {
     val += __shfl_xor_sync(0xffffffff, val, mask);
   }
   return val;
@@ -55,9 +60,11 @@ __device__ __forceinline__ float warp_reduce_sum_f32(float val) {
 
 // Warp Reduce Max
 template <const int kWarpSize = WARP_SIZE>
-__device__ __forceinline__ float warp_reduce_max_f32(float val) {
+__device__ __forceinline__ float warp_reduce_max_f32(float val)
+{
 #pragma unroll
-  for (int mask = kWarpSize >> 1; mask >= 1; mask >>= 1) {
+  for (int mask = kWarpSize >> 1; mask >= 1; mask >>= 1)
+  {
     val = fmaxf(val, __shfl_xor_sync(0xffffffff, val, mask));
   }
   return val;
@@ -65,7 +72,8 @@ __device__ __forceinline__ float warp_reduce_max_f32(float val) {
 
 // grid 1D block 1D, grid(N/256), block(256)
 template <const int NUM_THREADS = 256>
-__device__ float block_reduce_sum_f32(float val) {
+__device__ float block_reduce_sum_f32(float val)
+{
   // always <= 32 warps per block (limited by 1024 threads per block)
   constexpr int NUM_WARPS = (NUM_THREADS + WARP_SIZE - 1) / WARP_SIZE;
   int warp = threadIdx.x / WARP_SIZE;
@@ -84,7 +92,8 @@ __device__ float block_reduce_sum_f32(float val) {
 }
 
 template <const int NUM_THREADS = 256>
-__device__ float block_reduce_max_f32(float val) {
+__device__ float block_reduce_max_f32(float val)
+{
   // always <= 32 warps per block (limited by 1024 threads per block)
   constexpr int NUM_WARPS = (NUM_THREADS + WARP_SIZE - 1) / WARP_SIZE;
   int warp = threadIdx.x / WARP_SIZE;
@@ -158,7 +167,8 @@ __device__ float block_reduce_max_f32(float val) {
 // one token per thread block, only support 64<=h<=1024 and 2^n
 // HEAD_SIZE/KV_LEN=NUM_THREADS
 template <const int NUM_THREADS = 256>
-__global__ void softmax_f32_per_token_kernel(float *x, float *y, int N) {
+__global__ void softmax_f32_per_token_kernel(float *x, float *y, int N)
+{
   const int tid = threadIdx.x;
   const int idx = blockIdx.x * blockDim.x + tid;
 
@@ -172,7 +182,8 @@ __global__ void softmax_f32_per_token_kernel(float *x, float *y, int N) {
 }
 
 template <const int NUM_THREADS = 256 / 4>
-__global__ void softmax_f32x4_per_token_kernel(float *x, float *y, int N) {
+__global__ void softmax_f32x4_per_token_kernel(float *x, float *y, int N)
+{
   const int tid = threadIdx.x;
   const int idx = (blockIdx.x * blockDim.x + tid) * 4;
 
@@ -186,7 +197,8 @@ __global__ void softmax_f32x4_per_token_kernel(float *x, float *y, int N) {
   float exp_val = (reg_exp.x + reg_exp.y + reg_exp.z + reg_exp.w);
   float exp_sum = block_reduce_sum_f32<NUM_THREADS>(exp_val); // block sum
   // e^x_i/sum(e^x_0,...,e^x_n-1)
-  if (idx + 3 < N) {
+  if (idx + 3 < N)
+  {
     float4 reg_y;
     reg_y.x = reg_exp.x / (exp_sum);
     reg_y.y = reg_exp.y / (exp_sum);
@@ -198,7 +210,8 @@ __global__ void softmax_f32x4_per_token_kernel(float *x, float *y, int N) {
 
 // safe_softmax per token
 template <const int NUM_THREADS = 256>
-__global__ void safe_softmax_f32_per_token_kernel(float *x, float *y, int N) {
+__global__ void safe_softmax_f32_per_token_kernel(float *x, float *y, int N)
+{
   const int tid = threadIdx.x;
   const int idx = blockIdx.x * blockDim.x + tid;
 
@@ -212,7 +225,8 @@ __global__ void safe_softmax_f32_per_token_kernel(float *x, float *y, int N) {
 }
 
 template <const int NUM_THREADS = 256 / 4>
-__global__ void safe_softmax_f32x4_per_token_kernel(float *x, float *y, int N) {
+__global__ void safe_softmax_f32x4_per_token_kernel(float *x, float *y, int N)
+{
   const int tid = threadIdx.x;
   const int idx = (blockIdx.x * blockDim.x + tid) * 4;
 
@@ -236,7 +250,8 @@ __global__ void safe_softmax_f32x4_per_token_kernel(float *x, float *y, int N) {
   float exp_val = (reg_exp.x + reg_exp.y + reg_exp.z + reg_exp.w);
   float exp_sum = block_reduce_sum_f32<NUM_THREADS>(exp_val); // block sum
   // e^x_i/sum(e^x_0,...,e^x_n-1)
-  if (idx + 3 < N) {
+  if (idx + 3 < N)
+  {
     float4 reg_y;
     reg_y.x = reg_exp.x / (exp_sum);
     reg_y.y = reg_exp.y / (exp_sum);
@@ -247,7 +262,8 @@ __global__ void safe_softmax_f32x4_per_token_kernel(float *x, float *y, int N) {
 }
 
 template <const int NUM_THREADS = 256>
-__global__ void safe_softmax_f16_f32_per_token_kernel(half *x, half *y, int N) {
+__global__ void safe_softmax_f16_f32_per_token_kernel(half *x, half *y, int N)
+{
   const int tid = threadIdx.x;
   const int idx = blockIdx.x * blockDim.x + tid;
 
@@ -262,7 +278,8 @@ __global__ void safe_softmax_f16_f32_per_token_kernel(half *x, half *y, int N) {
 
 template <const int NUM_THREADS = 256>
 __global__ void safe_softmax_f16x2_f32_per_token_kernel(half *x, half *y,
-                                                        int N) {
+                                                        int N)
+{
   const int tid = threadIdx.x;
   const int idx = (blockIdx.x * blockDim.x + tid) * 2;
 
@@ -290,7 +307,8 @@ __global__ void safe_softmax_f16x2_f32_per_token_kernel(half *x, half *y,
 
 template <const int NUM_THREADS = 256>
 __global__ void safe_softmax_f16x8_pack_f32_per_token_kernel(half *x, half *y,
-                                                             int N) {
+                                                             int N)
+{
   const int tid = threadIdx.x;
   const int idx = (blockIdx.x * blockDim.x + tid) * 8;
   // temporary register(memory), .local space in ptx, addressable
@@ -300,27 +318,31 @@ __global__ void safe_softmax_f16x8_pack_f32_per_token_kernel(half *x, half *y,
 
   float max_val = -FLT_MAX;
 #pragma unroll
-  for (int i = 0; i < 8; ++i) {
+  for (int i = 0; i < 8; ++i)
+  {
     max_val = fmaxf(__half2float(pack_x[i]), max_val);
   }
   max_val = block_reduce_max_f32<NUM_THREADS>(max_val); // block max
 
   float exp_sum = 0.0f;
 #pragma unroll
-  for (int i = 0; i < 8; ++i) {
+  for (int i = 0; i < 8; ++i)
+  {
     float exp_val = expf(__half2float(pack_x[i]) - max_val);
     exp_sum += (((idx + i) < N) ? exp_val : 0.0f);
   }
   exp_sum = block_reduce_sum_f32<NUM_THREADS>(exp_sum); // block sum
 
 #pragma unroll
-  for (int i = 0; i < 8; ++i) {
+  for (int i = 0; i < 8; ++i)
+  {
     // e^x_i/sum(e^x_0,...,e^x_n-1)
     float exp_val = expf(__half2float(pack_x[i]) - max_val);
     pack_y[i] = __float2half_rn(exp_val / exp_sum);
   }
   // reinterpret as float4 and store 128 bits in 1 memory issue.
-  if ((idx + 7) < N) {
+  if ((idx + 7) < N)
+  {
     LDST128BITS(y[idx]) = LDST128BITS(pack_y[0]);
   }
   // TODO: support non 8-multiple K here
@@ -328,29 +350,32 @@ __global__ void safe_softmax_f16x8_pack_f32_per_token_kernel(half *x, half *y,
 
 template <const int NUM_THREADS = 256>
 __global__ void online_safe_softmax_f32_per_token_kernel(const float *x,
-                                                         float *y, int N) {
+                                                         float *y, int N)
+{
   // reference: https://arxiv.org/pdf/1805.02867 (Online normalizer calculation
   // for softmax)
   int local_tid = threadIdx.x;
   int global_tid = blockIdx.x * NUM_THREADS + threadIdx.x;
-  const int WAPR_NUM = NUM_THREADS / WARP_SIZE;
+  const int WARP_NUM = NUM_THREADS / WARP_SIZE;
   int warp_id = local_tid / WARP_SIZE;
   int lane_id = local_tid % WARP_SIZE;
   MD val;
   val.m = global_tid < N ? x[global_tid] : -FLT_MAX;
   val.d = global_tid < N ? 1.0f : 0.0f;
 
-  __shared__ MD shared[WAPR_NUM];
+  __shared__ MD shared[WARP_NUM];
   MD res = warp_reduce_md_op<WARP_SIZE>(val);
 
   if (lane_id == 0)
     shared[warp_id] = res;
   __syncthreads();
 
-  if (local_tid < WARP_SIZE) {
+  if (local_tid < WARP_SIZE)
+  {
     MD block_res = shared[local_tid];
-    block_res = warp_reduce_md_op<WAPR_NUM>(block_res);
-    if (local_tid == 0) {
+    block_res = warp_reduce_md_op<WARP_NUM>(block_res);
+    if (local_tid == 0)
+    {
       shared[0] = block_res;
     }
   }
@@ -358,20 +383,22 @@ __global__ void online_safe_softmax_f32_per_token_kernel(const float *x,
 
   MD final_res = shared[0];
   float d_total_inverse = __fdividef(1.0f, final_res.d);
-  if (global_tid < N) {
+  if (global_tid < N)
+  {
     y[global_tid] = __expf(x[global_tid] - final_res.m) * d_total_inverse;
   }
 }
 
 template <const int NUM_THREADS = 256 / 4>
 __global__ void
-online_safe_softmax_f32x4_pack_per_token_kernel(float *x, float *y, int N) {
+online_safe_softmax_f32x4_pack_per_token_kernel(float *x, float *y, int N)
+{
   // reference: https://arxiv.org/pdf/1805.02867 (Online normalizer calculation
   // for softmax)
   int local_tid = threadIdx.x;
   int global_tid = (blockIdx.x * NUM_THREADS + local_tid) * 4;
 
-  const int WAPR_NUM = NUM_THREADS / WARP_SIZE;
+  const int WARP_NUM = NUM_THREADS / WARP_SIZE;
   int warp_id = local_tid / WARP_SIZE;
   int lane_id = local_tid % WARP_SIZE;
   // compare local max value
@@ -382,15 +409,16 @@ online_safe_softmax_f32x4_pack_per_token_kernel(float *x, float *y, int N) {
 
   MD local_md = {local_m, local_d};
   MD res = warp_reduce_md_op<WARP_SIZE>(local_md);
-  __shared__ MD shared[WAPR_NUM];
+  __shared__ MD shared[WARP_NUM];
 
   if (lane_id == 0)
     shared[warp_id] = res;
   __syncthreads();
   // do block reduce
-  if (local_tid < WARP_SIZE) {
+  if (local_tid < WARP_SIZE)
+  {
     MD block_res = shared[local_tid];
-    block_res = warp_reduce_md_op<WAPR_NUM>(block_res);
+    block_res = warp_reduce_md_op<WARP_NUM>(block_res);
     if (local_tid == 0)
       shared[0] = block_res;
   }
@@ -398,7 +426,8 @@ online_safe_softmax_f32x4_pack_per_token_kernel(float *x, float *y, int N) {
   // write back
   MD final_res = shared[0];
   float d_total_inverse = __fdividef(1.0f, final_res.d);
-  if (global_tid < N) {
+  if (global_tid < N)
+  {
     float4 reg_y;
     reg_y.x = __expf(val.x - final_res.m) * d_total_inverse;
     reg_y.y = __expf(val.y - final_res.m) * d_total_inverse;
@@ -409,331 +438,345 @@ online_safe_softmax_f32x4_pack_per_token_kernel(float *x, float *y, int N) {
 }
 
 #define STRINGFY(str) #str
-#define TORCH_BINDING_COMMON_EXTENSION(func)                                   \
+#define TORCH_BINDING_COMMON_EXTENSION(func) \
   m.def(STRINGFY(func), &func, STRINGFY(func));
 
-#define CHECK_TORCH_TENSOR_DTYPE(T, th_type)                                   \
-  if (((T).options().dtype() != (th_type))) {                                  \
-    std::cout << "Tensor Info:" << (T).options() << std::endl;                 \
-    throw std::runtime_error("values must be " #th_type);                      \
+#define CHECK_TORCH_TENSOR_DTYPE(T, th_type)                   \
+  if (((T).options().dtype() != (th_type)))                    \
+  {                                                            \
+    std::cout << "Tensor Info:" << (T).options() << std::endl; \
+    throw std::runtime_error("values must be " #th_type);      \
   }
 
-#define CHECK_TORCH_TENSOR_SHAPE(T1, T2)                                       \
-  assert((T1).dim() == (T2).dim());                                            \
-  for (int i = 0; i < (T1).dim(); ++i) {                                       \
-    if ((T2).size(i) != (T1).size(i)) {                                        \
-      throw std::runtime_error("Tensor size mismatch!");                       \
-    }                                                                          \
+#define CHECK_TORCH_TENSOR_SHAPE(T1, T2)                 \
+  assert((T1).dim() == (T2).dim());                      \
+  for (int i = 0; i < (T1).dim(); ++i)                   \
+  {                                                      \
+    if ((T2).size(i) != (T1).size(i))                    \
+    {                                                    \
+      throw std::runtime_error("Tensor size mismatch!"); \
+    }                                                    \
   }
 
 // grid memory fence
-#define TORCH_BINDING_SOFTMAX(packed_type, th_type, element_type, n_elements)  \
-  void softmax_##packed_type(torch::Tensor x, torch::Tensor y) {               \
-    CHECK_TORCH_TENSOR_DTYPE(x, (th_type))                                     \
-    CHECK_TORCH_TENSOR_DTYPE(y, (th_type))                                     \
-    auto options =                                                             \
-        torch::TensorOptions().dtype((th_type)).device(torch::kCUDA, 0);       \
-    const int N = x.size(0);                                                   \
-    CHECK_TORCH_TENSOR_SHAPE(x, y)                                             \
-    auto total = torch::zeros({1}, options);                                   \
-    dim3 block(256);                                                           \
-    dim3 grid(((N + 256 - 1) / 256) / (n_elements));                           \
-    softmax_##packed_type##_kernel<256><<<grid, block>>>(                      \
-        reinterpret_cast<element_type *>(x.data_ptr()),                        \
-        reinterpret_cast<element_type *>(y.data_ptr()),                        \
-        reinterpret_cast<element_type *>(total.data_ptr()), N);                \
+#define TORCH_BINDING_SOFTMAX(packed_type, th_type, element_type, n_elements) \
+  void softmax_##packed_type(torch::Tensor x, torch::Tensor y)                \
+  {                                                                           \
+    CHECK_TORCH_TENSOR_DTYPE(x, (th_type))                                    \
+    CHECK_TORCH_TENSOR_DTYPE(y, (th_type))                                    \
+    auto options =                                                            \
+        torch::TensorOptions().dtype((th_type)).device(torch::kCUDA, 0);      \
+    const int N = x.size(0);                                                  \
+    CHECK_TORCH_TENSOR_SHAPE(x, y)                                            \
+    auto total = torch::zeros({1}, options);                                  \
+    dim3 block(256);                                                          \
+    dim3 grid(((N + 256 - 1) / 256) / (n_elements));                          \
+    softmax_##packed_type##_kernel<256><<<grid, block>>>(                     \
+        reinterpret_cast<element_type *>(x.data_ptr()),                       \
+        reinterpret_cast<element_type *>(y.data_ptr()),                       \
+        reinterpret_cast<element_type *>(total.data_ptr()), N);               \
   }
 
 // softmax per token
-#define LANUCH_SOFTMAX_F32_PER_TOKEN_KERNEL(H)                                 \
-  softmax_f32_per_token_kernel<(H)>                                            \
-      <<<grid, block>>>(reinterpret_cast<float *>(x.data_ptr()),               \
+#define LANUCH_SOFTMAX_F32_PER_TOKEN_KERNEL(H)                   \
+  softmax_f32_per_token_kernel<(H)>                              \
+      <<<grid, block>>>(reinterpret_cast<float *>(x.data_ptr()), \
                         reinterpret_cast<float *>(y.data_ptr()), N);
 
-#define DISPATCH_SOFTMAX_F32_PER_TOKEN_KERNEL(S, H)                            \
-  dim3 block((H));                                                             \
-  dim3 grid((S));                                                              \
-  switch ((H)) {                                                               \
-  case 32:                                                                     \
-    LANUCH_SOFTMAX_F32_PER_TOKEN_KERNEL(32)                                    \
-    break;                                                                     \
-  case 64:                                                                     \
-    LANUCH_SOFTMAX_F32_PER_TOKEN_KERNEL(64)                                    \
-    break;                                                                     \
-  case 128:                                                                    \
-    LANUCH_SOFTMAX_F32_PER_TOKEN_KERNEL(128)                                   \
-    break;                                                                     \
-  case 256:                                                                    \
-    LANUCH_SOFTMAX_F32_PER_TOKEN_KERNEL(256)                                   \
-    break;                                                                     \
-  case 512:                                                                    \
-    LANUCH_SOFTMAX_F32_PER_TOKEN_KERNEL(512)                                   \
-    break;                                                                     \
-  case 1024:                                                                   \
-    LANUCH_SOFTMAX_F32_PER_TOKEN_KERNEL(1024)                                  \
-    break;                                                                     \
-  default:                                                                     \
-    throw std::runtime_error("only support H: 64/128/256/512/1024");           \
-    break;                                                                     \
+#define DISPATCH_SOFTMAX_F32_PER_TOKEN_KERNEL(S, H)                  \
+  dim3 block((H));                                                   \
+  dim3 grid((S));                                                    \
+  switch ((H))                                                       \
+  {                                                                  \
+  case 32:                                                           \
+    LANUCH_SOFTMAX_F32_PER_TOKEN_KERNEL(32)                          \
+    break;                                                           \
+  case 64:                                                           \
+    LANUCH_SOFTMAX_F32_PER_TOKEN_KERNEL(64)                          \
+    break;                                                           \
+  case 128:                                                          \
+    LANUCH_SOFTMAX_F32_PER_TOKEN_KERNEL(128)                         \
+    break;                                                           \
+  case 256:                                                          \
+    LANUCH_SOFTMAX_F32_PER_TOKEN_KERNEL(256)                         \
+    break;                                                           \
+  case 512:                                                          \
+    LANUCH_SOFTMAX_F32_PER_TOKEN_KERNEL(512)                         \
+    break;                                                           \
+  case 1024:                                                         \
+    LANUCH_SOFTMAX_F32_PER_TOKEN_KERNEL(1024)                        \
+    break;                                                           \
+  default:                                                           \
+    throw std::runtime_error("only support H: 64/128/256/512/1024"); \
+    break;                                                           \
   }
 
-#define LANUCH_SOFTMAX_F32x4_PER_TOKEN_KERNEL(H)                               \
-  softmax_f32x4_per_token_kernel<(H) / 4>                                      \
-      <<<grid, block>>>(reinterpret_cast<float *>(x.data_ptr()),               \
+#define LANUCH_SOFTMAX_F32x4_PER_TOKEN_KERNEL(H)                 \
+  softmax_f32x4_per_token_kernel<(H) / 4>                        \
+      <<<grid, block>>>(reinterpret_cast<float *>(x.data_ptr()), \
                         reinterpret_cast<float *>(y.data_ptr()), N);
 
-#define DISPATCH_SOFTMAX_F32x4_PER_TOKEN_KERNEL(S, H)                          \
-  const int NT = (H) / 4;                                                      \
-  dim3 block(NT);                                                              \
-  dim3 grid((S));                                                              \
-  switch (H) {                                                                 \
-  case 32:                                                                     \
-    LANUCH_SOFTMAX_F32x4_PER_TOKEN_KERNEL(32) break;                           \
-  case 64:                                                                     \
-    LANUCH_SOFTMAX_F32x4_PER_TOKEN_KERNEL(64) break;                           \
-  case 128:                                                                    \
-    LANUCH_SOFTMAX_F32x4_PER_TOKEN_KERNEL(128) break;                          \
-  case 256:                                                                    \
-    LANUCH_SOFTMAX_F32x4_PER_TOKEN_KERNEL(256) break;                          \
-  case 512:                                                                    \
-    LANUCH_SOFTMAX_F32x4_PER_TOKEN_KERNEL(512) break;                          \
-  case 1024:                                                                   \
-    LANUCH_SOFTMAX_F32x4_PER_TOKEN_KERNEL(1024) break;                         \
-  case 2048:                                                                   \
-    LANUCH_SOFTMAX_F32x4_PER_TOKEN_KERNEL(2048) break;                         \
-  case 4096:                                                                   \
-    LANUCH_SOFTMAX_F32x4_PER_TOKEN_KERNEL(4096) break;                         \
-  default:                                                                     \
-    throw std::runtime_error("only support H: 64/128/.../1024*4");             \
-    break;                                                                     \
+#define DISPATCH_SOFTMAX_F32x4_PER_TOKEN_KERNEL(S, H)              \
+  const int NT = (H) / 4;                                          \
+  dim3 block(NT);                                                  \
+  dim3 grid((S));                                                  \
+  switch (H)                                                       \
+  {                                                                \
+  case 32:                                                         \
+    LANUCH_SOFTMAX_F32x4_PER_TOKEN_KERNEL(32) break;               \
+  case 64:                                                         \
+    LANUCH_SOFTMAX_F32x4_PER_TOKEN_KERNEL(64) break;               \
+  case 128:                                                        \
+    LANUCH_SOFTMAX_F32x4_PER_TOKEN_KERNEL(128) break;              \
+  case 256:                                                        \
+    LANUCH_SOFTMAX_F32x4_PER_TOKEN_KERNEL(256) break;              \
+  case 512:                                                        \
+    LANUCH_SOFTMAX_F32x4_PER_TOKEN_KERNEL(512) break;              \
+  case 1024:                                                       \
+    LANUCH_SOFTMAX_F32x4_PER_TOKEN_KERNEL(1024) break;             \
+  case 2048:                                                       \
+    LANUCH_SOFTMAX_F32x4_PER_TOKEN_KERNEL(2048) break;             \
+  case 4096:                                                       \
+    LANUCH_SOFTMAX_F32x4_PER_TOKEN_KERNEL(4096) break;             \
+  default:                                                         \
+    throw std::runtime_error("only support H: 64/128/.../1024*4"); \
+    break;                                                         \
   }
 
 // safe softmax per token
-#define LANUCH_SAFE_SOFTMAX_F32_PER_TOKEN_KERNEL(H)                            \
-  safe_softmax_f32_per_token_kernel<(H)>                                       \
-      <<<grid, block>>>(reinterpret_cast<float *>(x.data_ptr()),               \
+#define LANUCH_SAFE_SOFTMAX_F32_PER_TOKEN_KERNEL(H)              \
+  safe_softmax_f32_per_token_kernel<(H)>                         \
+      <<<grid, block>>>(reinterpret_cast<float *>(x.data_ptr()), \
                         reinterpret_cast<float *>(y.data_ptr()), N);
 
-#define DISPATCH_SATE_SOFTMAX_F32_PER_TOKEN_KERNEL(S, H)                       \
-  dim3 block((H));                                                             \
-  dim3 grid((S));                                                              \
-  switch ((H)) {                                                               \
-  case 32:                                                                     \
-    LANUCH_SAFE_SOFTMAX_F32_PER_TOKEN_KERNEL(32)                               \
-    break;                                                                     \
-  case 64:                                                                     \
-    LANUCH_SAFE_SOFTMAX_F32_PER_TOKEN_KERNEL(64)                               \
-    break;                                                                     \
-  case 128:                                                                    \
-    LANUCH_SAFE_SOFTMAX_F32_PER_TOKEN_KERNEL(128)                              \
-    break;                                                                     \
-  case 256:                                                                    \
-    LANUCH_SAFE_SOFTMAX_F32_PER_TOKEN_KERNEL(256)                              \
-    break;                                                                     \
-  case 512:                                                                    \
-    LANUCH_SAFE_SOFTMAX_F32_PER_TOKEN_KERNEL(512)                              \
-    break;                                                                     \
-  case 1024:                                                                   \
-    LANUCH_SAFE_SOFTMAX_F32_PER_TOKEN_KERNEL(1024)                             \
-    break;                                                                     \
-  default:                                                                     \
-    throw std::runtime_error("only support H: 64/128/256/512/1024");           \
-    break;                                                                     \
+#define DISPATCH_SATE_SOFTMAX_F32_PER_TOKEN_KERNEL(S, H)             \
+  dim3 block((H));                                                   \
+  dim3 grid((S));                                                    \
+  switch ((H))                                                       \
+  {                                                                  \
+  case 32:                                                           \
+    LANUCH_SAFE_SOFTMAX_F32_PER_TOKEN_KERNEL(32)                     \
+    break;                                                           \
+  case 64:                                                           \
+    LANUCH_SAFE_SOFTMAX_F32_PER_TOKEN_KERNEL(64)                     \
+    break;                                                           \
+  case 128:                                                          \
+    LANUCH_SAFE_SOFTMAX_F32_PER_TOKEN_KERNEL(128)                    \
+    break;                                                           \
+  case 256:                                                          \
+    LANUCH_SAFE_SOFTMAX_F32_PER_TOKEN_KERNEL(256)                    \
+    break;                                                           \
+  case 512:                                                          \
+    LANUCH_SAFE_SOFTMAX_F32_PER_TOKEN_KERNEL(512)                    \
+    break;                                                           \
+  case 1024:                                                         \
+    LANUCH_SAFE_SOFTMAX_F32_PER_TOKEN_KERNEL(1024)                   \
+    break;                                                           \
+  default:                                                           \
+    throw std::runtime_error("only support H: 64/128/256/512/1024"); \
+    break;                                                           \
   }
 
 // online softmax per token
-#define LANUCH_ONLINE_SOFTMAX_F32_PER_TOKEN_KERNEL(H)                          \
-  online_safe_softmax_f32_per_token_kernel<(H)>                                \
-      <<<grid, block>>>(reinterpret_cast<float *>(x.data_ptr()),               \
+#define LANUCH_ONLINE_SOFTMAX_F32_PER_TOKEN_KERNEL(H)            \
+  online_safe_softmax_f32_per_token_kernel<(H)>                  \
+      <<<grid, block>>>(reinterpret_cast<float *>(x.data_ptr()), \
                         reinterpret_cast<float *>(y.data_ptr()), N);
 
-#define DISPATCH_ONLINE_SOFTMAX_F32_PER_TOKEN_KERNEL(S, H)                     \
-  dim3 block((H));                                                             \
-  dim3 grid((S));                                                              \
-  switch ((H)) {                                                               \
-  case 32:                                                                     \
-    LANUCH_ONLINE_SOFTMAX_F32_PER_TOKEN_KERNEL(32)                             \
-    break;                                                                     \
-  case 64:                                                                     \
-    LANUCH_ONLINE_SOFTMAX_F32_PER_TOKEN_KERNEL(64)                             \
-    break;                                                                     \
-  case 128:                                                                    \
-    LANUCH_ONLINE_SOFTMAX_F32_PER_TOKEN_KERNEL(128)                            \
-    break;                                                                     \
-  case 256:                                                                    \
-    LANUCH_ONLINE_SOFTMAX_F32_PER_TOKEN_KERNEL(256)                            \
-    break;                                                                     \
-  case 512:                                                                    \
-    LANUCH_ONLINE_SOFTMAX_F32_PER_TOKEN_KERNEL(512)                            \
-    break;                                                                     \
-  case 1024:                                                                   \
-    LANUCH_ONLINE_SOFTMAX_F32_PER_TOKEN_KERNEL(1024)                           \
-    break;                                                                     \
-  default:                                                                     \
-    throw std::runtime_error("only support H: 64/128/256/512/1024");           \
-    break;                                                                     \
+#define DISPATCH_ONLINE_SOFTMAX_F32_PER_TOKEN_KERNEL(S, H)           \
+  dim3 block((H));                                                   \
+  dim3 grid((S));                                                    \
+  switch ((H))                                                       \
+  {                                                                  \
+  case 32:                                                           \
+    LANUCH_ONLINE_SOFTMAX_F32_PER_TOKEN_KERNEL(32)                   \
+    break;                                                           \
+  case 64:                                                           \
+    LANUCH_ONLINE_SOFTMAX_F32_PER_TOKEN_KERNEL(64)                   \
+    break;                                                           \
+  case 128:                                                          \
+    LANUCH_ONLINE_SOFTMAX_F32_PER_TOKEN_KERNEL(128)                  \
+    break;                                                           \
+  case 256:                                                          \
+    LANUCH_ONLINE_SOFTMAX_F32_PER_TOKEN_KERNEL(256)                  \
+    break;                                                           \
+  case 512:                                                          \
+    LANUCH_ONLINE_SOFTMAX_F32_PER_TOKEN_KERNEL(512)                  \
+    break;                                                           \
+  case 1024:                                                         \
+    LANUCH_ONLINE_SOFTMAX_F32_PER_TOKEN_KERNEL(1024)                 \
+    break;                                                           \
+  default:                                                           \
+    throw std::runtime_error("only support H: 64/128/256/512/1024"); \
+    break;                                                           \
   }
 
 // online softmax per token
-#define LANUCH_ONLINE_SOFTMAX_F32X4_PACK_PER_TOKEN_KERNEL(H)                   \
-  online_safe_softmax_f32x4_pack_per_token_kernel<(H / 4)>                     \
-      <<<grid, block>>>(reinterpret_cast<float *>(x.data_ptr()),               \
+#define LANUCH_ONLINE_SOFTMAX_F32X4_PACK_PER_TOKEN_KERNEL(H)     \
+  online_safe_softmax_f32x4_pack_per_token_kernel<(H / 4)>       \
+      <<<grid, block>>>(reinterpret_cast<float *>(x.data_ptr()), \
                         reinterpret_cast<float *>(y.data_ptr()), N);
 
-#define DISPATCH_ONLINE_SOFTMAX_F32X4_PACK_PER_TOKEN_KERNEL(S, H)              \
-  dim3 block((H / 4));                                                         \
-  dim3 grid((S));                                                              \
-  switch ((H)) {                                                               \
-  case 128:                                                                    \
-    LANUCH_ONLINE_SOFTMAX_F32X4_PACK_PER_TOKEN_KERNEL(128)                     \
-    break;                                                                     \
-  case 256:                                                                    \
-    LANUCH_ONLINE_SOFTMAX_F32X4_PACK_PER_TOKEN_KERNEL(256)                     \
-    break;                                                                     \
-  case 512:                                                                    \
-    LANUCH_ONLINE_SOFTMAX_F32X4_PACK_PER_TOKEN_KERNEL(512)                     \
-    break;                                                                     \
-  case 1024:                                                                   \
-    LANUCH_ONLINE_SOFTMAX_F32X4_PACK_PER_TOKEN_KERNEL(1024)                    \
-    break;                                                                     \
-  case 2048:                                                                   \
-    LANUCH_ONLINE_SOFTMAX_F32X4_PACK_PER_TOKEN_KERNEL(2048)                    \
-    break;                                                                     \
-  case 4096:                                                                   \
-    LANUCH_ONLINE_SOFTMAX_F32X4_PACK_PER_TOKEN_KERNEL(4096)                    \
-    break;                                                                     \
-  default:                                                                     \
-    throw std::runtime_error("only support H: 128/256/.../4096;");             \
-    break;                                                                     \
+#define DISPATCH_ONLINE_SOFTMAX_F32X4_PACK_PER_TOKEN_KERNEL(S, H)  \
+  dim3 block((H / 4));                                             \
+  dim3 grid((S));                                                  \
+  switch ((H))                                                     \
+  {                                                                \
+  case 128:                                                        \
+    LANUCH_ONLINE_SOFTMAX_F32X4_PACK_PER_TOKEN_KERNEL(128)         \
+    break;                                                         \
+  case 256:                                                        \
+    LANUCH_ONLINE_SOFTMAX_F32X4_PACK_PER_TOKEN_KERNEL(256)         \
+    break;                                                         \
+  case 512:                                                        \
+    LANUCH_ONLINE_SOFTMAX_F32X4_PACK_PER_TOKEN_KERNEL(512)         \
+    break;                                                         \
+  case 1024:                                                       \
+    LANUCH_ONLINE_SOFTMAX_F32X4_PACK_PER_TOKEN_KERNEL(1024)        \
+    break;                                                         \
+  case 2048:                                                       \
+    LANUCH_ONLINE_SOFTMAX_F32X4_PACK_PER_TOKEN_KERNEL(2048)        \
+    break;                                                         \
+  case 4096:                                                       \
+    LANUCH_ONLINE_SOFTMAX_F32X4_PACK_PER_TOKEN_KERNEL(4096)        \
+    break;                                                         \
+  default:                                                         \
+    throw std::runtime_error("only support H: 128/256/.../4096;"); \
+    break;                                                         \
   }
 
-#define LANUCH_SAFE_SOFTMAX_F32x4_PER_TOKEN_KERNEL(H)                          \
-  safe_softmax_f32x4_per_token_kernel<(H) / 4>                                 \
-      <<<grid, block>>>(reinterpret_cast<float *>(x.data_ptr()),               \
+#define LANUCH_SAFE_SOFTMAX_F32x4_PER_TOKEN_KERNEL(H)            \
+  safe_softmax_f32x4_per_token_kernel<(H) / 4>                   \
+      <<<grid, block>>>(reinterpret_cast<float *>(x.data_ptr()), \
                         reinterpret_cast<float *>(y.data_ptr()), N);
 
-#define DISPATCH_SATE_SOFTMAX_F32x4_PER_TOKEN_KERNEL(S, H)                     \
-  const int NT = (H) / 4;                                                      \
-  dim3 block(NT);                                                              \
-  dim3 grid((S));                                                              \
-  switch (H) {                                                                 \
-  case 32:                                                                     \
-    LANUCH_SAFE_SOFTMAX_F32x4_PER_TOKEN_KERNEL(32) break;                      \
-  case 64:                                                                     \
-    LANUCH_SAFE_SOFTMAX_F32x4_PER_TOKEN_KERNEL(64) break;                      \
-  case 128:                                                                    \
-    LANUCH_SAFE_SOFTMAX_F32x4_PER_TOKEN_KERNEL(128) break;                     \
-  case 256:                                                                    \
-    LANUCH_SAFE_SOFTMAX_F32x4_PER_TOKEN_KERNEL(256) break;                     \
-  case 512:                                                                    \
-    LANUCH_SAFE_SOFTMAX_F32x4_PER_TOKEN_KERNEL(512) break;                     \
-  case 1024:                                                                   \
-    LANUCH_SAFE_SOFTMAX_F32x4_PER_TOKEN_KERNEL(1024) break;                    \
-  case 2048:                                                                   \
-    LANUCH_SAFE_SOFTMAX_F32x4_PER_TOKEN_KERNEL(2048) break;                    \
-  case 4096:                                                                   \
-    LANUCH_SAFE_SOFTMAX_F32x4_PER_TOKEN_KERNEL(4096) break;                    \
-  default:                                                                     \
-    throw std::runtime_error("only support H: 64/128/.../1024*4");             \
-    break;                                                                     \
+#define DISPATCH_SATE_SOFTMAX_F32x4_PER_TOKEN_KERNEL(S, H)         \
+  const int NT = (H) / 4;                                          \
+  dim3 block(NT);                                                  \
+  dim3 grid((S));                                                  \
+  switch (H)                                                       \
+  {                                                                \
+  case 32:                                                         \
+    LANUCH_SAFE_SOFTMAX_F32x4_PER_TOKEN_KERNEL(32) break;          \
+  case 64:                                                         \
+    LANUCH_SAFE_SOFTMAX_F32x4_PER_TOKEN_KERNEL(64) break;          \
+  case 128:                                                        \
+    LANUCH_SAFE_SOFTMAX_F32x4_PER_TOKEN_KERNEL(128) break;         \
+  case 256:                                                        \
+    LANUCH_SAFE_SOFTMAX_F32x4_PER_TOKEN_KERNEL(256) break;         \
+  case 512:                                                        \
+    LANUCH_SAFE_SOFTMAX_F32x4_PER_TOKEN_KERNEL(512) break;         \
+  case 1024:                                                       \
+    LANUCH_SAFE_SOFTMAX_F32x4_PER_TOKEN_KERNEL(1024) break;        \
+  case 2048:                                                       \
+    LANUCH_SAFE_SOFTMAX_F32x4_PER_TOKEN_KERNEL(2048) break;        \
+  case 4096:                                                       \
+    LANUCH_SAFE_SOFTMAX_F32x4_PER_TOKEN_KERNEL(4096) break;        \
+  default:                                                         \
+    throw std::runtime_error("only support H: 64/128/.../1024*4"); \
+    break;                                                         \
   }
 
-#define LANUCH_SAFE_SOFTMAX_F16_F32_PER_TOKEN_KERNEL(H)                        \
-  safe_softmax_f16_f32_per_token_kernel<(H)>                                   \
-      <<<grid, block>>>(reinterpret_cast<half *>(x.data_ptr()),                \
+#define LANUCH_SAFE_SOFTMAX_F16_F32_PER_TOKEN_KERNEL(H)         \
+  safe_softmax_f16_f32_per_token_kernel<(H)>                    \
+      <<<grid, block>>>(reinterpret_cast<half *>(x.data_ptr()), \
                         reinterpret_cast<half *>(y.data_ptr()), N);
 
-#define DISPATCH_SATE_SOFTMAX_F16_F32_PER_TOKEN_KERNEL(S, H)                   \
-  dim3 block((H));                                                             \
-  dim3 grid((S));                                                              \
-  switch ((H)) {                                                               \
-  case 32:                                                                     \
-    LANUCH_SAFE_SOFTMAX_F16_F32_PER_TOKEN_KERNEL(32)                           \
-    break;                                                                     \
-  case 64:                                                                     \
-    LANUCH_SAFE_SOFTMAX_F16_F32_PER_TOKEN_KERNEL(64)                           \
-    break;                                                                     \
-  case 128:                                                                    \
-    LANUCH_SAFE_SOFTMAX_F16_F32_PER_TOKEN_KERNEL(128)                          \
-    break;                                                                     \
-  case 256:                                                                    \
-    LANUCH_SAFE_SOFTMAX_F16_F32_PER_TOKEN_KERNEL(256)                          \
-    break;                                                                     \
-  case 512:                                                                    \
-    LANUCH_SAFE_SOFTMAX_F16_F32_PER_TOKEN_KERNEL(512)                          \
-    break;                                                                     \
-  case 1024:                                                                   \
-    LANUCH_SAFE_SOFTMAX_F16_F32_PER_TOKEN_KERNEL(1024)                         \
-    break;                                                                     \
-  default:                                                                     \
-    throw std::runtime_error("only support H: 64/128/256/512/1024");           \
-    break;                                                                     \
+#define DISPATCH_SATE_SOFTMAX_F16_F32_PER_TOKEN_KERNEL(S, H)         \
+  dim3 block((H));                                                   \
+  dim3 grid((S));                                                    \
+  switch ((H))                                                       \
+  {                                                                  \
+  case 32:                                                           \
+    LANUCH_SAFE_SOFTMAX_F16_F32_PER_TOKEN_KERNEL(32)                 \
+    break;                                                           \
+  case 64:                                                           \
+    LANUCH_SAFE_SOFTMAX_F16_F32_PER_TOKEN_KERNEL(64)                 \
+    break;                                                           \
+  case 128:                                                          \
+    LANUCH_SAFE_SOFTMAX_F16_F32_PER_TOKEN_KERNEL(128)                \
+    break;                                                           \
+  case 256:                                                          \
+    LANUCH_SAFE_SOFTMAX_F16_F32_PER_TOKEN_KERNEL(256)                \
+    break;                                                           \
+  case 512:                                                          \
+    LANUCH_SAFE_SOFTMAX_F16_F32_PER_TOKEN_KERNEL(512)                \
+    break;                                                           \
+  case 1024:                                                         \
+    LANUCH_SAFE_SOFTMAX_F16_F32_PER_TOKEN_KERNEL(1024)               \
+    break;                                                           \
+  default:                                                           \
+    throw std::runtime_error("only support H: 64/128/256/512/1024"); \
+    break;                                                           \
   }
 
-#define LANUCH_SAFE_SOFTMAX_F16x2_F32_PER_TOKEN_KERNEL(H)                      \
-  safe_softmax_f16x2_f32_per_token_kernel<(H) / 2>                             \
-      <<<grid, block>>>(reinterpret_cast<half *>(x.data_ptr()),                \
+#define LANUCH_SAFE_SOFTMAX_F16x2_F32_PER_TOKEN_KERNEL(H)       \
+  safe_softmax_f16x2_f32_per_token_kernel<(H) / 2>              \
+      <<<grid, block>>>(reinterpret_cast<half *>(x.data_ptr()), \
                         reinterpret_cast<half *>(y.data_ptr()), N);
 
-#define DISPATCH_SATE_SOFTMAX_F16x2_F32_PER_TOKEN_KERNEL(S, H)                 \
-  const int NT = (H) / 2;                                                      \
-  dim3 block(NT);                                                              \
-  dim3 grid((S));                                                              \
-  switch (H) {                                                                 \
-  case 32:                                                                     \
-    LANUCH_SAFE_SOFTMAX_F16x2_F32_PER_TOKEN_KERNEL(32) break;                  \
-  case 64:                                                                     \
-    LANUCH_SAFE_SOFTMAX_F16x2_F32_PER_TOKEN_KERNEL(64) break;                  \
-  case 128:                                                                    \
-    LANUCH_SAFE_SOFTMAX_F16x2_F32_PER_TOKEN_KERNEL(128) break;                 \
-  case 256:                                                                    \
-    LANUCH_SAFE_SOFTMAX_F16x2_F32_PER_TOKEN_KERNEL(256) break;                 \
-  case 512:                                                                    \
-    LANUCH_SAFE_SOFTMAX_F16x2_F32_PER_TOKEN_KERNEL(512) break;                 \
-  case 1024:                                                                   \
-    LANUCH_SAFE_SOFTMAX_F16x2_F32_PER_TOKEN_KERNEL(1024) break;                \
-  case 2048:                                                                   \
-    LANUCH_SAFE_SOFTMAX_F16x2_F32_PER_TOKEN_KERNEL(2048) break;                \
-  default:                                                                     \
-    throw std::runtime_error("only support H: 64/128/.../1024*2");             \
-    break;                                                                     \
+#define DISPATCH_SATE_SOFTMAX_F16x2_F32_PER_TOKEN_KERNEL(S, H)     \
+  const int NT = (H) / 2;                                          \
+  dim3 block(NT);                                                  \
+  dim3 grid((S));                                                  \
+  switch (H)                                                       \
+  {                                                                \
+  case 32:                                                         \
+    LANUCH_SAFE_SOFTMAX_F16x2_F32_PER_TOKEN_KERNEL(32) break;      \
+  case 64:                                                         \
+    LANUCH_SAFE_SOFTMAX_F16x2_F32_PER_TOKEN_KERNEL(64) break;      \
+  case 128:                                                        \
+    LANUCH_SAFE_SOFTMAX_F16x2_F32_PER_TOKEN_KERNEL(128) break;     \
+  case 256:                                                        \
+    LANUCH_SAFE_SOFTMAX_F16x2_F32_PER_TOKEN_KERNEL(256) break;     \
+  case 512:                                                        \
+    LANUCH_SAFE_SOFTMAX_F16x2_F32_PER_TOKEN_KERNEL(512) break;     \
+  case 1024:                                                       \
+    LANUCH_SAFE_SOFTMAX_F16x2_F32_PER_TOKEN_KERNEL(1024) break;    \
+  case 2048:                                                       \
+    LANUCH_SAFE_SOFTMAX_F16x2_F32_PER_TOKEN_KERNEL(2048) break;    \
+  default:                                                         \
+    throw std::runtime_error("only support H: 64/128/.../1024*2"); \
+    break;                                                         \
   }
 
-#define LANUCH_SAFE_SOFTMAX_F16x8_PACK_F32_PER_TOKEN_KERNEL(H)                 \
-  safe_softmax_f16x8_pack_f32_per_token_kernel<(H) / 8>                        \
-      <<<grid, block>>>(reinterpret_cast<half *>(x.data_ptr()),                \
+#define LANUCH_SAFE_SOFTMAX_F16x8_PACK_F32_PER_TOKEN_KERNEL(H)  \
+  safe_softmax_f16x8_pack_f32_per_token_kernel<(H) / 8>         \
+      <<<grid, block>>>(reinterpret_cast<half *>(x.data_ptr()), \
                         reinterpret_cast<half *>(y.data_ptr()), N);
 
-#define DISPATCH_SATE_SOFTMAX_F16x8_PACK_F32_PER_TOKEN_KERNEL(S, H)            \
-  const int NT = (H) / 8;                                                      \
-  dim3 block(NT);                                                              \
-  dim3 grid((S));                                                              \
-  switch (H) {                                                                 \
-  case 32:                                                                     \
-    LANUCH_SAFE_SOFTMAX_F16x8_PACK_F32_PER_TOKEN_KERNEL(32) break;             \
-  case 64:                                                                     \
-    LANUCH_SAFE_SOFTMAX_F16x8_PACK_F32_PER_TOKEN_KERNEL(64) break;             \
-  case 128:                                                                    \
-    LANUCH_SAFE_SOFTMAX_F16x8_PACK_F32_PER_TOKEN_KERNEL(128) break;            \
-  case 256:                                                                    \
-    LANUCH_SAFE_SOFTMAX_F16x8_PACK_F32_PER_TOKEN_KERNEL(256) break;            \
-  case 512:                                                                    \
-    LANUCH_SAFE_SOFTMAX_F16x8_PACK_F32_PER_TOKEN_KERNEL(512) break;            \
-  case 1024:                                                                   \
-    LANUCH_SAFE_SOFTMAX_F16x8_PACK_F32_PER_TOKEN_KERNEL(1024) break;           \
-  case 2048:                                                                   \
-    LANUCH_SAFE_SOFTMAX_F16x8_PACK_F32_PER_TOKEN_KERNEL(2048) break;           \
-  case 4096:                                                                   \
-    LANUCH_SAFE_SOFTMAX_F16x8_PACK_F32_PER_TOKEN_KERNEL(4096) break;           \
-  case 8192:                                                                   \
-    LANUCH_SAFE_SOFTMAX_F16x8_PACK_F32_PER_TOKEN_KERNEL(8192) break;           \
-  default:                                                                     \
-    throw std::runtime_error("only support H: 64/128/.../1024*8");             \
-    break;                                                                     \
+#define DISPATCH_SATE_SOFTMAX_F16x8_PACK_F32_PER_TOKEN_KERNEL(S, H)  \
+  const int NT = (H) / 8;                                            \
+  dim3 block(NT);                                                    \
+  dim3 grid((S));                                                    \
+  switch (H)                                                         \
+  {                                                                  \
+  case 32:                                                           \
+    LANUCH_SAFE_SOFTMAX_F16x8_PACK_F32_PER_TOKEN_KERNEL(32) break;   \
+  case 64:                                                           \
+    LANUCH_SAFE_SOFTMAX_F16x8_PACK_F32_PER_TOKEN_KERNEL(64) break;   \
+  case 128:                                                          \
+    LANUCH_SAFE_SOFTMAX_F16x8_PACK_F32_PER_TOKEN_KERNEL(128) break;  \
+  case 256:                                                          \
+    LANUCH_SAFE_SOFTMAX_F16x8_PACK_F32_PER_TOKEN_KERNEL(256) break;  \
+  case 512:                                                          \
+    LANUCH_SAFE_SOFTMAX_F16x8_PACK_F32_PER_TOKEN_KERNEL(512) break;  \
+  case 1024:                                                         \
+    LANUCH_SAFE_SOFTMAX_F16x8_PACK_F32_PER_TOKEN_KERNEL(1024) break; \
+  case 2048:                                                         \
+    LANUCH_SAFE_SOFTMAX_F16x8_PACK_F32_PER_TOKEN_KERNEL(2048) break; \
+  case 4096:                                                         \
+    LANUCH_SAFE_SOFTMAX_F16x8_PACK_F32_PER_TOKEN_KERNEL(4096) break; \
+  case 8192:                                                         \
+    LANUCH_SAFE_SOFTMAX_F16x8_PACK_F32_PER_TOKEN_KERNEL(8192) break; \
+  default:                                                           \
+    throw std::runtime_error("only support H: 64/128/.../1024*8");   \
+    break;                                                           \
   }
 
 // per token fp32
-void softmax_f32_per_token(torch::Tensor x, torch::Tensor y) {
+void softmax_f32_per_token(torch::Tensor x, torch::Tensor y)
+{
   CHECK_TORCH_TENSOR_DTYPE(x, torch::kFloat32)
   CHECK_TORCH_TENSOR_DTYPE(y, torch::kFloat32)
   CHECK_TORCH_TENSOR_SHAPE(x, y)
@@ -743,7 +786,8 @@ void softmax_f32_per_token(torch::Tensor x, torch::Tensor y) {
   DISPATCH_SOFTMAX_F32_PER_TOKEN_KERNEL(S, H)
 }
 
-void softmax_f32x4_per_token(torch::Tensor x, torch::Tensor y) {
+void softmax_f32x4_per_token(torch::Tensor x, torch::Tensor y)
+{
   CHECK_TORCH_TENSOR_DTYPE(x, torch::kFloat32)
   CHECK_TORCH_TENSOR_DTYPE(y, torch::kFloat32)
   CHECK_TORCH_TENSOR_SHAPE(x, y)
@@ -753,7 +797,8 @@ void softmax_f32x4_per_token(torch::Tensor x, torch::Tensor y) {
   DISPATCH_SOFTMAX_F32x4_PER_TOKEN_KERNEL(S, H)
 }
 
-void safe_softmax_f32_per_token(torch::Tensor x, torch::Tensor y) {
+void safe_softmax_f32_per_token(torch::Tensor x, torch::Tensor y)
+{
   CHECK_TORCH_TENSOR_DTYPE(x, torch::kFloat32)
   CHECK_TORCH_TENSOR_DTYPE(y, torch::kFloat32)
   CHECK_TORCH_TENSOR_SHAPE(x, y)
@@ -763,7 +808,8 @@ void safe_softmax_f32_per_token(torch::Tensor x, torch::Tensor y) {
   DISPATCH_SATE_SOFTMAX_F32_PER_TOKEN_KERNEL(S, H)
 }
 
-void safe_softmax_f32x4_per_token(torch::Tensor x, torch::Tensor y) {
+void safe_softmax_f32x4_per_token(torch::Tensor x, torch::Tensor y)
+{
   CHECK_TORCH_TENSOR_DTYPE(x, torch::kFloat32)
   CHECK_TORCH_TENSOR_DTYPE(y, torch::kFloat32)
   CHECK_TORCH_TENSOR_SHAPE(x, y)
@@ -774,7 +820,8 @@ void safe_softmax_f32x4_per_token(torch::Tensor x, torch::Tensor y) {
 }
 
 // per token fp16
-void safe_softmax_f16_f32_per_token(torch::Tensor x, torch::Tensor y) {
+void safe_softmax_f16_f32_per_token(torch::Tensor x, torch::Tensor y)
+{
   CHECK_TORCH_TENSOR_DTYPE(x, torch::kHalf)
   CHECK_TORCH_TENSOR_DTYPE(y, torch::kHalf)
   CHECK_TORCH_TENSOR_SHAPE(x, y)
@@ -784,7 +831,8 @@ void safe_softmax_f16_f32_per_token(torch::Tensor x, torch::Tensor y) {
   DISPATCH_SATE_SOFTMAX_F16_F32_PER_TOKEN_KERNEL(S, H)
 }
 
-void safe_softmax_f16x2_f32_per_token(torch::Tensor x, torch::Tensor y) {
+void safe_softmax_f16x2_f32_per_token(torch::Tensor x, torch::Tensor y)
+{
   CHECK_TORCH_TENSOR_DTYPE(x, torch::kHalf)
   CHECK_TORCH_TENSOR_DTYPE(y, torch::kHalf)
   CHECK_TORCH_TENSOR_SHAPE(x, y)
@@ -794,7 +842,8 @@ void safe_softmax_f16x2_f32_per_token(torch::Tensor x, torch::Tensor y) {
   DISPATCH_SATE_SOFTMAX_F16x2_F32_PER_TOKEN_KERNEL(S, H)
 }
 
-void safe_softmax_f16x8_pack_f32_per_token(torch::Tensor x, torch::Tensor y) {
+void safe_softmax_f16x8_pack_f32_per_token(torch::Tensor x, torch::Tensor y)
+{
   CHECK_TORCH_TENSOR_DTYPE(x, torch::kHalf)
   CHECK_TORCH_TENSOR_DTYPE(y, torch::kHalf)
   CHECK_TORCH_TENSOR_SHAPE(x, y)
@@ -804,7 +853,8 @@ void safe_softmax_f16x8_pack_f32_per_token(torch::Tensor x, torch::Tensor y) {
   DISPATCH_SATE_SOFTMAX_F16x8_PACK_F32_PER_TOKEN_KERNEL(S, H)
 }
 
-void online_safe_softmax_f32_per_token(torch::Tensor x, torch::Tensor y) {
+void online_safe_softmax_f32_per_token(torch::Tensor x, torch::Tensor y)
+{
   CHECK_TORCH_TENSOR_DTYPE(x, torch::kFloat32)
   CHECK_TORCH_TENSOR_DTYPE(y, torch::kFloat32)
   CHECK_TORCH_TENSOR_SHAPE(x, y)
@@ -815,7 +865,8 @@ void online_safe_softmax_f32_per_token(torch::Tensor x, torch::Tensor y) {
 }
 
 void online_safe_softmax_f32x4_pack_per_token(torch::Tensor x,
-                                              torch::Tensor y) {
+                                              torch::Tensor y)
+{
   CHECK_TORCH_TENSOR_DTYPE(x, torch::kFloat32)
   CHECK_TORCH_TENSOR_DTYPE(y, torch::kFloat32)
   CHECK_TORCH_TENSOR_SHAPE(x, y)
@@ -829,7 +880,8 @@ void online_safe_softmax_f32x4_pack_per_token(torch::Tensor x,
 // TORCH_BINDING_SOFTMAX(f32,   torch::kFloat32, float, 1)
 // TORCH_BINDING_SOFTMAX(f32x4, torch::kFloat32, float, 4)
 
-PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
+{
   // TORCH_BINDING_COMMON_EXTENSION(softmax_f32)
   // TORCH_BINDING_COMMON_EXTENSION(softmax_f32x4)
   TORCH_BINDING_COMMON_EXTENSION(softmax_f32_per_token)
