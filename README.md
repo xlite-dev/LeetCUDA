@@ -1,7 +1,7 @@
 <div align="center">
   <p align="center">
     <h2>📚 LeetCUDA: Modern CUDA Learn Notes with PyTorch for Beginners 🐑</h2>
-    <img src='https://github.com/user-attachments/assets/b2578723-b7a7-4d8f-bcd1-5008947b808a' >
+    <img src='https://github.com/user-attachments/assets/b2578723-b7a7-4d8f-bcd1-5008947b808a' width="700">
   </p>
   <div align='center'>
       <img src=https://cdn.rawgit.com/sindresorhus/awesome/d7305f38d29fed78fa85652e3a63e154dd8e8829/media/badge.svg >
@@ -16,10 +16,10 @@
 
 <div align="center">
   <p align="center">
-    <a href="https://hellogithub.com/repository/98348655a96640ca8ddcbc298edc901d" target="_blank"><img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=98348655a96640ca8ddcbc298edc901d&claim_uid=ofSCbzTmdeQk3FD&theme=dark" alt="Featured｜HelloGitHub" style="width: 250px; height: 54px;" width="250" height="54" /></a> <br>
     <a href="#contribute">🔥🔥 PR Welcome: Add Your Kernel to LeetCUDA! Let's make it Awesome together! 🎉🎉</a> <br>
     <a href=https://github.com/xlite-dev/LeetCUDA/graphs/contributors > <img src=https://opencollective.com/leetcuda/contributors.svg height=40px > </a>
   </p>
+  <a href="https://hellogithub.com/repository/98348655a96640ca8ddcbc298edc901d" target="_blank"><img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=98348655a96640ca8ddcbc298edc901d&claim_uid=ofSCbzTmdeQk3FD&theme=dark" alt="Featured｜HelloGitHub" style="width: 250px; height: 54px;" width="250" height="54" /></a> 
 </div>
 
 ## ©️Citations🎉🎉
