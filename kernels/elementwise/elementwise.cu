@@ -119,7 +119,7 @@ __global__ void elementwise_add_f16x8_pack_kernel(half *a, half *b, half *c,
     LDST128BITS(c[idx]) = LDST128BITS(pack_c[0]);
   } else {
     for (int i=0; nx+i<N; i++) {
-      c[nx+i] = __hadd(a[nx+i], b[nx+i]);
+      c[idx+i] = __hadd(a[idx+i], b[idx+i]);
     }
   }
 }
