@@ -61,7 +61,7 @@ mma_80_debug:
 mma_80_swizzle:
 	nvcc mma/swizzle/hgemm_mma_stage_swizzle.cu -o hgemm_mma_stage_swizzle.80.bin $(DEFAULT_FLAGS_80)
 mma_80_swizzle_debug:
-	nvcc mma/swizzle/hgemm_mma_stage_swizzle.cu -o hgemm_mma_stage_swizzle.80.debug.bin $(DEFAULT_FLAGS_80) -DHGEMM_MMA_DEBUG
+	nvcc mma/swizzle/hgemm_mma_stage_swizzle.cu -o hgemm_mma_stage_swizzle.80.debug.bin -g -G -O1 $(ARCHS_80) -std=c++17 $(INCLUDE_DIRS) --expt-relaxed-constexpr -lcublas -DHGEMM_MMA_DEBUG
 # SM 80 TN debug
 mma_tn_80:
 	nvcc mma/basic/hgemm_mma_stage_tn.cu -o hgemm_mma_stage_tn.80.bin $(DEFAULT_FLAGS_80)

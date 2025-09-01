@@ -18,162 +18,170 @@ torch.set_grad_enabled(False)
 
 def get_args():
     parser = argparse.ArgumentParser(description="hgemm benchmark")
-    parser.add_argument("--M", type=int, default=None, help="Matrix M size")
-    parser.add_argument("--N", type=int, default=None, help="Matrix N size")
-    parser.add_argument("--K", type=int, default=None, help="Matrix K size")
+    # 矩阵维度参数 / Matrix dimension parameters
+    parser.add_argument("--M", type=int, default=None, help="Matrix M size / 矩阵M维度大小")
+    parser.add_argument("--N", type=int, default=None, help="Matrix N size / 矩阵N维度大小")
+    parser.add_argument("--K", type=int, default=None, help="Matrix K size / 矩阵K维度大小")
     parser.add_argument(
-        "--MNK", type=int, default=None, help="Matrix M=N=K size"
+        "--MNK", type=int, default=None, help="Matrix M=N=K size / 设置M=N=K的正方形矩阵大小"
     )
     parser.add_argument(
-        "--MMNK", type=int, default=12800, help="Matrix MAX M=M=N=K size"
+        "--MMNK", type=int, default=12800, help="Matrix MAX M=M=N=K size / 批量测试时的最大矩阵尺寸上限"
     )
     parser.add_argument(
-        "--SEP", "--sep", type=int, default=256, help="Matrix SEP M=M=N=K size"
+        "--SEP", "--sep", type=int, default=256, help="Matrix SEP M=M=N=K size / 批量测试时矩阵尺寸的步长间隔"
+    )
+    # 性能测试参数 / Performance test parameters
+    parser.add_argument(
+        "--warmup", "--w", type=int, default=2, help="Warmup iters / 预热迭代次数"
     )
     parser.add_argument(
-        "--warmup", "--w", type=int, default=2, help="Warmup iters"
+        "--iters", "--i", type=int, default=10, help="Benchmark iters / 基准测试的迭代次数"
     )
-    parser.add_argument(
-        "--iters", "--i", type=int, default=10, help="Benchmark iters"
-    )
-    parser.add_argument("--verbose", "--v", action="store_true", help="Verbose")
+    # 输出显示参数 / Output display parameters
+    parser.add_argument("--verbose", "--v", action="store_true", help="Verbose / 详细输出模式")
     parser.add_argument(
         "--show-matrix",
         "--show-m",
         action="store_true",
-        help="Show output matrix values",
+        help="Show output matrix values / 显示输出矩阵的具体数值",
     )
     parser.add_argument(
         "--show-all-info",
         "--show-a",
         action="store_true",
-        help="Show all the profile info",
+        help="Show all the profile info / 显示所有性能分析信息",
     )
     parser.add_argument(
         "--show-memory",
         "--show-mm",
         action="store_true",
-        help="Show gpu memory info",
+        help="Show gpu memory info / 显示GPU内存使用信息",
     )
+    # CUDA内核启用参数 / CUDA kernel enable parameters
     parser.add_argument(
         "--enable-mma",
         "--mma",
         action="store_true",
-        help="Enable MMA kernel tests",
+        help="Enable MMA kernel tests / 启用MMA内核测试",
     )
     parser.add_argument(
         "--enable-mma-tn",
         "--mma-tn",
         action="store_true",
-        help="Enable TN MMA kernel tests",
+        help="Enable TN MMA kernel tests / 启用TN布局的MMA内核测试",
     )
     parser.add_argument(
         "--enable-wmma",
         "--wmma",
         action="store_true",
-        help="Enable WMMA kernel tests",
+        help="Enable WMMA kernel tests / 启用WMMA内核测试",
     )
     parser.add_argument(
         "--enable-cuda",
         "--cuda",
         action="store_true",
-        help="Enable CUDA kernel tests",
+        help="Enable CUDA kernel tests / 启用传统CUDA内核测试",
     )
     parser.add_argument(
         "--enable-mma-all",
         "--mma-all",
         action="store_true",
-        help="Enable all MMA kernel tests",
+        help="Enable all MMA kernel tests / 启用所有MMA内核变体测试",
     )
     parser.add_argument(
         "--enable-wmma-all",
         "--wmma-all",
         action="store_true",
-        help="Enable all WMMA kernel tests",
+        help="Enable all WMMA kernel tests / 启用所有WMMA内核变体测试",
     )
     parser.add_argument(
         "--enable-cuda-all",
         "--cuda-all",
         action="store_true",
-        help="Enable all CUDA kernel tests",
+        help="Enable all CUDA kernel tests / 启用所有传统CUDA内核变体测试",
     )
     parser.add_argument(
         "--enable-torch",
         "--torch",
         action="store_true",
-        help="Enable torch matmul",
+        help="Enable torch matmul / 启用PyTorch原生矩阵乘法测试",
     )
     parser.add_argument(
         "--enable-cute-tn",
         "--cute-tn",
         action="store_true",
-        help="Enable cute hgemm matmul",
+        help="Enable cute hgemm matmul / 启用CuTe库的TN布局半精度矩阵乘法测试",
     )
     parser.add_argument(
         "--enable-cute",
         "--cute",
         action="store_true",
-        help="Enable cute hgemm matmul",
+        help="Enable cute hgemm matmul / 启用CuTe库的半精度矩阵乘法测试",
     )
+    # 库函数禁用参数 / Library disable parameters
     parser.add_argument(
         "--disable-cublas",
         "--no-cublas",
         action="store_true",
-        help="Disable cublas hgemm",
+        help="Disable cublas hgemm / 禁用cuBLAS半精度矩阵乘法测试",
     )
     parser.add_argument(
         "--disable-cublas-tn",
         "--no-cublas-tn",
         action="store_true",
-        help="Disable cublas TN hgemm",
+        help="Disable cublas TN hgemm / 禁用cuBLAS的TN布局半精度矩阵乘法测试",
     )
+    # 运行时控制参数 / Runtime control parameters
     parser.add_argument(
         "--sleep-duration",
         "--sleep",
         type=float,
         default=0.1,
-        help="Sleep duration",
+        help="Sleep duration / 测试间隔的休眠时间",
     )
     parser.add_argument(
         "--swizzle-factor",
         "--swizzle",
         type=float,
         default=None,
-        help="Swizzle factor",
+        help="Swizzle factor / 内存访问模式的混洗因子",
     )
     parser.add_argument(
-        "--no-default", action="store_true", help="Disable default tests"
+        "--no-default", action="store_true", help="Disable default tests / 禁用默认的测试组合"
+    )
+    # 绘图和结果保存参数 / Plot and save parameters
+    parser.add_argument(
+        "--plot-flops", "--plot", action="store_true", help="Plot TFLOPS / 绘制TFLOPS性能图表"
     )
     parser.add_argument(
-        "--plot-flops", "--plot", action="store_true", help="Plot TFLOPS"
-    )
-    parser.add_argument(
-        "--plot-topk", "--topk", type=int, default=8, help="Plot top k TFLOPS"
+        "--plot-topk", "--topk", type=int, default=8, help="Plot top k TFLOPS / 绘图时显示前K个最佳TFLOPS结果"
     )
     parser.add_argument(
         "--no-plot-best",
         "--no-best",
         action="store_true",
-        help="Not Plot best TFLOPS",
+        help="Not Plot best TFLOPS / 不在图表中突出显示最佳TFLOPS结果",
     )
     parser.add_argument(
         "--exclude-tags",
         "--exclude",
         type=str,
         default=None,
-        help="Exclude tag for plot, sperated by comma",
+        help="Exclude tag for plot, sperated by comma / 绘图时排除的标签(用逗号分隔)",
     )
     parser.add_argument(
-        "--save-dir", "--dir", type=str, default="./", help="Save dir for plot"
+        "--save-dir", "--dir", type=str, default="./", help="Save dir for plot / 图表保存目录路径"
     )
     parser.add_argument(
-        "--save-tag", "--tag", type=str, default=None, help="Save name for plot"
+        "--save-tag", "--tag", type=str, default=None, help="Save name for plot / 保存图表时的文件名标签"
     )
+    # 构建选项 / Build options
     parser.add_argument(
         "--force-build",
         "--build",
         action="store_true",
-        help="Force build from sources",
+        help="Force build from sources / 强制从源代码重新编译CUDA内核",
     )
     return parser.parse_args()
 

@@ -19,6 +19,8 @@
 
 // FP32
 // DS required for Online Softmax
+// 这里__align__(8) 表示MD类型的大小是8字节对齐的，8字节对齐的意思是，这个struct存放的起始地址一定是8的整数倍
+// 这样的好处是，1、这里两个float正好8字节，正好匹配对齐边界 2、起始地址是8的倍数，更容易合并访存
 struct __align__(8) MD {
   float m;
   float d;
@@ -171,8 +173,9 @@ __global__ void softmax_f32_per_token_kernel(float *x, float *y, int N) {
     y[idx] = exp_val / exp_sum;
 }
 
+// 相比上面的实现，这里的优化点是float4向量化访存
 template <const int NUM_THREADS = 256 / 4>
-__global__ void softmax_f32x4_per_token_kernel(float *x, float *y, int N) {
+__global__ void softmax_f32x4_per_token_kernel(float *x, float *y, int N) {/
   const int tid = threadIdx.x;
   const int idx = (blockIdx.x * blockDim.x + tid) * 4;
 
@@ -196,13 +199,14 @@ __global__ void softmax_f32x4_per_token_kernel(float *x, float *y, int N) {
   }
 }
 
+// safe softmax公式：safe_softmax(x_i) = exp(x_i - max_val) / Σ(exp(x_j - max_val))
 // safe_softmax per token
 template <const int NUM_THREADS = 256>
 __global__ void safe_softmax_f32_per_token_kernel(float *x, float *y, int N) {
   const int tid = threadIdx.x;
   const int idx = blockIdx.x * blockDim.x + tid;
 
-  float val = (idx < N) ? x[idx] : -FLT_MAX;
+  float val = (idx < N) ? x[idx] : -FLT_MAX; // -FLT_MAX表示最小的浮点数
   float max_val = block_reduce_max_f32<NUM_THREADS>(val); // block max
   float exp_val = (idx < N) ? expf(x[idx] - max_val) : 0.0f;
   float exp_sum = block_reduce_sum_f32<NUM_THREADS>(exp_val); // block sum
@@ -211,6 +215,7 @@ __global__ void safe_softmax_f32_per_token_kernel(float *x, float *y, int N) {
     y[idx] = exp_val / exp_sum;
 }
 
+// 相比上面的优化就是，多了个float4向量化访存
 template <const int NUM_THREADS = 256 / 4>
 __global__ void safe_softmax_f32x4_per_token_kernel(float *x, float *y, int N) {
   const int tid = threadIdx.x;
@@ -246,6 +251,8 @@ __global__ void safe_softmax_f32x4_per_token_kernel(float *x, float *y, int N) {
   }
 }
 
+// 这个实现是基于softmax_f32_per_token_kernel修改的
+// 修改在于，读入的是half类型，然后转换成float，使用float计算，最后输出结果时再转换为half
 template <const int NUM_THREADS = 256>
 __global__ void safe_softmax_f16_f32_per_token_kernel(half *x, half *y, int N) {
   const int tid = threadIdx.x;
@@ -260,6 +267,7 @@ __global__ void safe_softmax_f16_f32_per_token_kernel(half *x, half *y, int N) {
     y[idx] = __float2half_rn(exp_val / exp_sum);
 }
 
+// 相比上面的优化是向量化访存，一次拿两个half，然后转换为float2,存的时候将float2转换为half2，然后一次存一个half2
 template <const int NUM_THREADS = 256>
 __global__ void safe_softmax_f16x2_f32_per_token_kernel(half *x, half *y,
                                                         int N) {
@@ -288,6 +296,9 @@ __global__ void safe_softmax_f16x2_f32_per_token_kernel(half *x, half *y,
     HALF2(y[idx]) = __float22half2_rn(reg_y);
 }
 
+// 这里也是向量化访存，相比上面的优化点在于，上面的是一次存取两个half，这里一次存取8个half
+// 这里一次拿8个half用的float4的向量化访存，一次拿4个float就相当于拿了8个half
+// 测了下发现这个kernel的性能比上面的kernel的性能稍差(A100)，说明向量化访存一次存取的数也不是越多越好
 template <const int NUM_THREADS = 256>
 __global__ void safe_softmax_f16x8_pack_f32_per_token_kernel(half *x, half *y,
                                                              int N) {
@@ -397,7 +408,7 @@ online_safe_softmax_f32x4_pack_per_token_kernel(float *x, float *y, int N) {
   __syncthreads();
   // write back
   MD final_res = shared[0];
-  float d_total_inverse = __fdividef(1.0f, final_res.d);
+  float d_total_inverse = __fdividef(1.0f, final_res.d); // 这个是cuda内置的单精度除法函数
   if (global_tid < N) {
     float4 reg_y;
     reg_y.x = __expf(val.x - final_res.m) * d_total_inverse;
