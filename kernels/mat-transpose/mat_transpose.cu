@@ -413,6 +413,7 @@ __global__ void mat_transpose_f32x4_shared_bcf_merge_write_row2col2d_kernel(
   void mat_transpose_##tag##2d(torch::Tensor x, torch::Tensor y) {             \
     CHECK_TORCH_TENSOR_DTYPE(x, (th_type))                                     \
     CHECK_TORCH_TENSOR_DTYPE(y, (th_type))                                     \
+
     const int M = x.size(0);  /* 输入矩阵行数 */                                \
     const int N = x.size(1);  /* 输入矩阵列数 */                                \
     dim3 block(WARP_SIZE_S, WARP_SIZE_S);  /* 2D线程块：16x16=256个线程 */      \
@@ -421,6 +422,7 @@ __global__ void mat_transpose_f32x4_shared_bcf_merge_write_row2col2d_kernel(
     mat_transpose_##tag##2d_kernel<<<grid, block>>>(                           \
         reinterpret_cast<element_type *>(x.data_ptr()),                        \
         reinterpret_cast<element_type *>(y.data_ptr()), M, N);                 \
+
   }
 
 // ============================================================================
