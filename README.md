@@ -510,7 +510,9 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 
 |📖 类型-标题|📖 作者| 📖 推荐 |
 |:---|:---|:---|
-| [[Diffusion推理]📖cache-dit: Qwen-Image 1.5x 无损加速](https://zhuanlan.zhihu.com/p/1938547315221705644)|@DefTruth|⭐️⭐️⭐|
+| [[Diffusion推理]📖cache-dit: Wan2.2-MoE 2.4x 推理加速!](https://zhuanlan.zhihu.com/p/1943976514321380955)|@DefTruth|⭐️⭐️⭐|
+| [[Diffusion推理]📖cache-dit: Qwen-Image-Edit 2x 无损加速!](https://zhuanlan.zhihu.com/p/1941503245764792443)|@DefTruth|⭐️⭐️⭐|
+| [[Diffusion推理]📖cache-dit: Qwen-Image 1.5x 无损加速!](https://zhuanlan.zhihu.com/p/1938547315221705644)|@DefTruth|⭐️⭐️⭐|
 | [[Diffusion推理]📖Cache加速-TaylorSeer算法简析](https://zhuanlan.zhihu.com/p/1937477466475197176)|@DefTruth|⭐️⭐️⭐|
 | [[Diffusion推理]📖DiT推理加速综述: Caching](https://zhuanlan.zhihu.com/p/711223667)|@DefTruth|⭐️⭐️⭐|
 | [[Triton编程][基础]📖Triton极简入门: Triton Vector Add](https://zhuanlan.zhihu.com/p/1902778199261291694)|@DefTruth|⭐️⭐️⭐|
