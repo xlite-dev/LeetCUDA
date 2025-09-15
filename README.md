@@ -510,6 +510,8 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 
 |📖 类型-标题|📖 作者| 📖 推荐 |
 |:---|:---|:---|
+| [[Diffusion推理]📖cache-dit: BlockAdapter支持HunyuanImage-2.1 Cache加速!](https://zhuanlan.zhihu.com/p/1950849526400263083)|@DefTruth|⭐️⭐️⭐|
+| [[Diffusion推理]📖cache-dit + Qwen-Image-Lightning 实现 3.5 steps 推理!](https://zhuanlan.zhihu.com/p/1948696529180295613)|@DefTruth|⭐️⭐️⭐|
 | [[Diffusion推理]📖cache-dit: Wan2.2-MoE 2.4x 推理加速!](https://zhuanlan.zhihu.com/p/1943976514321380955)|@DefTruth|⭐️⭐️⭐|
 | [[Diffusion推理]📖cache-dit: Qwen-Image-Edit 2x 无损加速!](https://zhuanlan.zhihu.com/p/1941503245764792443)|@DefTruth|⭐️⭐️⭐|
 | [[Diffusion推理]📖cache-dit: Qwen-Image 1.5x 无损加速!](https://zhuanlan.zhihu.com/p/1938547315221705644)|@DefTruth|⭐️⭐️⭐|
