@@ -1,29 +1,3 @@
-<!--
-<div align="center">
-  <p align="center">
-    <h2>📚 LeetCUDA: Modern CUDA Learn Notes with PyTorch for Beginners 🐑</h2>
-    <img src='https://github.com/user-attachments/assets/b2578723-b7a7-4d8f-bcd1-5008947b808a' width="700">
-  </p>
-  <div align='center'>
-      <img src=https://cdn.rawgit.com/sindresorhus/awesome/d7305f38d29fed78fa85652e3a63e154dd8e8829/media/badge.svg >
-      <img src=https://img.shields.io/badge/Language-CUDA-brightgreen.svg >
-      <img src=https://img.shields.io/github/forks/xlite-dev/LeetCUDA.svg?style=dark >
-      <img src=https://img.shields.io/github/stars/xlite-dev/LeetCUDA.svg?style=dark >
-      <img src=https://img.shields.io/badge/License-GPLv3.0-turquoise.svg >
-  </div>
-</div>
-
-📚 **LeetCUDA**: It includes **Tensor/CUDA Cores, TF32/F16/BF16/F8**, [📖200+ CUDA Kernels🔥](#cuda-kernel) with PyTorch, [📖100+ LLM/CUDA🔥](#my-blogs-part-1) blogs, [📖HGEMM⚡️](./kernels/hgemm) which can achieve `98%~100%` TFLOPS of **cuBLAS**, and [📖flash-attn⚡️](./kernels/flash-attn) using Tensor Cores with pure MMA PTX. ♥️ Please consider to leave a ⭐️ Star to support me, my bro ~ ♥️
-
-<div align="center">
-  <p align="center">
-    <a href="#contribute">🔥🔥 PR Welcome: Add Your Kernel to LeetCUDA! Let's make it Awesome together! 🎉🎉</a> <br>
-    <a href=https://github.com/xlite-dev/LeetCUDA/graphs/contributors > <img src=https://opencollective.com/leetcuda/contributors.svg height=40px > </a>
-  </p>
-  <a href="https://hellogithub.com/repository/98348655a96640ca8ddcbc298edc901d" target="_blank"><img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=98348655a96640ca8ddcbc298edc901d&claim_uid=ofSCbzTmdeQk3FD&theme=dark" alt="Featured｜HelloGitHub" style="width: 250px; height: 54px;" width="250" height="54" /></a>
-</div>
--->
-
 <div align="center">
   <p align="center">
     <h2>📚 LeetCUDA: Modern CUDA Learn Notes with PyTorch for Beginners 🐑</h2>
@@ -64,7 +38,7 @@
 ## 📖 News 🔥🔥
 <div id="news"></div>
 
-- [2025-08-18]: **[🤗cache-dit](https://github.com/vipshop/cache-dit)** is released! 🤗An Unified and Training-free Cache Acceleration Toolbox for DiTs: Cache Acceleration with One-line Code ~ ♥️. Feel free to take a try!
+- [2025-08-18]: **[🤗cache-dit](https://github.com/vipshop/cache-dit)** is released! A Unified and Training-free Cache Acceleration Framework for 🤗Diffusers: Cache Acceleration with One-line Code ~ ♥️. Feel free to take a try!
 
 <div align='center'>
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-v1.png height="320px">
@@ -77,14 +51,6 @@
 </div>
 
 - [2024-12-02]: **[⚡️HGEMM](https://github.com/xlite-dev/HGEMM.git)** is released! Write HGEMM from scratch using Tensor Cores with **WMMA, MMA and CuTe** API, achieve peak🎉 performance.
-
-<!--
-<div align='center'>
-  <img src='https://github.com/user-attachments/assets/71927ac9-72b3-4ce9-b0e2-788b5885bc99' height="170px" width="229px">
-  <img src='https://github.com/user-attachments/assets/05ef4f5e-d999-48ea-b58e-782cffb24e85' height="170px" width="229px">
-  <img src='https://github.com/user-attachments/assets/9472e970-c083-4b31-9252-3eeecc761078' height="170px" width="229px">
-</div>
--->
 
 ## 📖 Contents
 <div id="contents"></div>
@@ -510,6 +476,7 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 
 |📖 类型-标题|📖 作者| 📖 推荐 |
 |:---|:---|:---|
+| [[Diffusion推理]📖Cache加速-FoCa公式理解记录](https://zhuanlan.zhihu.com/p/1952056591068144338)|@DefTruth|⭐️⭐️⭐|
 | [[Diffusion推理]📖cache-dit: BlockAdapter支持HunyuanImage-2.1 Cache加速!](https://zhuanlan.zhihu.com/p/1950849526400263083)|@DefTruth|⭐️⭐️⭐|
 | [[Diffusion推理]📖cache-dit + Qwen-Image-Lightning 实现 3.5 steps 推理!](https://zhuanlan.zhihu.com/p/1948696529180295613)|@DefTruth|⭐️⭐️⭐|
 | [[Diffusion推理]📖cache-dit: Wan2.2-MoE 2.4x 推理加速!](https://zhuanlan.zhihu.com/p/1943976514321380955)|@DefTruth|⭐️⭐️⭐|
