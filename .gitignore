@@ -25,3 +25,7 @@ bin
 __pycache__
 pdfs
 build*
+.vscode
+.idea
+.github/copilot-instructions.md
+AGENTS.md
