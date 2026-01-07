@@ -1,5 +1,4 @@
 #include <algorithm>
-#include <cuda_bf16.h>
 #include <cuda_fp16.h>
 #include <cuda_fp8.h>
 #include <cuda_runtime.h>
@@ -16,16 +15,10 @@
 #define INT4(value) (reinterpret_cast<int4 *>(&(value))[0])
 #define FLOAT4(value) (reinterpret_cast<float4 *>(&(value))[0])
 #define HALF2(value) (reinterpret_cast<half2 *>(&(value))[0])
-#define BFLOAT2(value) (reinterpret_cast<__nv_bfloat162 *>(&(value))[0])
 #define LDST128BITS(value) (reinterpret_cast<float4 *>(&(value))[0])
-#define MAX_EXP_F32 88.3762626647949f
-#define MIN_EXP_F32 -88.3762626647949f
-#define MAX_EXP_F16 __float2half(11.089866488461016f)
-#define MIN_EXP_F16 __float2half(-9.704060527839234f)
 
 // FP32
-// col2row means read x[row][col] and
-// write y[col][row] row2col means read x[col][row] and write y[row][col]
+// col2row means read x[row][col] and write y[col][row]
 __global__ void mat_transpose_f32_col2row_kernel(float *x, float *y,
                                                  const int row, const int col) {
   const int global_idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -36,6 +29,7 @@ __global__ void mat_transpose_f32_col2row_kernel(float *x, float *y,
   }
 }
 
+// row2col means read x[col][row] and write y[row][col]
 __global__ void mat_transpose_f32_row2col_kernel(float *x, float *y,
                                                  const int row, const int col) {
   const int global_idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -104,8 +98,8 @@ __global__ void mat_transpose_f32_col2row2d_kernel(float *x, float *y,
 __global__ void mat_transpose_f32_row2col2d_kernel(float *x, float *y,
                                                    const int row,
                                                    const int col) {
-  const int global_y = blockIdx.x * blockDim.x + threadIdx.x;
-  const int global_x = blockIdx.y * blockDim.y + threadIdx.y;
+  const int global_x = blockIdx.x * blockDim.x + threadIdx.x;
+  const int global_y = blockIdx.y * blockDim.y + threadIdx.y;
   if (global_y < col && global_x < row) {
     y[global_y * row + global_x] = x[global_x * col + global_y];
   }
