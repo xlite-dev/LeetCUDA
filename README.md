@@ -38,10 +38,10 @@
 ## 📖 News 🔥🔥
 <div id="news"></div>
 
-- [2026-01-16]: **[🤗Cache-DiT v1.2.0 Major Release](https://github.com/vipshop/cache-dit)** is readly! 🤗Cache-DiT is A PyTorch-native Inference Engine with Hybrid Cache Acceleration and Parallelism for DiTs. Feel free to take a try!
+- [2026-01-16]: **[🤗Cache-DiT v1.2.0 Major Release](https://github.com/vipshop/cache-dit)** is ready! 🤗Cache-DiT is A PyTorch-native Inference Engine with Hybrid Cache Acceleration and Parallelism for DiTs. Feel free to take a try!
 
 <div align='center'>
-  <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo-v2.png height=380px>
+  <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo-v2.png height=320px>
 </div>
 
 - [2025-01-08]: **[🤖ffpa-attn](https://github.com/xlite-dev/ffpa-attn.git)** is released! Yet another Faster Flash Prefill Attention with O(1)🎉SRAM complexity for large headdim, **1.8x~3x↑**🎉 vs SDPA EA: [📈L20 ~1.9x↑🎉](https://github.com/xlite-dev/ffpa-attn?tab=readme-ov-file#L1-bench-l20), [📈A30 ~1.8x↑🎉](https://github.com/xlite-dev/ffpa-attn?tab=readme-ov-file#L1-bench-a30),[📈4090 ~2.1x↑🎉](https://github.com/xlite-dev/ffpa-attn?tab=readme-ov-file#L1-bench-4090).
