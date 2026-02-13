@@ -476,6 +476,9 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 
 |📖 类型-标题|📖 作者| 📖 推荐 |
 |:---|:---|:---|
+| [[Diffusion推理]📖简短的2025年总结，写在Cache-DiT v1.2.1之际](https://zhuanlan.zhihu.com/p/2001692370358539662)|@DefTruth|⭐️⭐️|
+| [[Diffusion推理]📖CacheDiT支持Z-Image分布式推理和缓存加速​​](https://zhuanlan.zhihu.com/p/1978490962742374735)|@DefTruth|⭐️⭐️|
+| [[Diffusion推理]📖cache-dit支持FLUX.2分布式推理和Cache](https://zhuanlan.zhihu.com/p/1977698505834379041)|@DefTruth|⭐️⭐️|
 | [[Diffusion推理]📖Cache加速-FoCa公式理解记录](https://zhuanlan.zhihu.com/p/1952056591068144338)|@DefTruth|⭐️⭐️⭐|
 | [[Diffusion推理]📖cache-dit: BlockAdapter支持HunyuanImage-2.1 Cache加速!](https://zhuanlan.zhihu.com/p/1950849526400263083)|@DefTruth|⭐️⭐️⭐|
 | [[Diffusion推理]📖cache-dit + Qwen-Image-Lightning 实现 3.5 steps 推理!](https://zhuanlan.zhihu.com/p/1948696529180295613)|@DefTruth|⭐️⭐️⭐|
@@ -570,6 +573,12 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 |:---|:---|:---|
 | [[cute系列详解][入门]📖cutlass cute 101](https://zhuanlan.zhihu.com/p/660379052)|@朱小霖|⭐️⭐️⭐️|
 | [[cute系列详解][入门]📖CUTLASS 2.x & CUTLASS 3.x Intro 学习笔记](https://zhuanlan.zhihu.com/p/710516489)|@BBuf|⭐️⭐️⭐️|
+| [[cute系列详解][入门]📖写给大家看的 CuTe 教程：tiled copy](https://zhuanlan.zhihu.com/p/1930389542784964333)|@竹熙佳处|⭐️⭐️⭐️|
+| [[cute系列详解][入门]📖写给大家看的 CuTe 教程：tiled mma](https://zhuanlan.zhihu.com/p/1937145378446226159)|@竹熙佳处|⭐️⭐️⭐️|
+| [[cute系列详解][入门]📖写给大家看的 CuTe 教程：Layout Compose & Inverse](https://zhuanlan.zhihu.com/p/1962625273636845008)|@竹熙佳处|⭐️⭐️⭐️|
+| [[cute系列详解][入门]📖写给大家看的 CuTe 教程: Layout Product & Divide](https://zhuanlan.zhihu.com/p/1971945267294111573)|@竹熙佳处|⭐️⭐️⭐️|
+| [[cute系列详解][入门]📖写给大家看的 CuTe 教程：TMA Copy](https://zhuanlan.zhihu.com/p/2003198909405763007)|@竹熙佳处|⭐️⭐️⭐️|
+| [[cute系列详解][入门]📖写给进阶开发的 CuTe 笔记：permutationMNK 参数](https://zhuanlan.zhihu.com/p/1973526710105419953)|@竹熙佳处|⭐️⭐️⭐️|
 | [[cute系列详解][Layout]📖cute 之 Layout](https://zhuanlan.zhihu.com/p/661182311)|@reed|⭐️⭐️⭐️|
 | [[cute系列详解][Layout]📖cute Layout 的代数和几何解释](https://zhuanlan.zhihu.com/p/662089556)|@reed|⭐️⭐️⭐️|
 | [[cute系列详解][Tensor]📖cute 之 Tensor](https://zhuanlan.zhihu.com/p/663093816)|@reed|⭐️⭐️⭐️|
@@ -580,6 +589,7 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 | [[cute系列详解][Swizzle]📖cutlass swizzle机制解析（一）](https://zhuanlan.zhihu.com/p/710337546)|@Titus|⭐️⭐️⭐️|
 | [[cute系列详解][Swizzle]📖cutlass swizzle机制解析（二）](https://zhuanlan.zhihu.com/p/711398930)|@Titus|⭐️⭐️⭐️|
 | [[cute系列详解][Swizzle]📖CUDA避免smem bank conflict的swizzle机制解析](https://zhuanlan.zhihu.com/p/4746910252)|@frankshi|⭐️⭐️⭐️|
+| [[cute系列详解][Swizzle]📖布局代数实战：Swizzle自动推导](https://zhuanlan.zhihu.com/p/1941306442683515068)|@melonedo|⭐️⭐️⭐️|
 | [[cute系列详解][GEMM]📖cute 之 简单GEMM实现](https://zhuanlan.zhihu.com/p/667521327)|@reed|⭐️⭐️⭐️|
 | [[cute系列详解][GEMM]📖cute 之 GEMM流水线](https://zhuanlan.zhihu.com/p/665082713)|@reed|⭐️⭐️⭐️|
 | [[cute系列详解][GEMM]📖cute 之 高效GEMM实现](https://zhuanlan.zhihu.com/p/675308830)|@reed|⭐️⭐️⭐️|
