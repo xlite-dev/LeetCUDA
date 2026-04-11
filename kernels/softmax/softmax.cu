@@ -348,7 +348,8 @@ __global__ void online_safe_softmax_f32_per_token_kernel(const float *x,
   __syncthreads();
 
   if (local_tid < WARP_SIZE) {
-    MD block_res = shared[local_tid];
+    MD block_res =
+        local_tid < WARP_NUM ? shared[local_tid] : MD{-FLT_MAX, 0.0f};
     block_res = warp_reduce_md_op<WARP_NUM>(block_res);
     if (local_tid == 0) {
       shared[0] = block_res;
@@ -389,7 +390,8 @@ online_safe_softmax_f32x4_pack_per_token_kernel(float *x, float *y, int N) {
   __syncthreads();
   // do block reduce
   if (local_tid < WARP_SIZE) {
-    MD block_res = shared[local_tid];
+    MD block_res =
+        local_tid < WARP_NUM ? shared[local_tid] : MD{-FLT_MAX, 0.0f};
     block_res = warp_reduce_md_op<WARP_NUM>(block_res);
     if (local_tid == 0)
       shared[0] = block_res;
