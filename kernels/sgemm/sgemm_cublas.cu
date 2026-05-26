@@ -18,7 +18,7 @@
   do {                                                                         \
     cublasStatus_t status = (call);                                            \
     if (status != CUBLAS_STATUS_SUCCESS) {                                     \
-      throw std::runtime_error("cuBLAS call failed");                         \
+      throw std::runtime_error("cuBLAS call failed");                          \
     }                                                                          \
   } while (0)
 

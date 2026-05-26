@@ -1,17 +1,17 @@
 import cutlass
 import cutlass.cute as cute
-from cutlass.cute.runtime import from_dlpack
 import cutlass.cute.testing as testing
-
 import torch
+from cutlass.cute.runtime import from_dlpack
 
 num_stages = 3
 cta_tiler = (128, 128, 8)
-mma_tiler = (16, 16) 
+mma_tiler = (16, 16)
 
 
 VERBOSE = True
 LOG = "[Info]"
+
 
 @cute.kernel
 def sgemm_kernel(
@@ -27,7 +27,6 @@ def sgemm_kernel(
 ):
     tid_x, _, _ = cute.arch.thread_idx()
     bid_x, bid_y, _ = cute.arch.block_idx()
-
 
     tiler_coord = (bid_x, bid_y, None)
 
@@ -59,12 +58,11 @@ def sgemm_kernel(
 
     thr_mma = tiled_mma.get_slice(tid_x)
 
-
     # ==========================================================================
     # prologue
     # --------------------------------------------------------------------------
-    smem_pipe_depth = cute.size(tAsA, mode=[3]) # num stages = 3
-    num_tiles_k = cute.size(tAgA, mode=[3]) # num of k tiles = 256
+    smem_pipe_depth = cute.size(tAsA, mode=[3])  # num stages = 3
+    num_tiles_k = cute.size(tAgA, mode=[3])  # num of k tiles = 256
     gmem_pipe_read = cutlass.Int32(0)
 
     for pipe in range(0, smem_pipe_depth - 1, unroll_full=True):
@@ -82,7 +80,6 @@ def sgemm_kernel(
 
         gmem_pipe_read += 1
 
-
     tCsA = thr_mma.partition_A(sA)
     tCsB = thr_mma.partition_B(sB)
     tCgC = thr_mma.partition_C(gC)
@@ -99,14 +96,13 @@ def sgemm_kernel(
         print(f"{LOG} tCrB {tCrB}")
         print(f"{LOG} tCrC {tCrC}")
 
-
-    smem_pipe_read = cutlass.Int32(0) # read from stage 0
-    smem_pipe_write = cutlass.Int32(smem_pipe_depth - 1) # write into stage 2
+    smem_pipe_read = cutlass.Int32(0)  # read from stage 0
+    smem_pipe_write = cutlass.Int32(smem_pipe_depth - 1)  # write into stage 2
 
     tCsA_ = tCsA[None, None, None, smem_pipe_read]
     tCsB_ = tCsB[None, None, None, smem_pipe_read]
 
-    num_mma_k = cute.size(tCrA, mode=[2]) # 8
+    num_mma_k = cute.size(tCrA, mode=[2])  # 8
     if num_mma_k > 1:
         # Wait until the first prefetched tile is loaded in
         cute.arch.cp_async_wait_group(smem_pipe_depth - 2)
@@ -127,11 +123,14 @@ def sgemm_kernel(
                 cute.arch.cp_async_wait_group(smem_pipe_depth - 2)
                 cute.arch.barrier()
 
-
             mma_k_next = (mma_k_idx + 1) % num_mma_k
 
-            cute.autovec_copy(tCsA_[None, None, mma_k_next], tCrA[None, None, mma_k_next])
-            cute.autovec_copy(tCsB_[None, None, mma_k_next], tCrB[None, None, mma_k_next])
+            cute.autovec_copy(
+                tCsA_[None, None, mma_k_next], tCrA[None, None, mma_k_next]
+            )
+            cute.autovec_copy(
+                tCsB_[None, None, mma_k_next], tCrB[None, None, mma_k_next]
+            )
 
             # this runs once per smem tile, right when starting to consume that tile.
             if mma_k_idx == 0:
@@ -176,34 +175,42 @@ def sgemm_kernel(
     cute.arch.barrier()
     tCrC.store(epilogue_op(tCrC.load()))
 
-    c_copy_atom = cute.make_copy_atom(cute.nvgpu.CopyUniversalOp(), cutlass.Float32)
+    c_copy_atom = cute.make_copy_atom(
+        cute.nvgpu.CopyUniversalOp(), cutlass.Float32
+    )
     cute.copy(c_copy_atom, tCrC, tCgC)
 
     return
-    
+
+
 @cute.jit
-def sgemm_host(a: cute.Tensor, 
-               b: cute.Tensor,
-               c: cute.Tensor,
-               copy_bits: cutlass.Constexpr = 128):
-    
+def sgemm_host(
+    a: cute.Tensor,
+    b: cute.Tensor,
+    c: cute.Tensor,
+    copy_bits: cutlass.Constexpr = 128,
+):
+
     tile_m, tile_n, tile_k = cta_tiler
     mma_m, mma_n = mma_tiler
     threads = mma_m * mma_n
 
-
-    smem_layout_a = cute.make_layout( # (128,8,3) : (1,132,1056)
+    smem_layout_a = cute.make_layout(  # (128,8,3) : (1,132,1056)
         (tile_m, tile_k, num_stages), stride=(1, tile_m, tile_k * tile_m)
     )
     smem_layout_b = cute.make_layout(
         (tile_n, tile_k, num_stages), stride=(1, tile_n, tile_k * tile_n)
     )
     smem_size = sum(
-        [cute.size_in_bytes(cutlass.Float32, lo) for lo in [smem_layout_a, smem_layout_b]]
-    ) 
+        [
+            cute.size_in_bytes(cutlass.Float32, lo)
+            for lo in [smem_layout_a, smem_layout_b]
+        ]
+    )
 
-
-    thr_layout_a = cute.make_ordered_layout((threads // tile_k, tile_k), order=(1, 0))
+    thr_layout_a = cute.make_ordered_layout(
+        (threads // tile_k, tile_k), order=(1, 0)
+    )
     val_layout_a = cute.make_layout((1, 1))
     async_copy_atom_a = cute.make_copy_atom(
         cute.nvgpu.cpasync.CopyG2SOp(),
@@ -211,18 +218,22 @@ def sgemm_host(a: cute.Tensor,
         num_bits_per_copy=a.element_type.width,
     )
 
-
-    thr_layout_b = cute.make_ordered_layout((threads // tile_k, tile_k), order=(1, 0))
+    thr_layout_b = cute.make_ordered_layout(
+        (threads // tile_k, tile_k), order=(1, 0)
+    )
     val_layout_b = cute.make_layout((1, 1))
     async_copy_atom_b = cute.make_copy_atom(
         cute.nvgpu.cpasync.CopyG2SOp(),
         cutlass.Float32,
         num_bits_per_copy=b.element_type.width,
     )
-    
-    tiled_copy_a = cute.make_tiled_copy_tv(async_copy_atom_a, thr_layout_a, val_layout_a)
-    tiled_copy_b = cute.make_tiled_copy_tv(async_copy_atom_b, thr_layout_b, val_layout_b)
 
+    tiled_copy_a = cute.make_tiled_copy_tv(
+        async_copy_atom_a, thr_layout_a, val_layout_a
+    )
+    tiled_copy_b = cute.make_tiled_copy_tv(
+        async_copy_atom_b, thr_layout_b, val_layout_b
+    )
 
     mma_op = cute.nvgpu.MmaUniversalOp(cutlass.Float32)
     mma_atoms_layout = cute.make_layout((mma_m, mma_n, 1), stride=(mma_n, 1, 0))
@@ -256,10 +267,11 @@ def sgemm_host(a: cute.Tensor,
         tiled_copy_a,
         tiled_copy_b,
         tiled_mma,
-    ).launch(grid = grid_dim, block = block_dim, smem = smem_size)
+    ).launch(grid=grid_dim, block=block_dim, smem=smem_size)
 
 
 import time
+
 
 def run_sgemm(
     M: int = 2048,
@@ -288,20 +300,30 @@ def run_sgemm(
 
     workspace_generator = lambda: testing.JitArguments(*tensor_generator())
 
-    _a, _b, _c, _a_tensor, _b_tensor, _c_tensor = tensor_generator(return_torch_tensor=True)
+    _a, _b, _c, _a_tensor, _b_tensor, _c_tensor = tensor_generator(
+        return_torch_tensor=True
+    )
 
     compile_tic = time.perf_counter()
-    matmul = cute.compile(sgemm_host, _a_tensor, _b_tensor, _c_tensor, options="--generate-line-info")
+    matmul = cute.compile(
+        sgemm_host,
+        _a_tensor,
+        _b_tensor,
+        _c_tensor,
+        options="--generate-line-info",
+    )
     print(f"kernel compiled in {time.perf_counter() - compile_tic:.4f} seconds")
 
     if verify:
         matmul(_a_tensor, _b_tensor, _c_tensor)
         torch.cuda.synchronize()
-        torch.testing.assert_close(_c, torch.matmul(_a, _b), atol=1e-3, rtol=1e-3)
+        torch.testing.assert_close(
+            _c, torch.matmul(_a, _b), atol=1e-3, rtol=1e-3
+        )
         print("verification passed!")
     else:
         print("verification skipped...")
-    
+
     torch.cuda.empty_cache()
     for _ in range(warmup_iterations):
         _ = torch.matmul(_a, _b)
@@ -312,11 +334,15 @@ def run_sgemm(
     torch.cuda.synchronize()
     torch_avg_time_us = (time.perf_counter() - torch_tic) * 1e6 / iterations
     print(f"torch kernel execution time: {torch_avg_time_us / 1e3:.2f} ms")
-    print(f"torch achieved TFLOPS: {(2 * M * N * K) / torch_avg_time_us / 1e6:.2f}")
+    print(
+        f"torch achieved TFLOPS: {(2 * M * N * K) / torch_avg_time_us / 1e6:.2f}"
+    )
 
     torch.cuda.empty_cache()
     workspace_bytes = (M * K + N * K + M * N) * 4
-    workspace_count = testing.get_workspace_count(workspace_bytes, warmup_iterations, iterations)
+    workspace_count = testing.get_workspace_count(
+        workspace_bytes, warmup_iterations, iterations
+    )
     avg_time_us = testing.benchmark(
         matmul,
         workspace_generator=workspace_generator,
