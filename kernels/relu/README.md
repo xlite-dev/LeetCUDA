@@ -13,7 +13,21 @@
 - [X] PyTorch bindings
 
 
+## 文件组织
+
+本目录下有三套实现，分别对应不同用途：
+
+| 文件                                    | 用途                                                                 |
+| --------------------------------------- | -------------------------------------------------------------------- |
+| `relu.cu` / `relu.py`                   | **参考实现**：上游原版，包含全部 kernel 和 benchmark                 |
+| `my_relu.cu` / `my_relu.py`             | **学习实现**：自己学习时写的版本，带 correctness 检查、benchmark 和 profiling 入口 |
+| `practice_relu.cu` / `practice_relu.py` | **练习实现**：日常反复练手用，只保留每种 dtype 下的最佳 kernel       |
+| `my_relu.sh`                            | 一键 `ncu` profiling 脚本                                            |
+
+
 ## 测试
+
+### 1. 参考实现 (relu.py)
 
 ```bash
 # 只测试Ada架构 不指定默认编译所有架构 耗时较长: Volta, Ampere, Ada, Hopper, ...
@@ -21,7 +35,57 @@ export TORCH_CUDA_ARCH_LIST=Ada
 python3 relu.py
 ```
 
-输出:
+### 2. 学习实现 (my_relu.py)
+
+`my_relu.py` 在参考实现基础上加了三件事：
+
+- `check_correctness`：对照 `torch.relu` 校验每个 kernel 的数值正确性
+- `run_benchmark`：跑全 shape 的 benchmark（带正确性校验）
+- `run_profiling`：用 NVTX range 包住单次调用，配合 `ncu` 抓 metrics
+
+```bash
+# 跑 benchmark + 正确性校验
+python3 my_relu.py --benchmark
+
+# 跳过正确性校验
+python3 my_relu.py --benchmark --no-check
+
+# 单 kernel profiling（默认 S=K=4096）
+python3 my_relu.py --profiling relu_f16x8_pack --dtype float16
+python3 my_relu.py --profiling relu_f32x4     --dtype float32 --S 4096 --K 4096
+```
+
+可选 kernel 名：`relu_f32` / `relu_f32x4` / `relu_f16` / `relu_f16x2` / `relu_f16x8` / `relu_f16x8_pack` / `relu_th`。
+
+### 3. 一键 profiling (my_relu.sh)
+
+`my_relu.sh` 把 `ncu --nvtx` 调用封装好了，输出 `<name>.ncu-rep` 报告：
+
+```bash
+# 默认 relu_f16, float16
+./my_relu.sh
+
+# 指定 kernel 和 dtype
+./my_relu.sh relu_f16x8_pack float16
+./my_relu.sh relu_f32x4 float32
+```
+
+报告用 Nsight Compute UI 打开即可。
+
+### 4. 练习实现 (practice_relu.py)
+
+每种 dtype 只保留最优 kernel（FP32 → `relu_f32x4`、FP16 → `relu_f16x8_pack`），kernel 名字也去掉了优化标签（`relu_f32` / `relu_f16`），用来反复练手时不被花样实现干扰：
+
+```bash
+# 跑 benchmark + 正确性校验
+python3 practice_relu.py
+
+# 跳过正确性校验
+python3 practice_relu.py --no-check
+```
+
+
+## 参考输出 (relu.py)
 
 ```bash
 -------------------------------------------------------------------------------------
