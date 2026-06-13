@@ -30,3 +30,11 @@ build*
 .github/copilot-instructions.md
 AGENTS.md
 *.ncu-rep
+
+# Claude Code: ignore everything under .claude/ by default,
+# but keep skill source under .claude/skills/ checked into the repo.
+# .claude/skills/<name>-workspace/ (eval runs) and .claude/worktrees/
+# (transient subagent worktrees) stay local-only.
+.claude/*
+!.claude/skills/
+.claude/skills/*-workspace/

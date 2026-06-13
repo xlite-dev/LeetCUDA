@@ -1,0 +1,57 @@
+{
+  "skill_name": "kernel-scaffolder",
+  "evals": [
+    {
+      "id": 0,
+      "name": "elementwise-both-gelu",
+      "prompt": "我在 LeetCUDA 仓库里 kernels/gelu/ 目录下，已经有上游的 gelu.cu 和 gelu.py。请按 CLAUDE.md 描述的三层约定，给我生成 my_gelu.cu / my_gelu.py / my_gelu.sh 和 practice_gelu.cu / practice_gelu.py。生成完不用编译，列一下生成了哪些文件就行。",
+      "assertions": [
+        {"id": "files-all-present", "text": "All 5 files exist in outputs/"},
+        {"id": "my-cu-keeps-all-six-kernels", "text": "my_gelu.cu defines all 6 original __global__ kernels"},
+        {"id": "my-cu-bodies-emptied", "text": "Each kernel body in my_gelu.cu is empty with a TODO"},
+        {"id": "my-cu-bindings-preserved", "text": "TORCH_BINDING_GELU + PYBIND11 register all 6 kernels"},
+        {"id": "my-cu-cast-macros-commented", "text": "Cast macros (FLOAT4/HALF2/LDST128BITS) commented out at top"},
+        {"id": "practice-cu-only-best-per-dtype", "text": "practice_gelu.cu has exactly gelu_f32_kernel + gelu_f16_kernel"},
+        {"id": "practice-cu-bindings-simple", "text": "practice_gelu.cu binds only gelu_f32 and gelu_f16"},
+        {"id": "my-py-argparse-flags", "text": "my_gelu.py argparse has all required flags"},
+        {"id": "my-py-three-funcs", "text": "my_gelu.py has run_benchmark + run_profiling + check_correctness"},
+        {"id": "my-py-build-dir", "text": "my_gelu.py uses build_directory under build/<lib>"},
+        {"id": "my-py-lineinfo", "text": "my_gelu.py nvcc flags include -lineinfo"},
+        {"id": "practice-py-minimal", "text": "practice_gelu.py is minimal (correctness + benchmark + --no-check)"},
+        {"id": "my-sh-ncu-wrapper", "text": "my_gelu.sh is a thin ncu wrapper with --nvtx --nvtx-include 'profiling/'"}
+      ]
+    },
+    {
+      "id": 1,
+      "name": "elementwise-only-practice-swish",
+      "prompt": "kernels/swish/ 已经有 swish.cu / swish.py 了，我先不需要 my_swish 那一套，能不能只给我生成 practice_swish.cu 和 practice_swish.py？保持 sigmoid/relu 那种 practice 文件的风格。",
+      "assertions": [
+        {"id": "only-two-files", "text": "Exactly 2 files in outputs/ (no my_swish.*)"},
+        {"id": "practice-cu-two-kernels", "text": "practice_swish.cu has only swish_f32 + swish_f16 kernels"},
+        {"id": "practice-cu-bindings", "text": "practice_swish.cu binds only swish_f32 and swish_f16"},
+        {"id": "practice-cu-includes", "text": "practice_swish.cu has correct minimal includes"},
+        {"id": "practice-py-minimal-driver", "text": "practice_swish.py is minimal"},
+        {"id": "practice-py-build-dir", "text": "practice_swish.py uses build/practice_swish_lib/"},
+        {"id": "practice-py-tests-best", "text": "practice_swish.py drives swish_f32 + swish_f16 against torch ref"},
+        {"id": "no-my-files-leaked", "text": "No my_swish.* files in outputs/"}
+      ]
+    },
+    {
+      "id": 2,
+      "name": "reduce-style-dot-product",
+      "prompt": "帮我把 kernels/dot-product/ 这个 op 也接进 my_/practice_ 那套学习工作流。注意它和 sigmoid/relu 不一样——是 reduce 风格的 (两个输入 a, b，输出一个 scalar)，参考实现里有好几种 dtype 的 kernel（f32 / f16 等）。",
+      "assertions": [
+        {"id": "five-files-present", "text": "All 5 files exist in outputs/"},
+        {"id": "my-cu-keeps-all-kernels", "text": "my_dot_product.cu keeps all original kernels with TODO bodies"},
+        {"id": "my-cu-keeps-warp-helper", "text": "warp_reduce_sum_f32 helper retained"},
+        {"id": "my-cu-bindings-preserved", "text": "Dispatch macros + TORCH_BINDING + PYBIND11 preserved"},
+        {"id": "my-py-no-out-arg", "text": "my_dot_product.py funcs don't take out tensor"},
+        {"id": "my-py-correctness-uses-sum", "text": "Correctness ref is torch.sum(a*b) or torch.dot"},
+        {"id": "my-py-no-dtype-flag", "text": "argparse has no --dtype (reduce style)"},
+        {"id": "my-sh-reduce-style", "text": "my_dot_product.sh has -k regex pattern + -f flag"},
+        {"id": "practice-cu-best-per-dtype", "text": "practice_dot_product.cu has best kernel per dtype"},
+        {"id": "practice-py-minimal-reduce", "text": "practice_dot_product.py is minimal reduce-style driver"}
+      ]
+    }
+  ]
+}
