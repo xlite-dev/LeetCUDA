@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-practice_relu.py - Practice-use ReLU benchmark
-===============================================
-After learning the relu kernel, use this for repeated practice:
+practice_sigmoid.py - Practice-use Sigmoid benchmark
+=====================================================
+After learning the sigmoid kernel, use this for repeated practice:
   - Only the best-performing kernel per dtype (FP32: f32x4, FP16: f16x8_pack)
   - Two features only: check_correctness and benchmark
-  - Plain kernel names (relu_f32 / relu_f16), no optimization hints
+  - Plain kernel names (sigmoid_f32 / sigmoid_f16), no optimization hints
 """
 
 import argparse
-import os
 import time
+from functools import partial
 from typing import Optional
 
 import torch
@@ -18,13 +18,9 @@ from torch.utils.cpp_extension import load
 
 torch.set_grad_enabled(False)
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-_BUILD_DIR = os.path.join(_HERE, "build", "practice_relu_lib")
-os.makedirs(_BUILD_DIR, exist_ok=True)
-
 lib = load(
-    name="practice_relu_lib",
-    sources=[os.path.join(_HERE, "practice_relu.cu")],
+    name="practice_sigmoid_lib",
+    sources=["practice_sigmoid.cu"],
     extra_cuda_cflags=[
         "-O3",
         "-U__CUDA_NO_HALF_OPERATORS__",
@@ -36,7 +32,6 @@ lib = load(
         "--use_fast_math",
     ],
     extra_cflags=["-std=c++17"],
-    build_directory=_BUILD_DIR,
 )
 
 
@@ -51,7 +46,7 @@ def check_correctness(
     atol: float = 1e-5,
     rtol: float = 1e-5,
 ) -> bool:
-    ref = torch.relu(x)
+    ref = torch.sigmoid(x)
     if out is not None:
         out.fill_(0)
         perf_func(x, out)
@@ -122,23 +117,23 @@ def run(check: bool = True):
         x = torch.randn((S, K)).cuda().float().contiguous()
         y = torch.zeros_like(x)
         if check:
-            all_ok &= check_correctness(lib.relu_f32, x, "f32", y)
-            all_ok &= check_correctness(torch.relu, x, "f32_th")
-        run_benchmark(lib.relu_f32, x, "f32", y)
-        run_benchmark(torch.relu, x, "f32_th")
+            all_ok &= check_correctness(lib.sigmoid_f32, x, "f32", y)
+            all_ok &= check_correctness(torch.sigmoid, x, "f32_th")
+        run_benchmark(lib.sigmoid_f32, x, "f32", y)
+        run_benchmark(partial(torch.sigmoid, out=y), x, "f32_th", y)
 
         # --- FP16 ---
         x_f16 = x.half().contiguous()
         y_f16 = y.half().contiguous()
         if check:
             all_ok &= check_correctness(
-                lib.relu_f16, x_f16, "f16", y_f16, atol=1e-3, rtol=1e-3
+                lib.sigmoid_f16, x_f16, "f16", y_f16, atol=1e-3, rtol=1e-3
             )
             all_ok &= check_correctness(
-                torch.relu, x_f16, "f16_th", atol=1e-3, rtol=1e-3
+                torch.sigmoid, x_f16, "f16_th", atol=1e-3, rtol=1e-3
             )
-        run_benchmark(lib.relu_f16, x_f16, "f16", y_f16)
-        run_benchmark(torch.relu, x_f16, "f16_th")
+        run_benchmark(lib.sigmoid_f16, x_f16, "f16", y_f16)
+        run_benchmark(partial(torch.sigmoid, out=y_f16), x_f16, "f16_th", y_f16)
         print("-" * 85)
 
     if check:

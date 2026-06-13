@@ -54,13 +54,81 @@ TORCH_BINDING_REDUCE(i8,               i32,  torch::kInt8,          int8_t,     
 TORCH_BINDING_REDUCE(i8x16_pack,       i32,  torch::kInt8,          int8_t,             16, int32_t)
 ```
 
+## 文件组织
+
+本目录下现有两套 reduce/all-reduce 用途：
+
+| 文件 | 用途 |
+| ---- | ---- |
+| `block_all_reduce.cu` / `block_all_reduce.py` | 上游原版：覆盖 fp32/fp16/bf16/fp8/i8 的 block all reduce sum |
+| `all_reduce.cu` / `all_reduce.py` | **参考实现**：只保留 f16，按 naive shared-memory → warp reduce → half2 → 128-bit pack 演化 |
+| `my_all_reduce.cu` / `my_all_reduce.py` | **学习实现**：f16 演化版，带 correctness 检查、benchmark 和 profiling 入口 |
+| `practice_all_reduce.cu` / `practice_all_reduce.py` | **练习实现**：只保留最佳 f16 kernel 的空壳，用于反复练手 |
+| `my_all_reduce.sh` | 一键 `ncu` profiling 脚本 |
+
 ## 测试
+
+### 1. 原版实现 (block_all_reduce.py)
 
 ```bash
 # 只测试Ada架构 不指定默认编译所有架构 耗时较长: Volta, Ampere, Ada, Hopper, ...
 export TORCH_CUDA_ARCH_LIST=Ada
 python3 block_all_reduce.py
 ```
+
+### 2. f16 参考实现 (all_reduce.py)
+
+```bash
+export TORCH_CUDA_ARCH_LIST=Ada
+python3 all_reduce.py
+```
+
+包含以下演化版本：`all_reduce_sum_f16_naive` / `all_reduce_sum_f16_warp` / `all_reduce_sum_f16x2` / `all_reduce_sum_f16x8_pack`。
+
+### 3. 学习实现 (my_all_reduce.py)
+
+`my_all_reduce.py` 参考 `kernels/relu/my_relu.py`，增加：
+
+- `check_correctness`：对照 `torch.sum(x.float())` 校验每个 f16 kernel
+- `run_benchmark`：跑全 shape 的 benchmark（带正确性校验）
+- `run_profiling`：用 NVTX range 包住单次调用，配合 `ncu` 抓 metrics
+
+```bash
+# 跑 benchmark + 正确性校验
+python3 my_all_reduce.py --benchmark
+
+# 跳过正确性校验
+python3 my_all_reduce.py --benchmark --no-check
+
+# 单 kernel profiling（默认 S=K=4096）
+python3 my_all_reduce.py --profiling all_reduce_sum_f16_naive
+python3 my_all_reduce.py --profiling all_reduce_sum_f16x8_pack --S 4096 --K 4096
+```
+
+可选 kernel 名：`all_reduce_sum_f16_naive` / `all_reduce_sum_f16_warp` / `all_reduce_sum_f16x2` / `all_reduce_sum_f16x8_pack` / `all_reduce_sum_th`。
+
+### 4. 一键 profiling (my_all_reduce.sh)
+
+```bash
+# 默认 all_reduce_sum_f16x8_pack
+./my_all_reduce.sh
+
+# 指定 kernel
+./my_all_reduce.sh all_reduce_sum_f16_warp
+```
+
+### 5. 练习实现 (practice_all_reduce.py)
+
+只保留最佳 f16 kernel（`all_reduce_sum_f16x8_pack`），kernel 名字去掉优化标签（`all_reduce_sum_f16`），用来反复练手时不被花样实现干扰：
+
+```bash
+# 跑 benchmark + 正确性校验
+python3 practice_all_reduce.py
+
+# 跳过正确性校验
+python3 practice_all_reduce.py --no-check
+```
+
 
 输出:
 

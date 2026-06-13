@@ -13,13 +13,81 @@
 - [X] PyTorch bindings
 
 
+## 文件组织
+
+本目录下有三套实现，分别对应不同用途：
+
+| 文件                                          | 用途                                                                 |
+| --------------------------------------------- | -------------------------------------------------------------------- |
+| `sigmoid.cu` / `sigmoid.py`                   | **参考实现**：上游原版，包含全部 kernel 和 benchmark                 |
+| `my_sigmoid.cu` / `my_sigmoid.py`             | **学习实现**：自己学习时写的版本，带 correctness 检查、benchmark 和 profiling 入口 |
+| `practice_sigmoid.cu` / `practice_sigmoid.py` | **练习实现**：日常反复练手用，只保留每种 dtype 下的最佳 kernel       |
+| `my_sigmoid.sh`                               | 一键 `ncu` profiling 脚本                                            |
+
+> `my_sigmoid.cu` 和 `practice_sigmoid.cu` 中的 kernel 函数体目前是空的（只留 `// TODO`），是预留给学习/练手时自己补全用的。`sigmoid` 比 `relu` 多了 `expf`/`hexp` 计算和数值范围 clamp（`MIN/MAX_EXP_F32`、`MIN/MAX_EXP_F16`），实现时记得别忘掉夹紧。
+
+
 ## 测试
+
+### 1. 参考实现 (sigmoid.py)
 
 ```bash
 # 只测试Ada架构 不指定默认编译所有架构 耗时较长: Volta, Ampere, Ada, Hopper, ...
 export TORCH_CUDA_ARCH_LIST=Ada
 python3 sigmoid.py
 ```
+
+### 2. 学习实现 (my_sigmoid.py)
+
+`my_sigmoid.py` 在参考实现基础上加了三件事：
+
+- `check_correctness`：对照 `torch.sigmoid` 校验每个 kernel 的数值正确性
+- `run_benchmark`：跑全 shape 的 benchmark（带正确性校验）
+- `run_profiling`：用 NVTX range 包住单次调用，配合 `ncu` 抓 metrics
+
+```bash
+# 跑 benchmark + 正确性校验
+python3 my_sigmoid.py --benchmark
+
+# 跳过正确性校验
+python3 my_sigmoid.py --benchmark --no-check
+
+# 单 kernel profiling（默认 S=K=4096）
+python3 my_sigmoid.py --profiling sigmoid_f16x8_pack --dtype float16
+python3 my_sigmoid.py --profiling sigmoid_f32x4     --dtype float32 --S 4096 --K 4096
+```
+
+可选 kernel 名：`sigmoid_f32` / `sigmoid_f32x4` / `sigmoid_f16` / `sigmoid_f16x2` / `sigmoid_f16x8` / `sigmoid_f16x8_pack` / `sigmoid_th`。
+
+### 3. 一键 profiling (my_sigmoid.sh)
+
+`my_sigmoid.sh` 把 `ncu --nvtx` 调用封装好了，输出 `<name>.ncu-rep` 报告：
+
+```bash
+# 默认 sigmoid_f16, float16
+./my_sigmoid.sh
+
+# 指定 kernel 和 dtype
+./my_sigmoid.sh sigmoid_f16x8_pack float16
+./my_sigmoid.sh sigmoid_f32x4 float32
+```
+
+报告用 Nsight Compute UI 打开即可。
+
+### 4. 练习实现 (practice_sigmoid.py)
+
+每种 dtype 只保留最优 kernel（FP32 → `sigmoid_f32x4`、FP16 → `sigmoid_f16x8_pack`），kernel 名字也去掉了优化标签（`sigmoid_f32` / `sigmoid_f16`），用来反复练手时不被花样实现干扰：
+
+```bash
+# 跑 benchmark + 正确性校验
+python3 practice_sigmoid.py
+
+# 跳过正确性校验
+python3 practice_sigmoid.py --no-check
+```
+
+
+## 参考输出 (sigmoid.py)
 
 输出:
 
