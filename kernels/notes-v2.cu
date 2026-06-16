@@ -138,6 +138,44 @@
 // 双模板参数：T=数据类型, kWarpSize=segment width（默认 32）
 // 第四个参数 kWarpSize 是 segment width：限制 shuffle 在同一 segment 内
 // 当 kWarpSize < 32（如 FA 中 kWarpSize=4）时，只有同 segment 的 lane 参与通信
+//   蝶形归约示意（以 warpSize=8 为例，实际 warpSize=32 有 5 次迭代）：
+//
+//   初始: 每个 lane 持有自己的值 v0..v7
+//   lane:  0    1    2    3    4    5    6    7
+//   val:  v0   v1   v2   v3   v4   v5   v6   v7
+//
+//   mask=4 (第1次迭代，lane i 与 lane i^4 交换并累加):
+//          ┌──────────────┐
+//   对:   (0,4) (1,5) (2,6) (3,7)
+//
+//   lane:  0    1    2    3    4    5    6    7
+//   val: v0+v4 v1+v5 v2+v6 v3+v7 v4+v0 v5+v1 v6+v2 v7+v3
+//
+//   mask=2 (第2次迭代，lane i 与 lane i^2 交换并累加):
+//          ┌──────┐  ┌──────┐  ┌──────┐  ┌──────┐
+//   对:   (0,2) (1,3) (4,6) (5,7)
+//       ──── 前4个一组 ────   ──── 后4个一组 ────
+//
+//   lane:  0    1    2    3    4    5    6    7
+//   val: Σ0-4 Σ1-5 Σ2-6 Σ3-7 Σ4-0 Σ5-1 Σ6-2 Σ7-3   (每lane持有前一轮2个值的和再加本轮配对)
+//        = v0+v2+v4+v6 ... (逐步归约)
+//
+//   mask=1 (第3次迭代，lane i 与 lane i^1 交换并累加):
+//          ┌──┐ ┌──┐ ┌──┐ ┌──┐ ┌──┐ ┌──┐ ┌──┐ ┌──┐
+//   对:   (0,1)(2,3)(4,5)(6,7)
+//
+//   lane:  0    1    2    3    4    5    6    7
+//   val:  Σall Σall Σall Σall Σall Σall Σall Σall  ← 所有 lane 拥有全归约结果！
+//
+//   mask=0: 循环终止，归约完成。
+//
+//   关键性质：
+//   - XOR 配对是对称的：lane i 的配对对象是 lane i^mask，而 (i^mask)^mask = i
+//   - 每轮每个 lane 只和恰好 1 个其他 lane 通信（一对一，无冲突）
+//   - 每轮信息传递距离减半：16→8→4→2→1（距离减半，信息翻倍）
+//   - O(log₂ N) 步完成，无需 shared memory，纯寄存器操作
+//   - __shfl_xor_sync 第四个参数 kWarpSize 限制 segment width：
+//     当 kWarpSize=4 时，只有同 segment(4个一组)内的 lane 参与 shuffle
 template <typename T = float, const int kWarpSize = WARP_SIZE>
 __device__ __forceinline__ T warp_reduce_sum(T val) {
 #pragma unroll
