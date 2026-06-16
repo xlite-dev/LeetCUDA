@@ -1,6 +1,7 @@
 \documentclass[9pt,twocolumn]{ctexart}
 \usepackage[paperwidth=210mm,paperheight=297mm,left=0.75cm,right=0.75cm,top=1.0cm,bottom=1.15cm]{geometry}
-\usepackage{listings,xcolor,fancyhdr}
+\usepackage{listings,xcolor,fancyhdr,xcolor}
+\usepackage{graphicx}
 \setlength{\columnsep}{0.35cm}
 \pagestyle{fancy}
 \fancyhf{}
@@ -68,7 +69,46 @@
 \author{LeetCUDA Project}
 \date{}
 \begin{document}
-\maketitle
+
+% ========== 封面（单独一页）==========
+\begin{titlepage}
+\thispagestyle{empty}
+\begin{center}
+  \vspace*{5.0cm}
+  {\fontsize{28pt}{36pt}\selectfont\bfseries CUDA Kernel 面试背题笔记}
+
+  \vspace{0.5cm}
+  \rule{0.6\textwidth}{0.5pt}
+
+  \vspace{1.5cm}
+  {\fontsize{12pt}{18pt}\selectfont
+  本书整理自 LeetCUDA 项目，系统汇编了 CUDA 面试中 \\
+  最高频的 GPU Kernel 实现，涵盖从 Warp/Block 原语、 \\
+  Elementwise、Softmax、GEMM、FlashAttention 等 \\
+  面试核心知识体系。
+
+  \vspace{0.6cm}
+  每个 Kernel 配备详细的中文面试要点注释（WHY + HOW）， \\
+  并以递进式优化路线（naive → tiling → vectorize → \\
+  tensor core → warp specialized）展示 GPU 性能调优思维。
+
+  \vspace{0.6cm}
+  \textbf{37 个 Kernel} · \textbf{10 个 Phase} · \textbf{全中文注释}
+  }
+
+  \vspace{2.5cm}
+  {\fontsize{11pt}{16pt}\selectfont
+   项目主页：\texttt{https://github.com/xlite-dev/LeetCUDA}
+  }
+
+  \vspace{0.3cm}
+  {\fontsize{10pt}{14pt}\selectfont\color{gray}
+   更新日期：\today
+  }
+\end{center}
+\vfill
+\end{titlepage}
+\setcounter{page}{1}
 \begin{lstlisting}[firstnumber=1]
 // ===================================================
 // notes-v2.cu — CUDA Kernel 面试背题笔记
