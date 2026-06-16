@@ -5,8 +5,7 @@
 // 整理自 LeetCUDA 项目（https://github.com/xlite-dev/LeetCUDA），涵盖：
 //   - 面试高频 CUDA kernel 的完整实现（共 37 个 kernel）
 //   - 每类 kernel 附带详细的面试要点注释（WHY + HOW）
-//   - 优化技术的递进式讲解（naive → tiling → vectorize → tensor core → warp
-//   spec）
+//   - 优化技术的递进式讲解（naive → tiling → vectorize → tensor core → ws）
 //   - BLAS 语义：N=col-major(Normal), T=row-major(Transposed)
 //
 // 10 个 Phase 覆盖：
