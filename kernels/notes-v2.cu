@@ -32,7 +32,7 @@
 //   - Warp Scheduler ×4：每 SM 4 个 warp scheduler，每个每周期可发射 1 条指令
 //   - Register File：每 SM 65536 × 32-bit = 256KB
 //   - Shared Memory / L1：可配置，最大 shared memory ~228KB (Hopper)
-//   - Tensor Cores：Hopper 每 SM 4 个，Blackwell 每 SM 8 个
+//   - Tensor Cores：Hopper 每 SM 4 个；Blackwell 数量随型号/定义不同，建议以官方 ISV guide 为准
 //   - Warp = 32 threads：最小调度单元，SIMT 执行模型
 //
 // Memory Hierarchy 带宽数量级（H100 参考）：
@@ -48,7 +48,7 @@
 //
 // Occupancy 公式：
 //   occupancy = active_warps / max_warps_per_SM
-//   受限于：register/thread × threads/block + shared_memory/block
+//   受三类资源分别取下限：每线程寄存器数 → threads/SM；每 block shared memory → blocks/SM；block 大小 → blocks/SM
 
 // ---- 常见优化手段速查清单 ----
 //
@@ -96,15 +96,15 @@
 // GEMM (M=N=K=4096):
 //   FLOPs = 2 × M × N × K = 2 × 4096³ ≈ 137 GFLOPS
 //   Bytes  = (M×K + K×N + M×N) × sizeof(float) ≈ 200 MB
-//   AI    ≈ 137G / 200M ≈ 685 FLOPS/Byte → compute-bound（远超 H100 的 ~50:1
-//   墙）
+//   AI    ≈ 137G / 200M ≈ 685 FLOPS/Byte → compute-bound（远超 H100 ridge point：
+//   FP16 TC ≈ 295:1，FP32 ≈ 20:1）
 //
 // GEMV (M=4096, K=4096):
 //   FLOPs = 2 × M × K = 2 × 4096² ≈ 33 MFLOPS
 //   Bytes  = (M×K + K + M) × sizeof(float) ≈ 67 MB
 //   AI    ≈ 33M / 67M ≈ 0.5 FLOPS/Byte → severely memory-bound
 //
-// Softmax (N=4096): AI ≈ (5×N) / (2×N×4) ≈ 2.5 FLOPS/Byte → memory-bound
+// Softmax (N=4096): AI ≈ (5×N) / (2×N×4) = 5/8 ≈ 0.625 FLOPS/Byte → memory-bound
 
 // =============================================================================
 // Phase 1: 头文件 + 宏定义 + 基础原语（Warp Reduce / Block Reduce）
@@ -135,8 +135,8 @@
 // Warp Reduce Sum — generic (used by both FP32 and FP16 contexts)
 // 使用 __shfl_xor_sync 做蝶形归约（butterfly reduction）
 // 复杂度 O(logN)，N=32 时仅需 5 步
-// 双模板参数：T=数据类型, kWarpSize=segment width（默认 32）
-// 第四个参数 kWarpSize 是 segment width：限制 shuffle 在同一 segment 内
+// 模板参数：T=数据类型, kWarpSize=segment width（默认 32）
+// kWarpSize 会作为 __shfl_xor_sync 的第 4 个实参 width，限制 shuffle 在同一 segment 内
 // 当 kWarpSize < 32（如 FA 中 kWarpSize=4）时，只有同 segment 的 lane 参与通信
 //   蝶形归约示意（以 warpSize=8 为例，实际 warpSize=32 有 5 次迭代）：
 //
@@ -157,7 +157,7 @@
 //       ──── 前4个一组 ────   ──── 后4个一组 ────
 //
 //   lane:  0    1    2    3    4    5    6    7
-//   val: Σ0-4 Σ1-5 Σ2-6 Σ3-7 Σ4-0 Σ5-1 Σ6-2 Σ7-3   (每lane持有前一轮2个值的和再加本轮配对)
+//   val: Σ{0,2,4,6} Σ{1,3,5,7} Σ{0,2,4,6} Σ{1,3,5,7} Σ{0,2,4,6} Σ{1,3,5,7} Σ{0,2,4,6} Σ{1,3,5,7}   (每lane持有前一轮2个值的和再加本轮配对)
 //        = v0+v2+v4+v6 ... (逐步归约)
 //
 //   mask=1 (第3次迭代，lane i 与 lane i^1 交换并累加):
@@ -254,7 +254,11 @@ __device__ float block_reduce_max_f32(float val) {
 }
 
 // Block Reduce Sum — FP32（notes-v1 原版，保留用于兼容旧 kernel）
-// 注意：此版本没有 broadcast，warp内只有lane<NUM_WARPS 知道结果 持有最终结果
+// 注意：此版本无 broadcast。第二级 warp_reduce_sum<NUM_WARPS> 所有 warp 都会执行
+// （__shfl_xor_sync 的 width=NUM_WARPS 把归约限制在 4-lane 子组内），
+// 因此每个 warp 内只有 lane<NUM_WARPS 的线程持有最终结果，其余 lane 为 0。
+// 相比之下，增强版 block_reduce_sum_f32 额外用 __shfl_sync(..., 0, 32) 把
+// 结果 broadcast 到所有 32 个 lane。
 template <const int NUM_THREADS = 128>
 __device__ __forceinline__ float block_reduce_sum(float val) {
   constexpr int NUM_WARPS = (NUM_THREADS + WARP_SIZE - 1) / WARP_SIZE;
@@ -426,7 +430,7 @@ __global__ void softmax_f32_per_token_kernel(float *x, float *y, int N) {
 
 // ---- Level 2: Safe Softmax（2-pass：先 max 再 exp，数值稳定）----
 // 面试重点：为什么 Softmax 需要 Safe？
-//   - exp(89) ≈ 4.5e38 已接近 float32 上限，exp(100) 直接 inf
+//   - expf 溢出阈值约 88.7：exp(88)≈1.65e38（接近 float32 上限 3.4e38），exp(89)≈4.5e38 已溢出为 inf
 //   - 减去 max 后：exp(x - max) ≤ exp(0) = 1.0，永不超过 1
 //   - 数学等价性：softmax(x) = softmax(x - c) 对任意常数 c 成立
 //   - 代价：2 次 block reduce（先 max，再 sum），但仍 O(N/B) 高效
@@ -662,7 +666,7 @@ __global__ void layer_norm_vec4(float *x, float *y, float g, float b, int N,
 // a: M×K, x: K×1, y: M×1, 计算: y = a * x
 
 // ---- SGEMV K32: 基础 warp-per-row ----
-// 设计：block(32, 4)，blockDim.x=WARP_SIZE=K，blockDim.y=4 行/block
+// 设计：block(32, 4)，blockDim.x=WARP_SIZE=32（K 需为 32 倍数时一轮覆盖，否则内层循环 NUM_WARPS 次）
 // grid(M/4)，每个 warp 负责一行
 // K 为 32 的倍数时，warp 的 32 个线程恰好覆盖 K 维
 // Grid:  ((M + 3) / 4, 1, 1)，每 block 处理 4 行
@@ -704,7 +708,7 @@ __global__ void sgemv_k128(float *a, float *x, float *y, int M, int K) {
 
   if (m < M) {
     float sum = 0.0f;
-    // K/128 个 warp 覆盖 K 维
+    // 沿 K 维的迭代数 = ceil(K/128)，每个 warp 每轮用 float4 覆盖 128 个 K 元素
     int NUM_WARPS = (((K + WARP_SIZE - 1) / WARP_SIZE) + 4 - 1) / 4;
 #pragma unroll
     for (int w = 0; w < NUM_WARPS; ++w) {
@@ -918,7 +922,7 @@ __global__ void sgemm_thread_tile_vec4(float *a, float *b, float *c, int M,
   int ty = threadIdx.y;
   int tid = threadIdx.y * blockDim.x + tx;
 
-  // smem: 2×128×8×4 = 8KB（只有 1/4 的 L1/SMEM！）
+  // smem: 2×128×8×4 = 8KB（仅占 H100 ~228KB L1/SMEM 的约 1/28，占用极低）
   __shared__ float s_a[BM][BK], s_b[BK][BN];
 
   // 线程到 smem 的映射 — 256 线程协作加载 128×8 的矩阵
@@ -1062,7 +1066,7 @@ __global__ void hgemm_t_8x8_sliced_k_f16x4_kernel(half *a, half *b, half *c,
 //     第一个字母 → A 的 op，第二个字母 → B 的 op
 //     所以 TN 表示：A 是行优先（相对 BLAS=Transposed），B 是列优先（相对
 //     BLAS=Normal） 即：C = op(A) × op(B) = A^T × B? 不对！ 在 row-major
-//     视角下：TN = A row-major [M×K], B col-major [N×K] 在 cuBLAS
+//     视角下：TN = A row-major [M×K], B^T row-major [N×K]（等价于 B col-major [K×N]） 在 cuBLAS
 //     调用中：cublasGemmEx(..., CUBLAS_OP_T, CUBLAS_OP_N, ...)
 //       T on A: BLAS 把 row-major 的 A 视为 A^T，传 T 表示"转置回去"
 //       N on B: B 已经是 BLAS 原生的 col-major，无需转置
@@ -1071,25 +1075,24 @@ __global__ void hgemm_t_8x8_sliced_k_f16x4_kernel(half *a, half *b, half *c,
 //     T = row-major（行优先，对 BLAS 来说是 transposed）
 //     N = col-major（列优先，BLAS native = normal）
 //
-//   NN 布局对比: C[M×N] = A[M×K] × B[K×N]
+//   LeetCUDA _nn 布局对比（A/B 均 row-major 自然存储）: C[M×N] = A[M×K] × B[K×N]
 //     - A: row-major [M, K], B: row-major [K, N]
-//     - 两者都是行优先 → BLAS 视角都是 T → cuBLAS: (T, T)
+//     - 按 N=col-major/T=row-major 约定，二者 BLAS 视角均为 T → cuBLAS 等效 (T,T)
 //     - 问题：ldmatrix 默认加载 col-major，B 是 row-major 需要 .trans
 //
-//   TN 布局: C[M×N] = A[M×K] × B[N×K]（A 行优先，B 列优先）
+//   TN 布局: C[M×N] = A[M×K] × B[K×N]，B 以 B^T=[N×K] row-major 存储（A 行优先，B 列优先）
 //     - A [M×K]: row-major → 全局索引 A[m*K + k]，smem s_a[BM][BK]
-//     - B [N×K]: col-major → 全局索引 B[n*K + k]（⚠ 内维是 K！）
-//               物理含义：存的是原 B[K×N] 的转置 B^T
-//     - 优势：B 已是 col-major，ldmatrix 无需 .trans，天然匹配 MMA row.col
+//     - B^T [N×K]: row-major → 全局索引 B[n*K+k] 即访问原 B 元素 (k,n)（⚠ 内维连续的是 K）
+//     - 优势：B^T 已是 row-major，ldmatrix 无需 .trans，天然匹配 MMA row.col
 //   MMA 指令: mma.sync.aligned.m16n8k16.row.col
 //     - row.col: A 输入 row-major，B 输入 col-major → 与 TN 布局天然匹配
 //
 // WGMMA (Warp Group MMA, Hopper+):
 //   - warpgroup 级指令（128 threads = 4 warps），异步执行
-//   - m64n128k16: 一次处理 64×128×16 的矩阵乘（比 MMA 大 32 倍）
+//   - m64n128k16: 一次处理 64×128×16 的矩阵乘（总 tile 量 131072，是 MMA m16n8k16 的 64 倍）
 //   - Warp Specialization: Producer(128 threads) 做 TMA 搬运, Consumer(128
 //   threads) 做计算
-//   - TMA: 硬件 DMA，零寄存器开销，支持 2D/3D 寻址
+//   - TMA: 硬件 DMA，~零寄存器开销，支持 1D~5D 寻址
 
 // =============================================================================
 // Phase 5b-1: MMA PTX 宏定义
@@ -1139,7 +1142,7 @@ __global__ void hgemm_t_8x8_sliced_k_f16x4_kernel(half *a, half *b, half *c,
 // row.col: A 是 row-major, B 是 col-major
 // f16.f16.f16.f16: A/B 是 f16, C/D 是 f16（f32 累加版本用 f32.f16.f16.f32）
 // 2 个输出寄存器（RD0, RD1），4 个 A 寄存器 + 2 个 B 寄存器
-// C 矩阵大小 16×8=128 元素 = 64 个 half = 2 个 uint32
+// C 矩阵大小 16×8=128 元素 = 128 个 half；32 线程分担，每线程 4 half = 2 个 uint32
 #define HMMA16816(RD0, RD1, RA0, RA1, RA2, RA3, RB0, RB1, RC0, RC1)            \
   asm volatile(                                                                \
       "mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16 {%0, %1}, {%2, %3, "  \
@@ -1168,11 +1171,11 @@ HOST_DEVICE_INLINE int div_ceil(int a, int b) {
 //
 // TN 布局在本 kernel 中的体现（T=A 行优先，N=B 列优先）：
 //   - A[M][K]: row-major, 全局索引 A[m*K + k], shared memory s_a[BM][BK]
-//   - B[N][K]: col-major, 全局索引 B[n*K + k]（⚠ 注意内维是 K 不是 N！）
-//              shared memory s_b[BN][BK] = s_b[N_tile][K_tile]
+//   - B[K][N]: col-major（等价于 B^T[N][K] row-major）, 全局索引 B[n*K+k] 即原 B 元素 (k,n)
+//              （⚠ 内维连续的是 K）shared memory s_b[BN][BK] = s_b[N_tile][K_tile]
 //   - ldmatrix A: 用 x4（非转置），因为 A 是 row-major，ldmatrix 原生匹配
-//   - ldmatrix B: 用 x2（非转置），因为 B 已是 col-major（BLAS Normal），无需
-//   .trans
+//   - ldmatrix B: 用 x2（非转置），因为 B^T 在 smem 中为 row-major，ldmatrix 逐行加载
+//     B^T 的行即 B 的列，天然匹配 MMA row.col 的 col-major B 输入，无需 .trans
 //   - MMA 指令: row.col = A row, B col → 天然匹配 TN 布局
 // Grid:  ((N+127)/128/S, (M+127)/128, S)，S=(N+2047)/2048，3D block swizzle
 //   - grid.z = S 个 swizzle 分区
@@ -1197,8 +1200,8 @@ __global__ void __launch_bounds__(256)
   constexpr int BK = MMA_K;                            // 16
 
   // Dynamic shared memory: K_STAGE 个 stage 的 A 和 B
-  // TN 布局: s_a[BM][BK]=[128][16](A row-major), s_b[BN][BK]=[128][16](B
-  // col-major)
+  // TN 布局: s_a[BM][BK]=[128][16](A row-major), s_b[BN][BK]=[128][16](B^T
+  // row-major，即 B col-major [K×N] 在 smem 中按 B^T[N×K] 存储)
   // 原始实现会按配置决定是否给 A/B 的 K 维加 PAD；尤其 B 在 TN 布局下常见会额外
   // 加 B_PAD 来打散 bank 映射，避免按列访问时出现明显 bank conflict。这里先保留最简 PAD=0 版本。
   extern __shared__ half smem[];
@@ -1206,7 +1209,7 @@ __global__ void __launch_bounds__(256)
   half *s_b = smem + K_STAGE * BM * BK;     // A 和 B 连续存放
   constexpr int s_a_stage_offset = BM * BK; // 128*16
   constexpr int s_b_stage_offset =
-      BN * BK; // 128*16  ⚠ BN(128)×BK(16) = B col-major 的 smem 布局
+      BN * BK; // 128*16  ⚠ BN(128)×BK(16) = B^T row-major 的 smem 布局
 
   const int tid = threadIdx.y * blockDim.x + threadIdx.x;
   const int warp_id = tid / WARP_SIZE; // 0~7
@@ -1215,12 +1218,12 @@ __global__ void __launch_bounds__(256)
   const int warp_n = warp_id / 2;      // 0,1,2,3（N 方向 4 个 warp）
 
   // 线程到 global memory 的映射（用于加载 A 和 B）
-  // TN 布局关键: A[m*K+k] 是 row-major, B[n*K+k] 是 col-major（内维是 K！）
+  // TN 布局关键: A[m*K+k] 是 row-major, B^T[n*K+k] 是 row-major（内维连续的是 K）
   int load_smem_a_m = tid / 2;                // 0~127
   int load_smem_a_k = (tid % 2 == 0) ? 0 : 8; // 0, 8
-  int load_smem_b_n = tid / 2; // 0~127 → B 的 N 方向（col-major 的行）
+  int load_smem_b_n = tid / 2; // 0~127 → B^T 的 N 方向（row-major 的行）
   int load_smem_b_k =
-      (tid % 2 == 0) ? 0 : 8; // 0, 8  → B 的 K 方向（col-major 的列）
+      (tid % 2 == 0) ? 0 : 8; // 0, 8  → B^T 的 K 方向（row-major 的列）
   int load_gmem_a_m = by * BM + load_smem_a_m;
   int load_gmem_b_n =
       bx * BN + load_smem_b_n; // B 全局列号 = N 方向的 tile 起始 + 线程偏移
@@ -1235,14 +1238,14 @@ __global__ void __launch_bounds__(256)
   uint32_t smem_b_base_ptr = __cvta_generic_to_shared(s_b);
 
   // 预加载前 (K_STAGE-1) 个 stage
-  // TN 布局: A 的 gmem 索引用 m*K+k(row-major), B 用 n*K+k(col-major)
+  // TN 布局: A 的 gmem 索引用 m*K+k(row-major), B^T 用 n*K+k(row-major，即 B col-major [K×N])
 #pragma unroll
   for (int k = 0; k < (K_STAGE - 1); ++k) {
     int load_gmem_a_k = k * BK + load_smem_a_k;
     int load_gmem_a_addr = load_gmem_a_m * K + load_gmem_a_k; // A: [m][k]
     int load_gmem_b_k = k * BK + load_smem_b_k;
     int load_gmem_b_addr =
-        load_gmem_b_n * K + load_gmem_b_k; // B: [n][k] col-major ⚠
+        load_gmem_b_n * K + load_gmem_b_k; // B^T: [n][k] row-major（即 B[k][n] col-major）⚠
 
     uint32_t load_smem_a_ptr =
         (smem_a_base_ptr +
@@ -1273,14 +1276,14 @@ __global__ void __launch_bounds__(256)
     int smem_sel_next = k % K_STAGE;  // 下一轮加载的 stage
 
     // 异步加载下一批数据到 smem_sel_next
-    // TN 布局: A 的 gmem 地址用 m*K+k（row-major），B 的 gmem 地址用
-    // n*K+k（col-major，内维是 K）
+    // TN 布局: A 的 gmem 地址用 m*K+k（row-major），B^T 的 gmem 地址用
+    // n*K+k（row-major，内维连续的是 K）
     int load_gmem_a_k = k * BK + load_smem_a_k;
     int load_gmem_a_addr =
         load_gmem_a_m * K + load_gmem_a_k; // A: row-major [m][k]
     int load_gmem_b_k = k * BK + load_smem_b_k;
     int load_gmem_b_addr =
-        load_gmem_b_n * K + load_gmem_b_k; // B: col-major [n][k] ⚠ 内维是 K！
+        load_gmem_b_n * K + load_gmem_b_k; // B^T: row-major [n][k]，内维连续的是 K ⚠
 
     uint32_t load_smem_a_ptr =
         (smem_a_base_ptr + (smem_sel_next * s_a_stage_offset +
@@ -1297,7 +1300,7 @@ __global__ void __launch_bounds__(256)
 
     // ldmatrix: 从 smem_sel 加载 A 和 B 到寄存器
     // TN 布局关键: A 用 x4（非转置），因为 A 是 row-major
-    //             B 用 x2（非转置），因为 B 已经是 col-major，无需 .trans
+    //             B 用 x2（非转置），smem 中 B^T 为 row-major，逐行加载即得 B 的列，天然匹配 col-major B
     uint32_t RA[WARP_TILE_M][4];
     uint32_t RB[WARP_TILE_N][2];
 
@@ -1315,9 +1318,9 @@ __global__ void __launch_bounds__(256)
       LDMATRIX_X4(RA[i][0], RA[i][1], RA[i][2], RA[i][3], lane_smem_a_ptr);
     }
 
-    // ldmatrix.x2: 加载 B 的 k16n8 片段（col-major B，非转置）
-    // 为什么不用 .trans？因为 TN 布局下 B 已经是 col-major [N][K]
-    // ldmatrix 默认期望 col-major 输入 → 直接匹配
+    // ldmatrix.x2: 加载 B 的 k16n8 片段（非转置）
+    // 为什么不用 .trans？因为 smem 中存的是 B^T row-major [N][K]，
+    // ldmatrix 逐行加载 B^T 的行 = B 的列，天然给出 col-major B fragment → 直接匹配 MMA row.col
 #pragma unroll
     for (int j = 0; j < WARP_TILE_N; ++j) {
       int warp_smem_b_n = warp_n * (MMA_N * WARP_TILE_N) + j * MMA_N;
@@ -1484,7 +1487,8 @@ __device__ inline uint64_t make_smem_desc(half *ptr) {
 // wgmma.mma_async.sync.aligned.m64n128k16.f16.f16.f16
 // m64n128k16: M=64, N=128, K=16
 // f16.f16.f16: A=f16, B=f16, D=f16 (accumulation in f16)
-// 32 个输出寄存器 = 64×128/2/4 = 1024 个 half / 32 = 32 个 uint32
+// 每线程 32 个 uint32 输出：D=64×128=8192 half，warpgroup 128 线程分担，
+// 每线程 64 half = 32 uint32
 // descA/descB: shared memory 描述符（由 make_smem_desc 生成）
 // ScaleD: 0=clear accum, 1=accumulate（用于 K 维迭代时累加）
 #define WGMMA_M64N128K16_F16F16F16(d, sA, sB, ScaleD, ScaleA, ScaleB, TransA,  \
@@ -1528,8 +1532,8 @@ template <int BM, int BN, int BK, int QSIZE> struct WgmmaSMem {
 // 面试重点 — Warp Specialization:
 //   WG0 (128 threads): Producer — 用 TMA 异步加载 A/B 到 shared memory
 //   WG1 (128 threads): Consumer — 用 WGMMA 做矩阵乘
-//   同步: cuda::barrier（CTA 级别），Producer 发 full 信号，Consumer 发 empty
-//   信号 K_STAGE=3: 3 个 stage，Consumer 滞后 Producer 最多 2 步
+//   同步: cuda::barrier（CTA 级别），Producer 发 full 信号，Consumer 发 empty 信号
+//   K_STAGE=3: 3 个 stage，Consumer 滞后 Producer 最多 2 步
 // Grid:  ((N+127)/128/S, (M+127)/128, S)，S=(N+2047)/2048，3D block swizzle
 // Block: (256, 1, 1)，2 warpgroups(Producer+Consumer)
 // source: LeetCUDA/kernels/hgemm/wgmma/hgemm_wgmma_fp16acc_stages_tn.cu
@@ -1737,11 +1741,12 @@ __global__ void rope_f32_kernel(float *x, float *out, int seq_len, int N) {
 //   - n-way bank conflict: n 个线程冲突 → 访问串行化为 n 次
 //   - 解决方案：PAD（在每行末尾加 1 个元素，打破地址对齐）
 //
-// 转置的三步演进：
+// 转置的四步演进：
 //   naive: 非合并写入（列优先写）→ 每个 warp 产生 32 次内存事务
 //   shared: 写入 smem（行优先）→ 从 smem 读取（列优先）→ 合并写入 gmem
-//   BCF:   smem 布局 [WARP_SIZE_S][WARP_SIZE_S*4+PAD]，PAD=1 消除 bank conflict
+//   BCF:   smem 布局 [WARP_SIZE_S*4][WARP_SIZE_S+PAD] = [64][17]，PAD=1 加在第二维消除 bank conflict
 //   merge_write: 进一步将 4 次 separate store 合并为 1 次 float4 store
+// 注：本文件仅实现 Level 1(naive) 与 Level 4(BCF+merge_write)，Level 2/3 省略
 
 // ---- Level 1: 基础版（2D 索引，合并读 + 非合并写）----
 // 每个线程处理 1 个元素，block(16,16)
@@ -1819,7 +1824,7 @@ __global__ void mat_transpose_f32x4_shared_bcf_merge_write_row2col2d_kernel(
 // 面试要点：
 //   - Dot Product: elementwise mul + reduce，演示两种 reduce 模式结合
 //   - Block All Reduce: 多 block 各自做 reduce，最后 atomicAdd 到全局结果
-//   - Histogram: atomicAdd 模式，演示共享内存冲突的处理
+//   - Histogram: global atomicAdd 模式，演示多线程竞争同一 bin 的原子更新
 
 // ---- Dot Product: y = sum(a[i] * b[i]) ----
 // 核心模式：elementwise 乘法 → block reduce → atomicAdd 全局累加
@@ -1980,9 +1985,9 @@ __global__ void histogram_vec4(int *a, int *y, int N) {
 //      - 优点：减少 warp 间通信和 shuffle
 //   4. Online rescaling 公式（FA 核心，arXiv:2307.08691）：
 //      for each K,V tile:
-//        S_cur = Q @ K^T * scale
-//        m_new = max(m_old, row_max(S_cur))
-//        P_cur = exp(S_cur * scale - m_new)           // ← 写回 R_S 寄存器！
+//        S_cur = Q @ K^T                         // 未缩放，存入 R_S
+//        m_new = max(m_old, row_max(S_cur * scale))
+//        P_cur = exp(S_cur * scale - m_new)      // ← 写回 R_S 寄存器！
 //        l_new = exp(m_old - m_new) * l_old + row_sum(P_cur)
 //        O_new = diag(exp(m_old - m_new)) * O_old + P_cur @ V
 //      O_final = O_new / l_final
@@ -2446,9 +2451,7 @@ __global__ void __launch_bounds__(WARP_SIZE *kMmaTileSeqLenQ *kMmaTileSeqLenK)
     // ======================================================================
     // 3e: Online rescaling — O_new = exp(m_old - m_new) * O_old + P@V
     // ======================================================================
-    // 公式来源: FA2 paper Eq.(7-8)
-    // 注意：FA2 论文中的公式有误（取倒数而非 exp），实际实现使用 exp(m_old -
-    // m_new)
+    // 公式来源: FA2 paper Eq.(7-8)，使用 exp(m_old - m_new) 做 O 与 l 的 rescale
 #pragma unroll
     for (int i = 0; i < kWarpTileSeqLenP; ++i) {
       float block_row_max_new_0 = lane_row_max_new[i][0];
@@ -2593,13 +2596,4 @@ __global__ void __launch_bounds__(WARP_SIZE *kMmaTileSeqLenQ *kMmaTileSeqLenK)
 //   寄存器复用 P@V ★ Bank Conflict: 原理 + PAD 解决方案 + 四步演进 ★ Memory
 //   Hierarchy: HBM → L2 → L1/SMEM → Register ★ BLAS 布局约定:
 //   N=col-major(Normal), T=row-major(Transposed), TN=A行B列
-// =============================================================================
-// 本文件覆盖了面试中最高频的 CUDA kernel 考点：
-//   ★ 基础原语: warp_reduce (O(logN) butterfly), block_reduce (两级:
-//   warp→smem→warp0) ★ 优化手段: coalescing, tiling, thread tile, vectorize,
-//   pipeline, tensor core ★ Softmax 递进: naive → safe(2-pass) → online(1-pass,
-//   FA 基础) ★ GEMM 五层金字塔: tiling → thread tile → vectorize → MMA → WGMMA
-//   ★ FlashAttention: tiling + online softmax + recomputation 三板斧
-//   ★ Bank Conflict: 原理 + PAD 解决方案
-//   ★ Memory Hierarchy: HBM → L2 → L1/SMEM → Register
 // =============================================================================
