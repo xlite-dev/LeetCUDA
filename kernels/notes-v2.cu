@@ -825,12 +825,12 @@ __global__ void sgemm(float *a, float *b, float *c, int M, int N, int K) {
   int tid = threadIdx.y * blockDim.x + tx;
 
   // 线程到 smem 的映射：32×32 线程，每个线程加载 a 和 b 各 1 个元素
-  int load_smem_a_m = tid / 32; // row 0~31 由 32 线程加载; vec 版: a_m = tid / (32 / 4)， row 0~127
-  int load_smem_a_k = tid % 32; // col 0~31 由 32 线程加载; vec 版: a_k = tid % (32 / 4)， col 0~7, 每个线程加载 4 个元素，4x8 = 32
-  int load_smem_b_k = tid / 32; // row 0~31 由 32 线程加载; vec 版: b_k = tid / (32 / 4)， row 0~7, 每个线程加载 4 个元素，4x8 = 32
-  int load_smem_b_n = tid % 32; // col 0~31 由 32 线程加载; vec 版: b_n = tid % (32 / 4)， col 0~127
-  int load_gmem_a_m = by * BM + load_smem_a_m; // gmem row
-  int load_gmem_b_n = bx * BN + load_smem_b_n; // gmem col
+  int load_smem_a_m = tid / 32; // row 0~31 由 32 线程加载; vec 版: a_m = tid / (32 / 4)， row 0~127, [128x32]
+  int load_smem_a_k = tid % 32; // col 0~31 由 32 线程加载; vec 版: a_k = (tid % (32 / 4)) * 4， t 0~7, col 0~31, 每个线程加载 4 个元素，8x4 = 32
+  int load_smem_b_k = tid / 32; // row 0~31 由 32 线程加载; vec 版: b_k = tid / 32, row 0~31, [32x128]
+  int load_smem_b_n = tid % 32; // col 0~31 由 32 线程加载; vec 版: b_n = (tid % 32) * 4, t 0~31, col 0~127, 每个线程加载 4 个元素，32x4 = 128
+  int load_gmem_a_m = by * BM + load_smem_a_m; // gmem row; vec 版: load_smem_a_m, 0~127, [128x128]
+  int load_gmem_b_n = bx * BN + load_smem_b_n; // gmem col; vec 版: load_smem_b_n, 0~127
 
   float sum = 0.f; // 遍历完整的K，slice K
   for (int bk = 0; bk < (K + BK - 1) / BK; ++bk) {
