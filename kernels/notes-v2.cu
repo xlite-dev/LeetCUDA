@@ -816,7 +816,7 @@ __global__ void sgemm(float *a, float *b, float *c, int M, int N, int K) {
   constexpr int BM = 32;
   constexpr int BN = 32;
   constexpr int BK = 32;
-  __shared__ float s_a[BM][BK], s_b[BK][BN];
+  __shared__ float s_a[BM][BK], s_b[BK][BN]; //  1KB smem
 
   int bx = blockIdx.x;
   int by = blockIdx.y;
@@ -854,81 +854,6 @@ __global__ void sgemm(float *a, float *b, float *c, int M, int N, int K) {
   int store_gmem_c_n = load_gmem_b_n;
   int store_gmem_c_addr = store_gmem_c_m * N + store_gmem_c_n;
   c[store_gmem_c_addr] = sum; // C [M, N] = A[M, K] x B[K, N]
-}
-
-// ---- Level 2+3: SGEMM — Block Tile 128×128 + Thread Tile 8×8 + float4 ----
-// 三层 tile hierarchy：Block Tile → Thread Tile → K Tile
-// BM=BN=128, TM=TN=8, BK=8, block(16, 16)=256 threads
-// 每个线程计算 TM×TN=64 个元素，大幅提升计算密度
-// Grid:  ((N + 127) / 128, (M + 127) / 128, 1)
-// Block: (16, 16, 1)，256 线程
-// source: LeetCUDA/kernels/sgemm/sgemm.cu
-__global__ void sgemm_vec4(float *a, float *b, float *c, int M, int N, int K) {
-  constexpr int BM = 128; // 32 x 4
-  constexpr int BN = 128; // 32 x 4
-  constexpr int BK = 8;
-  constexpr int TM = 8;
-  constexpr int TN = 8;
-
-  int bx = blockIdx.x;
-  int by = blockIdx.y;
-  int tx = threadIdx.x;
-  int ty = threadIdx.y;
-  int tid = threadIdx.y * blockDim.x + tx;
-
-  // smem: 2×128×8×4 = 8KB（仅占 H100 ~228KB L1/SMEM 的约 1/28，占用极低）
-  __shared__ float s_a[BM][BK], s_b[BK][BN];
-
-  // 线程到 smem 的映射 — 256 线程协作加载 128×8 的矩阵
-  // s_a[BM][BK]=[128][8]: 每行 8 元素，2 线程/行(float4)→ 256 线程覆盖 128 行
-  int load_smem_a_m = tid / 2;
-  int load_smem_a_k = (tid % 2 == 0) ? 0 : 4;
-  // s_b[BK][BN]=[8][128]: 每行 128 元素，32 线程/行(float4)→ 256 线程覆盖 8 行
-  int load_smem_b_k = tid / 32;
-  int load_smem_b_n = (tid % 32) * 4;
-
-  int load_gmem_a_m = by * BM + load_smem_a_m;
-  int load_gmem_b_n = bx * BN + load_smem_b_n;
-
-  // 寄存器分块：每个线程累积 TM×TN=64 个部分和
-  float r_c[TM][TN] = {0.0};
-
-  for (int bk = 0; bk < (K + BK - 1) / BK; ++bk) {
-    int load_gmem_a_k = bk * BK + load_smem_a_k;
-    int load_gmem_a_addr = load_gmem_a_m * K + load_gmem_a_k;
-    FLOAT4(s_a[load_smem_a_m][load_smem_a_k]) = FLOAT4(a[load_gmem_a_addr]);
-
-    int load_gmem_b_k = bk * BK + load_smem_b_k;
-    int load_gmem_b_addr = load_gmem_b_k * N + load_gmem_b_n;
-    FLOAT4(s_b[load_smem_b_k][load_smem_b_n]) = FLOAT4(b[load_gmem_b_addr]);
-    __syncthreads();
-
-#pragma unroll
-    for (int k = 0; k < BK; k++) {
-#pragma unroll
-      for (int m = 0; m < TM; m++) {
-#pragma unroll
-        for (int n = 0; n < TN; n++) {
-          int comp_smem_a_m = ty * TM + m;
-          int comp_smem_b_n = tx * TN + n;
-          r_c[m][n] += s_a[comp_smem_a_m][k] * s_b[k][comp_smem_b_n];
-        }
-      }
-    }
-    __syncthreads();
-  }
-
-  // 写回：float4 向量化 store
-#pragma unroll
-  for (int m = 0; m < TM; ++m) {
-    int store_gmem_c_m = by * BM + ty * TM + m;
-#pragma unroll
-    for (int n = 0; n < TN; n += 4) {
-      int store_gmem_c_n = bx * BN + tx * TN + n;
-      int store_gmem_c_addr = store_gmem_c_m * N + store_gmem_c_n;
-      FLOAT4(c[store_gmem_c_addr]) = FLOAT4(r_c[m][n]);
-    }
-  }
 }
 
 // =============================================================================
