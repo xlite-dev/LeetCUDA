@@ -195,16 +195,6 @@ __device__ __forceinline__ T warp_reduce_max(T val) {
   return val;
 }
 
-// Warp Reduce Sum — FP16（保留特化版本，用于 HGEMV）
-template <const int kWarpSize = WARP_SIZE>
-__device__ __forceinline__ half warp_reduce_sum_f16(half val) {
-#pragma unroll
-  for (int mask = kWarpSize >> 1; mask >= 1; mask >>= 1) {
-    val += __shfl_xor_sync(0xffffffff, val, mask, kWarpSize);
-  }
-  return val;
-}
-
 // =============================================================================
 // Phase 1b: Block Reduce（block 内归约，两级：warp → shared memory → warp0）
 // =============================================================================
@@ -217,7 +207,7 @@ __device__ __forceinline__ half warp_reduce_sum_f16(half val) {
 //   4. 所有 warp 内再做一次 warp_reduce<NUM_WARPS> → 得到最终结果
 //   5. __shfl_sync broadcast 到所有线程（关键！否则每个warp只有lane<NUM_WARPS 知道结果）
 template <const int NUM_THREADS = 256>
-__device__ float block_reduce_sum_f32(float val) {
+__device__ float block_reduce_sum(float val) {
   constexpr int NUM_WARPS = (NUM_THREADS + WARP_SIZE - 1) / WARP_SIZE;
   int warp = threadIdx.x / WARP_SIZE;
   int lane = threadIdx.x % WARP_SIZE;
@@ -237,7 +227,7 @@ __device__ float block_reduce_sum_f32(float val) {
 
 // Block Reduce Max — FP32（增强版，带 broadcast）
 template <const int NUM_THREADS = 256>
-__device__ float block_reduce_max_f32(float val) {
+__device__ float block_reduce_max(float val) {
   constexpr int NUM_WARPS = (NUM_THREADS + WARP_SIZE - 1) / WARP_SIZE;
   int warp = threadIdx.x / WARP_SIZE;
   int lane = threadIdx.x % WARP_SIZE;
@@ -251,44 +241,6 @@ __device__ float block_reduce_max_f32(float val) {
   value = warp_reduce_max<NUM_WARPS>(value);
   value = __shfl_sync(0xffffffff, value, 0, 32);
   return value;
-}
-
-// Block Reduce Sum — FP32（notes-v1 原版，保留用于兼容旧 kernel）
-// 注意：此版本无 broadcast。第二级 warp_reduce_sum<NUM_WARPS> 所有 warp 都会执行
-// （__shfl_xor_sync 的 width=NUM_WARPS 把归约限制在 4-lane 子组内），
-// 因此每个 warp 内只有 lane<NUM_WARPS 的线程持有最终结果，其余 lane 为 0。
-// 相比之下，增强版 block_reduce_sum_f32 额外用 __shfl_sync(..., 0, 32) 把
-// 结果 broadcast 到所有 32 个 lane。
-template <const int NUM_THREADS = 128>
-__device__ __forceinline__ float block_reduce_sum(float val) {
-  constexpr int NUM_WARPS = (NUM_THREADS + WARP_SIZE - 1) / WARP_SIZE;
-  int warp = threadIdx.x / WARP_SIZE;
-  int lane = threadIdx.x % WARP_SIZE;
-  static __shared__ float shared[NUM_WARPS];
-
-  val = warp_reduce_sum<WARP_SIZE>(val);
-  if (lane == 0)
-    shared[warp] = val;
-  __syncthreads();
-  val = (lane < NUM_WARPS) ? shared[lane] : 0.0f;
-  val = warp_reduce_sum<NUM_WARPS>(val);
-  return val;
-}
-
-template <const int NUM_THREADS = 128>
-__device__ __forceinline__ float block_reduce_max(float val) {
-  constexpr int NUM_WARPS = (NUM_THREADS + WARP_SIZE - 1) / WARP_SIZE;
-  int warp = threadIdx.x / WARP_SIZE;
-  int lane = threadIdx.x % WARP_SIZE;
-  static __shared__ float shared[NUM_WARPS];
-
-  val = warp_reduce_max<WARP_SIZE>(val);
-  if (lane == 0)
-    shared[warp] = val;
-  __syncthreads();
-  val = (lane < NUM_WARPS) ? shared[lane] : -FLT_MAX;
-  val = warp_reduce_max<NUM_WARPS>(val);
-  return val;
 }
 
 // =============================================================================
@@ -418,12 +370,12 @@ template <const int NUM_THREADS = 256>
 // Grid:  (S, 1, 1)，S=batch*seq_len, DISPATCH_SOFTMAX_F32_PER_TOKEN_KERNEL
 // Block: (H, 1, 1)，由外层 dispatch 选择 H=32/64/128/256/512/1024，一个 block 处理一个 token
 // source: LeetCUDA/kernels/softmax/softmax.cu
-__global__ void softmax_f32_per_token_kernel(float *x, float *y, int N) {
+__global__ void softmax_per_token(float *x, float *y, int N) {
   const int tid = threadIdx.x;
   const int idx = blockIdx.x * blockDim.x + tid;
 
   float exp_val = (idx < N) ? expf(x[idx]) : 0.0f;
-  float exp_sum = block_reduce_sum_f32<NUM_THREADS>(exp_val);
+  float exp_sum = block_reduce_sum<NUM_THREADS>(exp_val);
   if (idx < N)
     y[idx] = exp_val / exp_sum;
 }
@@ -438,23 +390,23 @@ template <const int NUM_THREADS = 256>
 // Grid:  (S, 1, 1)
 // Block: (H, 1, 1)，由外层 dispatch 选择 H=32/64/128/256/512/1024
 // source: LeetCUDA/kernels/softmax/softmax.cu
-__global__ void safe_softmax_f32_per_token_kernel(float *x, float *y, int N) {
+__global__ void safe_softmax_per_token(float *x, float *y, int N) {
   const int tid = threadIdx.x;
   const int idx = blockIdx.x * blockDim.x + tid;
 
   // Pass 1: block reduce max — 找最大值
   float val = (idx < N) ? x[idx] : -FLT_MAX;
-  float max_val = block_reduce_max_f32<NUM_THREADS>(val);
+  float max_val = block_reduce_max<NUM_THREADS>(val);
 
   // Pass 2: exp(x - max) → block reduce sum
   float exp_val = (idx < N) ? expf(x[idx] - max_val) : 0.0f;
-  float exp_sum = block_reduce_sum_f32<NUM_THREADS>(exp_val);
+  float exp_sum = block_reduce_sum<NUM_THREADS>(exp_val);
 
   if (idx < N)
     y[idx] = exp_val / exp_sum;
 }
 
-// ---- Level 3: Online Safe Softmax（1-pass，FlashAttention 的数学基础）----
+// ---- Level 3: Online Safe Softmax（FlashAttention 的数学基础）----
 // 面试重点：Online Softmax 为什么重要？
 //   - Safe Softmax 需要 3 遍遍历：找 max → exp+sum → 除法
 //   - Online Softmax 用递推公式合并为 1 遍遍历
@@ -467,8 +419,7 @@ template <const int NUM_THREADS = 256>
 // Grid:  (S, 1, 1)
 // Block: (H, 1, 1)，由外层 dispatch 选择 H=32/64/128/256/512/1024
 // source: LeetCUDA/kernels/softmax/softmax.cu
-__global__ void online_safe_softmax_f32_per_token_kernel(const float *x,
-                                                         float *y, int N) {
+__global__ void online_safe_softmax_per_token(const float *x, float *y, int N) {
   int local_tid = threadIdx.x;
   int global_tid = blockIdx.x * NUM_THREADS + threadIdx.x;
   const int WARP_NUM = NUM_THREADS / WARP_SIZE;
@@ -513,7 +464,7 @@ __global__ void online_safe_softmax_f32_per_token_kernel(const float *x,
 // Phase 3b: RMS Normalization（1-pass reduce）
 // =============================================================================
 // 面试要点：
-//   - RMS Norm: y = x / rms(x) * g, rms(x) = sqrt(mean(x²))
+//   - RMS Norm: y = (x / rms(x)) * g, 1/rms(x) = rsqrt(mean(x²))
 //   - 只需 1 次 block reduce（sum of squares），比 Layer Norm 少 1 次同步
 //   - Llama 系列使用 RMS Norm
 //   - grid(N, K/K), block(K)：一行一个 block
@@ -533,7 +484,7 @@ __global__ void rms_norm(float *x, float *y, float g, int N, int K) {
   float variance = value * value;
   variance = block_reduce_sum<NUM_THREADS>(variance);
   if (tid == 0)
-    s_variance = rsqrtf(variance / (float)K + epsilon);
+    s_variance = rsqrtf(variance / (float)K + epsilon); // 1/rms(x)
   __syncthreads();
   if (idx < N * K)
     y[idx] = (value * s_variance) * g;
@@ -573,7 +524,7 @@ __global__ void rms_norm_vec4(float *x, float *y, float g, int N, int K) {
 // Phase 3c: Layer Normalization（2-pass reduce）
 // =============================================================================
 // 面试要点：
-//   - Layer Norm: y = (x - mean) / std * g + b
+//   - Layer Norm: y = (x - mean) / std * g + b, std = sqrt(variance)，variance = mean((x - mean)²)
 //   - 需要 2 次 block reduce：先 mean（sum/K），再 variance（sum((x-mean)²)/K）
 //   - 两次 __syncthreads 必须到位，否则 s_mean 未对所有线程可见就计算 variance
 
@@ -601,7 +552,7 @@ __global__ void layer_norm(float *x, float *y, float g, float b, int N, int K) {
   float variance = (value - s_mean) * (value - s_mean);
   variance = block_reduce_sum<NUM_THREADS>(variance);
   if (tid == 0)
-    s_variance = rsqrtf(variance / (float)K + epsilon);
+    s_variance = rsqrtf(variance / (float)K + epsilon); // 1/std
   __syncthreads(); // 必须等待 s_variance 对所有线程可见
 
   if (idx < N * K)
@@ -661,7 +612,7 @@ __global__ void layer_norm_vec4(float *x, float *y, float g, float b, int N,
 //   - 不同 K 值对应不同分块策略：
 //     K=32 倍数：一个 warp 的 32 线程恰好覆盖 K 维
 //     K=128 倍数：每个线程用 float4 处理 4 元素，warp 覆盖 128
-//     K=16 < 32：一个 warp 不够，用 ROW_PER_WARP=2 让每个 warp 处理 2 行
+//     K=16 < 32：一个 warp 用不满，用 ROW_PER_WARP=2 让每个 warp 处理 2 行
 //
 // a: M×K, x: K×1, y: M×1, 计算: y = a * x
 
@@ -756,7 +707,7 @@ __global__ void sgemv_k16(float *A, float *x, float *y, int M, int K) {
 // Block: (32, 4, 1)
 // 注意：该版本最适合 K 按 32 对齐；当 K 更小时通常切到 K16 这类专用分支
 // source: LeetCUDA/kernels/hgemv/hgemv.cu
-__global__ void hgemv_k32_f16_kernel(half *a, half *x, half *y, int M, int K) {
+__global__ void hgemv_k32(half *a, half *x, half *y, int M, int K) {
   int tx = threadIdx.x;
   int ty = threadIdx.y;
   int bx = blockIdx.x;
@@ -770,7 +721,7 @@ __global__ void hgemv_k32_f16_kernel(half *a, half *x, half *y, int M, int K) {
       int k = w * WARP_SIZE + lane;
       sum += a[m * K + k] * x[k];
     }
-    sum = warp_reduce_sum_f16<WARP_SIZE>(sum); // FP16 warp reduce
+    sum = warp_reduce_sum<WARP_SIZE>(sum); // FP16 warp reduce
     if (lane == 0)
       y[m] = sum;
   }
@@ -782,8 +733,7 @@ __global__ void hgemv_k32_f16_kernel(half *a, half *x, half *y, int M, int K) {
 // Block: (32, 4, 1)
 // 注意：该版本最适合 K 按 128 对齐，且 x/a 的地址满足 half2 打包访问前提
 // source: LeetCUDA/kernels/hgemv/hgemv.cu
-__global__ void hgemv_k128_f16x4_kernel(half *a, half *x, half *y, int M,
-                                        int K) {
+__global__ void hgemv_k128(half *a, half *x, half *y, int M, int K) {
   int tx = threadIdx.x;
   int ty = threadIdx.y;
   int bx = blockIdx.x;
@@ -803,7 +753,7 @@ __global__ void hgemv_k128_f16x4_kernel(half *a, half *x, half *y, int M,
       sum += (reg_x_0.x * reg_a_0.x + reg_x_0.y * reg_a_0.y +
               reg_x_1.x * reg_a_1.x + reg_x_1.y * reg_a_1.y);
     }
-    sum = warp_reduce_sum_f16<WARP_SIZE>(sum);
+    sum = warp_reduce_sum<WARP_SIZE>(sum);
     if (lane == 0)
       y[m] = sum;
   }
@@ -815,7 +765,7 @@ template <const int ROW_PER_WARP = 2>
 // Block: (32, 4, 1)
 // 注意：这一版是面向 K=16 的专用写法；ROW_PER_WARP=2 时一个 warp 同时处理 2 行
 // source: LeetCUDA/kernels/hgemv/hgemv.cu
-__global__ void hgemv_k16_f16_kernel(half *A, half *x, half *y, int M, int K) {
+__global__ void hgemv_k16(half *A, half *x, half *y, int M, int K) {
   constexpr int K_WARP_SIZE = (WARP_SIZE + ROW_PER_WARP - 1) / ROW_PER_WARP;
   int tx = threadIdx.x;
   int ty = threadIdx.y;
@@ -825,7 +775,7 @@ __global__ void hgemv_k16_f16_kernel(half *A, half *x, half *y, int M, int K) {
   int m = (blockDim.y * bx + ty) * ROW_PER_WARP + lane / K_WARP_SIZE;
   if (m < M) {
     half sum = A[m * K + k] * x[k];
-    sum = warp_reduce_sum_f16<K_WARP_SIZE>(sum);
+    sum = warp_reduce_sum<K_WARP_SIZE>(sum);
     if (k == 0)
       y[m] = sum;
   }
