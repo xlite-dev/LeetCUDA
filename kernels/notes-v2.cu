@@ -12,7 +12,7 @@
 //   Phase 0 — 面试框架速查（GPU 架构 / Memory Hierarchy / Roofline / 优化清单）
 //   Phase 1 — 基础原语：Warp Reduce / Block Reduce（含 broadcast 增强版）
 //   Phase 2 — Elementwise：ReLU / Elementwise Add（基础 + float4 向量化）
-//   Phase 3 — Softmax：naive → safe(2-pass) → online(1-pass) + RMS/Layer Norm
+//   Phase 3 — Softmax：naive → safe → online + RMS/Layer Norm
 //   Phase 4 — GEMV：SGEMV K32/K128/K16 + HGEMV K32/K128/K16（warp-per-row）
 //   Phase 5 — GEMM ★：SGEMM → HGEMM → MMA m16n8k16(TN布局) → WGMMA m64n128k16
 //   Phase 6 — RoPE：旋转位置编码（Llama 风格 theta=10000）
@@ -101,7 +101,7 @@
 //
 // GEMV (M=4096, K=4096):
 //   FLOPs = 2 × M × K = 2 × 4096² ≈ 33 MFLOPS
-//   Bytes  = (M×K + K + M) × sizeof(float) ≈ 67 MB
+//   Bytes = (M×K + K + M) × sizeof(float) ≈ 67 MB
 //   AI    ≈ 33M / 67M ≈ 0.5 FLOPS/Byte → severely memory-bound
 //
 // Softmax (N=4096): AI ≈ (5×N) / (2×N×4) = 5/8 ≈ 0.625 FLOPS/Byte → memory-bound
@@ -196,7 +196,7 @@ __device__ __forceinline__ T warp_reduce_max(T val) {
 }
 
 // =============================================================================
-// Phase 1b: Block Reduce（block 内归约，两级：warp → shared memory → warp0）
+// Phase 1b: Block Reduce（block 内归约，两级：warp → shared memory → warp reduce）
 // =============================================================================
 
 // Block Reduce Sum — FP32（增强版，带 broadcast）
