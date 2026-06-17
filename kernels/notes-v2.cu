@@ -604,7 +604,7 @@ __global__ void layer_norm_vec4(float *x, float *y, float g, float b, int N,
 }
 
 // =============================================================================
-// Phase 4: GEMV — 矩阵向量乘（纯 memory-bound 算子，warp-per-row 策略）
+// Phase 4: GEMV — 矩阵向量乘（M or N = 1, 纯 memory-bound 算子，warp-per-row 策略）
 // =============================================================================
 // 面试要点：
 //   - GEMV 是典型的 memory-bound 算子：AI ≈ O(1)，瓶颈在内存带宽
@@ -614,7 +614,7 @@ __global__ void layer_norm_vec4(float *x, float *y, float g, float b, int N,
 //     K=128 倍数：每个线程用 float4 处理 4 元素，warp 覆盖 128
 //     K=16 < 32：一个 warp 用不满，用 ROW_PER_WARP=2 让每个 warp 处理 2 行
 //
-// a: M×K, x: K×1, y: M×1, 计算: y = a * x
+// a: M×K, x: K×1, y: M×1, 计算: y = a * x; N = 1
 
 // ---- SGEMV K32: 基础 warp-per-row ----
 // 设计：block(32, 4)，blockDim.x=WARP_SIZE=32（K 需为 32 倍数时一轮覆盖，否则内层循环 NUM_WARPS 次）
@@ -632,13 +632,17 @@ __global__ void sgemv_k32(float *a, float *x, float *y, int M, int K) {
   int m = bx * blockDim.y + ty; // 全局行号
   if (m < M) {
     float sum = 0.0f;
-    int NUM_WARPS = (K + WARP_SIZE - 1) / WARP_SIZE;
+    // 沿 K 维的迭代数 = ceil(K/32)，每个 warp 要累加完整的K，那么
+    // 每个thread就要负责累加NUM_ITERS个元素，NUM_ITERS = ceil(K/32)
+    int NUM_ITERS = (K + WARP_SIZE - 1) / WARP_SIZE;
 #pragma unroll
-    for (int w = 0; w < NUM_WARPS; ++w) {
+    for (int w = 0; w < NUM_ITERS; ++w) {
+      // 假设K是32的整倍数，m * K 本行的起始地址，x: Kx1
       int k = w * WARP_SIZE + lane;
       sum += a[m * K + k] * x[k];
     }
     sum = warp_reduce_sum<WARP_SIZE>(sum);
+    // 每个 warp 处理一行，lane 0 写回结果
     if (lane == 0)
       y[m] = sum;
   }
@@ -660,9 +664,9 @@ __global__ void sgemv_k128(float *a, float *x, float *y, int M, int K) {
   if (m < M) {
     float sum = 0.0f;
     // 沿 K 维的迭代数 = ceil(K/128)，每个 warp 每轮用 float4 覆盖 128 个 K 元素
-    int NUM_WARPS = (((K + WARP_SIZE - 1) / WARP_SIZE) + 4 - 1) / 4;
+    int NUM_ITERS = (((K + WARP_SIZE - 1) / WARP_SIZE) + 4 - 1) / 4;
 #pragma unroll
-    for (int w = 0; w < NUM_WARPS; ++w) {
+    for (int w = 0; w < NUM_ITERS; ++w) {
       int k = (w * WARP_SIZE + lane) * 4;
       float4 reg_x = FLOAT4(x[k]);
       float4 reg_a = FLOAT4(a[m * K + k]);
@@ -677,15 +681,14 @@ __global__ void sgemv_k128(float *a, float *x, float *y, int M, int K) {
 
 // ---- SGEMV K16: K < WarpSize, ROW_PER_WARP=2 ----
 // 面试亮点：K=16 < 32，一个 warp 可以处理多行
-// ROW_PER_WARP=2，K_WARP_SIZE=16，前 16 个 lane 处理 row0，后 16 个 lane 处理
-// row1
+// ROW_PER_WARP=2，K_WARP_SIZE=16，前 16 个 lane 处理 row0，后 16 个 lane 处理 row1
 template <const int ROW_PER_WARP = 2>
 // Grid:  ((M + 7) / 8, 1, 1)，NUM_ROWS=8
 // Block: (32, 4, 1)
 // 注意：这一版是面向 K=16 的专用写法；ROW_PER_WARP=2 时一个 warp 同时处理 2 行
 // source: LeetCUDA/kernels/sgemv/sgemv.cu
 __global__ void sgemv_k16(float *A, float *x, float *y, int M, int K) {
-  constexpr int K_WARP_SIZE = (WARP_SIZE + ROW_PER_WARP - 1) / ROW_PER_WARP;
+  constexpr int K_WARP_SIZE = (WARP_SIZE + ROW_PER_WARP - 1) / ROW_PER_WARP; // 16
   int tx = threadIdx.x;
   int ty = threadIdx.y;
   int bx = blockIdx.x;
@@ -694,6 +697,7 @@ __global__ void sgemv_k16(float *A, float *x, float *y, int M, int K) {
   int m = (blockDim.y * bx + ty) * ROW_PER_WARP + lane / K_WARP_SIZE;
   if (m < M) {
     float sum = A[m * K + k] * x[k];
+    // 按照K_WARP_SIZE=16，分2组各自做 warp reduce sum，k==0的lane写回结果
     sum = warp_reduce_sum<K_WARP_SIZE>(sum);
     // 注意：判断条件是 k == 0，不是 lane == 0！
     if (k == 0)
@@ -715,9 +719,9 @@ __global__ void hgemv_k32(half *a, half *x, half *y, int M, int K) {
   int m = bx * blockDim.y + ty;
   if (m < M) {
     half sum = 0.0f;
-    int NUM_WARPS = (K + WARP_SIZE - 1) / WARP_SIZE;
+    int NUM_ITERS = (K + WARP_SIZE - 1) / WARP_SIZE;
 #pragma unroll
-    for (int w = 0; w < NUM_WARPS; ++w) {
+    for (int w = 0; w < NUM_ITERS; ++w) {
       int k = w * WARP_SIZE + lane;
       sum += a[m * K + k] * x[k];
     }
@@ -742,9 +746,9 @@ __global__ void hgemv_k128(half *a, half *x, half *y, int M, int K) {
 
   if (m < M) {
     half sum = 0.0f;
-    int NUM_WARPS = (((K + WARP_SIZE - 1) / WARP_SIZE) + 4 - 1) / 4;
+    int NUM_ITERS = (((K + WARP_SIZE - 1) / WARP_SIZE) + 4 - 1) / 4;
 #pragma unroll
-    for (int w = 0; w < NUM_WARPS; ++w) {
+    for (int w = 0; w < NUM_ITERS; ++w) {
       int k = (w * WARP_SIZE + lane) * 4;
       half2 reg_x_0 = HALF2(x[k + 0]);
       half2 reg_x_1 = HALF2(x[k + 2]);
