@@ -807,9 +807,10 @@ __global__ void hgemv_k16(half *A, half *x, half *y, int M, int K) {
 
 // ---- Level 1: SGEMM — Block Tile 32×32 + K Tile 32 ----
 // 最基础的 tiling 实现，演示 shared memory 的核心用法
+// C = A x B, C[M, N] = A[M, K] x B[K, N]
 // BM=BN=32, BK=32, block(32, 32)，一个线程计算 c 的一个元素
 // Grid:  ((N + 31) / 32, (M + 31) / 32, 1)
-// Block: (32, 32, 1)
+// Block: (32, 32, 1), 1024 线程
 // source: LeetCUDA/kernels/sgemm/sgemm.cu
 __global__ void sgemm(float *a, float *b, float *c, int M, int N, int K) {
   constexpr int BM = 32;
@@ -824,19 +825,19 @@ __global__ void sgemm(float *a, float *b, float *c, int M, int N, int K) {
   int tid = threadIdx.y * blockDim.x + tx;
 
   // 线程到 smem 的映射：32×32 线程，每个线程加载 a 和 b 各 1 个元素
-  int load_smem_a_m = tid / 32;
-  int load_smem_a_k = tid % 32;
-  int load_smem_b_k = tid / 32;
-  int load_smem_b_n = tid % 32;
-  int load_gmem_a_m = by * BM + load_smem_a_m;
-  int load_gmem_b_n = bx * BN + load_smem_b_n;
+  int load_smem_a_m = tid / 32; // row 0~31 由 32 线程加载
+  int load_smem_a_k = tid % 32; // col 0~31 由 32 线程加载
+  int load_smem_b_k = tid / 32; // row 0~31 由 32 线程加载
+  int load_smem_b_n = tid % 32; // col 0~31 由 32 线程加载
+  int load_gmem_a_m = by * BM + load_smem_a_m; // gmem row
+  int load_gmem_b_n = bx * BN + load_smem_b_n; // gmem col
 
-  float sum = 0.f;
+  float sum = 0.f; // 遍历完整的K，slice K
   for (int bk = 0; bk < (K + BK - 1) / BK; ++bk) {
-    int load_gmem_a_k = bk * BK + load_smem_a_k;
+    int load_gmem_a_k = bk * BK + load_smem_a_k; // A [M, K]
     int load_gmem_a_addr = load_gmem_a_m * K + load_gmem_a_k;
     s_a[load_smem_a_m][load_smem_a_k] = a[load_gmem_a_addr];
-    int load_gmem_b_k = bk * BK + load_smem_b_k;
+    int load_gmem_b_k = bk * BK + load_smem_b_k; // B [K, N]
     int load_gmem_b_addr = load_gmem_b_k * N + load_gmem_b_n;
     s_b[load_smem_b_k][load_smem_b_n] = b[load_gmem_b_addr];
     __syncthreads(); // 确保整个 smem tile 加载完毕
@@ -852,7 +853,7 @@ __global__ void sgemm(float *a, float *b, float *c, int M, int N, int K) {
   int store_gmem_c_m = load_gmem_a_m;
   int store_gmem_c_n = load_gmem_b_n;
   int store_gmem_c_addr = store_gmem_c_m * N + store_gmem_c_n;
-  c[store_gmem_c_addr] = sum;
+  c[store_gmem_c_addr] = sum; // C [M, N] = A[M, K] x B[K, N]
 }
 
 // ---- Level 2+3: SGEMM — Block Tile 128×128 + Thread Tile 8×8 + float4 ----
@@ -862,10 +863,9 @@ __global__ void sgemm(float *a, float *b, float *c, int M, int N, int K) {
 // Grid:  ((N + 127) / 128, (M + 127) / 128, 1)
 // Block: (16, 16, 1)，256 线程
 // source: LeetCUDA/kernels/sgemm/sgemm.cu
-__global__ void sgemm_thread_tile_vec4(float *a, float *b, float *c, int M,
-                                       int N, int K) {
-  constexpr int BM = 128;
-  constexpr int BN = 128;
+__global__ void sgemm_vec4(float *a, float *b, float *c, int M, int N, int K) {
+  constexpr int BM = 128; // 32 x 4
+  constexpr int BN = 128; // 32 x 4
   constexpr int BK = 8;
   constexpr int TM = 8;
   constexpr int TN = 8;
@@ -927,76 +927,6 @@ __global__ void sgemm_thread_tile_vec4(float *a, float *b, float *c, int M,
       int store_gmem_c_n = bx * BN + tx * TN + n;
       int store_gmem_c_addr = store_gmem_c_m * N + store_gmem_c_n;
       FLOAT4(c[store_gmem_c_addr]) = FLOAT4(r_c[m][n]);
-    }
-  }
-}
-
-// ---- Level 2+3 (FP16): HGEMM — Thread Tile 8×8 + half2 向量化 ----
-// FP16 版本：BM=BN=128, TM=TN=8, BK=8, block(16, 16)
-// half2 向量化：每次加载 2 个 half（32-bit）到寄存器
-// 面试注意：这里的优化重点是 half2 访存向量化；算术语义以当前 half 运算符实现为准
-template <const int BM = 128, const int BN = 128, const int BK = 8,
-          const int TM = 8, const int TN = 8>
-// Grid:  ((N + 127) / 128, (M + 127) / 128, 1)
-// Block: (16, 16, 1)，256 线程
-// source: LeetCUDA/kernels/hgemm/naive/hgemm.cu
-__global__ void hgemm_t_8x8_sliced_k_f16x4_kernel(half *a, half *b, half *c,
-                                                  int M, int N, int K) {
-  int bx = blockIdx.x;
-  int by = blockIdx.y;
-  int tx = threadIdx.x;
-  int ty = threadIdx.y;
-  int tid = threadIdx.y * blockDim.x + tx;
-
-  // FP16 smem: 2×128×8×2 = 4KB（是 FP32 的一半！）
-  __shared__ half s_a[BM][BK], s_b[BK][BN];
-
-  // 线程到 smem 映射与 FP32 版本相同
-  int load_smem_a_m = tid / 2;
-  int load_smem_a_k = (tid % 2 == 0) ? 0 : 4;
-  int load_smem_b_k = tid / 32;
-  int load_smem_b_n = (tid % 32) * 4;
-
-  int load_gmem_a_m = by * BM + load_smem_a_m;
-  int load_gmem_b_n = bx * BN + load_smem_b_n;
-
-  // 注意：寄存器分块用 half 类型
-  half r_c[TM][TN] = {__float2half(0.0f)};
-
-  for (int bk = 0; bk < (K + BK - 1) / BK; ++bk) {
-    int load_gmem_a_k = bk * BK + load_smem_a_k;
-    int load_gmem_a_addr = load_gmem_a_m * K + load_gmem_a_k;
-    // half2 向量化：一次加载 2 个 half = 4 bytes
-    HALF2(s_a[load_smem_a_m][load_smem_a_k]) = HALF2(a[load_gmem_a_addr]);
-
-    int load_gmem_b_k = bk * BK + load_smem_b_k;
-    int load_gmem_b_addr = load_gmem_b_k * N + load_gmem_b_n;
-    HALF2(s_b[load_smem_b_k][load_smem_b_n]) = HALF2(b[load_gmem_b_addr]);
-    __syncthreads();
-
-#pragma unroll
-    for (int k = 0; k < BK; k++) {
-#pragma unroll
-      for (int m = 0; m < TM; m++) {
-#pragma unroll
-        for (int n = 0; n < TN; n++) {
-          int comp_smem_a_m = ty * TM + m;
-          int comp_smem_b_n = tx * TN + n;
-          r_c[m][n] += s_a[comp_smem_a_m][k] * s_b[k][comp_smem_b_n];
-        }
-      }
-    }
-    __syncthreads();
-  }
-
-#pragma unroll
-  for (int m = 0; m < TM; ++m) {
-    int store_gmem_c_m = by * BM + ty * TM + m;
-#pragma unroll
-    for (int n = 0; n < TN; n += 2) {
-      int store_gmem_c_n = bx * BN + tx * TN + n;
-      int store_gmem_c_addr = store_gmem_c_m * N + store_gmem_c_n;
-      HALF2(c[store_gmem_c_addr]) = HALF2(r_c[m][n]);
     }
   }
 }
@@ -1142,10 +1072,7 @@ template <const int MMA_M = 16, const int MMA_N = 8, const int MMA_K = 16,
           const int WARP_TILE_M = 4, const int WARP_TILE_N = 4,
           const int K_STAGE = 3, const bool BLOCK_SWIZZLE = false>
 __global__ void __launch_bounds__(256)
-    hgemm_mma_m16n8k16_mma2x4_warp4x4_stages_dsmem_tn_kernel(half *A, half *B,
-                                                             half *C, int M,
-                                                             int N, int K) {
-
+    hgemm_mma_stages_tn(half *A, half *B, half *C, int M, int N, int K) {
   // Block Swizzle: 在 grid x 维度做 swizzle，改善 L2 cache 局部性
   const int bx = ((int)BLOCK_SWIZZLE) * blockIdx.z * gridDim.x + blockIdx.x;
   const int by = blockIdx.y;
@@ -1496,7 +1423,7 @@ template <const int WGMMA_M = 64, const int WGMMA_N = 128,
           const int BK = 64, const int NUM_THREADS = 256, const int K_STAGE = 3,
           const bool BLOCK_SWIZZLE = false>
 __global__ void __launch_bounds__(NUM_THREADS)
-    hgemm_wgmma_m64n128k16_f16acc_stages_tma_ws_tn_kernel(
+    hgemm_wgmma_stages_tn(
         int M, int N, int K, half *C,
         const CUtensorMap *__restrict__ tensorMapA,
         const CUtensorMap *__restrict__ tensorMapB) {
@@ -1709,9 +1636,7 @@ __global__ void rope_f32_kernel(float *x, float *out, int seq_len, int N) {
 // Grid:  ((col + 15) / 16, (row + 15) / 16, 1)，每线程 1 元素
 // Block: (16, 16, 1)
 // source: LeetCUDA/kernels/mat-transpose/mat_transpose.cu
-__global__ void mat_transpose_f32_row2col2d_kernel(float *x, float *y,
-                                                   const int row,
-                                                   const int col) {
+__global__ void mat_transpose(float *x, float *y, const int row, const int col) {
   const int global_x = blockIdx.x * blockDim.x + threadIdx.x;
   const int global_y = blockIdx.y * blockDim.y + threadIdx.y;
   if (global_y < row && global_x < col) {
@@ -1728,7 +1653,7 @@ __global__ void mat_transpose_f32_row2col2d_kernel(float *x, float *y,
 // Block: (16, 16, 1)
 // 注意：该版本默认按 float4 打包写回；最适合 row 能按 4 对齐的场景
 // source: LeetCUDA/kernels/mat-transpose/mat_transpose.cu
-__global__ void mat_transpose_f32x4_shared_bcf_merge_write_row2col2d_kernel(
+__global__ void mat_transpose_padded(
     float *x, float *y, const int row, const int col) {
   const int global_x = blockIdx.x * blockDim.x + threadIdx.x;
   const int global_y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -1802,7 +1727,7 @@ __global__ void dot(float *a, float *b, float *y, int N) {
   __syncthreads();
 
   prod = (lane < NUM_WARPS) ? reduce_smem[lane] : 0.0f;
-  if (warp == 0)
+  if (warp == 0) // 只需要 warp 0 的线程继续 reduce 即可
     prod = warp_reduce_sum<NUM_WARPS>(prod);
   if (tid == 0)
     atomicAdd(y, prod);
@@ -1842,6 +1767,7 @@ __global__ void dot_vec4(float *a, float *b, float *y, int N) {
 
 // ---- Block All Reduce Sum: y = sum(a[0..N-1]) ----
 // 多 block 各自做 warp→smem→warp0 reduce，然后 atomicAdd 到全局 y
+// 跨 block 求和的常见模式，适合 N 较大时使用；
 template <const int NUM_THREADS = 128>
 // Grid:  ((N + 127) / 128, 1, 1)
 // Block: (128, 1, 1)
@@ -2020,8 +1946,8 @@ template <
     const int kStage,            // pipeline stages for K: 1 or 2
     const int kPad>              // padding for bank conflict avoidance
 __global__ void __launch_bounds__(WARP_SIZE *kMmaTileSeqLenQ *kMmaTileSeqLenK)
-    flash_attn_mma_stages_split_q_kernel(half *Q, half *K, half *V, half *O,
-                                         int QKV_seqlen, int QKV_head) {
+    flash_attn_mma_stages_split_q(half *Q, half *K, half *V, half *O,
+                                  int QKV_seqlen, int QKV_head) {
 
   // Tile dimensions
   constexpr int Br = kMmaAtomM * kMmaTileSeqLenQ * kWarpTileSeqLenQ; // 64
