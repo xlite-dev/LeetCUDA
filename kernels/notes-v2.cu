@@ -1204,8 +1204,8 @@ __global__ void __launch_bounds__(256)
   // Epilogue: 寄存器 → global memory（通过 warp shuffle + 128-bit store）
   {
     for (int i = 0; i < WARP_TILE_M; ++i) {
-      uint32_t RC0[WARP_TILE_N][4];
-      uint32_t RC1[WARP_TILE_N][4];
+      uint32_t RC0[WARP_TILE_N][4]; // 32 bits x 4 = 128 bits = 8 half
+      uint32_t RC1[WARP_TILE_N][4]; // 32 bits x 4 = 128 bits = 8 half
       // 用 warp shuffle 收集同一个 MMA tile 内不同 lane 的结果。
       // 对 m16n8k16 的 C fragment：
       //   - lane 0/4/8/.../28 各自持有某一行里的 {c0,c1}
@@ -1330,8 +1330,7 @@ __device__ inline uint64_t make_smem_desc(half *ptr) {
 // Multi-stage pipeline: K_STAGE 个 stage，每个 stage 存储 A[BM×BK] + B[BK×BN]
 template <int BM, int BN, int BK, int QSIZE> struct WgmmaSMem {
   alignas(128) half A[BM * BK * QSIZE]; // A tile: row-major [BM, BK]
-  alignas(128)
-      half B[BK * BN * QSIZE]; // B tile: row-major [BK, BN]（即 col-major B^T）
+  alignas(128) half B[BK * BN * QSIZE]; // B tile: row-major [BK, BN]（即 col-major B^T）
 };
 
 // ---- WGMMA Kernel: Warp Specialization + TMA ----
