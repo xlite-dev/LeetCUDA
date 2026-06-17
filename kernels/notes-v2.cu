@@ -214,8 +214,8 @@ __device__ __forceinline__ half warp_reduce_sum_f16(half val) {
 //   1. 每个 warp 内做 warp_reduce_sum → 得到每 warp 的一个值
 //   2. warp leader (lane=0) 写入 shared memory
 //   3. syncthreads 后，lane 0~NUM_WARPS-1 读取 shared memory
-//   4. warp0 内再做一次 warp_reduce → 得到最终结果
-//   5. __shfl_sync broadcast 到所有线程（关键！否则只有 warp0 知道结果）
+//   4. 所有 warp 内再做一次 warp_reduce<NUM_WARPS> → 得到最终结果
+//   5. __shfl_sync broadcast 到所有线程（关键！否则每个warp只有lane<NUM_WARPS 知道结果）
 template <const int NUM_THREADS = 256>
 __device__ float block_reduce_sum_f32(float val) {
   constexpr int NUM_WARPS = (NUM_THREADS + WARP_SIZE - 1) / WARP_SIZE;
@@ -254,7 +254,7 @@ __device__ float block_reduce_max_f32(float val) {
 }
 
 // Block Reduce Sum — FP32（notes-v1 原版，保留用于兼容旧 kernel）
-// 注意：此版本没有 broadcast，仅 warp0 持有最终结果
+// 注意：此版本没有 broadcast，warp内只有lane<NUM_WARPS 知道结果 持有最终结果
 template <const int NUM_THREADS = 128>
 __device__ __forceinline__ float block_reduce_sum(float val) {
   constexpr int NUM_WARPS = (NUM_THREADS + WARP_SIZE - 1) / WARP_SIZE;
@@ -306,7 +306,6 @@ __global__ void relu(float *x, float *y, int N) {
 }
 
 // ReLU + float4 向量化：每个线程处理 4 个元素，减少 75% 的 load/store 指令
-// Block: (256, 1, 1)
 // block(64)×4(float4)=256 元素/block，与基础版吞吐相同
 // Grid:  ((N + 255) / 256, 1, 1)
 // Block: (64, 1, 1)
@@ -373,10 +372,8 @@ __global__ void elementwise_add_vec4(float *a, float *b, float *c, int N) {
 // MD struct: 存储 running max (m) 和 running denominator (d)
 // 算法来源: "Online normalizer calculation for softmax" (arXiv:1805.02867)
 // 核心递推公式：
-//   m_new = max(m_old, m_cur)
-//   d_new = d_old * exp(m_old - m_new) + d_cur * exp(m_cur - m_new)
-// FlashAttention 中用同样的公式做 online rescaling：
-//   O_new = diag(exp(m_old - m_new)) * O_old + exp(m_cur - m_new) * P@V
+//   m_new = max(m_old, x_i)
+//   d_new = d_old * exp(m_old - m_new) + exp(x_i - m_new)
 struct __align__(8) MD {
   float m; // running max
   float d; // running denominator (sum of exp(x - max))
@@ -408,7 +405,7 @@ __device__ __forceinline__ MD warp_reduce_md_op(MD value) {
 // Phase 3a: Softmax — 三级递进（面试核心考点）
 // =============================================================================
 // 面试常问：「Softmax 有哪些实现方式？各有什么优缺点？」
-// 回答线索：naive(溢出) → safe(2-pass, 稳定) → online(1-pass, 为 FA 打基础)
+// 回答线索：naive(溢出) → safe → online
 
 // ---- Level 1: 基础 Softmax（per-token，无 max 减法，数值不稳定）----
 // grid(S*h/h, h), block(h), 一个 block 处理一个 token
