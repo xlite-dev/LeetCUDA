@@ -524,7 +524,7 @@ __global__ void rms_norm_vec4(float *x, float *y, float g, int N, int K) {
 // Phase 3c: Layer Normalization（2-pass reduce）
 // =============================================================================
 // 面试要点：
-//   - Layer Norm: y = (x - mean) / std * g + b, std = sqrt(variance)，variance = mean((x - mean)²)
+//   - Layer Norm: y = ((x - mean) / std) * g + b, std = sqrt(variance)，variance = mean((x - mean)²)
 //   - 需要 2 次 block reduce：先 mean（sum/K），再 variance（sum((x-mean)²)/K）
 //   - 两次 __syncthreads 必须到位，否则 s_mean 未对所有线程可见就计算 variance
 
