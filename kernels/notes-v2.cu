@@ -1418,6 +1418,9 @@ template <int BM, int BN, int BK, int QSIZE> struct WgmmaSMem {
 // Grid:  ((N+127)/128/S, (M+127)/128, S)，S=(N+2047)/2048，3D block swizzle
 // Block: (256, 1, 1)，2 warpgroups(Producer+Consumer)
 // source: LeetCUDA/kernels/hgemm/wgmma/hgemm_wgmma_fp16acc_stages_tn.cu
+
+using cde = cuda::device::experimental;
+
 template <const int WGMMA_M = 64, const int WGMMA_N = 128,
           const int WGMMA_K = 16, const int BM = 128, const int BN = 128,
           const int BK = 64, const int NUM_THREADS = 256, const int K_STAGE = 3,
@@ -1463,7 +1466,7 @@ __global__ void __launch_bounds__(NUM_THREADS)
       init(&full[i], num_consumers * 128 + 1);  // 128 consumer + 1 producer
       init(&empty[i], num_consumers * 128 + 1); // same
     }
-    cuda::device::experimental::fence_proxy_async_shared_cta();
+    cde::fence_proxy_async_shared_cta();
   }
   __syncthreads();
 
@@ -1482,12 +1485,12 @@ __global__ void __launch_bounds__(NUM_THREADS)
         empty[qidx].wait(empty[qidx].arrive());
 
         // TMA 2D 加载 A tile: coords = (k_offset, m_offset)
-        cuda::device::experimental::cp_async_bulk_tensor_2d_global_to_shared(
+        cde::cp_async_bulk_tensor_2d_global_to_shared(
             &s_a[qidx * BK * BM], tensorMapA, block_k_iter * BK, by * BM,
             full[qidx]);
 
         // TMA 2D 加载 B tile: coords = (k_offset, n_offset)
-        cuda::device::experimental::cp_async_bulk_tensor_2d_global_to_shared(
+        cde::cp_async_bulk_tensor_2d_global_to_shared(
             &s_b[qidx * BK * BN], tensorMapB, block_k_iter * BK, bx * BN,
             full[qidx]);
 
@@ -1594,7 +1597,7 @@ __global__ void __launch_bounds__(NUM_THREADS)
 // Grid:  ((seq_len * N + 255) / 256, 1, 1)
 // Block: (256, 1, 1)
 // source: LeetCUDA/kernels/rope/rope.cu
-__global__ void rope_f32_kernel(float *x, float *out, int seq_len, int N) {
+__global__ void rope(float *x, float *out, int seq_len, int N) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   float x1 = x[idx * 2];
   float x2 = x[idx * 2 + 1];
@@ -1765,49 +1768,20 @@ __global__ void dot_vec4(float *a, float *b, float *y, int N) {
     atomicAdd(y, prod);
 }
 
-// ---- Block All Reduce Sum: y = sum(a[0..N-1]) ----
+// ---- Block Reduce Sum All: y = sum(a[0..N-1]) ----
 // 多 block 各自做 warp→smem→warp0 reduce，然后 atomicAdd 到全局 y
 // 跨 block 求和的常见模式，适合 N 较大时使用；
 template <const int NUM_THREADS = 128>
 // Grid:  ((N + 127) / 128, 1, 1)
 // Block: (128, 1, 1)
 // source: LeetCUDA/kernels/reduce/block_all_reduce.cu
-__global__ void block_all_reduce_sum(float *a, float *y, int N) {
+__global__ void block_reduce_sum_all(float *a, float *y, int N) {
   int tid = threadIdx.x;
   int idx = blockIdx.x * NUM_THREADS + tid;
   constexpr int NUM_WARPS = (NUM_THREADS + WARP_SIZE - 1) / WARP_SIZE;
   __shared__ float reduce_smem[NUM_WARPS];
 
   float sum = (idx < N) ? a[idx] : 0.0f;
-  int warp = tid / WARP_SIZE;
-  int lane = tid % WARP_SIZE;
-
-  sum = warp_reduce_sum<WARP_SIZE>(sum);
-  if (lane == 0)
-    reduce_smem[warp] = sum;
-  __syncthreads();
-
-  sum = (lane < NUM_WARPS) ? reduce_smem[lane] : 0.0f;
-  if (warp == 0)
-    sum = warp_reduce_sum<NUM_WARPS>(sum);
-  if (tid == 0)
-    atomicAdd(y, sum);
-}
-
-// Block All Reduce Sum + float4
-template <const int NUM_THREADS = 128 / 4>
-// Grid:  ((N + 127) / 128, 1, 1)
-// Block: (32, 1, 1)，128/4=32
-// 注意：该版本默认输入地址满足 float4 对齐；最适合 N 按 4 对齐的场景
-// source: LeetCUDA/kernels/reduce/block_all_reduce.cu
-__global__ void block_all_reduce_sum_vec4(float *a, float *y, int N) {
-  int tid = threadIdx.x;
-  int idx = (blockIdx.x * NUM_THREADS + tid) * 4;
-  constexpr int NUM_WARPS = (NUM_THREADS + WARP_SIZE - 1) / WARP_SIZE;
-  __shared__ float reduce_smem[NUM_WARPS];
-
-  float4 reg_a = FLOAT4(a[idx]);
-  float sum = (idx < N) ? (reg_a.x + reg_a.y + reg_a.z + reg_a.w) : 0.0f;
   int warp = tid / WARP_SIZE;
   int lane = tid % WARP_SIZE;
 
@@ -1832,22 +1806,6 @@ __global__ void histogram(int *a, int *y, int N) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx < N)
     atomicAdd(&(y[a[idx]]), 1);
-}
-
-// Histogram + int4 向量化
-// Grid:  ((N + 255) / 256, 1, 1)
-// Block: (64, 1, 1)，256/4=64
-// 注意：该版本默认输入地址满足 int4 对齐；最适合 N 按 4 对齐的场景
-// source: LeetCUDA/kernels/histogram/histogram.cu
-__global__ void histogram_vec4(int *a, int *y, int N) {
-  int idx = 4 * (blockIdx.x * blockDim.x + threadIdx.x);
-  if (idx < N) {
-    int4 reg_a = INT4(a[idx]);
-    atomicAdd(&(y[reg_a.x]), 1);
-    atomicAdd(&(y[reg_a.y]), 1);
-    atomicAdd(&(y[reg_a.z]), 1);
-    atomicAdd(&(y[reg_a.w]), 1);
-  }
 }
 
 // =============================================================================
