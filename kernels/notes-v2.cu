@@ -829,31 +829,46 @@ __global__ void sgemm(float *a, float *b, float *c, int M, int N, int K) {
   int load_smem_a_k = tid % 32; // col 0~31 由 32 线程加载; vec 版: a_k = (tid % (32 / 4)) * 4， t 0~7, col 0~31, 每个线程加载 4 个元素，8x4 = 32
   int load_smem_b_k = tid / 32; // row 0~31 由 32 线程加载; vec 版: b_k = tid / 32, row 0~31, [32x128]
   int load_smem_b_n = tid % 32; // col 0~31 由 32 线程加载; vec 版: b_n = (tid % 32) * 4, t 0~31, col 0~127, 每个线程加载 4 个元素，32x4 = 128
-  int load_gmem_a_m = by * BM + load_smem_a_m; // gmem row; vec 版: load_smem_a_m, 0~127, [128x128]
-  int load_gmem_b_n = bx * BN + load_smem_b_n; // gmem col; vec 版: load_smem_b_n, 0~127
+  int load_gmem_a_m = by * BM + load_smem_a_m; // gmem row; vec 版: load_smem_a_m, 0~127, 0, 1, 2, ... (连续) [128x128]
+  int load_gmem_b_n = bx * BN + load_smem_b_n; // gmem col; vec 版: load_smem_b_n, 0~127, 0, 4, 8, ... (间隔)
 
-  float sum = 0.f; // 遍历完整的K，slice K
+  float sum = 0.f; // 遍历完整的K，slice K; vec 版: sum[4][4] = 0.f; 每个线程处理4x4的大小，才能保证32x32线程处理[32x4,32x4]=[128x128]大小
   for (int bk = 0; bk < (K + BK - 1) / BK; ++bk) {
     int load_gmem_a_k = bk * BK + load_smem_a_k; // A [M, K]
     int load_gmem_a_addr = load_gmem_a_m * K + load_gmem_a_k;
-    s_a[load_smem_a_m][load_smem_a_k] = a[load_gmem_a_addr];
+    // vec 版: FLOAT4(s_a[load_smem_a_m][load_smem_a_k]) = FLOAT4(a[load_gmem_a_addr])
+    s_a[load_smem_a_m][load_smem_a_k] = a[load_gmem_a_addr]; 
     int load_gmem_b_k = bk * BK + load_smem_b_k; // B [K, N]
     int load_gmem_b_addr = load_gmem_b_k * N + load_gmem_b_n;
+    // vec 版：FLOAT4(s_b[load_smem_b_k][load_smem_b_n]) = FLOAT4(b[load_gmem_b_addr]);
     s_b[load_smem_b_k][load_smem_b_n] = b[load_gmem_b_addr];
     __syncthreads(); // 确保整个 smem tile 加载完毕
 
 #pragma unroll
     for (int k = 0; k < BK; ++k) {
-      int comp_smem_a_m = load_smem_a_m;
-      int comp_smem_b_n = load_smem_b_n;
+      int comp_smem_a_m = load_smem_a_m; // vec 版: 0~127, 0, 1, 2, ... (连续)
+      int comp_smem_b_n = load_smem_b_n; // vec 版: 0~127, 0, 4, 8, ... (间隔)
       sum += s_a[comp_smem_a_m][k] * s_b[k][comp_smem_b_n];
+      // vec 版: compute 4x4, C: mxn
+      // for (int i = 0; i < 4; ++i) {
+      //   for (int j = 0; j < 4; ++j) {
+      //     sum[i][j] = += s_a[(comp_smem_a_m / 4) + i][k] * s_b[k][comp_smem_b_n + j];
+      //   }
+      }
     }
     __syncthreads(); // 确保 smem 不会在下一轮加载时被覆盖
   }
-  int store_gmem_c_m = load_gmem_a_m;
-  int store_gmem_c_n = load_gmem_b_n;
+  int store_gmem_c_m = load_gmem_a_m; // vec 版: load_smem_a_m, 0~127, 0, 1, 2, ... (连续) [128x128]
+  int store_gmem_c_n = load_gmem_b_n; // vec 版: 0~127, 0, 4, 8, ... (间隔)
   int store_gmem_c_addr = store_gmem_c_m * N + store_gmem_c_n;
   c[store_gmem_c_addr] = sum; // C [M, N] = A[M, K] x B[K, N]
+  // vec 版: store 4x4, C: mxn
+  // for (int i = 0; i < 4; ++i) {
+  //   for (int j = 0; j < 4; ++j) {
+  //     int store_gmem_c_addr = ((store_gmem_c_m / 4) + i) * N + (store_gmem_c_n + j);
+  //     c[store_gmem_c_addr] = sum[i][j];
+  //   }
+  // }
 }
 
 // =============================================================================
