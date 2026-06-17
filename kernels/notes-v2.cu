@@ -634,7 +634,7 @@ __global__ void sgemv_k32(float *a, float *x, float *y, int M, int K) {
     float sum = 0.0f;
     // 沿 K 维的迭代数 = ceil(K/32)，每个 warp 要累加完整的K，那么
     // 每个thread就要负责累加NUM_ITERS个元素，NUM_ITERS = ceil(K/32)
-    int NUM_ITERS = (K + WARP_SIZE - 1) / WARP_SIZE;
+    const int NUM_ITERS = (K + WARP_SIZE - 1) / WARP_SIZE;
 #pragma unroll
     for (int w = 0; w < NUM_ITERS; ++w) {
       // 假设K是32的整倍数，m * K 本行的起始地址，x: Kx1
@@ -664,7 +664,7 @@ __global__ void sgemv_k128(float *a, float *x, float *y, int M, int K) {
   if (m < M) {
     float sum = 0.0f;
     // 沿 K 维的迭代数 = ceil(K/128)，每个 warp 每轮用 float4 覆盖 128 个 K 元素
-    int NUM_ITERS = (((K + WARP_SIZE - 1) / WARP_SIZE) + 4 - 1) / 4;
+    const int NUM_ITERS = (((K + WARP_SIZE - 1) / WARP_SIZE) + 4 - 1) / 4;
 #pragma unroll
     for (int w = 0; w < NUM_ITERS; ++w) {
       int k = (w * WARP_SIZE + lane) * 4;
@@ -719,7 +719,7 @@ __global__ void hgemv_k32(half *a, half *x, half *y, int M, int K) {
   int m = bx * blockDim.y + ty;
   if (m < M) {
     half sum = 0.0f;
-    int NUM_ITERS = (K + WARP_SIZE - 1) / WARP_SIZE;
+    const int NUM_ITERS = (K + WARP_SIZE - 1) / WARP_SIZE;
 #pragma unroll
     for (int w = 0; w < NUM_ITERS; ++w) {
       int k = w * WARP_SIZE + lane;
@@ -746,7 +746,7 @@ __global__ void hgemv_k128(half *a, half *x, half *y, int M, int K) {
 
   if (m < M) {
     half sum = 0.0f;
-    int NUM_ITERS = (((K + WARP_SIZE - 1) / WARP_SIZE) + 4 - 1) / 4;
+    const int NUM_ITERS = (((K + WARP_SIZE - 1) / WARP_SIZE) + 4 - 1) / 4;
 #pragma unroll
     for (int w = 0; w < NUM_ITERS; ++w) {
       int k = (w * WARP_SIZE + lane) * 4;
