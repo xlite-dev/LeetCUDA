@@ -1700,7 +1700,7 @@ template <const int NUM_THREADS = 128>
 // Grid:  ((N + 127) / 128, 1, 1)
 // Block: (128, 1, 1)
 // source: LeetCUDA/kernels/reduce/block_all_reduce.cu
-__global__ void block_reduce_sum_all(float *a, float *y, int N) {
+__global__ void block_reduce_v2(float *a, float *y, int N) {
   int tid = threadIdx.x;
   int idx = blockIdx.x * NUM_THREADS + tid;
   constexpr int NUM_WARPS = (NUM_THREADS + WARP_SIZE - 1) / WARP_SIZE;
@@ -2197,6 +2197,8 @@ __global__ void __launch_bounds__(WARP_SIZE *kMmaTileSeqLenQ *kMmaTileSeqLenK)
       // 当前实现正是利用这一路径下 A fragment 与前面生成的 P fragment 可以直接对接，
       // 才能把 R_S 中的 P 直接喂给 HMMA16816 做 P@V；复习时不要把它背成对所有 MMA
       // fragment 都无条件成立的通用结论。
+      // layout转换逻辑：
+      //   C layout: 8 x (16 x 8) layout -> A layout: 4 x (16 x 16) layout
       int w = tile_V_Bc * 2;
 #pragma unroll
       for (int i = 0; i < kWarpTileSeqLenP; ++i) {
