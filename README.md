@@ -15,10 +15,6 @@
 
 📚 **LeetCUDA**: It includes **Tensor/CUDA Cores, TF32/F16/BF16/F8**, [📖200+ CUDA Kernels🔥](#cuda-kernel) with PyTorch, [📖100+ LLM/CUDA🔥](#my-blogs-part-1) blogs, [📖HGEMM⚡️](./kernels/hgemm) which can achieve `98%~100%` TFLOPS of **cuBLAS**, and [📖flash-attn⚡️](./kernels/flash-attn) using Tensor Cores with pure MMA PTX. ♥️ Please consider to leave a ⭐️ Star to support me, my bro ~ ♥️
 
-<!--
-> 🔥 **[📖 核心背诵版 notes-v2.cu](./kernels/notes-v2.cu)** — 面试向 CUDA Kernel 完整笔记，26 个 kernel，涵盖 Softmax 三级递进 / GEMM 五层金字塔（MMA+WGMMA）/ FlashAttention Split-Q / Bank Conflict 专题 / TN 布局详解，每个 kernel 含数学公式 + Grid/Block 配置 + 详细中文注释。
--->
-
 <div align="center">
   <p align="center">
     <a href="#contribute">🔥🔥 PR Welcome: Add Your Kernel to LeetCUDA! Let's make it Awesome together! 🎉🎉</a> <br>
@@ -354,7 +350,6 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 | ✔️ [rms_norm_f16_f32](./kernels/rms-norm/rms_norm.cu)|f16|f32|[link](./kernels/rms-norm/)|⭐️⭐️|
 | ✔️ [nms_f32](./kernels/nms/nms.cu)|f32|/|[link](./kernels/nms)|⭐️⭐️|
 | ✔️ [merge_attn_states](./kernels/openai-triton/merge-attn-states/cuda_merge_attn_states.cu)|f16/bf16/f32|f32|[link](./kernels/openai-triton/merge-attn-states)|⭐️⭐️|
-| ✔️ [notes v1(deprecated)](./kernels/notes-v1.cu)|f32|f32|/|⭐️⭐️|
 | ✔️ [How to use nsys/ncu(timeline/ptx/sass)](./kernels/nvidia-nsight/)|/|/|[link](./kernels/nvidia-nsight/)|⭐️⭐️|
 
 </div>
