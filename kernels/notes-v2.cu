@@ -3,7 +3,7 @@
 // =============================================================================
 //
 // 整理自 LeetCUDA 项目（https://github.com/xlite-dev/LeetCUDA），涵盖：
-//   - 面试高频 CUDA kernel 的完整实现（共 37 个 kernel）
+//   - 面试高频 CUDA kernel 的完整实现（共 26 个 kernel）
 //   - 每类 kernel 附带详细的面试要点注释（WHY + HOW）
 //   - 优化技术的递进式讲解（naive → tiling → vectorize → tensor core → ws）
 //   - BLAS 语义：N=col-major(Normal), T=row-major(Transposed)
@@ -13,15 +13,13 @@
 //   Phase 1 — 基础原语：Warp Reduce / Block Reduce（含 broadcast 增强版）
 //   Phase 2 — Elementwise：ReLU / Elementwise Add（基础 + float4 向量化）
 //   Phase 3 — Softmax：naive → safe → online + RMS/Layer Norm
-//   Phase 4 — GEMV：SGEMV K32/K128/K16 + HGEMV K32/K128/K16（warp-per-row）
+//   Phase 4 — GEMV：SGEMV K32/K128/K16（warp-per-row）
 //   Phase 5 — GEMM ★：SGEMM → HGEMM → MMA m16n8k16(TN布局) → WGMMA m64n128k16
 //   Phase 6 — RoPE：旋转位置编码（Llama 风格 theta=10000）
 //   Phase 7 — Mat Transpose：基础版 + BCF merge_write 最佳版（Bank Conflict专题） 
-//   Phase 8 — 杂项：Dot Product / Block All Reduce / Histogram 
+//   Phase 8 — 杂项：Dot Product / Block Reduce All / Histogram 
 //   Phase 9 — FlashAttention split_q（FA-2, 含 online softmax + P@V 寄存器复用）
 //
-// =============================================================================
-
 // =============================================================================
 // Phase 0: 面试框架速查（纯注释，面试开场必备的基础知识）
 // =============================================================================
@@ -705,86 +703,6 @@ __global__ void sgemv_k16(float *A, float *x, float *y, int M, int K) {
   }
 }
 
-// ---- HGEMV K32: FP16 版本 ----
-// 策略与 SGEMV K32 完全一致，仅数据类型从 float 变为 half
-// Grid:  ((M + 3) / 4, 1, 1)
-// Block: (32, 4, 1)
-// 注意：该版本最适合 K 按 32 对齐；当 K 更小时通常切到 K16 这类专用分支
-// source: LeetCUDA/kernels/hgemv/hgemv.cu
-__global__ void hgemv_k32(half *a, half *x, half *y, int M, int K) {
-  int tx = threadIdx.x;
-  int ty = threadIdx.y;
-  int bx = blockIdx.x;
-  int lane = tx % WARP_SIZE;
-  int m = bx * blockDim.y + ty;
-  if (m < M) {
-    half sum = 0.0f;
-    const int NUM_ITERS = (K + WARP_SIZE - 1) / WARP_SIZE;
-#pragma unroll
-    for (int w = 0; w < NUM_ITERS; ++w) {
-      int k = w * WARP_SIZE + lane;
-      sum += a[m * K + k] * x[k];
-    }
-    sum = warp_reduce_sum<WARP_SIZE>(sum); // FP16 warp reduce
-    if (lane == 0)
-      y[m] = sum;
-  }
-}
-
-// ---- HGEMV K128: FP16 + half2 向量化 ----
-// 每个线程处理 4 个 half（2 个 half2），一个 warp 覆盖 128 个元素
-// Grid:  ((M + 3) / 4, 1, 1)
-// Block: (32, 4, 1)
-// 注意：该版本最适合 K 按 128 对齐，且 x/a 的地址满足 half2 打包访问前提
-// source: LeetCUDA/kernels/hgemv/hgemv.cu
-__global__ void hgemv_k128(half *a, half *x, half *y, int M, int K) {
-  int tx = threadIdx.x;
-  int ty = threadIdx.y;
-  int bx = blockIdx.x;
-  int lane = tx % WARP_SIZE;
-  int m = blockDim.y * bx + ty;
-
-  if (m < M) {
-    half sum = 0.0f;
-    const int NUM_ITERS = (((K + WARP_SIZE - 1) / WARP_SIZE) + 4 - 1) / 4;
-#pragma unroll
-    for (int w = 0; w < NUM_ITERS; ++w) {
-      int k = (w * WARP_SIZE + lane) * 4;
-      half2 reg_x_0 = HALF2(x[k + 0]);
-      half2 reg_x_1 = HALF2(x[k + 2]);
-      half2 reg_a_0 = HALF2(a[m * K + k + 0]);
-      half2 reg_a_1 = HALF2(a[m * K + k + 2]);
-      sum += (reg_x_0.x * reg_a_0.x + reg_x_0.y * reg_a_0.y +
-              reg_x_1.x * reg_a_1.x + reg_x_1.y * reg_a_1.y);
-    }
-    sum = warp_reduce_sum<WARP_SIZE>(sum);
-    if (lane == 0)
-      y[m] = sum;
-  }
-}
-
-// ---- HGEMV K16: FP16 + ROW_PER_WARP=2 ----
-template <const int ROW_PER_WARP = 2>
-// Grid:  ((M + 7) / 8, 1, 1)
-// Block: (32, 4, 1)
-// 注意：这一版是面向 K=16 的专用写法；ROW_PER_WARP=2 时一个 warp 同时处理 2 行
-// source: LeetCUDA/kernels/hgemv/hgemv.cu
-__global__ void hgemv_k16(half *A, half *x, half *y, int M, int K) {
-  constexpr int K_WARP_SIZE = (WARP_SIZE + ROW_PER_WARP - 1) / ROW_PER_WARP;
-  int tx = threadIdx.x;
-  int ty = threadIdx.y;
-  int bx = blockIdx.x;
-  int lane = tx % WARP_SIZE;
-  int k = lane % K_WARP_SIZE;
-  int m = (blockDim.y * bx + ty) * ROW_PER_WARP + lane / K_WARP_SIZE;
-  if (m < M) {
-    half sum = A[m * K + k] * x[k];
-    sum = warp_reduce_sum<K_WARP_SIZE>(sum);
-    if (k == 0)
-      y[m] = sum;
-  }
-}
-
 // =============================================================================
 // Phase 5: GEMM — 矩阵矩阵乘（GPU 最重要的算子，面试核心考点）
 // =============================================================================
@@ -1411,7 +1329,7 @@ __device__ inline uint64_t make_smem_desc(half *ptr) {
         "{%0,   %1,   %2,   %3,   %4,   %5,   %6,   %7,   "                    \
         " %8,   %9,   %10,  %11,  %12,  %13,  %14,  %15,  "                    \
         " %16,  %17,  %18,  %19,  %20,  %21,  %22,  %23,  "                    \
-        " %24,  %25,  %26,  %27,  %28,  %29,  %30,  %31},"                     \
+        " %24,  %25,  %26,  %27,  %28,  %26,  %30,  %31},"                     \
         " %32,"                                                                \
         " %33,"                                                                \
         " %34, %35, %36, %37, %38;\n"                                          \
@@ -2454,7 +2372,7 @@ __global__ void __launch_bounds__(WARP_SIZE *kMmaTileSeqLenQ *kMmaTileSeqLenK)
 // =============================================================================
 // End of notes-v2.cu
 // =============================================================================
-// 本文件覆盖了面试中最高频的 CUDA kernel 考点（37 个 kernel）：
+// 本文件覆盖了面试中最高频的 CUDA kernel 考点（26 个 kernel）：
 //   ★ 基础原语: warp_reduce (O(logN) butterfly), block_reduce (两级:
 //   warp→smem→warp0) ★ 优化手段: coalescing, tiling, thread tile, vectorize,
 //   pipeline, tensor core ★ Softmax 递进: naive → safe(2-pass) → online(1-pass,

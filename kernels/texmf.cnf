@@ -1,0 +1,6 @@
+main_memory = 12000000
+extra_mem_top = 2000000
+extra_mem_bot = 2000000
+pool_size = 12500000
+save_size = 200000
+stack_size = 200000
