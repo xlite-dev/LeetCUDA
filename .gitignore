@@ -30,3 +30,4 @@ build*
 .github/copilot-instructions.md
 AGENTS.md
 *.aux
+*.out.pyg
