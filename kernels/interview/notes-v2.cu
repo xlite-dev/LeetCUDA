@@ -937,8 +937,6 @@ __global__ void sgemm_vec4(float *a, float *b, float *c, int M, int N, int K) {
 #define CP_ASYNC_WAIT_GROUP(n)                                                 \
   asm volatile("cp.async.wait_group %0;\n" ::"n"(n))
 
-// cp.async.cg: bypass L1, 写入 L2（适合 GEMM 中只读一次的数据）
-// cp.async.ca: cache all, L1+L2（适合需要多次复用的数据）
 // 注意：cg 只支持 16 bytes，ca 支持 4/8/16 bytes
 #define CP_ASYNC_CG(dst, src, bytes)                                           \
   asm volatile(                                                                \
@@ -963,7 +961,6 @@ __global__ void sgemm_vec4(float *a, float *b, float *c, int M, int N, int K) {
 
 // ldmatrix.x2.trans: 转置加载（用于 NN 布局中需要 col-major B 矩阵的场景）
 // FA 中 V[Bc,d] 为 row-major，但 P@V 的 MMA 需要 col-major 的 B → 使用 trans
-// 加载
 #define LDMATRIX_X2_T(R0, R1, addr)                                            \
   asm volatile(                                                                \
       "ldmatrix.sync.aligned.x2.trans.m8n8.shared.b16 {%0, %1}, [%2];\n"       \
