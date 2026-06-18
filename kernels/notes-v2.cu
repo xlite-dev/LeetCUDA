@@ -849,26 +849,120 @@ __global__ void sgemm(float *a, float *b, float *c, int M, int N, int K) {
       int comp_smem_a_m = load_smem_a_m; // vec 版: 0~127, 0, 1, 2, ... (连续)
       int comp_smem_b_n = load_smem_b_n; // vec 版: 0~127, 0, 4, 8, ... (间隔)
       sum += s_a[comp_smem_a_m][k] * s_b[k][comp_smem_b_n];
-      // vec 版: compute 4x4, C: mxn
-      // for (int i = 0; i < 4; ++i) {
-      //   for (int j = 0; j < 4; ++j) {
-      //     sum[i][j] = += s_a[(comp_smem_a_m / 4) + i][k] * s_b[k][comp_smem_b_n + j];
-      //   }
-      // }
     }
     __syncthreads(); // 确保 smem 不会在下一轮加载时被覆盖
   }
-  int store_gmem_c_m = load_gmem_a_m; // vec 版: load_smem_a_m, 0~127, 0, 1, 2, ... (连续) [128x128]
+  int store_gmem_c_m = load_gmem_a_m; // vec 版: 0~127, 0, 1, 2, ... (连续) [128x128]
   int store_gmem_c_n = load_gmem_b_n; // vec 版: 0~127, 0, 4, 8, ... (间隔)
   int store_gmem_c_addr = store_gmem_c_m * N + store_gmem_c_n;
   c[store_gmem_c_addr] = sum; // C [M, N] = A[M, K] x B[K, N]
-  // vec 版: store 4x4, C: mxn
-  // for (int i = 0; i < 4; ++i) {
-  //   for (int j = 0; j < 4; ++j) {
-  //     int store_gmem_c_addr = ((store_gmem_c_m / 4) + i) * N + (store_gmem_c_n + j);
-  //     c[store_gmem_c_addr] = sum[i][j];
-  //   }
-  // }
+}
+
+// ---- Level 1+: SGEMM Vec4 — Block Tile 128×128 + K Tile 32 + Thread Tile 4×4 ----
+// 在 Level 1 基础上引入两层优化：
+//   1) float4 向量化加载：A/B 各用 1 条 128-bit load 取代 4 条 32-bit load
+//   2) Thread Tile 4×4：每线程计算 16 个 C 元素，提升计算/访存比（AI 从
+//   BK/2≈16 提升到 TM*TN*BK/2≈256），减少线程总数带来的同步开销
+// C = A x B, C[M, N] = A[M, K] x B[K, N]，A/B 均 row-major
+// BM=BN=128, BK=32, block(32, 32)=1024 线程，每线程负责 4×4=16 个 C 元素
+//   1024 × 16 = 16384 = 128 × 128 ✓
+//
+// 线程到 4×4 tile 的映射（与加载映射解耦，独立计算更清晰）：
+//   m_tile = tid / 32 (0~31)，每 tile 4 行 → 行 [m_tile*4, m_tile*4+3]，覆盖 0~127
+//   n_tile = tid % 32 (0~31)，每 tile 4 列 → 列 [n_tile*4, n_tile*4+3]，覆盖 0~127
+//
+// 加载映射（每线程 4 个元素，float4）：
+//   A[128][32]: a_m = tid/8 (8 线程/行), a_k = (tid%8)*4 (4 列/线程) → 8×4=32 列 ✓
+//   B[32][128]: b_k = tid/32 (32 线程/行), b_n = (tid%32)*4 (4 列/线程) → 32×4=128 列 ✓
+//   row-major 下 A[m][k..k+3] 与 B[k][n..n+3] 均连续 → float4 load 合法
+//
+// ⚠ 注释修正：原始 vec 注释中 `s_a[(comp_smem_a_m / 4) + i][k]` 漏了 `*4`。
+//   comp_smem_a_m = tid/8（0~127），/4 后为 tid/32（0~31），+i 仅覆盖行 0~34，
+//   无法覆盖 0~127。正确行基址为 `(tid/32)*4`，列基址为 `(tid%32)*4`。存储
+//   同理：`((store_gmem_c_m / 4) + i)` 应改为 `(m_base + i)`，其中
+//   `m_base = by*BM + (tid/32)*4`。
+//
+// ⚠ Bank Conflict 提示（面试加分点）：
+//   s_b[32][128] 上 warp 内 32 线程按 stride=4 访问（tid%32 决定列 0,4,8,...,124）
+//   → 每 4 个线程落同一 bank 不同地址 → 4-way bank conflict。生产代码可用
+//   s_b[BK][BN+1] PAD 打散，这里保持最简布局便于讲解。
+//
+// Grid:  ((N + 127) / 128, (M + 127) / 128, 1)
+// Block: (32, 32, 1), 1024 线程
+// 假设：M/N 为 128 的倍数，K 为 32 的倍数（与 Level 1 naive 版一致的边界约定）
+// source: LeetCUDA/kernels/sgemm/sgemm.cu (vec4 variant)
+__global__ void sgemm_vec4(float *a, float *b, float *c, int M, int N, int K) {
+  constexpr int BM = 128;
+  constexpr int BN = 128;
+  constexpr int BK = 32;
+  __shared__ float s_a[BM][BK]; // 128*32*4 = 16KB
+  __shared__ float s_b[BK][BN]; // 32*128*4 = 16KB
+
+  int bx = blockIdx.x;
+  int by = blockIdx.y;
+  int tx = threadIdx.x;
+  int ty = threadIdx.y;
+  int tid = threadIdx.y * blockDim.x + tx; // 0~1023
+
+  // 加载 A: 每线程加载 s_a[a_m][a_k..a_k+3] 共 4 个元素
+  int load_smem_a_m = tid / 8;        // 0~127, 8 线程/行
+  int load_smem_a_k = (tid % 8) * 4;  // 0,4,...,28
+  // 加载 B: 每线程加载 s_b[b_k][b_n..b_n+3] 共 4 个元素
+  int load_smem_b_k = tid / 32;       // 0~31, 32 线程/行
+  int load_smem_b_n = (tid % 32) * 4; // 0,4,...,124
+
+  int load_gmem_a_m = by * BM + load_smem_a_m;
+  int load_gmem_b_n = bx * BN + load_smem_b_n;
+
+  // 4×4 Thread Tile 基址（独立于加载映射，避免 /4 漏乘 bug）
+  int comp_smem_a_m_base = (tid / 32) * 4; // 0,4,8,...,124
+  int comp_smem_b_n_base = (tid % 32) * 4; // 0,4,8,...,124
+
+  float sum[4][4] = {0.f};
+  for (int bk = 0; bk < (K + BK - 1) / BK; ++bk) {
+    int load_gmem_a_k = bk * BK + load_smem_a_k;
+    int load_gmem_a_addr = load_gmem_a_m * K + load_gmem_a_k;
+    FLOAT4(s_a[load_smem_a_m][load_smem_a_k]) = FLOAT4(a[load_gmem_a_addr]);
+    int load_gmem_b_k = bk * BK + load_smem_b_k;
+    int load_gmem_b_addr = load_gmem_b_k * N + load_gmem_b_n;
+    FLOAT4(s_b[load_smem_b_k][load_smem_b_n]) = FLOAT4(b[load_gmem_b_addr]);
+    __syncthreads();
+
+#pragma unroll
+    for (int k = 0; k < BK; ++k) {
+      // 每次迭代加载 4 个 A 元素 + 4 个 B 元素，再做 4×4=16 次 FMA
+      float a_vals[4] = {s_a[comp_smem_a_m_base + 0][k],
+                         s_a[comp_smem_a_m_base + 1][k],
+                         s_a[comp_smem_a_m_base + 2][k],
+                         s_a[comp_smem_a_m_base + 3][k]};
+      float b_vals[4] = {s_b[k][comp_smem_b_n_base + 0],
+                         s_b[k][comp_smem_b_n_base + 1],
+                         s_b[k][comp_smem_b_n_base + 2],
+                         s_b[k][comp_smem_b_n_base + 3]};
+#pragma unroll
+      for (int i = 0; i < 4; ++i) {
+#pragma unroll
+        for (int j = 0; j < 4; ++j) {
+          sum[i][j] += a_vals[i] * b_vals[j];
+        }
+      }
+    }
+    __syncthreads();
+  }
+
+  // 存储 4×4：每行 4 个元素连续 → 可用 float4 store（要求 N 为 4 的倍数以保证对齐）
+  int store_gmem_c_m = by * BM + comp_smem_a_m_base;
+  int store_gmem_c_n = bx * BN + comp_smem_b_n_base;
+#pragma unroll
+  for (int i = 0; i < 4; ++i) {
+    int store_gmem_c_addr = (store_gmem_c_m + i) * N + store_gmem_c_n;
+    float4 reg_c;
+    reg_c.x = sum[i][0];
+    reg_c.y = sum[i][1];
+    reg_c.z = sum[i][2];
+    reg_c.w = sum[i][3];
+    FLOAT4(c[store_gmem_c_addr]) = reg_c;
+  }
 }
 
 // =============================================================================
