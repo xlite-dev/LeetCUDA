@@ -2519,7 +2519,7 @@ static void test_hgemm_mma(int M, int N, int K) {
   size_t smem_bytes = K_STAGE * (BM * BK + BN * BK) * sizeof(half); // 24576
   dim3 block(256);
   dim3 grid((N + BN - 1) / BN, (M + BM - 1) / BM);
-  hgemm_mma_stages_tn<> <<<grid, block, smem_bytes>>>(d_a, d_b_t, d_c, M, N, K);
+  hgemm_mma_stages_tn<<<grid, block, smem_bytes>>>(d_a, d_b_t, d_c, M, N, K);
   check(cudaGetLastError(), "hgemm launch");
   check(cudaDeviceSynchronize(), "hgemm sync");
 
@@ -2609,7 +2609,7 @@ static void test_block_reduce(int N) {
 
   dim3 block(128);
   dim3 grid((N + 127) / 128);
-  block_reduce_v2<> <<<grid, block>>>(d_a, d_y, N);
+  block_reduce_v2<<<grid, block>>>(d_a, d_y, N);
   check(cudaGetLastError(), "blockreduce launch");
   check(cudaDeviceSynchronize(), "blockreduce sync");
 
@@ -2651,7 +2651,7 @@ static void test_dot(int N) {
 
   dim3 block(128);
   dim3 grid((N + 127) / 128);
-  dot<> <<<grid, block>>>(d_a, d_b, d_y, N);
+  dot<<<grid, block>>>(d_a, d_b, d_y, N);
   check(cudaGetLastError(), "dot launch");
   check(cudaDeviceSynchronize(), "dot sync");
 
@@ -2698,7 +2698,7 @@ static void test_softmax(int N) {
 
   dim3 block(256);
   dim3 grid(1);  // one token covering all N elements
-  online_safe_softmax_per_token<> <<<grid, block>>>(d_x, d_y, N);
+  online_safe_softmax_per_token<<<grid, block>>>(d_x, d_y, N);
   check(cudaGetLastError(), "softmax launch");
   check(cudaDeviceSynchronize(), "softmax sync");
 
@@ -2744,7 +2744,7 @@ static void test_rms_norm(int N, int K) {
 
   dim3 block(128);
   dim3 grid(N);
-  rms_norm<> <<<grid, block>>>(d_x, d_y, g, N, K);
+  rms_norm<<<grid, block>>>(d_x, d_y, g, N, K);
   check(cudaGetLastError(), "rmsnorm launch");
   check(cudaDeviceSynchronize(), "rmsnorm sync");
 
@@ -2796,7 +2796,7 @@ static void test_layer_norm(int N, int K) {
 
   dim3 block(128);
   dim3 grid(N);
-  layer_norm<> <<<grid, block>>>(d_x, d_y, g, b, N, K);
+  layer_norm<<<grid, block>>>(d_x, d_y, g, b, N, K);
   check(cudaGetLastError(), "layernorm launch");
   check(cudaDeviceSynchronize(), "layernorm sync");
 
