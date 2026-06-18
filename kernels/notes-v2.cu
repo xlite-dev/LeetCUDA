@@ -2814,6 +2814,119 @@ static void test_layer_norm(int N, int K) {
   cudaFree(d_x); cudaFree(d_y);
 }
 
+static void test_flash_attn(int seqlen, int head_dim) {
+  // FlashAttention-2 with split-Q, MMA m16n8k16
+  int B = 1, H = 8;
+  printf("  FlashAttn-SplitQ %dx%dx%dx%d ... ", B, H, seqlen, head_dim);
+  fflush(stdout);
+
+  size_t sz = (size_t)B * H * seqlen * head_dim * sizeof(half);
+
+  srand(42);
+  half *h_q = (half *)malloc(sz);
+  half *h_k = (half *)malloc(sz);
+  half *h_v = (half *)malloc(sz);
+  for (int i = 0; i < B * H * seqlen * head_dim; i++) {
+    h_q[i] = __float2half(((float)rand() / RAND_MAX) * 2.0f - 1.0f);
+    h_k[i] = __float2half(((float)rand() / RAND_MAX) * 2.0f - 1.0f);
+    h_v[i] = __float2half(((float)rand() / RAND_MAX) * 2.0f - 1.0f);
+  }
+
+  // CPU reference in FP32: O = softmax(Q @ K^T / sqrt(d)) @ V
+  float *ref_q = (float *)malloc(sz * 4 / sizeof(half));  // 4x for float
+  float *ref_k = (float *)malloc(sz * 4 / sizeof(half));
+  float *ref_v = (float *)malloc(sz * 4 / sizeof(half));
+  float *ref_o = (float *)malloc(sz * 4 / sizeof(half));
+  int count = B * H * seqlen * head_dim;
+  for (int i = 0; i < count; i++) {
+    ref_q[i] = __half2float(h_q[i]);
+    ref_k[i] = __half2float(h_k[i]);
+    ref_v[i] = __half2float(h_v[i]);
+  }
+
+  float scale = 1.0f / sqrtf((float)head_dim);
+  for (int bi = 0; bi < B * H; bi++) {
+    for (int qi = 0; qi < seqlen; qi++) {
+      // S[qi, kj] = Q[qi,:] @ K[kj,:]^T * scale
+      float smax = -INFINITY;
+      float *S = (float *)malloc((size_t)seqlen * sizeof(float));
+      for (int kj = 0; kj < seqlen; kj++) {
+        float s = 0.0f;
+        for (int d = 0; d < head_dim; d++)
+          s += ref_q[bi * seqlen * head_dim + qi * head_dim + d] *
+               ref_k[bi * seqlen * head_dim + kj * head_dim + d];
+        S[kj] = s * scale;
+        if (S[kj] > smax) smax = S[kj];
+      }
+      // softmax
+      double sum_exp = 0.0;
+      for (int kj = 0; kj < seqlen; kj++) sum_exp += (double)expf(S[kj] - smax);
+      float inv_sum = 1.0f / (float)sum_exp;
+      // O[qi, :] = sum_kj P[qi, kj] * V[kj, :]
+      for (int d = 0; d < head_dim; d++) {
+        double o_acc = 0.0;
+        for (int kj = 0; kj < seqlen; kj++)
+          o_acc += (double)(expf(S[kj] - smax) * inv_sum) *
+                   ref_v[bi * seqlen * head_dim + kj * head_dim + d];
+        ref_o[bi * seqlen * head_dim + qi * head_dim + d] = (float)o_acc;
+      }
+      free(S);
+    }
+  }
+
+  half *d_q, *d_k, *d_v, *d_o;
+  check(cudaMalloc(&d_q, sz), "fa alloc Q");
+  check(cudaMalloc(&d_k, sz), "fa alloc K");
+  check(cudaMalloc(&d_v, sz), "fa alloc V");
+  check(cudaMalloc(&d_o, sz), "fa alloc O");
+  check(cudaMemcpy(d_q, h_q, sz, cudaMemcpyHostToDevice), "fa H2D Q");
+  check(cudaMemcpy(d_k, h_k, sz, cudaMemcpyHostToDevice), "fa H2D K");
+  check(cudaMemcpy(d_v, h_v, sz, cudaMemcpyHostToDevice), "fa H2D V");
+
+  // Template params for kHeadDim=64, kStage=2
+  constexpr int kHeadDim = 64, kStageV = 2, kPadV = 8;
+  constexpr int kMmaAtomM = 16, kMmaAtomN = 8, kMmaAtomK = 16;
+  constexpr int kMmaTileSeqLenQ = 4;
+  constexpr int kMmaTileSeqLenK = 1;
+  constexpr int kMmaTileSeqLenP = 4;
+  constexpr int kMmaTileHeadDimV = 1;
+  constexpr int kWarpTileSeqLenQ = 1;
+  constexpr int kWarpTileSeqLenK = 8;
+  constexpr int kWarpTileSeqLenP = 1;
+  constexpr int kWarpTileHeadDimV = kHeadDim / (8 * kMmaTileHeadDimV);
+
+  constexpr int Br = kMmaAtomM * kMmaTileSeqLenQ * kWarpTileSeqLenQ;
+  constexpr int Bc = kMmaAtomN * kMmaTileSeqLenK * kWarpTileSeqLenK;
+  size_t smem_bytes = (Br * (kHeadDim + kPadV) +
+                       kStageV * Bc * (kHeadDim + kPadV) +
+                       Bc * (kHeadDim + kPadV)) * sizeof(half);
+
+  dim3 block(128);
+  dim3 grid((seqlen + Br - 1) / Br, B * H);
+
+  flash_attn_mma_stages_split_q<kHeadDim, kMmaAtomM, kMmaAtomN, kMmaAtomK,
+      kMmaTileSeqLenQ, kMmaTileSeqLenK, kMmaTileSeqLenP, kMmaTileHeadDimV,
+      kWarpTileSeqLenQ, kWarpTileSeqLenK, kWarpTileSeqLenP, kWarpTileHeadDimV,
+      kStageV, kPadV>
+      <<<grid, block, smem_bytes>>>(d_q, d_k, d_v, d_o, seqlen, head_dim);
+  check(cudaGetLastError(), "fa launch");
+  check(cudaDeviceSynchronize(), "fa sync");
+
+  half *h_o = (half *)malloc(sz);
+  check(cudaMemcpy(h_o, d_o, sz, cudaMemcpyDeviceToHost), "fa D2H");
+
+  float max_err = 0.0f;
+  for (int i = 0; i < count; i++) {
+    float err = fabsf(__half2float(h_o[i]) - ref_o[i]);
+    if (err > max_err) max_err = err;
+  }
+  printf("max_err=%.6f %s\n", max_err, max_err < 1e-1f ? "PASS" : "FAIL");
+
+  free(h_q); free(h_k); free(h_v); free(h_o);
+  free(ref_q); free(ref_k); free(ref_v); free(ref_o);
+  cudaFree(d_q); cudaFree(d_k); cudaFree(d_v); cudaFree(d_o);
+}
+
 int main(int argc, char *argv[]) {
   int M = 1024, N = 1024, K = 1024;
   if (argc > 3) { M = atoi(argv[1]); N = atoi(argv[2]); K = atoi(argv[3]); }
@@ -2828,6 +2941,7 @@ int main(int argc, char *argv[]) {
   test_sgemv(256, 128);
   test_sgemm(M, N, K);
   test_hgemm_mma(M, N, K);
+  test_flash_attn(1024, 64);
   
   printf("=== All tests done ===\n");
   return 0;
