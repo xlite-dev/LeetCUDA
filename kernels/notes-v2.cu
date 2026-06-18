@@ -889,7 +889,7 @@ __global__ void sgemm_vec4(float *a, float *b, float *c, int M, int N, int K) {
   constexpr int BM = 128;
   constexpr int BN = 128;
   constexpr int BK = 32;
-  __shared__ float s_a[BM][BK]; // 128*32*4 = 16KB
+  __shared__ float s_a[BM][BK]; // 128*32*4 = 16KB, float = 4 bytes
   __shared__ float s_b[BK][BN]; // 32*128*4 = 16KB
 
   int bx = blockIdx.x;
