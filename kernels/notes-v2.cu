@@ -854,7 +854,7 @@ __global__ void sgemm(float *a, float *b, float *c, int M, int N, int K) {
       //   for (int j = 0; j < 4; ++j) {
       //     sum[i][j] = += s_a[(comp_smem_a_m / 4) + i][k] * s_b[k][comp_smem_b_n + j];
       //   }
-      }
+      // }
     }
     __syncthreads(); // 确保 smem 不会在下一轮加载时被覆盖
   }
