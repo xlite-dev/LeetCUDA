@@ -391,10 +391,10 @@ __global__ void softmax_per_token(float *x, float *y, int N) {
 //   - 减去 max 后：exp(x - max) ≤ exp(0) = 1.0，永不超过 1
 //   - 数学等价性：softmax(x) = softmax(x - c) 对任意常数 c 成立
 //   - 代价：2 次 block reduce（先 max，再 sum），但仍 O(N/B) 高效
-template <const int NUM_THREADS = 256>
 // Grid:  (S, 1, 1)
 // Block: (H, 1, 1)，由外层 dispatch 选择 H=32/64/128/256/512/1024
 // source: LeetCUDA/kernels/softmax/softmax.cu
+template <const int NUM_THREADS = 256>
 __global__ void safe_softmax_per_token(float *x, float *y, int N) {
   const int tid = threadIdx.x;
   const int idx = blockIdx.x * blockDim.x + tid;
@@ -420,10 +420,10 @@ __global__ void safe_softmax_per_token(float *x, float *y, int N) {
 //     O_new = diag(exp(m_old - m_new)) * O_old + exp(m_cur - m_new) * P@V
 // 算法参考: "Online normalizer calculation for softmax" (arXiv:1805.02867)
 // 注意：这里默认一个 block 处理一个 token；边界线程的 d=0 只参与归约，不会写回 y
-template <const int NUM_THREADS = 256>
 // Grid:  (S, 1, 1)
 // Block: (H, 1, 1)，由外层 dispatch 选择 H=32/64/128/256/512/1024
 // source: LeetCUDA/kernels/softmax/softmax.cu
+template <const int NUM_THREADS = 256>
 __global__ void online_safe_softmax_per_token(const float *x, float *y, int N) {
   int local_tid = threadIdx.x;
   int global_tid = blockIdx.x * NUM_THREADS + threadIdx.x;
@@ -473,11 +473,10 @@ __global__ void online_safe_softmax_per_token(const float *x, float *y, int N) {
 //   - 只需 1 次 block reduce（sum of squares），比 Layer Norm 少 1 次同步
 //   - Llama 系列使用 RMS Norm
 //   - grid(N, K/K), block(K)：一行一个 block
-
-template <const int NUM_THREADS = 128>
 // Grid:  (N, 1, 1)，N=batch*seq_len，每行一个 block
 // Block: (128, 1, 1)，NUM_THREADS=K=128（K>128 时调整模板参数）
 // source: LeetCUDA/kernels/rms-norm/rms_norm.cu
+template <const int NUM_THREADS = 128>
 __global__ void rms_norm(float *x, float *y, float g, int N, int K) {
   int tid = threadIdx.x;
   int bid = blockIdx.x;
@@ -496,11 +495,11 @@ __global__ void rms_norm(float *x, float *y, float g, int N, int K) {
 }
 
 // RMS Norm + float4
-template <const int NUM_THREADS = 128 / 4>
 // Grid:  (N, 1, 1)
 // Block: (32, 1, 1)，128/4=32；对应一行 K 元素按 4 个一组交给 32 个线程处理
 // 注意：该版本默认 K 按 4 对齐，且输入/输出地址满足 float4 对齐
 // source: LeetCUDA/kernels/rms-norm/rms_norm.cu
+template <const int NUM_THREADS = 128 / 4>
 __global__ void rms_norm_vec4(float *x, float *y, float g, int N, int K) {
   int tid = threadIdx.x;
   int bid = blockIdx.x;
@@ -532,11 +531,10 @@ __global__ void rms_norm_vec4(float *x, float *y, float g, int N, int K) {
 //   - Layer Norm: y = ((x - mean) / std) * g + b, std = sqrt(variance)，variance = mean((x - mean)²)
 //   - 需要 2 次 block reduce：先 mean（sum/K），再 variance（sum((x-mean)²)/K）
 //   - 两次 __syncthreads 必须到位，否则 s_mean 未对所有线程可见就计算 variance
-
-template <const int NUM_THREADS = 128>
 // Grid:  (N, 1, 1)，一行一个 block
 // Block: (128, 1, 1)，NUM_THREADS=K=128
 // source: LeetCUDA/kernels/layer-norm/layer_norm.cu
+template <const int NUM_THREADS = 128>
 __global__ void layer_norm(float *x, float *y, float g, float b, int N, int K) {
   int tid = threadIdx.x;
   int bid = blockIdx.x;
@@ -565,11 +563,11 @@ __global__ void layer_norm(float *x, float *y, float g, float b, int N, int K) {
 }
 
 // Layer Norm + float4
-template <const int NUM_THREADS = 128 / 4>
 // Grid:  (N, 1, 1)
 // Block: (32, 1, 1)，128/4=32；对应一行 K 元素按 4 个一组交给 32 个线程处理
 // 注意：该版本默认 K 按 4 对齐，且输入/输出地址满足 float4 对齐
 // source: LeetCUDA/kernels/layer-norm/layer_norm.cu
+template <const int NUM_THREADS = 128 / 4>
 __global__ void layer_norm_vec4(float *x, float *y, float g, float b, int N,
                                 int K) {
   int tid = threadIdx.x;
@@ -687,11 +685,11 @@ __global__ void sgemv_k128(float *a, float *x, float *y, int M, int K) {
 // ---- SGEMV K16: K < WarpSize, ROW_PER_WARP=2 ----
 // 面试亮点：K=16 < 32，一个 warp 可以处理多行
 // ROW_PER_WARP=2，K_WARP_SIZE=16，前 16 个 lane 处理 row0，后 16 个 lane 处理 row1
-template <const int ROW_PER_WARP = 2>
 // Grid:  ((M + 7) / 8, 1, 1)，NUM_ROWS=8
 // Block: (32, 4, 1)
 // 注意：这一版是面向 K=16 的专用写法；ROW_PER_WARP=2 时一个 warp 同时处理 2 行
 // source: LeetCUDA/kernels/sgemv/sgemv.cu
+template <const int ROW_PER_WARP = 2>
 __global__ void sgemv_k16(float *A, float *x, float *y, int M, int K) {
   constexpr int K_WARP_SIZE = (WARP_SIZE + ROW_PER_WARP - 1) / ROW_PER_WARP; // 16
   int tx = threadIdx.x;
@@ -1369,7 +1367,6 @@ template <int BM, int BN, int BK, int QSIZE> struct WgmmaSMem {
 // Grid:  ((N+127)/128/S, (M+127)/128, S)，S=(N+2047)/2048，3D block swizzle
 // Block: (256, 1, 1)，2 warpgroups(Producer+Consumer)
 // source: LeetCUDA/kernels/hgemm/wgmma/hgemm_wgmma_fp16acc_stages_tn.cu
-
 template <const int WGMMA_M = 64, const int WGMMA_N = 128,
           const int WGMMA_K = 16, const int BM = 128, const int BN = 128,
           const int BK = 64, const int NUM_THREADS = 256, const int K_STAGE = 3,
@@ -1660,10 +1657,10 @@ __global__ void mat_transpose_padded(
 
 // ---- Dot Product: y = sum(a[i] * b[i]) ----
 // 核心模式：elementwise 乘法 → block reduce → atomicAdd 全局累加
-template <const int NUM_THREADS = 128>
 // Grid:  ((N + 127) / 128, 1, 1)
 // Block: (128, 1, 1)
 // source: LeetCUDA/kernels/dot-product/dot_product.cu
+template <const int NUM_THREADS = 128>
 __global__ void dot(float *a, float *b, float *y, int N) {
   int tid = threadIdx.x;
   int idx = blockIdx.x * NUM_THREADS + tid;
@@ -1687,11 +1684,11 @@ __global__ void dot(float *a, float *b, float *y, int N) {
 }
 
 // Dot Product + float4
-template <const int NUM_THREADS = 128 / 4>
 // Grid:  ((N + 127) / 128, 1, 1)
 // Block: (32, 1, 1)，128/4=32
 // 注意：该版本默认输入地址满足 float4 对齐；最适合 N 按 4 对齐的场景
 // source: LeetCUDA/kernels/dot-product/dot_product.cu
+template <const int NUM_THREADS = 128 / 4>
 __global__ void dot_vec4(float *a, float *b, float *y, int N) {
   int tid = threadIdx.x;
   int idx = (blockIdx.x * NUM_THREADS + tid) * 4;
@@ -1721,10 +1718,10 @@ __global__ void dot_vec4(float *a, float *b, float *y, int N) {
 // ---- Block Reduce Sum All: y = sum(a[0..N-1]) ----
 // 多 block 各自做 warp→smem→warp0 reduce，然后 atomicAdd 到全局 y
 // 跨 block 求和的常见模式，适合 N 较大时使用；
-template <const int NUM_THREADS = 128>
 // Grid:  ((N + 127) / 128, 1, 1)
 // Block: (128, 1, 1)
 // source: LeetCUDA/kernels/reduce/block_all_reduce.cu
+template <const int NUM_THREADS = 128>
 __global__ void block_reduce_v2(float *a, float *y, int N) {
   int tid = threadIdx.x;
   int idx = blockIdx.x * NUM_THREADS + tid;
@@ -2375,7 +2372,7 @@ __global__ void __launch_bounds__(WARP_SIZE *kMmaTileSeqLenQ *kMmaTileSeqLenK)
 }
 
 // =============================================================================
-// Host check: SGEMM + HGEMM MMA verification
+// 以下是测试代码，验证 sgemm, sgemm_vec4, hgemm_mma, flash_attention等核函数的正确性
 // =============================================================================
 
 static inline void check(cudaError_t err, const char *msg) {
@@ -2950,27 +2947,8 @@ int main(int argc, char *argv[]) {
 // =============================================================================
 // Quick build & run reference
 // =============================================================================
-//
-// # fatbin (sm_89 + sm_90a):
-// nvcc -std=c++20 -O2 -gencode arch=compute_89,code=sm_89 -gencode arch=compute_90a,code=sm_90a \
-//   -lcublas -lcuda notes-v2.cu -o notes_v2_fat.bin
-//
 // # sm_89 单独编译 + 运行:
 // nvcc -std=c++20 -O2 -arch=sm_89 -lcublas -lcuda notes-v2.cu -o notes_v2_sm89.bin
 //
 // # sm_90a 单独编译（运行需要 H800 Hopper GPU）:
 // nvcc -std=c++20 -O2 -arch=sm_90a -lcublas -lcuda notes-v2.cu -o notes_v2_sm90.bin
-
-// =============================================================================
-// End of notes-v2.cu
-// =============================================================================
-// 本文件覆盖了面试中最高频的 CUDA kernel 考点（26 个 kernel）：
-//   ★ 基础原语: warp_reduce (O(logN) butterfly), block_reduce (两级:
-//   warp→smem→warp0) ★ 优化手段: coalescing, tiling, thread tile, vectorize,
-//   pipeline, tensor core ★ Softmax 递进: naive → safe(2-pass) → online(1-pass,
-//   FA 基础) ★ GEMM 五层金字塔: tiling → thread tile → vectorize → MMA(TN布局)
-//   → WGMMA(warp spec) ★ FlashAttention: split-Q + online softmax + R_S
-//   寄存器复用 P@V ★ Bank Conflict: 原理 + PAD 解决方案 + 四步演进 ★ Memory
-//   Hierarchy: HBM → L2 → L1/SMEM → Register ★ BLAS 布局约定:
-//   N=col-major(Normal), T=row-major(Transposed), TN=A行B列
-// =============================================================================
