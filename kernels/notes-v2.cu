@@ -2716,6 +2716,104 @@ static void test_softmax(int N) {
   cudaFree(d_x); cudaFree(d_y);
 }
 
+static void test_rms_norm(int N, int K) {
+  printf("  RMSNorm %dx%d ... ", N, K);
+  fflush(stdout);
+
+  srand(42);
+  float *h_x = (float *)malloc((size_t)N * K * sizeof(float));
+  float *h_y_ref = (float *)malloc((size_t)N * K * sizeof(float));
+  for (int i = 0; i < N * K; i++)
+    h_x[i] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;
+  float g = 1.5f;  // gain
+
+  // CPU reference: y = (x / rms(x)) * g
+  float epsilon = 1e-5f;
+  for (int n = 0; n < N; n++) {
+    double sum_sq = 0.0;
+    for (int k = 0; k < K; k++) sum_sq += (double)h_x[n * K + k] * (double)h_x[n * K + k];
+    float rms = sqrtf((float)sum_sq / (float)K + epsilon);
+    for (int k = 0; k < K; k++)
+      h_y_ref[n * K + k] = (h_x[n * K + k] / rms) * g;
+  }
+
+  float *d_x, *d_y;
+  check(cudaMalloc(&d_x, (size_t)N * K * sizeof(float)), "rmsnorm alloc X");
+  check(cudaMalloc(&d_y, (size_t)N * K * sizeof(float)), "rmsnorm alloc Y");
+  check(cudaMemcpy(d_x, h_x, (size_t)N * K * sizeof(float), cudaMemcpyHostToDevice), "rmsnorm H2D X");
+
+  dim3 block(128);
+  dim3 grid(N);
+  rms_norm<> <<<grid, block>>>(d_x, d_y, g, N, K);
+  check(cudaGetLastError(), "rmsnorm launch");
+  check(cudaDeviceSynchronize(), "rmsnorm sync");
+
+  float *h_y = (float *)malloc((size_t)N * K * sizeof(float));
+  check(cudaMemcpy(h_y, d_y, (size_t)N * K * sizeof(float), cudaMemcpyDeviceToHost), "rmsnorm D2H");
+
+  float max_err = 0.0f;
+  for (int i = 0; i < N * K; i++) {
+    float err = fabsf(h_y[i] - h_y_ref[i]);
+    if (err > max_err) max_err = err;
+  }
+  printf("max_err=%.6f %s\n", max_err, max_err < 1e-4f ? "PASS" : "FAIL");
+
+  free(h_x); free(h_y); free(h_y_ref);
+  cudaFree(d_x); cudaFree(d_y);
+}
+
+static void test_layer_norm(int N, int K) {
+  printf("  LayerNorm %dx%d ... ", N, K);
+  fflush(stdout);
+
+  srand(42);
+  float *h_x = (float *)malloc((size_t)N * K * sizeof(float));
+  float *h_y_ref = (float *)malloc((size_t)N * K * sizeof(float));
+  for (int i = 0; i < N * K; i++)
+    h_x[i] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;
+  float g = 1.5f, b = 0.3f;  // gain and bias
+
+  // CPU reference: y = ((x - mean) / std) * g + b
+  float epsilon = 1e-5f;
+  for (int n = 0; n < N; n++) {
+    double sum = 0.0;
+    for (int k = 0; k < K; k++) sum += (double)h_x[n * K + k];
+    float mean = (float)sum / (float)K;
+    double sum_sq = 0.0;
+    for (int k = 0; k < K; k++) {
+      float diff = h_x[n * K + k] - mean;
+      sum_sq += (double)diff * (double)diff;
+    }
+    float std = sqrtf((float)sum_sq / (float)K + epsilon);
+    for (int k = 0; k < K; k++)
+      h_y_ref[n * K + k] = ((h_x[n * K + k] - mean) / std) * g + b;
+  }
+
+  float *d_x, *d_y;
+  check(cudaMalloc(&d_x, (size_t)N * K * sizeof(float)), "layernorm alloc X");
+  check(cudaMalloc(&d_y, (size_t)N * K * sizeof(float)), "layernorm alloc Y");
+  check(cudaMemcpy(d_x, h_x, (size_t)N * K * sizeof(float), cudaMemcpyHostToDevice), "layernorm H2D X");
+
+  dim3 block(128);
+  dim3 grid(N);
+  layer_norm<> <<<grid, block>>>(d_x, d_y, g, b, N, K);
+  check(cudaGetLastError(), "layernorm launch");
+  check(cudaDeviceSynchronize(), "layernorm sync");
+
+  float *h_y = (float *)malloc((size_t)N * K * sizeof(float));
+  check(cudaMemcpy(h_y, d_y, (size_t)N * K * sizeof(float), cudaMemcpyDeviceToHost), "layernorm D2H");
+
+  float max_err = 0.0f;
+  for (int i = 0; i < N * K; i++) {
+    float err = fabsf(h_y[i] - h_y_ref[i]);
+    if (err > max_err) max_err = err;
+  }
+  printf("max_err=%.6f %s\n", max_err, max_err < 1e-4f ? "PASS" : "FAIL");
+
+  free(h_x); free(h_y); free(h_y_ref);
+  cudaFree(d_x); cudaFree(d_y);
+}
+
 int main(int argc, char *argv[]) {
   int M = 1024, N = 1024, K = 1024;
   if (argc > 3) { M = atoi(argv[1]); N = atoi(argv[2]); K = atoi(argv[3]); }
@@ -2725,6 +2823,8 @@ int main(int argc, char *argv[]) {
   test_block_reduce(N);
   test_dot(N);
   test_softmax(256);  // softmax kernel requires N == blockDim.x
+  test_rms_norm(8, 128);
+  test_layer_norm(8, 128);
   test_sgemv(256, 128);
   test_sgemm(M, N, K);
   test_hgemm_mma(M, N, K);
