@@ -876,12 +876,6 @@ __global__ void sgemm(float *a, float *b, float *c, int M, int N, int K) {
 //   B[32][128]: b_k = tid/32 (32 线程/行), b_n = (tid%32)*4 (4 列/线程) → 32×4=128 列 ✓
 //   row-major 下 A[m][k..k+3] 与 B[k][n..n+3] 均连续 → float4 load 合法
 //
-// ⚠ 注释修正：原始 vec 注释中 `s_a[(comp_smem_a_m / 4) + i][k]` 漏了 `*4`。
-//   comp_smem_a_m = tid/8（0~127），/4 后为 tid/32（0~31），+i 仅覆盖行 0~34，
-//   无法覆盖 0~127。正确行基址为 `(tid/32)*4`，列基址为 `(tid%32)*4`。存储
-//   同理：`((store_gmem_c_m / 4) + i)` 应改为 `(m_base + i)`，其中
-//   `m_base = by*BM + (tid/32)*4`。
-//
 // ⚠ Bank Conflict 提示（面试加分点）：
 //   s_b[32][128] 上 warp 内 32 线程按 stride=4 访问（tid%32 决定列 0,4,8,...,124）
 //   → 每 4 个线程落同一 bank 不同地址 → 4-way bank conflict。生产代码可用
