@@ -816,7 +816,7 @@ __global__ void sgemm(float *a, float *b, float *c, int M, int N, int K) {
   constexpr int BM = 32; // vec 版: 32x4 = 128
   constexpr int BN = 32; // vec 版: 32x4 = 128
   constexpr int BK = 32;
-  __shared__ float s_a[BM][BK], s_b[BK][BN]; //  1KB smem
+  __shared__ float s_a[BM][BK], s_b[BK][BN]; //  32x32x4=4KB smem, float = 4 bytes
 
   int bx = blockIdx.x;
   int by = blockIdx.y;
