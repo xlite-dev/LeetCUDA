@@ -2439,6 +2439,25 @@ static void test_sgemm(int M, int N, int K) {
   }
   printf("max_err=%.6f %s\n", max_err, max_err < 1e-2f ? "PASS" : "FAIL");
 
+  // ---- SGEMM Vec4 (128×128 tile, 4×4 thread tile) ----
+  printf("  SGEMM-Vec4 %dx%dx%d ... ", M, N, K);
+  fflush(stdout);
+
+  dim3 grid_vec4((N + 127) / 128, (M + 127) / 128);
+  check(cudaMemset(d_c, 0, size_c), "sgemm_vec4 zero C");
+  sgemm_vec4<<<grid_vec4, block>>>(d_a, d_b, d_c, M, N, K);
+  check(cudaGetLastError(), "sgemm_vec4 launch");
+  check(cudaDeviceSynchronize(), "sgemm_vec4 sync");
+
+  check(cudaMemcpy(h_c, d_c, size_c, cudaMemcpyDeviceToHost), "sgemm_vec4 D2H");
+
+  max_err = 0.0f;
+  for (int i = 0; i < M * N; i++) {
+    float err = fabsf(h_c[i] - h_c_ref[i]);
+    if (err > max_err) max_err = err;
+  }
+  printf("max_err=%.6f %s\n", max_err, max_err < 1e-2f ? "PASS" : "FAIL");
+
   free(h_a); free(h_b); free(h_c); free(h_c_ref);
   cudaFree(d_a); cudaFree(d_b); cudaFree(d_c);
   cublasDestroy(handle);
@@ -2720,13 +2739,13 @@ int main(int argc, char *argv[]) {
 //
 // # fatbin (sm_89 + sm_90a):
 // nvcc -std=c++20 -O2 -gencode arch=compute_89,code=sm_89 -gencode arch=compute_90a,code=sm_90a \
-//   -lcublas -lcuda notes-v2.cu -o notes_v2_fatbin
+//   -lcublas -lcuda notes-v2.cu -o notes_v2_fat.bin
 //
 // # sm_89 单独编译 + 运行:
-// nvcc -std=c++20 -O2 -arch=sm_89 -lcublas -lcuda notes-v2.cu -o notes_v2_sm89
+// nvcc -std=c++20 -O2 -arch=sm_89 -lcublas -lcuda notes-v2.cu -o notes_v2_sm89.bin
 //
 // # sm_90a 单独编译（运行需要 H800 Hopper GPU）:
-// nvcc -std=c++20 -O2 -arch=sm_90a -lcublas -lcuda notes-v2.cu -o notes_v2_sm90
+// nvcc -std=c++20 -O2 -arch=sm_90a -lcublas -lcuda notes-v2.cu -o notes_v2_sm90.bin
 
 // =============================================================================
 // End of notes-v2.cu
