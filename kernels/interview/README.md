@@ -12,7 +12,7 @@ nvcc -std=c++20 -O2 -arch=sm_89 -lcublas -lcuda notes-v2.cu -o notes_v2_sm89.bin
 CUDA_VISIBLE_DEVICES=7 ./notes_v2_sm89.bin
 
 # 自定义 GEMM 尺寸
-./notes_v2_sm89.bin
+./notes_v2_sm89.bin 512 512 512
 ```
 
 ## 测试输出
