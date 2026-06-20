@@ -2573,9 +2573,9 @@ __global__ void __launch_bounds__(WARP_SIZE *kMmaTileSeqLenQ *kMmaTileSeqLenK)
   }
 }
 
-// =============================================================================
-// 以下是测试代码，验证 sgemm, sgemm_vec4, hgemm_mma, flash_attention等核函数的正确性
-// =============================================================================
+// ================================================================
+// 以下是测试代码，验证 Phase 1 - Phase 8 的kernel的正确性，不评估性能。
+// ================================================================
 
 static inline void check(cudaError_t err, const char *msg) {
   if (err != cudaSuccess) {
@@ -2584,9 +2584,477 @@ static inline void check(cudaError_t err, const char *msg) {
   }
 }
 
+
+static void test_block_reduce(int N) {
+
+  srand(42);
+  float *h_a = (float *)malloc((size_t)N * sizeof(float));
+  for (int i = 0; i < N; i++)
+    h_a[i] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;
+
+  // CPU reference: sum of all elements
+  double ref = 0.0;
+  for (int i = 0; i < N; i++) ref += (double)h_a[i];
+
+  float *d_a, *d_y;
+  check(cudaMalloc(&d_a, (size_t)N * sizeof(float)), "blockreduce alloc A");
+  check(cudaMalloc(&d_y, sizeof(float)), "blockreduce alloc Y");
+
+  check(cudaMemcpy(d_a, h_a, (size_t)N * sizeof(float), cudaMemcpyHostToDevice), "blockreduce H2D A");
+  check(cudaMemset(d_y, 0, sizeof(float)), "blockreduce zero Y");
+
+  dim3 block(128);
+  dim3 grid((N + 127) / 128);
+  block_reduce_v2<<<grid, block>>>(d_a, d_y, N);
+  check(cudaGetLastError(), "blockreduce launch");
+  check(cudaDeviceSynchronize(), "blockreduce sync");
+
+  float result;
+  check(cudaMemcpy(&result, d_y, sizeof(float), cudaMemcpyDeviceToHost), "blockreduce D2H");
+
+  float err = fabsf(result - (float)ref);
+  printf("| %-35s | %.6e | %-4s |\n", "BlockReduceAll", err,
+         err < 1e-2f ? "PASS" : "FAIL");
+
+  free(h_a);
+  cudaFree(d_a); cudaFree(d_y);
+}
+
+
+static void test_dot(int N) {
+
+  srand(42);
+  float *h_a = (float *)malloc((size_t)N * sizeof(float));
+  float *h_b = (float *)malloc((size_t)N * sizeof(float));
+  for (int i = 0; i < N; i++) {
+    h_a[i] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;
+    h_b[i] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;
+  }
+
+  // CPU reference
+  double ref = 0.0;
+  for (int i = 0; i < N; i++) ref += (double)h_a[i] * (double)h_b[i];
+
+  float *d_a, *d_b, *d_y;
+  check(cudaMalloc(&d_a, (size_t)N * sizeof(float)), "dot alloc A");
+  check(cudaMalloc(&d_b, (size_t)N * sizeof(float)), "dot alloc B");
+  check(cudaMalloc(&d_y, sizeof(float)), "dot alloc Y");
+
+  check(cudaMemcpy(d_a, h_a, (size_t)N * sizeof(float), cudaMemcpyHostToDevice), "dot H2D A");
+  check(cudaMemcpy(d_b, h_b, (size_t)N * sizeof(float), cudaMemcpyHostToDevice), "dot H2D B");
+  check(cudaMemset(d_y, 0, sizeof(float)), "dot zero Y");
+
+  dim3 block(128);
+  dim3 grid((N + 127) / 128);
+  dot<<<grid, block>>>(d_a, d_b, d_y, N);
+  check(cudaGetLastError(), "dot launch");
+  check(cudaDeviceSynchronize(), "dot sync");
+
+  float result;
+  check(cudaMemcpy(&result, d_y, sizeof(float), cudaMemcpyDeviceToHost), "dot D2H");
+
+  float err = fabsf(result - (float)ref);
+  printf("| %-35s | %.6e | %-4s |\n", "Dot", err,
+         err < 1e-2f ? "PASS" : "FAIL");
+
+  free(h_a); free(h_b);
+  cudaFree(d_a); cudaFree(d_b); cudaFree(d_y);
+}
+
+
+static void test_softmax(int N) {
+  // Use N = blockDim.x so one block processes all elements as one token.
+  constexpr int NUM_THREADS = 256;
+  if (N != NUM_THREADS) {
+    printf("  OnlineSafeSoftmax: N must be %d (got %d), skipping.\n", NUM_THREADS, N);
+    return;
+  }
+
+  srand(42);
+  float *h_x = (float *)malloc((size_t)N * sizeof(float));
+  float *h_y_ref = (float *)malloc((size_t)N * sizeof(float));
+  for (int i = 0; i < N; i++)
+    h_x[i] = ((float)rand() / RAND_MAX) * 10.0f - 5.0f;  // [-5, 5]
+
+  // CPU reference: softmax(x_i) = exp(x_i - max) / sum(exp(x_j - max))
+  float max_val = -FLT_MAX;
+  for (int i = 0; i < N; i++) if (h_x[i] > max_val) max_val = h_x[i];
+  double sum_exp = 0.0;
+  for (int i = 0; i < N; i++) sum_exp += (double)expf(h_x[i] - max_val);
+  for (int i = 0; i < N; i++)
+    h_y_ref[i] = expf(h_x[i] - max_val) / (float)sum_exp;
+
+  float *d_x, *d_y;
+  check(cudaMalloc(&d_x, (size_t)N * sizeof(float)), "softmax alloc X");
+  check(cudaMalloc(&d_y, (size_t)N * sizeof(float)), "softmax alloc Y");
+
+  check(cudaMemcpy(d_x, h_x, (size_t)N * sizeof(float), cudaMemcpyHostToDevice), "softmax H2D X");
+
+  dim3 block(256);
+  dim3 grid(1);  // one token covering all N elements
+  online_safe_softmax_per_token<<<grid, block>>>(d_x, d_y, N);
+  check(cudaGetLastError(), "softmax launch");
+  check(cudaDeviceSynchronize(), "softmax sync");
+
+  float *h_y = (float *)malloc((size_t)N * sizeof(float));
+  check(cudaMemcpy(h_y, d_y, (size_t)N * sizeof(float), cudaMemcpyDeviceToHost), "softmax D2H");
+
+  float max_err = 0.0f;
+  for (int i = 0; i < N; i++) {
+    float err = fabsf(h_y[i] - h_y_ref[i]);
+    if (err > max_err) max_err = err;
+  }
+  printf("| %-35s | %.6e | %-4s |\n", "OnlineSafeSoftmax", max_err, max_err < 1e-4f ? "PASS" : "FAIL");
+
+  free(h_x); free(h_y); free(h_y_ref);
+  cudaFree(d_x); cudaFree(d_y);
+}
+
+
+static void test_rms_norm(int N, int K) {
+
+  srand(42);
+  float *h_x = (float *)malloc((size_t)N * K * sizeof(float));
+  float *h_y_ref = (float *)malloc((size_t)N * K * sizeof(float));
+  for (int i = 0; i < N * K; i++)
+    h_x[i] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;
+  float g = 1.5f;  // gain
+
+  // CPU reference: y = (x / rms(x)) * g
+  float epsilon = 1e-5f;
+  for (int n = 0; n < N; n++) {
+    double sum_sq = 0.0;
+    for (int k = 0; k < K; k++) sum_sq += (double)h_x[n * K + k] * (double)h_x[n * K + k];
+    float rms = sqrtf((float)sum_sq / (float)K + epsilon);
+    for (int k = 0; k < K; k++)
+      h_y_ref[n * K + k] = (h_x[n * K + k] / rms) * g;
+  }
+
+  float *d_x, *d_y;
+  check(cudaMalloc(&d_x, (size_t)N * K * sizeof(float)), "rmsnorm alloc X");
+  check(cudaMalloc(&d_y, (size_t)N * K * sizeof(float)), "rmsnorm alloc Y");
+  check(cudaMemcpy(d_x, h_x, (size_t)N * K * sizeof(float), cudaMemcpyHostToDevice), "rmsnorm H2D X");
+
+  dim3 block(128);
+  dim3 grid(N);
+  rms_norm<<<grid, block>>>(d_x, d_y, g, N, K);
+  check(cudaGetLastError(), "rmsnorm launch");
+  check(cudaDeviceSynchronize(), "rmsnorm sync");
+
+  float *h_y = (float *)malloc((size_t)N * K * sizeof(float));
+  check(cudaMemcpy(h_y, d_y, (size_t)N * K * sizeof(float), cudaMemcpyDeviceToHost), "rmsnorm D2H");
+
+  float max_err = 0.0f;
+  for (int i = 0; i < N * K; i++) {
+    float err = fabsf(h_y[i] - h_y_ref[i]);
+    if (err > max_err) max_err = err;
+  }
+  printf("| %-35s | %.6e | %-4s |\n", "RMSNorm", max_err, max_err < 1e-4f ? "PASS" : "FAIL");
+
+  free(h_x); free(h_y); free(h_y_ref);
+  cudaFree(d_x); cudaFree(d_y);
+}
+
+
+static void test_layer_norm(int N, int K) {
+
+  srand(42);
+  float *h_x = (float *)malloc((size_t)N * K * sizeof(float));
+  float *h_y_ref = (float *)malloc((size_t)N * K * sizeof(float));
+  for (int i = 0; i < N * K; i++)
+    h_x[i] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;
+  float g = 1.5f, b = 0.3f;  // gain and bias
+
+  // CPU reference: y = ((x - mean) / std) * g + b
+  float epsilon = 1e-5f;
+  for (int n = 0; n < N; n++) {
+    double sum = 0.0;
+    for (int k = 0; k < K; k++) sum += (double)h_x[n * K + k];
+    float mean = (float)sum / (float)K;
+    double sum_sq = 0.0;
+    for (int k = 0; k < K; k++) {
+      float diff = h_x[n * K + k] - mean;
+      sum_sq += (double)diff * (double)diff;
+    }
+    float std = sqrtf((float)sum_sq / (float)K + epsilon);
+    for (int k = 0; k < K; k++)
+      h_y_ref[n * K + k] = ((h_x[n * K + k] - mean) / std) * g + b;
+  }
+
+  float *d_x, *d_y;
+  check(cudaMalloc(&d_x, (size_t)N * K * sizeof(float)), "layernorm alloc X");
+  check(cudaMalloc(&d_y, (size_t)N * K * sizeof(float)), "layernorm alloc Y");
+  check(cudaMemcpy(d_x, h_x, (size_t)N * K * sizeof(float), cudaMemcpyHostToDevice), "layernorm H2D X");
+
+  dim3 block(128);
+  dim3 grid(N);
+  layer_norm<<<grid, block>>>(d_x, d_y, g, b, N, K);
+  check(cudaGetLastError(), "layernorm launch");
+  check(cudaDeviceSynchronize(), "layernorm sync");
+
+  float *h_y = (float *)malloc((size_t)N * K * sizeof(float));
+  check(cudaMemcpy(h_y, d_y, (size_t)N * K * sizeof(float), cudaMemcpyDeviceToHost), "layernorm D2H");
+
+  float max_err = 0.0f;
+  for (int i = 0; i < N * K; i++) {
+    float err = fabsf(h_y[i] - h_y_ref[i]);
+    if (err > max_err) max_err = err;
+  }
+  printf("| %-35s | %.6e | %-4s |\n", "LayerNorm", max_err, max_err < 1e-4f ? "PASS" : "FAIL");
+
+  free(h_x); free(h_y); free(h_y_ref);
+  cudaFree(d_x); cudaFree(d_y);
+}
+
+
+static void test_rope(int seq_len, int N) {
+
+  int total_pairs = seq_len * N;
+  int total_elems = total_pairs * 2;
+  size_t size = (size_t)total_elems * sizeof(float);
+
+  float *h_x = (float *)malloc(size);
+  float *h_y_ref = (float *)malloc(size);
+
+  srand(42);
+  for (int i = 0; i < total_elems; i++)
+    h_x[i] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;
+
+  // CPU reference: 2D rotation for each pair
+  for (int idx = 0; idx < total_pairs; idx++) {
+    int token_pos = idx / N;
+    int token_idx = idx % N;
+    float x1 = h_x[idx * 2];
+    float x2 = h_x[idx * 2 + 1];
+    float theta = 1.0f / powf(10000.0f, 2.0f * token_idx / (N * 2.0f));
+    float angle = (float)token_pos * theta;
+    float cos_v = cosf(angle);
+    float sin_v = sinf(angle);
+    h_y_ref[idx * 2] = x1 * cos_v - x2 * sin_v;
+    h_y_ref[idx * 2 + 1] = x1 * sin_v + x2 * cos_v;
+  }
+
+  float *d_x, *d_y;
+  check(cudaMalloc(&d_x, size), "rope alloc X");
+  check(cudaMalloc(&d_y, size), "rope alloc Y");
+  check(cudaMemcpy(d_x, h_x, size, cudaMemcpyHostToDevice), "rope H2D");
+
+  dim3 block(256);
+  dim3 grid((total_pairs + 255) / 256);
+  rope<<<grid, block>>>(d_x, d_y, seq_len, N);
+  check(cudaGetLastError(), "rope launch");
+  check(cudaDeviceSynchronize(), "rope sync");
+
+  float *h_y = (float *)malloc(size);
+  check(cudaMemcpy(h_y, d_y, size, cudaMemcpyDeviceToHost), "rope D2H");
+
+  float max_err = 0.0f;
+  for (int i = 0; i < total_elems; i++) {
+    float err = fabsf(h_y[i] - h_y_ref[i]);
+    if (err > max_err) max_err = err;
+  }
+  printf("| %-35s | %.6e | %-4s |\n", "RoPE", max_err, max_err < 1e-4f ? "PASS" : "FAIL");
+
+  free(h_x);
+  free(h_y);
+  free(h_y_ref);
+  cudaFree(d_x);
+  cudaFree(d_y);
+}
+
+
+static void test_mat_transpose(int row, int col) {
+
+  size_t size_in = (size_t)row * col * sizeof(float);
+  size_t size_out = (size_t)col * row * sizeof(float);
+
+  float *h_x = (float *)malloc(size_in);
+  float *h_y_ref = (float *)malloc(size_out);
+
+  srand(42);
+  for (int i = 0; i < row * col; i++)
+    h_x[i] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;
+
+  // CPU reference: y[j][i] = x[i][j] (row-major)
+  for (int i = 0; i < row; i++)
+    for (int j = 0; j < col; j++)
+      h_y_ref[j * row + i] = h_x[i * col + j];
+
+  float *d_x, *d_y;
+  check(cudaMalloc(&d_x, size_in), "mattrans alloc X");
+  check(cudaMalloc(&d_y, size_out), "mattrans alloc Y");
+  check(cudaMemcpy(d_x, h_x, size_in, cudaMemcpyHostToDevice), "mattrans H2D");
+
+  dim3 block(16, 16);
+  dim3 grid((col + 15) / 16, (row + 15) / 16);
+  mat_transpose<<<grid, block>>>(d_x, d_y, row, col);
+  check(cudaGetLastError(), "mattrans launch");
+  check(cudaDeviceSynchronize(), "mattrans sync");
+
+  float *h_y = (float *)malloc(size_out);
+  check(cudaMemcpy(h_y, d_y, size_out, cudaMemcpyDeviceToHost), "mattrans D2H");
+
+  float max_err = 0.0f;
+  for (int i = 0; i < col * row; i++) {
+    float err = fabsf(h_y[i] - h_y_ref[i]);
+    if (err > max_err) max_err = err;
+  }
+  printf("| %-35s | %.6e | %-4s |\n", "MatTranspose", max_err, max_err < 1e-6f ? "PASS" : "FAIL");
+
+  free(h_x);
+  free(h_y);
+  free(h_y_ref);
+  cudaFree(d_x);
+  cudaFree(d_y);
+}
+
+
+static void test_mat_transpose_padded(int row, int col) {
+
+  size_t size_in = (size_t)row * col * sizeof(float);
+  size_t size_out = (size_t)col * row * sizeof(float);
+
+  float *h_x = (float *)malloc(size_in);
+  float *h_y_ref = (float *)malloc(size_out);
+
+  srand(42);
+  for (int i = 0; i < row * col; i++)
+    h_x[i] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;
+
+  // CPU reference: y[j][i] = x[i][j] (row-major)
+  for (int i = 0; i < row; i++)
+    for (int j = 0; j < col; j++)
+      h_y_ref[j * row + i] = h_x[i * col + j];
+
+  float *d_x, *d_y;
+  check(cudaMalloc(&d_x, size_in), "mattrans_padded alloc X");
+  check(cudaMalloc(&d_y, size_out), "mattrans_padded alloc Y");
+  check(cudaMemcpy(d_x, h_x, size_in, cudaMemcpyHostToDevice), "mattrans_padded H2D");
+
+  dim3 block(16, 16);
+  dim3 grid((col + 15) / 16, (row + 63) / 64);
+  mat_transpose_padded<<<grid, block>>>(d_x, d_y, row, col);
+  check(cudaGetLastError(), "mattrans_padded launch");
+  check(cudaDeviceSynchronize(), "mattrans_padded sync");
+
+  float *h_y = (float *)malloc(size_out);
+  check(cudaMemcpy(h_y, d_y, size_out, cudaMemcpyDeviceToHost), "mattrans_padded D2H");
+
+  float max_err = 0.0f;
+  for (int i = 0; i < col * row; i++) {
+    float err = fabsf(h_y[i] - h_y_ref[i]);
+    if (err > max_err) max_err = err;
+  }
+  printf("| %-35s | %.6e | %-4s |\n", "MatTransposePadded", max_err, max_err < 1e-6f ? "PASS" : "FAIL");
+
+  free(h_x);
+  free(h_y);
+  free(h_y_ref);
+  cudaFree(d_x);
+  cudaFree(d_y);
+}
+
+
+static void test_sgemv(int M, int K) {
+
+  srand(42);
+  float *h_a = (float *)malloc((size_t)M * K * sizeof(float));
+  float *h_x = (float *)malloc((size_t)K * sizeof(float));
+  float *h_y_ref = (float *)malloc((size_t)M * sizeof(float));
+  for (int i = 0; i < M * K; i++) h_a[i] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;
+  for (int i = 0; i < K; i++) h_x[i] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;
+
+  // CPU reference: y[m] = sum_k A[m,k] * x[k]
+  for (int m = 0; m < M; m++) {
+    double sum = 0.0;
+    for (int k = 0; k < K; k++) sum += (double)h_a[m * K + k] * (double)h_x[k];
+    h_y_ref[m] = (float)sum;
+  }
+
+  float *d_a, *d_x, *d_y;
+  check(cudaMalloc(&d_a, (size_t)M * K * sizeof(float)), "sgemv alloc A");
+  check(cudaMalloc(&d_x, (size_t)K * sizeof(float)), "sgemv alloc X");
+  check(cudaMalloc(&d_y, (size_t)M * sizeof(float)), "sgemv alloc Y");
+
+  check(cudaMemcpy(d_a, h_a, (size_t)M * K * sizeof(float), cudaMemcpyHostToDevice), "sgemv H2D A");
+  check(cudaMemcpy(d_x, h_x, (size_t)K * sizeof(float), cudaMemcpyHostToDevice), "sgemv H2D X");
+
+  dim3 block(32, 4);
+  dim3 grid((M + 3) / 4);
+  sgemv_k128<<<grid, block>>>(d_a, d_x, d_y, M, K);
+  check(cudaGetLastError(), "sgemv launch");
+  check(cudaDeviceSynchronize(), "sgemv sync");
+
+  float *h_y = (float *)malloc((size_t)M * sizeof(float));
+  check(cudaMemcpy(h_y, d_y, (size_t)M * sizeof(float), cudaMemcpyDeviceToHost), "sgemv D2H");
+
+  float max_err = 0.0f;
+  for (int m = 0; m < M; m++) {
+    float err = fabsf(h_y[m] - h_y_ref[m]);
+    if (err > max_err) max_err = err;
+  }
+  printf("| %-35s | %.6e | %-4s |\n", "SGEMV-K128", max_err, max_err < 1e-2f ? "PASS" : "FAIL");
+
+  // ---- SGEMV K32 ----
+  check(cudaMemset(d_y, 0, M * sizeof(float)), "sgemv_k32 zero Y");
+  sgemv_k32<<<grid, block>>>(d_a, d_x, d_y, M, K);
+  check(cudaGetLastError(), "sgemv_k32 launch");
+  check(cudaDeviceSynchronize(), "sgemv_k32 sync");
+
+  check(cudaMemcpy(h_y, d_y, (size_t)M * sizeof(float), cudaMemcpyDeviceToHost), "sgemv_k32 D2H");
+
+  max_err = 0.0f;
+  for (int m = 0; m < M; m++) {
+    float err = fabsf(h_y[m] - h_y_ref[m]);
+    if (err > max_err) max_err = err;
+  }
+  printf("| %-35s | %.6e | %-4s |\n", "SGEMV-K32", max_err, max_err < 1e-2f ? "PASS" : "FAIL");
+
+  // ---- SGEMV K16 ----
+  free(h_a); free(h_x); free(h_y); free(h_y_ref);
+  cudaFree(d_a); cudaFree(d_x); cudaFree(d_y);
+
+  int K16 = 16;
+  h_a = (float *)malloc((size_t)M * K16 * sizeof(float));
+  h_x = (float *)malloc((size_t)K16 * sizeof(float));
+  h_y_ref = (float *)malloc((size_t)M * sizeof(float));
+  for (int i = 0; i < M * K16; i++) h_a[i] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;
+  for (int i = 0; i < K16; i++) h_x[i] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;
+
+  for (int m = 0; m < M; m++) {
+    double sum = 0.0;
+    for (int k = 0; k < K16; k++) sum += (double)h_a[m * K16 + k] * (double)h_x[k];
+    h_y_ref[m] = (float)sum;
+  }
+
+  check(cudaMalloc(&d_a, (size_t)M * K16 * sizeof(float)), "sgemv_k16 alloc A");
+  check(cudaMalloc(&d_x, (size_t)K16 * sizeof(float)), "sgemv_k16 alloc X");
+  check(cudaMalloc(&d_y, (size_t)M * sizeof(float)), "sgemv_k16 alloc Y");
+
+  check(cudaMemcpy(d_a, h_a, (size_t)M * K16 * sizeof(float), cudaMemcpyHostToDevice), "sgemv_k16 H2D A");
+  check(cudaMemcpy(d_x, h_x, (size_t)K16 * sizeof(float), cudaMemcpyHostToDevice), "sgemv_k16 H2D X");
+
+  dim3 grid_k16((M + 7) / 8);
+  sgemv_k16<2><<<grid_k16, block>>>(d_a, d_x, d_y, M, K16);
+  check(cudaGetLastError(), "sgemv_k16 launch");
+  check(cudaDeviceSynchronize(), "sgemv_k16 sync");
+
+  h_y = (float *)malloc((size_t)M * sizeof(float));
+  check(cudaMemcpy(h_y, d_y, (size_t)M * sizeof(float), cudaMemcpyDeviceToHost), "sgemv_k16 D2H");
+
+  max_err = 0.0f;
+  for (int m = 0; m < M; m++) {
+    float err = fabsf(h_y[m] - h_y_ref[m]);
+    if (err > max_err) max_err = err;
+  }
+  printf("| %-35s | %.6e | %-4s |\n", "SGEMV-K16", max_err, max_err < 1e-2f ? "PASS" : "FAIL");
+
+  free(h_a); free(h_x); free(h_y); free(h_y_ref);
+  cudaFree(d_a); cudaFree(d_x); cudaFree(d_y);
+}
+
+
 static void test_sgemm(int M, int N, int K) {
-  printf("  SGEMM %dx%dx%d ... ", M, N, K);
-  fflush(stdout);
 
   size_t size_a = (size_t)M * K * sizeof(float);
   size_t size_b = (size_t)K * N * sizeof(float);
@@ -2636,11 +3104,9 @@ static void test_sgemm(int M, int N, int K) {
     float err = fabsf(h_c[i] - h_c_ref[i]);
     if (err > max_err) max_err = err;
   }
-  printf("max_err=%.6f %s\n", max_err, max_err < 1e-2f ? "PASS" : "FAIL");
+  printf("| %-35s | %.6e | %-4s |\n", "SGEMM", max_err, max_err < 1e-2f ? "PASS" : "FAIL");
 
   // ---- SGEMM Vec4 (128×128 tile, 4×4 thread tile) ----
-  printf("  SGEMM-Vec4 %dx%dx%d ... ", M, N, K);
-  fflush(stdout);
 
   dim3 grid_vec4((N + 127) / 128, (M + 127) / 128);
   check(cudaMemset(d_c, 0, size_c), "sgemm_vec4 zero C");
@@ -2655,7 +3121,7 @@ static void test_sgemm(int M, int N, int K) {
     float err = fabsf(h_c[i] - h_c_ref[i]);
     if (err > max_err) max_err = err;
   }
-  printf("max_err=%.6f %s\n", max_err, max_err < 1e-2f ? "PASS" : "FAIL");
+  printf("| %-35s | %.6e | %-4s |\n", "SGEMM-Vec4", max_err, max_err < 1e-2f ? "PASS" : "FAIL");
 
   free(h_a); free(h_b); free(h_c); free(h_c_ref);
   cudaFree(d_a); cudaFree(d_b); cudaFree(d_c);
@@ -2664,9 +3130,8 @@ static void test_sgemm(int M, int N, int K) {
   cudaEventDestroy(stop);
 }
 
+
 static void test_hgemm_mma(int M, int N, int K) {
-  printf("  HGEMM MMA %dx%dx%d ... ", M, N, K);
-  fflush(stdout);
 
   size_t size_a = (size_t)M * K * sizeof(half);
   size_t size_b = (size_t)K * N * sizeof(half);
@@ -2731,7 +3196,7 @@ static void test_hgemm_mma(int M, int N, int K) {
     float err = fabsf(__half2float(h_c[i]) - __half2float(h_c_ref[i]));
     if (err > max_err) max_err = err;
   }
-  printf("max_err=%.6f %s\n", max_err, max_err < 1.0f ? "PASS" : "FAIL");
+  printf("| %-35s | %.6e | %-4s |\n", "HGEMM MMA", max_err, max_err < 1.0f ? "PASS" : "FAIL");
 
   free(h_a); free(h_b); free(h_b_t); free(h_c); free(h_c_ref);
   cudaFree(d_a); cudaFree(d_b); cudaFree(d_b_t); cudaFree(d_c);
@@ -2740,284 +3205,10 @@ static void test_hgemm_mma(int M, int N, int K) {
   cudaEventDestroy(stop);
 }
 
-static void test_sgemv(int M, int K) {
-  printf("  SGEMV-K128 %dx%d ... ", M, K);
-  fflush(stdout);
-
-  srand(42);
-  float *h_a = (float *)malloc((size_t)M * K * sizeof(float));
-  float *h_x = (float *)malloc((size_t)K * sizeof(float));
-  float *h_y_ref = (float *)malloc((size_t)M * sizeof(float));
-  for (int i = 0; i < M * K; i++) h_a[i] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;
-  for (int i = 0; i < K; i++) h_x[i] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;
-
-  // CPU reference: y[m] = sum_k A[m,k] * x[k]
-  for (int m = 0; m < M; m++) {
-    double sum = 0.0;
-    for (int k = 0; k < K; k++) sum += (double)h_a[m * K + k] * (double)h_x[k];
-    h_y_ref[m] = (float)sum;
-  }
-
-  float *d_a, *d_x, *d_y;
-  check(cudaMalloc(&d_a, (size_t)M * K * sizeof(float)), "sgemv alloc A");
-  check(cudaMalloc(&d_x, (size_t)K * sizeof(float)), "sgemv alloc X");
-  check(cudaMalloc(&d_y, (size_t)M * sizeof(float)), "sgemv alloc Y");
-
-  check(cudaMemcpy(d_a, h_a, (size_t)M * K * sizeof(float), cudaMemcpyHostToDevice), "sgemv H2D A");
-  check(cudaMemcpy(d_x, h_x, (size_t)K * sizeof(float), cudaMemcpyHostToDevice), "sgemv H2D X");
-
-  dim3 block(32, 4);
-  dim3 grid((M + 3) / 4);
-  sgemv_k128<<<grid, block>>>(d_a, d_x, d_y, M, K);
-  check(cudaGetLastError(), "sgemv launch");
-  check(cudaDeviceSynchronize(), "sgemv sync");
-
-  float *h_y = (float *)malloc((size_t)M * sizeof(float));
-  check(cudaMemcpy(h_y, d_y, (size_t)M * sizeof(float), cudaMemcpyDeviceToHost), "sgemv D2H");
-
-  float max_err = 0.0f;
-  for (int m = 0; m < M; m++) {
-    float err = fabsf(h_y[m] - h_y_ref[m]);
-    if (err > max_err) max_err = err;
-  }
-  printf("max_err=%.6f %s\n", max_err, max_err < 1e-2f ? "PASS" : "FAIL");
-
-  free(h_a); free(h_x); free(h_y); free(h_y_ref);
-  cudaFree(d_a); cudaFree(d_x); cudaFree(d_y);
-}
-
-static void test_block_reduce(int N) {
-  printf("  BlockReduceAll %d ... ", N);
-  fflush(stdout);
-
-  srand(42);
-  float *h_a = (float *)malloc((size_t)N * sizeof(float));
-  for (int i = 0; i < N; i++)
-    h_a[i] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;
-
-  // CPU reference: sum of all elements
-  double ref = 0.0;
-  for (int i = 0; i < N; i++) ref += (double)h_a[i];
-
-  float *d_a, *d_y;
-  check(cudaMalloc(&d_a, (size_t)N * sizeof(float)), "blockreduce alloc A");
-  check(cudaMalloc(&d_y, sizeof(float)), "blockreduce alloc Y");
-
-  check(cudaMemcpy(d_a, h_a, (size_t)N * sizeof(float), cudaMemcpyHostToDevice), "blockreduce H2D A");
-  check(cudaMemset(d_y, 0, sizeof(float)), "blockreduce zero Y");
-
-  dim3 block(128);
-  dim3 grid((N + 127) / 128);
-  block_reduce_v2<<<grid, block>>>(d_a, d_y, N);
-  check(cudaGetLastError(), "blockreduce launch");
-  check(cudaDeviceSynchronize(), "blockreduce sync");
-
-  float result;
-  check(cudaMemcpy(&result, d_y, sizeof(float), cudaMemcpyDeviceToHost), "blockreduce D2H");
-
-  float err = fabsf(result - (float)ref);
-  printf("ref=%.6f got=%.6f err=%.6f %s\n", (float)ref, result, err,
-         err < 1e-2f ? "PASS" : "FAIL");
-
-  free(h_a);
-  cudaFree(d_a); cudaFree(d_y);
-}
-
-static void test_dot(int N) {
-  printf("  Dot %d ... ", N);
-  fflush(stdout);
-
-  srand(42);
-  float *h_a = (float *)malloc((size_t)N * sizeof(float));
-  float *h_b = (float *)malloc((size_t)N * sizeof(float));
-  for (int i = 0; i < N; i++) {
-    h_a[i] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;
-    h_b[i] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;
-  }
-
-  // CPU reference
-  double ref = 0.0;
-  for (int i = 0; i < N; i++) ref += (double)h_a[i] * (double)h_b[i];
-
-  float *d_a, *d_b, *d_y;
-  check(cudaMalloc(&d_a, (size_t)N * sizeof(float)), "dot alloc A");
-  check(cudaMalloc(&d_b, (size_t)N * sizeof(float)), "dot alloc B");
-  check(cudaMalloc(&d_y, sizeof(float)), "dot alloc Y");
-
-  check(cudaMemcpy(d_a, h_a, (size_t)N * sizeof(float), cudaMemcpyHostToDevice), "dot H2D A");
-  check(cudaMemcpy(d_b, h_b, (size_t)N * sizeof(float), cudaMemcpyHostToDevice), "dot H2D B");
-  check(cudaMemset(d_y, 0, sizeof(float)), "dot zero Y");
-
-  dim3 block(128);
-  dim3 grid((N + 127) / 128);
-  dot<<<grid, block>>>(d_a, d_b, d_y, N);
-  check(cudaGetLastError(), "dot launch");
-  check(cudaDeviceSynchronize(), "dot sync");
-
-  float result;
-  check(cudaMemcpy(&result, d_y, sizeof(float), cudaMemcpyDeviceToHost), "dot D2H");
-
-  float err = fabsf(result - (float)ref);
-  printf("ref=%.6f got=%.6f err=%.6f %s\n", (float)ref, result, err,
-         err < 1e-2f ? "PASS" : "FAIL");
-
-  free(h_a); free(h_b);
-  cudaFree(d_a); cudaFree(d_b); cudaFree(d_y);
-}
-
-static void test_softmax(int N) {
-  // Use N = blockDim.x so one block processes all elements as one token.
-  constexpr int NUM_THREADS = 256;
-  if (N != NUM_THREADS) {
-    printf("  OnlineSafeSoftmax: N must be %d (got %d), skipping.\n", NUM_THREADS, N);
-    return;
-  }
-  printf("  OnlineSafeSoftmax %d ... ", N);
-  fflush(stdout);
-
-  srand(42);
-  float *h_x = (float *)malloc((size_t)N * sizeof(float));
-  float *h_y_ref = (float *)malloc((size_t)N * sizeof(float));
-  for (int i = 0; i < N; i++)
-    h_x[i] = ((float)rand() / RAND_MAX) * 10.0f - 5.0f;  // [-5, 5]
-
-  // CPU reference: softmax(x_i) = exp(x_i - max) / sum(exp(x_j - max))
-  float max_val = -FLT_MAX;
-  for (int i = 0; i < N; i++) if (h_x[i] > max_val) max_val = h_x[i];
-  double sum_exp = 0.0;
-  for (int i = 0; i < N; i++) sum_exp += (double)expf(h_x[i] - max_val);
-  for (int i = 0; i < N; i++)
-    h_y_ref[i] = expf(h_x[i] - max_val) / (float)sum_exp;
-
-  float *d_x, *d_y;
-  check(cudaMalloc(&d_x, (size_t)N * sizeof(float)), "softmax alloc X");
-  check(cudaMalloc(&d_y, (size_t)N * sizeof(float)), "softmax alloc Y");
-
-  check(cudaMemcpy(d_x, h_x, (size_t)N * sizeof(float), cudaMemcpyHostToDevice), "softmax H2D X");
-
-  dim3 block(256);
-  dim3 grid(1);  // one token covering all N elements
-  online_safe_softmax_per_token<<<grid, block>>>(d_x, d_y, N);
-  check(cudaGetLastError(), "softmax launch");
-  check(cudaDeviceSynchronize(), "softmax sync");
-
-  float *h_y = (float *)malloc((size_t)N * sizeof(float));
-  check(cudaMemcpy(h_y, d_y, (size_t)N * sizeof(float), cudaMemcpyDeviceToHost), "softmax D2H");
-
-  float max_err = 0.0f;
-  for (int i = 0; i < N; i++) {
-    float err = fabsf(h_y[i] - h_y_ref[i]);
-    if (err > max_err) max_err = err;
-  }
-  printf("max_err=%.6f %s\n", max_err, max_err < 1e-4f ? "PASS" : "FAIL");
-
-  free(h_x); free(h_y); free(h_y_ref);
-  cudaFree(d_x); cudaFree(d_y);
-}
-
-static void test_rms_norm(int N, int K) {
-  printf("  RMSNorm %dx%d ... ", N, K);
-  fflush(stdout);
-
-  srand(42);
-  float *h_x = (float *)malloc((size_t)N * K * sizeof(float));
-  float *h_y_ref = (float *)malloc((size_t)N * K * sizeof(float));
-  for (int i = 0; i < N * K; i++)
-    h_x[i] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;
-  float g = 1.5f;  // gain
-
-  // CPU reference: y = (x / rms(x)) * g
-  float epsilon = 1e-5f;
-  for (int n = 0; n < N; n++) {
-    double sum_sq = 0.0;
-    for (int k = 0; k < K; k++) sum_sq += (double)h_x[n * K + k] * (double)h_x[n * K + k];
-    float rms = sqrtf((float)sum_sq / (float)K + epsilon);
-    for (int k = 0; k < K; k++)
-      h_y_ref[n * K + k] = (h_x[n * K + k] / rms) * g;
-  }
-
-  float *d_x, *d_y;
-  check(cudaMalloc(&d_x, (size_t)N * K * sizeof(float)), "rmsnorm alloc X");
-  check(cudaMalloc(&d_y, (size_t)N * K * sizeof(float)), "rmsnorm alloc Y");
-  check(cudaMemcpy(d_x, h_x, (size_t)N * K * sizeof(float), cudaMemcpyHostToDevice), "rmsnorm H2D X");
-
-  dim3 block(128);
-  dim3 grid(N);
-  rms_norm<<<grid, block>>>(d_x, d_y, g, N, K);
-  check(cudaGetLastError(), "rmsnorm launch");
-  check(cudaDeviceSynchronize(), "rmsnorm sync");
-
-  float *h_y = (float *)malloc((size_t)N * K * sizeof(float));
-  check(cudaMemcpy(h_y, d_y, (size_t)N * K * sizeof(float), cudaMemcpyDeviceToHost), "rmsnorm D2H");
-
-  float max_err = 0.0f;
-  for (int i = 0; i < N * K; i++) {
-    float err = fabsf(h_y[i] - h_y_ref[i]);
-    if (err > max_err) max_err = err;
-  }
-  printf("max_err=%.6f %s\n", max_err, max_err < 1e-4f ? "PASS" : "FAIL");
-
-  free(h_x); free(h_y); free(h_y_ref);
-  cudaFree(d_x); cudaFree(d_y);
-}
-
-static void test_layer_norm(int N, int K) {
-  printf("  LayerNorm %dx%d ... ", N, K);
-  fflush(stdout);
-
-  srand(42);
-  float *h_x = (float *)malloc((size_t)N * K * sizeof(float));
-  float *h_y_ref = (float *)malloc((size_t)N * K * sizeof(float));
-  for (int i = 0; i < N * K; i++)
-    h_x[i] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;
-  float g = 1.5f, b = 0.3f;  // gain and bias
-
-  // CPU reference: y = ((x - mean) / std) * g + b
-  float epsilon = 1e-5f;
-  for (int n = 0; n < N; n++) {
-    double sum = 0.0;
-    for (int k = 0; k < K; k++) sum += (double)h_x[n * K + k];
-    float mean = (float)sum / (float)K;
-    double sum_sq = 0.0;
-    for (int k = 0; k < K; k++) {
-      float diff = h_x[n * K + k] - mean;
-      sum_sq += (double)diff * (double)diff;
-    }
-    float std = sqrtf((float)sum_sq / (float)K + epsilon);
-    for (int k = 0; k < K; k++)
-      h_y_ref[n * K + k] = ((h_x[n * K + k] - mean) / std) * g + b;
-  }
-
-  float *d_x, *d_y;
-  check(cudaMalloc(&d_x, (size_t)N * K * sizeof(float)), "layernorm alloc X");
-  check(cudaMalloc(&d_y, (size_t)N * K * sizeof(float)), "layernorm alloc Y");
-  check(cudaMemcpy(d_x, h_x, (size_t)N * K * sizeof(float), cudaMemcpyHostToDevice), "layernorm H2D X");
-
-  dim3 block(128);
-  dim3 grid(N);
-  layer_norm<<<grid, block>>>(d_x, d_y, g, b, N, K);
-  check(cudaGetLastError(), "layernorm launch");
-  check(cudaDeviceSynchronize(), "layernorm sync");
-
-  float *h_y = (float *)malloc((size_t)N * K * sizeof(float));
-  check(cudaMemcpy(h_y, d_y, (size_t)N * K * sizeof(float), cudaMemcpyDeviceToHost), "layernorm D2H");
-
-  float max_err = 0.0f;
-  for (int i = 0; i < N * K; i++) {
-    float err = fabsf(h_y[i] - h_y_ref[i]);
-    if (err > max_err) max_err = err;
-  }
-  printf("max_err=%.6f %s\n", max_err, max_err < 1e-4f ? "PASS" : "FAIL");
-
-  free(h_x); free(h_y); free(h_y_ref);
-  cudaFree(d_x); cudaFree(d_y);
-}
 
 static void test_flash_attn(int seqlen, int head_dim) {
   // FlashAttention-2 with split-Q, MMA m16n8k16
   int B = 1, H = 8;
-  printf("  FlashAttn-SplitQ %dx%dx%dx%d ... ", B, H, seqlen, head_dim);
-  fflush(stdout);
 
   size_t sz = (size_t)B * H * seqlen * head_dim * sizeof(half);
 
@@ -3119,178 +3310,21 @@ static void test_flash_attn(int seqlen, int head_dim) {
     float err = fabsf(__half2float(h_o[i]) - ref_o[i]);
     if (err > max_err) max_err = err;
   }
-  printf("max_err=%.6f %s\n", max_err, max_err < 1e-1f ? "PASS" : "FAIL");
+  printf("| %-35s | %.6e | %-4s |\n", "FlashAttn-SplitQ", max_err, max_err < 1e-1f ? "PASS" : "FAIL");
 
   free(h_q); free(h_k); free(h_v); free(h_o);
   free(ref_q); free(ref_k); free(ref_v); free(ref_o);
   cudaFree(d_q); cudaFree(d_k); cudaFree(d_v); cudaFree(d_o);
 }
 
-// =============================================================================
-// Phase 4 test: RoPE — 旋转位置编码
-// =============================================================================
-static void test_rope(int seq_len, int N) {
-  printf("  RoPE seq_len=%d N=%d ... ", seq_len, N);
-  fflush(stdout);
-
-  int total_pairs = seq_len * N;
-  int total_elems = total_pairs * 2;
-  size_t size = (size_t)total_elems * sizeof(float);
-
-  float *h_x = (float *)malloc(size);
-  float *h_y_ref = (float *)malloc(size);
-
-  srand(42);
-  for (int i = 0; i < total_elems; i++)
-    h_x[i] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;
-
-  // CPU reference: 2D rotation for each pair
-  for (int idx = 0; idx < total_pairs; idx++) {
-    int token_pos = idx / N;
-    int token_idx = idx % N;
-    float x1 = h_x[idx * 2];
-    float x2 = h_x[idx * 2 + 1];
-    float theta = 1.0f / powf(10000.0f, 2.0f * token_idx / (N * 2.0f));
-    float angle = (float)token_pos * theta;
-    float cos_v = cosf(angle);
-    float sin_v = sinf(angle);
-    h_y_ref[idx * 2] = x1 * cos_v - x2 * sin_v;
-    h_y_ref[idx * 2 + 1] = x1 * sin_v + x2 * cos_v;
-  }
-
-  float *d_x, *d_y;
-  check(cudaMalloc(&d_x, size), "rope alloc X");
-  check(cudaMalloc(&d_y, size), "rope alloc Y");
-  check(cudaMemcpy(d_x, h_x, size, cudaMemcpyHostToDevice), "rope H2D");
-
-  dim3 block(256);
-  dim3 grid((total_pairs + 255) / 256);
-  rope<<<grid, block>>>(d_x, d_y, seq_len, N);
-  check(cudaGetLastError(), "rope launch");
-  check(cudaDeviceSynchronize(), "rope sync");
-
-  float *h_y = (float *)malloc(size);
-  check(cudaMemcpy(h_y, d_y, size, cudaMemcpyDeviceToHost), "rope D2H");
-
-  float max_err = 0.0f;
-  for (int i = 0; i < total_elems; i++) {
-    float err = fabsf(h_y[i] - h_y_ref[i]);
-    if (err > max_err) max_err = err;
-  }
-  printf("max_err=%.6f %s\n", max_err, max_err < 1e-4f ? "PASS" : "FAIL");
-
-  free(h_x);
-  free(h_y);
-  free(h_y_ref);
-  cudaFree(d_x);
-  cudaFree(d_y);
-}
-
-// =============================================================================
-// Phase 5 test: Mat Transpose — 基础版
-// =============================================================================
-static void test_mat_transpose(int row, int col) {
-  printf("  MatTranspose %dx%d ... ", row, col);
-  fflush(stdout);
-
-  size_t size_in = (size_t)row * col * sizeof(float);
-  size_t size_out = (size_t)col * row * sizeof(float);
-
-  float *h_x = (float *)malloc(size_in);
-  float *h_y_ref = (float *)malloc(size_out);
-
-  srand(42);
-  for (int i = 0; i < row * col; i++)
-    h_x[i] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;
-
-  // CPU reference: y[j][i] = x[i][j] (row-major)
-  for (int i = 0; i < row; i++)
-    for (int j = 0; j < col; j++)
-      h_y_ref[j * row + i] = h_x[i * col + j];
-
-  float *d_x, *d_y;
-  check(cudaMalloc(&d_x, size_in), "mattrans alloc X");
-  check(cudaMalloc(&d_y, size_out), "mattrans alloc Y");
-  check(cudaMemcpy(d_x, h_x, size_in, cudaMemcpyHostToDevice), "mattrans H2D");
-
-  dim3 block(16, 16);
-  dim3 grid((col + 15) / 16, (row + 15) / 16);
-  mat_transpose<<<grid, block>>>(d_x, d_y, row, col);
-  check(cudaGetLastError(), "mattrans launch");
-  check(cudaDeviceSynchronize(), "mattrans sync");
-
-  float *h_y = (float *)malloc(size_out);
-  check(cudaMemcpy(h_y, d_y, size_out, cudaMemcpyDeviceToHost), "mattrans D2H");
-
-  float max_err = 0.0f;
-  for (int i = 0; i < col * row; i++) {
-    float err = fabsf(h_y[i] - h_y_ref[i]);
-    if (err > max_err) max_err = err;
-  }
-  printf("max_err=%.6f %s\n", max_err, max_err < 1e-6f ? "PASS" : "FAIL");
-
-  free(h_x);
-  free(h_y);
-  free(h_y_ref);
-  cudaFree(d_x);
-  cudaFree(d_y);
-}
-
-// =============================================================================
-// Phase 5 test: Mat Transpose Padded — BCF + merge_write 最佳版
-// =============================================================================
-static void test_mat_transpose_padded(int row, int col) {
-  printf("  MatTransposePadded %dx%d ... ", row, col);
-  fflush(stdout);
-
-  size_t size_in = (size_t)row * col * sizeof(float);
-  size_t size_out = (size_t)col * row * sizeof(float);
-
-  float *h_x = (float *)malloc(size_in);
-  float *h_y_ref = (float *)malloc(size_out);
-
-  srand(42);
-  for (int i = 0; i < row * col; i++)
-    h_x[i] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;
-
-  // CPU reference: y[j][i] = x[i][j] (row-major)
-  for (int i = 0; i < row; i++)
-    for (int j = 0; j < col; j++)
-      h_y_ref[j * row + i] = h_x[i * col + j];
-
-  float *d_x, *d_y;
-  check(cudaMalloc(&d_x, size_in), "mattrans_padded alloc X");
-  check(cudaMalloc(&d_y, size_out), "mattrans_padded alloc Y");
-  check(cudaMemcpy(d_x, h_x, size_in, cudaMemcpyHostToDevice), "mattrans_padded H2D");
-
-  dim3 block(16, 16);
-  dim3 grid((col + 15) / 16, (row + 63) / 64);
-  mat_transpose_padded<<<grid, block>>>(d_x, d_y, row, col);
-  check(cudaGetLastError(), "mattrans_padded launch");
-  check(cudaDeviceSynchronize(), "mattrans_padded sync");
-
-  float *h_y = (float *)malloc(size_out);
-  check(cudaMemcpy(h_y, d_y, size_out, cudaMemcpyDeviceToHost), "mattrans_padded D2H");
-
-  float max_err = 0.0f;
-  for (int i = 0; i < col * row; i++) {
-    float err = fabsf(h_y[i] - h_y_ref[i]);
-    if (err > max_err) max_err = err;
-  }
-  printf("max_err=%.6f %s\n", max_err, max_err < 1e-6f ? "PASS" : "FAIL");
-
-  free(h_x);
-  free(h_y);
-  free(h_y_ref);
-  cudaFree(d_x);
-  cudaFree(d_y);
-}
 
 int main(int argc, char *argv[]) {
   int M = 1024, N = 1024, K = 1024;
   if (argc > 3) { M = atoi(argv[1]); N = atoi(argv[2]); K = atoi(argv[3]); }
 
   printf("=== notes-v2.cu verification harness ===\n");
+  printf("| %-35s | %-8s | %-5s |\n", "Kernel", "Max Err", "Pass");
+  printf("|-------------------------------------|----------|-------|\n");
 
   test_block_reduce(N);
   test_dot(N);
