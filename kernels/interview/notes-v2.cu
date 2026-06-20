@@ -3500,7 +3500,7 @@ int main(int argc, char *argv[]) {
 
   test_block_reduce(N);
   test_dot(N);
-  test_phase2(1024);
+  test_phase2(1024); // relu, histogram, elementwise, etc.
   test_softmax(256);  // softmax kernel requires N == blockDim.x
   test_rms_norm(8, 128);
   test_layer_norm(8, 128);
