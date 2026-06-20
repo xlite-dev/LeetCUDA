@@ -1290,24 +1290,89 @@ __global__ void __launch_bounds__(256)
 #define WGMMA_WAIT_GROUP(n)                                                    \
   asm volatile("wgmma.wait_group.sync.aligned %0;\n" ::"n"(n) : "memory")
 
-// Shared memory descriptor encode: 将 smem 地址编码为 WGMMA 可用的描述符
+// SMEM_DESC_ENCODE: 将 byte 偏移编码为 WGMMA descriptor 位域中的 14-bit 值。
+// 编码规则（PTX ISA §9.7.15.5.1.2.2）：
+//   encoded = (x & 0x3FFFF) >> 4
+// 其中 0x3FFFF = 2^18 - 1 = 262143，只保留低 18 bit。
+// >>4 是因为 shared memory 地址/偏移必须 16B 对齐（2^4），低 4 bit 恒为 0，
+// 可省略以扩大可表示范围。
+// 解码：decoded = encoded << 4（回到原始 byte 值）。
 #define SMEM_DESC_ENCODE(x) ((((uint64_t)(x)) & 0x3FFFF) >> 0x4)
 
-// make_smem_desc: 创建 WGMMA 的 shared memory 矩阵描述符
-// 这里沿用原始 hgemm_wgmma 实现里的描述符字段约定：
-//   - base addr: 当前 shared memory tile 基址
-//   - leading offset: 16 bytes = 8 个 half * 2B，对应 WGMMA 在 tile 内沿 minor
-//     方向前进一次的 byte 步长
-//   - stride offset: 1024 bytes = 64 * 8 * 2B，对应跨到下一条 major stripe 的 byte 步长
-//   - bit 62: 打开 128B swizzle
-// 这些字段是当前 WGMMA/TMA 布局下的实现常量，不要把它直接背成 BM/BK 的原始字节数公式。
+// make_smem_desc: 构造 WGMMA（warpgroup MMA）的 64-bit shared memory 矩阵描述符。
+// 硬件 WGMMA（如 wgmma.mma_async.m64n128k16）需要 descA/descB 两个 64-bit 描述符，
+// 来定位 shared memory 中的 A/B tile 并告知 swizzle 模式。
+//
+// 64-bit descriptor 位域布局（参见 PTX ISA §9.7.15.5.1.2.2 & CUTLASS GmmaDescriptor）：
+//   ----------------------------------------------------------------------
+//   | 位域                | 范围      | 大小 | 含义
+//   |---------------------|-----------|------|-----------------------------
+//   | start_address       | [0, 14)   | 14   | smem 基址编码
+//   | (unused)            | [14, 16)  |  2   | -
+//   | leading_byte_offset | [16, 30)  | 14   | 次要维度的字节步长编码
+//   | (unused)            | [30, 32)  |  2   | -
+//   | stride_byte_offset  | [32, 46)  | 14   | 主要维度的字节步长编码
+//   | (unused)            | [46, 49)  |  3   | -
+//   | base_offset         | [49, 52)  |  3   | swizzle pattern 偏移
+//   | (unused)            | [52, 62)  | 10   | -
+//   | layout_type         | [62, 64)  |  2   | swizzle 模式
+//   ----------------------------------------------------------------------
+//   layout_type: 0=None, 1=128B swizzle, 2=64B swizzle, 3=32B swizzle
+//
+// K-Major + 128B swizzle + half(16-bit) 的几何推导（PTX ISA §9.7.15.5.1.2）：
+//   - 128B swizzle atom 在 128-bit 单位下为 8×8
+//   - 归一化到 half(2B) 后：atom 覆盖 8×(128/16)=64 个 K 方向元素 × 8 个 M 方向元素
+//   - 即每个 atom = 64(K) × 8(M) 个 half = 64×8×2 = 1024 bytes
+//   - 这是 stride_byte_offset=1024 的来源
+//
+//   - leading_byte_offset 在 K-Major swizzle 下 unused（hardware assumes 1），
+//     此处填 16 仅为占位，编码后为 1。
+//
+//   - base_offset=0（bits [49,52) 未显式置位），表示 smem ptr 已 1024B 对齐。
+//     若未对齐需计算 (pattern_start_addr >> 7) & 0x7。
+//
+// 参考：CUTLASS GmmaDescriptor (cute/arch/mma_sm90_desc.hpp)
 __device__ inline uint64_t make_smem_desc(half *ptr) {
+  // __cvta_generic_to_shared: 将通用地址空间中的指针转换为 shared memory 地址
+  // （一个 32-bit 的 smem byte 偏移量，相对于当前 CTA 的 shared memory 基址）。
   uint32_t addr = static_cast<uint32_t>(__cvta_generic_to_shared(ptr));
+
+  // 从全零开始：所有位域初始化为 0。
   uint64_t desc = 0x0000000000000000;
+
+  // ── bits [0, 14): start_address ──
+  // SMEM_DESC_ENCODE(addr) 将 addr 右移 4 位（丢弃低 4 个 0 bit），
+  // 只保留 14 位。硬件解码时左移 4 位恢复完整的 16B-aligned 地址。
+  // 可寻址范围：2^(14+4) = 2^18 = 256K 个 half = 512 KB 共享内存。
   desc |= SMEM_DESC_ENCODE(addr);
-  desc |= SMEM_DESC_ENCODE((uint64_t)16) << 16;   // leading dim offset bytes
-  desc |= SMEM_DESC_ENCODE((uint64_t)1024) << 32; // stride dim offset bytes
-  desc |= 1llu << 62;                             // 128B swizzle
+
+  // ── bits [16, 30): leading_byte_offset ──
+  // 原始值 16（字节），编码后为 (16 & 0x3FFFF) >> 4 = 1。
+  // << 16 将编码值放到 bits [16, 30)。
+  // K-Major + 128B swizzle 下该字段 unused（hardware assumes 1），
+  // 此处填 16 仅为占位，使编码值为 1 满足硬件预期。
+  // 若为 MN-Major 或 INTERLEAVE 布局，LBO 有实际含义：
+  //   对 INTERLEAVE: 同一 8×2 brick 内第一列到第二列的字节偏移。
+  //   对 swizzle: unused, assumed to be 1。
+  desc |= SMEM_DESC_ENCODE((uint64_t)16) << 16;
+
+  // ── bits [32, 46): stride_byte_offset ──
+  // 原始值 1024（字节），编码后为 (1024 & 0x3FFFF) >> 4 = 64。
+  // << 32 将编码值放到 bits [32, 46)。
+  // 1024 的来源（K-Major + 128B swizzle + half）：
+  //   一个 128B swizzle atom 覆盖 64(K) × 8(M) 个 half。
+  //   从 1 个 8-row stripe 到下一个 stripe 需要跨越 8 × 64 × 2 = 1024 bytes。
+  // 若为 MN-Major: SBO 是从首列到下一列的偏移（8 列一组）。
+  desc |= SMEM_DESC_ENCODE((uint64_t)1024) << 32;
+
+  // ── bits [62, 64): layout_type (swizzle mode) ──
+  // 1llu << 62  = 二进制 01 在 bits [62, 64) = layout_type = 1。
+  // 1 = 128B swizzle mode。
+  // 其他取值：0=None, 2=64B swizzle, 3=32B swizzle。
+  // 128B swizzle 将 smem 中连续的行按 128B 粒度进行 XOR 重映射，
+  // 确保同一 warp 内各线程访问不同 bank 的同一偏移时不会产生 bank conflict。
+  desc |= 1llu << 62;
+
   return desc;
 }
 
@@ -1350,19 +1415,56 @@ __device__ inline uint64_t make_smem_desc(half *ptr) {
 
 // ---- TMA Shared Memory Layout ----
 // Multi-stage pipeline: K_STAGE 个 stage，每个 stage 存储 A[BM×BK] + B[BK×BN]
+//
+// 每个 stage 包含两块 smem：
+//   A tile: [BM, BK] row-major → BK×BM 个 half，地址连续
+//   B tile: [BK, BN] row-major → BN×BK 个 half，地址连续
+// 注意 B 的 smem 布局是 row-major [BK, BN]，物理上按 K-major 排列（imm-trans-b=0），
+// 与 A 的 K-major 配合供 WGMMA 读取。128B swizzle 将 [BK,BN] row-major 重新映射为
+// K-major 布局，使得 K 维元素在 128B atom 内连续，区别于 MMA TN 布局下的 B^T[N,K]。
 template <int BM, int BN, int BK, int QSIZE> struct WgmmaSMem {
   alignas(128) half A[BM * BK * QSIZE]; // A tile: row-major [BM, BK]
-  alignas(128) half B[BK * BN * QSIZE]; // B tile: row-major [BK, BN]（即 col-major B^T）
+  alignas(128) half B[BK * BN * QSIZE]; // B tile: row-major [BK, BN]（K-major 布局，供 WGMMA imm-trans-b=0 直接读取）
 };
 
 // ---- WGMMA Kernel: Warp Specialization + TMA ----
-// 面试重点 — Warp Specialization:
-//   WG0 (128 threads): Producer — 用 TMA 异步加载 A/B 到 shared memory
-//   WG1 (128 threads): Consumer — 用 WGMMA 做矩阵乘
-//   同步: cuda::barrier（CTA 级别），Producer 发 full 信号，Consumer 发 empty 信号
-//   K_STAGE=3: 3 个 stage，Consumer 滞后 Producer 最多 2 步
+// 面试重点 — Warp Specialization（Hopper 最核心的编程模型变化）：
+//
+// 背景：传统 GEMM kernel 中，所有线程同步地"加载→计算→存回"，
+// 数据搬运和计算无法重叠。Hopper 的 TMA + WGMMA 支持将工作拆分为两个
+// warpgroup，让数据搬运和矩阵乘完全异步执行：
+//
+//   WG0 (128 threads, Producer): 仅 thread 0 提交 TMA 2D 拷贝指令，
+//     将 A/B tile 从 HBM 搬到 shared memory。
+//   WG1 (128 threads, Consumer): 所有 128 个线程参与 WGMMA 矩阵乘。
+//
+// Producer 和 Consumer 通过 cuda::barrier（CTA 级别）同步：
+//   - full[qidx]:  Producer 发信号表示 stage qidx 的数据已就绪
+//   - empty[qidx]: Consumer 发信号表示 stage qidx 的使用完毕，可被覆盖
+//
+// 本节重点理解：
+//   1) 为什么 Producer 只需要 thread 0？TMA 是硬件 DMA 指令，一次提交
+//      即可搬运整个 2D tile，无需所有线程参与。
+//   2) barrier 的 arrive count = 129：128 个 Consumer 线程 + 1 个 Producer 提交线程。
+//   3) 多 stage pipeline 使 Consumer 计算 stage qidx 的同时，
+//      Producer 可以搬运 stage (qidx+1)，隐藏 HBM→SMEM 延迟。
+//
+// Tile Hierarchy（与 MMA m16n8k16 kernel 对比）：
+//   WGMMA Atom:       m64n128k16（一次处理 64×128×16，是 MMA 的 64 倍）
+//   K Tile:           BK=64，每个 K tile 包含 BK/WGMMA_K=4 个 WGMMA atom
+//   M Tile:           BM=128，每个 M tile 包含 BM/WGMMA_M=2 个 WGMMA atom
+//   N Tile:           BN=128，单个 WGMMA_N=128 即可覆盖，无需在 N 方向分块
+//   Block Tile:       C[128,128] = A[128,64] × B[64,128]
+//   Threads:          256 = 2 warpgroups × 128 threads/warpgroup
+//     Producer(WG0):  128 threads（仅 thread 0 做 TMA 提交）
+//     Consumer(WG1):  128 threads = 4 warps（全部参与 WGMMA 和写回）
+//
+// K_STAGE=3: 3 级流水线。Consumer 滞后 Producer 最多 2 步，确保 HBM→SMEM
+// 的延迟被计算完全掩盖。
+//
 // Grid:  ((N+127)/128/S, (M+127)/128, S)，S=(N+2047)/2048，3D block swizzle
-// Block: (256, 1, 1)，2 warpgroups(Producer+Consumer)
+//   - grid.z = S 个 swizzle 分区，将连续 block 打散到不同 N 区域改善 L2 命中
+// Block: (256, 1, 1)，2 warpgroups
 // source: LeetCUDA/kernels/hgemm/wgmma/hgemm_wgmma_fp16acc_stages_tn.cu
 template <const int WGMMA_M = 64, const int WGMMA_N = 128,
           const int WGMMA_K = 16, const int BM = 128, const int BN = 128,
@@ -1379,24 +1481,39 @@ __global__ void __launch_bounds__(NUM_THREADS)
   // 这是 TMA descriptor 最容易背错的地方之一。notes 这里只保留 kernel 主体，
   // 不展开宿主侧 create_tensor_map 细节。
 
+  // Block Swizzle: 在 grid x 维度做 swizzle，改善 L2 cache 局部性
+  // bx = blockIdx.z * gridDim.x + blockIdx.x，将相邻 block 打散到不同 N 区域
   const int bx = ((int)BLOCK_SWIZZLE) * blockIdx.z * gridDim.x + blockIdx.x;
   const int by = blockIdx.y;
+  // num_consumers = (NUM_THREADS / 128) - 1 = 2 - 1 = 1（1 个 consumer WG）
+  // 这里的 -1 是因为 2 个 warpgroup 中 1 个是 producer，剩余都是 consumer
   constexpr int num_consumers = (NUM_THREADS / 128) - 1; // 1 consumer WG
+  // B_WG_M = BM / num_consumers：每个 consumer warpgroup 负责的 M 行数
+  // 当只有一个 consumer 时，它负责全部 BM=128 行
   constexpr int B_WG_M = BM / num_consumers;             // 128
 
+  // 边界检查：确保当前 block 不超出 M/N 范围
   if (bx >= div_ceil(N, BN) || by >= div_ceil(M, BM))
     return;
 
+  // ---- Shared Memory 分配 ----
+  // 动态 shared memory（由 host 侧通过 kernel launch 的 smem 参数指定大小）
+  // __align__(128) 满足 TMA 和 WGMMA 的 16B 对齐 + 128B swizzle 对齐要求
   extern __shared__ __align__(128) uint8_t smem[];
   WgmmaSMem<BM, BN, BK, K_STAGE> &s =
       *reinterpret_cast<WgmmaSMem<BM, BN, BK, K_STAGE> *>(smem);
   half *s_a = s.A;
   half *s_b = s.B;
 
-  // CTA barrier: 同步 Producer 和 Consumer
+  // ---- cuda::barrier 初始化 ----
+  // 每个 stage 有两个 barrier：
+  //   full[qidx]:  Producer thread 0 发 full 信号，128 个 Consumer 线程等 full
+  //   empty[qidx]: Consumer 发 empty 信号，Producer thread 0 等 empty
+  // 每轮参与 arrive 的总人数 = 128 (consumer) + 1 (producer) = 129
   __shared__ cuda::barrier<cuda::thread_scope_block> full[K_STAGE];
   __shared__ cuda::barrier<cuda::thread_scope_block> empty[K_STAGE];
 
+  // K 方向总 tile 数。要求 K 能被 BK 整除，否则尾 tile 被丢弃。
   const int num_blocks_k = K / BK;
   const int wg_idx = threadIdx.x / 128; // 0=Producer, 1=Consumer
   const int tid = threadIdx.x % 128;    // 0~127 within warpgroup
@@ -1404,29 +1521,47 @@ __global__ void __launch_bounds__(NUM_THREADS)
   // 初始化 barriers（仅 thread 0 执行）
   if (threadIdx.x == 0) {
     for (int i = 0; i < K_STAGE; ++i) {
-      // 这里的 129 不是“warp 数”也不是“线程块总线程数”，
-      // 而是这个 barrier 上每轮会 arrive 的参与者总数：128 个 consumer 线程 + 1 个 producer 提交线程。
+      // init 的第二个参数是 barrier 的 arrive count：
+      //   num_consumers * 128 + 1 = 1 * 128 + 1 = 129
+      // 即每轮需要 128 个 consumer 线程 + 1 个 producer 线程都 arrive 后，
+      // barrier 才翻转 phase 并唤醒等待线程。
       init(&full[i], num_consumers * 128 + 1);  // 128 consumer + 1 producer
       init(&empty[i], num_consumers * 128 + 1); // same
     }
+    // fence_proxy_async_shared_cta: 确保 barrier 在 smem 中的初始化
+    // 对 async proxy（TMA/WGMMA）可见。
     cuda::device::fence_proxy_async_shared_cta();
   }
   __syncthreads();
 
-  // ========== Producer Warpgroup (WG0) ==========
+  // ==================================================================
+  // Producer Warpgroup (WG0, threadIdx.x 0~127)
+  // 职责：提交 TMA 2D 拷贝，将 A/B tile 从 HBM 异步搬运到 SMEM。
+  // 只有 tid==0 执行实际拷贝提交，其余 127 个线程空闲。
+  // ==================================================================
   if (wg_idx == 0) {
-    if (tid == 0) { // 仅 producer 的 thread 0 执行 TMA 加载
-      // TMA 是硬件 DMA 提交指令：发起一次 descriptor+坐标提交后，后续搬运由硬件异步完成，
-      // 不需要整个 producer warpgroup 里的 128 个线程都参与拷贝。
+    if (tid == 0) {
+      // qidx: 当前操作的 stage 索引（round-robin 0 -> 1 -> 2 -> 0 -> ...）
       int qidx = 0;
       for (int block_k_iter = 0; block_k_iter < num_blocks_k;
            ++block_k_iter, ++qidx) {
         if (qidx == K_STAGE)
           qidx = 0;
 
-        // 等待 Consumer 释放此 stage（empty 信号）
+        // Step P1: 等待 Consumer 释放此 stage（empty 信号）
+        // empty[qidx].arrive() 表示 Producer 自己"已准备好等待"，
+        // 然后 wait() 阻塞直到 barrier phase 翻转（即所有 Consumer 都已 arrive）。
         empty[qidx].wait(empty[qidx].arrive());
 
+        // Step P2: 提交 TMA 2D 拷贝指令
+        // cp_async_bulk_tensor_2d_global_to_shared:
+        //   参数1(dst): smem 目标地址（当前 stage 的 A/B tile 起始位置）
+        //   参数2(tensorMap): Host 预创建的 TMA descriptor（描述源矩阵的 shape/stride/dtype）
+        //   参数3/4(coords): (k_offset, m_offset) 或 (k_offset, n_offset) 的全局坐标
+        //   参数5(barrier): 拷贝完成后自动 arrive 到此 barrier
+        //
+        // TMA 是硬件 DMA 引擎：一次指令提交即可搬运整个 2D tile，
+        // 无需线程逐元素搬运，零寄存器开销。
         // TMA 2D 加载 A tile: coords = (k_offset, m_offset)
         cuda::device::cp_async_bulk_tensor_2d_global_to_shared(
             &s_a[qidx * BK * BM], tensorMapA, block_k_iter * BK, by * BM,
@@ -1437,46 +1572,86 @@ __global__ void __launch_bounds__(NUM_THREADS)
             &s_b[qidx * BK * BN], tensorMapB, block_k_iter * BK, bx * BN,
             full[qidx]);
 
-        // 通知 Consumer 此 stage 已准备好（full 信号）
-        cuda::device::barrier_arrive_tx(full[qidx], 1,
-                                        (BK * BN + BK * BM) * sizeof(half));
+        // Step P3: 通知 Consumer 此 stage 已准备好（full 信号）
+        // barrier_arrive_tx 除了 arrive 之外还额外告知硬件：
+        // 本次 TMA 事务预期传输的字节数。
+        // Consumer 的 full[qidx].wait() 会等待这 (BK*BN+BK*BM)*sizeof(half)
+        // 字节全部写入 smem 后才返回。
+        cuda::device::barrier_arrive_tx(
+            full[qidx], 1, (BK * BN + BK * BM) * sizeof(half));
       }
     }
   }
-  // ========== Consumer Warpgroup (WG1) ==========
+  // ==================================================================
+  // Consumer Warpgroup (WG1, threadIdx.x 128~255)
+  // 职责：等待 TMA 数据就绪 -> 发射 WGMMA 做矩阵乘 -> 积累结果 -> 写回 C
+  // 所有 128 个线程（4 warps）全部参与。
+  // ==================================================================
   else {
-    // Consumer 初始时"准备就绪"，arrive 到所有 empty barriers
+    // Step C0: Consumer 初始时"准备就绪"
+    // 对所有 stage 的 empty barrier 执行 arrive，表示初始时所有 stage
+    // 都是"空的"（可被 Producer 写入）。
+    // 如果没有这一步，Producer 的 empty[qidx].wait() 在第一轮会永远阻塞。
     for (int i = 0; i < K_STAGE; ++i) {
       empty[i].arrive();
     }
 
-    // 累加器：B_WG_M/WGMMA_M=2 行 × WGMMA_N/16=8 列 = 16 组寄存器
+    // 累加器寄存器声明
+    // d[B_WG_M / WGMMA_M][WGMMA_N / 16][4]:
+    //   - d[0][*][*]: M 方向第 1 个 WGMMA atom（rows 0~63）
+    //   - d[1][*][*]: M 方向第 2 个 WGMMA atom（rows 64~127）
+    //   - d[*][g][*]: N 方向第 g 组 16 列
+    //   - d[*][*][0..3]: 4 条 uint32 寄存器，共 8 个 half（覆盖 16×16 子块）
+    // 每个线程总共 2 * 8 * 4 = 64 uint32 = 128 half
+    // 128 线程 * 128 half = 16384 half = 128 * 128 = BM*BN（刚好覆盖整个 C tile）
     uint32_t d[B_WG_M / WGMMA_M][WGMMA_N / 16][4] = {};
 
     int qidx = 0;
+    // K 维外循环：沿 K tile 迭代（BK=64，每个 K tile 做 4 次 WGMMA 累加）
     for (int block_k_iter = 0; block_k_iter < num_blocks_k;
          ++block_k_iter, ++qidx) {
       if (qidx == K_STAGE)
         qidx = 0;
 
-      // 等待 Producer 的 full 信号
+      // Step C1: 等待 Producer 的 full 信号
+      // 表示 stage qidx 的 A/B tile 数据已通过 TMA 搬运到 smem。
       full[qidx].wait(full[qidx].arrive());
 
-      // WGMMA 指令序列的常见记法是：
-      //   FENCE -> 发射一串 WGMMA -> COMMIT_GROUP -> WAIT_GROUP -> 下一轮再 FENCE
-      // fence 是为后续 WGMMA 建立可见性/顺序关系；commit 表示当前这组 WGMMA 已经发完；
-      // wait 才是真正等待已 commit 的异步矩阵乘完成。
-      // WGMMA fence: 确保 smem 写可见、accum 寄存器准备好
+      // Step C2: 发射 WGMMA 指令序列
+      //
+      // WGMMA 指令序列的固定模式：
+      //   WGMMA_FENCE -> 发射一串 WGMMA -> COMMIT_GROUP -> WAIT_GROUP
+      //
+      // WGMMA_FENCE: 确保 smem 写可见、accum 寄存器准备好。
+      //   是一条内存 fence 指令，建立 async proxy 与 generic proxy 之间的
+      //   可见性顺序。必须在发射 WGMMA 之前执行。
+      //
+      // 每个 WGMMA_M64N128K16_F16F16F16 指令：
+      //   执行 D[64*128] += A[64*16] * B[16*128]
+      //   其中 A 的 smem 指针由 descA 描述（K-major），B 由 descB 描述（K-major）
+      //   imm-trans-a=0/imm-trans-b=0 表示 A/B 都是 K-major（非转置）。
+      //   ScaleD=1: 累加模式（不清零），用于 K 维累加。
+      //   ScaleA=ScaleB=1: 不翻转符号。
       WGMMA_FENCE();
 
-      // M 维迭代：BM/WGMMA_M = 128/64 = 2
+      // M 维迭代：BM/WGMMA_M = 128/64 = 2 个 WGMMA atom
+      // 每个 atom 处理 64 行 M 方向数据。
 #pragma unroll
       for (int m_it = 0; m_it < B_WG_M / WGMMA_M; ++m_it) {
+        // wgmma_sA 指向当前 stage 中 A tile 的第 m_it 个 64*BK 子块
+        // s_a 布局：[K_STAGE][BM][BK] -> qidx * BK*BM + BK * (m_it*64)
         half *wgmma_sA = s_a + qidx * BK * BM + BK * m_it * WGMMA_M;
 
-        // K 维迭代：BK/WGMMA_K = 64/16 = 4
+        // K 维迭代：BK/WGMMA_K = 64/16 = 4 次 WGMMA（累加）
+        // 每次处理 K=16 维的矩阵乘，4 次累加后覆盖完整的 BK=64。
 #pragma unroll
         for (int k_it = 0; k_it < BK / WGMMA_K; ++k_it) {
+          // 第 k_it 次 WGMMA:
+          //   A: wgmma_sA + k_it * WGMMA_K（A 的 K 维起始位置）
+          //   B: s_b + qidx * BK * BN + k_it * WGMMA_K（B 的 K 维起始位置）
+          //   注意 B 的 smem 布局是 [BK, BN] row-major，K-major 读取时从
+          //   第 k_it*16 行开始取 16 行，每行 BN=128 列。
+          //   ScaleD=1: 累加（K 维迭代需要累积结果）
           WGMMA_M64N128K16_F16F16F16(d[m_it], wgmma_sA + k_it * WGMMA_K,
                                      s_b + qidx * BK * BN + k_it * WGMMA_K,
                                      1, // ScaleD=1: accumulate（不清零）
@@ -1484,40 +1659,77 @@ __global__ void __launch_bounds__(NUM_THREADS)
         }
       }
 
+      // Step C3: 提交并等待 WGMMA 完成
+      // COMMIT_GROUP: 将此前发射的所有 WGMMA 指令归为一组提交。
+      // WAIT_GROUP(0): 等待之前 commit 的所有 WGMMA 完成（0 表示等待所有组）。
+      // 注意 WGMMA 是异步执行（async proxy），这些指令用于同步 completion。
       WGMMA_COMMIT_GROUP();
-      WGMMA_WAIT_GROUP(0); // 等待所有 WGMMA 完成
+      WGMMA_WAIT_GROUP(0);
 
-      // 释放此 stage（发 empty 信号给 Producer）
+      // Step C4: 释放此 stage（发 empty 信号给 Producer）
+      // 通知 Producer stage qidx 的 smem 已使用完毕，可以安全覆盖。
       empty[qidx].arrive();
     }
 
-    // ===== Epilogue: 写回 C =====
-    // WGMMA m64n128k16 的输出寄存器映射可这样记：
-    //   row = warp * 16 + lane / 4
-    //   col = g * 16 + 2 * (lane % 4)
-    //   d[m_it][g][0] -> (row,     col)
-    //   d[m_it][g][1] -> (row + 8, col)
-    //   d[m_it][g][2] -> (row,     col + 8)
-    //   d[m_it][g][3] -> (row + 8, col + 8)
-    // 所以每个线程一次写回 4 个 half2，刚好覆盖当前 16x16 子块里的四个象限位置。
+    // ==================================================================
+    // Epilogue: 将寄存器中的累加结果写回 global memory C
+    // ==================================================================
+    //
+    // WGMMA m64n128k16.f16.f16.f16 的输出寄存器映射：
+    //
+    // 对 warpgroup 内每个线程，输出 64 个 half = 32 个 uint32。
+    // 这些 half 分布在 d[2][8][4] 数组中：
+    //   d[m_it][g][0]: (row, col) 和 (row, col+2) 位置的 2 个 half
+    //   d[m_it][g][1]: (row+8, col) 和 (row+8, col+2) 位置的 2 个 half
+    //   d[m_it][g][2]: (row, col+8) 和 (row, col+10) 位置的 2 个 half
+    //   d[m_it][g][3]: (row+8, col+8) 和 (row+8, col+10) 位置的 2 个 half
+    //
+    // 其中：
+    //   row = warp * 16 + lane / 4    (0~63, 4 warps * 16 rows)
+    //   col = g * 16 + 2 * (lane % 4)  (0~126, step 2, 8 g's * 16 cols)
+    //
+    // 每个线程覆盖一个 16x16 子块中的 16 个 half：
+    //   +-------+-------+
+    //   | reg[0] | reg[2] |  <- rows [row, row+8)
+    //   |(col,+2)|(col+8)|
+    //   +-------+-------+
+    //   | reg[1] | reg[3] |  <- rows [row+8, row+16)
+    //   |(col,+2)|(col+8)|
+    //   +-------+-------+
+    //   每个 reg 包含 2 个连续 half（col 和 col+2），用 uint32 存储。
+    //
+    // 三维遍历：
+    //   m_it=0: rows 0~63,  m_it=1: rows 64~127
+    //   g=0..7: 每个覆盖 16 列，8*16=128 列 ok
+    // 每个线程写 4 uint32 * 2 half/uint32 * 8 g * 2 m_it = 128 half。
+    // 128 线程 * 128 half = 16384 half = 128 * 128 ok
+
     const int lane = tid % 32;
     const int warp = tid / 32;
+    // row: 当前线程在当前 WGMMA atom 中负责的起始行
+    // warp 0~3 各负责 16 行：rows [warp*16, warp*16+15]
     const int row = warp * 16 + lane / 4;
+    // block_C: 当前 C tile 在 global memory 中的起始地址
+    // by*BM 是 M 方向偏移，bx*BN 是 N 方向偏移
     half *block_C = C + by * BM * N + bx * BN;
 
 #pragma unroll
     for (int m_it = 0; m_it < B_WG_M / WGMMA_M; ++m_it) {
-      int yo = m_it * WGMMA_M;
+      int yo = m_it * WGMMA_M; // M 方向行偏移 (0 或 64)
 #pragma unroll
       for (int g = 0; g < WGMMA_N / 16; ++g) {
-        int col = g * 16 + 2 * (lane % 4);
-        // 将 uint32 直接 reinterpret 为 half2 pair 写入 C
+        int col = g * 16 + 2 * (lane % 4); // N 方向列偏移 (0,2,4,...,14 then 16,18,...)
+        // 一次 uint32 store 写入 2 个 half（连续列 col 和 col+2）
+        // 左上象限: (row, col)
         *reinterpret_cast<uint32_t *>(&block_C[(row + yo) * N + col]) =
             d[m_it][g][0];
+        // 左下象限: (row+8, col)
         *reinterpret_cast<uint32_t *>(&block_C[(row + yo + 8) * N + col]) =
             d[m_it][g][1];
+        // 右上象限: (row, col+8)
         *reinterpret_cast<uint32_t *>(&block_C[(row + yo) * N + col + 8]) =
             d[m_it][g][2];
+        // 右下象限: (row+8, col+8)
         *reinterpret_cast<uint32_t *>(&block_C[(row + yo + 8) * N + col + 8]) =
             d[m_it][g][3];
       }
