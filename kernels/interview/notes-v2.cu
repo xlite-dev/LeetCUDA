@@ -10,15 +10,14 @@
 //
 // 10 个 Phase 覆盖：
 //   Phase 0 — 面试框架速查（GPU 架构 / Memory Hierarchy / Roofline / 优化清单）
-//   Phase 1 — 基础原语：Warp Reduce / Block Reduce（含 broadcast 增强版）
-//   Phase 2 — Elementwise：ReLU / Elementwise Add（基础 + float4 向量化）
+//   Phase 1 — 基础原语：Warp Reduce / Block Reduce / Dot Product（含 broadcast 增强版）
+//   Phase 2 — Elementwise：ReLU / Elementwise Add / Histogram（基础 + float4 向量化 + atomic）
 //   Phase 3 — Softmax：naive → safe → online + RMS/Layer Norm
-//   Phase 4 — GEMV：SGEMV K32/K128/K16（warp-per-row）
-//   Phase 5 — GEMM ★：SGEMM → HGEMM → MMA m16n8k16(TN布局) → WGMMA m64n128k16
-//   Phase 6 — RoPE：旋转位置编码（Llama 风格 theta=10000）
-//   Phase 7 — Mat Transpose：基础版 + BCF merge_write 最佳版（Bank Conflict专题） 
-//   Phase 8 — 杂项：Dot Product / Block Reduce All / Histogram 
-//   Phase 9 — FlashAttention split_q（FA-2, 含 online softmax + P@V 寄存器复用）
+//   Phase 4 — RoPE：旋转位置编码（Llama 风格 theta=10000）
+//   Phase 5 — Mat Transpose：基础版 + BCF merge_write 最佳版（Bank Conflict专题）
+//   Phase 6 — GEMV：SGEMV K32/K128/K16（warp-per-row）
+//   Phase 7 — GEMM ★：SGEMM → HGEMM → MMA m16n8k16(TN布局) → WGMMA m64n128k16 
+//   Phase 8 — FlashAttention split_q（FA-2, 含 online softmax + P@V 寄存器复用）
 //
 // =============================================================================
 // Phase 0: 面试框架速查（纯注释，面试开场必备的基础知识）
@@ -93,7 +92,7 @@
 //
 // GEMM (M=N=K=4096):
 //   FLOPs = 2 × M × N × K = 2 × 4096³ ≈ 137 GFLOPS
-//   Bytes  = (M×K + K×N + M×N) × sizeof(float) ≈ 200 MB
+//   Bytes = (M×K + K×N + M×N) × sizeof(float) ≈ 200 MB
 //   AI    ≈ 137G / 200M ≈ 685 FLOPS/Byte → compute-bound（远超 H100 ridge point：
 //   FP16 TC ≈ 295:1，FP32 ≈ 20:1）
 //
@@ -248,6 +247,95 @@ __device__ float block_reduce_max(float val) {
   return value;
 }
 
+// ---- Dot Product: y = sum(a[i] * b[i]) ----
+// 核心模式：elementwise 乘法 → block reduce → atomicAdd 全局累加
+// Grid:  ((N + 127) / 128, 1, 1)
+// Block: (128, 1, 1)
+// source: LeetCUDA/kernels/dot-product/dot_product.cu
+template <const int NUM_THREADS = 128>
+__global__ void dot(float *a, float *b, float *y, int N) {
+  int tid = threadIdx.x;
+  int idx = blockIdx.x * NUM_THREADS + tid;
+  constexpr int NUM_WARPS = (NUM_THREADS + WARP_SIZE - 1) / WARP_SIZE;
+  __shared__ float reduce_smem[NUM_WARPS];
+
+  float prod = (idx < N) ? a[idx] * b[idx] : 0.0f;
+  int warp = tid / WARP_SIZE;
+  int lane = tid % WARP_SIZE;
+
+  prod = warp_reduce_sum<WARP_SIZE>(prod);
+  if (lane == 0)
+    reduce_smem[warp] = prod;
+  __syncthreads();
+
+  prod = (lane < NUM_WARPS) ? reduce_smem[lane] : 0.0f;
+  if (warp == 0) // 只需要 warp 0 的线程继续 reduce 即可
+    prod = warp_reduce_sum<NUM_WARPS>(prod);
+  if (tid == 0)
+    atomicAdd(y, prod);
+}
+
+// Dot Product + float4
+// Grid:  ((N + 127) / 128, 1, 1)
+// Block: (32, 1, 1)，128/4=32
+// 注意：该版本默认输入地址满足 float4 对齐；最适合 N 按 4 对齐的场景
+// source: LeetCUDA/kernels/dot-product/dot_product.cu
+template <const int NUM_THREADS = 128 / 4>
+__global__ void dot_vec4(float *a, float *b, float *y, int N) {
+  int tid = threadIdx.x;
+  int idx = (blockIdx.x * NUM_THREADS + tid) * 4;
+  constexpr int NUM_WARPS = (NUM_THREADS + WARP_SIZE - 1) / WARP_SIZE;
+  __shared__ float reduce_smem[NUM_WARPS];
+
+  float4 reg_a = FLOAT4(a[idx]);
+  float4 reg_b = FLOAT4(b[idx]);
+  float prod = (idx < N) ? (reg_a.x * reg_b.x + reg_a.y * reg_b.y +
+                            reg_a.z * reg_b.z + reg_a.w * reg_b.w)
+                         : 0.0f;
+  int warp = tid / WARP_SIZE;
+  int lane = tid % WARP_SIZE;
+
+  prod = warp_reduce_sum<WARP_SIZE>(prod);
+  if (lane == 0)
+    reduce_smem[warp] = prod;
+  __syncthreads();
+
+  prod = (lane < NUM_WARPS) ? reduce_smem[lane] : 0.0f;
+  if (warp == 0)
+    prod = warp_reduce_sum<NUM_WARPS>(prod);
+  if (tid == 0)
+    atomicAdd(y, prod);
+}
+
+// ---- Block Reduce Sum All: y = sum(a[0..N-1]) ----
+// 多 block 各自做 warp→smem→warp0 reduce，然后 atomicAdd 到全局 y
+// 跨 block 求和的常见模式，适合 N 较大时使用；
+// Grid:  ((N + 127) / 128, 1, 1)
+// Block: (128, 1, 1)
+// source: LeetCUDA/kernels/reduce/block_all_reduce.cu
+template <const int NUM_THREADS = 128>
+__global__ void block_reduce_v2(float *a, float *y, int N) {
+  int tid = threadIdx.x;
+  int idx = blockIdx.x * NUM_THREADS + tid;
+  constexpr int NUM_WARPS = (NUM_THREADS + WARP_SIZE - 1) / WARP_SIZE;
+  __shared__ float reduce_smem[NUM_WARPS];
+
+  float sum = (idx < N) ? a[idx] : 0.0f;
+  int warp = tid / WARP_SIZE;
+  int lane = tid % WARP_SIZE;
+
+  sum = warp_reduce_sum<WARP_SIZE>(sum);
+  if (lane == 0)
+    reduce_smem[warp] = sum;
+  __syncthreads();
+
+  sum = (lane < NUM_WARPS) ? reduce_smem[lane] : 0.0f;
+  if (warp == 0)
+    sum = warp_reduce_sum<NUM_WARPS>(sum);
+  if (tid == 0)
+    atomicAdd(y, sum);
+}
+
 // =============================================================================
 // Phase 2: Elementwise Ops（逐元素操作，演示 coalesced access + vectorize）
 // =============================================================================
@@ -316,6 +404,17 @@ __global__ void elementwise_add_vec4(float *a, float *b, float *c, int N) {
       c[idx + i] = a[idx + i] + b[idx + i];
     }
   }
+}
+
+// ---- Histogram: y[a[i]]++ ----
+// 演示 atomicAdd 的用法：多个线程可能同时更新同一个 bin
+// Grid:  ((N + 255) / 256, 1, 1)
+// Block: (256, 1, 1)
+// source: LeetCUDA/kernels/histogram/histogram.cu
+__global__ void histogram(int *a, int *y, int N) {
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx < N)
+    atomicAdd(&(y[a[idx]]), 1);
 }
 
 // =============================================================================
@@ -607,7 +706,127 @@ __global__ void layer_norm_vec4(float *x, float *y, float g, float b, int N,
 }
 
 // =============================================================================
-// Phase 4: GEMV — 矩阵向量乘（M or N = 1, 纯 memory-bound 算子，warp-per-row 策略）
+// Phase 4: RoPE — 旋转位置编码（Rotary Position Embedding）
+// =============================================================================
+// 面试要点：
+//   - RoPE 数学公式: 对每对相邻维度做 2D 旋转
+//     [x1']   [cos(θ)  -sin(θ)] [x1]
+//     [x2'] = [sin(θ)   cos(θ)] [x2]
+//   - θ_i = 1 / (theta^(2i/d)), theta=10000.0f（Llama 风格）
+//   - token_pos = idx / N: token 在序列中的位置
+//   - token_idx = idx % N: token 内的维度对索引
+//   - 输入 [seq_len, hidden_size], 输出同形状
+
+// Grid:  ((seq_len * N + 255) / 256, 1, 1)
+// Block: (256, 1, 1)
+// source: LeetCUDA/kernels/rope/rope.cu
+__global__ void rope(float *x, float *out, int seq_len, int N) {
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  float x1 = x[idx * 2];
+  float x2 = x[idx * 2 + 1];
+  int token_pos = idx / N; // 序列位置
+  int token_idx = idx % N; // 维度对索引
+
+  // 频率计算: θ_i = 1 / (10000^(2i/d))
+  float exp_v = 1.0f / powf(10000.0f, 2 * token_idx / (N * 2.0f));
+  float sin_v = sinf(token_pos * exp_v);
+  float cos_v = cosf(token_pos * exp_v);
+
+  // 2D 旋转
+  float out1 = x1 * cos_v - x2 * sin_v;
+  float out2 = x1 * sin_v + x2 * cos_v;
+  out[idx * 2] = out1;
+  out[idx * 2 + 1] = out2;
+}
+
+// =============================================================================
+// Phase 5: Mat Transpose — 矩阵转置（Bank Conflict 专题）
+// =============================================================================
+// 面试要点（Bank Conflict 专题）：
+//   - Shared memory 有 32 个 bank，每个 bank 4 bytes（32-bit）
+//   - 同一 warp 的多个线程访问同一 bank 的不同地址 → bank conflict
+//   - n-way bank conflict: n 个线程冲突 → 访问串行化为 n 次
+//   - 解决方案：PAD（在每行末尾加 1 个元素，打破地址对齐）
+//
+// 转置的四步演进：
+//   naive: 非合并写入（列优先写）→ 每个 warp 产生 32 次内存事务
+//   shared: 写入 smem（行优先）→ 从 smem 读取（列优先）→ 合并写入 gmem
+//   BCF:   smem 布局 [WARP_SIZE_S*4][WARP_SIZE_S+PAD] = [64][17]，PAD=1 加在第二维消除 bank conflict
+//   merge_write: 进一步将 4 次 separate store 合并为 1 次 float4 store
+// 注：本文件仅实现 Level 1(naive) 与 Level 4(BCF+merge_write)，Level 2/3 省略
+
+// ---- Level 1: 基础版（2D 索引，合并读 + 非合并写）----
+// 每个线程处理 1 个元素，block(16,16)
+// 读：x 按行优先访问，warp 的 32 线程访问 32 个连续地址 → 合并读取 ✓
+// 写：y 按列优先写入，32 线程跨 row 行分散 → 非合并写入 ✗（32 次内存事务）
+// Grid:  ((col + 15) / 16, (row + 15) / 16, 1)，每线程 1 元素
+// Block: (16, 16, 1)
+// source: LeetCUDA/kernels/mat-transpose/mat_transpose.cu
+__global__ void mat_transpose(float *x, float *y, const int row, const int col) {
+  const int global_x = blockIdx.x * blockDim.x + threadIdx.x;
+  const int global_y = blockIdx.y * blockDim.y + threadIdx.y;
+  if (global_y < row && global_x < col) {
+    // 读取：x[global_x][global_y] = x[global_x * col + global_y]，行优先，合并
+    // 写入：y[global_y][global_x] = y[global_y * row +
+    // global_x]，列优先，非合并
+    y[global_y * row + global_x] = x[global_x * col + global_y];
+  }
+}
+
+// ---- Level 4: 最佳版（shared memory + bank conflict fix + merge write）----
+
+// Grid:  ((col + 15) / 16, (row + 63) / 64, 1)，每线程 4 元素(float4)
+// Block: (16, 16, 1)
+// 注意：该版本默认按 float4 打包写回；最适合 row 能按 4 对齐的场景
+// source: LeetCUDA/kernels/mat-transpose/mat_transpose.cu
+__global__ void mat_transpose_padded(
+    float *x, float *y, const int row, const int col) {
+  const int global_x = blockIdx.x * blockDim.x + threadIdx.x;
+  const int global_y = blockIdx.y * blockDim.y + threadIdx.y;
+  const int local_x = threadIdx.x;
+  const int local_y = threadIdx.y;
+
+  constexpr int WARP_SIZE_S = 16;
+  constexpr int PAD = 1;
+  // Bank conflict fix: 每行多 1 个元素，打破 32-bank 对齐
+  __shared__ float tile[WARP_SIZE_S * 4][WARP_SIZE_S + PAD];
+
+  if (global_y * 4 < row && global_x < col) {
+    // Step 1: 从 global memory 读取 4 行，写入 shared
+    // memory（行优先，合并读取）
+    float4 x_val;
+    x_val.x = x[(global_y * 4) * col + global_x];
+    x_val.y = x[(global_y * 4 + 1) * col + global_x];
+    x_val.z = x[(global_y * 4 + 2) * col + global_x];
+    x_val.w = x[(global_y * 4 + 3) * col + global_x];
+    tile[local_y * 4][local_x] = x_val.x;
+    tile[local_y * 4 + 1][local_x] = x_val.y;
+    tile[local_y * 4 + 2][local_x] = x_val.z;
+    tile[local_y * 4 + 3][local_x] = x_val.w;
+    __syncthreads();
+
+    // Step 2: 从 shared memory 读取（"转置"方向），合并写入 global memory
+    float4 smem_val;
+    smem_val.x = tile[local_x * 4][local_y];
+    smem_val.y = tile[local_x * 4 + 1][local_y];
+    smem_val.z = tile[local_x * 4 + 2][local_y];
+    smem_val.w = tile[local_x * 4 + 3][local_y];
+
+    const int gid_x = blockIdx.x * blockDim.x;
+    const int gid_y = blockIdx.y * blockDim.y * 4;
+    const int out_y = gid_y + local_x * 4;
+    const int out_x = gid_x + local_y;
+
+    // 逐元素写回（避免 reinterpret_cast<float4> 的对齐要求）
+    y[out_x * row + out_y + 0] = smem_val.x;
+    y[out_x * row + out_y + 1] = smem_val.y;
+    y[out_x * row + out_y + 2] = smem_val.z;
+    y[out_x * row + out_y + 3] = smem_val.w;
+  }
+}
+
+// =============================================================================
+// Phase 6: GEMV — 矩阵向量乘（M or N = 1, 纯 memory-bound 算子，warp-per-row 策略）
 // =============================================================================
 // 面试要点：
 //   - GEMV 是典型的 memory-bound 算子：AI ≈ O(1)，瓶颈在内存带宽
@@ -709,7 +928,7 @@ __global__ void sgemv_k16(float *A, float *x, float *y, int M, int K) {
 }
 
 // =============================================================================
-// Phase 5: GEMM — 矩阵矩阵乘（GPU 最重要的算子，面试核心考点）
+// Phase 7: GEMM — 矩阵矩阵乘（GPU 最重要的算子，面试核心考点）
 // =============================================================================
 // 面试要点（GEMM 优化五层金字塔）：
 //   Level 1 — Tiling（分块 + shared memory）：将数据从 HBM 搬到 SMEM 复用
@@ -1739,235 +1958,7 @@ __global__ void __launch_bounds__(NUM_THREADS)
 #endif /* __CUDA_ARCH__ >= 900 */
 
 // =============================================================================
-// Phase 6: RoPE — 旋转位置编码（Rotary Position Embedding）
-// =============================================================================
-// 面试要点：
-//   - RoPE 数学公式: 对每对相邻维度做 2D 旋转
-//     [x1']   [cos(θ)  -sin(θ)] [x1]
-//     [x2'] = [sin(θ)   cos(θ)] [x2]
-//   - θ_i = 1 / (theta^(2i/d)), theta=10000.0f（Llama 风格）
-//   - token_pos = idx / N: token 在序列中的位置
-//   - token_idx = idx % N: token 内的维度对索引
-//   - 输入 [seq_len, hidden_size], 输出同形状
-
-// Grid:  ((seq_len * N + 255) / 256, 1, 1)
-// Block: (256, 1, 1)
-// source: LeetCUDA/kernels/rope/rope.cu
-__global__ void rope(float *x, float *out, int seq_len, int N) {
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  float x1 = x[idx * 2];
-  float x2 = x[idx * 2 + 1];
-  int token_pos = idx / N; // 序列位置
-  int token_idx = idx % N; // 维度对索引
-
-  // 频率计算: θ_i = 1 / (10000^(2i/d))
-  float exp_v = 1.0f / powf(10000.0f, 2 * token_idx / (N * 2.0f));
-  float sin_v = sinf(token_pos * exp_v);
-  float cos_v = cosf(token_pos * exp_v);
-
-  // 2D 旋转
-  float out1 = x1 * cos_v - x2 * sin_v;
-  float out2 = x1 * sin_v + x2 * cos_v;
-  out[idx * 2] = out1;
-  out[idx * 2 + 1] = out2;
-}
-
-// =============================================================================
-// Phase 7: Mat Transpose — 矩阵转置（Bank Conflict 专题）
-// =============================================================================
-// 面试要点（Bank Conflict 专题）：
-//   - Shared memory 有 32 个 bank，每个 bank 4 bytes（32-bit）
-//   - 同一 warp 的多个线程访问同一 bank 的不同地址 → bank conflict
-//   - n-way bank conflict: n 个线程冲突 → 访问串行化为 n 次
-//   - 解决方案：PAD（在每行末尾加 1 个元素，打破地址对齐）
-//
-// 转置的四步演进：
-//   naive: 非合并写入（列优先写）→ 每个 warp 产生 32 次内存事务
-//   shared: 写入 smem（行优先）→ 从 smem 读取（列优先）→ 合并写入 gmem
-//   BCF:   smem 布局 [WARP_SIZE_S*4][WARP_SIZE_S+PAD] = [64][17]，PAD=1 加在第二维消除 bank conflict
-//   merge_write: 进一步将 4 次 separate store 合并为 1 次 float4 store
-// 注：本文件仅实现 Level 1(naive) 与 Level 4(BCF+merge_write)，Level 2/3 省略
-
-// ---- Level 1: 基础版（2D 索引，合并读 + 非合并写）----
-// 每个线程处理 1 个元素，block(16,16)
-// 读：x 按行优先访问，warp 的 32 线程访问 32 个连续地址 → 合并读取 ✓
-// 写：y 按列优先写入，32 线程跨 row 行分散 → 非合并写入 ✗（32 次内存事务）
-// Grid:  ((col + 15) / 16, (row + 15) / 16, 1)，每线程 1 元素
-// Block: (16, 16, 1)
-// source: LeetCUDA/kernels/mat-transpose/mat_transpose.cu
-__global__ void mat_transpose(float *x, float *y, const int row, const int col) {
-  const int global_x = blockIdx.x * blockDim.x + threadIdx.x;
-  const int global_y = blockIdx.y * blockDim.y + threadIdx.y;
-  if (global_y < row && global_x < col) {
-    // 读取：x[global_x][global_y] = x[global_x * col + global_y]，行优先，合并
-    // 写入：y[global_y][global_x] = y[global_y * row +
-    // global_x]，列优先，非合并
-    y[global_y * row + global_x] = x[global_x * col + global_y];
-  }
-}
-
-// ---- Level 4: 最佳版（shared memory + bank conflict fix + merge write）----
-
-// Grid:  ((col + 15) / 16, (row + 63) / 64, 1)，每线程 4 元素(float4)
-// Block: (16, 16, 1)
-// 注意：该版本默认按 float4 打包写回；最适合 row 能按 4 对齐的场景
-// source: LeetCUDA/kernels/mat-transpose/mat_transpose.cu
-__global__ void mat_transpose_padded(
-    float *x, float *y, const int row, const int col) {
-  const int global_x = blockIdx.x * blockDim.x + threadIdx.x;
-  const int global_y = blockIdx.y * blockDim.y + threadIdx.y;
-  const int local_x = threadIdx.x;
-  const int local_y = threadIdx.y;
-
-  constexpr int WARP_SIZE_S = 16;
-  constexpr int PAD = 1;
-  // Bank conflict fix: 每行多 1 个元素，打破 32-bank 对齐
-  __shared__ float tile[WARP_SIZE_S * 4][WARP_SIZE_S + PAD];
-
-  if (global_y * 4 < row && global_x < col) {
-    // Step 1: 从 global memory 读取 4 行，写入 shared
-    // memory（行优先，合并读取）
-    float4 x_val;
-    x_val.x = x[(global_y * 4) * col + global_x];
-    x_val.y = x[(global_y * 4 + 1) * col + global_x];
-    x_val.z = x[(global_y * 4 + 2) * col + global_x];
-    x_val.w = x[(global_y * 4 + 3) * col + global_x];
-    tile[local_y * 4][local_x] = x_val.x;
-    tile[local_y * 4 + 1][local_x] = x_val.y;
-    tile[local_y * 4 + 2][local_x] = x_val.z;
-    tile[local_y * 4 + 3][local_x] = x_val.w;
-    __syncthreads();
-
-    // Step 2: 从 shared memory 读取（"转置"方向），合并写入 global memory
-    float4 smem_val;
-    smem_val.x = tile[local_x * 4][local_y];
-    smem_val.y = tile[local_x * 4 + 1][local_y];
-    smem_val.z = tile[local_x * 4 + 2][local_y];
-    smem_val.w = tile[local_x * 4 + 3][local_y];
-
-    const int gid_x = blockIdx.x * blockDim.x;
-    const int gid_y = blockIdx.y * blockDim.y * 4;
-    const int out_y = gid_y + local_x * 4;
-    const int out_x = gid_x + local_y;
-
-    // 逐元素写回（避免 reinterpret_cast<float4> 的对齐要求）
-    y[out_x * row + out_y + 0] = smem_val.x;
-    y[out_x * row + out_y + 1] = smem_val.y;
-    y[out_x * row + out_y + 2] = smem_val.z;
-    y[out_x * row + out_y + 3] = smem_val.w;
-  }
-}
-
-// =============================================================================
-// Phase 8: 杂项 Ops — Dot Product / Block All Reduce / Histogram
-// =============================================================================
-// 面试要点：
-//   - Dot Product: elementwise mul + reduce，演示两种 reduce 模式结合
-//   - Block All Reduce: 多 block 各自做 reduce，最后 atomicAdd 到全局结果
-//   - Histogram: global atomicAdd 模式，演示多线程竞争同一 bin 的原子更新
-
-// ---- Dot Product: y = sum(a[i] * b[i]) ----
-// 核心模式：elementwise 乘法 → block reduce → atomicAdd 全局累加
-// Grid:  ((N + 127) / 128, 1, 1)
-// Block: (128, 1, 1)
-// source: LeetCUDA/kernels/dot-product/dot_product.cu
-template <const int NUM_THREADS = 128>
-__global__ void dot(float *a, float *b, float *y, int N) {
-  int tid = threadIdx.x;
-  int idx = blockIdx.x * NUM_THREADS + tid;
-  constexpr int NUM_WARPS = (NUM_THREADS + WARP_SIZE - 1) / WARP_SIZE;
-  __shared__ float reduce_smem[NUM_WARPS];
-
-  float prod = (idx < N) ? a[idx] * b[idx] : 0.0f;
-  int warp = tid / WARP_SIZE;
-  int lane = tid % WARP_SIZE;
-
-  prod = warp_reduce_sum<WARP_SIZE>(prod);
-  if (lane == 0)
-    reduce_smem[warp] = prod;
-  __syncthreads();
-
-  prod = (lane < NUM_WARPS) ? reduce_smem[lane] : 0.0f;
-  if (warp == 0) // 只需要 warp 0 的线程继续 reduce 即可
-    prod = warp_reduce_sum<NUM_WARPS>(prod);
-  if (tid == 0)
-    atomicAdd(y, prod);
-}
-
-// Dot Product + float4
-// Grid:  ((N + 127) / 128, 1, 1)
-// Block: (32, 1, 1)，128/4=32
-// 注意：该版本默认输入地址满足 float4 对齐；最适合 N 按 4 对齐的场景
-// source: LeetCUDA/kernels/dot-product/dot_product.cu
-template <const int NUM_THREADS = 128 / 4>
-__global__ void dot_vec4(float *a, float *b, float *y, int N) {
-  int tid = threadIdx.x;
-  int idx = (blockIdx.x * NUM_THREADS + tid) * 4;
-  constexpr int NUM_WARPS = (NUM_THREADS + WARP_SIZE - 1) / WARP_SIZE;
-  __shared__ float reduce_smem[NUM_WARPS];
-
-  float4 reg_a = FLOAT4(a[idx]);
-  float4 reg_b = FLOAT4(b[idx]);
-  float prod = (idx < N) ? (reg_a.x * reg_b.x + reg_a.y * reg_b.y +
-                            reg_a.z * reg_b.z + reg_a.w * reg_b.w)
-                         : 0.0f;
-  int warp = tid / WARP_SIZE;
-  int lane = tid % WARP_SIZE;
-
-  prod = warp_reduce_sum<WARP_SIZE>(prod);
-  if (lane == 0)
-    reduce_smem[warp] = prod;
-  __syncthreads();
-
-  prod = (lane < NUM_WARPS) ? reduce_smem[lane] : 0.0f;
-  if (warp == 0)
-    prod = warp_reduce_sum<NUM_WARPS>(prod);
-  if (tid == 0)
-    atomicAdd(y, prod);
-}
-
-// ---- Block Reduce Sum All: y = sum(a[0..N-1]) ----
-// 多 block 各自做 warp→smem→warp0 reduce，然后 atomicAdd 到全局 y
-// 跨 block 求和的常见模式，适合 N 较大时使用；
-// Grid:  ((N + 127) / 128, 1, 1)
-// Block: (128, 1, 1)
-// source: LeetCUDA/kernels/reduce/block_all_reduce.cu
-template <const int NUM_THREADS = 128>
-__global__ void block_reduce_v2(float *a, float *y, int N) {
-  int tid = threadIdx.x;
-  int idx = blockIdx.x * NUM_THREADS + tid;
-  constexpr int NUM_WARPS = (NUM_THREADS + WARP_SIZE - 1) / WARP_SIZE;
-  __shared__ float reduce_smem[NUM_WARPS];
-
-  float sum = (idx < N) ? a[idx] : 0.0f;
-  int warp = tid / WARP_SIZE;
-  int lane = tid % WARP_SIZE;
-
-  sum = warp_reduce_sum<WARP_SIZE>(sum);
-  if (lane == 0)
-    reduce_smem[warp] = sum;
-  __syncthreads();
-
-  sum = (lane < NUM_WARPS) ? reduce_smem[lane] : 0.0f;
-  if (warp == 0)
-    sum = warp_reduce_sum<NUM_WARPS>(sum);
-  if (tid == 0)
-    atomicAdd(y, sum);
-}
-
-// ---- Histogram: y[a[i]]++ ----
-// 演示 atomicAdd 的用法：多个线程可能同时更新同一个 bin
-// Grid:  ((N + 255) / 256, 1, 1)
-// Block: (256, 1, 1)
-// source: LeetCUDA/kernels/histogram/histogram.cu
-__global__ void histogram(int *a, int *y, int N) {
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  if (idx < N)
-    atomicAdd(&(y[a[idx]]), 1);
-}
-
-// =============================================================================
-// Phase 9: FlashAttention-2 (Split-Q + MMA m16n8k16)
+// Phase 8: FlashAttention-2 (Split-Q + MMA m16n8k16)
 // =============================================================================
 // 面试要点（FlashAttention 算法）：
 //   1. 核心问题：标准 Attention 的 O(N^2) 中间矩阵 (S=QK^T) 必须写入 HBM，
@@ -3136,7 +3127,7 @@ static void test_flash_attn(int seqlen, int head_dim) {
 }
 
 // =============================================================================
-// Phase 6 test: RoPE — 旋转位置编码
+// Phase 4 test: RoPE — 旋转位置编码
 // =============================================================================
 static void test_rope(int seq_len, int N) {
   printf("  RoPE seq_len=%d N=%d ... ", seq_len, N);
@@ -3196,7 +3187,7 @@ static void test_rope(int seq_len, int N) {
 }
 
 // =============================================================================
-// Phase 7 test: Mat Transpose — 基础版
+// Phase 5 test: Mat Transpose — 基础版
 // =============================================================================
 static void test_mat_transpose(int row, int col) {
   printf("  MatTranspose %dx%d ... ", row, col);
@@ -3246,7 +3237,7 @@ static void test_mat_transpose(int row, int col) {
 }
 
 // =============================================================================
-// Phase 7 test: Mat Transpose Padded — BCF + merge_write 最佳版
+// Phase 5 test: Mat Transpose Padded — BCF + merge_write 最佳版
 // =============================================================================
 static void test_mat_transpose_padded(int row, int col) {
   printf("  MatTransposePadded %dx%d ... ", row, col);
