@@ -2116,8 +2116,7 @@ __global__ void __launch_bounds__(WARP_SIZE *kMmaTileSeqLenQ *kMmaTileSeqLenK)
 
   // ---- Online Softmax persistent state ----
   // lane_block_row_max_old[i][r]: running max for row r of warp tile i
-  // lane_block_row_sum_old[i][r]: running denominator l for row r of warp tile
-  // i
+  // lane_block_row_sum_old[i][r]: running denominator l for row r of warp tile i
   float lane_block_row_max_old[kWarpTileSeqLenQ][2];
   float lane_block_row_sum_old[kWarpTileSeqLenQ][2];
   fill_2D_regs<float, kWarpTileSeqLenQ, 2>(lane_block_row_max_old, -INFINITY);
@@ -2657,8 +2656,131 @@ static void test_dot(int N) {
   printf("| %-35s | %.6e | %-4s |\n", "Dot", err,
          err < 1e-2f ? "PASS" : "FAIL");
 
+  // ---- Dot Vec4 ----
+  check(cudaMemset(d_y, 0, sizeof(float)), "dot_vec4 zero Y");
+  dim3 block_v4(32);
+  dot_vec4<<<grid, block_v4>>>(d_a, d_b, d_y, N);
+  check(cudaGetLastError(), "dot_vec4 launch");
+  check(cudaDeviceSynchronize(), "dot_vec4 sync");
+
+  check(cudaMemcpy(&result, d_y, sizeof(float), cudaMemcpyDeviceToHost), "dot_vec4 D2H");
+  float err_v4 = fabsf(result - (float)ref);
+  printf("| %-35s | %.6e | %-4s |\n", "Dot-Vec4", err_v4, err_v4 < 1e-2f ? "PASS" : "FAIL");
+
   free(h_a); free(h_b);
   cudaFree(d_a); cudaFree(d_b); cudaFree(d_y);
+}
+
+
+static void test_phase2(int N) {
+  srand(42);
+  float *h_x = (float *)malloc((size_t)N * sizeof(float));
+  float *h_y = (float *)malloc((size_t)N * sizeof(float));
+  for (int i = 0; i < N; i++)
+    h_x[i] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;
+
+  float *d_x, *d_y;
+  check(cudaMalloc(&d_x, (size_t)N * sizeof(float)), "phase2 alloc X");
+  check(cudaMalloc(&d_y, (size_t)N * sizeof(float)), "phase2 alloc Y");
+  check(cudaMemcpy(d_x, h_x, (size_t)N * sizeof(float), cudaMemcpyHostToDevice), "phase2 H2D");
+
+  // ---- ReLU ----
+  for (int i = 0; i < N; i++) h_y[i] = fmaxf(0.0f, h_x[i]);
+  dim3 block256(256);
+  dim3 grid256((N + 255) / 256);
+  relu<<<grid256, block256>>>(d_x, d_y, N);
+  check(cudaGetLastError(), "relu launch");
+  check(cudaDeviceSynchronize(), "relu sync");
+  check(cudaMemcpy(h_y, d_y, (size_t)N * sizeof(float), cudaMemcpyDeviceToHost), "relu D2H");
+  float max_err = 0.0f;
+  for (int i = 0; i < N; i++) {
+    float expected = fmaxf(0.0f, h_x[i]);
+    float err = fabsf(h_y[i] - expected);
+    if (err > max_err) max_err = err;
+  }
+  printf("| %-35s | %.6e | %-4s |\n", "ReLU", max_err, max_err < 1e-4f ? "PASS" : "FAIL");
+
+  // ---- ReLU Vec4 ----
+  dim3 block64(64);
+  relu_vec4<<<grid256, block64>>>(d_x, d_y, N);
+  check(cudaGetLastError(), "relu_vec4 launch");
+  check(cudaDeviceSynchronize(), "relu_vec4 sync");
+  check(cudaMemcpy(h_y, d_y, (size_t)N * sizeof(float), cudaMemcpyDeviceToHost), "relu_vec4 D2H");
+  max_err = 0.0f;
+  for (int i = 0; i < N; i++) {
+    float expected = fmaxf(0.0f, h_x[i]);
+    float err = fabsf(h_y[i] - expected);
+    if (err > max_err) max_err = err;
+  }
+  printf("| %-35s | %.6e | %-4s |\n", "ReLU-Vec4", max_err, max_err < 1e-4f ? "PASS" : "FAIL");
+
+  // ---- Elementwise Add ----
+  float *h_a = (float *)malloc((size_t)N * sizeof(float));
+  float *h_b = (float *)malloc((size_t)N * sizeof(float));
+  float *d_a, *d_b, *d_c;
+  for (int i = 0; i < N; i++) {
+    h_a[i] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;
+    h_b[i] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;
+  }
+  check(cudaMalloc(&d_a, (size_t)N * sizeof(float)), "eadd alloc A");
+  check(cudaMalloc(&d_b, (size_t)N * sizeof(float)), "eadd alloc B");
+  check(cudaMalloc(&d_c, (size_t)N * sizeof(float)), "eadd alloc C");
+  check(cudaMemcpy(d_a, h_a, (size_t)N * sizeof(float), cudaMemcpyHostToDevice), "eadd H2D A");
+  check(cudaMemcpy(d_b, h_b, (size_t)N * sizeof(float), cudaMemcpyHostToDevice), "eadd H2D B");
+  elementwise_add<<<grid256, block256>>>(d_a, d_b, d_c, N);
+  check(cudaGetLastError(), "elementwise_add launch");
+  check(cudaDeviceSynchronize(), "elementwise_add sync");
+  float *h_c = (float *)malloc((size_t)N * sizeof(float));
+  check(cudaMemcpy(h_c, d_c, (size_t)N * sizeof(float), cudaMemcpyDeviceToHost), "eadd D2H");
+  max_err = 0.0f;
+  for (int i = 0; i < N; i++) {
+    float err = fabsf(h_c[i] - (h_a[i] + h_b[i]));
+    if (err > max_err) max_err = err;
+  }
+  printf("| %-35s | %.6e | %-4s |\n", "ElemwiseAdd", max_err, max_err < 1e-4f ? "PASS" : "FAIL");
+
+  // ---- Elementwise Add Vec4 ----
+  check(cudaMemset(d_c, 0, (size_t)N * sizeof(float)), "eadd_vec4 zero C");
+  elementwise_add_vec4<<<grid256, block64>>>(d_a, d_b, d_c, N);
+  check(cudaGetLastError(), "elementwise_add_vec4 launch");
+  check(cudaDeviceSynchronize(), "elementwise_add_vec4 sync");
+  check(cudaMemcpy(h_c, d_c, (size_t)N * sizeof(float), cudaMemcpyDeviceToHost), "eadd_vec4 D2H");
+  max_err = 0.0f;
+  for (int i = 0; i < N; i++) {
+    float err = fabsf(h_c[i] - (h_a[i] + h_b[i]));
+    if (err > max_err) max_err = err;
+  }
+  printf("| %-35s | %.6e | %-4s |\n", "ElemwiseAdd-Vec4", max_err, max_err < 1e-4f ? "PASS" : "FAIL");
+
+  // ---- Histogram ----
+  int BINS = 16;
+  int *h_hist = (int *)calloc(BINS, sizeof(int));
+  int *h_hist_ref = (int *)calloc(BINS, sizeof(int));
+  int *h_idx = (int *)malloc((size_t)N * sizeof(int));
+  for (int i = 0; i < N; i++) h_idx[i] = rand() % BINS;
+  for (int i = 0; i < N; i++) h_hist_ref[h_idx[i]]++;
+  int *d_idx, *d_hist;
+  check(cudaMalloc(&d_idx, (size_t)N * sizeof(int)), "hist alloc idx");
+  check(cudaMalloc(&d_hist, BINS * sizeof(int)), "hist alloc hist");
+  check(cudaMemcpy(d_idx, h_idx, (size_t)N * sizeof(int), cudaMemcpyHostToDevice), "hist H2D idx");
+  check(cudaMemset(d_hist, 0, BINS * sizeof(int)), "hist zero");
+  histogram<<<grid256, block256>>>(d_idx, d_hist, N);
+  check(cudaGetLastError(), "histogram launch");
+  check(cudaDeviceSynchronize(), "histogram sync");
+  check(cudaMemcpy(h_hist, d_hist, BINS * sizeof(int), cudaMemcpyDeviceToHost), "hist D2H");
+  max_err = 0.0f;
+  for (int i = 0; i < BINS; i++) {
+    float err = fabsf((float)(h_hist[i] - h_hist_ref[i]));
+    if (err > max_err) max_err = err;
+  }
+  printf("| %-35s | %.6e | %-4s |\n", "Histogram", max_err, max_err < 1e-4f ? "PASS" : "FAIL");
+
+  free(h_x); free(h_y);
+  free(h_a); free(h_b); free(h_c);
+  free(h_hist); free(h_hist_ref); free(h_idx);
+  cudaFree(d_x); cudaFree(d_y);
+  cudaFree(d_a); cudaFree(d_b); cudaFree(d_c);
+  cudaFree(d_idx); cudaFree(d_hist);
 }
 
 
@@ -2706,6 +2828,30 @@ static void test_softmax(int N) {
   }
   printf("| %-35s | %.6e | %-4s |\n", "OnlineSafeSoftmax", max_err, max_err < 1e-4f ? "PASS" : "FAIL");
 
+  // ---- Safe Softmax ----
+  safe_softmax_per_token<<<grid, block>>>(d_x, d_y, N);
+  check(cudaGetLastError(), "safe_softmax launch");
+  check(cudaDeviceSynchronize(), "safe_softmax sync");
+  check(cudaMemcpy(h_y, d_y, (size_t)N * sizeof(float), cudaMemcpyDeviceToHost), "safe_softmax D2H");
+  max_err = 0.0f;
+  for (int i = 0; i < N; i++) {
+    float err = fabsf(h_y[i] - h_y_ref[i]);
+    if (err > max_err) max_err = err;
+  }
+  printf("| %-35s | %.6e | %-4s |\n", "SafeSoftmax", max_err, max_err < 1e-4f ? "PASS" : "FAIL");
+
+  // ---- Naive Softmax ----
+  softmax_per_token<<<grid, block>>>(d_x, d_y, N);
+  check(cudaGetLastError(), "naive_softmax launch");
+  check(cudaDeviceSynchronize(), "naive_softmax sync");
+  check(cudaMemcpy(h_y, d_y, (size_t)N * sizeof(float), cudaMemcpyDeviceToHost), "naive_softmax D2H");
+  max_err = 0.0f;
+  for (int i = 0; i < N; i++) {
+    float err = fabsf(h_y[i] - h_y_ref[i]);
+    if (err > max_err) max_err = err;
+  }
+  printf("| %-35s | %.6e | %-4s |\n", "NaiveSoftmax", max_err, max_err < 1e-4f ? "PASS" : "FAIL");
+
   free(h_x); free(h_y); free(h_y_ref);
   cudaFree(d_x); cudaFree(d_y);
 }
@@ -2750,6 +2896,19 @@ static void test_rms_norm(int N, int K) {
     if (err > max_err) max_err = err;
   }
   printf("| %-35s | %.6e | %-4s |\n", "RMSNorm", max_err, max_err < 1e-4f ? "PASS" : "FAIL");
+
+  // ---- RMS Norm Vec4 ----
+  dim3 block_rv4(32);
+  rms_norm_vec4<<<grid, block_rv4>>>(d_x, d_y, g, N, K);
+  check(cudaGetLastError(), "rmsnorm_vec4 launch");
+  check(cudaDeviceSynchronize(), "rmsnorm_vec4 sync");
+  check(cudaMemcpy(h_y, d_y, (size_t)N * K * sizeof(float), cudaMemcpyDeviceToHost), "rmsnorm_vec4 D2H");
+  max_err = 0.0f;
+  for (int i = 0; i < N * K; i++) {
+    float err = fabsf(h_y[i] - h_y_ref[i]);
+    if (err > max_err) max_err = err;
+  }
+  printf("| %-35s | %.6e | %-4s |\n", "RMSNorm-Vec4", max_err, max_err < 1e-4f ? "PASS" : "FAIL");
 
   free(h_x); free(h_y); free(h_y_ref);
   cudaFree(d_x); cudaFree(d_y);
@@ -2801,6 +2960,19 @@ static void test_layer_norm(int N, int K) {
     if (err > max_err) max_err = err;
   }
   printf("| %-35s | %.6e | %-4s |\n", "LayerNorm", max_err, max_err < 1e-4f ? "PASS" : "FAIL");
+
+  // ---- Layer Norm Vec4 ----
+  dim3 block_lv4(32);
+  layer_norm_vec4<<<grid, block_lv4>>>(d_x, d_y, g, b, N, K);
+  check(cudaGetLastError(), "layernorm_vec4 launch");
+  check(cudaDeviceSynchronize(), "layernorm_vec4 sync");
+  check(cudaMemcpy(h_y, d_y, (size_t)N * K * sizeof(float), cudaMemcpyDeviceToHost), "layernorm_vec4 D2H");
+  max_err = 0.0f;
+  for (int i = 0; i < N * K; i++) {
+    float err = fabsf(h_y[i] - h_y_ref[i]);
+    if (err > max_err) max_err = err;
+  }
+  printf("| %-35s | %.6e | %-4s |\n", "LayerNorm-Vec4", max_err, max_err < 1e-4f ? "PASS" : "FAIL");
 
   free(h_x); free(h_y); free(h_y_ref);
   cudaFree(d_x); cudaFree(d_y);
@@ -3323,11 +3495,12 @@ int main(int argc, char *argv[]) {
   if (argc > 3) { M = atoi(argv[1]); N = atoi(argv[2]); K = atoi(argv[3]); }
 
   printf("=== notes-v2.cu verification harness ===\n");
-  printf("| %-35s | %-8s | %-5s |\n", "Kernel", "Max Err", "Pass");
-  printf("|-------------------------------------|----------|-------|\n");
+  printf("| %-35s | %-12s | %-4s |\n", "Kernel", "Max Err", "Pass");
+  printf("|-------------------------------------|--------------|------|\n");
 
   test_block_reduce(N);
   test_dot(N);
+  test_phase2(1024);
   test_softmax(256);  // softmax kernel requires N == blockDim.x
   test_rms_norm(8, 128);
   test_layer_norm(8, 128);
