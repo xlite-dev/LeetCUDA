@@ -1850,9 +1850,11 @@ __global__ void mat_transpose_padded(
     const int out_y = gid_y + local_x * 4;
     const int out_x = gid_x + local_y;
 
-    // float4 merge write: 1 次 128-bit store；这里也隐含 out_y 为 4 的倍数
-    *reinterpret_cast<float4 *>(&y[(out_x * row + out_y) / 4]) =
-        *reinterpret_cast<float4 *>(&smem_val);
+    // 逐元素写回（避免 reinterpret_cast<float4> 的对齐要求）
+    y[out_x * row + out_y + 0] = smem_val.x;
+    y[out_x * row + out_y + 1] = smem_val.y;
+    y[out_x * row + out_y + 2] = smem_val.z;
+    y[out_x * row + out_y + 3] = smem_val.w;
   }
 }
 
@@ -3133,6 +3135,166 @@ static void test_flash_attn(int seqlen, int head_dim) {
   cudaFree(d_q); cudaFree(d_k); cudaFree(d_v); cudaFree(d_o);
 }
 
+// =============================================================================
+// Phase 6 test: RoPE — 旋转位置编码
+// =============================================================================
+static void test_rope(int seq_len, int N) {
+  printf("  RoPE seq_len=%d N=%d ... ", seq_len, N);
+  fflush(stdout);
+
+  int total_pairs = seq_len * N;
+  int total_elems = total_pairs * 2;
+  size_t size = (size_t)total_elems * sizeof(float);
+
+  float *h_x = (float *)malloc(size);
+  float *h_y_ref = (float *)malloc(size);
+
+  srand(42);
+  for (int i = 0; i < total_elems; i++)
+    h_x[i] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;
+
+  // CPU reference: 2D rotation for each pair
+  for (int idx = 0; idx < total_pairs; idx++) {
+    int token_pos = idx / N;
+    int token_idx = idx % N;
+    float x1 = h_x[idx * 2];
+    float x2 = h_x[idx * 2 + 1];
+    float theta = 1.0f / powf(10000.0f, 2.0f * token_idx / (N * 2.0f));
+    float angle = (float)token_pos * theta;
+    float cos_v = cosf(angle);
+    float sin_v = sinf(angle);
+    h_y_ref[idx * 2] = x1 * cos_v - x2 * sin_v;
+    h_y_ref[idx * 2 + 1] = x1 * sin_v + x2 * cos_v;
+  }
+
+  float *d_x, *d_y;
+  check(cudaMalloc(&d_x, size), "rope alloc X");
+  check(cudaMalloc(&d_y, size), "rope alloc Y");
+  check(cudaMemcpy(d_x, h_x, size, cudaMemcpyHostToDevice), "rope H2D");
+
+  dim3 block(256);
+  dim3 grid((total_pairs + 255) / 256);
+  rope<<<grid, block>>>(d_x, d_y, seq_len, N);
+  check(cudaGetLastError(), "rope launch");
+  check(cudaDeviceSynchronize(), "rope sync");
+
+  float *h_y = (float *)malloc(size);
+  check(cudaMemcpy(h_y, d_y, size, cudaMemcpyDeviceToHost), "rope D2H");
+
+  float max_err = 0.0f;
+  for (int i = 0; i < total_elems; i++) {
+    float err = fabsf(h_y[i] - h_y_ref[i]);
+    if (err > max_err) max_err = err;
+  }
+  printf("max_err=%.6f %s\n", max_err, max_err < 1e-4f ? "PASS" : "FAIL");
+
+  free(h_x);
+  free(h_y);
+  free(h_y_ref);
+  cudaFree(d_x);
+  cudaFree(d_y);
+}
+
+// =============================================================================
+// Phase 7 test: Mat Transpose — 基础版
+// =============================================================================
+static void test_mat_transpose(int row, int col) {
+  printf("  MatTranspose %dx%d ... ", row, col);
+  fflush(stdout);
+
+  size_t size_in = (size_t)row * col * sizeof(float);
+  size_t size_out = (size_t)col * row * sizeof(float);
+
+  float *h_x = (float *)malloc(size_in);
+  float *h_y_ref = (float *)malloc(size_out);
+
+  srand(42);
+  for (int i = 0; i < row * col; i++)
+    h_x[i] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;
+
+  // CPU reference: y[j][i] = x[i][j] (row-major)
+  for (int i = 0; i < row; i++)
+    for (int j = 0; j < col; j++)
+      h_y_ref[j * row + i] = h_x[i * col + j];
+
+  float *d_x, *d_y;
+  check(cudaMalloc(&d_x, size_in), "mattrans alloc X");
+  check(cudaMalloc(&d_y, size_out), "mattrans alloc Y");
+  check(cudaMemcpy(d_x, h_x, size_in, cudaMemcpyHostToDevice), "mattrans H2D");
+
+  dim3 block(16, 16);
+  dim3 grid((col + 15) / 16, (row + 15) / 16);
+  mat_transpose<<<grid, block>>>(d_x, d_y, row, col);
+  check(cudaGetLastError(), "mattrans launch");
+  check(cudaDeviceSynchronize(), "mattrans sync");
+
+  float *h_y = (float *)malloc(size_out);
+  check(cudaMemcpy(h_y, d_y, size_out, cudaMemcpyDeviceToHost), "mattrans D2H");
+
+  float max_err = 0.0f;
+  for (int i = 0; i < col * row; i++) {
+    float err = fabsf(h_y[i] - h_y_ref[i]);
+    if (err > max_err) max_err = err;
+  }
+  printf("max_err=%.6f %s\n", max_err, max_err < 1e-6f ? "PASS" : "FAIL");
+
+  free(h_x);
+  free(h_y);
+  free(h_y_ref);
+  cudaFree(d_x);
+  cudaFree(d_y);
+}
+
+// =============================================================================
+// Phase 7 test: Mat Transpose Padded — BCF + merge_write 最佳版
+// =============================================================================
+static void test_mat_transpose_padded(int row, int col) {
+  printf("  MatTransposePadded %dx%d ... ", row, col);
+  fflush(stdout);
+
+  size_t size_in = (size_t)row * col * sizeof(float);
+  size_t size_out = (size_t)col * row * sizeof(float);
+
+  float *h_x = (float *)malloc(size_in);
+  float *h_y_ref = (float *)malloc(size_out);
+
+  srand(42);
+  for (int i = 0; i < row * col; i++)
+    h_x[i] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;
+
+  // CPU reference: y[j][i] = x[i][j] (row-major)
+  for (int i = 0; i < row; i++)
+    for (int j = 0; j < col; j++)
+      h_y_ref[j * row + i] = h_x[i * col + j];
+
+  float *d_x, *d_y;
+  check(cudaMalloc(&d_x, size_in), "mattrans_padded alloc X");
+  check(cudaMalloc(&d_y, size_out), "mattrans_padded alloc Y");
+  check(cudaMemcpy(d_x, h_x, size_in, cudaMemcpyHostToDevice), "mattrans_padded H2D");
+
+  dim3 block(16, 16);
+  dim3 grid((col + 15) / 16, (row + 63) / 64);
+  mat_transpose_padded<<<grid, block>>>(d_x, d_y, row, col);
+  check(cudaGetLastError(), "mattrans_padded launch");
+  check(cudaDeviceSynchronize(), "mattrans_padded sync");
+
+  float *h_y = (float *)malloc(size_out);
+  check(cudaMemcpy(h_y, d_y, size_out, cudaMemcpyDeviceToHost), "mattrans_padded D2H");
+
+  float max_err = 0.0f;
+  for (int i = 0; i < col * row; i++) {
+    float err = fabsf(h_y[i] - h_y_ref[i]);
+    if (err > max_err) max_err = err;
+  }
+  printf("max_err=%.6f %s\n", max_err, max_err < 1e-6f ? "PASS" : "FAIL");
+
+  free(h_x);
+  free(h_y);
+  free(h_y_ref);
+  cudaFree(d_x);
+  cudaFree(d_y);
+}
+
 int main(int argc, char *argv[]) {
   int M = 1024, N = 1024, K = 1024;
   if (argc > 3) { M = atoi(argv[1]); N = atoi(argv[2]); K = atoi(argv[3]); }
@@ -3144,11 +3306,14 @@ int main(int argc, char *argv[]) {
   test_softmax(256);  // softmax kernel requires N == blockDim.x
   test_rms_norm(8, 128);
   test_layer_norm(8, 128);
+  test_rope(8, 128);
+  test_mat_transpose(256, 256);
+  test_mat_transpose_padded(256, 256);
   test_sgemv(256, 128);
   test_sgemm(M, N, K);
   test_hgemm_mma(M, N, K);
   test_flash_attn(1024, 64);
-  
+
   printf("=== All tests done ===\n");
   return 0;
 }
