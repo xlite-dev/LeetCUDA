@@ -39,8 +39,9 @@
 
 ```bash
 cd kernels/interview && export CUDA_VISIBLE_DEVICES=0
-nvcc -std=c++20 -O2 -arch=sm_89 -lcublas -lcuda notes-v2.cu -o notes_v2.bin
-./notes_v2.bin # run verification harness
+nvcc -std=c++20 -O2 -arch=sm_89 -lcublas -lcuda notes-v2.cu -o notes_v2_sm89.bin # Ada
+nvcc -std=c++20 -O2 -arch=sm_90 -lcublas -lcuda notes-v2.cu -o notes_v2_sm90.bin # Hopper
+./notes_v2_sm89.bin # NOTE: run notes_v2_sm90.bin for HGEMM TMA + WGMMA on Hopper device.
 === notes-v2.cu verification harness ===
 | Kernel                              | Max Err      | Pass |
 |-------------------------------------|--------------|------|
