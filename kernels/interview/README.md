@@ -18,6 +18,7 @@ CUDA_VISIBLE_DEVICES=7 ./notes_v2_sm89.bin
 ## 测试输出
 
 ```
+./notes_v2_sm89.bin
 === notes-v2.cu verification harness ===
 | Kernel                              | Max Err      | Pass |
 |-------------------------------------|--------------|------|
