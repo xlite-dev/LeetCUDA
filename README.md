@@ -35,20 +35,43 @@
 ```
 
 
-## 📖 News 🔥🔥
-<div id="news"></div>
+## 📖 Quick Start 🔥🔥
 
-- [2026/03] Cache-DiT **[🎉v1.3.0](https://github.com/vipshop/cache-dit)** release is ready, the major updates including: [Ring](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL) Attention w/ [batched P2P](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL), [USP](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/) (Hybrid Ring and Ulysses), Hybrid 2D and 3D Parallelism (💥[USP + TP](https://cache-dit.readthedocs.io/en/latest/user_guide/HYBRID_PARALLEL/)),  VAE-P Comm overhead reduce.
-
-![arch](https://github.com/vipshop/cache-dit/raw/main/assets/arch_v2.png)
-
-- [2026/04]: **[🤖ffpa-attn](https://github.com/xlite-dev/ffpa-attn.git)** is released! Yet another Faster Flash Prefill Attention with O(1)🎉SRAM complexity for large headdim, **1.8x~3x↑**🎉 vs SDPA EA: [📈L20 ~1.9x↑🎉](https://github.com/xlite-dev/ffpa-attn?tab=readme-ov-file#L1-bench-l20), [📈A30 ~1.8x↑🎉](https://github.com/xlite-dev/ffpa-attn?tab=readme-ov-file#L1-bench-a30),[📈4090 ~2.1x↑🎉](https://github.com/xlite-dev/ffpa-attn?tab=readme-ov-file#L1-bench-4090). Currently, FFPA supports self-attention, cross-attention, grouped/multi-query attention, causal attention with large headdim (D=320~1024). While the standard FlashAttention-2 only support headdim <= 256.
-
-<div align='center'>
-<img height="320px" alt="image" src="https://github.com/user-attachments/assets/ed30185b-2e11-4293-832f-43e9003d6ad9" />
-</div>
-
-- [2024/12]: **[⚡️HGEMM](https://github.com/xlite-dev/HGEMM.git)** is released! Write HGEMM from scratch using Tensor Cores with **WMMA, MMA and CuTe** API, achieve peak🎉 performance.
+```bash
+cd kernels/interview && export CUDA_VISIBLE_DEVICES=0
+nvcc -std=c++20 -O2 -arch=sm_89 -lcublas -lcuda notes-v2.cu -o notes_v2.bin
+./notes_v2.bin # run verification harness
+=== notes-v2.cu verification harness ===
+| Kernel                              | Max Err      | Pass |
+|-------------------------------------|--------------|------|
+| BlockReduce                         | 1.907349e-06 | PASS |
+| Dot                                 | 0.000000e+00 | PASS |
+| Dot-Vec4                            | 0.000000e+00 | PASS |
+| ReLU                                | 0.000000e+00 | PASS |
+| ReLU-Vec4                           | 0.000000e+00 | PASS |
+| ElemwiseAdd                         | 0.000000e+00 | PASS |
+| ElemwiseAdd-Vec4                    | 0.000000e+00 | PASS |
+| Histogram                           | 0.000000e+00 | PASS |
+| OnlineSafeSoftmax                   | 3.725290e-09 | PASS |
+| SafeSoftmax                         | 1.862645e-09 | PASS |
+| NaiveSoftmax                        | 3.725290e-09 | PASS |
+| RMSNorm                             | 4.768372e-07 | PASS |
+| RMSNorm-Vec4                        | 4.768372e-07 | PASS |
+| LayerNorm                           | 4.768372e-07 | PASS |
+| LayerNorm-Vec4                      | 3.576279e-07 | PASS |
+| RoPE                                | 1.192093e-07 | PASS |
+| MatTranspose                        | 0.000000e+00 | PASS |
+| MatTransposePadded                  | 0.000000e+00 | PASS |
+| SGEMV-K128                          | 9.536743e-07 | PASS |
+| SGEMV-K32                           | 9.536743e-07 | PASS |
+| SGEMV-K16                           | 2.384186e-07 | PASS |
+| SGEMM                               | 7.247925e-05 | PASS |
+| SGEMM-Vec4                          | 7.247925e-05 | PASS |
+| HGEMM MMA                           | 0.000000e+00 | PASS |
+| FlashAttn-SplitQ                    | 1.303628e-04 | PASS |
+=== All tests done ===
+```
+A PDF version of LeetCUDA focused on **interview scenarios** is available at [`kernels/interview/notes-v2.pdf`](https://github.com/xlite-dev/LeetCUDA/blob/dev/kernels/interview/notes-v2.pdf).
 
 ## 📖 Contents
 <div id="contents"></div>
