@@ -2612,7 +2612,7 @@ static void test_block_reduce(int N) {
   check(cudaMemcpy(&result, d_y, sizeof(float), cudaMemcpyDeviceToHost), "blockreduce D2H");
 
   float err = fabsf(result - (float)ref);
-  printf("| %-35s | %.6e | %-4s |\n", "BlockReduceAll", err,
+  printf("| %-35s | %.6e | %-4s |\n", "BlockReduce", err,
          err < 1e-2f ? "PASS" : "FAIL");
 
   free(h_a);
@@ -2672,7 +2672,7 @@ static void test_dot(int N) {
 }
 
 
-static void test_phase2(int N) {
+static void test_relu(int N) {
   srand(42);
   float *h_x = (float *)malloc((size_t)N * sizeof(float));
   float *h_y = (float *)malloc((size_t)N * sizeof(float));
@@ -2680,11 +2680,10 @@ static void test_phase2(int N) {
     h_x[i] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;
 
   float *d_x, *d_y;
-  check(cudaMalloc(&d_x, (size_t)N * sizeof(float)), "phase2 alloc X");
-  check(cudaMalloc(&d_y, (size_t)N * sizeof(float)), "phase2 alloc Y");
-  check(cudaMemcpy(d_x, h_x, (size_t)N * sizeof(float), cudaMemcpyHostToDevice), "phase2 H2D");
+  check(cudaMalloc(&d_x, (size_t)N * sizeof(float)), "relu alloc X");
+  check(cudaMalloc(&d_y, (size_t)N * sizeof(float)), "relu alloc Y");
+  check(cudaMemcpy(d_x, h_x, (size_t)N * sizeof(float), cudaMemcpyHostToDevice), "relu H2D");
 
-  // ---- ReLU ----
   for (int i = 0; i < N; i++) h_y[i] = fmaxf(0.0f, h_x[i]);
   dim3 block256(256);
   dim3 grid256((N + 255) / 256);
@@ -2700,7 +2699,6 @@ static void test_phase2(int N) {
   }
   printf("| %-35s | %.6e | %-4s |\n", "ReLU", max_err, max_err < 1e-4f ? "PASS" : "FAIL");
 
-  // ---- ReLU Vec4 ----
   dim3 block64(64);
   relu_vec4<<<grid256, block64>>>(d_x, d_y, N);
   check(cudaGetLastError(), "relu_vec4 launch");
@@ -2714,36 +2712,46 @@ static void test_phase2(int N) {
   }
   printf("| %-35s | %.6e | %-4s |\n", "ReLU-Vec4", max_err, max_err < 1e-4f ? "PASS" : "FAIL");
 
-  // ---- Elementwise Add ----
+  free(h_x); free(h_y);
+  cudaFree(d_x); cudaFree(d_y);
+}
+
+
+static void test_elementwise(int N) {
+  srand(42);
   float *h_a = (float *)malloc((size_t)N * sizeof(float));
   float *h_b = (float *)malloc((size_t)N * sizeof(float));
-  float *d_a, *d_b, *d_c;
   for (int i = 0; i < N; i++) {
     h_a[i] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;
     h_b[i] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;
   }
+
+  float *d_a, *d_b, *d_c;
   check(cudaMalloc(&d_a, (size_t)N * sizeof(float)), "eadd alloc A");
   check(cudaMalloc(&d_b, (size_t)N * sizeof(float)), "eadd alloc B");
   check(cudaMalloc(&d_c, (size_t)N * sizeof(float)), "eadd alloc C");
   check(cudaMemcpy(d_a, h_a, (size_t)N * sizeof(float), cudaMemcpyHostToDevice), "eadd H2D A");
   check(cudaMemcpy(d_b, h_b, (size_t)N * sizeof(float), cudaMemcpyHostToDevice), "eadd H2D B");
+
+  dim3 block256(256);
+  dim3 grid256((N + 255) / 256);
   elementwise_add<<<grid256, block256>>>(d_a, d_b, d_c, N);
-  check(cudaGetLastError(), "elementwise_add launch");
-  check(cudaDeviceSynchronize(), "elementwise_add sync");
+  check(cudaGetLastError(), "eadd launch");
+  check(cudaDeviceSynchronize(), "eadd sync");
   float *h_c = (float *)malloc((size_t)N * sizeof(float));
   check(cudaMemcpy(h_c, d_c, (size_t)N * sizeof(float), cudaMemcpyDeviceToHost), "eadd D2H");
-  max_err = 0.0f;
+  float max_err = 0.0f;
   for (int i = 0; i < N; i++) {
     float err = fabsf(h_c[i] - (h_a[i] + h_b[i]));
     if (err > max_err) max_err = err;
   }
   printf("| %-35s | %.6e | %-4s |\n", "ElemwiseAdd", max_err, max_err < 1e-4f ? "PASS" : "FAIL");
 
-  // ---- Elementwise Add Vec4 ----
+  dim3 block64(64);
   check(cudaMemset(d_c, 0, (size_t)N * sizeof(float)), "eadd_vec4 zero C");
   elementwise_add_vec4<<<grid256, block64>>>(d_a, d_b, d_c, N);
-  check(cudaGetLastError(), "elementwise_add_vec4 launch");
-  check(cudaDeviceSynchronize(), "elementwise_add_vec4 sync");
+  check(cudaGetLastError(), "eadd_vec4 launch");
+  check(cudaDeviceSynchronize(), "eadd_vec4 sync");
   check(cudaMemcpy(h_c, d_c, (size_t)N * sizeof(float), cudaMemcpyDeviceToHost), "eadd_vec4 D2H");
   max_err = 0.0f;
   for (int i = 0; i < N; i++) {
@@ -2752,34 +2760,41 @@ static void test_phase2(int N) {
   }
   printf("| %-35s | %.6e | %-4s |\n", "ElemwiseAdd-Vec4", max_err, max_err < 1e-4f ? "PASS" : "FAIL");
 
-  // ---- Histogram ----
+  free(h_a); free(h_b); free(h_c);
+  cudaFree(d_a); cudaFree(d_b); cudaFree(d_c);
+}
+
+
+static void test_histogram(int N) {
+  srand(42);
   int BINS = 16;
   int *h_hist = (int *)calloc(BINS, sizeof(int));
   int *h_hist_ref = (int *)calloc(BINS, sizeof(int));
   int *h_idx = (int *)malloc((size_t)N * sizeof(int));
   for (int i = 0; i < N; i++) h_idx[i] = rand() % BINS;
   for (int i = 0; i < N; i++) h_hist_ref[h_idx[i]]++;
+
   int *d_idx, *d_hist;
   check(cudaMalloc(&d_idx, (size_t)N * sizeof(int)), "hist alloc idx");
   check(cudaMalloc(&d_hist, BINS * sizeof(int)), "hist alloc hist");
   check(cudaMemcpy(d_idx, h_idx, (size_t)N * sizeof(int), cudaMemcpyHostToDevice), "hist H2D idx");
   check(cudaMemset(d_hist, 0, BINS * sizeof(int)), "hist zero");
+
+  dim3 block256(256);
+  dim3 grid256((N + 255) / 256);
   histogram<<<grid256, block256>>>(d_idx, d_hist, N);
   check(cudaGetLastError(), "histogram launch");
   check(cudaDeviceSynchronize(), "histogram sync");
   check(cudaMemcpy(h_hist, d_hist, BINS * sizeof(int), cudaMemcpyDeviceToHost), "hist D2H");
-  max_err = 0.0f;
+
+  float max_err = 0.0f;
   for (int i = 0; i < BINS; i++) {
     float err = fabsf((float)(h_hist[i] - h_hist_ref[i]));
     if (err > max_err) max_err = err;
   }
   printf("| %-35s | %.6e | %-4s |\n", "Histogram", max_err, max_err < 1e-4f ? "PASS" : "FAIL");
 
-  free(h_x); free(h_y);
-  free(h_a); free(h_b); free(h_c);
   free(h_hist); free(h_hist_ref); free(h_idx);
-  cudaFree(d_x); cudaFree(d_y);
-  cudaFree(d_a); cudaFree(d_b); cudaFree(d_c);
   cudaFree(d_idx); cudaFree(d_hist);
 }
 
@@ -3500,7 +3515,9 @@ int main(int argc, char *argv[]) {
 
   test_block_reduce(N);
   test_dot(N);
-  test_phase2(1024); // relu, histogram, elementwise, etc.
+  test_relu(1024);
+  test_elementwise(1024);
+  test_histogram(1024);
   test_softmax(256);  // softmax kernel requires N == blockDim.x
   test_rms_norm(8, 128);
   test_layer_norm(8, 128);
