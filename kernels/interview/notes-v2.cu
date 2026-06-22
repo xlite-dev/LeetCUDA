@@ -272,7 +272,7 @@ __global__ void block_reduce_all(float *a, float *y, int N) {
   sum = (lane < NUM_WARPS) ? reduce_smem[lane] : 0.0f;
   if (warp == 0)
     sum = warp_reduce_sum<NUM_WARPS>(sum);
-  if (tid == 0)
+  if (tid == 0) // tid == 0, not lane 0.
     atomicAdd(y, sum);
 }
 
