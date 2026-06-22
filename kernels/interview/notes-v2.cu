@@ -250,10 +250,10 @@ __device__ float block_reduce_max(float val) {
 // ---- Block Reduce Sum All: y = sum(a[0..N-1]) ----
 // 多 block 各自做 warp→smem→warp0 reduce，然后 atomicAdd 到全局 y
 // 跨 block 求和的常见模式，适合 N 较大时使用；
-// Grid:  ((N + 127) / 128, 1, 1)
-// Block: (128, 1, 1)
+// Grid:  ((N + 255) / 256, 1, 1)
+// Block: (256, 1, 1)
 // source: LeetCUDA/kernels/reduce/block_all_reduce.cu
-template <const int NUM_THREADS = 128>
+template <const int NUM_THREADS = 256>
 __global__ void block_reduce_all(float *a, float *y, int N) {
   int tid = threadIdx.x;
   int idx = blockIdx.x * NUM_THREADS + tid;
@@ -272,16 +272,16 @@ __global__ void block_reduce_all(float *a, float *y, int N) {
   sum = (lane < NUM_WARPS) ? reduce_smem[lane] : 0.0f;
   if (warp == 0)
     sum = warp_reduce_sum<NUM_WARPS>(sum);
-  if (tid == 0) // tid == 0, not lane 0.
+  if (tid == 0) // tid == 0, not lane 0. 只有 block 内的一个线程负责写回全局结果，避免重复累加
     atomicAdd(y, sum);
 }
 
 // ---- Dot Product: y = sum(a[i] * b[i]) ----
 // 核心模式：elementwise 乘法 → block reduce → atomicAdd 全局累加
-// Grid:  ((N + 127) / 128, 1, 1)
-// Block: (128, 1, 1)
+// Grid:  ((N + 255) / 256, 1, 1)
+// Block: (256, 1, 1)
 // source: LeetCUDA/kernels/dot-product/dot_product.cu
-template <const int NUM_THREADS = 128>
+template <const int NUM_THREADS = 256>
 __global__ void dot(float *a, float *b, float *y, int N) {
   int tid = threadIdx.x;
   int idx = blockIdx.x * NUM_THREADS + tid;
@@ -300,16 +300,16 @@ __global__ void dot(float *a, float *b, float *y, int N) {
   prod = (lane < NUM_WARPS) ? reduce_smem[lane] : 0.0f;
   if (warp == 0) // 只需要 warp 0 的线程继续 reduce 即可
     prod = warp_reduce_sum<NUM_WARPS>(prod);
-  if (tid == 0)
+  if (tid == 0) // tid == 0, not lane 0. 只有 block 内的一个线程负责写回全局结果，避免重复累加
     atomicAdd(y, prod);
 }
 
 // Dot Product + float4
-// Grid:  ((N + 127) / 128, 1, 1)
-// Block: (32, 1, 1)，128/4=32
+// Grid:  ((N + 255) / 256, 1, 1), 每个block处理256元素，float4向量化后每个线程处理4元素
+// Block: (64, 1, 1)，256/4=64
 // 注意：该版本默认输入地址满足 float4 对齐；最适合 N 按 4 对齐的场景
 // source: LeetCUDA/kernels/dot-product/dot_product.cu
-template <const int NUM_THREADS = 128 / 4>
+template <const int NUM_THREADS = 256 / 4>
 __global__ void dot_vec4(float *a, float *b, float *y, int N) {
   int tid = threadIdx.x;
   int idx = (blockIdx.x * NUM_THREADS + tid) * 4;
