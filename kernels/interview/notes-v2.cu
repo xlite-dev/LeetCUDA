@@ -486,10 +486,6 @@ __global__ void safe_softmax_per_token(float *x, float *y, int N) {
 //   - 正是 FlashAttention 中 "online rescaling"：
 //     O_new = diag(exp(m_old - m_new)) * O_old + exp(m_cur - m_new) * P@V
 // 算法参考: "Online normalizer calculation for softmax" (arXiv:1805.02867)
-// 注意：这里默认一个 block 处理一个 token；边界线程的 d=0 只参与归约，不会写回 y
-// Grid:  (S, 1, 1)
-// Block: (H, 1, 1)，由外层 dispatch 选择 H=32/64/128/256/512/1024
-// source: LeetCUDA/kernels/softmax/softmax.cu
 
 // ---- Online Softmax 辅助结构 ----
 // MD struct: 存储 running max (m) 和 running denominator (d)
@@ -523,6 +519,10 @@ __device__ __forceinline__ MD warp_reduce_md_op(MD value) {
   return value;
 }
 
+// 注意：这里默认一个 block 处理一个 token；边界线程的 d=0 只参与归约，不会写回 y
+// Grid:  (S, 1, 1)
+// Block: (H, 1, 1)，由外层 dispatch 选择 H=32/64/128/256/512/1024
+// source: LeetCUDA/kernels/softmax/softmax.cu
 template <const int NUM_THREADS = 256>
 __global__ void online_safe_softmax_per_token(const float *x, float *y, int N) {
   int local_tid = threadIdx.x;
