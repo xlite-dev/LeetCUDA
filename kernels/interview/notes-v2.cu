@@ -247,6 +247,35 @@ __device__ float block_reduce_max(float val) {
   return value;
 }
 
+// ---- Block Reduce Sum All: y = sum(a[0..N-1]) ----
+// 多 block 各自做 warp→smem→warp0 reduce，然后 atomicAdd 到全局 y
+// 跨 block 求和的常见模式，适合 N 较大时使用；
+// Grid:  ((N + 127) / 128, 1, 1)
+// Block: (128, 1, 1)
+// source: LeetCUDA/kernels/reduce/block_all_reduce.cu
+template <const int NUM_THREADS = 128>
+__global__ void block_reduce_all(float *a, float *y, int N) {
+  int tid = threadIdx.x;
+  int idx = blockIdx.x * NUM_THREADS + tid;
+  constexpr int NUM_WARPS = (NUM_THREADS + WARP_SIZE - 1) / WARP_SIZE;
+  __shared__ float reduce_smem[NUM_WARPS];
+
+  float sum = (idx < N) ? a[idx] : 0.0f;
+  int warp = tid / WARP_SIZE;
+  int lane = tid % WARP_SIZE;
+
+  sum = warp_reduce_sum<WARP_SIZE>(sum);
+  if (lane == 0)
+    reduce_smem[warp] = sum;
+  __syncthreads();
+
+  sum = (lane < NUM_WARPS) ? reduce_smem[lane] : 0.0f;
+  if (warp == 0)
+    sum = warp_reduce_sum<NUM_WARPS>(sum);
+  if (tid == 0)
+    atomicAdd(y, sum);
+}
+
 // ---- Dot Product: y = sum(a[i] * b[i]) ----
 // 核心模式：elementwise 乘法 → block reduce → atomicAdd 全局累加
 // Grid:  ((N + 127) / 128, 1, 1)
@@ -307,34 +336,6 @@ __global__ void dot_vec4(float *a, float *b, float *y, int N) {
     atomicAdd(y, prod);
 }
 
-// ---- Block Reduce Sum All: y = sum(a[0..N-1]) ----
-// 多 block 各自做 warp→smem→warp0 reduce，然后 atomicAdd 到全局 y
-// 跨 block 求和的常见模式，适合 N 较大时使用；
-// Grid:  ((N + 127) / 128, 1, 1)
-// Block: (128, 1, 1)
-// source: LeetCUDA/kernels/reduce/block_all_reduce.cu
-template <const int NUM_THREADS = 128>
-__global__ void block_reduce_v2(float *a, float *y, int N) {
-  int tid = threadIdx.x;
-  int idx = blockIdx.x * NUM_THREADS + tid;
-  constexpr int NUM_WARPS = (NUM_THREADS + WARP_SIZE - 1) / WARP_SIZE;
-  __shared__ float reduce_smem[NUM_WARPS];
-
-  float sum = (idx < N) ? a[idx] : 0.0f;
-  int warp = tid / WARP_SIZE;
-  int lane = tid % WARP_SIZE;
-
-  sum = warp_reduce_sum<WARP_SIZE>(sum);
-  if (lane == 0)
-    reduce_smem[warp] = sum;
-  __syncthreads();
-
-  sum = (lane < NUM_WARPS) ? reduce_smem[lane] : 0.0f;
-  if (warp == 0)
-    sum = warp_reduce_sum<NUM_WARPS>(sum);
-  if (tid == 0)
-    atomicAdd(y, sum);
-}
 
 // =============================================================================
 // Phase 2: Elementwise Ops（逐元素操作，演示 coalesced access + vectorize）
@@ -2604,7 +2605,7 @@ static void test_block_reduce(int N) {
 
   dim3 block(128);
   dim3 grid((N + 127) / 128);
-  block_reduce_v2<<<grid, block>>>(d_a, d_y, N);
+  block_reduce_all<<<grid, block>>>(d_a, d_y, N);
   check(cudaGetLastError(), "blockreduce launch");
   check(cudaDeviceSynchronize(), "blockreduce sync");
 
