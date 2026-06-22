@@ -444,12 +444,11 @@ struct __align__(8) MD {
 // 与普通 reduce 不同：归约时需同时更新 m 和 d（因为 max 在不断变大）
 template <const int kWarpSize = WARP_SIZE>
 __device__ __forceinline__ MD warp_reduce_md_op(MD value) {
-  unsigned int mask = 0xffffffff;
 #pragma unroll
-  for (int stride = kWarpSize >> 1; stride >= 1; stride >>= 1) {
+  for (int mask = kWarpSize >> 1; mask >= 1; mask >>= 1) {
     MD other;
-    other.m = __shfl_xor_sync(mask, value.m, stride);
-    other.d = __shfl_xor_sync(mask, value.d, stride);
+    other.m = __shfl_xor_sync(0xffffffff, value.m, mask, kWarpSize);
+    other.d = __shfl_xor_sync(0xffffffff, value.d, mask, kWarpSize);
 
     bool value_bigger = (value.m > other.m);
     MD bigger_m = value_bigger ? value : other;
@@ -2605,7 +2604,7 @@ static void test_block_reduce(int N) {
 
   dim3 block(128);
   dim3 grid((N + 127) / 128);
-  block_reduce_all<<<grid, block>>>(d_a, d_y, N);
+  block_reduce_all<128><<<grid, block>>>(d_a, d_y, N);
   check(cudaGetLastError(), "blockreduce launch");
   check(cudaDeviceSynchronize(), "blockreduce sync");
 
@@ -2646,7 +2645,7 @@ static void test_dot(int N) {
 
   dim3 block(128);
   dim3 grid((N + 127) / 128);
-  dot<<<grid, block>>>(d_a, d_b, d_y, N);
+  dot<128><<<grid, block>>>(d_a, d_b, d_y, N);
   check(cudaGetLastError(), "dot launch");
   check(cudaDeviceSynchronize(), "dot sync");
 
@@ -2660,7 +2659,7 @@ static void test_dot(int N) {
   // ---- Dot Vec4 ----
   check(cudaMemset(d_y, 0, sizeof(float)), "dot_vec4 zero Y");
   dim3 block_v4(32);
-  dot_vec4<<<grid, block_v4>>>(d_a, d_b, d_y, N);
+  dot_vec4<32><<<grid, block_v4>>>(d_a, d_b, d_y, N);
   check(cudaGetLastError(), "dot_vec4 launch");
   check(cudaDeviceSynchronize(), "dot_vec4 sync");
 
