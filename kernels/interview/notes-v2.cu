@@ -429,38 +429,6 @@ __global__ void histogram(int *a, int *y, int N) {
 //   + variance）
 //   - Per-token 设计：一个 block 处理一个 token，无需跨 block 同步
 
-// ---- Online Softmax 辅助结构 ----
-// MD struct: 存储 running max (m) 和 running denominator (d)
-// 算法来源: "Online normalizer calculation for softmax" (arXiv:1805.02867)
-// 核心递推公式：
-//   m_new = max(m_old, x_i)
-//   d_new = d_old * exp(m_old - m_new) + exp(x_i - m_new)
-struct __align__(8) MD {
-  float m; // running max
-  float d; // running denominator (sum of exp(x - max))
-};
-
-// Warp Reduce for Online Softmax
-// 与普通 reduce 不同：归约时需同时更新 m 和 d（因为 max 在不断变大）
-template <const int kWarpSize = WARP_SIZE>
-__device__ __forceinline__ MD warp_reduce_md_op(MD value) {
-#pragma unroll
-  for (int mask = kWarpSize >> 1; mask >= 1; mask >>= 1) {
-    MD other;
-    other.m = __shfl_xor_sync(0xffffffff, value.m, mask, kWarpSize);
-    other.d = __shfl_xor_sync(0xffffffff, value.d, mask, kWarpSize);
-
-    bool value_bigger = (value.m > other.m);
-    MD bigger_m = value_bigger ? value : other;
-    MD smaller_m = value_bigger ? other : value;
-
-    // 关键：更新 d 时需要 rescale 旧的 d 到新的 max 尺度下
-    value.d = bigger_m.d + smaller_m.d * __expf(smaller_m.m - bigger_m.m);
-    value.m = bigger_m.m;
-  }
-  return value;
-}
-
 // =============================================================================
 // Phase 3a: Softmax — 三级递进（面试核心考点）
 // =============================================================================
@@ -522,6 +490,39 @@ __global__ void safe_softmax_per_token(float *x, float *y, int N) {
 // Grid:  (S, 1, 1)
 // Block: (H, 1, 1)，由外层 dispatch 选择 H=32/64/128/256/512/1024
 // source: LeetCUDA/kernels/softmax/softmax.cu
+
+// ---- Online Softmax 辅助结构 ----
+// MD struct: 存储 running max (m) 和 running denominator (d)
+// 算法来源: "Online normalizer calculation for softmax" (arXiv:1805.02867)
+// 核心递推公式：
+//   m_new = max(m_old, x_i)
+//   d_new = d_old * exp(m_old - m_new) + exp(x_i - m_new)
+struct __align__(8) MD {
+  float m; // running max
+  float d; // running denominator (sum of exp(x - max))
+};
+
+// Warp Reduce for Online Softmax
+// 与普通 reduce 不同：归约时需同时更新 m 和 d（因为 max 在不断变大）
+template <const int kWarpSize = WARP_SIZE>
+__device__ __forceinline__ MD warp_reduce_md_op(MD value) {
+#pragma unroll
+  for (int mask = kWarpSize >> 1; mask >= 1; mask >>= 1) {
+    MD other;
+    other.m = __shfl_xor_sync(0xffffffff, value.m, mask, kWarpSize);
+    other.d = __shfl_xor_sync(0xffffffff, value.d, mask, kWarpSize);
+
+    bool value_bigger = (value.m > other.m);
+    MD bigger_m = value_bigger ? value : other;
+    MD smaller_m = value_bigger ? other : value;
+
+    // 关键：更新 d 时需要 rescale 旧的 d 到新的 max 尺度下
+    value.d = bigger_m.d + smaller_m.d * __expf(smaller_m.m - bigger_m.m);
+    value.m = bigger_m.m;
+  }
+  return value;
+}
+
 template <const int NUM_THREADS = 256>
 __global__ void online_safe_softmax_per_token(const float *x, float *y, int N) {
   int local_tid = threadIdx.x;
