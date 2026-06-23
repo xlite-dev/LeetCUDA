@@ -488,18 +488,35 @@ __global__ void safe_softmax_per_token(float *x, float *y, int N) {
 // 算法参考: "Online normalizer calculation for softmax" (arXiv:1805.02867)
 
 // ---- Online Softmax 辅助结构 ----
-// MD struct: 存储 running max (m) 和 running denominator (d)
+// MD struct: 存储 running max (m) 和 running denominator (d = Σexp(x - m))
+//
+// 两种使用场景（公式不同，但结果等价）：
+//   1) 单元素增量更新 (online update，处理新元素 x_i)：
+//      m_new = max(m_old, x_i)
+//      d_new = d_old * exp(m_old - m_new) + exp(x_i - m_new)
+//   2) 二元合并 (binary merge，合并两个部分累加器，warp/block reduce 使用)：
+//      m = max(m1, m2)
+//      d = d1*exp(m1-m) + d2*exp(m2-m)
+//      当 m1≥m2 时退化为 d1 + d2*exp(m2-m1)（d_bigger + d_smaller*exp(m_smaller - m_bigger)）
+//
 // 算法来源: "Online normalizer calculation for softmax" (arXiv:1805.02867)
-// 核心递推公式：
-//   m_new = max(m_old, x_i)
-//   d_new = d_old * exp(m_old - m_new) + exp(x_i - m_new)
 struct __align__(8) MD {
   float m; // running max
   float d; // running denominator (sum of exp(x - max))
 };
 
-// Warp Reduce for Online Softmax
-// 与普通 reduce 不同：归约时需同时更新 m 和 d（因为 max 在不断变大）
+// Warp Reduce for Online Softmax — binary merge of two partial (m,d) accumulators.
+//
+// 不同于单元素增量更新公式（m_new = max(m_old, x_i); d_new = d_old*exp(m_old-m_new) + exp(x_i-m_new)），
+// warp reduce 中每次合并的是两个**已各自归一化到各自 max 的部分累加器**：
+//   (m1,d1): max 和 Σexp(x_j - m1)，覆盖集合 S1
+//   (m2,d2): max 和 Σexp(x_k - m2)，覆盖集合 S2
+//
+// 合并公式（对称，不依赖"新/旧"概念）：
+//   m = max(m1, m2)
+//   d = d1*exp(m1-m) + d2*exp(m2-m)   ← m1≥m2 时退化为 d1 + d2*exp(m2-m1)
+//
+// 该操作满足结合律 → XOR butterfly 任意归约顺序均保证全局正确结果。
 template <const int kWarpSize = WARP_SIZE>
 __device__ __forceinline__ MD warp_reduce_md_op(MD value) {
 #pragma unroll
@@ -512,7 +529,8 @@ __device__ __forceinline__ MD warp_reduce_md_op(MD value) {
     MD bigger_m = value_bigger ? value : other;
     MD smaller_m = value_bigger ? other : value;
 
-    // 关键：更新 d 时需要 rescale 旧的 d 到新的 max 尺度下
+    // d_bigger 无需 rescale（其基准 max 已是全局 max），
+    // d_smaller 需 rescale：exp(m_smaller - m_bigger)
     value.d = bigger_m.d + smaller_m.d * __expf(smaller_m.m - bigger_m.m);
     value.m = bigger_m.m;
   }
@@ -2019,8 +2037,8 @@ __device__ inline void fill_2D_regs(T (&R)[M][N], T val) {
 // Q,K,V,O: [batch_size, num_heads, seq_len, head_dim], [B,H,N,d]
 //
 // Tile 设计（以 kHeadDim=64 为例）:
-//   Br = kMmaAtomM * kMmaTileSeqLenQ * kWarpTileSeqLenQ = 16*4*1 = 64
-//   Bc = kMmaAtomN * kMmaTileSeqLenK * kWarpTileSeqLenK = 8*1*8  = 64
+//   Br = kMmaAtomM * kMmaTileSeqLenQ * kValTileSeqLenQ = 16*4*1 = 64
+//   Bc = kMmaAtomN * kMmaTileSeqLenK * kValTileSeqLenK = 8*1*8  = 64
 //   Warp 布局: 4 warps, warp_QP 0~3 各处理 16 行, warp_KV=0 共享 K
 //
 // 执行流程:
@@ -2043,14 +2061,12 @@ template <
     const int kMmaAtomK,         // 16 (MMA instruction K dimension)
     const int kMmaTileSeqLenQ,   // MMA tiles along Q's M dim, 4 → Br=16*4=64
     const int kMmaTileSeqLenK,   // MMA tiles along K's N dim, 1 → Bc basis=8
-    const int kMmaTileSeqLenP,   // MMA tiles for P@V M dim, must equal
-                                 // kMmaTileSeqLenQ
+    const int kMmaTileSeqLenP,   // MMA tiles for P@V M dim, must equal kMmaTileSeqLenQ
     const int kMmaTileHeadDimV,  // MMA tiles for P@V N dim (head dim direction)
-    const int kWarpTileSeqLenQ,  // warp tiles along Q's M, 1 → Br per warp=16
-    const int kWarpTileSeqLenK,  // warp tiles along K's N, 8 → Bc_warp=8*8=64
-    const int kWarpTileSeqLenP,  // warp tiles for P@V M dim, 1
-    const int kWarpTileHeadDimV, // warp tiles for P@V N dim,
-                                 // kHeadDim/(8*kMmaTileHeadDimV)
+    const int kValTileSeqLenQ,   // value tiles along Q's M, 1 → Br per warp=16
+    const int kValTileSeqLenK,   // value tiles along K's N, 8 → Bc_warp=8*8=64
+    const int kValTileSeqLenP,   // value tiles for P@V M dim, 1
+    const int kValTileHeadDimV,  // value tiles for P@V N dim, kHeadDim/(8*kMmaTileHeadDimV)
     const int kStage,            // pipeline stages for K: 1 or 2
     const int kPad>              // padding for bank conflict avoidance
 __global__ void __launch_bounds__(WARP_SIZE *kMmaTileSeqLenQ *kMmaTileSeqLenK)
@@ -2058,8 +2074,8 @@ __global__ void __launch_bounds__(WARP_SIZE *kMmaTileSeqLenQ *kMmaTileSeqLenK)
                                   int QKV_seqlen, int QKV_head) {
 
   // Tile dimensions
-  constexpr int Br = kMmaAtomM * kMmaTileSeqLenQ * kWarpTileSeqLenQ; // 64
-  constexpr int Bc = kMmaAtomN * kMmaTileSeqLenK * kWarpTileSeqLenK; // 64
+  constexpr int Br = kMmaAtomM * kMmaTileSeqLenQ * kValTileSeqLenQ; // 64
+  constexpr int Bc = kMmaAtomN * kMmaTileSeqLenK * kValTileSeqLenK; // 64
   constexpr int kNumThreads =
       WARP_SIZE * kMmaTileSeqLenQ * kMmaTileSeqLenK; // 128
   const int Tc = (QKV_seqlen + Bc - 1) / Bc;
@@ -2118,27 +2134,27 @@ __global__ void __launch_bounds__(WARP_SIZE *kMmaTileSeqLenQ *kMmaTileSeqLenK)
   // ---- Online Softmax persistent state ----
   // lane_block_row_max_old[i][r]: running max for row r of warp tile i
   // lane_block_row_sum_old[i][r]: running denominator l for row r of warp tile i
-  float lane_block_row_max_old[kWarpTileSeqLenQ][2];
-  float lane_block_row_sum_old[kWarpTileSeqLenQ][2];
-  fill_2D_regs<float, kWarpTileSeqLenQ, 2>(lane_block_row_max_old, -INFINITY);
-  fill_2D_regs<float, kWarpTileSeqLenQ, 2>(lane_block_row_sum_old, 0.0f);
+  float lane_block_row_max_old[kValTileSeqLenQ][2];
+  float lane_block_row_sum_old[kValTileSeqLenQ][2];
+  fill_2D_regs<float, kValTileSeqLenQ, 2>(lane_block_row_max_old, -INFINITY);
+  fill_2D_regs<float, kValTileSeqLenQ, 2>(lane_block_row_sum_old, 0.0f);
 
   // ---- Register allocation ----
-  uint32_t R_Q[kWarpTileSeqLenQ][4];                   // Q regs
-  uint32_t R_K[kWarpTileSeqLenK][2];                   // K regs
-  uint32_t R_V[kWarpTileHeadDimV][2];                  // V regs
+  uint32_t R_Q[kValTileSeqLenQ][4];                   // Q regs
+  uint32_t R_K[kValTileSeqLenK][2];                   // K regs
+  uint32_t R_V[kValTileHeadDimV][2];                  // V regs
   // R_S / R_O / R_D 都按 mma.sync.aligned.m16n8k16 的 fragment 约定存储。
   // 对单个 m16n8k16 tile 而言：
   //   - reg[0] 持有该 tile 前 8 行里的两个 half 值
   //   - reg[1] 持有该 tile 后 8 行里的两个 half 值
   // 后续 softmax、P@V、online rescale 都直接围绕这组 fragment 布局做寄存器内变换。
-  uint32_t R_S[kWarpTileSeqLenQ][kWarpTileSeqLenK][2]; // S=Q@K^T / P=softmax(S)
-  uint32_t R_O[kWarpTileSeqLenP][kWarpTileHeadDimV][2]; // O for current tile
-  uint32_t R_D[kWarpTileSeqLenP][kWarpTileHeadDimV]
+  uint32_t R_S[kValTileSeqLenQ][kValTileSeqLenK][2]; // S=Q@K^T / P=softmax(S)
+  uint32_t R_O[kValTileSeqLenP][kValTileHeadDimV][2]; // O for current tile
+  uint32_t R_D[kValTileSeqLenP][kValTileHeadDimV]
               [2]; // O accumulator (final output)
 
-  fill_3D_regs<uint32_t, kWarpTileSeqLenQ, kWarpTileSeqLenK, 2>(R_S, 0);
-  fill_3D_regs<uint32_t, kWarpTileSeqLenP, kWarpTileHeadDimV, 2>(R_D, 0);
+  fill_3D_regs<uint32_t, kValTileSeqLenQ, kValTileSeqLenK, 2>(R_S, 0);
+  fill_3D_regs<uint32_t, kValTileSeqLenP, kValTileHeadDimV, 2>(R_D, 0);
 
   // ======================================================================
   // Step 1: 加载 Q[Br, d] 到 shared memory（整个外循环只加载一次）
@@ -2230,14 +2246,14 @@ __global__ void __launch_bounds__(WARP_SIZE *kMmaTileSeqLenQ *kMmaTileSeqLenK)
     }
 
     // ---- 3b: Q@K^T = S[Br, Bc] — 沿 head dim (d/kMmaAtomK=16) 内循环 ----
-    fill_3D_regs<uint32_t, kWarpTileSeqLenQ, kWarpTileSeqLenK, 2>(R_S, 0);
+    fill_3D_regs<uint32_t, kValTileSeqLenQ, kValTileSeqLenK, 2>(R_S, 0);
 #pragma unroll
     for (int tile_K_d = 0; tile_K_d < (kHeadDim / kMmaAtomK); ++tile_K_d) {
       // ldmatrix.x4: 加载 Q 的 m16k16 片段到 R_Q
 #pragma unroll
-      for (int i = 0; i < kWarpTileSeqLenQ; ++i) {
+      for (int i = 0; i < kValTileSeqLenQ; ++i) {
         int warp_smem_Q_Br =
-            warp_QP * (kMmaAtomM * kWarpTileSeqLenQ) + i * kMmaAtomM;
+            warp_QP * (kMmaAtomM * kValTileSeqLenQ) + i * kMmaAtomM;
         int lane_smem_Q_Br =
             warp_smem_Q_Br + lane_id % 16; // ldmatrix uses 16 lanes
         int lane_smem_Q_d = tile_K_d * kMmaAtomK + (lane_id / 16) * 8; // 0, 8
@@ -2251,9 +2267,9 @@ __global__ void __launch_bounds__(WARP_SIZE *kMmaTileSeqLenQ *kMmaTileSeqLenK)
       // ldmatrix.x2: 加载 K 的 k16n8 片段到 R_K
       // K[Bc,d] row-major = K^T[d,Bc] col-major（NT 布局的 B 矩阵）
 #pragma unroll
-      for (int j = 0; j < kWarpTileSeqLenK; ++j) {
+      for (int j = 0; j < kValTileSeqLenK; ++j) {
         int warp_smem_K_Bc =
-            warp_KV * (kMmaAtomN * kWarpTileSeqLenK) + j * kMmaAtomN;
+            warp_KV * (kMmaAtomN * kValTileSeqLenK) + j * kMmaAtomN;
         int lane_smem_K_Bc =
             warp_smem_K_Bc + lane_id % 8; // ldmatrix B uses 8 lanes
         int lane_smem_K_d =
@@ -2268,9 +2284,9 @@ __global__ void __launch_bounds__(WARP_SIZE *kMmaTileSeqLenQ *kMmaTileSeqLenK)
 
       // MMA: S[tile] += Q[tile] @ K^T[tile]
 #pragma unroll
-      for (int i = 0; i < kWarpTileSeqLenQ; ++i) {
+      for (int i = 0; i < kValTileSeqLenQ; ++i) {
 #pragma unroll
-        for (int j = 0; j < kWarpTileSeqLenK; ++j) {
+        for (int j = 0; j < kValTileSeqLenK; ++j) {
           HMMA16816(R_S[i][j][0], R_S[i][j][1], R_Q[i][0], R_Q[i][1], R_Q[i][2],
                     R_Q[i][3], R_K[j][0], R_K[j][1], R_S[i][j][0],
                     R_S[i][j][1]);
@@ -2290,20 +2306,19 @@ __global__ void __launch_bounds__(WARP_SIZE *kMmaTileSeqLenQ *kMmaTileSeqLenK)
     //   - 对于 rows 8~15 也是同样的 lane 分组，只是读取的是 reg[1]
     // 这就是为什么后面做 row max / row sum 时，warp 内真正参与同一行归约的是
     // {0,4,8,...,28} 这一类 4-lane 子组，而不是整 warp 32 个线程。
-    // Each (i, j) pair = one 16x8 MMA tile; there are kWarpTileSeqLenQ x
-    // kWarpTileSeqLenK tiles.
+    // Each (i, j) pair = one 16x8 MMA tile; there are kValTileSeqLenQ x
+    // kValTileSeqLenK tiles.
 
-    float lane_row_max_new[kWarpTileSeqLenQ][2];
-    float lane_row_sum_new[kWarpTileSeqLenQ][2];
-    fill_2D_regs<float, kWarpTileSeqLenQ, 2>(lane_row_max_new, -INFINITY);
-    fill_2D_regs<float, kWarpTileSeqLenQ, 2>(lane_row_sum_new, 0.0f);
+    float lane_row_max_new[kValTileSeqLenQ][2];
+    float lane_row_sum_new[kValTileSeqLenQ][2];
+    fill_2D_regs<float, kValTileSeqLenQ, 2>(lane_row_max_new, -INFINITY);
+    fill_2D_regs<float, kValTileSeqLenQ, 2>(lane_row_sum_new, 0.0f);
 
-    // ---- Pass 1: Thread-level reduce max across all columns (kWarpTileSeqLenK
-    // tiles) ----
+    // Pass 1: Thread-level reduce max across all columns (kValTileSeqLenK tiles)
 #pragma unroll
-    for (int i = 0; i < kWarpTileSeqLenQ; ++i) {
+    for (int i = 0; i < kValTileSeqLenQ; ++i) {
 #pragma unroll
-      for (int j = 0; j < kWarpTileSeqLenK; ++j) {
+      for (int j = 0; j < kValTileSeqLenK; ++j) {
         // Extract half values from R_S registers (C matrix fragment layout)
         float2 t_reg_S_0 =
             __half22float2(HALF2(R_S[i][j][0])); // rows 0~7:  {c0, c1}
@@ -2323,12 +2338,12 @@ __global__ void __launch_bounds__(WARP_SIZE *kMmaTileSeqLenQ *kMmaTileSeqLenK)
           warp_reduce_max<4, float>(lane_row_max_new[i][1]);
     }
 
-    // ---- Pass 2: Compute P = exp(S*scale - m_new), store back to R_S ----
+    // Pass 2: Compute P = exp(S*scale - m_new), store back to R_S
     // 面试关键点：这里将 P 写回 R_S 寄存器！
     // 为什么可以？当前实现依赖 m16n8k16 这一路径下约定好的 fragment 布局，
     // 使 softmax 后的 P 能继续留在 R_S 中供后面的 P@V 直接消费，无需额外重组。
 #pragma unroll
-    for (int i = 0; i < kWarpTileSeqLenQ; ++i) {
+    for (int i = 0; i < kValTileSeqLenQ; ++i) {
       // m_new = max(m_old, m_cur)
       float block_row_max_new_0 =
           max(lane_block_row_max_old[i][0], lane_row_max_new[i][0]);
@@ -2336,7 +2351,7 @@ __global__ void __launch_bounds__(WARP_SIZE *kMmaTileSeqLenQ *kMmaTileSeqLenK)
           max(lane_block_row_max_old[i][1], lane_row_max_new[i][1]);
 
 #pragma unroll
-      for (int j = 0; j < kWarpTileSeqLenK; ++j) {
+      for (int j = 0; j < kValTileSeqLenK; ++j) {
         float2 t_reg_S_0 = __half22float2(HALF2(R_S[i][j][0]));
         float2 t_reg_S_1 = __half22float2(HALF2(R_S[i][j][1]));
 
@@ -2382,7 +2397,7 @@ __global__ void __launch_bounds__(WARP_SIZE *kMmaTileSeqLenQ *kMmaTileSeqLenK)
     }
     __syncthreads();
 
-    fill_3D_regs<uint32_t, kWarpTileSeqLenP, kWarpTileHeadDimV, 2>(R_O, 0);
+    fill_3D_regs<uint32_t, kValTileSeqLenP, kValTileHeadDimV, 2>(R_O, 0);
 
     // tile_V_Bc: iterate over chunks of Bc/K=16 columns in P matrix
     // Bc=kMmaAtomK=16 → 1 iteration for kHeadDim≤64 configurations
@@ -2392,9 +2407,9 @@ __global__ void __launch_bounds__(WARP_SIZE *kMmaTileSeqLenQ *kMmaTileSeqLenK)
       // V is row-major [Bc,d], but NN matmul needs B matrix in col-major → use
       // transposed ldmatrix
 #pragma unroll
-      for (int j = 0; j < kWarpTileHeadDimV; ++j) {
+      for (int j = 0; j < kValTileHeadDimV; ++j) {
         int warp_smem_V_d =
-            warp_KV * (kMmaAtomN * kWarpTileHeadDimV) + j * kMmaAtomN;
+            warp_KV * (kMmaAtomN * kValTileHeadDimV) + j * kMmaAtomN;
         int lane_smem_V_Bc = tile_V_Bc * kMmaAtomK + lane_id % 16;
         int lane_smem_V_d = warp_smem_V_d;
         uint32_t lane_smem_V_ptr =
@@ -2420,14 +2435,13 @@ __global__ void __launch_bounds__(WARP_SIZE *kMmaTileSeqLenQ *kMmaTileSeqLenK)
       //   - rows 8~15: lane 0~3 -> {a2,a3} 与 {a6,a7}，lane 4~7 -> 下一行，依次类推
       // 当前实现正是利用这一路径下 A fragment 与前面生成的 P fragment 可以直接对接，
       // 才能把 R_S 中的 P 直接喂给 HMMA16816 做 P@V；复习时不要把它背成对所有 MMA
-      // fragment 都无条件成立的通用结论。
-      // layout转换逻辑：
+      // fragment 都无条件成立的通用结论。layout转换逻辑：
       //   C layout: 8 x (16 x 8) layout -> A layout: 4 x (16 x 16) layout
       int w = tile_V_Bc * 2;
 #pragma unroll
-      for (int i = 0; i < kWarpTileSeqLenP; ++i) {
+      for (int i = 0; i < kValTileSeqLenP; ++i) {
 #pragma unroll
-        for (int j = 0; j < kWarpTileHeadDimV; ++j) {
+        for (int j = 0; j < kValTileHeadDimV; ++j) {
           HMMA16816(R_O[i][j][0], R_O[i][j][1], // C fragment output
                     R_S[i][w][0], R_S[i][w][1], R_S[i][w + 1][0], R_S[i][w + 1][1],  // A fragment = P
                     R_V[j][0], R_V[j][1], // B fragment = V
@@ -2442,7 +2456,7 @@ __global__ void __launch_bounds__(WARP_SIZE *kMmaTileSeqLenQ *kMmaTileSeqLenK)
     // ======================================================================
     // 公式来源: FA2 paper Eq.(7-8)，使用 exp(m_old - m_new) 做 O 与 l 的 rescale
 #pragma unroll
-    for (int i = 0; i < kWarpTileSeqLenP; ++i) {
+    for (int i = 0; i < kValTileSeqLenP; ++i) {
       float block_row_max_new_0 = lane_row_max_new[i][0];
       float block_row_max_new_1 = lane_row_max_new[i][1];
       float block_row_sum_new_0 = lane_row_sum_new[i][0];
@@ -2467,7 +2481,7 @@ __global__ void __launch_bounds__(WARP_SIZE *kMmaTileSeqLenQ *kMmaTileSeqLenK)
 
       // Rescale O_old + Add P@V in one fused step
 #pragma unroll
-      for (int j = 0; j < kWarpTileHeadDimV; ++j) {
+      for (int j = 0; j < kValTileHeadDimV; ++j) {
         // R_O / R_D 与前面的 R_S 一样，都按 MMA C fragment 布局解释：
         //   reg[0] -> rows 0~7 的 {c0,c1}
         //   reg[1] -> rows 8~15 的 {c2,c3}
@@ -2513,11 +2527,11 @@ __global__ void __launch_bounds__(WARP_SIZE *kMmaTileSeqLenQ *kMmaTileSeqLenK)
   // Step 4: 最终 rescale — O_final = (1/l_final) * O_final
   // ======================================================================
 #pragma unroll
-  for (int i = 0; i < kWarpTileSeqLenP; ++i) {
+  for (int i = 0; i < kValTileSeqLenP; ++i) {
     float rescale_factor_0 = __frcp_rn(lane_block_row_sum_old[i][0]);
     float rescale_factor_1 = __frcp_rn(lane_block_row_sum_old[i][1]);
 #pragma unroll
-    for (int j = 0; j < kWarpTileHeadDimV; ++j) {
+    for (int j = 0; j < kValTileHeadDimV; ++j) {
       float2 t_reg_D_0 = __half22float2(HALF2(R_D[i][j][0]));
       float2 t_reg_D_1 = __half22float2(HALF2(R_D[i][j][1]));
       t_reg_D_0.x = rescale_factor_0 * t_reg_D_0.x;
@@ -2535,9 +2549,9 @@ __global__ void __launch_bounds__(WARP_SIZE *kMmaTileSeqLenQ *kMmaTileSeqLenK)
   // 利用 warp shuffle 将分散在各 lane 的寄存器数据收集到 lane 0~3，
   // 然后用 LDST128BITS (st.global.v4.f32) 一次性写入 16 bytes
 #pragma unroll
-  for (int i = 0; i < kWarpTileSeqLenP; ++i) {
+  for (int i = 0; i < kValTileSeqLenP; ++i) {
 #pragma unroll
-    for (int j = 0; j < kWarpTileHeadDimV; ++j) {
+    for (int j = 0; j < kValTileHeadDimV; ++j) {
       uint32_t R_Z[2][4];
       R_Z[0][0] = R_D[i][j][0];
       R_Z[1][0] = R_D[i][j][1];
@@ -2551,11 +2565,11 @@ __global__ void __launch_bounds__(WARP_SIZE *kMmaTileSeqLenQ *kMmaTileSeqLenK)
       // st.global.v4.f32: 128-bit store, 4 lanes × 32-bit
       if (lane_id % 4 == 0) {
         int store_warp_regs_O_Br =
-            warp_QP * (kMmaAtomM * kWarpTileSeqLenP) + i * kMmaAtomM;
+            warp_QP * (kMmaAtomM * kValTileSeqLenP) + i * kMmaAtomM;
         int store_lane_gmem_O_Br =
             Q_tile_id * Br + store_warp_regs_O_Br + lane_id / 4;
         int store_warp_regs_O_d =
-            warp_KV * (kMmaAtomN * kWarpTileHeadDimV) + j * kMmaAtomN;
+            warp_KV * (kMmaAtomN * kValTileHeadDimV) + j * kMmaAtomN;
         int store_lane_gmem_O_d = store_warp_regs_O_d;
         int store_gmem_O_addr_0 = O_gmem_offset +
                                   (store_lane_gmem_O_Br + 0) * kHeadDim +
@@ -3468,13 +3482,13 @@ static void test_flash_attn(int seqlen, int head_dim) {
   constexpr int kMmaTileSeqLenK = 1;
   constexpr int kMmaTileSeqLenP = 4;
   constexpr int kMmaTileHeadDimV = 1;
-  constexpr int kWarpTileSeqLenQ = 1;
-  constexpr int kWarpTileSeqLenK = 8;
-  constexpr int kWarpTileSeqLenP = 1;
-  constexpr int kWarpTileHeadDimV = kHeadDim / (8 * kMmaTileHeadDimV);
+  constexpr int kValTileSeqLenQ = 1;
+  constexpr int kValTileSeqLenK = 8;
+  constexpr int kValTileSeqLenP = 1;
+  constexpr int kValTileHeadDimV = kHeadDim / (8 * kMmaTileHeadDimV);
 
-  constexpr int Br = kMmaAtomM * kMmaTileSeqLenQ * kWarpTileSeqLenQ;
-  constexpr int Bc = kMmaAtomN * kMmaTileSeqLenK * kWarpTileSeqLenK;
+  constexpr int Br = kMmaAtomM * kMmaTileSeqLenQ * kValTileSeqLenQ;
+  constexpr int Bc = kMmaAtomN * kMmaTileSeqLenK * kValTileSeqLenK;
   size_t smem_bytes = (Br * (kHeadDim + kPadV) +
                        kStageV * Bc * (kHeadDim + kPadV) +
                        Bc * (kHeadDim + kPadV)) * sizeof(half);
@@ -3484,7 +3498,7 @@ static void test_flash_attn(int seqlen, int head_dim) {
 
   flash_attn_mma_stages_split_q<kHeadDim, kMmaAtomM, kMmaAtomN, kMmaAtomK,
       kMmaTileSeqLenQ, kMmaTileSeqLenK, kMmaTileSeqLenP, kMmaTileHeadDimV,
-      kWarpTileSeqLenQ, kWarpTileSeqLenK, kWarpTileSeqLenP, kWarpTileHeadDimV,
+      kValTileSeqLenQ, kValTileSeqLenK, kValTileSeqLenP, kValTileHeadDimV,
       kStageV, kPadV>
       <<<grid, block, smem_bytes>>>(d_q, d_k, d_v, d_o, seqlen, head_dim);
   check(cudaGetLastError(), "fa launch");
