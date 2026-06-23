@@ -1973,8 +1973,8 @@ __global__ void __launch_bounds__(NUM_THREADS)
   }
 }
 
-#if defined(__CUDA_ARCH_FEAT_SM90_ALL)
-// ---- Host-side TMA Tensor Map helpers (WGMMA test) — sm_90a only ----
+#if __CUDA_ARCH__ >= 900
+// ---- Host-side TMA Tensor Map helpers (WGMMA test) — sm_90a+ ----
 // 面试要点（TMA descriptor 创建 — cuTensorMapEncodeTiled）：
 //   - TMA descriptor 描述 global memory 中矩阵的 shape/stride/dtype，
 //     以及硬件搬运的 box (tile) 大小和 smem swizzle 模式
@@ -2019,7 +2019,7 @@ __host__ static inline CUtensorMap *allocate_and_create_tensor_map(
              cudaMemcpyHostToDevice);
   return tma_map_d;
 }
-#endif /* __CUDA_ARCH_FEAT_SM90_ALL */
+#endif /* __CUDA_ARCH__ >= 900 */
 
 // =============================================================================
 // Phase 8: FlashAttention-2 (Split-Q + MMA m16n8k16)
@@ -3453,7 +3453,7 @@ static void test_hgemm_mma(int M, int N, int K) {
 }
 
 
-#if defined(__CUDA_ARCH_FEAT_SM90_ALL)
+#if __CUDA_ARCH__ >= 900
 static void test_hgemm_wgmma(int M, int N, int K) {
   // HGEMM WGMMA — m64n128k16 + TMA + Warp Specialization (Hopper SM90+)
   // TN layout: C[M×N] = A[M×K] × B^T[N×K]
@@ -3561,7 +3561,7 @@ static void test_hgemm_wgmma(int M, int N, int K) {
   cudaFree(tma_b);
   cublasDestroy(handle);
 }
-#endif /* __CUDA_ARCH_FEAT_SM90_ALL */
+#endif /* __CUDA_ARCH__ >= 900 */
 
 
 static void test_flash_attn(int seqlen, int head_dim) {
@@ -3677,7 +3677,7 @@ static void test_flash_attn(int seqlen, int head_dim) {
 
 
 int main(int argc, char *argv[]) {
-#if defined(__CUDA_ARCH_FEAT_SM90_ALL)
+#if __CUDA_ARCH__ >= 900
   cuInit(0); // Driver API init required for cuTensorMapEncodeTiled (TMA, sm_90a+)
 #endif
   int M = 1024, N = 1024, K = 1024;
@@ -3701,7 +3701,7 @@ int main(int argc, char *argv[]) {
   test_sgemv(256, 128);
   test_sgemm(M, N, K);
   test_hgemm_mma(M, N, K);
-#if defined(__CUDA_ARCH_FEAT_SM90_ALL)
+#if __CUDA_ARCH__ >= 900
   test_hgemm_wgmma(M, N, K);
 #endif
   test_flash_attn(1024, 64);
