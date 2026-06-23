@@ -121,11 +121,8 @@
 #include <stdlib.h>
 #include <math.h>
 #include <cublas_v2.h>
-
-// WGMMA/TMA headers (sm90a only)
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
+#include <cuda.h>
 #include <cuda/barrier>
-#endif
 
 #define WARP_SIZE 32
 #define INT4(value) (reinterpret_cast<int4 *>(&(value))[0])
@@ -1520,7 +1517,6 @@ __global__ void __launch_bounds__(256)
 //   同步
 //   - 128B swizzle: shared memory 的 128B swizzle 模式，避免 bank conflict
 
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
 // ---- WGMMA 辅助函数 ----
 #define WGMMA_FENCE() asm volatile("wgmma.fence.sync.aligned;\n" ::: "memory")
 #define WGMMA_COMMIT_GROUP()                                                   \
@@ -1737,9 +1733,9 @@ __global__ void __launch_bounds__(NUM_THREADS)
   // ---- Shared Memory 分配 ----
   // 动态 shared memory（由 host 侧通过 kernel launch 的 smem 参数指定大小）
   // __align__(128) 满足 TMA 和 WGMMA 的 16B 对齐 + 128B swizzle 对齐要求
-  extern __shared__ __align__(128) uint8_t smem[];
+  extern __shared__ __align__(128) uint8_t smem_wgmma[];
   WgmmaSMem<BM, BN, BK, K_STAGE> &s =
-      *reinterpret_cast<WgmmaSMem<BM, BN, BK, K_STAGE> *>(smem);
+      *reinterpret_cast<WgmmaSMem<BM, BN, BK, K_STAGE> *>(smem_wgmma);
   half *s_a = s.A;
   half *s_b = s.B;
 
@@ -1748,8 +1744,10 @@ __global__ void __launch_bounds__(NUM_THREADS)
   //   full[qidx]:  Producer thread 0 发 full 信号，128 个 Consumer 线程等 full
   //   empty[qidx]: Consumer 发 empty 信号，Producer thread 0 等 empty
   // 每轮参与 arrive 的总人数 = 128 (consumer) + 1 (producer) = 129
+#pragma nv_diag_suppress static_var_with_dynamic_init
   __shared__ cuda::barrier<cuda::thread_scope_block> full[K_STAGE];
   __shared__ cuda::barrier<cuda::thread_scope_block> empty[K_STAGE];
+#pragma nv_diag_default static_var_with_dynamic_init
 
   // K 方向总 tile 数。要求 K 能被 BK 整除，否则尾 tile 被丢弃。
   const int num_blocks_k = K / BK;
@@ -1768,7 +1766,7 @@ __global__ void __launch_bounds__(NUM_THREADS)
     }
     // fence_proxy_async_shared_cta: 确保 barrier 在 smem 中的初始化
     // 对 async proxy（TMA/WGMMA）可见。
-    cuda::device::fence_proxy_async_shared_cta();
+    cuda::device::experimental::fence_proxy_async_shared_cta();
   }
   __syncthreads();
 
@@ -1801,12 +1799,12 @@ __global__ void __launch_bounds__(NUM_THREADS)
         // TMA 是硬件 DMA 引擎：一次指令提交即可搬运整个 2D tile，
         // 无需线程逐元素搬运，零寄存器开销。
         // TMA 2D 加载 A tile: coords = (k_offset, m_offset)
-        cuda::device::cp_async_bulk_tensor_2d_global_to_shared(
+        cuda::device::experimental::cp_async_bulk_tensor_2d_global_to_shared(
             &s_a[qidx * BK * BM], tensorMapA, block_k_iter * BK, by * BM,
             full[qidx]);
 
         // TMA 2D 加载 B tile: coords = (k_offset, n_offset)
-        cuda::device::cp_async_bulk_tensor_2d_global_to_shared(
+        cuda::device::experimental::cp_async_bulk_tensor_2d_global_to_shared(
             &s_b[qidx * BK * BN], tensorMapB, block_k_iter * BK, bx * BN,
             full[qidx]);
 
@@ -1815,7 +1813,7 @@ __global__ void __launch_bounds__(NUM_THREADS)
         // 本次 TMA 事务预期传输的字节数。
         // Consumer 的 full[qidx].wait() 会等待这 (BK*BN+BK*BM)*sizeof(half)
         // 字节全部写入 smem 后才返回。
-        cuda::device::barrier_arrive_tx(
+        [[maybe_unused]] auto token = cuda::device::barrier_arrive_tx(
             full[qidx], 1, (BK * BN + BK * BM) * sizeof(half));
       }
     }
@@ -1831,7 +1829,7 @@ __global__ void __launch_bounds__(NUM_THREADS)
     // 都是"空的"（可被 Producer 写入）。
     // 如果没有这一步，Producer 的 empty[qidx].wait() 在第一轮会永远阻塞。
     for (int i = 0; i < K_STAGE; ++i) {
-      empty[i].arrive();
+      [[maybe_unused]] auto token = empty[i].arrive();
     }
 
     // 累加器寄存器声明
@@ -1906,7 +1904,7 @@ __global__ void __launch_bounds__(NUM_THREADS)
 
       // Step C4: 释放此 stage（发 empty 信号给 Producer）
       // 通知 Producer stage qidx 的 smem 已使用完毕，可以安全覆盖。
-      empty[qidx].arrive();
+      [[maybe_unused]] auto token = empty[qidx].arrive();
     }
 
     // ==================================================================
@@ -1974,7 +1972,54 @@ __global__ void __launch_bounds__(NUM_THREADS)
     }
   }
 }
-#endif /* __CUDA_ARCH__ >= 900 */
+
+#if defined(__CUDA_ARCH_FEAT_SM90_ALL)
+// ---- Host-side TMA Tensor Map helpers (WGMMA test) — sm_90a only ----
+// 面试要点（TMA descriptor 创建 — cuTensorMapEncodeTiled）：
+//   - TMA descriptor 描述 global memory 中矩阵的 shape/stride/dtype，
+//     以及硬件搬运的 box (tile) 大小和 smem swizzle 模式
+//   - 关键易错点：TMA shape 参数写的是 (W,H) 而不是 (H,W)！
+//     对 row-major [M,K] 矩阵，TMA shape = (K,M)，minor=K，major=M
+//   - cuTensorMapEncodeTiled 是 CUDA Driver API，需 #include <cuda.h> 并链接 -lcuda
+//   - smem_box 维度顺序也是 (minor, major) = (BK, BM) 或 (BK, BN)
+//   - Swizzle 模式通常选 CU_TENSOR_MAP_SWIZZLE_128B 配合 WGMMA 的 128B swizzle
+//
+// 参考：CUDA Programming Guide §TMA, PTX ISA §9.7.15.5, CUTLASS GmmaDescriptor
+
+template <int BlockMajorSize, int BlockMinorSize>
+__host__ static inline void create_tensor_map(CUtensorMap *tma_map,
+                                               half *gmem_ptr,
+                                               int blocks_height,
+                                               int blocks_width) {
+  void *gmem_address = (void *)gmem_ptr;
+  uint64_t gmem_prob_shape[5] = {(uint64_t)BlockMinorSize * blocks_width,
+                                  (uint64_t)BlockMajorSize * blocks_height,
+                                  1, 1, 1};
+  uint64_t gmem_prob_stride[5] = {
+      sizeof(half), sizeof(half) * BlockMinorSize * blocks_width, 0, 0, 0};
+  uint32_t smem_box_shape[5] = {uint32_t(BlockMinorSize),
+                                 uint32_t(BlockMajorSize), 1, 1, 1};
+  uint32_t smem_box_stride[5] = {1, 1, 1, 1, 1};
+  CUresult result = cuTensorMapEncodeTiled(
+      tma_map, CU_TENSOR_MAP_DATA_TYPE_FLOAT16, 2, gmem_address,
+      gmem_prob_shape, gmem_prob_stride + 1, smem_box_shape, smem_box_stride,
+      CU_TENSOR_MAP_INTERLEAVE_NONE, CU_TENSOR_MAP_SWIZZLE_128B,
+      CU_TENSOR_MAP_L2_PROMOTION_NONE, CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE);
+  if (result != CUDA_SUCCESS)
+    printf("cuTensorMapEncodeTiled failed: %d\n", (int)result);
+}
+
+__host__ static inline CUtensorMap *allocate_and_create_tensor_map(
+    half *src, int blocks_height, int blocks_width) {
+  CUtensorMap *tma_map_d;
+  cudaMalloc(&tma_map_d, sizeof(CUtensorMap));
+  CUtensorMap tma_map_host;
+  create_tensor_map<128, 64>(&tma_map_host, src, blocks_height, blocks_width);
+  cudaMemcpy(tma_map_d, &tma_map_host, sizeof(CUtensorMap),
+             cudaMemcpyHostToDevice);
+  return tma_map_d;
+}
+#endif /* __CUDA_ARCH_FEAT_SM90_ALL */
 
 // =============================================================================
 // Phase 8: FlashAttention-2 (Split-Q + MMA m16n8k16)
@@ -3408,6 +3453,117 @@ static void test_hgemm_mma(int M, int N, int K) {
 }
 
 
+#if defined(__CUDA_ARCH_FEAT_SM90_ALL)
+static void test_hgemm_wgmma(int M, int N, int K) {
+  // HGEMM WGMMA — m64n128k16 + TMA + Warp Specialization (Hopper SM90+)
+  // TN layout: C[M×N] = A[M×K] × B^T[N×K]
+  // Kernel: hgemm_wgmma_stages_tn with default template params
+
+  constexpr int BM = 128, BN = 128, BK = 64, K_STAGE = 3, NUM_THREADS = 256;
+
+  // M, K must be divisible by tile dims
+  if (M % BM != 0 || N % BN != 0 || K % BK != 0) {
+    printf("| %-35s | %-12s | %-4s |\n",
+           "HGEMM WGMMA", "SKIP", "SKIP");
+    return;
+  }
+
+  size_t size_a = (size_t)M * K * sizeof(half);
+  size_t size_b = (size_t)K * N * sizeof(half);
+  size_t size_c = (size_t)M * N * sizeof(half);
+
+  half *h_a = (half *)malloc(size_a);
+  half *h_b = (half *)malloc(size_b);
+  half *h_c_ref = (half *)malloc(size_c);
+
+  srand(42);
+  for (int i = 0; i < M * K; i++)
+    h_a[i] = __float2half(((float)rand() / RAND_MAX) * 2.0f - 1.0f);
+  for (int i = 0; i < K * N; i++)
+    h_b[i] = __float2half(((float)rand() / RAND_MAX) * 2.0f - 1.0f);
+
+  // B^T [N×K] row-major for TN layout (same as hgemm_mma kernel)
+  size_t size_b_t = (size_t)N * K * sizeof(half);
+  half *h_b_t = (half *)malloc(size_b_t);
+  for (int n = 0; n < N; n++)
+    for (int k = 0; k < K; k++)
+      h_b_t[n * K + k] = h_b[k * N + n];
+
+  half *d_a, *d_b, *d_b_t, *d_c;
+  check(cudaMalloc(&d_a, size_a), "wgmma alloc A");
+  check(cudaMalloc(&d_b, size_b), "wgmma alloc B (cuBLAS)");
+  check(cudaMalloc(&d_b_t, size_b_t), "wgmma alloc B_t (kernel)");
+  check(cudaMalloc(&d_c, size_c), "wgmma alloc C");
+
+  check(cudaMemcpy(d_a, h_a, size_a, cudaMemcpyHostToDevice), "wgmma H2D A");
+  check(cudaMemcpy(d_b, h_b, size_b, cudaMemcpyHostToDevice),
+        "wgmma H2D B (cuBLAS)");
+  check(cudaMemcpy(d_b_t, h_b_t, size_b_t, cudaMemcpyHostToDevice),
+        "wgmma H2D B_t (kernel)");
+
+  // cuBLAS FP16 reference (row-major idiom, same as hgemm_mma)
+  cublasHandle_t handle;
+  cublasCreate(&handle);
+  half alpha_h = __float2half(1.0f), beta_h = __float2half(0.0f);
+  cublasGemmEx(handle, CUBLAS_OP_N, CUBLAS_OP_N, N, M, K, &alpha_h, d_b,
+               CUDA_R_16F, N, d_a, CUDA_R_16F, K, &beta_h, d_c, CUDA_R_16F, N,
+               CUBLAS_COMPUTE_16F, CUBLAS_GEMM_DEFAULT);
+  check(cudaMemcpy(h_c_ref, d_c, size_c, cudaMemcpyDeviceToHost),
+        "wgmma D2H ref");
+
+  // Create TMA tensor maps for A and B^T
+  // A[M×K] row-major: TMA box=(BK=64, BM=128), global shape=(K, M)
+  // B^T[N×K] row-major: TMA box=(BK=64, BN=128), global shape=(K, N)
+  CUtensorMap *tma_a =
+      allocate_and_create_tensor_map(d_a, M / BM, K / BK);
+  CUtensorMap *tma_b =
+      allocate_and_create_tensor_map(d_b_t, N / BN, K / BK);
+
+  // Launch WGMMA kernel
+  // BLOCK_SWIZZLE=false → 2D grid, no swizzle
+  size_t smem_bytes =
+      K_STAGE * (BM * BK + BN * BK) * sizeof(half); // 3*16384*2 = 96KB
+  cudaFuncSetAttribute(
+      hgemm_wgmma_stages_tn<64, 128, 16, BM, BN, BK, NUM_THREADS, K_STAGE,
+                             false>,
+      cudaFuncAttributeMaxDynamicSharedMemorySize, smem_bytes);
+
+  dim3 block(NUM_THREADS);
+  dim3 grid((N + BN - 1) / BN, (M + BM - 1) / BM);
+  hgemm_wgmma_stages_tn<64, 128, 16, BM, BN, BK, NUM_THREADS, K_STAGE, false>
+      <<<grid, block, smem_bytes>>>(M, N, K, d_c, tma_a, tma_b);
+  check(cudaGetLastError(), "wgmma launch");
+  check(cudaDeviceSynchronize(), "wgmma sync");
+
+  half *h_c = (half *)malloc(size_c);
+  check(cudaMemcpy(h_c, d_c, size_c, cudaMemcpyDeviceToHost), "wgmma D2H");
+
+  // Verify
+  float max_err = 0.0f;
+  for (int i = 0; i < M * N; i++) {
+    float err = fabsf(__half2float(h_c[i]) - __half2float(h_c_ref[i]));
+    if (err > max_err)
+      max_err = err;
+  }
+  printf("| %-35s | %.6e | %-4s |\n", "HGEMM WGMMA", max_err,
+         max_err < 1.0f ? "PASS" : "FAIL");
+
+  free(h_a);
+  free(h_b);
+  free(h_b_t);
+  free(h_c);
+  free(h_c_ref);
+  cudaFree(d_a);
+  cudaFree(d_b);
+  cudaFree(d_b_t);
+  cudaFree(d_c);
+  cudaFree(tma_a);
+  cudaFree(tma_b);
+  cublasDestroy(handle);
+}
+#endif /* __CUDA_ARCH_FEAT_SM90_ALL */
+
+
 static void test_flash_attn(int seqlen, int head_dim) {
   // FlashAttention-2 with split-Q, MMA m16n8k16
   int B = 1, H = 8;
@@ -3521,6 +3677,9 @@ static void test_flash_attn(int seqlen, int head_dim) {
 
 
 int main(int argc, char *argv[]) {
+#if defined(__CUDA_ARCH_FEAT_SM90_ALL)
+  cuInit(0); // Driver API init required for cuTensorMapEncodeTiled (TMA, sm_90a+)
+#endif
   int M = 1024, N = 1024, K = 1024;
   if (argc > 3) { M = atoi(argv[1]); N = atoi(argv[2]); K = atoi(argv[3]); }
 
@@ -3542,6 +3701,9 @@ int main(int argc, char *argv[]) {
   test_sgemv(256, 128);
   test_sgemm(M, N, K);
   test_hgemm_mma(M, N, K);
+#if defined(__CUDA_ARCH_FEAT_SM90_ALL)
+  test_hgemm_wgmma(M, N, K);
+#endif
   test_flash_attn(1024, 64);
 
   printf("=== All tests done ===\n");
