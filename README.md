@@ -74,7 +74,7 @@ nvcc -std=c++20 -O2 -gencode arch=compute_90a,code=sm_90a -DNOTES_V2_HAS_WGMMA \
 | FlashAttn-SplitQ                    | 1.646988e-04 | PASS |
 === All tests done ===
 ```
-A PDF version of LeetCUDA focused on **interview scenarios** is available at [`kernels/interview/notes-v2.pdf`](https://github.com/xlite-dev/LeetCUDA/blob/dev/kernels/interview/notes-v2.pdf).
+A PDF version of LeetCUDA focused on **interview scenarios** is available at [`kernels/interview/notes-v2.pdf`](https://github.com/xlite-dev/LeetCUDA/blob/main/kernels/interview/notes-v2.pdf).
 
 ## 📖 Contents
 <div id="contents"></div>
