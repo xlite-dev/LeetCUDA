@@ -84,7 +84,7 @@
 //    - 通过 cuda::barrier 同步，完全解耦数据搬运和计算
 //
 // 9. TMA (Tensor Memory Accelerator, Hopper+)
-//    - 硬件 DMA 引擎，支持 2D~3D 寻址，低寄存器开销
+//    - 硬件 DMA 引擎，支持 2D~5D 寻址，低寄存器开销
 //    - 配合 cp.async.bulk 实现异步数据搬运
 
 // ---- Roofline 分析公式 ----
