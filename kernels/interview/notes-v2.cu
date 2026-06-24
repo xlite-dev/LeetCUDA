@@ -1614,7 +1614,8 @@ __device__ inline uint64_t make_smem_desc(half *ptr) {
 // K-major 布局，使得 K 维元素在 128B atom 内连续，区别于 MMA TN 布局下的 B^T[N,K]。
 template <int BM, int BN, int BK, int QSIZE> struct WgmmaSMem {
   alignas(128) half A[BM * BK * QSIZE]; // A tile: row-major [BM, BK]
-  alignas(128) half B[BK * BN * QSIZE]; // B tile: row-major [BK, BN]（K-major 布局，供 WGMMA imm-trans-b=0 直接读取）
+  // B: K-major 布局，供 WGMMA imm-trans-b=0 直接读取, [BK, BN].
+  alignas(128) half B[BK * BN * QSIZE]; // B tile: row-major [BK, BN]
 };
 
 // ---- WGMMA Kernel: Warp Specialization + TMA ----
