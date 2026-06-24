@@ -1154,6 +1154,11 @@ __global__ void sgemm_vec4(float *a, float *b, float *c, int M, int N, int K) {
 // =============================================================================
 
 // ---- gmem → smem: cp.async ----
+// cp.async.commit_group / wait_group / wait_all 语义（PTX ISA §9.7.9.25.3）：
+//   - commit_group: 将此前所有未提交的 cp.async 归入一个新的 async-group（per-thread）。
+//   - wait_group N: 阻塞直到最多 N 个 async-group 尚未完成（即 pending ≤ N）。
+//     N=0 → 等所有 group 完成。与 wgmma.wait_group 语义一致。
+//   - wait_all: 等价于 commit_group + wait_group 0。
 #define CP_ASYNC_COMMIT_GROUP() asm volatile("cp.async.commit_group;\n" ::)
 #define CP_ASYNC_WAIT_ALL() asm volatile("cp.async.wait_all;\n" ::)
 #define CP_ASYNC_WAIT_GROUP(n)                                                 \
@@ -1487,6 +1492,12 @@ __global__ void __launch_bounds__(256)
 //   - 128B swizzle: shared memory 的 128B swizzle 模式，避免 bank conflict
 
 // ---- WGMMA 辅助函数 ----
+// wgmma.commit_group / wait_group 语义（PTX ISA §9.7.15.7）：
+//   - commit_group: 将此前所有未提交的 wgmma.mma_async 归入一个新的 wgmma-group
+//     （per-warpgroup，故需 .sync.aligned 确保所有线程同步执行）。
+//   - wait_group N: 阻塞直到最多 N 个 wgmma-group 尚未完成（pending ≤ N）。
+//     N=0 → 等所有 group 完成。★ 与 cp.async.wait_group 语义一致（PTX ISA §9.7.9.25.3.3），
+//     都是 "wait until only N or fewer groups are pending"。
 #define WGMMA_FENCE() asm volatile("wgmma.fence.sync.aligned;\n" ::: "memory")
 #define WGMMA_COMMIT_GROUP()                                                   \
   asm volatile("wgmma.commit_group.sync.aligned;\n" ::: "memory")
@@ -1582,12 +1593,15 @@ __device__ inline uint64_t make_smem_desc(half *ptr) {
 
 // ---- WGMMA PTX 指令宏 ----
 // wgmma.mma_async.sync.aligned.m64n128k16.f16.f16.f16
-// m64n128k16: M=64, N=128, K=16
-// f16.f16.f16: A=f16, B=f16, D=f16 (accumulation in f16)
+// m64n128k16: M=64, N=128, K=16。一次 WGMMA 计算 D[64×128] += A[64×16] × B[16×128]。
+// f16.f16.f16: A=f16, B=f16, D=f16（累加器也是 f16 精度）。
 // 每线程 32 个 uint32 输出：D=64×128=8192 half，warpgroup 128 线程分担，
-// 每线程 64 half = 32 uint32
-// descA/descB: shared memory 描述符（由 make_smem_desc 生成）
-// ScaleD: 0=clear accum, 1=accumulate（用于 K 维迭代时累加）
+// 每线程 64 half = 32 uint32。
+// descA/descB: shared memory 描述符（由 make_smem_desc 生成，64-bit 编码）。
+// ScaleD: 0=清零累加器再写入, 1=与累加器中的旧值累加（K 维迭代必须用 1）。
+// ScaleA/ScaleB: 1=正常符号, -1=翻转符号（此处始终用 1）。
+// TransA/TransB: 0=K-major（K 维连续），1=MN-major（M/N 维连续）。本实现始终用 0。
+// 参考：PTX ISA §9.7.15.4 (wgmma.mma_async)
 #define WGMMA_M64N128K16_F16F16F16(d, sA, sB, ScaleD, ScaleA, ScaleB, TransA,  \
                                    TransB)                                     \
   {                                                                            \
@@ -1623,9 +1637,14 @@ __device__ inline uint64_t make_smem_desc(half *ptr) {
 // 每个 stage 包含两块 smem：
 //   A tile: [BM, BK] row-major → BK×BM 个 half，地址连续
 //   B tile: [BK, BN] row-major → BN×BK 个 half，地址连续
-// 注意 B 的 smem 布局是 row-major [BK, BN]，物理上按 K-major 排列（imm-trans-b=0），
-// 与 A 的 K-major 配合供 WGMMA 读取。128B swizzle 将 [BK,BN] row-major 重新映射为
-// K-major 布局，使得 K 维元素在 128B atom 内连续，区别于 MMA TN 布局下的 B^T[N,K]。
+//
+// ★ 关键区别 — WGMMA 的 B 布局 vs MMA(TN) 的 B^T 布局：
+//   MMA (TN):   smem 存 B^T [N, K] row-major，ldmatrix 解出 col-major B fragment。
+//   WGMMA:      smem 存 B [BK, BN] row-major（即 N 维连续，K 维步幅=BN个half）。
+//               WGMMA 指令的 imm-trans-b=0 指示硬件按 K-major 读 B，
+//               128B swizzle + make_smem_desc 的 stride_byte_offset 将这些地址
+//               重新映射，使硬件能从 [BK,BN] row-major 中正确按 K-major 顺序取值。
+//   简言之：swizzle 桥接了 "row-major 存储" 和 "K-major 读取" 的差异。
 template <int BM, int BN, int BK, int QSIZE> struct WgmmaSMem {
   alignas(128) half A[BM * BK * QSIZE]; // A tile: row-major [BM, BK]
   // B: K-major 布局，供 WGMMA imm-trans-b=0 直接读取, [BK, BN].
@@ -1711,10 +1730,54 @@ __global__ void __launch_bounds__(NUM_THREADS)
   half *s_b = s.B;
 
   // ---- cuda::barrier 初始化 ----
-  // 每个 stage 有两个 barrier：
-  //   full[qidx]:  Producer thread 0 发 full 信号，128 个 Consumer 线程等 full
-  //   empty[qidx]: Consumer 发 empty 信号，Producer thread 0 等 empty
-  // 每轮参与 arrive 的总线程数 = 128 (consumer) + 1 (producer) = 129
+  //
+  // ★ Barrier 机制速查（arrive / wait 核心语义）：
+  //
+  // cuda::barrier 是一个 CTA 级同步原语，基于 **phase（奇偶交替）** 工作：
+  //
+  //   init(bar, N): 设置 arrive_count = N。
+  //     含义：每 phase 需要 N 个线程各调用一次 arrive()，barrier 才翻转 phase。
+  //
+  //   arrive(): 线程声明"我已到达此 barrier 点"。
+  //     - 非阻塞，立即返回一个 token（包含当前 phase 值）。
+  //     - 不关心"谁"到达，只关心"到达次数"是否达到 arrive_count。
+  //
+  //   wait(token): 线程阻塞，直到 barrier 的当前 phase ≠ token 中的 phase。
+  //     - 即：等待 phase 翻转。
+  //     - Phase 翻转条件：(1) arrive 次数达到 arrive_count
+  //                      (2) 若使用了 barrier_arrive_tx，还需 TMA 字节全部写完
+  //
+  //   典型用法：b.wait(b.arrive())
+  //     - arrive() 注册自己到达，拿到 token（当前 phase = P）
+  //     - wait(token) 阻塞直到 phase 翻转（P → P+1）
+  //     - 如果自己是第 N 个到达者 → phase 立即翻转 → wait 立即返回（不阻塞）
+  //     - 如果自己不是最后一个 → wait 阻塞，直到第 N 个到达者触发翻转
+  //
+  // ★ 本 kernel 的 Pipeline 同步协议（K_STAGE=3，arrive_count=129）：
+  //
+  //   Producer (1 thread)               Consumer (128 threads)
+  //   ──────────────────                ──────────────────────
+  //                                      C0: arrive(empty[*]) ×128  [init: 标记所有 stage 为空]
+  //   ┌─ for each k_tile: ─┐            ┌─ for each k_tile: ─┐
+  //   │ P1: arrive+wait(empty[q])       │ C1: arrive+wait(full[q])
+  //   │     ↓ 等 stage q 被消费完       │     ↓ 等 TMA 数据就绪
+  //   │ P2: TMA(A[q]) + TMA(B[q])       │ C2: WGMMA 计算
+  //   │     ↓ 异步拷贝                  │ C3: wait WGMMA 完成
+  //   │ P3: arrive_tx(full[q])          │ C4: arrive(empty[q])
+  //   │     ↑ 通知：stage q 数据就绪     │     ↑ 通知：stage q 已消费完
+  //   └──────────────────────┘           └──────────────────────┘
+  //
+  //   关键不变式（invariant）：
+  //     - Producer 不会覆盖 Consumer 正在读的 stage
+  //     - Consumer 不会读 Producer 还没写完的 stage
+  //     - 通过 full/empty 两个 barrier 的 phase 交替来保证
+  //
+  //   每个 stage 有两个 barrier：
+  //     full[qidx]:  TMA 数据就绪信号。Producer 发（arrive_tx），Consumer 等（wait）。
+  //     empty[qidx]: Stage 空闲信号。   Consumer 发（arrive），   Producer 等（wait）。
+  //
+  //   arrive_count = 128 (consumer) + 1 (producer) = 129：
+  //     每 phase，128 个 consumer 线程 + 1 个 producer 线程都要 arrive 一次。
 #pragma nv_diag_suppress static_var_with_dynamic_init
   __shared__ cuda::barrier<cuda::thread_scope_block> full[K_STAGE];
   __shared__ cuda::barrier<cuda::thread_scope_block> empty[K_STAGE];
@@ -1728,14 +1791,10 @@ __global__ void __launch_bounds__(NUM_THREADS)
   // 初始化 barriers（仅 thread 0 执行）
   if (threadIdx.x == 0) {
     for (int i = 0; i < K_STAGE; ++i) {
-      // init 的第二个参数是 barrier 的 arrive count：
-      //   num_consumers * 128 + 1 = 1 * 128 + 1 = 129
-      // 即每轮需要 128 个 consumer 线程 + 1 个 producer 线程都 arrive 后，
-      // barrier 才翻转 phase 并唤醒等待线程。
-      // cuda::barrier<cuda::thread_scope_block>::init(barrier, arrive_count)
+      // arrive_count = 129：128 consumer + 1 producer
       // init 是 CUDA barrier 的 hidden friend 函数（定义在 cuda::barrier 类体内），
-      // 只能通过 ADL（Argument-Dependent Lookup）调用。因为第一个参数 &full[i] 的类型是 
-      // cuda::barrier<cuda::thread_scope_block>*，编译器通过 ADL 在 cuda 命名空间中自动找到
+      // 只能通过 ADL（Argument-Dependent Lookup）调用。因为第一个参数 &full[i] 的类型是
+      // cuda::barrier<cuda::thread_scope_block>*，编译器通过 ADL 在 cuda 命名空间中自动找到它。
       init(&full[i], num_consumers * 128 + 1);  // 128 consumer + 1 producer
       init(&empty[i], num_consumers * 128 + 1); // same
     }
@@ -1759,9 +1818,20 @@ __global__ void __launch_bounds__(NUM_THREADS)
         if (qidx == K_STAGE)
           qidx = 0;
 
-        // Step P1: 等待 Consumer 释放此 stage（empty 信号）
-        // empty[qidx].arrive() 表示 Producer 自己"已准备好等待"，
-        // 然后 wait() 阻塞直到 barrier phase 翻转（即所有 Consumer 都已 arrive）。
+        // Step P1: 等待 stage qidx 变为"空"（可被覆盖写入）
+        //
+        // 模式 empty[qidx].wait(empty[qidx].arrive()):
+        //   - arrive(): Producer（1 个线程）在 empty barrier 上注册到达，
+        //     获得当前 phase 的 token。如果 Consumer 已经在 C4 步骤积累了
+        //     128 次 arrive（来自上一轮迭代或 C0 初始化），则加上这次共 129 次
+        //     → phase 立即翻转。
+        //   - wait(token): 阻塞直到 barrier phase ≠ token 中的 phase。
+        //     由于 arrive() 是第 129 次到达，phase 在 arrive 时已翻转，
+        //     wait 看到 phase 已变 → 立即返回（首轮不阻塞）。
+        //
+        // 语义：Producer 说"我准备好写 stage qidx 了，Consumer 用完没有？"
+        //       如果 Consumer 还没用完 → phase 未翻转 → wait 阻塞等待。
+        //       如果 Consumer 已用完 → phase 已翻转 → wait 立即返回。
         empty[qidx].wait(empty[qidx].arrive());
 
         // Step P2: 提交 TMA 2D 拷贝指令
@@ -1783,11 +1853,16 @@ __global__ void __launch_bounds__(NUM_THREADS)
             &s_b[qidx * BK * BN], tensorMapB, block_k_iter * BK, bx * BN,
             full[qidx]);
 
-        // Step P3: 通知 Consumer 此 stage 已准备好（full 信号）
-        // barrier_arrive_tx 除了 arrive 之外还额外告知硬件：
-        // 本次 TMA 事务预期传输的字节数。
-        // Consumer 的 full[qidx].wait() 会等待这 (BK*BN+BK*BM)*sizeof(half)
-        // 字节全部写入 smem 后才返回。
+        // Step P3: 通知 Consumer：stage qidx 的 TMA 数据已就绪
+        //
+        // barrier_arrive_tx(bar, arrive_count_update, byte_count):
+        //   - 在 bar 上注册 1 次到达（arrive_count_update=1）
+        //   - 同时声明预期有 byte_count 字节将通过 async copy（TMA）写入 smem
+        //   - Phase 翻转条件：
+        //       (a) 总 arrive 次数达到 129（128 consumer + 1 producer）
+        //       (b) 所有声明的 async 字节已写入 smem
+        //     两个条件都满足后 phase 才翻转，Consumer 的 wait() 才返回。
+        //   - 即：Consumer 不会在 TMA 数据完整到达前就开始读 smem。
         [[maybe_unused]] auto token = cuda::device::barrier_arrive_tx(
             full[qidx], 1, (BK * BN + BK * BM) * sizeof(half));
       }
@@ -1799,10 +1874,14 @@ __global__ void __launch_bounds__(NUM_THREADS)
   // 所有 128 个线程（4 warps）全部参与。
   // ==================================================================
   else {
-    // Step C0: Consumer 初始时"准备就绪"
-    // 对所有 stage 的 empty barrier 执行 arrive，表示初始时所有 stage
-    // 都是"空的"（可被 Producer 写入）。
-    // 如果没有这一步，Producer 的 empty[qidx].wait() 在第一轮会永远阻塞。
+    // Step C0: Consumer 初始化 — 标记所有 stage 为"空"（可被 Producer 写入）
+    //
+    // 所有 128 个 Consumer 线程对每个 stage 的 empty barrier 调用 arrive()。
+    // 这是 Pipeline 的"起搏"步骤——没有它，Producer 的 empty[qidx].wait()
+    // 在第一轮会永远阻塞（因为 Producer 的 1 次 arrive 不足以凑够 129）。
+    //
+    // 注意：此时每个 empty[i] 只有 128 次 arrive，未达 129，phase 不翻转。
+    // Producer 后续的 empty[qidx].arrive() 作为第 129 次，触发 phase 翻转。
     for (int i = 0; i < K_STAGE; ++i) {
       [[maybe_unused]] auto token = empty[i].arrive();
     }
@@ -1824,25 +1903,31 @@ __global__ void __launch_bounds__(NUM_THREADS)
       if (qidx == K_STAGE)
         qidx = 0;
 
-      // Step C1: 等待 Producer 的 full 信号
-      // 表示 stage qidx 的 A/B tile 数据已通过 TMA 搬运到 smem。
+      // Step C1: 等待 TMA 数据就绪（full 信号）
+      //
+      // 模式 full[qidx].wait(full[qidx].arrive()):
+      //   - 128 个 Consumer 线程各调用 arrive()，共 128 次到达。
+      //   - 当前 phase 累积：128/129，phase 尚未翻转。
+      //   - wait(token) 阻塞，直到 Producer 的 barrier_arrive_tx（Step P3）
+      //     贡献第 129 次到达 + TMA 字节全部写完 → phase 翻转 → wait 返回。
+      //
+      // 语义：Consumer 说"我准备好读 stage qidx 了，数据到了没有？"
       full[qidx].wait(full[qidx].arrive());
 
       // Step C2: 发射 WGMMA 指令序列
       //
-      // WGMMA 指令序列的固定模式：
-      //   WGMMA_FENCE -> 发射一串 WGMMA -> COMMIT_GROUP -> WAIT_GROUP
+      // WGMMA 是异步指令（fire-and-forget），发射后立即返回，不等待计算完成。
+      // 标准流程：FENCE → 发射 WGMMA → COMMIT → WAIT。
       //
-      // WGMMA_FENCE: 确保 smem 写可见、accum 寄存器准备好。
-      //   是一条内存 fence 指令，建立 async proxy 与 generic proxy 之间的
-      //   可见性顺序。必须在发射 WGMMA 之前执行。
+      // WGMMA_FENCE（wgmma.fence.sync.aligned）:
+      //   - 确保 TMA 写入 smem 的数据对 async proxy（WGMMA）可见
+      //   - 确保累加器寄存器 d[] 已准备好接收 WGMMA 输出
+      //   - 本质是 proxy 间的内存序（memory ordering），不是传统 __syncthreads
       //
       // 每个 WGMMA_M64N128K16_F16F16F16 指令：
-      //   执行 D[64*128] += A[64*16] * B[16*128]
-      //   其中 A 的 smem 指针由 descA 描述（K-major），B 由 descB 描述（K-major）
-      //   imm-trans-a=0/imm-trans-b=0 表示 A/B 都是 K-major（非转置）。
-      //   ScaleD=1: 累加模式（不清零），用于 K 维累加。
-      //   ScaleA=ScaleB=1: 不翻转符号。
+      //   D[64×128] += A[64×16] × B[16×128]
+      //   A/B 均为 K-major（imm-trans=0），由 descA/descB 描述 smem 中的布局。
+      //   ScaleD=1: 累加。K 维有 BK/WGMMA_K=4 次迭代，每次都用 ScaleD=1。
       WGMMA_FENCE();
 
       // M 维迭代：BM/WGMMA_M = 128/64 = 2 个 WGMMA atom
@@ -1871,14 +1956,26 @@ __global__ void __launch_bounds__(NUM_THREADS)
       }
 
       // Step C3: 提交并等待 WGMMA 完成
-      // COMMIT_GROUP: 将此前发射的所有 WGMMA 指令归为一组提交。
-      // WAIT_GROUP(0): 等待之前 commit 的所有 WGMMA 完成（0 表示等待所有组）。
-      // 注意 WGMMA 是异步执行（async proxy），这些指令用于同步 completion。
+      //
+      // WGMMA_COMMIT_GROUP (wgmma.commit_group.sync.aligned):
+      //   将自上一次 COMMIT 以来发射的所有 WGMMA 归为一组，提交到 async proxy 执行。
+      //   类比 cp.async.commit_group，但 scope 是 warpgroup 而非 per-thread。
+      //
+      // WGMMA_WAIT_GROUP(0) (wgmma.wait_group.sync.aligned 0):
+      //   阻塞直到最多 N 个 group 尚未完成（pending ≤ N）。N=0 即等待所有 group。
+      //   ★ 语义与 cp.async.wait_group 完全一致（PTX ISA §9.7.15.7.3 vs §9.7.9.25.3.3）：
+      //     两者都是 "wait until only N or fewer of the most recent groups are pending"。
+      //   此处用 0 是因为 Consumer 在本次迭代中只 commit 了 1 个 group，
+      //   必须等它全部完成才能进入下一步（读下一 stage 的数据）。
       WGMMA_COMMIT_GROUP();
       WGMMA_WAIT_GROUP(0);
 
-      // Step C4: 释放此 stage（发 empty 信号给 Producer）
-      // 通知 Producer stage qidx 的 smem 已使用完毕，可以安全覆盖。
+      // Step C4: 释放 stage qidx — 通知 Producer 可以覆盖写入
+      //
+      // 128 个 Consumer 线程在 empty[qidx] 上 arrive()，为 **下一 phase** 积累到达次数。
+      // 这 128 次 arrive 不会立即翻转 phase（还需 Producer 在下一轮的 1 次 arrive）。
+      //
+      // 语义：Consumer 说"stage qidx 我已经读完了，你可以放心覆盖了。"
       [[maybe_unused]] auto token = empty[qidx].arrive();
     }
 
@@ -1917,8 +2014,12 @@ __global__ void __launch_bounds__(NUM_THREADS)
 
     const int lane = tid % 32;
     const int warp = tid / 32;
-    // row: 当前线程在当前 WGMMA atom 中负责的起始行
-    // warp 0~3 各负责 16 行：rows [warp*16, warp*16+15]
+    // row: 当前线程在当前 WGMMA atom 中负责的起始行。
+    // warp 0~3 各负责 16 行：rows [warp*16, warp*16+15]。
+    // lane/4：每 4 个连续 lane 负责同一行（因为 WGMMA fragment 中每行有 4 个 uint32，
+    //         分别覆盖列对 {c0,c1}、{c2,c3}、{c8,c9}、{c10,c11}，由 lane%4 区分）。
+    //         因此 lane/4 给出该行在 16-row block 内的行号（0~7 对应 rows 0~7，
+    //         同一 warp 中 lane/4==0 的有 lane 0,1,2,3，都负责 row 0）。
     const int row = warp * 16 + lane / 4;
     // block_C: 当前 C tile 在 global memory 中的起始地址
     // by*BM 是 M 方向偏移，bx*BN 是 N 方向偏移
@@ -1970,12 +2071,12 @@ __host__ static inline void create_tensor_map(CUtensorMap *tma_map,
                                               int blocks_width) {
   void *gmem_address = (void *)gmem_ptr;
   uint64_t gmem_prob_shape[5] = {(uint64_t)BlockMinorSize * blocks_width,
-                                  (uint64_t)BlockMajorSize * blocks_height,
+                                 (uint64_t)BlockMajorSize * blocks_height,
                                   1, 1, 1};
   uint64_t gmem_prob_stride[5] = {
       sizeof(half), sizeof(half) * BlockMinorSize * blocks_width, 0, 0, 0};
   uint32_t smem_box_shape[5] = {uint32_t(BlockMinorSize),
-                                 uint32_t(BlockMajorSize), 1, 1, 1};
+                                uint32_t(BlockMajorSize), 1, 1, 1};
   uint32_t smem_box_stride[5] = {1, 1, 1, 1, 1};
   CUresult result = cuTensorMapEncodeTiled(
       tma_map, CU_TENSOR_MAP_DATA_TYPE_FLOAT16, 2, gmem_address,
