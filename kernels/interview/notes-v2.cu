@@ -1805,6 +1805,24 @@ __global__ void __launch_bounds__(NUM_THREADS)
   __syncthreads();
 
   // ==================================================================
+  // ★ Warp Specialization 并发模型 — 为什么只有 if/else 没有 while？
+  // ==================================================================
+  //
+  // 256 个线程在同一个 SM 上**并发执行**。if/else 只是分工，不是先后顺序：
+  //   - WG0 (threadIdx.x 0~127):   全部走 if 分支，做 Producer。
+  //   - WG1 (threadIdx.x 128~255): 全部走 else 分支，做 Consumer。
+  //
+  // SM 的 warp scheduler 会交替调度来自 WG0 和 WG1 的 warp，两者**同时**推进：
+  //   Producer: for (k_iter = 0 .. num_blocks_k) { P1→P2→P3 }  ← 自己的循环
+  //   Consumer: for (k_iter = 0 .. num_blocks_k) { C1→C2→C3→C4 } ← 自己的循环
+  //
+  // 两个 warpgroups 各自独立迭代 K-tiles，通过 full[] / empty[] barrier 同步：
+  //   - Producer 领先 Consumer 太多 → wait(empty[q]) 阻塞，等 Consumer 消费完
+  //   - Consumer 领先 Producer 太多 → wait(full[q]) 阻塞，等 TMA 搬运完
+  //
+  // 这是生产者-消费者模型的 GPU 实现：不需要共享循环变量，barrier 的 phase
+  // 交替天然保证了流水线串行化（at most K_STAGE-1 steps ahead）。
+  // ==================================================================
   // Producer Warpgroup (WG0, threadIdx.x 0~127)
   // 职责：提交 TMA 2D 拷贝，将 A/B tile 从 HBM 异步搬运到 SMEM。
   // 只有 tid==0 执行实际拷贝提交，其余 127 个线程空闲。
