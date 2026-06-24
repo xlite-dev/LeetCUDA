@@ -1512,9 +1512,9 @@ __global__ void __launch_bounds__(256)
 //   |---------------------|-----------|------|-----------------------------
 //   | start_address       | [0, 14)   | 14   | smem 基址编码
 //   | (unused)            | [14, 16)  |  2   | -
-//   | leading_byte_offset | [16, 30)  | 14   | 次要维度的字节步长编码
+//   | leading_byte_offset | [16, 30)  | 14   | 主要维度（K）的字节步长；swizzle 下硬件未使用（assumed=1）
 //   | (unused)            | [30, 32)  |  2   | -
-//   | stride_byte_offset  | [32, 46)  | 14   | 主要维度的字节步长编码
+//   | stride_byte_offset  | [32, 46)  | 14   | 跨越维度（M/N）的字节步长：K-Major 下为 8-row stripe 间距
 //   | (unused)            | [46, 49)  |  3   | -
 //   | base_offset         | [49, 52)  |  3   | swizzle pattern 偏移
 //   | (unused)            | [52, 62)  | 10   | -
@@ -1552,16 +1552,17 @@ __device__ inline uint64_t make_smem_desc(half *ptr) {
   // ── bits [16, 30): leading_byte_offset ──
   // 原始值 16（字节），编码后为 (16 & 0x3FFFF) >> 4 = 1。
   // << 16 将编码值放到 bits [16, 30)。
-  // K-Major + 128B swizzle 下该字段 unused（hardware assumes 1），
+  // K-Major + 128B swizzle 下该字段硬件未使用（assumed to be 1，参见 PTX ISA §9.7.15.5.1.2.1.1），
   // 此处填 16 仅为占位，使编码值为 1 满足硬件预期。
   // 若为 MN-Major 或 INTERLEAVE 布局，LBO 有实际含义：
   //   对 INTERLEAVE: 同一 8×2 brick 内第一列到第二列的字节偏移。
-  //   对 swizzle: unused, assumed to be 1。
+  //   对 MN-Major swizzle: 偏移从首 (swizzle-byte-size/16) 行到下一组行。
   desc |= SMEM_DESC_ENCODE((uint64_t)16) << 16;
 
   // ── bits [32, 46): stride_byte_offset ──
   // 原始值 1024（字节），编码后为 (1024 & 0x3FFFF) >> 4 = 64。
   // << 32 将编码值放到 bits [32, 46)。
+  // K-Major 下定义为"从首 8 行到次 8 行的字节偏移"（PTX ISA §9.7.15.5.1.2.1.2）。
   // 1024 的来源（K-Major + 128B swizzle + half）：
   //   一个 128B swizzle atom 覆盖 64(K) × 8(M) 个 half。
   //   从 1 个 8-row stripe 到下一个 stripe 需要跨越 8 × 64 × 2 = 1024 bytes。
@@ -1643,8 +1644,8 @@ template <int BM, int BN, int BK, int QSIZE> struct WgmmaSMem {
 //   WG1 (128 threads, Consumer): 所有 128 个线程参与 WGMMA 矩阵乘。
 //
 // Producer 和 Consumer 通过 cuda::barrier（CTA 级别）同步：
-//   - full[qidx]:  Producer 发信号表示 stage qidx 的数据已就绪
-//   - empty[qidx]: Consumer 发信号表示 stage qidx 的使用完毕，可被覆盖
+//   - full[qidx]:  Producer 发信号表示 stage qidx 的数据已就绪，可被使用
+//   - empty[qidx]: Consumer 发信号表示 stage qidx 的使用完毕，可以被覆盖
 //
 // 本节重点理解：
 //   1) 为什么 Producer 只需要 thread 0？TMA 是硬件 DMA 指令，一次提交
