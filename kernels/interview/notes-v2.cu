@@ -771,7 +771,6 @@ __global__ void rope(float *x, float *out, int seq_len, int N) {
 //   merge_write: 进一步将 4 次 separate store 合并为 1 次 float4 store
 // 注：本文件仅实现 Level 1(naive) 与 Level 4(BCF+merge_write)，Level 2/3 省略
 
-// ---- Level 1: 基础版（2D 索引，合并读 + 非合并写）----
 // 每个线程处理 1 个元素，block(16,16)
 // 读：x 按行优先访问，warp 的 32 线程访问 32 个连续地址 → 合并读取 ✓
 // 写：y 按列优先写入，32 线程跨 row 行分散 → 非合并写入 ✗（32 次内存事务）
@@ -786,8 +785,6 @@ __global__ void mat_transpose(float *x, float *y, const int row, const int col) 
     y[c * row + r] = x[r * col + c];
   }
 }
-
-// ---- Level 4: 最佳版（shared memory + bank conflict fix + merge write）----
 
 // Grid:  ((col + 15) / 16, (row + 63) / 64, 1)，每线程 4 元素(float4)
 // Block: (16, 16, 1)
@@ -949,7 +946,7 @@ __global__ void sgemv_k16(float *A, float *x, float *y, int M, int K) {
 //   Level 4: Tensor Core 提供硬件加速的 256 FMA/cycle/warp → 大幅提升吞吐
 
 // =============================================================================
-// Phase 5a: SGEMM + HGEMM（非 Tensor Core 路径）
+// Phase 7a: SGEMM + HGEMM（非 Tensor Core 路径）
 // =============================================================================
 
 // ---- Level 1: SGEMM — Block Tile 32×32 + K Tile 32 ----
@@ -1105,7 +1102,7 @@ __global__ void sgemm_vec4(float *a, float *b, float *c, int M, int N, int K) {
 }
 
 // =============================================================================
-// Phase 5b: HGEMM — Tensor Core 路径（MMA m16n8k16 + WGMMA m64n128k16）
+// Phase 7b: HGEMM — Tensor Core 路径（MMA m16n8k16 + WGMMA m64n128k16）
 // =============================================================================
 // 面试要点：
 //   - MMA (Matrix Multiply-Accumulate): Ampere+ 的 Tensor Core 指令
@@ -1152,7 +1149,7 @@ __global__ void sgemm_vec4(float *a, float *b, float *c, int M, int N, int K) {
 //   - TMA: 硬件 DMA，~零寄存器开销，支持 1D~5D 寻址
 
 // =============================================================================
-// Phase 5b-1: MMA PTX 宏定义
+// Phase 7b-1: MMA PTX 宏定义
 // =============================================================================
 
 // ---- gmem → smem: cp.async ----
@@ -1212,7 +1209,7 @@ HOST_DEVICE_INLINE int div_ceil(int a, int b) {
 }
 
 // =============================================================================
-// Phase 5b-2: HGEMM MMA — m16n8k16 + multistage pipeline + TN 布局（统一循环版）
+// Phase 7b-2: HGEMM MMA — m16n8k16 + multistage pipeline + TN 布局（统一循环版）
 // =============================================================================
 // 面试重点 — Tile Hierarchy:
 //   MMA Atom:         m16n8k16（1 条 MMA 指令处理的最小 tile）
@@ -1443,7 +1440,7 @@ __global__ void __launch_bounds__(256)
         RC1[j][3] = __shfl_sync(0xffffffff, RC[i][j][1], lane_id + 3);
       }
       // 每 4 个 lane 中只有 lane 0 做 128-bit store
-      // lane_id / 4 → 行号映射（每 4 个连续 lane 负责一行）：
+      // lane_id / 4 → 行号映射（每 4 个连续 lane 负责上8x8矩阵和下8x8矩阵各一行）：
       //   ┌─────────┬───────────┬──────────────┬──────────────┐
       //   │ lane_id │ lane_id/4 │ RC[0] 的行   │ RC[1] 的行   │
       //   ├─────────┼───────────┼──────────────┼──────────────┤
@@ -1479,7 +1476,7 @@ __global__ void __launch_bounds__(256)
 }
 
 // =============================================================================
-// Phase 5b-3: HGEMM WGMMA — m64n128k16 + TMA + Warp Specialization (Hopper)
+// Phase 7c: HGEMM WGMMA — m64n128k16 + TMA + Warp Specialization (Hopper)
 // =============================================================================
 // 面试要点（WGMMA vs MMA 对比）：
 //   - MMA: warp 级（32 threads），同步执行
@@ -2092,12 +2089,9 @@ template <
 __global__ void __launch_bounds__(WARP_SIZE *kMmaTileSeqLenQ *kMmaTileSeqLenK)
     flash_attn_mma_stages_split_q(half *Q, half *K, half *V, half *O,
                                   int QKV_seqlen, int QKV_head) {
-
-  // Tile dimensions
   constexpr int Br = kMmaAtomM * kMmaTileSeqLenQ * kValTileSeqLenQ; // 64
   constexpr int Bc = kMmaAtomN * kMmaTileSeqLenK * kValTileSeqLenK; // 64
-  constexpr int kNumThreads =
-      WARP_SIZE * kMmaTileSeqLenQ * kMmaTileSeqLenK; // 128
+  constexpr int kNumThreads = WARP_SIZE * kMmaTileSeqLenQ * kMmaTileSeqLenK; // 128
   const int Tc = (QKV_seqlen + Bc - 1) / Bc;
   // 原始实现默认 seqlen 与 Bc 对齐；最后一个不完整 tile 需要额外 pad/边界处理。
   // 这里保留 ceil 写法是为了说明 tile 划分方式，不等于当前实现已经完整处理了尾 tile。
@@ -2316,8 +2310,7 @@ __global__ void __launch_bounds__(WARP_SIZE *kMmaTileSeqLenQ *kMmaTileSeqLenK)
     __syncthreads();
 
     // ======================================================================
-    // 3c: Online Safe Softmax — row-wise max + exp + sum, then store P back to
-    // R_S
+    // 3c: Online Safe Softmax — row-wise max + exp + sum, then store P back to R_S
     // ======================================================================
     // MMA C fragment layout for m16n8k16 (PTX ISA 对应的线程寄存器分布):
     //   - R_S[i][j][0] 对应当前 16x8 tile 的 rows 0~7 里的两个 half 值 {c0,c1}
