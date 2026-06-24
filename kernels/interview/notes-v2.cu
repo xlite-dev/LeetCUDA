@@ -1443,17 +1443,30 @@ __global__ void __launch_bounds__(256)
         RC1[j][3] = __shfl_sync(0xffffffff, RC[i][j][1], lane_id + 3);
       }
       // 每 4 个 lane 中只有 lane 0 做 128-bit store
+      // lane_id / 4 → 行号映射（每 4 个连续 lane 负责一行）：
+      //   ┌─────────┬───────────┬──────────────┬──────────────┐
+      //   │ lane_id │ lane_id/4 │ RC[0] 的行   │ RC[1] 的行   │
+      //   ├─────────┼───────────┼──────────────┼──────────────┤
+      //   │ 0~3     │ 0         │ row 0        │ row 8        │
+      //   │ 4~7     │ 1         │ row 1        │ row 9        │
+      //   │ 8~11    │ 2         │ row 2        │ row 10       │
+      //   │ 12~15   │ 3         │ row 3        │ row 11       │
+      //   │ 16~19   │ 4         │ row 4        │ row 12       │
+      //   │ 20~23   │ 5         │ row 5        │ row 13       │
+      //   │ 24~27   │ 6         │ row 6        │ row 14       │
+      //   │ 28~31   │ 7         │ row 7        │ row 15       │
+      //   └─────────┴───────────┴──────────────┴──────────────┘
       if (lane_id % 4 == 0) {
+        // {0,1} * (16 * 4) + i * 16 = {0,64} + {0,16,32,48} = {0,16,32,48,64,80,96,112}
         int store_warp_smem_c_m = warp_m * (MMA_M * VAL_TILE_M) + i * MMA_M;
         int store_lane_gmem_c_m = by * BM + store_warp_smem_c_m + lane_id / 4;
 #pragma unroll
         for (int j = 0; j < VAL_TILE_N; ++j) {
+          // {0,...,3} * (8 * 4) + j * 8 = {0,32,64,96} + {0,8,16,24} = {0,8,...,120}
           int store_warp_smem_c_n = warp_n * (MMA_N * VAL_TILE_N) + j * MMA_N;
           int store_lane_gmem_c_n = bx * BN + store_warp_smem_c_n;
-          int store_gmem_c_addr_0 =
-              store_lane_gmem_c_m * N + store_lane_gmem_c_n;
-          int store_gmem_c_addr_1 =
-              (store_lane_gmem_c_m + 8) * N + store_lane_gmem_c_n;
+          int store_gmem_c_addr_0 = store_lane_gmem_c_m * N + store_lane_gmem_c_n;
+          int store_gmem_c_addr_1 = (store_lane_gmem_c_m + 8) * N + store_lane_gmem_c_n;
           // 128-bit store: 一次写入 8 个 half
           *reinterpret_cast<float4 *>(&C[store_gmem_c_addr_0]) =
               *reinterpret_cast<float4 *>(&RC0[j][0]);
