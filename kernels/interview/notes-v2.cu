@@ -1279,7 +1279,9 @@ __global__ void __launch_bounds__(256)
   if (load_gmem_a_m >= M || load_gmem_b_n >= N)
     return;
 
-  // 累加器：每个 thread 计算 VAL_TILE_M×VAL_TILE_N=16大小的tile，一个uint32_t寄存器存储2个half
+  // 8个Warps(MMAs)的排布是M方向2个，N方向4个，则MMA Atom一次性能处理的tile大小是[2*16,4*8]=[32,32]. 
+  // CUDA中每个block能放的线程数是有上限的（warp数量有限），一般为4或者8个warps。为了能处理更大的C tile，
+  // 需要把MMA Atom的tile再M方向和N方向各自重复4次，得到[128,128]的C block tile，这就是VAL Tile的作用。
   uint32_t RC[VAL_TILE_M][VAL_TILE_N][2] = {0}; // 初始化为 0
 
   // CVTA: 一次转换 smem 基地址，避免每次 cp.async 都做转换
