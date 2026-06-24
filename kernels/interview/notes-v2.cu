@@ -45,7 +45,8 @@
 //
 // Occupancy 公式：
 //   occupancy = active_warps / max_warps_per_SM
-//   受三类资源分别取下限：每线程寄存器数 → threads/SM；每 block shared memory → blocks/SM；block 大小 → blocks/SM
+//   受三类资源分别取下限：每线程寄存器数 → threads/SM；每 block shared memory 
+//   → blocks/SM；block 大小 → blocks/SM
 
 // ---- 常见优化手段速查清单 ----
 //
@@ -83,7 +84,7 @@
 //    - 通过 cuda::barrier 同步，完全解耦数据搬运和计算
 //
 // 9. TMA (Tensor Memory Accelerator, Hopper+)
-//    - 硬件 DMA 引擎，支持 2D/3D 寻址，零寄存器开销
+//    - 硬件 DMA 引擎，支持 2D~3D 寻址，低寄存器开销
 //    - 配合 cp.async.bulk 实现异步数据搬运
 
 // ---- Roofline 分析公式 ----
@@ -1230,7 +1231,6 @@ HOST_DEVICE_INLINE int div_ceil(int a, int b) {
 //   - 加载语义为"预取未来"：迭代 k 加载 tile (k+K_STAGE-1) 供后续使用
 //   - cp.async 条件化：仅当 k+K_STAGE-1 < NUM_K_TILES 时加载
 //   - WAIT_GROUP 自适应：满载期用 K_STAGE-2，尾部排空用 0
-//   - 消除 ~40 行尾端循环重复（ldmatrix+MMA 只写一次）
 //
 // Grid:  ((N+127)/128/S, (M+127)/128, S)，S=(N+2047)/2048，3D block swizzle
 // Block: (256, 1, 1)，8 warps
@@ -1680,9 +1680,9 @@ __global__ void __launch_bounds__(NUM_THREADS)
         int M, int N, int K, half *C,
         const CUtensorMap *__restrict__ tensorMapA,
         const CUtensorMap *__restrict__ tensorMapB) {
-
   // 注意：tensorMapA/tensorMapB 需要由 host 侧按当前 tile 布局预先创建；
-  // 对 row-major [H,W] 矩阵，TMA shape 参数写的是 (W,H) 而不是 (H,W)，
+  // 对 row-major [M, K] 矩阵，TMA shape 参数写的是 (K, M) 而不是 (M, K)，
+  // 也就是TMA descriptor中把连续的维度写在最内层，非连续的维度写在最外层。
   // 这是 TMA descriptor 最容易背错的地方之一。notes 这里只保留 kernel 主体，
   // 不展开宿主侧 create_tensor_map 细节。
 
@@ -1695,7 +1695,7 @@ __global__ void __launch_bounds__(NUM_THREADS)
   constexpr int num_consumers = (NUM_THREADS / 128) - 1; // 1 consumer WG
   // B_WG_M = BM / num_consumers：每个 consumer warpgroup 负责的 M 行数
   // 当只有一个 consumer 时，它负责全部 BM=128 行
-  constexpr int B_WG_M = BM / num_consumers;             // 128
+  constexpr int B_WG_M = BM / num_consumers; // 128
 
   // 边界检查：确保当前 block 不超出 M/N 范围
   if (bx >= div_ceil(N, BN) || by >= div_ceil(M, BM))
@@ -1714,7 +1714,7 @@ __global__ void __launch_bounds__(NUM_THREADS)
   // 每个 stage 有两个 barrier：
   //   full[qidx]:  Producer thread 0 发 full 信号，128 个 Consumer 线程等 full
   //   empty[qidx]: Consumer 发 empty 信号，Producer thread 0 等 empty
-  // 每轮参与 arrive 的总人数 = 128 (consumer) + 1 (producer) = 129
+  // 每轮参与 arrive 的总线程数 = 128 (consumer) + 1 (producer) = 129
 #pragma nv_diag_suppress static_var_with_dynamic_init
   __shared__ cuda::barrier<cuda::thread_scope_block> full[K_STAGE];
   __shared__ cuda::barrier<cuda::thread_scope_block> empty[K_STAGE];
@@ -1732,6 +1732,10 @@ __global__ void __launch_bounds__(NUM_THREADS)
       //   num_consumers * 128 + 1 = 1 * 128 + 1 = 129
       // 即每轮需要 128 个 consumer 线程 + 1 个 producer 线程都 arrive 后，
       // barrier 才翻转 phase 并唤醒等待线程。
+      // cuda::barrier<cuda::thread_scope_block>::init(barrier, arrive_count)
+      // init 是 CUDA barrier 的 hidden friend 函数（定义在 cuda::barrier 类体内），
+      // 只能通过 ADL（Argument-Dependent Lookup）调用。因为第一个参数 &full[i] 的类型是 
+      // cuda::barrier<cuda::thread_scope_block>*，编译器通过 ADL 在 cuda 命名空间中自动找到
       init(&full[i], num_consumers * 128 + 1);  // 128 consumer + 1 producer
       init(&empty[i], num_consumers * 128 + 1); // same
     }
@@ -1961,9 +1965,9 @@ __global__ void __launch_bounds__(NUM_THREADS)
 
 template <int BlockMajorSize, int BlockMinorSize>
 __host__ static inline void create_tensor_map(CUtensorMap *tma_map,
-                                               half *gmem_ptr,
-                                               int blocks_height,
-                                               int blocks_width) {
+                                              half *gmem_ptr,
+                                              int blocks_height,
+                                              int blocks_width) {
   void *gmem_address = (void *)gmem_ptr;
   uint64_t gmem_prob_shape[5] = {(uint64_t)BlockMinorSize * blocks_width,
                                   (uint64_t)BlockMajorSize * blocks_height,
