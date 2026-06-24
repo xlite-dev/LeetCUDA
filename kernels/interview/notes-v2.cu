@@ -1732,9 +1732,9 @@ __global__ void __launch_bounds__(NUM_THREADS)
   // ---- Shared Memory 分配 ----
   // 动态 shared memory（由 host 侧通过 kernel launch 的 smem 参数指定大小）
   // __align__(128) 满足 TMA 和 WGMMA 的 16B 对齐 + 128B swizzle 对齐要求
-  extern __shared__ __align__(128) uint8_t smem_wgmma[];
+  extern __shared__ __align__(128) uint8_t smem_AB[];
   WgmmaSMem<BM, BN, BK, K_STAGE> &s =
-      *reinterpret_cast<WgmmaSMem<BM, BN, BK, K_STAGE> *>(smem_wgmma);
+      *reinterpret_cast<WgmmaSMem<BM, BN, BK, K_STAGE> *>(smem_AB);
   half *s_a = s.A;
   half *s_b = s.B;
 
