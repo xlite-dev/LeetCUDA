@@ -779,13 +779,11 @@ __global__ void rope(float *x, float *out, int seq_len, int N) {
 // Block: (16, 16, 1)
 // source: LeetCUDA/kernels/mat-transpose/mat_transpose.cu
 __global__ void mat_transpose(float *x, float *y, const int row, const int col) {
-  const int global_x = blockIdx.x * blockDim.x + threadIdx.x;
-  const int global_y = blockIdx.y * blockDim.y + threadIdx.y;
-  if (global_y < row && global_x < col) {
-    // 读取：x[global_x][global_y] = x[global_x * col + global_y]，行优先，合并
-    // 写入：y[global_y][global_x] = y[global_y * row +
-    // global_x]，列优先，非合并
-    y[global_y * row + global_x] = x[global_x * col + global_y];
+  const int c = blockIdx.x * blockDim.x + threadIdx.x;  // col in x
+  const int r = blockIdx.y * blockDim.y + threadIdx.y;  // row in x
+  if (r < row && c < col) {
+    // x[r][c] → y[c][r]; x stride=col, y (transposed) stride=row
+    y[c * row + r] = x[r * col + c];
   }
 }
 
@@ -797,47 +795,38 @@ __global__ void mat_transpose(float *x, float *y, const int row, const int col) 
 // source: LeetCUDA/kernels/mat-transpose/mat_transpose.cu
 __global__ void mat_transpose_padded(
     float *x, float *y, const int row, const int col) {
-  const int global_x = blockIdx.x * blockDim.x + threadIdx.x;
-  const int global_y = blockIdx.y * blockDim.y + threadIdx.y;
-  const int local_x = threadIdx.x;
-  const int local_y = threadIdx.y;
+  const int tx = threadIdx.x, ty = threadIdx.y;
 
-  constexpr int WARP_SIZE_S = 16;
+  constexpr int TILE = 16;
   constexpr int PAD = 1;
   // Bank conflict fix: 每行多 1 个元素，打破 32-bank 对齐
-  __shared__ float tile[WARP_SIZE_S * 4][WARP_SIZE_S + PAD];
+  __shared__ float tile[TILE * 4][TILE + PAD];
 
-  if (global_y * 4 < row && global_x < col) {
-    // Step 1: 从 global memory 读取 4 行，写入 shared
-    // memory（行优先，合并读取）
-    float4 x_val;
-    x_val.x = x[(global_y * 4) * col + global_x];
-    x_val.y = x[(global_y * 4 + 1) * col + global_x];
-    x_val.z = x[(global_y * 4 + 2) * col + global_x];
-    x_val.w = x[(global_y * 4 + 3) * col + global_x];
-    tile[local_y * 4][local_x] = x_val.x;
-    tile[local_y * 4 + 1][local_x] = x_val.y;
-    tile[local_y * 4 + 2][local_x] = x_val.z;
-    tile[local_y * 4 + 3][local_x] = x_val.w;
+  // x 空间坐标; 每线程覆盖 4 行 (actual row = x_r * 4)
+  const int x_c = blockIdx.x * TILE + tx;
+  const int x_r = blockIdx.y * TILE + ty;
+
+  if (x_r * 4 < row && x_c < col) {
+    // Step 1: 4 rows × 1 col → smem (row-major);
+#pragma unroll
+    for (int i = 0; i < 4; ++i) {
+      tile[ty * 4 + i][tx] = x[(x_r * 4 + i) * col + x_c];
+    }
     __syncthreads();
 
-    // Step 2: 从 shared memory 读取（"转置"方向），合并写入 global memory
-    float4 smem_val;
-    smem_val.x = tile[local_x * 4][local_y];
-    smem_val.y = tile[local_x * 4 + 1][local_y];
-    smem_val.z = tile[local_x * 4 + 2][local_y];
-    smem_val.w = tile[local_x * 4 + 3][local_y];
+    // Step 2: Transposed read from smem
+    float4 reg_trans;
+    reg_trans.x = tile[tx * 4 + 0][ty];
+    reg_trans.y = tile[tx * 4 + 1][ty];
+    reg_trans.z = tile[tx * 4 + 2][ty];
+    reg_trans.w = tile[tx * 4 + 3][ty];
 
-    const int gid_x = blockIdx.x * blockDim.x;
-    const int gid_y = blockIdx.y * blockDim.y * 4;
-    const int out_y = gid_y + local_x * 4;
-    const int out_x = gid_x + local_y;
+    // y 空间坐标: y_r = x 的列, y_c = x 的行
+    const int y_r = blockIdx.x * TILE + ty;          // = x col
+    const int y_c = (blockIdx.y * TILE + tx) * 4;    // = x row
 
-    // 逐元素写回（避免 reinterpret_cast<float4> 的对齐要求）
-    y[out_x * row + out_y + 0] = smem_val.x;
-    y[out_x * row + out_y + 1] = smem_val.y;
-    y[out_x * row + out_y + 2] = smem_val.z;
-    y[out_x * row + out_y + 3] = smem_val.w;
+    // Coalesced write: y[y_r][y_c .. y_c+3]
+    FLOAT4(y[y_r * row + y_c]) = reg_trans;
   }
 }
 
@@ -1284,16 +1273,14 @@ __global__ void __launch_bounds__(256)
   int load_smem_a_m = tid / 2;                // 0~127
   int load_smem_a_k = (tid % 2 == 0) ? 0 : 8; // 0, 8
   int load_smem_b_n = tid / 2; // 0~127 → B^T 的 N 方向（row-major 的行）
-  int load_smem_b_k =
-      (tid % 2 == 0) ? 0 : 8; // 0, 8  → B^T 的 K 方向（row-major 的列）
+  int load_smem_b_k = (tid % 2 == 0) ? 0 : 8; // 0, 8  → B^T 的 K 方向（row-major 的列）
   int load_gmem_a_m = by * BM + load_smem_a_m;
-  int load_gmem_b_n =
-      bx * BN + load_smem_b_n; // B 全局列号 = N 方向的 tile 起始 + 线程偏移
+  int load_gmem_b_n = bx * BN + load_smem_b_n; // B 全局列号 = N 方向的 tile 起始 + 线程偏移
   if (load_gmem_a_m >= M || load_gmem_b_n >= N)
     return;
 
-  // 累加器：每个 warp 计算 WARP_TILE_M×WARP_TILE_N=16 个 MMA tile
-  uint32_t RC[WARP_TILE_M][WARP_TILE_N][2] = {}; // 初始化为 0
+  // 累加器：每个 warp 计算 WARP_TILE_M×WARP_TILE_N=16 累加器，一个uint32_t寄存器存储2个half
+  uint32_t RC[WARP_TILE_M][WARP_TILE_N][2] = {0}; // 初始化为 0
 
   // CVTA: 一次转换 smem 基地址，避免每次 cp.async 都做转换
   uint32_t smem_a_base_ptr = __cvta_generic_to_shared(s_a);
@@ -1306,8 +1293,7 @@ __global__ void __launch_bounds__(256)
     int load_gmem_a_k = k * BK + load_smem_a_k;
     int load_gmem_a_addr = load_gmem_a_m * K + load_gmem_a_k; // A: [m][k]
     int load_gmem_b_k = k * BK + load_smem_b_k;
-    int load_gmem_b_addr =
-        load_gmem_b_n * K + load_gmem_b_k; // B^T: [n][k] row-major（即 B[k][n] col-major）⚠
+    int load_gmem_b_addr = load_gmem_b_n * K + load_gmem_b_k; // B^T: [n][k] row-major（即 B[k][n] col-major）⚠
 
     uint32_t load_smem_a_ptr =
         (smem_a_base_ptr +
@@ -1332,20 +1318,16 @@ __global__ void __launch_bounds__(256)
 #pragma unroll
   for (int k = (K_STAGE - 1); k < NUM_K_TILES; ++k) {
     // Stage 选择：轮转方式 (round-robin)
-    // 这里统一用 %K_STAGE，而不是只在 s2/s4 时写成 &1 / &3：
-    // 原始实现要兼容 s3 这类非 2 的幂 stage 数，因此直接用 mod 最稳妥。
-    int smem_sel = (k + 1) % K_STAGE; // 当前计算的 stage
-    int smem_sel_next = k % K_STAGE;  // 下一轮加载的 stage
+    // s2: {k=1, sel=0}, {k=2, sel=1}, {k=3, sel=0}, {k=4, sel=1}, ...
+    int smem_sel = (k + 1) % K_STAGE; // s3 k 2->0, k 3->1, k 4->2...
+    int smem_sel_next = k % K_STAGE;  // s3 k 2->2, k 3->0, k 4->1...
 
     // 异步加载下一批数据到 smem_sel_next
-    // TN 布局: A 的 gmem 地址用 m*K+k（row-major），B^T 的 gmem 地址用
-    // n*K+k（row-major，内维连续的是 K）
+    // TN 布局: A 的 gmem 地址用 m*K+k（row-major），B^T 的 gmem 地址用 n*K+k（row-major，内维连续的是 K）
     int load_gmem_a_k = k * BK + load_smem_a_k;
-    int load_gmem_a_addr =
-        load_gmem_a_m * K + load_gmem_a_k; // A: row-major [m][k]
+    int load_gmem_a_addr = load_gmem_a_m * K + load_gmem_a_k; // A: row-major [m][k]
     int load_gmem_b_k = k * BK + load_smem_b_k;
-    int load_gmem_b_addr =
-        load_gmem_b_n * K + load_gmem_b_k; // B^T: row-major [n][k]，内维连续的是 K ⚠
+    int load_gmem_b_addr = load_gmem_b_n * K + load_gmem_b_k; // B^T: row-major [n][k]，内维连续的是 K ⚠
 
     uint32_t load_smem_a_ptr =
         (smem_a_base_ptr + (smem_sel_next * s_a_stage_offset +
@@ -1369,9 +1351,10 @@ __global__ void __launch_bounds__(256)
     // ldmatrix.x4: 加载 A 的 m16k16 片段（row-major A，非转置）
 #pragma unroll
     for (int i = 0; i < WARP_TILE_M; ++i) {
-      int warp_smem_a_m = warp_m * (MMA_M * WARP_TILE_M) + i * MMA_M;
-      int lane_smem_a_m =
-          warp_smem_a_m + lane_id % 16;       // ldmatrix 用 16 个 lane
+      // {0,1} * (16 * 4) + i * 16 = {0,64} + {0,16,32,48} = {0,16,32,48,64,80,96,112}
+      int warp_smem_a_m = warp_m * (MMA_M * WARP_TILE_M) + i * MMA_M; 
+      // {0,16,32,48,64,80,96,112} + {0~15} = {0~127}, 按照col-major的顺序访问A的4个8x8 matrix
+      int lane_smem_a_m = warp_smem_a_m + lane_id % 16; 
       int lane_smem_a_k = (lane_id / 16) * 8; // 0, 8
       uint32_t lane_smem_a_ptr =
           (smem_a_base_ptr +
@@ -1385,9 +1368,10 @@ __global__ void __launch_bounds__(256)
     // ldmatrix 逐行加载 B^T 的行 = B 的列，天然给出 col-major B fragment → 直接匹配 MMA row.col
 #pragma unroll
     for (int j = 0; j < WARP_TILE_N; ++j) {
+      // {0,...,3} * (8 * 4) + j * 8 = {0,32,64,96} + {0,8,16,24} = {0,8,...,120}
       int warp_smem_b_n = warp_n * (MMA_N * WARP_TILE_N) + j * MMA_N;
-      int lane_smem_b_n =
-          warp_smem_b_n + lane_id % 8;             // ldmatrix B 用 8 个 lane
+      // {0,8,...,120} + {0~7} = {0~127}, 按照row-major的顺序访问B^T的2个8x8 matrix
+      int lane_smem_b_n = warp_smem_b_n + lane_id % 8;
       int lane_smem_b_k = ((lane_id / 8) % 2) * 8; // 0, 8
       uint32_t lane_smem_b_ptr =
           (smem_b_base_ptr +
@@ -1462,14 +1446,29 @@ __global__ void __launch_bounds__(256)
     for (int i = 0; i < WARP_TILE_M; ++i) {
       uint32_t RC0[WARP_TILE_N][4]; // 32 bits x 4 = 128 bits = 8 half
       uint32_t RC1[WARP_TILE_N][4]; // 32 bits x 4 = 128 bits = 8 half
-      // 用 warp shuffle 收集同一个 MMA tile 内不同 lane 的结果。
-      // 对 m16n8k16 的 C fragment：
-      //   - lane 0/4/8/.../28 各自持有某一行里的 {c0,c1}
-      //   - lane+1 持有同一行里的 {c2,c3}
-      //   - lane+2 持有同一行里的 {c4,c5}
-      //   - lane+3 持有同一行里的 {c6,c7}
-      // 所以每个 4-lane 子组可以通过 shfl 收齐一整行 8 个 half，然后由 lane%4==0
-      // 的那个线程做一次 128-bit store。
+      // ==================================================================
+      // MMA m16n8k16 C fragment — a single 16×8 matrix (registers per warp):
+      // Thread t holds 4 half values → RC[0] for rows 0-7, RC[1] for rows 8-15.
+      // Mapping: row = t/4, col-pair = t%4 (each uint32 = 2 half values).
+      //
+      //       cols: c0-1    c2-3    c4-5    c6-7
+      //   r0:  T0{c0,c1}   T1       T2       T3      ┐
+      //   r1:  T4          T5       T6       T7      │
+      //   r2:  T8     →    T9  →    T10  →   T11     │ RC[0]
+      //   ...                                        │
+      //   r7:  T28         T29      T30      T31     ┘
+      //   r8:  T0{c2,c3}   T1       T2       T3      ┐
+      //   r9:  T4          T5       T6       T7      │
+      //  r10:  T8     →    T9  →    T10  →   T11     │ RC[1]
+      //   ...                                        │
+      //  r15:  T28         T29      T30      T31     ┘
+      //
+      // Within a 4-lane group (e.g. T0-T3 for row 0):
+      //   lane+0 holds {c0,c1}, lane+1 holds {c2,c3},
+      //   lane+2 holds {c4,c5}, lane+3 holds {c6,c7}.
+      // shfl 从 lane+1/+2/+3 各收 2 个 half 到 lane+0，4 次 shuffle 凑齐
+      // 一行 8 个 half = {c0,c1,c2,c3,c4,c5,c6,c7}，再由 lane%4==0 128-bit store。
+      // ==================================================================
 #pragma unroll
       for (int j = 0; j < WARP_TILE_N; ++j) {
         RC0[j][0] = RC[i][j][0];
