@@ -1213,30 +1213,33 @@ HOST_DEVICE_INLINE int div_ceil(int a, int b) {
 }
 
 // =============================================================================
-// Phase 5b-2: HGEMM MMA — m16n8k16 + multistage pipeline + TN 布局
+// Phase 5b-2: HGEMM MMA — m16n8k16 + multistage pipeline + TN 布局（统一循环版）
 // =============================================================================
 // 面试重点 — Tile Hierarchy:
 //   MMA Atom:         m16n8k16（1 条 MMA 指令处理的最小 tile）
-//   MMA Tile (warp):  2×4=8 个 MMA atom, 计算单元的扩展，8 个 warp，更多计算线程，[2x16,8x4]=[32,32]
-//   Warp Tile:        4×4=16 warps = [32x4,32x4]=[128,128]，每个warp（MMA）覆盖更多的value，block tile.
-//   线程映射:          2×4=8 warps, 每个 warp（MMA） 又各自重复4次（4x4）
-// 实际: MMA_TILE_M=2, MMA_TILE_N=4, WARP_TILE_M=4, WARP_TILE_N=4
-//       → BM=16×2×4=128, BN=8×4×4=128, Warps=2×4=8, Threads=8×32=256
+//   MMA Tile (warp):  2×4=8 个 MMA atom → [2×16, 8×4]=[32,32]
+//   Warp Tile:        4×4=16 warps → [32×4, 32×4]=[128,128]
+//   实际: MMA_TILE_M=2, MMA_TILE_N=4, WARP_TILE_M=4, WARP_TILE_N=4
+//         → BM=16×2×4=128, BN=8×4×4=128, Warps=2×4=8, Threads=8×32=256
 //
-// TN 布局在本 kernel 中的体现（T=A 行优先，N=B 列优先）：
-//   - A[M][K]: row-major, 全局索引 A[m*K + k], shared memory s_a[BM][BK]
-//   - B[K][N]: col-major（等价于 B^T[N][K] row-major）, 全局索引 B[n*K+k] 即原 B 元素 (k,n)
-//              （⚠ 内维连续的是 K）shared memory s_b[BN][BK] = s_b[N_tile][K_tile]
-//   - ldmatrix A: 用 x4（非转置），因为 A 是 row-major，ldmatrix 原生匹配
-//   - ldmatrix B: 用 x2（非转置），因为 B^T 在 smem 中为 row-major，ldmatrix 逐行加载
-//     B^T 的行即 B 的列，天然匹配 MMA row.col 的 col-major B 输入，无需 .trans
-//   - MMA 指令: row.col = A row, B col → 天然匹配 TN 布局
+// ★ TN 布局（T=A 行优先，N=B 列优先）：
+//   - A[M][K]: row-major → 全局索引 A[m*K + k], smem s_a[BM][BK]
+//   - B[K][N]: col-major（等价于 B^T[N][K] row-major）→ 全局索引 B[n*K+k]
+//   - ldmatrix A: 用 x4（非转置），A row-major 原生匹配
+//   - ldmatrix B: 用 x2（非转置），B^T row-major 逐行加载 = B 的列，天然匹配 MMA row.col
+//   - MMA 指令: mma.sync.aligned.m16n8k16.row.col → 天然匹配 TN 布局
+//
+// ★ 统一循环设计（k 从 0 开始，消除尾端重复代码）：
+//   - k 从 0 开始：每次迭代 k 直接对应 tile k，sel = k % K_STAGE（零偏移）
+//   - 加载语义为"预取未来"：迭代 k 加载 tile (k+K_STAGE-1) 供后续使用
+//   - cp.async 条件化：仅当 k+K_STAGE-1 < NUM_K_TILES 时加载
+//   - WAIT_GROUP 自适应：满载期用 K_STAGE-2，尾部排空用 0
+//   - 消除 ~40 行尾端循环重复（ldmatrix+MMA 只写一次）
+//
 // Grid:  ((N+127)/128/S, (M+127)/128, S)，S=(N+2047)/2048，3D block swizzle
-//   - grid.z = S 个 swizzle 分区
-//   - grid.x = 每个分区内部需要发射多少个 128x128 的 N tiles
-//   - bx = blockIdx.z * gridDim.x + blockIdx.x，把连续 block 打散到不同 N 区域，改善 L2 命中
 // Block: (256, 1, 1)，8 warps
 // source: LeetCUDA/kernels/hgemm/mma/basic/hgemm_mma_stage_tn.cu
+// =============================================================================
 template <const int MMA_M = 16, const int MMA_N = 8, const int MMA_K = 16,
           const int MMA_TILE_M = 2, const int MMA_TILE_N = 4,
           const int WARP_TILE_M = 4, const int WARP_TILE_N = 4,
@@ -1259,9 +1262,7 @@ __global__ void __launch_bounds__(256)
   half *s_a = smem;
   half *s_b = smem + K_STAGE * BM * BK;     // A 和 B 连续存放
   constexpr int s_a_stage_offset = BM * BK; // 128*16
-  constexpr int s_b_stage_offset =
-      BN * BK; // 128*16  ⚠ BN(128)×BK(16) = B^T row-major 的 smem 布局
-
+  constexpr int s_b_stage_offset = BN * BK; // 128*16  ⚠ BN(128)×BK(16) = B^T row-major
   const int tid = threadIdx.y * blockDim.x + threadIdx.x;
   const int warp_id = tid / WARP_SIZE; // 0~7
   const int lane_id = tid % WARP_SIZE; // 0~31
@@ -1314,33 +1315,33 @@ __global__ void __launch_bounds__(256)
   CP_ASYNC_WAIT_GROUP(K_STAGE - 2); // 等待前 (K_STAGE-2) 个 group 完成
   __syncthreads();
 
-  // 主循环：K 维分块迭代
+  // 统一循环：k 从 0 开始，每次迭代负责 tile k（加载 + 计算合并为单循环）
 #pragma unroll
-  for (int k = (K_STAGE - 1); k < NUM_K_TILES; ++k) {
-    // Stage 选择：轮转方式 (round-robin)
-    // s2: {k=1, sel=0}, {k=2, sel=1}, {k=3, sel=0}, {k=4, sel=1}, ...
-    int smem_sel = (k + 1) % K_STAGE; // s3 k 2->0, k 3->1, k 4->2...
-    int smem_sel_next = k % K_STAGE;  // s3 k 2->2, k 3->0, k 4->1...
+  for (int k = 0; k < NUM_K_TILES; ++k) {
+    int smem_sel = k % K_STAGE;                      // 计算 tile k 的 stage
+    int smem_sel_next = (k + K_STAGE - 1) % K_STAGE; // 预加载目标 stage
 
-    // 异步加载下一批数据到 smem_sel_next
+    // 条件加载：预加载 tile (k+K_STAGE-1) 供将来使用
     // TN 布局: A 的 gmem 地址用 m*K+k（row-major），B^T 的 gmem 地址用 n*K+k（row-major，内维连续的是 K）
-    int load_gmem_a_k = k * BK + load_smem_a_k;
-    int load_gmem_a_addr = load_gmem_a_m * K + load_gmem_a_k; // A: row-major [m][k]
-    int load_gmem_b_k = k * BK + load_smem_b_k;
-    int load_gmem_b_addr = load_gmem_b_n * K + load_gmem_b_k; // B^T: row-major [n][k]，内维连续的是 K ⚠
+    if (k + K_STAGE - 1 < NUM_K_TILES) {
+      int load_gmem_a_k = (k + K_STAGE - 1) * BK + load_smem_a_k;
+      int load_gmem_a_addr = load_gmem_a_m * K + load_gmem_a_k; // A: row-major [m][k]
+      int load_gmem_b_k = (k + K_STAGE - 1) * BK + load_smem_b_k;
+      int load_gmem_b_addr = load_gmem_b_n * K + load_gmem_b_k; // B^T: row-major [n][k]，内维连续的是 K ⚠
 
-    uint32_t load_smem_a_ptr =
-        (smem_a_base_ptr + (smem_sel_next * s_a_stage_offset +
-                            load_smem_a_m * BK + load_smem_a_k) *
-                               sizeof(half));
-    CP_ASYNC_CG(load_smem_a_ptr, &A[load_gmem_a_addr], 16);
+      uint32_t load_smem_a_ptr =
+          (smem_a_base_ptr + (smem_sel_next * s_a_stage_offset +
+                              load_smem_a_m * BK + load_smem_a_k) *
+                                 sizeof(half));
+      CP_ASYNC_CG(load_smem_a_ptr, &A[load_gmem_a_addr], 16);
 
-    uint32_t load_smem_b_ptr =
-        (smem_b_base_ptr + (smem_sel_next * s_b_stage_offset +
-                            load_smem_b_n * BK + load_smem_b_k) *
-                               sizeof(half));
-    CP_ASYNC_CG(load_smem_b_ptr, &B[load_gmem_b_addr], 16);
-    CP_ASYNC_COMMIT_GROUP();
+      uint32_t load_smem_b_ptr =
+          (smem_b_base_ptr + (smem_sel_next * s_b_stage_offset +
+                              load_smem_b_n * BK + load_smem_b_k) *
+                                 sizeof(half));
+      CP_ASYNC_CG(load_smem_b_ptr, &B[load_gmem_b_addr], 16);
+      CP_ASYNC_COMMIT_GROUP();
+    }
 
     // ldmatrix: 从 smem_sel 加载 A 和 B 到寄存器
     // TN 布局关键: A 用 x4（非转置），因为 A 是 row-major
@@ -1352,9 +1353,9 @@ __global__ void __launch_bounds__(256)
 #pragma unroll
     for (int i = 0; i < WARP_TILE_M; ++i) {
       // {0,1} * (16 * 4) + i * 16 = {0,64} + {0,16,32,48} = {0,16,32,48,64,80,96,112}
-      int warp_smem_a_m = warp_m * (MMA_M * WARP_TILE_M) + i * MMA_M; 
+      int warp_smem_a_m = warp_m * (MMA_M * WARP_TILE_M) + i * MMA_M;
       // {0,16,32,48,64,80,96,112} + {0~15} = {0~127}, 按照col-major的顺序访问A的4个8x8 matrix
-      int lane_smem_a_m = warp_smem_a_m + lane_id % 16; 
+      int lane_smem_a_m = warp_smem_a_m + lane_id % 16;
       int lane_smem_a_k = (lane_id / 16) * 8; // 0, 8
       uint32_t lane_smem_a_ptr =
           (smem_a_base_ptr +
@@ -1390,55 +1391,13 @@ __global__ void __launch_bounds__(256)
       }
     }
 
-    // 等待当前 stage 的异步加载完成，然后 sync
-    CP_ASYNC_WAIT_GROUP(K_STAGE - 2);
-    __syncthreads();
-  }
-
-  // 尾端处理：最后 (K_STAGE-1) 个 stage 的计算（无新数据加载）
-  if ((K_STAGE - 2) > 0) {
-    CP_ASYNC_WAIT_GROUP(0);
-    __syncthreads();
-  }
-
-  {
-#pragma unroll
-    for (int k = 0; k < (K_STAGE - 1); k++) {
-      uint32_t RA[WARP_TILE_M][4];
-      uint32_t RB[WARP_TILE_N][2];
-      int stage_sel = ((NUM_K_TILES - (K_STAGE - 1) + k) % K_STAGE);
-
-#pragma unroll
-      for (int i = 0; i < WARP_TILE_M; ++i) {
-        int warp_smem_a_m = warp_m * (MMA_M * WARP_TILE_M) + i * MMA_M;
-        int lane_smem_a_m = warp_smem_a_m + lane_id % 16;
-        int lane_smem_a_k = (lane_id / 16) * 8;
-        uint32_t lane_smem_a_ptr =
-            (smem_a_base_ptr + (stage_sel * s_a_stage_offset +
-                                lane_smem_a_m * BK + lane_smem_a_k) *
-                                   sizeof(half));
-        LDMATRIX_X4(RA[i][0], RA[i][1], RA[i][2], RA[i][3], lane_smem_a_ptr);
-      }
-#pragma unroll
-      for (int j = 0; j < WARP_TILE_N; ++j) {
-        int warp_smem_b_n = warp_n * (MMA_N * WARP_TILE_N) + j * MMA_N;
-        int lane_smem_b_n = warp_smem_b_n + lane_id % 8;
-        int lane_smem_b_k = ((lane_id / 8) % 2) * 8;
-        uint32_t lane_smem_b_ptr =
-            (smem_b_base_ptr + (stage_sel * s_b_stage_offset +
-                                lane_smem_b_n * BK + lane_smem_b_k) *
-                                   sizeof(half));
-        LDMATRIX_X2(RB[j][0], RB[j][1], lane_smem_b_ptr);
-      }
-#pragma unroll
-      for (int i = 0; i < WARP_TILE_M; ++i) {
-#pragma unroll
-        for (int j = 0; j < WARP_TILE_N; ++j) {
-          HMMA16816(RC[i][j][0], RC[i][j][1], RA[i][0], RA[i][1], RA[i][2],
-                    RA[i][3], RB[j][0], RB[j][1], RC[i][j][0], RC[i][j][1]);
-        }
-      }
+    // 自适应等待：流水线满载期用 K_STAGE-2，尾部排空用 0
+    if (k + K_STAGE - 1 < NUM_K_TILES) {
+      CP_ASYNC_WAIT_GROUP(K_STAGE - 2);
+    } else if (k < NUM_K_TILES - 1) {
+      CP_ASYNC_WAIT_GROUP(0);
     }
+    __syncthreads();
   }
 
   // Epilogue: 寄存器 → global memory（通过 warp shuffle + 128-bit store）
@@ -1509,11 +1468,9 @@ __global__ void __launch_bounds__(256)
 // 面试要点（WGMMA vs MMA 对比）：
 //   - MMA: warp 级（32 threads），同步执行
 //   - WGMMA: warpgroup 级（128 threads = 4 warps），异步执行（fire-and-forget）
-//   - m64n128k16: M=64, N=128, K=16 → 一次处理 64×128×16=131K 个乘加（MMA 的 32
-//   倍）
+//   - m64n128k16: M=64, N=128, K=16 → 一次处理 64×128×16=131K 个乘加（MMA m16n8k16的 4x16=64倍）
 //   - TMA (Tensor Memory Accelerator): 硬件 DMA，2D 寻址，零寄存器开销
-//   - Warp Specialization: Producer 做 TMA，Consumer 做 WGMMA，通过 barrier
-//   同步
+//   - Warp Specialization: Producer 做 TMA，Consumer 做 WGMMA，通过 barrier 同步
 //   - 128B swizzle: shared memory 的 128B swizzle 模式，避免 bank conflict
 
 // ---- WGMMA 辅助函数 ----
