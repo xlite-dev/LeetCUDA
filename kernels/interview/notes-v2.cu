@@ -1355,7 +1355,7 @@ __global__ void __launch_bounds__(256)
     for (int i = 0; i < VAL_TILE_M; ++i) {
       // {0,1} * (16 * 4) + i * 16 = {0,64} + {0,16,32,48} = {0,16,32,48,64,80,96,112}
       int warp_smem_a_m = warp_m * (MMA_M * VAL_TILE_M) + i * MMA_M;
-      // {0,16,32,48,64,80,96,112} + {0~15} = {0~127}, 按照col-major的顺序访问A的4个8x8 matrix
+      // {0,16,32,...,112} + {0~15} = {0~127}, 按照col-major的顺序访问A的4个8x8 matrix (16x16)
       int lane_smem_a_m = warp_smem_a_m + lane_id % 16;
       int lane_smem_a_k = (lane_id / 16) * 8; // 0, 8
       uint32_t lane_smem_a_ptr =
@@ -1372,7 +1372,7 @@ __global__ void __launch_bounds__(256)
     for (int j = 0; j < VAL_TILE_N; ++j) {
       // {0,...,3} * (8 * 4) + j * 8 = {0,32,64,96} + {0,8,16,24} = {0,8,...,120}
       int warp_smem_b_n = warp_n * (MMA_N * VAL_TILE_N) + j * MMA_N;
-      // {0,8,...,120} + {0~7} = {0~127}, 按照row-major的顺序访问B^T的2个8x8 matrix
+      // {0,8,...,120} + {0~7} = {0~127}, 按照row-major的顺序访问B^T的2个8x8 matrix (8x16)
       int lane_smem_b_n = warp_smem_b_n + lane_id % 8;
       int lane_smem_b_k = ((lane_id / 8) % 2) * 8; // 0, 8
       uint32_t lane_smem_b_ptr =
