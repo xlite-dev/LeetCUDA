@@ -158,8 +158,8 @@
 //   对:   (0,2) (1,3) (4,6) (5,7)
 //       ──── 前4个一组 ────   ──── 后4个一组 ────
 //
-//   lane:  0    1    2    3    4    5    6    7
-//   val: Σ{0,2,4,6} Σ{1,3,5,7} Σ{0,2,4,6} Σ{1,3,5,7} Σ{0,2,4,6} Σ{1,3,5,7} Σ{0,2,4,6} Σ{1,3,5,7}   (每lane持有前一轮2个值的和再加本轮配对)
+//   lane:  0    1    2    3    4    5    6    7  (每lane持有前一轮2个值的和再加本轮配对)
+//   val: Σ{0,2,4,6} Σ{1,3,5,7} Σ{0,2,4,6} Σ{1,3,5,7} Σ{0,2,4,6} Σ{1,3,5,7} Σ{0,2,4,6} Σ{1,3,5,7}  
 //        = v0+v2+v4+v6 ... (逐步归约)
 //
 //   mask=1 (第3次迭代，lane i 与 lane i^1 交换并累加):
@@ -258,20 +258,20 @@ __global__ void block_reduce_all(float *a, float *y, int N) {
   constexpr int NUM_WARPS = (NUM_THREADS + WARP_SIZE - 1) / WARP_SIZE;
   __shared__ float reduce_smem[NUM_WARPS];
 
-  float sum = (idx < N) ? a[idx] : 0.0f;
+  float val = (idx < N) ? a[idx] : 0.0f;
   int warp = tid / WARP_SIZE;
   int lane = tid % WARP_SIZE;
 
-  sum = warp_reduce_sum<WARP_SIZE>(sum);
+  val = warp_reduce_sum<WARP_SIZE>(val);
   if (lane == 0)
-    reduce_smem[warp] = sum;
+    reduce_smem[warp] = val;
   __syncthreads();
 
-  sum = (lane < NUM_WARPS) ? reduce_smem[lane] : 0.0f;
+  val = (lane < NUM_WARPS) ? reduce_smem[lane] : 0.0f;
   if (warp == 0)
-    sum = warp_reduce_sum<NUM_WARPS>(sum);
+    val = warp_reduce_sum<NUM_WARPS>(val);
   if (tid == 0) // tid == 0, not lane 0. 只有 block 内的一个线程负责写回全局结果，避免重复累加
-    atomicAdd(y, sum);
+    atomicAdd(y, val);
 }
 
 // ---- Dot Product: y = sum(a[i] * b[i]) ----
@@ -477,17 +477,7 @@ __global__ void safe_softmax_per_token(float *x, float *y, int N) {
 }
 
 // ---- Level 3: Online Safe Softmax（FlashAttention 的数学基础）----
-// 面试重点：Online Softmax 为什么重要？
-//   - Safe Softmax 需要 3 遍遍历：找 max → exp+sum → 除法
-//   - Online Softmax 用递推公式合并为 1 遍遍历
-//   - 核心思想：处理新元素时，用新旧 max 的差值 rescale 旧 denominator
-//   - 正是 FlashAttention 中 "online rescaling"：
-//     O_new = diag(exp(m_old - m_new)) * O_old + exp(m_cur - m_new) * P@V
-// 算法参考: "Online normalizer calculation for softmax" (arXiv:1805.02867)
-
-// ---- Online Softmax 辅助结构 ----
-// MD struct: 存储 running max (m) 和 running denominator (d = Σexp(x - m))
-//
+// 面试重点：
 // 两种使用场景（公式不同，但结果等价）：
 //   1) 单元素增量更新 (online update，处理新元素 x_i)：
 //      m_new = max(m_old, x_i)
@@ -496,13 +486,7 @@ __global__ void safe_softmax_per_token(float *x, float *y, int N) {
 //      m = max(m1, m2)
 //      d = d1*exp(m1-m) + d2*exp(m2-m)
 //      当 m1≥m2 时退化为 d1 + d2*exp(m2-m1)（d_bigger + d_smaller*exp(m_smaller - m_bigger)）
-//
 // 算法来源: "Online normalizer calculation for softmax" (arXiv:1805.02867)
-struct __align__(8) MD {
-  float m; // running max
-  float d; // running denominator (sum of exp(x - max))
-};
-
 // Warp Reduce for Online Softmax — binary merge of two partial (m,d) accumulators.
 //
 // 不同于单元素增量更新公式（m_new = max(m_old, x_i); d_new = d_old*exp(m_old-m_new) + exp(x_i-m_new)），
@@ -515,24 +499,28 @@ struct __align__(8) MD {
 //   d = d1*exp(m1-m) + d2*exp(m2-m)   ← m1≥m2 时退化为 d1 + d2*exp(m2-m1)
 //
 // 该操作满足结合律 → XOR butterfly 任意归约顺序均保证全局正确结果。
+struct __align__(8) MD {
+  float m; // running max
+  float d; // running denominator (sum of exp(x - max))
+};
+
 template <const int kWarpSize = WARP_SIZE>
-__device__ __forceinline__ MD warp_reduce_md_op(MD value) {
+__device__ __forceinline__ MD warp_reduce_md(MD md1) {
 #pragma unroll
   for (int mask = kWarpSize >> 1; mask >= 1; mask >>= 1) {
-    MD other;
-    other.m = __shfl_xor_sync(0xffffffff, value.m, mask, kWarpSize);
-    other.d = __shfl_xor_sync(0xffffffff, value.d, mask, kWarpSize);
+    MD md2;
+    md2.m = __shfl_xor_sync(0xffffffff, md1.m, mask, kWarpSize);
+    md2.d = __shfl_xor_sync(0xffffffff, md1.d, mask, kWarpSize);
 
-    bool value_bigger = (value.m > other.m);
-    MD bigger_m = value_bigger ? value : other;
-    MD smaller_m = value_bigger ? other : value;
+    MD b_m = (md1.m > md2.m) ? md1 : md2; // max
+    MD s_m = (md1.m > md2.m) ? md2 : md1;
 
-    // d_bigger 无需 rescale（其基准 max 已是全局 max），
-    // d_smaller 需 rescale：exp(m_smaller - m_bigger)
-    value.d = bigger_m.d + smaller_m.d * __expf(smaller_m.m - bigger_m.m);
-    value.m = bigger_m.m;
+    // b_m.d 无需 rescale（其基准 max 已是全局 max），
+    // s_m.d 需 rescale：exp(s_m.m - b_m.m)
+    md1.d = b_m.d + s_m.d * __expf(s_m.m - b_m.m);
+    md1.m = b_m.m;
   }
-  return value;
+  return md1;
 }
 
 // 注意：这里默认一个 block 处理一个 token；边界线程的 d=0 只参与归约，不会写回 y
@@ -541,43 +529,42 @@ __device__ __forceinline__ MD warp_reduce_md_op(MD value) {
 // source: LeetCUDA/kernels/softmax/softmax.cu
 template <const int NUM_THREADS = 256>
 __global__ void online_safe_softmax_per_token(const float *x, float *y, int N) {
-  int local_tid = threadIdx.x;
-  int global_tid = blockIdx.x * NUM_THREADS + threadIdx.x;
-  const int WARP_NUM = NUM_THREADS / WARP_SIZE;
-  int warp_id = local_tid / WARP_SIZE;
-  int lane_id = local_tid % WARP_SIZE;
+  int tid = threadIdx.x;
+  int idx = blockIdx.x * NUM_THREADS + threadIdx.x;
+  const int NUM_WARPS = (NUM_THREADS + WARP_SIZE - 1) / WARP_SIZE;
+  int warp = tid / WARP_SIZE;
+  int lane = tid % WARP_SIZE;
 
   // 初始化：每个线程持有一个 (max, denom) 对
-  MD val;
-  val.m = global_tid < N ? x[global_tid] : -FLT_MAX;
-  val.d = global_tid < N ? 1.0f : 0.0f;
+  MD md;
+  md.m = idx < N ? x[idx] : -FLT_MAX;
+  md.d = idx < N ? 1.0f : 0.0f;
 
-  // Block reduce：warp_reduce_md_op 在归约中自动更新 m 和 d
-  __shared__ MD shared[WARP_NUM];
-  MD res = warp_reduce_md_op<WARP_SIZE>(val);
+  // Block reduce：warp_reduce_md 在归约中自动更新 m 和 d
+  __shared__ MD shared[NUM_WARPS];
+  md = warp_reduce_md<WARP_SIZE>(md);
 
-  if (lane_id == 0)
-    shared[warp_id] = res;
+  if (lane == 0)
+    shared[warp] = md;
   __syncthreads();
 
-  // 第二级归约：warp0 收集各 warp 结果再做一次 md_op（复用 block_reduce 模式）
-  // 只有 local_tid < 32 的线程参与；shared[0] 在第二次 __syncthreads 后才对整个 block 可见
-  if (local_tid < WARP_SIZE) {
-    MD block_res =
-        local_tid < WARP_NUM ? shared[local_tid] : MD{-FLT_MAX, 0.0f};
-    block_res = warp_reduce_md_op<WARP_NUM>(block_res);
-    if (local_tid == 0) {
-      shared[0] = block_res;
+  // 第二级归约：warp0 收集各 warp 结果再做一次 warp_reduce_md（复用 block_reduce 模式）
+  // 只有 tid < 32 的线程参与；shared[0] 在第二次 __syncthreads 后才对整个 block 可见
+  if (tid < WARP_SIZE) {
+    md = tid < NUM_WARPS ? shared[tid] : MD{-FLT_MAX, 0.0f};
+    md = warp_reduce_md<NUM_WARPS>(md);
+    if (tid == 0) {
+      shared[0] = md;
     }
   }
   __syncthreads();
 
   // 用全局 max 和 denom 做最终 softmax
-  MD final_res = shared[0];
-  float d_total_inverse = __fdividef(1.0f, final_res.d);
+  md = shared[0];
+  float d_inv = __fdividef(1.0f, md.d);
   // 边界线程即使看到 d=0 的填充值，也不会走到写回路径
-  if (global_tid < N) {
-    y[global_tid] = __expf(x[global_tid] - final_res.m) * d_total_inverse;
+  if (idx < N) {
+    y[idx] = __expf(x[idx] - md.m) * d_inv;
   }
 }
 
@@ -595,8 +582,7 @@ __global__ void online_safe_softmax_per_token(const float *x, float *y, int N) {
 template <const int NUM_THREADS = 128>
 __global__ void rms_norm(float *x, float *y, float g, int N, int K) {
   int tid = threadIdx.x;
-  int bid = blockIdx.x;
-  int idx = bid * blockDim.x + threadIdx.x;
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
   const float epsilon = 1e-5f;
 
   __shared__ float s_variance;
@@ -618,8 +604,7 @@ __global__ void rms_norm(float *x, float *y, float g, int N, int K) {
 template <const int NUM_THREADS = 128 / 4>
 __global__ void rms_norm_vec4(float *x, float *y, float g, int N, int K) {
   int tid = threadIdx.x;
-  int bid = blockIdx.x;
-  int idx = (bid * blockDim.x + threadIdx.x) * 4;
+  int idx = (blockIdx.x * blockDim.x + threadIdx.x) * 4;
   const float epsilon = 1e-5f;
 
   __shared__ float s_variance;
@@ -653,8 +638,7 @@ __global__ void rms_norm_vec4(float *x, float *y, float g, int N, int K) {
 template <const int NUM_THREADS = 128>
 __global__ void layer_norm(float *x, float *y, float g, float b, int N, int K) {
   int tid = threadIdx.x;
-  int bid = blockIdx.x;
-  int idx = bid * blockDim.x + threadIdx.x;
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
   const float epsilon = 1e-5f;
 
   __shared__ float s_mean;
@@ -684,11 +668,9 @@ __global__ void layer_norm(float *x, float *y, float g, float b, int N, int K) {
 // 注意：该版本默认 K 按 4 对齐，且输入/输出地址满足 float4 对齐
 // source: LeetCUDA/kernels/layer-norm/layer_norm.cu
 template <const int NUM_THREADS = 128 / 4>
-__global__ void layer_norm_vec4(float *x, float *y, float g, float b, int N,
-                                int K) {
+__global__ void layer_norm_vec4(float *x, float *y, float g, float b, int N, int K) {
   int tid = threadIdx.x;
-  int bid = blockIdx.x;
-  int idx = (bid * blockDim.x + threadIdx.x) * 4;
+  int idx = (blockIdx.x * blockDim.x + threadIdx.x) * 4;
   const float epsilon = 1e-5f;
 
   __shared__ float s_mean;
@@ -852,9 +834,8 @@ __global__ void mat_transpose_padded(
 __global__ void sgemv_k32(float *a, float *x, float *y, int M, int K) {
   int tx = threadIdx.x; // 0~31
   int ty = threadIdx.y; // 0~3
-  int bx = blockIdx.x;
-  int lane = tx % WARP_SIZE;    // 0~31
-  int m = bx * blockDim.y + ty; // 全局行号
+  int lane = tx % WARP_SIZE; // 0~31
+  int m = blockIdx.x * blockDim.y + ty; // 全局行号
   if (m < M) {
     float sum = 0.0f;
     // 沿 K 维的迭代数 = ceil(K/32)，每个 warp 要累加完整的K，那么
@@ -882,9 +863,8 @@ __global__ void sgemv_k32(float *a, float *x, float *y, int M, int K) {
 __global__ void sgemv_k128(float *a, float *x, float *y, int M, int K) {
   int tx = threadIdx.x; // 0~31
   int ty = threadIdx.y; // 0~3
-  int bx = blockIdx.x;
   int lane = tx % WARP_SIZE; // 0~31
-  int m = blockDim.y * bx + ty;
+  int m = blockDim.y * blockIdx.x + ty;
 
   if (m < M) {
     float sum = 0.0f;
@@ -916,10 +896,9 @@ __global__ void sgemv_k16(float *A, float *x, float *y, int M, int K) {
   constexpr int K_WARP_SIZE = (WARP_SIZE + ROW_PER_WARP - 1) / ROW_PER_WARP; // 16
   int tx = threadIdx.x;
   int ty = threadIdx.y;
-  int bx = blockIdx.x;
   int lane = tx % WARP_SIZE;
   int k = lane % K_WARP_SIZE; // 0~15
-  int m = (blockDim.y * bx + ty) * ROW_PER_WARP + lane / K_WARP_SIZE;
+  int m = (blockDim.y * blockIdx.x + ty) * ROW_PER_WARP + lane / K_WARP_SIZE;
   if (m < M) {
     float sum = A[m * K + k] * x[k];
     // 按照K_WARP_SIZE=16，分2组各自做 warp reduce sum，k==0的lane写回结果
@@ -969,22 +948,20 @@ __global__ void sgemm(float *a, float *b, float *c, int M, int N, int K) {
   int tid = threadIdx.y * blockDim.x + tx;
 
   // 线程到 smem 的映射：32×32 线程，每个线程加载 a 和 b 各 1 个元素
-  int load_smem_a_m = tid / 32; // row 0~31 由 32 线程加载; vec 版: a_m = tid / (32 / 4)， row 0~127, [128x32]
-  int load_smem_a_k = tid % 32; // col 0~31 由 32 线程加载; vec 版: a_k = (tid % (32 / 4)) * 4， t 0~7, col 0~31, 每个线程加载 4 个元素，8x4 = 32
-  int load_smem_b_k = tid / 32; // row 0~31 由 32 线程加载; vec 版: b_k = tid / 32, row 0~31, [32x128]
-  int load_smem_b_n = tid % 32; // col 0~31 由 32 线程加载; vec 版: b_n = (tid % 32) * 4, t 0~31, col 0~127, 每个线程加载 4 个元素，32x4 = 128
-  int load_gmem_a_m = by * BM + load_smem_a_m; // gmem row; vec 版: load_smem_a_m, 0~127, 0, 1, 2, ... (连续) [128x128]
-  int load_gmem_b_n = bx * BN + load_smem_b_n; // gmem col; vec 版: load_smem_b_n, 0~127, 0, 4, 8, ... (间隔)
+  int load_smem_a_m = tid / 32; // row 0~31 由 32 线程加载;
+  int load_smem_a_k = tid % 32; // col 0~31 由 32 线程加载;
+  int load_smem_b_k = tid / 32; // row 0~31 由 32 线程加载;
+  int load_smem_b_n = tid % 32; // col 0~31 由 32 线程加载;
+  int load_gmem_a_m = by * BM + load_smem_a_m; // gmem row;
+  int load_gmem_b_n = bx * BN + load_smem_b_n; // gmem col;
 
-  float sum = 0.f; // 遍历完整的K，slice K; vec 版: sum[4][4] = 0.f; 每个线程处理4x4的大小，才能保证32x32线程处理[32x4,32x4]=[128x128]大小
+  float sum = 0.f; // 遍历完整的K，slice K;
   for (int bk = 0; bk < (K + BK - 1) / BK; ++bk) {
     int load_gmem_a_k = bk * BK + load_smem_a_k; // A [M, K]
     int load_gmem_a_addr = load_gmem_a_m * K + load_gmem_a_k;
-    // vec 版: FLOAT4(s_a[load_smem_a_m][load_smem_a_k]) = FLOAT4(a[load_gmem_a_addr])
     s_a[load_smem_a_m][load_smem_a_k] = a[load_gmem_a_addr];
     int load_gmem_b_k = bk * BK + load_smem_b_k; // B [K, N]
     int load_gmem_b_addr = load_gmem_b_k * N + load_gmem_b_n;
-    // vec 版：FLOAT4(s_b[load_smem_b_k][load_smem_b_n]) = FLOAT4(b[load_gmem_b_addr]);
     s_b[load_smem_b_k][load_smem_b_n] = b[load_gmem_b_addr];
     __syncthreads(); // 确保整个 smem tile 加载完毕
 
