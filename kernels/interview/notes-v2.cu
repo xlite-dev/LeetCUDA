@@ -1750,8 +1750,8 @@ __global__ void __launch_bounds__(NUM_THREADS)
   //     - 通过 full/empty 两个 barrier 的 phase 交替来保证
   //
   //   每个 stage 有两个 barrier：
-  //     full[qidx]:  TMA 数据就绪信号。Producer 发（arrive_tx），Consumer 等（wait）。
-  //     empty[qidx]: Stage 空闲信号。   Consumer 发（arrive），   Producer 等（wait）。
+  //      full[qidx]: TMA 数据就绪信号。Producer 发（arrive_tx），Consumer 等（wait）。
+  //     empty[qidx]: Stage 空闲信号。 Consumer 发（arrive），   Producer 等（wait）。
   //
   //   arrive_count = 128 (consumer) + 1 (producer) = 129：
   //     每 phase，128 个 consumer 线程 + 1 个 producer 线程都要 arrive 一次。
@@ -1808,8 +1808,7 @@ __global__ void __launch_bounds__(NUM_THREADS)
     if (tid == 0) {
       // qidx: 当前操作的 stage 索引（round-robin 0 -> 1 -> 2 -> 0 -> ...）
       int qidx = 0;
-      for (int block_k_iter = 0; block_k_iter < num_blocks_k;
-           ++block_k_iter, ++qidx) {
+      for (int block_k_iter = 0; block_k_iter < num_blocks_k; ++block_k_iter, ++qidx) {
         if (qidx == K_STAGE)
           qidx = 0;
 
@@ -1872,7 +1871,7 @@ __global__ void __launch_bounds__(NUM_THREADS)
     // Step C0: Consumer 初始化 — 标记所有 stage 为"空"（可被 Producer 写入）
     //
     // 所有 128 个 Consumer 线程对每个 stage 的 empty barrier 调用 arrive()。
-    // 这是 Pipeline 的"起搏"步骤——没有它，Producer 的 empty[qidx].wait()
+    // 这是 Pipeline 的"预热"步骤——没有它，Producer 的 empty[qidx].wait()
     // 在第一轮会永远阻塞（因为 Producer 的 1 次 arrive 不足以凑够 129）。
     //
     // 注意：此时每个 empty[i] 只有 128 次 arrive，未达 129，phase 不翻转。
@@ -1893,8 +1892,7 @@ __global__ void __launch_bounds__(NUM_THREADS)
 
     int qidx = 0;
     // K 维外循环：沿 K tile 迭代（BK=64，每个 K tile 做 4 次 WGMMA 累加）
-    for (int block_k_iter = 0; block_k_iter < num_blocks_k;
-         ++block_k_iter, ++qidx) {
+    for (int block_k_iter = 0; block_k_iter < num_blocks_k; ++block_k_iter, ++qidx) {
       if (qidx == K_STAGE)
         qidx = 0;
 
