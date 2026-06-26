@@ -2044,7 +2044,7 @@ __global__ void __launch_bounds__(NUM_THREADS)
   }
 }
 
-#if (defined(NOTES_V2_HAS_WGMMA) && (defined(__CUDA_ARCH__) && __CUDA_ARCH__ == 900) && defined(__CUDA_ARCH_FEAT_SM90_ALL))
+#if (defined(NOTES_V2_HAS_WGMMA) && (defined(__CUDA_ARCH__) && __CUDA_ARCH__ == 900))
 // ---- Host-side TMA Tensor Map helpers (WGMMA test) ----
 // 面试要点（TMA descriptor 创建 — cuTensorMapEncodeTiled）：
 //   - TMA descriptor 描述 global memory 中矩阵的 shape/stride/dtype，
@@ -3520,7 +3520,7 @@ static void test_hgemm_mma(int M, int N, int K) {
 }
 
 
-#if defined(NOTES_V2_HAS_WGMMA) && (defined(__CUDA_ARCH__) && __CUDA_ARCH__ == 900) && defined(__CUDA_ARCH_FEAT_SM90_ALL)
+#if defined(NOTES_V2_HAS_WGMMA) && (defined(__CUDA_ARCH__) && __CUDA_ARCH__ == 900)
 static void test_hgemm_wgmma(int M, int N, int K) {
   // HGEMM WGMMA — m64n128k16 + TMA + Warp Specialization (Hopper SM90+)
   // TN layout: C[M×N] = A[M×K] × B^T[N×K]
@@ -3744,7 +3744,7 @@ static void test_flash_attn(int seqlen, int head_dim) {
 
 
 int main(int argc, char *argv[]) {
-#if defined(NOTES_V2_HAS_WGMMA) && (defined(__CUDA_ARCH__) && __CUDA_ARCH__ == 900) && defined(__CUDA_ARCH_FEAT_SM90_ALL)
+#if defined(NOTES_V2_HAS_WGMMA) && (defined(__CUDA_ARCH__) && __CUDA_ARCH__ == 900)
   cuInit(0); // Driver API init required for cuTensorMapEncodeTiled (TMA, sm_90a+)
 #endif
   int M = 1024, N = 1024, K = 1024;
@@ -3768,7 +3768,7 @@ int main(int argc, char *argv[]) {
   test_sgemv(256, 128);
   test_sgemm(M, N, K);
   test_hgemm_mma(M, N, K);
-#if (defined(NOTES_V2_HAS_WGMMA) && (defined(__CUDA_ARCH__) && __CUDA_ARCH__ == 900) && defined(__CUDA_ARCH_FEAT_SM90_ALL))
+#if (defined(NOTES_V2_HAS_WGMMA) && (defined(__CUDA_ARCH__) && __CUDA_ARCH__ == 900))
   test_hgemm_wgmma(M, N, K);
 #endif
   test_flash_attn(1024, 64);
