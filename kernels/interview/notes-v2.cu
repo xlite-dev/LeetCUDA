@@ -1881,8 +1881,8 @@ __global__ void __launch_bounds__(NUM_THREADS)
   //     - 通过 full/empty 两个 barrier 的 phase 交替来保证
   //
   //   每个 stage 有两个 barrier：
-  //     full[qidx]:  TMA 数据就绪信号。Producer 发（arrive_tx），Consumer 等（wait）。
-  //     empty[qidx]: Stage 空闲信号。   Consumer 发（arrive），   Producer 等（wait）。
+  //      full[qidx]: TMA 数据就绪信号。Producer 发（arrive_tx），Consumer 等（wait）。
+  //     empty[qidx]: Stage 空闲信号。 Consumer 发（arrive），   Producer 等（wait）。
   //
   //   arrive_count = 128 (consumer) + 1 (producer) = 129：
   //     每 phase，128 个 consumer 线程 + 1 个 producer 线程都要 arrive 一次。
@@ -1939,8 +1939,7 @@ __global__ void __launch_bounds__(NUM_THREADS)
     if (tid == 0) {
       // qidx: 当前操作的 stage 索引（round-robin 0 -> 1 -> 2 -> 0 -> ...）
       int qidx = 0;
-      for (int block_k_iter = 0; block_k_iter < num_blocks_k;
-           ++block_k_iter, ++qidx) {
+      for (int block_k_iter = 0; block_k_iter < num_blocks_k; ++block_k_iter, ++qidx) {
         if (qidx == K_STAGE)
           qidx = 0;
 
@@ -2003,7 +2002,7 @@ __global__ void __launch_bounds__(NUM_THREADS)
     // Step C0: Consumer 初始化 — 标记所有 stage 为"空"（可被 Producer 写入）
     //
     // 所有 128 个 Consumer 线程对每个 stage 的 empty barrier 调用 arrive()。
-    // 这是 Pipeline 的"起搏"步骤——没有它，Producer 的 empty[qidx].wait()
+    // 这是 Pipeline 的"预热"步骤——没有它，Producer 的 empty[qidx].wait()
     // 在第一轮会永远阻塞（因为 Producer 的 1 次 arrive 不足以凑够 129）。
     //
     // 注意：此时每个 empty[i] 只有 128 次 arrive，未达 129，phase 不翻转。
@@ -2024,8 +2023,7 @@ __global__ void __launch_bounds__(NUM_THREADS)
 
     int qidx = 0;
     // K 维外循环：沿 K tile 迭代（BK=64，每个 K tile 做 4 次 WGMMA 累加）
-    for (int block_k_iter = 0; block_k_iter < num_blocks_k;
-         ++block_k_iter, ++qidx) {
+    for (int block_k_iter = 0; block_k_iter < num_blocks_k; ++block_k_iter, ++qidx) {
       if (qidx == K_STAGE)
         qidx = 0;
 
@@ -2175,9 +2173,7 @@ __global__ void __launch_bounds__(NUM_THREADS)
   }
 }
 
-#if (defined(NOTES_V2_HAS_WGMMA) \
-  || (defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900) \
-  || defined(__CUDA_ARCH_FEAT_SM90_ALL))
+#if (defined(NOTES_V2_HAS_WGMMA))
 // ---- Host-side TMA Tensor Map helpers (WGMMA test) ----
 // 面试要点（TMA descriptor 创建 — cuTensorMapEncodeTiled）：
 //   - TMA descriptor 描述 global memory 中矩阵的 shape/stride/dtype，
@@ -3779,7 +3775,7 @@ static void test_hgemm_mma(int M, int N, int K) {
 }
 
 
-#if defined(NOTES_V2_HAS_WGMMA) || (defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900) || defined(__CUDA_ARCH_FEAT_SM90_ALL)
+#if defined(NOTES_V2_HAS_WGMMA)
 static void test_hgemm_wgmma(int M, int N, int K) {
   // HGEMM WGMMA — m64n128k16 + TMA + Warp Specialization (Hopper SM90+)
   // TN layout: C[M×N] = A[M×K] × B^T[N×K]
@@ -4003,7 +3999,7 @@ static void test_flash_attn(int seqlen, int head_dim) {
 
 
 int main(int argc, char *argv[]) {
-#if defined(NOTES_V2_HAS_WGMMA) || (defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900) || defined(__CUDA_ARCH_FEAT_SM90_ALL)
+#if defined(NOTES_V2_HAS_WGMMA)
   cuInit(0); // Driver API init required for cuTensorMapEncodeTiled (TMA, sm_90a+)
 #endif
   int M = 1024, N = 1024, K = 1024;
@@ -4028,9 +4024,7 @@ int main(int argc, char *argv[]) {
   test_sgemv(256, 128);
   test_sgemm(M, N, K);
   test_hgemm_mma(M, N, K);
-#if (defined(NOTES_V2_HAS_WGMMA) \
-    || (defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900) \
-    || defined(__CUDA_ARCH_FEAT_SM90_ALL))
+#if (defined(NOTES_V2_HAS_WGMMA))
   test_hgemm_wgmma(M, N, K);
 #endif
   test_flash_attn(1024, 64);
