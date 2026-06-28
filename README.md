@@ -54,6 +54,8 @@ nvcc -std=c++20 -O2 -gencode arch=compute_90a,code=sm_90a -DNOTES_V2_HAS_WGMMA \
 | ElemwiseAdd                         | 0.000000e+00 | PASS |
 | ElemwiseAdd-Vec4                    | 0.000000e+00 | PASS |
 | Histogram                           | 0.000000e+00 | PASS |
+| MergeAttnStates                     | 1.788139e-07 | PASS |
+| MergeAttnStates-inf                 | 0.000000e+00 | PASS |
 | OnlineSafeSoftmax                   | 3.725290e-09 | PASS |
 | SafeSoftmax                         | 1.862645e-09 | PASS |
 | NaiveSoftmax                        | 3.725290e-09 | PASS |
