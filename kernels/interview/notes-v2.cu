@@ -416,6 +416,137 @@ __global__ void histogram(int *a, int *y, int N) {
     atomicAdd(&(y[a[idx]]), 1);
 }
 
+// ---- Merge Attn States: 合并 Split-KV Attention 的部分结果 ----
+// 实现 FlashInfer 论文 (arXiv 2501.01005) Section 2.2 的 attention 合并逻辑。
+//
+// 面试要点：
+//   - 应用场景：Split-KV attention 将序列沿 K 维分段计算 attention，
+//     每段产出部分结果 (O_i, LSE_i)，本 kernel 将两段按指数权重加权合并。
+//   - 数学公式（5 步推导）：
+//     Step 1 — max 归一化（数值稳定，与 safe softmax 同理）:
+//              L_max = max(LSE_1, LSE_2)
+//     Step 2 — 还原指数权重（un-normalized）:
+//              w_1 = exp(LSE_1 - L_max),  w_2 = exp(LSE_2 - L_max)
+//     Step 3 — 归一化为混合比例:
+//              alpha = w_1 / (w_1 + w_2),  beta = w_2 / (w_1 + w_2)
+//              满足 alpha + beta = 1
+//     Step 4 — 逐元素加权合并:
+//              O = alpha * O_1 + beta * O_2
+//   - LSE 布局 [num_heads, num_tokens]（与 FlashAttention 惯例一致，
+//     lse[head_idx][token_idx]）
+//   - Output 布局 [num_tokens, num_heads, head_size]（token 维在最外，
+//     展平为 [T0H0, T0H1, ..., T1H0, ...]）
+//   - inf LSE → -inf：空 attention 段（causal mask 等导致全部 score
+//     为 -inf）的 LSE 可能为 +inf，替换后 exp(-inf - L_max) = 0，
+//     该段权重退化为 0
+//   - 128-bit 向量化：uint4 = 4 × float，每线程处理 4 个输出元素，
+//     pack load → FMA → pack store 一条流水线
+//   - AI ≈ 3 FLOP / 20 bytes ≈ 0.15 FLOPS/Byte → severely memory-bound
+//
+// 线程到数据的 3D 映射（以 num_tokens=2, num_heads=2, head_size=8 为例）：
+//   pack_size = 16 / sizeof(float) = 4（每线程 4 个 float = 128-bit）
+//   threads_per_head = head_size / 4 = 2
+//   total_threads = num_tokens * num_heads * threads_per_head = 8
+//
+//   global_idx:       0      1      2      3      4      5      6      7
+//   token_head_idx:   0      0      1      1      2      2      3      3
+//       （第几个 (token,head) 对，行优先）
+//   pack_idx:         0      1      0      1      0      1      0      1
+//       （该 (token,head) 对内第几个 pack）
+//   token_idx:        0      0      0      0      1      1      1      1
+//       （token_head_idx / num_heads，token 变化慢）
+//   head_idx:         0      0      1      1      0      0      1      1
+//       （token_head_idx % num_heads，head 变化快）
+//   pack_offset:      0      4      0      4      0      4      0      4
+//       （pack_idx * 4，该 pack 在 head_size 中的起始元素偏移）
+//   head_offset:      0      0      8      8     16     16     24     24
+//       （token_idx * num_heads * head_size + head_idx * head_size，
+//        该 (token,head) 对在 output 展平数组中的起始偏移）
+//
+// Grid:  ((total_threads + 127) / 128, 1, 1)
+// Block: (128, 1, 1)
+// source: LeetCUDA/kernels/openai-triton/merge-attn-states/cuda_merge_attn_states.cu
+__global__ void merge_attn_states(
+    float *output,              // [num_tokens, num_heads, head_size]
+    const float *prefix_output, // [num_tokens, num_heads, head_size]
+    const float *prefix_lse,    // [num_heads, num_tokens]
+    const float *suffix_output, // [num_tokens, num_heads, head_size]
+    const float *suffix_lse,    // [num_heads, num_tokens]
+    int num_tokens, int num_heads, int head_size) {
+
+  constexpr int NUM_THREADS = 128;
+  constexpr int PACK_SIZE = 16 / sizeof(float); // 4 floats = 128-bit
+  using pack_t = uint4;
+
+  // 每个 (token, head) 对需要 threads_per_head 个线程覆盖 head_size 个元素
+  int threads_per_head = head_size / PACK_SIZE;
+  int total_threads = num_tokens * num_heads * threads_per_head;
+
+  int global_idx = blockIdx.x * NUM_THREADS + threadIdx.x;
+  if (global_idx >= total_threads)
+    return;
+
+  // global_idx → (token_head_idx, pack_idx) → (token_idx, head_idx, pack_offset)
+  // token_head_idx: 第几个 (token, head) 对，行优先展平
+  int token_head_idx = global_idx / threads_per_head;
+  // pack_idx: 该 (token, head) 对内第几个 pack，0 ~ threads_per_head-1
+  int pack_idx = global_idx % threads_per_head;
+
+  // token_head_idx 分解为 (token_idx, head_idx)
+  int token_idx = token_head_idx / num_heads; // token 变化慢（外维）
+  int head_idx = token_head_idx % num_heads;  // head 变化快（内维）
+
+  // pack_offset: 该 pack 覆盖的元素在 head_size 中的起始偏移（0, 4, 8, ...）
+  int pack_offset = pack_idx * PACK_SIZE;
+  // head_offset: 该 (token, head) 对在 output 展平一维数组中的起始偏移
+  int head_offset = token_idx * num_heads * head_size + head_idx * head_size;
+
+  // 定位到当前 (token, head) 的输出段起始
+  const float *prefix_head = prefix_output + head_offset;
+  const float *suffix_head = suffix_output + head_offset;
+  float *output_head = output + head_offset;
+
+  // LSE 布局 [num_heads, num_tokens]: lse[head_idx][token_idx]
+  float p_lse = prefix_lse[head_idx * num_tokens + token_idx];
+  float s_lse = suffix_lse[head_idx * num_tokens + token_idx];
+
+  // inf → -inf: 空 attention 段 LSE 可能为 +inf，替换后权重退化为 0
+  p_lse = isinf(p_lse) ? -INFINITY : p_lse;
+  s_lse = isinf(s_lse) ? -INFINITY : s_lse;
+
+  // Step 1: max 归一化（与 safe softmax 同理，防 exp 溢出）
+  float max_lse = fmaxf(p_lse, s_lse);
+  p_lse -= max_lse;
+  s_lse -= max_lse;
+
+  // Step 2-3: 指数还原 → 混合比例 alpha, beta
+  float p_se = expf(p_lse);
+  float s_se = expf(s_lse);
+  float out_se = p_se + s_se;
+  float p_scale = p_se / out_se; // alpha = w_1 / (w_1 + w_2)
+  float s_scale = s_se / out_se; // beta  = w_2 / (w_1 + w_2)
+
+  // Step 4: 逐元素加权合并 O = alpha * O_1 + beta * O_2
+  // 128-bit 向量化: uint4 load → per-element FMA → uint4 store
+  if (pack_offset < head_size) {
+    pack_t p_pack =
+        reinterpret_cast<const pack_t *>(prefix_head)[pack_offset / PACK_SIZE];
+    pack_t s_pack =
+        reinterpret_cast<const pack_t *>(suffix_head)[pack_offset / PACK_SIZE];
+    pack_t o_pack;
+
+#pragma unroll
+    for (int i = 0; i < PACK_SIZE; ++i) {
+      float p_val = reinterpret_cast<const float *>(&p_pack)[i];
+      float s_val = reinterpret_cast<const float *>(&s_pack)[i];
+      float o_val = p_val * p_scale + s_val * s_scale;
+      reinterpret_cast<float *>(&o_pack)[i] = o_val;
+    }
+
+    reinterpret_cast<pack_t *>(output_head)[pack_offset / PACK_SIZE] = o_pack;
+  }
+}
+
 // =============================================================================
 // Phase 3: Reduce 类 Ops — Softmax / RMS Norm / Layer Norm
 // =============================================================================
@@ -2928,6 +3059,132 @@ static void test_histogram(int N) {
 }
 
 
+static void test_merge_attn_states(int num_tokens, int num_heads,
+                                   int head_size) {
+
+  size_t out_size = (size_t)num_tokens * num_heads * head_size * sizeof(float);
+  size_t lse_size = (size_t)num_heads * num_tokens * sizeof(float);
+
+  float *h_prefix_out = (float *)malloc(out_size);
+  float *h_suffix_out = (float *)malloc(out_size);
+  float *h_prefix_lse = (float *)malloc(lse_size);
+  float *h_suffix_lse = (float *)malloc(lse_size);
+  float *h_output_ref = (float *)malloc(out_size);
+
+  srand(42);
+  for (int i = 0; i < num_tokens * num_heads * head_size; i++) {
+    h_prefix_out[i] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;
+    h_suffix_out[i] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;
+  }
+  for (int i = 0; i < num_heads * num_tokens; i++) {
+    h_prefix_lse[i] = ((float)rand() / RAND_MAX) * 20.0f - 10.0f;
+    h_suffix_lse[i] = ((float)rand() / RAND_MAX) * 20.0f - 10.0f;
+  }
+
+  // CPU reference: 与 kernel 完全相同的浮点计算
+  for (int t = 0; t < num_tokens; t++) {
+    for (int h = 0; h < num_heads; h++) {
+      float p_lse = h_prefix_lse[h * num_tokens + t];
+      float s_lse = h_suffix_lse[h * num_tokens + t];
+      p_lse = isinf(p_lse) ? -INFINITY : p_lse;
+      s_lse = isinf(s_lse) ? -INFINITY : s_lse;
+
+      float max_lse = fmaxf(p_lse, s_lse);
+      p_lse -= max_lse;
+      s_lse -= max_lse;
+      float p_se = expf(p_lse);
+      float s_se = expf(s_lse);
+      float p_scale = p_se / (p_se + s_se);
+      float s_scale = s_se / (p_se + s_se);
+
+      int head_off = t * num_heads * head_size + h * head_size;
+      for (int d = 0; d < head_size; d++) {
+        h_output_ref[head_off + d] =
+            h_prefix_out[head_off + d] * p_scale +
+            h_suffix_out[head_off + d] * s_scale;
+      }
+    }
+  }
+
+  float *d_prefix_out, *d_suffix_out, *d_prefix_lse, *d_suffix_lse, *d_output;
+  check(cudaMalloc(&d_prefix_out, out_size), "merge_attn alloc p_out");
+  check(cudaMalloc(&d_suffix_out, out_size), "merge_attn alloc s_out");
+  check(cudaMalloc(&d_prefix_lse, lse_size), "merge_attn alloc p_lse");
+  check(cudaMalloc(&d_suffix_lse, lse_size), "merge_attn alloc s_lse");
+  check(cudaMalloc(&d_output, out_size), "merge_attn alloc output");
+
+  check(cudaMemcpy(d_prefix_out, h_prefix_out, out_size,
+                   cudaMemcpyHostToDevice),
+        "merge_attn H2D p_out");
+  check(cudaMemcpy(d_suffix_out, h_suffix_out, out_size,
+                   cudaMemcpyHostToDevice),
+        "merge_attn H2D s_out");
+  check(cudaMemcpy(d_prefix_lse, h_prefix_lse, lse_size,
+                   cudaMemcpyHostToDevice),
+        "merge_attn H2D p_lse");
+  check(cudaMemcpy(d_suffix_lse, h_suffix_lse, lse_size,
+                   cudaMemcpyHostToDevice),
+        "merge_attn H2D s_lse");
+
+  int threads_per_head = head_size / 4;
+  int total_threads = num_tokens * num_heads * threads_per_head;
+  dim3 block(128);
+  dim3 grid((total_threads + 127) / 128);
+  merge_attn_states<<<grid, block>>>(
+      d_output, d_prefix_out, d_prefix_lse, d_suffix_out, d_suffix_lse,
+      num_tokens, num_heads, head_size);
+  check(cudaGetLastError(), "merge_attn launch");
+  check(cudaDeviceSynchronize(), "merge_attn sync");
+
+  float *h_output = (float *)malloc(out_size);
+  check(cudaMemcpy(h_output, d_output, out_size, cudaMemcpyDeviceToHost),
+        "merge_attn D2H");
+
+  float max_err = 0.0f;
+  for (int i = 0; i < num_tokens * num_heads * head_size; i++) {
+    float err = fabsf(h_output[i] - h_output_ref[i]);
+    if (err > max_err) max_err = err;
+  }
+  printf("| %-35s | %.6e | %-4s |\n", "MergeAttnStates", max_err,
+         max_err < 1e-4f ? "PASS" : "FAIL");
+
+  // 边界测试: +inf LSE → 权重退化为 0（空 attention 段）
+  h_prefix_lse[0] = INFINITY; // head 0, token 0 的 LSE = +inf
+  h_suffix_lse[0] = 0.0f;
+  check(cudaMemcpy(d_prefix_lse, h_prefix_lse, lse_size,
+                   cudaMemcpyHostToDevice),
+        "merge_attn H2D inf lse");
+  merge_attn_states<<<grid, block>>>(
+      d_output, d_prefix_out, d_prefix_lse, d_suffix_out, d_suffix_lse,
+      num_tokens, num_heads, head_size);
+  check(cudaGetLastError(), "merge_attn inf launch");
+  check(cudaDeviceSynchronize(), "merge_attn inf sync");
+  check(cudaMemcpy(h_output, d_output, out_size, cudaMemcpyDeviceToHost),
+        "merge_attn inf D2H");
+
+  // token 0, head 0 的所有元素应等于 suffix_output（prefix 权重 α=0）
+  float inf_err = 0.0f;
+  for (int d = 0; d < head_size; d++) {
+    float err = fabsf(h_output[d] - h_suffix_out[d]);
+    if (err > inf_err) inf_err = err;
+  }
+  printf("| %-35s | %.6e | %-4s |\n", "MergeAttnStates-inf", inf_err,
+         inf_err < 1e-4f ? "PASS" : "FAIL");
+
+  free(h_prefix_out);
+  free(h_suffix_out);
+  free(h_prefix_lse);
+  free(h_suffix_lse);
+  free(h_output_ref);
+  free(h_output);
+  cudaFree(d_prefix_out);
+  cudaFree(d_suffix_out);
+  cudaFree(d_prefix_lse);
+  cudaFree(d_suffix_lse);
+  cudaFree(d_output);
+}
+
+
 static void test_softmax(int N) {
   // Use N = blockDim.x so one block processes all elements as one token.
   constexpr int NUM_THREADS = 256;
@@ -3761,7 +4018,8 @@ int main(int argc, char *argv[]) {
   test_relu(1024);
   test_elementwise(1024);
   test_histogram(1024);
-  test_softmax(256);  // softmax kernel requires N == blockDim.x
+  test_merge_attn_states(512, 16, 128);
+  test_softmax(256);
   test_rms_norm(8, 128);
   test_layer_norm(8, 128);
   test_rope(8, 128);
