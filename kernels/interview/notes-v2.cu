@@ -1057,7 +1057,7 @@ __global__ void sgemv_k16(float *A, float *x, float *y, int M, int K) {
 //   Level 4: Tensor Core 提供硬件加速的 256 FMA/cycle/warp → 大幅提升吞吐
 
 // =============================================================================
-// Phase 7a: SGEMM + HGEMM（非 Tensor Core 路径）
+// Phase 7a: SGEMM（非 Tensor Core 路径）
 // =============================================================================
 
 // ---- Level 1: SGEMM — Block Tile 32×32 + K Tile 32 ----
