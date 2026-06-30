@@ -2352,7 +2352,7 @@ __global__ void __launch_bounds__(NUM_THREADS)
     //   - d[1][*][*]: M 方向第 2 个 WGMMA atom（rows 64~127）
     //   - d[*][g][*]: N 方向第 g 组 16 列
     //   - d[*][*][0..3]: 4 条 uint32 寄存器，共 8 个 half（覆盖 16×16 子块）
-    // 每个线程总共 2 * 8 * 4 = 64 uint32 = 128 half
+    // 每个线程总共 2 * 8 * 4 = 2 * 32 = 64 uint32 = 128 half (每次WGMMA Atom 32 uint32 输出)
     // 128 线程 * 128 half = 16384 half = 128 * 128 = BM*BN（刚好覆盖整个 C tile）
     uint32_t d[B_WG_M / WGMMA_M][WGMMA_N / 16][4] = {};
 
