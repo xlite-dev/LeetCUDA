@@ -72,6 +72,7 @@ nvcc -std=c++20 -O2 -gencode arch=compute_90a,code=sm_90a -DNOTES_V2_HAS_WGMMA \
 | SGEMM                               | 0.000000e+00 | PASS |
 | SGEMM-Vec4                          | 0.000000e+00 | PASS |
 | HGEMM MMA                           | 0.000000e+00 | PASS |
+| HGEMM MMA Swizzle                   | 0.000000e+00 | PASS |
 | HGEMM WGMMA                         | 0.000000e+00 | PASS |
 | FlashAttn-SplitQ                    | 1.646988e-04 | PASS |
 === All tests done ===
