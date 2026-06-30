@@ -1968,6 +1968,7 @@ __global__ void __launch_bounds__(256)
 //     若未对齐需计算 (pattern_start_addr >> 7) & 0x7。
 //
 // 参考：CUTLASS GmmaDescriptor (cute/arch/mma_sm90_desc.hpp)
+// 注：descA/descB 共用此函数；对 B 而言物理存储为 [BN, BK]，详见 WgmmaSMem 注释。
 __device__ inline uint64_t make_smem_desc(half *ptr) {
   // __cvta_generic_to_shared: 将通用地址空间中的指针转换为 shared memory 地址
   // （一个 32-bit 的 smem byte 偏移量，相对于当前 CTA 的 shared memory 基址）。
@@ -2058,19 +2059,39 @@ __device__ inline uint64_t make_smem_desc(half *ptr) {
 //
 // 每个 stage 包含两块 smem：
 //   A tile: [BM, BK] row-major → BK×BM 个 half，地址连续
-//   B tile: [BK, BN] row-major → BN×BK 个 half，地址连续
+//   B tile: TMA 按 [BN, BK] 物理写入（详见下方 ★），BN×BK 个 half
 //
-// ★ 关键区别 — WGMMA 的 B 布局 vs MMA(TN) 的 B^T 布局：
-//   MMA (TN):   smem 存 B^T [N, K] row-major，ldmatrix 解出 col-major B fragment。
-//   WGMMA:      smem 存 B [BK, BN] row-major（即 N 维连续，K 维步幅=BN个half）。
-//               WGMMA 指令的 imm-trans-b=0 指示硬件按 K-major 读 B，
-//               128B swizzle + make_smem_desc 的 stride_byte_offset 将这些地址
-//               重新映射，使硬件能从 [BK,BN] row-major 中正确按 K-major 顺序取值。
-//   简言之：swizzle 桥接了 "row-major 存储" 和 "K-major 读取" 的差异。
+// ★ 关键区别 — WGMMA 的 B 物理存储 vs 逻辑视图：
+//
+//   上层数据：源矩阵 B^T [N, K] row-major（TN 布局，B 的列以行优先形式存储）。
+//   物理存储：TMA 将 B^T 的 tile 写入 smem，物理布局为 [BN, BK] row-major
+//            （BN=128 行，BK=64 列，每行 64 个连续的 half）。
+//            TMA 的 smem_box_shape = (BK=64, BN=128) 定义了每个 tile 的 shape，
+//            TMA 按行写入，行内 BK 个 half 连续 → 物理上就是 [BN][BK]。
+//   逻辑视图：WGMMA 指令 (wgmma.mma_async.m64n128k16, PTX ISA §9.7.15.4)
+//            通过 imm-trans-b=0 指定 B 为 K-major，即逻辑上按 [BK, BN] 寻址。
+//            实际 [BN, BK] → 逻辑 [BK, BN] 的"转置"是通过 descB 中的 128B
+//            swizzle (layout_type=1) 在硬件地址重映射层完成的，无需软件转置。
+//
+//   stride_byte_offset=1024 的来源（K-major + 128B swizzle + f16, PTX ISA §9.7.15.5.1.2.1.2）：
+//     128B swizzle atom = 8(N) × 8(K) × 128-bit = 8 rows × 64 个 half。
+//     stride_byte_offset = 从当前 8-row stripe 到下一个 8-row stripe 的字节偏移
+//                        = 8 rows × (BK=64) halfs × 2 bytes = 1024。
+//     这个值恰好等于物理 [BN, BK] 布局中连续 8 行的跨度 ← 进一步证实物理存储是 [BN, BK]。
+//
+//   与 MMA(TN) 的对比：
+//     MMA (TN):  smem 存 B^T [N, K] row-major，ldmatrix 按列解出 col-major B fragment。
+//     WGMMA:     smem 物理存 [BN, BK]（TMA 直写），WGMMA 通过 swizzle 硬件以 K-major [BK, BN] 逻辑视图读取。
+//   简言之：swizzle 桥接了 "物理 row-major [BN, BK]" 和 "逻辑 K-major [BK, BN]" 的差异。
 template <int BM, int BN, int BK, int QSIZE> struct WgmmaSMem {
   alignas(128) half A[BM * BK * QSIZE]; // A tile: row-major [BM, BK]
-  // B: K-major 布局，供 WGMMA imm-trans-b=0 直接读取, [BK, BN].
-  alignas(128) half B[BK * BN * QSIZE]; // B tile: row-major [BK, BN]
+  // B tile 注记：
+  //   - 物理存储：TMA 从 B^T[N,K] row-major 搬入，物理上是 [BN, BK] row-major（BN 行，BK 列）
+  //   - 逻辑视图：WGMMA 通过 descB 的 128B swizzle（PTX ISA §9.7.15.5.1.2）将地址重映射，
+  //     以 K-major [BK, BN] 逻辑视图供 wgmma.mma_async（imm-trans-b=0, PTX ISA §9.7.15.4）读取
+  //   - B[BN * BK * QSIZE] 与 B[BK * BN * QSIZE] 数值等价（BN×BK = BK×BN），
+  //     但写 BN*BK 更能体现物理存储形态
+  alignas(128) half B[BN * BK * QSIZE];
 };
 
 // ---- WGMMA Kernel: Warp Specialization + TMA ----
