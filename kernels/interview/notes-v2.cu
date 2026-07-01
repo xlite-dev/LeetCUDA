@@ -2520,6 +2520,33 @@ __global__ void __launch_bounds__(NUM_THREADS)
 //   - smem_box 维度顺序也是 (minor, major) = (BK, BM) 或 (BK, BN)
 //   - Swizzle 模式通常选 CU_TENSOR_MAP_SWIZZLE_128B 配合 WGMMA 的 128B swizzle
 //
+// ★ gmem_prob_stride + 1 的含义：
+//   语法层面 — 数组名退化 + 指针算术：
+//     gmem_prob_stride 类型为 uint64_t[5]，在表达式中退化为 uint64_t*
+//     （指向首元素 gmem_prob_stride[0]）。+ 1 偏移 1 个 uint64_t，指向
+//     gmem_prob_stride[1]，等价于 &gmem_prob_stride[1]。
+//   语义层面 — 跳过隐式的最内维 stride：
+//     cuTensorMapEncodeTiled 的 globalStrides 参数只接收 tensorRank-1 个
+//     stride 值。最内维（fastest-changing dimension）的 stride 是隐式的，
+//    固定等于 sizeof(element_type)，不需要显式传入。
+//     对于 tensorRank=2 的 FP16 矩阵：
+//       dim 0（内维，K）：stride = sizeof(half)    ← 隐式，API 不需要
+//       dim 1（外维，M）：stride = sizeof(half)*K   ← 需要传给 API
+//     gmem_prob_stride 数组的布局是内维在前：
+//       [0] = sizeof(half)                              ← 内维，不传
+//       [1] = sizeof(half) * BlockMinorSize * blocks_width ← 外维，传给 API
+//   所以 + 1 的作用是跳过 [0]，让 API 从 [1] 开始读取，正好得到外维 stride。
+//
+// ★ smem_box_stride 为什么不需要 +1？
+//   与 globalStrides 不同，smemBoxStrides 参数接收完整的 tensorRank 个 stride，
+//   最内维 stride 也必须显式传入（不隐式）。
+//   smem_box_stride[5] = {1, 1, 1, 1, 1} 表示 smem tile 中所有维度元素
+//   都是连续存放的，维度间没有 padding/stride。
+//   对于 tensorRank=2：strides[0]=1（内维 stride），strides[1]=1（外维 stride），
+//   即 smem 中第 (i,j) 元素的偏移 = i*1 + j*1 = i+j（元素连续排列）。
+//   所以这里直接传 smem_box_stride（即 &smem_box_stride[0]），API 会读到全部
+//   两个 stride 值，不需要跳过任何一个。
+//
 // 参考：CUDA Programming Guide §TMA, PTX ISA §9.7.15.5, CUTLASS GmmaDescriptor
 
 template <int BlockMajorSize, int BlockMinorSize>
