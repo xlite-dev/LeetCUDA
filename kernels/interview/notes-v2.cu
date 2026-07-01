@@ -2483,7 +2483,8 @@ __global__ void __launch_bounds__(NUM_THREADS)
     // block_C: 当前 C tile 在 global memory 中的起始地址
     // by*BM 是 M 方向偏移，bx*BN 是 N 方向偏移
     half *block_C = C + by * BM * N + bx * BN;
-
+    
+    // 2 * (8 * 4) = 2 * 32 = 64 uint32 = 128 half
 #pragma unroll
     for (int m_it = 0; m_it < B_WG_M / WGMMA_M; ++m_it) {
       int yo = m_it * WGMMA_M; // M 方向行偏移 (0 或 64)
