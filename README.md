@@ -38,10 +38,10 @@
 ## 📖 Quick Start 🔥🔥
 
 ```bash
-git submodule update --init --recursive --force
-cd kernels/interview && export CUDA_VISIBLE_DEVICES=0
+git submodule update --init --recursive --force && cd kernels/interview
+
 nvcc -std=c++20 -O2 -arch=sm_89 -lcublas -lcuda notes-v2.cu -o notes_v2_sm89.bin # Ada
-nvcc -std=c++20 -O2 -arch=sm_89-I ../../third-party/cutlass/include -DNOTES_V2_ENABLE_CUTE \
+nvcc -std=c++20 -O2 -arch=sm_89 -DNOTES_V2_ENABLE_CUTE -I ../../third-party/cutlass/include  \
   -lcublas -lcuda notes-v2.cu -o notes_v2_cute_sm89.bin # Ada + CuTe
 nvcc -std=c++20 -O2 -gencode arch=compute_90a,code=sm_90a -DNOTES_V2_ENABLE_WGMMA \
   -lcublas -lcuda notes-v2.cu -o notes_v2_sm90.bin # Hopper (H100, H200, etc)
