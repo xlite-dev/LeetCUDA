@@ -1903,7 +1903,398 @@ __global__ void __launch_bounds__(256)
 }
 
 // =============================================================================
-// Phase 7c: HGEMM WGMMA — m64n128k16 + TMA + Warp Specialization (Hopper)
+// Phase 7c: HGEMM CuTe — CUTLASS CuTe DSL 实现（SM80+, Tensor Core 全自动调度）
+// =============================================================================
+// 面试要点（CuTe vs 手写 MMA PTX）：
+//   - CuTe (CUTLASS Templates) 是 NVIDIA CUTLASS 3.x 的核心 DSL，提供编译期
+//     Tensor 抽象，自动推导 MMA、Copy、Swizzle 的线程-数据映射
+//   - 与手写 MMA PTX (Phase 7b) 的对比：
+//     - 手写 MMA: 手动计算 smem 地址、手动 ldmatrix/mma PTX、手动 swizzle、手动 epilogue shuffle
+//     - CuTe: 声明 TiledMMA / TiledCopy / SmemLayout，编译器自动推导线程-数据映射,
+//       cute::copy / cute::gemm 自动展开为高效指令序列
+//   - 核心抽象（"CuTe 五要素"）：
+//     1. Tensor: 全局/共享/寄存器数据的逻辑视图 = (ptr, shape, stride)
+//     2. TiledMMA: 描述 MMA 指令 + warp/warpgroup 排布 + value tile 的 compile-time type
+//     3. TiledCopy: 描述数据搬运（G→S, S→R, R→S, S→G）的线程-元素映射
+//     4. Layout + Swizzle: 描述 smem 的数据排布和 bank conflict 消除
+//     5. Pipeline: cp.async + multistage, 由 cute::copy 自动管理
+//
+//   CuTe kernel 的参数推导链（launch wrapper 负责实例化，kernel 只接收实例化后的类型）：
+//     MMA Atom (SM80_16x8x16_F16F16F16F16_TN)
+//       → TiledMMA (EURepeat=MxNxK, ValTile=MxNxK)
+//       → TiledCopy (G2S/S2R/R2S/S2G, 每种有 ThrLayout + ValLayout)
+//       → SmemLayout (Atom + Swizzle + tile_to_shape + Stage)
+//
+//   调参口诀（面试速记）：
+//     BM/BN/BK 越大 → smem 越大 → occupancy 越低, 但 K 循环更少 → 指令开销更低
+//     Swizzle<B,M,S>: B=bank 维度 bit, M=M维 bit, S=stride bit → Swizzle<3,3,3> = 512 values = 1024B
+//     kStage: 2=最低延迟, 3/4=更好隐藏延迟 → 权衡 smem 占用
+//     EURepeat: 增加 warp 数 → 更多并行但每个 warp 做更少 MMA → 寄存器压力降低
+//
+// ★ 与手写 MMA Swizzle (Phase 7b-3) 的本质区别：
+//   - 手写 swizzle: 在 smem 地址计算时手动 XOR 列索引
+//   - CuTe Swizzle: SmemLayout 声明式指定 swizzle pattern, cute::copy 自动应用
+//   - CuTe 优势: 类型安全, 编译器可做更激进的优化, 布局变更只需改类型定义
+//
+// ★ 本实现的 Tile 配置：
+//   BM=128, BN=256, BK=32, kStage=2
+//   MMA: SM80_16x8x16_F16F16F16F16_TN, EURepeat=2x2x1, ValTile=32x32x16
+//   Smem Swizzle<3,3,3>: 512-value XOR permutation, 消除 ldmatrix bank conflict
+//   Threads: size(MMA{}) = 128 (4 warps × 2x2 EU repeat)
+//   Smem: ~49KB (Stage=2, A[128×32] + B[256×32] × half)
+//
+// 参考：LeetCUDA/kernels/hgemm/cutlass/hgemm_mma_stage_tn_cute.cu
+// 参考：https://zhuanlan.zhihu.com/p/671419093 (CuTe Swizzle 详解)
+// =============================================================================
+
+#if defined(NOTES_V2_ENABLE_CUTE)
+
+#include <cute/tensor.hpp>
+
+// =============================================================================
+// Phase 7d-1: CuTe HGEMM Kernel — TN 布局 + Smem Swizzle + Multistage Pipeline
+// =============================================================================
+// TN 布局: C[M×N] = A[M×K] × B^T[N×K]
+//   - A[M][K] row-major, B^T[N][K] row-major（等价 B col-major [K×N]）
+//   - CuTe 中通过 make_tensor(make_gmem_ptr(ptr), shape, stride) 描述
+//
+// Pipeline 流程（每个 stage 对应一次完整的 G→S→R→MMA→R→S→G 链条）:
+//   1. PREFETCH: 预加载 kStage-1 个 tile (G→S via cp.async)
+//   2. 主循环 over K tiles:
+//      a. S→R: cute::copy(s2r_tiled_copy, sA, rA)  ← 自动展开为 ldmatrix
+//      b. MMA:  cute::gemm(tiled_mma, rD, rA, rB, rD)  ← 自动展开为 mma.sync
+//      c. G→S (next tile): cute::copy(g2s_tiled_copy, gA, sA) ← cp.async
+//      d. Pipeline wait + smem stage advance
+//   3. Epilogue: R→S (via UniversalCopy) → S→G (128-bit store)
+//
+// 面试对比 — 手写 MMA vs CuTe 代码量：
+//   手写: ldmatrix PTX 地址计算 + swizzle XOR + mma PTX + epilogue shuffle (~200行)
+//   CuTe: partition + copy + gemm (~80行), 其余由 launch wrapper 的类型推导完成
+template <typename T, int BM, int BN, int BK, int kStage, typename TiledMMA,
+          typename G2SCopyA, typename G2SCopyB, typename SmemLayoutA,
+          typename SmemLayoutB, typename SmemLayoutC, typename S2RCopyAtomA,
+          typename S2RCopyAtomB, typename R2SCopyAtomC, typename S2GCopyAtomC,
+          typename S2GCopyC>
+__global__ void hgemm_mma_stages_tn_cute(T *Aptr, T *Bptr, T *Dptr, int m,
+                                         int n, int k) {
+  using namespace cute;
+
+  // 动态 shared memory: A tile + B tile（C epilogue 复用 A tile 的空间）
+  extern __shared__ T shm_data[];
+  T *Ashm = shm_data;
+  T *Bshm = shm_data + cute::cosize(SmemLayoutA{});
+
+  int idx = threadIdx.x;
+  int ix = blockIdx.x; // N 方向 block 索引（本实现默认不开启 BlockSwizzle）
+  int iy = blockIdx.y; // M 方向 block 索引
+  if (iy * BM >= m || ix * BN >= n) return;
+
+  // CuTe Tensor 抽象: (ptr, shape, stride) 三元组描述数据布局
+  // make_stride(leading_dim, Int<1>{})  → row-major: 同行相邻元素步长=1, 跨行步长=leading_dim
+  Tensor A = make_tensor(make_gmem_ptr(Aptr), make_shape(m, k),
+                         make_stride(k, Int<1>{}));
+  Tensor B = make_tensor(make_gmem_ptr(Bptr), make_shape(n, k),
+                         make_stride(k, Int<1>{}));
+  Tensor D = make_tensor(make_gmem_ptr(Dptr), make_shape(m, n),
+                         make_stride(n, Int<1>{}));
+
+  // local_tile: 从全局 Tensor 切出当前 CTA 负责的 tile
+  // make_coord(iy, _): M 维固定为 iy, K 维自动按 BK 分 tile（_ = 通配符）
+  Tensor gA = local_tile(A, make_tile(Int<BM>{}, Int<BK>{}), make_coord(iy, _));
+  Tensor gB = local_tile(B, make_tile(Int<BN>{}, Int<BK>{}), make_coord(ix, _));
+  Tensor gD = local_tile(D, make_tile(Int<BM>{}, Int<BN>{}), make_coord(iy, ix));
+
+  // Shared memory Tensor: 按 SmemLayout 解读 smem 区域
+  auto sA = make_tensor(make_smem_ptr(Ashm), SmemLayoutA{}); // (BM, BK, kStage)
+  auto sB = make_tensor(make_smem_ptr(Bshm), SmemLayoutB{}); // (BN, BK, kStage)
+
+  // TiledMMA partition: 将 MMA 的 A/B/C tile 映射到各线程的寄存器 fragment
+  TiledMMA tiled_mma;
+  auto thr_mma = tiled_mma.get_slice(threadIdx.x);
+  auto tCrA = thr_mma.partition_fragment_A(gA(_, _, 0)); // (MMA, MMA_M, MMA_K)
+  auto tCrB = thr_mma.partition_fragment_B(gB(_, _, 0)); // (MMA, MMA_N, MMA_K)
+  auto tCrD = thr_mma.partition_fragment_C(gD);          // (MMA, MMA_M, MMA_N)
+  clear(tCrD); // 累加器清零
+
+  // G2S TiledCopy: 描述 global → shared memory 的数据搬运（使用 cp.async 128-bit）
+  G2SCopyA g2s_tiled_copy_a;
+  auto g2s_thr_copy_a = g2s_tiled_copy_a.get_slice(idx);
+  auto tAgA_copy = g2s_thr_copy_a.partition_S(gA);   // (CPY, CPY_M, CPY_K, k_tile)
+  auto tAsA_copy = g2s_thr_copy_a.partition_D(sA);   // (CPY, CPY_M, CPY_K, kStage)
+
+  G2SCopyB g2s_tiled_copy_b;
+  auto g2s_thr_copy_b = g2s_tiled_copy_b.get_slice(idx);
+  auto tBgB_copy = g2s_thr_copy_b.partition_S(gB);
+  auto tBsB_copy = g2s_thr_copy_b.partition_D(sB);
+
+  // S2R TiledCopy: 描述 shared → register 的数据搬运（使用 ldmatrix）
+  // make_tiled_copy_A/B: 根据 TiledMMA 自动推导 S2R copy 的线程-数据映射
+  auto s2r_tiled_copy_a = make_tiled_copy_A(S2RCopyAtomA{}, tiled_mma);
+  auto s2r_thr_copy_a = s2r_tiled_copy_a.get_slice(idx);
+  auto tAsA = s2r_thr_copy_a.partition_S(sA);       // (CPY, CPY_M, CPY_K, kStage)
+  auto tCrA_view = s2r_thr_copy_a.retile_D(tCrA);   // (CPY, CPY_M, CPY_K) — 与 rA 寄存器布局对齐
+
+  auto s2r_tiled_copy_b = make_tiled_copy_B(S2RCopyAtomB{}, tiled_mma);
+  auto s2r_thr_copy_b = s2r_tiled_copy_b.get_slice(idx);
+  auto tBsB = s2r_thr_copy_b.partition_S(sB);
+  auto tCrB_view = s2r_thr_copy_b.retile_D(tCrB);
+
+  // PREFETCH: 预加载前 (kStage - 1) 个 K tile, 填满流水线
+  int itile_to_read = 0, ismem_read = 0, ismem_write = 0;
+#pragma unroll
+  for (int istage = 0; istage < kStage - 1; ++istage) {
+    cute::copy(g2s_tiled_copy_a, tAgA_copy(_, _, _, istage),
+               tAsA_copy(_, _, _, istage));
+    cute::copy(g2s_tiled_copy_b, tBgB_copy(_, _, _, istage),
+               tBsB_copy(_, _, _, istage));
+    cp_async_fence();
+    ++itile_to_read;
+    ++ismem_write;
+  }
+  cp_async_wait<kStage - 2>();
+  __syncthreads();
+
+  // 主循环: over K tiles, 每个 K tile 内再分 MMA_K 步迭代
+  int ntile = k / BK; // K 方向总 tile 数
+  int ik = 0;
+  // 首轮 S→R 加载（在进入循环前先加载第一个 ik slice）
+  cute::copy(s2r_tiled_copy_a, tAsA(_, _, ik, ismem_read), tCrA_view(_, _, ik));
+  cute::copy(s2r_tiled_copy_b, tBsB(_, _, ik, ismem_read), tCrB_view(_, _, ik));
+
+#pragma unroll 1
+  for (int itile = 0; itile < ntile; ++itile) {
+    int nk = size<2>(tCrA); // 每个 K tile 内的 MMA_K 步数
+
+#pragma unroll
+    for (int ik = 0; ik < nk; ++ik) {
+      int ik_next = (ik + 1) % nk;
+
+      if (ik == nk - 1) {
+        // 等待下一批 smem 数据就绪（pipeline 同步）
+        cp_async_wait<kStage - 2>();
+        __syncthreads();
+        ismem_read = (ismem_read + 1) % kStage;
+      }
+
+      // S→R: 加载下一组 A/B fragment 到寄存器（用 ik_next 预取）
+      cute::copy(s2r_tiled_copy_a, tAsA(_, _, ik_next, ismem_read),
+                 tCrA_view(_, _, ik_next));
+      cute::copy(s2r_tiled_copy_b, tBsB(_, _, ik_next, ismem_read),
+                 tCrB_view(_, _, ik_next));
+
+      if (ik == 0) {
+        // G→S: 提交下一个 K tile 的异步拷贝（流水线加载）
+        if (itile_to_read < ntile) {
+          cute::copy(g2s_tiled_copy_a, tAgA_copy(_, _, _, itile_to_read),
+                     tAsA_copy(_, _, _, ismem_write));
+          cute::copy(g2s_tiled_copy_b, tBgB_copy(_, _, _, itile_to_read),
+                     tBsB_copy(_, _, _, ismem_write));
+          ++itile_to_read;
+          ismem_write = (ismem_write + 1) % kStage;
+        }
+        cp_async_fence();
+      }
+
+      // MMA: 发射 Tensor Core 指令（自动展开为 mma.sync.aligned.m16n8k16）
+      cute::gemm(tiled_mma, tCrD, tCrA(_, _, ik), tCrB(_, _, ik), tCrD);
+    }
+  }
+
+  // Epilogue: D寄存器 → shared memory → global memory
+  // 使用 A tile 的最后一个 stage 作为 C 的 scratchpad（节省 smem）
+  auto sC = make_tensor(sA(_, _, ismem_read).data(), SmemLayoutC{});
+
+  // R2S TiledCopy: 寄存器 → shared memory（使用 UniversalCopy 做类型转换）
+  auto r2s_tiled_copy_c = make_tiled_copy_C(R2SCopyAtomC{}, tiled_mma);
+  auto r2s_thr_copy_c = r2s_tiled_copy_c.get_slice(idx);
+  auto tCrC_r2s = r2s_thr_copy_c.retile_S(tCrD);    // (CPY, CPY_M, CPY_N)
+  auto tCsC_r2s = r2s_thr_copy_c.partition_D(sC);    // (CPY, _1, _1, pipe)
+
+  // S2G TiledCopy: shared memory → global memory（128-bit store）
+  S2GCopyC s2g_tiled_copy_c;
+  auto s2g_thr_copy_c = s2g_tiled_copy_c.get_thread_slice(idx);
+  auto tCsC_s2g = s2g_thr_copy_c.partition_S(sC);    // (CPY, _1, _1, pipe)
+  auto tCgC_s2g = s2g_thr_copy_c.partition_D(gD);    // (CPY, CPY_M, CPY_N)
+
+  // group_modes: 将多维 Tensor 的某些 mode 合并，简化遍历
+  auto tCgC_s2gx = group_modes<1, 3>(tCgC_s2g);
+  auto tCrC_r2sx = group_modes<1, 3>(tCrC_r2s);
+
+  int step = size<3>(tCsC_r2s); // pipeline depth of C smem
+#pragma unroll
+  for (int i = 0; i < size<1>(tCrC_r2sx); i += step) {
+    // R→S: 寄存器写回 shared memory
+#pragma unroll
+    for (int j = 0; j < step; ++j) {
+      auto t = make_tensor_like<T>(tCrC_r2sx(_, i + j));
+      cute::copy(tCrC_r2sx(_, i + j), t);
+      cute::copy(r2s_tiled_copy_c, t, tCsC_r2s(_, 0, 0, j));
+    }
+    __syncthreads();
+
+    // S→G: shared memory 写回 global memory
+#pragma unroll
+    for (int j = 0; j < step; ++j) {
+      cute::copy(s2g_tiled_copy_c, tCsC_s2g(_, 0, 0, j), tCgC_s2gx(_, i + j));
+    }
+    __syncthreads();
+  }
+}
+
+// =============================================================================
+// Phase 7c-2: CuTe HGEMM Launch Wrapper — 类型实例化 + Grid/Block 配置
+// =============================================================================
+// CuTe 的核心设计理念: "类型即配置" (Type-level configuration)
+// 所有的 MMA atom、TiledCopy、SmemLayout、Swizzle 都是 **编译期类型**，
+// kernel 接收这些类型的实例（通常为空 struct），在编译期完成全部映射推导。
+//
+// 面试常问：「CuTe 为什么比手写 PTX 简洁？」
+// 答: 手写需要:
+//   1) 手动计算每线程的 smem 地址偏移
+//   2) 手动计算 ldmatrix 的 lane 映射
+//   3) 手动插入 swizzle XOR 到每个地址计算点
+//   4) 手动做 epilogue 的 warp shuffle 编排
+// CuTe 的 partition + copy + gemm 通过 TiledCopy/TiledMMA 的类型信息
+// 在编译期自动完成上述全部推导，生成与手写等价的 PTX 指令序列。
+//
+// 模板参数推导链（面试速记）：
+//   SM80_16x8x16_F16F16F16F16_TN  ← MMA 指令 atom
+//     → MMA_Atom<MMA_Traits<mma_op>>
+//     → make_tiled_mma(mma_atom, EURepeat{2,2,1}, ValTile{32,32,16})
+//     → TiledMMA (128 threads, 4 warps × 2×2 slices)
+//
+//   SM80_CP_ASYNC_CACHEGLOBAL<uint128_t> ← G→S copy atom
+//     → Copy_Atom<Copy_Traits<g2s_copy_op>, T>
+//     → make_tiled_copy(copy_atom, ThrLayout{32,4}, ValLayout{1,8})
+//     → G2SCopy: 32×4=128 threads, each copies 1×8=8 halfs = 128 bits
+//
+//   Swizzle<3,3,3> + Atom{8,BK} → composition → tile_to_shape{BM,BK,kStage}
+//     → SmemLayoutA/B: 带 XOR swizzle 的 smem 排布
+//
+//   SM75_U32x4_LDSM_N ← S→R copy atom (ldmatrix 的 CuTe 封装)
+//     → Copy_Atom<Copy_Traits<s2r_copy_op>, T>
+//
+//   UniversalCopy<uint128_t> ← S→G copy atom (128-bit store)
+//     → make_tiled_copy(copy_atom, ThrLayout{32,4}, ValLayout{1,8})
+//
+// ★ Tile 尺寸速查:
+//   BM=128: M 方向 block tile (16 × 2 EU × 4 Val = 128)
+//   BN=256: N 方向 block tile (8 × 2 EU × 16 Val... etc. 实际 8 × 2 × 16 = 256)
+//   BK=32:  K 方向 block tile (= kMmaPK = 1 × 1 × 16 = 16? 不对, BK=32 由 SmemLayout 控制)
+//   kStage=2: 双缓冲 pipeline
+// =============================================================================
+template <typename T, const int Stages = 2>
+void launch_hgemm_mma_stages_tn_cute(T *a, T *b, T *c, int M, int N, int K) {
+  using namespace cute;
+
+  auto BM = Int<128>{};
+  auto BN = Int<256>{};
+  auto BK = Int<32>{};
+  auto KStage = Int<Stages>{};
+  auto kSmemLayoutCBatch = Int<4>{}; // C smem pipeline depth
+
+  // SmemLayout: Swizzle<3,3,3> 做 512-value (1024-byte) XOR 置换消除 bank conflict
+  // composition: 将 swizzle pattern 应用到 8×BK 的 base layout
+  // tile_to_shape: 将 atom layout 扩展到完整的 BM×BK×kStage
+  using SmemLayoutAtom = decltype(composition(
+      Swizzle<3, 3, 3>{},
+      make_layout(make_shape(Int<8>{}, Int<BK>{}),
+                  make_stride(Int<BK>{}, Int<1>{}))));
+  using SmemLayoutA = decltype(tile_to_shape(
+      SmemLayoutAtom{}, make_shape(Int<BM>{}, Int<BK>{}, Int<KStage>{})));
+  using SmemLayoutB = decltype(tile_to_shape(
+      SmemLayoutAtom{}, make_shape(Int<BN>{}, Int<BK>{}, Int<KStage>{})));
+
+  // MMA: SM80_16x8x16_F16F16F16F16_TN
+  // TN = A row-major, B col-major（与 Phase 7b 手写 MMA 完全相同的布局约定）
+  using mma_op = SM80_16x8x16_F16F16F16F16_TN;
+  using mma_traits = MMA_Traits<mma_op>;
+  using mma_atom = MMA_Atom<mma_traits>;
+  using mma_atom_shape = mma_traits::Shape_MNK; // (Int<16>, Int<8>, Int<16>)
+
+  static constexpr int kMmaEURepeatM = 2;
+  static constexpr int kMmaEURepeatN = 2;
+  static constexpr int kMmaEURepeatK = 1;
+  static constexpr int kMmaPM = 1 * kMmaEURepeatM * get<0>(mma_atom_shape{}); // 32
+  static constexpr int kMmaPN = 2 * kMmaEURepeatN * get<1>(mma_atom_shape{}); // 32
+  static constexpr int kMmaPK = 1 * kMmaEURepeatK * get<2>(mma_atom_shape{}); // 16
+
+  using MMA_EU_RepeatT = decltype(make_layout(make_shape(
+      Int<kMmaEURepeatM>{}, Int<kMmaEURepeatN>{}, Int<kMmaEURepeatK>{})));
+  using MMA_P_T = Tile<Int<kMmaPM>, Int<kMmaPN>, Int<kMmaPK>>;
+  using MMA = decltype(make_tiled_mma(mma_atom{}, MMA_EU_RepeatT{}, MMA_P_T{}));
+
+  // G2S Copy: cp.async 128-bit, 32×4 threads each loading 1×8 halfs
+  using g2s_copy_op = SM80_CP_ASYNC_CACHEGLOBAL<cute::uint128_t>;
+  using g2s_copy_traits = Copy_Traits<g2s_copy_op>;
+  using g2s_copy_atom = Copy_Atom<g2s_copy_traits, T>;
+  using G2SCopyA = decltype(make_tiled_copy(
+      g2s_copy_atom{},
+      make_layout(make_shape(Int<32>{}, Int<4>{}),
+                  make_stride(Int<4>{}, Int<1>{})),
+      make_layout(make_shape(Int<1>{}, Int<8>{}))));
+  using G2SCopyB = G2SCopyA;
+
+  // S2R Copy: ldmatrix (SM75_U32x4_LDSM_N), 由 make_tiled_copy_A/B 自动与 TiledMMA 对齐
+  using s2r_copy_op = SM75_U32x4_LDSM_N;
+  using s2r_copy_traits = Copy_Traits<s2r_copy_op>;
+  using s2r_copy_atom = Copy_Atom<s2r_copy_traits, T>;
+  using S2RCopyAtomA = s2r_copy_atom;
+  using S2RCopyAtomB = s2r_copy_atom;
+
+  // Epilogue smem layout for C: Swizzle<3,3,3> on 32×32 atom, 4 pipeline stages
+  using SmemLayoutAtomC = decltype(composition(
+      Swizzle<3, 3, 3>{},
+      make_layout(make_shape(Int<kMmaPM>{}, Int<kMmaPN>{}),
+                  make_stride(Int<kMmaPN>{}, Int<1>{}))));
+  using SmemLayoutC = decltype(tile_to_shape(
+      SmemLayoutAtomC{},
+      make_shape(Int<kMmaPM>{}, Int<kMmaPN>{}, Int<kSmemLayoutCBatch>{})));
+
+  // R2S Copy: 寄存器 → shared memory（epilogue 阶段, UniversalCopy<int> 做逐 int 拷贝）
+  using R2SCopyAtomC = Copy_Atom<UniversalCopy<int>, T>;
+
+  // S2G Copy: shared memory → global（128-bit store）
+  using S2GCopyAtomC = Copy_Atom<UniversalCopy<cute::uint128_t>, T>;
+  using S2GCopyC = decltype(make_tiled_copy(
+      S2GCopyAtomC{},
+      make_layout(make_shape(Int<32>{}, Int<4>{}),
+                  make_stride(Int<4>{}, Int<1>{})),
+      make_layout(make_shape(Int<1>{}, Int<8>{}))));
+
+  // Grid/Block 配置
+  int BX = (N + BN - 1) / BN;
+  int BY = (M + BM - 1) / BM;
+  dim3 block(size(MMA{}));   // 128 threads
+  dim3 grid(BX, BY);
+
+  // Smem 大小: A tile + B tile（C epilogue 复用 A tile 空间）
+  static constexpr int shm_size_AB =
+      cute::cosize(SmemLayoutA{}) + cute::cosize(SmemLayoutB{});
+  static constexpr int shm_size_C = cute::cosize(SmemLayoutC{});
+  // C smem ≤ A 的一个 pipe, 可以安全复用
+  static_assert(size<0>(SmemLayoutA{}) * size<1>(SmemLayoutA{}) >= size(SmemLayoutC{}),
+                "C shared memory must fit within one A pipe");
+  static constexpr int kShmSize =
+      cute::max(shm_size_AB, shm_size_C) * sizeof(T);
+
+  cudaFuncSetAttribute(
+      hgemm_mma_stages_tn_cute<T, BM, BN, BK, KStage, MMA, G2SCopyA, G2SCopyB,
+                                SmemLayoutA, SmemLayoutB, SmemLayoutC,
+                                S2RCopyAtomA, S2RCopyAtomB, R2SCopyAtomC,
+                                S2GCopyAtomC, S2GCopyC>,
+      cudaFuncAttributeMaxDynamicSharedMemorySize, kShmSize);
+
+  hgemm_mma_stages_tn_cute<T, BM, BN, BK, KStage, MMA, G2SCopyA, G2SCopyB,
+                            SmemLayoutA, SmemLayoutB, SmemLayoutC, S2RCopyAtomA,
+                            S2RCopyAtomB, R2SCopyAtomC, S2GCopyAtomC, S2GCopyC>
+      <<<grid, block, kShmSize>>>(a, b, c, M, N, K);
+}
+
+#endif /* NOTES_V2_ENABLE_CUTE */
+
+// =============================================================================
+// Phase 7d: HGEMM WGMMA — m64n128k16 + TMA + Warp Specialization (Hopper)
 // =============================================================================
 // 面试要点（WGMMA vs MMA 对比）：
 //   - MMA: warp 级（32 threads），同步执行
@@ -2509,7 +2900,7 @@ __global__ void __launch_bounds__(NUM_THREADS)
   }
 }
 
-#if (defined(NOTES_V2_HAS_WGMMA))
+#if (defined(NOTES_V2_ENABLE_WGMMA))
 // ---- Host-side TMA Tensor Map helpers (WGMMA test) ----
 // 面试要点（TMA descriptor 创建 — cuTensorMapEncodeTiled）：
 //   - TMA descriptor 描述 global memory 中矩阵的 shape/stride/dtype，
@@ -2582,7 +2973,7 @@ __host__ static inline CUtensorMap *allocate_and_create_tensor_map(
              cudaMemcpyHostToDevice);
   return tma_map_d;
 }
-#endif /* NOTES_V2_HAS_WGMMA */
+#endif /* NOTES_V2_ENABLE_WGMMA */
 
 // =============================================================================
 // Phase 8: FlashAttention-2 (Split-Q + MMA m16n8k16)
@@ -4208,7 +4599,77 @@ static void test_hgemm_swizzle(int M, int N, int K) {
 }
 
 
-#if defined(NOTES_V2_HAS_WGMMA)
+#if defined(NOTES_V2_ENABLE_CUTE)
+static void test_hgemm_cute(int M, int N, int K) {
+  // HGEMM CuTe — SM80_16x8x16_F16F16F16F16_TN + Swizzle<3,3,3> + kStage=2
+  // TN layout: C[M×N] = A[M×K] × B^T[N×K]
+  // Kernel: hgemm_mma_stages_tn_cute via launch_hgemm_mma_stages_tn_cute
+  // Tile: BM=128, BN=256, BK=32, 128 threads/block
+
+  size_t size_a = (size_t)M * K * sizeof(half);
+  size_t size_b = (size_t)K * N * sizeof(half);
+  size_t size_c = (size_t)M * N * sizeof(half);
+
+  half *h_a = (half *)malloc(size_a);
+  half *h_b = (half *)malloc(size_b);
+  half *h_c_ref = (half *)malloc(size_c);
+
+  srand(42);
+  for (int i = 0; i < M * K; i++)
+    h_a[i] = __float2half(((float)rand() / RAND_MAX) * 2.0f - 1.0f);
+  for (int i = 0; i < K * N; i++)
+    h_b[i] = __float2half(((float)rand() / RAND_MAX) * 2.0f - 1.0f);
+
+  // CuTe kernel expects B^T [N×K] row-major (TN layout).
+  size_t size_b_t = (size_t)N * K * sizeof(half);
+  half *h_b_t = (half *)malloc(size_b_t);
+  for (int n = 0; n < N; n++)
+    for (int k = 0; k < K; k++)
+      h_b_t[n * K + k] = h_b[k * N + n];
+
+  half *d_a, *d_b, *d_b_t, *d_c;
+  check(cudaMalloc(&d_a, size_a), "hgemm_cute alloc A");
+  check(cudaMalloc(&d_b, size_b), "hgemm_cute alloc B (cuBLAS)");
+  check(cudaMalloc(&d_b_t, size_b_t), "hgemm_cute alloc B_t (kernel)");
+  check(cudaMalloc(&d_c, size_c), "hgemm_cute alloc C");
+
+  check(cudaMemcpy(d_a, h_a, size_a, cudaMemcpyHostToDevice), "hgemm_cute H2D A");
+  check(cudaMemcpy(d_b, h_b, size_b, cudaMemcpyHostToDevice), "hgemm_cute H2D B (cuBLAS)");
+  check(cudaMemcpy(d_b_t, h_b_t, size_b_t, cudaMemcpyHostToDevice), "hgemm_cute H2D B_t (kernel)");
+
+  // cuBLAS FP16 reference (row-major idiom: swap M/N, swap A/B)
+  cublasHandle_t handle;
+  cublasCreate(&handle);
+  half alpha_h = __float2half(1.0f), beta_h = __float2half(0.0f);
+  cublasGemmEx(handle, CUBLAS_OP_N, CUBLAS_OP_N, N, M, K, &alpha_h, d_b,
+               CUDA_R_16F, N, d_a, CUDA_R_16F, K, &beta_h, d_c, CUDA_R_16F, N,
+               CUBLAS_COMPUTE_16F, CUBLAS_GEMM_DEFAULT);
+  check(cudaMemcpy(h_c_ref, d_c, size_c, cudaMemcpyDeviceToHost), "hgemm_cute D2H ref");
+
+  // CuTe kernel (Stages=2, TN layout)
+  launch_hgemm_mma_stages_tn_cute<half, 2>(d_a, d_b_t, d_c, M, N, K);
+  check(cudaGetLastError(), "hgemm_cute launch");
+  check(cudaDeviceSynchronize(), "hgemm_cute sync");
+
+  half *h_c = (half *)malloc(size_c);
+  check(cudaMemcpy(h_c, d_c, size_c, cudaMemcpyDeviceToHost), "hgemm_cute D2H");
+
+  // Verify
+  float max_err = 0.0f;
+  for (int i = 0; i < M * N; i++) {
+    float err = fabsf(__half2float(h_c[i]) - __half2float(h_c_ref[i]));
+    if (err > max_err) max_err = err;
+  }
+  printf("| %-35s | %.6e | %-4s |\n", "HGEMM CuTe", max_err, max_err < 1.0f ? "PASS" : "FAIL");
+
+  free(h_a); free(h_b); free(h_b_t); free(h_c); free(h_c_ref);
+  cudaFree(d_a); cudaFree(d_b); cudaFree(d_b_t); cudaFree(d_c);
+  cublasDestroy(handle);
+}
+#endif /* NOTES_V2_ENABLE_CUTE */
+
+
+#if defined(NOTES_V2_ENABLE_WGMMA)
 static void test_hgemm_wgmma(int M, int N, int K) {
   // HGEMM WGMMA — m64n128k16 + TMA + Warp Specialization (Hopper SM90+)
   // TN layout: C[M×N] = A[M×K] × B^T[N×K]
@@ -4316,7 +4777,7 @@ static void test_hgemm_wgmma(int M, int N, int K) {
   cudaFree(tma_b);
   cublasDestroy(handle);
 }
-#endif /* NOTES_V2_HAS_WGMMA */
+#endif /* NOTES_V2_ENABLE_WGMMA */
 
 
 static void test_flash_attn(int seqlen, int head_dim) {
@@ -4432,7 +4893,7 @@ static void test_flash_attn(int seqlen, int head_dim) {
 
 
 int main(int argc, char *argv[]) {
-#if defined(NOTES_V2_HAS_WGMMA)
+#if defined(NOTES_V2_ENABLE_WGMMA)
   cuInit(0); // Driver API init required for cuTensorMapEncodeTiled (TMA, sm_90a+)
 #endif
   int M = 1024, N = 1024, K = 1024;
@@ -4458,7 +4919,10 @@ int main(int argc, char *argv[]) {
   test_sgemm(M, N, K);
   test_hgemm_mma(M, N, K);
   test_hgemm_swizzle(M, N, K);
-#if (defined(NOTES_V2_HAS_WGMMA))
+#if (defined(NOTES_V2_ENABLE_CUTE))
+  test_hgemm_cute(M, N, K);
+#endif
+#if (defined(NOTES_V2_ENABLE_WGMMA))
   test_hgemm_wgmma(M, N, K);
 #endif
   test_flash_attn(1024, 64);
@@ -4473,5 +4937,18 @@ int main(int argc, char *argv[]) {
 // # sm_89 单独编译 + 运行:
 // nvcc -std=c++20 -O2 -arch=sm_89 -lcublas -lcuda notes-v2.cu -o notes_v2_sm89.bin
 //
+// # sm_89 + CuTe（需要 CUTLASS include 路径, 编译 CUDA_HOME 指向的 CUTLASS 或
+//    项目内置 third-party/cutlass）:
+// nvcc -std=c++20 -O2 -arch=sm_89 -DNOTES_V2_ENABLE_CUTE \
+//   -I ../../third-party/cutlass/include \
+//   -lcublas -lcuda notes-v2.cu -o notes_v2_cute_sm89.bin
+//
 // # sm_90a 单独编译 + 运行（需要 Hopper GPU, H100/H200 均可）:
-// nvcc -std=c++20 -O2 -gencode arch=compute_90a,code=sm_90a -DNOTES_V2_HAS_WGMMA -lcublas -lcuda notes-v2.cu -o notes_v2_sm90.bin
+// nvcc -std=c++20 -O2 -gencode arch=compute_90a,code=sm_90a \
+//   -DNOTES_V2_ENABLE_WGMMA -lcublas -lcuda notes-v2.cu -o notes_v2_sm90.bin
+//
+// # sm_90a + CuTe + WGMMA:
+// nvcc -std=c++20 -O2 -gencode arch=compute_90a,code=sm_90a \
+//   -DNOTES_V2_ENABLE_CUTE -DNOTES_V2_ENABLE_WGMMA \
+//   -I ../../third-party/cutlass/include \
+//   -lcublas -lcuda notes-v2.cu -o notes_v2_cute_sm90.bin
