@@ -115,6 +115,7 @@
 //   - 为什么不用 __shfl_down_sync？xor 模式所有线程做相同工作量，更均衡
 
 #include <algorithm>
+#include <cstring>
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 #include <float.h>
