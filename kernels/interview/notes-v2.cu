@@ -84,7 +84,7 @@
 //    - 通过 cuda::barrier 同步，完全解耦数据搬运和计算
 //
 // 9. TMA (Tensor Memory Accelerator, Hopper+)
-//    - 硬件 DMA 引擎，支持 2D~5D 寻址，低寄存器开销
+//    - 硬件 DMA 引擎，支持 1D~5D 寻址，低寄存器开销
 //    - 配合 cp.async.bulk 实现异步数据搬运
 
 // ---- Roofline 分析公式 ----
@@ -481,6 +481,7 @@ __global__ void merge_attn_states(
 
   // 每个 (token, head) 对需要 threads_per_head 个线程覆盖 head_size 个元素
   int threads_per_head = head_size / PACK_SIZE;
+  // 实际有效总线程数，超过这个数的线程会被忽略，block是按照NUM_THREADS=128来分配的
   int total_threads = num_tokens * num_heads * threads_per_head;
 
   int global_idx = blockIdx.x * NUM_THREADS + threadIdx.x;
@@ -531,20 +532,20 @@ __global__ void merge_attn_states(
   // 128-bit 向量化: uint4 load → per-element FMA → uint4 store
   if (pack_offset < head_size) {
     pack_t p_pack =
-        reinterpret_cast<const pack_t *>(prefix_head)[pack_offset / PACK_SIZE];
+        reinterpret_cast<const pack_t *>(prefix_head)[pack_idx];
     pack_t s_pack =
-        reinterpret_cast<const pack_t *>(suffix_head)[pack_offset / PACK_SIZE];
+        reinterpret_cast<const pack_t *>(suffix_head)[pack_idx];
     pack_t o_pack;
 
 #pragma unroll
     for (int i = 0; i < PACK_SIZE; ++i) {
       float p_val = reinterpret_cast<const float *>(&p_pack)[i];
       float s_val = reinterpret_cast<const float *>(&s_pack)[i];
-      float o_val = p_val * p_scale + s_val * s_scale;
+      float o_val = p_val * p_scale + (s_val * s_scale); // FMA
       reinterpret_cast<float *>(&o_pack)[i] = o_val;
     }
 
-    reinterpret_cast<pack_t *>(output_head)[pack_offset / PACK_SIZE] = o_pack;
+    reinterpret_cast<pack_t *>(output_head)[pack_idx] = o_pack;
   }
 }
 
