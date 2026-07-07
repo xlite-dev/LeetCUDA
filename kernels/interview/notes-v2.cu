@@ -617,8 +617,8 @@ __global__ void safe_softmax_per_token(float *x, float *y, int N) {
 //      m_new = max(m_old, x_i)
 //      d_new = d_old * exp(m_old - m_new) + exp(x_i - m_new)
 //   2) 二元合并 (binary merge，合并两个部分累加器，warp/block reduce 使用)：
-//      m = max(m1, m2)
-//      d = d1*exp(m1-m) + d2*exp(m2-m)
+//      m = max(m1, m2) safe softmax用的max值
+//      d = d1*exp(m1-m) + d2*exp(m2-m) softmax用的分母值
 //      当 m1≥m2 时退化为 d1 + d2*exp(m2-m1)（d_bigger + d_smaller*exp(m_smaller - m_bigger)）
 // 算法来源: "Online normalizer calculation for softmax" (arXiv:1805.02867)
 // Warp Reduce for Online Softmax — binary merge of two partial (m,d) accumulators.
