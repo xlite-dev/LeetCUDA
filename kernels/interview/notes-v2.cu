@@ -666,39 +666,33 @@ __global__ void online_safe_softmax_per_token(const float *x, float *y, int N) {
   int tid = threadIdx.x;
   int idx = blockIdx.x * NUM_THREADS + threadIdx.x;
   const int NUM_WARPS = (NUM_THREADS + WARP_SIZE - 1) / WARP_SIZE;
+  __shared__ MD shared[NUM_WARPS];
+
+  float val = (idx < N) ? x[idx] : -FLT_MAX;
   int warp = tid / WARP_SIZE;
   int lane = tid % WARP_SIZE;
 
   // 初始化：每个线程持有一个 (max, denom) 对
   MD md;
-  md.m = idx < N ? x[idx] : -FLT_MAX;
+  md.m = idx < N ? val : -FLT_MAX;
   md.d = idx < N ? 1.0f : 0.0f;
 
-  // Block reduce：warp_reduce_md 在归约中自动更新 m 和 d
-  __shared__ MD shared[NUM_WARPS];
+  // 第一级规约：warp_reduce_md 在归约中自动更新 m 和 d
   md = warp_reduce_md<WARP_SIZE>(md);
 
   if (lane == 0)
     shared[warp] = md;
   __syncthreads();
 
-  // 第二级归约：warp0 收集各 warp 结果再做一次 warp_reduce_md（复用 block_reduce 模式）
-  // 只有 tid < 32 的线程参与；shared[0] 在第二次 __syncthreads 后才对整个 block 可见
-  if (tid < WARP_SIZE) {
-    md = tid < NUM_WARPS ? shared[tid] : MD{-FLT_MAX, 0.0f};
-    md = warp_reduce_md<NUM_WARPS>(md);
-    if (tid == 0) {
-      shared[0] = md;
-    }
-  }
-  __syncthreads();
+  // 第二级归约：每个 warp 结果再做一次 warp_reduce_md（复用 block_reduce 模式）
+  md = lane < NUM_WARPS ? shared[lane] : MD{-FLT_MAX, 0.0f};
+  md = warp_reduce_md<WARP_SIZE>(md); // 用WARP_SIZE确保每个lane都能拿到最终结果
 
   // 用全局 max 和 denom 做最终 softmax
-  md = shared[0];
   float d_inv = __fdividef(1.0f, md.d);
   // 边界线程即使看到 d=0 的填充值，也不会走到写回路径
   if (idx < N) {
-    y[idx] = __expf(x[idx] - md.m) * d_inv;
+    y[idx] = __expf(val - md.m) * d_inv;
   }
 }
 
