@@ -204,7 +204,7 @@ __global__ void safe_softmax_f32_per_token_kernel(float *x, float *y, int N) {
 
   float val = (idx < N) ? x[idx] : -FLT_MAX;
   float max_val = block_reduce_max_f32<NUM_THREADS>(val); // block max
-  float exp_val = (idx < N) ? expf(x[idx] - max_val) : 0.0f;
+  float exp_val = (idx < N) ? expf(val - max_val) : 0.0f;
   float exp_sum = block_reduce_sum_f32<NUM_THREADS>(exp_val); // block sum
   // e^x_i/sum(e^x_0,...,e^x_n-1)
   if (idx < N)
