@@ -1156,7 +1156,10 @@ __global__ void sgemm_vec4(float *a, float *b, float *c, int M, int N, int K) {
   int load_gmem_a_m = by * BM + load_smem_a_m;
   int load_gmem_b_n = bx * BN + load_smem_b_n;
 
-  // 4×4 Thread Tile 基址（独立于加载映射，避免 /4 漏乘 bug）
+  // 4×4 Thread Tile 基址（独立于加载映射），这里compute索引的计算逻辑要和
+  // load索引的计算逻辑分开，load/compute是可以独立索引的，理解这点很重要。
+  // 目标C Tile为[BM,BN]=[128x128], 有32x32线程，则每个线程处理4x4 tile
+  // 那么，就可以不重不漏地覆盖[32x4,32x4]=[128x128]的大小
   int comp_smem_a_m_base = (tid / 32) * 4; // 0,4,8,...,124
   int comp_smem_b_n_base = (tid % 32) * 4; // 0,4,8,...,124
 
