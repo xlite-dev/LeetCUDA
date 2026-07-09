@@ -903,12 +903,13 @@ __global__ void mat_transpose(float *x, float *y, const int row, const int col) 
 // source: LeetCUDA/kernels/mat-transpose/mat_transpose.cu
 __global__ void mat_transpose_padded(
     float *x, float *y, const int row, const int col) {
-  const int tx = threadIdx.x, ty = threadIdx.y;
+  const int tx = threadIdx.x;
+  const int ty = threadIdx.y;
 
   constexpr int TILE = 16;
   constexpr int PAD = 1;
   // Bank conflict fix: 每行多 1 个元素，打破 32-bank 对齐
-  __shared__ float tile[TILE * 4][TILE + PAD];
+  __shared__ float tile[TILE * 4][TILE + PAD]; // 64x16
 
   // x 空间坐标; 每线程覆盖 4 行 (actual row = x_r * 4)
   const int x_c = blockIdx.x * TILE + tx;
@@ -1165,12 +1166,12 @@ __global__ void sgemm_vec4(float *a, float *b, float *c, int M, int N, int K) {
 
   float sum[4][4] = {0.f};
   for (int bk = 0; bk < (K + BK - 1) / BK; ++bk) {
-    int load_gmem_a_k = bk * BK + load_smem_a_k;
+    int load_gmem_a_k = bk * BK + load_smem_a_k; // A [M, K]
     int load_gmem_a_addr = load_gmem_a_m * K + load_gmem_a_k;
-    FLOAT4(s_a[load_smem_a_m][load_smem_a_k]) = FLOAT4(a[load_gmem_a_addr]);
-    int load_gmem_b_k = bk * BK + load_smem_b_k;
+    FLOAT4(s_a[load_smem_a_m][load_smem_a_k]) = FLOAT4(a[load_gmem_a_addr]); // s_a [BM,BK]
+    int load_gmem_b_k = bk * BK + load_smem_b_k; // B [K, N]
     int load_gmem_b_addr = load_gmem_b_k * N + load_gmem_b_n;
-    FLOAT4(s_b[load_smem_b_k][load_smem_b_n]) = FLOAT4(b[load_gmem_b_addr]);
+    FLOAT4(s_b[load_smem_b_k][load_smem_b_n]) = FLOAT4(b[load_gmem_b_addr]); // s_b [BK,BN]
     __syncthreads();
 
 #pragma unroll
