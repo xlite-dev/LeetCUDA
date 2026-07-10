@@ -1376,8 +1376,10 @@ __global__ void __launch_bounds__(256)
   const int tid = threadIdx.y * blockDim.x + threadIdx.x;
   const int warp_id = tid / WARP_SIZE; // 0~7
   const int lane_id = tid % WARP_SIZE; // 0~31
-  const int warp_m = warp_id % 2;      // 0,1（M 方向 2 个 warp）
-  const int warp_n = warp_id / 2;      // 0,1,2,3（N 方向 4 个 warp）
+  // warp_m变化快(0->0,1->1), warp_n变化慢([0,1]->0,[2,3]->1,...), 因此，
+  // 这种2x4的MMA(Warp) layout是按照col major的顺序来排列MMA0~MMA7的
+  const int warp_m = warp_id % 2; // 0,1（M 方向 2 个 warp）
+  const int warp_n = warp_id / 2; // 0,1,2,3（N 方向 4 个 warp）
 
   // 线程到 global memory 的映射（用于加载 A 和 B）共 256 个线程
   // TN 布局关键: A[m*K+k] 是 row-major, B^T[n*K+k] 是 row-major（内维连续的是 K）
@@ -1432,14 +1434,15 @@ __global__ void __launch_bounds__(256)
     int smem_sel = k % K_STAGE;                      // 计算 tile k 的 stage
     int smem_sel_next = (k + K_STAGE - 1) % K_STAGE; // 预加载目标 stage
 
-    // 条件加载：预加载 tile (k+K_STAGE-1) 供将来使用
-    // TN 布局: A 的 gmem 地址用 m*K+k（row-major），B^T 的 gmem 地址用 n*K+k（row-major，内维连续的是 K）
+    // 条件加载：预加载 tile (k+K_STAGE-1) 供将来使用。因为在prefetch loop中已经
+    // load了(K_STAGE-1) 个 stage，因此这里是从 tile (k+K_STAGE-1) 开始预加载
+    // TN 布局: A 的 gmem 地址用 m*K+k（row-major），B^T 的 gmem 地址用 n*K+k
+    // (row-major，内维连续的是 K)
     if (k + K_STAGE - 1 < NUM_K_TILES) {
       int load_gmem_a_k = (k + K_STAGE - 1) * BK + load_smem_a_k;
       int load_gmem_a_addr = load_gmem_a_m * K + load_gmem_a_k; // A: row-major [m][k]
       int load_gmem_b_k = (k + K_STAGE - 1) * BK + load_smem_b_k;
-      // B^T: row-major [n][k]，内维连续的是 K ⚠
-      int load_gmem_b_addr = load_gmem_b_n * K + load_gmem_b_k; 
+      int load_gmem_b_addr = load_gmem_b_n * K + load_gmem_b_k; // B^T: row-major [n][k]
 
       uint32_t load_smem_a_ptr =
           (smem_a_base_ptr + (smem_sel_next * s_a_stage_offset +
@@ -1465,8 +1468,10 @@ __global__ void __launch_bounds__(256)
 #pragma unroll
     for (int i = 0; i < VAL_TILE_M; ++i) {
       // {0,1} * (16 * 4) + i * 16 = {0,64} + {0,16,32,48} = {0,16,32,48,64,80,96,112}
+      // 其中 warp_m {0,1}; warp_m_0 offsets {0,16,32,48}; warp_m_1 offsets {64,80,96,112}
       int warp_smem_a_m = warp_m * (MMA_M * VAL_TILE_M) + i * MMA_M;
       // {0,16,32,...,112} + {0~15} = {0~127}, 按照col-major的顺序访问A的4个8x8 matrix (16x16)
+      // ldmatrix.{...}.x4.{...} 需要warp内32个线程都参与，每个线程提供一个有效的，不重叠的addr
       int lane_smem_a_m = warp_smem_a_m + lane_id % 16; // t{0...15}=0~15, t{16...31}=0~15
       int lane_smem_a_k = (lane_id / 16) * 8; // 0, 8, t{0...15}=0, t{16...31}=8
       uint32_t lane_smem_a_ptr =
@@ -1482,8 +1487,11 @@ __global__ void __launch_bounds__(256)
 #pragma unroll
     for (int j = 0; j < VAL_TILE_N; ++j) {
       // {0,...,3} * (8 * 4) + j * 8 = {0,32,64,96} + {0,8,16,24} = {0,8,...,120}
+      // warp_n_0 offsets {0,8,16,24}; warp_n_1 offsets {32,40,48,56}
+      // warp_n_2 offsets {64,72,80,88}; warp_n_3 offsets {96,104,112,120}
       int warp_smem_b_n = warp_n * (MMA_N * VAL_TILE_N) + j * MMA_N;
       // {0,8,...,120} + {0~7} = {0~127}, 按照row-major的顺序访问B^T的2个8x8 matrix (8x16)
+      // ldmatrix.{...}.x2.{...} 需要warp内前16个线程参与，后16个线程传的addr会被忽略
       int lane_smem_b_n = warp_smem_b_n + lane_id % 8; // t{0...7}=0~7, t{8...15}=0~7
       int lane_smem_b_k = ((lane_id / 8) % 2) * 8; // t{0...7}=0, t{8...15}=8
       uint32_t lane_smem_b_ptr =
@@ -1517,6 +1525,11 @@ __global__ void __launch_bounds__(256)
   // Epilogue: 寄存器 → global memory（通过 warp shuffle + 128-bit store）
   {
     for (int i = 0; i < VAL_TILE_M; ++i) {
+      // RC[VAL_TILE_M][VAL_TILE_N][2] 中  RC[...][...][2] 中保存了2个 uint32
+      // 寄存器，每个uint32 寄存器表示两个临近的fp16值：{c0,c1}，然后RC[...][...][0]
+      // 和RC[...][...][1]代表的是按照col-major排布的2个8x8子矩阵上（不同物理行，跨8x8）
+      // 同一个位置上的元素，也就是，实际代表了2个不同的行的元素，因此要分开RC0, RC1；
+      // RC0表示第一行，8个half，可以用4个uint32寄存器来装；同理，RC1表示第二行。
       uint32_t RC0[VAL_TILE_N][4]; // 32 bits x 4 = 128 bits = 8 half
       uint32_t RC1[VAL_TILE_N][4]; // 32 bits x 4 = 128 bits = 8 half
       // ==================================================================
