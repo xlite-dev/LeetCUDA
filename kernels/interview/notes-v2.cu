@@ -1651,6 +1651,9 @@ static __device__ __forceinline__ int swizzle_permuted_j(int i, int j) {
 
 // swizzle_permuted_A_j: A 矩阵专用封装（kMmaAtomK=16, kStep=8）。
 // 16 行（一个 MMA atom 的 M 维）内的 swizzle pattern：
+// 8个half=16 bytes=128 bits=4 banks (32 bits/bank) 组成一个phase，
+// 触发一次合并的memory transaction. 这里的col=16的swizzle，相当于
+// TMA中的SWIZZLE_32B pattern.
 // -------------------
 // -col 0~16, step 8--
 // -------------------
