@@ -98,7 +98,6 @@
 //   FP16 TC ≈ 295:1，FP32 ≈ 20:1）
 //
 // GEMV (M=4096, K=4096):
-//     因此 M 描述基本元素宽度，S 描述二维空间的列数，B 描述二维空间的行数。
 //   Bytes = (M×K + K + M) × sizeof(float) ≈ 67 MB
 //   AI    ≈ 33M / 67M ≈ 0.5 FLOPS/Byte → severely memory-bound
 //
