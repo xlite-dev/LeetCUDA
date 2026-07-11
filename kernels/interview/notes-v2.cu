@@ -2090,38 +2090,69 @@ __global__ void hgemm_mma_stages_tn_cute(T *Aptr, T *Bptr, T *Dptr, int m,
   cp_async_wait<kStage - 2>();
   __syncthreads();
 
-  // 主循环: over K tiles，每个 K tile 内再分 MMA_K 步迭代。
+  // K 维第一层循环 — 按 BK 大小将 K 切分为 num_k_tiles 个 tile。
+  // 外层 k_tile 遍历这些 BK-tile，内层 k_step 遍历 tile 内的 MMA_K slice。
   // 当前实现使用整除，要求 K % BK == 0；没有为尾部 K tile 做 predication/padding。
-  int ntile = k / BK; // K 方向总 tile 数
-  int ik = 0;
-  // 首轮 S→R 加载（在进入循环前先加载第一个 ik slice）
-  cute::copy(s2r_tiled_copy_a, tAsA(_, _, ik, ismem_read), tCrA_view(_, _, ik));
-  cute::copy(s2r_tiled_copy_b, tBsB(_, _, ik, ismem_read), tCrB_view(_, _, ik));
+  int num_k_tiles = k / BK;
+  // 循环前预加载首轮数据：将第一个 K tile 的第 0 个 K slice 从 smem 加载到寄存器。
+  cute::copy(s2r_tiled_copy_a, tAsA(_, _, 0, ismem_read), tCrA_view(_, _, 0));
+  cute::copy(s2r_tiled_copy_b, tBsB(_, _, 0, ismem_read), tCrB_view(_, _, 0));
 
 #pragma unroll 1
-  for (int itile = 0; itile < ntile; ++itile) {
-    int nk = size<2>(tCrA); // 每个 K tile 内的 MMA_K 步数
+  for (int k_tile = 0; k_tile < num_k_tiles; ++k_tile) {
+    // num_k_steps: BK tile 内 K 方向的 MMA 迭代次数，取自 fragment 的第三 mode（K-mode）。
+    //
+    // 为什么只显式展开 K？MMA_M 和 MMA_N 去哪了？
+    //   tCrA=(MMA, MMA_M, MMA_K), tCrB=(MMA, MMA_N, MMA_K), tCrD=(MMA, MMA_M, MMA_N)
+    //   - K 方向：每个 k_step 需要从 smem 加载**不同的** A/B 数据（ldmatrix），
+    //     所以 K 循环必须显式写，每次迭代做 S→R copy + cute::gemm。
+    //   - M/N 方向：同一个 k_step 内，所有 M、N 位置的 MMA atom 共享
+    //     同一批寄存器数据。cute::gemm 根据 tiled_mma 的类型信息（EURepeat=2×2）
+    //     在编译期自动展开为覆盖全部 (MMA_M, MMA_N) 对的 mma.sync 指令序列，
+    //     无需手动写 M/N 循环。——这等价于手写 MMA 中的：
+    //       for (i=0; i<VAL_TILE_M; ++i)
+    //         for (j=0; j<VAL_TILE_N; ++j)
+    //           HMMA16816(RC[i][j][0], RC[i][j][1], ...);
+    //
+    // CUTLASS 推导链（mma_atom.hpp）：
+    //   make_tiled_mma 将 MMA_P_T::<2>（即 kMmaPK）存入 PermutationMNK
+    //   → TiledMMA::permutation_mnk<2>() 返回 kMmaPK
+    //   → thrfrg_A 对 A(M,K) 按 (permutation_mnk<0>(), permutation_mnk<2>())
+    //     做 logical_divide，即按 (kMmaPM,kMmaPK) tile 化 K 维：
+    //        K 被分为 BK/kMmaPK 个 perm-K slice
+    //     随后按 AtomShape_MNK<2>（MMA_K_atom）做 zipped_divide
+    //     每个 perm-K 含 kMmaEURepeatK 个 atom-K slice
+    //   → partition_A 选当前线程后，K-mode size = BK / kMmaPK
+    // 本配置：kMmaPK=16（MMA_K_atom=16 × kMmaEURepeatK=1），BK=32 → num_k_steps=2
+    int num_k_steps = size<2>(tCrA);
 
 #pragma unroll
-    for (int ik = 0; ik < nk; ++ik) {
-      int ik_next = (ik + 1) % nk;
+    for (int k_step = 0; k_step < num_k_steps; ++k_step) {
+      int k_step_next = (k_step + 1) % num_k_steps;
 
-      if (ik == nk - 1) {
+      if (k_step == num_k_steps - 1) {
           // 等待下一个 K tile 的 smem 数据就绪，然后切换到下一个 stage。
         cp_async_wait<kStage - 2>();
         __syncthreads();
         ismem_read = (ismem_read + 1) % kStage;
       }
 
-      // S→R: 加载下一组 A/B fragment 到寄存器；ik_next 是当前/下一 stage 中的 K slice。
-      cute::copy(s2r_tiled_copy_a, tAsA(_, _, ik_next, ismem_read),
-                 tCrA_view(_, _, ik_next));
-      cute::copy(s2r_tiled_copy_b, tBsB(_, _, ik_next, ismem_read),
-                 tCrB_view(_, _, ik_next));
+      // S→R: 加载下一组 A/B fragment 到寄存器。
+      //
+      // cute::copy 原生支持多 mode——理论上可以一次加载全部 K slice：
+      //   cute::copy(s2r_tiled_copy_a, tAsA(_, _, _, ismem_read), tCrA_view);
+      // 但这里刻意逐 k_step_next 加载，目的是做**寄存器双缓冲**：
+      //   当前 k_step 做 MMA 计算时，ldmatrix 预加载 k_step_next 的数据，
+      //   让 S→R 延迟与 MMA 计算重叠。
+      // 如果一次性加载全部 K slice，S→R 和 MMA 就会彻底串行。
+      cute::copy(s2r_tiled_copy_a, tAsA(_, _, k_step_next, ismem_read),
+                 tCrA_view(_, _, k_step_next));
+      cute::copy(s2r_tiled_copy_b, tBsB(_, _, k_step_next, ismem_read),
+                 tCrB_view(_, _, k_step_next));
 
-      if (ik == 0) {
-        // G→S: 提交下一个 K tile 的异步拷贝（流水线加载）
-        if (itile_to_read < ntile) {
+      if (k_step == 0) {
+        // G→S: 提交下一个 K tile（整个 BK）的异步拷贝。
+        if (itile_to_read < num_k_tiles) {
           cute::copy(g2s_tiled_copy_a, tAgA_copy(_, _, _, itile_to_read),
                      tAsA_copy(_, _, _, ismem_write));
           cute::copy(g2s_tiled_copy_b, tBgB_copy(_, _, _, itile_to_read),
@@ -2132,8 +2163,9 @@ __global__ void hgemm_mma_stages_tn_cute(T *Aptr, T *Bptr, T *Dptr, int m,
         cp_async_fence();
       }
 
-      // MMA: 对当前 ik slice 发射 Tensor Core 指令（展开为 mma.sync.aligned.m16n8k16）。
-      cute::gemm(tiled_mma, tCrD, tCrA(_, _, ik), tCrB(_, _, ik), tCrD);
+      // MMA: cute::gemm 内部根据 tiled_mma 的类型信息，自动展开为覆盖
+      // 全部 (MMA_M, MMA_N) 对的 mma.sync 指令序列，累加到 tCrD。
+      cute::gemm(tiled_mma, tCrD, tCrA(_, _, k_step), tCrB(_, _, k_step), tCrD);
     }
   }
 
@@ -5012,6 +5044,11 @@ int main(int argc, char *argv[]) {
 // =============================================================================
 // Quick build & run reference
 // =============================================================================
+// # sm_86 + CuTe（Ampere，RTX 30/40 系列，无 WGMMA）:
+// nvcc -std=c++20 -O2 -arch=sm_86 -DNOTES_V2_ENABLE_CUTE \
+//   -I ../../third-party/cutlass/include \
+//   -lcublas -lcuda notes-v2.cu -o notes_v2_cute_sm86.bin
+//
 // # sm_89 单独编译 + 运行:
 // nvcc -std=c++20 -O2 -arch=sm_89 -lcublas -lcuda notes-v2.cu -o notes_v2_sm89.bin
 //
