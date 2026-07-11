@@ -45,7 +45,7 @@
 //
 // Occupancy 公式：
 //   occupancy = active_warps / max_warps_per_SM
-//   受三类资源分别取下限：每线程寄存器数 → threads/SM；每 block shared memory 
+//   受三类资源分别取下限：每线程寄存器数 → threads/SM；每 block shared memory
 //   → blocks/SM；block 大小 → blocks/SM
 
 // ---- 常见优化手段速查清单 ----
@@ -160,7 +160,7 @@
 //       ──── 前4个一组 ────   ──── 后4个一组 ────
 //
 //   lane:  0    1    2    3    4    5    6    7  (每lane持有前一轮2个值的和再加本轮配对)
-//   val: Σ{0,2,4,6} Σ{1,3,5,7} Σ{0,2,4,6} Σ{1,3,5,7} Σ{0,2,4,6} Σ{1,3,5,7} Σ{0,2,4,6} Σ{1,3,5,7}  
+//   val: Σ{0,2,4,6} Σ{1,3,5,7} Σ{0,2,4,6} Σ{1,3,5,7} Σ{0,2,4,6} Σ{1,3,5,7} Σ{0,2,4,6} Σ{1,3,5,7}
 //        = v0+v2+v4+v6 ... (逐步归约)
 //
 //   mask=1 (第3次迭代，lane i 与 lane i^1 交换并累加):
@@ -1392,7 +1392,7 @@ __global__ void __launch_bounds__(256)
   if (load_gmem_a_m >= M || load_gmem_b_n >= N)
     return;
 
-  // 8个Warps(MMAs)的排布是M方向2个，N方向4个，则MMA Atom一次性能处理的tile大小是[2*16,4*8]=[32,32]. 
+  // 8个Warps(MMAs)的排布是M方向2个，N方向4个，则MMA Atom一次性能处理的tile大小是[2*16,4*8]=[32,32].
   // CUDA中每个block能放的线程数是有上限的（warp数量有限），一般为4或者8个warps。为了能处理更大的C tile，
   // 需要把MMA Atom的tile再M方向和N方向各自重复4次，得到[128,128]的C block tile，这就是Value Tile的作用。
   // MMA Tile对应到cutlass cute中的TiledMMA的概念，Value Tile对应到cutlass cute中的PermuteMNK的概念。
@@ -1415,7 +1415,7 @@ __global__ void __launch_bounds__(256)
 
     int load_gmem_b_k = k * BK + load_smem_b_k;
     // B^T: [n][k] row-major（即 B[k][n] col-major）⚠
-    int load_gmem_b_addr = load_gmem_b_n * K + load_gmem_b_k; 
+    int load_gmem_b_addr = load_gmem_b_n * K + load_gmem_b_k;
     uint32_t load_smem_b_ptr = (smem_b_base_ptr +
       (k * s_b_stage_offset + load_smem_b_n * BK + load_smem_b_k) * sizeof(half)
     );
@@ -1459,7 +1459,7 @@ __global__ void __launch_bounds__(256)
     }
 
     // ldmatrix: 从 smem_sel 加载 A 和 B 到寄存器
-    // TN 布局关键: A 用 x4（非转置），因为 A 是 row-major; B 用 x2（非转置），smem 中 
+    // TN 布局关键: A 用 x4（非转置），因为 A 是 row-major; B 用 x2（非转置），smem 中
     // B^T 为 row-major，逐行加载即得 B 的列，天然匹配 col-major B
     uint32_t RA[VAL_TILE_M][4]; // [4][4], M方向4次repeat, A regs = 4 uint32_t per MMA
     uint32_t RB[VAL_TILE_N][2]; // [4][2], N方向4次repeat, B regs = 2 uint32_t per MMA
@@ -1758,8 +1758,8 @@ __global__ void __launch_bounds__(256)
   int load_gmem_b_n = bx * BN + load_smem_b_n; // C/B 全局列号
   if (load_gmem_a_m >= M || load_gmem_b_n >= N)
     return;
-  
-  // 8个Warps(MMAs)的排布是M方向2个，N方向4个，则MMA Atom一次性能处理的tile大小是[2*16,4*8]=[32,32]. 
+
+  // 8个Warps(MMAs)的排布是M方向2个，N方向4个，则MMA Atom一次性能处理的tile大小是[2*16,4*8]=[32,32].
   // CUDA中每个block能放的线程数是有上限的（warp数量有限），一般为4或者8个warps。为了能处理更大的C tile，
   // 需要把MMA Atom的tile再M方向和N方向各自重复4次，得到[128,128]的C block tile，这就是Value Tile的作用。
   // MMA Tile对应到cutlass cute中的TiledMMA的概念，Value Tile对应到cutlass cute中的PermuteMNK的概念。
@@ -2953,7 +2953,7 @@ __global__ void __launch_bounds__(NUM_THREADS)
     // block_C: 当前 C tile 在 global memory 中的起始地址
     // by*BM 是 M 方向偏移，bx*BN 是 N 方向偏移
     half *block_C = C + by * BM * N + bx * BN;
-    
+
     // 2 * (8 * 4) = 2 * 32 = 64 uint32 = 128 half
 #pragma unroll
     for (int m_it = 0; m_it < B_WG_M / WGMMA_M; ++m_it) {
