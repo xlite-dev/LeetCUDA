@@ -1693,38 +1693,37 @@ static __device__ __forceinline__ int swizzle_permuted_B_j(int i, int j) {
 
 // =============================================================================
 // Phase 7b-3: HGEMM MMA — m16n8k16 + multistage pipeline + TN 布局 + XOR swizzle
+//              + Register Double Buffering (VAL_TILE_K=2, BK=32 统一 tile)
 // =============================================================================
-// 与 Phase 7b-2 (hgemm_mma_stages_tn) 的核心区别：
-//   - 所有 smem 地址计算加 swizzle_permuted_A_j/swizzle_permuted_B_j，消除 bank conflict
-//   - VAL_TILE_M/N → VAL_TILE_M/N（与源 kernel 命名一致）
-//   - 其余 tile hierarchy、pipeline、epilogue 与统一循环版完全一致
+// 在 Phase 7b-2 的 smem XOR swizzle 基础上增加寄存器双缓冲：
+//   - VAL_TILE_K=2: 每个 BK tile 包含 2 个 MMA_K slice（BK = MMA_K * VAL_TILE_K = 32）
+//   - BK=32 统一 tile：MMA_K=0 和 MMA_K=1 数据连续存放在同一个 BK=32 宽的 smem tile 中
+//   - RA[2][VAL_TILE_M][4] / RB[2][VAL_TILE_N][2]：双份寄存器乒乓切换
+//   - ldmatrix 与 MMA 计算重叠：加载 k_step=1 的同时用另一组寄存器做 k_step=0 计算
 //
-// Tile Hierarchy:
-//   MMA Atom:         m16n8k16（1 条 MMA 指令处理的最小 tile）
-//   MMA Tile (more warps):  2×4=8 个 MMA atom → [2×16, 8×4]=[32,32]
-//   WARP Tile (more values): 4×4=16 expand → [32×4, 32×4]=[128,128]
-//   实际: MMA_TILE_M=2, MMA_TILE_N=4, VAL_TILE_M=4, VAL_TILE_N=4
-//         → BM=16×2×4=128, BN=8×4×4=128, Warps=2×4=8, Threads=8×32=256
+// ★ smem 布局：
+//   s_a: [stage0][stage1][stage2]，每个 stage = BM × BK = 128 × 32
+//   s_b: 紧接 s_a 之后
+//   每个 stage 内 k_step=0 列偏移 0，k_step=1 列偏移 +MMA_K(=16)
 //
-// TN 布局: C[M×N] = A[M×K] × B^T[N×K]
-//   - A[M][K]: row-major → 全局索引 A[m*K + k], smem s_a[BM][BK]
-//   - B^T[N][K]: row-major → 全局索引 B[n*K+k]
-//   - ldmatrix A: x4（非转置），A row-major 原生匹配
-//   - ldmatrix B: x2（非转置），B^T row-major 逐行加载 = B 的列
-//   - MMA 指令: mma.sync.aligned.m16n8k16.row.col → 天然匹配 TN 布局
+// ★ 寄存器双缓冲时间线（每 k 迭代内）：
+//   Step 1: G→S cp.async 预取 stage(k+K_STAGE-1) 全部 k_step（条件）
+//   Step 2: MMA k_step=0（用 reg[load]，已在上轮 post-wait 中 ldmatrix）
+//   Step 3: for k_step=1..VAL_TILE_K-1: ldmatrix(列偏移 k_step*MMA_K)→reg[store], flip, MMA→reg[load]
+//   Step 4: adaptive wait + __syncthreads
+//   Step 5: S→R ldmatrix 预加载 stage(k+1) k_step=0 → reg[store]（条件）
 //
-// 统一循环设计（同 hgemm_mma_stages_tn）：
-//   - k 从 0 开始：每次迭代 k 直接对应 tile k, sel = k % K_STAGE（零偏移）
-//   - 加载语义为"预取未来"：迭代 k 加载 tile (k+K_STAGE-1) 供后续使用
-//   - cp.async 条件化：仅当 k+K_STAGE-1 < NUM_K_TILES 时加载
-//   - WAIT_GROUP 自适应：满载期用 K_STAGE-2，尾部排空用 0
+// 与 dsmem 版本的对比：
+//   - dsmem: smem 分两个区域存放 MMA_K=0 和 MMA_K=1，smem 翻倍
+//   - BK=32: MMA_K=0/1 连续存同一 tile 内，smem 不变，gmem 索引用 k*BK 直接定位
 //
+// 参考：LeetCUDA/kernels/hgemm/mma/swizzle/hgemm_mma_stage_tn_swizzle_x2.cu
 // Grid:  ((N+127)/128/S, (M+127)/128, S)，S=(N+2047)/2048，3D block swizzle
 // Block: (256, 1, 1)，8 warps
-// source: LeetCUDA/kernels/hgemm/mma/swizzle/hgemm_mma_stage_tn_swizzle.cu
 template <const int MMA_M = 16, const int MMA_N = 8, const int MMA_K = 16,
           const int MMA_TILE_M = 2, const int MMA_TILE_N = 4,
           const int VAL_TILE_M = 4, const int VAL_TILE_N = 4,
+          const int VAL_TILE_K = 2,
           const int K_STAGE = 3,
           const bool BLOCK_SWIZZLE = false>
 __global__ void __launch_bounds__(256)
@@ -1734,27 +1733,30 @@ __global__ void __launch_bounds__(256)
   const int by = blockIdx.y;
   constexpr int BM = MMA_M * MMA_TILE_M * VAL_TILE_M; // 16*2*4=128
   constexpr int BN = MMA_N * MMA_TILE_N * VAL_TILE_N; // 8*4*4=128
-  constexpr int BK = MMA_K;                           // 16
+  constexpr int BK = MMA_K * VAL_TILE_K;               // 16*2=32
 
-  // Dynamic shared memory: K_STAGE 个 stage 的 A 和 B（与 hgemm_mma_stages_tn 相同）
+  // K_STAGE stages, each with BM×BK for A, BN×BK for B
+  // smem: VAL_TILE_K 个 MMA_K slice 连续存放在同一个 BK=32 宽 tile 中
   extern __shared__ half smem[];
   half *s_a = smem;
   half *s_b = smem + K_STAGE * BM * BK;
-  constexpr int s_a_stage_offset = BM * BK; // 128*16
-  constexpr int s_b_stage_offset = BN * BK; // 128*16 ⚠ B^T row-major
+  constexpr int s_a_stage_offset = BM * BK;
+  constexpr int s_b_stage_offset = BN * BK;
+
   const int tid = threadIdx.y * blockDim.x + threadIdx.x;
-  const int warp_id = tid / WARP_SIZE; // 0~7
-  const int lane_id = tid % WARP_SIZE; // 0~31
+  const int warp_id = tid / WARP_SIZE;
+  const int lane_id = tid % WARP_SIZE;
   const int warp_m = warp_id % 2;      // 0,1（M 方向 2 个 warp）
   const int warp_n = warp_id / 2;      // 0,1,2,3（N 方向 4 个 warp）
 
-  // 线程到 global memory 的映射（用于加载 A 和 B）
+  // 线程到 global memory 的映射（用于加载 A 和 B）共 256 个线程
+  // TN 布局关键: A[m*K+k] 是 row-major, B^T[n*K+k] 是 row-major（内维连续的是 K）
   int load_smem_a_m = tid / 2;                // 0~127
   int load_smem_a_k = (tid % 2 == 0) ? 0 : 8; // 0, 8
   int load_smem_b_n = tid / 2; // 0~127 → B^T 的 N 方向（row-major 的行）
   int load_smem_b_k = (tid % 2 == 0) ? 0 : 8; // 0, 8  → B^T 的 K 方向（row-major 的列）
-  int load_gmem_a_m = by * BM + load_smem_a_m; // C/A 全局行号
-  int load_gmem_b_n = bx * BN + load_smem_b_n; // C/B 全局列号
+  int load_gmem_a_m = by * BM + load_smem_a_m; // C/A 全局行号 = M 方向的 tile 起始 + 线程偏移
+  int load_gmem_b_n = bx * BN + load_smem_b_n; // C/B 全局列号 = N 方向的 tile 起始 + 线程偏移
   if (load_gmem_a_m >= M || load_gmem_b_n >= N)
     return;
 
@@ -1764,155 +1766,238 @@ __global__ void __launch_bounds__(256)
   // MMA Tile对应到cutlass cute中的TiledMMA的概念，Value Tile对应到cutlass cute中的PermuteMNK的概念。
   uint32_t RC[VAL_TILE_M][VAL_TILE_N][2] = {0}; // 初始化为 0
 
-  // CVTA: 一次转换 smem 基地址，避免每次 cp.async 都做转换
   uint32_t smem_a_base_ptr = __cvta_generic_to_shared(s_a);
   uint32_t smem_b_base_ptr = __cvta_generic_to_shared(s_b);
 
-  // 预加载前 (K_STAGE-1) 个 stage
-  // ★ swizzle 区别：cp.async 的目标 smem 地址加 swizzle_permuted_A_j/swizzle_permuted_B_j
+  // Prefetch (K_STAGE-1) stages: load all k_step slices for each early stage
 #pragma unroll
   for (int k = 0; k < (K_STAGE - 1); ++k) {
-    int load_gmem_a_k = k * BK + load_smem_a_k;
-    int load_gmem_a_addr = load_gmem_a_m * K + load_gmem_a_k;
-    int load_gmem_b_k = k * BK + load_smem_b_k;
-    int load_gmem_b_addr = load_gmem_b_n * K + load_gmem_b_k;
-
-    uint32_t load_smem_a_ptr =
-        (smem_a_base_ptr +
-         (k * s_a_stage_offset + load_smem_a_m * BK +
-          swizzle_permuted_A_j<MMA_K>(load_smem_a_m, load_smem_a_k)) *
-             sizeof(half));
-    CP_ASYNC_CG(load_smem_a_ptr, &A[load_gmem_a_addr], 16);
-
-    uint32_t load_smem_b_ptr =
-        (smem_b_base_ptr +
-         (k * s_b_stage_offset + load_smem_b_n * BK +
-          swizzle_permuted_B_j<MMA_K>(load_smem_b_n, load_smem_b_k)) *
-             sizeof(half));
-    CP_ASYNC_CG(load_smem_b_ptr, &B[load_gmem_b_addr], 16);
-
-    CP_ASYNC_COMMIT_GROUP();
-  }
-
-  CP_ASYNC_WAIT_GROUP(K_STAGE - 2); // 允许有 K_STAGE-2 个group未完成
-  __syncthreads();
-
-  // 统一循环：k 从 0 开始，每次迭代负责 tile k（加载 + 计算合并为单循环）
-  const int NUM_K_TILES = div_ceil(K, BK);
 #pragma unroll
-  for (int k = 0; k < NUM_K_TILES; ++k) {
-    int smem_sel = k % K_STAGE;                      // 计算 tile k 的 stage
-    int smem_sel_next = (k + K_STAGE - 1) % K_STAGE; // 预加载目标 stage
-
-    // 条件加载：预加载 tile (k+K_STAGE-1) 供将来使用
-    // swizzle 区别：smem 地址加 swizzle_permuted_*_j
-    if (k + K_STAGE - 1 < NUM_K_TILES) {
-      int load_gmem_a_k = (k + K_STAGE - 1) * BK + load_smem_a_k;
+    for (int k_step = 0; k_step < VAL_TILE_K; ++k_step) {
+      int load_gmem_a_k = k * BK + k_step * MMA_K + load_smem_a_k;
       int load_gmem_a_addr = load_gmem_a_m * K + load_gmem_a_k;
-      int load_gmem_b_k = (k + K_STAGE - 1) * BK + load_smem_b_k;
+      int load_gmem_b_k = k * BK + k_step * MMA_K + load_smem_b_k;
       int load_gmem_b_addr = load_gmem_b_n * K + load_gmem_b_k;
 
       uint32_t load_smem_a_ptr =
           (smem_a_base_ptr +
-           (smem_sel_next * s_a_stage_offset + load_smem_a_m * BK +
+           (k * s_a_stage_offset + load_smem_a_m * BK +
+            k_step * MMA_K +
             swizzle_permuted_A_j<MMA_K>(load_smem_a_m, load_smem_a_k)) *
                sizeof(half));
       CP_ASYNC_CG(load_smem_a_ptr, &A[load_gmem_a_addr], 16);
 
       uint32_t load_smem_b_ptr =
           (smem_b_base_ptr +
-           (smem_sel_next * s_b_stage_offset + load_smem_b_n * BK +
+           (k * s_b_stage_offset + load_smem_b_n * BK +
+            k_step * MMA_K +
             swizzle_permuted_B_j<MMA_K>(load_smem_b_n, load_smem_b_k)) *
                sizeof(half));
       CP_ASYNC_CG(load_smem_b_ptr, &B[load_gmem_b_addr], 16);
+    }
+    CP_ASYNC_COMMIT_GROUP();
+  }
+
+  CP_ASYNC_WAIT_GROUP(K_STAGE - 2);
+  __syncthreads();
+
+  // Register double buffers: RA[0/1] for k_step=0/1 A data, RB[0/1] for B data
+  uint32_t RA[2][VAL_TILE_M][4];
+  uint32_t RB[2][VAL_TILE_N][2];
+  int reg_st_idx = 0; // write target for ldmatrix
+  int reg_ld_idx = 1;  // read source for MMA
+
+  // Initial ldmatrix: load stage 0, k_step=0 (MMA_K=0 列) → reg[0]
+#pragma unroll
+  for (int i = 0; i < VAL_TILE_M; ++i) {
+    int warp_smem_a_m = warp_m * (MMA_M * VAL_TILE_M) + i * MMA_M;
+    int lane_smem_a_m = warp_smem_a_m + lane_id % 16;
+    int lane_smem_a_k = (lane_id / 16) * 8;
+    uint32_t lane_smem_a_ptr =
+        (smem_a_base_ptr +
+         (0 * s_a_stage_offset + lane_smem_a_m * BK +
+          swizzle_permuted_A_j<MMA_K>(lane_smem_a_m, lane_smem_a_k)) *
+             sizeof(half));
+    LDMATRIX_X4(RA[reg_st_idx][i][0], RA[reg_st_idx][i][1],
+                RA[reg_st_idx][i][2], RA[reg_st_idx][i][3],
+                lane_smem_a_ptr);
+  }
+#pragma unroll
+  for (int j = 0; j < VAL_TILE_N; ++j) {
+    int warp_smem_b_n = warp_n * (MMA_N * VAL_TILE_N) + j * MMA_N;
+    int lane_smem_b_n = warp_smem_b_n + lane_id % 8;
+    int lane_smem_b_k = ((lane_id / 8) % 2) * 8;
+    uint32_t lane_smem_b_ptr =
+        (smem_b_base_ptr +
+         (0 * s_b_stage_offset + lane_smem_b_n * BK +
+          swizzle_permuted_B_j<MMA_K>(lane_smem_b_n, lane_smem_b_k)) *
+             sizeof(half));
+    LDMATRIX_X2(RB[reg_st_idx][j][0], RB[reg_st_idx][j][1],
+                lane_smem_b_ptr);
+  }
+
+  // 统一循环：k 从 0 开始，条件 G→S / S→R / wait 处理所有边界情况
+  // BK = MMA_K * VAL_TILE_K = 32，每个 k 迭代覆盖 BK=32 个 K 元素
+  const int NUM_K_TILES = div_ceil(K, BK);
+#pragma unroll
+  for (int k = 0; k < NUM_K_TILES; ++k) {
+    int smem_sel = k % K_STAGE;
+    int smem_sel_next = (k + K_STAGE - 1) % K_STAGE;
+
+    // G→S: 条件预取 stage(k+K_STAGE-1) 全部 k_step slice
+    if (k + K_STAGE - 1 < NUM_K_TILES) {
+#pragma unroll
+      for (int k_step = 0; k_step < VAL_TILE_K; ++k_step) {
+        int load_gmem_a_k =
+            (k + K_STAGE - 1) * BK + k_step * MMA_K + load_smem_a_k;
+        int load_gmem_a_addr = load_gmem_a_m * K + load_gmem_a_k;
+        int load_gmem_b_k =
+            (k + K_STAGE - 1) * BK + k_step * MMA_K + load_smem_b_k;
+        int load_gmem_b_addr = load_gmem_b_n * K + load_gmem_b_k;
+
+        uint32_t load_smem_a_ptr =
+            (smem_a_base_ptr +
+             (smem_sel_next * s_a_stage_offset + load_smem_a_m * BK +
+              k_step * MMA_K +
+              swizzle_permuted_A_j<MMA_K>(load_smem_a_m, load_smem_a_k)) *
+                 sizeof(half));
+        CP_ASYNC_CG(load_smem_a_ptr, &A[load_gmem_a_addr], 16);
+
+        uint32_t load_smem_b_ptr =
+            (smem_b_base_ptr +
+             (smem_sel_next * s_b_stage_offset + load_smem_b_n * BK +
+              k_step * MMA_K +
+              swizzle_permuted_B_j<MMA_K>(load_smem_b_n, load_smem_b_k)) *
+                 sizeof(half));
+        CP_ASYNC_CG(load_smem_b_ptr, &B[load_gmem_b_addr], 16);
+      }
       CP_ASYNC_COMMIT_GROUP();
     }
 
-    // ldmatrix: 从 smem_sel 加载 A 和 B 到寄存器
-    // ★ swizzle 区别：ldmatrix 的源 smem 地址也加 swizzle_permuted_*_j
-    uint32_t RA[VAL_TILE_M][4];
-    uint32_t RB[VAL_TILE_N][2];
+    // 内层 k_step 循环: flip → ldmatrix(k_step+1) → MMA, 乒乓交替
+    // 初始: st=0, ld=1, reg[0]=preload k_step=0; reg[1]=未初始化
+    // 每轮: flip→ldmatrix next k_step→reg[st], MMA reg[ld]（k_step+1 的 ldmatrix 条件化）
 
-    // ldmatrix.x4: 加载 A 的 m16k16 片段（row-major A，非转置）
 #pragma unroll
-    for (int i = 0; i < VAL_TILE_M; ++i) {
-      int warp_smem_a_m = warp_m * (MMA_M * VAL_TILE_M) + i * MMA_M;
-      int lane_smem_a_m = warp_smem_a_m + lane_id % 16;
-      int lane_smem_a_k = (lane_id / 16) * 8; // 0, 8
-      uint32_t lane_smem_a_ptr =
-          (smem_a_base_ptr +
-           (smem_sel * s_a_stage_offset + lane_smem_a_m * BK +
-            swizzle_permuted_A_j<MMA_K>(lane_smem_a_m, lane_smem_a_k)) *
-               sizeof(half));
-      LDMATRIX_X4(RA[i][0], RA[i][1], RA[i][2], RA[i][3], lane_smem_a_ptr);
-    }
+    for (int k_step = 0; k_step < VAL_TILE_K; ++k_step) {
+      reg_st_idx ^= 1; // 0 -> 1; 1 -> 0
+      reg_ld_idx ^= 1; // 1 -> 0; 0 -> 1
 
-    // ldmatrix.x2: 加载 B 的 k16n8 片段（非转置）
+      if (k_step + 1 < VAL_TILE_K) {
+        int smem_k_offset = (k_step + 1) * MMA_K;
 #pragma unroll
-    for (int j = 0; j < VAL_TILE_N; ++j) {
-      int warp_smem_b_n = warp_n * (MMA_N * VAL_TILE_N) + j * MMA_N;
-      int lane_smem_b_n = warp_smem_b_n + lane_id % 8;
-      int lane_smem_b_k = ((lane_id / 8) % 2) * 8; // 0, 8
-      uint32_t lane_smem_b_ptr =
-          (smem_b_base_ptr +
-           (smem_sel * s_b_stage_offset + lane_smem_b_n * BK +
-            swizzle_permuted_B_j<MMA_K>(lane_smem_b_n, lane_smem_b_k)) *
-               sizeof(half));
-      LDMATRIX_X2(RB[j][0], RB[j][1], lane_smem_b_ptr);
-    }
+        for (int i = 0; i < VAL_TILE_M; ++i) {
+          int warp_smem_a_m = warp_m * (MMA_M * VAL_TILE_M) + i * MMA_M;
+          int lane_smem_a_m = warp_smem_a_m + lane_id % 16;
+          int lane_smem_a_k = (lane_id / 16) * 8;
+          uint32_t lane_smem_a_ptr =
+              (smem_a_base_ptr +
+              (smem_sel * s_a_stage_offset + lane_smem_a_m * BK +
+                smem_k_offset +
+                swizzle_permuted_A_j<MMA_K>(lane_smem_a_m, lane_smem_a_k)) *
+                  sizeof(half));
+          LDMATRIX_X4(RA[reg_st_idx][i][0], RA[reg_st_idx][i][1],
+                      RA[reg_st_idx][i][2], RA[reg_st_idx][i][3],
+                      lane_smem_a_ptr);
+        }
+  #pragma unroll
+        for (int j = 0; j < VAL_TILE_N; ++j) {
+          int warp_smem_b_n = warp_n * (MMA_N * VAL_TILE_N) + j * MMA_N;
+          int lane_smem_b_n = warp_smem_b_n + lane_id % 8;
+          int lane_smem_b_k = ((lane_id / 8) % 2) * 8;
+          uint32_t lane_smem_b_ptr =
+              (smem_b_base_ptr +
+              (smem_sel * s_b_stage_offset + lane_smem_b_n * BK +
+                smem_k_offset +
+                swizzle_permuted_B_j<MMA_K>(lane_smem_b_n, lane_smem_b_k)) *
+                  sizeof(half));
+          LDMATRIX_X2(RB[reg_st_idx][j][0], RB[reg_st_idx][j][1],
+                      lane_smem_b_ptr);
+        }
+      }
 
-    // MMA compute: 每个Warp(MMA) 在M方向重复VAL_TILE_M(4)次，在N方向重复VAL_TILE_N(4)次
 #pragma unroll
-    for (int i = 0; i < VAL_TILE_M; ++i) {
+      for (int i = 0; i < VAL_TILE_M; ++i) {
 #pragma unroll
-      for (int j = 0; j < VAL_TILE_N; ++j) {
-        HMMA16816(RC[i][j][0], RC[i][j][1], // C fragment
-                  RA[i][0], RA[i][1], RA[i][2], RA[i][3], // A fragment
-                  RB[j][0], RB[j][1], // B fragment
-                  RC[i][j][0], RC[i][j][1]);
+        for (int j = 0; j < VAL_TILE_N; ++j) {
+          HMMA16816(RC[i][j][0], RC[i][j][1],
+                    RA[reg_ld_idx][i][0], RA[reg_ld_idx][i][1],
+                    RA[reg_ld_idx][i][2], RA[reg_ld_idx][i][3],
+                    RB[reg_ld_idx][j][0], RB[reg_ld_idx][j][1],
+                    RC[i][j][0], RC[i][j][1]);
+        }
       }
     }
 
-    // 自适应等待：流水线满载期用 K_STAGE-2，尾部排空用 0
+    // 自适应等待：满载期用 K_STAGE-2，尾部排空用 0
     if (k + K_STAGE - 1 < NUM_K_TILES) {
       CP_ASYNC_WAIT_GROUP(K_STAGE - 2);
     } else {
       CP_ASYNC_WAIT_GROUP(0);
     }
     __syncthreads();
-  }
 
-  // Epilogue: 寄存器 → global memory（通过 warp shuffle + 128-bit store）
-  // 与 hgemm_mma_stages_tn 完全一致的 epilogue 模式
-  {
-    for (int i = 0; i < VAL_TILE_M; ++i) {
-      uint32_t RC0[VAL_TILE_N][4];
-      uint32_t RC1[VAL_TILE_N][4];
+    // 从下一阶段加载 k_step=0 数据，供下一轮 k 迭代使用，此时 reg_st_idx=0
+    if (k + 1 < NUM_K_TILES) {
+      smem_sel = (k + 1) % K_STAGE; // old smem_sel + 1
+#pragma unroll
+      for (int i = 0; i < VAL_TILE_M; ++i) {
+        int warp_smem_a_m = warp_m * (MMA_M * VAL_TILE_M) + i * MMA_M;
+        int lane_smem_a_m = warp_smem_a_m + lane_id % 16;
+        int lane_smem_a_k = (lane_id / 16) * 8;
+        uint32_t lane_smem_a_ptr =
+            (smem_a_base_ptr +
+             (smem_sel * s_a_stage_offset + lane_smem_a_m * BK +
+              swizzle_permuted_A_j<MMA_K>(lane_smem_a_m, lane_smem_a_k)) *
+                 sizeof(half));
+        LDMATRIX_X4(RA[reg_st_idx][i][0], RA[reg_st_idx][i][1],
+                    RA[reg_st_idx][i][2], RA[reg_st_idx][i][3],
+                    lane_smem_a_ptr);
+      }
 #pragma unroll
       for (int j = 0; j < VAL_TILE_N; ++j) {
-        RC0[j][0] = RC[i][j][0];
-        RC1[j][0] = RC[i][j][1];
-        RC0[j][1] = __shfl_sync(0xffffffff, RC[i][j][0], lane_id + 1);
-        RC0[j][2] = __shfl_sync(0xffffffff, RC[i][j][0], lane_id + 2);
-        RC0[j][3] = __shfl_sync(0xffffffff, RC[i][j][0], lane_id + 3);
-        RC1[j][1] = __shfl_sync(0xffffffff, RC[i][j][1], lane_id + 1);
-        RC1[j][2] = __shfl_sync(0xffffffff, RC[i][j][1], lane_id + 2);
-        RC1[j][3] = __shfl_sync(0xffffffff, RC[i][j][1], lane_id + 3);
+        int warp_smem_b_n = warp_n * (MMA_N * VAL_TILE_N) + j * MMA_N;
+        int lane_smem_b_n = warp_smem_b_n + lane_id % 8;
+        int lane_smem_b_k = ((lane_id / 8) % 2) * 8;
+        uint32_t lane_smem_b_ptr =
+            (smem_b_base_ptr +
+             (smem_sel * s_b_stage_offset + lane_smem_b_n * BK +
+              swizzle_permuted_B_j<MMA_K>(lane_smem_b_n, lane_smem_b_k)) *
+                 sizeof(half));
+        LDMATRIX_X2(RB[reg_st_idx][j][0], RB[reg_st_idx][j][1],
+                    lane_smem_b_ptr);
       }
-      if (lane_id % 4 == 0) {
-        int store_warp_smem_c_m = warp_m * (MMA_M * VAL_TILE_M) + i * MMA_M;
-        int store_lane_gmem_c_m = by * BM + store_warp_smem_c_m + lane_id / 4;
+    }
+  }
+
+  // Epilogue: 复用 RA 寄存器做 warp shuffle → 128-bit collective store
+  for (int i = 0; i < VAL_TILE_M; ++i) {
 #pragma unroll
-        for (int j = 0; j < VAL_TILE_N; ++j) {
-          int store_warp_smem_c_n = warp_n * (MMA_N * VAL_TILE_N) + j * MMA_N;
-          int store_lane_gmem_c_n = bx * BN + store_warp_smem_c_n;
-          int store_gmem_c_addr_0 = store_lane_gmem_c_m * N + store_lane_gmem_c_n;
-          int store_gmem_c_addr_1 = (store_lane_gmem_c_m + 8) * N + store_lane_gmem_c_n;
-          *reinterpret_cast<float4 *>(&C[store_gmem_c_addr_0]) =
-              *reinterpret_cast<float4 *>(&RC0[j][0]);
-          *reinterpret_cast<float4 *>(&C[store_gmem_c_addr_1]) =
-              *reinterpret_cast<float4 *>(&RC1[j][0]);
-        }
+    for (int j = 0; j < VAL_TILE_N; ++j) {
+      RA[0][j][0] = RC[i][j][0];
+      RA[1][j][0] = RC[i][j][1];
+      RA[0][j][1] = __shfl_sync(0xffffffff, RC[i][j][0], lane_id + 1);
+      RA[0][j][2] = __shfl_sync(0xffffffff, RC[i][j][0], lane_id + 2);
+      RA[0][j][3] = __shfl_sync(0xffffffff, RC[i][j][0], lane_id + 3);
+      RA[1][j][1] = __shfl_sync(0xffffffff, RC[i][j][1], lane_id + 1);
+      RA[1][j][2] = __shfl_sync(0xffffffff, RC[i][j][1], lane_id + 2);
+      RA[1][j][3] = __shfl_sync(0xffffffff, RC[i][j][1], lane_id + 3);
+    }
+    if (lane_id % 4 == 0) {
+      int store_warp_smem_c_m = warp_m * (MMA_M * VAL_TILE_M) + i * MMA_M;
+      int store_lane_gmem_c_m = by * BM + store_warp_smem_c_m + lane_id / 4;
+#pragma unroll
+      for (int j = 0; j < VAL_TILE_N; ++j) {
+        int store_warp_smem_c_n = warp_n * (MMA_N * VAL_TILE_N) + j * MMA_N;
+        int store_lane_gmem_c_n = bx * BN + store_warp_smem_c_n;
+        int store_gmem_c_addr_0 =
+            store_lane_gmem_c_m * N + store_lane_gmem_c_n;
+        int store_gmem_c_addr_1 =
+            (store_lane_gmem_c_m + 8) * N + store_lane_gmem_c_n;
+        *reinterpret_cast<float4 *>(&C[store_gmem_c_addr_0]) =
+            *reinterpret_cast<float4 *>(&RA[0][j][0]);
+        *reinterpret_cast<float4 *>(&C[store_gmem_c_addr_1]) =
+            *reinterpret_cast<float4 *>(&RA[1][j][0]);
       }
     }
   }
@@ -2007,7 +2092,7 @@ template <typename T, int BM, int BN, int BK, int kStage, typename TiledMMA,
           typename G2SCopyA, typename G2SCopyB, typename SmemLayoutA,
           typename SmemLayoutB, typename SmemLayoutC, typename S2RCopyAtomA,
           typename S2RCopyAtomB, typename R2SCopyAtomC, typename S2GCopyAtomC,
-          typename S2GCopyC>
+          typename S2GCopyC, const bool BlockSwizzle = false>
 __global__ void hgemm_mma_stages_tn_cute(T *Aptr, T *Bptr, T *Dptr, int m,
                                          int n, int k) {
   using namespace cute;
@@ -2018,7 +2103,8 @@ __global__ void hgemm_mma_stages_tn_cute(T *Aptr, T *Bptr, T *Dptr, int m,
   T *Bshm = shm_data + cute::cosize(SmemLayoutA{});
 
   int idx = threadIdx.x;
-  int ix = blockIdx.x; // N 方向 block 索引（本实现默认不开启 BlockSwizzle）
+  // BlockSwizzle: 0/1 控制是否启用 thread block swizzle，改善 L2 cache 局部性
+  int ix = ((int)BlockSwizzle) * blockIdx.z * gridDim.x + blockIdx.x;
   int iy = blockIdx.y; // M 方向 block 索引
   // 当前 kernel 只有 CTA 级边界判断，没有 tile 内的逐元素 predication；调用方需保证
   // M % BM == 0、N % BN == 0、K % BK == 0，才能避免边界 tile 的越界访问或未写回。
@@ -2554,15 +2640,20 @@ void launch_hgemm_mma_stages_tn_cute(T *a, T *b, T *c, int M, int N, int K) {
   // ── Grid/Block 配置 ──
   // kernel 用法: 
   // int idx = threadIdx.x;         // 0..127
-  // int ix = blockIdx.x;           // N 方向 CTA 坐标
+  // int ix = ((int)BlockSwizzle) * blockIdx.z * gridDim.x + blockIdx.x;
   // int iy = blockIdx.y;           // M 方向 CTA 坐标
   // if (iy * BM >= m || ix * BN >= n) return;  // CTA 级边界保护
   // 由于 kernel 没有 tile 内的逐元素 predication，调用方需保证
   // M % BM == 0、N % BN == 0、K % BK == 0。
+  // 当不启用 BlockSwizzle 时，BZ=1 退化为纯 2D grid，行为不变。
+  constexpr bool kBlockSwizzle = false;
+  constexpr int kSwizzleStride = 2048;
   int BX = (N + BN - 1) / BN;
   int BY = (M + BM - 1) / BM;
+  int BZ = kBlockSwizzle ? (N + kSwizzleStride - 1) / kSwizzleStride : 1;
+  BX = kBlockSwizzle ? (BX + BZ - 1) / BZ : BX;
   dim3 block(size(MMA{}));   // 128 threads (= size(TiledMMA))
-  dim3 grid(BX, BY);
+  dim3 grid(BX, BY, BZ);
 
   // ── Dynamic Shared Memory 大小 ──
   // kernel 用法: 
@@ -2586,12 +2677,13 @@ void launch_hgemm_mma_stages_tn_cute(T *a, T *b, T *c, int M, int N, int K) {
       hgemm_mma_stages_tn_cute<T, BM, BN, BK, KStage, MMA, G2SCopyA, G2SCopyB,
                                 SmemLayoutA, SmemLayoutB, SmemLayoutC,
                                 S2RCopyAtomA, S2RCopyAtomB, R2SCopyAtomC,
-                                S2GCopyAtomC, S2GCopyC>,
+                                S2GCopyAtomC, S2GCopyC, kBlockSwizzle>,
       cudaFuncAttributeMaxDynamicSharedMemorySize, kShmSize);
 
   hgemm_mma_stages_tn_cute<T, BM, BN, BK, KStage, MMA, G2SCopyA, G2SCopyB,
                             SmemLayoutA, SmemLayoutB, SmemLayoutC, S2RCopyAtomA,
-                            S2RCopyAtomB, R2SCopyAtomC, S2GCopyAtomC, S2GCopyC>
+                            S2RCopyAtomB, R2SCopyAtomC, S2GCopyAtomC, S2GCopyC,
+                            kBlockSwizzle>
       <<<grid, block, kShmSize>>>(a, b, c, M, N, K);
 }
 
@@ -4835,8 +4927,11 @@ static void test_hgemm_mma(int M, int N, int K) {
 
 static void test_hgemm_swizzle(int M, int N, int K) {
   // HGEMM MMA Swizzle — m16n8k16 + multistage pipeline + TN 布局 + XOR swizzle
+  //   + Register Double Buffering (VAL_TILE_K=2, BK=32)
   // TN layout: C[M×N] = A[M×K] × B^T[N×K]
   // Kernel: hgemm_mma_stages_tn_swizzle with default template params
+  //   (VAL_TILE_K=2, K_STAGE=3, BK=32)
+  // smem: K_STAGE × (BM×BK + BN×BK) halfs
 
   size_t size_a = (size_t)M * K * sizeof(half);
   size_t size_b = (size_t)K * N * sizeof(half);
@@ -4877,8 +4972,8 @@ static void test_hgemm_swizzle(int M, int N, int K) {
                CUBLAS_COMPUTE_16F, CUBLAS_GEMM_DEFAULT);
   check(cudaMemcpy(h_c_ref, d_c, size_c, cudaMemcpyDeviceToHost), "hgemm_swizzle D2H ref");
 
-  // MMA swizzle kernel (default params: K_STAGE=3)
-  constexpr int BM = 128, BN = 128, BK = 16, K_STAGE_S = 3;
+  // MMA swizzle kernel (default params: K_STAGE=3, VAL_TILE_K=2, BK=32)
+  constexpr int BM = 128, BN = 128, BK = 32, K_STAGE_S = 3;
   size_t smem_bytes = K_STAGE_S * (BM * BK + BN * BK) * sizeof(half);
   dim3 block(256);
   dim3 grid((N + BN - 1) / BN, (M + BM - 1) / BM);
@@ -4895,7 +4990,7 @@ static void test_hgemm_swizzle(int M, int N, int K) {
     float err = fabsf(__half2float(h_c[i]) - __half2float(h_c_ref[i]));
     if (err > max_err) max_err = err;
   }
-  printf("| %-35s | %.6e | %-4s |\n", "HGEMM MMA Swizzle", max_err, max_err < 1.0f ? "PASS" : "FAIL");
+  printf("| %-35s | %.6e | %-4s |\n", "HGEMM Swizzle+Reg2x", max_err, max_err < 1.0f ? "PASS" : "FAIL");
 
   free(h_a); free(h_b); free(h_b_t); free(h_c); free(h_c_ref);
   cudaFree(d_a); cudaFree(d_b); cudaFree(d_b_t); cudaFree(d_c);
