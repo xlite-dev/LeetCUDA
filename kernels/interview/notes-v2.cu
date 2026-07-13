@@ -2122,7 +2122,7 @@ __global__ void hgemm_mma_stages_tn_cute(T *Aptr, T *Bptr, T *Dptr, int m,
     //        K 被分为 BK/kMmaPK 个 perm-K slice
     //     随后按 AtomShape_MNK<2>（MMA_K_atom）做 zipped_divide
     //     每个 perm-K 含 kMmaEURepeatK 个 atom-K slice
-    //   → partition_A 选当前线程后，K-mode size = BK / kMmaPK
+    //   → partition_A 选当前线程后，K-mode size = BK / kMmaPK = 32 / 16 = 2
     // 本配置：kMmaPK=16（MMA_K_atom=16 × kMmaEURepeatK=1），BK=32 → num_k_steps=2
     int num_k_steps = size<2>(tCrA);
 
@@ -2171,19 +2171,64 @@ __global__ void hgemm_mma_stages_tn_cute(T *Aptr, T *Bptr, T *Dptr, int m,
 
   // Epilogue: D 寄存器 → shared memory → global memory。
   // 使用当前 A stage 作为 C scratchpad，避免为 epilogue 单独分配完整的 C shared memory。
+  // 这里是“复用 storage”，不是把 A Tensor 转换成 C Tensor：
+  //   sA 的逻辑 shape 是 (BM, BK, kStage)=(128,32,2)，而 sA(_,_,ismem_read)
+  //   只选出其中一个 A-stage 的 storage 起点；sC 随后以完全独立的 SmemLayoutC
+  //   解释这同一段地址。当前 wrapper 的固定配置下：
+  //     一个 A stage: 128 x 32 = 4096 个 half；
+  //     C scratchpad: 32 x 32 x 4 = 4096 个 half。
+  //   两者容量刚好相等，但 logical shape 和 layout 不是同一个：A 的 layout atom
+  //   是 8x32，C 的 layout atom 是 32x32，二者都含 Swizzle<3,3,3>，却不能把
+  //   C 数据再按 SmemLayoutA 读取。launch wrapper 的 static_assert 用当前配置
+  //   检查 C scratchpad 能放进一个 A pipe；此处只别名该单个 stage，不是整块双缓冲 sA。
+  //
+  // mainloop 已结束，不会再通过 sA 的 A/B load view 消费这个 pipe 的旧 A 数据。
+  // 从这一行开始，对这块地址的所有访问都通过 SmemLayoutC 派生的 sC 完成：R2S
+  // 用它写 C，S2G 也用它读 C。因此 C 的 swizzle/address mapping 在写和读两侧一致。
   auto sC = make_tensor(sA(_, _, ismem_read).data(), SmemLayoutC{});
 
   // R2S TiledCopy: 寄存器 → shared memory（使用 UniversalCopy 做类型转换）
+  // R2SCopyAtomC = Copy_Atom<UniversalCopy<int>, T>; 以 32-bit 粒度搬运 T 数据
   auto r2s_tiled_copy_c = make_tiled_copy_C(R2SCopyAtomC{}, tiled_mma);
   auto r2s_thr_copy_c = r2s_tiled_copy_c.get_slice(idx);
-  auto tCrC_r2s = r2s_thr_copy_c.retile_S(tCrD);    // (CPY, CPY_M, CPY_N)
-  auto tCsC_r2s = r2s_thr_copy_c.partition_D(sC);   // (CPY, _1, _1, pipe)
+  // tCrD 是 TiledMMA 产生的 accumulator fragment，逻辑 shape 为
+  // (MMA, MMA_M, MMA_N)。它的寄存器元素已经就位，但该 layout 是为 MMA
+  // accumulator 服务的，并不直接按 R2S copy atom 的 source-value 顺序表达。
+  //
+  // retile_S 中的 S 指“这个 TiledCopy 的 source side”，不是 shared memory。
+  // 它基于 r2s_tiled_copy_c 的 reference layout 创建一个共享 tCrD.data() 的
+  // zero-copy layout view，将逻辑坐标表示为 (CPY, CPY_M, CPY_N)。这一步不读取
+  // 或写入寄存器/共享内存，不进行 dtype conversion，也不交换 lane 间数据；真正的
+  // R2S 数据搬运发生在下面的 cute::copy(r2s_tiled_copy_c, ..., tCsC_r2s(...))。
+  // 可将它与主循环的 s2r_thr_copy_a.retile_D(tCrA) 对照：二者都是为了让已有
+  // fragment 的 per-thread value ordering 匹配某个 TiledCopy 的 source/destination
+  // 角色，而不是另一次 memory transfer。
+  // tCrD: (MMA, MMA_M, MMA_N) -> retile -> tCrC_r2s: (CPY, CPY_M, CPY_N)
+  auto tCrC_r2s = r2s_thr_copy_c.retile_S(tCrD); // (CPY, CPY_M, CPY_N)
+  // get_slice(idx) 已固定 CTA 内当前 logical copy thread；partition_D 再按
+  // R2S TiledCopy 的 destination mapping 切分 sC。推导链：
+  //   MMA_P_T = Tile<kMmaPM, kMmaPN, kMmaPK> = Tile<32, 32, 16>
+  //     → TiledMMA::tile_size<0>(mma) = 32, tile_size<1>(mma) = 32
+  //     → make_tiled_copy_C 的 tiler = (32, 32)
+  //     → SmemLayoutC 的逻辑 M×N = (kMmaPM, kMmaPN) = (32, 32) 恰好等于该 tiler
+  //     → partition_D: zipped_divide(sC, tiler=(32,32)) 后 M/N 维无 remainder
+  //     → 结果 shape 的 M/N remainder = _1, _1
+  // 最后一维 pipe=4 来自 SmemLayoutC 的第三维 kSmemLayoutCBatch，而不是
+  // “thread-level tensor 自动只剩 CPY”这一条规则。_1 表示该逻辑 mode 的 extent
+  // 是 1，并非该 mode 被删除或 C tile 没有 M/N 覆盖。
+  auto tCsC_r2s = r2s_thr_copy_c.partition_D(sC); // (CPY, _1, _1, pipe)
 
   // S2G TiledCopy: shared memory → global memory（128-bit store）
+  // S2GCopyAtomC(Copy_Atom<UniversalCopy<cute::uint128_t>, T>) -> S2GCopyC
   S2GCopyC s2g_tiled_copy_c;
-  auto s2g_thr_copy_c = s2g_tiled_copy_c.get_thread_slice(idx);
-  auto tCsC_s2g = s2g_thr_copy_c.partition_S(sC);    // (CPY, _1, _1, pipe)
-  auto tCgC_s2g = s2g_thr_copy_c.partition_D(gD);    // (CPY, CPY_M, CPY_N)
+  auto s2g_thr_copy_c = s2g_tiled_copy_c.get_slice(idx);
+  // tCsC_s2g 与 tCsC_r2s 都从同一个 sC 产生，因而保留相同的 pipe=4；前者是
+  // S2G source mapping，后者是 R2S destination mapping。tCgC_s2g 则面向完整
+  // gD=(BM,BN)=(128,256)，相对于 S2G copy tiler 仍有非平凡的 M/N repetition，
+  // 所以它保留 CPY_M、CPY_N。这里的 CPY/CPY_M/CPY_N 都是编译期 copy-partition
+  // 的逻辑 mode，不应直接理解为固定的 lane 数、warp 数或物理连续维度。
+  auto tCsC_s2g = s2g_thr_copy_c.partition_S(sC); // (CPY, _1, _1, pipe)
+  auto tCgC_s2g = s2g_thr_copy_c.partition_D(gD); // (CPY, CPY_M, CPY_N)
 
   // group_modes<B,E> 将 layout 的半开区间 [B,E) 组合成一个嵌套 mode：
   //   group_modes<1,3>(Tensor(CPY, CPY_M, CPY_N))
@@ -2192,6 +2237,11 @@ __global__ void hgemm_mma_stages_tn_cute(T *Aptr, T *Bptr, T *Dptr, int m,
   // 第二个 mode 仍然保存原来 CPY_M/CPY_N 的层次关系，只是现在可以用一个坐标
   // i+j 访问这个组合 mode；因此这里的 group_modes 更准确地说是“合并 mode”，
   // 而不是把底层数据拷贝或无条件 flatten 成普通一维数组。
+  // 从 type/shape 结构看，结果确实是 Tensor(CPY, (CPY_M, CPY_N))；但 grouped
+  // mode 的 cardinality 是两个子 mode 的乘积，因此 size<1>(...) 可作为一个标量
+  // 范围遍历其全部 logical coordinate。于是 (_, i+j) 中的 i+j 是该 nested mode
+  // 的线性 logical coordinate，不是在 C++ 中对二维 tuple 做加法，更不是 raw
+  // pointer offset；最终物理地址仍由各自 Tensor 的 grouped layout 计算。
   //
   // 这里为什么要对 tCrC_r2s 和 tCgC_s2g 同时 group？
   //   - tCrC_r2s: 每个线程持有的寄存器 C fragment，原始形状为 (CPY, CPY_M, CPY_N)；
@@ -2204,6 +2254,9 @@ __global__ void hgemm_mma_stages_tn_cute(T *Aptr, T *Bptr, T *Dptr, int m,
   // 每一轮可以复用的 C shared-memory pipeline 深度。外层 i 在合并后的 C 元素空间中
   // 按 step 前进，内层 j 选择当前 pipeline slot：寄存器先写入 sC(_,0,0,j)，
   // 再从同一个 slot 写回 global memory。
+  // 当前 kSmemLayoutCBatch=4，因此 step=4。代码未对 i+j 做尾部 predication，
+  // 这个循环依赖当前静态 layout 中 grouped extent 能被 pipe depth 整除；不应将
+  // “每轮正好处理 4 个 fragment”误认为任意 tile/copy 配置都自动成立的通用规则。
   auto tCgC_s2gx = group_modes<1, 3>(tCgC_s2g);
   auto tCrC_r2sx = group_modes<1, 3>(tCrC_r2s);
 
@@ -2214,19 +2267,48 @@ __global__ void hgemm_mma_stages_tn_cute(T *Aptr, T *Bptr, T *Dptr, int m,
     // R→S: 寄存器写回 shared memory 的第 j 个 pipe slot。
 #pragma unroll
     for (int j = 0; j < step; ++j) {
+      // 这两行是 R2R staging：make_tensor_like<T> 分配当前线程私有、拥有 storage
+      // 的 register Tensor；普通 cute::copy 将 accumulator fragment materialize
+      // 成输出元素类型 T 的临时 payload。上游同源实现保留该步骤以兼容 accumulator
+      // dtype 与 output dtype 不同的情形；当前 T=half 的配置可能退化为简单 move，
+      // 但仍保留通用的 type-adaptation 结构。
+      //
+      // 这不是 retile_S 的一部分，也不是 warp shuffle：源/目的都在当前线程的
+      // register 中，代码没有显式 __shfl_sync。不能仅根据这段 C++ 断言最终 SASS
+      // 绝不会含 shuffle；但语义上的跨线程 regrouping 不由此 R2R copy 承担，而是
+      // 由随后的 R2S -> shared memory -> S2G 路径完成。若特定 accumulator/output
+      // type 与 R2S copy-atom contract 已直接兼容，可以设计直接 R2S 的变体；本例
+      // 保持同源实现的通用 staging 写法。
       auto t = make_tensor_like<T>(tCrC_r2sx(_, i + j));
       cute::copy(tCrC_r2sx(_, i + j), t);
+      // R2S 的 copy atom 才在此处将 thread-local payload 写入 j 号 C scratchpad
+      // slot；SmemLayoutC 定义写入后的跨线程地址重组。
       cute::copy(r2s_tiled_copy_c, t, tCsC_r2s(_, 0, 0, j));
     }
+    // 这是 CTA 范围的 rendezvous：所有线程完成当前批 R2S 写入后，S2G 才能从
+    // sC 的重组布局读取完整数据。它承担了手写版中显式跨 lane 拼接所需的协作边界。
     __syncthreads();
 
     // S→G: 从同一个 pipe slot 读回 global memory，保持源/目的坐标一一对应。
 #pragma unroll
     for (int j = 0; j < step; ++j) {
+      // S2GCopyC 的 atom 为 UniversalCopy<uint128_t>：在满足本实例 layout/alignment
+      // 条件时，它以 128-bit 粒度将 shared-memory 中已重组的 C 数据写回 global。
       cute::copy(s2g_tiled_copy_c, tCsC_s2g(_, 0, 0, j), tCgC_s2gx(_, i + j));
     }
+    // 所有线程都完成当前 pipe slots 的 S2G 读取后，下一轮 R2S 才能覆盖这 4 个
+    // scratchpad slots，避免一部分线程仍在读取旧数据时被其他线程提前重写。
     __syncthreads();
   }
+
+  // 与 hgemm_mma_stages_tn 的手写 epilogue 对照：手写版必须显式处理 MMA fragment
+  // 的物理分布，使用 RC0/RC1 暂存，再用 __shfl_sync 从同一 warp 的相邻 lane 收齐
+  // 8 个 half，并由 lane_id % 4 == 0 的线程做 float4 (128-bit) global store。
+  // CuTe 版没有把这些 lane 映射写死在 kernel 源码中：retile_S 表达 accumulator
+  // fragment 与 R2S copy 的对应，R2S/sC/S2G 通过 shared-memory scratchpad 完成
+  // CTA 范围的数据重组，S2GCopyC 以 uint128_t 表达 wide store。两者的共同目标都是
+  // 将分散在计算线程寄存器中的 C fragment 变为适合连续 global-memory 写回的布局；
+  // 区别是手写版直接编排 shuffle/store，CuTe 版将映射交给 TiledMMA/TiledCopy 类型推导。
 }
 
 // =============================================================================
