@@ -2261,17 +2261,43 @@ __global__ void hgemm_mma_stages_tn_cute(T *Aptr, T *Bptr, T *Dptr, int m,
   auto tCrC_r2sx = group_modes<1, 3>(tCrC_r2s);
 
   int step = size<3>(tCsC_r2s); // C scratchpad 的 pipe 数（由 kSmemLayoutCBatch=4 指定）
+  // 双层循环的语义（注意 step 与 CPY_N 无关）：
+  //   group_modes<1,3> 之后，tCrC_r2sx 的 shape 为 (CPY, (CPY_M, CPY_N))。
+  //   size<1>(tCrC_r2sx) = CPY_M * CPY_N，即该线程需处理的 C fragment 总数。
+  //   外循环以 step=4 为步长，内循环 j=0..3 每次处理 1 个 fragment，将其写入
+  //   第 j 号 C scratchpad pipe slot，再读出写回 global。
+  //
+  //   这里 step=4 是 scratchpad pipeline 深度，不是 CPY_N。CPY_N 的值取决于
+  //   TiledMMA 的 C-layout 如何将 (128,256) 的 gD tile 分配到 128 个线程上，
+  //   通常 ≠ 4。循环之所以成立，是因为 grouped mode 用线性坐标 i+j 遍历整个
+  //   CPY_M * CPY_N 的扁平空间——它不再区分 M 和 N 方向，也不要求 CPY_N == step。
+  //   唯一前提是 CPY_M * CPY_N 能被 step 整除（当前静态 layout 编译期保证）。
+  //
+  //   第 j 号 pipe slot 在 sC 上的物理地址由 R2S partition_D / S2G partition_S
+  //   各自推导；因为二者都从同一个 sC（SmemLayoutC）出发，pipe mode 保持一致，
+  //   写入和读取命中同一段 shared memory。
 #pragma unroll
   for (int i = 0; i < size<1>(tCrC_r2sx); i += step) {
-    // 每轮处理 step 个合并后的 C fragment，i 是合并 mode 的起始坐标。
-    // R→S: 寄存器写回 shared memory 的第 j 个 pipe slot。
+    // 每轮处理 step 个 fragment，内层 j 选 pipe slot。
 #pragma unroll
     for (int j = 0; j < step; ++j) {
       // 这两行是 R2R staging：make_tensor_like<T> 分配当前线程私有、拥有 storage
       // 的 register Tensor；普通 cute::copy 将 accumulator fragment materialize
-      // 成输出元素类型 T 的临时 payload。上游同源实现保留该步骤以兼容 accumulator
-      // dtype 与 output dtype 不同的情形；当前 T=half 的配置可能退化为简单 move，
-      // 但仍保留通用的 type-adaptation 结构。
+      // 成输出元素类型 T 的临时 payload。
+      //
+      // cute::copy（无 copy-atom 的普通版）内部按元素做
+      //   dst(i) = static_cast<T>(static_cast<SrcType>(src(i)))
+      // 因此当 accumulator 与 T 类型不同时，它自动完成 dtype 转换；当二者相同
+      // （如本 kernel 的 f16 accumulator + T=half），cast 退化为 no-op。
+      //
+      // 即使类型一致，t 还有一个不可省略的作用：layout 归一化。
+      // tCrC_r2sx(_, i+j) 的 layout 是 retile_S → group_modes → slice 层层
+      // 叠加的 composed layout，而 make_tensor_like<T> + cute::copy 把它
+      // 物化到一个拥有简单 strides 的 owning register Tensor 中。后续
+      // r2s_tiled_copy_c 的 copy_unpack 需要按 copy-atom 的 val-layout
+      // 拆分 source 元素，简单 owning layout 比复杂的 composed layout 更容易
+      // 被编译器推导内联。上游同源实现将其概括为"cope with accumulator and
+      // output data type difference"，实际承担了类型适配和 layout 归一化两个职责。
       //
       // 这不是 retile_S 的一部分，也不是 warp shuffle：源/目的都在当前线程的
       // register 中，代码没有显式 __shfl_sync。不能仅根据这段 C++ 断言最终 SASS
@@ -2283,6 +2309,24 @@ __global__ void hgemm_mma_stages_tn_cute(T *Aptr, T *Bptr, T *Dptr, int m,
       cute::copy(tCrC_r2sx(_, i + j), t);
       // R2S 的 copy atom 才在此处将 thread-local payload 写入 j 号 C scratchpad
       // slot；SmemLayoutC 定义写入后的跨线程地址重组。
+      //
+      // cute::copy(r2s_tiled_copy_c, src, dst) 的调用链路：
+      //   r2s_tiled_copy_c 是 TiledCopy，但继承自 Copy_Atom<UniversalCopy<int>,T>
+      //   → 匹配 copy(Copy_Atom<...> const&, src, dst) 重载 [copy.hpp:~L190]
+      //   → src(t) 与 dst(tCsC_r2s(_,0,0,j)) 都是 rank-1 → 直接 copy_atom.call
+      //   → copy_atom.call 内部：若 size(src)==NumValSrc（atom 编译期 val-count），
+      //     走 copy_unpack；否则递归剥 mode，最终都落到 UniversalCopy<int>::copy
+      //     → 硬件层面就是逐 uint32_t 的 register-to-smem store [arch/copy.hpp:~L46]
+      //
+      //   这里没有任何运行时"查找表"：t 的第 i 个元素之所以对应 dst 的第 i 个
+      //   shared memory offset，是因为 pre-partition 阶段已经把映射烧进 layout 了：
+      //     - t 的 layout 来自 retile_S → group_modes → slice → make_tensor_like
+      //       → 元素顺序已按 R2S atom 的 source-side value ordering 排好
+      //     - tCsC_r2s 的 layout 来自 r2s_thr_copy_c.partition_D(sC)
+      //       → TiledCopy::tidfrg_D 用 LayoutCopy_TV + Tiler_MN + ValLayoutDst
+      //         计算了当前线程每个 val 在 smem 中的物理 offset
+      //   两者共享同一个 copy atom 的 ValLayoutSrc/ValLayoutDst 定义，
+      //   因此逐元素 copy 天然把正确的数据写到了正确的地址。
       cute::copy(r2s_tiled_copy_c, t, tCsC_r2s(_, 0, 0, j));
     }
     // 这是 CTA 范围的 rendezvous：所有线程完成当前批 R2S 写入后，S2G 才能从
@@ -2292,8 +2336,33 @@ __global__ void hgemm_mma_stages_tn_cute(T *Aptr, T *Bptr, T *Dptr, int m,
     // S→G: 从同一个 pipe slot 读回 global memory，保持源/目的坐标一一对应。
 #pragma unroll
     for (int j = 0; j < step; ++j) {
-      // S2GCopyC 的 atom 为 UniversalCopy<uint128_t>：在满足本实例 layout/alignment
-      // 条件时，它以 128-bit 粒度将 shared-memory 中已重组的 C 数据写回 global。
+      // S2GCopyC 的 atom 为 UniversalCopy<uint128_t>：与 R2S 的 UniversalCopy<int>
+      // （32-bit）不同，它一次搬运 128-bit（8 个 half），映射为一条 wide store
+      // （如 st.global.v4.f32 或 st.global.b128）。
+      //
+      // cute::copy(s2g_tiled_copy_c, src, dst) 的调用链路：
+      //   s2g_tiled_copy_c 是 TiledCopy，继承自 Copy_Atom<UniversalCopy<uint128_t>,T>
+      //   → 匹配 copy(Copy_Atom<...> const&, src, dst) 重载 [copy.hpp:~L190]
+      //   → src=tCsC_s2g(_,0,0,j) 与 dst=tCgC_s2gx(_,i+j) 都是 rank-1
+      //   → 直接 copy_atom.call(src, dst)
+      //   → copy_atom.call 内部：size(src)==NumValSrc → copy_unpack
+      //     → 逐 128-bit chunk 调用 UniversalCopy<uint128_t>::copy
+      //     → 硬件层面就是 shared-memory-to-global wide store [arch/copy.hpp:~L46]
+      //
+      // S2G 的 pre-partition 与 R2S 对称，但 source/destination 角色互换：
+      //   - tCsC_s2g 来自 s2g_thr_copy_c.partition_S(sC)：TiledCopy::tidfrg_S
+      //     用 LayoutCopy_TV + Tiler_MN + ValLayoutSrc 计算了当前线程每个 val
+      //     在 sC（shared memory）中的物理 offset。
+      //     S2GCopyC 的 tiler = product(ThrLayout{32,4}, ValLayout{1,8})
+      //                        = (32×1, 4×8) = (32, 32) — 恰好与 R2S tiler 相同，
+      //     因此 tCsC_s2g 也是 (CPY, _1, _1, pipe)，_1,_1 来自 sC=(32,32,4) 无
+      //     M/N remainder。
+      //   - tCgC_s2gx(_, i+j) 来自 s2g_thr_copy_c.partition_D(gD) → group_modes
+      //     → slice。gD=(128,256) 相对于 tiler (32,32) 有 4×8 个 tile repetition，
+      //     因此 tCgC_s2g 为 (CPY, CPY_M, CPY_N)，group_modes<1,3> 合并 M/N
+      //     repetition 后得到 (CPY, (CPY_M,CPY_N))，再用线性坐标 i+j 切片。
+      //   两者共享同一个 copy atom 的 ValLayoutSrc/ValLayoutDst 定义，
+      //   因此逐 chunk copy 天然从正确的 smem 地址读到正确的 gmem 地址。
       cute::copy(s2g_tiled_copy_c, tCsC_s2g(_, 0, 0, j), tCgC_s2gx(_, i + j));
     }
     // 所有线程都完成当前 pipe slots 的 S2G 读取后，下一轮 R2S 才能覆盖这 4 个
