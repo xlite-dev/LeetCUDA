@@ -1755,11 +1755,13 @@ __global__ void __launch_bounds__(256)
   const int tid = threadIdx.y * blockDim.x + threadIdx.x;
   const int warp_id = tid / WARP_SIZE;
   const int lane_id = tid % WARP_SIZE;
-  const int warp_m = warp_id % 2;      // 0,1（M 方向 2 个 warp）
-  const int warp_n = warp_id / 2;      // 0,1,2,3（N 方向 4 个 warp）
+  const int warp_m = warp_id % 2; // 0,1（M 方向 2 个 warp）
+  const int warp_n = warp_id / 2; // 0,1,2,3（N 方向 4 个 warp）
 
   // 线程到 global memory 的映射（用于加载 A 和 B）共 256 个线程
   // TN 布局关键: A[m*K+k] 是 row-major, B^T[n*K+k] 是 row-major（内维连续的是 K）
+  // 注意：smem_a_k 和 smem_b_k 依然使用 0/8，虽然BK=16*2=32，在后续的kValTileK循环中
+  // 会加上 k_step*kMmaK=0/16，最终得到 smem 中的列偏移 0/8/16/24，正好覆盖 BK=32
   int load_smem_a_m = tid / 2;                // 0~127
   int load_smem_a_k = (tid % 2 == 0) ? 0 : 8; // 0, 8
   int load_smem_b_n = tid / 2; // 0~127 → B^T 的 N 方向（row-major 的行）
