@@ -3005,8 +3005,7 @@ __global__ void __launch_bounds__(kNumThreads)
         int M, int N, int K, half *C,
         const CUtensorMap *__restrict__ tensorMapA,
         const CUtensorMap *__restrict__ tensorMapB) {
-  static_assert(kBlockSwizzle == 0 || kBlockSwizzle == 1,
-                "kBlockSwizzle must be 0 or 1");
+  static_assert(kBlockSwizzle == 0 || kBlockSwizzle == 1, "kBlockSwizzle must be 0 or 1");
   // 注意：tensorMapA/tensorMapB 需要由 host 侧按当前 tile 布局预先创建；
   // 对 row-major [M, K] 矩阵，TMA shape 参数写的是 (K, M) 而不是 (M, K)，
   // 也就是TMA descriptor中把连续的维度写在最内层，非连续的维度写在最外层。
