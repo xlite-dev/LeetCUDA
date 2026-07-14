@@ -205,22 +205,22 @@ __device__ __forceinline__ T warp_reduce_max(T val) {
 // 两级归约流程：
 //   1. 每个 warp 内做 warp_reduce_sum → 得到每 warp 的一个值
 //   2. warp leader (lane=0) 写入 shared memory
-//   3. syncthreads 后，lane 0~NUM_WARPS-1 读取 shared memory
-//   4. 所有 warp 内再做一次 warp_reduce<NUM_WARPS> → 得到最终结果
-//   5. __shfl_sync broadcast 到所有线程（关键！否则每个warp只有lane<NUM_WARPS 知道结果）
-template <const int NUM_THREADS = 256>
+//   3. syncthreads 后，lane 0~kNumWarps-1 读取 shared memory
+//   4. 所有 warp 内再做一次 warp_reduce<kNumWarps> → 得到最终结果
+//   5. __shfl_sync broadcast 到所有线程（关键！否则每个warp只有lane<kNumWarps 知道结果）
+template <const int kNumThreads = 256>
 __device__ float block_reduce_sum(float val) {
-  constexpr int NUM_WARPS = (NUM_THREADS + WARP_SIZE - 1) / WARP_SIZE;
+  constexpr int kNumWarps = (kNumThreads + WARP_SIZE - 1) / WARP_SIZE;
   int warp = threadIdx.x / WARP_SIZE;
   int lane = threadIdx.x % WARP_SIZE;
-  __shared__ float shared[NUM_WARPS];
+  __shared__ float shared[kNumWarps];
 
   float value = warp_reduce_sum<WARP_SIZE>(val);
   if (lane == 0)
     shared[warp] = value;
   __syncthreads();
-  value = (lane < NUM_WARPS) ? shared[lane] : 0.0f;
-  value = warp_reduce_sum<NUM_WARPS>(value);
+  value = (lane < kNumWarps) ? shared[lane] : 0.0f;
+  value = warp_reduce_sum<kNumWarps>(value);
   // 关键：broadcast 结果到所有线程，后续用 result
   // 做除法等操作时所有线程都能拿到
   value = __shfl_sync(0xffffffff, value, 0, 32);
@@ -228,19 +228,19 @@ __device__ float block_reduce_sum(float val) {
 }
 
 // Block Reduce Max — FP32（增强版，带 broadcast）
-template <const int NUM_THREADS = 256>
+template <const int kNumThreads = 256>
 __device__ float block_reduce_max(float val) {
-  constexpr int NUM_WARPS = (NUM_THREADS + WARP_SIZE - 1) / WARP_SIZE;
+  constexpr int kNumWarps = (kNumThreads + WARP_SIZE - 1) / WARP_SIZE;
   int warp = threadIdx.x / WARP_SIZE;
   int lane = threadIdx.x % WARP_SIZE;
-  __shared__ float shared[NUM_WARPS];
+  __shared__ float shared[kNumWarps];
 
   float value = warp_reduce_max<WARP_SIZE>(val);
   if (lane == 0)
     shared[warp] = value;
   __syncthreads();
-  value = (lane < NUM_WARPS) ? shared[lane] : -FLT_MAX;
-  value = warp_reduce_max<NUM_WARPS>(value);
+  value = (lane < kNumWarps) ? shared[lane] : -FLT_MAX;
+  value = warp_reduce_max<kNumWarps>(value);
   value = __shfl_sync(0xffffffff, value, 0, 32);
   return value;
 }
@@ -251,12 +251,12 @@ __device__ float block_reduce_max(float val) {
 // Grid:  ((N + 255) / 256, 1, 1)
 // Block: (256, 1, 1)
 // source: LeetCUDA/kernels/reduce/block_all_reduce.cu
-template <const int NUM_THREADS = 256>
+template <const int kNumThreads = 256>
 __global__ void block_reduce_all(float *a, float *y, int N) {
   int tid = threadIdx.x;
-  int idx = blockIdx.x * NUM_THREADS + tid;
-  constexpr int NUM_WARPS = (NUM_THREADS + WARP_SIZE - 1) / WARP_SIZE;
-  __shared__ float shared[NUM_WARPS];
+  int idx = blockIdx.x * kNumThreads + tid;
+  constexpr int kNumWarps = (kNumThreads + WARP_SIZE - 1) / WARP_SIZE;
+  __shared__ float shared[kNumWarps];
 
   float val = (idx < N) ? a[idx] : 0.0f;
   int warp = tid / WARP_SIZE;
@@ -267,9 +267,9 @@ __global__ void block_reduce_all(float *a, float *y, int N) {
     shared[warp] = val;
   __syncthreads();
 
-  val = (lane < NUM_WARPS) ? shared[lane] : 0.0f;
+  val = (lane < kNumWarps) ? shared[lane] : 0.0f;
   if (warp == 0)
-    val = warp_reduce_sum<NUM_WARPS>(val);
+    val = warp_reduce_sum<kNumWarps>(val);
   if (tid == 0) // tid == 0, not lane 0. 只有 block 内的一个线程负责写回全局结果，避免重复累加
     atomicAdd(y, val);
 }
@@ -279,12 +279,12 @@ __global__ void block_reduce_all(float *a, float *y, int N) {
 // Grid:  ((N + 255) / 256, 1, 1)
 // Block: (256, 1, 1)
 // source: LeetCUDA/kernels/dot-product/dot_product.cu
-template <const int NUM_THREADS = 256>
+template <const int kNumThreads = 256>
 __global__ void dot(float *a, float *b, float *y, int N) {
   int tid = threadIdx.x;
-  int idx = blockIdx.x * NUM_THREADS + tid;
-  constexpr int NUM_WARPS = (NUM_THREADS + WARP_SIZE - 1) / WARP_SIZE;
-  __shared__ float shared[NUM_WARPS];
+  int idx = blockIdx.x * kNumThreads + tid;
+  constexpr int kNumWarps = (kNumThreads + WARP_SIZE - 1) / WARP_SIZE;
+  __shared__ float shared[kNumWarps];
 
   float prod = (idx < N) ? a[idx] * b[idx] : 0.0f;
   int warp = tid / WARP_SIZE;
@@ -295,9 +295,9 @@ __global__ void dot(float *a, float *b, float *y, int N) {
     shared[warp] = prod;
   __syncthreads();
 
-  prod = (lane < NUM_WARPS) ? shared[lane] : 0.0f;
+  prod = (lane < kNumWarps) ? shared[lane] : 0.0f;
   if (warp == 0) // 只需要 warp 0 的线程继续 reduce 即可
-    prod = warp_reduce_sum<NUM_WARPS>(prod);
+    prod = warp_reduce_sum<kNumWarps>(prod);
   if (tid == 0) // tid == 0, not lane 0. 只有 block 内的一个线程负责写回全局结果，避免重复累加
     atomicAdd(y, prod);
 }
@@ -307,12 +307,12 @@ __global__ void dot(float *a, float *b, float *y, int N) {
 // Block: (64, 1, 1)，256/4=64
 // 注意：该版本默认输入地址满足 float4 对齐；最适合 N 按 4 对齐的场景
 // source: LeetCUDA/kernels/dot-product/dot_product.cu
-template <const int NUM_THREADS = 256 / 4>
+template <const int kNumThreads = 256 / 4>
 __global__ void dot_vec4(float *a, float *b, float *y, int N) {
   int tid = threadIdx.x;
-  int idx = (blockIdx.x * NUM_THREADS + tid) * 4;
-  constexpr int NUM_WARPS = (NUM_THREADS + WARP_SIZE - 1) / WARP_SIZE;
-  __shared__ float shared[NUM_WARPS];
+  int idx = (blockIdx.x * kNumThreads + tid) * 4;
+  constexpr int kNumWarps = (kNumThreads + WARP_SIZE - 1) / WARP_SIZE;
+  __shared__ float shared[kNumWarps];
 
   float4 reg_a = FLOAT4(a[idx]);
   float4 reg_b = FLOAT4(b[idx]);
@@ -327,9 +327,9 @@ __global__ void dot_vec4(float *a, float *b, float *y, int N) {
     shared[warp] = prod;
   __syncthreads();
 
-  prod = (lane < NUM_WARPS) ? shared[lane] : 0.0f;
+  prod = (lane < kNumWarps) ? shared[lane] : 0.0f;
   if (warp == 0)
-    prod = warp_reduce_sum<NUM_WARPS>(prod);
+    prod = warp_reduce_sum<kNumWarps>(prod);
   if (tid == 0)
     atomicAdd(y, prod);
 }
@@ -444,7 +444,7 @@ __global__ void histogram(int *a, int *y, int N) {
 //   - AI ≈ 3 FLOP / 20 bytes ≈ 0.15 FLOPS/Byte → severely memory-bound
 //
 // 线程到数据的 3D 映射（以 num_tokens=2, num_heads=2, head_size=8 为例）：
-//   pack_size = 16 / sizeof(float) = 4（每线程 4 个 float = 128-bit）
+//   kPackSize = 16 / sizeof(float) = 4（每线程 4 个 float = 128-bit）
 //   threads_per_head = head_size / 4 = 2
 //   total_threads = num_tokens * num_heads * threads_per_head = 8
 //
@@ -474,17 +474,17 @@ __global__ void merge_attn_states(
     const float *suffix_lse,    // [num_heads, num_tokens]
     int num_tokens, int num_heads, int head_size) {
 
-  constexpr int NUM_THREADS = 128;
-  constexpr int PACK_SIZE = 16 / sizeof(float); // 4 floats = 128-bit
+  constexpr int kNumThreads = 128;
+  constexpr int kPackSize = 16 / sizeof(float); // 4 floats = 128-bit
   using pack_t = uint4;
 
   // 每个 (token, head) 对需要 threads_per_head 个线程覆盖 head_size 个元素
-  const int threads_per_head = head_size / PACK_SIZE;
+  const int threads_per_head = head_size / kPackSize;
   // 实际有效总线程数，超过这个数的线程会被忽略，block是按照NUM_THREADS=128
   // 来分配的，那么最后一个block的线程数可能会超过实际需要的线程数
   const int total_threads = num_tokens * num_heads * threads_per_head;
 
-  const int global_idx = blockIdx.x * NUM_THREADS + threadIdx.x;
+  const int global_idx = blockIdx.x * kNumThreads + threadIdx.x;
   if (global_idx >= total_threads)
     return;
 
@@ -499,7 +499,7 @@ __global__ void merge_attn_states(
   const int head_idx = token_head_idx % num_heads;  // head 变化快（内维）
 
   // pack_offset: 该 pack 覆盖的元素在 head_size 中的起始偏移（0, 4, 8, ...）
-  const int pack_offset = pack_idx * PACK_SIZE;
+  const int pack_offset = pack_idx * kPackSize;
   // head_offset: 该 (token, head) 对在 output 展平一维数组中的起始偏移
   const int head_offset = token_idx * num_heads * head_size + head_idx * head_size;
 
@@ -538,7 +538,7 @@ __global__ void merge_attn_states(
     pack_t o_pack;
 
 #pragma unroll
-    for (int i = 0; i < PACK_SIZE; ++i) {
+    for (int i = 0; i < kPackSize; ++i) {
       const float p_v = reinterpret_cast<const float *>(&p_pack)[i];
       const float s_v = reinterpret_cast<const float *>(&s_pack)[i];
       const float o_v = p_v * p_scale + (s_v * s_scale); // FMA
@@ -569,7 +569,7 @@ __global__ void merge_attn_states(
 // ---- Level 1: 基础 Softmax（per-token，无 max 减法，数值不稳定）----
 // grid(S*h/h, h), block(h), 一个 block 处理一个 token
 // 问题：x 值很大时 exp(x) 溢出为 inf
-template <const int NUM_THREADS = 256>
+template <const int kNumThreads = 256>
 // Grid:  (S, 1, 1)，S=batch*seq_len, DISPATCH_SOFTMAX_F32_PER_TOKEN_KERNEL
 // Block: (H, 1, 1)，由外层 dispatch 选择 H=32/64/128/256/512/1024，一个 block 处理一个 token
 // source: LeetCUDA/kernels/softmax/softmax.cu
@@ -578,7 +578,7 @@ __global__ void softmax_per_token(float *x, float *y, int N) {
   const int idx = blockIdx.x * blockDim.x + tid;
 
   float exp_val = (idx < N) ? expf(x[idx]) : 0.0f;
-  float exp_sum = block_reduce_sum<NUM_THREADS>(exp_val);
+  float exp_sum = block_reduce_sum<kNumThreads>(exp_val);
   if (idx < N)
     y[idx] = exp_val / exp_sum;
 }
@@ -592,18 +592,18 @@ __global__ void softmax_per_token(float *x, float *y, int N) {
 // Grid:  (S, 1, 1)
 // Block: (H, 1, 1)，由外层 dispatch 选择 H=32/64/128/256/512/1024
 // source: LeetCUDA/kernels/softmax/softmax.cu
-template <const int NUM_THREADS = 256>
+template <const int kNumThreads = 256>
 __global__ void safe_softmax_per_token(float *x, float *y, int N) {
   const int tid = threadIdx.x;
   const int idx = blockIdx.x * blockDim.x + tid;
 
   // Pass 1: block reduce max — 找最大值
   float val = (idx < N) ? x[idx] : -FLT_MAX;
-  float max_val = block_reduce_max<NUM_THREADS>(val);
+  float max_val = block_reduce_max<kNumThreads>(val);
 
   // Pass 2: exp(x - max) → block reduce sum
   float exp_val = (idx < N) ? expf(x[idx] - max_val) : 0.0f;
-  float exp_sum = block_reduce_sum<NUM_THREADS>(exp_val);
+  float exp_sum = block_reduce_sum<kNumThreads>(exp_val);
 
   if (idx < N)
     y[idx] = exp_val / exp_sum;
@@ -660,12 +660,12 @@ __device__ __forceinline__ MD warp_reduce_md(MD md1) {
 // Grid:  (S, 1, 1)
 // Block: (H, 1, 1)，由外层 dispatch 选择 H=32/64/128/256/512/1024
 // source: LeetCUDA/kernels/softmax/softmax.cu
-template <const int NUM_THREADS = 256>
+template <const int kNumThreads = 256>
 __global__ void online_safe_softmax_per_token(const float *x, float *y, int N) {
   int tid = threadIdx.x;
-  int idx = blockIdx.x * NUM_THREADS + threadIdx.x;
-  const int NUM_WARPS = (NUM_THREADS + WARP_SIZE - 1) / WARP_SIZE;
-  __shared__ MD shared[NUM_WARPS];
+  int idx = blockIdx.x * kNumThreads + threadIdx.x;
+  const int kNumWarps = (kNumThreads + WARP_SIZE - 1) / WARP_SIZE;
+  __shared__ MD shared[kNumWarps];
 
   float val = (idx < N) ? x[idx] : -FLT_MAX;
   int warp = tid / WARP_SIZE;
@@ -684,7 +684,7 @@ __global__ void online_safe_softmax_per_token(const float *x, float *y, int N) {
   __syncthreads();
 
   // 第二级归约：每个 warp 结果再做一次 warp_reduce_md（复用 block_reduce 模式）
-  md = lane < NUM_WARPS ? shared[lane] : MD{-FLT_MAX, 0.0f};
+  md = lane < kNumWarps ? shared[lane] : MD{-FLT_MAX, 0.0f};
   md = warp_reduce_md<WARP_SIZE>(md); // 用WARP_SIZE确保每个lane都能拿到最终结果
 
   // 用全局 max 和 denom 做最终 softmax
@@ -704,9 +704,9 @@ __global__ void online_safe_softmax_per_token(const float *x, float *y, int N) {
 //   - Llama 系列使用 RMS Norm
 //   - grid(N, K/K), block(K)：一行一个 block
 // Grid:  (N, 1, 1)，N=batch*seq_len，每行一个 block
-// Block: (128, 1, 1)，NUM_THREADS=K=128（K>128 时调整模板参数）
+// Block: (128, 1, 1)，kNumThreads=K=128（K>128 时调整模板参数）
 // source: LeetCUDA/kernels/rms-norm/rms_norm.cu
-template <const int NUM_THREADS = 128>
+template <const int kNumThreads = 128>
 __global__ void rms_norm(float *x, float *y, float g, int N, int K) {
   int tid = threadIdx.x;
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -715,7 +715,7 @@ __global__ void rms_norm(float *x, float *y, float g, int N, int K) {
   __shared__ float s_variance;
   float value = (idx < N * K) ? x[idx] : 0.0f;
   float variance = value * value;
-  variance = block_reduce_sum<NUM_THREADS>(variance);
+  variance = block_reduce_sum<kNumThreads>(variance);
   if (tid == 0)
     s_variance = rsqrtf(variance / (float)K + epsilon); // 1/rms(x)
   __syncthreads();
@@ -728,7 +728,7 @@ __global__ void rms_norm(float *x, float *y, float g, int N, int K) {
 // Block: (32, 1, 1)，128/4=32；对应一行 K 元素按 4 个一组交给 32 个线程处理
 // 注意：该版本默认 K 按 4 对齐，且输入/输出地址满足 float4 对齐
 // source: LeetCUDA/kernels/rms-norm/rms_norm.cu
-template <const int NUM_THREADS = 128 / 4>
+template <const int kNumThreads = 128 / 4>
 __global__ void rms_norm_vec4(float *x, float *y, float g, int N, int K) {
   int tid = threadIdx.x;
   int idx = (blockIdx.x * blockDim.x + threadIdx.x) * 4;
@@ -739,7 +739,7 @@ __global__ void rms_norm_vec4(float *x, float *y, float g, int N, int K) {
   float variance = (idx < N * K) ? (reg_x.x * reg_x.x + reg_x.y * reg_x.y +
                                     reg_x.z * reg_x.z + reg_x.w * reg_x.w)
                                  : 0.0f;
-  variance = block_reduce_sum<NUM_THREADS>(variance);
+  variance = block_reduce_sum<kNumThreads>(variance);
   if (tid == 0)
     s_variance = rsqrtf(variance / (float)K + epsilon);
   __syncthreads();
@@ -760,9 +760,9 @@ __global__ void rms_norm_vec4(float *x, float *y, float g, int N, int K) {
 //   - 需要 2 次 block reduce：先 mean（sum/K），再 variance（sum((x-mean)²)/K）
 //   - 两次 __syncthreads 必须到位，否则 s_mean 未对所有线程可见就计算 variance
 // Grid:  (N, 1, 1)，一行一个 block
-// Block: (128, 1, 1)，NUM_THREADS=K=128
+// Block: (128, 1, 1)，kNumThreads=K=128
 // source: LeetCUDA/kernels/layer-norm/layer_norm.cu
-template <const int NUM_THREADS = 128>
+template <const int kNumThreads = 128>
 __global__ void layer_norm(float *x, float *y, float g, float b, int N, int K) {
   int tid = threadIdx.x;
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -773,14 +773,14 @@ __global__ void layer_norm(float *x, float *y, float g, float b, int N, int K) {
   float value = (idx < N * K) ? x[idx] : 0.0f;
 
   // Pass 1: compute mean
-  float sum = block_reduce_sum<NUM_THREADS>(value);
+  float sum = block_reduce_sum<kNumThreads>(value);
   if (tid == 0)
     s_mean = sum / (float)K;
   __syncthreads(); // 必须等待 s_mean 对所有线程可见
 
   // Pass 2: compute variance = (x - mean)²
   float variance = (value - s_mean) * (value - s_mean);
-  variance = block_reduce_sum<NUM_THREADS>(variance);
+  variance = block_reduce_sum<kNumThreads>(variance);
   if (tid == 0)
     s_variance = rsqrtf(variance / (float)K + epsilon); // 1/std
   __syncthreads(); // 必须等待 s_variance 对所有线程可见
@@ -794,7 +794,7 @@ __global__ void layer_norm(float *x, float *y, float g, float b, int N, int K) {
 // Block: (32, 1, 1)，128/4=32；对应一行 K 元素按 4 个一组交给 32 个线程处理
 // 注意：该版本默认 K 按 4 对齐，且输入/输出地址满足 float4 对齐
 // source: LeetCUDA/kernels/layer-norm/layer_norm.cu
-template <const int NUM_THREADS = 128 / 4>
+template <const int kNumThreads = 128 / 4>
 __global__ void layer_norm_vec4(float *x, float *y, float g, float b, int N, int K) {
   int tid = threadIdx.x;
   int idx = (blockIdx.x * blockDim.x + threadIdx.x) * 4;
@@ -805,7 +805,7 @@ __global__ void layer_norm_vec4(float *x, float *y, float g, float b, int N, int
   float4 reg_x = FLOAT4(x[idx]);
   float value = (idx < N * K) ? (reg_x.x + reg_x.y + reg_x.z + reg_x.w) : 0.0f;
 
-  float sum = block_reduce_sum<NUM_THREADS>(value);
+  float sum = block_reduce_sum<kNumThreads>(value);
   if (tid == 0)
     s_mean = sum / (float)K;
   __syncthreads();
@@ -817,7 +817,7 @@ __global__ void layer_norm_vec4(float *x, float *y, float g, float b, int N, int
   reg_x_hat.w = reg_x.w - s_mean;
   float variance = reg_x_hat.x * reg_x_hat.x + reg_x_hat.y * reg_x_hat.y +
                    reg_x_hat.z * reg_x_hat.z + reg_x_hat.w * reg_x_hat.w;
-  variance = block_reduce_sum<NUM_THREADS>(variance);
+  variance = block_reduce_sum<kNumThreads>(variance);
   if (tid == 0)
     s_variance = rsqrtf(variance / (float)K + epsilon);
   __syncthreads();
@@ -952,7 +952,7 @@ __global__ void mat_transpose_padded(
 // a: M×K, x: K×1, y: M×1, 计算: y = a * x; N = 1
 
 // ---- SGEMV K32: 基础 warp-per-row ----
-// 设计：block(32, 4)，blockDim.x=WARP_SIZE=32（K 需为 32 倍数时一轮覆盖，否则内层循环 NUM_WARPS 次）
+// 设计：block(32, 4)，blockDim.x=WARP_SIZE=32（K 需为 32 倍数时一轮覆盖，否则内层循环 kNumWarps 次）
 // grid(M/4)，每个 warp 负责一行
 // K 为 32 的倍数时，warp 的 32 个线程恰好覆盖 K 维
 // Grid:  ((M + 3) / 4, 1, 1)，每 block 处理 4 行
@@ -1329,7 +1329,7 @@ HOST_DEVICE_INLINE int div_ceil(int a, int b) {
 //   MMA Atom:         m16n8k16（1 条 MMA 指令处理的最小 tile）
 //   MMA Tile (more warps):  2×4=8 个 MMA atom → [2×16, 8×4]=[32,32]
 //   VAL Tile (more values): 4×4=16 expand → [32×4, 32×4]=[128,128]
-//   实际: MMA_TILE_M=2, MMA_TILE_N=4, VAL_TILE_M=4, VAL_TILE_N=4
+//   实际: kMmaTileM=2, kMmaTileN=4, kValTileM=4, kValTileN=4
 //         → BM=16×2×4=128, BN=8×4×4=128, Warps=2×4=8, Threads=8×32=256
 //
 // ★ TN 布局（T=A 行优先，N=B 列优先）：
@@ -1340,36 +1340,41 @@ HOST_DEVICE_INLINE int div_ceil(int a, int b) {
 //   - MMA 指令: mma.sync.aligned.m16n8k16.row.col → 天然匹配 TN 布局
 //
 // ★ 统一循环设计（k 从 0 开始，消除尾端重复代码）：
-//   - k 从 0 开始：每次迭代 k 直接对应 tile k，sel = k % K_STAGE（零偏移）
-//   - 加载语义为"预取未来"：迭代 k 加载 tile (k+K_STAGE-1) 供后续使用
-//   - cp.async 条件化：仅当 k+K_STAGE-1 < NUM_K_TILES 时加载
-//   - WAIT_GROUP 自适应：满载期用 K_STAGE-2，尾部排空用 0
+//   - k 从 0 开始：每次迭代 k 直接对应 tile k，sel = k % kStages（零偏移）
+//   - 加载语义为"预取未来"：迭代 k 加载 tile (k+kStages-1) 供后续使用
+//   - cp.async 条件化：仅当 k+kStages-1 < NUM_K_TILES 时加载
+//   - WAIT_GROUP 自适应：满载期用 kStages-2，尾部排空用 0
 //
 // Grid:  ((N+127)/128/S, (M+127)/128, S)，S=(N+2047)/2048，3D block swizzle
 // Block: (256, 1, 1)，8 warps
 // source: LeetCUDA/kernels/hgemm/mma/basic/hgemm_mma_stage_tn.cu
 // =============================================================================
-template <const int MMA_M = 16, const int MMA_N = 8, const int MMA_K = 16,
-          const int MMA_TILE_M = 2, const int MMA_TILE_N = 4,
-          const int VAL_TILE_M = 4, const int VAL_TILE_N = 4,
-          const int K_STAGE = 3, const bool BLOCK_SWIZZLE = false>
+template <const int kMmaM = 16,             // MMA atom M dim (m16n8k16)
+          const int kMmaN = 8,              // MMA atom N dim
+          const int kMmaK = 16,             // MMA atom K dim, also BK tile = kMmaK
+          const int kMmaTileM = 2,          // warps along M, 2 → warp tile M = 32
+          const int kMmaTileN = 4,          // warps along N, 4 → warp tile N = 32
+          const int kValTileM = 4,          // value-repeat along M, BM = 16*2*4 = 128
+          const int kValTileN = 4,          // value-repeat along N, BN = 8*4*4 = 128
+          const int kStages = 3,            // cp.async pipeline depth
+          const bool kBlockSwizzle = false> // enable 3D grid swizzle for L2 locality
 __global__ void __launch_bounds__(256)
     hgemm_mma_stages_tn(half *A, half *B, half *C, int M, int N, int K) {
   // Block Swizzle: 在 grid x 维度做 swizzle，改善 L2 cache 局部性
-  const int bx = ((int)BLOCK_SWIZZLE) * blockIdx.z * gridDim.x + blockIdx.x;
+  const int bx = ((int)kBlockSwizzle) * blockIdx.z * gridDim.x + blockIdx.x;
   const int by = blockIdx.y;
-  constexpr int BM = MMA_M * MMA_TILE_M * VAL_TILE_M; // 16*2*4=128
-  constexpr int BN = MMA_N * MMA_TILE_N * VAL_TILE_N; // 8*4*4=128
-  constexpr int BK = MMA_K;                           // 16
+  constexpr int BM = kMmaM * kMmaTileM * kValTileM; // 16*2*4=128
+  constexpr int BN = kMmaN * kMmaTileN * kValTileN; // 8*4*4=128
+  constexpr int BK = kMmaK;                         // 16
 
-  // Dynamic shared memory: K_STAGE 个 stage 的 A 和 B
+  // Dynamic shared memory: kStages 个 stage 的 A 和 B
   // TN 布局: s_a[BM][BK]=[128][16](A row-major), s_b[BN][BK]=[128][16](B^T
   // row-major，即 B col-major [K×N] 在 smem 中按 B^T[N×K] 存储)
   // 原始实现会按配置决定是否给 A/B 的 K 维加 PAD；尤其 B 在 TN 布局下常见会额外
   // 加 B_PAD 来打散 bank 映射，避免按列访问时出现明显 bank conflict。这里先保留最简 PAD=0 版本。
   extern __shared__ half smem[];
   half *s_a = smem;
-  half *s_b = smem + K_STAGE * BM * BK;     // A 和 B 连续存放
+  half *s_b = smem + kStages * BM * BK;     // A 和 B 连续存放
   constexpr int s_a_stage_offset = BM * BK; // 128*16
   constexpr int s_b_stage_offset = BN * BK; // 128*16  ⚠ BN(128)×BK(16) = B^T row-major
   const int tid = threadIdx.y * blockDim.x + threadIdx.x;
@@ -1395,16 +1400,16 @@ __global__ void __launch_bounds__(256)
   // CUDA中每个block能放的线程数是有上限的（warp数量有限），一般为4或者8个warps。为了能处理更大的C tile，
   // 需要把MMA Atom的tile再M方向和N方向各自重复4次，得到[128,128]的C block tile，这就是Value Tile的作用。
   // MMA Tile对应到cutlass cute中的TiledMMA的概念，Value Tile对应到cutlass cute中的PermuteMNK的概念。
-  uint32_t RC[VAL_TILE_M][VAL_TILE_N][2] = {0}; // 初始化为 0
+  uint32_t RC[kValTileM][kValTileN][2] = {0}; // 初始化为 0
 
   // CVTA: 一次转换 smem 基地址，避免每次 cp.async 都做转换
   uint32_t smem_a_base_ptr = __cvta_generic_to_shared(s_a);
   uint32_t smem_b_base_ptr = __cvta_generic_to_shared(s_b);
 
-  // 预加载前 (K_STAGE-1) 个 stage
+  // 预加载前 (kStages-1) 个 stage
   // TN 布局: A 的 gmem 索引用 m*K+k(row-major), B^T 用 n*K+k(row-major，即 B col-major [K×N])
 #pragma unroll
-  for (int k = 0; k < (K_STAGE - 1); ++k) {
+  for (int k = 0; k < (kStages - 1); ++k) {
     int load_gmem_a_k = k * BK + load_smem_a_k;
     int load_gmem_a_addr = load_gmem_a_m * K + load_gmem_a_k; // A: [m][k]
     uint32_t load_smem_a_ptr = (smem_a_base_ptr +
@@ -1423,24 +1428,24 @@ __global__ void __launch_bounds__(256)
     CP_ASYNC_COMMIT_GROUP();
   }
 
-  CP_ASYNC_WAIT_GROUP(K_STAGE - 2); // 允许有 K_STAGE-2 个group未完成
+  CP_ASYNC_WAIT_GROUP(kStages - 2); // 允许有 kStages-2 个group未完成
   __syncthreads();
 
   // 统一循环：k 从 0 开始，每次迭代负责 tile k（加载 + 计算合并为单循环）
   const int NUM_K_TILES = div_ceil(K, BK);
 #pragma unroll
   for (int k = 0; k < NUM_K_TILES; ++k) {
-    int smem_sel = k % K_STAGE;                      // 计算 tile k 的 stage
-    int smem_sel_next = (k + K_STAGE - 1) % K_STAGE; // 预加载目标 stage
+    int smem_sel = k % kStages;                      // 计算 tile k 的 stage
+    int smem_sel_next = (k + kStages - 1) % kStages; // 预加载目标 stage
 
-    // 条件加载：预加载 tile (k+K_STAGE-1) 供将来使用。因为在prefetch loop中已经
-    // load了(K_STAGE-1) 个 stage，因此这里是从 tile (k+K_STAGE-1) 开始预加载
+    // 条件加载：预加载 tile (k+kStages-1) 供将来使用。因为在prefetch loop中已经
+    // load了(kStages-1) 个 stage，因此这里是从 tile (k+kStages-1) 开始预加载
     // TN 布局: A 的 gmem 地址用 m*K+k（row-major），B^T 的 gmem 地址用 n*K+k
     // (row-major，内维连续的是 K)
-    if (k + K_STAGE - 1 < NUM_K_TILES) {
-      int load_gmem_a_k = (k + K_STAGE - 1) * BK + load_smem_a_k;
+    if (k + kStages - 1 < NUM_K_TILES) {
+      int load_gmem_a_k = (k + kStages - 1) * BK + load_smem_a_k;
       int load_gmem_a_addr = load_gmem_a_m * K + load_gmem_a_k; // A: row-major [m][k]
-      int load_gmem_b_k = (k + K_STAGE - 1) * BK + load_smem_b_k;
+      int load_gmem_b_k = (k + kStages - 1) * BK + load_smem_b_k;
       int load_gmem_b_addr = load_gmem_b_n * K + load_gmem_b_k; // B^T: row-major [n][k]
 
       uint32_t load_smem_a_ptr =
@@ -1460,15 +1465,15 @@ __global__ void __launch_bounds__(256)
     // ldmatrix: 从 smem_sel 加载 A 和 B 到寄存器
     // TN 布局关键: A 用 x4（非转置），因为 A 是 row-major; B 用 x2（非转置），smem 中
     // B^T 为 row-major，逐行加载即得 B 的列，天然匹配 col-major B
-    uint32_t RA[VAL_TILE_M][4]; // [4][4], M方向4次repeat, A regs = 4 uint32_t per MMA
-    uint32_t RB[VAL_TILE_N][2]; // [4][2], N方向4次repeat, B regs = 2 uint32_t per MMA
+    uint32_t RA[kValTileM][4]; // [4][4], M方向4次repeat, A regs = 4 uint32_t per MMA
+    uint32_t RB[kValTileN][2]; // [4][2], N方向4次repeat, B regs = 2 uint32_t per MMA
 
     // ldmatrix.x4: 加载 A 的 m16k16 片段（row-major A，非转置）
 #pragma unroll
-    for (int i = 0; i < VAL_TILE_M; ++i) {
+    for (int i = 0; i < kValTileM; ++i) {
       // {0,1} * (16 * 4) + i * 16 = {0,64} + {0,16,32,48} = {0,16,32,48,64,80,96,112}
       // 其中 warp_m {0,1}; warp_m_0 offsets {0,16,32,48}; warp_m_1 offsets {64,80,96,112}
-      int warp_smem_a_m = warp_m * (MMA_M * VAL_TILE_M) + i * MMA_M;
+      int warp_smem_a_m = warp_m * (kMmaM * kValTileM) + i * kMmaM;
       // {0,16,32,...,112} + {0~15} = {0~127}, 按照col-major的顺序访问A的4个8x8 matrix (16x16)
       // ldmatrix.{...}.x4.{...} 需要warp内32个线程都参与，每个线程提供一个有效的，不重叠的addr
       int lane_smem_a_m = warp_smem_a_m + lane_id % 16; // t{0...15}=0~15, t{16...31}=0~15
@@ -1484,11 +1489,11 @@ __global__ void __launch_bounds__(256)
     // 为什么不用 .trans？因为 smem 中存的是 B^T row-major [N][K]，
     // ldmatrix 逐行加载 B^T 的行 = B 的列，天然给出 col-major B fragment → 直接匹配 MMA row.col
 #pragma unroll
-    for (int j = 0; j < VAL_TILE_N; ++j) {
+    for (int j = 0; j < kValTileN; ++j) {
       // {0,...,3} * (8 * 4) + j * 8 = {0,32,64,96} + {0,8,16,24} = {0,8,...,120}
       // warp_n_0 offsets {0,8,16,24}; warp_n_1 offsets {32,40,48,56}
       // warp_n_2 offsets {64,72,80,88}; warp_n_3 offsets {96,104,112,120}
-      int warp_smem_b_n = warp_n * (MMA_N * VAL_TILE_N) + j * MMA_N;
+      int warp_smem_b_n = warp_n * (kMmaN * kValTileN) + j * kMmaN;
       // {0,8,...,120} + {0~7} = {0~127}, 按照row-major的顺序访问B^T的2个8x8 matrix (8x16)
       // ldmatrix.{...}.x2.{...} 需要warp内前16个线程参与，后16个线程传的addr会被忽略
       int lane_smem_b_n = warp_smem_b_n + lane_id % 8; // t{0...7}=0~7, t{8...15}=0~7
@@ -1502,9 +1507,9 @@ __global__ void __launch_bounds__(256)
 
     // MMA compute: 每个Warp(MMA) 在M方向重复VAL_TILE_M(4)次，在N方向重复VAL_TILE_N(4)次
 #pragma unroll
-    for (int i = 0; i < VAL_TILE_M; ++i) {
+    for (int i = 0; i < kValTileM; ++i) {
 #pragma unroll
-      for (int j = 0; j < VAL_TILE_N; ++j) {
+      for (int j = 0; j < kValTileN; ++j) {
         HMMA16816(RC[i][j][0], RC[i][j][1], // C fragment
                   RA[i][0], RA[i][1], RA[i][2], RA[i][3], // A fragment
                   RB[j][0], RB[j][1], // B fragment
@@ -1512,9 +1517,9 @@ __global__ void __launch_bounds__(256)
       }
     }
 
-    // 自适应等待：流水线满载期用 K_STAGE-2，尾部排空用 0
-    if (k + K_STAGE - 1 < NUM_K_TILES) {
-      CP_ASYNC_WAIT_GROUP(K_STAGE - 2);
+    // 自适应等待：流水线满载期用 kStages-2，尾部排空用 0
+    if (k + kStages - 1 < NUM_K_TILES) {
+      CP_ASYNC_WAIT_GROUP(kStages - 2);
     } else { // 对于尾部的 k，等待所有剩余的 cp.async 完成
       CP_ASYNC_WAIT_GROUP(0);
     }
@@ -1523,14 +1528,14 @@ __global__ void __launch_bounds__(256)
 
   // Epilogue: 寄存器 → global memory（通过 warp shuffle + 128-bit store）
   {
-    for (int i = 0; i < VAL_TILE_M; ++i) {
-      // RC[VAL_TILE_M][VAL_TILE_N][2] 中  RC[...][...][2] 中保存了2个 uint32
+    for (int i = 0; i < kValTileM; ++i) {
+      // RC[kValTileM][kValTileN][2] 中  RC[...][...][2] 中保存了2个 uint32
       // 寄存器，每个uint32 寄存器表示两个临近的fp16值：{c0,c1}，然后RC[...][...][0]
       // 和RC[...][...][1]代表的是按照col-major排布的2个8x8子矩阵上（不同物理行，跨8x8）
       // 同一个位置上的元素，也就是，实际代表了2个不同的行的元素，因此要分开RC0, RC1；
       // RC0表示第一行，8个half，可以用4个uint32寄存器来装；同理，RC1表示第二行。
-      uint32_t RC0[VAL_TILE_N][4]; // 32 bits x 4 = 128 bits = 8 half
-      uint32_t RC1[VAL_TILE_N][4]; // 32 bits x 4 = 128 bits = 8 half
+      uint32_t RC0[kValTileN][4]; // 32 bits x 4 = 128 bits = 8 half
+      uint32_t RC1[kValTileN][4]; // 32 bits x 4 = 128 bits = 8 half
       // ==================================================================
       // MMA m16n8k16 C fragment — a single 16×8 matrix (registers per warp):
       // Thread t holds 4 half values → RC[0] for rows 0-7, RC[1] for rows 8-15.
@@ -1555,7 +1560,7 @@ __global__ void __launch_bounds__(256)
       // 一行 8 个 half = {c0,c1,c2,c3,c4,c5,c6,c7}，再由 lane%4==0 128-bit store。
       // ==================================================================
 #pragma unroll
-      for (int j = 0; j < VAL_TILE_N; ++j) {
+      for (int j = 0; j < kValTileN; ++j) {
         RC0[j][0] = RC[i][j][0];
         RC1[j][0] = RC[i][j][1];
         RC0[j][1] = __shfl_sync(0xffffffff, RC[i][j][0], lane_id + 1);
@@ -1581,12 +1586,12 @@ __global__ void __launch_bounds__(256)
       //   └─────────┴───────────┴──────────────┴──────────────┘
       if (lane_id % 4 == 0) {
         // {0,1} * (16 * 4) + i * 16 = {0,64} + {0,16,32,48} = {0,16,32,48,64,80,96,112}
-        int store_warp_smem_c_m = warp_m * (MMA_M * VAL_TILE_M) + i * MMA_M;
+        int store_warp_smem_c_m = warp_m * (kMmaM * kValTileM) + i * kMmaM;
         int store_lane_gmem_c_m = by * BM + store_warp_smem_c_m + lane_id / 4;
 #pragma unroll
-        for (int j = 0; j < VAL_TILE_N; ++j) {
+        for (int j = 0; j < kValTileN; ++j) {
           // {0,...,3} * (8 * 4) + j * 8 = {0,32,64,96} + {0,8,16,24} = {0,8,...,120}
-          int store_warp_smem_c_n = warp_n * (MMA_N * VAL_TILE_N) + j * MMA_N;
+          int store_warp_smem_c_n = warp_n * (kMmaN * kValTileN) + j * kMmaN;
           int store_lane_gmem_c_n = bx * BN + store_warp_smem_c_n;
           int store_gmem_c_addr_0 = store_lane_gmem_c_m * N + store_lane_gmem_c_n;
           int store_gmem_c_addr_1 = (store_lane_gmem_c_m + 8) * N + store_lane_gmem_c_n;
@@ -1648,7 +1653,7 @@ static __device__ __forceinline__ int swizzle_permuted_j(int i, int j) {
   }
 }
 
-// swizzle_permuted_A_j: A 矩阵专用封装（kMmaAtomK=16, kStep=8）。
+// swizzle_A: A 矩阵专用封装（kMmaAtomK=16, kStep=8）。
 // 16 行（一个 MMA atom 的 M 维）内的 swizzle pattern：
 // 8个half=16 bytes=128 bits=4 banks (32 bits/bank) 组成一个phase，
 // 触发一次合并的memory transaction. 这里的col=16的swizzle，相当于
@@ -1678,68 +1683,72 @@ static __device__ __forceinline__ int swizzle_permuted_j(int i, int j) {
 // -------------------
 // source: LeetCUDA/kernels/hgemm/mma/swizzle/hgemm_mma_stage_tn_swizzle.cu
 template <const int kMmaAtomK = 16>
-static __device__ __forceinline__ int swizzle_permuted_A_j(int i, int j) {
+static __device__ __forceinline__ int swizzle_A(int i, int j) {
   return swizzle_permuted_j<kMmaAtomK, 8>(i, j);
 }
 
-// swizzle_permuted_B_j: B 矩阵专用封装（与 A 相同的 pattern）。
+// swizzle_B: B 矩阵专用封装（与 A 相同的 pattern）。
 // B^T smem 布局 [BN][BK]=[128][16] 在 BK 维做 swizzle，
 // pattern 与 A 完全相同（kMmaAtomK=16, kStep=8）。
 // source: LeetCUDA/kernels/hgemm/mma/swizzle/hgemm_mma_stage_tn_swizzle.cu
 template <const int kMmaAtomK = 16>
-static __device__ __forceinline__ int swizzle_permuted_B_j(int i, int j) {
+static __device__ __forceinline__ int swizzle_B(int i, int j) {
   return swizzle_permuted_j<kMmaAtomK, 8>(i, j);
 }
 
 // =============================================================================
 // Phase 7b-3: HGEMM MMA — m16n8k16 + multistage pipeline + TN 布局 + XOR swizzle
-//              + Register Double Buffering (VAL_TILE_K=2, BK=32 统一 tile)
+//              + Register Double Buffering (kValTileK=2, BK=32 统一 tile)
 // =============================================================================
 // 在 Phase 7b-2 的 smem XOR swizzle 基础上增加寄存器双缓冲：
-//   - VAL_TILE_K=2: 每个 BK tile 包含 2 个 MMA_K slice（BK = MMA_K * VAL_TILE_K = 32）
-//   - BK=32 统一 tile：MMA_K=0 和 MMA_K=1 数据连续存放在同一个 BK=32 宽的 smem tile 中
-//   - RA[2][VAL_TILE_M][4] / RB[2][VAL_TILE_N][2]：双份寄存器乒乓切换
+//   - kValTileK=2: 每个 BK tile 包含 2 个 kMmaK slice（BK = kMmaK * kValTileK = 32）
+//   - BK=32 统一 tile：kMmaK=0 和 kMmaK=1 数据连续存放在同一个 BK=32 宽的 smem tile 中
+//   - RA[2][kValTileM][4] / RB[2][kValTileN][2]：双份寄存器乒乓切换
 //   - ldmatrix 与 MMA 计算重叠：加载 k_step=1 的同时用另一组寄存器做 k_step=0 计算
 //
 // ★ smem 布局：
 //   s_a: [stage0][stage1][stage2]，每个 stage = BM × BK = 128 × 32
 //   s_b: 紧接 s_a 之后
-//   每个 stage 内 k_step=0 列偏移 0，k_step=1 列偏移 +MMA_K(=16)
+//   每个 stage 内 k_step=0 列偏移 0，k_step=1 列偏移 +kMmaK(=16)
 //
 // ★ 寄存器双缓冲时间线（每 k 迭代内）：
-//   Step 1: G→S cp.async 预取 stage(k+K_STAGE-1) 全部 k_step（条件）
+//   Step 1: G→S cp.async 预取 stage(k+kStages-1) 全部 k_step（条件）
 //   Step 2: MMA k_step=0（用 reg[load]，已在上轮 post-wait 中 ldmatrix）
-//   Step 3: for k_step=1..VAL_TILE_K-1: ldmatrix(列偏移 k_step*MMA_K)→reg[store], flip, MMA→reg[load]
+//   Step 3: for k_step=1..kValTileK-1: ldmatrix(列偏移 k_step*kMmaK)→reg[store], flip, MMA→reg[load]
 //   Step 4: adaptive wait + __syncthreads
 //   Step 5: S→R ldmatrix 预加载 stage(k+1) k_step=0 → reg[store]（条件）
 //
 // 与 dsmem 版本的对比：
-//   - dsmem: smem 分两个区域存放 MMA_K=0 和 MMA_K=1，smem 翻倍
-//   - BK=32: MMA_K=0/1 连续存同一 tile 内，smem 不变，gmem 索引用 k*BK 直接定位
+//   - dsmem: smem 分两个区域存放 kMmaK=0 和 kMmaK=1，smem 翻倍
+//   - BK=32: kMmaK=0/1 连续存同一 tile 内，smem 不变，gmem 索引用 k*BK 直接定位
 //
 // 参考：LeetCUDA/kernels/hgemm/mma/swizzle/hgemm_mma_stage_tn_swizzle_x2.cu
 // Grid:  ((N+127)/128/S, (M+127)/128, S)，S=(N+2047)/2048，3D block swizzle
 // Block: (256, 1, 1)，8 warps
-template <const int MMA_M = 16, const int MMA_N = 8, const int MMA_K = 16,
-          const int MMA_TILE_M = 2, const int MMA_TILE_N = 4,
-          const int VAL_TILE_M = 4, const int VAL_TILE_N = 4,
-          const int VAL_TILE_K = 2,
-          const int K_STAGE = 3,
-          const bool BLOCK_SWIZZLE = false>
+template <const int kMmaM = 16,             // MMA atom M dim (m16n8k16)
+          const int kMmaN = 8,              // MMA atom N dim
+          const int kMmaK = 16,             // MMA atom K dim
+          const int kMmaTileM = 2,          // warps along M, 2 → warp tile M = 32
+          const int kMmaTileN = 4,          // warps along N, 4 → warp tile N = 32
+          const int kValTileM = 4,          // value-repeat along M, BM = 16*2*4 = 128
+          const int kValTileN = 4,          // value-repeat along N, BN = 8*4*4 = 128
+          const int kValTileK = 2,          // MMA_K slices per BK tile, BK = kMmaK*2 = 32
+          const int kStages = 3,            // cp.async pipeline depth
+          const bool kBlockSwizzle = false> // enable 3D grid swizzle for L2 locality
 __global__ void __launch_bounds__(256)
     hgemm_mma_stages_tn_swizzle(half *A, half *B, half *C, int M, int N, int K) {
   // Block Swizzle: 在 grid x 维度做 swizzle，改善 L2 cache 局部性
-  const int bx = ((int)BLOCK_SWIZZLE) * blockIdx.z * gridDim.x + blockIdx.x;
+  const int bx = ((int)kBlockSwizzle) * blockIdx.z * gridDim.x + blockIdx.x;
   const int by = blockIdx.y;
-  constexpr int BM = MMA_M * MMA_TILE_M * VAL_TILE_M; // 16*2*4=128
-  constexpr int BN = MMA_N * MMA_TILE_N * VAL_TILE_N; // 8*4*4=128
-  constexpr int BK = MMA_K * VAL_TILE_K;               // 16*2=32
+  constexpr int BM = kMmaM * kMmaTileM * kValTileM; // 16*2*4=128
+  constexpr int BN = kMmaN * kMmaTileN * kValTileN; // 8*4*4=128
+  constexpr int BK = kMmaK * kValTileK;             // 16*2=32
 
-  // K_STAGE stages, each with BM×BK for A, BN×BK for B
-  // smem: VAL_TILE_K 个 MMA_K slice 连续存放在同一个 BK=32 宽 tile 中
+  // kStages stages, each with BM×BK for A, BN×BK for B
+  // smem: kValTileK 个 kMmaK slice 连续存放在同一个 BK=32 宽 tile 中
   extern __shared__ half smem[];
   half *s_a = smem;
-  half *s_b = smem + K_STAGE * BM * BK;
+  half *s_b = smem + kStages * BM * BK;
   constexpr int s_a_stage_offset = BM * BK;
   constexpr int s_b_stage_offset = BN * BK;
 
@@ -1764,110 +1773,110 @@ __global__ void __launch_bounds__(256)
   // CUDA中每个block能放的线程数是有上限的（warp数量有限），一般为4或者8个warps。为了能处理更大的C tile，
   // 需要把MMA Atom的tile再M方向和N方向各自重复4次，得到[128,128]的C block tile，这就是Value Tile的作用。
   // MMA Tile对应到cutlass cute中的TiledMMA的概念，Value Tile对应到cutlass cute中的PermuteMNK的概念。
-  uint32_t RC[VAL_TILE_M][VAL_TILE_N][2] = {0}; // 初始化为 0
+  uint32_t RC[kValTileM][kValTileN][2] = {0}; // 初始化为 0
 
   uint32_t smem_a_base_ptr = __cvta_generic_to_shared(s_a);
   uint32_t smem_b_base_ptr = __cvta_generic_to_shared(s_b);
 
-  // Prefetch (K_STAGE-1) stages: load all k_step slices for each early stage
+  // Prefetch (kStages-1) stages: load all k_step slices for each early stage
 #pragma unroll
-  for (int k = 0; k < (K_STAGE - 1); ++k) {
+  for (int k = 0; k < (kStages - 1); ++k) {
 #pragma unroll
-    for (int k_step = 0; k_step < VAL_TILE_K; ++k_step) {
-      int load_gmem_a_k = k * BK + k_step * MMA_K + load_smem_a_k;
+    for (int k_step = 0; k_step < kValTileK; ++k_step) {
+      int load_gmem_a_k = k * BK + k_step * kMmaK + load_smem_a_k;
       int load_gmem_a_addr = load_gmem_a_m * K + load_gmem_a_k;
-      int load_gmem_b_k = k * BK + k_step * MMA_K + load_smem_b_k;
+      int load_gmem_b_k = k * BK + k_step * kMmaK + load_smem_b_k;
       int load_gmem_b_addr = load_gmem_b_n * K + load_gmem_b_k;
 
       uint32_t load_smem_a_ptr =
           (smem_a_base_ptr +
            (k * s_a_stage_offset + load_smem_a_m * BK +
-            k_step * MMA_K +
-            swizzle_permuted_A_j<MMA_K>(load_smem_a_m, load_smem_a_k)) *
+            k_step * kMmaK +
+            swizzle_A<kMmaK>(load_smem_a_m, load_smem_a_k)) *
                sizeof(half));
       CP_ASYNC_CG(load_smem_a_ptr, &A[load_gmem_a_addr], 16);
 
       uint32_t load_smem_b_ptr =
           (smem_b_base_ptr +
            (k * s_b_stage_offset + load_smem_b_n * BK +
-            k_step * MMA_K +
-            swizzle_permuted_B_j<MMA_K>(load_smem_b_n, load_smem_b_k)) *
+            k_step * kMmaK +
+            swizzle_B<kMmaK>(load_smem_b_n, load_smem_b_k)) *
                sizeof(half));
       CP_ASYNC_CG(load_smem_b_ptr, &B[load_gmem_b_addr], 16);
     }
     CP_ASYNC_COMMIT_GROUP();
   }
 
-  CP_ASYNC_WAIT_GROUP(K_STAGE - 2);
+  CP_ASYNC_WAIT_GROUP(kStages - 2);
   __syncthreads();
 
   // Register double buffers: RA[0/1] for k_step=0/1 A data, RB[0/1] for B data
-  uint32_t RA[2][VAL_TILE_M][4];
-  uint32_t RB[2][VAL_TILE_N][2];
+  uint32_t RA[2][kValTileM][4];
+  uint32_t RB[2][kValTileN][2];
   int reg_st_idx = 0; // write target for ldmatrix
   int reg_ld_idx = 1;  // read source for MMA
 
-  // Initial ldmatrix: load stage 0, k_step=0 (MMA_K=0 列) → reg[0]
+  // Initial ldmatrix: load stage 0, k_step=0 (kMmaK=0 列) → reg[0]
 #pragma unroll
-  for (int i = 0; i < VAL_TILE_M; ++i) {
-    int warp_smem_a_m = warp_m * (MMA_M * VAL_TILE_M) + i * MMA_M;
+  for (int i = 0; i < kValTileM; ++i) {
+    int warp_smem_a_m = warp_m * (kMmaM * kValTileM) + i * kMmaM;
     int lane_smem_a_m = warp_smem_a_m + lane_id % 16;
     int lane_smem_a_k = (lane_id / 16) * 8;
     uint32_t lane_smem_a_ptr =
         (smem_a_base_ptr +
          (0 * s_a_stage_offset + lane_smem_a_m * BK +
-          swizzle_permuted_A_j<MMA_K>(lane_smem_a_m, lane_smem_a_k)) *
+          swizzle_A<kMmaK>(lane_smem_a_m, lane_smem_a_k)) *
              sizeof(half));
     LDMATRIX_X4(RA[reg_st_idx][i][0], RA[reg_st_idx][i][1],
                 RA[reg_st_idx][i][2], RA[reg_st_idx][i][3],
                 lane_smem_a_ptr);
   }
 #pragma unroll
-  for (int j = 0; j < VAL_TILE_N; ++j) {
-    int warp_smem_b_n = warp_n * (MMA_N * VAL_TILE_N) + j * MMA_N;
+  for (int j = 0; j < kValTileN; ++j) {
+    int warp_smem_b_n = warp_n * (kMmaN * kValTileN) + j * kMmaN;
     int lane_smem_b_n = warp_smem_b_n + lane_id % 8;
     int lane_smem_b_k = ((lane_id / 8) % 2) * 8;
     uint32_t lane_smem_b_ptr =
         (smem_b_base_ptr +
          (0 * s_b_stage_offset + lane_smem_b_n * BK +
-          swizzle_permuted_B_j<MMA_K>(lane_smem_b_n, lane_smem_b_k)) *
+          swizzle_B<kMmaK>(lane_smem_b_n, lane_smem_b_k)) *
              sizeof(half));
     LDMATRIX_X2(RB[reg_st_idx][j][0], RB[reg_st_idx][j][1],
                 lane_smem_b_ptr);
   }
 
   // 统一循环：k 从 0 开始，条件 G→S / S→R / wait 处理所有边界情况
-  // BK = MMA_K * VAL_TILE_K = 32，每个 k 迭代覆盖 BK=32 个 K 元素
+  // BK = kMmaK * kValTileK = 32，每个 k 迭代覆盖 BK=32 个 K 元素
   const int NUM_K_TILES = div_ceil(K, BK);
 #pragma unroll
   for (int k = 0; k < NUM_K_TILES; ++k) {
-    int smem_sel = k % K_STAGE;
-    int smem_sel_next = (k + K_STAGE - 1) % K_STAGE;
+    int smem_sel = k % kStages;
+    int smem_sel_next = (k + kStages - 1) % kStages;
 
-    // G→S: 条件预取 stage(k+K_STAGE-1) 全部 k_step slice
-    if (k + K_STAGE - 1 < NUM_K_TILES) {
+    // G→S: 条件预取 stage(k+kStages-1) 全部 k_step slice
+    if (k + kStages - 1 < NUM_K_TILES) {
 #pragma unroll
-      for (int k_step = 0; k_step < VAL_TILE_K; ++k_step) {
+      for (int k_step = 0; k_step < kValTileK; ++k_step) {
         int load_gmem_a_k =
-            (k + K_STAGE - 1) * BK + k_step * MMA_K + load_smem_a_k;
+            (k + kStages - 1) * BK + k_step * kMmaK + load_smem_a_k;
         int load_gmem_a_addr = load_gmem_a_m * K + load_gmem_a_k;
         int load_gmem_b_k =
-            (k + K_STAGE - 1) * BK + k_step * MMA_K + load_smem_b_k;
+            (k + kStages - 1) * BK + k_step * kMmaK + load_smem_b_k;
         int load_gmem_b_addr = load_gmem_b_n * K + load_gmem_b_k;
 
         uint32_t load_smem_a_ptr =
             (smem_a_base_ptr +
              (smem_sel_next * s_a_stage_offset + load_smem_a_m * BK +
-              k_step * MMA_K +
-              swizzle_permuted_A_j<MMA_K>(load_smem_a_m, load_smem_a_k)) *
+              k_step * kMmaK +
+              swizzle_A<kMmaK>(load_smem_a_m, load_smem_a_k)) *
                  sizeof(half));
         CP_ASYNC_CG(load_smem_a_ptr, &A[load_gmem_a_addr], 16);
 
         uint32_t load_smem_b_ptr =
             (smem_b_base_ptr +
              (smem_sel_next * s_b_stage_offset + load_smem_b_n * BK +
-              k_step * MMA_K +
-              swizzle_permuted_B_j<MMA_K>(load_smem_b_n, load_smem_b_k)) *
+              k_step * kMmaK +
+              swizzle_B<kMmaK>(load_smem_b_n, load_smem_b_k)) *
                  sizeof(half));
         CP_ASYNC_CG(load_smem_b_ptr, &B[load_gmem_b_addr], 16);
       }
@@ -1879,37 +1888,37 @@ __global__ void __launch_bounds__(256)
     // 每轮: flip→ldmatrix next k_step→reg[st], MMA reg[ld]（k_step+1 的 ldmatrix 条件化）
 
 #pragma unroll
-    for (int k_step = 0; k_step < VAL_TILE_K; ++k_step) {
+    for (int k_step = 0; k_step < kValTileK; ++k_step) {
       reg_st_idx ^= 1; // 0 -> 1; 1 -> 0
       reg_ld_idx ^= 1; // 1 -> 0; 0 -> 1
 
-      if (k_step + 1 < VAL_TILE_K) {
-        int smem_k_offset = (k_step + 1) * MMA_K;
+      if (k_step + 1 < kValTileK) {
+        int smem_k_offset = (k_step + 1) * kMmaK;
 #pragma unroll
-        for (int i = 0; i < VAL_TILE_M; ++i) {
-          int warp_smem_a_m = warp_m * (MMA_M * VAL_TILE_M) + i * MMA_M;
+        for (int i = 0; i < kValTileM; ++i) {
+          int warp_smem_a_m = warp_m * (kMmaM * kValTileM) + i * kMmaM;
           int lane_smem_a_m = warp_smem_a_m + lane_id % 16;
           int lane_smem_a_k = (lane_id / 16) * 8;
           uint32_t lane_smem_a_ptr =
               (smem_a_base_ptr +
               (smem_sel * s_a_stage_offset + lane_smem_a_m * BK +
                 smem_k_offset +
-                swizzle_permuted_A_j<MMA_K>(lane_smem_a_m, lane_smem_a_k)) *
+                swizzle_A<kMmaK>(lane_smem_a_m, lane_smem_a_k)) *
                   sizeof(half));
           LDMATRIX_X4(RA[reg_st_idx][i][0], RA[reg_st_idx][i][1],
                       RA[reg_st_idx][i][2], RA[reg_st_idx][i][3],
                       lane_smem_a_ptr);
         }
   #pragma unroll
-        for (int j = 0; j < VAL_TILE_N; ++j) {
-          int warp_smem_b_n = warp_n * (MMA_N * VAL_TILE_N) + j * MMA_N;
+        for (int j = 0; j < kValTileN; ++j) {
+          int warp_smem_b_n = warp_n * (kMmaN * kValTileN) + j * kMmaN;
           int lane_smem_b_n = warp_smem_b_n + lane_id % 8;
           int lane_smem_b_k = ((lane_id / 8) % 2) * 8;
           uint32_t lane_smem_b_ptr =
               (smem_b_base_ptr +
               (smem_sel * s_b_stage_offset + lane_smem_b_n * BK +
                 smem_k_offset +
-                swizzle_permuted_B_j<MMA_K>(lane_smem_b_n, lane_smem_b_k)) *
+                swizzle_B<kMmaK>(lane_smem_b_n, lane_smem_b_k)) *
                   sizeof(half));
           LDMATRIX_X2(RB[reg_st_idx][j][0], RB[reg_st_idx][j][1],
                       lane_smem_b_ptr);
@@ -1917,9 +1926,9 @@ __global__ void __launch_bounds__(256)
       }
 
 #pragma unroll
-      for (int i = 0; i < VAL_TILE_M; ++i) {
+      for (int i = 0; i < kValTileM; ++i) {
 #pragma unroll
-        for (int j = 0; j < VAL_TILE_N; ++j) {
+        for (int j = 0; j < kValTileN; ++j) {
           HMMA16816(RC[i][j][0], RC[i][j][1],
                     RA[reg_ld_idx][i][0], RA[reg_ld_idx][i][1],
                     RA[reg_ld_idx][i][2], RA[reg_ld_idx][i][3],
@@ -1929,9 +1938,9 @@ __global__ void __launch_bounds__(256)
       }
     }
 
-    // 自适应等待：满载期用 K_STAGE-2，尾部排空用 0
-    if (k + K_STAGE - 1 < NUM_K_TILES) {
-      CP_ASYNC_WAIT_GROUP(K_STAGE - 2);
+    // 自适应等待：满载期用 kStages-2，尾部排空用 0
+    if (k + kStages - 1 < NUM_K_TILES) {
+      CP_ASYNC_WAIT_GROUP(kStages - 2);
     } else {
       CP_ASYNC_WAIT_GROUP(0);
     }
@@ -1939,30 +1948,30 @@ __global__ void __launch_bounds__(256)
 
     // 从下一阶段加载 k_step=0 数据，供下一轮 k 迭代使用，此时 reg_st_idx=0
     if (k + 1 < NUM_K_TILES) {
-      smem_sel = (k + 1) % K_STAGE; // old smem_sel + 1
+      smem_sel = (k + 1) % kStages; // old smem_sel + 1
 #pragma unroll
-      for (int i = 0; i < VAL_TILE_M; ++i) {
-        int warp_smem_a_m = warp_m * (MMA_M * VAL_TILE_M) + i * MMA_M;
+      for (int i = 0; i < kValTileM; ++i) {
+        int warp_smem_a_m = warp_m * (kMmaM * kValTileM) + i * kMmaM;
         int lane_smem_a_m = warp_smem_a_m + lane_id % 16;
         int lane_smem_a_k = (lane_id / 16) * 8;
         uint32_t lane_smem_a_ptr =
             (smem_a_base_ptr +
              (smem_sel * s_a_stage_offset + lane_smem_a_m * BK +
-              swizzle_permuted_A_j<MMA_K>(lane_smem_a_m, lane_smem_a_k)) *
+              swizzle_A<kMmaK>(lane_smem_a_m, lane_smem_a_k)) *
                  sizeof(half));
         LDMATRIX_X4(RA[reg_st_idx][i][0], RA[reg_st_idx][i][1],
                     RA[reg_st_idx][i][2], RA[reg_st_idx][i][3],
                     lane_smem_a_ptr);
       }
 #pragma unroll
-      for (int j = 0; j < VAL_TILE_N; ++j) {
-        int warp_smem_b_n = warp_n * (MMA_N * VAL_TILE_N) + j * MMA_N;
+      for (int j = 0; j < kValTileN; ++j) {
+        int warp_smem_b_n = warp_n * (kMmaN * kValTileN) + j * kMmaN;
         int lane_smem_b_n = warp_smem_b_n + lane_id % 8;
         int lane_smem_b_k = ((lane_id / 8) % 2) * 8;
         uint32_t lane_smem_b_ptr =
             (smem_b_base_ptr +
              (smem_sel * s_b_stage_offset + lane_smem_b_n * BK +
-              swizzle_permuted_B_j<MMA_K>(lane_smem_b_n, lane_smem_b_k)) *
+              swizzle_B<kMmaK>(lane_smem_b_n, lane_smem_b_k)) *
                  sizeof(half));
         LDMATRIX_X2(RB[reg_st_idx][j][0], RB[reg_st_idx][j][1],
                     lane_smem_b_ptr);
@@ -1971,9 +1980,9 @@ __global__ void __launch_bounds__(256)
   }
 
   // Epilogue: 复用 RA 寄存器做 warp shuffle → 128-bit collective store
-  for (int i = 0; i < VAL_TILE_M; ++i) {
+  for (int i = 0; i < kValTileM; ++i) {
 #pragma unroll
-    for (int j = 0; j < VAL_TILE_N; ++j) {
+    for (int j = 0; j < kValTileN; ++j) {
       RA[0][j][0] = RC[i][j][0];
       RA[1][j][0] = RC[i][j][1];
       RA[0][j][1] = __shfl_sync(0xffffffff, RC[i][j][0], lane_id + 1);
@@ -1984,11 +1993,11 @@ __global__ void __launch_bounds__(256)
       RA[1][j][3] = __shfl_sync(0xffffffff, RC[i][j][1], lane_id + 3);
     }
     if (lane_id % 4 == 0) {
-      int store_warp_smem_c_m = warp_m * (MMA_M * VAL_TILE_M) + i * MMA_M;
+      int store_warp_smem_c_m = warp_m * (kMmaM * kValTileM) + i * kMmaM;
       int store_lane_gmem_c_m = by * BM + store_warp_smem_c_m + lane_id / 4;
 #pragma unroll
-      for (int j = 0; j < VAL_TILE_N; ++j) {
-        int store_warp_smem_c_n = warp_n * (MMA_N * VAL_TILE_N) + j * MMA_N;
+      for (int j = 0; j < kValTileN; ++j) {
+        int store_warp_smem_c_n = warp_n * (kMmaN * kValTileN) + j * kMmaN;
         int store_lane_gmem_c_n = bx * BN + store_warp_smem_c_n;
         int store_gmem_c_addr_0 =
             store_lane_gmem_c_m * N + store_lane_gmem_c_n;
@@ -2088,11 +2097,21 @@ __global__ void __launch_bounds__(256)
 // 面试对比 — 手写 MMA vs CuTe 代码量：
 //   手写: ldmatrix PTX 地址计算 + swizzle XOR + mma PTX + epilogue shuffle (~200行)
 //   CuTe: partition + copy + gemm (~80行), 其余由 launch wrapper 的类型推导完成
-template <typename T, int BM, int BN, int BK, int kStage, typename TiledMMA,
-          typename G2SCopyA, typename G2SCopyB, typename SmemLayoutA,
-          typename SmemLayoutB, typename SmemLayoutC, typename S2RCopyAtomA,
-          typename S2RCopyAtomB, typename R2SCopyAtomC, typename S2GCopyAtomC,
-          typename S2GCopyC, const bool BlockSwizzle = false>
+template <typename T,                      // element type (half)
+          int BM, int BN, int BK,          // block tile: BM=128, BN=256, BK=32
+          int kStage,                      // cp.async pipeline depth (2)
+          typename TiledMMA,               // MMA: SM80_16x8x16_F16F16F16F16_TN, EURepeat=2x2x1
+          typename G2SCopyA,               // G→S A: SM80_CP_ASYNC_CACHEGLOBAL<uint128_t>
+          typename G2SCopyB,               // G→S B: same as G2SCopyA
+          typename SmemLayoutA,            // smem A: Swizzle<3,3,3> + 8×BK atom → (BM,BK,kStage)
+          typename SmemLayoutB,            // smem B: same atom → (BN,BK,kStage)
+          typename SmemLayoutC,            // C scratchpad: Swizzle<3,3,3> + 32×32 atom, pipe=4
+          typename S2RCopyAtomA,           // S→R A: SM75_U32x4_LDSM_N (ldmatrix.x4)
+          typename S2RCopyAtomB,           // S→R B: same as S2RCopyAtomA
+          typename R2SCopyAtomC,           // R→S C: UniversalCopy<int> (32-bit store)
+          typename S2GCopyAtomC,           // S→G C: UniversalCopy<uint128_t> (128-bit wide store)
+          typename S2GCopyC,               // S→G TiledCopy: ThrLayout{32,4} × ValLayout{1,8}
+          const bool BlockSwizzle = false> // enable 3D grid swizzle for L2 locality
 __global__ void hgemm_mma_stages_tn_cute(T *Aptr, T *Bptr, T *Dptr, int m,
                                          int n, int k) {
   using namespace cute;
@@ -2196,8 +2215,8 @@ __global__ void hgemm_mma_stages_tn_cute(T *Aptr, T *Bptr, T *Dptr, int m,
     //     同一批寄存器数据。cute::gemm 根据 tiled_mma 的类型信息（EURepeat=2×2）
     //     在编译期自动展开为覆盖全部 (MMA_M, MMA_N) 对的 mma.sync 指令序列，
     //     无需手动写 M/N 循环。——这等价于手写 MMA 中的：
-    //       for (i=0; i<VAL_TILE_M; ++i)
-    //         for (j=0; j<VAL_TILE_N; ++j)
+    //       for (i=0; i<kValTileM; ++i)
+    //         for (j=0; j<kValTileN; ++j)
     //           HMMA16816(RC[i][j][0], RC[i][j][1], ...);
     //
     // CUTLASS 推导链（mma_atom.hpp）：
@@ -2842,7 +2861,7 @@ __device__ inline uint64_t make_smem_desc(half *ptr) {
   }
 
 // ---- TMA Shared Memory Layout ----
-// Multi-stage pipeline: K_STAGE 个 stage，每个 stage 存储 A[BM×BK] + B[BK×BN]
+// Multi-stage pipeline: kStages 个 stage，每个 stage 存储 A[BM×BK] + B[BK×BN]
 //
 // 每个 stage 包含两块 smem：
 //   A tile: [BM, BK] row-major → BK×BM 个 half，地址连续
@@ -2905,26 +2924,31 @@ template <int BM, int BN, int BK, int QSIZE> struct WgmmaSMem {
 //
 // Tile Hierarchy（与 MMA m16n8k16 kernel 对比）：
 //   WGMMA Atom:       m64n128k16（一次处理 64×128×16，是 MMA 的 64 倍）
-//   K Tile:           BK=64，每个 K tile 包含 BK/WGMMA_K=4 个 WGMMA atom
-//   M Tile:           BM=128，每个 M tile 包含 BM/WGMMA_M=2 个 WGMMA atom
-//   N Tile:           BN=128，单个 WGMMA_N=128 即可覆盖，无需在 N 方向分块
+//   K Tile:           BK=64，每个 K tile 包含 BK/kWgmmaK=4 个 WGMMA atom
+//   M Tile:           BM=128，每个 M tile 包含 BM/kWgmmaM=2 个 WGMMA atom
+//   N Tile:           BN=128，单个 kWgmmaN=128 即可覆盖，无需在 N 方向分块
 //   Block Tile:       C[128,128] = A[128,64] × B[64,128]
 //   Threads:          256 = 2 warpgroups × 128 threads/warpgroup
 //     Producer(WG0):  128 threads（仅 thread 0 做 TMA 提交）
 //     Consumer(WG1):  128 threads = 4 warps（全部参与 WGMMA 和写回）
 //
-// K_STAGE=3: 3 级流水线。Consumer 滞后 Producer 最多 2 步，确保 HBM→SMEM
+// kStages=3: 3 级流水线。Consumer 滞后 Producer 最多 2 步，确保 HBM→SMEM
 // 的延迟被计算完全掩盖。
 //
 // Grid:  ((N+127)/128/S, (M+127)/128, S)，S=(N+2047)/2048，3D block swizzle
 //   - grid.z = S 个 swizzle 分区，将连续 block 打散到不同 N 区域改善 L2 命中
 // Block: (256, 1, 1)，2 warpgroups
 // source: LeetCUDA/kernels/hgemm/wgmma/hgemm_wgmma_fp16acc_stages_tn.cu
-template <const int WGMMA_M = 64, const int WGMMA_N = 128,
-          const int WGMMA_K = 16, const int BM = 128, const int BN = 128,
-          const int BK = 64, const int NUM_THREADS = 256, const int K_STAGE = 3,
-          const bool BLOCK_SWIZZLE = false>
-__global__ void __launch_bounds__(NUM_THREADS)
+template <const int kWgmmaM = 64,           // WGMMA atom M dim (m64n128k16)
+          const int kWgmmaN = 128,          // WGMMA atom N dim
+          const int kWgmmaK = 16,           // WGMMA atom K dim
+          const int BM = 128,               // block tile M, 2 × kWgmmaM
+          const int BN = 128,               // block tile N, 1 × kWgmmaN
+          const int BK = 64,                // block tile K, 4 × kWgmmaK
+          const int kNumThreads = 256,      // 2 wargroups × 128 threads
+          const int kStages = 3,            // TMA pipeline depth (full/empty barriers)
+          const bool kBlockSwizzle = false> // enable 3D grid swizzle for L2 locality
+__global__ void __launch_bounds__(kNumThreads)
     hgemm_wgmma_stages_tn(
         int M, int N, int K, half *C,
         const CUtensorMap *__restrict__ tensorMapA,
@@ -2937,11 +2961,11 @@ __global__ void __launch_bounds__(NUM_THREADS)
 
   // Block Swizzle: 在 grid x 维度做 swizzle，改善 L2 cache 局部性
   // bx = blockIdx.z * gridDim.x + blockIdx.x，将相邻 block 打散到不同 N 区域
-  const int bx = ((int)BLOCK_SWIZZLE) * blockIdx.z * gridDim.x + blockIdx.x;
+  const int bx = ((int)kBlockSwizzle) * blockIdx.z * gridDim.x + blockIdx.x;
   const int by = blockIdx.y;
-  // num_consumers = (NUM_THREADS / 128) - 1 = 2 - 1 = 1（1 个 consumer WG）
+  // num_consumers = (kNumThreads / 128) - 1 = 2 - 1 = 1（1 个 consumer WG）
   // 这里的 -1 是因为 2 个 warpgroup 中 1 个是 producer，剩余都是 consumer
-  constexpr int num_consumers = (NUM_THREADS / 128) - 1; // 1 consumer WG
+  constexpr int num_consumers = (kNumThreads / 128) - 1; // 1 consumer WG
   // B_WG_M = BM / num_consumers：每个 consumer warpgroup 负责的 M 行数
   // 当只有一个 consumer 时，它负责全部 BM=128 行
   constexpr int B_WG_M = BM / num_consumers; // 128
@@ -2954,8 +2978,8 @@ __global__ void __launch_bounds__(NUM_THREADS)
   // 动态 shared memory（由 host 侧通过 kernel launch 的 smem 参数指定大小）
   // __align__(128) 满足 TMA 和 WGMMA 的 16B 对齐 + 128B swizzle 对齐要求
   extern __shared__ __align__(128) uint8_t smem_AB[];
-  WgmmaSMem<BM, BN, BK, K_STAGE> &s =
-      *reinterpret_cast<WgmmaSMem<BM, BN, BK, K_STAGE> *>(smem_AB);
+  WgmmaSMem<BM, BN, BK, kStages> &s =
+      *reinterpret_cast<WgmmaSMem<BM, BN, BK, kStages> *>(smem_AB);
   half *s_a = s.A;
   half *s_b = s.B;
 
@@ -2983,7 +3007,7 @@ __global__ void __launch_bounds__(NUM_THREADS)
   //     - 如果自己是第 N 个到达者 → phase 立即翻转 → wait 立即返回（不阻塞）
   //     - 如果自己不是最后一个 → wait 阻塞，直到第 N 个到达者触发翻转
   //
-  // ★ 本 kernel 的 Pipeline 同步协议（K_STAGE=3，arrive_count=129）：
+  // ★ 本 kernel 的 Pipeline 同步协议（kStages=3，arrive_count=129）：
   //
   //   Producer (1 thread)               Consumer (128 threads)
   //   ──────────────────                ──────────────────────
@@ -3009,8 +3033,8 @@ __global__ void __launch_bounds__(NUM_THREADS)
   //   arrive_count = 128 (consumer) + 1 (producer) = 129：
   //     每 phase，128 个 consumer 线程 + 1 个 producer 线程都要 arrive 一次。
 #pragma nv_diag_suppress static_var_with_dynamic_init
-  __shared__ cuda::barrier<cuda::thread_scope_block> full[K_STAGE];
-  __shared__ cuda::barrier<cuda::thread_scope_block> empty[K_STAGE];
+  __shared__ cuda::barrier<cuda::thread_scope_block> full[kStages];
+  __shared__ cuda::barrier<cuda::thread_scope_block> empty[kStages];
 #pragma nv_diag_default static_var_with_dynamic_init
 
   // K 方向总 tile 数。要求 K 能被 BK 整除，否则尾 tile 被丢弃。
@@ -3020,7 +3044,7 @@ __global__ void __launch_bounds__(NUM_THREADS)
 
   // 初始化 barriers（仅 thread 0 执行）
   if (threadIdx.x == 0) {
-    for (int i = 0; i < K_STAGE; ++i) {
+    for (int i = 0; i < kStages; ++i) {
       // arrive_count = 129：128 consumer + 1 producer
       // init 是 CUDA barrier 的 hidden friend 函数（定义在 cuda::barrier 类体内），
       // 只能通过 ADL（Argument-Dependent Lookup）调用。因为第一个参数 &full[i] 的类型是
@@ -3051,7 +3075,7 @@ __global__ void __launch_bounds__(NUM_THREADS)
   //   - Consumer 领先 Producer 太多 → wait(full[q]) 阻塞，等 TMA 搬运完
   //
   // 这是生产者-消费者模型的 GPU 实现：不需要共享循环变量，barrier 的 phase
-  // 交替天然保证了流水线串行化（at most K_STAGE-1 steps ahead）。
+  // 交替天然保证了流水线串行化（at most kStages-1 steps ahead）。
   // ==================================================================
   // Producer Warpgroup (WG0, threadIdx.x 0~127)
   // 职责：提交 TMA 2D 拷贝，将 A/B tile 从 HBM 异步搬运到 SMEM。
@@ -3062,7 +3086,7 @@ __global__ void __launch_bounds__(NUM_THREADS)
       // qidx: 当前操作的 stage 索引（round-robin 0 -> 1 -> 2 -> 0 -> ...）
       int qidx = 0;
       for (int block_k_iter = 0; block_k_iter < num_blocks_k; ++block_k_iter, ++qidx) {
-        if (qidx == K_STAGE)
+        if (qidx == kStages)
           qidx = 0;
 
         // Step P1: 等待 stage qidx 变为"空"（可被覆盖写入）
@@ -3129,24 +3153,24 @@ __global__ void __launch_bounds__(NUM_THREADS)
     //
     // 注意：此时每个 empty[i] 只有 128 次 arrive，未达 129，phase 不翻转。
     // Producer 后续的 empty[qidx].arrive() 作为第 129 次，触发 phase 翻转。
-    for (int i = 0; i < K_STAGE; ++i) {
+    for (int i = 0; i < kStages; ++i) {
       [[maybe_unused]] auto token = empty[i].arrive();
     }
 
     // 累加器寄存器声明
-    // d[B_WG_M / WGMMA_M][WGMMA_N / 16][4]:
+    // d[B_WG_M / kWgmmaM][kWgmmaN / 16][4]:
     //   - d[0][*][*]: M 方向第 1 个 WGMMA atom（rows 0~63）
     //   - d[1][*][*]: M 方向第 2 个 WGMMA atom（rows 64~127）
     //   - d[*][g][*]: N 方向第 g 组 16 列
     //   - d[*][*][0..3]: 4 条 uint32 寄存器，共 8 个 half（覆盖 16×16 子块）
     // 每个线程总共 2 * 8 * 4 = 2 * 32 = 64 uint32 = 128 half (每次WGMMA Atom 32 uint32 输出)
     // 128 线程 * 128 half = 16384 half = 128 * 128 = BM*BN（刚好覆盖整个 C tile）
-    uint32_t d[B_WG_M / WGMMA_M][WGMMA_N / 16][4] = {};
+    uint32_t d[B_WG_M / kWgmmaM][kWgmmaN / 16][4] = {};
 
     int qidx = 0;
     // K 维外循环：沿 K tile 迭代（BK=64，每个 K tile 做 4 次 WGMMA 累加）
     for (int block_k_iter = 0; block_k_iter < num_blocks_k; ++block_k_iter, ++qidx) {
-      if (qidx == K_STAGE)
+      if (qidx == kStages)
         qidx = 0;
 
       // Step C1: 等待 TMA 数据就绪（full 信号）
@@ -3173,29 +3197,29 @@ __global__ void __launch_bounds__(NUM_THREADS)
       // 每个 WGMMA_M64N128K16_F16F16F16 指令：
       //   D[64×128] += A[64×16] × B[16×128]
       //   A/B 均为 K-major（imm-trans=0），由 descA/descB 描述 smem 中的布局。
-      //   ScaleD=1: 累加。K 维有 BK/WGMMA_K=4 次迭代，每次都用 ScaleD=1。
+      //   ScaleD=1: 累加。K 维有 BK/kWgmmaK=4 次迭代，每次都用 ScaleD=1。
       WGMMA_FENCE();
 
-      // M 维迭代：BM/WGMMA_M = 128/64 = 2 个 WGMMA atom
+      // M 维迭代：BM/kWgmmaM = 128/64 = 2 个 WGMMA atom
       // 每个 atom 处理 64 行 M 方向数据。
 #pragma unroll
-      for (int m_it = 0; m_it < B_WG_M / WGMMA_M; ++m_it) {
+      for (int m_it = 0; m_it < B_WG_M / kWgmmaM; ++m_it) {
         // wgmma_sA 指向当前 stage 中 A tile 的第 m_it 个 64*BK 子块
-        // s_a 布局：[K_STAGE][BM][BK] -> qidx * BK*BM + BK * (m_it*64)
-        half *wgmma_sA = s_a + qidx * BK * BM + BK * m_it * WGMMA_M;
+        // s_a 布局：[kStages][BM][BK] -> qidx * BK*BM + BK * (m_it*64)
+        half *wgmma_sA = s_a + qidx * BK * BM + BK * m_it * kWgmmaM;
 
-        // K 维迭代：BK/WGMMA_K = 64/16 = 4 次 WGMMA（累加）
+        // K 维迭代：BK/kWgmmaK = 64/16 = 4 次 WGMMA（累加）
         // 每次处理 K=16 维的矩阵乘，4 次累加后覆盖完整的 BK=64。
 #pragma unroll
-        for (int k_it = 0; k_it < BK / WGMMA_K; ++k_it) {
+        for (int k_it = 0; k_it < BK / kWgmmaK; ++k_it) {
           // 第 k_it 次 WGMMA:
-          //   A: wgmma_sA + k_it * WGMMA_K（A 的 K 维起始位置）
-          //   B: s_b + qidx * BK * BN + k_it * WGMMA_K（B 的 K 维起始位置）
+          //   A: wgmma_sA + k_it * kWgmmaK（A 的 K 维起始位置）
+          //   B: s_b + qidx * BK * BN + k_it * kWgmmaK（B 的 K 维起始位置）
           //   注意 B 的 smem 布局是 [BK, BN] row-major，K-major 读取时从
           //   第 k_it*16 行开始取 16 行，每行 BN=128 列。
           //   ScaleD=1: 累加（K 维迭代需要累积结果）
-          WGMMA_M64N128K16_F16F16F16(d[m_it], wgmma_sA + k_it * WGMMA_K,
-                                     s_b + qidx * BK * BN + k_it * WGMMA_K,
+          WGMMA_M64N128K16_F16F16F16(d[m_it], wgmma_sA + k_it * kWgmmaK,
+                                     s_b + qidx * BK * BN + k_it * kWgmmaK,
                                      1, // ScaleD=1: accumulate（不清零）
                                      1, 1, 0, 0);
         }
@@ -3273,10 +3297,10 @@ __global__ void __launch_bounds__(NUM_THREADS)
 
     // 2 * (8 * 4) = 2 * 32 = 64 uint32 = 128 half
 #pragma unroll
-    for (int m_it = 0; m_it < B_WG_M / WGMMA_M; ++m_it) {
-      int yo = m_it * WGMMA_M; // M 方向行偏移 (0 或 64)
+    for (int m_it = 0; m_it < B_WG_M / kWgmmaM; ++m_it) {
+      int yo = m_it * kWgmmaM; // M 方向行偏移 (0 或 64)
 #pragma unroll
-      for (int g = 0; g < WGMMA_N / 16; ++g) {
+      for (int g = 0; g < kWgmmaN / 16; ++g) {
         int col = g * 16 + 2 * (lane % 4); // N 方向列偏移 (0,2,4,...,14 then 16,18,...)
         // 一次 uint32 store 写入 2 个 half（连续列 col 和 col+2）
         // 左上象限: (row, col)
@@ -4333,9 +4357,9 @@ static void test_merge_attn_states(int num_tokens, int num_heads,
 
 static void test_softmax(int N) {
   // Use N = blockDim.x so one block processes all elements as one token.
-  constexpr int NUM_THREADS = 256;
-  if (N != NUM_THREADS) {
-    printf("  OnlineSafeSoftmax: N must be %d (got %d), skipping.\n", NUM_THREADS, N);
+  constexpr int kNumThreads = 256;
+  if (N != kNumThreads) {
+    printf("  OnlineSafeSoftmax: N must be %d (got %d), skipping.\n", kNumThreads, N);
     return;
   }
 
@@ -4898,8 +4922,8 @@ static void test_hgemm_mma(int M, int N, int K) {
   cudaEventCreate(&start);
   cudaEventCreate(&stop);
 
-  constexpr int BM = 128, BN = 128, BK = 16, K_STAGE = 3;
-  size_t smem_bytes = K_STAGE * (BM * BK + BN * BK) * sizeof(half); // 24576
+  constexpr int BM = 128, BN = 128, BK = 16, kStages = 3;
+  size_t smem_bytes = kStages * (BM * BK + BN * BK) * sizeof(half); // 24576
   dim3 block(256);
   dim3 grid((N + BN - 1) / BN, (M + BM - 1) / BM);
   hgemm_mma_stages_tn<<<grid, block, smem_bytes>>>(d_a, d_b_t, d_c, M, N, K);
@@ -4927,11 +4951,11 @@ static void test_hgemm_mma(int M, int N, int K) {
 
 static void test_hgemm_swizzle(int M, int N, int K) {
   // HGEMM MMA Swizzle — m16n8k16 + multistage pipeline + TN 布局 + XOR swizzle
-  //   + Register Double Buffering (VAL_TILE_K=2, BK=32)
+  //   + Register Double Buffering (kValTileK=2, BK=32)
   // TN layout: C[M×N] = A[M×K] × B^T[N×K]
   // Kernel: hgemm_mma_stages_tn_swizzle with default template params
-  //   (VAL_TILE_K=2, K_STAGE=3, BK=32)
-  // smem: K_STAGE × (BM×BK + BN×BK) halfs
+  //   (kValTileK=2, kStages=3, BK=32)
+  // smem: kStages × (BM×BK + BN×BK) halfs
 
   size_t size_a = (size_t)M * K * sizeof(half);
   size_t size_b = (size_t)K * N * sizeof(half);
@@ -4972,7 +4996,7 @@ static void test_hgemm_swizzle(int M, int N, int K) {
                CUBLAS_COMPUTE_16F, CUBLAS_GEMM_DEFAULT);
   check(cudaMemcpy(h_c_ref, d_c, size_c, cudaMemcpyDeviceToHost), "hgemm_swizzle D2H ref");
 
-  // MMA swizzle kernel (default params: K_STAGE=3, VAL_TILE_K=2, BK=32)
+  // MMA swizzle kernel (default params: kStages=3, kValTileK=2, BK=32)
   constexpr int BM = 128, BN = 128, BK = 32, K_STAGE_S = 3;
   size_t smem_bytes = K_STAGE_S * (BM * BK + BN * BK) * sizeof(half);
   dim3 block(256);
@@ -4990,7 +5014,7 @@ static void test_hgemm_swizzle(int M, int N, int K) {
     float err = fabsf(__half2float(h_c[i]) - __half2float(h_c_ref[i]));
     if (err > max_err) max_err = err;
   }
-  printf("| %-35s | %.6e | %-4s |\n", "HGEMM Swizzle+Reg2x", max_err, max_err < 1.0f ? "PASS" : "FAIL");
+  printf("| %-35s | %.6e | %-4s |\n", "HGEMM Swizzle + Reg2x", max_err, max_err < 1.0f ? "PASS" : "FAIL");
 
   free(h_a); free(h_b); free(h_b_t); free(h_c); free(h_c_ref);
   cudaFree(d_a); cudaFree(d_b); cudaFree(d_b_t); cudaFree(d_c);
@@ -5074,7 +5098,7 @@ static void test_hgemm_wgmma(int M, int N, int K) {
   // TN layout: C[M×N] = A[M×K] × B^T[N×K]
   // Kernel: hgemm_wgmma_stages_tn with default template params
 
-  constexpr int BM = 128, BN = 128, BK = 64, K_STAGE = 3, NUM_THREADS = 256;
+  constexpr int BM = 128, BN = 128, BK = 64, kStages = 3, kNumThreads = 256;
 
   // M, K must be divisible by tile dims
   if (M % BM != 0 || N % BN != 0 || K % BK != 0) {
@@ -5135,17 +5159,17 @@ static void test_hgemm_wgmma(int M, int N, int K) {
       allocate_and_create_tensor_map(d_b_t, N / BN, K / BK);
 
   // Launch WGMMA kernel
-  // BLOCK_SWIZZLE=false → 2D grid, no swizzle
+  // kBlockSwizzle=false → 2D grid, no swizzle
   size_t smem_bytes =
-      K_STAGE * (BM * BK + BN * BK) * sizeof(half); // 3*16384*2 = 96KB
+      kStages * (BM * BK + BN * BK) * sizeof(half); // 3*16384*2 = 96KB
   cudaFuncSetAttribute(
-      hgemm_wgmma_stages_tn<64, 128, 16, BM, BN, BK, NUM_THREADS, K_STAGE,
+      hgemm_wgmma_stages_tn<64, 128, 16, BM, BN, BK, kNumThreads, kStages,
                              false>,
       cudaFuncAttributeMaxDynamicSharedMemorySize, smem_bytes);
 
-  dim3 block(NUM_THREADS);
+  dim3 block(kNumThreads);
   dim3 grid((N + BN - 1) / BN, (M + BM - 1) / BM);
-  hgemm_wgmma_stages_tn<64, 128, 16, BM, BN, BK, NUM_THREADS, K_STAGE, false>
+  hgemm_wgmma_stages_tn<64, 128, 16, BM, BN, BK, kNumThreads, kStages, false>
       <<<grid, block, smem_bytes>>>(M, N, K, d_c, tma_a, tma_b);
   check(cudaGetLastError(), "wgmma launch");
   check(cudaDeviceSynchronize(), "wgmma sync");
