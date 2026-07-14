@@ -1,6 +1,6 @@
 # CUDA Kernel 面试背题笔记
 
-[notes-v2.cu](https://github.com/xlite-dev/LeetCUDA/kernels/interview/notes-v2.cu): 面试中高频出现的 CUDA kernel 的背题版本。
+[notes-v2.cu](notes-v2.cu): 面试中高频出现的 CUDA kernel 的背题版本。
 
 ## 快速开始
 
