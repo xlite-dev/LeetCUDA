@@ -1646,6 +1646,9 @@ static __device__ __forceinline__ int swizzle_permuted_j(int i, int j) {
   static_assert(kColStride % kStep == 0,
                 "kColStride must be multiple of kStep.");
   if constexpr (kStep == 8) {
+    // j >> 3: 表示8个half(=16 bytes)数据为一个chunk; i >> 2: 表示4行为一组
+    // kColStride >> 3: 按照kStep=8计算chunk idx，kColStride=16 → {0, 1}
+    // 最后的 << 3: 将chunk idx转换为实际的列偏移量（8个half/chunk），{0, 8}
     return (((j >> 3) ^ (i >> 2)) % (kColStride >> 3)) << 3;
   } else {
     static_assert(kStep == 4);
