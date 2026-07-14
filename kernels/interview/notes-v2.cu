@@ -481,7 +481,7 @@ __global__ void merge_attn_states(
 
   // 每个 (token, head) 对需要 threads_per_head 个线程覆盖 head_size 个元素
   const int threads_per_head = head_size / kPackSize;
-  // 实际有效总线程数，超过这个数的线程会被忽略，block是按照NUM_THREADS=128
+  // 实际有效总线程数，超过这个数的线程会被忽略，block是按照kNumThreads=128
   // 来分配的，那么最后一个block的线程数可能会超过实际需要的线程数
   const int total_threads = num_tokens * num_heads * threads_per_head;
 
@@ -1346,7 +1346,49 @@ HOST_DEVICE_INLINE int div_ceil(int a, int b) {
 //   - cp.async 条件化：仅当 k+kStages-1 < NUM_K_TILES 时加载
 //   - WAIT_GROUP 自适应：满载期用 kStages-2，尾部排空用 0
 //
-// Grid:  ((N+127)/128/S, (M+127)/128, S)，S=(N+2047)/2048，3D block swizzle
+// ★ Block Swizzle：把 C 的逻辑 tile 布局改写为紧凑的二维发射窗口，增加 A/B tile 的 L2 reuse 机会。
+//   C tile 坐标为 (by, bx)，by 沿 M 方向，bx 沿 N 方向；一个 bx 读取同一块 B^T[bx*BN:(bx+1)*BN, :]
+//   （TN 布局中 B^T[N][K] 为 row-major），一个 by 读取同一块 A[by*BM:(by+1)*BM, :]。
+//   下图只画 4 个逻辑上相邻的 CTA；SM0~SM3 仅表示可能的发射序列，不是硬件 SM 绑定或调度保证。
+//
+//   No Swizzle: grid = (tiles_n, tiles_m, 1)，blockIdx.x = bx。
+//   C-Matrix（同一 by 行；CTA 先在很宽的 N 方向范围内展开）：
+//
+//       N / bx →  0          1          2          3        ...
+//     M  ↓      ┌────────┬────────┬────────┬────────┐
+//     by = 0    │  SM0   │  SM1   │  SM2   │  SM3   │  ...
+//               │ A 0,B0 │ A 0,B1 │ A 0,B2 │ A 0,B3 │
+//               └────────┴────────┴────────┴────────┘
+//
+//   同一 by 的 CTA 复用 A[by]，但分别读取 B^T 0、B^T 1 等不同 B tile。只有 scheduler
+//   推进到下一条 by 行、再次遇到相同 bx 时，才有机会复用 B；当 tiles_n 很大时，这段时间内
+//   L2 更容易被其他 B tile 挤占。
+//
+//   Thread Block Swizzle: 先把 N 切成 S 个连续窗口；一个 z slice 只含 grid_x 个 bx。
+//   下图用 grid_x=2 展示一个窄窗口，scheduler 更早进入下一条 by 行：
+//
+//       N / local x →  0          1
+//     M  ↓          ┌────────┬────────┐
+//     by = 0        │  SM0   │  SM1   │  → A 0; B^T 0, B^T 1
+//                   ├────────┼────────┤
+//     by = 1        │  SM2   │  SM3   │  → A 1; B^T 0, B^T 1
+//                   └────────┴────────┘
+//
+//   对于这个 2x2 窗口：同一行横向复用 A（SM0/SM1、SM2/SM3），同一列纵向复用 B
+//   （SM0/SM2、SM1/SM3）。真实 grid_x 不必等于 2，但缩小它会缩短再次访问相同 bx 的距离。
+//   此优化只提高 scheduler 在相近时间执行这些 CTA、命中 L2 的机会，不保证 CTA 的 z 顺序、
+//   缓存驻留或 L2 hit。
+//
+//   Launch（kBlockSwizzle=false，当前默认路径）：
+//     grid = (ceil(N / BN), ceil(M / BM), 1)，blockIdx.x 直接就是 N-tile 编号 bx。
+//   Launch（kBlockSwizzle=true，需由 launch 端显式构造 3D grid）：
+//     tiles_n = ceil(N / BN), S = ceil(N / 2048)
+//     grid = (ceil(tiles_n / S), ceil(M / BM), S)
+//     bx = blockIdx.z * grid.x + blockIdx.x，col_start = bx * BN。
+//   例如 N=8192、BN=128：tiles_n=64，S=4，grid.x=16；z=0/1/2/3 分别覆盖
+//   bx=0..15/16..31/32..47/48..63，即 columns [0,2048)/[2048,4096)/[4096,6144)/[6144,8192)。
+//   grid.x*grid.z 可能产生 bx>=tiles_n 的冗余 CTA。当前 kernel 仍要求 M/N/K 分别按 BM/BN/BK
+//   对齐；ceil 只保证逻辑 tile 编号不遗漏，并不使部分尾 tile 变为安全。
 // Block: (256, 1, 1)，8 warps
 // source: LeetCUDA/kernels/hgemm/mma/basic/hgemm_mma_stage_tn.cu
 // =============================================================================
@@ -1358,10 +1400,12 @@ template <const int kMmaM = 16,             // MMA atom M dim (m16n8k16)
           const int kValTileM = 4,          // value-repeat along M, BM = 16*2*4 = 128
           const int kValTileN = 4,          // value-repeat along N, BN = 8*4*4 = 128
           const int kStages = 3,            // cp.async pipeline depth
-          const bool kBlockSwizzle = false> // enable 3D grid swizzle for L2 locality
+          const int kBlockSwizzle = 0>      // 1 enables 3D grid swizzle for L2 locality
 __global__ void __launch_bounds__(256)
     hgemm_mma_stages_tn(half *A, half *B, half *C, int M, int N, int K) {
-  // Block Swizzle: 在 grid x 维度做 swizzle，改善 L2 cache 局部性
+  static_assert(kBlockSwizzle == 0 || kBlockSwizzle == 1, "kBlockSwizzle must be 0 or 1");
+  // Block Swizzle: 0 时 bx=blockIdx.x；1 时将 (blockIdx.z, blockIdx.x)
+  // 线性化为原始 N-tile 编号 bx=z*gridDim.x+x。by 始终是 M-tile 编号。
   const int bx = ((int)kBlockSwizzle) * blockIdx.z * gridDim.x + blockIdx.x;
   const int by = blockIdx.y;
   constexpr int BM = kMmaM * kMmaTileM * kValTileM; // 16*2*4=128
@@ -1738,9 +1782,10 @@ template <const int kMmaM = 16,             // MMA atom M dim (m16n8k16)
           const int kValTileN = 4,          // value-repeat along N, BN = 8*4*4 = 128
           const int kValTileK = 2,          // MMA_K slices per BK tile, BK = kMmaK*2 = 32
           const int kStages = 3,            // cp.async pipeline depth
-          const bool kBlockSwizzle = false> // enable 3D grid swizzle for L2 locality
+          const int kBlockSwizzle = 0>      // 1 enables 3D grid swizzle for L2 locality
 __global__ void __launch_bounds__(256)
     hgemm_mma_stages_tn_swizzle(half *A, half *B, half *C, int M, int N, int K) {
+  static_assert(kBlockSwizzle == 0 || kBlockSwizzle == 1, "kBlockSwizzle must be 0 or 1");
   // Block Swizzle: 在 grid x 维度做 swizzle，改善 L2 cache 局部性
   const int bx = ((int)kBlockSwizzle) * blockIdx.z * gridDim.x + blockIdx.x;
   const int by = blockIdx.y;
@@ -2117,10 +2162,11 @@ template <typename T,                      // element type (half)
           typename R2SCopyAtomC,           // R→S C: UniversalCopy<int> (32-bit store)
           typename S2GCopyAtomC,           // S→G C: UniversalCopy<uint128_t> (128-bit wide store)
           typename S2GCopyC,               // S→G TiledCopy: ThrLayout{32,4} × ValLayout{1,8}
-          const bool BlockSwizzle = false> // enable 3D grid swizzle for L2 locality
+          const int BlockSwizzle = 0>      // 1 enables 3D grid swizzle for L2 locality
 __global__ void hgemm_mma_stages_tn_cute(T *Aptr, T *Bptr, T *Dptr, int m,
                                          int n, int k) {
   using namespace cute;
+  static_assert(BlockSwizzle == 0 || BlockSwizzle == 1, "BlockSwizzle must be 0 or 1");
 
   // 动态 shared memory: KStage 个 A/B tile；C epilogue 复用当前 A stage 的空间。
   extern __shared__ T shm_data[];
@@ -2671,7 +2717,7 @@ void launch_hgemm_mma_stages_tn_cute(T *a, T *b, T *c, int M, int N, int K) {
   // 由于 kernel 没有 tile 内的逐元素 predication，调用方需保证
   // M % BM == 0、N % BN == 0、K % BK == 0。
   // 当不启用 BlockSwizzle 时，BZ=1 退化为纯 2D grid，行为不变。
-  constexpr bool kBlockSwizzle = false;
+  constexpr int kBlockSwizzle = 0;
   constexpr int kSwizzleStride = 2048;
   int BX = (N + BN - 1) / BN;
   int BY = (M + BM - 1) / BM;
@@ -2953,12 +2999,14 @@ template <const int kWgmmaM = 64,           // WGMMA atom M dim (m64n128k16)
           const int BK = 64,                // block tile K, 4 × kWgmmaK
           const int kNumThreads = 256,      // 2 wargroups × 128 threads
           const int kStages = 3,            // TMA pipeline depth (full/empty barriers)
-          const bool kBlockSwizzle = false> // enable 3D grid swizzle for L2 locality
+          const int kBlockSwizzle = 0>      // 1 enables 3D grid swizzle for L2 locality
 __global__ void __launch_bounds__(kNumThreads)
     hgemm_wgmma_stages_tn(
         int M, int N, int K, half *C,
         const CUtensorMap *__restrict__ tensorMapA,
         const CUtensorMap *__restrict__ tensorMapB) {
+  static_assert(kBlockSwizzle == 0 || kBlockSwizzle == 1,
+                "kBlockSwizzle must be 0 or 1");
   // 注意：tensorMapA/tensorMapB 需要由 host 侧按当前 tile 布局预先创建；
   // 对 row-major [M, K] 矩阵，TMA shape 参数写的是 (K, M) 而不是 (M, K)，
   // 也就是TMA descriptor中把连续的维度写在最内层，非连续的维度写在最外层。
