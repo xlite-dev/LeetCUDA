@@ -948,7 +948,7 @@ __global__ void mat_transpose_padded(
 //   - 不同 K 值对应不同分块策略：
 //     K=32 倍数：一个 warp 的 32 线程恰好覆盖 K 维
 //     K=128 倍数：每个线程用 float4 处理 4 元素，warp 覆盖 128
-//     K=16 < 32：一个 warp 用不满，用 ROW_PER_WARP=2 让每个 warp 处理 2 行
+//     K=16 < 32：一个 warp 用不满，用 kRowPerWarp=2 让每个 warp 处理 2 行
 //
 // a: M×K, x: K×1, y: M×1, 计算: y = a * x; N = 1
 
@@ -1013,25 +1013,25 @@ __global__ void sgemv_k128(float *a, float *x, float *y, int M, int K) {
   }
 }
 
-// ---- SGEMV K16: K < WarpSize, ROW_PER_WARP=2 ----
+// ---- SGEMV K16: K < WarpSize, kRowPerWarp=2 ----
 // 面试亮点：K=16 < 32，一个 warp 可以处理多行
-// ROW_PER_WARP=2，K_kWarpSize=16，前 16 个 lane 处理 row0，后 16 个 lane 处理 row1
+// kRowPerWarp=2，kNumLanePerRow=16，前 16 个 lane 处理 row0，后 16 个 lane 处理 row1
 // Grid:  ((M + 7) / 8, 1, 1)，NUM_ROWS=8
 // Block: (32, 4, 1)
-// 注意：这一版是面向 K=16 的专用写法；ROW_PER_WARP=2 时一个 warp 同时处理 2 行
+// 注意：这一版是面向 K=16 的专用写法；kRowPerWarp=2 时一个 warp 同时处理 2 行
 // source: LeetCUDA/kernels/sgemv/sgemv.cu
-template <const int ROW_PER_WARP = 2>
+template <const int kRowPerWarp = 2>
 __global__ void sgemv_k16(float *A, float *x, float *y, int M, int K) {
-  constexpr int K_kWarpSize = (kWarpSize + ROW_PER_WARP - 1) / ROW_PER_WARP; // 16
+  constexpr int kNumLanePerRow = (kWarpSize + kRowPerWarp - 1) / kRowPerWarp; // 16
   int tx = threadIdx.x;
   int ty = threadIdx.y;
   int lane = tx % kWarpSize;
-  int k = lane % K_kWarpSize; // 0~15
-  int m = (blockDim.y * blockIdx.x + ty) * ROW_PER_WARP + lane / K_kWarpSize;
+  int k = lane % kNumLanePerRow; // row0: 0~15, t0~t15; row1: 0~15, t16~t31
+  int m = (blockDim.y * blockIdx.x + ty) * kRowPerWarp + lane / kNumLanePerRow;
   if (m < M) {
     float sum = A[m * K + k] * x[k];
-    // 按照K_kWarpSize=16，分2组各自做 warp reduce sum，k==0的lane写回结果
-    sum = warp_reduce_sum<K_kWarpSize>(sum);
+    // 按照kNumLanePerRow=16，分2组各自做 warp reduce sum，k==0的lane写回结果
+    sum = warp_reduce_sum<kNumLanePerRow>(sum);
     // 注意：判断条件是 k == 0，不是 lane == 0！
     if (k == 0)
       y[m] = sum;
