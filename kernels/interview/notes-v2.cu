@@ -3751,7 +3751,7 @@ __global__ void __launch_bounds__(kWarpSize *kMmaTileSeqLenQ *kMmaTileSeqLenK)
         lane_row_max_new[i][0] = max(lane_row_max_new[i][0], tmp_max_0);
         lane_row_max_new[i][1] = max(lane_row_max_new[i][1], tmp_max_1);
       }
-      // Warp-level reduce max (kWarpSize = 4 for Q@K^T — only lanes
+      // Warp-level reduce max (kWarpWidth = 4 for Q@K^T — only lanes
       // {0,4,8,...,28} hold valid data)
       lane_row_max_new[i][0] =
           warp_reduce_max<4, float>(lane_row_max_new[i][0]);
