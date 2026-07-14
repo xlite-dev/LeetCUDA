@@ -125,10 +125,11 @@
 #include <cuda.h>
 #include <cuda/barrier>
 
-#define WARP_SIZE 32
 #define INT4(value) (reinterpret_cast<int4 *>(&(value))[0])
 #define FLOAT4(value) (reinterpret_cast<float4 *>(&(value))[0])
 #define HALF2(value) (reinterpret_cast<half2 *>(&(value))[0])
+
+static constexpr int kWarpSize = 32;
 
 // =============================================================================
 // Phase 1a: Warp Reduce（warp 内归约，纯寄存器操作，无需 shared memory）
@@ -137,9 +138,9 @@
 // Warp Reduce Sum — generic (used by both FP32 and FP16 contexts)
 // 使用 __shfl_xor_sync 做蝶形归约（butterfly reduction）
 // 复杂度 O(logN)，N=32 时仅需 5 步
-// 模板参数：T=数据类型, kWarpSize=segment width（默认 32）
-// kWarpSize 会作为 __shfl_xor_sync 的第 4 个实参 width，限制 shuffle 在同一 segment 内
-// 当 kWarpSize < 32（如 FA 中 kWarpSize=4）时，只有同 segment 的 lane 参与通信
+// 模板参数：T=数据类型, kWarpWidth=segment width（默认 32）
+// kWarpWidth 会作为 __shfl_xor_sync 的第 4 个实参 width，限制 shuffle 在同一 segment 内
+// 当 kWarpWidth < 32（如 FA 中 kWarpWidth=4）时，只有同 segment 的 lane 参与通信
 //   蝶形归约示意（以 warpSize=8 为例，实际 warpSize=32 有 5 次迭代）：
 //
 //   初始: 每个 lane 持有自己的值 v0..v7
@@ -176,23 +177,23 @@
 //   - 每轮每个 lane 只和恰好 1 个其他 lane 通信（一对一，无冲突）
 //   - 每轮信息传递距离减半：16→8→4→2→1（距离减半，信息翻倍）
 //   - O(log₂ N) 步完成，无需 shared memory，纯寄存器操作
-//   - __shfl_xor_sync 第四个参数 kWarpSize 限制 segment width：
-//     当 kWarpSize=4 时，只有同 segment(4个一组)内的 lane 参与 shuffle
-template <const int kWarpSize = WARP_SIZE, typename T = float>
+//   - __shfl_xor_sync 第四个参数 kWarpWidth 限制 segment width：
+//     当 kWarpWidth=4 时，只有同 segment(4个一组)内的 lane 参与 shuffle
+template <const int kWarpWidth = kWarpSize, typename T = float>
 __device__ __forceinline__ T warp_reduce_sum(T val) {
 #pragma unroll
-  for (int mask = kWarpSize >> 1; mask >= 1; mask >>= 1) {
-    val += __shfl_xor_sync(0xffffffff, val, mask, kWarpSize);
+  for (int mask = kWarpWidth >> 1; mask >= 1; mask >>= 1) {
+    val += __shfl_xor_sync(0xffffffff, val, mask, kWarpWidth);
   }
   return val;
 }
 
 // Warp Reduce Max — generic
-template <const int kWarpSize = WARP_SIZE, typename T = float>
+template <const int kWarpWidth = kWarpSize, typename T = float>
 __device__ __forceinline__ T warp_reduce_max(T val) {
 #pragma unroll
-  for (int mask = kWarpSize >> 1; mask >= 1; mask >>= 1) {
-    val = max(val, __shfl_xor_sync(0xffffffff, val, mask, kWarpSize));
+  for (int mask = kWarpWidth >> 1; mask >= 1; mask >>= 1) {
+    val = max(val, __shfl_xor_sync(0xffffffff, val, mask, kWarpWidth));
   }
   return val;
 }
@@ -210,12 +211,12 @@ __device__ __forceinline__ T warp_reduce_max(T val) {
 //   5. __shfl_sync broadcast 到所有线程（关键！否则每个warp只有lane<kNumWarps 知道结果）
 template <const int kNumThreads = 256>
 __device__ float block_reduce_sum(float val) {
-  constexpr int kNumWarps = (kNumThreads + WARP_SIZE - 1) / WARP_SIZE;
-  int warp = threadIdx.x / WARP_SIZE;
-  int lane = threadIdx.x % WARP_SIZE;
+  constexpr int kNumWarps = (kNumThreads + kWarpSize - 1) / kWarpSize;
+  int warp = threadIdx.x / kWarpSize;
+  int lane = threadIdx.x % kWarpSize;
   __shared__ float shared[kNumWarps];
 
-  float value = warp_reduce_sum<WARP_SIZE>(val);
+  float value = warp_reduce_sum<kWarpSize>(val);
   if (lane == 0)
     shared[warp] = value;
   __syncthreads();
@@ -230,12 +231,12 @@ __device__ float block_reduce_sum(float val) {
 // Block Reduce Max — FP32（增强版，带 broadcast）
 template <const int kNumThreads = 256>
 __device__ float block_reduce_max(float val) {
-  constexpr int kNumWarps = (kNumThreads + WARP_SIZE - 1) / WARP_SIZE;
-  int warp = threadIdx.x / WARP_SIZE;
-  int lane = threadIdx.x % WARP_SIZE;
+  constexpr int kNumWarps = (kNumThreads + kWarpSize - 1) / kWarpSize;
+  int warp = threadIdx.x / kWarpSize;
+  int lane = threadIdx.x % kWarpSize;
   __shared__ float shared[kNumWarps];
 
-  float value = warp_reduce_max<WARP_SIZE>(val);
+  float value = warp_reduce_max<kWarpSize>(val);
   if (lane == 0)
     shared[warp] = value;
   __syncthreads();
@@ -255,14 +256,14 @@ template <const int kNumThreads = 256>
 __global__ void block_reduce_all(float *a, float *y, int N) {
   int tid = threadIdx.x;
   int idx = blockIdx.x * kNumThreads + tid;
-  constexpr int kNumWarps = (kNumThreads + WARP_SIZE - 1) / WARP_SIZE;
+  constexpr int kNumWarps = (kNumThreads + kWarpSize - 1) / kWarpSize;
   __shared__ float shared[kNumWarps];
 
   float val = (idx < N) ? a[idx] : 0.0f;
-  int warp = tid / WARP_SIZE;
-  int lane = tid % WARP_SIZE;
+  int warp = tid / kWarpSize;
+  int lane = tid % kWarpSize;
 
-  val = warp_reduce_sum<WARP_SIZE>(val);
+  val = warp_reduce_sum<kWarpSize>(val);
   if (lane == 0)
     shared[warp] = val;
   __syncthreads();
@@ -283,14 +284,14 @@ template <const int kNumThreads = 256>
 __global__ void dot(float *a, float *b, float *y, int N) {
   int tid = threadIdx.x;
   int idx = blockIdx.x * kNumThreads + tid;
-  constexpr int kNumWarps = (kNumThreads + WARP_SIZE - 1) / WARP_SIZE;
+  constexpr int kNumWarps = (kNumThreads + kWarpSize - 1) / kWarpSize;
   __shared__ float shared[kNumWarps];
 
   float prod = (idx < N) ? a[idx] * b[idx] : 0.0f;
-  int warp = tid / WARP_SIZE;
-  int lane = tid % WARP_SIZE;
+  int warp = tid / kWarpSize;
+  int lane = tid % kWarpSize;
 
-  prod = warp_reduce_sum<WARP_SIZE>(prod);
+  prod = warp_reduce_sum<kWarpSize>(prod);
   if (lane == 0)
     shared[warp] = prod;
   __syncthreads();
@@ -311,7 +312,7 @@ template <const int kNumThreads = 256 / 4>
 __global__ void dot_vec4(float *a, float *b, float *y, int N) {
   int tid = threadIdx.x;
   int idx = (blockIdx.x * kNumThreads + tid) * 4;
-  constexpr int kNumWarps = (kNumThreads + WARP_SIZE - 1) / WARP_SIZE;
+  constexpr int kNumWarps = (kNumThreads + kWarpSize - 1) / kWarpSize;
   __shared__ float shared[kNumWarps];
 
   float4 reg_a = FLOAT4(a[idx]);
@@ -319,10 +320,10 @@ __global__ void dot_vec4(float *a, float *b, float *y, int N) {
   float prod = (idx < N) ? (reg_a.x * reg_b.x + reg_a.y * reg_b.y +
                             reg_a.z * reg_b.z + reg_a.w * reg_b.w)
                          : 0.0f;
-  int warp = tid / WARP_SIZE;
-  int lane = tid % WARP_SIZE;
+  int warp = tid / kWarpSize;
+  int lane = tid % kWarpSize;
 
-  prod = warp_reduce_sum<WARP_SIZE>(prod);
+  prod = warp_reduce_sum<kWarpSize>(prod);
   if (lane == 0)
     shared[warp] = prod;
   __syncthreads();
@@ -637,13 +638,13 @@ struct __align__(8) MD {
   float d; // running denominator (sum of exp(x - max))
 };
 
-template <const int kWarpSize = WARP_SIZE>
+template <const int kWarpWidth = kWarpSize>
 __device__ __forceinline__ MD warp_reduce_md(MD md1) {
 #pragma unroll
-  for (int mask = kWarpSize >> 1; mask >= 1; mask >>= 1) {
+  for (int mask = kWarpWidth >> 1; mask >= 1; mask >>= 1) {
     MD md2;
-    md2.m = __shfl_xor_sync(0xffffffff, md1.m, mask, kWarpSize);
-    md2.d = __shfl_xor_sync(0xffffffff, md1.d, mask, kWarpSize);
+    md2.m = __shfl_xor_sync(0xffffffff, md1.m, mask, kWarpWidth);
+    md2.d = __shfl_xor_sync(0xffffffff, md1.d, mask, kWarpWidth);
 
     MD b_m = (md1.m > md2.m) ? md1 : md2; // max
     MD s_m = (md1.m > md2.m) ? md2 : md1;
@@ -664,12 +665,12 @@ template <const int kNumThreads = 256>
 __global__ void online_safe_softmax_per_token(const float *x, float *y, int N) {
   int tid = threadIdx.x;
   int idx = blockIdx.x * kNumThreads + threadIdx.x;
-  const int kNumWarps = (kNumThreads + WARP_SIZE - 1) / WARP_SIZE;
+  const int kNumWarps = (kNumThreads + kWarpSize - 1) / kWarpSize;
   __shared__ MD shared[kNumWarps];
 
   float val = (idx < N) ? x[idx] : -FLT_MAX;
-  int warp = tid / WARP_SIZE;
-  int lane = tid % WARP_SIZE;
+  int warp = tid / kWarpSize;
+  int lane = tid % kWarpSize;
 
   // 初始化：每个线程持有一个 (max, denom) 对
   MD md;
@@ -677,7 +678,7 @@ __global__ void online_safe_softmax_per_token(const float *x, float *y, int N) {
   md.d = idx < N ? 1.0f : 0.0f;
 
   // 第一级规约：warp_reduce_md 在归约中自动更新 m 和 d
-  md = warp_reduce_md<WARP_SIZE>(md);
+  md = warp_reduce_md<kWarpSize>(md);
 
   if (lane == 0)
     shared[warp] = md;
@@ -685,7 +686,7 @@ __global__ void online_safe_softmax_per_token(const float *x, float *y, int N) {
 
   // 第二级归约：每个 warp 结果再做一次 warp_reduce_md（复用 block_reduce 模式）
   md = lane < kNumWarps ? shared[lane] : MD{-FLT_MAX, 0.0f};
-  md = warp_reduce_md<WARP_SIZE>(md); // 用WARP_SIZE确保每个lane都能拿到最终结果
+  md = warp_reduce_md<kWarpSize>(md); // 用kWarpSize确保每个lane都能拿到最终结果
 
   // 用全局 max 和 denom 做最终 softmax
   float d_inv = __fdividef(1.0f, md.d);
@@ -877,7 +878,7 @@ __global__ void rope(float *x, float *out, int seq_len, int N) {
 // 转置的四步演进：
 //   naive: 非合并写入（列优先写）→ 每个 warp 产生 32 次内存事务
 //   shared: 写入 smem（行优先）→ 从 smem 读取（列优先）→ 合并写入 gmem
-//   BCF:   smem 布局 [WARP_SIZE_S*4][WARP_SIZE_S+PAD] = [64][17]，PAD=1 加在第二维消除 bank conflict
+//   BCF:   smem 布局 [kWarpSize_S*4][kWarpSize_S+PAD] = [64][17]，PAD=1 加在第二维消除 bank conflict
 //   merge_write: 进一步将 4 次 separate store 合并为 1 次 float4 store
 // 注：本文件仅实现 Level 1(naive) 与 Level 4(BCF+merge_write)，Level 2/3 省略
 
@@ -952,7 +953,7 @@ __global__ void mat_transpose_padded(
 // a: M×K, x: K×1, y: M×1, 计算: y = a * x; N = 1
 
 // ---- SGEMV K32: 基础 warp-per-row ----
-// 设计：block(32, 4)，blockDim.x=WARP_SIZE=32（K 需为 32 倍数时一轮覆盖，否则内层循环 kNumWarps 次）
+// 设计：block(32, 4)，blockDim.x=kWarpSize=32（K 需为 32 倍数时一轮覆盖，否则内层循环 kNumWarps 次）
 // grid(M/4)，每个 warp 负责一行
 // K 为 32 的倍数时，warp 的 32 个线程恰好覆盖 K 维
 // Grid:  ((M + 3) / 4, 1, 1)，每 block 处理 4 行
@@ -962,20 +963,20 @@ __global__ void mat_transpose_padded(
 __global__ void sgemv_k32(float *a, float *x, float *y, int M, int K) {
   int tx = threadIdx.x; // 0~31
   int ty = threadIdx.y; // 0~3
-  int lane = tx % WARP_SIZE; // 0~31
+  int lane = tx % kWarpSize; // 0~31
   int m = blockIdx.x * blockDim.y + ty; // 全局行号
   if (m < M) {
     float sum = 0.0f;
     // 沿 K 维的迭代数 = ceil(K/32)，每个 warp 要累加完整的K，那么
     // 每个thread就要负责累加NUM_ITERS个元素，NUM_ITERS = ceil(K/32)
-    const int NUM_ITERS = (K + WARP_SIZE - 1) / WARP_SIZE;
+    const int NUM_ITERS = (K + kWarpSize - 1) / kWarpSize;
 #pragma unroll
     for (int w = 0; w < NUM_ITERS; ++w) {
       // 假设K是32的整倍数，m * K 本行的起始地址，x: Kx1
-      int k = w * WARP_SIZE + lane;
+      int k = w * kWarpSize + lane;
       sum += a[m * K + k] * x[k];
     }
-    sum = warp_reduce_sum<WARP_SIZE>(sum);
+    sum = warp_reduce_sum<kWarpSize>(sum);
     // 每个 warp 处理一行，lane 0 写回结果
     if (lane == 0)
       y[m] = sum;
@@ -991,22 +992,22 @@ __global__ void sgemv_k32(float *a, float *x, float *y, int M, int K) {
 __global__ void sgemv_k128(float *a, float *x, float *y, int M, int K) {
   int tx = threadIdx.x; // 0~31
   int ty = threadIdx.y; // 0~3
-  int lane = tx % WARP_SIZE; // 0~31
+  int lane = tx % kWarpSize; // 0~31
   int m = blockDim.y * blockIdx.x + ty;
 
   if (m < M) {
     float sum = 0.0f;
     // 沿 K 维的迭代数 = ceil(K/128)，每个 warp 每轮用 float4 覆盖 128 个 K 元素
-    const int NUM_ITERS = (((K + WARP_SIZE - 1) / WARP_SIZE) + 4 - 1) / 4;
+    const int NUM_ITERS = (((K + kWarpSize - 1) / kWarpSize) + 4 - 1) / 4;
 #pragma unroll
     for (int w = 0; w < NUM_ITERS; ++w) {
-      int k = (w * WARP_SIZE + lane) * 4;
+      int k = (w * kWarpSize + lane) * 4;
       float4 reg_x = FLOAT4(x[k]);
       float4 reg_a = FLOAT4(a[m * K + k]);
       sum += (reg_a.x * reg_x.x + reg_a.y * reg_x.y + reg_a.z * reg_x.z +
               reg_a.w * reg_x.w);
     }
-    sum = warp_reduce_sum<WARP_SIZE>(sum);
+    sum = warp_reduce_sum<kWarpSize>(sum);
     if (lane == 0)
       y[m] = sum;
   }
@@ -1014,23 +1015,23 @@ __global__ void sgemv_k128(float *a, float *x, float *y, int M, int K) {
 
 // ---- SGEMV K16: K < WarpSize, ROW_PER_WARP=2 ----
 // 面试亮点：K=16 < 32，一个 warp 可以处理多行
-// ROW_PER_WARP=2，K_WARP_SIZE=16，前 16 个 lane 处理 row0，后 16 个 lane 处理 row1
+// ROW_PER_WARP=2，K_kWarpSize=16，前 16 个 lane 处理 row0，后 16 个 lane 处理 row1
 // Grid:  ((M + 7) / 8, 1, 1)，NUM_ROWS=8
 // Block: (32, 4, 1)
 // 注意：这一版是面向 K=16 的专用写法；ROW_PER_WARP=2 时一个 warp 同时处理 2 行
 // source: LeetCUDA/kernels/sgemv/sgemv.cu
 template <const int ROW_PER_WARP = 2>
 __global__ void sgemv_k16(float *A, float *x, float *y, int M, int K) {
-  constexpr int K_WARP_SIZE = (WARP_SIZE + ROW_PER_WARP - 1) / ROW_PER_WARP; // 16
+  constexpr int K_kWarpSize = (kWarpSize + ROW_PER_WARP - 1) / ROW_PER_WARP; // 16
   int tx = threadIdx.x;
   int ty = threadIdx.y;
-  int lane = tx % WARP_SIZE;
-  int k = lane % K_WARP_SIZE; // 0~15
-  int m = (blockDim.y * blockIdx.x + ty) * ROW_PER_WARP + lane / K_WARP_SIZE;
+  int lane = tx % kWarpSize;
+  int k = lane % K_kWarpSize; // 0~15
+  int m = (blockDim.y * blockIdx.x + ty) * ROW_PER_WARP + lane / K_kWarpSize;
   if (m < M) {
     float sum = A[m * K + k] * x[k];
-    // 按照K_WARP_SIZE=16，分2组各自做 warp reduce sum，k==0的lane写回结果
-    sum = warp_reduce_sum<K_WARP_SIZE>(sum);
+    // 按照K_kWarpSize=16，分2组各自做 warp reduce sum，k==0的lane写回结果
+    sum = warp_reduce_sum<K_kWarpSize>(sum);
     // 注意：判断条件是 k == 0，不是 lane == 0！
     if (k == 0)
       y[m] = sum;
@@ -1378,8 +1379,8 @@ __global__ void __launch_bounds__(256)
   constexpr int s_a_stage_offset = BM * BK; // 128*16
   constexpr int s_b_stage_offset = BN * BK; // 128*16  ⚠ BN(128)×BK(16) = B^T row-major
   const int tid = threadIdx.y * blockDim.x + threadIdx.x;
-  const int warp_id = tid / WARP_SIZE; // 0~7
-  const int lane_id = tid % WARP_SIZE; // 0~31
+  const int warp_id = tid / kWarpSize; // 0~7
+  const int lane_id = tid % kWarpSize; // 0~31
   // warp_m变化快(0->0,1->1), warp_n变化慢([0,1]->0,[2,3]->1,...), 因此，
   // 这种2x4的MMA(Warp) layout是按照col major的顺序来排列MMA0~MMA7的
   const int warp_m = warp_id % 2; // 0,1（M 方向 2 个 warp）
@@ -1756,8 +1757,8 @@ __global__ void __launch_bounds__(256)
   constexpr int s_b_stage_offset = BN * BK;
 
   const int tid = threadIdx.y * blockDim.x + threadIdx.x;
-  const int warp_id = tid / WARP_SIZE;
-  const int lane_id = tid % WARP_SIZE;
+  const int warp_id = tid / kWarpSize;
+  const int lane_id = tid % kWarpSize;
   const int warp_m = warp_id % 2; // 0,1（M 方向 2 个 warp）
   const int warp_n = warp_id / 2; // 0,1,2,3（N 方向 4 个 warp）
 
@@ -3431,7 +3432,7 @@ __host__ static inline CUtensorMap *allocate_and_create_tensor_map(
 // 本实现参考: FlashAttention-2 (Dao et al., arXiv:2307.08691)
 // 从 LeetCUDA flash-attn/mma/basic/flash_attn_mma_split_q.cu 提取
 // Grid:  ((QKV_seqlen + 63) / 64, QKV_batch * QKV_head, 1)，Br=64
-// Block: (128, 1, 1)，kNumThreads=WARP_SIZE×kMmaTileSeqLenQ×kMmaTileSeqLenK=128
+// Block: (128, 1, 1)，kNumThreads=kWarpSize×kMmaTileSeqLenQ×kMmaTileSeqLenK=128
 // source: LeetCUDA/kernels/flash-attn/mma/basic/flash_attn_mma_split_q.cu
 
 // ---- 寄存器填充辅助函数 ----
@@ -3493,12 +3494,12 @@ template <
     const int kValTileHeadDimV,  // value tiles for P@V N dim, kHeadDim/(8*kMmaTileHeadDimV)
     const int kStage,            // pipeline stages for K: 1 or 2
     const int kPad>              // padding for bank conflict avoidance
-__global__ void __launch_bounds__(WARP_SIZE *kMmaTileSeqLenQ *kMmaTileSeqLenK)
+__global__ void __launch_bounds__(kWarpSize *kMmaTileSeqLenQ *kMmaTileSeqLenK)
     flash_attn_mma_stages_split_q(half *Q, half *K, half *V, half *O,
                                   int QKV_seqlen, int QKV_head) {
   constexpr int Br = kMmaAtomM * kMmaTileSeqLenQ * kValTileSeqLenQ; // 64
   constexpr int Bc = kMmaAtomN * kMmaTileSeqLenK * kValTileSeqLenK; // 64
-  constexpr int kNumThreads = WARP_SIZE * kMmaTileSeqLenQ * kMmaTileSeqLenK; // 128
+  constexpr int kNumThreads = kWarpSize * kMmaTileSeqLenQ * kMmaTileSeqLenK; // 128
   const int Tc = (QKV_seqlen + Bc - 1) / Bc;
   // 原始实现默认 seqlen 与 Bc 对齐；最后一个不完整 tile 需要额外 pad/边界处理。
   // 这里保留 ceil 写法是为了说明 tile 划分方式，不等于当前实现已经完整处理了尾 tile。
@@ -3509,8 +3510,8 @@ __global__ void __launch_bounds__(WARP_SIZE *kMmaTileSeqLenQ *kMmaTileSeqLenK)
   const int QKV_head_id = blockIdx.y % QKV_head;
   const int Q_tile_id = blockIdx.x;
   const int tid = threadIdx.x;
-  const int warp_id = tid / WARP_SIZE;
-  const int lane_id = tid % WARP_SIZE;
+  const int warp_id = tid / kWarpSize;
+  const int lane_id = tid % kWarpSize;
   const int warp_QP = warp_id; // Split-Q: 每个 warp 处理不同的 Q 行片段
   const int warp_KV = 0; // 所有 warp 共享 K（减少跨 warp 通信）
 
@@ -3750,7 +3751,7 @@ __global__ void __launch_bounds__(WARP_SIZE *kMmaTileSeqLenQ *kMmaTileSeqLenK)
         lane_row_max_new[i][0] = max(lane_row_max_new[i][0], tmp_max_0);
         lane_row_max_new[i][1] = max(lane_row_max_new[i][1], tmp_max_1);
       }
-      // Warp-level reduce max (warp_size = 4 for Q@K^T — only lanes
+      // Warp-level reduce max (kWarpSize = 4 for Q@K^T — only lanes
       // {0,4,8,...,28} hold valid data)
       lane_row_max_new[i][0] =
           warp_reduce_max<4, float>(lane_row_max_new[i][0]);
@@ -3794,7 +3795,7 @@ __global__ void __launch_bounds__(WARP_SIZE *kMmaTileSeqLenQ *kMmaTileSeqLenK)
         HALF2(R_S[i][j][1]) = __float22half2_rn(t_reg_S_1);
       }
 
-      // Warp-level reduce sum (warp_size = 4, same as max)
+      // Warp-level reduce sum (kWarpWidth = 4, same as max)
       lane_row_sum_new[i][0] =
           warp_reduce_sum<4, float>(lane_row_sum_new[i][0]);
       lane_row_sum_new[i][1] =
