@@ -1437,7 +1437,8 @@ __global__ void __launch_bounds__(256)
   // M direction (warp_m)  0  MMA0    MMA2    MMA4    MMA6
   //                       1  MMA1    MMA3    MMA5    MMA7
   // MMA的排布方式不是唯一的，现在这样排是因为结合MMA/VAL Tile之后，刚好能覆盖整个
-  // C Tile[128,128]。只要调整MMA/VAL Tile，这里的排布方式也可以跟着调整。
+  // C Tile[128,128]。只要调整MMA/VAL Tile，这里的排布方式也可以跟着调整。要注意的
+  // 是，MMA0-7逻辑上是可以认为是并行执行的，各自的计算结果累计加到对应的C Tile位置上。
   const int warp_m = warp_id % 2; // 0,1（M 方向 2 个 warp）
   const int warp_n = warp_id / 2; // 0,1,2,3（N 方向 4 个 warp）
 
