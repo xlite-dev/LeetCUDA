@@ -1077,6 +1077,10 @@ __global__ void sgemm(float *a, float *b, float *c, int M, int N, int K) {
   int tid = threadIdx.y * blockDim.x + tx;
 
   // 线程到 smem 的映射：32×32 线程，每个线程加载 a 和 b 各 1 个元素
+  // 技巧：一般来说 “/” 表示线程不是连续排布的，"%" 表示线程是连续排布的
+  // 因此，在需要考虑连续访问的维度使用“%”，比如，连续的线程访问列方向连续的元素
+  // A[M, K], M的stride=K, K的stride=1 → 线程连续访问 K 维度 → 用 %，
+  // 线程不连续访问 M 维度 → 用 /;
   int load_smem_a_m = tid / 32; // row 0~31 由 32 线程加载;
   int load_smem_a_k = tid % 32; // col 0~31 由 32 线程加载;
   int load_smem_b_k = tid / 32; // row 0~31 由 32 线程加载;
@@ -1085,6 +1089,7 @@ __global__ void sgemm(float *a, float *b, float *c, int M, int N, int K) {
   int load_gmem_b_n = bx * BN + load_smem_b_n; // gmem col;
 
   float sum = 0.f; // 遍历完整的K，slice K;
+  // 这里不用pragma unroll，因为K不是编译器常量，编译器无法展开循环
   for (int bk = 0; bk < (K + BK - 1) / BK; ++bk) {
     int load_gmem_a_k = bk * BK + load_smem_a_k; // A [M, K]
     int load_gmem_a_addr = load_gmem_a_m * K + load_gmem_a_k;
@@ -1427,6 +1432,12 @@ __global__ void __launch_bounds__(256)
   const int lane_id = tid % kWarpSize; // 0~31
   // warp_m变化快(0->0,1->1), warp_n变化慢([0,1]->0,[2,3]->1,...), 因此，
   // 这种2x4的MMA(Warp) layout是按照col major的顺序来排列MMA0~MMA7的
+  //                          N direction (warp_n)
+  //                          0       1       2       3
+  // M direction (warp_m)  0  MMA0    MMA2    MMA4    MMA6
+  //                       1  MMA1    MMA3    MMA5    MMA7
+  // MMA的排布方式不是唯一的，现在这样排是因为结合MMA/VAL Tile之后，刚好能覆盖整个
+  // C Tile[128,128]。只要调整MMA/VAL Tile，这里的排布方式也可以跟着调整。
   const int warp_m = warp_id % 2; // 0,1（M 方向 2 个 warp）
   const int warp_n = warp_id / 2; // 0,1,2,3（N 方向 4 个 warp）
 
