@@ -1490,7 +1490,7 @@ __global__ void __launch_bounds__(256)
 
   // 统一循环：k 从 0 开始，每次迭代负责 tile k（加载 + 计算合并为单循环）
   const int NUM_K_TILES = div_ceil(K, BK);
-#pragma unroll
+  // 此处不用pragma unroll，因为 K 不是编译期常量，因此NUM_K_TILES 也不是编译期常量
   for (int k = 0; k < NUM_K_TILES; ++k) {
     int smem_sel = k % kStages;                      // 计算 tile k 的 stage
     int smem_sel_next = (k + kStages - 1) % kStages; // 预加载目标 stage
@@ -1562,7 +1562,7 @@ __global__ void __launch_bounds__(256)
       LDMATRIX_X2(RB[j][0], RB[j][1], lane_smem_b_ptr);
     }
 
-    // MMA compute: 每个Warp(MMA) 在M方向重复VAL_TILE_M(4)次，在N方向重复VAL_TILE_N(4)次
+    // MMA compute: 每个Warp(MMA) 在M方向重复kValTileM(4)次，在N方向重复kValTileN(4)次
 #pragma unroll
     for (int i = 0; i < kValTileM; ++i) {
 #pragma unroll
@@ -1877,9 +1877,9 @@ __global__ void __launch_bounds__(256)
   uint32_t RA[2][kValTileM][4];
   uint32_t RB[2][kValTileN][2];
   int reg_st_idx = 0; // write target for ldmatrix
-  int reg_ld_idx = 1;  // read source for MMA
+  int reg_ld_idx = 1; // read source for MMA
 
-  // Initial ldmatrix: load stage 0, k_step=0 (kMmaK=0 列) → reg[0]
+// Initial ldmatrix: load stage 0, S -> R, k_step=0 (0~15列) → reg[0]
 #pragma unroll
   for (int i = 0; i < kValTileM; ++i) {
     int warp_smem_a_m = warp_m * (kMmaM * kValTileM) + i * kMmaM;
@@ -1911,7 +1911,6 @@ __global__ void __launch_bounds__(256)
   // 统一循环：k 从 0 开始，条件 G→S / S→R / wait 处理所有边界情况
   // BK = kMmaK * kValTileK = 32，每个 k 迭代覆盖 BK=32 个 K 元素
   const int NUM_K_TILES = div_ceil(K, BK);
-#pragma unroll
   for (int k = 0; k < NUM_K_TILES; ++k) {
     int smem_sel = k % kStages;
     int smem_sel_next = (k + kStages - 1) % kStages;
