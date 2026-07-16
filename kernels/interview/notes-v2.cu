@@ -126,8 +126,8 @@
 #include <cuda/barrier>
 #include <cuda/ptx>
 
-#if defined(NOTES_V2_ENABLE_TMA_MMA_WS) && CUDART_VERSION < 13020
-#error "NOTES_V2_ENABLE_TMA_MMA_WS requires CUDA Toolkit 13.2 or newer"
+#if defined(NOTES_V2_ENABLE_TMA_MMA_WS) && CUDART_VERSION < 13000
+#error "NOTES_V2_ENABLE_TMA_MMA_WS requires CUDA Toolkit 13.0 or newer"
 #endif
 
 #define INT4(value) (reinterpret_cast<int4 *>(&(value))[0])
