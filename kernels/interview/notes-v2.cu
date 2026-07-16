@@ -3073,12 +3073,12 @@ __global__ void __launch_bounds__(kNumThreads)
   const int bx = ((int)kBlockSwizzle) * blockIdx.z * gridDim.x + blockIdx.x;
   const int by = blockIdx.y;
   constexpr int kConsumerThreads = kNumThreads / 2; // 128 threads = 1 warpgroup
-  // num_consumers = (kNumThreads / 128) - 1 = 2 - 1 = 1（1 个 consumer WG）
+  // kNumConsumers = (kNumThreads / 128) - 1 = 2 - 1 = 1（1 个 consumer WG）
   // 这里的 -1 是因为 2 个 warpgroup 中 1 个是 producer，剩余都是 consumer
-  constexpr int num_consumers = (kNumThreads / kConsumerThreads) - 1; // 1 consumer WG
-  // B_WG_M = BM / num_consumers：每个 consumer warpgroup 负责的 M 行数
+  constexpr int kNumConsumers = (kNumThreads / kConsumerThreads) - 1; // 1 consumer WG
+  // kWarpgroupM = BM / kNumConsumers：每个 consumer warpgroup 负责的 M 行数
   // 当只有一个 consumer 时，它负责全部 BM=128 行
-  constexpr int B_WG_M = BM / num_consumers; // 128
+  constexpr int kWarpgroupM = BM / kNumConsumers; // 128
 
   // 边界检查：确保当前 block 不超出 M/N 范围
   if (bx >= div_ceil(N, BN) || by >= div_ceil(M, BM))
@@ -3086,7 +3086,17 @@ __global__ void __launch_bounds__(kNumThreads)
 
   // ---- Shared Memory 分配 ----
   // 动态 shared memory（由 host 侧通过 kernel launch 的 smem 参数指定大小）
-  // __align__(128) 满足 TMA 和 WGMMA 的 16B 对齐 + 128B swizzle 对齐要求
+  // TMA + WGMMA 仅需 __align__(128)，而非 __align__(1024)。原因：
+  //   make_smem_desc() 构造 WGMMA descriptor 时，start_address 字段
+  //   完整编码了 __cvta_generic_to_shared 的绝对 32-bit 偏移量，
+  //   硬件根据该绝对地址自动推导并补偿 swizzle phase 偏移（等价于
+  //   descriptor 内置的 base_offset 机制）。因此即使 smem 基址未落到
+  //   1024B 边界，WGMMA 硬件也能正确读取 TMA 写入的数据。
+  // 对比 hgemm_tma_mma_ws_tn：消费者使用 ldmatrix + 手写 swizzle
+  //   函数 tma_swizzle_128B()，该函数无法感知 smem 绝对地址，硬编码
+  //   了 phase=0 的假设，因此必须 __align__(1024) 来保证 phase 确实为 0。
+  //   从健壮性角度看本 kernel 也应该用 __align__(1024)；这里保留 128 是
+  //   为了突出两种消费者的特点与对比。
   extern __shared__ __align__(128) uint8_t smem_tma_wgmma_ws[];
   WgmmaSMem<BM, BN, BK, kStages> &s =
       *reinterpret_cast<WgmmaSMem<BM, BN, BK, kStages> *>(smem_tma_wgmma_ws);
@@ -3148,7 +3158,7 @@ __global__ void __launch_bounds__(kNumThreads)
 #pragma nv_diag_default static_var_with_dynamic_init
 
   // K 方向总 tile 数。要求 K 能被 BK 整除，否则尾 tile 被丢弃。
-  const int num_blocks_k = K / BK;
+  const int NUM_K_TILES = div_ceil(K, BK);
   const int wg_idx = threadIdx.x / kConsumerThreads; // 0=Producer, 1=Consumer
   const int wg_tid = threadIdx.x % kConsumerThreads; // 0~127 within warpgroup
 
@@ -3177,8 +3187,8 @@ __global__ void __launch_bounds__(kNumThreads)
   //   - WG1 (threadIdx.x 128~255): 全部走 else 分支，做 Consumer。
   //
   // SM 的 warp scheduler 会交替调度来自 WG0 和 WG1 的 warp，两者**同时**推进：
-  //   Producer: for (k_iter = 0 .. num_blocks_k) { P1→P2→P3 }  ← 自己的循环
-  //   Consumer: for (k_iter = 0 .. num_blocks_k) { C1→C2→C3→C4 } ← 自己的循环
+  //   Producer: for (k_iter = 0 .. NUM_K_TILES) { P1→P2→P3 }  ← 自己的循环
+  //   Consumer: for (k_iter = 0 .. NUM_K_TILES) { C1→C2→C3→C4 } ← 自己的循环
   //
   // 两个 warpgroups 各自独立迭代 K-tiles，通过 full[] / empty[] barrier 同步：
   //   - Producer 领先 Consumer 太多 → wait(empty[q]) 阻塞，等 Consumer 消费完
@@ -3195,7 +3205,7 @@ __global__ void __launch_bounds__(kNumThreads)
     if (wg_tid == 0) {
       // stage: 当前操作的 stage 索引（round-robin 0 -> 1 -> 2 -> 0 -> ...）
       int stage = 0;
-      for (int block_k = 0; block_k < num_blocks_k; ++block_k, ++stage) {
+      for (int k = 0; k < NUM_K_TILES; ++k, ++stage) {
         if (stage == kStages)
           stage = 0;
 
@@ -3225,12 +3235,12 @@ __global__ void __launch_bounds__(kNumThreads)
         // TMA 是硬件 DMA 引擎：一次指令提交即可搬运整个 2D tile，
         // 无需线程逐元素搬运，零寄存器开销。
         // TMA 2D 加载 A tile: coords = (k_offset, m_offset)
-        tma_load_2d(&s_a[stage * BK * BM], tensorMapA, block_k * BK,
-          by * BM, full[stage]);
+        tma_load_2d(&s_a[stage * BK * BM], tensorMapA, k * BK, by * BM, 
+                    full[stage]);
 
         // TMA 2D 加载 B tile: coords = (k_offset, n_offset)
-        tma_load_2d(&s_b[stage * BK * BN], tensorMapB, block_k * BK,
-          bx * BN, full[stage]);
+        tma_load_2d(&s_b[stage * BK * BN], tensorMapB, k * BK, bx * BN, 
+                    full[stage]);
 
         // Step P3: 通知 Consumer：stage stage 的 TMA 数据已就绪
         //
@@ -3265,18 +3275,18 @@ __global__ void __launch_bounds__(kNumThreads)
     }
 
     // 累加器寄存器声明
-    // d[B_WG_M / kWgmmaM][kWgmmaN / 16][4]:
+    // d[kWarpgroupM / kWgmmaM][kWgmmaN / 16][4]:
     //   - d[0][*][*]: M 方向第 1 个 WGMMA atom（rows 0~63）
     //   - d[1][*][*]: M 方向第 2 个 WGMMA atom（rows 64~127）
     //   - d[*][g][*]: N 方向第 g 组 16 列
     //   - d[*][*][0..3]: 4 条 uint32 寄存器，共 8 个 half（覆盖 16×16 子块）
     // 每个线程总共 2 * 8 * 4 = 2 * 32 = 64 uint32 = 128 half (每次WGMMA Atom 32 uint32 输出)
     // 128 线程 * 128 half = 16384 half = 128 * 128 = BM*BN（刚好覆盖整个 C tile）
-    uint32_t d[B_WG_M / kWgmmaM][kWgmmaN / 16][4] = {};
+    uint32_t d[kWarpgroupM / kWgmmaM][kWgmmaN / 16][4] = {};
 
     int stage = 0;
     // K 维外循环：沿 K tile 迭代（BK=64，每个 K tile 做 4 次 WGMMA 累加）
-    for (int block_k = 0; block_k < num_blocks_k; ++block_k, ++stage) {
+    for (int k = 0; k < NUM_K_TILES; ++k, ++stage) {
       if (stage == kStages)
         stage = 0;
 
@@ -3310,10 +3320,10 @@ __global__ void __launch_bounds__(kNumThreads)
       // M 维迭代：BM/kWgmmaM = 128/64 = 2 个 WGMMA atom
       // 每个 atom 处理 64 行 M 方向数据。
 #pragma unroll
-      for (int m_it = 0; m_it < B_WG_M / kWgmmaM; ++m_it) {
-        // wgmma_sA 指向当前 stage 中 A tile 的第 m_it 个 64*BK 子块
-        // s_a 布局：[kStages][BM][BK] -> stage * BK*BM + BK * (m_it*64)
-        half *wgmma_sA = s_a + stage * BK * BM + BK * m_it * kWgmmaM;
+      for (int m = 0; m < kWarpgroupM / kWgmmaM; ++m) {
+        // wgmma_sA 指向当前 stage 中 A tile 的第 m 个 64*BK 子块
+        // s_a 布局：[kStages][BM][BK] -> stage * BK*BM + BK * (m*64)
+        half *wgmma_sA = s_a + stage * BK * BM + BK * m * kWgmmaM;
 
         // K 维迭代：BK/kWgmmaK = 64/16 = 4 次 WGMMA（累加）
         // 每次处理 K=16 维的矩阵乘，4 次累加后覆盖完整的 BK=64。
@@ -3325,7 +3335,7 @@ __global__ void __launch_bounds__(kNumThreads)
           //   注意 B 的 smem 布局是 [BK, BN] row-major，K-major 读取时从
           //   第 k_it*16 行开始取 16 行，每行 BN=128 列。
           //   ScaleD=1: 累加（K 维迭代需要累积结果）
-          WGMMA_M64N128K16_F16F16F16(d[m_it], wgmma_sA + k_step * kWgmmaK,
+          WGMMA_M64N128K16_F16F16F16(d[m], wgmma_sA + k_step * kWgmmaK,
                                      s_b + stage * BK * BN + k_step * kWgmmaK,
                                      1, // ScaleD=1: accumulate（不清零）
                                      1, 1, 0, 0);
@@ -3403,25 +3413,22 @@ __global__ void __launch_bounds__(kNumThreads)
     half *block_C = C + by * BM * N + bx * BN;
 
     // 2 * (8 * 4) = 2 * 32 = 64 uint32 = 128 half
+    // NOTE: 这里可以考虑通过 R->S, S->G 的方式做一次 128 bits写回。
 #pragma unroll
-    for (int m_it = 0; m_it < B_WG_M / kWgmmaM; ++m_it) {
-      int yo = m_it * kWgmmaM; // M 方向行偏移 (0 或 64)
+    for (int m = 0; m < kWarpgroupM / kWgmmaM; ++m) {
+      int yo = m * kWgmmaM; // M 方向行偏移 (0 或 64)
 #pragma unroll
       for (int g = 0; g < kWgmmaN / 16; ++g) {
         int col = g * 16 + 2 * (lane % 4); // N 方向列偏移 (0,2,4,...,14 then 16,18,...)
         // 一次 uint32 store 写入 2 个 half（连续列 col 和 col+2）
         // 左上象限: (row, col)
-        *reinterpret_cast<uint32_t *>(&block_C[(row + yo) * N + col]) =
-            d[m_it][g][0];
+        *reinterpret_cast<uint32_t *>(&block_C[(row + yo) * N + col]) = d[m][g][0];
         // 左下象限: (row+8, col)
-        *reinterpret_cast<uint32_t *>(&block_C[(row + yo + 8) * N + col]) =
-            d[m_it][g][1];
+        *reinterpret_cast<uint32_t *>(&block_C[(row + yo + 8) * N + col]) = d[m][g][1];
         // 右上象限: (row, col+8)
-        *reinterpret_cast<uint32_t *>(&block_C[(row + yo) * N + col + 8]) =
-            d[m_it][g][2];
+        *reinterpret_cast<uint32_t *>(&block_C[(row + yo) * N + col + 8]) = d[m][g][2];
         // 右下象限: (row+8, col+8)
-        *reinterpret_cast<uint32_t *>(&block_C[(row + yo + 8) * N + col + 8]) =
-            d[m_it][g][3];
+        *reinterpret_cast<uint32_t *>(&block_C[(row + yo + 8) * N + col + 8]) = d[m][g][3];
       }
     }
   }
@@ -3436,7 +3443,7 @@ template <int BM, int BN, int BK, int QSIZE> struct TmaMmaWSSMem {
   half B[BN * BK * QSIZE];
 };
 
-// tma_swizzle_128b_k: 计算 128B TMA swizzle 下 smem 中 (row, k) 的物理 K 偏移。
+// tma_swizzle_128B: 计算 128B TMA swizzle 下 smem 中 (row, k) 的物理 K 偏移。
 //
 // TMA descriptor 使用 CU_TENSOR_MAP_SWIZZLE_128B 时，硬件会将写入 smem 的
 // 数据按 128B 粒度做 XOR 重映射以消除 bank conflict。消费者在 ldmatrix 前必须
@@ -3484,8 +3491,9 @@ template <int BM, int BN, int BK, int QSIZE> struct TmaMmaWSSMem {
 //     即 row 3 的 chunk 2 被映射到物理 chunk 1（K=8）。
 //
 // 关键结论：TMA 和 ldmatrix 两侧必须使用相同的 swizzle；任何一侧不用或用了
-// 不同的 pattern，整个 tile 的输出都会被破坏。
-__device__ __forceinline__ int tma_swizzle_128b_k(int row, int k) {
+// 不同的 pattern，整个 tile 的输出都会被破坏。128B = 128 BYTES = 64 half 
+// = 8 chunk × 8 half/chunk = 8 rows × 512 half/row。
+__device__ __forceinline__ int tma_swizzle_128B(int row, int k) {
   return (((k >> 3) ^ (row & 7)) << 3) | (k & 7);
 }
 
@@ -3527,9 +3535,27 @@ __global__ void __launch_bounds__(kNumThreads)
     return;
 
   // TMA CU_TENSOR_MAP_SWIZZLE_128B 要求 smem 基地址 1024 字节对齐，
-  // 以确保硬件 swizzle phase 从零开始。消费者 tma_swizzle_128b_k()
+  // 以确保硬件 swizzle phase 从零开始。消费者 tma_swizzle_128B()
   // 假设零 phase；其他对齐（如 128）会导致 phase 偏移，产生不匹配的
   // 物理地址，破坏整个输出。
+  //
+  // 为什么 hgemm_wgmma_stages_tn 只需要 __align__(128)，而本 kernel
+  // 必须 __align__(1024)？核心区别在于消费者如何感知 swizzle phase：
+  //
+  // WGMMA 消费者：通过 make_smem_desc() 构造 64-bit WGMMA descriptor，
+  //   其中 bits [49,52) 的 base_offset 字段编码了 smem 基址相对于
+  //   1024B 边界的偏移量（(addr >> 7) & 0x7）。硬件在读取 smem 时会
+  //   用这个 base_offset 自动补偿 swizzle phase，因此 WGMMA 路径不
+  //   需要 1024 字节对齐也能得到正确数据。
+  //
+  // 本 kernel 消费者：使用 ldmatrix + 手写 tma_swizzle_128B() 来
+  //   计算 smem 物理地址。这个函数是纯软件公式，没有任何 base_offset
+  //   补偿机制。它假设 smem 基址恰好落在 1024B 边界上（phase=0）。
+  //   如果基址只满足 128B 对齐，TMA 硬件会以非零 phase 写入数据，
+  //   而 ldmatrix 以零 phase 读取 → 物理地址彻底错位 → 全输出错误。
+  //
+  // 简言之：WGMMA 用硬件 descriptor base_offset 自动解决 phase 偏移；
+  // ldmatrix 路径没有等价机制，必须靠 1024B 对齐来保证 phase=0。
   extern __shared__ __align__(1024) uint8_t smem_tma_mma_ws[];
   TmaMmaWSSMem<BM, BN, BK, kStages> &s =
       *reinterpret_cast<TmaMmaWSSMem<BM, BN, BK, kStages> *>(smem_tma_mma_ws);
@@ -3541,7 +3567,7 @@ __global__ void __launch_bounds__(kNumThreads)
   __shared__ cuda::barrier<cuda::thread_scope_block> empty[kStages];
 #pragma nv_diag_default static_var_with_dynamic_init
 
-  const int num_blocks_k = K / BK;
+  const int NUM_K_TILES = div_ceil(K, BK);
   const int wg_idx = threadIdx.x / kConsumerThreads;
   const int wg_tid = threadIdx.x % kConsumerThreads;
 
@@ -3555,17 +3581,18 @@ __global__ void __launch_bounds__(kNumThreads)
   __syncthreads();
 
   if (wg_idx == 0) {
+    // 生产者 Warpgroup（wg_idx==0）
     if (wg_tid == 0) {
       int stage = 0;
-      for (int block_k = 0; block_k < num_blocks_k; ++block_k, ++stage) {
+      for (int k = 0; k < NUM_K_TILES; ++k, ++stage) {
         if (stage == kStages)
           stage = 0;
 
         empty[stage].wait(empty[stage].arrive());
 
-        tma_load_2d(&s_a[stage * BM * BK], tensorMapA, block_k * BK, by * BM,
+        tma_load_2d(&s_a[stage * BM * BK], tensorMapA, k * BK, by * BM,
                     full[stage]);
-        tma_load_2d(&s_b[stage * BN * BK], tensorMapB, block_k * BK, bx * BN,
+        tma_load_2d(&s_b[stage * BN * BK], tensorMapB, k * BK, bx * BN,
                     full[stage]);
         tma_arrive_expect_tx(full[stage], (BM * BK + BN * BK) * sizeof(half));
       }
@@ -3589,7 +3616,7 @@ __global__ void __launch_bounds__(kNumThreads)
     const uint32_t smem_a_base_ptr = __cvta_generic_to_shared(s_a);
     const uint32_t smem_b_base_ptr = __cvta_generic_to_shared(s_b);
     int stage = 0;
-    for (int block_k = 0; block_k < num_blocks_k; ++block_k, ++stage) {
+    for (int k = 0; k < NUM_K_TILES; ++k, ++stage) {
       if (stage == kStages)
         stage = 0;
 
@@ -3618,7 +3645,8 @@ __global__ void __launch_bounds__(kNumThreads)
       //    行区间）。它们之间不需要读写共享数据，因此不需要 __syncthreads 来
       //    对齐 warp 间的执行进度。mma.sync 本身是 warp 级同步指令，保证同一
       //    warp 内 32 个线程的 ldmatrix 和 mma 操作正确协作。
-
+      
+      // 注意：这里已经没有NUM_K_TILES循环了，因为K loop load已经被WG0生产者处理了
 #pragma unroll
       for (int k_step = 0; k_step < kValTileK; ++k_step) {
 
@@ -3627,10 +3655,18 @@ __global__ void __launch_bounds__(kNumThreads)
           // kMmaM * kValTileM = 16*4 = 64，每个消费者 warp 在 M 方向覆盖 64 行。
           const int warp_smem_a_m = warp_m * (kMmaM * kValTileM) + i * kMmaM;
           const int lane_smem_a_m = warp_smem_a_m + lane_id % 16;
-          const int lane_smem_a_k = k_step * kMmaK + (lane_id / 16) * 8;
+          // 与 hgemm_mma_stages_tn_swizzle 不同：k_step * kMmaK 必须放在
+          // lane_smem_a_k 中传给 tma_swizzle_128B()，而非像 swizzle kernel
+          // 那样作为 smem_k_offset 加在 swizzle 外部。原因：
+          //   tma_swizzle_128B 是 128B TMA swizzle，作用于完整 BK=64，
+          //   swizzle 周期覆盖全部 64 列，k_step=0 和 k_step=1 的 chunk 会
+          //   被 XOR 交叉混合 → k_step 偏移必须在 swizzle 内部参与 chunk 计算。
+          //   swizzle_A<kMmaK> 作用于 kMmaK=16，每个 kMmaK slice 独立
+          //   swizzle，slice 之间互不跨越 → k_step * kMmaK 可以加在外部。
+          const int lane_smem_a_k = (k_step * kMmaK) + (lane_id / 16) * 8;
           const uint32_t lane_smem_a_ptr = smem_a_base_ptr +
               (stage * BM * BK + lane_smem_a_m * BK +
-              tma_swizzle_128b_k(lane_smem_a_m, lane_smem_a_k)) *
+              tma_swizzle_128B(lane_smem_a_m, lane_smem_a_k)) *
                   sizeof(half);
           LDMATRIX_X4(RA[i][0], RA[i][1], RA[i][2], RA[i][3], lane_smem_a_ptr);
         }
@@ -3640,10 +3676,10 @@ __global__ void __launch_bounds__(kNumThreads)
           // kMmaN * kValTileN = 8*8 = 64，每个消费者 warp 在 B^T 的 N 方向覆盖 64 行。
           const int warp_smem_b_n = warp_n * (kMmaN * kValTileN) + j * kMmaN;
           const int lane_smem_b_n = warp_smem_b_n + lane_id % 8;
-          const int lane_smem_b_k = k_step * kMmaK + ((lane_id / 8) % 2) * 8;
+          const int lane_smem_b_k = (k_step * kMmaK) + ((lane_id / 8) % 2) * 8;
           const uint32_t lane_smem_b_ptr = smem_b_base_ptr +
               (stage * BN * BK + lane_smem_b_n * BK +
-              tma_swizzle_128b_k(lane_smem_b_n, lane_smem_b_k)) *
+              tma_swizzle_128B(lane_smem_b_n, lane_smem_b_k)) *
                   sizeof(half);
           LDMATRIX_X2(RB[j][0], RB[j][1], lane_smem_b_ptr);
         }
