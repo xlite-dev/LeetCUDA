@@ -5461,7 +5461,8 @@ static void test_hgemm_cute(int M, int N, int K) {
     float err = fabsf(__half2float(h_c[i]) - __half2float(h_c_ref[i]));
     if (err > max_err) max_err = err;
   }
-  printf("| %-42s | %.6e | %-4s |\n", "HGEMM CuTe", max_err, max_err < 1.0f ? "PASS" : "FAIL");
+  printf("| %-42s | %.6e | %-4s |\n", "HGEMM CuTe Swizzle + Reg2x", 
+         max_err, max_err < 1.0f ? "PASS" : "FAIL");
 
   free(h_a); free(h_b); free(h_b_t); free(h_c); free(h_c_ref);
   cudaFree(d_a); cudaFree(d_b); cudaFree(d_b_t); cudaFree(d_c);
@@ -5562,7 +5563,7 @@ static void test_hgemm_wgmma(int M, int N, int K) {
     if (err > max_err)
       max_err = err;
   }
-  printf("| %-42s | %.6e | %-4s |\n", "HGEMM TMA WGMMA WS", max_err,
+  printf("| %-42s | %.6e | %-4s |\n", "HGEMM TMA WGMMA WS (3-stage)", max_err,
          max_err < 1.0f ? "PASS" : "FAIL");
 
   free(h_a);
@@ -5846,7 +5847,7 @@ int main(int argc, char *argv[]) {
     }
     printf("=== SM120 TMA MMA WS validation ===\n");
     printf("| %-42s | %-12s | %-4s |\n", "Kernel", "Max Err", "Pass");
-    printf("|-------------------------------------|--------------|------|\n");
+    printf("|--------------------------------------------|--------------|------|\n");
     test_hgemm_tma_mma_ws(M, N, K);
     return 0;
   }
@@ -5856,7 +5857,7 @@ int main(int argc, char *argv[]) {
 
   printf("=== notes-v2.cu verification harness ===\n");
   printf("| %-42s | %-12s | %-4s |\n", "Kernel", "Max Err", "Pass");
-  printf("|-------------------------------------|--------------|------|\n");
+  printf("|--------------------------------------------|--------------|------|\n");
 
   test_block_reduce(N);
   test_dot(N);
