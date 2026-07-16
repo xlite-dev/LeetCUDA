@@ -13,6 +13,10 @@ nvcc -std=c++20 -O2 -gencode arch=compute_90a,code=sm_90a -DNOTES_V2_ENABLE_WGMM
   -DNOTES_V2_ENABLE_CUTE -I ../../third-party/cutlass/include -lcublas -lcuda \
   notes-v2.cu -o notes_v2_sm90.bin # Hopper (H100, H200, etc)
 ./notes_v2_sm90.bin # NOTE: run notes_v2_sm90.bin for HGEMM TMA + WGMMA on Hopper device.
+# CUDA Toolkit >= 13.2: direct cuda::ptx TMA + warp-specialized mma.sync
+nvcc -std=c++20 -O2 -arch=sm_120a -DNOTES_V2_ENABLE_TMA_MMA_WS -lcublas -lcuda \
+  notes-v2.cu -o notes_v2_tma_mma_ws_sm120.bin # RTX PRO 5000 / RTX 5090
+./notes_v2_tma_mma_ws_sm120.bin --tma-mma-ws 1024 1024 1024
 === notes-v2.cu verification harness ===
 | Kernel                              | Max Err      | Pass |
 |-------------------------------------|--------------|------|
