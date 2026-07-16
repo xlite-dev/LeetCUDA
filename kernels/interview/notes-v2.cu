@@ -2219,7 +2219,7 @@ __global__ void hgemm_mma_stages_tn_cute(T *Aptr, T *Bptr, T *Dptr, int m,
 
   // TiledMMA partition: 将 MMA 的 A/B/C tile 映射到各线程的寄存器 fragment
   TiledMMA tiled_mma;
-  auto thr_mma = tiled_mma.get_slice(threadIdx.x);
+  auto thr_mma = tiled_mma.get_slice(idx);
   auto tCrA = thr_mma.partition_fragment_A(gA(_, _, 0)); // (MMA, MMA_M, MMA_K)
   auto tCrB = thr_mma.partition_fragment_B(gB(_, _, 0)); // (MMA, MMA_N, MMA_K)
   auto tCrD = thr_mma.partition_fragment_C(gD);          // (MMA, MMA_M, MMA_N)
@@ -2228,20 +2228,20 @@ __global__ void hgemm_mma_stages_tn_cute(T *Aptr, T *Bptr, T *Dptr, int m,
   // G2S TiledCopy: 描述 global → shared memory 的数据搬运（128-bit cp.async）。
   G2SCopyA g2s_tiled_copy_a;
   auto g2s_thr_copy_a = g2s_tiled_copy_a.get_slice(idx);
-  auto tAgA_copy = g2s_thr_copy_a.partition_S(gA);   // (CPY, CPY_M, CPY_K, num_tile_k)
-  auto tAsA_copy = g2s_thr_copy_a.partition_D(sA);   // (CPY, CPY_M, CPY_K, kStage)
+  auto tAgA_copy = g2s_thr_copy_a.partition_S(gA); // (CPY, CPY_M, CPY_K, num_tile_k)
+  auto tAsA_copy = g2s_thr_copy_a.partition_D(sA); // (CPY, CPY_M, CPY_K, kStage)
 
   G2SCopyB g2s_tiled_copy_b;
   auto g2s_thr_copy_b = g2s_tiled_copy_b.get_slice(idx);
-  auto tBgB_copy = g2s_thr_copy_b.partition_S(gB);   // (CPY, CPY_N, CPY_K, num_tile_k)
+  auto tBgB_copy = g2s_thr_copy_b.partition_S(gB); // (CPY, CPY_N, CPY_K, num_tile_k)
   auto tBsB_copy = g2s_thr_copy_b.partition_D(sB);
 
   // S2R TiledCopy: 描述 shared → register 的数据搬运（使用 ldmatrix）
   // make_tiled_copy_A/B: 根据 TiledMMA 自动推导 S2R copy 的线程-数据映射
   auto s2r_tiled_copy_a = make_tiled_copy_A(S2RCopyAtomA{}, tiled_mma);
   auto s2r_thr_copy_a = s2r_tiled_copy_a.get_slice(idx);
-  auto tAsA = s2r_thr_copy_a.partition_S(sA);       // (CPY, CPY_M, CPY_K, kStage)
-  auto tCrA_view = s2r_thr_copy_a.retile_D(tCrA);   // (CPY, CPY_M, CPY_K) — 与 rA 寄存器布局对齐
+  auto tAsA = s2r_thr_copy_a.partition_S(sA);     // (CPY, CPY_M, CPY_K, kStage)
+  auto tCrA_view = s2r_thr_copy_a.retile_D(tCrA); // (CPY, CPY_M, CPY_K) — 与 rA 寄存器布局对齐
 
   auto s2r_tiled_copy_b = make_tiled_copy_B(S2RCopyAtomB{}, tiled_mma);
   auto s2r_thr_copy_b = s2r_tiled_copy_b.get_slice(idx);
