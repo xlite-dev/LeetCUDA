@@ -1444,10 +1444,10 @@ __global__ void __launch_bounds__(256)
 
   // 线程到 global memory 的映射（用于加载 A 和 B）共 256 个线程
   // TN 布局关键: A[m*K+k] 是 row-major, B^T[n*K+k] 是 row-major（内维连续的是 K）
-  int load_smem_a_m = tid / 2;                // 0~127
-  int load_smem_a_k = (tid % 2 == 0) ? 0 : 8; // 0, 8
-  int load_smem_b_n = tid / 2; // 0~127 → B^T 的 N 方向（row-major 的行）
-  int load_smem_b_k = (tid % 2 == 0) ? 0 : 8; // 0, 8  → B^T 的 K 方向（row-major 的列）
+  int load_smem_a_m = tid / 2;                 // 0~127
+  int load_smem_a_k = (tid % 2 == 0) ? 0 : 8;  // 0, 8
+  int load_smem_b_n = tid / 2;                 // 0~127 → B^T 的 N 方向（row-major 的行）
+  int load_smem_b_k = (tid % 2 == 0) ? 0 : 8;  // 0, 8  → B^T 的 K 方向（row-major 的列）
   int load_gmem_a_m = by * BM + load_smem_a_m; // C/A 全局行号 = M 方向的 tile 起始 + 线程偏移
   int load_gmem_b_n = bx * BN + load_smem_b_n; // C/B 全局列号 = N 方向的 tile 起始 + 线程偏移
   if (load_gmem_a_m >= M || load_gmem_b_n >= N)
@@ -1643,15 +1643,16 @@ __global__ void __launch_bounds__(256)
       //   └─────────┴───────────┴──────────────┴──────────────┘
       if (lane_id % 4 == 0) {
         // {0,1} * (16 * 4) + i * 16 = {0,64} + {0,16,32,48} = {0,16,32,48,64,80,96,112}
-        int store_warp_smem_c_m = warp_m * (kMmaM * kValTileM) + i * kMmaM;
-        int store_lane_gmem_c_m = by * BM + store_warp_smem_c_m + lane_id / 4;
+        int store_warp_smem_c_m = warp_m * (kMmaM * kValTileM) + i * kMmaM; // smem row
+        // 这里用 lane_id / 4 → {0,1,2,3,4,5,6,7}，对应 RC0/RC1 (+8) 的行号，表示2个8x8矩阵的行号
+        int store_lane_gmem_c_m = by * BM + store_warp_smem_c_m + lane_id / 4; // gmem row
 #pragma unroll
         for (int j = 0; j < kValTileN; ++j) {
           // {0,...,3} * (8 * 4) + j * 8 = {0,32,64,96} + {0,8,16,24} = {0,8,...,120}
-          int store_warp_smem_c_n = warp_n * (kMmaN * kValTileN) + j * kMmaN;
-          int store_lane_gmem_c_n = bx * BN + store_warp_smem_c_n;
-          int store_gmem_c_addr_0 = store_lane_gmem_c_m * N + store_lane_gmem_c_n;
-          int store_gmem_c_addr_1 = (store_lane_gmem_c_m + 8) * N + store_lane_gmem_c_n;
+          int store_warp_smem_c_n = warp_n * (kMmaN * kValTileN) + j * kMmaN; // smem col
+          int store_lane_gmem_c_n = bx * BN + store_warp_smem_c_n; // gmem col
+          int store_gmem_c_addr_0 = store_lane_gmem_c_m * N + store_lane_gmem_c_n; // 1-th 8x8 matrix
+          int store_gmem_c_addr_1 = (store_lane_gmem_c_m + 8) * N + store_lane_gmem_c_n; // 2-th 8x8 matrix
           // 128-bit store: 一次写入 8 个 half
           *reinterpret_cast<float4 *>(&C[store_gmem_c_addr_0]) =
               *reinterpret_cast<float4 *>(&RC0[j][0]);
@@ -1778,10 +1779,6 @@ static __device__ __forceinline__ int swizzle_B(int i, int j) {
 //   Step 4: adaptive wait + __syncthreads
 //   Step 5: S→R ldmatrix 预加载 stage(k+1) k_step=0 → reg[store]（条件）
 //
-// 与 dsmem 版本的对比：
-//   - dsmem: smem 分两个区域存放 kMmaK=0 和 kMmaK=1，smem 翻倍
-//   - BK=32: kMmaK=0/1 连续存同一 tile 内，smem 不变，gmem 索引用 k*BK 直接定位
-//
 // 参考：LeetCUDA/kernels/hgemm/mma/swizzle/hgemm_mma_stage_tn_swizzle_x2.cu
 // Grid:  ((N+127)/128/S, (M+127)/128, S)，S=(N+2047)/2048，3D block swizzle
 // Block: (256, 1, 1)，8 warps
@@ -1797,6 +1794,7 @@ template <const int kMmaM = 16,             // MMA atom M dim (m16n8k16)
           const int kBlockSwizzle = 0>      // 1 enables 3D grid swizzle for L2 locality
 __global__ void __launch_bounds__(256)
     hgemm_mma_stages_tn_swizzle(half *A, half *B, half *C, int M, int N, int K) {
+  static_assert(kValTileK == 2, "Only support kValTileK=2 for register double buffering");
   static_assert(kBlockSwizzle == 0 || kBlockSwizzle == 1, "kBlockSwizzle must be 0 or 1");
   // Block Swizzle: 在 grid x 维度做 swizzle，改善 L2 cache 局部性
   const int bx = ((int)kBlockSwizzle) * blockIdx.z * gridDim.x + blockIdx.x;
@@ -1823,10 +1821,10 @@ __global__ void __launch_bounds__(256)
   // TN 布局关键: A[m*K+k] 是 row-major, B^T[n*K+k] 是 row-major（内维连续的是 K）
   // 注意：smem_a_k 和 smem_b_k 依然使用 0/8，虽然BK=16*2=32，在后续的kValTileK循环中
   // 会加上 k_step*kMmaK=0/16，最终得到 smem 中的列偏移 0/8/16/24，正好覆盖 BK=32
-  int load_smem_a_m = tid / 2;                // 0~127
-  int load_smem_a_k = (tid % 2 == 0) ? 0 : 8; // 0, 8
-  int load_smem_b_n = tid / 2; // 0~127 → B^T 的 N 方向（row-major 的行）
-  int load_smem_b_k = (tid % 2 == 0) ? 0 : 8; // 0, 8  → B^T 的 K 方向（row-major 的列）
+  int load_smem_a_m = tid / 2;                 // 0~127
+  int load_smem_a_k = (tid % 2 == 0) ? 0 : 8;  // 0, 8
+  int load_smem_b_n = tid / 2;                 // 0~127 → B^T 的 N 方向（row-major 的行）
+  int load_smem_b_k = (tid % 2 == 0) ? 0 : 8;  // 0, 8  → B^T 的 K 方向（row-major 的列）
   int load_gmem_a_m = by * BM + load_smem_a_m; // C/A 全局行号 = M 方向的 tile 起始 + 线程偏移
   int load_gmem_b_n = bx * BN + load_smem_b_n; // C/B 全局列号 = N 方向的 tile 起始 + 线程偏移
   if (load_gmem_a_m >= M || load_gmem_b_n >= N)
@@ -1846,9 +1844,9 @@ __global__ void __launch_bounds__(256)
   for (int k = 0; k < (kStages - 1); ++k) {
 #pragma unroll
     for (int k_step = 0; k_step < kValTileK; ++k_step) {
-      int load_gmem_a_k = k * BK + k_step * kMmaK + load_smem_a_k;
+      int load_gmem_a_k = k * BK + (k_step * kMmaK) + load_smem_a_k;
       int load_gmem_a_addr = load_gmem_a_m * K + load_gmem_a_k;
-      int load_gmem_b_k = k * BK + k_step * kMmaK + load_smem_b_k;
+      int load_gmem_b_k = k * BK + (k_step * kMmaK) + load_smem_b_k;
       int load_gmem_b_addr = load_gmem_b_n * K + load_gmem_b_k;
 
       uint32_t load_smem_a_ptr =
@@ -1880,6 +1878,7 @@ __global__ void __launch_bounds__(256)
   int reg_ld_idx = 1; // read source for MMA
 
 // Initial ldmatrix: load stage 0, S -> R, k_step=0 (0~15列) → reg[0]
+// 此时，reg_st_idx = 0，对0位置的寄存器buffer做初始化。
 #pragma unroll
   for (int i = 0; i < kValTileM; ++i) {
     int warp_smem_a_m = warp_m * (kMmaM * kValTileM) + i * kMmaM;
@@ -1920,10 +1919,10 @@ __global__ void __launch_bounds__(256)
 #pragma unroll
       for (int k_step = 0; k_step < kValTileK; ++k_step) {
         int load_gmem_a_k =
-            (k + kStages - 1) * BK + k_step * kMmaK + load_smem_a_k;
+            (k + kStages - 1) * BK + (k_step * kMmaK) + load_smem_a_k;
         int load_gmem_a_addr = load_gmem_a_m * K + load_gmem_a_k;
         int load_gmem_b_k =
-            (k + kStages - 1) * BK + k_step * kMmaK + load_smem_b_k;
+            (k + kStages - 1) * BK + (k_step * kMmaK) + load_smem_b_k;
         int load_gmem_b_addr = load_gmem_b_n * K + load_gmem_b_k;
 
         uint32_t load_smem_a_ptr =
@@ -2041,7 +2040,8 @@ __global__ void __launch_bounds__(256)
     }
   }
 
-  // Epilogue: 复用 RA 寄存器做 warp shuffle → 128-bit collective store
+  // Epilogue: 复用 RA[2][4][4] 寄存器做 warp shuffle → 128-bit collective store
+  // 做RC的warp shuffle正好需要[2][4][4]的寄存器空间，RA[2][4][4]正好可以复用
   for (int i = 0; i < kValTileM; ++i) {
 #pragma unroll
     for (int j = 0; j < kValTileN; ++j) {
