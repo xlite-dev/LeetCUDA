@@ -5527,7 +5527,7 @@ static void test_hgemm_wgmma(int M, int N, int K) {
   // M, K must be divisible by tile dims
   if (M % BM != 0 || N % BN != 0 || K % BK != 0) {
     printf("| %-42s | %-12s | %-4s | %-8s |\n",
-           "HGEMM WGMMA", "SKIP", "SKIP");
+           "HGEMM WGMMA", "SKIP", "SKIP", "None");
     return;
   }
 
