@@ -56,7 +56,7 @@ nvcc -std=c++20 -O2 -arch=sm_120a -DNOTES_V2_ENABLE_CUTE -DNOTES_V2_ENABLE_TMA_M
 
 ```bash
 # Run notes_v2_sm120a.bin with bench mode (tested: NVIDIA PRO 5000)
-./notes_v2_cute_ws_sm120a.bin --bench --bench-fa --mnk 8192,8192,8192 --bnhd 8,8192,48,64
+./notes_v2_cute_ws_sm120a.bin --bench --bench-fa --mnk 8192,8192,8192 --bhnd 8,48,8192,64
 HGEMM: M=8192 N=8192 K=8192   FA: B=8 H=48 N=8192 D=64
 | Kernel                                     | Max Err      | Pass | TFLOPS   |
 |--------------------------------------------|--------------|------|----------|
