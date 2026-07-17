@@ -2825,6 +2825,7 @@ __device__ __forceinline__ void tma_arrive_expect_tx(
 }
 #endif
 
+#if defined(NOTES_V2_ENABLE_WGMMA)
 // =============================================================================
 // Phase 7d: HGEMM WGMMA — m64n128k16 + TMA + Warp Specialization (Hopper)
 // =============================================================================
@@ -3442,6 +3443,8 @@ __global__ void __launch_bounds__(kNumThreads)
     }
   }
 }
+
+#endif /* NOTES_V2_ENABLE_WGMMA */
 
 #if defined(NOTES_V2_ENABLE_TMA_MMA_WS)
 // SM120 不支持 WGMMA，但支持相同的 TMA 生产者协议和 warp 级 mma.sync。
