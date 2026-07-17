@@ -6505,108 +6505,7 @@ static void bench_flash_attn(int B, int H, int N, int D) {
     h_v[i] = __float2half(((float)rand() / RAND_MAX) * 2.0f - 1.0f);
   }
 
-#if defined(NOTES_V2_ENABLE_CUDNN)
-  half *d_q, *d_k, *d_v, *d_o, *d_o_ref;
-  check(cudaMalloc(&d_q, sz), "bench fa alloc Q");
-  check(cudaMalloc(&d_k, sz), "bench fa alloc K");
-  check(cudaMalloc(&d_v, sz), "bench fa alloc V");
-  check(cudaMalloc(&d_o, sz), "bench fa alloc O");
-  check(cudaMalloc(&d_o_ref, sz), "bench fa alloc O_ref");
-  check(cudaMemcpy(d_q, h_q, sz, cudaMemcpyHostToDevice), "bench fa H2D Q");
-  check(cudaMemcpy(d_k, h_k, sz, cudaMemcpyHostToDevice), "bench fa H2D K");
-  check(cudaMemcpy(d_v, h_v, sz, cudaMemcpyHostToDevice), "bench fa H2D V");
-
-  // cuDNN SDPA reference
-  cudnnHandle_t cudnn_handle;
-  cudnnCreate(&cudnn_handle);
-  {
-    auto graph = std::make_shared<fe::graph::Graph>();
-    graph->set_io_data_type(fe::DataType_t::HALF)
-      .set_intermediate_data_type(fe::DataType_t::FLOAT)
-      .set_compute_data_type(fe::DataType_t::FLOAT);
-
-    auto Q = graph->tensor(fe::graph::Tensor_attributes()
-      .set_uid(1)
-      .set_dim({B, H, seqlen, head_dim})
-      .set_stride({H * seqlen * head_dim, seqlen * head_dim, head_dim, 1}));
-    auto K = graph->tensor(fe::graph::Tensor_attributes()
-      .set_uid(2)
-      .set_dim({B, H, seqlen, head_dim})
-      .set_stride({H * seqlen * head_dim, seqlen * head_dim, head_dim, 1}));
-    auto V = graph->tensor(fe::graph::Tensor_attributes()
-      .set_uid(3)
-      .set_dim({B, H, seqlen, head_dim})
-      .set_stride({H * seqlen * head_dim, seqlen * head_dim, head_dim, 1}));
-
-    auto [O, Stats] = graph->sdpa(Q, K, V,
-      fe::graph::SDPA_attributes()
-        .set_name("sdpa_ref")
-        .set_attn_scale(1.0f / sqrtf((float)head_dim)));
-
-    O->set_output(true).set_uid(4)
-      .set_dim({B, H, seqlen, head_dim})
-      .set_stride({H * seqlen * head_dim, seqlen * head_dim, head_dim, 1});
-
-    { auto _e = graph->build(cudnn_handle, {fe::HeurMode_t::A}); if (!_e.is_good()) { fprintf(stderr, "cudnn build failed: %s\n", _e.get_message().c_str()); exit(1); } }
-
-    std::unordered_map<fe::graph::Tensor_attributes::uid_t, void*> variant_pack = {
-      {1, d_q}, {2, d_k}, {3, d_v}, {4, d_o_ref}
-    };
-
-    int64_t workspace_size = 0;
-    { auto _e = graph->get_workspace_size(workspace_size); if (!_e.is_good()) { fprintf(stderr, "cudnn workspace size failed\n"); exit(1); } }
-    int8_t *d_workspace = nullptr;
-    if (workspace_size > 0) check(cudaMalloc(&d_workspace, workspace_size), "bench fa workspace");
-
-    { auto _e = graph->execute(cudnn_handle, variant_pack, d_workspace); if (!_e.is_good()) { fprintf(stderr, "cudnn execute failed\n"); exit(1); } }
-    check(cudaDeviceSynchronize(), "bench fa cudnn sync");
-
-    if (d_workspace) cudaFree(d_workspace);
-  }
-  cudnnDestroy(cudnn_handle);
-
-  half *h_o_ref = (half *)malloc(sz);
-  check(cudaMemcpy(h_o_ref, d_o_ref, sz, cudaMemcpyDeviceToHost), "bench fa D2H ref");
-#else
-  float *ref_q = (float *)malloc(sz * 4 / sizeof(half));
-  float *ref_k = (float *)malloc(sz * 4 / sizeof(half));
-  float *ref_v = (float *)malloc(sz * 4 / sizeof(half));
-  float *ref_o = (float *)malloc(sz * 4 / sizeof(half));
-  int count = B * H * seqlen * head_dim;
-  for (int i = 0; i < count; i++) {
-    ref_q[i] = __half2float(h_q[i]);
-    ref_k[i] = __half2float(h_k[i]);
-    ref_v[i] = __half2float(h_v[i]);
-  }
-
-  float scale = 1.0f / sqrtf((float)head_dim);
-  for (int bi = 0; bi < B * H; bi++) {
-    for (int qi = 0; qi < seqlen; qi++) {
-      float smax = -INFINITY;
-      float *S = (float *)malloc((size_t)seqlen * sizeof(float));
-      for (int kj = 0; kj < seqlen; kj++) {
-        float s = 0.0f;
-        for (int d = 0; d < head_dim; d++)
-          s += ref_q[bi * seqlen * head_dim + qi * head_dim + d] *
-          ref_k[bi * seqlen * head_dim + kj * head_dim + d];
-        S[kj] = s * scale;
-        if (S[kj] > smax) smax = S[kj];
-      }
-      double sum_exp = 0.0;
-      for (int kj = 0; kj < seqlen; kj++)
-        sum_exp += (double)expf(S[kj] - smax);
-      float inv_sum = 1.0f / (float)sum_exp;
-      for (int d = 0; d < head_dim; d++) {
-        double o_acc = 0.0;
-        for (int kj = 0; kj < seqlen; kj++)
-          o_acc += (double)(expf(S[kj] - smax) * inv_sum) *
-          ref_v[bi * seqlen * head_dim + kj * head_dim + d];
-        ref_o[bi * seqlen * head_dim + qi * head_dim + d] = (float)o_acc;
-      }
-      free(S);
-    }
-  }
-
+  // Device allocations — shared by kernel and reference
   half *d_q, *d_k, *d_v, *d_o;
   check(cudaMalloc(&d_q, sz), "bench fa alloc Q");
   check(cudaMalloc(&d_k, sz), "bench fa alloc K");
@@ -6615,7 +6514,115 @@ static void bench_flash_attn(int B, int H, int N, int D) {
   check(cudaMemcpy(d_q, h_q, sz, cudaMemcpyHostToDevice), "bench fa H2D Q");
   check(cudaMemcpy(d_k, h_k, sz, cudaMemcpyHostToDevice), "bench fa H2D K");
   check(cudaMemcpy(d_v, h_v, sz, cudaMemcpyHostToDevice), "bench fa H2D V");
+
+  // Reference output: either cuDNN (half) or CPU (float)
+  half *h_o_ref = nullptr;
+  float *ref_o = nullptr;
+  int ref_count = B * H * seqlen * head_dim;
+
+#if defined(NOTES_V2_ENABLE_CUDNN)
+  // Try cuDNN SDPA first; fall back to CPU if unsupported on this SM
+  bool cudnn_ok = false;
+  half *d_o_ref;
+  check(cudaMalloc(&d_o_ref, sz), "bench fa alloc O_ref");
+  {
+    cudnnHandle_t cudnn_handle;
+    cudnnCreate(&cudnn_handle);
+    auto graph = std::make_shared<fe::graph::Graph>();
+    graph->set_io_data_type(fe::DataType_t::HALF)
+      .set_intermediate_data_type(fe::DataType_t::FLOAT)
+      .set_compute_data_type(fe::DataType_t::FLOAT);
+
+    auto Q = graph->tensor(fe::graph::Tensor_attributes()
+      .set_uid(1).set_dim({B, H, seqlen, head_dim})
+      .set_stride({H * seqlen * head_dim, seqlen * head_dim, head_dim, 1}));
+    auto K = graph->tensor(fe::graph::Tensor_attributes()
+      .set_uid(2).set_dim({B, H, seqlen, head_dim})
+      .set_stride({H * seqlen * head_dim, seqlen * head_dim, head_dim, 1}));
+    auto V = graph->tensor(fe::graph::Tensor_attributes()
+      .set_uid(3).set_dim({B, H, seqlen, head_dim})
+      .set_stride({H * seqlen * head_dim, seqlen * head_dim, head_dim, 1}));
+
+    auto [O_sdpa, Stats] = graph->sdpa(Q, K, V,
+      fe::graph::SDPA_attributes()
+        .set_name("sdpa_ref")
+        .set_attn_scale(1.0f / sqrtf((float)head_dim)));
+
+    O_sdpa->set_output(true).set_uid(4)
+      .set_dim({B, H, seqlen, head_dim})
+      .set_stride({H * seqlen * head_dim, seqlen * head_dim, head_dim, 1});
+
+    // Try A first, then fallback (matching Python example: [cudnn.heur_mode.A, cudnn.heur_mode.FALLBACK])
+    auto build_status = graph->build(cudnn_handle, {fe::HeurMode_t::A, fe::HeurMode_t::FALLBACK});
+    if (build_status.is_good()) {
+      std::unordered_map<fe::graph::Tensor_attributes::uid_t, void*> vp = {
+        {1, d_q}, {2, d_k}, {3, d_v}, {4, d_o_ref}};
+      int64_t ws_size = 0;
+      if (graph->get_workspace_size(ws_size).is_good()) {
+        int8_t *d_ws = nullptr;
+        if (ws_size > 0) check(cudaMalloc(&d_ws, ws_size), "bench fa workspace");
+        if (graph->execute(cudnn_handle, vp, d_ws).is_good()) {
+          check(cudaDeviceSynchronize(), "bench fa cudnn sync");
+          cudnn_ok = true;
+        }
+        if (d_ws) cudaFree(d_ws);
+      }
+    }
+    cudnnDestroy(cudnn_handle);
+  }
+
+  if (cudnn_ok) {
+    h_o_ref = (half *)malloc(sz);
+    check(cudaMemcpy(h_o_ref, d_o_ref, sz, cudaMemcpyDeviceToHost), "bench fa D2H ref");
+  } else {
+    fprintf(stderr, "cudnn SDPA unsupported on this SM, using CPU ref\n");
+  }
+  cudaFree(d_o_ref);
 #endif
+
+  // CPU reference fallback
+  if (!h_o_ref) {
+    float *ref_q = (float *)malloc(sz * 4 / sizeof(half));
+    float *ref_k = (float *)malloc(sz * 4 / sizeof(half));
+    float *ref_v = (float *)malloc(sz * 4 / sizeof(half));
+    ref_o = (float *)malloc(sz * 4 / sizeof(half));
+    for (int i = 0; i < ref_count; i++) {
+      ref_q[i] = __half2float(h_q[i]);
+      ref_k[i] = __half2float(h_k[i]);
+      ref_v[i] = __half2float(h_v[i]);
+    }
+
+    float scale = 1.0f / sqrtf((float)head_dim);
+    for (int bi = 0; bi < B * H; bi++) {
+      for (int qi = 0; qi < seqlen; qi++) {
+        float smax = -INFINITY;
+        float *S = (float *)malloc((size_t)seqlen * sizeof(float));
+        for (int kj = 0; kj < seqlen; kj++) {
+          float s = 0.0f;
+          for (int d = 0; d < head_dim; d++)
+            s += ref_q[bi * seqlen * head_dim + qi * head_dim + d] *
+                 ref_k[bi * seqlen * head_dim + kj * head_dim + d];
+          S[kj] = s * scale;
+          if (S[kj] > smax) smax = S[kj];
+        }
+        double sum_exp = 0.0;
+        for (int kj = 0; kj < seqlen; kj++)
+          sum_exp += (double)expf(S[kj] - smax);
+        float inv_sum = 1.0f / (float)sum_exp;
+        for (int d = 0; d < head_dim; d++) {
+          double o_acc = 0.0;
+          for (int kj = 0; kj < seqlen; kj++)
+            o_acc += (double)(expf(S[kj] - smax) * inv_sum) *
+                     ref_v[bi * seqlen * head_dim + kj * head_dim + d];
+          ref_o[bi * seqlen * head_dim + qi * head_dim + d] = (float)o_acc;
+        }
+        free(S);
+      }
+    }
+    free(ref_q);
+    free(ref_k);
+    free(ref_v);
+  }
 
   constexpr int kHeadDim = 64, kStage = 2, kPad = 8;
   constexpr int kMmaAtomM = 16, kMmaAtomN = 8, kMmaAtomK = 16;
@@ -6665,17 +6672,11 @@ static void bench_flash_attn(int B, int H, int N, int D) {
   int count = B * H * seqlen * head_dim;
   float max_err = 0.0f;
   if (smem_ok) {
-#if defined(NOTES_V2_ENABLE_CUDNN)
     for (int i = 0; i < count; i++) {
-      float err = fabsf(__half2float(h_o[i]) - __half2float(h_o_ref[i]));
+      float ref_val = h_o_ref ? __half2float(h_o_ref[i]) : ref_o[i];
+      float err = fabsf(__half2float(h_o[i]) - ref_val);
       if (err > max_err) max_err = err;
     }
-#else
-    for (int i = 0; i < count; i++) {
-      float err = fabsf(__half2float(h_o[i]) - ref_o[i]);
-      if (err > max_err) max_err = err;
-    }
-#endif
   }
   if (smem_ok) {
     float tflops = bench_fa_tflops(B, H, N, D, time_ms);
@@ -6692,15 +6693,8 @@ static void bench_flash_attn(int B, int H, int N, int D) {
   free(h_k);
   free(h_v);
   free(h_o);
-#if defined(NOTES_V2_ENABLE_CUDNN)
   free(h_o_ref);
-  cudaFree(d_o_ref);
-#else
-  free(ref_q);
-  free(ref_k);
-  free(ref_v);
   free(ref_o);
-#endif
   cudaFree(d_q);
   cudaFree(d_k);
   cudaFree(d_v);
