@@ -45,6 +45,12 @@ nvcc -std=c++20 -O2 -arch=sm_89 -DNOTES_V2_ENABLE_CUTE -I ../../third-party/cutl
 nvcc -std=c++20 -O2 -gencode arch=compute_90a,code=sm_90a -DNOTES_V2_ENABLE_WGMMA \
   -DNOTES_V2_ENABLE_CUTE -DNOTES_V2_ENABLE_TMA_MMA_WS -I ../../third-party/cutlass/include \
   -lcublas -lcuda notes-v2.cu -o notes_v2_sm90.bin # Hopper (H100, H200, etc)
+# Blackwell SM120 + CuTe + TMA MMA WS + cuDNN SDPA (CUDA Toolkit >= 13.2):
+nvcc -std=c++20 -O2 -arch=sm_120a \
+  -DNOTES_V2_ENABLE_CUTE -DNOTES_V2_ENABLE_TMA_MMA_WS -DNOTES_V2_ENABLE_CUDNN \
+  -I ../../third-party/cutlass/include -I ../../third-party/cudnn-frontend/include \
+  -L/usr/local/cuda-13.2/targets/x86_64-linux/lib/stubs \
+  -lcublas -lcudnn -lnvrtc -lcuda notes-v2.cu -o notes_v2_cute_ws_sm120a.bin
 === notes-v2.cu verification harness ===
 | Kernel                                     | Max Err      | Pass |
 |--------------------------------------------|--------------|------|
