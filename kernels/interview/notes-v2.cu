@@ -6489,10 +6489,91 @@ static void bench_hgemm_tma_mma_ws(int M, int N, int K) {
 #endif
 
 // =============================================================================
-// Bench: FlashAttention Split-Q
+// Bench: FlashAttention Split-Q (template on kHeadDim for dispatch)
 // =============================================================================
+template <int kHeadDim>
+static void bench_fa_launch(int B, int H, int seqlen, int head_dim,
+    half *h_o_ref, float *ref_o, half *d_q, half *d_k, half *d_v, half *d_o) {
+  static_assert(kHeadDim == 64 || kHeadDim == 128, "Only D=64 and D=128 are supported");
+  constexpr int kStage = 2, kPad = 8;
+  constexpr int kMmaAtomM = 16, kMmaAtomN = 8, kMmaAtomK = 16;
+  constexpr int kMmaTileSeqLenQ = 8, kMmaTileSeqLenK = 1, kMmaTileSeqLenP = 8;
+  constexpr int kMmaTileHeadDimV = 1, kValTileSeqLenQ = 1, kValTileSeqLenK = 8;
+  constexpr int kValTileSeqLenP = 1;
+  constexpr int kValTileHeadDimV = kHeadDim / (8 * kMmaTileHeadDimV);
+  constexpr int Br = kMmaAtomM * kMmaTileSeqLenQ * kValTileSeqLenQ;
+  constexpr int Bc = kMmaAtomN * kMmaTileSeqLenK * kValTileSeqLenK;
+  size_t smem_bytes =
+    (Br * (kHeadDim + kPad) + kStage * Bc * (kHeadDim + kPad) +
+    Bc * (kHeadDim + kPad)) *
+    sizeof(half);
+
+  dim3 block(256);
+  dim3 grid((seqlen + Br - 1) / Br, B * H);
+
+  cudaStream_t timing_stream;
+  cudaStreamCreate(&timing_stream);
+  cudaEvent_t start, stop;
+  cudaEventCreate(&start);
+  cudaEventCreate(&stop);
+
+  using FAKernel = void (*)(half *, half *, half *, half *, int, int);
+  FAKernel fa_k = flash_attn_mma_stages_split_q<
+    kHeadDim, kMmaAtomM, kMmaAtomN, kMmaAtomK, kMmaTileSeqLenQ, kMmaTileSeqLenK,
+    kMmaTileSeqLenP, kMmaTileHeadDimV, kValTileSeqLenQ, kValTileSeqLenK,
+    kValTileSeqLenP, kValTileHeadDimV, kStage, kPad>;
+  bool smem_ok = check_smem_feasible((const void *)fa_k, smem_bytes);
+  if (smem_ok) {
+    cudaFuncSetAttribute(fa_k, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_bytes);
+  }
+
+  cudaEventRecord(start, timing_stream);
+  if (smem_ok) {
+    fa_k<<<grid, block, smem_bytes, timing_stream>>>(d_q, d_k, d_v, d_o, seqlen, head_dim);
+  }
+  cudaEventRecord(stop, timing_stream);
+  cudaEventSynchronize(stop);
+
+  float time_ms = 0;
+  cudaEventElapsedTime(&time_ms, start, stop);
+
+  size_t sz = (size_t)B * H * seqlen * head_dim * sizeof(half);
+  half *h_o = (half *)malloc(sz);
+  check(cudaMemcpy(h_o, d_o, sz, cudaMemcpyDeviceToHost), "bench fa D2H");
+
+  int count = B * H * seqlen * head_dim;
+  char label[64];
+  snprintf(label, sizeof(label), "FlashAttn-SplitQ (D=%d)", kHeadDim);
+  float max_err = 0.0f;
+  if (smem_ok) {
+    for (int i = 0; i < count; i++) {
+      float ref_val = h_o_ref ? __half2float(h_o_ref[i]) : ref_o[i];
+      float err = fabsf(__half2float(h_o[i]) - ref_val);
+      if (err > max_err) max_err = err;
+    }
+  }
+  if (smem_ok) {
+    float tflops = bench_fa_tflops(B, H, seqlen, head_dim, time_ms);
+    printf("| %-42s | %.6e | %-4s | %-8.1f |\n", label, max_err,
+           max_err < 5e-1f ? "PASS" : "FAIL", tflops);
+  } else {
+    printf("| %-42s | %-12s | %-4s | %-8s |\n", label, "SMEM too large", "SKIP", "None");
+  }
+
+  cudaEventDestroy(start);
+  cudaEventDestroy(stop);
+  cudaStreamDestroy(timing_stream);
+  free(h_o);
+}
+
 static void bench_flash_attn(int B, int H, int N, int D) {
   int seqlen = N, head_dim = D;
+
+  if (head_dim != 64 && head_dim != 128) {
+    printf("| %-42s | %-12s | %-4s | %-8s |\n", "FlashAttn-SplitQ", "unsupported D", "SKIP", "None");
+    return;
+  }
+
   size_t sz = (size_t)B * H * seqlen * head_dim * sizeof(half);
 
   srand(42);
@@ -6519,6 +6600,8 @@ static void bench_flash_attn(int B, int H, int N, int D) {
   half *h_o_ref = nullptr;
   float *ref_o = nullptr;
   int ref_count = B * H * seqlen * head_dim;
+
+  // (cuDNN / CPU reference code unchanged — same as before) ...
 
 #if defined(NOTES_V2_ENABLE_CUDNN)
   // Try cuDNN SDPA first; fall back to CPU if unsupported on this SM
@@ -6624,75 +6707,14 @@ static void bench_flash_attn(int B, int H, int N, int D) {
     free(ref_v);
   }
 
-  constexpr int kHeadDim = 64, kStage = 2, kPad = 8;
-  constexpr int kMmaAtomM = 16, kMmaAtomN = 8, kMmaAtomK = 16;
-  constexpr int kMmaTileSeqLenQ = 8, kMmaTileSeqLenK = 1, kMmaTileSeqLenP = 8;
-  constexpr int kMmaTileHeadDimV = 1, kValTileSeqLenQ = 1, kValTileSeqLenK = 8;
-  constexpr int kValTileSeqLenP = 1;
-  constexpr int kValTileHeadDimV = kHeadDim / (8 * kMmaTileHeadDimV);
-  constexpr int Br = kMmaAtomM * kMmaTileSeqLenQ * kValTileSeqLenQ;
-  constexpr int Bc = kMmaAtomN * kMmaTileSeqLenK * kValTileSeqLenK;
-  size_t smem_bytes =
-    (Br * (kHeadDim + kPad) + kStage * Bc * (kHeadDim + kPad) +
-    Bc * (kHeadDim + kPad)) *
-    sizeof(half);
+  if (head_dim == 64)
+    bench_fa_launch<64>(B, H, seqlen, head_dim, h_o_ref, ref_o, d_q, d_k, d_v, d_o);
+  else
+    bench_fa_launch<128>(B, H, seqlen, head_dim, h_o_ref, ref_o, d_q, d_k, d_v, d_o);
 
-  dim3 block(256);
-  dim3 grid((seqlen + Br - 1) / Br, B * H);
-
-  cudaStream_t timing_stream;
-  cudaStreamCreate(&timing_stream);
-  cudaEvent_t start, stop;
-  cudaEventCreate(&start);
-  cudaEventCreate(&stop);
-
-  using FAKernel = void (*)(half *, half *, half *, half *, int, int);
-  FAKernel fa_k = flash_attn_mma_stages_split_q<
-    kHeadDim, kMmaAtomM, kMmaAtomN, kMmaAtomK, kMmaTileSeqLenQ, kMmaTileSeqLenK,
-    kMmaTileSeqLenP, kMmaTileHeadDimV, kValTileSeqLenQ, kValTileSeqLenK,
-    kValTileSeqLenP, kValTileHeadDimV, kStage, kPad>;
-  bool smem_ok = check_smem_feasible((const void *)fa_k, smem_bytes);
-  if (smem_ok) {
-    cudaFuncSetAttribute(fa_k, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_bytes);
-  }
-
-  cudaEventRecord(start, timing_stream);
-  if (smem_ok) {
-    fa_k<<<grid, block, smem_bytes, timing_stream>>>(d_q, d_k, d_v, d_o, seqlen, head_dim);
-  }
-  cudaEventRecord(stop, timing_stream);
-  cudaEventSynchronize(stop);
-
-  float time_ms = 0;
-  cudaEventElapsedTime(&time_ms, start, stop);
-
-  half *h_o = (half *)malloc(sz);
-  check(cudaMemcpy(h_o, d_o, sz, cudaMemcpyDeviceToHost), "bench fa D2H");
-
-  int count = B * H * seqlen * head_dim;
-  float max_err = 0.0f;
-  if (smem_ok) {
-    for (int i = 0; i < count; i++) {
-      float ref_val = h_o_ref ? __half2float(h_o_ref[i]) : ref_o[i];
-      float err = fabsf(__half2float(h_o[i]) - ref_val);
-      if (err > max_err) max_err = err;
-    }
-  }
-  if (smem_ok) {
-    float tflops = bench_fa_tflops(B, H, N, D, time_ms);
-    printf("| %-42s | %.6e | %-4s | %-8.1f |\n", "FlashAttn-SplitQ (kStage=2)", max_err,
-           max_err < 5e-1f ? "PASS" : "FAIL", tflops);
-  } else {
-    printf("| %-42s | %-12s | %-4s | %-8s |\n", "FlashAttn-SplitQ (kStage=2)", "SMEM too large", "SKIP", "None");
-  }
-
-  cudaEventDestroy(start);
-  cudaEventDestroy(stop);
-  cudaStreamDestroy(timing_stream);
   free(h_q);
   free(h_k);
   free(h_v);
-  free(h_o);
   free(h_o_ref);
   free(ref_o);
   cudaFree(d_q);
