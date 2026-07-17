@@ -51,19 +51,18 @@ nvcc -std=c++20 -O2 -gencode arch=compute_90a,code=sm_90a -DNOTES_V2_ENABLE_WGMM
 nvcc -std=c++20 -O2 -arch=sm_120a -DNOTES_V2_ENABLE_CUTE -DNOTES_V2_ENABLE_TMA_MMA_WS \
   -DNOTES_V2_ENABLE_CUDNN -I ../../third-party/cutlass/include -I ../../third-party/cudnn-frontend/include \
   -L/usr/local/cuda/targets/x86_64-linux/lib/stubs -lcublas -lcudnn -lnvrtc -lcuda \
-  notes-v2.cu -o notes_v2_sm120a.bin
+  notes-v2.cu -o notes_v2_cute_ws_sm120a.bin
 ```
 
 ```bash
 # Run notes_v2_sm120a.bin with bench mode (tested: NVIDIA PRO 5000)
-./notes_v2_sm120a.bin --bench --bench-fa
-=== notes-v2.cu bench mode ===
-HGEMM: M=4096 N=4096 K=4096   FA: B=1 H=32 N=4096 D=64
+./notes_v2_cute_ws_sm120a.bin --bench --bench-fa --mnk 8192,8192,8192 --bnhd 8,8192,48,64
+HGEMM: M=8192 N=8192 K=8192   FA: B=8 H=48 N=8192 D=64
 | Kernel                                     | Max Err      | Pass | TFLOPS   |
 |--------------------------------------------|--------------|------|----------|
-| BlockReduce                                | 9.536743e-07 | PASS | None     |
-| Dot                                        | 2.384186e-06 | PASS | None     |
-| Dot-Vec4                                   | 1.907349e-06 | PASS | None     |
+| BlockReduce                                | 1.144409e-05 | PASS | None     |
+| Dot                                        | 3.814697e-06 | PASS | None     |
+| Dot-Vec4                                   | 0.000000e+00 | PASS | None     |
 | ReLU                                       | 0.000000e+00 | PASS | None     |
 | ReLU-Vec4                                  | 0.000000e+00 | PASS | None     |
 | ElemwiseAdd                                | 0.000000e+00 | PASS | None     |
@@ -84,28 +83,27 @@ HGEMM: M=4096 N=4096 K=4096   FA: B=1 H=32 N=4096 D=64
 | SGEMV-K128                                 | 9.536743e-07 | PASS | None     |
 | SGEMV-K32                                  | 9.536743e-07 | PASS | None     |
 | SGEMV-K16                                  | 2.384186e-07 | PASS | None     |
-| SGEMM                                      | 3.395081e-04 | PASS | None     |
-| SGEMM-Vec4                                 | 3.395081e-04 | PASS | None     |
-| HGEMM MMA (S=2, SW=0)                      | 0.000000e+00 | PASS | 116.9    |
-| HGEMM MMA (S=2, SW=1)                      | 0.000000e+00 | PASS | 117.3    |
-| HGEMM MMA (S=3, SW=0)                      | 0.000000e+00 | PASS | 124.1    |
-| HGEMM MMA (S=3, SW=1)                      | 0.000000e+00 | PASS | 124.7    |
-| HGEMM Swizzle+Reg2x (S=2, SW=0)            | 0.000000e+00 | PASS | 115.6    |
-| HGEMM Swizzle+Reg2x (S=2, SW=1)            | 0.000000e+00 | PASS | 115.9    |
-| HGEMM Swizzle+Reg2x (S=3, SW=0)            | 0.000000e+00 | PASS | 121.3    |
-| HGEMM Swizzle+Reg2x (S=3, SW=1)            | 0.000000e+00 | PASS | 123.5    |
-| HGEMM CuTe Swizzle (S=2, SW=0)             | 0.000000e+00 | PASS | 202.6    |
-| HGEMM CuTe Swizzle (S=2, SW=1)             | 0.000000e+00 | PASS | 211.2    |
-| HGEMM CuTe Swizzle (S=3, SW=0)             | 0.000000e+00 | PASS | 218.7    |
-| HGEMM CuTe Swizzle (S=3, SW=1)             | 0.000000e+00 | PASS | 217.8    |
-| HGEMM TMA MMA WS (S=1, SW=0)               | 0.000000e+00 | PASS | 43.3     |
-| HGEMM TMA MMA WS (S=1, SW=1)               | 0.000000e+00 | PASS | 208.2    |
-| HGEMM TMA MMA WS (S=2, SW=0)               | 0.000000e+00 | PASS | 209.6    |
-| HGEMM TMA MMA WS (S=2, SW=1)               | 0.000000e+00 | PASS | 207.9    |
-| HGEMM TMA MMA WS (S=3, SW=0)               | 0.000000e+00 | PASS | 207.0    |
-| HGEMM TMA MMA WS (S=3, SW=1)               | 0.000000e+00 | PASS | 207.7    |
-| FlashAttn-SplitQ (kStage=2)                | 1.525879e-04 | PASS | 164.0    |
-=== Bench done ===
+| SGEMM                                      | 0.000000e+00 | PASS | None     |
+| SGEMM-Vec4                                 | 0.000000e+00 | PASS | None     |
+| HGEMM MMA (S=2, SW=0)                      | 0.000000e+00 | PASS | 118.3    |
+| HGEMM MMA (S=2, SW=1)                      | 0.000000e+00 | PASS | 125.1    |
+| HGEMM MMA (S=3, SW=0)                      | 0.000000e+00 | PASS | 122.7    |
+| HGEMM MMA (S=3, SW=1)                      | 0.000000e+00 | PASS | 127.5    |
+| HGEMM Swizzle+Reg2x (S=2, SW=0)            | 0.000000e+00 | PASS | 120.6    |
+| HGEMM Swizzle+Reg2x (S=2, SW=1)            | 0.000000e+00 | PASS | 125.6    |
+| HGEMM Swizzle+Reg2x (S=3, SW=0)            | 0.000000e+00 | PASS | 123.2    |
+| HGEMM Swizzle+Reg2x (S=3, SW=1)            | 0.000000e+00 | PASS | 128.3    |
+| HGEMM CuTe Swizzle (S=2, SW=0)             | 0.000000e+00 | PASS | 239.0    |
+| HGEMM CuTe Swizzle (S=2, SW=1)             | 0.000000e+00 | PASS | 244.6    |
+| HGEMM CuTe Swizzle (S=3, SW=0)             | 0.000000e+00 | PASS | 252.8    |
+| HGEMM CuTe Swizzle (S=3, SW=1)             | 0.000000e+00 | PASS | 260.5    |
+| HGEMM TMA MMA WS (S=1, SW=0)               | 0.000000e+00 | PASS | 134.0    |
+| HGEMM TMA MMA WS (S=1, SW=1)               | 0.000000e+00 | PASS | 227.9    |
+| HGEMM TMA MMA WS (S=2, SW=0)               | 0.000000e+00 | PASS | 192.8    |
+| HGEMM TMA MMA WS (S=2, SW=1)               | 0.000000e+00 | PASS | 228.9    |
+| HGEMM TMA MMA WS (S=3, SW=0)               | 0.000000e+00 | PASS | 194.9    |
+| HGEMM TMA MMA WS (S=3, SW=1)               | 0.000000e+00 | PASS | 228.1    |
+| FlashAttn-SplitQ (kStage=2)                | 1.831055e-04 | PASS | 185.3    |
 ```
 A PDF version of LeetCUDA focused on **interview scenarios** is available at [`kernels/interview/notes-v2.pdf`](https://github.com/xlite-dev/LeetCUDA/blob/main/kernels/interview/notes-v2.pdf).
 
