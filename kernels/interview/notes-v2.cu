@@ -4597,6 +4597,10 @@ __global__ void __launch_bounds__(kNumThreads)
   // Per-head gmem base offset (self-attention: Q=K=V share layout)
   const int QKV_gmem_offset = (Nb_id * H * N + Nh_id * N) * kHeadDim;
   const int O_gmem_offset = QKV_gmem_offset;
+  // TMA descriptor covers the entire [B*H*N, D] gmem as one 2D matrix; the
+  // producer must offset major_coord by this head/batch base so each block
+  // loads its own (batch, head) Q/K/V tile instead of always reading head 0.
+  const int qkv_major_base = (Nb_id * H + Nh_id) * N;
 
   // ---- Shared memory layout ----
   // TMA CU_TENSOR_MAP_SWIZZLE_128B requires 1024B-aligned smem base so the
@@ -4653,16 +4657,17 @@ __global__ void __launch_bounds__(kNumThreads)
     if (wg_tid == 0) {
       // Step P0: Load block-level Q tile [Br, d] once. TMA coords:
       //   minor = d_offset = 0 (kHeadDim=64 == BlockMinorSize)
-      //   major = q_offset = Q_tile_id * Br
-      tma_load_2d(Q_smem, tensorMapQ, 0, Q_tile_id * Br, full_Q);
+      //   major = qkv_major_base + Q_tile_id * Br
+      tma_load_2d(Q_smem, tensorMapQ, 0, qkv_major_base + Q_tile_id * Br,
+                  full_Q);
       tma_arrive_expect_tx(full_Q, kQTileBytes);
 
       // Step P1: Prefetch first (kStagesK-1) K tiles.
-      // K tile coords: minor = d_offset = 0, major = kv_offset = k*Bc
+      // K tile coords: minor = d_offset = 0, major = qkv_major_base + k*Bc
       for (int s = 0; s < kStagesK - 1; ++s) {
         empty_K[s].wait(empty_K[s].arrive());
-        tma_load_2d(K_smem + s * Bc * kHeadDim, tensorMapK, 0, s * Bc,
-                    full_K[s]);
+        tma_load_2d(K_smem + s * Bc * kHeadDim, tensorMapK, 0,
+                    qkv_major_base + s * Bc, full_K[s]);
         tma_arrive_expect_tx(full_K[s], kKTileBytes);
       }
 
@@ -4673,7 +4678,7 @@ __global__ void __launch_bounds__(kNumThreads)
         // Issue V[k] TMA (before QK gemm so it overlaps with QK compute).
         // V single buffer: wait for consumer to release V from previous iter.
         empty_V.wait(empty_V.arrive());
-        tma_load_2d(V_smem, tensorMapV, 0, k * Bc, full_V);
+        tma_load_2d(V_smem, tensorMapV, 0, qkv_major_base + k * Bc, full_V);
         tma_arrive_expect_tx(full_V, kVTileBytes);
 
         // Prefetch K[k+kStagesK-1] (pipelined).
@@ -4681,7 +4686,8 @@ __global__ void __launch_bounds__(kNumThreads)
           const int stage_next = (k + kStagesK - 1) % kStagesK;
           empty_K[stage_next].wait(empty_K[stage_next].arrive());
           tma_load_2d(K_smem + stage_next * Bc * kHeadDim, tensorMapK, 0,
-                      (k + kStagesK - 1) * Bc, full_K[stage_next]);
+                      qkv_major_base + (k + kStagesK - 1) * Bc,
+                      full_K[stage_next]);
           tma_arrive_expect_tx(full_K[stage_next], kKTileBytes);
         }
       }
@@ -6625,15 +6631,16 @@ static void test_flash_attn_tma_mma_ws(int seqlen, int head_dim) {
   }
 
   // TMA descriptors: Q tile [Br, d]=[128, 64], K/V tile [Bc, d]=[64, 64]
-  // Q/K/V gmem is [seqlen, head_dim] row-major: major=seqlen, minor=head_dim.
-  // blocks_height = seqlen/tile_major (major dim tile count)
-  // blocks_width  = 1 (minor dim == BlockMinorSize, single tile)
+  // Q/K/V gmem is [B, H, seqlen, head_dim] row-major, treated as one 2D
+  // [B*H*seqlen, head_dim] matrix for TMA. blocks_height = B*H*seqlen/tile_major
+  // (major dim tile count), blocks_width = 1 (minor dim == BlockMinorSize).
+  // The kernel offsets major_coord by (Nb_id*H+Nh_id)*N per block.
   CUtensorMap *tma_q = allocate_and_create_tensor_map_t<Br, kHeadDim>(
-      d_q, seqlen / Br, 1);
+      d_q, B * H * seqlen / Br, 1);
   CUtensorMap *tma_k = allocate_and_create_tensor_map_t<Bc, kHeadDim>(
-      d_k, seqlen / Bc, 1);
+      d_k, B * H * seqlen / Bc, 1);
   CUtensorMap *tma_v = allocate_and_create_tensor_map_t<Bc, kHeadDim>(
-      d_v, seqlen / Bc, 1);
+      d_v, B * H * seqlen / Bc, 1);
 
   using FAKernel = void (*)(half *, half *, half *, half *, int, int,
                              const CUtensorMap *, const CUtensorMap *,
@@ -7473,15 +7480,16 @@ static void bench_fa_tma_mma_ws_launch(int B, int H, int seqlen, int head_dim,
   }
 
   // TMA descriptors (Q: <Br, d>, K/V: <Bc, d>)
-  // Q/K/V gmem is [seqlen, head_dim] row-major: major=seqlen, minor=head_dim.
-  // blocks_height = seqlen/tile_major (major dim tile count)
-  // blocks_width  = 1 (minor dim == BlockMinorSize, single tile)
+  // Q/K/V gmem is [B, H, seqlen, head_dim] row-major, treated as one 2D
+  // [B*H*seqlen, head_dim] matrix for TMA. blocks_height = B*H*seqlen/tile_major
+  // (major dim tile count), blocks_width = 1 (minor dim == BlockMinorSize).
+  // The kernel offsets major_coord by (Nb_id*H+Nh_id)*N per block.
   CUtensorMap *tma_q = allocate_and_create_tensor_map_t<Br, kHeadDim>(
-      d_q, seqlen / Br, 1);
+      d_q, B * H * seqlen / Br, 1);
   CUtensorMap *tma_k = allocate_and_create_tensor_map_t<Bc, kHeadDim>(
-      d_k, seqlen / Bc, 1);
+      d_k, B * H * seqlen / Bc, 1);
   CUtensorMap *tma_v = allocate_and_create_tensor_map_t<Bc, kHeadDim>(
-      d_v, seqlen / Bc, 1);
+      d_v, B * H * seqlen / Bc, 1);
 
   using FAKernel = void (*)(half *, half *, half *, half *, int, int,
                              const CUtensorMap *, const CUtensorMap *,
