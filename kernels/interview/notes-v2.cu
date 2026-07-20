@@ -7856,9 +7856,9 @@ static void bench_flash_attn(int B, int H, int N, int D) {
       cudnnHandle_t cudnn_handle;
       cudnnCreate(&cudnn_handle);
       auto graph = std::make_shared<fe::graph::Graph>();
-      graph->set_io_data_type(fe::DataType_t::HALF)
-        .set_intermediate_data_type(fe::DataType_t::FLOAT)
-        .set_compute_data_type(fe::DataType_t::HALF);
+      graph->set_io_data_type(fe::DataType_t::HALF) // QKVO io buffer
+        .set_intermediate_data_type(fe::DataType_t::FLOAT) // Softmax, P buffer
+        .set_compute_data_type(fe::DataType_t::HALF); // Accumulate, mma accumulator
 
       auto Q = graph->tensor(fe::graph::Tensor_attributes()
         .set_uid(1).set_dim({B, H, seqlen, head_dim})
