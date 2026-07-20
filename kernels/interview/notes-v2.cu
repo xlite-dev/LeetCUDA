@@ -3858,7 +3858,7 @@ __device__ inline void fill_2D_regs(T (&R)[M][N], T val) {
 // Q,K,V,O: [batch_size, num_heads, seq_len, head_dim], [B,H,N,d]
 //
 // Tile 设计（以 kHeadDim=64 为例）:
-//   Br = kMmaAtomM * kMmaTileSeqLenQ * kValTileSeqLenQ = 16*4*1 = 64
+//   Br = kMmaAtomM * kMmaTileSeqLenQ * kValTileSeqLenQ = 16*{4,8}*1 = {64,128}
 //   Bc = kMmaAtomN * kMmaTileSeqLenK * kValTileSeqLenK = 8*1*8  = 64
 //   Warp 布局: 4 warps, warp_QP 0~3 各处理 16 行, warp_KV=0 共享 K
 //
@@ -3912,9 +3912,9 @@ __global__ void flash_attn_mma_stages_split_q(
   constexpr bool kSwizzleQ = kPadQ == 0;
   constexpr bool kSwizzleK = kPadK == 0;
   constexpr bool kSwizzleV = kPadV == 0;
-  constexpr int Br = kMmaAtomM * kMmaTileSeqLenQ * kValTileSeqLenQ; // 64
-  constexpr int Bc = kMmaAtomN * kMmaTileSeqLenK * kValTileSeqLenK; // 64
-  constexpr int kNumThreads = kWarpSize * kMmaTileSeqLenQ * kMmaTileSeqLenK; // 128
+  constexpr int Br = kMmaAtomM * kMmaTileSeqLenQ * kValTileSeqLenQ; // 16*8*1=128
+  constexpr int Bc = kMmaAtomN * kMmaTileSeqLenK * kValTileSeqLenK; // 8*1*8=64
+  constexpr int kNumThreads = kWarpSize * kMmaTileSeqLenQ * kMmaTileSeqLenK; // 32*8*1=256
   const int Tc = (N + Bc - 1) / Bc;
   // 原始实现默认 seqlen 与 Bc 对齐；最后一个不完整 tile 需要额外 pad/边界处理。
   // 这里保留 ceil 写法是为了说明 tile 划分方式，不等于当前实现已经完整处理了尾 tile。
@@ -3976,9 +3976,9 @@ __global__ void flash_attn_mma_stages_split_q(
   fill_2D_regs<float, kValTileSeqLenQ, 2>(lane_block_row_max_old, -INFINITY);
   fill_2D_regs<float, kValTileSeqLenQ, 2>(lane_block_row_sum_old, 0.0f);
 
-  uint32_t R_Q[kValTileSeqLenQ][4];                   // Q regs
-  uint32_t R_K[kValTileSeqLenK][2];                   // K regs
-  uint32_t R_V[kValTileHeadDimV][2];                  // V regs
+  uint32_t R_Q[kValTileSeqLenQ][4];  // Q regs
+  uint32_t R_K[kValTileSeqLenK][2];  // K regs
+  uint32_t R_V[kValTileHeadDimV][2]; // V regs
   // R_S / R_O / R_D 都按 mma.sync.aligned.m16n8k16 的 fragment 约定存储。
   // 对单个 m16n8k16 tile 而言：
   //   - reg[0] 持有该 tile 前 8 行里的两个 half 值
