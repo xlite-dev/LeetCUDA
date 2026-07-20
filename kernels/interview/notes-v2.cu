@@ -1802,18 +1802,19 @@ static __device__ __forceinline__ int swizzle(int i, int j) {
 
 // =============================================================================
 // Phase 7b-3: HGEMM MMA — m16n8k16 + multistage pipeline + TN 布局 + XOR swizzle
-//              + Register Double Buffering (kValTileK=2, BK=32 统一 tile)
+//              + Register Double Buffering (generic kValTileK, default BK=64)
 // =============================================================================
 // 在 Phase 7b-2 的 smem XOR swizzle 基础上增加寄存器双缓冲：
-//   - kValTileK=2: 每个 BK tile 包含 2 个 kMmaK slice（BK = kMmaK * kValTileK = 32）
-//   - BK=32 统一 tile：kMmaK=0 和 kMmaK=1 数据连续存放在同一个 BK=32 宽的 smem tile 中
-//   - RA[2][kValTileM][4] / RB[2][kValTileN][2]：双份寄存器乒乓切换
-//   - ldmatrix 与 MMA 计算重叠：加载 k_step=1 的同时用另一组寄存器做 k_step=0 计算
+//   - kValTileK: 每个 BK tile 包含 kValTileK 个 kMmaK slice（BK = kMmaK * kValTileK）
+//   - 统一 BK tile：所有 k_step slice 连续存放在同一个 BK 宽的 smem tile 中
+//   - RA[2][kValTileM][4] / RB[2][kValTileN][2]：双份寄存器乒乓切换（与 kValTileK 无关）
+//   - ldmatrix 与 MMA 计算重叠：加载 k_step+1 的同时用另一组寄存器做 k_step 计算
+//   - 支持任意 kValTileK >= 2；默认 kValTileK=4 (BK=64)，kStages=2 推荐 64KB smem
 //
 // ★ smem 布局：
-//   s_a: [stage0][stage1][stage2]，每个 stage = BM × BK = 128 × 32
+//   s_a: [stage0][stage1]...[stage(kStages-1)]，每个 stage = BM × BK = 128 × BK
 //   s_b: 紧接 s_a 之后
-//   每个 stage 内 k_step=0 列偏移 0，k_step=1 列偏移 +kMmaK(=16)
+//   每个 stage 内 k_step slice 列偏移 = k_step * kMmaK
 //
 // ★ 寄存器双缓冲时间线（每 k 迭代内）：
 //   Step 1: G→S cp.async 预取 stage(k+kStages-1) 全部 k_step（条件）
@@ -1832,12 +1833,12 @@ template <const int kMmaM = 16,             // MMA atom M dim (m16n8k16)
           const int kMmaTileN = 4,          // warps along N, 4 → warp tile N = 32
           const int kValTileM = 4,          // value-repeat along M, BM = 16*2*4 = 128
           const int kValTileN = 4,          // value-repeat along N, BN = 8*4*4 = 128
-          const int kValTileK = 2,          // MMA_K slices per BK tile, BK = kMmaK*2 = 32
-          const int kStages = 3,            // cp.async pipeline depth
+          const int kValTileK = 4,          // MMA_K slices per BK tile, BK = kMmaK * kValTileK
+          const int kStages = 2,            // cp.async pipeline depth (2 for kValTileK>=4 to fit smem)
           const int kBlockSwizzle = 0>      // 1 enables 3D grid swizzle for L2 locality
 __global__ void __launch_bounds__(256)
     hgemm_mma_stages_tn_swizzle(half *A, half *B, half *C, int M, int N, int K) {
-  static_assert(kValTileK == 2, "Only support kValTileK=2 for register double buffering");
+  static_assert(kValTileK >= 2, "Register double buffering requires kValTileK >= 2");
   static_assert(kBlockSwizzle == 0 || kBlockSwizzle == 1, "kBlockSwizzle must be 0 or 1");
   static_assert(kStages >= 2, "kStages must be >= 2 for cp.async pipeline");
   // Block Swizzle: 在 grid x 维度做 swizzle，改善 L2 cache 局部性
@@ -1845,10 +1846,10 @@ __global__ void __launch_bounds__(256)
   const int by = blockIdx.y;
   constexpr int BM = kMmaM * kMmaTileM * kValTileM; // 16*2*4=128
   constexpr int BN = kMmaN * kMmaTileN * kValTileN; // 8*4*4=128
-  constexpr int BK = kMmaK * kValTileK;             // 16*2=32
+  constexpr int BK = kMmaK * kValTileK;             // 16 * kValTileK
 
   // kStages stages, each with BM×BK for A, BN×BK for B
-  // smem: kValTileK 个 kMmaK slice 连续存放在同一个 BK=32 宽 tile 中
+  // smem: kValTileK 个 kMmaK slice 连续存放在同一个 BK 宽 tile 中
   extern __shared__ half smem[];
   half *s_a = smem;
   half *s_b = smem + kStages * BM * BK;
@@ -1863,8 +1864,8 @@ __global__ void __launch_bounds__(256)
 
   // 线程到 global memory 的映射（用于加载 A 和 B）共 256 个线程
   // TN 布局关键: A[m*K+k] 是 row-major, B^T[n*K+k] 是 row-major（内维连续的是 K）
-  // 注意：smem_a_k 和 smem_b_k 依然使用 0/8，虽然BK=16*2=32，在后续的kValTileK循环中
-  // 会加上 k_step*kMmaK=0/16，最终得到 smem 中的列偏移 0/8/16/24，正好覆盖 BK=32
+  // 注意：smem_a_k 和 smem_b_k 依然使用 0/8，在后续的 kValTileK 循环中
+  // 会加上 k_step*kMmaK，最终覆盖全部 BK 列
   int load_smem_a_m = tid / 2;                 // 0~127
   int load_smem_a_k = (tid % 2 == 0) ? 0 : 8;  // 0, 8
   int load_smem_b_n = tid / 2;                 // 0~127 → B^T 的 N 方向（row-major 的行）
@@ -1952,7 +1953,7 @@ __global__ void __launch_bounds__(256)
   }
 
   // 统一循环：k 从 0 开始，条件 G→S / S→R / wait 处理所有边界情况
-  // BK = kMmaK * kValTileK = 32，每个 k 迭代覆盖 BK=32 个 K 元素
+  // BK = kMmaK * kValTileK，每个 k 迭代覆盖 BK 个 K 元素
   const int NUM_K_TILES = div_ceil(K, BK);
   for (int k = 0; k < NUM_K_TILES; ++k) {
     int smem_sel = k % kStages;
@@ -3948,7 +3949,7 @@ __global__ void flash_attn_mma_stages_split_q(
   if (load_gmem_Q_Br >= N)
     return;
 
-  // ---- Shared memory layout ----
+  // Shared memory layout
   // Q/K/V independently use padded row-major when kPad* > 0 and compact XOR
   // swizzle when kPad* == 0. Padding and XOR are never combined per operand.
   // The swizzled physical layout is [col / 16][row][16]; swizzle<16>() selects
@@ -3967,7 +3968,7 @@ __global__ void flash_attn_mma_stages_split_q(
   uint32_t smem_K_base_ptr = __cvta_generic_to_shared(K_tile_smem);
   uint32_t smem_V_base_ptr = __cvta_generic_to_shared(V_tile_smem);
 
-  // ---- Online Softmax persistent state ----
+  // Online Softmax persistent state
   // lane_block_row_max_old[i][r]: running max for row r of warp tile i
   // lane_block_row_sum_old[i][r]: running denominator l for row r of warp tile i
   float lane_block_row_max_old[kValTileSeqLenQ][2];
@@ -3975,7 +3976,6 @@ __global__ void flash_attn_mma_stages_split_q(
   fill_2D_regs<float, kValTileSeqLenQ, 2>(lane_block_row_max_old, -INFINITY);
   fill_2D_regs<float, kValTileSeqLenQ, 2>(lane_block_row_sum_old, 0.0f);
 
-  // ---- Register allocation ----
   uint32_t R_Q[kValTileSeqLenQ][4];                   // Q regs
   uint32_t R_K[kValTileSeqLenK][2];                   // K regs
   uint32_t R_V[kValTileHeadDimV][2];                  // V regs
@@ -4136,7 +4136,7 @@ __global__ void flash_attn_mma_stages_split_q(
       }
     }
 
-    // ---- 3b: Q@K^T = S[Br, Bc] — 沿 head dim (d/kMmaAtomK=16) 内循环 ----
+    // 3b: Q@K^T = S[Br, Bc] — 沿 head dim (d/kMmaAtomK=16) 内循环 
     fill_3D_regs<uint32_t, kValTileSeqLenQ, kValTileSeqLenK, 2>(R_S, 0);
 #pragma unroll
     for (int tile_K_d = 0; tile_K_d < (kHeadDim / kMmaAtomK); ++tile_K_d) {
@@ -5454,10 +5454,10 @@ static void test_hgemm_mma(int M, int N, int K) {
 
 static void test_hgemm_swizzle(int M, int N, int K) {
   // HGEMM MMA Swizzle — m16n8k16 + multistage pipeline + TN 布局 + XOR swizzle
-  //   + Register Double Buffering (kValTileK=2, BK=32)
+  //   + Register Double Buffering (kValTileK=4, BK=64)
   // TN layout: C[M×N] = A[M×K] × B^T[N×K]
   // Kernel: hgemm_mma_stages_tn_swizzle with default template params
-  //   (kValTileK=2, kStages=3, BK=32)
+  //   (kValTileK=4, kStages=2, BK=64)
   // smem: kStages × (BM×BK + BN×BK) halfs
 
   size_t size_a = (size_t)M * K * sizeof(half);
@@ -5499,9 +5499,12 @@ static void test_hgemm_swizzle(int M, int N, int K) {
                CUBLAS_COMPUTE_16F, CUBLAS_GEMM_DEFAULT);
   check(cudaMemcpy(h_c_ref, d_c, size_c, cudaMemcpyDeviceToHost), "hgemm_swizzle D2H ref");
 
-  // MMA swizzle kernel (default params: kStages=3, kValTileK=2, BK=32)
-  constexpr int BM = 128, BN = 128, BK = 32, K_STAGE_S = 3;
+  // MMA swizzle kernel (default params: kStages=2, kValTileK=4, BK=64)
+  constexpr int BM = 128, BN = 128, BK = 64, K_STAGE_S = 2;
   size_t smem_bytes = K_STAGE_S * (BM * BK + BN * BK) * sizeof(half);
+  cudaFuncSetAttribute(
+      (const void *)hgemm_mma_stages_tn_swizzle<16, 8, 16, 2, 4, 4, 4, 4, K_STAGE_S, 0>,
+      cudaFuncAttributeMaxDynamicSharedMemorySize, smem_bytes);
   dim3 block(256);
   dim3 grid((N + BN - 1) / BN, (M + BM - 1) / BM);
   hgemm_mma_stages_tn_swizzle<<<grid, block, smem_bytes>>>(d_a, d_b_t, d_c, M, N, K);
@@ -6116,7 +6119,7 @@ static void bench_hgemm_mma(int M, int N, int K) {
 }
 
 // =============================================================================
-// Bench: HGEMM MMA Swizzle + Register Double Buffering (kValTileK=2, BK=32)
+// Bench: HGEMM MMA Swizzle + Register Double Buffering (kValTileK=4, BK=64)
 // =============================================================================
 template <int kStages, int kBlockSwizzle>
 static bool launch_timed_hgemm_swizzle(
@@ -6125,11 +6128,12 @@ static bool launch_timed_hgemm_swizzle(
   cudaEvent_t start, cudaEvent_t stop, float &max_err,
   float &time_ms
 ) {
-  constexpr int BM = 128, BN = 128, BK = 32;
+  constexpr int BM = 128, BN = 128, BK = 64;
   using Kernel = void (*)(half *, half *, half *, int, int, int);
-  Kernel k = hgemm_mma_stages_tn_swizzle<16, 8, 16, 2, 4, 4, 4, 2, kStages, kBlockSwizzle>;
+  Kernel k = hgemm_mma_stages_tn_swizzle<16, 8, 16, 2, 4, 4, 4, 4, kStages, kBlockSwizzle>;
   size_t smem = kStages * (BM * BK + BN * BK) * sizeof(half);
   if (!check_smem_feasible((const void *)k, smem)) return false;
+  cudaFuncSetAttribute((const void *)k, cudaFuncAttributeMaxDynamicSharedMemorySize, smem);
   dim3 block(256);
   const int tiles_n = (N + BN - 1) / BN;
   constexpr int kSwizzleN = 16;
