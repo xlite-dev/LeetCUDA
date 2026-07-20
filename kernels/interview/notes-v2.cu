@@ -6855,8 +6855,8 @@ static bool g_bench_all = false;
 static bool g_fa_skip_check = false;
 enum class FALayout {All, Pad, SwizzleQ, SwizzleK, SwizzleV, SwizzleQK, SwizzleQV, SwizzleKV, Swizzle};
 static FALayout g_fa_layout = FALayout::Pad;
-static int g_bench_M = 4096, g_bench_N = 4096, g_bench_K = 4096;
-static int g_bench_B = 1, g_bench_H = 32, g_bench_Nfa = 4096, g_bench_D = 64;
+static int g_bench_M = 8192, g_bench_N = 8192, g_bench_K = 8192;
+static int g_bench_B = 1, g_bench_H = 48, g_bench_Nfa = 8192, g_bench_D = 64;
 static int g_warmup = 3, g_repeat = 5;
 
 static float bench_hgemm_tflops(int M, int N, int K, float time_ms) {
