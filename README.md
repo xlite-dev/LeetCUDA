@@ -61,20 +61,19 @@ nvcc -std=c++20 -O2 -gencode arch=compute_120a,code=sm_120a -DNOTES_V2_ENABLE_CU
 ```bash
 # Run notes_v2_sm120a.bin with bench mode (e.g., NVIDIA TRX 5090, FP16)
 ./notes_v2_sm120a.bin --bench --mnk 8192,8192,8192 --bhnd 1,48,8192,64
-HGEMM: M=8192 N=8192 K=8192   FA: B=1 H=48 N=8192 D=64
-| Kernel                                             | Max Err      | Pass | TFLOPS vs cu{BLAS,DNN} |
-|----------------------------------------------------|--------------|------|------------------------|
-| HGEMM CuTe Swizzle (S=2, SW=0)                     | 0.000000e+00 | PASS | 353.5/369.6 (0.96x)    |
-| HGEMM CuTe Swizzle (S=2, SW=1)                     | 0.000000e+00 | PASS | 375.1/369.6 (1.01x)    |
-| HGEMM CuTe Swizzle (S=3, SW=0)                     | 0.000000e+00 | PASS | 373.9/369.6 (1.01x)    |
-| HGEMM CuTe Swizzle (S=3, SW=1)                     | 0.000000e+00 | PASS | 387.4/369.6 (1.05x)    |
-| FlashAttention-2 (S=1, D=64, Pad)                  | 1.831055e-04 | PASS | 239.1/227.2 (1.05x)    |
-| FlashAttention-2 (S=2, D=64, Pad)                  | 1.831055e-04 | PASS | 271.4/227.2 (1.19x)    |
-| FlashAttention-2 TMA MMA WS (Sk=1, Sv=1, D=64)     | 1.831055e-04 | PASS | 282.8/227.2 (1.24x)    |
-| FlashAttention-2 TMA MMA WS (Sk=2, Sv=1, D=64)     | 1.831055e-04 | PASS | 287.3/227.2 (1.26x)    |
-| FlashAttention-2 TMA MMA WS (Sk=3, Sv=1, D=64)     | 1.831055e-04 | PASS | 286.6/227.2 (1.26x)    |
-| FlashAttention-2 TMA MMA WS (Sk=4, Sv=1, D=64)     | 1.831055e-04 | PASS | 227.8/227.2 (1.00x)    |
-| FlashAttention-2 TMA MMA WS (Sk=2, Sv=2, D=64)     | 1.831055e-04 | PASS | 291.0/227.2 (1.28x)    |
+| Kernel                                         | Max Err      | Pass | TFLOPS vs cu{BLAS,DNN} |
+|------------------------------------------------|--------------|------|------------------------|
+| HGEMM CuTe Swizzle (S=2, SW=0)                 | 0.000000e+00 | PASS | 349.5/369.5 (0.95x)    |
+| HGEMM CuTe Swizzle (S=2, SW=1)                 | 0.000000e+00 | PASS | 375.0/369.5 (1.01x)    |
+| HGEMM CuTe Swizzle (S=3, SW=0)                 | 0.000000e+00 | PASS | 373.7/369.5 (1.01x)    |
+| HGEMM CuTe Swizzle (S=3, SW=1)                 | 0.000000e+00 | PASS | 386.8/369.5 (1.05x)    |
+| FlashAttention-2 (S=1, D=64, Pad)              | 1.831055e-04 | PASS | 239.0/227.5 (1.05x)    |
+| FlashAttention-2 (S=2, D=64, Pad)              | 1.831055e-04 | PASS | 271.3/227.5 (1.19x)    |
+| FlashAttention-2 TMA MMA WS (Sk=1, Sv=1, D=64) | 1.831055e-04 | PASS | 282.6/227.5 (1.24x)    |
+| FlashAttention-2 TMA MMA WS (Sk=2, Sv=1, D=64) | 1.831055e-04 | PASS | 287.3/227.5 (1.26x)    |
+| FlashAttention-2 TMA MMA WS (Sk=3, Sv=1, D=64) | 1.831055e-04 | PASS | 286.4/227.5 (1.26x)    |
+| FlashAttention-2 TMA MMA WS (Sk=4, Sv=1, D=64) | 1.831055e-04 | PASS | 228.1/227.5 (1.00x)    |
+| FlashAttention-2 TMA MMA WS (Sk=2, Sv=2, D=64) | 1.831055e-04 | PASS | 290.8/227.5 (1.28x)    |
 ```
 
 A PDF version of LeetCUDA focused on **interview scenarios** is available at [`kernels/interview/notes-v2.pdf`](https://github.com/xlite-dev/LeetCUDA/blob/main/kernels/interview/notes-v2.pdf).
