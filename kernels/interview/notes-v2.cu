@@ -17,7 +17,7 @@
 //   Phase 5 — Mat Transpose：基础版 + BCF merge_write 最佳版（Bank Conflict专题）
 //   Phase 6 — GEMV：SGEMV K32/K128/K16（warp-per-row）
 //   Phase 7 — GEMM ★：SGEMM → HGEMM → MMA m16n8k16(TN布局) → WGMMA m64n128k16
-//   Phase 8 — FlashAttention split_q（FA-2, 含 online softmax + P@V 寄存器复用）
+//   Phase 8 — FlashAttention-2split_q（FA-2, 含 online softmax + P@V 寄存器复用）
 //
 // =============================================================================
 // Phase 0: 面试框架速查（纯注释，面试开场必备的基础知识）
@@ -445,7 +445,7 @@ __global__ void histogram(int *a, int *y, int N) {
 //              满足 alpha + beta = 1
 //     Step 4 — 逐元素加权合并:
 //              O = alpha * O_1 + beta * O_2
-//   - LSE 布局 [num_heads, num_tokens]（与 FlashAttention 惯例一致，
+//   - LSE 布局 [num_heads, num_tokens]（与 FlashAttention-2惯例一致，
 //     lse[head_idx][token_idx]）
 //   - Output 布局 [num_tokens, num_heads, head_size]（token 维在最外，
 //     展平为 [T0H0, T0H1, ..., T1H0, ...]）
@@ -568,7 +568,7 @@ __global__ void merge_attn_states(
 // 面试要点：
 //   - Softmax 三种实现递进：naive（溢出）→ safe（2-pass，max 减法）→
 //   online（1-pass，增量更新）
-//   - Online Softmax 是 FlashAttention 的数学基础
+//   - Online Softmax 是 FlashAttention-2的数学基础
 //   - RMS Norm vs Layer Norm：RMS 只需 1 次 reduce，Layer Norm 需要 2 次（mean
 //   + variance）
 //   - Per-token 设计：一个 block 处理一个 token，无需跨 block 同步
@@ -622,7 +622,7 @@ __global__ void safe_softmax_per_token(float *x, float *y, int N) {
     y[idx] = exp_val / exp_sum;
 }
 
-// ---- Level 3: Online Safe Softmax（FlashAttention 的数学基础）----
+// ---- Level 3: Online Safe Softmax（FlashAttention-2的数学基础）----
 // 面试重点：
 // 两种使用场景（公式不同，但结果等价）：
 //   1) 单元素增量更新 (online update，处理新元素 x_i)：
@@ -1700,65 +1700,104 @@ __global__ void __launch_bounds__(256)
 
 // ---- Swizzle 辅助函数 ----
 
-// permuted_j: 对 smem 列索引 j 做 XOR 置换，消除 bank conflict。
 // i: row index; j: col index.
-// e.g kColStride = 16, kStep = 8 -> load 8 half as 128 bits memory issue.
-// 公式：((j / kStep) ^ (i / 4)) % (kColStride / kStep) * kStep
-// 用位运算展开（kStep=8）：(((j >> 3) ^ (i >> 2)) % (kColStride >> 3)) << 3
-// 限制：kColStride ≤ 16（BK ≤ 16），kStep ∈ {4, 8}，kColStride % kStep == 0
-// source: LeetCUDA/kernels/hgemm/mma/swizzle/hgemm_mma_stage_tn_swizzle.cu
+// Returns the chunk-level (8 fp16 = 16 B per chunk) column swizzle, i.e.
+// 0 / 8 / 16 / ... that the caller adds to the chunk-aligned base column.
+// The within-chunk offset (``j & 7``) is preserved by the caller.
+//
+// kColStride matches the equivalent CuTe ``Swizzle<B, M, S>`` swizzle
+// hardware mode used by TMA bulk-tensor descriptors:
+//   * kColStride = 16 fp16 = 32 B/row -> Swizzle<1, 4, 3>  = SWIZZLE_32B
+//   * kColStride = 32 fp16 = 64 B/row -> Swizzle<2, 4, 3>  = SWIZZLE_64B
+//   * kColStride = 64 fp16 = 128 B/row -> Swizzle<3, 4, 3> = SWIZZLE_128B
+// The XOR mask is derived from the byte-address bit positions used by the
+// underlying CuTe swizzle pattern: bits {4..(4+B-1)} XOR bits
+// {7..(7+B-1)} of the absolute byte address. Translating to (i, j) with
+// row stride ``kColStride * 2`` bytes:
+//   * 32B (B=1) : (j>>3) ^ (i>>2)              [chunk in {0, 1}]
+//   * 64B (B=2) : chunk(2b) ^ {(i>>1)&1, (i>>2)&1}      [{0..3}]
+//   * 128B(B=3) : chunk(3b) ^ {i&1, (i>>1)&1, (i>>2)&1} [{0..7}]
+// source: LeetCUDA/ffpa-attn/cuffpa/swizzle.cuh
 template <const int kColStride = 16, const int kStep = 8>
-static __device__ __forceinline__ int permuted_j(int i, int j) {
-  // for col_stride > 16, we have to permute it using col major ZigZag order.
-  // e.g, A smem logical layout [Br,d]=[Br,64] -> store layout [4][Br][16].
-  static_assert(kColStride <= 16, "kColStride must <= 16");
-  // swizzle: ((int(j / kStep) ^ int(i / 4)) % int(kColStride / kStep)) * kStep;
+static __device__ __forceinline__ int permuted(int i, int j) {
+  static_assert(kColStride == 16 || kColStride == 32 || kColStride == 64 ||
+                kColStride == 8,
+                "kColStride must be one of {8, 16, 32, 64} (matches "
+                "SWIZZLE_32B/64B/128B + the "
+                "kStep=4 narrow legacy case).");
   static_assert(kStep == 4 || kStep == 8, "kStep must be 8 or 4.");
   static_assert(kColStride % kStep == 0,
                 "kColStride must be multiple of kStep.");
-  if constexpr (kStep == 8) {
-    // j >> 3: 表示8个half(=16 bytes)数据为一个chunk; i >> 2: 表示4行为一组
-    // kColStride >> 3: 按照kStep=8计算chunk idx，kColStride=16 → {0, 1}
-    // 最后的 << 3: 将chunk idx转换为实际的列偏移量（8个half/chunk），{0, 8}
-    return (((j >> 3) ^ (i >> 2)) % (kColStride >> 3)) << 3;
-  } else {
-    static_assert(kStep == 4);
+  if constexpr (kStep == 4) {
+    static_assert(kColStride <= 16, "kStep=4 only supports (kColStride <= 16).");
     return (((j >> 2) ^ (i >> 2)) % (kColStride >> 2)) << 2;
+  } else if constexpr (kColStride == 16) {
+    return (((j >> 3) ^ (i >> 2)) & 1) << 3;  // SWIZZLE_32B
+  } else if constexpr (kColStride == 32) {
+    const int chunk = (j >> 3) & 3;
+    const int xor_mask = ((i >> 1) & 1) | (((i >> 2) & 1) << 1);
+    return (chunk ^ xor_mask) << 3;  // SWIZZLE_64B
+  } else {                           // kColStride == 64
+    const int chunk = (j >> 3) & 7;
+    const int xor_mask =
+        (i & 1) | (((i >> 1) & 1) << 1) | (((i >> 2) & 1) << 2);
+    return (chunk ^ xor_mask) << 3;  // SWIZZLE_128B
   }
 }
 
-// swizzle: A 矩阵专用封装（kMmaAtomK=16, kStep=8）。
-// 16 行（一个 MMA atom 的 M 维）内的 swizzle pattern：
-// 8个half=16 bytes=128 bits=4 banks (32 bits/bank) 组成一个phase，
-// 触发一次合并的memory transaction. 这里的col=16的swizzle，相当于
-// TMA中的SWIZZLE_32B pattern.
-// -------------------
-// -col 0~16, step 8--
-// -------------------
-// | row 0  | (0, 8) |
-// | row 1  | (0, 8) |
-// | row 2  | (0, 8) |
-// | row 3  | (0, 8) |
-// -------------------
-// | row 4  | (8, 0) |
-// | row 5  | (8, 0) |
-// | row 6  | (8, 0) |
-// | row 7  | (8, 0) |
-// -------------------
-// | row 8  | (0, 8) |
-// | row 9  | (0, 8) |
-// | row 10 | (0, 8) |
-// | row 11 | (0, 8) |
-// -------------------
-// | row 12 | (8, 0) |
-// | row 13 | (8, 0) |
-// | row 14 | (8, 0) |
-// | row 15 | (8, 0) |
-// -------------------
-// source: LeetCUDA/kernels/hgemm/mma/swizzle/hgemm_mma_stage_tn_swizzle.cu
-template <const int kMmaAtomK = 16>
+// Manually SMEM swizzling for bank conflict free.
+// ----------------------------------------------------------------
+// [INFO] Assert smem store layout col_stride <= 16, prefer 16.   |
+// [INFO] For logical_col_stride > 16, we have to permute the     |
+// [INFO] smem store layout using col major ZigZag method:        |
+// [INFO] e.g, --> Q smem logical layout [Br][64].                |
+// [INFO]      --> col major ZigZag permuted -->                  |
+// [INFO]      --> Q smem store layout [4][Br][16].               |
+// ----------------------------------------------------------------
+// ----------------------------------------------------------------
+// -------------------------swizzle layout-------------------------
+// --------------------logical col 0~64, step 8--------------------
+// ---------------------smem col 0~16, step 8----------------------
+// ----------------------------------------------------------------
+// |bank  |b 0~3 |b 4~7 |b 0~3 |b 4~7 |b 0~3 |b 4~7 |b 0~3 |b 4~7 |
+// |row 0 |  0   |  8   |  0   |  8   |  0   |  8   |  0   |  8   |
+// |bank  |b 8~11|b12~15|b 8~11|b12~15|b 8~11|b12~15|b 8~11|b12~15|
+// |row 1 |  0   |  8   |  0   |  8   |  0   |  8   |  0   |  8   |
+// |bank  |b16~19|b20~23|b16~19|b20~23|b16~19|b20~23|b16~19|b20~23|
+// |row 2 |  0   |  8   |  0   |  8   |  0   |  8   |  0   |  8   |
+// |bank  |b24~27|b28~31|b24~27|b28~31|b24~27|b28~31|b24~27|b28~31|
+// |row 3 |  0   |  8   |  0   |  8   |  0   |  8   |  0   |  8   |
+// ----------------------------------------------------------------
+// |bank  |b 0~3 |b 4~7 |b 0~3 |b 4~7 |b 0~3 |b 4~7 |b 0~3 |b 4~7 |
+// |row 4 |  8   |  0   |  8   |  0   |  8   |  0   |  8   |  0   |
+// |bank  |b 8~11|b12~15|b 8~11|b12~15|b 8~11|b12~15|b 8~11|b12~15|
+// |row 5 |  8   |  0   |  8   |  0   |  8   |  0   |  8   |  0   |
+// |bank  |b16~19|b20~23|b16~19|b20~23|b16~19|b20~23|b16~19|b20~23|
+// |row 6 |  8   |  0   |  8   |  0   |  8   |  0   |  8   |  0   |
+// |bank  |b24~27|b28~31|b24~27|b28~31|b24~27|b28~31|b24~27|b28~31|
+// |row 7 |  8   |  0   |  8   |  0   |  8   |  0   |  8   |  0   |
+// ----------------------------------------------------------------
+// |bank  |b 0~3 |b 4~7 |b 0~3 |b 4~7 |b 0~3 |b 4~7 |b 0~3 |b 4~7 |
+// |row 8 |  0   |  8   |  0   |  8   |  0   |  8   |  0   |  8   |
+// |bank  |b 8~11|b12~15|b 8~11|b12~15|b 8~11|b12~15|b 8~11|b12~15|
+// |row 9 |  0   |  8   |  0   |  8   |  0   |  8   |  0   |  8   |
+// |bank  |b16~19|b20~23|b16~19|b20~23|b16~19|b20~23|b16~19|b20~23|
+// |row 10|  0   |  8   |  0   |  8   |  0   |  8   |  0   |  8   |
+// |bank  |b24~27|b28~31|b24~27|b28~31|b24~27|b28~31|b24~27|b28~31|
+// |row 11|  0   |  8   |  0   |  8   |  0   |  8   |  0   |  8   |
+// ----------------------------------------------------------------
+// |bank  |b 0~3 |b 4~7 |b 0~3 |b 4~7 |b 0~3 |b 4~7 |b 0~3 |b 4~7 |
+// |row 12|  8   |  0   |  8   |  0   |  8   |  0   |  8   |  0   |
+// |bank  |b 8~11|b12~15|b 8~11|b12~15|b 8~11|b12~15|b 8~11|b12~15|
+// |row 13|  8   |  0   |  8   |  0   |  8   |  0   |  8   |  0   |
+// |bank  |b16~19|b20~23|b16~19|b20~23|b16~19|b20~23|b16~19|b20~23|
+// |row 14|  8   |  0   |  8   |  0   |  8   |  0   |  8   |  0   |
+// |bank  |b24~27|b28~31|b24~27|b28~31|b24~27|b28~31|b24~27|b28~31|
+// |row 15|  8   |  0   |  8   |  0   |  8   |  0   |  8   |  0   |
+// ----------------------------------------------------------------
+template <const int kColStride = 16>
 static __device__ __forceinline__ int swizzle(int i, int j) {
-  return permuted_j<kMmaAtomK, 8>(i, j);
+  return permuted<kColStride, 8>(i, j);
 }
 
 // =============================================================================
@@ -3813,11 +3852,11 @@ __host__ static inline CUtensorMap *allocate_and_create_tensor_map(
 #endif /* NOTES_V2_ENABLE_WGMMA || NOTES_V2_ENABLE_TMA_MMA_WS */
 
 // =============================================================================
-// Phase 8: FlashAttention-2 (Split-Q + MMA m16n8k16)
+// Phase 8: FlashAttention-2  + MMA m16n8k16)
 // =============================================================================
-// 面试要点（FlashAttention 算法）：
+// 面试要点（FlashAttention-2算法）：
 //   1. 核心问题：标准 Attention 的 O(N^2) 中间矩阵 (S=QK^T) 必须写入 HBM，
-//      但 HBM 带宽是瓶颈 → FlashAttention 用 tiling + online softmax 避免写回
+//      但 HBM 带宽是瓶颈 → FlashAttention-2用 tiling + online softmax 避免写回
 //   2. FA 三板斧：
 //      a) Tiling: Q 分块 [Br,d]，K/V 沿 seqlen 分块 [Bc,d]
 //      b) Online Softmax: 迭代更新 m(行max) 和 l(行sum)，无需全局同步
@@ -3889,6 +3928,18 @@ __device__ inline void fill_2D_regs(T (&R)[M][N], T val) {
 //   7)   3e: Online rescaling — O_new = exp(m_old-m_new)*O_old + P@V
 //   8) 最终 rescale: O_final = (1/l_final) * O_final
 //   9) Epilogue: warp shuffle + 128-bit collective store
+//
+// ★ Pad 与手动 XOR swizzle 的 profile 结论（SM120, B=1,H=32,N=4096,D=64）:
+//   - XOR 能消除目标 ldmatrix lane pattern 的 bank conflict，但收益是局部的；
+//     XOR 本身及 `% 2` 的计算不是主要瓶颈，nvcc 已能将该式化简为 bit operations。
+//   - compact Q/K/V XOR 改变了 cp.async 的 shared destination pattern：LDGSTS
+//     wavefronts 从 pad 的 30.15M 增至 68.16M（2.26x），long-scoreboard、
+//     LG-throttle、MIO-throttle 分别约为 pad 的 3.25x、2.74x、1.60x。
+//   - compact XOR 虽节省约 5 KiB smem，但没有提高此 kernel 的 occupancy；最终
+//     约 120.0 TFLOPS，显著低于 Q/K/V kPad=8 的 166.6 TFLOPS。
+//   - 所以当前 kernel 默认对 Q/K/V 都用 kPad=8。保留 swizzle 路径是为了学习和消融：评价
+//     shared layout 必须同时观察 ldmatrix reads 与 cp.async/LDGSTS writes，不能只看
+//     bank-conflict counter，也不能只优化 XOR 地址算术。
 
 template <
     const int kHeadDim,          // head dim: 32, 64, 128
@@ -3903,15 +3954,21 @@ template <
     const int kValTileSeqLenK,   // value tiles along K's N, 8 → Bc_warp=8*8=64
     const int kValTileSeqLenP,   // value tiles for P@V M dim, 1
     const int kValTileHeadDimV,  // value tiles for P@V N dim, kHeadDim/(8*kMmaTileHeadDimV)
-    const int kStage,            // pipeline stages for K: >= 1
-    const int kPad>              // padding for bank conflict avoidance
-__global__ void __launch_bounds__(kWarpSize *kMmaTileSeqLenQ *kMmaTileSeqLenK)
-    flash_attn_mma_stages_split_q(half *Q, half *K, half *V, half *O,
-                                  int N, int H) {
+    const int kStagesK,          // pipeline stages for K: >= 1; NO stages required for Q/V
+    const int kPadQ,             // Q row padding; 0 selects compact XOR swizzle
+    const int kPadK,             // K row padding; 0 selects compact XOR swizzle
+    const int kPadV>             // V row padding; 0 selects compact XOR swizzle
+__global__ void flash_attn_mma_stages_split_q(
+  half *Q, half *K, half *V, half *O, int N, int H) {
+  static_assert(kStagesK >= 1, "kStagesK must be >= 1");
+  static_assert(kPadQ >= 0 && kPadK >= 0 && kPadV >= 0,
+                "Q/K/V padding must be non-negative");
+  constexpr bool kSwizzleQ = kPadQ == 0;
+  constexpr bool kSwizzleK = kPadK == 0;
+  constexpr bool kSwizzleV = kPadV == 0;
   constexpr int Br = kMmaAtomM * kMmaTileSeqLenQ * kValTileSeqLenQ; // 64
   constexpr int Bc = kMmaAtomN * kMmaTileSeqLenK * kValTileSeqLenK; // 64
   constexpr int kNumThreads = kWarpSize * kMmaTileSeqLenQ * kMmaTileSeqLenK; // 128
-  constexpr bool kUseSwizzle = (kPad == 0); // kPad=0 → QKV shared SMEM + swizzle
   const int Tc = (N + Bc - 1) / Bc;
   // 原始实现默认 seqlen 与 Bc 对齐；最后一个不完整 tile 需要额外 pad/边界处理。
   // 这里保留 ceil 写法是为了说明 tile 划分方式，不等于当前实现已经完整处理了尾 tile。
@@ -3920,7 +3977,7 @@ __global__ void __launch_bounds__(kWarpSize *kMmaTileSeqLenQ *kMmaTileSeqLenK)
   // Block indexing
   const int Nb_id = blockIdx.y / H; // batch id
   const int Nh_id = blockIdx.y % H; // head id
-  const int Nq_id = blockIdx.x; // tile id along Q's M dim (Br)
+  const int Q_tile_id = blockIdx.x; // tile id along Q's M dim (Br)
   const int tid = threadIdx.x;
   const int warp_id = tid / kWarpSize;
   const int lane_id = tid % kWarpSize;
@@ -3929,38 +3986,37 @@ __global__ void __launch_bounds__(kWarpSize *kMmaTileSeqLenQ *kMmaTileSeqLenK)
 
   // Global memory base offsets for this (batch, head)
   // 这里默认 Q/K/V 共享同一 per-head 基址布局，对应 self-attention 场景
-  const int Q_gmem_offset =
-      (Nb_id * H * N + Nh_id * N) *
-      kHeadDim;
+  const int Q_gmem_offset = (Nb_id * H * N + Nh_id * N) * kHeadDim;
   const int K_gmem_offset = Q_gmem_offset;
   const int V_gmem_offset = Q_gmem_offset;
   const int O_gmem_offset = Q_gmem_offset;
 
   // Thread-to-smem mapping for cooperative load
   int load_smem_Q_Br = tid / (kNumThreads / Br);
-  int load_smem_Q_d =
-      (tid % (kNumThreads / Br)) * (kHeadDim / (kNumThreads / Br));
+  int load_smem_Q_d = (tid % (kNumThreads / Br)) * (kHeadDim / (kNumThreads / Br));
   int load_smem_K_Bc = tid / (kNumThreads / Bc);
-  int load_smem_K_d =
-      (tid % (kNumThreads / Bc)) * (kHeadDim / (kNumThreads / Bc));
+  int load_smem_K_d = (tid % (kNumThreads / Bc)) * (kHeadDim / (kNumThreads / Bc));
   int load_smem_V_Bc = tid / (kNumThreads / Bc);
-  int load_smem_V_d =
-      (tid % (kNumThreads / Bc)) * (kHeadDim / (kNumThreads / Bc));
+  int load_smem_V_d = (tid % (kNumThreads / Bc)) * (kHeadDim / (kNumThreads / Bc));
 
-  int load_gmem_Q_Br = Nq_id * Br + load_smem_Q_Br;
+  int load_gmem_Q_Br = Q_tile_id * Br + load_smem_Q_Br;
   if (load_gmem_Q_Br >= N)
     return;
 
   // ---- Shared memory layout ----
-  // kUseSwizzle: no padding, use swizzle<kMmaAtomK> for bank conflict avoidance
-  // !kUseSwizzle: traditional padding with kPad bytes per row
+  // Q/K/V independently use padded row-major when kPad* > 0 and compact XOR
+  // swizzle when kPad* == 0. Padding and XOR are never combined per operand.
+  // The swizzled physical layout is [col / 16][row][16]; swizzle<16>() selects
+  // the 0/8 phase inside the final 16-half tile.
   extern __shared__ half smem[];
-  constexpr int Q_tile_size = kUseSwizzle ? (Br * kHeadDim) : (Br * (kHeadDim + kPad));
-  constexpr int KV_tile_size = kUseSwizzle ? (Bc * kHeadDim) : (Bc * (kHeadDim + kPad));
-  constexpr int kSmemStride = kUseSwizzle ? kHeadDim : (kHeadDim + kPad);
+  constexpr int Q_tile_size = Br * (kHeadDim + kPadQ);
+  constexpr int K_tile_size = Bc * (kHeadDim + kPadK);
+  constexpr int kSmemStrideQ = kHeadDim + kPadQ;
+  constexpr int kSmemStrideK = kHeadDim + kPadK;
+  constexpr int kSmemStrideV = kHeadDim + kPadV;
   half *Q_tile_smem = smem;
   half *K_tile_smem = Q_tile_smem + Q_tile_size;
-  half *V_tile_smem = K_tile_smem + kStage * KV_tile_size;
+  half *V_tile_smem = K_tile_smem + kStagesK * K_tile_size;
 
   uint32_t smem_Q_base_ptr = __cvta_generic_to_shared(Q_tile_smem);
   uint32_t smem_K_base_ptr = __cvta_generic_to_shared(K_tile_smem);
@@ -3997,7 +4053,7 @@ __global__ void __launch_bounds__(kWarpSize *kMmaTileSeqLenQ *kMmaTileSeqLenK)
   {
     int load_gmem_Q_addr =
         Q_gmem_offset + load_gmem_Q_Br * kHeadDim + load_smem_Q_d;
-    if constexpr (kUseSwizzle) {
+    if constexpr (kSwizzleQ) {
 #pragma unroll
       for (int i = 0; i < (kHeadDim / (kNumThreads / Br)); i += 8) {
         int col = load_smem_Q_d + i;
@@ -4011,7 +4067,7 @@ __global__ void __launch_bounds__(kWarpSize *kMmaTileSeqLenQ *kMmaTileSeqLenK)
     } else {
       uint32_t load_smem_Q_ptr =
           smem_Q_base_ptr +
-          (load_smem_Q_Br * kSmemStride + load_smem_Q_d) * sizeof(half);
+          (load_smem_Q_Br * kSmemStrideQ + load_smem_Q_d) * sizeof(half);
 #pragma unroll
       for (int i = 0; i < (kHeadDim / (kNumThreads / Br)); i += 8) {
         CP_ASYNC_CG(load_smem_Q_ptr + i * 2, &Q[load_gmem_Q_addr + i], 16);
@@ -4021,32 +4077,32 @@ __global__ void __launch_bounds__(kWarpSize *kMmaTileSeqLenQ *kMmaTileSeqLenK)
   }
 
   // ======================================================================
-  // Step 2: 预加载前 (kStage-1) 个 K tile（多 stage pipeline 预热）
+  // Step 2: 预加载前 (kStagesK-1) 个 K tile（多 stage pipeline 预热）
   // 注意：Q 由 blockIdx.x 固定到当前 Q tile；而 K/V 的 seqlen 遍历始终从 tile 0 开始，
   // 后续在外循环里不断递增到 tile 1/2/3/.../Tc-1。
   // ======================================================================
-  if constexpr (kStage > 1) {
+  if constexpr (kStagesK > 1) {
 #pragma unroll
-    for (int stage = 0; stage < (kStage - 1); ++stage) {
+    for (int stage = 0; stage < (kStagesK - 1); ++stage) {
       int load_gmem_K_Bc = stage * Bc + load_smem_K_Bc;
       int load_gmem_K_addr =
           K_gmem_offset + load_gmem_K_Bc * kHeadDim + load_smem_K_d;
-      if constexpr (kUseSwizzle) {
+      if constexpr (kSwizzleK) {
 #pragma unroll
         for (int i = 0; i < (kHeadDim / (kNumThreads / Bc)); i += 8) {
           int col = load_smem_K_d + i;
           uint32_t ptr = smem_K_base_ptr +
-              ((stage * KV_tile_size) +
+              (stage * K_tile_size +
                (col / kMmaAtomK) * Bc * kMmaAtomK +
                load_smem_K_Bc * kMmaAtomK +
                swizzle<kMmaAtomK>(load_smem_K_Bc, col % kMmaAtomK)) *
-                  sizeof(half);
+            sizeof(half);
           CP_ASYNC_CG(ptr, &K[load_gmem_K_addr + i], 16);
         }
       } else {
         uint32_t load_smem_K_ptr =
             smem_K_base_ptr +
-            (stage * KV_tile_size + load_smem_K_Bc * kSmemStride +
+            (stage * K_tile_size + load_smem_K_Bc * kSmemStrideK +
              load_smem_K_d) *
                 sizeof(half);
 #pragma unroll
@@ -4056,7 +4112,7 @@ __global__ void __launch_bounds__(kWarpSize *kMmaTileSeqLenQ *kMmaTileSeqLenK)
       }
       CP_ASYNC_COMMIT_GROUP();
     }
-    CP_ASYNC_WAIT_GROUP(kStage - 2);
+    CP_ASYNC_WAIT_GROUP(kStagesK - 2);
     __syncthreads();
   }
 
@@ -4066,20 +4122,20 @@ __global__ void __launch_bounds__(kWarpSize *kMmaTileSeqLenQ *kMmaTileSeqLenK)
   // ======================================================================
 #pragma unroll 1
   for (int tile_K_seqlen = 0; tile_K_seqlen < Tc; ++tile_K_seqlen) {
-    int smem_sel = tile_K_seqlen % kStage;
-    int smem_sel_next = (tile_K_seqlen + (kStage - 1)) % kStage;
+    int smem_sel = tile_K_seqlen % kStagesK;
+    int smem_sel_next = (tile_K_seqlen + (kStagesK - 1)) % kStagesK;
 
     // ---- 3a: 异步加载 K/V tile（多 stage pipeline）----
-    if constexpr (kStage > 1) {
-      // 只有 kStage>1 才能真正做 K 的 pipeline：
+    if constexpr (kStagesK > 1) {
+      // 只有 kStagesK>1 才能真正做 K 的 pipeline：
       //   smem_sel 负责“当前正在计算”的 K tile，smem_sel_next 负责“下一轮预取”的 K tile。
-      // 若 kStage=1，这两个槽位永远都等于 0，当前 K 还没算完就无法安全覆盖同一块 smem。
+      // 若 kStagesK=1，这两个槽位永远都等于 0，当前 K 还没算完就无法安全覆盖同一块 smem。
       // Load current V tile (no pipeline for V — one stage is enough)
       {
         int load_gmem_V_Bc = tile_K_seqlen * Bc + load_smem_V_Bc;
         int load_gmem_V_addr =
             V_gmem_offset + load_gmem_V_Bc * kHeadDim + load_smem_V_d;
-        if constexpr (kUseSwizzle) {
+        if constexpr (kSwizzleV) {
 #pragma unroll
           for (int i = 0; i < (kHeadDim / (kNumThreads / Bc)); i += 8) {
             int col = load_smem_V_d + i;
@@ -4093,7 +4149,7 @@ __global__ void __launch_bounds__(kWarpSize *kMmaTileSeqLenQ *kMmaTileSeqLenK)
         } else {
           uint32_t load_smem_V_ptr =
               smem_V_base_ptr +
-              (load_smem_V_Bc * kSmemStride + load_smem_V_d) * sizeof(half);
+              (load_smem_V_Bc * kSmemStrideV + load_smem_V_d) * sizeof(half);
 #pragma unroll
           for (int i = 0; i < (kHeadDim / (kNumThreads / Bc)); i += 8) {
             CP_ASYNC_CG(load_smem_V_ptr + i * 2, &V[load_gmem_V_addr + i], 16);
@@ -4107,22 +4163,23 @@ __global__ void __launch_bounds__(kWarpSize *kMmaTileSeqLenQ *kMmaTileSeqLenK)
         int load_gmem_K_Bc = (tile_K_seqlen + 1) * Bc + load_smem_K_Bc;
         int load_gmem_K_addr =
             K_gmem_offset + load_gmem_K_Bc * kHeadDim + load_smem_K_d;
-        if constexpr (kUseSwizzle) {
+        if constexpr (kSwizzleK) {
 #pragma unroll
           for (int i = 0; i < (kHeadDim / (kNumThreads / Bc)); i += 8) {
             int col = load_smem_K_d + i;
             uint32_t ptr = smem_K_base_ptr +
-                ((smem_sel_next * KV_tile_size) +
-                 (col / kMmaAtomK) * Bc * kMmaAtomK +
-                 load_smem_K_Bc * kMmaAtomK +
-                 swizzle<kMmaAtomK>(load_smem_K_Bc, col % kMmaAtomK)) *
-                    sizeof(half);
+               (smem_sel_next * K_tile_size +
+                (col / kMmaAtomK) * Bc * kMmaAtomK +
+                load_smem_K_Bc * kMmaAtomK +
+                swizzle<kMmaAtomK>(load_smem_K_Bc, col % kMmaAtomK)) *
+                  sizeof(half);
             CP_ASYNC_CG(ptr, &K[load_gmem_K_addr + i], 16);
           }
         } else {
           uint32_t load_smem_K_ptr =
               smem_K_base_ptr +
-              (smem_sel_next * KV_tile_size + load_smem_K_Bc * kSmemStride +
+              (smem_sel_next * K_tile_size +
+               load_smem_K_Bc * kSmemStrideK +
                load_smem_K_d) *
                   sizeof(half);
 #pragma unroll
@@ -4147,16 +4204,16 @@ __global__ void __launch_bounds__(kWarpSize *kMmaTileSeqLenQ *kMmaTileSeqLenK)
             warp_smem_Q_Br + lane_id % 16; // ldmatrix uses 16 lanes
         int lane_smem_Q_d = tile_K_d * kMmaAtomK + (lane_id / 16) * 8; // 0, 8
         uint32_t lane_smem_Q_ptr;
-        if constexpr (kUseSwizzle) {
+        if constexpr (kSwizzleQ) {
           lane_smem_Q_ptr = smem_Q_base_ptr +
               ((lane_smem_Q_d / kMmaAtomK) * Br * kMmaAtomK +
                lane_smem_Q_Br * kMmaAtomK +
                swizzle<kMmaAtomK>(lane_smem_Q_Br,
-                                    lane_smem_Q_d % kMmaAtomK)) *
+                                   lane_smem_Q_d % kMmaAtomK)) *
                   sizeof(half);
         } else {
           lane_smem_Q_ptr = smem_Q_base_ptr +
-              (lane_smem_Q_Br * kSmemStride + lane_smem_Q_d) * sizeof(half);
+              (lane_smem_Q_Br * kSmemStrideQ + lane_smem_Q_d) * sizeof(half);
         }
         LDMATRIX_X4(R_Q[i][0], R_Q[i][1], R_Q[i][2], R_Q[i][3],
                     lane_smem_Q_ptr);
@@ -4173,17 +4230,17 @@ __global__ void __launch_bounds__(kWarpSize *kMmaTileSeqLenQ *kMmaTileSeqLenK)
         int lane_smem_K_d =
             tile_K_d * kMmaAtomK + ((lane_id / 8) % 2) * 8; // 0, 8
         uint32_t lane_smem_K_ptr;
-        if constexpr (kUseSwizzle) {
+        if constexpr (kSwizzleK) {
           lane_smem_K_ptr = smem_K_base_ptr +
-              (smem_sel * KV_tile_size +
+              (smem_sel * K_tile_size +
                (lane_smem_K_d / kMmaAtomK) * Bc * kMmaAtomK +
                lane_smem_K_Bc * kMmaAtomK +
                swizzle<kMmaAtomK>(lane_smem_K_Bc,
-                                    lane_smem_K_d % kMmaAtomK)) *
+                                   lane_smem_K_d % kMmaAtomK)) *
                   sizeof(half);
         } else {
           lane_smem_K_ptr = smem_K_base_ptr +
-              (smem_sel * KV_tile_size + lane_smem_K_Bc * kSmemStride +
+            (smem_sel * K_tile_size + lane_smem_K_Bc * kSmemStrideK +
                lane_smem_K_d) *
                   sizeof(half);
         }
@@ -4293,7 +4350,7 @@ __global__ void __launch_bounds__(kWarpSize *kMmaTileSeqLenQ *kMmaTileSeqLenK)
     // 3d: P@V — P[Br,Bc] @ V[Bc,d] = O[Br,d]
     // ======================================================================
     // Wait for V to be ready before computing P@V
-    if constexpr (kStage > 1) {
+    if constexpr (kStagesK > 1) {
       if ((tile_K_seqlen + 1) < Tc) {
         CP_ASYNC_WAIT_GROUP(1);
       } else {
@@ -4320,16 +4377,16 @@ __global__ void __launch_bounds__(kWarpSize *kMmaTileSeqLenQ *kMmaTileSeqLenK)
         int lane_smem_V_Bc = tile_V_Bc * kMmaAtomK + lane_id % 16;
         int lane_smem_V_d = warp_smem_V_d;
         uint32_t lane_smem_V_ptr;
-        if constexpr (kUseSwizzle) {
+        if constexpr (kSwizzleV) {
           lane_smem_V_ptr = smem_V_base_ptr +
               ((lane_smem_V_d / kMmaAtomK) * Bc * kMmaAtomK +
                lane_smem_V_Bc * kMmaAtomK +
                swizzle<kMmaAtomK>(lane_smem_V_Bc,
-                                    lane_smem_V_d % kMmaAtomK)) *
+                                   lane_smem_V_d % kMmaAtomK)) *
                   sizeof(half);
         } else {
           lane_smem_V_ptr = smem_V_base_ptr +
-              (lane_smem_V_Bc * kSmemStride + lane_smem_V_d) * sizeof(half);
+              (lane_smem_V_Bc * kSmemStrideV + lane_smem_V_d) * sizeof(half);
         }
         LDMATRIX_X2_T(R_V[j][0], R_V[j][1], lane_smem_V_ptr);
       }
@@ -4430,7 +4487,7 @@ __global__ void __launch_bounds__(kWarpSize *kMmaTileSeqLenQ *kMmaTileSeqLenK)
     }
 
     // Wait for next K tile to be ready in smem before next iteration
-    if constexpr (kStage > 1) {
+    if constexpr (kStagesK > 1) {
       if ((tile_K_seqlen + 1) < Tc) {
         CP_ASYNC_WAIT_GROUP(0);
       }
@@ -4483,7 +4540,7 @@ __global__ void __launch_bounds__(kWarpSize *kMmaTileSeqLenQ *kMmaTileSeqLenK)
         int store_warp_regs_O_Br =
             warp_QP * (kMmaAtomM * kValTileSeqLenP) + i * kMmaAtomM;
         int store_lane_gmem_O_Br =
-            Nq_id * Br + store_warp_regs_O_Br + lane_id / 4;
+            Q_tile_id * Br + store_warp_regs_O_Br + lane_id / 4;
         int store_warp_regs_O_d =
             warp_KV * (kMmaAtomN * kValTileHeadDimV) + j * kMmaAtomN;
         int store_lane_gmem_O_d = store_warp_regs_O_d;
@@ -5911,9 +5968,15 @@ static void test_flash_attn(int seqlen, int head_dim) {
   check(cudaMemcpy(d_k, h_k, sz, cudaMemcpyHostToDevice), "fa H2D K");
   check(cudaMemcpy(d_v, h_v, sz, cudaMemcpyHostToDevice), "fa H2D V");
 
-  // Template params for kHeadDim=64, kStage=2
-  constexpr int kHeadDim = 64, kStage = 2, kPad = 8;
-  constexpr int kMmaAtomM = 16, kMmaAtomN = 8, kMmaAtomK = 16;
+  // Template params for kHeadDim=64, kStagesK=2
+  constexpr int kHeadDim = 64;
+  constexpr int kStagesK = 2;
+  constexpr int kPadQ = 8;
+  constexpr int kPadK = 8;
+  constexpr int kPadV = 8;
+  constexpr int kMmaAtomM = 16;
+  constexpr int kMmaAtomN = 8;
+  constexpr int kMmaAtomK = 16;
   constexpr int kMmaTileSeqLenQ = 8;
   constexpr int kMmaTileSeqLenK = 1;
   constexpr int kMmaTileSeqLenP = 8;
@@ -5926,9 +5989,10 @@ static void test_flash_attn(int seqlen, int head_dim) {
   constexpr int Br = kMmaAtomM * kMmaTileSeqLenQ * kValTileSeqLenQ;
   constexpr int Bc = kMmaAtomN * kMmaTileSeqLenK * kValTileSeqLenK;
   if (seqlen < Br) return; // kernel requires seqlen >= tile size
-  constexpr int kSmemStride = (kPad == 0) ? kHeadDim : (kHeadDim + kPad);
-  size_t smem_bytes = (Br * kSmemStride + kStage * Bc * kSmemStride +
-                       Bc * kSmemStride) * sizeof(half);
+  size_t smem_bytes =
+      (Br * (kHeadDim + kPadQ) +
+       kStagesK * Bc * (kHeadDim + kPadK) +
+       Bc * (kHeadDim + kPadV)) * sizeof(half);
 
   dim3 block(256);
   dim3 grid((seqlen + Br - 1) / Br, B * H);
@@ -5937,7 +6001,7 @@ static void test_flash_attn(int seqlen, int head_dim) {
   FAKernel fa_k = flash_attn_mma_stages_split_q<kHeadDim, kMmaAtomM, kMmaAtomN,
       kMmaAtomK, kMmaTileSeqLenQ, kMmaTileSeqLenK, kMmaTileSeqLenP,
       kMmaTileHeadDimV, kValTileSeqLenQ, kValTileSeqLenK, kValTileSeqLenP,
-      kValTileHeadDimV, kStage, kPad>;
+      kValTileHeadDimV, kStagesK, kPadQ, kPadK, kPadV>;
   cudaFuncSetAttribute(fa_k, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_bytes);
   fa_k<<<grid, block, smem_bytes>>>(d_q, d_k, d_v, d_o, seqlen, H);
   check(cudaGetLastError(), "fa launch");
@@ -5951,20 +6015,23 @@ static void test_flash_attn(int seqlen, int head_dim) {
     float err = fabsf(__half2float(h_o[i]) - ref_o[i]);
     if (err > max_err) max_err = err;
   }
-  printf("| %-42s | %.6e | %-4s | %-8s |\n", "FlashAttn-SplitQ (kStage=2, Pad)", max_err, max_err < 5e-1f ? "PASS" : "FAIL", "None");
+  printf("| %-42s | %.6e | %-4s | %-8s |\n", "FlashAttention-2, (kStagesK=2, Pad)", 
+         max_err, max_err < 5e-1f ? "PASS" : "FAIL", "None");
 
-  // Also test swizzle mode (kPad=0)
+  // Also test swizzle mode (kPadQ=kPadK=kPadV=0)
   {
-    constexpr int kPadSwz = 0;
-    constexpr int kSmemStrideSwz = kHeadDim;
-    size_t smem_bytes_swz = (Br * kSmemStrideSwz + kStage * Bc * kSmemStrideSwz +
-                             Bc * kSmemStrideSwz) * sizeof(half);
+    constexpr int kPadQSwz = 0, kPadKSwz = 0, kPadVSwz = 0;
+    size_t smem_bytes_swz =
+        (Br * (kHeadDim + kPadQSwz) +
+         kStagesK * Bc * (kHeadDim + kPadKSwz) +
+         Bc * (kHeadDim + kPadVSwz)) * sizeof(half);
     check(cudaMemset(d_o, 0, sz), "fa memset O");
     using FAKernelSwz = void (*)(half *, half *, half *, half *, int, int);
     FAKernelSwz fa_k_swz = flash_attn_mma_stages_split_q<
         kHeadDim, kMmaAtomM, kMmaAtomN, kMmaAtomK, kMmaTileSeqLenQ, kMmaTileSeqLenK,
         kMmaTileSeqLenP, kMmaTileHeadDimV, kValTileSeqLenQ, kValTileSeqLenK,
-        kValTileSeqLenP, kValTileHeadDimV, kStage, kPadSwz>;
+        kValTileSeqLenP, kValTileHeadDimV, kStagesK,
+        kPadQSwz, kPadKSwz, kPadVSwz>;
     cudaFuncSetAttribute(fa_k_swz, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_bytes_swz);
     fa_k_swz<<<grid, block, smem_bytes_swz>>>(d_q, d_k, d_v, d_o, seqlen, H);
     check(cudaGetLastError(), "fa swizzle launch");
@@ -5976,7 +6043,8 @@ static void test_flash_attn(int seqlen, int head_dim) {
       float err = fabsf(__half2float(h_o[i]) - ref_o[i]);
       if (err > max_err) max_err = err;
     }
-    printf("| %-42s | %.6e | %-4s | %-8s |\n", "FlashAttn-SplitQ (kStage=2, Swizzle)", max_err, max_err < 5e-1f ? "PASS" : "FAIL", "None");
+    printf("| %-42s | %.6e | %-4s | %-8s |\n", "FlashAttention-2, (kStagesK=2, Swizzle)", 
+           max_err, max_err < 5e-1f ? "PASS" : "FAIL", "None");
   }
 
   free(h_q); free(h_k); free(h_v); free(h_o);
@@ -5989,6 +6057,9 @@ static void test_flash_attn(int seqlen, int head_dim) {
 static bool g_bench_mode = false;
 static bool g_bench_fa = false;
 static bool g_bench_only_fa = false;
+static bool g_fa_skip_check = false;
+enum class FALayout {All, Pad, SwizzleQ, SwizzleK, SwizzleV, SwizzleQK, SwizzleQV, SwizzleKV, Swizzle};
+static FALayout g_fa_layout = FALayout::Pad;
 static int g_bench_M = 4096, g_bench_N = 4096, g_bench_K = 4096;
 static int g_bench_B = 1, g_bench_H = 32, g_bench_Nfa = 4096, g_bench_D = 64;
 static int g_warmup = 5, g_repeat = 10;
@@ -6017,10 +6088,12 @@ static bool check_smem_feasible(const void *kernel_func, size_t dyn_smem_bytes) 
 // Bench: HGEMM MMA (basic m16n8k16 + multistage pipeline)
 // =============================================================================
 template <int kStages, int kBlockSwizzle>
-static bool launch_timed_hgemm_mma(half *d_a, half *d_b_t, half *d_c, half *h_c,
-            half *h_c_ref, int M, int N, int K, size_t size_c,
-            cudaEvent_t start, cudaEvent_t stop, float &max_err,
-            float &time_ms) {
+static bool launch_timed_hgemm_mma(
+  half *d_a, half *d_b_t, half *d_c, half *h_c,
+  half *h_c_ref, int M, int N, int K, size_t size_c,
+  cudaEvent_t start, cudaEvent_t stop, float &max_err,
+  float &time_ms
+) {
   constexpr int BM = 128, BN = 128, BK = 16;
   using Kernel = void (*)(half *, half *, half *, int, int, int);
   Kernel k = hgemm_mma_stages_tn<16, 8, 16, 2, 4, 4, 4, kStages, kBlockSwizzle>;
@@ -6130,10 +6203,12 @@ static void bench_hgemm_mma(int M, int N, int K) {
 // Bench: HGEMM MMA Swizzle + Register Double Buffering (kValTileK=2, BK=32)
 // =============================================================================
 template <int kStages, int kBlockSwizzle>
-static bool launch_timed_hgemm_swizzle(half *d_a, half *d_b_t, half *d_c, half *h_c,
-            half *h_c_ref, int M, int N, int K, size_t size_c,
-            cudaEvent_t start, cudaEvent_t stop, float &max_err,
-            float &time_ms) {
+static bool launch_timed_hgemm_swizzle(
+  half *d_a, half *d_b_t, half *d_c, half *h_c,
+  half *h_c_ref, int M, int N, int K, size_t size_c,
+  cudaEvent_t start, cudaEvent_t stop, float &max_err,
+  float &time_ms
+) {
   constexpr int BM = 128, BN = 128, BK = 32;
   using Kernel = void (*)(half *, half *, half *, int, int, int);
   Kernel k = hgemm_mma_stages_tn_swizzle<16, 8, 16, 2, 4, 4, 4, 2, kStages, kBlockSwizzle>;
@@ -6238,6 +6313,7 @@ static void bench_hgemm_swizzle(int M, int N, int K) {
   cudaFree(d_c);
   cublasDestroy(handle);
 }
+
 #if defined(NOTES_V2_ENABLE_CUTE)
 // =============================================================================
 // Bench: HGEMM CuTe
@@ -6475,11 +6551,12 @@ static void bench_hgemm_wgmma(int M, int N, int K) {
 // Bench: HGEMM TMA MMA WS (mma.sync + TMA + Warp Specialization, SM120)
 // =============================================================================
 template <int kStages, int kBlockSwizzle>
-static bool bench_launch_tma_mma_ws(int M, int N, int K, half *d_a, half *d_b_t,
-            half *d_c, half *h_c, half *h_c_ref, size_t size_c,
-            CUtensorMap *tma_a, CUtensorMap *tma_b,
-            cudaEvent_t start, cudaEvent_t stop,
-            float &max_err, float &time_ms) {
+static bool bench_launch_tma_mma_ws(
+  int M, int N, int K, half *d_a, half *d_b_t,
+  half *d_c, half *h_c, half *h_c_ref, size_t size_c,
+  CUtensorMap *tma_a, CUtensorMap *tma_b,
+  cudaEvent_t start, cudaEvent_t stop,
+  float &max_err, float &time_ms) {
   constexpr int BM = 128, BN = 128, BK = 64, kNumThreads = 256;
   constexpr size_t payload_bytes = kStages * (BM * BK + BN * BK) * sizeof(half);
   using Kernel = void (*)(int, int, int, half *, const CUtensorMap *,
@@ -6605,34 +6682,51 @@ static void bench_hgemm_tma_mma_ws(int M, int N, int K) {
 #endif
 
 // =============================================================================
-// Bench: FlashAttention Split-Q (template on kHeadDim for dispatch)
+// Bench: FlashAttention-2Split-Q (template on kHeadDim for dispatch)
 // =============================================================================
-template <int kHeadDim, int kPad = 8>
+template <int kHeadDim, int kPadQ = 8, int kPadK = 8, int kPadV = 8>
 static void bench_fa_launch(int B, int H, int seqlen, int head_dim,
     half *h_o_ref, float *ref_o, half *d_q, half *d_k, half *d_v, half *d_o) {
   static_assert(kHeadDim == 64 || kHeadDim == 128, "Only D=64 and D=128 are supported");
-  constexpr int kStage = 2;
-  constexpr int kMmaAtomM = 16, kMmaAtomN = 8, kMmaAtomK = 16;
-  constexpr int kMmaTileSeqLenQ = 8, kMmaTileSeqLenK = 1, kMmaTileSeqLenP = 8;
-  constexpr int kMmaTileHeadDimV = 1, kValTileSeqLenQ = 1, kValTileSeqLenK = 8;
+  constexpr int kStagesK = 2;
+  constexpr bool kSwizzleQ = kPadQ == 0;
+  constexpr bool kSwizzleK = kPadK == 0;
+  constexpr bool kSwizzleV = kPadV == 0;
+  constexpr int kMmaAtomM = 16;
+  constexpr int kMmaAtomN = 8;
+  constexpr int kMmaAtomK = 16;
+  constexpr int kMmaTileSeqLenQ = 8;
+  constexpr int kMmaTileSeqLenK = 1;
+  constexpr int kMmaTileSeqLenP = 8;
+  constexpr int kMmaTileHeadDimV = 1;
+  constexpr int kValTileSeqLenQ = 1;
+  constexpr int kValTileSeqLenK = 8;
   constexpr int kValTileSeqLenP = 1;
   constexpr int kValTileHeadDimV = kHeadDim / (8 * kMmaTileHeadDimV);
   constexpr int Br = kMmaAtomM * kMmaTileSeqLenQ * kValTileSeqLenQ;
   constexpr int Bc = kMmaAtomN * kMmaTileSeqLenK * kValTileSeqLenK;
+  constexpr const char *layout_name =
+      kSwizzleQ && kSwizzleK && kSwizzleV ? "Swizzle" :
+      kSwizzleQ && kSwizzleK ? "SwizzleQK" :
+      kSwizzleQ && kSwizzleV ? "SwizzleQV" :
+      kSwizzleK && kSwizzleV ? "SwizzleKV" :
+      kSwizzleQ ? "SwizzleQ" :
+      kSwizzleK ? "SwizzleK" :
+      kSwizzleV ? "SwizzleV" : "Pad";
 
   // Kernel requires seqlen >= Br (tile size); skip gracefully for short seqlen
   if (seqlen < Br) {
     char label[64];
-    snprintf(label, sizeof(label), "FlashAttn-SplitQ (D=%d,%s)", kHeadDim,
-             kPad == 0 ? "swizzle" : "pad");
+    snprintf(label, sizeof(label), "FlashAttention-2, D=%d, %s)", kHeadDim,
+             layout_name);
     printf("| %-42s | %-12s | %-4s | %-8s |\n", label,
            "seqlen<Br", "SKIP", "None");
     return;
   }
-  constexpr int kSmemStride = (kPad == 0) ? kHeadDim : (kHeadDim + kPad);
   size_t smem_bytes =
-    (Br * kSmemStride + kStage * Bc * kSmemStride + Bc * kSmemStride) *
-    sizeof(half);
+      (Br * (kHeadDim + kPadQ) +
+       kStagesK * Bc * (kHeadDim + kPadK) +
+       Bc * (kHeadDim + kPadV)) * sizeof(half);
 
   dim3 block(256);
   dim3 grid((seqlen + Br - 1) / Br, B * H);
@@ -6647,13 +6741,13 @@ static void bench_fa_launch(int B, int H, int seqlen, int head_dim,
   FAKernel fa_k = flash_attn_mma_stages_split_q<
     kHeadDim, kMmaAtomM, kMmaAtomN, kMmaAtomK, kMmaTileSeqLenQ, kMmaTileSeqLenK,
     kMmaTileSeqLenP, kMmaTileHeadDimV, kValTileSeqLenQ, kValTileSeqLenK,
-    kValTileSeqLenP, kValTileHeadDimV, kStage, kPad>;
+    kValTileSeqLenP, kValTileHeadDimV, kStagesK, kPadQ, kPadK, kPadV>;
   bool smem_ok = check_smem_feasible((const void *)fa_k, smem_bytes);
   if (smem_ok) {
     cudaFuncSetAttribute(fa_k, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_bytes);
   }
 
-  // Warmup (discard)
+  // Warmup 
   if (smem_ok) {
     for (int w = 0; w < g_warmup; w++)
       fa_k<<<grid, block, smem_bytes, timing_stream>>>(d_q, d_k, d_v, d_o, seqlen, H);
@@ -6679,20 +6773,24 @@ static void bench_fa_launch(int B, int H, int seqlen, int head_dim,
 
   int count = B * H * seqlen * head_dim;
   char label[64];
-  snprintf(label, sizeof(label), "FlashAttn-SplitQ (S=2, D=%d, %s)", kHeadDim,
-           kPad == 0 ? "Swizzle" : "Pad");
+  snprintf(label, sizeof(label), "FlashAttention-2, (S=2, D=%d, %s)", kHeadDim,
+           layout_name);
   float max_err = 0.0f;
-  if (smem_ok) {
+  bool checked = h_o_ref || ref_o;
+  if (smem_ok && checked) {
     for (int i = 0; i < count; i++) {
       float ref_val = h_o_ref ? __half2float(h_o_ref[i]) : ref_o[i];
       float err = fabsf(__half2float(h_o[i]) - ref_val);
       if (err > max_err) max_err = err;
     }
   }
-  if (smem_ok) {
+  if (smem_ok && checked) {
     float tflops = bench_fa_tflops(B, H, seqlen, head_dim, time_ms);
     printf("| %-42s | %.6e | %-4s | %-8.1f |\n", label, max_err,
            max_err < 5e-1f ? "PASS" : "FAIL", tflops);
+  } else if (smem_ok) {
+    float tflops = bench_fa_tflops(B, H, seqlen, head_dim, time_ms);
+    printf("| %-42s | %-12s | %-4s | %-8.1f |\n", label, "unchecked", "SKIP", tflops);
   } else {
     printf("| %-42s | %-12s | %-4s | %-8s |\n", label, "SMEM too large", "SKIP", "None");
   }
@@ -6707,7 +6805,7 @@ static void bench_flash_attn(int B, int H, int N, int D) {
   int seqlen = N, head_dim = D;
 
   if (head_dim != 64 && head_dim != 128) {
-    printf("| %-42s | %-12s | %-4s | %-8s |\n", "FlashAttn-SplitQ", "unsupported D", "SKIP", "None");
+    printf("| %-42s | %-12s | %-4s | %-8s |\n", "FlashAttention-2", "unsupported D", "SKIP", "None");
     return;
   }
 
@@ -6738,70 +6836,70 @@ static void bench_flash_attn(int B, int H, int N, int D) {
   float *ref_o = nullptr;
   int ref_count = B * H * seqlen * head_dim;
 
-  // (cuDNN / CPU reference code unchanged — same as before) ...
-
 #if defined(NOTES_V2_ENABLE_CUDNN)
-  // Try cuDNN SDPA first; fall back to CPU if unsupported on this SM
-  bool cudnn_ok = false;
-  half *d_o_ref;
-  check(cudaMalloc(&d_o_ref, sz), "bench fa alloc O_ref");
-  {
-    cudnnHandle_t cudnn_handle;
-    cudnnCreate(&cudnn_handle);
-    auto graph = std::make_shared<fe::graph::Graph>();
-    graph->set_io_data_type(fe::DataType_t::HALF)
-      .set_intermediate_data_type(fe::DataType_t::FLOAT)
-      .set_compute_data_type(fe::DataType_t::FLOAT);
+  if (!g_fa_skip_check) {
+    // Try cuDNN SDPA first; fall back to CPU if unsupported on this SM
+    bool cudnn_ok = false;
+    half *d_o_ref;
+    check(cudaMalloc(&d_o_ref, sz), "bench fa alloc O_ref");
+    {
+      cudnnHandle_t cudnn_handle;
+      cudnnCreate(&cudnn_handle);
+      auto graph = std::make_shared<fe::graph::Graph>();
+      graph->set_io_data_type(fe::DataType_t::HALF)
+        .set_intermediate_data_type(fe::DataType_t::FLOAT)
+        .set_compute_data_type(fe::DataType_t::FLOAT);
 
-    auto Q = graph->tensor(fe::graph::Tensor_attributes()
-      .set_uid(1).set_dim({B, H, seqlen, head_dim})
-      .set_stride({H * seqlen * head_dim, seqlen * head_dim, head_dim, 1}));
-    auto K = graph->tensor(fe::graph::Tensor_attributes()
-      .set_uid(2).set_dim({B, H, seqlen, head_dim})
-      .set_stride({H * seqlen * head_dim, seqlen * head_dim, head_dim, 1}));
-    auto V = graph->tensor(fe::graph::Tensor_attributes()
-      .set_uid(3).set_dim({B, H, seqlen, head_dim})
-      .set_stride({H * seqlen * head_dim, seqlen * head_dim, head_dim, 1}));
+      auto Q = graph->tensor(fe::graph::Tensor_attributes()
+        .set_uid(1).set_dim({B, H, seqlen, head_dim})
+        .set_stride({H * seqlen * head_dim, seqlen * head_dim, head_dim, 1}));
+      auto K = graph->tensor(fe::graph::Tensor_attributes()
+        .set_uid(2).set_dim({B, H, seqlen, head_dim})
+        .set_stride({H * seqlen * head_dim, seqlen * head_dim, head_dim, 1}));
+      auto V = graph->tensor(fe::graph::Tensor_attributes()
+        .set_uid(3).set_dim({B, H, seqlen, head_dim})
+        .set_stride({H * seqlen * head_dim, seqlen * head_dim, head_dim, 1}));
 
-    auto [O_sdpa, Stats] = graph->sdpa(Q, K, V,
-      fe::graph::SDPA_attributes()
-        .set_name("sdpa_ref")
-        .set_attn_scale(1.0f / sqrtf((float)head_dim)));
+      auto [O_sdpa, Stats] = graph->sdpa(Q, K, V,
+        fe::graph::SDPA_attributes()
+          .set_name("sdpa_ref")
+          .set_attn_scale(1.0f / sqrtf((float)head_dim)));
 
-    O_sdpa->set_output(true).set_uid(4)
-      .set_dim({B, H, seqlen, head_dim})
-      .set_stride({H * seqlen * head_dim, seqlen * head_dim, head_dim, 1});
+      O_sdpa->set_output(true).set_uid(4)
+        .set_dim({B, H, seqlen, head_dim})
+        .set_stride({H * seqlen * head_dim, seqlen * head_dim, head_dim, 1});
 
-    // Try A first, then fallback (matching Python example: [cudnn.heur_mode.A, cudnn.heur_mode.FALLBACK])
-    auto build_status = graph->build(cudnn_handle, {fe::HeurMode_t::A, fe::HeurMode_t::FALLBACK});
-    if (build_status.is_good()) {
-      std::unordered_map<fe::graph::Tensor_attributes::uid_t, void*> vp = {
-        {1, d_q}, {2, d_k}, {3, d_v}, {4, d_o_ref}};
-      int64_t ws_size = 0;
-      if (graph->get_workspace_size(ws_size).is_good()) {
-        int8_t *d_ws = nullptr;
-        if (ws_size > 0) check(cudaMalloc(&d_ws, ws_size), "bench fa workspace");
-        if (graph->execute(cudnn_handle, vp, d_ws).is_good()) {
-          check(cudaDeviceSynchronize(), "bench fa cudnn sync");
-          cudnn_ok = true;
+      // Try A first, then fallback (matching Python example: [cudnn.heur_mode.A, cudnn.heur_mode.FALLBACK])
+      auto build_status = graph->build(cudnn_handle, {fe::HeurMode_t::A, fe::HeurMode_t::FALLBACK});
+      if (build_status.is_good()) {
+        std::unordered_map<fe::graph::Tensor_attributes::uid_t, void*> vp = {
+          {1, d_q}, {2, d_k}, {3, d_v}, {4, d_o_ref}};
+        int64_t ws_size = 0;
+        if (graph->get_workspace_size(ws_size).is_good()) {
+          int8_t *d_ws = nullptr;
+          if (ws_size > 0) check(cudaMalloc(&d_ws, ws_size), "bench fa workspace");
+          if (graph->execute(cudnn_handle, vp, d_ws).is_good()) {
+            check(cudaDeviceSynchronize(), "bench fa cudnn sync");
+            cudnn_ok = true;
+          }
+          if (d_ws) cudaFree(d_ws);
         }
-        if (d_ws) cudaFree(d_ws);
       }
+      cudnnDestroy(cudnn_handle);
     }
-    cudnnDestroy(cudnn_handle);
-  }
 
-  if (cudnn_ok) {
-    h_o_ref = (half *)malloc(sz);
-    check(cudaMemcpy(h_o_ref, d_o_ref, sz, cudaMemcpyDeviceToHost), "bench fa D2H ref");
-  } else {
-    fprintf(stderr, "cudnn SDPA unsupported on this SM, using CPU ref\n");
+    if (cudnn_ok) {
+      h_o_ref = (half *)malloc(sz);
+      check(cudaMemcpy(h_o_ref, d_o_ref, sz, cudaMemcpyDeviceToHost), "bench fa D2H ref");
+    } else {
+      fprintf(stderr, "cudnn SDPA unsupported on this SM, using CPU ref\n");
+    }
+    cudaFree(d_o_ref);
   }
-  cudaFree(d_o_ref);
 #endif
 
   // CPU reference fallback
-  if (!h_o_ref) {
+  if (!g_fa_skip_check && !h_o_ref) {
     float *ref_q = (float *)malloc(sz * 4 / sizeof(half));
     float *ref_k = (float *)malloc(sz * 4 / sizeof(half));
     float *ref_v = (float *)malloc(sz * 4 / sizeof(half));
@@ -6845,18 +6943,73 @@ static void bench_flash_attn(int B, int H, int N, int D) {
   }
 
   if (head_dim == 64) {
-    cudaDeviceSynchronize();
-    bench_fa_launch<64, 8>(B, H, seqlen, head_dim, h_o_ref, ref_o, d_q, d_k, d_v, d_o);
-    cudaDeviceSynchronize();
-    bench_fa_launch<64, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o, d_q, d_k, d_v, d_o);
-    cudaDeviceSynchronize();
+    if (g_fa_layout == FALayout::All || g_fa_layout == FALayout::Pad) {
+      cudaDeviceSynchronize();
+      bench_fa_launch<64, 8, 8, 8>(B, H, seqlen, head_dim, h_o_ref, ref_o, d_q, d_k, d_v, d_o);
+    }
+    if (g_fa_layout == FALayout::All || g_fa_layout == FALayout::SwizzleQ) {
+      cudaDeviceSynchronize();
+      bench_fa_launch<64, 0, 8, 8>(B, H, seqlen, head_dim, h_o_ref, ref_o, d_q, d_k, d_v, d_o);
+    }
+    if (g_fa_layout == FALayout::All || g_fa_layout == FALayout::SwizzleK) {
+      cudaDeviceSynchronize();
+      bench_fa_launch<64, 8, 0, 8>(B, H, seqlen, head_dim, h_o_ref, ref_o, d_q, d_k, d_v, d_o);
+    }
+    if (g_fa_layout == FALayout::All || g_fa_layout == FALayout::SwizzleV) {
+      cudaDeviceSynchronize();
+      bench_fa_launch<64, 8, 8, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o, d_q, d_k, d_v, d_o);
+    }
+    if (g_fa_layout == FALayout::All || g_fa_layout == FALayout::SwizzleQK) {
+      cudaDeviceSynchronize();
+      bench_fa_launch<64, 0, 0, 8>(B, H, seqlen, head_dim, h_o_ref, ref_o, d_q, d_k, d_v, d_o);
+    }
+    if (g_fa_layout == FALayout::All || g_fa_layout == FALayout::SwizzleQV) {
+      cudaDeviceSynchronize();
+      bench_fa_launch<64, 0, 8, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o, d_q, d_k, d_v, d_o);
+    }
+    if (g_fa_layout == FALayout::All || g_fa_layout == FALayout::SwizzleKV) {
+      cudaDeviceSynchronize();
+      bench_fa_launch<64, 8, 0, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o, d_q, d_k, d_v, d_o);
+    }
+    if (g_fa_layout == FALayout::All || g_fa_layout == FALayout::Swizzle) {
+      cudaDeviceSynchronize();
+      bench_fa_launch<64, 0, 0, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o, d_q, d_k, d_v, d_o);
+    }
   } else {
-    cudaDeviceSynchronize();
-    bench_fa_launch<128, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o, d_q, d_k, d_v, d_o);
-    cudaDeviceSynchronize();
-    bench_fa_launch<128, 8>(B, H, seqlen, head_dim, h_o_ref, ref_o, d_q, d_k, d_v, d_o);
-    cudaDeviceSynchronize();
+    if (g_fa_layout == FALayout::All || g_fa_layout == FALayout::Pad) {
+      cudaDeviceSynchronize();
+      bench_fa_launch<128, 8, 8, 8>(B, H, seqlen, head_dim, h_o_ref, ref_o, d_q, d_k, d_v, d_o);
+    }
+    if (g_fa_layout == FALayout::All || g_fa_layout == FALayout::SwizzleQ) {
+      cudaDeviceSynchronize();
+      bench_fa_launch<128, 0, 8, 8>(B, H, seqlen, head_dim, h_o_ref, ref_o, d_q, d_k, d_v, d_o);
+    }
+    if (g_fa_layout == FALayout::All || g_fa_layout == FALayout::SwizzleK) {
+      cudaDeviceSynchronize();
+      bench_fa_launch<128, 8, 0, 8>(B, H, seqlen, head_dim, h_o_ref, ref_o, d_q, d_k, d_v, d_o);
+    }
+    if (g_fa_layout == FALayout::All || g_fa_layout == FALayout::SwizzleV) {
+      cudaDeviceSynchronize();
+      bench_fa_launch<128, 8, 8, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o, d_q, d_k, d_v, d_o);
+    }
+    if (g_fa_layout == FALayout::All || g_fa_layout == FALayout::SwizzleQK) {
+      cudaDeviceSynchronize();
+      bench_fa_launch<128, 0, 0, 8>(B, H, seqlen, head_dim, h_o_ref, ref_o, d_q, d_k, d_v, d_o);
+    }
+    if (g_fa_layout == FALayout::All || g_fa_layout == FALayout::SwizzleQV) {
+      cudaDeviceSynchronize();
+      bench_fa_launch<128, 0, 8, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o, d_q, d_k, d_v, d_o);
+    }
+    if (g_fa_layout == FALayout::All || g_fa_layout == FALayout::SwizzleKV) {
+      cudaDeviceSynchronize();
+      bench_fa_launch<128, 8, 0, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o, d_q, d_k, d_v, d_o);
+    }
+    if (g_fa_layout == FALayout::All || g_fa_layout == FALayout::Swizzle) {
+      cudaDeviceSynchronize();
+      bench_fa_launch<128, 0, 0, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o, d_q, d_k, d_v, d_o);
+    }
   }
+  cudaDeviceSynchronize();
 
   free(h_q);
   free(h_k);
@@ -6880,6 +7033,9 @@ int main(int argc, char *argv[]) {
       g_bench_mode = true;
     } else if (strcmp(argv[i], "--bench-fa") == 0) {
       g_bench_fa = true;
+    } else if (strcmp(argv[i], "--bench-fa-all") == 0) {
+      g_bench_fa = true;
+      g_fa_layout = FALayout::All;
     } else if (strcmp(argv[i], "--only-fa") == 0) {
       g_bench_mode = true;
       g_bench_only_fa = true;
@@ -6888,6 +7044,32 @@ int main(int argc, char *argv[]) {
       sscanf(argv[++i], "%d,%d,%d", &g_bench_M, &g_bench_N, &g_bench_K);
     } else if (strcmp(argv[i], "--bhnd") == 0 && i + 1 < argc) {
       sscanf(argv[++i], "%d,%d,%d,%d", &g_bench_B, &g_bench_H, &g_bench_Nfa, &g_bench_D);
+    } else if (strcmp(argv[i], "--fa-layout") == 0 && i + 1 < argc) {
+      const char *layout = argv[++i];
+      if (strcmp(layout, "all") == 0)
+        g_fa_layout = FALayout::All;
+      else if (strcmp(layout, "pad") == 0)
+        g_fa_layout = FALayout::Pad;
+      else if (strcmp(layout, "swizzle-q") == 0)
+        g_fa_layout = FALayout::SwizzleQ;
+      else if (strcmp(layout, "swizzle-k") == 0)
+        g_fa_layout = FALayout::SwizzleK;
+      else if (strcmp(layout, "swizzle-v") == 0)
+        g_fa_layout = FALayout::SwizzleV;
+      else if (strcmp(layout, "swizzle-qk") == 0)
+        g_fa_layout = FALayout::SwizzleQK;
+      else if (strcmp(layout, "swizzle-qv") == 0)
+        g_fa_layout = FALayout::SwizzleQV;
+      else if (strcmp(layout, "swizzle-kv") == 0)
+        g_fa_layout = FALayout::SwizzleKV;
+      else if (strcmp(layout, "swizzle") == 0)
+        g_fa_layout = FALayout::Swizzle;
+      else {
+        fprintf(stderr, "Unsupported FA layout: %s\n", layout);
+        return EXIT_FAILURE;
+      }
+    } else if (strcmp(argv[i], "--fa-skip-check") == 0) {
+      g_fa_skip_check = true;
     } else if (strcmp(argv[i], "--warmup") == 0 && i + 1 < argc) {
       g_warmup = atoi(argv[++i]);
     } else if (strcmp(argv[i], "--repeat") == 0 && i + 1 < argc) {
@@ -6903,22 +7085,21 @@ int main(int argc, char *argv[]) {
     printf("| %-42s | %-12s | %-4s | %-8s |\n", "Kernel", "Max Err", "Pass", "TFLOPS");
     printf("|--------------------------------------------|--------------|------|----------|\n");
 
-    test_block_reduce(g_bench_N);
-    test_dot(g_bench_N);
-    test_relu(1024);
-    test_elementwise(1024);
-    test_histogram(1024);
-    test_merge_attn_states(512, 16, 128);
-    test_softmax(256);
-    test_rms_norm(8, 128);
-    test_layer_norm(8, 128);
-    test_rope(8, 128);
-    test_mat_transpose(256, 256);
-    test_mat_transpose_padded(256, 256);
-    test_sgemv(256, 128);
-    test_sgemm(g_bench_M, g_bench_N, g_bench_K);
-
     if (!g_bench_only_fa) {
+      test_block_reduce(g_bench_N);
+      test_dot(g_bench_N);
+      test_relu(1024);
+      test_elementwise(1024);
+      test_histogram(1024);
+      test_merge_attn_states(512, 16, 128);
+      test_softmax(256);
+      test_rms_norm(8, 128);
+      test_layer_norm(8, 128);
+      test_rope(8, 128);
+      test_mat_transpose(256, 256);
+      test_mat_transpose_padded(256, 256);
+      test_sgemv(256, 128);
+      test_sgemm(g_bench_M, g_bench_N, g_bench_K);
       bench_hgemm_mma(g_bench_M, g_bench_N, g_bench_K);
       bench_hgemm_swizzle(g_bench_M, g_bench_N, g_bench_K);
 #if defined(NOTES_V2_ENABLE_CUTE)
@@ -7031,6 +7212,7 @@ int main(int argc, char *argv[]) {
 //   -I ../../third-party/cutlass/include -I ../../third-party/cudnn-frontend/include \
 //   -L/usr/local/cuda-13.2/targets/x86_64-linux/lib/stubs \
 //   -lcublas -lcudnn -lnvrtc -lcuda notes-v2.cu -o notes_v2_cute_ws_sm120a.bin
-// # Quick bench: ./notes_v2_cute_ws_sm120a.bin --bench 
-// # Full bench:  ./notes_v2_cute_ws_sm120a.bin --bench --bench-fa \
-//   --mnk 4096,4096,4096 --bhnd 1,48,4096,64
+// # Default FA bench (kPadQ=kPadK=kPadV=8 only):
+// ./notes_v2_cute_ws_sm120a.bin --bench --bench-fa --bhnd 1,48,4096,64
+// # All FA layout variants:
+// ./notes_v2_cute_ws_sm120a.bin --bench --bench-fa-all --bhnd 1,48,4096,64
