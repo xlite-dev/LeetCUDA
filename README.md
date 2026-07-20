@@ -42,7 +42,7 @@ git clone https://github.com/xlite-dev/LeetCUDA.git && cd LeetCUDA
 git submodule update --init --recursive --force && cd kernels/interview
 
 # Ada SM_89 + MMA + SMEM Swizzle + Block Swizzle + CuTe (CUDA Toolkit >= 13.2)
-nvcc -std=c++20 -O2 -arch=sm_89 -lcublas -lcuda notes-v2.cu -o notes_v2_sm89.bin # Ada
+nvcc -std=c++20 -O2 -arch=sm_89 -lcublas -lcuda notes-v2.cu -o notes_v2_sm89.bin
 nvcc -std=c++20 -O2 -arch=sm_89 -DNOTES_V2_ENABLE_CUTE -I ../../third-party/cutlass/include  \
   -lcublas -lcuda notes-v2.cu -o notes_v2_cute_sm89.bin
 
@@ -59,8 +59,8 @@ nvcc -std=c++20 -O2 -gencode arch=compute_120a,code=sm_120a -DNOTES_V2_ENABLE_CU
 ```
 
 ```bash
-# Run notes_v2_sm120a.bin with bench mode (e.g., NVIDIA TRX 5090, FP16)
-./notes_v2_sm120a.bin --bench --mnk 8192,8192,8192 --bhnd 1,48,8192,64
+# Run notes_v2_sm120a.bin with bench mode (e.g., NVIDIA RTX 5090, Blackwell SM_120a)
+./notes_v2_sm120a.bin --bench --mnk 8192,8192,8192 --bhnd 1,48,8192,64 # FP16
 | Kernel                                         | Max Err      | Pass | TFLOPS vs cu{BLAS,DNN} |
 |------------------------------------------------|--------------|------|------------------------|
 | HGEMM CuTe Swizzle (S=2, SW=0)                 | 0.000000e+00 | PASS | 349.5/369.5 (0.95x)    |
