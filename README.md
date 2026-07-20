@@ -41,23 +41,21 @@
 git clone https://github.com/xlite-dev/LeetCUDA.git && cd LeetCUDA
 git submodule update --init --recursive --force && cd kernels/interview
 
-# Ada SM89 + MMA + SMEM Swizzle + Block Swizzle + CuTe (CUDA Toolkit >= 13.2)
+# Ada SM_89 + MMA + SMEM Swizzle + Block Swizzle + CuTe (CUDA Toolkit >= 13.2)
 nvcc -std=c++20 -O2 -arch=sm_89 -lcublas -lcuda notes-v2.cu -o notes_v2_sm89.bin # Ada
 nvcc -std=c++20 -O2 -arch=sm_89 -DNOTES_V2_ENABLE_CUTE -I ../../third-party/cutlass/include  \
   -lcublas -lcuda notes-v2.cu -o notes_v2_cute_sm89.bin
 
-# Hopper SM90a + CuTe + Swizzle + TMA WGMMA WS + CuTe HGEMM (CUDA Toolkit >= 13.2)
+# Hopper SM_90a + CuTe + Swizzle + TMA WGMMA WS + CuTe HGEMM (CUDA Toolkit >= 13.2)
 nvcc -std=c++20 -O2 -gencode arch=compute_90a,code=sm_90a -DNOTES_V2_ENABLE_WGMMA \
   -DNOTES_V2_ENABLE_CUTE -DNOTES_V2_ENABLE_TMA_MMA_WS -I ../../third-party/cutlass/include \
-  -lcublas -lcuda notes-v2.cu -o notes_v2_sm90.bin # Hopper (H100, H200, etc)
+  -lcublas -lcuda notes-v2.cu -o notes_v2_sm90a.bin 
 
-# Blackwell SM120 + CuTe + Swizzle + TMA MMA WS + cuDNN SDPA (CUDA Toolkit >= 13.2):
-nvcc -std=c++20 -O2 -arch=sm_120a -DNOTES_V2_ENABLE_CUTE -DNOTES_V2_ENABLE_TMA_MMA_WS \
-  -DNOTES_V2_ENABLE_CUDNN -I ../../third-party/cutlass/include \
-  -I ../../third-party/cudnn-frontend/include \
-  -L/usr/local/cuda/targets/x86_64-linux/lib/stubs \
-  -lcublas -lcudnn -lnvrtc -lcuda \
-  notes-v2.cu -o notes_v2_sm120a.bin
+# Blackwell SM_120a + CuTe + Swizzle + TMA MMA WS + cuDNN SDPA (CUDA Toolkit >= 13.2):
+nvcc -std=c++20 -O2 -gencode arch=compute_120a,code=sm_120a -DNOTES_V2_ENABLE_CUTE \
+  -DNOTES_V2_ENABLE_TMA_MMA_WS -DNOTES_V2_ENABLE_CUDNN -I ../../third-party/cutlass/include \
+  -I ../../third-party/cudnn-frontend/include -L/usr/local/cuda/targets/x86_64-linux/lib/stubs \
+  -lcublas -lcudnn -lnvrtc -lcuda notes-v2.cu -o notes_v2_sm120a.bin 
 ```
 
 ```bash
