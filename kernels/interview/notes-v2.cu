@@ -3904,7 +3904,8 @@ template <
     const int kPadQ,             // Q row padding; 0 selects compact XOR swizzle
     const int kPadK,             // K row padding; 0 selects compact XOR swizzle
     const int kPadV>             // V row padding; 0 selects compact XOR swizzle
-__global__ void flash_attn_mma_stages_split_q(
+__global__ void __launch_bounds__(kWarpSize * kMmaTileSeqLenQ * kMmaTileSeqLenK) 
+flash_attn_mma_stages_split_q(
   half *Q, half *K, half *V, half *O, int N, int H) {
   static_assert(kStagesK >= 1, "kStagesK must be >= 1");
   static_assert(kPadQ >= 0 && kPadK >= 0 && kPadV >= 0,
