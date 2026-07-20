@@ -3132,11 +3132,10 @@ __global__ void __launch_bounds__(kNumThreads)
   //   硬件根据该绝对地址自动推导并补偿 swizzle phase 偏移（等价于
   //   descriptor 内置的 base_offset 机制）。因此即使 smem 基址未落到
   //   1024B 边界，WGMMA 硬件也能正确读取 TMA 写入的数据。
-  // 对比 hgemm_tma_mma_ws_tn：消费者使用 ldmatrix + 手写 swizzle
-  //   函数 tma_swizzle_128B()，该函数无法感知 smem 绝对地址，硬编码
-  //   了 phase=0 的假设，因此必须 __align__(1024) 来保证 phase 确实为 0。
-  //   从健壮性角度看本 kernel 也应该用 __align__(1024)；这里保留 128 是
-  //   为了突出两种消费者的特点与对比。
+  // 对比 hgemm_tma_mma_ws_tn：消费者使用 ldmatrix + 手写 swizzle<64>()
+  //   ，该函数无法感知 smem 绝对地址，硬编码了 phase=0 的假设，因此必须
+  //   __align__(1024) 来保证 phase 确实为 0。从健壮性角度看本 kernel 也
+  //   应该用 __align__(1024)；这里保留 128 是为了突出两种消费者的特点与对比。
   extern __shared__ __align__(128) uint8_t smem_tma_wgmma_ws[];
   WgmmaSMem<BM, BN, BK, kStages> &s =
       *reinterpret_cast<WgmmaSMem<BM, BN, BK, kStages> *>(smem_tma_wgmma_ws);
@@ -3485,60 +3484,6 @@ template <int BM, int BN, int BK, int QSIZE> struct TmaMmaWSSMem {
   half B[BN * BK * QSIZE];
 };
 
-// tma_swizzle_128B: 计算 128B TMA swizzle 下 smem 中 (row, k) 的物理 K 偏移。
-//
-// TMA descriptor 使用 CU_TENSOR_MAP_SWIZZLE_128B 时，硬件会将写入 smem 的
-// 数据按 128B 粒度做 XOR 重映射以消除 bank conflict。消费者在 ldmatrix 前必须
-// 对地址施加相同的 swizzle 变换，否则读到的数据与 TMA 写入的物理位置不一致。
-//
-// 位级公式与 CuTe 对照：
-//   swizzle_k = (((k >> 3) ^ (row & 7)) << 3) | (k & 7)
-//
-//   等价于 CuTe Swizzle<3,4,3>：
-//     M=3 → 基本元素宽 2^3=8 个 half（16 bytes）
-//     S=4 → 每行 2^4=16 个基本元素（32 个 half）...不，BK=64...
-//
-// 实际让我们从函数出发：
-//   - k & 7：低 3 位保持不变。即 8 个 half（16 bytes）为一组，组内顺序不变。
-//   - k >> 3：K 被划分为 8 个 chunk（BK=64，每 chunk 8 个 half）。
-//   - row & 7：取行号的低 3 位（swizzle 周期为 8 行）。
-//   - XOR：将 chunk 索引与行号的低 3 位做异或。
-//
-// ★ swizzle 映射图（BK=64，每 row 8 chunk à 8 half；周期 = 8 rows × 512 half = 1024B）：
-//
-//   下图表示同一 chunk 索引在各行被映射到的物理 chunk 位置。例如 chunk 0 在
-//   row 0 位于物理 chunk 0，在 row 1 被 XOR 到物理 chunk 1，以此类推。
-//
-//   chunk idx:     0     1     2     3     4     5     6     7
-//                ─────────────────────────────────────────────
-//   row 0 (0^c):   0     1     2     3     4     5     6     7   ← 恒等
-//   row 1 (1^c):   1     0     3     2     5     4     7     6   ← 相邻对交换
-//   row 2 (2^c):   2     3     0     1     6     7     4     5
-//   row 3 (3^c):   3     2     1     0     7     6     5     4
-//   row 4 (4^c):   4     5     6     7     0     1     2     3
-//   row 5 (5^c):   5     4     7     6     1     0     3     2
-//   row 6 (6^c):   6     7     4     5     2     3     0     1
-//   row 7 (7^c):   7     6     5     4     3     2     1     0
-//
-//   ── 8 行一周期 ──
-//   row 8 (0^c): 同 row 0 映射；row 9 同 row 1；依此类推。
-//
-//   例子——ldmatrix 读取 row 1、逻辑 k=0 处的数据：
-//     swizzle_k = (((0 >> 3) ^ (1 & 7)) << 3) | (0 & 7) = ((0 ^ 1) << 3) | 0 = 8
-//     即 row 1 的 chunk 0 被 TMA 写到了物理 K=8 的位置，ldmatrix 地址需从 K=8 读。
-//
-//   例子——ldmatrix 读取 row 3、逻辑 k=16 处的数据：
-//     swizzle_k = (((16 >> 3) ^ (3 & 7)) << 3) | (16 & 7)
-//               = ((2 ^ 3) << 3) | 0 = (1 << 3) | 0 = 8
-//     即 row 3 的 chunk 2 被映射到物理 chunk 1（K=8）。
-//
-// 关键结论：TMA 和 ldmatrix 两侧必须使用相同的 swizzle；任何一侧不用或用了
-// 不同的 pattern，整个 tile 的输出都会被破坏。128B = 128 BYTES = 64 half 
-// = 8 chunk × 8 half/chunk = 8 rows × 512 half/row。
-__device__ __forceinline__ int tma_swizzle_128B(int row, int k) {
-  return (((k >> 3) ^ (row & 7)) << 3) | (k & 7);
-}
-
 // 消费者 MMA 层级映射参考 hgemm_mma_stages_tn_swizzle。与那个
 // 八 warp kernel 不同，本 warp-specialized 消费者仅拥有四个 warp。
 template <const int kMmaM = 16,             // MMA atom M dim (m16n8k16)
@@ -3577,7 +3522,7 @@ __global__ void __launch_bounds__(kNumThreads)
     return;
 
   // TMA CU_TENSOR_MAP_SWIZZLE_128B 要求 smem 基地址 1024 字节对齐，
-  // 以确保硬件 swizzle phase 从零开始。消费者 tma_swizzle_128B()
+  // 以确保硬件 swizzle phase 从零开始。消费者 swizzle<64>()
   // 假设零 phase；其他对齐（如 128）会导致 phase 偏移，产生不匹配的
   // 物理地址，破坏整个输出。
   //
@@ -3590,8 +3535,8 @@ __global__ void __launch_bounds__(kNumThreads)
   //   用这个 base_offset 自动补偿 swizzle phase，因此 WGMMA 路径不
   //   需要 1024 字节对齐也能得到正确数据。
   //
-  // 本 kernel 消费者：使用 ldmatrix + 手写 tma_swizzle_128B() 来
-  //   计算 smem 物理地址。这个函数是纯软件公式，没有任何 base_offset
+  // 本 kernel 消费者：使用 ldmatrix + 手写 swizzle<64>() 来计算
+  //   smem 物理地址。这个函数是纯软件公式，没有任何 base_offset
   //   补偿机制。它假设 smem 基址恰好落在 1024B 边界上（phase=0）。
   //   如果基址只满足 128B 对齐，TMA 硬件会以非零 phase 写入数据，
   //   而 ldmatrix 以零 phase 读取 → 物理地址彻底错位 → 全输出错误。
@@ -3698,17 +3643,17 @@ __global__ void __launch_bounds__(kNumThreads)
           const int warp_smem_a_m = warp_m * (kMmaM * kValTileM) + i * kMmaM;
           const int lane_smem_a_m = warp_smem_a_m + lane_id % 16;
           // 与 hgemm_mma_stages_tn_swizzle 不同：k_step * kMmaK 必须放在
-          // lane_smem_a_k 中传给 tma_swizzle_128B()，而非像 swizzle kernel
+          // lane_smem_a_k 中传给 swizzle<64>()，而非像 swizzle kernel
           // 那样作为 smem_k_offset 加在 swizzle 外部。原因：
-          //   tma_swizzle_128B 是 128B TMA swizzle，作用于完整 BK=64，
-          //   swizzle 周期覆盖全部 64 列，k_step=0 和 k_step=1 的 chunk 会
-          //   被 XOR 交叉混合 → k_step 偏移必须在 swizzle 内部参与 chunk 计算。
+          //   swizzle<64> 作用于完整 BK=64，swizzle 周期覆盖全部 64 列，
+          //   k_step=0 和 k_step=1 的 chunk 会被 XOR 交叉混合 → k_step
+          //   偏移必须在 swizzle 内部参与 chunk 计算。
           //   swizzle<kMmaK> 作用于 kMmaK=16，每个 kMmaK slice 独立
           //   swizzle，slice 之间互不跨越 → k_step * kMmaK 可以加在外部。
           const int lane_smem_a_k = (k_step * kMmaK) + (lane_id / 16) * 8;
           const uint32_t lane_smem_a_ptr = smem_a_base_ptr +
               (stage * BM * BK + lane_smem_a_m * BK +
-              tma_swizzle_128B(lane_smem_a_m, lane_smem_a_k)) *
+              swizzle<64>(lane_smem_a_m, lane_smem_a_k)) *
                   sizeof(half);
           LDMATRIX_X4(RA[i][0], RA[i][1], RA[i][2], RA[i][3], lane_smem_a_ptr);
         }
@@ -3721,7 +3666,7 @@ __global__ void __launch_bounds__(kNumThreads)
           const int lane_smem_b_k = (k_step * kMmaK) + ((lane_id / 8) % 2) * 8;
           const uint32_t lane_smem_b_ptr = smem_b_base_ptr +
               (stage * BN * BK + lane_smem_b_n * BK +
-              tma_swizzle_128B(lane_smem_b_n, lane_smem_b_k)) *
+              swizzle<64>(lane_smem_b_n, lane_smem_b_k)) *
                   sizeof(half);
           LDMATRIX_X2(RB[j][0], RB[j][1], lane_smem_b_ptr);
         }
@@ -6015,37 +5960,8 @@ static void test_flash_attn(int seqlen, int head_dim) {
     float err = fabsf(__half2float(h_o[i]) - ref_o[i]);
     if (err > max_err) max_err = err;
   }
-  printf("| %-42s | %.6e | %-4s | %-8s |\n", "FlashAttention-2, (kStagesK=2, Pad)", 
+  printf("| %-42s | %.6e | %-4s | %-8s |\n", "FlashAttention-2 (kStagesK=2, Pad)", 
          max_err, max_err < 5e-1f ? "PASS" : "FAIL", "None");
-
-  // Also test swizzle mode (kPadQ=kPadK=kPadV=0)
-  {
-    constexpr int kPadQSwz = 0, kPadKSwz = 0, kPadVSwz = 0;
-    size_t smem_bytes_swz =
-        (Br * (kHeadDim + kPadQSwz) +
-         kStagesK * Bc * (kHeadDim + kPadKSwz) +
-         Bc * (kHeadDim + kPadVSwz)) * sizeof(half);
-    check(cudaMemset(d_o, 0, sz), "fa memset O");
-    using FAKernelSwz = void (*)(half *, half *, half *, half *, int, int);
-    FAKernelSwz fa_k_swz = flash_attn_mma_stages_split_q<
-        kHeadDim, kMmaAtomM, kMmaAtomN, kMmaAtomK, kMmaTileSeqLenQ, kMmaTileSeqLenK,
-        kMmaTileSeqLenP, kMmaTileHeadDimV, kValTileSeqLenQ, kValTileSeqLenK,
-        kValTileSeqLenP, kValTileHeadDimV, kStagesK,
-        kPadQSwz, kPadKSwz, kPadVSwz>;
-    cudaFuncSetAttribute(fa_k_swz, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_bytes_swz);
-    fa_k_swz<<<grid, block, smem_bytes_swz>>>(d_q, d_k, d_v, d_o, seqlen, H);
-    check(cudaGetLastError(), "fa swizzle launch");
-    check(cudaDeviceSynchronize(), "fa swizzle sync");
-    check(cudaMemcpy(h_o, d_o, sz, cudaMemcpyDeviceToHost), "fa swizzle D2H");
-
-    max_err = 0.0f;
-    for (int i = 0; i < count; i++) {
-      float err = fabsf(__half2float(h_o[i]) - ref_o[i]);
-      if (err > max_err) max_err = err;
-    }
-    printf("| %-42s | %.6e | %-4s | %-8s |\n", "FlashAttention-2, (kStagesK=2, Swizzle)", 
-           max_err, max_err < 5e-1f ? "PASS" : "FAIL", "None");
-  }
 
   free(h_q); free(h_k); free(h_v); free(h_o);
   free(ref_q); free(ref_k); free(ref_v); free(ref_o);
@@ -6717,7 +6633,7 @@ static void bench_fa_launch(int B, int H, int seqlen, int head_dim,
   // Kernel requires seqlen >= Br (tile size); skip gracefully for short seqlen
   if (seqlen < Br) {
     char label[64];
-    snprintf(label, sizeof(label), "FlashAttention-2, D=%d, %s)", kHeadDim,
+    snprintf(label, sizeof(label), "FlashAttention-2 (D=%d, %s)", kHeadDim,
              layout_name);
     printf("| %-42s | %-12s | %-4s | %-8s |\n", label,
            "seqlen<Br", "SKIP", "None");
@@ -6773,7 +6689,7 @@ static void bench_fa_launch(int B, int H, int seqlen, int head_dim,
 
   int count = B * H * seqlen * head_dim;
   char label[64];
-  snprintf(label, sizeof(label), "FlashAttention-2, (S=2, D=%d, %s)", kHeadDim,
+  snprintf(label, sizeof(label), "FlashAttention-2 (S=2, D=%d, %s)", kHeadDim,
            layout_name);
   float max_err = 0.0f;
   bool checked = h_o_ref || ref_o;
