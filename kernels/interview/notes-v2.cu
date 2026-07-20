@@ -3720,6 +3720,7 @@ __global__ void __launch_bounds__(kNumThreads)
     }
   }
 }
+
 #endif /* NOTES_V2_ENABLE_TMA_MMA_WS */
 
 #if defined(NOTES_V2_ENABLE_WGMMA) || defined(NOTES_V2_ENABLE_TMA_MMA_WS)
@@ -3795,6 +3796,23 @@ __host__ static inline CUtensorMap *allocate_and_create_tensor_map(
              cudaMemcpyHostToDevice);
   return tma_map_d;
 }
+
+// Templated variant: BlockMajorSize = major dim (outer), BlockMinorSize =
+// minor dim (inner, contiguous). For row-major [Major, Minor] matrices.
+// HGEMM A/B^T use <128, 64>; FA Q uses <128, 64>; FA K/V use <64, 64>.
+template <int BlockMajorSize, int BlockMinorSize>
+__host__ static inline CUtensorMap *allocate_and_create_tensor_map_t(
+    half *src, int blocks_height, int blocks_width) {
+  CUtensorMap *tma_map_d;
+  cudaMalloc(&tma_map_d, sizeof(CUtensorMap));
+  CUtensorMap tma_map_host;
+  create_tensor_map<BlockMajorSize, BlockMinorSize>(&tma_map_host, src,
+                                                     blocks_height,
+                                                     blocks_width);
+  cudaMemcpy(tma_map_d, &tma_map_host, sizeof(CUtensorMap),
+             cudaMemcpyHostToDevice);
+  return tma_map_d;
+}
 #endif /* NOTES_V2_ENABLE_WGMMA || NOTES_V2_ENABLE_TMA_MMA_WS */
 
 // =============================================================================
@@ -3831,27 +3849,6 @@ __host__ static inline CUtensorMap *allocate_and_create_tensor_map(
 // Block: (128, 1, 1)，kNumThreads=kWarpSize×kMmaTileSeqLenQ×kMmaTileSeqLenK=128
 // source: LeetCUDA/kernels/flash-attn/mma/basic/flash_attn_mma_split_q.cu
 
-// ---- 寄存器填充辅助函数 ----
-template <typename T, int M, const int N, const int K = 2>
-__device__ inline void fill_3D_regs(T (&R)[M][N][K], T val) {
-#pragma unroll
-  for (int i = 0; i < M; ++i)
-#pragma unroll
-    for (int j = 0; j < N; ++j)
-#pragma unroll
-      for (int k = 0; k < K; ++k)
-        R[i][j][k] = val;
-}
-
-template <typename T, int M, const int N = 2>
-__device__ inline void fill_2D_regs(T (&R)[M][N], T val) {
-#pragma unroll
-  for (int i = 0; i < M; ++i)
-#pragma unroll
-    for (int j = 0; j < N; ++j)
-      R[i][j] = val;
-}
-
 // =============================================================================
 // FlashAttention-2 Split-Q Kernel（完整实现）
 // =============================================================================
@@ -3886,6 +3883,26 @@ __device__ inline void fill_2D_regs(T (&R)[M][N], T val) {
 //   - 所以当前 kernel 默认对 Q/K/V 都用 kPad=8。保留 swizzle 路径是为了学习和消融：评价
 //     shared layout 必须同时观察 ldmatrix reads 与 cp.async/LDGSTS writes，不能只看
 //     bank-conflict counter，也不能只优化 XOR 地址算术。
+// ---- 寄存器填充辅助函数（FlashAttention 用，前移以供 TMA_MMA_WS kernel 使用） ----
+template <typename T, int M, const int N, const int K = 2>
+__device__ inline void fill_3D_regs(T (&R)[M][N][K], T val) {
+#pragma unroll
+  for (int i = 0; i < M; ++i)
+#pragma unroll
+    for (int j = 0; j < N; ++j)
+#pragma unroll
+      for (int k = 0; k < K; ++k)
+        R[i][j][k] = val;
+}
+
+template <typename T, int M, const int N = 2>
+__device__ inline void fill_2D_regs(T (&R)[M][N], T val) {
+#pragma unroll
+  for (int i = 0; i < M; ++i)
+#pragma unroll
+    for (int j = 0; j < N; ++j)
+      R[i][j] = val;
+}
 
 template <
     const int kHeadDim,          // head dim: 32, 64, 128
@@ -4505,6 +4522,483 @@ flash_attn_mma_stages_split_q(
     }
   }
 }
+
+#if defined(NOTES_V2_ENABLE_TMA_MMA_WS)
+// =============================================================================
+// Phase 8b: FlashAttention-2 TMA + MMA Warp Specialization (SM120)
+// =============================================================================
+// 面试要点（FA TMA MMA WS vs cp.async FA）：
+//   - Producer (WG0, 128T) 用 TMA 128B SWIZZLE 搬运 Q/K/V tile 到 smem
+//   - Consumer (WG1, 256T) 用 ldmatrix + mma.sync.m16n8k16 做 Q@K^T / P@V
+//   - 与 hgemm_tma_mma_ws_tn 的对比：
+//     * HGEMM 只做一次 GEMM，K 维迭代；FA 做 QK^T 和 PV 两次 GEMM，KV seqlen 迭代
+//     * HGEMM 的 A/B 都 staged；FA 中 Q 只 load 一次（split-Q），K staged，V 单 buffer
+//
+// ★ split-Q 语义（关键，避免误解）：
+//   - grid = (seqlen/Br, B*H)，每个 block 处理一个 **block-level Q tile [Br, d]**
+//     （不是全局 Q）。对 Q 的 seqlen 做 block-level 并行。
+//   - 每个 block 遍历**完整的 KV seqlen**（Tc = seqlen/Bc 次外循环）。
+//   - 因此每个 block 的 Q tile 只需 **load 一次到 smem**，在整个 KV 遍历中复用
+//     → 只需 full_Q barrier（无 empty_Q）。
+//
+// ★ Pipeline 同步协议（arrive_count = 257 = 256 consumer + 1 producer）：
+//   - Q:  full_Q — Producer 发 arrive_tx，Consumer 在主循环前 wait 一次
+//   - K:  full_K[kStagesK] / empty_K[kStagesK] — 多 stage pipeline
+//   - V:  full_V / empty_V — 单 buffer 串行（QK 前发 TMA → QK 重叠 → PV 前等 → PV 后释放）
+//
+// ★ V ldmatrix.x2.trans 正确性（已论证无风险）：
+//   TMA 128B SWIZZLE 是 1-1 映射，ldmatrix 用 swizzle<64>(row,col) 计算的物理地址
+//   = TMA 写入的物理地址（smem 1024B 对齐保证 phase=0）。ldmatrix.x2.trans 的转置
+//   语义在寄存器层面工作，与 smem 物理布局无关 → 必然正确。
+//
+// v1 限制：kHeadDim=64 only；seqlen % Br == 0 且 seqlen % Bc == 0（不处理尾 tile）
+template <
+    const int kHeadDim,          // head dim: v1 only 64
+    const int kMmaAtomM,         // 16 (MMA instruction M dim)
+    const int kMmaAtomN,         // 8  (MMA instruction N dim)
+    const int kMmaAtomK,         // 16 (MMA instruction K dim)
+    const int kMmaTileSeqLenQ,   // MMA tiles along Q's M dim, 8 → Br=16*8=128
+    const int kMmaTileSeqLenK,   // MMA tiles along K's N dim, 1 → Bc basis=8
+    const int kMmaTileSeqLenP,   // MMA tiles for P@V M dim, == kMmaTileSeqLenQ
+    const int kMmaTileHeadDimV,  // MMA tiles for P@V N dim (head dim direction)
+    const int kValTileSeqLenQ,   // value tiles along Q's M, 1 → Br per warp=16
+    const int kValTileSeqLenK,   // value tiles along K's N, 8 → Bc_warp=8*8=64
+    const int kValTileSeqLenP,   // value tiles for P@V M dim, 1
+    const int kValTileHeadDimV,  // value tiles for P@V N dim, kHeadDim/(8*kMmaTileHeadDimV)
+    const int kStagesK,          // K pipeline depth (>=1)
+    const int kNumThreads>       // 384, 128 producer + 256 consumer
+__global__ void __launch_bounds__(kNumThreads)
+    flash_attn_tma_mma_ws_stages_split_q(
+        half *Q, half *K, half *V, half *O, int N, int H,
+        const CUtensorMap *__restrict__ tensorMapQ,
+        const CUtensorMap *__restrict__ tensorMapK,
+        const CUtensorMap *__restrict__ tensorMapV) {
+  static_assert(kHeadDim == 64, "v1 only supports kHeadDim == 64");
+  static_assert(kNumThreads == 384, "128 producer + 256 consumer");
+  static_assert(kStagesK >= 1, "kStagesK must be >= 1");
+
+  constexpr int Br = kMmaAtomM * kMmaTileSeqLenQ * kValTileSeqLenQ; // 128
+  constexpr int Bc = kMmaAtomN * kMmaTileSeqLenK * kValTileSeqLenK; // 64
+  // BK for QK: kHeadDim=64, split into kHeadDim/kMmaAtomK=4 MMA K slices
+  // BK for PV: Bc=64, split into Bc/kMmaAtomK=4 MMA K slices (P rows)
+  constexpr int kConsumerThreads = 256;  // 8 warps
+  constexpr int kProducerThreads = 128;  // 4 warps, only thread 0 issues TMA
+  constexpr int kQTileBytes = Br * kHeadDim * sizeof(half);       // 16 KB
+  constexpr int kKTileBytes = Bc * kHeadDim * sizeof(half);       // 8 KB
+  constexpr int kVTileBytes = Bc * kHeadDim * sizeof(half);       // 8 KB
+
+  // Block indexing — split-Q: blockIdx.x indexes Q tile along seqlen
+  const int Nb_id = blockIdx.y / H;
+  const int Nh_id = blockIdx.y % H;
+  const int Q_tile_id = blockIdx.x;
+  const int Tc = (N + Bc - 1) / Bc;  // number of KV tiles along seqlen
+  const float scale = 1.0f / sqrtf((float)kHeadDim);
+
+  // Per-head gmem base offset (self-attention: Q=K=V share layout)
+  const int QKV_gmem_offset = (Nb_id * H * N + Nh_id * N) * kHeadDim;
+  const int O_gmem_offset = QKV_gmem_offset;
+
+  // ---- Shared memory layout ----
+  // TMA CU_TENSOR_MAP_SWIZZLE_128B requires 1024B-aligned smem base so the
+  // hardware swizzle phase starts at zero. Consumer swizzle<64>() assumes
+  // zero phase (no base_offset compensation like WGMMA descriptor).
+  // Q: [Br, kHeadDim] = [128, 64] = 16 KB (1024B aligned ✓)
+  // K: [kStagesK, Bc, kHeadDim] = [kStagesK, 64, 64] (8 KB per stage)
+  // V: [Bc, kHeadDim] = [64, 64] = 8 KB (1024B aligned ✓)
+  extern __shared__ __align__(1024) uint8_t smem_fa_tma_ws[];
+  half *Q_smem = reinterpret_cast<half *>(smem_fa_tma_ws);
+  half *K_smem = Q_smem + Br * kHeadDim;
+  half *V_smem = K_smem + kStagesK * Bc * kHeadDim;
+
+  const uint32_t smem_Q_base_ptr = __cvta_generic_to_shared(Q_smem);
+  const uint32_t smem_K_base_ptr = __cvta_generic_to_shared(K_smem);
+  const uint32_t smem_V_base_ptr = __cvta_generic_to_shared(V_smem);
+
+  // ---- Barriers ----
+  // arrive_count = kConsumerThreads + 1 = 257 (256 consumer arrives + 1 producer arrive_tx)
+#pragma nv_diag_suppress static_var_with_dynamic_init
+  __shared__ cuda::barrier<cuda::thread_scope_block> full_Q;
+  __shared__ cuda::barrier<cuda::thread_scope_block> full_K[kStagesK];
+  __shared__ cuda::barrier<cuda::thread_scope_block> empty_K[kStagesK];
+  __shared__ cuda::barrier<cuda::thread_scope_block> full_V;
+  __shared__ cuda::barrier<cuda::thread_scope_block> empty_V;
+#pragma nv_diag_default static_var_with_dynamic_init
+
+  // Thread partition: first kProducerThreads (0~127) = Producer WG,
+  // remaining kConsumerThreads (128~383) = Consumer WG.
+  // WARN: Must use kProducerThreads (not kConsumerThreads) as the divisor, otherwise
+  // the split is wrong: 384/256=1.5 would give Producer 256 threads and
+  // Consumer only 128, but barriers expect 256 consumer arrives → deadlock.
+  const int wg_idx = (threadIdx.x < kProducerThreads) ? 0 : 1;
+  const int wg_tid = (threadIdx.x < kProducerThreads) ? threadIdx.x : 
+                     (threadIdx.x - kProducerThreads);
+
+  if (threadIdx.x == 0) {
+    init(&full_Q, kConsumerThreads + 1);
+    init(&full_V, kConsumerThreads + 1);
+    init(&empty_V, kConsumerThreads + 1);
+    for (int s = 0; s < kStagesK; ++s) {
+      init(&full_K[s], kConsumerThreads + 1);
+      init(&empty_K[s], kConsumerThreads + 1);
+    }
+    tma_fence_proxy_async_shared_cta();
+  }
+  __syncthreads();
+
+  // ==================================================================
+  // Producer Warpgroup (WG0, threadIdx.x 0~127)
+  // Only wg_tid == 0 issues TMA. Split-Q: Q tile loaded once, K staged, V single buffer.
+  // ==================================================================
+  if (wg_idx == 0) {
+    if (wg_tid == 0) {
+      // Step P0: Load block-level Q tile [Br, d] once. TMA coords:
+      //   minor = d_offset = 0 (kHeadDim=64 == BlockMinorSize)
+      //   major = q_offset = Q_tile_id * Br
+      tma_load_2d(Q_smem, tensorMapQ, 0, Q_tile_id * Br, full_Q);
+      tma_arrive_expect_tx(full_Q, kQTileBytes);
+
+      // Step P1: Prefetch first (kStagesK-1) K tiles.
+      // K tile coords: minor = d_offset = 0, major = kv_offset = k*Bc
+      for (int s = 0; s < kStagesK - 1; ++s) {
+        empty_K[s].wait(empty_K[s].arrive());
+        tma_load_2d(K_smem + s * Bc * kHeadDim, tensorMapK, 0, s * Bc,
+                    full_K[s]);
+        tma_arrive_expect_tx(full_K[s], kKTileBytes);
+      }
+
+      // Step P2: Main loop over KV seqlen tiles
+      for (int k = 0; k < Tc; ++k) {
+        [[maybe_unused]] const int stage = k % kStagesK;
+
+        // Issue V[k] TMA (before QK gemm so it overlaps with QK compute).
+        // V single buffer: wait for consumer to release V from previous iter.
+        empty_V.wait(empty_V.arrive());
+        tma_load_2d(V_smem, tensorMapV, 0, k * Bc, full_V);
+        tma_arrive_expect_tx(full_V, kVTileBytes);
+
+        // Prefetch K[k+kStagesK-1] (pipelined).
+        if (k + kStagesK - 1 < Tc) {
+          const int stage_next = (k + kStagesK - 1) % kStagesK;
+          empty_K[stage_next].wait(empty_K[stage_next].arrive());
+          tma_load_2d(K_smem + stage_next * Bc * kHeadDim, tensorMapK, 0,
+                      (k + kStagesK - 1) * Bc, full_K[stage_next]);
+          tma_arrive_expect_tx(full_K[stage_next], kKTileBytes);
+        }
+      }
+    }
+  }
+  // ==================================================================
+  // Consumer Warpgroup (WG1, threadIdx.x 128~383, 256 threads = 8 warps)
+  // All 256 threads participate in ldmatrix + mma.sync.
+  // ==================================================================
+  else {
+    const int warp_id = wg_tid / kWarpSize;  // 0~7
+    const int lane_id = wg_tid % kWarpSize;  // 0~31
+    // Split-Q warp layout: 8 warps form 8x1 grid (warp_QP = 0~7, warp_KV = 0)
+    // Br = 16 * 8 * 1 = 128 → 8 warps each handle 16 rows of Q
+    const int warp_QP = warp_id;
+    const int warp_KV = 0;
+
+    // Step C0: init — mark all K stages and V as "empty" (consumable by producer)
+    for (int s = 0; s < kStagesK; ++s) {
+      [[maybe_unused]] auto token = empty_K[s].arrive();
+    }
+    {
+      [[maybe_unused]] auto token = empty_V.arrive();
+    }
+
+    // Wait for Q tile ready once (split-Q: Q smem is reused across all KV iters)
+    full_Q.wait(full_Q.arrive());
+
+    // Online softmax persistent state (per-warp, per-row-pair)
+    float lane_block_row_max_old[kValTileSeqLenQ][2];
+    float lane_block_row_sum_old[kValTileSeqLenQ][2];
+    fill_2D_regs<float, kValTileSeqLenQ, 2>(lane_block_row_max_old, -INFINITY);
+    fill_2D_regs<float, kValTileSeqLenQ, 2>(lane_block_row_sum_old, 0.0f);
+
+    uint32_t R_Q[kValTileSeqLenQ][4];
+    uint32_t R_K[kValTileSeqLenK][2];
+    uint32_t R_V[kValTileHeadDimV][2];
+    uint32_t R_S[kValTileSeqLenQ][kValTileSeqLenK][2];
+    uint32_t R_O[kValTileSeqLenP][kValTileHeadDimV][2];
+    uint32_t R_D[kValTileSeqLenP][kValTileHeadDimV][2];
+
+    fill_3D_regs<uint32_t, kValTileSeqLenP, kValTileHeadDimV, 2>(R_D, 0);
+
+    // ---- Main loop over KV seqlen ----
+    for (int tile_K_seqlen = 0; tile_K_seqlen < Tc; ++tile_K_seqlen) {
+      const int stage = tile_K_seqlen % kStagesK;
+
+      // Wait for K[stage] ready
+      full_K[stage].wait(full_K[stage].arrive());
+      tma_fence_proxy_async_shared_cta();
+
+      // ---- 3b: Q @ K^T = S[Br, Bc] ----
+      // Q smem reused (split-Q). K from stage `stage`.
+      // smem addr (TMA 128B swizzle, swizzle<64>)
+      fill_3D_regs<uint32_t, kValTileSeqLenQ, kValTileSeqLenK, 2>(R_S, 0);
+#pragma unroll
+      for (int tile_K_d = 0; tile_K_d < (kHeadDim / kMmaAtomK); ++tile_K_d) {
+        // ldmatrix.x4: load Q m16k16 fragment (Q row-major, non-transpose)
+#pragma unroll
+        for (int i = 0; i < kValTileSeqLenQ; ++i) {
+          const int warp_smem_Q_Br =
+              warp_QP * (kMmaAtomM * kValTileSeqLenQ) + i * kMmaAtomM;
+          const int lane_smem_Q_Br = warp_smem_Q_Br + lane_id % 16;
+          const int lane_smem_Q_d = tile_K_d * kMmaAtomK + (lane_id / 16) * 8;
+          const uint32_t lane_smem_Q_ptr =
+              smem_Q_base_ptr +
+              (lane_smem_Q_Br * kHeadDim +
+               swizzle<kHeadDim>(lane_smem_Q_Br, lane_smem_Q_d)) *
+                  sizeof(half);
+          LDMATRIX_X4(R_Q[i][0], R_Q[i][1], R_Q[i][2], R_Q[i][3],
+                      lane_smem_Q_ptr);
+        }
+
+        // ldmatrix.x2: load K k16n8 fragment (K row-major = K^T col-major)
+#pragma unroll
+        for (int j = 0; j < kValTileSeqLenK; ++j) {
+          const int warp_smem_K_Bc =
+              warp_KV * (kMmaAtomN * kValTileSeqLenK) + j * kMmaAtomN;
+          const int lane_smem_K_Bc = warp_smem_K_Bc + lane_id % 8;
+          const int lane_smem_K_d =
+              tile_K_d * kMmaAtomK + ((lane_id / 8) % 2) * 8;
+          const uint32_t lane_smem_K_ptr =
+              smem_K_base_ptr +
+              (stage * Bc * kHeadDim + lane_smem_K_Bc * kHeadDim +
+               swizzle<kHeadDim>(lane_smem_K_Bc, lane_smem_K_d)) *
+                  sizeof(half);
+          LDMATRIX_X2(R_K[j][0], R_K[j][1], lane_smem_K_ptr);
+        }
+
+#pragma unroll
+        for (int i = 0; i < kValTileSeqLenQ; ++i) {
+#pragma unroll
+          for (int j = 0; j < kValTileSeqLenK; ++j) {
+            HMMA16816(R_S[i][j][0], R_S[i][j][1], R_Q[i][0], R_Q[i][1],
+                      R_Q[i][2], R_Q[i][3], R_K[j][0], R_K[j][1],
+                      R_S[i][j][0], R_S[i][j][1]);
+          }
+        }
+      }
+
+      // Release K[stage] for producer reuse as early as possible: QK^T GEMM has
+      // consumed all K smem data; the subsequent softmax (3c) and PV GEMM (3d)
+      // only touch registers (R_S, R_O) and V smem, so K[stage] is free to be
+      // overwritten by the producer's next TMA prefetch.
+      {
+        [[maybe_unused]] auto token = empty_K[stage].arrive();
+      }
+
+      // ---- 3c: Online Safe Softmax — row max + exp + sum, P back to R_S ----
+      // Softmax only touches R_S (registers), so V TMA latency can be overlapped
+      // with this compute. Defer full_V.wait() until just before P@V (3d).
+      float lane_row_max_new[kValTileSeqLenQ][2];
+      float lane_row_sum_new[kValTileSeqLenQ][2];
+      fill_2D_regs<float, kValTileSeqLenQ, 2>(lane_row_max_new, -INFINITY);
+      fill_2D_regs<float, kValTileSeqLenQ, 2>(lane_row_sum_new, 0.0f);
+
+      // Pass 1: row-wise max across kValTileSeqLenK tiles (warp_reduce_max<4>)
+#pragma unroll
+      for (int i = 0; i < kValTileSeqLenQ; ++i) {
+#pragma unroll
+        for (int j = 0; j < kValTileSeqLenK; ++j) {
+          float2 t_reg_S_0 = __half22float2(HALF2(R_S[i][j][0]));
+          float2 t_reg_S_1 = __half22float2(HALF2(R_S[i][j][1]));
+          float tmp_max_0 = max(t_reg_S_0.x, t_reg_S_0.y) * scale;
+          float tmp_max_1 = max(t_reg_S_1.x, t_reg_S_1.y) * scale;
+          lane_row_max_new[i][0] = max(lane_row_max_new[i][0], tmp_max_0);
+          lane_row_max_new[i][1] = max(lane_row_max_new[i][1], tmp_max_1);
+        }
+        lane_row_max_new[i][0] =
+            warp_reduce_max<4, float>(lane_row_max_new[i][0]);
+        lane_row_max_new[i][1] =
+            warp_reduce_max<4, float>(lane_row_max_new[i][1]);
+      }
+
+      // Pass 2: P = exp(S*scale - m_new), store back to R_S, accumulate row sums
+#pragma unroll
+      for (int i = 0; i < kValTileSeqLenQ; ++i) {
+        float block_row_max_new_0 =
+            max(lane_block_row_max_old[i][0], lane_row_max_new[i][0]);
+        float block_row_max_new_1 =
+            max(lane_block_row_max_old[i][1], lane_row_max_new[i][1]);
+
+#pragma unroll
+        for (int j = 0; j < kValTileSeqLenK; ++j) {
+          float2 t_reg_S_0 = __half22float2(HALF2(R_S[i][j][0]));
+          float2 t_reg_S_1 = __half22float2(HALF2(R_S[i][j][1]));
+          t_reg_S_0.x = __expf(__fmaf_rn(t_reg_S_0.x, scale, -block_row_max_new_0));
+          t_reg_S_0.y = __expf(__fmaf_rn(t_reg_S_0.y, scale, -block_row_max_new_0));
+          t_reg_S_1.x = __expf(__fmaf_rn(t_reg_S_1.x, scale, -block_row_max_new_1));
+          t_reg_S_1.y = __expf(__fmaf_rn(t_reg_S_1.y, scale, -block_row_max_new_1));
+          lane_row_sum_new[i][0] += (t_reg_S_0.x + t_reg_S_0.y);
+          lane_row_sum_new[i][1] += (t_reg_S_1.x + t_reg_S_1.y);
+          HALF2(R_S[i][j][0]) = __float22half2_rn(t_reg_S_0);
+          HALF2(R_S[i][j][1]) = __float22half2_rn(t_reg_S_1);
+        }
+        lane_row_sum_new[i][0] =
+            warp_reduce_sum<4, float>(lane_row_sum_new[i][0]);
+        lane_row_sum_new[i][1] =
+            warp_reduce_sum<4, float>(lane_row_sum_new[i][1]);
+      }
+
+      // ---- 3d: P @ V = O[Br, d] ----
+      // Wait for V ready just before P@V (V TMA was issued by producer before
+      // QK). Deferring the wait here lets V TMA overlap with softmax (3c),
+      // which only touched registers (R_S). Softmax done → V should be ready.
+      full_V.wait(full_V.arrive());
+      tma_fence_proxy_async_shared_cta();
+
+      // ldmatrix.x2.trans: V row-major → col-major B fragment for NN matmul
+      fill_3D_regs<uint32_t, kValTileSeqLenP, kValTileHeadDimV, 2>(R_O, 0);
+#pragma unroll
+      for (int tile_V_Bc = 0; tile_V_Bc < (Bc / kMmaAtomK); ++tile_V_Bc) {
+#pragma unroll
+        for (int j = 0; j < kValTileHeadDimV; ++j) {
+          const int warp_smem_V_d =
+              warp_KV * (kMmaAtomN * kValTileHeadDimV) + j * kMmaAtomN;
+          const int lane_smem_V_Bc = tile_V_Bc * kMmaAtomK + lane_id % 16;
+          const int lane_smem_V_d = warp_smem_V_d;
+          const uint32_t lane_smem_V_ptr =
+              smem_V_base_ptr +
+              (lane_smem_V_Bc * kHeadDim +
+               swizzle<kHeadDim>(lane_smem_V_Bc, lane_smem_V_d)) *
+                  sizeof(half);
+          LDMATRIX_X2_T(R_V[j][0], R_V[j][1], lane_smem_V_ptr);
+        }
+
+        // P fragment (R_S) directly feeds A of P@V MMA (layout reuse trick)
+        const int w = tile_V_Bc * 2;
+#pragma unroll
+        for (int i = 0; i < kValTileSeqLenP; ++i) {
+#pragma unroll
+          for (int j = 0; j < kValTileHeadDimV; ++j) {
+            HMMA16816(R_O[i][j][0], R_O[i][j][1],
+                      R_S[i][w][0], R_S[i][w][1],
+                      R_S[i][w + 1][0], R_S[i][w + 1][1],
+                      R_V[j][0], R_V[j][1],
+                      R_O[i][j][0], R_O[i][j][1]);
+          }
+        }
+      }
+
+      // Release V (single buffer) for producer reuse: PV GEMM has consumed all
+      // V smem data; the subsequent online rescaling (3e) only touches registers
+      // (R_O, R_D, R_S, lane_block_*), so V smem is free to be overwritten by
+      // the producer's next TMA. K[stage] was already released right after QK^T.
+      {
+        [[maybe_unused]] auto token = empty_V.arrive();
+      }
+
+      // ---- 3e: Online rescaling — O_new = exp(m_old - m_new) * O_old + P@V ----
+#pragma unroll
+      for (int i = 0; i < kValTileSeqLenP; ++i) {
+        float block_row_max_new_0 = lane_row_max_new[i][0];
+        float block_row_max_new_1 = lane_row_max_new[i][1];
+        float block_row_sum_new_0 = lane_row_sum_new[i][0];
+        float block_row_sum_new_1 = lane_row_sum_new[i][1];
+        float block_row_max_old_0 = lane_block_row_max_old[i][0];
+        float block_row_max_old_1 = lane_block_row_max_old[i][1];
+
+        block_row_max_new_0 = max(block_row_max_old_0, block_row_max_new_0);
+        block_row_max_new_1 = max(block_row_max_old_1, block_row_max_new_1);
+
+        // First iteration: m_old = -inf, use m_new directly
+        block_row_max_old_0 = (tile_K_seqlen > 0 ? block_row_max_old_0
+                                                  : block_row_max_new_0);
+        block_row_max_old_1 = (tile_K_seqlen > 0 ? block_row_max_old_1
+                                                  : block_row_max_new_1);
+
+        float rescale_o_factor_0 =
+            __expf(block_row_max_old_0 - block_row_max_new_0);
+        float rescale_o_factor_1 =
+            __expf(block_row_max_old_1 - block_row_max_new_1);
+
+#pragma unroll
+        for (int j = 0; j < kValTileHeadDimV; ++j) {
+          float2 t_reg_O_0 = __half22float2(HALF2(R_O[i][j][0]));
+          float2 t_reg_O_1 = __half22float2(HALF2(R_O[i][j][1]));
+          float2 t_reg_D_0 = __half22float2(HALF2(R_D[i][j][0]));
+          float2 t_reg_D_1 = __half22float2(HALF2(R_D[i][j][1]));
+          t_reg_D_0.x = __fmaf_rn(rescale_o_factor_0, t_reg_D_0.x, t_reg_O_0.x);
+          t_reg_D_0.y = __fmaf_rn(rescale_o_factor_0, t_reg_D_0.y, t_reg_O_0.y);
+          t_reg_D_1.x = __fmaf_rn(rescale_o_factor_1, t_reg_D_1.x, t_reg_O_1.x);
+          t_reg_D_1.y = __fmaf_rn(rescale_o_factor_1, t_reg_D_1.y, t_reg_O_1.y);
+          HALF2(R_D[i][j][0]) = __float22half2_rn(t_reg_D_0);
+          HALF2(R_D[i][j][1]) = __float22half2_rn(t_reg_D_1);
+        }
+
+        float block_row_sum_old_0 = lane_block_row_sum_old[i][0];
+        float block_row_sum_old_1 = lane_block_row_sum_old[i][1];
+        lane_block_row_sum_old[i][0] =
+            __fmaf_rn(rescale_o_factor_0, block_row_sum_old_0,
+                      block_row_sum_new_0);
+        lane_block_row_sum_old[i][1] =
+            __fmaf_rn(rescale_o_factor_1, block_row_sum_old_1,
+                      block_row_sum_new_1);
+        lane_block_row_max_old[i][0] = block_row_max_new_0;
+        lane_block_row_max_old[i][1] = block_row_max_new_1;
+      }
+    }
+
+    // ---- Step 4: Final rescale — O_final = (1/l_final) * O_final ----
+#pragma unroll
+    for (int i = 0; i < kValTileSeqLenP; ++i) {
+      float rescale_factor_0 = __frcp_rn(lane_block_row_sum_old[i][0]);
+      float rescale_factor_1 = __frcp_rn(lane_block_row_sum_old[i][1]);
+#pragma unroll
+      for (int j = 0; j < kValTileHeadDimV; ++j) {
+        float2 t_reg_D_0 = __half22float2(HALF2(R_D[i][j][0]));
+        float2 t_reg_D_1 = __half22float2(HALF2(R_D[i][j][1]));
+        t_reg_D_0.x = rescale_factor_0 * t_reg_D_0.x;
+        t_reg_D_0.y = rescale_factor_0 * t_reg_D_0.y;
+        t_reg_D_1.x = rescale_factor_1 * t_reg_D_1.x;
+        t_reg_D_1.y = rescale_factor_1 * t_reg_D_1.y;
+        HALF2(R_D[i][j][0]) = __float22half2_rn(t_reg_D_0);
+        HALF2(R_D[i][j][1]) = __float22half2_rn(t_reg_D_1);
+      }
+    }
+
+    // ---- Step 5: Epilogue — warp shuffle + 128-bit collective store ----
+#pragma unroll
+    for (int i = 0; i < kValTileSeqLenP; ++i) {
+#pragma unroll
+      for (int j = 0; j < kValTileHeadDimV; ++j) {
+        uint32_t R_Z[2][4];
+        R_Z[0][0] = R_D[i][j][0];
+        R_Z[1][0] = R_D[i][j][1];
+        R_Z[0][1] = __shfl_sync(0xffffffff, R_D[i][j][0], lane_id + 1, 4);
+        R_Z[0][2] = __shfl_sync(0xffffffff, R_D[i][j][0], lane_id + 2, 4);
+        R_Z[0][3] = __shfl_sync(0xffffffff, R_D[i][j][0], lane_id + 3, 4);
+        R_Z[1][1] = __shfl_sync(0xffffffff, R_D[i][j][1], lane_id + 1, 4);
+        R_Z[1][2] = __shfl_sync(0xffffffff, R_D[i][j][1], lane_id + 2, 4);
+        R_Z[1][3] = __shfl_sync(0xffffffff, R_D[i][j][1], lane_id + 3, 4);
+
+        if (lane_id % 4 == 0) {
+          const int store_warp_regs_O_Br =
+              warp_QP * (kMmaAtomM * kValTileSeqLenP) + i * kMmaAtomM;
+          const int store_lane_gmem_O_Br =
+              Q_tile_id * Br + store_warp_regs_O_Br + lane_id / 4;
+          const int store_warp_regs_O_d =
+              warp_KV * (kMmaAtomN * kValTileHeadDimV) + j * kMmaAtomN;
+          const int store_lane_gmem_O_d = store_warp_regs_O_d;
+          const int store_gmem_O_addr_0 =
+              O_gmem_offset + store_lane_gmem_O_Br * kHeadDim +
+              store_lane_gmem_O_d;
+          const int store_gmem_O_addr_1 =
+              O_gmem_offset + (store_lane_gmem_O_Br + 8) * kHeadDim +
+              store_lane_gmem_O_d;
+          *reinterpret_cast<float4 *>(&O[store_gmem_O_addr_0]) =
+              *reinterpret_cast<float4 *>(&R_Z[0][0]);
+          *reinterpret_cast<float4 *>(&O[store_gmem_O_addr_1]) =
+              *reinterpret_cast<float4 *>(&R_Z[1][0]);
+        }
+      }
+    }
+  }
+}
+#endif // END NOTES_V2_ENABLE_TMA_MMA_WS
 
 // ================================================================
 // 以下是测试代码，验证 Phase 1 - Phase 8 的kernel的正确性，不评估性能。
@@ -5973,9 +6467,236 @@ static void test_flash_attn(int seqlen, int head_dim) {
 }
 
 
+#if defined(NOTES_V2_ENABLE_TMA_MMA_WS)
+// Test for flash_attn_tma_mma_ws_stages_split_q (SM120, D=64 only)
+// Reference: cuDNN SDPA (half) if available, else CPU FP32 (float) fallback.
+static void test_flash_attn_tma_mma_ws(int seqlen, int head_dim) {
+  if (head_dim != 64) {
+    printf("| %-42s | %-12s | %-4s | %-8s |\n",
+           "FlashAttn-2 TMA MMA WS (D!=64)", "SKIP", "SKIP", "None");
+    return;
+  }
+  int B = 1, H = 8;
+  constexpr int kHeadDim = 64;
+  constexpr int kStagesK = 2;
+  constexpr int kMmaAtomM = 16, kMmaAtomN = 8, kMmaAtomK = 16;
+  constexpr int kMmaTileSeqLenQ = 8, kMmaTileSeqLenK = 1;
+  constexpr int kMmaTileSeqLenP = 8, kMmaTileHeadDimV = 1;
+  constexpr int kValTileSeqLenQ = 1, kValTileSeqLenK = 8;
+  constexpr int kValTileSeqLenP = 1;
+  constexpr int kValTileHeadDimV = kHeadDim / (8 * kMmaTileHeadDimV);
+  constexpr int Br = kMmaAtomM * kMmaTileSeqLenQ * kValTileSeqLenQ;  // 128
+  constexpr int Bc = kMmaAtomN * kMmaTileSeqLenK * kValTileSeqLenK;  // 64
+  constexpr int kNumThreads = 384;
+
+  if (seqlen % Br != 0 || seqlen % Bc != 0 || seqlen < Br) {
+    printf("| %-42s | %-12s | %-4s | %-8s |\n",
+           "FlashAttn-2 TMA MMA WS (unaligned)", "SKIP", "SKIP", "None");
+    return;
+  }
+
+  size_t sz = (size_t)B * H * seqlen * head_dim * sizeof(half);
+  srand(42);
+  half *h_q = (half *)malloc(sz);
+  half *h_k = (half *)malloc(sz);
+  half *h_v = (half *)malloc(sz);
+  for (int i = 0; i < B * H * seqlen * head_dim; ++i) {
+    h_q[i] = __float2half(((float)rand() / RAND_MAX) * 2.0f - 1.0f);
+    h_k[i] = __float2half(((float)rand() / RAND_MAX) * 2.0f - 1.0f);
+    h_v[i] = __float2half(((float)rand() / RAND_MAX) * 2.0f - 1.0f);
+  }
+
+  half *d_q, *d_k, *d_v, *d_o;
+  check(cudaMalloc(&d_q, sz), "fa_tma_ws alloc Q");
+  check(cudaMalloc(&d_k, sz), "fa_tma_ws alloc K");
+  check(cudaMalloc(&d_v, sz), "fa_tma_ws alloc V");
+  check(cudaMalloc(&d_o, sz), "fa_tma_ws alloc O");
+  check(cudaMemcpy(d_q, h_q, sz, cudaMemcpyHostToDevice), "fa_tma_ws H2D Q");
+  check(cudaMemcpy(d_k, h_k, sz, cudaMemcpyHostToDevice), "fa_tma_ws H2D K");
+  check(cudaMemcpy(d_v, h_v, sz, cudaMemcpyHostToDevice), "fa_tma_ws H2D V");
+
+  // Reference output: either cuDNN (half) or CPU (float)
+  half *h_o_ref = nullptr;
+  float *ref_o = nullptr;
+  int count = B * H * seqlen * head_dim;
+
+#if defined(NOTES_V2_ENABLE_CUDNN)
+  {
+    // Try cuDNN SDPA first; fall back to CPU if unsupported on this SM
+    bool cudnn_ok = false;
+    half *d_o_ref;
+    check(cudaMalloc(&d_o_ref, sz), "fa_tma_ws alloc O_ref");
+    {
+      cudnnHandle_t cudnn_handle;
+      cudnnCreate(&cudnn_handle);
+      auto graph = std::make_shared<fe::graph::Graph>();
+      graph->set_io_data_type(fe::DataType_t::HALF)
+        .set_intermediate_data_type(fe::DataType_t::FLOAT)
+        .set_compute_data_type(fe::DataType_t::FLOAT);
+
+      auto Q = graph->tensor(fe::graph::Tensor_attributes()
+        .set_uid(1).set_dim({B, H, seqlen, head_dim})
+        .set_stride({H * seqlen * head_dim, seqlen * head_dim, head_dim, 1}));
+      auto K = graph->tensor(fe::graph::Tensor_attributes()
+        .set_uid(2).set_dim({B, H, seqlen, head_dim})
+        .set_stride({H * seqlen * head_dim, seqlen * head_dim, head_dim, 1}));
+      auto V = graph->tensor(fe::graph::Tensor_attributes()
+        .set_uid(3).set_dim({B, H, seqlen, head_dim})
+        .set_stride({H * seqlen * head_dim, seqlen * head_dim, head_dim, 1}));
+
+      auto [O_sdpa, Stats] = graph->sdpa(Q, K, V,
+        fe::graph::SDPA_attributes()
+          .set_name("sdpa_ref")
+          .set_attn_scale(1.0f / sqrtf((float)head_dim)));
+
+      O_sdpa->set_output(true).set_uid(4)
+        .set_dim({B, H, seqlen, head_dim})
+        .set_stride({H * seqlen * head_dim, seqlen * head_dim, head_dim, 1});
+
+      auto build_status = graph->build(cudnn_handle, {fe::HeurMode_t::A, fe::HeurMode_t::FALLBACK});
+      if (build_status.is_good()) {
+        std::unordered_map<fe::graph::Tensor_attributes::uid_t, void*> vp = {
+          {1, d_q}, {2, d_k}, {3, d_v}, {4, d_o_ref}};
+        int64_t ws_size = 0;
+        if (graph->get_workspace_size(ws_size).is_good()) {
+          int8_t *d_ws = nullptr;
+          if (ws_size > 0) check(cudaMalloc(&d_ws, ws_size), "fa_tma_ws workspace");
+          if (graph->execute(cudnn_handle, vp, d_ws).is_good()) {
+            check(cudaDeviceSynchronize(), "fa_tma_ws cudnn sync");
+            cudnn_ok = true;
+          }
+          if (d_ws) cudaFree(d_ws);
+        }
+      }
+      cudnnDestroy(cudnn_handle);
+    }
+
+    if (cudnn_ok) {
+      h_o_ref = (half *)malloc(sz);
+      check(cudaMemcpy(h_o_ref, d_o_ref, sz, cudaMemcpyDeviceToHost), "fa_tma_ws D2H ref");
+    } else {
+      fprintf(stderr, "cudnn SDPA unsupported on this SM, using CPU ref\n");
+    }
+    cudaFree(d_o_ref);
+  }
+#endif
+
+  // CPU reference fallback
+  if (!h_o_ref) {
+    float *ref_q = (float *)malloc(sz * 4 / sizeof(half));
+    float *ref_k = (float *)malloc(sz * 4 / sizeof(half));
+    float *ref_v = (float *)malloc(sz * 4 / sizeof(half));
+    ref_o = (float *)malloc(sz * 4 / sizeof(half));
+    for (int i = 0; i < count; ++i) {
+      ref_q[i] = __half2float(h_q[i]);
+      ref_k[i] = __half2float(h_k[i]);
+      ref_v[i] = __half2float(h_v[i]);
+    }
+    float scale = 1.0f / sqrtf((float)head_dim);
+    for (int bi = 0; bi < B * H; ++bi) {
+      for (int qi = 0; qi < seqlen; ++qi) {
+        float smax = -INFINITY;
+        float *S = (float *)malloc((size_t)seqlen * sizeof(float));
+        for (int kj = 0; kj < seqlen; ++kj) {
+          float s = 0.0f;
+          for (int d = 0; d < head_dim; ++d)
+            s += ref_q[bi * seqlen * head_dim + qi * head_dim + d] *
+                 ref_k[bi * seqlen * head_dim + kj * head_dim + d];
+          S[kj] = s * scale;
+          if (S[kj] > smax) smax = S[kj];
+        }
+        double sum_exp = 0.0;
+        for (int kj = 0; kj < seqlen; ++kj)
+          sum_exp += (double)expf(S[kj] - smax);
+        float inv_sum = 1.0f / (float)sum_exp;
+        for (int d = 0; d < head_dim; ++d) {
+          double o_acc = 0.0;
+          for (int kj = 0; kj < seqlen; ++kj)
+            o_acc += (double)(expf(S[kj] - smax) * inv_sum) *
+                     ref_v[bi * seqlen * head_dim + kj * head_dim + d];
+          ref_o[bi * seqlen * head_dim + qi * head_dim + d] = (float)o_acc;
+        }
+        free(S);
+      }
+    }
+    free(ref_q);
+    free(ref_k);
+    free(ref_v);
+  }
+
+  // TMA descriptors: Q tile [Br, d]=[128, 64], K/V tile [Bc, d]=[64, 64]
+  // Q/K/V gmem is [seqlen, head_dim] row-major: major=seqlen, minor=head_dim.
+  // blocks_height = seqlen/tile_major (major dim tile count)
+  // blocks_width  = 1 (minor dim == BlockMinorSize, single tile)
+  CUtensorMap *tma_q = allocate_and_create_tensor_map_t<Br, kHeadDim>(
+      d_q, seqlen / Br, 1);
+  CUtensorMap *tma_k = allocate_and_create_tensor_map_t<Bc, kHeadDim>(
+      d_k, seqlen / Bc, 1);
+  CUtensorMap *tma_v = allocate_and_create_tensor_map_t<Bc, kHeadDim>(
+      d_v, seqlen / Bc, 1);
+
+  using FAKernel = void (*)(half *, half *, half *, half *, int, int,
+                             const CUtensorMap *, const CUtensorMap *,
+                             const CUtensorMap *);
+  FAKernel fa_k = flash_attn_tma_mma_ws_stages_split_q<
+      kHeadDim, kMmaAtomM, kMmaAtomN, kMmaAtomK, kMmaTileSeqLenQ,
+      kMmaTileSeqLenK, kMmaTileSeqLenP, kMmaTileHeadDimV, kValTileSeqLenQ,
+      kValTileSeqLenK, kValTileSeqLenP, kValTileHeadDimV, kStagesK, kNumThreads>;
+
+  // smem = Q[Br*d] + K[kStagesK*Bc*d] + V[Bc*d]
+  size_t smem_bytes = (Br * kHeadDim + kStagesK * Bc * kHeadDim +
+                       Bc * kHeadDim) * sizeof(half);
+  int device = 0, max_smem = 0;
+  cudaFuncAttributes attributes{};
+  cudaGetDevice(&device);
+  cudaDeviceGetAttribute(&max_smem, cudaDevAttrMaxSharedMemoryPerBlockOptin,
+                         device);
+  cudaFuncGetAttributes(&attributes, fa_k);
+  bool smem_ok =
+      (smem_bytes + attributes.sharedSizeBytes <= (size_t)max_smem);
+  if (!smem_ok) {
+    printf("| %-42s | %-12s | %-4s | %-8s |\n",
+           "FlashAttn-2 TMA MMA WS (D=64)", "SMEM SKIP", "SKIP", "None");
+  } else {
+    cudaFuncSetAttribute(fa_k, cudaFuncAttributeMaxDynamicSharedMemorySize,
+                         smem_bytes);
+    dim3 block(kNumThreads);
+    dim3 grid((seqlen + Br - 1) / Br, B * H);
+    fa_k<<<grid, block, smem_bytes>>>(d_q, d_k, d_v, d_o, seqlen, H, tma_q,
+                                       tma_k, tma_v);
+    check(cudaGetLastError(), "fa_tma_ws launch");
+    check(cudaDeviceSynchronize(), "fa_tma_ws sync");
+
+    half *h_o = (half *)malloc(sz);
+    check(cudaMemcpy(h_o, d_o, sz, cudaMemcpyDeviceToHost), "fa_tma_ws D2H");
+    float max_err = 0.0f;
+    bool checked = h_o_ref || ref_o;
+    if (checked) {
+      for (int i = 0; i < count; ++i) {
+        float ref_val = h_o_ref ? __half2float(h_o_ref[i]) : ref_o[i];
+        float err = fabsf(__half2float(h_o[i]) - ref_val);
+        if (err > max_err) max_err = err;
+      }
+    }
+    printf("| %-42s | %.6e | %-4s | %-8s |\n",
+           "FlashAttention-2 TMA MMA WS (D=64)", max_err,
+           (checked && max_err < 5e-1f) ? "PASS" : (checked ? "FAIL" : "SKIP"),
+           "None");
+    free(h_o);
+  }
+
+  free(h_q); free(h_k); free(h_v);
+  free(h_o_ref); free(ref_o);
+  cudaFree(d_q); cudaFree(d_k); cudaFree(d_v); cudaFree(d_o);
+  cudaFree(tma_q); cudaFree(tma_k); cudaFree(tma_v);
+}
+#endif /* NOTES_V2_ENABLE_TMA_MMA_WS */
+
+
 // Bench mode globals and helpers
 static bool g_bench_mode = false;
 static bool g_bench_fa = false;
+static bool g_bench_fa_tma_ws = false;
 static bool g_bench_only_fa = false;
 static bool g_fa_skip_check = false;
 enum class FALayout {All, Pad, SwizzleQ, SwizzleK, SwizzleV, SwizzleQK, SwizzleQV, SwizzleKV, Swizzle};
@@ -6603,7 +7324,7 @@ static void bench_hgemm_tma_mma_ws(int M, int N, int K) {
 #endif
 
 // =============================================================================
-// Bench: FlashAttention-2Split-Q (template on kHeadDim for dispatch)
+// Bench: FlashAttention-2 Split-Q (template on kHeadDim for dispatch)
 // =============================================================================
 template <int kHeadDim, int kPadQ = 8, int kPadK = 8, int kPadV = 8>
 static void bench_fa_launch(int B, int H, int seqlen, int head_dim,
@@ -6721,6 +7442,132 @@ static void bench_fa_launch(int B, int H, int seqlen, int head_dim,
   cudaStreamDestroy(timing_stream);
   free(h_o);
 }
+
+#if defined(NOTES_V2_ENABLE_TMA_MMA_WS)
+// Bench for flash_attn_tma_mma_ws_stages_split_q (SM120, D=64 only)
+template <int kStagesK>
+static void bench_fa_tma_mma_ws_launch(int B, int H, int seqlen, int head_dim,
+                                       half *h_o_ref, float *ref_o,
+                                       half *d_q, half *d_k, half *d_v,
+                                       half *d_o) {
+  constexpr int kHeadDim = 64;
+  constexpr int kMmaAtomM = 16, kMmaAtomN = 8, kMmaAtomK = 16;
+  constexpr int kMmaTileSeqLenQ = 8, kMmaTileSeqLenK = 1;
+  constexpr int kMmaTileSeqLenP = 8, kMmaTileHeadDimV = 1;
+  constexpr int kValTileSeqLenQ = 1, kValTileSeqLenK = 8;
+  constexpr int kValTileSeqLenP = 1;
+  constexpr int kValTileHeadDimV = kHeadDim / (8 * kMmaTileHeadDimV);
+  constexpr int Br = kMmaAtomM * kMmaTileSeqLenQ * kValTileSeqLenQ;
+  constexpr int Bc = kMmaAtomN * kMmaTileSeqLenK * kValTileSeqLenK;
+  constexpr int kNumThreads = 384;
+
+  if (head_dim != kHeadDim) {
+    printf("| %-42s | %-12s | %-4s | %-8s |\n",
+           "FlashAttn-2 TMA MMA WS (D!=64)", "SKIP", "SKIP", "None");
+    return;
+  }
+  if (seqlen < Br || seqlen % Br != 0 || seqlen % Bc != 0) {
+    printf("| %-42s | %-12s | %-4s | %-8s |\n",
+           "FlashAttn-2 TMA MMA WS (unaligned)", "SKIP", "SKIP", "None");
+    return;
+  }
+
+  // TMA descriptors (Q: <Br, d>, K/V: <Bc, d>)
+  // Q/K/V gmem is [seqlen, head_dim] row-major: major=seqlen, minor=head_dim.
+  // blocks_height = seqlen/tile_major (major dim tile count)
+  // blocks_width  = 1 (minor dim == BlockMinorSize, single tile)
+  CUtensorMap *tma_q = allocate_and_create_tensor_map_t<Br, kHeadDim>(
+      d_q, seqlen / Br, 1);
+  CUtensorMap *tma_k = allocate_and_create_tensor_map_t<Bc, kHeadDim>(
+      d_k, seqlen / Bc, 1);
+  CUtensorMap *tma_v = allocate_and_create_tensor_map_t<Bc, kHeadDim>(
+      d_v, seqlen / Bc, 1);
+
+  using FAKernel = void (*)(half *, half *, half *, half *, int, int,
+                             const CUtensorMap *, const CUtensorMap *,
+                             const CUtensorMap *);
+  FAKernel fa_k = flash_attn_tma_mma_ws_stages_split_q<
+      kHeadDim, kMmaAtomM, kMmaAtomN, kMmaAtomK, kMmaTileSeqLenQ,
+      kMmaTileSeqLenK, kMmaTileSeqLenP, kMmaTileHeadDimV, kValTileSeqLenQ,
+      kValTileSeqLenK, kValTileSeqLenP, kValTileHeadDimV, kStagesK, kNumThreads>;
+
+  size_t smem_bytes = (Br * kHeadDim + kStagesK * Bc * kHeadDim +
+                       Bc * kHeadDim) * sizeof(half);
+  bool smem_ok = check_smem_feasible((const void *)fa_k, smem_bytes);
+  if (smem_ok) {
+    cudaFuncSetAttribute(fa_k, cudaFuncAttributeMaxDynamicSharedMemorySize,
+                         smem_bytes);
+  }
+
+  dim3 block(kNumThreads);
+  dim3 grid((seqlen + Br - 1) / Br, B * H);
+
+  cudaStream_t timing_stream;
+  cudaStreamCreate(&timing_stream);
+  cudaEvent_t start, stop;
+  cudaEventCreate(&start);
+  cudaEventCreate(&stop);
+
+  if (smem_ok) {
+    for (int w = 0; w < g_warmup; ++w)
+      fa_k<<<grid, block, smem_bytes, timing_stream>>>(d_q, d_k, d_v, d_o,
+                                                       seqlen, H, tma_q, tma_k,
+                                                       tma_v);
+    check(cudaStreamSynchronize(timing_stream), "fa_tma_ws warmup sync");
+  }
+  cudaEventRecord(start, timing_stream);
+  if (smem_ok) {
+    for (int r = 0; r < g_repeat; ++r)
+      fa_k<<<grid, block, smem_bytes, timing_stream>>>(d_q, d_k, d_v, d_o,
+                                                       seqlen, H, tma_q, tma_k,
+                                                       tma_v);
+  }
+  cudaEventRecord(stop, timing_stream);
+  cudaEventSynchronize(stop);
+
+  float time_ms = 0;
+  cudaEventElapsedTime(&time_ms, start, stop);
+  time_ms /= g_repeat;
+
+  size_t sz = (size_t)B * H * seqlen * head_dim * sizeof(half);
+  half *h_o = (half *)malloc(sz);
+  check(cudaMemcpy(h_o, d_o, sz, cudaMemcpyDeviceToHost), "fa_tma_ws D2H");
+  int count = B * H * seqlen * head_dim;
+
+  char label[64];
+  snprintf(label, sizeof(label), "FlashAttention-2 TMA MMA WS (S=%d, D=64)",
+           kStagesK);
+  float max_err = 0.0f;
+  bool checked = h_o_ref || ref_o;
+  if (smem_ok && checked) {
+    for (int i = 0; i < count; ++i) {
+      float ref_val = h_o_ref ? __half2float(h_o_ref[i]) : ref_o[i];
+      float err = fabsf(__half2float(h_o[i]) - ref_val);
+      if (err > max_err) max_err = err;
+    }
+  }
+  if (smem_ok && checked) {
+    float tflops = bench_fa_tflops(B, H, seqlen, head_dim, time_ms);
+    printf("| %-42s | %.6e | %-4s | %-8.1f |\n", label, max_err,
+           max_err < 5e-1f ? "PASS" : "FAIL", tflops);
+  } else if (smem_ok) {
+    float tflops = bench_fa_tflops(B, H, seqlen, head_dim, time_ms);
+    printf("| %-42s | %-12s | %-4s | %-8.1f |\n", label, "unchecked", "SKIP",
+           tflops);
+  } else {
+    printf("| %-42s | %-12s | %-4s | %-8s |\n", label, "SMEM too large", "SKIP",
+           "None");
+  }
+
+  cudaEventDestroy(start);
+  cudaEventDestroy(stop);
+  cudaStreamDestroy(timing_stream);
+  free(h_o);
+  cudaFree(tma_q);
+  cudaFree(tma_k);
+  cudaFree(tma_v);
+}
+#endif /* NOTES_V2_ENABLE_TMA_MMA_WS */
 
 static void bench_flash_attn(int B, int H, int N, int D) {
   int seqlen = N, head_dim = D;
@@ -6896,6 +7743,16 @@ static void bench_flash_attn(int B, int H, int N, int D) {
       cudaDeviceSynchronize();
       bench_fa_launch<64, 0, 0, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o, d_q, d_k, d_v, d_o);
     }
+#if defined(NOTES_V2_ENABLE_TMA_MMA_WS)
+    if (g_bench_fa_tma_ws) {
+      cudaDeviceSynchronize();
+      bench_fa_tma_mma_ws_launch<2>(B, H, seqlen, head_dim, h_o_ref, ref_o,
+                                    d_q, d_k, d_v, d_o);
+      cudaDeviceSynchronize();
+      bench_fa_tma_mma_ws_launch<3>(B, H, seqlen, head_dim, h_o_ref, ref_o,
+                                    d_q, d_k, d_v, d_o);
+    }
+#endif
   } else {
     if (g_fa_layout == FALayout::All || g_fa_layout == FALayout::Pad) {
       cudaDeviceSynchronize();
@@ -6954,6 +7811,9 @@ int main(int argc, char *argv[]) {
       g_bench_mode = true;
     } else if (strcmp(argv[i], "--bench-fa") == 0) {
       g_bench_fa = true;
+    } else if (strcmp(argv[i], "--bench-fa-tma-ws") == 0) {
+      g_bench_mode = true;
+      g_bench_fa_tma_ws = true;
     } else if (strcmp(argv[i], "--bench-fa-all") == 0) {
       g_bench_fa = true;
       g_fa_layout = FALayout::All;
@@ -7033,7 +7893,7 @@ int main(int argc, char *argv[]) {
       bench_hgemm_tma_mma_ws(g_bench_M, g_bench_N, g_bench_K);
 #endif
     }
-    if (g_bench_fa)
+    if (g_bench_fa || g_bench_fa_tma_ws)
       bench_flash_attn(g_bench_B, g_bench_H, g_bench_Nfa, g_bench_D);
 
     printf("=== Bench done ===\n");
@@ -7088,6 +7948,9 @@ int main(int argc, char *argv[]) {
   test_hgemm_tma_mma_ws(M, N, K);
 #endif
   test_flash_attn(1024, 64);
+#if defined(NOTES_V2_ENABLE_TMA_MMA_WS)
+  test_flash_attn_tma_mma_ws(1024, 64);
+#endif
 
   printf("=== All tests done ===\n");
   return 0;
@@ -7137,3 +8000,5 @@ int main(int argc, char *argv[]) {
 // ./notes_v2_cute_ws_sm120a.bin --bench --bench-fa --bhnd 1,48,4096,64
 // # All FA layout variants:
 // ./notes_v2_cute_ws_sm120a.bin --bench --bench-fa-all --bhnd 1,48,4096,64
+// # FA TMA MMA WS bench (SM120, D=64 only, kStagesK=2/3):
+// ./notes_v2_cute_ws_sm120a.bin --bench-fa-tma-ws --bhnd 1,32,4096,64
