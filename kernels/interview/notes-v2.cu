@@ -3065,6 +3065,22 @@ static __device__ __forceinline__ void tma_arrive_expect_tx(
 // __forceinline__ is mandatory: without it ptxas drops setmaxnreg with
 // warning C7506 "ignored to maintain compatibility into 'extern' call",
 // because a non-inlined call boundary forces a fixed register convention.
+//
+// On sm_120a (Blackwell, CUDA 13.2) ptxas drops setmaxnreg with C7506 even
+// when the PTX is fully inlined (no call.uni), because ptxas treats
+// cp.async.bulk.tensor (TMA) usage as an implicit extern-call boundary.
+// sm_90a (Hopper) is unaffected. Gate the *call sites* with
+// NOTES_V2_ENABLE_SETMAXNREGS so sm_120a builds stay warning-free and avoid
+// the register-allocation side effects of __launch_bounds__(N,1) until ptxas
+// is fixed. The function templates themselves are always defined.
+#if defined(NOTES_V2_ENABLE_SETMAXNREGS)
+  #define NOTES_V2_REG_DEALLOC(N) warpgroup_reg_dealloc<N>()
+  #define NOTES_V2_REG_ALLOC(N)   warpgroup_reg_alloc<N>()
+#else
+  #define NOTES_V2_REG_DEALLOC(N) ((void)0)
+  #define NOTES_V2_REG_ALLOC(N)   ((void)0)
+#endif
+
 template <uint32_t kNumRegs>
 __device__ __forceinline__ void warpgroup_reg_dealloc()
 {
@@ -3464,7 +3480,7 @@ __global__ void __launch_bounds__(kNumThreads, 1)
   // 只有 wg_tid==0 执行实际拷贝提交，其余 127 个线程空闲。
   // ==================================================================
   if (wg_idx == 0) {
-    warpgroup_reg_dealloc<40>();
+    NOTES_V2_REG_DEALLOC(40);
     if (wg_tid == 0) {
       // stage: 当前操作的 stage 索引（round-robin 0 -> 1 -> 2 -> 0 -> ...）
       int stage = 0;
@@ -3533,7 +3549,7 @@ __global__ void __launch_bounds__(kNumThreads, 1)
     //
     // 注意：此时每个 empty[i] 只有 128 次 arrive，未达 129，phase 不翻转。
     // Producer 后续的 empty[stage].arrive() 作为第 129 次，触发 phase 翻转。
-    warpgroup_reg_alloc<232>();
+    NOTES_V2_REG_ALLOC(232);
 
     for (int i = 0; i < kStages; ++i) {
       [[maybe_unused]] auto token = empty[i].arrive();
@@ -3795,6 +3811,7 @@ __global__ void __launch_bounds__(kNumThreads)
 
   if (wg_idx == 0) {
     // 生产者 Warpgroup（wg_idx==0）
+    NOTES_V2_REG_DEALLOC(40);
     if (wg_tid == 0) {
       int stage = 0;
       for (int k = 0; k < NUM_K_TILES; ++k, ++stage) {
@@ -3813,6 +3830,8 @@ __global__ void __launch_bounds__(kNumThreads)
   } else {
     // 消费者 Warpgroup（wg_idx==1）
     // 初始化：标记所有 stage 为"空"（可被 Producer 写入）
+    NOTES_V2_REG_ALLOC(232);
+
     for (int stage = 0; stage < kStages; ++stage) {
       [[maybe_unused]] auto token = empty[stage].arrive();
     }
@@ -5015,7 +5034,7 @@ __global__ void __launch_bounds__(kNumThreads, 1)
   // 1 次 mbarrier_arrive_expect_tx 声明总字节 + producer thread arrive。
   // ==================================================================
   if (wg_idx == 0) {
-    warpgroup_reg_dealloc<40>();
+    NOTES_V2_REG_DEALLOC(40);
     if (wg_tid == 0) {
       // Step P0: Load block-level Q tile [Br, d] once. D=128 时发 kTmaChunks 次。
       //   minor_coord = c * 64, major_coord = qkv_major_base + Q_tile_id * Br
@@ -5109,9 +5128,9 @@ __global__ void __launch_bounds__(kNumThreads, 1)
     // Consumer register budget per Triton flash_attn_v2 maxnreg strategy on
     // Blackwell warp_specialize: D=128 -> 168, otherwise -> 80.
     if constexpr (kHeadDim == 128) {
-      warpgroup_reg_alloc<168>();
+      NOTES_V2_REG_ALLOC(168);
     } else {
-      warpgroup_reg_alloc<80>();
+      NOTES_V2_REG_ALLOC(80);
     }
 
     for (int s = 0; s < kStagesK; ++s) {
