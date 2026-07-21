@@ -1730,8 +1730,16 @@ __global__ void __launch_bounds__(256)
 //   * 64B (B=2) : chunk(2b) ^ {(i>>1)&1, (i>>2)&1}      [{0..3}]
 //   * 128B(B=3) : chunk(3b) ^ {i&1, (i>>1)&1, (i>>2)&1} [{0..7}]
 // source: LeetCUDA/ffpa-attn/cuffpa/swizzle.cuh
+//
+// v1/v2 实现 (由编译宏 NOTES_V2_ENABLE_SWIZZLE_V2 门控):
+//   swizzle_v1_impl : 原手写 XOR 分支 (permuted<kColStride,8>), 按列宽展开.
+//   swizzle_v2_impl : 用本地 SwizzleBMS<B,M,S> 镜像 cute::Swizzle<B,M,S>::apply
+//                     位级公式统一表达 (16/32/64); kColStride=8 回退 v1.
+//   swizzle         : 公开派发器, 宏门控, 接口与原 swizzle<kColStride> 一致.
+// v2 不是新算法, 而是把 v1 的手写展开重新表达为 cute 的统一位置换公式,
+// 便于脱离 cute 框架理解 swizzle 本质. v1/v2 bit-exact 等价.
 template <const int kColStride = 16, const int kStep = 8>
-static __device__ __forceinline__ int permuted(int i, int j) {
+static __host__ __device__ __forceinline__ int permuted(int i, int j) {
   static_assert(kColStride == 16 || kColStride == 32 || kColStride == 64 ||
                 kColStride == 8,
                 "kColStride must be one of {8, 16, 32, 64} (matches "
@@ -1808,8 +1816,126 @@ static __device__ __forceinline__ int permuted(int i, int j) {
 // |row 15|  8   |  0   |  8   |  0   |  8   |  0   |  8   |  0   |
 // ----------------------------------------------------------------
 template <const int kColStride = 16>
-static __device__ __forceinline__ int swizzle(int i, int j) {
+static __host__ __device__ __forceinline__ int swizzle_v1_impl(int i, int j) {
   return permuted<kColStride, 8>(i, j);
+}
+
+// Swizzle v2: cute::Swizzle<B,M,S> 位级镜像（脱离 cute 框架独立理解）
+//
+// v2 双重目的:
+//   (1) 探索优化 v1 的可能 -- v1 按 kColStride 手写 XOR 分支展开, 已被 nvcc
+//       strength-reduce 到极简位运算; v2 用 cute 的统一位置换公式重新表达,
+//       预期中性, 但统一表达式可能更利于合并到地址算术 (bonus).
+//   (2) 把 cute Swizzle 的核心位逻辑从 cute 框架提取出来独立理解 -- 让 notes-v2
+//       不依赖 cute 头即可展示 Swizzle<B,M,S> 的位级语义, 便于读者脱离 cute
+//       模板体系直接掌握 swizzle 原理.
+//
+// 注释叙述参考: 上方 hgemm_mma_stages_tn_cute 处的 Swizzle<B,M,S> 原理解释
+// (二维逻辑空间 + 列置换), 此处适配 v2 的 (B,M,S)=(1/2/3, 4, 3) 语境.
+//
+// Swizzle<B,M,S> 的核心不是改变逻辑 Tensor 的 shape, 而是把一维 byte offset
+// 重新解释为一个二维逻辑空间, 再把二维坐标映射回 bank-conflict-free 的物理
+// offset:
+//   1. 连续的 2^M 个元素组成二维空间中的一个基本元素 (元素宽度);
+//   2. 连续的 2^S 个基本元素组成一行 (列数);
+//   3. 二维空间包含 2^B 行 (行数, 这些行的 chunk 互相置换);
+//   4. 对二维坐标做列置换: icol' = irow ^ icol;
+//   5. 保留基本元素内部的低 M 位, 再将置换后的二维坐标编码回 offset.
+//
+// 位级实现 (与 cutlass/include/cute/swizzle.hpp 一致):
+//   bit 布局:   0bxxxxxxxxxxxxxxxYYYxxxxxxxZZZxxxx
+//                                  ^--^ MBase: 保留不参与置换的低位数
+//                       ^-^       ^-^     BBits: XOR 掩码位数
+//                         ^---------^       SShift: YYY 相对 ZZZ 的位移
+//   apply(off) = off ^ shiftr(off & yyy_msk, S)
+//   yyy_msk    = ((1<<B)-1) << (M + max(0,S))    // YYY 掩码位置
+//   zzz_msk    = ((1<<B)-1) << (M - min(0,S))    // ZZZ 掩码位置 (文档用)
+//
+// 模板参数物理/语义含义:
+//   B (BBits)  : 二维逻辑空间的行数位 = 2^B 行, 即 swizzle 周期覆盖 2^B 个 chunk
+//                (这些 chunk 互相置换); 同时是 TMA 硬件 swizzle 模式
+//                SWIZZLE_{32,64,128}B 的位数 (B=1/2/3).
+//   M (MBase)  : 基本元素宽度位 = 2^M 个连续元素组成一个基本元素. 对 fp16 +
+//                8-element chunk, 基本元素 = 16B = 2^4, 故 M=4; 地址 bit[0..M-1]
+//                在 apply 中保持不变 (保留).
+//   S (SShift) : 二维空间每行列数位 = 2^S 个基本元素组成一行; 同时是 YYY 掩码
+//                相对 ZZZ 掩码的位移. S>0 表示 YYY 在更高位, 向右移 S 位到 ZZZ
+//                位置后 XOR. 本 notes-v2 三模式 S 恒为 3 (YYY 在 bit[7..7+B-1],
+//                即行索引 i 的低 B 位; ZZZ 在 bit[4..4+B-1], 即列 chunk 索引).
+//
+// 完整 swizzle 周期覆盖 2^(M+S+B) 个元素 (fp16 下 2^(M+S+B+1) 字节):
+//   (B,M,S)=(1,4,3): 256 elem / 512B   (SWIZZLE_32B)
+//   (B,M,S)=(2,4,3): 512 elem / 1024B  (SWIZZLE_64B)
+//   (B,M,S)=(3,4,3): 1024 elem / 2048B (SWIZZLE_128B)
+template <int B, int M, int S>
+struct SwizzleBMS {
+  static_assert(M >= 0, "MBase must be non-negative.");
+  static_assert(B > 0, "BBits must be positive.");
+  static_assert((S > 0 ? S : -S) >= B,
+                "abs(SShift) must be >= BBits (cute::Swizzle constraint).");
+
+  static constexpr int bit_msk = (1 << B) - 1;
+  static constexpr int yyy_msk = bit_msk << (M + (S > 0 ? S : 0));
+  static constexpr int zzz_msk = bit_msk << (M - (S < 0 ? S : 0));
+
+  // apply: 对 byte offset 做 XOR 位置换, ZZZ ^= (YYY >> S).
+  static __host__ __device__ __forceinline__ int apply(int offset) {
+    if constexpr (S >= 0) {
+      return offset ^ ((offset & yyy_msk) >> S);
+    } else {
+      return offset ^ ((offset & yyy_msk) << (-S));
+    }
+  }
+};
+
+// swizzle_v2_impl: 用 SwizzleBMS<B,M,S>::apply 计算 chunk 级列 swizzle.
+//
+// 流程: (i,j) -> byte offset off=(i*kColStride+j)*sizeof(half) -> SwizzleBMS
+//       位级置换 -> 取 [M, M+B) 位作为物理 chunk 索引 -> 乘 kStep 还原为列偏移.
+//
+// kColStride -> (B,M,S) 映射表 (对应 TMA 硬件 swizzle 模式):
+//   kColStride=16 fp16=32B/row  -> (B,M,S)=(1,4,3) = SWIZZLE_32B
+//   kColStride=32 fp16=64B/row  -> (B,M,S)=(2,4,3) = SWIZZLE_64B
+//   kColStride=64 fp16=128B/row -> (B,M,S)=(3,4,3) = SWIZZLE_128B
+//
+// kColStride=8 (kStep=4 legacy): 无对应 cute 标准 TMA swizzle 模式, 回退到
+//   swizzle_v1_impl. 该路径当前无任何 kernel 使用, 回退保证接口契约零变更.
+//
+// 等价性: 对 (16,32,64), v2 输出与 v1 bit-exact 相同 (见 test_swizzle_equiv).
+//   证明: off 的 bit[4..4+B-1] 恰是 (j>>3) 低 B 位 (因 i*kColStride 在这些位
+//   为 0); bit[7..7+B-1] 恰是 i 低 B 位 (因 j<kColStride 不贡献高位). apply
+//   把 YYY(bit[7..]) XOR 到 ZZZ(bit[4..]), 取 [M,M+B)=bit[4..4+B-1] 即得
+//   (j>>3)^i 的低 B 位 = v1 的 chunk^xor_mask.
+template <const int kColStride = 16>
+static __host__ __device__ __forceinline__ int swizzle_v2_impl(int i, int j) {
+  if constexpr (kColStride == 8) {
+    return swizzle_v1_impl<kColStride>(i, j);
+  } else {
+    static_assert(kColStride == 16 || kColStride == 32 || kColStride == 64,
+                  "v2 supports kColStride in {16, 32, 64} (cute TMA swizzle); "
+                  "8 falls back to v1.");
+    constexpr int B = (kColStride == 16) ? 1 : (kColStride == 32) ? 2 : 3;
+    constexpr int M = 4;
+    constexpr int S = 3;
+    constexpr int kStep = 8;
+    const int off = (i * kColStride + j) * (int)sizeof(half);
+    const int sw = SwizzleBMS<B, M, S>::apply(off);
+    return ((sw >> M) & ((1 << B) - 1)) * kStep;
+  }
+}
+
+// swizzle: 公开派发器, 由编译宏 NOTES_V2_ENABLE_SWIZZLE_V2 门控 v1/v2.
+//   未定义宏 (默认) -> swizzle_v1_impl (原手写 XOR 分支, 历史默认路径).
+//   定义宏          -> swizzle_v2_impl (cute Swizzle<B,M,S> 位级镜像).
+// 接口与原 swizzle<kColStride>(i,j) 完全一致, 所有 kernel 调用点无需改动.
+// v1/v2 等价性由 host 端 test_swizzle_equiv (--swizzle-eq-check) 验证.
+template <const int kColStride = 16>
+static __device__ __forceinline__ int swizzle(int i, int j) {
+#if defined(NOTES_V2_ENABLE_SWIZZLE_V2)
+  return swizzle_v2_impl<kColStride>(i, j);
+#else
+  return swizzle_v1_impl<kColStride>(i, j);
+#endif
 }
 
 // =============================================================================
@@ -7012,6 +7138,7 @@ static bool g_bench_hgemm_all = false;
 static bool g_bench_fa = false;
 static bool g_bench_all = false;
 static bool g_fa_skip_check = false;
+static bool g_swizzle_eq_check = false;
 enum class FALayout {All, Pad, SwizzleQ, SwizzleK, SwizzleV, SwizzleQK, SwizzleQV, SwizzleKV, Swizzle};
 static FALayout g_fa_layout = FALayout::Pad;
 static int g_bench_M = 8192, g_bench_N = 8192, g_bench_K = 8192;
@@ -8356,6 +8483,37 @@ static void bench_flash_attn(int B, int H, int N, int D) {
   cudaFree(d_o);
 }
 
+// Host 端 v1/v2 等价性测试: 遍历 kColStride/i/j, 断言 swizzle_v1_impl == swizzle_v2_impl.
+// 用于在启用 NOTES_V2_ENABLE_SWIZZLE_V2 前后验证 v2 与 v1 bit-exact 等价.
+// kColStride=8 在 v2 内回退 v1, 故 8 也应恒等.
+template <int kColStride>
+static void swizzle_equiv_check_one(long &total, long &fail) {
+  for (int i = 0; i < 256; ++i) {
+    for (int j = 0; j < kColStride; ++j) {
+      int v1 = swizzle_v1_impl<kColStride>(i, j);
+      int v2 = swizzle_v2_impl<kColStride>(i, j);
+      ++total;
+      if (v1 != v2) {
+        ++fail;
+        if (fail <= 10)
+          printf("  MISMATCH cs=%d i=%d j=%d: v1=%d v2=%d\n", kColStride, i, j, v1, v2);
+      }
+    }
+  }
+}
+
+static void test_swizzle_equiv() {
+  long total = 0, fail = 0;
+  swizzle_equiv_check_one<8>(total, fail);
+  swizzle_equiv_check_one<16>(total, fail);
+  swizzle_equiv_check_one<32>(total, fail);
+  swizzle_equiv_check_one<64>(total, fail);
+  printf("| %-56s | %-12s | %-4s | %-22s |\n",
+         "Swizzle v1/v2 equiv (host)", "N/A",
+         fail == 0 ? "PASS" : "FAIL",
+         fail == 0 ? "ALL PASS" : "FAIL");
+  printf("  total=%ld fail=%ld\n", total, fail);
+}
 
 int main(int argc, char *argv[]) {
 #if defined(NOTES_V2_ENABLE_WGMMA) || defined(NOTES_V2_ENABLE_TMA_MMA_WS)
@@ -8408,11 +8566,22 @@ int main(int argc, char *argv[]) {
       }
     } else if (strcmp(argv[i], "--fa-skip-check") == 0) {
       g_fa_skip_check = true;
+    } else if (strcmp(argv[i], "--swizzle-eq-check") == 0) {
+      g_swizzle_eq_check = true;
     } else if (strcmp(argv[i], "--warmup") == 0 && i + 1 < argc) {
       g_warmup = atoi(argv[++i]);
     } else if (strcmp(argv[i], "--repeat") == 0 && i + 1 < argc) {
       g_repeat = atoi(argv[++i]);
     }
+  }
+
+  if (g_swizzle_eq_check) {
+    printf("=== notes-v2.cu swizzle v1/v2 equivalence check ===\n");
+    printf("| %-56s | %-12s | %-4s | %-22s |\n", "Kernel", "Max Err", "Pass", "TFLOPS vs cu{BLAS,DNN}");
+    printf("|----------------------------------------------------------|--------------|------|------------------------|\n");
+    test_swizzle_equiv();
+    printf("=== Done ===\n");
+    return 0;
   }
 
   if (g_bench_hgemm || g_bench_fa || g_bench_all) {
