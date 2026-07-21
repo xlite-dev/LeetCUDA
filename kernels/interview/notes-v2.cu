@@ -2955,9 +2955,70 @@ void launch_hgemm_mma_stages_tn_cute(T *a, T *b, T *c, int M, int N, int K) {
 #endif /* NOTES_V2_ENABLE_CUTE */
 
 #if defined(NOTES_V2_ENABLE_WGMMA) || defined(NOTES_V2_ENABLE_TMA_MMA_WS)
-// CUDA 13.2 promotes these TMA operations to cuda::ptx. Keep the older
-// experimental wrappers so the Hopper path remains buildable on prior toolkits.
-__device__ __forceinline__ void tma_fence_proxy_async_shared_cta() {
+// TMA/mbarrier helpers.
+//
+// Two implementations gated by NOTES_V2_FORCE_INLINE_ASYNC_PROXY:
+//   - Defined (default): raw `asm volatile` PTX. ptxas keeps setmaxnreg
+//     because raw asm carries no source annotation that ptxas would treat as
+//     an "extern call" boundary (warning C7506 otherwise drops the hint).
+//   - Undef'd: cuda::ptx:: / cuda::device:: C++ wrappers. Cleaner API but
+//     ptxas drops setmaxnreg with C7506 even though the wrappers inline to
+//     identical PTX; useful for comparing behavior / debugging.
+//
+// cuda::barrier (init/arrive/wait) is shared by both paths: it inlines to raw
+// mbarrier PTX and does not trigger C7506, so it needs no gating.
+//
+// Mirrors the raw-PTX style of tmp/LeetGPU/CUDA/22_GEMM/sm90_wgmma_tma_ws_pingpong.cu.
+#if defined(NOTES_V2_FORCE_INLINE_ASYNC_PROXY)
+
+static __device__ __forceinline__ uint32_t
+cast_smem_ptr_to_uint(void const *ptr) {
+  return static_cast<uint32_t>(__cvta_generic_to_shared(ptr));
+}
+
+static __device__ __forceinline__ void tma_fence_proxy_async_shared_cta() {
+  asm volatile("fence.proxy.async.shared::cta;\n" ::: "memory");
+}
+
+// cp.async.bulk.tensor.2d: 2D TMA copy from global to shared::cluster.
+//   [dst]            = shared memory destination (smem addr, 32-bit)
+//   [desc, {c0, c1}]  = CUtensorMap + (minor_coord, major_coord) coords
+//   [mbar]            = mbarrier in shared memory (smem addr, 32-bit)
+// mbarrier::complete_tx::bytes: barrier flips phase when TMA bytes land.
+// L2::cache_hint omitted (EVICT_NORMAL); matches the cuda::ptx default.
+static __device__ __forceinline__ void tma_load_2d(
+    void *dst, const CUtensorMap *tensor_map, int minor_coord, int major_coord,
+    cuda::barrier<cuda::thread_scope_block> &barrier) {
+  uint64_t gmem_int_desc = reinterpret_cast<uint64_t>(tensor_map);
+  uint32_t smem_int_ptr = cast_smem_ptr_to_uint(dst);
+  uint32_t smem_int_mbar =
+      cast_smem_ptr_to_uint(reinterpret_cast<uint64_t *>(&barrier));
+  asm volatile(
+      "cp.async.bulk.tensor.2d.shared::cluster.global.mbarrier::complete_tx::bytes"
+      " [%0], [%1, {%3, %4}], [%2];"
+      :
+      : "r"(smem_int_ptr), "l"(gmem_int_desc), "r"(smem_int_mbar),
+        "r"(minor_coord), "r"(major_coord)
+      : "memory");
+}
+
+// mbarrier.arrive.expect_tx: register one arrival on the mbarrier and declare
+// that `bytes` of async copy traffic is expected before the phase flips.
+// Equivalent to cuda::ptx::mbarrier_arrive_expect_tx(release, cta, shared).
+static __device__ __forceinline__ void tma_arrive_expect_tx(
+    cuda::barrier<cuda::thread_scope_block> &barrier, uint32_t bytes) {
+  uint32_t smem_int_mbar =
+      cast_smem_ptr_to_uint(reinterpret_cast<uint64_t *>(&barrier));
+  asm volatile(
+      "mbarrier.arrive.expect_tx.shared::cta.b64 _, [%0], %1;\n"
+      :
+      : "r"(smem_int_mbar), "r"(bytes)
+      : "memory");
+}
+
+#else // !NOTES_V2_FORCE_INLINE_ASYNC_PROXY: use cuda::ptx / cuda::device wrappers
+
+static __device__ __forceinline__ void tma_fence_proxy_async_shared_cta() {
 #if CUDART_VERSION >= 13020
   cuda::ptx::fence_proxy_async(cuda::ptx::space_shared);
 #else
@@ -2965,7 +3026,7 @@ __device__ __forceinline__ void tma_fence_proxy_async_shared_cta() {
 #endif
 }
 
-__device__ __forceinline__ void tma_load_2d(
+static __device__ __forceinline__ void tma_load_2d(
     void *dst, const CUtensorMap *tensor_map, int minor_coord, int major_coord,
     cuda::barrier<cuda::thread_scope_block> &barrier) {
 #if CUDART_VERSION >= 13020
@@ -2980,7 +3041,7 @@ __device__ __forceinline__ void tma_load_2d(
 #endif
 }
 
-__device__ __forceinline__ void tma_arrive_expect_tx(
+static __device__ __forceinline__ void tma_arrive_expect_tx(
     cuda::barrier<cuda::thread_scope_block> &barrier, uint32_t bytes) {
 #if CUDART_VERSION >= 13020
   auto *barrier_handle = cuda::device::barrier_native_handle(barrier);
@@ -2991,6 +3052,29 @@ __device__ __forceinline__ void tma_arrive_expect_tx(
   [[maybe_unused]] auto token =
       cuda::device::barrier_arrive_tx(barrier, 1, bytes);
 #endif
+}
+
+#endif // NOTES_V2_FORCE_INLINE_ASYNC_PROXY
+
+// Warpgroup-level register rebalancing for warp specialization.
+// setmaxnreg.dec releases registers (producer TMA path needs few),
+// setmaxnreg.inc requests registers (consumer MMA path needs many).
+// Both require all warps in a warpgroup to execute the same instruction,
+// and require __launch_bounds__(N, 1) so the compiler permits up to 256
+// regs/warp (otherwise the hint may have no effect). Supported on sm_90a/sm_120a.
+// __forceinline__ is mandatory: without it ptxas drops setmaxnreg with
+// warning C7506 "ignored to maintain compatibility into 'extern' call",
+// because a non-inlined call boundary forces a fixed register convention.
+template <uint32_t kNumRegs>
+__device__ __forceinline__ void warpgroup_reg_dealloc()
+{
+  asm volatile("setmaxnreg.dec.sync.aligned.u32 %0;\n" : : "n"(kNumRegs));
+}
+
+template <uint32_t kNumRegs>
+__device__ __forceinline__ void warpgroup_reg_alloc()
+{
+  asm volatile("setmaxnreg.inc.sync.aligned.u32 %0;\n" : : "n"(kNumRegs));
 }
 #endif
 
@@ -3235,7 +3319,7 @@ template <const int kWgmmaM = 64,           // WGMMA atom M dim (m64n128k16)
           const int kNumThreads = 256,      // 2 wargroups × 128 threads
           const int kStages = 3,            // TMA pipeline depth (full/empty barriers)
           const int kBlockSwizzle = 0>      // 1 enables 3D grid swizzle for L2 locality
-__global__ void __launch_bounds__(kNumThreads)
+__global__ void __launch_bounds__(kNumThreads, 1)
     hgemm_wgmma_stages_tn(
         int M, int N, int K, half *C,
         const CUtensorMap *__restrict__ tensorMapA,
@@ -3380,6 +3464,7 @@ __global__ void __launch_bounds__(kNumThreads)
   // 只有 wg_tid==0 执行实际拷贝提交，其余 127 个线程空闲。
   // ==================================================================
   if (wg_idx == 0) {
+    warpgroup_reg_dealloc<40>();
     if (wg_tid == 0) {
       // stage: 当前操作的 stage 索引（round-robin 0 -> 1 -> 2 -> 0 -> ...）
       int stage = 0;
@@ -3448,6 +3533,8 @@ __global__ void __launch_bounds__(kNumThreads)
     //
     // 注意：此时每个 empty[i] 只有 128 次 arrive，未达 129，phase 不翻转。
     // Producer 后续的 empty[stage].arrive() 作为第 129 次，触发 phase 翻转。
+    warpgroup_reg_alloc<232>();
+
     for (int i = 0; i < kStages; ++i) {
       [[maybe_unused]] auto token = empty[i].arrive();
     }
@@ -4827,7 +4914,7 @@ template <
     const int kStagesK,          // K pipeline depth (>=1)
     const int kStagesV,          // V pipeline depth (>=1; 1=single buffer, >=2=pipelined)
     const int kNumThreads>       // 384, 128 producer + 256 consumer
-__global__ void __launch_bounds__(kNumThreads)
+__global__ void __launch_bounds__(kNumThreads, 1)
     flash_attn_tma_mma_ws_stages_split_q(
         half *Q, half *K, half *V, half *O, int N, int H,
         const CUtensorMap *__restrict__ tensorMapQ,
@@ -4928,6 +5015,7 @@ __global__ void __launch_bounds__(kNumThreads)
   // 1 次 mbarrier_arrive_expect_tx 声明总字节 + producer thread arrive。
   // ==================================================================
   if (wg_idx == 0) {
+    warpgroup_reg_dealloc<40>();
     if (wg_tid == 0) {
       // Step P0: Load block-level Q tile [Br, d] once. D=128 时发 kTmaChunks 次。
       //   minor_coord = c * 64, major_coord = qkv_major_base + Q_tile_id * Br
@@ -5018,6 +5106,14 @@ __global__ void __launch_bounds__(kNumThreads)
     const int warp_KV = 0;
 
     // Step C0: init — mark all K stages and V stages as "empty" (consumable by producer)
+    // Consumer register budget per Triton flash_attn_v2 maxnreg strategy on
+    // Blackwell warp_specialize: D=128 -> 168, otherwise -> 80.
+    if constexpr (kHeadDim == 128) {
+      warpgroup_reg_alloc<168>();
+    } else {
+      warpgroup_reg_alloc<80>();
+    }
+
     for (int s = 0; s < kStagesK; ++s) {
       [[maybe_unused]] auto token = empty_K[s].arrive();
     }
