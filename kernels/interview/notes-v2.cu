@@ -7691,7 +7691,7 @@ template <int kHeadDim, int kStagesK = 2, int kPadQ = 8, int kPadK = 8,
           int kPadV = 8, int kMmaAccF32 = 0>
 static void bench_fa_launch(int B, int H, int seqlen, int head_dim,
     half *h_o_ref, float *ref_o, half *d_q, half *d_k, half *d_v, half *d_o,
-    float cudnn_tflops) {
+    float cudnn_tflops_f16) {
   static_assert(kHeadDim == 64 || kHeadDim == 128, "Only D=64 and D=128 are supported");
   constexpr bool kSwizzleQ = kPadQ == 0;
   constexpr bool kSwizzleK = kPadK == 0;
@@ -7792,8 +7792,8 @@ static void bench_fa_launch(int B, int H, int seqlen, int head_dim,
   if (smem_ok && checked) {
     float tflops = bench_fa_tflops(B, H, seqlen, head_dim, time_ms);
     char tflops_str[32];
-    if (cudnn_tflops > 0)
-      snprintf(tflops_str, sizeof(tflops_str), "%.1f/%.1f (%.2fx)", tflops, cudnn_tflops, tflops / cudnn_tflops);
+    if (cudnn_tflops_f16 > 0)
+      snprintf(tflops_str, sizeof(tflops_str), "%.1f/%.1f (%.2fx)", tflops, cudnn_tflops_f16, tflops / cudnn_tflops_f16);
     else
       snprintf(tflops_str, sizeof(tflops_str), "%.1f", tflops);
     printf("| %-56s | %.6e | %-4s | %-22s |\n", label, max_err,
@@ -7819,7 +7819,7 @@ template <int kHeadDim, int kStagesK, int kStagesV = 1, int kMmaAccF32 = 0>
 static void bench_fa_tma_mma_ws_launch(int B, int H, int seqlen, int head_dim,
                                        half *h_o_ref, float *ref_o,
                                        half *d_q, half *d_k, half *d_v,
-                                       half *d_o, float cudnn_tflops) {
+                                       half *d_o, float cudnn_tflops_f16) {
   constexpr int kMmaAtomM = 16, kMmaAtomN = 8, kMmaAtomK = 16;
   constexpr int kMmaTileSeqLenQ = 8, kMmaTileSeqLenK = 1;
   constexpr int kMmaTileSeqLenP = 8, kMmaTileHeadDimV = 1;
@@ -7923,8 +7923,8 @@ static void bench_fa_tma_mma_ws_launch(int B, int H, int seqlen, int head_dim,
   if (smem_ok && checked) {
     float tflops = bench_fa_tflops(B, H, seqlen, head_dim, time_ms);
     char tflops_str[32];
-    if (cudnn_tflops > 0)
-      snprintf(tflops_str, sizeof(tflops_str), "%.1f/%.1f (%.2fx)", tflops, cudnn_tflops, tflops / cudnn_tflops);
+    if (cudnn_tflops_f16 > 0)
+      snprintf(tflops_str, sizeof(tflops_str), "%.1f/%.1f (%.2fx)", tflops, cudnn_tflops_f16, tflops / cudnn_tflops_f16);
     else
       snprintf(tflops_str, sizeof(tflops_str), "%.1f", tflops);
     printf("| %-56s | %.6e | %-4s | %-22s |\n", label, max_err,
@@ -7954,13 +7954,13 @@ template <int kStagesK, int kStagesV = 1, int kMmaAccF32 = 0>
 static void bench_fa_tma_mma_ws_dispatch(int B, int H, int seqlen, int head_dim,
                                          half *h_o_ref, float *ref_o,
                                          half *d_q, half *d_k, half *d_v,
-                                         half *d_o, float cudnn_tflops) {
+                                         half *d_o, float cudnn_tflops_f16) {
   if (head_dim == 64) {
     bench_fa_tma_mma_ws_launch<64, kStagesK, kStagesV, kMmaAccF32>(B, H, seqlen, head_dim, h_o_ref,
-                                                       ref_o, d_q, d_k, d_v, d_o, cudnn_tflops);
+                                                       ref_o, d_q, d_k, d_v, d_o, cudnn_tflops_f16);
   } else if (head_dim == 128) {
     bench_fa_tma_mma_ws_launch<128, kStagesK, kStagesV, kMmaAccF32>(B, H, seqlen, head_dim, h_o_ref,
-                                                        ref_o, d_q, d_k, d_v, d_o, cudnn_tflops);
+                                                        ref_o, d_q, d_k, d_v, d_o, cudnn_tflops_f16);
   } else {
     char label[64];
     snprintf(label, sizeof(label),
@@ -7969,6 +7969,71 @@ static void bench_fa_tma_mma_ws_dispatch(int B, int H, int seqlen, int head_dim,
   }
 }
 #endif /* NOTES_V2_ENABLE_TMA_MMA_WS */
+
+#if defined(NOTES_V2_ENABLE_CUDNN)
+static float bench_cudnn_sdpa_tflops(half *d_q, half *d_k, half *d_v,
+                                      half *d_o_ref, int B, int H, int seqlen,
+                                      int head_dim, fe::DataType_t compute_type) {
+  cudnnHandle_t handle;
+  cudnnCreate(&handle);
+  auto graph = std::make_shared<fe::graph::Graph>();
+  graph->set_io_data_type(fe::DataType_t::HALF)
+    .set_intermediate_data_type(fe::DataType_t::FLOAT)
+    .set_compute_data_type(compute_type);
+
+  auto Q = graph->tensor(fe::graph::Tensor_attributes()
+    .set_uid(1).set_dim({B, H, seqlen, head_dim})
+    .set_stride({H * seqlen * head_dim, seqlen * head_dim, head_dim, 1}));
+  auto K = graph->tensor(fe::graph::Tensor_attributes()
+    .set_uid(2).set_dim({B, H, seqlen, head_dim})
+    .set_stride({H * seqlen * head_dim, seqlen * head_dim, head_dim, 1}));
+  auto V = graph->tensor(fe::graph::Tensor_attributes()
+    .set_uid(3).set_dim({B, H, seqlen, head_dim})
+    .set_stride({H * seqlen * head_dim, seqlen * head_dim, head_dim, 1}));
+
+  auto [O_sdpa, Stats] = graph->sdpa(Q, K, V,
+    fe::graph::SDPA_attributes()
+      .set_name("sdpa_ref")
+      .set_attn_scale(1.0f / sqrtf((float)head_dim)));
+
+  O_sdpa->set_output(true).set_uid(4)
+    .set_dim({B, H, seqlen, head_dim})
+    .set_stride({H * seqlen * head_dim, seqlen * head_dim, head_dim, 1});
+
+  auto build_status = graph->build(handle, {fe::HeurMode_t::A, fe::HeurMode_t::FALLBACK});
+  float tflops = -1.0f;
+  if (build_status.is_good()) {
+    std::unordered_map<fe::graph::Tensor_attributes::uid_t, void*> vp = {
+      {1, d_q}, {2, d_k}, {3, d_v}, {4, d_o_ref}};
+    int64_t ws_size = 0;
+    if (graph->get_workspace_size(ws_size).is_good()) {
+      int8_t *d_ws = nullptr;
+      if (ws_size > 0) check(cudaMalloc(&d_ws, ws_size), "bench cudnn ws");
+      if (graph->execute(handle, vp, d_ws).is_good()) {
+        check(cudaDeviceSynchronize(), "bench cudnn sync");
+        for (int w = 1; w < g_warmup; ++w)
+          (void)graph->execute(handle, vp, d_ws);
+        cudaDeviceSynchronize();
+        cudaEvent_t ev_s, ev_e;
+        cudaEventCreate(&ev_s); cudaEventCreate(&ev_e);
+        cudaEventRecord(ev_s);
+        for (int r = 0; r < g_repeat; ++r)
+          (void)graph->execute(handle, vp, d_ws);
+        cudaEventRecord(ev_e);
+        cudaEventSynchronize(ev_e);
+        float time_ms = 0;
+        cudaEventElapsedTime(&time_ms, ev_s, ev_e);
+        time_ms /= g_repeat;
+        tflops = bench_fa_tflops(B, H, seqlen, head_dim, time_ms);
+        cudaEventDestroy(ev_s); cudaEventDestroy(ev_e);
+      }
+      if (d_ws) cudaFree(d_ws);
+    }
+  }
+  cudnnDestroy(handle);
+  return tflops;
+}
+#endif
 
 static void bench_flash_attn(int B, int H, int N, int D) {
   int seqlen = N, head_dim = D;
@@ -8003,80 +8068,21 @@ static void bench_flash_attn(int B, int H, int N, int D) {
   // Reference output: either cuDNN (half) or CPU (float)
   half *h_o_ref = nullptr;
   float *ref_o = nullptr;
-  float cudnn_tflops = -1.0f;
+  float cudnn_tflops_f16 = -1.0f, cudnn_tflops_f32 = -1.0f;
   int ref_count = B * H * seqlen * head_dim;
 
 #if defined(NOTES_V2_ENABLE_CUDNN)
   if (!g_fa_skip_check) {
-    // Try cuDNN SDPA first; fall back to CPU if unsupported on this SM
-    bool cudnn_ok = false;
     half *d_o_ref;
     check(cudaMalloc(&d_o_ref, sz), "bench fa alloc O_ref");
-    {
-      cudnnHandle_t cudnn_handle;
-      cudnnCreate(&cudnn_handle);
-      auto graph = std::make_shared<fe::graph::Graph>();
-      graph->set_io_data_type(fe::DataType_t::HALF) // QKVO io buffer
-        .set_intermediate_data_type(fe::DataType_t::FLOAT) // Softmax, P buffer
-        .set_compute_data_type(fe::DataType_t::HALF); // Accumulate, mma accumulator
-
-      auto Q = graph->tensor(fe::graph::Tensor_attributes()
-        .set_uid(1).set_dim({B, H, seqlen, head_dim})
-        .set_stride({H * seqlen * head_dim, seqlen * head_dim, head_dim, 1}));
-      auto K = graph->tensor(fe::graph::Tensor_attributes()
-        .set_uid(2).set_dim({B, H, seqlen, head_dim})
-        .set_stride({H * seqlen * head_dim, seqlen * head_dim, head_dim, 1}));
-      auto V = graph->tensor(fe::graph::Tensor_attributes()
-        .set_uid(3).set_dim({B, H, seqlen, head_dim})
-        .set_stride({H * seqlen * head_dim, seqlen * head_dim, head_dim, 1}));
-
-      auto [O_sdpa, Stats] = graph->sdpa(Q, K, V,
-        fe::graph::SDPA_attributes()
-          .set_name("sdpa_ref")
-          .set_attn_scale(1.0f / sqrtf((float)head_dim)));
-
-      O_sdpa->set_output(true).set_uid(4)
-        .set_dim({B, H, seqlen, head_dim})
-        .set_stride({H * seqlen * head_dim, seqlen * head_dim, head_dim, 1});
-
-      // Try A first, then fallback (matching Python example: [cudnn.heur_mode.A, cudnn.heur_mode.FALLBACK])
-      auto build_status = graph->build(cudnn_handle, {fe::HeurMode_t::A, fe::HeurMode_t::FALLBACK});
-      if (build_status.is_good()) {
-        std::unordered_map<fe::graph::Tensor_attributes::uid_t, void*> vp = {
-          {1, d_q}, {2, d_k}, {3, d_v}, {4, d_o_ref}};
-        int64_t ws_size = 0;
-        if (graph->get_workspace_size(ws_size).is_good()) {
-          int8_t *d_ws = nullptr;
-          if (ws_size > 0) check(cudaMalloc(&d_ws, ws_size), "bench fa workspace");
-          if (graph->execute(cudnn_handle, vp, d_ws).is_good()) {
-            check(cudaDeviceSynchronize(), "bench fa cudnn sync");
-            cudnn_ok = true;
-            // time cuDNN SDPA with same warmup/repeat
-            for (int w = 1; w < g_warmup; ++w)
-              (void)graph->execute(cudnn_handle, vp, d_ws);
-            cudaDeviceSynchronize();
-            cudaEvent_t ev_start, ev_stop;
-            cudaEventCreate(&ev_start);
-            cudaEventCreate(&ev_stop);
-            cudaEventRecord(ev_start);
-            for (int r = 0; r < g_repeat; ++r)
-              (void)graph->execute(cudnn_handle, vp, d_ws);
-            cudaEventRecord(ev_stop);
-            cudaEventSynchronize(ev_stop);
-            float time_ms = 0;
-            cudaEventElapsedTime(&time_ms, ev_start, ev_stop);
-            time_ms /= g_repeat;
-            cudnn_tflops = bench_fa_tflops(B, H, seqlen, head_dim, time_ms);
-            cudaEventDestroy(ev_start);
-            cudaEventDestroy(ev_stop);
-          }
-          if (d_ws) cudaFree(d_ws);
-        }
-      }
-      cudnnDestroy(cudnn_handle);
-    }
-
+    cudnn_tflops_f16 = bench_cudnn_sdpa_tflops(d_q, d_k, d_v, d_o_ref,
+                                               B, H, seqlen, head_dim,
+                                               fe::DataType_t::HALF);
+    bool cudnn_ok = (cudnn_tflops_f16 > 0);
     if (cudnn_ok) {
+      cudnn_tflops_f32 = bench_cudnn_sdpa_tflops(d_q, d_k, d_v, d_o_ref,
+                                                 B, H, seqlen, head_dim,
+                                                 fe::DataType_t::FLOAT);
       h_o_ref = (half *)malloc(sz);
       check(cudaMemcpy(h_o_ref, d_o_ref, sz, cudaMemcpyDeviceToHost), "bench fa D2H ref");
     } else {
@@ -8133,165 +8139,165 @@ static void bench_flash_attn(int B, int H, int N, int D) {
   if (head_dim == 64) {
     if (g_fa_layout == FALayout::All || g_fa_layout == FALayout::Pad) {
       cudaDeviceSynchronize();
-      bench_fa_launch<64, 1, 8, 8, 8>(B, H, seqlen, head_dim, h_o_ref, ref_o, 
-                                      d_q, d_k, d_v, d_o, cudnn_tflops);
+      bench_fa_launch<64, 1, 8, 8, 8, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o, 
+                                       d_q, d_k, d_v, d_o, cudnn_tflops_f16);
       cudaDeviceSynchronize();
-      bench_fa_launch<64, 2, 8, 8, 8>(B, H, seqlen, head_dim, h_o_ref, ref_o, 
-                                      d_q, d_k, d_v, d_o, cudnn_tflops);
+      bench_fa_launch<64, 2, 8, 8, 8, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o, 
+                                        d_q, d_k, d_v, d_o, cudnn_tflops_f16);
       cudaDeviceSynchronize();
       bench_fa_launch<64, 1, 8, 8, 8, 1>(B, H, seqlen, head_dim, h_o_ref, ref_o,
-                                         d_q, d_k, d_v, d_o, cudnn_tflops);
+                                         d_q, d_k, d_v, d_o, cudnn_tflops_f32);
       cudaDeviceSynchronize();
       bench_fa_launch<64, 2, 8, 8, 8, 1>(B, H, seqlen, head_dim, h_o_ref, ref_o,
-                                         d_q, d_k, d_v, d_o, cudnn_tflops);
+                                         d_q, d_k, d_v, d_o, cudnn_tflops_f32);
     }
     if (g_fa_layout == FALayout::All || g_fa_layout == FALayout::SwizzleQ) {
       cudaDeviceSynchronize();
-      bench_fa_launch<64, 2, 0, 8, 8>(B, H, seqlen, head_dim, h_o_ref, ref_o, 
-                                      d_q, d_k, d_v, d_o, cudnn_tflops);
+      bench_fa_launch<64, 2, 0, 8, 8, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o, 
+                                         d_q, d_k, d_v, d_o, cudnn_tflops_f16);
     }
     if (g_fa_layout == FALayout::All || g_fa_layout == FALayout::SwizzleK) {
       cudaDeviceSynchronize();
-      bench_fa_launch<64, 2, 8, 0, 8>(B, H, seqlen, head_dim, h_o_ref, ref_o, 
-                                      d_q, d_k, d_v, d_o, cudnn_tflops);
+      bench_fa_launch<64, 2, 8, 0, 8, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o, 
+                                         d_q, d_k, d_v, d_o, cudnn_tflops_f16);
     }
     if (g_fa_layout == FALayout::All || g_fa_layout == FALayout::SwizzleV) {
       cudaDeviceSynchronize();
-      bench_fa_launch<64, 2, 8, 8, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o, 
-                                      d_q, d_k, d_v, d_o, cudnn_tflops);
+      bench_fa_launch<64, 2, 8, 8, 0, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o, 
+                                         d_q, d_k, d_v, d_o, cudnn_tflops_f16);
     }
     if (g_fa_layout == FALayout::All || g_fa_layout == FALayout::SwizzleQK) {
       cudaDeviceSynchronize();
-      bench_fa_launch<64, 2, 0, 0, 8>(B, H, seqlen, head_dim, h_o_ref, ref_o, 
-                                      d_q, d_k, d_v, d_o, cudnn_tflops);
+      bench_fa_launch<64, 2, 0, 0, 8, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o, 
+                                         d_q, d_k, d_v, d_o, cudnn_tflops_f16);
     }
     if (g_fa_layout == FALayout::All || g_fa_layout == FALayout::SwizzleQV) {
       cudaDeviceSynchronize();
-      bench_fa_launch<64, 2, 0, 8, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o, 
-                                      d_q, d_k, d_v, d_o, cudnn_tflops);
+      bench_fa_launch<64, 2, 0, 8, 0, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o, 
+                                         d_q, d_k, d_v, d_o, cudnn_tflops_f16);
     }
     if (g_fa_layout == FALayout::All || g_fa_layout == FALayout::SwizzleKV) {
       cudaDeviceSynchronize();
-      bench_fa_launch<64, 2, 8, 0, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o, 
-                                      d_q, d_k, d_v, d_o, cudnn_tflops);
+      bench_fa_launch<64, 2, 8, 0, 0, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o, 
+                                        d_q, d_k, d_v, d_o, cudnn_tflops_f16);
     }
     if (g_fa_layout == FALayout::All || g_fa_layout == FALayout::Swizzle) {
       cudaDeviceSynchronize();
-      bench_fa_launch<64, 2, 0, 0, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o, 
-                                      d_q, d_k, d_v, d_o, cudnn_tflops);
+      bench_fa_launch<64, 2, 0, 0, 0, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o, 
+                                         d_q, d_k, d_v, d_o, cudnn_tflops_f16);
     }
 #if defined(NOTES_V2_ENABLE_TMA_MMA_WS)
     {
       cudaDeviceSynchronize();
-      bench_fa_tma_mma_ws_dispatch<1, 1>(B, H, seqlen, head_dim, h_o_ref, ref_o,
-                                         d_q, d_k, d_v, d_o, cudnn_tflops);
+      bench_fa_tma_mma_ws_dispatch<1, 1, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o,
+                                            d_q, d_k, d_v, d_o, cudnn_tflops_f16);
       cudaDeviceSynchronize();
-      bench_fa_tma_mma_ws_dispatch<2, 1>(B, H, seqlen, head_dim, h_o_ref, ref_o,
-                                         d_q, d_k, d_v, d_o, cudnn_tflops);
+      bench_fa_tma_mma_ws_dispatch<2, 1, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o,
+                                            d_q, d_k, d_v, d_o, cudnn_tflops_f16);
       cudaDeviceSynchronize();
-      bench_fa_tma_mma_ws_dispatch<3, 1>(B, H, seqlen, head_dim, h_o_ref, ref_o,
-                                         d_q, d_k, d_v, d_o, cudnn_tflops);
+      bench_fa_tma_mma_ws_dispatch<3, 1, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o,
+                                            d_q, d_k, d_v, d_o, cudnn_tflops_f16);
       cudaDeviceSynchronize();
-      bench_fa_tma_mma_ws_dispatch<4, 1>(B, H, seqlen, head_dim, h_o_ref, ref_o,
-                                         d_q, d_k, d_v, d_o, cudnn_tflops);
+      bench_fa_tma_mma_ws_dispatch<4, 1, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o,
+                                            d_q, d_k, d_v, d_o, cudnn_tflops_f16);
       cudaDeviceSynchronize();
-      bench_fa_tma_mma_ws_dispatch<2, 2>(B, H, seqlen, head_dim, h_o_ref, ref_o,
-                                         d_q, d_k, d_v, d_o, cudnn_tflops);
+      bench_fa_tma_mma_ws_dispatch<2, 2, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o,
+                                            d_q, d_k, d_v, d_o, cudnn_tflops_f16);
       // F32Acc variants
       cudaDeviceSynchronize();
       bench_fa_tma_mma_ws_dispatch<1, 1, 1>(B, H, seqlen, head_dim, h_o_ref,
-                                            ref_o, d_q, d_k, d_v, d_o, cudnn_tflops);
+                                            ref_o, d_q, d_k, d_v, d_o, cudnn_tflops_f32);
       cudaDeviceSynchronize();
       bench_fa_tma_mma_ws_dispatch<2, 1, 1>(B, H, seqlen, head_dim, h_o_ref,
-                                            ref_o, d_q, d_k, d_v, d_o, cudnn_tflops);
+                                            ref_o, d_q, d_k, d_v, d_o, cudnn_tflops_f32);
       cudaDeviceSynchronize();
       bench_fa_tma_mma_ws_dispatch<3, 1, 1>(B, H, seqlen, head_dim, h_o_ref,
-                                            ref_o, d_q, d_k, d_v, d_o, cudnn_tflops);
+                                            ref_o, d_q, d_k, d_v, d_o, cudnn_tflops_f32);
       cudaDeviceSynchronize();
       bench_fa_tma_mma_ws_dispatch<4, 1, 1>(B, H, seqlen, head_dim, h_o_ref,
-                                            ref_o, d_q, d_k, d_v, d_o, cudnn_tflops);
+                                            ref_o, d_q, d_k, d_v, d_o, cudnn_tflops_f32);
       cudaDeviceSynchronize();
       bench_fa_tma_mma_ws_dispatch<2, 2, 1>(B, H, seqlen, head_dim, h_o_ref,
-                                            ref_o, d_q, d_k, d_v, d_o, cudnn_tflops);
+                                            ref_o, d_q, d_k, d_v, d_o, cudnn_tflops_f32);
     }
 #endif
   } else {
     if (g_fa_layout == FALayout::All || g_fa_layout == FALayout::Pad) {
       cudaDeviceSynchronize();
-      bench_fa_launch<128, 1, 8, 8, 8>(B, H, seqlen, head_dim, h_o_ref, ref_o, 
-                                       d_q, d_k, d_v, d_o, cudnn_tflops);
+      bench_fa_launch<128, 1, 8, 8, 8, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o, 
+                                          d_q, d_k, d_v, d_o, cudnn_tflops_f16);
       cudaDeviceSynchronize();
-      bench_fa_launch<128, 2, 8, 8, 8>(B, H, seqlen, head_dim, h_o_ref, ref_o, 
-                                       d_q, d_k, d_v, d_o, cudnn_tflops);
+      bench_fa_launch<128, 2, 8, 8, 8, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o, 
+                                          d_q, d_k, d_v, d_o, cudnn_tflops_f16);
       cudaDeviceSynchronize();
       bench_fa_launch<128, 1, 8, 8, 8, 1>(B, H, seqlen, head_dim, h_o_ref, ref_o,
-                                          d_q, d_k, d_v, d_o, cudnn_tflops);
+                                          d_q, d_k, d_v, d_o, cudnn_tflops_f32);
       cudaDeviceSynchronize();
       bench_fa_launch<128, 2, 8, 8, 8, 1>(B, H, seqlen, head_dim, h_o_ref, ref_o,
-                                          d_q, d_k, d_v, d_o, cudnn_tflops);
+                                          d_q, d_k, d_v, d_o, cudnn_tflops_f32);
     }
     if (g_fa_layout == FALayout::All || g_fa_layout == FALayout::SwizzleQ) {
       cudaDeviceSynchronize();
-      bench_fa_launch<128, 2, 0, 8, 8>(B, H, seqlen, head_dim, h_o_ref, ref_o, 
-                                       d_q, d_k, d_v, d_o, cudnn_tflops);
+      bench_fa_launch<128, 2, 0, 8, 8, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o, 
+                                          d_q, d_k, d_v, d_o, cudnn_tflops_f16);
     }
     if (g_fa_layout == FALayout::All || g_fa_layout == FALayout::SwizzleK) {
       cudaDeviceSynchronize();
-      bench_fa_launch<128, 2, 8, 0, 8>(B, H, seqlen, head_dim, h_o_ref, ref_o, 
-                                       d_q, d_k, d_v, d_o, cudnn_tflops);
+      bench_fa_launch<128, 2, 8, 0, 8, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o, 
+                                          d_q, d_k, d_v, d_o, cudnn_tflops_f16);
     }
     if (g_fa_layout == FALayout::All || g_fa_layout == FALayout::SwizzleV) {
       cudaDeviceSynchronize();
-      bench_fa_launch<128, 2, 8, 8, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o, 
-                                       d_q, d_k, d_v, d_o, cudnn_tflops);
+      bench_fa_launch<128, 2, 8, 8, 0, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o, 
+                                          d_q, d_k, d_v, d_o, cudnn_tflops_f16);
     }
     if (g_fa_layout == FALayout::All || g_fa_layout == FALayout::SwizzleQK) {
       cudaDeviceSynchronize();
-      bench_fa_launch<128, 2, 0, 0, 8>(B, H, seqlen, head_dim, h_o_ref, ref_o, 
-                                       d_q, d_k, d_v, d_o, cudnn_tflops);
+      bench_fa_launch<128, 2, 0, 0, 8, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o, 
+                                          d_q, d_k, d_v, d_o, cudnn_tflops_f16);
     }
     if (g_fa_layout == FALayout::All || g_fa_layout == FALayout::SwizzleQV) {
       cudaDeviceSynchronize();
-      bench_fa_launch<128, 2, 0, 8, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o, 
-                                       d_q, d_k, d_v, d_o, cudnn_tflops);
+      bench_fa_launch<128, 2, 0, 8, 0, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o, 
+                                          d_q, d_k, d_v, d_o, cudnn_tflops_f16);
     }
     if (g_fa_layout == FALayout::All || g_fa_layout == FALayout::SwizzleKV) {
       cudaDeviceSynchronize();
-      bench_fa_launch<128, 2, 8, 0, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o, 
-                                       d_q, d_k, d_v, d_o, cudnn_tflops);
+      bench_fa_launch<128, 2, 8, 0, 0, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o, 
+                                          d_q, d_k, d_v, d_o, cudnn_tflops_f16);
     }
     if (g_fa_layout == FALayout::All || g_fa_layout == FALayout::Swizzle) {
       cudaDeviceSynchronize();
-      bench_fa_launch<128, 2, 0, 0, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o, 
-                                       d_q, d_k, d_v, d_o, cudnn_tflops);
+      bench_fa_launch<128, 2, 0, 0, 0, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o, 
+                                          d_q, d_k, d_v, d_o, cudnn_tflops_f16);
     }
 #if defined(NOTES_V2_ENABLE_TMA_MMA_WS)
     {
       cudaDeviceSynchronize();
-      bench_fa_tma_mma_ws_dispatch<1, 1>(B, H, seqlen, head_dim, h_o_ref, ref_o,
-                                         d_q, d_k, d_v, d_o, cudnn_tflops);
+      bench_fa_tma_mma_ws_dispatch<1, 1, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o,
+                                            d_q, d_k, d_v, d_o, cudnn_tflops_f16);
       cudaDeviceSynchronize();
-      bench_fa_tma_mma_ws_dispatch<2, 1>(B, H, seqlen, head_dim, h_o_ref, ref_o,
-                                         d_q, d_k, d_v, d_o, cudnn_tflops);
+      bench_fa_tma_mma_ws_dispatch<2, 1, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o,
+                                            d_q, d_k, d_v, d_o, cudnn_tflops_f16);
       cudaDeviceSynchronize();
-      bench_fa_tma_mma_ws_dispatch<3, 1>(B, H, seqlen, head_dim, h_o_ref, ref_o,
-                                         d_q, d_k, d_v, d_o, cudnn_tflops);
+      bench_fa_tma_mma_ws_dispatch<3, 1, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o,
+                                            d_q, d_k, d_v, d_o, cudnn_tflops_f16);
       cudaDeviceSynchronize();
-      bench_fa_tma_mma_ws_dispatch<2, 2>(B, H, seqlen, head_dim, h_o_ref, ref_o,
-                                         d_q, d_k, d_v, d_o, cudnn_tflops);
+      bench_fa_tma_mma_ws_dispatch<2, 2, 0>(B, H, seqlen, head_dim, h_o_ref, ref_o,
+                                            d_q, d_k, d_v, d_o, cudnn_tflops_f16);
       // F32Acc variants
       cudaDeviceSynchronize();
       bench_fa_tma_mma_ws_dispatch<1, 1, 1>(B, H, seqlen, head_dim, h_o_ref,
-                                            ref_o, d_q, d_k, d_v, d_o, cudnn_tflops);
+                                            ref_o, d_q, d_k, d_v, d_o, cudnn_tflops_f32);
       cudaDeviceSynchronize();
       bench_fa_tma_mma_ws_dispatch<2, 1, 1>(B, H, seqlen, head_dim, h_o_ref,
-                                            ref_o, d_q, d_k, d_v, d_o, cudnn_tflops);
+                                            ref_o, d_q, d_k, d_v, d_o, cudnn_tflops_f32);
       cudaDeviceSynchronize();
       bench_fa_tma_mma_ws_dispatch<3, 1, 1>(B, H, seqlen, head_dim, h_o_ref,
-                                            ref_o, d_q, d_k, d_v, d_o, cudnn_tflops);
+                                            ref_o, d_q, d_k, d_v, d_o, cudnn_tflops_f32);
       cudaDeviceSynchronize();
       bench_fa_tma_mma_ws_dispatch<2, 2, 1>(B, H, seqlen, head_dim, h_o_ref,
-                                            ref_o, d_q, d_k, d_v, d_o, cudnn_tflops);
+                                            ref_o, d_q, d_k, d_v, d_o, cudnn_tflops_f32);
     }
 #endif
   }
