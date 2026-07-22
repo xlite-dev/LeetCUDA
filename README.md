@@ -86,7 +86,7 @@ nvcc -std=c++20 -O2 -gencode arch=compute_120a,code=sm_120a -DNOTES_V2_ENABLE_CU
 | FA2 TMA MMA WS (Sk=3, Sv=1, F32Acc)       | 1.525879e-05 | PASS | 204.0/222.7 (0.92x) |
 | FA2 TMA MMA WS (Sk=2, Sv=2, F32Acc)       | 1.525879e-05 | PASS | 203.9/222.7 (0.92x) |
 | FA3-style TMA MMA WS (Sk=1, Sv=1, F16Acc) | 1.068115e-04 | PASS | 302.3/224.7 (1.35x) |
-| FA3-style TMA MMA WS (Sk=1, Sv=1, F32Acc) | 1.525879e-05 | PASS | 217.8/222.7 (0.98x) |
+| FA3-style TMA MMA WS (Sk=1, Sv=1, F32Acc) | 1.525879e-05 | PASS | 218.3/222.7 (0.98x) |
 ```
 
 A PDF version of LeetCUDA focused on **interview scenarios** is available at [`kernels/interview/notes-v2.pdf`](https://github.com/xlite-dev/LeetCUDA/blob/main/kernels/interview/notes-v2.pdf).
