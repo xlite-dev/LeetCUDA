@@ -6247,7 +6247,7 @@ namespace fa3_cute_detail {
 using namespace cute;
 
 template <int kHeadDim>
-struct FlashAttn3CuteTraits {
+struct FlashAttn3CuTeTraits {
   static_assert(kHeadDim == 64 || kHeadDim == 128);
 
   using Element = cutlass::half_t;
@@ -6350,7 +6350,7 @@ flash_attn_3_tma_mma_ws_split_q_cute(
     CUTLASS_GRID_CONSTANT TmaV const tma_v,
     cutlass::half_t *output, int rows, int seqlen) {
   using namespace cute;
-  using Traits = fa3_cute_detail::FlashAttn3CuteTraits<kHeadDim>;
+  using Traits = fa3_cute_detail::FlashAttn3CuTeTraits<kHeadDim>;
   using Element = typename Traits::Element;
   using SmemLayout = typename Traits::SmemLayoutQKV;
   using TmaBarrier = cutlass::arch::ClusterTransactionBarrier;
@@ -6663,7 +6663,7 @@ __global__ void flash_attn_3_cute_tma_copy_smoke(
   CUTLASS_GRID_CONSTANT TmaQ const tma_q,
   cutlass::half_t *output, int rows) {
   using namespace cute;
-  using Traits = fa3_cute_detail::FlashAttn3CuteTraits<kHeadDim>;
+  using Traits = fa3_cute_detail::FlashAttn3CuTeTraits<kHeadDim>;
   using Element = typename Traits::Element;
   using SmemLayout = typename Traits::SmemLayoutQKV;
   using TransactionBarrier = cutlass::arch::ClusterTransactionBarrier;
@@ -6743,7 +6743,7 @@ static inline void check(cudaError_t err, const char *msg) {
 template <int kHeadDim>
 static void test_flash_attn_3_cute_tma_copy_smoke() {
   using namespace cute;
-  using Traits = fa3_cute_detail::FlashAttn3CuteTraits<kHeadDim>;
+  using Traits = fa3_cute_detail::FlashAttn3CuTeTraits<kHeadDim>;
   using SmemLayout = typename Traits::SmemLayoutQKV;
   constexpr int kRows = 128;
   constexpr int kCount = kRows * kHeadDim;
@@ -6799,7 +6799,7 @@ static void test_flash_attn_3_cute_tma_copy_smoke() {
 template <int kHeadDim>
 static void test_flash_attn_3_tma_mma_ws_split_q_cute() {
   using namespace cute;
-  using Traits = fa3_cute_detail::FlashAttn3CuteTraits<kHeadDim>;
+  using Traits = fa3_cute_detail::FlashAttn3CuTeTraits<kHeadDim>;
   using SmemLayout = typename Traits::SmemLayoutQKV;
   constexpr int kSeqlen = 128;
   constexpr int kCount = kSeqlen * kHeadDim;
@@ -6897,7 +6897,7 @@ static void test_flash_attn_3_tma_mma_ws_split_q_cute() {
     max_err = max(max_err, fabsf(__half2float(h_o[idx]) - ref_o[idx]));
   }
   char label[80];
-  snprintf(label, sizeof(label), "FA3-style CuTe TMA MMA WS (Sk=1, F32Acc, D=%d)", kHeadDim);
+  snprintf(label, sizeof(label), "FA3-style CuTe TMA MMA WS  (Sk=1, F32Acc, D=%d)", kHeadDim);
   printf("| %-41s | %.6e | %-4s | %-19s |\n", label, max_err,
          max_err < 5e-2f ? "PASS" : "FAIL", "None");
 
@@ -9944,13 +9944,13 @@ static void bench_fa_3_cute_launch(
     half *d_q, half *d_k, half *d_v, half *d_o,
     float cudnn_tflops_f32) {
   using namespace cute;
-  using Traits = fa3_cute_detail::FlashAttn3CuteTraits<kHeadDim>;
+  using Traits = fa3_cute_detail::FlashAttn3CuTeTraits<kHeadDim>;
   using SmemLayout = typename Traits::SmemLayoutQKV;
   constexpr int kNumConsumers = 2;
   if (seqlen < 64 || seqlen % 64 != 0) {
     char label[80];
     snprintf(label, sizeof(label),
-             "FA3-style CuTe TMA MMA WS (Sk=%d, unaligned)", kStagesK);
+             "FA3-style CuTe TMA MMA WS  (Sk=%d, unaligned)", kStagesK);
     printf("| %-41s | %-12s | %-4s | %-19s |\n", label, "SKIP", "SKIP", "None");
     return;
   }
@@ -9981,7 +9981,7 @@ static void bench_fa_3_cute_launch(
   if (!smem_ok) {
     char label[80];
     snprintf(label, sizeof(label),
-             "FA3-style CuTe TMA MMA WS (Sk=%d, SMEM)", kStagesK);
+             "FA3-style CuTe TMA MMA WS  (Sk=%d, SMEM)", kStagesK);
     if (g_verbose)
       printf("| %-41s | %-12s | %-4s | %-19s |\n", label, "SMEM too large", "SKIP", "None");
     return;
@@ -10037,7 +10037,7 @@ static void bench_fa_3_cute_launch(
   }
   char label[80];
   snprintf(label, sizeof(label),
-           "FA3-style CuTe TMA MMA WS (Sk=%d, F32Acc)", kStagesK);
+           "FA3-style CuTe TMA MMA WS  (Sk=%d, F32Acc)", kStagesK);
   printf("| %-41s | %.6e | %-4s | %-19s |\n", label, max_err,
          checked ? (max_err < 5e-1f ? "PASS" : "FAIL") : "SKIP",
          performance);
@@ -10064,6 +10064,8 @@ static void bench_fa_3_cute_dispatch(
         d_q, d_k, d_v, d_o, cudnn_tflops_f32);
   } else if (head_dim == 128) {
     bench_fa_3_cute_launch<128, 1>(B, H, seqlen, h_o_ref, ref_o,
+        d_q, d_k, d_v, d_o, cudnn_tflops_f32);
+    bench_fa_3_cute_launch<128, 2>(B, H, seqlen, h_o_ref, ref_o,
         d_q, d_k, d_v, d_o, cudnn_tflops_f32);
   }
 }
