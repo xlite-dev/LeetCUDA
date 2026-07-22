@@ -5487,7 +5487,8 @@ __global__ void __launch_bounds__(kNumThreads, 1)
 
 // =============================================================================
 // Phase 8c: FlashAttention-3-style TMA + MMA Warp Specialization (SM120)
-//   Dual 128-thread consumer warpgroups processing disjoint KV tiles.
+//   Dual 128-thread consumer warpgroups processing disjoint KV tiles,
+//   with per-WG independent K pipeline (kStagesK) and single V buffer (kStagesV=1).
 //
 // 与 flash_attn_tma_mma_ws_stages_split_q (Phase 8b) 的核心区别：
 //   - 8b: 1 producer WG (128T) + 1 consumer WG (256T, 8 warps), 全 KV 遍历
@@ -5498,88 +5499,66 @@ __global__ void __launch_bounds__(kNumThreads, 1)
 //   WG1 [128,255]: consumer_id=0, 处理偶数 KV tile (0,2,4,...)
 //   WG2 [256,383]: consumer_id=1, 处理奇数 KV tile (1,3,5,...)
 //
-// Barrier 协议 (固定 Sk=Sv=2):
-//   - full_Q: 257 arrivals (256 consumer + 1 producer), 两个 WG 共享同一 Q tile
-//   - full_K[s]/empty_K[s], full_V[s]/empty_V[s]: 129 arrivals (128 owner WG + 1 producer)
-//   - stage 0 永久归 WG1 (偶数 tile), stage 1 永久归 WG2 (奇数 tile)
-//   - 初始 empty phase: 每个 stage 由其 owner WG 执行 128 次 arrive, producer 执行第 129 次
+// per-WG 独立 stage 语义 (关键改进):
+// ----------------------------------------------------------------
+// 每个 consumer WG 拥有独立的 K stage slots (kStagesK 个) 和 1 个 V buffer。
+// K/V smem 按 consumer_id 分 bank: K_smem[cid][stage], V_smem[cid]。
+// Barrier 也按 consumer_id 隔离: full_K[cid][s], empty_K[cid][s], full_V[cid], empty_V[cid]。
+// 两个 WG 绝不争抢同一 smem slot 或 barrier，producer 通过 cid = tile&1 路由 TMA。
+//
+// 这样 stage 语义从 "跨 WG 共享的 2 slot (每 WG 实际 depth=1)" 变为
+// "每 WG 独立拥有 kStagesK 个 K slot (每 WG 真正 depth=kStagesK)"。
+//
+// Pipeline 时序 (Sk=1, Sv=1):
+//   K[tile] TMA 被 softmax+PV+rescale 隐藏 (Sk=1 复用同 slot，用完即释放);
+//   V[tile] TMA 被 rescale+QK[next]+softmax[next] 隐藏 (Sv=1 同理)。
+//
+// Pipeline 时序 (Sk=2, Sv=1, D=64 only):
+//   K[tile+2] 在 QK[tile] 之前就 prefetch 到另一个 slot，被整个 tile compute 隐藏;
+//   V[tile] TMA 同 Sk=1，被 QK+softmax 隐藏。
 //
 // 为什么是奇偶 tile 拆分 (而非前/后半区各自一半)?
 // ----------------------------------------------------------------
-// 关键约束: Sk=Sv=2, smem 只有 2 个 K stage slot 和 2 个 V stage slot。
-// Producer 按 global tile 顺序 0,1,2,3,... 连续 TMA, tile k 装入
-// stage (k & 1)。因此邻近的两块 tile (k, k+1) 总是被连续 TMA 并
-// 分别落到 stage 0 / stage 1, 不会跨半区 G2S copy。
+// 关键约束: producer 按 global tile 顺序 0,1,2,3,... 连续 TMA。
+// 奇偶拆分让 cid = tile & 1 静态路由: tile 0,2,4,... -> WG1; tile 1,3,5,... -> WG2。
+// 每 WG 的下一个 tile (tile+2) 正好是 producer 当前/下一轮要加载的 tile，
+// 保证 producer/consumer 流水无停顿。
 //
-// 奇偶拆分让 stage ownership 静态绑定:
-//   - stage 0 (tile 0,2,4,...) 永久归 WG1
-//   - stage 1 (tile 1,3,5,...) 永久归 WG2
-// 这样两个 WG 永远不会争抢同一个 stage slot: producer 可以无冲突地
-// 为 WG1 填充 stage 0 的同时为 WG2 填充 stage 1, 形成真正的双 consumer
-// 并发 (inter-WG overlap)。
-//
-// 若改为前/后半区拆分 (WG1 处理 [0, Tc/2), WG2 处理 [Tc/2, Tc)):
-//   - 两个 WG 在各自窗口内都会用 stage 0 和 stage 1 交替;
-//   - 在过渡区域两个 WG 可能同时需要同一 stage, 且 barrier ownership
-//     无法静态绑定到固定 WG, 引发 phase arrive 错乱;
-//   - WG2 跳跃访问远端 tile 时, 所需数据可能尚未被 producer TMA 到 smem
-//     (producer 按全局顺序连续填充), 导致 consumer 空等、退化为串行。
-// 奇偶拆分保证每个 WG 的下一个 tile 正好是 producer 当前正在 prefetch 的
-// tile, 实现 producer/consumer 流水无停顿。
+// 若改为前/后半区拆分: 过渡区两个 WG 可能同时需要同一 cid 的 slot,
+// 且 WG2 跳跃访问远端 tile 时数据尚未被 producer TMA 到 smem。
 //
 // Partial state merge (Split-KV / FlashDecoding-style reduction):
 // ----------------------------------------------------------------
-// 本质: 这是 split-KV 算法。每个 WG 各自处理一半 KV tile 序列, 独立维护
-// "未归一化" 的 online-softmax 中间状态 (m, l, Oacc):
-//   - WG1: m_0 = max over its KV tiles of rowmax(S*scale)
-//          l_0 = sum of exp(S*scale - m_0)            (未归一化 denominator)
-//          Oacc_0 = sum of P@V, P = exp(S*scale - m_0) (未除以 l)
-//   - WG2: m_1, l_1, Oacc_1 同理 (over its KV tiles)
+// 每个 WG 各自处理一半 KV tile 序列, 独立维护 "未归一化" 的 online-softmax
+// 中间状态 (m, l, Oacc), 合并后等价于全 KV 遍历。
 //
-// 注意: Oacc 是 "未归一化" 的累加值, 不是最终 O = Oacc/l。
-// 两个 WG 的 partial state 覆盖不相交的 KV 子集, 合并后等价于全 KV 遍历。
-//
-// 稳定归并公式 (避免 exp 溢出, 类似 FlashDecoding merge):
-//   m     = max(m_0, m_1)                          // 全局 row max
-//   alpha = exp(m_0 - m)  (<=1, 数值稳定)          // WG1 rescale factor
-//   beta  = exp(m_1 - m)  (<=1, 数值稳定)          // WG2 rescale factor
-//   l     = alpha * l_0 + beta * l_1               // 合并 denominator
-//   Oacc  = alpha * Oacc_0 + beta * Oacc_1         // 合并未归一化 output
-//   O     = Oacc / l                               // 最终归一化
-//
-// 正确性证明: 设 O_0 = Oacc_0/l_0, O_1 = Oacc_1/l_1 (各自归一化输出),
-//   全局 O = (l_0*e^{m_0-m}*O_0 + l_1*e^{m_1-m}*O_1) / (l_0*e^{m_0-m} + l_1*e^{m_1-m})
-//          = (alpha*Oacc_0 + beta*Oacc_1) / (alpha*l_0 + beta*l_1) = Oacc / l
+// 稳定归并公式 (避免 exp 溢出):
+//   m     = max(m_0, m_1)            // 全局 row max
+//   alpha = exp(m_0 - m)  (<=1)      // WG1 rescale factor
+//   beta  = exp(m_1 - m)  (<=1)      // WG2 rescale factor
+//   l     = alpha * l_0 + beta * l_1
+//   Oacc  = alpha * Oacc_0 + beta * Oacc_1
+//   O     = Oacc / l                 // 最终归一化
 //
 // Tc==1 退化: WG2 无 tile, m_1=-inf, l_1=0, Oacc_1=0;
-//   m = m_0, alpha = exp(0) = 1, beta = exp(-inf) = 0;
-//   l = l_0, Oacc = Oacc_0, O = Oacc_0/l_0 = WG1 结果 ✓
-//
-//   - 每个 consumer WG 独立维护 (m, l, Oacc), mainloop 内无跨 WG 同步
-//   - mainloop 结束后, CTA-wide __syncthreads, 复用 dynamic smem 做 stable merge
-//   - WG2 写出 partial (R_D, m, l), WG1 读取并归并, 最终归一化并写 O
+//   beta = exp(-inf) = 0, 退化为 WG1 结果。
 //
 // 限制 (首版):
-//   - 固定 kStagesK == kStagesV == 2 (奇数 stage 的 owner 切换有 phase arrive 风险)
+//   - kStagesV == 1 (V 只需 1 buffer, TMA 被 QK+softmax 隐藏)
+//   - kStagesK >= 1 (K pipeline depth; D=128 在 SM120 只支持 Sk=1)
+//   - D=128 时 Sk=1 (Sk=2 需 112KB > 101KB optin 上限)
 //   - Br=64, Bc=64, D=64/128, aligned seqlen (N % Br == 0 && N % Bc == 0)
 //   - 仅 self-attention, 无 causal/varlen/GQA
 // =============================================================================
 template <
     const int kHeadDim,
-    const int kMmaAtomM, 
-    const int kMmaAtomN, 
-    const int kMmaAtomK,
+    const int kMmaAtomM, const int kMmaAtomN, const int kMmaAtomK,
     const int kMmaAccF32,
-    const int kMmaTileSeqLenQ, 
-    const int kMmaTileSeqLenK,
-    const int kMmaTileSeqLenP, 
-    const int kMmaTileHeadDimV,
-    const int kValTileSeqLenQ, 
-    const int kValTileSeqLenK,
-    const int kValTileSeqLenP, 
-    const int kValTileHeadDimV,
-    const int kStagesK, 
-    const int kStagesV,
+    const int kMmaTileSeqLenQ, const int kMmaTileSeqLenK,
+    const int kMmaTileSeqLenP, const int kMmaTileHeadDimV,
+    const int kValTileSeqLenQ, const int kValTileSeqLenK,
+    const int kValTileSeqLenP, const int kValTileHeadDimV,
+    const int kStagesK, const int kStagesV,
     const int kNumThreads>
 __global__ void __launch_bounds__(kNumThreads, 1)
     flash_attn_3_tma_ws_stages_split_q(
@@ -5590,15 +5569,19 @@ __global__ void __launch_bounds__(kNumThreads, 1)
   static_assert(kHeadDim == 64 || kHeadDim == 128,
                 "v1 supports kHeadDim == 64 or 128");
   static_assert(kNumThreads == 384, "128 producer + 256 consumer (2 WGs)");
-  static_assert(kStagesK == 2 && kStagesV == 2,
-                "dual-consumer requires Sk == Sv == 2");
   static_assert(kMmaAccF32 == 0 || kMmaAccF32 == 1, "kMmaAccF32 must be 0 or 1");
+  static_assert(kStagesV == 1, "per-WG V pipeline depth must be 1");
+  static_assert(kStagesK >= 1, "kStagesK must be >= 1");
+  // D=128 only supports Sk=1 (Sk=2 needs 112KB > 101KB optin)
+  static_assert(!(kHeadDim == 128 && kStagesK >= 2),
+                "D=128 requires kStagesK == 1 on SM120");
   constexpr int kNRegs = kMmaAccF32 ? 4 : 2;
 
   constexpr int Br = kMmaAtomM * kMmaTileSeqLenQ * kValTileSeqLenQ; // 64
   constexpr int Bc = kMmaAtomN * kMmaTileSeqLenK * kValTileSeqLenK; // 64
   constexpr int kConsumerThreadsPerWG = 128;
   constexpr int kProducerThreads = 128;
+  constexpr int kNumConsumerWGs = 2;
   constexpr int kQTileBytes = Br * kHeadDim * sizeof(half);
   constexpr int kKTileBytes = Bc * kHeadDim * sizeof(half);
   constexpr int kVTileBytes = Bc * kHeadDim * sizeof(half);
@@ -5615,49 +5598,68 @@ __global__ void __launch_bounds__(kNumThreads, 1)
   const int O_gmem_offset = QKV_gmem_offset;
   const int qkv_major_base = (Nb_id * H + Nh_id) * N;
 
+  // ---- Shared memory layout (per-WG independent K/V banks) ----
+  // [Q_shared: Br*D]
+  // [K[cid=0][s=0..Sk-1]: Sk*Bc*D]  [K[cid=1][s=0..Sk-1]]
+  // [V[cid=0]: Bc*D]                 [V[cid=1]: Bc*D]
   extern __shared__ __align__(1024) uint8_t smem_fa3_tma_ws[];
   half *Q_smem = reinterpret_cast<half *>(smem_fa3_tma_ws);
-  half *K_smem = Q_smem + Br * kHeadDim;
-  half *V_smem = K_smem + kStagesK * Bc * kHeadDim;
+  half *K_smem_base = Q_smem + Br * kHeadDim;
+  // K: [numConsumerWGs][kStagesK][Bc*kHeadDim], linearized
+  //   K_smem_base + cid * (kStagesK * Bc * kHeadDim) + stg * (Bc * kHeadDim)
+  half *V_smem_base = K_smem_base + kNumConsumerWGs * kStagesK * Bc * kHeadDim;
+  // V: [numConsumerWGs][Bc*kHeadDim]
+  //   V_smem_base + cid * (Bc * kHeadDim)
 
   const uint32_t smem_Q_base_ptr = __cvta_generic_to_shared(Q_smem);
-  const uint32_t smem_K_base_ptr = __cvta_generic_to_shared(K_smem);
-  const uint32_t smem_V_base_ptr = __cvta_generic_to_shared(V_smem);
+  const uint32_t smem_K_base_ptr = __cvta_generic_to_shared(K_smem_base);
+  const uint32_t smem_V_base_ptr = __cvta_generic_to_shared(V_smem_base);
 
 #pragma nv_diag_suppress static_var_with_dynamic_init
   __shared__ cuda::barrier<cuda::thread_scope_block> full_Q;
-  __shared__ cuda::barrier<cuda::thread_scope_block> full_K[kStagesK];
-  __shared__ cuda::barrier<cuda::thread_scope_block> empty_K[kStagesK];
-  __shared__ cuda::barrier<cuda::thread_scope_block> full_V[kStagesV];
-  __shared__ cuda::barrier<cuda::thread_scope_block> empty_V[kStagesV];
+  // per-WG K barriers: [cid][stage]
+  __shared__ cuda::barrier<cuda::thread_scope_block> full_K[kNumConsumerWGs][kStagesK];
+  __shared__ cuda::barrier<cuda::thread_scope_block> empty_K[kNumConsumerWGs][kStagesK];
+  // per-WG V barriers: [cid] (kStagesV=1)
+  __shared__ cuda::barrier<cuda::thread_scope_block> full_V[kNumConsumerWGs];
+  __shared__ cuda::barrier<cuda::thread_scope_block> empty_V[kNumConsumerWGs];
 #pragma nv_diag_default static_var_with_dynamic_init
 
-  // Thread partition: WG0=[0,127] producer, WG1=[128,255]
-  // consumer_id=0, WG2=[256,383] consumer_id=1
   const bool is_producer = threadIdx.x < kProducerThreads;
-  const int consumer_id = is_producer ? 0 : (
-    threadIdx.x - kProducerThreads) / kConsumerThreadsPerWG;
-  const int wg_tid = is_producer ? threadIdx.x : (
-    threadIdx.x - kProducerThreads) % kConsumerThreadsPerWG;
+  const int consumer_id = is_producer ? 0
+                    : (threadIdx.x - kProducerThreads) / kConsumerThreadsPerWG;
+  const int wg_tid = is_producer ? threadIdx.x
+                    : (threadIdx.x - kProducerThreads) % kConsumerThreadsPerWG;
 
   if (threadIdx.x == 0) {
     init(&full_Q, 256 + 1);  // 2 consumer WGs * 128 + 1 producer
-    for (int s = 0; s < kStagesV; ++s) {
-      init(&full_V[s], kConsumerThreadsPerWG + 1);
-      init(&empty_V[s], kConsumerThreadsPerWG + 1);
-    }
-    for (int s = 0; s < kStagesK; ++s) {
-      init(&full_K[s], kConsumerThreadsPerWG + 1);
-      init(&empty_K[s], kConsumerThreadsPerWG + 1);
+    for (int cid = 0; cid < kNumConsumerWGs; ++cid) {
+      for (int s = 0; s < kStagesK; ++s) {
+        init(&full_K[cid][s], kConsumerThreadsPerWG + 1);
+        init(&empty_K[cid][s], kConsumerThreadsPerWG + 1);
+      }
+      init(&full_V[cid], kConsumerThreadsPerWG + 1);
+      init(&empty_V[cid], kConsumerThreadsPerWG + 1);
     }
     tma_fence_proxy_async_shared_cta();
   }
   __syncthreads();
 
+  // Helper: K_smem ptr for (cid, stg)
+  // K layout: K_smem_base + cid*(Sk*Bc*D) + stg*(Bc*D)
+  // D=128 chunk-major: each tile's 2 chunks at stg*Bc*D + c*Bc*64
+
   // ==================================================================
   // Producer Warpgroup (WG0, threadIdx.x 0~127)
-  // Single global tile loop: acquire K+V for tile, TMA, signal.
-  // Prefetches tile k+1 while consumers work on tile k.
+  // Single global tile loop over all KV tiles (0..Tc-1).
+  // cid = tile & 1 routes TMA to the owning consumer WG's smem bank.
+  //
+  // Per-tile load order: V first, then K (prefetch next).
+  //   - V[tile] TMA: blocked until consumer releases V[cid] (after PV).
+  //     But K[tile] signal already sent in warmup/prev iter, so consumer
+  //     can do QK[tile] while producer waits for V release.
+  //   - K[tile+2] prefetch (Sk>=2): blocked until consumer releases K[cid][stg_next]
+  //     (after QK). QK is first compute step, always done before producer reaches here.
   // ==================================================================
   if (is_producer) {
     NOTES_V2_REG_DEALLOC(40);
@@ -5669,39 +5671,79 @@ __global__ void __launch_bounds__(kNumThreads, 1)
       }
       tma_arrive_expect_tx(full_Q, kQTileBytes);
 
-      // P1: Prefetch tile 0 (K + V) to stage 0
-      empty_K[0].wait(empty_K[0].arrive());
-      for (int c = 0; c < kTmaChunks; ++c) {
-        tma_load_2d(K_smem + c * Bc * kTmaBoxMinor, tensorMapK,
-                    c * kTmaBoxMinor, qkv_major_base, full_K[0]);
+      // P1: Warmup - prefetch first K tile for each consumer WG (Sk-1 tiles)
+      // tile 0 -> cid=0, tile 1 -> cid=1
+      if constexpr (kStagesK > 1) {
+        for (int cid = 0; cid < kNumConsumerWGs; ++cid) {
+          const int tile0 = cid;  // first tile for this WG
+          if (tile0 < Tc) {
+            const int stg = 0;  // first slot
+            empty_K[cid][stg].wait(empty_K[cid][stg].arrive());
+            for (int c = 0; c < kTmaChunks; ++c) {
+              tma_load_2d(K_smem_base + cid * (kStagesK * Bc * kHeadDim) +
+                              stg * Bc * kHeadDim + c * Bc * kTmaBoxMinor,
+                          tensorMapK, c * kTmaBoxMinor,
+                          qkv_major_base + tile0 * Bc, full_K[cid][stg]);
+            }
+            tma_arrive_expect_tx(full_K[cid][stg], kKTileBytes);
+          }
+        }
       }
-      tma_arrive_expect_tx(full_K[0], kKTileBytes);
-      empty_V[0].wait(empty_V[0].arrive());
-      for (int c = 0; c < kTmaChunks; ++c) {
-        tma_load_2d(V_smem + c * Bc * kTmaBoxMinor, tensorMapV,
-                    c * kTmaBoxMinor, qkv_major_base, full_V[0]);
-      }
-      tma_arrive_expect_tx(full_V[0], kVTileBytes);
 
-      // P2: Main loop - prefetch tile k+1 to stage (k+1)&1
-      for (int k = 0; k < Tc; ++k) {
-        const int next = k + 1;
-        if (next < Tc) {
-          const int stg = next & 1;
-          empty_K[stg].wait(empty_K[stg].arrive());
+      // P2: Main loop over all global KV tiles
+      for (int tile = 0; tile < Tc; ++tile) {
+        const int cid = tile & 1;
+
+        // Step 1: Load V[tile] to V_smem[cid]
+        empty_V[cid].wait(empty_V[cid].arrive());
+        for (int c = 0; c < kTmaChunks; ++c) {
+          tma_load_2d(V_smem_base + cid * Bc * kHeadDim + c * Bc * kTmaBoxMinor,
+                      tensorMapV, c * kTmaBoxMinor,
+                      qkv_major_base + tile * Bc, full_V[cid]);
+        }
+        tma_arrive_expect_tx(full_V[cid], kVTileBytes);
+
+        // Step 2: Load/prefetch K
+        if constexpr (kStagesK == 1) {
+          // Sk=1: load K[tile] to the single slot (reuse after consumer QK release)
+          empty_K[cid][0].wait(empty_K[cid][0].arrive());
           for (int c = 0; c < kTmaChunks; ++c) {
-            tma_load_2d(K_smem + stg * Bc * kHeadDim + c * Bc * kTmaBoxMinor,
+            tma_load_2d(K_smem_base + cid * (kStagesK * Bc * kHeadDim) +
+                            c * Bc * kTmaBoxMinor,
                         tensorMapK, c * kTmaBoxMinor,
-                        qkv_major_base + next * Bc, full_K[stg]);
+                        qkv_major_base + tile * Bc, full_K[cid][0]);
           }
-          tma_arrive_expect_tx(full_K[stg], kKTileBytes);
-          empty_V[stg].wait(empty_V[stg].arrive());
-          for (int c = 0; c < kTmaChunks; ++c) {
-            tma_load_2d(V_smem + stg * Bc * kHeadDim + c * Bc * kTmaBoxMinor,
-                        tensorMapV, c * kTmaBoxMinor,
-                        qkv_major_base + next * Bc, full_V[stg]);
+          tma_arrive_expect_tx(full_K[cid][0], kKTileBytes);
+        } else {
+          // Sk>=2: prefetch K[tile+2] to next slot (true ping-pong pipeline!)
+          // tile belongs to consumer cid; local_iter = (tile - cid) / 2
+          const int local_tile = (tile - cid) / 2;
+          const int stg_next = (local_tile + 1) % kStagesK;
+
+          // Load K[tile] to current slot (was prefetched in warmup if local_tile==0,
+          // or in previous iteration's prefetch. For local_tile==0, warmup already
+          // loaded it, so we skip re-loading. For local_tile>0, prefetch loaded it.)
+          // Actually: warmup loaded tile0 for each cid. For tile>0, the prefetch
+          // in previous iteration loaded it. So here we only need to prefetch next.
+          // But for Sk==1 we always load. For Sk>=2, current tile already loaded.
+          // Wait: warmup only runs if kStagesK > 1. For Sk>=2 + local_tile==0,
+          //   K[tile] was loaded in warmup. For local_tile>0, K[tile] was prefetched
+          //   in the previous global iteration (tile-2).
+          // So for Sk>=2, we only prefetch K[tile+2] here (if exists).
+
+          // Prefetch K[tile+2] to stg_next (true ping-pong pipeline!)
+          const int next_tile = tile + 2;
+          if (next_tile < Tc) {
+            empty_K[cid][stg_next].wait(empty_K[cid][stg_next].arrive());
+            for (int c = 0; c < kTmaChunks; ++c) {
+              tma_load_2d(K_smem_base + cid * (kStagesK * Bc * kHeadDim) +
+                              stg_next * Bc * kHeadDim + c * Bc * kTmaBoxMinor,
+                          tensorMapK, c * kTmaBoxMinor,
+                          qkv_major_base + next_tile * Bc,
+                          full_K[cid][stg_next]);
+            }
+            tma_arrive_expect_tx(full_K[cid][stg_next], kKTileBytes);
           }
-          tma_arrive_expect_tx(full_V[stg], kVTileBytes);
         }
       }
     }
@@ -5709,8 +5751,8 @@ __global__ void __launch_bounds__(kNumThreads, 1)
   // ==================================================================
   // Consumer Warpgroups (WG1 consumer_id=0, WG2 consumer_id=1)
   // Each WG processes every other KV tile (consumer_id, consumer_id+2, ...).
-  // stage = tile & 1 == consumer_id (fixed Sk=Sv=2), so each WG always
-  // uses the same stage slot -> no cross-WG phase conflict.
+  // K stage index: local_iter % kStagesK (Sk=1: always 0; Sk=2: 0,1,0,1,...)
+  // V stage index: always consumer_id (only 1 V buffer per WG)
   // ==================================================================
   else {
     const int warp_id = wg_tid / kWarpSize;  // 0~3
@@ -5724,9 +5766,11 @@ __global__ void __launch_bounds__(kNumThreads, 1)
       NOTES_V2_REG_ALLOC(80);
     }
 
-    // C0: init - mark OWNED stage empty (stage == consumer_id)
+    // C0: init - mark OWN K/V slots as empty (consumer arrives, producer is 129th)
+    for (int s = 0; s < kStagesK; ++s) {
+      [[maybe_unused]] auto tk = empty_K[consumer_id][s].arrive();
+    }
     {
-      [[maybe_unused]] auto tk = empty_K[consumer_id].arrive();
       [[maybe_unused]] auto tv = empty_V[consumer_id].arrive();
     }
 
@@ -5747,16 +5791,24 @@ __global__ void __launch_bounds__(kNumThreads, 1)
     uint32_t R_D[kValTileSeqLenP][kValTileHeadDimV][kNRegs];
     fill_3D_regs<uint32_t, kValTileSeqLenP, kValTileHeadDimV, kNRegs>(R_D, 0);
 
-    // split-KV: 每个 WG 只遍历自己的一半 KV tile (奇偶交错)。
-    // stage = tile & 1 == consumer_id (固定 Sk=Sv=2), 故 stage ownership 静态
-    // 绑定: WG1 永远用 stage 0, WG2 永远用 stage 1, 不会争抢同一 slot。
-    // 奇偶拆分而非半区拆分的原因见 kernel 头部注释。
+    // K smem offset for this WG: base + cid*(Sk*Bc*D)
+    // stg within: local_iter % kStagesK
+    // V smem offset for this WG: V_smem_base + cid*(Bc*D)
+    const uint32_t smem_K_wg_base = smem_K_base_ptr +
+        consumer_id * (kStagesK * Bc * kHeadDim) * sizeof(half);
+    const uint32_t smem_V_wg_base = smem_V_base_ptr +
+        consumer_id * (Bc * kHeadDim) * sizeof(half);
+
     int local_iter = 0;
     for (int tile = consumer_id; tile < Tc; tile += 2) {
-      const int stage = tile & 1;  // == consumer_id (fixed Sk=Sv=2)
+      const int k_stg = local_iter % kStagesK;
 
-      // Wait for K[stage] ready
-      full_K[stage].wait(full_K[stage].arrive());
+      // K smem offset for this stage: wg_base + stg*(Bc*D)
+      const uint32_t smem_K_stage_ptr = smem_K_wg_base +
+          k_stg * Bc * kHeadDim * sizeof(half);
+
+      // Wait for K[consumer_id][k_stg] ready
+      full_K[consumer_id][k_stg].wait(full_K[consumer_id][k_stg].arrive());
       tma_fence_proxy_async_shared_cta();
 
       // ---- Q @ K^T = S[Br, Bc] ----
@@ -5784,10 +5836,10 @@ __global__ void __launch_bounds__(kNumThreads, 1)
           const int lane_smem_K_Bc = warp_smem_K_Bc + lane_id % 8;
           const int lane_smem_K_d =
               tile_K_d * kMmaAtomK + ((lane_id / 8) % 2) * 8;
+          // K smem: stage_ptr + swizzle_fa offset (no stage*Bc*D since stage_ptr already includes it)
           const uint32_t lane_smem_K_ptr =
-              smem_K_base_ptr +
-              (stage * Bc * kHeadDim +
-               swizzle_fa<kHeadDim, Bc>(lane_smem_K_Bc, lane_smem_K_d)) *
+              smem_K_stage_ptr +
+              swizzle_fa<kHeadDim, Bc>(lane_smem_K_Bc, lane_smem_K_d) *
                   sizeof(half);
           LDMATRIX_X2(R_K[j][0], R_K[j][1], lane_smem_K_ptr);
         }
@@ -5810,12 +5862,16 @@ __global__ void __launch_bounds__(kNumThreads, 1)
         }
       }
 
-      // Release K[stage] early (QK consumed all K data)
+      // Release K[consumer_id][k_stg] early (QK consumed all K data)
+      // For Sk=1: this lets producer load K[tile+2] into the same slot
+      // For Sk=2: this frees the slot for K[tile+4] prefetch
       {
-        [[maybe_unused]] auto token = empty_K[stage].arrive();
+        [[maybe_unused]] auto token = empty_K[consumer_id][k_stg].arrive();
       }
 
       // ---- Online Safe Softmax ----
+      // This compute overlaps with producer's V[tile] TMA (which waits for
+      // empty_V from previous PV, or is already in-flight)
       float lane_row_max_new[kValTileSeqLenQ][2];
       float lane_row_sum_new[kValTileSeqLenQ][2];
       fill_2D_regs<float, kValTileSeqLenQ, 2>(lane_row_max_new, -INFINITY);
@@ -5887,7 +5943,8 @@ __global__ void __launch_bounds__(kNumThreads, 1)
       }
 
       // ---- P @ V = O[Br, d] ----
-      full_V[stage].wait(full_V[stage].arrive());
+      // Wait for V[consumer_id] ready
+      full_V[consumer_id].wait(full_V[consumer_id].arrive());
       tma_fence_proxy_async_shared_cta();
 
       fill_3D_regs<uint32_t, kValTileSeqLenP, kValTileHeadDimV, kNRegs>(R_O, 0);
@@ -5899,10 +5956,10 @@ __global__ void __launch_bounds__(kNumThreads, 1)
               warp_KV * (kMmaAtomN * kValTileHeadDimV) + j * kMmaAtomN;
           const int lane_smem_V_Bc = tile_V_Bc * kMmaAtomK + lane_id % 16;
           const int lane_smem_V_d = warp_smem_V_d;
+          // V smem: V_wg_base + swizzle_fa offset
           const uint32_t lane_smem_V_ptr =
-              smem_V_base_ptr +
-              (stage * Bc * kHeadDim +
-               swizzle_fa<kHeadDim, Bc>(lane_smem_V_Bc, lane_smem_V_d)) *
+              smem_V_wg_base +
+              swizzle_fa<kHeadDim, Bc>(lane_smem_V_Bc, lane_smem_V_d) *
                   sizeof(half);
           LDMATRIX_X2_T(R_V[j][0], R_V[j][1], lane_smem_V_ptr);
         }
@@ -5928,9 +5985,10 @@ __global__ void __launch_bounds__(kNumThreads, 1)
         }
       }
 
-      // Release V[stage] early (PV consumed all V data)
+      // Release V[consumer_id] early (PV consumed all V data)
+      // This lets producer load V[tile+2] into the same slot
       {
-        [[maybe_unused]] auto token = empty_V[stage].arrive();
+        [[maybe_unused]] auto token = empty_V[consumer_id].arrive();
       }
 
       // ---- Online rescaling - O_new = exp(m_old - m_new) * O_old + P@V ----
@@ -6010,15 +6068,15 @@ __global__ void __launch_bounds__(kNumThreads, 1)
     __syncthreads();
 
     // Merge scratch 布局 (按 wg_tid 索引, 每 WG 128 thread):
-    //   [merge_d]: 128 * kDPerThread 个 uint32  <- WG2 未归一化 R_D fragment
-    //   [merge_m]: 128 * kMPerThread 个 float   <- WG2 的 m (row max)
-    //   [merge_l]: 128 * kMPerThread 个 float   <- WG2 的 l (denominator)
+    //   [merge_rd]: 128 * kRdPerThread 个 uint32  <- WG2 未归一化 R_D fragment
+    //   [merge_m]  : 128 * kMPerThread 个 float    <- WG2 的 m (row max)
+    //   [merge_l]  : 128 * kMPerThread 个 float    <- WG2 的 l (denominator)
     // WG1 用自己的 R_D/m/l 作为 (Oacc_0, m_0, l_0), 读取 WG2 写出的作为
     // (Oacc_1, m_1, l_1), 按 stable merge 公式归并后由 WG1 写最终 O。
-    constexpr int kDPerThread = kValTileSeqLenP * kValTileHeadDimV * kNRegs;
+    constexpr int kRdPerThread = kValTileSeqLenP * kValTileHeadDimV * kNRegs;
     constexpr int kMPerThread = kValTileSeqLenQ * 2;
-    uint32_t *merge_d = reinterpret_cast<uint32_t *>(smem_fa3_tma_ws);
-    float *merge_m = reinterpret_cast<float *>(merge_d + 128 * kDPerThread);
+    uint32_t *merge_rd = reinterpret_cast<uint32_t *>(smem_fa3_tma_ws);
+    float *merge_m = reinterpret_cast<float *>(merge_rd + 128 * kRdPerThread);
     float *merge_l = merge_m + 128 * kMPerThread;
 
     // WG2 写出未归一化 partial (R_D, m, l) 到 scratch, 按 wg_tid 索引。
@@ -6035,9 +6093,8 @@ __global__ void __launch_bounds__(kNumThreads, 1)
         for (int j = 0; j < kValTileHeadDimV; ++j)
 #pragma unroll
           for (int k = 0; k < kNRegs; ++k)
-            merge_d[
-              wg_tid * kDPerThread + (i * kValTileHeadDimV + j) * kNRegs + k
-            ] = R_D[i][j][k];
+            merge_rd[wg_tid * kRdPerThread +
+                     (i * kValTileHeadDimV + j) * kNRegs + k] = R_D[i][j][k];
 #pragma unroll
       for (int i = 0; i < kValTileSeqLenQ; ++i) {
         merge_m[wg_tid * kMPerThread + i * 2 + 0] = lane_block_row_max_old[i][0];
@@ -6060,8 +6117,9 @@ __global__ void __launch_bounds__(kNumThreads, 1)
         for (int j = 0; j < kValTileHeadDimV; ++j)
 #pragma unroll
           for (int k = 0; k < kNRegs; ++k)
-            R_O[i][j][k] = merge_d[wg_tid * kDPerThread +
-                           (i * kValTileHeadDimV + j) * kNRegs + k];
+            R_O[i][j][k] =
+                merge_rd[wg_tid * kRdPerThread +
+                         (i * kValTileHeadDimV + j) * kNRegs + k];
 
       // 稳定归并 (实现层面, 完整数学见头部注释):
       //   - m0/l0 = WG1 自己的 partial (寄存器), m1/l1 = WG2 的 partial (scratch)
@@ -7956,7 +8014,7 @@ static float bench_cudnn_sdpa_tflops(half *d_q, half *d_k, half *d_v,
                                       half *d_o_ref, int B, int H, int seqlen,
                                       int head_dim, fe::DataType_t compute_type);
 #endif
-template <int kHeadDim>
+template <int kHeadDim, int kStagesK>
 static void test_flash_attn_3_tma_ws_impl(int seqlen, int head_dim) {
   int B = 1, H = 8;
   constexpr int kMmaAtomM = 16, kMmaAtomN = 8, kMmaAtomK = 16;
@@ -7965,7 +8023,8 @@ static void test_flash_attn_3_tma_ws_impl(int seqlen, int head_dim) {
   constexpr int kValTileSeqLenQ = 1, kValTileSeqLenK = 8;
   constexpr int kValTileSeqLenP = 1;
   constexpr int kValTileHeadDimV = kHeadDim / (8 * kMmaTileHeadDimV);
-  constexpr int kStagesK = 2, kStagesV = 2;
+  constexpr int kStagesV = 1;  // per-WG V: always 1 buffer
+  constexpr int kNumConsumerWGs = 2;
   constexpr int Br = kMmaAtomM * kMmaTileSeqLenQ * kValTileSeqLenQ;  // 64
   constexpr int Bc = kMmaAtomN * kMmaTileSeqLenK * kValTileSeqLenK; // 64
   constexpr int kNumThreads = 384;
@@ -8025,8 +8084,10 @@ static void test_flash_attn_3_tma_ws_impl(int seqlen, int head_dim) {
                              const CUtensorMap *, const CUtensorMap *,
                              const CUtensorMap *);
 
-  size_t smem_bytes = (Br * kHeadDim + kStagesK * Bc * kHeadDim +
-                       kStagesV * Bc * kHeadDim) * sizeof(half);
+  // smem = Q + K[2WGs * Sk * Bc*D] + V[2WGs * 1 * Bc*D]
+  size_t smem_bytes = (Br * kHeadDim +
+                       kNumConsumerWGs * kStagesK * Bc * kHeadDim +
+                       kNumConsumerWGs * kStagesV * Bc * kHeadDim) * sizeof(half);
   dim3 block(kNumThreads);
   dim3 grid((seqlen + Br - 1) / Br, B * H);
 
@@ -8079,9 +8140,12 @@ static void test_flash_attn_3_tma_ws_impl(int seqlen, int head_dim) {
 
 static void test_flash_attn_3_tma_ws(int seqlen, int head_dim) {
   if (head_dim == 64) {
-    test_flash_attn_3_tma_ws_impl<64>(seqlen, head_dim);
+    // D=64: test both Sk=1 and Sk=2
+    test_flash_attn_3_tma_ws_impl<64, 1>(seqlen, head_dim);
+    test_flash_attn_3_tma_ws_impl<64, 2>(seqlen, head_dim);
   } else if (head_dim == 128) {
-    test_flash_attn_3_tma_ws_impl<128>(seqlen, head_dim);
+    // D=128: only Sk=1 (Sk=2 needs 112KB > 101KB optin)
+    test_flash_attn_3_tma_ws_impl<128, 1>(seqlen, head_dim);
   } else {
     printf("| %-56s | %-12s | %-4s | %-22s |\n",
            "FA3-style TMA MMA WS (D!=64/128)", "SKIP", "SKIP", "None");
@@ -9056,8 +9120,8 @@ static void bench_fa_tma_mma_ws_dispatch(int B, int H, int seqlen, int head_dim,
   }
 }
 
-// FA3-style dual-consumer bench (Br=64, Sk=Sv=2)
-template <int kHeadDim, int kMmaAccF32 = 0>
+// FA3-style dual-consumer bench (Br=64, per-WG independent K pipeline, Sv=1)
+template <int kHeadDim, int kStagesK, int kMmaAccF32 = 0>
 static void bench_fa_3_tma_ws_launch(int B, int H, int seqlen, int head_dim,
                                       half *h_o_ref, float *ref_o,
                                       half *d_q, half *d_k, half *d_v,
@@ -9068,7 +9132,8 @@ static void bench_fa_3_tma_ws_launch(int B, int H, int seqlen, int head_dim,
   constexpr int kValTileSeqLenQ = 1, kValTileSeqLenK = 8;
   constexpr int kValTileSeqLenP = 1;
   constexpr int kValTileHeadDimV = kHeadDim / (8 * kMmaTileHeadDimV);
-  constexpr int kStagesK = 2, kStagesV = 2;
+  constexpr int kStagesV = 1;  // per-WG V: always 1 buffer
+  constexpr int kNumConsumerWGs = 2;
   constexpr int Br = kMmaAtomM * kMmaTileSeqLenQ * kValTileSeqLenQ;  // 64
   constexpr int Bc = kMmaAtomN * kMmaTileSeqLenK * kValTileSeqLenK;  // 64
   constexpr int kNumThreads = 384;
@@ -9100,8 +9165,10 @@ static void bench_fa_3_tma_ws_launch(int B, int H, int seqlen, int head_dim,
       kValTileSeqLenK, kValTileSeqLenP, kValTileHeadDimV, kStagesK, kStagesV,
       kNumThreads>;
 
-  size_t smem_bytes = (Br * kHeadDim + kStagesK * Bc * kHeadDim +
-                       kStagesV * Bc * kHeadDim) * sizeof(half);
+  // smem = Q + K[2WGs * Sk * Bc*D] + V[2WGs * 1 * Bc*D]
+  size_t smem_bytes = (Br * kHeadDim +
+                       kNumConsumerWGs * kStagesK * Bc * kHeadDim +
+                       kNumConsumerWGs * kStagesV * Bc * kHeadDim) * sizeof(half);
   bool smem_ok = check_smem_feasible((const void *)fa_k, smem_bytes);
   if (smem_ok) {
     cudaFuncSetAttribute(fa_k, cudaFuncAttributeMaxDynamicSharedMemorySize,
@@ -9191,11 +9258,15 @@ static void bench_fa_3_tma_ws_dispatch(int B, int H, int seqlen, int head_dim,
                                        half *d_q, half *d_k, half *d_v,
                                        half *d_o, float cudnn_tflops_f16) {
   if (head_dim == 64) {
-    bench_fa_3_tma_ws_launch<64, kMmaAccF32>(B, H, seqlen, head_dim, h_o_ref,
-                                              ref_o, d_q, d_k, d_v, d_o, cudnn_tflops_f16);
+    // D=64: bench both Sk=1 and Sk=2
+    bench_fa_3_tma_ws_launch<64, 1, kMmaAccF32>(B, H, seqlen, head_dim, h_o_ref,
+                                                ref_o, d_q, d_k, d_v, d_o, cudnn_tflops_f16);
+    bench_fa_3_tma_ws_launch<64, 2, kMmaAccF32>(B, H, seqlen, head_dim, h_o_ref,
+                                                ref_o, d_q, d_k, d_v, d_o, cudnn_tflops_f16);
   } else if (head_dim == 128) {
-    bench_fa_3_tma_ws_launch<128, kMmaAccF32>(B, H, seqlen, head_dim, h_o_ref,
-                                               ref_o, d_q, d_k, d_v, d_o, cudnn_tflops_f16);
+    // D=128: only Sk=1 (Sk=2 needs 112KB > 101KB optin)
+    bench_fa_3_tma_ws_launch<128, 1, kMmaAccF32>(B, H, seqlen, head_dim, h_o_ref,
+                                                  ref_o, d_q, d_k, d_v, d_o, cudnn_tflops_f16);
   } else {
     char label[64];
     snprintf(label, sizeof(label), "FA3-style TMA MMA WS (D!=64/128)");
