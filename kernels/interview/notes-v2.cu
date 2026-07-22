@@ -6341,7 +6341,8 @@ CUTE_DEVICE void gemm_rs(
 
 }  // namespace fa3_cute_detail
 
-template <int kHeadDim, typename TmaQ, typename TmaK, typename TmaV>
+template <int kHeadDim, typename TmaQ, typename TmaK, typename TmaV,
+          int kStagesK = 1, int kStagesV = 1>
 __global__ void __launch_bounds__(384, 1)
 flash_attn_3_tma_mma_ws_split_q_cute(
     CUTLASS_GRID_CONSTANT TmaQ const tma_q,
@@ -6363,13 +6364,13 @@ flash_attn_3_tma_mma_ws_split_q_cute(
   extern __shared__ __align__(1024) Element shm[];
   auto sQ = make_tensor(make_smem_ptr(shm), SmemLayout{});
   Element *k_base = shm + kTileElements;
-  Element *v_base = k_base + kNumConsumers * kTileElements;
+  Element *v_base = k_base + kNumConsumers * kStagesK * kTileElements;
 
   __shared__ uint64_t q_full;
-  __shared__ uint64_t k_full[kNumConsumers];
-  __shared__ uint64_t k_empty[kNumConsumers];
-  __shared__ uint64_t v_full[kNumConsumers];
-  __shared__ uint64_t v_empty[kNumConsumers];
+  __shared__ uint64_t k_full[kNumConsumers][kStagesK];
+  __shared__ uint64_t k_empty[kNumConsumers][kStagesK];
+  __shared__ uint64_t v_full[kNumConsumers][kStagesV];
+  __shared__ uint64_t v_empty[kNumConsumers][kStagesV];
 
   const bool is_producer = threadIdx.x < kProducerThreads;
   const int consumer_id = is_producer ? 0
@@ -6380,10 +6381,14 @@ flash_attn_3_tma_mma_ws_split_q_cute(
   if (threadIdx.x == 0) {
     TmaBarrier::init(&q_full, 1);
     for (int cid = 0; cid < kNumConsumers; ++cid) {
-      TmaBarrier::init(&k_full[cid], 1);
-      CtaBarrier::init(&k_empty[cid], kConsumerThreads);
-      TmaBarrier::init(&v_full[cid], 1);
-      CtaBarrier::init(&v_empty[cid], kConsumerThreads);
+      for (int s = 0; s < kStagesK; ++s) {
+        TmaBarrier::init(&k_full[cid][s], 1);
+        CtaBarrier::init(&k_empty[cid][s], kConsumerThreads);
+      }
+      for (int s = 0; s < kStagesV; ++s) {
+        TmaBarrier::init(&v_full[cid][s], 1);
+        CtaBarrier::init(&v_empty[cid][s], kConsumerThreads);
+      }
     }
   }
   __syncthreads();
@@ -6417,34 +6422,40 @@ flash_attn_3_tma_mma_ws_split_q_cute(
 
       for (int tile = 0; tile < kv_tiles; ++tile) {
         int cid = tile & 1;
-        int phase = (tile / kNumConsumers) & 1;
+        int local = (tile - cid) / kNumConsumers;
+        int k_stg = local % kStagesK;
+        int v_stg = local % kStagesV;
+        int k_phase = (local / kStagesK) & 1;
+        int v_phase = (local / kStagesV) & 1;
         int kv_tile = blockIdx.y * kv_tiles + tile;
 
         // Step 1: K first — release depends on QK (early), so consumer
         // will release K quickly. Issue K TMA to unblock consumer QK ASAP.
         auto sK = make_tensor(
-            make_smem_ptr(k_base + cid * kTileElements), SmemLayout{});
-        CtaBarrier::wait(&k_empty[cid], phase);
+            make_smem_ptr(k_base + (cid * kStagesK + k_stg) * kTileElements),
+            SmemLayout{});
+        CtaBarrier::wait(&k_empty[cid][k_stg], k_phase);
         auto gK = local_tile(
             mK, Shape<_64, Int<kHeadDim>>{}, make_coord(kv_tile, _0{}));
         auto tKgK = k_slice.partition_S(gK);
         auto tKsK = k_slice.partition_D(sK);
         TmaBarrier::arrive_and_expect_tx(
-            &k_full[cid], sizeof(Element) * size(sK));
-        copy(tma_k.with(k_full[cid]), tKgK, tKsK);
+            &k_full[cid][k_stg], sizeof(Element) * size(sK));
+        copy(tma_k.with(k_full[cid][k_stg]), tKgK, tKsK);
 
         // Step 2: V — release depends on PV (late step, still inflight).
         // V TMA latency is hidden by consumer QK+softmax compute.
         auto sV = make_tensor(
-            make_smem_ptr(v_base + cid * kTileElements), SmemLayout{});
-        CtaBarrier::wait(&v_empty[cid], phase);
+            make_smem_ptr(v_base + (cid * kStagesV + v_stg) * kTileElements),
+            SmemLayout{});
+        CtaBarrier::wait(&v_empty[cid][v_stg], v_phase);
         auto gV = local_tile(
             mV, Shape<_64, Int<kHeadDim>>{}, make_coord(kv_tile, _0{}));
         auto tVgV = v_slice.partition_S(gV);
         auto tVsV = v_slice.partition_D(sV);
         TmaBarrier::arrive_and_expect_tx(
-            &v_full[cid], sizeof(Element) * size(sV));
-        copy(tma_v.with(v_full[cid]), tVgV, tVsV);
+            &v_full[cid][v_stg], sizeof(Element) * size(sV));
+        copy(tma_v.with(v_full[cid][v_stg]), tVgV, tVsV);
       }
     }
   }
@@ -6458,9 +6469,11 @@ flash_attn_3_tma_mma_ws_split_q_cute(
     TmaBarrier::wait(&q_full, 0);
 
     auto sK = make_tensor(
-        make_smem_ptr(k_base + consumer_id * kTileElements), SmemLayout{});
+        make_smem_ptr(k_base + (consumer_id * kStagesK + 0) * kTileElements),
+        SmemLayout{});
     auto sV = make_tensor(
-        make_smem_ptr(v_base + consumer_id * kTileElements), SmemLayout{});
+        make_smem_ptr(v_base + (consumer_id * kStagesV + 0) * kTileElements),
+        SmemLayout{});
     auto sVt = make_tensor(sV.data(), typename Traits::SmemLayoutVt{});
     auto sVt_ns = make_tensor(
         sV.data(), get_nonswizzle_portion(typename Traits::SmemLayoutVt{}));
@@ -6501,25 +6514,28 @@ flash_attn_3_tma_mma_ws_split_q_cute(
     }
 
     // Init: mark own K/V slots as empty
-    {
-      CtaBarrier::arrive(&k_empty[consumer_id]);
-      CtaBarrier::arrive(&v_empty[consumer_id]);
-    }
+    for (int s = 0; s < kStagesK; ++s)
+      CtaBarrier::arrive(&k_empty[consumer_id][s]);
+    for (int s = 0; s < kStagesV; ++s)
+      CtaBarrier::arrive(&v_empty[consumer_id][s]);
 
     float scale = rsqrtf(static_cast<float>(kHeadDim));
     int local_iter = 0;
     for (int tile = consumer_id; tile < kv_tiles;
          tile += kNumConsumers, ++local_iter) {
-      int phase = local_iter & 1;
+      int k_stg = local_iter % kStagesK;
+      int v_stg = local_iter % kStagesV;
+      int k_phase = (local_iter / kStagesK) & 1;
+      int v_phase = (local_iter / kStagesV) & 1;
 
       // 1) Wait K, QK gemm, release K early
-      TmaBarrier::wait(&k_full[consumer_id], phase);
+      TmaBarrier::wait(&k_full[consumer_id][k_stg], k_phase);
       auto tCrS = partition_fragment_C(tiled_mma, Shape<_64, _64>{});
       clear(tCrS);
       fa3_cute_detail::gemm_ss(
           tCrS, tCrQ, tCrK, tQsQ_s2r, tKsK_s2r,
           tiled_mma, s2r_copy_q, s2r_copy_k, s2r_thr_q, s2r_thr_k);
-      { CtaBarrier::arrive(&k_empty[consumer_id]); }
+      { CtaBarrier::arrive(&k_empty[consumer_id][k_stg]); }
 
       // 2) Online softmax (overlaps with producer's V TMA)
       auto scores = make_tensor(
@@ -6552,7 +6568,7 @@ flash_attn_3_tma_mma_ws_split_q_cute(
       }
 
       // 3) Wait V, PV gemm, release V early
-      TmaBarrier::wait(&v_full[consumer_id], phase);
+      TmaBarrier::wait(&v_full[consumer_id][v_stg], v_phase);
       auto tCrP = fa3_cute_detail::convert_type<Element>(tCrS);
       auto tCrPv = make_tensor(
           tCrP.data(),
@@ -6561,7 +6577,7 @@ flash_attn_3_tma_mma_ws_split_q_cute(
       fa3_cute_detail::gemm_rs(
           tCrO, tCrPv, tCrV, tVsVt_s2r,
           tiled_mma, s2r_copy_v, s2r_thr_v);
-      { CtaBarrier::arrive(&v_empty[consumer_id]); }
+      { CtaBarrier::arrive(&v_empty[consumer_id][v_stg]); }
     }
 
     // Split-KV merge
@@ -6826,8 +6842,11 @@ static void test_flash_attn_3_tma_mma_ws_split_q_cute() {
       kHeadDim, decltype(tma_q), decltype(tma_k), decltype(tma_v)>;
   auto acc_o = partition_fragment_C(
       typename Traits::TiledMma{}, Shape<_64, Int<kHeadDim>>{});
+  constexpr int kNumConsumers = 2;
+  constexpr int kStagesK = 1, kStagesV = 1;
+  constexpr int kTiles = 1 + kNumConsumers * kStagesK + kNumConsumers * kStagesV;
   constexpr int kTilesBytes =
-      5 * cosize(SmemLayout{}) * sizeof(cutlass::half_t);
+      kTiles * cosize(SmemLayout{}) * sizeof(cutlass::half_t);
   int merge_bytes = 128 * size(acc_o) * sizeof(float) + 128 * sizeof(float4);
   int smem_bytes = max(kTilesBytes, merge_bytes);
   check(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize,
@@ -9887,7 +9906,7 @@ static void bench_fa_3_tma_ws_dispatch(int B, int H, int seqlen, int head_dim,
 }
 
 #if defined(NOTES_V2_ENABLE_CUTE)
-template <int kHeadDim>
+template <int kHeadDim, int kStagesK = 1, int kStagesV = 1>
 static void bench_fa_3_cute_launch(
     int B, int H, int seqlen, half *h_o_ref, float *ref_o,
     half *d_q, half *d_k, half *d_v, half *d_o,
@@ -9895,9 +9914,13 @@ static void bench_fa_3_cute_launch(
   using namespace cute;
   using Traits = fa3_cute_detail::FlashAttn3CuteTraits<kHeadDim>;
   using SmemLayout = typename Traits::SmemLayoutQKV;
+  constexpr int kNumConsumers = 2;
   if (seqlen < 64 || seqlen % 64 != 0) {
-    printf("| %-41s | %-12s | %-4s | %-19s |\n",
-           "FA3-style CuTe TMA MMA WS (Sk=1, Sv=1, unaligned)", "SKIP", "SKIP", "None");
+    char label[80];
+    snprintf(label, sizeof(label),
+             "FA3-style CuTe TMA MMA WS (Sk=%d, Sv=%d, unaligned)",
+             kStagesK, kStagesV);
+    printf("| %-41s | %-12s | %-4s | %-19s |\n", label, "SKIP", "SKIP", "None");
     return;
   }
 
@@ -9915,13 +9938,25 @@ static void bench_fa_3_cute_launch(
   auto tma_k = make_tma(d_k);
   auto tma_v = make_tma(d_v);
   auto kernel = flash_attn_3_tma_mma_ws_split_q_cute<
-      kHeadDim, decltype(tma_q), decltype(tma_k), decltype(tma_v)>;
+      kHeadDim, decltype(tma_q), decltype(tma_k), decltype(tma_v),
+      kStagesK, kStagesV>;
   auto acc_o = partition_fragment_C(
       typename Traits::TiledMma{}, Shape<_64, Int<kHeadDim>>{});
-  constexpr int kTilesBytes =
-      5 * cosize(SmemLayout{}) * sizeof(cutlass::half_t);
+  constexpr int kTiles =
+      1 + kNumConsumers * kStagesK + kNumConsumers * kStagesV;
+  constexpr int kTilesBytes = kTiles * cosize(SmemLayout{}) * sizeof(cutlass::half_t);
   int merge_bytes = 128 * size(acc_o) * sizeof(float) + 128 * sizeof(float4);
   int smem_bytes = max(kTilesBytes, merge_bytes);
+  bool smem_ok = check_smem_feasible((const void *)kernel, smem_bytes);
+  if (!smem_ok) {
+    char label[80];
+    snprintf(label, sizeof(label),
+             "FA3-style CuTe TMA MMA WS (Sk=%d, Sv=%d, SMEM)",
+             kStagesK, kStagesV);
+    if (g_verbose)
+      printf("| %-41s | %-12s | %-4s | %-19s |\n", label, "SMEM too large", "SKIP", "None");
+    return;
+  }
   check(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize,
                              smem_bytes),
         "bench cute fa3 set smem");
@@ -9971,8 +10006,11 @@ static void bench_fa_3_cute_launch(
   } else {
     snprintf(performance, sizeof(performance), "%.1f", tflops);
   }
-  printf("| %-41s | %.6e | %-4s | %-19s |\n",
-         "FA3-style CuTe TMA MMA WS (Sk=1, Sv=1, F32Acc)", max_err,
+  char label[80];
+  snprintf(label, sizeof(label),
+           "FA3-style CuTe TMA MMA WS (Sk=%d, Sv=%d, F32Acc)",
+           kStagesK, kStagesV);
+  printf("| %-41s | %.6e | %-4s | %-19s |\n", label, max_err,
          checked ? (max_err < 5e-1f ? "PASS" : "FAIL") : "SKIP",
          performance);
 
@@ -9988,12 +10026,16 @@ static void bench_fa_3_cute_dispatch(
     half *d_q, half *d_k, half *d_v, half *d_o,
     float cudnn_tflops_f32) {
   if (head_dim == 64) {
-    bench_fa_3_cute_launch<64>(
-        B, H, seqlen, h_o_ref, ref_o,
+    bench_fa_3_cute_launch<64, 1, 1>(B, H, seqlen, h_o_ref, ref_o,
+        d_q, d_k, d_v, d_o, cudnn_tflops_f32);
+    bench_fa_3_cute_launch<64, 2, 1>(B, H, seqlen, h_o_ref, ref_o,
+        d_q, d_k, d_v, d_o, cudnn_tflops_f32);
+    bench_fa_3_cute_launch<64, 3, 1>(B, H, seqlen, h_o_ref, ref_o,
+        d_q, d_k, d_v, d_o, cudnn_tflops_f32);
+    bench_fa_3_cute_launch<64, 4, 1>(B, H, seqlen, h_o_ref, ref_o,
         d_q, d_k, d_v, d_o, cudnn_tflops_f32);
   } else if (head_dim == 128) {
-    bench_fa_3_cute_launch<128>(
-        B, H, seqlen, h_o_ref, ref_o,
+    bench_fa_3_cute_launch<128, 1, 1>(B, H, seqlen, h_o_ref, ref_o,
         d_q, d_k, d_v, d_o, cudnn_tflops_f32);
   }
 }
