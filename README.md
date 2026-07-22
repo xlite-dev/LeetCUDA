@@ -62,10 +62,10 @@ nvcc -std=c++20 -O2 -gencode arch=compute_120a,code=sm_120a -DNOTES_V2_ENABLE_CU
 ```
 
 ```bash
-# Then, you can run notes_v2_sm120a.bin with bench mode (e.g., NVIDIA RTX 5090, Blackwell SM_120a)
-# Baseline: cuBLAS v13.3.0.5-1 (290T); cuDNN v9.25.0.15-1 SDPA (225T), PyTorch v2.11 SDPA (~210T)
-# Speedup: FlashAttention-2 -> ~1.35x (F16 Acc vs cuDNN), ~0.98x (F32 Acc vs cuDNN), ~1.04x (F32 
-# Acc vs PyTorch SDPA); HGEMM w/ Pipeline & SMEM & Block Swizzle -> ~1.07x (F16 Acc vs cuBLAS).
+# Run notes_v2_sm120a.bin with bench mode (e.g., NVIDIA RTX 5090, Blackwell SM_120a)
+# Baseline: cuBLAS v13.3.0.5-1 (290T); cuDNN v9.25 SDPA (225T), PyTorch v2.11 SDPA (~210T)
+# Speedup: FlashAttention-2 -> ~1.35x (F16 Acc vs cuDNN), ~0.98x (F32 Acc vs cuDNN), ~1.04x
+# (F32 Acc vs PyTorch SDPA); HGEMM w/ Pipeline & SMEM & Block Swizzle -> ~1.07x (vs cuBLAS).
 ./notes_v2_sm120a.bin --bench --mnk 4096,4096,4096 --bhnd 1,48,8192,128 # MMA ACC F16/F32
 | Kernel                                    | Max Err      | Pass | TFLOPS/cu{BLAS,DNN} |
 |-------------------------------------------|--------------|------|---------------------|
