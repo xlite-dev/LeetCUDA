@@ -55,38 +55,40 @@ nvcc -std=c++20 -O2 -gencode arch=compute_90a,code=sm_90a -DNOTES_V2_ENABLE_WGMM
   -lcublas -lcuda notes-v2.cu -o notes_v2_sm90a.bin 
 
 # Blackwell SM_120a + CuTe + Swizzle + TMA MMA WS + cuDNN SDPA (CUDA Toolkit >= 13.2):
-nvcc -std=c++20 -O2 -gencode arch=compute_120a,code=sm_120a -DNOTES_V2_ENABLE_CUTE \
-  -DNOTES_V2_ENABLE_TMA_MMA_WS -DNOTES_V2_ENABLE_CUDNN -I ../../third-party/cutlass/include \
-  -I ../../third-party/cudnn-frontend/include -L/usr/local/cuda/targets/x86_64-linux/lib/stubs \
-  -lcublas -lcudnn -lnvrtc -lcuda notes-v2.cu -o notes_v2_sm120a.bin 
+nvcc -std=c++20 -O2 -gencode arch=compute_120a,code=sm_120a --expt-relaxed-constexpr \
+  -DNOTES_V2_ENABLE_CUTE -DNOTES_V2_ENABLE_TMA_MMA_WS -DNOTES_V2_ENABLE_CUDNN \
+  -I ../../third-party/cutlass/include -I ../../third-party/cudnn-frontend/include \
+  -L/usr/local/cuda/targets/x86_64-linux/lib/stubs -lcublas -lcudnn -lnvrtc \
+  -lcuda notes-v2.cu -o notes_v2_sm120a.bin 
 ```
 
 ```bash
 # Then, run notes_v2_sm120a.bin with bench mode (e.g., NVIDIA RTX 5090, Blackwell SM_120a)
-# Baseline: cuBLAS v13.3.0.5-1 (290T); cuDNN v9.25 SDPA (225T), PyTorch v2.11 SDPA (~210T)
-# Speedup: FlashAttention-2 -> ~1.35x (F16 Acc vs cuDNN), ~0.98x (F32 Acc vs cuDNN), 1.04x
-# (F32 Acc vs PyTorch SDPA); HGEMM w/ Pipeline & SMEM & Block Swizzle -> 1.07x (vs cuBLAS)
-./notes_v2_sm120a.bin --bench --mnk 4096,4096,4096 --bhnd 1,48,8192,128 # MMA ACC F16/F32
+# Baseline: cuBLAS v13.3.0.5-1 (290T); cuDNN v9.25 SDPA (223T), PyTorch v2.11 SDPA (~210T)
+# Speedup: FlashAttention-2 -> ~1.28x (F16 Acc vs cuDNN), ~0.99x (F32 Acc vs cuDNN), 1.07x
+# (F32 Acc vs PyTorch SDPA); HGEMM w/ Pipeline & SMEM & Block Swizzle -> 1.08x (vs cuBLAS)
+./notes_v2_sm120a.bin --bench --mnk 4096,4096,4096 --bhnd 1,32,16384,128 # MMA ACC F16/F32
 | Kernel                                    | Max Err      | Pass | TFLOPS/cu{BLAS,DNN} |
 |-------------------------------------------|--------------|------|---------------------|
-| HGEMM CuTe Swizzle (S=2, SW=0)            | 0.000000e+00 | PASS | 302.0/288.4 (1.05x) |
-| HGEMM CuTe Swizzle (S=2, SW=1)            | 0.000000e+00 | PASS | 301.7/288.4 (1.05x) |
-| HGEMM CuTe Swizzle (S=3, SW=0)            | 0.000000e+00 | PASS | 309.1/288.4 (1.07x) |
-| HGEMM CuTe Swizzle (S=3, SW=1)            | 0.000000e+00 | PASS | 311.7/288.4 (1.08x) |
-| FA2 (S=1, Pad, F16Acc)                    | 2.441406e-04 | PASS | 214.0/224.8 (0.95x) |
-| FA2 (S=2, Pad, F16Acc)                    | 2.441406e-04 | PASS | 249.0/224.8 (1.11x) |
-| FA2 (S=1, Pad, F32Acc)                    | 1.525879e-05 | PASS | 163.5/222.7 (0.73x) |
-| FA2 (S=2, Pad, F32Acc)                    | 1.525879e-05 | PASS | 177.8/222.7 (0.80x) |
-| FA2 TMA MMA WS (Sk=1, Sv=1, F16Acc)       | 2.441406e-04 | PASS | 261.0/224.8 (1.16x) |
-| FA2 TMA MMA WS (Sk=2, Sv=1, F16Acc)       | 2.441406e-04 | PASS | 294.3/224.8 (1.31x) |
-| FA2 TMA MMA WS (Sk=3, Sv=1, F16Acc)       | 2.441406e-04 | PASS | 293.5/224.8 (1.31x) |
-| FA2 TMA MMA WS (Sk=2, Sv=2, F16Acc)       | 2.441406e-04 | PASS | 286.0/224.8 (1.27x) |
-| FA2 TMA MMA WS (Sk=1, Sv=1, F32Acc)       | 1.525879e-05 | PASS | 177.6/222.7 (0.80x) |
-| FA2 TMA MMA WS (Sk=2, Sv=1, F32Acc)       | 1.525879e-05 | PASS | 204.3/222.7 (0.92x) |
-| FA2 TMA MMA WS (Sk=3, Sv=1, F32Acc)       | 1.525879e-05 | PASS | 204.0/222.7 (0.92x) |
-| FA2 TMA MMA WS (Sk=2, Sv=2, F32Acc)       | 1.525879e-05 | PASS | 203.9/222.7 (0.92x) |
-| FA3-style TMA MMA WS (Sk=1, Sv=1, F16Acc) | 1.068115e-04 | PASS | 302.3/224.7 (1.35x) |
-| FA3-style TMA MMA WS (Sk=1, Sv=1, F32Acc) | 1.525879e-05 | PASS | 218.3/222.7 (0.98x) |
+| HGEMM CuTe Swizzle (S=2, SW=0)            | 0.000000e+00 | PASS | 302.7/290.1 (1.04x) |
+| HGEMM CuTe Swizzle (S=2, SW=1)            | 0.000000e+00 | PASS | 303.9/290.1 (1.05x) |
+| HGEMM CuTe Swizzle (S=3, SW=0)            | 0.000000e+00 | PASS | 309.1/290.1 (1.07x) |
+| HGEMM CuTe Swizzle (S=3, SW=1)            | 0.000000e+00 | PASS | 313.1/290.1 (1.08x) |
+| FA2 (S=1, Pad, F16Acc)                    | 1.831055e-04 | PASS | 217.6/223.4 (0.97x) |
+| FA2 (S=2, Pad, F16Acc)                    | 1.831055e-04 | PASS | 249.6/223.4 (1.12x) |
+| FA2 (S=1, Pad, F32Acc)                    | 1.525879e-05 | PASS | 167.6/222.6 (0.75x) |
+| FA2 (S=2, Pad, F32Acc)                    | 1.525879e-05 | PASS | 179.9/222.6 (0.81x) |
+| FA2 TMA MMA WS (Sk=1, Sv=1, F16Acc)       | 1.831055e-04 | PASS | 264.8/223.4 (1.19x) |
+| FA2 TMA MMA WS (Sk=2, Sv=1, F16Acc)       | 1.831055e-04 | PASS | 287.4/223.4 (1.29x) |
+| FA2 TMA MMA WS (Sk=3, Sv=1, F16Acc)       | 1.831055e-04 | PASS | 276.3/223.4 (1.24x) |
+| FA2 TMA MMA WS (Sk=2, Sv=2, F16Acc)       | 1.831055e-04 | PASS | 282.2/223.4 (1.26x) |
+| FA2 TMA MMA WS (Sk=1, Sv=1, F32Acc)       | 1.525879e-05 | PASS | 179.3/222.6 (0.81x) |
+| FA2 TMA MMA WS (Sk=2, Sv=1, F32Acc)       | 1.525879e-05 | PASS | 204.6/222.6 (0.92x) |
+| FA2 TMA MMA WS (Sk=3, Sv=1, F32Acc)       | 1.525879e-05 | PASS | 204.3/222.6 (0.92x) |
+| FA2 TMA MMA WS (Sk=2, Sv=2, F32Acc)       | 1.525879e-05 | PASS | 205.2/222.6 (0.92x) |
+| FA3-style TMA MMA WS (Sk=1, Sv=1, F16Acc) | 9.155273e-05 | PASS | 285.1/223.4 (1.28x) |
+| FA3-style TMA MMA WS (Sk=1, Sv=1, F32Acc) | 1.525879e-05 | PASS | 218.9/222.6 (0.98x) |
+| FA3-style CuTe TMA MMA WS  (Sk=1, F32Acc) | 1.525879e-05 | PASS | 219.5/222.6 (0.99x) |
 ```
 
 A PDF version of LeetCUDA focused on **interview scenarios** is available at [`kernels/interview/notes-v2.pdf`](https://github.com/xlite-dev/LeetCUDA/blob/main/kernels/interview/notes-v2.pdf).
