@@ -6073,8 +6073,8 @@ __global__ void __launch_bounds__(kNumThreads, 1)
     constexpr int kRdPackPerThread = kRdPerThread / 4;  // float4 个数 (kNRegs 始终偶数)
     constexpr int kMlPackPerThread = kValTileSeqLenQ;   // 每 thread 的 float4 个数
     uint32_t *merge_rd = reinterpret_cast<uint32_t *>(smem_fa3_tma_ws);
-    float4 *merge_rd_f4 = reinterpret_cast<float4 *>(merge_rd);
-    float4 *merge_ml_f4 = merge_rd_f4 + 128 * kRdPackPerThread;
+    float4 *merge_rd_pack = reinterpret_cast<float4 *>(merge_rd);
+    float4 *merge_ml_pack = merge_rd_pack + 128 * kRdPackPerThread;
 
     // WG2 写出未归一化 partial (R_D, m, l) 到 scratch, 按 wg_tid 索引。
     // R_D: 以 float4 (128-bit) 连续写入, kRdPackPerThread 次。
@@ -6087,7 +6087,7 @@ __global__ void __launch_bounds__(kNumThreads, 1)
     // 写完后第二次 __syncthreads 让 WG1 看到 WG2 的全部写入。
     if (consumer_id == 1) {
       // R_D: 128-bit stores
-      float4 *rd_dst = merge_rd_f4 + wg_tid * kRdPackPerThread;
+      float4 *rd_dst = merge_rd_pack + wg_tid * kRdPackPerThread;
 #pragma unroll
       for (int idx = 0; idx < kRdPackPerThread; ++idx)
         rd_dst[idx] = reinterpret_cast<float4 *>(&R_D[0][0][0])[idx];
@@ -6099,7 +6099,7 @@ __global__ void __launch_bounds__(kNumThreads, 1)
         ml.y = lane_block_row_max_old[i][1];
         ml.z = lane_block_row_sum_old[i][0];
         ml.w = lane_block_row_sum_old[i][1];
-        merge_ml_f4[wg_tid * kMlPackPerThread + i] = ml;
+        merge_ml_pack[wg_tid * kMlPackPerThread + i] = ml;
       }
     }
     __syncthreads();
@@ -6110,7 +6110,7 @@ __global__ void __launch_bounds__(kNumThreads, 1)
       // R_D: 以 float4 (128-bit) 连续读取。
       // 后续 merge 用 R_D[i][j] 作为 Oacc_0, R_O[i][j] 作为 Oacc_1, 逐元素加权后
       // 结果写回 R_D, 再做最终 O=Oacc/l 归一化。
-      float4 *rd_src = merge_rd_f4 + wg_tid * kRdPackPerThread;
+      float4 *rd_src = merge_rd_pack + wg_tid * kRdPackPerThread;
 #pragma unroll
       for (int idx = 0; idx < kRdPackPerThread; ++idx)
         reinterpret_cast<float4 *>(&R_O[0][0][0])[idx] = rd_src[idx];
@@ -6128,7 +6128,7 @@ __global__ void __launch_bounds__(kNumThreads, 1)
 #pragma unroll
       for (int i = 0; i < kValTileSeqLenQ; ++i) {
         // 128-bit load: [m1_0, m1_1, l1_0, l1_1] interleaved
-        float4 ml1 = merge_ml_f4[wg_tid * kMlPackPerThread + i];
+        float4 ml1 = merge_ml_pack[wg_tid * kMlPackPerThread + i];
         float m1_0 = ml1.x;
         float m1_1 = ml1.y;
         float l1_0 = ml1.z;
@@ -6161,16 +6161,16 @@ __global__ void __launch_bounds__(kNumThreads, 1)
             d0[2] = alpha_1 * d0[2] + beta_1 * d1[2];
             d0[3] = alpha_1 * d0[3] + beta_1 * d1[3];
           } else {
-            float2 d0 = __half22float2(HALF2(R_D[i][j][0]));
-            float2 d0b = __half22float2(HALF2(R_D[i][j][1]));
-            float2 d1 = __half22float2(HALF2(R_O[i][j][0]));
-            float2 d1b = __half22float2(HALF2(R_O[i][j][1]));
-            d0.x = alpha_0 * d0.x + beta_0 * d1.x;
-            d0.y = alpha_0 * d0.y + beta_0 * d1.y;
-            d0b.x = alpha_1 * d0b.x + beta_1 * d1b.x;
-            d0b.y = alpha_1 * d0b.y + beta_1 * d1b.y;
-            HALF2(R_D[i][j][0]) = __float22half2_rn(d0);
-            HALF2(R_D[i][j][1]) = __float22half2_rn(d0b);
+            float2 d0_0 = __half22float2(HALF2(R_D[i][j][0]));
+            float2 d0_1 = __half22float2(HALF2(R_D[i][j][1]));
+            float2 d1_0 = __half22float2(HALF2(R_O[i][j][0]));
+            float2 d1_1 = __half22float2(HALF2(R_O[i][j][1]));
+            d0_0.x = alpha_0 * d0_0.x + beta_0 * d1_0.x;
+            d0_0.y = alpha_0 * d0_0.y + beta_0 * d1_0.y;
+            d0_1.x = alpha_1 * d0_1.x + beta_1 * d1_1.x;
+            d0_1.y = alpha_1 * d0_1.y + beta_1 * d1_1.y;
+            HALF2(R_D[i][j][0]) = __float22half2_rn(d0_0);
+            HALF2(R_D[i][j][1]) = __float22half2_rn(d0_1);
           }
         }
       }
@@ -7717,7 +7717,7 @@ static void test_flash_attn(int seqlen, int head_dim) {
     }
     const char *acc_label = kMmaAcc ? "F32Acc" : "F16Acc";
     char label[64];
-    snprintf(label, sizeof(label), "FlashAttention-2 (kStagesK=2, Pad, %s)", acc_label);
+    snprintf(label, sizeof(label), "FA2 (kStagesK=2, Pad, %s)", acc_label);
     printf("| %-56s | %.6e | %-4s | %-22s |\n", label,
            max_err, max_err < 5e-1f ? "PASS" : "FAIL", "None");
     free(h_o);
@@ -7749,7 +7749,7 @@ static void test_flash_attn_tma_mma_ws_impl(int seqlen, int head_dim) {
 
   if (seqlen % Br != 0 || seqlen % Bc != 0 || seqlen < Br) {
     printf("| %-56s | %-12s | %-4s | %-22s |\n",
-           "FlashAttn-2 TMA MMA WS (unaligned)", "SKIP", "SKIP", "None");
+           "FA2 TMA MMA WS (unaligned)", "SKIP", "SKIP", "None");
     return;
   }
 
@@ -7922,7 +7922,7 @@ static void test_flash_attn_tma_mma_ws_impl(int seqlen, int head_dim) {
       (smem_bytes + attributes.sharedSizeBytes <= (size_t)max_smem);
   if (!smem_ok) {
     printf("| %-56s | %-12s | %-4s | %-22s |\n",
-           "FlashAttn-2 TMA MMA WS (D=64)", "SMEM SKIP", "SKIP", "None");
+           "FA2 TMA MMA WS (SMEM SKIP)", "SMEM SKIP", "SKIP", "None");
   } else {
     dim3 block(kNumThreads);
     dim3 grid((seqlen + Br - 1) / Br, B * H);
@@ -7974,7 +7974,7 @@ static void test_flash_attn_tma_mma_ws_impl(int seqlen, int head_dim) {
       const char *acc_label = kMmaAcc ? "F32Acc" : "F16Acc";
       char label[64];
       snprintf(label, sizeof(label),
-               "FlashAttention-2 TMA MMA WS (D=%d, %s)", (int)kHeadDim,
+               "FA2 TMA MMA WS (%s)", (int)kHeadDim,
                acc_label);
       printf("| %-56s | %.6e | %-4s | %-22s |\n",
              label, max_err,
@@ -7998,7 +7998,7 @@ static void test_flash_attn_tma_mma_ws(int seqlen, int head_dim) {
     test_flash_attn_tma_mma_ws_impl<128>(seqlen, head_dim);
   } else {
     printf("| %-56s | %-12s | %-4s | %-22s |\n",
-           "FlashAttn-2 TMA MMA WS (D!=64/128)", "SKIP", "SKIP", "None");
+           "FA2 TMA MMA WS (D!=64/128)", "SKIP", "SKIP", "None");
   }
 }
 
@@ -8121,7 +8121,7 @@ static void test_flash_attn_3_tma_ws_impl(int seqlen, int head_dim) {
     }
     const char *acc_label = acc ? "F32Acc" : "F16Acc";
     char label[64];
-    snprintf(label, sizeof(label), "FA3-style TMA MMA WS (D=%d, %s)",
+    snprintf(label, sizeof(label), "FA3-style TMA MMA WS (%s)",
              (int)kHeadDim, acc_label);
     printf("| %-56s | %.6e | %-4s | %-22s |\n", label, max_err,
            (checked && max_err < 5e-1f) ? "PASS" : (checked ? "FAIL" : "SKIP"),
@@ -8163,7 +8163,7 @@ enum class FALayout {
 static FALayout g_fa_layout = FALayout::Pad;
 static int g_bench_M = 4096, g_bench_N = 4096, g_bench_K = 4096;
 static int g_bench_B = 1, g_bench_H = 48, g_bench_Nfa = 8192, g_bench_D = 128;
-static int g_warmup = 3, g_repeat = 5;
+static int g_warmup = 2, g_repeat = 3;
 
 static float bench_hgemm_tflops(int M, int N, int K, float time_ms) {
   double flops = 2.0 * M * N * K;
@@ -8868,7 +8868,7 @@ static void bench_fa_launch(int B, int H, int seqlen, int head_dim,
   // Kernel requires seqlen >= Br (tile size); skip gracefully for short seqlen
   if (seqlen < Br) {
     char label[64];
-    snprintf(label, sizeof(label), "FlashAttention-2 (D=%d, %s)", kHeadDim,
+    snprintf(label, sizeof(label), "FA2 (%s)", kHeadDim,
              layout_name);
     printf("| %-56s | %-12s | %-4s | %-22s |\n", label,
            "seqlen<Br", "SKIP", "None");
@@ -8925,7 +8925,7 @@ static void bench_fa_launch(int B, int H, int seqlen, int head_dim,
 
   int count = B * H * seqlen * head_dim;
   char label[64];
-  snprintf(label, sizeof(label), "FlashAttention-2 (S=%d, D=%d, %s, %s)", kStagesK,
+  snprintf(label, sizeof(label), "FA2 (S=%d, %s, %s)", kStagesK,
            kHeadDim, layout_name, kMmaAccF32 ? "F32Acc" : "F16Acc");
   float max_err = 0.0f;
   bool checked = h_o_ref || ref_o;
@@ -8980,7 +8980,7 @@ static void bench_fa_tma_mma_ws_launch(int B, int H, int seqlen, int head_dim,
   if (seqlen < Br || seqlen % Br != 0 || seqlen % Bc != 0) {
     char label[64];
     snprintf(label, sizeof(label),
-             "FlashAttn-2 TMA MMA WS (Sk=%d, Sv=%d, D=%d, unaligned)", kStagesK, kStagesV,
+             "FA2 TMA MMA WS (Sk=%d, Sv=%d, unaligned)", kStagesK, kStagesV,
              (int)kHeadDim);
     printf("| %-56s | %-12s | %-4s | %-22s |\n", label, "SKIP", "SKIP", "None");
     return;
@@ -9056,7 +9056,7 @@ static void bench_fa_tma_mma_ws_launch(int B, int H, int seqlen, int head_dim,
   int count = B * H * seqlen * head_dim;
 
   char label[64];
-  snprintf(label, sizeof(label), "FlashAttention-2 TMA MMA WS (Sk=%d, Sv=%d, D=%d, %s)",
+  snprintf(label, sizeof(label), "FA2 TMA MMA WS (Sk=%d, Sv=%d, %s)",
            kStagesK, kStagesV, (int)kHeadDim, kMmaAccF32 ? "F32Acc" : "F16Acc");
   float max_err = 0.0f;
   bool checked = h_o_ref || ref_o;
@@ -9111,7 +9111,7 @@ static void bench_fa_tma_mma_ws_dispatch(int B, int H, int seqlen, int head_dim,
   } else {
     char label[64];
     snprintf(label, sizeof(label),
-             "FlashAttn-2 TMA MMA WS (Sk=%d, Sv=%d, D!=64/128)", kStagesK, kStagesV);
+             "FA2 TMA MMA WS (Sk=%d, Sv=%d, D!=64/128)", kStagesK, kStagesV);
     printf("| %-56s | %-12s | %-4s | %-22s |\n", label, "SKIP", "SKIP", "None");
   }
 }
@@ -9137,7 +9137,7 @@ static void bench_fa_3_tma_ws_launch(int B, int H, int seqlen, int head_dim,
   if (seqlen < Br || seqlen % Br != 0 || seqlen % Bc != 0) {
     char label[80];
     snprintf(label, sizeof(label),
-             "FA3-style TMA MMA WS (Sk=%d, Sv=%d, D=%d, unaligned)", kStagesK, kStagesV,
+             "FA3-style TMA MMA WS (Sk=%d, Sv=%d, unaligned)", kStagesK, kStagesV,
              (int)kHeadDim);
     printf("| %-56s | %-12s | %-4s | %-22s |\n", label, "SKIP", "SKIP", "None");
     return;
@@ -9207,7 +9207,7 @@ static void bench_fa_3_tma_ws_launch(int B, int H, int seqlen, int head_dim,
   int count = B * H * seqlen * head_dim;
 
   char label[80];
-  snprintf(label, sizeof(label), "FA3-style TMA MMA WS (Sk=%d, Sv=%d, D=%d, %s)",
+  snprintf(label, sizeof(label), "FA3-style TMA MMA WS (Sk=%d, Sv=%d, %s)",
            kStagesK, kStagesV, (int)kHeadDim, kMmaAccF32 ? "F32Acc" : "F16Acc");
   float max_err = 0.0f;
   bool checked = h_o_ref || ref_o;
