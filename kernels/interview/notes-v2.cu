@@ -5691,19 +5691,14 @@ __global__ void __launch_bounds__(kNumThreads, 1)
       }
 
       // P2: Main loop over all global KV tiles
+      // K 优先于 V: K 的 release 依赖 QK (tile 第一步 compute, 早完成),
+      // V 的 release 依赖 PV (tile 最后一步 compute, 晚完成)。
+      // 先发 K 让 consumer 尽早开始 QK, V 的 TMA 在 K 之后发出,
+      // 被 QK+softmax 的 compute 时间隐藏。
       for (int tile = 0; tile < Tc; ++tile) {
         const int cid = tile & 1;
 
-        // Step 1: Load V[tile] to V_smem[cid]
-        empty_V[cid].wait(empty_V[cid].arrive());
-        for (int c = 0; c < kTmaChunks; ++c) {
-          tma_load_2d(V_smem_base + cid * Bc * kHeadDim + c * Bc * kTmaBoxMinor,
-                      tensorMapV, c * kTmaBoxMinor,
-                      qkv_major_base + tile * Bc, full_V[cid]);
-        }
-        tma_arrive_expect_tx(full_V[cid], kVTileBytes);
-
-        // Step 2: Load/prefetch K
+        // Step 1: Load/prefetch K first (release depends on QK, which is early)
         if constexpr (kStagesK == 1) {
           // Sk=1: load K[tile] to the single slot (reuse after consumer QK release)
           empty_K[cid][0].wait(empty_K[cid][0].arrive());
@@ -5716,22 +5711,8 @@ __global__ void __launch_bounds__(kNumThreads, 1)
           tma_arrive_expect_tx(full_K[cid][0], kKTileBytes);
         } else {
           // Sk>=2: prefetch K[tile+2] to next slot (true ping-pong pipeline!)
-          // tile belongs to consumer cid; local_iter = (tile - cid) / 2
           const int local_tile = (tile - cid) / 2;
           const int stg_next = (local_tile + 1) % kStagesK;
-
-          // Load K[tile] to current slot (was prefetched in warmup if local_tile==0,
-          // or in previous iteration's prefetch. For local_tile==0, warmup already
-          // loaded it, so we skip re-loading. For local_tile>0, prefetch loaded it.)
-          // Actually: warmup loaded tile0 for each cid. For tile>0, the prefetch
-          // in previous iteration loaded it. So here we only need to prefetch next.
-          // But for Sk==1 we always load. For Sk>=2, current tile already loaded.
-          // Wait: warmup only runs if kStagesK > 1. For Sk>=2 + local_tile==0,
-          //   K[tile] was loaded in warmup. For local_tile>0, K[tile] was prefetched
-          //   in the previous global iteration (tile-2).
-          // So for Sk>=2, we only prefetch K[tile+2] here (if exists).
-
-          // Prefetch K[tile+2] to stg_next (true ping-pong pipeline!)
           const int next_tile = tile + 2;
           if (next_tile < Tc) {
             empty_K[cid][stg_next].wait(empty_K[cid][stg_next].arrive());
@@ -5745,6 +5726,15 @@ __global__ void __launch_bounds__(kNumThreads, 1)
             tma_arrive_expect_tx(full_K[cid][stg_next], kKTileBytes);
           }
         }
+
+        // Step 2: Load V[tile] (release depends on PV, which is late)
+        empty_V[cid].wait(empty_V[cid].arrive());
+        for (int c = 0; c < kTmaChunks; ++c) {
+          tma_load_2d(V_smem_base + cid * Bc * kHeadDim + c * Bc * kTmaBoxMinor,
+                      tensorMapV, c * kTmaBoxMinor,
+                      qkv_major_base + tile * Bc, full_V[cid]);
+        }
+        tma_arrive_expect_tx(full_V[cid], kVTileBytes);
       }
     }
   }
@@ -5812,6 +5802,9 @@ __global__ void __launch_bounds__(kNumThreads, 1)
       tma_fence_proxy_async_shared_cta();
 
       // ---- Q @ K^T = S[Br, Bc] ----
+      // K early release: 在最后一个 tile_K_d 的 ldmatrix_K 完成后立即 release K,
+      // 不等整个 QK MMA 循环结束。K 数据已全部读入 R_K 寄存器, smem 可被
+      // producer 复用。这对 Sk=1 尤其重要: producer 可更早开始下一个 K TMA。
       fill_3D_regs<uint32_t, kValTileSeqLenQ, kValTileSeqLenK, kNRegs>(R_S, 0);
 #pragma unroll
       for (int tile_K_d = 0; tile_K_d < (kHeadDim / kMmaAtomK); ++tile_K_d) {
@@ -5844,6 +5837,11 @@ __global__ void __launch_bounds__(kNumThreads, 1)
           LDMATRIX_X2(R_K[j][0], R_K[j][1], lane_smem_K_ptr);
         }
 
+        // Early release K after last ldmatrix_K: K data now fully in registers
+        if (tile_K_d == (kHeadDim / kMmaAtomK) - 1) {
+          [[maybe_unused]] auto token = empty_K[consumer_id][k_stg].arrive();
+        }
+
 #pragma unroll
         for (int i = 0; i < kValTileSeqLenQ; ++i) {
 #pragma unroll
@@ -5862,12 +5860,7 @@ __global__ void __launch_bounds__(kNumThreads, 1)
         }
       }
 
-      // Release K[consumer_id][k_stg] early (QK consumed all K data)
-      // For Sk=1: this lets producer load K[tile+2] into the same slot
-      // For Sk=2: this frees the slot for K[tile+4] prefetch
-      {
-        [[maybe_unused]] auto token = empty_K[consumer_id][k_stg].arrive();
-      }
+      // K already released above (after last ldmatrix_K)
 
       // ---- Online Safe Softmax ----
       // This compute overlaps with producer's V[tile] TMA (which waits for
@@ -5964,6 +5957,13 @@ __global__ void __launch_bounds__(kNumThreads, 1)
           LDMATRIX_X2_T(R_V[j][0], R_V[j][1], lane_smem_V_ptr);
         }
 
+        // Early release V after last ldmatrix_V: V data now fully in registers.
+        // This lets producer start next V TMA during the remaining PV MMA +
+        // online rescaling, giving more overlap window than releasing after PV.
+        if (tile_V_Bc == (Bc / kMmaAtomK) - 1) {
+          [[maybe_unused]] auto token = empty_V[consumer_id].arrive();
+        }
+
         const int w = tile_V_Bc * 2;
 #pragma unroll
         for (int i = 0; i < kValTileSeqLenP; ++i) {
@@ -5985,11 +5985,7 @@ __global__ void __launch_bounds__(kNumThreads, 1)
         }
       }
 
-      // Release V[consumer_id] early (PV consumed all V data)
-      // This lets producer load V[tile+2] into the same slot
-      {
-        [[maybe_unused]] auto token = empty_V[consumer_id].arrive();
-      }
+      // V already released above (after last ldmatrix_V)
 
       // ---- Online rescaling - O_new = exp(m_old - m_new) * O_old + P@V ----
 #pragma unroll
