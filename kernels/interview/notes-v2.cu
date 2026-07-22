@@ -6065,17 +6065,20 @@ __global__ void __launch_bounds__(kNumThreads, 1)
 
     // Merge scratch 布局 (按 wg_tid 索引, 每 WG 128 thread):
     //   [merge_rd]: 128 * kRdPerThread 个 uint32  <- WG2 未归一化 R_D fragment
-    //   [merge_m]  : 128 * kMPerThread 个 float    <- WG2 的 m (row max)
-    //   [merge_l]  : 128 * kMPerThread 个 float    <- WG2 的 l (denominator)
+    //   [merge_ml]: 128 * kValTileSeqLenQ 个 float4 <- WG2 的 [m0,m1,l0,l1] interleaved
     // WG1 用自己的 R_D/m/l 作为 (Oacc_0, m_0, l_0), 读取 WG2 写出的作为
     // (Oacc_1, m_1, l_1), 按 stable merge 公式归并后由 WG1 写最终 O。
+    // m/l interleaved 为 float4 布局, 写入/读取各一次 128-bit store/load。
     constexpr int kRdPerThread = kValTileSeqLenP * kValTileHeadDimV * kNRegs;
-    constexpr int kMPerThread = kValTileSeqLenQ * 2;
+    constexpr int kRdPackPerThread = kRdPerThread / 4;  // float4 个数 (kNRegs 始终偶数)
+    constexpr int kMlPackPerThread = kValTileSeqLenQ;   // 每 thread 的 float4 个数
     uint32_t *merge_rd = reinterpret_cast<uint32_t *>(smem_fa3_tma_ws);
-    float *merge_m = reinterpret_cast<float *>(merge_rd + 128 * kRdPerThread);
-    float *merge_l = merge_m + 128 * kMPerThread;
+    float4 *merge_rd_f4 = reinterpret_cast<float4 *>(merge_rd);
+    float4 *merge_ml_f4 = merge_rd_f4 + 128 * kRdPackPerThread;
 
     // WG2 写出未归一化 partial (R_D, m, l) 到 scratch, 按 wg_tid 索引。
+    // R_D: 以 float4 (128-bit) 连续写入, kRdPackPerThread 次。
+    // m/l: interleaved 为 float4 [m0, m1, l0, l1], 每次 128-bit store。
     // 按 wg_tid 索引保证 WG1 的同一 lane 读到对应行的 WG2 partial:
     //   R_D[i][j][k] fragment 对应的 Q rows 与 lane_block_row_max/sum[i][0/1]
     //   的两组 rows (rows 0-7 / rows 8-15) 严格对齐, 故 WG1/WG2 同一
@@ -6083,20 +6086,20 @@ __global__ void __launch_bounds__(kNumThreads, 1)
     // Tc==1 时 WG2 未进入循环, m=-inf/l=0/R_D=0, merge 自然退化。
     // 写完后第二次 __syncthreads 让 WG1 看到 WG2 的全部写入。
     if (consumer_id == 1) {
+      // R_D: 128-bit stores
+      float4 *rd_dst = merge_rd_f4 + wg_tid * kRdPackPerThread;
 #pragma unroll
-      for (int i = 0; i < kValTileSeqLenP; ++i)
-#pragma unroll
-        for (int j = 0; j < kValTileHeadDimV; ++j)
-#pragma unroll
-          for (int k = 0; k < kNRegs; ++k)
-            merge_rd[wg_tid * kRdPerThread +
-                     (i * kValTileHeadDimV + j) * kNRegs + k] = R_D[i][j][k];
+      for (int idx = 0; idx < kRdPackPerThread; ++idx)
+        rd_dst[idx] = reinterpret_cast<float4 *>(&R_D[0][0][0])[idx];
+      // m/l interleaved: [m0, m1, l0, l1] per i, 128-bit store
 #pragma unroll
       for (int i = 0; i < kValTileSeqLenQ; ++i) {
-        merge_m[wg_tid * kMPerThread + i * 2 + 0] = lane_block_row_max_old[i][0];
-        merge_m[wg_tid * kMPerThread + i * 2 + 1] = lane_block_row_max_old[i][1];
-        merge_l[wg_tid * kMPerThread + i * 2 + 0] = lane_block_row_sum_old[i][0];
-        merge_l[wg_tid * kMPerThread + i * 2 + 1] = lane_block_row_sum_old[i][1];
+        float4 ml;
+        ml.x = lane_block_row_max_old[i][0];
+        ml.y = lane_block_row_max_old[i][1];
+        ml.z = lane_block_row_sum_old[i][0];
+        ml.w = lane_block_row_sum_old[i][1];
+        merge_ml_f4[wg_tid * kMlPackPerThread + i] = ml;
       }
     }
     __syncthreads();
@@ -6104,18 +6107,13 @@ __global__ void __launch_bounds__(kNumThreads, 1)
     // WG1 merges WG2's partial into its own, normalizes, and writes O
     if (consumer_id == 0) {
       // 把 WG2 的未归一化 R_D (Oacc_1) 载入 R_O 寄存器复用为临时 buffer。
+      // R_D: 以 float4 (128-bit) 连续读取。
       // 后续 merge 用 R_D[i][j] 作为 Oacc_0, R_O[i][j] 作为 Oacc_1, 逐元素加权后
       // 结果写回 R_D, 再做最终 O=Oacc/l 归一化。
-      // Load WG2's R_D into R_O (reused as temp buffer)
+      float4 *rd_src = merge_rd_f4 + wg_tid * kRdPackPerThread;
 #pragma unroll
-      for (int i = 0; i < kValTileSeqLenP; ++i)
-#pragma unroll
-        for (int j = 0; j < kValTileHeadDimV; ++j)
-#pragma unroll
-          for (int k = 0; k < kNRegs; ++k)
-            R_O[i][j][k] =
-                merge_rd[wg_tid * kRdPerThread +
-                         (i * kValTileHeadDimV + j) * kNRegs + k];
+      for (int idx = 0; idx < kRdPackPerThread; ++idx)
+        reinterpret_cast<float4 *>(&R_O[0][0][0])[idx] = rd_src[idx];
 
       // 稳定归并 (实现层面, 完整数学见头部注释):
       //   - m0/l0 = WG1 自己的 partial (寄存器), m1/l1 = WG2 的 partial (scratch)
@@ -6129,10 +6127,12 @@ __global__ void __launch_bounds__(kNumThreads, 1)
       //   l=a*l0+b*l1, Oacc=a*Oacc0+b*Oacc1
 #pragma unroll
       for (int i = 0; i < kValTileSeqLenQ; ++i) {
-        float m1_0 = merge_m[wg_tid * kMPerThread + i * 2 + 0];
-        float m1_1 = merge_m[wg_tid * kMPerThread + i * 2 + 1];
-        float l1_0 = merge_l[wg_tid * kMPerThread + i * 2 + 0];
-        float l1_1 = merge_l[wg_tid * kMPerThread + i * 2 + 1];
+        // 128-bit load: [m1_0, m1_1, l1_0, l1_1] interleaved
+        float4 ml1 = merge_ml_f4[wg_tid * kMlPackPerThread + i];
+        float m1_0 = ml1.x;
+        float m1_1 = ml1.y;
+        float l1_0 = ml1.z;
+        float l1_1 = ml1.w;
 
         float m0_0 = lane_block_row_max_old[i][0];
         float m0_1 = lane_block_row_max_old[i][1];
