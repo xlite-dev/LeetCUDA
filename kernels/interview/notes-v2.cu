@@ -10035,7 +10035,8 @@ static void bench_hgemm_mma(int M, int N, int K) {
       } else {
         float tflops = bench_hgemm_tflops(M, N, K, time_ms);
         char tflops_str[32];
-        snprintf(tflops_str, sizeof(tflops_str), "%.1f/%.1f (%.2fx)", tflops, cublas_tflops, tflops / cublas_tflops);
+        snprintf(tflops_str, sizeof(tflops_str), "%.1f/%.1f (%.2fx)", 
+                 tflops, cublas_tflops, tflops / cublas_tflops);
         printf("| %-56s | %.3e | %-19s |\n", label, max_err,
         tflops_str);
       }
@@ -10155,7 +10156,8 @@ static void bench_hgemm_swizzle(int M, int N, int K) {
       } else {
         float tflops = bench_hgemm_tflops(M, N, K, time_ms);
         char tflops_str[32];
-        snprintf(tflops_str, sizeof(tflops_str), "%.1f/%.1f (%.2fx)", tflops, cublas_tflops, tflops / cublas_tflops);
+        snprintf(tflops_str, sizeof(tflops_str), "%.1f/%.1f (%.2fx)", 
+                 tflops, cublas_tflops, tflops / cublas_tflops);
         printf("| %-56s | %.3e | %-19s |\n", label, max_err,
         tflops_str);
       }
@@ -10256,7 +10258,8 @@ static void bench_hgemm_cute(int M, int N, int K) {
         }
         float tflops = bench_hgemm_tflops(M, N, K, time_ms);
         char tflops_str[32];
-        snprintf(tflops_str, sizeof(tflops_str), "%.1f/%.1f (%.2fx)", tflops, cublas_tflops, tflops / cublas_tflops);
+        snprintf(tflops_str, sizeof(tflops_str), "%.1f/%.1f (%.2fx)", 
+                 tflops, cublas_tflops, tflops / cublas_tflops);
         printf("| %-56s | %.3e | %-19s |\n", label, max_err,
         tflops_str);
       } else {
@@ -10390,7 +10393,8 @@ static void bench_hgemm_wgmma(int M, int N, int K) {
       } else {
         float tflops = bench_hgemm_tflops(M, N, K, time_ms);
         char tflops_str[32];
-        snprintf(tflops_str, sizeof(tflops_str), "%.1f/%.1f (%.2fx)", tflops, cublas_tflops, tflops / cublas_tflops);
+        snprintf(tflops_str, sizeof(tflops_str), "%.1f/%.1f (%.2fx)", tflops, 
+                 cublas_tflops, tflops / cublas_tflops);
         printf("| %-56s | %.3e | %-19s |\n", label, max_err,
         tflops_str);
       }
@@ -10528,7 +10532,8 @@ static void bench_hgemm_tma_mma_ws(int M, int N, int K) {
       } else {
         float tflops = bench_hgemm_tflops(M, N, K, time_ms);
         char tflops_str[32];
-        snprintf(tflops_str, sizeof(tflops_str), "%.1f/%.1f (%.2fx)", tflops, cublas_tflops, tflops / cublas_tflops);
+        snprintf(tflops_str, sizeof(tflops_str), "%.1f/%.1f (%.2fx)", tflops, 
+                 cublas_tflops, tflops / cublas_tflops);
         printf("| %-56s | %.3e | %-19s |\n", label, max_err,
         tflops_str);
       }
@@ -10956,7 +10961,8 @@ static void bench_fa_3_tma_ws_launch(int B, int H, int seqlen, int head_dim,
     if (is_fail || should_print_fa_tflops(kMmaAccF32, tflops)) {
       char tflops_str[32];
       if (cudnn_tflops_f16 > 0)
-        snprintf(tflops_str, sizeof(tflops_str), "%.1f/%.1f (%.2fx)", tflops, cudnn_tflops_f16, tflops / cudnn_tflops_f16);
+        snprintf(tflops_str, sizeof(tflops_str), "%.1f/%.1f (%.2fx)", tflops, 
+                 cudnn_tflops_f16, tflops / cudnn_tflops_f16);
       else
         snprintf(tflops_str, sizeof(tflops_str), "%.1f", tflops);
       printf("| %-56s | %.3e | %-19s |\n", label, max_err,
@@ -11005,13 +11011,13 @@ static void bench_fa_3_tma_ws_dispatch(int B, int H, int seqlen, int head_dim,
                                                 ref_o, d_q, d_k, d_v, d_o, cudnn_tflops_f16);
   } else if (head_dim == 128) {
     bench_fa_3_tma_ws_launch<128, 1, kMmaAccF32>(B, H, seqlen, head_dim, h_o_ref,
-                                                  ref_o, d_q, d_k, d_v, d_o, cudnn_tflops_f16);
+                                                 ref_o, d_q, d_k, d_v, d_o, cudnn_tflops_f16);
     bench_fa_3_tma_ws_launch<128, 2, kMmaAccF32>(B, H, seqlen, head_dim, h_o_ref,
-                                                  ref_o, d_q, d_k, d_v, d_o, cudnn_tflops_f16);
+                                                 ref_o, d_q, d_k, d_v, d_o, cudnn_tflops_f16);
     bench_fa_3_tma_ws_launch<128, 3, kMmaAccF32>(B, H, seqlen, head_dim, h_o_ref,
-                                                  ref_o, d_q, d_k, d_v, d_o, cudnn_tflops_f16);
+                                                 ref_o, d_q, d_k, d_v, d_o, cudnn_tflops_f16);
     bench_fa_3_tma_ws_launch<128, 4, kMmaAccF32>(B, H, seqlen, head_dim, h_o_ref,
-                                                  ref_o, d_q, d_k, d_v, d_o, cudnn_tflops_f16);
+                                                 ref_o, d_q, d_k, d_v, d_o, cudnn_tflops_f16);
   } else {
     char label[64];
     snprintf(label, sizeof(label), "FA3 TMA MMA WS (2 Consumer WG) (D!=64/128)");
@@ -11294,7 +11300,8 @@ static void bench_fa_2_tma_mma_ws_cute_launch(
   if (seqlen < kBr || seqlen % kBr != 0 || seqlen % 64 != 0) {
     char label[80];
     snprintf(label, sizeof(label),
-             "FA2 CuTe TMA MMA WS (1 Consumer WG) (Sk=%d, Sv=%d, unaligned)", kStagesK, kStagesV);
+             "FA2 CuTe TMA MMA WS (1 Consumer WG) (Sk=%d, Sv=%d, unaligned)", 
+             kStagesK, kStagesV);
     printf("| %-56s | %-9s | %-19s |\n", label, "SKIP", "None");
     return;
   }
@@ -11334,7 +11341,8 @@ static void bench_fa_2_tma_mma_ws_cute_launch(
   if (!smem_ok) {
     char label[80];
     snprintf(label, sizeof(label),
-             "FA2 CuTe TMA MMA WS (1 Consumer WG) (Sk=%d, Sv=%d, SMEM)", kStagesK, kStagesV);
+             "FA2 CuTe TMA MMA WS (1 Consumer WG) (Sk=%d, Sv=%d, SMEM)", 
+             kStagesK, kStagesV);
     if (g_debug)
       printf("| %-56s | %-9s | %-19s |\n", label, "SMEM too large", "None");
     return;
@@ -11383,7 +11391,8 @@ static void bench_fa_2_tma_mma_ws_cute_launch(
   float tflops = bench_fa_tflops(B, H, seqlen, kHeadDim, time_ms);
   char label[80];
   snprintf(label, sizeof(label),
-           "FA2 CuTe TMA MMA WS (1 Consumer WG) (Sk=%d, Sv=%d, F32Acc)", kStagesK, kStagesV);
+           "FA2 CuTe TMA MMA WS (1 Consumer WG) (Sk=%d, Sv=%d, F32Acc)", 
+           kStagesK, kStagesV);
   bool is_fail = checked && max_err >= 5e-1f;
   if (is_fail || should_print_fa_tflops(1, tflops)) {
     char performance[32];
@@ -12025,7 +12034,9 @@ int main(int argc, char *argv[]) {
            g_bench_M, g_bench_N, g_bench_K,
            g_bench_B, g_bench_H, g_bench_Nfa, g_bench_D);
     printf("| %-56s | %-9s | %-19s |\n", "Kernel", "Max Err", "TFLOPS/cu{BLAS,DNN}");
-    printf("|----------------------------------------------------------|-----------|---------------------|\n");
+    printf(
+      "|----------------------------------------------------------|-----------|---------------------|\n"
+    );
 
     if (g_bench_hgemm || g_bench_hgemm_all || g_bench_all) {
 #if defined(NOTES_V2_ENABLE_CUTE)
