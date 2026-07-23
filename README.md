@@ -59,7 +59,7 @@ nvcc -std=c++20 -O3 -gencode arch=compute_120a,code=sm_120a --expt-relaxed-const
   --use_fast_math -DNOTES_V2_ENABLE_CUTE -DNOTES_V2_ENABLE_TMA_MMA_WS -DNOTES_V2_ENABLE_CUDNN \
   -I ../../third-party/cutlass/include -I ../../third-party/cudnn-frontend/include \
   -L/usr/local/cuda/targets/x86_64-linux/lib/stubs -lcublas -lcudnn -lnvrtc \
-  -lcuda notes-v2.cu -o notes_v2_sm120a.bin 
+  -lcuda notes-v2.cu -o notes_v2_sm120a.bin
 ```
 
 ```bash
