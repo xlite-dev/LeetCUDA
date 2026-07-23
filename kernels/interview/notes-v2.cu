@@ -6788,12 +6788,14 @@ flash_attn_mma_stages_split_q_cute(
     }
 
     // 3d: PV 前 wait V[tile] 就绪
+    // kStagesK>1: K_next 提交条件是 tile + kStagesK - 1 < kv_tiles。
+    //   已提交时栈顶有 K_next，wait<1> 只等 V_tile；
+    //   未提交（尾部 Sk-1 个 tile）时栈只有 V_tile，必须 wait<0>。
+    //   tile=0 必然已提交（PREFETCH 保证 kv_tiles >= kStagesK-1，且循环能跑说明 kv_tiles >= 1）。
     if constexpr (kStagesK > 1) {
-      if (tile + 1 < kv_tiles) {
-        // 非最后 tile，栈顶有 K_next，wait<1> 只等 V_tile 完成
+      if (tile + kStagesK - 1 < kv_tiles) {
         cp_async_wait<1>();
       } else {
-        // 最后 tile 无 K_next prefetch，wait<0> 等全部
         cp_async_wait<0>();
       }
     }
@@ -6810,11 +6812,10 @@ flash_attn_mma_stages_split_q_cute(
         fa_cute::convert_layout_acc_Aregs<typename Traits::TiledMma>(
             tCrP.layout()));
     fa_cute::gemm_rs(tCrO, tCrPv, tCrV, tVsVt_s2r,
-                    tiled_mma, s2r_copy_v, s2r_thr_v);
+                     tiled_mma, s2r_copy_v, s2r_thr_v);
     __syncthreads();  // 确保 ldmatrix V 完成后才能覆盖 V smem
 
     // 3e: rescale 已合并到 3c softmax pass
-
     // 循环末尾: kStagesK>1 且非最后 tile -> wait<0> 确保 K_next 完成
     // (下一轮 QK 安全；同时保护 V/K smem 不被提前覆盖)
     if constexpr (kStagesK > 1) {
@@ -11682,6 +11683,13 @@ static void bench_flash_attn(int B, int H, int N, int D) {
       bench_fa_launch<64, 2, 0, 0, 0, 1>(B, H, seqlen, head_dim, h_o_ref, ref_o,
                                          d_q, d_k, d_v, d_o, cudnn_tflops_f32);
     }
+#if defined(NOTES_V2_ENABLE_CUTE)
+    {
+      cudaDeviceSynchronize();
+      bench_fa_2_mma_stages_cute_dispatch(
+        B, H, seqlen, head_dim, h_o_ref, ref_o, d_q, d_k, d_v, d_o, cudnn_tflops_f32);
+    }
+#endif
 #if defined(NOTES_V2_ENABLE_TMA_MMA_WS)
     {
       cudaDeviceSynchronize();
@@ -11803,6 +11811,13 @@ static void bench_flash_attn(int B, int H, int N, int D) {
       bench_fa_launch<128, 2, 0, 0, 0, 1>(B, H, seqlen, head_dim, h_o_ref, ref_o,
                                           d_q, d_k, d_v, d_o, cudnn_tflops_f32);
     }
+#if defined(NOTES_V2_ENABLE_CUTE)
+    {
+      cudaDeviceSynchronize();
+      bench_fa_2_mma_stages_cute_dispatch(
+        B, H, seqlen, head_dim, h_o_ref, ref_o, d_q, d_k, d_v, d_o, cudnn_tflops_f32);
+    }
+#endif    
 #if defined(NOTES_V2_ENABLE_TMA_MMA_WS)
     {
       cudaDeviceSynchronize();
@@ -11845,13 +11860,6 @@ static void bench_flash_attn(int B, int H, int N, int D) {
       bench_fa_3_tma_mma_ws_cute_dispatch(B, H, seqlen, head_dim, h_o_ref, ref_o,
                d_q, d_k, d_v, d_o, cudnn_tflops_f32);
     #endif
-    }
-#endif
-#if defined(NOTES_V2_ENABLE_CUTE) && defined(NOTES_V2_ENABLE_TMA_MMA_WS)
-    {
-      cudaDeviceSynchronize();
-      bench_fa_2_mma_stages_cute_dispatch(B, H, seqlen, head_dim, h_o_ref, ref_o,
-               d_q, d_k, d_v, d_o, cudnn_tflops_f32);
     }
 #endif
   }
