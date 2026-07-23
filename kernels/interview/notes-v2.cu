@@ -10645,7 +10645,7 @@ static void bench_fa_launch(int B, int H, int seqlen, int head_dim,
 
   int count = B * H * seqlen * head_dim;
   char label[64];
-  snprintf(label, sizeof(label), "FA2 (Sk=%d, %s, %s)", kStagesK,
+  snprintf(label, sizeof(label), "FA2 MMA Stages (Sk=%d, %s, %s)", kStagesK,
            layout_name, kMmaAccF32 ? "F32Acc" : "F16Acc");
   float max_err = 0.0f;
   bool checked = h_o_ref || ref_o;
