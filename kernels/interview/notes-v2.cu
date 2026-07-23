@@ -10616,7 +10616,7 @@ static void bench_fa_3_tma_ws_dispatch(int B, int H, int seqlen, int head_dim,
 
 #if defined(NOTES_V2_ENABLE_CUTE)
 template <int kHeadDim, int kStagesK = 1>
-static void bench_fa_3_cute_launch(
+static void bench_fa_3_tma_mma_ws_cute_launch(
     int B, int H, int seqlen, half *h_o_ref, float *ref_o,
     half *d_q, half *d_k, half *d_v, half *d_o,
     float cudnn_tflops_f32) {
@@ -10726,31 +10726,31 @@ static void bench_fa_3_cute_launch(
   cudaStreamDestroy(stream);
 }
 
-static void bench_fa_3_cute_dispatch(
+static void bench_fa_3_tma_mma_ws_cute_dispatch(
     int B, int H, int seqlen, int head_dim,
     half *h_o_ref, float *ref_o,
     half *d_q, half *d_k, half *d_v, half *d_o,
     float cudnn_tflops_f32) {
   if (head_dim == 64) {
-    bench_fa_3_cute_launch<64, 1>(B, H, seqlen, h_o_ref, ref_o,
+    bench_fa_3_tma_mma_ws_cute_launch<64, 1>(B, H, seqlen, h_o_ref, ref_o,
         d_q, d_k, d_v, d_o, cudnn_tflops_f32);
-    bench_fa_3_cute_launch<64, 2>(B, H, seqlen, h_o_ref, ref_o,
+    bench_fa_3_tma_mma_ws_cute_launch<64, 2>(B, H, seqlen, h_o_ref, ref_o,
         d_q, d_k, d_v, d_o, cudnn_tflops_f32);
-    bench_fa_3_cute_launch<64, 3>(B, H, seqlen, h_o_ref, ref_o,
+    bench_fa_3_tma_mma_ws_cute_launch<64, 3>(B, H, seqlen, h_o_ref, ref_o,
         d_q, d_k, d_v, d_o, cudnn_tflops_f32);
-    bench_fa_3_cute_launch<64, 4>(B, H, seqlen, h_o_ref, ref_o,
+    bench_fa_3_tma_mma_ws_cute_launch<64, 4>(B, H, seqlen, h_o_ref, ref_o,
         d_q, d_k, d_v, d_o, cudnn_tflops_f32);
   } else if (head_dim == 128) {
-    bench_fa_3_cute_launch<128, 1>(B, H, seqlen, h_o_ref, ref_o,
+    bench_fa_3_tma_mma_ws_cute_launch<128, 1>(B, H, seqlen, h_o_ref, ref_o,
         d_q, d_k, d_v, d_o, cudnn_tflops_f32);
-    bench_fa_3_cute_launch<128, 2>(B, H, seqlen, h_o_ref, ref_o,
+    bench_fa_3_tma_mma_ws_cute_launch<128, 2>(B, H, seqlen, h_o_ref, ref_o,
         d_q, d_k, d_v, d_o, cudnn_tflops_f32);
   }
 }
 
 // FA2-style CuTe bench: single consumer, Br=128, no merge.
 template <int kHeadDim, int kStagesK, int kStagesV = 1>
-static void bench_fa_2_cute_launch(
+static void bench_fa_2_tma_mma_ws_cute_launch(
     int B, int H, int seqlen, half *h_o_ref, float *ref_o,
     half *d_q, half *d_k, half *d_v, half *d_o,
     float cudnn_tflops_f32) {
@@ -10870,28 +10870,28 @@ static void bench_fa_2_cute_launch(
   cudaStreamDestroy(stream);
 }
 
-static void bench_fa_2_cute_dispatch(
+static void bench_fa_2_tma_mma_ws_cute_dispatch(
     int B, int H, int seqlen, int head_dim,
     half *h_o_ref, float *ref_o,
     half *d_q, half *d_k, half *d_v, half *d_o,
     float cudnn_tflops_f32) {
   if (head_dim == 64) {
-    bench_fa_2_cute_launch<64, 1, 1>(B, H, seqlen, h_o_ref, ref_o,
+    bench_fa_2_tma_mma_ws_cute_launch<64, 1, 1>(B, H, seqlen, h_o_ref, ref_o,
         d_q, d_k, d_v, d_o, cudnn_tflops_f32);
-    bench_fa_2_cute_launch<64, 2, 1>(B, H, seqlen, h_o_ref, ref_o,
+    bench_fa_2_tma_mma_ws_cute_launch<64, 2, 1>(B, H, seqlen, h_o_ref, ref_o,
         d_q, d_k, d_v, d_o, cudnn_tflops_f32);
-    bench_fa_2_cute_launch<64, 3, 1>(B, H, seqlen, h_o_ref, ref_o,
+    bench_fa_2_tma_mma_ws_cute_launch<64, 3, 1>(B, H, seqlen, h_o_ref, ref_o,
         d_q, d_k, d_v, d_o, cudnn_tflops_f32);
-    bench_fa_2_cute_launch<64, 4, 1>(B, H, seqlen, h_o_ref, ref_o,
+    bench_fa_2_tma_mma_ws_cute_launch<64, 4, 1>(B, H, seqlen, h_o_ref, ref_o,
         d_q, d_k, d_v, d_o, cudnn_tflops_f32);
-    bench_fa_2_cute_launch<64, 2, 2>(B, H, seqlen, h_o_ref, ref_o,
+    bench_fa_2_tma_mma_ws_cute_launch<64, 2, 2>(B, H, seqlen, h_o_ref, ref_o,
         d_q, d_k, d_v, d_o, cudnn_tflops_f32);
   } else if (head_dim == 128) {
-    bench_fa_2_cute_launch<128, 1, 1>(B, H, seqlen, h_o_ref, ref_o,
+    bench_fa_2_tma_mma_ws_cute_launch<128, 1, 1>(B, H, seqlen, h_o_ref, ref_o,
         d_q, d_k, d_v, d_o, cudnn_tflops_f32);
-    bench_fa_2_cute_launch<128, 2, 1>(B, H, seqlen, h_o_ref, ref_o,
+    bench_fa_2_tma_mma_ws_cute_launch<128, 2, 1>(B, H, seqlen, h_o_ref, ref_o,
         d_q, d_k, d_v, d_o, cudnn_tflops_f32);
-    bench_fa_2_cute_launch<128, 3, 1>(B, H, seqlen, h_o_ref, ref_o,
+    bench_fa_2_tma_mma_ws_cute_launch<128, 3, 1>(B, H, seqlen, h_o_ref, ref_o,
         d_q, d_k, d_v, d_o, cudnn_tflops_f32);
   }
 }
@@ -11066,7 +11066,7 @@ static void bench_flash_attn(int B, int H, int N, int D) {
 
   if (g_bench_fa3_cute_only) {
 #if defined(NOTES_V2_ENABLE_CUTE) && defined(NOTES_V2_ENABLE_TMA_MMA_WS)
-    bench_fa_3_cute_dispatch(
+    bench_fa_3_tma_mma_ws_cute_dispatch(
         B, H, seqlen, head_dim, h_o_ref, ref_o,
         d_q, d_k, d_v, d_o, cudnn_tflops_f32);
 #endif
@@ -11195,10 +11195,10 @@ static void bench_flash_attn(int B, int H, int N, int D) {
                                      d_q, d_k, d_v, d_o, cudnn_tflops_f32);
 #if defined(NOTES_V2_ENABLE_CUTE)
       cudaDeviceSynchronize();
-      bench_fa_2_cute_dispatch(B, H, seqlen, head_dim, h_o_ref, ref_o,
+      bench_fa_2_tma_mma_ws_cute_dispatch(B, H, seqlen, head_dim, h_o_ref, ref_o,
                                d_q, d_k, d_v, d_o, cudnn_tflops_f32);
       cudaDeviceSynchronize();
-      bench_fa_3_cute_dispatch(B, H, seqlen, head_dim, h_o_ref, ref_o,
+      bench_fa_3_tma_mma_ws_cute_dispatch(B, H, seqlen, head_dim, h_o_ref, ref_o,
                                d_q, d_k, d_v, d_o, cudnn_tflops_f32);
 #endif
     }
@@ -11310,10 +11310,10 @@ static void bench_flash_attn(int B, int H, int N, int D) {
                                      d_q, d_k, d_v, d_o, cudnn_tflops_f32);
     #if defined(NOTES_V2_ENABLE_CUTE)
       cudaDeviceSynchronize();
-      bench_fa_2_cute_dispatch(B, H, seqlen, head_dim, h_o_ref, ref_o,
+      bench_fa_2_tma_mma_ws_cute_dispatch(B, H, seqlen, head_dim, h_o_ref, ref_o,
                d_q, d_k, d_v, d_o, cudnn_tflops_f32);
       cudaDeviceSynchronize();
-      bench_fa_3_cute_dispatch(B, H, seqlen, head_dim, h_o_ref, ref_o,
+      bench_fa_3_tma_mma_ws_cute_dispatch(B, H, seqlen, head_dim, h_o_ref, ref_o,
                d_q, d_k, d_v, d_o, cudnn_tflops_f32);
     #endif
     }
