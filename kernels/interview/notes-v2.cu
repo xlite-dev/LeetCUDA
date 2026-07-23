@@ -6246,29 +6246,30 @@ __global__ void __launch_bounds__(kNumThreads, 1)
 namespace fa_cute {
 using namespace cute;
 
-template <int kHeadDim>
-struct FlashAttn3CuTeTraits {
-  static_assert(kHeadDim == 64 || kHeadDim == 128);
-
-  using Element = cutlass::half_t;
-  using SmemLayoutAtom = GMMA::Layout_K_SW128_Atom<Element>;
-  using SmemLayoutQKV = decltype(tile_to_shape(
-      SmemLayoutAtom{}, Shape<_64, Int<kHeadDim>>{}));
-  using SmemLayoutVt = decltype(composition(
-      SmemLayoutQKV{},
-      make_layout(Shape<Int<kHeadDim>, _64>{}, GenRowMajor{})));
-
-  using MmaAtom = MMA_Atom<SM80_16x8x16_F32F16F16F32_TN>;
-  using TiledMma = TiledMMA<
-      MmaAtom, Layout<Shape<_4, _1, _1>>,
-      Tile<_64, _16, _16>>;
-  using SmemCopyAtom = Copy_Atom<SM75_U32x4_LDSM_N, Element>;
-  using SmemCopyAtomTransposed = Copy_Atom<SM75_U16x8_LDSM_T, Element>;
-};
-
-// FA2-style single-consumer traits (Br=128, Bc=64).
-// 与 FlashAttn3CuTeTraits 的区别：Br=128 -> 8 warps along M (vs 4),
-// Q smem tile 为 [128, D] (vs [64, D])，K/V tile 仍为 [64, D] (与 8c 一致)。
+// FlashAttn2CuTeTraits: FA2-style CuTe kernel 配置 (Br=128, Bc=64, 单 consumer WG)。
+// 与 FlashAttn3CuTeTraits 的核心区别:
+//   - Br=128 -> 8 warps along M (vs FA3 的 4), Q tile [128, D] (vs [64, D])
+//   - 单 consumer WG 全 KV 遍历, 无 split-KV merge
+//   - K/V tile 仍为 [64, D], SmemLayoutAtom/MmaAtom/SmemCopyAtom 与 FA3 一致
+//     (设计原因见 FlashAttn3CuTeTraits 头注释)
+//
+// 设计差异详述:
+// ── SmemLayout (Q 更大, K/V 不变) ──
+//   SmemLayoutQ = tile_to_shape(atom, (128, D)): Q tile [128, D] (Br=128),
+//     是 FA3 Q tile [64, D] 的 2 倍行数。8×8 atom 按 128 行重复, swizzle pattern 不变。
+//   SmemLayoutKV = tile_to_shape(atom, (64, D)): K/V tile [64, D] (Bc=64),
+//     与 FA3 的 SmemLayoutQKV 完全一致。
+//   SmemLayoutVt: 同 FA3, composition 叠加 col-major (D, 64) 得 V^T 转置视图。
+//
+// ── MMA (8 warps, 单 WG 覆盖 Br=128) ──
+//   TiledMma = TiledMMA(atom, EURepeat<8,1,1>, Tile<128,16,16>):
+//     - EURepeat<8,1,1>: 8 warp 沿 M 重复 MMA atom
+//       -> 8 warps × 32 threads = 256 threads = 1 consumer WG (FA3 为 128 threads)
+//     - Tile<128,16,16>: 逻辑 MMA tile
+//       M=128 = 8 warps × 16 rows = Br (单 WG 覆盖 Br=128, FA3 为 64)
+//       N=16, K=16: 与 FA3 一致
+//   MmaAtom / SmemCopyAtom / SmemCopyAtomTransposed 与 FA3 完全相同,
+//   不再重复说明 (见 FlashAttn3CuTeTraits 头注释)。
 // 复用 fa_cute 的 gemm_ss / gemm_rs / convert_layout_acc_* / convert_type。
 template <int kHeadDim>
 struct FlashAttn2CuTeTraits {
@@ -6290,6 +6291,71 @@ struct FlashAttn2CuTeTraits {
   using TiledMma = TiledMMA<
       MmaAtom, Layout<Shape<_8, _1, _1>>,
       Tile<_128, _16, _16>>;
+  using SmemCopyAtom = Copy_Atom<SM75_U32x4_LDSM_N, Element>;
+  using SmemCopyAtomTransposed = Copy_Atom<SM75_U16x8_LDSM_T, Element>;
+};
+
+// FlashAttn3CuTeTraits: FA3-style CuTe kernel 编译期配置 (Br=Bc=64, 双 consumer WG)。
+// 所有 layout/atom/tiler 都是编译期类型, kernel body 只接收实例化后的类型。
+//
+// ── SmemLayout 设计 (与 TMA 128B swizzle 匹配, 保证 ldmatrix 无 bank conflict) ──
+//   SmemLayoutAtom = GMMA::Layout_K_SW128_Atom<Element>:
+//     - GMMA 128B swizzle atom: (8, 8) layout + Swizzle<3,4,3>
+//     - 一个 atom 覆盖 8 行 × 8 half = 128B, 恰好一个 swizzle 周期
+//     - 与 TMA CU_TENSOR_MAP_SWIZZLE_128B 写入 pattern 完全一致:
+//       producer 用 TMA 按 128B 粒度写入 swizzle 地址, consumer 用 cute::copy
+//       读取时由同款 swizzle layout 推导物理地址, 读写两侧 swizzle 一致 -> 无 bank conflict
+//   SmemLayoutQKV = tile_to_shape(atom, (64, D)):
+//     - Q/K/V tile 都是 [Br=Bc=64, D] (FA3 中 Br=Bc=64)
+//     - tile_to_shape 把 8×8 atom 按 (64, D) 重复, 保持 swizzle pattern
+//   SmemLayoutVt = composition(QKV, col-major (D, 64)):
+//     - V 转置视图: P@V 时 V 作为 MMA 的 B 矩阵, mma.sync.row.col 要求
+//       B 为 col-major。V 物理存储是 row-major [64, D], 通过 composition
+//       叠加 col-major (D, 64) 逻辑视图, 得到 V^T[D, 64] 访问接口。
+//     - composition 不搬数据, 只改 layout 解读, 物理 swizzle 不变。
+//
+// ── MMA 设计 (Ampere m16n8k16, f32 累加保证 softmax 精度) ──
+//   MmaAtom = SM80_16x8x16_F32F16F16F32_TN:
+//     - f16 输入 + f32 累加。FA 的 softmax 对精度敏感 (exp/sum),
+//       f16 累加会导致 row sum 溢出/下溢, 必须用 f32。
+//     - TN 布局: A(row-major) × B(col-major), 与 smem 物理布局天然匹配。
+//   TiledMma = TiledMMA(atom, EURepeat<4,1,1>, Tile<64,16,16>):
+//     - EURepeat<4,1,1>: 4 warp 沿 M 重复 MMA atom
+//       -> 4 warps × 32 threads = 128 threads = 1 consumer WG
+//     - Tile<64,16,16>: 逻辑 MMA tile
+//       M=64 = 4 warps × 16 rows = Br (单 WG 覆盖 Br=64)
+//       N=16 = 2 × kMmaN(8) -> 一次覆盖 16 列
+//       K=16 = kMmaK (单次 MMA K slice)
+//
+// ── SmemCopy 设计 (S->R ldmatrix, 与 smem swizzle layout 配合) ──
+//   SmemCopyAtom = SM75_U32x4_LDSM_N:
+//     - 对应 ldmatrix.sync.aligned.x4.m8n8.shared.b16 (非转置)
+//     - 一次加载 4 个 8×8 half 片段到 4 条 uint32 寄存器
+//     - 用于 Q 和 K: Q/K 在 smem 是 row-major, ldmatrix.x4 非转置加载
+//       得到 col-major fragment, 匹配 mma.row.col 的 A/B 输入约定
+//   SmemCopyAtomTransposed = SM75_U16x8_LDSM_T:
+//     - 对应 ldmatrix.sync.aligned.x2.trans.m8n8.shared.b16 (转置)
+//     - 用于 V: V 在 smem 是 row-major [Bc, D], P@V 需把 V 当 col-major
+//       B 矩阵。ldmatrix.x2.trans 转置加载为 col-major fragment, 直接匹配
+//       mma.row.col 的 B 输入, 无需软件转置 V smem。
+//     - 用 x2 (非 x4): V 的 K 维 (Bc=64) 按 kMmaK=16 切片, 每片 16×8
+//       = 1 个 ldmatrix.x2 (2 个 8×8 fragment)
+template <int kHeadDim>
+struct FlashAttn3CuTeTraits {
+  static_assert(kHeadDim == 64 || kHeadDim == 128);
+
+  using Element = cutlass::half_t;
+  using SmemLayoutAtom = GMMA::Layout_K_SW128_Atom<Element>;
+  using SmemLayoutQKV = decltype(tile_to_shape(
+      SmemLayoutAtom{}, Shape<_64, Int<kHeadDim>>{}));
+  using SmemLayoutVt = decltype(composition(
+      SmemLayoutQKV{},
+      make_layout(Shape<Int<kHeadDim>, _64>{}, GenRowMajor{})));
+
+  using MmaAtom = MMA_Atom<SM80_16x8x16_F32F16F16F32_TN>;
+  using TiledMma = TiledMMA<
+      MmaAtom, Layout<Shape<_4, _1, _1>>,
+      Tile<_64, _16, _16>>;
   using SmemCopyAtom = Copy_Atom<SM75_U32x4_LDSM_N, Element>;
   using SmemCopyAtomTransposed = Copy_Atom<SM75_U16x8_LDSM_T, Element>;
 };
@@ -6354,6 +6420,18 @@ CUTE_DEVICE auto convert_layout_acc_Aregs(Layout acc_layout) {
       get<1>(divided), get<2, 1>(divided));
 }
 
+// convert_type: 在寄存器层面做 dtype 转换, 不搬数据只改元素类型解释。
+//
+// 为什么需要? MMA accumulator 是 f32 (F32F16F16F32_TN), 但下游消费需要 f16:
+//   - tCrP = convert_type<Element>(tCrS): softmax 后的 score S (f32) 转 P (f16),
+//     供 P@V 的 A fragment (mma 要求 f16 输入)
+//   - tCrO_half = convert_type<Element>(tCrO): 最终 O (f32 acc) 转 f16, 供 store
+//
+// 实现: NumericArrayConverter 一次性批量转换整个 fragment (kElements 个元素),
+// 返回的 tensor 共享原 layout, 只是 value_type 从 From 变为 To。
+// 零拷贝, 纯寄存器内转换 (make_rmem_ptr 标记为 register memory)。
+//
+// 出处: flash-attention/csrc/flash_attn/src/epilogue/epilogue.hpp (同类实现)
 template <typename To, typename Engine, typename Layout>
 CUTE_DEVICE auto convert_type(Tensor<Engine, Layout> const &tensor) {
   using From = typename Engine::value_type;
@@ -6364,10 +6442,6 @@ CUTE_DEVICE auto convert_type(Tensor<Engine, Layout> const &tensor) {
   return make_tensor(make_rmem_ptr<To>(&fragment), tensor.layout());
 }
 
-template <typename TensorC, typename TensorA, typename TensorB,
-          typename TensorSA, typename TensorSB, typename TiledMma,
-          typename TiledCopyA, typename TiledCopyB,
-          typename ThreadCopyA, typename ThreadCopyB>
 // gemm_ss: Shared-Shared GEMM，A 和 B 都从 smem 加载到寄存器再做 MMA。
 // 用于 FA 的 Q@K^T 步骤：Q 和 K 都在 smem 中（Q 由 TMA/cp.async 预加载，
 // K 由 TMA 加载到当前 stage），需要 ldmatrix 同时搬运 A(Q) 和 B(K)。
@@ -6392,6 +6466,10 @@ template <typename TensorC, typename TensorA, typename TensorB,
 // 出处: flash-attention/csrc/flash_attn/src/utils.h:166 (gemm_rs 的对照)
 //       FlashMLA/csrc/sm90/helpers.h:97 (gemm_ss 的同类实现)
 //       本 notes 的 QK GEMM 调用: fa_cute::gemm_ss(tCrS, tCrQ, tCrK, ...)
+template <typename TensorC, typename TensorA, typename TensorB,
+          typename TensorSA, typename TensorSB, typename TiledMma,
+          typename TiledCopyA, typename TiledCopyB,
+          typename ThreadCopyA, typename ThreadCopyB>
 CUTE_DEVICE void gemm_ss(
     TensorC &acc, TensorA &fragment_a, TensorB &fragment_b,
     TensorSA const &shared_a, TensorSB const &shared_b,
