@@ -6565,6 +6565,7 @@ flash_attn_tma_mma_ws_split_q_cute(
     CUTLASS_GRID_CONSTANT TmaK const tma_k,
     CUTLASS_GRID_CONSTANT TmaV const tma_v,
     cutlass::half_t *output, int rows, int seqlen) {
+  // rows: B * H * seqlen, seqlen: N, kHeadDim: D    
   using namespace cute;
   using Traits = fa_cute::FlashAttn2CuTeTraits<kHeadDim>;
   using Element = typename Traits::Element;
@@ -6880,6 +6881,7 @@ flash_attn_3_tma_mma_ws_split_q_cute(
     CUTLASS_GRID_CONSTANT TmaK const tma_k,
     CUTLASS_GRID_CONSTANT TmaV const tma_v,
     cutlass::half_t *output, int rows, int seqlen) {
+  // rows: B * H * seqlen, seqlen: N, kHeadDim: D    
   using namespace cute;
   using Traits = fa_cute::FlashAttn3CuTeTraits<kHeadDim>;
   using Element = typename Traits::Element;
