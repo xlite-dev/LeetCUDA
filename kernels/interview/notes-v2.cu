@@ -11212,9 +11212,10 @@ static void bench_flash_attn(int B, int H, int N, int D) {
                                      d_q, d_k, d_v, d_o, cudnn_tflops_f32);
 #if defined(NOTES_V2_ENABLE_CUTE)
       cudaDeviceSynchronize();
-      bench_fa_3_cute_dispatch(B, H, seqlen, head_dim, h_o_ref, ref_o,
-                               d_q, d_k, d_v, d_o, cudnn_tflops_f32);
       bench_fa_2_cute_dispatch(B, H, seqlen, head_dim, h_o_ref, ref_o,
+                               d_q, d_k, d_v, d_o, cudnn_tflops_f32);
+      cudaDeviceSynchronize();
+      bench_fa_3_cute_dispatch(B, H, seqlen, head_dim, h_o_ref, ref_o,
                                d_q, d_k, d_v, d_o, cudnn_tflops_f32);
 #endif
     }
@@ -11326,9 +11327,10 @@ static void bench_flash_attn(int B, int H, int N, int D) {
                                      d_q, d_k, d_v, d_o, cudnn_tflops_f32);
     #if defined(NOTES_V2_ENABLE_CUTE)
       cudaDeviceSynchronize();
-      bench_fa_3_cute_dispatch(B, H, seqlen, head_dim, h_o_ref, ref_o,
-               d_q, d_k, d_v, d_o, cudnn_tflops_f32);
       bench_fa_2_cute_dispatch(B, H, seqlen, head_dim, h_o_ref, ref_o,
+               d_q, d_k, d_v, d_o, cudnn_tflops_f32);
+      cudaDeviceSynchronize();
+      bench_fa_3_cute_dispatch(B, H, seqlen, head_dim, h_o_ref, ref_o,
                d_q, d_k, d_v, d_o, cudnn_tflops_f32);
     #endif
     }
