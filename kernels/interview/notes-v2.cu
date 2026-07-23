@@ -9212,8 +9212,8 @@ static bool launch_hgemm_tma_mma_ws(int M, int N, int K, half *d_a,
   if (smem_bytes + attributes.sharedSizeBytes > size_t(max_smem)) {
     if (g_debug)
       printf("| %-56s | %-9s |\n",
-             kStages == 2 ? "HGEMM TMA MMA WS (S=2, SW=0)"
-                          : "HGEMM TMA MMA WS (S=3, SW=0)",
+             kStages == 2 ? "HGEMM TMA MMA WS (S=2, BLKSW=0)"
+                          : "HGEMM TMA MMA WS (S=3, BLKSW=0)",
              "SMEM SKIP");
     return false;
   }
@@ -9302,10 +9302,10 @@ static void test_hgemm_tma_mma_ws(int M, int N, int K) {
                                        __half2float(h_c_ref[i])));
       printf("| %-56s | %.3e |\n",
              block_swizzle
-                 ? (stages == 2 ? "HGEMM TMA MMA WS (S=2, SW=1)"
-                                : "HGEMM TMA MMA WS (S=3, SW=1)")
-                 : (stages == 2 ? "HGEMM TMA MMA WS (S=2, SW=0)"
-                                : "HGEMM TMA MMA WS (S=3, SW=0)"),
+                 ? (stages == 2 ? "HGEMM TMA MMA WS (S=2, BLKSW=1)"
+                                : "HGEMM TMA MMA WS (S=3, BLKSW=1)")
+                 : (stages == 2 ? "HGEMM TMA MMA WS (S=2, BLKSW=0)"
+                                : "HGEMM TMA MMA WS (S=3, BLKSW=0)"),
              max_err);
     }
   }
@@ -10028,7 +10028,7 @@ static void bench_hgemm_mma(int M, int N, int K) {
           : launch_timed_hgemm_mma<3, 0>(d_a, d_b_t, d_c, h_c, h_c_ref, M, N,
             K, size_c, start, stop, max_err, time_ms);
       char label[64];
-      snprintf(label, sizeof(label), "HGEMM MMA (S=%d, SW=%d)", stages, swizzle);
+      snprintf(label, sizeof(label), "HGEMM MMA (S=%d, BLKSW=%d)", stages, swizzle);
       if (!ok) {
         if (g_debug)
           printf("| %-56s | %-9s | %-19s |\n", label, "SMEM SKIP", "None");
@@ -10148,7 +10148,7 @@ static void bench_hgemm_swizzle(int M, int N, int K) {
           : launch_timed_hgemm_swizzle<3, 0>(d_a, d_b_t, d_c, h_c, h_c_ref, M,
             N, K, size_c, start, stop, max_err, time_ms);
       char label[64];
-      snprintf(label, sizeof(label), "HGEMM Swizzle+Reg2x (S=%d, SW=%d)", stages, swizzle);
+      snprintf(label, sizeof(label), "HGEMM Swizzle+Reg2x (S=%d, BLKSW=%d)", stages, swizzle);
       if (!ok) {
         if (g_debug)
           printf("| %-56s | %-9s | %-19s |\n", label, "SMEM SKIP", "None");
@@ -10219,7 +10219,7 @@ static void bench_hgemm_cute(int M, int N, int K) {
   for (int stages : {2, 3}) {
     for (int swizzle : {0, 1}) {
       char label[64];
-      snprintf(label, sizeof(label), "HGEMM CuTe Swizzle (S=%d, SW=%d)", stages, swizzle);
+      snprintf(label, sizeof(label), "HGEMM CuTe Swizzle (S=%d, BLKSW=%d)", stages, swizzle);
       bool ok = false;
       float time_ms = 0, max_err = 0;
       if (stages == 2) {
@@ -10383,7 +10383,7 @@ static void bench_hgemm_wgmma(int M, int N, int K) {
           : launch_timed_hgemm_wgmma<3, 0>(d_c, h_c, h_c_ref, tma_a, tma_b, M, N, K,
             size_c, start, stop, max_err, time_ms);
       char label[64];
-      snprintf(label, sizeof(label), "HGEMM TMA WGMMA WS (S=%d, SW=%d)", stages, swizzle);
+      snprintf(label, sizeof(label), "HGEMM TMA WGMMA WS (S=%d, BLKSW=%d)", stages, swizzle);
       if (!ok) {
         if (g_debug)
           printf("| %-56s | %-9s | %-19s |\n", label, "SMEM SKIP", "None");
@@ -10521,7 +10521,7 @@ static void bench_hgemm_tma_mma_ws(int M, int N, int K) {
             h_c_ref, size_c, tma_a, tma_b,
             start, stop, max_err, time_ms);
       char label[64];
-      snprintf(label, sizeof(label), "HGEMM TMA MMA WS (S=%d, SW=%d)", stages, swizzle);
+      snprintf(label, sizeof(label), "HGEMM TMA MMA WS (S=%d, BLKSW=%d)", stages, swizzle);
       if (!ok) {
         if (g_debug)
           printf("| %-56s | %-9s | %-19s |\n", label, "SMEM SKIP", "None");
@@ -10645,7 +10645,7 @@ static void bench_fa_launch(int B, int H, int seqlen, int head_dim,
 
   int count = B * H * seqlen * head_dim;
   char label[64];
-  snprintf(label, sizeof(label), "FA2 (S=%d, %s, %s)", kStagesK,
+  snprintf(label, sizeof(label), "FA2 (Sk=%d, %s, %s)", kStagesK,
            layout_name, kMmaAccF32 ? "F32Acc" : "F16Acc");
   float max_err = 0.0f;
   bool checked = h_o_ref || ref_o;
@@ -10662,7 +10662,8 @@ static void bench_fa_launch(int B, int H, int seqlen, int head_dim,
     if (is_fail || should_print_fa_tflops(kMmaAccF32, tflops)) {
       char tflops_str[32];
       if (cudnn_tflops_f16 > 0)
-        snprintf(tflops_str, sizeof(tflops_str), "%.1f/%.1f (%.2fx)", tflops, cudnn_tflops_f16, tflops / cudnn_tflops_f16);
+        snprintf(tflops_str, sizeof(tflops_str), "%.1f/%.1f (%.2fx)", 
+                 tflops, cudnn_tflops_f16, tflops / cudnn_tflops_f16);
       else
         snprintf(tflops_str, sizeof(tflops_str), "%.1f", tflops);
       printf("| %-56s | %.3e | %-19s |\n", label, max_err,
@@ -10798,7 +10799,8 @@ static void bench_fa_tma_mma_ws_launch(int B, int H, int seqlen, int head_dim,
     if (is_fail || should_print_fa_tflops(kMmaAccF32, tflops)) {
       char tflops_str[32];
       if (cudnn_tflops_f16 > 0)
-        snprintf(tflops_str, sizeof(tflops_str), "%.1f/%.1f (%.2fx)", tflops, cudnn_tflops_f16, tflops / cudnn_tflops_f16);
+        snprintf(tflops_str, sizeof(tflops_str), "%.1f/%.1f (%.2fx)", 
+                 tflops, cudnn_tflops_f16, tflops / cudnn_tflops_f16);
       else
         snprintf(tflops_str, sizeof(tflops_str), "%.1f", tflops);
       printf("| %-56s | %.3e | %-19s |\n", label, max_err,
@@ -10834,11 +10836,11 @@ static void bench_fa_tma_mma_ws_dispatch(int B, int H, int seqlen, int head_dim,
                                          half *d_q, half *d_k, half *d_v,
                                          half *d_o, float cudnn_tflops_f16) {
   if (head_dim == 64) {
-    bench_fa_tma_mma_ws_launch<64, kStagesK, kStagesV, kMmaAccF32>(B, H, seqlen, head_dim, h_o_ref,
-                                                       ref_o, d_q, d_k, d_v, d_o, cudnn_tflops_f16);
+    bench_fa_tma_mma_ws_launch<64, kStagesK, kStagesV, kMmaAccF32>(
+      B, H, seqlen, head_dim, h_o_ref, ref_o, d_q, d_k, d_v, d_o, cudnn_tflops_f16);
   } else if (head_dim == 128) {
-    bench_fa_tma_mma_ws_launch<128, kStagesK, kStagesV, kMmaAccF32>(B, H, seqlen, head_dim, h_o_ref,
-                                                        ref_o, d_q, d_k, d_v, d_o, cudnn_tflops_f16);
+    bench_fa_tma_mma_ws_launch<128, kStagesK, kStagesV, kMmaAccF32>(
+      B, H, seqlen, head_dim, h_o_ref, ref_o, d_q, d_k, d_v, d_o, cudnn_tflops_f16);
   } else {
     char label[64];
     snprintf(label, sizeof(label),
