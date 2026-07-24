@@ -4538,9 +4538,6 @@ int main(int argc, char *argv[]) {
     );
 
     if (g_bench_hgemm || g_bench_hgemm_all || g_bench_all) {
-#if defined(NOTES_V2_ENABLE_CUTE)
-      bench_hgemm_cute(g_bench_M, g_bench_N, g_bench_K);
-#endif
       if (g_bench_hgemm_all || g_bench_all) {
         bench_hgemm_mma(g_bench_M, g_bench_N, g_bench_K);
         bench_hgemm_swizzle(g_bench_M, g_bench_N, g_bench_K);
@@ -4551,6 +4548,9 @@ int main(int argc, char *argv[]) {
         bench_hgemm_tma_mma_ws(g_bench_M, g_bench_N, g_bench_K);
 #endif
       }
+#if defined(NOTES_V2_ENABLE_CUTE)
+      bench_hgemm_cute(g_bench_M, g_bench_N, g_bench_K);
+#endif
     }
     if (g_bench_fa || g_bench_all)
       bench_flash_attn(g_bench_B, g_bench_H, g_bench_Nfa, g_bench_D);
