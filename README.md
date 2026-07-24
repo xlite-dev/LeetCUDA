@@ -80,7 +80,7 @@ apt install -y cudnn9-cuda-13 ccache # Also install ccache for faster rebuilds
 | FA3 CuTe TMA MMA WS (2 Consumer WG) (Sk=1, Sv=1, F32Acc) | 1.526e-05 | 224.5/222.1 (1.01x) |
 ```
 
-A PDF version of LeetCUDA focused on **interview scenarios** is available at [`kernels/interview/notes-v2.pdf`](https://github.com/xlite-dev/LeetCUDA/blob/main/kernels/interview/notes-v2.pdf).
+A PDF version of LeetCUDA focused on **interview scenarios** is available at [`interview/tex/notes-v2.pdf`](https://github.com/xlite-dev/LeetCUDA/blob/main/kernels/interview/tex/notes-v2.pdf).
 
 ## 📖 Contents
 <div id="contents"></div>
