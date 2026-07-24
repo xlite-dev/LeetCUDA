@@ -3208,6 +3208,133 @@ static void bench_fa_launch(int B, int H, int seqlen, int head_dim,
   free(h_o);
 }
 
+#if defined(NOTES_V2_ENABLE_CUTE)
+// FA2-style CuTe cp.async bench: single consumer, Br=128, no TMA/WS.
+// V 单 buffer, V 在 QK 之前发起 cp.async, 通过 QK+softmax 隐藏 V 延迟.
+template <int kHeadDim, int kStagesK>
+static void bench_fa_2_mma_stages_cute_launch(
+    int B, int H, int seqlen, half *h_o_ref, float *ref_o,
+    half *d_q, half *d_k, half *d_v, half *d_o,
+    float cudnn_tflops_f32) {
+  using namespace cute;
+  using Traits = fa_cute::FlashAttn2CuTeTraits<kHeadDim>;
+  using SmemLayoutQ = typename Traits::SmemLayoutQ;
+  using SmemLayoutKV = typename Traits::SmemLayoutKV;
+  constexpr int kBr = 128;
+  if (seqlen < kBr || seqlen % kBr != 0 || seqlen % 64 != 0) {
+    char label[96];
+    snprintf(label, sizeof(label),
+             "FA2 CuTe MMA Stages (Sk=%d, unaligned)", kStagesK);
+    printf("| %-56s | %-9s | %-19s |\n", label, "SKIP", "None");
+    return;
+  }
+
+  int rows = B * H * seqlen;
+  auto kernel = flash_attn_mma_stages_split_q_cute<kHeadDim, kStagesK>;
+  int smem_bytes = (size(SmemLayoutQ{}) +
+                    kStagesK * size(SmemLayoutKV{}) +
+                    1 * size(SmemLayoutKV{})) *
+                   sizeof(cutlass::half_t);
+  bool smem_ok = check_smem_feasible((const void *)kernel, smem_bytes);
+  if (!smem_ok) {
+    char label[96];
+    snprintf(label, sizeof(label),
+             "FA2 CuTe MMA Stages (Sk=%d, SMEM)", kStagesK);
+    if (g_debug)
+      printf("| %-56s | %-9s | %-19s |\n", label, "SMEM too large", "None");
+    return;
+  }
+  check(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize,
+                             smem_bytes),
+        "bench cute fa2 cpasync set smem");
+
+  dim3 grid(seqlen / kBr, B * H);
+  cudaStream_t stream;
+  cudaEvent_t start;
+  cudaEvent_t stop;
+  check(cudaStreamCreate(&stream), "bench cute fa2 cpasync stream");
+  check(cudaEventCreate(&start), "bench cute fa2 cpasync event start");
+  check(cudaEventCreate(&stop), "bench cute fa2 cpasync event stop");
+  for (int warmup = 0; warmup < g_warmup; ++warmup) {
+    kernel<<<grid, 256, smem_bytes, stream>>>(
+        reinterpret_cast<cutlass::half_t *>(d_q),
+        reinterpret_cast<cutlass::half_t *>(d_k),
+        reinterpret_cast<cutlass::half_t *>(d_v),
+        reinterpret_cast<cutlass::half_t *>(d_o), rows, seqlen);
+  }
+  check(cudaStreamSynchronize(stream), "bench cute fa2 cpasync warmup sync");
+  check(cudaEventRecord(start, stream), "bench cute fa2 cpasync record start");
+  for (int repeat = 0; repeat < g_repeat; ++repeat) {
+    kernel<<<grid, 256, smem_bytes, stream>>>(
+        reinterpret_cast<cutlass::half_t *>(d_q),
+        reinterpret_cast<cutlass::half_t *>(d_k),
+        reinterpret_cast<cutlass::half_t *>(d_v),
+        reinterpret_cast<cutlass::half_t *>(d_o), rows, seqlen);
+  }
+  check(cudaEventRecord(stop, stream), "bench cute fa2 cpasync record stop");
+  check(cudaEventSynchronize(stop), "bench cute fa2 cpasync timing sync");
+  float time_ms = 0.0f;
+  check(cudaEventElapsedTime(&time_ms, start, stop),
+        "bench cute fa2 cpasync elapsed");
+  time_ms /= g_repeat;
+
+  size_t count = (size_t)rows * kHeadDim;
+  half *h_o = (half *)malloc(count * sizeof(half));
+  check(cudaMemcpy(h_o, d_o, count * sizeof(half), cudaMemcpyDeviceToHost),
+        "bench cute fa2 cpasync D2H");
+  float max_err = 0.0f;
+  bool checked = h_o_ref || ref_o;
+  if (checked) {
+    for (size_t idx = 0; idx < count; ++idx) {
+      float reference = h_o_ref ? __half2float(h_o_ref[idx]) : ref_o[idx];
+      max_err = max(max_err, fabsf(__half2float(h_o[idx]) - reference));
+    }
+  }
+  float tflops = bench_fa_tflops(B, H, seqlen, kHeadDim, time_ms);
+  char label[96];
+  snprintf(label, sizeof(label),
+           "FA2 CuTe MMA Stages (Sk=%d, F32Acc)", kStagesK);
+  bool is_fail = checked && max_err >= 5e-1f;
+  if (is_fail || should_print_fa_tflops(1, tflops)) {
+    char performance[32];
+    if (cudnn_tflops_f32 > 0.0f) {
+      snprintf(performance, sizeof(performance), "%.1f/%.1f (%.2fx)",
+               tflops, cudnn_tflops_f32, tflops / cudnn_tflops_f32);
+    } else {
+      snprintf(performance, sizeof(performance), "%.1f", tflops);
+    }
+    printf("| %-56s | %.3e | %-19s |\n", label, max_err, performance);
+  }
+
+  free(h_o);
+  cudaEventDestroy(start);
+  cudaEventDestroy(stop);
+  cudaStreamDestroy(stream);
+}
+
+static void bench_fa_2_mma_stages_cute_dispatch(
+    int B, int H, int seqlen, int head_dim,
+    half *h_o_ref, float *ref_o,
+    half *d_q, half *d_k, half *d_v, half *d_o,
+    float cudnn_tflops_f32) {
+  if (head_dim == 64) {
+    bench_fa_2_mma_stages_cute_launch<64, 1>(B, H, seqlen, h_o_ref, ref_o,
+        d_q, d_k, d_v, d_o, cudnn_tflops_f32);
+    bench_fa_2_mma_stages_cute_launch<64, 2>(B, H, seqlen, h_o_ref, ref_o,
+        d_q, d_k, d_v, d_o, cudnn_tflops_f32);
+    bench_fa_2_mma_stages_cute_launch<64, 3>(B, H, seqlen, h_o_ref, ref_o,
+        d_q, d_k, d_v, d_o, cudnn_tflops_f32);
+    bench_fa_2_mma_stages_cute_launch<64, 4>(B, H, seqlen, h_o_ref, ref_o,
+        d_q, d_k, d_v, d_o, cudnn_tflops_f32);
+  } else if (head_dim == 128) {
+    bench_fa_2_mma_stages_cute_launch<128, 1>(B, H, seqlen, h_o_ref, ref_o,
+        d_q, d_k, d_v, d_o, cudnn_tflops_f32);
+    bench_fa_2_mma_stages_cute_launch<128, 2>(B, H, seqlen, h_o_ref, ref_o,
+        d_q, d_k, d_v, d_o, cudnn_tflops_f32);
+  }
+}
+#endif // NOTES_V2_ENABLE_CUTE
+
 #if defined(NOTES_V2_ENABLE_TMA_MMA_WS)
 // Bench for flash_attn_tma_mma_ws_stages_split_q (SM120, D=64/128)
 template <int kHeadDim, int kStagesK, int kStagesV = 1, int kMmaAccF32 = 0>
@@ -3675,132 +3802,6 @@ static void bench_fa_3_tma_mma_ws_cute_dispatch(
   }
 }
 
-#if defined(NOTES_V2_ENABLE_CUTE) && defined(NOTES_V2_ENABLE_TMA_MMA_WS)
-// FA2-style CuTe cp.async bench: single consumer, Br=128, no TMA/WS.
-// V 单 buffer, V 在 QK 之前发起 cp.async, 通过 QK+softmax 隐藏 V 延迟.
-template <int kHeadDim, int kStagesK>
-static void bench_fa_2_mma_stages_cute_launch(
-    int B, int H, int seqlen, half *h_o_ref, float *ref_o,
-    half *d_q, half *d_k, half *d_v, half *d_o,
-    float cudnn_tflops_f32) {
-  using namespace cute;
-  using Traits = fa_cute::FlashAttn2CuTeTraits<kHeadDim>;
-  using SmemLayoutQ = typename Traits::SmemLayoutQ;
-  using SmemLayoutKV = typename Traits::SmemLayoutKV;
-  constexpr int kBr = 128;
-  if (seqlen < kBr || seqlen % kBr != 0 || seqlen % 64 != 0) {
-    char label[96];
-    snprintf(label, sizeof(label),
-             "FA2 CuTe MMA Stages (Sk=%d, unaligned)", kStagesK);
-    printf("| %-56s | %-9s | %-19s |\n", label, "SKIP", "None");
-    return;
-  }
-
-  int rows = B * H * seqlen;
-  auto kernel = flash_attn_mma_stages_split_q_cute<kHeadDim, kStagesK>;
-  int smem_bytes = (size(SmemLayoutQ{}) +
-                    kStagesK * size(SmemLayoutKV{}) +
-                    1 * size(SmemLayoutKV{})) *
-                   sizeof(cutlass::half_t);
-  bool smem_ok = check_smem_feasible((const void *)kernel, smem_bytes);
-  if (!smem_ok) {
-    char label[96];
-    snprintf(label, sizeof(label),
-             "FA2 CuTe MMA Stages (Sk=%d, SMEM)", kStagesK);
-    if (g_debug)
-      printf("| %-56s | %-9s | %-19s |\n", label, "SMEM too large", "None");
-    return;
-  }
-  check(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize,
-                             smem_bytes),
-        "bench cute fa2 cpasync set smem");
-
-  dim3 grid(seqlen / kBr, B * H);
-  cudaStream_t stream;
-  cudaEvent_t start;
-  cudaEvent_t stop;
-  check(cudaStreamCreate(&stream), "bench cute fa2 cpasync stream");
-  check(cudaEventCreate(&start), "bench cute fa2 cpasync event start");
-  check(cudaEventCreate(&stop), "bench cute fa2 cpasync event stop");
-  for (int warmup = 0; warmup < g_warmup; ++warmup) {
-    kernel<<<grid, 256, smem_bytes, stream>>>(
-        reinterpret_cast<cutlass::half_t *>(d_q),
-        reinterpret_cast<cutlass::half_t *>(d_k),
-        reinterpret_cast<cutlass::half_t *>(d_v),
-        reinterpret_cast<cutlass::half_t *>(d_o), rows, seqlen);
-  }
-  check(cudaStreamSynchronize(stream), "bench cute fa2 cpasync warmup sync");
-  check(cudaEventRecord(start, stream), "bench cute fa2 cpasync record start");
-  for (int repeat = 0; repeat < g_repeat; ++repeat) {
-    kernel<<<grid, 256, smem_bytes, stream>>>(
-        reinterpret_cast<cutlass::half_t *>(d_q),
-        reinterpret_cast<cutlass::half_t *>(d_k),
-        reinterpret_cast<cutlass::half_t *>(d_v),
-        reinterpret_cast<cutlass::half_t *>(d_o), rows, seqlen);
-  }
-  check(cudaEventRecord(stop, stream), "bench cute fa2 cpasync record stop");
-  check(cudaEventSynchronize(stop), "bench cute fa2 cpasync timing sync");
-  float time_ms = 0.0f;
-  check(cudaEventElapsedTime(&time_ms, start, stop),
-        "bench cute fa2 cpasync elapsed");
-  time_ms /= g_repeat;
-
-  size_t count = (size_t)rows * kHeadDim;
-  half *h_o = (half *)malloc(count * sizeof(half));
-  check(cudaMemcpy(h_o, d_o, count * sizeof(half), cudaMemcpyDeviceToHost),
-        "bench cute fa2 cpasync D2H");
-  float max_err = 0.0f;
-  bool checked = h_o_ref || ref_o;
-  if (checked) {
-    for (size_t idx = 0; idx < count; ++idx) {
-      float reference = h_o_ref ? __half2float(h_o_ref[idx]) : ref_o[idx];
-      max_err = max(max_err, fabsf(__half2float(h_o[idx]) - reference));
-    }
-  }
-  float tflops = bench_fa_tflops(B, H, seqlen, kHeadDim, time_ms);
-  char label[96];
-  snprintf(label, sizeof(label),
-           "FA2 CuTe MMA Stages (Sk=%d, F32Acc)", kStagesK);
-  bool is_fail = checked && max_err >= 5e-1f;
-  if (is_fail || should_print_fa_tflops(1, tflops)) {
-    char performance[32];
-    if (cudnn_tflops_f32 > 0.0f) {
-      snprintf(performance, sizeof(performance), "%.1f/%.1f (%.2fx)",
-               tflops, cudnn_tflops_f32, tflops / cudnn_tflops_f32);
-    } else {
-      snprintf(performance, sizeof(performance), "%.1f", tflops);
-    }
-    printf("| %-56s | %.3e | %-19s |\n", label, max_err, performance);
-  }
-
-  free(h_o);
-  cudaEventDestroy(start);
-  cudaEventDestroy(stop);
-  cudaStreamDestroy(stream);
-}
-
-static void bench_fa_2_mma_stages_cute_dispatch(
-    int B, int H, int seqlen, int head_dim,
-    half *h_o_ref, float *ref_o,
-    half *d_q, half *d_k, half *d_v, half *d_o,
-    float cudnn_tflops_f32) {
-  if (head_dim == 64) {
-    bench_fa_2_mma_stages_cute_launch<64, 1>(B, H, seqlen, h_o_ref, ref_o,
-        d_q, d_k, d_v, d_o, cudnn_tflops_f32);
-    bench_fa_2_mma_stages_cute_launch<64, 2>(B, H, seqlen, h_o_ref, ref_o,
-        d_q, d_k, d_v, d_o, cudnn_tflops_f32);
-    bench_fa_2_mma_stages_cute_launch<64, 3>(B, H, seqlen, h_o_ref, ref_o,
-        d_q, d_k, d_v, d_o, cudnn_tflops_f32);
-    bench_fa_2_mma_stages_cute_launch<64, 4>(B, H, seqlen, h_o_ref, ref_o,
-        d_q, d_k, d_v, d_o, cudnn_tflops_f32);
-  } else if (head_dim == 128) {
-    bench_fa_2_mma_stages_cute_launch<128, 1>(B, H, seqlen, h_o_ref, ref_o,
-        d_q, d_k, d_v, d_o, cudnn_tflops_f32);
-    bench_fa_2_mma_stages_cute_launch<128, 2>(B, H, seqlen, h_o_ref, ref_o,
-        d_q, d_k, d_v, d_o, cudnn_tflops_f32);
-  }
-}
-#endif
 
 // FA2-style CuTe bench: single consumer, Br=128, no merge.
 template <int kHeadDim, int kStagesK, int kStagesV = 1>

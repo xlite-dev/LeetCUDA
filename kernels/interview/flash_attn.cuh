@@ -2191,6 +2191,8 @@ __global__ void __launch_bounds__(kNumThreads, 1)
   }
 }
 
+#endif // NOTES_V2_ENABLE_TMA_MMA_WS
+
 #if defined(NOTES_V2_ENABLE_CUTE)
 namespace fa_cute {
 using namespace cute;
@@ -2485,9 +2487,9 @@ CUTE_DEVICE void gemm_rs(
 }
 
 }  // namespace fa_cute
+#endif // NOTES_V2_ENABLE_CUTE
 
-// =============================================================================
-// FA2 CuTe cp.async MMA Stages Split-Q (no TMA, no Warp Specialization)
+#if defined(NOTES_V2_ENABLE_CUTE)
 // =============================================================================
 // 是 flash_attn_tma_mma_ws_split_q_cute 的简化版：去掉 TMA producer/consumer WS，
 // 改用 cp.async + 统一 pipeline（参考 hgemm_mma_stages_tn_cute 的 cute::copy 用法
@@ -2797,7 +2799,11 @@ flash_attn_mma_stages_split_q_cute(
   auto tCgO = thr_mma.partition_C(gO);
   copy(tCrO_half, tCgO);
 }
+#endif // NOTES_V2_ENABLE_CUTE
 
+#if defined(NOTES_V2_ENABLE_TMA_MMA_WS)
+
+#if defined(NOTES_V2_ENABLE_CUTE)
 template <int kHeadDim, typename TmaQ, typename TmaK, typename TmaV,
           int kStagesK = 1, int kStagesV = 1>
 __global__ void __launch_bounds__(384, 1)
@@ -3113,7 +3119,9 @@ flash_attn_tma_mma_ws_split_q_cute(
     copy(tCrO_half, tCgO);
   }
 }
+#endif // NOTES_V2_ENABLE_CUTE
 
+#if defined(NOTES_V2_ENABLE_CUTE)
 template <int kHeadDim, typename TmaQ, typename TmaK, typename TmaV,
           int kStagesK = 1>
 __global__ void __launch_bounds__(384, 1)
@@ -3431,8 +3439,9 @@ flash_attn_3_tma_mma_ws_split_q_cute(
     }
   }
 }
+#endif // NOTES_V2_ENABLE_CUTE
 
-
+#if defined(NOTES_V2_ENABLE_CUTE)
 template <int kHeadDim, typename TmaQ>
 __global__ void flash_attn_3_cute_tma_copy_smoke(
   CUTLASS_GRID_CONSTANT TmaQ const tma_q,
@@ -3473,5 +3482,6 @@ __global__ void flash_attn_3_cute_tma_copy_smoke(
     output[(blockIdx.x * 64 + row) * kHeadDim + col] = sQ(row, col);
   }
 }
-#endif
+#endif // NOTES_V2_ENABLE_CUTE
+
 #endif // END NOTES_V2_ENABLE_TMA_MMA_WS
