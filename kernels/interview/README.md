@@ -26,11 +26,11 @@ apt remove -y libcudnn9-cuda-13 libcudnn9-dev-cuda-13 libcudnn9-headers-cuda-13
 apt install -y cudnn9-cuda-13 ccache # Also install ccache for faster rebuilds
 
 # Build for target architecture (ccache accelerated when available):
-./build.sh --arch sm_89     # Ada Lovelace (RTX 40 series, CUDA Toolkit >= 13.2)
+./build.sh --arch sm_89     # Ada Lovelace (L20, RTX 40 series, CUDA Toolkit >= 13.2)
 ./build.sh --arch sm_90a    # Hopper (H100/H200, CUDA Toolkit >= 13.2)
 ./build.sh --arch sm_120a   # Blackwell (RTX 5090 / PRO 5000/6000, CUDA Toolkit >= 13.2)
-./build.sh --arch all       # All three architectures
-./build.sh --clean          # Remove build artifacts
+./build.sh --arch all       # All three architectures (sm_89, sm_90a, sm_120a)
+./build.sh --clean          # Remove build artifacts (*.o, *.bin, *.ptx)
 ```
 
 ```bash
