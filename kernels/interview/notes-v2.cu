@@ -48,6 +48,7 @@ static int g_bench_B = 1, g_bench_H = 32, g_bench_Nfa = 8192, g_bench_D = 128;
 static int g_warmup = 2, g_repeat = 3;
 static float g_fa_f16_max_tflops = 0.0f;
 static float g_fa_f32_max_tflops = 0.0f;
+static float g_hgemm_max_tflops = 0.0f;
 static bool g_verbose = false;
 
 // Decide whether to print a FA TFLOPS line. When --verbose/--debug is off,
@@ -59,6 +60,17 @@ static bool should_print_fa_tflops(int acc_f32, float tflops) {
   float &max_tflops = acc_f32 ? g_fa_f32_max_tflops : g_fa_f16_max_tflops;
   if (tflops > max_tflops) {
     max_tflops = tflops;
+    return true;
+  }
+  return false;
+}
+
+// Decide whether to print a HGEMM TFLOPS line. When --verbose/--debug is off,
+// only print when the current TFLOPS exceeds the running max.
+static bool should_print_hgemm_tflops(float tflops) {
+  if (g_verbose || g_debug) return true;
+  if (tflops > g_hgemm_max_tflops) {
+    g_hgemm_max_tflops = tflops;
     return true;
   }
   return false;
@@ -2536,8 +2548,9 @@ static void bench_hgemm_mma(int M, int N, int K) {
         char tflops_str[32];
         snprintf(tflops_str, sizeof(tflops_str), "%.1f/%.1f (%.2fx)", 
                  tflops, cublas_tflops, tflops / cublas_tflops);
-        printf("| %-56s | %.3e | %-19s |\n", label, max_err,
-        tflops_str);
+        if (should_print_hgemm_tflops(tflops))
+          printf("| %-56s | %.3e | %-19s |\n", label, max_err,
+          tflops_str);
       }
     }
   }
@@ -2657,8 +2670,9 @@ static void bench_hgemm_swizzle(int M, int N, int K) {
         char tflops_str[32];
         snprintf(tflops_str, sizeof(tflops_str), "%.1f/%.1f (%.2fx)", 
                  tflops, cublas_tflops, tflops / cublas_tflops);
-        printf("| %-56s | %.3e | %-19s |\n", label, max_err,
-        tflops_str);
+        if (should_print_hgemm_tflops(tflops))
+          printf("| %-56s | %.3e | %-19s |\n", label, max_err,
+          tflops_str);
       }
     }
   }
@@ -2759,8 +2773,9 @@ static void bench_hgemm_cute(int M, int N, int K) {
         char tflops_str[32];
         snprintf(tflops_str, sizeof(tflops_str), "%.1f/%.1f (%.2fx)", 
                  tflops, cublas_tflops, tflops / cublas_tflops);
-        printf("| %-56s | %.3e | %-19s |\n", label, max_err,
-        tflops_str);
+        if (should_print_hgemm_tflops(tflops))
+          printf("| %-56s | %.3e | %-19s |\n", label, max_err,
+          tflops_str);
       } else {
         printf("| %-56s | %-9s | %-19s |\n", label, "LAUNCH ERR", "None");
       }
@@ -2894,8 +2909,9 @@ static void bench_hgemm_wgmma(int M, int N, int K) {
         char tflops_str[32];
         snprintf(tflops_str, sizeof(tflops_str), "%.1f/%.1f (%.2fx)", tflops, 
                  cublas_tflops, tflops / cublas_tflops);
-        printf("| %-56s | %.3e | %-19s |\n", label, max_err,
-        tflops_str);
+        if (should_print_hgemm_tflops(tflops))
+          printf("| %-56s | %.3e | %-19s |\n", label, max_err,
+          tflops_str);
       }
     }
   }
@@ -3033,8 +3049,9 @@ static void bench_hgemm_tma_mma_ws(int M, int N, int K) {
         char tflops_str[32];
         snprintf(tflops_str, sizeof(tflops_str), "%.1f/%.1f (%.2fx)", tflops, 
                  cublas_tflops, tflops / cublas_tflops);
-        printf("| %-56s | %.3e | %-19s |\n", label, max_err,
-        tflops_str);
+        if (should_print_hgemm_tflops(tflops))
+          printf("| %-56s | %.3e | %-19s |\n", label, max_err,
+          tflops_str);
       }
     }
   }
