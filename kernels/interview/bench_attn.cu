@@ -325,8 +325,6 @@ static float bench_ffpa_cute_tma_ws_split_d_launch(
                              smem_bytes),
         "bench ffpa split-d set smem");
 
-  float *d_o_acc;
-  check(cudaMalloc(&d_o_acc, count * sizeof(float)), "alloc Split-D O accumulator");
   cudaStream_t stream;
   cudaEvent_t start, stop;
   check(cudaStreamCreate(&stream), "bench ffpa split-d stream");
@@ -335,7 +333,7 @@ static float bench_ffpa_cute_tma_ws_split_d_launch(
   dim3 grid(seqlen / kBr, B * H);
   for (int warmup = 0; warmup < g_warmup; ++warmup) {
     kernel<<<grid, kNumThreads, smem_bytes, stream>>>(
-        tma_q, tma_k, tma_v, d_o_acc,
+        tma_q, tma_k, tma_v,
         reinterpret_cast<cutlass::half_t *>(d_o), rows, seqlen);
   }
   check(cudaGetLastError(), "bench ffpa split-d warmup launch");
@@ -343,7 +341,7 @@ static float bench_ffpa_cute_tma_ws_split_d_launch(
   check(cudaEventRecord(start, stream), "bench ffpa split-d record start");
   for (int repeat = 0; repeat < g_repeat; ++repeat) {
     kernel<<<grid, kNumThreads, smem_bytes, stream>>>(
-        tma_q, tma_k, tma_v, d_o_acc,
+        tma_q, tma_k, tma_v,
         reinterpret_cast<cutlass::half_t *>(d_o), rows, seqlen);
   }
   check(cudaGetLastError(), "bench ffpa split-d timed launch");
@@ -375,7 +373,6 @@ static float bench_ffpa_cute_tma_ws_split_d_launch(
          max_err, performance);
 
   free(h_o);
-  cudaFree(d_o_acc);
   cudaEventDestroy(start);
   cudaEventDestroy(stop);
   cudaStreamDestroy(stream);

@@ -4077,12 +4077,10 @@ static float bench_fa_split_d_launch(
                              smem_bytes),
         "bench split-d set smem");
 
-  float *d_o_acc;
-  check(cudaMalloc(&d_o_acc, count * sizeof(float)), "alloc Split-D O accumulator");
   dim3 grid(seqlen / kBr, B * H);
   for (int warmup = 0; warmup < g_warmup; ++warmup) {
     kernel<<<grid, kNumThreads, smem_bytes>>>(
-        tma_q, tma_k, tma_v, d_o_acc,
+        tma_q, tma_k, tma_v,
         reinterpret_cast<cutlass::half_t *>(d_o), rows, seqlen);
   }
   check(cudaGetLastError(), "bench split-d warmup launch");
@@ -4094,7 +4092,7 @@ static float bench_fa_split_d_launch(
   check(cudaEventRecord(start), "bench split-d record start");
   for (int repeat = 0; repeat < g_repeat; ++repeat) {
     kernel<<<grid, kNumThreads, smem_bytes>>>(
-        tma_q, tma_k, tma_v, d_o_acc,
+        tma_q, tma_k, tma_v,
         reinterpret_cast<cutlass::half_t *>(d_o), rows, seqlen);
   }
   check(cudaGetLastError(), "bench split-d timed launch");
@@ -4132,7 +4130,6 @@ static float bench_fa_split_d_launch(
   printf("| %-56s | %.3e | %-19s |\n", label, max_err, performance);
 
   free(h_o);
-  cudaFree(d_o_acc);
   cudaEventDestroy(start);
   cudaEventDestroy(stop);
   return tflops;
@@ -4152,7 +4149,8 @@ static void bench_fa_split_d_dispatch(
     bench_fa_split_d_launch<D, 2, 2>(B, H, seqlen, h_o_ref, ref_o,
                                       d_q, d_k, d_v, d_o, cudnn_tflops_f32, max_err);
   };
-  if (head_dim == 192) call(Int<192>{});
+  if (head_dim == 128) call(Int<128>{});
+  else if (head_dim == 192) call(Int<192>{});
   else if (head_dim == 256) call(Int<256>{});
   else if (head_dim == 320) call(Int<320>{});
   else if (head_dim == 384) call(Int<384>{});

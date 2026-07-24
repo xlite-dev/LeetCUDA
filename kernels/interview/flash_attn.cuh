@@ -2823,12 +2823,18 @@ flash_attn_mma_stages_split_q_cute(
 }
 #endif // NOTES_V2_ENABLE_CUTE
 
-#if defined(NOTES_V2_ENABLE_TMA_MMA_WS)
-
 #if defined(NOTES_V2_ENABLE_CUTE)
-// Split-D FA2 forward: Q/K and V are streamed in 64-wide head-dimension
-// chunks. F32 O_acc lives in global memory so D=512 does not inflate the
-// consumer register footprint beyond one [128, 64] output fragment.
+// Split-D FA forward: large head-dim (>128) handled by streaming Q/K/V in
+// 64-wide head-dim chunks. O accumulators stay in per-thread registers.
+//
+// 与 flash_attn_tma_mma_ws_split_q_cute (标准 FA) 的唯一区别:
+//   - QK: Q[Br,D]@K^T[Bc,D] 沿 D 方向分 kDChunks 次 gemm_ss 累加到单个 tCrS
+//   - PV: P[Br,Bc]@V[Bc,D] 沿 D 方向分 kDChunks 次 gemm_rs, 每个 v_chunk
+//         独立 O accumulator (o_accs[v]), 跨 kv_tile 累加
+//   - softmax / tCrS->tCrP 寄存器复用 / online rescale: 与标准 FA 完全一致
+//
+// 参考: ffpa-attn CuTeDSL FFPAAttnFwdSm80SplitD (acc_Os tuple 模式)
+//       ffpa-attn Triton _ffpa_fwd_kernel_impl (o_accs tuple + row_scale)
 template <int kHeadDim, typename TmaQ, typename TmaK, typename TmaV,
           int kStagesQK = 2, int kStagesV = 2>
 __global__ void __launch_bounds__(384, 1)
@@ -2836,7 +2842,7 @@ ffpa_attn_tma_mma_ws_split_d_cute(
     CUTLASS_GRID_CONSTANT TmaQ const tma_q,
     CUTLASS_GRID_CONSTANT TmaK const tma_k,
     CUTLASS_GRID_CONSTANT TmaV const tma_v,
-    float *output_acc, cutlass::half_t *output, int rows, int seqlen) {
+    cutlass::half_t *output, int rows, int seqlen) {
   using namespace cute;
   using Traits = fa_cute::FFPAAttnSplitDCuTeTraits<kHeadDim>;
   using Element = typename Traits::Element;
@@ -2846,7 +2852,7 @@ ffpa_attn_tma_mma_ws_split_d_cute(
   using CtaBarrier = cutlass::arch::ClusterBarrier;
 
   static_assert(kHeadDim % 64 == 0, "Split-D requires head-dim multiple of 64");
-  static_assert(kStagesQK >= 1 && kStagesV >= 1, "pipeline stages must be positive");
+  static_assert(kStagesQK >= 1 && kStagesV >= 1);
   constexpr int kBr = 128;
   constexpr int kBc = 64;
   constexpr int kDChunk = 64;
@@ -2936,7 +2942,7 @@ ffpa_attn_tma_mma_ws_split_d_cute(
       }
     }
   } else {
-    NOTES_V2_REG_ALLOC(168);
+    NOTES_V2_REG_ALLOC(255);
     typename Traits::TiledMma tiled_mma;
     auto thr_mma = tiled_mma.get_thread_slice(wg_tid);
     auto s2r_copy_q = make_tiled_copy_A(typename Traits::SmemCopyAtom{}, tiled_mma);
@@ -2951,12 +2957,49 @@ ffpa_attn_tma_mma_ws_split_d_cute(
     auto sVt0_ns = make_tensor(
         sV0.data(), get_nonswizzle_portion(typename Traits::SmemLayoutVt{}));
     auto tCrV_layout = thr_mma.partition_fragment_B(sVt0_ns).layout();
-    float row_max[2] = {-INFINITY, -INFINITY};
-    float row_sum[2] = {0.0f, 0.0f};
+
+    // O fragment layout + sizes: derive WITHOUT allocating a register fragment.
+    // partition_fragment_C returns Tensor<ArrayEngine<float,N>,Layout> which
+    // would allocate N floats on the stack (registers/local mem). We only need
+    // the layout and size, so use decltype to extract types at compile time
+    // without instantiating the storage.
+    using OFragType = decltype(partition_fragment_C(tiled_mma, Shape<_128, _64>{}));
+    using OFragLayout = typename OFragType::layout_type;
+    constexpr int kOElemsPerFrag = decltype(size(OFragType{}))::value;
+    constexpr int kORows = decltype(size<0>(make_tensor(
+        (float*)nullptr, fa_cute::convert_layout_acc_rowcol(OFragLayout{}))))::value;
+    constexpr int kOCols = decltype(size<1>(make_tensor(
+        (float*)nullptr, fa_cute::convert_layout_acc_rowcol(OFragLayout{}))))::value;
+
+    float row_max[kORows];
+    float row_sum[kORows];
+#pragma unroll
+    for (int r = 0; r < kORows; ++r) {
+      row_max[r] = -INFINITY;
+      row_sum[r] = 0.0f;
+    }
     const float scale = rsqrtf(static_cast<float>(kHeadDim)) * M_LOG2E;
-    auto mOacc = make_tensor(make_gmem_ptr(output_acc),
-                             make_shape(rows, Int<kHeadDim>{}),
-                             make_stride(Int<kHeadDim>{}, _1{}));
+
+    // Per-v_chunk register O accumulators (CuTeDSL acc_Os tuple pattern).
+    //
+    // 为什么需要 kDChunks 份独立 O 累加器 (而非像 tCrS 那样单份累加)?
+    //   - QK: S = Q @ K^T, reduce 维度是 D (head_dim)。
+    //     d_chunk 循环沿 D 切分, 每次 gemm_ss 的结果累加到同一个 tCrS (acc +=)。
+    //     所以 QK 只需单份 tCrS, 循环内做 reduce 累加。
+    //   - PV: O = P @ V, reduce 维度是 Bc (KV seqlen, 即 P 的列 / V 的行),
+    //     而 d_chunk 切分的是 V 的列维度 (head_dim), 即 O 的输出列维度。
+    //     每次 gemm_rs 产生 O 的一个 [Br, d_chunk] 子块, 不同 v_chunk 的 O 子块
+    //     覆盖 head_dim 的不同区间, 之间不存在 reduce 关系, 不能累加到同一寄存器。
+    //     因此需要 kDChunks 份独立 O 累加器, 跨 kv_tile 做在线 softmax rescale 累加。
+    //
+    // make_rmem_ptr lets gemm_rs write directly into these registers.
+    float o_acc_storage[kDChunks][kOElemsPerFrag];
+#pragma unroll
+    for (int v = 0; v < kDChunks; ++v)
+#pragma unroll
+      for (int i = 0; i < kOElemsPerFrag; ++i)
+        o_acc_storage[v][i] = 0.0f;
+
     auto mO = make_tensor(make_gmem_ptr(output),
                           make_shape(rows, Int<kHeadDim>{}),
                           make_stride(Int<kHeadDim>{}, _1{}));
@@ -2968,6 +3011,7 @@ ffpa_attn_tma_mma_ws_split_d_cute(
       CtaBarrier::arrive(&v_empty[s]);
 
     for (int kv_tile = 0; kv_tile < kv_tiles; ++kv_tile) {
+      // ===== Phase 1: QK with Split-D (累加到单个 tCrS) =====
       auto tCrS = partition_fragment_C(tiled_mma, Shape<_128, _64>{});
       clear(tCrS);
       for (int d_chunk = 0; d_chunk < kDChunks; ++d_chunk) {
@@ -2990,11 +3034,12 @@ ffpa_attn_tma_mma_ws_split_d_cute(
         CtaBarrier::arrive(&qk_empty[stage]);
       }
 
+      // ===== Phase 2: Online softmax (和标准 FA 完全一致) =====
       auto scores = make_tensor(
           tCrS.data(), fa_cute::convert_layout_acc_rowcol(tCrS.layout()));
-      float row_scale[2];
+      float row_scale[kORows];
 #pragma unroll
-      for (int row = 0; row < 2; ++row) {
+      for (int row = 0; row < kORows; ++row) {
         float tile_max = -INFINITY;
 #pragma unroll
         for (int col = 0; col < size<1>(scores); ++col)
@@ -3016,10 +3061,14 @@ ffpa_attn_tma_mma_ws_split_d_cute(
         row_max[row] = next_max;
       }
 
+      // ===== tCrS -> tCrP -> tCrPv 寄存器复用 (和标准 FA 完全一致) =====
       auto tCrP = fa_cute::convert_type<Element>(tCrS);
       auto tCrPv = make_tensor(
           tCrP.data(),
-          fa_cute::convert_layout_acc_Aregs<typename Traits::TiledMma>(tCrP.layout()));
+          fa_cute::convert_layout_acc_Aregs<typename Traits::TiledMma>(
+              tCrP.layout()));
+
+      // ===== Phase 3: PV with Split-D (每个 v_chunk 独立 O 累加) =====
       for (int v_chunk = 0; v_chunk < kDChunks; ++v_chunk) {
         const int chunk_index = kv_tile * kDChunks + v_chunk;
         const int stage = chunk_index % kStagesV;
@@ -3032,42 +3081,40 @@ ffpa_attn_tma_mma_ws_split_d_cute(
         auto tCrVStorage = thr_mma.partition_fragment_B(sV);
         auto tCrV = make_tensor(tCrVStorage.data(), tCrV_layout);
         auto tVsVt = s2r_thr_v.partition_S(sVt);
-        auto tCrO = partition_fragment_C(tiled_mma, Shape<_128, _64>{});
-        auto gOacc = local_tile(mOacc, Shape<_128, _64>{},
-                                make_coord(q_tile, v_chunk));
-        auto tCgOacc = thr_mma.partition_C(gOacc);
-        if (kv_tile == 0) {
-          clear(tCrO);
-        } else {
-          copy(tCgOacc, tCrO);
+
+        // O accumulator: view directly into persistent register storage.
+        // make_rmem_ptr lets gemm_rs use it as acc without memcpy.
+        auto tCrO = make_tensor(make_rmem_ptr(&o_acc_storage[v_chunk][0]),
+                                OFragLayout{});
+
+        // Rescale old O by row_scale (skip first kv_tile, O is zero)
+        if (kv_tile > 0) {
+          auto tCrO_rc = make_tensor(
+              tCrO.data(), fa_cute::convert_layout_acc_rowcol(tCrO.layout()));
+#pragma unroll
+          for (int row = 0; row < kORows; ++row)
+#pragma unroll
+            for (int col = 0; col < kOCols; ++col)
+              tCrO_rc(row, col) *= row_scale[row];
         }
-        auto tCrO_rc = make_tensor(
-            tCrO.data(), fa_cute::convert_layout_acc_rowcol(tCrO.layout()));
-#pragma unroll
-        for (int row = 0; row < 2; ++row)
-#pragma unroll
-          for (int col = 0; col < size<1>(tCrO_rc); ++col)
-            tCrO_rc(row, col) *= row_scale[row];
         fa_cute::gemm_rs(tCrO, tCrPv, tCrV, tVsVt,
                          tiled_mma, s2r_copy_v, s2r_thr_v);
-        copy(tCrO, tCgOacc);
         CtaBarrier::arrive(&v_empty[stage]);
       }
     }
 
+    // ===== Phase 4: Final normalize + store (遍历 kDChunks) =====
+#pragma unroll
     for (int v_chunk = 0; v_chunk < kDChunks; ++v_chunk) {
-      auto tCrO = partition_fragment_C(tiled_mma, Shape<_128, _64>{});
-      auto gOacc = local_tile(mOacc, Shape<_128, _64>{},
-                              make_coord(q_tile, v_chunk));
-      auto tCgOacc = thr_mma.partition_C(gOacc);
-      copy(tCgOacc, tCrO);
+      auto tCrO = make_tensor(make_rmem_ptr(&o_acc_storage[v_chunk][0]),
+                              OFragLayout{});
       auto tCrO_rc = make_tensor(
           tCrO.data(), fa_cute::convert_layout_acc_rowcol(tCrO.layout()));
 #pragma unroll
-      for (int row = 0; row < 2; ++row) {
+      for (int row = 0; row < kORows; ++row) {
         const float inv_sum = 1.0f / row_sum[row];
 #pragma unroll
-        for (int col = 0; col < size<1>(tCrO_rc); ++col)
+        for (int col = 0; col < kOCols; ++col)
           tCrO_rc(row, col) *= inv_sum;
       }
       auto tCrOHalf = fa_cute::convert_type<Element>(tCrO);
@@ -3078,6 +3125,9 @@ ffpa_attn_tma_mma_ws_split_d_cute(
   }
 }
 
+#endif // NOTES_V2_ENABLE_CUTE
+
+#if defined(NOTES_V2_ENABLE_CUTE)
 template <int kHeadDim, typename TmaQ, typename TmaK, typename TmaV,
           int kStagesK = 1, int kStagesV = 1>
 __global__ void __launch_bounds__(384, 1)
@@ -3760,4 +3810,4 @@ __global__ void flash_attn_3_cute_tma_copy_smoke(
 }
 #endif // NOTES_V2_ENABLE_CUTE
 
-#endif // END NOTES_V2_ENABLE_TMA_MMA_WS
+
