@@ -33,3 +33,4 @@ AGENTS.md
 *.out.pyg
 .plans
 .tmp
+*.o

@@ -54,30 +54,31 @@ apt install -y cudnn9-cuda-13 ccache # Also install ccache for faster rebuilds
 
 ```bash
 # Then, run the notes_v2_sm120a.bin with bench mode (e.g., NVIDIA RTX 5090, Blackwell SM_120a)
-# Baseline: cuBLAS v13.3.0.5-1 (290T); cuDNN v9.25.0.15 SDPA (223T), PyTorch v2.11 SDPA (210T)
-# Speedup: Flash-Attention 2/3 -> ~1.32x (F16 Acc vs cuDNN), ~1.01x (F32 Acc vs cuDNN), ~1.07x
-# (F32 Acc vs PyTorch SDPA); HGEMM w/ Pipe & SMEM & Block Swizzle -> 1.05x (F16 Acc vs cuBLAS)
+# Baseline: cuBLAS v13.3.0.5-1 (290T); cuDNN v9.25.0.15 SDPA (222T), PyTorch v2.11 SDPA (210T)
+# Speedup: Flash-Attention 2/3 -> ~1.37x (F16 Acc vs cuDNN), ~1.01x (F32 Acc vs cuDNN), ~1.07x
+# (F32 Acc vs PyTorch SDPA); HGEMM w/ Pipe & SMEM & Block Swizzle -> 1.07x (F16 Acc vs cuBLAS)
 ./notes_v2_sm120a.bin --bench --mnk 4096,4096,4096 --bhnd 1,32,16384,128 # MMA ACC F16/F32 Acc
 | Kernel                                                   | Max Err   | TFLOPS/cu{BLAS,DNN} |
 |----------------------------------------------------------|-----------|---------------------|
-| HGEMM CuTe Swizzle (S=2, BLK_SW=0)                       | 0.000e+00 | 306.2/302.2 (1.01x) |
-| HGEMM CuTe Swizzle (S=2, BLK_SW=1)                       | 0.000e+00 | 307.9/302.2 (1.02x) |
-| HGEMM CuTe Swizzle (S=3, BLK_SW=0)                       | 0.000e+00 | 315.9/302.2 (1.05x) |
-| HGEMM CuTe Swizzle (S=3, BLK_SW=1)                       | 0.000e+00 | 317.3/302.2 (1.05x) |
-| FA2 MMA Stages (Sk=1, Pad, F16Acc)                       | 1.831e-04 | 217.8/223.4 (0.97x) |
-| FA2 MMA Stages (Sk=2, Pad, F16Acc)                       | 1.831e-04 | 254.0/223.4 (1.14x) |
-| FA2 MMA Stages (Sk=1, Pad, F32Acc)                       | 1.526e-05 | 166.8/222.1 (0.75x) |
-| FA2 MMA Stages (Sk=2, Pad, F32Acc)                       | 1.526e-05 | 179.1/222.1 (0.81x) |
-| FA2 CuTe MMA Stages (Sk=1, F32Acc)                       | 1.526e-05 | 194.5/222.1 (0.88x) |
-| FA2 CuTe MMA Stages (Sk=2, F32Acc)                       | 1.526e-05 | 200.5/222.1 (0.90x) |
-| FA2 TMA MMA WS (1 Consumer WG) (Sk=1, Sv=1, F16Acc)      | 1.831e-04 | 263.2/223.4 (1.18x) |
-| FA2 TMA MMA WS (1 Consumer WG) (Sk=2, Sv=1, F16Acc)      | 1.831e-04 | 286.6/223.4 (1.28x) |
-| FA2 TMA MMA WS (1 Consumer WG) (Sk=3, Sv=1, F16Acc)      | 1.831e-04 | 288.4/223.4 (1.29x) |
-| FA2 TMA MMA WS (1 Consumer WG) (Sk=2, Sv=1, F32Acc)      | 1.526e-05 | 205.7/222.1 (0.93x) |
-| FA3 TMA MMA WS (2 Consumer WG) (Sk=1, Sv=1, F32Acc)      | 1.526e-05 | 212.8/222.1 (0.96x) |
-| FA2 CuTe TMA MMA WS (1 Consumer WG) (Sk=2, Sv=1, F32Acc) | 1.526e-05 | 220.5/222.1 (0.99x) |
-| FA2 CuTe TMA MMA WS (1 Consumer WG) (Sk=3, Sv=1, F32Acc) | 1.526e-05 | 220.9/222.1 (0.99x) |
-| FA3 CuTe TMA MMA WS (2 Consumer WG) (Sk=1, Sv=1, F32Acc) | 1.526e-05 | 224.5/222.1 (1.01x) |
+| HGEMM CuTe Swizzle (S=2, BLK_SW=0)                       | 0.000e+00 | 307.7/295.4 (1.04x) |
+| HGEMM CuTe Swizzle (S=2, BLK_SW=1)                       | 0.000e+00 | 307.3/295.4 (1.04x) |
+| HGEMM CuTe Swizzle (S=3, BLK_SW=0)                       | 0.000e+00 | 315.3/295.4 (1.07x) |
+| HGEMM CuTe Swizzle (S=3, BLK_SW=1)                       | 0.000e+00 | 317.4/295.4 (1.07x) |
+| FA2 MMA Stages (Sk=1, Pad, F16Acc)                       | 1.831e-04 | 220.2/222.9 (0.99x) |
+| FA2 MMA Stages (Sk=2, Pad, F16Acc)                       | 1.831e-04 | 254.7/222.9 (1.14x) |
+| FA2 MMA Stages (Sk=1, Pad, F32Acc)                       | 1.526e-05 | 165.6/221.6 (0.75x) |
+| FA2 MMA Stages (Sk=2, Pad, F32Acc)                       | 1.526e-05 | 180.1/221.6 (0.81x) |
+| FA2 CuTe MMA Stages (Sk=1, F32Acc)                       | 1.526e-05 | 199.0/221.6 (0.90x) |
+| FA2 CuTe MMA Stages (Sk=2, F32Acc)                       | 1.526e-05 | 201.2/221.6 (0.91x) |
+| FA2 TMA MMA WS (1 Consumer WG) (Sk=1, Sv=1, F16Acc)      | 1.831e-04 | 262.5/222.9 (1.18x) |
+| FA2 TMA MMA WS (1 Consumer WG) (Sk=2, Sv=1, F16Acc)      | 1.831e-04 | 292.0/222.9 (1.31x) |
+| FA2 TMA MMA WS (1 Consumer WG) (Sk=3, Sv=1, F16Acc)      | 1.831e-04 | 296.9/222.9 (1.33x) |
+| FA2 TMA MMA WS (1 Consumer WG) (Sk=2, Sv=1, F32Acc)      | 1.526e-05 | 201.9/221.6 (0.91x) |
+| FA2 TMA MMA WS (1 Consumer WG) (Sk=3, Sv=1, F32Acc)      | 1.526e-05 | 202.2/221.6 (0.91x) |
+| FA3 TMA MMA WS (2 Consumer WG) (Sk=1, Sv=1, F16Acc)      | 9.155e-05 | 305.2/222.9 (1.37x) |
+| FA3 TMA MMA WS (2 Consumer WG) (Sk=1, Sv=1, F32Acc)      | 1.526e-05 | 212.0/221.6 (0.96x) |
+| FA2 CuTe TMA MMA WS (1 Consumer WG) (Sk=2, Sv=1, F32Acc) | 1.526e-05 | 220.8/221.6 (1.00x) |
+| FA2 CuTe TMA MMA WS (1 Consumer WG) (Sk=3, Sv=1, F32Acc) | 1.526e-05 | 222.8/221.6 (1.01x) |
 ```
 
 A PDF version of LeetCUDA focused on **interview scenarios** is available at [`interview/tex/notes-v2.pdf`](https://github.com/xlite-dev/LeetCUDA/blob/main/kernels/interview/tex/notes-v2.pdf).
