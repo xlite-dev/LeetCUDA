@@ -2246,6 +2246,27 @@ struct FlashAttn2CuTeTraits {
   using SmemCopyAtomTransposed = Copy_Atom<SM75_U16x8_LDSM_T, Element>;
 };
 
+// Split-D keeps a single 64-wide head-dimension chunk in each shared stage.
+template <int kHeadDim>
+struct FFPAAttnSplitDCuTeTraits {
+  static_assert(kHeadDim % 64 == 0, "Split-D requires head-dim multiple of 64");
+
+  using Element = cutlass::half_t;
+  using SmemLayoutAtom = GMMA::Layout_K_SW128_Atom<Element>;
+  using SmemLayoutQ = decltype(tile_to_shape(
+      SmemLayoutAtom{}, Shape<_128, _64>{}));
+  using SmemLayoutKV = decltype(tile_to_shape(
+      SmemLayoutAtom{}, Shape<_64, _64>{}));
+  using SmemLayoutVt = decltype(composition(
+      SmemLayoutKV{}, make_layout(Shape<_64, _64>{}, GenRowMajor{})));
+
+  using MmaAtom = MMA_Atom<SM80_16x8x16_F32F16F16F32_TN>;
+  using TiledMma = TiledMMA<
+      MmaAtom, Layout<Shape<_8, _1, _1>>, Tile<_128, _16, _16>>;
+  using SmemCopyAtom = Copy_Atom<SM75_U32x4_LDSM_N, Element>;
+  using SmemCopyAtomTransposed = Copy_Atom<SM75_U16x8_LDSM_T, Element>;
+};
+
 // FlashAttn3CuTeTraits: FA3-style CuTe kernel 编译期配置 (Br=Bc=64, 双 consumer WG)。
 // 所有 layout/atom/tiler 都是编译期类型, kernel body 只接收实例化后的类型。
 //
@@ -2805,6 +2826,258 @@ flash_attn_mma_stages_split_q_cute(
 #if defined(NOTES_V2_ENABLE_TMA_MMA_WS)
 
 #if defined(NOTES_V2_ENABLE_CUTE)
+// Split-D FA2 forward: Q/K and V are streamed in 64-wide head-dimension
+// chunks. F32 O_acc lives in global memory so D=512 does not inflate the
+// consumer register footprint beyond one [128, 64] output fragment.
+template <int kHeadDim, typename TmaQ, typename TmaK, typename TmaV,
+          int kStagesQK = 2, int kStagesV = 2>
+__global__ void __launch_bounds__(384, 1)
+ffpa_attn_tma_mma_ws_split_d_cute(
+    CUTLASS_GRID_CONSTANT TmaQ const tma_q,
+    CUTLASS_GRID_CONSTANT TmaK const tma_k,
+    CUTLASS_GRID_CONSTANT TmaV const tma_v,
+    float *output_acc, cutlass::half_t *output, int rows, int seqlen) {
+  using namespace cute;
+  using Traits = fa_cute::FFPAAttnSplitDCuTeTraits<kHeadDim>;
+  using Element = typename Traits::Element;
+  using SmemLayoutQ = typename Traits::SmemLayoutQ;
+  using SmemLayoutKV = typename Traits::SmemLayoutKV;
+  using TmaBarrier = cutlass::arch::ClusterTransactionBarrier;
+  using CtaBarrier = cutlass::arch::ClusterBarrier;
+
+  static_assert(kHeadDim % 64 == 0, "Split-D requires head-dim multiple of 64");
+  static_assert(kStagesQK >= 1 && kStagesV >= 1, "pipeline stages must be positive");
+  constexpr int kBr = 128;
+  constexpr int kBc = 64;
+  constexpr int kDChunk = 64;
+  constexpr int kDChunks = kHeadDim / kDChunk;
+  constexpr int kProducerThreads = 128;
+  constexpr int kConsumerThreads = 256;
+  constexpr int kQChunkElements = cosize(SmemLayoutQ{});
+  constexpr int kKVChunkElements = cosize(SmemLayoutKV{});
+
+  extern __shared__ __align__(1024) Element shm[];
+  Element *q_base = shm;
+  Element *k_base = q_base + kStagesQK * kQChunkElements;
+  Element *v_base = k_base + kStagesQK * kKVChunkElements;
+
+  __shared__ uint64_t qk_full[kStagesQK];
+  __shared__ uint64_t qk_empty[kStagesQK];
+  __shared__ uint64_t v_full[kStagesV];
+  __shared__ uint64_t v_empty[kStagesV];
+
+  const bool is_producer = threadIdx.x < kProducerThreads;
+  const int wg_tid = is_producer ? threadIdx.x : threadIdx.x - kProducerThreads;
+  const int q_tile = blockIdx.y * (seqlen / kBr) + blockIdx.x;
+  const int kv_tiles = seqlen / kBc;
+
+  if (threadIdx.x == 0) {
+    for (int stage = 0; stage < kStagesQK; ++stage) {
+      TmaBarrier::init(&qk_full[stage], 1);
+      CtaBarrier::init(&qk_empty[stage], kConsumerThreads);
+    }
+    for (int stage = 0; stage < kStagesV; ++stage) {
+      TmaBarrier::init(&v_full[stage], 1);
+      CtaBarrier::init(&v_empty[stage], kConsumerThreads);
+    }
+  }
+  __syncthreads();
+
+  if (is_producer) {
+    NOTES_V2_REG_DEALLOC(40);
+    if (wg_tid == 0) {
+      auto mQ = tma_q.get_tma_tensor(make_shape(rows, Int<kHeadDim>{}));
+      auto mK = tma_k.get_tma_tensor(make_shape(rows, Int<kHeadDim>{}));
+      auto mV = tma_v.get_tma_tensor(make_shape(rows, Int<kHeadDim>{}));
+      auto q_slice = tma_q.get_slice(_0{});
+      auto k_slice = tma_k.get_slice(_0{});
+      auto v_slice = tma_v.get_slice(_0{});
+
+      for (int kv_tile = 0; kv_tile < kv_tiles; ++kv_tile) {
+        for (int d_chunk = 0; d_chunk < kDChunks; ++d_chunk) {
+          const int chunk_index = kv_tile * kDChunks + d_chunk;
+          const int stage = chunk_index % kStagesQK;
+          const int phase = (chunk_index / kStagesQK) & 1;
+          CtaBarrier::wait(&qk_empty[stage], phase);
+          auto sQ = make_tensor(make_smem_ptr(q_base + stage * kQChunkElements),
+                                SmemLayoutQ{});
+          auto sK = make_tensor(make_smem_ptr(k_base + stage * kKVChunkElements),
+                                SmemLayoutKV{});
+          auto gQ = local_tile(mQ, Shape<_128, _64>{},
+                               make_coord(q_tile, d_chunk));
+          auto gK = local_tile(mK, Shape<_64, _64>{},
+                               make_coord(blockIdx.y * kv_tiles + kv_tile, d_chunk));
+          auto tQgQ = q_slice.partition_S(gQ);
+          auto tQsQ = q_slice.partition_D(sQ);
+          auto tKgK = k_slice.partition_S(gK);
+          auto tKsK = k_slice.partition_D(sK);
+          TmaBarrier::arrive_and_expect_tx(
+              &qk_full[stage], sizeof(Element) * (size(sQ) + size(sK)));
+          copy(tma_q.with(qk_full[stage]), tQgQ, tQsQ);
+          copy(tma_k.with(qk_full[stage]), tKgK, tKsK);
+          tma_fence_proxy_async_shared_cta();
+        }
+
+        for (int v_chunk = 0; v_chunk < kDChunks; ++v_chunk) {
+          const int chunk_index = kv_tile * kDChunks + v_chunk;
+          const int stage = chunk_index % kStagesV;
+          const int phase = (chunk_index / kStagesV) & 1;
+          CtaBarrier::wait(&v_empty[stage], phase);
+          auto sV = make_tensor(make_smem_ptr(v_base + stage * kKVChunkElements),
+                                SmemLayoutKV{});
+          auto gV = local_tile(mV, Shape<_64, _64>{},
+                               make_coord(blockIdx.y * kv_tiles + kv_tile, v_chunk));
+          auto tVgV = v_slice.partition_S(gV);
+          auto tVsV = v_slice.partition_D(sV);
+          TmaBarrier::arrive_and_expect_tx(&v_full[stage], sizeof(Element) * size(sV));
+          copy(tma_v.with(v_full[stage]), tVgV, tVsV);
+          tma_fence_proxy_async_shared_cta();
+        }
+      }
+    }
+  } else {
+    NOTES_V2_REG_ALLOC(168);
+    typename Traits::TiledMma tiled_mma;
+    auto thr_mma = tiled_mma.get_thread_slice(wg_tid);
+    auto s2r_copy_q = make_tiled_copy_A(typename Traits::SmemCopyAtom{}, tiled_mma);
+    auto s2r_copy_k = make_tiled_copy_B(typename Traits::SmemCopyAtom{}, tiled_mma);
+    auto s2r_copy_v = make_tiled_copy_B(
+        typename Traits::SmemCopyAtomTransposed{}, tiled_mma);
+    auto s2r_thr_q = s2r_copy_q.get_thread_slice(wg_tid);
+    auto s2r_thr_k = s2r_copy_k.get_thread_slice(wg_tid);
+    auto s2r_thr_v = s2r_copy_v.get_thread_slice(wg_tid);
+
+    auto sV0 = make_tensor(make_smem_ptr(v_base), SmemLayoutKV{});
+    auto sVt0_ns = make_tensor(
+        sV0.data(), get_nonswizzle_portion(typename Traits::SmemLayoutVt{}));
+    auto tCrV_layout = thr_mma.partition_fragment_B(sVt0_ns).layout();
+    float row_max[2] = {-INFINITY, -INFINITY};
+    float row_sum[2] = {0.0f, 0.0f};
+    const float scale = rsqrtf(static_cast<float>(kHeadDim)) * M_LOG2E;
+    auto mOacc = make_tensor(make_gmem_ptr(output_acc),
+                             make_shape(rows, Int<kHeadDim>{}),
+                             make_stride(Int<kHeadDim>{}, _1{}));
+    auto mO = make_tensor(make_gmem_ptr(output),
+                          make_shape(rows, Int<kHeadDim>{}),
+                          make_stride(Int<kHeadDim>{}, _1{}));
+
+    // Init: mark all QK/V slots as empty (256 consumer arrivals each)
+    for (int s = 0; s < kStagesQK; ++s)
+      CtaBarrier::arrive(&qk_empty[s]);
+    for (int s = 0; s < kStagesV; ++s)
+      CtaBarrier::arrive(&v_empty[s]);
+
+    for (int kv_tile = 0; kv_tile < kv_tiles; ++kv_tile) {
+      auto tCrS = partition_fragment_C(tiled_mma, Shape<_128, _64>{});
+      clear(tCrS);
+      for (int d_chunk = 0; d_chunk < kDChunks; ++d_chunk) {
+        const int chunk_index = kv_tile * kDChunks + d_chunk;
+        const int stage = chunk_index % kStagesQK;
+        const int phase = (chunk_index / kStagesQK) & 1;
+        TmaBarrier::wait(&qk_full[stage], phase);
+        tma_fence_proxy_async_shared_cta();
+        auto sQ = make_tensor(make_smem_ptr(q_base + stage * kQChunkElements),
+                              SmemLayoutQ{});
+        auto sK = make_tensor(make_smem_ptr(k_base + stage * kKVChunkElements),
+                              SmemLayoutKV{});
+        auto tCrQ = thr_mma.partition_fragment_A(sQ);
+        auto tCrK = thr_mma.partition_fragment_B(sK);
+        auto tQsQ = s2r_thr_q.partition_S(sQ);
+        auto tKsK = s2r_thr_k.partition_S(sK);
+        fa_cute::gemm_ss(tCrS, tCrQ, tCrK, tQsQ, tKsK,
+                         tiled_mma, s2r_copy_q, s2r_copy_k,
+                         s2r_thr_q, s2r_thr_k);
+        CtaBarrier::arrive(&qk_empty[stage]);
+      }
+
+      auto scores = make_tensor(
+          tCrS.data(), fa_cute::convert_layout_acc_rowcol(tCrS.layout()));
+      float row_scale[2];
+#pragma unroll
+      for (int row = 0; row < 2; ++row) {
+        float tile_max = -INFINITY;
+#pragma unroll
+        for (int col = 0; col < size<1>(scores); ++col)
+          tile_max = fmaxf(tile_max, scores(row, col) * scale);
+        tile_max = fmaxf(tile_max, __shfl_xor_sync(0xffffffff, tile_max, 1));
+        tile_max = fmaxf(tile_max, __shfl_xor_sync(0xffffffff, tile_max, 2));
+        const float next_max = fmaxf(row_max[row], tile_max);
+        row_scale[row] = exp2f(row_max[row] - next_max);
+        float tile_sum = 0.0f;
+#pragma unroll
+        for (int col = 0; col < size<1>(scores); ++col) {
+          const float p = exp2f(scores(row, col) * scale - next_max);
+          scores(row, col) = p;
+          tile_sum += p;
+        }
+        tile_sum += __shfl_xor_sync(0xffffffff, tile_sum, 1);
+        tile_sum += __shfl_xor_sync(0xffffffff, tile_sum, 2);
+        row_sum[row] = row_sum[row] * row_scale[row] + tile_sum;
+        row_max[row] = next_max;
+      }
+
+      auto tCrP = fa_cute::convert_type<Element>(tCrS);
+      auto tCrPv = make_tensor(
+          tCrP.data(),
+          fa_cute::convert_layout_acc_Aregs<typename Traits::TiledMma>(tCrP.layout()));
+      for (int v_chunk = 0; v_chunk < kDChunks; ++v_chunk) {
+        const int chunk_index = kv_tile * kDChunks + v_chunk;
+        const int stage = chunk_index % kStagesV;
+        const int phase = (chunk_index / kStagesV) & 1;
+        TmaBarrier::wait(&v_full[stage], phase);
+        tma_fence_proxy_async_shared_cta();
+        auto sV = make_tensor(make_smem_ptr(v_base + stage * kKVChunkElements),
+                              SmemLayoutKV{});
+        auto sVt = make_tensor(sV.data(), typename Traits::SmemLayoutVt{});
+        auto tCrVStorage = thr_mma.partition_fragment_B(sV);
+        auto tCrV = make_tensor(tCrVStorage.data(), tCrV_layout);
+        auto tVsVt = s2r_thr_v.partition_S(sVt);
+        auto tCrO = partition_fragment_C(tiled_mma, Shape<_128, _64>{});
+        auto gOacc = local_tile(mOacc, Shape<_128, _64>{},
+                                make_coord(q_tile, v_chunk));
+        auto tCgOacc = thr_mma.partition_C(gOacc);
+        if (kv_tile == 0) {
+          clear(tCrO);
+        } else {
+          copy(tCgOacc, tCrO);
+        }
+        auto tCrO_rc = make_tensor(
+            tCrO.data(), fa_cute::convert_layout_acc_rowcol(tCrO.layout()));
+#pragma unroll
+        for (int row = 0; row < 2; ++row)
+#pragma unroll
+          for (int col = 0; col < size<1>(tCrO_rc); ++col)
+            tCrO_rc(row, col) *= row_scale[row];
+        fa_cute::gemm_rs(tCrO, tCrPv, tCrV, tVsVt,
+                         tiled_mma, s2r_copy_v, s2r_thr_v);
+        copy(tCrO, tCgOacc);
+        CtaBarrier::arrive(&v_empty[stage]);
+      }
+    }
+
+    for (int v_chunk = 0; v_chunk < kDChunks; ++v_chunk) {
+      auto tCrO = partition_fragment_C(tiled_mma, Shape<_128, _64>{});
+      auto gOacc = local_tile(mOacc, Shape<_128, _64>{},
+                              make_coord(q_tile, v_chunk));
+      auto tCgOacc = thr_mma.partition_C(gOacc);
+      copy(tCgOacc, tCrO);
+      auto tCrO_rc = make_tensor(
+          tCrO.data(), fa_cute::convert_layout_acc_rowcol(tCrO.layout()));
+#pragma unroll
+      for (int row = 0; row < 2; ++row) {
+        const float inv_sum = 1.0f / row_sum[row];
+#pragma unroll
+        for (int col = 0; col < size<1>(tCrO_rc); ++col)
+          tCrO_rc(row, col) *= inv_sum;
+      }
+      auto tCrOHalf = fa_cute::convert_type<Element>(tCrO);
+      auto gO = local_tile(mO, Shape<_128, _64>{}, make_coord(q_tile, v_chunk));
+      auto tCgO = thr_mma.partition_C(gO);
+      copy(tCrOHalf, tCgO);
+    }
+  }
+}
+
 template <int kHeadDim, typename TmaQ, typename TmaK, typename TmaV,
           int kStagesK = 1, int kStagesV = 1>
 __global__ void __launch_bounds__(384, 1)

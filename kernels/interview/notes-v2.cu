@@ -4021,10 +4021,154 @@ static float bench_cudnn_sdpa_tflops(half *d_q, half *d_k, half *d_v,
 }
 #endif
 
+#if defined(NOTES_V2_ENABLE_CUTE) && defined(NOTES_V2_ENABLE_TMA_MMA_WS)
+template <int kHeadDim, int kStagesQK, int kStagesV>
+static float bench_fa_split_d_launch(
+    int B, int H, int seqlen, half *h_o_ref, float *ref_o,
+    half *d_q, half *d_k, half *d_v, half *d_o,
+    float cudnn_tflops_f32, float &out_max_err) {
+  using namespace cute;
+  using Traits = fa_cute::FFPAAttnSplitDCuTeTraits<kHeadDim>;
+  using SmemLayoutQ = typename Traits::SmemLayoutQ;
+  using SmemLayoutKV = typename Traits::SmemLayoutKV;
+  constexpr int kBr = 128;
+  constexpr int kChunk = 64;
+  constexpr int kNumThreads = 384;
+  out_max_err = -1.0f;
+  if (seqlen < kBr || seqlen % kBr != 0 || seqlen % kChunk != 0) {
+    printf("| %-56s | %-9s | %-19s |\n",
+           "FA Split-D CuTe TMA MMA WS (unaligned)", "SKIP", "None");
+    return -1.0f;
+  }
+
+  const int rows = B * H * seqlen;
+  const size_t count = (size_t)rows * kHeadDim;
+  auto make_tma_q = [=]() {
+    auto tensor = make_tensor(
+        make_gmem_ptr(reinterpret_cast<cutlass::half_t *>(d_q)),
+        make_shape(rows, Int<kHeadDim>{}),
+        make_stride(Int<kHeadDim>{}, _1{}));
+    return make_tma_copy(SM90_TMA_LOAD{}, tensor, SmemLayoutQ{},
+                         Shape<_128, _64>{}, _1{});
+  };
+  auto make_tma_kv = [=](half *pointer) {
+    auto tensor = make_tensor(
+        make_gmem_ptr(reinterpret_cast<cutlass::half_t *>(pointer)),
+        make_shape(rows, Int<kHeadDim>{}),
+        make_stride(Int<kHeadDim>{}, _1{}));
+    return make_tma_copy(SM90_TMA_LOAD{}, tensor, SmemLayoutKV{},
+                         Shape<_64, _64>{}, _1{});
+  };
+  auto tma_q = make_tma_q();
+  auto tma_k = make_tma_kv(d_k);
+  auto tma_v = make_tma_kv(d_v);
+  auto kernel = ffpa_attn_tma_mma_ws_split_d_cute<
+      kHeadDim, decltype(tma_q), decltype(tma_k), decltype(tma_v),
+      kStagesQK, kStagesV>;
+  const int smem_bytes =
+      (kStagesQK * (cosize(SmemLayoutQ{}) + cosize(SmemLayoutKV{})) +
+       kStagesV * cosize(SmemLayoutKV{})) * sizeof(cutlass::half_t);
+  if (!check_smem_feasible((const void *)kernel, smem_bytes)) {
+    printf("| %-56s | %-9s | %-19s |\n",
+           "FA Split-D CuTe TMA MMA WS (SMEM)", "SMEM", "None");
+    return -1.0f;
+  }
+  check(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize,
+                             smem_bytes),
+        "bench split-d set smem");
+
+  float *d_o_acc;
+  check(cudaMalloc(&d_o_acc, count * sizeof(float)), "alloc Split-D O accumulator");
+  dim3 grid(seqlen / kBr, B * H);
+  for (int warmup = 0; warmup < g_warmup; ++warmup) {
+    kernel<<<grid, kNumThreads, smem_bytes>>>(
+        tma_q, tma_k, tma_v, d_o_acc,
+        reinterpret_cast<cutlass::half_t *>(d_o), rows, seqlen);
+  }
+  check(cudaGetLastError(), "bench split-d warmup launch");
+  check(cudaDeviceSynchronize(), "bench split-d warmup sync");
+
+  cudaEvent_t start, stop;
+  check(cudaEventCreate(&start), "bench split-d start");
+  check(cudaEventCreate(&stop), "bench split-d stop");
+  check(cudaEventRecord(start), "bench split-d record start");
+  for (int repeat = 0; repeat < g_repeat; ++repeat) {
+    kernel<<<grid, kNumThreads, smem_bytes>>>(
+        tma_q, tma_k, tma_v, d_o_acc,
+        reinterpret_cast<cutlass::half_t *>(d_o), rows, seqlen);
+  }
+  check(cudaGetLastError(), "bench split-d timed launch");
+  check(cudaEventRecord(stop), "bench split-d record stop");
+  check(cudaEventSynchronize(stop), "bench split-d timing sync");
+  float time_ms = 0.0f;
+  check(cudaEventElapsedTime(&time_ms, start, stop), "bench split-d elapsed");
+  time_ms /= g_repeat;
+
+  half *h_o = (half *)malloc(count * sizeof(half));
+  check(cudaMemcpy(h_o, d_o, count * sizeof(half), cudaMemcpyDeviceToHost),
+        "bench split-d D2H");
+  float max_err = -1.0f;
+  if (h_o_ref) {
+    max_err = 0.0f;
+    for (size_t idx = 0; idx < count; ++idx)
+      max_err = max(max_err, fabsf(__half2float(h_o[idx]) - __half2float(h_o_ref[idx])));
+  } else if (ref_o) {
+    max_err = 0.0f;
+    for (size_t idx = 0; idx < count; ++idx)
+      max_err = max(max_err, fabsf(__half2float(h_o[idx]) - ref_o[idx]));
+  }
+  out_max_err = max_err;
+  const float tflops = bench_fa_tflops(B, H, seqlen, kHeadDim, time_ms);
+  char label[96];
+  snprintf(label, sizeof(label),
+           "FA Split-D CuTe TMA MMA WS (D=%d, Sk=%d, Sv=%d)",
+           kHeadDim, kStagesQK, kStagesV);
+  char performance[32];
+  if (cudnn_tflops_f32 > 0.0f)
+    snprintf(performance, sizeof(performance), "%.1f/%.1f (%.2fx)",
+             tflops, cudnn_tflops_f32, tflops / cudnn_tflops_f32);
+  else
+    snprintf(performance, sizeof(performance), "%.1f", tflops);
+  printf("| %-56s | %.3e | %-19s |\n", label, max_err, performance);
+
+  free(h_o);
+  cudaFree(d_o_acc);
+  cudaEventDestroy(start);
+  cudaEventDestroy(stop);
+  return tflops;
+}
+
+static void bench_fa_split_d_dispatch(
+    int B, int H, int seqlen, int head_dim,
+    half *h_o_ref, float *ref_o,
+    half *d_q, half *d_k, half *d_v, half *d_o,
+    float cudnn_tflops_f32) {
+  using namespace cute;
+  float max_err;
+  auto call = [&](auto dim_tag) {
+    constexpr int D = decltype(dim_tag)::value;
+    bench_fa_split_d_launch<D, 1, 1>(B, H, seqlen, h_o_ref, ref_o,
+                                      d_q, d_k, d_v, d_o, cudnn_tflops_f32, max_err);
+    bench_fa_split_d_launch<D, 2, 2>(B, H, seqlen, h_o_ref, ref_o,
+                                      d_q, d_k, d_v, d_o, cudnn_tflops_f32, max_err);
+  };
+  if (head_dim == 192) call(Int<192>{});
+  else if (head_dim == 256) call(Int<256>{});
+  else if (head_dim == 320) call(Int<320>{});
+  else if (head_dim == 384) call(Int<384>{});
+  else if (head_dim == 448) call(Int<448>{});
+  else if (head_dim == 512) call(Int<512>{});
+  else if (head_dim == 1024) call(Int<1024>{});
+  else
+    printf("| %-56s | %-9s | %-19s |\n",
+           "FA Split-D CuTe TMA MMA WS (unsupported D)", "SKIP", "None");
+}
+#endif
+
 static void bench_flash_attn(int B, int H, int N, int D) {
   int seqlen = N, head_dim = D;
 
-  if (head_dim != 64 && head_dim != 128) {
+  if (head_dim % 64 != 0) {
     printf("| %-56s | %-9s | %-19s |\n", "FlashAttention-2", "unsupported D", "None");
     return;
   }
@@ -4127,6 +4271,26 @@ static void bench_flash_attn(int B, int H, int N, int D) {
     bench_fa_3_tma_mma_ws_cute_dispatch(
         B, H, seqlen, head_dim, h_o_ref, ref_o,
         d_q, d_k, d_v, d_o, cudnn_tflops_f32);
+#endif
+    free(h_q);
+    free(h_k);
+    free(h_v);
+    free(h_o_ref);
+    free(ref_o);
+    cudaFree(d_q);
+    cudaFree(d_k);
+    cudaFree(d_v);
+    cudaFree(d_o);
+    return;
+  }
+
+  if (head_dim > 128) {
+#if defined(NOTES_V2_ENABLE_CUTE) && defined(NOTES_V2_ENABLE_TMA_MMA_WS)
+    bench_fa_split_d_dispatch(B, H, seqlen, head_dim, h_o_ref, ref_o,
+                               d_q, d_k, d_v, d_o, cudnn_tflops_f32);
+#else
+    printf("| %-56s | %-9s | %-19s |\n",
+           "FA Split-D (TMA MMA WS disabled)", "SKIP", "None");
 #endif
     free(h_q);
     free(h_k);
