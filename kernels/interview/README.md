@@ -2,6 +2,20 @@
 
 [notes-v2.cu](notes-v2.cu): 面试中高频出现的 CUDA kernel 的背题版本。
 
+## 文件结构
+
+| 文件 | 内容 |
+|------|------|
+| `common.cuh` | 底层公共模块：CUDA 头文件、基础宏(`INT4`/`FLOAT4`/`HALF2`)、`kWarpSize`、MMA/WGMMA PTX 宏、XOR Swizzle 函数、TMA/mbarrier helpers、TensorMap helpers |
+| `base.cuh` | Phase 0-5：GPU 架构速查、Warp/Block Reduce、Dot Product、Elementwise Ops、Softmax（三级递进）、RMS/Layer Norm、RoPE、Mat Transpose |
+| `sgemv.cuh` | Phase 6：SGEMV（K32/K128/K16, warp-per-row） |
+| `sgemm.cuh` | Phase 7a：SGEMM（Block Tile + Vec4 + Thread Tile） |
+| `hgemm.cuh` | Phase 7b-d：HGEMM 全部（MMA m16n8k16 + XOR Swizzle + CuTe + WGMMA m64n128k16 + TMA MMA WS） |
+| `flash_attn.cuh` | Phase 8：FlashAttention 2/3 全部（MMA cp.async Split-Q + TMA MMA WS + FA3 dual-consumer + CuTe 版本） |
+| `notes-v2.cu` | 入口文件：include 以上所有 `.cuh`，包含全部 test/bench 函数和 CLI 入口 |
+
+依赖关系：`common.cuh` ← `base.cuh` ← `sgemv.cuh` / `sgemm.cuh` / `hgemm.cuh` / `flash_attn.cuh` ← `notes-v2.cu`
+
 ## 📖 快速开始 🔥🔥
 
 ```bash
@@ -9,24 +23,14 @@ git clone https://github.com/xlite-dev/LeetCUDA.git && cd LeetCUDA
 git submodule update --init --recursive --force && cd kernels/interview
 # Install the latest CUDNN library for benchmarks (remove the old version first)
 apt remove -y libcudnn9-cuda-13 libcudnn9-dev-cuda-13 libcudnn9-headers-cuda-13 
-apt install -y cudnn9-cuda-13 # Install the latest version for best performance.
+apt install -y cudnn9-cuda-13 ccache # Also install ccache for faster rebuilds
 
-# Ada SM_89 + MMA + SMEM Swizzle + Block Swizzle + CuTe (CUDA Toolkit >= 13.2)
-nvcc -std=c++20 -O3 -arch=sm_89 -lcublas -lcuda notes-v2.cu -o notes_v2_sm89.bin
-nvcc -std=c++20 -O3 -arch=sm_89 -DNOTES_V2_ENABLE_CUTE -I ../../third-party/cutlass/include  \
-  -lcublas -lcuda notes-v2.cu -o notes_v2_cute_sm89.bin
-
-# Hopper SM_90a + CuTe + Swizzle + TMA WGMMA WS + CuTe HGEMM (CUDA Toolkit >= 13.2)
-nvcc -std=c++20 -O3 -gencode arch=compute_90a,code=sm_90a -DNOTES_V2_ENABLE_WGMMA \
-  -DNOTES_V2_ENABLE_CUTE -DNOTES_V2_ENABLE_TMA_MMA_WS -I ../../third-party/cutlass/include \
-  -lcublas -lcuda notes-v2.cu -o notes_v2_sm90a.bin 
-
-# Blackwell SM_120a + CuTe + Swizzle + TMA MMA WS + cuDNN SDPA (CUDA Toolkit >= 13.2):
-nvcc -std=c++20 -O3 -gencode arch=compute_120a,code=sm_120a --expt-relaxed-constexpr \
-  --use_fast_math -DNOTES_V2_ENABLE_CUTE -DNOTES_V2_ENABLE_TMA_MMA_WS -DNOTES_V2_ENABLE_CUDNN \
-  -I ../../third-party/cutlass/include -I ../../third-party/cudnn-frontend/include \
-  -L/usr/local/cuda/targets/x86_64-linux/lib/stubs -lcublas -lcudnn -lnvrtc \
-  -lcuda notes-v2.cu -o notes_v2_sm120a.bin
+# Build for target architecture (ccache accelerated when available):
+./build.sh --arch sm_89     # Ada Lovelace (RTX 40 series, CUDA Toolkit >= 13.2)
+./build.sh --arch sm_90a    # Hopper (H100/H200, CUDA Toolkit >= 13.2)
+./build.sh --arch sm_120a   # Blackwell (RTX 5090 / PRO 5000/6000, CUDA Toolkit >= 13.2)
+./build.sh --arch all       # All three architectures
+./build.sh --clean          # Remove build artifacts
 ```
 
 ```bash

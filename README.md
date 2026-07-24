@@ -42,24 +42,14 @@ git clone https://github.com/xlite-dev/LeetCUDA.git && cd LeetCUDA
 git submodule update --init --recursive --force && cd kernels/interview
 # Install the latest CUDNN library for benchmarks (remove the old version first)
 apt remove -y libcudnn9-cuda-13 libcudnn9-dev-cuda-13 libcudnn9-headers-cuda-13 
-apt install -y cudnn9-cuda-13 # Install the latest version for best performance.
+apt install -y cudnn9-cuda-13 ccache # Also install ccache for faster rebuilds
 
-# Ada SM_89 + MMA + SMEM Swizzle + Block Swizzle + CuTe (CUDA Toolkit >= 13.2)
-nvcc -std=c++20 -O3 -arch=sm_89 -lcublas -lcuda notes-v2.cu -o notes_v2_sm89.bin
-nvcc -std=c++20 -O3 -arch=sm_89 -DNOTES_V2_ENABLE_CUTE -I ../../third-party/cutlass/include  \
-  -lcublas -lcuda notes-v2.cu -o notes_v2_cute_sm89.bin
-
-# Hopper SM_90a + CuTe + Swizzle + TMA WGMMA WS + CuTe HGEMM (CUDA Toolkit >= 13.2)
-nvcc -std=c++20 -O3 -gencode arch=compute_90a,code=sm_90a -DNOTES_V2_ENABLE_WGMMA \
-  -DNOTES_V2_ENABLE_CUTE -DNOTES_V2_ENABLE_TMA_MMA_WS -I ../../third-party/cutlass/include \
-  -lcublas -lcuda notes-v2.cu -o notes_v2_sm90a.bin 
-
-# Blackwell SM_120a + CuTe + Swizzle + TMA MMA WS + cuDNN SDPA (CUDA Toolkit >= 13.2):
-nvcc -std=c++20 -O3 -gencode arch=compute_120a,code=sm_120a --expt-relaxed-constexpr \
-  --use_fast_math -DNOTES_V2_ENABLE_CUTE -DNOTES_V2_ENABLE_TMA_MMA_WS -DNOTES_V2_ENABLE_CUDNN \
-  -I ../../third-party/cutlass/include -I ../../third-party/cudnn-frontend/include \
-  -L/usr/local/cuda/targets/x86_64-linux/lib/stubs -lcublas -lcudnn -lnvrtc \
-  -lcuda notes-v2.cu -o notes_v2_sm120a.bin
+# Build for target architecture (ccache accelerated when available):
+./build.sh --arch sm_89     # Ada Lovelace (L20, RTX 40 series, CUDA Toolkit >= 13.2)
+./build.sh --arch sm_90a    # Hopper (H100/H200, CUDA Toolkit >= 13.2)
+./build.sh --arch sm_120a   # Blackwell (RTX 5090 / PRO 5000/6000, CUDA Toolkit >= 13.2)
+./build.sh --arch all       # All three architectures (sm_89, sm_90a, sm_120a)
+./build.sh --clean          # Remove build artifacts
 ```
 
 ```bash
