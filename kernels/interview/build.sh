@@ -54,8 +54,8 @@ declare -A ARCH_OUTPUT
 # sm_89 — Ada (Ampere RTX 40 series)
 ARCH_GENCODE[sm_89]="-gencode arch=compute_89,code=sm_89"
 ARCH_DEFINES[sm_89]="-DNOTES_V2_ENABLE_CUTE -DNOTES_V2_ENABLE_CUDNN"
-ARCH_LIB_PATH[sm_89]=""
-ARCH_LIBS[sm_89]="-lcublas -lcudnn -lcuda"
+ARCH_LIB_PATH[sm_89]="-L/usr/local/cuda/targets/x86_64-linux/lib/stubs"
+ARCH_LIBS[sm_89]="-lcublas -lcudnn -lnvrtc -lcuda"
 ARCH_OUTPUT[sm_89]="notes_v2_cute_sm89.bin"
 
 # sm_90a — Hopper (H100/H200)
