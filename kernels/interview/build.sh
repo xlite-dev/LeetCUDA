@@ -84,10 +84,15 @@ Architectures:
   sm_90a    Hopper (H100/H200)
   sm_120a   Blackwell (RTX 5090 / PRO 5000/6000)
   all       Build all three architectures
+  sm_XX     Generic SM arch (e.g., sm_86 for Ampere RTX 30 series)
 
 Options:
   --clean   Remove .o and .bin files, then exit
   -h, --help  Show this help
+
+Generic arch notes:
+  Generic arches use no NOTES_V2_XXX flags (no CuTe/WGMMA/TMA/CUDNN).
+  Output: notes_v2_smXX.bin (e.g., notes_v2_sm86.bin), linked with -lcublas -lcuda only.
 EOF
   exit 0
 }
@@ -112,9 +117,7 @@ done
 if [[ "$CLEAN_ONLY" == "1" ]]; then
   echo "[clean] Removing build artifacts..."
   rm -f notes-v2.o
-  for a in $VALID_ARCHS; do
-    rm -f "${ARCH_OUTPUT[$a]}"
-  done
+  rm -f notes_v2_*.bin
   echo "[clean] Done."
   exit 0
 fi
@@ -170,11 +173,41 @@ if [[ "$ARCH" == "all" ]]; then
     build_one "$a"
   done
 else
-  if [[ -z "${ARCH_GENCODE[$ARCH]:-}" ]]; then
-    echo "[ERROR] Unknown architecture: $ARCH. Valid: $VALID_ARCHS, all" >&2
-    exit 1
+  if [[ -n "${ARCH_GENCODE[$ARCH]:-}" ]]; then
+    # Predefined arch (sm_89/sm_90a/sm_120a)
+    build_one "$ARCH"
+  else
+    # Generic arch (e.g., sm_86, sm_80)
+    echo "[build.sh] Generic architecture: $ARCH (no NOTES_V2_XXX flags)"
+    arch_num="${ARCH#sm_}"
+    local_gencode="-gencode arch=compute_${arch_num},code=sm_${arch_num}"
+    local_output="notes_v2_sm${arch_num}.bin"
+    
+    echo "=== Building $ARCH -> $local_output ==="
+    t0=$(date +%s)
+
+    # Step 1: compile
+    if [[ "$USE_CCACHE" == "1" ]]; then
+      compile_cmd=(ccache "$NVCC")
+    else
+      compile_cmd=("$NVCC")
+    fi
+    compile_cmd+=(
+      "${COMMON_FLAGS[@]}"
+      $local_gencode
+      -c notes-v2.cu -o notes-v2.o
+    )
+    echo "  [compile] ${compile_cmd[*]}"
+    "${compile_cmd[@]}"
+
+    # Step 2: link
+    link_cmd=("$NVCC" notes-v2.o -o "$local_output" -L/usr/local/cuda/targets/x86_64-linux/lib/stubs -lcublas -lcuda)
+    echo "  [link]    ${link_cmd[*]}"
+    "${link_cmd[@]}"
+
+    t1=$(date +%s)
+    echo "  [OK] $local_output  (${t1}-${t0}s, elapsed $((t1 - t0))s)"
   fi
-  build_one "$ARCH"
 fi
 
 echo "=== All builds complete ==="
