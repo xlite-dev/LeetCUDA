@@ -2992,6 +2992,14 @@ ffpa_attn_tma_mma_ws_split_d_cute(
     //     覆盖 head_dim 的不同区间, 之间不存在 reduce 关系, 不能累加到同一寄存器。
     //     因此需要 kDChunks 份独立 O 累加器, 跨 kv_tile 做在线 softmax rescale 累加。
     //
+    // ★ 与 ffpa-attn CUDA 的流式 rescale 对比:
+    //   ffpa-attn (`ffpa_attn_split_d_fwd_template`) 的 R_O 只有 1 份 (4 regs),
+    //   每个 d_chunk 内: 清零 R_O -> PV reduce 循环 -> 流式 rescale 到 R_D[j]。
+    //   这能大幅降低寄存器压力 (R_O[4] vs o_acc_storage[kDChunks][32])。
+    //   但 CuTe 的 TiledMma (Tile<_128,_16,_16>) 一次 gemm_rs 覆盖 [128, d_chunk],
+    //   不能像手写 m16n8 MMA 那样拆成细粒度的 Bc 循环, 因此无法直接复用该模式。
+    //   优化方向: 用 fp16 O 累加器或减小 Br 到 64 降低 kOElemsPerFrag。
+    //
     // make_rmem_ptr lets gemm_rs write directly into these registers.
     float o_acc_storage[kDChunks][kOElemsPerFrag];
 #pragma unroll
