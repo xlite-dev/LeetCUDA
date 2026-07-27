@@ -25,6 +25,7 @@
 #include "sgemm.cuh"
 #include "hgemm.cuh"
 #include "flash_attn.cuh"
+#include "ffpa_attn.cuh"
 
 // ================================================================
 // 以下是测试代码，验证 Phase 1 - Phase 8 的kernel的正确性，不评估性能。
@@ -4031,9 +4032,9 @@ static float bench_fa_split_d_launch(
   using Traits = fa_cute::FFPAAttnSplitDCuTeTraits<kHeadDim>;
   using SmemLayoutQ = typename Traits::SmemLayoutQ;
   using SmemLayoutKV = typename Traits::SmemLayoutKV;
-  constexpr int kBr = 128;
+  constexpr int kBr = 64;
   constexpr int kChunk = 64;
-  constexpr int kNumThreads = 384;
+  constexpr int kNumThreads = 256;
   out_max_err = -1.0f;
   if (seqlen < kBr || seqlen % kBr != 0 || seqlen % kChunk != 0) {
     printf("| %-56s | %-9s | %-19s |\n",
@@ -4049,7 +4050,7 @@ static float bench_fa_split_d_launch(
         make_shape(rows, Int<kHeadDim>{}),
         make_stride(Int<kHeadDim>{}, _1{}));
     return make_tma_copy(SM90_TMA_LOAD{}, tensor, SmemLayoutQ{},
-                         Shape<_128, _64>{}, _1{});
+                         Shape<_64, _64>{}, _1{});
   };
   auto make_tma_kv = [=](half *pointer) {
     auto tensor = make_tensor(
