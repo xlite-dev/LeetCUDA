@@ -22,7 +22,7 @@
   </p>
 </div>
 
-Please also check out our production-ready **Kernel Library** for **Large Headdim Attention**, [`ffpa-attn`](https://github.com/xlite-dev/ffpa-attn) for more details: achieving **1.5x~6x🔥** speedup over standard PyTorch SDPA. 
+Please also check out our production-ready **Kernel Library** for **Large Headdim Attention**: [`ffpa-attn`](https://github.com/xlite-dev/ffpa-attn) - achieving **1.5x~6x🔥** speedup over standard PyTorch SDPA. 
 
 ## ©️Citations🎉🎉
 
