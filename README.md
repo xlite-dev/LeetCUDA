@@ -22,6 +22,8 @@
   </p>
 </div>
 
+Please also check out our production-ready **Kernel Library** for **Large Headdim Attention**, [`ffpa-attn`](https://github.com/xlite-dev/ffpa-attn) for more details: achieving **1.5x~6x🔥** speedup over standard PyTorch SDPA. 
+
 ## ©️Citations🎉🎉
 
 ```BibTeX
@@ -87,7 +89,7 @@ apt install -y cudnn9-cuda-13 ccache # Also install ccache for faster rebuilds
 | FA Split-D CuTe TMA MMA WS (D=320, Sk=2, Sv=2)           | 1.526e-05 | 182.6/83.1 (2.20x)  |
 ```
 
-A PDF version of LeetCUDA focused on **interview scenarios** is available at [`interview/tex/notes-v2.pdf`](https://github.com/xlite-dev/LeetCUDA/blob/main/kernels/interview/tex/notes-v2.pdf). Please also check out our production ready Kernel Library for **large headdims** attention, [`ffpa-attn`](https://github.com/xlite-dev/ffpa-attn), achieving **1.5x~6x🔥** speedup over standard PyTorch SDPA. 
+A PDF version of LeetCUDA focused on **interview scenarios** is available at [`interview/tex/notes-v2.pdf`](https://github.com/xlite-dev/LeetCUDA/blob/main/kernels/interview/tex/notes-v2.pdf). 
 
 ## 📖 Contents
 <div id="contents"></div>
