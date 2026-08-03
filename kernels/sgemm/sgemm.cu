@@ -461,12 +461,16 @@ __global__ void sgemm_t_8x8_sliced_k_f32x4_bcf_dbuf_kernel(
   }
 
 // 计算剩下最后一块BK
+  // Which buffer holds the final tile depends on parity of the loop's
++ // last iteration (bk = numTiles - 1), matching smem_sel_next's formula.
+  int smem_sel_last = ((K + BK - 1) / BK - 1) & 1;
+
 #pragma unroll
   for (int tk = 0; tk < BK; tk++) {
-    FLOAT4(r_comp_a[0]) = FLOAT4(s_a[1][tk][ty * TM / 2]);
-    FLOAT4(r_comp_a[4]) = FLOAT4(s_a[1][tk][ty * TM / 2 + BM / 2]);
-    FLOAT4(r_comp_b[0]) = FLOAT4(s_b[1][tk][tx * TN / 2]);
-    FLOAT4(r_comp_b[4]) = FLOAT4(s_b[1][tk][tx * TN / 2 + BN / 2]);
+    FLOAT4(r_comp_a[0]) = FLOAT4(s_a[smem_sel_last][tk][ty * TM / 2]);
+    FLOAT4(r_comp_a[4]) = FLOAT4(s_a[smem_sel_last][tk][ty * TM / 2 + BM / 2]);
+    FLOAT4(r_comp_b[0]) = FLOAT4(s_b[smem_sel_last][tk][tx * TN / 2]);
+    FLOAT4(r_comp_b[4]) = FLOAT4(s_b[smem_sel_last][tk][tx * TN / 2 + BN / 2]);
 
 #pragma unroll
     for (int tm = 0; tm < TM; tm++) {
