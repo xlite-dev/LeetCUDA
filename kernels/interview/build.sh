@@ -53,9 +53,9 @@ declare -A ARCH_OUTPUT
 
 # sm_86 — Ampere (RTX 30 series, 3080)
 ARCH_GENCODE[sm_86]="-gencode arch=compute_86,code=sm_86"
-ARCH_DEFINES[sm_86]="-DNOTES_V2_ENABLE_CUTE"
+ARCH_DEFINES[sm_86]="-DNOTES_V2_ENABLE_CUTE -DNOTES_V2_ENABLE_CUDNN"
 ARCH_LIB_PATH[sm_86]="-L/usr/local/cuda/targets/x86_64-linux/lib/stubs"
-ARCH_LIBS[sm_86]="-lcublas -lcuda"
+ARCH_LIBS[sm_86]="-lcublas -lcudnn -lnvrtc -lcuda"
 ARCH_OUTPUT[sm_86]="notes_v2_sm86.bin"
 
 # sm_89 — Ada (Ampere RTX 40 series)
