@@ -49,7 +49,8 @@ static int g_bench_B = 1, g_bench_H = 32, g_bench_Nfa = 8192, g_bench_D = 128;
 static int g_warmup = 2, g_repeat = 3;
 static float g_fa_f16_max_tflops = 0.0f;
 static float g_fa_f32_max_tflops = 0.0f;
-static float g_hgemm_max_tflops = 0.0f;
+static float g_hgemm_f16_max_tflops = 0.0f;
+static float g_hgemm_f32_max_tflops = 0.0f;
 static bool g_verbose = false;
 
 // Decide whether to print a FA TFLOPS line. When --verbose/--debug is off,
@@ -67,11 +68,13 @@ static bool should_print_fa_tflops(int acc_f32, float tflops) {
 }
 
 // Decide whether to print a HGEMM TFLOPS line. When --verbose/--debug is off,
-// only print when the current TFLOPS exceeds the running max.
-static bool should_print_hgemm_tflops(float tflops) {
+// only print when the current TFLOPS exceeds the running max for its
+// accumulator category (f16/f32).
+static bool should_print_hgemm_tflops(int acc_f32, float tflops) {
   if (g_verbose || g_debug) return true;
-  if (tflops > g_hgemm_max_tflops) {
-    g_hgemm_max_tflops = tflops;
+  float &max_tflops = acc_f32 ? g_hgemm_f32_max_tflops : g_hgemm_f16_max_tflops;
+  if (tflops > max_tflops) {
+    max_tflops = tflops;
     return true;
   }
   return false;
@@ -1513,7 +1516,7 @@ static void test_hgemm_swizzle(int M, int N, int K) {
 
 #if defined(NOTES_V2_ENABLE_CUTE)
 static void test_hgemm_cute(int M, int N, int K) {
-  // HGEMM CuTe — SM80_16x8x16_F16F16F16F16_TN + Swizzle<3,3,3> + kStage=2
+  // HGEMM CuTe — SM80_16x8x16_{F16,F32}F16F16{_,F32}_TN + Swizzle<3,3,3> + kStage=2
   // TN layout: C[M×N] = A[M×K] × B^T[N×K]
   // Kernel: hgemm_mma_stages_tn_cute via launch_hgemm_mma_stages_tn_cute
   // Tile: BM=128, BN=256, BK=32, 128 threads/block
@@ -1525,6 +1528,7 @@ static void test_hgemm_cute(int M, int N, int K) {
   half *h_a = (half *)malloc(size_a);
   half *h_b = (half *)malloc(size_b);
   half *h_c_ref = (half *)malloc(size_c);
+  half *h_c_ref32 = (half *)malloc(size_c);
 
   srand(42);
   for (int i = 0; i < M * K; i++)
@@ -1549,33 +1553,41 @@ static void test_hgemm_cute(int M, int N, int K) {
   check(cudaMemcpy(d_b, h_b, size_b, cudaMemcpyHostToDevice), "hgemm_cute H2D B (cuBLAS)");
   check(cudaMemcpy(d_b_t, h_b_t, size_b_t, cudaMemcpyHostToDevice), "hgemm_cute H2D B_t (kernel)");
 
-  // cuBLAS FP16 reference (row-major idiom: swap M/N, swap A/B)
+  // cuBLAS FP16 references: F16 acc (CUBLAS_COMPUTE_16F) and F32 acc (CUBLAS_COMPUTE_32F)
+  // (row-major idiom: swap M/N, swap A/B)
+  // alpha/beta 类型必须匹配 computeType: 32F→float, 16F→half
   cublasHandle_t handle;
   cublasCreate(&handle);
   half alpha_h = __float2half(1.0f), beta_h = __float2half(0.0f);
+  float alpha_f = 1.0f, beta_f = 0.0f;
   cublasGemmEx(handle, CUBLAS_OP_N, CUBLAS_OP_N, N, M, K, &alpha_h, d_b,
                CUDA_R_16F, N, d_a, CUDA_R_16F, K, &beta_h, d_c, CUDA_R_16F, N,
                CUBLAS_COMPUTE_16F, CUBLAS_GEMM_DEFAULT);
   check(cudaMemcpy(h_c_ref, d_c, size_c, cudaMemcpyDeviceToHost), "hgemm_cute D2H ref");
+  cublasGemmEx(handle, CUBLAS_OP_N, CUBLAS_OP_N, N, M, K, &alpha_f, d_b,
+               CUDA_R_16F, N, d_a, CUDA_R_16F, K, &beta_f, d_c, CUDA_R_16F, N,
+               CUBLAS_COMPUTE_32F, CUBLAS_GEMM_DEFAULT);
+  check(cudaMemcpy(h_c_ref32, d_c, size_c, cudaMemcpyDeviceToHost), "hgemm_cute D2H ref32");
 
-  // CuTe kernel (Stages=2, TN layout)
-  launch_hgemm_mma_stages_tn_cute<half, 2, 0>(d_a, d_b_t, d_c, M, N, K);
-  check(cudaGetLastError(), "hgemm_cute launch");
-  check(cudaDeviceSynchronize(), "hgemm_cute sync");
-
+  // CuTe kernel (Stages=2, TN layout), acc 由模板参数 kAccF32 控制
   half *h_c = (half *)malloc(size_c);
-  check(cudaMemcpy(h_c, d_c, size_c, cudaMemcpyDeviceToHost), "hgemm_cute D2H");
+  auto run_one = [&]<bool kAccF32>(const char *label) {
+    launch_hgemm_mma_stages_tn_cute<half, 2, 0, kAccF32>(d_a, d_b_t, d_c, M, N, K);
+    check(cudaGetLastError(), "hgemm_cute launch");
+    check(cudaDeviceSynchronize(), "hgemm_cute sync");
+    check(cudaMemcpy(h_c, d_c, size_c, cudaMemcpyDeviceToHost), "hgemm_cute D2H");
+    half *ref = kAccF32 ? h_c_ref32 : h_c_ref;
+    float max_err = 0.0f;
+    for (int i = 0; i < M * N; i++) {
+      float err = fabsf(__half2float(h_c[i]) - __half2float(ref[i]));
+      if (err > max_err) max_err = err;
+    }
+    printf("| %-56s | %.3e |\n", label, max_err);
+  };
+  run_one.template operator()<false>("HGEMM CuTe Swizzle + Reg2x (F16Acc)");
+  run_one.template operator()<true>("HGEMM CuTe Swizzle + Reg2x (F32Acc)");
 
-  // Verify
-  float max_err = 0.0f;
-  for (int i = 0; i < M * N; i++) {
-    float err = fabsf(__half2float(h_c[i]) - __half2float(h_c_ref[i]));
-    if (err > max_err) max_err = err;
-  }
-  printf("| %-56s | %.3e |\n", "HGEMM CuTe Swizzle + Reg2x", 
-         max_err);
-
-  free(h_a); free(h_b); free(h_b_t); free(h_c); free(h_c_ref);
+  free(h_a); free(h_b); free(h_b_t); free(h_c); free(h_c_ref); free(h_c_ref32);
   cudaFree(d_a); cudaFree(d_b); cudaFree(d_b_t); cudaFree(d_c);
   cublasDestroy(handle);
 }
@@ -2416,16 +2428,21 @@ static float bench_fa_tflops(int B, int H, int N, int D, float time_ms) {
 }
 
 static float bench_cublas_hgemm_tflops(cublasHandle_t handle, int M, int N, int K,
-                                       half *d_a, half *d_b, half *d_c) {
-  half alpha = __float2half(1.0f), beta = __float2half(0.0f);
+                                       half *d_a, half *d_b, half *d_c,
+                                       cublasComputeType_t compute = CUBLAS_COMPUTE_16F) {
+  // alpha/beta 类型必须匹配 computeType: 32F→float, 16F→half
+  half alpha_h = __float2half(1.0f), beta_h = __float2half(0.0f);
+  float alpha_f = 1.0f, beta_f = 0.0f;
+  void *alpha = (compute == CUBLAS_COMPUTE_32F) ? (void *)&alpha_f : (void *)&alpha_h;
+  void *beta = (compute == CUBLAS_COMPUTE_32F) ? (void *)&beta_f : (void *)&beta_h;
   cudaStream_t stream;
   cudaStreamCreate(&stream);
   cublasSetStream(handle, stream);
   // warmup
   for (int w = 0; w < g_warmup; ++w)
-    cublasGemmEx(handle, CUBLAS_OP_N, CUBLAS_OP_N, N, M, K, &alpha,
-                 d_b, CUDA_R_16F, N, d_a, CUDA_R_16F, K, &beta,
-                 d_c, CUDA_R_16F, N, CUBLAS_COMPUTE_16F, CUBLAS_GEMM_DEFAULT);
+    cublasGemmEx(handle, CUBLAS_OP_N, CUBLAS_OP_N, N, M, K, alpha,
+                 d_b, CUDA_R_16F, N, d_a, CUDA_R_16F, K, beta,
+                 d_c, CUDA_R_16F, N, compute, CUBLAS_GEMM_DEFAULT);
   cudaStreamSynchronize(stream);
   // timed repeat
   cudaEvent_t start, stop;
@@ -2433,9 +2450,9 @@ static float bench_cublas_hgemm_tflops(cublasHandle_t handle, int M, int N, int 
   cudaEventCreate(&stop);
   cudaEventRecord(start, stream);
   for (int r = 0; r < g_repeat; ++r)
-    cublasGemmEx(handle, CUBLAS_OP_N, CUBLAS_OP_N, N, M, K, &alpha,
-                 d_b, CUDA_R_16F, N, d_a, CUDA_R_16F, K, &beta,
-                 d_c, CUDA_R_16F, N, CUBLAS_COMPUTE_16F, CUBLAS_GEMM_DEFAULT);
+    cublasGemmEx(handle, CUBLAS_OP_N, CUBLAS_OP_N, N, M, K, alpha,
+                 d_b, CUDA_R_16F, N, d_a, CUDA_R_16F, K, beta,
+                 d_c, CUDA_R_16F, N, compute, CUBLAS_GEMM_DEFAULT);
   cudaEventRecord(stop, stream);
   cudaEventSynchronize(stop);
   float time_ms = 0;
@@ -2549,7 +2566,7 @@ static void bench_hgemm_mma(int M, int N, int K) {
         char tflops_str[32];
         snprintf(tflops_str, sizeof(tflops_str), "%.1f/%.1f (%.2fx)", 
                  tflops, cublas_tflops, tflops / cublas_tflops);
-        if (should_print_hgemm_tflops(tflops))
+        if (should_print_hgemm_tflops(0, tflops))
           printf("| %-56s | %.3e | %-19s |\n", label, max_err,
           tflops_str);
       }
@@ -2671,7 +2688,7 @@ static void bench_hgemm_swizzle(int M, int N, int K) {
         char tflops_str[32];
         snprintf(tflops_str, sizeof(tflops_str), "%.1f/%.1f (%.2fx)", 
                  tflops, cublas_tflops, tflops / cublas_tflops);
-        if (should_print_hgemm_tflops(tflops))
+        if (should_print_hgemm_tflops(0, tflops))
           printf("| %-56s | %.3e | %-19s |\n", label, max_err,
           tflops_str);
       }
@@ -2702,6 +2719,7 @@ static void bench_hgemm_cute(int M, int N, int K) {
   half *h_a = (half *)malloc(size_a);
   half *h_b = (half *)malloc(size_b);
   half *h_c_ref = (half *)malloc(size_c);
+  half *h_c_ref32 = (half *)malloc(size_c);
   srand(42);
   for (int i = 0; i < M * K; i++)
     h_a[i] = __float2half(((float)rand() / RAND_MAX) * 2.0f - 1.0f);
@@ -2723,62 +2741,61 @@ static void bench_hgemm_cute(int M, int N, int K) {
   cublasHandle_t handle;
   cublasCreate(&handle);
   half alpha_h = __float2half(1.0f), beta_h = __float2half(0.0f);
+  float alpha_f = 1.0f, beta_f = 0.0f;
   cublasGemmEx(handle, CUBLAS_OP_N, CUBLAS_OP_N, N, M, K, &alpha_h, d_b, CUDA_R_16F, N,
         d_a, CUDA_R_16F, K, &beta_h, d_c, CUDA_R_16F, N, CUBLAS_COMPUTE_16F,
         CUBLAS_GEMM_DEFAULT);
   check(cudaMemcpy(h_c_ref, d_c, size_c, cudaMemcpyDeviceToHost), "bench cute D2H ref");
+  cublasGemmEx(handle, CUBLAS_OP_N, CUBLAS_OP_N, N, M, K, &alpha_f, d_b, CUDA_R_16F, N,
+        d_a, CUDA_R_16F, K, &beta_f, d_c, CUDA_R_16F, N, CUBLAS_COMPUTE_32F,
+        CUBLAS_GEMM_DEFAULT);
+  check(cudaMemcpy(h_c_ref32, d_c, size_c, cudaMemcpyDeviceToHost), "bench cute D2H ref32");
   half *h_c = (half *)malloc(size_c);
-  float cublas_tflops = bench_cublas_hgemm_tflops(handle, M, N, K, d_a, d_b, d_c);
+  float cublas_f16_tflops = bench_cublas_hgemm_tflops(handle, M, N, K, d_a, d_b, d_c);
+  float cublas_f32_tflops = bench_cublas_hgemm_tflops(handle, M, N, K, d_a, d_b, d_c,
+                                                      CUBLAS_COMPUTE_32F);
   cudaEvent_t start, stop;
   cudaEventCreate(&start);
   cudaEventCreate(&stop);
   for (int stages : {2, 3}) {
     for (int swizzle : {0, 1}) {
-      char label[64];
-      snprintf(label, sizeof(label), "HGEMM CuTe Swizzle (S=%d, BLK_SW=%d)", stages, swizzle);
-      bool ok = false;
-      float time_ms = 0, max_err = 0;
-      if (stages == 2) {
-        auto k = swizzle ? launch_hgemm_mma_stages_tn_cute<half, 2, 1>
-                         : launch_hgemm_mma_stages_tn_cute<half, 2, 0>;
-        for (int w = 0; w < g_warmup; w++) k(d_a, d_b_t, d_c, M, N, K);
-        cudaDeviceSynchronize();
-        cudaEventRecord(start);
-        for (int r = 0; r < g_repeat; r++) k(d_a, d_b_t, d_c, M, N, K);
-        cudaEventRecord(stop);
-        cudaEventSynchronize(stop);
-        cudaEventElapsedTime(&time_ms, start, stop);
-        time_ms /= g_repeat;
-        ok = true;
-      } else {
-        auto k = swizzle ? launch_hgemm_mma_stages_tn_cute<half, 3, 1>
-                         : launch_hgemm_mma_stages_tn_cute<half, 3, 0>;
-        for (int w = 0; w < g_warmup; w++) k(d_a, d_b_t, d_c, M, N, K);
-        cudaDeviceSynchronize();
-        cudaEventRecord(start);
-        for (int r = 0; r < g_repeat; r++) k(d_a, d_b_t, d_c, M, N, K);
-        cudaEventRecord(stop);
-        cudaEventSynchronize(stop);
-        cudaEventElapsedTime(&time_ms, start, stop);
-        time_ms /= g_repeat;
-        ok = true;
-      }
-      if (ok) {
+      for (int acc : {0, 1}) {
+        char label[64];
+        snprintf(label, sizeof(label), "HGEMM CuTe Swizzle (S=%d, BLK_SW=%d, %sAcc)",
+                 stages, swizzle, acc ? "F32" : "F16");
+        float time_ms = 0, max_err = 0;
+        auto timed = [&]<int kStages, bool kAccF32>() {
+          auto k = swizzle ? launch_hgemm_mma_stages_tn_cute<half, kStages, 1, kAccF32>
+                           : launch_hgemm_mma_stages_tn_cute<half, kStages, 0, kAccF32>;
+          for (int w = 0; w < g_warmup; w++) k(d_a, d_b_t, d_c, M, N, K);
+          cudaDeviceSynchronize();
+          cudaEventRecord(start);
+          for (int r = 0; r < g_repeat; r++) k(d_a, d_b_t, d_c, M, N, K);
+          cudaEventRecord(stop);
+          cudaEventSynchronize(stop);
+          cudaEventElapsedTime(&time_ms, start, stop);
+          time_ms /= g_repeat;
+        };
+        if (stages == 2) {
+          if (acc) timed.template operator()<2, true>();
+          else timed.template operator()<2, false>();
+        } else {
+          if (acc) timed.template operator()<3, true>();
+          else timed.template operator()<3, false>();
+        }
         check(cudaMemcpy(h_c, d_c, size_c, cudaMemcpyDeviceToHost), "bench cute D2H");
-        max_err = 0.0f;
+        half *ref = acc ? h_c_ref32 : h_c_ref;
         for (int i = 0; i < M * N; i++) {
-          float err = fabsf(__half2float(h_c[i]) - __half2float(h_c_ref[i]));
+          float err = fabsf(__half2float(h_c[i]) - __half2float(ref[i]));
           if (err > max_err) max_err = err;
         }
         float tflops = bench_hgemm_tflops(M, N, K, time_ms);
+        float cublas_tflops = acc ? cublas_f32_tflops : cublas_f16_tflops;
         char tflops_str[32];
-        snprintf(tflops_str, sizeof(tflops_str), "%.1f/%.1f (%.2fx)", 
+        snprintf(tflops_str, sizeof(tflops_str), "%.1f/%.1f (%.2fx)",
                  tflops, cublas_tflops, tflops / cublas_tflops);
-        if (should_print_hgemm_tflops(tflops))
-          printf("| %-56s | %.3e | %-19s |\n", label, max_err,
-          tflops_str);
-      } else {
-        printf("| %-56s | %-9s | %-19s |\n", label, "LAUNCH ERR", "None");
+        if (should_print_hgemm_tflops(acc, tflops))
+          printf("| %-56s | %.3e | %-19s |\n", label, max_err, tflops_str);
       }
     }
   }
@@ -2789,6 +2806,7 @@ static void bench_hgemm_cute(int M, int N, int K) {
   free(h_b_t);
   free(h_c);
   free(h_c_ref);
+  free(h_c_ref32);
   cudaFree(d_a);
   cudaFree(d_b);
   cudaFree(d_b_t);
@@ -2910,7 +2928,7 @@ static void bench_hgemm_wgmma(int M, int N, int K) {
         char tflops_str[32];
         snprintf(tflops_str, sizeof(tflops_str), "%.1f/%.1f (%.2fx)", tflops, 
                  cublas_tflops, tflops / cublas_tflops);
-        if (should_print_hgemm_tflops(tflops))
+        if (should_print_hgemm_tflops(0, tflops))
           printf("| %-56s | %.3e | %-19s |\n", label, max_err,
           tflops_str);
       }
@@ -3050,7 +3068,7 @@ static void bench_hgemm_tma_mma_ws(int M, int N, int K) {
         char tflops_str[32];
         snprintf(tflops_str, sizeof(tflops_str), "%.1f/%.1f (%.2fx)", tflops, 
                  cublas_tflops, tflops / cublas_tflops);
-        if (should_print_hgemm_tflops(tflops))
+        if (should_print_hgemm_tflops(0, tflops))
           printf("| %-56s | %.3e | %-19s |\n", label, max_err,
           tflops_str);
       }

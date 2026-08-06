@@ -51,6 +51,13 @@ declare -A ARCH_LIB_PATH
 declare -A ARCH_LIBS
 declare -A ARCH_OUTPUT
 
+# sm_86 — Ampere (RTX 30 series, 3080)
+ARCH_GENCODE[sm_86]="-gencode arch=compute_86,code=sm_86"
+ARCH_DEFINES[sm_86]="-DNOTES_V2_ENABLE_CUTE"
+ARCH_LIB_PATH[sm_86]="-L/usr/local/cuda/targets/x86_64-linux/lib/stubs"
+ARCH_LIBS[sm_86]="-lcublas -lcuda"
+ARCH_OUTPUT[sm_86]="notes_v2_sm86.bin"
+
 # sm_89 — Ada (Ampere RTX 40 series)
 ARCH_GENCODE[sm_89]="-gencode arch=compute_89,code=sm_89"
 ARCH_DEFINES[sm_89]="-DNOTES_V2_ENABLE_CUTE -DNOTES_V2_ENABLE_CUDNN"
@@ -72,7 +79,7 @@ ARCH_LIB_PATH[sm_120a]="-L/usr/local/cuda/targets/x86_64-linux/lib/stubs"
 ARCH_LIBS[sm_120a]="-lcublas -lcudnn -lnvrtc -lcuda"
 ARCH_OUTPUT[sm_120a]="notes_v2_sm120a.bin"
 
-VALID_ARCHS="sm_89 sm_90a sm_120a"
+VALID_ARCHS="sm_86 sm_89 sm_90a sm_120a"
 
 # ── CLI ───────────────────────────────────────────────────────────
 usage() {
@@ -80,10 +87,11 @@ usage() {
 Usage: $0 --arch <name>   [--clean] [-h]
 
 Architectures:
+  sm_86     Ampere (RTX 30 series)
   sm_89     Ada Lovelace (RTX 40 series)
   sm_90a    Hopper (H100/H200)
   sm_120a   Blackwell (RTX 5090 / PRO 5000/6000)
-  all       Build all three architectures
+  all       Build all four architectures
 
 Options:
   --clean   Remove .o and .bin files, then exit

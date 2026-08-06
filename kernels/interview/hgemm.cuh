@@ -778,6 +778,7 @@ __global__ void __launch_bounds__(256)
 
 #if defined(NOTES_V2_ENABLE_CUTE)
 
+#include <type_traits>
 #include <cute/tensor.hpp>
 #include <cutlass/arch/barrier.h>
 #include <cutlass/device_kernel.h>
@@ -1210,7 +1211,8 @@ __global__ void hgemm_mma_stages_tn_cute(T *Aptr, T *Bptr, T *Dptr, int m,
 // CuTe 的 partition + copy + gemm 通过 TiledCopy/TiledMMA 的类型信息
 // 在编译期自动完成上述全部推导，生成与手写等价的 PTX 指令序列。
 // =============================================================================
-template <typename T, const int Stages = 2, const int BlockSwizzle = 0>
+template <typename T, const int Stages = 2, const int BlockSwizzle = 0,
+          const bool kAccF32 = false>
 void launch_hgemm_mma_stages_tn_cute(T *a, T *b, T *c, int M, int N, int K) {
   using namespace cute;
 
@@ -1224,8 +1226,11 @@ void launch_hgemm_mma_stages_tn_cute(T *a, T *b, T *c, int M, int N, int K) {
   //   BK=32:    num_k_tiles = k / BK; 每个 BK tile 内 num_k_steps = BK/kMmaPK = 2 个 MMA_K slice
   //   kStage=2: sA/sB 的第三维 = (BM,BK,kStage)；cp_async_wait<kStage-2>() 流水线同步
   //   kSmemLayoutCBatch=4: step = size<3>(tCsC_r2s) → C scratchpad pipe 深度 = 4
+  //   BN: F16 acc 用 256(128×256 tile,0 spill)；F32 acc 用 128(128×128 tile,0 spill)。
+  //       F32 + BN=256 会产生 ~1KB spill(254 reg),性能下降 3-8 倍。
+  static constexpr int kBN = kAccF32 ? 128 : 256;
   auto BM = Int<128>{};
-  auto BN = Int<256>{};
+  auto BN = Int<kBN>{};
   auto BK = Int<32>{};
   auto KStage = Int<Stages>{};
   auto kSmemLayoutCBatch = Int<4>{};
@@ -1269,12 +1274,15 @@ void launch_hgemm_mma_stages_tn_cute(T *a, T *b, T *c, int M, int N, int K) {
   // MMA 还决定 S2R/R2S copy 的 tiler：make_tiled_copy_A/B/C 都依赖 tiled_mma 的
   // tile_size<0/1>(mma) = (32,32) 来推导线程→数据映射。
   //
-  // 推导链: SM80_16x8x16_F16F16F16F16_TN → MMA_Atom 
+  // 推导链: SM80_16x8x16_<Acc>F16F16<Acc>_TN → MMA_Atom
   //   → make_tiled_mma(atom, EURepeat{2,2,1}, ValTile{32,32,16})
   //   → TiledMMA: 128 threads = 4 warps × (2×2 EU slices)，逻辑 MMA tile = 32×32×16
   // TN = A row-major, B col-major；因此传给本 kernel 的 B 指针实际指向
   // B^T[N,K] 的 row-major 存储（等价于 GEMM 语义中的 B[K,N] col-major）。
-  using mma_op = SM80_16x8x16_F16F16F16F16_TN;
+  // kAccF32=false → F16 累加（默认）；kAccF32=true → F32 累加。两个 atom 都是
+  // m16n8k16，A/B fragment 与 shape 完全一致，kMmaPM/PN/PK 推导不受影响。
+  using mma_op = std::conditional_t<kAccF32, SM80_16x8x16_F32F16F16F32_TN,
+                                    SM80_16x8x16_F16F16F16F16_TN>;
   using mma_traits = MMA_Traits<mma_op>;
   using mma_atom = MMA_Atom<mma_traits>;
   using mma_atom_shape = mma_traits::Shape_MNK; // (Int<16>, Int<8>, Int<16>)
@@ -1341,12 +1349,16 @@ void launch_hgemm_mma_stages_tn_cute(T *a, T *b, T *c, int M, int N, int K) {
       make_shape(Int<kMmaPM>{}, Int<kMmaPN>{}, Int<kSmemLayoutCBatch>{})));
 
   // ── R2SCopyAtomC ──
-  // kernel 用法: 
+  // kernel 用法:
   // auto r2s_tiled_copy_c = make_tiled_copy_C(R2SCopyAtomC{}, tiled_mma);
   // cute::copy(r2s_tiled_copy_c, t, tCsC_r2s(_, 0, 0, j));
   // R→S: UniversalCopy<int> 以 32-bit 粒度将寄存器 payload 写入 C scratchpad。
-  // make_tiled_copy_C 从 TiledMMA 的 tile_size<0/1>(mma)=(32,32) 推导 tiler，
-  // 因此 R2S copy 的 tiler = (32,32)，与 SmemLayoutC 的 (32,32) 恰好匹配。
+  // make_tiled_copy_C 从 TiledMMA 的 tile_size<0/1>(mma)=(32,32) 推导 tiler,
+  // 因此 R2S copy 的 tiler = (32,32),与 SmemLayoutC 的 (32,32) 恰好匹配。
+  // atom T 固定为 half(smem C 的元素类型),val packing=2 half/int,32-bit store
+  // 写 2 half(4 字节,4 字节对齐)。F32 acc 时,retile_S 之前需把 float 累加器
+  // cast 成 half(见 epilogue 入口的 tCrD_cast),否则 layoutC_TV 的 V 布局差异
+  // (F32: 4 float / F16: 4 half packed in 2 uint32)会导致 retile 错位。
   using R2SCopyAtomC = Copy_Atom<UniversalCopy<int>, T>;
 
   // ── S2GCopyC ──
