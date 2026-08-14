@@ -747,11 +747,11 @@ GNU General Public License v3.0
 How to contribute? Star this repo or check [🌤🌤CONTRIBUTE🎉🎉](./CONTRIBUTE.md).
 
 <div align='center'>
-<a href="https://star-history.com/#xlite-dev/LeetCUDA&Date">
+<a href="https://star-history.dera.page/#xlite-dev/LeetCUDA&Date">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=xlite-dev/LeetCUDA&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=xlite-dev/LeetCUDA&type=Date" />
-   <img width=400 height=300 alt="Star History Chart" src="https://api.star-history.com/svg?repos=xlite-dev/LeetCUDA&type=Date" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=xlite-dev/LeetCUDA&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=xlite-dev/LeetCUDA&type=Date" />
+   <img width=400 height=300 alt="Star History Chart" src="https://star-history.dera.page/svg?repos=xlite-dev/LeetCUDA&type=Date" />
  </picture>
 </a>
 </div>
