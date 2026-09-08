@@ -133,8 +133,10 @@ torch::Tensor nms(torch::Tensor boxes, torch::Tensor scores,
   TORCH_CHECK(boxes.dim() == 2 && boxes.size(1) == 4, "boxes must be (N, 4)");
   TORCH_CHECK(scores.dim() == 1 && scores.size(0) == boxes.size(0),
               "scores must be (N,)");
-  const int num_boxes = boxes.size(0);
-  TORCH_CHECK(num_boxes > 0, "num_boxes must be > 0");
+const int num_boxes = boxes.size(0);
+if (num_boxes == 0) {
+  return torch::empty({0}, torch::TensorOptions().dtype(torch::kInt64).device(boxes.device()));
+}
 
   auto toption =
       torch::TensorOptions().dtype(torch::kInt32).device(boxes.device());
