@@ -133,10 +133,12 @@ torch::Tensor nms(torch::Tensor boxes, torch::Tensor scores,
   TORCH_CHECK(boxes.dim() == 2 && boxes.size(1) == 4, "boxes must be (N, 4)");
   TORCH_CHECK(scores.dim() == 1 && scores.size(0) == boxes.size(0),
               "scores must be (N,)");
-const int num_boxes = boxes.size(0);
-if (num_boxes == 0) {
-  return torch::empty({0}, torch::TensorOptions().dtype(torch::kInt64).device(boxes.device()));
-}
+  const int num_boxes = boxes.size(0);
+  if (num_boxes == 0) {
+    return torch::empty({0}, torch::TensorOptions()
+                                 .dtype(torch::kInt64)
+                                 .device(boxes.device()));
+  }
 
   auto toption =
       torch::TensorOptions().dtype(torch::kInt32).device(boxes.device());
@@ -169,19 +171,23 @@ if (num_boxes == 0) {
       reinterpret_cast<const unsigned int *>(mask.data_ptr()),
       reinterpret_cast<int *>(keep.data_ptr()), num_boxes, mask_words);
 
-  // map kept sorted positions back to original input indices
+  // map kept sorted positions back to original input indices.
+  // Result: int64 indices on the same device as the inputs, matching
+  // torchvision.ops.nms (no accessor<long>, which is platform-dependent).
   auto keep_cpu = keep.to(torch::kCPU);
   auto order_cpu = order_t.to(torch::kCPU);
   auto keep_accessor = keep_cpu.accessor<int, 1>();
-  auto order_accessor = order_cpu.accessor<long, 1>();
-  std::vector<int> keep_indices;
+  auto order_data = order_cpu.data_ptr<std::int64_t>();
+  std::vector<std::int64_t> keep_indices;
   for (int i = 0; i < num_boxes; ++i) {
     if (keep_accessor[i] == 1) {
-      keep_indices.push_back(static_cast<int>(order_accessor[i]));
+      keep_indices.push_back(order_data[i]);
     }
   }
   return torch::tensor(keep_indices,
-                       torch::TensorOptions().dtype(torch::kInt32));
+                       torch::TensorOptions()
+                           .dtype(torch::kInt64)
+                           .device(boxes.device()));
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) { TORCH_BINDING_COMMON_EXTENSION(nms) }
