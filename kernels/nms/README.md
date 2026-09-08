@@ -4,10 +4,17 @@
 
 包含以下内容：
 
-- [X] nms_kernel(CPU/GPU)
+- [X] nms_kernel（两阶段：并行 IoU mask kernel + 顺序消解 kernel）
+- [X] hard_nms（CPU 参考实现，nms.cc）
 - [X] PyTorch bindings
 
-nms cuda实现是最基础的版本，根据[官方源码](https://github.com/pytorch/vision/blob/main/torchvision/csrc/ops/cuda/nms_kernel.cu)可以进行进一步优化。
+nms cuda 实现采用两阶段方案：
+- Phase 1 每个 warp 负责一个 box，32 个 lane 并行计算 32 个候选的 IoU，用 `__ballot_sync` 收集成一个 32-bit 掩码字写入 suppression bitmask（每对 box 只算一次 IoU，无写冲突无需原子操作）；
+- Phase 2 在单个 block 内用共享内存位图按分数从高到低顺序消解（`__syncthreads` 保证前序决策可见）。
+
+根据[官方源码](https://github.com/pytorch/vision/blob/main/torchvision/csrc/ops/cuda/nms_kernel.cu)可以进一步优化（分块降低 bitmask 内存到 O(N·blocks)）。
+
+> 注：nms.cc 的 CPU 参考实现使用 +1 像素面积约定（`x2-x1+1`），与现代 GPU/torchvision 的连续坐标约定 IoU 值略有差异，属已知语义区别。
 
 ## 测试
 
@@ -17,27 +24,42 @@ export TORCH_CUDA_ARCH_LIST=Ada
 python3 nms.py
 ```
 
-输出:
+nms.py 先跑正确性检查（固定 6 框算例 5 次 + 随机对拍 N×seeds×阈值，与 torchvision 逐元素对比），再跑 benchmark。
 
-```bash
+输出(4090实测):
+
+```txt
+=====================================================================================
+correctness check: fixed 6-box case (issue minimal repro), 5 runs
+   torchvision: [0, 2, 3, 4]
+    lib.nms #0: [0, 2, 3, 4], OK
+    lib.nms #1: [0, 2, 3, 4], OK
+    lib.nms #2: [0, 2, 3, 4], OK
+    lib.nms #3: [0, 2, 3, 4], OK
+    lib.nms #4: [0, 2, 3, 4], OK
+=> fixed case: PASS
+=====================================================================================
+correctness check: random sweep (N x seeds x thresholds, ties in scores)
+=> random sweep: PASS
+=====================================================================================
 -------------------------------------------------------------------------------------
                                         nboxes=1024
-       out_nms: ['1021 ', '1022 ', '1023 '], len of keep: 950, time:0.26456594ms
-    out_nms_th: ['1021 ', '1022 ', '1023 '], len of keep: 950, time:0.19218683ms
+           nms: ['1020 ', '1021 ', '1023 '], len of keep: 513, time:0.21558762ms
+        nms_th: ['1020 ', '1021 ', '1023 '], len of keep: 513, time:0.13555527ms
 -------------------------------------------------------------------------------------
 -------------------------------------------------------------------------------------
                                         nboxes=2048
-       out_nms: ['2045 ', '2046 ', '2047 '], len of keep: 1838, time:0.47256470ms
-    out_nms_th: ['2044 ', '2045 ', '2047 '], len of keep: 1838, time:0.39437532ms
+           nms: ['2039 ', '2043 ', '2044 '], len of keep: 852, time:0.31803608ms
+        nms_th: ['2039 ', '2043 ', '2044 '], len of keep: 852, time:0.24639606ms
 -------------------------------------------------------------------------------------
 -------------------------------------------------------------------------------------
                                         nboxes=4096
-       out_nms: ['4092 ', '4093 ', '4095 '], len of keep: 3598, time:0.89909315ms
-    out_nms_th: ['4093 ', '4094 ', '4095 '], len of keep: 3598, time:1.03515625ms
+           nms: ['4085 ', '4086 ', '4089 '], len of keep: 1409, time:0.50380707ms
+        nms_th: ['4085 ', '4086 ', '4089 '], len of keep: 1409, time:0.60021162ms
 -------------------------------------------------------------------------------------
 -------------------------------------------------------------------------------------
                                         nboxes=8192
-       out_nms: ['8189 ', '8190 ', '8191 '], len of keep: 7023, time:1.49935722ms
-    out_nms_th: ['8189 ', '8190 ', '8191 '], len of keep: 7023, time:3.39094877ms
+           nms: ['8184 ', '8185 ', '8188 '], len of keep: 2317, time:0.87251425ms
+        nms_th: ['8184 ', '8185 ', '8188 '], len of keep: 2317, time:1.52289629ms
 -------------------------------------------------------------------------------------
 ```

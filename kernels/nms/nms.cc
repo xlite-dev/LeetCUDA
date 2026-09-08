@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -12,16 +13,16 @@ struct Box {
     float inner_h = inner_y2 - inner_y1 + 1.0f;
     float inner_w = inner_x2 - inner_x1 + 1.0f;
     float inner_area = inner_h * inner_w;
-    return (inner_area / (area() + tbox.area() - inner_area));
+    return (inner_area / (area() + other.area() - inner_area));
   }
-}
+};
 
 void hard_nms(std::vector<Box> &input, std::vector<Box> &output,
-              float iou_threshold){
+              float iou_threshold) {
   if (input.empty())
     return;
   std::sort(input.begin(), input.end(),
-            [](Box &a, Box &b) { return a.score > b.score; });
+            [](const Box &a, const Box &b) { return a.score > b.score; });
   int box_num = input.size();
   std::vector<int> merged(box_num, 0);
   for (int i = 0; i < box_num; ++i) {
