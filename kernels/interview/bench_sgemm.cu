@@ -218,16 +218,24 @@ int main(int argc, char **argv) {
   int warmup = 2, repeat = 5;
 
   for (int i = 1; i < argc; ++i) {
-    if (strcmp(argv[i], "--mnk") == 0 && i + 3 < argc) {
-      M = atoi(argv[++i]);
-      N = atoi(argv[++i]);
-      K = atoi(argv[++i]);
+    if (strcmp(argv[i], "--mnk") == 0 && i + 1 < argc) {
+      // 兼容逗号形式（--mnk 1024,1024,1024）与空格形式（--mnk 1024 1024 1024）
+      if (sscanf(argv[i + 1], "%d,%d,%d", &M, &N, &K) == 3) {
+        ++i;
+      } else if (i + 3 < argc) {
+        M = atoi(argv[++i]);
+        N = atoi(argv[++i]);
+        K = atoi(argv[++i]);
+      } else {
+        fprintf(stderr, "[ERROR] --mnk expects \"M,N,K\" or \"M N K\"\n");
+        return 1;
+      }
     } else if (strcmp(argv[i], "--warmup") == 0 && i + 1 < argc) {
       warmup = atoi(argv[++i]);
     } else if (strcmp(argv[i], "--repeat") == 0 && i + 1 < argc) {
       repeat = atoi(argv[++i]);
     } else if (strcmp(argv[i], "--help") == 0) {
-      printf("Usage: %s [--mnk M N K] [--warmup N] [--repeat N]\n", argv[0]);
+      printf("Usage: %s [--mnk M,N,K] [--warmup N] [--repeat N]\n", argv[0]);
       return 0;
     }
   }
