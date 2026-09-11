@@ -1,0 +1,62 @@
+% book.tex — LeetCUDA 技术书主文件（RFC-0.3 骨架）
+% 构建：cd book/ && TEXMFCNF=../tex/: xelatex -interaction=nonstopmode book.tex （×2）
+% 或 ./build.sh
+\documentclass[9pt,openany]{ctexbook}
+\input{preamble.tex}
+\usepackage[unicode,bookmarksnumbered,colorlinks,linkcolor=vscKeyword,citecolor=vscKeyword,urlcolor=vscEmphasis]{hyperref}
+
+\title{LeetCUDA：CUDA Kernel 优化之路\\{\large 从编程模型到 CuTe 与 FlashAttention}}
+\author{LeetCUDA Project}
+\date{2026 年 9 月}
+
+\begin{document}
+
+\maketitle
+\frontmatter
+\tableofcontents
+
+\mainmatter
+
+\part{基础篇：编程模型、访存与归约}
+\input{chapters/ch01-arch-roofline}
+\input{chapters/ch02-reduce-dot}
+\input{chapters/ch03-vectorize-atomic}
+\input{chapters/ch04-softmax}
+\input{chapters/ch05-lse-merge}
+\input{chapters/ch06-norm}
+\input{chapters/ch07-rope-transpose}
+
+\part{GEMM 篇：从 CUDA Core 到 Tensor Core}
+\input{chapters/ch08-sgemv}
+\input{chapters/ch09-sgemm-tiling}
+\input{chapters/ch10-sgemm-tf32-wmma}
+\input{chapters/ch11-hgemm-mma}
+\input{chapters/ch12-hgemm-swizzle}
+\input{chapters/ch13-hopper-tma-wgmma}
+\input{chapters/ch14-sm120-tma-ws}
+
+\part{Attention 篇：FlashAttention 2/3 与大 head\_dim}
+\input{chapters/ch15-attn-math}
+\input{chapters/ch16-fa2-splitq-mma}
+\input{chapters/ch17-fa2-tma-ws}
+\input{chapters/ch18-fa3-dual-consumer}
+\input{chapters/ch19-ffpa-split-d}
+
+\part{CuTe 篇：布局代数与现代化 Kernel 工程}
+\input{chapters/ch20-cute-layout}
+\input{chapters/ch21-cute-tensor-tiledcopy}
+\input{chapters/ch22-cute-tiledmma}
+\input{chapters/ch23-cute-swizzle-tma}
+\input{chapters/ch24-cute-hgemm}
+\input{chapters/ch25-cute-flash-attn}
+\input{chapters/ch26-cute-ffpa}
+
+\appendix
+\input{appendices/appA-common-toolbox}
+\input{appendices/appB-perf-data}
+\input{appendices/appC-build-guide}
+\input{appendices/appD-source-index}
+\input{appendices/appE-references}
+
+\backmatter
+\end{document}

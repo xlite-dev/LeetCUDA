@@ -1,5 +1,7 @@
 # LeetCUDA 面试笔记成书计划
 
+> **⚠️ 本文档（v1 draft）已被 [`book/skills/write-leetcuda-book/BOOK_PLAN.md`](book/skills/write-leetcuda-book/BOOK_PLAN.md) 取代**（RFC-0.9，2026-09-11）。仅保留作历史参考，规范与执行跟踪一律以新文档为准。
+
 把 `kernels/interview/` 下分散在 `.cuh` 源码注释里的教学内容，重构为一本**按难度递进**的中文 CUDA Kernel 技术书，最终产出 PDF。
 
 ## 一、总体设计

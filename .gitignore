@@ -34,3 +34,11 @@ AGENTS.md
 .plans
 .tmp
 *.o
+# --- LeetCUDA book（RFC-0.7）：解禁章节 tex，忽略构建产物（BOOK_PLAN §8.3） ---
+!kernels/interview/book/**/*.tex
+kernels/interview/book/**/*.pdf
+kernels/interview/book/**/*.aux
+kernels/interview/book/**/*.toc
+kernels/interview/book/**/*.out
+kernels/interview/book/**/*.log
+

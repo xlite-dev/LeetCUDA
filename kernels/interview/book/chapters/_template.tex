@@ -1,0 +1,51 @@
+% _template.tex — 章节模板（RFC-A.2，10 节骨架）。复制为 chapters/chNN-*.tex 后撰写。
+% 本文件不被 book.tex include；可直接单独编译验收（A.6）。
+%
+% ── 单章 DoD 自审 checklist（BOOK_PLAN §4.2，八条全过才勾 RFC 执行卡片）──
+% [ ] 1. chapters/chNN-*.tex 完成，全书编译零 "! LaTeX Error"
+% [ ] 2. 锚点断言通过：python3 scripts/verify_anchors.py --ch chNN
+% [ ] 3. 注释核查完成并记录 book/CHECKLOG.md（正文只留精简勘误框注）
+% [ ] 4. tests/chNN_*.cu 编译并运行 PASS（或目标 arch 不在位输出 SKIP）
+% [ ] 5. 本章 kernel bench 复测一次，数据落 .tmp/book-bench/chNN/（增量，供附录 B）
+% [ ] 6. 本章公式清单、图清单登记进 RFC.md 登记表
+% [ ] 7. 延伸阅读（2-5 篇知乎参考）就位（URL 以 references/zhihu-inventory.md 为准）
+% [ ] 8. 单章自审 checklist + 本章 pdftotext 抽查（无豆腐块、无横向溢出）
+%
+% ── 代码段规范（BOOK_PLAN §4.1 第 4 节 + §8.2）──
+% 每段 ≤40 行；\lstinputlisting + linerange 多段裁剪；firstnumber=auto 行号与源文件一致；
+% 完整代码链接附录 D 的 commit permalink。示例：
+% \lstinputlisting[linerange={87-140,150-180},firstnumber=auto,
+%   title={base.cuh L87-140, L150-180（warp reduce）}]{../base.cuh}
+\chapter{章节标题占位}\label{ch:00}
+
+\section{本章导读}
+% 学什么 / 前置章节（\ref{ch:xx}）/ 源码区间（file:line，以 anchors.yaml 为准）/
+% 编译宏与架构限定（如 NOTES\_V2\_ENABLE\_WGMMA，仅 sm\_90a）/ 预计篇幅
+
+\section{问题与动机}
+% 为什么需要这个算子/优化；性能瓶颈直觉
+
+\section{数学原理}
+% 公式逐项展开（DefTruth 风格基线，BOOK_PLAN §4.3）：每个符号首次出现即对照
+% notes/notation.md 定义；推导不跳步，给中间量。
+
+\section{设计与实现}
+% 先直觉后形式化再代码；关键代码段（每段 ≤40 行，见文件头示例）
+
+\section{图示}
+% FIG-<ch>-<n>；占位=verbatim ASCII；正式=drawio 导出图或 TikZ（状态同步 RFC.md 图清单）
+
+\section{性能分析}
+% Roofline/算术强度 + 本章复测数据对照（.tmp/book-bench/chNN/，注明 GPU/日期/口径）
+
+\section{勘误与考据}
+% \begin{kaogu}[F4]{ffpa\_attn.cuh 头注释性能口径}\end{kaogu}
+% 全量记录在 book/CHECKLOG.md；此处只留精简框注
+
+\section{常见坑}
+
+\section{面试要点速查}
+% Q&A 形式
+
+\section{最小测试与动手实验}
+% 对应 tests/chNN\_*.cu：编译命令、运行输出、预期 PASS 判据

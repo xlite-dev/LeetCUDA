@@ -30,25 +30,25 @@
 
 ## 2. RFC-0 脚手架
 
-- [ ] 0.1 建 `book/` 目录树：chapters/ appendices/ figures/{ascii,zhihu,tikz}/ tests/ notes/ references/ scripts/
-- [ ] 0.2 `preamble.tex`：从 `tex/notes-v2.tex` 抽取 8 色调色板、字体、`\lstset`；`ctexart`→`ctexbook[9pt,openany]`；新增 graphicx/amsmath/amsthm/booktabs/enumitem；代码清单 `firstnumber=auto`
-- [ ] 0.3 `book.tex`：4 Part + 26 章 + 5 附录骨架（空章节），`\tableofcontents` + hyperref 书签
-- [ ] 0.4 关键字表审计：删 0 命中旧名（`sgemm_thread_tile_vec4`/`rope_f32_kernel`/`mat_transpose_f32_row2col2d_kernel`/`block_all_reduce_sum`/`hgemv_k32_f16_kernel`/`hgemm_t_8x8_sliced_k_f16x4_kernel`/`flash_attn_mma_stages_split_q_kernel`/`softmax_f32_per_token_kernel` 系），补 BOOK_PLAN §8.2 清单中的新 kernel/CuTe/FFPA 标识符
-- [ ] 0.5 `build.sh`：两遍 xelatex（`TEXMFCNF=../tex/`）+ 中间文件清理
-- [ ] 0.6 `tests/common_test.h` + `tests/build_tests.sh`（含 `-I ../../third-party/cutlass/include`）+ `tests/README.md`
-- [ ] 0.7 `.gitignore` 追加 BOOK_PLAN §8.3 规则；`git check-ignore -v` 自检通过；`git status` 确认章节 .tex 未被忽略
-- [ ] 0.8 `book/CHECKLOG.md` 空表（列：位置/原文/问题类别 F1-F5/证据/建议/状态）
-- [ ] 0.9 draft `../../../book_plan.md` 顶部加「已被 book/skills/write-leetcuda-book/BOOK_PLAN.md 取代」横幅
-- [ ] 0.10 **验收**：空骨架两遍编译出带正确 TOC/书签的 `book.pdf`；无 `! LaTeX Error`
+- [x] 0.1 建 `book/` 目录树：chapters/ appendices/ figures/{ascii,zhihu,tikz}/ tests/ notes/ references/ scripts/（2026-09-11）
+- [x] 0.2 `preamble.tex`：从 `tex/notes-v2.tex` 抽取 8 色调色板、字体、`\lstset`；`ctexart`→`ctexbook[9pt,openany]`；新增 graphicx/amsmath/amsthm/booktabs/enumitem；代码清单 `firstnumber=auto`（2026-09-11）
+- [x] 0.3 `book.tex`：4 Part + 26 章 + 5 附录骨架（空章节），`\tableofcontents` + hyperref 书签（2026-09-11）
+- [x] 0.4 关键字表审计：删 0 命中旧名（`sgemm_thread_tile_vec4`/`rope_f32_kernel`/`mat_transpose_f32_row2col2d_kernel`/`block_all_reduce_sum`/`hgemv_k32_f16_kernel`/`hgemm_t_8x8_sliced_k_f16x4_kernel`/`flash_attn_mma_stages_split_q_kernel`/`softmax_f32_per_token_kernel` 系），补 BOOK_PLAN §8.2 清单中的新 kernel/CuTe/FFPA 标识符（2026-09-11）
+- [x] 0.5 `build.sh`：两遍 xelatex（`TEXMFCNF=../tex/`）+ 中间文件清理（2026-09-11）
+- [x] 0.6 `tests/common_test.h` + `tests/build_tests.sh`（含 `-I ../../third-party/cutlass/include`）+ `tests/README.md`（2026-09-11）
+- [x] 0.7 `.gitignore` 追加 BOOK_PLAN §8.3 规则；`git check-ignore -v` 自检通过；`git status` 确认章节 .tex 未被忽略（2026-09-11）
+- [x] 0.8 `book/CHECKLOG.md` 空表（列：位置/原文/问题类别 F1-F5/证据/建议/状态）（2026-09-11）
+- [x] 0.9 draft `../../../book_plan.md` 顶部加「已被 book/skills/write-leetcuda-book/BOOK_PLAN.md 取代」横幅（2026-09-11）
+- [x] 0.10 **验收**：空骨架两遍编译出带正确 TOC/书签的 `book.pdf`；无 `! LaTeX Error`（2026-09-11）
 
 ## 3. RFC-A 冻结件
 
-- [ ] A.1 全书记号表定稿（BOOK_PLAN §7.4 初稿 → 补全源码变量映射列 → 冻结）
-- [ ] A.2 每章模板固化成 `chapters/_template.tex`（10 节骨架 + DoD 自审 checklist 注释块）
-- [ ] A.3 **源码冻结宣告**：`scripts/anchors.yaml` 登记各 `.cuh`/`notes-v2.cu` 的 SHA256 + 每章引用区间（首/末行锚点文本）；此后源文件零改动
-- [ ] A.4 `scripts/verify_anchors.py`：校验 SHA256、锚点文本、范围内 `#if/#endif` 成对；`--ch chNN` 单章模式
-- [ ] A.5 附录 D 索引 v1：topic ↔ file:line ↔ GitHub commit permalink（记录当前 commit hash）
-- [ ] A.6 **验收**：verify_anchors.py 全绿；模板章编译通过
+- [x] A.1 全书记号表定稿（BOOK_PLAN §7.4 初稿 → 补全源码变量映射列 → 冻结）（2026-09-11）
+- [x] A.2 每章模板固化成 `chapters/_template.tex`（10 节骨架 + DoD 自审 checklist 注释块）（2026-09-11）
+- [x] A.3 **源码冻结宣告**：`scripts/anchors.yaml` 登记各 `.cuh`/`notes-v2.cu` 的 SHA256 + 每章引用区间（首/末行锚点文本）；此后源文件零改动（2026-09-11）
+- [x] A.4 `scripts/verify_anchors.py`：校验 SHA256、锚点文本、范围内 `#if/#endif` 成对；`--ch chNN` 单章模式（2026-09-11）
+- [x] A.5 附录 D 索引 v1：topic ↔ file:line ↔ GitHub commit permalink（记录当前 commit hash）（2026-09-11）
+- [x] A.6 **验收**：verify_anchors.py 全绿；模板章编译通过（2026-09-11）
 
 ## 4. RFC-B 知乎资料全集
 

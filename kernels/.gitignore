@@ -23,3 +23,10 @@ bin
 *.txt
 *.tex
 __pycache__
+# --- LeetCUDA book（RFC-0.7）：解禁章节 tex，忽略构建产物（BOOK_PLAN §8.3） ---
+!interview/book/**/*.tex
+interview/book/**/*.pdf
+interview/book/**/*.aux
+interview/book/**/*.toc
+interview/book/**/*.out
+interview/book/**/*.log

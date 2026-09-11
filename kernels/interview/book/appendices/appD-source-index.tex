@@ -1,0 +1,48 @@
+% appD-source-index.tex — 附录 D 源码索引 v1（RFC-A.5）
+% permalink 基准 commit：1c2c1e0a91fd（anchors.yaml repo_commit；RFC-I.4 定稿收口时刷新）
+\chapter{附录 D\quad 源码索引}\label{app:D}
+
+正文关键代码段的完整实现入口。行区间与 \texttt{scripts/anchors.yaml} 冻结登记一致；
+链接为 GitHub commit permalink（防 branch 漂移）。
+
+\begin{longtable}{llp{7.2cm}}
+\toprule
+章 & 主题 & 源码区间（permalink） \\
+\midrule
+\endfirsthead
+\toprule
+章 & 主题 & 源码区间（permalink） \\
+\midrule
+\endhead
+A & common.cuh 工具箱 & \href{https://github.com/xlite-dev/LeetCUDA/blob/1c2c1e0a91fd24119c0c0a059413a0cf82cb4244/kernels/interview/common.cuh#L1-L773}{common.cuh L1--L773} \\
+第01 & GPU 架构/Roofline 速查 & \href{https://github.com/xlite-dev/LeetCUDA/blob/1c2c1e0a91fd24119c0c0a059413a0cf82cb4244/kernels/interview/base.cuh#L1-L86}{base.cuh L1--L86} \\
+第02 & warp/block 归约与 dot & \href{https://github.com/xlite-dev/LeetCUDA/blob/1c2c1e0a91fd24119c0c0a059413a0cf82cb4244/kernels/interview/base.cuh#L87-L305}{base.cuh L87--L305} \\
+第03 & 向量化与原子操作 & \href{https://github.com/xlite-dev/LeetCUDA/blob/1c2c1e0a91fd24119c0c0a059413a0cf82cb4244/kernels/interview/base.cuh#L306-L386}{base.cuh L306--L386} \\
+第04 & softmax 三级递进 & \href{https://github.com/xlite-dev/LeetCUDA/blob/1c2c1e0a91fd24119c0c0a059413a0cf82cb4244/kernels/interview/base.cuh#L520-L665}{base.cuh L520--L665} \\
+第05 & merge\_attn\_states & \href{https://github.com/xlite-dev/LeetCUDA/blob/1c2c1e0a91fd24119c0c0a059413a0cf82cb4244/kernels/interview/base.cuh#L387-L519}{base.cuh L387--L519} \\
+第06 & RMSNorm/LayerNorm & \href{https://github.com/xlite-dev/LeetCUDA/blob/1c2c1e0a91fd24119c0c0a059413a0cf82cb4244/kernels/interview/base.cuh#L666-L801}{base.cuh L666--L801} \\
+第07 & RoPE 与转置 & \href{https://github.com/xlite-dev/LeetCUDA/blob/1c2c1e0a91fd24119c0c0a059413a0cf82cb4244/kernels/interview/base.cuh#L802-L909}{base.cuh L802--L909} \\
+第08 & sgemv 三种划分 & \href{https://github.com/xlite-dev/LeetCUDA/blob/1c2c1e0a91fd24119c0c0a059413a0cf82cb4244/kernels/interview/sgemv.cuh#L1-L102}{sgemv.cuh L1--L102} \\
+第09 & sgemm 阶梯一 & \href{https://github.com/xlite-dev/LeetCUDA/blob/1c2c1e0a91fd24119c0c0a059413a0cf82cb4244/kernels/interview/sgemm.cuh#L6-L183}{sgemm.cuh L6--L183} \\
+第10 & sgemm TF32/WMMA & \href{https://github.com/xlite-dev/LeetCUDA/blob/1c2c1e0a91fd24119c0c0a059413a0cf82cb4244/kernels/interview/sgemm.cuh#L184-L434}{sgemm.cuh L184--L434} \\
+第11 & hgemm mma.sync & \href{https://github.com/xlite-dev/LeetCUDA/blob/1c2c1e0a91fd24119c0c0a059413a0cf82cb4244/kernels/interview/hgemm.cuh#L3-L397}{hgemm.cuh L3--L397} \\
+第12 & hgemm swizzle & \href{https://github.com/xlite-dev/LeetCUDA/blob/1c2c1e0a91fd24119c0c0a059413a0cf82cb4244/kernels/interview/hgemm.cuh#L399-L716}{hgemm.cuh L399--L716}, \href{https://github.com/xlite-dev/LeetCUDA/blob/1c2c1e0a91fd24119c0c0a059413a0cf82cb4244/kernels/interview/common.cuh#L110-L348}{common.cuh L110--L348} \\
+第13 & WGMMA/TMA/mbarrier & \href{https://github.com/xlite-dev/LeetCUDA/blob/1c2c1e0a91fd24119c0c0a059413a0cf82cb4244/kernels/interview/hgemm.cuh#L1428-L1857}{hgemm.cuh L1428--L1857}, \href{https://github.com/xlite-dev/LeetCUDA/blob/1c2c1e0a91fd24119c0c0a059413a0cf82cb4244/kernels/interview/common.cuh#L350-L773}{common.cuh L350--L773} \\
+第14 & SM120 TMA+WS & \href{https://github.com/xlite-dev/LeetCUDA/blob/1c2c1e0a91fd24119c0c0a059413a0cf82cb4244/kernels/interview/hgemm.cuh#L1859-L2100}{hgemm.cuh L1859--L2100}, \href{https://github.com/xlite-dev/LeetCUDA/blob/1c2c1e0a91fd24119c0c0a059413a0cf82cb4244/kernels/interview/common.cuh#L462-L475}{common.cuh L462--L475} \\
+第15 & FA 原理（头注释） & \href{https://github.com/xlite-dev/LeetCUDA/blob/1c2c1e0a91fd24119c0c0a059413a0cf82cb4244/kernels/interview/flash_attn.cuh#L5-L110}{flash\_attn.cuh L5--L110} \\
+第16 & FA2 split-Q+MMA & \href{https://github.com/xlite-dev/LeetCUDA/blob/1c2c1e0a91fd24119c0c0a059413a0cf82cb4244/kernels/interview/flash_attn.cuh#L5-L790}{flash\_attn.cuh L5--L790} \\
+第17 & FA2 TMA+WS & \href{https://github.com/xlite-dev/LeetCUDA/blob/1c2c1e0a91fd24119c0c0a059413a0cf82cb4244/kernels/interview/flash_attn.cuh#L792-L1440}{flash\_attn.cuh L792--L1440} \\
+第18 & FA3 双 consumer & \href{https://github.com/xlite-dev/LeetCUDA/blob/1c2c1e0a91fd24119c0c0a059413a0cf82cb4244/kernels/interview/flash_attn.cuh#L1441-L2192}{flash\_attn.cuh L1441--L2192} \\
+第19 & FFPA split-D 全篇 & \href{https://github.com/xlite-dev/LeetCUDA/blob/1c2c1e0a91fd24119c0c0a059413a0cf82cb4244/kernels/interview/ffpa_attn.cuh#L1-L641}{ffpa\_attn.cuh L1--L641} \\
+第20 & CuTe Layout 对照 & \href{https://github.com/xlite-dev/LeetCUDA/blob/1c2c1e0a91fd24119c0c0a059413a0cf82cb4244/kernels/interview/hgemm.cuh#L788-L820}{hgemm.cuh L788--L820} \\
+第21 & CuTe TiledCopy 对照 & \href{https://github.com/xlite-dev/LeetCUDA/blob/1c2c1e0a91fd24119c0c0a059413a0cf82cb4244/kernels/interview/hgemm.cuh#L821-L1196}{hgemm.cuh L821--L1196} \\
+第22 & CuTe TiledMMA 对照 & \href{https://github.com/xlite-dev/LeetCUDA/blob/1c2c1e0a91fd24119c0c0a059413a0cf82cb4244/kernels/interview/ffpa_attn.cuh#L31-L79}{ffpa\_attn.cuh L31--L79} \\
+第23 & CuTe SW128 atom 对照 & \href{https://github.com/xlite-dev/LeetCUDA/blob/1c2c1e0a91fd24119c0c0a059413a0cf82cb4244/kernels/interview/hgemm.cuh#L1232-L1270}{hgemm.cuh L1232--L1270} \\
+第24 & CuTe HGEMM & \href{https://github.com/xlite-dev/LeetCUDA/blob/1c2c1e0a91fd24119c0c0a059413a0cf82cb4244/kernels/interview/hgemm.cuh#L718-L1427}{hgemm.cuh L718--L1427} \\
+第25 & CuTe FA 三实现 & \href{https://github.com/xlite-dev/LeetCUDA/blob/1c2c1e0a91fd24119c0c0a059413a0cf82cb4244/kernels/interview/flash_attn.cuh#L2196-L3488}{flash\_attn.cuh L2196--L3488} \\
+第26 & CuTe FFPA 双 TiledMMA & \href{https://github.com/xlite-dev/LeetCUDA/blob/1c2c1e0a91fd24119c0c0a059413a0cf82cb4244/kernels/interview/ffpa_attn.cuh#L30-L65}{ffpa\_attn.cuh L30--L65}, \href{https://github.com/xlite-dev/LeetCUDA/blob/1c2c1e0a91fd24119c0c0a059413a0cf82cb4244/kernels/interview/ffpa_attn.cuh#L79-L375}{ffpa\_attn.cuh L79--L375}, \href{https://github.com/xlite-dev/LeetCUDA/blob/1c2c1e0a91fd24119c0c0a059413a0cf82cb4244/kernels/interview/ffpa_attn.cuh#L377-L640}{ffpa\_attn.cuh L377--L640} \\
+\bottomrule
+\end{longtable}
+
+基准 commit：\texttt{1c2c1e0a91fd}（2026-09-11 冻结）。行号漂移由
+\texttt{verify\_anchors.py} 兜底：SHA256 + 首末行锚点双重校验。
