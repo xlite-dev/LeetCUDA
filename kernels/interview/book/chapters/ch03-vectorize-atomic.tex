@@ -1,4 +1,362 @@
-% ch03-vectorize-atomic.tex — 骨架（RFC-0.3），撰写任务见 RFC.md C3
+% ch03-vectorize-atomic.tex — 向量化访存与原子操作（RFC-C3）
+% 源码区间: base.cuh L306-386；无编译宏限定
 \chapter{向量化访存与原子操作}\label{ch:03}
 
-本章待撰写。源码区间：base.cuh L306-386；执行卡片：RFC.md C3；章节模板：\texttt{chapters/\_template.tex}（10 节结构 + DoD 八条）。
+\section{本章导读}
+
+逐元素（elementwise）算子是 GPU kernel 世界的「Hello World」：结构最简单，
+却浓缩了 GPU 性能工程的两条第一性原理——\textbf{coalescing}（访存合并）与
+\textbf{向量化}（vectorized load/store）。前者决定「一次访存搬多少有效数据」，
+后者决定「一条指令搬多少数据」。本章以 base.cuh Phase 2（L306--386）的
+五个实现为线索：relu / relu\_vec4（激活）、elementwise\_add / 
+elementwise\_add\_vec4（残差连接的原型）、histogram（原子操作出场）。
+
+前四个 kernel 是「如何把带宽吃满」的正反教材；histogram 则引入本章第二个
+主角 atomicAdd——它既是从「读-算-写」跨向「读-改-写」的钥匙，也是 ch02
+末尾埋下的伏笔（跨 block 归约）的正式登场。LLM 推理引擎里，激活、残差、
+直方图统计（如 MoE 路由计数）无处不在，这几个「小算子」在端到端延迟里的
+占比常被低估。
+
+\textbf{前置}：第 \ref{ch:01} 章（roofline/带宽）、第 \ref{ch:02} 章
+（归约骨架，本章 vec4 版点积会回指）。\textbf{源码区间}：base.cuh
+L306--386。\textbf{无编译宏限定}。\textbf{预计篇幅}：约 12 页。
+
+\section{问题与动机}
+
+先算一笔 roofline 账（口径沿用 ch01）：relu 每元素读 4B 写 4B、做 1 FLOP，
+$AI = 1/8 = 0.125$；elementwise\_add 读 $a,b$ 写 $c$ 共 12B、做 1 FLOP，
+$AI = 1/12 \approx 0.083$。对照本机 ridge point（约 49.8 FLOP/Byte），它们
+比 memory-bound 还要「纯」——性能天花板就是带宽本身。于是问题转化为：
+\textbf{怎么把每一个字节、每一条访存指令都花在刀刃上？}
+
+两个互补的杠杆。其一是 coalescing：硬件以 32B sector 为粒度搬运数据，若
+一个 warp 的 32 个线程访问的是连续地址，128B 恰好铺满 4 个 sector，零浪费；
+反之若地址发散，最坏要搬 32 个 sector 却只用到 32 个标量——效率 3\%。
+其二是向量化：用 float4 让一条指令搬 16B，指令数降为 1/4。这两个杠杆都
+不改变算法的 FLOPs 与 Bytes（roofline 位置不变），改变的是
+\textbf{实际带宽向理论带宽的逼近程度}——这正是 memory-bound 算子优化
+的全部战场。
+
+而 histogram 提出另一个问题：当多个线程要\textbf{写同一个位置}时怎么办？
+朴素方案会丢失更新（lost update）；atomicAdd 给出正确性保证，代价是
+冲突串行化。ch02 的 bench 已经量化过全局原子的代价（约 2.6 ns/op），本章
+在一个更极端的场景（256-bin 直方图、四百万次插入）里再看它一次。
+
+\section{数学原理}\label{sec:ch03-math}
+
+\subsection{Coalescing：sector 与事务合并}
+
+现代 NVIDIA GPU（Volta 起）的访存以 \textbf{32 字节 sector} 为最小搬运
+粒度，L2 与 HBM 之间以 32B sector、L1 与 L2 之间以更大粒度的 cache line
+组织。当一条访存指令在一个 warp（32 线程）上执行时，硬件把 32 个线程的
+地址按 sector 归类合并（coalesce），每个被触及的 sector 生成一次搬运请求。
+定义一次 warp 访存的\textbf{有效率}：
+\begin{equation}
+  \eta \;=\; \frac{\text{线程实际读写的字节数}}
+                  {\text{被搬运的 sector 总字节数}}
+  \;=\; \frac{32 \times b}{S \times 32},
+  \label{eq:ch03-eta}
+\end{equation}
+其中 $b$ 是每线程访问的字节数（fp32 标量 $b = 4$），$S$ 是 32 个地址触及的
+sector 数。三种典型情形（图 ch03-1）：
+
+\begin{itemize}
+\item \textbf{连续（coalesced）}：32 个 4B 地址恰好铺满 $[base,\, base+128)$，
+  $S = 4$，$\eta = 128/128 = 100\%$。
+\item \textbf{stride 为 2}：地址铺满 $256$B 跨度但只用一半，$S = 8$，
+  $\eta = 50\%$——有效带宽直接减半。
+\item \textbf{大 stride}：每线程落在不同 sector，$S = 32$，$\eta = 4/128
+  \approx 3\%$——矩阵转置的朴素版本（ch07 专题）正是这种形态。
+\end{itemize}
+
+\begin{center}
+\begin{verbatim}
+   一条 warp 访存指令的合并过程 (fp32, 每格 4B, 一个 sector 8 格)
+   -------------------------------------------------------------
+   coalesced:  lane0..31 访问连续 128B
+     [sector0][sector1][sector2][sector3]     S=4, 有效率 100%
+   stride=2:   访问 0,2,4,..,62 号元素, 跨度 256B
+     [xx.xxxx.][xx.xxxx.]...                   S=8, 有效率 50%
+   大 stride:  每线程各落一个 sector
+     [x.......][x.......]... x32              S=32, 有效率 3%
+   -------------------------------------------------------------
+   事务粒度 = 32B sector; 无用字节照样从 HBM 搬上来
+\end{verbatim}
+
+图 ch03-1：coalescing 与非合并访存对比（占位，RFC-H 升级；对应 FIG-3-1）
+\end{center}
+
+一维排布的逐元素算子天然满足连续性：线程 $t$ 处理元素
+$\mathrm{idx} = \mathrm{blockIdx} \times T + t$，warp 内 32 个连续 idx
+对应连续 4B 地址。这就是源码注释「grid/block 维度设计：grid(N/threads),
+block(threads)，一维即可」背后的全部数学——\textbf{只要 idx 映射是线性的，
+coalescing 是免费的}；它昂贵的时候，是高维张量的维度交错（ch07 转置、
+ch16 的 BHND 布局）。
+
+\subsection{向量化：一条指令 128 bit}
+
+向量化把每线程的处理粒度从 1 个标量提升到 4 个（float4）。对 $N$ 个
+元素、block 大小 $T$：
+
+\begin{equation}
+  \text{标量版}:\ \frac{N}{T} \text{ 线程} \times 2 \text{ 条访存指令},
+  \qquad
+  \text{vec4 版}:\ \frac{N}{4T} \text{ 线程} \times 2 \text{ 条访存指令},
+\end{equation}
+warp 级访存指令数同为 $N/32$ 的倍数，但\textbf{每线程}的指令数从 2 降到
+$2/4$——load/store 指令发射压力降为 1/4，同时每线程拿到 4 个独立的
+计算输入，ILP（指令级并行）翻两番。地址也依然连续：vec4 线程 $t$ 处理
+$[4t, 4t+3]$，warp 的 32 个线程覆盖连续 512B $= 16$ 个 sector，$\eta$ 仍
+是 100\%。可见\textbf{向量化与 coalescing 正交}：前者减指令，后者减无效
+字节；最好的情况是两者兼得——一条 128-bit load 恰好铺满 4 个整 sector。
+
+向量化的代价是\textbf{对齐约束}。float4 类型要求 16B 对齐：cudaMalloc
+返回的基址满足 256B 对齐，因此只要\textbf{元素偏移 idx 是 4 的倍数}
+（vec4 版 idx $= 4 \times$ 全局线程号，天然满足），地址即对齐。反过来，
+若 $N$ 不是 4 的倍数，最后一组 \texttt{FLOAT4(a[idx])} 的 4 元素读取会
+越过数组末尾——源码里两个 vec4 kernel（relu/dot）只守卫 \texttt{idx < N}，
+存在越界读隐患，一个（elementwise\_add\_vec4）用 \texttt{idx + 3 < N}
+加标量尾部兜底，见 \S\ref{sec:ch03-kaogu} 的逐条核查。
+
+\subsection{原子操作与直方图的冲突账}
+
+histogram 要维护 $y[a\sb i] \mathrel{+}= 1$：读 $y[a\sb i]$、加 1、写回——
+read-modify-write（RMW）。若两个线程同时 RMW 同一 bin 且无同步，两次加法
+会丢失一次（lost update）。atomicAdd 把 RMW 变成硬件级的不可分割操作：
+在 L2 的原子处理单元上排队执行，同地址操作\textbf{串行化}，不同地址并行。
+串行化的代价可以直接建模：设一次全局原子延迟约 $\tau$（ch02 实测约
+2.6 ns），若全部 $N$ 次插入都砸向同一个 bin，吞吐被钉死在 $1/\tau$；
+若 $B$ 个 bin 均匀承压，理论上限约 $B/\tau$ op/s。真实情形介于两者之间，
+且 L1 侧的 atomic 路径与请求排队会进一步压低实测值——
+\S\ref{sec:ch03-perf} 的 bench 会看到，4M 次 256-bin 插入实测有效带宽只有
+26.7 GB/s，比相邻的 elementwise\_add（2654 GB/s）低\textbf{两个数量级}。
+这也解释了为什么生产级实现都要做 smem 私有化：先在 block 内用 smem 直方图
+（冲突域缩小到 block 内、且 smem 原子远快于全局），最后每个 block 对全局
+做 $B$ 次合并写——全局原子次数从 $N$ 降到 $G \times B$。
+
+\section{设计与实现}
+
+Phase 2 的开场注释给出了本章的考点清单：
+
+\lstinputlisting[linerange={306-310},firstnumber=auto,
+  title={base.cuh L306-310（Phase 2 面试要点）}]{../base.cuh}
+
+\subsection{relu：标量基线与 vec4 对照}
+
+\lstinputlisting[linerange={314-322},firstnumber=auto,
+  title={base.cuh L314-322（relu：标量版）}]{../base.cuh}
+
+三行代码，两条考点：一维 idx 映射保证 warp 内连续 coalesced；
+\texttt{fmaxf(0.0f, x)} 表达的是「逐元素无分支」——若写成
+\texttt{if (x > 0) ... else ...}，warp 会因 lane 间条件不同而发散
+（divergence），两条路径串行执行；\texttt{fmaxf} 编译为单条
+\texttt{max.f32} 指令，无发散。\textbf{逐元素算子的分支要写进指令选择
+而不是控制流}，这个原则在 ch04 的 \texttt{\_\_expf} 选择、ch06 的
+rsqrt 中反复出现。
+
+\lstinputlisting[linerange={324-345},firstnumber=auto,
+  title={base.cuh L324-345（relu vec4：单条 128-bit load/store）}]{../base.cuh}
+
+\texttt{FLOAT4(x[idx])} 是 common.cuh 的宏：把任意标量引用重解释为
+float4 引用，编译为一条 \texttt{LDG.E.128}；\texttt{FLOAT4(y[idx]) = reg\_y}
+同理是一条 \texttt{STG.E.128}。四个 fmaxf 是 4 条独立的寄存器指令——它们
+与 load/store 的比例恰好说明：\textbf{向量化后指令瓶颈从访存侧转移到了
+计算侧}，这正是「AI 低」的算子最乐意看到的结构。
+
+\subsection{elementwise add：安全范式}
+
+\lstinputlisting[linerange={343-374},firstnumber=auto,
+  title={base.cuh L343-374（elementwise add：标量版与 vec4 安全版）}]{../base.cuh}
+
+vec4 版的守卫值得逐行读：主路径 \texttt{(idx + 3) < N} 一次性保证 4 个
+元素都在界内；否则进入标量尾部循环 \texttt{for (i = 0; idx + i < N; i++)}
+逐个补齐。这个「主路径快、尾路径对」的二段式是向量化 kernel 的通用范式
+（Part II 的 GEMM 主 K 循环 + 尾部处理同构）。它同时示范了另一种工程判断：
+\texttt{else if (idx < N)} 里 idx 不足 4 时（如 N=510，idx=508）循环最多
+跑 2 次，正确但慢——\textbf{尾部牺牲性能换正确性}，主路径保住 99\% 的
+流量。
+
+\subsection{histogram：原子操作的正式登场}
+
+\lstinputlisting[linerange={376-385},firstnumber=auto,
+  title={base.cuh L376-385（histogram：atomicAdd 计数）}]{../base.cuh}
+
+一行有效代码。\texttt{atomicAdd(\&(y[a[idx]]), 1)} 把 RMW 交给硬件：地址
+相同则串行、不同则并行，正确性由硬件保证。按 \S\ref{sec:ch03-math} 的
+冲突账：bin 分布越尖（少数 bin 承压越多），串行化越狠。调用契约也别忽略：
+输入值必须落在 $[0, B)$ 内，越界即写坏全局内存——kernel 层不检查（性能
+优先），这是调用方的责任，也是「kernel 信任调用方」设计哲学的一个小注脚。
+
+\section{图示}
+
+图 ch03-1（coalescing 对比）已见 \S\ref{sec:ch03-math}。补充一张三条
+优化路线的「收益分解」图，把本章与 ch02 的实测串起来：
+
+\begin{center}
+\begin{verbatim}
+   elementwise kernel: 从朴素到峰值带宽
+   -------------------------------------------------------------
+   朴素(stride 访存)     需要搬运 8x 数据      有效性 3%~12%
+     -> coalesced        搬运 bytes 最小化      有效率 100%
+        (idx 连续映射)
+     -> + vectorize      指令数 /4, ILP x4      逼近峰值带宽
+        (float4, 16B 对齐, N 非 4 倍数走标量尾部)
+     -> + privatize      原子冲突域: 全局 -> smem
+        (histogram 专用: block 内 smem 直方图 + 少量全局合并)
+   -------------------------------------------------------------
+\end{verbatim}
+
+图 ch03-2：逐元素算子的三级优化路线（占位，RFC-H 升级）
+\end{center}
+
+\section{性能分析}\label{sec:ch03-perf}
+
+\textbf{Roofline 定性}：relu（AI 0.125）与 elementwise\_add（AI 0.083）
+都是极深 memory-bound 区的算子，性能分数只看「实测带宽 / 数据所在层级的
+理论带宽」。实测（RTX PRO 5000，sm\_120a，2026-09-11；bench 口径：warmup 3
++ 计时 10 次均值，$N = 4{,}194{,}304$，输入 16 MB 全部落在 96 MB L2 内，
+故实测带宽是 \textbf{L2 口径}而非 HBM 口径，见 ch01 \S\ref{sec:ch01-perf}）：
+
+\begin{center}
+\begin{tabular}{lrrl}
+\toprule
+kernel & 均值 (ms) & 有效带宽 & 口径 \\
+\midrule
+relu & 0.01802 & 1862.15 GB/s & 读+写 8B/元素 \\
+relu\_vec4 & 0.01798 & 1866.46 GB/s & 同上 \\
+elementwise\_add & 0.01897 & 2653.73 GB/s & 两读一写 12B/元素 \\
+elementwise\_add\_vec4 & 0.01927 & 2611.86 GB/s & 同上 \\
+histogram (256 bins) & 0.62860 & 26.69 GB/s & 按读 4B/元素计，原子另计 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+（数据文件：.tmp/book-bench/ch03/bench.txt。）三条观察：
+
+\textbf{其一，L2 命中让实测超过 HBM 理论值}。1862 GB/s $>$ 本机 GDDR7
+理论 1344 GB/s——数据 16 MB 从未离开 96 MB 的 L2，实测是 L2 到 SM 的
+带宽。这是 ch01「$BW$ 用数据实际所在层级」提醒的实证；若要测 HBM 口径，
+应把 $N$ 放大到数倍于 L2。
+
+\textbf{其二，vec4 与标量在 L2 口径下几乎打平}（1862 vs 1866、2654 vs
+2612，差异在 $\pm 2\%$ 噪声内）。因为此时瓶颈在 L2/互联的搬运能力而非
+指令发射——4 倍的指令缩减没有释放空间。但不要据此断言 vec4 无用：当
+数据集大于 L2（HBM 直读）、或 block 数受 grid 限制（指令发射成为瓶颈）
+时，vec4 的 1/4 指令量与 4 倍 ILP 优势会显性化。工程结论是\textbf{先看清
+瓶颈层级，再选武器}。
+
+\textbf{其三，histogram 比 elementwise 慢两个数量级}（26.7 vs 2654 GB/s，
+0.63 ms vs 0.019 ms）。4M 次原子均摊每次约 $0.63\,\mathrm{ms}/4.2\mathrm{M}
+\approx 150\,\mathrm{ns}$——远高于 ch02 全局求和的 2.5 ns/op，因为这里
+4M 个原子请求要经过 L1 侧 atomic 路径排队、且 256 个 bin 的并行度远小于
+请求速率，冲突排队是常态。优化方向即 \S\ref{sec:ch03-math} 的 smem
+私有化：全局原子次数 $N \to G \times B$（$G$ 为 block 数、$B$ 为 bin 数），
+预期可把 0.63 ms 压低一个数量级以上——留作动手实验。
+
+\section{勘误与考据}\label{sec:ch03-kaogu}
+
+\begin{kaogu}[F1]{L311「内存事务数减为 1/4」口径过时}
+注释称「float4 向量化可将内存事务数减为 1/4」。Volta 起访存以 32B sector
+为粒度：coalesced 场景下搬运的 sector 数由总数据量决定（每元素都要搬一次），
+向量化并不减少 sector 事务数；它减少的是\textbf{每线程 load/store 指令数}
+（4 条 32-bit $\to$ 1 条 128-bit）。「事务数减为 1/4」只在 Fermi/Kepler
+的 128B 事务口径下才成立，建议改为「访存指令数减为 1/4」。
+\end{kaogu}
+
+\begin{kaogu}[F1]{L324--329 relu\_vec4 边界守卫不足（越界读隐患）}
+与 ch02 的 dot\_vec4 同病：守卫只有 \texttt{idx < N}，而 FLOAT4 一次读 4
+元素，$N$ 非 4 倍数时最后一个线程越界读 \texttt{x[idx..idx+3]}。注释
+「最适合 N 按 4 对齐的场景」是隐含免责，未明示越界后果。同文件
+elementwise\_add\_vec4（L358--374）的 \texttt{(idx + 3) < N} 主路径 + 标量
+尾部是安全范式，建议统一。
+\end{kaogu}
+
+\begin{kaogu}[F4]{L325「与基础版吞吐相同」表述不准}
+「block(64)×4(float4)=256 元素/block，与基础版吞吐相同」——相同的是
+\textbf{每 block 处理规模}（256 元素）；吞吐（带宽利用率）两者通常不同，
+取决于瓶颈层级（本机 L2 口径下两者差异在 $\pm 2\%$ 噪声内，见
+\S\ref{sec:ch03-perf}）。建议改为「每 block 处理元素数相同」。
+\end{kaogu}
+
+\section{常见坑}
+
+\begin{enumerate}
+\item \textbf{float4 未对齐}。基址非 16B 对齐时（例如对子数组
+  \texttt{a + 1} 做 FLOAT4）触发 CUDA misaligned address 运行时错误。
+  规约：vec4 主路径的 idx 必须是 4 的倍数、指针必须来自整块分配的基址。
+\item \textbf{$N$ 非 4 倍数时用「浅守卫」vec4 kernel}。relu\_vec4 /
+  dot\_vec4 的 \texttt{idx < N} 不覆盖 4 元素读取的尾部（见
+  \S\ref{sec:ch03-kaogu}）；生产代码应统一为 elementwise\_add\_vec4 的
+  二段式守卫。用 compute-sanitizer memcheck 可以稳定复现越界。
+\item \textbf{histogram 忘记清零}。atomicAdd 是「加在旧值上」，复用缓冲区
+  时若不 memset，两轮结果会叠加——本测试每轮 bench 前显式 memset。
+\item \textbf{把原子当免费}。全局原子吞吐有上限（同址串行化），热点地址
+  会让 kernel 慢百倍（\S\ref{sec:ch03-perf} 实测 98 倍差）。先问「冲突域
+  能不能缩小」：smem 私有化、分桶、thread-warp 内先归约再提交。
+\item \textbf{原子还破坏确定性}。与 ch02 的浮点 atomicAdd 同理，冲突
+  顺序不定 $\Rightarrow$ 累加型原子的结果 run-to-run 抖动；int 计数
+  （histogram）无此问题，浮点累加要留意。
+\item \textbf{grid 尺寸截断}。grid 计算要向上取整
+  \texttt{(N + T - 1) / T}，配合 kernel 内 \texttt{idx < N} 守卫；漏守卫
+  或漏取整都会越界。
+\end{enumerate}
+
+\section{面试要点速查}
+
+\begin{itemize}
+\item \textbf{Q：什么是 coalescing？怎么保证？}\\
+  A：warp 的 32 个地址按 32B sector 合并搬运；保证手段是让相邻线程访问
+  相邻地址（一维线性 idx 映射），高维场景靠布局分析与 padding/swizzle
+  （ch07/ch12）。
+\item \textbf{Q：float4 向量化的收益来源？}\\
+  A：访存指令数减为 1/4（单条 128-bit load/store）、每线程 ILP 增至 4；
+  前提是 16B 对齐。收益大小取决于当前瓶颈是发射带宽还是数据搬运带宽
+  （本机 L2 口径下收益不足 2\%，HBM 直读场景更大）。
+\item \textbf{Q：histogram 为什么慢？如何优化？}\\
+  A：RMW 原子在冲突 bin 上串行化。优化：smem 私有直方图（冲突域缩到
+  block 内）+ 全局合并（原子次数 $N \to G \times B$）；进一步可按 bin
+  分块或用 warp 级聚合。
+\item \textbf{Q：atomicAdd 的硬件代价模型？}\\
+  A：L2 原子单元排队 RMW，同地址严格串行（本机实测全局求和约
+  2.6 ns/op）、不同地址并行；吞吐上限约 $B/\tau$（$B$ 为活跃地址数）。
+\item \textbf{Q：逐元素 kernel 怎么打到峰值带宽？}\\
+  A：连续 idx 映射（coalesced）+ 足够多的线程覆盖访存延迟（occupancy）
+  + vec4 降指令量 + 尾部安全处理；最后用「实测带宽/所在层级理论带宽」
+  打分（本机 L2 口径实测 1862--2654 GB/s）。
+\end{itemize}
+
+\section{最小测试与动手实验}
+
+测试文件：book/tests/ch03\_elementwise.cu，逻辑抽取自 notes-v2.cu 的
+test\_relu（L596）/ test\_elementwise（L641）/ test\_histogram（L689），
+改用 common\_test.h 判定：$N = 512$ 验证 relu/relu\_vec4 与 CPU 逐元素
+精确一致（误差 0）、elementwise\_add 两版误差 $6 \times 10^{-8}$、
+histogram（16 bins）与 CPU 计数完全一致；另附 5 个 kernel 的 cudaEvent
+bench（warmup 3 + 10 次均值），结果写入 .tmp/book-bench/ch03/bench.txt。
+
+运行（CWD：book/tests/，\texttt{./build\_tests.sh -{}-ch ch03}；kernel 名
+按本书排版把下划线转写为连字符，实测 max\_abs\_err 见各行）：
+\begin{verbatim}
+  PASS relu(N=512):              err=0.000e+00 (tol=1.0e-03)
+  PASS relu-vec4(N=512):         err=0.000e+00 (tol=1.0e-03)
+  PASS elementwise-add(N=512):   err=5.960e-08 (tol=1.0e-03)
+  PASS elementwise-add-vec4:     err=5.960e-08 (tol=1.0e-03)
+  PASS histogram(BINS=16,N=512): err=0.000e+00 (tol=1.0e-03)
+\end{verbatim}
+
+\textbf{动手实验}：(1) 把 bench 的 $N$ 从 $2^{22}$ 放大到 $2^{26}$
+（256 MB $>$ L2），观察 relu 带宽从 1862 GB/s 回落到 HBM 口径——亲手
+验证 ch01 的「层级带宽」提醒；(2) 给 histogram 加 smem 私有直方图
+（\texttt{\_\_shared\_\_ int cnt[B]} + block 内原子 + 合并），对比
+0.63 ms 基线；(3) 把 relu\_vec4 的 $N$ 改成 510，用 compute-sanitizer
+memcheck 复现越界读（对应 \S\ref{sec:ch03-kaogu} 第二条）。
+
+\section*{延伸阅读}
+\begin{itemize}
+\item @懒蚂蚁呀不嘿《CUDA element-wise 算子详解》：
+  \href{https://zhuanlan.zhihu.com/p/1888630735520391519}{zhuanlan.zhihu.com/p/1888630735520391519}
+\item @紫气东来《ops(5) 激活与残差》：
+  \href{https://zhuanlan.zhihu.com/p/695703671}{zhuanlan.zhihu.com/p/695703671}
+\item @reed《GPU 指令集架构-程序控制和原子操作》：
+  \href{https://zhuanlan.zhihu.com/p/712357443}{zhuanlan.zhihu.com/p/712357443}
+\end{itemize}

@@ -1,4 +1,492 @@
-% ch04-softmax.tex — 骨架（RFC-0.3），撰写任务见 RFC.md C4
-\chapter{Softmax 三级递进：naive 到 online}\label{ch:04}
+% ch04-softmax.tex — Softmax 三级递进：从 naive 到 online（RFC-C4，2026-09-11）
+\chapter{Softmax 三级递进：从 naive 到 online}\label{ch:04}
 
-本章待撰写。源码区间：base.cuh L520-665；执行卡片：RFC.md C4；章节模板：\texttt{chapters/\_template.tex}（10 节结构 + DoD 八条）。
+\section{本章导读}
+
+Softmax 是深度学习里出场率最高的归一化算子：语言模型输出头的概率分布、注意力机制中的
+$\mathrm{softmax}(QK^{\top}/\sqrt{d})$（第~\ref{ch:15}~章的主角）、MoE 的门控权重……都离不开它。
+它的数学定义只有一行，但在 GPU 上写对一个\textbf{又快又稳}的 softmax，要同时跨过两道坎：
+\textbf{数值稳定性}（$e^{x}$ 的溢出）与\textbf{归约遍数}（多一遍全局扫描就多一倍同步与访存）。
+本章沿着教学源码的三级递进，把这两道坎各击破一次：
+
+\begin{itemize}
+  \item \textbf{Level 1 naive}（base.cuh~L544，\texttt{softmax\_per\_token}）——
+        直接按定义实现，演示溢出风险与最基本的 block 归约用法；
+  \item \textbf{Level 2 safe}（base.cuh~L564，\texttt{safe\_softmax\_per\_token}）——
+        减 max 的两遍扫描（2 次 block reduce），数值稳定的工业标配形态；
+  \item \textbf{Level 3 online}——\texttt{online\_safe\_softmax\_per\_token}
+        （base.cuh~L632）：$(m,\ell)$ 双状态单遍联动更新（1 次融合归约），
+        是 FlashAttention online rescale 的数学内核。
+\end{itemize}
+
+\textbf{前置章节}：第~\ref{ch:02}~章的 warp/block 归约原语——本章的三版实现分别建立在其
+\texttt{block\_reduce\_sum}、\allowbreak\texttt{block\_reduce\_max} 与 XOR 蝶形归约之上；不熟悉
+\texttt{\_\_shfl\_xor\_sync}
+蝶形归约的读者请先回看第~\ref{ch:02}~章。
+\textbf{源码区间}：base.cuh~L520--665（Phase 3a），无编译宏限定，全部架构适用；
+配套最小测试为 \texttt{book/tests/ch04\_softmax.cu}。
+\textbf{后继}：本章 4.3~节推导的 online 递推与二元合并公式，将在第~\ref{ch:05}~章以
+LSE 的形式被「压缩」成一个标量状态，并在第~\ref{ch:15}~章成长为 FlashAttention 的
+online rescale。预计篇幅约 11 页。
+
+\section{问题与动机}
+
+\textbf{动机一：$e^{x}$ 会溢出。}直觉上 softmax 的输入都是「分数」，能有多大？但在
+attention 里，logit 是 $Q$、$K$ 行向量的内积，量级随训练状态与序列位置漂移；语言模型
+logits 在训练早期破百也不罕见。而 fp32 能表示的最大正规数约 $3.4\times 10^{38}$，
+$e^{89}$ 就已经越界变成 \texttt{inf}。一旦分子或分母出现 \texttt{inf}，输出就是
+\texttt{inf}/\texttt{inf} 型的 \texttt{NaN}——模型直接产出垃圾。所以「减 max」不是锦上添花的技巧，
+而是正确性的底线。
+
+\textbf{动机二：每多一遍扫描，就多一遍代价。}教科书的 safe softmax 要对输入做三次遍历：
+求 max、求指数和、再除一遍写回。每次「遍历」在 GPU 上至少意味着一遍全局内存读取，或者
+一次 block 级同步归约。本章将看到：三版实现的差距，本质上就是\textbf{全局扫描次数}的差距
+（3-pass $\to$ 2-pass $\to$ 1-pass），图~\ref{fig:4-1} 给出三者的数据流对比。
+
+\textbf{动机三：softmax 的「行内自足性」。}softmax 沿一行（一个 token、一个 query）独立计算，
+行与行之间零依赖。这意味着一行数据可以完整驻留在一个 block 的寄存器/共享内存里，
+为「一遍扫描」的 online 形态提供了舞台——这也是它后来能被 FlashAttention 塞进
+「KV 分块流水线」里的根本原因：分块后的部分结果可以用一个 $(m,\ell)$（或 LSE）状态无损概括。
+
+\section{数学原理}
+
+\subsection{定义与平移不变性}
+
+设一行输入 $x^{(1)}, x^{(2)}, \dots, x^{(n)}$，softmax 的定义为
+\begin{equation}
+  y^{(i)} \;=\; \mathrm{softmax}\bigl(x\bigr)^{(i)}
+  \;=\; \frac{e^{x^{(i)}}}{\sum\sb{j=1}^{n} e^{x^{(j)}}},
+  \qquad i = 1, \dots, n .
+  \label{eq:4-softmax-def}
+\end{equation}
+输出 $y^{(i)} \in (0,1)$ 且 $\sum\sb{i} y^{(i)} = 1$。对任意常数 $c$，softmax 具有\textbf{平移不变性}：
+\begin{equation}
+  \frac{e^{x^{(i)} - c}}{\sum\sb{j} e^{x^{(j)} - c}}
+  \;=\; \frac{e^{-c}\, e^{x^{(i)}}}{e^{-c} \sum\sb{j} e^{x^{(j)}}}
+  \;=\; \frac{e^{x^{(i)}}}{\sum\sb{j} e^{x^{(j)}}} ,
+  \label{eq:4-shift}
+\end{equation}
+即 $\mathrm{softmax}(x - c\cdot \mathbf{1}) = \mathrm{softmax}(x)$：分子分母同乘
+$e^{-c}$，严格约掉。平移不变性就是一切数值稳定手段的数学基础——
+\textbf{减 max 不改变结果，只改变中间量的量级}。
+
+\subsection{为什么必须减 max：$e^{x}$ 的溢出界}
+
+fp32 的最大正规数（\texttt{FLT\_MAX}）为
+\begin{equation}
+  \mathrm{FLT\_MAX} \;=\; \bigl(2 - 2^{-23}\bigr) \times 2^{127}
+  \;\approx\; 3.4028 \times 10^{38},
+  \qquad
+  \ln\bigl(\mathrm{FLT\_MAX}\bigr) \;\approx\; 88.72 .
+  \label{eq:4-fltmax}
+\end{equation}
+因此 $e^{t}$ 不溢出的充要条件是 $t \lesssim 88.72$。两个锚点数字：$e^{88} \approx 1.65\times 10^{38}$
+（尚可表示），$e^{89} \approx 4.49\times 10^{38} > \mathrm{FLT\_MAX}$（已经是 \texttt{inf}）。
+源码注释 base.cuh~L556 写的「溢出阈值约 88.7」正是这个界（核校无误）。
+一旦有元素溢出：若分子为 \texttt{inf} 则 $y^{(i)} = \texttt{inf}/s$；若分母
+$s = \texttt{inf}$，则 $y^{(i)} = \texttt{inf}/\texttt{inf} = \texttt{NaN}$。本章测试
+Case~C 用 $x \in [80, 120]$ 复现了这一点：naive 版输出 \texttt{NaN}，safe/online 版纹丝不动。
+
+利用平移不变性（式~\ref{eq:4-shift}），取 $c = m = \max\sb{j} x^{(j)}$，得到\textbf{safe softmax}：
+\begin{equation}
+  m = \max\sb{j} x^{(j)},
+  \qquad
+  y^{(i)} \;=\; \frac{e^{x^{(i)} - m}}{\sum\sb{j} e^{x^{(j)} - m}} .
+  \label{eq:4-safe}
+\end{equation}
+减去 max 之后每个指数参数 $x^{(i)} - m \le 0$，故 $e^{x^{(i)} - m} \le 1$，分子绝不溢出，
+分母是 $n$ 个不超过 1 的正数之和（最大为 $n$），也绝不溢出。下溢方向（极小值被舍入为 0）
+只会让本来就权重趋零的元素更趋零，不影响结果的相对结构。
+
+\subsection{online 递推：$(m, \ell)$ 双状态单遍更新}
+
+safe 版的问题是要\textbf{先}知道全行的 max 才能\textbf{再}算指数和，这强制了两遍扫描。
+online softmax（Milakov \& Gimelshein，arXiv:1805.02867）的思路是：维护一对
+\textbf{运行状态}，让它随时都等价于「已见元素构成的 safe softmax 中间量」：
+\begin{equation}
+  m^{(k)} = \max\sb{j \le k} x^{(j)},
+  \qquad
+  \ell^{(k)} = \sum\sb{j=1}^{k} e^{\,x^{(j)} - m^{(k)}} ,
+  \label{eq:4-invariant}
+\end{equation}
+即 $\ell^{(k)}$ 永远是「以前 $k$ 个元素自己的 max 为基准的指数和」。
+现在走来了第 $k+1$ 个元素 $x^{(k+1)}$，逐项推导新状态。第一步，新 max 显然是
+\begin{equation}
+  m^{\mathrm{new}} = \max\bigl(m,\; x^{(k+1)}\bigr) .
+\end{equation}
+第二步，按定义展开 $\ell^{\mathrm{new}}$ 并把求和拆成「旧元素 + 新元素」两段：
+\begin{align}
+  \ell^{\mathrm{new}}
+  &= \sum\sb{j=1}^{k+1} e^{\,x^{(j)} - m^{\mathrm{new}}}
+   = \sum\sb{j=1}^{k} e^{\,x^{(j)} - m^{\mathrm{new}}} \;+\; e^{\,x^{(k+1)} - m^{\mathrm{new}}}
+   \notag \\
+  &= \underbrace{\sum\sb{j=1}^{k} e^{\,x^{(j)} - m}}\sb{\text{这正是 } \ell}
+     \;\cdot\; e^{\,m - m^{\mathrm{new}}}
+     \;+\; e^{\,x^{(k+1)} - m^{\mathrm{new}}} ,
+  \label{eq:4-online-l}
+\end{align}
+其中第二个等号在旧元素一项上同时乘除 $e^{m - m^{\mathrm{new}}}$（$e^{m-m^{\mathrm{new}}}$ 是
+常数可以提到求和外）。于是得到 online 递推的核心公式：
+\begin{equation}
+  m^{\mathrm{new}} = \max(m,\, x^{(k+1)}),
+  \qquad
+  \ell^{\mathrm{new}} = \ell\; e^{\,m - m^{\mathrm{new}}}
+                        + e^{\,x^{(k+1)} - m^{\mathrm{new}}} .
+  \label{eq:4-online}
+\end{equation}
+两种情形的直觉：
+\begin{itemize}
+  \item 若 $x^{(k+1)} \le m$（新元素不刷新 max）：$m^{\mathrm{new}} = m$，
+        修正因子 $e^{m - m^{\mathrm{new}}} = e^{0} = 1$，旧的和原封不动，
+        $\ell$ 只需累加一个新项；
+  \item 若 $x^{(k+1)} > m$（新元素刷新 max）：旧的 $\ell$ 是「以旧 max 为基准」的，
+        基准抬高了 $m^{\mathrm{new}} - m$，所以整体乘 $e^{m - m^{\mathrm{new}}} < 1$
+        做\textbf{ rescale（缩放）}，再加新项。缩放是全局一次乘法，代价 $O(1)$。
+\end{itemize}
+全部 $n$ 个元素流过后，输出为 $y^{(i)} = e^{x^{(i)} - m^{(n)}} / \ell^{(n)}$。
+注意：真正的 online 实现（含 FlashAttention）里，$x$ 之外还有加权对象 $V$，
+输出 $O$ 也要跟着 rescale——那正是第~\ref{ch:15}~章 online rescale 的内容，
+本章先只盯着 $(m, \ell)$ 这对状态。符号约定上，本章的 $m$、$\ell$ 即全书记号表中的
+running max / running sum，在 FlashAttention 实现里对应源码变量
+\texttt{block\_row\_max} 与 \texttt{block\_row\_sum}（联动更新量为
+\texttt{block\_row\_max\_new}、\texttt{block\_row\_sum\_new}）；本章 Level~3
+实现中它们由 \texttt{MD} 结构体的 \texttt{m}、\texttt{d} 两个字段承载。
+
+\subsection{二元合并：把递推广广成可归约的运算}
+
+式~\ref{eq:4-online} 是「状态 + 单元素」的更新。GPU 归约需要的是「状态 + 状态」。
+设两段各自算好了部分状态 $\bigl(m^{(1)}, \ell^{(1)}\bigr)$（覆盖集合
+$S^{(1)}$）与 $\bigl(m^{(2)}, \ell^{(2)}\bigr)$（覆盖集合 $S^{(2)}$），合并公式为
+\begin{equation}
+  m = \max\bigl(m^{(1)}, m^{(2)}\bigr),
+  \qquad
+  \ell = \ell^{(1)} e^{\,m^{(1)} - m} + \ell^{(2)} e^{\,m^{(2)} - m} .
+  \label{eq:4-merge}
+\end{equation}
+推导与式~\ref{eq:4-online-l} 同构：合并后的基准是两段 max 的较大者，两段的和各乘一个
+「基准抬升修正因子」后相加。当 $m^{(1)} \ge m^{(2)}$ 时退化为
+$\ell = \ell^{(1)} + \ell^{(2)} e^{m^{(2)} - m^{(1)}}$——只有较小者需要 rescale，
+较大者原样保留。把式~\ref{eq:4-online} 看作式~\ref{eq:4-merge} 的特例也很自然：
+单元素 $x^{(k+1)}$ 就是一个 $\bigl(x^{(k+1)}, 1\bigr)$ 状态（$e^{0}=1$）。
+
+\begin{lemma}[二元合并的结合律]\label{lem:md-assoc}
+  定义运算 $\bigl(m^{(1)},\ell^{(1)}\bigr) \oplus \bigl(m^{(2)},\ell^{(2)}\bigr)$
+  为式~\ref{eq:4-merge}。若各部分状态都满足不变量式~\ref{eq:4-invariant}
+  （即 $\ell = \sum\sb{x \in S} e^{x - m}$ 且 $m = \max S$），则合并结果也满足同一不变量，
+  且 $\oplus$ 满足结合律。
+\end{lemma}
+\begin{proof}
+  合并后的 max 显然是 $\max\bigl(S^{(1)} \cup S^{(2)}\bigr)$；而
+  \begin{equation*}
+    \ell^{(1)} e^{m^{(1)}-m} + \ell^{(2)} e^{m^{(2)}-m}
+    = \sum\sb{x \in S^{(1)}} e^{x-m^{(1)}} e^{m^{(1)}-m}
+    + \sum\sb{x \in S^{(2)}} e^{x-m^{(2)}} e^{m^{(2)}-m}
+    = \sum\sb{x \in S^{(1)} \cup S^{(2)}} e^{x - m},
+  \end{equation*}
+  不变量保持。有了不变量，
+  三个状态无论先结合哪两个，结果都是「全集的 $(\max, \text{指数和})$」，由全集唯一决定，
+  故任意归约树（结合顺序）给出同一结果。
+\end{proof}
+
+引理~\ref{lem:md-assoc} 是本章实现能直接套用第~\ref{ch:02}~章 XOR 蝶形归约的\textbf{合法性证明}：
+32 个 lane 携带各自的 $(m, d)$，按 XOR 蝶形任意两两合并，5 步后所有 lane 拿到的都是全行的
+正确状态，与归约顺序无关。
+
+最后预告两个后继。其一是\textbf{LSE}：对状态取对数压缩，
+\begin{equation}
+  \mathrm{LSE}(x) \;=\; \log \sum\sb{j} e^{x^{(j)}} \;=\; m + \log \ell ,
+  \label{eq:4-lse}
+\end{equation}
+它把 $(m, \ell)$ 两个数打包成一个标量（正式定义见第~\ref{ch:05}~章定义~\ref{def:lse}），
+是分块合并的主角。其二是 FlashAttention 的 online rescale：在 attention 里，
+与 $(m,\ell)$ 联动更新的还有输出累加器
+$O^{\mathrm{new}} = e^{m - m^{\mathrm{new}}}\, O + e^{s - m^{\mathrm{new}}} V$，
+分母 $\ell$ 留到最后统一除——第~\ref{ch:15}~章展开。
+
+\section{设计与实现}
+
+三版实现的公共骨架都是第~\ref{ch:02}~章的 per-token 模式：一个 block 处理一行
+（一个 token），grid 维度携带 token 维度。注意一个容易踩坑的约定：
+kernel 形参 $N$ 的语义是\textbf{总元素数}（原始工程入口传 $N = S \times H$，
+$S$ 为 token 数、$H$ 为每 token 长度；见 4.6~节勘误一）。
+
+\subsection{Level 1：naive——按定义直译}
+
+\lstinputlisting[linerange={540-552},firstnumber=auto,
+  title={base.cuh L540-552（Level 1：naive softmax，无 max 减法）}]{../base.cuh}
+
+数据流只有三步：每个线程算自己元素的 $e^{x^{(i)}}$；\texttt{block\_reduce\_sum} 把
+$2^{8}$ 个指数加起来（warp 内蝶形 + shared memory 二级 + 广播，见第~\ref{ch:02}~章）；
+每线程做一次除法写回。访存上是每元素读 4~B 写 4~B，归约开销是 1 次
+\texttt{\_\_syncthreads} 级的 block 同步。它就是式~\ref{eq:4-softmax-def} 的直译，
+也因此继承了定义的全部缺陷：输入一旦有元素超过 $88.72$，$e^{x}$ 变
+\texttt{inf}，输出全行 \texttt{NaN}。它的存在价值是充当「反面教材 + 归约骨架」：
+后两版只改数据流，不改这套归约基建。
+
+\subsection{Level 2：safe——两遍扫描的工业标配}
+
+\lstinputlisting[linerange={563-578},firstnumber=auto,
+  title={base.cuh L563-578（Level 2：safe softmax，2 次 block reduce）}]{../base.cuh}
+
+对照式~\ref{eq:4-safe}，实现是两次 block 归约的串联：
+\begin{itemize}
+  \item \textbf{Pass 1（求 max）}：边界线程填 \texttt{-FLT\_MAX}（求和的单位元换成了
+        max 的单位元），\texttt{block\_reduce\_max} 返回全行最大值并广播到所有线程；
+  \item \textbf{Pass 2（指数和）}：每线程算 $e^{x^{(i)} - m}$（上界 1，永不溢出），
+        \texttt{block\_reduce\_sum} 求和并广播；
+  \item \textbf{写回}：除法与写回融合，不再单独占一遍扫描。
+\end{itemize}
+值得指出的一个实现细节：Pass~2 里 \texttt{expf(x[idx] - max\_val)} 重新读了一次
+\texttt{x[idx]}——$x$ 实际被全局读了两次（第二次通常 L1 命中，代价远小于一次完整 DRAM 遍历，
+但不是零）。同步开销上是 2 次 block 级同步（两次归约各一次）。safe 版换来的保证是：
+\textbf{任何有限输入都不产生 \texttt{inf}/\texttt{NaN}}，这是它成为推理引擎默认形态的原因。
+
+\subsection{Level 3：online——$(m,d)$ 融合归约}
+
+\lstinputlisting[linerange={603-625},firstnumber=auto,
+  title={base.cuh L603-625（MD 状态与 warp\_reduce\_md 二元合并）}]{../base.cuh}
+
+\texttt{MD} 结构体就是式~\ref{eq:4-invariant} 的运行状态：\texttt{m} 对应 max、
+\texttt{d} 对应 $\ell$（denominator，分母），8 字节对齐使它可以整体进 shared memory。
+\texttt{warp\_reduce\_md} 把式~\ref{eq:4-merge} 装进了蝶形归约的骨架，逐行对照：
+\begin{itemize}
+  \item 每轮 mask 下，lane $i$ 与 lane $i \oplus \text{mask}$ 交换各自的
+        $(m, d)$，得到对称的两个输入（\texttt{md1} 与 \texttt{md2}）；
+  \item \texttt{b\_m}/\texttt{s\_m} 分别是 max 较大/较小的那个状态（bigger/smaller 的缩写）；
+  \item 合并时\textbf{只有较小者需要 rescale}：\texttt{b\_m} 的基准已经是二者共同的 max，
+        它的 $d$ 原样保留；\texttt{s\_m} 的 $d$ 乘修正因子
+        \texttt{\_\_expf(s\_m.m - b\_m.m)}。
+        这正是式~\ref{eq:4-merge} 退化形式 $m^{(1)} \ge m^{(2)}$ 的情形；
+  \item 结合律由引理~\ref{lem:md-assoc} 保证，因此 XOR 蝶形的归约顺序不影响结果。
+\end{itemize}
+
+\lstinputlisting[linerange={631-664},firstnumber=auto,
+  title={base.cuh L631-664（Level 3：online safe softmax 主 kernel）}]{../base.cuh}
+
+主 kernel 的流程：
+（1）初始化——每个线程把\textbf{自己的那一个元素}打包成状态
+$\bigl(x^{(i)}, 1\bigr)$（边界线程填 $\bigl(\texttt{-FLT\_MAX}, 0\bigr)$：
+max 用单位元，$d$ 用加法单位元 0，这样它们参与归约但不污染结果）；
+（2）第一级：warp 内 5 步 \texttt{warp\_reduce\_md} 蝶形；
+（3）warp leader 把 warp 状态写入 shared memory，\texttt{\_\_syncthreads} 一次；
+（4）第二级：每个 warp 的所有 lane 重新读出 8 个 warp 状态再做一次
+\texttt{warp\_reduce\_md}——注释里「用 kWarpSize 确保每个 lane 都拿到最终结果」的用意是：
+第二级不只在 warp 0 做，而是\textbf{每个 warp 都独立算一遍}，从而免去第二次
+\texttt{\_\_syncthreads} 加广播；
+（5）写回 $y^{(i)} = e^{x^{(i)} - m} \cdot d^{-1}$，除法用近似倒数
+\texttt{\_\_fdividef} 配一次乘法完成，指数用快速数学 \texttt{\_\_expf}。
+与 safe 版对比：扫描遍数从 2 降到 1（$x$ 只读一次、一直躺在寄存器里），
+block 级同步从 2 次降到 1 次；代价是归约算子从「单个加法」变成「合并运算」，
+且写回阶段的 \texttt{\_\_expf}/\texttt{\_\_fdividef} 是近似指令（精度见 4.7~节坑三）。
+
+\section{图示}
+
+\begin{figure}[htbp]
+\centering
+\begin{verbatim}
+  FIG-4-1  Softmax: 3-pass (textbook) -> 2-pass (safe) -> 1-pass (online)
+
+  [naive / textbook]           [safe / Level 2]            [online / Level 3]
+  ------------------           -------------------         --------------------
+  gmem x (read pass 1)         gmem x -> regs (1st read)   gmem x -> regs (only read)
+    m = max(x)                   block reduce max -> m       init (m,d) = (x, 1)
+  gmem x (read pass 2)         gmem x (2nd read, L1 hit)   MD butterfly reduce:
+    s = SUM e^(x)                e^(x-m) -> reduce sum s      d = d1 + d2*e^(m2-m1)
+    e^(x) may overflow: inf      e^(x-m) <= 1, no overflow   m,d rescale in lockstep
+  gmem x (read pass 3)         write y = e^(x-m) / s       write y = e^(x-m) / d
+    y = e^(x) / s                2 block syncs               1 block sync
+                                                             fast math: expf/div
+\end{verbatim}
+\caption{Softmax 三级递进的 3-pass $\to$ 2-pass $\to$ 1-pass 数据流：
+左为教科书三遍扫描（本仓库 naive kernel 融合了后两遍但保留无 max 减法的溢出风险）；
+中为 safe 版两次归约；右为 online 版 $(m,d)$ 状态一次融合归约。
+（占位，RFC-H 升级）}\label{fig:4-1}
+\end{figure}
+
+图~\ref{fig:4-1} 的三条泳道对应本章三级实现。读图的关键是「全局扫描次数」这一维度：
+3-pass 版本每遍历一次 $x$ 都要付一遍 DRAM 带宽；2-pass 版本把 $x$ 装进寄存器后只需
+两次 block 归约；1-pass 版本连归约都只剩一次——$(m, d)$ 在蝶形归约里同步长大。
+FlashAttention 把右列的 $(m,d)$ 再加一列 $O$，就是第~\ref{ch:15}~章的 online rescale。
+
+\section{性能分析}
+
+\textbf{算术强度}：per-token softmax 每个元素的有效访存是读 4~B + 写 4~B = 8~B；
+计算上除一次超越函数 $e^{x}$（SFU 指令，不占 FMA 流水）外只有 $O(1)$ 次乘加。
+按「每元素 2 FLOP」的乐观口径，$AI \approx 2/8 = 0.25$ FLOP/B，远低于现代 GPU
+数十至上百 FLOP/B 的 roofline 拐点——softmax 是典型的 \textbf{memory-bound} 算子，
+优化重心在扫描遍数与同步次数，而不是 FLOP。
+
+本章 bench 复测（RTX PRO 5000 72GB Blackwell，sm\_120，2026-09-11；
+$S = 4096$ 个 token、每 token $N = 256$、block = 256；warmup 3 次 + 10 次取均值；
+数据文件 \texttt{.tmp/book-bench/ch04/bench.txt}）：
+
+\begin{table}[htbp]
+\centering
+\caption{ch04 三版 softmax 耗时对比（10 次均值，带宽按每元素 8~B 有效流量计）}
+\label{tab:4-bench}
+\begin{tabular}{lrr}
+\toprule
+实现 & ms/iter & 有效带宽 (GB/s) \\
+\midrule
+naive（1 次归约，无 max 减法） & 0.0121 & 690.6 \\
+safe（2 次归约）              & 0.0146 & 572.9 \\
+online（1 次 MD 融合归约）     & 0.0142 & 591.6 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+三个观察：
+（1）naive 最快——它比 safe 少一次 block 归约（少一次全局同步），比 online 的合并运算轻；
+在输入保证有界时它确实是三者中最便宜的，可惜这个前提在生产环境不可保证。
+（2）online 比 safe 略快：扫描遍数与同步次数的优势
+（1 次 vs 2 次）压过了更重的合并算子与快速数学指令；差距在小 $N$ 下不明显，
+当 $N$ 变大、第二次全局读取不再能被 L1 完全吸收时，online 的优势会拉大。
+（3）三者的绝对带宽都不高（数百 GB/s）：单次 kernel 只有十几个微秒，
+launch 与同步的固定开销占比大；附录~B 的汇总口径会注明这是「短 kernel 小形状」数据，
+不与 README 的大形状 GEMM/attention 带宽直接比较。
+
+\section{勘误与考据}
+
+\begin{kaogu}[F3]{base.cuh L538-539 与 L541-542：启动配置注释的两处含混}
+  其一，L538 的「grid(S*h/h, h), block(h)」中 $S h / h$ 化简后就是 $S$，写法混乱；
+  实际启动为 grid$(S,1,1)$、block$(H,1,1)$，与 L541-542 一致。
+  其二，更实质的问题：三版 kernel 内的边界守卫都是全局索引 \texttt{idx < N}，
+  但注释没有说明 $N$ 的语义是\textbf{总元素数} $S \times H$（原始工程
+  \texttt{softmax.cu} 入口有 \texttt{const int N = S * H;}，base.cuh 精简版丢掉了这行）。
+  本章测试曾因按「每 token 长度」理解 $N$ 并以 $S=2$ 调用而复现故障：
+  block 1 的全部线程被守卫剪掉，token 1 的输出\textbf{不写回}（旧值残留）。
+  抽取源 notes-v2.cu 的 test\_softmax（L847）固定 grid$(1)$、$N = 256$（单 token），
+  恰好绕开了该歧义。建议读者牢记约定：grid$(S)$ 时必须传 $N = S \times H$，
+  且 $H$ 恰等于 blockDim（一个 token 装满一个 block）。
+\end{kaogu}
+
+\begin{kaogu}[F3 核校通过]{base.cuh L556：溢出阈值 88.7}
+  $\ln(\mathrm{FLT\_MAX}) \approx 88.72$；$e^{88} \approx 1.65\times 10^{38} < \mathrm{FLT\_MAX}$，
+  $e^{89} \approx 4.49\times 10^{38} > \mathrm{FLT\_MAX}$。注释数字与独立推导一致。
+\end{kaogu}
+
+\begin{kaogu}[F5 核校通过]{base.cuh L590：算法出处 arXiv:1805.02867}
+  Online normalizer calculation for softmax（M. Milakov, N. Gimelshein, 2018），
+  arXiv 编号正确。该文同时给出了本文式~\ref{eq:4-merge} 的二元合并形式。
+\end{kaogu}
+
+\begin{kaogu}[F3]{base.cuh L583-585 与 L586-589：两套公式并存需辨析}
+  注释同时给出「单元素增量更新」与「二元合并」两组公式，数学上等价
+  （后者视为前者的推广，见式~\ref{eq:4-online} 与式~\ref{eq:4-merge} 的关系），
+  但注意实现细节：\texttt{warp\_reduce\_md} 中的指数用的是快速数学
+  \texttt{\_\_expf}，与 safe 版的 \texttt{expf} 精度语义不同（见 4.7~节坑三），
+  两版输出逐位对比会有 $10^{-8}$ 量级差异，属预期现象（本章测试的一致性判定按此放宽）。
+\end{kaogu}
+
+\section{常见坑}
+
+\textbf{坑一：$N$ 传错语义，静默丢输出。}见 4.6~节勘误一：grid$(S)$ 且 $S>1$ 时
+必须传 $N = S \times H$，否则 block $1, \dots, S-1$ 整体被 \texttt{idx < N} 剪掉，
+输出缓冲残留旧值——不报错、不崩溃，纯静默。建议自测时先以 $S=2$ 跑一遍
+「输出缓冲先 memset 成哨兵值」的检查。
+
+\textbf{坑二：边界填充值要和运算匹配。}求和的填充是 $0$（加法单位元），
+求 max 的填充是 \texttt{-FLT\_MAX}（max 单位元），online 版状态填充是
+$\bigl(\texttt{-FLT\_MAX},\, 0\bigr)$。三者各自配对，混用（比如 max 归约填 0）
+会让 max 被钳在 0、指数整体偏大。若整行全为边界线程（空行），$d = 0$ 会出现
+除零，per-token 场景下由调用方保证行非空。
+
+\textbf{坑三：\texttt{\_\_expf}/\texttt{\_\_fdividef} 的精度语义。}\texttt{\_\_expf}
+是 SFU 硬件指数，约 2 ulp 量级误差；\texttt{expf} 是软件精确版。推理路径用快速数学通常无损
+（softmax 输出本就有 fp32 舍入），但参考实现、精度回归、数值实验必须用 \texttt{expf}。
+同理 online 版写回的 \texttt{\_\_fdividef} 是近似除法。第~\ref{ch:19}~章量化注意力对
+LSE 的精度更敏感，届时这类选择要重新评估。
+
+\textbf{坑四：fp16 输入必须升 fp32 累加。}half 的最大值约 65504，
+$e^{11}$ 就越界。所以 fp16 softmax 的正确姿势永远是：减 max 后用 fp32
+做指数与累加（F32Acc），最后再落回 fp16。第~\ref{ch:06}~章的 RMSNorm/LayerNorm
+同理，容差分级也沿用 F32Acc 档。
+
+\textbf{坑五：blockDim 必须与模板参数一致。}三版 kernel 的模板参数
+\texttt{kNumThreads} 决定二级归约的 shared 数组大小与参与线程数，launch 时
+blockDim 不一致会越界或归约错位。这是第~\ref{ch:02}~章 block 归约的既有约束，
+本章沿用。
+
+\section{面试要点速查}
+
+\textbf{Q1：为什么 softmax 要减 max？不减会怎样？}\\
+A：数学上平移不变（式~\ref{eq:4-shift}），工程上 $e^{x}$ 在 $x > 88.72$ 时溢出为
+\texttt{inf}，输出变 \texttt{NaN}；减 max 后指数参数非正、指数值 $\le 1$，绝对安全。
+
+\textbf{Q2：safe 版比 naive 版多花了什么？}\\
+A：一次额外的 block 归约（一次全局同步点），以及写回阶段对 $x$ 的第二次读取
+（通常 L1 命中）。本章实测约慢 $17\%$（表~\ref{tab:4-bench}），买到的是任意有限输入下的确定性。
+
+\textbf{Q3：online softmax 的不变量是什么？为什么能套 XOR 蝶形归约？}\\
+A：不变量是式~\ref{eq:4-invariant}；二元合并满足结合律（引理~\ref{lem:md-assoc}），
+所以任意归约树结果唯一，XOR 蝶形 5 步即可全 warp 收敛。
+
+\textbf{Q4：单元素更新和二元合并两套公式什么关系？}\\
+A：后者是前者的一般化：单元素 $x$ 等价于状态 $(x, 1)$。$m^{(1)} \ge m^{(2)}$ 时合并退化为
+$\ell = \ell^{(1)} + \ell^{(2)} e^{m^{(2)} - m^{(1)}}$，即「大者不动、小者 rescale」。
+
+\textbf{Q5：FlashAttention 为什么必须要 online softmax？}\\
+A：attention 若先物化整张分数矩阵 $S$ 再 softmax，显存是 $O(N^{2})$；online rescale 让
+softmax 依附在 KV 分块循环上流式完成，$S$ 从不落地，显存 $O(N)$。这正是
+第~\ref{ch:15}~章的主题，而它的状态打包形式 LSE 就是下一章的主角。
+
+\section{最小测试与动手实验}
+
+测试文件：\texttt{book/tests/ch04\_softmax.cu}（逻辑抽取自 notes-v2.cu 的
+test\_softmax，L847，对照改为 CPU fp64 参考）。三个 case：
+A（$S=2$、$N=256$，$x \in [-5,5]$，三版正确性 + 两两一致性）；
+B（$S=1$、$N=100$、block=128，边界线程守卫路径）；
+C（$x \in [80,120]$，naive 必然溢出 vs safe/online 稳定的演示）。
+
+在 \texttt{book/tests/} 目录、\texttt{CUDA\_VISIBLE\_DEVICES=7} 下执行
+\texttt{./build\_tests.sh --ch ch04}（编译 + 运行一体）。本机运行输出
+（RTX PRO 5000，2026-09-11，PASS 行的误差数值见表~\ref{tab:4-pass}）：
+
+\begin{verbatim}
+case A: S=2 N=256 block=256 x in [-5,5]
+case B: S=1 N=100 block=128 x in [-5,5]
+case C: S=1 N=256 block=256 x in [80,120]
+INFO naive with large x: y[0]=nan (non-finite expected)
+ALL OK
+\end{verbatim}
+
+\begin{table}[htbp]
+\centering
+\caption{ch04 测试 PASS 行数值摘录（完整行式输出见
+\texttt{tests/.build/ch04\_softmax} 运行日志；tol 为判定容差）}
+\label{tab:4-pass}
+\begin{tabular}{llrr}
+\toprule
+case & 判定项 & 最大绝对误差 & tol \\
+\midrule
+A & softmax naive           & 3.914e-09 & 1.0e-03 \\
+A & softmax safe            & 3.624e-09 & 1.0e-03 \\
+A & softmax online          & 3.914e-09 & 1.0e-03 \\
+A & consistency naive vs safe  & 3.725e-09 & 2.0e-05 \\
+A & consistency safe vs online & 3.725e-09 & 2.0e-05 \\
+A & consistency naive vs online & 3.725e-09 & 2.0e-05 \\
+B & softmax naive / safe / online & $<$ 1.2e-08 & 1.0e-03 \\
+C & softmax safe            & 1.150e-08 & 1.0e-03 \\
+C & softmax online          & 8.146e-09 & 1.0e-03 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+判据：三版对 CPU fp64 参考的误差都在 $10^{-8}$ 量级（远小于 F32Acc 档 $10^{-3}$）；
+case~C 中 naive 输出 \texttt{NaN} 而 safe/online 与参考吻合，直观展示了 4.2~节的溢出界。
+动手实验建议：（1）把 Case~A 的 scale 从 5 逐步调到 30，观察 naive 从正确到溢出的
+临界点；（2）把 launch 改成 $S=2$ 但只传 $N=256$，复现勘误一的静默丢输出；
+（3）bench 用 \texttt{./build/ch04\_softmax bench} 自行复现表~\ref{tab:4-bench} 的数据。
+
+\section*{延伸阅读}
+
+\begin{itemize}
+  \item @紫气东来《CUDA 算子系列(二)： SoftMax》，
+        \url{https://zhuanlan.zhihu.com/p/695307283}
+        （naive/safe/online 的 CUDA 实现对照）；
+  \item @DefTruth《图解大模型训练之：推理加速一一从 Online-Softmax 到 FlashAttention
+        V1, V2, V3》，\url{https://zhuanlan.zhihu.com/p/668888063}
+        （online softmax $\to$ FA 的完整推导链，本章 4.3 节的风格基线）；
+  \item M. Milakov, N. Gimelshein. Online normalizer calculation for softmax.
+        arXiv:1805.02867, 2018（online 递推与二元合并的原始出处）。
+\end{itemize}

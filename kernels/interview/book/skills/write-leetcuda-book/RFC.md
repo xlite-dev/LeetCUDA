@@ -14,10 +14,10 @@
 
 | 里程碑 | 内容 | 依赖 | 状态 |
 |---|---|---|---|
-| RFC-0 | 脚手架与空骨架编译 | — | 未开始 |
-| RFC-A | 冻结件（记号表/模板/锚点脚本/源码冻结） | RFC-0 | 未开始 |
+ |
+| RFC-A | 冻结件（记号表/模板/锚点脚本/源码冻结） | RFC-0 | 完成（2026-09-11）|
 | RFC-B | 知乎资料全集（专栏枚举+图片归档） | RFC-0 | 未开始（可与 A 并行） |
-| RFC-C | Part I 基础篇 ch1-7 | RFC-A（素材按需 RFC-B） | 未开始 |
+| RFC-C | Part I 基础篇 ch1-7 | RFC-A（素材按需 RFC-B） | 完成（2026-09-11，91 页/42 PASS）|
 | RFC-D | Part II GEMM 篇 ch8-14 | RFC-C | 未开始 |
 | RFC-E | Part III Attention 篇 ch15-19 | RFC-D | 未开始 |
 | RFC-F | Part IV CuTe 篇 ch20-26（原理章先行） | RFC-E | 未开始 |
@@ -66,14 +66,14 @@
 
 > 每项格式：`[ ] 编号 chNN 标题 | 源码区间 | 宏/arch | 测试文件 ← notes-v2.cu 抽取源 | 必收图`。DoD=BOOK_PLAN §4.2。
 
-- [ ] C1 ch01 GPU 架构/Roofline | base.cuh L1-86 扩写 | 无宏/全 arch | ch01_roofline.cu（AI 计算演示，host 为主） | FIG-1-1 内存层级、FIG-1-2 roofline
-- [ ] C2 ch02 Warp/Block Reduce 与 Dot | base.cuh L87-305 | 无宏 | ch02_reduce.cu ← test_block_reduce@L510 + test_dot@L545 | FIG-2-1 shuffle 蝶形
-- [ ] C3 ch03 向量化与原子操作 | base.cuh L306-386 | 无宏 | ch03_elementwise.cu ← test_relu@L596/test_elementwise@L641/test_histogram@L689 | FIG-3-1 coalescing 对比
-- [ ] C4 ch04 Softmax 三级递进★ | base.cuh L520-665 | 无宏 | ch04_softmax.cu ← test_softmax@L847 | FIG-4-1 online 数据流
-- [ ] C5 ch05 LSE 与 merge_attn_states | base.cuh L387-519 | 无宏 | ch05_merge_attn.cu ← test_merge_attn_states@L723 | FIG-5-1 分块合并
-- [ ] C6 ch06 RMSNorm/LayerNorm | base.cuh L666-801 | 无宏 | ch06_norm.cu ← test_rms_norm@L920/test_layer_norm@L978 | —
-- [ ] C7 ch07 RoPE 与转置·Bank Conflict | base.cuh L802-909 | 无宏 | ch07_rope_transpose.cu ← test_rope@L1042/test_mat_transpose@L1098/@1144 | FIG-7-1 bank conflict vs padding
-- [ ] C-验收 Part I 全部章节编译进 book.pdf；7 个测试全 PASS；每章 DoD 勾选留档
+- [x] C1 ch01 GPU 架构/Roofline | base.cuh L1-86 扩写 | 无宏/全 arch | ch01_roofline.cu（AI 计算演示，host 为主） | FIG-1-1 内存层级、FIG-1-2 roofline（2026-09-11）
+- [x] C2 ch02 Warp/Block Reduce 与 Dot | base.cuh L87-305 | 无宏 | ch02_reduce.cu ← test_block_reduce@L510 + test_dot@L545 | FIG-2-1 shuffle 蝶形（2026-09-11）
+- [x] C3 ch03 向量化与原子操作 | base.cuh L306-386 | 无宏 | ch03_elementwise.cu ← test_relu@L596/test_elementwise@L641/test_histogram@L689 | FIG-3-1 coalescing 对比（2026-09-11）
+- [x] C4 ch04 Softmax 三级递进★ | base.cuh L520-665 | 无宏 | ch04_softmax.cu ← test_softmax@L847 | FIG-4-1 online 数据流（2026-09-11）
+- [x] C5 ch05 LSE 与 merge_attn_states | base.cuh L387-519 | 无宏 | ch05_merge_attn.cu ← test_merge_attn_states@L723 | FIG-5-1 分块合并（2026-09-11）
+- [x] C6 ch06 RMSNorm/LayerNorm | base.cuh L666-801 | 无宏 | ch06_norm.cu ← test_rms_norm@L920/test_layer_norm@L978 | —（2026-09-11）
+- [x] C7 ch07 RoPE 与转置·Bank Conflict | base.cuh L802-909 | 无宏 | ch07_rope_transpose.cu ← test_rope@L1042/test_mat_transpose@L1098/@1144 | FIG-7-1 bank conflict vs padding（2026-09-11）
+- [x] C-验收 Part I 全部章节编译进 book.pdf；7 个测试全 PASS；每章 DoD 勾选留档（2026-09-11）
 
 ## 6. RFC-D Part II GEMM 篇（ch8-14）
 

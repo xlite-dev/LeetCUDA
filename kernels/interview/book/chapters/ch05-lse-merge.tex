@@ -1,4 +1,454 @@
-% ch05-lse-merge.tex — 骨架（RFC-0.3），撰写任务见 RFC.md C5
+% ch05-lse-merge.tex — LSE 与分块合并：merge\_attn\_states（RFC-C5，2026-09-11）
 \chapter{LSE 与分块合并：merge\_attn\_states}\label{ch:05}
 
-本章待撰写。源码区间：base.cuh L387-519；执行卡片：RFC.md C5；章节模板：\texttt{chapters/\_template.tex}（10 节结构 + DoD 八条）。
+\section{本章导读}
+
+第~\ref{ch:04}~章末尾我们预告了 LSE：它把 online softmax 的双状态 $(m, \ell)$
+压缩成一个标量。本章讲清楚两件事：\textbf{为什么这个压缩是无损的}，以及
+\textbf{拿到两份分块的部分结果后，如何只靠 LSE 就把它们合并成与「一次性算完」
+逐元素相等的结果}。教学载体是 base.cuh 的 \texttt{merge\_attn\_states}
+（base.cuh~L437 起）：它实现 FlashInfer 论文（arXiv 2501.01005）Section~2.2
+描述的 attention 状态合并逻辑，也是 vLLM/FlashInfer 里 chunked prefill、
+FlashDecoding 等分块方案共用的「最后一公里」。
+
+\textbf{前置章节}：第~\ref{ch:04}~章（online 递推与二元合并式）。
+\textbf{源码区间}：base.cuh~L387--519（Phase 2 末尾），无编译宏限定，全部架构适用。
+\textbf{后继}：第~\ref{ch:15}~章 FlashAttention 的 online rescale 把本章的「事后合并」
+搬进主循环内部；第~\ref{ch:19}~章 FFPA Split-D 则在大 head\_dim 切分后用同一套
+公式跨 D-chunk 合并。预计篇幅约 10 页。
+
+\section{问题与动机}
+
+长序列推理有一条基本的工程规律：\textbf{注意力要沿 KV 维分块}。原因有二：
+其一，KV cache 随序列增长，一次性装不下或不想装（chunked prefill、PagedAttention
+的分页调度）；其二，把 KV 沿序列切给多个 SM 并行（FlashDecoding 的 split-KV），
+用并行度换延迟。分块之后立刻产生一个新问题：
+\textbf{每个分块各自做了一次独立的 softmax，它们的输出不能直接相加}——
+softmax 不是线性算子，分母（指数和）被各自的 max 归一化过，直接相加等于
+把两份「各自除过各自分母」的概率混在一起。
+
+好在第~\ref{ch:04}~章的 online 递推已经告诉我们：只要每块额外吐出一个状态
+$(m, \ell)$（或其打包形式 LSE），两块就能严格合并，且结果与「把两块拼起来一次算完」
+逐元素相等。于是整个分块体系拆成两层：
+\begin{itemize}
+  \item \textbf{块内}：各块独立跑标准 attention kernel，输出已归一化的
+        $O^{A}, O^{B}$ 与各自的 $\mathrm{LSE}^{A}, \mathrm{LSE}^{B}$；
+  \item \textbf{块间}：一个极轻量的合并 kernel（本章主角）按指数权重把两份
+        $O$ 加权混合。它每个输出元素只有 3 次 FLOP、约 12~B 流量，
+        完全并行、无任何同步，是一个纯粹 bandwidth-bound 的 elementwise kernel。
+\end{itemize}
+这个设计的妙处在于\textbf{状态接口极窄}：块与块之间只传一个标量 LSE
+（外加那份本来就要传的 $O$），主 kernel 不需要为「可合并」做任何特殊化改造。
+本章测试将构造两个分块状态，验证合并结果与整体 softmax 直接计算逐元素相等。
+
+\section{数学原理}
+
+\subsection{分块状态与 LSE 的无损打包}
+
+沿用第~\ref{ch:04}~章记号：某 query 行的打分为 $s^{(j)}$，KV 被切成两个分块
+$A$（$j \in A$，共 $n$ 个）与 $B$（$j \in B$，共 $m$ 个）。每个分块独立跑完
+attention 后持有四个量：
+\begin{equation}
+  m^{A} = \max\sb{j \in A} s^{(j)}, \quad
+  \ell^{A} = \sum\sb{j \in A} e^{\,s^{(j)} - m^{A}}, \quad
+  O^{A} = \frac{1}{\ell^{A}} \sum\sb{j \in A} e^{\,s^{(j)} - m^{A}}\, v^{(j)}, \quad
+  \mathrm{LSE}^{A} = m^{A} + \log \ell^{A},
+  \label{eq:5-chunk-state}
+\end{equation}
+分块 $B$ 同理（上标 $A$ 换 $B$）。$O^{A}$ 是\textbf{已归一化}的分块输出
+（除过自己的 $\ell^{A}$），这正是 FlashAttention kernel 落盘的形态；
+$\mathrm{LSE}^{A}$ 是对数求和指数（log-sum-exp），它是 $m$ 与 $\ell$ 的可逆打包：
+
+\begin{definition}[LSE]\label{def:lse}
+  对集合 $S$ 上的分数 $\{s^{(j)}\}$，
+  $\mathrm{LSE}(S) = \log \sum\sb{j \in S} e^{s^{(j)}}$。若以 $m = \max\sb{j\in S} s^{(j)}$
+  与 $\ell = \sum\sb{j \in S} e^{s^{(j)} - m}$ 表示，则
+  \begin{equation}
+    \mathrm{LSE}(S) = m + \log \ell .
+    \label{eq:5-lse-def}
+  \end{equation}
+  由于 $e^{\mathrm{LSE} - m} = \ell$ 对\textbf{任意}基准 $m$ 成立，
+  LSE 单个标量即可无损还原 $(m, \ell)$ 状态（给定任一 shift 基准）。
+\end{definition}
+
+\subsection{合并公式：从真值形式到 LSE 形式}
+
+先写\textbf{真值形式}。把两块拼起来一次性做 safe softmax，基准取
+$m = \max(m^{A}, m^{B})$：
+\begin{equation}
+  O \;=\; \frac{\displaystyle\sum\sb{j \in A \cup B} e^{\,s^{(j)} - m}\, v^{(j)}}
+               {\displaystyle\ell}, \qquad
+  \ell \;=\; e^{\,m^{A} - m}\,\ell^{A} \;+\; e^{\,m^{B} - m}\,\ell^{B} ,
+  \label{eq:5-merge-true}
+\end{equation}
+其中分母正是第~\ref{ch:04}~章式~\ref{eq:4-merge} 的二元合并。把分子的求和按
+$A$、$B$ 拆开并凑因子：
+\begin{equation}
+  \sum\sb{j \in A} e^{\,s^{(j)} - m}\, v^{(j)}
+  = \underbrace{e^{\,m^{A} - m}\,\ell^{A}}\sb{\textstyle \triangleq\, W^{A}}
+    \cdot \underbrace{\frac{1}{\ell^{A}} \sum\sb{j \in A} e^{\,s^{(j)} - m^{A}}\, v^{(j)}}\sb{\textstyle =\, O^{A}} ,
+  \label{eq:5-split}
+\end{equation}
+于是真值合并可以写成「未归一化权重」$W^{A}, W^{B}$ 对已归一化输出的凸组合：
+\begin{equation}
+  O \;=\; \frac{W^{A} O^{A} + W^{B} O^{B}}{W^{A} + W^{B}},
+  \qquad W^{A} = e^{\,m^{A} - m}\,\ell^{A}, \;\;
+          W^{B} = e^{\,m^{B} - m}\,\ell^{B} .
+  \label{eq:5-convex}
+\end{equation}
+
+现在做\textbf{关键替换}：问题要求我们手上只有 $\mathrm{LSE}^{A}, \mathrm{LSE}^{B}$
+（没有分开的 $m^{A}, \ell^{A}$）。利用定义~\ref{def:lse} 的还原性，对合并基准
+$L \triangleq \max\bigl(\mathrm{LSE}^{A}, \mathrm{LSE}^{B}\bigr)$ 计算
+\begin{equation}
+  w^{A} \;\triangleq\; e^{\,\mathrm{LSE}^{A} - L}
+         \;=\; e^{\,m^{A} + \log \ell^{A} - L}
+         \;=\; e^{\,m - L} \cdot \underbrace{e^{\,m^{A} - m}\,\ell^{A}}\sb{\textstyle W^{A}} .
+  \label{eq:5-key}
+\end{equation}
+也就是说：\textbf{用 LSE 算出的权重 $w^{A}$ 与真值权重 $W^{A}$ 只差一个对两块
+完全相同的常数因子 $e^{\,m - L}$}。在式~\ref{eq:5-convex} 的分子分母里，
+这个常数同时出现、同时约掉。定义归一化权重
+\begin{equation}
+  \alpha = \frac{w^{A}}{w^{A} + w^{B}}, \qquad
+  \beta  = \frac{w^{B}}{w^{A} + w^{B}}, \qquad \alpha + \beta = 1 ,
+  \label{eq:5-alpha-beta}
+\end{equation}
+则 $\alpha = W^{A}/(W^{A}+W^{B})$、$\beta = W^{B}/(W^{A}+W^{B})$，立刻得到
+本章的核心定理。
+
+\begin{theorem}[LSE 合并等价于整体 softmax 加权]\label{thm:merge-eq}
+  设两分块状态由式~\ref{eq:5-chunk-state} 给出，$L = \max(\mathrm{LSE}^{A},
+  \mathrm{LSE}^{B})$，$\alpha, \beta$ 由式~\ref{eq:5-alpha-beta} 定义，则
+  \begin{equation}
+    O \;=\; \alpha\, O^{A} + \beta\, O^{B}
+      \;=\; \frac{\sum\sb{j \in A \cup B} e^{\,s^{(j)} - m}\, v^{(j)}}
+                 {\sum\sb{j \in A \cup B} e^{\,s^{(j)} - m}} ,
+    \label{eq:5-theorem}
+  \end{equation}
+  即两步合并（先块内归一化、后 LSE 加权）与拼接后一次性 softmax 加权逐元素相等。
+\end{theorem}
+\begin{proof}
+  由式~\ref{eq:5-key}，$w^{A}/(w^{A}+w^{B}) = W^{A}/(W^{A}+W^{B})$（常数因子
+  $e^{m-L}$ 约去）。代入式~\ref{eq:5-convex}：
+  $\alpha O^{A} + \beta O^{B} = (W^{A} O^{A} + W^{B} O^{B})/(W^{A}+W^{B})$。
+  再由式~\ref{eq:5-split} 反向展开，分子为
+  $\sum\sb{j \in A} e^{s^{(j)}-m} v^{(j)} + \sum\sb{j \in B} e^{s^{(j)}-m} v^{(j)}
+  = \sum\sb{j \in A \cup B} e^{s^{(j)}-m} v^{(j)}$，分母为式~\ref{eq:5-merge-true}
+  的 $\ell = \sum\sb{j \in A \cup B} e^{s^{(j)}-m}$。得证。
+\end{proof}
+
+定理~\ref{thm:merge-eq} 有三个值得咀嚼的点。
+\textbf{其一}，shift 基准随便换：用 $L = \max(\mathrm{LSE})$ 还是
+$m = \max(m)$ 做基准只改变常数因子，不影响凸组合系数——所以 kernel 可以
+直接在 LSE 域上取 max，无需还原 $m$。同时 $w^{A}, w^{B} \le e^{0} = 1$，
+与 safe softmax 一脉相承的数值安全。
+\textbf{其二}，$\alpha + \beta = 1$ 意味着合并是\textbf{凸组合}：
+$O$ 落在 $[O^{A}, O^{B}]$ 的凸包内，不会放大任何一方的量级。
+\textbf{其三}，这套推导对「两块」成立，对任意多块也成立（逐对两两合并即可，
+对应第~\ref{ch:15}~章 FA 主循环里的 online rescale 与第~\ref{ch:19}~章
+跨 D-chunk 的两阶段合并）。
+
+\subsection{空段与 $\pm\infty$ 语义}
+
+causal mask 等机制会产生「空段」：某分块内全部打分被 mask 成 $-\infty$，
+此时 $\ell = 0$，LSE 依实现约定可能记为 $+\infty$ 或 $-\infty$。合并层的
+正确语义是\textbf{空段权重必须为 0}。源码的防御是：先把 $+\infty$ 的 LSE
+清洗成 $-\infty$（base.cuh~L484-485），此后 $w = e^{-\infty - L} = 0$，
+该块权重自然退化为 0（数学上严格成立，核校通过）。但要小心一个残留边界：
+\textbf{两段同时为空}时 $L = -\infty$，$w = e^{-\infty - (-\infty)} = e^{\mathrm{NaN}}$，
+输出 \texttt{NaN}——kernel 未处理；真实合并场景（prefix+suffix 至少一段非空）
+不会触发，但做单元测试与泛化改造时必须知道这条边界的存在。
+
+\section{设计与实现}
+
+\lstinputlisting[linerange={437-457},firstnumber=auto,
+  title={base.cuh L437-457（merge\_attn\_states 签名与线程规划）}]{../base.cuh}
+
+先看接口与布局约定，这里有本章最容易犯错的一处\textbf{转置陷阱}：
+\begin{itemize}
+  \item $O$ 相关的三个数组（\texttt{output}/\texttt{prefix\_output}/
+        \texttt{suffix\_output}）布局是 $[\text{num\_tokens}, \text{num\_heads},
+        \text{head\_size}]$——token 维在最外，与 attention 输出惯例一致；
+  \item 而 LSE 的两个数组布局是 $[\text{num\_heads}, \text{num\_tokens}]$
+        ——head 维在最外（FlashAttention-2 惯例里 LSE 逐 head 连续存放便于后续
+        逐 head 处理）。于是同一个逻辑对 $(t, h)$ 在两边的寻址分别是
+        $t \cdot H \cdot D + h \cdot D$ 与 $h \cdot T + t$，一个是「行优先的块」
+        一个是「转置的下标」，写测试时极易弄反（见 5.7~节坑二）。
+\end{itemize}
+线程规划是三维切分：\texttt{threads\_per\_head = head\_size / kPackSize} 个线程
+覆盖一个 (token, head) 对的 $D$ 个元素，\texttt{total\_threads} 为全局有效线程数，
+超过它的线程直接返回（block 按 128 对齐分配，最后一个 block 会多出空闲线程）。
+
+\lstinputlisting[linerange={459-485},firstnumber=auto,
+  title={base.cuh L459-485（global\_idx 三级解包与 LSE 读取、inf 清洗）}]{../base.cuh}
+
+这段是一维线程号到三维数据坐标的解包：\texttt{global\_idx} 先除/模
+\texttt{threads\_per\_head} 得到（第几个 (token,head) 对，pack 内第几个 128-bit 包），
+再除/模 \texttt{num\_heads} 分出 token（变化慢的外维）与 head（变化快的内维）。
+以头注释的示例（$T{=}2, H{=}2, D{=}8$）：8 个线程的
+\texttt{token\_head\_idx} 依次为 $0,0,1,1,2,2,3,3$、\texttt{pack\_idx} 为
+$0,1,0,1,0,1,0,1$。同一个 warp 里相邻线程访问相邻 pack，两次 $O$ 的读与一次写
+都是 128-bit 完全 coalesced——这是它跑出 TB/s 级带宽的直接原因。
+LSE 读取只有每 (token, head) 2 次标量加载（\texttt{p\_lse}、\texttt{s\_lse}），
+随后立即做 $+\infty \to -\infty$ 清洗（5.3~节）。
+
+\lstinputlisting[linerange={487-497},firstnumber=auto,
+  title={base.cuh L487-497（Step 1--3：max 归一、指数还原、归一化权重）}]{../base.cuh}
+
+对照定理~\ref{thm:merge-eq} 的推导链，加上最前面的清洗，实现共五步：
+\begin{itemize}
+  \item \textbf{Step 0（清洗）}：\texttt{isinf ? -INFINITY : lse}，
+        把空段的 $+\infty$ 约定归一到 $-\infty$；
+  \item \textbf{Step 1（max 归一）}：$L = \max(\mathrm{LSE}^{A}, \mathrm{LSE}^{B})$，
+        两数各减 $L$——与 safe softmax 的减 max 完全同构，保证后续指数参数非正；
+  \item \textbf{Step 2（指数还原）}：$w^{A} = e^{\mathrm{LSE}^{A} - L}$、
+        $w^{B} = e^{\mathrm{LSE}^{B} - L}$（源码 \texttt{p\_se}/\texttt{s\_se}），
+        即式~\ref{eq:5-key}；
+  \item \textbf{Step 3（归一化）}：$\alpha = w^{A}/(w^{A}+w^{B})$、
+        $\beta = w^{B}/(w^{A}+w^{B})$（源码 \texttt{p\_scale}/\texttt{s\_scale}），
+        即式~\ref{eq:5-alpha-beta}，常数因子 $e^{m-L}$ 在此处被约掉；
+  \item \textbf{Step 4（凸组合）}：$O = \alpha O^{A} + \beta O^{B}$，
+        见下一段。
+\end{itemize}
+值得强调：源码头注释写「Step 1--4」而概括为「5 步推导」，本书按
+「清洗 + Step 1--4」共 5 步展开（见 5.6~节勘误一）；
+另外每 (token, head) 对的 Step 0--3 只做一遍（4 次标量运算），
+然后由覆盖该 head 的全部线程共享结果——这就是为什么合并层的计算开销
+可以忽略不计。
+
+\lstinputlisting[linerange={499-517},firstnumber=auto,
+  title={base.cuh L499-517（Step 4：128-bit 向量化凸组合）}]{../base.cuh}
+
+Step 4 的主体是 \texttt{uint4}（$=4 \times$ float，128-bit）打包加载：
+\texttt{prefix}/\texttt{suffix} 各取一个 pack，逐元素做一次乘加
+$o = p \cdot \alpha + s \cdot \beta$（硬件可融合为 FMA），再整包写回。
+每个输出元素 3 次 FLOP、2 次读 1 次写；128-bit 粒度让每线程的 4 个元素
+共享同一份 $\alpha, \beta$ 与同一份 LSE 读取。收尾的
+\texttt{if (pack\_offset < head\_size)} 在「$D$ 是 4 的倍数」的约定下恒为真
+（见 5.6~节勘误三），属于防御性写法。
+
+\section{图示}
+
+\begin{figure}[htbp]
+\centering
+\begin{verbatim}
+  FIG-5-1  merge two chunked attention states == full softmax weighting
+
+    KV chunk A: s(1..n)                     KV chunk B: s(n+1..n+m)
+    ---------------------------             ---------------------------
+    m(A) = max s(1..n)                      m(B) = max s(n+1..n+m)
+    l(A) = SUM e^(s - m(A))                 l(B) = SUM e^(s - m(B))
+    O(A) = SUM e^(s-m(A)) * V / l(A)        O(B) = SUM e^(s-m(B)) * V / l(B)
+    LSE(A) = m(A) + log l(A)                LSE(B) = m(B) + log l(B)
+              |                                        |
+              +------------------>+<------------------+
+                                  |
+                   L = max(LSE(A), LSE(B))
+                   w(A) = e^(LSE(A)-L)      w(B) = e^(LSE(B)-L)
+                   alpha = w(A)/(w(A)+w(B)) beta = w(B)/(w(A)+w(B))
+                   O = alpha * O(A) + beta * O(B)
+                                  |
+                                  v
+        O == softmax([s(1..n); s(n+1..n+m)]) applied to [V(A); V(B)]
+        (element-wise equal to one-shot attention over both chunks)
+\end{verbatim}
+\caption{两个分块 attention 状态的合并：块内各自输出（已归一化 $O$ 与单标量
+LSE），块间以 $L = \max(\mathrm{LSE})$ 为 shift 基准计算凸组合系数
+$\alpha, \beta$，合并结果与整体 softmax 直接加权逐元素相等
+（定理~\ref{thm:merge-eq}）。（占位，RFC-H 升级）}\label{fig:5-1}
+\end{figure}
+
+\section{性能分析}
+
+\textbf{算术强度}：每个输出元素读 $O^{A}$（4~B）、读 $O^{B}$（4~B）、写
+$O$（4~B），共 12~B；LSE 是每 (token, head) 8~B 的标量流量，摊到元素上是
+$8/D$~B。计算是每元素 3 FLOP（2 乘 1 加）。$D = 128$ 时
+$AI \approx 3 / 12.06 \approx 0.25$ FLOP/B，深居 roofline 拐点左侧，
+是教科书级的 \textbf{severely memory-bound} 算子——头注释的结论正确，
+但「20 bytes」的口径把 LSE 读按每元素计了（见 5.6~节勘误二）。
+优化抓手也因此明确：向量化宽度（128-bit 已到位）、coalescing（三维解包保证）、
+以及避免任何分支/同步（本 kernel 无共享内存、无同步点）。
+
+本章 bench 复测（RTX PRO 5000 72GB Blackwell，sm\_120，2026-09-11；
+$T = 16384$、$H = 32$、$D = 128$；每次迭代净流量为两份 $O$ 读取与一份 $O$ 写入
+$3 \times 268.4~\text{MB}$，加两份 LSE 共 $2 \times 2.1~\text{MB}$，合计约
+$809.5~\text{MB}$；warmup 3 次 + 10 次取均值；数据文件
+\texttt{.tmp/book-bench/ch05/bench.txt}）：
+
+\begin{table}[htbp]
+\centering
+\caption{ch05 merge\_attn\_states 耗时与带宽（10 次均值）}
+\label{tab:5-bench}
+\begin{tabular}{lrr}
+\toprule
+kernel & ms/iter & 有效带宽 (GB/s) \\
+\midrule
+merge\_attn\_states & 0.7849 & 1031.4 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+单 kernel 0.78~ms 跑满 809.5~MB，有效带宽 $1031~\text{GB/s}$，
+已达到该卡理论带宽的六成上下——对「读两份写一份」的纯流式访存是合理水平
+（读写翻转与 LSE 的零散标量访问会损失一部分）。作为对比参照：同卡上
+ch04 的 softmax 小形状只有数百 GB/s，差距主要来自形状规模
+（本 kernel 每次迭代有 1600 万个线程、13 万个 block，launch 开销完全摊薄）。
+若要继续压榨，可尝试的方向是 256-bit 访问或 LSE 的 warp 级广播复用，
+但收益预计在个位数百分比——memory-bound 算子的带宽已近材料上限。
+
+\section{勘误与考据}
+
+\begin{kaogu}[F3]{base.cuh L393：「5 步推导」只列了 Step 1--4}
+  头注释称「数学公式（5 步推导）」，随后仅列出 Step 1（max 归一）、Step 2（指数还原）、
+  Step 3（归一化混合比例）、Step 4（加权合并）四步。按实现数，第 5 步应是
+  L484-485 的 $+\infty \to -\infty$ 清洗（或把「$w\sb{1} + w\sb{2}$ 归一化」与
+  「逐元素加权」拆开计数）。本章 5.3~节按「清洗 + Step 1--4」共 5 步展开，
+  与代码行一一对应；建议后续修订注释时明确第 5 步所指。
+\end{kaogu}
+
+\begin{kaogu}[F4]{base.cuh L412：「AI $\approx$ 3 FLOP / 20 bytes $\approx$ 0.15」口径需注明}
+  20~B 的口径把两次 LSE 读（8~B）按\textbf{每个输出元素}计入，仅在
+  $D = 1$ 量级成立；LSE 是每 (token, head) 一份的标量，摊销后每元素流量为
+  $12 + 8/D$~B（$D = 128$ 时约 12.06~B，$AI \approx 0.25$）。「severely
+  memory-bound」的定性结论不受影响，数值口径建议标注为「LSE 不摊销的上界」。
+\end{kaogu}
+
+\begin{kaogu}[F3]{base.cuh L450 与 L501：head\_size 须为 4 的倍数是隐含约定}
+  \texttt{threads\_per\_head = head\_size / kPackSize} 是整除写法：若
+  head\_size 不是 4 的倍数，尾部 head\_size\,\% 4 个元素\textbf{没有任何线程覆盖}，
+  输出静默不写（无报错）。而 L501 的守卫 \texttt{if (pack\_offset < head\_size)}
+  在整除约定下恒为真，非整除时也救不回尾部元素，属防御性死代码。
+  调用方应保证 head\_size \% 4 == 0（现实中 attention 的 head\_dim 均满足），
+  泛化改造则需补尾部标量路径。
+\end{kaogu}
+
+\begin{kaogu}[F5 核校通过]{base.cuh L388：FlashInfer 论文引用}
+  arXiv 2501.01005 即 FlashInfer: Efficient and Customizable Attention Engine
+  for LLM Inference Serving（2025-01），编号正确；其 attention 合并逻辑
+  （本章 5.3 节同款公式）出自该文 Section~2.2 附近，小节号未逐页复核，引用整体成立。
+  另核校 L407-409：空段 $+\infty$ 清洗后 $e^{-\infty - L} = 0$ 的权重退化数学正确；
+  补充边界——两段同时为空时 $L = -\infty$、出现 $\mathrm{NaN}$（见 5.3 节末），
+  注释未提及，做泛化测试时需自行防护。
+\end{kaogu}
+
+\section{常见坑}
+
+\textbf{坑一：输入 $O$ 必须是已归一化的。}本章推导（式~\ref{eq:5-split}）假设
+$O^{A}$ 已除过 $\ell^{A}$（FA kernel 落盘形态）。若误喂未归一化的分块输出
+（还带着自己的 $\ell$），合并结果会整体错一个 $\ell$ 因子——数值上看起来
+「量级差不多」，精度上已经全错。改造或复用该 kernel 前先确认上游契约。
+
+\textbf{坑二：$O$ 与 LSE 的布局转置。}$O$ 是 $[T, H, D]$、LSE 是 $[H, T]$
+（源码 L479-481 的寻址 \texttt{lse[h * num\_tokens + t]}）。两者转置关系，
+索引公式写反不会报任何错，但合并的是「错配的 (token, head)」，输出表现为
+与参考完全对不上。本章测试的 build\_case 里两个布局分别独立排布，可作为对照。
+
+\textbf{坑三：head\_size 必须是 4 的倍数。}见 5.6~节勘误三。另注意
+\texttt{uint4} 访问要求 16~B 对齐：\texttt{head\_offset} 以元素计是
+$(t \cdot H + h) \cdot D$，$D$ 为 4 的倍数时自然对齐；若在张量切片视图上
+直接取指针（如从大 tensor 掐出非对齐段），会触发 misaligned address 崩溃。
+
+\textbf{坑四：两段同时为空会产出 NaN。}见 5.3~节末。真实分块场景
+（prefix + suffix、split-KV 的各段）至少一段非空；但做泛化工具或单测时，
+应显式防护「双空段」或将其定义为约定俗成的输出（例如全零或直接透传）。
+
+\textbf{坑五：区分「事后合并」与「在线合并」。}本 kernel 是分块计算\textbf{完成之后}
+的合并，需要落盘两份 $O$；FlashAttention 主循环内部（第~\ref{ch:15}~章）与
+FFPA 跨 D-chunk（第~\ref{ch:19}~章）用的是同一套数学、但在寄存器里\textbf{在线}
+rescale，从不物化两份 $O$。两者数学同源（定理~\ref{thm:merge-eq}），工程取舍不同：
+前者换来主 kernel 的零侵入，后者省一整轮显存往返。
+
+\section{面试要点速查}
+
+\textbf{Q1：LSE 是什么？为什么它能代替 $(m, \ell)$ 两个状态？}\\
+A：$\mathrm{LSE} = m + \log \ell$（定义~\ref{def:lse}）。给定任意 shift 基准
+$L$，$e^{\mathrm{LSE} - L}$ 同时还原出「以 $L$ 为基准的未归一化指数和」，
+即 $(m, \ell)$ 的全部信息；一个 float 就够，这是分块方案接口极窄的原因。
+
+\textbf{Q2：写出两块合并的完整流程。}\\
+A：五步：清洗（$+\infty \to -\infty$）$\to L = \max(\mathrm{LSE}^{A},
+\mathrm{LSE}^{B}) \to w = e^{\mathrm{LSE} - L} \to
+\alpha = w^{A}/(w^{A}+w^{B}), \beta = w^{B}/(w^{A}+w^{B}) \to
+O = \alpha O^{A} + \beta O^{B}$，且 $\alpha + \beta = 1$（凸组合）。
+
+\textbf{Q3：为什么用 $\max(\mathrm{LSE})$ 而不是 $\max(m)$ 做 shift 基准也正确？}\\
+A：定理~\ref{thm:merge-eq} 的证明核心——LSE 域的权重 $w$ 与真值权重 $W$ 只差一个
+两块共享的常数因子 $e^{m - L}$，归一化后约掉；shift 基准只影响数值安全
+（保证指数参数非正），不影响数学结果。
+
+\textbf{Q4：这个 kernel 为什么是 memory-bound？瓶颈怎么估？}\\
+A：每元素 12~B 流量对 3 FLOP，$AI \approx 0.25$ FLOP/B；
+实测 0.78~ms 搬 809.5~MB（表~\ref{tab:5-bench}），约 1.03~TB/s。
+优化空间在访存粒度与 coalescing（已做 128-bit），而非计算。
+
+\textbf{Q5：空段的 LSE 该如何处理？}\\
+A：约定 $+\infty$（或 $-\infty$）的空段先统一清洗成 $-\infty$，使其权重
+$e^{-\infty - L} = 0$；注意两段同时为空时会出现 $-\infty - (-\infty) = \mathrm{NaN}$，
+需要上游保证至少一段非空或显式防护。
+
+\textbf{Q6：它与 FlashAttention 内部的 online rescale 什么关系？}\\
+A：同一套合并数学（比较式~\ref{eq:5-convex} 与第~\ref{ch:15}~章的
+$O \leftarrow e^{m^{old} - m^{new}} O + PV$）：本 kernel 是事后、落盘、
+elementwise 的版本；FA 是在线、寄存器、随 KV 分块流水推进的版本。
+
+\section{最小测试与动手实验}
+
+测试文件：\texttt{book/tests/ch05\_merge\_attn.cu}（逻辑抽取自 notes-v2.cu 的
+test\_merge\_attn\_states，L723；对照改为 CPU fp64 的「整体 softmax 直接加权」）。
+每个 case 为每个 (token, head) 构造两个 KV 分块（各 32 个 score），以 float 模拟
+FA 分块输出（$O^{A}, O^{B}$ 已归一化、$\mathrm{LSE} = m + \log \ell$），
+验证两件事：合并结果 $\stackrel{!}{=}$ 全序列 softmax 直接计算
+（定理~\ref{thm:merge-eq} 的数值版）；prefix LSE 置 $+\infty$ 后该段输出精确
+退化为 suffix。
+
+在 \texttt{book/tests/} 目录、\texttt{CUDA\_VISIBLE\_DEVICES=7} 下执行
+\texttt{./build\_tests.sh --ch ch05}（编译 + 运行一体）。本机运行输出
+（RTX PRO 5000，2026-09-11，PASS 行的误差数值见表~\ref{tab:5-pass}）：
+
+\begin{verbatim}
+case A: T=2 H=2 D=8 kv=2x32
+case B: T=3 H=4 D=128 kv=2x32
+ALL OK
+\end{verbatim}
+
+\begin{table}[htbp]
+\centering
+\caption{ch05 测试 PASS 行数值摘录（完整行式输出见
+\texttt{tests/.build/ch05\_merge\_attn} 运行日志；tol 为判定容差）}
+\label{tab:5-pass}
+\begin{tabular}{llrr}
+\toprule
+case & 判定项 & 最大绝对误差 & tol \\
+\midrule
+A & merge == direct full-softmax & 9.624e-08 & 1.0e-03 \\
+A & inf-lse $\to$ suffix only    & 0.000e+00 & 1.0e-06 \\
+B & merge == direct full-softmax & 2.049e-07 & 1.0e-03 \\
+B & inf-lse $\to$ suffix only    & 0.000e+00 & 1.0e-06 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+两个细节值得一提：其一，「合并 == 直接计算」的误差是 $10^{-7}$ 量级
+（fp32 分块状态 + fp32 合并累积），远小于 F32Acc 档 $10^{-3}$，
+说明该合并路径的数值质量足以支撑真实 attention 的分块方案；
+其二，inf 段测试误差\textbf{精确为 0}——$\alpha = 0, \beta = 1$ 时
+FMA 的 $0 \cdot p + 1 \cdot s$ 不引入任何舍入，权重退化是位精确的。
+动手实验建议：（1）把某一段的 score 整体抬高 20（模拟「一段压倒另一段」），
+观察 $\alpha$ 趋近 1、$O$ 趋近 $O^{A}$；（2）故意把 LSE 布局按 $[T, H]$ 传
+（复现坑二），确认输出全面失配；（3）bench 用
+\texttt{./build/ch05\_merge\_attn bench} 复现表~\ref{tab:5-bench}。
+
+\section*{延伸阅读}
+
+\begin{itemize}
+  \item @DefTruth《vLLM 源码解读 1.4：Merge Attention States 算子》——
+        \newline \url{https://zhuanlan.zhihu.com/p/1904937907703243110}
+        （vLLM 中该合并算子的工程上下文与 CUDA/Triton 双实现）；
+  \item @DefTruth《图解大模型训练之：推理加速一一从 Online-Softmax 到 FlashAttention
+        V1, V2, V3》，\url{https://zhuanlan.zhihu.com/p/668888063}
+        （online softmax $\to$ 在线合并的推导链，本章定理的前置视角）；
+  \item FlashInfer: Efficient and Customizable Attention Engine for LLM
+        Inference Serving. arXiv:2501.01005, 2025（attention 状态合并的论文出处，
+        源码头注释引用）。
+\end{itemize}
