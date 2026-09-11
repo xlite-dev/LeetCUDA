@@ -18,8 +18,8 @@
 | RFC-A | 冻结件（记号表/模板/锚点脚本/源码冻结） | RFC-0 | 完成（2026-09-11）|
 | RFC-B | 知乎资料全集（专栏枚举+图片归档） | RFC-0 | 未开始（可与 A 并行） |
 | RFC-C | Part I 基础篇 ch1-7 | RFC-A（素材按需 RFC-B） | 完成（2026-09-11，91 页/42 PASS）|
-| RFC-D | Part II GEMM 篇 ch8-14 | RFC-C | 进行中（D1-D6 完成 2026-09-11，D7 ch14 待做）|
-| RFC-E | Part III Attention 篇 ch15-19 | RFC-D | 未开始 |
+| RFC-D | Part II GEMM 篇 ch8-14 | RFC-C | 完成（2026-09-11，218 页/77 PASS）|
+| RFC-E | Part III Attention 篇 ch15-19 | RFC-D | 进行中（E1-E3 完成 2026-09-11，E4/E5 待做）|
 | RFC-F | Part IV CuTe 篇 ch20-26（原理章先行） | RFC-E | 未开始 |
 | RFC-G | 性能数据汇总（附录 B 成表） | RFC-C..F 各章增量数据 | 未开始 |
 | RFC-H | 图表升级（知乎图 drawio 重建为主 + ASCII→drawio/TikZ 新建） | 章节完成 | 未开始（可穿插） |
@@ -83,14 +83,14 @@
 - [x] D4 ch11 HGEMM mma.sync | hgemm.cuh L3-397 | 无宏（SM80+ mma） | ch11_hgemm_mma.cu ← test_hgemm_mma@L1416（F16Acc 档） | FIG-11-1 ldmatrix、FIG-11-2 fragment 布局（2026-09-11）
 - [x] D5 ch12 HGEMM Swizzle 三件套 | hgemm.cuh L399-716 + common.cuh L110-348 | 可选 `NOTES_V2_ENABLE_SWIZZLE_V2` | ch12_hgemm_swizzle.cu ← test_hgemm_swizzle@L1491 + test_swizzle_equiv@L4657 | **FIG-12-1 smem swizzle 前后排布（用户点名）**、**FIG-12-2 block swizzle layout（用户点名）**、FIG-12-3 XOR 位运算（2026-09-11）
 - [x] D6 ch13 Hopper：TMA+mbarrier+WGMMA | hgemm.cuh L1428-1857 + common.cuh L350-773 | `NOTES_V2_ENABLE_WGMMA`/仅 sm_90a | ch13_hgemm_wgmma.cu ← test_hgemm_wgmma@L1648（本机编译级验证+SKIP 标注） | FIG-13-1 descriptor 位域、FIG-13-2 warpgroup 数据流、FIG-13-3 mbarrier 状态机（2026-09-11）
-- [ ] D7 ch14 SM120 TMA+mma.sync+WS | hgemm.cuh L1859-2100 + common.cuh setmaxnreg | `NOTES_V2_ENABLE_TMA_MMA_WS`/sm_90a+sm_120a | ch14_hgemm_tma_ws.cu ← test_hgemm_tma_mma_ws@L1810 | FIG-14-1 TMA box、FIG-14-2 producer/consumer 时序
+- [x] D7 ch14 SM120 TMA+mma.sync+WS | hgemm.cuh L1859-2100 + common.cuh setmaxnreg | `NOTES_V2_ENABLE_TMA_MMA_WS`/sm_90a+sm_120a | ch14_hgemm_tma_ws.cu ← test_hgemm_tma_mma_ws@L1810 | FIG-14-1 TMA box、FIG-14-2 producer/consumer 时序（2026-09-11）
 - [ ] D-验收 Part II 编译+测试（ch13 SKIP 路径验证）+每章 DoD 留档
 
 ## 7. RFC-E Part III Attention 篇（ch15-19）
 
-- [ ] E1 ch15 Attention 数学与 FA 原理（新写） | flash_attn.cuh L5-110 头注释+FA2/FA3 论文 | 无宏 | 无独立 kernel 测试（公式推导章；引用 ch04/05 测试） | FIG-15-1 attention 分块流水
-- [ ] E2 ch16 FA2 Split-Q+MMA | flash_attn.cuh L5-790 | 无宏 | ch16_fa2_mma.cu ← test_flash_attn@L1895 | FIG-16-1 split-Q warp 布局
-- [ ] E3 ch17 FA2 TMA+WS | flash_attn.cuh L792-1440（宏块 L791-2194 内） | `NOTES_V2_ENABLE_TMA_MMA_WS` | ch17_fa2_tma_ws.cu ← test_flash_attn_tma_mma_ws_impl@L2041 | FIG-17-1 双流水时序
+- [x] E1 ch15 Attention 数学与 FA 原理（新写） | flash_attn.cuh L5-110 头注释+FA2/FA3 论文 | 无宏 | 无独立 kernel 测试（公式推导章；引用 ch04/05 测试） | FIG-15-1 attention 分块流水（2026-09-11）
+- [x] E2 ch16 FA2 Split-Q+MMA | flash_attn.cuh L5-790 | 无宏 | ch16_fa2_mma.cu ← test_flash_attn@L1895 | FIG-16-1 split-Q warp 布局（2026-09-11）
+- [x] E3 ch17 FA2 TMA+WS | flash_attn.cuh L792-1440（宏块 L791-2194 内） | `NOTES_V2_ENABLE_TMA_MMA_WS` | ch17_fa2_tma_ws.cu ← test_flash_attn_tma_mma_ws_impl@L2041 | FIG-17-1 双流水时序（2026-09-11）
 - [ ] E4 ch18 FA3 双 Consumer | flash_attn.cuh L1441-2192（同宏块） | 同上+setmaxnreg 宏说明 | ch18_fa3.cu ← test_flash_attn_3_tma_ws_impl@L2318 | FIG-18-1 双 consumer 角色
 - [ ] E5 ch19 FFPA Split-D | ffpa_attn.cuh L1-641 | `NOTES_V2_ENABLE_CUTE`(+TMA_MMA_WS) | ch19_ffpa_split_d.cu ← bench_ffpa.cu 内 test 逻辑抽取 | FIG-19-1 D-chunk 切分、FIG-19-2 两阶段合并
 - [ ] E-验收 Part III 编译+测试+每章 DoD 留档；ch15 公式全部独立推导核验（F3）

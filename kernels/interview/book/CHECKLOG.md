@@ -14,3 +14,5 @@
 | 2026-09-11 | hgemm.cuh L31-32 | 「ldmatrix 默认加载 col-major」与 PTX 文档相反（.trans 才是 column-major） | F2 | ptx-docs 9-instruction-set | ch11 勘误框（重要） | 已入正文 |
 | 2026-09-11 | common.cuh L124-125 | 「swizzle 后 1-way conflict-free」仅 32B 行宽成立；BK=64/128B 行宽下 NCU 实测仍 4-way（297,628 次/launch，模型预测 2.33 vs 实测 2.32） | F3 | 轮2 agent NCU 实证+数学模型 | ch12 勘误框（重要）；128B 零冲突需 swizzle<64>/SW128 | 已入正文 |
 | 2026-09-11 | common.cuh L344-347 | 「swizzle 公开派发器」注释位置悬置，实际在 hgemm.cuh L388-396 | F5 | 轮2 agent 考据 | ch12 考据框 | 已入正文 |
+| 2026-09-11 | flash_attn.cuh L7-13 | 「三板斧」（tiling/online softmax/recomputation）挂在 FA2 名下属归属错位：按 FA1 论文（arXiv:2205.14135）为 FA1 贡献；FA2 主题是 non-matmul FLOPs/并行度/split-Q | F5 | FA1/FA2 原论文摘要比对 | ch15 勘误框 | 已入正文 |
+| 2026-09-11 | flash_attn.cuh L19-21 | scale 按块乘进 S（FA1 式）；FA2 论文 Algorithm 1 预乘进 Q（数学等价，非错误） | F5/考据 | FA2 论文 §3.2 | ch15 考据框（等价性说明） | 已入正文 |
