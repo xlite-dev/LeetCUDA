@@ -1,0 +1,253 @@
+<mxfile host="app.diagrams.net" modified="2026-09-11T06:30:00.000Z" agent="drawio-skill-smoke-test" version="24.7.5">
+  <diagram id="m1-recon" name="Page-1">
+    <mxGraphModel dx="1680" dy="860" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1680" pageHeight="860" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="bg" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#F7F8FA;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="0" y="0" width="1680" height="860" as="geometry" />
+        </mxCell>
+        <mxCell id="title_icon" value="" style="ellipse;whiteSpace=wrap;html=1;fillColor=#10B981;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="36" y="32" width="60" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="title_icon_l1" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="48" y="50" width="36" height="5" as="geometry" />
+        </mxCell>
+        <mxCell id="title_icon_l2" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="48" y="61" width="36" height="5" as="geometry" />
+        </mxCell>
+        <mxCell id="title_icon_l3" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="48" y="72" width="36" height="5" as="geometry" />
+        </mxCell>
+        <mxCell id="title" value="大模型时代的存储分层" style="text;html=1;align=left;verticalAlign=middle;fontSize=30;fontStyle=1;fontColor=#111827;" vertex="1" parent="1">
+          <mxGeometry x="112" y="32" width="900" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" value="容量 · 带宽 · 成本 的三方权衡：从 GPU 显存到归档存储的全链路数据分层" style="text;html=1;align=left;verticalAlign=top;fontSize=13;fontColor=#6B7280;" vertex="1" parent="1">
+          <mxGeometry x="116" y="80" width="900" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="panel_l1" value="" style="rounded=1;arcSize=6;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#D1D5DB;" vertex="1" parent="1">
+          <mxGeometry x="36" y="140" width="530" height="648" as="geometry" />
+        </mxCell>
+        <mxCell id="panel_l1_dot" value="" style="ellipse;whiteSpace=wrap;html=1;fillColor=#10B981;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="60" y="166" width="12" height="12" as="geometry" />
+        </mxCell>
+        <mxCell id="panel_l1_title" value="L1 本地内存 + KV Cache" style="text;html=1;align=left;verticalAlign=middle;fontSize=18;fontStyle=1;fontColor=#059669;" vertex="1" parent="1">
+          <mxGeometry x="82" y="158" width="460" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="l1_r1_bg" value="" style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#F9FAFB;strokeColor=#E5E7EB;" vertex="1" parent="1">
+          <mxGeometry x="60" y="204" width="482" height="118" as="geometry" />
+        </mxCell>
+        <mxCell id="l1_r1_icon" value="" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=10;fillColor=#ECFDF5;strokeColor=#10B981;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="78" y="228" width="42" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="l1_r1_t1" value="GPU 显存（HBM）" style="text;html=1;align=left;verticalAlign=middle;fontSize=16;fontStyle=1;fontColor=#111827;" vertex="1" parent="1">
+          <mxGeometry x="140" y="224" width="380" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="l1_r1_t2" value="模型权重 / KV Cache 热页常驻 · 带宽最高、容量最小" style="text;html=1;align=left;verticalAlign=top;fontSize=12;fontColor=#6B7280;" vertex="1" parent="1">
+          <mxGeometry x="140" y="254" width="380" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="l1_r2_bg" value="" style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#F9FAFB;strokeColor=#E5E7EB;" vertex="1" parent="1">
+          <mxGeometry x="60" y="338" width="482" height="118" as="geometry" />
+        </mxCell>
+        <mxCell id="l1_r2_icon_a" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ECFDF5;strokeColor=#10B981;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="78" y="362" width="42" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="l1_r2_icon_b" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ECFDF5;strokeColor=#10B981;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="78" y="390" width="42" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="l1_r2_t1" value="CPU 内存（DDR5）" style="text;html=1;align=left;verticalAlign=middle;fontSize=16;fontStyle=1;fontColor=#111827;" vertex="1" parent="1">
+          <mxGeometry x="140" y="358" width="380" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="l1_r2_t2" value="KV Cache 溢出页 / 重计算缓存 · 容量中等、延迟 ~100ns" style="text;html=1;align=left;verticalAlign=top;fontSize=12;fontColor=#6B7280;" vertex="1" parent="1">
+          <mxGeometry x="140" y="388" width="380" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="l1_r3_bg" value="" style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#F9FAFB;strokeColor=#E5E7EB;" vertex="1" parent="1">
+          <mxGeometry x="60" y="472" width="482" height="118" as="geometry" />
+        </mxCell>
+        <mxCell id="l1_r3_icon" value="" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#ECFDF5;strokeColor=#10B981;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="78" y="496" width="42" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="l1_r3_icon_s1" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#10B981;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="86" y="540" width="26" height="4" as="geometry" />
+        </mxCell>
+        <mxCell id="l1_r3_t1" value="本地 NVMe SSD" style="text;html=1;align=left;verticalAlign=middle;fontSize=16;fontStyle=1;fontColor=#111827;" vertex="1" parent="1">
+          <mxGeometry x="140" y="492" width="380" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="l1_r3_t2" value="冷 KV Cache / 页缓存落盘 · μs~ms 级延迟、GB~TB 级" style="text;html=1;align=left;verticalAlign=top;fontSize=12;fontColor=#6B7280;" vertex="1" parent="1">
+          <mxGeometry x="140" y="522" width="380" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="l1_r4_bg" value="" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ECFDF5;strokeColor=#A7F3D0;" vertex="1" parent="1">
+          <mxGeometry x="60" y="606" width="482" height="158" as="geometry" />
+        </mxCell>
+        <mxCell id="l1_r4_title" value="层级特性" style="text;html=1;align=left;verticalAlign=middle;fontSize=14;fontStyle=1;fontColor=#065F46;" vertex="1" parent="1">
+          <mxGeometry x="84" y="618" width="434" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="l1_r4_c1" value="容量：最小&#10;(GB~TB 级)" style="rounded=1;arcSize=20;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#A7F3D0;fontSize=12;fontColor=#065F46;" vertex="1" parent="1">
+          <mxGeometry x="84" y="652" width="140" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="l1_r4_c2" value="带宽：最高&#10;(TB/s 级)" style="rounded=1;arcSize=20;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#A7F3D0;fontSize=12;fontColor=#065F46;" vertex="1" parent="1">
+          <mxGeometry x="238" y="652" width="140" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="l1_r4_c3" value="成本：最高&#10;($/GB 最高)" style="rounded=1;arcSize=20;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#A7F3D0;fontSize=12;fontColor=#065F46;" vertex="1" parent="1">
+          <mxGeometry x="392" y="652" width="140" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="l1_r4_note" value="典型用途：权重常驻 + KV Cache 热数据" style="text;html=1;align=left;verticalAlign=middle;fontSize=11;fontColor=#059669;" vertex="1" parent="1">
+          <mxGeometry x="84" y="718" width="434" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="panel_l2" value="" style="rounded=1;arcSize=6;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#D1D5DB;" vertex="1" parent="1">
+          <mxGeometry x="622" y="140" width="470" height="648" as="geometry" />
+        </mxCell>
+        <mxCell id="panel_l2_dot" value="" style="ellipse;whiteSpace=wrap;html=1;fillColor=#3B82F6;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="646" y="166" width="12" height="12" as="geometry" />
+        </mxCell>
+        <mxCell id="panel_l2_title" value="L2 高速网络存储层" style="text;html=1;align=left;verticalAlign=middle;fontSize=18;fontStyle=1;fontColor=#2563EB;" vertex="1" parent="1">
+          <mxGeometry x="668" y="158" width="400" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="l2_r1_bg" value="" style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#F9FAFB;strokeColor=#E5E7EB;" vertex="1" parent="1">
+          <mxGeometry x="646" y="204" width="422" height="118" as="geometry" />
+        </mxCell>
+        <mxCell id="l2_r1_icon" value="" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#3B82F6;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="662" y="228" width="42" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="l2_r1_icon_n1" value="" style="ellipse;whiteSpace=wrap;html=1;fillColor=#3B82F6;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="674" y="242" width="8" height="8" as="geometry" />
+        </mxCell>
+        <mxCell id="l2_r1_icon_n2" value="" style="ellipse;whiteSpace=wrap;html=1;fillColor=#3B82F6;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="690" y="258" width="8" height="8" as="geometry" />
+        </mxCell>
+        <mxCell id="l2_r1_icon_n3" value="" style="ellipse;whiteSpace=wrap;html=1;fillColor=#3B82F6;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="674" y="274" width="8" height="8" as="geometry" />
+        </mxCell>
+        <mxCell id="l2_r1_t1" value="分布式内存池（RDMA / RoCE）" style="text;html=1;align=left;verticalAlign=middle;fontSize=16;fontStyle=1;fontColor=#111827;" vertex="1" parent="1">
+          <mxGeometry x="722" y="224" width="330" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="l2_r1_t2" value="跨节点 KV Cache 共享池 · 网络延迟 μs 级" style="text;html=1;align=left;verticalAlign=top;fontSize=12;fontColor=#6B7280;" vertex="1" parent="1">
+          <mxGeometry x="722" y="254" width="330" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="l2_r2_bg" value="" style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#F9FAFB;strokeColor=#E5E7EB;" vertex="1" parent="1">
+          <mxGeometry x="646" y="338" width="422" height="118" as="geometry" />
+        </mxCell>
+        <mxCell id="l2_r2_icon" value="" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#3B82F6;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="662" y="362" width="42" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="l2_r2_icon_s1" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#3B82F6;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="670" y="392" width="26" height="4" as="geometry" />
+        </mxCell>
+        <mxCell id="l2_r2_icon_s2" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#3B82F6;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="670" y="404" width="26" height="4" as="geometry" />
+        </mxCell>
+        <mxCell id="l2_r2_t1" value="全闪并行文件系统（NVMe-oF）" style="text;html=1;align=left;verticalAlign=middle;fontSize=16;fontStyle=1;fontColor=#111827;" vertex="1" parent="1">
+          <mxGeometry x="722" y="358" width="330" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="l2_r2_t2" value="权重分发 / 数据集加载 · 聚合带宽 GB/s 级" style="text;html=1;align=left;verticalAlign=top;fontSize=12;fontColor=#6B7280;" vertex="1" parent="1">
+          <mxGeometry x="722" y="388" width="330" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="l2_r3_bg" value="" style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#F9FAFB;strokeColor=#E5E7EB;" vertex="1" parent="1">
+          <mxGeometry x="646" y="472" width="422" height="118" as="geometry" />
+        </mxCell>
+        <mxCell id="l2_r3_icon" value="" style="shape=cloud;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#3B82F6;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="660" y="496" width="48" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="l2_r3_t1" value="高性能对象存储" style="text;html=1;align=left;verticalAlign=middle;fontSize=16;fontStyle=1;fontColor=#111827;" vertex="1" parent="1">
+          <mxGeometry x="722" y="492" width="330" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="l2_r3_t2" value="Checkpoint / 数据集远端缓存 · ms 级延迟" style="text;html=1;align=left;verticalAlign=top;fontSize=12;fontColor=#6B7280;" vertex="1" parent="1">
+          <mxGeometry x="722" y="522" width="330" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="l2_r4_bg" value="" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#BFDBFE;" vertex="1" parent="1">
+          <mxGeometry x="646" y="606" width="422" height="158" as="geometry" />
+        </mxCell>
+        <mxCell id="l2_r4_title" value="层级特性" style="text;html=1;align=left;verticalAlign=middle;fontSize=14;fontStyle=1;fontColor=#1E40AF;" vertex="1" parent="1">
+          <mxGeometry x="670" y="618" width="374" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="l2_r4_c1" value="容量：大&#10;(TB~PB 级)" style="rounded=1;arcSize=20;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#BFDBFE;fontSize=12;fontColor=#1E40AF;" vertex="1" parent="1">
+          <mxGeometry x="670" y="652" width="116" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="l2_r4_c2" value="带宽：中高&#10;(GB/s 级)" style="rounded=1;arcSize=20;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#BFDBFE;fontSize=12;fontColor=#1E40AF;" vertex="1" parent="1">
+          <mxGeometry x="796" y="652" width="116" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="l2_r4_c3" value="成本：中&#10;(网络开销附加)" style="rounded=1;arcSize=20;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#BFDBFE;fontSize=12;fontColor=#1E40AF;" vertex="1" parent="1">
+          <mxGeometry x="922" y="652" width="120" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="l2_r4_note" value="典型用途：可共享的近线缓存与分发层" style="text;html=1;align=left;verticalAlign=middle;fontSize=11;fontColor=#2563EB;" vertex="1" parent="1">
+          <mxGeometry x="670" y="718" width="374" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="panel_l3" value="" style="rounded=1;arcSize=6;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#D1D5DB;" vertex="1" parent="1">
+          <mxGeometry x="1148" y="140" width="496" height="648" as="geometry" />
+        </mxCell>
+        <mxCell id="panel_l3_dot" value="" style="ellipse;whiteSpace=wrap;html=1;fillColor=#F59E0B;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1172" y="166" width="12" height="12" as="geometry" />
+        </mxCell>
+        <mxCell id="panel_l3_title" value="L3 慢速网络存储层" style="text;html=1;align=left;verticalAlign=middle;fontSize=18;fontStyle=1;fontColor=#D97706;" vertex="1" parent="1">
+          <mxGeometry x="1194" y="158" width="426" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="l3_r1_bg" value="" style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#FFFBEB;strokeColor=#FDE68A;" vertex="1" parent="1">
+          <mxGeometry x="1172" y="204" width="448" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="l3_r1_icon" value="" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=10;fillColor=#FEF3C7;strokeColor=#F59E0B;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="1190" y="240" width="44" height="76" as="geometry" />
+        </mxCell>
+        <mxCell id="l3_r1_t1b" value="热数据 · 高频对象访问" style="text;html=1;align=left;verticalAlign=middle;fontSize=16;fontStyle=1;fontColor=#111827;" vertex="1" parent="1">
+          <mxGeometry x="1252" y="224" width="352" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="l3_r1_t2" value="近期 Checkpoint / 高频数据集 · ms 级、可容忍" style="text;html=1;align=left;verticalAlign=top;fontSize=12;fontColor=#92400E;" vertex="1" parent="1">
+          <mxGeometry x="1252" y="254" width="352" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="l3_r2_bg" value="" style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#FFFBEB;strokeColor=#FDE68A;" vertex="1" parent="1">
+          <mxGeometry x="1172" y="370" width="448" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="l3_r2_icon" value="" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=10;fillColor=#FEF3C7;strokeColor=#F59E0B;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="1190" y="386" width="44" height="68" as="geometry" />
+        </mxCell>
+        <mxCell id="l3_r2_t1" value="温数据 · 标准文件存储" style="text;html=1;align=left;verticalAlign=middle;fontSize=16;fontStyle=1;fontColor=#111827;" vertex="1" parent="1">
+          <mxGeometry x="1252" y="382" width="352" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="l3_r2_t2" value="历史版本 / 低频数据集 · 10ms 级" style="text;html=1;align=left;verticalAlign=top;fontSize=12;fontColor=#92400E;" vertex="1" parent="1">
+          <mxGeometry x="1252" y="412" width="352" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="l3_r3_bg" value="" style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#FFFBEB;strokeColor=#FDE68A;" vertex="1" parent="1">
+          <mxGeometry x="1172" y="486" width="448" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="l3_r3_icon" value="" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=10;fillColor=#FEF3C7;strokeColor=#F59E0B;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="1190" y="502" width="44" height="68" as="geometry" />
+        </mxCell>
+        <mxCell id="l3_r3_t1" value="冷数据 · 归档存储" style="text;html=1;align=left;verticalAlign=middle;fontSize=16;fontStyle=1;fontColor=#111827;" vertex="1" parent="1">
+          <mxGeometry x="1252" y="498" width="352" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="l3_r3_t2" value="合规留存 / 审计数据 · 秒级访问、成本最低" style="text;html=1;align=left;verticalAlign=top;fontSize=12;fontColor=#92400E;" vertex="1" parent="1">
+          <mxGeometry x="1252" y="528" width="352" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="l3_r4_bg" value="" style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#FFFBEB;strokeColor=#FDE68A;" vertex="1" parent="1">
+          <mxGeometry x="1172" y="602" width="448" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="l3_r4_icon" value="" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=10;fillColor=#FEF3C7;strokeColor=#F59E0B;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="1190" y="618" width="44" height="68" as="geometry" />
+        </mxCell>
+        <mxCell id="l3_r4_t1" value="备份与容灾 · 磁带 / 蓝光" style="text;html=1;align=left;verticalAlign=middle;fontSize=16;fontStyle=1;fontColor=#111827;" vertex="1" parent="1">
+          <mxGeometry x="1252" y="614" width="352" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="l3_r4_t2" value="异地副本 / 灾备 · 小时级恢复、$/GB 最低" style="text;html=1;align=left;verticalAlign=top;fontSize=12;fontColor=#92400E;" vertex="1" parent="1">
+          <mxGeometry x="1252" y="644" width="352" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="l3_note" value="容量：最大（PB+ 级） · 带宽：最低 · 成本：最低" style="text;html=1;align=left;verticalAlign=middle;fontSize=12;fontColor=#D97706;" vertex="1" parent="1">
+          <mxGeometry x="1172" y="718" width="448" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow12" value="预取 / 换出" style="endArrow=block;startArrow=block;endFill=1;startFill=1;dashed=1;strokeColor=#EF4444;strokeWidth=2;fontSize=11;fontColor=#DC2626;labelBackgroundColor=#F7F8FA;" edge="1" parent="1">
+          <mxGeometry x="0.1" relative="1" as="geometry">
+            <mxPoint x="576" y="440" as="sourcePoint" />
+            <mxPoint x="616" y="440" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow23" value="降冷 / 拉取" style="endArrow=block;startArrow=block;endFill=1;startFill=1;dashed=1;strokeColor=#EF4444;strokeWidth=2;fontSize=11;fontColor=#DC2626;labelBackgroundColor=#F7F8FA;" edge="1" parent="1">
+          <mxGeometry x="0.1" relative="1" as="geometry">
+            <mxPoint x="1100" y="440" as="sourcePoint" />
+            <mxPoint x="1140" y="440" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="footer" value="* 示意图：具体介质与容量随硬件代际变化（smoke test 重建件，小字文本以原文为准）" style="text;html=1;align=left;verticalAlign=middle;fontSize=11;fontColor=#9CA3AF;" vertex="1" parent="1">
+          <mxGeometry x="40" y="812" width="1200" height="24" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

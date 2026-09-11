@@ -65,6 +65,10 @@ kernels/interview/book/
 └── .tmp/                                   # 测试/bench 临时产物（按任务建子目录）
 ```
 
+## Examples
+
+- `examples/drawio-recon-m1/`：drawio 重建 smoke test 固化样例（重建件 + headless 导出预览 + audit + 复现命令）。正式重建任务照此流程执行；原图在 drawio-reconstruction skill 的 `examples/m1.png`（路径引用，不复制）。
+
 ## 关联 skill
 
 - `drawio-reconstruction`（知乎图重建主路径）、`drawio-diagram-builder` / `drawio-flow-forge`（新建图）

@@ -304,7 +304,7 @@ kernels/interview/book/tests/
 - 兜底：`drawio-diagram-builder/scripts/serve_drawio_preview.py` + 集成浏览器截图
 - VS Code drawio 插件（用户已装，hediet.vscode-drawio）：用于**人工查看/微调** agent 产出的 `.drawio` 与逐字校对预览；自动化导出仍走上面 CLI，不依赖插件
 
-**执行模式（2026-09-11 smoke test 结论，用户拍板）**：drawio 重建由**主 agent 直接完成**（inventory→重建→导出→自审），**不派 task agent**——多 agent 闭环实测易卡死超时；audit 如实记录执行模式（自审需标注「coordinator 自审」）。正式重建的小字文本须对照放大 crop 逐字核对（smoke test 样例见 `book/.tmp/drawio-skill-test/m1.audit.md`）。
+**执行模式（2026-09-11 smoke test 结论，用户拍板）**：drawio 重建由**主 agent 直接完成**（inventory→重建→导出→自审），**不派 task agent**——多 agent 闭环实测易卡死超时；audit 如实记录执行模式（自审需标注「coordinator 自审」）。正式重建的小字文本须对照放大 crop 逐字核对（流程演示样例：本 skill `examples/drawio-recon-m1/`，含重建件/导出预览/audit/复现命令）。
 
 **水印规则**：见 §5.2；重建 Reviewer 验收项必含「无水印/作者角标/平台 logo 残留」。
 

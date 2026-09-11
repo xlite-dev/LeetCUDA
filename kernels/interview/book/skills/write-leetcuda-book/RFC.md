@@ -55,7 +55,9 @@
 - [ ] B.1 `fetch_column_fulltext.py` 枚举 @reed、@竹熙佳处 专栏全部文章（frankshi 如有专栏同）；产出 `book/references/zhihu-inventory.md`（§15 种子表并入，标注「已核/待核」）
 - [ ] B.2 增量确认：README 外新文章全部入册（已知：reed《TMA Descriptor 第21bit》p/2037200219700449995、《程序控制和原子操作》p/712357443）
 - [ ] B.3 补充作者关键文章全文取回（@melonedo 除法、@Anonymous Layout 技巧+GEMM 细节三篇、@可怕的杰瑞、@weishengying、@水木皇工仔、@Arthur、@Titus、@进击的Killua、@66RING、@shengying.wei 等），存 `zhihu-analysis/`
-- [ ] B.4 图片归档规范落地：`figures/zhihu/<author>-<slug>/` + 元数据 sidecar（来源 URL/引用章节/替换状态=否）- [ ] B.4a drawio 重建管线试点：取 1 张候选图（建议 FIG-21-1 tv-layout-grid，原图先归档）走 drawio-reconstruction 全流程闭环（水印标记→Icon/Reconstruction 独立审查→导出），验收按 BOOK_PLAN §7.2 单图 DoD 六条。工具链 2026-09-11 已验证：drawio CLI v31.4.5（官方 deb）+ `/usr/local/bin/drawio-headless` wrapper（xvfb+--no-sandbox），skill 脚本用 `DRAWIO_PATH=/usr/local/bin/drawio-headless`- [ ] B.5 RoPE 参考补充检索（ch7 当前无主参考）
+- [ ] B.4 图片归档规范落地：`figures/zhihu/<author>-<slug>/` + 元数据 sidecar（来源 URL/引用章节/替换状态=否）
+- [ ] B.4a drawio 重建管线试点（**知乎真实图**，含水印场景）：取 1 张候选图（建议 FIG-21-1 tv-layout-grid，原图先归档）走全流程（水印标记→重建→导出→audit），验收按 BOOK_PLAN §7.2 单图 DoD 六条。工具链已由本 skill `examples/drawio-recon-m1/`（2026-09-11 smoke test：CLI v31.4.5 官方 deb + `/usr/local/bin/drawio-headless` wrapper，CJK 渲染 OK）验证，此项只差水印场景实操
+- [ ] B.5 RoPE 参考补充检索（ch7 当前无主参考）
 - [ ] B.6 附录 E 表结构定稿（作者/标题/URL/对应章节/引用日期/图片数）
 - [ ] B.7 **验收**：inventory 覆盖 §15 全部条目且每章「主参考」都有 URL；每篇已核文章在 zhihu-analysis/ 有存档
 - 注：素材按 Part I→II→III→IV 章序优先交付（章节任务不被卡死）
