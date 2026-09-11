@@ -18,7 +18,7 @@
 | RFC-A | 冻结件（记号表/模板/锚点脚本/源码冻结） | RFC-0 | 完成（2026-09-11）|
 | RFC-B | 知乎资料全集（专栏枚举+图片归档） | RFC-0 | 未开始（可与 A 并行） |
 | RFC-C | Part I 基础篇 ch1-7 | RFC-A（素材按需 RFC-B） | 完成（2026-09-11，91 页/42 PASS）|
-| RFC-D | Part II GEMM 篇 ch8-14 | RFC-C | 未开始 |
+| RFC-D | Part II GEMM 篇 ch8-14 | RFC-C | 进行中（D1-D6 完成 2026-09-11，D7 ch14 待做）|
 | RFC-E | Part III Attention 篇 ch15-19 | RFC-D | 未开始 |
 | RFC-F | Part IV CuTe 篇 ch20-26（原理章先行） | RFC-E | 未开始 |
 | RFC-G | 性能数据汇总（附录 B 成表） | RFC-C..F 各章增量数据 | 未开始 |
@@ -77,12 +77,12 @@
 
 ## 6. RFC-D Part II GEMM 篇（ch8-14）
 
-- [ ] D1 ch08 SGEMV 三种划分 | sgemv.cuh L1-102 | 无宏 | ch08_sgemv.cu ← test_sgemv@L1190 | FIG-8-1 warp-per-row
-- [ ] D2 ch09 SGEMM 阶梯一 | sgemm.cuh L6-183 | 无宏 | ch09_sgemm.cu ← test_sgemm@L1289（CPU fp64 参考+F32Acc 档） | FIG-9-1 四级 tiling
-- [ ] D3 ch10 SGEMM 阶梯二 TF32 WMMA | sgemm.cuh L184-434 | 无宏 | ch10_sgemm_tf32.cu ← test_sgemm@L1289（TF32 档） | FIG-10-1 双缓冲时序
-- [ ] D4 ch11 HGEMM mma.sync | hgemm.cuh L3-397 | 无宏（SM80+ mma） | ch11_hgemm_mma.cu ← test_hgemm_mma@L1416（F16Acc 档） | FIG-11-1 ldmatrix、FIG-11-2 fragment 布局
-- [ ] D5 ch12 HGEMM Swizzle 三件套 | hgemm.cuh L399-716 + common.cuh L110-348 | 可选 `NOTES_V2_ENABLE_SWIZZLE_V2` | ch12_hgemm_swizzle.cu ← test_hgemm_swizzle@L1491 + test_swizzle_equiv@L4657 | **FIG-12-1 smem swizzle 前后排布（用户点名）**、**FIG-12-2 block swizzle layout（用户点名）**、FIG-12-3 XOR 位运算
-- [ ] D6 ch13 Hopper：TMA+mbarrier+WGMMA | hgemm.cuh L1428-1857 + common.cuh L350-773 | `NOTES_V2_ENABLE_WGMMA`/仅 sm_90a | ch13_hgemm_wgmma.cu ← test_hgemm_wgmma@L1648（本机编译级验证+SKIP 标注） | FIG-13-1 descriptor 位域、FIG-13-2 warpgroup 数据流、FIG-13-3 mbarrier 状态机
+- [x] D1 ch08 SGEMV 三种划分 | sgemv.cuh L1-102 | 无宏 | ch08_sgemv.cu ← test_sgemv@L1190 | FIG-8-1 warp-per-row（2026-09-11）
+- [x] D2 ch09 SGEMM 阶梯一 | sgemm.cuh L6-183 | 无宏 | ch09_sgemm.cu ← test_sgemm@L1289（CPU fp64 参考+F32Acc 档） | FIG-9-1 四级 tiling（2026-09-11）
+- [x] D3 ch10 SGEMM 阶梯二 TF32 WMMA | sgemm.cuh L184-434 | 无宏 | ch10_sgemm_tf32.cu ← test_sgemm@L1289（TF32 档） | FIG-10-1 双缓冲时序（2026-09-11）
+- [x] D4 ch11 HGEMM mma.sync | hgemm.cuh L3-397 | 无宏（SM80+ mma） | ch11_hgemm_mma.cu ← test_hgemm_mma@L1416（F16Acc 档） | FIG-11-1 ldmatrix、FIG-11-2 fragment 布局（2026-09-11）
+- [x] D5 ch12 HGEMM Swizzle 三件套 | hgemm.cuh L399-716 + common.cuh L110-348 | 可选 `NOTES_V2_ENABLE_SWIZZLE_V2` | ch12_hgemm_swizzle.cu ← test_hgemm_swizzle@L1491 + test_swizzle_equiv@L4657 | **FIG-12-1 smem swizzle 前后排布（用户点名）**、**FIG-12-2 block swizzle layout（用户点名）**、FIG-12-3 XOR 位运算（2026-09-11）
+- [x] D6 ch13 Hopper：TMA+mbarrier+WGMMA | hgemm.cuh L1428-1857 + common.cuh L350-773 | `NOTES_V2_ENABLE_WGMMA`/仅 sm_90a | ch13_hgemm_wgmma.cu ← test_hgemm_wgmma@L1648（本机编译级验证+SKIP 标注） | FIG-13-1 descriptor 位域、FIG-13-2 warpgroup 数据流、FIG-13-3 mbarrier 状态机（2026-09-11）
 - [ ] D7 ch14 SM120 TMA+mma.sync+WS | hgemm.cuh L1859-2100 + common.cuh setmaxnreg | `NOTES_V2_ENABLE_TMA_MMA_WS`/sm_90a+sm_120a | ch14_hgemm_tma_ws.cu ← test_hgemm_tma_mma_ws@L1810 | FIG-14-1 TMA box、FIG-14-2 producer/consumer 时序
 - [ ] D-验收 Part II 编译+测试（ch13 SKIP 路径验证）+每章 DoD 留档
 

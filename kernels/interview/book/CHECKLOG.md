@@ -6,3 +6,11 @@
 | 日期 | 位置 | 原文摘要 | 类别 | 证据 | 建议 | 状态 |
 |---|---|---|---|---|---|---|
 | 2026-09-11 | ffpa_attn.cuh L17-18 头注释 | 性能口径为 PRO 5000 | F4 | README 同项数据口径为 RTX 5090 | ch19 正文双口径标注（PRO 5000 复测 + README 5090 引用） | 待 ch19 核查 |
+| 2026-09-11 | sgemv.cuh L17 | 「否则内层循环 kNumWarps 次」——kNumWarps 不存在，实际 NUM_ITERS=ceil(K/32) | F3 | 轮2 agent 独立核校 | ch08 正文勘误框 | 已入正文 |
+| 2026-09-11 | sgemv.cuh L91-98 | sgemv_k16 M%8!=0 时半 warp 守卫分叉，全掩码 __shfl_xor_sync 属 UB（实践碰巧正确） | F2 | CUDA 语义+轮2 agent 分析 | ch08 勘误+坑节 | 已入正文 |
+| 2026-09-11 | sgemm.cuh L18-19 | 金字塔 AI 公式量纲不一致：B_K 分子分母相消，32×32 tile AI=8 而非 4；L84-85 同族 | F3 | 轮2 agent 独立推导 | ch09 勘误框（定性结论不变） | 已入正文 |
+| 2026-09-11 | sgemm.cuh L193/L238/L242-243 | smem 字节数 16KB 实为 20736B；1024 floats 实为 1536/1056 | F1 | 模板参数计算 | ch10 勘误框 | 已入正文 |
+| 2026-09-11 | sgemm.cuh L196-198 | 「每 MMA 64 TF32 MAC、4096 MAC/cycle」不能由配置推出 | F1 | m16n16k8=2048 MAC/tile 推导 | ch10 勘误框 | 已入正文 |
+| 2026-09-11 | hgemm.cuh L31-32 | 「ldmatrix 默认加载 col-major」与 PTX 文档相反（.trans 才是 column-major） | F2 | ptx-docs 9-instruction-set | ch11 勘误框（重要） | 已入正文 |
+| 2026-09-11 | common.cuh L124-125 | 「swizzle 后 1-way conflict-free」仅 32B 行宽成立；BK=64/128B 行宽下 NCU 实测仍 4-way（297,628 次/launch，模型预测 2.33 vs 实测 2.32） | F3 | 轮2 agent NCU 实证+数学模型 | ch12 勘误框（重要）；128B 零冲突需 swizzle<64>/SW128 | 已入正文 |
+| 2026-09-11 | common.cuh L344-347 | 「swizzle 公开派发器」注释位置悬置，实际在 hgemm.cuh L388-396 | F5 | 轮2 agent 考据 | ch12 考据框 | 已入正文 |
