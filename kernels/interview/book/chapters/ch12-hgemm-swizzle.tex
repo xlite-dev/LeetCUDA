@@ -71,11 +71,11 @@ $32\times4=128$\,B。字节地址 $a$ 所属 bank 为
   \label{eq:12-bank}
 \end{equation}
 一个 16\,B 数据块（本章的所有访问都以 16\,B chunk 为粒度——half 的 8 元素，
-恰是 ldmatrix 一行、cp.async.cg 一次搬运的宽度）占据\textbf{连续 4 个 bank}，
-下文记其「bank 四联组」编号为
+恰是 ldmatrix 一行、cp.async.cg 一次搬运的宽度）占据\textbf{连续 4 个 bank}（一个「quad」），
+下文记其\textbf{起始 bank} 编号为
 \begin{equation}
-  q(a) \;=\; \left\lfloor \tfrac{a}{16} \right\rfloor \bmod 32, \qquad
-  q \in \{0,1,\dots,31\}\ \text{（占 bank}\ 4q,\dots,4q{+}3\text{）}.
+  q(a) \;=\; 4\left\lfloor \tfrac{a}{16} \right\rfloor \bmod 32, \qquad
+  q \in \{0,4,\dots,28\}\ \text{（占 bank}\ q,\dots,q{+}3\text{）}.
 \end{equation}
 硬件按 \textbf{phase} 处理 128-bit 向量访问：warp 的 32 lane 分成 4 组、每组
 8 lane 依次服务，一组 8 lane $\times$ 16\,B $=$ 128\,B 恰好用满全部 bank。\textbf{同一
@@ -94,7 +94,7 @@ Phase 7b-1 的 \texttt{hgemm\_mma\_stages\_tn}（第~\ref{ch:11}~章）中 $B_K=
 smem tile 为 $[128][16]$ half，行宽 32\,B。行 $i$ chunk $c$ 的字节地址
 $a=32i+16c$，四联组
 \begin{equation}
-  q(i,c) \;=\; \left\lfloor \tfrac{32i+16c}{16} \right\rfloor \bmod 32
+  q(i,c) \;=\; 4\left\lfloor \tfrac{32i+16c}{16} \right\rfloor \bmod 32
           \;=\; (8i+4c)\bmod 32 .
   \label{eq:12-q16}
 \end{equation}
@@ -117,13 +117,14 @@ $M{=}N{=}K{=}512$，16 block $\times$ 8 warp $\times$ 32 个 k 迭代）：
 Phase 7b-3 把 4 个 $k_{\mathrm{step}}$ slice 统一进 $[128][64]$ 的宽 tile，行宽
 64 half $=$ 128\,B。行 $i$、slice $s$、chunk $c$ 的地址 $a=128i+32s+16c$：
 \begin{equation}
-  q(i,s,c) \;=\; \left\lfloor \tfrac{128i+32s+16c}{16} \right\rfloor \bmod 32
+  q(i,s,c) \;=\; 4\left\lfloor \tfrac{128i+32s+16c}{16} \right\rfloor \bmod 32
             \;=\; (8s+4c)\bmod 32 .
   \label{eq:12-q64}
 \end{equation}
-注意\textbf{行号 $i$ 的贡献消失了}——行 stride 128\,B 是「32 bank $\times$ 4\,B」
-一整行（512\,B 计数环）的整数倍，任何一行的同一 (slice, chunk) 都映射到同一个
-四联组。phase 0 的 8 个 lane（行 0--7、$c$ 固定）全部落在 $q=8s+4c$ 上：
+注意\textbf{行号 $i$ 的贡献消失了}——bank 计数环 128\,B（32 bank $\times$ 4\,B）、
+quad 环 512\,B（32 quad $\times$ 16\,B）；行 stride 128\,B 对两者均为整数倍
+（前者恰 1 圈、后者恰 8 个 quad），任何一行的同一 (slice, chunk) 都映射到同一个
+起始 bank $q$。phase 0 的 8 个 lane（行 0--7、$c$ 固定）全部落在 $q=8s+4c$ 上：
 \textbf{8-way 冲突}。NCU 实测同形状下 691{,}067 次（把 kernel 中 8 处 swizzle
 调用置 0 的对照版，见 12.6 节表~\ref{tab:12-bank}）。统一宽 tile 省了同步与
 寻址开销，却把 ldmatrix 的冲突度放大了 4 倍——这正是必须引入 swizzle 的地方。

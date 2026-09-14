@@ -214,15 +214,15 @@ traits 分别声明：
   \mathrm{EURepeat} \;=\; \frac{\mathrm{Tile}}{\mathrm{AtomShape}\otimes \mathrm{AtomLayout}}
   \quad\Longrightarrow\quad
   \begin{cases}
-    \text{FA2: } (64,16,16)\oslash(128{:}8,\ 8,\ 16) = \langle 1,2,1\rangle,\\[2pt]
+    \text{FA2: } (128,16,16)\oslash(128,\ 8,\ 16) = \langle 1,2,1\rangle,\\[2pt]
     \text{FA3: } \langle 64/64,\ 16/8,\ 16/16\rangle = \langle 1,2,1\rangle .
   \end{cases}
   \label{eq:25-eurepeat}
 \end{equation}
 
 （记 $\otimes$ 为「atom 形状按 AtomLayout 放大」：$\langle16,8,16\rangle\otimes
-\langle8,1,1\rangle=\langle128,8,16\rangle$，$64$ 行的 $M$ 方向恰好被 8 个
-warp 分完，故 $M$ 向 EURepeat 为 1；$N$ 向 16 列需要 2 个 $n8$ atom，
+\langle8,1,1\rangle=\langle128,8,16\rangle$，$128$ 行的 $M$ 方向被 8 个
+warp（每 warp 16 行）分完，故 $M$ 向 EURepeat 为 1；$N$ 向 16 列需要 2 个 $n8$ atom，
 $K$ 向 16 恰好一个 atom。）两条式子的 $N$ 向重复都是 2，这不是巧合：
 两份 traits 都选择「一次逻辑 MMA 覆盖 16 列」，原因是 $B_c=64$ 的
 S 矩阵按 16 列一块推进，softmax 的行归约粒度与之匹配。
@@ -289,8 +289,9 @@ $\mathrm{ncol}=2\cdot \mathrm{MMA\_N}$。实测（$D{=}64$、$B_r{=}128$）：
 于是行归约可以写成 \texttt{for c: max}，再对 4-lane 子组做两次
 \texttt{\_\_shfl\_xor\_sync}（步长 1、2）——为什么是 4-lane？因为
 式~\eqref{eq:25-rowcol-num} 里 $r$ 的第二个 mode（$\mathrm{MMA\_M}$ 的 rest）
-在 lane 内的宽度是 $2\times2=4$：lane $\bmod\ 4$ 决定行片段，
-$\mathrm{lane}/4$ 决定行的另一半——两次蝶形恰好把 4 条 lane 的行片段合并。
+在 lane 内的宽度是 $2\times2=4$：$\mathrm{lane}/4$ 决定行号
+（寄存器对给 $+8$ 行），$\mathrm{lane}\bmod4$ 决定行内 4 个列片段
+之一——两次蝶形恰好把 4 条 lane 的行片段合并。
 
 \subsection{P 矩阵的布局变换：从 C-layout 到 A-layout}
 
@@ -408,7 +409,7 @@ CuTe 版把「一个 stage」打包成 \texttt{ClusterTransactionBarrier} +
 （式~\eqref{eq:25-proto3}）。
 
 有一个数字容易被误读：实现 2 的 \texttt{TmaBarrier::init(\&q\_full, 1)}
-（L2849）写的是 1，而第~\ref{ch:17}~章手写版的 arrive\_count 是 257。
+（L2847）写的是 1，而第~\ref{ch:17}~章手写版的 arrive\_count 是 257。
 两者并不矛盾——相位翻转要求「arrive 计数归零\textbf{且} tx 计数归零」，
 CuTe 的 \texttt{arrive\_\allowbreak{}and\_\allowbreak{}expect\_\allowbreak{}tx} 由 producer \emph{单线程}调用，
 它同时完成那 1 次 arrive 并把期望字节数写进 tx 计数，consumer 只 wait

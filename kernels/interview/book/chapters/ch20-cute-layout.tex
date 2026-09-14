@@ -139,7 +139,7 @@ layout，而 \texttt{cosize} 直接就是这块 smem 实际要占的元素数—
         得到它；注意 \texttt{make\_layout(Shape)} 的默认是 column-major，
         与 C 数组的直觉相反（常见坑二）。
   \item 例 3（带孔洞）：$S=(8,4),D=(2,16)$：$f(c_0,c_1)=2c_0+16c_1$，
-        $\mathrm{size}=32$ 但 $\mathrm{cosize}=1+2\cdot7+16\cdot3=64$，
+        $\mathrm{size}=32$ 但 $\mathrm{cosize}=1+2\cdot7+16\cdot3=63$，
         值域只命中偶数——这是一个「每两个元素塞一个」的稀疏布局。
 \end{itemize}
 
@@ -616,6 +616,48 @@ $f(1,3)=11$——同一 shape，stride 决定读序。}
 \includegraphics[width=0.95\textwidth]{figures/drawio/fig-20-3-layout-convert/fig-20-3.png}
 \caption{FA2 的 P 矩阵布局转换：tri-dao 的几何重排与 reed 的代数复合两条路线，结果等价。本书 flash\_attn.cuh 的 \texttt{convert\_layout\_acc\_Aregs}（被 ffpa\_attn.cuh 复用）采用的是几何路线。}
 \label{fig:20-3}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-20-4-tensor-addr/fig-20-4.png}
+\caption{CuTe Tensor 的寻址分工：Layout 负责「坐标 $\to$ offset」的代数——shape 限定输入范围、stride 决定各 mode 步长；Engine 只持有 \texttt{base\_ptr}。$(1,1)\to 5$，命中行主序（$(4,4){:}(4,1)$，列连续）第 5 号元素 \texttt{f}。重建自 @竹熙佳处《写给大家看的 CuTe 教程：Layout Compose \& Inverse》。}
+\label{fig:20-4}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-20-5-compose-flow/fig-20-5.png}
+\caption{compose(A, B) 的三步求值：先查内层 B 得 offset，再按外层 A 的 shape 把 offset 换算回坐标，最后查 A 得最终值。例：$C(4,1)\to B(4,1)=9\to(9\bmod 4,\,9\div 4)=(1,2)\to A(1,2)=6$ 回填 $C$。重建自同上文。}
+\label{fig:20-5}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-20-6-inverse-reshape/fig-20-6.png}
+\caption{inverse 与 with\_shape：inverse 把「值 $\to$ 坐标」倒过来查表（$9\leftrightarrow 6$ 互逆），with\_shape 再把 1D 长条按新 shape $(8,2)$ 沿 col-major 折回 2D，得 $B(1,1)=6$。重建自同上文。}
+\label{fig:20-6}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-20-7-left-right-inverse/fig-20-7.png}
+\caption{left\_inverse / right\_inverse 的两种情形（CuTe v4.6.1 实测）：stride $(1,0)$ 广播布局两逆相同，均为去重投影 $(4){:}(1)$——stride 为 0 的维度被投影掉，每行只保留代表坐标 $m$；stride $(4,1)$ 的双射布局两逆均为其自身 $(4,4){:}(4,1)$（该布局是对合，$f\circ f=\mathrm{id}$）。重建自 @竹熙佳处《写给大家看的 CuTe 教程：Layout Compose \& Inverse》（数值按 CuTe v4.6.1 实测校正）。}
+\label{fig:20-7}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-20-8-layout-product/fig-20-8.png}
+\caption{layout product：A 的每个坐标位放一份 B 的拷贝（块偏移 $=$ A 的线性序号 $\times$ size(B)），得到嵌套布局 $((2,2),(2,2)){:}((8,4),(2,1))$。行值 $0,1,4,5\,/\,2,3,6,7\,/\cdots$ 的「块拷贝拼接」排布即 product 的几何签名——它不是 row-major。重建自 @竹熙佳处《写给大家看的 CuTe 教程：Layout Product \& Divide》。}
+\label{fig:20-8}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-20-9-layout-divide/fig-20-9.png}
+\caption{logical\_divide：按 $2\times2$ 子块把 $(4,4){:}(4,1)$ 重组为 $((2,2),(2,2)){:}((4,1),(8,2))$（CuTe 实测的 zipped 形式：块内 mode 在前、块位 mode 在后）——值排布不变（仍 row-major），改变的只是索引方式（一组 $(4,1)$ 索引块内、一组 $(8,2)$ 索引块位）。与上图对比：同物理格 $(3,1)$ 的 product 值为 11（新排布），divide 后仍为 13（原排布）。重建自同上文。}
+\label{fig:20-9}
 \end{figure}
 
 \section{性能分析}

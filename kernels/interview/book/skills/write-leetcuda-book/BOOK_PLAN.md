@@ -107,6 +107,7 @@
 
 | 章 | 标题 | 源码区间 | 前置 | 核心公式 | 关键图 | 主参考 |
 |---|---|---|---|---|---|---|
+| 0 | 性能分析先于优化：nsys 与 ncu | —（通用工具章，不绑定源码） | — | 瓶颈判断决策树；nsys/ncu 核心指标口径 | 表：瓶颈判断决策树 | Nsight Systems/Compute 官方文档 |
 | 1 | GPU 架构、执行模型与 Roofline | base.cuh L1-86（扩写） | — | Roofline $P=\min(P_{peak}, AI\cdot BW)$；$AI=\frac{\text{FLOPs}}{\text{Bytes}}$；occupancy | 内存层级图、roofline 曲线 | @reed GPU 指令集系列；@紫气东来 CUDA(一)(二)；cutlass skill arch guides |
 | 2 | 归约原语：Warp/Block Reduce 与 Dot | base.cuh L87-305 | 1 | 蝶形归约步数 $\log_2 32$；`__shfl_xor_sync` 掩码 | shuffle 蝶形图、block 两级归约图 | @懒蚂蚁呀不嘿 reduce 详解 |
 | 3 | 向量化访存与原子操作 | base.cuh L306-386 | 1 | coalescing 事务合并；向量化带宽公式 | 合并与非合并访存对比图 | @懒蚂蚁呀不嘿 element-wise；@紫气东来 ops(5) |

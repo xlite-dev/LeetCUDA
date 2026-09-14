@@ -293,24 +293,26 @@ $\ell = \alpha \ell_0 + \beta \ell_1$、$O = \alpha O_0 + \beta O_1$。把两者
 \end{equation}
 
 生产者与消费者用\textbf{同一个公式}推导 (stage, phase)，因此不需要任何额外通信
-就能对上账（19.4.4~节细讲）。相位在「stage 回绕」时翻转，所以 stage 与 phase 的
-联合周期是 $\mathrm{lcm}(C, \mathrm{Sk}) / C$ 个 KV tile：
+就能对上账（19.4.4~节细讲）。相位在「stage 回绕」时翻转：stage 随 chunk 计数
+idx 的周期是 $\mathrm{Sk}$、phase 的周期是 $2\,\mathrm{Sk}$，(stage, phase) 联合
+周期 $2\,\mathrm{Sk}$；idx 每个 KV tile 前进 $C$，故 stage 与 phase 的
+联合周期是 $\mathrm{lcm}(C, 2\,\mathrm{Sk}) / C$ 个 KV tile：
 
 \begin{center}
 \begin{tabular}{rcccl}
 \toprule
 $D$ & $C = D/64$ & $\mathrm{Sk}$ & 相位周期（KV tile 数） & 形态 \\
 \midrule
-64 & 1 & 2 & 1 & 退化：每 KV tile 只推 1 个 chunk，流水到不了稳态 \\
-128 & 2 & 2 & 1 & 一个 KV tile 恰好推满一轮，相位每轮重置 \\
-192 & 3 & 2 & 2 & $C$ 与 $\mathrm{Sk}$ 互质，相位在两个 KV tile 间交错 \\
-512 & 8 & 2 & 1 & 每 KV tile 走 4 轮，与 $C{=}2$ 同相 \\
+64 & 1 & 2 & 4 & 退化：每 KV tile 只推 1 个 chunk，流水到不了稳态 \\
+128 & 2 & 2 & 2 & 一个 KV tile 恰好推满一轮 stage，phase $= t \bmod 2$，每 tile 翻转 \\
+192 & 3 & 2 & 4 & $C$ 与 $\mathrm{Sk}$ 互质，相位模式要跨 4 个 KV tile 才重复 \\
+512 & 8 & 2 & 1 & 每 KV tile 走 4 轮，相位模式逐 tile 相同 \\
 \bottomrule
 \end{tabular}
 \end{center}
 
 本章测试特意覆盖了 $C=1$、$C=2$、$C=3$（与 $\mathrm{Sk}{=}2$ 互质）、$C=8$
-四种情形（19.10~节）。其中 $C=3$ 是唯一让「相位在 KV tile 之间交错」的配置，
+四种情形（19.10~节）。其中 $C=3$ 的相位模式要跨 4 个 KV tile 才重复，
 也是最容易暴露 (stage, phase) 推导错误的一档。
 
 \section{设计与实现}
@@ -852,7 +854,7 @@ A：看 $R_O = D/2$。$D \le 384$（$R_O \le 192$）在本结构下健康；$D \
 \textbf{Q9：相位账本为什么不能用「每轮重置」？}\\
 A：mbarrier 是共享对象，phase 是它自身的状态位。跨 KV tile 复用同一批屏障时，
 两端只有用同一个全局公式（式~\ref{eq:19-phase}）才能对上；$C$ 与 $\mathrm{Sk}$
-互质时（如 $D{=}192$、$\mathrm{Sk}{=}2$）相位周期是 2 个 KV tile，手写特判几乎
+互质时（如 $D{=}192$、$\mathrm{Sk}{=}2$）相位周期是 4 个 KV tile，手写特判几乎
 必错。这一档也是本章测试特意覆盖的组合。
 
 \section{最小测试与动手实验}
@@ -868,8 +870,8 @@ A：mbarrier 是共享对象，phase 是它自身的状态位。跨 KV tile 复�
 $D$ & $C$ & $N$ & $H$ & 覆盖点 & \\
 \midrule
 64 & 1 & 256 & 2 & 单 chunk 退化（$C < \mathrm{Sk}$，流水到不了稳态） & \\
-128 & 2 & 256 & 2 & chunk 数与 stage 数整除，相位每个 KV tile 重置 & \\
-192 & 3 & 192 & 2 & 与 $\mathrm{Sk}{=}2$ 互质，跨 KV tile 相位交错 & \\
+128 & 2 & 256 & 2 & chunk 数与 stage 数整除，phase $= t \bmod 2$ 逐 tile 翻转 & \\
+192 & 3 & 192 & 2 & 与 $\mathrm{Sk}{=}2$ 互质，相位模式跨 4 个 KV tile 才重复 & \\
 512 & 8 & 128 & 2 & 8 chunk，O 累加器 256 f32/线程的寄存器极值 & \\
 \bottomrule
 \end{tabular}
@@ -912,9 +914,9 @@ $5\times10^{-2}$ 判定线（约三个数量级余量）。其三，$D{=}512$ �
 动手实验建议（源码冻结，请在\textbf{自己的副本}上改）：
 
 \begin{enumerate}[itemsep=2pt,topsep=2pt]
-  \item 把 $D{=}192$ 例的 $\mathrm{Sk}$ 从 2 改成 3：此时 $C$ 与 $\mathrm{Sk}$
-        互质且 $C = \mathrm{Sk}$，相位周期回到 1 个 KV tile——用来验证
-        式~\ref{eq:19-phase} 的周期公式；
+  \item 把 $D{=}192$ 例的 $\mathrm{Sk}$ 从 2 改成 3：此时 $C = \mathrm{Sk}$，
+        每 KV tile 恰好推满一轮 stage，phase $= t \bmod 2$，相位周期是 2 个
+        KV tile——用来验证式~\ref{eq:19-phase} 的周期公式；
   \item 在 rescale 处只对偶数 chunk 乘 \texttt{row\_scale}（坑三），观察最大误差
         如何随 $N$ 增长；
   \item 把 $\mathrm{Sk}=\mathrm{Sv}$ 从 2 加到 4，观察 smem 涨到 96\,KB 与

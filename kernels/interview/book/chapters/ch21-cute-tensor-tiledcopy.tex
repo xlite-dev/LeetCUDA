@@ -225,10 +225,11 @@ CuTe 两个方向都提供，并且用同一个 layout 表示：
 \begin{equation}
   \mathrm{Layout\_MN} = \mathrm{raked\_product}\bigl(
     \mathrm{ThrLayout},\ \mathrm{ValLayout}\bigr)
-  \ \cong\ \bigl((32,4),(1,8)\bigr){:}\bigl((4,1),(1,1)\bigr),
+  \ =\ \bigl((1,32),(8,4)\bigr){:}\bigl((0,4),(128,1)\bigr),
   \label{eq:21-raked}
 \end{equation}
-其中 \texttt{raked}（交错）指：同一个线程的 $V$ 个值\textbf{沿坐标连续排列}，
+右侧为 CuTe 的实测输出形式（按 $(t,v)$ 的 colex 编码 $t+128v$ 索引
+线程-值对）。其中 \texttt{raked}（交错）指：同一个线程的 $V$ 个值\textbf{沿坐标连续排列}，
 而不是把 tile 先按线程切成大块、再在线程内切小块（回看 3.2 节的小例子：
 Thr \texttt{(2,2):(2,1)} 与 Val \texttt{(1,2)} 按同样方式合成出来的，正是
 那张手画的表）。式~\eqref{eq:21-raked} 的
@@ -550,6 +551,13 @@ step 整除——当前静态布局下这是编译期保证的。
 \includegraphics[width=0.95\textwidth]{figures/drawio/fig-21-3-g2s-grid/fig-21-3.png}
 \caption{thread$\times$value 网格：G$\to$S 拷贝把 $32\times32$ 的 tile 划成 $t=4m+j$ 的网格，每个线程搬 8 个连续元素（一条 128-bit \texttt{cp.async}）。同一划分用 MN 语言或 TV 语言描述是等价的（式~\eqref{eq:21-g2s-mn} 与式~\eqref{eq:21-g2s-tv}）；本章测试 case~A/B 对 1024 个 $(t,v)$ 对与 4096 个坐标逐一核对了这两组公式。}
 \label{fig:21-3}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-21-4-tiled-copy-flow/fig-21-4.png}
+\caption{tiled copy 全景数据流：gmem tile（$(8,8)$ 视图，上半 32 个元素参与拷贝、下半灰色不参与）经 g2s TiledCopy 搬成连续 smem tile，再由 s2r 依 TV layout 切成每线程 fragment（thread $t$ 持 $\{t,\,t+16\}$ 两值）。两级 TiledCopy 的分工：g2s 把 strided 的全局块搬连续，s2r 按 thread$\times$value 分发到寄存器。重建自 @竹熙佳处《写给大家看的 CuTe 教程：tiled copy》。}
+\label{fig:21-4}
 \end{figure}
 
 \section{性能分析}

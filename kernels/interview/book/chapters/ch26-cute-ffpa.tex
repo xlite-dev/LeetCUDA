@@ -266,8 +266,8 @@ inverse$\circ$compose 代数法都在讲同一件事）。放到 Split-D 的语�
 数值上它是「一条长 $K$ 向链」；结构上 FFPA 把它组织成两级：
 
 \begin{equation}
-  S_{ij} \;=\; \sum_{c=0}^{C-1}\ \underbrace{\sum_{t=0}^{3}
-  Q_{i,\,64c+16t}\,K_{j,\,64c+16t}}_{\text{chunk } c\ \text{内部：4 个 } k16\ \text{atom}} ,
+  S_{ij} \;=\; \sum_{c=0}^{C-1}\ \underbrace{\sum_{t=0}^{3}\sum_{s=0}^{15}
+  Q_{i,\,64c+16t+s}\,K_{j,\,64c+16t+s}}_{\text{chunk } c\ \text{内部：4 个 } k16\ \text{atom}} ,
   \qquad C = \frac{kHeadDim}{64} .
   \label{eq:26-splitd}
 \end{equation}

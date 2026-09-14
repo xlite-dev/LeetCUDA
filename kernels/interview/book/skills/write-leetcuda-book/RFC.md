@@ -97,6 +97,7 @@
 
 ## 8. RFC-F Part IV CuTe 篇（ch20-26，原理章 F1-F4 先行）
 
+- [x] F0 ch00 性能分析先于优化：nsys 与 ncu | 新写（工具方法论章，通用化实战素材；无 kernel 测试） | 无 | 无 | 表 tab:00-stall（stall 字典）+ tab:00-tree（决策速查） | 2026-09-14 用户点名新增，基础篇开篇
 - [x] F1 ch20 CuTe Layout 基础与代数 | 新写+对照 hgemm.cuh L788-820 | `NOTES_V2_ENABLE_CUTE` | ch20_layout.cu（host 端 CuTe 布局断言：compose/inverse/product/divide 坐标一致性） | FIG-20-1 坐标映射、FIG-20-2 mode 分组
 - [x] F2 ch21 CuTe Tensor 与 TiledCopy | 新写+对照 g2s/s2r copy | 同上 | ch21_tiled_copy.cu（host 端 TV-layout 断言，6 case） | FIG-21-1 thread×value 网格
 - [x] F3 ch22 CuTe TiledMMA 与 fragment | 新写+对照 FFPAAttnSplitDCuTeTraits L31-79 | 同上 | ch22_tiled_mma.cu（host 端 partition 一致性断言，6 case） | FIG-22-1 TiledMMA partition
@@ -118,8 +119,8 @@
 > 管线规范=BOOK_PLAN §7.2 v4：tex 内规格为内容源 → python 生成器（figures/drawio/<id>/gen.py 入库）
 > → drawio-headless -s 3 → view_image + PIL 裁剪复核（≥2 轮）→ audit.md → tex 接线 → 图清单回写。
 > **PDF 缩放硬验收**：两位数格 ≥54px、字号 ≥12、CJK 禁 bold——铁律全集 /memories/repo/leetcuda-book-drawio.md。
-> 原「知乎图 reconstruction 重建」路径降级为可选（figures/zhihu/ 无归档图，内容源=书内 ASCII 规格）。
-> 已完成 4/约 35 张（FIG-20-1/22-1/23-1/26-1；20-1/22-1 已按用户反馈修格线粘连）。
+> 知乎图 reconstruction 路径已恢复（2026-09-14 打通浏览器登录态抓图：fetch→base64→`figures/zhihu/<author>-<slug>/` 本地归档 + meta.md，gitignore 不入库）→ vision inventory → gen.py 重建 → 体检（COVER/COLLIDE=0）→ view 直读验收。首批 FIG-20-4..20-7（竹熙佳处 Layout Compose & Inverse）。
+> 已完成 14/约 35 张（FIG-20-1/22-1/23-1/26-1 + 20-4..20-9 + 21-4/22-2/23-2/24-3；20-1/22-1 已按用户反馈修格线粘连）。知乎原图归档 11 目录（figures/zhihu/，gitignore 不入库，各含 meta.md）；ch20 已 9 图封章。
 
 - [ ] H.0 TikZ/pgfplots 模板（仅函数曲线/数据图：roofline、吞吐曲线；配色/字体与全书一致）
 - [ ] H.1 必收图批次（用户点名，优先）：FIG-12-1 smem swizzle、FIG-12-2 block swizzle——生成器新建（规格=ch12 ASCII 图 + caption，可参 common.cuh L185-235 布局表）
@@ -185,13 +186,23 @@
 | FIG-20-1 | 20 | layout-coord-mapping | B→D（reed/竹熙佳处） | 正式 | figures/drawio/fig-20-1-colex/
 | FIG-20-2 | 20 | mode-grouping | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-20-2-mode-ops/ |
 | FIG-20-3 | 20 | layout-convert-routes | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-20-3-layout-convert/ |
+| FIG-20-4 | 20 | tensor-layout-engine-addr | B→D（竹熙佳处 compose&inverse，2026-09-14） | 正式 | figures/drawio/fig-20-4-tensor-addr/ |
+| FIG-20-5 | 20 | compose-3step-flow | B→D（竹熙佳处，2026-09-14） | 正式 | figures/drawio/fig-20-5-compose-flow/ |
+| FIG-20-6 | 20 | inverse-with-shape | B→D（竹熙佳处，2026-09-14） | 正式 | figures/drawio/fig-20-6-inverse-reshape/ |
+| FIG-20-7 | 20 | left-right-inverse | B→D（竹熙佳处，2026-09-14） | 正式 | figures/drawio/fig-20-7-left-right-inverse/ |
+| FIG-20-8 | 20 | layout-product | B→D（竹熙佳处 product&divide，2026-09-14） | 正式 | figures/drawio/fig-20-8-layout-product/ |
+| FIG-20-9 | 20 | layout-divide | B→D（竹熙佳处，2026-09-14） | 正式 | figures/drawio/fig-20-9-layout-divide/ |
 | FIG-21-1 | 21 | tv-layout-grid | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-21-1-engine-layout/ |
 | FIG-21-2 | 21 | tv-hand-table | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-21-2-tv-table/ |
 | FIG-21-3 | 21 | g2s-thread-grid | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-21-3-g2s-grid/ |
-| FIG-22-1 | 22 | tiledmma-partition | B→D（竹熙佳处 tiled mma） | 正式 | figures/drawio/fig-22-1-tiledmma/
-| FIG-23-1 | 23 | sw128-atom | B→D（竹熙佳处/reed） | 正式 | figures/drawio/fig-23-1-sw128/
+| FIG-21-4 | 21 | tiled-copy-flow | B→D（竹熙佳处 tiled copy，2026-09-14） | 正式 | figures/drawio/fig-21-4-tiled-copy-flow/ |
+| FIG-22-1 | 22 | tiledmma-partition | B→D（竹熙佳处 tiled mma） | 正式 | figures/drawio/fig-22-1-tiledmma/ |
+| FIG-22-2 | 22 | mma-atom-fragments | B→D（竹熙佳处 tiled mma，2026-09-14） | 正式 | figures/drawio/fig-22-2-mma-atom-fragments/ |
+| FIG-23-1 | 23 | sw128-atom | B→D（竹熙佳处/reed） | 正式 | figures/drawio/fig-23-1-sw128/ |
+| FIG-23-2 | 23 | tma-copy-flow | B→D（竹熙佳处 TMA Copy，2026-09-14） | 正式 | figures/drawio/fig-23-2-tma-copy-flow/ |
 | FIG-24-1 | 24 | handwritten-vs-cute-table | C2（LaTeX 表格） | 正式 | （保持 tabular 形态） |
 | FIG-24-2 | 24 | kstage2-pipeline | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-24-2-kstage-pipeline/ |
+| FIG-24-3 | 24 | gemm-3level-partition | B→D（reed 简单 GEMM，2026-09-14） | 正式 | figures/drawio/fig-24-3-gemm-3level-partition/ |
 | FIG-25-1 | 25 | fa-cute-3impl-compare | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-25-1-cute-struct/ |
 | FIG-26-1 | 26 | ffpa-dual-tiledmma | A→C1 | 正式 | figures/drawio/fig-26-1-dual-mma/
 

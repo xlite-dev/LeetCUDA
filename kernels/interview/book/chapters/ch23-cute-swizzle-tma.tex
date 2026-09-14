@@ -47,8 +47,8 @@ hgemm.cuh~L1859--2100（宏块 \texttt{NOTES\_V2\_ENABLE\_\allowbreak TMA\_MMA\_
 先看第~\ref{ch:12}~章那行 swizzle 在真实工程里的三种「漂移」形态。
 
 \textbf{漂移一：语义只存在于调用点。} 手写版的 swizzle 是一个自由函数，
-调用点写 \texttt{swizzle<64>(row, k)}，函数体里写死「取 bit6--7，右移 3 位
-后再 XOR」。要换 fp8（元素 1 字节、行宽翻倍）或换行宽（64 B/128 B/256 B），
+调用点写 \texttt{swizzle<64>(row, k)}，函数体里写死「取 bit7--9（3 位），
+右移 3 位后 XOR 到 bit4--6」。要换 fp8（元素 1 字节、行宽翻倍）或换行宽（64 B/128 B/256 B），
 就得改函数体内的位域，而改对与否只能靠再跑一遍正确性测试。ch12 的 kernel
 之所以只写了一个 \texttt{swizzle<>}，是因为它只有一个 smem 布局。
 
@@ -163,11 +163,12 @@ warp 内不一致的延迟。硬件愿意把 swizzle 做进 TMA 与 \texttt{ldma
 \begin{table}[htbp]
 \centering
 \caption{三个标准档位与 TMA 硬件模式、ch12 手写版的对应关系
-（周期 $=2^{M+S+B}$ 个元素；fp16 时 $2^M$ 个元素 $=16$\,B）。}
+（周期 $=2^{M+S+B}$ 字节，$2^M$ 字节 $=16$\,B $=8$ 个 fp16；末行
+\texttt{<3,3,3>} 为元素口径，周期 $512$ 个元素折算 $1024$\,B）。}
 \label{tab:23-modes}
 \begin{tabular}{cccccc}
 \toprule
-$B$ & $M$ & $S$ & 周期（fp16 元素） & TMA descriptor 模式 & ch12 手写版 \\
+$B$ & $M$ & $S$ & 周期（字节） & TMA descriptor 模式 & ch12 手写版 \\
 \midrule
 1 & 4 & 3 & 256  & \texttt{SWIZZLE\_32B}  & \texttt{swizzle<16>} \\
 2 & 4 & 3 & 512  & \texttt{SWIZZLE\_64B}  & \texttt{swizzle<32>} \\
@@ -284,10 +285,15 @@ phase 不一致，读出来就是错的。本章测试里有一条\textbf{刻意
 对照（case E）：把 \texttt{Swizzle<3,4,3>} 作用在字节偏移上得到的模式，
 与 sw\_120a 上实测 TMA \texttt{SWIZZLE\_128B} 的 4096 个元素逐点相等
 （$0$ 失配）；而用 \texttt{tile\_to\_shape} 得到的\emph{平铺布局求值}
-去对同一块 smem 时，4096 点里只有 1024 点（$25\%$）能对上——这不是
-bug，而是「位置无关的布局求值」与「位置相关的硬件 swizzle」两个语义的
-分界线：平铺之后 swizzle 的源字段里混进了块索引 $r/8$ 的相位，两者的
-位模型不再重合。
+去对同一块 smem 时，4096 点里只有 1024 点（$25\%$）能对上。这 $25\%$
+\textbf{不是}「位置无关 vs 位置相关」的语义分界，而是\textbf{单位错配}：
+裸求值把字节口径的 \texttt{Swizzle<3,4,3>} 直接作用在元素偏移上（缺了
+fp16 元素到字节的 $\times2$ recast），\texttt{YYY} 取到的是元素偏移的
+bit$[7,10)$ 而非字节偏移的 bit$[7,10)$，仅当行号满足
+$r\bmod 16\in\{0,2,4,6\}$（与列无关，恰为 $1/4$ 的行——两种口径取到的
+XOR 位段在这些行上恰好一致）时两者巧合相等——$1024/4096$ 正是这个规则的
+命中率（数值模拟 64 行 $\times$ 64 列逐点核对）。补上 recast、按正确字节口径
+求值，平铺布局同样 $4096$ 点全中。
 
 \subsection{tile\_to\_shape：从原子到多级 smem 布局}
 
@@ -409,8 +415,8 @@ __global__ void __launch_bounds__(kNumThreads)
 "TMA desc and 128B swizzle require 128x128x64")} 本身就是一条知识：
 \textbf{描述符里的 swizzle 模式、CTA tile 形状与 smem 布局三者必须自洽}。
 该 kernel 的 K 方向 tile 是 64 个 half $=128$\,B，正好等于
-\texttt{SWIZZLE\_128B} 的一行。实测把 A 的 descriptor 打印出来，
-第二个 64-bit 字的 bit[4:7] 恰为 3，就是 128\,B 模式的编码。
+\texttt{SWIZZLE\_128B} 的一行；swizzle 档位在 descriptor 里的编码位置
+见下方实践须知（control word 的 bit$[13,15)$）。
 
 \paragraph{实践须知}（descriptor 里两个「藏起来的东西」）
 \begin{itemize}
@@ -467,11 +473,12 @@ TMA 版 kernel 里，数据的写入由\textbf{硬件}完成，读取由\textbf{
 \lstinputlisting[linerange={2021-2034},firstnumber=auto,
   title={hgemm.cuh L2021-2034（消费者：k\_step 必须放进 swizzle 内部的原因）}]{../hgemm.cuh}
 
-注释里的对比是全章技术含量最高的一段：\texttt{swizzle<64>} 的周期是
-完整 $B_K=64$ 列（128\,B 行宽），所以 $k_{\text{step}}\cdot k_{\text{MmaK}}$
+注释里的对比是全章技术含量最高的一段：\texttt{swizzle<64>} 的作用域是
+完整 $B_K=64$ 列（$128$\,B 行宽；其重复周期为 $1024$\,B $=8$ 行），
+所以 $k_{\text{step}}\cdot k_{\text{MmaK}}$
 必须作为「列坐标」的一部分进入 swizzle 内部；而
 \texttt{swizzle<kMmaK>}（$k_{\text{MmaK}}=16$，即 \texttt{SWIZZLE\_32B}）
-的周期只有 16 列，每个 slice 内部自洽，偏移可以加在 swizzle 外部。
+的跨度只有 16 列，每个 slice 内部自洽，偏移可以加在 swizzle 外部。
 这条规则用式~\eqref{eq:23-chunk} 一句话就能推出：XOR 是否跨越
 slice 边界，取决于 slice 宽度是否整除 swizzle 周期。
 
@@ -495,15 +502,17 @@ phase 恰好为零。
 \begin{itemize}
   \item \textbf{「128\,B」是跨度，不是周期}。\texttt{SWIZZLE\_128B} 里的
         $128$\,B 是「一次置换覆盖的行宽」；swizzle 的\emph{重复周期}要大
-        得多——$2^{M+S+B}$ 个元素，fp16 的 SW128 是 $1024$ 个元素
-        $=2048$\,B。两者相差 $16$ 倍，讨论「多少行一循环」「多大对齐才够」
+        得多——字节口径 $2^{M+S+B}$ 字节（改 bit$[4,7)$、读 bit$[7,10)$），
+        fp16 的 SW128 是 $512$ 个元素 $=1024$\,B（$8$ 行），与行宽
+        $128$\,B 相差 $8$ 倍。讨论「多少行一循环」「多大对齐才够」
         时用的是后者。
   \item \textbf{1024 对齐的来源是「相位为零」}。把
-        \texttt{Swizzle<3,4,3>} 作用在字节偏移 $[0,2048)$ 上，软件公式
+        \texttt{Swizzle<3,4,3>} 作用在字节偏移 $[0,1024)$ 上，软件公式
         算出的排布只有在基址为 $1024$ 的倍数时才与硬件写出的排布逐点一致
         ——这正是 \texttt{\_\_align\_\_(1024)} 的来历（本章测试 case E：
-        字节空间公式 $4096$ 点全中，平铺布局求值仅 $1024$ 点命中，差的
-        就是相位）。
+        字节空间公式 $4096$ 点全中；平铺布局的裸求值只剩 $1024$ 点命中，
+        差的不是相位，而是 fp16 元素到字节的 $\times2$ recast，见
+        3.5 节）。
 \end{itemize}
 
 \needspace{96mm}
@@ -527,6 +536,13 @@ chunk 下标；蓝底行 $r=1/2/4$ 给出 chunk $c_0$ 落点翻转 $1/2/4$ 地�
 \texttt{swizzle<64>}（第~\ref{ch:12}~章）同构，TMA \texttt{SWIZZLE\_128B}
 写 $64\times64$ half tile 实测 $4096/4096$ 逐点一致（case~E）。}
 \label{fig:23-1}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-23-2-tma-copy-flow/fig-23-2.png}
+\caption{TMA copy 数据流：全局张量按 $3\times3$ box 切分（绿=已搬完、橙=搬运中），各 box 起始坐标与张量描述由 CPU encode 进 tensormap，TMA 引擎据此定位整块搬运。发起与搬运分离——单线程发起拷贝指令，box 内全部元素由 TMA 引擎异步搬入 smem；数据落地后改用 tile 局部坐标，与全局坐标脱钩。重建自 @竹熙佳处《写给大家看的 CuTe 教程：TMA Copy》。}
+\label{fig:23-2}
 \end{figure}
 
 \section{性能分析}
@@ -650,8 +666,9 @@ domain（$256+256$ 个坐标）；
 \item \textbf{case E}：硬件对照——sm\_120a 实测的 TMA
 \texttt{SWIZZLE\_128B} $8\times8$ chunk 掩码表（$64$ 槽）与
 \texttt{Swizzle<3,4,3>} 逐槽比较，再由该表导出 $4096$ 点排布逐点比较；
-同时统计 \texttt{tile\_to\_shape} 平铺布局求值的命中数（$1024/4096$），
-用于说明位置相关与位置无关的差异；
+同时统计 \texttt{tile\_to\_shape} 平铺布局\emph{裸求值}的命中数
+（$1024/4096$），用于说明把字节口径 swizzle 直接套在元素偏移上的
+单位错配（补上 $\times2$ recast 后应 $4096/4096$）；
 \item \textbf{case F}：$8\times32$ 原子的退化形态（4.1 节实践须知）——
 验证 $\text{chunk}'=\text{chunk}\oplus(\text{row}\gg1)$，XOR 值集合为
 $\{0,8,16,24\}$、每个值覆盖 $2$ 行（$=64$ 个坐标）；
@@ -685,8 +702,10 @@ PASS case F hgemm 8x32 atom effective swizzle: mismatches=0 (262 checks)
 PASS case G TMA compile-level (descriptor): mismatches=0 (15 checks)
 ALL OK
 \end{lstlisting}
-（\texttt{build\_tests.sh} 在该输出之后还会再打印一次 \texttt{ALL OK}
-作为汇总，退出码 $0$。）
+（\texttt{tiled formula 1024/4096} 一行是裸求值——字节口径 swizzle 直接
+作用在元素偏移上——的口径错配结果，补上 $\times2$ recast 后为
+$4096/4096$。\texttt{build\_tests.sh} 在该输出之后还会再打印一次
+\texttt{ALL OK} 作为汇总，退出码 $0$。）
 
 \textbf{动手实验（可选）}：把 case F 里的 \texttt{Swizzle<3,3,3>} 换成
 \texttt{Swizzle<3,4,3>}（相当于把 $8\times32$ 原子按 128\,B 行宽去解释），

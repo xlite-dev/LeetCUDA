@@ -385,7 +385,7 @@ $\bigl(\texttt{-FLT\_MAX},\, 0\bigr)$。三者各自配对，混用（比如 max
 LSE 的精度更敏感，届时这类选择要重新评估。
 
 \textbf{坑四：fp16 输入必须升 fp32 累加。}half 的最大值约 65504，
-$e^{11}$ 就越界。所以 fp16 softmax 的正确姿势永远是：减 max 后用 fp32
+$e^{x}$ 在 $x \gtrsim 11.1$（$\ln 65504 \approx 11.09$）越界。所以 fp16 softmax 的正确姿势永远是：减 max 后用 fp32
 做指数与累加（F32Acc），最后再落回 fp16。第~\ref{ch:06}~章的 RMSNorm/LayerNorm
 同理，容差分级也沿用 F32Acc 档。
 

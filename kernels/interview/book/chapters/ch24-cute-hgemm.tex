@@ -11,7 +11,8 @@
 
 第~\ref{ch:11}、\ref{ch:12}~章用两条不同的路把同一个 HGEMM 写了两遍：一条是
 「手写 MMA PTX $+$ 手算 smem 地址」的 Phase~7b，另一条是「手写 XOR swizzle $+$
-寄存器双缓冲」的 Phase~7b-3。两条路都跑到了 122\,TFLOPS 量级，但代价是同一组
+寄存器双缓冲」的 Phase~7b-3。Phase~7b-3 跑到了 122.9\,TFLOPS
+（2048$\times$16384），Phase~7b 为 76.55\,TFLOPS（1024$^3$），但代价是同一组
 「形状与步长」的事实被反复重写：\texttt{ldmatrix} 的 lane 映射、swizzle 的
 XOR 掩码、epilogue 的 \texttt{\_\_shfl\_sync} 编排，每一处都要人工保证与其余
 四处的地址算术一致。本章把同一个 kernel 交给 CuTe 重写一遍——Phase~7c 的
@@ -168,8 +169,9 @@ $B_K=32$ 与 $k_{\mathrm{stage}}=2$ 一起决定了 smem 占用：
   \label{eq:24-smem}
 \end{equation}
 
-也就是说这个 kernel 落在「一个 CTA 占 48\,KiB smem」的档位上（本机 PRO~5000
-每 SM 228\,KiB，理论上限更高，但占用率还要受寄存器与 block 数约束）。
+也就是说这个 kernel 落在「一个 CTA 占 48\,KiB smem」的档位上（本机
+PRO~5000（cc~12.0）实测每 SM smem 上限 102400\,B $=$ 100\,KiB，一个
+48\,KiB 的 CTA 每 SM 至多驻留 2 个；占用率还要受寄存器与 block 数约束）。
 
 \subsection{MMA atom 与 EURepeat}
 
@@ -198,14 +200,16 @@ tile：
 
 \begin{equation}
   \texttt{kMmaPM}=2\times16=32,\quad
-  \texttt{kMmaPN}=2\times8=32,\quad
+  \texttt{kMmaPN}=2\times2\times8=32,\quad
   \texttt{kMmaPK}=1\times16=16 ,
   \label{eq:24-tile-mma}
 \end{equation}
 
-即 EURepeat$(M,N,K)=(2,2,1)$、逻辑 MMA tile 为 $32\times32\times16$，线程数
-$\mathrm{size}(\texttt{MMA})=4\ \text{warps}\times(2\times2)=128$——这个 128
-就是 launch 配置里 \texttt{dim3 block(size(MMA\{\}))} 的来源。
+即 AtomLayout$(M,N,K)=(2,2,1)$（$2\times2=4$ 个 warp）、EURepeat$(M,N,K)=(1,2,1)$
+（每线程的 atom 重复数，两种语境的区分见第~\ref{ch:22}~章实践须知）、逻辑
+MMA tile 为 $32\times32\times16$，线程数 $\mathrm{size}(\texttt{MMA})=
+32\ \text{lanes}\times4\ \text{warps}=128$——这个 128 就是 launch 配置里
+\texttt{dim3 block(size(MMA\{\}))} 的来源。
 $B_K=32$ 相对 \texttt{kMmaPK}$=16$ 的倍数即 K 方向的切片数：
 
 \begin{equation}
@@ -571,13 +575,14 @@ $\langle3,3,3\rangle$ 配 $8\times B_K$ 原子，这是 fp16、128\,B 行宽的�
 
 \begin{itemize}
   \item 参数含义：$M=3$ 表示 $2^3=8$ 个 half（16\,B）组成一个基本元素；
-        $S=3$ 表示一行有 8 个基本元素（128\,B）；$B=3$ 表示二维空间有 8 行，
-        于是 $8\times32$ 的逻辑 tile 正好是 8 行 $\times$128\,B，覆盖全部
-        32 个 bank。
+        $S=3$ 表示 swizzle 作用域为 8 个基本元素（128\,B）；$B=3$ 表示
+        参与异或的块号占 3 位。本章 $8\times32$ 的原子每行 4 个基本元素
+        （64\,B），相邻 2 行组成一个 128\,B 块——恰好覆盖全部 32 个 bank。
   \item 位级核对：对 \texttt{Swizzle<3,3,3>}，$\mathit{yyy}=7\ll(3+3)=$
         \texttt{0x1C0}、$\mathit{zzz}=7\ll3=$\texttt{0x38}，即把「bit
-        $[6,9)$ 的行号」异或到「bit $[3,6)$ 的 16\,B chunk 号」——与注释、
-        与第~\ref{ch:12}~章式~(12.9) 完全一致。
+        $[6,9)$ 的 128\,B 块号（$=r\gg1$）」异或到「bit $[3,6)$ 的
+        16\,B chunk 号」——与源码注释的位级式子、与第~\ref{ch:12}~章
+        式~(12.8)（位级 apply 公式）完全一致。
   \item 核对手段：本章最小测试对 $(8\times32)$ 原子做了 256 点全遍历比对
         （逐坐标写、逐坐标读、与公式逐点对照）。换 $B_K$、换 dtype 或换
         swizzle 档位后，这条核对应当重跑——\textbf{swizzle 参数是最容易被
@@ -590,9 +595,9 @@ G2S 的 Copy Atom 取
 \texttt{SM80\_CP\_ASYNC\_}\allowbreak\texttt{CACHEGLOBAL}，模板参数填
 \texttt{uint128\_t}：一次搬 16\,B，\texttt{CACHEGLOBAL} 表示只经 L2、跳过 L1
 （数据马上要被 smem 消费，留在 L1 是浪费）。线程布局 $\{32,4\}$ 乘值布局
-$\{1,8\}$ 的含义是「每线程连续搬 8 个 half $=$ 128 位」，128 个线程正好覆盖
-一行 $B_K=32$ 个 half $\times$ 4 行——\textbf{一条 \texttt{cp.async} 指令搬满
-128 位，且不需要任何 predicate}。
+$\{1,8\}$ 的含义是「每线程连续搬 8 个 half $=$ 128 位」：4 个线程 $\times$ 8 个
+half 铺满一行 $B_K=32$ 个 half，128 个线程每轮覆盖 32 行——\textbf{一条
+\texttt{cp.async} 指令搬满 128 位，且不需要任何 predicate}。
 
 \paragraph{S$\to$R：\texttt{ldmatrix} 与「从 TiledMMA 反推」}
 
@@ -809,6 +814,13 @@ R2S $\to$ sC $\to$ S2G，映射进类型 \\
 \includegraphics[width=0.95\textwidth]{figures/drawio/fig-24-2-kstage-pipeline/fig-24-2.png}
 \caption{CuTe HGEMM 的 $k_{\mathrm{stage}}=2$ 流水时序（含寄存器双缓冲）。上：G$\to$S（LDGSTS）；中：S$\to$R（LDSM）；下：MMA。MMA 消费 stage $s_k$ 的 k\_step 时，LDSM 预取同一 stage 的 k\_step+1，cp.async 同时填另一个 stage——三重重叠；左端 prefetch 一个 tile，右端 epilogue（R2R $\to$ R2S $\to$ S2G，sC 与一个 A stage 别名：$32{\times}32{\times}4 = 128{\times}32 = 4096$ half）。}
 \label{fig:24-2}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-24-3-gemm-3level-partition/fig-24-3.png}
+\caption{CuTe GEMM 的三层 partition：\texttt{local\_tile} 以 \texttt{(blockIdx.y, blockIdx.x)} 为坐标从 gmem 切出 CTA tile $(128,128)$；warp 布局 $(2,2)$ 下 \texttt{local\_partition} 平分给 4 个 warp 得 $(64,64)$；warp tile 由 $4\times8$ 个 $16\times8$ atom 铺满，\texttt{partition\_fragment\_C} 为每 thread 生成累加器片段（单 MMA tile 内 $2\times2$ 四值，v0/v1 在第 $i$ 行、v2/v3 在第 $i+8$ 行）。层级换算 $128\times128=4\times(64\times64)=128$\,threads$\times128$ 值/thread。重建自 @reed《cute 之 简单 GEMM 实现》（示意图为经典 4-warp/$64\times64$ 配置；本章 kernel 实为 tile $32\times32$、warp $32\times16$，层级方法相同）。}
+\label{fig:24-3}
 \end{figure}
 
 \section{性能分析}

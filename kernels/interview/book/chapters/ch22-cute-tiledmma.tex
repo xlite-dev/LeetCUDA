@@ -203,14 +203,15 @@ $\mathrm{thr\_layout\_vmnk} = (32,4,1,1){:}(1,32,0,0)$——$\mathrm{ThrV}=32$
   \mathrm{permutation\_mnk}\langle I\rangle =
   \begin{cases}
     \text{显式给定}, & \text{非下划线},\\[2pt]
-    \mathrm{size}_I \cdot \mathrm{size}_{I+1}, & \text{否则},
+    \mathrm{atom}_I \times \mathrm{Thr}_I, & \text{否则},
   \end{cases}
   \label{eq:22-tile-size}
 \end{equation}
 
 给出：QK 实测 $\mathrm{tile\_size} = (64,64,16)$，PV 为 $(64,16,16)$
 （FFPA 两者都显式给定）。式~\eqref{eq:22-tile-size} 的第二行是「不显式
-给时会怎么算」：原子长度乘该方向的线程组数（M 对应
+给时会怎么算」：$\mathrm{tile}_I = \mathrm{atom}_I \times \mathrm{Thr}_I$，
+原子长度乘该方向的 warp 组数（M 对应
 $\mathrm{ThrM}$、N 对应 $\mathrm{ThrN}$、K 对应 $\mathrm{ThrK}$）。
 
 用映射语言说：\texttt{ThrLayoutVMNK} 把\textbf{线程编号}拆成
@@ -370,10 +371,11 @@ $\mathrm{MMA}_N = 8$（$8$ 个 $8$ 列的原子），全部落在同一个 warp 
 \textbf{为什么 PV 用 $64\times16$？}因为 acc\_O 是「$64\times D$-chunk $\times$
 $D$ 方向 chunk 数」的大数组。每线程每个 chunk 32 个 float，
 $D=512$ 时 $8$ 个 chunk 共 \textbf{256 个寄存器}——这已经逼近寄存器文件的上限
-（第~\ref{ch:19}~章的寄存器压力讨论）。若把 PV 的 N 也拉到 64，单次 MMA 的
-C fragment 会从 8 涨到 32，寄存器直接爆掉。实测 PV 在 $(64,16)$ 的 C 上
+（第~\ref{ch:19}~章的寄存器压力讨论）。若把 PV 的 N 也拉到 64，单次 gemm
+调用的 C 视图会从 8 涨到 32、B fragment 随之线性增长，S$\to$R 拷贝粒度
+变粗，常驻 acc\_O 并不变。实测 PV 在 $(64,16)$ 的 C 上
 每线程 $(4,1,2) = 8$ 个 float，与注释「EURepeat$=<1,2,1>$」一致——
-\textbf{tile 的 N 尺寸就是 acc\_O 寄存器的旋钮}。
+\textbf{tile 的 N 尺寸是 per-call C 视图与拷贝粒度的旋钮}。
 
 \paragraph{实践须知}（读 FFPA traits 注释时容易踩的两处）
 \begin{itemize}
@@ -462,10 +464,18 @@ PV 一侧的使用（L339--345）：
 \caption{TiledMMA partition：QK 的 $64\times64$ tile 上，4 个 warp 各覆盖
 16 行，warp 内 N 方向重复 8 个原子；A/B/C 三种 fragment 的每线程形状与
 重复因子（式~\eqref{eq:22-dup}）。下半部分是 PV 的 $(64,16,16)$ tile：
-N 方向只重复 2 个原子，代价换来 acc\_O 的寄存器可控（8 个 d-chunk 共
-256 寄存器；N tile 拉到 64 则 8 倍超支）。本章测试 case~C--F
+N 方向只重复 2 个原子，代价换来 per-call C 视图与拷贝粒度可控（8 个
+d-chunk 各自拷回，常驻 acc\_O 256 寄存器不变；N tile 拉到 64 只是单次
+调用的 C fragment 临时 4 倍）。本章测试 case~C--F
 对全部形状与覆盖做了逐点核对。}
 \label{fig:22-1}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-22-2-mma-atom-fragments/fig-22-2.png}
+\caption{m16n8k16 atom 的 C fragment thread-value 映射：thread $t$ 持行 $t/4$ 与 $t/4+8$、列 $2(t\bmod 4)$ 与 $2(t\bmod 4)+1$ 共 4 值——行 $m$ 与 $m+8$ 由同组线程重复持有。三个操作数每线程 A 8 值 / B 4 值 / C 4 值，守恒式 $32\times(8+4+4)=512$。更大的 tile 只是 atom 沿 M/N 的复制堆叠，thread-value 规律不变——\texttt{make\_tiled\_mma} 的构造基础。重建自 @竹熙佳处《写给大家看的 CuTe 教程：tiled mma》。}
+\label{fig:22-2}
 \end{figure}
 
 \section{性能分析}
@@ -474,13 +484,16 @@ N 方向只重复 2 个原子，代价换来 acc\_O 的寄存器可控（8 个 d
 数字在第~\ref{ch:19}、\ref{ch:26}~章（FFPA）与第~\ref{ch:24}~章（HGEMM）。
 本节把「tile 选择」翻译成三条可计算的账。
 
-\textbf{账一（寄存器）}：acc\_O $=kD_{\mathrm{chunks}}\times
-\mathrm{MMA}\times\mathrm{MMA}_M\times\mathrm{MMA}_N$。PV 的
-$\mathrm{MMA}_N = 2$（$16/8$）时每个 $64\times64$ d-chunk 是 32 个 float；
-$D=512$ 时 $8$ 个 chunk 共 256 个寄存器。若把 PV 的 tile N 改成 64
-（$\mathrm{MMA}_N = 8$），单 chunk 就是 128 个 float——8 倍超支，
-不可能常驻。这就是 FFPA 注释里「PV 保持小 tile 控制 acc\_O 寄存器」的
-算术依据。
+\textbf{账一（寄存器）}：acc\_O $=kD_{\mathrm{chunks}}\times\mathrm{ThrLD}
+\times\mathrm{MMA}_M\times\mathrm{MMA}_N\times\mathrm{Nrep}$（ThrLD 是单个
+atom 每线程的 C 值数 $4$，Nrep 是 chunk 内 N 方向的重复数 $64/16=4$）
+$=8\times4\times1\times2\times4=256$。PV 的
+$\mathrm{MMA}_N = 2$（$16/8$）时每个 $64\times64$ d-chunk 每线程是 32 个
+float；$D=512$ 时 $8$ 个 chunk 共 256 个寄存器。tile N=64 时单次 gemm 调用
+的 C fragment 从 8 值涨到 32 值（4 倍），常驻 acc\_O（8 chunk $\times$ 32
+$=$ 256 float）不变——超支的是每次调用的临时视图与 B fragment，不是
+累加器。FFPA 注释「PV 保持小 tile」的算术依据正在于此：压的是每次调用的
+临时开销，而非 acc\_O。
 
 \textbf{账二（重复因子）}：B 的 fragment 按 M-warp 数重复（式~\eqref{eq:22-dup}）。
 QK 用 $(4,1,1)$ 排布时 B 重复 4 倍（$4\times32=128$ 个 half/线程），
@@ -584,11 +597,12 @@ A：它是 TiledMMA 对外的尺寸接口，也是 \texttt{make\_tiled\_copy\_A/
 推导 S$\to$R 拷贝 tiler 的来源（第~\ref{ch:21}~章式~(21-mtca)）——
 TiledMMA 与 TiledCopy 通过它解耦：改 tile 不影响拷贝代码。
 
-\textbf{Q8：为什么说「tile 的 N 尺寸是寄存器旋钮」？}\\
-A：C fragment 每线程元素数 $=\mathrm{MMA}\times\mathrm{MMA}_M\times
-\mathrm{MMA}_N$，而 $\mathrm{MMA}_N = \mathrm{tile}_N/\mathrm{atom}_N$。
-FFPA 在 $D=512$ 时 acc\_O 已达 256 个寄存器，所以 PV 的 $\mathrm{tile}_N$
-只能取 16（$64\times16\times16$）。
+\textbf{Q8：tile 的 N 尺寸调节什么？}\\
+A：单次调用 C fragment 每线程元素数 $=\mathrm{MMA}\times\mathrm{MMA}_M\times
+\mathrm{MMA}_N$，而 $\mathrm{MMA}_N = \mathrm{tile}_N/\mathrm{atom}_N$——
+tile N 增大时 per-call C 视图与 B fragment 随之线性增长，S$\to$R 拷贝
+粒度变粗；常驻 acc\_O（$D=512$ 时 256 个寄存器）不变，PV 因此取
+$\mathrm{tile}_N=16$（$64\times16\times16$）。
 
 \section{最小测试与动手实验}
 
@@ -645,8 +659,8 @@ ALL OK
 \begin{enumerate}
   \item 把 case~C 的 PV mma 的 tile 从 \texttt{Tile<64,16,16>} 改成
         \texttt{Tile<64,32,16>}，观察 fragment 的 $\mathrm{MMA}_N$ 从 2 变
-        4、单 d-chunk 的 acc\_O 从 32 涨到 64 个寄存器——亲手体验「tile N
-        是寄存器旋钮」；
+        4、单次调用的 C 视图从 8 涨到 16 个值，而单个 d-chunk 的 acc\_O
+        仍是 32——亲手体验「tile N 调节 per-call C 视图与拷贝粒度」；
   \item 把 QK 的 warp 排布从 \texttt{Layout<Shape<\_,4,\_,\_>>} 改成
         \texttt{Layout<Shape<\_,2,\_2,\_>>}（$2\times2$ 网格），观察
         A/B 的重复因子与 warp 行带如何变化（case~D/E 的断言会同时失效，
