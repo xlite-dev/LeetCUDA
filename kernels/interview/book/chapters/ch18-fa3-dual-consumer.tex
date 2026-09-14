@@ -208,12 +208,13 @@ Q/K/V 操作数碎片与 $m/\ell$ 统计量（L1725--1731）。$D{=}128$ 的 F16
 40 个就够。\textbf{同一份 64K 寄存器文件，按角色重新切蛋糕}——这就是 warp
 specialization 收益的另一半来源。
 
-必须补一句现实约束（第~\ref{ch:13}~章已考据）：在 sm\_120a 上，只要 kernel
-用了 \texttt{cp.async.bulk.tensor}，ptxas 就会以 C7506 丢弃
-\texttt{setmaxnreg}（CUDA 13.2），所以 40/168/80 在当前工具的编译产物里是
+必须补一句现实约束（第~\ref{ch:14}~章已考据）：默认 \texttt{-arch
+sm\_120a} 目标下，只要 kernel 用了 \texttt{cp.async.bulk.tensor}，ptxas
+就会以 C7506 丢弃 \texttt{setmaxnreg}（CUDA 13.2）；改用 family-specific
+目标 \texttt{-arch sm\_120f} 即可保留生效。默认构建产物里 40/168/80 是
 \textbf{意图注释}而非既成事实，真正决定分配的是
 \texttt{\_\_launch\_bounds\_\_(384, 1)}（L1515）与 ptxas 的分配器。池数学的
-价值在于：一旦条件具备（sm\_90a，或未来工具链修复），这套数字必须\textbf{先
+价值在于：一旦条件具备（sm\_90a，或 sm\_120f 目标），这套数字必须\textbf{先
 算对}，否则就是上面那次挂死事故。
 
 \section{设计与实现}
@@ -373,9 +374,9 @@ GEMM 以喂满 Tensor Core。本 kernel 的 consumer 用\textbf{同步}的
   P2  for tile = 0..Tc-1:
         cid = tile & 1             K first ...
         K[tile] (Sk=1) or K[tile+2] (Sk>=2) -> K_smem[cid][stg]
-                                     waits empty_K[cid][stg] -> full_K[cid][stg]
+                                  waits empty_K[cid][stg] -> full_K[cid][stg]
         V[tile]                      -> V_smem[cid]
-                                     waits empty_V[cid]      -> full_V[cid]
+                                  waits empty_V[cid]      -> full_V[cid]
 
   --- WG1 [128,255] consumer_id=0 ---+--- WG2 [256,383] consumer_id=1 ----
       tiles 0,2,4,...  (ceil Tc/2)   |    tiles 1,3,5,...  (floor Tc/2)
@@ -450,7 +451,7 @@ f16 写回之间反复 \texttt{\_\_float22half2\_rn}，而 attention 的 softmax
 「两条路线在同一张卡上的量级对照」即可，不宜当作「FA3 比 FA2 快 $x\%$」
 的结论——真正受控的对照需要固定 tile 与流水深度，留给附录 B 的复测表。
 
-\section{勘误与考据}
+\section{实践经验与考据说明}
 
 \begin{kaogu}[F1·注释与代码相反]{L1606 「Per-tile load order: V first, then K」}
   该行位于 producer 段注释块（L1601--1612），写作「每 tile 先 V 后 K」，但
@@ -553,11 +554,12 @@ producer 阻塞在 barrier——排查口诀见第~\ref{ch:14}~章（唯一变�
 $B_c$ 或让两个 WG 共享一套更大 bank——前者改变 tile 几何，后者退回
 第~\ref{ch:17}~章的结构。
 
-\textbf{坑七：sm\_120a 上 \texttt{setmaxnreg} 被 ptxas 丢弃（C7506）。}
-只要 kernel 里有 TMA（\texttt{cp.async.bulk.tensor}），ptxas 就视其为隐式
-extern-call 边界，丢弃同 kernel 的 \texttt{setmaxnreg}。所以本机跑出的性能
-里\textbf{没有}寄存器再分配的功劳；换到 sm\_90a 或未来工具链再复测才是
-式~\ref{eq:18-pool} 的真实检验。
+\textbf{坑七：\texttt{setmaxnreg} 是目标后缀敏感的（默认 sm\_120a 丢弃，
+C7506）。}sm\_120a 目标下只要 kernel 里有 TMA（\texttt{cp.async.bulk.tensor}），
+ptxas 就视其为隐式 extern-call 边界，丢弃同 kernel 的 \texttt{setmaxnreg}；
+换用 \texttt{-arch sm\_120f}（family-specific 目标）即可保留（第~\ref{ch:14}~章）。
+所以默认构建跑出的性能里\textbf{没有}寄存器再分配的功劳；用 sm\_120f
+重建、或在 sm\_90a 上复测才是式~\ref{eq:18-pool} 的真实检验。
 
 \textbf{坑八：seqlen 对齐。}v1 要求 $N \% B_r = 0$ 且 $N \% B_c = 0$，
 本章 $B_r = B_c = 64$，比第~\ref{ch:17}~章的 128 宽松一档（无尾 tile 处理，

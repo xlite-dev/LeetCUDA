@@ -1,4 +1,178 @@
-% appA-common-toolbox.tex — 骨架（RFC-0.3）
+% appA-common-toolbox.tex — 附录 A 全书通用工具箱：common.cuh 解析 v1（RFC-I.1）
+% 行号按冻结基线 1c2c1e0a 核对（L456 前两版完全一致；setmaxnreg 注释段
+% L457--476 后续有增补，本附录引用的是当前工作树行号，接口无变化）。
 \chapter{附录 A\quad 基础设施工具箱：common.cuh 解析}\label{app:A}
 
-本章待撰写。MMA/WGMMA PTX 宏、swizzle v1/v2、TMA/mbarrier helpers、TensorMap、setmaxnreg（I.1）。
+\section{这个文件在全书的角色}
+
+正文的组织方式是「一章一个 kernel 家族，公共工具向 common.cuh 沉淀」：
+cp.async 协议宏、ldmatrix/HMMA 指令封装、XOR swizzle、TMA/mbarrier helpers、
+setmaxnreg 封装、WGMMA descriptor 编码——每一样都在某一章首次登场，
+之后被后续章节直接复用。本附录把这个头文件按工具族拆开，给出
+「地图 + 用法要点」：读正文时想确认某个宏的出处，或动手复现时想知道
+该 include 什么、能拿什么现成设施，都可以从这里查起。工具族与章节的
+对应关系见表~\ref{tab:appA-map}；逐段的 permalink 源码区间见附录~\ref{app:D}。
+
+\begin{table}[htbp]
+\centering\small
+\caption{common.cuh 工具族地图（行号按当前源码树核对）}\label{tab:appA-map}
+\begin{tabular}{clp{4.9cm}c}
+\toprule
+段 & 行区间 & 内容 & 主要使用章 \\
+\midrule
+1 & L4--29 & 头文件、CUDART $\ge$13.0 门控（L21--24）、
+  \texttt{INT4}/\texttt{FLOAT4}/\texttt{HALF2}（L25--27）、\texttt{kWarpSize} & 3、8、9 \\
+2 & L31--105 & cp.async 宏（L41--49）、ldmatrix 宏（L56--72）、
+  \texttt{HMMA16816}/\texttt{F32}（L81/L92）、\texttt{div\_ceil} & 9--12、16--18 \\
+3 & L110--348 & swizzle 家族：\texttt{permuted}（L158）、
+  \texttt{swizzle\_v1\_impl}（L235）、\texttt{SwizzleBMS}（L287）、
+  \texttt{swizzle\_v2\_impl}（L326） & 12、14、23 \\
+4 & L350--475 & TMA/mbarrier helpers（双实现门控 L353--364） & 13、14、17、18 \\
+5 & L452--495 & setmaxnreg 封装：注释（L452--476）、宏门控（L477--483）、
+  两个模板（L485--495） & 13、14 \\
+6 & L500--691 & WGMMA 家族：异步三件套（L517--521）、
+  \texttt{SMEM\_DESC\_ENCODE}（L530）、\texttt{make\_smem\_desc}（L566）、
+  指令宏（L622）、\texttt{WgmmaSMem}（L680） & 13 \\
+7 & L693--700 & SM120 适配：\texttt{TmaMmaWSSMem}（L695） & 14 \\
+8 & L703--781 & host 侧 TMA descriptor：
+  \texttt{create\_tensor\_map}（L743）、\texttt{allocate\_and\_create\_tensor\_map}（L769） & 13、14 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+第 4--8 段整体由编译宏门控：不定义 \texttt{NOTES\_V2\_ENABLE\_WGMMA} 或
+\texttt{NOTES\_V2\_ENABLE\_TMA\_MA\_WS} 时，TMA/WGMMA 相关设施完全不参与编译——
+这是「基础章构建保持轻量」的机制保证（各宏与架构的组合见附录~\ref{app:C}）。
+
+\section{搬运原语：向量化宏与 cp.async}
+
+\texttt{FLOAT4(v)}（L26）把任意左值重解释为 \texttt{float4} 引用，实现一条
+128-bit 访存指令加载 4 个 float——第~\ref{ch:03}~章的向量化与
+第~\ref{ch:08}~章 GEMV 的核心武器。Ampere 时代的异步全局到共享内存搬运则由
+四个宏构成完整协议（第~\ref{ch:10}~章双缓冲首次使用）：
+
+\lstinputlisting[linerange={41-49},firstnumber=auto,
+  title={common.cuh L41-49（cp.async 协议宏：commit/wait 语义与 cg 粒度）}]{../common.cuh}
+
+用法要点：\texttt{commit\_group} 把此前未提交的 \texttt{cp.async} 归入一个
+async-group（per-thread）；\texttt{wait\_group~N} 阻塞到「未完成 group 数
+$\le$ N」，N=0 即等全部落地——这与后面 WGMMA 的
+\texttt{wgmma.wait\_group}（L520）语义完全同构，是贯穿第~\ref{ch:10}~、
+\ref{ch:11}~、\ref{ch:13}~章的同一套「分组-等待」心智模型。
+\texttt{cg} 只支持 16 字节粒度（\texttt{ca} 支持 4/8/16），与 \texttt{FLOAT4}
+天然对齐。
+
+\section{Tensor Core 入口：ldmatrix 与 HMMA 宏}
+
+ldmatrix 家族（L56--72）把 smem 中 8$\times$8 的矩阵片段按 Tensor Core
+fragment 布局装进寄存器：\texttt{LDMATRIX\_X4} 一次装 4 个片段，
+\texttt{LDMATRIX\_X2\_T} 的 \texttt{.trans} 后缀做转置加载——FA 里 P@V 的
+B 矩阵需要 col-major，而 V 在 smem 是 row-major，转置在这一步完成
+（第~\ref{ch:16}~章）。计算侧是两个指令宏：\texttt{HMMA16816}（L81，
+f16 累加）与 \texttt{HMMA16816F32}（L92，f32 累加），对应
+\texttt{mma.sync.aligned.m16n8k16} 的两个变体。寄存器口径：16$\times$8=128
+个输出元素由 32 线程分担，f16 变体每线程 2 个 \texttt{uint32}、f32 变体
+4 个。使用者：hgemm 家族（第~\ref{ch:11}~、\ref{ch:12}~章）、FA2
+（第~\ref{ch:16}~章）；第~\ref{ch:14}~章的 SM120 kernel 同样复用
+ldmatrix + \texttt{HMMA16816F32}。
+
+\section{smem swizzle 家族}
+
+第 3 段（L110--348）是全书篇幅最大的工具族，动机、bank 分布表与
+\texttt{Swizzle<B,M,S>} 位级语义的完整推导都在第~\ref{ch:12}~章，这里只给
+接口速览。核心是按列宽模板化的 \texttt{permuted}——三档 TMA 硬件 swizzle
+模式的手写 XOR 展开：
+
+\lstinputlisting[linerange={171-183},firstnumber=auto,
+  title={common.cuh L171-183（permuted：SWIZZLE\_32B/64B/128B 三档 XOR 分支）}]{../common.cuh}
+
+族内四个实体的关系：\texttt{swizzle\_v1\_impl}（L235）就是
+\texttt{permuted<kColStride,8>} 的别名；\texttt{SwizzleBMS<B,M,S>}（L287）
+把 cute 的 \texttt{Swizzle<B,M,S>::apply} 位级公式独立实现（L287--320），
+\texttt{swizzle\_v2\_impl}（L326）用它统一表达 16/32/64 三档，与 v1
+bit-exact 等价（等价性证明注释在 L320--325，host 端
+\texttt{test\_swizzle\_equiv} 可验证）。第~\ref{ch:23}~章讲 CuTe swizzle
+时，\texttt{SwizzleBMS} 正是「脱离 cute 框架理解位级语义」的对照实现。
+一个容易踩的悬置事实：L344--348 的派发器注释描述的
+\texttt{swizzle<kColStride>} 函数\textbf{实体在 hgemm.cuh}，common.cuh 只
+提供 v1/v2 两个实现与注释（第~\ref{ch:12}~章考据框有记录）。
+
+\section{TMA/mbarrier helpers 与 setmaxnreg}
+
+第 4 段（L350--475）在 \texttt{NOTES\_V2\_FORCE\_INLINE\_ASYNC\_PROXY}
+门控下提供两套等价实现：默认走 raw \texttt{asm volatile} PTX；未定义该宏
+则走 \texttt{cuda::ptx} / \texttt{cuda::device} C++ 封装（L422 起）。
+两套并存的原因是 ptxas 对 setmaxnreg 的 C7506 丢弃问题（下文）。raw 形式的
+2D TMA 加载：
+
+\lstinputlisting[linerange={382-397},firstnumber=auto,
+  title={common.cuh L382-397（tma\_load\_2d：cp.async.bulk.tensor.2d raw PTX 形式）}]{../common.cuh}
+
+要点：目的地址与 mbarrier 都是 32-bit smem 地址（\texttt{\_\_cvta\_generic\_to\_shared}
+转换）；数据落齐由硬件对 mbarrier 做 complete-tx 记账，配合
+\texttt{tma\_arrive\_expect\_tx}（声明期望字节数）构成第~\ref{ch:13}~、
+\ref{ch:14}~、\ref{ch:17}~、\ref{ch:18}~章流水线的 full/empty 双屏障协议。
+寄存器再分配封装则被 \texttt{NOTES\_V2\_ENABLE\_SETMAXNREGS} 独立门控：
+
+\lstinputlisting[linerange={485-495},firstnumber=auto,
+  title={common.cuh L485-495（warpgroup\_reg\_dealloc/alloc：setmaxnreg 指令模板）}]{../common.cuh}
+
+用法要点（完整事实链见第~\ref{ch:14}~章考据框）：两条指令都要求 warpgroup
+内全部 warp 同步执行；sm\_90a 上只要 PTX 完全内联即可生效，而 sm\_120a 上
+ptxas 会把 TMA 的使用当作隐式 call 边界、以 C7506 警告丢弃 setmaxnreg——
+换 family-specific 目标 \texttt{-arch sm\_120f} 才保留生效（ffpa-attn 实测，
+详见附录~\ref{app:C} 的目标选择表）。默认构建里宏展开为 \texttt{((void)0)}
+（L477--483），调用点零成本。
+
+\section{WGMMA 家族与 host 侧 TensorMap}
+
+第 6 段（L500--691）是 Hopper 专用：\texttt{WGMMA\_FENCE/COMMIT\_GROUP/
+WAIT\_GROUP}（L517--521）延续 cp.async 的分组-等待语义；
+\texttt{make\_smem\_desc}（L566）把 smem 指针编码成 64-bit 矩阵描述符
+（位域布局与 K-Major + 128B swizzle 的几何推导在第~\ref{ch:13}~章，
+不重复）；\texttt{WGMMA\_M64N128K16\_F16F16F16}（L622）封装
+\texttt{wgmma.mma\_async.m64n128k16}，一次发射计算 $64\times128\times16$。
+配套的 \texttt{WgmmaSMem}（L680）与 SM120 的 \texttt{TmaMmaWSSMem}（L695）
+只差 alignas：前者供 descriptor 硬件补偿 swizzle 相位，后者要求 consumer
+（ldmatrix）用软件公式感知相位（第~\ref{ch:14}~章 14.4.2 节）。
+host 侧创建 TMA descriptor 的入口：
+
+\lstinputlisting[linerange={745-758},firstnumber=auto,
+  title={common.cuh L745-758（create\_tensor\_map 核心：shape/stride/box 的 (minor,major) 顺序）}]{../common.cuh}
+
+两个高频易错点（第~\ref{ch:13}~章展开）：TMA 的 shape 与 box 都按
+(minor, major) 排列，row-major $[M,K]$ 矩阵要传 $(K,M)$；
+\texttt{gmem\_prob\_stride + 1} 跳过隐式的最内维 stride（元素类型宽度），
+API 只接收 rank$-1$ 个 stride。swizzle 模式固定选
+\texttt{CU\_TENSOR\_MAP\_SWIZZLE\_128B} 与 \texttt{make\_smem\_desc} 的
+layout\_type=1 配对。
+
+\section{写一个新教学 kernel 的最小 checklist}
+
+从零加一个「正文可引用、测试可复现」的教学 kernel，按这条路径走：
+
+\begin{enumerate}
+  \item \textbf{include}：kernel 头文件放 \texttt{kernels/interview/}，直接
+        \texttt{\#include "common.cuh"}；需要归约/softmax/norm 等基础件则
+        \texttt{\#include "base.cuh"}（测试侧以 \texttt{\#include "../../base.cuh"}
+        相对路径引用，见 book/tests/README.md 约定）。
+  \item \textbf{按目标代际选工具族}：sm\_89 走 \texttt{FLOAT4} + cp.async +
+        ldmatrix + \texttt{HMMA16816}；sm\_90a 追加 TMA helpers +
+        \texttt{make\_smem\_desc} + WGMMA 宏；sm\_120 用 TMA helpers +
+        mma.sync 路径（WGMMA 不存在），swizzle 记得从 \texttt{<16>} 换
+        \texttt{<64>} 档。
+  \item \textbf{kernel 写作三件事}：\texttt{\_\_launch\_bounds\_\_} 写满；
+        128B swizzle 路径的 smem 基址对齐 1024B（第~\ref{ch:14}~章坑三）；
+        网格维度一律 \texttt{div\_ceil}（L104）。
+  \item \textbf{对拍}：测试复用 \texttt{book/tests/common\_test.h}——
+        \texttt{book\_fill\_rand} 造确定性输入，CPU fp64 写参考，
+        \texttt{book\_check} 按三档容差判定（附录~\ref{app:C}）；
+        规模不超过 \texttt{BOOK\_TEST\_MAX\_N}。
+  \item \textbf{arch 门控}：普通特性用 \texttt{book\_require\_sm} 打 SKIP；
+        家族特性（如 WGMMA）必须精确判断家族——\texttt{>=} 挡不住
+        「sm\_120 $\ge$ sm\_90 但无 WGMMA」的假阳性（第~\ref{ch:13}~章教训）。
+  \item \textbf{落盘验证}：单文件写 \texttt{book/tests/chNN\_<slug>.cu}，
+        \texttt{./build\_tests.sh -{}-ch chNN} 跑到尾行 \texttt{ALL OK}。
+  \item \textbf{接回正文}：从 \texttt{chapters/\_template.tex} 起步写章稿，
+        源码区间登记 \texttt{scripts/anchors.yaml}，进附录~\ref{app:D} 索引。
+\end{enumerate}

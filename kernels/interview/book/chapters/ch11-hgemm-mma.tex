@@ -102,7 +102,7 @@ C 的 $16\times8$——每个 lane 持多少、在矩阵的什么位置，就是
 \begin{figure}[htbp]
 \centering
 \begin{verbatim}
-  FIG-11-2a  A fragment (m16 x k16, row-major), groupID g = lane>>2, tig = lane%4
+  FIG-11-2a  A fragment (m16 x k16, row-major), g = lane>>2, tig = lane%4
 
         k: 0  1  2  3  4  5  6  7   8  9 10 11 12 13 14 15
   m  0     T0 T0 T1 T1 T2 T2 T3 T3  T0 T0 T1 T1 T2 T2 T3 T3   } a0,a1 in R0
@@ -113,8 +113,8 @@ C 的 $16\times8$——每个 lane 持多少、在矩阵的什么位置，就是
   ...                                                      (row = g+8)
   m 15     T28 ...                                    T31 T31  }
 
-  R0 = {a0,a1}: row=g,   cols (2*tig, 2*tig+1)     R2 = {a4,a5}: row=g,   cols+8
-  R1 = {a2,a3}: row=g+8, cols (2*tig, 2*tig+1)     R3 = {a6,a7}: row=g+8, cols+8
+  R0 = {a0,a1}: row=g,   cols (2*tig,2*tig+1) R2 = {a4,a5}: row=g,   cols+8
+  R1 = {a2,a3}: row=g+8, cols (2*tig,2*tig+1) R3 = {a6,a7}: row=g+8, cols+8
   quadrant order expected by mma: R0=upper-left, R1=lower-left,
                                   R2=upper-right, R3=lower-right
 \end{verbatim}
@@ -382,7 +382,7 @@ $B\sb K{=}16$ 的指令发射密度翻倍、三级流水的同步更松。
 说明源码被宏门控剪掉、走了 CUDA Core 的 fallback 路径——
 这是改造这类教学 kernel 时最常见的「白忙一场」。
 
-\section{勘误与考据}
+\section{实践经验}
 
 \begin{kaogu}[F2]{hgemm.cuh L31-32：「ldmatrix 默认加载 col-major」与 PTX 文档相反}
   注释原文（\texttt{\_nn} 布局对比段）称 B 行主序时「需要 .trans」的理由是
@@ -509,11 +509,11 @@ B$^{\top}$ 在 host 构造（坑一的根源演示）。
 本机运行输出（RTX PRO 5000，2026-09-11；PASS 行的误差数值见
 表~\ref{tab:11-pass}）：
 
-\begin{verbatim}
+\begin{lstlisting}[style=console]
 case A: M=128 N=128 K=128
 case B: M=256 N=128 K=64
 ALL OK
-\end{verbatim}
+\end{lstlisting}
 
 \begin{table}[htbp]
 \centering

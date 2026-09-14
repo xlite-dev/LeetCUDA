@@ -64,24 +64,24 @@ fp64 参考做正确性判定；本章的实测数字全部来自该测试与 \t
 手写版与 CuTe 版的「行数比」并不悬殊（231 对 204），但\textbf{代码的性质变了}。
 手写版里出现的是地址表达式与内联 PTX：
 
-\begin{verbatim}
+\begin{lstlisting}
 int lane_smem_a_m = warp_m * (kMmaM * kValTileM) + i * kMmaM + lane_id % 16;
 int lane_smem_a_k = k_step * kMmaK + (lane_id / 16) * 8;
 uint32_t lane_smem_a_ptr = smem_a_base_ptr +
     (stage * BM * BK + lane_smem_a_m * BK +
      swizzle<64>(lane_smem_a_m, lane_smem_a_k)) * sizeof(half);
 LDMATRIX_X4(RA[i][0], RA[i][1], RA[i][2], RA[i][3], lane_smem_a_ptr);
-\end{verbatim}
+\end{lstlisting}
 
 CuTe 版里出现的是\textbf{声明}与\textbf{分区}：
 
-\begin{verbatim}
+\begin{lstlisting}
 auto sA = make_tensor(make_smem_ptr(Ashm), SmemLayoutA{});
 auto tAsA = s2r_thr_copy_a.partition_S(sA);
 auto tCrA_view = s2r_thr_copy_a.retile_D(tCrA);
 cute::copy(s2r_tiled_copy_a, tAsA(_, _, k_step_next, ismem_read),
            tCrA_view(_, _, k_step_next));
-\end{verbatim}
+\end{lstlisting}
 
 前者把「\texttt{lane} 到 smem 地址」的公式写死在 kernel 里，改一个 tile 尺寸
 就要把公式推倒重来；后者把同一件事表达成「\texttt{sA} 的布局是
@@ -123,12 +123,12 @@ $B^{\mathsf T}[N,K]$ 是同一块内存。\textbf{这是本章第一个坑}：�
 
 用 CuTe 的话说，「TN」不是一个标志位，而是一句关于步长的声明：
 
-\begin{verbatim}
+\begin{lstlisting}
   Tensor A = make_tensor(make_gmem_ptr(Aptr), make_shape(m, k),
                          make_stride(k, Int<1>{}));  // A 是 (M,K)，K 连续
   Tensor B = make_tensor(make_gmem_ptr(Bptr), make_shape(n, k),
                          make_stride(k, Int<1>{}));  // Bt 是 (N,K)，K 连续
-\end{verbatim}
+\end{lstlisting}
 
 两行 \texttt{make\_tensor} 之后，后续所有分区与拷贝都在「$(shape,stride)$
 就是布局」这条约定上工作：$K$ 维连续意味着按 $K$ 切出来的片天然适合做
@@ -301,7 +301,7 @@ shuffle 编排，改一处就得把其余三处跟着重推。第一步先不管
 把三个裸指针包成 \texttt{Tensor}，再用
 \texttt{local\_tile} 切出当前 CTA 的 tile。
 
-\begin{verbatim}
+\begin{lstlisting}
   // -- hgemm.cuh L840-858（节选，长行折行）--
   Tensor A = make_tensor(make_gmem_ptr(Aptr), make_shape(m, k),
                          make_stride(k, Int<1>{}));   // B、D 同构
@@ -313,7 +313,7 @@ shuffle 编排，改一处就得把其余三处跟着重推。第一步先不管
                          make_coord(iy, ix));
   auto sA = make_tensor(make_smem_ptr(Ashm), SmemLayoutA{}); // (BM,BK,kStage)
   auto sB = make_tensor(make_smem_ptr(Bshm), SmemLayoutB{}); // (BN,BK,kStage)
-\end{verbatim}
+\end{lstlisting}
 
 三行 \texttt{make\_tensor} 就是「(ptr, shape, stride) 三元组」的字面翻译：A 是
 $(m,k)$ 且 $k$ 连续（stride $=(k,1)$），D 是 $(m,n)$、$n$ 连续。
@@ -325,7 +325,7 @@ remainder mode，主循环直接拿它当循环上界用。
 
 \paragraph{第二个动作：把 tile 分到线程}
 
-\begin{verbatim}
+\begin{lstlisting}
   // -- hgemm.cuh L860-866（节选）--
   TiledMMA tiled_mma;
   auto thr_mma = tiled_mma.get_slice(idx);
@@ -333,7 +333,7 @@ remainder mode，主循环直接拿它当循环上界用。
   auto tCrB = thr_mma.partition_fragment_B(gB(_, _, 0)); // B fragment
   auto tCrD = thr_mma.partition_fragment_C(gD);          // C accumulator
   clear(tCrD); // 累加器清零
-\end{verbatim}
+\end{lstlisting}
 
 \texttt{get\_slice(idx)} 把「整个 TiledMMA 的能力」换成「第 \texttt{idx} 号线程
 的视角」，\texttt{partition\_fragment\_}\allowbreak\texttt{A/B/C} 则给出该
@@ -348,7 +348,7 @@ $(MMA, MMA\_M, MMA\_N)$——第一维是「单个 atom 内的值」，
 把三个动作接到一起，就得到一个能跑、但完全不考虑性能的版本（结构取自
 @reed《cute 之 简单 GEMM 实现》，尺寸换成本章的 $B_M/B_N/B_K$）：
 
-\begin{verbatim}
+\begin{lstlisting}
   // 最简版：无 smem、无流水线，G -> R 直读，R -> G 直写
   auto tAgA = thr_mma.partition_A(gA);   // (MMA, MMA_M, MMA_K, num_k_tile)
   auto tBgB = thr_mma.partition_B(gB);   // (MMA, MMA_N, MMA_K, num_k_tile)
@@ -361,7 +361,7 @@ $(MMA, MMA\_M, MMA\_N)$——第一维是「单个 atom 内的值」，
     cute::gemm(tiled_mma, tCrD, tCrA, tCrB, tCrD);
   }
   cute::copy(tCrD, tCgD);                     // R -> G
-\end{verbatim}
+\end{lstlisting}
 
 这段代码里没有一行地址算术：没有 \texttt{stage*BM*BK}、没有 XOR 掩码、没有
 lane 映射。\texttt{cute::gemm} 按 \texttt{tiled\_mma} 的类型把
@@ -397,7 +397,7 @@ CuTe 提供的是搬运与计算的抽象，怎么把它们排成流水线，是
 
 流水线要动用的搬运视图有两组。第一组把 gmem 与 smem 接起来（G$\to$S）：
 
-\begin{verbatim}
+\begin{lstlisting}
   // -- hgemm.cuh L868-889（节选）--
   G2SCopyA g2s_tiled_copy_a;
   auto g2s_thr_copy_a = g2s_tiled_copy_a.get_slice(idx);
@@ -407,7 +407,7 @@ CuTe 提供的是搬运与计算的抽象，怎么把它们排成流水线，是
   auto g2s_thr_copy_b = g2s_tiled_copy_b.get_slice(idx);
   auto tBgB_copy = g2s_thr_copy_b.partition_S(gB);
   auto tBsB_copy = g2s_thr_copy_b.partition_D(sB);
-\end{verbatim}
+\end{lstlisting}
 
 注意 \texttt{partition\_S}/\texttt{partition\_D} 的
 \texttt{(CPY, CPY\_M, CPY\_K, \dots)} 四维 shape：前三维是 TiledCopy 的
@@ -416,7 +416,7 @@ stage 数——正因为留着这一维，预取循环可以直接用 \texttt{is
 
 第二组是 S$\to$R 的视图（怎么把 smem 的数据装进 MMA 需要的寄存器布局）：
 
-\begin{verbatim}
+\begin{lstlisting}
   // -- hgemm.cuh L891-904（节选）--
   auto s2r_tiled_copy_a = make_tiled_copy_A(S2RCopyAtomA{}, tiled_mma);
   auto s2r_thr_copy_a = s2r_tiled_copy_a.get_slice(idx);
@@ -426,7 +426,7 @@ stage 数——正因为留着这一维，预取循环可以直接用 \texttt{is
   auto s2r_thr_copy_b = s2r_tiled_copy_b.get_slice(idx);
   auto tBsB = s2r_thr_copy_b.partition_S(sB);
   auto tCrB_view = s2r_thr_copy_b.retile_D(tCrB);
-\end{verbatim}
+\end{lstlisting}
 
 \texttt{retile\_D(tCrA)} 把 fragment 的布局「重述」为 copy 视角（\texttt{retile}
 不搬运数据，只改视图），于是主循环里的 S$\to$R 拷贝可以直接按
@@ -437,7 +437,7 @@ $(CPY, CPY\_M, CPY\_K)$ 寻址。这里为什么选
 有了这两组视图，预取阶段就是「提交 $k_{\mathrm{stage}}-1$ 个 K-tile，
 再等一次 \texttt{cp\_async\_wait<kStage-2>()}」：
 
-\begin{verbatim}
+\begin{lstlisting}
   // -- hgemm.cuh L906-915（节选）--
   int itile_to_read = 0, ismem_read = 0, ismem_write = 0;
 #pragma unroll
@@ -452,7 +452,7 @@ $(CPY, CPY\_M, CPY\_K)$ 寻址。这里为什么选
   }
   cp_async_wait<kStage - 2>();
   __syncthreads();
-\end{verbatim}
+\end{lstlisting}
 
 三个计数器的分工在这里第一次出现：\texttt{itile\_to\_read} 是下一个要发起的
 K-tile 序号，\texttt{ismem\_write} 是下一个要写入的 stage 槽位，
@@ -532,7 +532,7 @@ smem 的布局由第~\ref{ch:23}~章的两个构造组成：先造 8 行 $\times
 swizzle 原子，再 \texttt{tile\_to\_shape} 铺满
 $B_M\times B_K\times k_{\mathrm{stage}}$：
 
-\begin{verbatim}
+\begin{lstlisting}
   // -- hgemm.cuh L1233-1264（节选）--
   auto BM = Int<128>{};  auto BN = Int<kBN>{};  auto BK = Int<32>{};
   auto KStage = Int<Stages>{};  auto kSmemLayoutCBatch = Int<4>{};
@@ -545,7 +545,7 @@ $B_M\times B_K\times k_{\mathrm{stage}}$：
       SmemLayoutAtom{}, make_shape(Int<BM>{}, Int<BK>{}, Int<KStage>{})));
   using SmemLayoutB = decltype(tile_to_shape(
       SmemLayoutAtom{}, make_shape(Int<BN>{}, Int<BK>{}, Int<KStage>{})));
-\end{verbatim}
+\end{lstlisting}
 
 与手写版对照最能说明「声明式」的价值：手写版必须在每一次 smem 寻址处调用
 \texttt{swizzle}\allowbreak\texttt{<kMmaK>()}（第~\ref{ch:12}~章），读侧
@@ -662,15 +662,15 @@ C scratchpad 复用当前 A stage 的空间，容量对齐关系是
 即「4 个 $32\times32$ 的 pipe slot」恰好等于「一个 $128\times32$ 的 A stage」。
 先看 scratchpad 的别名与 R2S copy 的构造：
 
-\begin{verbatim}
+\begin{lstlisting}
   // -- hgemm.cuh L1001-1005（节选）--
   auto sC = make_tensor(sA(_, _, ismem_read).data(), SmemLayoutC{});
   auto r2s_tiled_copy_c = make_tiled_copy_C(R2SCopyAtomC{}, tiled_mma);
-\end{verbatim}
+\end{lstlisting}
 
 再看双层循环的骨架与两次 copy：
 
-\begin{verbatim}
+\begin{lstlisting}
   // -- hgemm.cuh L1074-1096（节选）--
   auto tCgC_s2gx = group_modes<1, 3>(tCgC_s2g);
   auto tCrC_r2sx = group_modes<1, 3>(tCrC_r2s);
@@ -678,16 +678,16 @@ C scratchpad 复用当前 A stage 的空间，容量对齐关系是
 #pragma unroll
   for (int i = 0; i < size<1>(tCrC_r2sx); i += step) {
     for (int j = 0; j < step; ++j) {
-\end{verbatim}
+\end{lstlisting}
 
-\begin{verbatim}
+\begin{lstlisting}
   // -- hgemm.cuh L1121-1147（节选）--
   auto t = make_tensor_like<T>(tCrC_r2sx(_, i + j));   // R2R staging
   cute::copy(tCrC_r2sx(_, i + j), t);                  // 顺带 f32 -> f16
   ...
   cute::copy(r2s_tiled_copy_c, t, tCsC_r2s(_, 0, 0, j)); // R2S 写入 j 号 slot
   __syncthreads();
-\end{verbatim}
+\end{lstlisting}
 
 四个要点：
 
@@ -727,7 +727,7 @@ MMA 的类型推导在 L1266--1310：先用 \texttt{std::conditional\_t} 按
 \texttt{MMA\_P\_T} 组装出 \texttt{make\_tiled\_mma(\dots)}。最后是
 grid/block 配置与动态 smem 大小：
 
-\begin{verbatim}
+\begin{lstlisting}
   // -- hgemm.cuh L1386-1393（节选，首行为注释）--
   constexpr int kSwizzleStride = 2048;
   int BX = (N + BN - 1) / BN;
@@ -736,7 +736,7 @@ grid/block 配置与动态 smem 大小：
   BX = BlockSwizzle ? (BX + BZ - 1) / BZ : BX;
   dim3 block(size(MMA{}));   // 128 threads (= size(TiledMMA))
   dim3 grid(BX, BY, BZ);
-\end{verbatim}
+\end{lstlisting}
 
 \lstinputlisting[linerange={1405-1424},firstnumber=auto]{../hgemm.cuh}
 
@@ -954,19 +954,19 @@ L1568 的 \texttt{test\_hgemm\_cute}，但按本书测试规范改造：参考�
 规模约束来自 kernel 的整除要求（$M\%128=0$、$N\%B_N=0$、$K\%32=0$），同时满足
 BOOK\_PLAN §6「CPU 参考规模 $\le 512$」的时限约束。编译与运行：
 
-\begin{verbatim}
+\begin{lstlisting}[style=console]
 cd kernels/interview/book/tests
 CUDA_VISIBLE_DEVICES=6 ./build_tests.sh --arch sm_120a --ch ch24
-\end{verbatim}
+\end{lstlisting}
 
 本机运行输出（RTX PRO 5000，CUDA 13.2，CUTLASS v4.6.1，2026-09-11）：
 
-\begin{verbatim}
+\begin{lstlisting}[style=console]
 == ch24_hgemm_cute.cu (sm_120a)
 PASS HGEMM CuTe F16Acc 128x256x64: max_abs_err=4.376e-04 (tol=5.0e-02)
 PASS HGEMM CuTe F32Acc 128x128x64: max_abs_err=2.897e-04 (tol=1.0e-03)
 ALL OK
-\end{verbatim}
+\end{lstlisting}
 
 两组输入的随机数幅度缩到 $\pm0.25$：fp16\textbf{输出}的舍入误差量级是
 $|C|\cdot2^{-11}$，只有把 $|C|$ 压在 $2$ 附近，$10^{-3}$ 这条容差才是在

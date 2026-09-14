@@ -299,7 +299,7 @@ L375 的条件等待被编译期剪掉。写回阶段每个 warp 把 8 个累加
                   |         |         +-- compute reads stage (k-1)%2
                   |         +------------ load writes stage k%2
                   +----------------------- first iteration k=1:
-                                           load tile 1 into S1, compute tile 0 from S0
+                                           load 1 into S1, compute 0 from S0
 
   smem:  [ S0 : tile 0 | tile 2 | tile 4 ... ]   (even k)
          [ S1 : tile 1 | tile 3 | tile 5 ... ]   (odd k)
@@ -336,7 +336,7 @@ k-tile（MMA 指令发射密度低）与每迭代一次的迭代末同步——�
 把 $B\sb K$ 提到 16、同步放宽到 \texttt{wait\_group(1)} 后，同机实测
 76.55 TFLOPS（f16 累加路径），验证了这两处设计的代价。
 
-\section{勘误与考据}
+\section{实践经验}
 
 \begin{kaogu}[F4]{sgemm.cuh L193 与 L238：dynamic smem 大小注释前后矛盾}
   L193 头注释写「Dynamic SMEM：16KB（s\_a 8KB + s\_b 8KB）」、L238 又写
@@ -454,12 +454,12 @@ C（$256\times256\times64$，grid $2\times2$ 多 block）。
 本机运行输出（RTX PRO 5000，2026-09-11；PASS 行的误差数值见
 表~\ref{tab:10-pass}）：
 
-\begin{verbatim}
+\begin{lstlisting}[style=console]
 case A: f32->tf32 convert kernel (n=4096)
 case B: M=128 N=128 K=128
 case C: M=256 N=256 K=64
 ALL OK
-\end{verbatim}
+\end{lstlisting}
 
 \begin{table}[htbp]
 \centering

@@ -58,9 +58,12 @@ sm120 优化指南一句话总结：sm120 在 warp 组织与 block 限制上更�
 
 但退化的计算层并不推翻 warp specialization 的价值：producer/consumer 分工
 消除的是「搬运与计算争抢发射槽」的结构性开销，这与计算指令是哪一代无关。
-此外，SM120 的 \texttt{setmaxnreg}（寄存器池再分配）\textbf{指令存在但默认
-不可用}——ptxas 在 sm\_120a 上会把它静默丢弃（C7506 警告），这本身就是一条
-值得写进正文的工程教训（14.3.3、14.8~节）。
+此外，SM120 的 \texttt{setmaxnreg}（寄存器池再分配）\textbf{指令存在且可以
+生效}，但有一个容易踩的目标后缀陷阱：默认的 \texttt{-arch sm\_120a} 会被
+ptxas 静默丢弃（C7506 警告），改用 CUDA 13.2+ 的 family-specific 目标
+\texttt{-arch sm\_120f} 编译即可保留并生效（ffpa-attn 在 Blackwell 上的
+warp-specialized kernel 正是这么启用的）。「目标后缀选错就静默失效」本身
+就是一条值得写进正文的工程教训（14.3.3、14.8~节）。
 
 \section{数学原理}
 
@@ -76,7 +79,7 @@ TMA（bulk.tensor） & 有 & 有（无 multicast） & 原样复用 \\
 mbarrier & 有 & 有 & full/empty 协议复用 \\
 WGMMA（warpgroup MMA） & 有 & \textbf{无} & mma.sync + ldmatrix（ch11） \\
 swizzle 相位补偿 & descriptor base\_offset & \textbf{无} & \_\_align\_\_(1024) \\
-setmaxnreg & 可用 & 被 ptxas 丢弃（C7506） & 宏门控默认关闭 \\
+setmaxnreg & 可用 & sm\_120f 下可用（默认目标丢弃） & -arch sm\_120f + 宏开启 \\
 cluster / TMEM & cluster 有 / TMEM 无 & 均无 & 不涉及 \\
 每 SM 寄存器 & 65536 & 65536 & 池数学同型（14.3.3） \\
 smem / SM & 228KB & 128KB & kStages $\le$ 3 \\
@@ -182,17 +185,24 @@ setmaxnreg——\textbf{双向互等，纯挂死}：无 illegal instruction、�
 watchdog 超时前毫无征兆。而 alloc 从 224 降到 208（总 61440，余 4096）后一切
 正常。诊断口诀：kernel 无报错挂起、唯一变量是 setmaxnreg 数字时，先查池数学。
 
-\textbf{sm\_120a 上的现实}：即便池数学正确，本章在 sm\_120a 上也拿不到这笔收益
-——ptxas 会把 \texttt{setmaxnreg} 连同警告 C7506 一起丢弃
-（"ignored to maintain compatibility into 'extern' call"）。原因在
-common.cuh~L462--466 的注释：sm\_90a 上只要 PTX 完全内联（无 call 边界）
-setmaxnreg 就能保留；而 CUDA 13.2 的 ptxas 把 kernel 内\textbf{使用
-\texttt{cp.async.bulk.tensor}} 本身当作隐式 extern-call 边界——TMA 与
-setmaxnreg 在同一个 kernel 里出现，后者必被丢弃。这就是
-\texttt{NOTES\_V2\_ENABLE\_SETMAXNREGS} 宏门控（默认关闭）存在的原因：sm\_120a
-构建保持无警告、也避免 \texttt{\_\_launch\_bounds\_\_(N,1)} 副作用；sm\_90a
-构建可以打开它做对照实验。PTX ISA 的 Target ISA Notes 确认 setmaxnreg 本身
-支持 sm\_90a/sm\_100a/sm\_120a——是工具链而非指令集把它挡在了门外。
+\textbf{Blackwell 上的目标后缀陷阱与解法}：即便池数学正确，默认
+\texttt{-arch sm\_120a} 构建也拿不到这笔收益——ptxas 会把 \texttt{setmaxnreg}
+连同警告 C7506 一起丢弃（"ignored to maintain compatibility into 'extern'
+call"）。原因在 common.cuh~L462--475 的注释：sm\_90a 上只要 PTX 完全内联
+（无 call 边界）setmaxnreg 就能保留；而 CUDA 13.2 的 ptxas 在 sm\_120a 目标
+下把 kernel 内\textbf{使用 \texttt{cp.async.bulk.tensor}} 本身当作隐式
+extern-call 边界——TMA 与 setmaxnreg 在同一个 kernel 里出现，后者必被丢弃。
+\textbf{解法是指定 family-specific 目标}：\texttt{-arch sm\_120f}（CUDA 13.2+
+引入的家族后缀，覆盖整个 Blackwell 家族而非单一架构）下 ptxas 不再丢弃，
+setmaxnreg 完整生效——ffpa-attn 的 cute sm\_120 persist-D kernel 在 PRO~5000
+上以此方式端到端启用寄存器再分配。所以正确的结论不是「SM120 用不了
+setmaxnreg」，而是「目标后缀选错就静默失效」。这也是
+\texttt{NOTES\_V2\_ENABLE\_SETMAXNREGS} 宏门控（默认关闭）存在的原因：默认
+构建混合 sm\_89/sm\_120a 多目标，保持无警告、也避免
+\texttt{\_\_launch\_bounds\_\_(N,1)} 副作用；要做 setmaxnreg 实验就用
+\texttt{-arch sm\_120f} 构建并打开宏。PTX ISA 的 Target ISA Notes 确认
+setmaxnreg 支持 sm\_90a 与 sm\_120 家族的 specific 目标——把指令挡在门外的
+是目标后缀的选择，不是指令集本身。
 
 \subsection{TMA box：回指与本章坐标}
 
@@ -232,8 +242,8 @@ $8 \times 8 = 64$ 列。
 
 \subsection{smem 布局与 1024B 对齐：本章最重要的差异点}
 
-\lstinputlisting[linerange={684-692},firstnumber=auto,breakatwhitespace=true,
-  title={common.cuh L684-692（TmaMmaWSSMem：plain 数组 + 128B swizzle 由 TMA 写入）}]{../common.cuh}
+\lstinputlisting[linerange={692-700},firstnumber=auto,breakatwhitespace=true,
+  title={common.cuh L692-700（TmaMmaWSSMem：plain 数组 + 128B swizzle 由 TMA 写入）}]{../common.cuh}
 
 \lstinputlisting[linerange={1920-1932},firstnumber=auto,breakatwhitespace=true,
   title={hgemm.cuh L1920-1932（\_\_align\_\_(1024) 的 smem 与 full/empty 屏障阵列）}]{../hgemm.cuh}
@@ -443,7 +453,7 @@ cp.async 提交指令，ldmatrix 到 mma 的发射槽更纯粹；（2）TMA 单�
 （3）数据驱动的 full/empty 协议替代 \texttt{\_\_syncthreads} 栅栏，warp 间
 不再互相拖拽。数据与脚本存 \texttt{.tmp/book-bench/ch14/bench.txt}。
 
-\section{勘误与考据}
+\section{实践经验与考据说明}
 
 \begin{kaogu}[F2 核校通过]{「SWIZZLE\_128B 要求 smem 基地址 1024 字节对齐」的表述}
   hgemm.cuh L1898 起的注释如此声明，并区分了 WGMMA（base\_offset 硬件补偿，
@@ -462,13 +472,16 @@ cp.async 提交指令，ldmatrix 到 mma 的发射槽更纯粹；（2）TMA 单�
   与实现不一致——写 2D TMA 时以实践为准，但升级 CUDA 版本时此处值得回归。
 \end{kaogu}
 
-\begin{kaogu}[F1 核校通过]{C7506 丢弃 setmaxnreg 的事实链}
-  common.cuh L354--359 与 L462--466 注释：非内联调用边界会触发 C7506（sm\_90a
-  亦然）；sm\_120a 上即使 PTX 完全内联，ptxas 也把 \texttt{cp.async.bulk.tensor}
-  的使用当作隐式 extern-call 边界丢弃 setmaxnreg。对照 PTX ISA Target ISA
-  Notes：指令本身 sm\_120a 受支持。结论：这是 CUDA 13.2 工具链行为，非指令集
-  约束——升级 ptxas 后需重验（\texttt{NOTES\_V2\_ENABLE\_SETMAXNREGS} 即为
-  该重验预留的开关）。
+\begin{kaogu}[F1 核校通过]{setmaxnreg 的目标后缀事实链}
+  common.cuh L354--359 与 L462--475 注释：非内联调用边界会触发 C7506（sm\_90a
+  亦然）；默认 \texttt{-arch sm\_120a} 上即使 PTX 完全内联，ptxas 也把
+  \texttt{cp.async.bulk.tensor} 的使用当作隐式 extern-call 边界丢弃
+  setmaxnreg；改用 family-specific 目标 \texttt{-arch sm\_120f}（CUDA 13.2+）
+  则保留生效——ffpa-attn cute sm\_120 persist-D kernel 在 PRO~5000 实测端到端
+  可用。对照 PTX ISA Target ISA Notes：指令本身受 sm\_120 家族 specific 目标
+  支持。结论：不是「SM120 无法用 setmaxnreg」，而是「目标后缀选错会静默失效」
+  （\texttt{NOTES\_V2\_ENABLE\_SETMAXNREGS} + \texttt{-arch sm\_120f} 即为对照
+  实验的正确打开方式）。
 \end{kaogu}
 
 \begin{kaogu}[F2 提示]{注释「require \_\_launch\_bounds\_\_(N, 1)」与实现不一致}

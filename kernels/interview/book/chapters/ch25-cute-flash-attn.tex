@@ -829,13 +829,13 @@ sm\_120a -{}-ch ch25}
 \end{quote}
 
 {\footnotesize
-\begin{verbatim}
+\begin{lstlisting}[style=console]
 == ch25_fa_cute.cu (sm_120a)
 PASS fa_cute cp.async D=64 Sk=2 B=1 H=2 N=128: max_abs_err=8.149e-05 (tol=5.0e-02)
 PASS fa_cute cp.async D=64 Sk=2 B=1 H=2 N=256: max_abs_err=6.614e-05 (tol=5.0e-02)
 PASS fa_cute cp.async D=128 Sk=2 B=1 H=2 N=128: max_abs_err=8.084e-05 (tol=5.0e-02)
 ALL OK
-\end{verbatim}
+\end{lstlisting}
 }
 
 动手实验建议：（1）把 case B 的 $H$ 改成 1，再删掉实现 2 producer 的

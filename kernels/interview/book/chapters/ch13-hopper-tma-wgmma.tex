@@ -1,6 +1,6 @@
 % ch13-hopper-tma-wgmma.tex — Hopper 之路：TMA、mbarrier 与 WGMMA（RFC D6，2026-09-11）
 % 教学顺序（BOOK\_PLAN 决策 D6）：前半 TMA + mbarrier，后半 WGMMA。
-% 源码冻结基线：hgemm.cuh L1428-1857 / common.cuh L350-773（linerange 引用，勿改源文件）。
+% 源码冻结基线：hgemm.cuh L1428-1857 / common.cuh L350-781（linerange 引用，勿改源文件）。
 \chapter{Hopper 之路：TMA、mbarrier 与 WGMMA}\label{ch:13}
 
 \section{本章导读}
@@ -20,8 +20,8 @@ mbarrier 的 arrive/tx 双计数事务模型——它们是 Hopper 异步流水�
 以及 producer/consumer warp specialization 的完整协作协议。
 
 \textbf{源码区间}：hgemm.cuh~L1428--1857（\texttt{hgemm\_wgmma\_stages\_tn}@L1477）；
-common.cuh~L350--773（TMA/mbarrier helpers、\texttt{setmaxnreg}、WGMMA 宏、
-smem descriptor 位域注释 L500--700、TensorMap helpers）。
+common.cuh~L350--781（TMA/mbarrier helpers、\texttt{setmaxnreg}、WGMMA 宏、
+smem descriptor 位域注释 L508--708、TensorMap helpers）。
 \textbf{编译宏与架构限定}：\texttt{NOTES\_V2\_ENABLE\_WGMMA}，\textbf{仅 sm\_90a}——
 WGMMA/mbarrier/TMA 是 Hopper 专属指令族，不向前兼容 sm\_100/sm\_120（详见 13.8~节坑一）。
 \textbf{前置}：第~\ref{ch:11}~章（mma.sync、ldmatrix、多级流水）与第~\ref{ch:12}~章
@@ -186,8 +186,8 @@ TMA descriptor 在 host 侧由 driver API \texttt{cuTensorMapEncodeTiled} 创建
 （128 字节的不透明对象，使用时传 device 侧拷贝的指针），kernel 侧只需把
 \texttt{CUtensorMap*} 当作 \texttt{cp.async.bulk.tensor} 的操作数：
 
-\lstinputlisting[linerange={734-756},firstnumber=auto,breakatwhitespace=true,
-  title={common.cuh L734-756（create\_tensor\_map：host 侧 TMA descriptor）}]{../common.cuh}
+\lstinputlisting[linerange={742-764},firstnumber=auto,breakatwhitespace=true,
+  title={common.cuh L742-764（create\_tensor\_map：host 侧 TMA descriptor）}]{../common.cuh}
 
 逐参数对照（以 $A[M, K]$ row-major、box $= (B\sb{K}, B\sb{M}) = (64, 128)$ 为例）：
 \begin{itemize}
@@ -295,14 +295,14 @@ $S = 3$ 个 empty 各预存 128 次到达，producer 的 1 次 arrive 恰好补�
 WGMMA 与 TMA 的「接头暗号」就是 smem descriptor：TMA 按 128B swizzle 写入 smem，
 WGMMA 按同一个 128B swizzle 读出，descriptor 告诉硬件「tile 在哪、怎么走、
 swizzle 模式是哪档」。64-bit 位域布局（PTX ISA §9.7.15.5.1.2.2；源码
-common.cuh~L524--557 的注释表与图~\ref{fig:13-1} 逐字段一致，此处不重复引用，
+common.cuh~L532--565 的注释表与图~\ref{fig:13-1} 逐字段一致，此处不重复引用，
 直接看编码实现）：
 
-\lstinputlisting[linerange={558-579},firstnumber=auto,breakatwhitespace=true,
-  title={common.cuh L558-579（make\_smem\_desc 上半：start\_address 与 LBO）}]{../common.cuh}
+\lstinputlisting[linerange={566-587},firstnumber=auto,breakatwhitespace=true,
+  title={common.cuh L566-587（make\_smem\_desc 上半：start\_address 与 LBO）}]{../common.cuh}
 
-\lstinputlisting[linerange={581-601},firstnumber=auto,breakatwhitespace=true,
-  title={common.cuh L581-601（make\_smem\_desc 下半：SBO 与 layout\_type）}]{../common.cuh}
+\lstinputlisting[linerange={589-609},firstnumber=auto,breakatwhitespace=true,
+  title={common.cuh L589-609（make\_smem\_desc 下半：SBO 与 layout\_type）}]{../common.cuh}
 
 逐字段拆解（编码函数 $\mathrm{enc}(x) = (x \,\&\, \mathrm{0x3FFFF}) \gg 4$，
 对三个地址/偏移字段统一适用）：
@@ -346,8 +346,8 @@ major-ness（0 = K-major，1 = M/N-major）。本 kernel 全部取 $(1, 1, 1, 0,
 
 \subsection{wgmma.fence / commit\_group / wait\_group 三件套}
 
-\lstinputlisting[linerange={502-522},firstnumber=auto,breakatwhitespace=true,
-  title={common.cuh L502-522（WGMMA 异步三件套宏 + 编码函数）}]{../common.cuh}
+\lstinputlisting[linerange={510-530},firstnumber=auto,breakatwhitespace=true,
+  title={common.cuh L510-530（WGMMA 异步三件套宏 + 编码函数）}]{../common.cuh}
 
 WGMMA 是 fire-and-forget 指令，正确用法是固定四拍：先 \texttt{fence}，再发射
 WGMMA，再 \texttt{commit\_group}，最后 \texttt{wait\_group} 收割。
@@ -400,18 +400,18 @@ $m$ 个 $64 \times B\sb{K}$ 子块，K-step 每次前进 \texttt{kWgmmaK=16} 个
   FIG-13-1  WGMMA smem descriptor: 64-bit bit-field layout
             enc(x) = (x & 0x3FFFF) >> 4   (18-bit window, 16B-aligned)
 
-   63  62 61      52 51 49 48    46 45        32 31  30        16 15  14        0
-  +-----+----------+------+----+------+----------+----+----------+----+----------+
-  |type | (unused) | base | u  | (u)  | SBO enc  | u  | LBO enc  | u  | addr enc |
-  | 2b  |   10b    | off  | 3b | 14b  |   14b    | 2b |   14b    | 2b |   14b    |
-  | =1  |          | 3b=0 |    |      | 1024>>4  |    | 16>>4=1  |    | smem>>4  |
-  +-----+----------+------+----+------+----------+----+----------+----+----------+
-   swizzle        phase       unused  8-row     unused K-stride  unused 16B-aligned
-   0=none 1=128B  (addr>>7)&7         stripe           (unused=1        base addr
-   2=64B  3=32B   1024B bndy=0        gap(bytes)       in K-major       (absolute
-                                         K-major swizzle              smem offset)
+   63   62 61    52 51 49 48   46 45     32 31 30   16 15 14   0
+  +----+--------+----+--+----+--------+--+--------+--+--------+
+  |type|(unused)|base|u |(u) |SBO enc |u |LBO enc |u |addr enc|
+  | 2b |10b     |off |3b|14b |14b     |2b|14b     |2b|14b     |
+  | =1 |        |3b=0|  |    |1024>>4 |  |16>>4=1 |  |smem>>4 |
+  +----+--------+----+--+----+--------+--+--------+--+--------+
+   swizzle     phase     unused 8-row    unused K-stride unused 16B-aligned
+   0=none 1=128B (addr>>7)&7     stripe         (unused=1     base addr
+   2=64B  3=32B  1024B bndy=0     gap(bytes)     in K-major    (absolute
+                             K-major swizzle              smem offset)
 \end{verbatim}
-\caption{WGMMA smem descriptor 的 64-bit 位域（对照 common.cuh L524-557 注释与
+\caption{WGMMA smem descriptor 的 64-bit 位域（对照 common.cuh L532-565 注释与
 PTX ISA §9.7.15.5.1.2.2 逐字段核校；u = unused；数值列为本章 kernel
 $B\sb{K}=64$ half + 128B swizzle 的取值）。
 （占位，RFC-H 升级为 drawio 位域框图）}\label{fig:13-1}
@@ -424,9 +424,9 @@ $B\sb{K}=64$ half + 128B swizzle 的取值）。
 
    HBM (global)              smem (per CTA)               C (global)
   --------------   TMA(1thr)  ----------------   WGMMA(128thr)  ---------
-  | A tile 16K | ==========> | s0: A+B | full[0] --> | d[2][8][4] | ==> | C tile |
-  | B tile 16K |  cp.async   | s1: A+B | full[1] ->  | 64 x uint32 |     |128x128|
-                 .tensor.2d  | s2: A+B | full[2] ->  |  per thread |     +-------+
+  |A tile 16K| ========> |s0: A+B| full[0] -> |d[2][8][4]| ==> |C tile|
+  |B tile 16K| cp.async   |s1: A+B| full[1] ->  |64 x uint32|     |128x128|
+                 .tensor.2d  |s2: A+B| full[2] ->  |per thread|     +------+
                              ----------------   |    ^    |
                                                wait(0)|    |epilogue
   WG0 producer (128 thr, 1 active)             +---+--+----+
@@ -457,23 +457,24 @@ kStages=3 使计算与搬运最多重叠 2 个 tile。
                            |  pending = P      tx = T    |
                            +-----------------------------+
      arrive (count=1)          |             ^        ^
-        P -= 1                 v             |        |  complete-tx (dC), automatic:
-   expect-tx (dT)         P > 0  or  T > 0   |        |  T -= dC when TMA bytes
-        T += dT            "phase incomplete"|        |  actually hit smem
+        P -= 1                 v             |        |
+    expect-tx (dT)         P > 0  or  T > 0   |        |
+        T += dT            "phase incomplete"|        |
                                |             |        |
                                v             |        |
                         P == 0  and  T == 0 --+        |
                                | (atomic flip)         |
                                v                       |
-                     +---------------------------------------+
-                     |  phase = p+1 ;  pending = expected   |
-                     +---------------------------------------+----> waiters on old
-                                                           phase wake up (parity)
+                      +----------------------------------+
+                      | phase = p+1 ; pending = expected |
+                      +----------------------------------+--> old-phase
+                          waiters wake up (parity)
 
    full[s]:  128 consumer arrives + 1 producer arrive.expect-tx(32768 B)
              + 32768 B complete-tx  =>  flip  =>  consumer reads data
    empty[s]: 128 consumer arrives (C4 / C0 warmup) + 1 producer arrive (P1)
-             =>  flip  =>  producer overwrites stage
+              =>  flip  =>  producer overwrites stage
+  note: complete-tx (dC) automatic -- T -= dC when TMA bytes hit smem
 \end{verbatim}
 \caption{mbarrier 状态机：arrive 与 tx 两把独立的「锁」同时归零才翻转相位；
 翻转瞬间原子地重置 pending 为 expected。下半部分给出本章 kernel 中
@@ -512,9 +513,9 @@ $\approx 295$~FLOP/B：\textbf{单看一个 CTA 的装载流，访存仍是短�
 bench（对照 notes-v2 的 bench 口径），数据落 \texttt{.tmp/book-bench/ch13/}
 供附录~B 汇总。
 
-\section{勘误与考据}
+\section{实践经验与考据说明}
 
-\begin{kaogu}[F2 核校通过]{common.cuh L524-557 descriptor 位域注释 vs PTX ISA}
+\begin{kaogu}[F2 核校通过]{common.cuh L532-565 descriptor 位域注释 vs PTX ISA}
   逐字段对照 PTX ISA §9.7.15.5.1.2.2：start\_address $[0,14)$、LBO $[16,30)$、
   SBO $[32,46)$、base\_offset $[49,52)$、layout\_type $[62,64)$（0/1/2/3 $=$
   无/128B/64B/32B），编码函数 $(x \,\&\, \mathrm{0x3FFFF}) \gg 4$，base\_offset
@@ -533,7 +534,7 @@ bench（对照 notes-v2 的 bench 口径），数据落 \texttt{.tmp/book-bench/
 \begin{kaogu}[F2 核校通过]{wgmma.wait\_group 与 cp.async.wait\_group 的同构表述}
   PTX ISA §9.7.15.7.3 原文 "wait until only N or fewer of the most recent
   wgmma-groups are pending"，与 cp.async.wait\_group（§9.7.9.25.3.3）语义逐词
-  同构；common.cuh L507 与 hgemm.cuh C3 注释的对应表述核校通过。
+  同构；common.cuh L515 与 hgemm.cuh C3 注释的对应表述核校通过。
 \end{kaogu}
 
 \begin{kaogu}[F2 核校通过]{mbarrier 双计数与 129 协议}

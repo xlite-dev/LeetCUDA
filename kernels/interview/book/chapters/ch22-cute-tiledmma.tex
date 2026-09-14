@@ -620,14 +620,14 @@ partition 断言，不启动 kernel；直接 include
 
 运行命令：
 
-\begin{verbatim}
+\begin{lstlisting}[style=console]
 cd kernels/interview/book/tests
 CUDA_VISIBLE_DEVICES=6 ./build_tests.sh --arch sm_120a --ch ch22
-\end{verbatim}
+\end{lstlisting}
 
 预期输出（本机 RTX PRO 5000，CUDA 13.2，CUTLASS v4.6.1，2026-09-11 实测）：
 
-\begin{verbatim}
+\begin{lstlisting}[style=console]
 ch22 CuTe TiledMMA & fragments (host-only, no kernel launch)
 PASS case A MMA atom fragment layouts (m16n8k16): mismatches=0 (519 checks)
 PASS case B FFPA traits tile_size & thread count: mismatches=0 (14 checks)
@@ -636,7 +636,7 @@ PASS case D conservation & B duplication factor: mismatches=0 (4 checks)
 PASS case E warp row bands & cross-warp boundary: mismatches=0 (4360 checks)
 PASS case F PV acc_O register budget & coverage: mismatches=0 (136 checks)
 ALL OK
-\end{verbatim}
+\end{lstlisting}
 
 动手实验：
 

@@ -252,9 +252,10 @@ consumer 计算体 & ldmatrix $+$ mma $+$ softmax & 同左（逐行相同） \\
 
 最后一行是 \texttt{setmaxnreg} 的寄存器再分配声明：producer 让渡到 40、
 consumer 扩到 80（$D{=}64$）或 168（$D{=}128$，对齐 Triton Blackwell
-warp-specialize 策略）。注意该指令在 sm\_120a 上被 ptxas 以 C7506 丢弃
-（第~\ref{ch:13}~章已考据），默认编译宏关闭时是 no-op——寄存器预算实际
-由编译器按 \texttt{\_\_launch\_bounds\_(384,1)} 自行分配（17.8~节坑七）。
+注意该指令对编译目标敏感：默认 \texttt{-arch sm\_120a} 会被 ptxas 以
+C7506 丢弃（第~\ref{ch:14}~章已考据），改用 \texttt{-arch sm\_120f}
+（family-specific 目标）即可保留生效；默认编译宏关闭时是 no-op——寄存器
+预算实际由编译器按 \texttt{\_\_launch\_bounds\_(384,1)} 自行分配（17.8~节坑七）。
 
 \subsection{模板参数与 tile 派生}
 
@@ -420,21 +421,21 @@ L1374--1399），Step 5 的写回是 ch16 的原版方案——warp 内 shuffle 
 \begin{verbatim}
   FIG-17-1  producer/consumer double pipeline (Sk=2, Sv=1, D=64)
 
-  producer WG0 (1 active thread, TMA submit)     consumer WG1 (8 warps, 256 thr)
-  =========================================     ==================================
-  P0  TMA Q ----expect_tx 16KB --> full_Q        C0  256x arrive empty_K[0..1]
-  P1  TMA K[0]->st0 ; TMA K[1]->st1                 256x arrive empty_V[0]
-      (prefetch Sk-1=1 tiles)                     wait full_Q (once)  <- Q ready
-  P2  k=0: TMA V[0]->v0 ---------------------->   +-------- iter k=0 ------------+
-      k=0: TMA K[2]->st0 (overwrite freed st0)    | wait full_K[0] (QK uses K[0]) |
-      k=1: TMA V[1]->v0 ^                         | 3b QK^T: ldmatrix+HMMA        |
-      k=1: TMA K[3]->st1 |                        |     arrive empty_K[0] <-early |
-      k=2: TMA V[2]->v0 | overlap                 | 3c softmax (regs only)        |
-          ...            |                        | wait full_V[0] (just b4 3d!)  |
-                         |                        | 3d PV: R_S reuse + X2_T(V)    |
-                         |                        |     arrive empty_V[0]         |
-                         +----------------------> | 3e rescale (m,l,O)            |
-                                                  +-------- iter k=1 ------------+
+  producer WG0 (1 active thread, TMA submit)  consumer WG1 (8 warps, 256thr)
+  =========================================   ==============================
+  P0  TMA Q ----expect_tx 16KB --> full_Q      C0  256x arrive empty_K[0..1]
+  P1  TMA K[0]->st0 ; TMA K[1]->st1                256x arrive empty_V[0]
+      (prefetch Sk-1=1 tiles)                  wait full_Q (once) <- Q ready
+  P2  k=0: TMA V[0]->v0 ---------------------> +------ iter k=0 ------------+
+    k=0: TMA K[2]->st0 (overwrite freed st0)   |wait full_K[0]: QK uses K[0]|
+    k=1: TMA V[1]->v0 ^                        | 3b QK^T: ldmatrix+HMMA     |
+    k=1: TMA K[3]->st1 |                       |   arrive empty_K[0] <-early|
+    k=2: TMA V[2]->v0 | overlap                | 3c softmax (regs only)     |
+        ...            |                       |wait full_V[0] (just b4 3d!)|
+                       |                       | 3d PV: R_S reuse + X2_T(V) |
+                       |                       |    arrive empty_V[0]       |
+                       +---------------------> | 3e rescale (m,l,O)         |
+                                               +------ iter k=1 ------------+
   timeline: producer leads consumer by Sk-1 K tiles / Sv V tiles;
             "compute tile k" fully overlaps "load tile k+1".
             K[2] load window = QK[0]+softmax[0]+PV[0]  (empty_K[0] freed
@@ -454,23 +455,23 @@ empty 释放点（K 在 QK 后、V 在 PV 后）决定了每个 stage 的可覆�
   FIG-17-2  mbarrier array topology: who arrives / who waits (count=257)
 
                     +---------+  tx: kQTileBytes (16KB, D=64)
-   producer(1 thr)->| full_Q  |<-------------------------------------+ TMA(D=128:
-                    +---------+                                       | kTmaChunks
-     consumer 256x  arrive+wait ^                                      | loads share
-   (one-shot, no empty_Q)       |                                      | one barrier)
-                                |                                      |
-   stage s in [0,Sk):           v                                      v
-                    +-----------+  256x arrive(wait)  +------------ 256x arrive(free)
-   producer ------->| full_K[s] |<-------------------|  consumer   (right after QK^T)
-   arrive_tx(8/16KB)+-----------+                    +------------ empty_K[s].arrive
-                    ^                                               |
+   producer(1 thr)->| full_Q  |<------------------------+ TMA(D=128:
+                    +---------+                        | kTmaChunks
+     consumer 256x  arrive+wait ^                       | loads share
+   (one-shot, no empty_Q)       |                       | one barrier)
+                                |                       |
+   stage s in [0,Sk):           v                       v
+                    +-----------+  256x arrive(wait)  +---- 256x arrive(free)
+   producer ------->| full_K[s] |<----------|  consumer (right after QK^T)
+   arrive_tx(8/16KB)+-----------+            +---- empty_K[s].arrive
+                    ^                          |
                     |             producer b4 write: wait(own arrive)
                     +-----------------------------------------------+
    full_V[s]/empty_V[s] same shape (Sv copies; V freed right after PV)
 
-   per-phase ledger: full[s] = 256(consumer) + 1(producer arrive_tx) + tx landed
-                     empty[s] = 256(consumer free) + 1(producer b4-write arrive)
-                     both budgets exactly 257/round -> phase loop never misaligns
+   per-phase ledger: full[s] = 256(consumer)+1(producer arrive_tx)+tx landed
+                     empty[s] = 256(consumer free)+1(producer b4-write arrive)
+                     budgets exactly 257/round -> phase loop never misaligns
 \end{verbatim}
 \caption{本章 kernel 的 mbarrier 阵列拓扑：Q 一对一单屏障、K/V 各
 $\mathrm{Sk}/S_v$ 对 full/empty 屏障，全部 init 257。D $=$ 128 时同一 tile 的
@@ -524,7 +525,7 @@ f16 写回 R\_S 之间反复转换（\texttt{\_\_float22half2\_rn}），F32Acc �
 贴近 SM120 roofline 拐点，FA 是典型的「装载敏感型」算子，这也解释了为何
 TMA 专线化的收益（$+20\%$）远大于再加深一级流水（$\approx$ 0）。
 
-\section{勘误与考据}
+\section{实践经验与考据说明}
 
 \begin{kaogu}[F2/F3 核校通过]{mbarrier 257 协议注释 vs 实际代码（L808 起）}
   逐条核验：（1）arrive\_count $=$ 257 $=$ 256 $+$ 1，与 L968--975 的
@@ -608,9 +609,11 @@ PV 等 V 到达，纯浪费。正确位置是「PV 前最后一条 wait」——
 smem，超过 48 KB 默认上限，launch 前必须 \texttt{cudaFuncSetAttribute}；
 Sk$=$4 的 112 KB 超 99 KB optin 上限，只能 SKIP（占用表见 17.3.4 节）。
 
-\textbf{坑七：setmaxnreg 在 sm\_120a 上被丢弃。}\texttt{NOTES\_V2\_REG\_
-ALLOC/DEALLOC} 默认宏关闭（sm\_120a 上 ptxas 以 C7506 丢弃该指令，第~\ref{ch:13}~章
-13.7 节考据）。源码里的 40/80/168 预算只是注释性意图；真实寄存器分配靠
+\textbf{坑七：setmaxnreg 是目标后缀敏感的。}\texttt{NOTES\_V2\_REG\_
+ALLOC/DEALLOC} 默认宏关闭——默认 \texttt{-arch sm\_120a} 上 ptxas 以 C7506
+丢弃该指令（第~\ref{ch:14}~章考据），而 \texttt{-arch sm\_120f}（CUDA 13.2+
+family-specific 目标）下可保留生效（ffpa-attn 实测）。默认构建里源码的
+40/80/168 预算只是注释性意图；真实寄存器分配靠
 \texttt{\_\_launch\_bounds\_(384, 1)}。排查寄存器溢出时别把注释数字当事实。
 
 \textbf{坑八：seqlen 对齐限制。}v1 要求 seqlen $\%$ $B_r{=}128$ $=$ 0 且

@@ -257,7 +257,7 @@ $K{=}16$ 的行只有 64B，虽然相邻两行拼成 128B，但按 64B 对齐（
 仅 $\approx 0.47$ TFLOPS（峰值的 0.7\%）——三版 kernel 的差距全部来自带宽侧的
 「喂得饱不饱」，而不是算得快不快。这就是 memory-bound 算子的优化美学。
 
-\section{勘误与考据}
+\section{实践经验}
 
 \begin{kaogu}[F3]{sgemv.cuh L17：「否则内层循环 kNumWarps 次」表述错误}
   该行注释描述 k32 在 $K$ 非 32 倍数时的行为，写「否则内层循环 kNumWarps 次」。
@@ -353,12 +353,12 @@ C（$M{=}40$、$K{=}16$，k16 双行分段归约，$M \% 8 = 0$ 避开勘误二�
 \texttt{./build\_tests.sh --ch ch08}（编译 + 运行一体）。本机运行输出
 （RTX PRO 5000，2026-09-11；PASS 行的 \texttt{max\_abs\_err} 数值见表~\ref{tab:8-pass}）：
 
-\begin{verbatim}
+\begin{lstlisting}[style=console]
 case A: M=64 K=512 (K%128==0)
 case B: M=7 K=128 (M guard)
 case C: M=40 K=16 (2 rows/warp)
 ALL OK
-\end{verbatim}
+\end{lstlisting}
 
 \begin{table}[htbp]
 \centering

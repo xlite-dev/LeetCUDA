@@ -366,9 +366,9 @@ $256\times32\times2=16384$ 个 half。这两个别名随后被
 最自然的想法是「CuTe 既然有现成的 SW128 原子，直接用不就完了」。实测
 \texttt{GMMA::Layout\_K\_SW128\_Atom<half\_t>} 的类型是
 
-\begin{verbatim}
+\begin{lstlisting}[style=console]
   Sw<3,4,3> o smem_ptr[16b](unset) o (_8,_64):(_64,_1)      size=cosize=512
-\end{verbatim}
+\end{lstlisting}
 
 即 $8\times64$、每行 128\,B、cosize 512。把它铺到 $B_K=32$ 的 tile 上会
 撞上 3.6 节的整除约束（64 不整除 32）；而如果为了迁就它把 $B_K$ 改成 64，
@@ -397,13 +397,13 @@ barrier），地址算术与越界填充全交给硬件（4.4 节展开）。仓
 driver API \texttt{cuTensorMapEncodeTiled}，kernel 签名里出现
 \texttt{const CUtensorMap*}（hgemm.cuh~L1874--1878）：
 
-\begin{verbatim}
+\begin{lstlisting}
 __global__ void __launch_bounds__(kNumThreads)
     hgemm_tma_mma_ws_tn(
         int M, int N, int K, half *C,
         const CUtensorMap *__restrict__ tensorMapA,
         const CUtensorMap *__restrict__ tensorMapB)
-\end{verbatim}
+\end{lstlisting}
 
 紧跟其后的 \texttt{static\_assert(BM == 128 \&\& BN == 128 \&\& BK == 64,
 "TMA desc and 128B swizzle require 128x128x64")} 本身就是一条知识：
@@ -663,14 +663,14 @@ size/stride 推导。
 
 编译与运行：
 
-\begin{verbatim}
+\begin{lstlisting}[style=console]
   cd book/tests
   ./build_tests.sh --arch sm_120a --ch ch23
-\end{verbatim}
+\end{lstlisting}
 
 预期输出（$2026$-$09$-$11$ 于 RTX PRO 5000 / sm\_120a 实机执行，全文）：
 
-\begin{verbatim}
+\begin{lstlisting}[style=console]
 == ch23 CuTe swizzle / TMA (host-side assertions) ==
 PASS case A Swizzle<3,3,3> bit formula: mismatches=0 (1044 checks)
 PASS case B involution + bijection + base layout: mismatches=0 (1105 checks)
@@ -682,7 +682,7 @@ PASS case E hardware SWIZZLE_128B cross-check: mismatches=0 (3 checks)
 PASS case F hgemm 8x32 atom effective swizzle: mismatches=0 (262 checks)
 PASS case G TMA compile-level (descriptor): mismatches=0 (15 checks)
 ALL OK
-\end{verbatim}
+\end{lstlisting}
 （\texttt{build\_tests.sh} 在该输出之后还会再打印一次 \texttt{ALL OK}
 作为汇总，退出码 $0$。）
 

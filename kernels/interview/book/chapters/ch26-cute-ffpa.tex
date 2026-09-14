@@ -729,14 +729,14 @@ L281--282 与 L291--292）。多加一层掩码 4 会把\emph{另一个 warp 段
 
 两者都与 CPU fp64 参考对照（容差 \texttt{TOL\_F16ACC}），运行：
 
-\begin{verbatim}
+\begin{lstlisting}[style=console]
 cd book/tests && CUDA_VISIBLE_DEVICES=6 ./build_tests.sh --arch sm_120a --ch ch26
-\end{verbatim}
+\end{lstlisting}
 
 本机实测输出（sm\_120a，6 号卡）：
 
 {\scriptsize
-\begin{verbatim}
+\begin{lstlisting}[style=console]
 PASS case A chunk constants D=64 (kDChunks=1): mismatches=0 (4 checks)
 PASS case A chunk constants D=128 (kDChunks=2): mismatches=0 (6 checks)
 PASS case A chunk constants D=192 (kDChunks=3): mismatches=0 (8 checks)
@@ -747,7 +747,7 @@ PASS case B2 device probe: rowcol (2,16) & Aregs 32 elems: mismatches=0 (3 check
 PASS ffpa split-d cute D=192 N=128 Sk=3 Sv=2 B=1 H=2: max_abs_err=8.481e-05 (tol=5.0e-02)
 PASS ffpa split-d cute D=128 N=128 Sk=2 Sv=2 B=1 H=2: max_abs_err=8.084e-05 (tol=5.0e-02)
 ALL OK
-\end{verbatim}
+\end{lstlisting}
 }
 
 \section*{延伸阅读}

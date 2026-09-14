@@ -42,7 +42,29 @@
 % 勘误与考据框注（源码注释核查结果，全量记录在 book/CHECKLOG.md）
 \newtheoremstyle{kaowustyle}{6pt}{6pt}{\small}{}{\bfseries}{：}{ }{}
 \theoremstyle{kaowustyle}
-\newtheorem{kaogu}{勘误与考据}[chapter]
+\newtheorem{kaogu}{实践经验}[chapter]
+
+% --- 伪代码清单（E2 修复）：同框灰底，自动行号，# 注释 ---
+\lstdefinestyle{pseudo}{
+  language=, numbers=left, numberstyle=\scriptsize\color{vscLineNumber},
+  basicstyle=\footnotesize\ttfamily\color{vscText},
+  comment=[l]{\#}, commentstyle=\color{vscComment},
+  keywordstyle=\bfseries\color{vscKeyword},
+  morekeywords={function,for,to,do,end,if,then,else,while,return,in,parallel,foreach},
+  backgroundcolor=\color{vscBackground}, frame=single, framerule=0.8pt,
+  rulecolor=\color{vscFrame}, framesep=6pt, xleftmargin=4pt, xrightmargin=4pt,
+  breaklines=true, columns=fullflexible, keepspaces=true, tabsize=2,
+  aboveskip=4pt, belowskip=4pt, showstringspaces=false, upquote=true,
+}
+% --- 终端/测试输出清单（E6 修复）：无行号灰底框 ---
+\lstdefinestyle{console}{
+  language=, numbers=none,
+  basicstyle=\footnotesize\ttfamily\color{vscText},
+  backgroundcolor=\color{vscBackground}, frame=single, framerule=0.8pt,
+  rulecolor=\color{vscFrame}, framesep=6pt, xleftmargin=4pt, xrightmargin=4pt,
+  breaklines=true, columns=fullflexible, keepspaces=true, tabsize=2,
+  aboveskip=4pt, belowskip=4pt, showstringspaces=false, upquote=true,
+}
 
 % --- 代码清单：firstnumber=auto（行号与源文件一致） ---
 \lstset{

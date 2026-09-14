@@ -503,11 +503,13 @@ Phase 3 的 rescale 是本章数学结论落地的位置——\textbf{同一个 
         （L432、L484）——producer 只做地址计算与 TMA 提交，40 个寄存器够用；
         consumer 要背 $S$、$P$、$C$ 个 O 累加器与操作数碎片，直接申请 255 的
         上限。池算术：$128 \times 40 + 128 \times 255 = 37760 \le 65536$，余量
-        27776 个寄存器，远高于「留 $\ge 2048$」的安全线。注意在 sm\_120a 上，
-        只要 kernel 里出现 \texttt{cp.async.bulk.tensor}，ptxas 就会以 C7506
-        丢弃 \texttt{setmaxnreg}（第~\ref{ch:14}/\ref{ch:18}~章考据），所以这两个
-        宏在本机是\textbf{意图注释}；真正决定分配的是
-        \texttt{\_\_launch\_bounds\_\_(256,1)} 与 ptxas。
+        27776 个寄存器，远高于「留 $\ge 2048$」的安全线。注意该指令是目标后缀敏感的：默认
+        \texttt{-arch sm\_120a} 下只要 kernel 里出现
+        \texttt{cp.async.bulk.tensor}，ptxas 就会以 C7506 丢弃
+        \texttt{setmaxnreg}（第~\ref{ch:14}/\ref{ch:18}~章考据）；改用
+        \texttt{-arch sm\_120f}（family-specific 目标）即可保留生效
+        （ffpa-attn 实测）。默认构建里这两个宏是\textbf{意图注释}；真正决定
+        分配的是 \texttt{\_\_launch\_bounds\_(256,1)} 与 ptxas。
 \end{itemize}
 
 生产者的主体是「单线程 TMA」：整个 warpgroup 里只有 \texttt{wg\_tid == 0}
@@ -609,23 +611,23 @@ $\times$ 2 个 N-warp，$R_O$ 降到 $D/4$）的原因，也是本章这版 kern
 
   Q [Br=64, D=512]           K [Bc=64, D=512]          V [Bc=64, D=512]
   +----+----+-- ... --+      +----+----+-- ... --+      +----+----+-- ... --+
-  | c0 | c1 |         | c7   | c0 | c1 |         | c7   | c0 | c1 |         | c7
+  | c0 | c1 | ... c7 |      | c0 | c1 | ... c7 |      | c0 | c1 | ... c7 |
   +----+----+-- ... --+      +----+----+-- ... --+      +----+----+-- ... --+
      |    |                chunk c = 64 f16 wide = 1 SW128 atom
      v    v
-  +-----------------------------------------------------------+
-  | Phase 1  QK^T :  S[64,64] += Q(c) @ K(c)^T   for c = 0..7 |  <- one shared
-  |          (exact reduction over chunks, no weighting)      |     S acc
-  +-----------------------------------------------------------+
+  +------------------------------------------------------+
+  | Phase 1  QK^T : S[64,64] += Q(c) @ K(c)^T  for c=0..7|  <- one shared
+  |         (exact reduction over chunks, no weighting)  |     S acc
+  +------------------------------------------------------+
                               |
-  +-----------------------------------------------------------+
-  | Phase 2  softmax(S):  m, l, p = exp2(S*scale - m)         |  <- D-independent
-  +-----------------------------------------------------------+
+  +------------------------------------------------------+
+  | Phase 2  softmax(S):  m, l, p = exp2(S*scale - m)    |  <- D-independent
+  +------------------------------------------------------+
                               |
-  +-----------------------------------------------------------+
-  | Phase 3  PV :  O_c[64,64] *= rho ;  O_c += P @ V(c)       |  <- C independent
-  |          for c = 0..7   (same rho broadcast to all c)     |     O accs
-  +-----------------------------------------------------------+
+  +------------------------------------------------------+
+  | Phase 3  PV :  O_c[64,64] *= rho ;  O_c += P @ V(c)  |  <- C independent
+  |         for c = 0..7   (same rho broadcast to all c) |     O accs
+  +------------------------------------------------------+
                               |
   Epi      O_c /= l  for c = 0..7  -> store [64,64] tiles at (q_tile, c)
 
@@ -663,8 +665,8 @@ $\mathrm{idx}$ 导出。（占位，RFC-H 升级为 drawio 图）}
      after last tile:
         O_c /= l_T   for all c   ->  concat = full softmax(QK^T/sqrt(D)) V
 
-  contrast - split-KV (ch18) needs a SECOND max:  a = exp(m_0 - m), b = exp(m_1 - m)
-  contrast - split-D      has NO second max:       rho is shared by construction
+  contrast - split-KV (ch18) needs a SECOND max: a=exp(m_0-m), b=exp(m_1-m)
+  contrast - split-D     has NO second max:    rho is shared by construction
 \end{verbatim}
 \caption{跨 chunk 的两阶段合并。第一阶段：QK${}^\top$ 的 chunk 求和是同一
 点积内部加数的分组，\textbf{精确且无需权重}；第二阶段：$PV$ 的每个 chunk 各持一个
@@ -742,7 +744,7 @@ persist-D 家族正是冲这部分去的（Q 的 A 操作数常驻寄存器、�
 $\mathrm{Sk}{=}5$ 会直接超预算。数据请落
 \texttt{.tmp/book-bench/ch19/}，并与上述两组口径分开登记。
 
-\section{勘误与考据}
+\section{实践经验与考据说明}
 
 \begin{kaogu}[F4·口径差异]{L16-18 头注释性能口径（PRO 5000）}
   头注释声明 $D{=}512$、$N{=}8192$ 在 \textbf{SM120a RTX PRO 5000} 上

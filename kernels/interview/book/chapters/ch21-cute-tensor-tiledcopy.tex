@@ -161,7 +161,7 @@ src/dst 地址；让连续线程读连续地址（合并访存）；让每线程
 （宽访存）。4 线程 $\times$ 2 float $= 8$ 个元素一轮，$4\times4=16$ 个元素
 循环 2 轮：
 
-\begin{verbatim}
+\begin{lstlisting}
   int tid = threadIdx.x;              // 0..3
   int r = tid / 2;                    // 行方向线程号
   int c = (tid % 2) * 2;              // 列方向起点（每线程 2 个连续 float）
@@ -169,7 +169,7 @@ src/dst 地址；让连续线程读连续地址（合并访存）；让每线程
     float2 s = *(float2*)&g[(loop * 2 + r) * 4 + c];    // src: 合并访存
     *(float2*)&shm[(loop * 2 + r) * 4 + c] = s;         // dst: 无冲突写
   }
-\end{verbatim}
+\end{lstlisting}
 
 \textbf{痛点在哪。}这段代码很短，但它把「谁搬哪块」\emph{算在了}
 \texttt{r}/\texttt{c}/\texttt{loop} 三个变量里——一旦引入 swizzle、
@@ -776,14 +776,14 @@ G$\to$S 一个 tile 一级切完，S$\to$R 需要 2 个 K 切片（实测
 
 运行命令（在 \texttt{book/tests/} 下；脚本已配置 CUTLASS include 路径）：
 
-\begin{verbatim}
+\begin{lstlisting}[style=console]
 cd kernels/interview/book/tests
 CUDA_VISIBLE_DEVICES=6 ./build_tests.sh --arch sm_120a --ch ch21
-\end{verbatim}
+\end{lstlisting}
 
 预期输出（本机 RTX PRO 5000，CUDA 13.2，CUTLASS v4.6.1，2026-09-11 实测）：
 
-\begin{verbatim}
+\begin{lstlisting}[style=console]
 ch21 CuTe Tensor & TiledCopy (host-only, no kernel launch)
 PASS case A make_tiled_copy TV decomposition: mismatches=0 (1027 checks)
 PASS case B partition_S shape & bijection: mismatches=0 (12544 checks)
@@ -792,7 +792,7 @@ PASS case D ldmatrix source partitioning formula: mismatches=0 (16640 checks)
 PASS case E A-copy duplication factor: mismatches=0 (3 checks)
 PASS case F upcast semantics & R2S/S2G tilers: mismatches=0 (1814 checks)
 ALL OK
-\end{verbatim}
+\end{lstlisting}
 
 动手实验（三条，都在本章测试上改）：
 

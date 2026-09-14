@@ -649,7 +649,7 @@ warp 间需要归约；FA2 靠 warp 级 split-Q 消灭归约、靠 seqlen(Q) 维
 变成 $90\%$ 的功课——第~\ref{ch:12}~章（swizzle）与第~\ref{ch:16}~章（FA 的
 smem 布局）接着讲。
 
-\section{勘误与考据}
+\section{实践经验与考据说明}
 
 \begin{kaogu}[F5]{flash\_attn.cuh L7--13：「三板斧」的代际归属需厘清}
   头注释以「面试要点（FlashAttention-2算法）」为题列出三板斧：tiling、online
@@ -800,7 +800,7 @@ kernel 层面的 FlashAttention 正确性入口在第~\ref{ch:16}~章的
 
 \begin{enumerate}[itemsep=0pt,topsep=2pt]
   \item \textbf{对拍在线分块与整体计算}（15.3.4/15.3.5~节的数值版）：
-\begin{verbatim}
+\begin{lstlisting}
 import numpy as np
 def attn_ref(Q, K, V):                    # (N,d) x (N,d) x (N,d)
     S = Q @ K.T / np.sqrt(Q.shape[1])
@@ -822,7 +822,7 @@ def attn_online(Q, K, V, Bc=32):          # tiled + online rescale
 rng = np.random.default_rng(0); N, d = 256, 64
 Q, K, V = (rng.standard_normal((N, d)) for _ in range(3))
 print(abs(attn_online(Q, K, V) - attn_ref(Q, K, V)).max())  # ~1e-13
-\end{verbatim}
+\end{lstlisting}
   \item \textbf{次序不变性}：把 \texttt{attn\_online} 的循环改为倒序或随机打乱块序，
         输出应逐元素不变（定理~\ref{thm:15-invariant} 的次序无关性）。
   \item \textbf{不变量逐块自检}：在循环内断言 $\ell_i \ge e^{0}$ 当

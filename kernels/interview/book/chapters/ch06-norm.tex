@@ -165,7 +165,8 @@ vec4 化带来一个标量版没有的实现细节：Pass 2 需要再次用到 $
 
 图 ch06-1 对比两类归一化的归约结构。RMSNorm 的关键在于归约量只有一个 $S_2$；LayerNorm 的 $\sigma^2$ 依赖 $\mu$，依赖链把结构拉长为两段。
 
-\begin{center}
+\begin{figure}[htbp]
+\centering
 \begin{minipage}{0.92\textwidth}
 \begin{verbatim}
       RMSNorm (1-pass)                       LayerNorm (2-pass)
@@ -178,7 +179,7 @@ vec4 化带来一个标量版没有的实现细节：Pass 2 需要再次用到 $
      S2 = sum(x^2)  [block reduce]       (x_k - mu)^2 全员平方
              |                                |    |
      s = rsqrtf(S2/K + eps)                  +----+
-             |  [tid0 -> smem, sync]      S2' = sum((x-mu)^2) [block reduce #2]
+             |  [tid0 -> smem, sync]   S2' = sum((x-mu)^2) [block reduce #2]
     |    |         |                           |
    y_k = x_k * s * g  (elementwise)      s = rsqrtf(S2'/K + eps)  [sync]
     |    |         |                           |
@@ -186,10 +187,9 @@ vec4 化带来一个标量版没有的实现细节：Pass 2 需要再次用到 $
   归约: 1 次   __syncthreads: 2 次         归约: 2 次   __syncthreads: 4 次
 \end{verbatim}
 \end{minipage}
-
-\smallskip
-{\small 图 ch06-1：RMSNorm 1-pass 与 LayerNorm 2-pass 的归约结构对比（占位，RFC-H 升级）}
-\end{center}
+\caption{RMSNorm 1-pass 与 LayerNorm 2-pass 的归约结构对比}
+\label{fig:6-1}
+\end{figure}
 
 \section{性能分析}
 
@@ -220,7 +220,7 @@ $N$（行） & rms\_norm & rms\_norm\_vec4 & layer\_norm & layer\_norm\_vec4 \\
   \item \textbf{1-pass 收益在两种口径下都稳定约 $7\%$}：同精度对比标量版 rms\_norm vs layer\_norm：$0.1289$ vs $0.1384\,\mathrm{ms}$（L2 口径，$-6.9\%$）；$0.5019$ vs $0.5369\,\mathrm{ms}$（HBM 口径，$-6.5\%$）。减少的那一次 block reduce 与两次同步在两种口径下都没有被访存完全掩盖——归一化算子太薄，结构开销永远在关键路径上。这正是 LLaMA 选择 RMSNorm 在 kernel 层面的直接收益。
 \end{enumerate}
 
-\section{勘误与考据}
+\section{实践经验}
 
 \begin{kaogu}[F3 | 模板参数与 K 的隐含契约]
 源码注释只提示「kNumThreads=K=128（K>128 时调整模板参数）」，但 $K < 128$ 且不改模板参数同样出错：网格按 \texttt{idx = blockIdx*128 + tid} 线性展开，一个 block 会覆盖到相邻行的数据，行归约被跨行污染（\texttt{idx < N*K} 只防全局越界，不防跨行）。正确契约是 $K$ 必须等于模板参数；支持任意 $K$ 需要行内 padding 或行内循环分块，当前实现未包含。
@@ -260,14 +260,14 @@ $N$（行） & rms\_norm & rms\_norm\_vec4 & layer\_norm & layer\_norm\_vec4 \\
 
 测试文件 \texttt{tests/ch06\_norm.cu}（$\le 300$ 行），逻辑抽取自 \texttt{notes-v2.cu} 的 \texttt{test\_rms\_norm}（L920）与 \texttt{test\_layer\_norm}（L978），对照参考改为 CPU fp64 手算（\texttt{double} 累加求 $S_1, S_2$，再按式~\eqref{eq:ch06-rms}~\eqref{eq:ch06-ln} 生成参考），容差取 \texttt{TOL\_F32ACC} $= 10^{-3}$。规模 $N=512, K=128$，覆盖 4 个 kernel：
 
-\begin{verbatim}
+\begin{lstlisting}[style=console]
 cd kernels/interview/book/tests && CUDA_VISIBLE_DEVICES=7 ./build_tests.sh --ch ch06
   PASS rms_norm: max_abs_err=4.392e-07 (tol=1.0e-03)
   PASS rms_norm_vec4: max_abs_err=4.392e-07 (tol=1.0e-03)
   PASS layer_norm: max_abs_err=4.991e-07 (tol=1.0e-03)
   PASS layer_norm_vec4: max_abs_err=5.318e-07 (tol=1.0e-03)
   ch06 ALL PASS
-\end{verbatim}
+\end{lstlisting}
 
 性能实验：\texttt{./.build/ch06\_norm --bench} 复现本章第 6 节表格（cudaEvent min-of-20），输出落盘 \texttt{.tmp/book-bench/ch06/bench.txt}。建议动手：把 \texttt{kNumThreads} 改成 256 而 $K=128$ 不变，观察归约结果如何被跨行污染；删除写 \texttt{s\_variance} 后的 \texttt{\_\_syncthreads()} 并用 \texttt{compute-sanitizer --tool racecheck} 捕获竞争。
 

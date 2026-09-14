@@ -1,4 +1,157 @@
-% appC-build-guide.tex — 骨架（RFC-0.3）
+% appC-build-guide.tex — 附录 C 构建与运行指南 v1（RFC-I.3）
+% 报错文本均为真实编译器输出（probe 复现，2026-09-14，CUDA 13.2 nvcc/ptxas）。
 \chapter{附录 C\quad 构建、运行与最小测试指南}\label{app:C}
 
-本章待撰写。build.sh、章 $\times$ 编译宏 $\times$ arch 矩阵、环境安装、notes-v2.cu 角色声明（I.3）。
+\section{两套构建入口的分工}
+
+仓库里有两个构建入口，角色不同、不要混用：
+
+\begin{itemize}
+  \item \texttt{kernels/interview/build.sh}——编译集成 bench harness
+        \texttt{notes-v2.cu}（带 cuBLAS/cuDNN 对照与性能计时）。检测到
+        ccache 时走两段式：\texttt{ccache nvcc -c} 产 \texttt{.o}（可缓存），
+        再裸 \texttt{nvcc} 链接产 \texttt{notes\_v2\_<arch>.bin}（不缓存）。
+        公共 flags：\texttt{-std=c++20 -O3 --expt-relaxed-constexpr
+        --use\_fast\_math} + cutlass/cudnn-frontend include。
+  \item \texttt{book/tests/build\_tests.sh}——编译并运行每章最小正确性测试。
+        本书的作用是\textbf{取代 notes-v2.cu 的正确性验证角色}：对拍一律
+        CPU fp64，无 cuBLAS/cuDNN 依赖，可在任何机器复现；notes-v2.cu
+        保留为集成 bench harness。
+\end{itemize}
+
+\noindent build.sh 的架构 $\times$ 编译宏矩阵（决定 common.cuh 哪些段参与
+编译，见附录~\ref{app:A}）：
+
+\begin{table}[htbp]
+\centering\small
+\caption{build.sh 架构配置与产物}\label{tab:appC-archdef}
+\begin{tabular}{lll}
+\toprule
+\texttt{-{}-arch} & 编译宏 & 产物 \\
+\midrule
+sm\_86 & CUTE, CUDNN & notes\_v2\_sm86.bin \\
+sm\_89 & CUTE, CUDNN & notes\_v2\_cute\_sm89.bin \\
+sm\_90a & WGMMA, CUTE, TMA\_MMA\_WS, CUDNN & notes\_v2\_sm90a.bin \\
+sm\_120a & CUTE, TMA\_MMA\_WS, CUDNN & notes\_v2\_sm120a.bin \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{book/tests/build\_tests.sh 用法}
+
+\begin{lstlisting}[style=console]
+cd kernels/interview/book/tests
+./build_tests.sh --arch sm_120a --all   # 构建运行全部已存在测试
+./build_tests.sh --ch ch04              # 单章
+./build_tests.sh --ch ch13 --no-run     # 只编译不运行（远端无 H800 时）
+\end{lstlisting}
+
+行为细节（对应脚本 L13/L47--52/L57/L64）：\texttt{-{}-arch} 默认
+\texttt{sm\_120a}（验收机 RTX PRO 5000），\texttt{NVCC} 可用环境变量覆盖；
+ch13（WGMMA）在非 \texttt{sm\_90a} 目标下自动跳过并打印提示；每个测试用
+\texttt{-std=c++20 -O2} + cutlass include 单文件编译；全部成功时末行
+\texttt{ALL~OK}、退出码 0，任一编译或运行失败输出 \texttt{FAILURES~PRESENT}
+并返回非 0。生成物在 \texttt{.build/} 下：与源文件同名的可执行文件
+（无扩展名，如 \texttt{.build/ch01\_roofline}）与逐源的
+\texttt{<name>.buildlog}。
+
+\section{公共对拍头 common\_test.h}
+
+所有章测试共享 \texttt{book/tests/common\_test.h}（72 行）：
+三档容差 \texttt{TOL\_F32ACC}=1e-3 / \texttt{TOL\_F16ACC}=5e-2 /
+\texttt{TOL\_TF32}=1e-2（L14--16）；测试规模上限
+\texttt{BOOK\_TEST\_MAX\_N}=512（L19，CPU fp64 三重循环的时限约束）；
+\texttt{book\_require\_sm}（L32）arch 不在位时打印 \texttt{SKIP(chNN)} 并
+正常退出；\texttt{BOOK\_CUDA\_CHECK}（L39）统一 CUDA 错误拦截；
+\texttt{book\_check}（L51）打印 \texttt{max\_abs\_err} 与首个超差下标；
+\texttt{book\_fill\_rand}（L69）以固定种子 0xA5A5 造确定性输入。
+
+\section{-arch 目标选择}
+
+\begin{table}[htbp]
+\centering\small
+\caption{-arch 目标选择表}\label{tab:appC-arch}
+\begin{tabular}{lp{8.6cm}}
+\toprule
+目标 & 适用场景 \\
+\midrule
+sm\_89 & Ada Lovelace（RTX 40 / L20）。基础章至 GEMM 章的通用目标。 \\
+sm\_90a & Hopper（H100/H200/H800）。WGMMA 章必需：build\_tests.sh 在其它
+  目标下自动跳过 ch13；完整编译须用 \texttt{-gencode
+  arch=compute\_90a,code=sm\_90a} 形式（\texttt{-arch sm\_90a} 会退化为
+  compute\_90，第~\ref{ch:13}~章 13.7 节勘误）。 \\
+sm\_120a & Blackwell（RTX 5090 / PRO 5000/6000），build\_tests.sh 与本书
+  验收机的默认目标：ch14/ch17/ch18 的 TMA+mbarrier 路径直接可跑。 \\
+sm\_120f & family-specific 目标（CUDA 13.2+）。\textbf{setmaxnreg 等家族
+  特性指令需要它}：sm\_120a 上 ptxas 把 \texttt{cp.async.bulk.tensor} 的
+  使用当作隐式 extern-call 边界，以 C7506 警告静默丢弃 setmaxnreg；换
+  \texttt{-arch sm\_120f} 则保留生效（ffpa-attn cute sm\_120 persist-D
+  kernel 在 PRO 5000 实测端到端可用，第~\ref{ch:14}~章考据框）。做寄存器
+  再分配对照实验时的正确目标。 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+工具链门槛：TMA 相关章硬性要求 CUDA $\ge$ 13.0（common.cuh L21--24 直接
+\texttt{\#error}）；sm\_89/sm\_90a/sm\_120a 后缀目标与 sm\_120f 建议
+CUDA 13.2+。
+
+\section{常见编译与运行错误速查}
+
+以下报错均为真实编译器输出照录（探针最小复现，CUDA 13.2）：
+
+\begin{lstlisting}[style=console]
+# 1. WGMMA 用在非 sm_90a 目标上（忘了换 -arch，或误在 sm_89/sm_120 上编 ch13）
+ptxas ... error : Instruction 'wgmma.commit_group' not supported on .target 'sm_89'
+# -> WGMMA 仅 sm_90a 存在；sm_120 改用 mma.sync 路径（ch14）
+
+# 2. smem 超过 sm_90a 单 block 上限（227 KB = 0x38c00 = 232448 B）
+ptxas error : Entry function '_Z1kPf' uses too much shared data (0x40000 bytes, 0x38c00 max)
+# -> 减 kStages 或缩小 tile；多级流水先算 smem 预算
+
+# 3. smem 超过 sm_120a 单 block 上限（99 KB = 0x18c00 = 101376 B）
+ptxas error : Entry function '_Z1kPf' uses too much shared data (0x28000 bytes, 0x18c00 max)
+# -> SM120 SM 总量 128 KB 但单 block opt-in 上限 101376 B（ch17 实测口径）
+
+# 4. setmaxnreg 被 ptxas 静默丢弃（warning，不是 error）
+#    ... C7506: ... ignored to maintain compatibility into 'extern' call ...
+# -> sm_120a 上 TMA 隐式 call 边界触发；对照实验换 -arch sm_120f（见上表）
+
+# 5. CUDA Toolkit 版本不足（common.cuh L21--24 门控）
+#error "NOTES_V2_ENABLE_TMA_MMA_WS requires CUDA Toolkit 13.0 or newer"
+# -> 升级工具链，或改用 raw PTX 分支并降级宏组合
+\end{lstlisting}
+
+另一类「不报错但全错」的运行期坑（系统性错值而非随机数）见第~\ref{ch:14}~章
+常见坑一节：smem 基址未对齐 1024B、swizzle 档位选错、期望字节数没喂给
+mbarrier。
+
+\section{全书 139 个测试：运行与期望输出}
+
+一条命令跑全书最小测试（验收机口径）：
+
+\begin{lstlisting}[style=console]
+cd kernels/interview/book/tests
+./build_tests.sh --arch sm_120a --all
+\end{lstlisting}
+
+\noindent 实测输出摘录（RTX PRO 5000，2026-09-14；全书 24 个测试可执行
+——ch01--ch26 中 ch13 在 sm\_120a 下自动跳过、ch15 原理章无测试——
+共 139 条 \texttt{PASS}、0 条 \texttt{FAIL}，末行 \texttt{ALL~OK}、退出码 0）：
+
+\begin{lstlisting}[style=console]
+(ch13 skipped: requires -arch sm_90a; see ch13 §13.10 for explicit build)
+== ch01_roofline.cu (sm_120a)
+PASS GEMM     FLOPs=1.3744e+11 Bytes=2.0133e+08 AI= 682.6667 (expect  682.6667, rel_err=4.9e-08)
+PASS softmax  FLOPs=2.0480e+04 Bytes=3.2768e+04 AI=  0.6250 (expect    0.6250, rel_err=0.0e+00)
+...（ch02--ch26 依次构建运行；各章输出行格式一致）...
+PASS ffpa split-d cute D=128 N=128 Sk=2 Sv=2 B=1 H=2: max_abs_err=8.084e-05 (tol=5.0e-02)
+ALL OK
+\end{lstlisting}
+
+\noindent 判定行格式统一为
+\texttt{PASS/FAIL <name>: max\_abs\_err=<e> (tol=<e>)}，超差时追加
+\texttt{first\_bad\_index}；arch 不在位输出 \texttt{SKIP(chNN): requires
+sm\_XX, device is sm\_YY} 且退出码 0（不视为失败）。逐章测试的设计口径
+（规模、容差档、K-tile 回绕覆盖）见各章「最小测试与动手实验」节；
+ch13 的 Hopper 复现命令见第~\ref{ch:13}~章 13.10 节。

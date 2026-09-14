@@ -362,22 +362,22 @@ warp shuffle 拼出 128-bit 向量写回 C，思路与第~\ref{ch:11}~章一致�
 \begin{figure}[htbp]
 \centering
 \begin{verbatim}
-  FIG-12-1  smem swizzle before/after: 8x16 fp16 tile (32B rows), quad=(8i+4c)%32
+  FIG-12-1  smem swizzle before/after: 8x16 fp16 (32B rows), quad=(8i+4c)%32
 
-  [before swizzle]                       [after XOR swizzle: c' = c ^ ((i>>2)&1)]
+  [before swizzle]                       [after XOR: c' = c ^ ((i>>2)&1)]
   row i | chunk0 quad | chunk1 quad       row i | chunk0 quad | chunk1 quad
     0   |     0       |      4              0   |     0        |      4
     1   |     8       |     12              1   |     8        |     12
     2   |    16       |     20              2   |    16        |     20
     3   |    24       |     28              3   |    24        |     28
-    4   |     0 <-hit |      4              4   |     4  <-- flipped (rows 4-7)
+    4   |     0 <-hit |      4              4   |     4 <- flipped (rows 4-7)
     5   |     8       |     12              5   |    12        |
     6   |    16       |     20              6   |    20        |
     7   |    24       |     28              7   |    28        |
 
   ldmatrix.x4 phase 0 = lanes 0..7 = rows 0..7, chunk0:
     before: quads {0,8,16,24,0,8,16,24}  -> each quad serves 2 rows = 2-way
-    after : quads {0,8,16,24,4,12,20,28} -> 8 distinct quads = 32 banks = 1-way
+    after: quads {0,8,16,24,4,12,20,28} -> 8 distinct quads (32 banks) = 1-way
   (chunk1 lanes 16..31 mirror the same pattern. In the BK=64 unified tile
    only the intra-slice flip survives -> 4-way per phase, see FIG-12-3)
 \end{verbatim}
@@ -493,7 +493,7 @@ BK=64，swizzle（7b-3）    & 297{,}628 & 20.7 & 4-way；本章 kernel \\
 （3）绝对值口径为 fp16 累加（\texttt{f16.f16.f16.f16}）+ 本机 PRO 5000，与
 README 的 5090 口径不可直接比较。
 
-\section{勘误与考据}
+\section{实践经验}
 
 \begin{kaogu}[F3 + NCU 实证]{common.cuh L124-125：「降低到 1-way（fully conflict-free）」对本章 kernel 不成立}
   注释的 1-way 结论只在\textbf{swizzle 作用域 = 整行}（32\,B 行宽，BK=16 / FA 的
@@ -617,7 +617,7 @@ C（host 端 v1/v2 全遍历等价，$k_{\mathrm{cs}}\in\{8,16,32,64\}$ 共 30{,
 \texttt{./build\_tests.sh --arch sm\_120a --ch ch12}。本机运行输出
 （RTX PRO 5000，2026-09-11）：
 
-\begin{verbatim}
+\begin{lstlisting}[style=console]
 case A: M=256 N=256 K=256 (2D vs 3D grid)
 PASS hgemm swizzle reg2x (2D grid): max_abs_err=2.477e-02 (tol=5.0e-02)
 PASS hgemm swizzle reg2x (3D grid BS=1): max_abs_err=2.477e-02 (tol=5.0e-02)
@@ -629,7 +629,7 @@ PASS 2D vs 3D grid bitwise-equal: max_diff=0.0e+00
 case C: swizzle v1/v2 host equivalence
 PASS swizzle v1/v2 equiv: total=30720 fail=0
 ALL OK
-\end{verbatim}
+\end{lstlisting}
 
 判据说明：fp16 累加（\texttt{f16.f16.f16.f16}）对 fp64 参考的误差随 $K$ 增长，
 $K{=}256$ 时约 $2.5{\sim}2.9\times10^{-2}$，落在 F16Acc 档 $5\times10^{-2}$ 内；

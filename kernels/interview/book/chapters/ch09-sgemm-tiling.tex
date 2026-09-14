@@ -296,7 +296,7 @@ $4 \times 4 = 16$ 个 block，110 个 SM 有 86 个闲着；naive 同形状有 2
 单个 SM 同时只能驻留 1 个 block——vec4 的 32KB smem 与 1024 线程都不再是
 第一瓶颈，瓶颈回到「每 SM 同时在飞的加载与 FMA 数」。
 
-\section{勘误与考据}
+\section{实践经验}
 
 \begin{kaogu}[F3]{sgemm.cuh L18-19：金字塔注释的两个 AI 公式量纲不一致}
   注释原文给出「Level 1: \texttt{AI ≈ B\_K/(2×sizeof) ≈ 32/8=4}」与
@@ -402,11 +402,11 @@ A（$128^3$：naive 16 blocks vs vec4 1 block）；B（$256^3$：64 vs 4 blocks�
 \texttt{./build\_tests.sh --ch ch09}。本机运行输出（RTX PRO 5000，2026-09-11；
 PASS 行的 \texttt{max\_abs\_err} 数值见表~\ref{tab:9-pass}）：
 
-\begin{verbatim}
+\begin{lstlisting}[style=console]
 case A: M=N=K=128 (16 vs 1 blocks)
 case B: M=N=K=256 (64 vs 4 blocks)
 ALL OK
-\end{verbatim}
+\end{lstlisting}
 
 \begin{table}[htbp]
 \centering

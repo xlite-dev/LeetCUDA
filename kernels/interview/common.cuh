@@ -454,18 +454,26 @@ static __device__ __forceinline__ void tma_arrive_expect_tx(
 // setmaxnreg.inc requests registers (consumer MMA path needs many).
 // Both require all warps in a warpgroup to execute the same instruction,
 // and require __launch_bounds__(N, 1) so the compiler permits up to 256
-// regs/warp (otherwise the hint may have no effect). Supported on sm_90a/sm_120a.
+// regs/warp (otherwise the hint may have no effect). Supported on sm_90a and
+// the sm_120 family-specific targets (sm_120a/sm_120f).
 // __forceinline__ is mandatory: without it ptxas drops setmaxnreg with
 // warning C7506 "ignored to maintain compatibility into 'extern' call",
 // because a non-inlined call boundary forces a fixed register convention.
 //
-// On sm_120a (Blackwell, CUDA 13.2) ptxas drops setmaxnreg with C7506 even
-// when the PTX is fully inlined (no call.uni), because ptxas treats
-// cp.async.bulk.tensor (TMA) usage as an implicit extern-call boundary.
-// sm_90a (Hopper) is unaffected. Gate the *call sites* with
-// NOTES_V2_ENABLE_SETMAXNREGS so sm_120a builds stay warning-free and avoid
-// the register-allocation side effects of __launch_bounds__(N,1) until ptxas
-// is fixed. The function templates themselves are always defined.
+// On Blackwell the picture depends on the -arch target suffix (CUDA 13.2+):
+//   - plain sm_120a: ptxas drops setmaxnreg with C7506 even when the PTX is
+//     fully inlined (no call.uni), because ptxas treats cp.async.bulk.tensor
+//     (TMA) usage as an implicit extern-call boundary.
+//   - sm_120f (family-specific target): setmaxnreg is KEPT and takes effect.
+//     Verified on the ffpa-attn cute sm_120 persist-D kernels (PRO 5000):
+//     build with -arch sm_120f and the rebalancing works end to end.
+// So setmaxnreg is NOT unusable on SM120 -- it just requires the
+// family-specific compilation target. sm_90a (Hopper) is unaffected.
+// Gate the *call sites* with NOTES_V2_ENABLE_SETMAXNREGS: default builds
+// (which mix sm_89/sm_120a targets) stay warning-free and avoid the
+// register-allocation side effects of __launch_bounds__(N,1); for a
+// setmaxnreg experiment build with -arch sm_120f and define the macro.
+// The function templates themselves are always defined.
 #if defined(NOTES_V2_ENABLE_SETMAXNREGS)
   #define NOTES_V2_REG_DEALLOC(N) warpgroup_reg_dealloc<N>()
   #define NOTES_V2_REG_ALLOC(N)   warpgroup_reg_alloc<N>()

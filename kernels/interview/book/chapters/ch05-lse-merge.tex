@@ -297,7 +297,7 @@ ch04 的 softmax 小形状只有数百 GB/s，差距主要来自形状规模
 若要继续压榨，可尝试的方向是 256-bit 访问或 LSE 的 warp 级广播复用，
 但收益预计在个位数百分比——memory-bound 算子的带宽已近材料上限。
 
-\section{勘误与考据}
+\section{实践经验}
 
 \begin{kaogu}[F3]{base.cuh L393：「5 步推导」只列了 Step 1--4}
   头注释称「数学公式（5 步推导）」，随后仅列出 Step 1（max 归一）、Step 2（指数还原）、
@@ -406,11 +406,11 @@ FA 分块输出（$O^{A}, O^{B}$ 已归一化、$\mathrm{LSE} = m + \log \ell$�
 \texttt{./build\_tests.sh --ch ch05}（编译 + 运行一体）。本机运行输出
 （RTX PRO 5000，2026-09-11，PASS 行的误差数值见表~\ref{tab:5-pass}）：
 
-\begin{verbatim}
+\begin{lstlisting}[style=console]
 case A: T=2 H=2 D=8 kv=2x32
 case B: T=3 H=4 D=128 kv=2x32
 ALL OK
-\end{verbatim}
+\end{lstlisting}
 
 \begin{table}[htbp]
 \centering

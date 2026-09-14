@@ -441,7 +441,7 @@ long-scoreboard / LG-throttle / MIO-throttle stall 分别放大
 写两个方向}，只优化 bank-conflict counter 会顾此失彼（该结论出自
 源码注释，属作者实测口径；本章复测 pad 路径与其吻合）。
 
-\section{勘误与考据}
+\section{实践经验与考据说明}
 
 \begin{kaogu}[F5 配置口径]{头注释 L33--37「Br=64 / Block(128,1,1) / 4 warps」与默认实例化不符}
   头注释的 grid/block 描述取 $kMmaTileSeqLenQ{=}4$（$B_r{=}64$、
@@ -587,7 +587,7 @@ include 顺序有讲究（见 16.7 节工程观察）：\texttt{hgemm.cuh} 必�
 \texttt{./build\_tests.sh --arch sm\_120a --ch ch16}，本机输出
 （RTX PRO 5000 72GB，2026-09-11）：
 
-\begin{verbatim}
+\begin{lstlisting}[style=console]
 case A: B=1 H=2 N=256 D=64
 PASS fa2 splitq F16Acc B1 H2 N256 D64: max_abs_err=1.417e-04 (tol=5.0e-02)
 PASS fa2 splitq F32Acc B1 H2 N256 D64: max_abs_err=6.614e-05 (tol=1.0e-03)
@@ -595,7 +595,7 @@ case B: B=1 H=1 N=512 D=64
 PASS fa2 splitq F16Acc B1 H1 N512 D64: max_abs_err=9.811e-05 (tol=5.0e-02)
 PASS fa2 splitq F32Acc B1 H1 N512 D64: max_abs_err=4.084e-05 (tol=1.0e-03)
 ALL OK
-\end{verbatim}
+\end{lstlisting}
 
 误差量级 $10^{-4}$（远低于 hgemm f16 acc 的 $10^{-2}$）：attention
 的 $O$ 是 $V$ 行的凸组合、$P\in(0,1]$，幅值约束让 half 舍入的绝对

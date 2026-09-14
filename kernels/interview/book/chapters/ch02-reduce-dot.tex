@@ -75,7 +75,8 @@ $S(R, i) = \sum\sb j x\sb j$——\textbf{每个 lane 都持有完整的归约�
 一对一无冲突（$m \neq 0$ 时 $i \oplus m \neq i$）、距离逐轮减半而信息量
 翻倍。
 
-\begin{center}
+\begin{figure}[htbp]
+\centering
 \begin{verbatim}
    蝶形归约, W=8 (R=3), 5 步同理 (base.cuh L111-148 以 8 为例)
    -------------------------------------------------------------
@@ -92,9 +93,9 @@ $S(R, i) = \sum\sb j x\sb j$——\textbf{每个 lane 都持有完整的归约�
                  2   6          4   6      4   5
                  3   7          5   7      6   7
 \end{verbatim}
-
-图 ch02-1：warp shuffle 蝶形归约（占位，RFC-H 升级；对应 FIG-2-1）
-\end{center}
+\caption{warp shuffle 蝶形归约}
+\label{fig:2-1}
+\end{figure}
 
 \textbf{为什么不用 \_\_shfl\_down\_sync？}down 模式下 lane $i$ 每轮读
 lane $i + m\sb r$，越界 lane 读自己（复制）。$R$ 轮后只有 lane 0 凑齐全和，
@@ -217,7 +218,8 @@ ch06 的 norm（预变换平方）都是这个模板的填空题。dot\_vec4（L
 
 \section{图示}
 
-\begin{center}
+\begin{figure}[htbp]
+\centering
 \begin{verbatim}
    block 两级归约 (T=256, W=8): 全员广播版 (block-reduce-sum)
    -------------------------------------------------------------
@@ -237,9 +239,9 @@ ch06 的 norm（预变换平方）都是这个模板的填空题。dot\_vec4（L
    -------------------------------------------------------------
    跨 block 版 (block-reduce-all): warp0 归约 -> tid0 -> atomicAdd(y)
 \end{verbatim}
-
-图 ch02-2：block 两级归约数据流（占位，RFC-H 升级）
-\end{center}
+\caption{block 两级归约数据流}
+\label{fig:2-2}
+\end{figure}
 
 \section{性能分析}\label{sec:ch02-perf}
 
@@ -275,7 +277,7 @@ $G$ 个数」，或 block 内先 smem 累积再少次原子—— atomic 次数�
 $\lceil G/K \rceil$，时间随之线性下降。这也是面试里「跨 block 归约怎么
 优化」的标准答案骨架。
 
-\section{勘误与考据}\label{sec:ch02-kaogu}
+\section{实践经验}\label{sec:ch02-kaogu}
 
 \begin{kaogu}[F1]{L93--94 两级归约流程注释与实现不一致}
 面试要点注释写「block\_reduce: 两级归约（warp $\to$ shared memory $\to$
@@ -354,11 +356,11 @@ CPU fp64 参考与 book\_check 容差判定：$N = 512$ 随机 fp32，分别验�
 block\_reduce\_all / dot / dot\_vec4 对 CPU 求和与点积。
 
 运行（CWD：book/tests/，\texttt{./build\_tests.sh -{}-ch ch02}）：
-\begin{verbatim}
+\begin{lstlisting}[style=console]
   PASS block-reduce-all(N=512): max-err=7.161e-07 (tol=1.0e-03)
   PASS dot(N=512):             max-err=4.480e-07 (tol=1.0e-03)
   PASS dot-vec4(N=512):        max-err=9.248e-07 (tol=1.0e-03)
-\end{verbatim}
+\end{lstlisting}
 （输出 kernel 名按本书排版把下划线转写为连字符；实测 max\_abs\_err 均为
 $10^{-7}$ 量级，远低于 $10^{-3}$ 容差，与 \S\ref{sec:ch02-math} 的浮点
 抖动分析一致：512 项求和的 fp32 误差在 $10^{-7}$，跨 block 原子顺序抖动

@@ -286,16 +286,16 @@ block 级同步从 2 次降到 1 次；代价是归约算子从「单个加法�
 \begin{verbatim}
   FIG-4-1  Softmax: 3-pass (textbook) -> 2-pass (safe) -> 1-pass (online)
 
-  [naive / textbook]           [safe / Level 2]            [online / Level 3]
-  ------------------           -------------------         --------------------
-  gmem x (read pass 1)         gmem x -> regs (1st read)   gmem x -> regs (only read)
-    m = max(x)                   block reduce max -> m       init (m,d) = (x, 1)
-  gmem x (read pass 2)         gmem x (2nd read, L1 hit)   MD butterfly reduce:
-    s = SUM e^(x)                e^(x-m) -> reduce sum s      d = d1 + d2*e^(m2-m1)
-    e^(x) may overflow: inf      e^(x-m) <= 1, no overflow   m,d rescale in lockstep
-  gmem x (read pass 3)         write y = e^(x-m) / s       write y = e^(x-m) / d
-    y = e^(x) / s                2 block syncs               1 block sync
-                                                             fast math: expf/div
+  [naive / textbook]   [safe / Level 2]           [online / Level 3]
+  ------------------   ----------------           ------------------
+  gmem x (pass 1)      gmem x -> regs (1st read)  gmem x -> regs (only read)
+    m = max(x)         block reduce max -> m      init (m,d) = (x, 1)
+  gmem x (pass 2)      gmem x (2nd read, L1 hit)  MD butterfly reduce:
+    s = SUM e^(x)      e^(x-m) -> reduce sum s    d = d1 + d2*e^(m2-m1)
+    e^(x) may hit inf  e^(x-m) <= 1, no overflow  m,d rescale in lockstep
+  gmem x (pass 3)      write y = e^(x-m) / s      write y = e^(x-m) / d
+    y = e^(x) / s      2 block syncs              1 block sync
+                                                    fast math: expf/div
 \end{verbatim}
 \caption{Softmax 三级递进的 3-pass $\to$ 2-pass $\to$ 1-pass 数据流：
 左为教科书三遍扫描（本仓库 naive kernel 融合了后两遍但保留无 max 减法的溢出风险）；
@@ -345,7 +345,7 @@ online（1 次 MD 融合归约）     & 0.0142 & 591.6 \\
 launch 与同步的固定开销占比大；附录~B 的汇总口径会注明这是「短 kernel 小形状」数据，
 不与 README 的大形状 GEMM/attention 带宽直接比较。
 
-\section{勘误与考据}
+\section{实践经验}
 
 \begin{kaogu}[F3]{base.cuh L538-539 与 L541-542：启动配置注释的两处含混}
   其一，L538 的「grid(S*h/h, h), block(h)」中 $S h / h$ 化简后就是 $S$，写法混乱；
@@ -442,13 +442,13 @@ C（$x \in [80,120]$，naive 必然溢出 vs safe/online 稳定的演示）。
 \texttt{./build\_tests.sh --ch ch04}（编译 + 运行一体）。本机运行输出
 （RTX PRO 5000，2026-09-11，PASS 行的误差数值见表~\ref{tab:4-pass}）：
 
-\begin{verbatim}
+\begin{lstlisting}[style=console]
 case A: S=2 N=256 block=256 x in [-5,5]
 case B: S=1 N=100 block=128 x in [-5,5]
 case C: S=1 N=256 block=256 x in [80,120]
 INFO naive with large x: y[0]=nan (non-finite expected)
 ALL OK
-\end{verbatim}
+\end{lstlisting}
 
 \begin{table}[htbp]
 \centering

@@ -612,7 +612,7 @@ $f(1,3)=11$——同一 shape，stride 决定读序。}
              |     +-- stride 2 (4 elems)  +------+-- stride 24 (2 elems)
              +-------- stride 1 (2 elems)  +--------- stride 8  (3 elems)
 
-    layout<0>(Lg)  = (2,4):(1,2)     layout<1>(Lg) = (3,2):(8,24)  [projection]
+    layout<0>(Lg)  = (2,4):(1,2)    layout<1>(Lg) = (3,2):(8,24) [projection]
     group<0,2>(Lg) = rank-1: ((2,4),(3,2)) : ((1,2),(8,24))        [merge]
     flatten(Lg)    = (2,4,3,2):(1,2,8,24)                          [flatten]
     coalesce(Lg)   = (48):(1)      <- strides chain 1 -> 2 -> 8 -> 24:
@@ -677,10 +677,10 @@ $\to\mathrm{Layout}_C\to\mathrm{offset}_1$），每段下标注对应 compose �
 \texttt{Int<N>}）上，\texttt{cosize}/\texttt{shape}/\texttt{compose}/
 \texttt{divide} 的结果都是 \texttt{constexpr}。本章测试把
 \texttt{tile\_to\_shape} 的结果直接塞进了编译期断言：
-\begin{verbatim}
+\begin{lstlisting}
 static_assert(cosize(decltype(atom){})  == 256,  "atom cosize folds");
 static_assert(cosize(decltype(tiled){}) == 8192, "tiled cosize folds");
-\end{verbatim}
+\end{lstlisting}
 编译通过即证明：$128\times32\times2$ 的 smem 布局的全部尺寸计算没有进入
 运行期一行代码。
 
@@ -826,15 +826,15 @@ A 线性化（coord 与整数两种形式，128 断言）；B compose（14）；
 \texttt{kernels/}\allowbreak\texttt{third-party/}\allowbreak\texttt{cutlass/include}，
 该目录不存在，故用 nvcc 的 \texttt{NVCC\_PREPEND\_FLAGS} 补上真实路径）：
 
-\begin{verbatim}
+\begin{lstlisting}[style=console]
 cd kernels/interview/book/tests
 NVCC_PREPEND_FLAGS="-I<repo>/third-party/cutlass/include" \
   CUDA_VISIBLE_DEVICES=6 ./build_tests.sh --arch sm_120a --ch ch20
-\end{verbatim}
+\end{lstlisting}
 
 本机运行输出（RTX PRO 5000，CUDA 13.2，CUTLASS v4.6.1，2026-09-11）：
 
-\begin{verbatim}
+\begin{lstlisting}[style=console]
 == ch20_layout.cu (sm_120a)
 ch20 CuTe layout basics & algebra (host-only, no kernel launch)
 PASS case A colex idx=sum(s_i*c_i): mismatches=0 (128 checks)
@@ -846,7 +846,7 @@ PASS case F zipped_divide tile semantics: mismatches=0 (76 checks)
 PASS case G tile_to_shape atom->(128,32,2): mismatches=0 (261 checks)
 PASS case H Swizzle<3,3,3> o layout bit formula: mismatches=0 (258 checks)
 ALL OK
-\end{verbatim}
+\end{lstlisting}
 
 判据说明：所有断言都是「库计算 vs 手工数学」的逐点比较——例如 case A 的手工
 一侧直接用 $\sum s_i c_i$ 与式~\eqref{eq:20-colex-decomp} 的展开式；case F 的

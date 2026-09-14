@@ -72,7 +72,7 @@ $d$ 维向量（$d$ 为偶数）不整体做一个 $d$ 维旋转，而是切成 
 \end{equation}
 $R^{d}_{\Theta}$ 是 $d/2$ 个 $2\times 2$ 旋转块排布在主对角线上的\textbf{分块对角}矩阵；位置 $m$ 的变换是 $R^{d}_{\Theta}(m)$，即每个块的角度乘 $m$。频率序列 $\theta_i = 10000^{-2i/d}$ 是等比数列：$i = 0$ 时 $\theta_0 = 1$（波长 $2\pi$，最高频，分辨局部），$i = d/2 - 1$ 时 $\theta_i \approx 10^{-4}$（波长 $\approx 2\pi \times 10^4$，最低频，分辨远距）。基 10000 与第 \ref{ch:15} 章 attention 的 $\mathrm{softmax}$ 温度一样是经验超参，控制「波长谱」的覆盖范围。
 
-需要特别注意\textbf{配对约定}：式~\eqref{eq:ch07-blockdiag} 只规定了「哪两个分量组成一对」，没有规定配对的枚举顺序。常见的两种是\textbf{相邻对}（interleaved：$(x_0,x_1), (x_2,x_3), \dots$，原始论文与本源码采用）与\textbf{半分对}（half-split：$(x_0, x_{d/2}), (x_1, x_{d/2+1}), \dots$，HuggingFace transformers 的 \texttt{rotate\_half} 实现）。两者是同一数学对象在不同分量排列下的表现形式，逐对重排即可互相转换；但 checkpoint 权重与 KV cache 布局如果不做对应重排，结果就是错的——对齐 HuggingFace 权重时这是经典坑（见本章勘误与考据）。
+需要特别注意\textbf{配对约定}：式~\eqref{eq:ch07-blockdiag} 只规定了「哪两个分量组成一对」，没有规定配对的枚举顺序。常见的两种是\textbf{相邻对}（interleaved：$(x_0,x_1), (x_2,x_3), \dots$，原始论文与本源码采用）与\textbf{半分对}（half-split：$(x_0, x_{d/2}), (x_1, x_{d/2+1}), \dots$，HuggingFace transformers 的 \texttt{rotate\_half} 实现）。两者是同一数学对象在不同分量排列下的表现形式，逐对重排即可互相转换；但 checkpoint 权重与 KV cache 布局如果不做对应重排，结果就是错的——对齐 HuggingFace 权重时这是经典坑（见本章实践经验）。
 
 \subsection{转置的「数学」}
 
@@ -136,7 +136,8 @@ shared memory 被切成 32 个 bank（对应一个 warp 的 32 线程），每�
 
 \textbf{Step 1 写 smem}（每条 ST 指令，$i$ 固定）：地址 $(4\,ty + i)\,W + tx$。无 PAD 时 bank 号 $= (16i + tx) \bmod 32$ 与 $ty$ 无关——warp 的两排 $ty$ 并行写相同 bank 序列，每 bank 2 线程，\textbf{2-way}；PAD=1 时行距变为 $68 \equiv 4 \pmod{32}$，两排 bank 序列错开 4，仍有部分重叠，模拟结果\textbf{仍是 2-way}（写侧 PAD 前后无改善）。
 
-\begin{center}
+\begin{figure}[htbp]
+\centering
 \begin{minipage}{0.92\textwidth}
 \begin{verbatim}
 FIG-7-1  Step2 转置读的 bank 分布（warp0: ty={0,1}, tx=0..15, j=0）
@@ -153,10 +154,9 @@ FIG-7-1  Step2 转置读的 bank 分布（warp0: ty={0,1}, tx=0..15, j=0）
   (读 smem 吞吐 1/16)                    (读 smem 吞吐 1/2)
 \end{verbatim}
 \end{minipage}
-
-\smallskip
-{\small 图 ch07-1：bank conflict vs padding——PAD=1 使步长 64B 变为 68B，$tx$ 项在 mod 32 下重新出现（占位，RFC-H 升级）}
-\end{center}
+\caption{bank conflict vs padding——PAD=1 使步长 64B 变为 68B，$tx$ 项在 mod 32 下重新出现}
+\label{fig:7-1}
+\end{figure}
 
 两个思考题留给自己：（1）为什么经典「一线程一元素」的 $32 \times 32$ tile 加 PAD=1 能做到零冲突，而本 kernel 的 4 行版本不能？（提示：经典版 warp 内 32 线程读同一列，地址步长 $33 \times 4\mathrm{B} \equiv 4\mathrm{B}$，32 线程 bank 号两两不同；本版每线程 4 行、warp 只跨 2 列，自由度更小。）（2）残留的 2-way 怎么彻底消除？把行距从 4 改成别的值、或干脆重排 tile 内的物理布局——第 \ref{ch:12} 章的 XOR swizzle 会给出系统性答案：用地址位异或代替加法 padding，在不浪费 smem 容量的前提下打散 bank 映射。
 
@@ -164,10 +164,10 @@ FIG-7-1  Step2 转置读的 bank 分布（warp0: ty={0,1}, tx=0..15, j=0）
 
 上述推导可以不依赖 GPU 复现：\texttt{.tmp/book-bench/ch07/bank\_sim.py} 按 warp 映射逐指令统计 bank 直方图（结果存 \texttt{bank\_sim.txt}），输出与推导一致：
 
-\begin{verbatim}
+\begin{lstlisting}[style=console]
 tile[64][16] (PAD=0):  Step1 write: 2-way   Step2 read: 16-way
 tile[64][17] (PAD=1):  Step1 write: 2-way   Step2 read:  2-way
-\end{verbatim}
+\end{lstlisting}
 
 \section{性能分析}
 
@@ -195,7 +195,7 @@ $M$ & mat\_transpose (naive) & mat\_transpose\_padded & 加速比 \\
   \item \textbf{HBM 口径下收益缩到 1.11$\times$}：$M = 8192$ 时数据穿透 L2 落到 DRAM，L2 的 write-back 聚合会把 naive 分散的 4B 写在写回 DRAM 前重新拼成整段，非合并写的惩罚被部分吸收；此时两者都逼近 DRAM 带宽，剩余差距主要来自 smem 2-way 与调度差异。结论很实用：\textbf{转置优化的收益必须按数据规模/L2 行为分口径报告}，拿 L2 口径的 2.4$\times$ 去外推大矩阵会严重高估。
 \end{enumerate}
 
-\section{勘误与考据}
+\section{实践经验}
 
 \begin{kaogu}[F3 | 「PAD 消除 bank conflict」在本 kernel 中是大幅降低而非消除]
 源码注释把 PAD 表述为「Bank conflict fix：每行多 1 个元素，打破 32-bank 对齐」与「解决方案：PAD……打破地址对齐」。按本章第 5 节的逐指令 bank 直方图（模拟复现于 \texttt{.tmp/book-bench/ch07/bank\_sim.txt}）：PAD=1 把 Step 2 转置读从 16-way 降到 2-way（主要收益），Step 1 写侧 PAD 前后均为 2-way。即注释的结论在数量级上成立（读事务 16 $\to$ 2），但「消除」并不准确——彻底消除需要第 \ref{ch:12} 章的 swizzle 或改变每线程 4 行的分工。经典「一线程一元素 + $32\times33$ tile」布局才是 PAD 完全消除冲突的形态。
@@ -236,13 +236,13 @@ rope 的参数 $N$ 是每 token 的\textbf{对数}（$d/2$），而非 hidden si
 
 测试文件 \texttt{tests/ch07\_rope\_transpose.cu}（$\le 300$ 行），逻辑抽取自 \texttt{notes-v2.cu} 的 \texttt{test\_rope}（L1042）与 \texttt{test\_mat\_transpose}（L1098、L1144）。RoPE 的 CPU 参考用 \texttt{double} 直接按旋转矩阵计算（\texttt{std::pow/std::cos/std::sin}）；转置的参考是纯数据搬运，两个 kernel 的 \texttt{max\_abs\_err} 应为 0，且测试显式断言两 kernel 输出逐元素 bitwise 一致。规模：RoPE \texttt{seq\_len}=128、$N=64$（对/token）；转置 $512 \times 512$。
 
-\begin{verbatim}
+\begin{lstlisting}[style=console]
 cd kernels/interview/book/tests && CUDA_VISIBLE_DEVICES=7 ./build_tests.sh --ch ch07
   PASS rope: max_abs_err=7.099e-06 (tol=1.0e-03)
   PASS mat_transpose: max_abs_err=0.000e+00 (tol=1.0e-03)
   PASS mat_transpose_padded: max_abs_err=0.000e+00 (tol=1.0e-03)
   ch07 ALL PASS
-\end{verbatim}
+\end{lstlisting}
 
 性能实验：\texttt{./.build/ch07\_rope\_transpose --bench} 复现本章第 6 节表格，输出落盘 \texttt{.tmp/book-bench/ch07/bench.txt}；\texttt{python3 .tmp/book-bench/ch07/bank\_sim.py} 复现 bank 直方图。建议动手：把 \texttt{PAD} 改成 2、4，观察 Step 2 的冲突度如何随步长变化（\texttt{bank\_sim.py} 改一行即可）；把每线程 4 行改成 2 行（tile 变 $[32][17]$、grid 相应调整），看 2-way 残留是否消失，并核对第 \ref{ch:12} 章 swizzle 动机的自然浮现。
 

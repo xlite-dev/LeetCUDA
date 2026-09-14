@@ -89,7 +89,8 @@ base.cuh L16--21 给出了 H100 参考下的带宽数量级：HBM3 约 3.35 TB/s
 计算单元，带宽越高、容量越小}，每一级之间的带宽差距都在 1.5--2 倍以上，而
 容量差距是数十倍。
 
-\begin{center}
+\begin{figure}[htbp]
+\centering
 \begin{verbatim}
         速率/容量金字塔（H100 数量级参考, base.cuh L16-21）
         -------------------------------------------------------------
@@ -101,9 +102,9 @@ base.cuh L16--21 给出了 H100 参考下的带宽数量级：HBM3 约 3.35 TB/s
           ----------------------> 离 SM 越远：带宽越低、容量越大
         -------------------------------------------------------------
 \end{verbatim}
-
-图 ch01-1：GPU 内存层级金字塔（占位，RFC-H 升级）
-\end{center}
+\caption{GPU 内存层级金字塔}
+\label{fig:1-1}
+\end{figure}
 
 这张图解释了 GPU 编程的第一定律：\textbf{数据每向上爬一层，就快一个台阶；
 kernel 优化的本质就是让数据尽量停在高层}。ch02 让归约的中间量全部驻留寄存器
@@ -194,7 +195,8 @@ FLOPs；访存是读入 $x$、写出 $y$ 各一次，$4 \times 2N$ 字节：
 判断规则由此而来：$AI < AI^{*}$ 则 memory-bound，$AI > AI^{*}$ 则
 compute-bound。
 
-\begin{center}
+\begin{figure}[htbp]
+\centering
 \begin{verbatim}
    性能 P (TFLOPS)
    ^                  compute-bound: P = P-peak
@@ -214,9 +216,9 @@ compute-bound。
      FP32 CUDA core: P-peak ~ 67 TFLOPS
        -> AI* ~ 20 FLOP/Byte     (softmax AI=0.625 << 20, 严重 memory-bound)
 \end{verbatim}
-
-图 ch01-2：Roofline 模型示意（占位，RFC-H 升级为 pgfplots 数据图）
-\end{center}
+\caption{Roofline 模型示意}
+\label{fig:1-2}
+\end{figure}
 
 \textbf{同一个 GPU 有多条屋顶线}。FP32 CUDA core 与 FP16 Tensor Core 的
 $P\sb{peak}$ 相差约 15 倍，于是 ridge point 也相差 15 倍：在 H100 上，
@@ -267,7 +269,8 @@ TMA）属于 Part II 后半与 Part III/IV。读到这里建议翻回本表：�
 RFC-H 升级为正式图（FIG-1-1、FIG-1-2）。这里补充一张「一次 HBM 读的一生」，
 把本章的概念串成时间线：
 
-\begin{center}
+\begin{figure}[htbp]
+\centering
 \begin{verbatim}
    一次 float 读的完整旅程（约 0.5us 量级, H100 参考）
    -------------------------------------------------------------
@@ -279,9 +282,9 @@ RFC-H 升级为正式图（FIG-1-1、FIG-1-2）。这里补充一张「一次 HB
           (occupancy 就是「可以切换的 warp 数量」)
    -------------------------------------------------------------
 \end{verbatim}
-
-图 ch01-3：一次访存的旅程与延迟隐藏（占位，RFC-H 升级）
-\end{center}
+\caption{一次访存的旅程与延迟隐藏}
+\label{fig:1-3}
+\end{figure}
 
 \section{性能分析}\label{sec:ch01-perf}
 
@@ -318,7 +321,7 @@ FLOP/Byte。后续各章 bench 都在这台机器上完成，请用这张表换�
 \textbf{roofline 里的 $BW$ 必须用「数据实际所在层级」的带宽}，小数据集的
 bench 对 HBM 口径失真。
 
-\section{勘误与考据}\label{sec:ch01-kaogu}
+\section{实践经验}\label{sec:ch01-kaogu}
 
 本章对 base.cuh L1--86 注释逐条核查（F1 架构事实/F3 数学/F4 性能断言），
 以下两条值得读者留意，全量记录见 book/CHECKLOG.md：
@@ -395,7 +398,7 @@ L2、smem 上限、GDDR7 理论带宽与 FP32 峰值估算，作为全书 bench 
 
 实测输出（RTX PRO 5000，sm\_120a，2026-09-11；末行设备名照录自驱动返回，
 含架构代号 sm120）：
-\begin{verbatim}
+\begin{lstlisting}[style=console]
   PASS GEMM     FLOPs=1.3744e+11 Bytes=2.0133e+08 AI= 682.6667
   PASS GEMV     FLOPs=3.3554e+07 Bytes=6.7142e+07 AI=   0.4998
   PASS softmax  FLOPs=2.0480e+04 Bytes=3.2768e+04 AI=   0.6250
@@ -405,7 +408,7 @@ L2、smem 上限、GDDR7 理论带宽与 FP32 峰值估算，作为全书 bench 
   name=NVIDIA RTX PRO 5000 72GB Blackwell sm120 SMs=110
   mem-theoretical-BW ~ 1344 GB/s   fp32-peak ~ 66.9 TFLOPS
   ridge-point ~ 49.8 FLOP/Byte
-\end{verbatim}
+\end{lstlisting}
 
 \textbf{动手实验}：把 softmax 的 FLOPs 口径从 $5N$ 改成 $3N$（不含减法与
 除法的近似），观察 AI 变为 0.375——结论不变（仍然 memory-bound），这说明
