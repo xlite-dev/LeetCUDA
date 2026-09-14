@@ -604,67 +604,15 @@ $f(1,3)=11$——同一 shape，stride 决定读序。}
 
 \begin{figure}[htbp]
 \centering
-\begin{lstlisting}[style=console]
-  FIG-20-2  mode tree and mode operations (Lg = ((2,4),(3,2)):((1,2),(8,24)))
-
-    Lg:  mode0 = (2,4):(1,2)           mode1 = (3,2):(8,24)
-             |     |                       |      |
-             |     +-- stride 2 (4 elems)  +------+-- stride 24 (2 elems)
-             +-------- stride 1 (2 elems)  +--------- stride 8  (3 elems)
-
-    layout<0>(Lg)  = (2,4):(1,2)    layout<1>(Lg) = (3,2):(8,24) [projection]
-    group<0,2>(Lg) = rank-1: ((2,4),(3,2)) : ((1,2),(8,24))        [merge]
-    flatten(Lg)    = (2,4,3,2):(1,2,8,24)                          [flatten]
-    coalesce(Lg)   = (48):(1)      <- strides chain 1 -> 2 -> 8 -> 24:
-                                     2 = 1*2, 8 = 2*4, 24 = 8*3
-                                     => one contiguous run of 48
-\end{lstlisting}
-\caption{mode 树与四种 mode 操作的结果（本章测试逐一核对了 shape/stride）。
-投影用于取子布局，合并/展平用于把嵌套结构变成可直接索引的线性结构，化简
-（coalesce）在编译期消除冗余 mode——kernel 里「fragment mode 与 rest mode
-分离」就是一次投影。（占位，RFC-H 升级为 drawio 图）
-图规格：左侧画两层的 mode 树（根节点 $L_g$，两个子节点
-$(2,4){:}(1,2)$ 与 $(3,2){:}(8,24)$，叶节点标注 stride）；右侧并排四栏
-分别画 projection / group / flatten / coalesce 的结果条，每栏用不同颜色的
-矩形块表示 mode 边界；coalesce 栏画成一条连续 48 格长条并标注
-「strides 链式衔接 $1\to2\to8\to24$」。}\label{fig:20-2}
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-20-2-mode-ops/fig-20-2.png}
+\caption{mode 树与四种 mode 操作的结果（本章测试逐一核对了 shape/stride）。投影用于取子布局，合并/展平用于把嵌套结构变成可直接索引的线性结构，化简（coalesce）在编译期消除冗余 mode——kernel 里「fragment mode 与 rest mode 分离」就是一次投影。}
+\label{fig:20-2}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
-\begin{lstlisting}[style=console]
-  FIG-20-3  FA2 P-matrix layout conversion: two routes, one result
-
-    S (C fragment)                              P (A fragment)
-    (4, MMA_M, MMA_N)  -------------->  ((4,2), MMA_M, MMA_N/2)
-          |                                       ^
-          |  (a) tri-dao: logical_divide         |
-          |      split MMA_N -> (2, MMA_N/2)      |
-          |      regroup: mode0 + mode2.0,        |
-          |               mode1, mode2.1          |
-          |                                       |
-          |  (b) reed: layout algebra             |
-          |      inv = left_inverse(Layout_C)     |
-          |      a   = inv . compose(Layout_A)    |
-          |      out = Layout_C . compose(a)      |
-          +---------------------------------------+
-
-    mapping language (route b):
-      (x_a,y_a) --Layout_A--> offset0 --inv--> (x_c,y_c) --Layout_C--> offset1
-                 \______ compose 1 (eq. 20-fa2-reed2) ______/
-                                  \_____ compose 2 (eq. 20-fa2-reed3) ______/
-\end{lstlisting}
-\caption{FA2 的 P 矩阵布局转换：tri-dao 的几何重排与 reed 的代数复合
-两条路线，结果等价。本书 flash\_attn.cuh 的
-\texttt{convert\_layout\_acc\_Aregs}（被 ffpa\_attn.cuh 复用）采用的是
-几何路线。（占位，RFC-H 升级为 drawio 图）
-图规格：上下两栏对照。上栏（tri-dao）左侧画 C fragment 的寄存器小方格
-阵列、右侧画 reshape 后的 A fragment 阵列，箭头旁标注
-\texttt{logical\_divide} 的拆分与四碎片重组；下栏（reed）画一条三段式
-箭头链（$\mathrm{Layout}_A\to\mathrm{offset}_0\to\mathrm{inv}\to$ 坐标
-$\to\mathrm{Layout}_C\to\mathrm{offset}_1$），每段下标注对应 compose 式子；
-两栏末端汇聚到同一「P（A fragment）」节点并标注「zero-copy：同一批
-寄存器」。}
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-20-3-layout-convert/fig-20-3.png}
+\caption{FA2 的 P 矩阵布局转换：tri-dao 的几何重排与 reed 的代数复合两条路线，结果等价。本书 flash\_attn.cuh 的 \texttt{convert\_layout\_acc\_Aregs}（被 ffpa\_attn.cuh 复用）采用的是几何路线。}
 \label{fig:20-3}
 \end{figure}
 

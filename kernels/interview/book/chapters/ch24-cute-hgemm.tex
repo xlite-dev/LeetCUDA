@@ -806,27 +806,8 @@ R2S $\to$ sC $\to$ S2G，映射进类型 \\
 
 \begin{figure}[htbp]
 \centering
-\begin{lstlisting}[style=console]
-  FIG-24-2  kStage=2 pipeline timeline (one CTA, 2 k-steps per BK tile)
-
-  prefetch  : G->S stage0 (1 tile)          <-- cp_async_fence + wait<0>
-  main loop over k_tile:
-    k_step=0 : MMA(tCrA/B(s0,k0))  ||  S2R load (s0,k1)  ||  G->S next -> s1
-    k_step=1 : MMA(tCrA/B(s0,k1))  ||  wait<0> + __syncthreads, flip s0 -> s1
-    k_step=0 : MMA(s1,k0) || S2R (s1,k1) || G->S +1 -> s0   ... alternating
-  epilogue  : R2R cast -> R2S into sC (pipe j) -> __syncthreads -> S2G -> gmem
-              (sC aliases one A stage: 32x32x4 = 128x32 = 4096 half)
-
-  legend: MMA consumes stage s_k while ldmatrix prefetches k_step+1 of the
-          same stage, and cp.async fills the *other* stage -- three overlaps
-\end{lstlisting}
-\caption{FIG-24-2 CuTe HGEMM 的 $k_{\mathrm{stage}}=2$ 流水时序（含寄存器
-双缓冲）。图规格：横向时间轴 $+$ 三条泳道（上：G$\to$S（LDGSTS）、中：S$\to$R
-（LDSM）、下：MMA）；每两条竖线之间是一个 k\_step，泳道内的斜纹块表示三者
-重叠；时间轴左端单独一段 prefetch（一个 tile）、右端单独一段 epilogue
-（R2R $\to$ R2S $\to$ S2G）；两个 stage 槽 s0/s1 用不同底色贯穿三条泳道，
-\texttt{wait} $+$ \texttt{\_\_syncthreads()} 标在 $k\_step=1$ 的末尾。
-（占位，RFC-H 升级为 drawio 正式图）}
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-24-2-kstage-pipeline/fig-24-2.png}
+\caption{CuTe HGEMM 的 $k_{\mathrm{stage}}=2$ 流水时序（含寄存器双缓冲）。上：G$\to$S（LDGSTS）；中：S$\to$R（LDSM）；下：MMA。MMA 消费 stage $s_k$ 的 k\_step 时，LDSM 预取同一 stage 的 k\_step+1，cp.async 同时填另一个 stage——三重重叠；左端 prefetch 一个 tile，右端 epilogue（R2R $\to$ R2S $\to$ S2G，sC 与一个 A stage 别名：$32{\times}32{\times}4 = 128{\times}32 = 4096$ half）。}
 \label{fig:24-2}
 \end{figure}
 

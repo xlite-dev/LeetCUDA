@@ -125,7 +125,7 @@
 - [ ] H.1 必收图批次（用户点名，优先）：FIG-12-1 smem swizzle、FIG-12-2 block swizzle——生成器新建（规格=ch12 ASCII 图 + caption，可参 common.cuh L185-235 布局表）
 - [ ] H.2 基础章批次：FIG-1-1/2-1/3-1/4-1/5-1/7-1/8-1（生成器新建）
 - [ ] H.3 GEMM 章批次：FIG-9-1/10-1/11-1/11-2a/12-3/13-1/13-2/13-3/14-1/14-2
-- [ ] H.4 FA/CuTe 章批次：FIG-15-1/15-2/16-1/17-1/17-2/18-1/19-1/19-2/20-2/20-3/21-1/21-2/21-3/24-2/25-1
+- [x] H.4 FA/CuTe 章批次：FIG-15-1/15-2/16-1/17-1/17-2/18-1/19-1/19-2/20-2/20-3/21-1/21-2/21-3/24-2/25-1（2026-09-14 全部完成，35/35 正式）
 - [ ] H.5 函数/数据图批次（TikZ）：FIG-1-2 roofline 等
 - [ ] H.6 生成器从 .tmp/drawio/ 迁移到 figures/drawio/<id>/gen.py（入库）；每张完成后图清单状态回写「正式」
 - [ ] H.7 **验收**：图清单全部条目状态=「正式」；audit.md 含生成器参数与复核结论；PDF 抽查缩放可读性
@@ -183,11 +183,15 @@
 | FIG-19-1 | 19 | split-d-chunk | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-19-1-split-d-chunk/ |
 | FIG-19-2 | 19 | split-d-merge | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-19-2-two-stage-merge/ |
 | FIG-20-1 | 20 | layout-coord-mapping | B→D（reed/竹熙佳处） | 正式 | figures/drawio/fig-20-1-colex/
-| FIG-20-2 | 20 | mode-grouping | B→D（竹熙佳处） | 待 RFC-B | — |
-| FIG-21-1 | 21 | tv-layout-grid | B→D（竹熙佳处 tiled copy） | 待 RFC-B | — |
+| FIG-20-2 | 20 | mode-grouping | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-20-2-mode-ops/ |
+| FIG-20-3 | 20 | layout-convert-routes | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-20-3-layout-convert/ |
+| FIG-21-1 | 21 | tv-layout-grid | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-21-1-engine-layout/ |
+| FIG-21-2 | 21 | tv-hand-table | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-21-2-tv-table/ |
+| FIG-21-3 | 21 | g2s-thread-grid | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-21-3-g2s-grid/ |
 | FIG-22-1 | 22 | tiledmma-partition | B→D（竹熙佳处 tiled mma） | 正式 | figures/drawio/fig-22-1-tiledmma/
 | FIG-23-1 | 23 | sw128-atom | B→D（竹熙佳处/reed） | 正式 | figures/drawio/fig-23-1-sw128/
-| FIG-24-1 | 24 | handwritten-vs-cute-table | C2（LaTeX 表格） | 占位 | — |
+| FIG-24-1 | 24 | handwritten-vs-cute-table | C2（LaTeX 表格） | 正式 | （保持 tabular 形态） |
+| FIG-24-2 | 24 | kstage2-pipeline | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-24-2-kstage-pipeline/ |
 | FIG-25-1 | 25 | fa-cute-3impl-compare | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-25-1-cute-struct/ |
 | FIG-26-1 | 26 | ffpa-dual-tiledmma | A→C1 | 正式 | figures/drawio/fig-26-1-dual-mma/
 

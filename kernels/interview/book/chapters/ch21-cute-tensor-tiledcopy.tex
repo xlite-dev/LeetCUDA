@@ -101,29 +101,8 @@ $(m,n)$ 坐标能落到 gmem/smem/reg 三种内存」的原因：换 engine，la
 
 \begin{figure}[htbp]
 \centering
-\begin{lstlisting}[style=console]
-  FIG-21-1  Tensor = Engine + Layout（2D 例子，每元素 4B）
-
-     逻辑坐标 (m,n)                 layout:  (m,n) -> offset
-        (2,1) ------------------------->  f(2,1) = m + 4n = 6
-                                             |
-                                  engine: base_ptr + offset*4B
-                                             v
-     gmem:  [ .. ][ 4 ][ 5 ][ 6 ][ 7 ][ .. ]
-                              ^ element at base + 6*4B
-
-     engine  ~ C++ iterator（可加偏移访问数据：gmem/smem/rmem 指针）
-     layout  ~ 坐标 -> offset 的函数（上一章的全部内容）
-     tensor  = (engine, layout)：两次映射串联成一个可索引对象
-\end{lstlisting}
-\caption{Tensor 的两段结构：layout 把坐标映成偏移，engine 把偏移映成数据。
-同一个 layout 换不同 engine（gmem/smem/rmem/identity）就得到服务不同内存的
-Tensor——这是第~\ref{ch:20}~章「布局与内存解耦」的落地方式。
-（占位，RFC-H 升级为 drawio 图）
-图规格：左画坐标空间的小格（标注 $(2,1)$），中间一个箭头框写
-$f(m,n)=m+4n$ 得到 $6$，右侧画一段 gmem 数带并把第 6 格高亮；底部三行
-图例分别用不同底色标出「engine / layout / tensor」三层，箭头从 engine
-和 layout 汇聚到 tensor。}
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-21-1-engine-layout/fig-21-1.png}
+\caption{Tensor 的两段结构：layout 把坐标映成偏移，engine 把偏移映成数据。同一个 layout 换不同 engine（gmem/smem/rmem/identity）就得到服务不同内存的 Tensor——这是第~\ref{ch:20}~章「布局与内存解耦」的落地方式。}
 \label{fig:21-1}
 \end{figure}
 
@@ -192,33 +171,8 @@ ldmatrix 或 bank 冲突考虑，地址公式会迅速膨胀，而「哪个数�
 
 \begin{figure}[htbp]
 \centering
-\begin{lstlisting}[style=console]
-  FIG-21-2  the 4-thread x (4,4) example: hand table vs CuTe printout
-
-    hand table (one round, rows 0..1)     CuTe printout (v4.6.1, measured)
-      t\v |  v=0    v=1                   ThrLayout : (_2,_2):(_2,_1)
-      ----+--------------                 ValLayout : (_1,_2)
-        0 | (0,0)  (0,1)                  layout_mn : ((_1,_2),(_2,_2))
-        1 | (0,2)  (0,3)                              : ((_0,_2),(_4,_1))
-        2 | (1,0)  (1,1)                  layout_tv : ((_2,_2),_2)
-        3 | (1,2)  (1,3)                              : ((_4,_1),_2)
-    loop 2 covers rows 2..3               tiler     : (_2,_4) -> 2 rounds
-                                          tvS(t,v)  : m = t/2
-                                                      n = 2*(t%2) + v
-
-    both tables say the same thing: element (m,n) is owned by
-      t = 2*m + (n/2),  v = n%2          [MN-layout, data-centric]
-      m = t/2,          n = 2*(t%2)+v    [TV-layout, task-centric]
-\end{lstlisting}
-\caption{4 线程小例子的两种表格：左边是朴素 CUDA 手算的「线程 $\times$ 值
-$\to$ 坐标」表（一轮覆盖 $2\times4$、两轮铺满 $(4,4)$），右边是 CuTe 的
-\texttt{make\_tiled\_copy} 打印结果——\texttt{tvS} 的公式与手算逐格一致
-（8 个 $(t,v)$ 逐点核对）。MN-layout 与 TV-layout 互为逆映射，分别服务
-「数据视角」与「线程视角」。（占位，RFC-H 升级为 drawio 图）
-图规格：左右两栏并排。左栏画线程表（4 行 $\times$ 2 列小格，每格写
-$(m,n)$ 坐标），行头标 $t$、列头标 $v$，右侧用虚线再画一轮覆盖的
-$(4,4)$ 大格示意两轮拼合；右栏写 CuTe 打印的三行 layout 与两行公式；
-底部一条汇总带把两种语言并列写出（MN 式与 TV 式）。}
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-21-2-tv-table/fig-21-2.png}
+\caption{4 线程小例子的两种表格：左边是朴素 CUDA 手算的「线程 $\times$ 值 $\to$ 坐标」表（一轮覆盖 $2\times4$、两轮铺满 $(4,4)$），右边是 CuTe 的 \texttt{make\_tiled\_copy} 打印结果——\texttt{tvS} 的公式与手算逐格一致（8 个 $(t,v)$ 逐点核对）。MN-layout 与 TV-layout 互为逆映射，分别服务「数据视角」与「线程视角」。}
 \label{fig:21-2}
 \end{figure}
 
@@ -591,44 +545,8 @@ step 整除——当前静态布局下这是编译期保证的。
 
 \begin{figure}[htbp]
 \centering
-\begin{lstlisting}[style=console]
-  FIG-21-3  thread x value grid for the G2S copy: ThrLayout (32,4):(4,1),
-            ValLayout (1,8) over a 32x32 tile (128 threads x 8 half = 1024)
-
-        n ->  0   1  ...  7   8  ... 15  16  ... 23  24 ... 31
-     m
-     |  0  | t=0 .........  | t=1 ....... | t=2 ....... | t=3 ....... |
-     v   1  | t=4 .........  | t=5 ....... | t=6 ....... | t=7 ....... |
-         2  | t=8            |             |             |             |
-        ...                                                             
-        31  | t=124          | t=125       | t=126       | t=127       |
-
-     one thread owns 8 consecutive elements (one 128-bit cp.async):
-        t = 4*m + j       (j = which 8-wide column group)
-        v = n mod 8
-     inverse (thread -> coord), eq. (21-g2s-tv):
-        m = t/4 ;  n = 8*(t mod 4) + v
-
-     dual view (same partition, two languages):
-        MN-layout (data-centric):  (m,n) -> (thr,val)   [eq. 21-g2s-mn]
-        TV-layout (task-centric):  (thr,val) -> (m,n)   [eq. 21-g2s-tv]
-        Tiler = product_each(shape(Layout_MN)) = (32,32)
-        conservation: NumThr * NumVal = 128*8 = 1024 = |Tiler|
-
-     S2R copy has no full coverage: Tiler = (32,16), P*V = 1024 -> 2x
-        duplication (eq. 21-dup: N-direction warps re-read the same A)
-\end{lstlisting}
-\caption{thread$\times$value 网格：G$\to$S 拷贝把 $32\times32$ 的 tile 划成
-$t=4m+j$ 的网格，每个线程搬 8 个连续元素（一条 128-bit \texttt{cp.async}）。
-同一划分用 MN 语言或 TV 语言描述是等价的（式~\eqref{eq:21-g2s-mn} 与
-式~\eqref{eq:21-g2s-tv}）；本章测试 case~A/B 对 1024 个 $(t,v)$ 对与 4096 个
-坐标逐一核对了这两组公式。（占位，RFC-H 升级为 drawio 图）
-图规格：画 $32\times32$ 的 tile 网格（细格），用 4 条粗线把列分成
-$4\times8$ 的四个竖条（对应 $t\bmod 4$），左侧标行号 0..31，横轴标
-$n$ 的区间标签（$0\!-\!7$、$8\!-\!15$、$16\!-\!23$、$24\!-\!31$）；每条
-竖条内把行号与线程号对应写出（第 $m$ 行第 $j$ 段 $=$ 线程 $4m+j$）；
-右下图例写守恒式 $128\times8=1024=|$Tiler$|$，并加一小块 S2R 的对照
-（$(32,16)$ 的 tiler、2 倍重复）用浅色标注。}
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-21-3-g2s-grid/fig-21-3.png}
+\caption{thread$\times$value 网格：G$\to$S 拷贝把 $32\times32$ 的 tile 划成 $t=4m+j$ 的网格，每个线程搬 8 个连续元素（一条 128-bit \texttt{cp.async}）。同一划分用 MN 语言或 TV 语言描述是等价的（式~\eqref{eq:21-g2s-mn} 与式~\eqref{eq:21-g2s-tv}）；本章测试 case~A/B 对 1024 个 $(t,v)$ 对与 4096 个坐标逐一核对了这两组公式。}
 \label{fig:21-3}
 \end{figure}
 
