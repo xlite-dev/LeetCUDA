@@ -418,7 +418,7 @@ L1374--1399），Step 5 的写回是 ch16 的原版方案——warp 内 shuffle 
 
 \begin{figure}[htbp]
 \centering
-\begin{verbatim}
+\begin{lstlisting}[style=console]
   FIG-17-1  producer/consumer double pipeline (Sk=2, Sv=1, D=64)
 
   producer WG0 (1 active thread, TMA submit)  consumer WG1 (8 warps, 256thr)
@@ -442,7 +442,7 @@ L1374--1399），Step 5 的写回是 ch16 的原版方案——warp 内 shuffle 
                               right after QK[0]);
             V[1] load window = QK[0]+softmax[0]        (empty_V[0] freed
                               after PV[0]).
-\end{verbatim}
+\end{lstlisting}
 \caption{FA2 TMA + WS 的 producer/consumer 双流水时序（$\mathrm{Sk}{=}2$、
 $S_v{=}1$、$D{=}64$）。producer 的 P2 每轮先发 V 再预取 K；consumer 的
 empty 释放点（K 在 QK 后、V 在 PV 后）决定了每个 stage 的可覆盖窗口。
@@ -451,7 +451,7 @@ empty 释放点（K 在 QK 后、V 在 PV 后）决定了每个 stage 的可覆�
 
 \begin{figure}[htbp]
 \centering
-\begin{verbatim}
+\begin{lstlisting}[style=console]
   FIG-17-2  mbarrier array topology: who arrives / who waits (count=257)
 
                     +---------+  tx: kQTileBytes (16KB, D=64)
@@ -472,7 +472,7 @@ empty 释放点（K 在 QK 后、V 在 PV 后）决定了每个 stage 的可覆�
    per-phase ledger: full[s] = 256(consumer)+1(producer arrive_tx)+tx landed
                      empty[s] = 256(consumer free)+1(producer b4-write arrive)
                      budgets exactly 257/round -> phase loop never misaligns
-\end{verbatim}
+\end{lstlisting}
 \caption{本章 kernel 的 mbarrier 阵列拓扑：Q 一对一单屏障、K/V 各
 $\mathrm{Sk}/S_v$ 对 full/empty 屏障，全部 init 257。D $=$ 128 时同一 tile 的
 多次 TMA 共享一个 full 屏障（多次 complete-tx 记账、一次 expect\_tx 声明总量）。

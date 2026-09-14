@@ -360,7 +360,7 @@ $\mathrm{g}{+}8$（L782--785），行号由 \texttt{Q\_tile\_id}、
 
 \begin{figure}[htbp]
 \centering
-\begin{verbatim}
+\begin{lstlisting}[style=console]
   FIG-16-1  Split-Q warp layout (Br=128, Bc=64, D=64, 8 warps, kStagesK=2)
             (upgraded from the README ASCII sketch, 4-warp version)
 
@@ -387,7 +387,7 @@ $\mathrm{g}{+}8$（L782--785），行号由 \texttt{Q\_tile\_id}、
   vs. Split-KV (FA1-style): warp_KV 0..3 each own 16 COLUMNS, row state
   split across warps -> per-tile smem merge (merge_attn_states);
   Split-Q: one warp owns 16 ROWS end-to-end -> zero merge, zero comm.
-\end{verbatim}
+\end{lstlisting}
 \caption{Split-Q warp 行划分与状态私有化（默认 $B_r{=}128$/8-warp 配置；
 升级自 LeetCUDA README 的 4-warp ASCII 底稿）。上图：Q 行按 warp 独占、
 KV 全 warp 共享；中图：每 warp 私有的 $(m,\ell,O)$ 与每 tile 的三段

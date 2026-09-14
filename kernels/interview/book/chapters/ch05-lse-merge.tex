@@ -232,7 +232,7 @@ $o = p \cdot \alpha + s \cdot \beta$（硬件可融合为 FMA），再整包写�
 
 \begin{figure}[htbp]
 \centering
-\begin{verbatim}
+\begin{lstlisting}[style=console]
   FIG-5-1  merge two chunked attention states == full softmax weighting
 
     KV chunk A: s(1..n)                     KV chunk B: s(n+1..n+m)
@@ -252,7 +252,7 @@ $o = p \cdot \alpha + s \cdot \beta$（硬件可融合为 FMA），再整包写�
                                   v
         O == softmax([s(1..n); s(n+1..n+m)]) applied to [V(A); V(B)]
         (element-wise equal to one-shot attention over both chunks)
-\end{verbatim}
+\end{lstlisting}
 \caption{两个分块 attention 状态的合并：块内各自输出（已归一化 $O$ 与单标量
 LSE），块间以 $L = \max(\mathrm{LSE})$ 为 shift 基准计算凸组合系数
 $\alpha, \beta$，合并结果与整体 softmax 直接加权逐元素相等

@@ -806,7 +806,7 @@ R2S $\to$ sC $\to$ S2G，映射进类型 \\
 
 \begin{figure}[htbp]
 \centering
-\begin{verbatim}
+\begin{lstlisting}[style=console]
   FIG-24-2  kStage=2 pipeline timeline (one CTA, 2 k-steps per BK tile)
 
   prefetch  : G->S stage0 (1 tile)          <-- cp_async_fence + wait<0>
@@ -819,7 +819,7 @@ R2S $\to$ sC $\to$ S2G，映射进类型 \\
 
   legend: MMA consumes stage s_k while ldmatrix prefetches k_step+1 of the
           same stage, and cp.async fills the *other* stage -- three overlaps
-\end{verbatim}
+\end{lstlisting}
 \caption{FIG-24-2 CuTe HGEMM 的 $k_{\mathrm{stage}}=2$ 流水时序（含寄存器
 双缓冲）。图规格：横向时间轴 $+$ 三条泳道（上：G$\to$S（LDGSTS）、中：S$\to$R
 （LDSM）、下：MMA）；每两条竖线之间是一个 k\_step，泳道内的斜纹块表示三者

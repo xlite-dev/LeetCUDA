@@ -396,7 +396,7 @@ $m$ 个 $64 \times B\sb{K}$ 子块，K-step 每次前进 \texttt{kWgmmaK=16} 个
 
 \begin{figure}[htbp]
 \centering
-\begin{verbatim}
+\begin{lstlisting}[style=console]
   FIG-13-1  WGMMA smem descriptor: 64-bit bit-field layout
             enc(x) = (x & 0x3FFFF) >> 4   (18-bit window, 16B-aligned)
 
@@ -410,7 +410,7 @@ $m$ 个 $64 \times B\sb{K}$ 子块，K-step 每次前进 \texttt{kWgmmaK=16} 个
    0=none 1=128B (addr>>7)&7     stripe         (unused=1     base addr
    2=64B  3=32B  1024B bndy=0     gap(bytes)     in K-major    (absolute
                              K-major swizzle              smem offset)
-\end{verbatim}
+\end{lstlisting}
 \caption{WGMMA smem descriptor 的 64-bit 位域（对照 common.cuh L532-565 注释与
 PTX ISA §9.7.15.5.1.2.2 逐字段核校；u = unused；数值列为本章 kernel
 $B\sb{K}=64$ half + 128B swizzle 的取值）。
@@ -419,7 +419,7 @@ $B\sb{K}=64$ half + 128B swizzle 的取值）。
 
 \begin{figure}[htbp]
 \centering
-\begin{verbatim}
+\begin{lstlisting}[style=console]
   FIG-13-2  Warp specialization data flow (kStages = 3)
 
    HBM (global)              smem (per CTA)               C (global)
@@ -440,7 +440,7 @@ $B\sb{K}=64$ half + 128B swizzle 的取值）。
                                           C2 8x wgmma m64n128k16
                                           C3 commit+wait(0)
                                           C4 arrive(empty[s])
-\end{verbatim}
+\end{lstlisting}
 \caption{producer/consumer 双 warpgroup 数据流：TMA 单线程提交搬运，WGMMA 全
 warpgroup 计算，\texttt{full[]}/\texttt{empty[]} 双屏障阵列按 stage 解耦两支执行流，
 kStages=3 使计算与搬运最多重叠 2 个 tile。
@@ -449,7 +449,7 @@ kStages=3 使计算与搬运最多重叠 2 个 tile。
 
 \begin{figure}[htbp]
 \centering
-\begin{verbatim}
+\begin{lstlisting}[style=console]
   FIG-13-3  mbarrier state machine (per barrier object, e.g. full[s])
 
       init(bar, 129)                        phase = p
@@ -475,7 +475,7 @@ kStages=3 使计算与搬运最多重叠 2 个 tile。
    empty[s]: 128 consumer arrives (C4 / C0 warmup) + 1 producer arrive (P1)
               =>  flip  =>  producer overwrites stage
   note: complete-tx (dC) automatic -- T -= dC when TMA bytes hit smem
-\end{verbatim}
+\end{lstlisting}
 \caption{mbarrier 状态机：arrive 与 tx 两把独立的「锁」同时归零才翻转相位；
 翻转瞬间原子地重置 pending 为 expected。下半部分给出本章 kernel 中
 \texttt{full[s]} 与 \texttt{empty[s]} 各自的翻转条件。

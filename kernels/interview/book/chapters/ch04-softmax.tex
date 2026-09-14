@@ -283,7 +283,7 @@ block 级同步从 2 次降到 1 次；代价是归约算子从「单个加法�
 
 \begin{figure}[htbp]
 \centering
-\begin{verbatim}
+\begin{lstlisting}[style=console]
   FIG-4-1  Softmax: 3-pass (textbook) -> 2-pass (safe) -> 1-pass (online)
 
   [naive / textbook]   [safe / Level 2]           [online / Level 3]
@@ -296,7 +296,7 @@ block 级同步从 2 次降到 1 次；代价是归约算子从「单个加法�
   gmem x (pass 3)      write y = e^(x-m) / s      write y = e^(x-m) / d
     y = e^(x) / s      2 block syncs              1 block sync
                                                     fast math: expf/div
-\end{verbatim}
+\end{lstlisting}
 \caption{Softmax 三级递进的 3-pass $\to$ 2-pass $\to$ 1-pass 数据流：
 左为教科书三遍扫描（本仓库 naive kernel 融合了后两遍但保留无 max 减法的溢出风险）；
 中为 safe 版两次归约；右为 online 版 $(m,d)$ 状态一次融合归约。

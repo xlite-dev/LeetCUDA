@@ -606,7 +606,7 @@ $\times$ 2 个 N-warp，$R_O$ 降到 $D/4$）的原因，也是本章这版 kern
 
 \begin{figure}[htbp]
 \centering
-\begin{verbatim}
+\begin{lstlisting}[style=console]
   FIG-19-1  Split-D: D-dim chunking (D = 512 -> C = 8 chunks of 64)
 
   Q [Br=64, D=512]           K [Bc=64, D=512]          V [Bc=64, D=512]
@@ -634,7 +634,7 @@ $\times$ 2 个 N-warp，$R_O$ 降到 $D/4$）的原因，也是本章这版 kern
   pipeline slots (TMA version, Sk = Sv = 2):
      idx = kv_tile * C + c ;  stage = idx % Sk ;  phase = (idx / Sk) & 1
      D=128 (C=2): phase period 1 kv_tile | D=192 (C=3): period 2 (gcd(C,Sk)=1)
-\end{verbatim}
+\end{lstlisting}
 \caption{Split-D 的 D 维切分：Q/K/V 各切成 $C = D/64$ 个 64 宽 chunk（一个 chunk
 等于一个 SW128 swizzle atom 宽）。QK 的 chunk 累加写进同一块 $S[64,64]$；PV 的每个
 chunk 写进自己的 $O_c[64,64]$，共用同一个 $\rho$ 与 $\ell$；流水槽位由扁平计数器
@@ -644,7 +644,7 @@ $\mathrm{idx}$ 导出。（占位，RFC-H 升级为 drawio 图）}
 
 \begin{figure}[htbp]
 \centering
-\begin{verbatim}
+\begin{lstlisting}[style=console]
   FIG-19-2  Two-stage merge across D chunks
 
   stage 1: exact reduction inside ONE dot product  (QK^T, no weights)
@@ -667,7 +667,7 @@ $\mathrm{idx}$ 导出。（占位，RFC-H 升级为 drawio 图）}
 
   contrast - split-KV (ch18) needs a SECOND max: a=exp(m_0-m), b=exp(m_1-m)
   contrast - split-D     has NO second max:    rho is shared by construction
-\end{verbatim}
+\end{lstlisting}
 \caption{跨 chunk 的两阶段合并。第一阶段：QK${}^\top$ 的 chunk 求和是同一
 点积内部加数的分组，\textbf{精确且无需权重}；第二阶段：$PV$ 的每个 chunk 各持一个
 输出列段累加器，跨 KV tile 的在线 rescale 因子 $\rho_t$ \textbf{必须广播到全部

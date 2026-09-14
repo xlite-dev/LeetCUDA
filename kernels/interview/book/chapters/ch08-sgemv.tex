@@ -190,7 +190,7 @@ $16\,\dots\,31$ 之间可能分叉（$M$ 为奇数时的最后一个 warp），�
 
 \begin{figure}[htbp]
 \centering
-\begin{verbatim}
+\begin{lstlisting}[style=console]
   FIG-8-1  warp-per-row: block(32,4) -> 4 rows per block, 1 warp = 1 row
 
   grid.x = ceil(M/4)                     block(32,4) = 4 warps
@@ -211,7 +211,7 @@ $16\,\dots\,31$ 之间可能分叉（$M$ 为奇数时的最后一个 warp），�
    lane 16..31  -> row m+1  (k = lane  % 16)    write y if k == 0
            rows m and m+1 are contiguous in row-major A -> the warp's
            32 lanes still form one 128B coalesced transaction
-\end{verbatim}
+\end{lstlisting}
 \caption{warp-per-row 的三种划分：k32 单行 32 lane 铺满、k128 单行 float4 加宽、
 k16 双行各 16 lane 分段归约。（占位，RFC-H 升级）}\label{fig:8-1}
 \end{figure}

@@ -71,7 +71,7 @@ sector 数。三种典型情形（图 ch03-1）：
 
 \begin{figure}[htbp]
 \centering
-\begin{verbatim}
+\begin{lstlisting}[style=console]
    一条 warp 访存指令的合并过程 (fp32, 每格 4B, 一个 sector 8 格)
    -------------------------------------------------------------
    coalesced:  lane0..31 访问连续 128B
@@ -82,7 +82,7 @@ sector 数。三种典型情形（图 ch03-1）：
      [x.......][x.......]... x32              S=32, 有效率 3%
    -------------------------------------------------------------
    事务粒度 = 32B sector; 无用字节照样从 HBM 搬上来
-\end{verbatim}
+\end{lstlisting}
 \caption{coalescing 与非合并访存对比}
 \label{fig:3-1}
 \end{figure}
@@ -195,7 +195,7 @@ vec4 版的守卫值得逐行读：主路径 \texttt{(idx + 3) < N} 一次性保
 
 \begin{figure}[htbp]
 \centering
-\begin{verbatim}
+\begin{lstlisting}[style=console]
    elementwise kernel: 从朴素到峰值带宽
    -------------------------------------------------------------
    朴素(stride 访存)     需要搬运 8x 数据      有效性 3%~12%
@@ -206,7 +206,7 @@ vec4 版的守卫值得逐行读：主路径 \texttt{(idx + 3) < N} 一次性保
      -> + privatize      原子冲突域: 全局 -> smem
         (histogram 专用: block 内 smem 直方图 + 少量全局合并)
    -------------------------------------------------------------
-\end{verbatim}
+\end{lstlisting}
 \caption{逐元素算子的三级优化路线}
 \label{fig:3-2}
 \end{figure}

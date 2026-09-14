@@ -363,7 +363,7 @@ epilogue 与 ch11/ch12 同款：mma m16n8k16 的 C fragment 中，同一 8$\time
 
 \begin{figure}[htbp]
 \centering
-\begin{verbatim}
+\begin{lstlisting}[style=console]
   FIG-14-1  TMA box: global [M,K] tensor -> smem 128B-swizzled tile
 
    A in gmem (row-major [M,K], minor = K)     boxDim = (BK=64, BM=128)
@@ -383,7 +383,7 @@ epilogue 与 ch11/ch12 同款：mma m16n8k16 的 C fragment 中，同一 8$\time
    i=2 | 2  3  0  1  6  7  4 5 |              consumer applies the
    ...  | (chunk ^ (i&7)) pattern|             SAME formula to invert
    i=7 | 7  6  5  4  3  2  1 0 |
-\end{verbatim}
+\end{lstlisting}
 \caption{TMA box：descriptor 以 minor-first 坐标指定 $64 \times 128$ 的 2D
 搬运块，落盘时按 SWIZZLE\_128B 原子（16B chunk 号与行低 3 位 XOR）重排；
 smem 基址 1024B 对齐保证硬件从相位 0 开始重排，consumer 的软件公式才能
@@ -393,7 +393,7 @@ smem 基址 1024B 对齐保证硬件从相位 0 开始重排，consumer 的软�
 
 \begin{figure}[htbp]
 \centering
-\begin{verbatim}
+\begin{lstlisting}[style=console]
   FIG-14-2  producer/consumer timeline (kStages = 2, one CTA)
 
   time --------------------------->
@@ -414,7 +414,7 @@ smem 基址 1024B 对齐保证硬件从相位 0 开始重排，consumer 的软�
 
    overlap: TMA(s1) in flight while mma(s0) runs -> memory latency hidden
    steady state: producer runs ahead by up to kStages-1 tiles
-\end{verbatim}
+\end{lstlisting}
 \caption{producer/consumer 时序：C0 预热点燃流水线；此后 producer 的 TMA
 提交与 consumer 的 ldmatrix+mma 在不同 stage 上重叠，搬运延迟被计算掩盖。
 （占位，RFC-H 升级为 drawio 时序图）}\label{fig:14-2}

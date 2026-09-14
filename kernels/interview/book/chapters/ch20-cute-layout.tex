@@ -604,7 +604,7 @@ $f(1,3)=11$——同一 shape，stride 决定读序。}
 
 \begin{figure}[htbp]
 \centering
-\begin{verbatim}
+\begin{lstlisting}[style=console]
   FIG-20-2  mode tree and mode operations (Lg = ((2,4),(3,2)):((1,2),(8,24)))
 
     Lg:  mode0 = (2,4):(1,2)           mode1 = (3,2):(8,24)
@@ -618,7 +618,7 @@ $f(1,3)=11$——同一 shape，stride 决定读序。}
     coalesce(Lg)   = (48):(1)      <- strides chain 1 -> 2 -> 8 -> 24:
                                      2 = 1*2, 8 = 2*4, 24 = 8*3
                                      => one contiguous run of 48
-\end{verbatim}
+\end{lstlisting}
 \caption{mode 树与四种 mode 操作的结果（本章测试逐一核对了 shape/stride）。
 投影用于取子布局，合并/展平用于把嵌套结构变成可直接索引的线性结构，化简
 （coalesce）在编译期消除冗余 mode——kernel 里「fragment mode 与 rest mode
@@ -632,7 +632,7 @@ $(2,4){:}(1,2)$ 与 $(3,2){:}(8,24)$，叶节点标注 stride）；右侧并排�
 
 \begin{figure}[htbp]
 \centering
-\begin{verbatim}
+\begin{lstlisting}[style=console]
   FIG-20-3  FA2 P-matrix layout conversion: two routes, one result
 
     S (C fragment)                              P (A fragment)
@@ -653,7 +653,7 @@ $(2,4){:}(1,2)$ 与 $(3,2){:}(8,24)$，叶节点标注 stride）；右侧并排�
       (x_a,y_a) --Layout_A--> offset0 --inv--> (x_c,y_c) --Layout_C--> offset1
                  \______ compose 1 (eq. 20-fa2-reed2) ______/
                                   \_____ compose 2 (eq. 20-fa2-reed3) ______/
-\end{verbatim}
+\end{lstlisting}
 \caption{FA2 的 P 矩阵布局转换：tri-dao 的几何重排与 reed 的代数复合
 两条路线，结果等价。本书 flash\_attn.cuh 的
 \texttt{convert\_layout\_acc\_Aregs}（被 ffpa\_attn.cuh 复用）采用的是

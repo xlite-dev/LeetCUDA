@@ -168,7 +168,7 @@ vec4 化带来一个标量版没有的实现细节：Pass 2 需要再次用到 $
 \begin{figure}[htbp]
 \centering
 \begin{minipage}{0.92\textwidth}
-\begin{verbatim}
+\begin{lstlisting}[style=console]
       RMSNorm (1-pass)                       LayerNorm (2-pass)
   x[0] x[1] ... x[K-1]                   x[0] x[1] ... x[K-1]
     |    |         |                        |    |         |
@@ -185,7 +185,7 @@ vec4 化带来一个标量版没有的实现细节：Pass 2 需要再次用到 $
     |    |         |                           |
                                              y_k = (x_k-mu)*s*g + b
   归约: 1 次   __syncthreads: 2 次         归约: 2 次   __syncthreads: 4 次
-\end{verbatim}
+\end{lstlisting}
 \end{minipage}
 \caption{RMSNorm 1-pass 与 LayerNorm 2-pass 的归约结构对比}
 \label{fig:6-1}

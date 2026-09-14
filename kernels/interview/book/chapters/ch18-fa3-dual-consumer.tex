@@ -366,7 +366,7 @@ GEMM 以喂满 Tensor Core。本 kernel 的 consumer 用\textbf{同步}的
 
 \begin{figure}[htbp]
 \centering
-\begin{verbatim}
+\begin{lstlisting}[style=console]
   FIG-18-1  FA3 dual-consumer role map (384 threads, Br=Bc=64)
 
   ---- WG0 [0,127]  producer (single thread submits TMA) ----------------
@@ -401,7 +401,7 @@ GEMM 以喂满 Tensor Core。本 kernel 的 consumer 用\textbf{同步}的
        __syncthreads()
   WG1: read scratch -> merge  m=max(m0,m1), a=e^{m0-m}, b=e^{m1-m}
        l = a*l0 + b*l1 ;  Oacc = a*Oacc0 + b*Oacc1 ;  O = Oacc/l -> gmem
-\end{verbatim}
+\end{lstlisting}
 \caption{FA3 双 consumer 的角色图：WG0 单线程提交 TMA，并按
 $\mathrm{cid} = \mathrm{tile}\,\&\,1$ 把 K/V 投递到两个独立 bank；WG1/WG2
 各自遍历一半 KV tile、维护独立 partial 与独立流水；收尾在 smem scratch 上

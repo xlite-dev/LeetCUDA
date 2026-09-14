@@ -630,7 +630,7 @@ KV 划分 & 单流全遍历 & 单流全遍历 & 奇偶拆给两个 consumer \\
 
 \begin{figure}[htbp]
 \centering
-\begin{verbatim}
+\begin{lstlisting}[style=console]
   FIG-25-1  flash_attn.cuh CuTe 块（L2196-3488）结构对照
 
   共享层 (L2197-2490, 107 行有效代码)
@@ -660,7 +660,7 @@ KV 划分 & 单流全遍历 & 单流全遍历 & 奇偶拆给两个 consumer \\
   +--------------------------------------------------------------+
   | 实现4 smoke (41 行): TMA desc + SW128 布局 + 事务屏障的最小闭环    |
   +--------------------------------------------------------------+
-\end{verbatim}
+\end{lstlisting}
 \caption{CuTe 块的四层结构：共享 traits 与五个工具函数（上），三个 attention
 实现（下），以及 41 行的 TMA 搬运自检（底）。箭头表示「同一份布局类型被三种
 调度结构复用」。图规格：四层从上到下——共享层（两个 traits 并排 $+$ 五个

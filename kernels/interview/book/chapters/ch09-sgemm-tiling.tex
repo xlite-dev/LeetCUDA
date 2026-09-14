@@ -221,7 +221,7 @@ $4 \times 128$ 的 C 横带}。金字塔的 warp 级在本章是「免费的」�
 
 \begin{figure}[htbp]
 \centering
-\begin{verbatim}
+\begin{lstlisting}[style=console]
   FIG-9-1  grid -> block -> warp -> thread 四级 tiling（C 矩阵视角）
 
   C [M,N] 切成 (M/BM) x (N/BN) 个 block tile            grid 级
@@ -241,7 +241,7 @@ $4 \times 128$ 的 C 横带}。金字塔的 warp 级在本章是「免费的」�
       ...         AI(smem) = 1.0 FLOP/B  vs naive 0.25
 
   AI 阶梯: naive 0.25 -> block 32x32: 8 -> block 128x128: 32 FLOP/B
-\end{verbatim}
+\end{lstlisting}
 \caption{四级 tiling 递进：grid 级切 C 为 block tile；block 级用 smem 承载
 $A$/$B$ 切片；warp 级在本章实现中是隐式的 $4 \times 128$ 横带；
 thread 级是 $4 \times 4$ 寄存器 tile。（占位，RFC-H 升级）}\label{fig:9-1}

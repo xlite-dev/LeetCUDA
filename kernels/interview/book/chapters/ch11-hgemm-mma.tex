@@ -101,7 +101,7 @@ C 的 $16\times8$——每个 lane 持多少、在矩阵的什么位置，就是
 
 \begin{figure}[htbp]
 \centering
-\begin{verbatim}
+\begin{lstlisting}[style=console]
   FIG-11-2a  A fragment (m16 x k16, row-major), g = lane>>2, tig = lane%4
 
         k: 0  1  2  3  4  5  6  7   8  9 10 11 12 13 14 15
@@ -117,7 +117,7 @@ C 的 $16\times8$——每个 lane 持多少、在矩阵的什么位置，就是
   R1 = {a2,a3}: row=g+8, cols (2*tig,2*tig+1) R3 = {a6,a7}: row=g+8, cols+8
   quadrant order expected by mma: R0=upper-left, R1=lower-left,
                                   R2=upper-right, R3=lower-right
-\end{verbatim}
+\end{lstlisting}
 \caption{A fragment 寄存器布局（依据 PTX ISA Figure 79 的行/列公式绘制；
 T$n$ 表示 lane $n$ 持有该元素，每格 2 个相邻 f16 装一条 \texttt{.b32}）。
 （占位，RFC-H 升级）}\label{fig:11-2a}
@@ -206,7 +206,7 @@ lane $4r + \mathrm{tig}$ 的寄存器 $r\sb i$ 的 $\mathrm{tig}$ 列对——
 
 \begin{figure}[htbp]
 \centering
-\begin{verbatim}
+\begin{lstlisting}[style=console]
   FIG-11-1  ldmatrix addressing in hgemm-mma-stages-tn (A: x4, B: x2)
 
   A m16k16 tile -> four 8x8 matrices, one address per lane (x4):
@@ -224,7 +224,7 @@ lane $4r + \mathrm{tig}$ 的寄存器 $r\sb i$ 的 $\mathrm{tig}$ 列对——
          t= 0.. 7 -> matrix0 (n 0..7, k 0..7) -> RB[j][0]  (upper k half)
          t= 8..15 -> matrix1 (n 0..7, k 8..15) -> RB[j][1] (lower k half)
     loading rows of B^T == loading cols of B, no .trans needed
-\end{verbatim}
+\end{lstlisting}
 \caption{本章 kernel 的 \texttt{ldmatrix} 寻址映射：A 用 x4 一次装载
 $m16\times k16$ 的四象限；B 用 x2 装载 $k16\times n8$（借 $B^{\top}$ 行主序
 存储）。（占位，RFC-H 升级）}\label{fig:11-1}

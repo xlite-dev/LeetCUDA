@@ -101,7 +101,7 @@ $(m,n)$ 坐标能落到 gmem/smem/reg 三种内存」的原因：换 engine，la
 
 \begin{figure}[htbp]
 \centering
-\begin{verbatim}
+\begin{lstlisting}[style=console]
   FIG-21-1  Tensor = Engine + Layout（2D 例子，每元素 4B）
 
      逻辑坐标 (m,n)                 layout:  (m,n) -> offset
@@ -115,7 +115,7 @@ $(m,n)$ 坐标能落到 gmem/smem/reg 三种内存」的原因：换 engine，la
      engine  ~ C++ iterator（可加偏移访问数据：gmem/smem/rmem 指针）
      layout  ~ 坐标 -> offset 的函数（上一章的全部内容）
      tensor  = (engine, layout)：两次映射串联成一个可索引对象
-\end{verbatim}
+\end{lstlisting}
 \caption{Tensor 的两段结构：layout 把坐标映成偏移，engine 把偏移映成数据。
 同一个 layout 换不同 engine（gmem/smem/rmem/identity）就得到服务不同内存的
 Tensor——这是第~\ref{ch:20}~章「布局与内存解耦」的落地方式。
@@ -192,7 +192,7 @@ ldmatrix 或 bank 冲突考虑，地址公式会迅速膨胀，而「哪个数�
 
 \begin{figure}[htbp]
 \centering
-\begin{verbatim}
+\begin{lstlisting}[style=console]
   FIG-21-2  the 4-thread x (4,4) example: hand table vs CuTe printout
 
     hand table (one round, rows 0..1)     CuTe printout (v4.6.1, measured)
@@ -209,7 +209,7 @@ ldmatrix 或 bank 冲突考虑，地址公式会迅速膨胀，而「哪个数�
     both tables say the same thing: element (m,n) is owned by
       t = 2*m + (n/2),  v = n%2          [MN-layout, data-centric]
       m = t/2,          n = 2*(t%2)+v    [TV-layout, task-centric]
-\end{verbatim}
+\end{lstlisting}
 \caption{4 线程小例子的两种表格：左边是朴素 CUDA 手算的「线程 $\times$ 值
 $\to$ 坐标」表（一轮覆盖 $2\times4$、两轮铺满 $(4,4)$），右边是 CuTe 的
 \texttt{make\_tiled\_copy} 打印结果——\texttt{tvS} 的公式与手算逐格一致
@@ -591,7 +591,7 @@ step 整除——当前静态布局下这是编译期保证的。
 
 \begin{figure}[htbp]
 \centering
-\begin{verbatim}
+\begin{lstlisting}[style=console]
   FIG-21-3  thread x value grid for the G2S copy: ThrLayout (32,4):(4,1),
             ValLayout (1,8) over a 32x32 tile (128 threads x 8 half = 1024)
 
@@ -617,7 +617,7 @@ step 整除——当前静态布局下这是编译期保证的。
 
      S2R copy has no full coverage: Tiler = (32,16), P*V = 1024 -> 2x
         duplication (eq. 21-dup: N-direction warps re-read the same A)
-\end{verbatim}
+\end{lstlisting}
 \caption{thread$\times$value 网格：G$\to$S 拷贝把 $32\times32$ 的 tile 划成
 $t=4m+j$ 的网格，每个线程搬 8 个连续元素（一条 128-bit \texttt{cp.async}）。
 同一划分用 MN 语言或 TV 语言描述是等价的（式~\eqref{eq:21-g2s-mn} 与

@@ -77,7 +77,7 @@ $S(R, i) = \sum\sb j x\sb j$——\textbf{每个 lane 都持有完整的归约�
 
 \begin{figure}[htbp]
 \centering
-\begin{verbatim}
+\begin{lstlisting}[style=console]
    蝶形归约, W=8 (R=3), 5 步同理 (base.cuh L111-148 以 8 为例)
    -------------------------------------------------------------
    round1 (mask=4):  lane i 加上 lane i^4
@@ -92,7 +92,7 @@ $S(R, i) = \sum\sb j x\sb j$——\textbf{每个 lane 都持有完整的归约�
                  1   5          1   3      2   3
                  2   6          4   6      4   5
                  3   7          5   7      6   7
-\end{verbatim}
+\end{lstlisting}
 \caption{warp shuffle 蝶形归约}
 \label{fig:2-1}
 \end{figure}
@@ -220,7 +220,7 @@ ch06 的 norm（预变换平方）都是这个模板的填空题。dot\_vec4（L
 
 \begin{figure}[htbp]
 \centering
-\begin{verbatim}
+\begin{lstlisting}[style=console]
    block 两级归约 (T=256, W=8): 全员广播版 (block-reduce-sum)
    -------------------------------------------------------------
    warp0   warp1   warp2  ...  warp7        (warp 内 5 轮 shuffle)
@@ -238,7 +238,7 @@ ch06 的 norm（预变换平方）都是这个模板的填空题。dot\_vec4（L
                  256 线程全员持有结果
    -------------------------------------------------------------
    跨 block 版 (block-reduce-all): warp0 归约 -> tid0 -> atomicAdd(y)
-\end{verbatim}
+\end{lstlisting}
 \caption{block 两级归约数据流}
 \label{fig:2-2}
 \end{figure}
