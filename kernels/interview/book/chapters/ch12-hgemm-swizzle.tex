@@ -361,54 +361,21 @@ warp shuffle 拼出 128-bit 向量写回 C，思路与第~\ref{ch:11}~章一致�
 
 \begin{figure}[htbp]
 \centering
-\begin{lstlisting}[style=console]
-  FIG-12-1  smem swizzle before/after: 8x16 fp16 (32B rows), quad=(8i+4c)%32
-
-  [before swizzle]                       [after XOR: c' = c ^ ((i>>2)&1)]
-  row i | chunk0 quad | chunk1 quad       row i | chunk0 quad | chunk1 quad
-    0   |     0       |      4              0   |     0        |      4
-    1   |     8       |     12              1   |     8        |     12
-    2   |    16       |     20              2   |    16        |     20
-    3   |    24       |     28              3   |    24        |     28
-    4   |     0 <-hit |      4              4   |     4 <- flipped (rows 4-7)
-    5   |     8       |     12              5   |    12        |
-    6   |    16       |     20              6   |    20        |
-    7   |    24       |     28              7   |    28        |
-
-  ldmatrix.x4 phase 0 = lanes 0..7 = rows 0..7, chunk0:
-    before: quads {0,8,16,24,0,8,16,24}  -> each quad serves 2 rows = 2-way
-    after: quads {0,8,16,24,4,12,20,28} -> 8 distinct quads (32 banks) = 1-way
-  (chunk1 lanes 16..31 mirror the same pattern. In the BK=64 unified tile
-   only the intra-slice flip survives -> 4-way per phase, see FIG-12-3)
-\end{lstlisting}
+\includegraphics[width=0.98\textwidth]{figures/drawio/fig-12-1-smem-swizzle/fig-12-1.png}
 \caption{smem XOR swizzle 前后的 bank 四联组分布（32\,B 行宽布局，即 BK=16 /
 FA 风格 $[\ast][16]$ tile）。同一 8$\times$16 tile：置换前每 4 行重复一轮 quad，
-按列读取 2-way 冲突；置换后行 4--7 的两个 chunk 对调，8 行恰好铺满 32 个 bank。
-（占位，RFC-H 升级；蓝本：common.cuh L185--235 布局表与 @frankshi 文）}\label{fig:12-1}
+按列读取 2-way 冲突；置换后行 4--7 的两个 chunk 对调，8 行恰好铺满 32 个
+bank——ldmatrix.x4 phase0 读到的 quad 序列从 $\{0,8,16,24,0,8,16,24\}$
+变为 $\{0,8,16,24,4,12,20,28\}$。蓝本：common.cuh~L185--235 布局表。}\label{fig:12-1}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
-\begin{lstlisting}[style=console]
-  FIG-12-2  block swizzle: C-tile grid rasterization before/after
-            (T_m=16 x T_n=128, resident set R=220 blocks, group width 16)
-
-  [default 2D grid: x fastest]          [3D swizzle: bx = z*gridDim.x + x]
-      x: 0 ............... 127              z=0 : bx =   0..15  (x=0..15)
-  y=0  [AAAAAAAAAAAAAAAAAAAAA]              z=1 : bx =  16..31  (x=0..15)
-  y=1  [AAAAAAAAAAAAAAAAAAAAA]              ...  (S=8 groups of 16 tiles)
-  y=2  [BBBBBBBBBBBBBBBBBBBBB]              launch order: x fastest, then y,
-  ...                                      then z -> resident set is a
-  resident set: W=128 cols, H=2 rows       16 cols x 14 rows near-square
-                                            rectangle of C tiles
-  L2 footprint F = (H*BM + W*BN)*K*2B   (per K-slab of unique A+B tiles)
-     default : (2*128 + 128*128)*K*2B = 16640*K*2B
-     swizzle: (14*128 + 16*128)*K*2B =  3840*K*2B   (4.3x smaller)
-  measured L2 sector hit rate: 64.45% -> 96.15% (PRO 5000, 2048x16384x4096)
-\end{lstlisting}
+\includegraphics[width=0.98\textwidth]{figures/drawio/fig-12-2-block-swizzle/fig-12-2.png}
 \caption{Block swizzle 的 grid 重排前后：默认光栅的常驻集合是
 $W{\times}H$ 宽条带（$W{=}T_n$），重排后折叠为组宽 16 的近似方块，L2 footprint
-按式~\ref{eq:12-footprint} 缩小 4.3 倍。（占位，RFC-H 升级）}\label{fig:12-2}
+按式~\ref{eq:12-footprint} 缩小 4.3 倍；实测 L2 sector hit rate
+64.45\,$\to$\,96.15\%（PRO 5000）。}\label{fig:12-2}
 \end{figure}
 
 \begin{figure}[htbp]

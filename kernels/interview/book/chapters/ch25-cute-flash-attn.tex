@@ -630,44 +630,10 @@ KV 划分 & 单流全遍历 & 单流全遍历 & 奇偶拆给两个 consumer \\
 
 \begin{figure}[htbp]
 \centering
-\begin{lstlisting}[style=console]
-  FIG-25-1  flash_attn.cuh CuTe 块（L2196-3488）结构对照
-
-  共享层 (L2197-2490, 107 行有效代码)
-  +--------------------------------------------------------------+
-  | FlashAttn2CuTeTraits<D>  Br=128    FlashAttn3CuTeTraits<D> Br=64 |
-  |   SmemLayoutQ  (128,D) SW128        SmemLayoutQKV (64,D) SW128  |
-  |   SmemLayoutKV (64,D)  SW128        SmemLayoutVt  = comp(QKV)   |
-  |   SmemLayoutVt = comp(KV)           TiledMma (4,1,1)x(64,16,16) |
-  |   TiledMma (8,1,1)x(128,16,16)                                  |
-  +--------------------------------------------------------------+
-  | convert_layout_acc_rowcol   (4,MM,NN) -> ((2,MM),(2,NN))         |
-  | convert_layout_acc_Aregs    C fragment -> A fragment (零拷贝)     |
-  | convert_type / gemm_ss / gemm_rs                                |
-  +--------------------------------------------------------------+
-         |                    |                     |
-         v                    v                     v
-  +----------------+  +------------------+  +---------------------+
-  | 实现1 cp.async |  | 实现2 TMA + WS   |  | 实现3 FA3 双 consumer|
-  | 256 threads    |  | 384 = 128P+256C  |  | 384 = 128P+2x128C    |
-  |   sQ(128,D)    |  |   mbarrier 计数   |  |   cid=tile&1 路由     |
-  |   sK[Sk](64,D) |  |   V-first,K-after|  |   每 C 独立 bank 屏障  |
-  |   sV   (64,D)  |  |   早释放 K       |  |   收尾 smem scratch   |
-  |   wait<N> 组栈  |  |                  |  |   归并 (max pivot)    |
-  +----------------+  +------------------+  +---------------------+
-         |
-         v
-  +--------------------------------------------------------------+
-  | 实现4 smoke (41 行): TMA desc + SW128 布局 + 事务屏障的最小闭环    |
-  +--------------------------------------------------------------+
-\end{lstlisting}
+\includegraphics[width=0.98\textwidth]{figures/drawio/fig-25-1-cute-struct/fig-25-1.png}
 \caption{CuTe 块的四层结构：共享 traits 与五个工具函数（上），三个 attention
-实现（下），以及 41 行的 TMA 搬运自检（底）。箭头表示「同一份布局类型被三种
-调度结构复用」。图规格：四层从上到下——共享层（两个 traits 并排 $+$ 五个
-工具函数一行）、三张实现卡片并排（各标线程数与流水特征）、底部一张横贯的
-实现 4 自检卡片；实线箭头自共享层垂直下引至三个实现，虚线箭头自三个实现
-汇入实现 4；配色建议——布局类型用蓝、调度结构用橙。
-（占位，RFC-H 升级为 drawio 对照图）}
+实现（中），以及 41 行的 TMA 搬运自检（底）。实线箭头表示「同一份布局类型被
+三种调度结构复用」，虚线表示三个实现共用实现~4 的底座自检。}
 \label{fig:25-1}
 \end{figure}
 

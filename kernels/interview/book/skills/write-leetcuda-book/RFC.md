@@ -113,21 +113,22 @@
 - [ ] G.3 附录 B 成表：README 数据 + 复测数据并列，标注差异原因（F4 类核查）
 - [ ] G.4 **验收**：附录 B 每行有出处；差异 >5% 的行有解释
 
-## 10. RFC-H 图表升级（v3：drawio 管线为主；可穿插，分批领取）
+## 10. RFC-H 图表升级（v4，2026-09-14：生成器单路径，主 agent 直做）
 
-> 管线规范=BOOK_PLAN §7.2（三 skill 分工/产物规范/导出工具链/水印规则/单图 DoD）；每批 2-4 张，≥2 张走 batch manifest 子代理调度。
-> 2026-09-14 管线打通（主 agent 直做）：python 生成器 → drawio-headless 导出 →
-> view_image 迭代（≥2 轮）→ audit.md → tex 接入 → 整书编译。渲染铁律见
-> /memories/repo/leetcuda-book-drawio.md。已完成 4/约 30 张（FIG-20-1/22-1/23-1/26-1）。
+> 管线规范=BOOK_PLAN §7.2 v4：tex 内规格为内容源 → python 生成器（figures/drawio/<id>/gen.py 入库）
+> → drawio-headless -s 3 → view_image + PIL 裁剪复核（≥2 轮）→ audit.md → tex 接线 → 图清单回写。
+> **PDF 缩放硬验收**：两位数格 ≥54px、字号 ≥12、CJK 禁 bold——铁律全集 /memories/repo/leetcuda-book-drawio.md。
+> 原「知乎图 reconstruction 重建」路径降级为可选（figures/zhihu/ 无归档图，内容源=书内 ASCII 规格）。
+> 已完成 4/约 35 张（FIG-20-1/22-1/23-1/26-1；20-1/22-1 已按用户反馈修格线粘连）。
 
 - [ ] H.0 TikZ/pgfplots 模板（仅函数曲线/数据图：roofline、吞吐曲线；配色/字体与全书一致）
-- [ ] H.1 必收图批次（用户点名，优先）：FIG-12-1 smem swizzle、FIG-12-2 block swizzle——有合适知乎参考图（如 frankshi）先归档再 drawio-reconstruction 重建；无则 drawio-diagram-builder 新建
-- [ ] H.2 知乎图重建·Part I/II 批次：FIG-4-1/9-1/11-1/11-2/14-1（原图归档→reconstruction 闭环→导出替换）
-- [ ] H.3 知乎图重建·Part III/IV 批次：FIG-15-1/19-1/19-2/20-2/21-1/21-2/21-3（20-1/22-1/23-1/26-1 已完成，见上注）
-- [ ] H.4 ASCII→drawio 新建批次：FIG-1-1/2-1/3-1/5-1/7-1/8-1/10-1/12-3/13-1/13-2/13-3/14-2/16-1/17-1/18-1/25-1——复杂高保真用 drawio-diagram-builder（≥3 轮截图迭代+自评分卡），概念流程/对比用 drawio-flow-forge
+- [ ] H.1 必收图批次（用户点名，优先）：FIG-12-1 smem swizzle、FIG-12-2 block swizzle——生成器新建（规格=ch12 ASCII 图 + caption，可参 common.cuh L185-235 布局表）
+- [ ] H.2 基础章批次：FIG-1-1/2-1/3-1/4-1/5-1/7-1/8-1（生成器新建）
+- [ ] H.3 GEMM 章批次：FIG-9-1/10-1/11-1/11-2a/12-3/13-1/13-2/13-3/14-1/14-2
+- [ ] H.4 FA/CuTe 章批次：FIG-15-1/15-2/16-1/17-1/17-2/18-1/19-1/19-2/20-2/20-3/21-1/21-2/21-3/24-2/25-1
 - [ ] H.5 函数/数据图批次（TikZ）：FIG-1-2 roofline 等
-- [ ] H.6 figures/zhihu/ 元数据「替换状态」随重建逐张更新；LaTeX 引用切换为 drawio 导出图（caption「重建自 @作者《文章》」）
-- [ ] H.7 **验收**：图清单全部条目状态=「重建完成/正式」；抽查 audit.md（独立 Reviewer PASS 记录）与导出图（无水印残留）
+- [ ] H.6 生成器从 .tmp/drawio/ 迁移到 figures/drawio/<id>/gen.py（入库）；每张完成后图清单状态回写「正式」
+- [ ] H.7 **验收**：图清单全部条目状态=「正式」；audit.md 含生成器参数与复核结论；PDF 抽查缩放可读性
 
 ## 11. RFC-I 附录 A-E
 
@@ -165,8 +166,8 @@
 | FIG-10-1 | 10 | double-buffer | A→C1 | 占位 | — |
 | FIG-11-1 | 11 | ldmatrix | B→D（木子知/Anonymous） | 待 RFC-B | — |
 | FIG-11-2 | 11 | mma-fragment | B→D | 待 RFC-B | — |
-| FIG-12-1 | 12 | smem-swizzle-before-after | A→C1（必收，用户点名；可参 frankshi 图→B→D） | 占位 | — |
-| FIG-12-2 | 12 | block-swizzle-layout | A→C1（必收，用户点名） | 占位 | — |
+| FIG-12-1 | 12 | smem-swizzle-before-after | C1 新建（用户点名，2026-09-14） | 正式 | figures/drawio/fig-12-1-smem-swizzle/ |
+| FIG-12-2 | 12 | block-swizzle-layout | C1 新建（用户点名，2026-09-14） | 正式 | figures/drawio/fig-12-2-block-swizzle/ |
 | FIG-12-3 | 12 | xor-bitwise | A→C1 | 占位 | — |
 | FIG-13-1 | 13 | wgmma-desc-bitfield | A→C1 | 占位 | — |
 | FIG-13-2 | 13 | warpgroup-dataflow | A→C1 | 占位 | — |
@@ -179,14 +180,14 @@
 | FIG-18-1 | 18 | fa3-dual-consumer | A→C1 | 占位 | — |
 | FIG-19-1 | 19 | split-d-chunk | B→D（DefTruth FFPA） | 待 RFC-B | — |
 | FIG-19-2 | 19 | split-d-merge | B→D（同上） | 待 RFC-B | — |
-| FIG-20-1 | 20 | layout-coord-mapping | B→D（reed/竹熙佳处） | 待 RFC-B | — |
+| FIG-20-1 | 20 | layout-coord-mapping | B→D（reed/竹熙佳处） | 正式 | figures/drawio/fig-20-1-colex/
 | FIG-20-2 | 20 | mode-grouping | B→D（竹熙佳处） | 待 RFC-B | — |
 | FIG-21-1 | 21 | tv-layout-grid | B→D（竹熙佳处 tiled copy） | 待 RFC-B | — |
-| FIG-22-1 | 22 | tiledmma-partition | B→D（竹熙佳处 tiled mma） | 待 RFC-B | — |
-| FIG-23-1 | 23 | sw128-atom | B→D（竹熙佳处/reed） | 待 RFC-B | — |
+| FIG-22-1 | 22 | tiledmma-partition | B→D（竹熙佳处 tiled mma） | 正式 | figures/drawio/fig-22-1-tiledmma/
+| FIG-23-1 | 23 | sw128-atom | B→D（竹熙佳处/reed） | 正式 | figures/drawio/fig-23-1-sw128/
 | FIG-24-1 | 24 | handwritten-vs-cute-table | C2（LaTeX 表格） | 占位 | — |
-| FIG-25-1 | 25 | fa-cute-3impl-compare | A→C1 | 占位 | — |
-| FIG-26-1 | 26 | ffpa-dual-tiledmma | A→C1 | 占位 | — |
+| FIG-25-1 | 25 | fa-cute-3impl-compare | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-25-1-cute-struct/ |
+| FIG-26-1 | 26 | ffpa-dual-tiledmma | A→C1 | 正式 | figures/drawio/fig-26-1-dual-mma/
 
 ## 14. CHECKLOG 摘要镜像（明细在 book/CHECKLOG.md）
 

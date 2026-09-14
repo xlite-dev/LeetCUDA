@@ -288,15 +288,25 @@ kernels/interview/book/tests/
 
 **必收图（用户点名）**：smem swizzle 前后排布（ch12/23）、block swizzle block layout（ch12）。
 
-### 7.2 drawio 管线（三个 skill 的分工）
+### 7.2 drawio 管线（v4，2026-09-14：生成器单路径，主 agent 直做）
 
-| skill | 角色 | 适用 |
+**主路径（全部图）**：tex 内 ASCII 规格/caption 规格为内容源 → python 生成器
+（`figures/drawio/<FIG-id>/gen.py`，入库不进 .tmp）→ `drawio-headless -s 3`
+导出 PNG（300dpi）→ `view_image` 整图 + PIL 裁剪放大复核细节（≥2 轮迭代）
+→ `audit.md`（生成器参数/迭代轮次/复核结论）→ tex 接线（label 锚点整块替换）
+→ RFC 图清单状态回写 → 分批 commit。
+
+**PDF 缩放硬验收（A5 版心 ~10cm）**：两位数格 ≥54px 宽、正文字号 ≥12；
+CJK 一律禁 bold/italic（字体 fallback 缺字形=方框）；value 禁 `&#10;`；
+下标纯文本（c0/c1）；折线箭头显式 mxPoint；渲染铁律全集见
+`/memories/repo/leetcuda-book-drawio.md`。
+
+| 辅助 skill | 角色 | 何时使用 |
 |---|---|---|
-| **drawio-reconstruction（主）** | 知乎原图 → 高保真可编辑 .drawio：inventory → Icon Producer/Reviewer → Reconstruction Producer/Reviewer 独立审查闭环 → audit.md；≥2 张走 batch manifest 子代理调度（`batch_manifest.py`/`batch_verify.py`） | 全部「知乎图 → 书内正式图」 |
-| drawio-diagram-builder（辅） | 从零新建高保真图：style extraction 风格契约 + 预览截图反馈循环（≥3 轮）+ 自评分卡硬门槛；`validate_visual_quality.py` 预检 | ASCII 草图升级、复杂自绘图 |
-| drawio-flow-forge（辅） | 13 种图型模板化快速生成 + 主题配色 + `validate.py` | 概念性流程/对比/层级示意图 |
+| drawio-reconstruction | 知乎原图高保真重建（多 agent 闭环） | **降级为可选**：确有高质量原图且结构复杂时；当前 figures/zhihu/ 无归档图，不构成主路径 |
+| drawio-diagram-builder / drawio-flow-forge | 从零新建辅助 | 复杂自绘图/概念流程图；与生成器路径产出同规范 |
 
-**产物规范**：`figures/drawio/<FIG-id>/`（如 `fig-12-1-smem-swizzle/`）内含 `<stem>.drawio`、`<stem>.png`（≥300dpi：CLI `-s 3` 导出）、`<stem>.audit.md`；.drawio 源入库，导出图入 LaTeX。
+**产物规范**：`figures/drawio/<FIG-id>/`（如 `fig-12-1-smem-swizzle/`）内含 `gen.py`（python 生成器，参数化重制的源码，**入库**）、`<stem>.drawio`、`<stem>.png`（≥300dpi：CLI `-s 3` 导出）、`<stem>.audit.md`；导出图入 LaTeX。生成器不再放 .tmp（被 gitignore，清理即丢失）。
 
 **导出工具链（2026-09-11 已验证可用）**：
 - drawio CLI v31.4.5，经官方 deb 安装（**Ubuntu noble 官方源无 `drawio` 包**，来源=`jgraph/drawio-desktop` GitHub releases deb；skill README 的 `apt install drawio` 写法不适用于 noble）
