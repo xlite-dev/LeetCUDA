@@ -116,12 +116,15 @@
 ## 10. RFC-H 图表升级（v3：drawio 管线为主；可穿插，分批领取）
 
 > 管线规范=BOOK_PLAN §7.2（三 skill 分工/产物规范/导出工具链/水印规则/单图 DoD）；每批 2-4 张，≥2 张走 batch manifest 子代理调度。
+> 2026-09-14 管线打通（主 agent 直做）：python 生成器 → drawio-headless 导出 →
+> view_image 迭代（≥2 轮）→ audit.md → tex 接入 → 整书编译。渲染铁律见
+> /memories/repo/leetcuda-book-drawio.md。已完成 4/约 30 张（FIG-20-1/22-1/23-1/26-1）。
 
 - [ ] H.0 TikZ/pgfplots 模板（仅函数曲线/数据图：roofline、吞吐曲线；配色/字体与全书一致）
 - [ ] H.1 必收图批次（用户点名，优先）：FIG-12-1 smem swizzle、FIG-12-2 block swizzle——有合适知乎参考图（如 frankshi）先归档再 drawio-reconstruction 重建；无则 drawio-diagram-builder 新建
 - [ ] H.2 知乎图重建·Part I/II 批次：FIG-4-1/9-1/11-1/11-2/14-1（原图归档→reconstruction 闭环→导出替换）
-- [ ] H.3 知乎图重建·Part III/IV 批次：FIG-15-1/19-1/19-2/20-1/20-2/21-1/22-1/23-1
-- [ ] H.4 ASCII→drawio 新建批次：FIG-1-1/2-1/3-1/5-1/7-1/8-1/10-1/12-3/13-1/13-2/13-3/14-2/16-1/17-1/18-1/25-1/26-1——复杂高保真用 drawio-diagram-builder（≥3 轮截图迭代+自评分卡），概念流程/对比用 drawio-flow-forge
+- [ ] H.3 知乎图重建·Part III/IV 批次：FIG-15-1/19-1/19-2/20-2/21-1/21-2/21-3（20-1/22-1/23-1/26-1 已完成，见上注）
+- [ ] H.4 ASCII→drawio 新建批次：FIG-1-1/2-1/3-1/5-1/7-1/8-1/10-1/12-3/13-1/13-2/13-3/14-2/16-1/17-1/18-1/25-1——复杂高保真用 drawio-diagram-builder（≥3 轮截图迭代+自评分卡），概念流程/对比用 drawio-flow-forge
 - [ ] H.5 函数/数据图批次（TikZ）：FIG-1-2 roofline 等
 - [ ] H.6 figures/zhihu/ 元数据「替换状态」随重建逐张更新；LaTeX 引用切换为 drawio 导出图（caption「重建自 @作者《文章》」）
 - [ ] H.7 **验收**：图清单全部条目状态=「重建完成/正式」；抽查 audit.md（独立 Reviewer PASS 记录）与导出图（无水印残留）

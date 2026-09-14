@@ -456,47 +456,13 @@ PV 一侧的使用（L339--345）：
 
 \begin{figure}[htbp]
 \centering
-\begin{verbatim}
-  FIG-22-1  TiledMMA partition for FFPA QK: Atom = SM80_16x8x16, 128 thr
-            AtomLayoutMNK = (4,1,1)   PermutationMNK = Tile<64,64,16>
-
-    warp w covers rows [16w, 16w+16)          (ThrM = 4, atom_M = 16)
-    within a warp, one atom = 16 rows x 8 cols:
-        lane = 4*(row%8 ... ) ...            (fig 22-1a: atom fragment)
-        m = lane/4 + 8*d1 ;  n = 2*(lane%4) + d0
-
-    +--------------------------------------------------------------+
-    |  warp 0: rows  0-15   |  warp 1: rows 16-31                   |
-    |  each warp repeats the atom 8x in N:                          |
-    |     N atoms:  n = 0..7   ->  cols [8j, 8j+8)                  |
-    +--------------------------------------------------------------+
-    |  warp 2: rows 32-47   |  warp 3: rows 48-63                   |
-    +--------------------------------------------------------------+
-
-    per-thread fragments on the (64,64) tile (measured):
-      A (Q): (MMA=8, MMA_M=1, MMA_K=4) =  32 half    (bijection)
-      B (K): (MMA=4, MMA_N=8, MMA_K=4) = 128 half    (4x dup: 4 M-warps)
-      C (S): (MMA=4, MMA_M=1, MMA_N=8) =  32 float   (bijection)
-    conservation: 128 thr x 32 = 4096 = 64 x 64  (A and C)
-
-    PV mma (Tile<64,16,16>) on the same threads:
-      C (O): per (64,16) tile -> (4,1,2) = 8 float
-             full 64x64 d-chunk view -> (4,1,8) = 32 float per thread
-             x8 d-chunks (D=512)      -> 256 registers  <-- the knob
-\end{verbatim}
+\includegraphics[width=0.92\textwidth]{figures/drawio/fig-22-1-tiledmma/fig-22-1.png}
 \caption{TiledMMA partition：QK 的 $64\times64$ tile 上，4 个 warp 各覆盖
 16 行，warp 内 N 方向重复 8 个原子；A/B/C 三种 fragment 的每线程形状与
 重复因子（式~\eqref{eq:22-dup}）。下半部分是 PV 的 $(64,16,16)$ tile：
-N 方向只重复 2 个原子，代价换来 acc\_O 的寄存器可控。本章测试 case~C--F
-对全部形状与覆盖做了逐点核对。图规格：三栏纵排——上栏「线程划分」，四个
-等宽横向色带（warp 0--3，各标行区间 $[16w,16w+16)$），带内画 8 个等宽
-小方块表示 N 方向 8 个原子；中栏「fragment 账目」，A/B/C 三张卡片各标
-$(\mathrm{MMA},\mathrm{MMA}_M,\mathrm{MMA}_K)$ 三元组、元素数与重复因子
-（B 卡片加 4 倍重复角标）；下栏「PV 寄存器账」，横向堆叠条形图表示
-8 个 d-chunk $\times$ 32 float $=$ 256 寄存器，右端画一条标注「N tile
-拉到 64 则 8$\times$ 超支」的警戒线。配色：A 蓝、B 绿、C 橙，warp 色带
-灰底黑描边。
-（占位，RFC-H 升级为 drawio 图）}
+N 方向只重复 2 个原子，代价换来 acc\_O 的寄存器可控（8 个 d-chunk 共
+256 寄存器；N tile 拉到 64 则 8 倍超支）。本章测试 case~C--F
+对全部形状与覆盖做了逐点核对。}
 \label{fig:22-1}
 \end{figure}
 

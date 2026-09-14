@@ -517,37 +517,13 @@ $j\oplus r$。第~\ref{ch:12}~章的「对角线置换」在这里有了精确�
 
 \begin{figure}[htbp]
 \centering
-\begin{verbatim}
-  FIG-23-1  SW128 atom 8x64 half (8 rows x 128 B, 8 chunks of 16 B per row)
-
-  logical row r:  [ c0 c1 c2 c3 c4 c5 c6 c7 ]   chunk index j = c/8
-      physical chunk of j  =  j XOR (r mod 8)
-
-  r=0 :  c0 c1 c2 c3 c4 c5 c6 c7      (identity)
-  r=1 :  c1 c0 c3 c2 c5 c4 c7 c6      (swap 16B pairs)
-  r=2 :  c2 c3 c0 c1 c6 c7 c4 c5
-  r=3 :  c3 c2 c1 c0 c7 c6 c5 c4
-  r=4 :  c4 c5 c6 c7 c0 c1 c2 c3      (halves swap)
-  r=5 :  c5 c4 c7 c6 c1 c0 c3 c2
-  r=6 :  c6 c7 c4 c5 c2 c3 c0 c1
-  r=7 :  c7 c6 c5 c4 c3 c2 c1 c0      (full reverse)
-
-  physical offset of (r,c) in half units:
-      smem_offset = 64*r + 8*( (c/8) XOR (r mod 8) ) + (c mod 8)
-  same pattern as ch12's swizzle<64>(row, k)  and  Swizzle<3,4,3> on bytes
-
-  verify: sw_120a TMA CUtensorMap SWIZZLE_128B write, 64x64 half tile
-          -> 4096/4096 elements match this table (0 mismatch)
-\end{verbatim}
-\caption{FIG-23-1 SW128 原子的物理排布：16\,B 块的列号 XOR 行号。
-图规格：单幅 $8\times8$ 网格矩阵——横轴 8 列对应 8 个 16\,B 逻辑 chunk
-（列头标 $c_0$--$c_7$），纵轴 8 行标 $r=0$--$7$，每格写该行接受置换后的
-chunk 下标，并对 $r=1,2,4$ 各画一条带箭头的示例迁移线；网格右侧竖排
-公式「物理偏移 $=64r+8\cdot(j\oplus r)+(c\bmod 8)$」与图例「与
-\texttt{swizzle<64>}（ch12）同构、对 TMA \texttt{SWIZZLE\_128B} 实测
-$4096/4096$ 逐点一致」。配色：行底交替浅灰/白，迁移箭头与公式深蓝，
-格内文字黑色，网格线浅灰。
-（占位，RFC-H 升级为 drawio 正式图）}
+\includegraphics[width=0.9\textwidth]{figures/drawio/fig-23-1-sw128/fig-23-1.png}
+\caption{SW128 原子的物理排布：16\,B 块的列号 XOR 行号。横轴为 8 个
+逻辑 chunk（$c_0$--$c_7$），纵轴 8 行，格内为该行接受置换后的物理
+chunk 下标；蓝底行 $r=1/2/4$ 给出 chunk $c_0$ 落点翻转 $1/2/4$ 地址位的
+示例。物理偏移 $=64r+8\cdot(j\oplus r)+(c\bmod 8)$（half 单位）——与
+\texttt{swizzle<64>}（第~\ref{ch:12}~章）同构，TMA \texttt{SWIZZLE\_128B}
+写 $64\times64$ half tile 实测 $4096/4096$ 逐点一致（case~E）。}
 \label{fig:23-1}
 \end{figure}
 

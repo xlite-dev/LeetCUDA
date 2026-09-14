@@ -578,40 +578,12 @@ rescale 的操作对象是 \texttt{tCrO} 的 rowcol 视图：行方向乘
 
 \begin{figure}[htbp]
 \centering
-\begin{verbatim}
-  FIG-26-1  ffpa_split_d_cute (128 threads): dual TiledMma flow
-
-    QK: TiledMmaQK  Tile<64,64,16>  EURepeat<1,8,1>
-    PV: TiledMmaPV  Tile<64,16,16>  EURepeat<1,2,1>
-
-  +-------------------------------+    +-------------------------------+
-  | for d in 0..C-1   (chunk)     |    | for v in 0..C-1   (chunk)     |
-  |   Q[d],K[d] --cp.async--> shm |    |   P (Aregs) x V[v] (ns view)  |
-  |   S += Q[d] @ K[d]^T          |    |   O[v] *= row_scale           |
-  |   (gemm_ss, 4 k16 atoms)      |    |   O[v] += P @ V[v]            |
-  +-------------------------------+    +-------------------------------+
-                |  S = 32 f32 ((2,2),1,8)          ^
-                v                                  |
-  +-------------------------------+                  |
-  | Phase 2: rowcol view of S     |                  |
-  |   row max/sum -> 2 rows/lane  |       32 values, Aregs layout
-  |   P = exp2(S*scale - m)       |                  |
-  |   P: convert_type + Aregs ----+------------------+
-  +-------------------------------+
-                   row_max[2], row_sum[2]
-                   row_scale[2] = exp2(m_old - m_new)
-
-  regs: S/P 32 + O[C][32] (C=8 -> 256) + V frag (per M-warp copy)
-\end{verbatim}
+\includegraphics[width=0.92\textwidth]{figures/drawio/fig-26-1-dual-mma/fig-26-1.png}
 \caption{双 TiledMma 的数据流：QK 沿 $D$ 累加成 $S$（32 寄存器跨 chunk
 存活），softmax 就地覆盖为 $P$，Aregs 重解释后喂给 PV；$O$ 的每个 chunk
-分量独立 rescale 与累加。虚线方向由 \texttt{row\_scale} 耦合。
-图规格：左右分栏——左栏画 QK 的 chunk 循环（$C$ 个 $[64,64]$ 块汇入 $S$），
-右栏画 PV 的 chunk 循环（$V$ 的 chunk 与 $O$ 分量一一对应）；中间窄栏放
-Phase 2（rowcol 视图 $\to$ 就地覆盖出 $P$ $\to$ Aregs），一条横向箭头串起
-「$S \to P \to O$」；底部标寄存器账本（$S/P$ 32、$O[C][32]$），
-\texttt{row\_scale} 用虚线从中间栏连到右栏的 rescale 步骤。
-（占位，RFC-H 升级为 drawio 图）}
+分量独立 rescale 与累加，\texttt{row\_scale}（虚线）耦合两个循环。底部
+为寄存器账本：$S/P$ 32、$O[C][32]$ 共 256（$C{=}8$）、V fragment 按
+M-warp 重复——smem 只承载 Q/K/V 的 chunk 流水。}
 \label{fig:26-1}
 \end{figure}
 

@@ -592,32 +592,13 @@ dtype 变化引起的布局变换），但中间布局要 \texttt{with\_shape} �
 
 \begin{figure}[htbp]
 \centering
-\begin{verbatim}
-  FIG-20-1  colex linearization table: L = (4,8):(1,4), f(c0,c1) = c0 + 4*c1
-            (rows = c1, cols = c0; cell = offset; read left->right, top->bottom)
-
-        c1\c0 |   0    1    2    3        colex order: c0 is fastest
-        ------+-----------------------    f(1,3) = 1*1 + 3*4 = 13
-          0   |   0    1    2    3              ^        ^
-          1   |   4    5    6    7              c0=1    c1=3
-          2   |   8    9   10   11        f(3,1) = 3*1 + 1*4 =  7
-          3   |  12   13   14   15
-          4   |  16   17   18   19        integer form: L(x) = x   (compact+col-major
-          5   |  20   21   22   23              => identity on [0,32))
-          6   |  24   25   26   27
-          7   |  28   29   30   31        row-major twin (4,8):(8,1):
-                                           f(1,3) = 1*8 + 3*1 = 11
-  size = 32  cosize = 32 (compact)         f(c0,c1) = 8*c0 + c1
-\end{verbatim}
-\caption{colex 线性化：坐标 $(c_0,c_1)$ 与 offset 的对应表。$c_0$ 沿行方向
-变化最快，故 $\mathrm{idx}=c_0+4c_1$；整数输入时 CuTe 用
+\includegraphics[width=0.92\textwidth]{figures/drawio/fig-20-1-colex/fig-20-1.png}
+\caption{colex 线性化：坐标 $(c_0,c_1)$ 与 offset 的对应表（左），同一
+布局展平后的 1D 数带（右）。$c_0$ 沿行方向变化最快，故
+$\mathrm{idx}=c_0+4c_1$；整数输入时 CuTe 用
 式~\eqref{eq:20-colex-decomp} 先把 $x$ 分解回坐标。compact 且 col-major 时
-$f(x)=x$（本章测试 128 点核对）。（占位，RFC-H 升级为 drawio 图）
-图规格：左侧画 $8\times4$ 偏移数表（行 $=c_1$、列 $=c_0$、格内填
-$c_0+4c_1$），右侧画同一布局展平后的 1D 数带（offset $0..31$）；用同色
-高亮 $f(1,3)=13$ 与 $f(3,1)=7$ 两处并用折线箭头连接，右上角标注
-「colex：$c_0$ 最快」，底部一行对照标注 row-major 版
-$(4,8){:}(8,1)$ 的 $f(1,3)=11$。}
+$f(x)=x$（本章测试 128 点核对）。对照 row-major 版 $(4,8){:}(8,1)$：
+$f(1,3)=11$——同一 shape，stride 决定读序。}
 \label{fig:20-1}
 \end{figure}
 
