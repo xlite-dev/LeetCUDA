@@ -360,39 +360,9 @@ $\mathrm{g}{+}8$（L782--785），行号由 \texttt{Q\_tile\_id}、
 
 \begin{figure}[htbp]
 \centering
-\begin{lstlisting}[style=console]
-  FIG-16-1  Split-Q warp layout (Br=128, Bc=64, D=64, 8 warps, kStagesK=2)
-            (upgraded from the README ASCII sketch, 4-warp version)
-
-  Q tile [Br=128, D]  (blockIdx.x)          K/V tiles [Bc=64, D] x Tc
-  +--------------------------------+        +---------------------------+
-  | warp_QP 0 | rows   0 -  15     |        |                           |
-  | warp_QP 1 | rows  16 -  31     |        |  all 8 warps read the     |
-  | warp_QP 2 | rows  32 -  47     |  <----|  same K_t / V_t (warp_KV  |
-  | ...       | ...                |        |  = 0, smem broadcast)     |
-  | warp_QP 7 | rows 112 - 127     |        |                           |
-  +--------------------------------+        +---------------------------+
-   Q loaded ONCE (Step 1), stays in smem      K: 2-stage ring (t, t+1)
-   for the whole outer loop                   V: 1-stage, in flight over
-                                               3b+3c (mma + softmax)
-
-  per-warp private state (registers, no cross-warp comm):
-    m, l  in R^16        lane_block_row_max/sum_old   (fp32)
-    O     in R^16xD      R_D accumulator fragment     (f16/f32 acc)
-  per KV tile t, each warp computes:
-    S_w = Q_w @ K_t^T   -> R_S      (8x m16n8, 32 HMMA)
-    P_w = exp(S_w*s - m)-> R_S      (in-place, softmax pass 2)
-    O_w += P_w @ V_t    -> R_O->R_D (8x m16n8, 32 HMMA, A = R_S direct)
-
-  vs. Split-KV (FA1-style): warp_KV 0..3 each own 16 COLUMNS, row state
-  split across warps -> per-tile smem merge (merge_attn_states);
-  Split-Q: one warp owns 16 ROWS end-to-end -> zero merge, zero comm.
-\end{lstlisting}
-\caption{Split-Q warp 行划分与状态私有化（默认 $B_r{=}128$/8-warp 配置；
-升级自 LeetCUDA README 的 4-warp ASCII 底稿）。上图：Q 行按 warp 独占、
-KV 全 warp 共享；中图：每 warp 私有的 $(m,\ell,O)$ 与每 tile 的三段
-计算；下图：与 split-KV 的对比——后者行状态按列撕裂、须逐 tile 归并。
-（占位，RFC-H 升级）}\label{fig:16-1}
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-16-1-split-q-warp/fig-16-1.png}
+\caption{Split-Q warp 行划分与状态私有化（默认 $B_r{=}128$/8-warp 配置；升级自 LeetCUDA README 的 4-warp ASCII 底稿）。左：Q 行按 warp 独占、KV 全 warp 共享；中：每 warp 私有的 $(m,\ell,O)$ 与每 tile 的三段计算；下：与 split-KV 的对比——后者行状态按列撕裂、须逐 tile 归并。}
+\label{fig:16-1}
 \end{figure}
 
 \section{性能分析}

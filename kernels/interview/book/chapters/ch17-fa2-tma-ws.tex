@@ -418,65 +418,16 @@ L1374--1399），Step 5 的写回是 ch16 的原版方案——warp 内 shuffle 
 
 \begin{figure}[htbp]
 \centering
-\begin{lstlisting}[style=console]
-  FIG-17-1  producer/consumer double pipeline (Sk=2, Sv=1, D=64)
-
-  producer WG0 (1 active thread, TMA submit)  consumer WG1 (8 warps, 256thr)
-  =========================================   ==============================
-  P0  TMA Q ----expect_tx 16KB --> full_Q      C0  256x arrive empty_K[0..1]
-  P1  TMA K[0]->st0 ; TMA K[1]->st1                256x arrive empty_V[0]
-      (prefetch Sk-1=1 tiles)                  wait full_Q (once) <- Q ready
-  P2  k=0: TMA V[0]->v0 ---------------------> +------ iter k=0 ------------+
-    k=0: TMA K[2]->st0 (overwrite freed st0)   |wait full_K[0]: QK uses K[0]|
-    k=1: TMA V[1]->v0 ^                        | 3b QK^T: ldmatrix+HMMA     |
-    k=1: TMA K[3]->st1 |                       |   arrive empty_K[0] <-early|
-    k=2: TMA V[2]->v0 | overlap                | 3c softmax (regs only)     |
-        ...            |                       |wait full_V[0] (just b4 3d!)|
-                       |                       | 3d PV: R_S reuse + X2_T(V) |
-                       |                       |    arrive empty_V[0]       |
-                       +---------------------> | 3e rescale (m,l,O)         |
-                                               +------ iter k=1 ------------+
-  timeline: producer leads consumer by Sk-1 K tiles / Sv V tiles;
-            "compute tile k" fully overlaps "load tile k+1".
-            K[2] load window = QK[0]+softmax[0]+PV[0]  (empty_K[0] freed
-                              right after QK[0]);
-            V[1] load window = QK[0]+softmax[0]        (empty_V[0] freed
-                              after PV[0]).
-\end{lstlisting}
-\caption{FA2 TMA + WS 的 producer/consumer 双流水时序（$\mathrm{Sk}{=}2$、
-$S_v{=}1$、$D{=}64$）。producer 的 P2 每轮先发 V 再预取 K；consumer 的
-empty 释放点（K 在 QK 后、V 在 PV 后）决定了每个 stage 的可覆盖窗口。
-（占位，RFC-H 升级为 drawio 时序图）}\label{fig:17-1}
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-17-1-dual-pipeline/fig-17-1.png}
+\caption{FA2 TMA + WS 的 producer/consumer 双流水时序（$\mathrm{Sk}{=}2$、$S_v{=}1$、$D{=}64$）。producer 的 P2 每轮先发 V 再预取 K；consumer 的 empty 释放点（K 在 QK 后、V 在 PV 后）决定了每个 stage 的可覆盖窗口。}
+\label{fig:17-1}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
-\begin{lstlisting}[style=console]
-  FIG-17-2  mbarrier array topology: who arrives / who waits (count=257)
-
-                    +---------+  tx: kQTileBytes (16KB, D=64)
-   producer(1 thr)->| full_Q  |<------------------------+ TMA(D=128:
-                    +---------+                        | kTmaChunks
-     consumer 256x  arrive+wait ^                       | loads share
-   (one-shot, no empty_Q)       |                       | one barrier)
-                                |                       |
-   stage s in [0,Sk):           v                       v
-                    +-----------+  256x arrive(wait)  +---- 256x arrive(free)
-   producer ------->| full_K[s] |<----------|  consumer (right after QK^T)
-   arrive_tx(8/16KB)+-----------+            +---- empty_K[s].arrive
-                    ^                          |
-                    |             producer b4 write: wait(own arrive)
-                    +-----------------------------------------------+
-   full_V[s]/empty_V[s] same shape (Sv copies; V freed right after PV)
-
-   per-phase ledger: full[s] = 256(consumer)+1(producer arrive_tx)+tx landed
-                     empty[s] = 256(consumer free)+1(producer b4-write arrive)
-                     budgets exactly 257/round -> phase loop never misaligns
-\end{lstlisting}
-\caption{本章 kernel 的 mbarrier 阵列拓扑：Q 一对一单屏障、K/V 各
-$\mathrm{Sk}/S_v$ 对 full/empty 屏障，全部 init 257。D $=$ 128 时同一 tile 的
-多次 TMA 共享一个 full 屏障（多次 complete-tx 记账、一次 expect\_tx 声明总量）。
-（占位，RFC-H 升级）}\label{fig:17-2}
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-17-2-mbarrier-topo/fig-17-2.png}
+\caption{本章 kernel 的 mbarrier 阵列拓扑：Q 一对一单屏障、K/V 各 $\mathrm{Sk}/S_v$ 对 full/empty 屏障，全部 init 257。D $=$ 128 时同一 tile 的多次 TMA 共享一个 full 屏障（多次 complete-tx 记账、一次 expect\_tx 声明总量）。}
+\label{fig:17-2}
 \end{figure}
 
 \section{性能分析}

@@ -564,61 +564,16 @@ layout 必须\textbf{同时}看读端（ldmatrix）与写端（cp.async），只
 
 \begin{figure}[htbp]
 \centering
-\begin{lstlisting}[style=console]
- FIG-15-1  One Q-block's pass over all KV blocks (per thread block)
-
- state kept across the whole loop (registers):
-   m [Br] running row max | l [Br] running row sum | O [Br,d] UNnormalized acc
- Q tile [Br,d] loaded ONCE into smem (split-Q), never re-read from HBM
-
- for j = 1 .. Tc   (outer loop streams K/V once)      kernel step
- --------------------------------------------------   ----------------
-   K^[j] [Bc,d] ---(cp.async / TMA)---> smem           (3a) load
-   S^[j] = Q K^[j]^T / sqrt(d)          [Br x Bc]     (3b) QK^T  -> R_S
-   m_new = max(m, rowmax(S^[j]))                      (3c) online
-   P^[j] = exp(S^[j] - m_new)           [Br x Bc]        softmax:
-   l_new = exp(m - m_new) * l + rowsum(P^[j])           P written
-   PV    = P^[j] V^[j]                  [Br x d]          back INTO R_S
-   O <- diag(exp(m - m_new)) * O + PV                  (3d) PV, (3e) rescale
- --------------------------------------------------
- after loop:  O <- O / l      (ONE final divide)      (8) epilogue
-
- The N x N matrix S never exists: only [Br x Bc] tiles live in R_S.
-\end{lstlisting}
-\caption{Attention 分块计算：单个 Q 块（$B_r$ 行）流式扫过全部 $T_c$ 个 KV 块
-（$B_c \times d$），每块依次执行 $S^{[j]} \to P^{[j]} \to P^{[j]}V^{[j]}$，并把
-$(m, \ell, O)$ 三状态按式~\ref{eq:15-upd-m}--\ref{eq:15-upd-o} 联动更新，循环结束后
-统一除 $\ell$。步骤编号对齐 flash\_attn.cuh~L48--59 的执行流程。
-（占位，RFC-H 升级）}\label{fig:15-1}
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-15-1-online-softmax/fig-15-1.png}
+\caption{Attention 分块计算：单个 Q 块（$B_r$ 行）流式扫过全部 $T_c$ 个 KV 块（$B_c \times d$），每块依次执行 $S^{[j]} \to P^{[j]} \to P^{[j]}V^{[j]}$，并把 $(m, \ell, O)$ 三状态按式~\ref{eq:15-upd-m}--\ref{eq:15-upd-o} 联动更新，循环结束后统一除 $\ell$。步骤编号对齐 flash\_attn.cuh~L48--59 的执行流程。}
+\label{fig:15-1}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
-\begin{lstlisting}[style=console]
- FIG-15-2  FA1 -> FA2 -> FA3: where the time goes (schematic)
-
- FA1 (A100)  warps split along K/V; softmax sits BETWEEN the two GEMMs
-             |GEMM1| softmax |GEMM2| GEMM1 | softmax | GEMM2| ...   serial
-             partial (m,l,O) per warp -> cross-warp reduce via smem
-
- FA2 (A100/H100)  warps split along Q rows; no cross-warp reduce
-             warp0 |GEMM1| softmax | GEMM2|   each warp owns 16 rows of Q:
-             warp1 |GEMM1| softmax | GEMM2|   private (m, l, O), K/V shared
-             warp2 |  ...                    + CTA-level parallelism added
-             warp3 |  ...                      over seqlen(Q): grid.x=N/Br
-             + O kept unnormalized -> ONE diag(1/l) at the very end
-
- FA3 (H100)  producer warp: TMA (async)  +  2 consumer warpgroups
-             WG1 |  GEMM  |  GEMM  |  GEMM  |      (tensor cores)
-             WG2    | softmax | softmax | ...      (CUDA cores)   overlap
-             pingpong: while WG1 runs GEMMs, WG2 runs softmax (and vice
-             versa); + FP8 GEMM (block scaling + incoherent processing)
-\end{lstlisting}
-\caption{三代 FlashAttention 的时间结构：FA1 的 softmax 串行夹在两次 GEMM 之间且
-warp 间需要归约；FA2 靠 warp 级 split-Q 消灭归约、靠 seqlen(Q) 维并行喂饱 SM、靠
-未归一化 $O$ 砍掉逐块对角修正；FA3 用 warp specialization + pingpong 让 softmax
-与 GEMM 在不同运算单元上重叠，并引入 FP8。
-（占位，RFC-H 升级）}\label{fig:15-2}
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-15-2-fa1-fa2-fa3/fig-15-2.png}
+\caption{三代 FlashAttention 的时间结构：FA1 的 softmax 串行夹在两次 GEMM 之间且 warp 间需要归约；FA2 靠 warp 级 split-Q 消灭归约、靠 seqlen(Q) 维并行喂饱 SM、靠未归一化 $O$ 砍掉逐块对角修正；FA3 用 warp specialization + pingpong 让 softmax 与 GEMM 在不同运算单元上重叠，并引入 FP8。}
+\label{fig:15-2}
 \end{figure}
 
 \section{性能分析}

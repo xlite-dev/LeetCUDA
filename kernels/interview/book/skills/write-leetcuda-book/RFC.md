@@ -174,12 +174,14 @@
 | FIG-13-3 | 13 | mbarrier-statemachine | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-13-3-mbarrier/ |
 | FIG-14-1 | 14 | tma-box | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-14-1-tma-box/ |
 | FIG-14-2 | 14 | producer-consumer-timeline | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-14-2-pc-timeline/ |
-| FIG-15-1 | 15 | attention-block-pipeline | B→D（DefTruth 图解 FA） | 待 RFC-B | — |
-| FIG-16-1 | 16 | split-q-warp-layout | A→C1（README 已有 ASCII 底稿） | 占位 | — |
-| FIG-17-1 | 17 | fa2-dual-pipeline | A→C1 | 占位 | — |
-| FIG-18-1 | 18 | fa3-dual-consumer | A→C1 | 占位 | — |
-| FIG-19-1 | 19 | split-d-chunk | B→D（DefTruth FFPA） | 待 RFC-B | — |
-| FIG-19-2 | 19 | split-d-merge | B→D（同上） | 待 RFC-B | — |
+| FIG-15-1 | 15 | attention-block-pipeline | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-15-1-online-softmax/ |
+| FIG-15-2 | 15 | fa1-fa2-fa3-timeline | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-15-2-fa1-fa2-fa3/ |
+| FIG-16-1 | 16 | split-q-warp-layout | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-16-1-split-q-warp/ |
+| FIG-17-1 | 17 | fa2-dual-pipeline | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-17-1-dual-pipeline/ |
+| FIG-17-2 | 17 | mbarrier-topology | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-17-2-mbarrier-topo/ |
+| FIG-18-1 | 18 | fa3-dual-consumer | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-18-1-fa3-dual-consumer/ |
+| FIG-19-1 | 19 | split-d-chunk | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-19-1-split-d-chunk/ |
+| FIG-19-2 | 19 | split-d-merge | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-19-2-two-stage-merge/ |
 | FIG-20-1 | 20 | layout-coord-mapping | B→D（reed/竹熙佳处） | 正式 | figures/drawio/fig-20-1-colex/
 | FIG-20-2 | 20 | mode-grouping | B→D（竹熙佳处） | 待 RFC-B | — |
 | FIG-21-1 | 21 | tv-layout-grid | B→D（竹熙佳处 tiled copy） | 待 RFC-B | — |

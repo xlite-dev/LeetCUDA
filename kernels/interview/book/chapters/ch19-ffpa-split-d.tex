@@ -610,73 +610,15 @@ $\times$ 2 个 N-warp，$R_O$ 降到 $D/4$）的原因，也是本章这版 kern
 
 \begin{figure}[htbp]
 \centering
-\begin{lstlisting}[style=console]
-  FIG-19-1  Split-D: D-dim chunking (D = 512 -> C = 8 chunks of 64)
-
-  Q [Br=64, D=512]           K [Bc=64, D=512]          V [Bc=64, D=512]
-  +----+----+-- ... --+      +----+----+-- ... --+      +----+----+-- ... --+
-  | c0 | c1 | ... c7 |      | c0 | c1 | ... c7 |      | c0 | c1 | ... c7 |
-  +----+----+-- ... --+      +----+----+-- ... --+      +----+----+-- ... --+
-     |    |                chunk c = 64 f16 wide = 1 SW128 atom
-     v    v
-  +------------------------------------------------------+
-  | Phase 1  QK^T : S[64,64] += Q(c) @ K(c)^T  for c=0..7|  <- one shared
-  |         (exact reduction over chunks, no weighting)  |     S acc
-  +------------------------------------------------------+
-                              |
-  +------------------------------------------------------+
-  | Phase 2  softmax(S):  m, l, p = exp2(S*scale - m)    |  <- D-independent
-  +------------------------------------------------------+
-                              |
-  +------------------------------------------------------+
-  | Phase 3  PV :  O_c[64,64] *= rho ;  O_c += P @ V(c)  |  <- C independent
-  |         for c = 0..7   (same rho broadcast to all c) |     O accs
-  +------------------------------------------------------+
-                              |
-  Epi      O_c /= l  for c = 0..7  -> store [64,64] tiles at (q_tile, c)
-
-  pipeline slots (TMA version, Sk = Sv = 2):
-     idx = kv_tile * C + c ;  stage = idx % Sk ;  phase = (idx / Sk) & 1
-     D=128 (C=2): phase period 1 kv_tile | D=192 (C=3): period 2 (gcd(C,Sk)=1)
-\end{lstlisting}
-\caption{Split-D 的 D 维切分：Q/K/V 各切成 $C = D/64$ 个 64 宽 chunk（一个 chunk
-等于一个 SW128 swizzle atom 宽）。QK 的 chunk 累加写进同一块 $S[64,64]$；PV 的每个
-chunk 写进自己的 $O_c[64,64]$，共用同一个 $\rho$ 与 $\ell$；流水槽位由扁平计数器
-$\mathrm{idx}$ 导出。（占位，RFC-H 升级为 drawio 图）}
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-19-1-split-d-chunk/fig-19-1.png}
+\caption{Split-D 的 D 维切分：Q/K/V 各切成 $C = D/64$ 个 64 宽 chunk（一个 chunk 等于一个 SW128 swizzle atom 宽）。QK 的 chunk 累加写进同一块 $S[64,64]$；PV 的每个 chunk 写进自己的 $O_c[64,64]$，共用同一个 $\rho$ 与 $\ell$；流水槽位由扁平计数器 $\mathrm{idx}$ 导出。}
 \label{fig:19-1}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
-\begin{lstlisting}[style=console]
-  FIG-19-2  Two-stage merge across D chunks
-
-  stage 1: exact reduction inside ONE dot product  (QK^T, no weights)
-     S_ij = sum_c S_ij^(c)          e.g. C = 3 (D = 192)
-     S^(0) = Q0 K0^T   S^(1) = Q1 K1^T   S^(2) = Q2 K2^T
-                \           |            /
-                 \          |           /      acc += (mma.sync chain)
-                  +---------+----------+
-                            v
-                     S[64,64]  (complete score tile, D-free)
-
-  stage 2: online softmax over KV tiles -- rho broadcast to ALL C accs
-     for kv_tile t:                         rho_t = exp(m_{t-1} - m_t)
-        O_0 *= rho_t ; O_0 += exp(S - m_t) V_0     (columns   0.. 63)
-        O_1 *= rho_t ; O_1 += exp(S - m_t) V_1     (columns  64..127)
-        O_2 *= rho_t ; O_2 += exp(S - m_t) V_2     (columns 128..191)
-        l_t = rho_t * l_{t-1} + rowsum(exp(S - m_t))   (ONE l per row)
-     after last tile:
-        O_c /= l_T   for all c   ->  concat = full softmax(QK^T/sqrt(D)) V
-
-  contrast - split-KV (ch18) needs a SECOND max: a=exp(m_0-m), b=exp(m_1-m)
-  contrast - split-D     has NO second max:    rho is shared by construction
-\end{lstlisting}
-\caption{跨 chunk 的两阶段合并。第一阶段：QK${}^\top$ 的 chunk 求和是同一
-点积内部加数的分组，\textbf{精确且无需权重}；第二阶段：$PV$ 的每个 chunk 各持一个
-输出列段累加器，跨 KV tile 的在线 rescale 因子 $\rho_t$ \textbf{必须广播到全部
-$C$ 个累加器}（定理~\ref{eq:19-invariant} 的不变量），$\ell$ 全程只有一份。
-（占位，RFC-H 升级为 drawio 图）}
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-19-2-two-stage-merge/fig-19-2.png}
+\caption{跨 chunk 的两阶段合并。第一阶段：QK${}^\top$ 的 chunk 求和是同一点积内部加数的分组，\textbf{精确且无需权重}；第二阶段：$PV$ 的每个 chunk 各持一个输出列段累加器，跨 KV tile 的在线 rescale 因子 $\rho_t$ \textbf{必须广播到全部 $C$ 个累加器}（定理~\ref{eq:19-invariant} 的不变量），$\ell$ 全程只有一份。}
 \label{fig:19-2}
 \end{figure}
 

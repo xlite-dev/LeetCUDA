@@ -366,46 +366,8 @@ GEMM 以喂满 Tensor Core。本 kernel 的 consumer 用\textbf{同步}的
 
 \begin{figure}[htbp]
 \centering
-\begin{lstlisting}[style=console]
-  FIG-18-1  FA3 dual-consumer role map (384 threads, Br=Bc=64)
-
-  ---- WG0 [0,127]  producer (single thread submits TMA) ----------------
-  P0  TMA Q  -> full_Q (once, 257 = 2 WG x 128 + 1)
-  P2  for tile = 0..Tc-1:
-        cid = tile & 1             K first ...
-        K[tile] (Sk=1) or K[tile+2] (Sk>=2) -> K_smem[cid][stg]
-                                  waits empty_K[cid][stg] -> full_K[cid][stg]
-        V[tile]                      -> V_smem[cid]
-                                  waits empty_V[cid]      -> full_V[cid]
-
-  --- WG1 [128,255] consumer_id=0 ---+--- WG2 [256,383] consumer_id=1 ----
-      tiles 0,2,4,...  (ceil Tc/2)   |    tiles 1,3,5,...  (floor Tc/2)
-  +--------------------------------+ | +--------------------------------+
-  | C0: 128x arrive empty_K[0][s]  | | | C0: 128x arrive empty_K[1][s]  |
-  |     128x arrive empty_V[0]     | | |     128x arrive empty_V[1]     |
-  | wait full_Q  (shared, 257)     | | | wait full_Q  (shared, 257)     |
-  | loop local_iter = 0,1,...      | | | loop local_iter = 0,1,...      |
-  |   wait full_K[0][it % Sk]      | | |   wait full_K[1][it % Sk]      |
-  |   QK^T  (ldmatrix + HMMA)      | | |   QK^T  (ldmatrix + HMMA)      |
-  |     -> arrive empty_K[0][..]   | | |     -> arrive empty_K[1][..]   |
-  |   softmax (m,l; regs only)     | | |   softmax (m,l; regs only)     |
-  |   wait full_V[0]               | | |   wait full_V[1]               |
-  |   PV   (R_S reuse + X2_T)      | | |   PV   (R_S reuse + X2_T)      |
-  |     -> arrive empty_V[0]       | | |     -> arrive empty_V[1]       |
-  |   rescale R_D  (Oacc partial)  | | |   rescale R_D  (Oacc partial)  |
-  +--------------------------------+ | +--------------------------------+
-                 \                   |                  /
-                  \-- __syncthreads  |  __syncthreads --
-                     (all TMAs landed -> K/V smem lifetime over)
-  WG2: (R_D, m1, l1) -> smem scratch (indexed by wg_tid)
-       __syncthreads()
-  WG1: read scratch -> merge  m=max(m0,m1), a=e^{m0-m}, b=e^{m1-m}
-       l = a*l0 + b*l1 ;  Oacc = a*Oacc0 + b*Oacc1 ;  O = Oacc/l -> gmem
-\end{lstlisting}
-\caption{FA3 双 consumer 的角色图：WG0 单线程提交 TMA，并按
-$\mathrm{cid} = \mathrm{tile}\,\&\,1$ 把 K/V 投递到两个独立 bank；WG1/WG2
-各自遍历一半 KV tile、维护独立 partial 与独立流水；收尾在 smem scratch 上
-做一次稳定归并后由 WG1 写出。（占位，RFC-H 升级为 drawio 角色图）}
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-18-1-fa3-dual-consumer/fig-18-1.png}
+\caption{FA3 双 consumer 的角色图：WG0 单线程提交 TMA，并按 $\mathrm{cid} = \mathrm{tile}\,\&\,1$ 把 K/V 投递到两个独立 bank；WG1/WG2 各自遍历一半 KV tile、维护独立 partial 与独立流水；收尾在 smem scratch 上做一次稳定归并后由 WG1 写出。}
 \label{fig:18-1}
 \end{figure}
 
