@@ -71,19 +71,8 @@ sector 数。三种典型情形（图 ch03-1）：
 
 \begin{figure}[htbp]
 \centering
-\begin{lstlisting}[style=console]
-   一条 warp 访存指令的合并过程 (fp32, 每格 4B, 一个 sector 8 格)
-   -------------------------------------------------------------
-   coalesced:  lane0..31 访问连续 128B
-     [sector0][sector1][sector2][sector3]     S=4, 有效率 100%
-   stride=2:   访问 0,2,4,..,62 号元素, 跨度 256B
-     [xx.xxxx.][xx.xxxx.]...                   S=8, 有效率 50%
-   大 stride:  每线程各落一个 sector
-     [x.......][x.......]... x32              S=32, 有效率 3%
-   -------------------------------------------------------------
-   事务粒度 = 32B sector; 无用字节照样从 HBM 搬上来
-\end{lstlisting}
-\caption{coalescing 与非合并访存对比}
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-3-1-coalescing/fig-3-1.png}
+\caption{coalescing 与非合并访存对比（fp32，每格 4B，一个 sector 8 格 32B）：coalesced 一条 指令落 4 个 sector 有效率 100\%；stride=2 落 8 个、50\%；大 stride 每线程各占一个 sector、仅 3\%——事务粒度是 32B sector，无用字节照样从 HBM 搬上来。}
 \label{fig:3-1}
 \end{figure}
 

@@ -156,8 +156,8 @@
 |---|---|---|---|---|---|
 | FIG-1-1 | 1 | mem-hierarchy | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-1-1-mem-hierarchy/ |
 | FIG-1-2 | 1 | roofline | C1 新建（drawio 折线，2026-09-14） | 正式 | figures/drawio/fig-1-2-roofline/ |
-| FIG-2-1 | 2 | shuffle-butterfly | A→C1 | 占位 | — |
-| FIG-3-1 | 3 | coalescing | A→C1 | 占位 | — |
+| FIG-2-1 | 2 | shuffle-butterfly | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-2-1-shuffle-butterfly/ |
+| FIG-3-1 | 3 | coalescing | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-3-1-coalescing/ |
 | FIG-4-1 | 4 | online-softmax-flow | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-4-1-softmax-flow/ |
 | FIG-5-1 | 5 | merge-states | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-5-1-merge-states/ |
 | FIG-7-1 | 7 | bank-conflict-padding | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-7-1-bank-pad/ |
