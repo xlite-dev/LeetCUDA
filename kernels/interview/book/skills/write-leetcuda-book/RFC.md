@@ -91,20 +91,20 @@
 - [x] E1 ch15 Attention 数学与 FA 原理（新写） | flash_attn.cuh L5-110 头注释+FA2/FA3 论文 | 无宏 | 无独立 kernel 测试（公式推导章；引用 ch04/05 测试） | FIG-15-1 attention 分块流水（2026-09-11）
 - [x] E2 ch16 FA2 Split-Q+MMA | flash_attn.cuh L5-790 | 无宏 | ch16_fa2_mma.cu ← test_flash_attn@L1895 | FIG-16-1 split-Q warp 布局（2026-09-11）
 - [x] E3 ch17 FA2 TMA+WS | flash_attn.cuh L792-1440（宏块 L791-2194 内） | `NOTES_V2_ENABLE_TMA_MMA_WS` | ch17_fa2_tma_ws.cu ← test_flash_attn_tma_mma_ws_impl@L2041 | FIG-17-1 双流水时序（2026-09-11）
-- [ ] E4 ch18 FA3 双 Consumer | flash_attn.cuh L1441-2192（同宏块） | 同上+setmaxnreg 宏说明 | ch18_fa3.cu ← test_flash_attn_3_tma_ws_impl@L2318 | FIG-18-1 双 consumer 角色
-- [ ] E5 ch19 FFPA Split-D | ffpa_attn.cuh L1-641 | `NOTES_V2_ENABLE_CUTE`(+TMA_MMA_WS) | ch19_ffpa_split_d.cu ← bench_ffpa.cu 内 test 逻辑抽取 | FIG-19-1 D-chunk 切分、FIG-19-2 两阶段合并
-- [ ] E-验收 Part III 编译+测试+每章 DoD 留档；ch15 公式全部独立推导核验（F3）
+- [x] E4 ch18 FA3 双 Consumer | flash_attn.cuh L1441-2192（同宏块） | 同上+setmaxnreg 宏说明 | ch18_fa3.cu ← test_flash_attn_3_tma_ws_impl@L2318 | FIG-18-1 双 consumer 角色（2026-09-14）
+- [x] E5 ch19 FFPA Split-D | ffpa_attn.cuh L1-641 | `NOTES_V2_ENABLE_CUTE`(+TMA_MMA_WS) | ch19_ffpa_split_d.cu ← bench_ffpa.cu 内 test 逻辑抽取（8 PASS） | FIG-19-1 D-chunk 切分、FIG-19-2 两阶段合并（2026-09-14）
+- [x] E-验收 Part III 编译+测试+每章 DoD 留档；ch15 公式全部独立推导核验（F3）（2026-09-14：全书 324 页零错误，测试 139 PASS）
 
 ## 8. RFC-F Part IV CuTe 篇（ch20-26，原理章 F1-F4 先行）
 
-- [ ] F1 ch20 CuTe Layout 基础与代数 | 新写+对照 hgemm.cuh L788-820 | `NOTES_V2_ENABLE_CUTE` | ch20_layout.cu（host 端 CuTe 布局断言：compose/inverse/product/divide 坐标一致性） | FIG-20-1 坐标映射、FIG-20-2 mode 分组
-- [ ] F2 ch21 CuTe Tensor 与 TiledCopy | 新写+对照 g2s/s2r copy | 同上 | ch21_tiled_copy.cu（host 端 TV-layout 断言） | FIG-21-1 thread×value 网格
-- [ ] F3 ch22 CuTe TiledMMA 与 fragment | 新写+对照 FFPAAttnSplitDCuTeTraits L31-79 | 同上 | ch22_tiled_mma.cu（host 端 partition 一致性断言） | FIG-22-1 TiledMMA partition
-- [ ] F4 ch23 CuTe Swizzle 与 TMA | 新写+对照 SW128 atom 用法 | 同上 | ch23_swizzle_tma.cu（swizzle 位运算 host 断言；TMA 部分编译级） | FIG-23-1 SW128 atom 排布
-- [ ] F5 ch24 CuTe HGEMM | hgemm.cuh L718-1427（宏块 L779-1427 内） | 同上 | ch24_hgemm_cute.cu ← test_hgemm_cute@L1568 | FIG-24-1 手写 vs CuTe 对照表（核心资产）
-- [ ] F6 ch25 CuTe FA 三实现对照 | flash_attn.cuh L2196-3488（5 对宏块） | `NOTES_V2_ENABLE_CUTE`+`TMA_MMA_WS` | ch25_fa_cute.cu ← test@cute 三函数 L157/L277/L387 | FIG-25-1 三实现结构对照
-- [ ] F7 ch26 CuTe FFPA Split-D | ffpa_attn.cuh（重点 L31-79+L81/L380 两 kernel） | 同上 | ch26_ffpa_cute.cu ← bench_ffpa.cu（CuTe 版 test） | FIG-26-1 双 TiledMma 数据流
-- [ ] F-验收 Part IV 编译+测试+每章 DoD 留档；F1-F4 完成前不开 F5-F7
+- [x] F1 ch20 CuTe Layout 基础与代数 | 新写+对照 hgemm.cuh L788-820 | `NOTES_V2_ENABLE_CUTE` | ch20_layout.cu（host 端 CuTe 布局断言：compose/inverse/product/divide 坐标一致性） | FIG-20-1 坐标映射、FIG-20-2 mode 分组
+- [x] F2 ch21 CuTe Tensor 与 TiledCopy | 新写+对照 g2s/s2r copy | 同上 | ch21_tiled_copy.cu（host 端 TV-layout 断言，6 case） | FIG-21-1 thread×value 网格
+- [x] F3 ch22 CuTe TiledMMA 与 fragment | 新写+对照 FFPAAttnSplitDCuTeTraits L31-79 | 同上 | ch22_tiled_mma.cu（host 端 partition 一致性断言，6 case） | FIG-22-1 TiledMMA partition
+- [x] F4 ch23 CuTe Swizzle 与 TMA | 新写+对照 SW128 atom 用法 | 同上 | ch23_swizzle_tma.cu（swizzle 位运算 host 断言；TMA 部分编译级，7 case） | FIG-23-1 SW128 atom 排布
+- [x] F5 ch24 CuTe HGEMM | hgemm.cuh L718-1427（宏块 L779-1427 内） | 同上 | ch24_hgemm_cute.cu ← test_hgemm_cute@L1568（F16/F32 双组 PASS） | FIG-24-1 手写 vs CuTe 对照表（核心资产）、FIG-24-2 流水时序
+- [x] F6 ch25 CuTe FA 三实现对照 | flash_attn.cuh L2196-3488（5 对宏块） | `NOTES_V2_ENABLE_CUTE`+`TMA_MMA_WS` | ch25_fa_cute.cu（3 PASS） | FIG-25-1 三实现结构对照
+- [x] F7 ch26 CuTe FFPA Split-D | ffpa_attn.cuh（重点 L31-79+L81/L380 两 kernel） | 同上 | ch26_ffpa_cute.cu ← bench_ffpa.cu（CuTe 版 test，10 项 PASS） | FIG-26-1 双 TiledMma 数据流
+- [x] F-验收 Part IV 编译+测试+每章 DoD 留档；F1-F4 完成前不开 F5-F7（2026-09-14：全书 324 页零错误，139 PASS；RFC-K 用户评审驱动的 CuTe 风格重构+勘误融入+drawio 图升级进行中）
 
 ## 9. RFC-G 性能数据汇总（降级为汇总任务；数据来自各章 DoD 第 5 条）
 

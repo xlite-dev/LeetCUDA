@@ -1,4 +1,706 @@
-% ch21-cute-tensor-tiledcopy.tex — 骨架（RFC-0.3），撰写任务见 RFC.md F2
+% ch21-cute-tensor-tiledcopy.tex — CuTe（二）：Tensor 与 TiledCopy（RFC-F F2，2026-09-11）
+% \url 由 book.tex 的 hyperref 提供；单章独立编译时降级为可断行的 \ttfamily
+% （逐字符插入 \allowbreak，避免长 URL 造成 Overfull \hbox）
+\makeatletter
+\providecommand{\urlchbrk}[1]{\@tfor\next:=#1\do{\next\allowbreak}}
+\makeatother
+\providecommand{\url}[1]{{\ttfamily\urlchbrk{#1}}}
 \chapter{CuTe（二）：Tensor 与 TiledCopy}\label{ch:21}
 
-本章待撰写。源码区间：新写，对照 g2s/s2r copy 代码；执行卡片：RFC.md F2；章节模板：\texttt{chapters/\_template.tex}（10 节结构 + DoD 八条）。
+\section{本章导读}
+
+第~\ref{ch:20}~章把 layout 变成了一个可运算的对象：坐标怎么映到线性 offset、
+两个布局怎么复合、怎么切分，全部由代数回答。但一个真实的 kernel 里还有第二类
+问题——\textbf{数据放在哪、由谁来搬}。以第~\ref{ch:12}~章的手写 HGEMM 为例，
+$128\times32$ 的 A tile 要经过三次搬运（gmem$\to$smem 的 \texttt{cp.async}、
+smem$\to$寄存器的 \texttt{ldmatrix}、epilogue 的寄存器$\to$smem$\to$gmem），
+每一次都有一份「哪个线程搬哪几个元素」的映射。这些映射散落在
+\texttt{idx} 算术、lane 地址表与 shuffle 编排里，改一个 tile 尺寸就要重新推导。
+
+本章引入 CuTe 的两个一等公民：\textbf{Tensor}（把「数据指针 $+$ 布局」绑成
+一个对象）与 \textbf{TiledCopy}（把「一个 copy 原子如何被多线程铺开」形式化为
+(thread, value) 二维网格）。四章路线中，本章位于第~\ref{ch:20}~章（layout
+代数）与第~\ref{ch:22}~章（TiledMMA）之间：本章讲\textbf{数据的搬运}，
+第~\ref{ch:22}~章讲\textbf{计算的分区}，第~\ref{ch:23}~章把两者接到硬件
+特性（Swizzle 与 TMA）上。
+
+\textbf{前置章节}：第~\ref{ch:20}~章（compose/divide/product 与
+\texttt{zipped\_divide}）、第~\ref{ch:11}~章（MMA fragment 与 ldmatrix）、
+第~\ref{ch:12}~章（cp.async 与多级流水）。\textbf{源码区间}：
+hgemm.cuh~L821--1196——Phase~7c-1 的 CuTe HGEMM kernel 本体（第~\ref{ch:24}~章
+讲它的算法流程，本章只抽取其中的 Tensor/TiledCopy 用法）；需要时引用
+L1197--1427 的 launch wrapper 中拷贝类型的构造段（G2S~L1303--1318、
+S2R~L1319--1332、R2S~L1355--1362、S2G~L1364--1377），其中 L1232--1270 的
+tile 尺寸与 SmemLayout 声明归第~\ref{ch:23}~章。\textbf{编译宏}：
+\texttt{NOTES\_V2\_ENABLE\_CUTE}（需要 CUTLASS 头文件；sm80+ 均可编）。
+配套最小测试 \texttt{book/tests/ch21\_tiled\_copy.cu}：host 端 TV-layout
+断言，不启动 kernel。预计篇幅约 13 页。
+
+\section{问题与动机}
+
+先看一次「搬运映射」的完整账目。第~\ref{ch:12}~章 swizzle 版 HGEMM 的主循环里，
+每个线程要搬到 smem 的 A 数据、要从 smem 读进寄存器的 A/B fragment、
+epilogue 里要写回 gmem 的 C 元素，各自都有一份映射：
+
+\begin{enumerate}
+  \item \textbf{G$\to$S}：128 个线程各搬 8 个 half（一条 128-bit \texttt{cp.async}）。
+        「线程 $t$ 搬哪 8 个」需要手写：$m = t/4$、$n = 8\,(t \bmod 4) + v$；
+  \item \textbf{S$\to$R}：\texttt{ldmatrix.x4} 的 lane 地址表——32 个 lane 各提供
+        一行（或一列）的 smem 地址，硬件把 4 个 $8\times8$ 矩阵分发到寄存器；
+        「哪个 lane 指哪一行」是与 MMA fragment 布局绑定的；
+  \item \textbf{R$\to$S$\to$G}：accumulator fragment 在寄存器里的分布由
+        m16n8k16 的 CLayout 决定，与「gmem 上连续」无关；手写版要用
+        \texttt{\_\_shfl\_sync} 跨 lane 收齐再写。
+\end{enumerate}
+
+三份映射必须彼此一致，而且它们\textbf{不是同一个函数}：G$\to$S 关心的是
+gmem 合并访问与 smem 冲突，S$\to$R 关心的是 Tensor Core 的 fragment 约定，
+R$\to$G 关心的是输出的写回形状。第~\ref{ch:11}、\ref{ch:12}~章的做法是
+「每个映射单独手写一遍，出错了靠对拍定位」。
+
+\begin{sloppypar}
+CuTe 的做法是把这三件事统一成\textbf{同一个抽象}：一次拷贝 $=$ 一个
+\emph{copy 原子}（「一个线程搬多少元素、怎么排」）$\times$ 一个
+\emph{thread-value 划分}（「第几个线程、第几个值」对应数据的哪个坐标）。
+TiledCopy 就是这个二元组的类型；\texttt{partition\_S} 与
+\texttt{partition\_D} 负责「按划分把源/目的 Tensor 切开」，
+\texttt{cute::copy} 负责「逐元素执行」，而两者的地址在编译期就已经折叠成
+常量。本章要回答的四个问题：
+\end{sloppypar}
+
+\begin{itemize}
+  \item \textbf{Tensor 是什么}：为什么指针必须与 layout 一起传递（4.1 节）；
+  \item \textbf{(thread, value) 怎么表达}：TV-layout 的定义、对偶与守恒律
+        （3.2--3.4 节），以及它与第~\ref{ch:20}~章的 MN-layout 的关系；
+  \item \textbf{TiledCopy 怎么来}：显式给 Thr/Val，或由 \texttt{TiledMMA}
+        反推（\texttt{make\_tiled\_copy\_A/B/C}）（4.3--4.5 节）；
+  \item \textbf{retile 为什么不需要搬数据}：零拷贝重标记的数学（3.6 节）。
+\end{itemize}
+
+\section{数学原理}
+
+\subsection{Tensor：布局与引擎}
+
+第~\ref{ch:20}~章的 layout 只回答「坐标 $\to$ offset」，它不知道 offset 要加到
+哪块内存上。CuTe 用 \textbf{Tensor} 把两者绑在一起：
+
+\begin{equation}
+  \mathrm{Tensor} = (\text{Engine},\ \text{Layout}), \qquad
+  T(\mathbf{c}) = \mathrm{Engine}\bigl(:, \mathrm{Layout}(\mathbf{c})\bigr) ,
+  \label{eq:21-tensor}
+\end{equation}
+
+其中 Engine 是「内存 $+$ 访问方式」：\texttt{make\_gmem\_ptr(p)} 表示从全局
+内存地址 $p$ 起算、\texttt{make\_smem\_ptr(p)} 表示 smem、\texttt{make\_rmem\_ptr}
+表示寄存器、\texttt{make\_identity\_tensor} 返回坐标本身（本章测试用它做断言）。
+\texttt{make\_tensor(ptr, shape, stride)} 是 hgemm CuTe 版里最常见的写法
+（hgemm.cuh~L842--844）：\texttt{A[M][K]} 行主序存储，等价于
+$\mathrm{Layout} = (M,K){:}(K,1)$。注意式~\eqref{eq:21-tensor} 里的 layout 可以
+是任意复杂结构——只要能算出 offset，Tensor 就能寻址；这一点是后面
+\texttt{partition\_S} 返回「嵌套 mode 的 Tensor」仍然可用的原因。
+
+Tensor 上最重要的两个操作在本章反复出现：
+
+\begin{itemize}
+  \item \textbf{切片/slice}：\texttt{tensor(coord)} 取单个元素，
+        \texttt{tensor(\_, \_, k)} 用占位符 \texttt{\_} 保留某个 mode
+        （得到低一维的视图）——hgemm 里
+        \texttt{gA(\_, \_, 0)} 表示「第 0 个 K tile 的 $B_M\times B_K$ 视图」；
+  \item \textbf{局部切片/local\_tile}：\texttt{local\_tile(A, make\_tile(BM,BK),
+        make\_coord(iy, \_))} 把大 Tensor 按 tile 切出当前 CTA 需要的那一块，
+        同时\textbf{保留未切出的 remainder mode}——它的实现就是第~\ref{ch:20}~章
+        的 \texttt{zipped\_divide}（L852--854 的 gA/gB/gD）。
+\end{itemize}
+
+\subsection{(thread, value) 网格：TV-layout}
+
+一次由 $P$ 个线程执行、每线程搬 $V$ 个值的拷贝，本质上是把 tile 的每个坐标
+指派给一个二元组 $(t,v)\in[0,P)\times[0,V)$。CuTe 把这个指派本身写成一个
+layout，称为 \textbf{TV-layout}：
+
+\begin{equation}
+  \mathrm{TV}:\ (t,v) \longmapsto (\text{tile 内坐标}), \qquad
+  \text{逆映射 } \mathrm{MN}:\ (\text{坐标}) \longmapsto (t,v) .
+  \label{eq:21-tv}
+\end{equation}
+
+TV 与 MN 是\textbf{同一个划分的两种视角}：写 kernel 时我们关心「第 $t$ 个线程
+拿哪几个值」（TV），写布局时我们关心「坐标 $(m,n)$ 落在谁手上」（MN）。
+CuTe 两个方向都提供，并且用同一个 layout 表示：
+
+\begin{equation}
+  \mathrm{Layout\_TV} \;=\; \bigl(\mathrm{Layout\_MN}\bigr)^{-1}
+  \ \text{（右逆）}, \qquad
+  \mathrm{Tiler} = \mathrm{product\_each}\bigl(\mathrm{shape}(\mathrm{Layout\_MN})\bigr) .
+  \label{eq:21-mn-tv}
+\end{equation}
+
+\subsection{raked\_product：从 Thr/Val 到 MN}
+
+\texttt{make\_tiled\_copy(atom, ThrLayout, ValLayout)} 的两个人肉参数是
+\textbf{MN$\to$thr/val} 的两个函数（注意方向：它们把坐标映到线程号/值号，
+不是反过来）：
+
+\begin{align}
+  \mathrm{ThrLayout}&:\ (i,j) \longmapsto t = 4i + j, \qquad
+  \mathrm{ValLayout}:\ (i,j) \longmapsto v = j , \label{eq:21-g2s-params}
+\end{align}
+
+式~\eqref{eq:21-g2s-params} 就是 hgemm 的 G$\to$S 参数
+（hgemm.cuh~L1313--1317：\texttt{ThrLayout\ =\ (32,4){:}(4,1)}、
+\texttt{ValLayout\ =\ (1,8)}）。CuTe 把它们合成一个 MN 布局
+\begin{equation}
+  \mathrm{Layout\_MN} = \mathrm{raked\_product}\bigl(
+    \mathrm{ThrLayout},\ \mathrm{ValLayout}\bigr)
+  \ \cong\ \bigl((32,4),(1,8)\bigr){:}\bigl((4,1),(1,1)\bigr),
+  \label{eq:21-raked}
+\end{equation}
+其中 \texttt{raked}（交错）指：同一个线程的 $V$ 个值\textbf{沿坐标连续排列}，
+而不是把 tile 先按线程切成大块、再在线程内切小块。式~\eqref{eq:21-raked} 的
+一句话版本就是 kernel 注释里的「128 个线程，每线程搬运 1$\times$8=8 个 half」
+（hgemm.cuh~L1308--1309）。把式~\eqref{eq:21-raked} 按坐标写开：坐标 $(i,j')$
+（$i\in[0,32)$、$j'\in[0,32)$）满足 $j' = 8j+v$，于是
+
+\begin{equation}
+  \boxed{\ t = 4i + j = 4i + \Bigl\lfloor \frac{j'}{8}\Bigr\rfloor,
+  \qquad v = j' \bmod 8\ }
+  \label{eq:21-g2s-mn}
+\end{equation}
+
+反过来（线程视角，本章测试 case~A 逐点核对的那条）：
+\begin{equation}
+  i = \Bigl\lfloor \frac{t}{4}\Bigr\rfloor,\qquad
+  j' = 8\,(t \bmod 4) + v .
+  \label{eq:21-g2s-tv}
+\end{equation}
+
+\textbf{读法}：线程 $t$ 负责第 $\lfloor t/4\rfloor$ 行的第 $8(t\bmod 4)$
+到 $8(t\bmod 4)+7$ 列——连续 8 个元素，正好对齐一条 128-bit \texttt{cp.async}。
+这就是「G$\to$S 划分」的一句话结论，它在手写版里是两行 $\mathrm{idx}$ 算术，
+在 CuTe 里是式~\eqref{eq:21-raked} 的类型。
+
+\subsection{守恒律与重复因子}
+
+由式~\eqref{eq:21-mn-tv} 右逆的定义，TV 布局天然把
+$P\times V$ 个 $(t,v)$ 映射到 Tiler 上；当它是双射时立刻得到一条守恒律：
+
+\begin{equation}
+  P \times V = \bigl|\mathrm{Tiler}\bigr| = \prod_i \mathrm{size}_i .
+  \label{eq:21-conserve}
+\end{equation}
+
+G$\to$S 的实测：$P\times V = 128\times 8 = 1024 = 32\times 32 = |\mathrm{Tiler}|$
+（3.3 节的 Thr/Val 恰好把 $32\times32$ 的 tile 铺满一层）。S$\to$R 的实测则
+不同：\texttt{make\_tiled\_copy\_A} 得到的 tiler 是
+$(\mathrm{tile\_size}_0, \mathrm{tile\_size}_2) = (32,16)$，只有 512 个元素，
+而 $P\times V = 128\times 8 = 1024$——\textbf{2 倍的重复因子}。原因不是 bug：
+$2\times2$ 的 warp 排布里，两个 N 方向的 warp 需要\textbf{同一份} A fragment，
+于是同一块 A 数据被两组线程各读一遍。一般地：
+
+\begin{equation}
+  \text{A 的重复因子} = \#\{\text{N 方向 warp}\},\qquad
+  \text{B 的重复因子} = \#\{\text{M 方向 warp}\} .
+  \label{eq:21-dup}
+\end{equation}
+
+式~\eqref{eq:21-dup} 是后面理解 fragment 寄存器占用的关键：本章测试 case~E
+对 A 拷贝的 128$\times$32 tile 做覆盖统计，实测每个元素恰好被 2 个
+(thread, value) 对覆盖（$\mathrm{multi}=8192$ 个覆盖点、$\mathrm{once}$ 结构
+$4096/2$），与式~\eqref{eq:21-dup} 完全一致。
+
+\subsection{partition 的数学}
+
+\texttt{partition\_S}/\texttt{partition\_D} 做的事情可以一句话写完：把
+\textbf{数据 Tensor 按 Tiler 切块}（第~\ref{ch:20}~章的
+\texttt{zipped\_divide}），再把每块的内部坐标交给 copy 原子的 TV 布局：
+
+\begin{equation}
+  \mathrm{partition}(T) \;=\;
+  \mathrm{tile2thrfrg}\Bigl(
+    \mathrm{zipped\_divide}(T,\ \mathrm{Tiler}),
+    \ \mathrm{right\_inverse}(\mathrm{AtomLayoutRef}) \circ \mathrm{AtomLayout}_{S/D}
+  \Bigr),
+  \label{eq:21-partition}
+\end{equation}
+
+其中后半段 $\mathrm{right\_inverse}(\mathrm{Ref})\circ\mathrm{Layout}_{S/D}$
+是「原子内部的源/目的重排」——它保证 \texttt{copy} 的第 $v$ 个源元素
+和第 $v$ 个目的元素是同一个逻辑值（例如 \texttt{cp.async} 的源是 8 个连续
+half，而 \texttt{ldmatrix} 的目的寄存器顺序与源地址顺序并不相同）。展开后
+每个线程拿到的视图形状是
+
+\begin{equation}
+  \mathrm{partition\_S}(T) = \bigl(\underbrace{V}_{V_\mathrm{atom}},\ 
+  (F_V, F_X),\ \underbrace{R_M, R_N, \dots}_{\text{remainder}}\bigr),
+  \label{eq:21-partition-shape}
+\end{equation}
+
+即「本线程的值 $\times$ 余下的重复次数 $\times$ 原 Tensor 未被切掉的 mode」。
+G$\to$S 在 $(128,32)$ 上的实测（本章测试 case~B）：每个线程
+$(8,\ 4,\ 1)$——8 个值、M 方向 4 个 tile 重复、K 方向 1 个；$8\times4\times1
+= 32$ 个元素，$\times 128$ 线程 $= 4096$ 恰好是整块 tile（双射）。
+
+\subsection{retile：零拷贝重标记与 upcast}
+
+\texttt{retile\_S}/\texttt{retile\_D} 解决一个具体的错位问题：MMA 的
+accumulator fragment $C$ 的逻辑形状是 $(\mathrm{MMA}, \mathrm{MMA}_M,
+\mathrm{MMA}_N)$（m16n8k16 下每线程 4 个值/原子实例），而 copy 想要的是
+「按 copy 原子的值顺序排列」的视图——两者\textbf{描述同一批寄存器}，只是
+索引方式不同。retile 就是这次重标记，它的定义式是
+
+\begin{equation}
+  \mathrm{retile}(T) = \mathrm{zipped\_divide}\Bigl(T,\
+    \mathrm{prepend}\bigl(\mathrm{product\_each}(\mathrm{shape}(f_{mn})),\ V\bigr)
+  \Bigr)\ \text{的坐标重排},
+  \label{eq:21-retile}
+\end{equation}
+
+其中 $f_{mn} = \mathrm{upcast}_{P\cdot V}\bigl(\mathrm{TV}^{-1}\bigr)$ 是
+「坐标 $\to$ 值编号」的布局。这里出现了本章唯一一个需要解释的
+运算：\textbf{upcast}$_N$。它把布局的定义域按「$N$ 个元素一组」合并——直觉是
+「把 $N$ 个 half 看成一个 uint128」：
+
+\begin{equation}
+  \mathrm{upcast}_2\bigl((8,32){:}(32,1)\bigr) = (8,16){:}(16,1),\qquad
+  \mathrm{downcast}_2\bigl((4,32){:}(32,1)\bigr) = (4,64){:}(64,1),
+  \label{eq:21-upcast}
+\end{equation}
+
+即连续方向的 extent 除以 $N$、其余 stride 除以 $N$（实测见本章测试 case~F）。
+它还有一条很好的性质：对复合布局分配——
+$\mathrm{upcast}_2\bigl(\mathrm{Swizzle}_{3,3,3}\circ L\bigr) =
+\mathrm{Swizzle}_{3,2,3}\circ \mathrm{upcast}_2(L)$
+（实测：\texttt{Sw<3,2,3> o \_0 o (32,16):(16,1)}），这也解释了为什么
+128-bit 拷贝的 smem 布局可以写成「half 版布局的 upcast」。
+
+\section{设计与实现}
+
+\subsection{kernel 骨架：Tensor 与 local\_tile}
+
+先看 hgemm CuTe 版 kernel 的开头——式~\eqref{eq:21-tensor} 的落地：
+
+\lstinputlisting[linerange={821-839},firstnumber=auto,breakatwhitespace=true,
+  title={hgemm.cuh L821-839（kernel 入口：模板参数、smem 与 CTA 级边界）}]{../hgemm.cuh}
+
+接着是数据视图与共享内存视图。注意 \texttt{local\_tile} 的第三个参数用了
+占位符 \texttt{\_}\,：它在 K 方向保留 remainder，于是 \texttt{gA} 是
+$(B_M, B_K, \lceil K/B_K\rceil)$ 的三维视图，之后 \texttt{gA(\_,\_,0)} 再
+取第 0 个 K tile——两级切片组合出「当前 CTA 的 A 分片」：
+
+\lstinputlisting[linerange={841-866},firstnumber=auto,breakatwhitespace=true,
+  title={hgemm.cuh L841-866（Tensor 视图、local\_tile 与 TiledMMA 的 fragment 分区）}]{../hgemm.cuh}
+
+\subsection{三种 TiledCopy 的构造方式}
+
+hgemm 里出现了三类搬运，它们的 TiledCopy 构造方式正好覆盖三种来源
+（表~\ref{tab:21-1}）：\textbf{显式给出 Thr/Val}（G$\to$S、S$\to$G：
+\texttt{make\_tiled\_copy}）、\textbf{由 TiledMMA 反推}（S$\to$R 用
+\texttt{make\_tiled\_copy\_A/B}、R$\to$S 用 \texttt{make\_tiled\_copy\_C}）。
+第二类的实现只有一行：
+
+\begin{align}
+  \mathrm{make\_tiled\_copy\_A}(\mathrm{atom}, \mathrm{mma}) &:=
+    \bigl(\mathrm{atom},\ \mathrm{mma.get\_layoutA\_TV()},\
+    (\mathrm{tile\_size}_0, \mathrm{tile\_size}_2)\bigr), \label{eq:21-mtca}\\
+  \mathrm{make\_tiled\_copy\_B}(\mathrm{atom}, \mathrm{mma}) &:=
+    \bigl(\mathrm{atom},\ \mathrm{mma.get\_layoutB\_TV()},\
+    (\mathrm{tile\_size}_1, \mathrm{tile\_size}_2)\bigr), \label{eq:21-mtcb}\\
+  \mathrm{make\_tiled\_copy\_C}(\mathrm{atom}, \mathrm{mma}) &:=
+    \bigl(\mathrm{atom},\ \mathrm{mma.get\_layoutC\_TV()},\
+    (\mathrm{tile\_size}_0, \mathrm{tile\_size}_1)\bigr). \label{eq:21-mtcc}
+\end{align}
+
+式~\eqref{eq:21-mtca}--\eqref{eq:21-mtcc} 是本章最实用的一条结论：
+\textbf{只要给了 TiledMMA，S$\to$R 的线程-值映射就是确定的}——因为 MMA 的
+fragment 布局本来就规定了每个线程持有哪些元素，S$\to$R 只是「把这些元素从
+smem 搬到寄存器」而已（第~\ref{ch:22}~章会看到 \texttt{get\_layoutA\_TV} 的
+构造过程）。对 hgemm 配置实测（CUTLASS v4.6.1）：
+$\mathrm{tile\_size} = (32,32,16)$，于是 A/B 拷贝的 Tiler $=(32,16)$、
+C 拷贝的 Tiler $=(32,32)$；后者恰好等于 SmemLayoutC 的
+$(k_{\mathrm{MmaPM}}, k_{\mathrm{MmaPN}}) = (32,32)$——这正是 kernel 注释
+（hgemm.cuh~L1355--1356）声称的「恰好匹配」，锚点核查确认无误（见勘误节）。
+
+\begin{table}[htbp]
+\centering
+\footnotesize
+\begin{tabular}{@{}lllll@{}}
+  \toprule
+  搬运 & 原子（Copy\_Atom） & Tiler & 构造方式 & kernel 行号 \\
+  \midrule
+  G$\to$S & \texttt{SM80\_CP\_ASYNC\_CACHEGLOBAL<uint128\_t>} & $(32,32)$
+    & 显式 Thr$(32,4){:}(4,1)$ / Val$(1,8)$ & L1303--1318 \\
+  S$\to$R (A) & \texttt{SM75\_U32x4\_LDSM\_N} & $(32,16)$
+    & \texttt{make\_tiled\_copy\_A} & L1319--1332 \\
+  S$\to$R (B) & \texttt{SM75\_U32x4\_LDSM\_N} & $(32,16)$
+    & \texttt{make\_tiled\_copy\_B} & L1319--1332 \\
+  R$\to$S (C) & \texttt{UniversalCopy<int>}（32-bit） & $(32,32)$
+    & \texttt{make\_tiled\_copy\_C} & L1362 \\
+  S$\to$G (C) & \texttt{UniversalCopy<uint128\_t>}（128-bit） & $(32,32)$
+    & 显式 Thr$(32,4){:}(4,1)$ / Val$(1,8)$ & L1371--1376 \\
+  \bottomrule
+\end{tabular}
+\caption{hgemm CuTe 版的五条搬运链路（表~21-1）。Tiler 为 CUTLASS v4.6.1
+下对 hgemm 配置（\texttt{SM80\_16x8x16}、EU-repeat $2\times2\times1$、
+\texttt{Tile<32,32,16>}）的实测值。}\label{tab:21-1}
+\end{table}
+
+\subsection{G$\to$S：显式 Thr/Val 与两级切片}
+
+G$\to$S 的 TiledCopy 类型定义在 launch wrapper 里（L1303--1318），kernel 里
+只做三件事：取本线程的 slice、对源（gmem）与目的（smem）各做一次 partition：
+
+\lstinputlisting[linerange={868-888},firstnumber=auto,breakatwhitespace=true,
+  title={hgemm.cuh L868-888（G2S 与 S2R 的 partition：同一份数据、两种划分）}]{../hgemm.cuh}
+
+这段代码是本章的「一图胜千言」：\textbf{同一个} \texttt{sA} Tensor 被两种
+TiledCopy 各分区一次——\texttt{tAsA\_copy} 是 G$\to$S 的视角
+（$(V,4,1,k_{\mathrm{Stage}})$），\texttt{tAsA} 是 S$\to$R 的视角
+（$(V,4,2,k_{\mathrm{Stage}})$，多出的 2 是 K 方向的 MMA 切片数）。为什么
+S$\to$R 的 K 方向重复更多？因为 copy 原子不同：G$\to$S 一次搬一整条
+128-bit，S$\to$R 的 \texttt{ldmatrix.x4} 一次只覆盖 $16\times16$ 的 K 切片。
+
+\subsection{S$\to$R：从 TiledMMA 推导，并用 retile\_D 对齐目的}
+
+\begin{sloppypar}
+式~\eqref{eq:21-mtca} 的实现在 L881--888，其中真正巧妙的一行是
+\texttt{retile\_D}：\texttt{tCrA} 是 \emph{MMA 视角}的寄存器 fragment
+（$(\mathrm{MMA}, \mathrm{MMA}_M, \mathrm{MMA}_K) = (8,4,2)$，
+本章测试 case~C 实测），\texttt{tCrA\_view} 是 \emph{copy 视角}的同一个
+片段（$(V, F_V, F_X) = (8,4,2)$）。二者的元素个数、数据指针完全相同，
+只是索引语义不同：
+\end{sloppypar}
+
+\begin{equation}
+  \mathrm{retile\_D}(\mathrm{tCrA}) = \text{同一块寄存器的
+  「(线程, 值) 顺序」视图},\qquad \mathrm{data()} \text{ 不变} .
+  \label{eq:21-retile-d}
+\end{equation}
+
+这一步是 \texttt{cute::copy(s2r\_tiled\_copy\_a, tAsA(\dots), tCrA\_view)}
+能成立的前提：copy 按「源的第 $i$ 个值 $\to$ 目的的第 $i$ 个值」逐元素配对，
+而 \texttt{retile} 保证目的视图的「第 $i$ 个值」就是本线程寄存器的第 $i$ 个
+槽位。它\textbf{不搬数据、不转换类型、不 shuffle}——真正跨线程的重组发生在
+后面 epilogue 的 smem 往返里。
+
+顺带解决一个易混点：\texttt{retile\_S} 的 S 指「该 TiledCopy 的 source
+side」，不是 shared memory；\texttt{retile\_D} 的 D 指 destination side。
+主循环里对 A fragment 用 \texttt{retile\_D}（fragment 是目的端），epilogue 里
+对 C fragment 用 \texttt{retile\_S}（fragment 是源端）——方向由数据流决定。
+
+\subsection{epilogue：R$\to$S$\to$G 与 group\_modes}
+
+epilogue 的三段划定值得单独讲：寄存器 fragment 先按 32-bit 粒度写进
+smem scratchpad（R$\to$S），再从 scratchpad 按 128-bit 读回 gmem
+（S$\to$G）。中间这块 scratchpad 复用了当前 A stage 的空间：
+
+\lstinputlisting[linerange={1001-1020},firstnumber=auto,breakatwhitespace=true,
+  title={hgemm.cuh L1001-1020（C scratchpad 的重解释与 R2S 的 retile\_S）}]{../hgemm.cuh}
+
+\begin{sloppypar}
+注意 L1001 的写法：\texttt{sC} 拿的是 \texttt{sA(\_,\_,ismem\_read).data()}
+（一个裸指针），再\emph{重新}用 SmemLayoutC 解释同一段地址。这里没有 Tensor
+类型转换，只是「同一块 smem、两种布局视图」——A 的 pipe 布局是
+$8\times32$ atom，C 的是 $32\times32$ atom，二者都含 \texttt{Swizzle<3,3,3>}
+但\textbf{不可互换读取}。容量上：一个 A stage 是 $128\times32=4096$ 个 half，
+C scratchpad 是 $32\times32\times4=4096$ 个 half，正好放得下（launch wrapper
+的 \texttt{static\_assert} 就是查这件事，实测 \texttt{cosize(SmemLayoutA)}
+$=8192$（2 stage）、C 部分 $4096$）。
+\end{sloppypar}
+
+S$\to$G 一侧的 partition 与 \texttt{group\_modes} 合并：
+
+\lstinputlisting[linerange={1036-1076},firstnumber=auto,breakatwhitespace=true,
+  title={hgemm.cuh L1036-1076（S2G 的划分与 group\_modes 合并 mode）}]{../hgemm.cuh}
+
+\texttt{group\_modes<1,3>} 把 mode 区间 $[1,3)$ 合并成一个嵌套 mode：形状从
+$(\mathrm{CPY}, \mathrm{CPY}_M, \mathrm{CPY}_N)$ 变成
+$(\mathrm{CPY}, (\mathrm{CPY}_M, \mathrm{CPY}_N))$。它\textbf{只重组 layout}，
+不分配内存、不搬数据（第~\ref{ch:20}~章 4.6 节的 \texttt{group} 的 Tensor 版；
+实测定义在 \texttt{cute/tensor\_impl.hpp}，一行 \texttt{group<B,E>} 的包装）。
+合并之后外层的双层循环可以用一个线性坐标 \texttt{i+j} 遍历整个
+$\mathrm{CPY}_M\times\mathrm{CPY}_N$ 空间（L1093 起的 epilogue 循环），
+而 step 来自 scratchpad 的 pipe 数（\texttt{size<3>(tCsC\_r2s)} $=4$）。
+kernel 注释（L1077--1092）特别提醒：\textbf{step 是 pipe 深度，不是
+$\mathrm{CPY}_N$}，循环成立的前提是 $\mathrm{CPY}_M\cdot\mathrm{CPY}_N$ 能被
+step 整除——当前静态布局下这是编译期保证的。
+
+\section{图示}
+
+\begin{figure}[htbp]
+\centering
+\begin{verbatim}
+  FIG-21-1  thread x value grid for the G2S copy: ThrLayout (32,4):(4,1),
+            ValLayout (1,8) over a 32x32 tile (128 threads x 8 half = 1024)
+
+        n ->  0   1  ...  7   8  ... 15  16  ... 23  24 ... 31
+     m
+     |  0  | t=0 .........  | t=1 ....... | t=2 ....... | t=3 ....... |
+     v   1  | t=4 .........  | t=5 ....... | t=6 ....... | t=7 ....... |
+         2  | t=8            |             |             |             |
+        ...                                                             
+        31  | t=124          | t=125       | t=126       | t=127       |
+
+     one thread owns 8 consecutive elements (one 128-bit cp.async):
+        t = 4*m + j       (j = which 8-wide column group)
+        v = n mod 8
+     inverse (thread -> coord), eq. (21-g2s-tv):
+        m = t/4 ;  n = 8*(t mod 4) + v
+
+     dual view (same partition, two languages):
+        MN-layout (data-centric):  (m,n) -> (thr,val)   [eq. 21-g2s-mn]
+        TV-layout (task-centric):  (thr,val) -> (m,n)   [eq. 21-g2s-tv]
+        Tiler = product_each(shape(Layout_MN)) = (32,32)
+        conservation: NumThr * NumVal = 128*8 = 1024 = |Tiler|
+
+     S2R copy has no full coverage: Tiler = (32,16), P*V = 1024 -> 2x
+        duplication (eq. 21-dup: N-direction warps re-read the same A)
+\end{verbatim}
+\caption{thread$\times$value 网格：G$\to$S 拷贝把 $32\times32$ 的 tile 划成
+$t=4m+j$ 的网格，每个线程搬 8 个连续元素（一条 128-bit \texttt{cp.async}）。
+同一划分用 MN 语言或 TV 语言描述是等价的（式~\eqref{eq:21-g2s-mn} 与
+式~\eqref{eq:21-g2s-tv}）；本章测试 case~A/B 对 1024 个 $(t,v)$ 对与 4096 个
+坐标逐一核对了这两组公式。（占位，RFC-H 升级为 drawio 图）}
+\label{fig:21-1}
+\end{figure}
+
+\section{性能分析}
+
+本章没有独立的 kernel bench：TiledCopy 的开销无法单独测——它总是嵌在某个
+kernel 的流水线里。所以本节回答的是「这套抽象的代价结构」，端到端数字留给
+第~\ref{ch:24}~章（CuTe HGEMM 与手写版对照）。
+
+\textbf{结论一（编译期零成本）}：Tiler、TV 布局、每个线程的地址全部是静态
+类型推导的结果；kernel 里没有一行显式地址算术，\texttt{cute::copy} 内联后
+就是 \texttt{cp.async.ca.shared.global} / \texttt{ldmatrix} / \texttt{st.shared}
+的序列。第~\ref{ch:20}~章已经用 \texttt{static\_assert} 证明过同类折叠，本章
+测试把 TiledCopy 的 Tiler/线程数/每线程值数也做成了静态断言。
+
+\textbf{结论二（搬运划分影响访存质量）}：式~\eqref{eq:21-g2s-tv} 保证每个线程
+的 8 个值是连续的，所以一条 128-bit 指令就够了；如果 Thr/Val 写反（比如
+\texttt{ValLayout=(8,1)}），每个线程的 8 个值会跨行分布，128-bit 拷贝会退化成
+8 条 16-bit 访问。这不是性能调优技巧，而是\textbf{类型写错就直接吃 8 倍
+访存指令}的硬约束——第~\ref{ch:12}~章的合并访问分析在这里变成了类型选择。
+
+\textbf{结论三（epilogue 的额外成本）}：CuTe 版 epilogue 走
+寄存器$\to$smem$\to$gmem 的 scratchpad 路线，比手写版的「shuffle $+$ 直接
+wide store」多了两次 \texttt{\_\_syncthreads()}（每轮 R$\to$S 后与
+S$\to$G 后各一次，L1116 与 L1184 附近）与一次 smem 往返。代价换来的是
+\textbf{不写 shuffle 编排}：跨 lane 重组交给 sC 的布局做。对 $B_M\times B_N
+=128\times256$ 的 tile，scratchpad 每轮搬 4 个 pipe slot（step $=4$），
+R$\to$S/R$\to$G 各 8 条指令级别——与主循环的 mma 数量相比是次要项，但它解释
+了为什么 CuTe 版在极端配置下需要 `kSmemLayoutCBatch` 这类旋钮。
+
+\textbf{结论四（重复因子是寄存器成本）}：式~\eqref{eq:21-dup} 的 A 重复因子
+$=2$、B 重复因子 $=2$（hgemm 的 $2\times2$ warp 排布），意味着每个线程的
+A/B fragment 数量按重复因子放大。这不是 TiledCopy 引入的，而是 MMA 本身
+要求的（第~\ref{ch:22}~章会从 \texttt{partition\_fragment\_A} 再算一遍），
+TiledCopy 只是把它如实反映到 partition 的形状里。
+
+\section{勘误与考据}
+
+\begin{kaogu}[F1 核校通过：五条搬运的类型注释与实现一致（CUTLASS v4.6.1 实测）]
+逐项核对 hgemm.cuh 的注释与实测类型/形状：
+(a) L1308--1309 声称 G$\to$S 为 \texttt{ThrLayout\{32,4\}\ $\times$\ ValLayout\{1,8\}}、
+128 线程每线程 8 half——实测 \texttt{TiledNumThr}=128、\texttt{TiledNumVal}=8、
+\texttt{Tiler\_MN}=(32,32)，逐项一致；
+(b) L1355--1357 声称 \texttt{make\_tiled\_copy\_C} 的 tiler 为 $(32,32)$ 且与
+SmemLayoutC 的 $(32,32)$ 匹配——实测 Tiler$=(32,32)$、\texttt{cosize(SmemLayoutC)}$=4096$
+（一个 A stage 也是 4096），一致；
+(c) L1371--1374 声称 S2G 的 tiler $=$ product$((32,4),(1,8)) = (32,32)$——
+实测一致；
+(d) L1001--1010 声称「C scratchpad $32\times32\times4=4096$ 恰好放进一个 A
+stage $128\times32=4096$」——实测二者 \texttt{cosize} 均为 4096，一致；
+(e) L863--865 的 fragment 形状注释 $(\mathrm{MMA}, \mathrm{MMA}_M,
+\mathrm{MMA}_K)$——实测为 $(8,4,2)$，与 $128\times32$ 的 tile 和
+\texttt{Tile<32,32,16>} 的推导一致。
+\end{kaogu}
+
+\begin{kaogu}[F1：\texttt{group\_modes} 在 v4.6.1 中存在，且是 Tensor 级操作]
+本章一度怀疑 L1073--1074 的 \texttt{group\_modes<1,3>} 是历史 API。
+实测：\texttt{group\_modes} 定义在 \texttt{cute/tensor\_impl.hpp}（v4.6.1），
+语义为「把 mode 区间 $[B,E)$ 合并成一个嵌套 mode」，实现是一行
+\texttt{make\_tensor(t.data(), group<B,E>(t.layout()))}。也就是说
+\textbf{layout 级叫 \texttt{group}，Tensor 级叫 \texttt{group\_modes}}，
+两者在 v4.6.1 中并存；kernel 注释（L1046--1072）对「合并 mode、不搬数据」的
+描述准确。
+\end{kaogu}
+
+\begin{kaogu}[F2：\texttt{partition\_S} 对 ldmatrix 返回的不是「收到的寄存器」]
+\texttt{s2r} 拷贝的 \texttt{partition\_S(sA)} 实测给出每线程 8 个\textbf{连续
+列}，且 source 侧的 TV 布局为 $\bigl((16,2,2,2),(8,1)\bigr):\bigl((1,256,16,0),
+(32,0)\bigr)$——第 4 个线程模式\textbf{步长为 0}：线程 $t$ 与 $t+64$ 读的
+是同一份 A 片段（这正是 N 方向 warp 重复的来源，测试 case~D/E）。线程 $t$
+的第 0 个值是 $((t\bmod 16) + 16\lfloor (t/32)\bmod 2\rfloor,\ 8\lfloor (t\bmod
+32)/16\rfloor)$。这不是 \texttt{ldmatrix} 写进寄存器的顺序，而是该线程在
+\emph{source side}（smem 地址表）上的读取视图——真正决定寄存器内容顺序的是
+copy 原子的 \texttt{ValLayoutDst}，由 \texttt{retile\_D} 表达的 fragment 视图
+承担（3.6 节）。把两者混为一谈会写出看似对齐、实际错位的 copy。
+\end{kaogu}
+
+\section{常见坑}
+
+\textbf{坑一：\texttt{make\_tiled\_copy} 的 Thr/Val 是「坐标 $\to$ 编号」，
+不是「编号 $\to$ 坐标」。}式~\eqref{eq:21-g2s-params} 的方向容易写反；
+写成「线程 $t$ 搬哪几个坐标」的形式（即式~\eqref{eq:21-g2s-tv}）会得到形状
+对、划分错的 TiledCopy——它不报错，只是每个线程搬了不连续的元素。
+
+\textbf{坑二：\texttt{partition\_S}/\texttt{partition\_D} 的 S/D 不能用
+「gmem/smem」来记。}S 指 \emph{source side}、D 指 \emph{destination side}，
+而每个 side 有自己的原子布局（\texttt{ValLayoutSrc}/\texttt{ValLayoutDst}）。
+同一个 Tensor 既可能是 S 也可能是 D：\texttt{tAsA} 是 G$\to$S 的 D
+（\texttt{partition\_D(sA)}），同时也是 S$\to$R 的 S
+（\texttt{partition\_S(sA)}）。
+
+\textbf{坑三：\texttt{retile} 不搬数据，别指望它对齐线程。}
+\texttt{retile\_D}/\texttt{retile\_S} 只重标索引，同一线程内的元素顺序被
+重新解释；跨线程的重组必须靠 smem（或 shuffle）完成。写错方向的后果是
+每个线程读到自己不该有的元素——数值错、不报错。
+
+\textbf{坑四：动态 shape 会让 TV 布局退化。}
+把 \texttt{Int<BM>} 换成运行期 \texttt{int}，\texttt{Tiler}、
+\texttt{partition} 的形状都变成动态量，编译期折叠失效、地址算术回到运行期。
+kernel 模板参数一律用 \texttt{Int<N>} 包住正是为此（第~\ref{ch:20}~章坑五的
+同一件事，在 copy 上的表现）。
+
+\textbf{坑五：\texttt{local\_tile} 之后别忘了 remainder。}
+\texttt{local\_tile(A, tile, coord)} 返回的 Tensor 仍带未切出的 mode
+（gA 是三维的）；直接当二维用会在 \texttt{partition} 时报 rank 不匹配，
+或者更隐蔽地——被 \texttt{\_} 占位符悄悄吞掉一维。
+
+\textbf{坑六：copy 的源/目的 shape 必须逐 mode 匹配。}
+\texttt{cute::copy(tiled\_copy, src, dst)} 内部按元素配对，前提是
+\texttt{src} 与 \texttt{dst} 的（值 $\times$ 剩余 mode）结构一致：这正是
+\texttt{partition\_S(sA\_slice)} 与 \texttt{retile\_D(tCrA)} 必须成对出现的
+原因。只 partition 一侧、另一侧手写一个 shape 相近的 Tensor，会在
+\texttt{copy} 内部静态断言炸掉（或者更糟，静默错位）。
+
+\section{面试要点速查}
+
+\textbf{Q1：CuTe 的 Tensor 是什么？为什么要与 layout 绑定？}\\
+A：Tensor $=$ (Engine, Layout)，即「一块内存 $+$ 一个坐标到 offset 的函数」。
+只有指针没有布局，就无法表达「行主序/列主序/带 swizzle/切片后的视图」；
+绑定之后，切片、分区、拷贝都可以作为\emph{布局运算}在编译期完成。
+
+\textbf{Q2：TV-layout 与 MN-layout 的关系？}\\
+A：同一划分的两种视角，互为逆映射（式~\eqref{eq:21-mn-tv}）：MN 把坐标映到
+(线程, 值)，TV 反过来。Tiler 由 MN 的 shape 取 product\_each 得到。
+
+\textbf{Q3：\texttt{make\_tiled\_copy} 的 raked\_product 是什么意思？}\\
+A：把 Thr/Val 两个「坐标$\to$编号」布局交错合成一个 MN 布局：同一线程的 $V$
+个值沿坐标连续排布（raked $=$ 交错），而不是先按线程切大块。G$\to$S 的实例
+就是式~\eqref{eq:21-g2s-mn}：$t=4m+\lfloor n/8\rfloor$、$v=n\bmod 8$。
+
+\textbf{Q4：TiledCopy 的线程数 $\times$ 每线程值数一定等于 tile 大小吗？}\\
+A：不一定。若 TV 布局是双射（G$\to$S、S$\to$G、C 类拷贝）则成立
+（$128\times8=1024=32\times32$）；对 A/B 类拷贝会按 warp 排布出现重复因子
+（式~\eqref{eq:21-dup}：A 的重复因子 $=$ N 方向 warp 数），因为多个 warp
+需要同一份 fragment。
+
+\textbf{Q5：\texttt{make\_tiled\_copy\_A/B/C} 从哪里得到线程映射？}\\
+A：从 \texttt{TiledMMA} 的 \texttt{get\_layoutA/B/C\_TV()} 直接取——MMA 的
+fragment 约定已经规定了「哪个线程持有哪个元素」，拷贝只需把这份约定当作目的
+布局（式~\eqref{eq:21-mtca}--\eqref{eq:21-mtcc}）。
+
+\textbf{Q6：\texttt{retile\_S}/\texttt{retile\_D} 做了什么？}\\
+A：零拷贝重标记：把 fragment 的（MMA, MMA\_M, MMA\_K）索引重排成 copy 视角的
+（值, 重复）索引，\texttt{data()} 不变。它是 \texttt{copy} 逐元素配对的
+前提，不做数据搬运、不做类型转换、不做 shuffle。
+
+\textbf{Q7：\texttt{group\_modes} 与 \texttt{group} 的区别？}\\
+A：\texttt{group<B,E>} 作用于 \emph{layout}，\texttt{group\_modes<B,E>} 作用于
+\emph{Tensor}（内部就是前者）。合并 mode 只改索引结构，不改数据、不改物理地址。
+
+\textbf{Q8：S$\to$R 的 K 方向为什么比 G$\to$S 多一层重复？}\\
+A：原子不同。G$\to$S 的原子一次覆盖连续的 128-bit（8 half），而
+\texttt{ldmatrix.x4} 一次只覆盖 $16\times16$ 的 K 切片；$B_K=16$ 时
+G$\to$S 一个 tile 一级切完，S$\to$R 需要 2 个 K 切片（实测
+\texttt{tAsA\_copy} 与 \texttt{tAsA} 的第三 mode 分别为 1 和 2）。
+
+\section{最小测试与动手实验}
+
+测试文件：\texttt{book/tests/ch21\_tiled\_copy.cu}（host-only：不启动 kernel、
+不需要 GPU；只做类型/布局断言）。六个 case 覆盖本章全部可验证结论：
+
+\begin{itemize}
+  \item \textbf{A TV 分解}：G$\to$S 的 \texttt{TiledNumThr}$=128$、
+        \texttt{TiledNumVal}$=8$、Tiler$=(32,32)$（编译期
+        \texttt{static\_assert}），并对 1024 个 $(t,v)$ 对核对手推公式
+        式~\eqref{eq:21-g2s-tv}；
+  \item \textbf{B partition 形状与守恒}：$(128,32)$ 上逐线程
+        $(8,4,1)$、每线程 32 个元素、全部线程合计 4096；并把 4096 个
+        (线程, 元素) 覆盖点回投到坐标上，验证双射（\texttt{once}$=4096$）；
+  \item \textbf{C fragment 与 retile}：TiledMMA（hgemm 配置）的
+        \texttt{partition\_fragment\_A} 形状 $(8,4,2)$；
+        \texttt{retile\_D} 后形状不变、\texttt{data()} 指针相同（零拷贝）；
+  \item \textbf{D ldmatrix 的 source 视图}：S$\to$R 拷贝在 $(128,32)$ 上
+        逐线程 64 个元素（$8\times4\times2$）、手推行/列公式逐点核对
+        （线程 $t$ 的第 0 个值为 $\bigl(t\bmod 16 + 16\lfloor (t/32)\bmod
+        2\rfloor,\ 8\lfloor (t\bmod 32)/16\rfloor\bigr)$；第 4 个线程模式
+        步长为 0，即 $t$ 与 $t+64$ 同源）；
+  \item \textbf{E 重复因子}：S$\to$R 的 A 拷贝对同一 tile 做覆盖统计，期望
+        每个元素被覆盖恰好 2 次（N 方向 warp 的重复，式~\eqref{eq:21-dup}）；
+  \item \textbf{F retile/upcast 语义}：\texttt{upcast} 式~\eqref{eq:21-upcast}
+        两条；\texttt{upcast} 对 Swizzle 复合分配
+        （\texttt{Sw<3,2,3>\ o \_0\ o\ (32,16):(16,1)}）；
+        R$\to$S 拷贝的 tiler$(32,32)$、逐线程 $(8,1,1,4)$、单 pipe 覆盖
+        1024 个坐标一次（双射）。
+\end{itemize}
+
+运行命令（在 \texttt{book/tests/} 下；脚本已配置 CUTLASS include 路径）：
+
+\begin{verbatim}
+cd kernels/interview/book/tests
+CUDA_VISIBLE_DEVICES=6 ./build_tests.sh --arch sm_120a --ch ch21
+\end{verbatim}
+
+预期输出（本机 RTX PRO 5000，CUDA 13.2，CUTLASS v4.6.1，2026-09-11 实测）：
+
+\begin{verbatim}
+ch21 CuTe Tensor & TiledCopy (host-only, no kernel launch)
+PASS case A make_tiled_copy TV decomposition: mismatches=0 (1027 checks)
+PASS case B partition_S shape & bijection: mismatches=0 (12544 checks)
+PASS case C fragment shape & retile_D zero-copy: mismatches=0 (11 checks)
+PASS case D ldmatrix source partitioning formula: mismatches=0 (16640 checks)
+PASS case E A-copy duplication factor: mismatches=0 (3 checks)
+PASS case F upcast semantics & R2S/S2G tilers: mismatches=0 (1814 checks)
+ALL OK
+\end{verbatim}
+
+动手实验（三条，都在本章测试上改）：
+
+\begin{enumerate}
+  \item 把 case~A 的 \texttt{ThrLayout} 从 $(32,4){:}(4,1)$ 改成
+        $(4,32){:}(32,1)$（线程坐标 i/j 与 stride 一起换），观察
+        \texttt{tv layout} 的公式断言如何失效——理解「线程坐标的顺序」与
+        「物理线程号的编法」是两件事；
+  \item 把 case~B 的源 Tensor 从 $(128,32)$ 换成 $(64,32)$，观察
+        \texttt{partition\_S} 的剩余 mode 从 4 变 2、而每线程值数不变
+        （8 个），并检查本轮覆盖统计是否有空洞；
+  \item 把 case~C 的 \texttt{retile\_D} 换成 \texttt{retile\_S}，观察返回
+        布局的形状差异，再对照 case~D 的 partition\_S 形状找出「谁的形状该
+        与谁相等」的判据。
+\end{enumerate}
+
+\section*{延伸阅读}
+
+\begin{itemize}
+  \item @Anonymous《GEMM 细节分析(二)：TiledCopy 与 cp.async》，
+        \url{https://zhuanlan.zhihu.com/p/703560147}
+        （从 cp.async 的地址计算切入 TiledCopy 的划分，本章 3.3--3.5 节的
+        对照读物）；
+  \item @reed《cute 之 Copy 抽象》，
+        \url{https://zhuanlan.zhihu.com/p/666232173}
+        （Copy\_Atom/ThrCopy/partition 的抽象层次，读 4.2--4.4 节时对照）；
+  \item @水木皇工仔《基于 CuTe 理解 swizzle, LDSM, MMA》，
+        \url{https://zhuanlan.zhihu.com/p/934430036}
+        （同一位作者把 LDSM 的 lane 映射与 MMA fragment 串起来讲，与本章
+        case~D 的实验互补）；
+  \item @竹熙佳处《写给大家看的 CuTe 教程：Tiled Copy》，
+        \url{https://zhuanlan.zhihu.com/p/1930389542784964333}
+        （本计划的 ch21 主参考；该条目在素材清单中标注「待核」，本章的
+        公式与实测均以 CUTLASS v4.6.1 头文件为准）；
+  \item @Anonymous《GEMM 细节分析(一)：ldmatrix 的选择》，
+        \url{https://zhuanlan.zhihu.com/p/702818267}
+        （ldmatrix 的转置/非转置选择，与第~\ref{ch:11}~章的手写版互证）。
+\end{itemize}
+
