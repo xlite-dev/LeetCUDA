@@ -396,90 +396,23 @@ $m$ 个 $64 \times B\sb{K}$ 子块，K-step 每次前进 \texttt{kWgmmaK=16} 个
 
 \begin{figure}[htbp]
 \centering
-\begin{lstlisting}[style=console]
-  FIG-13-1  WGMMA smem descriptor: 64-bit bit-field layout
-            enc(x) = (x & 0x3FFFF) >> 4   (18-bit window, 16B-aligned)
-
-   63   62 61    52 51 49 48   46 45     32 31 30   16 15 14   0
-  +----+--------+----+--+----+--------+--+--------+--+--------+
-  |type|(unused)|base|u |(u) |SBO enc |u |LBO enc |u |addr enc|
-  | 2b |10b     |off |3b|14b |14b     |2b|14b     |2b|14b     |
-  | =1 |        |3b=0|  |    |1024>>4 |  |16>>4=1 |  |smem>>4 |
-  +----+--------+----+--+----+--------+--+--------+--+--------+
-   swizzle     phase     unused 8-row    unused K-stride unused 16B-aligned
-   0=none 1=128B (addr>>7)&7     stripe         (unused=1     base addr
-   2=64B  3=32B  1024B bndy=0     gap(bytes)     in K-major    (absolute
-                             K-major swizzle              smem offset)
-\end{lstlisting}
-\caption{WGMMA smem descriptor 的 64-bit 位域（对照 common.cuh L532-565 注释与
-PTX ISA §9.7.15.5.1.2.2 逐字段核校；u = unused；数值列为本章 kernel
-$B\sb{K}=64$ half + 128B swizzle 的取值）。
-（占位，RFC-H 升级为 drawio 位域框图）}\label{fig:13-1}
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-13-1-wgmma-desc/fig-13-1.png}
+\caption{WGMMA smem descriptor 的 64-bit 位域（对照 common.cuh L532--565 注释与 PTX ISA \S9.7.15.5.1.2.2 逐字段核校；u = unused；数值列为本章 kernel $B_K{=}64$ half + 128B swizzle 的取值；\texttt{enc(x)} = (x \& 0x3FFFF) 右移 4，18-bit 窗口 16B 对齐）。}
+\label{fig:13-1}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
-\begin{lstlisting}[style=console]
-  FIG-13-2  Warp specialization data flow (kStages = 3)
-
-   HBM (global)              smem (per CTA)               C (global)
-  --------------   TMA(1thr)  ----------------   WGMMA(128thr)  ---------
-  |A tile 16K| ========> |s0: A+B| full[0] -> |d[2][8][4]| ==> |C tile|
-  |B tile 16K| cp.async   |s1: A+B| full[1] ->  |64 x uint32|     |128x128|
-                 .tensor.2d  |s2: A+B| full[2] ->  |per thread|     +------+
-                             ----------------   |    ^    |
-                                               wait(0)|    |epilogue
-  WG0 producer (128 thr, 1 active)             +---+--+----+
-  for each k-tile:                               |         |
-    P1 wait(empty[s])  <-------------------------+         |
-    P2 TMA(A), TMA(B)  ----------------> (bytes land)      |
-    P3 arrive+expect-tx(full[s], 32KB) ----+               |
-             ^                             |               |
-             | phase flips only when 128 consumer arrives  v
-             +-- AND 32768B landed   consumer WG1: C1 wait(full[s])
-                                          C2 8x wgmma m64n128k16
-                                          C3 commit+wait(0)
-                                          C4 arrive(empty[s])
-\end{lstlisting}
-\caption{producer/consumer 双 warpgroup 数据流：TMA 单线程提交搬运，WGMMA 全
-warpgroup 计算，\texttt{full[]}/\texttt{empty[]} 双屏障阵列按 stage 解耦两支执行流，
-kStages=3 使计算与搬运最多重叠 2 个 tile。
-（占位，RFC-H 升级）}\label{fig:13-2}
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-13-2-ws-dataflow/fig-13-2.png}
+\caption{producer/consumer 双 warpgroup 数据流：TMA 单线程提交搬运，WGMMA 全 warpgroup 计算，\texttt{full[]}/\texttt{empty[]} 双屏障阵列按 stage 解耦两支执行流，kStages=3 使计算与搬运最多重叠 2 个 tile。}
+\label{fig:13-2}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
-\begin{lstlisting}[style=console]
-  FIG-13-3  mbarrier state machine (per barrier object, e.g. full[s])
-
-      init(bar, 129)                        phase = p
-   --------------------->  +-----------------------------+
-                           |  pending = P      tx = T    |
-                           +-----------------------------+
-     arrive (count=1)          |             ^        ^
-        P -= 1                 v             |        |
-    expect-tx (dT)         P > 0  or  T > 0   |        |
-        T += dT            "phase incomplete"|        |
-                               |             |        |
-                               v             |        |
-                        P == 0  and  T == 0 --+        |
-                               | (atomic flip)         |
-                               v                       |
-                      +----------------------------------+
-                      | phase = p+1 ; pending = expected |
-                      +----------------------------------+--> old-phase
-                          waiters wake up (parity)
-
-   full[s]:  128 consumer arrives + 1 producer arrive.expect-tx(32768 B)
-             + 32768 B complete-tx  =>  flip  =>  consumer reads data
-   empty[s]: 128 consumer arrives (C4 / C0 warmup) + 1 producer arrive (P1)
-              =>  flip  =>  producer overwrites stage
-  note: complete-tx (dC) automatic -- T -= dC when TMA bytes hit smem
-\end{lstlisting}
-\caption{mbarrier 状态机：arrive 与 tx 两把独立的「锁」同时归零才翻转相位；
-翻转瞬间原子地重置 pending 为 expected。下半部分给出本章 kernel 中
-\texttt{full[s]} 与 \texttt{empty[s]} 各自的翻转条件。
-（占位，RFC-H 升级）}\label{fig:13-3}
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-13-3-mbarrier/fig-13-3.png}
+\caption{mbarrier 状态机：arrive 与 tx 两把独立的「锁」同时归零才翻转相位；翻转瞬间原子地重置 pending 为 expected。下半部分给出 \texttt{full[s]} 与 \texttt{empty[s]} 各自的翻转条件。}
+\label{fig:13-3}
 \end{figure}
 
 \section{性能分析}

@@ -169,11 +169,11 @@
 | FIG-12-1 | 12 | smem-swizzle-before-after | C1 新建（用户点名，2026-09-14） | 正式 | figures/drawio/fig-12-1-smem-swizzle/ |
 | FIG-12-2 | 12 | block-swizzle-layout | C1 新建（用户点名，2026-09-14） | 正式 | figures/drawio/fig-12-2-block-swizzle/ |
 | FIG-12-3 | 12 | xor-bitwise | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-12-3-xor-bits/ |
-| FIG-13-1 | 13 | wgmma-desc-bitfield | A→C1 | 占位 | — |
-| FIG-13-2 | 13 | warpgroup-dataflow | A→C1 | 占位 | — |
-| FIG-13-3 | 13 | mbarrier-statemachine | A→C1 | 占位 | — |
-| FIG-14-1 | 14 | tma-box | B→D（竹熙佳处 TMA Copy） | 待 RFC-B | — |
-| FIG-14-2 | 14 | producer-consumer-timeline | A→C1 | 占位 | — |
+| FIG-13-1 | 13 | wgmma-desc-bitfield | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-13-1-wgmma-desc/ |
+| FIG-13-2 | 13 | warpgroup-dataflow | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-13-2-ws-dataflow/ |
+| FIG-13-3 | 13 | mbarrier-statemachine | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-13-3-mbarrier/ |
+| FIG-14-1 | 14 | tma-box | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-14-1-tma-box/ |
+| FIG-14-2 | 14 | producer-consumer-timeline | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-14-2-pc-timeline/ |
 | FIG-15-1 | 15 | attention-block-pipeline | B→D（DefTruth 图解 FA） | 待 RFC-B | — |
 | FIG-16-1 | 16 | split-q-warp-layout | A→C1（README 已有 ASCII 底稿） | 占位 | — |
 | FIG-17-1 | 17 | fa2-dual-pipeline | A→C1 | 占位 | — |

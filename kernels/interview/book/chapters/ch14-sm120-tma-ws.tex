@@ -365,61 +365,16 @@ epilogue 与 ch11/ch12 同款：mma m16n8k16 的 C fragment 中，同一 8$\time
 
 \begin{figure}[htbp]
 \centering
-\begin{lstlisting}[style=console]
-  FIG-14-1  TMA box: global [M,K] tensor -> smem 128B-swizzled tile
-
-   A in gmem (row-major [M,K], minor = K)     boxDim = (BK=64, BM=128)
-        K dim ->                                coords minor-first
-   +------------------------------------+      A box  : (k*64, by*128)
-   |            k0                      |      B^T box: (k*64, bx*128)
-   |         +---------+                |
-   |    m0   |         | 128 rows       |      each box = 64x128 half
-   |         |   box   | x 64 cols      |            = 16 KB
-   |         |         |                |      lands in smem re-ordered
-   +---------+---------+----------------+      by SWIZZLE_128B atom:
-
-   smem tile (BM x BK, chunk = 16B = 8 half)   chunk' = chunk ^ (i & 7)
-       0  1  2  3  4  5  6 7   <- chunk idx   (i = row, XOR on low 3 bits)
-   i=0 | 0  1  2  3  4  5  6 7 |   identity   1024B-aligned base address
-   i=1 | 1  0  3  2  5  4  7 6 |              => hardware phase 0;
-   i=2 | 2  3  0  1  6  7  4 5 |              consumer applies the
-   ...  | (chunk ^ (i&7)) pattern|             SAME formula to invert
-   i=7 | 7  6  5  4  3  2  1 0 |
-\end{lstlisting}
-\caption{TMA box：descriptor 以 minor-first 坐标指定 $64 \times 128$ 的 2D
-搬运块，落盘时按 SWIZZLE\_128B 原子（16B chunk 号与行低 3 位 XOR）重排；
-smem 基址 1024B 对齐保证硬件从相位 0 开始重排，consumer 的软件公式才能
-按零相位逆推。
-（占位，RFC-H 升级为 drawio 图）}\label{fig:14-1}
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-14-1-tma-box/fig-14-1.png}
+\caption{TMA box：descriptor 以 minor-first 坐标指定 $64\times128$ 的 2D 搬运块，落盘时按 SWIZZLE\_128B 原子（16B chunk 号与行低 3 位 XOR）重排；smem 基址 1024B 对齐保证硬件从相位 0 开始重排，consumer 的软件公式才能按零相位逆推。}
+\label{fig:14-1}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
-\begin{lstlisting}[style=console]
-  FIG-14-2  producer/consumer timeline (kStages = 2, one CTA)
-
-  time --------------------------->
-  WG0 producer (1 active thread)            | full/empty phase flips
-   P1(s0) P2 P3 | P1(s1) P2 P3 | P1(s0) ... |  full[s]:  128 cons arrive
-     ^           ^             ^             |          + 1 prod arrive
-     |           |             |             |          + 32768B landed
-     +-- wait empty[s0] flips                 |  empty[s]: 128 cons arrive
-         (C0 warmup 128 + P1 1)               |          + 1 prod arrive
-                                              |
-  WG1 consumers (128 threads, 4 warps)        |  C0: arrive empty[0..S-1] x128
-   C0 | C1(s0) C2 mma x128 | C1(s1) C2 | C1(s0) ...
-        ^       ~~~~~~~~~~~   ^
-        |       compute on s0  |  overlaps producer filling s1
-        +-- wait full[s0]: 129 arrives + 32768B    C4: arrive empty[s0] x128
-                                                    (accounts for NEXT
-                                                     empty phase)
-
-   overlap: TMA(s1) in flight while mma(s0) runs -> memory latency hidden
-   steady state: producer runs ahead by up to kStages-1 tiles
-\end{lstlisting}
-\caption{producer/consumer 时序：C0 预热点燃流水线；此后 producer 的 TMA
-提交与 consumer 的 ldmatrix+mma 在不同 stage 上重叠，搬运延迟被计算掩盖。
-（占位，RFC-H 升级为 drawio 时序图）}\label{fig:14-2}
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-14-2-pc-timeline/fig-14-2.png}
+\caption{producer/consumer 时序：C0 预热点燃流水线；此后 producer 的 TMA 提交与 consumer 的 ldmatrix+mma 在不同 stage 上重叠，搬运延迟被计算掩盖；稳态 producer 领先至多 kStages-1 个 tile。}
+\label{fig:14-2}
 \end{figure}
 
 \section{性能分析}
