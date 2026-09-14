@@ -5,6 +5,8 @@
 
 | 日期 | 位置 | 原文摘要 | 类别 | 证据 | 建议 | 状态 |
 |---|---|---|---|---|---|---|
+| 2026-09-14 | ffpa_attn.cuh L432/L484 | `NOTES_V2_REG_DEALLOC(40)/ALLOC(255)`：255 非 8 的倍数，违反 PTX ISA §9.7.19.5（imm ∈ [24,256] 且 8 倍数）；宏默认关闭展开为 ((void)0) 故从未暴露 | F2 | ptx-docs 9.7.19.5 + FA3 论文约束链（NVCC 每线程 ≤255，合法顶格 248）+ ffpa-attn repo persist_d 原版 32/232 | 已改为 32/232（对齐 ffpa-attn repo），ch19 五处表述同步（含 sm120 丢弃条件限定）；anchors.yaml SHA 已更新 | 已回写源码+入正文 |
+| 2026-09-14 | ch14 表格/正文 | 「默认目标 sm_120a 丢弃 setmaxnreg」缺「与 TMA 同 kernel」条件，与 PTX ISA Target ISA Notes（sm_120a 在支持列表）矛盾 | F2 | ptx-docs Target ISA Notes：sm_90a/100a/110a/120a + 100f/110f/120f | 三处改为条件表述+精确支持列表 | 已入正文 |
 | 2026-09-11 | ffpa_attn.cuh L17-18 头注释 | 性能口径为 PRO 5000 | F4 | README 同项数据口径为 RTX 5090 | ch19 正文双口径标注（PRO 5000 复测 + README 5090 引用） | 待 ch19 核查 |
 | 2026-09-11 | sgemv.cuh L17 | 「否则内层循环 kNumWarps 次」——kNumWarps 不存在，实际 NUM_ITERS=ceil(K/32) | F3 | 轮2 agent 独立核校 | ch08 正文勘误框 | 已入正文 |
 | 2026-09-11 | sgemv.cuh L91-98 | sgemv_k16 M%8!=0 时半 warp 守卫分叉，全掩码 __shfl_xor_sync 属 UB（实践碰巧正确） | F2 | CUDA 语义+轮2 agent 分析 | ch08 勘误+坑节 | 已入正文 |

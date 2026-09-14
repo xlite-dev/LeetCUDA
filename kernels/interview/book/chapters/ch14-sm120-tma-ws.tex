@@ -59,11 +59,12 @@ sm120 优化指南一句话总结：sm120 在 warp 组织与 block 限制上更�
 但退化的计算层并不推翻 warp specialization 的价值：producer/consumer 分工
 消除的是「搬运与计算争抢发射槽」的结构性开销，这与计算指令是哪一代无关。
 此外，SM120 的 \texttt{setmaxnreg}（寄存器池再分配）\textbf{指令存在且可以
-生效}，但有一个容易踩的目标后缀陷阱：默认的 \texttt{-arch sm\_120a} 会被
-ptxas 静默丢弃（C7506 警告），改用 CUDA 13.2+ 的 family-specific 目标
-\texttt{-arch sm\_120f} 编译即可保留并生效（ffpa-attn 在 Blackwell 上的
-warp-specialized kernel 正是这么启用的）。「目标后缀选错就静默失效」本身
-就是一条值得写进正文的工程教训（14.3.3、14.8~节）。
+生效}，但有一个容易踩的目标后缀陷阱：默认的 \texttt{-arch sm\_120a} 下，
+只要 kernel 含 TMA 指令（\texttt{cp.async.bulk.tensor}），ptxas 就会静默丢弃
+\texttt{setmaxnreg}（C7506 警告；无 TMA 的 kernel 不受影响），改用 CUDA 13.2+
+的 family-specific 目标 \texttt{-arch sm\_120f} 编译即可保留并生效（ffpa-attn
+在 Blackwell 上的 warp-specialized kernel 正是这么启用的）。「目标后缀选错
+就静默失效」本身就是一条值得写进正文的工程教训（14.3.3、14.8~节）。
 
 \section{数学原理}
 
@@ -79,7 +80,7 @@ TMA（bulk.tensor） & 有 & 有（无 multicast） & 原样复用 \\
 mbarrier & 有 & 有 & full/empty 协议复用 \\
 WGMMA（warpgroup MMA） & 有 & \textbf{无} & mma.sync + ldmatrix（ch11） \\
 swizzle 相位补偿 & descriptor base\_offset & \textbf{无} & \_\_align\_\_(1024) \\
-setmaxnreg & 可用 & sm\_120f 下可用（默认目标丢弃） & -arch sm\_120f + 宏开启 \\
+setmaxnreg & 可用 & 支持；与 TMA 同 kernel 时被 ptxas 丢弃 & -arch sm\_120f + 宏开启 \\
 cluster / TMEM & cluster 有 / TMEM 无 & 均无 & 不涉及 \\
 每 SM 寄存器 & 65536 & 65536 & 池数学同型（14.3.3） \\
 smem / SM & 228KB & 128KB & kStages $\le$ 3 \\
@@ -201,8 +202,9 @@ setmaxnreg」，而是「目标后缀选错就静默失效」。这也是
 构建混合 sm\_89/sm\_120a 多目标，保持无警告、也避免
 \texttt{\_\_launch\_bounds\_\_(N,1)} 副作用；要做 setmaxnreg 实验就用
 \texttt{-arch sm\_120f} 构建并打开宏。PTX ISA 的 Target ISA Notes 确认
-setmaxnreg 支持 sm\_90a 与 sm\_120 家族的 specific 目标——把指令挡在门外的
-是目标后缀的选择，不是指令集本身。
+setmaxnreg 的支持列表覆盖 sm\_90a、sm\_100a/sm\_110a/sm\_120a 架构目标与
+sm\_100f/sm\_110f/sm\_120f 家族目标（PTX 8.8 起）——指令集本身支持 sm\_120a，
+把指令挡在门外的是 ptxas 把 TMA 当隐式 call 边界的处理，不是指令集。
 
 \subsection{TMA box：回指与本章坐标}
 

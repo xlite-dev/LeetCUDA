@@ -70,7 +70,7 @@ $D$ & 单个 $[64,D]$ tile & $Q{+}K{+}V$ 各 1 份 & O 累加器（f32/线程）
 
 O 累加器一列的口径见 19.4.6~节：$O$ 的碎片是 $[B_r, D]$ 的 f32 累加器，按 128 个
 consumer 线程均分，每线程 $B_r D / 128 = D/2$ 个寄存器。$D = 512$ 时单是累加器
-就要 256 个 f32 寄存器，而 PTX 规定每线程寄存器上限是 255——\textbf{还没算
+就要 256 个 f32 寄存器，而每线程寄存器上限是 255（NVCC 分配限制；setmaxnreg 再分配亦不破此限，见 19.4.5 节）——\textbf{还没算
 $S/P$ 碎片和 Q/K/V 操作数，账已经超了}。
 
 于是「大 head dim」的障碍是三条互相独立的硬约束，任何一条都足以否掉「整块
@@ -499,11 +499,15 @@ Phase 3 的 rescale 是本章数学结论落地的位置——\textbf{同一个 
         到达数是 \textbf{128}：每个 consumer 线程消费完该槽位各 arrive 一次。
         这就是第~\ref{ch:17}~章「arrive 数 $=$ 消费者线程数」规则的延续（那边是
         257 $=$ 256 $+$ 1，这边因为只有 1 个 consumer warpgroup，所以是 128）。
-  \item \texttt{NOTES\_V2\_REG\_DEALLOC(40)} / \texttt{NOTES\_V2\_REG\_ALLOC(255)}
-        （L432、L484）——producer 只做地址计算与 TMA 提交，40 个寄存器够用；
-        consumer 要背 $S$、$P$、$C$ 个 O 累加器与操作数碎片，直接申请 255 的
-        上限。池算术：$128 \times 40 + 128 \times 255 = 37760 \le 65536$，余量
-        27776 个寄存器，远高于「留 $\ge 2048$」的安全线。注意该指令是目标后缀敏感的：默认
+  \item \texttt{NOTES\_V2\_REG\_DEALLOC(32)} / \texttt{NOTES\_V2\_REG\_ALLOC(232)}
+        （L432、L484）——producer 只做地址计算与 TMA 提交，32 个寄存器够用；
+        consumer 要背 $S$、$P$、$C$ 个 O 累加器与操作数碎片，顶格申请 232，
+        取值对齐 ffpa-attn 生产库 persist\_d 的原版配比（32/232）。约束链
+        （FA3 论文与 PTX ISA~9.7.19.5）：立即数须为 $[24,256]$ 内 8 的倍数，
+        且 NVCC 对每线程实际分配另设 $\le 255$ 上限——合法顶格值是 248，
+        本书初版的 255 不是 8 的倍数，开宏会被 ptxas 拒绝。池算术：
+        $128 \times 32 + 128 \times 232 = 33792 \le 65536$，余量
+        31744 个寄存器，远高于「留 $\ge 2048$」的安全线。注意该指令是目标后缀敏感的：默认
         \texttt{-arch sm\_120a} 下只要 kernel 里出现
         \texttt{cp.async.bulk.tensor}，ptxas 就会以 C7506 丢弃
         \texttt{setmaxnreg}（第~\ref{ch:14}/\ref{ch:18}~章考据）；改用
@@ -559,8 +563,8 @@ PV 段的消费者循环与 cp.async 版同构，只是等待/释放换成屏障
   mbarrier：full（tx-count）$+$ empty（128 arrive）$+$ phase \\
 流水账本 & 每线程私有组 FIFO；每 KV tile 排空后重置 &
   扁平 \texttt{idx} 导出的 (stage, phase)；跨 KV tile 连续 \\
-寄存器池 & 无 \texttt{setmaxnreg} & \texttt{dealloc(40)} / \texttt{alloc(255)}
-  （sm120 上被 ptxas 丢弃） \\
+寄存器池 & 无 \texttt{setmaxnreg} & \texttt{dealloc(32)} / \texttt{alloc(232)}
+  （与 TMA 同 kernel 时在 sm\_120a 被 ptxas 以 C7506 丢弃） \\
 Q 的装载 & 每 KV tile 重装（与 K 同 stage） & 每 KV tile 重发 TMA（同样的冗余） \\
 计算段组织 & QK $\to$ softmax $\to$ PV 串行 & consumer 串行；producer 全程并行装载 \\
 架构门槛 & sm\_80$+$ & sm\_90a / sm\_120a（TMA） \\
@@ -598,7 +602,7 @@ $\times$ 2 个 N-warp，$R_O$ 降到 $D/4$）的原因，也是本章这版 kern
 
 同一条账本还解释了另一件事：\textbf{为什么这版 WS 不用双 consumer}
 （第~\ref{ch:18}~章的形态）。双 consumer 意味着两套 partial 状态与两套寄存器池，
-而这里 consumer 单个就已经申请到 255 的上限；生产库在 split-D WS 变体上的记录是
+而这里 consumer 单个就已经顶到 232 的寄存器配额；生产库在 split-D WS 变体上的记录是
 「\texttt{setmaxnreg} 的 consumer 上限装不下 $D{=}512$ 的 256 寄存器累加器，
 该变体已禁用，大 $D$ 转向 M4N2」。结构选择在这里被寄存器文件\textbf{逼}了出来。
 
@@ -891,7 +895,7 @@ A：算法层没有差别（头注释 L70--73 明确「消费者逻辑完全一�
 对象）直接决定了流水能否跨 tile 连续。
 
 \textbf{Q7：为什么这版 WS 只有一个 consumer warpgroup？}\\
-A：寄存器账本（式~\ref{eq:19-oacc}）。consumer 单线程已申请到 255 上限，
+A：寄存器账本（式~\ref{eq:19-oacc}）。consumer 单 warpgroup 已顶到 232 配额，
 $D{=}512$ 时 O 累加器一项就是 256 个 f32；再加第二套 partial 状态与寄存器池
 放不下。生产库的记录同样是「split-D WS 变体因消费者寄存器上限装不下大 D 累加器
 而禁用，大 $D$ 转 M4N2」。
