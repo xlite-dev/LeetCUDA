@@ -62,7 +62,7 @@ SY, SH = 424, 40
 for c in range(8):
     x = 40 + c * 96
     box(x, SY, 88, SH, f"chunk {c}", fill="#fde9d0", stroke="#d97706", fs=11)
-    text(x, SY + SH + 2, 88, 16, "32 float", fs=11, fc="#48586a")
+    text(x, SY + SH + 16, 88, 16, "32 float", fs=11, fc="#48586a")
 box(40, SY, 8 * 96 - 8, SH, "", fill="none", stroke="#d97706")
 # 总量 + 警戒线
 text(846, SY + 10, 190, 18, "合计 = 256 寄存器", fs=13, bold=True, fc="#b45309")

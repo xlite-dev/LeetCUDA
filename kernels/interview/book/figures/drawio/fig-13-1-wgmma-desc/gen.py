@@ -88,7 +88,8 @@ def fig_13_2():
     f.text(64, 304, 460, 20, "P1  wait(empty[s])   等待 stage 被读空", fs=12, fc="#243b53")
     f.text(64, 328, 460, 20, "P2  TMA(A), TMA(B)   单线程提交两笔搬运", fs=12, fc="#243b53")
     f.text(64, 352, 460, 20, "P3  arrive + expect-tx(full[s], 32KB)", fs=12, fc="#243b53")
-    f.text(64, 380, 460, 56, "相位翻转条件：129 次 arrive（128 consumer + 1 producer）且 32768B 落盘 —— 二者同时成立", fs=12, fc="#48586a")
+    f.text(64, 380, 460, 18, "相位翻转条件：129 次 arrive（128 consumer + 1 producer）", fs=12, fc="#48586a")
+    f.text(64, 398, 460, 18, "且 32768B 落盘 —— 二者同时成立", fs=12, fc="#48586a")
     f.box(560, 268, 480, 180, "", fill="#f0faf5", stroke=GREEN)
     f.box(560, 268, 480, 30, "WG1 consumer（128 线程 warpgroup）", fill=GRAY, stroke=GREEN, fs=13, bold=True, fc=GREEN)
     f.text(574, 304, 460, 20, "C1  wait(full[s])", fs=12, fc="#243b53")
@@ -129,11 +130,13 @@ def fig_13_3():
     f.text(60, 302, 280, 20, "waiter 按 parity 唤醒", fs=12.5, fc=GREEN)
     # 本章条件
     f.box(60, 350, 480, 76, "", fill="#f7f3ec", stroke="#b45309")
-    f.text(74, 356, 460, 22, "full[s] 翻转 = 128 consumer arrive + 1 producer arrive.expect-tx(32768B) + 32768B complete-tx", fs=11.5, fc="#7c5a1e")
-    f.text(74, 384, 460, 36, "-> 翻转后 consumer 读数据（complete-tx 自动：TMA 字节落盘时 T 减 dC）", fs=11.5, fc="#7c5a1e")
+    f.text(74, 356, 460, 18, "full[s] 翻转 = 128 consumer arrive + 1 producer arrive.expect-tx(32768B)", fs=11, fc="#7c5a1e")
+    f.text(74, 374, 460, 18, "+ 32768B complete-tx", fs=11, fc="#7c5a1e")
+    f.text(74, 392, 460, 18, "-> 翻转后 consumer 读数据（TMA 字节落盘时 T 减 dC）", fs=11, fc="#7c5a1e")
     f.box(560, 350, 500, 76, "", fill="#f7f3ec", stroke="#b45309")
-    f.text(574, 356, 480, 22, "empty[s] 翻转 = 128 consumer arrive（C4 / C0 warmup）+ 1 producer arrive（P1）", fs=11.5, fc="#7c5a1e")
-    f.text(574, 384, 480, 36, "-> 翻转后 producer 覆写该 stage（C0 预热补 128 次 arrive）", fs=11.5, fc="#7c5a1e")
+    f.text(574, 356, 480, 18, "empty[s] 翻转 = 128 consumer arrive（C4 / C0 warmup）", fs=11, fc="#7c5a1e")
+    f.text(574, 374, 480, 18, "+ 1 producer arrive（P1）", fs=11, fc="#7c5a1e")
+    f.text(574, 392, 480, 18, "-> 翻转后 producer 覆写该 stage（C0 预热补 128 次 arrive）", fs=11, fc="#7c5a1e")
     return mk(f.p, 1100, 450, "fig13-3")
 
 def fig_14_1():
@@ -147,9 +150,10 @@ def fig_14_1():
     f.text(96, 186, 100, 18, "m0", fs=11.5, fc="#627d98")
     f.text(50, 322, 460, 20, "boxDim = (BK=64, BM=128)，坐标 minor-first：A box (k*64, by*128)", fs=12, fc="#48586a")
     # 右：smem XOR 网格
-    f.text(560, 52, 500, 20, "smem tile（BM x BK，chunk = 16B = 8 half）：chunk 异或 行低 3 位", fs=13.5, bold=True, fc=ORANGE)
+    f.text(560, 40, 500, 20, "smem tile（BM x BK，chunk = 16B = 8 half）", fs=13.5, bold=True, fc=ORANGE)
+    f.text(560, 60, 500, 20, "chunk 异或 行低 3 位", fs=12, fc=ORANGE)
     CW, CH = 44, 32
-    GX, GY = 620, 84
+    GX, GY = 620, 114
     for c in range(8):
         f.box(GX + c * CW, GY - CH, CW, CH, str(c), fill=GRAY, stroke="#9aa5b1", fs=11.5, bold=True)
     f.text(GX - 60, GY - CH, 56, CH, "chunk", fs=11, fc="#627d98", align="right")

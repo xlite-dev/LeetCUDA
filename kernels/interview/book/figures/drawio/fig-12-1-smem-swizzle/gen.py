@@ -105,7 +105,8 @@ box(700, CY + 138, 350, 60, "after: quads {0,8,16,24,4,12,20,28}", fill="#c9e4c8
 box(700, CY + 204, 350, 46, "8 个互异 quad 铺满 32 bank -> 1-way", fill="#ffffff", stroke=GREEN, fs=13, fc=GREEN)
 
 # 底注
-text(30, H - 96, 1020, 20, "chunk1（lanes 16..31）镜像同一模式。BK=64 统一 tile 中只有 slice 内翻转存活 -> 每 phase 4-way，见 FIG-12-3", fs=12.5, fc="#48586a")
+text(30, H - 96, 1020, 18, "chunk1（lanes 16..31）镜像同一模式。", fs=12.5, fc="#48586a")
+text(30, H - 76, 1020, 18, "BK=64 统一 tile 中只有 slice 内翻转存活 -> 每 phase 4-way，见 FIG-12-3", fs=12.5, fc="#48586a")
 
 xml = f'''<mxfile host="app.diagrams.net">
   <diagram id="fig12-1" name="FIG-12-1">

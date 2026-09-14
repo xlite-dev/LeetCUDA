@@ -186,6 +186,8 @@ warp 的 32 个 lane 恰好拼出一段 128B 连续地址——\textbf{合并访
 $16\,\dots\,31$ 之间可能分叉（$M$ 为奇数时的最后一个 warp），这会踩到 shuffle
 掩码的语义红线——8.6~节勘误二详细展开，测试也据此固定 $M \% 8 = 0$。
 
+\needspace{92mm}
+
 \section{图示}
 
 \begin{figure}[htbp]

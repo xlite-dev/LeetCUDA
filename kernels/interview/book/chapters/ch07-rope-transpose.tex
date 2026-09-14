@@ -114,6 +114,8 @@ $R^{d}_{\Theta}$ 是 $d/2$ 个 $2\times 2$ 旋转块排布在主对角线上的\
 
 smem tile 的形状是 \texttt{[TILE*4][TILE+PAD]} $= [64][17]$：第二维多出的 \texttt{PAD = 1} 不是防越界，而是\textbf{消除 bank conflict} 的关键——这就是下一节的主题。
 
+\needspace{77mm}
+
 \section{图示：Bank Conflict 专题}
 
 \subsection{shared memory 的物理结构}

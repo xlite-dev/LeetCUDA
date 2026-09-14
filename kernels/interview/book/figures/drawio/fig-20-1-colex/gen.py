@@ -4,8 +4,8 @@
 import sys
 
 CELL_W, CELL_H = 54, 34
-GX, GY = 60, 90          # 左表原点
-RX, RY = 520, 90         # 右数带原点（8 列 x 4 行）
+GX, GY = 60, 116          # 左表原点（列头顶与副标题行留净空）
+RX, RY = 520, 116         # 右数带原点（8 列 x 4 行）
 W, H = 1010, 470
 
 def cell(x, y, w, h, text, fill="#ffffff", stroke="#9aa5b1", fontsize=13, bold=False, fontcolor="#1f2933"):
@@ -93,8 +93,10 @@ P(f'<mxCell id="note1" value="f(1,3) = 1·1 + 3·4 = 13" style="text;html=1;alig
   f'vertex="1" parent="1"><mxGeometry x="775" y="130" width="220" height="24" as="geometry"/></mxCell>')
 P(f'<mxCell id="note2" value="f(3,1) = 3·1 + 1·4 = 7" style="text;html=1;align=left;fontSize=14;fontColor=#2e8540;fontStyle=1;" '
   f'vertex="1" parent="1"><mxGeometry x="775" y="160" width="220" height="24" as="geometry"/></mxCell>')
-P(f'<mxCell id="note3" value="整数输入时 f(x)=x（compact + col-major）" style="text;html=1;align=left;fontSize=13;fontColor=#48586a;" '
-  f'vertex="1" parent="1"><mxGeometry x="775" y="196" width="225" height="40" as="geometry"/></mxCell>')
+P(f'<mxCell id="note3" value="整数输入时 f(x)=x" style="text;html=1;align=left;fontSize=13;fontColor=#48586a;" '
+  f'vertex="1" parent="1"><mxGeometry x="775" y="194" width="225" height="20" as="geometry"/></mxCell>')
+P(f'<mxCell id="note3b" value="（compact + col-major）" style="text;html=1;align=left;fontSize=13;fontColor=#48586a;" '
+  f'vertex="1" parent="1"><mxGeometry x="775" y="212" width="225" height="20" as="geometry"/></mxCell>')
 
 # 底部对照
 P(f'<mxCell id="foot" value="对照：row-major 版 (4,8):(8,1) 的 f(1,3) = 1·8 + 3·1 = 11 —— 同一 shape，stride 决定读序" '

@@ -2,9 +2,9 @@
 # gen_fig23_1.py — FIG-23-1 SW128 原子物理排布（8x8 XOR 置换网格）
 import sys
 
-W, H = 900, 470
+W, H = 1080, 470
 CW, CH = 52, 38          # 格
-GX, GY = 130, 80         # 网格原点
+GX, GY = 130, 96         # 网格原点（列头顶与说明行留 8px 净空）
 parts = []
 def P(s): parts.append(s)
 
@@ -67,9 +67,10 @@ arrow([(GX + 8, y4c - 4), (GX + CW * 2, y4c - 52), (GX + CW * 4 + CW - 10, y4c -
 # 公式侧栏
 text(690, GY + 30, 200, 20, "物理偏移(r, c)，half 单位：", fs=12.5, fc="#102a43")
 box(690, GY + 54, 200, 44, "smem = 64·r + 8·(j XOR r) + (c mod 8)", fill="#f0f4f8", stroke=BLUE, fs=12, bold=True, fc=BLUE)
-text(690, GY + 106, 200, 60, "与 swizzle&lt;64&gt;（第 12 章）同构；TMA SWIZZLE_128B 写 64×64 half tile 实测 4096/4096 逐点一致", fs=11, fc="#48586a")
+text(690, GY + 106, 370, 18, "与 swizzle&lt;64&gt;（第 12 章）同构；", fs=11, fc="#48586a")
+text(690, GY + 126, 370, 18, "TMA SWIZZLE_128B 写 64×64 half tile 实测 4096/4096 逐点一致", fs=11, fc="#48586a")
 
-text(30, 402, 840, 20, "蓝格行 r=1/2/4 的箭头示例：逻辑 chunk c0 的物理落点分别翻 1/2/4 对应的地址位——同一张表就是 Swizzle<3,4,3> 在 128B 行上的全部行为", fs=12, fc="#48586a")
+text(30, 414, 840, 20, "蓝格行 r=1/2/4 的箭头示例：逻辑 chunk c0 的物理落点分别翻 1/2/4 对应的地址位——同一张表就是 Swizzle&lt;3,4,3&gt; 在 128B 行上的全部行为", fs=12, fc="#48586a")
 
 xml = f'''<mxfile host="app.diagrams.net">
   <diagram id="fig23-1" name="FIG-23-1">

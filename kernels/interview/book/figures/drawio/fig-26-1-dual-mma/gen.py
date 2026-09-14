@@ -35,7 +35,7 @@ def arrow(x1, y1, x2, y2, color="#48586a", dashed=0, wy=None):
 
 # 标题
 text(30, 12, 840, 24, "ffpa_split_d_cute (128 threads): dual TiledMma dataflow", fs=17, bold=True)
-text(30, 38, 840, 20, "QK Tile<64,64,16> EURepeat<1,8,1> ｜ PV Tile<64,16,16> EURepeat<1,2,1> —— S 到 P 到 O 一条寄存器流水", fs=12.5, fc="#48586a")
+text(30, 38, 840, 20, "QK Tile&lt;64,64,16&gt; EURepeat&lt;1,8,1&gt; ｜ PV Tile&lt;64,16,16&gt; EURepeat&lt;1,2,1&gt; —— S 到 P 到 O 一条寄存器流水", fs=12.5, fc="#48586a")
 
 # ---- 左栏：QK chunk 循环 ----
 LX, LY, LW = 40, 80, 240

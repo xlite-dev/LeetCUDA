@@ -361,6 +361,8 @@ epilogue 与 ch11/ch12 同款：mma m16n8k16 的 C fragment 中，同一 8$\time
 覆盖 $(r, c)$ 与 $(r{+}8, c)$ 两个行片。这一步是第~\ref{ch:13}~章末尾预告的
 「R$\to$G 128-bit 写回」在寄存器直写路径下的实现（不经过 smem 中转）。
 
+\needspace{100mm}
+
 \section{图示}
 
 \begin{figure}[htbp]
@@ -460,10 +462,12 @@ cp.async 提交指令，ldmatrix 到 mma 的发射槽更纯粹；（2）TMA 单�
 「无 error、无 illegal access、永不返回」。调试口诀：唯一变量是 setmaxnreg
 数字的挂起，先查池数学再查别的。
 
-\textbf{坑二：sm\_120a 上 setmaxnreg 被 ptxas 静默丢弃（C7506）。}kernel 里
-同时出现 TMA 与 setmaxnreg 时，ptxas 把前者当隐式 call 边界，后者直接丢弃
-——只有一条 warning，功能消失。本章宏门控默认关闭正是为了它；在 sm\_120a
-上做寄存器再分配实验前，先看 build log 有无 C7506。
+\textbf{坑二：默认目标 sm\_120a 下 setmaxnreg 被 ptxas 静默丢弃（C7506），
+需指定 \texttt{-arch sm\_120f} 才能使能。}kernel 里同时出现 TMA 与
+setmaxnreg 时，ptxas 把前者当隐式 call 边界，后者直接丢弃——只有一条
+warning，功能消失。本章宏门控默认关闭正是为了它；\textbf{解法是 CUDA 13.2+
+的 family-specific 目标 \texttt{-arch sm\_120f}}（见 14.2 与 14.3.3 节考据），
+在此目标下重编译才会保留生效。沿用默认目标时，先看 build log 有无 C7506。
 
 \textbf{坑三：smem 基址只对齐 128B，输出全错但不越界。}ldmatrix + 手写
 \texttt{swizzle<64>()} 假设硬件以相位 0 写入；非 1024B 对齐时 TMA 按非零相位
@@ -514,10 +518,12 @@ A：$\sum\sb{warp} 32 \times r\sb{w} < 65536$，工程上留 $\ge$ 2048 slack；
 恰满 65536 时 \texttt{.inc} 永久阻塞（无报错），与 producer 互等成死锁。
 立即数范围 $[24, 256]$ 且 8 的倍数，warpgroup 对齐执行。
 
-\textbf{Q6：sm\_120a 上 setmaxnreg 为什么默认关？}\\
+\textbf{Q6：默认目标 sm\_120a 上 setmaxnreg 为什么默认关？}\\
 A：CUDA 13.2 ptxas 把 kernel 内使用 \texttt{cp.async.bulk.tensor} 视作隐式
 extern-call 边界，即使完全内联也以 C7506 丢弃 setmaxnreg（sm\_90a 不受影响）
-；指令集本身 sm\_120a 支持，属工具链限制。
+；指令集本身 sm\_120a 支持，属工具链限制。\textbf{解法是切到 family-specific
+目标 \texttt{-arch sm\_120f}（CUDA 13.2+），该目标下 setmaxnreg 保留生效}（见
+14.2、14.3.3 节）。
 
 \textbf{Q7：\texttt{swizzle<64>} 与 ch12 \texttt{swizzle<16>} 用法差异？}\\
 A：swizzle 周期覆盖整行 64 列时，k\_step 偏移参与 chunk 号高位，必须把完整列
@@ -558,8 +564,9 @@ bench 子命令输出 14.6~节的对照表（\texttt{CUDA\_VISIBLE\_DEVICES=6
 \texttt{tma\_arrive\_expect\_tx} 的字节数减半，观察 consumer 挂死（tx 永不
 归零）；（2）删掉 C0 预热循环，复现「首轮 empty 永不翻转」；（3）把
 \texttt{\_\_align\_\_(1024)} 改成 128，观察系统性错位输出（坑三）；（4）打开
-\texttt{NOTES\_V2\_ENABLE\_SETMAXNREGS} 重编译，在 build log 里找 C7506
-（坑二）。
+\texttt{NOTES\_V2\_ENABLE\_SETMAXNREGS} 重编译：默认 \texttt{-arch sm\_120a}
+下在 build log 里找 C7506（坑二），换成 \texttt{-arch sm\_120f} 后 warning
+消失、setmaxnreg 保留生效。
 
 \section*{延伸阅读}
 

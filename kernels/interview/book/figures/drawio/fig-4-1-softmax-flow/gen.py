@@ -51,8 +51,8 @@ def fig_1_1():
         f.text(820, y + 16, 100, 20, f"({scope})", fs=12.5, fc="#627d98")
         y += 66
     f.line([(48, 64), (48, y - 10)], color="#627d98", width=2, arrow_end=1)
-    f.text(20, 300, 130, 40, "离 SM 越远：带宽越低、容量越大", fs=13, fc="#48586a")
-    return mk(f.p, 950, y + 20, "fig1-1")
+    f.text(280, y + 16, 420, 22, "离 SM 越远：带宽越低、容量越大", fs=13, fc="#48586a", align="center")
+    return mk(f.p, 950, y + 50, "fig1-1")
 
 def fig_1_2():
     f = F()
@@ -77,8 +77,9 @@ def fig_1_2():
     f.text(500, 108, 330, 40, "GEMM K=4096: AI=683 高于 AI*=295 -> compute-bound", fs=12.5, fc=BLUE)
     f.box(196, 396, 12, 12, "", fill=GREEN, stroke=GREEN)
     f.text(214, 412, 330, 40, "softmax AI=0.625 远低于 AI*=20 -> 严重 memory-bound", fs=12.5, fc=GREEN)
-    f.text(40, 460, 900, 40, "例：H100 SXM（base.cuh L84-86 口径）FP16 TC dense P-peak 约 989 TFLOPS，BW=3.35 TB/s -> AI* 约 295；FP32 CUDA core 约 67 TFLOPS -> AI* 约 20", fs=12.5, fc="#48586a")
-    return mk(f.p, 980, 510, "fig1-2")
+    f.text(40, 458, 900, 20, "例：H100 SXM（base.cuh L84-86 口径）FP16 TC dense P-peak 约 989 TFLOPS，BW=3.35 TB/s -> AI* 约 295；", fs=12.5, fc="#48586a")
+    f.text(40, 478, 900, 20, "FP32 CUDA core 约 67 TFLOPS -> AI* 约 20", fs=12.5, fc="#48586a")
+    return mk(f.p, 980, 512, "fig1-2")
 
 def fig_4_1():
     f = F()

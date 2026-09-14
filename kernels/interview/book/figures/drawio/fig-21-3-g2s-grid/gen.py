@@ -201,7 +201,8 @@ def fig_24_2():
     for t in epi:
         f.box(1150, ye, 274, 30, t, fill=GRAY, stroke="#486581", fs=11, fc="#243b53")
         ye += 36
-    f.text(1150, 244, 274, 40, "sC 与一个 A stage 别名：32x32x4 = 128x32 = 4096 half", fs=11, fc="#48586a")
+    f.text(1150, 244, 274, 18, "sC 与一个 A stage 别名：", fs=11, fc="#48586a")
+    f.text(1150, 262, 274, 18, "32x32x4 = 128x32 = 4096 half", fs=11, fc="#48586a")
     f.box(24, 330, 1212, 48, "三重重叠：MMA 消费 stage s_k 的 k_step，LDSM 预取同一 stage 的 k_step+1，cp.async 同时填另一个 stage —— s0/s1 交替贯穿", fill=LOF, stroke=ORANGE, fs=13.5, bold=True, fc="#7c3a06")
     return mk(f.p, 1480, 392, "fig-24-2")
 

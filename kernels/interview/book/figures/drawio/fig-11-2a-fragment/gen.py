@@ -98,7 +98,8 @@ def fig_11_1():
     for name, x, y, reg, fill in quads:
         f.box(x, y, 150, 84, "", fill=fill, stroke=BLUE)
         f.text(x + 8, y + 6, 140, 18, name, fs=11.5, bold=True, fc=BLUE)
-        f.text(x + 8, y + 30, 140, 44, "rows = t%16\ncols = (t/16)*8", fs=11, fc="#48586a")
+        f.text(x + 8, y + 30, 140, 18, "rows = t%16", fs=11, fc="#48586a")
+        f.text(x + 8, y + 48, 140, 18, "cols = (t/16)*8", fs=11, fc="#48586a")
     f.text(60, 288, 380, 20, "t=0-7 -> m0; t=8-15 -> m1; t=16-23 -> m2; t=24-31 -> m3", fs=11.5, fc="#48586a")
     f.box(60, 312, 380, 40, "象限序 [UL, LL, UR, LR] == mma 期望序（Eq 11.1），开箱即用", fill="#c9e4c8", stroke=GREEN, fs=12, bold=True, fc="#1e5631")
     # 右：B 两矩阵
@@ -107,7 +108,8 @@ def fig_11_1():
                                                   ("matrix1  n 0-7, k 8-15", 770, 90, "RB[j][1]", "lower k half")]):
         f.box(x, y, 150, 84, "", fill="#f0faf5", stroke=GREEN)
         f.text(x + 8, y + 6, 140, 18, name, fs=11.5, bold=True, fc=GREEN)
-        f.text(x + 8, y + 30, 140, 44, "rows = t%8\ncols = ((t/8)%2)*8", fs=11, fc="#48586a")
+        f.text(x + 8, y + 30, 140, 18, "rows = t%8", fs=11, fc="#48586a")
+        f.text(x + 8, y + 48, 140, 26, "cols = ((t/8)%2)*8", fs=11, fc="#48586a")
     f.text(600, 188, 400, 20, "t=0-7 -> k 低半；t=8-15 -> k 高半（只用 t 小于 16）", fs=11.5, fc="#48586a")
     f.box(600, 312, 470, 40, "装载 B^T 的行 == 装载 B 的列：无需 .trans", fill="#c9e4c8", stroke=GREEN, fs=12.5, bold=True, fc="#1e5631")
     f.text(50, 372, 1030, 20, "地址公式：A row = warpM*64 + i*16 + (t%16)，col k = (t/16)*8；B row n = warpN*32 + j*8 + (t%8)", fs=12, fc="#48586a")
@@ -139,7 +141,7 @@ def fig_11_2a():
             f.box(GX + k * CW, y, CW, CH, f"T{lane}", fill=fill, stroke="#bcccdc", fs=11.5)
     for ri in range(len(rows) - 1):
         if rows[ri + 1] - rows[ri] > 1:
-            f.text(GX - 52, GY + ri * (CH + 6) + CH + 2, 300, 16, f"... (m {rows[ri]+1}-{rows[ri+1]-1} 同构)", fs=10.5, fc="#9aa5b1")
+            f.text(GX - 56, GY + ri * (CH + 6) + CH + 2, 52, 20, f"⋮ m{rows[ri]+1}-{rows[ri+1]-1}", fs=10.5, fc="#9aa5b1", align="center")
     # 象限注释卡
     f.box(980, GY - 10, 190, 30, "R0 = a0,a1 (m 0-7, k 0-7)", fill="#f0f6fb", stroke=BLUE, fs=11, bold=True, fc=BLUE)
     f.box(980, GY + 26, 190, 30, "R1 = a2,a3 (m 8-15, k 0-7)", fill="#e9eff6", stroke=BLUE, fs=11, bold=True, fc=BLUE)

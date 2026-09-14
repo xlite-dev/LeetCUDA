@@ -362,6 +362,8 @@ GEMM 以喂满 Tensor Core。本 kernel 的 consumer 用\textbf{同步}的
 窗口被完整隐藏。这是「无 WGMMA」约束下的近似——第~\ref{ch:25}~章的 CuTe 版
 会在 sm\_90a 上用 \texttt{wgmma} 把这层差距补上。
 
+\needspace{119mm}
+
 \section{图示}
 
 \begin{figure}[htbp]
@@ -595,18 +597,22 @@ F16Acc $5\times10^{-2}$、F32Acc $10^{-3}$。工程细节与
 \texttt{dlopen} 解析（build\_tests.sh 不带 \texttt{-lcuda}）；DOM 顺序先引
 hgemm.cuh（\texttt{swizzle\_fa} 依赖它的 \texttt{swizzle<64>}）。
 
-在 \texttt{book/tests/} 目录下编译运行（本机 sm\_120a，6 号卡）：
+在 \texttt{book/tests/} 目录下编译运行（6 号卡；arch 必须用 \texttt{sm\_120f}
+——本章 kernel 的 \texttt{setmaxnreg} 与 TMA 同 kernel，默认 \texttt{sm\_120a}
+下会被 ptxas 以 C7506 丢弃，见本节坑七与第~\ref{ch:14}~章的考据）：
 
-\begin{quote}\small
-\texttt{./build\_tests.sh --arch sm\_120a --ch ch18}\\[3pt]
-\texttt{max shared memory per block (optin): 101376 B (99.0 KB)}\\
-\texttt{PASS fa3\_2wg D=64 N=64 Sk=1 Tc=1 F16Acc: max\_abs\_err=2.388e-04}\\
-\texttt{PASS fa3\_2wg D=64 N=64 Sk=1 Tc=1 F32Acc: max\_abs\_err=1.368e-04}\\
-\texttt{PASS fa3\_2wg D=64 N=128 Sk=2 Tc=2 F16Acc: max\_abs\_err=1.678e-04}\\
-\texttt{PASS fa3\_2wg D=64 N=512 Sk=3 Tc=8 F32Acc: max\_abs\_err=4.646e-05}\\
-\texttt{...（14 例全 PASS，F16Acc $\sim$1.2--2.4e-04 / F32Acc $\sim$4.5e-05--1.4e-04）...}\\
-\texttt{ALL OK}
-\end{quote}
+\begin{lstlisting}[style=console]
+./build_tests.sh --arch sm_120f --ch ch18
+max shared memory per block (optin): 101376 B (99.0 KB)
+PASS fa3_2wg D=64 N=64 Sk=1 Tc=1 F16Acc: max_abs_err=2.388e-04 (tol=5.0e-02)
+PASS fa3_2wg D=64 N=64 Sk=1 Tc=1 F32Acc: max_abs_err=1.368e-04 (tol=1.0e-03)
+PASS fa3_2wg D=64 N=512 Sk=3 Tc=8 F32Acc: max_abs_err=4.646e-05 (tol=1.0e-03)
+PASS fa3_2wg D=128 N=512 Sk=1 Tc=8 F16Acc: max_abs_err=1.194e-04 (tol=5.0e-02)
+ALL OK
+\end{lstlisting}
+
+以上为照录（截取头尾），14 例全 PASS：F16Acc $\sim$1.1--2.4e-04、
+F32Acc $\sim$4.5e-05--1.4e-04。
 
 bench 子命令输出 18.6~节的复测表（\texttt{./.build/ch18\_fa3 bench}）。
 动手实验建议：（1）把 \texttt{N=64} 例改成 $N{=}192$（$T_c{=}3$，两 WG 分别

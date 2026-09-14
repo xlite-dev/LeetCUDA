@@ -4,9 +4,9 @@
 import sys
 
 W, H = 1120, 660
-LGX, LGY = 90, 130        # 左网格原点
-RGX, RGY = 640, 130       # 右网格原点
-CW, CH = 26, 22           # 缩略格（纯填色无文字）
+LGX, LGY = 80, 160        # 左网格原点
+RGX, RGY = 656, 160       # 右网格原点
+CW, CH = 19, 19           # 缩略格（纯填色无文字）
 parts = []
 def P(s): parts.append(s)
 
@@ -39,8 +39,8 @@ text(30, 12, 900, 26, "block swizzle：C-tile 光栅化前后（L2 footprint 对
 text(30, 42, 1000, 20, "T_m=16 x T_n=128，常驻集 R=220 blocks，组宽 16；resident set = 一个 wave 里同时驻留 SM 的 C-tile 集合", fs=13.5, fc="#48586a")
 
 # 左：default 2D grid
-text(LGX - 60, LGY - 34, 420, 22, "[default] 2D grid：x 最快，行优先光栅", fs=15, bold=True, fc=RED)
-text(LGX - 60, LGY - 12, 420, 18, "y=0/1 两行即被 220 blocks 填满", fs=12, fc=RED)
+text(30, LGY - 64, 460, 22, "[default] 2D grid：x 最快，行优先光栅", fs=15, bold=True, fc=RED)
+text(30, LGY - 42, 460, 18, "y=0/1 两行即被 220 blocks 填满", fs=12, fc=RED)
 LC, LR = 24, 8
 for r in range(LR):
     for c in range(LC):
@@ -51,16 +51,16 @@ text(LGX, LGY + LR * CH + 8, 300, 18, "x: 0 ............ 127 (T_n=128 列)", fs=
 text(LGX, LGY + LR * CH + 28, 340, 20, "resident = W=128 x H=2 宽条带", fs=13, fc=RED, bold=True)
 brace_y = LGY + 2 * CH
 arrow([(LGX - 14, LGY), (LGX - 14, brace_y)], color=RED, width=2)
-text(LGX - 92, LGY + CH - 8, 70, 20, "H=2 行", fs=12, fc=RED, align="right")
+text(LGX - 70, LGY + CH - 8, 46, 20, "H=2 行", fs=12, fc=RED, align="right")
 
 # 中间转换箭头
-arrow([(LGX + LC * CW + 24, LGY + LR * CH // 2), (RGX - 90, LGY + LR * CH // 2)], color=BLUE, width=3)
-text(LGX + LC * CW + 20, LGY + LR * CH // 2 - 30, 250, 22, "bx = z*gridDim.x + x", fs=14, fc=BLUE, bold=True)
-text(LGX + LC * CW + 20, LGY + LR * CH // 2 + 6, 250, 20, "(z 组折叠进 bx)", fs=12, fc=BLUE)
+arrow([(LGX + LC * CW + 10, LGY + LR * CH // 2 + 4), (RGX - 16, LGY + LR * CH // 2 + 4)], color=BLUE, width=3)
+text(LGX + LC * CW + 4, LGY + LR * CH // 2 - 44, 100, 20, "bx = z*gridDim.x", fs=11, fc=BLUE, bold=True)
+text(LGX + LC * CW + 4, LGY + LR * CH // 2 - 22, 100, 20, "(z 组折叠进 bx)", fs=11, fc=BLUE)
 
 # 右：3D swizzle
-text(RGX, LGY - 34, 460, 22, "[swizzle] 3D grid：z 组内 16 列，近似方块", fs=15, bold=True, fc="#2e8540")
-text(RGX, LGY - 12, 460, 18, "z=0: bx=0..15；共 8 组 x 16 tiles", fs=12, fc="#2e8540")
+text(RGX, LGY - 64, 460, 22, "[swizzle] 3D grid：z 组内 16 列，近似方块", fs=15, bold=True, fc="#2e8540")
+text(RGX, LGY - 42, 460, 18, "z=0: bx=0..15；共 8 组 x 16 tiles", fs=12, fc="#2e8540")
 RC, RR = 16, 10
 for r in range(RR + 4):
     for c in range(RC + 4):
@@ -72,7 +72,7 @@ text(RGX, LGY + (RR + 4) * CH + 8, 400, 20, "resident = 16 x 14 近方块（同 
 text(RGX, LGY + (RR + 4) * CH + 30, 420, 18, "launch 顺序 x -> y -> z 不变，bx 重排实现", fs=12, fc="#627d98")
 
 # 底部 footprint 公式 + 实测三卡
-FY = 480
+FY = 520
 text(30, FY - 30, 900, 22, "L2 footprint F（每个 K-slab 的 unique A+B tiles）：F = (H*BM + W*BN) * K * 2B", fs=14.5, bold=True)
 box(40, FY, 330, 70, "", fill="#fde9d0", stroke=RED)
 text(56, FY + 8, 310, 24, "default：(2*128 + 128*128) * K * 2B", fs=12.5, fc="#8c2f0f")
