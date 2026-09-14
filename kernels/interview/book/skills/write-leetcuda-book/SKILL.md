@@ -30,7 +30,7 @@ user-invocable: true
 2. **正文形态**：原理讲解 + 关键代码段（每段 ≤40 行，`linerange` 多段裁剪，`firstnumber=auto`）；完整代码给附录 D 的 **GitHub commit permalink**；每章正文（非 listings）≥3500 字。
 3. **测试**：`book/tests/chNN_*.cu` 无 cuBLAS/cuDNN 依赖，CPU fp64 参考 + 容差三档（F32Acc 1e-3 / F16Acc 5e-2 / TF32 1e-2），规模 ≤512，arch 不在位输出 SKIP；行数 ≤300（基础章）/≤500（复杂章）。
 4. **知乎素材**：五步法（枚举→全文落 `zhihu-analysis/`→提炼→成文不照抄→附录 E 汇总）；**图片直接引用+出处标注**（作者/文章/链接/日期），原图归档 `book/figures/zhihu/`；水印/作者角标/平台 logo 一律标记为非内容元素，不得进入书内图。
-5. **drawio 管线**（知乎图→正式图主路径）：`drawio-reconstruction` skill 为主（inventory→重建→审查闭环），`drawio-diagram-builder`/`drawio-flow-forge` 辅助（ASCII 升级/新建）。**执行模式：主 agent 直接做，不派 task agent**（闭环子代理实测易卡死，用户 2026-09-11 拍板）。审查结论如实记 audit（自审需标注）。
+5. **drawio 管线**（知乎图→正式图主路径）：`drawio-reconstruction` skill 为主（inventory→重建→审查闭环），`drawio-diagram-builder`/`drawio-flow-forge` 辅助（ASCII 升级/新建）。**执行模式：主 agent 直接做，不派 task agent**（闭环子代理实测易卡死，用户 2026-09-11 拍板）。审查结论如实记 audit（自审需标注）。**质量三查（每图必过）**：XML well-formed + 文字覆盖（COVER=0）+ 渲染宽不越界（见「drawio 制图铁律」）。**`.drawio` 源文件必须入库**（用户要求可手改，勿只提交 PNG）。
 6. **行文风格（作者基线）**：参考 @DefTruth《图解:从Online-Softmax到FlashAttention V1/V2/V3》与《WINT8/4》系列——**原理一定要讲细**：公式逐项展开、指令逐 bit/逐字段解释、先直觉后形式化再代码；中文叙述、术语保留英文。其余可自由发挥。
 7. **注释核查五类**：F1 架构事实（Prog Guide+cutlass skill arch guides）/ F2 PTX（本地 ptx-docs）/ F3 数学（独立推导）/ F4 性能断言（标来源）/ F5 历史陈述（对原论文）。
 8. **构建**：CWD=`book/`，`TEXMFCNF=../tex/: xelatex -interaction=nonstopmode book.tex` ×2（或 `./build.sh`）；本机已有 xelatex+ctexbook+Noto CJK（已验证）。
@@ -42,7 +42,12 @@ user-invocable: true
 DRAWIO_PATH=/usr/local/bin/drawio-headless \
   python3 /workspace/dev/vipshop/.github/skills/drawio-reconstruction/scripts/export_drawio.py in.drawio out.png
 python3 /workspace/dev/vipshop/.github/skills/drawio-reconstruction/scripts/check_drawio.py in.drawio
+# 也可直接：/usr/local/bin/drawio-headless -x -s 3 -o out.png in.drawio
 # VS Code drawio 插件（用户已装）：用于人工查看/微调 .drawio；自动导出仍走上面 CLI
+
+# 全书图几何体检（book/scripts/，2026-09 新增；改动后必须复检至 0）
+python3 scripts/check_overlap.py figures/drawio/*/*.drawio   # 文字覆盖（COVER = 后画实心框盖住先画 text）
+python3 scripts/check_text_fit.py figures/drawio/*/*.drawio  # 渲染宽 vs geometry 宽 + 页宽越界
 
 # 知乎 CLI（已授权；--count 上限 10）
 /root/.local/share/zhihu-cli/current/zhihu-cli search zhihu --query "..." --count 10
@@ -51,6 +56,22 @@ python3 /workspace/dev/vipshop/.github/skills/zhihu/scripts/fetch_column_fulltex
 # 源码锚点断言（RFC-A 后可用）
 python3 /workspace/dev/vipshop/LeetCUDA/kernels/interview/book/scripts/verify_anchors.py --ch chNN
 ```
+
+## drawio 制图铁律（2026-09 全书返工沉淀）
+
+**生成器结构**：每图一份自包含 `gen.py`（`F` 类 box/text/line + 输出 `python3 gen.py <输出文件全名>`，如 `gen.py fig-12-2.drawio`——误传目录名会产生孤儿文件）。批量期的权威源在 `.tmp/drawio/gen_batch_{a,b1,b2,c1,c2,d,e}.py`（**`.gitignore` 忽略**），每图目录的 gen.py 是其回流拷贝（入库、自包含）。**改图必须改 `.tmp` 权威源再回流**，直接改目录版会在下一轮批量重跑时被静默覆盖（fig-14-2 实测踩中）；回流后用 `cmp -s` 校验。
+
+**XML 铁律**：
+1. `value` 禁裸 `<` / `&`：`Tile<64,64,16>`、`Swizzle<3,4,3>`、`->`、`R^16` 类写法的 `<` 必须转义 `&lt;`。裸 `<` 毁掉 well-formed → drawio **静默**渲染成细条（fig-26-1 只输出 2522x74，书里等于废图）。
+2. 每个生成器末尾做 `ET.fromstring(xml)` 自检；全书定期 `python3 -c "ET.parse"` 全量扫（本次 2/39 破损）。
+3. `text` 元素**不自动换行**：geometry 宽小于渲染宽，文字直接溢出色框（甚至越出页宽）。长注释必须手工拆多行，或把 geometry 宽改到 ≥ 估算渲染宽。
+4. 宽度估算：CJK/全角 × `fontSize×1.02`，ASCII × `fontSize×0.58`（含全角标点按 CJK 计）。`check_text_fit.py` 用此公式报 `[OOB]`（越页宽）/`[COLLIDE]`（侵入右邻框）。
+5. z-order：后画的**实心 box 会盖住**先画的 text。右上角注释卡与左侧网格文字相交时，把文字移出卡区（`check_overlap.py` 的 `COVER` 即此类）。
+6. 导出体检：`PNG 宽 ≈ pageWidth × 3`（`-s 3`），高宽比 ≈ pageHeight/pageWidth。比例异常 = 渲染崩了（先查 XML well-formed），不要直接 `includegraphics`。
+
+**常见布局病**（本轮回修）：说明行（y 40–60）与列头框（y 50+）净空不足 → 原点下移 16–26px；卡片内文字 409px 渲染塞 300px 框 → 框加宽 + 拆行；左表右侧的 `...` 居左文本 geometry 过宽侵入相邻框 → 宽度收到渲染宽；「标题 + 图」跨页 → 图示节前 `\needspace{图高+30mm}`（mm = `width_tw × 181 × png_h/png_w`，`preamble.tex` 已 `\usepackage{needspace}`）。
+
+**其它约定**：CJK 禁 `bold`（易糊）；两位数格宽 ≥54px；纯色缩略格无文字；`.drawio`/`.png`/`gen.py` 三件套全部入库。
 
 ## 目录结构（book/，相对本 skill 的 `../../`）
 

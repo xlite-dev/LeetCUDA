@@ -301,6 +301,28 @@ CJK 一律禁 bold/italic（字体 fallback 缺字形=方框）；value 禁 `&#1
 下标纯文本（c0/c1）；折线箭头显式 mxPoint；渲染铁律全集见
 `/memories/repo/leetcuda-book-drawio.md`。
 
+**质量三查（2026-09-14 定稿，每图必过；改动后全量复检至 0）**：
+1. `python3 scripts/check_overlap.py figures/drawio/*/*.drawio` → `total COVER: 0`
+   （COVER = 定义顺序在前的 text 被后画**实心 box** 盖住；HIT 为普通相交，人工判断）
+2. `python3 scripts/check_text_fit.py figures/drawio/*/*.drawio` → `issues: 0`
+   （渲染宽估算：CJK/全角 × fontSize×1.02、ASCII ×0.58；报 OOB=越页宽、COLLIDE=侵入右邻框）
+3. XML well-formed（生成器末尾 `ET.fromstring(xml)` 自检；全量定期 ET.parse 扫）
+   —— value 裸 `<`（`Tile<64,64,16>`、`Swizzle<3,4,3>` 类写法）会**静默**毁掉 XML，
+   drawio 输出细条废图（fig-26-1 曾渲染成 2522×74 且无任何报错）。
+**导出体检**：PNG 宽 ≈ pageWidth×3（`-s 3`）、高宽比 ≈ pageHeight/pageWidth；比例异常先查 XML。
+
+**text 不 wrap 铁律**：drawio `text` 元素不自动换行——geometry 宽 < 渲染宽时文字直接
+溢出（可越出页宽）。长注释必须手工拆多行，或把 geometry 宽改到 ≥ 估算渲染宽。
+
+**生成器回流机制**：批量期的权威源在 `.tmp/drawio/gen_batch_{a,b1,b2,c1,c2,d,e}.py`
+（**被 .gitignore 忽略**）；每图目录 `gen.py` 是回流拷贝（入库、自包含）。
+**改图必须改 .tmp 权威源再回流**（`cp` 到各图目录 + `cmp -s` 校验），
+直接改目录版会在下一轮批量重跑时被静默覆盖（fig-14-2 实测踩中）。
+生成器参数是**输出文件全名**（`python3 gen.py fig-12-2.drawio`），误传目录名会产生孤儿文件。
+
+**排版接缝**：章节「图示」节前插 `\needspace{图高+30mm}`（mm = `width_tw×181×png_h/png_w`；
+`preamble.tex` 已加载 needspace），防「节标题与图被拆到两页、与下节内容混排」（ch25.5 现象）。
+
 | 辅助 skill | 角色 | 何时使用 |
 |---|---|---|
 | drawio-reconstruction | 知乎原图高保真重建（多 agent 闭环） | **降级为可选**：确有高质量原图且结构复杂时；当前 figures/zhihu/ 无归档图，不构成主路径 |
