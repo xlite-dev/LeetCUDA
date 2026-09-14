@@ -283,24 +283,9 @@ block 级同步从 2 次降到 1 次；代价是归约算子从「单个加法�
 
 \begin{figure}[htbp]
 \centering
-\begin{lstlisting}[style=console]
-  FIG-4-1  Softmax: 3-pass (textbook) -> 2-pass (safe) -> 1-pass (online)
-
-  [naive / textbook]   [safe / Level 2]           [online / Level 3]
-  ------------------   ----------------           ------------------
-  gmem x (pass 1)      gmem x -> regs (1st read)  gmem x -> regs (only read)
-    m = max(x)         block reduce max -> m      init (m,d) = (x, 1)
-  gmem x (pass 2)      gmem x (2nd read, L1 hit)  MD butterfly reduce:
-    s = SUM e^(x)      e^(x-m) -> reduce sum s    d = d1 + d2*e^(m2-m1)
-    e^(x) may hit inf  e^(x-m) <= 1, no overflow  m,d rescale in lockstep
-  gmem x (pass 3)      write y = e^(x-m) / s      write y = e^(x-m) / d
-    y = e^(x) / s      2 block syncs              1 block sync
-                                                    fast math: expf/div
-\end{lstlisting}
-\caption{Softmax 三级递进的 3-pass $\to$ 2-pass $\to$ 1-pass 数据流：
-左为教科书三遍扫描（本仓库 naive kernel 融合了后两遍但保留无 max 减法的溢出风险）；
-中为 safe 版两次归约；右为 online 版 $(m,d)$ 状态一次融合归约。
-（占位，RFC-H 升级）}\label{fig:4-1}
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-4-1-softmax-flow/fig-4-1.png}
+\caption{Softmax 三级递进的 3-pass $\to$ 2-pass $\to$ 1-pass 数据流：左为教科书三遍扫描（无 max 减法，$e^x$ 可能上溢）；中为 safe 版两次归约；右为 online 版 $(m,d)$ 状态一次融合归约。}
+\label{fig:4-1}
 \end{figure}
 
 图~\ref{fig:4-1} 的三条泳道对应本章三级实现。读图的关键是「全局扫描次数」这一维度：

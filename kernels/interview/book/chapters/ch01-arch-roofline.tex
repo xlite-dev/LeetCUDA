@@ -91,18 +91,8 @@ base.cuh L16--21 给出了 H100 参考下的带宽数量级：HBM3 约 3.35 TB/s
 
 \begin{figure}[htbp]
 \centering
-\begin{lstlisting}[style=console]
-        速率/容量金字塔（H100 数量级参考, base.cuh L16-21）
-        -------------------------------------------------------------
-          ^        Register      ~100+ TB/s   256 KB/SM   (thread)
-          |        SMEM / L1     ~19 TB/s     ~228 KB/SM  (block)
-          |        L2 Cache      ~12 TB/s     50 MB       (device)
-          |        HBM3          ~3.35 TB/s   80 GB       (device)
-          +
-          ----------------------> 离 SM 越远：带宽越低、容量越大
-        -------------------------------------------------------------
-\end{lstlisting}
-\caption{GPU 内存层级金字塔}
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-1-1-mem-hierarchy/fig-1-1.png}
+\caption{GPU 内存层级金字塔：离 SM 越远带宽越低、容量越大（H100 数量级，base.cuh L16--21 口径）。}
 \label{fig:1-1}
 \end{figure}
 
@@ -197,26 +187,8 @@ compute-bound。
 
 \begin{figure}[htbp]
 \centering
-\begin{lstlisting}[style=console]
-   性能 P (TFLOPS)
-   ^                  compute-bound: P = P-peak
-   |                  +---------------------------+
-   |                 /
-   |                /   memory-bound: P = AI x BW
-   |               /   (斜率 = BW)
-   |              /
-   |             /
-   |            /
-   +-----------+---------------------------+--> AI (FLOP/Byte)
-              AI* = P-peak / BW  (ridge point)
-
-   例: H100 SXM (base.cuh L84-86 口径)
-     FP16 TC dense: P-peak ~ 989 TFLOPS, BW = 3.35 TB/s
-       -> AI* ~ 295 FLOP/Byte    (GEMM K=4096: AI=683 > 295, compute-bound)
-     FP32 CUDA core: P-peak ~ 67 TFLOPS
-       -> AI* ~ 20 FLOP/Byte     (softmax AI=0.625 << 20, 严重 memory-bound)
-\end{lstlisting}
-\caption{Roofline 模型示意}
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-1-2-roofline/fig-1-2.png}
+\caption{Roofline 模型：$P = \min(P_{\mathrm{peak}}, \mathrm{AI} \times \mathrm{BW})$，脊点 $\mathrm{AI}^* = P_{\mathrm{peak}} / \mathrm{BW}$。GEMM $K{=}4096$（AI$=683$）落在计算屋顶，softmax（AI$=0.625$）落在带宽斜线区。}
 \label{fig:1-2}
 \end{figure}
 

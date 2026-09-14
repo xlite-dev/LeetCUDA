@@ -138,23 +138,8 @@ shared memory 被切成 32 个 bank（对应一个 warp 的 32 线程），每�
 
 \begin{figure}[htbp]
 \centering
-\begin{minipage}{0.92\textwidth}
-\begin{lstlisting}[style=console]
-FIG-7-1  Step2 转置读的 bank 分布（warp0: ty={0,1}, tx=0..15, j=0）
-
-无 PAD, tile[64][16]:  addr = 64*tx + ty          PAD=1, tile[64][17]:
-                                     addr = 68*tx + 17*j + ty
-  bank(#threads)                        bank(#threads)
-  bank[ty=0 列] 16 个线程                bank 0 : 2 线程 (tx=0,8)
-    <-- tx 项被 64%32 吞掉               bank 4 : 2 线程 (tx=1,9)
-  bank[ty=1 列] 16 个线程                bank 8 : 2 线程 (tx=2,10)
-    = ty + 16*j，同上                     ...  (步进 +4/tx)
-  => 2 个 bank 各 16 线程                => 8 个 bank 各 2 线程
-  => 16-way conflict                     => 2-way conflict
-  (读 smem 吞吐 1/16)                    (读 smem 吞吐 1/2)
-\end{lstlisting}
-\end{minipage}
-\caption{bank conflict vs padding——PAD=1 使步长 64B 变为 68B，$tx$ 项在 mod 32 下重新出现}
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-7-1-bank-pad/fig-7-1.png}
+\caption{bank conflict vs padding——PAD=1 使步长 64B 变为 68B，$tx$ 项在 mod 32 下重新出现，16-way 冲突降为 2-way（读 smem 吞吐 $1/16 \to 1/2$）。}
 \label{fig:7-1}
 \end{figure}
 

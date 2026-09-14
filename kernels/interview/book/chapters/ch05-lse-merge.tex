@@ -232,31 +232,9 @@ $o = p \cdot \alpha + s \cdot \beta$（硬件可融合为 FMA），再整包写�
 
 \begin{figure}[htbp]
 \centering
-\begin{lstlisting}[style=console]
-  FIG-5-1  merge two chunked attention states == full softmax weighting
-
-    KV chunk A: s(1..n)                     KV chunk B: s(n+1..n+m)
-    ---------------------------             ---------------------------
-    m(A) = max s(1..n)                      m(B) = max s(n+1..n+m)
-    l(A) = SUM e^(s - m(A))                 l(B) = SUM e^(s - m(B))
-    O(A) = SUM e^(s-m(A)) * V / l(A)        O(B) = SUM e^(s-m(B)) * V / l(B)
-    LSE(A) = m(A) + log l(A)                LSE(B) = m(B) + log l(B)
-              |                                        |
-              +------------------>+<------------------+
-                                  |
-                   L = max(LSE(A), LSE(B))
-                   w(A) = e^(LSE(A)-L)      w(B) = e^(LSE(B)-L)
-                   alpha = w(A)/(w(A)+w(B)) beta = w(B)/(w(A)+w(B))
-                   O = alpha * O(A) + beta * O(B)
-                                  |
-                                  v
-        O == softmax([s(1..n); s(n+1..n+m)]) applied to [V(A); V(B)]
-        (element-wise equal to one-shot attention over both chunks)
-\end{lstlisting}
-\caption{两个分块 attention 状态的合并：块内各自输出（已归一化 $O$ 与单标量
-LSE），块间以 $L = \max(\mathrm{LSE})$ 为 shift 基准计算凸组合系数
-$\alpha, \beta$，合并结果与整体 softmax 直接加权逐元素相等
-（定理~\ref{thm:merge-eq}）。（占位，RFC-H 升级）}\label{fig:5-1}
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-5-1-merge-states/fig-5-1.png}
+\caption{两个分块 attention 状态的合并：块内各自输出（已归一化 $O$ 与单标量 LSE），块间以 $L = \max(\mathrm{LSE})$ 为 shift 基准计算凸组合系数 $\alpha, \beta$，合并结果与整体 softmax 直接加权逐元素相等（定理~\ref{thm:merge-eq}）。}
+\label{fig:5-1}
 \end{figure}
 
 \section{性能分析}

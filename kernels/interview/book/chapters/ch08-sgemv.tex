@@ -190,30 +190,9 @@ $16\,\dots\,31$ 之间可能分叉（$M$ 为奇数时的最后一个 warp），�
 
 \begin{figure}[htbp]
 \centering
-\begin{lstlisting}[style=console]
-  FIG-8-1  warp-per-row: block(32,4) -> 4 rows per block, 1 warp = 1 row
-
-  grid.x = ceil(M/4)                     block(32,4) = 4 warps
-  +--------+--------+--------+           warp 0 (ty=0) ---> row m
-  | block0 | block1 | block2 | ...       warp 1 (ty=1) ---> row m+1
-  +--------+--------+--------+           warp 2 (ty=2) ---> row m+2
-   one block covers 4 rows               warp 3 (ty=3) ---> row m+3
-
-  k32 (K = 32 * NUM-ITERS):  lane l takes k = 32*w + l
-   row m:  |<-------- pass w=0 -------->|<-------- pass w=1 -------->| ...
-            lane0 lane1 ........... lane31  lane0 lane1 ......... lane31
-   x:      x[0]  x[1]  ........... x[31]   x[32] x[33] ......... x[63]
-           each lane: sum += a[m][k] * x[k]   (serial, NUM-ITERS terms)
-           then 5-step XOR butterfly -> lane 0 writes y[m]
-
-  k16 (K = 16, kRowPerWarp = 2): segment width 16, two rows per warp
-   lane  0..15  -> row m    (k = lane  % 16)    reduce<16>: masks 8,4,2,1
-   lane 16..31  -> row m+1  (k = lane  % 16)    write y if k == 0
-           rows m and m+1 are contiguous in row-major A -> the warp's
-           32 lanes still form one 128B coalesced transaction
-\end{lstlisting}
-\caption{warp-per-row 的三种划分：k32 单行 32 lane 铺满、k128 单行 float4 加宽、
-k16 双行各 16 lane 分段归约。（占位，RFC-H 升级）}\label{fig:8-1}
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-8-1-warp-per-row/fig-8-1.png}
+\caption{warp-per-row 的划分：k32 单行 32 lane 铺满、k16 双行各 16 lane 分段归约（mask 8/4/2/1）；k128 变体单行 float4 加宽。}
+\label{fig:8-1}
 \end{figure}
 
 图~\ref{fig:8-1} 的三段对应三个 kernel。读图的关键维度是「warp 的 32 个 lane

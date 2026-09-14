@@ -154,14 +154,14 @@
 
 | FIG | 章 | slug | 类型(A/B/D/C1/C2, 见 BOOK_PLAN §7.1) | 状态(占位/引用/重建完成/正式) | 出处或源文件 |
 |---|---|---|---|---|---|
-| FIG-1-1 | 1 | mem-hierarchy | A→C1 | 占位 | — |
-| FIG-1-2 | 1 | roofline | A→C2（函数曲线） | 占位 | — |
+| FIG-1-1 | 1 | mem-hierarchy | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-1-1-mem-hierarchy/ |
+| FIG-1-2 | 1 | roofline | C1 新建（drawio 折线，2026-09-14） | 正式 | figures/drawio/fig-1-2-roofline/ |
 | FIG-2-1 | 2 | shuffle-butterfly | A→C1 | 占位 | — |
 | FIG-3-1 | 3 | coalescing | A→C1 | 占位 | — |
-| FIG-4-1 | 4 | online-softmax-flow | B→D（DefTruth 图解 FA） | 待 RFC-B 取图 | — |
-| FIG-5-1 | 5 | merge-states | A→C1 | 占位 | — |
-| FIG-7-1 | 7 | bank-conflict-padding | A→C1（可参 frankshi 图→B→D） | 占位 | — |
-| FIG-8-1 | 8 | warp-per-row | A→C1 | 占位 | — |
+| FIG-4-1 | 4 | online-softmax-flow | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-4-1-softmax-flow/ |
+| FIG-5-1 | 5 | merge-states | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-5-1-merge-states/ |
+| FIG-7-1 | 7 | bank-conflict-padding | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-7-1-bank-pad/ |
+| FIG-8-1 | 8 | warp-per-row | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-8-1-warp-per-row/ |
 | FIG-9-1 | 9 | gemm-tiling-4level | B→D（白牛/紫气东来） | 待 RFC-B | — |
 | FIG-10-1 | 10 | double-buffer | A→C1 | 占位 | — |
 | FIG-11-1 | 11 | ldmatrix | B→D（木子知/Anonymous） | 待 RFC-B | — |
