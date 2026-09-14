@@ -288,26 +288,9 @@ L375 的条件等待被编译期剪掉。写回阶段每个 warp 把 8 个累加
 
 \begin{figure}[htbp]
 \centering
-\begin{lstlisting}[style=console]
-  FIG-10-1  2-stage double buffering: load(k) overlaps compute(k-1)
-
-  time ->        -------------------------------------------------->
-  LD unit   |ld 0|    |ld 1|    |ld 2|    |ld 3|   ...  |ld N-1|
-                |  ...wait group 0 at first barrier... |
-  TC unit        |cp 0|    |cp 1|    |cp 2|   ...      |cp N-2| cp N-1|
-                  ^         ^         ^
-                  |         |         +-- compute reads stage (k-1)%2
-                  |         +------------ load writes stage k%2
-                  +----------------------- first iteration k=1:
-                                           load 1 into S1, compute 0 from S0
-
-  smem:  [ S0 : tile 0 | tile 2 | tile 4 ... ]   (even k)
-         [ S1 : tile 1 | tile 3 | tile 5 ... ]   (odd k)
-  steady state: Tstep = max(Tload, Tcompute), the shorter side is hidden
-\end{lstlisting}
-\caption{cp.async 双缓冲时序：搬运单元与 Tensor Core 各自的流水线交替占用
-$S\sb 0/S\sb 1$ 两级缓冲；迭代 $k$ 内「向 $k\bmod 2$ 写 tile $k$」与
-「从 $(k-1)\bmod 2$ 读 tile $k-1$」并行。（占位，RFC-H 升级）}\label{fig:10-1}
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-10-1-double-buffer/fig-10-1.png}
+\caption{cp.async 双缓冲时序：搬运单元与 Tensor Core 各自的流水线交替占用 $S_0/S_1$ 两级缓冲；迭代 $k$ 内「向 $k\bmod 2$ 写 tile $k$」与「从 $(k-1)\bmod 2$ 读 tile $k-1$」并行，稳态步长 $T_{\mathrm{step}} = \max(T_{\mathrm{load}}, T_{\mathrm{compute}})$。}
+\label{fig:10-1}
 \end{figure}
 
 读图~\ref{fig:10-1} 的两个要点：其一，两条流水的错位正好是一个 tile，

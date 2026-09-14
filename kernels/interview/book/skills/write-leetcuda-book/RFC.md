@@ -162,13 +162,13 @@
 | FIG-5-1 | 5 | merge-states | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-5-1-merge-states/ |
 | FIG-7-1 | 7 | bank-conflict-padding | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-7-1-bank-pad/ |
 | FIG-8-1 | 8 | warp-per-row | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-8-1-warp-per-row/ |
-| FIG-9-1 | 9 | gemm-tiling-4level | B→D（白牛/紫气东来） | 待 RFC-B | — |
-| FIG-10-1 | 10 | double-buffer | A→C1 | 占位 | — |
-| FIG-11-1 | 11 | ldmatrix | B→D（木子知/Anonymous） | 待 RFC-B | — |
-| FIG-11-2 | 11 | mma-fragment | B→D | 待 RFC-B | — |
+| FIG-9-1 | 9 | gemm-tiling-4level | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-9-1-gemm-tiling/ |
+| FIG-10-1 | 10 | double-buffer | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-10-1-double-buffer/ |
+| FIG-11-1 | 11 | ldmatrix | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-11-1-ldmatrix/ |
+| FIG-11-2 | 11 | mma-fragment | C1 新建（fig-11-2a，2026-09-14） | 正式 | figures/drawio/fig-11-2a-fragment/ |
 | FIG-12-1 | 12 | smem-swizzle-before-after | C1 新建（用户点名，2026-09-14） | 正式 | figures/drawio/fig-12-1-smem-swizzle/ |
 | FIG-12-2 | 12 | block-swizzle-layout | C1 新建（用户点名，2026-09-14） | 正式 | figures/drawio/fig-12-2-block-swizzle/ |
-| FIG-12-3 | 12 | xor-bitwise | A→C1 | 占位 | — |
+| FIG-12-3 | 12 | xor-bitwise | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-12-3-xor-bits/ |
 | FIG-13-1 | 13 | wgmma-desc-bitfield | A→C1 | 占位 | — |
 | FIG-13-2 | 13 | warpgroup-dataflow | A→C1 | 占位 | — |
 | FIG-13-3 | 13 | mbarrier-statemachine | A→C1 | 占位 | — |

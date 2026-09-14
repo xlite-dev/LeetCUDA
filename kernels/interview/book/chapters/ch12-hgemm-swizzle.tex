@@ -380,29 +380,9 @@ $W{\times}H$ 宽条带（$W{=}T_n$），重排后折叠为组宽 16 的近似方
 
 \begin{figure}[htbp]
 \centering
-\begin{lstlisting}[style=console]
-  FIG-12-3  XOR swizzle bit mechanics (Swizzle<B,M,S>, fp16 tile)
-
-  byte offset bit layout (BK=16 tile, a = 32*i + 16*c + w):
-     bit:  9 8 7 | 6 5 | 4 | 3 2 1 0
-           [ i ] | ... |c ^| [ w : within 16B chunk ]
-     row bits start at bit5 -> bit7 = (i>>2)&1  == the XOR source bit
-     chunk bit4                                        == the XOR target bit
-
-     apply(a) = a ^ ((a & 0x80) >> 3)          // bit4 ^= bit7  (B=1,M=4,S=3)
-              = a ^ (bit7(a) << 4)
-
-  32B row  (BK=16) : bit4=c, bit7=row>>2           -> 1-way achievable
-  128B row (BK=64) : a = 128*i + 32*s + 16*c + w
-                     bits: [i: 7..][s: 5-6][c: 4][w: 0-3]
-     per-slice swizzle<16>: only bit4 ^= bit7      -> 2 quads/phase = 4-way
-     full-width swizzle<64> (B=3): bits 4..6 ^= bits 7..9 -> 8 quads = 1-way
-     source field [M+S, M+S+B) and target field [M, M+B) are disjoint (S>=B),
-     so applying twice restores the offset: involution (Lemma 12.1)
-\end{lstlisting}
-\caption{XOR 位运算示意：源位域（行号低位）经右移 $S$ 异或到目标位域（chunk 号）。
-行宽决定「有多少行号位能挤进 bank 位 $[2,7)$」，从而决定可达到的最小冲突度。
-（占位，RFC-H 升级）}\label{fig:12-3}
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-12-3-xor-bits/fig-12-3.png}
+\caption{XOR 位运算示意：源位域（行号低位）经右移 $S$ 异或到目标位域（chunk 号）。行宽决定「有多少行号位能挤进 bank 位 $[2,7)$」，从而决定可达到的最小冲突度；源/目标位域不相交（$S \ge B$）保证对合性（引理 12.1）。}
+\label{fig:12-3}
 \end{figure}
 
 \section{性能分析}

@@ -101,26 +101,9 @@ C 的 $16\times8$——每个 lane 持多少、在矩阵的什么位置，就是
 
 \begin{figure}[htbp]
 \centering
-\begin{lstlisting}[style=console]
-  FIG-11-2a  A fragment (m16 x k16, row-major), g = lane>>2, tig = lane%4
-
-        k: 0  1  2  3  4  5  6  7   8  9 10 11 12 13 14 15
-  m  0     T0 T0 T1 T1 T2 T2 T3 T3  T0 T0 T1 T1 T2 T2 T3 T3   } a0,a1 in R0
-  m  1     T4 T4 T5 T5 T6 T6 T7 T7  T4 T4 T5 T5 T6 T6 T7 T7   } (row = g)
-  ...
-  m  7     T28 ...                                    T31 T31  }
-  m  8     T0 T0 T1 T1 ...            T0 T0 T1 T1 T2 T2 T3 T3   } a2,a3 in R1
-  ...                                                      (row = g+8)
-  m 15     T28 ...                                    T31 T31  }
-
-  R0 = {a0,a1}: row=g,   cols (2*tig,2*tig+1) R2 = {a4,a5}: row=g,   cols+8
-  R1 = {a2,a3}: row=g+8, cols (2*tig,2*tig+1) R3 = {a6,a7}: row=g+8, cols+8
-  quadrant order expected by mma: R0=upper-left, R1=lower-left,
-                                  R2=upper-right, R3=lower-right
-\end{lstlisting}
-\caption{A fragment 寄存器布局（依据 PTX ISA Figure 79 的行/列公式绘制；
-T$n$ 表示 lane $n$ 持有该元素，每格 2 个相邻 f16 装一条 \texttt{.b32}）。
-（占位，RFC-H 升级）}\label{fig:11-2a}
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-11-2a-fragment/fig-11-2a.png}
+\caption{A fragment 寄存器布局（依据 PTX ISA Figure 79 的行/列公式绘制；T$n$ 表示 lane $n$ 持有该元素，每格 2 个相邻 f16 装一条 \texttt{.b32}；四象限 $R0/R1/R2/R3$ 分别对应 UL/LL/UR/LR）。}
+\label{fig:11-2a}
 \end{figure}
 
 PTX 给出的坐标公式（$\mathrm{g} = \mathrm{lane} \gg 2$，
@@ -206,28 +189,9 @@ lane $4r + \mathrm{tig}$ 的寄存器 $r\sb i$ 的 $\mathrm{tig}$ 列对——
 
 \begin{figure}[htbp]
 \centering
-\begin{lstlisting}[style=console]
-  FIG-11-1  ldmatrix addressing in hgemm-mma-stages-tn (A: x4, B: x2)
-
-  A m16k16 tile -> four 8x8 matrices, one address per lane (x4):
-    lane t: row = warpM*64 + i*16 + (t % 16),   col k = (t / 16) * 8
-         t= 0.. 7 -> matrix0 rows 0..7  (m  0..7,  k 0..7)  -> RA[i][0]
-         t= 8..15 -> matrix1 rows 0..7  (m  8..15, k 0..7)  -> RA[i][1]
-         t=16..23 -> matrix2 rows 0..7  (m  0..7,  k 8..15) -> RA[i][2]
-         t=24..31 -> matrix3 rows 0..7  (m  8..15, k 8..15) -> RA[i][3]
-    quadrant order out of the box: [upper-left, lower-left, upper-right,
-     lower-right] == exactly the order mma expects (Eq. 11.1)
-
-  B k16n8 tile (stored as B^T n16k16 rows) -> two 8x8 matrices (x2):
-    lane t (t<16 used): row n = warpN*32 + j*8 + (t % 8),
-                        col k = ((t / 8) % 2) * 8
-         t= 0.. 7 -> matrix0 (n 0..7, k 0..7) -> RB[j][0]  (upper k half)
-         t= 8..15 -> matrix1 (n 0..7, k 8..15) -> RB[j][1] (lower k half)
-    loading rows of B^T == loading cols of B, no .trans needed
-\end{lstlisting}
-\caption{本章 kernel 的 \texttt{ldmatrix} 寻址映射：A 用 x4 一次装载
-$m16\times k16$ 的四象限；B 用 x2 装载 $k16\times n8$（借 $B^{\top}$ 行主序
-存储）。（占位，RFC-H 升级）}\label{fig:11-1}
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-11-1-ldmatrix/fig-11-1.png}
+\caption{本章 kernel 的 \texttt{ldmatrix} 寻址映射：A 用 x4 一次装载 $m16\times k16$ 的四象限（象限序恰为 mma 期望序）；B 用 x2 装载 $k16\times n8$（借 $B^{\top}$ 行主序存储，无需 .trans）。}
+\label{fig:11-1}
 \end{figure}
 
 \subsection{kStages $= 3$ 的多级流水}

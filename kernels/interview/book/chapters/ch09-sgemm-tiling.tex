@@ -221,30 +221,9 @@ $4 \times 128$ 的 C 横带}。金字塔的 warp 级在本章是「免费的」�
 
 \begin{figure}[htbp]
 \centering
-\begin{lstlisting}[style=console]
-  FIG-9-1  grid -> block -> warp -> thread 四级 tiling（C 矩阵视角）
-
-  C [M,N] 切成 (M/BM) x (N/BN) 个 block tile            grid 级
-  +----------+----------+----------+-----
-  | block    | block    |   BM=BN=128, BK=32: 每 block 1024 线程,
-  | tile 0,0 | tile 0,1 |   smem = s-a[128][32] + s-b[32][128] = 32KB,
-  +----------+----------+   沿 K 循环 K/32 轮, 每轮两道栅栏夹计算窗口
-  | block    |   ...    |
-  | tile 1,0 |          |   warp 级（隐式）: warp = 32 个连续 tid
-  +----------+----------+   -> 行基址 (tid/32)*4 相同, 列基址 (tid%32)*4 递增
-                            -> 一个 warp 承包一条 4 x 128 的 C 横带
-
-  thread 级: 每线程一个 4 x 4 thread tile（16 个输出, sum[4][4]）
-      n:   |<-- n0..n0+3 -->|<-- n1..n1+3 -->| ...   n0=(tid%32)*4 ...
-      m0   [ tt ]  16 outputs per thread, 16 FMAs per k,
-      m0+1 [ tt ]  8 smem loads per k  (4 A + 4 B)
-      ...         AI(smem) = 1.0 FLOP/B  vs naive 0.25
-
-  AI 阶梯: naive 0.25 -> block 32x32: 8 -> block 128x128: 32 FLOP/B
-\end{lstlisting}
-\caption{四级 tiling 递进：grid 级切 C 为 block tile；block 级用 smem 承载
-$A$/$B$ 切片；warp 级在本章实现中是隐式的 $4 \times 128$ 横带；
-thread 级是 $4 \times 4$ 寄存器 tile。（占位，RFC-H 升级）}\label{fig:9-1}
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-9-1-gemm-tiling/fig-9-1.png}
+\caption{四级 tiling 递进：grid 级切 $C$ 为 block tile；block 级用 smem 承载 $A$/$B$ 切片；warp 级是隐式的 $4\times128$ 横带；thread 级是 $4\times4$ 寄存器 tile。AI 阶梯：naive $0.25 \to$ block $32{\times}32{:}\ 8 \to$ block $128{\times}128{:}\ 32$ FLOP/B。}
+\label{fig:9-1}
 \end{figure}
 
 图~\ref{fig:9-1} 把 9.3 节的三级公式落到同一张图上。读图顺序建议从下往上：
