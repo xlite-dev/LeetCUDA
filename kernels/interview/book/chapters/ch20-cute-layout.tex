@@ -68,7 +68,18 @@ hgemm 的手写版（235 行去注释代码）变成 CuTe 版 kernel 本体 118 
 
 \section{数学原理}
 
-\subsection{坐标空间与 colex 线性化}
+\subsection{Layout 是一个函数}
+
+在 CUDA 里访问一个元素，最终都要落到「基址 $+$ 偏移」：拿到一段内存的
+起始指针后，真正决定「我要的 $(m,k)$ 在哪里」的，是一个从坐标到偏移的
+映射。第~\ref{ch:11}、\ref{ch:12}~章手写 HGEMM 时，这个映射以五种面貌
+出现（gmem 寻址、cp.async 地址、ldmatrix lane 映射、XOR swizzle、
+epilogue 拼接），每种写一遍、彼此还要对齐。@竹熙佳处在《写给大家看的
+CuTe 教程：Layout Compose \& Inverse》里给出的视角是：把这些映射
+\textbf{统一看成一个函数}——输入是逻辑坐标，输出是一个整数偏移，函数体
+只有整数乘法与加法。把这件事命名并形式化，就得到了 CuTe 的 layout。
+
+\textbf{定义（layout）}。layout 由 shape 与 stride 两个参数组成：
 
 \begin{itemize}
   \item \textbf{坐标空间}：shape $S=(s_0,\dots,s_{k-1})$ 张成
@@ -86,19 +97,25 @@ hgemm 的手写版（235 行去注释代码）变成 CuTe 版 kernel 本体 118 
         $f=c_0+4c_1$，即 C 语义下的列优先。
 \end{itemize}
 
-CuTe 的 \texttt{Layout} 就装着一对 $(S,D)$；调用 \texttt{layout(coord)} 得到
-式~\eqref{eq:20-linear} 的值。还有一个关键的二象性：\textbf{把整数 $x$ 传给
-layout} 时，CuTe 先把 $x$ 按 colex 序分解回坐标
+用映射语言说，式~\eqref{eq:20-linear} 就是「$k$ 维坐标按各方向的步长折算成
+一个整数」——每个 mode 贡献 $d_i c_i$，最后求和，没有别的运算。CuTe 的
+\texttt{Layout} 就装着一对 $(S,D)$；调用 \texttt{layout(coord)} 得到
+式~\eqref{eq:20-linear} 的值。
+
+还有一个反直觉的二象性，值得单独强调：\textbf{把整数 $x$ 交给 layout} 时，
+CuTe 先把 $x$ 按 colex 序分解回坐标
 \begin{equation}
   c_i \;=\; \Bigl\lfloor x \big/ \textstyle\prod_{j<i} s_j \Bigr\rfloor
   \bmod s_i ,
   \label{eq:20-colex-decomp}
 \end{equation}
-再代入式~\eqref{eq:20-linear}。于是「$f$ 在坐标上」与「$f$ 在线性索引上」是
-同一个函数——$f(x)$ 单调不减（因为每次 $x\to x+1$ 只是某个坐标 $+1$，
-增量是该 mode 的 stride $\ge 0$）。这条性质让 layout 的整数域本身成为
-一个「一次遍历」的索引空间，是后面所有遍历式断言（以及 \texttt{cosize}）的
-基础。
+再代入式~\eqref{eq:20-linear}——这个分解只用到 shape、与 stride 无关，
+@竹熙佳处在教程里特别提示过这是初学时最容易卡住的一点。于是「$f$ 在坐标
+上」与「$f$ 在线性索引上」是同一个函数（用映射语言说：线性索引与坐标只是
+同一个函数的两种输入写法）；$f(x)$ 单调不减（因为每次 $x\to x+1$ 只是某个
+坐标 $+1$，增量是该 mode 的 stride $\ge 0$）。这条性质让 layout 的整数域
+本身成为一个「一次遍历」的索引空间，是后面所有遍历式断言（以及
+\texttt{cosize}）的基础。
 
 配套两个规模量：\textbf{size}（定义域基数）与 \textbf{cosize}（值域上界）
 \begin{equation}
@@ -106,10 +123,12 @@ layout} 时，CuTe 先把 $x$ 按 colex 序分解回坐标
   \mathrm{cosize}(f) = 1 + \sum_i d_i (s_i - 1) .
   \label{eq:20-size-cosize}
 \end{equation}
-当 $\mathrm{cosize}=\mathrm{size}$ 时称布局是 \textbf{compact}（无空洞、双射）；
-否则有「孔洞」（padding/skip）。这个区分在 kernel 里很重要：CuTe 里 padding
-后的一行 smem 就是一个带孔洞的 layout，而 \texttt{cosize} 直接就是这块 smem
-实际要占的元素数——声明布局的同时把 smem 用量也算出来了。
+用映射语言说：size 是定义域的元素个数；cosize 是值域的上界，$1+\sum
+d_i(s_i-1)$ 恰为「最大偏移加一」。当 $\mathrm{cosize}=\mathrm{size}$ 时称
+布局是 \textbf{compact}（无空洞、双射）；否则有「孔洞」（padding/skip）。
+这个区分在 kernel 里很重要：CuTe 里 padding 后的一行 smem 就是一个带孔洞的
+layout，而 \texttt{cosize} 直接就是这块 smem 实际要占的元素数——声明布局的
+同时把 smem 用量也算出来了。
 
 \begin{itemize}
   \item 例 1（compact col-major）：$S=(4,8),D=(1,4)$：$f(c_0,c_1)=c_0+4c_1$，
@@ -124,16 +143,44 @@ layout} 时，CuTe 先把 $x$ 按 colex 序分解回坐标
         值域只命中偶数——这是一个「每两个元素塞一个」的稀疏布局。
 \end{itemize}
 
-\subsection{从「计算」到「代数」}
+\subsection{五个运算，五类实际问题}
 
-把 layout 当函数以后，kernel 里的布局操作就全部变成函数运算，CuTe 提供了五个：
+把 layout 当函数以后，kernel 里的布局操作就全部变成函数运算。CuTe 提供
+五个运算族，每一族都对应 kernel 里的一类实际问题——本节先按
+「问题 $\to$ 运算」的顺序把它们点一遍（@竹熙佳处在教程里吐槽过 CuTe 官方
+文档「没有前后联系地抛出一堆概念和代数运算」；本章刻意反着组织：先让每个
+运算有具体的用武之地，再在下一节给出定义与公式）：
 
 \begin{enumerate}
-  \item \textbf{Compose（复合）}：先 $B$ 后 $A$，即函数复合 $R = A\circ B$；
-  \item \textbf{Inverse（逆）}：把 offset 拉回坐标（右逆/左逆两种）；
-  \item \textbf{Product（并列）}：两个 layout 并成一个（坐标分量按位相加）；
-  \item \textbf{Divide（切分）}：把 layout 按 tile 结构分解成 (tile, rest)；
-  \item \textbf{Mode 操作（投影/合并）}：取某个 mode、合并若干 mode、展平、化简。
+  \item \textbf{Compose（复合）：解决「两张地图怎么叠」。}三个真实场景：
+        (a) \textbf{TV-layout 寻址}——拷贝划分先给出 (thread, value) 到
+        逻辑坐标 $(m,n)$ 的映射，而真正访问内存还要再叠一层 tensor 自身的
+        $(m,n)\to$ offset 映射，两次映射复合才是「线程 $t$ 的第 $v$ 个值
+        在哪个地址」（第~\ref{ch:21}~章展开）；
+        (b) \textbf{swizzle 消 bank conflict}——swizzle 本身是
+        offset$\to$offset$'$ 的映射，把它复合到 smem 布局的外层，之后代码
+        仍可用正常 $(m,n)$ 坐标访问，物理地址已被改写而「不用 care」
+        （4.1 节的 \texttt{SmemLayoutA} 就是 \texttt{Swizzle}$\circ$atom
+        的一次复合）；
+        (c) \textbf{FA2 的 P 矩阵转换}——给 QK 的 accumulator 布局复合一次
+        「列拆半」变换，P 就能原地重解释为 $PV$ 的 A 操作数
+        （4.8 节完整推一遍）。
+  \item \textbf{Inverse（逆）：解决「这个 offset 是谁的」。}给定一个 offset
+        反查它的坐标：copy 的地址回拉、\texttt{max\_common\_layout}
+        （求两个布局的最大公共连续块）都以它为砖；4.8 节的代数法更是把它
+        当作 layout 变换的中心工具。
+  \item \textbf{Product（并列）：解决「小图案怎么铺成大图案」。}smem 上
+        $8\times B_K$ 的 swizzle atom 要铺满 $(B_M,B_K,k_{\mathrm{Stage}})$
+        的完整布局，靠的就是 product 族（\texttt{tile\_to\_shape}）；
+        「两块数据并排摆、坐标分量相加」是它的几何语义。
+  \item \textbf{Divide（切分）：解决「大矩阵怎么切块」。}GEMM 的
+        \texttt{local\_tile}、注意力里对 K/V 的分块遍历，底层是同一条
+        运算：把大 layout 切成「tile 内布局 $+$ tile 索引」两段；
+        \texttt{zipped\_divide} 的实测是本章最核心的数据（4.5 节）。
+  \item \textbf{Mode 操作（投影/合并/展平/化简）：解决「索引结构不顺手的
+        问题」。}MMA fragment 与 remainder mode 的分离（第~\ref{ch:22}~章）、
+        epilogue 把 $(\mathrm{CPY}_M,\mathrm{CPY}_N)$ 两层循环压成一个线性
+        索引（第~\ref{ch:21}~章），都是这类操作。
 \end{enumerate}
 
 一个 layout 恒等式是否成立，判据只有一条：\textbf{对定义域内每个坐标逐点相等}。
@@ -178,7 +225,51 @@ kernel 的流水线结构，与第~\ref{ch:11}、\ref{ch:12}~章手写版一一�
 由于 shape/stride 是类型的一部分，\texttt{cosize}、复合、切分的结果都可以在
 \textbf{编译期}折叠为常数——这是后文「零成本抽象」论证的根基。
 
+\paragraph{实践须知}
+\begin{itemize}
+  \item 模板参数清单里的 \texttt{TiledMMA}、\texttt{G2SCopyA}、
+        \texttt{SmemLayoutA} 等名字只说明「类型角色」；具体型号（哪个 MMA
+        原子、哪个 cp.async 变体、哪个 ldmatrix 方向）要去 launch wrapper
+        的构造段（hgemm.cuh~L1303--1377）核对。本书逐项核过（CUTLASS
+        v4.6.1）：F16 累加路径用 \texttt{SM80\_16x8x16\_}\allowbreak
+        \texttt{F16F16F16F16\_TN}（F32 累加则切到
+        \texttt{F32F16F16F32\_TN}），G2S 用
+        \texttt{SM80\_CP\_ASYNC\_}\allowbreak\texttt{CACHEGLOBAL<uint128\_t>}，
+        S2R 用 \texttt{SM75\_U32x4\_LDSM\_N}，R2S/S2G 用
+        \texttt{UniversalCopy<int>} 与
+        \texttt{UniversalCopy<}\allowbreak\texttt{uint128\_t>}，与注释一致。
+  \item 类型名随 CUTLASS 版本变化：换版本后「注释与实现是否一致」要重核，
+        不要照抄本节列表。
+  \item 更省事的做法是把注释声称的类型写进 \texttt{static\_assert}（或按本章
+        测试的做法在 host 端做类型断言），让「注释与实现一致」变成编译期
+        检查，而不是阅读理解。
+\end{itemize}
+
 \subsection{Compose：$R(c)=A(B(c))$}
+
+先看 compose 解决的三个真实问题，再看定义。
+
+\textbf{场景一：TV-layout 寻址（第~\ref{ch:21}~章的主角）。}
+\texttt{make\_tiled\_copy} 类划分先算出「$(t,v)\to(m,n)$」：线程 $t$ 的
+第 $v$ 个值对应 tile 的第 $(m,n)$ 格。但 $(m,n)$ 还只是\emph{逻辑}坐标——
+要把值真正取出来，还得再叠一层「$(m,n)\to$ 物理 offset」的 tensor 布局。
+两次映射的复合（$(t,v)\to(m,n)\to\mathrm{offset}$）才给出每个线程的访问
+地址。@竹熙佳处把这一点的价值概括为「变换 layout 时只关注坐标空间」：
+同一个 $(m,n)$ 复合不同的 tensor 布局，就能分别正确落到 global / shared /
+register 上——这是一份划分同时服务三种内存的关键。
+
+\textbf{场景二：swizzle 消 bank conflict。}swizzle 是
+offset$\to$offset$'$ 的映射。对一块 smem 布局做 swizzle 后，访问链变成
+$(m,n)\to\mathrm{offset}\to\mathrm{offset}'$：用映射语言说，这是在原函数
+外面\textbf{再叠一层 swizzle 函数}，所以源码里 swizzle 总是出现在
+\texttt{composition} 的第一个参数位置（A 的位置，见 4.1 节的
+\texttt{SmemLayoutA} 定义）。这样后续代码仍按正常 $(m,n)$ 坐标写字，物理
+地址已经被换掉，而「换掉」这件事对上层透明——第~\ref{ch:12}~章手写版要
+人肉维护的那套 XOR 公式，在这里收缩成一次复合。
+
+\textbf{场景三：FA2 的 P 矩阵转换（4.8 节完整展开）。}QK 累加器与 PV 左
+操作数是同一批寄存器的两种索引方式，两个索引方式之间恰好差一次
+「列拆半 $+$ 重组」的复合——这就是 4.8 节两条路线要解的题。
 
 \textbf{定义 20.1（composition）}。给定 layout $A$（任意 rank）与 $B$，若 $B$ 的
 值域以「整除」方式落在 $A$ 的 mode 结构里（CuTe 称 divisibility 条件），则
@@ -212,6 +303,23 @@ $\{0,1,2,3\}\subset[0,4)$，而 $A$ 在 $[0,4)$ 上恒等，故 $R=B$ 逐点成�
 意义上的先 $B$ 后 $A$」——4.5 节的 tile 反例会给出实例。
 
 \subsection{Inverse：右逆与左逆}
+
+inverse 回答的问题最直白：「给定一个 offset，它是哪个坐标的？」但真正常用
+的场合不止反解坐标：
+
+\textbf{场景一：copy 的坐标回拉。}（第~\ref{ch:21}~章）拷贝划分需要把
+「tile 上的位置」拉回「atom 内部的坐标」，用的就是 $A(R(i))=i$ 这条右逆
+性质；\texttt{max\_common\_layout}（求两个布局的最大公共连续块，判断能否
+直接互拷）也以右逆为砖。
+
+\textbf{场景二：layout 变换的「借道」（4.8 节）。}FA2 的代数法第一步就是
+\texttt{left\_inverse}：把 accumulator 的「坐标$\to$offset」翻成
+「offset$\to$坐标」，再把目标 A 布局复合上来——「输入输出对调」是这类
+变换的枢纽动作。
+
+一个实践提醒（也来自 @竹熙佳处）：单独做一次 inverse 得到的 layout 往往
+没有语义，通常要再 \texttt{with\_shape}（本质上还是复合一个布局）把结果
+排列成想要的形状，它才是「可用的布局」。这条在 4.8 节会再次出现。
 
 \textbf{定义 20.2（right\_inverse）}。$R=\mathrm{right\_inverse}(A)$ 满足
 \begin{equation}
@@ -249,11 +357,17 @@ $\{0,1,2,3\}\subset[0,4)$，而 $A$ 在 $[0,4)$ 上恒等，故 $R=B$ 逐点成�
         （测试 32 点核对）。
 \end{itemize}
 
-逆运算的用途不是「反解坐标」这么窄：\texttt{max\_common\_layout}（求两个
-layout 的最大公共连续块）、copy 的坐标回拉（第~\ref{ch:21}~章）都以
-\texttt{right\_inverse} 为砖。它是 CuTe 把「函数」当「坐标变换」用的开关。
+逆运算的用途不是「反解坐标」这么窄：右逆负责「值域中连续的那一段」，左逆
+负责「整个陪域」（含多对一的情形），选择依据就是本小节的实测——它是 CuTe
+把「函数」当「坐标变换」用的开关。
 
 \subsection{Product：并列}
+
+product 解决的是「小图案怎么铺成大图案」：smem 上一块 $8\times B_K$ 的
+swizzle atom 只是原料，kernel 真正要声明的是整块
+$(B_M,B_K,k_{\mathrm{Stage}})$ 的 A tile 布局（4.1 节的 \texttt{SmemLayoutA}
+就是这么拼出来的）。product 族的语义很直观——\textbf{把两块数据在地址
+空间里并排摆：坐标各自输入，offset 相加}：
 
 \textbf{定义 20.4（concatenation）}。$P=\mathrm{make\_layout}(A,B)$
 （即 \texttt{product}）把两个 layout 并列：
@@ -275,12 +389,15 @@ $A$ 的\emph{整棵} shape 成为 $P$ 的第一个 mode，所以 $2$ 个 rank-2 
 Product 家族还有几个更「kernel 化」的成员，本章只点穴、第~\ref{ch:24}~章展开：
 \texttt{logical\_product}（把 block 铺在 tiler 上）、\texttt{blocked\_product}
 （按 tiler 重复 block）、\texttt{raked\_product}（交错重复）、
-\texttt{tile\_to\_shape}（按目标 shape 铺 atom，4.6 节末的实测用到它）。
+\texttt{tile\_to\_shape}（按目标 shape 铺 atom，最小测试 case~G 的实测
+用到它）。
 
 \subsection{Divide：tile 的数学}
 
-Divide 是 kernel 里用得最多的一条：把一个大 layout 切成「tile 内布局 + tile
-在外的索引」。完整定义分两步。
+divide 是 kernel 里用得最多的一条：\texttt{local\_tile} 把大 Tensor 切出
+当前 CTA 的块（4.1 节 gA/gB/gD 的切法）、注意力里对 K/V 的分块遍历、
+4.8 节 tri-dao 的 P 转换，底层都是同一条运算——\textbf{把一个大 layout
+切成「tile 内布局 $+$ tile 在外面的索引」}。完整定义分两步。
 
 \textbf{第一步：complement。}对 tile layout $T$，
 $\mathrm{complement}\bigl(T,\mathrm{shape}(L)\bigr)$ 返回「补空间」的
@@ -326,21 +443,32 @@ $\mathrm{compatible}(T,\mathrm{layout}_0)$ 为真；(b) 坐标公式，64 组
 $(t,r)$ 全部满足式~\eqref{eq:20-zd-coord}；(c) \textbf{双射覆盖}，64 个输出
 恰好把 $[0,64)$ 各命中一次——这条最强：它同时排除了重叠与遗漏。
 
-\begin{kaogu}[F3 类实测：tile 的 stride 必须与目标 layout 同族]
-divide 的语义完全取决于 $T$ 的 stride 是否与 $L$ 的 stride 结构相容：
-若把上面的 $T$ 换成「compact col-major 的 $4\times4$」$(4,4){:}(1,4)$，
-结果是 $\bigl((4,4),(4)\bigr){:}\bigl((1,4),(16)\bigr)$——tile 变成
-16 个\emph{连续 offset}（在 col-major 的 $8\times8$ 里即「8 行 $\times$ 2 列」
-的列条带），不再是 $4\times4$ 方块；同理 row-major 全体
-（$L=(8,8){:}(8,1)$、$T=(4,4){:}(4,1)$）会得到
-$\bigl(((2,2),4),4\bigr){:}\bigl(((32,1),8),2\bigr)$ 这种被 colex 结构重排的
-结果。写 GEMM 时 tiler 要用 $(B_M,B_K){:}(d_M,d_K)$（从 $L$ 的 stride 派生），
-不要图省事写 compact tile——这是本章最容易踩的坑（见常见坑三）。
-\end{kaogu}
+\paragraph{实践须知}
+\begin{itemize}
+  \item \textbf{tile 的 stride 必须与目标 layout 同族。}divide 的语义完全
+        取决于 $T$ 的 stride 是否与 $L$ 的 stride 结构相容：把上面的 $T$
+        换成「compact col-major 的 $4\times4$」$(4,4){:}(1,4)$，结果是
+        $\bigl((4,4),(4)\bigr){:}\bigl((1,4),(16)\bigr)$——tile 变成
+        16 个\emph{连续 offset}（在 col-major 的 $8\times8$ 里即
+        「8 行 $\times$ 2 列」的列条带），不再是 $4\times4$ 方块；同理
+        row-major 全体（$L=(8,8){:}(8,1)$、$T=(4,4){:}(4,1)$）会得到
+        $\bigl(((2,2),4),4\bigr){:}\bigl(((32,1),8),2\bigr)$ 这种被 colex
+        结构重排的结果。
+  \item \textbf{正确写法}：tiler 用 $(B_M,B_K){:}(d_M,d_K)$，stride 从目标
+        layout 派生（hgemm 的 \texttt{local\_tile} 与 \texttt{SmemLayoutA}
+        都是这么写的）；不要图省事写 compact tile。
+  \item \textbf{判别法}：检查 $T$ 的 stride 是否等于 $L$ 在对应方向上的
+        stride（本章案例应为 $(1,8)$）。不相等时结果仍是合法 layout，
+        只是语义被默默换掉——不报错（另见常见坑三）。
+\end{itemize}
 
 \subsection{Mode 操作：投影、合并、展平、化简}
 
-一个 layout 的 shape 是一棵树（mode 里还能嵌套 mode）。对树的操作有：
+mode 操作解决的是「索引结构不顺手」的问题：MMA 的 fragment mode 与 rest
+mode 混在一起时要把它们分开（第~\ref{ch:22}~章），epilogue 要把
+$(\mathrm{CPY}_M,\mathrm{CPY}_N)$ 两层循环压成一个线性索引来遍历
+（第~\ref{ch:21}~章），都要对 shape 这棵树做手术。一个 layout 的 shape
+是一棵树（mode 里还能嵌套 mode）。对树的操作有：
 \texttt{layout<I>(L)}（等价 \texttt{get<I>(L)}）取第 $I$ 个 mode 的子 layout；
 \texttt{select<Is...>} 取多个；\texttt{group<B,E>(L)} 把模式区间 $[B,E)$ 合并成
 一个 mode；\texttt{flatten} 把嵌套展平为一层；\texttt{coalesce} 合并所有
@@ -359,13 +487,18 @@ $\bigl(((2,2),4),4\bigr){:}\bigl(((32,1),8),2\bigr)$ 这种被 colex 结构重�
 分离」（第~\ref{ch:22}~章），以及把 copy 的重复结构展平成线性索引
 （第~\ref{ch:21}~章）。
 
-\begin{kaogu}[符号考据：\texttt{group\_modes} 不存在于 CUTLASS v4.6.1]
-很多 CuTe 教程（以及本书早期计划文本、hgemm.cuh 内部分注释）使用
-\texttt{group\_modes<B,E>} 这个名字。实测本仓库
-\texttt{third-party/cutlass}（\texttt{version.h}：4.6.1）整个 include 目录
-grep 不到该符号；当前实现对应的 API 是 \texttt{group<B,E>(layout)} 与
-\texttt{select<I...>(layout)}。阅读旧教程时按此替换即可，语义一致。
-\end{kaogu}
+\begin{sloppypar}
+一个命名上容易绕的点：很多 CuTe 教程（以及 hgemm.cuh 的部分注释）用
+\texttt{group\_modes<B,E>} 这个名字。在本仓库 CUTLASS v4.6.1 里，
+这两个名字分属两层——\textbf{layout 级是 \texttt{group<B,E>(layout)}
+（配 \texttt{select<I...>} 取多个），Tensor 级才是
+\texttt{group\_modes<B,E>}\allowbreak\texttt{(tensor)}}（定义在
+\texttt{cute/tensor\_impl.hpp}，内部就是一行
+\texttt{make\_tensor(t.data(),}\allowbreak\texttt{group<B,E>(t.layout()))}；
+hgemm.cuh~L1073 的 \texttt{group\_modes<1,3>} 用的正是 Tensor 版，
+第~\ref{ch:21}~章 4.5 节会再遇到它）。阅读旧教程时按层替换即可，
+语义一致。
+\end{sloppypar}
 
 \subsection{运算一览与 hgemm 的落地位置}
 
@@ -394,6 +527,67 @@ grep 不到该符号；当前实现对应的 API 是 \texttt{group<B,E>(layout)}
 \caption{本章五个运算族与其在各章的位置对照（表~20-1）。}\label{tab:20-1}
 \end{table}
 
+\subsection{Compose \& Inverse 实战：FA2 的 P 矩阵布局转换}
+
+本节把 compose 与 inverse 两个运算用在 FlashAttention 的经典难题上：
+同一批寄存器，在上一个 mma 里是「算式子的输出」，在下一个 mma 里要变成
+「算式的输入」。
+
+\textbf{问题。}FA2 的核心是两连乘 $P=QK^{\top}$ 与 $O=PV$（为聚焦布局
+问题，先忽略 softmax）。第一段 mma 的输出是 accumulator，按 C fragment
+排布 $(\mathrm{MMA}=4,\ \mathrm{MMA}_M,\ \mathrm{MMA}_N)$；第二段 mma 的
+左操作数 P 要按 A fragment 排布——m16n8k16 下虽然都是 4 个寄存器，但 C 的
+4 个按「2 行 $\times$ 2 列」组织、A 的 4 个按「2 行 $\times$ 2 个 K 向
+切片」组织，把 C 直接当 A 用会得到寄存器对齐错误（\texttt{cute::gemm}
+静态报错拒绝）。第~\ref{ch:16}~章的手写版靠一份「P 布局契约」注释 $+$
+人工挑寄存器位置（\texttt{R\_S[i][w]}、\texttt{R\_S[i][w+1]} 喂
+\texttt{HMMA16816}）绕开这个问题；到了 CuTe 里，同一件事必须写成一个
+\textbf{layout 变换}。
+
+\textbf{路线一（tri-dao 的 logical\_divide 法：几何重排）。}把
+$\mathrm{MMA}_N$ 拆成 $(2,\mathrm{MMA}_N/2)$，再把「后 2」与 MMA mode
+重组：
+\begin{equation}
+  (\mathrm{MMA},\ \mathrm{MMA}_M,\ (2,\mathrm{MMA}_N/2))
+  \;\longrightarrow\;
+  \bigl((\mathrm{MMA},2),\ \mathrm{MMA}_M,\ \mathrm{MMA}_N/2\bigr) .
+  \label{eq:20-fa2-tri}
+\end{equation}
+用映射语言说：先把 $S$ 的列方向「对折」成两半，再把「后一半」拼进
+MMA mode——于是 C 的「相邻两列」在 A 的坐标系里成了「K 向相邻两个元素」。
+
+\textbf{路线二（reed 的 layout-algebra 法：代数复合）。}构造一条三步的
+映射链：先求 C 布局的逆（offset 拉回 C 的坐标），再复合 A 布局（把 A 的
+坐标翻译到 C 的坐标系），最后复合 C 本身（顺着 C 读回 offset）：
+\begin{align}
+  \mathrm{Layout}_C^{-1} &\leftarrow \mathrm{left\_inverse}(\mathrm{Layout}_C)
+    && (\mathrm{offset} \to \text{C 坐标}) \label{eq:20-fa2-reed1} \\
+  a &\leftarrow \mathrm{Layout}_C^{-1} \circ \mathrm{Layout}_A
+    && (x_a,y_a) \to \mathrm{offset} \to \text{C 坐标} \label{eq:20-fa2-reed2} \\
+  \mathrm{Layout}_C^{A} &\leftarrow \mathrm{Layout}_C \circ a
+    && (x_a,y_a) \to \cdots \to \mathrm{offset}_C \label{eq:20-fa2-reed3}
+\end{align}
+用映射语言说：第一步把「输入输出对调」，第二步「借 A 的道走到 C 的
+坐标系」，第三步「顺着 C 的路口回家」。这也是 4.3 节「inverse 要配
+\texttt{with\_shape} 才有语义」的大号实例——单独一次
+\texttt{left\_inverse} 的结果没有形状语义，复合上目标布局它才成为可用的
+变换。
+
+\textbf{本书用的是哪种。}看源码：flash\_attn.cuh 的共享工具函数
+\texttt{convert\_layout\_acc\_Aregs}（L2341--2372）就是路线一——
+\texttt{logical\_divide} 拆 mode $+$ \texttt{make\_layout} 重组四个碎片；
+ffpa\_attn.cuh 的 P 转换（L300--305、L584--588）直接复用这个函数，注释
+写明「与 TMA WS kernel 一致」。两个文件的 P 路径都走 \textbf{tri-dao 的
+几何法}。选它的理由很实际：这是一次纯 mode 重排，6 行代码就能写完、效果
+可直接验证；路线二的代数法把「C$\to$A」表达成「逆 $+$ 两次复合」，
+更\textbf{通用}（换任意两个 fragment 布局都能推，例如量化 gemm 里
+dtype 变化引起的布局变换），但中间布局要 \texttt{with\_shape} 才可读、
+且依赖静态 stride——在本例中它的收益与几何法相同。两法等价这件事本身
+是个好练习：第~\ref{ch:25}~章会看到该变换在 CuTe 版 FA 里的完整位置
+（softmax 之后、$PV$ 之前），对照本节把两条路线各推一遍即可复现。
+
+两条路线的对照示意见图~\ref{fig:20-3}。
+
 \section{图示}
 
 \begin{figure}[htbp]
@@ -418,7 +612,12 @@ grep 不到该符号；当前实现对应的 API 是 \texttt{group<B,E>(layout)}
 \caption{colex 线性化：坐标 $(c_0,c_1)$ 与 offset 的对应表。$c_0$ 沿行方向
 变化最快，故 $\mathrm{idx}=c_0+4c_1$；整数输入时 CuTe 用
 式~\eqref{eq:20-colex-decomp} 先把 $x$ 分解回坐标。compact 且 col-major 时
-$f(x)=x$（本章测试 128 点核对）。（占位，RFC-H 升级为 drawio 图）}
+$f(x)=x$（本章测试 128 点核对）。（占位，RFC-H 升级为 drawio 图）
+图规格：左侧画 $8\times4$ 偏移数表（行 $=c_1$、列 $=c_0$、格内填
+$c_0+4c_1$），右侧画同一布局展平后的 1D 数带（offset $0..31$）；用同色
+高亮 $f(1,3)=13$ 与 $f(3,1)=7$ 两处并用折线箭头连接，右上角标注
+「colex：$c_0$ 最快」，底部一行对照标注 row-major 版
+$(4,8){:}(8,1)$ 的 $f(1,3)=11$。}
 \label{fig:20-1}
 \end{figure}
 
@@ -442,7 +641,50 @@ $f(x)=x$（本章测试 128 点核对）。（占位，RFC-H 升级为 drawio �
 \caption{mode 树与四种 mode 操作的结果（本章测试逐一核对了 shape/stride）。
 投影用于取子布局，合并/展平用于把嵌套结构变成可直接索引的线性结构，化简
 （coalesce）在编译期消除冗余 mode——kernel 里「fragment mode 与 rest mode
-分离」就是一次投影。（占位，RFC-H 升级为 drawio 图）}\label{fig:20-2}
+分离」就是一次投影。（占位，RFC-H 升级为 drawio 图）
+图规格：左侧画两层的 mode 树（根节点 $L_g$，两个子节点
+$(2,4){:}(1,2)$ 与 $(3,2){:}(8,24)$，叶节点标注 stride）；右侧并排四栏
+分别画 projection / group / flatten / coalesce 的结果条，每栏用不同颜色的
+矩形块表示 mode 边界；coalesce 栏画成一条连续 48 格长条并标注
+「strides 链式衔接 $1\to2\to8\to24$」。}\label{fig:20-2}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\begin{verbatim}
+  FIG-20-3  FA2 P-matrix layout conversion: two routes, one result
+
+    S (C fragment)                              P (A fragment)
+    (4, MMA_M, MMA_N)  -------------->  ((4,2), MMA_M, MMA_N/2)
+          |                                       ^
+          |  (a) tri-dao: logical_divide         |
+          |      split MMA_N -> (2, MMA_N/2)      |
+          |      regroup: mode0 + mode2.0,        |
+          |               mode1, mode2.1          |
+          |                                       |
+          |  (b) reed: layout algebra             |
+          |      inv = left_inverse(Layout_C)     |
+          |      a   = inv . compose(Layout_A)    |
+          |      out = Layout_C . compose(a)      |
+          +---------------------------------------+
+
+    mapping language (route b):
+      (x_a,y_a) --Layout_A--> offset0 --inv--> (x_c,y_c) --Layout_C--> offset1
+                 \______ compose 1 (eq. 20-fa2-reed2) ______/
+                                  \_____ compose 2 (eq. 20-fa2-reed3) ______/
+\end{verbatim}
+\caption{FA2 的 P 矩阵布局转换：tri-dao 的几何重排与 reed 的代数复合
+两条路线，结果等价。本书 flash\_attn.cuh 的
+\texttt{convert\_layout\_acc\_Aregs}（被 ffpa\_attn.cuh 复用）采用的是
+几何路线。（占位，RFC-H 升级为 drawio 图）
+图规格：上下两栏对照。上栏（tri-dao）左侧画 C fragment 的寄存器小方格
+阵列、右侧画 reshape 后的 A fragment 阵列，箭头旁标注
+\texttt{logical\_divide} 的拆分与四碎片重组；下栏（reed）画一条三段式
+箭头链（$\mathrm{Layout}_A\to\mathrm{offset}_0\to\mathrm{inv}\to$ 坐标
+$\to\mathrm{Layout}_C\to\mathrm{offset}_1$），每段下标注对应 compose 式子；
+两栏末端汇聚到同一「P（A fragment）」节点并标注「zero-copy：同一批
+寄存器」。}
+\label{fig:20-3}
 \end{figure}
 
 \section{性能分析}
@@ -480,29 +722,6 @@ wrapper（L1197--1427）88 行。所以「$\sim$80 行」低估了 CuTe kernel �
 
 口径说明：本章测试是纯 host 断言（890 个），不产生 GPU 计时数据；上述
 「去注释行数」口径为 \texttt{sed} 去注释与空行后的物理行数（2026-09-11 实测）。
-
-\section{勘误与考据}
-
-\begin{kaogu}[F4：hgemm.cuh L803--805 的代码量口径]
-注释原文「手写 $\sim$200 行 / CuTe $\sim$80 行」。实测去注释非空行：手写
-swizzle kernel 235 行、CuTe kernel 本体 118 行、launch wrapper 88 行。手写
-一侧的量级正确（235 vs $\sim$200），CuTe 一侧偏乐观（118 vs $\sim$80）。
-更准确的口径是「CuTe 版 kernel 内联 PTX 为 0、显式地址表达式为 0」——省掉的
-是\emph{地址算术}这一类代码，而不是行数。已在正文性能节采用修正口径。
-\end{kaogu}
-
-\begin{kaogu}[F1 核校通过：L806--820 模板参数注释与实现一致]
-\begin{sloppypar}
-逐项核对 launch wrapper（L1197--1427 区间）：\texttt{TiledMMA} 注释为
-\texttt{SM80\_16x8x16\_}\allowbreak\texttt{F16F16F16F16\_TN}，
-实测 F16 累加路径正是该原子
-（F32 累加时切 \texttt{F32F16F16F32\_TN}）；\texttt{G2S} 为
-\texttt{SM80\_CP\_ASYNC\_}\allowbreak\texttt{CACHEGLOBAL<uint128\_t>}、
-\texttt{S2R} 为 \texttt{SM75\_U32x4\_LDSM\_N}、\texttt{R2S} / \texttt{S2G} 为
-\texttt{UniversalCopy<int>} 与 \texttt{UniversalCopy<}\allowbreak\texttt{uint128\_t>}——
-与注释逐项一致，未发现口径问题。
-\end{sloppypar}
-\end{kaogu}
 
 \section{常见坑}
 
@@ -599,6 +818,17 @@ A：三点——static layout 的全部运算在编译期折叠（\texttt{static
 A：layout 有「孔洞」（stride 跳跃、padding）时 $\mathrm{cosize}>\mathrm{size}$。
 对 kernel 的意义：\texttt{cosize} 就是这块布局实际占用的元素数（smem 分配
 依据），而 \texttt{size} 是有效元素数——两者之差即 padding 的开销。
+
+\begin{sloppypar}
+\textbf{Q9：FA2 里 C fragment 转 A fragment 需要什么样的 layout 变换？}\\
+A：QK 的累加器按 C fragment 排布 $(\mathrm{MMA},\mathrm{MMA}_M,
+\mathrm{MMA}_N)$，PV 的左操作数要 A fragment（形如
+$((4,2),\mathrm{MMA}_M,\mathrm{MMA}_N/2)$），两者寄存器对齐不同、不能互当。
+两条等价路线：tri-dao 的 \texttt{logical\_divide} 几何重排（本书
+flash\_attn.cuh 的 \texttt{convert\_layout\_}\allowbreak\texttt{acc\_Aregs}
+及复用它的 ffpa\_attn.cuh 采用，4.8 节），或 reed 的 inverse $+$ compose
+代数链（更通用但依赖静态 stride）。
+\end{sloppypar}
 
 \section{最小测试与动手实验}
 

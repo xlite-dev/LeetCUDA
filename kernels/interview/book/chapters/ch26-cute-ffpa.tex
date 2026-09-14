@@ -30,9 +30,14 @@ chunk 循环让「归约维度被切开」这件事也必须落在类型上—�
 \end{itemize}
 
 本章的叙述顺序与第~\ref{ch:25}~章一致：先给类型代数（26.3 节，所有公式都能
-在 host 端用 CuTe 原语验证），再逐相位读 kernel（26.4 节），最后是勘误、
-常见坑、面试速查与最小测试。涉及算法推导（chunk 分解的数学、online softmax
-的不变量、相位账本）的地方，直接引用第~\ref{ch:19}~章，不重复。
+在 host 端用 CuTe 原语验证），再逐相位读 kernel（26.4 节），最后是常见坑、
+面试速查与最小测试。全章跟一条\textbf{数据流}走：Q/K 的 chunk 从 smem
+切片进来、在 $S$ 的 32 个寄存器里跨 chunk 累加、经 rowcol 视图做 online
+softmax 就地变成 $P$、再被 Aregs 重解释成 PV 的 A 操作数——每一步都只用
+\emph{类型}回答「数据在哪、什么形状、谁持有」。两处布局变换（rowcol 与
+Aregs）的通用讲法在第~\ref{ch:25}~章 25.3.4 节已经展开，本章只补 Split-D
+语境下的增量。涉及算法推导（chunk 分解的数学、online softmax 的不变量、
+相位账本）的地方，直接引用第~\ref{ch:19}~章，不重复。
 
 前置：第~\ref{ch:19}~章（Split-D 算法）、第~\ref{ch:20}--\ref{ch:22}~章
 （布局代数、TiledCopy、TiledMMA）、第~\ref{ch:25}~章（attention 的 CuTe 化，
@@ -67,7 +72,8 @@ $[B_r, D]$、$[B_c, D]$，TiledMma 的 $K$ 向一次覆盖 16 列，循环在 $N
 
 四个问题的共同点：它们\emph{都不是数值问题}（谁的浮点和谁一样、归约顺序也定
 了），而是\textbf{类型与布局问题}——tile 怎么切、fragment 怎么换解释、寄存器
-怎么编号、循环与 stage 怎么对应。这正是 CuTe 的用武之地，也是本章的主题。
+怎么编号、循环与 stage 怎么对应。把这四个问题逐个翻译成 CuTe 的类型与布局，
+就是「用 CuTe 抽象表达 Split-D」的全部内容——也是本章的主题。
 
 本章引用的源码位置汇总在表~\ref{tab:26-code}。
 
@@ -199,6 +205,26 @@ $S$（QK 的 C fragment，f32）要变成 PV 的 A 操作数 $P$（f16）。两�
         重解释成「$m16n8k16$ 的 A 操作数」布局，\textbf{数据一个字节都不搬}。
 \end{enumerate}
 
+第一步到第二步的顺序不可交换；重解释本身调用的就是第~\ref{ch:25}~章
+25.3.4 节精读过的那个 \texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}Aregs}
+（Tri Dao 的 \texttt{logical\_divide} 几何法与 @reed 的
+inverse$\circ$compose 代数法都在讲同一件事）。放到 Split-D 的语境里，
+补三点增量：
+
+\begin{itemize}[itemsep=2pt,topsep=2pt]
+  \item \textbf{为什么必须「就地」}：$S$ 的 32 个寄存器是 Phase 2 手里最紧
+        的资源，$P$ 直接复用它们；若改走「$P$ 写回 smem 再 ldmatrix」，
+        每个 kv\_tile 多出一次 $64\times64$ 的 half 往返与一次同步——
+        Split-D 的 D-chunk 循环让这笔开销按 $C$ 倍累积；
+  \item \textbf{为什么模板参数是 \texttt{<TiledMmaPV>}}：Aregs 重解释要按
+        \emph{消费者}的 atom 约定推——PV 的 $k16$ atom 决定「K 向 2 值」
+        落在哪个寄存器编号上，而不是 QK 的约定；
+  \item \textbf{数据流本身}：$S$ 的列（$B_c$ 向）在 $P$ 里变成 K 向，而
+        $PV$ 的归约恰好沿这个方向——$P$ 的「生产者」（softmax）与
+        「消费者」（PV）在同一维上对话，变换只调整「哪个寄存器读哪一对
+        列」，不搬数据。
+\end{itemize}
+
 第二步为什么合法？在 atom 一级看两个 fragment 的\emph{线程-值}映射
 （第~\ref{ch:22}~章符号；$m$ 行、$k$ 是 $P$ 的 K 向 $=S$ 的列）：
 
@@ -284,6 +310,19 @@ $S$（QK 的 C fragment，f32）要变成 PV 的 A 操作数 $P$（f16）。两�
 把「物理偏移」伪装成「布局维度」，第~\ref{ch:20}~章的代数就会被你自己
 破坏。FFPA 的选择是：\textbf{布局只描述一块 chunk，池的偏移交给指针}。
 
+那么「切片 $+$ 流水」在代码里具体长什么样？看 QK 主循环（L237--266）：
+gmem 侧的 chunk 由 \texttt{local\_tile} 切出（坐标是 $(q\_tile, d\_chunk)$，
+$d$ 从 $0$ 滚到 $\mathrm{Sk}{-}1$）；smem 侧每轮把 \texttt{q\_base} 加上
+环状槽位偏移 \texttt{qk\_read} $\times$ \texttt{kQChunkElements}，重新
+包成一个 \texttt{SmemLayoutQ} 的 tensor——\textbf{类型是常量、指针是
+变量}：台子换了、剧本不变。随后 \texttt{partition\_fragment\_A} 与
+\texttt{s2r\_thr\_q} 的 \texttt{partition\_S} 在这个「一块 chunk」的视图
+上照常工作（两者的参数都是 \texttt{sQ\_stg}）。对照第~\ref{ch:25}~章的三级搭建，那里 smem 是常驻的几段静态视图，
+这里换成了\textbf{按 stage 轮转的池}——对 CuTe 而言两者没有区别，都是
+「带 layout 的 tensor」；流水的推进则是 \texttt{qk\_read}/\texttt{qk\_write}
+两个模 $\mathrm{Sk}$ 的计数器加 \texttt{cp\_async\_wait<Sk-2>}，与第~\ref{ch:25}~章
+实现 1 的组栈策略同构（细节见 26.4.5 节）。
+
 \section{设计与实现：逐相位读 kernel}
 
 本节按源码的相位顺序读 \texttt{ffpa\_\allowbreak{}split\_\allowbreak{}d\_\allowbreak{}cute}（cp.async 版，128 线程）。
@@ -319,6 +358,28 @@ $S$（QK 的 C fragment，f32）要变成 PV 的 A 操作数 $P$（f16）。两�
         \emph{推出}而不是手写。$\mathrm{cosize}$ 对 SW128 布局的实测值是
         $64\times64=4096$（第~\ref{ch:25}~章的 probe 同款），于是三块池的
         基址（L100--103）也是从它算出来的。
+\end{itemize}
+
+\paragraph{实践须知}（读这份源码时最容易踩的三个认知坑）：
+
+\begin{itemize}[itemsep=2pt,topsep=2pt]
+  \item \textbf{头注释的 kernel 清单不全}。\texttt{ffpa\_attn.cuh} L5--6 写
+        「仅定义……\texttt{ffpa\_\allowbreak{}attn\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}split\_\allowbreak{}d\_\allowbreak{}cute} kernel」，
+        但文件里实际有\textbf{两个} kernel：本节精读的
+        \texttt{ffpa\_\allowbreak{}split\_\allowbreak{}d\_\allowbreak{}cute}（cp.async 版，L81）与
+        \texttt{ffpa\_\allowbreak{}attn\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}split\_\allowbreak{}d\_\allowbreak{}cute}（TMA+WS 版，
+        L378 起）。读文件时以实际代码为准；
+  \item \textbf{「256 线程」只对 TMA+WS 版成立}。L12--13 与 L26--27 的
+        「128 producer $+$ 128 consumer $=$ 256 total threads」说的是
+        \textbf{TMA+WS 版}（与第~\ref{ch:19}~章 TMA+WS 版的划分一致）；
+        cp.async 版是
+        \textbf{单角色 128 线程}（L73--78 的注释自己写明了）。按 256 去数
+        cp.async 版的 warp 会踩空——本节的类型推导统一以 L80 的
+        \texttt{\_\_launch\_bounds\_\_(128)} 为准；
+  \item \textbf{EURepeat 是注释词汇、不是接口}。与第~\ref{ch:25}~章同族：
+        CuTe 公开可断言的是 \texttt{tile\_size\_mnk} 与 fragment 布局，
+        「EURepeat$<$1,8,1$>$/$<$1,2,1$>$」只是「tile 除以
+        (atom$\otimes$layout)」那一刻的中间量（26.3.1 节已按这个口径核对）。
 \end{itemize}
 
 \subsection{G2S \texttt{TiledCopy}：与 MMA 划分对齐}
@@ -463,7 +524,7 @@ PV 段（L307--353）分两半。前半是 chunk 流水与 $O$ 的 rescale：
 
 注意 \texttt{v\_write\_pv = (kStagesV > 1) ? (kStagesV - 1) : 0} 这个初值：
 Phase 0 已经预取了 $\mathrm{Sv}-1$ 个 chunk，PV 循环延续同一套环状槽位——
-\textbf{两个相位共用一份槽位账本}，改任何一个都要改另一个（26.8 节坑四）。
+\textbf{两个相位共用一份槽位账本}，改任何一个都要改另一个（26.7 节坑四）。
 rescale 的操作对象是 \texttt{tCrO} 的 rowcol 视图：行方向乘
 \texttt{row\_scale[row]}——与 softmax 的行状态同一坐标系，行方向
 「每线程 2 行」的约定再次复用。
@@ -545,6 +606,11 @@ rescale 的操作对象是 \texttt{tCrO} 的 rowcol 视图：行方向乘
 \caption{双 TiledMma 的数据流：QK 沿 $D$ 累加成 $S$（32 寄存器跨 chunk
 存活），softmax 就地覆盖为 $P$，Aregs 重解释后喂给 PV；$O$ 的每个 chunk
 分量独立 rescale 与累加。虚线方向由 \texttt{row\_scale} 耦合。
+图规格：左右分栏——左栏画 QK 的 chunk 循环（$C$ 个 $[64,64]$ 块汇入 $S$），
+右栏画 PV 的 chunk 循环（$V$ 的 chunk 与 $O$ 分量一一对应）；中间窄栏放
+Phase 2（rowcol 视图 $\to$ 就地覆盖出 $P$ $\to$ Aregs），一条横向箭头串起
+「$S \to P \to O$」；底部标寄存器账本（$S/P$ 32、$O[C][32]$），
+\texttt{row\_scale} 用虚线从中间栏连到右栏的 rescale 步骤。
 （占位，RFC-H 升级为 drawio 图）}
 \label{fig:26-1}
 \end{figure}
@@ -584,46 +650,8 @@ cuDNN SDPA 的加速比，比较对象与精度配置（f16 输入、f32 累加�
 \end{itemize}
 
 换句话说：\textbf{CuTe 在 Split-D 上的收益与代价都不在运行时，而在「类型
-可断言」}——本章测试（26.10 节）能在不启动 kernel 的情况下核对双 TiledMma
+可断言」}——本章测试（26.9 节）能在不启动 kernel 的情况下核对双 TiledMma
 的每条推导，这在手写版里是做不到的。
-
-\section{勘误与考据}
-
-\begin{kaogu}[F1·注释遗漏]{头注释声明的 kernel 清单不全}
-  \texttt{ffpa\_attn.cuh} L5--6 写「仅定义 FFPA 特有的
-  \texttt{FFPAAttnSplitD\allowbreak{}CuTe\allowbreak{}Traits} 和
-  \texttt{ffpa\_\allowbreak{}attn\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}split\_\allowbreak{}d\_\allowbreak{}cute} kernel」——但文件里
-  实际有\textbf{两个} kernel：\texttt{ffpa\_\allowbreak{}split\_\allowbreak{}d\_\allowbreak{}cute}（cp.async 版，
-  L81）与 \texttt{ffpa\_\allowbreak{}attn\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}split\_\allowbreak{}d\_\allowbreak{}cute}（TMA+WS 版，
-  L378 起）。cp.async 版是本章与第~\ref{ch:19}~章的主要分析对象，
-  却在头注释中缺席。同类现象在 \texttt{flash\_attn.cuh} 的 CuTe 块也出现过
-  （第~\ref{ch:25}~章 F5 考据）；不影响正确性，读文件时以实际为准。
-\end{kaogu}
-
-\begin{kaogu}[F5·归属含混]{线程数注释与两个 kernel 的对应}
-  L12--13 与 L26--27 两处注释都写「128 producer + 128 consumer = 256 total
-  threads (vs 原始 384)」。这个数字对 \textbf{TMA+WS 版}成立；而 cp.async 版
-  是\textbf{单角色 128 线程}（L73--78 的注释自己写明了）。同一段「优化点」
-  注释同时罩着两个线程模型不同的 kernel，读者若按 256 去数 cp.async 版的
-  warp 会踩空。本章 26.4.1 节以 L80 的 \texttt{\_\_launch\_bounds\_\_(128)}
-  为准。
-\end{kaogu}
-
-\begin{kaogu}[F3·术语]{EURepeat 的读法（与 ch25 同族）}
-  注释里的 \texttt{EURepeat<1,8,1>} 不是 CuTe 的公开类型名。本 CuTe 版本中，
-  「每线程补足的 atom 重复数」由(Tile $\oslash$ (AtomShape $\otimes$
-  AtomLayout)) 推出、没有独立实体；公开可断言的是 \texttt{tile\_size\_mnk}
-  与 fragment 的布局。本章 26.3.1 节按「tile 除以 (atom$\otimes$layout)」
-  的口径给出与注释一致的 $\langle1,8,1\rangle/\langle1,2,1\rangle$ 两组数
-  （核校通过）。
-\end{kaogu}
-
-\begin{kaogu}[F1/F3 核校通过]{「64-wide chunk」与类型常量的一致性}
-  头注释 L7--8「通过 64-wide Split-D chunks 处理」与代码逐项核对：
-  \texttt{kDChunk = 64}（L95）、\texttt{kDChunks = kHeadDim / 64}（L96）、
-  \texttt{SmemLayoutAtom = Layout\_\allowbreak{}K\_\allowbreak{}SW128\_\allowbreak{}Atom}（一行 64 half $=128$\,B）
-  ——三处互相咬合，chunk 宽度 64 确实由 SW128 原子宽度决定，注释无误。
-\end{kaogu}
 
 \section{常见坑}
 
@@ -753,6 +781,18 @@ ALL OK
 \section*{延伸阅读}
 
 \begin{itemize}[itemsep=2pt,topsep=2pt]
+  \item @竹熙佳处《写给大家看的 CuTe 教程：Layout Compose \& Inverse》——
+        $S\to P$ 布局变换的完整讲法（Tri Dao 的几何法与 @reed 的代数法），
+        本章 26.3.3 节与第~\ref{ch:25}~章 25.3.4 节的主参考。\\
+        \url{https://zhuanlan.zhihu.com/p/1962625273636845008}
+  \item @reed《cute 之 高效 GEMM 实现》——TiledMMA 的组装层次、
+        多级流水的写法与 Epilogue 的 smem 中转；同系列《cute 之 简单
+        GEMM 实现》给出最小版本的组装范式，配合 26.3.1 的推导链与
+        26.4 的相位阅读一起看。\\
+        \url{https://zhuanlan.zhihu.com/p/675308830}
+  \item @竹熙佳处《写给大家看的 CuTe 教程：tiled mma》——fragment 视角的
+        线程-值映射，26.3.2 节两个恒等式的入门读物。\\
+        \url{https://zhuanlan.zhihu.com/p/1937145378446226159}
   \item @DefTruth《FFPA(Split-D)：FA2 无限 HeadDim 扩展》——
         本主题在中文社区最系统的公开文章，Split-D 的动机与 RD 波形分析
         可与第~\ref{ch:19}~章的推导对读。\\
