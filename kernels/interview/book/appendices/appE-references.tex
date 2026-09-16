@@ -27,6 +27,12 @@
   \item FlashAttention 仓库\\
         \url{https://github.com/Dao-AILab/flash-attention}\\
         FA2/FA3 参考实现（第~\ref{ch:16}--\ref{ch:18}~章的对照对象）；
+  \item ffpa-attn 仓库（Part V 代码链路，源码索引锚定 commit \texttt{861d75e}，
+        permalink 见附录~\ref{app:D}）\\
+        \url{https://github.com/xlite-dev/ffpa-attn}\\
+        SageAttention 2/3 思想的 CuTe 高效复现：fp8/fp4 量化前处理链
+        + persist-D/split-D/M4N2 kernel 家族
+        （第~\ref{ch:19}、\ref{ch:26}、\ref{ch:27}--\ref{ch:33}~章）；
   \item Nsight Compute 文档\\
         \url{https://docs.nvidia.com/nsight-compute/}\\
         bank conflict 计数器与 stall 指标（第~\ref{ch:12}、\ref{ch:16}~章
@@ -50,6 +56,23 @@
   \item A. Milakov, N. Gimelshein. Online normalizer calculation for
         softmax. arXiv:1805.02867, 2018（online softmax 递推与二元合并的
         原始出处，第~\ref{ch:04}、\ref{ch:05}~章）；
+  \item J. Zhang et al. SageAttention: Accurate 8-bit Attention for
+        Plug-and-play Inference. arXiv:2410.02367, 2024（第一个端到端无损的
+        量化 attention：int8 QK + fp16 PV、smooth-K，第~\ref{ch:27}、
+        \ref{ch:28}~章）；
+  \item J. Zhang et al. SageAttention2: Efficient Attention with Thorough
+        Outlier Smoothing and Per-thread INT8 Quantization. arXiv:2411.10958,
+        2024（int4/int8 QK + fp8 PV、per-thread 粒度对齐 MMA fragment，
+        第~\ref{ch:27}--\ref{ch:29}~章）；
+  \item SageAttention2++: A Faster Post-Training Quantization for Attention
+        with fp8-f16accum MMA. arXiv:2505.21136, 2025（fp8-f16acc MMA 与
+        值域约束 $448\times2.25\le2047$，第~\ref{ch:27}、\ref{ch:29}~章）；
+  \item SageAttention3: Microscaling FP4 Attention. arXiv:2505.11594, 2025
+        （Blackwell FP4：NVFP4 microscaling + 两级 P 量化，第~\ref{ch:27}、
+        \ref{ch:31}、\ref{ch:32}~章）；
+  \item FlashAttention-4: Algorithm and Kernel Pipelining Co-Design.
+        arXiv:2603.05451, 2026（lazy rescale / conditional rescaling 的
+        原始出处，第~\ref{ch:27}、\ref{ch:29}、\ref{ch:32}~章）；
   \item FlashInfer: Efficient and Customizable Attention Engine for LLM
         Inference Serving. arXiv:2501.01005, 2025（\texttt{merge\_\allowbreak{}attn\_\allowbreak{}states}
         的论文出处，第~\ref{ch:05}~章）。

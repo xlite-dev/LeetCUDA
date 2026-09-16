@@ -24,9 +24,10 @@
 | RFC-G | 性能数据汇总（附录 B 成表） | RFC-C..F 各章增量数据 | 未开始 |
 | RFC-H | 图表升级（知乎图 drawio 重建为主 + ASCII→drawio/TikZ 新建） | 章节完成 | 未开始（可穿插） |
 | RFC-I | 附录 A-E | RFC-C..F（D 需收口） | 未开始 |
-| RFC-J | 全书集成审校与验收 | 全部 | 未开始 |
+| RFC-J | 全书集成审校与验收 | 全部 | 进行中（J.9/J.10 完成 2026-09-16）|
+| RFC-K | Part V FP8/FP4 Attention 篇 ch27-33（ffpa-attn CuTe sm_120） | RFC-E/F（前置章节） | 进行中（K0 规划完成 2026-09-16）|
 
-依赖图：`RFC-0 → RFC-A → (RFC-B ∥ RFC-C) → RFC-D → RFC-E → RFC-F → (RFC-G ∥ RFC-H ∥ RFC-I) → RFC-J`
+依赖图：`RFC-0 → RFC-A → (RFC-B ∥ RFC-C) → RFC-D → RFC-E → RFC-F → (RFC-G ∥ RFC-H ∥ RFC-I) → RFC-J`；`RFC-K 依赖 RFC-E/F 素材，与 RFC-G/H/I 并行，完成后并入 RFC-J 收口`
 
 ## 2. RFC-0 脚手架
 
@@ -152,6 +153,24 @@
 - [ ] J.8 **验收**：对照 BOOK_PLAN §11 全书级标准逐条勾选
 - [x] J.9 行越界专项：全书 Overfull \hbox 114 处（75 处 ≥10pt，最大 112pt）→ ≥1pt 清零（2026-09-16）。手段：preamble `\emergencystretch=2em`（114→52）；`\texttt` 断点注入脚本（camelCase/`\_`/`/`/`.`/`::`/`(`/`<`，门槛=真实断点切分后 run≥12，52→11，另修复 3 处裸 `\allowbreak ` 空格伪影导致的 `ENABLE_ TMA` 渲染变形）；`xurl`（\url 长链接断行）；剩余 11 处 editorial 精修（拆 run-in 粗体、`file~Lxxx` 改空格、表格 \footnotesize、align 续行列对齐修正）。终态仅余 1 处 0.88pt（<1pt 不可见，保留）。工具与清单：`book/.tmp/layout-fix/{map_overfull.py, inject2.py, overfull-map.md}`。页数 324→354
 - [x] J.10 全书内容审校（2026-09-16，commit 4caaed6+4517bb0）：(1) 日志排版——ch13/14/17/19/25 的 quote+texttt 伪代码块统一转 `lstlisting[style=console]`，恢复真实日志文本；(2) 本地路径清理——删除 16 处 `.tmp/book-bench|agent-chNN` 等读者不可见路径（保留 ch00 教学示例与模板注释）；(3) 4 份 GLM-5.3 审校报告（`book/.tmp/review/agent1-4.md`，77 条）应用 76 条：数学/事实错误均独立复算或源码/PTX 文档核实（重点：ch12 寄存器占用 R≈220→110、ch17 三处 linerange 错位互换、ch25/26 C fragment 行列 PTX ISA Figure 83 双重验证、ch15 FA3 作者名）；语言类清理生造词；跳过 12-7（低置信度冲突绝对计数）。顺手修复存量 undefined 引用 4 处（ch02 补 3 个 subsection label、ch17 ch:2→ch:02）。重建验证：0 编译错误、Overfull ≥1pt 为 0、undefined 引用为 0。遗留：fig-3-1/fig-12-2 图内数字与修正后正文不一致需重绘；ch16_fa2_mma.cu:5 头注释 grid 描述未改（测试文件）
+
+## 12-K. RFC-K Part V FP8/FP4 Attention 篇（ch27-33）
+
+> 规范源：BOOK_PLAN §3 Part V 卡片 + §4.2 Part V 特化 DoD。代码链路 = ffpa-attn repo（锚定 commit `861d75e`，`csrc/cuffpa/cute/{fp8,fp4}` + `cute/{softmax,hadamard}.cuh`，只讲 sm_120）。验证 = `python -m ffpa_attn.bench` / `bench/bench_{fp8,fp4}.py`（PRO 5000，`CUDA_VISIBLE_DEVICES=7`，ffpa-attn 0.2.5.dev25 editable 已装）。原理参考 = ffpa-cuda-understand skill §11（推导级）+ `references/papers/`（SA1/2/2++/3、FA-2/3/4 论文文本）。性能图资源 = ffpa-attn `docs/assets/perf/{fp8,fp4}/`（5090）+ `docs/assets/{ffpa-split-d,mma}.png`。
+
+- [x] K0 Part V 章节规划落盘：BOOK_PLAN §3 Part V 表（7 章卡片）+ 附录 B/C/D/E 增补 + §4.2 Part V 特化 DoD + 本 RFC-K 卡片（2026-09-16）
+- [x] K0.1 `book.tex` 加 Part V `\part` + ch27-33 空章骨架（含 `chapters/_template.tex` 复制）；两遍编译通过（2026-09-16：365 页零 error；Overfull 3 处为 ch14/ch21/ch24 存量，登记 K-验收清偿）
+- [x] K0.2 性能图资源归档：`docs/assets/perf/{fp8,fp4}/*.png` + `ffpa-split-d.png`/`mma.png` 复制到 `book/figures/ffpa/` + 出处 sidecar（ffpa-attn README / 5090 / URL / 引用章节）；附录 E 预登记（2026-09-16：15 图 + meta.md + SA1/2/2++/3、FA-4 论文条目 + ffpa-attn 仓库条目；bench smoke 口径确立：`--show-allclose` ✅ + timing 表，fp8 D128 self-attn 1.70x/365T 落 .tmp/book-bench/k0-smoke/）
+- [ ] K1 ch27 量化注意力的数学基础 | 新写原理章（fp8_pscale.cuh 头注释 + softmax.cuh 对照） | 前置 4,5,15 | FIG-27-1 量化格式位域、FIG-27-2 粒度谱系表、FIG-27-3 per-stage 误差分解 | 参考 SA1/SA2/SA2++/SA3/FA-4 论文 + @DefTruth WINT8/4 | 验证：`ffpa_attn.bench --cuda-impl fp8 --D 128`（quant 基线口径展示）
+- [ ] K2 ch28 FP8(一)量化前处理链 | `cute/fp8/{smooth_k(165),smooth_v(175),quantize_fp8(1024)}.cuh` + `cute/hadamard.cuh(202)` | 前置 20-23,27 | FIG-28-1 前处理 pipeline、FIG-28-2 smoothing 三不变性 | 验证：`--fp8-smooth-k/--fp8-smooth-v/--fp8-q-quant-method per-thread` knob A/B bench
+- [ ] K3 ch29 FP8(二)persist-D 主 kernel ★ | `cute/fp8/sm_120/persist_d.cuh(1036)` + `fp8_pscale.cuh(304)` + `softmax.cuh(344)` + `reg2reg_8b.cuh(163)` + `attn_traits.cuh(313)` | 前置 17,18,22,23,28 | FIG-29-1 scale 折叠数据流、FIG-29-2 persist-D WS 布局、FIG-29-3 reorg-free 打包对照 | 验证：`--cuda-impl fp8 --tasks self causal --D {64,128,192,256}` parity+timing
+- [ ] K4 ch30 FP8(三)split-D 与 M4N2 | `cute/fp8/sm_120/{split_d,split_d_m4n2}.cuh` | 前置 19,26,29 | FIG-30-1 寄存器压力曲线（README mma.png）、FIG-30-2 split-D 切分（ffpa-split-d.png）、FIG-30-3 M4N2 fragment 划分 | 验证：`--cuda-impl fp8 --D {320,512,768,1024}`（cross-point 展示）
+- [ ] K5 ch31 FP4(一)NVFP4 格式与量化链 | `cute/fp4/{quantize_fp4(1642),delta_s(451),attn_traits(658)}.cuh` | 前置 27,28 | FIG-31-1 NVFP4 1×16 block+SF、FIG-31-2 delta_s 修正、FIG-31-3 kv_perm32 | 验证：`--cuda-impl fp4 --D {64,128}`（fused 量化链）
+- [ ] K6 ch32 FP4(二)persist-D 主 kernel ★ | `cute/fp4/sm_120/persist_d.cuh(1113)` + `fp4_pscale.cuh(793)` + `fp4_gemm.cuh(276)` | 前置 29,31 | FIG-32-1 两级 P 量化域、FIG-32-2 persist-D 主循环数据流 | 验证：`--cuda-impl fp4 --tasks self causal --D {64,128,192,256}` + `--fp4-pv-mm-type fp8` 变体
+- [ ] K7 ch33 FP8/FP4 性能实战 | `bench/bench_{fp8,fp4}.py` + bench CLI 全 knob | 前置 29,30,32 | FIG-33-x README 5090 speedup 引用图（fp8/fp4 各 3-4 张）+ 本机 PRO 5000 plot | 验证：完整 task 矩阵（self/causal/gqa/cross × D{64..512}）+ knob 矩阵实验 + 图落盘
+- [ ] K-验收 Part V 集成：全书两遍编译零 error、Overfull ≥1pt 为 0、无 undefined 引用；附录 B（fp8/fp4 数据段）+ 附录 D（ffpa-attn `861d75e` 索引段）+ 附录 C（ffpa-attn 安装/bench 指南）更新；RFC.md 图清单登记；每章 DoD 勾选留档
+
+执行序：K0 → K1 → K2 → K3 → (K4 ∥ K5) → K6 → K7 → K-验收（K4/K5 无文件冲突可并行；每章完成即独立 commit）
 
 ## 13. 图清单登记表（写作期持续更新）
 

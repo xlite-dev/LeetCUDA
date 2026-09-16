@@ -1,0 +1,34 @@
+% ch33-fp8-fp4-bench.tex — FP8/FP4 性能实战：bench、精度与生态（RFC-K7）
+% 源码：ffpa-attn(861d75e) bench/bench_fp8.py(719L) + bench/bench_fp4.py(652L) + ffpa_attn.bench CLI
+% DoD：BOOK_PLAN §4.2 Part V 特化
+\chapter{FP8/FP4 性能实战：Bench、精度与生态}\label{ch:33}
+
+\section{本章导读}
+% 前置：\ref{ch:29}/\ref{ch:30}/\ref{ch:32}
+
+\section{问题与动机}
+% 如何科学度量量化 attention：speedup 口径、精度口径、E2E 占比
+
+\section{数学原理}
+% speedup = (T_self + d_SDPA)/(T_self + d_FFPA)；精度评估口径（max_abs tol / cosine / mean_abs）
+
+\section{设计与实现}
+% ffpa_attn.bench CLI 全 knob 矩阵（--cuda-impl fp8/fp4 家族、quant method、acc type、hybrid）；
+% bench/bench_fp8.py、bench_fp4.py 的 D/N 扫描与 plot 输出
+
+\section{图示}
+% README 5090 speedup 图引用（fp8 D64-768 / fp4 D64-512）+ 本机 PRO 5000 复测 plot
+
+\section{性能分析}
+% 本机复测 vs README 5090；aux 链 E2E 占比；kernel tensor pipe 77%；
+% knob 矩阵实测表（QK int8/fp8 x PV f16/f32 x per-block/thread x hybrid）
+
+\section{实践经验}
+
+\section{常见坑}
+% A/B 必须校验 SDPA 参照一致性；配置必须显式声明（默认已统一 int8+f16acc）
+
+\section{面试要点速查}
+
+\section{最小测试与动手实验}
+% 完整 task 矩阵（self/causal/gqa/cross x D{64..512}）+ knob 实验 + plot 落盘

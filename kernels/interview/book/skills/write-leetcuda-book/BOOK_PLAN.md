@@ -99,7 +99,7 @@
 
 ---
 
-## 3. 书稿结构：4 Part · 26 章 · 5 附录
+## 3. 书稿结构：5 Part · 33 章 · 5 附录
 
 > 每章卡片字段：**源码区间**（引用范围）/ **kernel** / **前置** / **公式** / **图** / **参考** / **测试**。行号以 §1.3 核验表为准；RFC-A 登记锚点断言。
 
@@ -150,15 +150,38 @@
 | 25 | CuTe 应用(二)：FlashAttention 三实现对照 | flash_attn.cuh L2196-3488（5 对宏块，见 §1.3） | 17,18,21-23 | fa_cute traits 复用结构；cp.async 版/TMA+WS 版/FA3 版演进 | 三实现结构对照图 | @66RING cute 复现 FA；@shengying.wei tiny-flash-attention；@Titus GEMM 流水线 |
 | 26 | CuTe 应用(三)：FFPA Split-D | ffpa_attn.cuh 全篇（重点 L31-79+两 kernel） | 19,22,23 | 双 TiledMma（QK Tile<64,64,16>/PV Tile<64,16,16>）；cp.async 与 TMA 两版对照 | 双 TiledMma 数据流图 | @DefTruth FFPA 文；ffpa-cuda-understand skill |
 
+### Part V FP8/FP4 Attention 篇：量化注意力的数学与 kernel 工程（2026-09-16 新增）
+
+> **代码链路**：ffpa-attn repo（独立 git，**锚定 commit `861d75e`**，与 LeetCUDA 冻结件互不影响）`csrc/cuffpa/cute/{fp8,fp4}` 家族 + `cute/{softmax,hadamard}.cuh`；**只讲 sm_120**（sm_89 路径不讲）。SageAttention 2/3 的高效复现（CuTe 化）。
+> **原理参考**：ffpa-cuda-understand skill 报告 §11.1-11.16（推导级：SA1/2/2++/3 + FA-2/3/4 数学原理；论文文本版在 skill `references/papers/`）。
+> **验证方式（替代 book/tests，用户 2026-09-16 指定）**：不新增 kernel/测试；每章用 `python -m ffpa_attn.bench --fwd-backend cuda --cuda-impl <fp8|fp4> --tasks <相关> --no-bwd [--D N]` 或 `bench/bench_{fp8,fp4}.py` 跑通并记录 parity/timing（PRO 5000 本机，CUDA_VISIBLE_DEVICES=7）。
+> **性能图资源**：ffpa-attn `docs/assets/perf/{fp8,fp4}/ffpa_speedup_nvidia-geforce-rtx-5090_*.png`（D64-768/D64-512，引用+出处标注，复制归档 `figures/ffpa/`）+ `docs/assets/{ffpa-split-d,mma}.png`。
+
+| 章 | 标题 | 源码区间（ffpa-attn） | 前置 | 核心公式/概念 | 关键图 | 主参考 |
+|---|---|---|---|---|---|---|
+| 27 | 量化注意力的数学基础（新写，公式密集承上启下章） | `cute/fp8/fp8_pscale.cuh` 头注释 + `cute/softmax.cuh` | 4,5,15 | 量化算子 $\hat x=\mathrm{clamp}(\mathrm{round}(x/\delta))$；格式谱系 int8/e4m3/e2m1/ue4m3 相对步长 $\approx 2^{-(m+1)}$；粒度谱系 per-block/thread/channel/row/$1\times16$；Sage 1/2/2++/3 谱系与贡献点；FA-4 lazy rescale；ESS 误差模型 $\mathrm{Var}(O_{i,d})=\sigma_V^2/\mathrm{ESS}_i$；误差分解（V 0.19 > QK 0.13 > P 0.11） | 量化格式位域图、粒度谱系表、per-stage 误差分解图 | SA1/SA2/SA2++/SA3 + FA-4 论文；@DefTruth WINT8/4 系列 |
+| 28 | FP8(一)：量化前处理链（aux kernels） | `cute/fp8/{smooth_k,smooth_v,quantize_fp8}.cuh` + `cute/hadamard.cuh` | 20-23,27 | smooth-K softmax 平移不变 + lse 修正；smooth-V 行和为 1 $\Rightarrow O\to O-v_m$；per-thread（SA2 fragment 对齐）/per-channel（$\delta_V=\mathrm{colmax}/448$）粒度；WHT 正交消去 $(QH)(KH)^\top=QK^\top$；V 预转置 + TMA 16B 对齐 pad；stride-generic NHD/strided-NHD 零拷贝寻址 | 前处理 pipeline 图（kv_mean→quantize→vt 转置链）、smoothing 三不变性示意图 | SA1/SA2 论文；QuaRot/SpinQuant（延伸） |
+| 29 | FP8(二)：persist-D 主 kernel 与 scale 折叠代数 ★ | `cute/fp8/sm_120/persist_d.cuh`（1036 行）+ `fp8_pscale.cuh` + `softmax.cuh` + `reg2reg_8b.cuh` + `attn_traits.cuh` | 17,18,22,23,28 | $s_{dequant}=\delta_Q\delta_K$ 折进 exp2 系数（int8 变体 s8xs8→s32）；P 量化三步协议 $v_s$ 精确消去 $O{+}=PV$；fixed $1/448$ vs per-row 满量程；lazy rescale 溢出约束 $2^T\mathrm{amax}(V)\le448$；f16 PV acc 域约束 $448\times2.25\le2047$（SA2++）；归约轴置换不变性 → reorg-free PV pack（零 SHFL）；kMaxScaleAfter；WS 128P+256C + setmaxnreg + Q s2r 常驻；causal tail-aligned 两级剪枝；hybrid 行分割等价性 | scale 折叠全链数据流图、persist-D WS smem/寄存器布局图、reorg-free vs cross-lane 打包对照图 | SA2/SA2++ 论文；ffpa-cuda-understand §11.6/11.11/11.13 |
+| 30 | FP8(三)：split-D 与 M4N2 扩展（只讲 FP8） | `cute/fp8/sm_120/{split_d,split_d_m4n2}.cuh` | 19,26,29 | split-D 两条分块恒等式（QK 归约维/PV 输出维，精确）；$O_{acc}=D/(2N_w)$ 寄存器模型；可行性比 $D\cdot M_w/4096$（$N_w$ 消去、M4N4=死路）；M4N2 跨 N-warp softmax 归约（max 结合/sum 分配、双 $m,L$ 一致性）；stage floor s3；smooth_v per-chunk identity partition；D 交叉点 224/768 dispatch | 寄存器压力 vs D 曲线（README mma.png）、split-D 切分图（README ffpa-split-d.png）、M4N2 fragment 划分图 | ffpa-cuda-understand §11.3/11.4/11.12；@DefTruth FFPA |
+| 31 | FP4(一)：NVFP4 格式与量化链 | `cute/fp4/{quantize_fp4,delta_s,attn_traits}.cuh` | 27,28 | microscaling $1\times16$ block + ue4m3 SF、$s=\mathrm{amax}/6$；blockscale MMA 逐块 dequant 语义；smooth-Q/K 强制（e2m1 ±6 动态范围）+ delta_s rank-1 修正 $\Delta S=q_mK^\top-q_{km}$（免物化 $K-\bar k$）；D≤128 fused 单 launch 量化；WHT fused（pow2 D，未旋转域均值/delta_s）；kv_perm32 列置换；subbyte `make_smem_ptr` 寻址 | NVFP4 $1\times16$ block+SF 布局图、delta_s rank-1 修正图、kv_perm32 置换图 | SA3 论文（主）；NVFP4 microscaling 格式文档 |
+| 32 | FP4(二)：persist-D 主 kernel 与两级 P 量化 ★ | `cute/fp4/sm_120/persist_d.cuh`（1113 行）+ `fp4_pscale.cuh` + `fp4_gemm.cuh` | 29,31 | 两级 P 量化 $s_{P1}=\mathrm{rowmax}(\tilde P)/2688$、$\tilde P_2\in[0,2688]$、$s_{P2}\in$ ue4m3；$\log_2(1/2688)$ 折进 exp2 shift；lse 复合公式 $(mL+\log_2 L+\log_2\tfrac1{2688})\ln2+\text{scale}\cdot q_{km}$；perm-aware masking（置换后位置判定）；persistent grid 调度（dense 波效率 vs causal 每 work 一 CTA）；MXFP8 PV 变体（$kPvMxfp8$，$\log_2\tfrac1{448}$）；条件 rescale；O epilogue STSM→TMA store | 两级 P 量化域拉伸图、fp4 persist-D 主循环数据流图 | SA3 论文 Algorithm 1；ffpa-cuda-understand §11.10 |
+| 33 | FP8/FP4 性能实战：bench、精度与生态 | `bench/bench_{fp8,fp4}.py` + `ffpa_attn.bench` CLI 全 knob | 29,30,32 | speedup 口径（vs SDPA BF16/FA2）；aux 链带宽贴峰（1.04TB/s）与 E2E 占比；kernel tensor pipe 占比 77%；knob 矩阵实测（QK int8/fp8 × PV f16/f32 × per-block/thread × hybrid）；精度 tol 口径（fp8 dense/causal、fp4 0.15/0.70，cosine/mean_abs 评估）；Cache-DiT×FFPA 应用 | README 5090 speedup 图（fp8 D64-768/fp4 D64-512，引用+出处）+ 本机 PRO 5000 复测 plot（bench_fp8.py 风格） | ffpa-attn README/bench；cuda-auto-tune 方法论 |
+
+> **Part V 特别约定**（区别于 Part I-IV）：
+> 1. 源码在 ffpa-attn repo（活跃开发），不做 SHA256 冻结；以 commit `861d75e` 为引用锚点（附录 D permalink）。写作期间发现 ffpa-attn 注释/行为错误：**顺手修 ffpa-attn 并同步更新锚点 commit**（不受 LeetCUDA 源码冻结约束），CHECKLOG 照记。
+> 2. 每章 DoD 第 4 条（book/tests）替换为：`ffpa_attn.bench` CLI 相关 task 跑通 + parity（max_abs/tol）输出记录落 `.tmp/book-bench/chNN/`。
+> 3. 行号引用基准：`861d75e` 工作树行号（§1.3 表不覆盖 ffpa-attn，各章卡片行号在 RFC-K 执行时以 wc/grep 复核）。
+> 4. sm_89 fp8 persist-D 路径**不讲**（只在 ch29 用一个考据框提「无 TMA/WS 的 cp.async 变体存在」即可）。
+
 ### 附录
 
 | 附录 | 内容 | 源 |
 |---|---|---|
 | A | 基础设施工具箱：MMA/WGMMA PTX 宏、swizzle v1/v2、TMA/mbarrier helpers、TensorMap、setmaxnreg | common.cuh 773 行 |
-| B | 性能数据与口径：README SM120a 表 + 补「对应章节/函数名」列 + 复测数据（统一注明 GPU/库版本/日期） | README + RFC-G |
-| C | 构建、运行与最小测试指南：build.sh、CLI、**章×编译宏×arch 开关矩阵**（§1.4 扩展）、cutlass include、notes-v2.cu 角色声明（保留为集成 bench harness） | build.sh、notes-v2.cu |
-| D | 源码索引：topic ↔ file:line ↔ **GitHub commit permalink**（固定 hash）——正文的完整代码入口 | 全书 |
-| E | 参考资料全集：知乎作者/文章/链接/对应章节/引用日期/图片引用清单 | RFC-B |
+| B | 性能数据与口径：README SM120a 表 + 补「对应章节/函数名」列 + 复测数据（统一注明 GPU/库版本/日期）+ **Part V fp8/fp4 段（5090 README 图 + PRO 5000 本机 bench CLI 数据）** | README + RFC-G |
+| C | 构建、运行与最小测试指南：build.sh、CLI、**章×编译宏×arch 开关矩阵**（§1.4 扩展）、cutlass include、notes-v2.cu 角色声明（保留为集成 bench harness）+ **ffpa-attn 安装与 bench CLI（Part V 验证链路）** | build.sh、notes-v2.cu |
+| D | 源码索引：topic ↔ file:line ↔ **GitHub commit permalink**（固定 hash）——正文的完整代码入口；**Part V 段锚定 ffpa-attn commit `861d75e`** | 全书 |
+| E | 参考资料全集：知乎作者/文章/链接/对应章节/引用日期/图片引用清单 + **SA1/SA2/SA2++/SA3、FA-2/3/4 论文条目** | RFC-B |
 
 ---
 
@@ -187,6 +210,8 @@
 6. 本章公式清单、图清单登记进 RFC.md 登记表
 7. 延伸阅读（2-5 篇知乎参考）就位
 8. 单章自审 checklist + 本章 pdftotext 抽查（无豆腐块、无横向溢出）
+
+> **Part V 特化（ch27-33，2026-09-16 用户指定）**：第 2 条锚点改为「ffpa-attn commit `861d75e` + linerange 首末行文本匹配」（不冻结 SHA256）；第 4 条测试替换为 `python -m ffpa_attn.bench --fwd-backend cuda --cuda-impl <fp8|fp4> --tasks <相关> --no-bwd` 跑通 + parity 输出（max_abs/tol）记录；第 5 条 bench 数据源 = bench CLI / `bench/bench_{fp8,fp4}.py`（PRO 5000，CUDA_VISIBLE_DEVICES=7）。其余各条不变。
 
 ### 4.3 行文风格（作者风格基线，2026-09-11 用户定）
 

@@ -1,0 +1,35 @@
+% ch31-fp4-nvfp4-quant.tex — FP4(一)：NVFP4 格式与量化链（RFC-K5）
+% 源码：ffpa-attn(861d75e) cute/fp4/{quantize_fp4(1642L),delta_s(451L),attn_traits(658L)}.cuh
+% DoD：BOOK_PLAN §4.2 Part V 特化
+\chapter{FP4（一）：NVFP4 格式与量化链}\label{ch:31}
+
+\section{本章导读}
+% 前置：\ref{ch:27}（量化数学）、\ref{ch:28}（fp8 量化链）
+
+\section{问题与动机}
+% e2m1 动态范围 ±6：为什么 microscaling + 强制 smoothing 是精度必需
+
+\section{数学原理}
+% NVFP4 = e2m1 + ue4m3 SF、1x16 block、s=amax/6；blockscale MMA 逐块 dequant 语义；
+% smooth-Q/K 强制 + delta_s rank-1 修正 dS=q_m K^T - q_km（免物化 K-km）；
+% head_dim pad 零贡献语义（data=0 且 SF=0）
+
+\section{设计与实现}
+% quantize_fp4 fused 单 launch（D<=128 同时产 qm）；delta_s_wmma_kernel（128x128 tile）；
+% WHT fused（pow2 D，未旋转域均值/delta_s）；kv_perm32 列置换；subbyte make_smem_ptr 寻址
+
+\section{图示}
+% FIG-31-1 NVFP4 1x16 block+SF 布局；FIG-31-2 delta_s rank-1 修正；FIG-31-3 kv_perm32 置换
+
+\section{性能分析}
+% delta_s 大 N 1.4ms->0.3ms（torch 链 -> wmma）；量化链 vs fp8 的带宽收益
+
+\section{实践经验}
+
+\section{常见坑}
+% subbyte reinterpret_cast 2x 越界（IMA）；0/0 NaN（amax=0 块）
+
+\section{面试要点速查}
+
+\section{最小测试与动手实验}
+% --cuda-impl fp4 --D {64,128}：fused 量化链；--fp4-hadamard / --fp4-smooth-v 变体

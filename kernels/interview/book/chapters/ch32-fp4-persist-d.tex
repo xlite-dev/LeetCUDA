@@ -1,0 +1,37 @@
+% ch32-fp4-persist-d.tex — FP4(二)：persist-D 主 kernel 与两级 P 量化（RFC-K6）★
+% 源码：ffpa-attn(861d75e) cute/fp4/sm_120/persist_d.cuh(1113L) + fp4_pscale.cuh(793L)
+%       + fp4_gemm.cuh(276L)
+% DoD：BOOK_PLAN §4.2 Part V 特化
+\chapter{FP4（二）：persist-D 主 Kernel 与两级 P 量化}\label{ch:32}
+
+\section{本章导读}
+% 前置：\ref{ch:29}（fp8 persist-D 骨架）、\ref{ch:31}（NVFP4 量化链）
+
+\section{问题与动机}
+% P 值域 [0,1] 对 SF 格式自身的精度损失（SA3 C2 挑战）；blockscale MMA 的数据链
+
+\section{数学原理}
+% 两级 P 量化 s_P1=rowmax/2688、P2 in [0,2688]、s_P2 in ue4m3；
+% log2(1/2688) 折进 exp2 shift；lse 复合公式 (mL+log2 L+log2(1/2688))ln2+scale*qkm；
+% S = FP4MM(Qhat,sQ,Khat,sK) + dS；数值链 = SA3 Algorithm 1
+
+\section{设计与实现}
+% persist-D 128P+256C 骨架复用；perm-aware masking；persistent grid（dense 波效率/causal 每 work 一 CTA）；
+% MXFP8 PV 变体（kPvMxfp8，log2(1/448)）；条件 rescale；O epilogue STSM->TMA store
+
+\section{图示}
+% FIG-32-1 两级 P 量化域拉伸；FIG-32-2 fp4 persist-D 主循环数据流
+
+\section{性能分析}
+% fp4 vs fp8 attn kernel 快 ~23%（带宽收益）；D=192 self 1.47x/causal 1.29x；
+% blockscale mxf4nvf4 吞吐 ≈ fp8 dense
+
+\section{实践经验}
+
+\section{常见坑}
+% perm-aware masking（上游 SA3 causal 直接坏的 bug）；MXFP8 域常量 2688 vs 448 latent bug
+
+\section{面试要点速查}
+
+\section{最小测试与动手实验}
+% --cuda-impl fp4 --tasks self causal --D {64,128,192,256} + --fp4-pv-mm-type fp8 变体

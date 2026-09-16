@@ -1,0 +1,37 @@
+% ch29-fp8-persist-d.tex — FP8(二)：persist-D 主 kernel 与 scale 折叠代数（RFC-K3）★
+% 源码：ffpa-attn(861d75e) cute/fp8/sm_120/persist_d.cuh(1036L) + fp8_pscale.cuh(304L)
+%       + softmax.cuh(344L) + reg2reg_8b.cuh(163L) + attn_traits.cuh(313L)
+% DoD：BOOK_PLAN §4.2 Part V 特化
+\chapter{FP8（二）：persist-D 主 Kernel 与 Scale 折叠代数}\label{ch:29}
+
+\section{本章导读}
+% 前置：\ref{ch:17}/\ref{ch:18}（TMA+WS）、\ref{ch:22}/\ref{ch:23}（TiledMMA/TMA）、\ref{ch:28}
+
+\section{问题与动机}
+% 量化后的 attention 主循环：所有 scale 因子要么精确消去要么折进免费位置
+
+\section{数学原理}
+% s_dequant 折进 exp2 系数（fp8/int8 双变体）；P 量化三步协议 vs 精确消去；
+% fixed 1/448 vs per-row 满量程；lazy rescale 溢出约束 2^T*amax(V)<=448；
+% f16 PV acc 域约束 448*2.25<=2047（SA2++）；归约轴置换不变性 -> reorg-free PV pack
+
+\section{设计与实现}
+% WS 128P+256C + setmaxnreg 32/232 + Q s2r 常驻；kMaxScaleAfter；exp_offset=log2(vs*448)；
+% reg2reg_8b 的 4 条 lane 无关 PRMT；causal tail-aligned 两级剪枝；hybrid 行分割
+
+\section{图示}
+% FIG-29-1 scale 折叠全链数据流；FIG-29-2 persist-D WS smem/寄存器布局；FIG-29-3 reorg-free 打包对照
+
+\section{性能分析}
+% kernel 级 vs SageAttention +1.1~2.3%；tensor pipe 77%、wait 依赖链；微优化到顶结论
+
+\section{实践经验}
+% 考据框：sm_89 cp.async 变体存在（不展开）；WS 双 consumer 证伪等 §5.8 清单
+
+\section{常见坑}
+% ESS 早行幅度放大；P 量化是 online 无法离线校准；lazy rescale 与 per-row 互斥
+
+\section{面试要点速查}
+
+\section{最小测试与动手实验}
+% --cuda-impl fp8 --tasks self causal --D {64,128,192,256}：parity（tol）+ timing

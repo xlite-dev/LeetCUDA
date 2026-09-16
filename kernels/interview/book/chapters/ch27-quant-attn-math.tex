@@ -1,0 +1,35 @@
+% ch27-quant-attn-math.tex — 量化注意力的数学基础（RFC-K1）
+% 源码对照：ffpa-attn(861d75e) cute/fp8/fp8_pscale.cuh 头注释 + cute/softmax.cuh
+% 原理参考：ffpa-cuda-understand skill §11.1/11.5/11.7/11.15 + SA1/SA2/SA2++/SA3、FA-4 论文
+% DoD：BOOK_PLAN §4.2 Part V 特化（bench CLI 替代 book/tests）
+\chapter{量化注意力的数学基础}\label{ch:27}
+
+\section{本章导读}
+% 学什么：数值格式谱系 / 量化算子与粒度 / Sage 1-3 谱系 / FA-4 lazy rescale / ESS 误差模型
+% 前置：\ref{ch:04}（softmax）、\ref{ch:05}（LSE）、\ref{ch:15}（attention 数学）
+
+\section{问题与动机}
+% 为什么 attention 能量化；Q/K/V/P 四个量化对象的离线校准 vs online 量化分野
+
+\section{数学原理}
+% 量化算子 clamp(round(x/delta))；int8/e4m3/e2m1/ue4m3/ue8m0 位域与相对步长 2^-(m+1)；
+% 粒度谱系 per-block/thread/channel/row/1x16；Sage 1/2/2++/3 逐代贡献；
+% FA-4 lazy rescale；ESS 误差模型 Var(O)=sigma_V^2/ESS；per-stage 误差分解
+
+\section{设计与实现}
+% 对照 fp8_pscale.cuh 头注释的三步协议框架 + softmax.cuh log2 域
+
+\section{图示}
+% FIG-27-1 量化格式位域；FIG-27-2 粒度谱系表；FIG-27-3 per-stage 误差分解
+
+\section{性能分析}
+% 量化收益上界：e4m3 ~2x fp16 带宽、e2m1 4x；TFLOPS 口径
+
+\section{实践经验}
+
+\section{常见坑}
+
+\section{面试要点速查}
+
+\section{最小测试与动手实验}
+% python -m ffpa_attn.bench --fwd-backend cuda --cuda-impl fp8 --D 128 --no-bwd --verbose

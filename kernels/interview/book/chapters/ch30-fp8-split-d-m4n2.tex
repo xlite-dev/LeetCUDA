@@ -1,0 +1,36 @@
+% ch30-fp8-split-d-m4n2.tex — FP8(三)：split-D 与 M4N2 扩展（RFC-K4，只讲 FP8）
+% 源码：ffpa-attn(861d75e) cute/fp8/sm_120/{split_d,split_d_m4n2}.cuh
+% DoD：BOOK_PLAN §4.2 Part V 特化
+\chapter{FP8（三）：split-D 与 M4N2 扩展}\label{ch:30}
+
+\section{本章导读}
+% 前置：\ref{ch:19}/\ref{ch:26}（split-D fp16 版）、\ref{ch:29}（fp8 persist-D）
+
+\section{问题与动机}
+% fp8 下大 D 的两个 O(D) 瓶颈；D>224 persist-D 不可行
+
+\section{数学原理}
+% split-D 两条分块恒等式（QK 归约维/PV 输出维，精确）；
+% O_acc=D/(2N_w) 寄存器模型；可行性比 D*M_w/4096（N_w 消去、M4N4=死路）；
+% M4N2 跨 N-warp softmax 归约（max 结合/sum 分配、双 m,L 一致性）
+
+\section{设计与实现}
+% fp8 split-D（M8N1 non-WS）；fp8 M4N2（方案 C fp32 tile_sum 单 barrier）；
+% stage floor s3；smooth_v per-chunk identity partition；D 交叉点 224/768 dispatch
+
+\section{图示}
+% FIG-30-1 寄存器压力 vs D 曲线（README mma.png）；FIG-30-2 split-D 切分（ffpa-split-d.png）；
+% FIG-30-3 M4N2 fragment 划分
+
+\section{性能分析}
+% s2->s3 -11.7~-13.1%@D768；M8N1 vs M4N2 交叉点实测；smem 57KB 与 D 无关
+
+\section{实践经验}
+
+\section{常见坑}
+% lazy rescale 在 m4n2 不可开（fixed 448*vs P 域膨胀 saturate）
+
+\section{面试要点速查}
+
+\section{最小测试与动手实验}
+% --cuda-impl fp8 --D {320,512,768,1024}：交叉点两侧 kernel 选择与 parity

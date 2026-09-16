@@ -1,0 +1,35 @@
+% ch28-fp8-quant-aux.tex — FP8(一)：量化前处理链（RFC-K2）
+% 源码：ffpa-attn(861d75e) cute/fp8/{smooth_k,smooth_v,quantize_fp8}.cuh + cute/hadamard.cuh
+% DoD：BOOK_PLAN §4.2 Part V 特化
+\chapter{FP8（一）：量化前处理链}\label{ch:28}
+
+\section{本章导读}
+% 前置：\ref{ch:20}-\ref{ch:23}（CuTe）、\ref{ch:27}（量化数学）
+
+\section{问题与动机}
+% fp16 输入 -> e4m3 workspace 的离线量化链；aux kernel 一览（每调用 ~13 kernel）
+
+\section{数学原理}
+% smooth-K softmax 平移不变 + lse 修正；smooth-V 行和为 1；
+% per-thread（SA2 fragment 对齐）/ per-channel（delta_V=colmax/448）粒度；
+% WHT 正交消去 (QH)(KH)^T=QK^T；outlier 扩散理论（QuaRot/SpinQuant）
+
+\section{设计与实现}
+% launch_kv_mean_sm120 两阶段列均值；launch_quantize_fp8(_perthread_qk/_vt_perchannel)；
+% apply_wht_qk_sm120；stride-generic NHD/strided-NHD 零拷贝寻址；V 预转置 + 16B 对齐 pad
+
+\section{图示}
+% FIG-28-1 前处理 pipeline（kv_mean->quantize->vt 转置链）；FIG-28-2 smoothing 三不变性
+
+\section{性能分析}
+% aux 链带宽贴峰 1.04TB/s；各 kernel 耗时（kv_mean ~50us、per-thread QK ~49us@N4608）
+
+\section{实践经验}
+
+\section{常见坑}
+% V 独立描述符 Lv 的静默读错 bug；hadamard 要求 BHND 物化
+
+\section{面试要点速查}
+
+\section{最小测试与动手实验}
+% bench knob A/B：--fp8-smooth-k / --fp8-smooth-v / --fp8-q-quant-method per-thread
