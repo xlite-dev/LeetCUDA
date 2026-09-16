@@ -430,12 +430,12 @@ f16 写回之间反复 \texttt{\_\allowbreak{}\_\allowbreak{}float22half2\_\allo
 \begin{kaogu}[F3·论证链补强]{merge scratch 的 alias 安全前提}
   L2003--2011 列出三条前提，第一条写「producer 已退出 mainloop（所有 TMA 已
   \texttt{arrive\_\allowbreak{}expect\_\allowbreak{}tx}）」。但「发出并声明事务量」不等于「数据已落盘」，
-  若某笔 TMA 仍在飞行，其目标写会与 scratch 写竞争。真正排除风险的是第二条
+  若某笔 TMA 仍inflight，其目标写会与 scratch 写竞争。真正排除风险的是第二条
   （两个 consumer 都已 release 自己的 K/V stage）加上\textbf{full 屏障的
   语义}：每个 tile 的 K/V 都被某个 WG 在 \texttt{full\_K}/\texttt{full\_V}
   上等过，而 tx-count 归零意味着搬运完成——两 WG 走完各自的 tile 序列，即
   覆盖了全部 $T_c$ 个 tile，故第一处 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads} 时\textbf{已无
-  在飞 TMA}。另一处值得写明的细节：scratch 尺寸并非只占 Q 区——以
+  inflight TMA}。另一处值得写明的细节：scratch 尺寸并非只占 Q 区——以
   $D{=}128$、F16Acc 计，$R\_D$ 区 $128 \times 8$ 个 \texttt{float4}
   $= 16$\,KB，m/l 区 $128 \times 1$ 个 \texttt{float4} $= 2$\,KB，合计
   18\,KB 比 Q 区（16\,KB）多出 2\,KB，会切进 \texttt{K[cid=0][0]} 的头部
@@ -476,7 +476,7 @@ f16 写回之间反复 \texttt{\_\allowbreak{}\_\allowbreak{}float22half2\_\allo
 
 \section{常见坑}
 
-\textbf{坑一：merge scratch 的安全前提是「无在飞 TMA」，不是「producer 已发完
+\textbf{坑一：merge scratch 的安全前提是「无inflight TMA」，不是「producer 已发完
 TMA」。}\allowbreak{}producer 退出 mainloop 只说明事务\textbf{已声明}；保证搬运\textbf{已
 落盘}的是 consumer 侧 \texttt{full\_K}/\texttt{full\_V} 的等待（tx-count 归零）。
 改动 scratch 布局或提前 merge 点时，必须重新确认这条链成立——否则会出现

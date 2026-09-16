@@ -469,9 +469,9 @@ K-tile 序号，\texttt{ismem\_write} 是下一个要写入的 stage 槽位，
   \label{eq:24-inflight}
 \end{equation}
 
-即最多一个 tile 在飞：这正是 $k_{\mathrm{stage}}=2$ 时 \texttt{wait} 的语义
+即最多一个 tile inflight：这正是 $k_{\mathrm{stage}}=2$ 时 \texttt{wait} 的语义
 （\texttt{cp\_\allowbreak{}async\_\allowbreak{}wait\allowbreak{}<N>} 等的是「未完成组数不超过 $N$」）。把
-$k_{\mathrm{stage}}$ 加到 3、4 时循环体几乎不用改——放行更多在飞 tile 靠的是
+$k_{\mathrm{stage}}$ 加到 3、4 时循环体几乎不用改——放行更多inflight tile 靠的是
 \texttt{wait} 的模板参数与计数器的取模，而不是 CuTe 接管了流水线。
 
 主循环的骨架是一层 K-tile 循环套一层 k\_step 循环：前者由 runtime 决定

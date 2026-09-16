@@ -1,7 +1,6 @@
 % ch29-fp8-persist-d.tex — FP8(二)：persist-D 主 kernel 与 scale 折叠代数（RFC-K3）★
 % 源码：ffpa-attn(861d75e) cute/fp8/sm_120/persist_d.cuh(1036L) + fp8_pscale.cuh(304L)
 %       + softmax.cuh(344L) + reg2reg_8b.cuh(163L) + attn_traits.cuh(313L)
-% DoD：BOOK_PLAN §4.2 Part V 特化
 \chapter{FP8（二）：persist-D 主 Kernel 与 Scale 折叠代数}\label{ch:29}
 
 \section{本章导读}
@@ -245,7 +244,7 @@ Q 在 kv 循环前一次性读进寄存器，之后 QK 步骤全是 gemm\_rs（K
 producer 的装载序还有两处细节：\texttt{V prologue 先于 K}（V0 只在
 QK0+softmax 之后才被消费，先发永远安全）；consumer 在等 Q 之前先
 \texttt{arrive} 全部初始 \texttt{k\_empty}/\texttt{v\_empty}（这些 arrive
-不依赖 Q 数据，提前放行让 K(0)/V(0) 的 TMA 与 Q 的 TMA 在飞行中重叠）。
+不依赖 Q 数据，提前放行让 K(0)/V(0) 的 TMA 与 Q 的 TMA inflight中重叠）。
 
 \subsection{主循环：五个 Phase 的字节旅程}
 
@@ -354,7 +353,7 @@ NEVER run against an unpermuted V\^{}T}——配对由 launcher 的单一
 
 \section{图示}
 
-\begin{figure}[htbp]
+\begin{figure}[H]
   \centering
   \includegraphics[width=0.98\textwidth]{figures/fig-29-1-scale-folding.png}
   \caption{scale 折叠全链数据流：$\delta_Q\delta_K$ 折进 exp2 系数、$v_s$
@@ -362,7 +361,7 @@ NEVER run against an unpermuted V\^{}T}——配对由 launcher 的单一
   \label{fig:29-scale-folding}
 \end{figure}
 
-\begin{figure}[htbp]
+\begin{figure}[H]
   \centering
   \includegraphics[width=0.98\textwidth]{figures/fig-29-2-persist-d-ws.png}
   \caption{persist-D WS 结构：128P+256C、setmaxnreg 32/232、Q s2r 常驻与
@@ -370,7 +369,7 @@ NEVER run against an unpermuted V\^{}T}——配对由 launcher 的单一
   \label{fig:29-persist-d-ws}
 \end{figure}
 
-\begin{figure}[htbp]
+\begin{figure}[H]
   \centering
   \includegraphics[width=0.98\textwidth]{figures/fig-29-3-reorg-free.png}
   \caption{reorg-free 打包对照：跨 lane 重排（16 SHFL）vs 就地打包 + $V^{\top}$
@@ -423,7 +422,7 @@ fp16 家族同构，但 fp8 的 MMA 吞吐翻倍使 softmax/P 打包的相对占
 
 \subsection{案例：D=192 正确性 bug 的定位（真实故事）}\label{sec:29-d192}
 
-写本章的 bench 验证（DoD）时发现 \texttt{--cuda-impl fp8 --D 192}
+写本章的 bench 验证时发现 \texttt{--cuda-impl fp8 --D 192}
 allclose 失败（fp16/bf16 双双 ❌），而 D=64/128 全绿。定位过程本身是
 一份方法论示范：
 \begin{enumerate}[itemsep=1pt,topsep=2pt]

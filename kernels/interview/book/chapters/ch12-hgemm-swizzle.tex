@@ -6,7 +6,7 @@
 第~\ref{ch:11}~章把 HGEMM 推进到了 \texttt{mma.sync} m16n8k16 + \texttt{ldmatrix} +
 cp.async 多级流水的形态，但那条流水线上还压着三块石头：\textbf{shared memory bank
 conflict} 让 \texttt{ldmatrix} 的读取被串行化；\textbf{k\_step 内 ldmatrix 与 MMA
-的依赖}让「搬数」和「算数」无法重叠；\textbf{grid 的光栅化顺序}让同时在飞的 block
+的依赖}让「搬数」和「算数」无法重叠；\textbf{grid 的光栅化顺序}让同时inflight的 block
 在 L2 里摊成一条宽条带、复用率低下。本章沿教学源码 Phase~7b-3 的
 \texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn\_\allowbreak{}swizzle}（hgemm.cuh~L434）逐一搬掉这三块石头：
 
@@ -17,7 +17,7 @@ conflict} 让 \texttt{ldmatrix} 的读取被串行化；\textbf{k\_step 内 ldma
   \item \textbf{寄存器双缓冲}（\texttt{RA[2][*][4]}/\texttt{RB[2][*][2]} 乒乓切换）——
         与 smem 双缓冲（kStages）分工：一个盖住 gmem 延迟，一个盖住 ldmatrix 延迟；
   \item \textbf{Block Swizzle}（\texttt{k\allowbreak{}Block\allowbreak{}Swizzle} + 3D grid）——重排 block
-        坐标映射，让同时在飞的 block 集合成近似方形，L2 footprint 显著缩小。
+        坐标映射，让同时inflight的 block 集合成近似方形，L2 footprint 显著缩小。
 \end{itemize}
 
 \textbf{前置章节}：第~\ref{ch:11}~章（mma fragment 布局、ldmatrix 语义、cp.async
@@ -53,7 +53,7 @@ stride，代价是浪费 smem、且破坏 16\,B 对齐粒度；XOR swizzle 用�
 smem 双缓冲（盖 gmem 延迟）之下的第二级流水，两者分工明确。
 
 \textbf{瓶颈三：grid 光栅化把 L2 复用摊薄（调度层）。}\allowbreak{}CUDA block 的分发顺序是
-$x$ 最快、$y$ 次之。C tile 网格 $T_m\times T_n$ 若按默认光栅铺开，同时在飞的
+$x$ 最快、$y$ 次之。C tile 网格 $T_m\times T_n$ 若按默认光栅铺开，同时inflight的
 $R$ 个 block（$R\approx$ SM 数 $\times$ 每 SM 常驻 block 数）呈
 $T_n\times\lceil R/T_n\rceil$ 的\textbf{宽条带}：A tile 复用好（行少），
 B tile 却要 $T_n$ 份同时驻留 L2，footprint 巨大。Block swizzle 用 3D grid
@@ -253,7 +253,7 @@ $bx=\mathrm{blockIdx.x}$，与默认完全一致——开关零成本。注意 k
 （源码注释的 $S{=}\lceil N/2048\rceil$ 是推荐值：每组 16 个 tile $\approx$
 $\sqrt{R}$，$R$ 为常驻 block 数）。
 
-为什么重排能提升 L2 命中？设同时在飞的 block 数为 $R$（PRO 5000：110 SM、
+为什么重排能提升 L2 命中？设同时inflight的 block 数为 $R$（PRO 5000：110 SM、
 smem/SM 100\,KB 对 64\,KB 动态 smem 只容 1 块常驻，$R \approx 110$）。每个 C tile block 要读 $B_M\times K$ 的 A 条带
 与 $B_N\times K$ 的 B 条带；常驻集合覆盖 $H$ 个 M-tile 行、$W$ 个 N-tile 列时，
 L2 必须同时容纳的 unique 数据量（footprint）为
@@ -354,7 +354,7 @@ ldmatrix 到 \texttt{reg[st]}、随后 HMMA 吃 \texttt{reg[ld]}——加载 sli
   title={hgemm.cuh L642-681（自适应 wait：满载 kStages-2 / 排空 0；预载下一 k 的 slice 0）}]{../hgemm.cuh}
 
 自适应等待是 cp.async 计数语义的直接应用（第~\ref{ch:10}~章）：满载期
-\texttt{WAIT\_\allowbreak{}GROUP\allowbreak{}(k\allowbreak{}Stages-2)} 允许还有 1 组在飞；尾 tile 无新预取时退化为
+\texttt{WAIT\_\allowbreak{}GROUP\allowbreak{}(k\allowbreak{}Stages-2)} 允许还有 1 组inflight；尾 tile 无新预取时退化为
 \texttt{WAIT\_\allowbreak{}GROUP\allowbreak{}(0)} 排空。Epilogue（L683--716）复用 \texttt{RA} 寄存器做
 warp shuffle 拼出 128-bit 向量写回 C，思路与第~\ref{ch:11}~章一致，此处不展开。
 

@@ -441,7 +441,7 @@ Phase 1 的内层是这个 kernel 的「心脏」，包含两个易错点：chun
 \texttt{cp\_\allowbreak{}async\_\allowbreak{}wait\allowbreak{}<N>} 的语义是「等到未完成的组数 $\le N$」。
 \texttt{kStagesQK} $=2$ 时 \texttt{wait<0>} 意味着\textbf{把刚发出的预取也一并等到}
 ——这一档没有循环内重叠，重叠主要来自 Phase 0 的 V 预取与整段 QK/softmax 的
-并行；$\mathrm{Sk} \ge 3$ 时 \texttt{wait<Sk-2>} 才允许 $\mathrm{Sk}-2$ 组仍在飞行，
+并行；$\mathrm{Sk} \ge 3$ 时 \texttt{wait<Sk-2>} 才允许 $\mathrm{Sk}-2$ 组仍inflight，
 循环内重叠才真正建立。这个细节在 19.6~节解释性能差异时会用到。
 
 Phase 2 与 Phase 3 的片段（软化的迭代顺序 + 广播式的 rescale）：
@@ -639,7 +639,7 @@ $\times$ 2 个 N-warp，$R_O$ 降到 $D/4$）的原因，也是本章这版 kern
         57.2 TFLOPS $|$ FFPA TMA WS 110.7 TFLOPS（$1.94\times$）」。这是源码作者
         在\textbf{RTX PRO 5000}（本机同型号）上的测量，形状是 $N{=}8192$、
         $D{=}512$、$\mathrm{Sk}=\mathrm{Sv}=2$。本书本章\textbf{未复测}该口径
-        （bench 需独占 GPU 且耗时，留给 DoD 第 5 条的增量复测），引用时一律标注
+        （bench 需独占 GPU 且耗时，留给后续增量复测），引用时一律标注
         「注释口径」。
   \item \textbf{README 口径（RTX 5090）}：LeetCUDA README 的 Split-D 表格
         （\texttt{--bhnd 1,\allowbreak{}32,\allowbreak{}16384,\allowbreak{}320}）给出 $D{=}320$、$N{=}16384$、

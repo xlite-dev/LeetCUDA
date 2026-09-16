@@ -274,7 +274,7 @@ $4 \times 4 = 16$ 个 block，110 个 SM 有 94 个闲着；naive 同形状有 2
 铺得更满。tile 不是越大越好——「block 数 $\ge$ SM 数的若干倍」是形状适配的底线。
 （5）\textbf{占用率视角}：两版都是 1024 线程的 block，而本机 threads/SM $=1536$，
 单个 SM 同时只能驻留 1 个 block——vec4 的 32KB smem 与 1024 线程都不再是
-第一瓶颈，瓶颈回到「每 SM 同时在飞的加载与 FMA 数」。
+第一瓶颈，瓶颈回到「每 SM 同时inflight的加载与 FMA 数」。
 
 \section{实践经验}
 

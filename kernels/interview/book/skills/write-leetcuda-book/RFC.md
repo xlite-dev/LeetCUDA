@@ -25,7 +25,7 @@
 | RFC-H | 图表升级（知乎图 drawio 重建为主 + ASCII→drawio/TikZ 新建） | 章节完成 | 未开始（可穿插） |
 | RFC-I | 附录 A-E | RFC-C..F（D 需收口） | 未开始 |
 | RFC-J | 全书集成审校与验收 | 全部 | 进行中（J.9/J.10 完成 2026-09-16）|
-| RFC-K | Part V FP8/FP4 Attention 篇 ch27-33（ffpa-attn CuTe sm_120） | RFC-E/F（前置章节） | 进行中（K0-K3 完成 2026-09-16）|
+| RFC-K | Part V FP8/FP4 Attention 篇 ch27-33（ffpa-attn CuTe sm_120） | RFC-E/F（前置章节） | 进行中（K0-K4 完成 2026-09-16）|
 
 依赖图：`RFC-0 → RFC-A → (RFC-B ∥ RFC-C) → RFC-D → RFC-E → RFC-F → (RFC-G ∥ RFC-H ∥ RFC-I) → RFC-J`；`RFC-K 依赖 RFC-E/F 素材，与 RFC-G/H/I 并行，完成后并入 RFC-J 收口`
 
@@ -164,7 +164,7 @@
 - [x] K1 ch27 量化注意力的数学基础 | 新写原理章（fp8_pscale.cuh 头注释 + softmax.cuh 对照） | 前置 4,5,15 | FIG-27-1 量化格式位域、FIG-27-2 粒度谱系表、FIG-27-3 per-stage 误差分解 | 参考 SA1/SA2/SA2++/SA3/FA-4 论文 + @DefTruth WINT8/4 | 验证：`ffpa_attn.bench --cuda-impl fp8 --D 128`（quant 基线口径展示）（2026-09-16：正文 10 节 + 相对步长定理证明 + 3 表 + 3 图（gen.py 入库，COVER=0/渲染越界 0/3x 导出指纹验收）；锚点 L17-37/L111-138/L44-63 grep 核对；bench 基线 .tmp/book-bench/k0-smoke/ 1.70x allclose✅；全书 375 页零 error、ch27 Overfull 清零）
 - [x] K2 ch28 FP8(一)量化前处理链 | `cute/fp8/{smooth_k(165),smooth_v(175),quantize_fp8(1024)}.cuh` + `cute/hadamard.cuh(202)` | 前置 20-23,27 | FIG-28-1 前处理 pipeline、FIG-28-2 smoothing 三不变性 | 验证：`--fp8-smooth-k/--fp8-smooth-v/--fp8-q-quant-method per-thread` knob A/B bench（2026-09-16：正文 10 节（三不变性推导+WHT+fragment 粒度+VTPerm+NHD 零拷贝）+ 2 图（COVER=0/text_fit 0/3x 导出指纹验收）；锚点 smooth_k L12-52/L56-84、quantize_fp8 L29-79/L172-201/L695-741、hadamard L1-32/L40-92 grep 核对，注释核查无错误（85→50us/2.6x RMSE/64-scale 排布均与实现/论文一致）；bench knob A/B 五组 + parity 三组全 allclose✅（smk 1.70x/smv 1.72x/per-thread 1.65x）.tmp/book-bench/ch28/；全书 385 页零 error、ch28 Overfull 清零（余 2.4pt 微量））
 - [x] K3 ch29 FP8(二)persist-D 主 kernel ★ | `cute/fp8/sm_120/persist_d.cuh(1036)` + `fp8_pscale.cuh(304)` + `softmax.cuh(344)` + `reg2reg_8b.cuh(163)` + `attn_traits.cuh(313)` | 前置 17,18,22,23,28 | FIG-29-1 scale 折叠数据流、FIG-29-2 persist-D WS 布局、FIG-29-3 reorg-free 打包对照 | 验证：`--cuda-impl fp8 --tasks self causal --D {64,128,192,256}` parity+timing（2026-09-16：正文 10 节（δ_Qδ_K 折 exp2+三步协议+lazy rescale 溢出界+f16 PV 域推导+置换不变性+traits/WS 复用/五 Phase/reorg-free 布局推导）+ 3 图（COVER=0/text_fit 0/3x 导出指纹验收）；锚点 persist_d L37-66/L193-215/L406-409/L502-522/L583-601/L723-732/L833-903/L886-894/L904-1031/L1020-1031、reg2reg L14-34/L96-141 grep 核对，code review 6 处行号偏差修正后无实质错误；bench D=64 1.26x/D=128 1.70x/causal 1.45x parity allclose✅，**D=192 发现正确性 bug（kBc=64 变体，坏行 row%128∈[64,127]），已记 memory + 书稿 29.7.1 定位方法论五步法**，.tmp/book-bench/ch29/；全书 395 页零 error）
-- [ ] K4 ch30 FP8(三)split-D 与 M4N2 | `cute/fp8/sm_120/{split_d,split_d_m4n2}.cuh` | 前置 19,26,29 | FIG-30-1 寄存器压力曲线（README mma.png）、FIG-30-2 split-D 切分（ffpa-split-d.png）、FIG-30-3 M4N2 fragment 划分 | 验证：`--cuda-impl fp8 --D {320,512,768,1024}`（cross-point 展示）
+- [x] K4 ch30 FP8(三)split-D 与 M4N2 | `cute/fp8/sm_120/{split_d,split_d_m4n2}.cuh` | 前置 19,26,29 | FIG-30-1 寄存器压力曲线（README mma.png）、FIG-30-2 split-D 切分（ffpa-split-d.png）、FIG-30-3 M4N2 fragment 划分 | 验证：`--cuda-impl fp8 --D {320,512,768,1024}`（cross-point 展示）（2026-09-16：正文 10 节（两堵墙动机+dispatch 三分+D-chunk 数学+O_acc/寄存器模型 M8N1 vs M4N2+三 Phase 结构+M4N2 三笔新代价（P SMEM roundtrip/跨 N-warp softmax 单 barrier/两级 reg 模型）+causal 精度定性+PC-7/PC-8 旋钮史）+ 2 图（FIG-30-1 split-D 两堵墙与三分路由、FIG-30-2 M4N2 布局与 softmax 协议；COVER=0/text_fit 0/3x 导出指纹验收，原计划 3 图并为 2 图）；锚点 split_d L39-42/L105-108/L124-125/L229-245/L267-274/L446-483/L495-503/L609-618/L678-756、split_d_m4n2 L120-121/L300-307/L638-641/L685-707/L970、softmax L74-163、traits L152-157/L279-284 grep 核对，code review（4 实质错误+9 行号+6 表述）全部修正；bench D={256,320,512} self 1.30x/3.76x/2.98x causal 1.12x/3.31x/2.57x，dense 全绿、causal D=320/512 临界失败按已知 ESS 特性定性（头注释 L39-42 佐证+hybrid 解法方向），本机无 768+ 编译实例引用 5090 交叉点数据，.tmp/book-bench/ch30/；配套 [H] 图文错乱修复（float 包+7 处）+全书 inflight/DoD 用词清理；全书 403 页零 error）
 - [ ] K5 ch31 FP4(一)NVFP4 格式与量化链 | `cute/fp4/{quantize_fp4(1642),delta_s(451),attn_traits(658)}.cuh` | 前置 27,28 | FIG-31-1 NVFP4 1×16 block+SF、FIG-31-2 delta_s 修正、FIG-31-3 kv_perm32 | 验证：`--cuda-impl fp4 --D {64,128}`（fused 量化链）
 - [ ] K6 ch32 FP4(二)persist-D 主 kernel ★ | `cute/fp4/sm_120/persist_d.cuh(1113)` + `fp4_pscale.cuh(793)` + `fp4_gemm.cuh(276)` | 前置 29,31 | FIG-32-1 两级 P 量化域、FIG-32-2 persist-D 主循环数据流 | 验证：`--cuda-impl fp4 --tasks self causal --D {64,128,192,256}` + `--fp4-pv-mm-type fp8` 变体
 - [ ] K7 ch33 FP8/FP4 性能实战 | `bench/bench_{fp8,fp4}.py` + bench CLI 全 knob | 前置 29,30,32 | FIG-33-x README 5090 speedup 引用图（fp8/fp4 各 3-4 张）+ 本机 PRO 5000 plot | 验证：完整 task 矩阵（self/causal/gqa/cross × D{64..512}）+ knob 矩阵实验 + 图落盘
@@ -234,6 +234,8 @@
 | FIG-29-1 | 29 | scale-folding | C1 新建（2026-09-16） | 正式 | figures/drawio/fig-29-1-scale-folding/ |
 | FIG-29-2 | 29 | persist-d-ws | C1 新建（2026-09-16） | 正式 | figures/drawio/fig-29-2-persist-d-ws/ |
 | FIG-29-3 | 29 | reorg-free | C1 新建（2026-09-16） | 正式 | figures/drawio/fig-29-3-reorg-free/ |
+| FIG-30-1 | 30 | split-d-walls | C1 新建（2026-09-16，原计划 mma 曲线+split-D 切分两图并为一张：两堵墙+dispatch 三分路由） | 正式 | figures/drawio/fig-30-1-split-d-walls/ |
+| FIG-30-2 | 30 | m4n2-softmax | C1 新建（2026-09-16，M4N2 (4,2,1) 布局与跨 N-warp softmax 单 barrier 协议） | 正式 | figures/drawio/fig-30-2-m4n2-softmax/ |
 
 ## 14. CHECKLOG 摘要镜像（明细在 book/CHECKLOG.md）
 

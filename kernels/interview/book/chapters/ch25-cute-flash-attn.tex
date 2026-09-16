@@ -377,7 +377,7 @@ K 向连续 2 个元素。实测结果是 $((2,2),2),1,4$：仍是 32 个元素�
 即等到「已完成组数 $\ge$ 总组数 $-N$」。对深度 $k$ 的 software pipeline，
 提交顺序是「V[tile]（栈底）→ K[tile+k-1]（栈顶）」，于是
 \texttt{wait\_group 1} 的含义是「除栈顶的 K 之外全部完成」=「V[tile] 已就绪、
-K[next] 还在飞」。实现 1 就是靠这条栈语义把 V 与 K 的等待分开的
+K[next] 还inflight」。实现 1 就是靠这条栈语义把 V 与 K 的等待分开的
 （L2743--2754）：$kStagesK>1$ 且非尾部时用 \texttt{cp\_\allowbreak{}async\_\allowbreak{}wait\allowbreak{}<1>}，
 尾部退回 \texttt{wait<0>}。注意组编号是 \textbf{per-thread 记账}的
 （PTX ISA §9.7.9.25.3.3：wait 只保证\emph{本线程}提交的组完成），所以实现 1

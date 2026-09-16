@@ -1,6 +1,5 @@
 % ch28-fp8-quant-aux.tex — FP8(一)：量化前处理链（RFC-K2）
 % 源码：ffpa-attn(861d75e) cute/fp8/{smooth_k,smooth_v,quantize_fp8,prepare_inputs,input_layout}.cuh + cute/hadamard.cuh
-% DoD：BOOK_PLAN §4.2 Part V 特化（bench CLI 替代 book/tests）
 \chapter{FP8（一）：量化前处理链}\label{ch:28}
 
 \section{本章导读}
@@ -370,7 +369,7 @@ QK 精修配方（\texttt{quant\_sym\_int8}，L29--34）。
 \end{lstlisting}
 
 两处值得咀嚼的细节。\textbf{每行两个线程}（而非一个线程整行）：行向量两半分给
-两个线程，网格规模翻倍，用更多在飞 warp 隐藏冷输入的 DRAM 延迟；两条
+两个线程，网格规模翻倍，用更多inflight warp 隐藏冷输入的 DRAM 延迟；两条
 \texttt{shfl\_xor}（1 与 16）把两半与行对拼回组 amax，注释强调结果与
 1-thread/row 形态\textbf{逐 bit 一致}——粒度变更不能偷偷改变数值。
 \textbf{scale 的写入下标}：$g = (\text{seg\_row}/16)\cdot 8 + \text{seg\_row}\bmod 8$
@@ -500,7 +499,7 @@ $kWhtWidth$ 列（lane $\times$ $kVec$），无需跨 warp 通信；$1/\sqrt{n}$
 
 \section{图示}
 
-\begin{figure}[htbp]
+\begin{figure}[H]
   \centering
   \includegraphics[width=0.98\textwidth]{figures/fig-28-1-quant-pipeline.png}
   \caption{fp8 前处理链全景：三泳道（Q/K/V）各自的统计 $\to$ 变换 $\to$ 量化
@@ -509,7 +508,7 @@ $kWhtWidth$ 列（lane $\times$ $kVec$），无需跨 warp 通信；$1/\sqrt{n}$
   \label{fig:28-pipeline}
 \end{figure}
 
-\begin{figure}[htbp]
+\begin{figure}[H]
   \centering
   \includegraphics[width=0.98\textwidth]{figures/fig-28-2-invariants.png}
   \caption{三条不变变换的代数结构对比：smooth-K 改 logits 不改概率（lse 回加）、
