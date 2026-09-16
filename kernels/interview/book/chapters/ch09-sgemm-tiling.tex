@@ -270,7 +270,7 @@ $8 \times 934 \approx 7.5$ TFLOPS，实测拿到其中 73\%（差值来自同步
 CUDA Core 写法推到了合理高度。距离峰值的 61\% 缺口，就是后两章的主菜：
 访存延迟（cp.async 双缓冲）与算力（TF32/FP16 Tensor Core）。
 （4）\textbf{512 行的 vec4 被并行度饿死}：$128^2$ 的 block tile 在 $512^2$ 上只切出
-$4 \times 4 = 16$ 个 block，110 个 SM 有 86 个闲着；naive 同形状有 256 个 block 反而
+$4 \times 4 = 16$ 个 block，110 个 SM 有 94 个闲着；naive 同形状有 256 个 block 反而
 铺得更满。tile 不是越大越好——「block 数 $\ge$ SM 数的若干倍」是形状适配的底线。
 （5）\textbf{占用率视角}：两版都是 1024 线程的 block，而本机 threads/SM $=1536$，
 单个 SM 同时只能驻留 1 个 block——vec4 的 32KB smem 与 1024 线程都不再是

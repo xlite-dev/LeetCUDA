@@ -441,7 +441,7 @@ $73\%$）。
         $15$--$25\%$ 的 softmax 时间被藏进 GEMM 的影子（第~\ref{ch:18}~章双
         consumer 结构图）。
   \item \textbf{FP8}。Hopper 的 FP8 Tensor Core 吞吐再翻一倍，但 naive 量化会伤
-        精度。FA3 的两件护法：\emph{block 量化}（按块维护缩放因子，而非全局 or
+        精度。FA3 的两件护法：\emph{block 量化}（按块维护缩放因子，而非全局或
         per-tensor）；\emph{incoherent processing}——对 $Q, K$ 右乘同一个正交矩阵
         $U$（随机化 Hadamard），点积严格不变：
         $(QU)(KU)^{\top} = QUU^{\top}K^{\top} = QK^{\top}$，
@@ -802,6 +802,6 @@ print(abs(attn_online(Q, K, V) - attn_ref(Q, K, V)).max())  # ~1e-13
         （attention 算子从数学到 CUDA 实现的工程视角，衔接第~\ref{ch:16}~章）；
   \item T. Dao et al. FlashAttention. arXiv:2205.14135, 2022；
         T. Dao. FlashAttention-2. arXiv:2307.08691, 2023；
-        T. Dao, S. Hazai. FlashAttention-3. arXiv:2407.08608, 2024
+        T. Dao, J. Shah, et al. FlashAttention-3. arXiv:2407.08608, 2024
         （三代演进的一手出处，本章 15.3.7~节的核验源）。
 \end{itemize}

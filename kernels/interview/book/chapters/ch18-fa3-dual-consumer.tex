@@ -547,7 +547,7 @@ cid，另一个 bank 空转，且远端 tile 的数据可能还没被搬运到�
 A：共享方案里 $\mathrm{Sk}$ 个 slot 是两个 WG 抢着用的（每个 WG 实际深度
 $\approx \mathrm{Sk}/2$）；独立 bank 后每个 WG 真正拥有 $\mathrm{Sk}$ 级深度，
 且两个 WG 永不在同一 slot/屏障上相遇（L1456--1462），屏障到达数从 257 降到
-129（式~\ref{eq:18-pool} 上方表格）。
+129（18.3.3 节的账本表）。
 
 \textbf{Q4：merge 为什么要用 $\max$ 作 pivot？}\\
 A：式~\ref{eq:18-merge} 用全局 $m = \max(m_0, m_1)$，使
@@ -593,7 +593,7 @@ $N{=}128$ 是两 WG 各一个 tile 的最小非退化形态，$N{=}512$（$T_c{=
 WG 跑满 4 个 tile 并触发 $\mathrm{Sk}{\ge}2$ 的 stage 回绕。判定用容差表：
 F16Acc $5\times10^{-2}$、F32Acc $10^{-3}$。工程细节与
 第~\ref{ch:17}~章的测试一致：\texttt{cu\allowbreak{}Tensor\allowbreak{}Map\allowbreak{}Encode\allowbreak{}Tiled} 经
-\texttt{dlopen} 解析（build\_tests.sh 不带 \texttt{-lcuda}）；DOM 顺序先引
+\texttt{dlopen} 解析（build\_tests.sh 不带 \texttt{-lcuda}）；include 顺序先引
 hgemm.cuh（\texttt{swizzle\_fa} 依赖它的 \texttt{swizzle<64>}）。
 
 在 \texttt{book/tests/} 目录下编译运行（6 号卡；arch 必须用 \texttt{sm\_120f}

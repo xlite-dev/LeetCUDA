@@ -269,7 +269,7 @@ kernel 本体把「全部配置」都收在模板参数里，函数体里没有�
 \midrule
 \texttt{BM, BN, BK} & 128, 256/128, 32 & CTA tile 尺寸（式~\eqref{eq:24-tile}） \\
 \texttt{kStage} & 2 & \texttt{cp.async} 流水深度 \\
-\texttt{TiledMMA} & EURepeat$(2,2,1)$ & MMA 指令 $+$ 逻辑 tile $+$ 线程排布 \\
+\texttt{TiledMMA} & AtomLayout$(2,2,1)$（4 warp）$+$ 每线程 repeat$(1,2,1)$ & MMA 指令 $+$ 逻辑 tile $+$ 线程排布 \\
 \texttt{G2SCopyA/B} & \texttt{SM80\_\allowbreak{}CP\_\allowbreak{}ASYNC\_\allowbreak{}CACHEGLOBAL} & G$\to$S 的 128-bit 异步拷贝 \\
 \texttt{Smem\allowbreak{}Layout\allowbreak{}A/\allowbreak{}B} & \texttt{Swizzle\allowbreak{}<3,\allowbreak{}3,\allowbreak{}3>} 原子 $+$ \texttt{tile\_\allowbreak{}to\_\allowbreak{}shape} & smem 布局 \\
 \texttt{SmemLayoutC} & $32\times32$ 原子，pipe$=4$ & epilogue scratchpad（式~\eqref{eq:24-cpipe}） \\
@@ -819,7 +819,7 @@ R2S $\to$ sC $\to$ S2G，映射进类型 \\
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.95\textwidth]{figures/drawio/fig-24-3-gemm-3level-partition/fig-24-3.png}
-\caption{CuTe GEMM 的三层 partition：\texttt{local\_tile} 以 \texttt{\allowbreak{}(block\allowbreak{}Idx.\allowbreak{}y,\allowbreak{} block\allowbreak{}Idx.\allowbreak{}x)} 为坐标从 gmem 切出 CTA tile $(128,128)$；warp 布局 $(2,2)$ 下 \texttt{local\_\allowbreak{}partition} 平分给 4 个 warp 得 $(64,64)$；warp tile 由 $4\times8$ 个 $16\times8$ atom 铺满，\texttt{partition\_\allowbreak{}fragment\_\allowbreak{}C} 为每 thread 生成累加器片段（单 MMA tile 内 $2\times2$ 四值，v0/v1 在第 $i$ 行、v2/v3 在第 $i+8$ 行）。层级换算 $128\times128=4\times(64\times64)=128$\,threads$\times128$ 值/thread。重建自 @reed《cute 之 简单 GEMM 实现》（示意图为经典 4-warp/$64\times64$ 配置；本章 kernel 实为 tile $32\times32$、warp $32\times16$，层级方法相同）。}
+\caption{CuTe GEMM 的三层 partition：\texttt{local\_tile} 以 \texttt{\allowbreak{}(block\allowbreak{}Idx.\allowbreak{}y,\allowbreak{} block\allowbreak{}Idx.\allowbreak{}x)} 为坐标从 gmem 切出 CTA tile $(128,128)$；warp 布局 $(2,2)$ 下 \texttt{local\_\allowbreak{}partition} 平分给 4 个 warp 得 $(64,64)$；warp tile 由 $4\times8$ 个 $16\times8$ atom 铺满，\texttt{partition\_\allowbreak{}fragment\_\allowbreak{}C} 为每 thread 生成累加器片段（单 MMA tile 内 $2\times2$ 四值，v0/v1 在第 $i$ 行、v2/v3 在第 $i+8$ 行）。层级换算 $128\times128=4\times(64\times64)=128$\,threads$\times128$ 值/thread。重建自 @reed《cute 之 简单 GEMM 实现》（示意图为经典 4-warp/$64\times64$ 配置；本章 kernel 实为 tile $32\times32$、warp $16\times16$，层级方法相同）。}
 \label{fig:24-3}
 \end{figure}
 

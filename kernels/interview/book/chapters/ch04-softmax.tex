@@ -378,7 +378,8 @@ $\bigl(\texttt{-FLT\_MAX},\, 0\bigr)$。三者各自配对，混用（比如 max
 除零，per-token 场景下由调用方保证行非空。
 
 \textbf{坑三：\texttt{\_\_expf}/\texttt{\_\_fdividef} 的精度语义。}\texttt{\_\_expf}
-是 SFU 硬件指数，约 2 ulp 量级误差；\texttt{expf} 是软件精确版。推理路径用快速数学通常无损
+是 SFU 硬件指数，最大误差约 $2+\lfloor|1.16x|\rfloor$ ulp（小参数下约 2 ulp）；
+\texttt{expf} 是软件精确版。推理路径用快速数学通常无损
 （softmax 输出本就有 fp32 舍入），但参考实现、精度回归、数值实验必须用 \texttt{expf}。
 同理 online 版写回的 \texttt{\_\_fdividef} 是近似除法。第~\ref{ch:19}~章量化注意力对
 LSE 的精度更敏感，届时这类选择要重新评估。
@@ -401,7 +402,7 @@ A：数学上平移不变（式~\ref{eq:4-shift}），工程上 $e^{x}$ 在 $x >
 
 \textbf{Q2：safe 版比 naive 版多花了什么？}\\
 A：一次额外的 block 归约（一次全局同步点），以及写回阶段对 $x$ 的第二次读取
-（通常 L1 命中）。本章实测约慢 $17\%$（表~\ref{tab:4-bench}），买到的是任意有限输入下的确定性。
+（通常 L1 命中）。本章实测约慢 $21\%$（表~\ref{tab:4-bench}），买到的是任意有限输入下的确定性。
 
 \textbf{Q3：online softmax 的不变量是什么？为什么能套 XOR 蝶形归约？}\\
 A：不变量是式~\ref{eq:4-invariant}；二元合并满足结合律（引理~\ref{lem:md-assoc}），

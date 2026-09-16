@@ -276,7 +276,7 @@ $R'_M = R_M/\mathrm{ThrM}$、$R'_K = R_K/\mathrm{ThrK}$ 是「warp 分完之后�
 $\mathrm{AtomLayout}=(4,1,1)$）在 $64\times64$ 的 Q 上为例逐项算：
 
 \begin{itemize}
-  \item (1)  $\mathrm{perm} = (64,16)$：$T_1 = ((1,64),(4,16))$；
+  \item (1)  $\mathrm{perm} = (64,16)$：$T_1 = ((64,16),(1,4))$；
   \item (2)  $\mathrm{atom}=(16,16)$：$T_2 = ((16,16),(4,4))$，即
         $R_M = 64/16 = 4$、$R_K = 64/16 = 4$；
   \item (3)  $\mathrm{LayoutA\_TV}$ 把 $(16,16)$ 变成 $(\mathrm{ThrV}=32,
@@ -383,7 +383,7 @@ $D=512$ 时 $8$ 个 chunk 共 \textbf{256 个寄存器}——这已经逼近寄�
   \item \textbf{注释里的线程数要带语境读}。traits 上方的「128 producer
         $+$ 128 consumer $= 256$ total threads（vs 原始 384）」描述的是
         \emph{TMA$+$WS 版} kernel 的线程配置；本 traits 服务的 cp.async 版
-        是 128 线程（L83--86 注释）。实测 \texttt{size\allowbreak{}(Tiled\allowbreak{}Mma\allowbreak{}QK)}
+        是 128 线程（L73--78 注释）。实测 \texttt{size\allowbreak{}(Tiled\allowbreak{}Mma\allowbreak{}QK)}
         $= 128$，与 \texttt{Layout\allowbreak{}<4,\allowbreak{}1,\allowbreak{}1>}（$4\times32$）自洽。看到注释
         数字与实测不一致时，先问「它描述的是哪个版本」，再下结论。
   \item \textbf{「EURepeat」有两种语境}。hgemm.cuh~L1283--1290 的
@@ -443,7 +443,7 @@ softmax 之后，$S$ 要变成 PV 的 A 矩阵 $P$。FFPA 不把 $P$ 写回 smem
 fragment 的寄存器\emph{物理}布局恰好兼容：m16n8k16 的 C 与 A 在同一个 lane
 上都持有「2 个相邻列 $+$ 2 个相隔 8 的行」，所以只需重标索引。
 \textbf{这是依赖具体 atom 的优化，不是 TiledMMA 的通用性质}（源码注释在
-flash\_attn.cuh~L2341--2378 明确写了这一点，第~\ref{ch:25}~章会再展开）。
+flash\_attn.cuh~L2341--2372 明确写了这一点，第~\ref{ch:25}~章会再展开）。
 PV 一侧的使用（L339--345）：
 \end{sloppypar}
 
@@ -503,16 +503,19 @@ A 不重复；若改成 $(2,2,1)$（各方向 2 个 warp），A 与 B 各重复 
 因此是「谁重复」的问题，而不是「重复多少」的问题。
 
 \textbf{账三（指令数）}：一次 TiledMMA 调用的指令数
-$=\mathrm{MMA}_M\times\mathrm{MMA}_N\times\mathrm{MMA}_K$。QK 的
-$(1,8,4) = 32$ 条 m16n8k16 覆盖 $64\times64\times64$——512 KFLOP/32 条，
-每条约 16 KFLOP；PV 的 $(1,2,4)=8$ 条覆盖 $64\times16\times64$。
+$=\mathrm{MMA}_M\times\mathrm{MMA}_N\times\mathrm{MMA}_K$——注意这是
+\emph{每线程（每 warp）}的条数。QK 的 $(1,8,4)=32$ 条是每个 warp 的量，
+覆盖该 warp 的 $16\times64\times64$；4 个 warp 共 128 条才铺满 CTA 的
+$64\times64\times64$——512 KFLOP/128 条，每条 $16\times8\times16$ 共
+$4096$ FLOP（约 4.1 KFLOP）；PV 同口径：$(1,2,4)=8$ 条/warp 覆盖
+$16\times16\times64$，CTA 的 $64\times16\times64$ 需 4 warp 共 32 条。
 两个 tile 都让「每条 MMA 指令」吃满原子尺寸，没有浪费——因为它们都是从
 $\mathrm{AtomShape}$ 出发、只用排布与 tile 尺寸做整数分块推出来的。
 
 \textbf{口径说明}：本节所有数字都是 host 端类型推导的实测值（
 \texttt{partition\_\allowbreak{}fragment\_\allowbreak{}*} 的形状），不含计时数据；FFPA 的
 TFLOPS 对照见第~\ref{ch:19}~章的表与第~\ref{ch:26}~章的 kernel 分析。
-还有一条引用纪律：ffpa\_attn.cuh L21--23 的头注释给出「SM120a
+还有一条引用纪律：ffpa\_attn.cuh L16--18 的头注释给出「SM120a
 RTX PRO 5000：cuDNN SDPA 57.2 TFLOPS、FFPA TMA WS 110.7 TFLOPS（1.94x）」，
 除法自洽（$110.7/57.2=1.94$），但设备口径是 \emph{RTX PRO 5000}（本机），
 与 README 的 5090 口径不同——\textbf{引用这类比值时必须带上设备名}，

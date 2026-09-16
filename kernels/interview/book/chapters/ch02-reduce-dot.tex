@@ -105,7 +105,7 @@ shfl 广播（见 \S\ref{sec:ch02-block}）。
 \end{equation}
 $T = 256$（$W = 8$）时共 8 轮，外加一次 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()}。
 smem 流量只有 $W$ 次写 + $W$ 次读（各 4B）——对比「所有中间量走 smem」的
-朴素树形归约（$\log\sb 2 T = 13$ 轮 smem 往返），两级结构把 smem 压力降了一个
+朴素树形归约（$\log\sb 2 T = 8$ 轮 smem 往返），两级结构把 smem 流量降了一个
 量级。这就是 ch01 图 ch01-1 定律的局部应用：\textbf{能在寄存器层完成的
 （warp 内 5 轮），绝不下放到 smem 层}。
 
@@ -124,7 +124,7 @@ $G$ 个 block 的和汇成一个」的最后一步。base.cuh 用
 
 \section{设计与实现}
 
-\subsection{第一层：warp 内蝶形归约}
+\subsection{第一层：warp 内蝶形归约}\label{sec:ch02-warp}
 
 先看入口（Phase 1 的面试要点自述）与实现：
 
@@ -142,7 +142,7 @@ $G$ 个 block 的和汇成一个」的最后一步。base.cuh 用
 $W/2$ 降幕到 1，正是 \S\ref{sec:ch02-math} 推导中 $m\sb r = 2^{R-r}$ 的代码
 形态；\texttt{\#pragma unroll} 让 5 轮循环在编译期完全展开成 5 条独立
 shuffle。warp reduce max（L158--166）与 sum 完全同构，只是把 \texttt{+}
-换成 \texttt{max}，不再赘录。
+换成 \texttt{max}，不再赘述。
 
 源码注释里还附了一张以 $W=8$ 为例的逐轮蝶形图（L111--148），它就是
 图 ch02-1 的底稿：
@@ -150,7 +150,7 @@ shuffle。warp reduce max（L158--166）与 sum 完全同构，只是把 \texttt
 \lstinputlisting[linerange={111-148},firstnumber=auto,
   title={base.cuh L111-148（蝶形归约逐轮示意注释）}]{../base.cuh}
 
-\subsection{第二层：block 两级归约}
+\subsection{第二层：block 两级归约}\label{sec:ch02-block}
 
 \lstinputlisting[linerange={172-197},firstnumber=auto,
   title={base.cuh L172-197（block reduce sum：注释与实现）}]{../base.cuh}
@@ -168,7 +168,7 @@ kNumWarps 知道结果」点出的正是这一步：归约函数的契约是「b
 后续 softmax 除以 $\ell$、norm 除以 $\sigma$ 都依赖它。block reduce max
 （L198--214）同构，哨兵值从 0 换成 \texttt{-FLT\_MAX}。
 
-\subsection{第三层：跨 block 全局归约与点积}
+\subsection{第三层：跨 block 全局归约与点积}\label{sec:ch02-global}
 
 \lstinputlisting[linerange={216-247},firstnumber=auto,
   title={base.cuh L216-247（block reduce all：多 block 求和 + atomicAdd）}]{../base.cuh}
@@ -255,7 +255,7 @@ dot\_vec4 & 0.04155 & 807.53 GB/s \\
 $G = N/256 = 16384$ 个 block 各做一次 \texttt{atomic\allowbreak{}Add\allowbreak{}(y)}，对同一地址的
 全局原子串行化约 $42\,\mu s / 16384 \approx 2.6\,\mathrm{ns/op}$，恰好等于
 实测总时长。\textbf{结论：该实现的上限不是带宽，是全局原子的串行吞吐}；
-dot\_vec4 把读入减半、指令减半，总时长却纹丝不动，正是因为访存早已不是
+dot\_vec4 把访存指令数降为 $1/4$（字节数不变），总时长却纹丝不动，正是因为访存早已不是
 短板。改进方向也很清晰：把「每 block 一次全局原子」改成「两级 kernel：先
 每 block 写出自己的和（$G$ 个地址，无冲突），再起一个小 kernel 归约
 $G$ 个数」，或 block 内先 smem 累积再少次原子—— atomic 次数从 $G$ 降到
@@ -320,7 +320,7 @@ vec4 kernel（dot/relu/eadd）统一。relu\_vec4 同病，详见 ch03。
   $T=256$ 共 8 轮 shuffle + 1 次同步。
 \item \textbf{Q：跨 block 归约有哪些方案，各自瓶颈？}\\
   A：atomicAdd 直写（瓶颈：同地址原子串行化，本机实测约
-  2.5 ns/op，见 \S\ref{sec:ch02-perf}）；两级 kernel（多一次 launch，
+  2.6 ns/op，见 \S\ref{sec:ch02-perf}）；两级 kernel（多一次 launch，
   无冲突）；网格级
   协作组或原子计数 + 最后 block 归约（threadfence 技巧）。
 \item \textbf{Q：\_\_shfl\_xor\_sync 的 width 参数是干什么的？}\\

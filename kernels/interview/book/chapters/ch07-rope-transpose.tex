@@ -22,7 +22,7 @@ RoPE 是当前 LLM 位置编码的事实标准（LLaMA、Qwen、PaLM、Mistral �
 \textit{按行读就是合并的，那么按列写必然是跨步的。}
 \end{center}
 
-naive 转置一半访存（写）退化到 $1/32$ 的有效利用率；引入 shared memory 中转可以两边都合并，但「按列读 shared memory」又会撞上 shared memory 的物理结构限制——32 个 bank。如何量化冲突、如何用最小的改动消除主要冲突，就是本章 bank conflict 专题的全部内容。
+naive 转置一半访存（写）退化到 $1/8$ 的有效利用率（32B sector 口径；若按 L1$\leftrightarrow$L2 的 128B cache line 口径则 $1/32$）；引入 shared memory 中转可以两边都合并，但「按列读 shared memory」又会撞上 shared memory 的物理结构限制——32 个 bank。如何量化冲突、如何用最小的改动消除主要冲突，就是本章 bank conflict 专题的全部内容。
 
 \section{数学原理}
 
@@ -98,7 +98,7 @@ $R^{d}_{\Theta}$ 是 $d/2$ 个 $2\times 2$ 旋转块排布在主对角线上的\
 \lstinputlisting[linerange={839-865},firstnumber=auto,
   title={base.cuh L839-865（mat\_transpose：naive 转置及其访存注释）}]{../base.cuh}
 
-每线程搬运一个元素：\texttt{y[c * row + r] = x[r * col + c]}。读侧：warp 内 32 线程的 $r$ 固定、$c$ 连续，读 128B 连续段，合并。写侧：$c$ 每加 1，地址跳一整行（\texttt{row} 个 float），32 线程写到 32 个互不相邻的 4B——每个 4B 落在各自的内存事务里，产生 32 次写事务，只运了 128B 有效数据。源码注释「非合并写入 $\to$ 32 次内存事务」说的正是这个。读是满血的，写是 $1/32$ 残血的，总带宽立刻被写侧拖垮（本章第 6 节实测 512 规模只有 $\sim 350\,\mathrm{GB/s}$，是 padded 版的 69\%）。
+每线程搬运一个元素：\texttt{y[c * row + r] = x[r * col + c]}。读侧：warp 内 32 线程的 $r$ 固定、$c$ 连续，读 128B 连续段，合并。写侧：$c$ 每加 1，地址跳一整行（\texttt{row} 个 float），32 线程写到 32 个互不相邻的 4B——每个 4B 落在各自的内存事务里，产生 32 次写事务（$32 \times 32\mathrm{B} = 1024\mathrm{B}$），只运了 128B 有效数据。源码注释「非合并写入 $\to$ 32 次内存事务」说的正是这个。读是满血的，写是 $1/8$ 残血的（32B sector 口径；按 128B cache line 口径则 $1/32$），总带宽立刻被写侧拖垮（本章第 6 节实测 512 规模只有 $\sim 350\,\mathrm{GB/s}$，是 padded 版的 69\%）。
 
 \subsection{mat\_transpose\_padded：shared memory 中转 + PAD}
 
@@ -212,7 +212,7 @@ rope 的参数 $N$ 是每 token 的\textbf{对数}（$d/2$），而非 hidden si
 \begin{enumerate}
   \item \textbf{Q：shared memory 的 bank 结构？} A：32 个 bank、每 bank 4B 宽、每周期每 bank 服务一次；连续 4B 字按 $(addr/4) \bmod 32$ 轮转映射。
   \item \textbf{Q：什么是 $n$-way bank conflict？和 broadcast 的区别？} A：同 warp 多线程访问同 bank \textbf{不同}地址 $\to$ 串行 $n$ 次，带宽 $1/n$；同地址 $\to$ 广播，无代价。
-  \item \textbf{Q：为什么 +1 padding 能打破冲突？} A：把行距从 $16 \times 4 = 64\mathrm{B}$（对 32 bank 周期整除，列访问全撞同 bank）变成 $17 \times 4 = 68\mathrm{B} \equiv 4\mathrm{B} \pmod{128\mathrm{B}}$，列方向的 bank 号不再对齐回绕。代价是每行多 4B smem（本例 64 行多 256B，约 $6\%$）。
+  \item \textbf{Q：为什么 +1 padding 能打破冲突？} A：Step 2 中相邻 tx 相隔 4 行，字步长从 $4 \times 16 = 64 \equiv 0 \pmod{32}$（对 32 bank 周期整除，列访问全撞同 bank）变为 $4 \times 17 = 68 \equiv 4 \pmod{32}$（行距 $17 \times 4 = 68\mathrm{B}$），bank 号每线程前进 4，不再对齐回绕。代价是每行多 4B smem（本例 64 行多 256B，约 $6\%$）。
   \item \textbf{Q：RoPE 为什么满足相对位置不变性？} A：旋转矩阵正交，$R(m\theta)^{\top}R(n\theta) = R((n-m)\theta)$；复数形式即 $e^{-im\theta}e^{in\theta} = e^{i(n-m)\theta}$。
   \item \textbf{Q：$\theta_i = 10000^{-2i/d}$ 的设计意图？} A：波长 $\lambda_i = 2\pi/\theta_i$ 构成 $2\pi$ 到 $\sim 2\pi \times 10^4$ 的等比谱，高频分量分辨局部、低频分量分辨远距，多尺度覆盖长程依赖。
   \item \textbf{Q：interleaved 与 half-split 配对的区别？} A：同一分块对角旋转的不同分量排列，逐对重排互相等价；权重/cache 对齐时必须按 checkpoint 约定处理。

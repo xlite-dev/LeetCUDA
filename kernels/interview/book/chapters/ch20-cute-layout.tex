@@ -90,8 +90,9 @@ CuTe 教程：Layout Compose \& Inverse》里给出的视角是：把这些映�
           \mathrm{idx} \;=\; f(\mathbf{c}) \;=\; \sum_{i=0}^{k-1} d_i\,c_i .
           \label{eq:20-linear}
         \end{equation}
-  \item \textbf{colex 序}：式~\eqref{eq:20-linear} 里 $c_0$ 是最快的坐标
-        （它的 stride 最先计入、变化时 offset 变化最小），$c_{k-1}$ 最慢。
+  \item \textbf{colex 序}：式~\eqref{eq:20-linear} 里 $c_0$ 是枚举最快的坐标
+        （整数 $x$ 加 1 时最先翻转的是 $c_0$；这与各 mode 的 stride 大小
+        无关），$c_{k-1}$ 最慢。
         CuTe 全书默认这一约定，来源是「column-major」：对
         $S=(4,8),D=(1,4)$，坐标 $(c_0,c_1)$ 是（行，列），
         $f=c_0+4c_1$，即 C 语义下的列优先。
@@ -350,8 +351,9 @@ inverse 回答的问题最直白：「给定一个 offset，它是哪个坐标�
   \item 同一个孔洞 layout 的左逆：$R=(2,32){:}(0,1)$。它的映射是
         $R(o)=\lfloor o/2\rfloor$（把偶 offset 拉回坐标）。注意 shape 里那个
         $(2){:}(0)$：\textbf{stride-0 的 mode 是「歧义位」}——它对 offset 没有
-        贡献，作用是记录「每个 offset 至多对应 2 个候选坐标」；真正的连续展开
-        在 $(32){:}(1)$ 那一层。这是 CuTe 用 layout 编码「多对一」的方式，
+        贡献，作用是记录「每个坐标至多对应 2 个 offset 候选」（值域以 2 为
+        间隔分布）；真正的连续展开在 $(32){:}(1)$ 那一层。这是 CuTe 用
+        layout 编码「多对一」的方式，
         测试里对 32 个坐标逐一验证了式~\eqref{eq:20-left-inv}。
   \item 二者关系：对 colex compact（双射）的 layout，左逆与右逆逐点相同
         （测试 32 点核对）。
@@ -687,7 +689,7 @@ $30{,}720$ 点 v1/v2 等价性结论互相印证：\textbf{声明式的 Swizzle 
 \textbf{证据三（代码量口径）}：hgemm.cuh~L803--805 的注释声称手写版
 「$\sim$200 行」、CuTe 版「$\sim$80 行」。实测去注释非空行：手写 swizzle
 kernel（L434--716）235 行；CuTe kernel 本体（L821--1196）118 行，另有 launch
-wrapper（L1197--1427）88 行。所以「$\sim$80 行」低估了 CuTe kernel 本体的物理
+wrapper（L1216--1427）86 行。所以「$\sim$80 行」低估了 CuTe kernel 本体的物理
 规模；真正成立的结论是\textbf{CuTe 版 kernel 里没有一行地址算术}——手写版用
 \texttt{LDMATRIX\_X4}/\texttt{LDMATRIX\_X2}/\texttt{HMMA16816} 宏直接编排 PTX
 与 lane 地址，CuTe 版的内联汇编为 0，地址全部由 layout 类型在编译期推出来。
@@ -743,7 +745,7 @@ shape $\bigl((4,4),(2,2)\bigr)$ 是「两个 mode，每个 mode 内含两个 mod
 
 \textbf{Q1：CuTe 的 layout 是什么？为什么默认 column-major？}\\
 A：layout 是函数「坐标 $\to$ 线性 offset」，由 (Shape, Stride) 表示，
-$\mathrm{idx}=\sum_i s_i c_i$。默认 column-major（\texttt{LayoutLeft}）意味着
+$\mathrm{idx}=\sum_i d_i c_i$。默认 column-major（\texttt{LayoutLeft}）意味着
 第一个 mode 变化最快——这是早年 BLAS 与 Tensor Core（如 MMA 的 m8n8 片段）
 的通行约定，CuTe 全书沿用它；C 数组是 row-major，需要显式
 \texttt{LayoutRight}。
@@ -751,7 +753,7 @@ $\mathrm{idx}=\sum_i s_i c_i$。默认 column-major（\texttt{LayoutLeft}）意�
 \textbf{Q2：colex 是什么意思？整数坐标怎么参与？}\\
 A：colex $=$ 坐标按「最左 mode 最快」的字典序枚举。把整数 $x$ 传给 layout 时，
 CuTe 先用式~\eqref{eq:20-colex-decomp} 把 $x$ 分解回坐标，再算
-$\sum s_i c_i$，所以「线性索引」与「坐标」是同一个函数的两种输入形式；
+$\sum d_i c_i$，所以「线性索引」与「坐标」是同一个函数的两种输入形式；
 $f(x)$ 对 $x$ 单调不减。
 
 \textbf{Q3：compose 的定义与前提？}\\
@@ -841,7 +843,7 @@ ALL OK
 \end{lstlisting}
 
 判据说明：所有断言都是「库计算 vs 手工数学」的逐点比较——例如 case A 的手工
-一侧直接用 $\sum s_i c_i$ 与式~\eqref{eq:20-colex-decomp} 的展开式；case F 的
+一侧直接用 $\sum d_i c_i$ 与式~\eqref{eq:20-colex-decomp} 的展开式；case F 的
 手工一侧用式~\eqref{eq:20-zd-coord}。任何一条不成立都会打印 FAIL 并以非零
 退出码结束。动手实验（三条，都在本章测试上改）：
 

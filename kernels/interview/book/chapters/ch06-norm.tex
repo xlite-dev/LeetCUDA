@@ -123,7 +123,7 @@ LayerNorm 能否也做成 1-pass？利用恒等式~\eqref{eq:ch06-var-identity}�
 \begin{enumerate}
   \item \textbf{载入与越界 padding}：\texttt{value = (idx < N*K) ? x[idx] : 0.0f}。越界线程贡献 $0$，而 $0^2 = 0$ 不影响平方和——padding 值的选择取决于归约量的物理含义。对照第 \ref{ch:04} 章 softmax 的行 max 归约必须 pad $-\mathrm{FLT\_MAX}$，如果这里错 pad 成 $\mathrm{FLT\_MAX}$，平方和直接溢出。
   \item \textbf{单次归约}：\texttt{block\_\allowbreak{}reduce\_\allowbreak{}sum\allowbreak{}<k\allowbreak{}Num\allowbreak{}Threads>\allowbreak{}(variance)} 一次得到整行平方和。变量名 \texttt{variance} 在此处尚不是方差，只是「平方和」的中间量，除以 $K$ 才是均方。
-  \item \textbf{tid 0 写共享标量}：\texttt{if \allowbreak{}(tid =\allowbreak{}=\allowbreak{} 0) s\_\allowbreak{}variance =\allowbreak{} rsqrtf\allowbreak{}(variance /\allowbreak{} K + epsilon)}。先除 $K$ 再加 $\epsilon$ 再开根号取倒数，与式~\eqref{eq:ch06-rms} 逐项对应；顺序若写成 $\mathrm{rsqrtf}((v + \epsilon)/K)$，$\epsilon$ 的相对作用被放大 $K$ 倍，结果系统性偏小。
+  \item \textbf{tid 0 写共享标量}：\texttt{if \allowbreak{}(tid =\allowbreak{}=\allowbreak{} 0) s\_\allowbreak{}variance =\allowbreak{} rsqrtf\allowbreak{}(variance /\allowbreak{} K + epsilon)}。先除 $K$ 再加 $\epsilon$ 再开根号取倒数，与式~\eqref{eq:ch06-rms} 逐项对应；顺序若写成 $\mathrm{rsqrtf}((v + \epsilon)/K)$，$\epsilon$ 的相对作用被缩小 $K$ 倍（近乎失效），分母偏小使输出系统性偏大。
   \item \textbf{第二次同步}：\texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()}。\texttt{block\_\allowbreak{}reduce\_\allowbreak{}sum} 内部的同步只保证「warp leader 写 \texttt{shared[]}」的可见性；\texttt{s\_variance} 是另一个共享变量，写在 reduce 之后，必须再立一次屏障，否则其他线程可能读到未初始化的 \texttt{s\_variance}——这是数据竞争，后果是非确定性错误值。
   \item \textbf{缩放写回}：\texttt{y[idx] = (value * s\_variance) * g}。所有线程拿到同一个 $s = 1/\mathrm{RMS}$，乘各自的 $x_k$ 与 gain。
 \end{enumerate}

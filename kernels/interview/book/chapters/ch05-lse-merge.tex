@@ -67,8 +67,10 @@ $\mathrm{LSE}^{A}$ 是对数求和指数（log-sum-exp），它是 $m$ 与 $\ell
     \mathrm{LSE}(S) = m + \log \ell .
     \label{eq:5-lse-def}
   \end{equation}
-  由于 $e^{\mathrm{LSE} - m} = \ell$ 对\textbf{任意}基准 $m$ 成立，
-  LSE 单个标量即可无损还原 $(m, \ell)$ 状态（给定任一 shift 基准）。
+  而对\textbf{任意}基准 $\tilde m$，$e^{\mathrm{LSE} - \tilde m}
+  = \sum\sb{j \in S} e^{s^{(j)} - \tilde m}$ 都成立（取 $\tilde m = m$ 时
+  即 $\ell$）——LSE 单个标量即可还原任意基准下的指数和，无损携带
+  $(m, \ell)$ 状态的全部信息。
 \end{definition}
 
 \subsection{合并公式：从真值形式到 LSE 形式}

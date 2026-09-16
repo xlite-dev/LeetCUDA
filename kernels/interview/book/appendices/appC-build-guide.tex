@@ -111,7 +111,8 @@ ptxas error : Entry function '_Z1kPf' uses too much shared data (0x40000 bytes, 
 
 # 3. smem 超过 sm_120a 单 block 上限（99 KB = 0x18c00 = 101376 B）
 ptxas error : Entry function '_Z1kPf' uses too much shared data (0x28000 bytes, 0x18c00 max)
-# -> SM120 SM 总量 128 KB 但单 block opt-in 上限 101376 B（ch17 实测口径）
+# -> SM120 统一 L1/smem 128 KB，其中 smem 每 SM 上限 100 KB（102400 B），
+#    单 block opt-in 上限 101376 B（ch17 实测口径）
 
 # 4. setmaxnreg 被 ptxas 静默丢弃（warning，不是 error）
 #    ... C7506: ... ignored to maintain compatibility into 'extern' call ...

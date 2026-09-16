@@ -157,8 +157,10 @@ CuTe 版 attention 的第一步是把「tile 几何 + 数据格式」编译期�
   title={flash\_attn.cuh L2226-2242（\texttt{Flash\allowbreak{}Attn2\allowbreak{}Cu\allowbreak{}Te\allowbreak{}Traits}：swizzle 后的 smem layout 与 \texttt{TiledMma}）}]{../flash_attn.cuh}
 
 逐字段读。\texttt{Smem\allowbreak{}Layout\allowbreak{}Atom =\allowbreak{} GMMA::\allowbreak{}Layout\_\allowbreak{}K\_\allowbreak{}SW128\_\allowbreak{}Atom\allowbreak{}<Element>}
-是「一个原子」：$8\times8$ 个 half 加 \texttt{Swizzle\allowbreak{}<3,\allowbreak{}4,\allowbreak{}3>}，
-覆盖 128\,B 一个 swizzle 周期（第~\ref{ch:23}~章会展开它与
+是「一个原子」：$8\times64$ 个 half（每行 64 half $=$ 128\,B）加
+\texttt{Swizzle\allowbreak{}<3,\allowbreak{}4,\allowbreak{}3>}，一个 swizzle 周期是 8 行 $=$ 1024\,B
+（traits 头注释把它写成「$8\times8$ atom」是笔误——原子实际是 8 行、
+行宽 128\,B，half 下即 $8\times64$；第~\ref{ch:23}~章会展开它与
 \texttt{CU\_\allowbreak{}TENSOR\_\allowbreak{}MAP\_\allowbreak{}SWIZZLE\_\allowbreak{}128B} 的对应）；\texttt{tile\_\allowbreak{}to\_\allowbreak{}shape}
 把原子铺满目标形状——Q 是 $B_r\times D$、K/V 是 $B_c\times D$。于是
 「smem 里 Q/K/V 长什么样」不再是散落在 kernel 里的 stride 变量，而是
@@ -176,8 +178,8 @@ V 的转置视图是第一个值得写透的细节：
 \texttt{composition\allowbreak{}(A,\allowbreak{} B)} 的语义是「先按 B 在 A 的定义域里取坐标、再代入 A」
 （第~\ref{ch:20}~章的 $R(c)=A(B(c))$）。这里 \texttt{A} 是 V 在 smem 中的
 物理布局（row-major 的 $[64,D]$ 加 swizzle），\texttt{B} 是逻辑上的
-col-major $(D,64)$——两者复合后得到的是「$V^\top$ 的访问接口」：逻辑坐标
-$(d, j)$ 被解释为 V 的第 $j$ 行第 $d$ 列。它的实测类型是
+row-major $(D,64)$——两者复合后的结果才是「$V^\top$ 的访问接口」的
+col-major 视图：逻辑坐标 $(d, j)$ 被解释为 V 的第 $j$ 行第 $d$ 列。它的实测类型是
 \texttt{Sw\allowbreak{}<3,\allowbreak{}4,\allowbreak{}3> o \allowbreak{}(64,\allowbreak{}64):\allowbreak{}(1,\allowbreak{}64)}，即 $V^\top(d,j) \mapsto d + 64j$
 的 col-major 视图，\textbf{一个字节都不搬}——这正是 $P@V$ 需要的 B 操作数
 形态（\texttt{mma.row.col} 要求 B 为 col-major），也是 25.7 节「常见坑」里
@@ -271,8 +273,8 @@ online softmax 需要按行操作 S（行 max、行内 exp、行和）。但
 
 为什么是「前 2 与 $\mathrm{MMA\_M}$ 配对、后 2 与 $\mathrm{MMA\_N}$ 配对」？
 看 $m16n8$ 的 C fragment 约定：4 个寄存器 $(c_0,c_1,c_2,c_3)$ 中
-$(c_0,c_1)$ 是同一列、相邻两行（行偏移 $+8$），$(c_2,c_3)$ 是列偏移 $+1$ 的
-另一组两行。即「寄存器编号的低位 = 行、高位 = 列」，这正是
+$(c_0,c_1)$ 是同一行、相邻两列（列偏移 $+1$），$(c_2,c_3)$ 是行偏移 $+8$ 的
+另一组两列。即「寄存器编号的 bit0 = 列、bit1 = 行（$+8$）」，这正是
 $\mathrm{MMA}=4 \to (2_{\text{行}},2_{\text{列}})$ 的
 \texttt{logical\_\allowbreak{}divide} 分解；再与 $\mathrm{MMA\_M}/\mathrm{MMA\_N}$
 里的 rest 段配对后，$\mathrm{nrow}=2\cdot \mathrm{MMA\_M}$、
@@ -301,9 +303,9 @@ $O=PV$ 里 $P$ 是左矩阵 A。QK 的累加器 $S$ 要么写回 smem 再 ldmatr
 几何摆清楚。
 
 \textbf{问题的几何}。$m16n8k16$ 的 C fragment 里，每个线程的 4 个值
-$(c_0,c_1,c_2,c_3)$ 是「同一列、相邻两行」的一对，加「列偏移 $+1$」的另一
-对；当这块 C 要变成下一条 mma 的左操作数 A 时，A 的 K 向（$PV$ 的归约维）
-恰好是 C 的列向。也就是说：\textbf{「C 的相邻 2 列」必须原样成为「A 的
+$(c_0,c_1,c_2,c_3)$ 是「同一行、相邻两列」（列偏移 $+1$）的一对，加
+「行偏移 $+8$」的另一对；当这块 C 要变成下一条 mma 的左操作数 A 时，
+A 的 K 向（$PV$ 的归约维）恰好是 C 的列向。也就是说：\textbf{「C 的相邻 2 列」必须原样成为「A 的
 K 向相邻 2 值」}——数据一个比特都不用改，缺的只是「换一套坐标读同一批
 寄存器」。直接拿 C 的 layout 去调 \texttt{gemm}，会被 CuTe 以「layout 不
 符合 A 的约定」拒绝；@竹熙佳处 的教程正是拿这个场景当 layout 变换的入门
@@ -355,7 +357,7 @@ w4a8 混合精度、2:4 稀疏 GEMM 等场景没有规整形状可用，代数�
 
 式子读回物理即前文那句话：$S$ 的列方向两个值（$+0$ 与 $+1$ 列）成为 A 的
 K 向连续 2 个元素。实测结果是 $((2,2),2),1,4$：仍是 32 个元素、原寄存器，
-只是 type 从 f32 换元为 f16——\texttt{convert\_\allowbreak{}type}（L2375--2395）按当前
+只是 type 从 f32 转换为 f16——\texttt{convert\_\allowbreak{}type}（L2375--2395）按当前
 布局的连续段做一次向量化批量转换。
 
 \begin{remark}
@@ -782,7 +784,8 @@ A：它是「TMA + SW128 布局 + 事务屏障」三件套的最小闭环，把
         元素数（32 f32/线程）——这些数值都能在本章 25.3 节的推导与实测
         标注里找到出处，case A 只是把它们固化成断言；
   \item \textbf{case B（端到端，$D{=}64/128$，$H{=}2$，$N{=}128/256$）}：
-        实现 1（cp.async）与实现 2（TMA+WS）各跑一遍，与 CPU fp64 参考
+        实现 1（cp.async）按三种形状组合各跑一遍（实现 2 的 TMA 链路由
+        case C 单独验证），与 CPU fp64 参考
         $\mathrm{softmax}(QK^\top/\sqrt{D})V$ 对照，容差
         \texttt{TOL\_F16ACC}$=5\times10^{-2}$；
   \item \textbf{case C（TMA 往返）}：smoke kernel 把一行数据经 TMA 搬进

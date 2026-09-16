@@ -30,7 +30,7 @@ L1/L2 命中率、bank conflict，每一个指标都配一个真实的「指标�
 \textbf{反例一：感觉是装载瓶颈，其实是依赖链}。一个 sm\_89 上的 fp8
 attention kernel（persist-D 结构）对标业界最快实现慢 28\%（909.4$\mu$s vs
 710$\mu$s）。直觉方案是「加深装载流水、砍指令、缩 tile」，全部实测无效；
-NCU 的 stall 剖像一锤定音：\texttt{math\_\allowbreak{}pipe\_\allowbreak{}throttle} 1.32
+NCU 的 stall 剖析结果一锤定音：\texttt{math\_\allowbreak{}pipe\_\allowbreak{}throttle} 1.32
 主导、\texttt{wait} 0.82、\texttt{long\_\allowbreak{}scoreboard} 仅
 0.04——\textbf{装载根本不是瓶颈}，瓶颈是单 CTA 内 softmax$\to$PV 的串行
 依赖链，唯一有效的改动是拆链（2 CTA/SM），实测 $-5\%$。
@@ -54,7 +54,7 @@ kernel」改成「单 pass 融合 + smem tile」，直觉上少一次读写应�
 
 \subsection{两个工具回答两个不同的问题}
 
-nsys 与 ncu 不是大小写不同的同一个东西，它们的采集原理完全不同：
+nsys 与 ncu 的采集原理完全不同：
 
 \begin{itemize}
 \item \textbf{nsys（Nsight Systems）}：\textbf{trace} 型。在驱动层记录 API
@@ -123,7 +123,7 @@ nsys stats -r cuda_gpu_trace   report.nsys-rep   # per-launch 时间线（看 ga
 \subsection{体积控制：一次 500GB 事故}
 
 nsys 的中间数据默认写到 \texttt{/\allowbreak{}tmp/\allowbreak{}nvidia/\allowbreak{}nsight\_\allowbreak{}systems}，体积 $\approx$
-事件数 $\times$ 时长。对大模型推理（多模型链、大 seqlen、多次 repeat）无脑
+单事件字节数 $\times$ 事件数，而事件数随时长线性增长。对大模型推理（多模型链、大 seqlen、多次 repeat）无脑
 全量采集，曾把 \texttt{/tmp} 写到 \textbf{500GiB+} 直到磁盘写满系统卡死
 （真实事故，2026-09）。
 三条铁律：
@@ -266,7 +266,7 @@ KPI，GEMM 类 kernel 用大 tile + 低 occupancy + 高 ILP 换性能是常态�
   LDL 的几百 cycle 延迟藏不住，同时指令数也变多。
 \item \textbf{寄存器预算可以算出来}。attention 的 O 累加器每线程占
   $k_{Br}\cdot D/256$ 个 f32 寄存器（M8N1 布局，$256=32$ lanes $\times 8$
-  行——一个 warp 摊到的 O 分量总数）；$k_{Br}{=}128$ 时为
+  个 warp——consumer 全部 256 线程）；$k_{Br}{=}128$ 时为
   $D/2$，D=512 要 256 个——\textbf{撞穿 255 墙}。这正是大 D 必须换
   M4N2 atom（列拆给两个 warp，每线程 $D/4$）的数学来源（ch19）。
 \end{itemize}
@@ -298,7 +298,7 @@ warp 每个周期若不能发射，必有一个「停滞原因」。sm\_120 上�
 \end{tabular}
 \end{table}
 
-读 stall 剖像的关键是\textbf{分好坏}：\texttt{math\_\allowbreak{}pipe\_\allowbreak{}throttle} 与
+读 stall 剖析结果的关键是\textbf{分好坏}：\texttt{math\_\allowbreak{}pipe\_\allowbreak{}throttle} 与
 \texttt{not\_\allowbreak{}selected} 高说明机器在干活；\texttt{sleeping} 高几乎总是结构
 问题；\texttt{wait} 与 \texttt{long\_\allowbreak{}scoreboard} 的\textbf{相对大小}直接
 区分「依赖链受限」与「装载受限」——例见 \S\ref{sec:ch00-cases} 例三。
@@ -317,8 +317,8 @@ warp 每个周期若不能发射，必有一个「停滞原因」。sm\_120 上�
   是常态。
 \item \textbf{DRAM}：\texttt{dram\_\allowbreak{}\_\allowbreak{}throughput}（峰值百分比）。贴满
   （$>$70\%）说明带宽墙已到，优化方向只剩减流量（混合精度、融合、去
-  物化）。一条量化前处理链实测贴到设备峰值带宽 1.04TB/s（理论
-  1344GB/s）——此时「融合省 launch」已无杠杆，只有减流量才有，这个
+  物化）。一条量化前处理链实测贴到饱和带宽 1.04TB/s（约为理论峰值
+  1344GB/s 的 77\%）——此时「融合省 launch」已无杠杆，只有减流量才有，这个
   判断直接由 DRAM 指标给出。
 \item \textbf{load/store 与合并访问}：global load 的每请求扇区数
   （\texttt{l1tex} 前缀的
@@ -409,7 +409,7 @@ TC 没用上 & pipe\_tensor 低 & CUDA Core 算矩阵 & 换 mma/wgmma 指令 \\
 业界实现。e2e 一度落后，最初的直觉是「辅助链 kernel 太多（每 call
 约 13 个）应该融合成一个 Mega Kernel」。先用全局视角（nsys + 每 kernel
 带宽核算）确认：大 N 场景\textbf{主 kernel 占 e2e 时间 86--92\%}，而 aux
-链每个 kernel 都已贴设备峰值带宽 1.04TB/s——融合只能省 launch 不能减流量，
+链每个 kernel 都已贴实测饱和带宽 1.04TB/s——融合只能省 launch 不能减流量，
 大 N wall 差实测 $<$0.2\%，方向证伪；真正的杠杆在主 kernel 与引擎层
 overlap。\textbf{方法论}：占比数据先给「优化预算上限」（14\% 的池子里抠
 不出 30\% 的收益），带宽核算再判「这个池子还抠不抠得动」。
@@ -442,7 +442,7 @@ warp group（128T，专职 TMA）+ 1 个 consumer（256T，全计算），用
 \subsection{例三：stall 证据链——好 stall 与坏 stall 的判读}
 
 场景：sm\_89 fp8 persist-D 909.4$\mu$s vs 业界实现 710$\mu$s
-（慢 28\%）。NCU 剖像：
+（慢 28\%）。NCU 剖析结果：
 
 \begin{itemize}
 \item \texttt{math\_\allowbreak{}pipe\_\allowbreak{}throttle} \textbf{1.32}（第一名）、
@@ -495,7 +495,7 @@ warp group（128T，专职 TMA）+ 1 个 consumer（256T，全计算），用
 本章没有写一行 kernel，却给出了全书其余 26 章共同的工作节奏：
 \textbf{nsys 定位（谁慢）$\to$ ncu 定性（为什么慢）$\to$ 单变量修改 $\to$
 复测 diff $\to$ 指标闭环}。指标字典里最值得带走的三句话：SOL 双低不是
-「没病」而是 latency-bound，答案在 stall 剖像里；stall 分好坏，
+「没病」而是 latency-bound，答案在 stall 剖析结果里；stall 分好坏，
 \texttt{math\_\allowbreak{}pipe\_\allowbreak{}throttle} 高是 Tensor Core 喂满的勋章，\texttt{sleeping}
 高是结构问题的警报；寄存器 255 墙、spill 与 occupancy 是同一份预算的三种
 花法，读数时要一起读。工具路径：ncu/nsys 随 CUDA Toolkit 安装（通常在

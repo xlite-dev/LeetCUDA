@@ -29,7 +29,7 @@ smem$\to$寄存器的 \texttt{ldmatrix}、epilogue 的寄存器$\to$smem$\to$gme
 第~\ref{ch:12}~章（cp.async 与多级流水）。\textbf{源码区间}：
 hgemm.cuh~L821--1196——Phase~7c-1 的 CuTe HGEMM kernel 本体（第~\ref{ch:24}~章
 讲它的算法流程，本章只抽取其中的 Tensor/TiledCopy 用法）；需要时引用
-L1197--1427 的 launch wrapper 中拷贝类型的构造段（G2S~L1303--1318、
+L1216--1427 的 launch wrapper 中拷贝类型的构造段（G2S~L1303--1318、
 S2R~L1319--1332、R2S~L1355--1362、S2G~L1364--1377），其中 L1232--1270 的
 tile 尺寸与 SmemLayout 声明归第~\ref{ch:23}~章。\textbf{编译宏}：
 \texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}CUTE}（需要 CUTLASS 头文件；sm80+ 均可编）。

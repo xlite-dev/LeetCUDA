@@ -110,8 +110,8 @@ $[B_r, D]$ 只需在进入 KV 循环前装载\textbf{一次}，此后 $T_c$ 轮�
 \textbf{一次装载、全程只读}，因此 Q 只需要 full 屏障（数据就绪），不需要
 empty 屏障（没有谁会覆盖它）。头注释对这一点的表述值得原文引用：
 
-\lstinputlisting[linerange={805-812},firstnumber=auto,breakatwhitespace=true,
-  title={flash\_attn.cuh L805-812（split-Q 语义：Q 只装一次 $\to$ 只需 full\_Q）}]{../flash_attn.cuh}
+\lstinputlisting[linerange={801-806},firstnumber=auto,breakatwhitespace=true,
+  title={flash\_attn.cuh L801-806（split-Q 语义：Q 只装一次 $\to$ 只需 full\_Q）}]{../flash_attn.cuh}
 
 \subsection{mbarrier arrive\_count 协议：257 的代数}
 
@@ -119,8 +119,8 @@ empty 屏障（没有谁会覆盖它）。头注释对这一点的表述值得�
 arrivals 与 tx-count \textbf{双计数同时归零}才翻转相位。本章把这套代数落到
 attention 的具体数字上。协议注释原文只有四行：
 
-\lstinputlisting[linerange={814-817},firstnumber=auto,breakatwhitespace=true,
-  title={flash\_attn.cuh L814-817（Pipeline 同步协议：arrive\_count = 257）}]{../flash_attn.cuh}
+\lstinputlisting[linerange={808-811},firstnumber=auto,breakatwhitespace=true,
+  title={flash\_attn.cuh L808-811（Pipeline 同步协议：arrive\_count = 257）}]{../flash_attn.cuh}
 
 逐条拆解。首先是\textbf{为什么是 257}：
 \begin{equation}
@@ -302,8 +302,8 @@ $B_c = 8 \times 1 \times 8 = 64$；consumer 8 warp 排成 $8 \times 1$
 V 通道的消费用 \texttt{ldmatrix.\allowbreak{}x2.trans}（转置读）。头注释对「swizzle 与
 trans 组合是否正确」给了专门的论证，逻辑值得背下来：
 
-\lstinputlisting[linerange={819-823},firstnumber=auto,breakatwhitespace=true,
-  title={flash\_attn.cuh L819-823（V ldmatrix.x2.trans 正确性论证）}]{../flash_attn.cuh}
+\lstinputlisting[linerange={813-816},firstnumber=auto,breakatwhitespace=true,
+  title={flash\_attn.cuh L813-816（V ldmatrix.x2.trans 正确性论证）}]{../flash_attn.cuh}
 
 \subsection{barrier 初始化与线程编队}
 
@@ -384,7 +384,7 @@ consumer 的 softmax 阶段就开始覆盖该 stage。对比 \texttt{\_\allowbre
 softmax 并行，因此 \texttt{full\_V} 的 wait 被刻意\textbf{推迟到 3d 之前}
 （下一代码段首行），一寸窗口都不浪费。exp 用 \texttt{\_\_expf} 快速近似、
 行归约用 \texttt{warp\_\allowbreak{}reduce\_\allowbreak{}max/\allowbreak{}sum\allowbreak{}<4>}（每线程持 2 行、4 线程组归约，
-第~\ref{ch:2}~章），与 ch16 相同。
+第~\ref{ch:02}~章），与 ch16 相同。
 
 \lstinputlisting[linerange={1260-1306},firstnumber=auto,breakatwhitespace=true,
   title={flash\_attn.cuh L1260-1306（拍四 3d：PV 前 wait full\_V $+$ R\_S 复用 $+$ 释放 V）}]{../flash_attn.cuh}

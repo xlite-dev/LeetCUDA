@@ -34,7 +34,7 @@ Ampere 为例，一条 warp 级的 TF32 MMA 指令（$m16n8k8$）一次完成
 $16\times 8\times 8 = 1024$ 个乘加，是同宽度 FFMA 的 32 倍密度。想继续提升
 GEMM 吞吐，就必须把循环核从「每线程一个 FMA」换成「每 warp 一条矩阵指令」。
 
-\textbf{动机二：舍出 13 个尾数位换 8 倍吞吐。}\allowbreak{}Tensor Core 不吃 fp32。Ampere
+\textbf{动机二：舍弃 13 个尾数位换 8 倍吞吐。}\allowbreak{}Tensor Core 不吃 fp32。Ampere
 为 fp32 输入准备的是 \textbf{TF32}（TensorFloat-32）：砍掉 fp32 尾数的低
 13 位、保留 8 位指数，得到 1+8+10 共 19 位的「fp32 的躯壳、fp16 的精度」格式。
 指数域不动意味着动态范围与 fp32 完全一致（约 $10^{\pm38}$），深度学习里
@@ -151,10 +151,10 @@ kernel 的 tile 配置由模板参数逐层相乘得到（sgemm.cuh~L225--236）
         = 16\times4\times2$，$B\sb N = 16\times2\times4$，$B\sb K = \mathrm{WMMA\_K} = 8$；
   \item \textbf{warp tile}：256 线程 = 8 warp，按 $4\times2$ 排布
         （\texttt{warp\_m}=0--3、\texttt{warp\_n}=0--1），每 warp 负责
-        $64\times32$ 的 C 子块；
+        $32\times64$ 的 C 子块；
   \item \textbf{fragment tile}：每 warp 内部再摆 $2\times4 = 8$ 个
         $m16n16k8$ 的 WMMA fragment（源码命名 \texttt{WARP\_\allowbreak{}TILE\_\allowbreak{}M/\allowbreak{}N}），
-        $64\times32$ 恰好被 $16\times16$ 的 fragment 阵列铺满。
+        $32\times64$ 恰好被 $16\times16$ 的 fragment 阵列铺满。
 \end{itemize}
 注意源码的\textbf{命名陷阱}：\texttt{WMMA\_\allowbreak{}TILE\_\allowbreak{}M/\allowbreak{}N} 其实是 warp 之间的排布数
 （$4\times2$），而 \texttt{WARP\_\allowbreak{}TILE\_\allowbreak{}M/\allowbreak{}N} 才是 warp 内 fragment 的重复数
@@ -257,8 +257,8 @@ tile $k$ 的搬运（写入 stage $k \bmod 2$），然后计算 tile $k-1$
 \lstinputlisting[linerange={332-348},firstnumber=auto,
   title={sgemm.cuh L332-348（TF32 fragment 声明与 A 碎片装载）}]{../sgemm.cuh}
 
-装载 A 碎片时，warp 只关心自己名下的 $64$ 行：起始行
-\texttt{warp\_\allowbreak{}m * \allowbreak{}(WMMA\_\allowbreak{}M * WARP\_\allowbreak{}TILE\_\allowbreak{}M)}（$=64\,w\sb m$），再由
+装载 A 碎片时，warp 只关心自己名下的 $32$ 行：起始行
+\texttt{warp\_\allowbreak{}m * \allowbreak{}(WMMA\_\allowbreak{}M * WARP\_\allowbreak{}TILE\_\allowbreak{}M)}（$=32\,w\sb m$），再由
 $i\in\{0,1\}$ 平移 $16$。B 碎片同理按 \texttt{warp\_n} 平移列起点。
 注意 fragment 每次迭代都在循环体内重新声明、重新装载——WMMA 不提供
 寄存器双缓冲，这是它与第~\ref{ch:11}~章手写路径的重要差距之一。
@@ -281,7 +281,7 @@ $2\times128\times128\times8$ FLOP。迭代末尾 \texttt{wait\_\allowbreak{}grou
 最后一次迭代里搬进 smem、但还没算——尾部块（L379--417，与主循环同构，节选）
 负责排空；K\_STAGE$=2$ 时主循环末尾的 \texttt{wait\_\allowbreak{}group\allowbreak{}(0)} 已保证拷贝完成，
 L375 的条件等待被编译期剪掉。写回阶段每个 warp 把 8 个累加器
-\texttt{store\_\allowbreak{}matrix\_\allowbreak{}sync} 到 C 的对应 $64\times32$ 子块，行距传
+\texttt{store\_\allowbreak{}matrix\_\allowbreak{}sync} 到 C 的对应 $32\times64$ 子块，行距传
 \texttt{N}（C 是 row-major 全矩阵）。
 
 \needspace{86mm}
@@ -305,7 +305,7 @@ L375 的条件等待被编译期剪掉。写回阶段每个 warp 把 8 个累加
 \textbf{算术强度}。按 block 内 smem 复用口径：每 k-step 从 global 搬入
 $(B\sb M B\sb K + B\sb K B\sb N)\times4$~B $= (128{\times}8{+}8{\times}128)\times4 = 8$~KB，
 完成 $2 B\sb M B\sb N B\sb K = 262{,}144$ FLOP，$AI \approx 32$ FLOP/B——远高于
-本机 roofline 拐点（PRO 5000 黑洞：FP32 CUDA Core $\sim$60 TFLOPS 级、
+本机 roofline 拐点（PRO 5000 Blackwell：FP32 CUDA Core $\sim$60 TFLOPS 级、
 HBM 带宽 $\sim$1.6 TB/s 级，拐点 $\sim$40 FLOP/B 的量级），判定
 \textbf{compute-bound}，优化重心在喂饱 Tensor Core 而非省带宽。
 按全局口径（每个 C tile 读整条 A 行块与 B 列块），

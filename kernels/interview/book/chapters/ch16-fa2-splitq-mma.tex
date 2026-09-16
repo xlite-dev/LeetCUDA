@@ -45,8 +45,7 @@ $B_r\times B_c$ 的 tile 存在，配合 online softmax（第~\ref{ch:04}~章）
 分块之后，\textbf{block 内 warp 怎么分工}是 FA1 到 FA2 的分水岭。
 LeetCUDA 的 FA1 式实现（\texttt{flash\_\allowbreak{}attn\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}split\_\allowbreak{}kv}）
 把 $B_r\times B_c$ 的 tile 同时按行列切给 warp：warp\_QP 分行、
-warp\_KV 分列（4-warp 版为 $2\times2$ warp 网格，8-warp 版
-$2\times4$）。问题在列方向：行 $r$ 的 $S$ 值分布在多个 warp 手里，
+warp\_KV 分列（8-warp 版为 $2\times4$ warp 网格）。问题在列方向：行 $r$ 的 $S$ 值分布在多个 warp 手里，
 每个 warp 只见到该行\textbf{部分} KV 的打分——它们各自维护的
 $(m,\ell,O)$ 都是\textbf{部分状态}，每个 KV tile 结束必须经 smem 中转、
 用第~\ref{ch:05}~章 \texttt{merge\_\allowbreak{}attn\_\allowbreak{}states} 的 LSE 合并语义跨
@@ -183,7 +182,7 @@ $B_r{=}128$、8-warp，行划分逻辑相同——见 16.7 节勘误。）
 
 grid 为 $(\lceil N/B_r\rceil,\ B\cdot H)$：blockIdx.y 打包 batch 与
 head（L132--133 拆包），blockIdx.x 是 Q tile 号。\texttt{warp\_QP =
-warp\_id}、\texttt{warp\_KV = 0}（L138--139）——split-Q 的全部含义
+warp\_id}、\texttt{warp\_KV = 0}（L137--138）——split-Q 的全部含义
 就这两行。Q/K/V/O 共享同一 per-head 基址（L143--145，
 self-attention 场景），O 与 Q 同形。
 
@@ -203,7 +202,7 @@ padding 分析、第~\ref{ch:12}~章的 swizzle 是同一主题的三种解法�
 
 加载映射：256 线程协作搬 $B_r{=}128$ 行 Q，每线程负责半行
 （\texttt{load\_\allowbreak{}smem\_\allowbreak{}Q\_\allowbreak{}Br =\allowbreak{} tid/\allowbreak{}2}，$d$ 向 64 个 half 分给 2 线程
-$\times$ 2 段 16~B）；K/V 按 $B_c{=}64$ 行、每线程管 4 行的起点
+$\times$ 4 段 16~B）；K/V 按 $B_c{=}64$ 行、每线程管 4 行的起点
 （\texttt{tid/4}）。\texttt{CP\_ASYNC\_CG} 每次 16~B，与
 第~\ref{ch:11}~章的搬运粒度一致。
 
@@ -548,7 +547,7 @@ cp.async 写侧 pattern：LDGSTS wavefront 2.26x、多种 stall 放大，
 测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch16\_\allowbreak{}fa2\_\allowbreak{}mma.\allowbreak{}cu}（逻辑抽取自
 notes-v2.cu 的 \texttt{test\_\allowbreak{}flash\_\allowbreak{}attn}，L1895；参考改为 CPU fp64
 直接算 softmax attention，half 输出 \texttt{\_\allowbreak{}\_\allowbreak{}half2float} 转 float
-比较）。case A（$B{=}1,H{=}2,N{=}256$：多 head 单 Q tile，$T_c{=}4$
+比较）。case A（$B{=}1,H{=}2,N{=}256$：多 head、每 head 2 个 Q tile，$T_c{=}4$
 覆盖流水满载与尾部排空）、case B（$B{=}1,H{=}1,N{=}512$：grid.x$=$4
 多 Q tile）；每 case 测 F16Acc/F32Acc 两变体，容差分别取
 \texttt{TOL\_F16ACC}$=5\times10^{-2}$ 与 \texttt{TOL\_F32ACC}$=10^{-3}$。

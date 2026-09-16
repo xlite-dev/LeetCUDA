@@ -214,10 +214,11 @@ tile $k{+}2$ 的那组允许还没到。尾部（$k + \mathrm{kStages} - 1 \ge
   title={hgemm.cuh L119-139（模板参数与 $B\sb M/B\sb N/B\sb K$ 推导）}]{../hgemm.cuh}
 
 三级相乘：\texttt{MMA atom} $m16n8k16$（一条指令）$\to$
-\texttt{warp tile} $32\times32$（$2\times4 = 8$ 个 warp 按列主序摆成
+\texttt{MMA tile} $32\times32$（$2\times4 = 8$ 个 warp 的 atom 排布，按列主序摆成
 $2\sb {M}\times4\sb {N}$，\texttt{warp\_m = warp\_id\%2}、\texttt{warp\_n = warp\_id/2}，
 见 L157--169 的排布图）$\to$ \texttt{block tile} $128\times128$
-（每 warp 再用 $kValTileM\times kValTileN = 4\times4$ 个 atom 重复）。
+（每 warp 的 \texttt{warp tile} 为 $64\times32$，用
+$kValTileM\times kValTileN = 4\times4$ 个 atom 重复）。
 用记号表写：$B\sb M = kMmaM \cdot kMmaTileM \cdot kValTileM = 16\cdot2\cdot4$，
 $B\sb N = 8\cdot4\cdot4$，$B\sb K = kMmaK = 16$。源码注释把两层重复分别对应到
 CuTe 的 TiledMMA 与 Value Tile 概念（L180--183），
@@ -310,9 +311,9 @@ $8\times16 = 128$ 条指令 $\times 4096$ FLOP $= 524{,}288$ FLOP。
 \lstinputlisting[linerange={365-382},firstnumber=auto,
   title={hgemm.cuh L365-382（每 4-lane 组的首 lane 两条 128-bit store 写回）}]{../hgemm.cuh}
 
-行号映射 \texttt{lane\_id/4} $= \mathrm{g}$：lane 0/4/8/.../28 分别写
-$\mathrm{g}$ 行与 $\mathrm{g}{+}8$ 行，每行两条
-\texttt{float4}（即 16~B）store 覆盖 8 个 half；列起点由
+行号映射 \texttt{lane\_id/4} $= \mathrm{g}$：lane 0/4/8/.../28 分别对
+$\mathrm{g}$ 行与 $\mathrm{g}{+}8$ 行各写一条
+\texttt{float4}（即 16~B）store，各覆盖 8 个 half；列起点由
 \texttt{warp\_n} 与 $j$ 平移。每个 warp 落笔 $64\times32$ 子块，
 与 11.4.1 的排布严丝合缝。写回没有经过 smem 中转——
 寄存器布局白盒后 epilogue 可以走「shuffle $\to$ 直接宽写」的捷径，
@@ -443,7 +444,7 @@ C：每 lane 4 个、两行各一对（式~\ref{eq:11-apos}--\ref{eq:11-cpos}）
 A：每矩阵 8 行 $\to$ 8 个 lane 各供一行 16~B 首地址；x4 全 warp 4 矩阵、
 x2 前 16 lane 2 矩阵。装载结果直接落在 mma fragment 的期望分布上，
 一条指令替代 32 lane 各自的 \texttt{ld.shared} 寻址，且天然规避多数
-bank conflict。\texttt{.trans} 才是列装载（见 10.7 勘误）。
+bank conflict。\texttt{.trans} 才是列装载（见 11.6 勘误）。
 
 \textbf{Q4：TN 布局为什么是 Tensor Core GEMM 的默认姿势？}\\
 A：A 行主序、$B^{\top}$ 行主序 $\Rightarrow$ 内维都是 K：gmem$\to$smem

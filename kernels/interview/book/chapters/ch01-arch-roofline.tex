@@ -65,9 +65,10 @@ GPU 是由大量 SM 组成的阵列。以本章测试机 RTX PRO 5000（Blackwel
   分配以 warp 为粒度均分——若 kernel 每线程用 64 个寄存器，一个 256 线程的
   block 就要占 $256 \times 64 \times 4\,\mathrm{B} = 64$ KB，SM 里最多驻留
   4 个这样的 block。
-\item \textbf{Shared Memory / L1}：同一块 256 KB 片上 SRAM 中可配置划分出
-  的共享内存部分，Hopper 上最多约 228 KB/SM 可用作 smem（SM80 为 163 KB，
-  SM120 本机实测 opt-in 上限为 99 KB，见 \S\ref{sec:ch01-test}）。它是
+\item \textbf{Shared Memory / L1}：同一块片上 SRAM 中可配置划分出
+  的共享内存部分（Hopper 上这块 SRAM 为 256 KB，SM120 本机为 128 KB 量级），
+  Hopper 上最多约 228 KB/SM 可用作 smem（SM80 为 163 KB，SM120 本机实测
+  opt-in 上限为 99 KB，见 \S\ref{sec:ch01-test}）。它是
   block 内线程交换数据的主战场，也是后续章节 bank conflict（ch07）、
   swizzle（ch12）故事的舞台。
 \item \textbf{Tensor Cores}：Hopper 每 SM 4 个第四代 Tensor Core，专门执行
@@ -86,8 +87,8 @@ GPU 是由大量 SM 组成的阵列。以本章测试机 RTX PRO 5000（Blackwel
 base.cuh L16--21 给出了 H100 参考下的带宽数量级：HBM3 约 3.35 TB/s（理论值，
 实际约 2.5--3.0 TB/s）、L2 约 12 TB/s、L1/SMEM 约 19 TB/s、寄存器等效带宽
 100+ TB/s。把这些数字画成金字塔（图 ch01-1），规律一目了然：\textbf{越靠近
-计算单元，带宽越高、容量越小}，每一级之间的带宽差距都在 1.5--2 倍以上，而
-容量差距是数十倍。
+计算单元，带宽越高、容量越小}，相邻层级的带宽差从 1.5 倍到 5 倍不等；
+容量上寄存器与 smem 同量级，再往上每升一级差两个数量级以上。
 
 \begin{figure}[htbp]
 \centering

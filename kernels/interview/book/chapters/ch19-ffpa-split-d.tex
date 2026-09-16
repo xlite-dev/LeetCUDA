@@ -134,8 +134,8 @@ $(\ell, m)$，合并只是「先沿列拼起来、再统一除一次 $\ell$」�
 
 \textbf{工程回声}：生产库 \texttt{ffpa-attn} 按 $D$ 分三个家族——$D \le 128$ 走
 persist-D（Q 常驻寄存器的 WS 结构），中段走 split-D（非 WS，即本章这版形态），
-$D \ge 768$ 换成 M4N2（\texttt{atom\_layout} $(4,2,1)$，8 个 M-warp 分摊，O
-寄存器降到 $D/4$）。交叉点大约在 $D \approx 768$，与式~\ref{eq:19-oacc} 算出的
+$D \ge 768$ 换成 M4N2（\texttt{atom\_layout} $(4,2,1)$，4 个 M-warp $\times$ 2 个
+N-warp（共 8 warp）分摊，O 寄存器降到 $D/4$）。交叉点大约在 $D \approx 768$，与式~\ref{eq:19-oacc} 算出的
 寄存器账本一致（19.4.6~节）。本章的两个 kernel 是这条路线在教学仓库里的最小形态。
 
 \section{数学原理}
@@ -499,8 +499,10 @@ Phase 3 的 rescale 是本章数学结论落地的位置——\textbf{同一个 
         $= 16$\,KB（L459--460），V 槽位是 8\,KB（L477）。
   \item \texttt{Cta\allowbreak{}Barrier::\allowbreak{}init\allowbreak{}(\&qk\_\allowbreak{}empty[s],\allowbreak{} k\allowbreak{}Consumer\allowbreak{}Threads)}——empty 的
         到达数是 \textbf{128}：每个 consumer 线程消费完该槽位各 arrive 一次。
-        这就是第~\ref{ch:17}~章「arrive 数 $=$ 消费者线程数」规则的延续（那边是
-        257 $=$ 256 $+$ 1，这边因为只有 1 个 consumer warpgroup，所以是 128）。
+        这与第~\ref{ch:17}~章不同：那边 empty 也是 257 $=$ 256 consumer $+$
+        1 producer（producer 在 empty 上补 1 票）；本章 producer 不在 empty
+        上 arrive（它的 1 票记在 full 侧的 \texttt{arrive\_and\_expect\_tx}），
+        故 empty 是 128 张纯 consumer 票。
   \item \texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}REG\_\allowbreak{}DEALLOC\allowbreak{}(32)} / \texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}REG\_\allowbreak{}ALLOC\allowbreak{}(232)}
         （L432、L484）——producer 只做地址计算与 TMA 提交，32 个寄存器够用；
         consumer 要背 $S$、$P$、$C$ 个 O 累加器与操作数碎片，顶格申请 232，
@@ -829,7 +831,7 @@ $e^{S-m}$ 为权重的 V 第 $c$ 段加权和」。跨 KV tile 更新 max 时，
 \textbf{Q5：chunk 为什么是 64 宽？}\\
 A：因为 SW128 swizzle atom 的行宽是 128\,B $=$ 64 个 f16，且 \texttt{ldmatrix}
 的粒度就是「8 行 $\times$ 16\,B」。64 列 $=$ 一个 atom 宽 $=$ 8 个 $n8$ 原子，
-每个 chunk 都能直接套用 \texttt{GROM::\allowbreak{}Layout\_\allowbreak{}K\_\allowbreak{}SW128\_\allowbreak{}Atom} 铺出来的 layout，
+每个 chunk 都能直接套用 \texttt{GMMA::\allowbreak{}Layout\_\allowbreak{}K\_\allowbreak{}SW128\_\allowbreak{}Atom} 铺出来的 layout，
 不必发明新 swizzle。$32$ 宽要走 SW64、$128$ 宽要两个 atom 拼——都不是「重推
 一次 swizzle」那么简单，所以这版代码用 \texttt{static\_\allowbreak{}assert} 把宽度钉死。
 

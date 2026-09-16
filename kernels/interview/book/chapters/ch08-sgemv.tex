@@ -98,7 +98,7 @@ $\texttt{NUM\_ITERS} = \lceil K/32 \rceil$。每 lane 串行累加 $\texttt{NUM\
 行守卫 \texttt{if (m < M)} 是 \textbf{warp 一致}的（同一 warp 内所有 lane 共享 $m$，
 要么全体执行要么全体跳过），因此蝶形归约里 \texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor\_\allowbreak{}sync} 的掩码
 \texttt{0xffffffff} 是安全的——这个「一致/不一致」的判别在 k16 那里会反过来，
-见 8.6~节勘误二。
+见 8.7~节勘误二。
 
 \subsection{float4 的覆盖与对齐}
 
@@ -153,7 +153,7 @@ lane $0\,\dots\,15$ 算第 $m$ 行、lane $16\,\dots\,31$ 算第 $m+1$ 行，每
 （式~\ref{eq:8-ai-pessimistic}）在实际上是乐观口径；（3）\texttt{warp\_\allowbreak{}reduce\_\allowbreak{}sum}
 收尾后只有 lane 0 写回，一个 warp 产出 4 字节——写流量占比可忽略。
 注意 kernel \textbf{没有} $k < K$ 的守卫：$K$ 不是 32 的倍数时最后一轮会越界读
-（8.7~节坑一），这是「对齐换简洁」的明确约定。
+（8.8~节坑一），这是「对齐换简洁」的明确约定。
 
 \subsection{sgemv\_k128：float4 向量化}
 
@@ -184,7 +184,7 @@ lane $0\,\dots\,15$ 算第 $m$ 行、lane $16\,\dots\,31$ 算第 $m+1$ 行，每
 warp 的 32 个 lane 恰好拼出一段 128B 连续地址——\textbf{合并访问没有因为劈半而损失}。
 但要注意行守卫的粒度变了：\texttt{if (m < M)} 在 lane $0\,\dots\,15$ 与
 $16\,\dots\,31$ 之间可能分叉（$M$ 为奇数时的最后一个 warp），这会踩到 shuffle
-掩码的语义红线——8.6~节勘误二详细展开，测试也据此固定 $M \% 8 = 0$。
+掩码的语义红线——8.7~节勘误二详细展开，测试也据此固定 $M \% 8 = 0$。
 
 \needspace{92mm}
 
@@ -230,10 +230,9 @@ k16  & $M{=}1048576,\ K{=}16$  & 0.1078 & 661.4 \\
 第~\ref{ch:09}~章的 roofline 定位）直接引用这个数作为「实测带宽口径」。
 （2）\textbf{float4 带来 $+5.2\%$}（934 vs 888）。对纯带宽型 kernel 这已是全部收益空间：
 指令数降为 1/4、事务利用率更高；它不改变字节数，所以不可能有数量级的变化。
-（3）\textbf{k16 是 661~GB/s}。原因有三：每 lane 只有一个元素可累加，没有任何 ILP
-去藏访存延迟；每个 block 只有 128 线程、block 数高达 13 万，调度与收尾开销占比上升；
-$K{=}16$ 的行只有 64B，虽然相邻两行拼成 128B，但按 64B 对齐（$m \cdot 64$B），
-一半的 warp 跨两个 128B 行。仍能到参照值的 71\%，说明双行复用的设计是站得住的。
+（3）\textbf{k16 是 661~GB/s}。原因有二：每 lane 只有一个元素可累加，没有任何 ILP
+去藏访存延迟；每个 block 只有 128 线程、block 数高达 13 万，调度与收尾开销占比上升。
+仍能到参照值的 71\%，说明双行复用的设计是站得住的。
 （4）\textbf{roofline 定位}：AI $\approx 0.5$（式~\ref{eq:8-ai-optimistic}）意味着计算侧上限
 仅 $\approx 0.47$ TFLOPS（峰值的 0.7\%）——三版 kernel 的差距全部来自带宽侧的
 「喂得饱不饱」，而不是算得快不快。这就是 memory-bound 算子的优化美学。
@@ -279,7 +278,7 @@ $K{=}16$ 的行只有 64B，虽然相邻两行拼成 128B，但按 64B 对齐（
 任何一个不满足都是 misaligned access，kernel 直接异常终止——比坑一「礼貌」，
 但同样在生产环境不可接受。
 
-\textbf{坑三：k16 的 $M$ 必须凑 8。}不是正确性一定会坏，而是 8.6~节勘误二所述的
+\textbf{坑三：k16 的 $M$ 必须凑 8。}不是正确性一定会坏，而是 8.7~节勘误二所述的
 掩码语义红线。顺带一提：k32/k128 只要求调用方处理 $M \% 4$（守卫内消化），
 两个 kernel 的边界约定粒度不同，混用时要分开记。
 
@@ -315,7 +314,7 @@ A：让一个 warp 服务 \texttt{kRowPerWarp} 行，lane 按 segment 分组
 A：把 warp 切成宽度为 width 的 segment，lane 只与本 segment 内的
 $\mathrm{lane} \oplus \mathrm{mask}$ 交换；掩码序列相应从 width/2 开始递减。
 k16 用它实现「一个 warp、两套独立归约」。同时注意掩码命名的线程必须都执行该指令
-（8.6~节勘误二的 UB 红线）。
+（8.7~节勘误二的 UB 红线）。
 
 \textbf{Q5：GEMV 与 GEMM 优化的本质区别？}\\
 A：GEMM 有 $N$ 维，$A$、$B$ 的 tile 都能被多个输出复用，AI 随 tile 尺寸增长

@@ -31,7 +31,7 @@ $AI = 1/12 \approx 0.083$。对照本机 ridge point（约 49.8 FLOP/Byte），�
 
 两个互补的杠杆。其一是 coalescing：硬件以 32B sector 为粒度搬运数据，若
 一个 warp 的 32 个线程访问的是连续地址，128B 恰好铺满 4 个 sector，零浪费；
-反之若地址发散，最坏要搬 32 个 sector 却只用到 32 个标量——效率 3\%。
+反之若地址发散，最坏要搬 32 个 sector 共 1024B，有效仅 128B——效率 12.5\%。
 其二是向量化：用 float4 让一条指令搬 16B，指令数降为 1/4。这两个杠杆都
 不改变算法的 FLOPs 与 Bytes（roofline 位置不变），改变的是
 \textbf{实际带宽向理论带宽的逼近程度}——这正是 memory-bound 算子优化
@@ -65,14 +65,16 @@ sector 数。三种典型情形（图 ch03-1）：
   $S = 4$，$\eta = 128/128 = 100\%$。
 \item \textbf{stride 为 2}：地址铺满 $256$B 跨度但只用一半，$S = 8$，
   $\eta = 50\%$——有效带宽直接减半。
-\item \textbf{大 stride}：每线程落在不同 sector，$S = 32$，$\eta = 4/128
-  \approx 3\%$——矩阵转置的朴素版本（ch07 专题）正是这种形态。
+\item \textbf{大 stride}：每线程落在不同 sector，$S = 32$，$\eta =
+  128/1024 = 12.5\%$（若按 L1$\leftrightarrow$L2 的 128B cache line 口径
+  则为 $128/4096 \approx 3\%$）——矩阵转置的朴素版本（ch07 专题）正是
+  这种形态。
 \end{itemize}
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.95\textwidth]{figures/drawio/fig-3-1-coalescing/fig-3-1.png}
-\caption{coalescing 与非合并访存对比（fp32，每格 4B，一个 sector 8 格 32B）：coalesced 一条 指令落 4 个 sector 有效率 100\%；stride=2 落 8 个、50\%；大 stride 每线程各占一个 sector、仅 3\%——事务粒度是 32B sector，无用字节照样从 HBM 搬上来。}
+\caption{coalescing 与非合并访存对比（fp32，每格 4B，一个 sector 8 格 32B）：coalesced 一条 指令落 4 个 sector 有效率 100\%；stride=2 落 8 个、50\%；大 stride 每线程各占一个 sector、仅 12.5\%——事务粒度是 32B sector，无用字节照样从 HBM 搬上来。}
 \label{fig:3-1}
 \end{figure}
 
@@ -238,9 +240,11 @@ histogram (256 bins) & 0.62860 & 26.69 GB/s & 按读 4B/元素计，原子另计
 
 \textbf{其三，histogram 比 elementwise 慢两个数量级}（26.7 vs 2654 GB/s，
 0.63 ms vs 0.019 ms）。4M 次原子均摊每次约 $0.63\,\mathrm{ms}/4.2\mathrm{M}
-\approx 150\,\mathrm{ns}$——远高于 ch02 全局求和的 2.5 ns/op，因为这里
-4M 个原子请求要经过 L1 侧 atomic 路径排队、且 256 个 bin 的并行度远小于
-请求速率，冲突排队是常态。优化方向即 \S\ref{sec:ch03-math} 的 smem
+\approx 0.15\,\mathrm{ns}$——单看均摊延迟并不差（256 个 bin 提供了并行度，
+反而低于 ch02 同址全局求和的 2.6 ns/op），慢在总量：按「256 bin 理想并行
++ 同址 2.6 ns 串行」模型，理想耗时约 $4.2\mathrm{M}/256 \times 2.6\,\mathrm{ns}
+\approx 42\,\mu$s，实测 0.63 ms 慢了约 15 倍，缺口来自 4M 个原子请求在
+L1 侧 atomic 路径的排队与串行化。优化方向即 \S\ref{sec:ch03-math} 的 smem
 私有化：全局原子次数 $N \to G \times B$（$G$ 为 block 数、$B$ 为 bin 数），
 预期可把 0.63 ms 压低一个数量级以上——留作动手实验。
 
@@ -274,7 +278,7 @@ elementwise\_add\_vec4（L358--374）的 \texttt{(idx + 3) < N} 主路径 + 标�
 \begin{enumerate}
 \item \textbf{float4 未对齐}。基址非 16B 对齐时（例如对子数组
   \texttt{a + 1} 做 FLOAT4）触发 CUDA misaligned address 运行时错误。
-  规约：vec4 主路径的 idx 必须是 4 的倍数、指针必须来自整块分配的基址。
+  约定：vec4 主路径的 idx 必须是 4 的倍数、指针必须来自整块分配的基址。
 \item \textbf{$N$ 非 4 倍数时用「浅守卫」vec4 kernel}。relu\_vec4 /
   dot\_vec4 的 \texttt{idx < N} 不覆盖 4 元素读取的尾部（见
   \S\ref{sec:ch03-kaogu}）；生产代码应统一为 elementwise\_add\_vec4 的
@@ -282,7 +286,7 @@ elementwise\_add\_vec4（L358--374）的 \texttt{(idx + 3) < N} 主路径 + 标�
 \item \textbf{histogram 忘记清零}。atomicAdd 是「加在旧值上」，复用缓冲区
   时若不 memset，两轮结果会叠加——本测试每轮 bench 前显式 memset。
 \item \textbf{把原子当免费}。全局原子吞吐有上限（同址串行化），热点地址
-  会让 kernel 慢百倍（\S\ref{sec:ch03-perf} 实测 98 倍差）。先问「冲突域
+  会让 kernel 慢百倍（\S\ref{sec:ch03-perf} 实测 99 倍差）。先问「冲突域
   能不能缩小」：smem 私有化、分桶、thread-warp 内先归约再提交。
 \item \textbf{原子还破坏确定性}。与 ch02 的浮点 atomicAdd 同理，冲突
   顺序不定 $\Rightarrow$ 累加型原子的结果 run-to-run 抖动；int 计数

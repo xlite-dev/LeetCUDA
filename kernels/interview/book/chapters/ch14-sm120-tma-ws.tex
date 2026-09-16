@@ -83,7 +83,7 @@ swizzle 相位补偿 & descriptor base\_offset & \textbf{无} & \_\_align\_\_(10
 setmaxnreg & 可用 & 支持；与 TMA 同 kernel 时被 ptxas 丢弃 & -arch sm\_120f + 宏开启 \\
 cluster / TMEM & cluster 有 / TMEM 无 & 均无 & 不涉及 \\
 每 SM 寄存器 & 65536 & 65536 & 池数学同型（14.3.3） \\
-smem / SM & 228KB & 128KB & kStages $\le$ 3 \\
+smem / SM & 228KB & 100KB（L1 共 128KB） & kStages $\le$ 3 \\
 \bottomrule
 \end{tabular}
 \caption{SM120 与 Hopper 在本章流水线相关能力上的差集（依据 cutlass sm120
@@ -203,7 +203,8 @@ setmaxnreg」，而是「目标后缀选错就静默失效」。这也是
 \texttt{\_\allowbreak{}\_\allowbreak{}launch\_\allowbreak{}bounds\_\allowbreak{}\_\allowbreak{}(N,\allowbreak{}1)} 副作用；要做 setmaxnreg 实验就用
 \texttt{-arch sm\_120f} 构建并打开宏。PTX ISA 的 Target ISA Notes 确认
 setmaxnreg 的支持列表覆盖 sm\_90a、sm\_100a/sm\_110a/sm\_120a 架构目标与
-sm\_100f/sm\_110f/sm\_120f 家族目标（PTX 8.8 起）——指令集本身支持 sm\_120a，
+sm\_100f/sm\_110f/sm\_120f 家族目标（sm\_100f/sm\_120f 自 PTX 8.8、
+sm\_110f 自 PTX 9.0 起）——指令集本身支持 sm\_120a，
 把指令挡在门外的是 ptxas 把 TMA 当隐式 call 边界的处理，不是指令集。
 
 \subsection{TMA box：回指与本章坐标}
@@ -445,8 +446,9 @@ cp.async 提交指令，ldmatrix 到 mma 的发射槽更纯粹；（2）TMA 单�
 
 \begin{kaogu}[F2 提示]{注释「require \_\_launch\_bounds\_\_(N, 1)」与实现不一致}
   common.cuh L456--457 称 setmaxnreg 需要 \texttt{\_\allowbreak{}\_\allowbreak{}launch\_\allowbreak{}bounds\_\allowbreak{}\_\allowbreak{}(N,\allowbreak{} 1)}
-  （每 SM 1 block，给满每线程 256 regs 的编译许可），而两个 kernel（WGMMA 版
-  与本章版）实际都只写 \texttt{\_\allowbreak{}\_\allowbreak{}launch\_\allowbreak{}bounds\_\allowbreak{}\_\allowbreak{}\allowbreak{}(k\allowbreak{}Num\allowbreak{}Threads)}。因
+  （每 SM 1 block，给满每线程 256 regs 的编译许可），而本章版 kernel 实际只写
+  \texttt{\_\allowbreak{}\_\allowbreak{}launch\_\allowbreak{}bounds\_\allowbreak{}\_\allowbreak{}\allowbreak{}(k\allowbreak{}Num\allowbreak{}Threads)}
+  （WGMMA 版 hgemm.cuh~L1477 已带 \texttt{, 1}）。因
   setmaxnreg 在 sm\_120a 被门控关闭、在 sm\_90a 的 WGMMA 测试亦通过，该差异
   未造成已知错误，但打开宏做对照实验时应按注释补上 \texttt{, 1}。
 \end{kaogu}
