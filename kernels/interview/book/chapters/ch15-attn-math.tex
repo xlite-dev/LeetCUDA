@@ -193,7 +193,7 @@ FlashAttention 的做法：$Q$ 按 $B_r$ 行切成 $\lceil N/B_r \rceil$ 个 Q �
 整行分数矩阵被按列切成 $S = \bigl[\,S^{[1]} \mid S^{[2]} \mid \cdots \mid S^{[T_c]}\,\bigr]$。
 对每个 query 行 $i$，维护三件套运行状态：标量 $m_i$（已见分数的行 max，即第~\ref{ch:04}~章
 的 running max）、标量 $\ell_i$（running sum，即第~\ref{ch:04}~章的 $\ell$；源码变量
-\texttt{block\_row\_max}/\texttt{block\_row\_sum}）、以及新增的一行输出累加器
+\texttt{block\_\allowbreak{}row\_\allowbreak{}max}/\texttt{block\_\allowbreak{}row\_\allowbreak{}sum}）、以及新增的一行输出累加器
 $O_i \in \mathbb{R}^{1 \times d}$。走到第 $j$ 块时，逐项推导四步更新。
 
 \textbf{第一步：新 max}。已见集合扩大为「前 $j$ 块」，行 max 只能变大或不变：
@@ -249,7 +249,7 @@ v_k$，同样拆「旧 + 新」并凑因子：
   \label{eq:15-upd-o-long}
 \end{align}
 写成矩阵形式，就得到本章的招牌公式（flash\_attn.cuh~L23 的
-\texttt{O\_new = diag(exp(m\_old - m\_new)) * O\_old + P\_cur @ V}）：
+\texttt{O\_\allowbreak{}new =\allowbreak{} diag\allowbreak{}(exp\allowbreak{}(m\_\allowbreak{}old - m\_\allowbreak{}new)) * O\_\allowbreak{}old + P\_\allowbreak{}cur @ V}）：
 \begin{equation}
   \boxed{\;
   O \;\leftarrow\; O\;\mathrm{diag}\bigl(e^{\,m^{\mathrm{old}} - m^{\mathrm{new}}}\bigr)
@@ -287,7 +287,7 @@ $O = \bigl(W^{A} O^{A}_{\text{norm}}\ell^{A} + W^{B} O^{B}_{\text{norm}}\ell^{B}
 FlashDecoding），本章是「在线合并」（寄存器里一份 $O$ 随 KV 循环滚动更新，从不物化
 两份 $O$）；式~\ref{eq:15-merge-o} 的结合律由引理~\ref{lem:md-assoc} 同样的
 「全集唯一决定」论证立刻推广到带 $O$ 的三元组。另注意一个精度口径：本仓库
-\texttt{merge\_attn\_states} 的接口要求输入 $O$ 已除过 $\ell$（ch05 坑一），而 FA
+\texttt{merge\_\allowbreak{}attn\_\allowbreak{}states} 的接口要求输入 $O$ 已除过 $\ell$（ch05 坑一），而 FA
 主循环的累加器 $O$ 必须\textbf{未}归一化——两套口径的公式不可混搭（见 15.8~节坑一）。
 
 \subsection{分块循环不变量与归纳法证明}
@@ -333,8 +333,8 @@ FlashDecoding），本章是「在线合并」（寄存器里一份 $O$ 随 KV �
     + \sum_{k \in \text{block } j} e^{\,s_{ik} - m^{(j)}_i}
     = \sum_{k \le jB_c} e^{\,s_{ik} - m^{(j)}_i} .
   \end{equation*}
-  \textbf{其三}（$O$）：同理用式~\ref{eq:15-upd-o-long} 与 $\mathrm{I}(j{-}1)$ 的
-  $O^{(j-1)}_i = \sum_{k \le (j-1)B_c} e^{s_{ik} - m^{(j-1)}_i} v_k$，得
+  \textbf{其三}（$O$）：同理用式~\ref{eq:15-upd-o-long} 与 $\mathrm{I}(j{-}1)$ 中的
+  $O^{(j-1)}_i = \sum_{k \le (j-1)B_c} e^{s_{ik} - m^{(j-1)}_i} v_k$，得到
   \begin{equation*}
     O^{(j)}_i = e^{\,m^{(j-1)}_i - m^{(j)}_i} O^{(j-1)}_i
     + \sum_{k \in \text{block } j} e^{\,s_{ik} - m^{(j)}_i} v_k
@@ -422,7 +422,7 @@ $3\times$ 加速，激活显存省 $10$--$20\times$。
         对角修正）。
   \item \textbf{并行度}。FA1 只在 $(B, H)$ 维开 thread block，长序列小 batch 时
         SM 吃不饱；FA2 把 \textbf{seqlen(Q) 维}也做成并行——query 序列切成多段，
-        每段独立一个 thread block（本仓库 \texttt{flash\_attn\_mma\_stages\_split\_q}
+        每段独立一个 thread block（本仓库 \texttt{flash\_\allowbreak{}attn\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}split\_\allowbreak{}q}
         的 \texttt{grid = ((N+63)/64, B*H)}，第~\ref{ch:16}~章展开）。
   \item \textbf{warp 分工}。FA1 的 4 个 warp 沿 KV 维切分，各算部分分数后必须经
         shared memory 做跨 warp 归约合并；FA2 改为 warp 沿 \textbf{$Q$ 行}切分
@@ -487,9 +487,9 @@ L2196--3488 是三者的 CuTe 复刻对照（第~\ref{ch:25}~章）——从 FA2
 
 flash\_attn.cuh 全文 $3490$ 行，按编译宏分成三段五族 kernel（行号见
 BOOK\_PLAN \S 1.3 核验表）：FA2 MMA 版
-（\texttt{flash\_attn\_mma\_stages\_split\_q}，L112 起）；\texttt{TMA\_MMA\_WS} 宏块
+（\texttt{flash\_\allowbreak{}attn\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}split\_\allowbreak{}q}，L112 起）；\texttt{TMA\_MMA\_WS} 宏块
 （L791--2194）内含 FA2 TMA+WS 版（L889）与 FA3 版
-（\texttt{flash\_attn\_3\_tma\_ws\_stages\_split\_q}，L1516）；\texttt{CUTE} 宏块
+（\texttt{flash\_\allowbreak{}attn\_\allowbreak{}3\_\allowbreak{}tma\_\allowbreak{}ws\_\allowbreak{}stages\_\allowbreak{}split\_\allowbreak{}q}，L1516）；\texttt{CUTE} 宏块
 （L2196--3488）内含 FA2/FA3 的 CuTe traits 与三个复刻 kernel。本章只引用头部设计
 注释（L5--110）：它是全文的「算法说明书」，五条要点恰好逐一对应 15.3~节的推导。
 
@@ -526,12 +526,12 @@ $8$ 倍堆叠——tile 尺寸被 Tensor Core 指令形状整除，这是分块�
 \lstinputlisting[linerange={93-110},firstnumber=auto,
   title={flash\_attn.cuh L93-110（kernel 模板参数：tile 的原子化分解）}]{../flash_attn.cuh}
 
-模板参数把 15.3.4~节的 $B_r, B_c$ 分解到指令原子：\texttt{kMmaTileSeqLenQ} 对应
-$B_r$ 的堆叠数、\texttt{kMmaTileSeqLenK}/\texttt{kValTileSeqLenK} 对应 $B_c$，
+模板参数把 15.3.4~节的 $B_r, B_c$ 分解到指令原子：\texttt{k\allowbreak{}Mma\allowbreak{}Tile\allowbreak{}Seq\allowbreak{}Len\allowbreak{}Q} 对应
+$B_r$ 的堆叠数、\texttt{k\allowbreak{}Mma\allowbreak{}Tile\allowbreak{}Seq\allowbreak{}Len\allowbreak{}K}/\texttt{k\allowbreak{}Val\allowbreak{}Tile\allowbreak{}Seq\allowbreak{}Len\allowbreak{}K} 对应 $B_c$，
 \texttt{kStagesK} 是 $K$ tile 的流水级数（cp.async 多级缓冲，第~\ref{ch:10}~章），
 \texttt{kPadQ/K/V} 控制 shared memory 的 padding 与 XOR swizzle 策略
 （第~\ref{ch:12}~章）。符号对应关系：$B_r \leftrightarrow$
-\texttt{kMmaTileSeqLenQ} 族、$B_c \leftrightarrow$ \texttt{kMmaTileSeqLenK} 族
+\texttt{k\allowbreak{}Mma\allowbreak{}Tile\allowbreak{}Seq\allowbreak{}Len\allowbreak{}Q} 族、$B_c \leftrightarrow$ \texttt{k\allowbreak{}Mma\allowbreak{}Tile\allowbreak{}Seq\allowbreak{}Len\allowbreak{}K} 族
 （全书记号表「源码对应」列）。
 
 \subsection{执行流程：九步与本章公式的对应}
@@ -581,7 +581,7 @@ layout 必须\textbf{同时}看读端（ldmatrix）与写端（cp.async），只
 \section{性能分析}
 
 本章是数学章，不做 kernel 复测（attention kernel 的 bench 按 DoD 落在
-第~\ref{ch:16}--\ref{ch:18}~章，数据将落 \texttt{.tmp/book-bench/chNN/}）。这里只做
+第~\ref{ch:16}--\ref{ch:18}~章，数据将落 \texttt{.\allowbreak{}tmp/\allowbreak{}book-bench/\allowbreak{}ch\allowbreak{}NN/\allowbreak{}}）。这里只做
 一阶 roofline 对照，把 15.3.6~节的两个算术强度落到实处：
 
 \begin{itemize}
@@ -625,7 +625,7 @@ smem 布局）接着讲。
 \end{kaogu}
 
 \begin{kaogu}[F5]{flash\_attn.cuh L19--21：scale 的安放位置与 FA2 论文不同}
-  注释按块缩放：\texttt{m\_new = max(m, row\_max(S\_cur * scale))}、
+  注释按块缩放：\texttt{m\_\allowbreak{}new =\allowbreak{} max\allowbreak{}(m,\allowbreak{} row\_\allowbreak{}max\allowbreak{}(S\_\allowbreak{}cur * scale))}、
   \texttt{P\_cur = exp(S\_cur * scale - m\_new)}——scale 在每个 KV 块内乘进 $S$
   （FA1 式）。FA2 论文为削减非 matmul FLOPs，把 $1/\sqrt{d}$ \textbf{预乘进 $Q$}，
   块内不再乘。数学上等价（scale 是常数，先乘后乘只影响舍入路径），工程上是 FA2
@@ -649,8 +649,8 @@ smem 布局）接着讲。
 
 \section{常见坑}
 
-\textbf{坑一：$O$ 的归一化口径要全局统一。}FA 主循环的 $O$ 是\textbf{未归一化}
-累加器（式~\ref{eq:15-upd-o}），ch05 \texttt{merge\_attn\_states} 的输入 $O$ 是
+\textbf{坑一：$O$ 的归一化口径要全局统一。}\allowbreak{}FA 主循环的 $O$ 是\textbf{未归一化}
+累加器（式~\ref{eq:15-upd-o}），ch05 \texttt{merge\_\allowbreak{}attn\_\allowbreak{}states} 的输入 $O$ 是
 \textbf{已归一化}输出（坑一原文见第~\ref{ch:05}~章）。两套公式不可混搭：把已除过
 $\ell$ 的 $O$ 再按式~\ref{eq:15-upd-o} 累加，等于漏乘旧块的 $\ell$；反之亦然。
 写任何「分块 + 合并」的 attention 代码前，先在纸上写清楚每个 $O$ 的口径。
@@ -667,7 +667,7 @@ $\mathrm{rowsum}(P^{[j]})$ 与 $P^{[j]}V^{[j]}$。顺序颠倒（例如先加 $P
 会把新块贡献也错误缩放。自查方法：对照不变量式~\ref{eq:15-invariant}，任何实现
 写完都对一遍「这三条此刻是否成立」。
 
-\textbf{坑四：$-\infty$ 参与运算的 inf$-$inf。}mask 位置填 $-\infty$ 时，若某行
+\textbf{坑四：$-\infty$ 参与运算的 inf$-$inf。}\allowbreak{}mask 位置填 $-\infty$ 时，若某行
 当前 $m$ 也是 $-\infty$（首块全 mask），$\exp(S - m)$ 计算出 $-\infty - (-\infty) =
 \mathrm{NaN}$。CPU 参考实现常用 \texttt{np.exp} 天然规避，CUDA 上 \texttt{\_\_expf}
 同样要防：先把 mask 位置洗成极小有限值（ch05 勘误的 $+\infty$ 清洗同族），或保证
@@ -744,16 +744,16 @@ fp16。
 都由前两章的测试覆盖——
 \begin{itemize}
   \item online rescale 的 $(m, \ell)$ 内核即第~\ref{ch:04}~章的三级 softmax 递进
-        测试（\texttt{tests/ch04\_softmax.cu}：case~A/B/C 覆盖递推正确性、边界
+        测试（\texttt{tests/\allowbreak{}ch04\_\allowbreak{}softmax.\allowbreak{}cu}：case~A/B/C 覆盖递推正确性、边界
         线程、大 logit 溢出）；
-  \item 分块状态的等价合并即第~\ref{ch:05}~章的 \texttt{tests/ch05\_merge\_attn.cu}
+  \item 分块状态的等价合并即第~\ref{ch:05}~章的 \texttt{tests/\allowbreak{}ch05\_\allowbreak{}merge\_\allowbreak{}attn.\allowbreak{}cu}
         （「合并 == 整体 softmax 直接计算」，正是定理~\ref{thm:15-invariant} 的
         数值版：任意切分 + 合并还原整体）。
 \end{itemize}
 kernel 层面的 FlashAttention 正确性入口在第~\ref{ch:16}~章的
-\texttt{tests/ch16\_*.cu}（对照 CPU fp64 参考，容差按 F32Acc/F16Acc 档）。
+\texttt{tests/\allowbreak{}ch16\_\allowbreak{}*.\allowbreak{}cu}（对照 CPU fp64 参考，容差按 F32Acc/F16Acc 档）。
 
-动手实验（建议在 \texttt{.tmp/book-bench/ch15/} 下进行，用 numpy/pytorch 对拍）：
+动手实验（建议在 \texttt{.\allowbreak{}tmp/\allowbreak{}book-bench/\allowbreak{}ch15/\allowbreak{}} 下进行，用 numpy/pytorch 对拍）：
 
 \begin{enumerate}[itemsep=0pt,topsep=2pt]
   \item \textbf{对拍在线分块与整体计算}（15.3.4/15.3.5~节的数值版）：

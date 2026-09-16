@@ -30,7 +30,7 @@ L1/L2 命中率、bank conflict，每一个指标都配一个真实的「指标�
 \textbf{反例一：感觉是装载瓶颈，其实是依赖链}。一个 sm\_89 上的 fp8
 attention kernel（persist-D 结构）对标业界最快实现慢 28\%（909.4$\mu$s vs
 710$\mu$s）。直觉方案是「加深装载流水、砍指令、缩 tile」，全部实测无效；
-NCU 的 stall 剖像一锤定音：\texttt{math\_\allowbreak{}pipe\_throttle} 1.32
+NCU 的 stall 剖像一锤定音：\texttt{math\_\allowbreak{}pipe\_\allowbreak{}throttle} 1.32
 主导、\texttt{wait} 0.82、\texttt{long\_\allowbreak{}scoreboard} 仅
 0.04——\textbf{装载根本不是瓶颈}，瓶颈是单 CTA 内 softmax$\to$PV 的串行
 依赖链，唯一有效的改动是拆链（2 CTA/SM），实测 $-5\%$。
@@ -114,15 +114,15 @@ nsys stats -r cuda_gpu_kern_sum report.nsys-rep   # per-kernel 时间占比（�
 nsys stats -r cuda_gpu_trace   report.nsys-rep   # per-launch 时间线（看 gap/流重叠）
 \end{lstlisting}
 
-\texttt{cuda\_gpu\_kern\_sum} 按 kernel 聚合总时长与占比，直接给出「该优化
-谁」的答案；\texttt{cuda\_gpu\_trace} 逐 launch 列时间戳，用来看相邻 kernel
+\texttt{cuda\_\allowbreak{}gpu\_\allowbreak{}kern\_\allowbreak{}sum} 按 kernel 聚合总时长与占比，直接给出「该优化
+谁」的答案；\texttt{cuda\_\allowbreak{}gpu\_\allowbreak{}trace} 逐 launch 列时间戳，用来看相邻 kernel
 间的空隙与多流 overlap。首次对旧 report 运行时报
-\texttt{Existing SQLite export found} 时，加 \texttt{-{}-force-export=true}
+\texttt{Existing SQLite export found} 时，加 \texttt{-{}-force-export=\allowbreak{}true}
 强制重新导出。
 
 \subsection{体积控制：一次 500GB 事故}
 
-nsys 的中间数据默认写到 \texttt{/tmp/nvidia/nsight\_systems}，体积 $\approx$
+nsys 的中间数据默认写到 \texttt{/\allowbreak{}tmp/\allowbreak{}nvidia/\allowbreak{}nsight\_\allowbreak{}systems}，体积 $\approx$
 事件数 $\times$ 时长。对大模型推理（多模型链、大 seqlen、多次 repeat）无脑
 全量采集，曾把 \texttt{/tmp} 写到 \textbf{500GiB+} 直到磁盘写满系统卡死
 （真实事故，2026-09）。
@@ -136,14 +136,14 @@ nsys 的中间数据默认写到 \texttt{/tmp/nvidia/nsight\_systems}，体积 $
 \item \textbf{禁止对大模型 e2e 无脑全量采}：repeat 降到 0--1，单域
   \texttt{-t cuda}，关采样。
 \item \textbf{优先 torch.profiler}：只想看 kernel 时间表时，
-  \texttt{torch.profiler} 输出 chrome trace 落在 \texttt{.tmp/}，零外部临时
+  \texttt{torch.\allowbreak{}profiler} 输出 chrome trace 落在 \texttt{.tmp/}，零外部临时
   文件风险；nsys 只在必须看时间线/同步事件时出场。
 \end{enumerate}
 
 \subsection{窗口化采集：cudaProfilerApi}
 
 只想采推理中的一小段（比如 50 个 denoise step 中的 1 步）时，用
-\texttt{-{}-capture-range=cudaProfilerApi} 配合代码里的开关，把采集窗口钉在
+\texttt{-{}-capture-range=\allowbreak{}cuda\allowbreak{}Profiler\allowbreak{}Api} 配合代码里的开关，把采集窗口钉在
 目标区间：
 
 \begin{lstlisting}[style=console, title={窗口化采集（Python 侧）}]
@@ -173,7 +173,7 @@ metric，见下）。
 \subsection{-{}-kernel-name 必须用 regex: 前缀}
 
 C++ 模板 kernel 的完整名带一长串后缀（如
-\texttt{persist\_d\_ws\_fwd\_cute\_fp8\_sm120}，实际实例化名比这更长）。
+\texttt{persist\_\allowbreak{}d\_\allowbreak{}ws\_\allowbreak{}fwd\_\allowbreak{}cute\_\allowbreak{}fp8\_\allowbreak{}sm120}，实际实例化名比这更长）。
 \texttt{-{}-kernel-name} 默认\textbf{精确匹配}，拿「名字的前缀」去匹配会报
 \texttt{No kernels were profiled} 且生成空 report。必须加 \texttt{regex:}
 前缀走部分匹配：
@@ -200,8 +200,8 @@ ncu --import rep.ncu-rep --page raw 2>&1 | \
 
 读性能计数器需要驱动授权。容器/云主机上常见
 \texttt{/proc/\allowbreak{}driver/\allowbreak{}nvidia/\allowbreak{}params} 里
-\texttt{RmProfiling\allowbreak{}AdminOnly} 标志为 1，
-此时 \texttt{-{}-set full} 直接报 \texttt{ERR\_NVGPUCTRPERM}，且容器内无法
+\texttt{Rm\allowbreak{}Profiling\allowbreak{}Admin\allowbreak{}Only} 标志为 1，
+此时 \texttt{-{}-set full} 直接报 \texttt{ERR\_\allowbreak{}NVGPUCTRPERM}，且容器内无法
 reload 驱动。可行解法是\textbf{同架构代理}：找一块相同微架构的本地 GPU 跑
 ncu——例如用本地 RTX PRO 5000（sm\_120a）代理远端 RTX 5090（sm\_120）。
 stall reasons、指令 mix、occupancy 这类\textbf{架构级}结论可以迁移，绝对
@@ -231,7 +231,7 @@ sm\_120 上的实测为参照。
 
 \subsection{SpeedOfLight：SM\% 与 MEM\%（roofline 定位）}
 
-\texttt{sm\_\_throughput}（SM\%）与 \texttt{gpu\_\_compute\_memory\_throughput}
+\texttt{sm\_\allowbreak{}\_\allowbreak{}throughput}（SM\%）与 \texttt{gpu\_\allowbreak{}\_\allowbreak{}compute\_\allowbreak{}memory\_\allowbreak{}throughput}
 （MEM\%）分别是计算管线与内存管线的峰值利用率，是 NCU 报告的第一行。
 两者把 kernel 放上 ch01 的 roofline：SM\% 高 MEM\% 低是 compute-bound，
 反之 memory-bound；\textbf{双低}（如 SM/MEM 都在 30\% 附近）则是
@@ -242,9 +242,9 @@ latency-bound——管线都没喂满，问题在并行度或依赖链，这是 
 
 区分两个数：\textbf{理论 occupancy}（kernel 资源能驻留多少 warp，受三类
 限制源钳制——寄存器、smem、block/warp 上限）与\textbf{达到 occupancy}
-（\texttt{sm\_\_warps\_active}，实际运行均值，受 tail effect 与负载不均
-拖累）。NCU 的 Occupancy section 会明确指出 \texttt{launch\_\_occupancy\_limit\_registers} /
-\texttt{\_\_shared\_mem} / \texttt{\_\_blocks} 哪个是当前限制源。一个
+（\texttt{sm\_\allowbreak{}\_\allowbreak{}warps\_\allowbreak{}active}，实际运行均值，受 tail effect 与负载不均
+拖累）。NCU 的 Occupancy section 会明确指出 \texttt{launch\_\allowbreak{}\_\allowbreak{}occupancy\_\allowbreak{}limit\_\allowbreak{}registers} /
+\texttt{\_\allowbreak{}\_\allowbreak{}shared\_\allowbreak{}mem} / \texttt{\_\_blocks} 哪个是当前限制源。一个
 fp8 attention kernel 的实例：REG:255 直接把 \texttt{Block Limit Registers} 压到 1——
 1 CTA/SM、8 warps，occupancy 16.67\%，此时想提并行度只有降寄存器或换结构
 （见 \S\ref{sec:ch00-cases} 例二）。注意 ch01 的告诫：occupancy 是手段不是
@@ -252,11 +252,11 @@ KPI，GEMM 类 kernel 用大 tile + 低 occupancy + 高 ILP 换性能是常态�
 
 \subsection{寄存器与 spill：255 墙}
 
-\texttt{launch\_\_registers\_per\_thread} 给出每线程寄存器数，硬上限
+\texttt{launch\_\allowbreak{}\_\allowbreak{}registers\_\allowbreak{}per\_\allowbreak{}thread} 给出每线程寄存器数，硬上限
 \textbf{255}（每线程）。超限时编译器把变量溢出到 local memory（SASS 里表现为
 \texttt{LDL}/\texttt{STL} 指令，NCU 里看
-\texttt{l1tex\_\_t\_bytes\_pipe\_lsu\_mem\_\allowbreak{}local\_op\_\_ld/st.sum} 是否非零）。
-编译期排查用 \texttt{-{}-ptxas-options=-v} 与
+\texttt{l1tex\_\allowbreak{}\_\allowbreak{}t\_\allowbreak{}bytes\_\allowbreak{}pipe\_\allowbreak{}lsu\_\allowbreak{}mem\_\allowbreak{}\allowbreak{}local\_\allowbreak{}op\_\allowbreak{}\_\allowbreak{}ld/\allowbreak{}st.sum} 是否非零）。
+编译期排查用 \texttt{-{}-ptxas-options=\allowbreak{}-v} 与
 \texttt{cuobjdump -{}-dump-resource-usage} 的 STACK 字节。两个实战要点：
 
 \begin{itemize}
@@ -274,7 +274,7 @@ KPI，GEMM 类 kernel 用大 tile + 低 occupancy + 高 ILP 换性能是常态�
 \subsection{Warp State：stall reasons，好 stall 与坏 stall}
 
 warp 每个周期若不能发射，必有一个「停滞原因」。sm\_120 上的口径是
-\texttt{smsp\_\allowbreak{}average\_warps\_\allowbreak{}issue\_stalled\_\allowbreak{}*\_per\_issue\_active.ratio}
+\texttt{smsp\_\allowbreak{}average\_\allowbreak{}warps\_\allowbreak{}issue\_\allowbreak{}stalled\_\allowbreak{}*\_\allowbreak{}per\_\allowbreak{}issue\_\allowbreak{}active.\allowbreak{}ratio}
 ——每个发射周期停在该原因上的平均 warp 数。表~\ref{tab:00-stall}
 是实战中最常读的八项：
 
@@ -287,20 +287,20 @@ warp 每个周期若不能发射，必有一个「停滞原因」。sm\_120 上�
 指标后缀 & 含义 & 高值时怎么办 \\
 \midrule
 \texttt{wait} & 固定延迟依赖（寄存器/ALU 结果未就绪） & 依赖链问题：拆链、增并行 warp、重排指令；attention 的 softmax$\to$PV 串行链是典型来源 \\
-\texttt{long\_scoreboard} & 等 gmem/TMA 数据 & 装载不足：\texttt{cp.async}/TMA、加深 stage、prefetch \\
-\texttt{short\_scoreboard} & 等 smem（MIO 队列） & LDS 链太长：swizzle 布局、减少 smem 往返 \\
-\texttt{math\_pipe\_throttle} & 数学管线排队满 & \textbf{好信号}：计算饱和。保持或进一步减 FLOPs \\
+\texttt{long\_\allowbreak{}scoreboard} & 等 gmem/TMA 数据 & 装载不足：\texttt{cp.async}/TMA、加深 stage、prefetch \\
+\texttt{short\_\allowbreak{}scoreboard} & 等 smem（MIO 队列） & LDS 链太长：swizzle 布局、减少 smem 往返 \\
+\texttt{math\_\allowbreak{}pipe\_\allowbreak{}throttle} & 数学管线排队满 & \textbf{好信号}：计算饱和。保持或进一步减 FLOPs \\
 \texttt{sleeping} & warp 休眠（mbarrier 退避） & \textbf{纯浪费}：producer/consumer 失衡或空转自旋，查 WS 结构 \\
-\texttt{barrier} & 等显式栅栏 & 同步过频：减少 \texttt{\_\_syncthreads} 点、缩 block \\
-\texttt{not\_selected} & 就绪但调度器选了别人 & \textbf{健康}：有冗余并行度可隐藏延迟 \\
+\texttt{barrier} & 等显式栅栏 & 同步过频：减少 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads} 点、缩 block \\
+\texttt{not\_\allowbreak{}selected} & 就绪但调度器选了别人 & \textbf{健康}：有冗余并行度可隐藏延迟 \\
 \texttt{selected} & 正在发射（非停滞） & 基线，越大越好 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-读 stall 剖像的关键是\textbf{分好坏}：\texttt{math\_pipe\_throttle} 与
-\texttt{not\_selected} 高说明机器在干活；\texttt{sleeping} 高几乎总是结构
-问题；\texttt{wait} 与 \texttt{long\_scoreboard} 的\textbf{相对大小}直接
+读 stall 剖像的关键是\textbf{分好坏}：\texttt{math\_\allowbreak{}pipe\_\allowbreak{}throttle} 与
+\texttt{not\_\allowbreak{}selected} 高说明机器在干活；\texttt{sleeping} 高几乎总是结构
+问题；\texttt{wait} 与 \texttt{long\_\allowbreak{}scoreboard} 的\textbf{相对大小}直接
 区分「依赖链受限」与「装载受限」——例见 \S\ref{sec:ch00-cases} 例三。
 
 \subsection{Memory Workload：L1/L2/DRAM 分层归因}
@@ -308,21 +308,21 @@ warp 每个周期若不能发射，必有一个「停滞原因」。sm\_120 上�
 三层各看两个数——命中率与吞吐：
 
 \begin{itemize}
-\item \textbf{L1/TEX}：\texttt{l1tex\_\_t\_sector\_hit\_rate.pct}。低于
+\item \textbf{L1/TEX}：\texttt{l1tex\_\allowbreak{}\_\allowbreak{}t\_\allowbreak{}sector\_\allowbreak{}hit\_\allowbreak{}rate.pct}。低于
   20\% 且数据本该复用时，考虑 tiling 进 smem 或改访问模式。注意 smem 与 L1
   \textbf{共池}（GB202 实测每多占 16KB smem，kernel 约慢 4--5$\mu$s），
   「多分 smem」不是免费的。
-\item \textbf{L2}：\texttt{lts\_\_t\_sector\_hit\_rate.pct}。大 GEMM 上低
+\item \textbf{L2}：\texttt{lts\_\allowbreak{}\_\allowbreak{}t\_\allowbreak{}sector\_\allowbreak{}hit\_\allowbreak{}rate.\allowbreak{}pct}。大 GEMM 上低
   命中可用 CTA swizzle / StreamK 提数据局部性；推理场景 K/V 重复读高命中
   是常态。
-\item \textbf{DRAM}：\texttt{dram\_\_throughput}（峰值百分比）。贴满
+\item \textbf{DRAM}：\texttt{dram\_\allowbreak{}\_\allowbreak{}throughput}（峰值百分比）。贴满
   （$>$70\%）说明带宽墙已到，优化方向只剩减流量（混合精度、融合、去
   物化）。一条量化前处理链实测贴到设备峰值带宽 1.04TB/s（理论
   1344GB/s）——此时「融合省 launch」已无杠杆，只有减流量才有，这个
   判断直接由 DRAM 指标给出。
 \item \textbf{load/store 与合并访问}：global load 的每请求扇区数
   （\texttt{l1tex} 前缀的
-  \texttt{average\_t\_sectors\_\_per\_request\_\allowbreak{}...} 系列指标）
+  \texttt{average\_\allowbreak{}t\_\allowbreak{}sectors\_\allowbreak{}\_\allowbreak{}per\_\allowbreak{}request\_\allowbreak{}\allowbreak{}...} 系列指标）
   衡量合并访问质量——32-bit 连续访问的理想值是 4（一个 warp 的 128B 恰好
   4 个 32B sector）；明显超标说明访存发散，流量被放大，对策是内维连续、
   向量化（\texttt{float4} 128-bit 访存，ch03）与 AoS$\to$SoA。IO 压力的
@@ -336,7 +336,7 @@ warp 每个周期若不能发射，必有一个「停滞原因」。sm\_120 上�
 
 \subsection{bank conflict 与 smem 指标}
 
-\texttt{l1tex\_\_data\_bank\_conflicts\_pipe\_lsu\_mem\_\_shared\_op\_ld/st.sum}
+\texttt{l1tex\_\allowbreak{}\_\allowbreak{}data\_\allowbreak{}bank\_\allowbreak{}conflicts\_\allowbreak{}pipe\_\allowbreak{}lsu\_\allowbreak{}mem\_\allowbreak{}\_\allowbreak{}shared\_\allowbreak{}op\_\allowbreak{}ld/\allowbreak{}st.sum}
 直接数冲突次数（ch12 表 12-1 的数据来源）。判读要点：\textbf{先看占比再
 动手}——曾有一个「消除 O 写回 bank conflict」的优化立项，NCU 一查
 ld conflict 仅 0.39\%，且 MUFU 等待被 MMA 掩盖，整个方向当场否决。
@@ -351,7 +351,7 @@ ld conflict 仅 0.39\%，且 MUFU 等待被 MMA 掩盖，整个方向当场否�
 饱和度}：fp16 GEMM 类 kernel 若 \texttt{pipe\_fma} 高而 \texttt{pipe\_tensor}
 低，说明还在用 CUDA Core 算乘加，应该换 MMA 指令（ch10--11 的主题）。
 一个 fp8 kernel 的实例：tensor pipe 从 49\% 提到 59.5\% 的那次优化，
-判据正是「\texttt{math\_pipe\_throttle} 降了、tensor pipe 升了」——两条
+判据正是「\texttt{math\_\allowbreak{}pipe\_\allowbreak{}throttle} 降了、tensor pipe 升了」——两条
 指标共同确认依赖链被拆开、Tensor Core 被喂得更满。
 
 \section{瓶颈判断决策树}\label{sec:ch00-tree}
@@ -364,13 +364,13 @@ ld conflict 仅 0.39\%，且 MUFU 等待被 MMA 掩盖，整个方向当场否�
   （都 $<$40）$\to$ latency/依赖链问题，进第 2 步；双高（都 $>$60）$\to$
   已接近平衡上限，停止优化。
 \item \textbf{latency-bound 分流}（看 stall 前二名）：\texttt{wait} 或
-  \texttt{math\_pipe\_throttle} 主导 $\to$ 依赖链/发射受限，对策是拆链
-  （拆 CTA、拆 warp 分工）或增并行 warp；\texttt{long\_scoreboard} 主导
+  \texttt{math\_\allowbreak{}pipe\_\allowbreak{}throttle} 主导 $\to$ 依赖链/发射受限，对策是拆链
+  （拆 CTA、拆 warp 分工）或增并行 warp；\texttt{long\_\allowbreak{}scoreboard} 主导
   $\to$ 数据供给不足，对策是异步装载（\texttt{cp.async}/TMA）与加深流水；
   \texttt{sleeping}/\texttt{barrier} 主导 $\to$ 同步结构问题，对策是重排
   producer/consumer 与栅栏。
 \item \textbf{查 occupancy 是否是限制源}：若 achieved 低且 limiter 是
-  registers/smem，先解决资源（缩 tile、降 stage、\texttt{\_\_launch\_bounds\_}），
+  registers/smem，先解决资源（缩 tile、降 stage、\texttt{\_\allowbreak{}\_\allowbreak{}launch\_\allowbreak{}bounds\_\allowbreak{}}），
   因为第 2 步的「增并行 warp」以有 warp 可增为前提。
 \item \textbf{memory-bound 分层}：DRAM $>$70\% $\to$ 带宽墙，减流量；
   L2 hit $<$50\% 且 DRAM $>$40\% $\to$ 工作集/L2 局部性问题；L1 hit $<$20\%
@@ -445,10 +445,10 @@ warp group（128T，专职 TMA）+ 1 个 consumer（256T，全计算），用
 （慢 28\%）。NCU 剖像：
 
 \begin{itemize}
-\item \texttt{math\_pipe\_throttle} \textbf{1.32}（第一名）、
-  \texttt{wait} 0.82、\texttt{long\_scoreboard} \textbf{0.04}、tensor
+\item \texttt{math\_\allowbreak{}pipe\_\allowbreak{}throttle} \textbf{1.32}（第一名）、
+  \texttt{wait} 0.82、\texttt{long\_\allowbreak{}scoreboard} \textbf{0.04}、tensor
   pipe 49\%、255 regs、1 CTA/SM。
-\item 判读：\texttt{long\_scoreboard} 近零 $\Rightarrow$ 装载不是瓶颈，
+\item 判读：\texttt{long\_\allowbreak{}scoreboard} 近零 $\Rightarrow$ 装载不是瓶颈，
   一切「加深流水/砍指令/缩 tile」无效（后续 6 项实验全部证伪，白跑的原因
   就是没先读这组数）；\texttt{mpt} 高但 tensor pipe 只有 49\% $\Rightarrow$
   管线在排队却没排满 Tensor Core——\textbf{依赖链/发射受限}。
@@ -459,7 +459,7 @@ warp group（128T，专职 TMA）+ 1 个 consumer（256T，全计算），用
 \end{itemize}
 
 同族的「坏 stall」案例：bias 注入的 smem tile 版本 \texttt{sleeping} 从
-3.5\% 涨到 22.3\%（SASS 采样里 \texttt{SYNCS.PHASECHK} mbarrier 自旋占
+3.5\% 涨到 22.3\%（SASS 采样里 \texttt{SYNCS.\allowbreak{}PHASECHK} mbarrier 自旋占
 18\%）——LDS 进了 consumer 关键路径、两级 QK 流水断供，全 warp 自旋等 K，
 该版本被指标否决。
 
@@ -496,10 +496,10 @@ warp group（128T，专职 TMA）+ 1 个 consumer（256T，全计算），用
 \textbf{nsys 定位（谁慢）$\to$ ncu 定性（为什么慢）$\to$ 单变量修改 $\to$
 复测 diff $\to$ 指标闭环}。指标字典里最值得带走的三句话：SOL 双低不是
 「没病」而是 latency-bound，答案在 stall 剖像里；stall 分好坏，
-\texttt{math\_pipe\_throttle} 高是 Tensor Core 喂满的勋章，\texttt{sleeping}
+\texttt{math\_\allowbreak{}pipe\_\allowbreak{}throttle} 高是 Tensor Core 喂满的勋章，\texttt{sleeping}
 高是结构问题的警报；寄存器 255 墙、spill 与 occupancy 是同一份预算的三种
 花法，读数时要一起读。工具路径：ncu/nsys 随 CUDA Toolkit 安装（通常在
-\texttt{/usr/local/cuda/bin}），不在 PATH 时用绝对路径调用。
+\texttt{/\allowbreak{}usr/\allowbreak{}local/\allowbreak{}cuda/\allowbreak{}bin}），不在 PATH 时用绝对路径调用。
 
 \section*{延伸阅读}
 \begin{itemize}

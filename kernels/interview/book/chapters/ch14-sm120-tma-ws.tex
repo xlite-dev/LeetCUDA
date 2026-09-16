@@ -14,18 +14,18 @@ compute capability 12.0）：TMA 与 mbarrier \textbf{原样保留}，但 WGMMA
 （warpgroup 级异步矩阵乘）\textbf{不存在}。SM120 没有 Hopper/数据中心 Blackwell 的
 warpgroup MMA 路径，也没有 tcgen05 第五代 Tensor Core 的 tensor memory（TMEM）与
 thread block cluster；它的 Tensor Core 回到 warp 级同步指令
-\texttt{mma.sync.m16n8k16}——也就是第~\ref{ch:11}~章的老朋友。于是本章 kernel
-\texttt{hgemm\_tma\_mma\_ws\_tn} 是一次「新旧合体」：搬运用 Hopper 的 TMA 协议，
+\texttt{mma.\allowbreak{}sync.\allowbreak{}m16n8k16}——也就是第~\ref{ch:11}~章的老朋友。于是本章 kernel
+\texttt{hgemm\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}tn} 是一次「新旧合体」：搬运用 Hopper 的 TMA 协议，
 计算用 Ampere 时代的 mma.sync + ldmatrix，两者靠 mbarrier 的 full/empty 双屏障
 阵列解耦。这个组合恰好回答了一个面试高频问题：\textbf{warp specialization 的收益
 到底来自搬运端还是计算端？}——本章实测（14.6~节）显示，仅升级搬运端与同步协议、
 计算指令一条不动，2048$^3$ HGEMM 即从 104.66 提升到 164.64 TFLOPS
 （PRO 5000，$1.57\times$）。
 
-\textbf{源码区间}：hgemm.cuh~L1859--2100（kernel
-\texttt{hgemm\_tma\_mma\_ws\_tn}@L1874）；common.cuh~L452--487
-（\texttt{setmaxnreg} 与 \texttt{NOTES\_V2\_ENABLE\_SETMAXNREGS} 门控）。
-\textbf{编译宏与架构限定}：\texttt{NOTES\_V2\_ENABLE\_TMA\_MA\_WS}，要求
+\textbf{源码区间}：kernel 主体 \texttt{hgemm\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}tn}@L1874 位于
+hgemm.cuh L1859--2100；common.cuh L452--487
+（\texttt{setmaxnreg} 与 \texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}SETMAXNREGS} 门控）。
+\textbf{编译宏与架构限定}：\texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}TMA\_\allowbreak{}MA\_\allowbreak{}WS}，要求
 CUDART $\ge$ 13.0（common.cuh~L21--23 直接 \#error）；TMA+mbarrier 需
 sm\_90+，本章在 sm\_120a 上编译运行。\textbf{前置}：第~\ref{ch:11}~章
 （mma.sync、ldmatrix、fragment 布局）、第~\ref{ch:12}~章（XOR swizzle）、
@@ -48,7 +48,7 @@ sm120 优化指南一句话总结：sm120 在 warp 组织与 block 限制上更�
   \item \textbf{同步层（保留）}。mbarrier 的 arrive/tx 双计数与相位轮转是
         sm\_90+ 的通用机制，「数据到齐」语义不依赖任何计算指令；
   \item \textbf{计算层（退化）}。WGMMA 没了，consumer 只能回到
-        \texttt{mma.sync.m16n8k16} + \texttt{ldmatrix}。代价有两处：其一，
+        \texttt{mma.\allowbreak{}sync.\allowbreak{}m16n8k16} + \texttt{ldmatrix}。代价有两处：其一，
         smem$\to$寄存器的搬运重新变成显式指令，且\textbf{软件必须自己感知 TMA
         写入 smem 时的 128B swizzle 相位}——WGMMA 靠 descriptor 的
         base\_offset 字段让硬件补偿相位，ldmatrix 路径没有等价机制（14.4.2~节）；
@@ -60,7 +60,7 @@ sm120 优化指南一句话总结：sm120 在 warp 组织与 block 限制上更�
 消除的是「搬运与计算争抢发射槽」的结构性开销，这与计算指令是哪一代无关。
 此外，SM120 的 \texttt{setmaxnreg}（寄存器池再分配）\textbf{指令存在且可以
 生效}，但有一个容易踩的目标后缀陷阱：默认的 \texttt{-arch sm\_120a} 下，
-只要 kernel 含 TMA 指令（\texttt{cp.async.bulk.tensor}），ptxas 就会静默丢弃
+只要 kernel 含 TMA 指令（\texttt{cp.\allowbreak{}async.\allowbreak{}bulk.\allowbreak{}tensor}），ptxas 就会静默丢弃
 \texttt{setmaxnreg}（C7506 警告；无 TMA 的 kernel 不受影响），改用 CUDA 13.2+
 的 family-specific 目标 \texttt{-arch sm\_120f} 编译即可保留并生效（ffpa-attn
 在 Blackwell 上的 warp-specialized kernel 正是这么启用的）。「目标后缀选错
@@ -71,7 +71,7 @@ sm120 优化指南一句话总结：sm120 在 warp 组织与 block 限制上更�
 \subsection{SM120 与 Hopper 的能力差集}
 
 \begin{table}[htbp]
-\centering\small
+\centering\footnotesize
 \begin{tabular}{@{}llll@{}}
 \toprule
 能力 & Hopper sm\_90a & SM120 & 本章对策 \\
@@ -101,7 +101,7 @@ mbarrier 的双计数模型（arrive 计数与 tx 字节数同时归零才翻转
   \;+\; \underbrace{1}\sb{\text{producer 提交线程}} \;=\; 129 ,
   \label{eq:14-129}
 \end{equation}
-即 \texttt{init(\&full[stage], kConsumerThreads + 1)}（hgemm.cuh~L1937）。
+即 \texttt{init\allowbreak{}(\&full[stage],\allowbreak{} k\allowbreak{}Consumer\allowbreak{}Threads + 1)}（hgemm.cuh~L1937）。
 数字 129 与 ch13 相同纯属巧合——那边 consumer 是 128 线程的 WGMMA warpgroup，
 这边是 128 线程的 4 个 mma.sync warp；协议只认「线程数」，不认指令。
 
@@ -114,8 +114,8 @@ mbarrier 的双计数模型（arrive 计数与 tx 字节数同时归零才翻转
 由 A、B 两次 TMA（各 16KB）搬运完成时硬件自动 complete-tx 记账。
 于是 \texttt{full[s]} 第 $p$ 相位的翻转条件是：
 \begin{equation}
-  \underbrace{128\ \text{consumer arrive}}\sb{\texttt{full[s].wait(full[s].arrive())}}
-  + \underbrace{1\ \text{producer arrive}}\sb{\texttt{arrive.expect\_tx}}
+  \underbrace{128\ \text{consumer arrive}}\sb{\texttt{full[s].\allowbreak{}wait\allowbreak{}(full[s].\allowbreak{}arrive\allowbreak{}())}}
+  + \underbrace{1\ \text{producer arrive}}\sb{\texttt{arrive.\allowbreak{}expect\_\allowbreak{}tx}}
   + \underbrace{32768\,\mathrm{B}\ \text{落盘}}\sb{\text{TMA complete-tx}}
   \quad\Longrightarrow\quad \pi \leftarrow \pi + 1 .
 \end{equation}
@@ -154,12 +154,12 @@ producer 的 1 次补满即翻。这套账本与 ch13 完全一致，本章不�
 warp specialization 的配套机制是\textbf{寄存器池再分配}：producer 只提交 TMA、
 几乎不需要寄存器，consumer 背着 32 个 f16x2 累加器碎片
 （$4 \times 8 \times 2$ 个 \texttt{uint32}/线程）急需寄存器。
-\texttt{setmaxnreg.dec} 把本 warp 的寄存器上限降到 $N$ 并把差额还给\textbf{CTA
-级寄存器池}，\texttt{setmaxnreg.inc} 从池里请求补足到 $N$。PTX ISA
+\texttt{setmaxnreg.\allowbreak{}dec} 把本 warp 的寄存器上限降到 $N$ 并把差额还给\textbf{CTA
+级寄存器池}，\texttt{setmaxnreg.\allowbreak{}inc} 从池里请求补足到 $N$。PTX ISA
 §9.7.19.5 给出四条硬约束：立即数 $N \in [24, 256]$ 且为 8 的倍数；warpgroup
 内 4 个 warp 必须\textbf{对齐执行同一条}指令（.aligned）；.dec 的目标值不得超过
 当前值、.inc 不得超过（否则未定义行为）；以及最关键的一条——
-\texttt{setmaxnreg.inc} 是\textbf{阻塞语义}：池中寄存器不够时 warp 停在原地，
+\texttt{setmaxnreg.\allowbreak{}inc} 是\textbf{阻塞语义}：池中寄存器不够时 warp 停在原地，
 不报错、不超时、永不返回。
 
 每 SM 寄存器文件共 65536 个 32-bit 寄存器，CTA 池从 warp 已声明配额中回收。于是
@@ -191,16 +191,16 @@ watchdog 超时前毫无征兆。而 alloc 从 224 降到 208（总 61440，余 
 连同警告 C7506 一起丢弃（"ignored to maintain compatibility into 'extern'
 call"）。原因在 common.cuh~L462--475 的注释：sm\_90a 上只要 PTX 完全内联
 （无 call 边界）setmaxnreg 就能保留；而 CUDA 13.2 的 ptxas 在 sm\_120a 目标
-下把 kernel 内\textbf{使用 \texttt{cp.async.bulk.tensor}} 本身当作隐式
+下把 kernel 内\textbf{使用 \texttt{cp.\allowbreak{}async.\allowbreak{}bulk.\allowbreak{}tensor}} 本身当作隐式
 extern-call 边界——TMA 与 setmaxnreg 在同一个 kernel 里出现，后者必被丢弃。
 \textbf{解法是指定 family-specific 目标}：\texttt{-arch sm\_120f}（CUDA 13.2+
 引入的家族后缀，覆盖整个 Blackwell 家族而非单一架构）下 ptxas 不再丢弃，
 setmaxnreg 完整生效——ffpa-attn 的 cute sm\_120 persist-D kernel 在 PRO~5000
 上以此方式端到端启用寄存器再分配。所以正确的结论不是「SM120 用不了
 setmaxnreg」，而是「目标后缀选错就静默失效」。这也是
-\texttt{NOTES\_V2\_ENABLE\_SETMAXNREGS} 宏门控（默认关闭）存在的原因：默认
+\texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}SETMAXNREGS} 宏门控（默认关闭）存在的原因：默认
 构建混合 sm\_89/sm\_120a 多目标，保持无警告、也避免
-\texttt{\_\_launch\_bounds\_\_(N,1)} 副作用；要做 setmaxnreg 实验就用
+\texttt{\_\allowbreak{}\_\allowbreak{}launch\_\allowbreak{}bounds\_\allowbreak{}\_\allowbreak{}(N,\allowbreak{}1)} 副作用；要做 setmaxnreg 实验就用
 \texttt{-arch sm\_120f} 构建并打开宏。PTX ISA 的 Target ISA Notes 确认
 setmaxnreg 的支持列表覆盖 sm\_90a、sm\_100a/sm\_110a/sm\_120a 架构目标与
 sm\_100f/sm\_110f/sm\_120f 家族目标（PTX 8.8 起）——指令集本身支持 sm\_120a，
@@ -222,7 +222,7 @@ producer 第 $k$ 轮提交的两个 box 左上角是
 即「行方向上贴着本 CTA 的 tile 行，列方向上随 K 循环推进」（B 以转置形态
 $[N, K]$ row-major 存储，N 当作它的 major 维）。每个 box 落进 smem 时被
 CU\_TENSOR\_MAP\_SWIZZLE\_128B 按 128B 原子重排——重排公式与 consumer 的
-\texttt{swizzle<64>()} 必须逐位互逆，这是 14.4.6~节的主题。
+\texttt{swizzle\allowbreak{}<64>\allowbreak{}()} 必须逐位互逆，这是 14.4.6~节的主题。
 
 \section{设计与实现}
 
@@ -236,7 +236,7 @@ $B\sb{N} = 8 \times 2 \times 8$、$B\sb{K} = 16 \times 4$，四条 static\_asser
 「atom $=$ m16n8k16、consumer 恰好 4 warp、tile 恰好 128$\times$128$\times$64」
 钉死——因为 TMA descriptor 的 box 与 128B swizzle 都按这套数字硬编码。与
 ch11 的分歧点只有一处：256 线程不再是「8 个同质计算 warp」，而是
-\texttt{kConsumerThreads = 128} 的 consumer warpgroup + 128 线程的 producer
+\texttt{k\allowbreak{}Consumer\allowbreak{}Threads =\allowbreak{} 128} 的 consumer warpgroup + 128 线程的 producer
 warpgroup（实际只有 \texttt{wg\_tid == 0} 的 1 个线程干活）。consumer 内部，
 4 个 warp 排成 $2\times2$ 网格（\texttt{warp\_m}, \texttt{warp\_n}），每 warp
 负责 $64 \times 64$ 的输出子块：M 方向 $16 \times 4 = 64$ 行、N 方向
@@ -252,12 +252,12 @@ $8 \times 8 = 64$ 列。
 
 注意结构体本身只有两个 plain half 数组——\textbf{没有软件 swizzle 的写入端}：
 TMA 在搬运时按 descriptor 声明的 SWIZZLE\_128B 模式直接写好重排后的布局，swizzle
-从「软件写+软件读」下沉为「硬件写+软件读」。而 \texttt{\_\_align\_\_(1024)}
+从「软件写+软件读」下沉为「硬件写+软件读」。而 \texttt{\_\allowbreak{}\_\allowbreak{}align\_\allowbreak{}\_\allowbreak{}(1024)}
 是本章与 ch13 井水不犯河水的分界：128B swizzle 的重排模式以 1024B（8 行
 $\times$ 128B）为周期，硬件按 smem 目的地址相对 1024B 边界的\textbf{相位}决定
 从周期的哪一步开始；WGMMA 消费端在 smem descriptor 里显式编码
 base\_offset $= (\mathrm{addr} \gg 7) \,\&\, 7$ 让硬件补偿任意相位，因此 ch13
-只要求 128B 对齐；本章的 ldmatrix 消费端用纯软件公式 \texttt{swizzle<64>()}
+只要求 128B 对齐；本章的 ldmatrix 消费端用纯软件公式 \texttt{swizzle\allowbreak{}<64>\allowbreak{}()}
 算物理地址，它\textbf{默认相位为 0}——如果基址只有 128B 对齐，TMA 以非零相位
 写入而软件按零相位读出，物理地址整体错位，输出全错（不越界、不报错，纯静默
 错误）。所以要么 1024B 对齐（本章做法），要么在软件公式里把基址相位加上
@@ -268,12 +268,12 @@ base\_offset $= (\mathrm{addr} \gg 7) \,\&\, 7$ 让硬件补偿任意相位，�
 \lstinputlisting[linerange={1934-1945},firstnumber=auto,breakatwhitespace=true,
   title={hgemm.cuh L1934-1945（单线程初始化 129 计数 + proxy fence + syncthreads）}]{../hgemm.cuh}
 
-初始化三点：其一，\texttt{init(\&full[s], 129)} 即
-\texttt{mbarrier.init.shared::cta.b64}~\texttt{[addr], 129}（cuda::barrier 内联展开），
+初始化三点：其一，\texttt{init\allowbreak{}(\&full[s],\allowbreak{} 129)} 即
+\texttt{mbarrier.\allowbreak{}init.\allowbreak{}shared::\allowbreak{}cta.\allowbreak{}b64}~\texttt{[addr], 129}（cuda::barrier 内联展开），
 两个屏障阵列的期望到达数都是式~\ref{eq:14-129} 的 129；其二，尾部
-\texttt{fence.proxy.async.shared::cta} 建立 generic proxy（软件写屏障对象）
+\texttt{fence.\allowbreak{}proxy.\allowbreak{}async.\allowbreak{}shared::\allowbreak{}cta} 建立 generic proxy（软件写屏障对象）
 到 async proxy（TMA/mbarrier 硬件）的可见性——初始化数据不被异步引擎看见，
-后面的 arrive/tx 全是空转；其三，\texttt{\_\_syncthreads()} 是全 kernel
+后面的 arrive/tx 全是空转；其三，\texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()} 是全 kernel
 \textbf{唯一一次}线程块级栅栏——此后 producer 与 consumer 的全部同步都走
 mbarrier，这正是 warp specialization 的定义性特征。
 
@@ -282,13 +282,13 @@ mbarrier，这正是 warp specialization 的定义性特征。
 \lstinputlisting[linerange={1944-1961},firstnumber=auto,breakatwhitespace=true,
   title={hgemm.cuh L1944-1961（WG0：dealloc 后单线程 P1/P2/P3 循环）}]{../hgemm.cuh}
 
-P1 \texttt{empty[stage].wait(empty[stage].arrive())}：先 arrive 后 wait——
+P1 \texttt{empty[stage].\allowbreak{}wait\allowbreak{}(empty[stage].\allowbreak{}arrive\allowbreak{}())}：先 arrive 后 wait——
 producer 的 1 次到达是 empty 相位翻转的最后一块拼图（表 14.2 的账本），
 翻转即代表「上一轮 consumer 已读空该 stage」。P2 两条
 \texttt{tma\_load\_2d}：A box 从 $(k \cdot 64,\ \mathrm{by} \cdot 128)$、
 B$^T$ box 从 $(k \cdot 64,\ \mathrm{bx} \cdot 128)$，各 16KB，目标分别是
 \texttt{s\_a}、\texttt{s\_b} 在该 stage 的偏移，完成时自动对
-\texttt{full[stage]} complete-tx。P3 \texttt{tma\_arrive\_expect\_tx} 一条指令
+\texttt{full[stage]} complete-tx。P3 \texttt{tma\_\allowbreak{}arrive\_\allowbreak{}expect\_\allowbreak{}tx} 一条指令
 同时完成「+1 到达」与「$T \mathrel{+}= 32768$」（式~\ref{eq:14-tx}）。整轮
 producer 只发 3 类共 3--4 条指令，寄存器占用几乎为零——这就是它敢
 \texttt{dealloc} 到 40 的底气。
@@ -300,16 +300,16 @@ producer 只发 3 类共 3--4 条指令，寄存器占用几乎为零——这�
 
 C0 预热（L1967--1969）的 128 次 arrive 已在 14.3.2 节入账。主循环头
 （L1987--1988）是 consumer 版的 arrive-then-wait 加一条
-\texttt{tma\_fence\_proxy\_async\_shared\_cta()}。为什么整条 consumer 路径
+\texttt{tma\_\allowbreak{}fence\_\allowbreak{}proxy\_\allowbreak{}async\_\allowbreak{}shared\_\allowbreak{}cta\allowbreak{}()}。为什么整条 consumer 路径
 \textbf{不需要 \_\_syncthreads}？源码 L1990--2013 的注释给了三条理由，归纳：
 （1）搬运完成由 \texttt{full[s]} 的 tx 计数保证——\texttt{wait} 返回时硬件
 已确认 32768B 真正落进 smem，这是 CTA 级同步语义，覆盖了 cp.async 路径里
-\texttt{\_\_syncthreads} 的职责；（2）async proxy 写（TMA）到 generic proxy 读
-（ldmatrix）的\textbf{内存序}由 \texttt{fence.proxy.async} 建立——它不阻塞、
+\texttt{\_\allowbreak{}\_\allowbreak{}syncthreads} 的职责；（2）async proxy 写（TMA）到 generic proxy 读
+（ldmatrix）的\textbf{内存序}由 \texttt{fence.\allowbreak{}proxy.\allowbreak{}async} 建立——它不阻塞、
 不等待任何线程，只约束两个代理间的可见顺序；（3）4 个 consumer warp 读写
 smem 中\textbf{互不重叠}的 A/B 子块（\texttt{warp\_m}/\texttt{warp\_n} 划分），
 warp 间没有数据依赖，mma.sync 本身保证 warp 内 32 线程同步。三条合起来：
-同步有 barrier、顺序有 fence、依赖不存在——\texttt{\_\_syncthreads} 无处安放。
+同步有 barrier、顺序有 fence、依赖不存在——\texttt{\_\allowbreak{}\_\allowbreak{}syncthreads} 无处安放。
 
 \subsection{swizzle<64> 与 k\_step 的位置：与 ch12 的关键分歧}
 
@@ -322,7 +322,7 @@ swizzle、slice 之间互不跨越，所以 \texttt{k\_step * kMmaK} 可以作�
 周期覆盖整行 64 列（8 个 16B chunk 一起参与置换），k\_step 偏移的高位会改变
 chunk 编号——必须把\textbf{完整列坐标} $j = k\sb{step} \times 16 + (\mathrm{lane}
 / 16) \times 8$ 传入公式\textbf{内部}参与 XOR。公式本身
-（common.cuh~L177--186 的 \texttt{permuted<64,8>}）：
+（common.cuh~L177--186 的 \texttt{permuted\allowbreak{}<64,\allowbreak{}8>}）：
 \begin{equation}
   j' \;=\; j \;+\; \Big( \big( (j \gg 3) \oplus \sigma(i) \big) - (j \gg 3)
   \Big) \times 8, \qquad
@@ -330,10 +330,10 @@ chunk 编号——必须把\textbf{完整列坐标} $j = k\sb{step} \times 16 + 
   \big((i \gg 2)\,\&\,1\big) \ll 2 ,
 \end{equation}
 即 16B 粒度的 chunk 号 $(j \gg 3) \in [0, 8)$ 与行号的低 3 位做 XOR、chunk 内
-偏移 $j \,\&\, 7$ 保留。这正是 CuTe \texttt{Swizzle<3,4,3>}（SWIZZLE\_128B
+偏移 $j \,\&\, 7$ 保留。这正是 CuTe \texttt{Swizzle\allowbreak{}<3,\allowbreak{}4,\allowbreak{}3>}（SWIZZLE\_128B
 模式）的位级定义，与 TMA 写入端的重排严格互逆。行号 $i$ 与列号 $j$ 的来源：
-\texttt{lane\_smem\_a\_m = warp\_m} 的 64 行基址 $+$ \texttt{lane \% 16}，
-\texttt{lane\_smem\_a\_k = k\_step * 16 + (lane / 16) * 8}——ldmatrix.x4 的
+\texttt{lane\_\allowbreak{}smem\_\allowbreak{}a\_\allowbreak{}m =\allowbreak{} warp\_\allowbreak{}m} 的 64 行基址 $+$ \texttt{lane \% 16}，
+\texttt{lane\_\allowbreak{}smem\_\allowbreak{}a\_\allowbreak{}k =\allowbreak{} k\_\allowbreak{}step * 16 + \allowbreak{}(lane /\allowbreak{} 16) * 8}——ldmatrix.x4 的
 地址模式（每 lane 提供一个 8 行片的首地址，4 个 8$\times$8 矩阵一次加载）与
 ch11 完全一致，此处不再展开。
 
@@ -348,7 +348,7 @@ $4 \times 8 = 32$ 条 \texttt{HMMA16816}，每 warp 每 k\_step 完成
 $64 \times 64 \times 16$；一轮 K-tile 4 个 k\_step，4 个 warp 合计
 $2 \times 128 \times 128 \times 64$ FLOP——与一个 16KB+16KB 的 TMA 装载量
 对应，算术强度 64 FLOP/B（同 ch13）。循环尾
-\texttt{empty[stage].arrive()}（L2062）是 C4：128 线程各贡献 1 次到达，
+\texttt{empty[stage].\allowbreak{}arrive\allowbreak{}()}（L2062）是 C4：128 线程各贡献 1 次到达，
 为 empty 的\textbf{下一相位}攒账（表 14.2 的 $\pi = 1$ 行）。
 
 \lstinputlisting[linerange={2064-2098},firstnumber=auto,breakatwhitespace=true,
@@ -386,7 +386,7 @@ $AI = 64$~FLOP/B。按 PRO 5000（110 SMs，sm\_120a）与 GDDR7 $\approx$ 1.8TB
 档估，纯 HBM 供给的计算上限 $\approx 64 \times 1.8\,\mathrm{TB/s} \approx
 115$ TFLOPS——而实测 164.64 TFLOPS 已经\textbf{越过}这条线，说明 96MB 级 L2
 吸收了相当比例的 tile 流量（同行 CTA 复用 B tile、同列复用 A tile），有效
-带宽远高于 HBM 名义值；这也解释了 \texttt{kBlockSwizzle} 3D 网格（L2 局部性）
+带宽远高于 HBM 名义值；这也解释了 \texttt{k\allowbreak{}Block\allowbreak{}Swizzle} 3D 网格（L2 局部性）
 的价值。
 
 \textbf{实测口径（F4，2026-09-11，RTX PRO 5000 72GB，sm\_120a，110 SMs，
@@ -398,8 +398,8 @@ CUDA 13.2）}：M$=$N$=$K$=$2048，f16 in/out + f16 累加（HMMA16816 的 .f16
 \toprule
 kernel & ms/iter & TFLOPS \\
 \midrule
-\texttt{hgemm\_tma\_mma\_ws\_tn}（TMA+WS，S=2） & 0.1043 & \textbf{164.64} \\
-\texttt{hgemm\_mma\_stages\_tn}（ch11，cp.async，S=3） & 0.1641 & 104.66 \\
+\texttt{hgemm\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}tn}（TMA+WS，S=2） & 0.1043 & \textbf{164.64} \\
+\texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn}（ch11，cp.async，S=3） & 0.1641 & 104.66 \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -409,15 +409,15 @@ TMA + mbarrier + warp specialization，即得 $1.57\times$。加速来源分解�
 （1）producer/consumer 分工后，consumer 循环里不再有 gmem 地址算术与
 cp.async 提交指令，ldmatrix 到 mma 的发射槽更纯粹；（2）TMA 单线程提交
 替代 256 线程的逐线程搬运，地址/OOB 全部在 descriptor 里预计算；
-（3）数据驱动的 full/empty 协议替代 \texttt{\_\_syncthreads} 栅栏，warp 间
-不再互相拖拽。数据与脚本存 \texttt{.tmp/book-bench/ch14/bench.txt}。
+（3）数据驱动的 full/empty 协议替代 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads} 栅栏，warp 间
+不再互相拖拽。数据与脚本存 \texttt{.tmp/\allowbreak{}book-bench/\allowbreak{}ch14/\allowbreak{}bench.txt}。
 
 \section{实践经验与考据说明}
 
 \begin{kaogu}[F2 核校通过]{「SWIZZLE\_128B 要求 smem 基地址 1024 字节对齐」的表述}
   hgemm.cuh L1898 起的注释如此声明，并区分了 WGMMA（base\_offset 硬件补偿，
   128B 即可）与 ldmatrix（软件公式假设相位 0，须 1024B）两条路径。对照 PTX
-  ISA：\texttt{cp.async.bulk.tensor} 对目的地址的硬性要求是对齐到 swizzle
+  ISA：\texttt{cp.\allowbreak{}async.\allowbreak{}bulk.\allowbreak{}tensor} 对目的地址的硬性要求是对齐到 swizzle
   模式宽度（128B），\textbf{1024B 并非指令集要求}，而是「让 consumer 的零相位
   软件公式成立」的充分条件，与 CUTLASS 对 Sw$\langle$3,4,3$\rangle$ tile 的
   对齐实践一致。注释逻辑自洽、结论正确，仅「要求」的归属（指令集 vs 软件
@@ -425,7 +425,7 @@ cp.async 提交指令，ldmatrix 到 mma 的发射槽更纯粹；（2）TMA 单�
 \end{kaogu}
 
 \begin{kaogu}[F2·文档 vs 实践]{cuda.h 注释「tensorRank must be 3, 4, or 5」}
-  CUDA 13.2 的 \texttt{cuTensorMapEncodeTiled} 头文件注释称 tensorRank 只能
+  CUDA 13.2 的 \texttt{cu\allowbreak{}Tensor\allowbreak{}Map\allowbreak{}Encode\allowbreak{}Tiled} 头文件注释称 tensorRank 只能
   是 3/4/5，而 common.cuh 与本章测试都用 rank$=$2（2D tile），实测编码成功、
   kernel 数值正确。驱动实践接受 rank 2（CUTLASS 同样大量使用），头文件注释
   与实现不一致——写 2D TMA 时以实践为准，但升级 CUDA 版本时此处值得回归。
@@ -434,43 +434,43 @@ cp.async 提交指令，ldmatrix 到 mma 的发射槽更纯粹；（2）TMA 单�
 \begin{kaogu}[F1 核校通过]{setmaxnreg 的目标后缀事实链}
   common.cuh L354--359 与 L462--475 注释：非内联调用边界会触发 C7506（sm\_90a
   亦然）；默认 \texttt{-arch sm\_120a} 上即使 PTX 完全内联，ptxas 也把
-  \texttt{cp.async.bulk.tensor} 的使用当作隐式 extern-call 边界丢弃
+  \texttt{cp.\allowbreak{}async.\allowbreak{}bulk.\allowbreak{}tensor} 的使用当作隐式 extern-call 边界丢弃
   setmaxnreg；改用 family-specific 目标 \texttt{-arch sm\_120f}（CUDA 13.2+）
   则保留生效——ffpa-attn cute sm\_120 persist-D kernel 在 PRO~5000 实测端到端
   可用。对照 PTX ISA Target ISA Notes：指令本身受 sm\_120 家族 specific 目标
   支持。结论：不是「SM120 无法用 setmaxnreg」，而是「目标后缀选错会静默失效」
-  （\texttt{NOTES\_V2\_ENABLE\_SETMAXNREGS} + \texttt{-arch sm\_120f} 即为对照
+  （\texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}SETMAXNREGS} + \texttt{-arch sm\_120f} 即为对照
   实验的正确打开方式）。
 \end{kaogu}
 
 \begin{kaogu}[F2 提示]{注释「require \_\_launch\_bounds\_\_(N, 1)」与实现不一致}
-  common.cuh L456--457 称 setmaxnreg 需要 \texttt{\_\_launch\_bounds\_\_(N, 1)}
+  common.cuh L456--457 称 setmaxnreg 需要 \texttt{\_\allowbreak{}\_\allowbreak{}launch\_\allowbreak{}bounds\_\allowbreak{}\_\allowbreak{}(N,\allowbreak{} 1)}
   （每 SM 1 block，给满每线程 256 regs 的编译许可），而两个 kernel（WGMMA 版
-  与本章版）实际都只写 \texttt{\_\_launch\_bounds\_\_(kNumThreads)}。因
+  与本章版）实际都只写 \texttt{\_\allowbreak{}\_\allowbreak{}launch\_\allowbreak{}bounds\_\allowbreak{}\_\allowbreak{}\allowbreak{}(k\allowbreak{}Num\allowbreak{}Threads)}。因
   setmaxnreg 在 sm\_120a 被门控关闭、在 sm\_90a 的 WGMMA 测试亦通过，该差异
   未造成已知错误，但打开宏做对照实验时应按注释补上 \texttt{, 1}。
 \end{kaogu}
 
-全量核查记录待汇总进 \texttt{book/CHECKLOG.md}（本次任务不改该文件，结论以上述
+全量核查记录待汇总进 \texttt{book/\allowbreak{}CHECKLOG.\allowbreak{}md}（本次任务不改该文件，结论以上述
 框注为准）。
 
 \section{常见坑}
 
 \textbf{坑一：setmaxnreg 满池死锁，纯挂死无报错。}式~\ref{eq:14-pool} 的池数学
 必须规划期就算：$\sum 32 r\sb{w} < 65536$ 且留 $\ge$ 2048 slack。
-\texttt{setmaxnreg.inc} 是阻塞语义，凑不齐就永远停在那，kernel 表现为
+\texttt{setmaxnreg.\allowbreak{}inc} 是阻塞语义，凑不齐就永远停在那，kernel 表现为
 「无 error、无 illegal access、永不返回」。调试口诀：唯一变量是 setmaxnreg
 数字的挂起，先查池数学再查别的。
 
 \textbf{坑二：默认目标 sm\_120a 下 setmaxnreg 被 ptxas 静默丢弃（C7506），
-需指定 \texttt{-arch sm\_120f} 才能使能。}kernel 里同时出现 TMA 与
+需指定 \texttt{-arch sm\_120f} 才能使能。}\allowbreak{}kernel 里同时出现 TMA 与
 setmaxnreg 时，ptxas 把前者当隐式 call 边界，后者直接丢弃——只有一条
 warning，功能消失。本章宏门控默认关闭正是为了它；\textbf{解法是 CUDA 13.2+
 的 family-specific 目标 \texttt{-arch sm\_120f}}（见 14.2 与 14.3.3 节考据），
 在此目标下重编译才会保留生效。沿用默认目标时，先看 build log 有无 C7506。
 
-\textbf{坑三：smem 基址只对齐 128B，输出全错但不越界。}ldmatrix + 手写
-\texttt{swizzle<64>()} 假设硬件以相位 0 写入；非 1024B 对齐时 TMA 按非零相位
+\textbf{坑三：smem 基址只对齐 128B，输出全错但不越界。}\allowbreak{}ldmatrix + 手写
+\texttt{swizzle\allowbreak{}<64>\allowbreak{}()} 假设硬件以相位 0 写入；非 1024B 对齐时 TMA 按非零相位
 重排，软件公式逆推的物理地址整体错位。诊断特征：错误是\textbf{系统性}的
 （大片输出错、错值有结构），不是随机数——想结构错位先查对齐。
 
@@ -479,16 +479,16 @@ warning，功能消失。本章宏门控默认关闭正是为了它；\textbf{�
 偏移——swizzle 周期覆盖整行 64 列时，k\_step 改变 chunk 号高位，必须进公式
 内部参与 XOR（14.4.6~节）。症状同样是系统性错位。
 
-\textbf{坑五：CUDART $<$ 13.0 编不过。}\texttt{NOTES\_V2\_ENABLE\_TMA\_MA\_WS}
+\textbf{坑五：CUDART $<$ 13.0 编不过。}\texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}TMA\_\allowbreak{}MA\_\allowbreak{}WS}
 在 common.cuh~L21--23 有 \#error 门控（\texttt{cuda::ptx} 的 bulk-tensor
 封装需要新 CUDART）。旧工具链要么升级，要么改用 raw PTX 分支。
 
-\textbf{坑六：kStages=3 的 96KB 动态 smem 要 opt-in。}launch 前必须用
-\texttt{cudaFuncSetAttribute} 把 \texttt{MaxDynamicSharedMemorySize}
+\textbf{坑六：kStages=3 的 96KB 动态 smem 要 opt-in。}\allowbreak{}launch 前必须用
+\texttt{cuda\allowbreak{}Func\allowbreak{}Set\allowbreak{}Attribute} 把 \texttt{Max\allowbreak{}Dynamic\allowbreak{}Shared\allowbreak{}Memory\allowbreak{}Size}
 提到 96KB；正确性测试规模要覆盖 stage 回绕（$K/B\sb{K} > kStages$，
 如 256/64 $= 4 > 3$）。
 
-\textbf{坑七：忘了喂 B 的转置。}kernel 的 TMA descriptor 期望 B 以 $[N, K]$
+\textbf{坑七：忘了喂 B 的转置。}\allowbreak{}kernel 的 TMA descriptor 期望 B 以 $[N, K]$
 row-major（TN 布局）存储，host 侧要先转置；忘转置时 box 形状仍匹配、
 数值全错。本章测试与 notes-v2 同款：host 显式转置后再上传。
 
@@ -506,7 +506,7 @@ A：都是 129 $=$ 128 consumer 线程各 1 次 $+$ 1 producer 提交线程。fu
 
 \textbf{Q3：为什么本章 consumer 全程不需要 \_\_syncthreads？}\\
 A：完成性由 barrier 保证（wait 返回即数据落盘）、内存序由
-\texttt{fence.proxy.async} 保证（async proxy 写对 generic proxy 读可见）、
+\texttt{fence.\allowbreak{}proxy.\allowbreak{}async} 保证（async proxy 写对 generic proxy 读可见）、
 warp 间无共享数据（2$\times$2 warp grid 读写互不重叠的子块）。
 
 \textbf{Q4：为什么必须 \_\_align\_\_(1024) 而 WGMMA 版只要 128？}\\
@@ -519,7 +519,7 @@ A：$\sum\sb{warp} 32 \times r\sb{w} < 65536$，工程上留 $\ge$ 2048 slack；
 立即数范围 $[24, 256]$ 且 8 的倍数，warpgroup 对齐执行。
 
 \textbf{Q6：默认目标 sm\_120a 上 setmaxnreg 为什么默认关？}\\
-A：CUDA 13.2 ptxas 把 kernel 内使用 \texttt{cp.async.bulk.tensor} 视作隐式
+A：CUDA 13.2 ptxas 把 kernel 内使用 \texttt{cp.\allowbreak{}async.\allowbreak{}bulk.\allowbreak{}tensor} 视作隐式
 extern-call 边界，即使完全内联也以 C7506 丢弃 setmaxnreg（sm\_90a 不受影响）
 ；指令集本身 sm\_120a 支持，属工具链限制。\textbf{解法是切到 family-specific
 目标 \texttt{-arch sm\_120f}（CUDA 13.2+），该目标下 setmaxnreg 保留生效}（见
@@ -536,8 +536,8 @@ A：cp.async 每线程一条 16B 指令 + 软件成组等待；TMA 每 tile 一�
 
 \section{最小测试与动手实验}
 
-测试文件：\texttt{book/tests/ch14\_hgemm\_tma\_ws.cu}（逻辑抽取自
-notes-v2.cu 的 \texttt{test\_hgemm\_tma\_mma\_ws}@L1809 与 launch wrapper，
+测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch14\_\allowbreak{}hgemm\_\allowbreak{}tma\_\allowbreak{}ws.cu}（逻辑抽取自
+notes-v2.cu 的 \texttt{test\_\allowbreak{}hgemm\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws}@L1809 与 launch wrapper，
 参考实现由 cuBLAS F16 换成 CPU fp64）。两个正确性 case 均 $256^3$：
 被 $B\sb{M} = B\sb{N} = 128$、$B\sb{K} = 64$ 整除，$K/B\sb{K} = 4$ 个 K-tile
 覆盖 kStages=2 与 3 两种回绕；case A（S=2、block swizzle=0）走主线协议，
@@ -545,26 +545,26 @@ case B（S=3、BLK\_SW=1）额外覆盖 3D grid 的越界早退分支。输入�
 $[-0.25, 0.25]$，f16 累加误差稳定落在 F16Acc 档 $5\times10^{-2}$ 内
 （实测 max\_abs\_err $\approx 1.9\times10^{-3}$）。
 
-一个工程细节：\texttt{cuTensorMapEncodeTiled} 是 driver API，链接需要
-\texttt{-lcuda}；而 \texttt{build\_tests.sh} 统一不传该参数。测试改用
-\texttt{cudaGetDriverEntryPointByVersion} 在运行时取函数指针（参数序列与
-common.cuh 的 \texttt{create\_tensor\_map<128,64>} 逐项一致）——这也顺带
+一个工程细节：\texttt{cu\allowbreak{}Tensor\allowbreak{}Map\allowbreak{}Encode\allowbreak{}Tiled} 是 driver API，链接需要
+\texttt{-lcuda}；而 \texttt{build\_\allowbreak{}tests.\allowbreak{}sh} 统一不传该参数。测试改用
+\texttt{cuda\allowbreak{}Get\allowbreak{}Driver\allowbreak{}Entry\allowbreak{}Point\allowbreak{}By\allowbreak{}Version} 在运行时取函数指针（参数序列与
+common.cuh 的 \texttt{create\_\allowbreak{}tensor\_\allowbreak{}map\allowbreak{}<128,\allowbreak{}64>} 逐项一致）——这也顺带
 演示了「不链接 libcuda 使用 driver API」的标准姿势。编译运行（本机
 sm\_120a 可直接跑）：
 
 \begin{quote}\small
-\texttt{cd book/tests \&\& CUDA\_VISIBLE\_DEVICES=6 ./build\_tests.sh -{}-arch sm\_120a -{}-ch ch14}\\[3pt]
-\texttt{-{}$>$ PASS hgemm tma ws 256x256x256 S=2: max\_abs\_err=1.871e-03}\\
-\texttt{-{}$>$ PASS hgemm tma ws 256x256x256 S=3 sw: max\_abs\_err=1.871e-03}\\
+\texttt{cd book/\allowbreak{}tests \&\& CUDA\_\allowbreak{}VISIBLE\_\allowbreak{}DEVICES=\allowbreak{}6 .\allowbreak{}/\allowbreak{}build\_\allowbreak{}tests.\allowbreak{}sh -{}-arch sm\_\allowbreak{}120a -{}-ch ch14}\\[3pt]
+\texttt{-{}$>$ PASS hgemm tma ws 256x256x256 S=\allowbreak{}2: max\_\allowbreak{}abs\_\allowbreak{}err=\allowbreak{}1.871e-03}\\
+\texttt{-{}$>$ PASS hgemm tma ws 256x256x256 S=\allowbreak{}3 sw: max\_\allowbreak{}abs\_\allowbreak{}err=\allowbreak{}1.871e-03}\\
 \texttt{-{}$>$ ALL OK}
 \end{quote}
 
-bench 子命令输出 14.6~节的对照表（\texttt{CUDA\_VISIBLE\_DEVICES=6
-.build/ch14\_hgemm\_tma\_ws bench}）。动手实验建议：（1）把
-\texttt{tma\_arrive\_expect\_tx} 的字节数减半，观察 consumer 挂死（tx 永不
+bench 子命令输出 14.6~节的对照表（\texttt{CUDA\_\allowbreak{}VISIBLE\_\allowbreak{}DEVICES=\allowbreak{}6
+.\allowbreak{}build/\allowbreak{}ch14\_\allowbreak{}hgemm\_\allowbreak{}tma\_\allowbreak{}ws bench}）。动手实验建议：（1）把
+\texttt{tma\_\allowbreak{}arrive\_\allowbreak{}expect\_\allowbreak{}tx} 的字节数减半，观察 consumer 挂死（tx 永不
 归零）；（2）删掉 C0 预热循环，复现「首轮 empty 永不翻转」；（3）把
-\texttt{\_\_align\_\_(1024)} 改成 128，观察系统性错位输出（坑三）；（4）打开
-\texttt{NOTES\_V2\_ENABLE\_SETMAXNREGS} 重编译：默认 \texttt{-arch sm\_120a}
+\texttt{\_\allowbreak{}\_\allowbreak{}align\_\allowbreak{}\_\allowbreak{}(1024)} 改成 128，观察系统性错位输出（坑三）；（4）打开
+\texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}SETMAXNREGS} 重编译：默认 \texttt{-arch sm\_120a}
 下在 build log 里找 C7506（坑二），换成 \texttt{-arch sm\_120f} 后 warning
 消失、setmaxnreg 保留生效。
 

@@ -8,26 +8,26 @@ cp.async 多级流水的形态，但那条流水线上还压着三块石头：\t
 conflict} 让 \texttt{ldmatrix} 的读取被串行化；\textbf{k\_step 内 ldmatrix 与 MMA
 的依赖}让「搬数」和「算数」无法重叠；\textbf{grid 的光栅化顺序}让同时在飞的 block
 在 L2 里摊成一条宽条带、复用率低下。本章沿教学源码 Phase~7b-3 的
-\texttt{hgemm\_mma\_stages\_tn\_swizzle}（hgemm.cuh~L434）逐一搬掉这三块石头：
+\texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn\_\allowbreak{}swizzle}（hgemm.cuh~L434）逐一搬掉这三块石头：
 
 \begin{itemize}
   \item \textbf{smem XOR swizzle}（common.cuh~L110--348）——不花一个字节的 padding，
         用地址位异或把 ldmatrix 的冲突访问打散；本章给出逐 bit 推导、可逆性证明，
-        以及 v1（手写 XOR 分支）与 v2（\texttt{Swizzle<B,M,S>} 位级镜像）两套实现；
+        以及 v1（手写 XOR 分支）与 v2（\texttt{Swizzle\allowbreak{}<B,\allowbreak{}M,\allowbreak{}S>} 位级镜像）两套实现；
   \item \textbf{寄存器双缓冲}（\texttt{RA[2][*][4]}/\texttt{RB[2][*][2]} 乒乓切换）——
         与 smem 双缓冲（kStages）分工：一个盖住 gmem 延迟，一个盖住 ldmatrix 延迟；
-  \item \textbf{Block Swizzle}（\texttt{kBlockSwizzle} + 3D grid）——重排 block
+  \item \textbf{Block Swizzle}（\texttt{k\allowbreak{}Block\allowbreak{}Swizzle} + 3D grid）——重排 block
         坐标映射，让同时在飞的 block 集合成近似方形，L2 footprint 显著缩小。
 \end{itemize}
 
 \textbf{前置章节}：第~\ref{ch:11}~章（mma fragment 布局、ldmatrix 语义、cp.async
 流水线）；第~\ref{ch:09}~章的五层金字塔分块。\textbf{源码区间}：hgemm.cuh~L388--716
-（派发器 L388、kernel L434）与 common.cuh~L110--348（\texttt{permuted}/\texttt{swizzle\_v1\_impl}/
-\texttt{SwizzleBMS}/\texttt{swizzle\_v2\_impl}）。\textbf{编译宏}：
-\texttt{NOTES\_V2\_ENABLE\_SWIZZLE\_V2}（默认关闭走 v1，打开走 v2，两者 bit-exact
+（派发器 L388、kernel L434）与 common.cuh~L110--348（\texttt{permuted}/\texttt{swizzle\_\allowbreak{}v1\_\allowbreak{}impl}/
+\texttt{SwizzleBMS}/\texttt{swizzle\_\allowbreak{}v2\_\allowbreak{}impl}）。\textbf{编译宏}：
+\texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}SWIZZLE\_\allowbreak{}V2}（默认关闭走 v1，打开走 v2，两者 bit-exact
 等价）；kernel 本体需 sm\_80+，无其它架构限定。配套最小测试
-\texttt{book/tests/ch12\_hgemm\_swizzle.cu}。\textbf{后继}：第~\ref{ch:23}~章把
-本章手写的 XOR swizzle 接入 CuTe 的 \texttt{Swizzle<B,M,S>} 布局代数，第~\ref{ch:24}~章
+\texttt{book/\allowbreak{}tests/\allowbreak{}ch12\_\allowbreak{}hgemm\_\allowbreak{}swizzle.cu}。\textbf{后继}：第~\ref{ch:23}~章把
+本章手写的 XOR swizzle 接入 CuTe 的 \texttt{Swizzle\allowbreak{}<B,\allowbreak{}M,\allowbreak{}S>} 布局代数，第~\ref{ch:24}~章
 的 CuTe HGEMM 将与本章手写版逐项对照。预计篇幅约 14 页。
 
 \section{问题与动机}
@@ -37,7 +37,7 @@ HGEMM 是 compute-bound 算子：$2MNK$ 次乘加对着 $O(MN+MK+NK)$ 的访存�
 多级流水已经把 gmem$\to$smem 的一段用 cp.async 双缓冲盖住了，但数据链路还有两段、调度
 还有一层，各有一个具体的瓶颈：
 
-\textbf{瓶颈一：ldmatrix 的 bank conflict（S$\to$R 段）。}MMA 的原料必须先由
+\textbf{瓶颈一：ldmatrix 的 bank conflict（S$\to$R 段）。}\allowbreak{}MMA 的原料必须先由
 \texttt{ldmatrix} 从 shared memory 搬进寄存器。smem 的 32 个 bank 每周期只能各出
 4~B，一个 warp 的 \texttt{ldmatrix.x4} 要读 $32\times16$\,B；若 8 个 lane 的地址
 落在同一组 bank 上，硬件只能串行重放（n-way conflict = 同一请求拆成 n 次传递）。
@@ -52,7 +52,7 @@ stride，代价是浪费 smem、且破坏 16\,B 对齐粒度；XOR swizzle 用�
 寄存器双缓冲让「加载 slice $t{+}1$」与「用 slice $t$ 计算」同拍进行——它是
 smem 双缓冲（盖 gmem 延迟）之下的第二级流水，两者分工明确。
 
-\textbf{瓶颈三：grid 光栅化把 L2 复用摊薄（调度层）。}CUDA block 的分发顺序是
+\textbf{瓶颈三：grid 光栅化把 L2 复用摊薄（调度层）。}\allowbreak{}CUDA block 的分发顺序是
 $x$ 最快、$y$ 次之。C tile 网格 $T_m\times T_n$ 若按默认光栅铺开，同时在飞的
 $R$ 个 block（$R\approx$ SM 数 $\times$ 每 SM 常驻 block 数）呈
 $T_n\times\lceil R/T_n\rceil$ 的\textbf{宽条带}：A tile 复用好（行少），
@@ -90,7 +90,7 @@ chunk 0。下面按两种 smem 行宽分别推导冲突度。
 
 \subsection{无 swizzle 的冲突推导：BK=16（32\,B 行宽）为 2-way}
 
-Phase 7b-1 的 \texttt{hgemm\_mma\_stages\_tn}（第~\ref{ch:11}~章）中 $B_K=16$，
+Phase 7b-1 的 \texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn}（第~\ref{ch:11}~章）中 $B_K=16$，
 smem tile 为 $[128][16]$ half，行宽 32\,B。行 $i$ chunk $c$ 的字节地址
 $a=32i+16c$，四联组
 \begin{equation}
@@ -107,7 +107,7 @@ $a=32i+16c$，四联组
 $M{=}N{=}K{=}512$，16 block $\times$ 8 warp $\times$ 32 个 k 迭代）：
 \begin{equation}
   128 \times 32 \times 24 \;=\; 98{,}304
-  \;=\; \text{实测 \texttt{shared\_op\_ld} 冲突计数} ,
+  \;=\; \text{实测 \texttt{shared\_\allowbreak{}op\_\allowbreak{}ld} 冲突计数} ,
 \end{equation}
 \textbf{分毫不差}——phase 模型与硬件计数完全对齐，后续推导都建立在这套校准过的
 模型上。
@@ -137,7 +137,7 @@ XOR swizzle 的想法一句话：\textbf{在写入 smem 时就把 chunk 的物�
 \begin{equation}
   c' \;=\; c \oplus \left(\left\lfloor \tfrac{i}{4} \right\rfloor \bmod 2\right),
   \qquad\text{即}\quad
-  \texttt{swizzle<16>(i,j)} = \Bigl(\bigl((j{\gg}3)\oplus(i{\gg}2)\bigr)\And 1\Bigr)\ll 3 .
+  \texttt{swizzle\allowbreak{}<16>\allowbreak{}(i,\allowbreak{}j)} = \Bigl(\bigl((j{\gg}3)\oplus(i{\gg}2)\bigr)\And 1\Bigr)\ll 3 .
   \label{eq:12-xor-v1}
 \end{equation}
 逐 bit 看（FIG-12-3）：字节地址 $a=32i+16c+w$（$w\in[0,16)$ 为 chunk 内偏移），
@@ -201,7 +201,7 @@ $j<k_{\mathrm{cs}}$）：$k_{\mathrm{cs}}{=}16$ 时 $a=32i+2j$，bit4 恰为
 $(j{\gg}3)\And1$（$2j<32$ 不上探），bit7 恰为 $(i{\gg}2)\And1$，apply 即
 式~\ref{eq:12-xor-v1}；$k_{\mathrm{cs}}{=}32$ 时 $a=64i+2j$，bit $[4,6)$ 为
 $(j{\gg}3)\And3$、bit $[7,9)$ 为 $i$ 的 bit $[1,3)$，与 v1 的
-\texttt{chunk\^{}xor\_mask} 逐位相同；$k_{\mathrm{cs}}{=}64$ 同理（bit $[4,7)$
+\texttt{chunk\^{}xor\_\allowbreak{}mask} 逐位相同；$k_{\mathrm{cs}}{=}64$ 同理（bit $[4,7)$
 对 bit $[7,10)$）。源码注释 common.cuh~L320--325 的等价性证明与上述独立推导一致，
 且 host 端全遍历测试（$i<256$、$j<k_{\mathrm{cs}}$、四档共 30{,}720 点）
 bit-exact 通过（本章 case~C）。$k_{\mathrm{cs}}{=}8$ 无对应 TMA 模式，v2 回退
@@ -228,8 +228,8 @@ BK=16 基线 98{,}304 次；两版比值 $691067/297628=2.32$，与模型预测�
 模型的 0.78 倍，但\textbf{比值精确吻合}）一致。要在 128\,B 行宽下真正 1-way，
 应使用 \texttt{swizzle<64>}（SWIZZLE\_128B，$B{=}3$）：$c'=c\oplus(i\And7)$，
 行 0--7 的 8 个 chunk 恰好铺满 $q=0,4,\dots,28$——common.cuh 的
-\texttt{permuted<64>} 已实现该档位，CuTe 版 HGEMM（第~\ref{ch:24}~章）使用的
-\texttt{Swizzle<3,3,3>} 正是同一思路；本 kernel 选择 per-slice 的 16 档位，
+\texttt{permuted\allowbreak{}<64>} 已实现该档位，CuTe 版 HGEMM（第~\ref{ch:24}~章）使用的
+\texttt{Swizzle\allowbreak{}<3,\allowbreak{}3,\allowbreak{}3>} 正是同一思路；本 kernel 选择 per-slice 的 16 档位，
 冲突从 8-way 降到 4-way 后，剩余延迟由寄存器双缓冲的流水覆盖（表~\ref{tab:12-bank}
 耗时列）。
 
@@ -314,7 +314,7 @@ bit-exact 等价（12.6 节）。派发器只有 9 行，宏门控：
   title={hgemm.cuh L431-460（模板参数 + 式~\ref{eq:12-bs} 坐标重映射 + 双缓冲 smem）}]{../hgemm.cuh}
 
 相对第~\ref{ch:11}~章的新模板参数是 \texttt{kValTileK}（每 BK tile 的 slice 数，
-$B_K=16\,k_{\mathrm{ValTileK}}$）与 \texttt{kBlockSwizzle}。smem 侧是经典的
+$B_K=16\,k_{\mathrm{ValTileK}}$）与 \texttt{k\allowbreak{}Block\allowbreak{}Swizzle}。smem 侧是经典的
 kStages 级双缓冲：$S$ 个 stage 轮转，cp.async 预取 $k{+}S{-}1$、MMA 消费 $k$。
 \texttt{kValTileK}{=}4 时每 stage $128{\times}64$ half，$S{=}2$ 共 64\,KB——
 恰好是注释「kStages=2 推荐 64KB smem」的由来（$S{=}3$ 需 96\,KB，sm\_120 可容
@@ -354,8 +354,8 @@ ldmatrix 到 \texttt{reg[st]}、随后 HMMA 吃 \texttt{reg[ld]}——加载 sli
   title={hgemm.cuh L642-681（自适应 wait：满载 kStages-2 / 排空 0；预载下一 k 的 slice 0）}]{../hgemm.cuh}
 
 自适应等待是 cp.async 计数语义的直接应用（第~\ref{ch:10}~章）：满载期
-\texttt{WAIT\_GROUP(kStages-2)} 允许还有 1 组在飞；尾 tile 无新预取时退化为
-\texttt{WAIT\_GROUP(0)} 排空。Epilogue（L683--716）复用 \texttt{RA} 寄存器做
+\texttt{WAIT\_\allowbreak{}GROUP\allowbreak{}(k\allowbreak{}Stages-2)} 允许还有 1 组在飞；尾 tile 无新预取时退化为
+\texttt{WAIT\_\allowbreak{}GROUP\allowbreak{}(0)} 排空。Epilogue（L683--716）复用 \texttt{RA} 寄存器做
 warp shuffle 拼出 128-bit 向量写回 C，思路与第~\ref{ch:11}~章一致，此处不展开。
 
 \needspace{153mm}
@@ -392,7 +392,7 @@ $W{\times}H$ 宽条带（$W{=}T_n$），重排后折叠为组宽 16 的近似方
 
 \textbf{bank conflict 三点实测}（RTX PRO 5000，sm\_120，$M{=}N{=}K{=}512$，
 NCU shared-load bank conflict 计数器
-\texttt{l1tex\_\_data\_bank\_conflicts\_pipe\_lsu\_mem\_\allowbreak{}shared\_op\_ld.sum}，
+\texttt{l1tex\_\allowbreak{}\_\allowbreak{}data\_\allowbreak{}bank\_\allowbreak{}conflicts\_\allowbreak{}pipe\_\allowbreak{}lsu\_\allowbreak{}mem\_\allowbreak{}\allowbreak{}shared\_\allowbreak{}op\_\allowbreak{}ld.sum}，
 每 launch 稳态值）：
 
 \begin{table}[htbp]
@@ -417,7 +417,7 @@ BK=64，swizzle（7b-3）    & 297{,}628 & 20.7 & 4-way；本章 kernel \\
 冲突并没有被「全消」，但寄存器双缓冲把残余 4-way 的重放延迟藏进了 MMA 流水。
 
 \textbf{端到端吞吐}（cudaEvent，warmup 3 + 10 次均值；数据文件
-\texttt{.tmp/book-bench/ch12/bench.txt}）：
+\texttt{.tmp/\allowbreak{}book-bench/\allowbreak{}ch12/\allowbreak{}bench.txt}）：
 
 \begin{table}[htbp]
 \centering
@@ -448,7 +448,7 @@ README 的 5090 口径不可直接比较。
 \begin{kaogu}[F3 + NCU 实证]{common.cuh L124-125：「降低到 1-way（fully conflict-free）」对本章 kernel 不成立}
   注释的 1-way 结论只在\textbf{swizzle 作用域 = 整行}（32\,B 行宽，BK=16 / FA 的
   $[\ast][16]$ 布局，即 common.cuh L185--235 表格对应的布局）时成立。本章主角
-  \texttt{hgemm\_mma\_stages\_tn\_swizzle} 的统一 tile 行宽 128\,B（BK=64），
+  \texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn\_\allowbreak{}swizzle} 的统一 tile 行宽 128\,B（BK=64），
   swizzle 以 per-slice 方式作用于 16 列窗口：行 stride 128\,B 是 bank 计数环
   （512\,B）的整数倍，行号位无法进入 bank 位，单个 XOR bit 最多把 phase 内
   8 lane 分到 2 个四联组——\textbf{下界 4-way}。NCU 实测 297{,}628 次
@@ -464,8 +464,8 @@ README 的 5090 口径不可直接比较。
   独立推导（12.6 节）：$a=2(k_{\mathrm{cs}}i+j)$、$j<k_{\mathrm{cs}}$ 时，
   bit $[4,4{+}B)$ 恰为 $(j{\gg}3)$ 低 $B$ 位、bit $[7,7{+}B)$ 恰为 $i$ 低 $B$
   位（$k_{\mathrm{cs}}\in\{16,32,64\}$ 逐一验证），apply 的异或结果与 v1 的
-  \texttt{chunk\^{}xor\_mask} 逐位相同。host 全遍历 30{,}720 点 bit-exact
-  （本章 case~C，复现 notes-v2.cu \texttt{test\_swizzle\_equiv} L4657）。
+  \texttt{chunk\^{}xor\_\allowbreak{}mask} 逐位相同。host 全遍历 30{,}720 点 bit-exact
+  （本章 case~C，复现 notes-v2.cu \texttt{test\_\allowbreak{}swizzle\_\allowbreak{}equiv} L4657）。
   注释证明无误。
 \end{kaogu}
 
@@ -477,8 +477,8 @@ README 的 5090 口径不可直接比较。
 \end{kaogu}
  
 \begin{kaogu}[位置考据]{common.cuh L344-347 注释悬置}
-  「swizzle: 公开派发器……」这条注释紧接在 \texttt{swizzle\_v2\_impl} 之后，
-  但 common.cuh 内\textbf{并没有}它描述的 \texttt{swizzle<kColStride>} 函数——
+  「swizzle: 公开派发器……」这条注释紧接在 \texttt{swizzle\_\allowbreak{}v2\_\allowbreak{}impl} 之后，
+  但 common.cuh 内\textbf{并没有}它描述的 \texttt{swizzle\allowbreak{}<k\allowbreak{}Col\allowbreak{}Stride>} 函数——
   派发器实际定义在 hgemm.cuh~L388--396（各 kernel 的 include 链上游）。
   阅读时按「注释在 common.cuh、实体在 hgemm.cuh」理解即可，行为无影响。
 \end{kaogu}
@@ -490,14 +490,14 @@ README 的 5090 口径不可直接比较。
 一侧不会越界、不会报错——数据在 chunk 粒度上错位，输出「看起来差不多但不对」，
 是典型的静默错误。本章测试的 2D/3D grid 一致性检查（逐位相等）可兜住这类错位。
 
-\textbf{坑二：形状对齐约束。}kernel 无 K 边界守卫：$K\bmod 64\neq0$ 时
+\textbf{坑二：形状对齐约束。}\allowbreak{}kernel 无 K 边界守卫：$K\bmod 64\neq0$ 时
 cp.async 静默读越界并把垃圾累进结果；M/N 非 128 倍数时 epilogue 的 128-bit
-写回越界（读侧有 \texttt{load\_gmem\_a\_m >= M} 守卫，写侧没有）。调用方必须
+写回越界（读侧有 \texttt{load\_\allowbreak{}gmem\_\allowbreak{}a\_\allowbreak{}m >=\allowbreak{} M} 守卫，写侧没有）。调用方必须
 保证 $M,N\equiv0\pmod{128}$、$K\equiv0\pmod{64}$。
 
 \textbf{坑三：64\,KB 动态 smem 要 opt-in。}默认每 block 动态 smem 上限 48\,KB，
 $k_{\mathrm{ValTileK}}{=}4$、$S{=}2$ 恰好 64\,KB——不调
-\texttt{cudaFuncSetAttribute} 直接 launch 会得到 \texttt{invalid argument}。
+\texttt{cuda\allowbreak{}Func\allowbreak{}Set\allowbreak{}Attribute} 直接 launch 会得到 \texttt{invalid argument}。
 
 \textbf{坑四：block swizzle 的冗余 CTA。}$\lceil T_n/S\rceil\cdot S\ge T_n$，
 多出来的 block（$bx\ge T_n$）靠入口守卫整体返回。守卫在所有 cp.async 之前，
@@ -554,17 +554,17 @@ $S$ = 每行 chunk 数位（8 chunk $\Rightarrow S{=}3$，也是源/目标 bit �
 
 \section{最小测试与动手实验}
 
-测试文件：\texttt{book/tests/ch12\_hgemm\_swizzle.cu}（逻辑抽取自 notes-v2.cu
+测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch12\_\allowbreak{}hgemm\_\allowbreak{}swizzle.cu}（逻辑抽取自 notes-v2.cu
 的 test\_hgemm\_swizzle（L1491）与 test\_swizzle\_equiv（L4657），正确性对照改为
-CPU fp64 参考；文件顶部 \texttt{\#define NOTES\_V2\_ENABLE\_SWIZZLE\_V2 1}，使
+CPU fp64 参考；文件顶部 \texttt{\#define NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}SWIZZLE\_\allowbreak{}V2 1}，使
 kernel 走 v2 路径——build\_tests.sh 不传额外宏，宏必须写在 include 之前）。
 三个 case：A（$256^3$，swizzle kernel vs fp64）；B（$M{=}384$、$N{=}512$、
 $K{=}256$，2D grid 与 3D 分组 grid 各跑一遍，除各自 vs fp64 外还要求两种 grid
 \textbf{逐位一致}——坐标重排只是 tile 重编号，同 tile 计算路径必须相同）；
 C（host 端 v1/v2 全遍历等价，$k_{\mathrm{cs}}\in\{8,16,32,64\}$ 共 30{,}720 点）。
 
-在 \texttt{book/tests/} 目录、\texttt{CUDA\_VISIBLE\_DEVICES=7} 下执行
-\texttt{./build\_tests.sh --arch sm\_120a --ch ch12}。本机运行输出
+在 \texttt{book/tests/} 目录、\texttt{CUDA\_\allowbreak{}VISIBLE\_\allowbreak{}DEVICES=\allowbreak{}7} 下执行
+\texttt{.\allowbreak{}/\allowbreak{}build\_\allowbreak{}tests.\allowbreak{}sh --arch sm\_\allowbreak{}120a --ch ch12}。本机运行输出
 （RTX PRO 5000，2026-09-11）：
 
 \begin{lstlisting}[style=console]
@@ -585,7 +585,7 @@ ALL OK
 $K{=}256$ 时约 $2.5{\sim}2.9\times10^{-2}$，落在 F16Acc 档 $5\times10^{-2}$ 内；
 $K{=}512$ 实测 5.8$\times10^{-2}$ 超档，故 case~B 固定 $K{=}256$。动手实验：
 （1）把 case~B 的 3D grid 换成 $\lceil T_n/4\rceil\times T_m\times 4$ 验证
-kernel 对任意分组的正确性；（2）复制 kernel 把 8 处 \texttt{swizzle<kMmaK>}
+kernel 对任意分组的正确性；（2）复制 kernel 把 8 处 \texttt{swizzle\allowbreak{}<k\allowbreak{}Mma\allowbreak{}K>}
 换成 \texttt{swizzle<64>} 并把 slice 基址并入 $j$（SW128 方案，12.7 节），
 用 NCU 复测冲突计数是否归零、端到端是否反超 7b-1；（3）用
 notes-v2.cu bench 复跑 $2048\times16384\times4096$ 口径对照表~\ref{tab:12-tflops}。

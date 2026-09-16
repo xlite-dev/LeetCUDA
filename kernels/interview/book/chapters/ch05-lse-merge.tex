@@ -6,7 +6,7 @@
 第~\ref{ch:04}~章末尾我们预告了 LSE：它把 online softmax 的双状态 $(m, \ell)$
 压缩成一个标量。本章讲清楚两件事：\textbf{为什么这个压缩是无损的}，以及
 \textbf{拿到两份分块的部分结果后，如何只靠 LSE 就把它们合并成与「一次性算完」
-逐元素相等的结果}。教学载体是 base.cuh 的 \texttt{merge\_attn\_states}
+逐元素相等的结果}。教学载体是 base.cuh 的 \texttt{merge\_\allowbreak{}attn\_\allowbreak{}states}
 （base.cuh~L437 起）：它实现 FlashInfer 论文（arXiv 2501.01005）Section~2.2
 描述的 attention 状态合并逻辑，也是 vLLM/FlashInfer 里 chunked prefill、
 FlashDecoding 等分块方案共用的「最后一公里」。
@@ -167,8 +167,8 @@ causal mask 等机制会产生「空段」：某分块内全部打分被 mask �
 
 先看接口与布局约定，这里有本章最容易犯错的一处\textbf{转置陷阱}：
 \begin{itemize}
-  \item $O$ 相关的三个数组（\texttt{output}/\texttt{prefix\_output}/
-        \texttt{suffix\_output}）布局是 $[\text{num\_tokens}, \text{num\_heads},
+  \item $O$ 相关的三个数组（\texttt{output}/\texttt{prefix\_\allowbreak{}output}/
+        \texttt{suffix\_\allowbreak{}output}）布局是 $[\text{num\_tokens}, \text{num\_heads},
         \text{head\_size}]$——token 维在最外，与 attention 输出惯例一致；
   \item 而 LSE 的两个数组布局是 $[\text{num\_heads}, \text{num\_tokens}]$
         ——head 维在最外（FlashAttention-2 惯例里 LSE 逐 head 连续存放便于后续
@@ -176,18 +176,18 @@ causal mask 等机制会产生「空段」：某分块内全部打分被 mask �
         $t \cdot H \cdot D + h \cdot D$ 与 $h \cdot T + t$，一个是「行优先的块」
         一个是「转置的下标」，写测试时极易弄反（见 5.7~节坑二）。
 \end{itemize}
-线程规划是三维切分：\texttt{threads\_per\_head = head\_size / kPackSize} 个线程
-覆盖一个 (token, head) 对的 $D$ 个元素，\texttt{total\_threads} 为全局有效线程数，
+线程规划是三维切分：\texttt{threads\_\allowbreak{}per\_\allowbreak{}head =\allowbreak{} head\_\allowbreak{}size /\allowbreak{} k\allowbreak{}Pack\allowbreak{}Size} 个线程
+覆盖一个 (token, head) 对的 $D$ 个元素，\texttt{total\_\allowbreak{}threads} 为全局有效线程数，
 超过它的线程直接返回（block 按 128 对齐分配，最后一个 block 会多出空闲线程）。
 
 \lstinputlisting[linerange={459-485},firstnumber=auto,
   title={base.cuh L459-485（global\_idx 三级解包与 LSE 读取、inf 清洗）}]{../base.cuh}
 
 这段是一维线程号到三维数据坐标的解包：\texttt{global\_idx} 先除/模
-\texttt{threads\_per\_head} 得到（第几个 (token,head) 对，pack 内第几个 128-bit 包），
+\texttt{threads\_\allowbreak{}per\_\allowbreak{}head} 得到（第几个 (token,head) 对，pack 内第几个 128-bit 包），
 再除/模 \texttt{num\_heads} 分出 token（变化慢的外维）与 head（变化快的内维）。
 以头注释的示例（$T{=}2, H{=}2, D{=}8$）：8 个线程的
-\texttt{token\_head\_idx} 依次为 $0,0,1,1,2,2,3,3$、\texttt{pack\_idx} 为
+\texttt{token\_\allowbreak{}head\_\allowbreak{}idx} 依次为 $0,0,1,1,2,2,3,3$、\texttt{pack\_idx} 为
 $0,1,0,1,0,1,0,1$。同一个 warp 里相邻线程访问相邻 pack，两次 $O$ 的读与一次写
 都是 128-bit 完全 coalesced——这是它跑出 TB/s 级带宽的直接原因。
 LSE 读取只有每 (token, head) 2 次标量加载（\texttt{p\_lse}、\texttt{s\_lse}），
@@ -225,7 +225,7 @@ Step 4 的主体是 \texttt{uint4}（$=4 \times$ float，128-bit）打包加载�
 $o = p \cdot \alpha + s \cdot \beta$（硬件可融合为 FMA），再整包写回。
 每个输出元素 3 次 FLOP、2 次读 1 次写；128-bit 粒度让每线程的 4 个元素
 共享同一份 $\alpha, \beta$ 与同一份 LSE 读取。收尾的
-\texttt{if (pack\_offset < head\_size)} 在「$D$ 是 4 的倍数」的约定下恒为真
+\texttt{if \allowbreak{}(pack\_\allowbreak{}offset \allowbreak{}< head\_\allowbreak{}size)} 在「$D$ 是 4 的倍数」的约定下恒为真
 （见 5.6~节勘误三），属于防御性写法。
 
 \needspace{122mm}
@@ -254,7 +254,7 @@ $AI \approx 3 / 12.06 \approx 0.25$ FLOP/B，深居 roofline 拐点左侧，
 $T = 16384$、$H = 32$、$D = 128$；每次迭代净流量为两份 $O$ 读取与一份 $O$ 写入
 $3 \times 268.4~\text{MB}$，加两份 LSE 共 $2 \times 2.1~\text{MB}$，合计约
 $809.5~\text{MB}$；warmup 3 次 + 10 次取均值；数据文件
-\texttt{.tmp/book-bench/ch05/bench.txt}）：
+\texttt{.tmp/\allowbreak{}book-bench/\allowbreak{}ch05/\allowbreak{}bench.txt}）：
 
 \begin{table}[htbp]
 \centering
@@ -295,9 +295,9 @@ ch04 的 softmax 小形状只有数百 GB/s，差距主要来自形状规模
 \end{kaogu}
 
 \begin{kaogu}[F3]{base.cuh L450 与 L501：head\_size 须为 4 的倍数是隐含约定}
-  \texttt{threads\_per\_head = head\_size / kPackSize} 是整除写法：若
+  \texttt{threads\_\allowbreak{}per\_\allowbreak{}head =\allowbreak{} head\_\allowbreak{}size /\allowbreak{} k\allowbreak{}Pack\allowbreak{}Size} 是整除写法：若
   head\_size 不是 4 的倍数，尾部 head\_size\,\% 4 个元素\textbf{没有任何线程覆盖}，
-  输出静默不写（无报错）。而 L501 的守卫 \texttt{if (pack\_offset < head\_size)}
+  输出静默不写（无报错）。而 L501 的守卫 \texttt{if \allowbreak{}(pack\_\allowbreak{}offset \allowbreak{}< head\_\allowbreak{}size)}
   在整除约定下恒为真，非整除时也救不回尾部元素，属防御性死代码。
   调用方应保证 head\_size \% 4 == 0（现实中 attention 的 head\_dim 均满足），
   泛化改造则需补尾部标量路径。
@@ -374,7 +374,7 @@ elementwise 的版本；FA 是在线、寄存器、随 KV 分块流水推进的�
 
 \section{最小测试与动手实验}
 
-测试文件：\texttt{book/tests/ch05\_merge\_attn.cu}（逻辑抽取自 notes-v2.cu 的
+测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch05\_\allowbreak{}merge\_\allowbreak{}attn.cu}（逻辑抽取自 notes-v2.cu 的
 test\_merge\_attn\_states，L723；对照改为 CPU fp64 的「整体 softmax 直接加权」）。
 每个 case 为每个 (token, head) 构造两个 KV 分块（各 32 个 score），以 float 模拟
 FA 分块输出（$O^{A}, O^{B}$ 已归一化、$\mathrm{LSE} = m + \log \ell$），
@@ -382,8 +382,8 @@ FA 分块输出（$O^{A}, O^{B}$ 已归一化、$\mathrm{LSE} = m + \log \ell$�
 （定理~\ref{thm:merge-eq} 的数值版）；prefix LSE 置 $+\infty$ 后该段输出精确
 退化为 suffix。
 
-在 \texttt{book/tests/} 目录、\texttt{CUDA\_VISIBLE\_DEVICES=7} 下执行
-\texttt{./build\_tests.sh --ch ch05}（编译 + 运行一体）。本机运行输出
+在 \texttt{book/tests/} 目录、\texttt{CUDA\_\allowbreak{}VISIBLE\_\allowbreak{}DEVICES=\allowbreak{}7} 下执行
+\texttt{.\allowbreak{}/\allowbreak{}build\_\allowbreak{}tests.\allowbreak{}sh --ch ch05}（编译 + 运行一体）。本机运行输出
 （RTX PRO 5000，2026-09-11，PASS 行的误差数值见表~\ref{tab:5-pass}）：
 
 \begin{lstlisting}[style=console]
@@ -395,7 +395,7 @@ ALL OK
 \begin{table}[htbp]
 \centering
 \caption{ch05 测试 PASS 行数值摘录（完整行式输出见
-\texttt{tests/.build/ch05\_merge\_attn} 运行日志；tol 为判定容差）}
+\texttt{tests/\allowbreak{}.build/\allowbreak{}ch05\_\allowbreak{}merge\_\allowbreak{}attn} 运行日志；tol 为判定容差）}
 \label{tab:5-pass}
 \begin{tabular}{llrr}
 \toprule
@@ -417,7 +417,7 @@ FMA 的 $0 \cdot p + 1 \cdot s$ 不引入任何舍入，权重退化是位精确
 动手实验建议：（1）把某一段的 score 整体抬高 20（模拟「一段压倒另一段」），
 观察 $\alpha$ 趋近 1、$O$ 趋近 $O^{A}$；（2）故意把 LSE 布局按 $[T, H]$ 传
 （复现坑二），确认输出全面失配；（3）bench 用
-\texttt{./build/ch05\_merge\_attn bench} 复现表~\ref{tab:5-bench}。
+\texttt{.\allowbreak{}/\allowbreak{}build/\allowbreak{}ch05\_\allowbreak{}merge\_\allowbreak{}attn bench} 复现表~\ref{tab:5-bench}。
 
 \section*{延伸阅读}
 

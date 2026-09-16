@@ -12,7 +12,7 @@ GEMM（GEneral Matrix Multiply）是 GPU 上最重要的算子：大模型里除
 \begin{itemize}
   \item \textbf{Level 1 — Block Tile}（\texttt{sgemm}，sgemm.cuh~L33）：
         $32 \times 32 \times 32$ 分块 + shared memory，一个线程算一个 C 元素——
-        最小但完整的 tiling 骨架，两级 \texttt{\_\_syncthreads} 的正确性语义在这里讲透；
+        最小但完整的 tiling 骨架，两级 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads} 的正确性语义在这里讲透；
   \item \textbf{Level 2 + Level 3 — Thread Tile 与 Vectorize}（\texttt{sgemm\_vec4}，
         sgemm.cuh~L108）：$128 \times 128 \times 32$ 分块 + 每线程 $4 \times 4$
         寄存器 tile + \texttt{float4} 加载——三个优化叠加后的工业雉形。
@@ -21,7 +21,7 @@ GEMM（GEneral Matrix Multiply）是 GPU 上最重要的算子：大模型里除
 \textbf{前置章节}：第~\ref{ch:01}~章 roofline（本章的每一级提升都要用 AI 定量核证）、
 第~\ref{ch:03}~章合并访问与向量化、第~\ref{ch:08}~章 GEMV（作为「复用维度消失」的
 对照组）。\textbf{源码区间}：sgemm.cuh~L6--183；无编译宏限定，全部架构适用；
-配套最小测试为 \texttt{book/tests/ch09\_sgemm.cu}。
+配套最小测试为 \texttt{book/\allowbreak{}tests/\allowbreak{}ch09\_\allowbreak{}sgemm.\allowbreak{}cu}。
 \textbf{后继}：第~\ref{ch:10}~章阶梯二（TF32 WMMA + cp.async 双缓冲）把「等数据」
 的空转吃掉；第~\ref{ch:11}~章起进入 Tensor Core；第~\ref{ch:12}~章解决本章留下的
 bank conflict 与 swizzle 问题。预计篇幅约 12 页。
@@ -47,7 +47,7 @@ $B[:,\ n{:}n{+}B\sb{N}]$ 上的所有输出共享同一段 $B$。把这两段搬
 三级叠加后，本章的 \texttt{sgemm\_vec4} 在 $2048^3$ 上比 naive 快 $4.76\times$
 （9.6~节实测），而它使用的仍然只是 CUDA Core 与 shared memory。
 
-\textbf{动机三：金字塔是「每一级解决一个不同的瓶颈」的接力。}Block Tile 解决
+\textbf{动机三：金字塔是「每一级解决一个不同的瓶颈」的接力。}\allowbreak{}Block Tile 解决
 \textbf{gmem 带宽}（AI 从 0.25 到 32）；Thread Tile 解决 \textbf{smem 带宽与指令数}
 （每 FMA 的 smem 读从 2 次降到 0.5 次）；再往上，剩下的瓶颈依次是访存延迟
 （$\to$ 双缓冲，第~\ref{ch:10}~章）、CUDA Core 吞吐本身
@@ -127,10 +127,10 @@ naive（AI $0.25$）计算上限 $\approx 0.23$ TFLOPS；
 
 形式化之外，tiling 循环的正确性依赖两道栅栏，缺一不可：
 \begin{itemize}
-  \item \textbf{第一道 \texttt{\_\_syncthreads}}（消费前）：保证本 k-slice 的
+  \item \textbf{第一道 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads}}（消费前）：保证本 k-slice 的
         \texttt{s\_a}、\texttt{s\_b} 已被\textbf{全部}线程写完，才能开始读——
         否则读到邻居还没写的半成品；
-  \item \textbf{第二道 \texttt{\_\_syncthreads}}（覆写前）：保证所有线程已读完
+  \item \textbf{第二道 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads}}（覆写前）：保证所有线程已读完
         本 slice，才允许下一轮加载覆写同一块 smem——否则慢的线程读到的数据
         被快的线程提前冲掉。
 \end{itemize}
@@ -191,7 +191,7 @@ $= 16384 = 128 \times 128$，不重不漏。
 
 注释 L99--102 的 bank conflict 预警也经推导属实：计算阶段读 \texttt{s\_b[k][n]}
 时，warp 内列地址步进 4 个 float（16B），32 个 lane 只命中 8 个 bank——
-4-way conflict；生产代码用 \texttt{s\_b[BK][BN+1]} 加一列 PAD 打散，
+4-way conflict；生产代码用 \texttt{s\_\allowbreak{}b[BK][BN+1]} 加一列 PAD 打散，
 本章保持最简布局，把系统解法（swizzle）留给第~\ref{ch:12}~章。
 
 \subsection{Level 1+：\texttt{sgemm\_vec4} 的实现}
@@ -239,7 +239,7 @@ block tile 决定「smem 里驻留多少输入」，grid 决定「C 被切成几
 本章复测（RTX PRO 5000 72GB Blackwell，sm\_120，110 SMs，threads/SM $=1536$，
 smem/SM $=100$KB；时钟按运行时查询 2.38~GHz，fp32 峰值按 128 FMA/SM/cycle 折算
 $\approx 66.9$ TFLOPS；warmup 3 + 10 次均值；数据文件
-\texttt{.tmp/book-bench/ch09/bench.txt}）：
+\texttt{.tmp/\allowbreak{}book-bench/\allowbreak{}ch09/\allowbreak{}bench.txt}）：
 
 \begin{table}[htbp]
 \centering
@@ -280,8 +280,8 @@ $4 \times 4 = 16$ 个 block，110 个 SM 有 86 个闲着；naive 同形状有 2
 \section{实践经验}
 
 \begin{kaogu}[F3]{sgemm.cuh L18-19：金字塔注释的两个 AI 公式量纲不一致}
-  注释原文给出「Level 1: \texttt{AI ≈ B\_K/(2×sizeof) ≈ 32/8=4}」与
-  「Level 2: \texttt{AI ≈ TM×TN×B\_K/(2×sizeof) ≈ 8×8×8/8=64}」。
+  注释原文给出「Level 1: \texttt{AI ≈ B\_\allowbreak{}K/\allowbreak{}(2×sizeof) ≈ 32/\allowbreak{}8=\allowbreak{}4}」与
+  「Level 2: \texttt{AI ≈ TM×TN×B\_\allowbreak{}K/\allowbreak{}(2×sizeof) ≈ 8×8×8/\allowbreak{}8=\allowbreak{}64}」。
   问题一：正确的 block tile 推导（式~\ref{eq:9-ai-tile}）中 $B\sb{K}$ 在分子分母间
   \textbf{相消}，AI 与 $B\sb{K}$ 无关——把 $B\sb{K}$ 放进分子会得出「加深 K 切片
   就能提升 AI」的错误直觉；数值上 $32 \times 32$ tile 的 AI 是 8 而非 4。
@@ -317,7 +317,7 @@ $4 \times 4 = 16$ 个 block，110 个 SM 有 86 个闲着；naive 同形状有 2
 
 \section{常见坑}
 
-\textbf{坑一：省掉第二道 \texttt{\_\_syncthreads}。}最常见的「优化」笔误：以为计算完
+\textbf{坑一：省掉第二道 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads}。}最常见的「优化」笔误：以为计算完
 就能直接加载下一片。后果是 race——快线程覆写 smem、慢线程读到新数据，
 \textbf{症状随形状与调度变化，难以稳定复现}。本章测试的动手实验（1）演示复现方法。
 
@@ -336,7 +336,7 @@ naive 要求三者都是 32 的倍数，vec4 要求 $M$、$N$ 是 128 的倍数�
 $b + kN$（$N$ 为 4 倍数即可）仍对齐，但 \texttt{s\_a} 行内偏移 $(\mathrm{tid}\%8)\cdot4$
 恒对齐——逐项检查三处（基址、行起点、列偏移）再动手。
 
-\textbf{坑五：tile 越大越好是幻觉。}9.6 节观察（4）：$512^2$ 上 $128^2$ tile 只有
+\textbf{坑五：tile 越大越好是幻觉。}\allowbreak{}9.6 节观察（4）：$512^2$ 上 $128^2$ tile 只有
 16 个 block，SM 大量闲置；同时 1024 线程的 block 在 1536 threads/SM 的机器上
 每 SM 只驻留 1 个。tile 尺寸是「AI（越大越好）」与「并行度/占用（越多越小越好）」
 的折中，形状适配（split-K、尾块处理）是工程必答题。
@@ -348,7 +348,7 @@ A：block tile 让每份 gmem 数据被 $B\sb{N}$（或 $B\sb{M}$）个输出复
 $\mathrm{AI} = B\sb{M}B\sb{N} / (2(B\sb{M}+B\sb{N}))$，与 $B\sb{K}$ 无关；
 $32^2 \to 8$、$128^2 \to 32$ FLOP/B。naive 的 0.25 是常数，与 $K$ 无关。
 
-\textbf{Q2：两道 \texttt{\_\_syncthreads} 各防什么？}\\
+\textbf{Q2：两道 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads} 各防什么？}\\
 A：第一道防「读到没写完的 smem」（生产者/消费者），第二道防「读还没读完就被
 下一轮覆写」（消费者/生产者）。双缓冲（第~\ref{ch:10}~章）用两份 smem 交替，
 可以把第二道栅栏变成流水线节拍。
@@ -374,13 +374,13 @@ WMMA 版出现。
 
 \section{最小测试与动手实验}
 
-测试文件：\texttt{book/tests/ch09\_sgemm.cu}（逻辑抽取自 notes-v2.cu 的
+测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch09\_\allowbreak{}sgemm.\allowbreak{}cu}（逻辑抽取自 notes-v2.cu 的
 test\_sgemm，L1289，对照由 cuBLAS 改为 CPU fp64 参考）。两个 case：
 A（$128^3$：naive 16 blocks vs vec4 1 block）；B（$256^3$：64 vs 4 blocks）。
 两版 kernel 输出与参考逐元素比对，容差取 F32Acc 档（$10^{-3}$）。
 
-在 \texttt{book/tests/} 目录、\texttt{CUDA\_VISIBLE\_DEVICES=7} 下执行
-\texttt{./build\_tests.sh --ch ch09}。本机运行输出（RTX PRO 5000，2026-09-11；
+在 \texttt{book/tests/} 目录、\texttt{CUDA\_\allowbreak{}VISIBLE\_\allowbreak{}DEVICES=\allowbreak{}7} 下执行
+\texttt{.\allowbreak{}/\allowbreak{}build\_\allowbreak{}tests.\allowbreak{}sh --ch ch09}。本机运行输出（RTX PRO 5000，2026-09-11；
 PASS 行的 \texttt{max\_abs\_err} 数值见表~\ref{tab:9-pass}）：
 
 \begin{lstlisting}[style=console]
@@ -409,10 +409,10 @@ B & sgemm-vec4 (128x128x32) & 1.362e-05 & 1.0e-03 \\
 串行 fp32 累加噪声），远小于 F32Acc 档容差；两 kernel 输出一致（同形状同累加顺序
 时误差完全相同，亦可作交叉印证）。注意测试形状必须满足倍数约束
 （坑二），否则越界写会直接破坏堆。动手实验建议：
-（1）注释掉 \texttt{sgemm} 的第二道 \texttt{\_\_syncthreads}（在自己的副本上），
+（1）注释掉 \texttt{sgemm} 的第二道 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads}（在自己的副本上），
 用 $K = 512$ 反复跑 case A 100 次，统计错误率，体会坑一的「时隐时现」；
 （2）把 $M$ 改成 33（不满足倍数约束）跑 \texttt{compute-sanitizer}，观察越界报告；
-（3）运行 \texttt{./.build/ch09\_sgemm bench} 复现表~\ref{tab:9-bench}，
+（3）运行 \texttt{.\allowbreak{}/\allowbreak{}.\allowbreak{}build/\allowbreak{}ch09\_\allowbreak{}sgemm bench} 复现表~\ref{tab:9-bench}，
 并解释 $512^3$ 时 vec4 相对 naive 只有 $1.13\times$ 的原因（9.6 节观察四）。
 
 \section*{延伸阅读}

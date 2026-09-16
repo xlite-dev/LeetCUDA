@@ -103,7 +103,7 @@ $[4t, 4t+3]$，warp 的 32 个线程覆盖连续 512B $= 16$ 个 sector，$\eta$
 向量化的代价是\textbf{对齐约束}。float4 类型要求 16B 对齐：cudaMalloc
 返回的基址满足 256B 对齐，因此只要\textbf{元素偏移 idx 是 4 的倍数}
 （vec4 版 idx $= 4 \times$ 全局线程号，天然满足），地址即对齐。反过来，
-若 $N$ 不是 4 的倍数，最后一组 \texttt{FLOAT4(a[idx])} 的 4 元素读取会
+若 $N$ 不是 4 的倍数，最后一组 \texttt{FLOAT4\allowbreak{}(a[idx])} 的 4 元素读取会
 越过数组末尾——源码里两个 vec4 kernel（relu/dot）只守卫 \texttt{idx < N}，
 存在越界读隐患，一个（elementwise\_add\_vec4）用 \texttt{idx + 3 < N}
 加标量尾部兜底，见 \S\ref{sec:ch03-kaogu} 的逐条核查。
@@ -147,8 +147,8 @@ rsqrt 中反复出现。
 \lstinputlisting[linerange={324-345},firstnumber=auto,
   title={base.cuh L324-345（relu vec4：单条 128-bit load/store）}]{../base.cuh}
 
-\texttt{FLOAT4(x[idx])} 是 common.cuh 的宏：把任意标量引用重解释为
-float4 引用，编译为一条 \texttt{LDG.E.128}；\texttt{FLOAT4(y[idx]) = reg\_y}
+\texttt{FLOAT4\allowbreak{}(x[idx])} 是 common.cuh 的宏：把任意标量引用重解释为
+float4 引用，编译为一条 \texttt{LDG.E.128}；\texttt{FLOAT4\allowbreak{}(y[idx]) =\allowbreak{} reg\_\allowbreak{}y}
 同理是一条 \texttt{STG.E.128}。四个 fmaxf 是 4 条独立的寄存器指令——它们
 与 load/store 的比例恰好说明：\textbf{向量化后指令瓶颈从访存侧转移到了
 计算侧}，这正是「AI 低」的算子最乐意看到的结构。
@@ -171,7 +171,7 @@ vec4 版的守卫值得逐行读：主路径 \texttt{(idx + 3) < N} 一次性保
 \lstinputlisting[linerange={376-385},firstnumber=auto,
   title={base.cuh L376-385（histogram：atomicAdd 计数）}]{../base.cuh}
 
-一行有效代码。\texttt{atomicAdd(\&(y[a[idx]]), 1)} 把 RMW 交给硬件：地址
+一行有效代码。\texttt{atomic\allowbreak{}Add\allowbreak{}(\&\allowbreak{}(y[a[idx]]),\allowbreak{} 1)} 把 RMW 交给硬件：地址
 相同则串行、不同则并行，正确性由硬件保证。按 \S\ref{sec:ch03-math} 的
 冲突账：bin 分布越尖（少数 bin 承压越多），串行化越狠。调用契约也别忽略：
 输入值必须落在 $[0, B)$ 内，越界即写坏全局内存——kernel 层不检查（性能
@@ -256,7 +256,7 @@ histogram (256 bins) & 0.62860 & 26.69 GB/s & 按读 4B/元素计，原子另计
 
 \begin{kaogu}[F1]{L324--329 relu\_vec4 边界守卫不足（越界读隐患）}
 与 ch02 的 dot\_vec4 同病：守卫只有 \texttt{idx < N}，而 FLOAT4 一次读 4
-元素，$N$ 非 4 倍数时最后一个线程越界读 \texttt{x[idx..idx+3]}。注释
+元素，$N$ 非 4 倍数时最后一个线程越界读 \texttt{x[idx.\allowbreak{}.\allowbreak{}idx+3]}。注释
 「最适合 N 按 4 对齐的场景」是隐含免责，未明示越界后果。同文件
 elementwise\_add\_vec4（L358--374）的 \texttt{(idx + 3) < N} 主路径 + 标量
 尾部是安全范式，建议统一。
@@ -325,7 +325,7 @@ test\_relu（L596）/ test\_elementwise（L641）/ test\_histogram（L689），
 histogram（16 bins）与 CPU 计数完全一致；另附 5 个 kernel 的 cudaEvent
 bench（warmup 3 + 10 次均值），结果写入 .tmp/book-bench/ch03/bench.txt。
 
-运行（CWD：book/tests/，\texttt{./build\_tests.sh -{}-ch ch03}；kernel 名
+运行（CWD：book/tests/，\texttt{.\allowbreak{}/\allowbreak{}build\_\allowbreak{}tests.\allowbreak{}sh -{}-ch ch03}；kernel 名
 按本书排版把下划线转写为连字符，实测 max\_abs\_err 见各行）：
 \begin{lstlisting}[style=console]
   PASS relu(N=512):              err=0.000e+00 (tol=1.0e-03)

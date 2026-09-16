@@ -351,7 +351,7 @@ GFLOP（运算\textbf{量}），FLOPS（每秒）是速率单位；该段实为 
 \item \textbf{Q：寄存器溢出（spill）是什么？}\\
   A：每线程寄存器需求超过分配上限时，编译器把局部变量挪到 local memory
   （实际在 HBM/L1），访存量暴涨、延迟暴露。用
-  \texttt{-{}-ptxas-options=-v} 观察 spill 次数，出现即优先 reconsider
+  \texttt{-{}-ptxas-options=\allowbreak{}-v} 观察 spill 次数，出现即优先 reconsider
   thread tile 大小。
 \item \textbf{Q：L1 与 shared memory 的关系？}\\
   A：同一块片上 SRAM 的两种角色，可配置划分。L1 对所有访存透明缓存；
@@ -366,7 +366,7 @@ GFLOP（运算\textbf{量}），FLOPS（每秒）是速率单位；该段实为 
 （682.67、0.5、0.625、1/12、1/8、0.25）核对；(2) 打印本机 GPU 的 SM 数、
 L2、smem 上限、GDDR7 理论带宽与 FP32 峰值估算，作为全书 bench 的标尺来源。
 
-编译与运行（CWD：book/tests/）：\texttt{./build\_tests.sh -{}-ch ch01}。
+编译与运行（CWD：book/tests/）：\texttt{.\allowbreak{}/\allowbreak{}build\_\allowbreak{}tests.\allowbreak{}sh -{}-ch ch01}。
 
 实测输出（RTX PRO 5000，sm\_120a，2026-09-11；末行设备名照录自驱动返回，
 含架构代号 sm120）：

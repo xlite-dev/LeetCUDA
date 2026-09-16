@@ -25,15 +25,15 @@ smem$\to$寄存器的 \texttt{ldmatrix}、epilogue 的寄存器$\to$smem$\to$gme
 特性（Swizzle 与 TMA）上。
 
 \textbf{前置章节}：第~\ref{ch:20}~章（compose/divide/product 与
-\texttt{zipped\_divide}）、第~\ref{ch:11}~章（MMA fragment 与 ldmatrix）、
+\texttt{zipped\_\allowbreak{}divide}）、第~\ref{ch:11}~章（MMA fragment 与 ldmatrix）、
 第~\ref{ch:12}~章（cp.async 与多级流水）。\textbf{源码区间}：
 hgemm.cuh~L821--1196——Phase~7c-1 的 CuTe HGEMM kernel 本体（第~\ref{ch:24}~章
 讲它的算法流程，本章只抽取其中的 Tensor/TiledCopy 用法）；需要时引用
 L1197--1427 的 launch wrapper 中拷贝类型的构造段（G2S~L1303--1318、
 S2R~L1319--1332、R2S~L1355--1362、S2G~L1364--1377），其中 L1232--1270 的
 tile 尺寸与 SmemLayout 声明归第~\ref{ch:23}~章。\textbf{编译宏}：
-\texttt{NOTES\_V2\_ENABLE\_CUTE}（需要 CUTLASS 头文件；sm80+ 均可编）。
-配套最小测试 \texttt{book/tests/ch21\_tiled\_copy.cu}：host 端 TV-layout
+\texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}CUTE}（需要 CUTLASS 头文件；sm80+ 均可编）。
+配套最小测试 \texttt{book/\allowbreak{}tests/\allowbreak{}ch21\_\allowbreak{}tiled\_\allowbreak{}copy.cu}：host 端 TV-layout
 断言，不启动 kernel。预计篇幅约 13 页。
 
 \section{问题与动机}
@@ -73,7 +73,7 @@ TiledCopy 就是这个二元组的类型；\texttt{partition\_S} 与
   \item \textbf{(thread, value) 怎么表达}：TV-layout 的定义、对偶与守恒律
         （3.3--3.5 节），以及它与第~\ref{ch:20}~章的 MN-layout 的关系；
   \item \textbf{TiledCopy 怎么来}：显式给 Thr/Val，或由 \texttt{TiledMMA}
-        反推（\texttt{make\_tiled\_copy\_A/B/C}）（4.2--4.4 节）；
+        反推（\texttt{make\_\allowbreak{}tiled\_\allowbreak{}copy\_\allowbreak{}A/\allowbreak{}B/\allowbreak{}C}）（4.2--4.4 节）；
   \item \textbf{retile 为什么不需要搬数据}：零拷贝重标记的数学（3.7 节）。
 \end{itemize}
 
@@ -106,10 +106,10 @@ $(m,n)$ 坐标能落到 gmem/smem/reg 三种内存」的原因：换 engine，la
 \label{fig:21-1}
 \end{figure}
 
-其中 Engine 是「内存 $+$ 访问方式」：\texttt{make\_gmem\_ptr(p)} 表示从全局
-内存地址 $p$ 起算、\texttt{make\_smem\_ptr(p)} 表示 smem、\texttt{make\_rmem\_ptr}
-表示寄存器、\texttt{make\_identity\_tensor} 返回坐标本身（本章测试用它做断言）。
-\texttt{make\_tensor(ptr, shape, stride)} 是 hgemm CuTe 版里最常见的写法
+其中 Engine 是「内存 $+$ 访问方式」：\texttt{make\_\allowbreak{}gmem\_\allowbreak{}ptr\allowbreak{}(p)} 表示从全局
+内存地址 $p$ 起算、\texttt{make\_\allowbreak{}smem\_\allowbreak{}ptr\allowbreak{}(p)} 表示 smem、\texttt{make\_\allowbreak{}rmem\_\allowbreak{}ptr}
+表示寄存器、\texttt{make\_\allowbreak{}identity\_\allowbreak{}tensor} 返回坐标本身（本章测试用它做断言）。
+\texttt{make\_\allowbreak{}tensor\allowbreak{}(ptr,\allowbreak{} shape,\allowbreak{} stride)} 是 hgemm CuTe 版里最常见的写法
 （hgemm.cuh~L842--844）：\texttt{A[M][K]} 行主序存储，等价于
 $\mathrm{Layout} = (M,K){:}(K,1)$。注意式~\eqref{eq:21-tensor} 里的 layout 可以
 是任意复杂结构——只要能算出 offset，Tensor 就能寻址；这一点是后面
@@ -118,14 +118,14 @@ $\mathrm{Layout} = (M,K){:}(K,1)$。注意式~\eqref{eq:21-tensor} 里的 layout
 Tensor 上最重要的两个操作在本章反复出现：
 
 \begin{itemize}
-  \item \textbf{切片/slice}：\texttt{tensor(coord)} 取单个元素，
+  \item \textbf{切片/slice}：\texttt{tensor\allowbreak{}(coord)} 取单个元素，
         \texttt{tensor(\_, \_, k)} 用占位符 \texttt{\_} 保留某个 mode
         （得到低一维的视图）——hgemm 里
         \texttt{gA(\_, \_, 0)} 表示「第 0 个 K tile 的 $B_M\times B_K$ 视图」；
-  \item \textbf{局部切片/local\_tile}：\texttt{local\_tile(A, make\_tile(BM,BK),
-        make\_coord(iy, \_))} 把大 Tensor 按 tile 切出当前 CTA 需要的那一块，
+  \item \textbf{局部切片/local\_tile}：\texttt{local\_\allowbreak{}tile\allowbreak{}(A,\allowbreak{} make\_\allowbreak{}tile\allowbreak{}(BM,\allowbreak{}BK),\allowbreak{}
+        make\_\allowbreak{}coord\allowbreak{}(iy,\allowbreak{} \_\allowbreak{}))} 把大 Tensor 按 tile 切出当前 CTA 需要的那一块，
         同时\textbf{保留未切出的 remainder mode}——它的实现就是第~\ref{ch:20}~章
-        的 \texttt{zipped\_divide}（L852--854 的 gA/gB/gD）。
+        的 \texttt{zipped\_\allowbreak{}divide}（L852--854 的 gA/gB/gD）。
 \end{itemize}
 
 \subsection{小例子：4 个线程搬一块 $(4,4)$}
@@ -172,7 +172,7 @@ ldmatrix 或 bank 冲突考虑，地址公式会迅速膨胀，而「哪个数�
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.95\textwidth]{figures/drawio/fig-21-2-tv-table/fig-21-2.png}
-\caption{4 线程小例子的两种表格：左边是朴素 CUDA 手算的「线程 $\times$ 值 $\to$ 坐标」表（一轮覆盖 $2\times4$、两轮铺满 $(4,4)$），右边是 CuTe 的 \texttt{make\_tiled\_copy} 打印结果——\texttt{tvS} 的公式与手算逐格一致（8 个 $(t,v)$ 逐点核对）。MN-layout 与 TV-layout 互为逆映射，分别服务「数据视角」与「线程视角」。}
+\caption{4 线程小例子的两种表格：左边是朴素 CUDA 手算的「线程 $\times$ 值 $\to$ 坐标」表（一轮覆盖 $2\times4$、两轮铺满 $(4,4)$），右边是 CuTe 的 \texttt{make\_\allowbreak{}tiled\_\allowbreak{}copy} 打印结果——\texttt{tvS} 的公式与手算逐格一致（8 个 $(t,v)$ 逐点核对）。MN-layout 与 TV-layout 互为逆映射，分别服务「数据视角」与「线程视角」。}
 \label{fig:21-2}
 \end{figure}
 
@@ -209,8 +209,8 @@ CuTe 两个方向都提供，并且用同一个 layout 表示：
 
 上节小例子里我们直接画了表；在 CuTe 里，「画表」被拆成两个更好写的动作：
 \textbf{声明线程怎么排（ThrLayout）、声明每线程搬的值怎么排（ValLayout）}，
-再由 \texttt{make\_tiled\_copy} 合成完整的 MN 表。
-\texttt{make\_tiled\_copy(atom, ThrLayout, ValLayout)} 的两个人肉参数是
+再由 \texttt{make\_\allowbreak{}tiled\_\allowbreak{}copy} 合成完整的 MN 表。
+\texttt{make\_\allowbreak{}tiled\_\allowbreak{}copy\allowbreak{}(atom,\allowbreak{} Thr\allowbreak{}Layout,\allowbreak{} Val\allowbreak{}Layout)} 的两个人肉参数是
 \textbf{坐标$\to$thr/val} 的两个函数（注意方向：它们把坐标映到线程号/值号，
 不是反过来）：
 
@@ -220,7 +220,7 @@ CuTe 两个方向都提供，并且用同一个 layout 表示：
 \end{align}
 
 式~\eqref{eq:21-g2s-params} 就是 hgemm 的 G$\to$S 参数
-（hgemm.cuh~L1313--1317：\texttt{ThrLayout\ =\ (32,4){:}(4,1)}、
+（hgemm.cuh~L1313--1317：\texttt{Thr\allowbreak{}Layout\ =\allowbreak{}\ \allowbreak{}(32,\allowbreak{}4){:}\allowbreak{}(4,\allowbreak{}1)}、
 \texttt{ValLayout\ =\ (1,8)}）。CuTe 把它们合成一个 MN 布局
 \begin{equation}
   \mathrm{Layout\_MN} = \mathrm{raked\_product}\bigl(
@@ -267,7 +267,7 @@ $P\times V$ 个 $(t,v)$ 映射到 Tiler 上；当它是双射时立刻得到一�
 
 G$\to$S 的实测：$P\times V = 128\times 8 = 1024 = 32\times 32 = |\mathrm{Tiler}|$
 （3.4 节的 Thr/Val 恰好把 $32\times32$ 的 tile 铺满一层）。S$\to$R 的实测则
-不同：\texttt{make\_tiled\_copy\_A} 得到的 tiler 是
+不同：\texttt{make\_\allowbreak{}tiled\_\allowbreak{}copy\_\allowbreak{}A} 得到的 tiler 是
 $(\mathrm{tile\_size}_0, \mathrm{tile\_size}_2) = (32,16)$，只有 512 个元素，
 而 $P\times V = 128\times 8 = 1024$——\textbf{2 倍的重复因子}。原因不是 bug：
 $2\times2$ 的 warp 排布里，两个 N 方向的 warp 需要\textbf{同一份} A fragment，
@@ -288,7 +288,7 @@ $4096/2$），与式~\eqref{eq:21-dup} 完全一致。
 
 \texttt{partition\_S}/\texttt{partition\_D} 做的事情可以一句话写完：把
 \textbf{数据 Tensor 按 Tiler 切块}（第~\ref{ch:20}~章的
-\texttt{zipped\_divide}），再把每块的内部坐标交给 copy 原子的 TV 布局：
+\texttt{zipped\_\allowbreak{}divide}），再把每块的内部坐标交给 copy 原子的 TV 布局：
 
 \begin{equation}
   \mathrm{partition}(T) \;=\;
@@ -324,7 +324,7 @@ $(8,\ 4,\ 1)$——8 个值、M 方向 4 个 tile 重复、K 方向 1 个；$8\t
 
 \subsection{retile：零拷贝重标记与 upcast}
 
-\texttt{retile\_S}/\texttt{retile\_D} 解决一个具体的错位问题：MMA 的
+retile 这对操作（\texttt{retile\_S} 与 \texttt{retile\_D}）解决一个具体的错位问题：MMA 的
 accumulator fragment $C$ 的逻辑形状是 $(\mathrm{MMA}, \mathrm{MMA}_M,
 \mathrm{MMA}_N)$（m16n8k16 下每线程 4 个值/原子实例），而 copy 想要的是
 「按 copy 原子的值顺序排列」的视图——两者\textbf{描述同一批寄存器}，只是
@@ -352,7 +352,7 @@ accumulator fragment $C$ 的逻辑形状是 $(\mathrm{MMA}, \mathrm{MMA}_M,
 它还有一条很好的性质：对复合布局分配——
 $\mathrm{upcast}_2\bigl(\mathrm{Swizzle}_{3,3,3}\circ L\bigr) =
 \mathrm{Swizzle}_{3,2,3}\circ \mathrm{upcast}_2(L)$
-（实测：\texttt{Sw<3,2,3> o \_0 o (32,16):(16,1)}），这也解释了为什么
+（实测：\texttt{Sw\allowbreak{}<3,\allowbreak{}2,\allowbreak{}3> o \_\allowbreak{}0 o \allowbreak{}(32,\allowbreak{}16):\allowbreak{}(16,\allowbreak{}1)}），这也解释了为什么
 128-bit 拷贝的 smem 布局可以写成「half 版布局的 upcast」。
 
 \section{设计与实现}
@@ -376,8 +376,8 @@ $(B_M, B_K, \lceil K/B_K\rceil)$ 的三维视图，之后 \texttt{gA(\_,\_,0)} �
 
 hgemm 里出现了三类搬运，它们的 TiledCopy 构造方式正好覆盖三种来源
 （表~\ref{tab:21-1}）：\textbf{显式给出 Thr/Val}（G$\to$S、S$\to$G：
-\texttt{make\_tiled\_copy}）、\textbf{由 TiledMMA 反推}（S$\to$R 用
-\texttt{make\_tiled\_copy\_A/B}、R$\to$S 用 \texttt{make\_tiled\_copy\_C}）。
+\texttt{make\_\allowbreak{}tiled\_\allowbreak{}copy}）、\textbf{由 TiledMMA 反推}（S$\to$R 用
+\texttt{make\_\allowbreak{}tiled\_\allowbreak{}copy\_\allowbreak{}A/\allowbreak{}B}、R$\to$S 用 \texttt{make\_\allowbreak{}tiled\_\allowbreak{}copy\_\allowbreak{}C}）。
 第二类的实现只有一行：
 
 \begin{align}
@@ -395,7 +395,7 @@ hgemm 里出现了三类搬运，它们的 TiledCopy 构造方式正好覆盖三
 式~\eqref{eq:21-mtca}--\eqref{eq:21-mtcc} 是本章最实用的一条结论：
 \textbf{只要给了 TiledMMA，S$\to$R 的线程-值映射就是确定的}——因为 MMA 的
 fragment 布局本来就规定了每个线程持有哪些元素，S$\to$R 只是「把这些元素从
-smem 搬到寄存器」而已（第~\ref{ch:22}~章会看到 \texttt{get\_layoutA\_TV} 的
+smem 搬到寄存器」而已（第~\ref{ch:22}~章会看到 \texttt{get\_\allowbreak{}layout\allowbreak{}A\_\allowbreak{}TV} 的
 构造过程）。对 hgemm 配置实测（CUTLASS v4.6.1）：
 $\mathrm{tile\_size} = (32,32,16)$，于是 A/B 拷贝的 Tiler $=(32,16)$、
 C 拷贝的 Tiler $=(32,32)$；后者恰好等于 SmemLayoutC 的
@@ -408,11 +408,11 @@ $(k_{\mathrm{MmaPM}}, k_{\mathrm{MmaPN}}) = (32,32)$——这正是 kernel 注�
         五条搬运链路的 Tiler、\texttt{TiledNumThr}/\texttt{TiledNumVal}
         与 launch wrapper（L1303--1377）的构造段逐项核对一致（G2S 的
         $(32,4){:}(4,1)\times(1,8)$、C 拷贝 Tiler $(32,32)$ 与
-        \texttt{cosize(SmemLayoutC)}$=4096$ 等）。
+        \texttt{cosize\allowbreak{}(Smem\allowbreak{}Layout\allowbreak{}C)}$=4096$ 等）。
   \item 注释只写参数、不写类型时，实际型号要去构造段自己确认——本仓库的
         注释与实现一致是核对的结论，不是可以推广的假设。
   \item 换 CUTLASS 版本后重核一遍：类型别名（如
-        \texttt{SM80\_CP\_ASYNC\_CACHEGLOBAL}）随版本演进。
+        \texttt{SM80\_\allowbreak{}CP\_\allowbreak{}ASYNC\_\allowbreak{}CACHEGLOBAL}）随版本演进。
 \end{itemize}
 
 \begin{table}[htbp]
@@ -422,21 +422,21 @@ $(k_{\mathrm{MmaPM}}, k_{\mathrm{MmaPN}}) = (32,32)$——这正是 kernel 注�
   \toprule
   搬运 & 原子（Copy\_Atom） & Tiler & 构造方式 & kernel 行号 \\
   \midrule
-  G$\to$S & \texttt{SM80\_CP\_ASYNC\_CACHEGLOBAL<uint128\_t>} & $(32,32)$
+  G$\to$S & \texttt{SM80\_\allowbreak{}CP\_\allowbreak{}ASYNC\_\allowbreak{}CACHEGLOBAL\allowbreak{}<uint128\_\allowbreak{}t>} & $(32,32)$
     & 显式 Thr$(32,4){:}(4,1)$ / Val$(1,8)$ & L1303--1318 \\
-  S$\to$R (A) & \texttt{SM75\_U32x4\_LDSM\_N} & $(32,16)$
-    & \texttt{make\_tiled\_copy\_A} & L1319--1332 \\
-  S$\to$R (B) & \texttt{SM75\_U32x4\_LDSM\_N} & $(32,16)$
-    & \texttt{make\_tiled\_copy\_B} & L1319--1332 \\
-  R$\to$S (C) & \texttt{UniversalCopy<int>}（32-bit） & $(32,32)$
-    & \texttt{make\_tiled\_copy\_C} & L1362 \\
-  S$\to$G (C) & \texttt{UniversalCopy<uint128\_t>}（128-bit） & $(32,32)$
+  S$\to$R (A) & \texttt{SM75\_\allowbreak{}U32x4\_\allowbreak{}LDSM\_\allowbreak{}N} & $(32,16)$
+    & \texttt{make\_\allowbreak{}tiled\_\allowbreak{}copy\_\allowbreak{}A} & L1319--1332 \\
+  S$\to$R (B) & \texttt{SM75\_\allowbreak{}U32x4\_\allowbreak{}LDSM\_\allowbreak{}N} & $(32,16)$
+    & \texttt{make\_\allowbreak{}tiled\_\allowbreak{}copy\_\allowbreak{}B} & L1319--1332 \\
+  R$\to$S (C) & \texttt{Universal\allowbreak{}Copy\allowbreak{}<int>}（32-bit） & $(32,32)$
+    & \texttt{make\_\allowbreak{}tiled\_\allowbreak{}copy\_\allowbreak{}C} & L1362 \\
+  S$\to$G (C) & \texttt{Universal\allowbreak{}Copy\allowbreak{}<uint128\_\allowbreak{}t>}（128-bit） & $(32,32)$
     & 显式 Thr$(32,4){:}(4,1)$ / Val$(1,8)$ & L1371--1376 \\
   \bottomrule
 \end{tabular}
 \caption{hgemm CuTe 版的五条搬运链路（表~21-1）。Tiler 为 CUTLASS v4.6.1
-下对 hgemm 配置（\texttt{SM80\_16x8x16}、EU-repeat $2\times2\times1$、
-\texttt{Tile<32,32,16>}）的实测值。}\label{tab:21-1}
+下对 hgemm 配置（\texttt{SM80\_\allowbreak{}16x8x16}、EU-repeat $2\times2\times1$、
+\texttt{Tile\allowbreak{}<32,\allowbreak{}32,\allowbreak{}16>}）的实测值。}\label{tab:21-1}
 \end{table}
 
 \subsection{G$\to$S：显式 Thr/Val 与两级切片}
@@ -471,7 +471,7 @@ S$\to$R 的 K 方向重复更多？因为 copy 原子不同：G$\to$S 一次搬�
   \label{eq:21-retile-d}
 \end{equation}
 
-这一步是 \texttt{cute::copy(s2r\_tiled\_copy\_a, tAsA(\dots), tCrA\_view)}
+这一步是 \texttt{cute::\allowbreak{}copy\allowbreak{}(s2r\_\allowbreak{}tiled\_\allowbreak{}copy\_\allowbreak{}a,\allowbreak{} tAsA\allowbreak{}(\dots),\allowbreak{} tCrA\_\allowbreak{}view)}
 能成立的前提：copy 按「源的第 $i$ 个值 $\to$ 目的的第 $i$ 个值」逐元素配对，
 而 \texttt{retile} 保证目的视图的「第 $i$ 个值」就是本线程寄存器的第 $i$ 个
 槽位。它\textbf{不搬数据、不转换类型、不 shuffle}——真正跨线程的重组发生在
@@ -491,11 +491,11 @@ side」，不是 shared memory；\texttt{retile\_D} 的 D 指 destination side�
         见式~\eqref{eq:21-dup}）。线程 $t$ 的第 0 个值是
         $\bigl((t\bmod 16) + 16\lfloor (t/32)\bmod 2\rfloor,\
         8\lfloor (t\bmod 32)/16\rfloor\bigr)$（本章测试 case~D 的核对公式）。
-  \item 真正决定寄存器内容顺序的是 copy 原子的 \texttt{ValLayoutDst}，
+  \item 真正决定寄存器内容顺序的是 copy 原子的 \texttt{Val\allowbreak{}Layout\allowbreak{}Dst}，
         由 \texttt{retile\_D} 表达的目的端布局承担（3.7 节）。把「smem 读取
         视图」与「寄存器视图」混为一谈，会写出看似对齐、实际错位的 copy。
   \item 换 copy 原子（例如 ldmatrix 的 \texttt{.trans} 变体）时，先确认
-        新的 \texttt{ValLayoutDst} 与目标 fragment 布局仍然兼容，再动
+        新的 \texttt{Val\allowbreak{}Layout\allowbreak{}Dst} 与目标 fragment 布局仍然兼容，再动
         retile 一侧。
 \end{itemize}
 
@@ -509,13 +509,13 @@ smem scratchpad（R$\to$S），再从 scratchpad 按 128-bit 读回 gmem
   title={hgemm.cuh L1001-1020（C scratchpad 的重解释与 R2S 的 retile\_S）}]{../hgemm.cuh}
 
 \begin{sloppypar}
-注意 L1001 的写法：\texttt{sC} 拿的是 \texttt{sA(\_,\_,ismem\_read).data()}
+注意 L1001 的写法：\texttt{sC} 拿的是 \texttt{s\allowbreak{}A\allowbreak{}(\_\allowbreak{},\allowbreak{}\_\allowbreak{},\allowbreak{}ismem\_\allowbreak{}read).\allowbreak{}data\allowbreak{}()}
 （一个裸指针），再\emph{重新}用 SmemLayoutC 解释同一段地址。这里没有 Tensor
 类型转换，只是「同一块 smem、两种布局视图」——A 的 pipe 布局是
-$8\times32$ atom，C 的是 $32\times32$ atom，二者都含 \texttt{Swizzle<3,3,3>}
+$8\times32$ atom，C 的是 $32\times32$ atom，二者都含 \texttt{Swizzle\allowbreak{}<3,\allowbreak{}3,\allowbreak{}3>}
 但\textbf{不可互换读取}。容量上：一个 A stage 是 $128\times32=4096$ 个 half，
 C scratchpad 是 $32\times32\times4=4096$ 个 half，正好放得下（launch wrapper
-的 \texttt{static\_assert} 就是查这件事，实测 \texttt{cosize(SmemLayoutA)}
+的 \texttt{static\_\allowbreak{}assert} 就是查这件事，实测 \texttt{cosize\allowbreak{}(Smem\allowbreak{}Layout\allowbreak{}A)}
 $=8192$（2 stage）、C 部分 $4096$）。
 \end{sloppypar}
 
@@ -525,15 +525,15 @@ S$\to$G 一侧的 partition 与 \texttt{group\_modes} 合并：
   title={hgemm.cuh L1036-1076（S2G 的划分与 group\_modes 合并 mode）}]{../hgemm.cuh}
 
 \begin{sloppypar}
-\texttt{group\_modes<1,3>} 把 mode 区间 $[1,3)$ 合并成一个嵌套 mode：形状从
+\texttt{group\_\allowbreak{}modes\allowbreak{}<1,\allowbreak{}3>} 把 mode 区间 $[1,3)$ 合并成一个嵌套 mode：形状从
 $(\mathrm{CPY}, \mathrm{CPY}_M, \mathrm{CPY}_N)$ 变成
 $(\mathrm{CPY}, (\mathrm{CPY}_M, \mathrm{CPY}_N))$。它\textbf{只重组 layout}，
 不分配内存、不搬数据——它是第~\ref{ch:20}~章 4.6 节 \texttt{group<B,E>}
-的 Tensor 版（定义在 \texttt{cute/tensor\_impl.hpp}，内部就是一行
-\texttt{make\_tensor(t.data(),}\allowbreak\texttt{group<B,E>(t.layout()))}）。
+的 Tensor 版（定义在 \texttt{cute/\allowbreak{}tensor\_\allowbreak{}impl.\allowbreak{}hpp}，内部就是一行
+\texttt{make\_\allowbreak{}tensor\allowbreak{}(t.\allowbreak{}data\allowbreak{}(),\allowbreak{}}\allowbreak\texttt{group\allowbreak{}<B,\allowbreak{}E>\allowbreak{}(t.\allowbreak{}layout\allowbreak{}()))}）。
 合并之后外层的双层循环可以用一个线性坐标 \texttt{i+j} 遍历整个
 $\mathrm{CPY}_M\times\mathrm{CPY}_N$ 空间（L1093 起的 epilogue 循环），
-而 step 来自 scratchpad 的 pipe 数（\texttt{size<3>(tCsC\_r2s)} $=4$）。
+而 step 来自 scratchpad 的 pipe 数（\texttt{size\allowbreak{}<3>\allowbreak{}(t\allowbreak{}Cs\allowbreak{}C\_\allowbreak{}r2s)} $=4$）。
 kernel 注释（L1077--1092）特别提醒：\textbf{step 是 pipe 深度，不是
 $\mathrm{CPY}_N$}，循环成立的前提是 $\mathrm{CPY}_M\cdot\mathrm{CPY}_N$ 能被
 step 整除——当前静态布局下这是编译期保证的。
@@ -568,19 +568,19 @@ kernel 的流水线里。所以本节回答的是「这套抽象的代价结构�
 
 \textbf{结论一（编译期零成本）}：Tiler、TV 布局、每个线程的地址全部是静态
 类型推导的结果；kernel 里没有一行显式地址算术，\texttt{cute::copy} 内联后
-就是 \texttt{cp.async.ca.shared.global} / \texttt{ldmatrix} / \texttt{st.shared}
-的序列。第~\ref{ch:20}~章已经用 \texttt{static\_assert} 证明过同类折叠，本章
+就是 \texttt{cp.\allowbreak{}async.\allowbreak{}ca.\allowbreak{}shared.\allowbreak{}global} / \texttt{ldmatrix} / \texttt{st.shared}
+的序列。第~\ref{ch:20}~章已经用 \texttt{static\_\allowbreak{}assert} 证明过同类折叠，本章
 测试把 TiledCopy 的 Tiler/线程数/每线程值数也做成了静态断言。
 
 \textbf{结论二（搬运划分影响访存质量）}：式~\eqref{eq:21-g2s-tv} 保证每个线程
 的 8 个值是连续的，所以一条 128-bit 指令就够了；如果 Thr/Val 写反（比如
-\texttt{ValLayout=(8,1)}），每个线程的 8 个值会跨行分布，128-bit 拷贝会退化成
+\texttt{Val\allowbreak{}Layout=\allowbreak{}(8,\allowbreak{}1)}），每个线程的 8 个值会跨行分布，128-bit 拷贝会退化成
 8 条 16-bit 访问。这不是性能调优技巧，而是\textbf{类型写错就直接吃 8 倍
 访存指令}的硬约束——第~\ref{ch:12}~章的合并访问分析在这里变成了类型选择。
 
 \textbf{结论三（epilogue 的额外成本）}：CuTe 版 epilogue 走
 寄存器$\to$smem$\to$gmem 的 scratchpad 路线，比手写版的「shuffle $+$ 直接
-wide store」多了两次 \texttt{\_\_syncthreads()}（每轮 R$\to$S 后与
+wide store」多了两次 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()}（每轮 R$\to$S 后与
 S$\to$G 后各一次，L1116 与 L1184 附近）与一次 smem 往返。代价换来的是
 \textbf{不写 shuffle 编排}：跨 lane 重组交给 sC 的布局做。对 $B_M\times B_N
 =128\times256$ 的 tile，scratchpad 每轮搬 4 个 pipe slot（step $=4$），
@@ -590,22 +590,22 @@ R$\to$S/R$\to$G 各 8 条指令级别——与主循环的 mma 数量相比是�
 \textbf{结论四（重复因子是寄存器成本）}：式~\eqref{eq:21-dup} 的 A 重复因子
 $=2$、B 重复因子 $=2$（hgemm 的 $2\times2$ warp 排布），意味着每个线程的
 A/B fragment 数量按重复因子放大。这不是 TiledCopy 引入的，而是 MMA 本身
-要求的（第~\ref{ch:22}~章会从 \texttt{partition\_fragment\_A} 再算一遍），
+要求的（第~\ref{ch:22}~章会从 \texttt{partition\_\allowbreak{}fragment\_\allowbreak{}A} 再算一遍），
 TiledCopy 只是把它如实反映到 partition 的形状里。
 
 \section{常见坑}
 
-\textbf{坑一：\texttt{make\_tiled\_copy} 的 Thr/Val 是「坐标 $\to$ 编号」，
+\textbf{坑一：\texttt{make\_\allowbreak{}tiled\_\allowbreak{}copy} 的 Thr/Val 是「坐标 $\to$ 编号」，
 不是「编号 $\to$ 坐标」。}式~\eqref{eq:21-g2s-params} 的方向容易写反；
 写成「线程 $t$ 搬哪几个坐标」的形式（即式~\eqref{eq:21-g2s-tv}）会得到形状
 对、划分错的 TiledCopy——它不报错，只是每个线程搬了不连续的元素。
 
 \textbf{坑二：\texttt{partition\_S}/\texttt{partition\_D} 的 S/D 不能用
-「gmem/smem」来记。}S 指 \emph{source side}、D 指 \emph{destination side}，
-而每个 side 有自己的原子布局（\texttt{ValLayoutSrc}/\texttt{ValLayoutDst}）。
+「gmem/smem」来记。}\allowbreak{}S 指 \emph{source side}、D 指 \emph{destination side}，
+而每个 side 有自己的原子布局（\texttt{Val\allowbreak{}Layout\allowbreak{}Src}/\texttt{Val\allowbreak{}Layout\allowbreak{}Dst}）。
 同一个 Tensor 既可能是 S 也可能是 D：\texttt{tAsA} 是 G$\to$S 的 D
-（\texttt{partition\_D(sA)}），同时也是 S$\to$R 的 S
-（\texttt{partition\_S(sA)}）。
+（\texttt{partition\_\allowbreak{}D\allowbreak{}(s\allowbreak{}A)}），同时也是 S$\to$R 的 S
+（\texttt{partition\_\allowbreak{}S\allowbreak{}(s\allowbreak{}A)}）。
 
 \textbf{坑三：\texttt{retile} 不搬数据，别指望它对齐线程。}
 \texttt{retile\_D}/\texttt{retile\_S} 只重标索引，同一线程内的元素顺序被
@@ -619,14 +619,14 @@ kernel 模板参数一律用 \texttt{Int<N>} 包住正是为此（第~\ref{ch:20
 同一件事，在 copy 上的表现）。
 
 \textbf{坑五：\texttt{local\_tile} 之后别忘了 remainder。}
-\texttt{local\_tile(A, tile, coord)} 返回的 Tensor 仍带未切出的 mode
+\texttt{local\_\allowbreak{}tile\allowbreak{}(A,\allowbreak{} tile,\allowbreak{} coord)} 返回的 Tensor 仍带未切出的 mode
 （gA 是三维的）；直接当二维用会在 \texttt{partition} 时报 rank 不匹配，
 或者更隐蔽地——被 \texttt{\_} 占位符悄悄吞掉一维。
 
 \textbf{坑六：copy 的源/目的 shape 必须逐 mode 匹配。}
-\texttt{cute::copy(tiled\_copy, src, dst)} 内部按元素配对，前提是
+\texttt{cute::\allowbreak{}copy\allowbreak{}(tiled\_\allowbreak{}copy,\allowbreak{} src,\allowbreak{} dst)} 内部按元素配对，前提是
 \texttt{src} 与 \texttt{dst} 的（值 $\times$ 剩余 mode）结构一致：这正是
-\texttt{partition\_S(sA\_slice)} 与 \texttt{retile\_D(tCrA)} 必须成对出现的
+\texttt{partition\_\allowbreak{}S\allowbreak{}(s\allowbreak{}A\_\allowbreak{}slice)} 与 \texttt{retile\_\allowbreak{}D\allowbreak{}(t\allowbreak{}Cr\allowbreak{}A)} 必须成对出现的
 原因。只 partition 一侧、另一侧手写一个 shape 相近的 Tensor，会在
 \texttt{copy} 内部静态断言炸掉（或者更糟，静默错位）。
 
@@ -641,7 +641,7 @@ A：Tensor $=$ (Engine, Layout)，即「一块内存 $+$ 一个坐标到 offset 
 A：同一划分的两种视角，互为逆映射（式~\eqref{eq:21-mn-tv}）：MN 把坐标映到
 (线程, 值)，TV 反过来。Tiler 由 MN 的 shape 取 product\_each 得到。
 
-\textbf{Q3：\texttt{make\_tiled\_copy} 的 raked\_product 是什么意思？}\\
+\textbf{Q3：\texttt{make\_\allowbreak{}tiled\_\allowbreak{}copy} 的 raked\_product 是什么意思？}\\
 A：把 Thr/Val 两个「坐标$\to$编号」布局交错合成一个 MN 布局：同一线程的 $V$
 个值沿坐标连续排布（raked $=$ 交错），而不是先按线程切大块。G$\to$S 的实例
 就是式~\eqref{eq:21-g2s-mn}：$t=4m+\lfloor n/8\rfloor$、$v=n\bmod 8$。
@@ -652,8 +652,8 @@ A：不一定。若 TV 布局是双射（G$\to$S、S$\to$G、C 类拷贝）则�
 （式~\eqref{eq:21-dup}：A 的重复因子 $=$ N 方向 warp 数），因为多个 warp
 需要同一份 fragment。
 
-\textbf{Q5：\texttt{make\_tiled\_copy\_A/B/C} 从哪里得到线程映射？}\\
-A：从 \texttt{TiledMMA} 的 \texttt{get\_layoutA/B/C\_TV()} 直接取——MMA 的
+\textbf{Q5：\texttt{make\_\allowbreak{}tiled\_\allowbreak{}copy\_\allowbreak{}A/\allowbreak{}B/\allowbreak{}C} 从哪里得到线程映射？}\\
+A：从 \texttt{TiledMMA} 的 \texttt{get\_\allowbreak{}layout\allowbreak{}A/\allowbreak{}B/\allowbreak{}C\_\allowbreak{}TV\allowbreak{}()} 直接取——MMA 的
 fragment 约定已经规定了「哪个线程持有哪个元素」，拷贝只需把这份约定当作目的
 布局（式~\eqref{eq:21-mtca}--\eqref{eq:21-mtcc}）。
 
@@ -663,7 +663,7 @@ A：零拷贝重标记：把 fragment 的（MMA, MMA\_M, MMA\_K）索引重排�
 前提，不做数据搬运、不做类型转换、不做 shuffle。
 
 \textbf{Q7：\texttt{group\_modes} 与 \texttt{group} 的区别？}\\
-A：\texttt{group<B,E>} 作用于 \emph{layout}，\texttt{group\_modes<B,E>} 作用于
+A：\texttt{group<B,E>} 作用于 \emph{layout}，\texttt{group\_\allowbreak{}modes\allowbreak{}<B,\allowbreak{}E>} 作用于
 \emph{Tensor}（内部就是前者）。合并 mode 只改索引结构，不改数据、不改物理地址。
 
 \textbf{Q8：S$\to$R 的 K 方向为什么比 G$\to$S 多一层重复？}\\
@@ -674,19 +674,19 @@ G$\to$S 一个 tile 一级切完，S$\to$R 需要 2 个 K 切片（实测
 
 \section{最小测试与动手实验}
 
-测试文件：\texttt{book/tests/ch21\_tiled\_copy.cu}（host-only：不启动 kernel、
+测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch21\_\allowbreak{}tiled\_\allowbreak{}copy.cu}（host-only：不启动 kernel、
 不需要 GPU；只做类型/布局断言）。六个 case 覆盖本章全部可验证结论：
 
 \begin{itemize}
   \item \textbf{A TV 分解}：G$\to$S 的 \texttt{TiledNumThr}$=128$、
         \texttt{TiledNumVal}$=8$、Tiler$=(32,32)$（编译期
-        \texttt{static\_assert}），并对 1024 个 $(t,v)$ 对核对手推公式
+        \texttt{static\_\allowbreak{}assert}），并对 1024 个 $(t,v)$ 对核对手推公式
         式~\eqref{eq:21-g2s-tv}；
   \item \textbf{B partition 形状与守恒}：$(128,32)$ 上逐线程
         $(8,4,1)$、每线程 32 个元素、全部线程合计 4096；并把 4096 个
         (线程, 元素) 覆盖点回投到坐标上，验证双射（\texttt{once}$=4096$）；
   \item \textbf{C fragment 与 retile}：TiledMMA（hgemm 配置）的
-        \texttt{partition\_fragment\_A} 形状 $(8,4,2)$；
+        \texttt{partition\_\allowbreak{}fragment\_\allowbreak{}A} 形状 $(8,4,2)$；
         \texttt{retile\_D} 后形状不变、\texttt{data()} 指针相同（零拷贝）；
   \item \textbf{D ldmatrix 的 source 视图}：S$\to$R 拷贝在 $(128,32)$ 上
         逐线程 64 个元素（$8\times4\times2$）、手推行/列公式逐点核对
@@ -697,7 +697,7 @@ G$\to$S 一个 tile 一级切完，S$\to$R 需要 2 个 K 切片（实测
         每个元素被覆盖恰好 2 次（N 方向 warp 的重复，式~\eqref{eq:21-dup}）；
   \item \textbf{F retile/upcast 语义}：\texttt{upcast} 式~\eqref{eq:21-upcast}
         两条；\texttt{upcast} 对 Swizzle 复合分配
-        （\texttt{Sw<3,2,3>\ o \_0\ o\ (32,16):(16,1)}）；
+        （\texttt{Sw\allowbreak{}<3,\allowbreak{}2,\allowbreak{}3>\ o \_\allowbreak{}0\ o\ \allowbreak{}(32,\allowbreak{}16):\allowbreak{}(16,\allowbreak{}1)}）；
         R$\to$S 拷贝的 tiler$(32,32)$、逐线程 $(8,1,1,4)$、单 pipe 覆盖
         1024 个坐标一次（双射）。
 \end{itemize}

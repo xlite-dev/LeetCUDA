@@ -2,7 +2,7 @@
 % 全部数字转录自正文各章「性能分析」节，原始 bench 数据落盘 .tmp/book-bench/chNN/。
 % 本地口径：RTX PRO 5000 72GB（sm_120a，110 SM，L2 96MB，CUDA 13.2，2026-09-11 复测）；
 % 非本地口径（README 5090 / 论文 A100）逐行单独标注，不与本地数字混排换算。
-\chapter{附录 B\quad 性能数据汇总}\label{app:B}
+\chapter{性能数据汇总}\label{app:B}
 
 \section{口径与标尺}
 
@@ -31,14 +31,14 @@ ridge point $\approx 49.8$~FLOP/B）。读表先记三件事：（1）带宽型�
 \endlastfoot
 第02 & \texttt{dot} / \texttt{dot\_vec4} & $N{=}4.19\,$M & 0.042~ms；806 / 808 GB/s & 三版同为 42~$\mu$s：瓶颈是全局原子串行 \\
 第04 & \texttt{softmax}（online） & $S{=}4096$，$N{=}256$ & 0.0142~ms；591.6 GB/s & naive 0.0121~ms 最快但数值不安全 \\
-第05 & \texttt{merge\_attn\_states} & $T{=}16384$，$H{=}32$，$D{=}128$ & 0.785~ms；1031.4 GB/s & HBM 理论带宽的 77\% \\
-第07 & \texttt{mat\_transpose\_padded} & $2048^2$ & 0.0145~ms；2320 GB/s & 2.40$\times$ vs naive（L2 口径） \\
+第05 & \texttt{merge\_\allowbreak{}attn\_\allowbreak{}states} & $T{=}16384$，$H{=}32$，$D{=}128$ & 0.785~ms；1031.4 GB/s & HBM 理论带宽的 77\% \\
+第07 & \texttt{mat\_\allowbreak{}transpose\_\allowbreak{}padded} & $2048^2$ & 0.0145~ms；2320 GB/s & 2.40$\times$ vs naive（L2 口径） \\
 第08 & \texttt{sgemv} k128 & $M{=}8192$，$K{=}4096$ & 0.144~ms；934.2 GB/s & 全书实测带宽参照；较 k32 +5.2\% \\
 第09 & \texttt{sgemm\_vec4} & $2048^3$ & 0.661~ms；25.97 T & 4.76$\times$ vs naive（3.144~ms，5.46 T） \\
 第10 & \texttt{sgemm\_tf32} & $1024^3$ & 28.19 T & 换 Tensor Core 的第一步 \\
-第11 & \texttt{hgemm\_mma\_stages\_tn} & $1024^3$ & 76.55 T（f16 acc） & 2.71$\times$ vs 第10章 TF32 \\
+第11 & \texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn} & $1024^3$ & 76.55 T（f16 acc） & 2.71$\times$ vs 第10章 TF32 \\
 第12 & 7b-1（BK=16） & $4096^3$ & 124.7 T & 7b-3 反而 118.6--119.0 T \\
-第14 & \texttt{hgemm\_tma\_mma\_ws\_tn} & $2048^3$ & 0.104~ms；164.64 T & 1.57$\times$ vs 第11章同形状 104.66 T \\
+第14 & \texttt{hgemm\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}tn} & $2048^3$ & 0.104~ms；164.64 T & 1.57$\times$ vs 第11章同形状 104.66 T \\
 第16 & FA2 split-Q（F32Acc） & $B{=}1$，$H{=}32$，$N{=}4096$，$D{=}64$ & 0.781~ms；175.88 T & F16Acc 166.56 T（F32 反快 +5.6\%） \\
 第17 & FA2 TMA+WS（F32Acc，Sk=2） & $N{=}16384$，$D{=}128$ & 195.2 T & 同口径 F16Acc 183.8 T \\
 第18 & FA3 双 consumer（F32Acc，Sk=1） & $N{=}4096$，$D{=}128$ & 194.2 T & $D{=}64$ 上 159.8 vs FA2 的 141.8（+13\%） \\
@@ -63,13 +63,13 @@ ridge point $\approx 49.8$~FLOP/B）。读表先记三件事：（1）带宽型�
 \endfoot
 \bottomrule
 \endlastfoot
-第02 & \texttt{block\_reduce\_all} & $N{=}4.19\,$M & 0.0416 & 402.9 & $G{=}16384$ 次全局原子串行（2.6~ns/op） \\
+第02 & \texttt{block\_\allowbreak{}reduce\_\allowbreak{}all} & $N{=}4.19\,$M & 0.0416 & 402.9 & $G{=}16384$ 次全局原子串行（2.6~ns/op） \\
 第02 & \texttt{dot} / \texttt{dot\_vec4} & 同上 & 0.0416 & 806.2 / 807.5 & vec4 零收益：原子钉死 \\
 第03 & \texttt{relu}（\_vec4） & $N{=}4.19\,$M & 0.0180 & 1862 / 1866 & L2 口径（16~MB 工作集） \\
-第03 & \texttt{elementwise\_add}（\_vec4） & 同上 & 0.0190 & 2653.7 / 2611.9 & L2 口径 \\
+第03 & \texttt{elementwise\_\allowbreak{}add}（\_vec4） & 同上 & 0.0190 & 2653.7 / 2611.9 & L2 口径 \\
 第03 & \texttt{histogram} 256 bins & 同上 & 0.6286 & 26.7 & 原子争用，慢两个数量级 \\
 第04 & softmax naive / safe / online & $S{=}4096$，$N{=}256$ & 0.0121 / 0.0146 / 0.0142 & 690.6 / 572.9 / 591.6 & 短 kernel，launch 开销占比大 \\
-第05 & \texttt{merge\_attn\_states} & $T{=}16384$，$H{=}32$，$D{=}128$ & 0.7849 & 1031.4 & HBM 口径 \\
+第05 & \texttt{merge\_\allowbreak{}attn\_\allowbreak{}states} & $T{=}16384$，$H{=}32$，$D{=}128$ & 0.7849 & 1031.4 & HBM 口径 \\
 第06 & \texttt{rms\_norm}（\_vec4） & $N{=}131072$，$K{=}128$ & 0.1289 / 0.1107 & 1041 / 1212 & L2 口径，vec4 +16\% \\
 第06 & \texttt{layer\_norm}（\_vec4） & 同上 & 0.1384 / 0.1118 & 970 / 1201 & 1-pass 稳定省约 7\% \\
 第06 & 四 kernel（HBM） & $N{=}524288$ & 0.50--0.54 & 1000--1070 & HBM 口径，vec4 收益被吸收 \\
@@ -90,9 +90,9 @@ GEMM 的优化路线在三个形状上各取一段可受控对照的阶梯（T �
 形状 & 配置 & ms/iter & 相对基线 \\
 \midrule
 $1024^3$ & \texttt{sgemm\_tf32}（WMMA，$B_K{=}8$） & 28.19 T & 基线（第~\ref{ch:10}~章） \\
-$1024^3$ & \texttt{hgemm\_mma\_stages\_tn}（HMMA，$B_K{=}16$，S=3） & 76.55 T & 2.71$\times$ \\
-$2048^3$ & \texttt{hgemm\_mma\_stages\_tn}（cp.async，S=3） & 0.1641；104.66 T & 基线（第~\ref{ch:14}~章对照） \\
-$2048^3$ & \texttt{hgemm\_tma\_mma\_ws\_tn}（TMA+WS，S=2） & 0.1043；164.64 T & 1.57$\times$ \\
+$1024^3$ & \texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn}（HMMA，$B_K{=}16$，S=3） & 76.55 T & 2.71$\times$ \\
+$2048^3$ & \texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn}（cp.async，S=3） & 0.1641；104.66 T & 基线（第~\ref{ch:14}~章对照） \\
+$2048^3$ & \texttt{hgemm\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}tn}（TMA+WS，S=2） & 0.1043；164.64 T & 1.57$\times$ \\
 $4096^3$ & 7b-1（BK=16，kS=3，无 swizzle） & 124.7 T & 基线（第~\ref{ch:12}~章） \\
 $4096^3$ & 7b-3（BK=64，kS=2，BS=0/1） & 118.6 / 119.0 T & $-4\sim5\%$（4-way 冲突抵消同步收益） \\
 $2048{\times}16384{\times}4096$ & 7b-3 BS=1 vs BS=0 & 122.9 vs 117.9 T & 宽 N 形状 block swizzle +4.2\% \\
@@ -147,21 +147,21 @@ swizzle kernel 代码量 & 235 行 & 118 行 + wrapper 88 行 \\
 HGEMM kernel 代码量 & 147（7b）/ 231（7b-3）行 & 118 行 + wrapper 86 行 \\
 寄存器（\texttt{ptxas -v}） & — & 254（$B_N{=}256$/F16）/ 226（$B_N{=}128$/F32），均 0 spill \\
 SASS 指令序列 & LDGSTS + LDSM + HMMA & 同左；kernel 内联汇编 0 条 \\
-swizzle 正确性 & v1/v2 30{,}720 点 bit-exact & \texttt{Swizzle<3,3,3>} 256 点 0 差异 \\
+swizzle 正确性 & v1/v2 30{,}720 点 bit-exact & \texttt{Swizzle\allowbreak{}<3,\allowbreak{}3,\allowbreak{}3>} 256 点 0 差异 \\
 \bottomrule
 \end{tabular}
 \end{center}
 
 \section{三条性能主线}
 
-\textbf{主线一：带宽（合并访问与向量化）。}Part I 的全部算子 $AI \le 0.625$，
+\textbf{主线一：带宽（合并访问与向量化）。}\allowbreak{}Part I 的全部算子 $AI \le 0.625$，
 成绩就是有效带宽。这条线的三个台阶：先把原子/同步请出关键路径（第~\ref{ch:02}~章
 42~$\mu$s 三行全同证明全局原子串行可以完全掩盖一切带宽优化）；再做合并访问与
 向量化（\texttt{sgemv} k128 拿到 934~GB/s 的全书带宽参照）；最后认清收益边界——
 vec4 只在 L2 口径显性（第~\ref{ch:06}~章 +16--24\%），HBM 口径下被 DRAM 带宽
 吸收（第~\ref{ch:03}、\ref{ch:07}~章）。\textbf{先定层级，再选武器。}
 
-\textbf{主线二：计算（MMA 流水）。}GEMM 从 CUDA Core 的 25.97~T（vec4 已是
+\textbf{主线二：计算（MMA 流水）。}\allowbreak{}GEMM 从 CUDA Core 的 25.97~T（vec4 已是
 该路径的 87\% 带宽上限）起步，换 HMMA 与 $B_K{=}16$ 后到 76.55~T，加深流水与
 统一 tile 到 124.7~T，TMA+warp specialization 后 164.64~T。attention 走完
 同一条路：166.6 $\to$ 195.2~T。共同规律是\textbf{流水深度很快饱和}（FA2 的

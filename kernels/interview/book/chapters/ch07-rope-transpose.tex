@@ -8,9 +8,9 @@
 
 \textbf{前置章节}：第 \ref{ch:03} 章 coalescing（合并访存事务的概念）；第 \ref{ch:01} 章 shared memory 层级。
 
-\textbf{源码区间}：\texttt{base.cuh} L802-909，3 个 kernel：\texttt{rope}（L817）、\texttt{mat\_transpose}（L858）、\texttt{mat\_transpose\_padded}（L871）。\textbf{编译宏与架构限定}：无，fp32，任意 arch。
+\textbf{源码区间}：\texttt{base.cuh} L802-909，3 个 kernel：\texttt{rope}（L817）、\texttt{mat\_\allowbreak{}transpose}（L858）、\texttt{mat\_\allowbreak{}transpose\_\allowbreak{}padded}（L871）。\textbf{编译宏与架构限定}：无，fp32，任意 arch。
 
-\textbf{预计篇幅}：约 12 页；配套最小测试 \texttt{tests/ch07\_rope\_transpose.cu}。
+\textbf{预计篇幅}：约 12 页；配套最小测试 \texttt{tests/\allowbreak{}ch07\_\allowbreak{}rope\_\allowbreak{}transpose.\allowbreak{}cu}。
 
 \section{问题与动机}
 
@@ -87,11 +87,11 @@ $R^{d}_{\Theta}$ 是 $d/2$ 个 $2\times 2$ 旋转块排布在主对角线上的\
 
 \textbf{索引解码}。\texttt{idx} 是「维度对」的全局编号，范围 $[0, \text{seq\_len} \times N)$，其中参数 $N$ 是\textbf{每 token 的对数}（$N = d/2$，hidden size 为 $2N$）。\texttt{token\_pos = idx / N} 解出序列位置 $m$，\texttt{token\_idx = idx \% N} 解出 token 内的对号 $i$。一对分量占两个连续地址 \texttt{x[idx*2]} 与 \texttt{x[idx*2+1]}。
 
-\textbf{频率计算}。\texttt{exp\_v = 1.0f / powf(10000.0f, 2 * token\_idx / (N * 2.0f))} 实现式~\eqref{eq:ch07-blockdiag} 的 $\theta_i = 10000^{-2i/d}$：分子 \texttt{2 * token\_idx} 是整数乘法，除以 \texttt{(N * 2.0f)}（即 $d$）时提升为浮点除法，不会截断。角度 \texttt{token\_pos * exp\_v} 即 $m\theta_i$。注意分母用的是 $d = N \times 2$ 而不是 $N$——若误用 $N$，频率谱整体偏移一个平方量级，这是把「对数」当「维度数」的经典笔误。
+\textbf{频率计算}。\texttt{exp\_\allowbreak{}v =\allowbreak{} 1.0f /\allowbreak{} powf\allowbreak{}(10000.0f,\allowbreak{} 2 * token\_\allowbreak{}idx /\allowbreak{} (N * 2.0f))} 实现式~\eqref{eq:ch07-blockdiag} 的 $\theta_i = 10000^{-2i/d}$：分子 \texttt{2 * token\_idx} 是整数乘法，除以 \texttt{(N * 2.0f)}（即 $d$）时提升为浮点除法，不会截断。角度 \texttt{token\_pos * exp\_v} 即 $m\theta_i$。注意分母用的是 $d = N \times 2$ 而不是 $N$——若误用 $N$，频率谱整体偏移一个平方量级，这是把「对数」当「维度数」的经典笔误。
 
 \textbf{旋转与写回}。两行乘加 $x_1' = x_1\cos\theta - x_2\sin\theta$、$x_2' = x_1\sin\theta + x_2\cos\theta$ 与式~\eqref{eq:ch07-2d-rot} 逐项对应，编译器可映射为 FMA。
 
-\textbf{访存与计算策略}。相邻线程访问相邻对，warp 的 32 线程读 64 个连续 float（256B，合并为 2 个事务），写同理——接近最优但差一步：一对元素本可用一条 \texttt{float2} load 完成。更值得注意的是计算侧：\texttt{powf/sinf/cosf} 三个超越函数在每个线程重算，而 $\theta_i$ 只依赖对号 $i$（整张 batch 复用）、$m\theta_i$ 只依赖 $(m, i)$（每层每次 forward 都相同）。生产实现普遍改为预计算 cos/sin 缓存表（\texttt{seq\_len} $\times d/2$ 个元素，启动时一次生成）或把 RoPE 融合进 attention/elementwise 链。本章 kernel 保留「每线程重算」的教学形态，把「算得少」作为优化讨论留给读者实验。
+\textbf{访存与计算策略}。相邻线程访问相邻对，warp 的 32 线程读 64 个连续 float（256B，合并为 2 个事务），写同理——接近最优但差一步：一对元素本可用一条 \texttt{float2} load 完成。更值得注意的是计算侧：\texttt{powf/\allowbreak{}sinf/\allowbreak{}cosf} 三个超越函数在每个线程重算，而 $\theta_i$ 只依赖对号 $i$（整张 batch 复用）、$m\theta_i$ 只依赖 $(m, i)$（每层每次 forward 都相同）。生产实现普遍改为预计算 cos/sin 缓存表（\texttt{seq\_len} $\times d/2$ 个元素，启动时一次生成）或把 RoPE 融合进 attention/elementwise 链。本章 kernel 保留「每线程重算」的教学形态，把「算得少」作为优化讨论留给读者实验。
 
 \subsection{mat\_transpose：矛盾的直接呈现}
 
@@ -107,8 +107,8 @@ $R^{d}_{\Theta}$ 是 $d/2$ 个 $2\times 2$ 旋转块排布在主对角线上的\
 
 整体思路是「两边各自合并，中间过一道 shared memory」：
 \begin{enumerate}
-  \item \textbf{Step 1（gmem $\to$ smem，合并读）}：\texttt{tile[ty*4+i][tx] = x[(x\_r*4+i)*col + x\_c]}。每线程负责 4 行 $\times$ 1 列（\texttt{\#pragma unroll} 展开 4 次读），warp 内 $x\_c$ 连续，读合并。写入 smem 是按行连续写。
-  \item \textbf{Step 2（smem 转置读 $\to$ gmem，合并写）}：\texttt{reg\_trans} 的 4 个分量取 \texttt{tile[tx*4+j][ty]}（$j = 0..3$）——行号与列号互换，正是「转置读 smem」。随后 \texttt{FLOAT4(y[y\_r * row + y\_c]) = reg\_trans} 把 4 个连续输出元素一条 16B 指令写回；同 warp 内 16 线程覆盖 64 个连续输出 float，合并写。
+  \item \textbf{Step 1（gmem $\to$ smem，合并读）}：\texttt{tile[ty*4+i][tx] =\allowbreak{} x[\allowbreak{}(x\_\allowbreak{}r*4+i)*col + x\_\allowbreak{}c]}。每线程负责 4 行 $\times$ 1 列（\texttt{\#pragma unroll} 展开 4 次读），warp 内 $x\_c$ 连续，读合并。写入 smem 是按行连续写。
+  \item \textbf{Step 2（smem 转置读 $\to$ gmem，合并写）}：\texttt{reg\_trans} 的 4 个分量取 \texttt{tile[tx*4+j][ty]}（$j = 0..3$）——行号与列号互换，正是「转置读 smem」。随后 \texttt{FLOAT4\allowbreak{}(y[y\_\allowbreak{}r * row + y\_\allowbreak{}c]) =\allowbreak{} reg\_\allowbreak{}trans} 把 4 个连续输出元素一条 16B 指令写回；同 warp 内 16 线程覆盖 64 个连续输出 float，合并写。
 \end{enumerate}
 两个坐标换算值得写慢一点：$y$ 的行号 $= x$ 的列号，故 \texttt{y\_r = blockIdx.x * TILE + ty}；$y$ 的列号 $= x$ 的行号 $\times 1$，但每线程覆盖 4 个连续行，故 \texttt{y\_c = (blockIdx.y * TILE + tx) * 4}。\texttt{FLOAT4} 写回要求 \texttt{y\_c} 起 4 个元素 16B 对齐，即 $x$ 的行号是 4 的倍数——这由 \texttt{y\_c} 的构造天然保证。
 
@@ -128,7 +128,7 @@ shared memory 被切成 32 个 bank（对应一个 warp 的 32 线程），每�
 
 \subsection{本 kernel 的精确冲突分析}
 
-\texttt{mat\_transpose\_padded} 的 block 是 $(16,16)$，线程坐标 $(tx, ty)$，warp 内线性映射为 \texttt{tid = tx + 16*ty}，即 warp 0 覆盖 $ty \in \{0,1\}$、$tx \in [0,16)$ 的 32 线程。设 tile 列宽 $W$（无 PAD 时 $W = 16$，PAD=1 时 $W = 17$），按 4B 字计地址。
+\texttt{mat\_\allowbreak{}transpose\_\allowbreak{}padded} 的 block 是 $(16,16)$，线程坐标 $(tx, ty)$，warp 内线性映射为 \texttt{tid = tx + 16*ty}，即 warp 0 覆盖 $ty \in \{0,1\}$、$tx \in [0,16)$ 的 32 线程。设 tile 列宽 $W$（无 PAD 时 $W = 16$，PAD=1 时 $W = 17$），按 4B 字计地址。
 
 \textbf{Step 2 转置读}（每条 LD 指令，$j$ 固定）：地址 $(4\,tx + j)\,W + ty$。
 \begin{itemize}
@@ -149,7 +149,7 @@ shared memory 被切成 32 个 bank（对应一个 warp 的 32 线程），每�
 
 \subsection{模拟验证}
 
-上述推导可以不依赖 GPU 复现：\texttt{.tmp/book-bench/ch07/bank\_sim.py} 按 warp 映射逐指令统计 bank 直方图（结果存 \texttt{bank\_sim.txt}），输出与推导一致：
+上述推导可以不依赖 GPU 复现：\texttt{.tmp/\allowbreak{}book-bench/\allowbreak{}ch07/\allowbreak{}bank\_\allowbreak{}sim.py} 按 warp 映射逐指令统计 bank 直方图（结果存 \texttt{bank\_\allowbreak{}sim.\allowbreak{}txt}），输出与推导一致：
 
 \begin{lstlisting}[style=console]
 tile[64][16] (PAD=0):  Step1 write: 2-way   Step2 read: 16-way
@@ -160,7 +160,7 @@ tile[64][17] (PAD=1):  Step1 write: 2-way   Step2 read:  2-way
 
 转置是零计算算子（$AI \approx 0$），性能上限 $=$ 带宽上限，优化就是把「事务数」压到理论最小：读 $M^2/32$ 个事务 + 写 $M^2/32$ 个事务（每 warp 每向一个 128B 段）。
 
-测试环境与口径：NVIDIA RTX PRO 5000 72GB（Blackwell，sm\_120a，L2 96MB），cudaEvent 取 20 次 min；$M \times M$ fp32 方阵；有效带宽按读 + 写 $2M^2 \cdot 4\,\mathrm{B}$ 计。数据落盘 \texttt{.tmp/book-bench/ch07/bench.txt}：
+测试环境与口径：NVIDIA RTX PRO 5000 72GB（Blackwell，sm\_120a，L2 96MB），cudaEvent 取 20 次 min；$M \times M$ fp32 方阵；有效带宽按读 + 写 $2M^2 \cdot 4\,\mathrm{B}$ 计。数据落盘 \texttt{.tmp/\allowbreak{}book-bench/\allowbreak{}ch07/\allowbreak{}bench.txt}：
 
 \begin{center}
 \begin{tabular}{lccc}
@@ -185,7 +185,7 @@ $M$ & mat\_transpose (naive) & mat\_transpose\_padded & 加速比 \\
 \section{实践经验}
 
 \begin{kaogu}[F3 | 「PAD 消除 bank conflict」在本 kernel 中是大幅降低而非消除]
-源码注释把 PAD 表述为「Bank conflict fix：每行多 1 个元素，打破 32-bank 对齐」与「解决方案：PAD……打破地址对齐」。按本章第 5 节的逐指令 bank 直方图（模拟复现于 \texttt{.tmp/book-bench/ch07/bank\_sim.txt}）：PAD=1 把 Step 2 转置读从 16-way 降到 2-way（主要收益），Step 1 写侧 PAD 前后均为 2-way。即注释的结论在数量级上成立（读事务 16 $\to$ 2），但「消除」并不准确——彻底消除需要第 \ref{ch:12} 章的 swizzle 或改变每线程 4 行的分工。经典「一线程一元素 + $32\times33$ tile」布局才是 PAD 完全消除冲突的形态。
+源码注释把 PAD 表述为「Bank conflict fix：每行多 1 个元素，打破 32-bank 对齐」与「解决方案：PAD……打破地址对齐」。按本章第 5 节的逐指令 bank 直方图（模拟复现于 \texttt{.tmp/\allowbreak{}book-bench/\allowbreak{}ch07/\allowbreak{}bank\_\allowbreak{}sim.txt}）：PAD=1 把 Step 2 转置读从 16-way 降到 2-way（主要收益），Step 1 写侧 PAD 前后均为 2-way。即注释的结论在数量级上成立（读事务 16 $\to$ 2），但「消除」并不准确——彻底消除需要第 \ref{ch:12} 章的 swizzle 或改变每线程 4 行的分工。经典「一线程一元素 + $32\times33$ tile」布局才是 PAD 完全消除冲突的形态。
 \end{kaogu}
 
 \begin{kaogu}[F5 | RoPE 的配对约定考据]
@@ -216,12 +216,12 @@ rope 的参数 $N$ 是每 token 的\textbf{对数}（$d/2$），而非 hidden si
   \item \textbf{Q：RoPE 为什么满足相对位置不变性？} A：旋转矩阵正交，$R(m\theta)^{\top}R(n\theta) = R((n-m)\theta)$；复数形式即 $e^{-im\theta}e^{in\theta} = e^{i(n-m)\theta}$。
   \item \textbf{Q：$\theta_i = 10000^{-2i/d}$ 的设计意图？} A：波长 $\lambda_i = 2\pi/\theta_i$ 构成 $2\pi$ 到 $\sim 2\pi \times 10^4$ 的等比谱，高频分量分辨局部、低频分量分辨远距，多尺度覆盖长程依赖。
   \item \textbf{Q：interleaved 与 half-split 配对的区别？} A：同一分块对角旋转的不同分量排列，逐对重排互相等价；权重/cache 对齐时必须按 checkpoint 约定处理。
-  \item \textbf{Q：转置为什么要经过 shared memory？} A：读合并与写合并不可兼得（行主存储下二者互斥）；smem 中转让 gmem 两侧都合并，代价是 smem 容量、一次 \texttt{\_\_syncthreads()} 与潜在的 bank conflict。
+  \item \textbf{Q：转置为什么要经过 shared memory？} A：读合并与写合并不可兼得（行主存储下二者互斥）；smem 中转让 gmem 两侧都合并，代价是 smem 容量、一次 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()} 与潜在的 bank conflict。
 \end{enumerate}
 
 \section{最小测试与动手实验}
 
-测试文件 \texttt{tests/ch07\_rope\_transpose.cu}（$\le 300$ 行），逻辑抽取自 \texttt{notes-v2.cu} 的 \texttt{test\_rope}（L1042）与 \texttt{test\_mat\_transpose}（L1098、L1144）。RoPE 的 CPU 参考用 \texttt{double} 直接按旋转矩阵计算（\texttt{std::pow/std::cos/std::sin}）；转置的参考是纯数据搬运，两个 kernel 的 \texttt{max\_abs\_err} 应为 0，且测试显式断言两 kernel 输出逐元素 bitwise 一致。规模：RoPE \texttt{seq\_len}=128、$N=64$（对/token）；转置 $512 \times 512$。
+测试文件 \texttt{tests/\allowbreak{}ch07\_\allowbreak{}rope\_\allowbreak{}transpose.\allowbreak{}cu}（$\le 300$ 行），逻辑抽取自 \texttt{notes-v2.cu} 的 \texttt{test\_rope}（L1042）与 \texttt{test\_\allowbreak{}mat\_\allowbreak{}transpose}（L1098、L1144）。RoPE 的 CPU 参考用 \texttt{double} 直接按旋转矩阵计算（\texttt{std::\allowbreak{}pow/\allowbreak{}std::\allowbreak{}cos/\allowbreak{}std::\allowbreak{}sin}）；转置的参考是纯数据搬运，两个 kernel 的 \texttt{max\_abs\_err} 应为 0，且测试显式断言两 kernel 输出逐元素 bitwise 一致。规模：RoPE \texttt{seq\_len}=128、$N=64$（对/token）；转置 $512 \times 512$。
 
 \begin{lstlisting}[style=console]
 cd kernels/interview/book/tests && CUDA_VISIBLE_DEVICES=7 ./build_tests.sh --ch ch07
@@ -231,7 +231,7 @@ cd kernels/interview/book/tests && CUDA_VISIBLE_DEVICES=7 ./build_tests.sh --ch 
   ch07 ALL PASS
 \end{lstlisting}
 
-性能实验：\texttt{./.build/ch07\_rope\_transpose --bench} 复现本章第 6 节表格，输出落盘 \texttt{.tmp/book-bench/ch07/bench.txt}；\texttt{python3 .tmp/book-bench/ch07/bank\_sim.py} 复现 bank 直方图。建议动手：把 \texttt{PAD} 改成 2、4，观察 Step 2 的冲突度如何随步长变化（\texttt{bank\_sim.py} 改一行即可）；把每线程 4 行改成 2 行（tile 变 $[32][17]$、grid 相应调整），看 2-way 残留是否消失，并核对第 \ref{ch:12} 章 swizzle 动机的自然浮现。
+性能实验：\texttt{./\allowbreak{}.build/\allowbreak{}ch07\_\allowbreak{}rope\_\allowbreak{}transpose --bench} 复现本章第 6 节表格，输出落盘 \texttt{.tmp/\allowbreak{}book-bench/\allowbreak{}ch07/\allowbreak{}bench.txt}；\texttt{python3 .tmp/\allowbreak{}book-bench/\allowbreak{}ch07/\allowbreak{}bank\_\allowbreak{}sim.py} 复现 bank 直方图。建议动手：把 \texttt{PAD} 改成 2、4，观察 Step 2 的冲突度如何随步长变化（\texttt{bank\_sim.py} 改一行即可）；把每线程 4 行改成 2 行（tile 变 $[32][17]$、grid 相应调整），看 2-way 残留是否消失，并核对第 \ref{ch:12} 章 swizzle 动机的自然浮现。
 
 \subsection*{延伸阅读}
 

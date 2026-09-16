@@ -11,15 +11,15 @@ GEMV（GEneral Matrix-Vector multiplication，矩阵向量乘）是 GEMM 在 $N 
   \item \textbf{sgemv\_k128}（sgemv.cuh~L53）——\textbf{float4 向量化}：每个 lane 每轮用一条
         128-bit load 处理 4 个元素，一个 warp 一轮覆盖 128 个 $K$ 元素；
   \item \textbf{sgemv\_k16}（sgemv.cuh~L85）——$K < 32$ 时的\textbf{双行复用}：
-        \texttt{kRowPerWarp=2}，前 16 个 lane 与后 16 个 lane 各算一行，
+        \texttt{k\allowbreak{}Row\allowbreak{}Per\allowbreak{}Warp=\allowbreak{}2}，前 16 个 lane 与后 16 个 lane 各算一行，
         用「分段宽度」的 XOR 蝶形归约各自收敛。
 \end{itemize}
 
 \textbf{前置章节}：第~\ref{ch:01}~章的 roofline 模型（算术强度决定优化方向——本章全篇都在用它）、
-第~\ref{ch:02}~章的 warp 归约原语（三个 kernel 的收尾都落在 \texttt{warp\_reduce\_sum} 上）、
+第~\ref{ch:02}~章的 warp 归约原语（三个 kernel 的收尾都落在 \texttt{warp\_\allowbreak{}reduce\_\allowbreak{}sum} 上）、
 第~\ref{ch:03}~章的向量化访存与合并访问。
 \textbf{源码区间}：sgemv.cuh~L1--102，无编译宏限定，全部架构适用；
-配套最小测试为 \texttt{book/tests/ch08\_sgemv.cu}。
+配套最小测试为 \texttt{book/\allowbreak{}tests/\allowbreak{}ch08\_\allowbreak{}sgemv.\allowbreak{}cu}。
 \textbf{后继}：第~\ref{ch:09}~章把 $N$ 维度搬上舞台，复用维度回归，算术强度从 $O(1)$
 跃迁到随 tile 尺寸增长，优化叙事从「抢带宽」切换为「搭金字塔」。
 预计篇幅约 10 页。
@@ -41,7 +41,7 @@ kernel 层面无事可做。于是算术强度天生是 $O(1)$ 量级的常数�
 $0.25 \sim 0.5$ FLOP/B），比现代 GPU 的 roofline 拐点低两个数量级。
 \textbf{GEMV 的全部优化目标只有一个：让有效访存带宽逼近机器上限。}计算怎么排都「够快」。
 
-\textbf{动机三：$K$ 的大小决定 warp「装不装得满」。}warp-per-row 的自然形态是 32 个 lane
+\textbf{动机三：$K$ 的大小决定 warp「装不装得满」。}\allowbreak{}warp-per-row 的自然形态是 32 个 lane
 铺满一行。$K \gg 32$ 时，每个 lane 要串行累加多个元素——顺便就有了向量化（每 lane 每轮
 搬 4 个）的余地；$K$ 恰为 32 的倍数时，一轮铺满、循环次数干净；而 $K < 32$（比如
 head 维度、或某些量化场景下的 16）时，一个 warp 铺不满一行，直接写会浪费一半 lane——
@@ -83,7 +83,7 @@ $0.7\%$。\textbf{kernel 写得再「聪明」，FLOPs 侧也毫无收益；唯�
 
 \subsection{warp-per-row 的覆盖数学}
 
-三版共同的启动形状是 \texttt{block(32,4)}、\texttt{grid(ceil(M/4))}。CUDA 把 block 内线程
+三版共同的启动形状是 \texttt{block(32,4)}、\texttt{grid\allowbreak{}(ceil\allowbreak{}(M/\allowbreak{}4))}。CUDA 把 block 内线程
 按 $x$ 最快线性化，于是每个 warp 恰好是「\texttt{threadIdx.x} $\in [0,32)$、
 \texttt{threadIdx.y} 固定」的一组线程——\textbf{一个 warp 天然对应一行}：
 \begin{equation}
@@ -96,7 +96,7 @@ $0.7\%$。\textbf{kernel 写得再「聪明」，FLOPs 侧也毫无收益；唯�
 $\texttt{NUM\_ITERS} = \lceil K/32 \rceil$。每 lane 串行累加 $\texttt{NUM\_ITERS}$ 项后，
 做一次第~\ref{ch:02}~章的 5 步 XOR 蝶形归约，lane 0 写回 $y\sb{m}$。
 行守卫 \texttt{if (m < M)} 是 \textbf{warp 一致}的（同一 warp 内所有 lane 共享 $m$，
-要么全体执行要么全体跳过），因此蝶形归约里 \texttt{\_\_shfl\_xor\_sync} 的掩码
+要么全体执行要么全体跳过），因此蝶形归约里 \texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor\_\allowbreak{}sync} 的掩码
 \texttt{0xffffffff} 是安全的——这个「一致/不一致」的判别在 k16 那里会反过来，
 见 8.6~节勘误二。
 
@@ -119,17 +119,17 @@ k128 把每 lane 每轮的工作量从 1 个元素提到 4 个：
 $K = 16 < 32$ 时，单行喂不饱一个 warp。k16 的做法是把 warp 沿行方向对半劈开：
 \begin{equation}
 \begin{aligned}
-  &\texttt{kNumLanePerRow} = \lceil 32 / \texttt{kRowPerWarp} \rceil = 16, \\
+  &\texttt{k\allowbreak{}Num\allowbreak{}Lane\allowbreak{}Per\allowbreak{}Row} = \lceil 32 / \texttt{kRowPerWarp} \rceil = 16, \\
   &k = \mathrm{lane} \bmod 16, \qquad
   m = (\mathrm{blockIdx.x} \cdot 4 + \texttt{threadIdx.y}) \cdot 2 + \lfloor \mathrm{lane} / 16 \rfloor .
 \end{aligned}
 \label{eq:8-k16-map}
 \end{equation}
 lane $0\,\dots\,15$ 算第 $m$ 行、lane $16\,\dots\,31$ 算第 $m+1$ 行，每 lane 恰好一个元素。
-收尾的归约换成 \texttt{warp\_reduce\_sum<16>}：蝶形掩码序列退化为 $8, 4, 2, 1$，
-且 \texttt{\_\_shfl\_xor\_sync} 的第 4 个参数（width$=16$）把数据交换限制在
+收尾的归约换成 \texttt{warp\_\allowbreak{}reduce\_\allowbreak{}sum\allowbreak{}<16>}：蝶形掩码序列退化为 $8, 4, 2, 1$，
+且 \texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor\_\allowbreak{}sync} 的第 4 个参数（width$=16$）把数据交换限制在
 16-lane \textbf{segment} 之内——前 16 个 lane 与后 16 个 lane 各自独立收敛、互不串音。
-这正是第~\ref{ch:02}~章讲 \texttt{\_\_shfl\_xor\_sync} 时「width 参数划分 segment」的
+这正是第~\ref{ch:02}~章讲 \texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor\_\allowbreak{}sync} 时「width 参数划分 segment」的
 实战用法。写回条件相应变成 \texttt{k == 0}（\textbf{不是} \texttt{lane == 0}）：
 满足条件的 lane 是 0 和 16 两个，分别写 $y\sb{m}$ 与 $y\sb{m+1}$。
 
@@ -146,11 +146,11 @@ lane $0\,\dots\,15$ 算第 $m$ 行、lane $16\,\dots\,31$ 算第 $m+1$ 行，每
   title={sgemv.cuh L16-45（Level 1：warp-per-row 基础版）}]{../sgemv.cuh}
 
 对照式~\ref{eq:8-k32-cover} 逐行读：（1）\texttt{lane = tx \% kWarpSize} 在
-\texttt{blockDim.x=32} 时就是 \texttt{tx} 本身，取模是防御性写法；
+\texttt{block\allowbreak{}Dim.\allowbreak{}x=\allowbreak{}32} 时就是 \texttt{tx} 本身，取模是防御性写法；
 （2）内层循环每轮做一次 \texttt{a[m*K+k] * x[k]}——\texttt{a} 的 32 个 lane 地址连续
 （合并访问，128B 事务），\texttt{x} 的 32 个 lane 地址同样连续；\texttt{x} 只有 16KB
 （$K=4096$ 口径），第一轮之后基本稳坐 L1/L2，所以「重读 $x$」的悲观口径
-（式~\ref{eq:8-ai-pessimistic}）在实际上是乐观口径；（3）\texttt{warp\_reduce\_sum}
+（式~\ref{eq:8-ai-pessimistic}）在实际上是乐观口径；（3）\texttt{warp\_\allowbreak{}reduce\_\allowbreak{}sum}
 收尾后只有 lane 0 写回，一个 warp 产出 4 字节——写流量占比可忽略。
 注意 kernel \textbf{没有} $k < K$ 的守卫：$K$ 不是 32 的倍数时最后一轮会越界读
 （8.7~节坑一），这是「对齐换简洁」的明确约定。
@@ -161,9 +161,9 @@ lane $0\,\dots\,15$ 算第 $m$ 行、lane $16\,\dots\,31$ 算第 $m+1$ 行，每
   title={sgemv.cuh L47-75（Level 2：float4 向量化）}]{../sgemv.cuh}
 
 三处值得停下来看。（1）\texttt{FLOAT4(v)} 宏（common.cuh~L26）把任意左值
-\texttt{reinterpret\_cast} 成 \texttt{float4*} 再解引用——load 与 store 都能用，
+\texttt{reinterpret\_\allowbreak{}cast} 成 \texttt{float4*} 再解引用——load 与 store 都能用，
 是全书向量化的标配工具；（2）\texttt{NUM\_ITERS} 的双层取整
-（式~\ref{eq:8-k128-cover}）写成了 \texttt{ceil(ceil(K/32)/4)} 的展开式，
+（式~\ref{eq:8-k128-cover}）写成了 \texttt{ceil\allowbreak{}(ceil\allowbreak{}(K/\allowbreak{}32)/\allowbreak{}4)} 的展开式，
 语义等价于 \texttt{ceil(K/128)}；（3）累加把 4 次 FMA 折成一行括号表达式，
 编译器会生成 4 条独立的 \texttt{FFMA}——对 memory-bound kernel 这不重要
 （计算只占峰值 1\% 不到），真正的好处是 \textbf{load 指令数与事务数}：
@@ -176,8 +176,8 @@ lane $0\,\dots\,15$ 算第 $m$ 行、lane $16\,\dots\,31$ 算第 $m+1$ 行，每
   title={sgemv.cuh L77-100（Level 3：kRowPerWarp=2 分段归约）}]{../sgemv.cuh}
 
 对照式~\ref{eq:8-k16-map}：（1）模板参数 \texttt{kRowPerWarp} 把「一个 warp 几行」
-做成编译期常量，\texttt{kNumLanePerRow} 随之推导为 16；（2）每个 lane 只做一次乘加
-（$K=16$ 恰好等于 segment 宽度，无循环）；（3）\texttt{warp\_reduce\_sum<16>} 内部
+做成编译期常量，\texttt{k\allowbreak{}Num\allowbreak{}Lane\allowbreak{}Per\allowbreak{}Row} 随之推导为 16；（2）每个 lane 只做一次乘加
+（$K=16$ 恰好等于 segment 宽度，无循环）；（3）\texttt{warp\_\allowbreak{}reduce\_\allowbreak{}sum\allowbreak{}<16>} 内部
 蝶形掩码从 8 开始递减，width 参数保证前 16 与后 16 两个 segment 互不干扰；
 （4）写回判据 \texttt{k == 0} 有两个命中 lane（0 与 16），分别落笔两行的结果。
 一个漂亮的副效应：row-major 下第 $m$ 行与第 $m+1$ 行在内存里首尾相接，
@@ -207,7 +207,7 @@ k16 则把行方向也用上了——当 $K$ 维度不足以喂饱 32 个 lane �
 本章复测（RTX PRO 5000 72GB Blackwell，sm\_120，110 SMs；时钟按运行时查询
 2.38~GHz，fp32 峰值按每 SM 128 条 FMA 流水（256 FLOP/cycle）折算，
 约 $66.9$ TFLOPS；warmup 5 + 50 次均值
-（k16 为 100 次）；数据文件 \texttt{.tmp/book-bench/ch08/bench.txt}）：
+（k16 为 100 次）；数据文件 \texttt{.tmp/\allowbreak{}book-bench/\allowbreak{}ch08/\allowbreak{}bench.txt}）：
 
 \begin{table}[htbp]
 \centering
@@ -251,8 +251,8 @@ $K{=}16$ 的行只有 64B，虽然相邻两行拼成 128B，但按 64B 对齐（
 \begin{kaogu}[F2]{sgemv\_k16：行守卫在半 warp 粒度分叉，掩码 0xffffffff 属未定义行为}
   k32/k128 的行守卫 \texttt{if (m < M)} 是 warp 一致的；k16 由于一个 warp 携带两行
   （式~\ref{eq:8-k16-map}），当 $M$ 为奇数且该 warp 恰好覆盖最后一行时，前 16 个 lane
-  通过守卫、后 16 个 lane 不通过——\texttt{warp\_reduce\_sum<16>} 里的
-  \texttt{\_\_shfl\_xor\_sync(0xffffffff, ...)} 把未执行该指令的 lane 命名进了掩码。
+  通过守卫、后 16 个 lane 不通过——\texttt{warp\_\allowbreak{}reduce\_\allowbreak{}sum\allowbreak{}<16>} 里的
+  \texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor\_\allowbreak{}sync\allowbreak{}(0xffffffff,\allowbreak{} .\allowbreak{}.\allowbreak{}.\allowbreak{})} 把未执行该指令的 lane 命名进了掩码。
   按 CUDA C++ Programming Guide 的规定，「掩码中命名的所有线程必须都执行同一条
   shuffle」，否则行为未定义。实践中当前硬件通常「碰巧」正确（分段宽度限制了实际交换
   范围），但这是不能依赖的语义。规避方式：保证 $M \% 8 = 0$（每 block 8 行，守卫
@@ -268,7 +268,7 @@ $K{=}16$ 的行只有 64B，虽然相邻两行拼成 128B，但按 64B 对齐（
 
 \section{常见坑}
 
-\textbf{坑一：$K$ 不对齐，静默越界。}k32/k128 没有 $k < K$ 守卫：$K$ 不是 32（或 128）
+\textbf{坑一：$K$ 不对齐，静默越界。}\allowbreak{}k32/k128 没有 $k < K$ 守卫：$K$ 不是 32（或 128）
 的倍数时，最后一轮 \texttt{a[m*K+k]} 与 \texttt{x[k]} 直接越界读。它不报错、不崩溃，
 结果看起来还「基本对」——越是接近边界越是隐蔽。\texttt{compute-sanitizer} 一跑一个准。
 调用方必须保证对齐，或在外层把尾块切给通用路径。
@@ -283,11 +283,11 @@ $K{=}16$ 的行只有 64B，虽然相邻两行拼成 128B，但按 64B 对齐（
 掩码语义红线。顺带一提：k32/k128 只要求调用方处理 $M \% 4$（守卫内消化），
 两个 kernel 的边界约定粒度不同，混用时要分开记。
 
-\textbf{坑四：写回条件 \texttt{lane==0} 与 \texttt{k==0} 不可互换。}k32/k128 每 warp
+\textbf{坑四：写回条件 \texttt{lane==0} 与 \texttt{k==0} 不可互换。}\allowbreak{}k32/k128 每 warp
 一个写者（lane 0）；k16 每个 segment 一个写者（k==0 命中 lane 0 与 16）。把 k16 的
 写回写成 \texttt{lane == 0} 会丢一半输出——第 $m+1$ 行永远不写，症状同样是「静默残留旧值」。
 
-\textbf{坑五：M 小 K 大的形状会把 GPU 饿死。}warp-per-row 的并行度上限是 $M$：
+\textbf{坑五：M 小 K 大的形状会把 GPU 饿死。}\allowbreak{}warp-per-row 的并行度上限是 $M$：
 $M = 8$ 时 grid 只有 2 个 block，110 个 SM 里 108 个在围观。正确姿势是沿 $K$ 切分
 （split-K：多个 block 各算一段部分和，再原子累加或二次归并），教学源码未实现，
 读者可参照第~\ref{ch:02}~章的两级归约自行补全——这也是面试高频追问点。
@@ -311,7 +311,7 @@ A：让一个 warp 服务 \texttt{kRowPerWarp} 行，lane 按 segment 分组
 归约用 width$=16$ 的分段蝶形（掩码 $8,4,2,1$），写回判据是 \texttt{k == 0}
 （每 segment 一个写者）。
 
-\textbf{Q4：\texttt{\_\_shfl\_xor\_sync} 第四个参数（width）是什么语义？}\\
+\textbf{Q4：\texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor\_\allowbreak{}sync} 第四个参数（width）是什么语义？}\\
 A：把 warp 切成宽度为 width 的 segment，lane 只与本 segment 内的
 $\mathrm{lane} \oplus \mathrm{mask}$ 交换；掩码序列相应从 width/2 开始递减。
 k16 用它实现「一个 warp、两套独立归约」。同时注意掩码命名的线程必须都执行该指令
@@ -324,14 +324,14 @@ $A$ 元素零复用、AI 是常数，只能拼带宽。一句话：GEMM 搭金�
 
 \section{最小测试与动手实验}
 
-测试文件：\texttt{book/tests/ch08\_sgemv.cu}（逻辑抽取自 notes-v2.cu 的
+测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch08\_\allowbreak{}sgemv.\allowbreak{}cu}（逻辑抽取自 notes-v2.cu 的
 test\_sgemv，L1190，对照改为 CPU fp64 参考）。三个 case：
 A（$M{=}64$、$K{=}512$，$K$ 同时被 32/128 整除，k32 与 k128 同形状对比）；
 B（$M{=}7$、$K{=}128$，行守卫路径——grid 2 个 block、第二个 block 有 warp 被剪）；
 C（$M{=}40$、$K{=}16$，k16 双行分段归约，$M \% 8 = 0$ 避开勘误二的 UB 路径）。
 
-在 \texttt{book/tests/} 目录、\texttt{CUDA\_VISIBLE\_DEVICES=7} 下执行
-\texttt{./build\_tests.sh --ch ch08}（编译 + 运行一体）。本机运行输出
+在 \texttt{book/tests/} 目录、\texttt{CUDA\_\allowbreak{}VISIBLE\_\allowbreak{}DEVICES=\allowbreak{}7} 下执行
+\texttt{.\allowbreak{}/\allowbreak{}build\_\allowbreak{}tests.\allowbreak{}sh --ch ch08}（编译 + 运行一体）。本机运行输出
 （RTX PRO 5000，2026-09-11；PASS 行的 \texttt{max\_abs\_err} 数值见表~\ref{tab:8-pass}）：
 
 \begin{lstlisting}[style=console]
@@ -364,7 +364,7 @@ $10^{-3}$ 的千分之一），行守卫路径（case B）与分段归约路径�
 动手实验建议：（1）把 case A 的 $K$ 改成 4096 重跑，观察误差随 $\sqrt{K}$
 缓涨但仍远离容差；（2）用 \texttt{compute-sanitizer --tool memcheck} 跑一遍
 $K = 40$（非对齐）的调用，亲眼看坑一的越界报告；（3）运行
-\texttt{./.build/ch08\_sgemv bench} 复现表~\ref{tab:8-bench}，
+\texttt{.\allowbreak{}/\allowbreak{}.\allowbreak{}build/\allowbreak{}ch08\_\allowbreak{}sgemv bench} 复现表~\ref{tab:8-bench}，
 并把 k16 的 $M$ 从 $2^{20}$ 降到 $2^{16}$，观察有效带宽如何被 L2 驻留虚高。
 
 \section*{延伸阅读}

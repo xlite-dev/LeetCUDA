@@ -6,16 +6,16 @@
 第~\ref{ch:10}~章用 WMMA 摸到了 Tensor Core 的门，但 WMMA 是一层
 「厚抽象」：fragment 布局是黑盒、寄存器数量不可控、没有寄存器双缓冲、
 流水线只能两级。本章把这层抽象整个掀掉，直接用 PTX 内联汇编写
-HGEMM：\texttt{mma.sync.aligned.m16n8k16} 矩阵指令 + \texttt{ldmatrix}
+HGEMM：\texttt{mma.\allowbreak{}sync.\allowbreak{}aligned.\allowbreak{}m16n8k16} 矩阵指令 + \texttt{ldmatrix}
 碎片装载 + \texttt{cp.async} 三级流水（kStages$=$3）。主角是教学源码里的
-\texttt{hgemm\_mma\_stages\_tn}（hgemm.cuh~L129，TN 布局，
+\texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn}（hgemm.cuh~L129，TN 布局，
 $B\sb M\times B\sb N\times B\sb K = 128\times128\times16$，block 256 线程）。
 
 本章源码区间为 hgemm.cuh~L3--397（Phase 7b-2），PTX 宏
 （\texttt{HMMA16816}、\texttt{LDMATRIX\_X4}、\texttt{LDMATRIX\_X2}、
 \texttt{CP\_ASYNC\_CG} 等）定义在 common.cuh~L32--109（附录 A）。
-无编译宏限定，\texttt{mma.m16n8k16} 要求 \texttt{sm\_80} 及以上；
-配套最小测试为 \texttt{ch11\_hgemm\_mma.cu}（\texttt{book/tests/}）。
+无编译宏限定，\texttt{mma.\allowbreak{}m16n8k16} 要求 \texttt{sm\_80} 及以上；
+配套最小测试为 \texttt{ch11\_\allowbreak{}hgemm\_\allowbreak{}mma.\allowbreak{}cu}（\texttt{book/tests/}）。
 
 本章是全书\textbf{指令级细节最重}的一章：11.3~节把 \texttt{mma} 指令的每个
 限定符逐字段对照 PTX ISA 讲解，把 A/B/C 三个 fragment 在 32 个 lane 上的
@@ -28,14 +28,14 @@ $B\sb M\times B\sb N\times B\sb K = 128\times128\times16$，block 256 线程）�
 \section{问题与动机}
 
 \textbf{动机一：WMMA 的四宗罪。}（1）布局黑盒：fragment 里哪个元素落在
-哪个寄存器不可知，epilogue 只能整块 \texttt{store\_matrix\_sync}；
+哪个寄存器不可知，epilogue 只能整块 \texttt{store\_\allowbreak{}matrix\_\allowbreak{}sync}；
 （2）寄存器失控：fragment 数组完全交给编译器，溢出与否靠运气；
 （3）无寄存器双缓冲：每迭代必须等 ldmatrix 完成才能 mma，装载延迟裸露；
 （4）流水线深度只有 2，搬运抖动一大就会戳穿。手写 PTX 后这四点全部可控：
 布局白盒（11.3.2--11.3.4）、寄存器显式声明（\texttt{RA/RB/RC} 数组）、
 装载与计算的重叠可以手工编排。
 
-\textbf{动机二：TN 布局让 ldmatrix 零转置。}BLAS 的布局记号
+\textbf{动机二：TN 布局让 ldmatrix 零转置。}\allowbreak{}BLAS 的布局记号
 T/N 来自 Fortran 列主序世界：N（Normal）$=$ 列主序原生、
 T（Transposed）$=$ 行主序。于是 \textbf{TN} $=$ A 行主序 $+$ B 列主序，
 即 $C\sb {M\times N} = A\sb {M\times K}\times B\sb {K\times N}$，其中 B 以
@@ -52,7 +52,7 @@ in-flight，搬运延迟的容忍窗口翻倍。代价是 smem 线性涨到 24~K
 
 \section{数学原理}
 
-\subsection{\texttt{mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16} 逐字段}
+\subsection{\texttt{mma.\allowbreak{}sync.\allowbreak{}aligned.\allowbreak{}m16n8k16.row.\allowbreak{}col.\allowbreak{}f16.f16.f16.f16} 逐字段}
 
 common.cuh~L73--80 的 \texttt{HMMA16816} 宏展开后就是这一条指令：
 
@@ -77,7 +77,7 @@ mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16
 \texttt{.m16n8k16} & 形状：$M{=}16$（A 的行）、$N{=}8$（B 的列）、$K{=}16$（归约维）。A 是 $16\times16$、B 是 $16\times8$、C/D 是 $16\times8$；每条指令 $2\times16\times8\times16 = 4096$ FLOP。 \\
 \texttt{.row} & A 以行主序 fragment 参与（A 的行方向连续）。 \\
 \texttt{.col} & B 以列主序 fragment 参与（B 的列方向即 K，连续）。 \\
-\texttt{.f16.f16.f16.f16} & 依次为 D/A/B/C 的元素类型：输入输出全 fp16（寄存器均为 \texttt{.b32} 打包的 f16x2）。另有 \texttt{f32.f16.f16.f32} 变体（common.cuh~L85，fp32 累加）。 \\
+\texttt{.\allowbreak{}f16.f16.f16.f16} & 依次为 D/A/B/C 的元素类型：输入输出全 fp16（寄存器均为 \texttt{.b32} 打包的 f16x2）。另有 \texttt{f32.f16.f16.f32} 变体（common.cuh~L85，fp32 累加）。 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -87,7 +87,7 @@ mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16
 （2）当 C 与 D 都是 \texttt{.f16} 时，\textbf{累加至少半精度}——
 也就是说本章 \texttt{f16.f16.f16.f16} 变体的累加链每条 \texttt{mma} 指令
 边界处都舍回 fp16；K 很长时误差沿 $\sqrt{K}$ 增长（11.6~节实测约
-$1.5\times10^{-2}$，K$=$128）。要高精度就换 \texttt{HMMA16816F32}
+$1.5\times10^{-2}$，K$=$128）。要高精度就换 \texttt{HMMA16816\allowbreak{}F32}
 （4 个累加寄存器的 fp32 版本）。
 （3）PTX 明确声明：\textbf{累加顺序、舍入与次正规处理均未指定}——
 不同架构/驱动上逐位结果可不同，正确性判定必须用容差。
@@ -170,7 +170,7 @@ ldmatrix.sync.aligned.m8n8.x2.shared.b16 {r0, r1},         [addr];
 \texttt{.x1/.x2/.x4} & 矩阵个数；x1 用 lane 0--7 的地址，x2 用 lane 0--15，x4 用全部 32 lane。 \\
 \texttt{.shared} & 地址处于 shared 状态空间（.b16 版无 \texttt{.trans} 时按行装载）。 \\
 \texttt{.trans} & 可选：按\textbf{列}装载（转置）。PTX 原文：``.trans indicates that the matrix is loaded in column-major format''——即不加 \texttt{.trans} 就是普通行装载。 \\
-\texttt{.sync/.aligned} & 同 \texttt{mma}：warp 集体执行、禁止分歧。 \\
+\texttt{.\allowbreak{}sync/\allowbreak{}.\allowbreak{}aligned} & 同 \texttt{mma}：warp 集体执行、禁止分歧。 \\
 对齐 & 「一组 4 个连续线程装载 16 字节」，地址须 16~B 自然对齐。 \\
 \bottomrule
 \end{tabular}
@@ -198,10 +198,10 @@ lane $4r + \mathrm{tig}$ 的寄存器 $r\sb i$ 的 $\mathrm{tig}$ 列对——
 
 三级缓冲 $S\sb 0,S\sb 1,S\sb 2$ 轮转，迭代 $k$ 读 $k \bmod 3$、预取
 $(k{+}2) \bmod 3$（即 tile $k{+}2$ 的搬运在迭代 $k$ 就发出）。
-稳态期 \texttt{wait\_group(kStages-2) = wait\_group(1)}：允许 1 组搬运
+稳态期 \texttt{wait\_\allowbreak{}group\allowbreak{}(k\allowbreak{}Stages-2) =\allowbreak{} wait\_\allowbreak{}group\allowbreak{}(1)}：允许 1 组搬运
 in-flight——迭代 $k$ 结束时，tile $k{+}1$ 必须就位（供迭代 $k{+}1$ 读），
 tile $k{+}2$ 的那组允许还没到。尾部（$k + \mathrm{kStages} - 1 \ge
-\mathrm{NUM\_K\_TILES}$，没有新 tile 可预取）切到 \texttt{wait\_group(0)}
+\mathrm{NUM\_K\_TILES}$，没有新 tile 可预取）切到 \texttt{wait\_\allowbreak{}group\allowbreak{}(0)}
 排空。与第~\ref{ch:10}~章对比：两级流水每个迭代都要 wait(0) 收口，
 三级流水稳态只 wait(1)——「组」这个记账单位让同步粒度从「每迭代全等」
 放松为「保持距离即可」。
@@ -251,7 +251,7 @@ CuTe 的 TiledMMA 与 Value Tile 概念（L180--183），
 tile $k$、同时预取 tile $k+\mathrm{kStages}-1$（前 $\mathrm{kStages}{-}1$
 个 tile 已由预载填满）。预取带边界条件（L220 的 \texttt{if}），
 尾部迭代不再发搬运；等待也自适应（L297--304）：满载期
-\texttt{wait\_group(kStages-2)}、排空期 \texttt{wait\_group(0)}。
+\texttt{wait\_\allowbreak{}group\allowbreak{}(k\allowbreak{}Stages-2)}、排空期 \texttt{wait\_\allowbreak{}group\allowbreak{}(0)}。
 好处是消除了尾部的重复代码块；代价是两个分支判断——
 对 K 不是 kStages 倍数的形状更稳健。
 
@@ -273,7 +273,7 @@ lane 16--23 给矩阵 2（$m$ 0--7 $\times$ $k$ 8--15）$\to$ \texttt{RA[i][2]}
   title={hgemm.cuh L266-285（ldmatrix.x2 装载 B：借 $B^{\top}$ 行主序免 .trans）}]{../hgemm.cuh}
 
 B 侧地址：行 \texttt{lane\%8}（$B^{\top}$ 的 $n$ 0--7）、列
-\texttt{((lane/8)\%2)*8}（$k$ 半区）。x2 只消费 lane 0--15 的 16 个地址，
+\texttt{\allowbreak{}(\allowbreak{}(lane/\allowbreak{}8)\%2)*8}（$k$ 半区）。x2 只消费 lane 0--15 的 16 个地址，
 lane 16--31 传的重复地址被硬件忽略（PTX 允许；sm\_75 以下才强制全 warp
 合法地址）。装载语义值得再念一遍：\texttt{ldmatrix}（无 \texttt{.trans}）
 \textbf{按行}装载 $8\times8$ 的 $B^{\top}$ 子块——即按 $n$ 行取 $k$ 方向
@@ -292,7 +292,7 @@ $k$ 方向 2 对」（式~\ref{eq:11-bpos}）。两者统一的方式：$B^{\top
 $8\times16 = 128$ 条指令 $\times 4096$ FLOP $= 524{,}288$ FLOP。
 累加器寄存器每 lane $4\times4\times2 = 32$ 个 \texttt{.b32}，
 加上 \texttt{RA} 16 个、\texttt{RB} 8 个与地址变量，
-\texttt{\_\_launch\_bounds\_\_(256)}（L129）下编译器仍有余量不溢出——
+\texttt{\_\allowbreak{}\_\allowbreak{}launch\_\allowbreak{}bounds\_\allowbreak{}\_\allowbreak{}(256)}（L129）下编译器仍有余量不溢出——
 这是手写路径「寄存器白盒」的直接收益。
 
 \subsection{Epilogue：shuffle 收拢 C fragment}
@@ -320,19 +320,19 @@ $\mathrm{g}$ 行与 $\mathrm{g}{+}8$ 行，每行两条
 
 \section{性能分析}
 
-每条 \texttt{mma.m16n8k16} 4096 FLOP、每 warp 每迭代 16 条、
+每条 \texttt{mma.\allowbreak{}m16n8k16} 4096 FLOP、每 warp 每迭代 16 条、
 每 block（8 warp）每 k-迭代 $2\times128\times128\times16 = 524{,}288$ FLOP、
 搬入 $(128{+}128)\times16\times2$~B $= 8$~KB，smem 口径
 $AI = 64$ FLOP/B——compute-bound 无悬念。
 本章复测（RTX PRO 5000 72GB，sm\_120，2026-09-11；$M{=}N{=}K{=}1024$，
-warmup 3 + 10 次均值；\texttt{.tmp/book-bench/ch11/}）：
-\texttt{hgemm\_mma\_stages\_tn} 76.55 TFLOPS（f16 累加）。
+warmup 3 + 10 次均值；\texttt{.\allowbreak{}tmp/\allowbreak{}book-bench/\allowbreak{}ch11/\allowbreak{}}）：
+\texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn} 76.55 TFLOPS（f16 累加）。
 同机同形状下第~\ref{ch:10}~章 TF32 WMMA 版为 28.19 TFLOPS——
 2.7 倍的差距来自三层：f16 数据通路本身快于 TF32、
 $B\sb K{=}16$ 的指令发射密度翻倍、三级流水的同步更松。
 精度口径见 11.3.1：f16 累加在 K$=$1024 时误差还会放大
 （本章正确性测试 K$\le$128 实测 $1.5\times10^{-2}$），
-生产环境常用 \texttt{HMMA16816F32} 的 fp32 累加变体换精度。
+生产环境常用 \texttt{HMMA16816\allowbreak{}F32} 的 fp32 累加变体换精度。
 （数值为共享开发机单次短测，仅供章节间相对对照。）
 
 最后回答一个实操问题：\textbf{怎么确认 kernel 真的跑在 Tensor Core 上？}
@@ -341,7 +341,7 @@ $B\sb K{=}16$ 的指令发射密度翻倍、三级流水的同步更松。
 本 kernel 主循环应出现成串的 \texttt{HMMA.16816.F16}（每 warp 每迭代 16 条）
 与 \texttt{LDSM}（ldmatrix 的 SASS 形态，x4 对应 \texttt{LDSM.128}）；
 （2）profile 级——ncu 的指令混合指标里
-\texttt{sm\_\_inst\_executed\_pipe\_tensor\_op} 应占主导。
+\texttt{sm\_\allowbreak{}\_\allowbreak{}inst\_\allowbreak{}executed\_\allowbreak{}pipe\_\allowbreak{}tensor\_\allowbreak{}op} 应占主导。
 若 HMMA 计数为零而 \texttt{FFMA}/\texttt{HFMA2} 居高，
 说明源码被宏门控剪掉、走了 CUDA Core 的 fallback 路径——
 这是改造这类教学 kernel 时最常见的「白忙一场」。
@@ -355,7 +355,7 @@ $B\sb K{=}16$ 的指令发射密度翻倍、三级流水的同步更松。
   column-major format''}——即\textbf{不加} \texttt{.trans} 是普通（行）装载，
   加了才是列装载。结论方向恰好写反。本章 kernel 的实际用法（TN 布局、
   A/B 都用非 trans 装载）不受影响；但按该注释推理会在 NN 布局下
-  选错 trans 与否。已记入 \texttt{book/CHECKLOG.md}，正文以 PTX 文档为准。
+  选错 trans 与否。已记入 \texttt{book/\allowbreak{}CHECKLOG.\allowbreak{}md}，正文以 PTX 文档为准。
 \end{kaogu}
 
 \begin{kaogu}[F2 核校通过]{hgemm.cuh L6 与 L73-80：m16n8k16 形状与寄存器数}
@@ -379,13 +379,13 @@ $B\sb K{=}16$ 的指令发射密度翻倍、三级流水的同步更松。
 
 \section{常见坑}
 
-\textbf{坑一：B 没转置直接喂 kernel。}kernel 吃的是 $B^{\top}$（$N\times K$
+\textbf{坑一：B 没转置直接喂 kernel。}\allowbreak{}kernel 吃的是 $B^{\top}$（$N\times K$
 行主序）。把 $K\times N$ 的 B 原样传入，gmem 索引
 \texttt{n*K + k} 会按错误布局取数——不越界（总元素数相同）、不报错、
 结果系统性错误。测试须像 notes-v2 一样显式构造 $B^{\top}$
 （本章测试的 \texttt{hbt} 循环）。
 
-\textbf{坑二：\texttt{.aligned} 与 early return 打架。}mma/ldmatrix 要求
+\textbf{坑二：\texttt{.aligned} 与 early return 打架。}\allowbreak{}mma/ldmatrix 要求
 全 warp 无分歧。本 kernel L176--177 的
 \texttt{if (... >= M ...) return;} 依赖
 「M/N 按 128 对齐时条件恒假」这一前提才安全；若形状未对齐，
@@ -393,27 +393,27 @@ $B\sb K{=}16$ 的指令发射密度翻倍、三级流水的同步更松。
 后续 mma 即未定义行为。对齐假设写在头注释里（L225 上方），
 改造 kernel 支持非对齐形状时必须先处理这里。
 
-\textbf{坑三：x2/x1 的高位 lane 地址。}PTX 允许 x2 时 lane 16--31 传
+\textbf{坑三：x2/x1 的高位 lane 地址。}\allowbreak{}PTX 允许 x2 时 lane 16--31 传
 「复制低位」的地址；但传\textbf{垃圾}（未映射地址）在部分架构上仍是雷。
 本 kernel 的 \texttt{lane\%8} / \texttt{(lane/8)\%2} 天然循环复用合法行号，
 属安全写法；自己写 kernel 时建议保持这种「地址周期化」的习惯。
 
-\textbf{坑四：\texttt{wait\_group} 之后漏 \texttt{\_\_syncthreads}。}
+\textbf{坑四：\texttt{wait\_group} 之后漏 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads}。}
 与第~\ref{ch:10}~章坑四同理但更容易漏：统一循环里 wait 在迭代末，
-读数据在迭代头，中间隔着 \texttt{\_\_syncthreads}（L303）——
+读数据在迭代头，中间隔着 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads}（L303）——
 删掉它，warp 0 可能已经读到 warp 7 还没写完的 stage。
-另外注意 \texttt{if (k + kStages - 1 < NUM\_K\_TILES)} 的条件加载分支：
+另外注意 \texttt{if \allowbreak{}(k + k\allowbreak{}Stages - 1 \allowbreak{}< NUM\_\allowbreak{}K\_\allowbreak{}TILES)} 的条件加载分支：
 \textbf{wait\_group 在分支外}（L297--304 自适应版本），
-而 \texttt{commit\_group} 在分支内——尾部迭代不 commit 却 wait(0)，
+而 \texttt{commit\_\allowbreak{}group} 在分支内——尾部迭代不 commit 却 wait(0)，
 per-thread 组计数对不上会提前放行（好在上一次的 sync 兜底；
-本 kernel 尾部迭代 \texttt{wait\_group(0)} 等到的是「至多 0 组」，
+本 kernel 尾部迭代 \texttt{wait\_\allowbreak{}group\allowbreak{}(0)} 等到的是「至多 0 组」，
 语义仍安全）。改造时保持 commit/wait 配对的对称性。
 
 \textbf{坑五：f16 累加的精度悬崖。}\texttt{f16.f16.f16.f16} 的累加
 「至少半精度」：每条 mma 边界舍回 f16。K$=$128 实测
 $1.5\times10^{-2}$；K 到千级、或输入幅值大于 1 时，误差进入
 $10^{-1}$ 量级并在个别元素上溢出 f16 范围（65504）。
-长 K / 大动态范围请换 \texttt{HMMA16816F32}（C 用 4 个 f32 寄存器）。
+长 K / 大动态范围请换 \texttt{HMMA16816\allowbreak{}F32}（C 用 4 个 f32 寄存器）。
 
 \textbf{坑六：改完模板参数忘了改 launch 侧。}$B\sb M/B\sb N/B\sb K$ 全由模板参数
 推导，但 smem 字节数（\texttt{kStages}$\times(B\sb M B\sb K + B\sb N B\sb K)\times2$）
@@ -425,12 +425,12 @@ $10^{-1}$ 量级并在个别元素上溢出 f16 范围（65504）。
 
 \section{面试要点速查}
 
-\textbf{Q1：\texttt{mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16}
+\textbf{Q1：\texttt{mma.\allowbreak{}sync.\allowbreak{}aligned.\allowbreak{}m16n8k16.row.\allowbreak{}col.\allowbreak{}f16.f16.f16.f16}
 每个字段什么意思？}\\
 A：见表~\ref{tab:11-mma-fields}。要点：$m16n8k16$ 是
 A$16\times16$、B$16\times8$、C$16\times8$；\texttt{.row/.col} 是 A/B 的
 fragment 主序；四个类型依次 D/A/B/C；一条 4096 FLOP；
-\texttt{.sync/.aligned} 要求全 warp 齐步走。
+\texttt{.\allowbreak{}sync/\allowbreak{}.\allowbreak{}aligned} 要求全 warp 齐步走。
 
 \textbf{Q2：A/B/C fragment 每个 lane 持哪些元素？}\\
 A：A：每 lane 8 个 f16、四个象限寄存器（行 $\mathrm{g}$/$\mathrm{g}{+}8$
@@ -452,24 +452,24 @@ A：A 行主序、$B^{\top}$ 行主序 $\Rightarrow$ 内维都是 K：gmem$\to$s
 mma \texttt{row.col} 与 TN 天然对齐，一条 \texttt{.trans} 都不用。
 
 \textbf{Q5：kStages 越大越好吗？}\\
-A：不是。深流水容忍更长的搬运延迟（稳态 \texttt{wait\_group(kStages-2)}），
+A：不是。深流水容忍更长的搬运延迟（稳态 \texttt{wait\_\allowbreak{}group\allowbreak{}(k\allowbreak{}Stages-2)}），
 但 smem 随 $S$ 线性增长（本章 24~KB$@$3 级）、占用 limit occupancy 与
 后续 swizzle/padding 的空间预算；且 $S$ 超过「搬运延迟/迭代时间」后
 收益归零。$S\in\{2,3,4\}$ 是常见区间，靠 profile 定。
 
 \section{最小测试与动手实验}
 
-测试文件：\texttt{book/tests/ch11\_hgemm\_mma.cu}（逻辑抽取自
-notes-v2.cu 的 \texttt{test\_hgemm\_mma}，L1416；参考改为 CPU fp64：
-half 输入转 double 精确累加，half 输出 \texttt{\_\_half2float} 后比较）。
+测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch11\_\allowbreak{}hgemm\_\allowbreak{}mma.cu}（逻辑抽取自
+notes-v2.cu 的 \texttt{test\_\allowbreak{}hgemm\_\allowbreak{}mma}，L1416；参考改为 CPU fp64：
+half 输入转 double 精确累加，half 输出 \texttt{\_\allowbreak{}\_\allowbreak{}half2float} 后比较）。
 case A（$128\times128\times128$，grid $1\times1$，K 为 8 个 k-tile，
 覆盖满载 + 尾部排空）、case B（$256\times128\times64$，grid $(1,2)$，
 M 方向多 block、K 非 kStages 倍数）；容差 F16Acc 档
 \texttt{TOL\_F16ACC} $= 5\times10^{-2}$。
 B$^{\top}$ 在 host 构造（坑一的根源演示）。
 
-在 \texttt{book/tests/} 目录、\texttt{CUDA\_VISIBLE\_DEVICES=7} 下执行
-\texttt{./build\_tests.sh --arch sm\_120a --ch ch11}。本机运行输出
+在 \texttt{book/tests/} 目录、\texttt{CUDA\_\allowbreak{}VISIBLE\_\allowbreak{}DEVICES=\allowbreak{}7} 下执行
+\texttt{.\allowbreak{}/\allowbreak{}build\_\allowbreak{}tests.\allowbreak{}sh --arch sm\_\allowbreak{}120a --ch ch11}。本机运行输出
 本机运行输出（RTX PRO 5000，2026-09-11；PASS 行的误差数值见
 表~\ref{tab:11-pass}）：
 
@@ -482,7 +482,7 @@ ALL OK
 \begin{table}[htbp]
 \centering
 \caption{ch11 测试 PASS 行数值摘录（完整行式输出见
-\texttt{tests/.build/ch11\_hgemm\_mma} 运行日志；tol 为判定容差）}
+\texttt{tests/\allowbreak{}.\allowbreak{}build/\allowbreak{}ch11\_\allowbreak{}hgemm\_\allowbreak{}mma} 运行日志；tol 为判定容差）}
 \label{tab:11-pass}
 \begin{tabular}{llrr}
 \toprule
@@ -498,10 +498,10 @@ B & hgemm\_mma $256\times128\times64$  & 7.919e-03 & 5.0e-02 \\
 $10^{-5}$——这正是 f16 累加（11.3.1 语义（2））的实测指纹：
 fp64 参考没有半精度舍入，差异全部来自每条 mma 边界的 f16 舍回。
 动手实验建议：
-（1）把 \texttt{HMMA16816} 换成 \texttt{HMMA16816F32}（C 寄存器改 4 个、
+（1）把 \texttt{HMMA16816} 换成 \texttt{HMMA16816\allowbreak{}F32}（C 寄存器改 4 个、
 epilogue 相应调整），观察误差跌回 $10^{-3}$ 以下；
 （2）故意把 B（而非 $B^{\top}$）传给 kernel，复现坑一的静默错误；
-（3）用 \texttt{./.build/ch11\_hgemm\_mma bench} 复现 76.55 TFLOPS，
+（3）用 \texttt{.\allowbreak{}/\allowbreak{}.\allowbreak{}build/\allowbreak{}ch11\_\allowbreak{}hgemm\_\allowbreak{}mma bench} 复现 76.55 TFLOPS，
 再把 kStages 模板参数改成 2/4 对比 smem 与吞吐的取舍。
 
 \section*{延伸阅读}
@@ -517,5 +517,5 @@ epilogue 相应调整），观察误差跌回 $10^{-3}$ 以下；
         对应本章 11.4.5--11.4.6）；
   \item NVIDIA. Parallel Thread Execution ISA, §9.7.14.5
         （\texttt{mma}/\texttt{ldmatrix} 官方语义与 Figure 79/81/83；
-        本地副本：cuda-cpp-kernel skill \texttt{references/ptx-docs}）。
+        本地副本：cuda-cpp-kernel skill \texttt{references/\allowbreak{}ptx-docs}）。
 \end{itemize}

@@ -150,6 +150,7 @@
 - [ ] J.6 术语一致性 pass（记号表为准；全书 grep 常见别名）
 - [ ] J.7 页数验收（≥280）+ 无 `! LaTeX Error` + Overfull 可控
 - [ ] J.8 **验收**：对照 BOOK_PLAN §11 全书级标准逐条勾选
+- [x] J.9 行越界专项：全书 Overfull \hbox 114 处（75 处 ≥10pt，最大 112pt）→ ≥1pt 清零（2026-09-16）。手段：preamble `\emergencystretch=2em`（114→52）；`\texttt` 断点注入脚本（camelCase/`\_`/`/`/`.`/`::`/`(`/`<`，门槛=真实断点切分后 run≥12，52→11，另修复 3 处裸 `\allowbreak ` 空格伪影导致的 `ENABLE_ TMA` 渲染变形）；`xurl`（\url 长链接断行）；剩余 11 处 editorial 精修（拆 run-in 粗体、`file~Lxxx` 改空格、表格 \footnotesize、align 续行列对齐修正）。终态仅余 1 处 0.88pt（<1pt 不可见，保留）。工具与清单：`book/.tmp/layout-fix/{map_overfull.py, inject2.py, overfull-map.md}`。页数 324→354
 
 ## 13. 图清单登记表（写作期持续更新）
 

@@ -12,6 +12,9 @@
 \usepackage{longtable}
 \usepackage{enumitem}
 
+% 长行内代码（\texttt 标识符/路径）混排中文时的断行弹性，压制 Overfull \hbox
+\emergencystretch=2em
+
 \pagestyle{fancy}
 \fancyhf{}
 \fancyhead[LE]{\scriptsize\leavevmode\leftmark}
