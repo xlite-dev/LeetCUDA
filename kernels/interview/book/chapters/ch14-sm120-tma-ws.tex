@@ -410,7 +410,7 @@ TMA + mbarrier + warp specialization，即得 $1.57\times$。加速来源分解�
 cp.async 提交指令，ldmatrix 到 mma 的发射槽更纯粹；（2）TMA 单线程提交
 替代 256 线程的逐线程搬运，地址/OOB 全部在 descriptor 里预计算；
 （3）数据驱动的 full/empty 协议替代 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads} 栅栏，warp 间
-不再互相拖拽。数据与脚本存 \texttt{.tmp/\allowbreak{}book-bench/\allowbreak{}ch14/\allowbreak{}bench.txt}。
+不再互相拖拽。
 
 \section{实践经验与考据说明}
 
@@ -552,12 +552,12 @@ common.cuh 的 \texttt{create\_\allowbreak{}tensor\_\allowbreak{}map\allowbreak{
 演示了「不链接 libcuda 使用 driver API」的标准姿势。编译运行（本机
 sm\_120a 可直接跑）：
 
-\begin{quote}\small
-\texttt{cd book/\allowbreak{}tests \&\& CUDA\_\allowbreak{}VISIBLE\_\allowbreak{}DEVICES=\allowbreak{}6 .\allowbreak{}/\allowbreak{}build\_\allowbreak{}tests.\allowbreak{}sh -{}-arch sm\_\allowbreak{}120a -{}-ch ch14}\\[3pt]
-\texttt{-{}$>$ PASS hgemm tma ws 256x256x256 S=\allowbreak{}2: max\_\allowbreak{}abs\_\allowbreak{}err=\allowbreak{}1.871e-03}\\
-\texttt{-{}$>$ PASS hgemm tma ws 256x256x256 S=\allowbreak{}3 sw: max\_\allowbreak{}abs\_\allowbreak{}err=\allowbreak{}1.871e-03}\\
-\texttt{-{}$>$ ALL OK}
-\end{quote}
+\begin{lstlisting}[style=console]
+$ cd book/tests && CUDA_VISIBLE_DEVICES=6 ./build_tests.sh --arch sm_120a --ch ch14
+-> PASS hgemm tma ws 256x256x256 S=2: max_abs_err=1.871e-03
+-> PASS hgemm tma ws 256x256x256 S=3 sw: max_abs_err=1.871e-03
+-> ALL OK
+\end{lstlisting}
 
 bench 子命令输出 14.6~节的对照表（\texttt{CUDA\_\allowbreak{}VISIBLE\_\allowbreak{}DEVICES=\allowbreak{}6
 .\allowbreak{}build/\allowbreak{}ch14\_\allowbreak{}hgemm\_\allowbreak{}tma\_\allowbreak{}ws bench}）。动手实验建议：（1）把

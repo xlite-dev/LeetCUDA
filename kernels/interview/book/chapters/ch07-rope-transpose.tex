@@ -149,7 +149,7 @@ shared memory 被切成 32 个 bank（对应一个 warp 的 32 线程），每�
 
 \subsection{模拟验证}
 
-上述推导可以不依赖 GPU 复现：\texttt{.tmp/\allowbreak{}book-bench/\allowbreak{}ch07/\allowbreak{}bank\_\allowbreak{}sim.py} 按 warp 映射逐指令统计 bank 直方图（结果存 \texttt{bank\_\allowbreak{}sim.\allowbreak{}txt}），输出与推导一致：
+上述推导可以不依赖 GPU 复现：按 warp 映射逐指令统计 bank 直方图的模拟（几十行 Python 即可写就），输出与推导一致：
 
 \begin{lstlisting}[style=console]
 tile[64][16] (PAD=0):  Step1 write: 2-way   Step2 read: 16-way
@@ -160,7 +160,7 @@ tile[64][17] (PAD=1):  Step1 write: 2-way   Step2 read:  2-way
 
 转置是零计算算子（$AI \approx 0$），性能上限 $=$ 带宽上限，优化就是把「事务数」压到理论最小：读 $M^2/32$ 个事务 + 写 $M^2/32$ 个事务（每 warp 每向一个 128B 段）。
 
-测试环境与口径：NVIDIA RTX PRO 5000 72GB（Blackwell，sm\_120a，L2 96MB），cudaEvent 取 20 次 min；$M \times M$ fp32 方阵；有效带宽按读 + 写 $2M^2 \cdot 4\,\mathrm{B}$ 计。数据落盘 \texttt{.tmp/\allowbreak{}book-bench/\allowbreak{}ch07/\allowbreak{}bench.txt}：
+测试环境与口径：NVIDIA RTX PRO 5000 72GB（Blackwell，sm\_120a，L2 96MB），cudaEvent 取 20 次 min；$M \times M$ fp32 方阵；有效带宽按读 + 写 $2M^2 \cdot 4\,\mathrm{B}$ 计：
 
 \begin{center}
 \begin{tabular}{lccc}
@@ -185,7 +185,7 @@ $M$ & mat\_transpose (naive) & mat\_transpose\_padded & 加速比 \\
 \section{实践经验}
 
 \begin{kaogu}[F3 | 「PAD 消除 bank conflict」在本 kernel 中是大幅降低而非消除]
-源码注释把 PAD 表述为「Bank conflict fix：每行多 1 个元素，打破 32-bank 对齐」与「解决方案：PAD……打破地址对齐」。按本章第 5 节的逐指令 bank 直方图（模拟复现于 \texttt{.tmp/\allowbreak{}book-bench/\allowbreak{}ch07/\allowbreak{}bank\_\allowbreak{}sim.txt}）：PAD=1 把 Step 2 转置读从 16-way 降到 2-way（主要收益），Step 1 写侧 PAD 前后均为 2-way。即注释的结论在数量级上成立（读事务 16 $\to$ 2），但「消除」并不准确——彻底消除需要第 \ref{ch:12} 章的 swizzle 或改变每线程 4 行的分工。经典「一线程一元素 + $32\times33$ tile」布局才是 PAD 完全消除冲突的形态。
+源码注释把 PAD 表述为「Bank conflict fix：每行多 1 个元素，打破 32-bank 对齐」与「解决方案：PAD……打破地址对齐」。按本章第 5 节的逐指令 bank 直方图：PAD=1 把 Step 2 转置读从 16-way 降到 2-way（主要收益），Step 1 写侧 PAD 前后均为 2-way。即注释的结论在数量级上成立（读事务 16 $\to$ 2），但「消除」并不准确——彻底消除需要第 \ref{ch:12} 章的 swizzle 或改变每线程 4 行的分工。经典「一线程一元素 + $32\times33$ tile」布局才是 PAD 完全消除冲突的形态。
 \end{kaogu}
 
 \begin{kaogu}[F5 | RoPE 的配对约定考据]
@@ -231,7 +231,7 @@ cd kernels/interview/book/tests && CUDA_VISIBLE_DEVICES=7 ./build_tests.sh --ch 
   ch07 ALL PASS
 \end{lstlisting}
 
-性能实验：\texttt{./\allowbreak{}.build/\allowbreak{}ch07\_\allowbreak{}rope\_\allowbreak{}transpose --bench} 复现本章第 6 节表格，输出落盘 \texttt{.tmp/\allowbreak{}book-bench/\allowbreak{}ch07/\allowbreak{}bench.txt}；\texttt{python3 .tmp/\allowbreak{}book-bench/\allowbreak{}ch07/\allowbreak{}bank\_\allowbreak{}sim.py} 复现 bank 直方图。建议动手：把 \texttt{PAD} 改成 2、4，观察 Step 2 的冲突度如何随步长变化（\texttt{bank\_sim.py} 改一行即可）；把每线程 4 行改成 2 行（tile 变 $[32][17]$、grid 相应调整），看 2-way 残留是否消失，并核对第 \ref{ch:12} 章 swizzle 动机的自然浮现。
+性能实验：\texttt{./\allowbreak{}.build/\allowbreak{}ch07\_\allowbreak{}rope\_\allowbreak{}transpose --bench} 复现本章第 6 节表格；bank 直方图可用本章第 5 节的模拟复现。建议动手：把 \texttt{PAD} 改成 2、4，观察 Step 2 的冲突度如何随步长变化（模拟脚本改一行即可）；把每线程 4 行改成 2 行（tile 变 $[32][17]$、grid 相应调整），看 2-way 残留是否消失，并核对第 \ref{ch:12} 章 swizzle 动机的自然浮现。
 
 \subsection*{延伸阅读}
 

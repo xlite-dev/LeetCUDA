@@ -416,8 +416,7 @@ BK=64，swizzle（7b-3）    & 297{,}628 & 20.7 & 4-way；本章 kernel \\
 结论由此坐实。同时注意：swizzle 版 kernel 耗时 30.2$\to$20.7\,$\mu$s（1.46$\times$），
 冲突并没有被「全消」，但寄存器双缓冲把残余 4-way 的重放延迟藏进了 MMA 流水。
 
-\textbf{端到端吞吐}（cudaEvent，warmup 3 + 10 次均值；数据文件
-\texttt{.tmp/\allowbreak{}book-bench/\allowbreak{}ch12/\allowbreak{}bench.txt}）：
+\textbf{端到端吞吐}（cudaEvent，warmup 3 + 10 次均值）：
 
 \begin{table}[htbp]
 \centering

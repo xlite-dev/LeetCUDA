@@ -222,7 +222,7 @@ histogram (256 bins) & 0.62860 & 26.69 GB/s & 按读 4B/元素计，原子另计
 \end{tabular}
 \end{center}
 
-（数据文件：.tmp/book-bench/ch03/bench.txt。）三条观察：
+（同口径 bench 复测。）三条观察：
 
 \textbf{其一，L2 命中让实测超过 HBM 理论值}。1862 GB/s $>$ 本机 GDDR7
 理论 1344 GB/s——数据 16 MB 从未离开 96 MB 的 L2，实测是 L2 到 SM 的
@@ -323,7 +323,7 @@ test\_relu（L596）/ test\_elementwise（L641）/ test\_histogram（L689），
 改用 common\_test.h 判定：$N = 512$ 验证 relu/relu\_vec4 与 CPU 逐元素
 精确一致（误差 0）、elementwise\_add 两版误差 $6 \times 10^{-8}$、
 histogram（16 bins）与 CPU 计数完全一致；另附 5 个 kernel 的 cudaEvent
-bench（warmup 3 + 10 次均值），结果写入 .tmp/book-bench/ch03/bench.txt。
+bench（warmup 3 + 10 次均值）。
 
 运行（CWD：book/tests/，\texttt{.\allowbreak{}/\allowbreak{}build\_\allowbreak{}tests.\allowbreak{}sh -{}-ch ch03}；kernel 名
 按本书排版把下划线转写为连字符，实测 max\_abs\_err 见各行）：

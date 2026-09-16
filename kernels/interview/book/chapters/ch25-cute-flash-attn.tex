@@ -656,8 +656,7 @@ CuTe 版与手写版在\emph{同一口径}下才可比。
 \textbf{本书复测}。本章测试（\texttt{book/\allowbreak{}tests/\allowbreak{}ch25\_\allowbreak{}fa\_\allowbreak{}cute.\allowbreak{}cu}）的
 \texttt{bench} 子命令按与第~\ref{ch:17}/\ref{ch:18}~章相同的口径测量
 CuTe 实现 1/2 的吞吐：$B{=}1$、$H{=}32$、warmup$=5$、iters$=20$，
-$D\in\{64,128\}$、$N\in\{4096\}$；数据落
-\texttt{.\allowbreak{}tmp/\allowbreak{}agent-ch25/\allowbreak{}}。三点预期需要强调：(1) 实现 1 与实现 2 的差异
+$D\in\{64,128\}$、$N\in\{4096\}$。三点预期需要强调：(1) 实现 1 与实现 2 的差异
 是\textbf{搬运路径}（cp.async 全员搬 vs TMA 单线程发）而非计算，
 $D{=}128$ 的 Q tile 更大（$128\times128$ 个 half $=32$\,KB），
 实现 1 的 G2S 负载更重——两者差距应主要体现在大 $D$；
@@ -792,13 +791,9 @@ A：它是「TMA + SW128 布局 + 事务屏障」三件套的最小闭环，把
 
 编译与运行（本机 sm\_120a，6 号卡；结果见下）：
 
-\begin{quote}\small
-\texttt{cd book/\allowbreak{}tests \&\& CUDA\_\allowbreak{}VISIBLE\_\allowbreak{}DEVICES=\allowbreak{}6 .\allowbreak{}/\allowbreak{}build\_\allowbreak{}tests.\allowbreak{}sh -{}-arch
-sm\_\allowbreak{}120a -{}-ch ch25}
-\end{quote}
-
 {\footnotesize
 \begin{lstlisting}[style=console]
+$ cd book/tests && CUDA_VISIBLE_DEVICES=6 ./build_tests.sh --arch sm_120a --ch ch25
 == ch25_fa_cute.cu (sm_120a)
 PASS fa_cute cp.async D=64 Sk=2 B=1 H=2 N=128: max_abs_err=8.149e-05 (tol=5.0e-02)
 PASS fa_cute cp.async D=64 Sk=2 B=1 H=2 N=256: max_abs_err=6.614e-05 (tol=5.0e-02)

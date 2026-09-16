@@ -199,7 +199,7 @@ vec4 化带来一个标量版没有的实现细节：Pass 2 需要再次用到 $
 
 \subsection{实测数据}
 
-测试环境：NVIDIA RTX PRO 5000 72GB（Blackwell，sm\_120a，110 SM，L2 96MB），CUDA 13，cudaEvent 计时取 20 次 min，warmup 3 次；$K=128$，fp32；有效带宽按读 + 写 $2NK \cdot 4\,\mathrm{B}$ 计。数据落盘 \texttt{.tmp/\allowbreak{}book-bench/\allowbreak{}ch06/\allowbreak{}bench.txt}：
+测试环境：NVIDIA RTX PRO 5000 72GB（Blackwell，sm\_120a，110 SM，L2 96MB），CUDA 13，cudaEvent 计时取 20 次 min，warmup 3 次；$K=128$，fp32；有效带宽按读 + 写 $2NK \cdot 4\,\mathrm{B}$ 计：
 
 \begin{center}
 \begin{tabular}{lcccc}
@@ -269,7 +269,7 @@ cd kernels/interview/book/tests && CUDA_VISIBLE_DEVICES=7 ./build_tests.sh --ch 
   ch06 ALL PASS
 \end{lstlisting}
 
-性能实验：\texttt{.\allowbreak{}/\allowbreak{}.\allowbreak{}build/\allowbreak{}ch06\_\allowbreak{}norm --bench} 复现本章第 6 节表格（cudaEvent min-of-20），输出落盘 \texttt{.tmp/\allowbreak{}book-bench/\allowbreak{}ch06/\allowbreak{}bench.txt}。建议动手：把 \texttt{kNumThreads} 改成 256 而 $K=128$ 不变，观察归约结果如何被跨行污染；删除写 \texttt{s\_variance} 后的 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()} 并用 \texttt{compute-sanitizer --tool racecheck} 捕获竞争。
+性能实验：\texttt{.\allowbreak{}/\allowbreak{}.\allowbreak{}build/\allowbreak{}ch06\_\allowbreak{}norm --bench} 复现本章第 6 节表格（cudaEvent min-of-20）。建议动手：把 \texttt{kNumThreads} 改成 256 而 $K=128$ 不变，观察归约结果如何被跨行污染；删除写 \texttt{s\_variance} 后的 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()} 并用 \texttt{compute-sanitizer --tool racecheck} 捕获竞争。
 
 \subsection*{延伸阅读}
 

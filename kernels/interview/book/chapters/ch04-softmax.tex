@@ -304,8 +304,7 @@ FlashAttention 把右列的 $(m,d)$ 再加一列 $O$，就是第~\ref{ch:15}~章
 优化重心在扫描遍数与同步次数，而不是 FLOP。
 
 本章 bench 复测（RTX PRO 5000 72GB Blackwell，sm\_120，2026-09-11；
-$S = 4096$ 个 token、每 token $N = 256$、block = 256；warmup 3 次 + 10 次取均值；
-数据文件 \texttt{.tmp/\allowbreak{}book-bench/\allowbreak{}ch04/\allowbreak{}bench.txt}）：
+$S = 4096$ 个 token、每 token $N = 256$、block = 256；warmup 3 次 + 10 次取均值）：
 
 \begin{table}[htbp]
 \centering

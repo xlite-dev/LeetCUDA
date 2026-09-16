@@ -877,28 +877,27 @@ $D$ & $C$ & $N$ & $H$ & 覆盖点 & \\
 \end{tabular}
 \end{center}
 
-编译与运行（本机 sm\_120a；测试自带 \texttt{SKIP(ch19)} 分支处理 smem 超限；
-\texttt{test.log} 全文落 \texttt{.\allowbreak{}tmp/\allowbreak{}agent-ch19/\allowbreak{}}）：
+编译与运行（本机 sm\_120a；测试自带 \texttt{SKIP(ch19)} 分支处理 smem 超限）：
 
-\begin{quote}\footnotesize
-\texttt{\$ CUDA\_\allowbreak{}VISIBLE\_\allowbreak{}DEVICES=\allowbreak{}6 .\allowbreak{}/\allowbreak{}build\_\allowbreak{}tests.\allowbreak{}sh --arch sm\_\allowbreak{}120a --ch ch19}\\[3pt]
-\texttt{=\allowbreak{}=\allowbreak{} ch19\_\allowbreak{}ffpa\_\allowbreak{}split\_\allowbreak{}d.\allowbreak{}cu \allowbreak{}(sm\_\allowbreak{}120a)}\\
-\texttt{GPU: NVIDIA RTX PRO 5000 72GB Blackwell (sm\_120),}\\
-\texttt{\ \ max shared memory per block (optin): 101376 B (99.0 KB)}\\
-\texttt{D=\allowbreak{}64: d\_\allowbreak{}chunk=\allowbreak{}64 x 1 chunks,\allowbreak{} O\_\allowbreak{}acc=\allowbreak{}32 f32/\allowbreak{}thread/\allowbreak{}chunk \allowbreak{}(total 32),\allowbreak{} rows=\allowbreak{}512,\allowbreak{} N=\allowbreak{}256}\\
-\texttt{PASS ffpa split-d async D=\allowbreak{}64 N=\allowbreak{}256 Sk=\allowbreak{}2 Sv=\allowbreak{}2: max\_\allowbreak{}abs\_\allowbreak{}err=\allowbreak{}6.614e-05 \allowbreak{}(tol=\allowbreak{}5.0e-02)}\\
-\texttt{PASS ffpa split-d tma ws D=\allowbreak{}64 N=\allowbreak{}256 Sk=\allowbreak{}2 Sv=\allowbreak{}2: max\_\allowbreak{}abs\_\allowbreak{}err=\allowbreak{}6.614e-05 \allowbreak{}(tol=\allowbreak{}5.0e-02)}\\
-\texttt{D=\allowbreak{}128: d\_\allowbreak{}chunk=\allowbreak{}64 x 2 chunks,\allowbreak{} O\_\allowbreak{}acc=\allowbreak{}32 f32/\allowbreak{}thread/\allowbreak{}chunk \allowbreak{}(total 64),\allowbreak{} rows=\allowbreak{}512,\allowbreak{} N=\allowbreak{}256}\\
-\texttt{PASS ffpa split-d async D=\allowbreak{}128 N=\allowbreak{}256 Sk=\allowbreak{}2 Sv=\allowbreak{}2: max\_\allowbreak{}abs\_\allowbreak{}err=\allowbreak{}6.489e-05 \allowbreak{}(tol=\allowbreak{}5.0e-02)}\\
-\texttt{PASS ffpa split-d tma ws D=\allowbreak{}128 N=\allowbreak{}256 Sk=\allowbreak{}2 Sv=\allowbreak{}2: max\_\allowbreak{}abs\_\allowbreak{}err=\allowbreak{}6.489e-05 \allowbreak{}(tol=\allowbreak{}5.0e-02)}\\
-\texttt{D=\allowbreak{}192: d\_\allowbreak{}chunk=\allowbreak{}64 x 3 chunks,\allowbreak{} O\_\allowbreak{}acc=\allowbreak{}32 f32/\allowbreak{}thread/\allowbreak{}chunk \allowbreak{}(total 96),\allowbreak{} rows=\allowbreak{}384,\allowbreak{} N=\allowbreak{}192}\\
-\texttt{PASS ffpa split-d async D=\allowbreak{}192 N=\allowbreak{}192 Sk=\allowbreak{}2 Sv=\allowbreak{}2: max\_\allowbreak{}abs\_\allowbreak{}err=\allowbreak{}6.934e-05 \allowbreak{}(tol=\allowbreak{}5.0e-02)}\\
-\texttt{PASS ffpa split-d tma ws D=\allowbreak{}192 N=\allowbreak{}192 Sk=\allowbreak{}2 Sv=\allowbreak{}2: max\_\allowbreak{}abs\_\allowbreak{}err=\allowbreak{}6.934e-05 \allowbreak{}(tol=\allowbreak{}5.0e-02)}\\
-\texttt{D=\allowbreak{}512: d\_\allowbreak{}chunk=\allowbreak{}64 x 8 chunks,\allowbreak{} O\_\allowbreak{}acc=\allowbreak{}32 f32/\allowbreak{}thread/\allowbreak{}chunk \allowbreak{}(total 256),\allowbreak{} rows=\allowbreak{}256,\allowbreak{} N=\allowbreak{}128}\\
-\texttt{PASS ffpa split-d async D=\allowbreak{}512 N=\allowbreak{}128 Sk=\allowbreak{}2 Sv=\allowbreak{}2: max\_\allowbreak{}abs\_\allowbreak{}err=\allowbreak{}8.943e-05 \allowbreak{}(tol=\allowbreak{}5.0e-02)}\\
-\texttt{PASS ffpa split-d tma ws D=\allowbreak{}512 N=\allowbreak{}128 Sk=\allowbreak{}2 Sv=\allowbreak{}2: max\_\allowbreak{}abs\_\allowbreak{}err=\allowbreak{}8.943e-05 \allowbreak{}(tol=\allowbreak{}5.0e-02)}\\
-\texttt{ALL OK}
-\end{quote}
+\begin{lstlisting}[style=console]
+$ CUDA_VISIBLE_DEVICES=6 ./build_tests.sh --arch sm_120a --ch ch19
+== ch19_ffpa_split_d.cu (sm_120a)
+GPU: NVIDIA RTX PRO 5000 72GB Blackwell (sm_120),
+    max shared memory per block (optin): 101376 B (99.0 KB)
+D=64: d_chunk=64 x 1 chunks, O_acc=32 f32/thread/chunk (total 32), rows=512, N=256
+PASS ffpa split-d async D=64 N=256 Sk=2 Sv=2: max_abs_err=6.614e-05 (tol=5.0e-02)
+PASS ffpa split-d tma ws D=64 N=256 Sk=2 Sv=2: max_abs_err=6.614e-05 (tol=5.0e-02)
+D=128: d_chunk=64 x 2 chunks, O_acc=32 f32/thread/chunk (total 64), rows=512, N=256
+PASS ffpa split-d async D=128 N=256 Sk=2 Sv=2: max_abs_err=6.489e-05 (tol=5.0e-02)
+PASS ffpa split-d tma ws D=128 N=256 Sk=2 Sv=2: max_abs_err=6.489e-05 (tol=5.0e-02)
+D=192: d_chunk=64 x 3 chunks, O_acc=32 f32/thread/chunk (total 96), rows=384, N=192
+PASS ffpa split-d async D=192 N=192 Sk=2 Sv=2: max_abs_err=6.934e-05 (tol=5.0e-02)
+PASS ffpa split-d tma ws D=192 N=192 Sk=2 Sv=2: max_abs_err=6.934e-05 (tol=5.0e-02)
+D=512: d_chunk=64 x 8 chunks, O_acc=32 f32/thread/chunk (total 256), rows=256, N=128
+PASS ffpa split-d async D=512 N=128 Sk=2 Sv=2: max_abs_err=8.943e-05 (tol=5.0e-02)
+PASS ffpa split-d tma ws D=512 N=128 Sk=2 Sv=2: max_abs_err=8.943e-05 (tol=5.0e-02)
+ALL OK
+\end{lstlisting}
 
 八条 PASS 覆盖两个 kernel 的四种 chunk 数。三点读数。其一，\textbf{两个 kernel 的
 最大误差逐位一致}（$6.614/6.489/6.934/$\allowbreak$8.943\times10^{-5}$）：这不是巧合——两者的

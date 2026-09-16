@@ -436,8 +436,7 @@ L1374--1399），Step 5 的写回是 ch16 的原版方案——warp 内 shuffle 
 
 \textbf{本书复测口径}（2026-09-11，RTX PRO 5000 sm\_120a，CUDA 13.2，
 \texttt{book/\allowbreak{}tests/\allowbreak{}ch17\_\allowbreak{}fa2\_\allowbreak{}tma\_\allowbreak{}ws.cu bench}：B$=$1、H$=$32、warmup$=$5、
-iters$=$20 取均值，FLOPS $= 4BHN^2D$；两轮复测差 $< 0.5\%$；数据存
-\texttt{.tmp/\allowbreak{}book-bench/\allowbreak{}ch17/\allowbreak{}bench.log}）：
+iters$=$20 取均值，FLOPS $= 4BHN^2D$；两轮复测差 $< 0.5\%$）：
 
 \begin{center}
 \begin{tabular}{lcc}
@@ -633,13 +632,13 @@ $T_c{=}2$ 触发 stage 回绕（Sk$=$2 的 0$\to$1$\to$0）；512 时 8 轮迭�
 
 在 \texttt{book/tests/} 目录下编译运行（本机 sm\_120a，6 号卡）：
 
-\begin{quote}\small
-\texttt{.\allowbreak{}/\allowbreak{}build\_\allowbreak{}tests.\allowbreak{}sh --arch sm\_\allowbreak{}120a --ch ch17}\\[3pt]
-\texttt{max shared memory per block (optin): 101376 B (99.0 KB)}\\
-\texttt{PASS fa2\_\allowbreak{}tma\_\allowbreak{}ws D=\allowbreak{}64 N=\allowbreak{}128 Sk=\allowbreak{}2 Sv=\allowbreak{}1 F16\allowbreak{}Acc: max\_\allowbreak{}abs\_\allowbreak{}err=\allowbreak{}1.746e-04}\\
-\texttt{PASS fa2\_\allowbreak{}tma\_\allowbreak{}ws D=\allowbreak{}64 N=\allowbreak{}128 Sk=\allowbreak{}2 Sv=\allowbreak{}1 F32\allowbreak{}Acc: max\_\allowbreak{}abs\_\allowbreak{}err=\allowbreak{}8.149e-05}\\
-\texttt{...（8 例全 PASS，F16Acc $\sim$ 2e-04 / F32Acc $\sim$ 5e-05）... ALL OK}
-\end{quote}
+\begin{lstlisting}[style=console]
+$ ./build_tests.sh --arch sm_120a --ch ch17
+max shared memory per block (optin): 101376 B (99.0 KB)
+PASS fa2_tma_ws D=64 N=128 Sk=2 Sv=1 F16Acc: max_abs_err=1.746e-04
+PASS fa2_tma_ws D=64 N=128 Sk=2 Sv=1 F32Acc: max_abs_err=8.149e-05
+...（8 例全 PASS，F16Acc ~ 2e-04 / F32Acc ~ 5e-05）... ALL OK
+\end{lstlisting}
 
 bench 子命令输出 17.6~节复测表（\texttt{.\allowbreak{}/\allowbreak{}.\allowbreak{}build/\allowbreak{}ch17\_\allowbreak{}fa2\_\allowbreak{}tma\_\allowbreak{}ws bench}，
 数据落 \texttt{.\allowbreak{}tmp/\allowbreak{}book-bench/\allowbreak{}ch17/\allowbreak{}}）。动手实验建议：（1）把 3d 步的

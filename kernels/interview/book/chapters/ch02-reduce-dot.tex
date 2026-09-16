@@ -238,13 +238,13 @@ atomicAdd。实测（RTX PRO 5000，sm\_120a，2026-09-11，bench 口径：warmu
 见 ch01 \S\ref{sec:ch01-perf} 关于 L2 口径的提醒）：
 
 \begin{center}
-\begin{tabular}{lrrl}
+\begin{tabular}{lrr}
 \toprule
-kernel & 均值 (ms) & 有效带宽 & 数据来源 \\
+kernel & 均值 (ms) & 有效带宽 \\
 \midrule
-block\_reduce\_all & 0.04164 & 402.93 GB/s & .tmp/book-bench/ch02/bench.txt \\
-dot & 0.04162 & 806.16 GB/s & 同上 \\
-dot\_vec4 & 0.04155 & 807.53 GB/s & 同上 \\
+block\_reduce\_all & 0.04164 & 402.93 GB/s \\
+dot & 0.04162 & 806.16 GB/s \\
+dot\_vec4 & 0.04155 & 807.53 GB/s \\
 \bottomrule
 \end{tabular}
 \end{center}

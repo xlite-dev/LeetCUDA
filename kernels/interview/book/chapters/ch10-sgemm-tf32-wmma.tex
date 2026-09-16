@@ -313,7 +313,7 @@ $AI = \frac{2MNK}{4(MK+KN)} = \frac{MN}{2(M+N)}$，$M{=}N{=}1024$ 时约 256 FLO
 更加 compute-bound。
 
 本章复测（RTX PRO 5000 72GB，sm\_120，2026-09-11；$M{=}N{=}K{=}1024$，
-warmup 3 + 10 次均值；数据文件 \texttt{.tmp/\allowbreak{}book-bench/\allowbreak{}ch10/\allowbreak{}bench.txt}）：
+warmup 3 + 10 次均值）：
 \texttt{sgemm\_tf32} 单卡 28.19 TFLOPS。两点口径说明：
 （1）该数值为共享开发机上的单次短测，仅作章节间相对对照，不与 README
 大形状数据直接比较；（2）TF32 理论峰与实测的差距主要来自 $B\sb K{=}8$ 的窄

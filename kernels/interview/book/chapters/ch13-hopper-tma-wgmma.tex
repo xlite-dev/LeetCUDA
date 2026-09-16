@@ -600,13 +600,14 @@ $K / B\sb{K} = 4$ 个 K-tile 恰好覆盖 kStages=3 的 stage 回绕（$0 \to 1 
 形式——\texttt{-arch sm\_90a} 会退化为 \texttt{compute\_90}，见 13.7~节勘误；并链接
 \texttt{-lcuda}，因 \texttt{cu\allowbreak{}Tensor\allowbreak{}Map\allowbreak{}Encode\allowbreak{}Tiled} 是 driver API）：
 
-\begin{quote}\small
-\texttt{/\allowbreak{}usr/\allowbreak{}local/\allowbreak{}cuda/\allowbreak{}bin/\allowbreak{}nvcc -gencode arch=\allowbreak{}compute\_\allowbreak{}90a,\allowbreak{}code=\allowbreak{}sm\_\allowbreak{}90a \textbackslash}\\
-\texttt{~~-O2 -std=\allowbreak{}c++17 -I.\allowbreak{}.\allowbreak{}/\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}third-party/\allowbreak{}cutlass/\allowbreak{}include -I.\allowbreak{}.\allowbreak{}/\allowbreak{}.\allowbreak{}.\allowbreak{} \textbackslash}\\
-\texttt{~~-lcuda -o .\allowbreak{}build/\allowbreak{}ch13\_\allowbreak{}hgemm\_\allowbreak{}wgmma ch13\_\allowbreak{}hgemm\_\allowbreak{}wgmma.\allowbreak{}cu}\\[3pt]
-\texttt{CUDA\_\allowbreak{}VISIBLE\_\allowbreak{}DEVICES=\allowbreak{}7 .\allowbreak{}build/\allowbreak{}ch13\_\allowbreak{}hgemm\_\allowbreak{}wgmma}\\[3pt]
-\texttt{--> SKIP(ch13): requires sm\_90 (Hopper WGMMA), device is sm\_120 (exit 0)}
-\end{quote}
+\begin{lstlisting}[style=console]
+$ /usr/local/cuda/bin/nvcc -gencode arch=compute_90a,code=sm_90a \
+  -O2 -std=c++17 -I../../../third-party/cutlass/include -I../../.. \
+  -lcuda -o .build/ch13_hgemm_wgmma ch13_hgemm_wgmma.cu
+
+$ CUDA_VISIBLE_DEVICES=7 .build/ch13_hgemm_wgmma
+--> SKIP(ch13): requires sm_90 (Hopper WGMMA), device is sm_120 (exit 0)
+\end{lstlisting}
 
 在 H100/H200/H800（sm\_90a）上同命令编译运行，预期输出
 \texttt{PASS hgemm wgmma m64n128k16 TMA+WS (F16Acc)}，\texttt{max\_abs\_err}
