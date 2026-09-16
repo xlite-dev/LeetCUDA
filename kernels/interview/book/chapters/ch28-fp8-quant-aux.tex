@@ -188,7 +188,7 @@ $\sum_{d<kHeadDim} (Q\hat H)_{:,d}(K\hat H)_{:,d} = \sum_{d<d_{og}} Q_d K_d$
 
 第~\ref{ch:27}~章的表~\ref{tab:27-granularity} 列了粒度谱系；本节回答工程问题：
 \textbf{ffpa-attn 为什么在 Q 上选 per-thread（64 scale / 128 行）这个奇怪的粒度}。
-答案藏在 MMA 的 C-fragment 布局里（第~\ref{ch:11}~章图~\ref{fig:11-frag}）：
+答案藏在 MMA 的 C-fragment 布局里（第~\ref{ch:11}~章图~\ref{fig:11-2a}）：
 $m16n8k16$ 的 fp32 累加 fragment 中，\textbf{每个线程持有 2 行 $\times$ 2 个列
 对}，且 quad 内 4 个 lane 持有\textbf{相同的 2 行}。反量化时若 scale 按行组织，
 同一线程的两行就要两个 scale；若 scale 按「C-fragment 行对」组织——每 scale 覆盖
