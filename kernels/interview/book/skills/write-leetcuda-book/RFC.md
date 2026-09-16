@@ -151,6 +151,7 @@
 - [ ] J.7 页数验收（≥280）+ 无 `! LaTeX Error` + Overfull 可控
 - [ ] J.8 **验收**：对照 BOOK_PLAN §11 全书级标准逐条勾选
 - [x] J.9 行越界专项：全书 Overfull \hbox 114 处（75 处 ≥10pt，最大 112pt）→ ≥1pt 清零（2026-09-16）。手段：preamble `\emergencystretch=2em`（114→52）；`\texttt` 断点注入脚本（camelCase/`\_`/`/`/`.`/`::`/`(`/`<`，门槛=真实断点切分后 run≥12，52→11，另修复 3 处裸 `\allowbreak ` 空格伪影导致的 `ENABLE_ TMA` 渲染变形）；`xurl`（\url 长链接断行）；剩余 11 处 editorial 精修（拆 run-in 粗体、`file~Lxxx` 改空格、表格 \footnotesize、align 续行列对齐修正）。终态仅余 1 处 0.88pt（<1pt 不可见，保留）。工具与清单：`book/.tmp/layout-fix/{map_overfull.py, inject2.py, overfull-map.md}`。页数 324→354
+- [x] J.10 全书内容审校（2026-09-16，commit 4caaed6+4517bb0）：(1) 日志排版——ch13/14/17/19/25 的 quote+texttt 伪代码块统一转 `lstlisting[style=console]`，恢复真实日志文本；(2) 本地路径清理——删除 16 处 `.tmp/book-bench|agent-chNN` 等读者不可见路径（保留 ch00 教学示例与模板注释）；(3) 4 份 GLM-5.3 审校报告（`book/.tmp/review/agent1-4.md`，77 条）应用 76 条：数学/事实错误均独立复算或源码/PTX 文档核实（重点：ch12 寄存器占用 R≈220→110、ch17 三处 linerange 错位互换、ch25/26 C fragment 行列 PTX ISA Figure 83 双重验证、ch15 FA3 作者名）；语言类清理生造词；跳过 12-7（低置信度冲突绝对计数）。顺手修复存量 undefined 引用 4 处（ch02 补 3 个 subsection label、ch17 ch:2→ch:02）。重建验证：0 编译错误、Overfull ≥1pt 为 0、undefined 引用为 0。遗留：fig-3-1/fig-12-2 图内数字与修正后正文不一致需重绘；ch16_fa2_mma.cu:5 头注释 grid 描述未改（测试文件）
 
 ## 13. 图清单登记表（写作期持续更新）
 
