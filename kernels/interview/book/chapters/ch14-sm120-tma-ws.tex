@@ -269,8 +269,9 @@ base\_offset $= (\mathrm{addr} \gg 7) \,\&\, 7$ 让硬件补偿任意相位，�
 \lstinputlisting[linerange={1934-1945},firstnumber=auto,breakatwhitespace=true,
   title={hgemm.cuh L1934-1945（单线程初始化 129 计数 + proxy fence + syncthreads）}]{../hgemm.cuh}
 
-初始化三点：其一，\texttt{init\allowbreak{}(\&full[s],\allowbreak{} 129)} 即
-\texttt{mbarrier.\allowbreak{}init.\allowbreak{}shared::\allowbreak{}cta.\allowbreak{}b64}~\texttt{[addr], 129}（cuda::barrier 内联展开），
+初始化三点：其一，cuda::barrier 的 \texttt{init\allowbreak{}(\&full[s],\allowbreak{} 129)}
+展开为 \texttt{mbarrier.\allowbreak{}init.\allowbreak{}shared::\allowbreak{}cta.\allowbreak{}b64}
+\texttt{[addr], 129}，
 两个屏障阵列的期望到达数都是式~\ref{eq:14-129} 的 129；其二，尾部
 \texttt{fence.\allowbreak{}proxy.\allowbreak{}async.\allowbreak{}shared::\allowbreak{}cta} 建立 generic proxy（软件写屏障对象）
 到 async proxy（TMA/mbarrier 硬件）的可见性——初始化数据不被异步引擎看见，

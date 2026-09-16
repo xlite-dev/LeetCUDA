@@ -17,7 +17,8 @@ smem、让单个 warp 独占 $O$ 的全部 $D$ 列。这在 $D\le 224$ 时是最
 \end{enumerate}
 
 两堵墙正交：只做 split-D，寄存器照旧 $O(D)$；只做 M4N2，smem 照旧装不下。
-ffpa-attn 的 dispatch（\texttt{dispatch/cute\_fp8.cuh} L60--64）按 $D$ 三分：
+ffpa-attn 的 dispatch 按 $D$ 三分（\texttt{dispatch/\allowbreak{}cute\_fp8.cuh}
+L60--64）：
 
 \begin{center}
 \begin{tabular}{@{}llll@{}}
@@ -384,8 +385,10 @@ fp16 家族同 $D$ 量级，带宽侧（1B/元素）更是 3.76x speedup 的直�
 
 \subsection{案例：causal allclose 临界失败的定位与定性}
 
-30.6~节表格里 D=320 bf16 / D=512 fp16 两格 \texttt{allclose} 失败，
-定性过程值得记录（脚本 \texttt{.tmp/book-bench/ch30/}）：
+30.6~节表格里有两格 \texttt{allclose} 失败：D=320（bf16）、
+D=512（fp16）。
+
+定性过程值得记录，脚本在 \texttt{.tmp/book-bench/ch30/}：
 
 \begin{enumerate}[itemsep=0pt,topsep=2pt]
   \item \textbf{先看模式不看标量}。对 $D\in\{256,320,512\}$ 各跑

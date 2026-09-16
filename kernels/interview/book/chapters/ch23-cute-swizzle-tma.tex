@@ -625,8 +625,8 @@ $2^{M+S}$ 字节」，工程上恒取 3。约束 $|S|\ge B$。
 只认字节地址上的位域交换；「列块 XOR 行号」在行宽 $=2^{M+S}$ 时与位运算
 等价（式~\eqref{eq:23-chunk}），行宽不匹配时就不等价了。
 
-\textbf{Q4：\texttt{composition} 的求值顺序？} 先算基础布局得到偏移，
-再把 Swizzle 作用在该偏移上：$R(c)=\text{Swizzle}(\text{Layout}(c))$。
+\textbf{Q4：\texttt{composition} 的求值顺序？} 先算基础布局得偏移，
+Swizzle 再作用其上：$R(c)=\text{Swizzle}(\text{Layout}(c))$。
 Swizzle 不参与坐标分解。
 
 \textbf{Q5：TMA swizzle 与手写 swizzle 的冲突点在哪？} 在「相位」。

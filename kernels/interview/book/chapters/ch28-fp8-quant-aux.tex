@@ -582,8 +582,8 @@ $\sim$1.6TB/s）实测 aux 链聚合有效带宽约 1.04TB/s——\textbf{纯带
 \section{常见坑}
 
 \begin{enumerate}[itemsep=1pt,topsep=2pt]
-  \item \textbf{V 的独立布局描述符}：Q/K 与 V 可能来自不同布局（例如 Q 是 BHND
-        而 V 是 NHD view）。\texttt{prepare\_fp8\_inputs} 对三者各持一个
+  \item \textbf{V 的独立布局描述符}：Q/K 与 V 可能来自不同布局（如 Q 是
+        BHND、V 是 NHD view）。\texttt{prepare\_fp8\_inputs} 对三者各持一个
         \texttt{Fp8InputLayout}（\texttt{Lq/Lkv/Lv}）；早期版本 K/V 共用描述符，
         NHD 输入时 V 静默读错——数值错但形状合法，allclose 才能抓到。
   \item \textbf{Hadamard 要求 BHND 物化输入}：

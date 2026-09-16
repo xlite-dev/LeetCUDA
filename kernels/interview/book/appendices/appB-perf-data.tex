@@ -152,7 +152,42 @@ swizzle 正确性 & v1/v2 30{,}720 点 bit-exact & \texttt{Swizzle\allowbreak{}<
 \end{tabular}
 \end{center}
 
-\section{三条性能主线}
+\section{Part V：FP8/FP4 量化 attention 明细}
+
+Part V（第~\ref{ch:27}--\ref{ch:33}~章）的性能口径与前三篇不同：基准是
+PyTorch SDPA（FA2 后端，$D>256$ 自动落 MATH），数字为 \texttt{ffpa\_attn.bench}
+CLI 复测（B1 H32 Hkv8 N=8192，fp16，PRO 5000，2026-09-16；tol 分档
+fp8 5e-2 / fp4 dense 0.15、causal 0.70）。speedup 一律对 SDPA 同形状。
+
+\begingroup\small
+\begin{longtable}{p{1.6cm}p{3.6cm}p{2.6cm}p{3.0cm}p{3.0cm}}
+\toprule
+章 & kernel 家族 & 形状 & 成绩 & 备注 \\
+\midrule
+\endfirsthead
+\toprule
+章 & kernel 家族 & 形状 & 成绩 & 备注 \\
+\midrule
+\endhead
+\endfoot
+\bottomrule
+\endlastfoot
+第28 & fp8 aux 链（quantize/smooth） & D=128, N=8192 & 聚合带宽 $\approx$1.04~TB/s & 纯带宽贴峰（HBM 78\%）；smk/smv 零开销 \\
+第29 & fp8 persist-D & self D$\in$[64,256] & 1.26--1.70$\times$ & D=192 正确性 bug 见 29.7.1；tensor pipe 77\% \\
+第30 & fp8 split-D / M4N2 & D=320 self / causal & 3.76$\times$ / 3.31$\times$ & D=512 2.98$\times$（参照换 MATH，见 33.6.1 归因）；causal 大 D allclose 临界失败为已知 ESS 特性（hybrid 解法） \\
+第31 & fp4 量化链（fused） & D=128 N=8192 & fused 单 launch 1.4$\to$0.3~ms & hadamard 零开销（bitwise 一致） \\
+第32 & fp4 persist-D & self D$\in$[64,256] & 1.49--2.11$\times$ & 同点 D=256 比 fp8 快 1.64$\times$；mxfp8 PV 变体 +28--39\% \\
+第33 & bench 矩阵与 knob & D=128 self & fp4 523~T（2.45$\times$） & fp4 vs fp8 1.39$\times$；粒度 knob 1.7--2.7\% 价目；Sage3 对照 causal rel\_err 0.59 vs hybrid 0.14 \\
+\end{longtable}
+\endgroup
+
+\noindent 非本地口径（ffpa-attn README，RTX 5090，引用不复测）：fp8
+D=128 FFPA-FP8 441~T vs Sage2 394~T vs SDPA 291~T；fp4 D=128
+FFPA-FP4 804~T（2.60$\times$）。同 sm\_120 微架构下 PRO 5000 绝对值低
+$\sim$16\%（fp8）/$\sim$35\%（fp4），形态结论可迁移、绝对数字不可
+（第~\ref{ch:33}~章 33.6.4）。
+
+\section{四条性能主线}
 
 \textbf{主线一：带宽（合并访问与向量化）。}\allowbreak{}Part I 的全部算子 $AI \le 0.625$，
 成绩就是有效带宽。这条线的三个台阶：先把原子/同步请出关键路径（第~\ref{ch:02}~章
@@ -174,3 +209,10 @@ Sk=2 即饱和、FA3 的 Sk=1 即饱和）——装载一旦退出关键路径�
 layout/TiledCopy/TiledMMA 全部编译期折叠，SASS 与手写同构、寄存器 0 spill、
 代码量约减半——它不直接产生加速，但让 swizzle 档位、tile 形状、流水深度这些
 \textbf{真正带来加速的算法级决策}更容易被表达、被检查、被复用。
+
+\textbf{主线四：量化（低位宽数据通路）。}\allowbreak{}Part V 把 attention 的
+数据通路从 fp16 一路降到 fp8/fp4：fp8 persist-D 1.70$\times$（D=128）起步，
+fp4 同点 2.04$\times$、大 D 靠 split-D/M4N2 3$\times$ 级。这条线的规律与
+前三条不同——收益不来自新结构，而来自\textbf{同样的数学量换更宽的通路}
+（blockscale MMA）；代价是精度管理（smooth、两级 P、hybrid），而度量本身
+也成为一门手艺（第~\ref{ch:33}~章）。

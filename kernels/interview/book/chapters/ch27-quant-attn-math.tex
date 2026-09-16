@@ -278,13 +278,13 @@ $\tilde{P} = P \cdot v_s \cdot 448$ 与溢出约束的完整推导见第~\ref{ch
   \centering
   \caption{SageAttention 谱系与 ffpa-attn 对应（knob 名省略 \texttt{fp8\_}/\texttt{fp4\_} 前缀）}
   \label{tab:27-sage}
-  \begin{tabular}{p{1.0cm}p{2.1cm}p{2.5cm}p{3.4cm}p{2.9cm}}
+  \begin{tabular}{p{1.2cm}p{2.1cm}p{2.5cm}p{3.2cm}p{2.9cm}}
     \toprule
     代 & QK / PV 格式 & 关键粒度 & 贡献 & ffpa 对应 \\
     \midrule
     SA1 & int8 / fp16（f16 acc） & per-block & smooth-K（softmax 平移不变）；fused RoPE+quant & {\footnotesize\texttt{qk\_mm\_type=int8}}、{\footnotesize\texttt{smooth\_k}} \\
     SA2 & int4或int8 / fp8 & per-thread（QK）、per-channel（V） & smoothing 系统化；per-thread 对齐 fragment & {\footnotesize\texttt{per\_thread}}、{\footnotesize\texttt{per\_channel}} \\
-    SA2++ & 同 SA2 / fp8-f16acc & 同 SA2 & fp16 累加器域约束 $P_r V_r \le 2047$；吞吐再翻倍 & {\footnotesize\texttt{pv\_acc\_type=f16}} \\
+    SA2++ & 同 SA2 / fp8-f16acc & 同 SA2 & fp16 累加器域约束 $P_r V_r \le 2047$；吞吐翻倍 & {\footnotesize\texttt{pv\_acc\_type=f16}} \\
     SA3 & FP4 / FP4（MXFP8 变体） & per-16 microscaling & 两级 P 量化；delta\_s rank-1 修正；RTX5090 1038 TOPS & {\footnotesize\texttt{cuda\_impl=fp4}} 全链 \\
     \bottomrule
   \end{tabular}

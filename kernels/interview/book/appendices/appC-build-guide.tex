@@ -37,6 +37,37 @@ sm\_120a & CUTE, TMA\_MMA\_WS, CUDNN & notes\_v2\_sm120a.bin \\
 \end{tabular}
 \end{table}
 
+\section{ffpa-attn（Part V 源码仓）安装与 bench}
+
+Part V（第~\ref{ch:27}--\ref{ch:33}~章）的源码在独立仓库
+\texttt{ffpa-attn}（锚定 commit \texttt{861d75e}，与 LeetCUDA 同 checkout
+于 monorepo）。两种安装形态：
+
+\begin{lstlisting}[style=console]
+# 仅 Python 侧（Triton/CuTeDSL 开发，跳过 CUDA kernel 编译）
+pip uninstall ffpa-attn -y && pip install -e . --no-build-isolation
+
+# 完整 CUDA kernel 编译（本地 PRO 5000 是 sm_120a，但编译时要用
+# sm_120f 才能保留 setmaxnreg 等 family 后缀指令，见第~\ref{ch:14}~章
+# 与本附录的后缀目标对照表）
+bash ./build.sh --arch sm_120f --headdim default --ext all --jobs 64
+\end{lstlisting}
+
+\noindent bench 验收用 \texttt{ffpa\_attn.bench} CLI（第~\ref{ch:33}~章的
+矩阵与 knob 口径）。小 headdim 必须先放开环境变量，否则 FFPA
+\textbf{静默回退 SDPA}（TFLOPS 掉到 200T 级是中招信号）：
+
+\begin{lstlisting}[style=console]
+export CUDA_VISIBLE_DEVICES=7 FFPA_CUDA_ALLOW_SMALL_D=1
+python -m ffpa_attn.bench --fwd-backend cuda --cuda-impl fp8 \
+  --tasks self-attn,causal --D 128 --no-bwd --show-allclose
+python -m ffpa_attn.bench --fwd-backend cuda --cuda-impl fp4 \
+  --tasks self-attn,causal --D 128 --no-bwd --show-allclose
+# 竞品对照层（Sage2/3 同场，生成 TFLOPS plot）：
+python bench/bench_fp8.py --dtype fp16    # 输出 bench/.tmp/*.png
+python bench/bench_fp4.py --dtype fp16
+\end{lstlisting}
+
 \section{book/tests/build\_tests.sh 用法}
 
 \begin{lstlisting}[style=console]
