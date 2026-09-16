@@ -25,7 +25,7 @@
 | RFC-H | 图表升级（知乎图 drawio 重建为主 + ASCII→drawio/TikZ 新建） | 章节完成 | 未开始（可穿插） |
 | RFC-I | 附录 A-E | RFC-C..F（D 需收口） | 未开始 |
 | RFC-J | 全书集成审校与验收 | 全部 | 进行中（J.9/J.10 完成 2026-09-16）|
-| RFC-K | Part V FP8/FP4 Attention 篇 ch27-33（ffpa-attn CuTe sm_120） | RFC-E/F（前置章节） | 进行中（K0-K2 完成 2026-09-16）|
+| RFC-K | Part V FP8/FP4 Attention 篇 ch27-33（ffpa-attn CuTe sm_120） | RFC-E/F（前置章节） | 进行中（K0-K3 完成 2026-09-16）|
 
 依赖图：`RFC-0 → RFC-A → (RFC-B ∥ RFC-C) → RFC-D → RFC-E → RFC-F → (RFC-G ∥ RFC-H ∥ RFC-I) → RFC-J`；`RFC-K 依赖 RFC-E/F 素材，与 RFC-G/H/I 并行，完成后并入 RFC-J 收口`
 
@@ -163,7 +163,7 @@
 - [x] K0.2 性能图资源归档：`docs/assets/perf/{fp8,fp4}/*.png` + `ffpa-split-d.png`/`mma.png` 复制到 `book/figures/ffpa/` + 出处 sidecar（ffpa-attn README / 5090 / URL / 引用章节）；附录 E 预登记（2026-09-16：15 图 + meta.md + SA1/2/2++/3、FA-4 论文条目 + ffpa-attn 仓库条目；bench smoke 口径确立：`--show-allclose` ✅ + timing 表，fp8 D128 self-attn 1.70x/365T 落 .tmp/book-bench/k0-smoke/）
 - [x] K1 ch27 量化注意力的数学基础 | 新写原理章（fp8_pscale.cuh 头注释 + softmax.cuh 对照） | 前置 4,5,15 | FIG-27-1 量化格式位域、FIG-27-2 粒度谱系表、FIG-27-3 per-stage 误差分解 | 参考 SA1/SA2/SA2++/SA3/FA-4 论文 + @DefTruth WINT8/4 | 验证：`ffpa_attn.bench --cuda-impl fp8 --D 128`（quant 基线口径展示）（2026-09-16：正文 10 节 + 相对步长定理证明 + 3 表 + 3 图（gen.py 入库，COVER=0/渲染越界 0/3x 导出指纹验收）；锚点 L17-37/L111-138/L44-63 grep 核对；bench 基线 .tmp/book-bench/k0-smoke/ 1.70x allclose✅；全书 375 页零 error、ch27 Overfull 清零）
 - [x] K2 ch28 FP8(一)量化前处理链 | `cute/fp8/{smooth_k(165),smooth_v(175),quantize_fp8(1024)}.cuh` + `cute/hadamard.cuh(202)` | 前置 20-23,27 | FIG-28-1 前处理 pipeline、FIG-28-2 smoothing 三不变性 | 验证：`--fp8-smooth-k/--fp8-smooth-v/--fp8-q-quant-method per-thread` knob A/B bench（2026-09-16：正文 10 节（三不变性推导+WHT+fragment 粒度+VTPerm+NHD 零拷贝）+ 2 图（COVER=0/text_fit 0/3x 导出指纹验收）；锚点 smooth_k L12-52/L56-84、quantize_fp8 L29-79/L172-201/L695-741、hadamard L1-32/L40-92 grep 核对，注释核查无错误（85→50us/2.6x RMSE/64-scale 排布均与实现/论文一致）；bench knob A/B 五组 + parity 三组全 allclose✅（smk 1.70x/smv 1.72x/per-thread 1.65x）.tmp/book-bench/ch28/；全书 385 页零 error、ch28 Overfull 清零（余 2.4pt 微量））
-- [ ] K3 ch29 FP8(二)persist-D 主 kernel ★ | `cute/fp8/sm_120/persist_d.cuh(1036)` + `fp8_pscale.cuh(304)` + `softmax.cuh(344)` + `reg2reg_8b.cuh(163)` + `attn_traits.cuh(313)` | 前置 17,18,22,23,28 | FIG-29-1 scale 折叠数据流、FIG-29-2 persist-D WS 布局、FIG-29-3 reorg-free 打包对照 | 验证：`--cuda-impl fp8 --tasks self causal --D {64,128,192,256}` parity+timing
+- [x] K3 ch29 FP8(二)persist-D 主 kernel ★ | `cute/fp8/sm_120/persist_d.cuh(1036)` + `fp8_pscale.cuh(304)` + `softmax.cuh(344)` + `reg2reg_8b.cuh(163)` + `attn_traits.cuh(313)` | 前置 17,18,22,23,28 | FIG-29-1 scale 折叠数据流、FIG-29-2 persist-D WS 布局、FIG-29-3 reorg-free 打包对照 | 验证：`--cuda-impl fp8 --tasks self causal --D {64,128,192,256}` parity+timing（2026-09-16：正文 10 节（δ_Qδ_K 折 exp2+三步协议+lazy rescale 溢出界+f16 PV 域推导+置换不变性+traits/WS 复用/五 Phase/reorg-free 布局推导）+ 3 图（COVER=0/text_fit 0/3x 导出指纹验收）；锚点 persist_d L37-66/L193-215/L406-409/L502-522/L583-601/L723-732/L833-903/L886-894/L904-1031/L1020-1031、reg2reg L14-34/L96-141 grep 核对，code review 6 处行号偏差修正后无实质错误；bench D=64 1.26x/D=128 1.70x/causal 1.45x parity allclose✅，**D=192 发现正确性 bug（kBc=64 变体，坏行 row%128∈[64,127]），已记 memory + 书稿 29.7.1 定位方法论五步法**，.tmp/book-bench/ch29/；全书 395 页零 error）
 - [ ] K4 ch30 FP8(三)split-D 与 M4N2 | `cute/fp8/sm_120/{split_d,split_d_m4n2}.cuh` | 前置 19,26,29 | FIG-30-1 寄存器压力曲线（README mma.png）、FIG-30-2 split-D 切分（ffpa-split-d.png）、FIG-30-3 M4N2 fragment 划分 | 验证：`--cuda-impl fp8 --D {320,512,768,1024}`（cross-point 展示）
 - [ ] K5 ch31 FP4(一)NVFP4 格式与量化链 | `cute/fp4/{quantize_fp4(1642),delta_s(451),attn_traits(658)}.cuh` | 前置 27,28 | FIG-31-1 NVFP4 1×16 block+SF、FIG-31-2 delta_s 修正、FIG-31-3 kv_perm32 | 验证：`--cuda-impl fp4 --D {64,128}`（fused 量化链）
 - [ ] K6 ch32 FP4(二)persist-D 主 kernel ★ | `cute/fp4/sm_120/persist_d.cuh(1113)` + `fp4_pscale.cuh(793)` + `fp4_gemm.cuh(276)` | 前置 29,31 | FIG-32-1 两级 P 量化域、FIG-32-2 persist-D 主循环数据流 | 验证：`--cuda-impl fp4 --tasks self causal --D {64,128,192,256}` + `--fp4-pv-mm-type fp8` 变体
@@ -231,6 +231,9 @@
 | FIG-27-3 | 27 | ess-decompose | C1 新建（2026-09-16） | 正式 | figures/drawio/fig-27-3-ess-decompose/ |
 | FIG-28-1 | 28 | quant-pipeline | C1 新建（2026-09-16） | 正式 | figures/drawio/fig-28-1-quant-pipeline/ |
 | FIG-28-2 | 28 | invariants | C1 新建（2026-09-16） | 正式 | figures/drawio/fig-28-2-invariants/ |
+| FIG-29-1 | 29 | scale-folding | C1 新建（2026-09-16） | 正式 | figures/drawio/fig-29-1-scale-folding/ |
+| FIG-29-2 | 29 | persist-d-ws | C1 新建（2026-09-16） | 正式 | figures/drawio/fig-29-2-persist-d-ws/ |
+| FIG-29-3 | 29 | reorg-free | C1 新建（2026-09-16） | 正式 | figures/drawio/fig-29-3-reorg-free/ |
 
 ## 14. CHECKLOG 摘要镜像（明细在 book/CHECKLOG.md）
 
