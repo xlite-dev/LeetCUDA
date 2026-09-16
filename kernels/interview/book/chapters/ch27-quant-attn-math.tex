@@ -1,35 +1,620 @@
 % ch27-quant-attn-math.tex — 量化注意力的数学基础（RFC-K1）
 % 源码对照：ffpa-attn(861d75e) cute/fp8/fp8_pscale.cuh 头注释 + cute/softmax.cuh
-% 原理参考：ffpa-cuda-understand skill §11.1/11.5/11.7/11.15 + SA1/SA2/SA2++/SA3、FA-4 论文
+% 原理参考：ffpa-cuda-understand skill §11.5/11.6/11.7/11.8 + SA1/SA2/SA2++/SA3、FA-4 论文
 % DoD：BOOK_PLAN §4.2 Part V 特化（bench CLI 替代 book/tests）
 \chapter{量化注意力的数学基础}\label{ch:27}
 
 \section{本章导读}
-% 学什么：数值格式谱系 / 量化算子与粒度 / Sage 1-3 谱系 / FA-4 lazy rescale / ESS 误差模型
-% 前置：\ref{ch:04}（softmax）、\ref{ch:05}（LSE）、\ref{ch:15}（attention 数学）
+
+前四个部分走完了一条「精度不变」的优化链：编程模型与访存（Part I）$\to$ Tensor Core
+GEMM（Part II）$\to$ FlashAttention（Part III）$\to$ CuTe 现代化工程（Part IV）。每一步
+都在\textbf{同等数值精度}下压时间。Part V 换一个维度发力：\textbf{把精度本身当作可
+交易的资源}——用 8-bit 甚至 4-bit 数值格式跑 attention 的两个 GEMM（$QK^{\top}$ 与
+$PV$），换 Tensor Core 吞吐的成倍提升。代码链路是 ffpa-attn 仓库的 CuTe fp8/fp4 kernel
+家族（commit \texttt{861d75e}，只讲 sm\_120 路径）：它是 SageAttention 2/3 思想的一次
+CuTe 化高效复现。本章是 Part V 的「理论总纲」——后面第~\ref{ch:28}--\ref{ch:32}~章
+里的每一个 kernel 决策（scale 折进哪条指令、粒度对齐哪个 fragment、发射域铺满哪个
+量程），都能回指到本章的某条公式或某个表格。
+
+本章依次回答五个问题：
+\begin{enumerate}[itemsep=0pt,topsep=2pt]
+  \item 量化算子长什么样？四种数值格式（int8 / e4m3 / e2m1 / ue4m3）的位域与
+        量化误差下界各是多少（27.3.1--27.3.2~节：相对步长
+        $\approx 2^{-(m+1)}$ 的逐 bit 推导）；
+  \item attention 有哪几个可量化的对象？各自适合什么粒度（27.3.3~节：per-block /
+        per-thread / per-channel / per-row / $1\times16$ 谱系表）；
+  \item scale 因子如何在不做显式反量化 pass 的前提下全部代数消去（27.3.4~节：
+        $\delta_Q\delta_K$ 折进 exp2 系数、$v_s$ 精确消去、$p_{scale}$ 收尾——本节
+        是第~\ref{ch:29}~章的数学骨架）；
+  \item SageAttention 四代（1/2/2++/3）各自贡献了什么、FA-4 的 lazy rescale 与量化
+        域如何交互（27.3.5--27.3.6~节）；
+  \item 量化 attention 的误差到底有多大、坏在哪一行（27.3.7--27.3.8~节：ESS 误差
+        模型与 per-stage 误差分解——解释 causal 早行绝对误差为何是 dense 的 15 倍，
+        以及 hybrid 行分割为何是唯一解）。
+\end{enumerate}
+
+\textbf{前置章节}：第~\ref{ch:04}~章（softmax 平移不变性）、第~\ref{ch:05}~章（LSE）、
+第~\ref{ch:15}~章（attention 分块数学，必须）、第~\ref{ch:11}~章（MMA fragment，
+建议——粒度谱系要回指 fragment 布局）。
+\textbf{源码区间}：ffpa-attn \texttt{cute/fp8/fp8\_pscale.cuh} 头注释（L17--37 三步
+协议）与 \texttt{cute/softmax.cuh} L44--63（lazy rescale）；完整源码锚定与行号以
+附录~\ref{app:D}~的 commit permalink 为准。
+\textbf{验证方式}：本章无独立 kernel 测试（Part V 以
+\texttt{ffpa\_attn.bench} CLI 替代 \texttt{book/tests}，见 27.10~节）。
+预计篇幅约 14 页。
 
 \section{问题与动机}
-% 为什么 attention 能量化；Q/K/V/P 四个量化对象的离线校准 vs online 量化分野
+
+\subsection{硬件的精度阶梯}
+
+同一代 GPU 的 Tensor Core 对低精度格式有明确的吞吐阶梯：以本仓库实测的
+sm\_120（GeForce RTX 5090 / RTX PRO 5000，Blackwell）为例，warp 级
+\texttt{mma.sync} 对 e4m3（FP8）的吞吐约为 fp16 的 2 倍，对 e2m1/microscaling FP4
+再翻倍；显存与互联带宽同样按位宽折半。SageAttention3 论文给出的量化口径是
+RTX 5090 上 FP4 attention kernel 达到 1038 TOPS、约为该卡上最快 FlashAttention
+的 $5\times$（arXiv:2505.11594）。对 attention 这种在长序列下被两个 $O(N^2 d)$
+GEMM 主导的算子，「把 GEMM 降到低精度」是 fp16 域内任何 tiling / 流水线优化都
+无法企及的收益量级——这正是 Part V 的全部动机。
+
+\subsection{attention 的三个量化点与「P 无法离线」困难}
+
+把式~\ref{eq:15-attn-def} 的计算链拆开，有三个可量化的对象：
+\begin{equation}
+  \underbrace{S = QK^{\top}}_{\text{量化点 1：}Q,K}
+  \;\longrightarrow\;
+  \underbrace{P = \mathrm{softmax}(S)}_{\text{量化点 2：}P}
+  \;\longrightarrow\;
+  \underbrace{O = PV}_{\text{量化点 3：}V}
+\end{equation}
+$Q,K,V$ 是\textbf{前向开始前就存在的静态张量}，可以离线（进 kernel 前）量化好、
+连同 scale 一起送进 kernel——称\textbf{离线校准}路径。而 $P$ 是 softmax 的输出，
+每个 forward、每个 tile 都不同，永远无法离线——必须\textbf{在 kernel 内、在寄存器
+fragment 上}完成量化。这一「在线量化」需求带来一串独有问题：量化 scale 从哪来
+（27.3.4）、scale 如何在 MMA 间传递与消去（第~\ref{ch:29}~章）、发射域与 lazy
+rescale 的膨胀如何不撞格式天花板（27.3.6）。
+
+\subsection{精度挑战：为什么不能直接量化}
+
+直接把 $Q,K,V,P$ 塞进 8-bit 会得到不可用的结果，原因集中在两点：
+\begin{itemize}[itemsep=2pt,topsep=2pt]
+  \item \textbf{outlier 摧毁块内分辨率}：低精度格式的量化步长
+        $\delta = \mathrm{amax}(\mathcal{B})/R$ 由块内最大值决定，任何一个 outlier
+        都会把同块其它元素压进步长的一个格子里。注意力权重有三个系统性的
+        「均值偏移」源（$K$ 的 token 间均值、$Q$ 的通道均值、$V$ 的通道均值），
+        对策是三条零数学代价的 smoothing 不变式——本章先给结论（27.3.5 谱系表），
+        完整推导与 kernel 实现放在第~\ref{ch:28}~章。
+  \item \textbf{格式量程天花板}：e4m3 最大 448、e2m1 最大 6，而 softmax 概率域
+        $P \in [0,1]$、FA-4 lazy rescale 又会按 $2^{\tau}$ 膨胀发射值——发射域必须
+        显式设计（27.3.4--27.3.6），否则不是精度差，而是直接溢出。
+\end{itemize}
+理想目标是\textbf{即插即用的无损量化}（plug-and-play PTQ）：不改模型权重、不需要
+校准数据集，attention 输出与 fp16 基线在端到端指标上不可区分。SageAttention 系列
+与 ffpa-attn 的全部设计都围绕这一目标。
 
 \section{数学原理}
-% 量化算子 clamp(round(x/delta))；int8/e4m3/e2m1/ue4m3/ue8m0 位域与相对步长 2^-(m+1)；
-% 粒度谱系 per-block/thread/channel/row/1x16；Sage 1/2/2++/3 逐代贡献；
-% FA-4 lazy rescale；ESS 误差模型 Var(O)=sigma_V^2/ESS；per-stage 误差分解
+
+\subsection{量化算子与记号}
+
+全书采用\textbf{对称、无零点}（symmetric, zero-point-free）的量化形式。对张量块
+$\mathcal{B}$（定义域见 27.3.3 的粒度谱系），量化与反量化算子为
+\begin{equation}
+  \hat{x} \;=\; \mathrm{clamp}_{[-R,R]}\!\Big(\mathrm{round}\big(x / \delta\big)\Big),
+  \qquad
+  \tilde{x} \;=\; \hat{x} \cdot \delta,
+  \label{eq:27-quant-op}
+\end{equation}
+其中 $R$ 是目标格式的满量程整数（int8 取 127，e4m3 取 448，e2m1 取 6），
+$\delta = \mathrm{amax}(\mathcal{B}) / R$ 是块步长（amax 为块内绝对值最大值）。
+$\tilde{x}$ 与 $x$ 的差就是量化误差；round 取最近邻（RN）。注意三点：
+\begin{itemize}[itemsep=2pt,topsep=2pt]
+  \item $\mathrm{amax}(\mathcal{B}) = 0$（全零块，如 padding 列）时 $\delta = 0$，
+        式~\ref{eq:27-quant-op} 出现 $0/0$——工程上必须显式防护（ffpa 对 SF 域取
+        $\mathrm{SF} = 0 \Rightarrow \mathrm{SF}^{-1} = 0$，见 27.8~节坑一）；
+  \item clamp 保证 $\hat{x}$ 落在格式可表示范围内，但\textbf{clamp 不是精度保证}：
+        依赖 clamp 修救的值已经携带大误差（satfinite 指令同理，27.3.6）；
+  \item scale（$\delta$）本身要以更高精度（fp32）存储与传递——这决定了后面所有
+        「scale 折叠」操作都以 fp32 标量进行。
+\end{itemize}
+
+\subsection{数值格式：从均匀到指数}
+
+\paragraph{int8：均匀网格。}
+int8 是 $[-127,127]$ 的\textbf{等距}整数网格。误差只依赖步长 $\delta$：均匀量化
+噪声在块内近似均匀分布 $[-\delta/2, \delta/2]$，RMS 误差为
+$\delta/\sqrt{12}$，与 $x$ 的幅度\textbf{无关}。这带来一个与指数格式相反的特性：
+小值区域（例如 $|S|$ 接近零的分数区）误差绝对值小——SageAttention 1 选择 int8
+而非 fp8 做 QK，理由正是「均匀步长对 $|S|$ 小的区域误差更小，fp8 指数格式在
+小值处浪费分辨率」（arXiv:2410.02367）。
+
+\paragraph{e4m3 / e2m1：指数格式与相对步长。}
+e4m3 用 1 位符号、4 位指数（bias 7）、3 位尾数；最大有限值是
+$1.75 \times 2^{8} = 448$（指数全 1 时仅 $M=111$ 编码 NaN，其余可用）。e2m1 只有
+1 位尾数，全部正值集合是 $\{0.5, 1, 1.5, 2, 3, 4, 6\}$——总共 16 个码点，动态
+范围却横跨三个二进制倍频程。指数格式的量化误差有干净的上界：
+
+\begin{theorem}[指数格式的相对步长]\label{thm:27-relstep}
+设格式有 $m$ 位尾数、规格化数 $x \in [2^{e}, 2^{e+1})$。则 $x$ 所在的 ULP
+（相邻可表示值间距）为 $2^{e-m}$，最近邻舍入误差 $\le \tfrac{1}{2}\,\mathrm{ULP}$，
+故相对误差上界为
+\begin{equation}
+  \frac{|\tilde{x} - x|}{|x|}
+  \;\le\;
+  \frac{2^{e-m-1}}{2^{e}}
+  \;=\; 2^{-(m+1)} .
+  \label{eq:27-relstep}
+\end{equation}
+\end{theorem}
+
+\begin{proof}
+规格化浮点在 $[2^{e}, 2^{e+1})$ 内等距分布，间距为尾数最低位的权值
+$2^{e-m}$（$m$ 位尾数把该倍频程切成 $2^{m}$ 格）。最近邻舍入误差至多半个格：
+$2^{e-m}/2 = 2^{e-m-1}$。除以区间下界 $2^{e}$（区间内最小可能幅度，取最坏
+情况）即得式~\ref{eq:27-relstep}。
+\end{proof}
+
+代入 $m$：e4m3（$m{=}3$）相对误差 $\le 2^{-4} = 6.25\%$，e2m1（$m{=}1$）
+$\le 2^{-2} = 25\%$。注意结论与 $e$ \textbf{无关}——这就是「指数格式相对误差恒定」：
+无论值大值小，误差都是自身幅度的固定百分比。它与 int8 的「绝对误差恒定」形成
+对偶，两者的适用面也因此分化：值域分布横跨多个倍频程的量（$Q/K/V$ 的元素）适合
+指数格式；已知幅度紧凑的整数域乘积（$\hat{Q}\hat{K}^{\top}$ 的 s32 累加）两者皆可。
+
+\paragraph{ue4m3 / ue8m0：无符号指数格式（scale 的格式）。}
+NVFP4 的 per-16 block scale 用\textbf{无符号} e4m3（ue4m3，$2^{-6} \sim 448$），
+MXFP8 的 per-32 scale 用纯指数 ue8m0（$2^{\pm127}$）。scale 本身的量化同样服从
+定理~\ref{thm:27-relstep}，但注意 scale 是\textbf{乘性}作用于数据的：
+$\tilde{x} = \hat{x} \cdot \widetilde{\mathrm{SF}}$，两级相对误差相加。这正是
+第~\ref{ch:31}~章「两级 P 量化」要显式核算的账。
+
+\begin{table}[htbp]
+  \centering
+  \caption{本书涉及的量化数值格式速查（$m$ 为尾数位数）}
+  \label{tab:27-formats}
+  \begin{tabular}{llllll}
+    \toprule
+    格式 & 表示范围 & $m$ & 相对步长 & 典型用途 & 出处 \\
+    \midrule
+    int8（对称） & $\pm127$，均匀 & — & 绝对 $\delta/\sqrt{12}$（RMS） & fp8 路径 QK（\texttt{int8} 变体） & SA1 \\
+    e4m3 & $\pm448$，非均匀 & 3 & $\approx 2^{-4}$（6.25\%） & Q/K/V/P（fp8 路径） & SA2 \\
+    e2m1 & $\pm 6$，非均匀 & 1 & $\approx 2^{-2}$（25\%） & NVFP4 数据（Q/K/V/P） & SA3 \\
+    ue4m3 & $2^{-6}\sim448$，无符号 & 3 & $\approx 2^{-4}$ & NVFP4 per-16 SF & SA3 \\
+    ue8m0 & $2^{\pm127}$，纯指数 & 0 & — & MXFP8 per-32 SF & MX 系列 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{量化粒度谱系}
+
+$\delta$ 的定义域 $\mathcal{B}$（式~\ref{eq:27-quant-op}）就是\textbf{粒度}。粒度越
+细，每个 scale 管的元素越少、分辨率越高，但 scale 的存储/传递/消去开销越大；
+且粒度必须与 MMA 的 fragment 布局对齐，否则每条 scale 都要跨 lane 归约（第~\ref{ch:28}~章
+的主题）。ffpa-attn 实际支持的谱系如下：
+
+\begin{table}[htbp]
+  \centering
+  \caption{量化粒度谱系（ffpa \texttt{CUDABackend} knob $\to$ kernel 行为）}
+  \label{tab:27-granularity}
+  \begin{tabular}{llll}
+    \toprule
+    粒度 & 定义域 $\mathcal{B}$ & ffpa 实例 & 出处 \\
+    \midrule
+    per-block & 128 行 tile（kBr/kBc） & fp8 Q/K/V 默认 & SA1 \\
+    per-thread & MMA fragment 对齐 & fp8 Q/K（\texttt{per\_thread}） & SA2 \\
+    per-channel & 沿 $D$ 每通道、跨 $N$ 取 amax & fp8 V（$\delta_V = \mathrm{colmax}/448$） & SA2 \\
+    per-row & softmax 行 & fp8 P（\texttt{kPQuantPerRow}） & ffpa \\
+    per-16 组 & NVFP4 $1\times16$ microscaling block & fp4 Q/K/V/P 的 SF & SA3 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+两条工程要点贯穿 Part V：其一，per-thread 粒度之所以存在，是因为 SA2 观察到
+scale 与 \texttt{mma.m16n8k16} fragment 的 thread-data 映射对齐后可以\textbf{零
+shuffle} 使用（每 lane 持有的 8 个 A 元素共享一个 scale，scale 直接乘进 exp2 的
+行常数）——粒度不是纯精度旋钮，而是「精度 $\times$ fragment 布局」的联合设计。
+其二，粒度谱系的两端有明确的失败模式：per-block 对 outlier 最脆弱（一个 outlier
+毁一整块），per-row/per-16 的 scale 数量与数据同阶（SF 本身成为新的访存项，
+第~\ref{ch:31}~章核算这笔账）。
+
+\subsection{attention 的 scale 流向总览}
+
+现在把三个量化点的 scale 因子串成一条链。设 $Q,K,V$ 已按上述粒度量化，scale 分别
+为 $\delta_Q, \delta_K, v_s$；$P$ 的量化 scale 记 $p_{scale}$。目标是：\textbf{任何
+时刻都不做显式的反量化 pass}——所有 scale 要么代数消去、要么折进本来就存在的
+标量位置。
+
+\paragraph{量化点 1（QK）：$\delta_Q\delta_K$ 折进 exp2 系数。}
+MMA 算出的是整数域 $\hat{S} = \hat{Q}\hat{K}^{\top}$，真实分数
+$S = \hat{S} \cdot \delta_Q\delta_K$。softmax 需要的是 $\exp(\text{scale} \cdot S)$
+（scale 即 $1/\sqrt{d}$），换到 exp2 域：
+\begin{equation}
+  \exp_2\!\Big(
+    \underbrace{\text{scale} \cdot \delta_Q\delta_K \cdot \log_2 e}_{s_{dequant}\text{：折叠为单个 fp32}}
+    \cdot \hat{S}
+  \Big),
+  \label{eq:27-qk-fold}
+\end{equation}
+即两个块 scale 的乘积与 softmax 常数、$\log_2 e$ 融合成\textbf{一个} fp32 系数，
+在 tile max 归约后一次乘入（配合 27.4~节的 \texttt{kMaxScaleAfter}：归约直接用
+原始 $\hat{S}$，scale 乘在归约结果上，每行省 $B_c$ 次 FMUL）。int8 变体（Q/K 走
+\texttt{s8xs8→s32} MMA）只改 $\hat{S}$ 的类型，式~\ref{eq:27-qk-fold} 不变。
+
+\paragraph{量化点 3（PV）：$v_s$ 精确消去。}
+V 已离线量化为 $\hat{V} = V / v_s$（驻留 gmem）。若 P 的量化把 $v_s$ 乘进自己：
+\begin{equation}
+  \hat{P} = \mathrm{round}\!\Big(\frac{P \cdot v_s}{p_{scale}}\Big),
+  \qquad
+  \mathrm{MMA} = \hat{P}\hat{V} = \frac{P\, v_s}{p_{scale}} \cdot \frac{V}{v_s}
+  = \frac{PV}{p_{scale}},
+  \label{eq:27-vs-cancel}
+\end{equation}
+$v_s$ \textbf{精确}消去（不是近似）——gmem 中预量化的 $\hat{V}$ 原样复用，
+$v_s$ 只出现在 P 侧的发射系数里。
+
+\paragraph{量化点 2（P）：$p_{scale}$ 收尾。}
+最后一步 $O \mathrel{+}= \mathrm{MMA} \cdot p_{scale} = PV$ 把 $p_{scale}$ 还回去。
+关键在 $p_{scale}$ 的\textbf{取值策略}决定整个 kernel 的寄存器经济学：
+\begin{itemize}[itemsep=2pt,topsep=2pt]
+  \item \textbf{fixed 模式}：$p_{scale} \equiv 1/448$（编译期常数，依据
+        $\max(P) \le 1$）。累加器 $o_{acc}$ 全程生活在同一个
+        「$/p_{scale}$」域里，PV MMA 可以\textbf{直接累加进 $o_{acc}$}，epilogue
+        一步 $O = o_{acc} \cdot (1/448) / \ell$ 同时完成反量化与 softmax 归一化。
+        代价：平坦行（$\max(P) \ll 1$，causal 三角顶部）只用满量程的一小部分。
+  \item \textbf{per-row 模式}：$p_{scale}[row] = \mathrm{rowmax}(P)/448$，每行
+        铺满 e4m3 满量程，精度最优。代价：跨 lane rowmax 归约（两次
+        \texttt{\_\_shfl\_xor}）+ per-row 反量化需要 64-float $o_{tile}$ 暂存
+        （寄存器压力、每 KV tile 多一次乘加 pass），且与 lazy rescale 互斥
+        （27.3.6）。
+\end{itemize}
+ffpa 默认 fixed（\texttt{FFPA\_FP8\_PQUANT\_PER\_ROW} 可开 per-row）；发射域
+$\tilde{P} = P \cdot v_s \cdot 448$ 与溢出约束的完整推导见第~\ref{ch:29}~章——本节
+只需记住结论：\textbf{scale 折叠使 fp8 路径除量化本身的 round() 外没有任何额外
+数学误差源，所有反量化都是精确代数操作}。
+
+\subsection{SageAttention 谱系：1 $\to$ 2 $\to$ 2++ $\to$ 3}
+
+把上述数学元件按论文时间线装配，就得到 SageAttention 四代。表中「贡献」列是
+每一代相对前代的新增；「ffpa 对应」列指出 ffpa-attn 中的 knob（后续章节逐一
+展开）：
+
+\begin{table}[htbp]
+  \centering
+  \caption{SageAttention 谱系与 ffpa-attn 对应（knob 名省略 \texttt{fp8\_}/\texttt{fp4\_} 前缀）}
+  \label{tab:27-sage}
+  \begin{tabular}{p{1.0cm}p{2.1cm}p{2.5cm}p{3.4cm}p{2.9cm}}
+    \toprule
+    代 & QK / PV 格式 & 关键粒度 & 贡献 & ffpa 对应 \\
+    \midrule
+    SA1 & int8 / fp16（f16 acc） & per-block & smooth-K（softmax 平移不变）；fused RoPE+quant & {\footnotesize\texttt{qk\_mm\_type=int8}}、{\footnotesize\texttt{smooth\_k}} \\
+    SA2 & int4或int8 / fp8 & per-thread（QK）、per-channel（V） & smoothing 系统化；per-thread 对齐 fragment & {\footnotesize\texttt{per\_thread}}、{\footnotesize\texttt{per\_channel}} \\
+    SA2++ & 同 SA2 / fp8-f16acc & 同 SA2 & fp16 累加器域约束 $P_r V_r \le 2047$；吞吐再翻倍 & {\footnotesize\texttt{pv\_acc\_type=f16}} \\
+    SA3 & FP4 / FP4（MXFP8 变体） & per-16 microscaling & 两级 P 量化；delta\_s rank-1 修正；RTX5090 1038 TOPS & {\footnotesize\texttt{cuda\_impl=fp4}} 全链 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+一句话脉络：\textbf{SA1 证明可行 $\to$ SA2 下探格式与粒度 $\to$ SA2++ 换 2 倍
+MMA 并推导值域 $\to$ SA3 进 Blackwell FP4}。四代的共同底座正是本章 27.3.1--27.3.4
+的算子、格式、粒度与 scale 折叠；分歧只在每个量化点选什么格式、什么粒度。表中的
+smooth-K/smoothing 不变式与 delta\_s 修正是第~\ref{ch:28}~章（fp8）与
+第~\ref{ch:31}~章（fp4）的主角；SA2++ 的 f16 累加域约束推导如下。
+
+\paragraph{SA2++ 的 f16 累加器域约束。}
+\texttt{mma.f16.f8.f8.f16} 的 fp16 累加器可表示 $\pm 65504$；\texttt{m16n8k32} 的
+K 深度是 32，若逐元素乘积幅度均匀，则每个元素需满足 $P_r \times V_r \le
+65504/32 \approx 2047$。SA2++ 论文两侧各收窄一半取 $P_r = 224$、$V_r = 4.5$
+（$224 \times 4.5 = 1008 \le 2047$）；\textbf{ffpa 的分配不同}：P 侧保持 448 满量程
+（fixed 发射 $\tilde{P} = P v_s 448$），把约束全部压在 V 侧——per-channel V +
+f16 acc 时发射 $\hat{V} \in [-2.25, 2.25]$，检验 $448 \times 2.25 = 1008 \le 2047$
+同样成立（\texttt{cute/fp8/smooth\_v.cuh} 注释，第~\ref{ch:28}~章展开）。两种分配
+的乘积预算相同，差别在「牺牲 P 分辨率还是 V 分辨率」——ffpa 选择保 P（softmax
+概率的相对结构更敏感）。
+
+\subsection{FA-4 lazy rescale 与量化域的交互}
+
+第~\ref{ch:04}~章的 online softmax 每 tile 都把 $O$ 与 $\ell$ 重缩放到新 max。
+FA-4（arXiv:2603.05451）的观察：max 的增长常常微不足道，重缩放可以\textbf{懒}做
+——当新 max 相对旧 max 的增长不超过阈值 $\tau$（log2 域）时，跳过 rescale，
+让 $O,\ell$ 停留在旧域，softmax 用 stale max 发射：
+\begin{equation}
+  \text{skip} \iff m_{\mathrm{new}} - m_{\mathrm{old}} \le \tau
+  \;\Longleftrightarrow\;
+  \underbrace{m_{\mathrm{old}} - m_{\mathrm{new}}}_{\text{log2 域，}\le 0}
+  \ge -\tau .
+  \label{eq:27-lazy}
+\end{equation}
+端到端无损：$O$ 与 $\ell$ 用同一个 stale max，epilogue 的 $O/\ell$ 把所有迟到的
+缩放一并消去（等价性见 27.4~节代码注释）。fp16 域中 lazy rescale 是纯粹的
+省指令优化；\textbf{量化域}中它多了一层含义——发射值被 $2^{\tau}$ 膨胀，必须核算
+格式天花板。fixed 模式发射 $\tilde{P} = P \cdot v_s \cdot 448$，其中
+$v_s \le \mathrm{amax}(V)$，撞顶条件与安全域为
+\begin{equation}
+  \underbrace{2^{\tau}}_{\text{lazy 膨胀}} \cdot
+  \underbrace{v_s}_{\le\, \mathrm{amax}(V)} \cdot
+  448
+  \;\le\; 448
+  \quad\Longrightarrow\quad
+  \mathrm{amax}(V) \le 2^{-\tau}.
+  \label{eq:27-overflow}
+\end{equation}
+ffpa 取 $T = \texttt{FFPA\_RESCALE\_THRESHOLD\_FP8} = 4$（FA-4 原文对 BF16 取
+$\tau = 8$；fp8 发射域的天花板更紧，反推出更小的 4），得 $\mathrm{amax}(V) \le 28$
+的适用域，残余超调交给 \texttt{satfinite} 钳位（27.8~节坑三）。这也解释了
+27.3.4 的一个断言：\textbf{per-row 满量程模式与 lazy rescale 互斥}——满量程发射
+已经没有 headroom，任何 $2^{\tau}$ 膨胀都直接撞顶。
+
+\subsection{ESS 误差模型：causal 早行的绝对误差放大}
+
+量化把每一级计算（QK / P / V / PV）的相对误差钉在 $\varepsilon \approx 2^{-(m+1)}$
+（定理~\ref{thm:27-relstep}）。误差的\textbf{绝对值}还取决于输出的\textbf{幅度}，
+而 attention 输出的幅度在行间差异巨大。设 $V$ 的行 i.i.d. $\sim
+\mathcal{N}(0, \sigma_V^2)$，考察输出行 $O_i = \sum_j P_{ij} V_j$ 的第 $d$ 维：
+\begin{equation}
+  \mathrm{Var}\big(O_{i,d}\big)
+  = \sum_j P_{ij}^2\, \mathrm{Var}(V_{j,d})
+  = \sigma_V^2 \sum_j P_{ij}^2
+  = \frac{\sigma_V^2}{\mathrm{ESS}_i},
+  \qquad
+  \mathrm{ESS}_i \;\mathrel{:=}\; \Big(\sum_j P_{ij}^2\Big)^{-1},
+  \label{eq:27-ess}
+\end{equation}
+$\mathrm{ESS}_i$ 是「有效样本数」：概率越集中（one-hot），ESS 越小、输出越像单个
+$V$ 行（幅度 $\sim \sigma_V\sqrt{2\ln D}$）；概率越平均，输出越像大量样本的均值
+（幅度 $\sim \sigma_V / \sqrt{N}$）。取 $D{=}128$、$\sigma_V{=}1$ 估算输出幅度
+$\approx \sigma_V \sqrt{2 \ln D} / \sqrt{\mathrm{ESS}} \approx 3.1/\sqrt{\mathrm{ESS}}$：
+
+\begin{table}[htbp]
+  \centering
+  \caption{ESS 与输出幅度、量化绝对误差（$\varepsilon = 5\%$，e4m3）}
+  \label{tab:27-ess}
+  \begin{tabular}{lllll}
+    \toprule
+    行类型 & $P$ 分布 & ESS & 幅度 & 绝对误差 $\approx \varepsilon \times$ 幅度 \\
+    \midrule
+    dense（均匀 over 8192） & $\approx 1/8192$ & $\sim$3000 & $\sim$0.05 & 0.003 \\
+    causal row[2] & 3 个 KV 上分布 & $\sim$2 & $\sim$1.8 & 0.09 \\
+    causal row[0] & one-hot $e_0$ & 1 & $\sim$3.1 & $\sim$0.16 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+因果掩码把序列前几行变成近 one-hot：row[0] 只能看自己。ffpa 的 PyTorch 数值仿真
+（$B1H32N8192D128$，randn）实测 causal \texttt{max\_abs} $= 0.22$ vs dense
+$0.015$——15 倍差距，而\textbf{相对误差两者都是 $\sim$5\%}（causal 5.5\% vs
+dense 9.1\%）。结论：\textbf{早行问题不是误差被放大，而是幅度大 + 误差相对恒定}。
+推论直接决定工程路线：降低幅度没有意义（输出本来就该大）；要么全链降 $\varepsilon$
+（fp16），要么对早行整体走 fp16——这就是 hybrid 行分割（第~\ref{ch:29}~章）
+的理论依据，且 $n_{early}$ 不需要很大（ESS 极小的行集中在前段）。
+
+\subsection{per-stage 误差分解与工程结论}
+
+式~\ref{eq:27-ess} 的 $\varepsilon$ 是单级贡献。整条链有四个独立误差源
+（QK 量化、P 量化、V 量化、PV MMA 域），各自独立贡献
+$\varepsilon \times$ 幅度。ffpa 的仿真分解给出排序：
+\begin{equation}
+  \text{V 量化}\;(0.19) \;>\; \text{QK 量化}\;(0.13) \;>\; \text{P 量化}\;(0.11),
+\end{equation}
+「只把早行的 QK 换回 fp16」并不能修复 causal 精度——V 量化是最大单项且纹丝不动；
+早行必须\textbf{全链 fp16}（hybrid），或者用 per-channel V scale 压 V 的相对误差
+（第~\ref{ch:28}~章 smooth-V + per-channel 的组合拳）。fp4 的同源分析见
+第~\ref{ch:31}~章：$\varepsilon$ 大一个量级（e2m1 25\%），剩余长尾由 V 量化主导、
+与行号无关，加大 $n_{early}$ 无法根治。
 
 \section{设计与实现}
-% 对照 fp8_pscale.cuh 头注释的三步协议框架 + softmax.cuh log2 域
+
+本节把 27.3.4 的 scale 代数落到 ffpa-attn 的两处源码：P 量化的三步协议
+（\texttt{fp8\_pscale.cuh}）与 log2 域 lazy rescale（\texttt{softmax.cuh}）。
+
+\subsection{P 量化的三步协议}
+
+\texttt{fp8\_pscale.cuh} 的头注释把 27.3.4 的量化点 2/3 浓缩成三行公式与一条
+消去证明——这是全书引用密度最高的一段注释：
+
+\lstinputlisting[linerange={17-37},firstnumber=auto,
+  title={ffpa-attn cute/fp8/fp8\_pscale.cuh L17-37（三步协议 + $v_s$ 精确消去 + 溢出安全）}]
+  {../../../../ffpa-attn/csrc/cuffpa/cute/fp8/fp8_pscale.cuh}
+
+三行注释与式~\ref{eq:27-vs-cancel} 逐条对应：式 (1) 把 $v_s$ 折进 P 的发射系数；
+式 (2) 的关键是 $\hat V = V/v_s$ \textbf{已在 gmem}（离线量化点 3 的产物）；式
+(3) 只剩 $p_{scale}$。溢出段即式~\ref{eq:27-overflow} 的源码版。
+
+\subsection{两种 $p_{scale}$ 模式的发射路径}
+
+\lstinputlisting[linerange={111-138},firstnumber=auto,
+  title={ffpa-attn cute/fp8/fp8\_pscale.cuh L111-138（quantize\_p\_frag：per-row / fixed 双模式 + 就地 downcast）}]
+  {../../../../ffpa-attn/csrc/cuffpa/cute/fp8/fp8_pscale.cuh}
+
+三个看点：
+\begin{enumerate}[itemsep=2pt,topsep=2pt]
+  \item \textbf{存储别名（alias）}：fp32 C-fragment 的寄存器内存被就地重解释为
+        4 倍密度的 e4m3 A-fragment（downcast 循环 + \texttt{make\_tensor} 重建
+        视图），量化前后\textbf{零额外寄存器}——前提是必须\textbf{先}调用本函数
+        \textbf{再}把 fragment 当 PV 的 A 操作数；
+  \item per-row 分支的除法带 $p_{scale} = 0$ 防护（全零块，27.8~节坑一）；
+        fixed 分支把除法变成乘常数 $v_s \cdot 448$；
+  \item \texttt{reorg} 参数（函数末尾调用）是 fragment 布局修理钩子——QK 的
+        C-fragment 到 PV 的 A-fragment 存在布局错位，ffpa 的
+        \texttt{ReorgC8bitToA8bit} 用寄存器内重排（无 SHFL）解决，这是
+        第~\ref{ch:29}~章的重头戏（归约轴置换不变性）。
+\end{enumerate}
+
+fixed 模式还有一条快路径：softmax 直接发射 $\tilde{P} = P \cdot v_s \cdot 448$
+（把 $\log_2(v_s \cdot 448)$ 折进 exp2 的 shift，见
+\texttt{online\_softmax\_fp8\_fixed}），量化只剩「downcast + reorg」，且 downcast
+用 \texttt{cvt.rn.satfinite.e4m3x2.f32} \textbf{成对}转换（一条指令转两个值，
+CVT 数减半）：
+\begin{lstlisting}[style=pseudo]
+// online_softmax_fp8_fixed 的发射域（与 quantize_p_frag<false> 等价）：
+//   exp_offset = log2(vs*448)
+//   exp2(s - max + exp_offset) = exp2(s - max) * vs * 448 = P*vs*448
+uint16_t packed;
+asm("cvt.rn.satfinite.e4m3x2.f32 %0, %1, %2;" : "=h"(packed)
+    : "f"(f32[2i+1]), "f"(f32[2i]));   // 一条指令、两个 e4m3
+\end{lstlisting}
+
+\subsection{log2 域的 lazy rescale}
+
+\texttt{softmax.cuh} 的 \texttt{online\_safe\_softmax} 是全家族（fp16/fp8/fp4）共享
+的 softmax 内核，FA-4 条件重缩放的核心 20 行：
+
+\lstinputlisting[linerange={44-63},firstnumber=auto,
+  title={ffpa-attn cute/softmax.cuh L44-63（lazy rescale：skip 判定与 stale max 发射）}]
+  {../../../../ffpa-attn/csrc/cuffpa/cute/softmax.cuh}
+
+逐行对照式~\ref{eq:27-lazy}：前两行计算 $m_{\mathrm{new}}$ 与 log2 域差值
+（\texttt{log2\_diff}，恒 $\le 0$）；中间是 skip 分支——\texttt{row\_scale = 1}
+（$O,\ell$ 不缩放）、\texttt{eff\_max = row\_max}（\textbf{stale} max 发射 P）、
+\texttt{row\_max} 不更新；\texttt{else} 是正常 rescale 分支。文件头注释对符号方向
+的说明（与 FA-4 的 $acc\_scale \ge -\tau$ 判定同构）值得细读——这是把论文公式
+映射到 log2 域实现时最容易搞错符号的地方。等价性的最后一块拼图是 epilogue：
+$O$ 与 $\ell$ 全程共享同一 stale 域，$O/\ell$ 消去全部迟到缩放。
 
 \section{图示}
-% FIG-27-1 量化格式位域；FIG-27-2 粒度谱系表；FIG-27-3 per-stage 误差分解
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.92\textwidth]{figures/drawio/fig-27-1-fp-bitfield/fig-27-1-fp-bitfield.png}
+  \caption{四种量化格式的位域与值域对照（int8 / e4m3 / e2m1 / ue4m3）。e4m3 的
+  指数全 1 时仅 $M{=}111$ 编码 NaN，故满量程 448；e2m1 全部 16 个码点在数轴上
+  标出，直观呈现「一个倍频程内只有两格」。}
+  \label{fig:27-1}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.95\textwidth]{figures/drawio/fig-27-2-quant-points/fig-27-2-quant-points.png}
+  \caption{attention 的三个量化点与 scale 流向：$\delta_Q\delta_K$ 折进 exp2
+  系数（式~\ref{eq:27-qk-fold}）、$v_s$ 在 P 侧精确消去
+  （式~\ref{eq:27-vs-cancel}）、$p_{scale}$ 在 epilogue 一步收尾。}
+  \label{fig:27-2}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.9\textwidth]{figures/drawio/fig-27-3-ess-decompose/fig-27-3-ess-decompose.png}
+  \caption{ESS 误差模型与 per-stage 误差分解：左半为 dense 行与 causal 早行的
+  $P$ 分布/ESS/幅度对比（表~\ref{tab:27-ess} 的图形化），右半为
+  V $>$ QK $>$ P 的误差贡献分解与「早行需全链 fp16」的结论。}
+  \label{fig:27-3}
+\end{figure}
 
 \section{性能分析}
-% 量化收益上界：e4m3 ~2x fp16 带宽、e2m1 4x；TFLOPS 口径
+
+量化的收益上限由 27.2.1 的精度阶梯给出；实际达成率取决于两个「非理想项」：
+\textbf{量化前处理链的开销}（第~\ref{ch:28}~章：kv\_mean / quantize / 转置链的
+带宽账，理想情况贴满 HBM 带宽、E2E 占比个位数百分比）与\textbf{softmax/CVT 等
+非 MMA 指令的占比}（第~\ref{ch:29}~章：persist-D 的流水线设计让 tensor pipe 占比
+达 $\sim$77\%）。本机（RTX PRO 5000 72GB Blackwell，sm\_120）以
+\texttt{ffpa\_attn.bench} 实测 fp8 路径基线：
+\begin{lstlisting}[style=console]
+$ FFPA_CUDA_ALLOW_SMALL_D=1 CUDA_VISIBLE_DEVICES=7 \
+  python -m ffpa_attn.bench --fwd-backend cuda --cuda-impl fp8 \
+  --tasks self-attn --D 128 --no-bwd --show-allclose
+| self-attn | fp16 | 8192/8192 | allclose ✅ | 3.01 / 5.12 ms | 365T / 215T | 1.70x |
+\end{lstlisting}
+即 fp8 全链（含前处理）相对 SDPA fp16 加速 $1.70\times$、折合 365 TFLOPS
+（同形状 fp16 kernel 的两倍量级，与 e4m3 吞吐阶梯一致）。D 与任务维度的完整
+矩阵、knob 扫描与 5090 对照图见第~\ref{ch:33}~章。
 
 \section{实践经验}
 
+\begin{itemize}[itemsep=2pt,topsep=2pt]
+  \item \textbf{先定发射域，再写 kernel}：fp8/fp4 kernel 的第一张草稿纸应该是
+        「每个 fragment 生命周期的值域区间图」（$P \cdot v_s \cdot 448 \cdot
+        2^{\tau}$ 类推），所有格式选择从这张图反推——本章 27.3.4--27.3.6 的顺序
+        即是如此。
+  \item \textbf{粒度对齐 fragment 是零成本精度}：per-thread/per-channel 的收益
+        不只是「更细」，而是 scale 恰好落在每 lane 私有或每行常数的免费位置
+        （式~\ref{eq:27-qk-fold} 折叠的前提）。
+  \item \textbf{误差分析要分幅度与相对两层}：见到的「causal 精度差 15 倍」先查
+        相对误差是否一致（式~\ref{eq:27-ess} 的 ESS 口径），再决定是降
+        $\varepsilon$ 还是分割行。
+\end{itemize}
+
 \section{常见坑}
+
+\begin{enumerate}[itemsep=2pt,topsep=2pt]
+  \item \textbf{全零块的 $0/0$ NaN}：$\mathrm{amax} = 0 \Rightarrow \delta = 0$，
+        式~\ref{eq:27-quant-op} 的除法产生 NaN。fp4 路径对 SF 域显式防护
+        （$\mathrm{SF} = 0 \Rightarrow \mathrm{SF}^{-1} = 0$）；fp8 的
+        per-row $p_{scale}$ 同样带零检查（27.4~节）。head\_dim padding 列
+        是全零块的常客。
+  \item \textbf{per-row 满量程 + lazy rescale = 溢出}：满量程发射没有 $2^{\tau}$
+        的 headroom（式~\ref{eq:27-overflow}），两者互斥是硬约束不是调参问题。
+  \item \textbf{把 satfinite 当正确性保证}：satfinite 只是钳位，被钳的值已携带
+        不可控误差；它的角色是「兜住残余超调」（$\mathrm{amax}(V)$ 刚好越过 28
+        的边缘 case），不是救火队。
+  \item \textbf{混淆 fp16 家族与 fp8 家族的 $\tau$}：FA-4 对 BF16 取 $\tau = 8$
+        （$2^8 = 256$ 在 fp16 域安全），fp8 发射域取 $T = 4$。跨家族搬阈值会
+        直接撞 e4m3 天花板。
+  \item \textbf{引用行号漂移}：ffpa-attn 是活跃仓库，本章行号锚定 commit
+        \texttt{861d75e}（附录~\ref{app:D}）；升级仓库后需复核
+        （\texttt{grep -n} 三步协议首行 "Why P needs"）。
+\end{enumerate}
 
 \section{面试要点速查}
 
+\begin{itemize}[itemsep=1pt,topsep=2pt]
+  \item Q：e4m3 与 int8 量化误差的本质区别？\\
+        A：均匀 vs 指数网格——int8 绝对误差恒定（$\delta/\sqrt{12}$ RMS），e4m3
+        相对误差恒定（$\le 2^{-(m+1)} = 6.25\%$，定理~\ref{thm:27-relstep}）。
+        值域横跨多倍频程用指数，幅度紧凑用均匀。
+  \item Q：为什么 P 必须在线量化，Q/K/V 可以离线？\\
+        A：Q/K/V 是前向输入侧的静态张量；P 每 tile 重算且依赖 softmax 状态，
+        只能在寄存器 fragment 上就地量化（27.2.2）。
+  \item Q：$v_s$ 如何消去？为什么 fold 进 P 而不是 V？\\
+        A：$(P v_s / p_{scale}) \cdot (V / v_s) = PV / p_{scale}$，精确消去
+        （式~\ref{eq:27-vs-cancel}）；fold 进 P 侧使 gmem 的 $\hat V$ 原样复用，
+        无需重写。
+  \item Q：fixed 与 per-row $p_{scale}$ 怎么选？\\
+        A：fixed 编译期常数、单一累加域、可与 lazy rescale 组合，默认；per-row
+        每行满量程精度最优，但要 rowmax 归约 + $o_{tile}$ 暂存 + 与 lazy rescale
+        互斥（27.3.4）。
+  \item Q：causal 前几行精度差 15 倍，是误差放大吗？\\
+        A：不是。相对误差 $\sim$5\% 全行一致；绝对误差 $= \varepsilon \times$
+        幅度，早行 ESS 小、幅度大（式~\ref{eq:27-ess}）。解法是 hybrid 全链
+        fp16 或压 V 的相对误差，单换 QK 无效（V 0.19 是最大单项）。
+  \item Q：FA-4 lazy rescale 在量化域要额外考虑什么？\\
+        A：发射值被 $2^{\tau}$ 膨胀，需核算格式天花板
+        $2^{\tau}\,\mathrm{amax}(V) \le 448$（式~\ref{eq:27-overflow}），
+        fp8 取 $T{=}4$ 而非 BF16 的 8。
+\end{itemize}
+
 \section{最小测试与动手实验}
-% python -m ffpa_attn.bench --fwd-backend cuda --cuda-impl fp8 --D 128 --no-bwd --verbose
+
+Part V 不新增 \texttt{book/tests}，验证链路统一为 \texttt{ffpa\_attn.bench} CLI
+（ffpa-attn 0.2.5.dev25 editable 安装，本机 PRO 5000，卡位 7）。本章实验聚焦
+「fp8 基线口径」：
+
+\begin{lstlisting}[style=console]
+# 前置：conda activate cdit；D<=256 需放开 small-D 门禁
+$ export FFPA_CUDA_ALLOW_SMALL_D=1 CUDA_VISIBLE_DEVICES=7
+
+# 实验 1：fp8 基线（self-attn D128，对照 SDPA，验证 allclose）
+$ python -m ffpa_attn.bench --fwd-backend cuda --cuda-impl fp8 \
+    --tasks self-attn --D 128 --no-bwd --show-allclose
+# 预期：allclose 列 ✅；speedup ~1.7x（365T vs 215T，本机 PRO 5000）
+
+# 实验 2：fp4 同形状对照（e2m1 的精度与速度差）
+$ python -m ffpa_attn.bench --fwd-backend cuda --cuda-impl fp4 \
+    --tasks self-attn --D 128 --no-bwd --show-allclose
+
+# 实验 3：causal 早行误差的直觉验证（ESS 模型，27.3.7）
+$ python -m ffpa_attn.bench --fwd-backend cuda --cuda-impl fp8 \
+    --tasks self-attn,causal --D 128 --no-bwd --show-allclose
+\end{lstlisting}
+
+实验 3 的观察点：causal 的绝对误差显著大于 dense（表~\ref{tab:27-ess}），
+但任务耗时反而更短（半个三角）。数据落盘规范：\texttt{--save-path} 指向
+\texttt{book/.tmp/book-bench/ch27/}，本章基线数据已归档于
+\texttt{.tmp/book-bench/k0-smoke/}。
+
+\section*{延伸阅读}
+
+\begin{itemize}[itemsep=1pt,topsep=2pt]
+  \item @DefTruth《WINT8/4 快速反量化系列（00)--(03)》：低比特数值格式与
+        反量化的工程直觉（全书行文风格基线）；
+  \item SageAttention 1/2/2++/3 四篇论文（arXiv:2410.02367 / 2411.10958 /
+        2505.21136 / 2505.11594，附录~\ref{app:E}）：表~\ref{tab:27-sage} 的
+        一手出处；
+  \item FlashAttention-4（arXiv:2603.05451）\S 3.1.4：lazy rescale 的原始
+        定义与 $\tau$ 选择。
+\end{itemize}

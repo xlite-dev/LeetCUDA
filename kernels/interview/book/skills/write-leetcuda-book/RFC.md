@@ -161,7 +161,7 @@
 - [x] K0 Part V 章节规划落盘：BOOK_PLAN §3 Part V 表（7 章卡片）+ 附录 B/C/D/E 增补 + §4.2 Part V 特化 DoD + 本 RFC-K 卡片（2026-09-16）
 - [x] K0.1 `book.tex` 加 Part V `\part` + ch27-33 空章骨架（含 `chapters/_template.tex` 复制）；两遍编译通过（2026-09-16：365 页零 error；Overfull 3 处为 ch14/ch21/ch24 存量，登记 K-验收清偿）
 - [x] K0.2 性能图资源归档：`docs/assets/perf/{fp8,fp4}/*.png` + `ffpa-split-d.png`/`mma.png` 复制到 `book/figures/ffpa/` + 出处 sidecar（ffpa-attn README / 5090 / URL / 引用章节）；附录 E 预登记（2026-09-16：15 图 + meta.md + SA1/2/2++/3、FA-4 论文条目 + ffpa-attn 仓库条目；bench smoke 口径确立：`--show-allclose` ✅ + timing 表，fp8 D128 self-attn 1.70x/365T 落 .tmp/book-bench/k0-smoke/）
-- [ ] K1 ch27 量化注意力的数学基础 | 新写原理章（fp8_pscale.cuh 头注释 + softmax.cuh 对照） | 前置 4,5,15 | FIG-27-1 量化格式位域、FIG-27-2 粒度谱系表、FIG-27-3 per-stage 误差分解 | 参考 SA1/SA2/SA2++/SA3/FA-4 论文 + @DefTruth WINT8/4 | 验证：`ffpa_attn.bench --cuda-impl fp8 --D 128`（quant 基线口径展示）
+- [x] K1 ch27 量化注意力的数学基础 | 新写原理章（fp8_pscale.cuh 头注释 + softmax.cuh 对照） | 前置 4,5,15 | FIG-27-1 量化格式位域、FIG-27-2 粒度谱系表、FIG-27-3 per-stage 误差分解 | 参考 SA1/SA2/SA2++/SA3/FA-4 论文 + @DefTruth WINT8/4 | 验证：`ffpa_attn.bench --cuda-impl fp8 --D 128`（quant 基线口径展示）（2026-09-16：正文 10 节 + 相对步长定理证明 + 3 表 + 3 图（gen.py 入库，COVER=0/渲染越界 0/3x 导出指纹验收）；锚点 L17-37/L111-138/L44-63 grep 核对；bench 基线 .tmp/book-bench/k0-smoke/ 1.70x allclose✅；全书 375 页零 error、ch27 Overfull 清零）
 - [ ] K2 ch28 FP8(一)量化前处理链 | `cute/fp8/{smooth_k(165),smooth_v(175),quantize_fp8(1024)}.cuh` + `cute/hadamard.cuh(202)` | 前置 20-23,27 | FIG-28-1 前处理 pipeline、FIG-28-2 smoothing 三不变性 | 验证：`--fp8-smooth-k/--fp8-smooth-v/--fp8-q-quant-method per-thread` knob A/B bench
 - [ ] K3 ch29 FP8(二)persist-D 主 kernel ★ | `cute/fp8/sm_120/persist_d.cuh(1036)` + `fp8_pscale.cuh(304)` + `softmax.cuh(344)` + `reg2reg_8b.cuh(163)` + `attn_traits.cuh(313)` | 前置 17,18,22,23,28 | FIG-29-1 scale 折叠数据流、FIG-29-2 persist-D WS 布局、FIG-29-3 reorg-free 打包对照 | 验证：`--cuda-impl fp8 --tasks self causal --D {64,128,192,256}` parity+timing
 - [ ] K4 ch30 FP8(三)split-D 与 M4N2 | `cute/fp8/sm_120/{split_d,split_d_m4n2}.cuh` | 前置 19,26,29 | FIG-30-1 寄存器压力曲线（README mma.png）、FIG-30-2 split-D 切分（ffpa-split-d.png）、FIG-30-3 M4N2 fragment 划分 | 验证：`--cuda-impl fp8 --D {320,512,768,1024}`（cross-point 展示）
@@ -226,6 +226,9 @@
 | FIG-24-3 | 24 | gemm-3level-partition | B→D（reed 简单 GEMM，2026-09-14） | 正式 | figures/drawio/fig-24-3-gemm-3level-partition/ |
 | FIG-25-1 | 25 | fa-cute-3impl-compare | C1 新建（2026-09-14） | 正式 | figures/drawio/fig-25-1-cute-struct/ |
 | FIG-26-1 | 26 | ffpa-dual-tiledmma | A→C1 | 正式 | figures/drawio/fig-26-1-dual-mma/
+| FIG-27-1 | 27 | fp-bitfield | C1 新建（2026-09-16） | 正式 | figures/drawio/fig-27-1-fp-bitfield/ |
+| FIG-27-2 | 27 | quant-points | C1 新建（2026-09-16） | 正式 | figures/drawio/fig-27-2-quant-points/ |
+| FIG-27-3 | 27 | ess-decompose | C1 新建（2026-09-16） | 正式 | figures/drawio/fig-27-3-ess-decompose/ |
 
 ## 14. CHECKLOG 摘要镜像（明细在 book/CHECKLOG.md）
 
