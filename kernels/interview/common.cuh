@@ -364,8 +364,11 @@ static __host__ __device__ __forceinline__ int swizzle_v2_impl(int i, int j) {
 // Mirrors the raw-PTX style of tmp/LeetGPU/CUDA/22_GEMM/sm90_wgmma_tma_ws_pingpong.cu.
 #if defined(NOTES_V2_FORCE_INLINE_ASYNC_PROXY)
 
+// Renamed from cast_smem_ptr_to_uint: the global name collides with
+// cute::cast_smem_ptr_to_uint (cute/arch/util.hpp) via ADL at CuTe call
+// sites, e.g. copy_sm90_desc.hpp TMA descriptor setup.
 static __device__ __forceinline__ uint32_t
-cast_smem_ptr_to_uint(void const *ptr) {
+notes_cast_smem_ptr_to_uint(void const *ptr) {
   return static_cast<uint32_t>(__cvta_generic_to_shared(ptr));
 }
 
@@ -383,9 +386,9 @@ static __device__ __forceinline__ void tma_load_2d(
     void *dst, const CUtensorMap *tensor_map, int minor_coord, int major_coord,
     cuda::barrier<cuda::thread_scope_block> &barrier) {
   uint64_t gmem_int_desc = reinterpret_cast<uint64_t>(tensor_map);
-  uint32_t smem_int_ptr = cast_smem_ptr_to_uint(dst);
+  uint32_t smem_int_ptr = notes_cast_smem_ptr_to_uint(dst);
   uint32_t smem_int_mbar =
-      cast_smem_ptr_to_uint(reinterpret_cast<uint64_t *>(&barrier));
+      notes_cast_smem_ptr_to_uint(reinterpret_cast<uint64_t *>(&barrier));
   asm volatile(
       "cp.async.bulk.tensor.2d.shared::cluster.global.mbarrier::complete_tx::bytes"
       " [%0], [%1, {%3, %4}], [%2];"
@@ -401,7 +404,7 @@ static __device__ __forceinline__ void tma_load_2d(
 static __device__ __forceinline__ void tma_arrive_expect_tx(
     cuda::barrier<cuda::thread_scope_block> &barrier, uint32_t bytes) {
   uint32_t smem_int_mbar =
-      cast_smem_ptr_to_uint(reinterpret_cast<uint64_t *>(&barrier));
+      notes_cast_smem_ptr_to_uint(reinterpret_cast<uint64_t *>(&barrier));
   asm volatile(
       "mbarrier.arrive.expect_tx.shared::cta.b64 _, [%0], %1;\n"
       :
