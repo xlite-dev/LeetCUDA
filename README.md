@@ -16,16 +16,16 @@
 **LeetCUDA**: includes **Tensor/CUDA Cores, TF32/F16/BF16/F8**, [200+ CUDA Kernels](#cuda-kernel) with PyTorch, [HGEMM](./kernels/hgemm) which can achieve `98%~100%` TFLOPS of **cuBLAS**, and [flash-attn](./kernels/flash-attn) using Tensor Cores with pure MMA PTX. <i>Open sources book of <b>LeetCUDA</b> now is avaliable at <a href='./kernels/interview/book/book.pdf'>book.pdf (w/ 400+ pages)🔥🔥🔥</a>. </i> 
 
 <div align='center'>
- <img src='./docs/book.png' width='850px'><br>
+ <img src='./docs/book.png' width='800px'><br>
  <p><i>Open sources book of LeetCUDA now is avaliable at <a href='./kernels/interview/book/book.pdf'>book.pdf (w/ 400+ pages)🔥🔥🔥</a>. </i></p>
 </div>
 
 Please also check out our production-ready **Kernel Library**: [**ffpa-attn**](https://github.com/xlite-dev/ffpa-attn) - Fast and Memory-Efficient Exact Attention (**BF16/FP16/FP8/FP4**) for Large Headdim, **1.5x~15x**🔥🔥 speedup over standard PyTorch SDPA. 
 <div align='center'>
-  <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-h20z_B1_H32_N8192_D512_T.png' width='210px'>
-  <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-h20z_B1_H32_N16384_D512_T.png' width='210px'>
-  <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-b200_B1_H32_N8192_D512_T.png' width='210px'>
-  <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-b200_B1_H32_N16384_D512_T.png' width='210px'><br>
+  <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-h20z_B1_H32_N8192_D512_T.png' width='200px'>
+  <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-h20z_B1_H32_N16384_D512_T.png' width='200px'>
+  <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-b200_B1_H32_N8192_D512_T.png' width='200px'>
+  <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-b200_B1_H32_N16384_D512_T.png' width='200px'><br>
   <p><i><b>BF16 Attention</b> for Large Headdim: FFPA vs SDPA (FWD/BWD) across NVIDIA H200 and B200, 6x-15x↑. </i></p>
 </div>
 
