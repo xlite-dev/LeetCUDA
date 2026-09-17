@@ -234,25 +234,29 @@ GPU 状态是三个最常见的失真源。
 \subsection{fp8 矩阵：D 的三段形态}
 
 表~\ref{tab:33-fp8-matrix} 是 CLI 矩阵实测（PRO 5000，fp16 行；
-每格上行为 FFPA/SDPA ms，下行为 speedup 与 allclose）：
+每格左为 FFPA/SDPA ms，右为 speedup 与 allclose）：
 
-\begin{table}[htbp]
+\begin{table}[!htbp]
   \centering\small
   \caption{fp8 CLI 矩阵（\texttt{--cuda-impl fp8}，B1 H32 Hkv8
   N8192，fp16；causal 默认自动 hybrid）}\label{tab:33-fp8-matrix}
-  \begin{tabular}{lcccc}
+  \begin{tabular}{lcccccccc}
     \toprule
-    task & D=64 & D=128 & D=256 & D=512$^{\dagger}$ \\
+    & \multicolumn{2}{c}{D=64} & \multicolumn{2}{c}{D=128} & \multicolumn{2}{c}{D=256} & \multicolumn{2}{c}{D=512$^{\dagger}$} \\
+    \cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+    task & FFPA/SDPA & speedup & FFPA/SDPA & speedup & FFPA/SDPA & speedup & FFPA/SDPA & speedup \\
     \midrule
-    self  & \shortstack[c]{1.91/2.40\\1.26x\,\checkmark} & \shortstack[c]{3.01/5.12\\1.70x\,\checkmark} & \shortstack[c]{8.13/10.55\\1.30x\,\checkmark} & \shortstack[c]{21.71/64.72\\2.98x\,\checkmark} \\
-    causal& \shortstack[c]{1.17/1.35\\1.16x\,\checkmark} & \shortstack[c]{1.89/2.70\\1.43x\,\checkmark} & \shortstack[c]{4.73/5.41\\1.14x\,\checkmark} & \shortstack[c]{12.82/32.91\\2.57x\,$\ast$} \\
-    gqa   & \shortstack[c]{1.79/2.40\\1.35x\,\checkmark} & \shortstack[c]{2.81/5.15\\1.83x\,\checkmark} & \shortstack[c]{7.34/10.62\\1.45x\,\checkmark} & \shortstack[c]{20.46/64.73\\3.16x\,\checkmark} \\
-    cross & \shortstack[c]{0.39/0.40\\1.01x\,\checkmark} & \shortstack[c]{0.68/0.82\\1.21x\,\checkmark} & \shortstack[c]{1.83/1.39\\0.76x\,\checkmark} & \shortstack[c]{4.59/8.73\\1.90x\,\checkmark} \\
+    self  & 1.91/2.40 & 1.26x\,\checkmark & 3.01/5.12 & 1.70x\,\checkmark & 8.13/10.55 & 1.30x\,\checkmark & 21.71/64.72 & 2.98x\,\checkmark \\
+    causal& 1.17/1.35 & 1.16x\,\checkmark & 1.89/2.70 & 1.43x\,\checkmark & 4.73/5.41 & 1.14x\,\checkmark & 12.82/32.91 & 2.57x\,$\ast$ \\
+    gqa   & 1.79/2.40 & 1.35x\,\checkmark & 2.81/5.15 & 1.83x\,\checkmark & 7.34/10.62 & 1.45x\,\checkmark & 20.46/64.73 & 3.16x\,\checkmark \\
+    cross & 0.39/0.40 & 1.01x\,\checkmark & 0.68/0.82 & 1.21x\,\checkmark & 1.83/1.39 & 0.76x\,\checkmark & 4.59/8.73 & 1.90x\,\checkmark \\
     \bottomrule
   \end{tabular}
-  \footnotesize $\dagger$ D=512 参照为 SDPA-MATH（FA2 只覆盖
+
+  \par\vspace{4pt}
+  {\footnotesize $\dagger$ D=512 参照为 SDPA-MATH（FA2 只覆盖
   $D\le256$）；$\ast$ fp16 因已知 ESS causal 特性临界失败，bf16
-  2.55x 通过（第~\ref{ch:30}~章 30.7.1 节定性）。
+  2.55x 通过（第~\ref{ch:30}~章 30.7.1 节定性）。\par}
 \end{table}
 
 三个形态段：
@@ -272,19 +276,21 @@ GPU 状态是三个最常见的失真源。
 
 \subsection{fp4 矩阵：D$\ge$128 稳定 2x 级}
 
-\begin{table}[htbp]
+\begin{table}[!htbp]
   \centering\small
   \caption{fp4 CLI 矩阵（\texttt{--cuda-impl fp4}，同形状，fp16；
   16 格 allclose 全绿，tol dense 0.15 / causal 0.70）}
   \label{tab:33-fp4-matrix}
-  \begin{tabular}{lcccc}
+  \begin{tabular}{lcccccccc}
     \toprule
-    task & D=64 & D=128 & D=192 & D=256 \\
+    & \multicolumn{2}{c}{D=64} & \multicolumn{2}{c}{D=128} & \multicolumn{2}{c}{D=192} & \multicolumn{2}{c}{D=256} \\
+    \cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+    task & FFPA/SDPA & speedup & FFPA/SDPA & speedup & FFPA/SDPA & speedup & FFPA/SDPA & speedup \\
     \midrule
-    self  & \shortstack[c]{1.61/2.41\\1.49x\,\checkmark} & \shortstack[c]{2.51/5.12\\2.04x\,\checkmark} & \shortstack[c]{3.47/7.20\\2.08x\,\checkmark} & \shortstack[c]{4.96/10.47\\2.11x\,\checkmark} \\
-    causal& \shortstack[c]{1.07/1.36\\1.26x\,\checkmark} & \shortstack[c]{1.67/2.69\\1.61x\,\checkmark} & \shortstack[c]{2.40/3.92\\1.63x\,\checkmark} & \shortstack[c]{3.54/5.30\\1.50x\,\checkmark} \\
-    gqa   & \shortstack[c]{1.53/2.41\\1.58x\,\checkmark} & \shortstack[c]{2.32/5.13\\2.21x\,\checkmark} & \shortstack[c]{3.17/7.26\\2.29x\,\checkmark} & \shortstack[c]{4.50/10.50\\2.33x\,\checkmark} \\
-    cross & \shortstack[c]{0.36/0.40\\1.10x\,\checkmark} & \shortstack[c]{0.68/0.82\\1.21x\,\checkmark} & \shortstack[c]{1.02/1.16\\1.14x\,\checkmark} & \shortstack[c]{1.41/1.40\\0.99x\,\checkmark} \\
+    self  & 1.61/2.41 & 1.49x\,\checkmark & 2.51/5.12 & 2.04x\,\checkmark & 3.47/7.20 & 2.08x\,\checkmark & 4.96/10.47 & 2.11x\,\checkmark \\
+    causal& 1.07/1.36 & 1.26x\,\checkmark & 1.67/2.69 & 1.61x\,\checkmark & 2.40/3.92 & 1.63x\,\checkmark & 3.54/5.30 & 1.50x\,\checkmark \\
+    gqa   & 1.53/2.41 & 1.58x\,\checkmark & 2.32/5.13 & 2.21x\,\checkmark & 3.17/7.26 & 2.29x\,\checkmark & 4.50/10.50 & 2.33x\,\checkmark \\
+    cross & 0.36/0.40 & 1.10x\,\checkmark & 0.68/0.82 & 1.21x\,\checkmark & 1.02/1.16 & 1.14x\,\checkmark & 1.41/1.40 & 0.99x\,\checkmark \\
     \bottomrule
   \end{tabular}
 \end{table}
