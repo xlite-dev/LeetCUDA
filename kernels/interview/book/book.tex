@@ -14,16 +14,21 @@
 
 \begin{document}
 
-% 封面：满幅出血（零边距页，图按纸宽纸高等比覆盖）
-\newgeometry{margin=0cm}
+% 封面：shipout 背景钩子满幅铺图，页面本体留空（newgeometry 会在此处
+% 先 clearpage 产生空白首页，故不用）；钩子 picture 原点在页左上、
+% y 轴向下，图参考点为左下角故放 (0,-\paperheight)
+\AddToHookNext{shipout/background}{%
+  \put(0,-\dimexpr\paperheight\relax){\includegraphics[width=\paperwidth,height=\paperheight]{figures/misc/cover.png}}}
 \thispagestyle{empty}
-\noindent\includegraphics[width=\paperwidth,height=\paperheight]{figures/cover.png}
+\null
 \clearpage
-\restoregeometry
 
-\maketitle
+% 消除 frontmatter 的奇数开页空页，目录紧跟封面
+\begingroup
+\let\cleardoublepage\clearpage
 \frontmatter
 \tableofcontents
+\endgroup
 
 \mainmatter
 

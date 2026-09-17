@@ -305,7 +305,7 @@ $\pi^{-1}$ 回到原始 token 位置判定。
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.98\textwidth]{figures/fig-31-1-nvfp4-block.png}
+  \includegraphics[width=0.98\textwidth]{figures/drawio/fig-31-1-nvfp4-block/fig-31-1-nvfp4-block.png}
   \caption{NVFP4 的 $1\times16$ microscaling 块：e2m1 数据位域与
   ue4m3 块尺度。$s_{block}=\mathrm{amax}/6$ 除进数据、乘回在
   blockscale MMA 内逐块完成。}
@@ -314,7 +314,7 @@ $\pi^{-1}$ 回到原始 token 位置判定。
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.98\textwidth]{figures/fig-31-2-fp4-pipeline.png}
+  \includegraphics[width=0.98\textwidth]{figures/drawio/fig-31-2-fp4-pipeline/fig-31-2-fp4-pipeline.png}
   \caption{fp4 前处理链数据流（$D\le128$ 走 fused 单 launch 路径）：
   $\bar k$/$q_m$ 均值先行的原因是它们是量化 kernel 的输入 bias；
   hadamard 下 $q_m^{rot}$ 在 fused kernel 内顺带产出。}
@@ -323,7 +323,7 @@ $\pi^{-1}$ 回到原始 token 位置判定。
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.98\textwidth]{figures/fig-31-3-kv-perm32.png}
+  \includegraphics[width=0.98\textwidth]{figures/drawio/fig-31-3-kv-perm32/fig-31-3-kv-perm32.png}
   \caption{kv\_perm32 的 32 列窗口双射与 perm-aware masking。置换让
   QK 的 C fragment 列直接匹配 PV 的 A 操作数布局；mask/bias 必须经
   \label{fig:31-3}

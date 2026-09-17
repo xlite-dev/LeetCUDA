@@ -230,7 +230,7 @@ exp2 参数——两级 scale 在数据通路里都不占显式乘法。图~\ref
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.98\textwidth]{figures/fig-32-1-two-level-p.png}
+  \includegraphics[width=0.98\textwidth]{figures/drawio/fig-32-1-two-level-p/fig-32-1-two-level-p.png}
   \caption{两级 P 量化的域拉伸：online softmax 使第一级退化为全局常数
   $1/2688$ 并折进 exp2 shift；第二级 per-16 组 absmax 铺满 ue4m3 域，
   组归一化同样折进 exp2 参数。}
@@ -239,7 +239,7 @@ exp2 参数——两级 scale 在数据通路里都不占显式乘法。图~\ref
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.98\textwidth]{figures/fig-32-2-persist-d-loop.png}
+  \includegraphics[width=0.98\textwidth]{figures/drawio/fig-32-2-persist-d-loop/fig-32-2-persist-d-loop.png}
   \caption{fp4 persist-D 主循环数据流（128T producer + 256T consumer）：
   每 kv tile 的五步（$\Delta S$ 预载 $\to$ QK $\to$ masking $\to$ 融合
   softmax/P 量化 $\to$ PV），barrier 永不 re-init，grid 由 runtime 定

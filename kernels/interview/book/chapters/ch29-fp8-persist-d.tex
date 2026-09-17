@@ -365,7 +365,7 @@ STSM + TMA 输出。图~\ref{fig:29-reorg-free} 则是 epilogue 侧的布局技�
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.98\textwidth]{figures/fig-29-1-scale-folding.png}
+  \includegraphics[width=0.98\textwidth]{figures/drawio/fig-29-1-scale-folding/fig-29-1-scale-folding.png}
   \caption{scale 折叠全链数据流：$\delta_Q\delta_K$ 折进 exp2 系数、$v_s$
   在 P 发射域消去、$p_{scale}$ 收在 epilogue——除 round() 外无额外误差源。}
   \label{fig:29-scale-folding}
@@ -373,7 +373,7 @@ STSM + TMA 输出。图~\ref{fig:29-reorg-free} 则是 epilogue 侧的布局技�
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.98\textwidth]{figures/fig-29-2-persist-d-ws.png}
+  \includegraphics[width=0.98\textwidth]{figures/drawio/fig-29-2-persist-d-ws/fig-29-2-persist-d-ws.png}
   \caption{persist-D WS 结构：128P+256C、setmaxnreg 32/232、Q s2r 常驻与
   K stage-0 槽位轮转的 smem 复用、STSM+TMA 输出。}
   \label{fig:29-persist-d-ws}
@@ -381,7 +381,7 @@ STSM + TMA 输出。图~\ref{fig:29-reorg-free} 则是 epilogue 侧的布局技�
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.98\textwidth]{figures/fig-29-3-reorg-free.png}
+  \includegraphics[width=0.98\textwidth]{figures/drawio/fig-29-3-reorg-free/fig-29-3-reorg-free.png}
   \caption{reorg-free 打包对照：跨 lane 重排（16 SHFL）vs 就地打包 + $V^{\top}$
   列置换（4 PRMT、零 SHFL），归约轴双射不变性保证精确等价。}
   \label{fig:29-reorg-free}

@@ -511,7 +511,7 @@ $V$ 不改 $O$、WHT 两端同乘正交阵——右侧的 outlier 幅度示意�
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.98\textwidth]{figures/fig-28-1-quant-pipeline.png}
+  \includegraphics[width=0.98\textwidth]{figures/drawio/fig-28-1-quant-pipeline/fig-28-1-quant-pipeline.png}
   \caption{fp8 前处理链全景：三泳道（Q/K/V）各自的统计 $\to$ 变换 $\to$ 量化
   kernel 与输出 workspace 布局。smoothing 与量化融合在同一 kernel 内（无中间
   落盘）；$V^{\top}$ 的列 pad 兼顾 TMA 16B 对齐与置换写。}
@@ -520,7 +520,7 @@ $V$ 不改 $O$、WHT 两端同乘正交阵——右侧的 outlier 幅度示意�
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.98\textwidth]{figures/fig-28-2-invariants.png}
+  \includegraphics[width=0.98\textwidth]{figures/drawio/fig-28-2-invariants/fig-28-2-invariants.png}
   \caption{三条不变变换的代数结构对比：smooth-K 改 logits 不改概率（lse 回加）、
   smooth-V 改 V 不改 O（行和为 1）、WHT 两端同乘正交阵（收缩逐元素精确）。
   右侧为 outlier 幅度在变换前后的示意（块 scale 收敛）。}

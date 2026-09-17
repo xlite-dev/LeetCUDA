@@ -317,7 +317,7 @@ m4n2 的 occupancy 已被 255 regs 锁死在 1 CTA，加深 stage 没有 occupan
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.98\textwidth]{figures/fig-30-1-split-d-walls.png}
+  \includegraphics[width=0.98\textwidth]{figures/drawio/fig-30-1-split-d-walls/fig-30-1-split-d-walls.png}
   \caption{大 $D$ 的两堵墙与 dispatch 三分路由。smem 墙由 split-D 拆
   （chunk 流水，smem 与 $D$ 解耦）；寄存器墙由 M4N2 拆（$N_w=2$ 把
   per-thread $O$ 从 $D/2$ 减到 $D/4$）；$D=768$ 是实测交叉点。}
@@ -326,7 +326,7 @@ m4n2 的 occupancy 已被 255 regs 锁死在 1 CTA，加深 stage 没有 occupan
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.98\textwidth]{figures/fig-30-2-m4n2-softmax.png}
+  \includegraphics[width=0.98\textwidth]{figures/drawio/fig-30-2-m4n2-softmax/fig-30-2-m4n2-softmax.png}
   \caption{M4N2 的 $(4,2,1)$ atom 布局与跨 N-warp softmax 单 barrier
   协议。max 段与 sum 段分置 \texttt{smem\_exchange} 防 RAW；sum 的
   发布搭 P roundtrip barrier 的便车。}
