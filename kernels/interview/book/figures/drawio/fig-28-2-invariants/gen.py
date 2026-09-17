@@ -65,7 +65,7 @@ f.box(770, y1 + 42, 350, 110, "", fill="#ffffff", stroke=GRAY)
 f.text(780, y1 + 46, 330, 18, "logits 平移示意（同一条曲线整体左右移）", fs=11.5, fc="#627d98")
 f.line([(800, y1 + 96), (1100, y1 + 96)], color=GRAY, width=1.5, arrow_end=0)
 f.line([(950, y1 + 58), (950, y1 + 132)], color=GRAY, width=1.5, arrow_end=0)
-f.line([(950, y1 + 96), (1020, y1 + 66), (1090, y1 + 90), (1150, y1 + 130)], color=RED, width=2, arrow_end=0)
+f.line([(950, y1 + 96), (1020, y1 + 66), (1090, y1 + 90), (1100, y1 + 122)], color=RED, width=2, arrow_end=0)
 f.line([(890, y1 + 90), (950, y1 + 96)], color=RED, width=2, arrow_end=0)
 
 # ================= 泳道 2：smooth-V =================

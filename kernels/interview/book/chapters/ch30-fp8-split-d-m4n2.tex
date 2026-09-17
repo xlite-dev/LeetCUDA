@@ -307,6 +307,14 @@ m4n2 的 occupancy 已被 255 regs 锁死在 1 CTA，加深 stage 没有 occupan
 
 \section{图示}
 
+图~\ref{fig:30-walls} 是全章的路线图：大 $D$ 的两堵墙——smem 随 $D$
+平方膨胀、per-thread 的 $O$ 寄存器随 $D$ 线性增长——分别由 split-D
+（chunk 流水，smem 与 $D$ 解耦）与 M4N2（$N_w=2$ 把每线程 $O$ 从 $D/2$
+减到 $D/4$）拆掉，$D=768$ 是两者的实测交叉点，dispatch 据此三分路由。
+图~\ref{fig:30-m4n2} 深入寄存器墙解法的内部：$(4,2,1)$ atom 的线程-值
+布局，以及跨 N-warp softmax 的单 barrier 协议——max 段与 sum 段分置
+\texttt{smem\_exchange} 防 RAW，sum 的发布搭 P roundtrip barrier 的便车。
+
 \begin{figure}[htbp]
   \centering
   \includegraphics[width=0.98\textwidth]{figures/fig-30-1-split-d-walls.png}
@@ -324,6 +332,8 @@ m4n2 的 occupancy 已被 255 regs 锁死在 1 CTA，加深 stage 没有 occupan
   发布搭 P roundtrip barrier 的便车。}
   \label{fig:30-m4n2}
 \end{figure}
+
+\FloatBarrier
 
 \section{性能分析}
 

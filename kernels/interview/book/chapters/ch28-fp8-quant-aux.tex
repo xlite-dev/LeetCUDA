@@ -499,6 +499,16 @@ $kWhtWidth$ 列（lane $\times$ $kVec$），无需跨 warp 通信；$1/\sqrt{n}$
 
 \section{图示}
 
+本章的两张图分工明确。图~\ref{fig:28-pipeline} 是前处理链的总地图：三条
+泳道（Q/K/V）从 fp16 输入出发，先取统计量（块 amax、两阶段列均值），再经
+各自的变换（smooth-K/$V$、WHT 旋转），汇入量化 kernel 后输出 fp8 数据与
+scale workspace（\texttt{cpu\_scales} 与 per-16 对齐的布局）；把它与
+第~\ref{ch:29}~章的 persist-D 数据通路图叠起来，就是 fp8 attention 的完整
+字节旅程。图~\ref{fig:28-invariants} 把~\ref{sec:28-smk}--\ref{sec:28-wht}~节
+的三条不变变换定理画成一页速查：smooth-K 改 logits 不改概率、smooth-V 改
+$V$ 不改 $O$、WHT 两端同乘正交阵——右侧的 outlier 幅度示意给出变换前后
+块 scale 的收敛对比。
+
 \begin{figure}[htbp]
   \centering
   \includegraphics[width=0.98\textwidth]{figures/fig-28-1-quant-pipeline.png}
@@ -517,9 +527,7 @@ $kWhtWidth$ 列（lane $\times$ $kVec$），无需跨 warp 通信；$1/\sqrt{n}$
   \label{fig:28-invariants}
 \end{figure}
 
-图~\ref{fig:28-pipeline} 是本章的总地图：把它与第~\ref{ch:29}~章的 persist-D 数据
-通路图叠起来，就是 fp8 attention 的完整字节旅程。图~\ref{fig:28-invariants} 把
-28.3.1--28.3.3~节的三条定理画成一页速查。
+\FloatBarrier
 
 \section{性能分析}
 

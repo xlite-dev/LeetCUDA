@@ -219,12 +219,22 @@ PV 的 C fragment 每 lane 持数不同（头注释 L44--46）。
 
 \section{图示}
 
+两张图分别对应本章的数学与实现。图~\ref{fig:32-1} 是两级 P 量化的域
+拉伸：online softmax 使第一级退化为全局常数 $1/2688$ 并折进 exp2
+shift；第二级按 per-16 组 absmax 铺满 ue4m3 域，组归一化同样折进
+exp2 参数——两级 scale 在数据通路里都不占显式乘法。图~\ref{fig:32-2}
+是主循环数据流：128T producer 与 256T consumer 围绕每个 kv tile 的
+五步（$\Delta S$ 预载 $\to$ QK $\to$ masking $\to$ 融合 softmax/P
+量化 $\to$ PV），barrier 永不 re-init，grid 由 runtime 定 persistent
+或 block-per-work。
+
 \begin{figure}[htbp]
   \centering
   \includegraphics[width=0.98\textwidth]{figures/fig-32-1-two-level-p.png}
   \caption{两级 P 量化的域拉伸：online softmax 使第一级退化为全局常数
   $1/2688$ 并折进 exp2 shift；第二级 per-16 组 absmax 铺满 ue4m3 域，
   组归一化同样折进 exp2 参数。}
+  \label{fig:32-1}
 \end{figure}
 
 \begin{figure}[htbp]
@@ -234,7 +244,10 @@ PV 的 C fragment 每 lane 持数不同（头注释 L44--46）。
   每 kv tile 的五步（$\Delta S$ 预载 $\to$ QK $\to$ masking $\to$ 融合
   softmax/P 量化 $\to$ PV），barrier 永不 re-init，grid 由 runtime 定
   persistent 或 block-per-work。}
+  \label{fig:32-2}
 \end{figure}
+
+\FloatBarrier
 
 \section{性能分析}
 

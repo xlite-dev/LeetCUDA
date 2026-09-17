@@ -293,12 +293,23 @@ TMA 访问越界直接 IMA（\texttt{sm\_120/persist\_d.cuh} L48--53 注
 
 \section{图示}
 
+三张图自底向上覆盖 fp4 的三个层面。图~\ref{fig:31-1} 是数据格式层：
+NVFP4 的 $1\times16$ microscaling 块——e2m1 位域配 ue4m3 块尺度，
+$s_{block}=\mathrm{amax}/6$ 除进数据、乘回发生在 blockscale MMA 内。
+图~\ref{fig:31-2} 是工程层：fp4 前处理链的数据流，$D\le128$ 走 fused
+单 launch 路径，$\bar k$/$q_m$ 均值先行（它们是量化 kernel 的输入
+bias），hadamard 下的 $q_m^{rot}$ 在 fused kernel 内顺带产出。
+图~\ref{fig:31-3} 是布局层：kv\_perm32 的 32 列窗口双射——置换让 QK 的
+C fragment 列直接匹配 PV 的 A 操作数布局，代价是 mask/bias 必须经
+$\pi^{-1}$ 回到原始 token 位置判定。
+
 \begin{figure}[htbp]
   \centering
   \includegraphics[width=0.98\textwidth]{figures/fig-31-1-nvfp4-block.png}
   \caption{NVFP4 的 $1\times16$ microscaling 块：e2m1 数据位域与
   ue4m3 块尺度。$s_{block}=\mathrm{amax}/6$ 除进数据、乘回在
   blockscale MMA 内逐块完成。}
+  \label{fig:31-1}
 \end{figure}
 
 \begin{figure}[htbp]
@@ -307,6 +318,7 @@ TMA 访问越界直接 IMA（\texttt{sm\_120/persist\_d.cuh} L48--53 注
   \caption{fp4 前处理链数据流（$D\le128$ 走 fused 单 launch 路径）：
   $\bar k$/$q_m$ 均值先行的原因是它们是量化 kernel 的输入 bias；
   hadamard 下 $q_m^{rot}$ 在 fused kernel 内顺带产出。}
+  \label{fig:31-2}
 \end{figure}
 
 \begin{figure}[htbp]
@@ -314,8 +326,11 @@ TMA 访问越界直接 IMA（\texttt{sm\_120/persist\_d.cuh} L48--53 注
   \includegraphics[width=0.98\textwidth]{figures/fig-31-3-kv-perm32.png}
   \caption{kv\_perm32 的 32 列窗口双射与 perm-aware masking。置换让
   QK 的 C fragment 列直接匹配 PV 的 A 操作数布局；mask/bias 必须经
+  \label{fig:31-3}
   $\pi^{-1}$ 回到原始 token 位置判定。}
 \end{figure}
+
+\FloatBarrier
 
 \section{性能分析}
 

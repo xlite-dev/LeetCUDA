@@ -353,6 +353,16 @@ NEVER run against an unpermuted V\^{}T}——配对由 launcher 的单一
 
 \section{图示}
 
+三张图对应本章的三条主线。图~\ref{fig:29-scale-folding} 是数学层的总账：
+scale 从「显式乘法」变成「折叠」——$\delta_Q\delta_K$ 折进 exp2 系数、
+$v_s$ 在 P 的发射域消去、$p_{scale}$ 收在 epilogue，除 round() 外不引入
+任何额外误差源。图~\ref{fig:29-persist-d-ws} 是这套数学的宿主结构：
+128 producer + 256 consumer 的 warp specialization、\texttt{setmaxnreg}
+32/232 的寄存器再分配、Q 的 s2r 常驻与 K 的 stage-0 槽位轮转，最后经
+STSM + TMA 输出。图~\ref{fig:29-reorg-free} 则是 epilogue 侧的布局技巧：
+跨 lane 重排（16 条 SHFL）与就地打包 + $V^{\top}$ 列置换（4 条 PRMT、
+零 SHFL）的对照——归约轴双射不变性保证两者精确等价。
+
 \begin{figure}[htbp]
   \centering
   \includegraphics[width=0.98\textwidth]{figures/fig-29-1-scale-folding.png}
@@ -376,6 +386,8 @@ NEVER run against an unpermuted V\^{}T}——配对由 launcher 的单一
   列置换（4 PRMT、零 SHFL），归约轴双射不变性保证精确等价。}
   \label{fig:29-reorg-free}
 \end{figure}
+
+\FloatBarrier
 
 \section{性能分析}
 
