@@ -87,7 +87,7 @@ apt install -y cudnn9-cuda-13 ccache # Also install ccache for faster rebuilds
 
 ## 🤖 Agentic workflow
 
-LeetCUDA provides a [leetcuda-cpp-kernel](./kernels/interview/book/skills/leetcuda-cpp-kernel/SKILL.md) that reuse the knowledge and examples from the LeetCUDA open sources **book** and **repository**. Users can use it with Coding Agents, e.g, [GitHub Copilot](https://docs.github.com/en/copilot), [Claude Code](https://claude.ai), [Open Code](https://opencode.ai/). 
+LeetCUDA provides a [leetcuda-cpp-kernel](./kernels/interview/book/skills/leetcuda-cpp-kernel/SKILL.md) SKILL that reuse the knowledge and examples from the LeetCUDA open sources **book** and **repository**. Users can use it with Coding Agents, e.g, [GitHub Copilot](https://docs.github.com/en/copilot), [Claude Code](https://claude.ai), [Open Code](https://opencode.ai/). 
 
 <div align='center'>
  <img src='docs/leetcuda-cpp-kernel-skill.png'><br>
