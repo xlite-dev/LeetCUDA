@@ -376,12 +376,20 @@ static __device__ __forceinline__ void tma_fence_proxy_async_shared_cta() {
   asm volatile("fence.proxy.async.shared::cta;\n" ::: "memory");
 }
 
-// cp.async.bulk.tensor.2d: 2D TMA copy from global to shared::cluster.
+// cp.async.bulk.tensor.2d: 2D TMA copy from global to shared::cta.
 //   [dst]            = shared memory destination (smem addr, 32-bit)
 //   [desc, {c0, c1}]  = CUtensorMap + (minor_coord, major_coord) coords
 //   [mbar]            = mbarrier in shared memory (smem addr, 32-bit)
 // mbarrier::complete_tx::bytes: barrier flips phase when TMA bytes land.
 // L2::cache_hint omitted (EVICT_NORMAL); matches the cuda::ptx default.
+// NOTE: dst must be shared::cta, NOT shared::cluster. ptxas (CUDA 13.2) treats
+// the shared::cluster form as an implicit extern-call boundary and silently
+// drops setmaxnreg from the same kernel (C7506). cute's TMA copy ops emit
+// shared::cta on SM120 targets (CUTE_ARCH_TMA_SM120_ENABLED gate in
+// copy_sm90_tma.hpp; the sm_90 path still emits cluster), which is why CuTe
+// WS kernels keep their register rebalancing. Semantics are identical here:
+// the destination is always CTA-local smem. Verified by PTX surgery:
+// cluster->cta flips C7506 off and USETMAXREG appears (both sm_120a/120f).
 static __device__ __forceinline__ void tma_load_2d(
     void *dst, const CUtensorMap *tensor_map, int minor_coord, int major_coord,
     cuda::barrier<cuda::thread_scope_block> &barrier) {
@@ -390,7 +398,7 @@ static __device__ __forceinline__ void tma_load_2d(
   uint32_t smem_int_mbar =
       notes_cast_smem_ptr_to_uint(reinterpret_cast<uint64_t *>(&barrier));
   asm volatile(
-      "cp.async.bulk.tensor.2d.shared::cluster.global.mbarrier::complete_tx::bytes"
+      "cp.async.bulk.tensor.2d.shared::cta.global.mbarrier::complete_tx::bytes"
       " [%0], [%1, {%3, %4}], [%2];"
       :
       : "r"(smem_int_ptr), "l"(gmem_int_desc), "r"(smem_int_mbar),
@@ -413,6 +421,10 @@ static __device__ __forceinline__ void tma_arrive_expect_tx(
 }
 
 #else // !NOTES_V2_FORCE_INLINE_ASYNC_PROXY: use cuda::ptx / cuda::device wrappers
+// NOTE: this path issues cp.async.bulk.tensor via cuda::ptx with
+// space_cluster (shared::cluster dst), which re-introduces the C7506
+// setmaxnreg drop. Debug/comparison builds only; the setmaxnreg experiment
+// path is NOTES_V2_FORCE_INLINE_ASYNC_PROXY (raw asm, shared::cta).
 
 static __device__ __forceinline__ void tma_fence_proxy_async_shared_cta() {
 #if CUDART_VERSION >= 13020
@@ -459,20 +471,27 @@ static __device__ __forceinline__ void tma_arrive_expect_tx(
 // and require __launch_bounds__(N, 1) so the compiler permits up to 256
 // regs/warp (otherwise the hint may have no effect). Supported on sm_90a and
 // the sm_120 family-specific targets (sm_120a/sm_120f).
-// __forceinline__ is mandatory: without it ptxas drops setmaxnreg with
-// warning C7506 "ignored to maintain compatibility into 'extern' call",
-// because a non-inlined call boundary forces a fixed register convention.
-//
-// On Blackwell the picture depends on the -arch target suffix (CUDA 13.2+):
-//   - plain sm_120a: ptxas drops setmaxnreg with C7506 even when the PTX is
-//     fully inlined (no call.uni), because ptxas treats cp.async.bulk.tensor
-//     (TMA) usage as an implicit extern-call boundary.
-//   - sm_120f (family-specific target): setmaxnreg is KEPT and takes effect.
-//     Verified on the ffpa-attn cute sm_120 persist-D kernels (PRO 5000):
-//     build with -arch sm_120f and the rebalancing works end to end.
-// So setmaxnreg is NOT unusable on SM120 -- it just requires the
-// family-specific compilation target. sm_90a (Hopper) is unaffected.
+// __forceinline(CUDA 13.2, PTX surgery verified): the survival of setmaxnreg
+// depends on the cp.async.bulk.tensor destination state space, NOT on the
+// -arch suffix:
+//   - shared::cluster dst: ptxas treats the TMA as an implicit extern-call
+//     boundary and drops setmaxnreg with C7506 on BOTH sm_120a and sm_120f.
+//     This is why raw-asm WS kernels (flash_attn/hgemm, modeled after the
+//     Hopper pingpong examples that use shared::cluster) lost 80/112
+//     instructions while CuTe-path kernels (cute::copy emits shared::cta on
+//     SM120) kept all of theirs.
+//   - shared::cta dst: setmaxnreg is kept on BOTH sm_120a and sm_120f
+//     (re-verified: 112 USETMAXREG == PTX count on each target).
+//   - a __launch_bounds__(N) missing the second parameter emits no
+//     .minnctapersm, and ptxas drops setmaxnreg with C7508 "unable to
+//     determine register count at entry". Always use __launch_bounds__(N, 1)
+//     for WS kernels (also required so ptxas may budget >168 regs/thread).
+// The earlier claim that "sm_120a drops setmaxnreg, use sm_120f" was an
+// artifact of the shared::cluster form and is superseded by this.
 // Gate the *call sites* with NOTES_V2_ENABLE_SETMAXNREGS: default builds
+// stay warning-free and avoid the register-allocation side effects of
+// __launch_bounds__(N,1); the sm_120f build.sh target defines the macro for
+// the setmaxnreg experiment path. The function templatS_V2_ENABLE_SETMAXNREGS: default builds
 // (which mix sm_89/sm_120a targets) stay warning-free and avoid the
 // register-allocation side effects of __launch_bounds__(N,1); for a
 // setmaxnreg experiment build with -arch sm_120f and define the macro.

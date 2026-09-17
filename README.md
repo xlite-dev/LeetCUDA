@@ -43,8 +43,10 @@ apt install -y cudnn9-cuda-13 ccache # Also install ccache for faster rebuilds
 ./build.sh --arch sm_89     # Ada Lovelace (L20, RTX 40 series, CUDA Toolkit >= 13.2)
 ./build.sh --arch sm_90a    # Hopper (H100/H200, CUDA Toolkit >= 13.2)
 ./build.sh --arch sm_120a   # Blackwell (RTX 5090 / PRO 5000/6000, CUDA Toolkit >= 13.2)
-./build.sh --arch sm_120f   # Blackwell family target, CUDA Toolkit >= 13.2: only sm_120f keeps
-                            # `setmaxnreg` alive (ptxas silently drops it on sm_120a, C7506)
+./build.sh --arch sm_120f   # Blackwell family target, CUDA Toolkit >= 13.2: setmaxnreg experiment
+                            # build — enables the WS kernels' register rebalancing (NOTES_V2_ENABLE_
+                            # SETMAXNREGS + raw-PTX TMA with shared::cta dst; see common.cuh for the
+                            # C7506 pitfalls), and stays binary-compatible across the sm_120 family
 ./build.sh --arch all       # All five architectures (sm_86, sm_89, sm_90a, sm_120a, sm_120f)
 ./build.sh --clean          # Remove build artifacts (*.o, *.bin, *.ptx)
 ```

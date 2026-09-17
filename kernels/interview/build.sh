@@ -81,11 +81,13 @@ ARCH_LIBS[sm_120a]="-lcublas -lcudnn -lnvrtc -lcuda"
 ARCH_OUTPUT[sm_120a]="notes_v2_sm120a.bin"
 
 # sm_120f — Blackwell family-specific target (RTX 5090 / PRO 5000/6000, CUDA >= 13.2).
-# Only the family target keeps setmaxnreg: on plain sm_120a ptxas drops it with
-# C7506 (TMA usage is treated as an implicit extern-call boundary). Enables
-# NOTES_V2_ENABLE_SETMAXNREGS so NOTES_V2_REG_{DE}ALLOC actually emit PTX, plus
-# NOTES_V2_FORCE_INLINE_ASYNC_PROXY so TMA helpers use raw `asm volatile`
-# (the cuda::ptx wrappers also trigger C7506 even on sm_120f).
+# setmaxnreg experiment target: defines NOTES_V2_ENABLE_SETMAXNREGS so
+# NOTES_V2_REG_{DE}ALLOC actually emit PTX, plus NOTES_V2_FORCE_INLINE_ASYNC_PROXY
+# so TMA helpers use raw `asm volatile` with a shared::cta destination (the
+# cuda::ptx wrappers issue shared::cluster, which ptxas treats as an extern-call
+# boundary and drops setmaxnreg with C7506). With those two macros the rebalancing
+# survives on sm_120a AND sm_120f alike (112 USETMAXREG == PTX count on both);
+# sm_120f additionally keeps the whole sm_120 family binary-compatible.
 ARCH_GENCODE[sm_120f]="-gencode arch=compute_120f,code=sm_120f"
 ARCH_DEFINES[sm_120f]="-DNOTES_V2_ENABLE_CUTE -DNOTES_V2_ENABLE_TMA_MMA_WS -DNOTES_V2_ENABLE_CUDNN -DNOTES_V2_ENABLE_SETMAXNREGS -DNOTES_V2_FORCE_INLINE_ASYNC_PROXY"
 ARCH_LIB_PATH[sm_120f]="-L/usr/local/cuda/targets/x86_64-linux/lib/stubs"
