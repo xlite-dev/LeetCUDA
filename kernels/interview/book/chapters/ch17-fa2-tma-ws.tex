@@ -62,7 +62,7 @@ ldmatrix + \texttt{mma.sync} + online softmax。两支流之间没有任何
 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads}，全靠 mbarrier 阵列传递「数据就绪」（full）与
 「stage 可覆盖」（empty）两类事件。收益是双重的：装载延迟被流水深度
 （kStagesK）完整掩盖；producer 空闲出来的 127 个线程的执行资源与寄存器
-（经 \texttt{setmaxnreg} 让渡，sm\_120a 上受限，见 17.8~节坑七）归 consumer 使用。
+（经 \texttt{setmaxnreg} 让渡；TMA dst 须为 \texttt{shared::cta}，见 17.8~节坑七）归 consumer 使用。
 
 源码头注释把这套结构压缩成了六行「面试要点」，先原文引用，再逐条展开：
 
@@ -252,9 +252,10 @@ consumer 计算体 & ldmatrix $+$ mma $+$ softmax & 同左（逐行相同） \\
 
 最后一行是 \texttt{setmaxnreg} 的寄存器再分配声明：producer 让渡到 40、
 consumer 扩到 80（$D{=}64$）或 168（$D{=}128$，对齐 Triton Blackwell
-注意该指令对编译目标敏感：默认 \texttt{-arch sm\_120a} 会被 ptxas 以
-C7506 丢弃（第~\ref{ch:14}~章已考据），改用 \texttt{-arch sm\_120f}
-（family-specific 目标）即可保留生效；默认编译宏关闭时是 no-op——寄存器
+注意该指令对 TMA 的目的地址空间敏感：dst 写成 \texttt{shared::cluster}
+会被 ptxas 以 C7506 丢弃（第~\ref{ch:14}~章已考据），写成
+\texttt{shared::cta} 则 sm\_120a/sm\_120f 都保留（build.sh 的 sm\_120f
+目标预设了正确组合）；默认编译宏关闭时是 no-op——寄存器
 预算实际由编译器按 \texttt{\_\allowbreak{}\_\allowbreak{}launch\_\allowbreak{}bounds\_\allowbreak{}(384,\allowbreak{}1)} 自行分配（17.8~节坑七）。
 
 \subsection{模板参数与 tile 派生}
@@ -561,10 +562,10 @@ PV 等 V 到达，纯浪费。正确位置是「PV 前最后一条 wait」——
 smem，超过 48 KB 默认上限，launch 前必须 \texttt{cuda\allowbreak{}Func\allowbreak{}Set\allowbreak{}Attribute}；
 Sk$=$4 的 112 KB 超 99 KB optin 上限，只能 SKIP（占用表见 17.3.4 节）。
 
-\textbf{坑七：setmaxnreg 是目标后缀敏感的。}\texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}REG\_\allowbreak{}
-ALLOC/\allowbreak{}DEALLOC} 默认宏关闭——默认 \texttt{-arch sm\_120a} 上 ptxas 以 C7506
-丢弃该指令（第~\ref{ch:14}~章考据），而 \texttt{-arch sm\_120f}（CUDA 13.2+
-family-specific 目标）下可保留生效（ffpa-attn 实测）。默认构建里源码的
+\textbf{坑七：setmaxnreg 是 TMA 地址空间敏感的。}\texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}REG\_\allowbreak{}
+ALLOC/\allowbreak{}DEALLOC} 默认宏关闭；TMA dst 为 \texttt{shared::cluster} 时 ptxas 以 C7506
+丢弃该指令（第~\ref{ch:14}~章考据），\texttt{shared::cta} 下 sm\_120a/sm\_120f
+均保留（build.sh sm\_120f 目标为实验预设组合）。默认构建里源码的
 40/80/168 预算只是注释性意图；真实寄存器分配靠
 \texttt{\_\allowbreak{}\_\allowbreak{}launch\_\allowbreak{}bounds\_\allowbreak{}(384,\allowbreak{} 1)}。排查寄存器溢出时别把注释数字当事实。
 

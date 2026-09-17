@@ -117,12 +117,15 @@ bit-exact 等价（等价性证明注释在 L320--325，host 端
 \lstinputlisting[linerange={485-495},firstnumber=auto,
   title={common.cuh L485-495（warpgroup\_reg\_dealloc/alloc：setmaxnreg 指令模板）}]{../common.cuh}
 
-用法要点（完整事实链见第~\ref{ch:14}~章考据框）：两条指令都要求 warpgroup
-内全部 warp 同步执行；sm\_90a 上只要 PTX 完全内联即可生效，而 sm\_120a 上
-ptxas 会把 TMA 的使用当作隐式 call 边界、以 C7506 警告丢弃 setmaxnreg——
-换 family-specific 目标 \texttt{-arch sm\_120f} 才保留生效（ffpa-attn 实测，
-详见附录~\ref{app:C} 的目标选择表）。默认构建里宏展开为 \texttt{((void)0)}
-（L477--483），调用点零成本。
+用法要点（完整事实链见第~\ref{ch:14}~章考据框与坑二取证）：两条指令都要求
+warpgroup 内全部 warp 同步执行，且 WS kernel 须声明
+\texttt{\_\allowbreak{}\_\allowbreak{}launch\_\allowbreak{}bounds\_\allowbreak{}\_\allowbreak{}(N,\allowbreak{}1)}（否则 PTX 无
+\texttt{.minnctapersm}，ptxas 以 C7508 丢弃）；sm\_120 上真正的生死条件是
+TMA 的目的地址空间——dst 为 \texttt{shared::cluster} 时 ptxas 把它当作
+隐式 call 边界、以 C7506 警告丢弃 setmaxnreg，dst 为 \texttt{shared::cta}
+（common.cuh 现行实现，cute 在 SM120 门控下同款）则 sm\_120a/sm\_120f 均
+保留生效（ffpa-attn 实测，详见附录~\ref{app:C} 的目标选择表）。默认构建里
+宏展开为 \texttt{((void)0)}，调用点零成本。
 
 \section{WGMMA 家族与 host 侧 TensorMap}
 

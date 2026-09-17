@@ -47,9 +47,9 @@ Part V（第~\ref{ch:27}--\ref{ch:33}~章）的源码在独立仓库
 # 仅 Python 侧（Triton/CuTeDSL 开发，跳过 CUDA kernel 编译）
 pip uninstall ffpa-attn -y && pip install -e . --no-build-isolation
 
-# 完整 CUDA kernel 编译（本地 PRO 5000 是 sm_120a，但编译时要用
-# sm_120f 才能保留 setmaxnreg 等 family 后缀指令，见第~\ref{ch:14}~章
-# 与本附录的后缀目标对照表）
+# 完整 CUDA kernel 编译（本地 PRO 5000 是 sm_120a，用 sm_120f family 目标
+# 构建以覆盖整个 Blackwell 家族；setmaxnreg 的保留条件是 TMA dst 用
+# shared::cta（cute 在 SM120 下即如此），见第~\ref{ch:14}~章坑二取证）
 bash ./build.sh --arch sm_120f --headdim default --ext all --jobs 64
 \end{lstlisting}
 
@@ -113,12 +113,13 @@ sm\_90a & Hopper（H100/H200/H800）。WGMMA 章必需：build\_tests.sh 在其�
   compute\_90，第~\ref{ch:13}~章 13.7 节勘误）。 \\
 sm\_120a & Blackwell（RTX 5090 / PRO 5000/6000），build\_tests.sh 与本书
   验收机的默认目标：ch14/ch17/ch18 的 TMA+mbarrier 路径直接可跑。 \\
-sm\_120f & family-specific 目标（CUDA 13.2+）。\textbf{setmaxnreg 等家族
-  特性指令需要它}：sm\_120a 上 ptxas 把 \texttt{cp.\allowbreak{}async.\allowbreak{}bulk.\allowbreak{}tensor} 的
-  使用当作隐式 extern-call 边界，以 C7506 警告静默丢弃 setmaxnreg；换
-  \texttt{-arch sm\_120f} 则保留生效（ffpa-attn cute sm\_120 persist-D
-  kernel 在 PRO 5000 实测端到端可用，第~\ref{ch:14}~章考据框）。做寄存器
-  再分配对照实验时的正确目标。 \\
+sm\_120f & family-specific 目标（CUDA 13.2+），build.sh 的 setmaxnreg
+  实验目标（预设 \texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}SETMAXNREGS} 与
+  raw-PTX/cta TMA 路径）。\textbf{保留 setmaxnreg 的真正条件是 TMA dst 用
+  \texttt{shared::cta}}：dst 为 \texttt{shared::cluster} 时 ptxas 以 C7506
+  静默丢弃（与 arch 后缀无关，sm\_120a/sm\_120f 都丢；修复后两者都 112/112
+  保留，第~\ref{ch:14}~章坑二取证）。sm\_120f 额外的好处是整个 Blackwell
+  家族二进制兼容。 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -147,7 +148,9 @@ ptxas error : Entry function '_Z1kPf' uses too much shared data (0x28000 bytes, 
 
 # 4. setmaxnreg 被 ptxas 静默丢弃（warning，不是 error）
 #    ... C7506: ... ignored to maintain compatibility into 'extern' call ...
-# -> sm_120a 上 TMA 隐式 call 边界触发；对照实验换 -arch sm_120f（见上表）
+# -> TMA dst 写成了 shared::cluster（隐式 call 边界触发，与 arch 后缀
+#    无关）；改成 shared::cta 即保留（第~\ref{ch:14}~章坑二取证）。
+#    另一类触发：__launch_bounds__(N) 缺第二参数 -> C7508，补 (N, 1)。
 
 # 5. CUDA Toolkit 版本不足（common.cuh L21--24 门控）
 #error "NOTES_V2_ENABLE_TMA_MMA_WS requires CUDA Toolkit 13.0 or newer"

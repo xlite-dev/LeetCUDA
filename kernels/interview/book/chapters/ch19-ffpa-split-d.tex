@@ -511,12 +511,11 @@ Phase 3 的 rescale 是本章数学结论落地的位置——\textbf{同一个 
         且 NVCC 对每线程实际分配另设 $\le 255$ 上限——合法顶格值是 248，
         本书初版的 255 不是 8 的倍数，开宏会被 ptxas 拒绝。池算术：
         $128 \times 32 + 128 \times 232 = 33792 \le 65536$，余量
-        31744 个寄存器，远高于「留 $\ge 2048$」的安全线。注意该指令是目标后缀敏感的：默认
-        \texttt{-arch sm\_120a} 下只要 kernel 里出现
-        \texttt{cp.\allowbreak{}async.\allowbreak{}bulk.\allowbreak{}tensor}，ptxas 就会以 C7506 丢弃
-        \texttt{setmaxnreg}（第~\ref{ch:14}/\ref{ch:18}~章考据）；改用
-        \texttt{-arch sm\_120f}（family-specific 目标）即可保留生效
-        （ffpa-attn 实测）。默认构建里这两个宏是\textbf{意图注释}；真正决定
+        31744 个寄存器，远高于「留 $\ge 2048$」的安全线。注意该指令对 TMA 目的地址空间敏感：dst 为
+        \texttt{shared::cluster} 的 \texttt{cp.\allowbreak{}async.\allowbreak{}bulk.\allowbreak{}tensor} 会让 ptxas 以
+        C7506 丢弃 \texttt{setmaxnreg}（第~\ref{ch:14}/\ref{ch:18}~章考据）；
+        dst 为 \texttt{shared::cta} 则 sm\_120a/sm\_120f 均保留（本章
+        cute 路径 kernel 正属此类）。默认构建里这两个宏是\textbf{意图注释}；真正决定
         分配的是 \texttt{\_\allowbreak{}\_\allowbreak{}launch\_\allowbreak{}bounds\_\allowbreak{}(256,\allowbreak{}1)} 与 ptxas。
 \end{itemize}
 

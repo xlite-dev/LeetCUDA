@@ -208,13 +208,14 @@ Q/K/V 操作数碎片与 $m/\ell$ 统计量（L1725--1731）。$D{=}128$ 的 F16
 40 个就够。\textbf{同一份 64K 寄存器文件，按角色重新切蛋糕}——这就是 warp
 specialization 收益的另一半来源。
 
-必须补一句现实约束（第~\ref{ch:14}~章已考据）：默认 \texttt{-arch
-sm\_120a} 目标下，只要 kernel 用了 \texttt{cp.\allowbreak{}async.\allowbreak{}bulk.\allowbreak{}tensor}，ptxas
-就会以 C7506 丢弃 \texttt{setmaxnreg}（CUDA 13.2）；改用 family-specific
-目标 \texttt{-arch sm\_120f} 即可保留生效。默认构建产物里 40/168/80 是
+必须补一句现实约束（第~\ref{ch:14}~章已考据）：若 kernel 里
+\texttt{cp.\allowbreak{}async.\allowbreak{}bulk.\allowbreak{}tensor} 的目的地址写成 \texttt{shared::cluster}，
+ptxas 就会以 C7506 丢弃 \texttt{setmaxnreg}（CUDA 13.2，与 arch 后缀无关）；
+写成 \texttt{shared::cta} 后 sm\_120a 与 sm\_120f 都完整保留。默认构建产物里
+40/168/80 是
 \textbf{意图注释}而非既成事实，真正决定分配的是
 \texttt{\_\allowbreak{}\_\allowbreak{}launch\_\allowbreak{}bounds\_\allowbreak{}\_\allowbreak{}(384,\allowbreak{} 1)}（L1515）与 ptxas 的分配器。池数学的
-价值在于：一旦条件具备（sm\_90a，或 sm\_120f 目标），这套数字必须\textbf{先
+价值在于：一旦开启寄存器再分配（正确的 TMA 形式 + 宏），这套数字必须\textbf{先
 算对}，否则就是上面那次挂死事故。
 
 \section{设计与实现}
@@ -517,12 +518,13 @@ producer 阻塞在 barrier——排查口诀见第~\ref{ch:14}~章（唯一变�
 $B_c$ 或让两个 WG 共享一套更大 bank——前者改变 tile 几何，后者退回
 第~\ref{ch:17}~章的结构。
 
-\textbf{坑七：\texttt{setmaxnreg} 是目标后缀敏感的（默认 sm\_120a 丢弃，
-C7506）。}\allowbreak{}sm\_120a 目标下只要 kernel 里有 TMA（\texttt{cp.\allowbreak{}async.\allowbreak{}bulk.\allowbreak{}tensor}），
-ptxas 就视其为隐式 extern-call 边界，丢弃同 kernel 的 \texttt{setmaxnreg}；
-换用 \texttt{-arch sm\_120f}（family-specific 目标）即可保留（第~\ref{ch:14}~章）。
-所以默认构建跑出的性能里\textbf{没有}寄存器再分配的功劳；用 sm\_120f
-重建、或在 sm\_90a 上复测才是式~\ref{eq:18-pool} 的真实检验。
+\textbf{坑七：\texttt{setmaxnreg} 是 TMA 地址空间敏感的（cluster 形式丢，
+C7506）。}\allowbreak{}TMA dst 为 \texttt{shared::cluster} 时（\texttt{cp.\allowbreak{}async.\allowbreak{}bulk.\allowbreak{}tensor}），
+ptxas 视其为隐式 extern-call 边界，丢弃同 kernel 的 \texttt{setmaxnreg}；
+dst 为 \texttt{shared::cta} 时 sm\_120a/sm\_120f 均保留（第~\ref{ch:14}~章
+坑二取证，与 arch 后缀无关）。
+所以默认构建跑出的性能里\textbf{没有}寄存器再分配的功劳；用 build.sh
+的 sm\_120f 目标重建、或在 sm\_90a 上复测才是式~\ref{eq:18-pool} 的真实检验。
 
 \textbf{坑八：seqlen 对齐。}\allowbreak{}v1 要求 $N \% B_r = 0$ 且 $N \% B_c = 0$，
 本章 $B_r = B_c = 64$，比第~\ref{ch:17}~章的 128 宽松一档（无尾 tile 处理，
@@ -596,9 +598,9 @@ F16Acc $5\times10^{-2}$、F32Acc $10^{-3}$。工程细节与
 \texttt{dlopen} 解析（build\_tests.sh 不带 \texttt{-lcuda}）；include 顺序先引
 hgemm.cuh（\texttt{swizzle\_fa} 依赖它的 \texttt{swizzle<64>}）。
 
-在 \texttt{book/tests/} 目录下编译运行（6 号卡；arch 必须用 \texttt{sm\_120f}
-——本章 kernel 的 \texttt{setmaxnreg} 与 TMA 同 kernel，默认 \texttt{sm\_120a}
-下会被 ptxas 以 C7506 丢弃，见本节坑七与第~\ref{ch:14}~章的考据）：
+在 \texttt{book/tests/} 目录下编译运行（6 号卡；建议 arch 用 \texttt{sm\_120f}
+——本章测试不含 setmaxnreg 路径，sm\_120a 亦可跑，但 sm\_120f 与
+notes-v2 实验构建保持同一目标口径，见本节坑七与第~\ref{ch:14}~章的考据）：
 
 \begin{lstlisting}[style=console]
 ./build_tests.sh --arch sm_120f --ch ch18
