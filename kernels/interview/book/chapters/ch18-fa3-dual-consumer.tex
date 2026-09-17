@@ -208,7 +208,7 @@ Q/K/V 操作数碎片与 $m/\ell$ 统计量（L1725--1731）。$D{=}128$ 的 F16
 40 个就够。\textbf{同一份 64K 寄存器文件，按角色重新切蛋糕}——这就是 warp
 specialization 收益的另一半来源。
 
-必须补一句现实约束（第~\ref{ch:14}~章已考据）：若 kernel 里
+必须补一句现实约束（第~\ref{ch:14}~章已考据）：若
 \texttt{cp.\allowbreak{}async.\allowbreak{}bulk.\allowbreak{}tensor} 的目的地址写成 \texttt{shared::cluster}，
 ptxas 就会以 C7506 丢弃 \texttt{setmaxnreg}（CUDA 13.2，与 arch 后缀无关）；
 写成 \texttt{shared::cta} 后 sm\_120a 与 sm\_120f 都完整保留。默认构建产物里

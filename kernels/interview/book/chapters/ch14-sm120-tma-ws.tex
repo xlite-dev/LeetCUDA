@@ -81,7 +81,7 @@ TMA（bulk.tensor） & 有 & 有（无 multicast） & 原样复用 \\
 mbarrier & 有 & 有 & full/empty 协议复用 \\
 WGMMA（warpgroup MMA） & 有 & \textbf{无} & mma.sync + ldmatrix（ch11） \\
 swizzle 相位补偿 & descriptor base\_offset & \textbf{无} & \_\_align\_\_(1024) \\
-setmaxnreg & 可用 & 支持；cluster 形式 TMA 同 kernel 时被 ptxas 丢弃 & shared::cta dst + 宏开启 \\
+setmaxnreg & 可用 & 支持；忌 cluster 形式 TMA & cta dst + 宏开启 \\
 cluster / TMEM & cluster 有 / TMEM 无 & 均无 & 不涉及 \\
 每 SM 寄存器 & 65536 & 65536 & 池数学同型（14.3.3） \\
 smem / SM & 228KB & 100KB（L1 共 128KB） & kStages $\le$ 3 \\
@@ -502,9 +502,9 @@ build.sh 的 sm\_120f 目标（预设 \texttt{NOTES\_\allowbreak{}V2\_\allowbrea
 \texttt{-Xptxas -v} 下 C7506$\times$36 与 C7508$\times$4。
 
 \paragraph{定位方法} 第一步，\texttt{nvcc -ptx -arch=compute\_120f} 生成完整
-PTX（注意：\texttt{-gencode arch=compute\_120f,code=sm\_120f} 只产 cubin、
-fatbin 不嵌 PTX，\texttt{cuobjdump --dump-ptx} 在链接产物上查不到）；确认
-112 条都在 \texttt{.entry} 里、PTX 层无任何 \texttt{call}——排除「内联不足」
+PTX。注意：\texttt{-gencode arch=compute\_120f,\allowbreak{}code=sm\_120f} 只产
+cubin，fatbin 不嵌 PTX，故 \texttt{cuobjdump --dump-ptx} 在链接产物上查不到。
+确认 112 条都在 \texttt{.entry} 里、PTX 层无任何 \texttt{call}——排除「内联不足」
 与「函数边界」两类解释。第二步，脚本把每个 \texttt{.entry} 块单独切出来喂
 \texttt{ptxas -arch=sm\_120f}，40 个 kernel 精确复现各自的 C7506/C7508。
 第三步，对其中一个触发 kernel 做\textbf{指令手术}：按类删除整条指令再重编——
