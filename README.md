@@ -2,6 +2,7 @@
   <div align='center'>
       <img src='./docs/book.png' width='800px'><br>
       <img src=https://cdn.rawgit.com/sindresorhus/awesome/d7305f38d29fed78fa85652e3a63e154dd8e8829/media/badge.svg >
+       <a href='./kernels/interview/book/book.pdf'><img src=https://img.shields.io/badge/PDF-available-hotpink.svg ></a>
       <img src=https://img.shields.io/badge/Language-CUDA-brightgreen.svg >
       <img src=https://img.shields.io/github/forks/xlite-dev/LeetCUDA.svg?style=dark >
       <img src=https://img.shields.io/github/stars/xlite-dev/LeetCUDA.svg?style=dark >
@@ -10,10 +11,9 @@
   </div>
 </div>
 
-**LeetCUDA**: includes **Tensor/CUDA Cores, TF32/F16/BF16/F8**, [200+ CUDA Kernels](#cuda-kernel) with PyTorch, [HGEMM](./kernels/hgemm) which can achieve `98%~100%` TFLOPS of **cuBLAS**, and [flash-attn](./kernels/flash-attn) using Tensor Cores with pure MMA PTX. <i>Open sources book of <b>LeetCUDA</b> now is avaliable at <a href='./kernels/interview/book/book.pdf'>book.pdf (w/ 400+ pages)🔥🔥🔥</a>. </i> 
+**LeetCUDA**: includes **Tensor/CUDA Cores, TF32/F16/BF16/FP8**, [200+ CUDA Kernels](#cuda-kernel) with PyTorch, [HGEMM](./kernels/hgemm) which can achieve `98%~100%` TFLOPS of **cuBLAS**, and [flash-attn](./kernels/flash-attn) using Tensor Cores with pure MMA PTX. <i>Open sources book of <b>LeetCUDA</b> now is avaliable at <a href='./kernels/interview/book/book.pdf'>book.pdf (w/ 400+ pages)🔥🔥🔥</a>. </i> 
 
 <div align='center'>
-  <p><i><b>BF16 Attention</b> for Large Headdim: FFPA vs SDPA (FWD/BWD) across NVIDIA H200 and B200, 6x-15x↑. </i></p>
   <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-h20z_B1_H32_N8192_D512_T.png' width='200px'>
   <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-h20z_B1_H32_N16384_D512_T.png' width='200px'>
   <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-b200_B1_H32_N8192_D512_T.png' width='200px'>
@@ -22,7 +22,7 @@
 
 Please also check out our production-ready **Kernel Library**: [**ffpa-attn**](https://github.com/xlite-dev/ffpa-attn) - Fast and Memory-Efficient Exact Attention (**BF16/FP16/FP8/FP4**) for Large Headdim, **1.5x~15x**🔥🔥 speedup over standard PyTorch SDPA. 
 
-## 📖 Quick Start 🔥🔥
+## 📖 Quick Start
 
 ```bash
 git clone https://github.com/xlite-dev/LeetCUDA.git && cd LeetCUDA
@@ -32,15 +32,8 @@ apt remove -y libcudnn9-cuda-13 libcudnn9-dev-cuda-13 libcudnn9-headers-cuda-13
 apt install -y cudnn9-cuda-13 ccache # Also install ccache for faster rebuilds
 
 # Build for target architecture (ccache accelerated when available):
-./build.sh --arch sm_89     # Ada Lovelace (L20, RTX 40 series, CUDA Toolkit >= 13.2)
-./build.sh --arch sm_90a    # Hopper (H100/H200, CUDA Toolkit >= 13.2)
 ./build.sh --arch sm_120a   # Blackwell (RTX 5090 / PRO 5000/6000, CUDA Toolkit >= 13.2)
-./build.sh --arch sm_120f   # Blackwell family target, CUDA Toolkit >= 13.2: setmaxnreg experiment
-                            # build — enables the WS kernels' register rebalancing (NOTES_V2_ENABLE_
-                            # SETMAXNREGS + raw-PTX TMA with shared::cta dst; see common.cuh for the
-                            # C7506 pitfalls), and stays binary-compatible across the sm_120 family
-./build.sh --arch all       # All five architectures (sm_86, sm_89, sm_90a, sm_120a, sm_120f)
-./build.sh --clean          # Remove build artifacts (*.o, *.bin, *.ptx)
+./build.sh --help           # Show help for build options
 ```
 
 ```bash
@@ -78,7 +71,7 @@ apt install -y cudnn9-cuda-13 ccache # Also install ccache for faster rebuilds
 | FA Split-D CuTe TMA MMA WS (D=320, Sk=2, Sv=2)           | 1.526e-05 | 182.6/83.1 (2.20x)  |
 ```
 
-## 🤖 Agentic workflow
+## 🤖 Agentic workflow 
 
 LeetCUDA provides a [leetcuda-cpp-kernel](./kernels/interview/book/skills/leetcuda-cpp-kernel/) SKILL that reuse the knowledge and examples from the LeetCUDA open sources **book** and **repository**. Users can use it with Coding Agents, e.g, [GitHub Copilot](https://docs.github.com/en/copilot), [Claude Code](https://claude.ai), [Open Code](https://opencode.ai/). 
 
@@ -86,7 +79,7 @@ LeetCUDA provides a [leetcuda-cpp-kernel](./kernels/interview/book/skills/leetcu
  <img src='docs/leetcuda-cpp-kernel-skill.png'><br>
 </div>
 
-## ©️Citations🎉🎉
+## ©️Citations
 
 ```BibTeX
 @misc{LeetCUDA@2025,
