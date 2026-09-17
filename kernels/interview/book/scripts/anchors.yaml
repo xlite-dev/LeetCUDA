@@ -1,0 +1,244 @@
+# anchors.yaml — LeetCUDA 成书源码冻结登记（RFC-A.3）
+# 登记后源文件零改动（BOOK_PLAN §5.3）；校验脚本 verify_anchors.py
+frozen_at: "2026-09-11"
+repo_commit: "1c2c1e0a91fd24119c0c0a059413a0cf82cb4244"
+files:
+  base.cuh:
+    sha256: cda419930ad0a0670f0695372a8599f398ac7b48479e5fcb317262b5dc232ac0
+    lines: 909
+  common.cuh:
+    sha256: 17801873f984ec13490b246fb250a31228ed2a9254841604943d9286e7199088
+    lines: 781
+  sgemv.cuh:
+    sha256: 5c539154353996e0bd51650bf03dde239e3133349ada31ba345ab14f05b25c2a
+    lines: 102
+  sgemm.cuh:
+    sha256: ad78cd403ac43b0f4b9798dc8695845fafb62dfe8c582e99d61d5096557114d6
+    lines: 434
+  hgemm.cuh:
+    sha256: 8ee44fedcdc8bd1c38d85591823d198f2b0fc6daf34a70a561c3039a422b772f
+    lines: 2100
+  flash_attn.cuh:
+    sha256: c15b4150560438771098a96003f136a1f5a7108903ab57990e2d31d701791713
+    lines: 3490
+  ffpa_attn.cuh:
+    sha256: c1eae5da4748dd15d91cf00e3006ba7be94dd8df428b0384c42b977ece4b479d
+    lines: 641
+  notes-v2.cu:
+    sha256: 9a58b997d13a0ffad75964a2f05cb107abe5eee7aa3c82c67fe64deebff6f26b
+    lines: 4915
+chapters:
+  ch01:
+    refs:
+      - file: base.cuh
+        start: 1
+        end: 86
+        first_anchor: "#pragma once"
+        last_anchor: ""
+  ch02:
+    refs:
+      - file: base.cuh
+        start: 87
+        end: 305
+        first_anchor: "// ============================================================================="
+        last_anchor: ""
+  ch03:
+    refs:
+      - file: base.cuh
+        start: 306
+        end: 386
+        first_anchor: "// ============================================================================="
+        last_anchor: ""
+  ch04:
+    refs:
+      - file: base.cuh
+        start: 520
+        end: 665
+        first_anchor: "// ============================================================================="
+        last_anchor: ""
+  ch05:
+    refs:
+      - file: base.cuh
+        start: 387
+        end: 519
+        first_anchor: "// ---- Merge Attn States: 合并 Split-KV Attention 的部分结果 ----"
+        last_anchor: ""
+  ch06:
+    refs:
+      - file: base.cuh
+        start: 666
+        end: 801
+        first_anchor: "// ============================================================================="
+        last_anchor: ""
+  ch07:
+    refs:
+      - file: base.cuh
+        start: 802
+        end: 909
+        first_anchor: "// ============================================================================="
+        last_anchor: "// ============================================================================="
+  ch08:
+    refs:
+      - file: sgemv.cuh
+        start: 1
+        end: 102
+        first_anchor: "#pragma once"
+        last_anchor: "// ============================================================================="
+  ch09:
+    refs:
+      - file: sgemm.cuh
+        start: 6
+        end: 183
+        first_anchor: "// sgemm.cuh: Phase 7a SGEMM"
+        last_anchor: ""
+  ch10:
+    refs:
+      - file: sgemm.cuh
+        start: 184
+        end: 434
+        first_anchor: "// ============================================================================="
+        last_anchor: "// ============================================================================="
+  ch11:
+    refs:
+      - file: hgemm.cuh
+        start: 3
+        end: 397
+        first_anchor: "// hgemm.cuh: Phase 7b-d HGEMM (MMA/Swizzle/CuTe/WGMMA/TMA_MMA_WS)"
+        last_anchor: ""
+  ch12:
+    refs:
+      - file: hgemm.cuh
+        start: 399
+        end: 716
+        first_anchor: "// Phase 7b-3: HGEMM MMA — m16n8k16 + multistage pipeline + TN 布局 + XOR swizzle"
+        last_anchor: ""
+      - file: common.cuh
+        start: 110
+        end: 348
+        first_anchor: "// Phase 7b-3: HGEMM MMA Swizzle — m16n8k16 + multistage pipeline + TN 布局"
+        last_anchor: "// v1/v2 等价性由 host 端 test_swizzle_equiv (--swizzle-eq-check) 验证."
+  ch13:
+    refs:
+      - file: hgemm.cuh
+        start: 1428
+        end: 1857
+        first_anchor: "#if defined(NOTES_V2_ENABLE_WGMMA)"
+        last_anchor: "#endif /* NOTES_V2_ENABLE_WGMMA */"
+      - file: common.cuh
+        start: 350
+        end: 781
+        first_anchor: "#if defined(NOTES_V2_ENABLE_WGMMA) || defined(NOTES_V2_ENABLE_TMA_MMA_WS)"
+        last_anchor: "#endif /* NOTES_V2_ENABLE_WGMMA || NOTES_V2_ENABLE_TMA_MMA_WS */"
+  ch14:
+    refs:
+      - file: hgemm.cuh
+        start: 1859
+        end: 2100
+        first_anchor: "#if defined(NOTES_V2_ENABLE_TMA_MMA_WS)"
+        last_anchor: "#endif /* NOTES_V2_ENABLE_TMA_MMA_WS */"
+      - file: common.cuh
+        start: 462
+        end: 475
+        first_anchor: "//"
+        last_anchor: "// setmaxnreg experiment build with -arch sm_120f and define the macro."
+  ch15:
+    refs:
+      - file: flash_attn.cuh
+        start: 5
+        end: 110
+        first_anchor: "// Phase 8: FlashAttention-2  + MMA m16n8k16)"
+        last_anchor: "const int kPadV>             // V row padding; 0 selects compact XOR swizzle"
+  ch16:
+    refs:
+      - file: flash_attn.cuh
+        start: 5
+        end: 790
+        first_anchor: "// Phase 8: FlashAttention-2  + MMA m16n8k16)"
+        last_anchor: ""
+  ch17:
+    refs:
+      - file: flash_attn.cuh
+        start: 792
+        end: 1440
+        first_anchor: "// Phase 8b: FlashAttention-2 TMA + MMA Warp Specialization (SM120)"
+        last_anchor: "// ============================================================================="
+  ch18:
+    refs:
+      - file: flash_attn.cuh
+        start: 1441
+        end: 2192
+        first_anchor: "// Phase 8c: FlashAttention-3-style TMA + MMA Warp Specialization (SM120)"
+        last_anchor: "}"
+  ch19:
+    refs:
+      - file: ffpa_attn.cuh
+        start: 1
+        end: 641
+        first_anchor: "#pragma once"
+        last_anchor: ""
+  ch20:
+    refs:
+      - file: hgemm.cuh
+        start: 788
+        end: 820
+        first_anchor: "// Phase 7c-1: CuTe HGEMM Kernel — TN 布局 + Smem Swizzle + Multistage Pipeline"
+        last_anchor: "const int BlockSwizzle = 0>      // 1 enables 3D grid swizzle for L2 locality"
+  ch21:
+    refs:
+      - file: hgemm.cuh
+        start: 821
+        end: 1196
+        first_anchor: "__global__ void hgemm_mma_stages_tn_cute(T *Aptr, T *Bptr, T *Dptr, int m,"
+        last_anchor: "// ============================================================================="
+  ch22:
+    refs:
+      - file: ffpa_attn.cuh
+        start: 31
+        end: 79
+        first_anchor: "namespace fa_cute {"
+        last_anchor: "#if defined(NOTES_V2_ENABLE_CUTE)"
+  ch23:
+    refs:
+      - file: hgemm.cuh
+        start: 1232
+        end: 1270
+        first_anchor: "auto BM = Int<128>{};"
+        last_anchor: "// auto tCrA = thr_mma.partition_fragment_A(gA(_,_,0)); // (MMA, MMA_M, MMA_K)"
+  ch24:
+    refs:
+      - file: hgemm.cuh
+        start: 718
+        end: 1427
+        first_anchor: "// Phase 7c: HGEMM CuTe — CUTLASS CuTe DSL 实现（SM80+, Tensor Core 全自动调度）"
+        last_anchor: "#endif /* NOTES_V2_ENABLE_CUTE */"
+  ch25:
+    refs:
+      - file: flash_attn.cuh
+        start: 2196
+        end: 3488
+        first_anchor: "#if defined(NOTES_V2_ENABLE_CUTE)"
+        last_anchor: "#endif // NOTES_V2_ENABLE_CUTE"
+  ch26:
+    refs:
+      - file: ffpa_attn.cuh
+        start: 30
+        end: 65
+        first_anchor: "#if defined(NOTES_V2_ENABLE_CUTE)"
+        last_anchor: "#endif // NOTES_V2_ENABLE_CUTE"
+      - file: ffpa_attn.cuh
+        start: 79
+        end: 375
+        first_anchor: "#if defined(NOTES_V2_ENABLE_CUTE)"
+        last_anchor: "#endif // NOTES_V2_ENABLE_CUTE"
+      - file: ffpa_attn.cuh
+        start: 377
+        end: 640
+        first_anchor: "#if defined(NOTES_V2_ENABLE_CUTE) && defined(NOTES_V2_ENABLE_TMA_MMA_WS)"
+        last_anchor: "#endif // NOTES_V2_ENABLE_CUTE && NOTES_V2_ENABLE_TMA_MMA_WS"
+  appA:
+    refs:
+      - file: common.cuh
+        start: 1
+        end: 781
+        first_anchor: "#pragma once"
+        last_anchor: "#endif /* NOTES_V2_ENABLE_WGMMA || NOTES_V2_ENABLE_TMA_MMA_WS */"

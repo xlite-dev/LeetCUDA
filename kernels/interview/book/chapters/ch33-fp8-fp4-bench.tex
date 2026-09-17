@@ -1,0 +1,478 @@
+% ch33-fp8-fp4-bench.tex — FP8/FP4 性能实战：bench、精度与生态（RFC-K7）
+% 源码：ffpa-attn(861d75e) bench/bench_fp8.py(719L) + bench/bench_fp4.py(652L) + ffpa_attn.bench CLI
+\chapter{FP8/FP4 性能实战：Bench、精度与生态}\label{ch:33}
+
+\section{本章导读}
+
+第~\ref{ch:29}--\ref{ch:32}~章讲完了 fp8/fp4 attention 的全部实现；
+本章讲\textbf{怎么度量与选用}它们。这是量化 attention 的「最后一公里」：
+一个不公平的 bench 能把 2x 加速测成 0.5x（功耗墙、参照漂移、preset
+隐藏成本），一个错误的容差能把好 kernel 判成精度不合格（用 fp8 的
+容径去卡 fp4）。本章沿三条线索展开：
+\begin{enumerate}[itemsep=0pt,topsep=2pt]
+  \item \textbf{口径}：speedup 怎么算才公平（参照后端、min-of-N、
+        pre-heat、no\_grad）；精度怎么报才有信息量（布尔 allclose 之外
+        的 rel\_err/max\_abs 体系）；
+  \item \textbf{矩阵}：bench CLI 的全 knob 空间与实测——fp8/fp4 在
+        self/causal/gqa/cross $\times$ D$\in[64,512]$ 上的完整版图，
+        knob（QK int8/fp8、PV f16/f32、量化粒度、hybrid）的边际效应；
+  \item \textbf{生态}：Cache-DiT $\times$ FFPA 的端到端集成——量化
+        attention 在真实扩散模型管线里怎么落地。
+\end{enumerate}
+素材锚定 ffpa-attn \texttt{861d75e} 的 \texttt{bench/bench\_fp8.py}、
+\texttt{bench/bench\_fp4.py} 与 \texttt{ffpa\_attn.bench} CLI；本机
+实测平台 RTX PRO 5000（sm\_120），对照引用 README 的 RTX 5090 数据。
+
+\section{问题与动机}
+
+\textbf{度量陷阱一：参照系}。speedup 是比值，分子分母任何一个漂移，
+结论就作废。三个具体来源：
+\begin{itemize}[itemsep=0pt,topsep=2pt]
+  \item \textbf{SDPA 后端随 D 换挡}：FA2 只覆盖 $D\le256$，更大 D
+        静默落到 MATH（materialize 整个 $N_q\times N_{kv}$ 矩阵），
+        参照时间膨胀数倍——D=512 的「3x 加速」里有一大半是 MATH
+        慢，不是量化快（\texttt{bench\_fp8.py} L153--160 的
+        \texttt{resolve\_sdpa\_backend} 把这个换挡显式化）；
+  \item \textbf{GPU 状态污染}：5090 类高功耗卡上，前一个高功耗负载
+        会把后一个测试压进降频区（实测 FFPA kernel 撞功耗墙
+        2932$\to$2445MHz，-17\%）；A/B 两轮的 SDPA 参照必须吻合
+        （$\pm1\%$），否则整轮作废；
+  \item \textbf{preset 隐藏成本}：对比双方的功能集不对齐时，「慢」
+        可能只是「多做了事」——hybrid（fp16 前缀行）与 smooth-V
+        都是 FFPA 独有的精度功能，开着测速度对 Sage 不公平，对
+        用户也是误导。
+\end{itemize}
+
+\textbf{度量陷阱二：精度口径}。allclose 是布尔值，信息量极低：
+\begin{itemize}[itemsep=0pt,topsep=2pt]
+  \item fp4 的 e2m1 网格噪声决定了它的容差天然比 fp8 宽一个量级
+        （dense 0.15 / causal 0.70 vs fp8 的 0.05），拿错档的容差
+        会把合格品打成废品；
+  \item 只看均值不看 max 会漏掉 causal 早期行这类\textbf{结构性}
+        误差（第~\ref{ch:31}~章 31.7 节的 e2m1 噪声地板）；
+  \item 推理 bench 必须 \texttt{no\_grad}：grad-on 会强制走完整
+        autograd 链（每调用多 $\sim$30$\mu$s Python 开销，
+        \texttt{bench\_ms} 注释口径），测出的
+        是训练链路而非 kernel。
+\end{itemize}
+
+\section{数学原理}
+
+\subsection{speedup 与有效 TFLOPS}
+
+kernel 级 speedup 定义为同形状下参照与被测的耗时比：
+\begin{equation}
+  S=\frac{T_{\mathrm{SDPA}}}{T_{\mathrm{FFPA}}},\qquad
+  T=\min_{i\in[1,N]}\;t_i\;\;(\text{min-of-}N,\ N\ge5)
+\end{equation}
+min-of-N 而非均值：推理延迟的合同口径是「最好情况可稳定达到的
+水平」，毛刺（时钟迁移、后台进程）只应抬高均值，不应进入分子。
+有效算力用 attention 前向 FLOPS 归一：
+\begin{equation}
+  \mathrm{FLOPs}=4\,N_qN_{kv}DH_q\cdot\delta_{\mathrm{causal}},\qquad
+  \delta_{\mathrm{causal}}=
+  \begin{cases}1 & \text{dense}\\[2pt] \tfrac{1}{2}+\tfrac{1}{2N_{kv}} & \text{causal}\end{cases}
+\end{equation}
+（QK$^\top$ 与 PV 各占 $2N_qN_{kv}DH_q$；causal 按三角mask 减半——
+此因子在方阵 $N_q=N_{kv}$ 下与 \texttt{\_flops.py} 的精确 tail 对齐
+计数一致，非方阵 causal 的精确计数为
+$1-(N_q-1)/(2N_{kv})$，本章 bench 的 causal 均为方阵。）
+注意这是\textbf{数学} FLOPS——量化 kernel 实际吞吐的是低位宽 MMA，
+$S>1$ 的来源是「同样的数学量用快得多的数据通路完成」。
+
+\subsection{端到端摊销}
+
+单算子加速换算成管线加速要看占比。设管线总时 $T$，attention 占
+$\alpha$，则端到端 speedup 上界为：
+\begin{equation}
+  S_{\mathrm{e2e}}=\frac{T}{T-\alpha T(1-1/S_{\mathrm{attn}})}
+  \xrightarrow{\ \alpha\to1\ }S_{\mathrm{attn}}
+  \label{eq:33-e2e}
+\end{equation}
+$\alpha=0.3$、$S_{\mathrm{attn}}=2.5$x 时 $S_{\mathrm{e2e}}\approx1.22$x
+——attention 只省下 $0.3T\times0.6=0.18T$，总时从 $T$ 降到
+$0.82T$。这解释了为什么扩散模型（attention 占比高、D 偏小）是量化 attention
+的第一落地场景，也是 Cache-DiT 集成（33.7 节）的价值前提。
+
+\subsection{精度指标体系}
+
+bench 输出三层指标，各有分工：
+\begin{itemize}[itemsep=0pt,topsep=2pt]
+  \item \texttt{rel\_err} $=\lVert O-\tilde O\rVert_2/\lVert
+        \tilde O\rVert_2$（\texttt{bench\_fp8.py} L270--274）：能量级
+        偏差，衡量「整体偏了多少」；
+  \item \texttt{max\_abs}（\texttt{max|diff|}）：最坏单点
+        偏差，捕捉结构性误差（causal 早期行、坏行 bug）；
+  \item \texttt{allclose(atol=tol, rtol=tol)}：CI 门禁布尔量，tol 按
+        精度分档（\texttt{\_runner\_fwd.py} L413--419）：
+        fp16/bf16-fp8 路径 5e-2，纯 fp16 2e-2；fp4 dense 0.15、
+        causal 0.70——依据是 e2m1 网格噪声地板（第~\ref{ch:31}~章
+        31.7 节：dense 实测 max\_abs $\approx$0.003 级，0.15 留出
+        一个量级余量；causal 尖峰行天然 0.5--0.75 级，0.70 按
+        无 hybrid 抑制的地板量级取上界）。
+\end{itemize}
+读数纪律：\textbf{速度看 min、能量看 rel\_err、结构看 max\_abs、
+门禁看 allclose}，四者缺一不可——第~\ref{ch:29}~章 29.7.1 的正确性
+bug 就是「速度正常 + 均值正常 + max\_abs 结构性坏行」的组合。
+
+\section{设计与实现}
+
+\subsection{两套 bench，两个层次}
+
+\texttt{ffpa\_attn.bench} CLI（\texttt{\_bench.py}）是\textbf{矩阵层}：
+固定形状族（B1 H32 Hkv8 N8192），扫 task $\times$ dtype $\times$
+\texttt{--cuda-impl} 全 knob，输出 markdown 表 + speedup/TFLOPS 图，
+适合回归与横向选型。\texttt{bench/bench\_fp8.py}（719 行）与
+\texttt{bench/bench\_fp4.py}（652 行）是\textbf{对照层}：多 N 扫描
+（默认 \texttt{--N 8192,16384}）+ 非 32 倍数对齐场景 + SageAttention
+竞品同场，preset
+体系（\texttt{bench\_fp8.py} L57：\texttt{default}/\texttt{cache-dit}/
+\texttt{perblock}）把「部署形态」编码进配置——\texttt{cache-dit} 预设
+NHD 零拷贝 + \texttt{hybrid\_n\_early}=256，\texttt{perblock} 预设
+sm89 cp.async 路径的 per-block 量化。
+
+\subsection{测量纪律的代码化}
+
+公平测量的每条纪律都落在代码里（\texttt{bench\_fp8.py}）：
+\begin{itemize}[itemsep=0pt,topsep=2pt]
+  \item \texttt{bench\_ms} L125--140：\texttt{no\_grad} 上下文 +
+        warmup 3 + iters 5 取 min；
+  \item L344--347：SDPA pre-heat 5 次（不计入）拉稳时钟，随后按
+        FFPA $\to$ Sage $\to$ SDPA 顺序测量——功耗墙下「谁排后面谁
+        吃亏」，固定顺序 + pre-heat 把它变成可复现的偏置；
+  \item L79--122 \texttt{fp8\_backend} 加 \texttt{@lru\_cache}：
+        每次构造触发两次 \texttt{get\_device\_capability}（实测
+        重建一次 $\sim$7$\mu$s），每 iter 重建会把 Python 开销算进
+        kernel 时间；
+  \item 精度参照统一为 \texttt{ref\_bf16}（bf16 SDPA-FA2）：融合
+        kernel 内部本就 fp32 累加，bf16 指数域比 fp16 宽，fp32 SDPA
+        在大 N 会因 MATH materialize 全矩阵而 OOM（L256--259 注释）。
+\end{itemize}
+
+\subsection{CLI knob 全集}
+
+\texttt{\_bench.py} 的 \texttt{--cuda-impl}（L347--386）是一棵别名
+树：\texttt{fp8} = \texttt{cute\_tma\_fp8}，\texttt{fp8\_smk} 名义上
+加 smooth-K（但 plain \texttt{fp8} 的 smooth-K 本就默认开，两者实际
+同配置），\texttt{fp8\_smv}/\texttt{fp8\_smkv} 才真正改变配置（开
+smooth-V、V 换 per-channel），
+\texttt{\_qk\_i8} 后缀强制 int8 QK MMA；\texttt{fp4} =
+\texttt{cute\_tma\_fp4}。细粒度 knob（L387--490）分三组：
+\begin{itemize}[itemsep=0pt,topsep=2pt]
+  \item fp8 数值通路：\texttt{--fp8-qk-mm-type} $\in$
+        \{fp8, int8\}（e4m3 vs s8xs8$\to$s32）、
+        \texttt{--fp8-pv-acc-type} $\in$ \{f32, f16\}（PV 累加精度）；
+  \item 量化粒度：\texttt{--fp8-\{q,k\}-quant-method} $\in$
+        \{per-block, per-channel, per-thread\}、
+        \texttt{--fp8-v-quant-method} $\in$ \{per-block,
+        per-channel\}（per-channel 即 Sage 式 per-D scale）；
+  \item hybrid：\texttt{--fp8-hybrid}/\texttt{--fp4-hybrid}——fp16
+        persist-D 算前 \texttt{n\_early} 行、量化 kernel 算余下
+        （零冗余拼接，\texttt{q\_start\_row} 偏移实现）；causal 下
+        \textbf{默认自动开启}以保护早期行精度，Nq$\ge$
+        \texttt{n\_early}（默认 256）。
+\end{itemize}
+fp4 侧另有 \texttt{--fp4-pv-mm-type} $\in$ \{fp4, fp8\}（第~\ref{ch:32}~
+章的 mxfp8 变体）、\texttt{--fp4-hadamard}、\texttt{--fp4-smooth-v}。
+CLI 默认值即推荐值：纯 fp8 QK + f32 累加 + Q/K/V 全 per-block
+（\texttt{--cuda-impl fp8} 的解析分支，\texttt{\_bench.py} L648--650
+显式设 V=per-block、L690--694 的 q/k fallback 同为 per-block）；注意
+\texttt{bench\_fp8.py} 脚本 default preset 用的是 per-thread/per-channel
+（更细粒度、对齐 Sage 配置），两套默认不同——对比数据时必须对齐
+preset。knob 的边际效应见 33.6.3。
+
+\section{图示}
+
+四张图分两个数据源。图~\ref{fig:33-5090-fp8} 与图~\ref{fig:33-5090-fp4}
+是 ffpa-attn README 引用的 RTX 5090 结果（B1 H64 N=16384 D=128）：fp8 对
+Sage2/SDPA 的领先与 fp4 的 2.60x 满血区，用于建立「能到多少」的量级预期。
+图~\ref{fig:33-pro5000-fp8} 与图~\ref{fig:33-pro5000-fp4} 是本机 PRO 5000
+的复测（H32/Hkv8，bench 脚本默认 preset）：fp8 与 Sage 总体打平、互有
+胜负，fp4 全场景领先——绝对 TFLOPS 比 5090 低 $\sim$16\%（fp8）/$\sim$35\%
+（fp4），但形态一致。读图时记住本章动机节的三陷阱：参照系、preset 与
+GPU 状态是三个最常见的失真源。
+
+\begin{figure}[!htbp]
+  \centering
+  \includegraphics[width=0.98\textwidth]{figures/ffpa/fp8/ffpa_speedup_nvidia-geforce-rtx-5090_B1_H64_N16384_D128_T.png}
+  \caption{RTX 5090 上的 fp8 speedup（D=128，B1 H64 N=16384；
+  FFPA-FP8 $\approx$441T vs Sage2 394T vs SDPA 291T）。图源：
+  ffpa-attn README，\texttt{bench\_fp8.py} 口径。}\label{fig:33-5090-fp8}
+\end{figure}
+
+\begin{figure}[!htbp]
+  \centering
+  \includegraphics[width=0.98\textwidth]{figures/ffpa/fp4/ffpa_speedup_nvidia-geforce-rtx-5090_B1_H64_N16384_D128_T.png}
+  \caption{RTX 5090 上的 fp4 speedup（同形状；FFPA-FP4 $\approx$804T
+  / 2.60x，比同场 fp8 再快 1.8x——blockscale MMA 的满血区）。
+  图源同上。}\label{fig:33-5090-fp4}
+\end{figure}
+
+\begin{figure}[!htbp]
+  \centering
+  \includegraphics[width=0.98\textwidth]{figures/ffpa/fp8/fig-33-3-pro5000-fp8-tflops.png}
+  \caption{本机 PRO 5000 复测（fp8，D=128 fp16，H32/Hkv8，
+  \texttt{bench\_fp8.py} 默认 preset，2026-09-16）：七个场景 $\times$
+  8K/16K。与 Sage 总体打平、互有胜负（self 8K FFPA +2.0\%，
+  gqa 16K Sage +1.4\%，最差差 2.6\%）；与 5090 图的形态一致，绝对
+  TFLOPS 低 $\sim$16\%（SM 数与功耗包络差异）。}\label{fig:33-pro5000-fp8}
+\end{figure}
+
+\begin{figure}[!htbp]
+  \centering
+  \includegraphics[width=0.98\textwidth]{figures/ffpa/fp4/fig-33-4-pro5000-fp4-tflops.png}
+  \caption{本机 PRO 5000 复测（fp4，同形状，\texttt{bench\_fp4.py}，
+  2026-09-16）：FFPA-FP4（紫）在所有场景领先；Sage3 在 GQA 行缺席
+  （不支持），causal 行其 rel\_err 达 0.59（早期行 e2m1 噪声无
+  hybrid 抑制）而 FFPA-FP4 为 0.14。}\label{fig:33-pro5000-fp4}
+\end{figure}
+
+\FloatBarrier
+
+\section{性能分析}
+
+\subsection{fp8 矩阵：D 的三段形态}
+
+表~\ref{tab:33-fp8-matrix} 是 CLI 矩阵实测（PRO 5000，fp16 行；
+每格左为 FFPA/SDPA ms，右为 speedup 与 allclose）：
+
+\begin{table}[!htbp]
+  \centering\small
+  \caption{fp8 CLI 矩阵（\texttt{--cuda-impl fp8}，B1 H32 Hkv8
+  N8192，fp16；causal 默认自动 hybrid）}\label{tab:33-fp8-matrix}
+  \begin{tabular}{lcccccccc}
+    \toprule
+    & \multicolumn{2}{c}{D=64} & \multicolumn{2}{c}{D=128} & \multicolumn{2}{c}{D=256} & \multicolumn{2}{c}{D=512$^{\dagger}$} \\
+    \cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+    task & FFPA/SDPA & speedup & FFPA/SDPA & speedup & FFPA/SDPA & speedup & FFPA/SDPA & speedup \\
+    \midrule
+    self  & 1.91/2.40 & 1.26x\,\checkmark & 3.01/5.12 & 1.70x\,\checkmark & 8.13/10.55 & 1.30x\,\checkmark & 21.71/64.72 & 2.98x\,\checkmark \\
+    causal& 1.17/1.35 & 1.16x\,\checkmark & 1.89/2.70 & 1.43x\,\checkmark & 4.73/5.41 & 1.14x\,\checkmark & 12.82/32.91 & 2.57x\,$\ast$ \\
+    gqa   & 1.79/2.40 & 1.35x\,\checkmark & 2.81/5.15 & 1.83x\,\checkmark & 7.34/10.62 & 1.45x\,\checkmark & 20.46/64.73 & 3.16x\,\checkmark \\
+    cross & 0.39/0.40 & 1.01x\,\checkmark & 0.68/0.82 & 1.21x\,\checkmark & 1.83/1.39 & 0.76x\,\checkmark & 4.59/8.73 & 1.90x\,\checkmark \\
+    \bottomrule
+  \end{tabular}
+
+  \par\vspace{4pt}
+  {\footnotesize $\dagger$ D=512 参照为 SDPA-MATH（FA2 只覆盖
+  $D\le256$）；$\ast$ fp16 因已知 ESS causal 特性临界失败，bf16
+  2.55x 通过（第~\ref{ch:30}~章 30.7.1 节定性）。\par}
+\end{table}
+
+三个形态段：
+\begin{itemize}[itemsep=0pt,topsep=2pt]
+  \item \textbf{D$\le$128 主权区}：1.26x--1.83x。量化 kernel 吃满
+        tensor pipe，aux 链被主 kernel 遮蔽；
+  \item \textbf{D=256 交叉点区}：fp8 persist-D 掉到 1.14x--1.45x
+        （smem 压力 + fp4 家族在此起跑——同点 fp4 2.11x，见
+        表~\ref{tab:33-fp4-matrix}；第~\ref{ch:30}~章的 dispatch
+        三分在此切换）；cross 甚至 0.76x：Nq=1024 小 Q 场景下
+        \textbf{aux 链占比}反超主 kernel（整条前处理链的聚合
+        吞吐上限 $\approx$1.04TB/s，第~\ref{ch:28}~章 28.6 节）；
+  \item \textbf{D=512 大 D 区}：参照换 SDPA-MATH，2.98x--3.16x——
+        数字大但要正确归因：一半来自 FFPA split-D 真加速
+        （第~\ref{ch:30}~章），一半来自 MATH 参照自身的低效。
+\end{itemize}
+
+\subsection{fp4 矩阵：D$\ge$128 稳定 2x 级}
+
+\begin{table}[!htbp]
+  \centering\small
+  \caption{fp4 CLI 矩阵（\texttt{--cuda-impl fp4}，同形状，fp16；
+  16 格 allclose 全绿，tol dense 0.15 / causal 0.70）}
+  \label{tab:33-fp4-matrix}
+  \begin{tabular}{lcccccccc}
+    \toprule
+    & \multicolumn{2}{c}{D=64} & \multicolumn{2}{c}{D=128} & \multicolumn{2}{c}{D=192} & \multicolumn{2}{c}{D=256} \\
+    \cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+    task & FFPA/SDPA & speedup & FFPA/SDPA & speedup & FFPA/SDPA & speedup & FFPA/SDPA & speedup \\
+    \midrule
+    self  & 1.61/2.41 & 1.49x\,\checkmark & 2.51/5.12 & 2.04x\,\checkmark & 3.47/7.20 & 2.08x\,\checkmark & 4.96/10.47 & 2.11x\,\checkmark \\
+    causal& 1.07/1.36 & 1.26x\,\checkmark & 1.67/2.69 & 1.61x\,\checkmark & 2.40/3.92 & 1.63x\,\checkmark & 3.54/5.30 & 1.50x\,\checkmark \\
+    gqa   & 1.53/2.41 & 1.58x\,\checkmark & 2.32/5.13 & 2.21x\,\checkmark & 3.17/7.26 & 2.29x\,\checkmark & 4.50/10.50 & 2.33x\,\checkmark \\
+    cross & 0.36/0.40 & 1.10x\,\checkmark & 0.68/0.82 & 1.21x\,\checkmark & 1.02/1.16 & 1.14x\,\checkmark & 1.41/1.40 & 0.99x\,\checkmark \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+与 fp8 的三点对照：其一，D$\ge$128 后 fp4 稳定 2x 级且\textbf{随 D
+单调走强}（blockscale MMA 无 fp8 的 smem 交叉点问题）；其二，D=256
+同点 fp4 比 fp8 快 1.64x（4.96 vs 8.13ms）——第~\ref{ch:30}~章
+dispatch 表的实证；其三，cross 小 Q 场景两者同病（aux 链占比），
+fp4 也只有 0.99x--1.21x。
+
+\subsection{knob 矩阵：数值通路中性，粒度有价目}
+
+表~\ref{tab:33-knobs} 在 fp8 D=128 self（主权区中心）逐 knob 实测：
+
+\begin{table}[htbp]
+  \centering\small
+  \caption{fp8 knob 矩阵（D=128 self-attn，fp16，其余同 CLI 默认；
+  基线即 CLI 默认配置：qk=fp8、pv=f32、Q/K/V 全 per-block）}
+  \label{tab:33-knobs}
+  \begin{tabular}{lccc}
+    \toprule
+    配置 & FFPA ms & TFLOPS & vs 基线 \\
+    \midrule
+    基线（CLI 默认）           & 3.01 & 365T & --- \\
+    \quad qk=int8               & 3.06 & 359T & $-1.7\%$ \\
+    \quad pv-acc=f16            & 3.01 & 365T & $\pm0\%$ \\
+    \quad qk=int8 + pv=f16      & 3.08 & 357T & $-2.3\%$ \\
+    \quad q/k per-thread        & 3.10 & 355T & $-2.7\%$ \\
+    \quad v per-channel         & 3.07 & 359T & $-1.7\%$ \\
+    \quad smooth-v（fp8\_smv）  & 2.98 & 369T & $+1.0\%$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+读数：主权区里 kernel 主体是 QK+PV tensor pipe（占 77\%，第~\ref{ch:29}~
+章 29.6 节），数值通路 knob 全部落在 $\pm2.3\%$ 内——\textbf{精度
+选择可以按需开，速度代价可忽略}（int8 QK 略慢是 s8 通路 scale 折叠
+多一层）。粒度 knob 则有真实方向：默认的 per-block 恰是最快档
+（量化 kernel 的向量化红利，第~\ref{ch:28}~章），升到 per-thread
+（Q/K）或 per-channel（V）各付 1.7--2.7\%——精度换速度的真实价目表。
+smooth-v 略快（+1.0\%）是 V 值域压缩后 PV 溢出重缩放更少。knob 真正
+的杠杆在两端：causal 精度（hybrid）与大 D dispatch（第~\ref{ch:30}~
+章），不在主权区的数值通路。
+
+\subsection{竞品对照与硬件对照}
+
+\texttt{bench\_fp4.py}（16K，fp16，H32/Hkv8）同场四backend：
+self 场景 FFPA-FP4 523T（2.45x）$>$ Sage3 410T（1.92x）$>$
+FFPA-FP8 377T（1.77x）$>$ SDPA 213T；causal 场景 Sage3 的
+rel\_err 0.59/max 1.0（早期行 e2m1 噪声无 hybrid 抑制，
+\texttt{bench\_fp4.py} 头注释 L8--10 记录其量级 $\sim$1.2），FFPA
+的 fp4-hybrid 把 max 压到 0.28；GQA 场景 Sage3 直接缺席。fp8 侧
+\texttt{bench\_fp8.py} 与 Sage2 总体打平互有胜负（多数 $\pm$1.5\% 内，
+最差 cross-dense 8K FFPA 快 2.6\%），
+这正是 preset 公平化的结果——2026-08 之前 cachedit preset 默认开
+hybrid+smooth-v，dense 场景「慢 3--8.7\%」全是功能成本，对齐后
+反超。硬件对照：5090（图~\ref{fig:33-5090-fp4}）fp4 D=128 自测
+$\approx$804T，PRO 5000 同形状 523T——同 sm\_120 微架构，差距
+来自 SM 数与功耗包络，\textbf{形态结论（谁快谁慢、随 D 怎么走）
+跨设备可迁移，绝对数字不可}。
+
+\section{实践经验}
+
+\textbf{选用决策树}（dense 优先快、causal 先保精度）：
+\begin{enumerate}[itemsep=0pt,topsep=2pt]
+  \item D$\le$192 且精度预算允许 $\Rightarrow$ fp4（2x 级 + tol
+        0.15 内）；精度敏感行（早期行/高对比度）开 fp4-hybrid；
+  \item D=256 区间 $\Rightarrow$ fp4（fp8 persist-D 在此有 smem
+        交叉点，1.3x vs fp4 的 2.1x）；
+  \item D$>$256 $\Rightarrow$ fp8 split-D/M4N2（fp4 大 D 依赖
+        split-D 家族，按第~\ref{ch:30}~章 dispatch 表选）；
+  \item 小 Nq（decode/cross 小 Q）$\Rightarrow$ 先看 aux 链占比，
+        量化的收益可能被前处理吃光——此时 fp16 persist-D 或 SDPA
+        反而合理；
+  \item causal 一律确认 hybrid 已开（CLI 默认自动），并按 bf16
+        口径复核 allclose。
+\end{enumerate}
+
+\textbf{Cache-DiT $\times$ FFPA}。量化 attention 进入扩散模型管线
+的三个工程要点：其一，\textbf{布局}——diffusers 上游产 NHD
+[B,N,H,D]，FFPA 的 \texttt{tensor\_layout="NHD"} 走零拷贝 fast
+path（第~\ref{ch:28}~章~\ref{sec:28-nhd}~节），省掉两侧 permute；其二，
+\textbf{占比}——按式~\ref{eq:33-e2e}，attention 占比决定端到端
+收益上限，视频扩散（长序列、双流块）是最佳场景；其三，\textbf{逐层
+ knob}——cache-dit 允许按层选 backend，因果块用 hybrid、双向块用
+纯 fp4，精度损失集中在最敏感的位置修。README 引用的 NeMo Automodel
+案例（D=512 全注意力层 10/60，训练 e2e 1.4x--1.5x）是同一公式在
+训练侧的实例。
+
+\section{常见坑}
+
+\begin{enumerate}[itemsep=0pt,topsep=2pt]
+  \item \textbf{A/B 不校验 SDPA 参照}：两轮 bench 的 SDPA 时间差
+        $>1\%$ 即作废重测（GPU 级污染会同时抬高 FFPA 与 SDPA，
+        制造「全面 2x」假象）；
+  \item \textbf{小 D 静默回退}：D$\le$256 不设
+        \texttt{FFPA\_CUDA\_ALLOW\_SMALL\_D=1} 时 FFPA 静默走
+        SDPA fallback——看到 TFLOPS 只有 200T 级、profiler 里是
+        \texttt{flash\_fwd\_kernel} 就是中招；
+  \item \textbf{功耗墙顺序偏置}：高功耗卡上单顺序 bench 谁排后面
+        谁吃亏（实测差 466--491$\mu$s）；必须 pre-heat + 固定顺序，
+        关键结论用配对窗口交替复核；
+  \item \textbf{grad-on 测推理}：autograd 链每调用多 $\sim$22$\mu$s
+        Python 开销，且 fast path 永不命中——推理 bench 必须
+        \texttt{no\_grad}；
+  \item \textbf{容差档位错配}：fp4 用 fp8 的 5e-2 去卡必然全红；
+        反过来 fp8 用 0.7 会让真 bug（坏行、读错布局）漏网——
+        tol 必须随 impl 走（\texttt{\_runner\_fwd.py} L413--419 的
+        分流就是为此）；
+  \item \textbf{D=512 speedup 的参照陷阱}：MATH 后端 materialize
+        $N_q\times N_{kv}$ 矩阵，报告里必须注明参照换挡，否则
+        「3x」里近半是参照自身的低效。
+\end{enumerate}
+
+\section{面试要点速查}
+
+\begin{enumerate}[itemsep=0pt,topsep=2pt]
+  \item min-of-N + no\_grad + pre-heat + 固定顺序——推理 bench 四
+        纪律，各自防什么坑；
+  \item speedup 口径三要素：参照后端（FA2/MATH 随 D 换挡）、
+        min-of-N、E2E 摊销公式（占比 $\alpha$ 决定上界）；
+  \item 精度四指标：rel\_err（能量）/max\_abs（结构）/allclose
+        （门禁）/tol 分档（fp8 5e-2、fp4 0.15/0.7，依据 e2m1
+        噪声地板）；
+  \item knob 空间三层：数值通路（QK/PV dtype）、量化粒度
+        （per-block/channel/thread）、hybrid（前缀行 fp16 零冗余
+        拼接）；主权区数值通路 knob 中性（$\pm2.3\%$）、粒度升级
+        1.7--2.7\%，杠杆在 dispatch
+        与 hybrid；
+  \item fp4 vs fp8 的性能形态差：blockscale MMA 让 fp4 无 smem
+        交叉点、全 D 段 2x 级；fp8 在 D=256 有交叉点、大 D 靠
+        split-D；
+  \item 竞品对照的公平性：preset 对齐（hybrid/smooth-v 是功能
+        不是负担）、Sage3 的 GQA 缺席与 causal 噪声地板；
+  \item 小 Q 场景（decode/cross）的 aux 链占比问题：量化收益的
+        边界在哪里。
+\end{enumerate}
+
+\section{最小测试与动手实验}
+
+\begin{lstlisting}[style=console]
+# 实验 1：fp8 全 D 矩阵（表 33.1 口径）
+export CUDA_VISIBLE_DEVICES=7 FFPA_CUDA_ALLOW_SMALL_D=1
+for D in 64 128 256 512; do
+  python -m ffpa_attn.bench --fwd-backend cuda --cuda-impl fp8 \
+    --tasks self-attn,causal,gqa,cross-attn --D $D --no-bwd --show-allclose
+done
+# 预期：D=128 self 1.70x；D=512 参照为 MATH（注意归因）
+
+# 实验 2：fp4 全 D 矩阵（表 33.2 口径）
+for D in 64 128 192 256; do
+  python -m ffpa_attn.bench --fwd-backend cuda --cuda-impl fp4 \
+    --tasks self-attn,causal,gqa,cross-attn --D $D --no-bwd --show-allclose
+done
+# 预期：16 格全绿；D=256 self 2.11x（对照 fp8 同点 1.30x）
+
+# 实验 3：knob 矩阵（表 33.3 口径，fp8 D=128 self）
+python -m ffpa_attn.bench --fwd-backend cuda --cuda-impl fp8 \
+  --fp8-qk-mm-type int8 --tasks self-attn --D 128 --no-bwd
+python -m ffpa_attn.bench --fwd-backend cuda --cuda-impl fp8 \
+  --fp8-q-quant-method per-thread --fp8-k-quant-method per-thread \
+  --tasks self-attn --D 128 --no-bwd
+# 预期：数值通路 knob 基线 ±2.3% 内；粒度升 per-thread -2.7%
+
+# 实验 4：竞品对照 + plot 落盘（图 33.3/33.4 口径）
+python bench/bench_fp8.py --dtype fp16   # 输出 bench/.tmp/*.png
+python bench/bench_fp4.py --dtype fp16
+# 预期：FFPA vs Sage 总体打平（最差差 2.6%）；fp4 causal 行
+# Sage3 rel_err ~0.59 vs FFPA 0.14（hybrid 的作用）
+\end{lstlisting}
+
+\section*{延伸阅读}
+\begin{itemize}[itemsep=0pt,topsep=2pt]
+  \item \texttt{bench/bench\_fp8.py} L1--20（口径 docstring）与
+        L344--347（pre-heat 顺序）、\texttt{bench/bench\_fp4.py}
+        L1--14（Sage3 对照口径）；
+  \item \texttt{cli/\_bench.py} L347--386（\texttt{--cuda-impl}
+        别名树）、L387--490（fp8/fp4 knob 全集）与 L648--694
+        （\texttt{--cuda-impl} 解析出的默认量化配置）；
+  \item \texttt{cli/\_runner\_fwd.py} L413--419（tol 分档依据）；
+  \item ffpa-attn README「Performance / End-to-End Inference」节
+        （5090/PRO 6000 数据与 Cache-DiT 集成入口）；
+  \item 瓶颈归因方法论见第~\ref{ch:28}--\ref{ch:30}~章（aux 链
+        1.04TB/s、tensor pipe 77\%、dispatch 三分）。
+\end{itemize}

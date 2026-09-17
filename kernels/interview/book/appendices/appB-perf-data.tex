@@ -1,0 +1,218 @@
+% appB-perf-data.tex — 附录 B 性能数据汇总 v1（RFC-G / I.2）
+% 全部数字转录自正文各章「性能分析」节，原始 bench 数据落盘 .tmp/book-bench/chNN/。
+% 本地口径：RTX PRO 5000 72GB（sm_120a，110 SM，L2 96MB，CUDA 13.2，2026-09-11 复测）；
+% 非本地口径（README 5090 / 论文 A100）逐行单独标注，不与本地数字混排换算。
+\chapter{性能数据汇总}\label{app:B}
+
+\section{口径与标尺}
+
+除单独标注外，本附录所有数字都是本书复测：RTX PRO 5000 72GB（sm\_120a，110 SM，
+L2 96MB，CUDA 13.2），cudaEvent 计时，warmup 3--5 + 10--20 次取均值；roofline 标尺
+取自第~\ref{ch:01}~章（GDDR7 理论带宽 1344~GB/s、FP32 峰值估算 66.9~TFLOPS、
+ridge point $\approx 49.8$~FLOP/B）。读表先记三件事：（1）带宽型算子分 L2/HBM
+两口径，工作集小于 96MB L2 时实测带宽可以超过 HBM 理论值（第~\ref{ch:03}~章
+1862~GB/s 的来源）；（2）TFLOPS 跨形状不可直接比较，「形状」列必须一起读；
+（3）FLOPS 统一按 GEMM $2MNK$、attention $4BHN^2D$ 折算。
+
+\section{全书核心演进主线}
+
+\begingroup\small
+\begin{longtable}{cp{4.3cm}p{2.9cm}p{2.7cm}p{3.4cm}}
+\toprule
+章 & kernel & 形状 & 耗时/成绩 & 相对基线 \\
+\midrule
+\endfirsthead
+\toprule
+章 & kernel & 形状 & 耗时/成绩 & 相对基线 \\
+\midrule
+\endhead
+\endfoot
+\bottomrule
+\endlastfoot
+第02 & \texttt{dot} / \texttt{dot\_vec4} & $N{=}4.19\,$M & 0.042~ms；806 / 808 GB/s & 三版同为 42~$\mu$s：瓶颈是全局原子串行 \\
+第04 & \texttt{softmax}（online） & $S{=}4096$，$N{=}256$ & 0.0142~ms；591.6 GB/s & naive 0.0121~ms 最快但数值不安全 \\
+第05 & \texttt{merge\_\allowbreak{}attn\_\allowbreak{}states} & $T{=}16384$，$H{=}32$，$D{=}128$ & 0.785~ms；1031.4 GB/s & HBM 理论带宽的 77\% \\
+第07 & \texttt{mat\_\allowbreak{}transpose\_\allowbreak{}padded} & $2048^2$ & 0.0145~ms；2320 GB/s & 2.40$\times$ vs naive（L2 口径） \\
+第08 & \texttt{sgemv} k128 & $M{=}8192$，$K{=}4096$ & 0.144~ms；934.2 GB/s & 全书实测带宽参照；较 k32 +5.2\% \\
+第09 & \texttt{sgemm\_vec4} & $2048^3$ & 0.661~ms；25.97 T & 4.76$\times$ vs naive（3.144~ms，5.46 T） \\
+第10 & \texttt{sgemm\_tf32} & $1024^3$ & 28.19 T & 换 Tensor Core 的第一步 \\
+第11 & \texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn} & $1024^3$ & 76.55 T（f16 acc） & 2.71$\times$ vs 第10章 TF32 \\
+第12 & 7b-1（BK=16） & $4096^3$ & 124.7 T & 7b-3 反而 118.6--119.0 T \\
+第14 & \texttt{hgemm\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}tn} & $2048^3$ & 0.104~ms；164.64 T & 1.57$\times$ vs 第11章同形状 104.66 T \\
+第16 & FA2 split-Q（F32Acc） & $B{=}1$，$H{=}32$，$N{=}4096$，$D{=}64$ & 0.781~ms；175.88 T & F16Acc 166.56 T（F32 反快 +5.6\%） \\
+第17 & FA2 TMA+WS（F32Acc，Sk=2） & $N{=}16384$，$D{=}128$ & 195.2 T & 同口径 F16Acc 183.8 T \\
+第18 & FA3 双 consumer（F32Acc，Sk=1） & $N{=}4096$，$D{=}128$ & 194.2 T & $D{=}64$ 上 159.8 vs FA2 的 141.8（+13\%） \\
+第19 & FFPA TMA WS & $N{=}8192$，$D{=}512$ & 110.7 T vs cuDNN 57.2（1.94$\times$） & 注释口径（未复测）；README 5090：182.6 vs 83.1（2.20$\times$） \\
+\end{longtable}
+\endgroup
+
+\section{Part I：带宽型算子明细}
+
+有效带宽按各章声明的有效流量折算；L2/HBM 口径以工作集是否落入 96MB L2 划分。
+
+\begingroup\small
+\begin{longtable}{cp{3.7cm}p{2.9cm}p{2.3cm}p{2.0cm}p{2.9cm}}
+\toprule
+章 & kernel & 形状 & ms/iter & GB/s & 口径与备注 \\
+\midrule
+\endfirsthead
+\toprule
+章 & kernel & 形状 & ms/iter & GB/s & 口径与备注 \\
+\midrule
+\endhead
+\endfoot
+\bottomrule
+\endlastfoot
+第02 & \texttt{block\_\allowbreak{}reduce\_\allowbreak{}all} & $N{=}4.19\,$M & 0.0416 & 402.9 & $G{=}16384$ 次全局原子串行（2.6~ns/op） \\
+第02 & \texttt{dot} / \texttt{dot\_vec4} & 同上 & 0.0416 & 806.2 / 807.5 & vec4 零收益：原子钉死 \\
+第03 & \texttt{relu}（\_vec4） & $N{=}4.19\,$M & 0.0180 & 1862 / 1866 & L2 口径（16~MB 工作集） \\
+第03 & \texttt{elementwise\_\allowbreak{}add}（\_vec4） & 同上 & 0.0190 & 2653.7 / 2611.9 & L2 口径 \\
+第03 & \texttt{histogram} 256 bins & 同上 & 0.6286 & 26.7 & 原子争用，慢两个数量级 \\
+第04 & softmax naive / safe / online & $S{=}4096$，$N{=}256$ & 0.0121 / 0.0146 / 0.0142 & 690.6 / 572.9 / 591.6 & 短 kernel，launch 开销占比大 \\
+第05 & \texttt{merge\_\allowbreak{}attn\_\allowbreak{}states} & $T{=}16384$，$H{=}32$，$D{=}128$ & 0.7849 & 1031.4 & HBM 口径 \\
+第06 & \texttt{rms\_norm}（\_vec4） & $N{=}131072$，$K{=}128$ & 0.1289 / 0.1107 & 1041 / 1212 & L2 口径，vec4 +16\% \\
+第06 & \texttt{layer\_norm}（\_vec4） & 同上 & 0.1384 / 0.1118 & 970 / 1201 & 1-pass 稳定省约 7\% \\
+第06 & 四 kernel（HBM） & $N{=}524288$ & 0.50--0.54 & 1000--1070 & HBM 口径，vec4 收益被吸收 \\
+第07 & transpose naive $\to$ padded & $2048^2$ & 0.0347 $\to$ 0.0145 & 966 $\to$ 2320 & L2 口径 2.40$\times$ \\
+第07 & transpose padded & $8192^2$ & 0.5318 & 1010 & HBM 口径，收益缩至 1.11$\times$ \\
+第08 & \texttt{sgemv} k32 / k128 & $M{=}8192$，$K{=}4096$ & 0.1512 / 0.1437 & 888.3 / 934.2 & k128 = 带宽参照 \\
+第08 & \texttt{sgemv} k16 & $M{=}2^{20}$，$K{=}16$ & 0.1078 & 661.4 & 参照的 71\%（无 ILP 藏延迟） \\
+\end{longtable}
+\endgroup
+
+\section{Part II：GEMM 阶梯与 bank conflict}
+
+GEMM 的优化路线在三个形状上各取一段可受控对照的阶梯（T 为 TFLOPS）：
+
+\begin{center}\small
+\begin{tabular}{lp{5.2cm}rp{2.6cm}}
+\toprule
+形状 & 配置 & ms/iter & 相对基线 \\
+\midrule
+$1024^3$ & \texttt{sgemm\_tf32}（WMMA，$B_K{=}8$） & 28.19 T & 基线（第~\ref{ch:10}~章） \\
+$1024^3$ & \texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn}（HMMA，$B_K{=}16$，S=3） & 76.55 T & 2.71$\times$ \\
+$2048^3$ & \texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn}（cp.async，S=3） & 0.1641；104.66 T & 基线（第~\ref{ch:14}~章对照） \\
+$2048^3$ & \texttt{hgemm\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}tn}（TMA+WS，S=2） & 0.1043；164.64 T & 1.57$\times$ \\
+$4096^3$ & 7b-1（BK=16，kS=3，无 swizzle） & 124.7 T & 基线（第~\ref{ch:12}~章） \\
+$4096^3$ & 7b-3（BK=64，kS=2，BS=0/1） & 118.6 / 119.0 T & $-4\sim5\%$（4-way 冲突抵消同步收益） \\
+$2048{\times}16384{\times}4096$ & 7b-3 BS=1 vs BS=0 & 122.9 vs 117.9 T & 宽 N 形状 block swizzle +4.2\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+swizzle 消除 bank conflict 的微观证据（第~\ref{ch:12}~章 NCU 计数器，
+$M{=}N{=}K{=}512$）：BK=16 基线 98{,}304 次冲突/launch、17.6~$\mu$s；BK=64 无
+swizzle 691{,}067 次、30.2~$\mu$s；BK=64 + swizzle 297{,}628 次、20.7~$\mu$s
+（8-way 降 4-way，1.46$\times$）。
+
+\section{Part III：Attention 演进}
+
+除标注外均为 $B{=}1, H{=}32$ 本书复测（T 为 TFLOPS）：
+
+\begin{center}\small
+\begin{tabular}{lp{3.4cm}rp{4.6cm}}
+\toprule
+配置 & 形状 & TFLOPS & 备注 \\
+\midrule
+FA2 split-Q F16Acc & $N{=}4096, D{=}64$ & 166.56 & 与源码注释 166.6 逐位吻合 \\
+FA2 split-Q F32Acc & $N{=}4096, D{=}64$ & 175.88 & F32 累加反而更快 \\
+FA2 compact XOR（消融） & $N{=}4096, D{=}64$ & 120.0 & 注释口径；写端 wavefront 2.26$\times$ \\
+FA2 TMA WS Sk=2 F16Acc & $D{=}128$，$N{=}4096$ / $16384$ & 172.5 / 183.8 & Sk=2 即饱和（Sk=3 $<$0.5\%） \\
+FA2 TMA WS Sk=2 F32Acc & $D{=}128$，$N{=}4096$ / $16384$ & 191.1 / 195.2 & \\
+FA2 cp.async $\to$ TMA WS & $N{=}16384, D{=}128$ & 158.7 $\to$ 190.4 & 原版 harness 对照，+20\% \\
+FA3 Sk=1 F16Acc & $D{=}128$，$N{=}4096$ / $16384$ & 190.4 / 185.2 & 双 consumer，smem 限 Sk=1 \\
+FA3 Sk=1 F32Acc & $D{=}128$，$N{=}4096$ / $16384$ & 194.2 / 189.7 & \\
+FA3 vs FA2（$D{=}64$） & $N{=}4096$ & 159.8 vs 141.8 & +13\%（$B_r{=}64$ 小 tile 两条流） \\
+FFPA TMA WS vs cuDNN & $N{=}8192, D{=}512$ & 110.7 vs 57.2 & 注释口径（PRO 5000，1.94$\times$） \\
+FFPA Sk=Sv=1 $\to$ 2 & $N{=}16384, D{=}320$ & 127.2 $\to$ 182.6 & README 5090 口径（cuDNN 83.1） \\
+FA2 论文锚点 & A100 前向 & 230（73\% 峰值） & 论文口径，供量级对照 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+第~\ref{ch:18}~章的 FA2/FA3 对照不是受控 A/B（$B_r$、Sk、网格形状均不同），
+读作「两条路线在同一张卡上的量级对照」。
+
+\section{Part IV：CuTe 对照口径}
+
+CuTe 篇的核心结论是\textbf{抽象零成本}，对照维度因此不是 TFLOPS 而是
+「同一份指令序列 + 更少的代码 + 可静态断言」（详见第~\ref{ch:24}~章）：
+
+\begin{center}\small
+\begin{tabular}{llp{6.2cm}}
+\toprule
+维度 & 手写 & CuTe \\
+\midrule
+swizzle kernel 代码量 & 235 行 & 118 行 + wrapper 88 行 \\
+HGEMM kernel 代码量 & 147（7b）/ 231（7b-3）行 & 118 行 + wrapper 86 行 \\
+寄存器（\texttt{ptxas -v}） & — & 254（$B_N{=}256$/F16）/ 226（$B_N{=}128$/F32），均 0 spill \\
+SASS 指令序列 & LDGSTS + LDSM + HMMA & 同左；kernel 内联汇编 0 条 \\
+swizzle 正确性 & v1/v2 30{,}720 点 bit-exact & \texttt{Swizzle\allowbreak{}<3,\allowbreak{}3,\allowbreak{}3>} 256 点 0 差异 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Part V：FP8/FP4 量化 attention 明细}
+
+Part V（第~\ref{ch:27}--\ref{ch:33}~章）的性能口径与前三篇不同：基准是
+PyTorch SDPA（FA2 后端，$D>256$ 自动落 MATH），数字为 \texttt{ffpa\_attn.bench}
+CLI 复测（B1 H32 Hkv8 N=8192，fp16，PRO 5000，2026-09-16；tol 分档
+fp8 5e-2 / fp4 dense 0.15、causal 0.70）。speedup 一律对 SDPA 同形状。
+
+\begingroup\small
+\begin{longtable}{p{1.6cm}p{3.6cm}p{2.6cm}p{3.0cm}p{3.0cm}}
+\toprule
+章 & kernel 家族 & 形状 & 成绩 & 备注 \\
+\midrule
+\endfirsthead
+\toprule
+章 & kernel 家族 & 形状 & 成绩 & 备注 \\
+\midrule
+\endhead
+\endfoot
+\bottomrule
+\endlastfoot
+第28 & fp8 aux 链（quantize/smooth） & D=128, N=8192 & 聚合带宽 $\approx$1.04~TB/s & 纯带宽贴峰（HBM 78\%）；smk/smv 零开销 \\
+第29 & fp8 persist-D & self D$\in$[64,256] & 1.26--1.70$\times$ & D=192 正确性 bug 见 29.7.1；tensor pipe 77\% \\
+第30 & fp8 split-D / M4N2 & D=320 self / causal & 3.76$\times$ / 3.31$\times$ & D=512 2.98$\times$（参照换 MATH，见 33.6.1 归因）；causal 大 D allclose 临界失败为已知 ESS 特性（hybrid 解法） \\
+第31 & fp4 量化链（fused） & D=128 N=8192 & fused 单 launch 1.4$\to$0.3~ms & hadamard 零开销（bitwise 一致） \\
+第32 & fp4 persist-D & self D$\in$[64,256] & 1.49--2.11$\times$ & 同点 D=256 比 fp8 快 1.64$\times$；mxfp8 PV 变体 +28--39\% \\
+第33 & bench 矩阵与 knob & D=128 self & fp4 523~T（2.45$\times$） & fp4 vs fp8 1.39$\times$；粒度 knob 1.7--2.7\% 价目；Sage3 对照 causal rel\_err 0.59 vs hybrid 0.14 \\
+\end{longtable}
+\endgroup
+
+\noindent 非本地口径（ffpa-attn README，RTX 5090，引用不复测）：fp8
+D=128 FFPA-FP8 441~T vs Sage2 394~T vs SDPA 291~T；fp4 D=128
+FFPA-FP4 804~T（2.60$\times$）。同 sm\_120 微架构下 PRO 5000 绝对值低
+$\sim$16\%（fp8）/$\sim$35\%（fp4），形态结论可迁移、绝对数字不可
+（第~\ref{ch:33}~章 33.6.4）。
+
+\section{四条性能主线}
+
+\textbf{主线一：带宽（合并访问与向量化）。}\allowbreak{}Part I 的全部算子 $AI \le 0.625$，
+成绩就是有效带宽。这条线的三个台阶：先把原子/同步请出关键路径（第~\ref{ch:02}~章
+42~$\mu$s 三行全同证明全局原子串行可以完全掩盖一切带宽优化）；再做合并访问与
+向量化（\texttt{sgemv} k128 拿到 934~GB/s 的全书带宽参照）；最后认清收益边界——
+vec4 只在 L2 口径显性（第~\ref{ch:06}~章 +16--24\%），HBM 口径下被 DRAM 带宽
+吸收（第~\ref{ch:03}、\ref{ch:07}~章）。\textbf{先定层级，再选武器。}
+
+\textbf{主线二：计算（MMA 流水）。}\allowbreak{}GEMM 从 CUDA Core 的 25.97~T（vec4 已是
+该路径的 87\% 带宽上限）起步，换 HMMA 与 $B_K{=}16$ 后到 76.55~T，加深流水与
+统一 tile 到 124.7~T，TMA+warp specialization 后 164.64~T。attention 走完
+同一条路：166.6 $\to$ 195.2~T。共同规律是\textbf{流水深度很快饱和}（FA2 的
+Sk=2 即饱和、FA3 的 Sk=1 即饱和）——装载一旦退出关键路径，剩下的增益只能从
+结构上找。
+
+\textbf{主线三：结构（warp specialization 与 CuTe 抽象零成本）。}第~\ref{ch:14}~章
+把搬运端换成 TMA + mbarrier + 双角色 warp（计算指令一条不动）即得 1.57$\times$；
+第~\ref{ch:17}~章在 attention 上复现同样的 +20\%。CuTe 把这套结构变成类型：
+layout/TiledCopy/TiledMMA 全部编译期折叠，SASS 与手写同构、寄存器 0 spill、
+代码量约减半——它不直接产生加速，但让 swizzle 档位、tile 形状、流水深度这些
+\textbf{真正带来加速的算法级决策}更容易被表达、被检查、被复用。
+
+\textbf{主线四：量化（低位宽数据通路）。}\allowbreak{}Part V 把 attention 的
+数据通路从 fp16 一路降到 fp8/fp4：fp8 persist-D 1.70$\times$（D=128）起步，
+fp4 同点 2.04$\times$、大 D 靠 split-D/M4N2 3$\times$ 级。这条线的规律与
+前三条不同——收益不来自新结构，而来自\textbf{同样的数学量换更宽的通路}
+（blockscale MMA）；代价是精度管理（smooth、两级 P、hybrid），而度量本身
+也成为一门手艺（第~\ref{ch:33}~章）。

@@ -429,7 +429,7 @@ ffpa_attn_tma_mma_ws_split_d_cute(
   __syncthreads();
 
   if (is_producer) {
-    NOTES_V2_REG_DEALLOC(40);
+    NOTES_V2_REG_DEALLOC(32);
     if (wg_tid == 0) {
       auto mQ = tma_q.get_tma_tensor(make_shape(rows, Int<kHeadDim>{}));
       auto mK = tma_k.get_tma_tensor(make_shape(rows, Int<kHeadDim>{}));
@@ -481,7 +481,7 @@ ffpa_attn_tma_mma_ws_split_d_cute(
       }
     }
   } else {
-    NOTES_V2_REG_ALLOC(255);
+    NOTES_V2_REG_ALLOC(232);
     typename Traits::TiledMmaQK tiled_mma_qk;
     typename Traits::TiledMmaPV tiled_mma_pv;
     auto thr_mma_qk = tiled_mma_qk.get_thread_slice(wg_tid);

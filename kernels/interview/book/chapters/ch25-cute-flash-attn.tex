@@ -1,0 +1,852 @@
+% ch25-cute-flash-attn.tex — CuTe 应用（二）：FlashAttention 三实现对照（agent-ch25 撰写，2026-09-11）
+% 源码区间（anchors.yaml ch25）：flash_attn.cuh L2196-3488（NOTES_V2_ENABLE_CUTE 宏块）
+% \url 由 book.tex 的 hyperref 提供；单章独立编译时降级为可断行的 \ttfamily
+\makeatletter
+\providecommand{\urlchbrk}[1]{\@tfor\next:=#1\do{\next\allowbreak}}
+\makeatother
+\providecommand{\url}[1]{{\ttfamily\urlchbrk{#1}}}
+\chapter{CuTe 应用（二）：FlashAttention 三实现对照}\label{ch:25}
+
+\section{本章导读}
+
+第~\ref{ch:16}--\ref{ch:18}~章我们用「手写地址算术」实现了三代 FlashAttention：
+FA2 的 Split-Q + cp.async 多级流水（flash\_attn.cuh L5--790）、FA2 的 TMA + warp
+specialization（L792--1440）、FA3 的双 consumer warpgroup（L1441--2192）。三代实现
+都在做同一件事——把 $S=QK^\top$、online softmax、$O=PV$ 三段落进张量核与搬运
+流水之间——但每一代都要重写一遍 Q/K/V 的 smem 布局、fragment 的 lane 映射、
+ldmatrix 的地址算术与屏障协议。这不是写代码的人偷懒，而是「布局事实」在
+C++/PTX 里没有独立的落脚点：swizzle 常量、lane 位段、寄存器编号只能以裸算术
+的形式长在计算逻辑旁边。
+
+本章问一个具体的问题：\textbf{把这些布局事实搬进类型之后，同一段 attention
+会长什么样？} 答案是同一文件第四个区段的四个 CuTe 实现（L2196--3488，
+\texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}CUTE} 宏块）。它们不是四份互不相干的代码，而是
+\textbf{同一个算法的三级搭建}：实现 1
+\texttt{flash\_\allowbreak{}attn\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}split\_\allowbreak{}q\_\allowbreak{}cute}（cp.async + 统一流水，256 线程）最朴素，
+组装方式照 @reed《cute 之 简单 GEMM 实现》的「Tensor $\to$ \texttt{local\_tile}
+$\to$ partition $\to$ copy/gemm」四步走——数据怎么切、怎么分给线程、怎么搬、
+怎么算，一一对应到 CuTe 抽象；实现 2
+\texttt{flash\_\allowbreak{}attn\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}split\_\allowbreak{}q\_\allowbreak{}cute}（TMA + producer/consumer 分工，
+384 线程）在同一个算法上把搬运与计算解耦；实现 3
+\texttt{flash\_\allowbreak{}attn\_\allowbreak{}3\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}split\_\allowbreak{}q\_\allowbreak{}cute} 继续加码到 FA3 式双 consumer
+（奇偶拆 KV + 终态归并）。第四个实现
+\texttt{flash\_\allowbreak{}attn\_\allowbreak{}3\_\allowbreak{}cute\_\allowbreak{}tma\_\allowbreak{}copy\_\allowbreak{}smoke}（41 行）不是 attention，而是
+一条 TMA 搬运链路的自检闭环——它的存在本身就是「先把搬运与计算解耦再排查」
+的方法论。这是 Part~IV 的倒数第二章，也是「抽象换代码量」这条主线在
+attention 上的完整样本。
+
+本章的组织方式\textbf{以动机为线}：三级搭建逐级回答上一级留下的问题——实现 1
+的浪费在哪、为什么实现 2 要把搬运拆出去、为什么实现 3 要拆 KV。四个实现共享
+同一组编译期布局类型（\texttt{Flash\allowbreak{}Attn2\allowbreak{}Cu\allowbreak{}Te\allowbreak{}Traits} /
+\texttt{Flash\allowbreak{}Attn3\allowbreak{}Cu\allowbreak{}Te\allowbreak{}Traits}）与五个 kernel 级工具函数，
+这正是第~\ref{ch:22}~章「TiledMMA 与 fragment」在真实 kernel 里的落点：
+
+\begin{itemize}[itemsep=1pt,topsep=2pt]
+  \item \texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}rowcol} 与 \texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}Aregs}
+        ——两次 fragment 重排（25.3.3/25.3.4 节）；
+  \item \texttt{convert\_\allowbreak{}type}、\texttt{gemm\_ss}、\texttt{gemm\_rs}——类型转换与
+        两个 GEMM 调用范式（25.4.1 节）。
+\end{itemize}
+
+五个函数里最值得单独立节的是 \texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}Aregs}：$P$
+（softmax 后的分数矩阵）要从 QK 的累加器变成 PV 的左操作数，这一步是 CuTe 版
+FA 最容易被一笔带过、又最值得写透的地方，也正是 @竹熙佳处
+《写给大家看的 CuTe 教程：Layout Compose \& Inverse》专门讨论的场景。
+
+\textbf{前置章节}：第~\ref{ch:17}~章（手写 TMA+WS 的 mbarrier 协议）、
+第~\ref{ch:18}~章（FA3 双 consumer 与 merge）、第~\ref{ch:21}~章
+（Tensor 与 TiledCopy：G2S/S2R 分工）、第~\ref{ch:22}~章（TiledMMA、EURepeat、
+fragment 与 rowcol 变换）。\textbf{源码区间}：flash\_attn.cuh L2196--3488。
+\textbf{编译宏}：\texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}CUTE}（四个实现都需要 TMA 或
+cp.async 的 CuTe 抽象；sm80+ 可编）；后三个实现另需
+\texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}TMA\_\allowbreak{}MMA\_\allowbreak{}WS}（TMA 指令，sm90+ 硬件）。
+本节默认实例化取 $D\in\{64,128\}$、$B_r\in\{64,128\}$、$B_c=64$。
+配套最小测试 \texttt{book/\allowbreak{}tests/\allowbreak{}ch25\_\allowbreak{}fa\_\allowbreak{}cute.\allowbreak{}cu}（正确性 + 结构断言）。
+预计篇幅约 15 页。
+
+\section{问题与动机}
+
+先把手写版的「维护面」摊开。第~\ref{ch:16}~章的 FA2 kernel 共 564 行有效代码，
+其中与「布局事实」直接相关的至少有五类，且每一类都以裸地址算术的形式出现：
+
+\begin{enumerate}
+  \item \textbf{smem 行距与 padding}：$kSmemStrideQ/K/V = D+\mathrm{pad}$，
+        pad 取 8 个 half 使 ldmatrix 的 8 行起始 bank 铺满 32 个 bank；
+        $pk$ 与 $kPad$ 的组合还决定走 XOR swizzle 还是 padding 路径；
+  \item \textbf{ldmatrix 的 lane 映射}：Q 用 \texttt{ldmatrix.x4}、
+        K 用 \texttt{ldmatrix.x2}、V 用 \texttt{ldmatrix.\allowbreak{}x2.trans}，
+        三者的行/列由 \texttt{lane} 的位段手工拼出；
+  \item \textbf{fragment 的寄存器编号}：$R\_S[8][2]$、$R\_O/R\_D[8][2]$
+        是「哪个寄存器对应矩阵哪个元素」的硬编码答案，4-lane 归约宽度
+        （\texttt{warp\_\allowbreak{}reduce\allowbreak{}<4>}）也是从这套编号推出来的；
+  \item \textbf{搬运粒度的地址划分}：256 线程协作加载时
+        \texttt{load\_\allowbreak{}smem\_\allowbreak{}Q\_\allowbreak{}Br =\allowbreak{} tid/\allowbreak{}2} 这类映射；
+  \item \textbf{屏障计数}：producer/consumer 的 arrive\_count（第~\ref{ch:17}~章
+        的 257 协议、第~\ref{ch:18}~章的 per-WG 129）。
+\end{enumerate}
+
+第~\ref{ch:20}~章已经论证过这五类事实的联动代价：改一个 tile 尺寸，至少三处
+要跟着改，且错误是静默的。CuTe 版的答案是把它们全部收进
+\textbf{编译期类型}：smem 布局是 \texttt{tile\_\allowbreak{}to\_\allowbreak{}shape} 的返回类型、fragment
+布局是 \texttt{partition\_\allowbreak{}fragment\_\allowbreak{}A/B/C} 的返回类型、搬运是
+\texttt{TiledCopy} 的 TV 划分、连 V 的转置视图都是
+\texttt{composition} 表达式的类型。kernel 正文里只剩三类语句：
+数据流（\texttt{copy}/\texttt{gemm}）、同步（barrier / \texttt{cp.\allowbreak{}async.\allowbreak{}wait}）
+与 online softmax 的标量运算。用一句话核对「抽象掉了什么」：\textbf{坐标计算}
+收进 \texttt{local\_tile}/\texttt{partition} 的类型、\textbf{fragment 手工索引}
+收进 \texttt{partition\_\allowbreak{}fragment} 的返回布局、\textbf{拷贝指令的选择}
+收进 \texttt{TiledCopy} 的原子类型（G2S 选 cp.async 还是 TMA、S2R 选哪个
+ldmatrix 形态）——三件事都不再出现在 kernel 正文里。
+
+量化一下收益。表~\ref{tab:25-code} 用「区间总行数 / 去注释空行的有效代码行数」
+对照三对实现（手写版区间与 CuTe 版区间都取自同一文件，统计口径一致：行以
+\texttt{\textbackslash n} 计，注释行指以 \texttt{//} 开头的行）。
+
+\begin{table}[htbp]
+\centering
+\caption{手写版与 CuTe 版的有效代码行数对照（flash\_attn.cuh，2026-09-11 统计）。
+「结构件」指 FA2/FA3 traits 与五个工具函数（L2197--2490），它们被后四个实现共享。}
+\label{tab:25-code}
+\begin{tabular}{llrr}
+\toprule
+实现 & 区间 & 总行数 & 有效代码行 \\
+\midrule
+FA2 手写（Split-Q + cp.async） & L5--790 & 786 & 564 \\
+FA2 手写（TMA + WS） & L792--1440 & 649 & 451 \\
+FA3 手写（双 consumer） & L1441--2192 & 752 & 515 \\
+\midrule
+CuTe 结构件（traits + 5 个工具函数） & L2197--2490 & 294 & 107 \\
+CuTe 实现 1（cp.async） & L2493--2803 & 311 & 206 \\
+CuTe 实现 2（TMA + WS） & L2807--3123 & 317 & 252 \\
+CuTe 实现 3（FA3 双 consumer） & L3126--3445 & 320 & 270 \\
+CuTe 实现 4（TMA copy smoke） & L3447--3488 & 42 & 36 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+读法要克制：CuTe 版并没有「更少的总代码」——结构件（107 行）加三个实现
+（728 行）合计 835 行，反而比手写三代（1530 行）少不了太多；真正的差别在
+\textbf{每一行代码的语义密度}与\textbf{改动的影响面}。手写版的 564 行里，
+地址算术与 lane 映射大约占四成，它们随 tile 形状与 arch 改动而整体失效；
+CuTe 版的 206 行里几乎没有地址算术，改 $B_r$ 只需要换 traits 里的
+\texttt{Shape}（实现 1/2/3 的 $B_r{=}128/128/64$ 就是这么分出来的，见
+表~\ref{tab:25-struct}）。更关键的是：四个实现共享同一份 traits 与同一组
+\texttt{gemm\_ss}/\texttt{gemm\_rs}——这正是第~\ref{ch:24}~章 hgemm 里
+「换 tile 不改 kernel 正文」在 attention 上的复现。
+
+另一层动机来自\textbf{可验证性}。手写版的三代实现里，唯一被复用的验证资产是
+端到端数值对照；而 CuTe 版把布局变成可打印、可断言的类型：本章的测试正是
+在 host 端断言 \texttt{tile\_\allowbreak{}size\_\allowbreak{}mnk}、fragment 元素数、rowcol 形状与
+D-chunk 的 \texttt{local\_tile} 语义——这些断言的「真值」直接来自
+\texttt{print\allowbreak{}(layout)} 的实测输出（25.9 节的 case A 清单给出全部数字）。
+
+三级搭建的分工也由此而来：实现 1 先回答「能不能用 CuTe 把 attention 写对」，
+实现 2 回答「搬运为什么要从计算线程手里拿走」，实现 3 回答「KV 方向的并行度
+怎么加」。25.4 节的三个小节按这个顺序展开，每一节只重点讲该级新引入的东西，
+共享层的类型推导统一放在 25.3 节。
+
+\section{数学原理}
+
+\subsection{两个 traits：编译期布局的「配置表」}
+
+CuTe 版 attention 的第一步是把「tile 几何 + 数据格式」编译期化。
+\texttt{Flash\allowbreak{}Attn2\allowbreak{}Cu\allowbreak{}Te\allowbreak{}Traits}（L2200--2243）与 \texttt{Flash\allowbreak{}Attn3\allowbreak{}Cu\allowbreak{}Te\allowbreak{}Traits}
+（L2250--2312）干的就是这件事，它们是两份只含 \texttt{using} 的配置表：
+
+\lstinputlisting[linerange={2226-2242},firstnumber=auto,
+  title={flash\_attn.cuh L2226-2242（\texttt{Flash\allowbreak{}Attn2\allowbreak{}Cu\allowbreak{}Te\allowbreak{}Traits}：swizzle 后的 smem layout 与 \texttt{TiledMma}）}]{../flash_attn.cuh}
+
+逐字段读。\texttt{Smem\allowbreak{}Layout\allowbreak{}Atom =\allowbreak{} GMMA::\allowbreak{}Layout\_\allowbreak{}K\_\allowbreak{}SW128\_\allowbreak{}Atom\allowbreak{}<Element>}
+是「一个原子」：$8\times64$ 个 half（每行 64 half $=$ 128\,B）加
+\texttt{Swizzle\allowbreak{}<3,\allowbreak{}4,\allowbreak{}3>}，一个 swizzle 周期是 8 行 $=$ 1024\,B
+（traits 头注释把它写成「$8\times8$ atom」是笔误——原子实际是 8 行、
+行宽 128\,B，half 下即 $8\times64$；第~\ref{ch:23}~章会展开它与
+\texttt{CU\_\allowbreak{}TENSOR\_\allowbreak{}MAP\_\allowbreak{}SWIZZLE\_\allowbreak{}128B} 的对应）；\texttt{tile\_\allowbreak{}to\_\allowbreak{}shape}
+把原子铺满目标形状——Q 是 $B_r\times D$、K/V 是 $B_c\times D$。于是
+「smem 里 Q/K/V 长什么样」不再是散落在 kernel 里的 stride 变量，而是
+两个类型的 \texttt{cosize}（实测：$B_r{=}128,D{=}64$ 时 Q 占 8192 个
+half，K/V 各占 4096 个——本章 25.9 节的 case A 断言清单与这批数字同源）。
+
+V 的转置视图是第一个值得写透的细节：
+
+\begin{equation}
+  \mathrm{SmemLayoutVt} \;=\; \mathrm{composition}\bigl(\mathrm{SmemLayoutKV},\;
+  \mathrm{make\_layout}(\mathrm{Shape}\langle D, 64\rangle, \mathrm{GenRowMajor})\bigr).
+  \label{eq:25-vt}
+\end{equation}
+
+\texttt{composition\allowbreak{}(A,\allowbreak{} B)} 的语义是「先按 B 在 A 的定义域里取坐标、再代入 A」
+（第~\ref{ch:20}~章的 $R(c)=A(B(c))$）。这里 \texttt{A} 是 V 在 smem 中的
+物理布局（row-major 的 $[64,D]$ 加 swizzle），\texttt{B} 是逻辑上的
+row-major $(D,64)$——两者复合后的结果才是「$V^\top$ 的访问接口」的
+col-major 视图：逻辑坐标 $(d, j)$ 被解释为 V 的第 $j$ 行第 $d$ 列。它的实测类型是
+\texttt{Sw\allowbreak{}<3,\allowbreak{}4,\allowbreak{}3> o \allowbreak{}(64,\allowbreak{}64):\allowbreak{}(1,\allowbreak{}64)}，即 $V^\top(d,j) \mapsto d + 64j$
+的 col-major 视图，\textbf{一个字节都不搬}——这正是 $P@V$ 需要的 B 操作数
+形态（\texttt{mma.row.col} 要求 B 为 col-major），也是 25.7 节「常见坑」里
+「不要用带 swizzle 的 Vt 视图推导寄存器布局」的由来。
+
+\begin{remark}
+  式~\eqref{eq:25-vt} 的 \texttt{composition} 与第~\ref{ch:12}~章手写版的
+  「V 用 \texttt{ldmatrix.\allowbreak{}trans} 转置加载」解决的是同一个问题。手写版把
+  「转置」落在\textbf{指令}上（\texttt{.trans}），CuTe 版把「转置」落在
+  \textbf{布局}上（\texttt{composition}），然后在 S2R copy 的 atom 里选择
+  \texttt{SM75\_\allowbreak{}U16x8\_\allowbreak{}LDSM\_\allowbreak{}T}——两条路最终都编到
+  \texttt{ldmatrix.\allowbreak{}sync.\allowbreak{}aligned.\allowbreak{}x2.trans}，但前者的地址算术消失了。
+\end{remark}
+
+\subsection{TiledMMA 的类型推导链：从 atom 到 EURepeat}
+
+第~\ref{ch:22}~章给出了 TiledMMA 的三元组
+$(\mathrm{Atom},\ \mathrm{AtomLayout},\ \mathrm{Tile})$。attention 的两个
+traits 分别声明：
+
+\begin{align}
+  \text{FA2:}\quad & \mathrm{Atom}=\mathtt{SM80\_\allowbreak{}16x8x16\_\allowbreak{}F32F16F16F32\_\allowbreak{}TN},\quad
+    \mathrm{AtomLayout}=\langle 8,1,1\rangle,\quad \mathrm{Tile}=\langle 128,16,16\rangle ;
+  \label{eq:25-mma2}\\
+  \text{FA3:}\quad & \mathrm{Atom}\ \text{同上},\quad
+    \mathrm{AtomLayout}=\langle 4,1,1\rangle,\quad \mathrm{Tile}=\langle 64,16,16\rangle .
+  \label{eq:25-mma3}
+\end{align}
+
+\texttt{TiledMMA} 的内部把 Tile 与「atom $\otimes$ AtomLayout」相除，得到
+\textbf{EURepeat}（每线程补足 tile 所需的 atom 重复数）：
+
+\begin{equation}
+  \mathrm{EURepeat} \;=\; \frac{\mathrm{Tile}}{\mathrm{AtomShape}\otimes \mathrm{AtomLayout}}
+  \quad\Longrightarrow\quad
+  \begin{cases}
+    \text{FA2: } (128,16,16)\oslash(128,\ 8,\ 16) = \langle 1,2,1\rangle,\\[2pt]
+    \text{FA3: } \langle 64/64,\ 16/8,\ 16/16\rangle = \langle 1,2,1\rangle .
+  \end{cases}
+  \label{eq:25-eurepeat}
+\end{equation}
+
+（记 $\otimes$ 为「atom 形状按 AtomLayout 放大」：$\langle16,8,16\rangle\otimes
+\langle8,1,1\rangle=\langle128,8,16\rangle$，$128$ 行的 $M$ 方向被 8 个
+warp（每 warp 16 行）分完，故 $M$ 向 EURepeat 为 1；$N$ 向 16 列需要 2 个 $n8$ atom，
+$K$ 向 16 恰好一个 atom。）两条式子的 $N$ 向重复都是 2，这不是巧合：
+两份 traits 都选择「一次逻辑 MMA 覆盖 16 列」，原因是 $B_c=64$ 的
+S 矩阵按 16 列一块推进，softmax 的行归约粒度与之匹配。
+
+推导链的终点是\textbf{每线程的 fragment}。\texttt{partition\_\allowbreak{}fragment\_\allowbreak{}C}
+把逻辑张量按 TiledMMA 的线程-值划分切开，本章测试在 device 端打印出的
+实测形状是（$D{=}64$，$B_r{=}128$）：
+
+\begin{equation}
+  \text{FA2 的 } S/O\ \text{fragment}:\quad
+  \underbrace{(2,2)}_{4\ \text{值}}\times\underbrace{1}_{\text{MMA\_M}}
+  \times\underbrace{8}_{\text{MMA\_N}} \;=\; 32\ \text{f32/线程},
+  \label{eq:25-frag}
+\end{equation}
+
+其中 $8 = (B_c/16)\times 2$ 是「4 个 $N$ tile × 每 tile 2 个 atom」——
+\textbf{fragment 的元素数只由 atom 与线程布局决定，与 Tile 的 $N$ 无关}：
+把 Tile 换成 $\langle128,64,16\rangle$ 不会让累加器变多，只会改变
+\texttt{gemm()} 内部 atom 的组织粒度。这条事实对后面理解 FFPA 的
+「双 TiledMma」至关重要（第~\ref{ch:26}~章 26.3 节会回到它）。
+
+\subsection{rowcol 变换：把累加器「掰」成行×列}
+
+online softmax 需要按行操作 S（行 max、行内 exp、行和）。但
+\texttt{m16n8k16} 的累加器 fragment 按 $(\mathrm{MMA}=4,\ \mathrm{MMA\_M},\
+\mathrm{MMA\_N})$ 排布：4 个寄存器在 lane 内的编号并不直接对应「行优先」。
+\texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}rowcol}（L2315--2339）做一次纯 layout 变换：
+
+\lstinputlisting[linerange={2333-2339,2366-2372},firstnumber=auto,
+  title={flash\_attn.cuh L2333-2339 + L2366-2372（共享层：\texttt{rowcol} 与 \texttt{Aregs} 两次 fragment 重排）}]{../flash_attn.cuh}
+
+代数上，它先把第一 mode 按 \texttt{Shape<\_2>} 做
+\texttt{logical\_\allowbreak{}divide}：
+\[
+  (4,\ \mathrm{MMA\_M},\ \mathrm{MMA\_N})
+  \;\longrightarrow\;
+  \bigl((2,2),\mathrm{MMA\_M},\mathrm{MMA\_N}\bigr),
+\]
+然后重组成
+
+\begin{equation}
+  \bigl(\underbrace{(2,\mathrm{MMA\_M})}_{\text{nrow}},\;
+  \underbrace{(2,\mathrm{MMA\_N})}_{\text{ncol}}\bigr).
+  \label{eq:25-rowcol}
+\end{equation}
+
+为什么是「前 2 与 $\mathrm{MMA\_M}$ 配对、后 2 与 $\mathrm{MMA\_N}$ 配对」？
+看 $m16n8$ 的 C fragment 约定：4 个寄存器 $(c_0,c_1,c_2,c_3)$ 中
+$(c_0,c_1)$ 是同一行、相邻两列（列偏移 $+1$），$(c_2,c_3)$ 是行偏移 $+8$ 的
+另一组两列。即「寄存器编号的 bit0 = 列、bit1 = 行（$+8$）」，这正是
+$\mathrm{MMA}=4 \to (2_{\text{行}},2_{\text{列}})$ 的
+\texttt{logical\_\allowbreak{}divide} 分解；再与 $\mathrm{MMA\_M}/\mathrm{MMA\_N}$
+里的 rest 段配对后，$\mathrm{nrow}=2\cdot \mathrm{MMA\_M}$、
+$\mathrm{ncol}=2\cdot \mathrm{MMA\_N}$。实测（$D{=}64$、$B_r{=}128$）：
+
+\begin{equation}
+  \mathrm{rowcol}(S) = \bigl((2,1),(2,8)\bigr):\bigl((2,0),(1,4)\bigr)
+  \;\Rightarrow\; \mathrm{nrow}=2\times1=2,\quad \mathrm{ncol}=2\times8=16 .
+  \label{eq:25-rowcol-num}
+\end{equation}
+
+变换后的 tensor 与原 tensor \textbf{共享数据指针}（同一组寄存器），
+只是索引语义变了：\texttt{scores(r, c)} 的 $r$ 是行、$c$ 是列，
+于是行归约可以写成 \texttt{for c: max}，再对 4-lane 子组做两次
+\texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor\_\allowbreak{}sync}（步长 1、2）——为什么是 4-lane？因为
+式~\eqref{eq:25-rowcol-num} 里 $r$ 的第二个 mode（$\mathrm{MMA\_M}$ 的 rest）
+在 lane 内的宽度是 $2\times2=4$：$\mathrm{lane}/4$ 决定行号
+（寄存器对给 $+8$ 行），$\mathrm{lane}\bmod4$ 决定行内 4 个列片段
+之一——两次蝶形恰好把 4 条 lane 的行片段合并。
+
+\subsection{P 矩阵的布局变换：从 C-layout 到 A-layout}
+
+$O=PV$ 里 $P$ 是左矩阵 A。QK 的累加器 $S$ 要么写回 smem 再 ldmatrix（费一次
+往返），要么原地重解释为 A fragment——FA 的经典优化。CuTe 把这一步写成
+\texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}Aregs}（L2341--2372）。在展开代数之前，先把这个问题的
+几何摆清楚。
+
+\textbf{问题的几何}。$m16n8k16$ 的 C fragment 里，每个线程的 4 个值
+$(c_0,c_1,c_2,c_3)$ 是「同一行、相邻两列」（列偏移 $+1$）的一对，加
+「行偏移 $+8$」的另一对；当这块 C 要变成下一条 mma 的左操作数 A 时，
+A 的 K 向（$PV$ 的归约维）恰好是 C 的列向。也就是说：\textbf{「C 的相邻 2 列」必须原样成为「A 的
+K 向相邻 2 值」}——数据一个比特都不用改，缺的只是「换一套坐标读同一批
+寄存器」。直接拿 C 的 layout 去调 \texttt{gemm}，会被 CuTe 以「layout 不
+符合 A 的约定」拒绝；@竹熙佳处 的教程正是拿这个场景当 layout 变换的入门
+例子。
+
+\textbf{两条讲法}。对「同一批数据、换一套坐标」，中文社区有两位作者把各自
+的写法写透了，恰好构成一组对照：
+
+\begin{itemize}[itemsep=2pt,topsep=2pt]
+  \item \textbf{几何法（Tri Dao 的 \texttt{logical\_\allowbreak{}divide}）}：把
+        $(\mathrm{MMA}{=}4,\ \mathrm{MMA\_M},\ \mathrm{MMA\_N})$ 在列方向
+        「切一刀」——令 $\mathrm{MMA\_N}=(2,\ \mathrm{MMA\_N}/2)$，再用
+        \texttt{make\_layout} 把切出的分量按 A 的约定重新配对。@竹熙佳处
+        把它概括为「在几何层面上做一次重排」：思考单位是 shape 的拆分
+        与配对；
+  \item \textbf{代数法（@reed 的 inverse $\circ$ compose）}：不碰 shape，
+        把变换写成函数复合——先取 layout 的「坐标 $\leftrightarrow$
+        offset」关系（\texttt{left\_\allowbreak{}inverse}），再把「A 坐标 $\to$ offset
+        $\to$ C 坐标 $\to$ C 寄存器编号」串成一条链（\texttt{compose}），
+        最后复合到原 tensor 上。教程用四行代码复刻了这条链，并指出它不
+        需要人工判断「哪一段对哪一段」——对应关系由代数自己推出来。
+\end{itemize}
+
+两条路的\textbf{结果完全一致}，差别在风格与适用范围：几何法假设布局规整、
+编译期已知，是「拼图式」的；代数法对不规整访问更从容——素材里提到的
+w4a8 混合精度、2:4 稀疏 GEMM 等场景没有规整形状可用，代数法是更自然的
+工具。选型建议：规整的静态布局用几何法，其余情况先想代数法。
+
+\textbf{本书源码用的是几何法}。\texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}Aregs}
+（L2367--2372）就是 \texttt{logical\_\allowbreak{}divide} 的化身：一行拆分
+（\texttt{Shape<X, X, \_2>}）加一行重组（\texttt{make\_layout}），与上面
+几何法的思路逐项同构；注释（L2352--2362）还标出了它的出处——官方 FA2 的
+\texttt{flash-attention/\allowbreak{}utils.\allowbreak{}h:200}。同族的
+\texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}rowcol}（L2334--2339，25.3.3 节）也是
+\texttt{logical\_\allowbreak{}divide} 路线：本章三个实现与官方 FA2 在「静态规整」的场景
+下都选了几何法，代数法的用武之地留给更复杂的变换（第~\ref{ch:26}~章 FFPA
+的双 TiledMma 交接用的是同一个几何法，见 26.3.3 节）。
+
+
+
+把上面的几何法写成代数动作，就是「列拆半 + 重新配对」：
+
+\begin{equation}
+  (\underbrace{4}_{\text{值}}, \mathrm{MMA\_M}, \underbrace{(2, \mathrm{MMA\_N}/2)}_{\text{列拆半}})
+  \;\longrightarrow\;
+  \bigl((\underbrace{4,2}_{\text{新 MMA}}), \mathrm{MMA\_M}, \mathrm{MMA\_N}/2\bigr).
+  \label{eq:25-aregs}
+\end{equation}
+
+式子读回物理即前文那句话：$S$ 的列方向两个值（$+0$ 与 $+1$ 列）成为 A 的
+K 向连续 2 个元素。实测结果是 $((2,2),2),1,4$：仍是 32 个元素、原寄存器，
+只是 type 从 f32 转换为 f16——\texttt{convert\_\allowbreak{}type}（L2375--2395）按当前
+布局的连续段做一次向量化批量转换。
+
+\begin{remark}
+  式~\eqref{eq:25-aregs} 的成立依赖 $m16n8k16$ 的\textbf{特定} fragment
+  约定——它不是通用性质。换成 $k8$ 的 atom 或 Hopper 的 wgmma（操作数在
+  寄存器文件之外）就得另写。源码注释 L2360--2362 特意标注了这一点，
+  是本章「常见坑」第六条的规范来源。几何法与代数法都改不了这个前提：
+  \textbf{布局代数能帮你推坐标，不能帮你改约定}。
+\end{remark}
+
+\subsection{两套流水的语义：cp.async 的组栈与 TMA 的事务计数}
+
+四个实现里有两种异步机制，它们的「等待语义」值得在数学上对齐。
+
+\textbf{cp.async 的组栈}：\texttt{cp.\allowbreak{}async.\allowbreak{}commit\_\allowbreak{}group} 把当前在途的搬运
+压栈，\texttt{cp.\allowbreak{}async.\allowbreak{}wait\_\allowbreak{}group N} 等待「栈顶往下恰好 $N$ 组未完成」——
+即等到「已完成组数 $\ge$ 总组数 $-N$」。对深度 $k$ 的 software pipeline，
+提交顺序是「V[tile]（栈底）→ K[tile+k-1]（栈顶）」，于是
+\texttt{wait\_group 1} 的含义是「除栈顶的 K 之外全部完成」=「V[tile] 已就绪、
+K[next] 还inflight」。实现 1 就是靠这条栈语义把 V 与 K 的等待分开的
+（L2743--2754）：$kStagesK>1$ 且非尾部时用 \texttt{cp\_\allowbreak{}async\_\allowbreak{}wait\allowbreak{}<1>}，
+尾部退回 \texttt{wait<0>}。注意组编号是 \textbf{per-thread 记账}的
+（PTX ISA §9.7.9.25.3.3：wait 只保证\emph{本线程}提交的组完成），所以实现 1
+里每一处 \texttt{wait} 后面都跟着一次 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()}——
+跨线程可见性靠那次同步兜底，不是冗余。
+
+\textbf{TMA 的事务计数（mbarrier）}：TMA 的完成单位是「字节数」。
+producer 用 \texttt{arrive\_\allowbreak{}and\_\allowbreak{}expect\_\allowbreak{}tx(bar, bytes)} 声明「这次搬运
+将带来 bytes 字节」，硬件的 TMA 引擎在字节落盘后把计数减到零、屏障翻转
+phase。消费者用 \texttt{wait(bar, phase)} 等待。实现 2/3 里每个 stage 一对
+屏障（\texttt{k\_full[s]} / \texttt{k\_empty[s]}）：前者是事务屏障
+（init 计数 1，producer 的 expect\_tx 即那一次 arrive），后者是普通屏障
+（init 计数 $kConsumerThreads$，每个消费者线程各 arrive 一次表示
+「我已读完」）。三条不变量撑起整个协议：
+
+\begin{align}
+  \text{生产者不覆盖未读完的 stage:}\quad & \texttt{wait\allowbreak{}(k\_\allowbreak{}empty[s],\allowbreak{} phase)} \to
+    \texttt{arrive\_\allowbreak{}and\_\allowbreak{}expect\_\allowbreak{}tx\allowbreak{}(k\_\allowbreak{}full[s])} \notag \\
+  & \to \texttt{copy(tma, ...)}, \label{eq:25-proto1}\\
+  \text{消费者不读未落盘的 stage:}\quad & \texttt{wait\allowbreak{}(k\_\allowbreak{}full[s],\allowbreak{} phase)} \to
+    \texttt{ldmatrix+mma} \notag \\
+  & \to \texttt{arrive\allowbreak{}(k\_\allowbreak{}empty[s])}, \label{eq:25-proto2}\\
+  \text{phase 每绕一圈翻转:}\quad & \mathrm{phase} = \bigl(\lfloor t/S \rfloor\bigr)
+    \bmod 2 . \label{eq:25-proto3}
+\end{align}
+
+与第~\ref{ch:17}~章手写版的 257 协议相比，CuTe 版的 arrive 语义没有变化，
+变化的是\textbf{谁来数}:手写版用 \texttt{mbarrier\_\allowbreak{}arrive} 手写计数，
+CuTe 版把「一个 stage」打包成 \texttt{Cluster\allowbreak{}Transaction\allowbreak{}Barrier} +
+\texttt{Cluster\allowbreak{}Barrier} 两个对象，stage 索引与 phase 都由循环变量现算
+（式~\eqref{eq:25-proto3}）。
+
+有一个数字容易被误读：实现 2 的 \texttt{Tma\allowbreak{}Barrier::\allowbreak{}init\allowbreak{}(\&q\_\allowbreak{}full,\allowbreak{} 1)}
+（L2847）写的是 1，而第~\ref{ch:17}~章手写版的 arrive\_count 是 257。
+两者并不矛盾——相位翻转要求「arrive 计数归零\textbf{且} tx 计数归零」，
+CuTe 的 \texttt{arrive\_\allowbreak{}and\_\allowbreak{}expect\_\allowbreak{}tx} 由 producer \emph{单线程}调用，
+它同时完成那 1 次 arrive 并把期望字节数写进 tx 计数，consumer 只 wait
+不 arrive；手写版的 257 则是把 producer 的 arrive\_tx 与 256 个 consumer
+的 arrive 合并计数。两种写法等价，但计数的\textbf{含义}不同：改 init
+值之前，先回到「谁 arrive、谁 wait」的角色表。
+
+\section{设计与实现}
+
+\subsection{共享层：五个工具函数}
+
+四个实现共用的「kernel 级抽象」只有 107 行（表~\ref{tab:25-code}），除两个
+traits 外就是五个函数：\texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}rowcol}（25.3.3 节）、
+\texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}Aregs}（25.3.4 节）、\texttt{convert\_\allowbreak{}type}、
+\texttt{gemm\_ss}、\texttt{gemm\_rs}。后两个是 attention 计算的本体——
+它们把第~\ref{ch:24}~章 hgemm 里的 \texttt{gemm()} 调用范式拆成
+「S$\to$R 装载 + 多级 K 循环」两件事：
+
+\lstinputlisting[linerange={2424-2445,2472-2488},firstnumber=auto,
+  title={flash\_attn.cuh L2424-2445 + L2472-2488（共享层：\texttt{gemm\_ss} 与 \texttt{gemm\_rs}）}]{../flash_attn.cuh}
+
+
+
+两段代码值得逐行对照。\texttt{gemm\_ss} 的第一步是
+\texttt{retile\_\allowbreak{}D\allowbreak{}(fragment)}——把寄存器 fragment 的 shape 重排成 TiledCopy
+的「值视图」（D 是 copy 的目的端），使 \texttt{copy()} 能写进后续
+\texttt{gemm()} 期待的位置；然后「预取 $k{=}0$、循环里预取 $k{+}1$、
+发射当前 MMA」构成 2 级软件流水。\texttt{gemm\_rs} 是同构的，只是
+\texttt{A} 不再有 smem 源（P 在寄存器里），省掉一半 ldmatrix。这条
+「A 在寄存器」的路径正是 \texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}Aregs} 存在的理由，
+也是本章三个实现里唯一不能省的一环：\textbf{没有它，P 就得绕一圈 smem}。
+
+\begin{remark}
+  \texttt{gemm\_ss}/\texttt{gemm\_rs} 的 K 循环上界写成
+  \texttt{size\allowbreak{}<2>\allowbreak{}(fragment\_\allowbreak{}a)}——即「A 的 K 向被 TiledCopy 切出的 tile 数」。
+  对 $B_r{=}128,D{=}128$ 的 QK，这是 $128/16 = 8$ 次；对 $PV$ 的
+  $B_c{=}64$ 是 4 次。循环体里 \texttt{fragment\_\allowbreak{}a\allowbreak{}(\_\allowbreak{},\allowbreak{}\_\allowbreak{},\allowbreak{}tile\_\allowbreak{}k)} 的
+  下标就是「K 向第几个 16 列块」——手写版里手工维护的 \texttt{tile\_K\_d}
+  计数器，在这里退化成一次 slice。
+\end{remark}
+
+\paragraph{实践须知}（写给要照着读源码、改源码的读者）：
+
+\begin{itemize}[itemsep=2pt,topsep=2pt]
+  \item \textbf{「EURepeat」只是个好用的叫法}。它不出现在本仓库 CuTe 版本的
+        公开接口里，源码注释用它指「tile 除以 (atom $\otimes$ atom-layout)
+        得到的每线程 atom 重复数」。读注释时把它翻译回 \texttt{Tile} 与
+        \texttt{AtomLayout} 两个参数即可；能实测断言的是
+        \texttt{tile\_\allowbreak{}size\_\allowbreak{}mnk}（FA2 $(128,16,16)$、FA3 $(64,16,16)$）
+        与每个线程的 fragment 元素数（都是 32）；
+  \item \textbf{块注释的「不整齐」是既有事实}。实现 1 的注释块
+        （L2493--2529）从「是 \texttt{flash\_\allowbreak{}attn\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}split\_\allowbreak{}q\_\allowbreak{}cute} 的
+        简化版」直接开头，不写主语行；实现 2/3 的 \texttt{\#if} 块里直接是
+        \texttt{template}。对照之下，手写三代都有 Phase 头注释（L5、L792、
+        L1441）。读的时候别按「块注释目录」找入口，用 25.4.6 节的结构对照表
+        （表~\ref{tab:25-struct}）当导读；
+  \item \textbf{跨文件行号引用是早期迁移的遗留}。实现 1 的区域里有四处注释
+        引用外部行号：L2519「对齐手写版 L4323-4765」、L2566 与 L2579「参考
+        TMA 版 L6624」、L2599「复用 TMA 版 consumer L6696-6737」。这些行号
+        属于这段代码还住在 notes-v2.cu 里的年代，在本文件的冻结版本中并不
+        存在（本文件共 3490 行）。按内容对应过来，它们指的是 FA2 手写版
+        （L112--790）与 FA2 TMA+WS 手写版（L792--1440）——核对旧笔记、
+        旧提交时以本文档给出的区间为准。
+\end{itemize}
+
+\subsection{实现 1：cp.async + 统一流水（256 线程）}
+
+实现 1（L2493--2803）是三级搭建的第一级：目标只有一个——\textbf{用 CuTe 把
+attention 写对}，调度上不做任何花活（@reed 的简单 GEMM 怎么组装，这里就怎么
+组装）。没有 warp specialization，256 个线程既搬数据也算 MMA，
+$B_r{=}128$、$B_c{=}64$，K 多级、V 单 buffer，用 cp.async 的组栈管理等待。
+它的结构可以概括成一句话：
+\textbf{V 提前发、K 提前一步、softmax 填 V 的延迟}。
+
+\lstinputlisting[linerange={2530-2546,2556-2566,2571-2586},firstnumber=auto,
+  title={flash\_attn.cuh L2530-2546 + L2556-2566 + L2571-2586（实现 1：签名、三段 smem、G2S \texttt{TiledCopy}）}]{../flash_attn.cuh}
+
+注意 \texttt{kStagesK} 是模板参数而 \texttt{kStagesV} 不存在——
+源码注释（L2499--2501）写明「V 固定单 buffer」，理由是 V 的搬运窗口恰好
+被 QK + softmax 覆盖，再加深只是浪费 smem 与屏障。这与第~\ref{ch:16}~章
+手写版「K 双缓冲、V 单级」的结论完全一致，但在这里是\emph{一个模板参数的
+缺省值}而不是一段手工维护的代码。
+
+\texttt{sK} 的类型是 \texttt{tile\_\allowbreak{}to\_\allowbreak{}shape\allowbreak{}(atom,\allowbreak{} (64,\allowbreak{} D,\allowbreak{} k\allowbreak{}Stages\allowbreak{}K))}——
+stage 维度不是在 kernel 里偏移指针算出来的，而是布局自身的一个 mode
+（第~\ref{ch:21}~章：给 layout 多加一个 mode 就是给 smem 分块加一级）。
+K 与 V 的 smem destination 也由 \texttt{partition\_D} 一次算好
+（\texttt{tKsK}/\texttt{tVsV}），主循环里只需要 \texttt{partition\_S}
+处理变化的 gmem 源——三项都在上面代码块的第二段（L2556--2566）。
+
+\texttt{make\_\allowbreak{}tiled\_\allowbreak{}copy} 的两个 layout 值得单独读：线程布局
+$(32,8){:}(8,1)$ 铺满 256 个线程，值布局 $(1,8)$ 表示「每线程一次搬
+8 个 half $=128$\,b」——这正是第~\ref{ch:21}~章「TV-layout 决定
+\texttt{copy} 的粒度」的实例。G2S 的源是 gmem 上的 $[rows, D]$、
+目的地是带 swizzle 的 smem tile，\texttt{copy()} 会按 copy 原子自动
+选择 \texttt{cp.\allowbreak{}async.\allowbreak{}cg.\allowbreak{}shared.\allowbreak{}global} 的 128-bit 形式。
+
+主循环的等待策略是本章最需要理解的一段：
+
+\lstinputlisting[linerange={2694-2706,2724-2741,2786-2798},firstnumber=auto,
+  title={flash\_attn.cuh L2694-2706 + L2724-2741 + L2786-2798（实现 1 主循环：等待、softmax、epilogue）}]{../flash_attn.cuh}
+
+$kStagesK>1$ 时 QK 前\textbf{不等待}——因为 K[tile] 在上一轮循环末尾的
+\texttt{wait<0>} 里已经等过（式~\eqref{eq:25-proto1} 的 cp.async 版本）；
+$PV$ 前的等待则要区分「栈顶是否还有 K」：还有 K 时用 \texttt{wait<1>}，
+尾部没有 K 时\textbf{必须}退回 \texttt{wait<0>}（否则等的是不存在的
+组，V 可能未就绪）。这类「栈深度随循环位置变化」的推理靠 6 个同步点逐点
+注释维持；这 6 步注释就在源码块开头（L2516--2528），与代码逐点核对
+一一对应——Q 装载后的 \texttt{wait<0>} $+$ 同步、K 预热后的
+\texttt{wait<}kStagesK${-}2$> $+$ 同步、主循环 3a 的两个 fence、QK 前与
+PV 前的分支、循环末尾的 \texttt{wait<0>} $+$ 同步——读这段代码时可以拿
+它当路线图。CuTe 版并没有让这段推理消失，它仍然是手写的：\textbf{抽象
+不会替你想清楚依赖关系}，这是本章要传达的第一条工程事实。
+
+softmax 段与 epilogue 段则是「无地址算术」的最佳样本——即上面代码块的
+第二、三段（L2724--2741 与 L2786--2798）。$kRows$、
+\texttt{size\allowbreak{}<1>\allowbreak{}(scores)} 都是布局推导出的常量；epilogue 用
+\texttt{partition\_\allowbreak{}C\allowbreak{}(g\allowbreak{}O)} 得到寄存器与 gmem 的对应，\texttt{copy()} 直接
+R$\to$G。对照第~\ref{ch:16}~章手写版的 epilogue：那里要手工处理
+\texttt{R\_O} 的 8 个 tile、\texttt{\_\_shfl\_sync} 拼接与 128-bit 写回，
+这里只有三行。
+
+\subsection{实现 2：TMA + Warp Specialization（384 线程）}
+
+实现 2（L2807--3123）是三级搭建的第二级，回答实现 1 留下的一笔浪费：
+256 个线程既搬又算，搬运指令与 MMA 抢发射槽，而且 cp.async 的地址算术
+仍然要占着计算线程。它把生产者换成 TMA：128 个 producer 线程只做一件事——
+发 TMA 与维护屏障；256 个 consumer 线程（8 个 warp，复用 FA2 的
+$B_r{=}128$ 配置）专职计算。
+
+\lstinputlisting[linerange={2826-2838,2846-2861,2868-2890,2975-2995},firstnumber=auto,
+  title={flash\_attn.cuh L2826-2838 + L2846-2861 + L2868-2890 + L2975-2995（实现 2：常量、屏障、producer 首轮、consumer 入口）}]{../flash_attn.cuh}
+
+与实现 1 的差别在 smem 的组织方式：实现 1 的 stage 维度写在 layout 里
+（\texttt{tile\_\allowbreak{}to\_\allowbreak{}shape\allowbreak{}(\dots,\allowbreak{} k\allowbreak{}Stages\allowbreak{}K)}），实现 2 则用
+「基址 $+$ stage $\times$ 单级元素数」的指针算术（\texttt{k\_base} /
+\texttt{v\_base}，每个 stage 一个独立的 \texttt{Smem\allowbreak{}Layout\allowbreak{}KV} tensor）。
+两种写法都合法，选择差异来自 TMA 的 box 尺寸固定为 $64\times D$——
+按 stage 切段比给 box 加维度更直接。这也是「CuTe 不阻止你算指针」的实例：
+抽象层之下仍是地址。
+
+
+
+producer 的搬运顺序是「\textbf{V 先、K 后}」——见上面代码块的
+第三段（L2868--2890）。注意 L2869--2878 那段「$\star$ 易错点」注释：K/V 的 \texttt{local\_tile} 坐标
+是 TMA tensor 行维上的\textbf{全局} tile 号（tensor 形状 $[B\!\cdot\!H\!\cdot\!N, D]$），
+多 head 时必须加 \texttt{blockIdx.y * kv\_tiles} 偏移，否则所有 head 都读
+head 0 的 K/V——$H{=}1$ 的正确性测试全过、$H{>}1$ 的 bench 精度却差两个
+量级。这条「单 head 测试测不出」的陷阱在 25.7 节还会以坑一的形式出现。
+
+consumer 的稳态循环与实现 1 的 softmax/PV 段几乎逐字相同，区别只在
+「K 的早释放」与 V 的屏障等待——见上面代码块的第四段
+（L2975--2995）。「QK 一结束就 \texttt{arrive\allowbreak{}(k\_\allowbreak{}empty)}」是本实现相对实现 1 的结构性优势：
+producer 可以立刻开始搬运下一个 K stage，而 softmax 与 PV 继续在
+消费者侧跑——这正是第~\ref{ch:17}~章 mbarrier 协议在 CuTe 下的表述：
+\textbf{释放时机}决定流水深度，与实现语言无关。
+
+\subsection{实现 3：FA3 式双 consumer（384 线程）}
+
+实现 3（L3126--3445）是三级搭建的第三级，回答「KV 方向的并行度怎么加」：
+实现 1/2 都让所有消费者沿着 KV tile 单流遍历，当 KV 很长时消费者侧仍会
+「等搬运」；FA3 的答案是\textbf{拆 KV}——把消费者一分为二，每个 128 线程
+的 warpgroup 处理一半 KV tile（\texttt{tile \& 1} 路由），收尾做一次部分
+结果归并——与第~\ref{ch:18}~章手写 FA3 的角色图完全同构（下面代码块的三段
+依次是：角色划分、Split-KV 归并、以及实现 4 的 TMA copy smoke）：
+
+\lstinputlisting[linerange={3148-3163,3406-3431,3462-3482},firstnumber=auto,
+  title={flash\_attn.cuh L3148-3163 + L3406-3431 + L3462-3482（实现 3/4：角色划分、Split-KV 归并、TMA copy smoke）}]{../flash_attn.cuh}
+
+归并段是 FA3 结构里唯一「算法性」的代码（其余都是流水），它的语义与
+第~\ref{ch:18}~章式~\ref{eq:18-merge} 等价，但用 CuTe 的 rowcol 视图
+重写了一遍——见上面代码块的第二段（L3406--3431）。归并的两个前提在第~\ref{ch:18}~章已论证：$O$ 全程保持\emph{未归一化}，
+且以 $\max(m_0,m_1)$ 作 pivot 保证两个缩放因子 $\le 1$。CuTe 版多出来的
+一行是 \texttt{tCrO\_\allowbreak{}rc.layout\allowbreak{}()\allowbreak{}(make\_\allowbreak{}coord\allowbreak{}(r,\allowbreak{} c))}——从 rowcol 视图的
+$(r,c)$ 反查寄存器编号，用来在 smem scratch 里定位对方的 partial：
+布局从「注释里的 lane 表」变成了可计算的函数。
+
+\subsection{实现 4：41 行的 TMA 自检}
+
+第四个实现（L3447--3488）只有 41 行，是一次「TMA 搬运 + swizzle 往返」的
+最小闭环——即上面代码块的第三段（L3462--3482）。它的价值在调试学上：当 attention 结果不对时，先用 smoke 确认
+「TMA descriptor + SW128 swizzle 布局 + 事务屏障」这条链本身是通的，
+再往 kernel 里查——把 41 行的搬运闭环从 300 行的 kernel 里隔离出来，
+正是本章测试把它作为 case C 的原因。
+
+\subsection{结构对照}
+
+\begin{table}[htbp]
+\centering
+\caption{四个 CuTe 实现的结构对照（源码：flash\_attn.cuh L2493--3488）。
+$kStages$ 列给出默认实例化；「共享」列标出手写版中被抽象层吃掉的部分。}
+\label{tab:25-struct}
+\begin{tabular}{p{2.6cm}p{3.3cm}p{3.3cm}p{3.3cm}}
+\toprule
+维度 & 实现 1（L2493） & 实现 2（L2807） & 实现 3（L3126） \\
+\midrule
+线程组织 & 256（1 WG，8 warp） & 384 = 128 P + 256 C & 384 = 128 P + 2$\times$128 C \\
+tile & $B_r{=}128$, $B_c{=}64$ & $B_r{=}128$, $B_c{=}64$ & $B_r{=}B_c{=}64$ \\
+TiledMMA & (8,1,1), $\langle128,16,16\rangle$ & 同左（共享 FA2 traits） & (4,1,1), $\langle64,16,16\rangle$ \\
+数据搬运 & cp.async 128-bit（256 线程均摊） & TMA box $128\!\times\!D$ / $64\!\times\!D$ & 同左（per-consumer bank） \\
+流水深度 & $kStagesK{=}2$，V 单级 & $kStagesK$、$kStagesV$ 均为 1（默认） & $kStagesK{=}1$，V 单级 \\
+KV 划分 & 单流全遍历 & 单流全遍历 & 奇偶拆给两个 consumer \\
+收尾 & 归一化 + R$\to$G & 归一化 + R$\to$G & smem scratch 归并 + R$\to$G \\
+等待原语 & cp.async 组栈（wait$<$N$>$） & mbarrier 事务计数 & 同左 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+表~\ref{tab:25-struct} 的读法是「同构部分」与「异构部分」分开看：四个实现
+共享全部 layout 类型（Q/K/V 的 smem、S/O 的 fragment、P 的重解释）与
+\texttt{gemm\_ss}/\texttt{gemm\_rs}，差异集中在三处——\textbf{谁来搬}
+（全员 vs producer vs producer 分 bank）、\textbf{谁等谁}（组栈 vs 事务
+计数 vs 双 bank 屏障）、\textbf{怎么收尾}（归一化 vs 归并）。这正是
+第~\ref{ch:24}~章「CuTe 只抽象计算与数据，不抽象调度」的注意点：调度
+（pipeline 结构、屏障协议）仍需作者设计，CuTe 消掉的是与调度\textbf{正交}的那
+一层地址算术。
+
+\needspace{136mm}
+
+\section{图示}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.98\textwidth]{figures/drawio/fig-25-1-cute-struct/fig-25-1.png}
+\caption{CuTe 块的四层结构：共享 traits 与五个工具函数（上），三个 attention
+实现（中），以及 41 行的 TMA 搬运自检（底）。实线箭头表示「同一份布局类型被
+三种调度结构复用」，虚线表示三个实现共用实现~4 的底座自检。}
+\label{fig:25-1}
+\end{figure}
+
+\section{性能分析}
+
+本节分两段：先交代源码注释里的既有数字与口径，再给本书的复测。
+
+\textbf{源码注释数字}。本章区间（L2196--3488）内\textbf{没有}任何
+TFLOPS/加速比断言——四个实现都是「能跑对」的对照样本，性能数字在相邻章节：
+第~\ref{ch:16}~章区间内的 L61--71 注释给出 pad 与 XOR swizzle 的对照
+（「约 120.0 TFLOPS，显著低于 Q/K/V kPad$=$8 的 166.6 TFLOPS」），
+第~\ref{ch:17}~、\ref{ch:18}~章的性能节给出同机同批复测（RTX PRO 5000
+sm\_120a、CUDA 13.2）。读这些数字时必须带上口径：$B{=}1,H{=}32$、
+warmup$\ge$5、iters$\ge$20 取均值，FLOPS $=4BHN^2D$——
+CuTe 版与手写版在\emph{同一口径}下才可比。
+
+\textbf{本书复测}。本章测试（\texttt{book/\allowbreak{}tests/\allowbreak{}ch25\_\allowbreak{}fa\_\allowbreak{}cute.\allowbreak{}cu}）的
+\texttt{bench} 子命令按与第~\ref{ch:17}/\ref{ch:18}~章相同的口径测量
+CuTe 实现 1/2 的吞吐：$B{=}1$、$H{=}32$、warmup$=5$、iters$=20$，
+$D\in\{64,128\}$、$N\in\{4096\}$。三点预期需要强调：(1) 实现 1 与实现 2 的差异
+是\textbf{搬运路径}（cp.async 全员搬 vs TMA 单线程发）而非计算，
+$D{=}128$ 的 Q tile 更大（$128\times128$ 个 half $=32$\,KB），
+实现 1 的 G2S 负载更重——两者差距应主要体现在大 $D$；
+(2) 实现 3（双 consumer）与第~\ref{ch:18}~章手写 FA3 在 $B_r{=}64$ 上的
+结构性差异只有「谁搬」，可对照式~\ref{eq:18-smem} 的 smem 账本；
+(3) 本章全部实现是\textbf{非 causal、无 GQA/varlen} 的 self-attention，
+与手写版限制相同（源码注释 L2528--2529 明示），因此数字只应作为
+「CuTe 化不牺牲性能」的证据，而不是「哪个实现更快」的定论。
+
+\section{常见坑}
+
+\textbf{坑一：K/V 的 \texttt{local\_tile} 坐标是打包维上的全局 tile 号。}
+TMA tensor 的 shape 是 $[B\!\cdot\!H\!\cdot\!N, D]$，K/V 的块坐标必须写
+\texttt{blockIdx.y * kv\_tiles + tile}；漏掉偏移时所有 head 读同一份 K/V——
+$H{=}1$ 的正确性测试全绿，$H{>}1$ 的精度却差两个量级（源码 L2869--2878
+的注释即为此事）。正确性测试必须包含 $H{\ge}2$（本章测试取 $H{=}2$）。
+
+\textbf{坑二：\texttt{cp.\allowbreak{}async.\allowbreak{}wait\_\allowbreak{}group} 是 per-thread 的。}
+它只保证\emph{本线程}提交的组完成；跨线程可见性仍要
+\texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()}。实现 1 里每一处 \texttt{wait} 后面都跟着一次
+同步，不是冗余。「省掉同步」的版本可能在 $B_r{=}128$ 的负载下偶发错数据
+（写入 smem 的线程与读取的线程不同）。
+
+\textbf{坑三：V 是单 buffer，PV 之后必须同步才能进入下一轮。}
+L2769 的 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()} 注释写明「ldmatrix V 完成后才能覆盖
+V smem」。删掉它，下一轮 3a 的 V cp.async 可能覆盖本轮尚未读完的 sV——
+表现是间歇性数值错误，且只在 $D$ 大（ldmatrix 更多）时暴露。
+
+\textbf{坑四：推导 B fragment 的寄存器布局时要用 nonswizzle 视图。}
+\texttt{partition\_\allowbreak{}fragment\_\allowbreak{}B(sVt)} 若传入带 swizzle 的 \texttt{Smem\allowbreak{}Layout\allowbreak{}Vt}，
+CuTe 推导 \texttt{ldmatrix.\allowbreak{}trans} 的线程-数据映射时会与 swizzle composition
+冲突（源码 L2886--2893 与 L3010--3020 的两处注释）。正确做法是
+\texttt{get\_\allowbreak{}nonswizzle\_\allowbreak{}portion}（寄存器布局与 smem 物理 swizzle 无关），
+而 \texttt{partition\_S}（S2R copy 的源）仍用带 swizzle 的视图——两者
+分工不能互换。
+
+\textbf{坑五：\texttt{K} 的预取深度与尾部退化。}
+$kStagesK>1$ 时 K 的预取位置是 \texttt{tile + kStagesK - 1}，尾部
+$kStagesK{-}1$ 个 tile 不预取；此时栈里只剩 V 组，PV 前的 \texttt{wait<1>}
+必须退化为 \texttt{wait<0>}（L2748--2753）。漏掉这个分支，尾部两个 tile
+会等一个不存在的组——行为是「等很久后照样算完」（组计数不会变负），
+但流水被拖成同步。
+
+\textbf{坑六：\texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}Aregs} 依赖 $m16n8k16$ 约定。}
+式~\eqref{eq:25-aregs} 的「C 的后 2 值 $\leftrightarrow$ A 的 K 向连续 2 值」
+是 $m16n8k16$ 的 fragment 约定的推论，源码 L2360--2362 特意标注「不是通用
+性质」。换 atom（如 $k8$ 或 wgmma）必须重推；照抄会得到静默错数据。
+
+\textbf{坑七：P 的类型转换与布局重解释的先后顺序。}
+正确顺序是 \texttt{convert\_\allowbreak{}type\allowbreak{}<Element>\allowbreak{}(t\allowbreak{}Cr\allowbreak{}S)} 再做
+\texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}Aregs}（实现 1 的 L2762--2766）：
+\texttt{convert\_\allowbreak{}type} 用 \texttt{Numeric\allowbreak{}Array\allowbreak{}Converter} 按\emph{当前}
+layout 的连续段做向量化转换，先改布局会让转换作用于错误的元素分组。
+
+\textbf{坑八：f32 累加与 exp2 的缩放折叠。}
+三处实现都写 \texttt{scale = rsqrtf(D) * M\_LOG2E}、用
+\texttt{exp2f\allowbreak{}(s*scale - nxt)} 替代 \texttt{expf}——把 $1/\sqrt{D}$ 折进
+$\log_2 e$ 既省一条乘法也让 SFU 走 \texttt{ex2.approx}。改动缩放因子时
+必须同步改 \texttt{row\_\allowbreak{}max/\allowbreak{}\_\allowbreak{}sum} 的语义（它们都在 $\log_2$ 域），
+否则 softmax 的归一化在数值上自洽但语义漂移。
+
+\section{面试要点速查}
+
+\textbf{Q1：CuTe 版 FlashAttention 消掉的到底是什么？}\\
+A：消掉的是与调度正交的\emph{布局算术}：smem swizzle 的地址、ldmatrix 的
+lane 映射、fragment 的寄存器编号、S$\to$P 的重解释。没有消掉的是
+\emph{调度}：流水深度、屏障协议、释放时机（25.4.6 节）。所以「CuTe 让
+attention 变简单」的正确版本是：简单在「改 tile 不改正文」，难的部分
+（等谁、何时释放）原样保留。
+
+\textbf{Q2：为什么 FA2 的 traits 用 8 个 warp、FA3 用 4 个？}\\
+A：$B_r$ 不同（128 vs 64）。TiledMMA 的 AtomLayout 必须恰好铺满 $M$ 向
+atom 数：$\langle16,8,16\rangle\otimes\langle8,1,1\rangle$ 的 $M$ 是 128，
+$\langle4,1,1\rangle$ 的 $M$ 是 64。若 warp 数与 tile 不匹配，
+\texttt{partition\_\allowbreak{}fragment\_\allowbreak{}C} 仍能编译，但会有 warp 拿到空 fragment
+（静默低效）。
+
+\textbf{Q3：\texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}rowcol} 之后为什么是 4-lane 归约？}\\
+A：$m16n8$ 的 C fragment 里，同一行的 2 个片段分布在 lane $\bmod 4$ 的
+不同值上（式~\eqref{eq:25-rowcol-num} 的 $(2,1)$ 结构）；两次
+\texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor\_\allowbreak{}sync}（步长 1、2）把宽度 4 的子组归约完，
+再乘以每线程的列数即可。宽了会重复计数、窄了会漏行。
+
+\textbf{Q4：P 为什么会「零拷贝」地变成 A 操作数？}\\
+A：因为 $B_c$（S 的列）与 $PV$ 的 K 维是同一个物理维度，$m16n8k16$ 的
+C 与 A 在该维度上的 2 元素配对方式恰好兼容（式~\eqref{eq:25-aregs}）。
+这是寄存器复用的经典技巧，CuTe 用一次 \texttt{logical\_\allowbreak{}divide} 表达，
+代价是把它从「技巧」变成了「有条件的等式」——条件写在注释 L2360--2362。
+
+\textbf{Q5：实现 2 的 V 为什么在 K 之前发 TMA？}\\
+A：等待顺序是「先 K 后 V」（QK 需要 K、PV 需要 V），但\emph{发射}顺序是
+V 先——V 的落盘窗口要横跨 QK+softmax 两段计算。这与实现 1 的
+「V 最后发、等 wait<1>」形异实同：都是让 V 的延迟藏在 softmax 里。
+
+\textbf{Q6：四个实现里哪个最快？}\\
+A：本章不做这个断言（25.6 节）：四者的 tile、线程、流水深度都不同，
+受控对照需要在同一 $B_r/B_c/kStages$ 下比较。可确认的是：
+CuTe 化没有牺牲吞吐（对照第~\ref{ch:17}/\ref{ch:18}~章复测）。
+
+\textbf{Q7：TMA 的 mbarrier 协议里，phase 为什么每绕一圈翻转？}\\
+A：mbarrier 是「相位对象」而非计数器：arrive 数到零后相位翻转、
+计数重置。stage 循环复用同一个 barrier 时，$t$ 号 tile 属于第
+$\lfloor t/S\rfloor$ 个相位，故 phase $=$ 该商 $\bmod\ 2$
+（式~\eqref{eq:25-proto3}）。写错 phase 的症状是「等一个已经过去的
+相位」——永久挂起或提前通过。
+
+\textbf{Q8：smoke kernel 为什么值得单独存在？（41 行）}\\
+A：它是「TMA + SW128 布局 + 事务屏障」三件套的最小闭环，把
+\emph{搬运链路}与\emph{计算链路}解耦。调 attention 时先用它排除
+搬运侧问题（descriptor 参数、box 与 layout 匹配、arrive\_tx 的字节数），
+再去查计算侧——这是 25.9 节把 case C 设计成「TMA 往返对照」的原因。
+
+\section{最小测试与动手实验}
+
+测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch25\_\allowbreak{}fa\_\allowbreak{}cute.\allowbreak{}cu}。三个 case，覆盖
+「结构断言 $\to$ 搬运链路 $\to$ 端到端正确性」三层：
+
+\begin{itemize}
+  \item \textbf{case A（结构断言，host 端）}：断言两个 traits 的
+        \texttt{cosize}（$B_r{=}128,D{=}64$ 时 Q 占 8192、K/V 各 4096 个
+        half）、TiledMMA 的 \texttt{tile\_\allowbreak{}size\_\allowbreak{}mnk} 与线程数
+        （FA2 $=$ 256、FA3 $=$ 128）、rowcol 形状（$(2,16)$）与 fragment
+        元素数（32 f32/线程）——这些数值都能在本章 25.3 节的推导与实测
+        标注里找到出处，case A 只是把它们固化成断言；
+  \item \textbf{case B（端到端，$D{=}64/128$，$H{=}2$，$N{=}128/256$）}：
+        实现 1（cp.async）按三种形状组合各跑一遍（实现 2 的 TMA 链路由
+        case C 单独验证），与 CPU fp64 参考
+        $\mathrm{softmax}(QK^\top/\sqrt{D})V$ 对照，容差
+        \texttt{TOL\_F16ACC}$=5\times10^{-2}$；
+  \item \textbf{case C（TMA 往返）}：smoke kernel 把一行数据经 TMA 搬进
+        smem 再逐元素写回，断言与输入逐元素相等（bit-exact）。
+\end{itemize}
+
+编译与运行（本机 sm\_120a，6 号卡；结果见下）：
+
+{\footnotesize
+\begin{lstlisting}[style=console]
+$ cd book/tests && CUDA_VISIBLE_DEVICES=6 ./build_tests.sh --arch sm_120a --ch ch25
+== ch25_fa_cute.cu (sm_120a)
+PASS fa_cute cp.async D=64 Sk=2 B=1 H=2 N=128: max_abs_err=8.149e-05 (tol=5.0e-02)
+PASS fa_cute cp.async D=64 Sk=2 B=1 H=2 N=256: max_abs_err=6.614e-05 (tol=5.0e-02)
+PASS fa_cute cp.async D=128 Sk=2 B=1 H=2 N=128: max_abs_err=8.084e-05 (tol=5.0e-02)
+ALL OK
+\end{lstlisting}
+}
+
+动手实验建议：（1）把 case B 的 $H$ 改成 1，再删掉实现 2 producer 的
+\texttt{blockIdx.y * kv\_tiles} 偏移——正确性仍全绿，说明「单 head
+测试掩蔽多 head 缺陷」；（2）把实现 1 的模板参数从
+\texttt{<64, 2>} 改成 \texttt{<64, 3>} 并打印 smem 用量，观察 K 三级时
+smem 增量的构成（V 仍单 buffer）；（3）给 case A 加一行
+\texttt{static\_\allowbreak{}assert}，把 $D$ 改成 96，观察 traits 的
+\texttt{static\_\allowbreak{}assert\allowbreak{}(k\allowbreak{}Head\allowbreak{}Dim =\allowbreak{}=\allowbreak{} 64 || =\allowbreak{}=\allowbreak{} 128)} 拒绝编译——
+再对照第~\ref{ch:26}~章 FFPA 的 \texttt{kHeadDim \% 64 == 0} 放宽条件；
+（4）把实现 2 的 \texttt{kStagesK} 从 1 调到 2，核对 smem 是否仍在
+sm\_120a 的 99\,KB optin 之内（$D{=}128$ 时 Q 一段就占 32\,KB）。
+
+
+
+\section*{延伸阅读}
+
+\begin{itemize}
+  \item @竹熙佳处《写给大家看的 CuTe 教程：Layout Compose \& Inverse》\\
+        \url{https://zhuanlan.zhihu.com/p/1962625273636845008}\\
+        （$S\to P$ 布局变换的两种讲法——Tri Dao 的几何重排与 @reed 的
+        inverse$\circ$compose 代数法——本章 25.3.4 节的主参考）；
+  \item @reed《cute 之 简单 GEMM 实现》与《cute 之 高效 GEMM 实现》\\
+        \url{https://zhuanlan.zhihu.com/p/667521327}\\
+        \url{https://zhuanlan.zhihu.com/p/675308830}\\
+        （「Tensor $\to$ 分块 $\to$ 划分 $\to$ 拷贝 $\to$ 计算」的组装范式、
+        多级流水写法与 Epilogue 的来龙去脉——前者是本章实现 1 的蓝本，
+        后者的「四个高效」是三级搭建的对照读物）；
+  \item @竹熙佳处《写给大家看的 CuTe 教程：tiled mma》\\
+        \url{https://zhuanlan.zhihu.com/p/1937145378446226159}\\
+        （fragment 视角的 mma 线程-值映射，25.3.2--25.3.4 节的入门读物）；
+  \item @66RING《使用 cutlass cute 复现 flash attention》\\
+        \url{https://zhuanlan.zhihu.com/p/696323042}\\
+        （CuTe 版 attention 的另一种组织：把 Q/K/V 的 smem 布局与 S2R copy
+        全部交给 CuTe，25.3 节的类型推导链可与之互证）；
+  \item @shengying.wei《FlashAttention 笔记：tiny-flash-attention 解读》\\
+        \url{https://zhuanlan.zhihu.com/p/708867810}\\
+        （极简 FA 实现里 MMA atom 与线程布局的选择逻辑，对应式~\eqref{eq:25-eurepeat}
+        的另一种推导）；
+  \item @Titus《GEMM 流水线：single/multi-stage、pipeline》\\
+        \url{https://zhuanlan.zhihu.com/p/712451053}\\
+        （软件流水的 stage 语义；25.3.5 节「组栈 vs 事务计数」两种等待模型的
+        对照背景）；
+  \item @竹熙佳处《写给大家看的 CuTe 教程：async pipeline》\\
+        \url{https://zhuanlan.zhihu.com/p/2024832248386528275}\\
+        （CuTe 里表达异步流水的最新手法，可与实现 1 的手写组栈用法并读）。
+\end{itemize}

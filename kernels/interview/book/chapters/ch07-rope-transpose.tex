@@ -1,0 +1,241 @@
+% ch07-rope-transpose.tex — RoPE 与矩阵转置/Bank Conflict 专题（RFC.md C7）
+% 源码区间：base.cuh L802-909（冻结锚点，RFC-A）；测试：book/tests/ch07_rope_transpose.cu
+\chapter{RoPE 与矩阵转置（Bank Conflict 专题）}\label{ch:07}
+
+\section{本章导读}
+
+本章处理两个表面无关、内核相通的算子。\textbf{RoPE}（Rotary Position Embedding，旋转位置编码）是逐元素数学型算子：每对分量做一个 2D 旋转，难点在数学形式的等价变换与超越函数的计算策略。\textbf{矩阵转置}是访存型算子的经典教具：读合并则写不合并的矛盾逼出 shared memory 中转，而中转本身又引出本章的真正主角——\textbf{bank conflict}。转置 kernel 中学到的 padding 思想，会在第 \ref{ch:12} 章升级为 XOR swizzle。
+
+\textbf{前置章节}：第 \ref{ch:03} 章 coalescing（合并访存事务的概念）；第 \ref{ch:01} 章 shared memory 层级。
+
+\textbf{源码区间}：\texttt{base.cuh} L802-909，3 个 kernel：\texttt{rope}（L817）、\texttt{mat\_\allowbreak{}transpose}（L858）、\texttt{mat\_\allowbreak{}transpose\_\allowbreak{}padded}（L871）。\textbf{编译宏与架构限定}：无，fp32，任意 arch。
+
+\textbf{预计篇幅}：约 12 页；配套最小测试 \texttt{tests/\allowbreak{}ch07\_\allowbreak{}rope\_\allowbreak{}transpose.\allowbreak{}cu}。
+
+\section{问题与动机}
+
+RoPE 是当前 LLM 位置编码的事实标准（LLaMA、Qwen、PaLM、Mistral 等全部采用），每层 attention 的 Q/K 在进 attention 之前都要经过一次 RoPE 变换。它的核心性质——\textbf{内积只依赖相对位置}——使其天然兼容 KV cache 的增量推理。作为独立算子，RoPE 是逐元素访存 + 少量超越函数；作为融合对象，它常被并入 attention kernel（第 \ref{ch:16} 章起会看到 attention kernel 的结构，RoPE 的预计算与融合策略是工程上的常见分叉点）。
+
+矩阵转置则无处不在：内存布局变换（NHWC $\leftrightarrow$ NCHW）、attention 的 QKV 重排、GEMM 中把 B 矩阵预先转置成行主以获得合并访存（第 \ref{ch:09} 章起大量出现）。它的计算量为零，性能完全由访存模式决定——而这恰好构成了一个教科书级的矛盾：
+
+\begin{center}
+\textit{按行读就是合并的，那么按列写必然是跨步的。}
+\end{center}
+
+naive 转置一半访存（写）退化到 $1/8$ 的有效利用率（32B sector 口径；若按 L1$\leftrightarrow$L2 的 128B cache line 口径则 $1/32$）；引入 shared memory 中转可以两边都合并，但「按列读 shared memory」又会撞上 shared memory 的物理结构限制——32 个 bank。如何量化冲突、如何用最小的改动消除主要冲突，就是本章 bank conflict 专题的全部内容。
+
+\section{数学原理}
+
+\subsection{二维旋转与复数形式}
+
+RoPE 的基本动作是把一对分量 $(x_1, x_2)$ 视作平面上的一个点，绕原点旋转角度 $\theta$：
+\begin{equation}
+  \begin{pmatrix} x_1' \\ x_2' \end{pmatrix}
+  = R(\theta)\begin{pmatrix} x_1 \\ x_2 \end{pmatrix}
+  = \begin{pmatrix} \cos\theta & -\sin\theta \\ \sin\theta & \cos\theta \end{pmatrix}
+  \begin{pmatrix} x_1 \\ x_2 \end{pmatrix},
+  \label{eq:ch07-2d-rot}
+\end{equation}
+即 $x_1' = x_1\cos\theta - x_2\sin\theta$，$x_2' = x_1\sin\theta + x_2\cos\theta$。把 $(x_1,x_2)$ 视作复数 $z = x_1 + i x_2$，旋转等价于乘一个模为 1 的复数：
+\begin{equation}
+  R(\theta)\, z \;\equiv\; e^{i\theta} z = (\cos\theta + i\sin\theta)(x_1 + i x_2),
+  \label{eq:ch07-complex}
+\end{equation}
+展开实部虚部与式~\eqref{eq:ch07-2d-rot} 逐项一致。复数形式的好处是乘法结合律让相对位置的推导一步到位（下一小节）。
+
+\subsection{相对位置不变性：RoPE 的灵魂}
+
+设位置 $m$ 的 query 对 $(q_1,q_2)$、位置 $n$ 的 key 对 $(k_1,k_2)$，分别旋转 $m\theta$ 与 $n\theta$。attention 打分用的内积（2D 情形即复数内积的实部）满足
+\begin{align}
+  \big(e^{im\theta} z_q\big)^{*}\,\big(e^{in\theta} z_k\big)
+  &= e^{-im\theta}\, z_q^{*}\, e^{in\theta}\, z_k
+   = e^{i(n-m)\theta}\, z_q^{*} z_k
+   = z_q^{*}\, R\big((n-m)\theta\big)\, z_k .
+  \label{eq:ch07-relative}
+\end{align}
+第一步用了共轭 $ (e^{im\theta})^{*} = e^{-im\theta}$ 与乘法结合律；结果只含位置差 $n - m$，与绝对位置 $m, n$ 无关——这就是「内积只依赖相对位置」。矩阵语言同样干净：旋转矩阵是正交阵且 $R(a)^{\top} = R(-a)$，故
+\begin{equation}
+  R(m\theta)^{\top} R(n\theta) = R(-m\theta)\,R(n\theta) = R\big((n-m)\theta\big).
+\end{equation}
+训练时模型看到的打分只随相对位移变化，位置信息以「旋转相位」的形式注入，这正是 RoPE 外推性质的数学根基。
+
+\subsection{高维形式：分块对角旋转矩阵}
+
+$d$ 维向量（$d$ 为偶数）不整体做一个 $d$ 维旋转，而是切成 $d/2$ 个独立的 2D 子空间，各转各的角度：
+\begin{equation}
+  R^{d}_{\Theta}
+  = \mathrm{diag}\big(R(\theta_0),\, R(\theta_1),\, \dots,\, R(\theta_{d/2-1})\big)
+  \in \mathbb{R}^{d \times d},
+  \qquad
+  \theta_i = 10000^{-2i/d},
+  \label{eq:ch07-blockdiag}
+\end{equation}
+$R^{d}_{\Theta}$ 是 $d/2$ 个 $2\times 2$ 旋转块排布在主对角线上的\textbf{分块对角}矩阵；位置 $m$ 的变换是 $R^{d}_{\Theta}(m)$，即每个块的角度乘 $m$。频率序列 $\theta_i = 10000^{-2i/d}$ 是等比数列：$i = 0$ 时 $\theta_0 = 1$（波长 $2\pi$，最高频，分辨局部），$i = d/2 - 1$ 时 $\theta_i \approx 10^{-4}$（波长 $\approx 2\pi \times 10^4$，最低频，分辨远距）。基 10000 与第 \ref{ch:15} 章 attention 的 $\mathrm{softmax}$ 温度一样是经验超参，控制「波长谱」的覆盖范围。
+
+需要特别注意\textbf{配对约定}：式~\eqref{eq:ch07-blockdiag} 只规定了「哪两个分量组成一对」，没有规定配对的枚举顺序。常见的两种是\textbf{相邻对}（interleaved：$(x_0,x_1), (x_2,x_3), \dots$，原始论文与本源码采用）与\textbf{半分对}（half-split：$(x_0, x_{d/2}), (x_1, x_{d/2+1}), \dots$，HuggingFace transformers 的 \texttt{rotate\_half} 实现）。两者是同一数学对象在不同分量排列下的表现形式，逐对重排即可互相转换；但 checkpoint 权重与 KV cache 布局如果不做对应重排，结果就是错的——对齐 HuggingFace 权重时这是经典坑（见本章实践经验）。
+
+\subsection{转置的「数学」}
+
+转置本身没有数学难度：$y_{ji} = x_{ij}$。值得形式化的是访存代价。行主存储下 $x_{ij}$ 位于地址 $i \cdot \mathrm{col} + j$。第 \ref{ch:03} 章的 coalescing 原则要求同 warp 的 32 线程访问连续地址；转置的读与写不可能同时满足——行主读合并意味着列主写跨步，反之亦然。这就是下一节用 shared memory 中转的动机。
+
+\section{设计与实现}
+
+\subsection{rope：每线程一对元素}
+
+\lstinputlisting[linerange={805-834},firstnumber=auto,
+  title={base.cuh L805-834（rope：相邻对配对的 RoPE kernel）}]{../base.cuh}
+
+\textbf{索引解码}。\texttt{idx} 是「维度对」的全局编号，范围 $[0, \text{seq\_len} \times N)$，其中参数 $N$ 是\textbf{每 token 的对数}（$N = d/2$，hidden size 为 $2N$）。\texttt{token\_pos = idx / N} 解出序列位置 $m$，\texttt{token\_idx = idx \% N} 解出 token 内的对号 $i$。一对分量占两个连续地址 \texttt{x[idx*2]} 与 \texttt{x[idx*2+1]}。
+
+\textbf{频率计算}。\texttt{exp\_\allowbreak{}v =\allowbreak{} 1.0f /\allowbreak{} powf\allowbreak{}(10000.0f,\allowbreak{} 2 * token\_\allowbreak{}idx /\allowbreak{} (N * 2.0f))} 实现式~\eqref{eq:ch07-blockdiag} 的 $\theta_i = 10000^{-2i/d}$：分子 \texttt{2 * token\_idx} 是整数乘法，除以 \texttt{(N * 2.0f)}（即 $d$）时提升为浮点除法，不会截断。角度 \texttt{token\_pos * exp\_v} 即 $m\theta_i$。注意分母用的是 $d = N \times 2$ 而不是 $N$——若误用 $N$，频率谱整体偏移一个平方量级，这是把「对数」当「维度数」的经典笔误。
+
+\textbf{旋转与写回}。两行乘加 $x_1' = x_1\cos\theta - x_2\sin\theta$、$x_2' = x_1\sin\theta + x_2\cos\theta$ 与式~\eqref{eq:ch07-2d-rot} 逐项对应，编译器可映射为 FMA。
+
+\textbf{访存与计算策略}。相邻线程访问相邻对，warp 的 32 线程读 64 个连续 float（256B，合并为 2 个事务），写同理——接近最优但差一步：一对元素本可用一条 \texttt{float2} load 完成。更值得注意的是计算侧：\texttt{powf/\allowbreak{}sinf/\allowbreak{}cosf} 三个超越函数在每个线程重算，而 $\theta_i$ 只依赖对号 $i$（整张 batch 复用）、$m\theta_i$ 只依赖 $(m, i)$（每层每次 forward 都相同）。生产实现普遍改为预计算 cos/sin 缓存表（\texttt{seq\_len} $\times d/2$ 个元素，启动时一次生成）或把 RoPE 融合进 attention/elementwise 链。本章 kernel 保留「每线程重算」的教学形态，把「算得少」作为优化讨论留给读者实验。
+
+\subsection{mat\_transpose：矛盾的直接呈现}
+
+\lstinputlisting[linerange={839-865},firstnumber=auto,
+  title={base.cuh L839-865（mat\_transpose：naive 转置及其访存注释）}]{../base.cuh}
+
+每线程搬运一个元素：\texttt{y[c * row + r] = x[r * col + c]}。读侧：warp 内 32 线程的 $r$ 固定、$c$ 连续，读 128B 连续段，合并。写侧：$c$ 每加 1，地址跳一整行（\texttt{row} 个 float），32 线程写到 32 个互不相邻的 4B——每个 4B 落在各自的内存事务里，产生 32 次写事务（$32 \times 32\mathrm{B} = 1024\mathrm{B}$），只运了 128B 有效数据。源码注释「非合并写入 $\to$ 32 次内存事务」说的正是这个。读是满血的，写是 $1/8$ 残血的（32B sector 口径；按 128B cache line 口径则 $1/32$），总带宽立刻被写侧拖垮（本章第 6 节实测 512 规模只有 $\sim 350\,\mathrm{GB/s}$，是 padded 版的 69\%）。
+
+\subsection{mat\_transpose\_padded：shared memory 中转 + PAD}
+
+\lstinputlisting[linerange={871-907},firstnumber=auto,
+  title={base.cuh L871-907（mat\_transpose\_padded：smem 中转 + PAD = 1）}]{../base.cuh}
+
+整体思路是「两边各自合并，中间过一道 shared memory」：
+\begin{enumerate}
+  \item \textbf{Step 1（gmem $\to$ smem，合并读）}：\texttt{tile[ty*4+i][tx] =\allowbreak{} x[\allowbreak{}(x\_\allowbreak{}r*4+i)*col + x\_\allowbreak{}c]}。每线程负责 4 行 $\times$ 1 列（\texttt{\#pragma unroll} 展开 4 次读），warp 内 $x\_c$ 连续，读合并。写入 smem 是按行连续写。
+  \item \textbf{Step 2（smem 转置读 $\to$ gmem，合并写）}：\texttt{reg\_trans} 的 4 个分量取 \texttt{tile[tx*4+j][ty]}（$j = 0..3$）——行号与列号互换，正是「转置读 smem」。随后 \texttt{FLOAT4\allowbreak{}(y[y\_\allowbreak{}r * row + y\_\allowbreak{}c]) =\allowbreak{} reg\_\allowbreak{}trans} 把 4 个连续输出元素一条 16B 指令写回；同 warp 内 16 线程覆盖 64 个连续输出 float，合并写。
+\end{enumerate}
+两个坐标换算值得写慢一点：$y$ 的行号 $= x$ 的列号，故 \texttt{y\_r = blockIdx.x * TILE + ty}；$y$ 的列号 $= x$ 的行号 $\times 1$，但每线程覆盖 4 个连续行，故 \texttt{y\_c = (blockIdx.y * TILE + tx) * 4}。\texttt{FLOAT4} 写回要求 \texttt{y\_c} 起 4 个元素 16B 对齐，即 $x$ 的行号是 4 的倍数——这由 \texttt{y\_c} 的构造天然保证。
+
+smem tile 的形状是 \texttt{[TILE*4][TILE+PAD]} $= [64][17]$：第二维多出的 \texttt{PAD = 1} 不是防越界，而是\textbf{消除 bank conflict} 的关键——这就是下一节的主题。
+
+\needspace{77mm}
+
+\section{图示：Bank Conflict 专题}
+
+\subsection{shared memory 的物理结构}
+
+shared memory 被切成 32 个 bank（对应一个 warp 的 32 线程），每个 bank 宽 4B；地址按每 4B 一次循环映射到 bank：
+\begin{equation}
+  \mathrm{bank}(addr) = \Big(\frac{addr}{4\,\mathrm{B}}\Big) \bmod 32 .
+\end{equation}
+硬件每个周期允许每个 bank 服务一次访问。同一 warp 内多个线程访问\textbf{同一 bank 的不同地址}时，访问被迫串行成 $n$ 次（$n$-way bank conflict，带宽除以 $n$）；访问\textbf{同一地址}则是广播（broadcast），一个周期完成，不冲突。分析任何 bank 冲突问题都是固定三步：第一步，确认 warp 到线程坐标的映射；第二步，写出每线程的地址表达式；第三步，对地址做 mod-32 直方图。
+
+\subsection{本 kernel 的精确冲突分析}
+
+\texttt{mat\_\allowbreak{}transpose\_\allowbreak{}padded} 的 block 是 $(16,16)$，线程坐标 $(tx, ty)$，warp 内线性映射为 \texttt{tid = tx + 16*ty}，即 warp 0 覆盖 $ty \in \{0,1\}$、$tx \in [0,16)$ 的 32 线程。设 tile 列宽 $W$（无 PAD 时 $W = 16$，PAD=1 时 $W = 17$），按 4B 字计地址。
+
+\textbf{Step 2 转置读}（每条 LD 指令，$j$ 固定）：地址 $(4\,tx + j)\,W + ty$。
+\begin{itemize}
+  \item 无 PAD（$W = 16$）：$64\,tx + 16j + ty$，对 32 取模后 $tx$ 项整体消失（$64 \equiv 0 \pmod{32}$），bank 号 $= (16j + ty) \bmod 32$ \textbf{与 $tx$ 无关}——32 个线程全部挤进 2 个 bank，每个 bank 16 线程等待，\textbf{16-way conflict}，读 shared memory 的吞吐掉到 $1/16$。
+  \item PAD=1（$W = 17$）：地址 $68\,tx + 17j + ty$，而 $68 \equiv 4 \pmod{32}$：$tx$ 每加 1，bank 号前进 4。16 个线程的 bank 号构成 $\{b, b{+}4, b{+}8, \dots, b{+}60\} \bmod 32$，恰好覆盖 8 个 bank、每个 bank 2 线程——\textbf{16-way 降到 2-way}，事务数从 16 降到 2（读吞吐 $\times 8$）。
+\end{itemize}
+
+\textbf{Step 1 写 smem}（每条 ST 指令，$i$ 固定）：地址 $(4\,ty + i)\,W + tx$。无 PAD 时 bank 号 $= (16i + tx) \bmod 32$ 与 $ty$ 无关——warp 的两排 $ty$ 并行写相同 bank 序列，每 bank 2 线程，\textbf{2-way}；PAD=1 时行距变为 $68 \equiv 4 \pmod{32}$，两排 bank 序列错开 4，仍有部分重叠，模拟结果\textbf{仍是 2-way}（写侧 PAD 前后无改善）。
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{figures/drawio/fig-7-1-bank-pad/fig-7-1.png}
+\caption{bank conflict vs padding——PAD=1 使步长 64B 变为 68B，$tx$ 项在 mod 32 下重新出现，16-way 冲突降为 2-way（读 smem 吞吐 $1/16 \to 1/2$）。}
+\label{fig:7-1}
+\end{figure}
+
+两个思考题留给自己：（1）为什么经典「一线程一元素」的 $32 \times 32$ tile 加 PAD=1 能做到零冲突，而本 kernel 的 4 行版本不能？（提示：经典版 warp 内 32 线程读同一列，地址步长 $33 \times 4\mathrm{B} \equiv 4\mathrm{B}$，32 线程 bank 号两两不同；本版每线程 4 行、warp 只跨 2 列，自由度更小。）（2）残留的 2-way 怎么彻底消除？把行距从 4 改成别的值、或干脆重排 tile 内的物理布局——第 \ref{ch:12} 章的 XOR swizzle 会给出系统性答案：用地址位异或代替加法 padding，在不浪费 smem 容量的前提下打散 bank 映射。
+
+\subsection{模拟验证}
+
+上述推导可以不依赖 GPU 复现：按 warp 映射逐指令统计 bank 直方图的模拟（几十行 Python 即可写就），输出与推导一致：
+
+\begin{lstlisting}[style=console]
+tile[64][16] (PAD=0):  Step1 write: 2-way   Step2 read: 16-way
+tile[64][17] (PAD=1):  Step1 write: 2-way   Step2 read:  2-way
+\end{lstlisting}
+
+\section{性能分析}
+
+转置是零计算算子（$AI \approx 0$），性能上限 $=$ 带宽上限，优化就是把「事务数」压到理论最小：读 $M^2/32$ 个事务 + 写 $M^2/32$ 个事务（每 warp 每向一个 128B 段）。
+
+测试环境与口径：NVIDIA RTX PRO 5000 72GB（Blackwell，sm\_120a，L2 96MB），cudaEvent 取 20 次 min；$M \times M$ fp32 方阵；有效带宽按读 + 写 $2M^2 \cdot 4\,\mathrm{B}$ 计：
+
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+$M$ & mat\_transpose (naive) & mat\_transpose\_padded & 加速比 \\
+\midrule
+512  & 0.0060 ms / 351 GB/s  & 0.0041 ms / 508 GB/s   & 1.45$\times$ \\
+1024 & 0.0112 ms / 751 GB/s  & 0.0068 ms / 1242 GB/s  & 1.65$\times$ \\
+2048 & 0.0347 ms / 966 GB/s  & 0.0145 ms / 2320 GB/s  & 2.40$\times$ \\
+8192 & 0.5909 ms / 909 GB/s  & 0.5318 ms / 1010 GB/s  & 1.11$\times$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{口径划分}：$M \le 2048$ 时数据（最大 34MB）完全落在 96MB L2 工作集内，测的是 L2 口径；$M = 8192$ 时读写流量 512MB 远超 L2，是 HBM 口径。
+
+\begin{enumerate}
+  \item \textbf{L2 口径下收益放大到 2.4$\times$}：L2 延迟低、带宽高，事务数（而非 DRAM 流量）成为第一瓶颈。naive 的 32 次写事务在 L2 上全额计费；padded 的 float4 合并写加上 smem 读从 16-way 修到 2-way，双双把事务开销压掉。$M = 2048$ 时 padded 有效带宽 2320 GB/s，这是 L2 量级的数字，不代表 HBM。
+  \item \textbf{HBM 口径下收益缩到 1.11$\times$}：$M = 8192$ 时数据穿透 L2 落到 DRAM，L2 的 write-back 聚合会把 naive 分散的 4B 写在写回 DRAM 前重新拼成整段，非合并写的惩罚被部分吸收；此时两者都逼近 DRAM 带宽，剩余差距主要来自 smem 2-way 与调度差异。结论很实用：\textbf{转置优化的收益必须按数据规模/L2 行为分口径报告}，拿 L2 口径的 2.4$\times$ 去外推大矩阵会严重高估。
+\end{enumerate}
+
+\section{实践经验}
+
+\begin{kaogu}[F3 | 「PAD 消除 bank conflict」在本 kernel 中是大幅降低而非消除]
+源码注释把 PAD 表述为「Bank conflict fix：每行多 1 个元素，打破 32-bank 对齐」与「解决方案：PAD……打破地址对齐」。按本章第 5 节的逐指令 bank 直方图：PAD=1 把 Step 2 转置读从 16-way 降到 2-way（主要收益），Step 1 写侧 PAD 前后均为 2-way。即注释的结论在数量级上成立（读事务 16 $\to$ 2），但「消除」并不准确——彻底消除需要第 \ref{ch:12} 章的 swizzle 或改变每线程 4 行的分工。经典「一线程一元素 + $32\times33$ tile」布局才是 PAD 完全消除冲突的形态。
+\end{kaogu}
+
+\begin{kaogu}[F5 | RoPE 的配对约定考据]
+本 kernel 为相邻对（interleaved）配对：\texttt{idx*2} 与 \texttt{idx*2+1} 成对，$\theta_i$ 作用于 $(x_{2i}, x_{2i+1})$。HuggingFace transformers 主流实现（\texttt{rotate\_half}）为半分（half-split）配对：$(x_i, x_{i+d/2})$。两者经逐对重排后数学等价，但直接套用权重不做重排会得到错误结果；社区若干「RoPE 精度不对」的 issue 根因即在此。
+\end{kaogu}
+
+\begin{kaogu}[F3 | 参数 N 的语义易误读]
+rope 的参数 $N$ 是每 token 的\textbf{对数}（$d/2$），而非 hidden size；频率分母用的是 $N \times 2$。与第 \ref{ch:06} 章中 $N$ 表示行数、本章 transpose 中 $N$ 无出现等用法对照，读多文件时需逐处确认参数语义。
+\end{kaogu}
+
+\section{常见坑}
+
+\begin{enumerate}
+  \item \textbf{padded 版的对齐前提}：grid 按 $(col+15)/16 \times (row+63)/64$ 覆盖，分支只判 \texttt{x\_r*4 < row}；若 $row$ 不是 64 的倍数，边界 tile 的 4 行批读写会越界（例如 $row = 66$ 时访问第 66、67 行）。\texttt{FLOAT4} 写回还要求 \texttt{row \% 4 == 0}（行首 16B 对齐）。测试与 bench 全部使用 64 的倍数规模。
+  \item \textbf{warp 到 $(tx,ty)$ 的映射想当然}：bank 分析第一步就是确认映射，\texttt{(16,16)} block 是 \texttt{tid = tx + 16*ty}（x 优先）。映射记错，直方图全错，冲突度结论跟着全错。
+  \item \textbf{同地址是 broadcast 不是 conflict}：同 bank 同地址（全 warp 读同一标量）一个周期完成；先判地址是否相同，再判 bank 是否相同。
+  \item \textbf{grid 尺寸复制粘贴}：naive 的 $y$ 向是 $(row+15)/16$，padded 是 $(row+63)/64$——每线程覆盖行数变了 4 倍，漏改 grid 会让输出一半是旧值（本测试刻意先清零 $y$ 再启动 padded kernel，防止「读到残值也算对」的假阳性）。
+  \item \textbf{超越函数精度}：\texttt{powf} 相对误差 $\sim 10^{-6}$，经 $m\theta_i$ 放大后（$m = 512, \theta_0 = 1$ 时角度绝对误差 $\sim 5 \times 10^{-4}$）仍在本章容差内；长序列（$m$ 上万）时误差线性放大，生产实现用 fp64 预计算或查表规避。
+  \item \textbf{转置 kernel 的写侧假阳性}：若不清零输出缓冲，未覆盖区域的旧值可能与参考「碰巧一致」，掩盖 grid 覆盖不全的 bug。
+\end{enumerate}
+
+\section{面试要点速查}
+
+\begin{enumerate}
+  \item \textbf{Q：shared memory 的 bank 结构？} A：32 个 bank、每 bank 4B 宽、每周期每 bank 服务一次；连续 4B 字按 $(addr/4) \bmod 32$ 轮转映射。
+  \item \textbf{Q：什么是 $n$-way bank conflict？和 broadcast 的区别？} A：同 warp 多线程访问同 bank \textbf{不同}地址 $\to$ 串行 $n$ 次，带宽 $1/n$；同地址 $\to$ 广播，无代价。
+  \item \textbf{Q：为什么 +1 padding 能打破冲突？} A：Step 2 中相邻 tx 相隔 4 行，字步长从 $4 \times 16 = 64 \equiv 0 \pmod{32}$（对 32 bank 周期整除，列访问全撞同 bank）变为 $4 \times 17 = 68 \equiv 4 \pmod{32}$（行距 $17 \times 4 = 68\mathrm{B}$），bank 号每线程前进 4，不再对齐回绕。代价是每行多 4B smem（本例 64 行多 256B，约 $6\%$）。
+  \item \textbf{Q：RoPE 为什么满足相对位置不变性？} A：旋转矩阵正交，$R(m\theta)^{\top}R(n\theta) = R((n-m)\theta)$；复数形式即 $e^{-im\theta}e^{in\theta} = e^{i(n-m)\theta}$。
+  \item \textbf{Q：$\theta_i = 10000^{-2i/d}$ 的设计意图？} A：波长 $\lambda_i = 2\pi/\theta_i$ 构成 $2\pi$ 到 $\sim 2\pi \times 10^4$ 的等比谱，高频分量分辨局部、低频分量分辨远距，多尺度覆盖长程依赖。
+  \item \textbf{Q：interleaved 与 half-split 配对的区别？} A：同一分块对角旋转的不同分量排列，逐对重排互相等价；权重/cache 对齐时必须按 checkpoint 约定处理。
+  \item \textbf{Q：转置为什么要经过 shared memory？} A：读合并与写合并不可兼得（行主存储下二者互斥）；smem 中转让 gmem 两侧都合并，代价是 smem 容量、一次 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()} 与潜在的 bank conflict。
+\end{enumerate}
+
+\section{最小测试与动手实验}
+
+测试文件 \texttt{tests/\allowbreak{}ch07\_\allowbreak{}rope\_\allowbreak{}transpose.\allowbreak{}cu}（$\le 300$ 行），逻辑抽取自 \texttt{notes-v2.cu} 的 \texttt{test\_rope}（L1042）与 \texttt{test\_\allowbreak{}mat\_\allowbreak{}transpose}（L1098、L1144）。RoPE 的 CPU 参考用 \texttt{double} 直接按旋转矩阵计算（\texttt{std::\allowbreak{}pow/\allowbreak{}std::\allowbreak{}cos/\allowbreak{}std::\allowbreak{}sin}）；转置的参考是纯数据搬运，两个 kernel 的 \texttt{max\_abs\_err} 应为 0，且测试显式断言两 kernel 输出逐元素 bitwise 一致。规模：RoPE \texttt{seq\_len}=128、$N=64$（对/token）；转置 $512 \times 512$。
+
+\begin{lstlisting}[style=console]
+cd kernels/interview/book/tests && CUDA_VISIBLE_DEVICES=7 ./build_tests.sh --ch ch07
+  PASS rope: max_abs_err=7.099e-06 (tol=1.0e-03)
+  PASS mat_transpose: max_abs_err=0.000e+00 (tol=1.0e-03)
+  PASS mat_transpose_padded: max_abs_err=0.000e+00 (tol=1.0e-03)
+  ch07 ALL PASS
+\end{lstlisting}
+
+性能实验：\texttt{./\allowbreak{}.build/\allowbreak{}ch07\_\allowbreak{}rope\_\allowbreak{}transpose --bench} 复现本章第 6 节表格；bank 直方图可用本章第 5 节的模拟复现。建议动手：把 \texttt{PAD} 改成 2、4，观察 Step 2 的冲突度如何随步长变化（模拟脚本改一行即可）；把每线程 4 行改成 2 行（tile 变 $[32][17]$、grid 相应调整），看 2-way 残留是否消失，并核对第 \ref{ch:12} 章 swizzle 动机的自然浮现。
+
+\subsection*{延伸阅读}
+
+\begin{itemize}
+  \item 懒蚂蚁呀不嘿，《CUDA matrix transpose 优化（bank conflict 消除）专题》：\url{https://zhuanlan.zhihu.com/p/1899760505733756129}——转置四步演进（naive $\to$ smem $\to$ padding $\to$ merge write）的完整实验，与本章源码的 Level 1/Level 4 对照阅读。
+  \item frankshi，《GPU shared memory bank conflict 与 swizzle》：\url{https://zhuanlan.zhihu.com/p/4746910252}——swizzle 的位运算原理，本章 padding 残留问题的进阶答案，第 \ref{ch:12} 章的预告篇。
+\end{itemize}

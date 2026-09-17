@@ -1871,7 +1871,7 @@ template <const int kMmaM = 16,             // MMA atom M dim (m16n8k16)
           const int kStages = 2,            // TMA full/empty pipeline depth
           const int kNumThreads = 256,      // 128 producer + 128 consumer threads
           const int kBlockSwizzle = 0>      // 1 enables 3D grid swizzle for L2 locality
-__global__ void __launch_bounds__(kNumThreads)
+__global__ void __launch_bounds__(kNumThreads, 1)
     hgemm_tma_mma_ws_tn(
         int M, int N, int K, half *C,
         const CUtensorMap *__restrict__ tensorMapA,

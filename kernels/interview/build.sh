@@ -9,7 +9,8 @@
 #   ./build.sh --arch sm_89       # Ada (RTX 40 series)
 #   ./build.sh --arch sm_90a      # Hopper (H100/H200)
 #   ./build.sh --arch sm_120a     # Blackwell (RTX 5090 / PRO 5000/6000)
-#   ./build.sh --arch all         # All three architectures
+#   ./build.sh --arch sm_120f     # Blackwell family target (keeps setmaxnreg; CUDA >= 13.2)
+#   ./build.sh --arch all         # All five architectures (sm_86/sm_89/sm_90a/sm_120a/sm_120f)
 #   ./build.sh --clean            # Remove build artifacts
 set -euo pipefail
 
@@ -79,7 +80,21 @@ ARCH_LIB_PATH[sm_120a]="-L/usr/local/cuda/targets/x86_64-linux/lib/stubs"
 ARCH_LIBS[sm_120a]="-lcublas -lcudnn -lnvrtc -lcuda"
 ARCH_OUTPUT[sm_120a]="notes_v2_sm120a.bin"
 
-VALID_ARCHS="sm_86 sm_89 sm_90a sm_120a"
+# sm_120f — Blackwell family-specific target (RTX 5090 / PRO 5000/6000, CUDA >= 13.2).
+# setmaxnreg experiment target: defines NOTES_V2_ENABLE_SETMAXNREGS so
+# NOTES_V2_REG_{DE}ALLOC actually emit PTX, plus NOTES_V2_FORCE_INLINE_ASYNC_PROXY
+# so TMA helpers use raw `asm volatile` with a shared::cta destination (the
+# cuda::ptx wrappers issue shared::cluster, which ptxas treats as an extern-call
+# boundary and drops setmaxnreg with C7506). With those two macros the rebalancing
+# survives on sm_120a AND sm_120f alike (112 USETMAXREG == PTX count on both);
+# sm_120f additionally keeps the whole sm_120 family binary-compatible.
+ARCH_GENCODE[sm_120f]="-gencode arch=compute_120f,code=sm_120f"
+ARCH_DEFINES[sm_120f]="-DNOTES_V2_ENABLE_CUTE -DNOTES_V2_ENABLE_TMA_MMA_WS -DNOTES_V2_ENABLE_CUDNN -DNOTES_V2_ENABLE_SETMAXNREGS -DNOTES_V2_FORCE_INLINE_ASYNC_PROXY"
+ARCH_LIB_PATH[sm_120f]="-L/usr/local/cuda/targets/x86_64-linux/lib/stubs"
+ARCH_LIBS[sm_120f]="-lcublas -lcudnn -lnvrtc -lcuda"
+ARCH_OUTPUT[sm_120f]="notes_v2_sm120f.bin"
+
+VALID_ARCHS="sm_86 sm_89 sm_90a sm_120a sm_120f"
 
 # ── CLI ───────────────────────────────────────────────────────────
 usage() {
@@ -91,7 +106,8 @@ Architectures:
   sm_89     Ada Lovelace (RTX 40 series)
   sm_90a    Hopper (H100/H200)
   sm_120a   Blackwell (RTX 5090 / PRO 5000/6000)
-  all       Build all four architectures
+  sm_120f   Blackwell family target (keeps setmaxnreg; CUDA >= 13.2)
+  all       Build all five architectures
   sm_XX     Generic SM arch (e.g., sm_80 for A100)
 
 Options:
@@ -182,7 +198,7 @@ if [[ "$ARCH" == "all" ]]; then
   done
 else
   if [[ -n "${ARCH_GENCODE[$ARCH]:-}" ]]; then
-    # Predefined arch (sm_86/sm_89/sm_90a/sm_120a)
+    # Predefined arch (sm_86/sm_89/sm_90a/sm_120a/sm_120f)
     build_one "$ARCH"
   elif [[ "$ARCH" == sm_* ]]; then
     # Generic arch (e.g., sm_80): no NOTES_V2_XXX flags, cublas/cuda only

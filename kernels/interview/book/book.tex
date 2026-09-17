@@ -1,0 +1,87 @@
+% book.tex — LeetCUDA 技术书主文件（RFC-0.3 骨架）
+% 构建：cd book/ && TEXMFCNF=../tex/: xelatex -interaction=nonstopmode book.tex （×2）
+% 或 ./build.sh
+\documentclass[9pt,openany]{ctexbook}
+\input{preamble.tex}
+\usepackage[unicode,bookmarksnumbered,colorlinks,linkcolor=vscKeyword,citecolor=vscKeyword,urlcolor=vscEmphasis]{hyperref}
+\usepackage{xurl}  % 参考文献长 URL 任意位置断行，压制脚注/itemize 行溢出
+\usepackage{float}  % [H] 强制图就地放置：放不下则标题+图整体下移到下一页，避免图文错乱
+\usepackage{placeins}  % \FloatBarrier：图示节末尾设屏障，保证下一节内容不跑到图前
+
+\title{LeetCUDA：CUDA Kernel 优化之路\\{\large 从编程模型到 CuTe 与 FlashAttention}}
+\author{LeetCUDA Project}
+\date{2026 年 9 月}
+
+\begin{document}
+
+% 封面：shipout 背景钩子满幅铺图，页面本体留空（newgeometry 会在此处
+% 先 clearpage 产生空白首页，故不用）；钩子 picture 原点在页左上、
+% y 轴向下，图参考点为左下角故放 (0,-\paperheight)
+\AddToHookNext{shipout/background}{%
+  \put(0,-\dimexpr\paperheight\relax){\includegraphics[width=\paperwidth,height=\paperheight]{figures/misc/cover.png}}}
+\thispagestyle{empty}
+\null
+\clearpage
+
+% 消除 frontmatter 的奇数开页空页，目录紧跟封面
+\begingroup
+\let\cleardoublepage\clearpage
+\frontmatter
+\tableofcontents
+\endgroup
+
+\mainmatter
+
+\part{基础篇：编程模型、访存与归约}
+\input{chapters/ch00-profiling}
+\input{chapters/ch01-arch-roofline}
+\input{chapters/ch02-reduce-dot}
+\input{chapters/ch03-vectorize-atomic}
+\input{chapters/ch04-softmax}
+\input{chapters/ch05-lse-merge}
+\input{chapters/ch06-norm}
+\input{chapters/ch07-rope-transpose}
+
+\part{GEMM 篇：从 CUDA Core 到 Tensor Core}
+\input{chapters/ch08-sgemv}
+\input{chapters/ch09-sgemm-tiling}
+\input{chapters/ch10-sgemm-tf32-wmma}
+\input{chapters/ch11-hgemm-mma}
+\input{chapters/ch12-hgemm-swizzle}
+\input{chapters/ch13-hopper-tma-wgmma}
+\input{chapters/ch14-sm120-tma-ws}
+
+\part{Attention 篇：FlashAttention 2/3 与大 head\_dim}
+\input{chapters/ch15-attn-math}
+\input{chapters/ch16-fa2-splitq-mma}
+\input{chapters/ch17-fa2-tma-ws}
+\input{chapters/ch18-fa3-dual-consumer}
+\input{chapters/ch19-ffpa-split-d}
+
+\part{CuTe 篇：布局代数与现代化 Kernel 工程}
+\input{chapters/ch20-cute-layout}
+\input{chapters/ch21-cute-tensor-tiledcopy}
+\input{chapters/ch22-cute-tiledmma}
+\input{chapters/ch23-cute-swizzle-tma}
+\input{chapters/ch24-cute-hgemm}
+\input{chapters/ch25-cute-flash-attn}
+\input{chapters/ch26-cute-ffpa}
+
+\part{FP8/FP4 Attention 篇：量化注意力的数学与 Kernel 工程}
+\input{chapters/ch27-quant-attn-math}
+\input{chapters/ch28-fp8-quant-aux}
+\input{chapters/ch29-fp8-persist-d}
+\input{chapters/ch30-fp8-split-d-m4n2}
+\input{chapters/ch31-fp4-nvfp4-quant}
+\input{chapters/ch32-fp4-persist-d}
+\input{chapters/ch33-fp8-fp4-bench}
+
+\appendix
+\input{appendices/appA-common-toolbox}
+\input{appendices/appB-perf-data}
+\input{appendices/appC-build-guide}
+\input{appendices/appD-source-index}
+\input{appendices/appE-references}
+
+\backmatter
+\end{document}

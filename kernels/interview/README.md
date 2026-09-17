@@ -1,20 +1,8 @@
-# CUDA Kernel 面试背题笔记
-
-[notes-v2.cu](notes-v2.cu): 面试中高频出现的 CUDA kernel 的背题版本。
-
-## 文件结构
-
-| 文件 | 内容 |
-|------|------|
-| `common.cuh` | 底层公共模块：CUDA 头文件、基础宏(`INT4`/`FLOAT4`/`HALF2`)、`kWarpSize`、MMA/WGMMA PTX 宏、XOR Swizzle 函数、TMA/mbarrier helpers、TensorMap helpers |
-| `base.cuh` | Phase 0-5：GPU 架构速查、Warp/Block Reduce、Dot Product、Elementwise Ops、Softmax（三级递进）、RMS/Layer Norm、RoPE、Mat Transpose |
-| `sgemv.cuh` | Phase 6：SGEMV（K32/K128/K16, warp-per-row） |
-| `sgemm.cuh` | Phase 7a：SGEMM（Block Tile + Vec4 + Thread Tile） |
-| `hgemm.cuh` | Phase 7b-d：HGEMM 全部（MMA m16n8k16 + XOR Swizzle + CuTe + WGMMA m64n128k16 + TMA MMA WS） |
-| `flash_attn.cuh` | Phase 8：FlashAttention 2/3 全部（MMA cp.async Split-Q + TMA MMA WS + FA3 dual-consumer + CuTe 版本） |
-| `notes-v2.cu` | 入口文件：include 以上所有 `.cuh`，包含全部 test/bench 函数和 CLI 入口 |
-
-依赖关系：`common.cuh` ← `base.cuh` ← `sgemv.cuh` / `sgemm.cuh` / `hgemm.cuh` / `flash_attn.cuh` ← `notes-v2.cu`
+<div align="center">
+  <div align='center'>
+      <img src='../../docs/book.png'>
+  </div>
+</div>
 
 ## 📖 快速开始 🔥🔥
 

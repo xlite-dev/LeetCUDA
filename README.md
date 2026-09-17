@@ -1,10 +1,8 @@
 <div align="center">
-  <p align="center">
-    <h2>📚 LeetCUDA: Modern CUDA Learn Notes with PyTorch for Beginners 🐑</h2>
-    <img src='https://github.com/user-attachments/assets/b2578723-b7a7-4d8f-bcd1-5008947b808a' >
-  </p>
   <div align='center'>
+      <img src='./docs/book.png' width='800px'><br>
       <img src=https://cdn.rawgit.com/sindresorhus/awesome/d7305f38d29fed78fa85652e3a63e154dd8e8829/media/badge.svg >
+       <a href='./kernels/interview/book/book.pdf'><img src=https://img.shields.io/badge/PDF-available-hotpink.svg ></a>
       <img src=https://img.shields.io/badge/Language-CUDA-brightgreen.svg >
       <img src=https://img.shields.io/github/forks/xlite-dev/LeetCUDA.svg?style=dark >
       <img src=https://img.shields.io/github/stars/xlite-dev/LeetCUDA.svg?style=dark >
@@ -13,45 +11,18 @@
   </div>
 </div>
 
-📚 **LeetCUDA**: It includes **Tensor/CUDA Cores, TF32/F16/BF16/F8**, [📖200+ CUDA Kernels🔥](#cuda-kernel) with PyTorch, [📖100+ LLM/CUDA🔥](#my-blogs-part-1) blogs, [📖HGEMM⚡️](./kernels/hgemm) which can achieve `98%~100%` TFLOPS of **cuBLAS**, and [📖flash-attn⚡️](./kernels/flash-attn) using Tensor Cores with pure MMA PTX. ♥️ Please consider to leave a ⭐️ Star to support me, my bro ~ ♥️
+**LeetCUDA**: includes **Tensor/CUDA Cores, TF32/F16/BF16/FP8**, [200+ CUDA Kernels](#cuda-kernel) with PyTorch, [HGEMM](./kernels/hgemm) which can achieve `98%~100%` TFLOPS of **cuBLAS**, and [flash-attn](./kernels/flash-attn) using Tensor Cores with pure MMA PTX. <i>Open sources book of <b>LeetCUDA</b> now is avaliable at <a href='./kernels/interview/book/book.pdf'>book.pdf (w/ 400+ pages)🔥🔥🔥</a>. </i> 
 
-<!--
-<div align="center">
-  <p align="center">
-    <a href="#contribute">🔥🔥 PR Welcome: Add Your Kernel to LeetCUDA! Let's make it Awesome together! 🎉🎉</a> <br>
-    <a href=https://github.com/xlite-dev/LeetCUDA/graphs/contributors > <img src=https://opencollective.com/leetcuda/contributors.svg height=40px > </a>
-  </p>
-</div>
--->
-
-Please also check out our production-ready **Kernel Library**: [**ffpa-attn**](https://github.com/xlite-dev/ffpa-attn) - Fast and Memory-Efficient Exact Attention (**BF16/FP16/FP8/FP4**) for Large Headdim, **1.5x~15x**🔥🔥 speedup over standard PyTorch SDPA. 
 <div align='center'>
   <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-h20z_B1_H32_N8192_D512_T.png' width='200px'>
   <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-h20z_B1_H32_N16384_D512_T.png' width='200px'>
   <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-b200_B1_H32_N8192_D512_T.png' width='200px'>
   <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-b200_B1_H32_N16384_D512_T.png' width='200px'><br>
-  <p><i><b>BF16 Attention</b> for Large Headdim: FFPA vs SDPA (FWD/BWD) across NVIDIA H200 and B200, 6x-15x↑. </i></p>
-  <img src="https://github.com/user-attachments/assets/1ec7d63f-711b-479d-b352-7ac7b7bff5a8" width='815px'/><br>
-  <p><i><b>FP4 Attention</b> for D=128: FFPA vs SageAttention-3 (FWD) on NVIDIA RTX PRO 6000. </i></p>
 </div>
 
+Please also check out our production-ready **Kernel Library**: [**ffpa-attn**](https://github.com/xlite-dev/ffpa-attn) - Fast and Memory-Efficient Exact Attention (**BF16/FP16/FP8/FP4**) for Large Headdim, **1.5x~15x**🔥🔥 speedup over standard PyTorch SDPA. 
 
-
-
-## ©️Citations🎉🎉
-
-```BibTeX
-@misc{LeetCUDA@2025,
-  title={LeetCUDA: A Modern CUDA Learn Notes with PyTorch for Beginners},
-  url={https://github.com/xlite-dev/LeetCUDA.git},
-  note={Open-source software available at https://github.com/xlite-dev/LeetCUDA.git},
-  author={DefTruth and Many Others},
-  year={2025}
-}
-```
-
-
-## 📖 Quick Start 🔥🔥
+## 📖 Quick Start
 
 ```bash
 git clone https://github.com/xlite-dev/LeetCUDA.git && cd LeetCUDA
@@ -61,11 +32,8 @@ apt remove -y libcudnn9-cuda-13 libcudnn9-dev-cuda-13 libcudnn9-headers-cuda-13
 apt install -y cudnn9-cuda-13 ccache # Also install ccache for faster rebuilds
 
 # Build for target architecture (ccache accelerated when available):
-./build.sh --arch sm_89     # Ada Lovelace (L20, RTX 40 series, CUDA Toolkit >= 13.2)
-./build.sh --arch sm_90a    # Hopper (H100/H200, CUDA Toolkit >= 13.2)
 ./build.sh --arch sm_120a   # Blackwell (RTX 5090 / PRO 5000/6000, CUDA Toolkit >= 13.2)
-./build.sh --arch all       # All three architectures (sm_89, sm_90a, sm_120a)
-./build.sh --clean          # Remove build artifacts (*.o, *.bin, *.ptx)
+./build.sh --help           # Show help for build options
 ```
 
 ```bash
@@ -103,7 +71,28 @@ apt install -y cudnn9-cuda-13 ccache # Also install ccache for faster rebuilds
 | FA Split-D CuTe TMA MMA WS (D=320, Sk=2, Sv=2)           | 1.526e-05 | 182.6/83.1 (2.20x)  |
 ```
 
-A PDF version of LeetCUDA focused on **interview scenarios** is available at [`interview/tex/notes-v2.pdf`](https://github.com/xlite-dev/LeetCUDA/blob/main/kernels/interview/tex/notes-v2.pdf). 
+## 🤖 Agentic workflow 
+
+LeetCUDA provides a [leetcuda-cpp-kernel](./kernels/interview/book/skills/leetcuda-cpp-kernel/) SKILL that reuse the knowledge and examples from the LeetCUDA open sources **book** and **repository**. Users can use it with Coding Agents, e.g, [GitHub Copilot](https://docs.github.com/en/copilot), [Claude Code](https://claude.ai), [Open Code](https://opencode.ai/). 
+
+<div align='center'>
+ <img src='docs/leetcuda-cpp-kernel-skill.png'><br>
+</div>
+
+## ©️Citations
+
+```BibTeX
+@misc{LeetCUDA@2025,
+  title={LeetCUDA: A Modern CUDA Learn Notes with PyTorch for Beginners},
+  url={https://github.com/xlite-dev/LeetCUDA.git},
+  note={Open-source software available at https://github.com/xlite-dev/LeetCUDA.git},
+  author={DefTruth and Many Others},
+  year={2025}
+}
+```
+
+<details>
+<summary> 📖 Click here to show the legacy contents </summary>
 
 ## 📖 Contents
 <div id="contents"></div>
@@ -746,19 +735,18 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 
 </div>
 
-## ©️License ([©️back👆🏻](#contents))
-
+## ©️License 
 <div id="License"></div>
 
 GNU General Public License v3.0
 
-## 🎉Contribute ([©️back👆🏻](#contents))
+## 🎉Contribute 
 
 <div id="contribute"></div>
 
 How to contribute? Star this repo or check [🌤🌤CONTRIBUTE🎉🎉](./CONTRIBUTE.md).
 
-<div align='center'>
+<!-- <div align='center'>
 <a href="https://star-history.dera.page/#xlite-dev/LeetCUDA&Date">
  <picture>
    <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=xlite-dev/LeetCUDA&type=Date&theme=dark" />
@@ -766,9 +754,9 @@ How to contribute? Star this repo or check [🌤🌤CONTRIBUTE🎉🎉](./CONTRI
    <img width=400 height=300 alt="Star History Chart" src="https://star-history.dera.page/svg?repos=xlite-dev/LeetCUDA&type=Date" />
  </picture>
 </a>
-</div>
+</div> -->
 
-## 📖 References ([©️back👆🏻](#contents))
+## 📖 References 
 <div id="ref"></div>
 
 - [flash-attention-minimal](https://github.com/tspeterkim/flash-attention-minimal)
@@ -782,3 +770,5 @@ How to contribute? Star this repo or check [🌤🌤CONTRIBUTE🎉🎉](./CONTRI
 - [how-to-optim-algorithm-in-cuda](https://github.com/BBuf/how-to-optim-algorithm-in-cuda)
 - [cute_gemm](https://github.com/weishengying/cute_gemm)
 - [cutlass](https://github.com/NVIDIA/cutlass)
+
+</details>
