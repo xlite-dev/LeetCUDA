@@ -14,6 +14,13 @@
 
 \begin{document}
 
+% 封面：满幅出血（零边距页，图按纸宽纸高等比覆盖）
+\newgeometry{margin=0cm}
+\thispagestyle{empty}
+\noindent\includegraphics[width=\paperwidth,height=\paperheight]{figures/cover.png}
+\clearpage
+\restoregeometry
+
 \maketitle
 \frontmatter
 \tableofcontents
