@@ -13,16 +13,12 @@
   </div>
 </div>
 
-📚 **LeetCUDA**: It includes **Tensor/CUDA Cores, TF32/F16/BF16/F8**, [📖200+ CUDA Kernels🔥](#cuda-kernel) with PyTorch, [📖100+ LLM/CUDA🔥](#my-blogs-part-1) blogs, [📖HGEMM⚡️](./kernels/hgemm) which can achieve `98%~100%` TFLOPS of **cuBLAS**, and [📖flash-attn⚡️](./kernels/flash-attn) using Tensor Cores with pure MMA PTX. ♥️ Please consider to leave a ⭐️ Star to support me, my bro ~ ♥️
+**LeetCUDA**: includes **Tensor/CUDA Cores, TF32/F16/BF16/F8**, [📖200+ CUDA Kernels](#cuda-kernel) with PyTorch, [📖HGEMM](./kernels/hgemm) which can achieve `98%~100%` TFLOPS of **cuBLAS**, and [📖flash-attn](./kernels/flash-attn) using Tensor Cores with pure MMA PTX. <i>Open sources book of <b>LeetCUDA</b> now is avaliable at <a href='./kernels/interview/book/book.pdf'>book.pdf (w/ 400+ pages)🔥🔥🔥</a>. </i> 
 
-<!--
-<div align="center">
-  <p align="center">
-    <a href="#contribute">🔥🔥 PR Welcome: Add Your Kernel to LeetCUDA! Let's make it Awesome together! 🎉🎉</a> <br>
-    <a href=https://github.com/xlite-dev/LeetCUDA/graphs/contributors > <img src=https://opencollective.com/leetcuda/contributors.svg height=40px > </a>
-  </p>
+<div align='center'>
+ <img src='./kernels/interview/book/figures/misc/cover.png' width='800px'><br>
+ <p><i>Open sources book of LeetCUDA now is avaliable at <a href='./kernels/interview/book/book.pdf'>book.pdf (w/ 400+ pages)🔥🔥🔥</a>. </i></p>
 </div>
--->
 
 Please also check out our production-ready **Kernel Library**: [**ffpa-attn**](https://github.com/xlite-dev/ffpa-attn) - Fast and Memory-Efficient Exact Attention (**BF16/FP16/FP8/FP4**) for Large Headdim, **1.5x~15x**🔥🔥 speedup over standard PyTorch SDPA. 
 <div align='center'>
@@ -31,24 +27,7 @@ Please also check out our production-ready **Kernel Library**: [**ffpa-attn**](h
   <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-b200_B1_H32_N8192_D512_T.png' width='200px'>
   <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-b200_B1_H32_N16384_D512_T.png' width='200px'><br>
   <p><i><b>BF16 Attention</b> for Large Headdim: FFPA vs SDPA (FWD/BWD) across NVIDIA H200 and B200, 6x-15x↑. </i></p>
-  <img src="https://github.com/user-attachments/assets/1ec7d63f-711b-479d-b352-7ac7b7bff5a8" width='815px'/><br>
-  <p><i><b>FP4 Attention</b> for D=128: FFPA vs SageAttention-3 (FWD) on NVIDIA RTX PRO 6000. </i></p>
 </div>
-
-
-
-
-## ©️Citations🎉🎉
-
-```BibTeX
-@misc{LeetCUDA@2025,
-  title={LeetCUDA: A Modern CUDA Learn Notes with PyTorch for Beginners},
-  url={https://github.com/xlite-dev/LeetCUDA.git},
-  note={Open-source software available at https://github.com/xlite-dev/LeetCUDA.git},
-  author={DefTruth and Many Others},
-  year={2025}
-}
-```
 
 
 ## 📖 Quick Start 🔥🔥
@@ -103,7 +82,20 @@ apt install -y cudnn9-cuda-13 ccache # Also install ccache for faster rebuilds
 | FA Split-D CuTe TMA MMA WS (D=320, Sk=2, Sv=2)           | 1.526e-05 | 182.6/83.1 (2.20x)  |
 ```
 
-A PDF version of LeetCUDA focused on **interview scenarios** is available at [`interview/tex/notes-v2.pdf`](https://github.com/xlite-dev/LeetCUDA/blob/main/kernels/interview/tex/notes-v2.pdf). 
+## ©️Citations🎉🎉
+
+```BibTeX
+@misc{LeetCUDA@2025,
+  title={LeetCUDA: A Modern CUDA Learn Notes with PyTorch for Beginners},
+  url={https://github.com/xlite-dev/LeetCUDA.git},
+  note={Open-source software available at https://github.com/xlite-dev/LeetCUDA.git},
+  author={DefTruth and Many Others},
+  year={2025}
+}
+```
+
+<details>
+<summary> 📖 Click here to show the legacy contents </summary>
 
 ## 📖 Contents
 <div id="contents"></div>
@@ -746,6 +738,8 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 
 </div>
 
+</details>
+
 ## ©️License ([©️back👆🏻](#contents))
 
 <div id="License"></div>
@@ -758,7 +752,7 @@ GNU General Public License v3.0
 
 How to contribute? Star this repo or check [🌤🌤CONTRIBUTE🎉🎉](./CONTRIBUTE.md).
 
-<div align='center'>
+<!-- <div align='center'>
 <a href="https://star-history.dera.page/#xlite-dev/LeetCUDA&Date">
  <picture>
    <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=xlite-dev/LeetCUDA&type=Date&theme=dark" />
@@ -766,7 +760,7 @@ How to contribute? Star this repo or check [🌤🌤CONTRIBUTE🎉🎉](./CONTRI
    <img width=400 height=300 alt="Star History Chart" src="https://star-history.dera.page/svg?repos=xlite-dev/LeetCUDA&type=Date" />
  </picture>
 </a>
-</div>
+</div> -->
 
 ## 📖 References ([©️back👆🏻](#contents))
 <div id="ref"></div>
