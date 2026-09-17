@@ -13,7 +13,7 @@
   </div>
 </div>
 
-**LeetCUDA**: includes **Tensor/CUDA Cores, TF32/F16/BF16/F8**, [📖200+ CUDA Kernels](#cuda-kernel) with PyTorch, [📖HGEMM](./kernels/hgemm) which can achieve `98%~100%` TFLOPS of **cuBLAS**, and [📖flash-attn](./kernels/flash-attn) using Tensor Cores with pure MMA PTX. <i>Open sources book of <b>LeetCUDA</b> now is avaliable at <a href='./kernels/interview/book/book.pdf'>book.pdf (w/ 400+ pages)🔥🔥🔥</a>. </i> 
+**LeetCUDA**: includes **Tensor/CUDA Cores, TF32/F16/BF16/F8**, [200+ CUDA Kernels](#cuda-kernel) with PyTorch, [HGEMM](./kernels/hgemm) which can achieve `98%~100%` TFLOPS of **cuBLAS**, and [flash-attn](./kernels/flash-attn) using Tensor Cores with pure MMA PTX. <i>Open sources book of <b>LeetCUDA</b> now is avaliable at <a href='./kernels/interview/book/book.pdf'>book.pdf (w/ 400+ pages)🔥🔥🔥</a>. </i> 
 
 <div align='center'>
  <img src='./kernels/interview/book/figures/misc/cover.png' width='800px'><br>
@@ -740,13 +740,12 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 
 </details>
 
-## ©️License ([©️back👆🏻](#contents))
-
+## ©️License 
 <div id="License"></div>
 
 GNU General Public License v3.0
 
-## 🎉Contribute ([©️back👆🏻](#contents))
+## 🎉Contribute 
 
 <div id="contribute"></div>
 
@@ -762,7 +761,7 @@ How to contribute? Star this repo or check [🌤🌤CONTRIBUTE🎉🎉](./CONTRI
 </a>
 </div> -->
 
-## 📖 References ([©️back👆🏻](#contents))
+## 📖 References 
 <div id="ref"></div>
 
 - [flash-attention-minimal](https://github.com/tspeterkim/flash-attention-minimal)
