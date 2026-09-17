@@ -219,7 +219,7 @@ PV 的 C fragment 每 lane 持数不同（头注释 L44--46）。
 
 \section{图示}
 
-\begin{figure}[H]
+\begin{figure}[htbp]
   \centering
   \includegraphics[width=0.98\textwidth]{figures/fig-32-1-two-level-p.png}
   \caption{两级 P 量化的域拉伸：online softmax 使第一级退化为全局常数
@@ -227,7 +227,7 @@ PV 的 C fragment 每 lane 持数不同（头注释 L44--46）。
   组归一化同样折进 exp2 参数。}
 \end{figure}
 
-\begin{figure}[H]
+\begin{figure}[htbp]
   \centering
   \includegraphics[width=0.98\textwidth]{figures/fig-32-2-persist-d-loop.png}
   \caption{fp4 persist-D 主循环数据流（128T producer + 256T consumer）：

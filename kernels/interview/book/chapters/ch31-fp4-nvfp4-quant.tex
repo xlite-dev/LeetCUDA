@@ -293,7 +293,7 @@ TMA 访问越界直接 IMA（\texttt{sm\_120/persist\_d.cuh} L48--53 注
 
 \section{图示}
 
-\begin{figure}[H]
+\begin{figure}[htbp]
   \centering
   \includegraphics[width=0.98\textwidth]{figures/fig-31-1-nvfp4-block.png}
   \caption{NVFP4 的 $1\times16$ microscaling 块：e2m1 数据位域与
@@ -301,7 +301,7 @@ TMA 访问越界直接 IMA（\texttt{sm\_120/persist\_d.cuh} L48--53 注
   blockscale MMA 内逐块完成。}
 \end{figure}
 
-\begin{figure}[H]
+\begin{figure}[htbp]
   \centering
   \includegraphics[width=0.98\textwidth]{figures/fig-31-2-fp4-pipeline.png}
   \caption{fp4 前处理链数据流（$D\le128$ 走 fused 单 launch 路径）：
@@ -309,7 +309,7 @@ TMA 访问越界直接 IMA（\texttt{sm\_120/persist\_d.cuh} L48--53 注
   hadamard 下 $q_m^{rot}$ 在 fused kernel 内顺带产出。}
 \end{figure}
 
-\begin{figure}[H]
+\begin{figure}[htbp]
   \centering
   \includegraphics[width=0.98\textwidth]{figures/fig-31-3-kv-perm32.png}
   \caption{kv\_perm32 的 32 列窗口双射与 perm-aware masking。置换让

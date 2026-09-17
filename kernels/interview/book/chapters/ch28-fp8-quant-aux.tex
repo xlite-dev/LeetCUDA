@@ -499,7 +499,7 @@ $kWhtWidth$ 列（lane $\times$ $kVec$），无需跨 warp 通信；$1/\sqrt{n}$
 
 \section{图示}
 
-\begin{figure}[H]
+\begin{figure}[htbp]
   \centering
   \includegraphics[width=0.98\textwidth]{figures/fig-28-1-quant-pipeline.png}
   \caption{fp8 前处理链全景：三泳道（Q/K/V）各自的统计 $\to$ 变换 $\to$ 量化
@@ -508,7 +508,7 @@ $kWhtWidth$ 列（lane $\times$ $kVec$），无需跨 warp 通信；$1/\sqrt{n}$
   \label{fig:28-pipeline}
 \end{figure}
 
-\begin{figure}[H]
+\begin{figure}[htbp]
   \centering
   \includegraphics[width=0.98\textwidth]{figures/fig-28-2-invariants.png}
   \caption{三条不变变换的代数结构对比：smooth-K 改 logits 不改概率（lse 回加）、
