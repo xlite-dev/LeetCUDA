@@ -27,14 +27,13 @@ TiledMMA 之间「原地复用」（4.3 节）。
 \textbf{前置章节}：第~\ref{ch:20}~章（divide/zipped\_divide）、
 第~\ref{ch:21}~章（Tensor 与 TV-layout）、第~\ref{ch:11}~章（m16n8k16 的
 手写 fragment）、第~\ref{ch:15}~章（FA 的 P 复用背景）。\textbf{源码区间}：
-ffpa\_attn.cuh~L31--79——\texttt{FFPAAttn\allowbreak{}Split\allowbreak{}DCu\allowbreak{}Te\allowbreak{}Traits} 的完整类型推导，
+ffpa\_attn.cuh~L31--64——\texttt{FFPAAttn\allowbreak{}Split\allowbreak{}DCu\allowbreak{}Te\allowbreak{}Traits} 的完整类型推导，
 它是全书中唯一把\textbf{两个不同 tile 尺寸的 TiledMMA 写在同一个 traits 里}
 的样本（QK 用 $64\times64\times16$ 一次覆盖 $S$，PV 用 $64\times16\times16$
 控制累加器）。使用点引 ffpa\_attn.cuh~L151--158、L257--264、L300--305、
 L339--345（cp.async 版本的 fragment 流转，与 TMA+WS 版逐行一致）。
 \textbf{编译宏}：\texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}CUTE}。配套最小测试
 \texttt{book/\allowbreak{}tests/\allowbreak{}ch22\_\allowbreak{}tiled\_\allowbreak{}mma.cu}：host 端 partition 一致性断言。
-预计篇幅约 13 页。
 
 \section{问题与动机}
 
@@ -386,7 +385,7 @@ $D=512$ 时 $8$ 个 chunk 共 \textbf{256 个寄存器}——这已经逼近寄�
         是 128 线程（L73--78 注释）。实测 \texttt{size\allowbreak{}(Tiled\allowbreak{}Mma\allowbreak{}QK)}
         $= 128$，与 \texttt{Layout\allowbreak{}<4,\allowbreak{}1,\allowbreak{}1>}（$4\times32$）自洽。看到注释
         数字与实测不一致时，先问「它描述的是哪个版本」，再下结论。
-  \item \textbf{「EURepeat」有两种语境}。hgemm.cuh~L1283--1290 的
+  \item \textbf{「EURepeat」有两种语境}。hgemm.cuh~L1290--1292 的
         \texttt{k\allowbreak{}Mma\allowbreak{}EURepeat\allowbreak{}M/\allowbreak{}N/\allowbreak{}K} 说的是 \emph{warp 排布}
         （\texttt{make\_\allowbreak{}tiled\_\allowbreak{}mma} 的第二个参数）；本章 FFPA 注释里的
         $\langle1,8,1\rangle$/$\langle1,2,1\rangle$ 说的是\emph{每线程原子
@@ -452,7 +451,7 @@ PV 一侧的使用（L339--345）：
 
 \texttt{tCrVStorage} 是「按 KV 布局的 V」的 B fragment，
 \texttt{tCrV} 用 \texttt{tCrV\_layout}（在循环外用 \texttt{Smem\allowbreak{}Layout\allowbreak{}Vt}
-的\emph{非 swizzle 部分}推导，L141--142）重新解释同一批寄存器——
+的\emph{非 swizzle 部分}推导，L136--140）重新解释同一批寄存器——
 与第~\ref{ch:21}~章的 \texttt{retile} 是同一类「零拷贝重标记」手法。
 
 \needspace{122mm}

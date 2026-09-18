@@ -8,7 +8,7 @@
 本章讲\textbf{怎么度量与选用}它们。这是量化 attention 的「最后一公里」：
 一个不公平的 bench 能把 2x 加速测成 0.5x（功耗墙、参照漂移、preset
 隐藏成本），一个错误的容差能把好 kernel 判成精度不合格（用 fp8 的
-容径去卡 fp4）。本章沿三条线索展开：
+容差去卡 fp4）。本章沿三条线索展开：
 \begin{enumerate}[itemsep=0pt,topsep=2pt]
   \item \textbf{口径}：speedup 怎么算才公平（参照后端、min-of-N、
         pre-heat、no\_grad）；精度怎么报才有信息量（布尔 allclose 之外
@@ -55,6 +55,10 @@
         \texttt{bench\_ms} 注释口径），测出的
         是训练链路而非 kernel。
 \end{itemize}
+
+\noindent{\footnotesize 注：本节与坑 3 的功耗墙频率（2932$\to$2445MHz）
+及顺序差（466--491$\mu$s）为写作期实测（2026-08，单卡 PRO 5000），
+原始 stdout 未随书归档。\par}
 
 \section{数学原理}
 
@@ -108,7 +112,7 @@ bench 输出三层指标，各有分工：
         fp16/bf16-fp8 路径 5e-2，纯 fp16 2e-2；fp4 dense 0.15、
         causal 0.70——依据是 e2m1 网格噪声地板（第~\ref{ch:31}~章
         31.7 节：dense 实测 max\_abs $\approx$0.003 级，0.15 留出
-        一个量级余量；causal 尖峰行天然 0.5--0.75 级，0.70 按
+        约 50 倍余量；causal 尖峰行天然 0.5--0.75 级，0.70 按
         无 hybrid 抑制的地板量级取上界）。
 \end{itemize}
 读数纪律：\textbf{速度看 min、能量看 rel\_err、结构看 max\_abs、
@@ -128,8 +132,9 @@ bug 就是「速度正常 + 均值正常 + max\_abs 结构性坏行」的组合�
 竞品同场，preset
 体系（\texttt{bench\_fp8.py} L57：\texttt{default}/\texttt{cache-dit}/
 \texttt{perblock}）把「部署形态」编码进配置——\texttt{cache-dit} 预设
-NHD 零拷贝 + \texttt{hybrid\_n\_early}=256，\texttt{perblock} 预设
-sm89 cp.async 路径的 per-block 量化。
+\texttt{hybrid\_n\_early}=256，\texttt{perblock} 预设
+sm89 cp.async 路径的 per-block 量化；NHD 零拷贝（diffusers E2E 布局）
+由独立的 \texttt{--with-permute} 启用，与 preset 正交。
 
 \subsection{测量纪律的代码化}
 
@@ -188,7 +193,7 @@ preset。knob 的边际效应见 33.6.3。
 Sage2/SDPA 的领先与 fp4 的 2.60x 满血区，用于建立「能到多少」的量级预期。
 图~\ref{fig:33-pro5000-fp8} 与图~\ref{fig:33-pro5000-fp4} 是本机 PRO 5000
 的复测（H32/Hkv8，bench 脚本默认 preset）：fp8 与 Sage 总体打平、互有
-胜负，fp4 全场景领先——绝对 TFLOPS 比 5090 低 $\sim$16\%（fp8）/$\sim$35\%
+胜负，fp4 全场景领先——绝对 TFLOPS 比 5090 低 $\sim$15\%（fp8）/$\sim$35\%
 （fp4），但形态一致。读图时记住本章动机节的三陷阱：参照系、preset 与
 GPU 状态是三个最常见的失真源。
 
@@ -205,7 +210,9 @@ GPU 状态是三个最常见的失真源。
   \includegraphics[width=0.98\textwidth]{figures/ffpa/fp4/ffpa_speedup_nvidia-geforce-rtx-5090_B1_H64_N16384_D128_T.png}
   \caption{RTX 5090 上的 fp4 speedup（同形状；FFPA-FP4 $\approx$804T
   / 2.60x，比同场 fp8 再快 1.8x——blockscale MMA 的满血区）。
-  图源同上。}\label{fig:33-5090-fp4}
+  图源同上；README 文本宣传口径（850--980 TOPS / 3.8x$\sim$4.4x，
+  D=128--256 区间）为不同期的后续版本，与本图（D=128 单点）不同期。}
+  \label{fig:33-5090-fp4}
 \end{figure}
 
 \begin{figure}[!htbp]
@@ -215,7 +222,7 @@ GPU 状态是三个最常见的失真源。
   \texttt{bench\_fp8.py} 默认 preset，2026-09-16）：七个场景 $\times$
   8K/16K。与 Sage 总体打平、互有胜负（self 8K FFPA +2.0\%，
   gqa 16K Sage +1.4\%，最差差 2.6\%）；与 5090 图的形态一致，绝对
-  TFLOPS 低 $\sim$16\%（SM 数与功耗包络差异）。}\label{fig:33-pro5000-fp8}
+  TFLOPS 低 $\sim$15\%（SM 数与功耗包络差异）。}\label{fig:33-pro5000-fp8}
 \end{figure}
 
 \begin{figure}[!htbp]
@@ -246,8 +253,8 @@ GPU 状态是三个最常见的失真源。
     \cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
     task & FFPA/SDPA & speedup & FFPA/SDPA & speedup & FFPA/SDPA & speedup & FFPA/SDPA & speedup \\
     \midrule
-    self  & 1.91/2.40 & 1.26x\,\checkmark & 3.01/5.12 & 1.70x\,\checkmark & 8.13/10.55 & 1.30x\,\checkmark & 21.71/64.72 & 2.98x\,\checkmark \\
-    causal& 1.17/1.35 & 1.16x\,\checkmark & 1.89/2.70 & 1.43x\,\checkmark & 4.73/5.41 & 1.14x\,\checkmark & 12.82/32.91 & 2.57x\,$\ast$ \\
+    self  & 1.91/2.40 & 1.26x\,\checkmark & 3.01/5.12 & 1.70x\,\checkmark & 8.12/10.52 & 1.30x\,\checkmark & 21.71/64.74 & 2.98x\,\checkmark \\
+    causal& 1.17/1.35 & 1.16x\,\checkmark & 1.85/2.68 & 1.45x\,\checkmark & 4.73/5.29 & 1.12x\,\checkmark & 12.82/32.92 & 2.57x\,$\ast$ \\
     gqa   & 1.79/2.40 & 1.35x\,\checkmark & 2.81/5.15 & 1.83x\,\checkmark & 7.34/10.62 & 1.45x\,\checkmark & 20.46/64.73 & 3.16x\,\checkmark \\
     cross & 0.39/0.40 & 1.01x\,\checkmark & 0.68/0.82 & 1.21x\,\checkmark & 1.83/1.39 & 0.76x\,\checkmark & 4.59/8.73 & 1.90x\,\checkmark \\
     \bottomrule
@@ -256,7 +263,9 @@ GPU 状态是三个最常见的失真源。
   \par\vspace{4pt}
   {\footnotesize $\dagger$ D=512 参照为 SDPA-MATH（FA2 只覆盖
   $D\le256$）；$\ast$ fp16 因已知 ESS causal 特性临界失败，bf16
-  2.55x 通过（第~\ref{ch:30}~章 30.7.1 节定性）。\par}
+  2.56x 通过（第~\ref{ch:30}~章 30.7.1 节定性）。self/causal 行与
+  第~\ref{ch:29}--\ref{ch:30}~章同一轮 bench（ch29 表~29.2）；gqa/cross 行为写作期实测
+  （2026-08，单卡 PRO 5000），原始 stdout 未随书归档。\par}
 \end{table}
 
 三个形态段：
@@ -287,12 +296,17 @@ GPU 状态是三个最常见的失真源。
     \cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
     task & FFPA/SDPA & speedup & FFPA/SDPA & speedup & FFPA/SDPA & speedup & FFPA/SDPA & speedup \\
     \midrule
-    self  & 1.61/2.41 & 1.49x\,\checkmark & 2.51/5.12 & 2.04x\,\checkmark & 3.47/7.20 & 2.08x\,\checkmark & 4.96/10.47 & 2.11x\,\checkmark \\
-    causal& 1.07/1.36 & 1.26x\,\checkmark & 1.67/2.69 & 1.61x\,\checkmark & 2.40/3.92 & 1.63x\,\checkmark & 3.54/5.30 & 1.50x\,\checkmark \\
+    self  & 1.61/2.40 & 1.49x\,\checkmark & 2.52/5.11 & 2.03x\,\checkmark & 3.48/7.14 & 2.05x\,\checkmark & 4.97/10.46 & 2.11x\,\checkmark \\
+    causal& 1.08/1.35 & 1.25x\,\checkmark & 1.67/2.68 & 1.61x\,\checkmark & 2.40/3.81 & 1.59x\,\checkmark & 3.54/5.27 & 1.49x\,\checkmark \\
     gqa   & 1.53/2.41 & 1.58x\,\checkmark & 2.32/5.13 & 2.21x\,\checkmark & 3.17/7.26 & 2.29x\,\checkmark & 4.50/10.50 & 2.33x\,\checkmark \\
     cross & 0.36/0.40 & 1.10x\,\checkmark & 0.68/0.82 & 1.21x\,\checkmark & 1.02/1.16 & 1.14x\,\checkmark & 1.41/1.40 & 0.99x\,\checkmark \\
     \bottomrule
   \end{tabular}
+
+  \par\vspace{4pt}
+  {\footnotesize self/causal 行取自第~\ref{ch:31}~章同轮 fp16 记录；
+  gqa/cross 行为写作期实测（2026-08，单卡 PRO 5000），原始 stdout
+  未随书归档。\par}
 \end{table}
 
 与 fp8 的三点对照：其一，D$\ge$128 后 fp4 稳定 2x 级且\textbf{随 D
@@ -323,6 +337,11 @@ fp4 也只有 0.99x--1.21x。
     \quad smooth-v（fp8\_smv）  & 2.98 & 369T & $+1.0\%$ \\
     \bottomrule
   \end{tabular}
+
+  \par\vspace{4pt}
+  {\footnotesize 本表部分数值（int8/pv-f16 行）为写作期实测（2026-08，
+  单卡 PRO 5000），原始 stdout 未随书归档；基线与 per-thread/smooth-v
+  行同表 33.1 口径。\par}
 \end{table}
 
 读数：主权区里 kernel 主体是 QK+PV tensor pipe（占 77\%，第~\ref{ch:29}~
@@ -344,13 +363,17 @@ rel\_err 0.59/max 1.0（早期行 e2m1 噪声无 hybrid 抑制，
 \texttt{bench\_fp4.py} 头注释 L8--10 记录其量级 $\sim$1.2），FFPA
 的 fp4-hybrid 把 max 压到 0.28；GQA 场景 Sage3 直接缺席。fp8 侧
 \texttt{bench\_fp8.py} 与 Sage2 总体打平互有胜负（多数 $\pm$1.5\% 内，
-最差 cross-dense 8K FFPA 快 2.6\%），
+最差 non-aligned-dense 8K FFPA 快 2.6\%），
 这正是 preset 公平化的结果——2026-08 之前 cachedit preset 默认开
 hybrid+smooth-v，dense 场景「慢 3--8.7\%」全是功能成本，对齐后
 反超。硬件对照：5090（图~\ref{fig:33-5090-fp4}）fp4 D=128 自测
 $\approx$804T，PRO 5000 同形状 523T——同 sm\_120 微架构，差距
 来自 SM 数与功耗包络，\textbf{形态结论（谁快谁慢、随 D 怎么走）
 跨设备可迁移，绝对数字不可}。
+
+\noindent{\footnotesize 注：本节 Sage3 对照的 rel\_err/max\_abs（0.59/1.0
+与 0.28/0.14）为写作期实测（2026-08，单卡 PRO 5000），原始 stdout
+未随书归档。\par}
 
 \section{实践经验}
 
@@ -393,7 +416,7 @@ path（第~\ref{ch:28}~章~\ref{sec:28-nhd}~节），省掉两侧 permute；其�
   \item \textbf{功耗墙顺序偏置}：高功耗卡上单顺序 bench 谁排后面
         谁吃亏（实测差 466--491$\mu$s）；必须 pre-heat + 固定顺序，
         关键结论用配对窗口交替复核；
-  \item \textbf{grad-on 测推理}：autograd 链每调用多 $\sim$22$\mu$s
+  \item \textbf{grad-on 测推理}：autograd 链每调用多 $\sim$30$\mu$s
         Python 开销，且 fast path 永不命中——推理 bench 必须
         \texttt{no\_grad}；
   \item \textbf{容差档位错配}：fp4 用 fp8 的 5e-2 去卡必然全红；

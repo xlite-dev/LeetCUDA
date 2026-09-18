@@ -367,15 +367,15 @@ $d$ 从 $0$ 滚到 $\mathrm{Sk}{-}1$）；smem 侧每轮把 \texttt{q\_base} 加
   \item \textbf{头注释的 kernel 清单不全}。\texttt{ffpa\_\allowbreak{}attn.\allowbreak{}cuh} L5--6 写
         「仅定义……\texttt{ffpa\_\allowbreak{}attn\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}split\_\allowbreak{}d\_\allowbreak{}cute} kernel」，
         但文件里实际有\textbf{两个} kernel：本节精读的
-        \texttt{ffpa\_\allowbreak{}split\_\allowbreak{}d\_\allowbreak{}cute}（cp.async 版，L81）与
+        \texttt{ffpa\_\allowbreak{}split\_\allowbreak{}d\_\allowbreak{}cute}（cp.async 版，L82）与
         \texttt{ffpa\_\allowbreak{}attn\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}split\_\allowbreak{}d\_\allowbreak{}cute}（TMA+WS 版，
         L378 起）。读文件时以实际代码为准；
-  \item \textbf{「256 线程」只对 TMA+WS 版成立}。L12--13 与 L26--27 的
+  \item \textbf{「256 线程」只对 TMA+WS 版成立}。L14 与 L28 的
         「128 producer $+$ 128 consumer $=$ 256 total threads」说的是
         \textbf{TMA+WS 版}（与第~\ref{ch:19}~章 TMA+WS 版的划分一致）；
         cp.async 版是
         \textbf{单角色 128 线程}（L73--78 的注释自己写明了）。按 256 去数
-        cp.async 版的 warp 会踩空——本节的类型推导统一以 L80 的
+        cp.async 版的 warp 会踩空——本节的类型推导统一以 L81 的
         \texttt{\_\allowbreak{}\_\allowbreak{}launch\_\allowbreak{}bounds\_\allowbreak{}\_\allowbreak{}(128)} 为准；
   \item \textbf{EURepeat 是注释词汇、不是接口}。与第~\ref{ch:25}~章同族：
         CuTe 公开可断言的是 \texttt{tile\_\allowbreak{}size\_\allowbreak{}mnk} 与 fragment 布局，

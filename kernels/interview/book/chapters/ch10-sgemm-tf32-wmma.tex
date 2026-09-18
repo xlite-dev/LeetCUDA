@@ -23,7 +23,7 @@ SGEMM；同时跨过第二道分水岭：用 \textbf{cp.async} 异步拷贝 +
 coalescing 与 float4 向量化（本章加载路径全部是 16~B 的 \texttt{cp.async}）。
 \textbf{后继}：第~\ref{ch:11}~章将抛弃 WMMA 的「布局黑盒」，直接手写
 \texttt{mma.sync} PTX 指令并引入 \texttt{ldmatrix} 与更深的多级流水；
-第~\ref{ch:12}~章在其上加 XOR swizzle。预计篇幅约 13 页。
+第~\ref{ch:12}~章在其上加 XOR swizzle。
 
 \section{问题与动机}
 
@@ -237,7 +237,7 @@ $8\times32$ 个 4 元组（\texttt{tid/32} 定行、\texttt{tid\%32} 定列组�
 \lstinputlisting[linerange={281-303},firstnumber=auto,
   title={sgemm.cuh L281-303（预加载 $\mathrm{K\_STAGE}-1$ 个 tile 并等待）}]{../sgemm.cuh}
 
-三条 PTX 指令构成异步拷贝的完整协议（宏定义见 common.cuh~L46--53）：
+三条 PTX 指令构成异步拷贝的完整协议（宏定义见 common.cuh~L41--51）：
 \texttt{cp.\allowbreak{}async.\allowbreak{}cg.\allowbreak{}shared.\allowbreak{}global} 发起 16~B 的 global$\to$shared 搬运
 （\texttt{.cg} 表示只走 L2、不分配 L1，16~B 是 \texttt{.cg} 唯一合法宽度）；
 \texttt{cp.\allowbreak{}async.\allowbreak{}commit\_\allowbreak{}group} 把此前发出的未提交拷贝打包成一个
@@ -306,7 +306,8 @@ L375 的条件等待被编译期剪掉。写回阶段每个 warp 把 8 个累加
 $(B\sb M B\sb K + B\sb K B\sb N)\times4$~B $= (128{\times}8{+}8{\times}128)\times4 = 8$~KB，
 完成 $2 B\sb M B\sb N B\sb K = 262{,}144$ FLOP，$AI \approx 32$ FLOP/B——远高于
 本机 roofline 拐点（PRO 5000 Blackwell：FP32 CUDA Core $\sim$60 TFLOPS 级、
-HBM 带宽 $\sim$1.6 TB/s 级，拐点 $\sim$40 FLOP/B 的量级），判定
+HBM 带宽 $\sim$1.6 TB/s 级，拐点 $\sim$40 FLOP/B 的量级——标称口径；按
+8.3 与 9.3.6 节实测 66.9 TFLOPS / 934 GB/s 折算则为 71.6 FLOP/B），判定
 \textbf{compute-bound}，优化重心在喂饱 Tensor Core 而非省带宽。
 按全局口径（每个 C tile 读整条 A 行块与 B 列块），
 $AI = \frac{2MNK}{4(MK+KN)} = \frac{MN}{2(M+N)}$，$M{=}N{=}1024$ 时约 256 FLOP/B，

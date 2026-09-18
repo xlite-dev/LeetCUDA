@@ -8,9 +8,7 @@
 
 \textbf{前置章节}：第 \ref{ch:03} 章 coalescing（合并访存事务的概念）；第 \ref{ch:01} 章 shared memory 层级。
 
-\textbf{源码区间}：\texttt{base.cuh} L802-909，3 个 kernel：\texttt{rope}（L817）、\texttt{mat\_\allowbreak{}transpose}（L858）、\texttt{mat\_\allowbreak{}transpose\_\allowbreak{}padded}（L871）。\textbf{编译宏与架构限定}：无，fp32，任意 arch。
-
-\textbf{预计篇幅}：约 12 页；配套最小测试 \texttt{tests/\allowbreak{}ch07\_\allowbreak{}rope\_\allowbreak{}transpose.\allowbreak{}cu}。
+\textbf{源码区间}：\texttt{base.cuh} L802-909，3 个 kernel：\texttt{rope}（L817）、\texttt{mat\_\allowbreak{}transpose}（L858）、\texttt{mat\_\allowbreak{}transpose\_\allowbreak{}padded}（L871）。\textbf{编译宏与架构限定}：无，fp32，任意 arch。配套最小测试 \texttt{tests/\allowbreak{}ch07\_\allowbreak{}rope\_\allowbreak{}transpose.\allowbreak{}cu}。
 
 \section{问题与动机}
 
@@ -98,7 +96,7 @@ $R^{d}_{\Theta}$ 是 $d/2$ 个 $2\times 2$ 旋转块排布在主对角线上的\
 \lstinputlisting[linerange={839-865},firstnumber=auto,
   title={base.cuh L839-865（mat\_transpose：naive 转置及其访存注释）}]{../base.cuh}
 
-每线程搬运一个元素：\texttt{y[c * row + r] = x[r * col + c]}。读侧：warp 内 32 线程的 $r$ 固定、$c$ 连续，读 128B 连续段，合并。写侧：$c$ 每加 1，地址跳一整行（\texttt{row} 个 float），32 线程写到 32 个互不相邻的 4B——每个 4B 落在各自的内存事务里，产生 32 次写事务（$32 \times 32\mathrm{B} = 1024\mathrm{B}$），只运了 128B 有效数据。源码注释「非合并写入 $\to$ 32 次内存事务」说的正是这个。读是满血的，写是 $1/8$ 残血的（32B sector 口径；按 128B cache line 口径则 $1/32$），总带宽立刻被写侧拖垮（本章第 6 节实测 512 规模只有 $\sim 350\,\mathrm{GB/s}$，是 padded 版的 69\%）。
+每线程搬运一个元素：\texttt{y[c * row + r] = x[r * col + c]}。读侧：warp 内 32 线程的 $r$ 固定、$c$ 连续，读 128B 连续段，合并。写侧：$c$ 每加 1，地址跳一整行（\texttt{row} 个 float），32 线程写到 32 个互不相邻的 4B——每个 4B 落在各自的内存事务里，产生 32 次写事务（$32 \times 32\mathrm{B} = 1024\mathrm{B}$），只运了 128B 有效数据。源码注释「非合并写入 $\to$ 32 次内存事务」说的正是这个。读侧利用率 100\%，写侧仅 $1/8$（32B sector 口径；按 128B cache line 口径则 $1/32$），总带宽立刻被写侧拖垮（本章第 6 节实测 512 规模只有 $\sim 350\,\mathrm{GB/s}$，是 padded 版的 69\%）。
 
 \subsection{mat\_transpose\_padded：shared memory 中转 + PAD}
 
@@ -236,6 +234,11 @@ cd kernels/interview/book/tests && CUDA_VISIBLE_DEVICES=7 ./build_tests.sh --ch 
 \subsection*{延伸阅读}
 
 \begin{itemize}
+  \item Jianlin Su, Yu Lu, Shengfeng Pan, Ahmed Murtadha, Bo Wen, Yunfeng
+        Liu. RoFormer: Enhanced Transformer with Rotary Position Embedding.
+        arXiv:2104.09864, 2021（RoPE 的第一出处：$\theta_i = 10000^{-2i/d}$
+        等比频率谱、内积只依赖相对位置与原始 interleaved 配对约定的来源，
+        对应本章式~\eqref{eq:ch07-2d-rot} 与配对约定考据）。
   \item 懒蚂蚁呀不嘿，《CUDA matrix transpose 优化（bank conflict 消除）专题》：\url{https://zhuanlan.zhihu.com/p/1899760505733756129}——转置四步演进（naive $\to$ smem $\to$ padding $\to$ merge write）的完整实验，与本章源码的 Level 1/Level 4 对照阅读。
   \item frankshi，《GPU shared memory bank conflict 与 swizzle》：\url{https://zhuanlan.zhihu.com/p/4746910252}——swizzle 的位运算原理，本章 padding 残留问题的进阶答案，第 \ref{ch:12} 章的预告篇。
 \end{itemize}

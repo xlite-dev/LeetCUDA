@@ -23,7 +23,6 @@ $B\sb M\times B\sb N\times B\sb K = 128\times128\times16$，block 256 线程）�
 也同样逐线程推导。这些细节不是炫技——第~\ref{ch:12}~章的 swizzle、
 第~\ref{ch:16}~章的 FlashAttention 全部建立在这套 fragment 几何之上。
 \textbf{前置}：第~\ref{ch:09}~章 tiling 金字塔、第~\ref{ch:10}~章 cp.async 协议。
-预计篇幅约 18 页。
 
 \section{问题与动机}
 
@@ -43,7 +42,7 @@ $B^{\top}\sb {N\times K}$ 行主序存放（源码头注释 hgemm.cuh~L10--22 �
 很好的辨析）。这个「转置存储」的妙处：A 与 $B^{\top}$ \textbf{都是行主序、
 内维都是 K}，cp.async 搬运完全对称；而 mma 指令要求的
 \texttt{.row.col}（A 行、B 列）恰好被「逐行装载 $B^{\top}$ $=$ 逐列装载 B」
-天然满足——\texttt{ldmatrix} 一个 \texttt{.trans} 都不用加（11.4.6）。
+天然满足——\texttt{ldmatrix} 一个 \texttt{.trans} 都不用加（11.4.4）。
 
 \textbf{动机三：更深的流水线。}$B\sb K$ 从 8 提到 16 后单个 tile 变大变慢，
 两级缓冲的「每迭代收口」不再够用；kStages$=$3 让一组搬运可以跨迭代
@@ -54,7 +53,7 @@ in-flight，搬运延迟的容忍窗口翻倍。代价是 smem 线性涨到 24~K
 
 \subsection{\texttt{mma.\allowbreak{}sync.\allowbreak{}aligned.\allowbreak{}m16n8k16.row.\allowbreak{}col.\allowbreak{}f16.f16.f16.f16} 逐字段}
 
-common.cuh~L73--80 的 \texttt{HMMA16816} 宏展开后就是这一条指令：
+common.cuh~L81--88 的 \texttt{HMMA16816} 宏展开后就是这一条指令：
 
 \begin{lstlisting}[language={}]
 mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16
@@ -77,16 +76,16 @@ mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16
 \texttt{.m16n8k16} & 形状：$M{=}16$（A 的行）、$N{=}8$（B 的列）、$K{=}16$（归约维）。A 是 $16\times16$、B 是 $16\times8$、C/D 是 $16\times8$；每条指令 $2\times16\times8\times16 = 4096$ FLOP。 \\
 \texttt{.row} & A 以行主序 fragment 参与（A 的行方向连续）。 \\
 \texttt{.col} & B 以列主序 fragment 参与（B 的列方向即 K，连续）。 \\
-\texttt{.\allowbreak{}f16.f16.f16.f16} & 依次为 D/A/B/C 的元素类型：输入输出全 fp16（寄存器均为 \texttt{.b32} 打包的 f16x2）。另有 \texttt{f32.f16.f16.f32} 变体（common.cuh~L85，fp32 累加）。 \\
+\texttt{.\allowbreak{}f16.f16.f16.f16} & 依次为 D/A/B/C 的元素类型：输入输出全 fp16（寄存器均为 \texttt{.b32} 打包的 f16x2）。另有 \texttt{f32.f16.f16.f32} 变体（common.cuh~L92，fp32 累加）。 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-两条精度语义（PTX 原文，写作 epilogue 时必须心里有数）：
+三条精度语义（PTX 原文，写作 epilogue 时必须心里有数）：
 （1）\textbf{元素乘至少单精度}执行；
 （2）当 C 与 D 都是 \texttt{.f16} 时，\textbf{累加至少半精度}——
 也就是说本章 \texttt{f16.f16.f16.f16} 变体的累加链每条 \texttt{mma} 指令
-边界处都舍回 fp16；K 很长时误差沿 $\sqrt{K}$ 增长（11.6~节实测约
+边界处都舍回 fp16；K 很长时误差沿 $\sqrt{K}$ 增长（11.9~节实测约
 $1.5\times10^{-2}$，K$=$128）。要高精度就换 \texttt{HMMA16816\allowbreak{}F32}
 （4 个累加寄存器的 fp32 版本）。
 （3）PTX 明确声明：\textbf{累加顺序、舍入与次正规处理均未指定}——
@@ -349,7 +348,7 @@ $B\sb K{=}16$ 的指令发射密度翻倍、三级流水的同步更松。
 
 \section{实践经验}
 
-\begin{kaogu}[F2]{hgemm.cuh L31-32：「ldmatrix 默认加载 col-major」与 PTX 文档相反}
+\begin{kaogu}[F2]{hgemm.cuh L35：「ldmatrix 默认加载 col-major」与 PTX 文档相反}
   注释原文（\texttt{\_nn} 布局对比段）称 B 行主序时「需要 .trans」的理由是
   「ldmatrix 默认加载 col-major」。PTX ISA §9.7.14.5.15 原文：
   \emph{``Optional qualifier .trans indicates that the matrix is loaded in
@@ -387,7 +386,7 @@ $B\sb K{=}16$ 的指令发射密度翻倍、三级流水的同步更松。
 （本章测试的 \texttt{hbt} 循环）。
 
 \textbf{坑二：\texttt{.aligned} 与 early return 打架。}\allowbreak{}mma/ldmatrix 要求
-全 warp 无分歧。本 kernel L176--177 的
+全 warp 无分歧。本 kernel L174--175 的
 \texttt{if (... >= M ...) return;} 依赖
 「M/N 按 128 对齐时条件恒假」这一前提才安全；若形状未对齐，
 同一 warp 的 32 个 lane（跨 16 个 $m$ 行）可能部分返回部分继续，
@@ -471,7 +470,7 @@ B$^{\top}$ 在 host 构造（坑一的根源演示）。
 
 在 \texttt{book/tests/} 目录、\texttt{CUDA\_\allowbreak{}VISIBLE\_\allowbreak{}DEVICES=\allowbreak{}7} 下执行
 \texttt{.\allowbreak{}/\allowbreak{}build\_\allowbreak{}tests.\allowbreak{}sh --arch sm\_\allowbreak{}120a --ch ch11}。本机运行输出
-本机运行输出（RTX PRO 5000，2026-09-11；PASS 行的误差数值见
+（RTX PRO 5000，2026-09-11；PASS 行的误差数值见
 表~\ref{tab:11-pass}）：
 
 \begin{lstlisting}[style=console]
@@ -515,7 +514,7 @@ epilogue 相应调整），观察误差跌回 $10^{-3}$ 以下；
   \item @Anonymous《GEMM 优化细节(一)：ldmatrix 的选择》，
         \url{https://zhuanlan.zhihu.com/p/702818267}
         （x4/x2/x2\_trans 的选型逻辑与 TN/NN 布局的配合，
-        对应本章 11.4.5--11.4.6）；
+        对应本章 11.2 与 11.4.4）；
   \item NVIDIA. Parallel Thread Execution ISA, §9.7.14.5
         （\texttt{mma}/\texttt{ldmatrix} 官方语义与 Figure 79/81/83；
         本地副本：cuda-cpp-kernel skill \texttt{references/\allowbreak{}ptx-docs}）。

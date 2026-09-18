@@ -15,7 +15,7 @@
 \ref{ch:12}~章把 HGEMM 推到了 122 TFLOPS 量级，但它的知识结构是「散」的——
 同一组形状与步长的事实，以五种不同的写法散落在 kernel 的五个角落。Part~IV
 换一种活法：把 \textbf{(Shape, Stride) 提升为一等的数学对象}，用代数运算
-（复合、逆、并列、切分）代替手写公式，把「我想要的布局」与「怎么算地址」
+（复合、逆、乘积、切分）代替手写公式，把「我想要的布局」与「怎么算地址」
 这两件事分开。
 
 本章是 Part~IV 的原理篇开篇，也是全书唯一一章\textbf{不写任何 GPU kernel}：
@@ -31,7 +31,7 @@ Phase~7c-1 的 CuTe HGEMM 头注释与模板参数清单（本章只引用这个
 kernel 本体的逐行讲解留给第~\ref{ch:24}~章）。\textbf{编译宏}：
 \texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}CUTE}（CuTe 路径需 CUTLASS 头文件可用，sm80+ 均可编）。
 配套最小测试 \texttt{book/\allowbreak{}tests/\allowbreak{}ch20\_\allowbreak{}layout.\allowbreak{}cu}：host 端 CuTe 布局断言，
-不需 GPU kernel。预计篇幅约 13 页。
+不需 GPU kernel。
 
 \section{问题与动机}
 
@@ -113,10 +113,14 @@ CuTe 先把 $x$ 按 colex 序分解回坐标
 再代入式~\eqref{eq:20-linear}——这个分解只用到 shape、与 stride 无关，
 @竹熙佳处在教程里特别提示过这是初学时最容易卡住的一点。于是「$f$ 在坐标
 上」与「$f$ 在线性索引上」是同一个函数（用映射语言说：线性索引与坐标只是
-同一个函数的两种输入写法）；$f(x)$ 单调不减（因为每次 $x\to x+1$ 只是某个
-坐标 $+1$，增量是该 mode 的 stride $\ge 0$）。这条性质让 layout 的整数域
-本身成为一个「一次遍历」的索引空间，是后面所有遍历式断言（以及
-\texttt{cosize}）的基础。
+同一个函数的两种输入写法）。注意 $f(x)$ 一般\emph{不}单调：colex 进位时
+$x\to x+1$ 同时改变两个坐标（低位复位、高位 $+1$），offset 增量
+$d_{i+1}-d_i(s_i-1)$ 可为负——$(2,3){:}(3,1)$ 的 offset 序列是
+$0,3,1,4,2,5$，row-major 的 $(4,8){:}(8,1)$ 也有 $f(3)=24>f(4)=8$；只有
+当各 mode 的 stride 按 colex 排序（如 compact col-major，此时 $f(x)=x$）
+时才单调不减。这条单调性并非后续结论的前提：layout 的整数域本身是一个
+「一次遍历」的索引空间，后面所有遍历式断言（以及 \texttt{cosize}）依赖的
+只是 shape 分解 $[0,\mathrm{size})\to Z(S)$ 的双射性，与单调性无关。
 
 配套两个规模量：\textbf{size}（定义域基数）与 \textbf{cosize}（值域上界）
 \begin{equation}
@@ -170,7 +174,7 @@ layout，而 \texttt{cosize} 直接就是这块 smem 实际要占的元素数—
         反查它的坐标：copy 的地址回拉、\texttt{max\_\allowbreak{}common\_\allowbreak{}layout}
         （求两个布局的最大公共连续块）都以它为砖；4.8 节的代数法更是把它
         当作 layout 变换的中心工具。
-  \item \textbf{Product（并列）：解决「小图案怎么铺成大图案」。}\allowbreak{}smem 上
+  \item \textbf{Product（乘积）：解决「小图案怎么铺成大图案」。}\allowbreak{}smem 上
         $8\times B_K$ 的 swizzle atom 要铺满 $(B_M,B_K,k_{\mathrm{Stage}})$
         的完整布局，靠的就是 product 族（\texttt{tile\_\allowbreak{}to\_\allowbreak{}shape}）；
         「两块数据并排摆、坐标分量相加」是它的几何语义。
@@ -363,16 +367,16 @@ inverse 回答的问题最直白：「给定一个 offset，它是哪个坐标�
 负责「整个陪域」（含多对一的情形），选择依据就是本小节的实测——它是 CuTe
 把「函数」当「坐标变换」用的开关。
 
-\subsection{Product：并列}
+\subsection{Product：乘积}
 
 product 解决的是「小图案怎么铺成大图案」：smem 上一块 $8\times B_K$ 的
 swizzle atom 只是原料，kernel 真正要声明的是整块
 $(B_M,B_K,k_{\mathrm{Stage}})$ 的 A tile 布局（4.1 节的 \texttt{SmemLayoutA}
-就是这么拼出来的）。product 族的语义很直观——\textbf{把两块数据在地址
-空间里并排摆：坐标各自输入，offset 相加}：
+就是这么拼出来的）。product 族的语义很直观——\textbf{把两块布局在 mode
+上相乘（拼接）：坐标各自输入，offset 相加}：
 
 \textbf{定义 20.4（concatenation）}。$P=\mathrm{make\_layout}(A,B)$
-（即 \texttt{product}）把两个 layout 并列：
+（即 \texttt{product}）把两个 layout 相乘：
 \begin{equation}
   \mathrm{shape}(P)=\bigl(\mathrm{shape}(A),\mathrm{shape}(B)\bigr),\quad
   \mathrm{stride}(P)=\bigl(\mathrm{stride}(A),\mathrm{stride}(B)\bigr),
@@ -384,7 +388,7 @@ $(B_M,B_K,k_{\mathrm{Stage}})$ 的 A tile 布局（4.1 节的 \texttt{SmemLayout
 \end{equation}
 实测：$\mathrm{make\_layout}\bigl((4,8){:}(1,4),\,(8,4){:}(2,16)\bigr)
 = \bigl((4,8),(8,4)\bigr){:}\bigl((1,4),(2,16)\bigr)$。注意 mode 的折叠方式：
-$A$ 的\emph{整棵} shape 成为 $P$ 的第一个 mode，所以 $2$ 个 rank-2 layout 并列后
+$A$ 的\emph{整棵} shape 成为 $P$ 的第一个 mode，所以 $2$ 个 rank-2 layout 相乘后
 \textbf{外层是 rank 2}（shape 为 $\bigl((4,8),(8,4)\bigr)$），不是 rank 4。
 测试对 $P(\mathrm{make\_coord}(a_0,a_1),b)=A(a_0,a_1)+B(b)$ 逐点核对 24 个断言。
 
@@ -754,7 +758,8 @@ $\mathrm{idx}=\sum_i d_i c_i$。默认 column-major（\texttt{LayoutLeft}）意�
 A：colex $=$ 坐标按「最左 mode 最快」的字典序枚举。把整数 $x$ 传给 layout 时，
 CuTe 先用式~\eqref{eq:20-colex-decomp} 把 $x$ 分解回坐标，再算
 $\sum d_i c_i$，所以「线性索引」与「坐标」是同一个函数的两种输入形式；
-$f(x)$ 对 $x$ 单调不减。
+$f(x)$ 对 $x$ 一般不单调（row-major 即反例），仅当各 mode 的 stride 按
+colex 排序（如 compact col-major，$f(x)=x$）时才单调不减。
 
 \textbf{Q3：compose 的定义与前提？}\\
 A：$R=\mathrm{composition}(A,B)$ 满足 $R(c)=A(B(c))$，且 $R$ 的顶层 shape 与
@@ -779,7 +784,7 @@ $\mathrm{size}(L)/\mathrm{size}(T)$ 块」。
 \end{sloppypar}
 
 \textbf{Q6：product 家族有几种？}\\
-A：并列（\texttt{make\_\allowbreak{}layout\allowbreak{}(A,\allowbreak{}B)}：坐标分量相加）、\texttt{logical\_\allowbreak{}product}
+A：乘积（\texttt{make\_\allowbreak{}layout\allowbreak{}(A,\allowbreak{}B)}：mode 拼接、坐标分量相加）、\texttt{logical\_\allowbreak{}product}
 （block 铺在 tiler 上）、\texttt{blocked\_\allowbreak{}product}（重复 block）、
 \texttt{raked\_\allowbreak{}product}（交错重复）与 \texttt{tile\_\allowbreak{}to\_\allowbreak{}shape}（按目标 shape
 铺 atom，最常用于 smem 布局）。区别在「block 之间怎么排」。

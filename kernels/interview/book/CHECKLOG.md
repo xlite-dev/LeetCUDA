@@ -18,3 +18,10 @@
 | 2026-09-11 | common.cuh L344-347 | 「swizzle 公开派发器」注释位置悬置，实际在 hgemm.cuh L388-396 | F5 | 轮2 agent 考据 | ch12 考据框 | 已入正文 |
 | 2026-09-11 | flash_attn.cuh L7-13 | 「三板斧」（tiling/online softmax/recomputation）挂在 FA2 名下属归属错位：按 FA1 论文（arXiv:2205.14135）为 FA1 贡献；FA2 主题是 non-matmul FLOPs/并行度/split-Q | F5 | FA1/FA2 原论文摘要比对 | ch15 勘误框 | 已入正文 |
 | 2026-09-11 | flash_attn.cuh L19-21 | scale 按块乘进 S（FA1 式）；FA2 论文 Algorithm 1 预乘进 Q（数学等价，非错误） | F5/考据 | FA2 论文 §3.2 | ch15 考据框（等价性说明） | 已入正文 |
+| 2026-09-18 | hgemm.cuh L1248 | 「一个 8×32 的逻辑 tile 正好对应 8 行 × 128B」：32 half/行 = 64B，应是 8 行 × 64B（Swizzle\<3,3,3\>，2^(M+S)=64B 行宽） | F3 | 行宽公式 + CUTLASS `Layout_K_SW128_Atom` 对照 | ch23 §23.3 已批评该注释 | 已入正文 |
+| 2026-09-18 | flash_attn.cuh L2255-2256（L2213 同族） | 「GMMA 128B swizzle atom: (8,8) layout + Swizzle\<3,4,3\>」「8 行 × 8 half = 128B，恰好一个 swizzle 周期」：CUTLASS atom 是 (8,64):(64,1)，周期 1024B=8 行×128B | F3 | CUTLASS atom 定义 + 周期公式 2^(M+S+B)=1024B | ch25 §25.x 勘误框 | 已入正文 |
+| 2026-09-18 | flash_attn.cuh L2213/L2263/L2266 | 三处注释把 `make_layout(Shape<D,64>, GenRowMajor{})` 称「col-major (D,64)」：B 实为 row-major，与 V^T col-major QKV 复合后的结果才是 col-major | F3 | 源码显式 GenRowMajor + 复合布局 (64,64):(1,64) 推导 | ch25 eq (25-vt) 解读处勘误注 | 已入正文 |
+| 2026-09-18 | ffpa fp8/quantize_fp8.cuh L697（自相矛盾见 L702） | 注释「paired via shfl_xor(amax, 8)」；实际代码 L739-740 为 shfl_xor 1（行内两半）+ shfl_xor 16（{r,r+8} 行对），同段 L702 自写 shfl_xor 16 | F3 | 逐行对代码 | ch28 §28.4.4 listing 原样引用，正文叙述用正确的 16 | 仅登记 |
+| 2026-09-18 | ffpa fp4/fp4_pscale.cuh L117 | 注释 `P2 = exp2(... + log2(1/(448*6))) in [0, 2688]`：符号与值域矛盾，应为 `+ log2(448*6)`（2688=448×6） | F3 | 值域反推 + 代码实际行为 | ch32 正文已指出笔误并按代码记述 | 已入正文 |
+| 2026-09-18 | ffpa fp8/sm_120/split_d.cuh L613 | 「cannot hide the extra tensor-pipe pressure」与上文「raises math_pipe_throttle」矛盾：rescale 折叠进吸收 FFMA 增加的是 math/FMA pipe 压力，不是 tensor pipe | F4 | NCU math_pipe_throttle stall 口径 | ch30 §30.4 忠实沿袭源注释，未改措辞 | 仅登记 |
+| 2026-09-18 | common.cuh L494-495 | v4.0.0（6cd32de）合并残留：注释被截断成乱码「The function templatS_V2_ENABLE_SETMAXNREGS: / default builds」，与 L491-493 语义重复 | F5 | git 比对 PR #522 合并 | 书稿 listing 不抽取该行；建议上报上游修复 | 仅登记 |

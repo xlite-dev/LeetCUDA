@@ -1,5 +1,5 @@
 % ch14-sm120-tma-ws.tex — SM120：TMA + mma.sync + Warp Specialization（RFC D7，2026-09-11）
-% 源码冻结基线：hgemm.cuh L1859-2100（hgemm\_tma\_mma\_ws\_tn@L1874）/ common.cuh L462-487。
+% 源码冻结基线：hgemm.cuh L1859-2100（hgemm\_tma\_mma\_ws\_tn@L1874）/ common.cuh L467-517。
 % 本章是全书中第一个「本机 GPU（sm\_120a）可直接运行验证」的异步流水线章节。
 % \url 由 book.tex 的 hyperref 提供；单章编译（无 hyperref）时退化为 \texttt。
 \providecommand{\url}[1]{\texttt{#1}}
@@ -23,14 +23,14 @@ thread block cluster；它的 Tensor Core 回到 warp 级同步指令
 （PRO 5000，$1.57\times$）。
 
 \textbf{源码区间}：kernel 主体 \texttt{hgemm\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}tn}@L1874 位于
-hgemm.cuh L1859--2100；common.cuh L452--487
+hgemm.cuh L1859--2100；common.cuh L467--517
 （\texttt{setmaxnreg} 与 \texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}SETMAXNREGS} 门控）。
 \textbf{编译宏与架构限定}：\texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}TMA\_\allowbreak{}MA\_\allowbreak{}WS}，要求
 CUDART $\ge$ 13.0（common.cuh~L21--23 直接 \#error）；TMA+mbarrier 需
 sm\_90+，本章在 sm\_120a 上编译运行。\textbf{前置}：第~\ref{ch:11}~章
 （mma.sync、ldmatrix、fragment 布局）、第~\ref{ch:12}~章（XOR swizzle）、
 第~\ref{ch:13}~章（TMA descriptor、mbarrier 事务模型——本章直接复用其协议，
-不重复推导 descriptor 编码）。预计篇幅约 13 页。
+不重复推导 descriptor 编码）。
 
 \section{问题与动机}
 
@@ -249,8 +249,8 @@ $8 \times 8 = 64$ 列。
 
 \subsection{smem 布局与 1024B 对齐：本章最重要的差异点}
 
-\lstinputlisting[linerange={692-700},firstnumber=auto,breakatwhitespace=true,
-  title={common.cuh L692-700（TmaMmaWSSMem：plain 数组 + 128B swizzle 由 TMA 写入）}]{../common.cuh}
+\lstinputlisting[linerange={714-722},firstnumber=auto,breakatwhitespace=true,
+  title={common.cuh L714-722（TmaMmaWSSMem：plain 数组 + 128B swizzle 由 TMA 写入）}]{../common.cuh}
 
 \lstinputlisting[linerange={1920-1932},firstnumber=auto,breakatwhitespace=true,
   title={hgemm.cuh L1920-1932（\_\_align\_\_(1024) 的 smem 与 full/empty 屏障阵列）}]{../hgemm.cuh}

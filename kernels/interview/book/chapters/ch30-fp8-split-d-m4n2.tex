@@ -34,8 +34,9 @@ $D\ge 768$ & \texttt{split\_d\_m4n2.cuh}（本章） & M4N2 & $D/4$ \\
 
 本章先推导 split-D 的分块恒等式（为什么它是\textbf{精确}变换，一个比特
 都不差），再建立 M4N2 的寄存器压力模型（为什么 $N$ 维劈开是数学上的唯一
-出口），最后走读两个 kernel 的实现差异——特别是 M4N2 带来的三笔新代价：
-P 的 SMEM roundtrip、跨 N-warp softmax 归约、$k_{Br}$ 减半。所有机制均以
+出口），最后走读两个 kernel 的实现差异——特别是 M4N2 带来的多笔新代价：
+P 的 SMEM roundtrip、跨 N-warp softmax 归约、$k_{Br}$ 减半与量化块
+错位等。所有机制均以
 fp8 家族为主线；fp16 家族同构（第~\ref{ch:25}~章已见其 fp16 版），fp4
 家族见第~\ref{ch:32}~章。
 
@@ -44,7 +45,8 @@ fp8 家族为主线；fp16 家族同构（第~\ref{ch:25}~章已见其 fp16 版�
 \subsection{两堵墙的数量级}
 
 smem 墙好算：fp8 下 1B/元素，$B_c=128$ 的 $K$ tile 在 $D=512$ 时是
-64KB，加上 V stage 与 Q 就超 99KB 预算。persist-D 靠「$K$ stage-0 复用」
+64KB，加上 V stage 与 Q 就超 99KB 预算。persist-D 靠「K 槽位 0（Q 区）
+复用给最后一个 K stage」
 挤过去的前提是 $D\le 224$；$D$ 再大，唯一的路是把 $D$ 切块流水。
 
 寄存器墙隐蔽一些。m16n8k32 atom 的 C-fragment 每 thread 持 4 个 f32；
@@ -76,7 +78,7 @@ roundtrip 开销、$k_{Br}$ 大一倍），之上 M4N2 的寄存器红利开始�
 
 \subsection{causal 精度的已知边界}
 
-\texttt{split\_d.cuh} 的头注释（L39--42）声明了 causal 精度边界：
+\texttt{split\_d.cuh} 的头注释（L40--43）声明了 causal 精度边界：
 逐元素误差上界——causal 早期行 attend 的 key 少，
 QK/P 量化误差无法被平均——
 $O$ 误差可保持在 $10^{-1}$ 量级但 lse 误差可达 $\sim 6\times10^{-2}$
@@ -145,7 +147,8 @@ N-warp 位）。协议刻意\textbf{只留一个 barrier}：
         读两 warp 的 sum 相加，折进全局 $\ell_r$（L700--704）。
 \end{enumerate}
 
-省掉的是 3-sync 版本的两次多余 barrier；代价是 max 段与 sum 段
+省掉的是 3-sync 版本里专门的 sum 交换 barrier（每 KV tile 净省一次
+CTA sync，sum 的发布搭 P roundtrip 便车）；代价是 max 段与 sum 段
 \textbf{必须分开}，否则快 warp 可能在 peer 读走 max 之前用 sum 覆写它
 （L92--95 的 RAW 注释）。fp8 变体 \texttt{online\_softmax\_fp8\_fixed\_m4n2}
 （L174--239）在此基础上把第~\ref{ch:29}~章的
@@ -167,7 +170,7 @@ O_{\text{acc}}
 =4\cdot\frac{k_{Br}}{16M_w}\cdot\frac{D}{8N_w}
 =\frac{D}{2N_w}\quad(\text{f32 regs/thread}),
 \end{equation}
-（M8N1/M4N2 都满足 $k_{Br}=16M_w\cdot 4$，即每 warp 恰好一片 M 方向 atom，
+（M8N1/M4N2 都满足 $k_{Br}=16M_w$，即每 warp 恰好一片 M 方向 atom，
 第一个因子为 1。）M8N1 给 $D/2$、M4N2 给 $D/4$，与前面
 估计一致。\textbf{每 thread 压力只取决于该 warp 分到的列数
 $D/N_w$}。
@@ -189,7 +192,7 @@ PV M4N2 仍是 $D/2$，而 $k_{Br}=64$ 强制下 M8N1 的 8 个 M-warp 有 4 个
 在 PV 相空转（QK 算力浪费 50\%）。其二，\textbf{WS（warp
 specialization）版 split-D}：consumer 的 \texttt{setmaxnreg} 上限 232
 装不下 $D=512$ 的 256-reg $O$ 累加器——所以 split-D 家族保持非 WS
-结构（全体线程做 MMA，\texttt{tid==0} 顺手发 TMA，L27--29 注释），这与
+结构（全体线程做 MMA，\texttt{tid==0} 顺手发 TMA，L28--30 注释），这与
 persist-D 的 WS 选择形成对照（29.4.2~节）。
 
 \section{设计与实现}
@@ -262,8 +265,8 @@ M8N1 相同（\texttt{split\_d.cuh} 头注释 L28--29 明言沿其 M8N1 设计�
 
 \textbf{P 的 SMEM roundtrip}（L685--707）。M8N1 里 P fragment 在寄存器
 里原地重排（16 SHFL + 32 PRMT，29.4.4~节）；M4N2 每 N-warp 只持半行
-$B_c$ 列，warp 内无法重建完整 A-operand，必须
-stmatrix$\to$SMEM$\to$\texttt{LDSM\_N}。注意写侧用的是
+$B_c$ 列，warp 内无法重建完整 A-operand，必须经 SMEM 中转
+（stmatrix$\to$SMEM$\to$\texttt{LDSM\_N} 的骨架）。注意写侧用的是
 \texttt{DefaultCopy}（向量化 store）而不是 \texttt{stmatrix}：
 stmatrix 是 b16 操作，要 16B 向量化需 SW128，而 SW128 的 128 元素
 atom 除不尽 64 列的 P tile（L685--688 注释）；smem 布局取 SW64 兼容
@@ -297,9 +300,9 @@ $-0.3\sim-0.4\%$，输出 bitwise 一致），现在 launcher 默认
 而 persist-D 是 384 线程 WS 藏得住。
 
 stage 数的教训方向相反（PC-8）：m4n2 每级仅 12KB，99KB 容得下 7 级，
-但实测 s2$\to$s3 e2e（self+causal 合并口径）快 $9\sim13\%$，
-s4$\sim$s7 非单调更慢——launcher 的 stage 下限
-从 2 抬到 3（\texttt{cute\_fp8\_split\_d\_m4n2.cuh} L31--33）。s2 的问题
+但实测 s2$\to$s3 e2e 快 $9\sim13\%$（D=768、N=4096$\sim$16384，
+self+causal 合并口径），s4$\sim$s7 非单调更慢——launcher 的 stage 下限
+从 2 抬到 3（\texttt{cute\_fp8\_split\_d\_m4n2.cuh} L127--133）。s2 的问题
 是 K/V TMA 流水饿死（NCU 里 \texttt{@BRA}+\texttt{@NANOSLEEP} barrier
 自旋主导）。这与 persist-D 的「加深 stages 证伪」结论相反，根源在于
 m4n2 的 occupancy 已被 255 regs 锁死在 1 CTA，加深 stage 没有 occupancy
@@ -308,7 +311,8 @@ m4n2 的 occupancy 已被 255 regs 锁死在 1 CTA，加深 stage 没有 occupan
 \section{图示}
 
 图~\ref{fig:30-walls} 是全章的路线图：大 $D$ 的两堵墙——smem 随 $D$
-平方膨胀、per-thread 的 $O$ 寄存器随 $D$ 线性增长——分别由 split-D
+线性膨胀（$k_{Bc}\times D$ 字节）、per-thread 的 $O$ 寄存器随 $D$ 线性
+增长——分别由 split-D
 （chunk 流水，smem 与 $D$ 解耦）与 M4N2（$N_w=2$ 把每线程 $O$ 从 $D/2$
 减到 $D/4$）拆掉，$D=768$ 是两者的实测交叉点，dispatch 据此三分路由。
 图~\ref{fig:30-m4n2} 深入寄存器墙解法的内部：$(4,2,1)$ atom 的线程-值
@@ -407,7 +411,7 @@ D=512（fp16）。
         mean $\sim$0.007；
   \item \textbf{dense 对照}。self-attn 六格全绿 $\Rightarrow$ 排除
         kernel 结构性错误（chunk 流水、mask、epilogue 都对）；
-  \item \textbf{对照头注释}。L39--42 声明的「causal 早期行
+  \item \textbf{对照头注释}。L40--43 声明的「causal 早期行
         attend 少、误差不被平均」与实测模式吻合：早期行
         $P$ 分布尖，e4m3 的 $2^{-3}$ 相对舍入直接进 $O$；行号
         过半后 $P$ 足够平，误差被平均掉；
@@ -437,7 +441,7 @@ tensor pipe 压力否决。三条都是「在 persist-D 域成立的优化不能
         \texttt{DefaultCopy} 规避向量化陷阱）。
   \item \textbf{max/sum 同区覆写}：单 barrier 协议里 sum 写与 peer
         max 读之间没有同步，两段必须分置；合成一块省下的 512B 换来
-        偶发 RAW 错值（softmax.cuh L96--99）。
+        偶发 RAW 错值（softmax.cuh L92--95）。
   \item \textbf{stmatrix 写不了 1B e4m3}：它是 b16 操作；1B 元素的
         P staging 退回 \texttt{DefaultCopy} 向量化 store（L685--688）。
   \item \textbf{两套块宽不一致}：$k_{Br}=64$ vs 量化 128 行块，奇数
@@ -508,6 +512,6 @@ tensor pipe 压力否决。三条都是「在 persist-D 域成立的优化不能
         分区的原始注释；
   \item ffpa-cuda-understand skill \S11.3--\S11.4：双墙模型与
         寄存器压力表的完整版（含 fp4 家族对照）；
-  \item \texttt{launch/cute\_fp8\_split\_d\_m4n2.cuh} L31--33 与
+  \item \texttt{launch/cute\_fp8\_split\_d\_m4n2.cuh} L127--133 与
         PC-8 记录：stage floor 的 NCU 证据链。
 \end{itemize}

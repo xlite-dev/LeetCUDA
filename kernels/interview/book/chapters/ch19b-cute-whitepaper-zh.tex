@@ -1,0 +1,111 @@
+%% ch19b：CuTe 官方白皮书中文导读（不编号，置于第四部分篇首）
+%% 译自 Cris Cecka, "CuTe: Layout Representation and Algebra",
+%% NVIDIA Research, arXiv:2603.02298v2（2026）。图、公式、代码均移植自
+%% 官方公开 LaTeX 源 CuTeWhitepaper.tex，版权归原作者所有。
+\begingroup
+% --- 论文宏（仅本导读局部有效，出组即恢复全书定义）---
+\def\CuTe{\textsc{CuTe}}
+\def\R{\mathbb{R}}
+\def\Q{\mathbb{Q}}
+\def\Z{\mathbb{Z}}
+\def\C{\mathbb{C}}
+\def\N{\mathbb{N}}
+\def\O{\mathcal{O}}
+\def\D{\mathcal{D}}
+\def\i{\imath}
+\def\eps{\varepsilon}
+\def\L{\mathcal{L}}
+\def\E{\mathcal{E}}
+\newcommand{\abs}[1]{\left| {#1} \right|}
+\newcommand{\norm}[1]{\left\| {#1} \right\|}
+\newcommand{\ceil}[1]{\left\lceil {#1} \right\rceil}
+\newcommand{\floor}[1]{\left\lfloor {#1} \right\rfloor}
+\def\v{\mathbf}
+\def\bar#1{\overline{#1}}
+\def\hat#1{\widehat{#1}}
+\def\tilde#1{\widetilde{#1}}
+\def\del{\nabla}
+\def\d#1{\,\mathrm{d}{#1}}
+\newcommand{\pluseq}{\mathrel{+}=}
+\newcommand*\BitAnd{\mathbin{\&}}
+\newcommand*\BitOr{\mathbin{|}}
+\newcommand*\BitXor{\mathbin{\oplus}}
+\newcommand*\BitNeg{\ensuremath{\mathord{\sim}}}
+\newcommand*\ShiftLeft{\ll}
+\newcommand*\ShiftRight{\gg}
+\newcommand{\argmax}{\operatornamewithlimits{argmax}}
+\newcommand{\sgn}{\operatorname{sgn}}
+\newcommand{\diag}{\operatorname{diag}}
+\def\epsilon{\varepsilon}
+\newcommand{\pp}[2]{\frac{\partial #1}{\partial #2}}
+\newcommand{\dd}[2]{\frac{\mathrm{d} #1}{\mathrm{d} #2}}
+% 论文 paralist 的 compactitem 环境
+\newenvironment{compactitem}{\begin{itemize}[itemsep=0pt,topsep=2pt]}{\end{itemize}}
+
+% --- 导读内独立编号（不挂靠任何章号）---
+\setcounter{section}{0}
+\setcounter{subsection}{0}
+\setcounter{subsubsection}{0}
+\setcounter{figure}{0}
+\setcounter{table}{0}
+\setcounter{equation}{0}
+\setcounter{theorem}{0}
+\renewcommand{\thesection}{\arabic{section}}
+\renewcommand{\thesubsection}{\arabic{section}.\arabic{subsection}}
+\renewcommand{\thesubsubsection}{\arabic{section}.\arabic{subsection}.\arabic{subsubsection}}
+\renewcommand{\thefigure}{W.\arabic{figure}}
+\renewcommand{\thetable}{W.\arabic{table}}
+\renewcommand{\theequation}{W.\arabic{equation}}
+\renewcommand{\thetheorem}{W.\arabic{theorem}}
+% 论文节标题映射：\section/\subsection/\subsubsection 正常编号并入目录
+\def\wph#1{\section{#1}}
+\def\wpsh#1{\subsection{#1}}
+\def\wpssh#1{\subsubsection{#1}}
+
+\chapter*{导读：CuTe 布局表示与代数\\（NVIDIA 官方白皮书中文译注）}
+\addcontentsline{toc}{chapter}{导读：CuTe 布局表示与代数（白皮书中文译注）}
+\markboth{导读：CuTe 布局表示与代数}{导读：CuTe 布局表示与代数}
+
+\begin{center}
+\small
+原文：\textbf{Cris Cecka}，\emph{CuTe: Layout Representation and Algebra}，
+NVIDIA Research，arXiv:2603.02298v2（2026）。\\[2pt]
+本导读为该论文的完整中文翻译，全部插图（TikZ）、公式与代码均移植自论文官方
+公开 \LaTeX{} 源 \texttt{CuTeWhitepaper.tex}，版权归原作者及 NVIDIA 所有，
+本中译仅供学习使用。译文与全书第~20\textendash 26 章术语保持一致
+（Product=乘积、Composition=复合、Coalesce=合并、Complement=补、
+Divide=切分、Inverse=逆）。
+\end{center}
+
+\begin{quotation}\noindent\small
+\textbf{摘要。}高性能计算与深度学习的现代体系结构越来越多地引入专用张量指令，
+包括用于矩阵乘法的 Tensor Core 与面向多维数据的硬件优化拷贝操作。这些指令规定
+了固定且往往十分复杂的数据布局，必须在整条执行流水线中被正确地传递，才能同时
+保证正确性与最优性能。本文介绍 \CuTe{}——一套用于表示和操作张量的新颖数学规约。
+\CuTe{} 提出两项关键创新：（1）层次化的布局表示，它是对传统扁平形状（flat
+shape）与扁平步幅（flat stride）张量表示的直接推广，能够表达现代硬件指令所需
+的复杂映射；（2）一套丰富的布局操作代数——包括拼接（concatenation）、合并
+（coalescence）、复合（composition）、补（complementation）、切分（division）、
+铺瓦（tiling）与求逆（inversion）——支持复杂的布局操作、推导、验证与静态分析。
+\CuTe{} 布局为管理 GPU kernel 中的数据布局与线程排布提供了统一框架，而布局代数
+使得我们能够在编译期对布局性质进行强有力的推理，并简洁地表达通用张量变换。
+
+在本文中我们将展示：与传统方法相比，\CuTe{} 的抽象显著助力软件开发，推动对体系
+结构规定布局的编译期验证，便于实现可泛化到大量应用场景的算法原语，并能简洁地
+表达现代专用张量指令所需的铺瓦与分块（partitioning）模式。
+
+\CuTe{} 已成功部署于生产系统，是 NVIDIA CUTLASS 库以及包括 CuTe DSL 在内的一系
+列相关工作的基础。我们同时给出数学基础与 Python 参考实现（PyCuTe），确立 \CuTe{}
+作为面向以张量为中心的计算时代的、有原则的布局感知编程方法。
+\end{quotation}
+
+\input{chapters/wp/wp0.tex}
+\input{chapters/wp/wp1.tex}
+\input{chapters/wp/wp2.tex}
+\input{chapters/wp/wp3.tex}
+\input{chapters/wp/wp4.tex}
+\input{chapters/wp/wp5.tex}
+\input{chapters/wp/wp6.tex}
+\input{chapters/wp/wp7.tex}
+
+\endgroup

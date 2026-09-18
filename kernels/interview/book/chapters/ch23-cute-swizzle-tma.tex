@@ -40,7 +40,6 @@ hgemm.cuh L1859--2100（宏块 \texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENAB
 \texttt{tile\_\allowbreak{}to\_\allowbreak{}shape} 的重复规律、SW128 atom 的物理排布）逐条与 CuTe 的
 布局求值结果做数值对照。这些断言与 sm\_120a 上实测的 TMA 硬件行为一致
 （该实测脚本不进入书稿测试集，只在测试 case E 的硬件对照里引用）。
-预计篇幅约 10 页。
 
 \section{问题与动机}
 
@@ -613,12 +612,15 @@ $2^{M+S}$ 字节。行宽不匹配时（例如 $B_K$ 取 48），两者不等。
 \textbf{Q1：\texttt{Swizzle\allowbreak{}<B,\allowbreak{}M,\allowbreak{}S>} 的三个参数各是什么？}
 $M$：被保留的连续低位位数（基本块宽 $2^M$ 字节）；$B$：XOR 掩码位数，
 同时决定 TMA 模式名（32/64/128\,B $\leftrightarrow$ 1/2/3）；
-$S$：\texttt{YYY} 相对 \texttt{ZZZ} 的位移，物理上等价于「一行
-$2^{M+S}$ 字节」，工程上恒取 3。约束 $|S|\ge B$。
+$S$：\texttt{YYY} 相对 \texttt{ZZZ} 的位移；仅当行宽恰好为 $2^{M+S}$
+字节时（三档中只有 SW128 满足，见 Q2）才等价于「一行 $2^{M+S}$ 字节」，
+工程上恒取 3。约束 $|S|\ge B$。
 
-\textbf{Q2：为什么 $S$ 恒为 3？} 三档 TMA 模式的行宽（128\,B）与块宽
-（16\,B）之比是 8，即 $S=3$；把 $S$ 固定成 3 就能用同一个模板覆盖三种
-模式，只需改 $M$（fp16 为 4）与 $B$。
+\textbf{Q2：为什么 $S$ 恒为 3？} 三档的 XOR 源字段固定取自 bit~7
+（128\,B 粒度）、目标字段固定取自 bit~4（16\,B 块），两者相距 3 位，
+故字节口径下 $S$ 恒为 3、$M$ 恒为 4（与 dtype 无关）；档间只改 $B$
+（1/2/3）与 box 内维（行宽 32/64/128\,B）。fp16 元素口径下 $M=3$
+（hgemm 自用的 \texttt{Swizzle\allowbreak{}<3,\allowbreak{}3,\allowbreak{}3>} 即此口径）。
 
 \textbf{Q3：为什么不写成「列块 XOR 行号」就好了，还要搞位运算？}
 因为硬件（TMA、\texttt{ldmatrix} 的地址通道、WGMMA 的 descriptor）都
@@ -635,7 +637,7 @@ Swizzle 不参与坐标分解。
 \texttt{ldmatrix} 没有。
 
 \textbf{Q6：给定 $B_K$ 与 fp16，怎么判断该用哪种 swizzle？} 先算行宽
-$B_K\times2$ 字节；可选 $2^{M+S}=32/64/128$，要求 $B_K\times2\ge$
+$B_K\times2$ 字节；可选行宽 32/64/128\,B，要求 $B_K\times2\ge$
 模式行宽且 $16$\,B 块宽整除行宽。$B_K=64$ 时行宽 128\,B
 $\Rightarrow$ \texttt{Swizzle\allowbreak{}<3,\allowbreak{}4,\allowbreak{}3>}（字节）或 \texttt{Swizzle\allowbreak{}<3,\allowbreak{}3,\allowbreak{}3>}
 （元素）；$B_K=32$ 时行宽 64\,B，只能退到 64\,B 或更弱的模式。

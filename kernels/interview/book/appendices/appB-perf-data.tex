@@ -158,6 +158,7 @@ Part V（第~\ref{ch:27}--\ref{ch:33}~章）的性能口径与前三篇不同：
 PyTorch SDPA（FA2 后端，$D>256$ 自动落 MATH），数字为 \texttt{ffpa\_attn.bench}
 CLI 复测（B1 H32 Hkv8 N=8192，fp16，PRO 5000，2026-09-16；tol 分档
 fp8 5e-2 / fp4 dense 0.15、causal 0.70）。speedup 一律对 SDPA 同形状。
+列内数字取自各自所在章节的原始记录，跨章对比时注意口径。
 
 \begingroup\small
 \begin{longtable}{p{1.6cm}p{3.6cm}p{2.6cm}p{3.0cm}p{3.0cm}}
@@ -176,15 +177,15 @@ fp8 5e-2 / fp4 dense 0.15、causal 0.70）。speedup 一律对 SDPA 同形状。
 第29 & fp8 persist-D & self D$\in$[64,256] & 1.26--1.70$\times$ & D=192 正确性 bug 见 29.7.1；tensor pipe 77\% \\
 第30 & fp8 split-D / M4N2 & D=320 self / causal & 3.76$\times$ / 3.31$\times$ & D=512 2.98$\times$（参照换 MATH，见 33.6.1 归因）；causal 大 D allclose 临界失败为已知 ESS 特性（hybrid 解法） \\
 第31 & fp4 量化链（fused） & D=128 N=8192 & fused 单 launch 1.4$\to$0.3~ms & hadamard 零开销（bitwise 一致） \\
-第32 & fp4 persist-D & self D$\in$[64,256] & 1.49--2.11$\times$ & 同点 D=256 比 fp8 快 1.64$\times$；mxfp8 PV 变体 +28--39\% \\
-第33 & bench 矩阵与 knob & D=128 self & fp4 523~T（2.45$\times$） & fp4 vs fp8 1.39$\times$；粒度 knob 1.7--2.7\% 价目；Sage3 对照 causal rel\_err 0.59 vs hybrid 0.14 \\
+第32 & fp4 persist-D & self D$\in$[64,256] & 1.49--2.11$\times$ & 同点 D=256 比 fp8 快 1.64$\times$（对照见 33.6.2）；mxfp8 PV 变体时间代价 +28--39\%（精度保险丝） \\
+第33 & bench 矩阵与 knob & D=128 self & fp4 523~T（2.45$\times$） & fp4 vs fp8 1.39$\times$；粒度 knob 1.7--2.7\% 价目；Sage3 对照 causal rel\_err 0.59 vs hybrid 0.14（523T 为 \texttt{bench\_fp4.py} 16K 口径，非 CLI N=8192） \\
 \end{longtable}
 \endgroup
 
 \noindent 非本地口径（ffpa-attn README，RTX 5090，引用不复测）：fp8
 D=128 FFPA-FP8 441~T vs Sage2 394~T vs SDPA 291~T；fp4 D=128
 FFPA-FP4 804~T（2.60$\times$）。同 sm\_120 微架构下 PRO 5000 绝对值低
-$\sim$16\%（fp8）/$\sim$35\%（fp4），形态结论可迁移、绝对数字不可
+$\sim$15\%（fp8）/$\sim$35\%（fp4），形态结论可迁移、绝对数字不可
 （第~\ref{ch:33}~章 33.6.4）。
 
 \section{四条性能主线}

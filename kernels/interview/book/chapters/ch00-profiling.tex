@@ -21,7 +21,6 @@ L1/L2 命中率、bank conflict，每一个指标都配一个真实的「指标�
 
 \textbf{前置}：无（与 ch01 互为入口，roofline 词汇见 ch01）。
 \textbf{源码区间}：无（工具方法论章）。\textbf{编译宏与架构限定}：无。
-\textbf{预计篇幅}：约 9 页。
 
 \section{问题与动机：凭感觉的优化是赌博}
 
@@ -246,7 +245,8 @@ latency-bound——管线都没喂满，问题在并行度或依赖链，这是 
 拖累）。NCU 的 Occupancy section 会明确指出 \texttt{launch\_\allowbreak{}\_\allowbreak{}occupancy\_\allowbreak{}limit\_\allowbreak{}registers} /
 \texttt{\_\allowbreak{}\_\allowbreak{}shared\_\allowbreak{}mem} / \texttt{\_\_blocks} 哪个是当前限制源。一个
 fp8 attention kernel 的实例：REG:255 直接把 \texttt{Block Limit Registers} 压到 1——
-1 CTA/SM、8 warps，occupancy 16.67\%，此时想提并行度只有降寄存器或换结构
+1 CTA/SM、12 warps（4 producer + 8 consumer，共 384 线程），理论 occupancy
+25\%（12/48），此时想提并行度只有降寄存器或换结构
 （见 \S\ref{sec:ch00-cases} 例二）。注意 ch01 的告诫：occupancy 是手段不是
 KPI，GEMM 类 kernel 用大 tile + 低 occupancy + 高 ILP 换性能是常态。
 
@@ -427,7 +427,7 @@ warp group（128T，专职 TMA）+ 1 个 consumer（256T，全计算），用
   m4n2 REG:255 + STACK 0--264B（几乎无 spill）；fp16 split\_d REG:196--254
   + STACK 约 1536B。STACK 字节就是溢出到 local 的体积。
 \item \textbf{动态}：NCU 确认 \texttt{Block Limit Registers=1}（REG:255 的
-  直接后果），occupancy 16.67\% 且 smem 守卫恒空转——限制源唯一。
+  直接后果），理论 occupancy 25\%（12 warps/48）且 smem 守卫恒空转——限制源唯一。
 \item \textbf{取舍}：consumer 想要更多寄存器（\texttt{setmaxnreg} 上限
   232，实测 224--232 区间性能平坦），但 O 累加器 $D/2$（M8N1）在 D=512 时
   要 256 个——\textbf{撞穿 255 墙}，于是 split-D 的 WS 变体被整体禁用，

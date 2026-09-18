@@ -17,7 +17,8 @@ CuTe 化高效复现。本章是 Part V 的「理论总纲」——后面第~\re
 
 本章依次回答五个问题：
 \begin{enumerate}[itemsep=0pt,topsep=2pt]
-  \item 量化算子长什么样？四种数值格式（int8 / e4m3 / e2m1 / ue4m3）的位域与
+  \item 量化算子长什么样？四种主要格式（int8 / e4m3 / e2m1 / ue4m3）加 scale
+        专用的 ue8m0 的位域与
         量化误差下界各是多少（27.3.1--27.3.2~节：相对步长
         $\approx 2^{-(m+1)}$ 的逐 bit 推导）；
   \item attention 有哪几个可量化的对象？各自适合什么粒度（27.3.3~节：per-block /
@@ -40,7 +41,6 @@ CuTe 化高效复现。本章是 Part V 的「理论总纲」——后面第~\re
 附录~\ref{app:D}~的 commit permalink 为准。
 \textbf{验证方式}：本章无独立 kernel 测试（Part V 以
 \texttt{ffpa\_attn.bench} CLI 替代 \texttt{book/tests}，见 27.10~节）。
-预计篇幅约 14 页。
 
 \section{问题与动机}
 
@@ -121,15 +121,17 @@ $\tilde{x}$ 与 $x$ 的差就是量化误差；round 取最近邻（RN）。注�
 int8 是 $[-127,127]$ 的\textbf{等距}整数网格。误差只依赖步长 $\delta$：均匀量化
 噪声在块内近似均匀分布 $[-\delta/2, \delta/2]$，RMS 误差为
 $\delta/\sqrt{12}$，与 $x$ 的幅度\textbf{无关}。这带来一个与指数格式相反的特性：
-小值区域（例如 $|S|$ 接近零的分数区）误差绝对值小——SageAttention 1 选择 int8
-而非 fp8 做 QK，理由正是「均匀步长对 $|S|$ 小的区域误差更小，fp8 指数格式在
-小值处浪费分辨率」（arXiv:2410.02367）。
+绝对误差有均匀上界（小值区域如 $|S|$ 接近零的分数区，误差绝对值小）。
+SageAttention 1 选择 int8 而非 fp8 做 QK，首要理由是速度（RTX4090/3090 上
+int8 MMA 比 fp16 快 4 倍、比 fp8 快 2 倍）；精度上，Q/K 分数分布集中时，int8
+的 254 个均匀码点密度高于 fp8 每倍频程 $2^m=8$ 个码点，量化更精
+（arXiv:2410.02367）。
 
 \paragraph{e4m3 / e2m1：指数格式与相对步长。}
 e4m3 用 1 位符号、4 位指数（bias 7）、3 位尾数；最大有限值是
 $1.75 \times 2^{8} = 448$（指数全 1 时仅 $M=111$ 编码 NaN，其余可用）。e2m1 只有
 1 位尾数，全部正值集合是 $\{0.5, 1, 1.5, 2, 3, 4, 6\}$——总共 16 个码点，动态
-范围却横跨三个二进制倍频程。指数格式的量化误差有干净的上界：
+范围却横跨约 3.6 个二进制倍频程。指数格式的量化误差有干净的上界：
 
 \begin{theorem}[指数格式的相对步长]\label{thm:27-relstep}
 设格式有 $m$ 位尾数、规格化数 $x \in [2^{e}, 2^{e+1})$。则 $x$ 所在的 ULP
@@ -221,7 +223,7 @@ shuffle} 使用（每 lane 持有的 8 个 A 元素共享一个 scale，scale �
 标量位置。
 
 \paragraph{量化点 1（QK）：$\delta_Q\delta_K$ 折进 exp2 系数。}
-MMA 算出的是整数域 $\hat{S} = \hat{Q}\hat{K}^{\top}$，真实分数
+MMA 算出的是未缩放域（quantized domain）的 $\hat{S} = \hat{Q}\hat{K}^{\top}$，真实分数
 $S = \hat{S} \cdot \delta_Q\delta_K$。softmax 需要的是 $\exp(\text{scale} \cdot S)$
 （scale 即 $1/\sqrt{d}$），换到 exp2 域：
 \begin{equation}
@@ -283,7 +285,7 @@ $\tilde{P} = P \cdot v_s \cdot 448$ 与溢出约束的完整推导见第~\ref{ch
     代 & QK / PV 格式 & 关键粒度 & 贡献 & ffpa 对应 \\
     \midrule
     SA1 & int8 / fp16（f16 acc） & per-block & smooth-K（softmax 平移不变）；fused RoPE+quant & {\footnotesize\texttt{qk\_mm\_type=int8}}、{\footnotesize\texttt{smooth\_k}} \\
-    SA2 & int4或int8 / fp8 & per-thread（QK）、per-channel（V） & smoothing 系统化；per-thread 对齐 fragment & {\footnotesize\texttt{per\_thread}}、{\footnotesize\texttt{per\_channel}} \\
+    SA2 & int4（实现含 int8 变体）/ fp8 & per-thread（QK）、per-channel（V） & smoothing 系统化；per-thread 对齐 fragment & {\footnotesize\texttt{per\_thread}}、{\footnotesize\texttt{per\_channel}} \\
     SA2++ & 同 SA2 / fp8-f16acc & 同 SA2 & fp16 累加器域约束 $P_r V_r \le 2047$；吞吐翻倍 & {\footnotesize\texttt{pv\_acc\_type=f16}} \\
     SA3 & FP4 / FP4（MXFP8 变体） & per-16 microscaling & 两级 P 量化；delta\_s rank-1 修正；RTX5090 1038 TOPS & {\footnotesize\texttt{cuda\_impl=fp4}} 全链 \\
     \bottomrule
@@ -323,19 +325,22 @@ FA-4（arXiv:2603.05451）的观察：max 的增长常常微不足道，重缩�
 端到端无损：$O$ 与 $\ell$ 用同一个 stale max，epilogue 的 $O/\ell$ 把所有迟到的
 缩放一并消去（等价性见 27.4~节代码注释）。fp16 域中 lazy rescale 是纯粹的
 省指令优化；\textbf{量化域}中它多了一层含义——发射值被 $2^{\tau}$ 膨胀，必须核算
-格式天花板。fixed 模式发射 $\tilde{P} = P \cdot v_s \cdot 448$，其中
-$v_s \le \mathrm{amax}(V)$，撞顶条件与安全域为
+格式天花板。fixed 模式发射 $\tilde{P} = P \cdot v_s \cdot 448$，而 per-block V
+量化有 $v_s = \mathrm{amax}(V)/448$，故发射峰值
+$\tilde{P}_{\max} = v_s \cdot 448 = \mathrm{amax}(V)$，撞顶条件与安全域为
 \begin{equation}
   \underbrace{2^{\tau}}_{\text{lazy 膨胀}} \cdot
-  \underbrace{v_s}_{\le\, \mathrm{amax}(V)} \cdot
-  448
+  \underbrace{v_s \cdot 448}_{=\ \mathrm{amax}(V)}
+  \;=\; 2^{\tau}\,\mathrm{amax}(V)
   \;\le\; 448
   \quad\Longrightarrow\quad
-  \mathrm{amax}(V) \le 2^{-\tau}.
+  \mathrm{amax}(V) \le 448/2^{\tau}.
   \label{eq:27-overflow}
 \end{equation}
-ffpa 取 $T = \texttt{FFPA\_RESCALE\_THRESHOLD\_FP8} = 4$（FA-4 原文对 BF16 取
-$\tau = 8$；fp8 发射域的天花板更紧，反推出更小的 4），得 $\mathrm{amax}(V) \le 28$
+ffpa 取 $T = \texttt{FFPA\_RESCALE\_THRESHOLD\_FP8} = 4$（FA-4 原文的 BF16
+kernel 典型取 $\tau = 8$；fp8 发射域的天花板更紧，按 e4m3 满量程反推出更小的
+4——源码注释把它归因为 "FA-4's fp8 choice"，但 FA-4 论文并无 fp8 $\tau$ 的
+表述），得 $\mathrm{amax}(V) \le 28$
 的适用域，残余超调交给 \texttt{satfinite} 钳位（27.8~节坑三）。这也解释了
 27.3.4 的一个断言：\textbf{per-row 满量程模式与 lazy rescale 互斥}——满量程发射
 已经没有 headroom，任何 $2^{\tau}$ 膨胀都直接撞顶。
@@ -368,8 +373,8 @@ $\approx \sigma_V \sqrt{2 \ln D} / \sqrt{\mathrm{ESS}} \approx 3.1/\sqrt{\mathrm
     \toprule
     行类型 & $P$ 分布 & ESS & 幅度 & 绝对误差 $\approx \varepsilon \times$ 幅度 \\
     \midrule
-    dense（均匀 over 8192） & $\approx 1/8192$ & $\sim$3000 & $\sim$0.05 & 0.003 \\
-    causal row[2] & 3 个 KV 上分布 & $\sim$2 & $\sim$1.8 & 0.09 \\
+    dense（randn logits） & 集中、非均匀 & $\sim$3000 & $\sim$0.05 & 0.003 \\
+    causal row[2] & 3 个 KV 上分布 & $\sim$3 & $\sim$1.8 & 0.09 \\
     causal row[0] & one-hot $e_0$ & 1 & $\sim$3.1 & $\sim$0.16 \\
     \bottomrule
   \end{tabular}
@@ -377,8 +382,8 @@ $\approx \sigma_V \sqrt{2 \ln D} / \sqrt{\mathrm{ESS}} \approx 3.1/\sqrt{\mathrm
 
 因果掩码把序列前几行变成近 one-hot：row[0] 只能看自己。ffpa 的 PyTorch 数值仿真
 （$B1H32N8192D128$，randn）实测 causal \texttt{max\_abs} $= 0.22$ vs dense
-$0.015$——15 倍差距，而\textbf{相对误差两者都是 $\sim$5\%}（causal 5.5\% vs
-dense 9.1\%）。结论：\textbf{早行问题不是误差被放大，而是幅度大 + 误差相对恒定}。
+$0.015$——15 倍差距，而\textbf{相对误差两者同量级}（causal 5.5\% vs dense
+9.1\%，口径为 max\_abs / 输出行幅度中位数）。结论：\textbf{早行问题不是误差被放大，而是幅度大 + 误差相对恒定}。
 推论直接决定工程路线：降低幅度没有意义（输出本来就该大）；要么全链降 $\varepsilon$
 （fp16），要么对早行整体走 fp16——这就是 hybrid 行分割（第~\ref{ch:29}~章）
 的理论依据，且 $n_{early}$ 不需要很大（ESS 极小的行集中在前段）。
@@ -387,7 +392,7 @@ dense 9.1\%）。结论：\textbf{早行问题不是误差被放大，而是幅�
 
 式~\ref{eq:27-ess} 的 $\varepsilon$ 是单级贡献。整条链有四个独立误差源
 （QK 量化、P 量化、V 量化、PV MMA 域），各自独立贡献
-$\varepsilon \times$ 幅度。ffpa 的仿真分解给出排序：
+$\varepsilon \times$ 幅度。ffpa 的仿真分解给出排序（内部仿真口径，未随书归档）：
 \begin{equation}
   \text{V 量化}\;(0.19) \;>\; \text{QK 量化}\;(0.13) \;>\; \text{P 量化}\;(0.11),
 \end{equation}
@@ -507,7 +512,7 @@ $O$ 与 $\ell$ 全程共享同一 stale 域，$O/\ell$ 消去全部迟到缩放�
 $ FFPA_CUDA_ALLOW_SMALL_D=1 CUDA_VISIBLE_DEVICES=7 \
   python -m ffpa_attn.bench --fwd-backend cuda --cuda-impl fp8 \
   --tasks self-attn --D 128 --no-bwd --show-allclose
-| self-attn | fp16 | 8192/8192 | allclose ✅ | 3.01 / 5.12 ms | 365T / 215T | 1.70x |
+| self-attn | fp16 | 8192/8192 | allclose OK | 3.01 / 5.12 ms | 365T / 215T | 1.70x |
 \end{lstlisting}
 即 fp8 全链（含前处理）相对 SDPA fp16 加速 $1.70\times$、折合 365 TFLOPS
 （同形状 fp16 kernel 的两倍量级，与 e4m3 吞吐阶梯一致）。D 与任务维度的完整
@@ -590,7 +595,7 @@ $ export FFPA_CUDA_ALLOW_SMALL_D=1 CUDA_VISIBLE_DEVICES=7
 # 实验 1：fp8 基线（self-attn D128，对照 SDPA，验证 allclose）
 $ python -m ffpa_attn.bench --fwd-backend cuda --cuda-impl fp8 \
     --tasks self-attn --D 128 --no-bwd --show-allclose
-# 预期：allclose 列 ✅；speedup ~1.7x（365T vs 215T，本机 PRO 5000）
+# 预期：allclose 列 OK；speedup ~1.7x（365T vs 215T，本机 PRO 5000）
 
 # 实验 2：fp4 同形状对照（e2m1 的精度与速度差）
 $ python -m ffpa_attn.bench --fwd-backend cuda --cuda-impl fp4 \

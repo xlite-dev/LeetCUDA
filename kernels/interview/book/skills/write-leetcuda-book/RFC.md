@@ -16,18 +16,18 @@
 |---|---|---|---|
  |
 | RFC-A | 冻结件（记号表/模板/锚点脚本/源码冻结） | RFC-0 | 完成（2026-09-11）|
-| RFC-B | 知乎资料全集（专栏枚举+图片归档） | RFC-0 | 未开始（可与 A 并行） |
+| RFC-B | 知乎资料全集（专栏枚举+图片归档） | RFC-0 | 取消（2026-09-18：被附录 E 成表 + drawio 全量重建取代，详见 §4 注记）|
 | RFC-C | Part I 基础篇 ch1-7 | RFC-A（素材按需 RFC-B） | 完成（2026-09-11，91 页/42 PASS）|
-| RFC-D | Part II GEMM 篇 ch8-14 | RFC-C | 完成（2026-09-11，218 页/77 PASS）|
-| RFC-E | Part III Attention 篇 ch15-19 | RFC-D | 进行中（E1-E3 完成 2026-09-11，E4/E5 待做）|
-| RFC-F | Part IV CuTe 篇 ch20-26（原理章先行） | RFC-E | 未开始 |
-| RFC-G | 性能数据汇总（附录 B 成表） | RFC-C..F 各章增量数据 | 未开始 |
-| RFC-H | 图表升级（知乎图 drawio 重建为主 + ASCII→drawio/TikZ 新建） | 章节完成 | 未开始（可穿插） |
-| RFC-I | 附录 A-E | RFC-C..F（D 需收口） | 未开始 |
-| RFC-J | 全书集成审校与验收 | 全部 | 进行中（J.9/J.10 完成 2026-09-16）|
+| RFC-D | Part II GEMM 篇 ch8-14 | RFC-C | 完成（2026-09-11/14，218 页/77 PASS）|
+| RFC-E | Part III Attention 篇 ch15-19 | RFC-D | 完成（2026-09-14，324 页/139 PASS）|
+| RFC-F | Part IV CuTe 篇 ch20-26（原理章先行） | RFC-E | 完成（2026-09-14，324 页/139 PASS）|
+| RFC-G | 性能数据汇总（附录 B 成表） | RFC-C..F 各章增量数据 | 完成（2026-09-16，随 K-验收 appB B.1-B.7 成表；G.2 口径见 §9）|
+| RFC-H | 图表升级（知乎图 drawio 重建为主 + ASCII→drawio 新建） | 章节完成 | 完成（2026-09-16，69 图全正式/64 gen.py 入库；H.0/H.5 TikZ 路径取消）|
+| RFC-I | 附录 A-E | RFC-C..F（D 需收口） | 完成（2026-09-16，随 K-验收收口）|
+| RFC-J | 全书集成审校与验收 | 全部 | **完成（2026-09-18）**：J.1-J.10 全勾；十六-agent 数理复审修复 + CuTe 白皮书导读并入 commit df21bee/d08f6ea；终态 459 页、0 error、0 undefined、0 Overfull≥1pt、0 缺字（build.sh 验收） |
 | RFC-K | Part V FP8/FP4 Attention 篇 ch27-33（ffpa-attn CuTe sm_120） | RFC-E/F（前置章节） | 完成（K0-K7 + K-验收 2026-09-16：全书 425 页零 error 零 undefined、Overfull 清零）|
 
-依赖图：`RFC-0 → RFC-A → (RFC-B ∥ RFC-C) → RFC-D → RFC-E → RFC-F → (RFC-G ∥ RFC-H ∥ RFC-I) → RFC-J`；`RFC-K 依赖 RFC-E/F 素材，与 RFC-G/H/I 并行，完成后并入 RFC-J 收口`
+依赖图（执行实况）：`RFC-0 → RFC-A → RFC-C → RFC-D → RFC-E → RFC-F → (RFC-G ∥ RFC-H ∥ RFC-I) → RFC-J`；RFC-B 于 2026-09-18 取消（素材职能被附录 E + drawio 全量重建接管）；`RFC-K 依赖 RFC-E/F 素材，与 RFC-G/H/I 并行，完成后并入 RFC-J 收口`
 
 ## 2. RFC-0 脚手架
 
@@ -53,14 +53,16 @@
 
 ## 4. RFC-B 知乎资料全集
 
-- [ ] B.1 `fetch_column_fulltext.py` 枚举 @reed、@竹熙佳处 专栏全部文章（frankshi 如有专栏同）；产出 `book/references/zhihu-inventory.md`（§15 种子表并入，标注「已核/待核」）
-- [ ] B.2 增量确认：README 外新文章全部入册（已知：reed《TMA Descriptor 第21bit》p/2037200219700449995、《程序控制和原子操作》p/712357443）
-- [ ] B.3 补充作者关键文章全文取回（@melonedo 除法、@Anonymous Layout 技巧+GEMM 细节三篇、@可怕的杰瑞、@weishengying、@水木皇工仔、@Arthur、@Titus、@进击的Killua、@66RING、@shengying.wei 等），存 `zhihu-analysis/`
-- [ ] B.4 图片归档规范落地：`figures/zhihu/<author>-<slug>/` + 元数据 sidecar（来源 URL/引用章节/替换状态=否）
-- [ ] B.4a drawio 重建管线试点（**知乎真实图**，含水印场景）：取 1 张候选图（建议 FIG-21-1 tv-layout-grid，原图先归档）走全流程（水印标记→重建→导出→audit），验收按 BOOK_PLAN §7.2 单图 DoD 六条。工具链已由本 skill `examples/drawio-recon-m1/`（2026-09-11 smoke test：CLI v31.4.5 官方 deb + `/usr/local/bin/drawio-headless` wrapper，CJK 渲染 OK）验证，此项只差水印场景实操
-- [ ] B.5 RoPE 参考补充检索（ch7 当前无主参考）
-- [ ] B.6 附录 E 表结构定稿（作者/标题/URL/对应章节/引用日期/图片数）
-- [ ] B.7 **验收**：inventory 覆盖 §15 全部条目且每章「主参考」都有 URL；每篇已核文章在 zhihu-analysis/ 有存档
+> **2026-09-18 取消说明（`[-]` = 取消，不再执行）**：全书已成稿（426 页），本里程碑的资料职能已被实际产物接管——参考条目由附录 E（`appendices/appE-references.tex`，官方文档/论文/知乎三组 298 行）承载；知乎图片全部由 drawio 正式图替换（69 图全「正式」，正式图不含水印/角标）；已取回全文留存于 `book/references/fulltext/`（7 篇）与 `book/references/zhihu-inventory.md`，原图归档于 `figures/zhihu/`（gitignore 不入库，各含 meta.md）。写作期实际采用「按需检索全文、提炼不照抄」路径，全量枚举/全量存档不再有收益。B.5 转入 2026-09-18 复审（O2 agent 核 ch7 延伸阅读，缺则补 1 条 RoPE 参考）。
+
+- [-] B.1 `fetch_column_fulltext.py` 枚举 @reed、@竹熙佳处 专栏全部文章（frankshi 如有专栏同）；产出 `book/references/zhihu-inventory.md`（§15 种子表并入，标注「已核/待核」） —— 部分落地（inventory 已存在、fulltext/ 7 篇），全集枚举取消，条目职能归附录 E（2026-09-18）
+- [-] B.2 增量确认：README 外新文章全部入册（已知：reed《TMA Descriptor 第21bit》p/2037200219700449995、《程序控制和原子操作》p/712357443） —— 两篇均已在 §15 种子表并经 ch1/ch13/ch23 引用，取消（2026-09-18）
+- [-] B.3 补充作者关键文章全文取回（@melonedo 除法、@Anonymous Layout 技巧+GEMM 细节三篇、@可怕的杰瑞、@weishengying、@水木皇工仔、@Arthur、@Titus、@进击的Killua、@66RING、@shengying.wei 等），存 `zhihu-analysis/` —— 写作期按需检索已覆盖（竹熙佳处四篇全文在 references/fulltext/），全量存档取消（2026-09-18）
+- [-] B.4 图片归档规范落地：`figures/zhihu/<author>-<slug>/` + 元数据 sidecar（来源 URL/引用章节/替换状态=否） —— 归档+meta.md 已实际执行（11 目录），「替换状态」字段因全部替换为 drawio 正式图而废弃，取消（2026-09-18）
+- [-] B.4a drawio 重建管线试点（**知乎真实图**，含水印场景）：取 1 张候选图（建议 FIG-21-1 tv-layout-grid，原图先归档）走全流程（水印标记→重建→导出→audit），验收按 BOOK_PLAN §7.2 单图 DoD 六条。工具链已由本 skill `examples/drawio-recon-m1/`（2026-09-11 smoke test：CLI v31.4.5 官方 deb + `/usr/local/bin/drawio-headless` wrapper，CJK 渲染 OK）验证，此项只差水印场景实操 —— 管线已在 64 张正式图上全面验证（含水印图源的 FIG-20-4..20-9），试点取消（2026-09-18）
+- [ ] B.5 RoPE 参考补充检索（ch7 当前无主参考） —— 转入 2026-09-18 复审 O2 核查 ch7 延伸阅读，缺则补 1 条
+- [-] B.6 附录 E 表结构定稿（作者/标题/URL/对应章节/引用日期/图片数） —— 被 appE 实际成表结构取代（官方文档/论文/知乎三组+主题分组），取消原六列设计（2026-09-18）
+- [-] B.7 **验收**：inventory 覆盖 §15 全部条目且每章「主参考」都有 URL；每篇已核文章在 zhihu-analysis/ 有存档 —— 全量存档要求取消；出处标注 100% 由 J.5 承接验收（2026-09-18）
 - 注：素材按 Part I→II→III→IV 章序优先交付（章节任务不被卡死）
 
 ## 5. RFC-C Part I 基础篇（ch1-7）
@@ -85,7 +87,7 @@
 - [x] D5 ch12 HGEMM Swizzle 三件套 | hgemm.cuh L399-716 + common.cuh L110-348 | 可选 `NOTES_V2_ENABLE_SWIZZLE_V2` | ch12_hgemm_swizzle.cu ← test_hgemm_swizzle@L1491 + test_swizzle_equiv@L4657 | **FIG-12-1 smem swizzle 前后排布（用户点名）**、**FIG-12-2 block swizzle layout（用户点名）**、FIG-12-3 XOR 位运算（2026-09-11）
 - [x] D6 ch13 Hopper：TMA+mbarrier+WGMMA | hgemm.cuh L1428-1857 + common.cuh L350-773 | `NOTES_V2_ENABLE_WGMMA`/仅 sm_90a | ch13_hgemm_wgmma.cu ← test_hgemm_wgmma@L1648（本机编译级验证+SKIP 标注） | FIG-13-1 descriptor 位域、FIG-13-2 warpgroup 数据流、FIG-13-3 mbarrier 状态机（2026-09-11）
 - [x] D7 ch14 SM120 TMA+mma.sync+WS | hgemm.cuh L1859-2100 + common.cuh setmaxnreg | `NOTES_V2_ENABLE_TMA_MMA_WS`/sm_90a+sm_120a | ch14_hgemm_tma_ws.cu ← test_hgemm_tma_mma_ws@L1810 | FIG-14-1 TMA box、FIG-14-2 producer/consumer 时序（2026-09-11）
-- [ ] D-验收 Part II 编译+测试（ch13 SKIP 路径验证）+每章 DoD 留档
+- [x] D-验收 Part II 编译+测试（ch13 sm_120a 自动 SKIP 路径验证）+每章 DoD 留档（2026-09-14 随 Part III 验收：139 PASS/0 FAIL）
 
 ## 7. RFC-E Part III Attention 篇（ch15-19）
 
@@ -110,10 +112,10 @@
 
 ## 9. RFC-G 性能数据汇总（降级为汇总任务；数据来自各章 DoD 第 5 条）
 
-- [ ] G.1 汇总 `.tmp/book-bench/ch*/` 数据 → 统一口径表（GPU/驱动/库版本/日期/形状/TFLOPS/对照基线）
-- [ ] G.2 复跑 README 主表形状（`--bench --mnk 4096,4096,4096 --bhnd 1,32,16384,128` 与 D=320 split-D）核对与 README 口径差异
-- [ ] G.3 附录 B 成表：README 数据 + 复测数据并列，标注差异原因（F4 类核查）
-- [ ] G.4 **验收**：附录 B 每行有出处；差异 >5% 的行有解释
+- [x] G.1 汇总 `.tmp/book-bench/ch*/` 数据 → 统一口径表（GPU/驱动/库版本/日期/形状/TFLOPS/对照基线）（2026-09-16：appB B.1-B.6 成表）
+- [-] G.2 复跑 README 主表形状（`--bench --mnk 4096,4096,4096 --bhnd 1,32,16384,128` 与 D=320 split-D）核对与 README 口径差异 —— 取消单跑（2026-09-18）：appB 采用「README/5090 引用口径 + PRO 5000 本机实测口径并列标注」，每行注明硬件/来源，无需在本机复刻 5090 主表
+- [x] G.3 附录 B 成表：README 数据 + 复测数据并列，标注差异原因（F4 类核查）（2026-09-16：含 B.7 Part V 六行明细与四条主线总结）
+- [x] G.4 **验收**：附录 B 每行有出处；差异 >5% 的行有解释（2026-09-16，2026-09-18 R7 复审三方交叉）
 
 ## 10. RFC-H 图表升级（v4，2026-09-14：生成器单路径，主 agent 直做）
 
@@ -121,36 +123,36 @@
 > → drawio-headless -s 3 → view_image + PIL 裁剪复核（≥2 轮）→ audit.md → tex 接线 → 图清单回写。
 > **PDF 缩放硬验收**：两位数格 ≥54px、字号 ≥12、CJK 禁 bold——铁律全集 /memories/repo/leetcuda-book-drawio.md。
 > 知乎图 reconstruction 路径已恢复（2026-09-14 打通浏览器登录态抓图：fetch→base64→`figures/zhihu/<author>-<slug>/` 本地归档 + meta.md，gitignore 不入库）→ vision inventory → gen.py 重建 → 体检（COVER/COLLIDE=0）→ view 直读验收。首批 FIG-20-4..20-7（竹熙佳处 Layout Compose & Inverse）。
-> 已完成 14/约 35 张（FIG-20-1/22-1/23-1/26-1 + 20-4..20-9 + 21-4/22-2/23-2/24-3；20-1/22-1 已按用户反馈修格线粘连）。知乎原图归档 11 目录（figures/zhihu/，gitignore 不入库，各含 meta.md）；ch20 已 9 图封章。
+> **2026-09-18 收口状态**：图清单 69 条全部「正式」（drawio 64 张 gen.py 全入库 + FIG-24-1 LaTeX 表 + FIG-33-1/2 引用图 + FIG-33-3/4 本机 plot）；49 份 audit.md（ch1-26 批次），Part V 15 张（fig-27-1..32-2）复核结论原记于 RFC K1-K6 条目，audit.md 补录列入本轮复审收口。知乎原图归档 11 目录（figures/zhihu/，gitignore 不入库，各含 meta.md）。
 
-- [ ] H.0 TikZ/pgfplots 模板（仅函数曲线/数据图：roofline、吞吐曲线；配色/字体与全书一致）
-- [ ] H.1 必收图批次（用户点名，优先）：FIG-12-1 smem swizzle、FIG-12-2 block swizzle——生成器新建（规格=ch12 ASCII 图 + caption，可参 common.cuh L185-235 布局表）
-- [ ] H.2 基础章批次：FIG-1-1/2-1/3-1/4-1/5-1/7-1/8-1（生成器新建）
-- [ ] H.3 GEMM 章批次：FIG-9-1/10-1/11-1/11-2a/12-3/13-1/13-2/13-3/14-1/14-2
+- [-] H.0 TikZ/pgfplots 模板（仅函数曲线/数据图：roofline、吞吐曲线；配色/字体与全书一致） —— 取消（2026-09-18）：roofline 由 drawio 折线 fig-1-2 承担，吞吐/性能曲线由 bench 脚本 matplotlib plot（fig-33-3/4）承担，TikZ 路径无收益
+- [x] H.1 必收图批次（用户点名，优先）：FIG-12-1 smem swizzle、FIG-12-2 block swizzle——生成器新建（规格=ch12 ASCII 图 + caption，可参 common.cuh L185-235 布局表）（2026-09-14）
+- [x] H.2 基础章批次：FIG-1-1/2-1/3-1/4-1/5-1/7-1/8-1（生成器新建）（2026-09-14）
+- [x] H.3 GEMM 章批次：FIG-9-1/10-1/11-1/11-2a/12-3/13-1/13-2/13-3/14-1/14-2（2026-09-14）
 - [x] H.4 FA/CuTe 章批次：FIG-15-1/15-2/16-1/17-1/17-2/18-1/19-1/19-2/20-2/20-3/21-1/21-2/21-3/24-2/25-1（2026-09-14 全部完成，35/35 正式）
-- [ ] H.5 函数/数据图批次（TikZ）：FIG-1-2 roofline 等
-- [ ] H.6 生成器从 .tmp/drawio/ 迁移到 figures/drawio/<id>/gen.py（入库）；每张完成后图清单状态回写「正式」
-- [ ] H.7 **验收**：图清单全部条目状态=「正式」；audit.md 含生成器参数与复核结论；PDF 抽查缩放可读性
+- [-] H.5 函数/数据图批次（TikZ）：FIG-1-2 roofline 等 —— 取消（2026-09-18）：同 H.0，由 drawio/matplotlib 替代
+- [x] H.6 生成器从 .tmp/drawio/ 迁移到 figures/drawio/<id>/gen.py（入库）；每张完成后图清单状态回写「正式」（2026-09-14/16：64 目录 gen.py 全部入库，.tmp 权威源按铁律回流）
+- [x] H.7 **验收**：图清单全部条目状态=「正式」（69/69）；audit.md 含生成器参数与复核结论（49 份已入库，Part V 15 份补录中，2026-09-18）；PDF 抽查缩放可读性（K-验收 2026-09-16 通过）
 
 ## 11. RFC-I 附录 A-E
 
-- [ ] I.1 附录 A common.cuh 工具箱（773 行分块解析）
-- [ ] I.2 附录 B ← RFC-G 产出合入
-- [ ] I.3 附录 C 构建/CLI/测试指南 + 章×宏×arch 矩阵（BOOK_PLAN §1.4 扩展）+ notes-v2.cu 角色声明 + 环境安装命令
-- [ ] I.4 附录 D 源码索引收口（26 章定稿后刷新 commit permalink）
-- [ ] I.5 附录 E ← RFC-B inventory 合入
-- [ ] I.6 **验收**：五个附录编译进书、TOC 正确
+- [x] I.1 附录 A common.cuh 工具箱（773 行分块解析）（2026-09-16：appA 181 行，8 段工具族地图+行号区间表）
+- [x] I.2 附录 B ← RFC-G 产出合入（2026-09-16：appB 218 行，B.1-B.7 含 Part V 明细）
+- [x] I.3 附录 C 构建/CLI/测试指南 + 章×宏×arch 矩阵（BOOK_PLAN §1.4 扩展）+ notes-v2.cu 角色声明 + 环境安装命令（2026-09-16：appC 192 行，含 C.2 ffpa-attn 安装/bench 段）
+- [x] I.4 附录 D 源码索引收口（26 章定稿后刷新 commit permalink）（2026-09-16：34 行双仓表 LeetCUDA@1c2c1e0 + ffpa-attn@861d75e；2026-09-18 R8 复审）
+- [x] I.5 附录 E ← RFC-B inventory 合入（2026-09-16：appE 298 行，官方文档/论文/知乎三组；RFC-B 取消后为参考条目唯一事实源）
+- [x] I.6 **验收**：五个附录编译进书、TOC 正确（2026-09-16 K-验收，2026-09-18 复审 R7/R8）
 
 ## 12. RFC-J 全书集成审校与验收
 
-- [ ] J.1 交叉引用/`\ref` 全部解析；TOC/页码/PDF 书签核对
-- [ ] J.2 verify_anchors.py 全量跑（26 章+附录 A）
-- [ ] J.3 pdftotext 全书抽查：无豆腐块、无横向溢出、每章正文 ≥3500 字统计
-- [ ] J.4 引文 `#if/#endif` 成对 grep 断言
-- [ ] J.5 引用图出处标注 100% 检查
-- [ ] J.6 术语一致性 pass（记号表为准；全书 grep 常见别名）
-- [ ] J.7 页数验收（≥280）+ 无 `! LaTeX Error` + Overfull 可控
-- [ ] J.8 **验收**：对照 BOOK_PLAN §11 全书级标准逐条勾选
+- [x] J.1 交叉引用/`\ref` 全部解析（build.sh undefined 断言 0，2026-09-18）；TOC 含 34 章+导读+5 附录，pdftotext 目录区核对（导读/致谢条目在），页码两趟解析
+- [x] J.2 verify_anchors.py 全量跑 ALL GREEN（27 章，2026-09-18，锚点 v4.0.0：common 803 行 / hgemm 2100 行）
+- [x] J.3 pdftotext 抽查：无豆腐块（Missing character=0，已固化为 build.sh 验收断言）；正文+导读 CJK 共 18.2 万字。正文章 <3500 者 6 章（ch02 3272 / ch03 3460 / ch30 3291 / ch31 3370 / ch32 2615 / ch33 2891），均为公式/代码/表格密集章，按内容实态记录不注水；导读章（ch19b+wp0-7）合计 ≈2.07 万字
+- [x] J.4 引文 `#if/#endif` 成对 grep 断言：7 个冻结源计数全对（common 11/11、hgemm 4/4、flash_attn 6/6、ffpa_attn 3/3，base/sgemv/sgemm 无条件编译）
+- [x] J.5 引用图出处标注检查：64/64 drawio 图目录均含 audit.md；无出处标记的 6 章（ch00/20/21/22/30/31）经核全部为自绘图或纯文字章，无引用图 → 引用图出处标注实际 100%
+- [x] J.6 术语一致性 pass（并列/余集/反演 grep=0；codomain 陪域 16 处统一、GETT 收缩、flat 扁平——2026-09-18 code review 修复）
+- [x] J.7 页数验收 459 页（≥280）+ `! LaTeX Error` 0 + Overfull ≥1pt 0（build.sh 断言）
+- [x] J.8 **验收**：对照 BOOK_PLAN §11 全书级标准逐条勾选（2026-09-18）。「每章标注编译宏与架构」：LeetCUDA 教学源章 ch00-25 已标注；**ffpa-attn 相关章 ch26-33 按用户决策豁免——书中假定 ffpa-attn 已安装，不写编译宏/编译安装类内容，读者自行参考 ffpa-attn repo 文档**（ch26 L736 的 build_tests.sh 为本书测试自身构建，非 ffpa-attn，保留）
 - [x] J.9 行越界专项：全书 Overfull \hbox 114 处（75 处 ≥10pt，最大 112pt）→ ≥1pt 清零（2026-09-16）。手段：preamble `\emergencystretch=2em`（114→52）；`\texttt` 断点注入脚本（camelCase/`\_`/`/`/`.`/`::`/`(`/`<`，门槛=真实断点切分后 run≥12，52→11，另修复 3 处裸 `\allowbreak ` 空格伪影导致的 `ENABLE_ TMA` 渲染变形）；`xurl`（\url 长链接断行）；剩余 11 处 editorial 精修（拆 run-in 粗体、`file~Lxxx` 改空格、表格 \footnotesize、align 续行列对齐修正）。终态仅余 1 处 0.88pt（<1pt 不可见，保留）。工具与清单：`book/.tmp/layout-fix/{map_overfull.py, inject2.py, overfull-map.md}`。页数 324→354
 - [x] J.10 全书内容审校（2026-09-16，commit 4caaed6+4517bb0）：(1) 日志排版——ch13/14/17/19/25 的 quote+texttt 伪代码块统一转 `lstlisting[style=console]`，恢复真实日志文本；(2) 本地路径清理——删除 16 处 `.tmp/book-bench|agent-chNN` 等读者不可见路径（保留 ch00 教学示例与模板注释）；(3) 4 份 GLM-5.3 审校报告（`book/.tmp/review/agent1-4.md`，77 条）应用 76 条：数学/事实错误均独立复算或源码/PTX 文档核实（重点：ch12 寄存器占用 R≈220→110、ch17 三处 linerange 错位互换、ch25/26 C fragment 行列 PTX ISA Figure 83 双重验证、ch15 FA3 作者名）；语言类清理生造词；跳过 12-7（低置信度冲突绝对计数）。顺手修复存量 undefined 引用 4 处（ch02 补 3 个 subsection label、ch17 ch:2→ch:02）。重建验证：0 编译错误、Overfull ≥1pt 为 0、undefined 引用为 0。遗留：fig-3-1/fig-12-2 图内数字与修正后正文不一致需重绘；ch16_fa2_mma.cu:5 头注释 grid 描述未改（测试文件）
 
@@ -243,8 +245,8 @@
 | FIG-32-2 | 32 | persist-d-loop | C1 新建（2026-09-16，persist-D 主循环数据流：gemm_ss→bias/masking→融合 softmax→gemm_rs→lazy rescale 五步与 barrier 交叠） | 正式 | figures/drawio/fig-32-2-persist-d-loop/ |
 | FIG-33-1 | 33 | 5090-fp8-speedup | C2 引用（2026-09-16，ffpa-attn README 5090 fp8 D=128 speedup：FFPA-FP8 441T vs Sage2 394T vs SDPA 291T） | 正式（引用） | figures/ffpa/fp8/ |
 | FIG-33-2 | 33 | 5090-fp4-speedup | C2 引用（2026-09-16，ffpa-attn README 5090 fp4 D=128 speedup：FFPA-FP4 804T/2.60x） | 正式（引用） | figures/ffpa/fp4/ |
-| FIG-33-3 | 33 | pro5000-fp8-tflops | C3 本机 plot（2026-09-16，bench_fp8.py 生成：PRO 5000 D=128 fp16 七场景 × 8K/16K，FFPA/Sage/SDPA 三系列） | 正式 | figures/fig-33-3-pro5000-fp8-tflops.png（生成脚本 = ffpa-attn bench/bench_fp8.py） |
-| FIG-33-4 | 33 | pro5000-fp4-tflops | C3 本机 plot（2026-09-16，bench_fp4.py 生成：PRO 5000 同形状，FFPA-FP4/FP8/Sage3/SDPA 四系列） | 正式 | figures/fig-33-4-pro5000-fp4-tflops.png（生成脚本 = ffpa-attn bench/bench_fp4.py） |
+| FIG-33-3 | 33 | pro5000-fp8-tflops | C3 本机 plot（2026-09-16，bench_fp8.py 生成：PRO 5000 D=128 fp16 七场景 × 8K/16K，FFPA/Sage/SDPA 三系列） | 正式 | figures/ffpa/fp8/fig-33-3-pro5000-fp8-tflops.png（生成脚本 = ffpa-attn bench/bench_fp8.py） |
+| FIG-33-4 | 33 | pro5000-fp4-tflops | C3 本机 plot（2026-09-16，bench_fp4.py 生成：PRO 5000 同形状，FFPA-FP4/FP8/Sage3/SDPA 四系列） | 正式 | figures/ffpa/fp4/fig-33-4-pro5000-fp4-tflops.png（生成脚本 = ffpa-attn bench/bench_fp4.py） |
 
 ## 14. CHECKLOG 摘要镜像（明细在 book/CHECKLOG.md）
 
@@ -319,3 +321,28 @@
 | DefTruth | vLLM Triton Merge Attention States Kernel 详解 | 1904937907703243110 | 5 |
 | DefTruth | LeetCUDA v3.0 大升级（项目自述） | 19862356369 | 1,附录C |
 | DefTruth | WINT8/4-(00)~(03) 快速反量化系列 | 657072856 / 657070837 / 657073159 / 657073857 | **全书行文风格基线**（BOOK_PLAN §4.3，与图解 FA 系列同为风格样本） |
+
+## 15. 未来任务（论文翻译/导读，2026-09-18 登记）
+
+- [ ] **RFC-L（未来）Colfax《Categorical Foundations for CuTe Layouts》翻译入附录**。
+  作者 Jack Carlisle、Jay Shah、Reuben Stern、Paul VanKoughnett（Colfax Research，
+  arXiv:2601.05972，2026-01），共 **174 页**——范畴论视角的 CuTe Layout 严格化
+  （functor/monad 语义下的 shape/stride 与 layout algebra）。本地素材：
+  `/workspace/dev/vipshop/tmp/papers/colfax-cute-layout-202601.pdf` 与
+  `…/colfax-cute-layout-202601/`（`FinalVersion.tex` + `references.bib`）。
+  定位：**未来翻译为中文作为附录（拟 appF 或独立「进阶导读」）**，非 Part IV 必读；
+  依赖：第四部分 CuTe 篇（ch20-26）已稳定。注意它正是 CuTe 白皮书 Related Work
+  引用的 Carlisle et al. CategoryCuTe，翻译时与 ch20 术语表对齐（Product=乘积、
+  Composition=复合、Coalesce=合并、Complement=补、Divide=切分、Inverse=逆）。
+- [x] **CuTe 官方白皮书中文导读**（✅ 完成，2026-09-18）：Cris Cecka（NVIDIA
+  Research）《CuTe Layout Representation and Algebra》（arXiv:2603.02298v2，
+  35 页，34 张原生 TikZ 图、111 个公式），译为中文作为 **Part IV 开篇导读
+  （不编号章 `ch19b-cute-whitepaper-zh.tex` + `chapters/wp/wp0-7.tex` 分片）**，
+  已显著标注译源与原作者；图/表/公式编号冠 `W.` 前缀（图 W.1–W.12、表 W.1–W.7），
+  致谢（Acknowledgments）译附文末。机械核对全部对齐源论文：label 集合一致、
+  figure 12/12、tikzpicture 34/34、table 7/7、tabular 13/13、python 8/8、
+  cpp 10/10（源 9 cpp + 1 lstlisting 等价转换）、definition 20/20、align 26/26、
+  align* 85/85、ref 85/85；全书构建 459 页 0 错误 0 未定义引用 0 Overfull(≥1pt)
+  0 缺字，7 个关键图页 view 验收通过。本地素材：
+  `/workspace/dev/vipshop/tmp/papers/CUTE-LAYOUT-NV-2026.pdf` 与
+  `…/CUTE-LAYOUT-NV-2026/`（`CuTeWhitepaper.tex`，TikZ 直接移植）。

@@ -1,14 +1,14 @@
 # anchors.yaml — LeetCUDA 成书源码冻结登记（RFC-A.3）
 # 登记后源文件零改动（BOOK_PLAN §5.3）；校验脚本 verify_anchors.py
-frozen_at: "2026-09-11"
-repo_commit: "1c2c1e0a91fd24119c0c0a059413a0cf82cb4244"
+frozen_at: "2026-09-18"
+repo_commit: "6cd32deca683d6c4aae2011988c9f4a35bc5f528"
 files:
   base.cuh:
     sha256: cda419930ad0a0670f0695372a8599f398ac7b48479e5fcb317262b5dc232ac0
     lines: 909
   common.cuh:
-    sha256: 17801873f984ec13490b246fb250a31228ed2a9254841604943d9286e7199088
-    lines: 781
+    sha256: f707fede6a55d258962fbd9c314e65c8f741f32bf161749e10b59e75e4d384d9
+    lines: 803
   sgemv.cuh:
     sha256: 5c539154353996e0bd51650bf03dde239e3133349ada31ba345ab14f05b25c2a
     lines: 102
@@ -16,7 +16,7 @@ files:
     sha256: ad78cd403ac43b0f4b9798dc8695845fafb62dfe8c582e99d61d5096557114d6
     lines: 434
   hgemm.cuh:
-    sha256: 8ee44fedcdc8bd1c38d85591823d198f2b0fc6daf34a70a561c3039a422b772f
+    sha256: 40e330514d004bfd7e2330dea941a9d75922efca75d93db443373714ae503324
     lines: 2100
   flash_attn.cuh:
     sha256: c15b4150560438771098a96003f136a1f5a7108903ab57990e2d31d701791713
@@ -126,7 +126,7 @@ chapters:
         last_anchor: "#endif /* NOTES_V2_ENABLE_WGMMA */"
       - file: common.cuh
         start: 350
-        end: 781
+        end: 803
         first_anchor: "#if defined(NOTES_V2_ENABLE_WGMMA) || defined(NOTES_V2_ENABLE_TMA_MMA_WS)"
         last_anchor: "#endif /* NOTES_V2_ENABLE_WGMMA || NOTES_V2_ENABLE_TMA_MMA_WS */"
   ch14:
@@ -137,10 +137,10 @@ chapters:
         first_anchor: "#if defined(NOTES_V2_ENABLE_TMA_MMA_WS)"
         last_anchor: "#endif /* NOTES_V2_ENABLE_TMA_MMA_WS */"
       - file: common.cuh
-        start: 462
-        end: 475
-        first_anchor: "//"
-        last_anchor: "// setmaxnreg experiment build with -arch sm_120f and define the macro."
+        start: 467
+        end: 517
+        first_anchor: "// Warpgroup-level register rebalancing for warp specialization."
+        last_anchor: "}"
   ch15:
     refs:
       - file: flash_attn.cuh
@@ -239,6 +239,6 @@ chapters:
     refs:
       - file: common.cuh
         start: 1
-        end: 781
+        end: 803
         first_anchor: "#pragma once"
         last_anchor: "#endif /* NOTES_V2_ENABLE_WGMMA || NOTES_V2_ENABLE_TMA_MMA_WS */"
