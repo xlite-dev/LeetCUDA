@@ -44,7 +44,7 @@ $m/\ell/O$ 递推）、第~\ref{ch:16}~章（\texttt{mma.sync} fragment 与
 第~\ref{ch:18}~章（双 consumer 与 merge）。CuTe 侧的前置是
 第~\ref{ch:20}--\ref{ch:23}~章：\texttt{TiledMma}/\texttt{partition\_\allowbreak{}fragment\_\allowbreak{}*}
 的语义在第~\ref{ch:22}~章会以本章的 traits 为样本逐字段拆开。
-第~\ref{ch:26}~章会用同一份代码做 CuTe 视角的复访。预计篇幅约 13 页。
+第~\ref{ch:26}~章会用同一份代码做 CuTe 视角的复访。
 
 \section{问题与动机}
 
@@ -732,7 +732,7 @@ $\mathrm{Sk}{=}5$ 会直接超预算。数据请落
 \begin{kaogu}[F2/F3·协议账本核校通过]{mbarrier 到达数与 TMA 事务字节数}
   逐条核验：（1）线程数与角色：L380 \texttt{\_\_launch\_}\allowbreak\texttt{bounds\_\allowbreak{}\_\allowbreak{}(256,\allowbreak{}1)}、
   L399--400 \texttt{k\allowbreak{}Producer\allowbreak{}Threads}$=$\texttt{k\allowbreak{}Consumer\allowbreak{}Threads}$=$128，
-  与头注释 L14「128 producer $+$ 128 consumer $=$ 256 total threads
+  与头注释 L14/L28「128 producer $+$ 128 consumer $=$ 256 total threads
   (vs 原始 384)」一致（「原始 384」指第~\ref{ch:17}~章的 FA2 TMA WS：
   128 producer $+$ 256 consumer）；（2）full 屏障初始到达数 1（L421/L425）、
   empty 屏障 128（L422/L426），与消费者侧「每线程消费完 arrive 一次」

@@ -124,7 +124,7 @@ sm\_120f & family-specific 目标（CUDA 13.2+），build.sh 的 setmaxnreg
 \end{tabular}
 \end{table}
 
-工具链门槛：TMA 相关章硬性要求 CUDA $\ge$ 13.0（common.cuh L21--24 直接
+工具链门槛：TMA 相关章硬性要求 CUDA $\ge$ 13.0（common.cuh L21--23 直接
 \texttt{\#error}）；sm\_89/sm\_90a/sm\_120a 后缀目标与 sm\_120f 建议
 CUDA 13.2+。
 
@@ -152,7 +152,7 @@ ptxas error : Entry function '_Z1kPf' uses too much shared data (0x28000 bytes, 
 #    无关）；改成 shared::cta 即保留（第~\ref{ch:14}~章坑二取证）。
 #    另一类触发：__launch_bounds__(N) 缺第二参数 -> C7508，补 (N, 1)。
 
-# 5. CUDA Toolkit 版本不足（common.cuh L21--24 门控）
+# 5. CUDA Toolkit 版本不足（common.cuh L21--23 门控）
 #error "NOTES_V2_ENABLE_TMA_MMA_WS requires CUDA Toolkit 13.0 or newer"
 # -> 升级工具链，或改用 raw PTX 分支并降级宏组合
 \end{lstlisting}

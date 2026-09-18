@@ -1,6 +1,6 @@
 % ch13-hopper-tma-wgmma.tex — Hopper 之路：TMA、mbarrier 与 WGMMA（RFC D6，2026-09-11）
 % 教学顺序（BOOK\_PLAN 决策 D6）：前半 TMA + mbarrier，后半 WGMMA。
-% 源码冻结基线：hgemm.cuh L1428-1857 / common.cuh L350-781（linerange 引用，勿改源文件）。
+% 源码冻结基线：hgemm.cuh L1428-1857 / common.cuh L350-803（linerange 引用，勿改源文件）。
 \chapter{Hopper 之路：TMA、mbarrier 与 WGMMA}\label{ch:13}
 
 \section{本章导读}
@@ -20,15 +20,15 @@ mbarrier 的 arrive/tx 双计数事务模型——它们是 Hopper 异步流水�
 以及 producer/consumer warp specialization 的完整协作协议。
 
 \textbf{源码区间}：hgemm.cuh~L1428--1857（\texttt{hgemm\_\allowbreak{}wgmma\_\allowbreak{}stages\_\allowbreak{}tn}@L1477）；
-common.cuh~L350--781（TMA/mbarrier helpers、\texttt{setmaxnreg}、WGMMA 宏、
-smem descriptor 位域注释 L508--708、TensorMap helpers）。
+common.cuh~L350--803（TMA/mbarrier helpers、\texttt{setmaxnreg}、WGMMA 宏、
+smem descriptor 位域注释 L545--587、TensorMap helpers）。
 \textbf{编译宏与架构限定}：\texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}WGMMA}，\textbf{仅 sm\_90a}——
 WGMMA/mbarrier/TMA 是 Hopper 专属指令族，不向前兼容 sm\_100/sm\_120（详见 13.8~节坑一）。
 \textbf{前置}：第~\ref{ch:11}~章（mma.sync、ldmatrix、多级流水）与第~\ref{ch:12}~章
 （swizzle 与 bank conflict）；\textbf{后继}：第~\ref{ch:14}~章把 TMA+mbarrier 协议
 搬到 SM120 配 \texttt{mma.sync}，第~\ref{ch:17}--\ref{ch:18}~章把它搬进 FlashAttention。
 \textbf{验证条件}：本机 GPU 为 sm\_120a（无 Hopper），本章采用「编译级验证 + 运行时
-SKIP」策略，完整数值验证需 H100/H200/H800（13.10~节给出复现命令）。预计篇幅约 14 页。
+SKIP」策略，完整数值验证需 H100/H200/H800（13.10~节给出复现命令）。
 
 \section{问题与动机}
 
@@ -186,8 +186,8 @@ TMA descriptor 在 host 侧由 driver API \texttt{cu\allowbreak{}Tensor\allowbre
 （128 字节的不透明对象，使用时传 device 侧拷贝的指针），kernel 侧只需把
 \texttt{CUtensor\allowbreak{}Map*} 当作 \texttt{cp.\allowbreak{}async.\allowbreak{}bulk.\allowbreak{}tensor} 的操作数：
 
-\lstinputlisting[linerange={742-764},firstnumber=auto,breakatwhitespace=true,
-  title={common.cuh L742-764（create\_tensor\_map：host 侧 TMA descriptor）}]{../common.cuh}
+\lstinputlisting[linerange={764-785},firstnumber=auto,breakatwhitespace=true,
+  title={common.cuh L764-785（create\_tensor\_map：host 侧 TMA descriptor）}]{../common.cuh}
 
 逐参数对照（以 $A[M, K]$ row-major、box $= (B\sb{K}, B\sb{M}) = (64, 128)$ 为例）：
 \begin{itemize}
@@ -227,8 +227,8 @@ TMA descriptor 在 host 侧由 driver API \texttt{cu\allowbreak{}Tensor\allowbre
 
 \subsection{发起搬运：cp.async.bulk.tensor.2d}
 
-\lstinputlisting[linerange={376-397},firstnumber=auto,breakatwhitespace=true,
-  title={common.cuh L376-397（tma\_load\_2d：raw PTX 形式）}]{../common.cuh}
+\lstinputlisting[linerange={379-407},firstnumber=auto,breakatwhitespace=true,
+  title={common.cuh L379-407（tma\_load\_2d：raw PTX 形式）}]{../common.cuh}
 
 指令 \texttt{cp.\allowbreak{}async.\allowbreak{}bulk.\allowbreak{}tensor.2d.\allowbreak{}shared::\allowbreak{}cluster.\allowbreak{}global.\allowbreak{}mbarrier::\allowbreak{}complete\_\allowbreak{}tx::\allowbreak{}bytes}
 的操作数逐个看：\texttt{[dst]} 是 smem 目的地址（32-bit shared 偏移，由
@@ -295,14 +295,14 @@ $S = 3$ 个 empty 各预存 128 次到达，producer 的 1 次 arrive 恰好补�
 WGMMA 与 TMA 的「接头暗号」就是 smem descriptor：TMA 按 128B swizzle 写入 smem，
 WGMMA 按同一个 128B swizzle 读出，descriptor 告诉硬件「tile 在哪、怎么走、
 swizzle 模式是哪档」。64-bit 位域布局（PTX ISA §9.7.15.5.1.2.2；源码
-common.cuh~L532--565 的注释表与图~\ref{fig:13-1} 逐字段一致，此处不重复引用，
+common.cuh~L558--587 的注释表与图~\ref{fig:13-1} 逐字段一致，此处不重复引用，
 直接看编码实现）：
 
-\lstinputlisting[linerange={566-587},firstnumber=auto,breakatwhitespace=true,
-  title={common.cuh L566-587（make\_smem\_desc 上半：start\_address 与 LBO）}]{../common.cuh}
+\lstinputlisting[linerange={596-610},firstnumber=auto,breakatwhitespace=true,
+  title={common.cuh L596-610（make\_smem\_desc 上半：start\_address 与 LBO）}]{../common.cuh}
 
-\lstinputlisting[linerange={589-609},firstnumber=auto,breakatwhitespace=true,
-  title={common.cuh L589-609（make\_smem\_desc 下半：SBO 与 layout\_type）}]{../common.cuh}
+\lstinputlisting[linerange={612-631},firstnumber=auto,breakatwhitespace=true,
+  title={common.cuh L612-631（make\_smem\_desc 下半：SBO 与 layout\_type）}]{../common.cuh}
 
 逐字段拆解（编码函数 $\mathrm{enc}(x) = (x \,\&\, \mathrm{0x3FFFF}) \gg 4$，
 对三个地址/偏移字段统一适用）：
@@ -346,8 +346,8 @@ major-ness（0 = K-major，1 = M/N-major）。本 kernel 全部取 $(1, 1, 1, 0,
 
 \subsection{wgmma.fence / commit\_group / wait\_group 三件套}
 
-\lstinputlisting[linerange={510-530},firstnumber=auto,breakatwhitespace=true,
-  title={common.cuh L510-530（WGMMA 异步三件套宏 + 编码函数）}]{../common.cuh}
+\lstinputlisting[linerange={539-552},firstnumber=auto,breakatwhitespace=true,
+  title={common.cuh L539-552（WGMMA 异步三件套宏 + 编码函数）}]{../common.cuh}
 
 WGMMA 是 fire-and-forget 指令，正确用法是固定四拍：先 \texttt{fence}，再发射
 WGMMA，再 \texttt{commit\_\allowbreak{}group}，最后 \texttt{wait\_group} 收割。
@@ -399,7 +399,7 @@ $m$ 个 $64 \times B\sb{K}$ 子块，K-step 每次前进 \texttt{kWgmmaK=16} 个
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.95\textwidth]{figures/drawio/fig-13-1-wgmma-desc/fig-13-1.png}
-\caption{WGMMA smem descriptor 的 64-bit 位域（对照 common.cuh L532--565 注释与 PTX ISA \S9.7.15.5.1.2.2 逐字段核校；u = unused；数值列为本章 kernel $B_K{=}64$ half + 128B swizzle 的取值；\texttt{enc(x)} = (x \& 0x3FFFF) 右移 4，18-bit 窗口 16B 对齐）。}
+\caption{WGMMA smem descriptor 的 64-bit 位域（对照 common.cuh L558--587 注释与 PTX ISA \S9.7.15.5.1.2.2 逐字段核校；u = unused；数值列为本章 kernel $B_K{=}64$ half + 128B swizzle 的取值；\texttt{enc(x)} = (x \& 0x3FFFF) 右移 4，18-bit 窗口 16B 对齐）。}
 \label{fig:13-1}
 \end{figure}
 
@@ -450,7 +450,7 @@ bench（对照 notes-v2 的 bench 口径），数据落 \texttt{.\allowbreak{}tm
 
 \section{实践经验与考据说明}
 
-\begin{kaogu}[F2 核校通过]{common.cuh L532-565 descriptor 位域注释 vs PTX ISA}
+\begin{kaogu}[F2 核校通过]{common.cuh L558-587 descriptor 位域注释 vs PTX ISA}
   逐字段对照 PTX ISA §9.7.15.5.1.2.2：start\_address $[0,14)$、LBO $[16,30)$、
   SBO $[32,46)$、base\_offset $[49,52)$、layout\_type $[62,64)$（0/1/2/3 $=$
   无/128B/64B/32B），编码函数 $(x \,\&\, \mathrm{0x3FFFF}) \gg 4$，base\_offset
@@ -469,7 +469,7 @@ bench（对照 notes-v2 的 bench 口径），数据落 \texttt{.\allowbreak{}tm
 \begin{kaogu}[F2 核校通过]{wgmma.wait\_group 与 cp.async.wait\_group 的同构表述}
   PTX ISA §9.7.15.7.3 原文 "wait until only N or fewer of the most recent
   wgmma-groups are pending"，与 cp.async.wait\_group（§9.7.9.25.3.3）语义逐词
-  同构；common.cuh L515 与 hgemm.cuh C3 注释的对应表述核校通过。
+  同构；common.cuh L538 与 hgemm.cuh C3 注释的对应表述核校通过。
 \end{kaogu}
 
 \begin{kaogu}[F2 核校通过]{mbarrier 双计数与 129 协议}

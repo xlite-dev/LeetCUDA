@@ -77,10 +77,11 @@ Table 1 中精度低于 NVFP4（ue8m0 只有 8 bit 指数无尾数，SF 本身�
 
 \textbf{SF 的双重身份}。$s_{block}$ 既是量化除数又是 dequant 乘数，
 而 ue4m3 只有 3 bit 尾数——SF 自身的舍入误差（6.25\%）会整体作用于
-16 个元素。这就是 SA3 所谓 C2 挑战（SF 格式自身的精度损失）：若块
-$\mathrm{amax}$ 落在 ue4m3 的窄域之外，或行内动态范围极端（causal 早
-行 $P$ 近 one-hot），SF 编码误差就会放大。两级 P 量化（下一章）正是
-为了把块的 $\mathrm{amax}$ 铺满 ue4m3 的域。
+16 个元素：若块 $\mathrm{amax}$ 落在 ue4m3 的窄域之外，或行内动态范围
+极端（causal 早行 $P$ 近 one-hot），SF 编码误差就会放大。两级 P 量化
+（下一章）正是 SA3 对 C2 挑战（$P$ 以小值为主的分布使块
+$\mathrm{amax}$ 难铺满 SF 域）的回答——把块的 $\mathrm{amax}$ 铺满
+ue4m3 的域。
 
 \subsection{smooth-Q/K 强制与 delta\_s 的 rank-1 恒等式}
 
@@ -97,9 +98,10 @@ $\hat Q=\phi(Q-q_m)$、$\hat K=\phi(K^\top-\bar k)$，score 的精确重构
 项」：
 \begin{equation}
   S=\hat Q\hat K^\top+\Delta S,\qquad
-  \Delta S[b,h,m,n]=q_m[b,h,m,:]\cdot\bigl(K[b,h,n,:]-\bar k\bigr)
+  \Delta S[b,h,m,n]=q_m[b,h,m,:]\cdot\bigl(K[b,h_{kv},n,:]-\bar k\bigr)
   \label{eq:31-deltas}
 \end{equation}
+（GQA 下 K/V 按 kv 头 $h_{kv}$ 索引，MHA 时退化为 $h_{kv}=h$。）
 而式~\ref{eq:31-deltas} 右边的 $K-\bar k$ 千万不要物化——它等于
 \begin{equation}
   \Delta S=\underbrace{q_m K^\top}_{\text{低秩 GEMM}}
@@ -126,7 +128,8 @@ $v_m[d]=\frac{1}{N_{kv}}\sum_n V[b,h,n,d]$（per-(b,hkv,d) 常数），
 （\texttt{quantize\_fp4.cuh} L437--455 的注释给出同一推导）。减除只缩
 小残差动态范围，让 e2m1 块量化的相对分辨率更细。fp8 的 smooth-V 走
 per-channel scale，fp4 因 e2m1 无 per-channel 余地，改用均值减除形
-式（\texttt{--fp4-smooth-v}，三族 kernel 全支持）。
+形式（\texttt{--fp4-smooth-v}，Q/K/V 三段量化 kernel——含独立
+$V^\top$、MXFP8 $V^\top$ 与 fused 单 launch 变体——均支持）。
 
 \subsection{pad 零贡献与 hadamard 的线性性}
 
@@ -140,7 +143,7 @@ scale 仍是零，MMA 贡献恒为 0——QK 的 $D$ 归约与 PV 的 pad 行都
 填，TMA 加载永远合法。
 
 \textbf{hadamard 融合的可行性}。WHT 线性
-（$\mathrm{mean}(Hq)=H\,\mathrm{mean}(q)$，$HH^\top=I$）⇒ 均值与旋转
+（$\mathrm{mean}(Hq)=H\,\mathrm{mean}(q)$，$HH^\top=I$）$\Rightarrow$ 均值与旋转
 可交换：$q_m$、$\Delta S$、$q_{km}$ 全部可以在\textbf{未旋转域}计算；
 旋转域里需要替换的只有两处——Q 段量化 bias 的减除改用旋转副本
 $q_m^{rot}$，lse 的 $\mathrm{dot}(q_{row},\bar k)$ 项用 $\bar
@@ -152,8 +155,9 @@ k^{rot}$（L101--108 注释）。于是 WHT 旋转可以 fused 进量化 kernel
 \subsection{Q/K 量化 kernel：4 线程一 token}
 
 \texttt{fp4\_quant\_kernel}（L109--320）的映射：每 token 4 个线程，
-每线程持 64 元素 slice（恰一个 SF 的 4 列组），$kHeadDim/64$ 个
-16 元素向量迭代。四个模板 bool 各管一件事：
+每线程持 $kHeadDim/4$ 个元素、$kHeadDim/64$ 个 16 元素向量迭代
+（D=256 时恰 64 元素 = 一个 SF atom 的 4 列组）。四个模板 bool 各管
+一件事：
 \texttt{kPermute}（K 的列置换，见 31.4.5）、\texttt{kSubQm}/
 \texttt{kSubKm}（bias 减除在 group max 之前原位完成）、
 \texttt{kHadamard}（fused WHT，31.4.3 节）。
@@ -379,9 +383,9 @@ MXFP8 PV 变体（$V^\top$ 走 e4m3 + ue8m0/32，精度更高）付出 37.7\%
     $D$ & self FFPA/SDPA (ms) & 吞吐 & causal FFPA/SDPA (ms) & 吞吐 & 加速比区间 \\
     \midrule
     64  & 1.61 / 2.40 & 341T & 1.08 / 1.35 & 255T & 1.23--1.49x \\
-    128 & 2.52 / 5.11 & 437T & 1.67 / 2.68 & 330T & 1.61--2.04x \\
+    128 & 2.52 / 5.11 & 437T & 1.67 / 2.68 & 330T & 1.61--2.03x \\
     192 & 3.48 / 7.14 & 474T & 2.40 / 3.81 & 344T & 1.59--2.05x \\
-    256 & 4.97 / 10.46 & 443T & 3.54 / 5.27 & 311T & 1.47--2.11x \\
+    256 & 4.97 / 10.46 & 443T & 3.54 / 5.27 & 311T & 1.49--2.11x \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -410,7 +414,7 @@ adapter 层、自研外闱（骨架/pipeline/dispatch），只修正确性 bug
 （e2m1 的 25\% 步长 × 尖峰行 P 近 one-hot 的误差结构，probe sim 与
 kernel 同级证明是格式固有），SA3 论文自身用 cosine 评估。工程验收
 应该看 mean\_abs（0.014--0.03 是质量指标）与 allclose 容差
-（dense 0.15 / causal 0.70），不要用 fp8 的 0.05 级容径去卡 fp4。
+（dense 0.15 / causal 0.70），不要用 fp8 的 0.05 级容差去卡 fp4。
 
 \textbf{固定链的适用边界}。本节 bench 都是 $N_q{=}8192$；把 fp4 路径
 用在 decode/短序列上，前处理链的固定成本会吞掉全部收益。规划上应把
@@ -429,9 +433,11 @@ fp4 前处理与 prefill 阶段绑定，decode 回 fp8/fp16 路径。
   \item \textbf{SF 写序不 match atom}：SF offset 公式与
         \texttt{BlockScaledConfig} 不一致时数据看起来「差不多对」但
         精度崩——SF 错位是尺度级错误，不是噪声级。
-  \item \textbf{e2m1 需要显式饱和}：手写 round(x/s) 不带 clamp，越界
-        值在 \texttt{cvt} 的非 satfinite 变体里会产 NaN；统一走
-        \texttt{satfinite} 变体（L41/L64）。
+  \item \textbf{e2m1 的饱和语义}：\texttt{cvt.rn.satfinite.e2m1x2.f32}
+        的 \texttt{.satfinite} 是 PTX 对 4 bit 目的端的强制修饰符（不
+        存在非 satfinite 的裸变体），越界值饱和到 $\pm$6、NaN 转 $+6$，
+        均不产 NaN；真正的风险在绕开 \texttt{cvt} 的手搓编码（无饱和
+        语义）与上游 0/0（见坑 2），不在 \texttt{cvt} 本身（L41/L64）。
   \item \textbf{mxfp8 的 stage 数学史}：早期 build 因一次 3-stage
         D=128 NaN 把全部 D 钉在 2 stage；后来定位不复现（16 shape 组合
         + 5 次新数据复测全无 NaN），D=128 恢复 3 stage 拿回 1.2\% kernel
@@ -451,12 +457,12 @@ fp4 前处理与 prefill 阶段绑定，decode 回 fp8/fp16 路径。
         $\mathrm{amax}$ 预算；fp8 可以选、fp4 必须。
   \item $\Delta S$ 恒等式：$q_m(K-\bar k)^\top=q_mK^\top-q_{km}$，
         免物化 $K-\bar k$；多余行常数平移 lse 不改 $O$。
-  \item smooth-V 精确性：softmax 权重和为 1 ⇒ 减均值是恒等变换，
+  \item smooth-V 精确性：softmax 权重和为 1 $\Rightarrow$ 减均值是恒等变换，
         只收动态范围。
   \item kv\_perm32：为对齐 C/A fragment 布局置换 K 列（32 列窗口双
         射）；mask/bias 必须 perm-aware，tile 级公式不受影响。
   \item fused WHT 的蝶形拆分：thread-local 对原地做，只剩两级
-        \texttt{shfl\_xor}；均值/旋转可交换 ⇒ $\Delta S$ 留在未旋转
+        \texttt{shfl\_xor}；均值/旋转可交换 $\Rightarrow$ $\Delta S$ 留在未旋转
         域。
 \end{enumerate}
 

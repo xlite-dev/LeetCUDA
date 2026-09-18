@@ -17,7 +17,7 @@ Multiprocessor，流式多处理器）的内部结构讲起，穿过 SIMT 执行
 的「性能分析」节都会反复使用本章建立的词汇表：算术强度（AI）、ridge point、
 memory-bound 与 compute-bound、occupancy 与延迟隐藏。
 
-\textbf{前置}：无。\textbf{源码区间}：base.cuh L1--86。\textbf{预计篇幅}：约 11 页。
+\textbf{前置}：无。\textbf{源码区间}：base.cuh L1--86。
 
 \section{问题与动机}
 
@@ -67,7 +67,8 @@ GPU 是由大量 SM 组成的阵列。以本章测试机 RTX PRO 5000（Blackwel
   4 个这样的 block。
 \item \textbf{Shared Memory / L1}：同一块片上 SRAM 中可配置划分出
   的共享内存部分（Hopper 上这块 SRAM 为 256 KB，SM120 本机为 128 KB 量级），
-  Hopper 上最多约 228 KB/SM 可用作 smem（SM80 为 163 KB，SM120 本机实测
+  Hopper 上最多约 228 KB/SM 可用作 smem（SM80 为 164 KB/SM，per-block
+  opt-in 上限 163 KB；SM120 本机实测
   opt-in 上限为 99 KB，见 \S\ref{sec:ch01-test}）。它是
   block 内线程交换数据的主战场，也是后续章节 bank conflict（ch07）、
   swizzle（ch12）故事的舞台。

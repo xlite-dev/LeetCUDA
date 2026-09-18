@@ -30,7 +30,7 @@ sm\_120a 可编译运行；要求 CUDART $\ge$ 13.0（common.cuh L21--23 有 \#e
 \textbf{前置}：第~\ref{ch:13}~章（TMA descriptor、mbarrier 双计数事务模型——本章
 不再重复其机制，只回指）、第~\ref{ch:15}~章（attention 数学与 online softmax）、
 第~\ref{ch:16}~章（split-Q 划分与 FA2 的寄存器流）；\textbf{后继}：第~\ref{ch:18}~章
-把 consumer 从 1 个 warpgroup 扩成 2 个（FA3 双 consumer 结构）。预计篇幅约 13 页。
+把 consumer 从 1 个 warpgroup 扩成 2 个（FA3 双 consumer 结构）。
 
 \section{问题与动机}
 
@@ -251,8 +251,9 @@ consumer 计算体 & ldmatrix $+$ mma $+$ softmax & 同左（逐行相同） \\
 \end{center}
 
 最后一行是 \texttt{setmaxnreg} 的寄存器再分配声明：producer 让渡到 40、
-consumer 扩到 80（$D{=}64$）或 168（$D{=}128$，对齐 Triton Blackwell
-注意该指令对 TMA 的目的地址空间敏感：dst 写成 \texttt{shared::cluster}
+consumer 扩到 80（$D{=}64$）或 168（$D{=}128$，对齐 Triton
+\texttt{flash\_attn\_v2} 在 Blackwell 上的 \texttt{maxnreg} 策略）。
+另注意该指令对 TMA 的目的地址空间敏感：dst 写成 \texttt{shared::cluster}
 会被 ptxas 以 C7506 丢弃（第~\ref{ch:14}~章已考据），写成
 \texttt{shared::cta} 则 sm\_120a/sm\_120f 都保留（build.sh 的 sm\_120f
 目标预设了正确组合）；默认编译宏关闭时是 no-op——寄存器
@@ -261,7 +262,7 @@ consumer 扩到 80（$D{=}64$）或 168（$D{=}128$，对齐 Triton Blackwell
 \subsection{模板参数与 tile 派生}
 
 \lstinputlisting[linerange={872-896},firstnumber=auto,breakatwhitespace=true,
-  title={flash\_attn.cuh L872-896（18 个模板参数：tile 层级 $+$ 流水深度 $+$ 384 线程）}]{../flash_attn.cuh}
+  title={flash\_attn.cuh L872-896（16 个模板参数：tile 层级 $+$ 流水深度 $+$ 384 线程）}]{../flash_attn.cuh}
 
 tile 派生链与 ch16 同一套代数：$B_r = \mathrm{atom}_M \times
 \mathrm{tile}_Q \times \mathrm{val}_Q = 16 \times 8 \times 1 = 128$、

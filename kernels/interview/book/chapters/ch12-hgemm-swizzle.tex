@@ -6,7 +6,7 @@
 第~\ref{ch:11}~章把 HGEMM 推进到了 \texttt{mma.sync} m16n8k16 + \texttt{ldmatrix} +
 cp.async 多级流水的形态，但那条流水线上还压着三块石头：\textbf{shared memory bank
 conflict} 让 \texttt{ldmatrix} 的读取被串行化；\textbf{k\_step 内 ldmatrix 与 MMA
-的依赖}让「搬数」和「算数」无法重叠；\textbf{grid 的光栅化顺序}让同时inflight的 block
+的依赖}让「搬数」和「算数」无法重叠；\textbf{grid 的光栅化顺序}让同时在飞（in-flight）的 block
 在 L2 里摊成一条宽条带、复用率低下。本章沿教学源码 Phase~7b-3 的
 \texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn\_\allowbreak{}swizzle}（hgemm.cuh~L434）逐一搬掉这三块石头：
 
@@ -17,7 +17,7 @@ conflict} 让 \texttt{ldmatrix} 的读取被串行化；\textbf{k\_step 内 ldma
   \item \textbf{寄存器双缓冲}（\texttt{RA[2][*][4]}/\texttt{RB[2][*][2]} 乒乓切换）——
         与 smem 双缓冲（kStages）分工：一个盖住 gmem 延迟，一个盖住 ldmatrix 延迟；
   \item \textbf{Block Swizzle}（\texttt{k\allowbreak{}Block\allowbreak{}Swizzle} + 3D grid）——重排 block
-        坐标映射，让同时inflight的 block 集合成近似方形，L2 footprint 显著缩小。
+        坐标映射，让同时在飞（in-flight）的 block 集合成近似方形，L2 footprint 显著缩小。
 \end{itemize}
 
 \textbf{前置章节}：第~\ref{ch:11}~章（mma fragment 布局、ldmatrix 语义、cp.async
@@ -28,7 +28,7 @@ conflict} 让 \texttt{ldmatrix} 的读取被串行化；\textbf{k\_step 内 ldma
 等价）；kernel 本体需 sm\_80+，无其它架构限定。配套最小测试
 \texttt{book/\allowbreak{}tests/\allowbreak{}ch12\_\allowbreak{}hgemm\_\allowbreak{}swizzle.cu}。\textbf{后继}：第~\ref{ch:23}~章把
 本章手写的 XOR swizzle 接入 CuTe 的 \texttt{Swizzle\allowbreak{}<B,\allowbreak{}M,\allowbreak{}S>} 布局代数，第~\ref{ch:24}~章
-的 CuTe HGEMM 将与本章手写版逐项对照。预计篇幅约 14 页。
+的 CuTe HGEMM 将与本章手写版逐项对照。
 
 \section{问题与动机}
 
@@ -53,7 +53,7 @@ stride，代价是浪费 smem、且破坏 16\,B 对齐粒度；XOR swizzle 用�
 smem 双缓冲（盖 gmem 延迟）之下的第二级流水，两者分工明确。
 
 \textbf{瓶颈三：grid 光栅化把 L2 复用摊薄（调度层）。}\allowbreak{}CUDA block 的分发顺序是
-$x$ 最快、$y$ 次之。C tile 网格 $T_m\times T_n$ 若按默认光栅铺开，同时inflight的
+$x$ 最快、$y$ 次之。C tile 网格 $T_m\times T_n$ 若按默认光栅铺开，同时在飞（in-flight）的
 $R$ 个 block（$R\approx$ SM 数 $\times$ 每 SM 常驻 block 数）呈
 $T_n\times\lceil R/T_n\rceil$ 的\textbf{宽条带}：A tile 复用好（行少），
 B tile 却要 $T_n$ 份同时驻留 L2，footprint 巨大。Block swizzle 用 3D grid
@@ -64,7 +64,7 @@ B tile 却要 $T_n$ 份同时驻留 L2，footprint 巨大。Block swizzle 用 3D
 
 \subsection{bank 模型：32 bank、4\,B 宽、128\,B 一行}
 
-现代 GPU（Volta 及之后各代）的 smem 均由 32 个 bank 组成，每 bank 宽 4\,B，一个 bank 周期全体最多交付
+现代 GPU（自 Fermi 以来的各代）的 smem 均由 32 个 bank 组成，每 bank 宽 4\,B，一个 bank 周期全体最多交付
 $32\times4=128$\,B。字节地址 $a$ 所属 bank 为
 \begin{equation}
   \mathrm{bank}(a) \;=\; \left\lfloor \tfrac{a}{4} \right\rfloor \bmod 32 .
@@ -224,8 +224,8 @@ bank 位 $[2,7)$，\textbf{单个 XOR bit 最多把 phase 内 8 lane 分到 2 �
 4-way 是该方案在这类布局下的下界}。NCU 三点实测（同形状 $512^3$，
 表~\ref{tab:12-bank}）：swizzle 版 297{,}628 次冲突、对照无 swizzle 版 691{,}067 次、
 BK=16 基线 98{,}304 次；两版比值 $691067/297628=2.32$，与模型预测的
-8-way$\to$4-way 比值（$881664/377856=2.33$；NCU 对 $\ge$4-way 的绝对计数约为
-模型的 0.78 倍，但\textbf{比值精确吻合}）一致。要在 128\,B 行宽下真正 1-way，
+8-way$\to$4-way 比值（$688128/294912=2.33$，即 BK=16 基线 98{,}304 的 7 倍与
+3 倍；实测与模型误差 $<$1\%）一致。要在 128\,B 行宽下真正 1-way，
 应使用 \texttt{swizzle<64>}（SWIZZLE\_128B，$B{=}3$）：$c'=c\oplus(i\And7)$，
 行 0--7 的 8 个 chunk 恰好铺满 $q=0,4,\dots,28$——common.cuh 的
 \texttt{permuted\allowbreak{}<64>} 已实现该档位，CuTe 版 HGEMM（第~\ref{ch:24}~章）使用的
@@ -253,7 +253,7 @@ $bx=\mathrm{blockIdx.x}$，与默认完全一致——开关零成本。注意 k
 （源码注释的 $S{=}\lceil N/2048\rceil$ 是推荐值：每组 16 个 tile $\approx$
 $\sqrt{R}$，$R$ 为常驻 block 数）。
 
-为什么重排能提升 L2 命中？设同时inflight的 block 数为 $R$（PRO 5000：110 SM、
+为什么重排能提升 L2 命中？设同时在飞（in-flight）的 block 数为 $R$（PRO 5000：110 SM、
 smem/SM 100\,KB 对 64\,KB 动态 smem 只容 1 块常驻，$R \approx 110$）。每个 C tile block 要读 $B_M\times K$ 的 A 条带
 与 $B_N\times K$ 的 B 条带；常驻集合覆盖 $H$ 个 M-tile 行、$W$ 个 N-tile 列时，
 L2 必须同时容纳的 unique 数据量（footprint）为
@@ -354,7 +354,7 @@ ldmatrix 到 \texttt{reg[st]}、随后 HMMA 吃 \texttt{reg[ld]}——加载 sli
   title={hgemm.cuh L642-681（自适应 wait：满载 kStages-2 / 排空 0；预载下一 k 的 slice 0）}]{../hgemm.cuh}
 
 自适应等待是 cp.async 计数语义的直接应用（第~\ref{ch:10}~章）：满载期
-\texttt{WAIT\_\allowbreak{}GROUP\allowbreak{}(k\allowbreak{}Stages-2)} 允许还有 1 组inflight；尾 tile 无新预取时退化为
+\texttt{WAIT\_\allowbreak{}GROUP\allowbreak{}(k\allowbreak{}Stages-2)} 允许还有 1 组在飞（in-flight）；尾 tile 无新预取时退化为
 \texttt{WAIT\_\allowbreak{}GROUP\allowbreak{}(0)} 排空。Epilogue（L683--716）复用 \texttt{RA} 寄存器做
 warp shuffle 拼出 128-bit 向量写回 C，思路与第~\ref{ch:11}~章一致，此处不展开。
 
@@ -410,9 +410,9 @@ BK=64，swizzle（7b-3）    & 297{,}628 & 20.7 & 4-way；本章 kernel \\
 \end{tabular}
 \end{table}
 
-模型与实测的对齐度：BK=16 行\textbf{逐次精确}；BK=64 两行的绝对计数约为模型
-（881{,}664 / 377{,}856）的 0.78 倍（NCU 对 $\ge$4-way 冲突的计数口径），但
-\textbf{比值} $691067/297628=2.32$ 对模型比值 $2.33$——12.3.7 节的 8-way$\to$4-way
+模型与实测的对齐度：BK=16 行\textbf{逐次精确}；BK=64 两行为模型 688{,}128 /
+294{,}912（$=98{,}304\times7$ 与 $98{,}304\times3$）对实测 691{,}067 / 297{,}628，
+误差 $<$1\%；\textbf{比值} $691067/297628=2.32$ 对模型比值 $2.33$——12.3.7 节的 8-way$\to$4-way
 结论由此坐实。同时注意：swizzle 版 kernel 耗时 30.2$\to$20.7\,$\mu$s（1.46$\times$），
 冲突并没有被「全消」，但寄存器双缓冲把残余 4-way 的重放延迟藏进了 MMA 流水。
 
@@ -435,7 +435,8 @@ BK=64，swizzle（7b-3）    & 297{,}628 & 20.7 & 4-way；本章 kernel \\
 
 三个观察：（1）宽 N 形状下 block swizzle +4.2\%（L2 命中 64.45\%$\to$96.15\%），
 方形形状（$4096^3$）收益仅 +0.3\%——与 12.3.8 节 footprint 推导一致，收益取决于
-常驻条带是否「过宽」。（2）swizzle 版在两种形状下都比 BK=16 基线慢 4--5\%：
+常驻条带是否「过宽」。（2）swizzle 版（BS=0）在两种形状下都比 BK=16 基线慢
+4--5\%（开 block swizzle 后宽 N 形状收窄到 0.3\%）：
 统一宽 tile 换来了更少的同步与 cp.async 组数，代价是 ldmatrix 冲突从 2-way 涨到
 4-way（表~\ref{tab:12-bank}），两相抵后小幅净亏——若按 12.3.7 节改用
 \texttt{swizzle<64>}（SW128）应可反超，这是一个现成的动手实验（见 12.10 节）。

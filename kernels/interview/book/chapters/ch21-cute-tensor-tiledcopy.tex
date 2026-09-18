@@ -34,7 +34,7 @@ S2R~L1319--1332、R2S~L1355--1362、S2G~L1364--1377），其中 L1232--1270 的
 tile 尺寸与 SmemLayout 声明归第~\ref{ch:23}~章。\textbf{编译宏}：
 \texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}CUTE}（需要 CUTLASS 头文件；sm80+ 均可编）。
 配套最小测试 \texttt{book/\allowbreak{}tests/\allowbreak{}ch21\_\allowbreak{}tiled\_\allowbreak{}copy.cu}：host 端 TV-layout
-断言，不启动 kernel。预计篇幅约 13 页。
+断言，不启动 kernel。
 
 \section{问题与动机}
 
@@ -584,7 +584,7 @@ wide store」多了两次 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allo
 S$\to$G 后各一次，L1116 与 L1184 附近）与一次 smem 往返。代价换来的是
 \textbf{不写 shuffle 编排}：跨 lane 重组交给 sC 的布局做。对 $B_M\times B_N
 =128\times256$ 的 tile，scratchpad 每轮搬 4 个 pipe slot（step $=4$），
-R$\to$S/R$\to$G 各 8 条指令级别——与主循环的 mma 数量相比是次要项，但它解释
+R$\to$S/R$\to$G 各约 8 条指令——与主循环的 mma 数量相比是次要项，但它解释
 了为什么 CuTe 版在极端配置下需要 `kSmemLayoutCBatch` 这类旋钮。
 
 \textbf{结论四（重复因子是寄存器成本）}：式~\eqref{eq:21-dup} 的 A 重复因子

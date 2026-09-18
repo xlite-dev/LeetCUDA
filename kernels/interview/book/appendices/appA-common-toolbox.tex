@@ -1,6 +1,7 @@
 % appA-common-toolbox.tex — 附录 A 全书通用工具箱：common.cuh 解析 v1（RFC-I.1）
-% 行号按冻结基线 1c2c1e0a 核对（L456 前两版完全一致；setmaxnreg 注释段
-% L457--476 后续有增补，本附录引用的是当前工作树行号，接口无变化）。
+% 行号按当前源码树（v4.0.0，803 行）核对；与旧冻结基线 1c2c1e0a 的差异
+% 自 L366 起（重命名注释、C7506 NOTE 增补、cluster->cta、setmaxnreg 注释段
+% 扩写），接口无变化。
 \chapter{基础设施工具箱：common.cuh 解析}\label{app:A}
 
 \section{这个文件在全书的角色}
@@ -20,22 +21,22 @@ setmaxnreg 封装、WGMMA descriptor 编码——每一样都在某一章首次�
 \toprule
 段 & 行区间 & 内容 & 主要使用章 \\
 \midrule
-1 & L4--29 & 头文件、CUDART $\ge$13.0 门控（L21--24）、
+1 & L4--29 & 头文件、CUDART $\ge$13.0 门控（L21--23）、
   \texttt{INT4}/\texttt{FLOAT4}/\texttt{HALF2}（L25--27）、\texttt{kWarpSize} & 3、8、9 \\
 2 & L31--105 & cp.async 宏（L41--49）、ldmatrix 宏（L56--72）、
   \texttt{HMMA16816}/\texttt{F32}（L81/L92）、\texttt{div\_ceil} & 9--12、16--18 \\
 3 & L110--348 & swizzle 家族：\texttt{permuted}（L158）、
   \texttt{swizzle\_\allowbreak{}v1\_\allowbreak{}impl}（L235）、\texttt{SwizzleBMS}（L287）、
   \texttt{swizzle\_\allowbreak{}v2\_\allowbreak{}impl}（L326） & 12、14、23 \\
-4 & L350--475 & TMA/mbarrier helpers（双实现门控 L353--364） & 13、14、17、18 \\
-5 & L452--495 & setmaxnreg 封装：注释（L452--476）、宏门控（L477--483）、
-  两个模板（L485--495） & 13、14 \\
-6 & L500--691 & WGMMA 家族：异步三件套（L517--521）、
-  \texttt{SMEM\_\allowbreak{}DESC\_\allowbreak{}ENCODE}（L530）、\texttt{make\_\allowbreak{}smem\_\allowbreak{}desc}（L566）、
-  指令宏（L622）、\texttt{WgmmaSMem}（L680） & 13 \\
-7 & L693--700 & SM120 适配：\texttt{Tma\allowbreak{}Mma\allowbreak{}WSSMem}（L695） & 14 \\
-8 & L703--781 & host 侧 TMA descriptor：
-  \texttt{create\_\allowbreak{}tensor\_\allowbreak{}map}（L743）、\texttt{allocate\_\allowbreak{}and\_\allowbreak{}create\_\allowbreak{}tensor\_\allowbreak{}map}（L769） & 13、14 \\
+4 & L350--465 & TMA/mbarrier helpers（双实现门控 L353--364） & 13、14、17、18 \\
+5 & L467--518 & setmaxnreg 封装：注释（L467--498）、宏门控（L499--505）、
+  两个模板（L507--517） & 13、14 \\
+6 & L520--712 & WGMMA 家族：异步三件套（L539--543）、
+  \texttt{SMEM\_\allowbreak{}DESC\_\allowbreak{}ENCODE}（L552）、\texttt{make\_\allowbreak{}smem\_\allowbreak{}desc}（L588）、
+  指令宏（L644）、\texttt{WgmmaSMem}（L702） & 13 \\
+7 & L714--722 & SM120 适配：\texttt{Tma\allowbreak{}Mma\allowbreak{}WSSMem}（L717） & 14 \\
+8 & L724--803 & host 侧 TMA descriptor：
+  \texttt{create\_\allowbreak{}tensor\_\allowbreak{}map}（L765）、\texttt{allocate\_\allowbreak{}and\_\allowbreak{}create\_\allowbreak{}tensor\_\allowbreak{}map}（L791） & 13、14 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -57,7 +58,7 @@ setmaxnreg 封装、WGMMA descriptor 编码——每一样都在某一章首次�
 用法要点：\texttt{commit\_\allowbreak{}group} 把此前未提交的 \texttt{cp.async} 归入一个
 async-group（per-thread）；\texttt{wait\_\allowbreak{}group~N} 阻塞到「未完成 group 数
 $\le$ N」，N=0 即等全部落地——这与后面 WGMMA 的
-\texttt{wgmma.\allowbreak{}wait\_\allowbreak{}group}（L520）语义完全同构，是贯穿第~\ref{ch:10}~、
+\texttt{wgmma.\allowbreak{}wait\_\allowbreak{}group}（L542）语义完全同构，是贯穿第~\ref{ch:10}~、
 \ref{ch:11}~、\ref{ch:13}~章的同一套「分组-等待」心智模型。
 \texttt{cg} 只支持 16 字节粒度（\texttt{ca} 支持 4/8/16），与 \texttt{FLOAT4}
 天然对齐。
@@ -93,20 +94,20 @@ ldmatrix + \texttt{HMMA16816\allowbreak{}F32}。
 bit-exact 等价（等价性证明注释在 L320--325，host 端
 \texttt{test\_\allowbreak{}swizzle\_\allowbreak{}equiv} 可验证）。第~\ref{ch:23}~章讲 CuTe swizzle
 时，\texttt{SwizzleBMS} 正是「脱离 cute 框架理解位级语义」的对照实现。
-一个容易踩的悬置事实：L344--348 的派发器注释描述的
+一个容易踩的坑：L344--348 的派发器注释描述的
 \texttt{swizzle\allowbreak{}<k\allowbreak{}Col\allowbreak{}Stride>} 函数\textbf{实体在 hgemm.cuh}，common.cuh 只
 提供 v1/v2 两个实现与注释（第~\ref{ch:12}~章考据框有记录）。
 
 \section{TMA/mbarrier helpers 与 setmaxnreg}
 
-第 4 段（L350--475）在 \texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}FORCE\_\allowbreak{}INLINE\_\allowbreak{}ASYNC\_\allowbreak{}PROXY}
+第 4 段（L350--465）在 \texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}FORCE\_\allowbreak{}INLINE\_\allowbreak{}ASYNC\_\allowbreak{}PROXY}
 门控下提供两套等价实现：默认走 raw \texttt{asm volatile} PTX；未定义该宏
-则走 \texttt{cuda::ptx} / \texttt{cuda::\allowbreak{}device} C++ 封装（L422 起）。
+则走 \texttt{cuda::ptx} / \texttt{cuda::\allowbreak{}device} C++ 封装（L423 起）。
 两套并存的原因是 ptxas 对 setmaxnreg 的 C7506 丢弃问题（下文）。raw 形式的
 2D TMA 加载：
 
-\lstinputlisting[linerange={382-397},firstnumber=auto,
-  title={common.cuh L382-397（tma\_load\_2d：cp.async.bulk.tensor.2d raw PTX 形式）}]{../common.cuh}
+\lstinputlisting[linerange={385-407},firstnumber=auto,
+  title={common.cuh L385-407（tma\_load\_2d：cp.async.bulk.tensor.2d raw PTX 形式）}]{../common.cuh}
 
 要点：目的地址与 mbarrier 都是 32-bit smem 地址（\texttt{\_\allowbreak{}\_\allowbreak{}cvta\_\allowbreak{}generic\_\allowbreak{}to\_\allowbreak{}shared}
 转换）；数据落齐由硬件对 mbarrier 做 complete-tx 记账，配合
@@ -114,8 +115,8 @@ bit-exact 等价（等价性证明注释在 L320--325，host 端
 \ref{ch:14}~、\ref{ch:17}~、\ref{ch:18}~章流水线的 full/empty 双屏障协议。
 寄存器再分配封装则被 \texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}SETMAXNREGS} 独立门控：
 
-\lstinputlisting[linerange={485-495},firstnumber=auto,
-  title={common.cuh L485-495（warpgroup\_reg\_dealloc/alloc：setmaxnreg 指令模板）}]{../common.cuh}
+\lstinputlisting[linerange={507-517},firstnumber=auto,
+  title={common.cuh L507-517（warpgroup\_reg\_dealloc/alloc：setmaxnreg 指令模板）}]{../common.cuh}
 
 用法要点（完整事实链见第~\ref{ch:14}~章考据框与坑二取证）：两条指令都要求
 warpgroup 内全部 warp 同步执行，且 WS kernel 须声明
@@ -129,19 +130,19 @@ TMA 的目的地址空间——dst 为 \texttt{shared::cluster} 时 ptxas 把它
 
 \section{WGMMA 家族与 host 侧 TensorMap}
 
-第 6 段（L500--691）是 Hopper 专用：\texttt{WGMMA\_\allowbreak{}FENCE/\allowbreak{}COMMIT\_\allowbreak{}GROUP/\allowbreak{}
-WAIT\_\allowbreak{}GROUP}（L517--521）延续 cp.async 的分组-等待语义；
-\texttt{make\_\allowbreak{}smem\_\allowbreak{}desc}（L566）把 smem 指针编码成 64-bit 矩阵描述符
+第 6 段（L520--712）是 Hopper 专用：\texttt{WGMMA\_\allowbreak{}FENCE/\allowbreak{}COMMIT\_\allowbreak{}GROUP/\allowbreak{}
+WAIT\_\allowbreak{}GROUP}（L539--543）延续 cp.async 的分组-等待语义；
+\texttt{make\_\allowbreak{}smem\_\allowbreak{}desc}（L588）把 smem 指针编码成 64-bit 矩阵描述符
 （位域布局与 K-Major + 128B swizzle 的几何推导在第~\ref{ch:13}~章，
-不重复）；\texttt{WGMMA\_\allowbreak{}M64\allowbreak{}N128\allowbreak{}K16\_\allowbreak{}F16\allowbreak{}F16\allowbreak{}F16}（L622）封装
+不重复）；\texttt{WGMMA\_\allowbreak{}M64\allowbreak{}N128\allowbreak{}K16\_\allowbreak{}F16\allowbreak{}F16\allowbreak{}F16}（L644）封装
 \texttt{wgmma.\allowbreak{}mma\_\allowbreak{}async.\allowbreak{}m64n128k16}，一次发射计算 $64\times128\times16$。
-配套的 \texttt{WgmmaSMem}（L680）与 SM120 的 \texttt{Tma\allowbreak{}Mma\allowbreak{}WSSMem}（L695）
+配套的 \texttt{WgmmaSMem}（L702）与 SM120 的 \texttt{Tma\allowbreak{}Mma\allowbreak{}WSSMem}（L717）
 只差 alignas：前者供 descriptor 硬件补偿 swizzle 相位，后者要求 consumer
 （ldmatrix）用软件公式感知相位（第~\ref{ch:14}~章 14.4.2 节）。
 host 侧创建 TMA descriptor 的入口：
 
-\lstinputlisting[linerange={745-758},firstnumber=auto,
-  title={common.cuh L745-758（create\_tensor\_map 核心：shape/stride/box 的 (minor,major) 顺序）}]{../common.cuh}
+\lstinputlisting[linerange={765-785},firstnumber=auto,
+  title={common.cuh L765-785（create\_tensor\_map 核心：shape/stride/box 的 (minor,major) 顺序）}]{../common.cuh}
 
 两个高频易错点（第~\ref{ch:13}~章展开）：TMA 的 shape 与 box 都按
 (minor, major) 排列，row-major $[M,K]$ 矩阵要传 $(K,M)$；

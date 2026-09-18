@@ -32,7 +32,7 @@ mbarrier 协议、full/empty 账本、early release 时机）、第~\ref{ch:14}~
 （SM120 上的 warp specialization 与 \texttt{setmaxnreg} 池数学）、
 第~\ref{ch:13}~章（TMA descriptor 与 mbarrier 双计数事务模型）。
 \textbf{后续}：第~\ref{ch:25}~章会看到同一结构的 CuTe 重写
-（\texttt{flash\_\allowbreak{}attn\_\allowbreak{}3\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}split\_\allowbreak{}q\_\allowbreak{}cute}）。预计篇幅约 13 页。
+（\texttt{flash\_\allowbreak{}attn\_\allowbreak{}3\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}split\_\allowbreak{}q\_\allowbreak{}cute}）。
 
 \section{问题与动机}
 
@@ -578,8 +578,9 @@ softmax 可重叠（intra-warpgroup overlapping），两个 WG 再交替发 GEMM
 版在 sm\_90a 上用 \texttt{wgmma} 才是论文形态。
 
 \textbf{Q8：为什么收尾要一次全 CTA 的 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads}？}\\
-A：merge 需要 WG2 的 partial 写完后再读（第一次 barrier），并把「K/V smem
-的生命周期结束」变成全 CTA 的共识（可在其上复用 scratch）；归并完成后
+A：merge 需要 WG2 的 partial 写完后再读（第二次 barrier），并把「K/V smem
+的生命周期结束」变成全 CTA 的共识（第一次 barrier，可在其上复用 scratch）；
+归并完成后
 \texttt{consumer\_id}$=0$ 独占写 gmem，无需第三次同步（第二次 barrier 只保证
 WG1 看到 WG2 的写入）。
 
@@ -628,7 +629,8 @@ prefetch 目标从 $t+2$ 改成 $t+1$（Sk$=$2 时），观察数值立刻出错
 \section*{延伸阅读}
 
 \begin{itemize}
-  \item T. Dao, J. Shah, et al.《FlashAttention-3: Fast and Accurate Attention
+  \item J. Shah, G. Bikshandi, Y. Zhang, V. Thakkar, P. Ramani, T. Dao.
+        《FlashAttention-3: Fast and Accurate Attention
         with Asynchrony and Low-precision》\\
         \url{https://arxiv.org/abs/2407.08608}\\
         （pingpong scheduling、warp specialization 与 FP8 的原始出处；本章

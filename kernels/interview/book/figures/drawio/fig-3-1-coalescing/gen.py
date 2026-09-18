@@ -85,7 +85,7 @@ def fig_3_1():
     for j in range(6):
         sector(40 + j * 110, 284, 1, f"sector{j}", RED)
     f.text(690, 286, 60, 26, "... x32", fs=14, fc="#48586a")
-    f.box(756, 284, 180, 30, "S = 32，有效率 3%", fill="#fbe3e3", stroke=RED, fs=12.5, bold=True, fc="#7f1d1d")
+    f.box(756, 284, 180, 30, "S = 32，有效率 12.5%", fill="#fbe3e3", stroke=RED, fs=12.5, bold=True, fc="#7f1d1d")
     f.text(40, 330, 896, 22, "绿格 = 本次指令真正用到的字节；灰格 = 同 sector 内被一起搬上来的无用字节", fs=12.5, fc="#48586a")
     f.box(24, 362, 1112, 42, "事务粒度 = 32B sector：无用字节照样从 HBM 搬上来 —— 有效率 = 有用字节 / 搬运字节", fill=LOF, stroke=ORANGE, fs=14, bold=True, fc="#7c3a06")
     return mk(f.p, 1160, 416, "fig-3-1")

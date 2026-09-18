@@ -19,7 +19,7 @@ dot\_vec4）。
 坑。
 
 \textbf{前置}：第 \ref{ch:01} 章（warp/SIMT/延迟隐藏）。\textbf{源码区间}：
-base.cuh L87--305。\textbf{无编译宏限定}。\textbf{预计篇幅}：约 12 页。
+base.cuh L87--305。\textbf{无编译宏限定}。
 
 \section{问题与动机}
 
@@ -297,8 +297,9 @@ vec4 kernel（dot/relu/eadd）统一。relu\_vec4 同病，详见 ch03。
   会写出 $W$ 次，结果系统性偏大 $W$ 倍（sum）——源码注释专门用「tid == 0,
   not lane 0」提醒。
 \item \textbf{二次归约的 width 传错}。第二次 warp\_reduce 的模板参数是
-  \texttt{kNumWarps} 不是 \texttt{kWarpSize}；传错会导致 mask 范围跨越
-  实际 warp 边界，读到未定义的 smem 槽位。
+  \texttt{kNumWarps} 不是 \texttt{kWarpSize}；传错不会算错结果——smem 读取
+  带 \texttt{lane < kNumWarps} 守卫，越界 lane 持单位元——但会多做
+  $\log_2 32 - \log_2 W$ 轮无效 shuffle，归约域也超出了有效数据范围。
 \item \textbf{期望 atomic 求和的结果逐位可复现}。浮点加法非结合 + block
   调度不定序 $\Rightarrow$ run-to-run 抖动；对齐测试要么用容差，要么改
   用确定序的两级归约。

@@ -2,7 +2,7 @@
 // 测试逻辑抽取自 notes-v2.cu test_flash_attn(L1895)，参考改为 CPU fp64
 // （softmax attention 直接算；half 输出 __half2float 转 float 比较）。
 // 覆盖：
-//   case A: B=1 H=2 N=256 D=64（grid (2,2)，单 Q tile 多 head；Tc=4 覆盖流水满载+尾部）
+//   case A: B=1 H=2 N=256 D=64（grid (2,2)，多 head、每 head 2 个 Q tile；Tc=4 覆盖流水满载+尾部）
 //   case B: B=1 H=1 N=512 D=64（grid (4,1)，多 Q tile；Tc=8）
 //   每个 case 测两个累加变体：F16Acc（kMmaAccF32=0，TOL_F16ACC）与
 //   F32Acc（kMmaAccF32=1，TOL_F32ACC）

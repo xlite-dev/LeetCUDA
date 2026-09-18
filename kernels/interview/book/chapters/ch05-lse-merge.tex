@@ -15,7 +15,7 @@ FlashDecoding 等分块方案共用的「最后一公里」。
 \textbf{源码区间}：base.cuh~L387--519（Phase 2 末尾），无编译宏限定，全部架构适用。
 \textbf{后继}：第~\ref{ch:15}~章 FlashAttention 的 online rescale 把本章的「事后合并」
 搬进主循环内部；第~\ref{ch:19}~章 FFPA Split-D 则在大 head\_dim 切分后用同一套
-公式跨 D-chunk 合并。预计篇幅约 10 页。
+公式跨 D-chunk 合并。
 
 \section{问题与动机}
 
@@ -215,8 +215,9 @@ LSE 读取只有每 (token, head) 2 次标量加载（\texttt{p\_lse}、\texttt{
 \end{itemize}
 值得强调：源码头注释写「Step 1--4」而概括为「5 步推导」，本书按
 「清洗 + Step 1--4」共 5 步展开（见 5.6~节勘误一）；
-另外每 (token, head) 对的 Step 0--3 只做一遍（4 次标量运算），
-然后由覆盖该 head 的全部线程共享结果——这就是为什么合并层的计算开销
+另外 Step 0--3 由覆盖每个 (token, head) 对的全部线程各自冗余执行
+（输入相同、结果一致；LSE 同址加载经合并后实际流量仍为每对 8B），
+计算被该 head 的 $D$ 个输出元素摊薄——这就是为什么合并层的计算开销
 可以忽略不计。
 
 \lstinputlisting[linerange={499-517},firstnumber=auto,

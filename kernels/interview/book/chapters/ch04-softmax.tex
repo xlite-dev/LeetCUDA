@@ -27,7 +27,7 @@ $\mathrm{softmax}(QK^{\top}/\sqrt{d})$（第~\ref{ch:15}~章的主角）、MoE �
 配套最小测试为 \texttt{book/\allowbreak{}tests/\allowbreak{}ch04\_\allowbreak{}softmax.\allowbreak{}cu}。
 \textbf{后继}：本章 4.3~节推导的 online 递推与二元合并公式，将在第~\ref{ch:05}~章以
 LSE 的形式被「压缩」成一个标量状态，并在第~\ref{ch:15}~章成长为 FlashAttention 的
-online rescale。预计篇幅约 11 页。
+online rescale。
 
 \section{问题与动机}
 
@@ -304,7 +304,7 @@ FlashAttention 把右列的 $(m,d)$ 再加一列 $O$，就是第~\ref{ch:15}~章
 优化重心在扫描遍数与同步次数，而不是 FLOP。
 
 本章 bench 复测（RTX PRO 5000 72GB Blackwell，sm\_120，2026-09-11；
-$S = 4096$ 个 token、每 token $N = 256$、block = 256；warmup 3 次 + 10 次取均值）：
+$S = 4096$ 个 token、每 token $H = 256$、block = 256；warmup 3 次 + 10 次取均值）：
 
 \begin{table}[htbp]
 \centering
@@ -374,7 +374,11 @@ launch 与同步的固定开销占比大；附录~B 的汇总口径会注明这�
 \textbf{坑二：边界填充值要和运算匹配。}求和的填充是 $0$（加法单位元），
 求 max 的填充是 \texttt{-FLT\_MAX}（max 单位元），online 版状态填充是
 $\bigl(\texttt{-FLT\_MAX},\, 0\bigr)$。三者各自配对，混用（比如 max 归约填 0）
-会让 max 被钳在 0、指数整体偏大。若整行全为边界线程（空行），$d = 0$ 会出现
+会让 max 被钳在 0——基准被抬高，指数参数 $x - 0$ 比正确的 $x - m$ 整体
+偏小（$m$ 为真实行最大值；输出在不下溢时因平移不变性式~\ref{eq:4-shift}
+逐位不变），真正的风险
+是整行强负值（$x \lesssim -87$）时 $e^{x}$ 全部下溢为 0，得到 $0/0$ 的
+NaN（naive 上溢故障的镜像）。若整行全为边界线程（空行），$d = 0$ 会出现
 除零，per-token 场景下由调用方保证行非空。
 
 \textbf{坑三：\texttt{\_\_expf}/\texttt{\_\_fdividef} 的精度语义。}\texttt{\_\_expf}

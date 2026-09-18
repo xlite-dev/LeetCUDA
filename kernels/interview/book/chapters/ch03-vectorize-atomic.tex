@@ -19,7 +19,7 @@ elementwise\_add\_vec4（残差连接的原型）、histogram（原子操作出�
 
 \textbf{前置}：第 \ref{ch:01} 章（roofline/带宽）、第 \ref{ch:02} 章
 （归约骨架，本章 vec4 版点积会回指）。\textbf{源码区间}：base.cuh
-L306--386。\textbf{无编译宏限定}。\textbf{预计篇幅}：约 12 页。
+L306--386。\textbf{无编译宏限定}。
 
 \section{问题与动机}
 
@@ -95,8 +95,9 @@ ch16 的 BHND 布局）。
   \qquad
   \text{vec4 版}:\ \frac{N}{4T} \text{ 线程} \times 2 \text{ 条访存指令},
 \end{equation}
-warp 级访存指令数同为 $N/32$ 的倍数，但\textbf{每线程}的指令数从 2 降到
-$2/4$——load/store 指令发射压力降为 1/4，同时每线程拿到 4 个独立的
+warp 级访存指令数同为 $N/32$ 的倍数，但每元素摊得的访存指令数从 2 降到
+$1/2$（线程数与总指令数降为 1/4，每线程仍是 1 条 128-bit load + 1 条
+128-bit store）——load/store 指令发射压力降为 1/4，同时每线程拿到 4 个独立的
 计算输入，ILP（指令级并行）翻两番。地址也依然连续：vec4 线程 $t$ 处理
 $[4t, 4t+3]$，warp 的 32 个线程覆盖连续 512B $= 16$ 个 sector，$\eta$ 仍
 是 100\%。可见\textbf{向量化与 coalescing 正交}：前者减指令，后者减无效
@@ -124,7 +125,9 @@ read-modify-write（RMW）。若两个线程同时 RMW 同一 bin 且无同步�
 26.7 GB/s，比相邻的 elementwise\_add（2654 GB/s）低\textbf{两个数量级}。
 这也解释了为什么生产级实现都要做 smem 私有化：先在 block 内用 smem 直方图
 （冲突域缩小到 block 内、且 smem 原子远快于全局），最后每个 block 对全局
-做 $B$ 次合并写——全局原子次数从 $N$ 降到 $G \times B$。
+做 $B$ 次合并写——全局原子总次数变为 $G \times B$（$G = N/T$ 为 block
+数），仅当 $T > B$ 时才低于 $N$；$T \le B$ 时次数不变，收益来自 smem
+原子远快于全局原子与写模式去热点。
 
 \section{设计与实现}
 
@@ -146,8 +149,8 @@ Phase 2 的开场注释给出了本章的考点清单：
 而不是控制流}，这个原则在 ch04 的 \texttt{\_\_expf} 选择、ch06 的
 rsqrt 中反复出现。
 
-\lstinputlisting[linerange={324-345},firstnumber=auto,
-  title={base.cuh L324-345（relu vec4：单条 128-bit load/store）}]{../base.cuh}
+\lstinputlisting[linerange={324-342},firstnumber=auto,
+  title={base.cuh L324-342（relu vec4：单条 128-bit load/store）}]{../base.cuh}
 
 \texttt{FLOAT4\allowbreak{}(x[idx])} 是 common.cuh 的宏：把任意标量引用重解释为
 float4 引用，编译为一条 \texttt{LDG.E.128}；\texttt{FLOAT4\allowbreak{}(y[idx]) =\allowbreak{} reg\_\allowbreak{}y}
@@ -189,7 +192,7 @@ vec4 版的守卫值得逐行读：主路径 \texttt{(idx + 3) < N} 一次性保
 \begin{lstlisting}[style=console]
    elementwise kernel: 从朴素到峰值带宽
    -------------------------------------------------------------
-   朴素(stride 访存)     需要搬运 8x 数据      有效性 3%~12%
+   朴素(stride 访存)     需要搬运 8x 数据      有效性 3%~12.5%
      -> coalesced        搬运 bytes 最小化      有效率 100%
         (idx 连续映射)
      -> + vectorize      指令数 /4, ILP x4      逼近峰值带宽
@@ -224,7 +227,7 @@ histogram (256 bins) & 0.62860 & 26.69 GB/s & 按读 4B/元素计，原子另计
 \end{tabular}
 \end{center}
 
-（同口径 bench 复测。）三条观察：
+（以上为与 ch02 相同口径的 bench 复测结果。）三条观察：
 
 \textbf{其一，L2 命中让实测超过 HBM 理论值}。1862 GB/s $>$ 本机 GDDR7
 理论 1344 GB/s——数据 16 MB 从未离开 96 MB 的 L2，实测是 L2 到 SM 的
@@ -245,8 +248,10 @@ histogram (256 bins) & 0.62860 & 26.69 GB/s & 按读 4B/元素计，原子另计
 + 同址 2.6 ns 串行」模型，理想耗时约 $4.2\mathrm{M}/256 \times 2.6\,\mathrm{ns}
 \approx 42\,\mu$s，实测 0.63 ms 慢了约 15 倍，缺口来自 4M 个原子请求在
 L1 侧 atomic 路径的排队与串行化。优化方向即 \S\ref{sec:ch03-math} 的 smem
-私有化：全局原子次数 $N \to G \times B$（$G$ 为 block 数、$B$ 为 bin 数），
-预期可把 0.63 ms 压低一个数量级以上——留作动手实验。
+私有化：全局原子次数 $N \to G \times B$（$G$ 为 block 数、$B$ 为
+bin 数）——注意本配置 $T{=}B{=}256$ 时 $G \times B = N$，次数并不下降，
+收益来自 smem 原子远快于全局原子与写热点消除，预期可把 0.63 ms 压低一个
+数量级以上——留作动手实验。
 
 \section{实践经验}\label{sec:ch03-kaogu}
 
@@ -309,8 +314,8 @@ elementwise\_add\_vec4（L358--374）的 \texttt{(idx + 3) < N} 主路径 + 标�
   （本机 L2 口径下收益不足 2\%，HBM 直读场景更大）。
 \item \textbf{Q：histogram 为什么慢？如何优化？}\\
   A：RMW 原子在冲突 bin 上串行化。优化：smem 私有直方图（冲突域缩到
-  block 内）+ 全局合并（原子次数 $N \to G \times B$）；进一步可按 bin
-  分块或用 warp 级聚合。
+  block 内）+ 全局合并（每 block 每 bin 一次合并写，总次数 $(N/T) \times B$，
+  仅当 $T > B$ 时下降）；进一步可按 bin 分块或用 warp 级聚合。
 \item \textbf{Q：atomicAdd 的硬件代价模型？}\\
   A：L2 原子单元排队 RMW，同地址严格串行（本机实测全局求和约
   2.6 ns/op）、不同地址并行；吞吐上限约 $B/\tau$（$B$ 为活跃地址数）。

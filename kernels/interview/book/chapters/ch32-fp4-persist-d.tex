@@ -6,7 +6,7 @@
 
 第~\ref{ch:31}~章把 Q/K/V 送进了 e2m1 + ue4m3 的 workspace；本章讲
 消费它们的\textbf{主 kernel}：
-\texttt{fp4\_persist\_d\_fwd\_}\allowbreak\texttt{cute\_fp4\_sm120}
+\texttt{persist\_d\_ws\_fwd\_}\allowbreak\texttt{cute\_fp4\_sm120}
 （\texttt{sm\_120/persist\_d.cuh}，1113 行），跑在 fp8 persist-D 同款
 128 线程 producer + 256 线程 consumer 的 warp-specialized 骨架上
 （第~\ref{ch:29}~章），数据路径移植自 SageAttention3 的 NVFP4 kernel。
@@ -28,7 +28,7 @@ shift，除法和归一化在到达寄存器之前就已经消失。
   \item \textbf{值域窄}：$P\in[0,1]$，且行内分布剧变——causal 早期行
         近 one-hot（一个 1、其余 $\approx0$），dense 行近均匀且数值极小；
   \item \textbf{SF 格式自身的损耗}（SA3 的 C2 挑战）：若按块直接量化，
-        $s_P=\mathrm{amax}(P_{块})/6\in[0,0.167]$，ue4m3 在这个窄域的
+        $s_P=\mathrm{amax}(P_{\text{块}})/6\in[0,0.167]$，ue4m3 在这个窄域的
         有效位数被浪费——\textbf{尺度因子自己}先损失精度，再乘回 16
         个元素。
 \end{enumerate}
@@ -53,8 +53,9 @@ pack 注释）。这套约束决定了 P 量化必须发生在寄存器里、紧
   \hat P_2,s_{P2}=\phi(\tilde P_2)
   \label{eq:32-two-level}
 \end{equation}
-$2688=448\times6$：分子是 ue4m3 满量程、分母是 e2m1 满量程，第一级把
-行拉伸到「SF 与数据的乘积极限域」。dequant 端
+$2688=448\times6$：448 是 ue4m3 满量程（SF 域上限）、6 是 e2m1 满量程
+（数据域上限），乘积 2688 是 SF$\times$数据的乘积极限域，第一级把
+行拉伸到这个域。dequant 端
 $O=\mathrm{FP4MM}(\hat P_2,s_{P2},\hat V,s_V)\times s_{P1}$，常数
 $s_{P1}$ 在 $O$ 与 row\_sum 中\textbf{同现同消}——finalize 相除后精确
 抵消（\texttt{fp4\_pscale.cuh} L327--330 注释）。
@@ -109,8 +110,9 @@ causal 左上角（L169--175、L219--221 的 \texttt{scores\_max\_cur} 守卫）
 跨 tile 的行 max 更新沿用 fp8 的 lazy rescale（第~\ref{ch:29}~章）：
 $O$ 不即时重缩放，记 \texttt{scores\_scale}，下一个 tile 的 PV 累加前
 按行补乘（\texttt{rescale\_acc}，L299；PC-11 起为 per-row 守卫——
-\texttt{scores\_scale(mi)<1.0f} 的行跳过 FMUL，dense 路径 96.5\% 命中
-零开销，\texttt{persist\_d.cuh} L968--975 注释）。
+\texttt{scores\_scale(mi)<1.0f} 的行跳过 FMUL，
+\texttt{persist\_d.cuh} L968--975 注释；dense 路径 96.5\% 命中
+零开销为 bench 记录口径）。
 
 lse 的复合公式（每项都有出处）：
 \begin{equation}
@@ -312,10 +314,11 @@ lock 在 \texttt{.tmp} 的对齐探针里逐项验证过，dense e2e 与 dequant
 一致）。逐字拷贝 + 只修 masking 是正确的移植姿势；单独「改进」其中
 一环会破坏补偿关系。
 
-\textbf{精度评估的口径}。e2m1 的 最坏 $\sim$25\% 的相对量化误差使 P/V 两级误差叠
+\textbf{精度评估的口径}。e2m1 的相对量化误差（主区间 $\sim$20\%、
+0.75 中点最坏 $\sim$33\%）使 P/V 两级误差叠
 加后 causal 尖峰行 max\_abs 天然 0.5--0.75（probe 仿真与 kernel 同
 级，格式固有）；SA3 论文自身用 cosine 评估。工程验收看 mean\_abs
-（0.014--0.03）与容差（dense 0.15 / causal 0.70），用 fp8 的容径卡
+（0.014--0.03）与容差（dense 0.15 / causal 0.70），用 fp8 的容差卡
 fp4 会全军覆没。hybrid（fp16 前 $n_{early}$ 行）是尖峰行的工程解法
 （b0/b1 误差 2.6/0.99 $\to$ 0.000/0.001，剩余长尾由 V 量化主导）。
 

@@ -45,7 +45,7 @@ Swizzle 与 TMA）。本章是 Part~IV 的第一章「应用篇」，只用到�
 配套最小测试 \texttt{book/\allowbreak{}tests/\allowbreak{}ch24\_\allowbreak{}hgemm\_\allowbreak{}cute.cu}：两组配置
 （\texttt{k\allowbreak{}Acc\allowbreak{}F32=\allowbreak{}false}、$B_N=256$ 与 \texttt{k\allowbreak{}Acc\allowbreak{}F32=\allowbreak{}true}、$B_N=128$）对 CPU
 fp64 参考做正确性判定；本章的实测数字全部来自该测试与 \texttt{ptxas -v}，
-端到端性能对照见 \texttt{.\allowbreak{}tmp/\allowbreak{}book-bench}（其它章）。预计篇幅约 16 页。
+端到端性能对照见 \texttt{.\allowbreak{}tmp/\allowbreak{}book-bench}（其它章）。
 
 \section{问题与动机}
 
@@ -209,7 +209,10 @@ tile：
 （每线程的 atom 重复数，两种语境的区分见第~\ref{ch:22}~章实践须知）、逻辑
 MMA tile 为 $32\times32\times16$，线程数 $\mathrm{size}(\texttt{MMA})=
 32\ \text{lanes}\times4\ \text{warps}=128$——这个 128 就是 launch 配置里
-\texttt{dim3 block\allowbreak{}(size\allowbreak{}(MMA\{\}))} 的来源。
+\texttt{dim3 block\allowbreak{}(size\allowbreak{}(MMA\{\}))} 的来源。对表源码时注意：
+源码常量 \texttt{kMmaEURepeatM/N/K}$=2/2/1$（hgemm.cuh L1290--1292）承载的
+是 \texttt{make\_\allowbreak{}tiled\_\allowbreak{}mma} 的第二个参数，即此处的 AtomLayout；
+CuTe 语义下的真 EURepeat 由 Tile 推出，是 $(1,2,1)$。
 $B_K=32$ 相对 \texttt{kMmaPK}$=16$ 的倍数即 K 方向的切片数：
 
 \begin{equation}
@@ -570,7 +573,7 @@ $\langle3,3,3\rangle$ 配 $8\times B_K$ 原子，这是 fp16、128\,B 行宽的�
 
 \paragraph{实践须知：swizzle 参数怎么自查}
 
-源码注释（hgemm.cuh L1234 与 L1257--1260）给出了参数的物理含义与位级式子，
+源码注释（hgemm.cuh L1244--1247 与 L1249--1252）给出了参数的物理含义与位级式子，
 上机时可以逐条核对：
 
 \begin{itemize}
@@ -846,7 +849,7 @@ R2S $\to$ sC $\to$ S2G，映射进类型 \\
 \paragraph{实践须知：两处源码注释的性能口径}\label{sec:24-kaogu}
 
 \begin{itemize}
-  \item \textbf{$B_N$ 随累加精度切换的寄存器断言}（hgemm.cuh L1163--1165）：
+  \item \textbf{$B_N$ 随累加精度切换的寄存器断言}（hgemm.cuh L1229--1230）：
         注释称「F16 acc 用 256（$128\times256$ tile，0 spill）；F32 acc 用 128
         （$128\times128$ tile，0 spill）。F32 $+$ $B_N{=}256$ 会产生
         $\sim$1\,KB spill（254 reg），性能下降 3--8 倍」。用
@@ -859,7 +862,7 @@ R2S $\to$ sC $\to$ S2G，映射进类型 \\
         改坏才会遇到」的反例。测量值本身有效（它是 $B_N{=}256$ 那一档的
         254\,reg），只是不该被读成「本 kernel 的第三种配置」；复现方法见
         第~\ref{sec:24-minitest}~节动手实验第 3 条。
-  \item \textbf{代码量对照}（hgemm.cuh L734--737）：注释写「手写 $\sim$200 行 /
+  \item \textbf{代码量对照}（hgemm.cuh L803--805）：注释写「手写 $\sim$200 行 /
         CuTe $\sim$80 行」。按同口径实测（去注释、去空行）：手写 Phase~7b 为
         147 行、Phase~7b-3 为 231 行，CuTe kernel 本体为 118 行（另有 launch
         wrapper 86 行）。注释给的是量级估计，方向正确（CuTe 版确实更短），但

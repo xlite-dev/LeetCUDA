@@ -33,7 +33,6 @@ split-Q + MMA 多级流水）、第~\ref{ch:17}~章（FA2 TMA + Warp Specializat
 ch16--18 展开）；历史与性能指标陈述以 FA1/FA2/FA3 三篇论文为核验源（F5 类）。
 \textbf{测试}：本章无独立 kernel 测试——数学正确性由第~\ref{ch:04}~章（softmax 三级
 递进）与第~\ref{ch:05}~章（merge\_attn\_states）的测试覆盖，见 15.10~节的显式声明。
-预计篇幅约 13 页。
 
 \section{问题与动机}
 
@@ -802,6 +801,7 @@ print(abs(attn_online(Q, K, V) - attn_ref(Q, K, V)).max())  # ~1e-13
         （attention 算子从数学到 CUDA 实现的工程视角，衔接第~\ref{ch:16}~章）；
   \item T. Dao et al. FlashAttention. arXiv:2205.14135, 2022；
         T. Dao. FlashAttention-2. arXiv:2307.08691, 2023；
-        T. Dao, J. Shah, et al. FlashAttention-3. arXiv:2407.08608, 2024
+        J. Shah, G. Bikshandi, Y. Zhang, V. Thakkar, P. Ramani, T. Dao.
+        FlashAttention-3. arXiv:2407.08608, 2024
         （三代演进的一手出处，本章 15.3.7~节的核验源）。
 \end{itemize}

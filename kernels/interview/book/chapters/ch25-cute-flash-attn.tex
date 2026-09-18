@@ -61,8 +61,7 @@ fragment 与 rowcol 变换）。\textbf{源码区间}：flash\_attn.cuh L2196--3
 cp.async 的 CuTe 抽象；sm80+ 可编）；后三个实现另需
 \texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}TMA\_\allowbreak{}MMA\_\allowbreak{}WS}（TMA 指令，sm90+ 硬件）。
 本节默认实例化取 $D\in\{64,128\}$、$B_r\in\{64,128\}$、$B_c=64$。
-配套最小测试 \texttt{book/\allowbreak{}tests/\allowbreak{}ch25\_\allowbreak{}fa\_\allowbreak{}cute.\allowbreak{}cu}（正确性 + 结构断言）。
-预计篇幅约 15 页。
+配套最小测试 \texttt{book/\allowbreak{}tests/\allowbreak{}ch25\_\allowbreak{}fa\_\allowbreak{}cute.\allowbreak{}cu}（三种形状的端到端正确性）。
 
 \section{问题与动机}
 
@@ -135,10 +134,12 @@ CuTe 版的 206 行里几乎没有地址算术，改 $B_r$ 只需要换 traits �
 「换 tile 不改 kernel 正文」在 attention 上的复现。
 
 另一层动机来自\textbf{可验证性}。手写版的三代实现里，唯一被复用的验证资产是
-端到端数值对照；而 CuTe 版把布局变成可打印、可断言的类型：本章的测试正是
-在 host 端断言 \texttt{tile\_\allowbreak{}size\_\allowbreak{}mnk}、fragment 元素数、rowcol 形状与
+端到端数值对照；而 CuTe 版把布局变成可打印、可断言的类型：第~\ref{ch:22}~章
+与第~\ref{ch:26}~章的最小测试正是在 host 端断言
+\texttt{tile\_\allowbreak{}size\_\allowbreak{}mnk}、fragment 元素数、rowcol 形状与
 D-chunk 的 \texttt{local\_tile} 语义——这些断言的「真值」直接来自
-\texttt{print\allowbreak{}(layout)} 的实测输出（25.9 节的 case A 清单给出全部数字）。
+\texttt{print\allowbreak{}(layout)} 的实测输出；本章自己的测试（25.9 节）则
+专注三种形状的端到端正确性。
 
 三级搭建的分工也由此而来：实现 1 先回答「能不能用 CuTe 把 attention 写对」，
 实现 2 回答「搬运为什么要从计算线程手里拿走」，实现 3 回答「KV 方向的并行度
@@ -165,7 +166,8 @@ CuTe 版 attention 的第一步是把「tile 几何 + 数据格式」编译期�
 把原子铺满目标形状——Q 是 $B_r\times D$、K/V 是 $B_c\times D$。于是
 「smem 里 Q/K/V 长什么样」不再是散落在 kernel 里的 stride 变量，而是
 两个类型的 \texttt{cosize}（实测：$B_r{=}128,D{=}64$ 时 Q 占 8192 个
-half，K/V 各占 4096 个——本章 25.9 节的 case A 断言清单与这批数字同源）。
+half，K/V 各占 4096 个——25.9 节 case C 的 smem 80\,KB 核算正是这批
+\texttt{cosize} 的直接应用）。
 
 V 的转置视图是第一个值得写透的细节：
 
@@ -179,7 +181,10 @@ V 的转置视图是第一个值得写透的细节：
 （第~\ref{ch:20}~章的 $R(c)=A(B(c))$）。这里 \texttt{A} 是 V 在 smem 中的
 物理布局（row-major 的 $[64,D]$ 加 swizzle），\texttt{B} 是逻辑上的
 row-major $(D,64)$——两者复合后的结果才是「$V^\top$ 的访问接口」的
-col-major 视图：逻辑坐标 $(d, j)$ 被解释为 V 的第 $j$ 行第 $d$ 列。它的实测类型是
+col-major 视图：逻辑坐标 $(d, j)$ 被解释为 V 的第 $j$ 行第 $d$ 列
+（源码 L2213/L2263/L2266 三处注释把这个 B 写作「col-major $(D,64)$」
+是笔误——\texttt{GenRowMajor} 明示 B 实为 row-major，col-major 的是
+复合后的结果视图）。它的实测类型是
 \texttt{Sw\allowbreak{}<3,\allowbreak{}4,\allowbreak{}3> o \allowbreak{}(64,\allowbreak{}64):\allowbreak{}(1,\allowbreak{}64)}，即 $V^\top(d,j) \mapsto d + 64j$
 的 col-major 视图，\textbf{一个字节都不搬}——这正是 $P@V$ 需要的 B 操作数
 形态（\texttt{mma.row.col} 要求 B 为 col-major），也是 25.7 节「常见坑」里
@@ -556,7 +561,7 @@ $B_r{=}128$ 配置）专职计算。
 
 
 producer 的搬运顺序是「\textbf{V 先、K 后}」——见上面代码块的
-第三段（L2868--2890）。注意 L2869--2878 那段「$\star$ 易错点」注释：K/V 的 \texttt{local\_tile} 坐标
+第三段（L2868--2890）。注意 L2885--2892 那段「$\star$ 易错点」注释：K/V 的 \texttt{local\_tile} 坐标
 是 TMA tensor 行维上的\textbf{全局} tile 号（tensor 形状 $[B\!\cdot\!H\!\cdot\!N, D]$），
 多 head 时必须加 \texttt{blockIdx.y * kv\_tiles} 偏移，否则所有 head 都读
 head 0 的 K/V——$H{=}1$ 的正确性测试全过、$H{>}1$ 的 bench 精度却差两个
@@ -595,7 +600,7 @@ $(r,c)$ 反查寄存器编号，用来在 smem scratch 里定位对方的 partia
 最小闭环——即上面代码块的第三段（L3462--3482）。它的价值在调试学上：当 attention 结果不对时，先用 smoke 确认
 「TMA descriptor + SW128 swizzle 布局 + 事务屏障」这条链本身是通的，
 再往 kernel 里查——把 41 行的搬运闭环从 300 行的 kernel 里隔离出来，
-正是本章测试把它作为 case C 的原因。
+正是它作为独立 kernel 存在的理由。
 
 \subsection{结构对照}
 
@@ -673,7 +678,7 @@ $D{=}128$ 的 Q tile 更大（$128\times128$ 个 half $=32$\,KB），
 \textbf{坑一：K/V 的 \texttt{local\_tile} 坐标是打包维上的全局 tile 号。}
 TMA tensor 的 shape 是 $[B\!\cdot\!H\!\cdot\!N, D]$，K/V 的块坐标必须写
 \texttt{blockIdx.y * kv\_tiles + tile}；漏掉偏移时所有 head 读同一份 K/V——
-$H{=}1$ 的正确性测试全绿，$H{>}1$ 的精度却差两个量级（源码 L2869--2878
+$H{=}1$ 的正确性测试全绿，$H{>}1$ 的精度却差两个量级（源码 L2885--2892
 的注释即为此事）。正确性测试必须包含 $H{\ge}2$（本章测试取 $H{=}2$）。
 
 \textbf{坑二：\texttt{cp.\allowbreak{}async.\allowbreak{}wait\_\allowbreak{}group} 是 per-thread 的。}
@@ -769,28 +774,34 @@ $\lfloor t/S\rfloor$ 个相位，故 phase $=$ 该商 $\bmod\ 2$
 A：它是「TMA + SW128 布局 + 事务屏障」三件套的最小闭环，把
 \emph{搬运链路}与\emph{计算链路}解耦。调 attention 时先用它排除
 搬运侧问题（descriptor 参数、box 与 layout 匹配、arrive\_tx 的字节数），
-再去查计算侧——这是 25.9 节把 case C 设计成「TMA 往返对照」的原因。
+再去查计算侧——本章测试（25.9 节）的三个 case 全走实现 1，并未单独
+驱动 smoke kernel；需要验搬运链路时可把它当独立小用例编译运行。
 
 \section{最小测试与动手实验}
 
-测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch25\_\allowbreak{}fa\_\allowbreak{}cute.\allowbreak{}cu}。三个 case，覆盖
-「结构断言 $\to$ 搬运链路 $\to$ 端到端正确性」三层：
+测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch25\_\allowbreak{}fa\_\allowbreak{}cute.\allowbreak{}cu}。三个 case 全部是
+\textbf{端到端正确性}验证：固定 $B{=}1$、$H{=}2$、$k_{StagesK}{=}2$，全部
+调用实现 1（cp.async 统一流水，256 线程），与 CPU fp64 参考
+$\mathrm{softmax}(QK^\top/\sqrt{D})V$ 对照（half 输入/输出），容差
+\texttt{TOL\_F16ACC}$=5\times10^{-2}$。形状约束：$N\bmod 128=0$
+（$B_r{=}128$）且 $N\bmod 64=0$（$B_c{=}64$）、$D\in\{64,128\}$
+（kernel 的 \texttt{static\_assert}；sm$_{80}+$）。三个形状的分工：
 
 \begin{itemize}
-  \item \textbf{case A（结构断言，host 端）}：断言两个 traits 的
-        \texttt{cosize}（$B_r{=}128,D{=}64$ 时 Q 占 8192、K/V 各 4096 个
-        half）、TiledMMA 的 \texttt{tile\_\allowbreak{}size\_\allowbreak{}mnk} 与线程数
-        （FA2 $=$ 256、FA3 $=$ 128）、rowcol 形状（$(2,16)$）与 fragment
-        元素数（32 f32/线程）——这些数值都能在本章 25.3 节的推导与实测
-        标注里找到出处，case A 只是把它们固化成断言；
-  \item \textbf{case B（端到端，$D{=}64/128$，$H{=}2$，$N{=}128/256$）}：
-        实现 1（cp.async）按三种形状组合各跑一遍（实现 2 的 TMA 链路由
-        case C 单独验证），与 CPU fp64 参考
-        $\mathrm{softmax}(QK^\top/\sqrt{D})V$ 对照，容差
-        \texttt{TOL\_F16ACC}$=5\times10^{-2}$；
-  \item \textbf{case C（TMA 往返）}：smoke kernel 把一行数据经 TMA 搬进
-        smem 再逐元素写回，断言与输入逐元素相等（bit-exact）。
+  \item \textbf{case A（$D{=}64$，$N{=}128$）}：单 Q tile、KV 分 2 段——
+        最小形状走通完整的 online softmax KV 循环；
+  \item \textbf{case B（$D{=}64$，$N{=}256$）}：多 Q tile，grid $(2,2)$
+        （Q 方向 2 tile $\times$ $B{\cdot}H{=}2$）——验证
+        \texttt{local\_tile} 切分与 grid 映射；
+  \item \textbf{case C（$D{=}128$，$N{=}128$）}：大 $D$ 路径，smem
+        80\,KB $<$ 99\,KB optin——验证 traits 在 $D{=}128$ 下的 smem 预算
+        与 fragment 形状。
 \end{itemize}
+
+host 端的 traits 结构断言（\texttt{tile\_\allowbreak{}size\_\allowbreak{}mnk}、fragment
+形状、D-chunk 语义）与 TMA 往返 smoke 不在本测试内：前者由第~\ref{ch:22}~章
+与第~\ref{ch:26}~章的最小测试承载，后者即本章实现 4 的 41 行 smoke kernel，
+可单独编译驱动。
 
 编译与运行（本机 sm\_120a，6 号卡；结果见下）：
 
@@ -805,12 +816,13 @@ ALL OK
 \end{lstlisting}
 }
 
-动手实验建议：（1）把 case B 的 $H$ 改成 1，再删掉实现 2 producer 的
+动手实验建议：（1）把 case B 的 $H$ 改成 1、并把 kernel 换成实现 2
+（需 \texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}TMA\_\allowbreak{}MMA\_\allowbreak{}WS}），再删掉实现 2 producer 的
 \texttt{blockIdx.y * kv\_tiles} 偏移——正确性仍全绿，说明「单 head
 测试掩蔽多 head 缺陷」；（2）把实现 1 的模板参数从
 \texttt{<64, 2>} 改成 \texttt{<64, 3>} 并打印 smem 用量，观察 K 三级时
-smem 增量的构成（V 仍单 buffer）；（3）给 case A 加一行
-\texttt{static\_\allowbreak{}assert}，把 $D$ 改成 96，观察 traits 的
+smem 增量的构成（V 仍单 buffer）；（3）把 case A 的模板参数从
+\texttt{<64, 2>} 改成 \texttt{<96, 2>}，观察 traits 的
 \texttt{static\_\allowbreak{}assert\allowbreak{}(k\allowbreak{}Head\allowbreak{}Dim =\allowbreak{}=\allowbreak{} 64 || =\allowbreak{}=\allowbreak{} 128)} 拒绝编译——
 再对照第~\ref{ch:26}~章 FFPA 的 \texttt{kHeadDim \% 64 == 0} 放宽条件；
 （4）把实现 2 的 \texttt{kStagesK} 从 1 调到 2，核对 smem 是否仍在

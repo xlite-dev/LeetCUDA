@@ -8,9 +8,7 @@
 
 \textbf{前置章节}：第 \ref{ch:02} 章的 warp/block 归约原语（本章直接复用 \texttt{block\_\allowbreak{}reduce\_\allowbreak{}sum}）；第 \ref{ch:03} 章的向量化访存（本章 vec4 版本的前置）。
 
-\textbf{源码区间}：\texttt{base.cuh} L666-801，共 4 个 kernel：\texttt{rms\_norm}（L677）、\texttt{rms\_\allowbreak{}norm\_\allowbreak{}vec4}（L699）、\texttt{layer\_norm}（L733）、\texttt{layer\_\allowbreak{}norm\_\allowbreak{}vec4}（L765）。\textbf{编译宏与架构限定}：无，fp32 纯 CUDA 实现，任意 arch 可编译运行。
-
-\textbf{预计篇幅}：约 10 页；配套最小测试 \texttt{tests/\allowbreak{}ch06\_\allowbreak{}norm.\allowbreak{}cu}。
+\textbf{源码区间}：\texttt{base.cuh} L666-801，共 4 个 kernel：\texttt{rms\_norm}（L677）、\texttt{rms\_\allowbreak{}norm\_\allowbreak{}vec4}（L699）、\texttt{layer\_norm}（L733）、\texttt{layer\_\allowbreak{}norm\_\allowbreak{}vec4}（L765）。\textbf{编译宏与架构限定}：无，fp32 纯 CUDA 实现，任意 arch 可编译运行。配套最小测试 \texttt{tests/\allowbreak{}ch06\_\allowbreak{}norm.\allowbreak{}cu}。
 
 \section{问题与动机}
 
@@ -146,7 +144,7 @@ LayerNorm 能否也做成 1-pass？利用恒等式~\eqref{eq:ch06-var-identity}�
 \lstinputlisting[linerange={723-758},firstnumber=auto,
   title={base.cuh L723-758（layer\_norm：2-pass LayerNorm）}]{../base.cuh}
 
-结构上就是 rms\_norm 的两连发，两次归约的依赖关系与第 \ref{ch:04} 章 safe softmax「先 max 后 sum」的依赖链如出一辙：
+结构上相当于把 rms\_norm 的归约-广播结构做两遍，两次归约的依赖关系与第 \ref{ch:04} 章 safe softmax「先 max 后 sum」的依赖链如出一辙：
 \begin{itemize}
   \item \textbf{Pass 1}：归约 $S_1$ 得 \texttt{s\_mean = sum / K}，\texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()} 广播。这一次同步不可省——Pass 2 中每个线程都要读 \texttt{s\_mean}。
   \item \textbf{Pass 2}：用广播后的均值计算 $\sum_k (x_k - \mu)^2$，再次 block reduce，tid 0 写 \texttt{s\_\allowbreak{}variance =\allowbreak{} rsqrtf\allowbreak{}(variance /\allowbreak{} K + epsilon)}，再一次 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()} 广播。
@@ -154,7 +152,7 @@ LayerNorm 能否也做成 1-pass？利用恒等式~\eqref{eq:ch06-var-identity}�
 \end{itemize}
 同步开销精确计数：layer\_norm 全程 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()} 共 4 次（两次 block reduce 内部各 1 次 + 显式 2 次），rms\_norm 只有 2 次——这就是源码注释「比 Layer Norm 少 1 次同步」的完整语境（少一次归约，连带少一次 reduce 内部同步与一次显式同步）。$K = 128$ 时每次块级同步的绝对延迟在微秒以下，但归一化算子本身极薄（一行 $128 \times 4\mathrm{B} \times 2$ 的访存在 $\sim\mathrm{TB/s}$ 带宽下不足 $1\,\mu s$），相对占比可观，本章第 6 节的实测数据会量化这一点。
 
-\subsection{layer\_norm\_vec4：寄存器复用的两连发}
+\subsection{layer\_norm\_vec4：寄存器复用的两遍结构}
 
 \lstinputlisting[linerange={765-800},firstnumber=auto,
   title={base.cuh L765-800（layer\_norm\_vec4：Vec4 的 2-pass 版本）}]{../base.cuh}
@@ -213,7 +211,12 @@ $N$（行） & rms\_norm & rms\_norm\_vec4 & layer\_norm & layer\_norm\_vec4 \\
 \end{tabular}
 \end{center}
 
-三个规模对应两种访存口径：$N = 8192, 131072$ 时工作集（最大 $64\,\mathrm{MB}$）落在 96MB L2 之内，是 L2 口径；$N = 524288$ 时读写流量 $512\,\mathrm{MB}$ 远超 L2，是 HBM 口径。两个结构性结论：
+三个规模对应两种访存口径（工作集按读集 $x+y$ 合计计，与第 \ref{ch:07}~章
+同口径）：$N = 8192$ 时合计约 $8\,\mathrm{MB}$ 完全落在 96MB L2 之内，
+是 L2 口径；$N = 131072$ 时输入合计约 $128\,\mathrm{MB}$ 已超出 L2——输入
+数组（$64\,\mathrm{MB}$）可基本驻留、写集引起部分逐出，实测带宽
+（1041--1212 GB/s）介于 HBM 饱和值与 L2 之间；
+$N = 524288$ 时读写流量 $512\,\mathrm{MB}$ 远超 L2，是 HBM 口径。两个结构性结论：
 
 \begin{enumerate}
   \item \textbf{vec4 收益只在 L2 口径显著}：$N = 131072$ 行时 rms\_norm $1041 \to 1212\,\mathrm{GB/s}$（$+16\%$），layer\_norm $970 \to 1201\,\mathrm{GB/s}$（$+24\%$）。L2 带宽远高于 HBM，标量访存的指令发射与事务数成为瓶颈，向量化直接缩短指令路径。而 HBM 口径（$N = 524288$）下四个 kernel 全部收敛到 $1000\text{-}1070\,\mathrm{GB/s}$——带宽上限由 DRAM 决定，标量版也能喂饱，vec4 的收益被吸收。
