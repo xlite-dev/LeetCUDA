@@ -1,1 +1,1070 @@
-% TODO 待翻译：对应原文 FinalVersion.tex L3892-4959
+\subsection{可处理扁平布局}
+
+本节中我们定义一类性质特别良好的扁平布局（flat layout），称为{\it 可处理}（tractable）扁平布局。可处理扁平布局包含了最受关注的一批重要例子，例如行主序（row-major）、列主序（column-major）、紧凑（compact）以及可求补（complementable）布局（layout）。后文将会看到，可处理扁平布局恰好是来自某个范畴（category）$\catstyle{Tuple}$ 的布局。
+
+\begin{definition}\label{definitionoftractableflatlayouts}
+    设 $L$ 是扁平布局，并记
+    \[
+    \sort(L) = (s_1,\dots,s_m):(d_1,\dots,d_m).
+    \]
+    我们称 $L$ 是{\it 可处理}的，如果对每个 $1 \leq i < m$，都有
+    \begin{enumerate}
+        \item $d_i = 0$，或
+        \item $s_id_i$ 整除 $d_{i+1}$。
+    \end{enumerate}
+\end{definition}
+
+
+\begin{example}
+    扁平布局
+    \[L = (12):(17)\]
+    是可处理的。更一般地，任何秩（rank）为 $1$ 的扁平布局都是可处理的。
+\end{example}
+
+\begin{example}
+    扁平布局
+    \[L = (2,4,32):(1,2,8)\]
+    是可处理的。更一般地，任何列主序布局
+    \[
+    L = (s_1,\dots,s_m):(1,s_1,\dots,s_1 \cdots s_{m-1})
+    \]
+    都是可处理的。
+\end{example}
+\begin{example}
+    扁平布局
+    \[L = (2,4,32):(128,32,1)\]
+    是可处理的。更一般地，任何行主序布局
+    \[
+    L = (s_1,\dots,s_m) : (s_2\cdots s_m, \dots, s_m , 1)
+    \]
+    都是可处理的。
+\end{example}
+\begin{example}
+    扁平布局
+    \[L = (3,3,1,3,3,1,3):(81,1,0,9,3,0,27)\]
+    是可处理的。更一般地，任何紧凑扁平布局都是可处理的。
+\end{example}
+
+\begin{example}
+    扁平布局
+    \[L = (3,7,7):(0,15,0)\]
+    是可处理的。更一般地，任何恰有一个非零步长（stride）的扁平布局都是可处理的。
+\end{example}
+
+\begin{example}
+    扁平布局
+    \[L = (2,2,2,2):(1,2048,16,64)\]
+    是可处理的。更一般地，任何可求补扁平布局都是可处理的。
+\end{example}
+
+\begin{example}
+    设 $L$ 是扁平布局。若 $L$ 可处理且 $I \subset \langle m \rangle$ 是任意子集，则限制（restriction）$L \mid_I$ 是可处理的。特别地，若 $L$ 可处理，则 $\squeeze(L)$ 与 $\filter(L)$ 都是可处理的。
+\end{example}
+
+\begin{example}
+    扁平布局
+    \[L = (4,8):(3,3)\]
+    不是可处理的。特别地，这说明可处理扁平布局 $L_1$ 与 $L_2$ 的拼接（concatenation）$L_1 \star L_2$ 未必可处理。
+\end{example}
+
+
+\begin{observation}
+    若 $L$ 是可处理扁平布局且 $\stride(L)$ 的元素（entry）均不等于 $0$，则 $L$ 可求补。特别地，若 $L$ 可处理，则 $\filter(L)$ 可求补。
+\end{observation}
+
+本节最后，我们列举扁平布局 $L$ 可处理的一族等价条件。
+
+\begin{proposition}\label{equivalentconditionsfortractable}
+    设 $L$ 是扁平布局。则下列条件等价。
+    \begin{enumerate}
+        \item $L$ 可处理。
+        \item $\sort(L)$ 可处理。
+        \item $\filter(L)$ 可处理。
+        \item $\filter(L)$ 可求补。
+    \end{enumerate}
+\end{proposition}
+
+\begin{proof} 设 $L$ 是扁平布局。
+    \begin{itemize}
+        \item (1 $\Leftrightarrow $ 2)：这由
+        \[
+        \sort(\sort(L)) = \sort(L).
+        \]
+        这一事实得出。
+        \item (1 $\Leftrightarrow $ 3)：这由
+        \[
+        \sort(\filter(L)) = \filter(\sort(L)).
+        \]
+        这一事实得出。
+        \item (3 $\Leftrightarrow $ 4)：这由如下事实得出：若
+        \[
+        L = (s_1,\dots,s_m):(d_1,\dots,d_m)
+        \]
+        是一个每个步长元素 $d_i$ 都非零的扁平布局，则可处理性的定义与可求补性的定义一致。
+    \end{itemize}
+\end{proof}
+
+
+\newpage
+
+\section{嵌套元组}\label{nestedtuplessection}
+
+本节引入嵌套元组（nested tuple），它是为在最一般意义下定义布局所需的元组（tuple）的推广。
+
+\subsection{轮廓}
+
+嵌套元组 $S$ 由它的{\it 扁平化}（flattening）——一个普通元组——与它的{\it 轮廓}（profile）——描述 $S$ 上括号模式的对象——所决定。我们如下精确定义轮廓。
+
+
+\begin{definition}
+    {\it 轮廓} $P$ 是以下二者之一
+    \begin{enumerate}
+        \item $P = *$，或
+        \item 对某个 $r \geq 0$，由轮廓 $P_1,\dots,P_r$ 组成的元组 $P = (P_1,\dots,P_r)$。
+    \end{enumerate}
+    我们记 $\mathterm{Profile}$ 为轮廓的集合。
+\end{definition}
+
+\begin{example}
+    以下是一些轮廓的例子。
+    \[
+    \begin{aligned}
+    P_1 &= (*,*) \\
+    P_2 &= (*,(*,*))\\
+    P_3 & = ((*,*),(*,*))\\
+    P_4 & = ((*,*,*),(*,()))\\
+    P_5 & = ()\\
+    P_6 & = *
+\end{aligned}
+\]
+\end{example}
+我们来定义轮廓的一些重要属性。
+\begin{definition}\label{definitionofnestedtupleattributes}
+    设 $P$ 是轮廓。
+    \begin{itemize} 
+    \item $X$ 的{\it 秩}为
+    \[
+    \rank(P) = \begin{cases}
+        1 & P = *\\
+        r & P = (P_1,\dots,P_r) \text{ 是一个由轮廓组成的元组。}
+    \end{cases}.
+    \]
+    \item $P$ 的{\it 长度}（length）为
+    \[
+    \len(P) = 
+    \begin{cases}
+        1 & P = *\\
+        \sum_{i=1}^r\len(P_i) & P = (P_1,\dots,P_r) \text{ 是一个由轮廓组成的元组。}
+    \end{cases}
+    \]
+    \item $P$ 的{\it 深度}（depth）为
+    \[
+    \depth(P) = 
+    \begin{cases}
+        0 & P = *\\
+        1 + \displaystyle\max_{1 \leq i \leq r} (\depth(P_i)) & P = (P_1,\dots,P_r) \text{ 是一个由轮廓组成的元组。}
+    \end{cases}
+    \]
+    \end{itemize}
+\end{definition}
+
+\begin{example}
+以下是一些轮廓的例子，连同它们的秩、长度与深度：
+\[
+\begin{aligned}
+P &= * & \quad \rank(P) &= 1, \quad \len(P)  = 1, & \depth(P) &= 0\\
+P &= (*,*,*) & \quad \rank(P) &= 3, \quad \len(P)  = 3, &\depth(P) &= 1 \\
+P &= (((*,*),*,*),*,*), & \quad \rank(P) &= 3, \quad \len(P)  = 6, & \depth(P) &= 3 \\
+P &= (((),()),(*,(*,*))), & \quad \rank(P) &= 2, \quad \len(P)  = 3, & \depth(P) &= 3 \\
+\end{aligned}
+\]
+\end{example}
+
+\begin{definition}\label{definitionofmodeofnestedtuple}
+设 $P$ 是满足 $\rank(P) = r$ 的轮廓。若 $1 \leq i \leq r$，则 $P$ 的第 $i$ 个{\it 模式}（mode）为
+\[
+\mode_i(P) = \begin{cases}
+    P & \depth(P) = 0 \text{ (从而 }i=r=1\text{),}\\
+    P_i & P = (P_1,\dots,P_{r}) \text{ 的深度 }\geq 1.
+\end{cases}
+\]
+\end{definition}
+
+\begin{example}
+    若 $P = ( (*,*),(()),((*,(*,*))))$，则 $P$ 的各模式为
+    \begin{align*}
+        \mode_1(P) & = (*,*)\\
+        \mode_2(P) & = (())\\
+        \mode_3(P) & = (*,(*,*)).
+    \end{align*}
+\end{example}
+
+下面的记号会很有用。
+
+\begin{notation}
+    设 $P$ 是深度 $>0$ 的轮廓。对任意 $1 \leq j \leq \rank(P)$，我们记
+    \begin{align*}
+        \len_j(X) & = \len(\mode_j(P))\text{, } \\
+        \len_{<j}(P) & = \sum_{i=1}^{j-1} \len_i(X)\text{,}\\
+        \len_{\leq j}(X) & = \len_{<j}(P) + \len_j(P)\\
+    \end{align*}
+\end{notation}
+
+轮廓所支持的最重要运算是{\it 代入}（substitution）：若 $Q$ 是长度为 $m$ 的轮廓，且 $P_1,\dots,P_m$ 是轮廓，则通过对每个 $1 \leq i \leq m$ 把 $Q$ 的第 $i$ 个元素替换为轮廓 $P_i$，我们可以得到一个新的轮廓 $(P_1,\dots,P_m)_Q$。更精确地说，我们有如下定义。
+
+\begin{definition}\label{definitionofPconcatenation}
+    设 $Q$ 是长度为 $m$ 的轮廓，并设 $P_1,\dots,P_m$ 是轮廓。则 $P_1,\dots,P_m$ 的 $Q${\it -代入}是如下定义的轮廓
+    \[
+    (P_1,\dots,P_m)_Q
+    \]
+    记 $\depth(Q) = d$ 且 $\rank(Q) = r$。
+    \begin{itemize}[left = 0pt]
+        \item 若 $d = 0$，则 $m = 1$，我们定义
+        \[
+        (P_1)_Q = P_1.
+        \]
+        \item 再设 $d > 0$，且我们已对所有深度 $<d$ 的轮廓 $Q'$ 定义了 $Q'$-代入。我们可以写出
+    \[
+    Q = (Q_1,\dots, Q_r)
+    \]
+    其中每个模式 $Q_i = \mode_i(Q)$ 的深度均 $< d$。若对每个 $1 \leq i \leq r$，令
+    \[\ell_i = \len(P_1) + \cdots + \len(P_{i-1}),\] 
+    则我们定义
+    \[
+    (P_1,\dots,P_r)_Q = ((P_{1},\dots,P_{\ell_2})_{Q_1},\dots,(P_{\ell_r +1},\dots,P_{\ell_{r+1}})_{Q_r}).
+    \]
+    \end{itemize}
+\end{definition}
+
+\begin{example}
+    若 $Q = (*,*)$ 且 $P_1 = (*,*)$、$P_2 = (*,*,*)$，则
+    \[
+    (P_1,P_2)_Q = ( (*,*), (*,*,*)).
+    \]
+    更一般地，若 $Q = (*,\dots,*)$ 是满足 $\depth(Q) = 1$ 且 $\len(Q) = \rank(Q) = r$ 的轮廓，则
+    \[
+    (P_1,\dots,P_r)_Q = (P_1,\dots,P_r)
+    \]
+    就是普通拼接。
+\end{example}
+
+
+\begin{aside}
+    $Q$-代入有一种 operad 式的解释。轮廓的集合 $\mathterm{Profile}$ 具有（非对称）operad 的结构：集合
+    \[
+    \mathterm{Profile}(n) = \{P \in \mathterm{Profile} \mid \len(P) = n\}
+    \]
+    构成 $\mathterm{Profile}$ 的 $n$ 元运算的全体，且若 $n = m_1 + \cdots + m_r$，则结构映射
+    \[ \begin{tikzcd} 
+     \mathterm{Profile}(m_1)\times \dots \times \mathterm{Profile}(m_r) \times \mathterm{Profile}(n) \ar[rr] & &  \mathterm{Profile}(m_1 + \cdots + m_r)\\
+    (P_1,\dots,P_r),Q \ar[rr,mapsto] & & (P_1,\dots,P_r)_Q
+    \end{tikzcd}\]
+    由 $Q$-代入给出。还可以在这个非对称 operad 上构造余自由对称 operad（cofree symmetric operad），这相当于给各 $n$ 元运算集合赋予平凡的对称群作用。
+\end{aside}
+
+
+
+
+\subsection{基本定义}
+
+定义了轮廓及其基本性质之后，我们现在可以定义嵌套元组了。
+
+\begin{definition}\label{definitionofnestedtuple}
+    若 $V$ 是集合，则以 $V$ 中元素为元素的{\it 嵌套元组} $X$ 是由以下两部分组成的对 $(X^\flat,P)$：
+    \begin{enumerate}
+        \item 一个元素取自 $V$ 的元组 $X^\flat = (x_1,\dots,x_m)$，称为 $X$ 的{\it 扁平化}；以及
+        \item 一个长度为 $m$ 的轮廓 $\profile(X) = P$，称为 $X$ 的{\it 轮廓}。
+    \end{enumerate}
+    我们记 $\mathterm{Nest}(V)$ 为以集合 $V$ 中元素为元素的所有嵌套元组构成的集合。
+\end{definition}
+
+\begin{example} 以下是一些嵌套元组的例子，连同它们的扁平化与轮廓。
+\[
+\begin{aligned}
+X &= (2,(2,2)) \quad & X^\flat &= (2,2,2) \quad & \profile(X) & = (*,(*,*)) \\
+X & = 25 \quad & X^\flat & = (25) \quad & \profile(X) & = * \\
+X & = (((2,2,2),8),64) \quad & X^\flat & = (2,2,2,8,26) \quad & \profile(X) & = (((*,*,*),*),*)\\
+X & = ((),(32,()),(4,8)) \quad & X^\flat & = (32,4,8) \quad & \profile(X) & = ((),(*,()),(*,*))
+\end{aligned}
+\]
+\end{example}
+
+\begin{notation}
+    我们有时写
+    \[X = (x_1,\dots,x_m)_P\]
+    来表示满足 $X^\flat = (x_1,\dots,x_m)$ 且轮廓为 $\profile(X) = P$ 的嵌套元组。
+\end{notation}
+
+\begin{observation}\label{nesttuplepullbacksquare}
+    若 $V$ 是任意集合，则按定义，我们有一个拉回方块（pullback square）
+    \[ \begin{tikzcd} 
+    \mathterm{Nest}(V) \ar[rr,"\profile(-)"] \ar[d,swap,"(-)^\flat"] \arrow[drr, phantom, "\lrcorner", very near start] & & \mathterm{Profile} \ar[d,"\len(-)"] \\
+    \mathterm{Tuple}(V) \ar[rr,swap,"\len(-)"] & & \mathbb{N}.
+    \end{tikzcd} \]
+\end{observation}
+
+
+\begin{remark}
+    鉴于轮廓的递归定义，我们也可以等价地把以 $V$ 中元素为元素的嵌套元组定义为以下二者之一：
+    \begin{enumerate}
+        \item $V$ 中的一个元素；或
+        \item 一个由以 $V$ 中元素为元素的嵌套元组组成的元组。
+    \end{enumerate}
+\end{remark}
+
+我们来定义嵌套元组的一些重要属性。嵌套元组 $X$ 的每个这样的属性都继承自它的扁平化 $X^\flat$ 或它的轮廓 $\profile(X)$。
+
+\begin{definition}\label{definitionofnestedtupleattributes}
+    设 $X$ 是以 $V$ 中元素为元素的嵌套元组。
+    \begin{itemize} 
+    \item $X$ 的{\it 秩}为
+    \[
+    \rank(X) = \rank(P)
+    \]
+    \item $X$ 的{\it 长度}为
+    \[
+    \len(X) = \len(P) = \len(X^\flat)
+    \]
+    \item $X$ 的{\it 深度}为
+    \[
+    \depth(X) = \depth(P)
+    \]
+    \item 若 $V = \mathbb{Z}$，则 $X$ 的{\it 大小}（size）为
+    \[
+    \size(X) = \size(X^\flat).
+    \]
+    \end{itemize}
+\end{definition}
+
+
+\begin{example}
+以下是一些整数嵌套元组的例子，连同它们的秩、长度、深度与大小：
+\[
+\begin{aligned}
+X &= 27 & \quad \rank(X) &= 1, \quad \len(X)  = 1, & \depth(X) &= 0, \quad \size(X) = 27 \\
+X &= (2,10,5) & \quad \rank(X) &= 3, \quad \len(X)  = 3, &\depth(X) &= 1, \quad \size(X) = 100 \\
+X &= (((3,4),2,2),8,9), & \quad \rank(X) &= 3, \quad \len(X)  = 6, & \depth(X) &= 3, \quad \size(X) = 3096 \\
+X &= (((),()),(2,(5,5))), & \quad \rank(X) &= 2, \quad \len(X)  = 3, & \depth(X) &= 3, \quad \size(X) = 50 \\
+\end{aligned}
+\]
+\end{example}
+
+\begin{example}
+    深度为 $0$ 的整数嵌套元组就是一个整数。
+\end{example}
+
+\begin{example}
+深度为 $1$ 的整数嵌套元组就是一个整数元组。若 $X$ 是这样的嵌套元组，则 $\rank(X) = \len(X)$。
+\end{example}
+
+\begin{definition}\label{definitionofmodeofnestedtuple}
+设 $X = (x_1,\dots,x_m)_P$ 是满足 $\rank(X) = r$ 的嵌套元组。若 $1 \leq i \leq r$，则 $X$ 的第 $i$ 个{\it 模式}定义为嵌套元组
+\[
+\mode_i(X) = (x_{\len_{<i}(P) + 1},\dots,x_{\len_{\leq i}(P)})_{\mode_i(P)}.
+\]
+\end{definition}
+
+\begin{example}
+    若
+    \[X = ((3),4,((10,10),12)),\]
+    则 $X$ 的各模式为
+    \begin{align*}
+        \mode_1(X) & = (3)\\
+        \mode_2(X) & = 4 \\
+        \mode_3(X) & = ((10,10),12)
+    \end{align*}
+\end{example}
+
+\begin{example}
+    若 $X = (32,5,6,64)$，则 $X$ 的各模式为
+    \begin{align*}
+        \mode_1(X) & = 32\\
+        \mode_2(X) & = 5 \\
+        \mode_3(X) & = 6\\
+        \mode_4(X) & = 64
+    \end{align*}
+\end{example}
+
+\noindent 引入以下记号会带来方便。
+
+\begin{notation}
+    设 $X$ 是满足 $\depth(X)>0$ 的整数嵌套元组。对任意 $1 \leq j \leq \rank(X)$，我们记
+    \begin{align*}
+        \len_j(X) & = \len(\mode_j(X))\text{, } \\
+        \len_{<j}(X) & = \sum_{i=1}^{j-1} \len_i(X)\text{,}\\
+        \len_{\leq j}(X) & = \len_{<j}(X) + \len_j(X)
+    \end{align*}
+    类似地，我们记
+    \begin{align*}
+        \size_j(X) & = \size(\mode_j(X))\text{, }\\
+        \size_{< j} (X) & = \prod_{i=1}^{j-1} \size_j(X)\text{, and}\\
+        \size_{\leq j} (X) & = \size_{<j}(X)\cdot\size_j(X).
+    \end{align*}
+\end{notation}
+
+\begin{definition}
+    \label{definitionofentryofnestedtuple}
+    若 $X = (x_1,\dots,x_m)_P$ 是嵌套元组且 $1 \leq i \leq m$，则 $X$ 的第 $i$ 个元素为
+    \[
+    \entry_i(X) = \entry_i(X^\flat) = x_i.
+    \]
+\end{definition}
+
+% \begin{definition} \label{definitionofentryofnestedtuple}
+% Suppose $X$ is a nested tuple with $\len(X) = \ell$. If $1 \leq i \leq \ell$, then the $i${\it th entry of} $X$ is defined recursively by
+% \[
+% \entry_i(X) = \begin{cases}
+%     X &  \depth(X) = 0 \text{ (hence }i=\ell=1\text{)}\\
+%  \entry_{i - N}(\mode_j(X)) & \begin{matrix} j \text{ is the largest integer such that }\\
+%  N \coloneqq \len_{<j}(X) < i. \\
+%  \end{matrix} 
+% \end{cases}
+% \]
+% \end{definition}
+
+\begin{example}
+    若
+    \[X = ((3),4,((10,10),12)),\]
+    则 $X$ 的各元素为
+    \begin{align*}
+        \entry_1(X) & = 3\\
+        \entry_2(X) & = 4\\
+        \entry_3(X) & = 10\\
+        \entry_4(X) & = 10\\
+        \entry_5(X) & = 12.
+    \end{align*}
+\end{example}
+
+\begin{example}
+    若 $X = (32,5,6,64)$，则 $X$ 的各元素为
+    \begin{align*}
+        \entry_1(X) & = 32\\
+        \entry_2(X) & = 5\\
+        \entry_3(X) & = 6\\
+        \entry_4(X) & = 4.
+    \end{align*}
+\end{example}
+
+\begin{example}
+    若 $X$ 是深度为 $1$ 的嵌套元组，则对所有 $1 \leq i \leq \rank(X) = \len(X)$，都有 $\mode_i(X) = \entry_i(X)$。
+\end{example}
+
+\begin{observation}
+    若 $X$ 是整数嵌套元组，则 $X$ 的{\it 元素}是整数，而 $X$ 的{\it 模式}本身也是整数嵌套元组。
+\end{observation}
+
+最后，我们引入嵌套元组的{\it 同余}（congruence）概念，它刻画嵌套元组何时具有相同的轮廓。
+
+\begin{definition}
+    若 $X_1$ 与 $X_2$ 是嵌套元组，我们称 $X_1$ 与 $X_2$ {\it 同余}，如果
+    \[
+    \profile(X_1) = \profile(X_2).
+    \]
+\end{definition}
+
+% \begin{definition}
+%     Suppose $X_1$ and $X_2$ are nested tuples. We say $X_1$ and $X_2$ are {\it congruent}, and write $X_1 \cong X_2$, if
+%     \begin{enumerate}
+%         \item $X_1$ and $X_2$ have depth $0$, or
+%         \item $X_1$ and $X_2$ have depth $\geq 1$, and 
+%         \[
+%         \mode_i(X_1) \cong \mode_i(X_2)
+%         \]
+%         for each $1 \leq i \leq \rank(X_1) = \rank(X_2)$.
+%     \end{enumerate}
+% \end{definition}
+
+
+\begin{example}
+    以下是一些嵌套元组 $X_1$ 与 $X_2$ 的例子，以及它们是否同余
+\[
+\begin{aligned}
+X_1 &= 27 \quad & X_2 &= 100 \quad & \text{同余}\\
+X_1 &= (2,2) \quad & X_2 &= (8,64) \quad & \text{同余}\\
+X_1 &= ((4,8),(4,8)) \quad & X_2 &= ((1,1),(5,10)) \quad & \text{同余}\\
+X_1 &= ((64,(8,8)),(25,(5,5))) \quad & X_2 &= ((2,(3,5)),(7,(11,13))) \quad & \text{同余}\\
+X_1 &= 27 \quad & X_2 &= (100) \quad & \text{不同余}\\
+X_1 &= (2,2) \quad & X_2 &= (8,64,128) \quad & \text{不同余}\\
+X_1 &= ((4,8),(4,8)) \quad & X_2 &= (((1,1),(5,10))) \quad & \text{不同余}\\
+\end{aligned}
+\]
+\end{example}
+
+% \subsection{Congruence and profiles}
+
+% Next, we introduce the notion of {\it congruence} of nested tuples, which encodes when nested tuples have the same pattern of parentheses. Again, our definition is recursive.
+
+
+% Congruence is an equivalence relation on nested tuples, and we write $[X]$ for the congruence class of a nested tuple $X$. It will be useful to introduce {\it profiles}, which are objects that characterize the congruence class of a nested tuple.
+
+
+% \begin{definition}
+%     A {\it profile} is a nested tuple with entries in the set $\{*\}$. We write 
+%     \[
+%     \mathterm{Profile} = \mathterm{Nest}(\{*\})
+%     \]
+%     for the set of profiles.
+% \end{definition}
+
+% \begin{example}
+%     Here are some examples of profiles.
+%     \begin{align*}
+%         P_1 & = (*,(*,*))\\
+%         P_2 & = (((*,*,*),(*,*)),((*,*)))\\
+%         P_3 & = (*)\\
+%         P_4 & = ()
+%     \end{align*}
+% \end{example}
+
+% If $X$ is a nested tuple, then we can obtain a profile $\profile(X)$ by replacing each entry of $X$ with the symbol ``$*$". In order to make this precise, we make the following construction.
+
+
+% \begin{construction} 
+% If $V$ is a set, let $\mathterm{Nest}(V)$ denote the collection of nested tuples with entries in $V$. If $V_1$ and $V_2$ are sets, and $f: V_1 \to V_2$ is a function, then we can define a function 
+% \[
+% f_*:\mathterm{Nest}(V_1) \to \mathterm{Nest}(V_2)
+% \]
+% recursively by 
+% \[
+% f_*(X) = \begin{cases}
+%     f(X) & \text{depth}(X) = 0 \text{, so } X \in V_1\\
+%     (f_*(\mode_1(X)),\dots,f_*(\mode_{\rank(X)}(X))) & \depth(X) > 0
+% \end{cases}
+% \]
+% \end{construction}
+
+% \begin{example}
+%     If $f:\mathbb{Z} \to \mathbb{Z}_{\geq 0}$ is the map $f(x) = |x|$, then here are some examples of nested tuples $X$ together with $f_*(X)$.
+%     \[
+%     \begin{aligned}
+%     X &= (2,-8) \quad & f_*(X) &= (2,8) \\
+%     X &= (10,(-10,-2)) \quad & f_*(X) &= (10,(10,2))\\
+%     X & = ((0,2),(0,2)) \quad & f_*(X) & = ((0,2),(0,2))\\
+%     X & = ((-8,8,-8),(-64,())) \quad & f_*(X) & = ((8,8,8),(64,()))\\
+% \end{aligned}
+%     \]
+% \end{example}
+
+% \begin{definition}
+%     If $X$ is a nested tuple (of integers), we define the {\it profile of} $X$ to be  
+%     \[
+%     \profile(X) = p_*(X).
+%     \]
+%     where $p:\mathbb{Z} \to \{*\}$ is the projection map.
+% \end{definition}
+
+% \begin{example}
+%     Here are some nested tuples $X$ together with their profile $\profile(X)$.
+%         \[
+%     \begin{aligned}
+%     X &= (2,8) \quad & \profile(X) &= (*,*) \\
+%     X &= (10,(10,2)) \quad & \profile(X) &= (*,(*,*))\\
+%     X & = ((0,2),(0,2)) \quad & \profile(X) & = ((*,*),(*,*))\\
+%     X & = ((8,8,8),(64,())) \quad & \profile(X) & = ((*,*,*),(*,()))\\
+%     X & = () \quad & \profile(X) & = ()\\
+%     X & = 25 \quad & \profile(X) & = *
+% \end{aligned}
+%     \]
+% \end{example}
+
+
+% \begin{lemma}
+%     If $X_1$ and $X_2$ are nested tuples, then $X_1 \cong X_2$ if and only if $\profile(X_1) = \profile(X_2)$. 
+% \end{lemma}
+% \begin{proof}
+%     Suppose first that $X_1 \cong X_2$. We prove the implication by induction on $\depth(X_1) = \depth(X_2)$. 
+% \end{proof}
+
+
+
+% We have shown that every nested tuple $X$ determines a tuple $X^\flat$ and a profile $\profile(X)$. Conversely, if $Y$ is a tuple and $P$ is a profile with $\len(Y) = \len(P)$, then we can construct a nested tuple $X$ whose flattening is $Y$ and whose profile is $P$ as follows.
+
+% \begin{proposition}\label{nestedtuplesdeterminedbyflatteningandprofile}
+%     Suppose $Y = (y_1,\dots,y_m)$ is a tuple and suppose $P$ is a profile of length $m$. Then there exists a unique nested tuple $X$ with flattening 
+%     \[
+%     X^\flat = Y\quad \text{and} \quad \profile(X) = P.
+%     \]
+% \end{proposition}
+
+% \begin{proof}
+%     Lets write $d = \depth(P)$ and $r = \rank(P)$. There are two cases to consider.
+%     \begin{itemize}[left=0pt]
+%     \item ($m=0$): In this case, $Y = ()$, and $P$ is a profile of length $0$. It follows that $X = P$ is the unique nested tuple satisfying the desired properties, since any nested tuple $X$ of length $0$ has $X^\flat = ()$ and $\profile(X) = X$.
+%     \item ($m \geq 1$): In this case, we prove the claim by induction on $d$. If $d = 0$, then $Y = (y_1)$ and $P = *$, and it follows that $X = y_1$ is the unique nested tuple satisfying the desired properties, since any nested tuple $X$ of depth $0$ has $X^\flat = (X)$. Suppose next that $d > 0$, and that we have proved the claim for all depths $< d$. Then we can write 
+%     \[
+%     P = (P_1,\dots,P_r)
+%     \]
+%     where each mode $P_i = \mode_i(P)$ has depth $< d$. If for each $1 \leq i \leq r$, we set $\ell_i = \len_{<i}(P)$, then we can write 
+%     \[
+%     Y = Y_1 \star \cdots \star Y_r
+%     \]
+%     where $Y_i = (y_{\ell_i+1},\dots,y_{\ell_{i+1}})$. By our inductive hypothesis, there exist unique nested tuples $X_1,\dots,X_r$ with 
+%     \[X_i^\flat = Y_i \quad \text{and}\quad \profile(X_i) = P_i \]
+%     in which case 
+%     \[
+%     X = (X_1,\dots,X_r)
+%     \]
+%     is the unique nested tuple with
+%     \[X^\flat = Y \quad \text{and}\quad \profile(X) = P \]
+%     \end{itemize}
+% \end{proof}
+
+
+% \begin{notation}
+% If $X$ is a nested tuple with flattening $X^\flat = (x_1,\dots,x_m)$ and profile $\profile(X) = P$, we sometimes write 
+% \[
+% X = (x_1,\dots,x_m)_P
+% \]
+% \end{notation}
+
+
+
+\subsection{代入}
+
+回顾：若 $Q$ 是长度为 $r$ 的轮廓，且 $P_1,\dots,P_r$ 是轮廓，则我们定义过轮廓
+\[
+(P_1,\dots,P_r)_Q
+\]
+称为 $P_1,\dots,P_r$ 的 $Q${\it-代入}。这个轮廓由 $Q$ 把第 $i$ 个元素替换为轮廓 $P_i$ 而得到。我们可以把它如下推广为嵌套元组上的运算。
+
+\begin{definition}
+    设 $X_1,\dots,X_m$ 是轮廓分别为 $P_1,\dots,P_m$ 的嵌套元组，并设 $Q$ 是长度为 $m$ 的轮廓。我们定义 $X_1,\dots,X_m$ 的 $Q$-代入
+    \[
+    (X_1,\dots,X_m)_Q
+    \]
+    为满足扁平化
+    \[
+    (X_1,\dots,X_m)_Q^\flat = X_1^\flat \star \cdots \star X_m^\flat
+    \]
+    与轮廓
+    \[
+    (P_1,\dots,P_m)_Q. 
+    \]
+    的嵌套元组。更一般地，若 $X_1,\dots,X_m$ 是嵌套元组且 $Y$ 是长度为 $m$ 的嵌套元组，我们定义
+    \[
+    (X_1,\dots,X_m)_Y = (X_1,\dots,X_m)_{\profile(Y)}.
+    \]
+\end{definition}
+
+
+% \begin{definition}[Concatenation]\label{definitionofconcatenationofnestedtuples}
+%     If $X_1,\dots,X_k$ are nested tuples, then the {\it concatenation} of $X_1,\dots,X_k$ is the nested tuple 
+%     \[(X_1,\dots,X_k)\]
+%     of rank $k$ whose $i$th mode is $X_i$.
+% \end{definition}
+
+% \begin{example}\label{exampleofconcatenation}
+%     If $X_1 = (2,2)$, $X_2 = (5,(10,11))$, and $X_3 = 100$, then 
+%     \[
+%     (X_1,X_2,X_3) = ((2,2),\bigl(5,(10,11)\bigr),100).
+%     \]
+% \end{example}
+
+% \begin{remark}\label{concatenationofnestedtuplesisnotassociative}
+%     Concatenation of nested tuples is not associative. For example, take $X_1 = 2$, $X_2 = 5$, and $X_3 = 11$. Then 
+%     \[(X_1, (X_2, X_3)) = (2, (5,11)) \neq ((2, 5), 11) = ((X_1, X_2), X_3). \]
+%     Moreover, neither of these layouts is equal to the ``three-fold" concatenation $(X_1,X_2,X_3) = (2,5,11)$.
+% \end{remark}
+
+% \begin{remark}
+%     If $X$ and $Y$ are tuples, then the ``flat" concatenation $X \star Y$ of Definition \ref{definitionofconcatenationoftuples} does not agree with the concatenation $(X,Y)$. Instead, these operations are related by the formula
+%     \[
+%     X \star Y = (X,Y)^\flat.
+%     \]
+% \end{remark}
+
+% Next, we define the most important operations on nested tuples, namely $P$-{\it concatenations}. These operations generalize concatenation, and are parametrized by profiles $P$.
+
+% \begin{definition}\label{definitionofPconcatenation}
+%     Suppose $X_1,\dots,X_k$ are nested tuples, and $P$ is a profile of length $k$. Then we define the $P$-substitution of $X_1,\dots,X_k$ to be the nested tuple 
+%     \[
+%     (X_1,\dots,X_k)_P
+%     \]
+%     defined as follows. Write $\depth(P) = d$ and $\rank(P) = r$. 
+%     \begin{itemize}[left = 0pt]
+%         \item If $d = 0$, then $k = 1$, and we define 
+%         \[
+%         (X_1)_P = X_1.
+%         \]
+%         \item Suppose next that $d > 0$, and that we have defined $Q$-concatenation  for all profiles $Q$ of depth $<d$. We can write 
+%     \[
+%     P = (P_1,\dots,P_r)
+%     \]
+%     where each mode $P_i$ has depth $< d$. If for each $1 \leq i \leq r$, we set 
+%     \[\ell_i = \len_{<i}(P) = \len(P_1) + \cdots + \len(P_{i-1}),\] 
+%     then we define
+%     \[
+%     (X,\dots,X_k)_P = ((X_{1},\dots,X_{\ell_2})_{P_1},\dots,(X_{\ell_r +1},\dots,X_{\ell_{r+1}})_{P_r}).
+%     \]
+%     \end{itemize}
+% \end{definition}
+
+
+\begin{example}
+    若 $(X_1,X_2,X_3) = (64,16,4)$ 且 $Q = (*,(*,*))$，则
+    \[
+    (X_1,X_2,X_3)_Q = (64,(32,4))
+    \]
+\end{example}
+
+\begin{example}
+    若 $(X_1,X_2,X_3,X_4) = ( (2,2), (3,3), (5,5), (7,7))$ 且 $Q = ((*,*),(*,*))$，则
+    \[
+    (X_1,X_2,X_3,X_4)_Q = (((2,2),(3,3)),((5,5),(7,7))).
+    \]
+\end{example}
+\begin{example}
+    若 $X = (12)$ 且 $Q = *$，则
+    \[
+    (X)_Q = 12.
+    \]
+\end{example}
+
+
+\begin{example}\label{exampleofmultiplesubstitution1}
+    若 $X_1 = 2$、$X_2 = 2$、$X_3 = (5,5)$，且 $Q = (*,*,*)$，则
+    \begin{align*}
+        (X_1,X_2,X_3)_Q = (2,2,(5,5)) = (X_1,X_2,X_3).
+    \end{align*}
+    更一般地，若 $X_1,\dots,X_m$ 是任意嵌套元组且 $P = (* , \dots , *)$，则
+    \[
+    (X_1,\dots,X_m)_Q = (X_1,\dots,X_k)
+    \]
+    就是 $X_1,\dots,X_m$ 的{\it 拼接}。
+\end{example}
+
+\begin{aside}
+    嵌套元组的代入有一种 {\it operad 式}的解释。整数嵌套元组的集合 $\mathterm{Nest}(\mathbb{Z})$ 是 operad $\mathterm{Profile}$ 上的一个{\it 代数}（algebra），其结构映射由 $Q$-代入给出：
+    \[ \begin{tikzcd} 
+    \mathterm{Nest}(\mathbb{Z})\times \dots \times \mathterm{Nest}(\mathbb{Z})\times \mathterm{Profile}(n) \ar[rr] & & \mathterm{Nest}(\mathbb{Z})\\
+    (X_1,\dots,X_m),Q \ar[rr,mapsto] & & (X_1,\dots,X_m)_Q.
+    \end{tikzcd}\]
+\end{aside}
+
+
+
+% Next, we define the substitution operation, which replaces a given entry of a nested tuple with some other nested tuple. 
+
+% \begin{definition}[Substitution]\label{definitionofsubstitution}
+%     Suppose $X$ is a nested tuple of length $\len(X) = \ell$ and $\rank(X) = r$. Suppose $Y$ is some other nested tuple and $1 \leq i \leq \ell$. We define a nested tuple $\sub_i(X,Y)$ as follows:
+%     \begin{enumerate}
+%         \item If $\depth(X) = 0$, so $i = 1$, we set 
+%         \[\sub_i(X,Y) = Y.\] 
+%         \item If $\text{depth(X)} > 0$, and $j$ is the largest integer such that 
+%         \[ N \coloneq \len_{<j}(X) < i,\]
+%         we define $\sub_i(X,Y)$ to be the nested tuple of rank $r$ with 
+%         \[
+%         \mode_{i'}(\sub_i(X,Y)) = 
+%         \begin{cases}
+%             \mode_{i'}(X) & i' \neq j\\
+%             \sub_{i-N}(\mode_j(X),Y) & i' = j.
+%         \end{cases}
+%         \]
+%     \end{enumerate}
+% \end{definition}
+
+% \begin{example}\label{exampleofsubstitution1}
+%     If $X = (2,2,2)$ and $Y = (5,5)$, then 
+%     \begin{align*}
+%         \sub_1(X,Y) & = \bigl((5,5),2,2\bigr),\\
+%         \sub_2(X,Y) & = \bigl(2,(5,5),2\bigr),\\
+%         \sub_3(X,Y) & = \bigl(2,2,(5,5)\bigr).\\
+%     \end{align*}
+% \end{example}
+
+% \begin{example}\label{exampleofsubstitution2}
+% If $X = ((2,(3,3)),5)$ and $Y = (10,(12,14))$, then 
+%     \begin{align*}
+%         \sub_1(X,Y) & = (((10,(12,14)),(3,3)),5).
+%     \end{align*}
+% \end{example}
+
+
+% \begin{definition}[Total Substitution]\label{definitionoftotalsubstitution}
+%     Suppose $X$ and $Y$ are nested tuples with $\len(X) = \ell > 0$ and $\rank(Y) = \ell$. We define $\sub(X,Y)$ to be the nested tuple obtained by replacing the $i$th entry of $X$ with the $i$th mode of $Y$, for each $1 \leq i \leq \ell$. More precisely,
+%     \[
+%     \sub(X,Y) = \sub_1(\sub_2( \cdots \sub_{\ell-1}(\sub_\ell(X,Y_\ell),Y_{\ell-1}), \cdots Y_2),Y_1).
+%     \]
+%     where $Y_i = \mode_i(Y)$.
+
+% \end{definition}
+
+% \begin{example}
+%     If $X = (3,4)$ and $Y = (7,8)$ then 
+%     \[
+%     \sub(X,Y) = (7,8)
+%     \]
+%     More generally, if $X$ and $Y$ have depth $1$ and $\len(X) = \rank(Y)$, then $\sub(X,Y) = Y$. 
+% \end{example}
+
+
+% \begin{example}\label{exampleofmultiplesubstitution1}
+%     If $X = ((2,2),2)$,  and $Y = ((100),5,(4,(4,7)))$, then 
+%     \begin{align*}
+%         \sub(X,Y) & = (((100),5),(4,(4,7))).
+%     \end{align*}
+% \end{example}
+
+% \begin{lemma}\label{flatteningofcompositionofnestedtuples}
+%     Suppose $X$ is a nested tuple with $\len(X) = \ell > 0$, and suppose $Y$ is a nested tuple with $\rank(Y) = \ell$. Then 
+%     \[\sub(X,Y)^\flat = Y^\flat\]
+% \end{lemma}
+% \begin{proof}
+%     This follows from the observation that for a nested tuple $X$ of length $\ell$, a nested tuple $Z$, and an integer $1 \leq i \leq r$, if we write $X_i = \entry_i(X)$ and $Z_i = \entry_i(Z)$, then we have
+%     \[
+%     \sub_i(X,Z)^\flat = \Bigl(X_1 , \dots ,X_{i-1} , Z_1 , \dots , Z_{\len(Z)}, X_{i+1} , \dots, X_\ell \Bigr) 
+%     \]
+% \end{proof}
+
+\subsection{加细}\label{refinementsection}
+
+本节引入嵌套元组上的一种重要关系，称为{\it 加细}（refinement）。直观上，若 $X'$ 与 $X$ 是整数嵌套元组，我们说 $X'$ 加细 $X$，如果 $X'$ 可以由 $X$ 把每个元素替换为某个大小相同的嵌套元组而得到。更精确地说，我们有如下定义。
+
+\begin{definition}\label{definitionofrefinement}
+若 $X'$ 与 $X$ 是嵌套元组，则我们称 $X'$ {\it 加细} $X$，如果下列之一成立
+    \begin{enumerate}
+    \item $X = \size(X')$；或
+    \item 
+    \begin{enumerate}
+    \item $\depth(X'),\depth(X) > 0$，
+    \item $\rank(X') = \rank(X)$，且
+    \item 对每个 $1 \leq i \leq \rank(X)$，$\mode_i(X')$ 加细 $\mode_i(X)$。
+    \end{enumerate}
+    \end{enumerate} 
+\end{definition}
+
+\begin{notation}
+我们记
+\[X' \twoheadrightarrow X\]
+以表示 $X'$ 加细 $X$。
+\end{notation}
+
+\begin{example}
+    以下是一些嵌套元组加细的例子。
+    \[\begin{aligned}
+        (2,(2,2))\twoheadrightarrow &  \hspace{0.05in} 8\\
+        ((2,2),(3,3),(5,5)) \twoheadrightarrow & \hspace{0.05in} (4,9,25)\\
+        (64) \twoheadrightarrow & \hspace{0.05in} 64\\
+        (8,((2,2,2),((1,4),(2,2)))) \twoheadrightarrow & \hspace{0.05in} (8,(8,8))
+    \end{aligned}\]
+\end{example}
+
+
+\begin{observation}
+嵌套元组的加细是自反、传递且反对称的，因此加细给出了正整数嵌套元组全体上的一个偏序（partial ordering）。
+\end{observation}
+
+% \begin{definition}[Reduction]\label{definitionofreduction}
+%     Suppose $X$ is a nested tuple of rank $\rank(X) = r$, and suppose $d \geq 0$ is an integer. We define the {\it depth }$\leq d$ {\it reduction} $\red_{\leq d}(X)$ of $X$ as follows.
+%     \begin{enumerate}
+%     \item If $d \geq \depth(X)$, we define $\red_{\leq d}(X) = X$.
+%     \item If $\depth(X) > d$ and $d = 0$, we define $\red_{\leq 0}(X) = \size(X)$.
+%         \item If $\depth(X) > d$ and $d > 0 $, we set 
+%         \[
+%         \red_{\leq d}(X) = (\red_{\leq d-1}(\mode_1(X)),\dots, \red_{\leq d-1}(\mode_r(X))).
+%         \]
+%     \end{enumerate}
+% \end{definition}
+
+% \begin{example}
+%     If $X = (((25)))$, then $\depth(X)= 3$, and 
+%         \begin{align*}
+%         \red_{\leq 0}(X) & = 25\\
+%         \red_{\leq 1}(X) & = (25)\\
+%         \red_{\leq 2}(X) & = ((25))\\
+%         \red_{\leq 3}(X) & = (((25))) = X\\
+%     \end{align*}
+% \end{example}
+
+% \begin{example}
+%     If  
+%     \[X = (((2,(2,2)),5),3,(10,2)),\]
+%     then $\depth(X) = 4$, and 
+%     \begin{align*}
+%         \red_{\leq 0}(X) & = 2400\\
+%         \red_{\leq 1}(X) & = (40,3,20)\\
+%         \red_{\leq 2}(X) & = ((8,5),3,(10,2))\\
+%         \red_{\leq 3}(X) & = (((2,4),5),3,(10,2))\\
+%         \red_{\leq 4}(X) & = (((2,(2,2)),5),3,(10,2)) = X\\
+%     \end{align*}
+% \end{example}
+
+% \begin{example}
+%     If $\depth(X) > 0$, and $\rank(X) = r$, then the depth $\leq 1$ reduction of $X$ is the tuple 
+%     \[
+%     \red_{\leq 1}(X) = \Bigl(\size_1(X),\dots, \size_r(X)\Bigr).
+%     \]
+% \end{example}
+
+若 $X'$ 加细 $X$，则我们可以把 $X'$ 看作由 $X$ 把每个元素 $x_i$ 替换为某个大小为 $x_i$ 的嵌套元组 $X_i'$ 而得到。我们把嵌套元组 $X_i'$ 称为 $X'$ 相对于 $X$ 的第 $i$ 个模式。更精确地说，我们有如下定义。
+
+\begin{construction}
+    设 $X$ 是长度为 $m$ 的整数嵌套元组，并设 $X'$ 加细 $X$。对任意 $1 \leq i \leq m$，我们定义嵌套元组
+    \[
+    X_i'=\mode_i(X',X),
+    \]
+    称为 $X'$ 相对于 $X$ 的第 $i$ 个{\it 模式}，其公式为
+    \[
+\mode_i(X',X) = \begin{cases}
+    X' &  \depth(X) = 0 \text{ (从而 }i=\ell=1\text{)}\\
+ \mode_{i - N}(\mode_j(X'),\mode_j(X)) & \begin{matrix} j \text{ 是满足如下条件的最大整数：}\\
+ N \coloneqq \len_{<j}(X) < i. \\
+ \end{matrix} 
+\end{cases}
+\]
+\end{construction}
+
+\begin{example}
+    若 $X = ((4,9),(25,36))$，且 $X' = ( ( (2,2),(3,3) ) , ( 25, (6,(2,3)) ) )$，则 $X'$ 加细 $X$，且 $X'$ 相对于 $X$ 的各模式为
+    \begin{align*}
+    \mode_1(X',X) & = (2,2) \\
+    \mode_2(X',X) & = (3,3) \\
+    \mode_3(X',X) & = 25 \\
+    \mode_4(X',X) & = (6,(2,3)) .
+    \end{align*}
+\end{example}
+
+\begin{example}
+    若 $X$ 是任意嵌套元组，则 $X$ 加细 $X$，且对任意 $1 \leq i \leq \len(X)$，有
+    \[
+    \mode_i(X,X) = \entry_i(X).
+    \]
+\end{example}
+
+\begin{example}
+    若 $X = X^\flat$ 是元组，且 $X'$ 加细 $X$，则对任意 $1 \leq i \leq \len(X)$，有
+    \[
+    \mode_i(X',X) = \mode_i(X').
+    \]
+\end{example}
+
+\begin{example}
+    若 $X'$ 是满足 $\size(X') = N$ 的嵌套元组，则 $X'$ 加细 $N$，且 $X'$ 相对于 $N$ 的唯一模式为
+    \[
+    \mode_1(X',N) = X'. 
+    \]
+\end{example}
+
+\begin{notation}
+    若 $X' \twoheadrightarrow X$ 是一个加细且 $1 \leq i \leq \len(X)$，则我们记
+    \begin{align*}
+    \len_i(X',X) & = \len(\mode_i(X',X))\\
+    \len_{<i}(X',X) & = \sum_{j < i} \len_j(X',X)\\
+    \len_{\leq i}(X',X) & = \sum_{j \leq i} \len_j(X',X)
+    \end{align*}
+\end{notation}
+
+
+
+
+
+
+% \begin{proposition}
+%     Suppose $X'$ and $X$ are nested tuples. Then $X'$ refines $X$ if and only if 
+%     \[
+%     X' = \sub(X,(X_1',\dots,X_m')).
+%     \]
+%     for some uniquely determined nested tuples $X_1',\dots,X_m'$, namely 
+%     \[
+%     X_i' = \mode_i(X',X).
+%     \]
+% \end{proposition}
+
+% \begin{proof}
+%     INCOMPLETE.
+% \end{proof}
+
+\begin{definition}
+    设 $X'$ 加细 $X$，并记 $X_i' = \mode_i(X',X)$。则 $X'$ 相对于 $X$ 的{\it 扁平化}是嵌套元组
+    \[
+    \flatten(X',X) = (X_1',\dots,X_m').
+    \]
+\end{definition}
+
+\begin{example} 
+若 $X' = (((2,2),(3,3)),((5,5),(7,7)))$ 且 $X = ((4,9),(25,49))$，则
+\[
+\flatten(X',X) = ((2,2),(3,3),(5,5),(7,7)).
+\]
+\end{example}
+
+\begin{example}
+    若 $X$ 是任意嵌套元组，则 $X$ 相对于 $X$ 的扁平化为
+    \[
+    \flatten(X,X) = X^\flat.
+    \]
+\end{example}
+
+\begin{example}
+    若 $X = X^\flat$ 是元组，且 $X'$ 加细 $X$，则 $X'$ 相对于 $X$ 的扁平化为
+    \[
+    \flatten(X',X) = X'. 
+    \]
+\end{example}
+
+\begin{example}
+    若 $X'$ 是满足 $\size(X') = N$ 的嵌套元组，则 $X'$ 加细 $N$，且 $X'$ 相对于 $N$ 的扁平化为
+    \[
+    \flatten(X',N) = (N). 
+    \]
+\end{example}
+
+\begin{observation}
+    若 $X'$ 加细 $X$，则 $\flatten(X',X)$ 加细 $X^\flat$。 
+\end{observation}
+
+
+% Every refinement $X' \twoheadrightarrow X$ encodes a generalized colexicographic isomorphism. In order to make this precise, we introduce some notation. 
+
+% \begin{definition}
+%     If $X$ is a nested tuple, then we define $[0,X)$ to be the finite set whose elements are nested tuples $Y$ of non-negative integers such that
+%     \begin{enumerate}
+%         \item $Y$ is congruent to $X$, and 
+%         \item if $1 \leq i \leq \text{length}(X)$, then $0 \leq \text{entry}_i(Y)  < \text{entry}_i(X)$.
+%     \end{enumerate}
+% \end{definition}
+
+% \begin{example}
+%     If $X = (8,(3,5))$, then 
+%     \[
+%     [0,X) =  [0,8) \times \left([0,3) \times [0,5) \right).
+%     \]
+%     Elements of $X$ include $(0,(0,0))$, $(1,(2,1))$, $(7,(2,4))$, etc.
+% \end{example}
+
+% \begin{observation}
+%     We can give a recursive description of $[0,X)$. If we choose $\{()\}$ for our model of the empty product of sets, i.e.
+%     \[\prod_{\varnothing} = \{()\},\]
+%     then  
+%     \[
+%     [0,X) = \begin{cases}
+% \{0,\dots,X-1\} & \text{depth}(X) = 0\\
+% \prod_{i=1}^{\text{rank}(X)} [0,\text{mode}_i(X)) & \text{depth}(X) > 0. 
+%     \end{cases}
+%     \]
+% \end{observation}
+
+
+% \begin{construction}
+%     Suppose $X' \twoheadrightarrow X$ is a refinement. We define the colexicographic isomorphism
+%     \[
+%     \colex_{X'}^{X}:[0,X') \to [0,X)
+%     \]
+%     as follows. 
+%     \begin{itemize}
+%         \item If $\depth(X) = 0$, we define 
+%         \[
+%         \colex_{X'}^X = \colex_X
+%         \]
+%     \end{itemize}
+% \end{construction}
+
+
+
+\newpage 
+
+
+\newpage 
+
+
+
