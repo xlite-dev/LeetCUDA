@@ -1,0 +1,234 @@
+% cf-macros.tex — 移植自 Colfax《Categorical Foundations for CuTe Layouts》官方源
+% （arXiv:2601.05972，FinalVersion.tex L1-270 preamble）。
+% 改动：①定理环境名中文化 ②xcolor 两次加载合并为一次 ③移除 lmodern/microtype
+%（pdflatex 专属，xelatex 下不需要）④增加 longtable（术语表用）。
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{tikz-cd}
+\usetikzlibrary{matrix,fit,backgrounds}
+\usepackage[table,dvipsnames]{xcolor}
+\usepackage{mathrsfs}
+\usepackage{mathdots}
+\usepackage{mathtools}
+\usepackage{comment}
+\usepackage{array}
+\usepackage{algorithm}
+\usepackage{algpseudocode}  % breakable algorithmic environment
+\usepackage{caption}
+\usepackage[most]{tcolorbox}
+\usepackage{longtable}
+\usepackage{booktabs}
+
+% Algorithm counter (for \ref)
+\renewcommand{\thealgorithm}{\arabic{algorithm}}
+
+% Breakable, framed algorithm box with continued title
+\newtcolorbox[use counter=algorithm, number within=section]{BreakableAlgorithm}[2][]{%
+  enhanced,
+  breakable,
+  colback=white,
+  colframe=black,
+  boxrule=0.8pt,
+  arc=2pt,
+  left=8pt,right=8pt,top=8pt,bottom=8pt,
+  attach title to upper,
+  title={算法~\thetcbcounter：#2},
+  title after break={算法~\thetcbcounter（续）：#2},
+  fonttitle=\bfseries,
+  colbacktitle=white,
+  coltitle=black,
+  titlerule=0.8pt,
+  borderline north={1pt}{0pt}{black},
+  borderline south={1pt}{0pt}{black},
+  #1
+}
+
+% Subtle line numbers & comment style
+\algrenewcommand\alglinenumber[1]{\scriptsize\color{gray}{#1}}
+\algrenewcommand{\algorithmiccomment}[1]{\hfill\(\triangleright\)\ #1}
+
+% Horizontal separator you can place inside the algorithm
+\newcommand{\algsep}{\Statex \rule{\linewidth}{0.6pt}}
+\renewcommand{\baselinestretch}{1.10}
+\usepackage[a4paper,margin=1.2in]{geometry}
+\usepackage[colorlinks=true, linkcolor=blue, urlcolor=blue, citecolor=blue]{hyperref}
+\usepackage{cleveref}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage[backend=biber,style=numeric]{biblatex}
+\addbibresource{references.bib}
+
+\definecolor{colorx1}{rgb}{1.00, 0.00, 0.00} % Red
+\definecolor{colorx2}{rgb}{1.00, 0.75, 0.00} % Orange-yellow
+\definecolor{colorx3}{rgb}{0.50, 1.00, 0.00} % Yellow-green
+\definecolor{colorx4}{rgb}{0.00, 1.00, 0.50} % Green-cyan
+\definecolor{colorx5}{rgb}{0.00, 1.00, 1.00} % Cyan
+\definecolor{colorx6}{rgb}{0.00, 0.50, 1.00} % Blue
+\definecolor{colorx7}{rgb}{0.50, 0.00, 1.00} % Indigo
+\definecolor{colorx8}{rgb}{1.00, 0.00, 1.00} % Magenta
+
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codebg}{rgb}{0.95,0.95,0.95}
+\lstset{
+    backgroundcolor=\color{codebg},
+    basicstyle=\ttfamily\footnotesize,
+    breaklines=true,
+    frame=single,
+    rulecolor=\color{codegray},
+    keywordstyle=\color{blue},
+    commentstyle=\color{gray},
+    stringstyle=\color{red},
+    showstringspaces=false,
+}
+
+\definecolor{keywordcolor}{rgb}{0.0, 0.0, 0.6}     % dark blue
+\definecolor{identifiercolor}{rgb}{0.5, 0.0, 0.5}  % purple
+\definecolor{stringcolor}{rgb}{0.58,0,0.82}        % magenta
+\definecolor{bgcolor}{rgb}{0.95,0.95,0.95}         % light gray
+
+% ===== COLORS =====
+\definecolor{codebg}{rgb}{0.98, 0.98, 0.95}
+\definecolor{codebase}{rgb}{0.25, 0.25, 0.28}
+\definecolor{codecomment}{rgb}{0.45, 0.50, 0.53}
+\definecolor{codekeyword}{rgb}{0.82, 0.37, 0.37}
+\definecolor{codestring}{rgb}{0.37, 0.55, 0.29}
+\definecolor{codefunc}{rgb}{0.48, 0.42, 0.93}
+\definecolor{codetype}{rgb}{0.76, 0.47, 0.96}
+\definecolor{codenumber}{rgb}{0.92, 0.47, 0.39}
+\definecolor{codegray}{rgb}{0.60, 0.60, 0.60}
+\definecolor{darkpastelpurple}{rgb}{0.59, 0.44, 0.84}
+\definecolor{darkerpastelpurple}{rgb}{0.47, 0.34, 0.66}
+
+% ===== CODE LISTINGS =====
+\lstset{
+    backgroundcolor=\color{codebg},
+    basicstyle=\ttfamily\footnotesize\color{codebase},
+    commentstyle=\itshape\color{codecomment},
+    keywordstyle=\bfseries\color{keywordcolor},
+    stringstyle=\color{codestring},
+    identifierstyle=\color{darkerpastelpurple},
+    numberstyle=\tiny\color{codegray},
+    numbers=left,
+    numbersep=6pt,
+    frame=single,
+    framesep=5pt,
+    breaklines=true,
+    showstringspaces=false,
+    tabsize=4,
+    morekeywords=[2]{cute, tract, uint32_t, int32_t, size_t, std, vector, string},
+    keywordstyle=[2]\color{red},
+    morekeywords=[3]{my_function, MyClass, CustomThing},
+    keywordstyle=[3]\color{darkpastelpurple}\bfseries,
+}
+
+\lstdefinelanguage{cutedsl}{
+    language=Python,
+    morekeywords={},                     % 'cute' as a keyword
+    morekeywords=[2]{},  % method names
+    keywordstyle=\color{keywordcolor}\bfseries,
+    morekeywords=[2]{cute, tract}
+    keywordstyle=[2]\color{red},
+    morestring=[b]',                        % single-quoted strings
+    morestring=[b]",                        % double-quoted strings
+    stringstyle=\color{stringcolor},
+    showstringspaces=false,
+    basicstyle=\ttfamily\footnotesize,
+    backgroundcolor=\color{bgcolor},
+    frame=single,
+    breaklines=true,
+    columns=flexible
+}
+
+% 定理环境（名称中文化，编号规则与原文一致：theorem 按 subsection 编号）
+\newtheorem{theorem}{定理}[subsection]
+\newtheorem{lemma}[theorem]{引理}
+\newtheorem{corollary}[theorem]{推论}
+\newtheorem{proposition}[theorem]{命题}
+\newtheorem{mainthm}{主定理}
+\renewcommand{\themainthm}{\Alph{mainthm}} % 主定理用大写字母 A, B, C...
+
+\setcounter{secnumdepth}{3}
+
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{定义}
+\newtheorem{example}[theorem]{例}
+\newtheorem{construction}[theorem]{构造}
+\newtheorem{observation}[theorem]{观察}
+\newtheorem{notation}[theorem]{记号}
+\newtheorem{warning}[theorem]{警告}
+\newtheorem{localnotation}[theorem]{局部记号}
+
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{注}
+\newtheorem{aside}[theorem]{旁注}
+
+\newcommand{\m}{\langle m \rangle}
+\newcommand{\n}{\langle n \rangle}
+\newcommand{\p}{\langle p \rangle}
+\newcommand{\q}{\langle q \rangle}
+
+\newcommand{\fpset}[1]{\langle #1 \rangle_*}
+
+\newcommand{\mathterm}[1]{\mathsf{#1}} % sans serif math terms
+
+\newcommand{\sort}{\mathterm{sort}}
+\newcommand{\coalesce}{\mathterm{coal}}
+\newcommand{\coal}{\coalesce}
+\renewcommand{\complement}{\mathterm{complement}}
+\newcommand{\comp}{\mathterm{comp}}
+\newcommand{\flatten}{\mathterm{flat}}
+\newcommand{\cosize}{\mathterm{cosize}}
+\newcommand{\size}{\mathterm{size}}
+\newcommand{\len}{\mathterm{len}}
+\newcommand{\rank}{\mathterm{rank}}
+\newcommand{\depth}{\mathterm{depth}}
+\newcommand{\mode}{\mathterm{mode}}
+\newcommand{\entry}{\mathterm{entry}}
+\newcommand{\red}{\mathterm{red}}
+\newcommand{\sub}{\mathterm{sub}}
+\newcommand{\shape}{\mathterm{shape}}
+\newcommand{\stride}{\mathterm{stride}}
+\newcommand{\colex}{\mathterm{colex}}
+\newcommand{\squeeze}{\mathterm{squeeze}}
+\newcommand{\Image}{\mathterm{Image}}
+\newcommand{\codomain}{\mathterm{codomain}}
+\newcommand{\domain}{\mathterm{domain}}
+\newcommand{\complexity}{\mathterm{complexity}}
+\newcommand{\id}{\mathterm{id}}
+\newcommand{\incl}{\mathterm{incl}}
+\newcommand{\Hom}{\mathterm{Hom}}
+\renewcommand{\max}{\mathterm{max}}
+\newcommand{\op}{\mathterm{op}}
+\newcommand{\sk}{\mathterm{sk}}
+\newcommand{\ob}{\mathterm{ob}}
+\newcommand{\filter}{\mathterm{filter}}
+\newcommand{\full}{\mathterm{full}}
+\newcommand{\profile}{\mathterm{prof}}
+\newcommand{\mor}{\mathterm{mor}}
+\newcommand{\row}{\mathterm{row}}
+\newcommand{\col}{\mathterm{col}}
+\newcommand{\tiled}{\mathterm{tiled}}
+\newcommand{\ind}{\mathterm{ind}}
+
+\newcommand{\bit}[1]{\textbf{\textit{#1}}}
+\newcommand{\catstyle}[1]{{\boldsymbol{\mathsf{#1}}}}
+\newcommand{\msf}[1]{\mathsf{#1}}
+
+\newcommand{\Set}{\catstyle{Set}}
+\newcommand{\Fin}{\catstyle{Fin}}
+\newcommand{\FinSet}{\catstyle{FinSet}}
+\newcommand{\Tuple}{\catstyle{Tuple}}
+\newcommand{\Cat}{\catstyle{Cat}}
+\newcommand{\cC}{\catstyle{C}}
+\newcommand{\cD}{\catstyle{D}}
+\newcommand{\cE}{\catstyle{E}}
+\newcommand{\cS}{\catstyle{S}}
+\newcommand{\Poset}{\catstyle{Poset}}
+\newcommand{\NN}{\mathbb{N}}
+\newcommand{\adj}{\dashv}
+
+\definecolor{amethyst}{rgb}{0.6, 0.4, 0.8}
+\newcommand{\rs}[1]{{\color{amethyst}\textbf{RS: }#1}}
