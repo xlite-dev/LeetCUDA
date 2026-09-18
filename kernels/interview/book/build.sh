@@ -18,6 +18,11 @@ if grep -qE '(There were undefined references|undefined citation|Reference .`.*.
 fi
 OVER=$(grep -oE 'Overfull \\hbox \([0-9]+\.[0-9]+pt' book.log | grep -oE '[0-9]+\.[0-9]+' | awk '$1>=1.0' | wc -l || true)
 echo "Overfull hbox >=1pt: ${OVER}"
+MISSING=$(grep -c 'Missing character' book.log || true)
+if [ "${MISSING}" -ne 0 ]; then
+  echo "Missing characters (tofu) found in book.log:"; grep 'Missing character' book.log | sort -u | head -10; exit 1
+fi
+echo "Missing characters: 0"
 
 PAGES=$(pdfinfo book.pdf 2>/dev/null | awk '/^Pages:/{print $2}')
 echo "OK: book.pdf (${PAGES:-?} pages)"

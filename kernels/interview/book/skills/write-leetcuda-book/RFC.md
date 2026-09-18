@@ -24,7 +24,7 @@
 | RFC-G | 性能数据汇总（附录 B 成表） | RFC-C..F 各章增量数据 | 完成（2026-09-16，随 K-验收 appB B.1-B.7 成表；G.2 口径见 §9）|
 | RFC-H | 图表升级（知乎图 drawio 重建为主 + ASCII→drawio 新建） | 章节完成 | 完成（2026-09-16，69 图全正式/64 gen.py 入库；H.0/H.5 TikZ 路径取消）|
 | RFC-I | 附录 A-E | RFC-C..F（D 需收口） | 完成（2026-09-16，随 K-验收收口）|
-| RFC-J | 全书集成审校与验收 | 全部 | 进行中（J.9/J.10 完成 2026-09-16；J.1-J.8 随 2026-09-18 十六-agent 数理复审收口）|
+| RFC-J | 全书集成审校与验收 | 全部 | **完成（2026-09-18）**：J.1-J.10 全勾；十六-agent 数理复审修复 + CuTe 白皮书导读并入 commit df21bee/d08f6ea；终态 459 页、0 error、0 undefined、0 Overfull≥1pt、0 缺字（build.sh 验收） |
 | RFC-K | Part V FP8/FP4 Attention 篇 ch27-33（ffpa-attn CuTe sm_120） | RFC-E/F（前置章节） | 完成（K0-K7 + K-验收 2026-09-16：全书 425 页零 error 零 undefined、Overfull 清零）|
 
 依赖图（执行实况）：`RFC-0 → RFC-A → RFC-C → RFC-D → RFC-E → RFC-F → (RFC-G ∥ RFC-H ∥ RFC-I) → RFC-J`；RFC-B 于 2026-09-18 取消（素材职能被附录 E + drawio 全量重建接管）；`RFC-K 依赖 RFC-E/F 素材，与 RFC-G/H/I 并行，完成后并入 RFC-J 收口`
@@ -145,14 +145,14 @@
 
 ## 12. RFC-J 全书集成审校与验收
 
-- [ ] J.1 交叉引用/`\ref` 全部解析；TOC/页码/PDF 书签核对
-- [ ] J.2 verify_anchors.py 全量跑（26 章+附录 A）
-- [ ] J.3 pdftotext 全书抽查：无豆腐块、无横向溢出、每章正文 ≥3500 字统计
-- [ ] J.4 引文 `#if/#endif` 成对 grep 断言
-- [ ] J.5 引用图出处标注 100% 检查
-- [ ] J.6 术语一致性 pass（记号表为准；全书 grep 常见别名）
-- [ ] J.7 页数验收（≥280）+ 无 `! LaTeX Error` + Overfull 可控
-- [ ] J.8 **验收**：对照 BOOK_PLAN §11 全书级标准逐条勾选
+- [x] J.1 交叉引用/`\ref` 全部解析（build.sh undefined 断言 0，2026-09-18）；TOC 含 34 章+导读+5 附录，pdftotext 目录区核对（导读/致谢条目在），页码两趟解析
+- [x] J.2 verify_anchors.py 全量跑 ALL GREEN（27 章，2026-09-18，锚点 v4.0.0：common 803 行 / hgemm 2100 行）
+- [x] J.3 pdftotext 抽查：无豆腐块（Missing character=0，已固化为 build.sh 验收断言）；正文+导读 CJK 共 18.2 万字。正文章 <3500 者 6 章（ch02 3272 / ch03 3460 / ch30 3291 / ch31 3370 / ch32 2615 / ch33 2891），均为公式/代码/表格密集章，按内容实态记录不注水；导读章（ch19b+wp0-7）合计 ≈2.07 万字
+- [x] J.4 引文 `#if/#endif` 成对 grep 断言：7 个冻结源计数全对（common 11/11、hgemm 4/4、flash_attn 6/6、ffpa_attn 3/3，base/sgemv/sgemm 无条件编译）
+- [x] J.5 引用图出处标注检查：64/64 drawio 图目录均含 audit.md；无出处标记的 6 章（ch00/20/21/22/30/31）经核全部为自绘图或纯文字章，无引用图 → 引用图出处标注实际 100%
+- [x] J.6 术语一致性 pass（并列/余集/反演 grep=0；codomain 陪域 16 处统一、GETT 收缩、flat 扁平——2026-09-18 code review 修复）
+- [x] J.7 页数验收 459 页（≥280）+ `! LaTeX Error` 0 + Overfull ≥1pt 0（build.sh 断言）
+- [x] J.8 **验收**：对照 BOOK_PLAN §11 全书级标准逐条勾选（2026-09-18）。「每章标注编译宏与架构」：LeetCUDA 教学源章 ch00-25 已标注；**ffpa-attn 相关章 ch26-33 按用户决策豁免——书中假定 ffpa-attn 已安装，不写编译宏/编译安装类内容，读者自行参考 ffpa-attn repo 文档**（ch26 L736 的 build_tests.sh 为本书测试自身构建，非 ffpa-attn，保留）
 - [x] J.9 行越界专项：全书 Overfull \hbox 114 处（75 处 ≥10pt，最大 112pt）→ ≥1pt 清零（2026-09-16）。手段：preamble `\emergencystretch=2em`（114→52）；`\texttt` 断点注入脚本（camelCase/`\_`/`/`/`.`/`::`/`(`/`<`，门槛=真实断点切分后 run≥12，52→11，另修复 3 处裸 `\allowbreak ` 空格伪影导致的 `ENABLE_ TMA` 渲染变形）；`xurl`（\url 长链接断行）；剩余 11 处 editorial 精修（拆 run-in 粗体、`file~Lxxx` 改空格、表格 \footnotesize、align 续行列对齐修正）。终态仅余 1 处 0.88pt（<1pt 不可见，保留）。工具与清单：`book/.tmp/layout-fix/{map_overfull.py, inject2.py, overfull-map.md}`。页数 324→354
 - [x] J.10 全书内容审校（2026-09-16，commit 4caaed6+4517bb0）：(1) 日志排版——ch13/14/17/19/25 的 quote+texttt 伪代码块统一转 `lstlisting[style=console]`，恢复真实日志文本；(2) 本地路径清理——删除 16 处 `.tmp/book-bench|agent-chNN` 等读者不可见路径（保留 ch00 教学示例与模板注释）；(3) 4 份 GLM-5.3 审校报告（`book/.tmp/review/agent1-4.md`，77 条）应用 76 条：数学/事实错误均独立复算或源码/PTX 文档核实（重点：ch12 寄存器占用 R≈220→110、ch17 三处 linerange 错位互换、ch25/26 C fragment 行列 PTX ISA Figure 83 双重验证、ch15 FA3 作者名）；语言类清理生造词；跳过 12-7（低置信度冲突绝对计数）。顺手修复存量 undefined 引用 4 处（ch02 补 3 个 subsection label、ch17 ch:2→ch:02）。重建验证：0 编译错误、Overfull ≥1pt 为 0、undefined 引用为 0。遗留：fig-3-1/fig-12-2 图内数字与修正后正文不一致需重绘；ch16_fa2_mma.cu:5 头注释 grid 描述未改（测试文件）
 
