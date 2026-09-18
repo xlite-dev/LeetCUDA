@@ -1,1 +1,726 @@
-% TODO 待翻译：对应原文 FinalVersion.tex L1297-2015
+% cf-ch2a.tex — 译自 FinalVersion.tex L1297-2015
+\chapter{布局及其代数}\label{layoutschapter}
+
+本章的目标是为布局（layout）建立一个全面且数学上严谨的理论。我们首先在 \ref{flatlayoutssection} 节中建立扁平布局的理论，随后在 \ref{nestedtuplessection} 节中介绍嵌套元组（nested tuple）的必要背景知识，以便在 \ref{layoutssection} 节中以最一般的形式讨论布局。
+
+
+\section{扁平布局}\label{flatlayoutssection}
+
+本节考察{\bf 扁平布局}（flat layout）——布局的一类重要子类，其中形状（shape）与步长（stride）都是元组（tuple），而不是更一般的嵌套元组。为使讨论形式化，我们先固定与元组相关的记号。
+
+\subsection{元组}\label{tuplessection}
+
+\begin{definition}
+    若 $V$ 是一个集合，则取值于 $V$ 的{\it 元组}是一个有限有序列表
+    \[
+    X = (x_1,\dots,x_m)
+    \]
+    其中的元素 $x_i \in V$ 对每个 $1 \le i \le m$ 取定。这样的元组 $X=(x_1,\dots,x_m)$ 的{\it 长度}（length）为
+    \[\len(X) = m.\]
+    我们把所有取值于 $V$ 的元组构成的整体记作 $\mathterm{Tuple}(V)$。我们尤其关心 $V = \mathbb{Z}$ 的情形，此时称 $X \in \mathterm{Tuple}(\mathbb{Z})$ 为{\it 整数元组}。若 $X$ 是整数元组，则 $X$ 的{\it 大小}（size）是乘积
+    \[
+        \size(X) = x_1 \cdots x_m.
+        \]
+\end{definition}
+
+\begin{example}
+下面给出若干元组的例子，并附上它们的长度与大小：
+\[
+\begin{aligned}
+X &= (3, 128, 128), & \quad \len(X) &= 3, \quad \size(X) = 49152 \\
+X &= (512),         & \quad \len(X) &= 1, \quad \size(X) = 512 \\
+X &= (),            & \quad \len(X) &= 0, \quad \size(X) = 1
+\end{aligned}
+\]
+\end{example}
+
+\begin{definition}\label{definitionofconcatenationoftuples}
+若 $ X = (x_1,\dots,x_m)$ 与 $Y = (y_1,\dots,y_n)$ 是元组，则记
+\[
+X \star Y = (x_1,\dots,x_m,y_1,\dots,y_n)
+\]
+为 $X$ 与 $Y$ 的{\it 拼接}（concatenation）。
+\end{definition}
+
+
+\begin{example}
+    若 $X = (64,32)$ 且 $Y = (8,8,8)$，则
+    \[
+    X \star Y = (64,32,8,8,8).
+    \]
+\end{example}
+
+\begin{remark}
+    若 $V$ 是集合，则所有取值于 $V$ 的元组构成的整体
+    \[\mathterm{Tuple}(V) = \coprod_{m \geq 0} V^{\times m}\]
+    是 $V$ 上的自由结合幺半群（monoid）。其幺半群乘积就是拼接，单位元是空元组 $()$。
+\end{remark}
+
+\begin{definition}\label{definitionofdivisibilityoftuples}
+若 $X$ 与 $X'$ 是元组，则称 $X'$ {\it 整除}（divides）$X$，如果存在元组 $X''$ 使得
+\[
+X' \star X'' = X.
+\]
+\end{definition}
+
+\begin{example}
+    若 $X' = (81,9)$ 且 $X = (81,9,64,8)$，则 $X'$ 整除 $X$，因为元组 $X'' = (64,8)$ 满足
+    \[
+    X' \star X'' = X.
+    \]
+\end{example}
+\begin{definition} 若 $X=(x_1,\dots,x_m)$ 是元组，$\sigma \in \Sigma_m$ 是一个置换（permutation），则记
+\[
+X^\sigma = (x_{\sigma(1)},\dots,x_{\sigma(m)})
+\]
+为 $X$ 被 $\sigma$ 置换的结果。这给出了 $\Sigma_m$ 在 $\mathbb{Z}^{\times m}$ 上的一个右作用。
+\end{definition}
+
+\begin{example}
+    若 $X = (8,16,32,64)$ 且 $\sigma = (1 \; 2)(3 \; 4)$，则
+    \[
+    X^\sigma = (16,8,64,32).
+    \]
+\end{example}
+
+\begin{notation}
+若 $n$ 是正整数，则记
+\[
+[0,n) = \{ 0,1,\dots,n-1\},
+\]
+又若 $S = (s_1,\dots,s_m)$ 是正整数元组，则记
+\begin{align*}
+[0,S) &  = [0,s_1) \times \cdots \times [0,s_m)
+\end{align*}
+为所有满足 $0 \leq x_i < s_i$ 的元组 $(x_1,\dots,x_m)$ 构成的集合。
+\end{notation}
+
+\begin{example}
+    若 $S = (3,2)$，则
+    \[
+    [0,S) = \{(0,0),(1,0),(2,0),(0,1),(1,1),(2,1) \}
+    \]
+\end{example}
+% \begin{example}
+%     If $S = (2,2,2)$, then
+%     \begin{align*}
+%     [0,S) & = \{(0,0,0),(0,1,0),(0,0,1),(1,0,0),(1,1,0),(1,0,1),(0,1,1),(1,1,1)\}.
+%     \end{align*}
+% \end{example}
+
+\subsection{基本定义}
+
+记号既已固定，我们便可以定义扁平布局了。
+
+\begin{definition}\label{definitionofflatlayout}
+    {\it 扁平布局}是一个二元组
+    \begin{align*}
+        L & = S:D \\
+        & = (s_1,\dots,s_m):(d_1,\dots,d_m)
+    \end{align*}
+    它由一个正整数元组
+    \begin{align*}
+        \shape(L) & = S\\
+        & =(s_1,\dots,s_m)
+    \end{align*}
+    （称为 $L$ 的{\it 形状}）与一个非负整数元组
+    \begin{align*}
+        \stride(L) & = D\\
+        & = (d_1,\dots,d_m)
+    \end{align*}
+    （称为 $L$ 的{\it 步长}）组成。
+\end{definition}
+
+\begin{remark}
+    若 $L$ 是扁平布局，则由定义，$\shape(L)$ 与 $\stride(L)$ 具有相同的长度。
+\end{remark}
+
+\begin{remark}
+    扁平布局是定义 \ref{definitionofnestedlayout} 中更一般的{\it 布局}的一个例子，因此我们有时也把扁平布局 $L$ 简称为{\it 布局}。
+\end{remark}
+
+\begin{example}
+    下面是扁平布局的一些例子：
+    \begin{align*}
+    L_1 & = (2,2,2):(1,2,4),\\
+    L_2 & = (128):(5),\\
+    L_3 & = (16,12,512,512):(0,0,1,512),\\
+    L_4 & = (6,1,12,2,2):(2,0,12,144,1),\\
+    L_5 & = () : ().
+    \end{align*}
+\end{example}
+
+\begin{example} 我们可以把布局 $L = (8):(5)$ 画成
+
+\bigskip
+
+\begin{centering}
+
+\begin{tikzpicture}[x={(0cm,-1cm)},y={(1cm,0cm)},every node/.style={minimum size=1cm, outer sep=0pt}]
+
+\node[fill=gray!20] at (0,0) {0};
+\node[fill=gray!20] at (0,1) {5};
+\node[fill=gray!20] at (0,2) {10};
+\node[fill=gray!20] at (0,3) {15};
+\node[fill=gray!20] at (0,4) {20};
+\node[fill=gray!20] at (0,5) {25};
+\node[fill=gray!20] at (0,6) {30};
+\node[fill=gray!20] at (0,7) {35};
+\draw[color=black,thick,shift={(-0.5,-0.5)}] (0,0) grid (1,8);
+
+\node[anchor = east] at (0,-1) {$L = $};
+\end{tikzpicture}
+
+\end{centering}
+
+\bigskip
+
+\noindent 而布局 $L = (3,5):(2,10)$ 可以画成
+
+\bigskip
+
+\begin{centering}
+
+\begin{tikzpicture}[x={(0cm,-1cm)},y={(1cm,0cm)},every node/.style={minimum size=1cm, outer sep=0pt}]
+
+\node[fill=gray!20] at (0,0) {0};
+\node[fill=gray!20] at (0,1) {10};
+\node[fill=gray!20] at (0,2) {20};
+\node[fill=gray!20] at (0,3) {30};
+\node[fill=gray!20] at (0,4) {40};
+\node[fill=gray!20] at (1,0) {2};
+\node[fill=gray!20] at (1,1) {12};
+\node[fill=gray!20] at (1,2) {22};
+\node[fill=gray!20] at (1,3) {32};
+\node[fill=gray!20] at (1,4) {42};
+\node[fill=gray!20] at (2,0) {4};
+\node[fill=gray!20] at (2,1) {14};
+\node[fill=gray!20] at (2,2) {24};
+\node[fill=gray!20] at (2,3) {34};
+\node[fill=gray!20] at (2,4) {44};
+\draw[color=black,thick,shift={(-0.5,-0.5)}] (0,0) grid (3,5);
+
+\node[anchor = east] at (1,-1) {$L = $};
+\end{tikzpicture}
+
+\end{centering}
+
+\bigskip
+
+\noindent 我们将在注 \ref{picturesoflayouts} 中精确说明这些图在何种意义上表示相应的布局。
+
+\end{example}
+
+\noindent 也许扁平布局最重要的例子是列主序（column-major）与行主序（row-major）布局，我们在下面给出定义。
+
+\begin{definition}\label{definitionofcolumnmajor} 设
+\[
+L = (s_1,\dots,s_m):(d_1,\dots,d_m)
+\]
+是扁平布局。若对每个 $1 \leq i \leq m$ 都有
+    \[
+    d_i = s_1 \cdots s_{i-1}
+    \]
+则称 $L$ 是{\it 列主序}的。若对每个 $1 \leq i \leq m$ 都有
+\[
+d_i = s_{i+1} \cdots s_m.
+\]
+则称 $L$ 是{\it 行主序}的。
+\end{definition}
+
+\begin{example} 布局
+
+\bigskip
+
+\begin{centering}
+
+\begin{tikzpicture}[x={(0cm,-1cm)},y={(1cm,0cm)},every node/.style={minimum size=1cm, outer sep=0pt}]
+
+\node[fill=gray!20] at (0,0) {0};
+\node[fill=gray!20] at (0,1) {3};
+\node[fill=gray!20] at (0,2) {6};
+\node[fill=gray!20] at (0,3) {9};
+\node[fill=gray!20] at (1,0) {1};
+\node[fill=gray!20] at (1,1) {4};
+\node[fill=gray!20] at (1,2) {7};
+\node[fill=gray!20] at (1,3) {10};
+\node[fill=gray!20] at (2,0) {2};
+\node[fill=gray!20] at (2,1) {5};
+\node[fill=gray!20] at (2,2) {8};
+\node[fill=gray!20] at (2,3) {11};
+\draw[color=black,thick,shift={(-0.5,-0.5)}] (0,0) grid (3,4);
+
+\node[anchor=east] at (1,-1) {$L = (3,4):(1,3) = $};
+
+\end{tikzpicture}
+
+\end{centering}
+
+\bigskip
+
+\noindent 是列主序的，而布局
+
+\bigskip
+
+\begin{centering}
+
+\begin{tikzpicture}[x={(0cm,-1cm)},y={(1cm,0cm)},every node/.style={minimum size=1cm, outer sep=0pt}]
+
+\node[fill=gray!20] at (0,0) {0};
+\node[fill=gray!20] at (0,1) {1};
+\node[fill=gray!20] at (0,2) {2};
+\node[fill=gray!20] at (0,3) {3};
+\node[fill=gray!20] at (1,0) {4};
+\node[fill=gray!20] at (1,1) {5};
+\node[fill=gray!20] at (1,2) {6};
+\node[fill=gray!20] at (1,3) {7};
+\node[fill=gray!20] at (2,0) {8};
+\node[fill=gray!20] at (2,1) {9};
+\node[fill=gray!20] at (2,2) {10};
+\node[fill=gray!20] at (2,3) {11};
+\draw[color=black,thick,shift={(-0.5,-0.5)}] (0,0) grid (3,4);
+
+\node[anchor=east] at (1,-1) {$L = (3,4):(4,1) = $};
+
+\end{tikzpicture}
+
+\end{centering}
+
+\bigskip
+
+\noindent 是行主序的。这些图清楚地展示了该术语的由来：若 $L$ 是秩（rank）为 $2$ 的列主序布局，则 $L$ 的各列是连续的；若 $L$ 是秩为 $2$ 的行主序布局，则 $L$ 的各行是连续的。
+
+\end{example}
+
+\begin{example}
+布局
+    \begin{align*}
+    L_1 & = (2,2,2,2,2):(1,2,4,8,16)\\
+    L_2 & = (3,128,128):(1,3,384)\\
+    L_3 & = (64):(1)
+    \end{align*}
+    是列主序的，而布局
+    \begin{align*}
+    L_4 & = (2,2,2,2,2):(16,8,4,2,1)\\
+    L_5 & = (3,128,128):(16384,128,1)\\
+    L_6 & = (64):(1)
+    \end{align*}
+    是行主序的。
+\end{example}
+
+看过若干例子之后，我们来定义扁平布局的一些重要属性。
+
+\begin{definition}\label{definitionofcosize} 设 $L = (s_1,\dots,s_m):(d_1,\dots,d_m)$ 是扁平布局。
+\begin{itemize}
+\item $L$ 的{\it 秩}为
+\[\rank(L) = m.\]
+\item $L$ 的{\it 大小}为
+    \[
+    \size(L) = \prod_{i=1}^m s_i.
+    \]
+\item $L$ 的{\it 余大小}（cosize）为
+    \[
+    \cosize(L) = 1 + \sum_{i=1}^m (s_i-1) \cdot d_i.
+    \]
+    \item 对任意 $1 \leq i \leq \rank(L)$，$L$ 的第 $i$ 个{\it 模式}（mode）是数对
+    \[
+    \mode_i(L) = s_i:d_i.
+    \]
+\end{itemize}
+\end{definition}
+
+
+\begin{example}
+    布局
+    \[L = (64,32):(1,128)\]
+    具有秩 $\rank(L) = 2$、大小 $\size(L) = 2048$ 与余大小 $\cosize(L) = 4032$。$L$ 的各模式为
+    \begin{align*} \mode_1(L) & = 64:1\\
+    \mode_2(L) & =  32:128.
+    \end{align*}
+\end{example}
+
+
+\begin{example}
+布局
+\[
+L = (3,8,8,8) : (1,3,24,192).
+\]
+具有 $\rank(L) = 4$、$\size(L) = 1536$ 与 $\cosize(L) = 1536$。布局 $L$ 有四个模式，例如 $\mode_3(L) = 8:24$。
+\end{example}
+
+\begin{example}
+布局
+\[
+L = (2,2,2,2,2) : (160,80,40,20,10).
+\]
+具有 $\rank(L) = 5$、$\size(L) = 32$ 与 $\cosize(L) = 311$。布局 $L$ 有 $5$ 个模式，例如 $\mode_5(L) = 2:10$。
+\end{example}
+
+若 $L$ 是扁平布局，则 $L$ 编码了一个{\it 坐标函数}（coordinate function）$\varphi_L$。$L$ 的坐标函数是一个从多维到一维的变换，由与 $\stride(L)$ 做点积给出。回顾：若 $S = (s_1,\dots,s_m)$ 是正整数元组，则
+\[
+[0,S) = [0,s_1) \times \cdots \times [0,s_m)
+\]
+是所有满足 $0 \leq x_i < s_i$ 的元组 $(x_1,\dots,x_m)$ 构成的集合。特别地，若 $S = ()$ 是空元组，则 $[0,S) = \{()\}$。
+
+\begin{construction}[坐标函数]\label{constructionofcoordinatefunctions}
+若
+\[
+L = (s_1,\dots,s_m):(d_1,\dots,d_m)
+\]
+是扁平布局，则 $L$ 的{\it 坐标函数}是函数
+\[\begin{tikzcd}
+{[}0,\shape(L){)} \ar[r,"\varphi_L"] &  \mathbb{Z}
+\end{tikzcd} \]
+它由
+\begin{align*}
+\varphi_L(x_1,\dots,x_m) & = (x_1,\dots,x_m) \cdot (d_1,\dots,d_m)\\
+& = x_1 d_1 + \cdots + x_m d_m.
+\end{align*}
+给出。坐标函数 $\varphi_L$ 可经由包含映射 $[0,\cosize(L)) \subset \mathbb{Z}$ 分解，我们把分解得到的映射记作
+    \[\begin{tikzcd} {[}0,\shape(L){)} \ar[rr,"\varphi_L^{\cosize(L)}"] & & {[}0,\cosize(L){)}\subset \mathbb{Z}
+    \end{tikzcd} \]
+    更一般地，对任意 $N \geq \cosize(L)$，我们把 $\varphi_L$ 经由 $[0,N) \subset \mathbb{Z}$ 的分解记作 $\varphi_L^N$，并且在术语上稍作滥用，把这样的映射 $\varphi_L^N$ 也称为 $L$ 的{\it 坐标函数}。
+\end{construction}
+
+\begin{example}\label{layoutfunctionexample1}
+    若 $L = (2,3):(1,5)$，则坐标函数
+    \[
+    \varphi_L:[0,2) \times [0,3) \to \mathbb{Z}
+    \]
+    由
+    \begin{align*}
+    \varphi_L(0,0) & = (0,0) \cdot (1,5) = 0,\\
+    \varphi_L(1,0) & = (1,0) \cdot (1,5) = 1,\\
+    \varphi_L(0,1) & = (0,1) \cdot (1,5) = 5,\\
+    \varphi_L(1,1) & = (1,1) \cdot (1,5) = 6,\\
+    \varphi_L(0,2) & = (0,2) \cdot (1,5) = 10,\\
+    \varphi_L(1,2) & = (1,2) \cdot (1,5) = 11.
+    \end{align*}
+    给出。
+\end{example}
+
+\begin{example}\label{layoutfunctionexample1}
+    若 $L = (2,2):(64,2)$，则坐标函数
+    \[
+    \varphi_L:[0,2) \times [0,2) \to \mathbb{Z}
+    \]
+    由
+    \begin{align*}
+    \varphi_L(0,0) & = (0,0) \cdot (64,2) = 0,\\
+    \varphi_L(1,0) & = (1,0) \cdot (64,2) = 64,\\
+    \varphi_L(0,1) & = (0,1) \cdot (64,2) = 2,\\
+    \varphi_L(1,1) & = (1,1) \cdot (64,2) = 66.\\
+    \end{align*}
+    给出。
+\end{example}
+
+\begin{example}
+    若 $E = ():()$ 是空布局，则 $E$ 的坐标函数是映射
+    \[
+    \varphi_E: \{()\} \to \mathbb{Z}
+    \]
+    它由
+    \[
+    \varphi(()) = 0.
+    \]
+    给出。
+\end{example}
+
+\begin{remark}\label{picturesoflayouts} 现在，举例来说，我们可以精确描述下图
+\bigskip
+
+\begin{centering}
+
+\begin{tikzpicture}[x={(0cm,-1cm)},y={(1cm,0cm)},every node/.style={minimum size=1cm, outer sep=0pt}]
+
+\node[fill=gray!20] at (0,0) {0};
+\node[fill=gray!20] at (0,1) {10};
+\node[fill=gray!20] at (0,2) {20};
+\node[fill=gray!20] at (0,3) {30};
+\node[fill=gray!20] at (0,4) {40};
+\node[fill=gray!20] at (1,0) {2};
+\node[fill=gray!20] at (1,1) {12};
+\node[fill=gray!20] at (1,2) {22};
+\node[fill=gray!20] at (1,3) {32};
+\node[fill=gray!20] at (1,4) {42};
+\node[fill=gray!20] at (2,0) {4};
+\node[fill=gray!20] at (2,1) {14};
+\node[fill=gray!20] at (2,2) {24};
+\node[fill=gray!20] at (2,3) {34};
+\node[fill=gray!20] at (2,4) {44};
+\draw[color=black,thick,shift={(-0.5,-0.5)}] (0,0) grid (3,5);
+
+% \node[anchor = east] at (1,-1) {$L = $};
+\end{tikzpicture}
+
+\end{centering}
+
+\bigskip
+
+\noindent 表示布局 $L = (3,5):(2,10)$ 的确切含义：网格中第 $(i,j)$ 个格子以 $L$ 的坐标函数的值
+\[\varphi_L(i,j) = (i,j) \cdot (2,10) = 2i + 10j\]
+标注。
+\end{remark}
+
+在实践中，扁平布局 $L$ 最重要的不变量是它的{\it 布局函数}（layout function）$\Phi_L$，它由坐标函数
+\[
+\varphi_L:[0,S) \to \mathbb{Z}
+\]
+与{\it 余字典序同构}（colexicographic isomorphism）
+\[
+\colex_S:[0,S) \to [0,\size(S)).
+\]
+的逆复合而得。
+
+\begin{definition}\label{definitionofcolex}
+    设 $S = (s_1,\dots,s_m)$ 是正整数元组，并回顾
+    \[
+    [0,S) = [0,s_1) \times \cdots \times [0,s_m).
+    \]
+    {\it 余字典序同构}是映射
+    \[ \begin{tikzcd}
+    {[}0,S{)} \ar[rr,"\colex_{S}"] & & \text{[}0,\size(S)\text{)}\\
+    (x_1,\dots,x_m) \ar[rr,mapsto] & & \sum_{i=1}^m s_1 \cdots s_{i-1} x_i.
+    \end{tikzcd} \]
+    当元组 $S$ 从上下文中明确时，我们有时简写 $\colex = \colex_{S}$。余字典序同构的逆是映射
+    \[ \begin{tikzcd}
+    \text{[}0,\size(S)\text{)} \ar[rr,"\colex_{S}^{-1}"] & & {[}0,S{)}
+    \end{tikzcd} \]
+    它由
+    \[
+    \colex_S^{-1}(x) = (x_1,\dots,x_m)
+    \]
+    给出，其中
+    \[
+    x_i = \left\lfloor \dfrac{x}{s_1 \cdots s_{i-1}} \right\rfloor \mod s_i.
+    \]
+    注意，若 $S = ()$ 是空元组，则
+    \[
+    \colex_{()}:\{()\} \to \{0\}
+    \]
+    与
+    \[
+    \colex_{()}^{-1}:\{0\} \to \{()\}
+    \]
+    都是典范的同构。
+\end{definition}
+
+
+
+\begin{construction}[布局函数]\label{constructionoflayoutfunctions}
+    若
+    \[L = (s_1,\dots,s_m):(d_1,\dots,d_m),\]
+    是扁平布局，则 $L$ 的{\it 布局函数}是复合
+    \[ \begin{tikzcd}
+    {[}0,\size(L){)} \ar[rr,"\Phi_L"] \ar[dr,swap,"\colex^{-1}_{\shape(L)}"] & & \mathbb{Z}. \\
+     & {[}0,\shape(L){)} \ar[ur,swap,"\varphi_L"] &
+    \end{tikzcd} \]
+    显式地，$\Phi_L$ 由
+    \[
+    \Phi_L(x) = x_1 d_1 + \cdots + x_m d_m
+    \]
+    给出，其中
+    \[
+    x_i = \left \lfloor \dfrac{x}{s_1 \cdots s_{i-1}} \right \rfloor \mod s_i.
+    \]
+    布局函数 $\Phi_L$ 可经由包含映射 $[0,\cosize(L)) \subset \mathbb{Z}$ 分解，我们把分解得到的映射记作
+    \[\begin{tikzcd} {[}0,\size(L){)} \ar[rr,"\Phi_L^{\cosize(L)}"] & & {[}0,\cosize(L){)}\subset \mathbb{Z}
+    \end{tikzcd} \]
+    更一般地，对任意 $N \geq \cosize(L)$，我们把 $\Phi_L$ 经由 $[0,N) \subset \mathbb{Z}$ 的分解记作 $\Phi_L^N$，并且在术语上稍作滥用，把这样的映射 $\varphi_L^N$ 也称为 $L$ 的{\it 布局函数}。
+\end{construction}
+
+\begin{example}\label{layoutfunctionexample1}
+    若 $L = (2,3):(1,5)$，则布局函数
+    \[
+    \Phi_L:[0,6) \to \mathbb{Z}
+    \]
+    由
+    \begin{align*}
+    \Phi_L(0) & = (0,0) \cdot (1,5) = 0,\\
+    \Phi_L(1) & = (1,0) \cdot (1,5) = 1,\\
+    \Phi_L(2) & = (0,1) \cdot (1,5) = 5,\\
+    \Phi_L(3) & = (1,1) \cdot (1,5) = 6,\\
+    \Phi_L(4) & = (0,2) \cdot (1,5) = 10,\\
+    \Phi_L(5) & = (1,2) \cdot (1,5) = 11.
+    \end{align*}
+    给出。
+\end{example}
+
+\begin{example}\label{layoutfunctionexample1}
+    若 $L = (2,2):(64,2)$，则布局函数
+    \[
+    \Phi_L:[0,4) \to \mathbb{Z}
+    \]
+    由
+    \begin{align*}
+    \Phi_L(0) & = (0,0) \cdot (64,2) = 0,\\
+    \Phi_L(1) & = (1,0) \cdot (64,2) = 64,\\
+    \Phi_L(2) & = (0,1) \cdot (64,2) = 2,\\
+    \Phi_L(3) & = (1,1) \cdot (64,2) = 66.\\
+    \end{align*}
+    给出。
+\end{example}
+
+\begin{example}\label{layoutfunctionexample2}
+    若 $L = (4,2,2):(3,3,100)$，则例如，$L$ 的布局函数满足
+    \begin{align*}
+    \Phi_L(7) & = (3,1,0) \cdot (3,3,100) = 12\text{,}\\
+    \Phi_L(9) & = (1,0,1) \cdot (3,3,100) = 103.
+    \end{align*}
+\end{example}
+\begin{example}
+    若 $E = ():()$ 是空布局，则
+    \[
+    \Phi_E:\{0\} \to \mathbb{Z}
+    \]
+    由
+    \[
+    \Phi_E(0) = 0.
+    \]
+    给出。
+\end{example}
+
+\begin{example}
+    若 $L$ 是任意扁平布局，则 $L$ 的布局函数 $\Phi_L$ 满足
+    \[
+    \Phi_L(0) = 0.
+    \]
+\end{example}
+
+\begin{remark}
+    若 $S = (s_1,\dots,s_m)$ 是正整数元组，则余字典序同构
+    \[\begin{tikzcd}
+    {[}0,S{)} \ar[rr,"\colex_S"] & & {[}0,\size(S){)}
+    \end{tikzcd} \]
+    等于列主序布局
+    \[
+    L = (s_1,s_2,\dots,s_m):(1,s_1,\dots,s_1 \cdots s_{m-1}).
+    \]
+    的坐标函数 $\varphi_{L}^{\cosize(L)}$。这意味着，若扁平布局 $L$ 是列主序的，则
+    \begin{align*}
+        \Phi_L^{\cosize(L)} & = \varphi_L^{\cosize(L)} \circ \colex_{\shape(L)}^{-1} \\
+        & =  \varphi_L^{\cosize(L)} \circ \left(\varphi_L^{\cosize(L)}\right)^{-1}\\
+        & = \id_{{[}0,\size(L){)}}
+    \end{align*}
+    是 $[0,\size(L))$ 上的恒等映射。
+\end{remark}
+
+% \begin{remark}
+%     The notion of coordinate functions and layout functions motivates the definition of cosize: If $L$ is a flat layout, then the cosize of $L$ is the smallest integer $N$ such that $\Phi_L$ factors through $[0,N)$:
+%     \begin{align*}
+%     \cosize(L) & = 1 + \max(\varphi_L)\\
+%     & = 1 + \max (\Phi_L).
+%     \end{align*}
+% \end{remark}
+
+
+
+\begin{remark}
+    存在互不相同的布局 $A \neq B$ 使得 $\Phi_A = \Phi_{B}$。例如，布局
+    \begin{align*}
+        A & = (7,7) : (1,7)\\
+        B & = (49) : (1)
+    \end{align*}
+    并不相等，却有 $\Phi_A = \Phi_{B}$。稍后我们将精确刻画两个扁平布局 $A$ 与 $B$ 何时具有相同的布局函数（见命题 \ref{coalesceproposition}）。
+\end{remark}
+
+在进入布局运算的讨论之前，我们需要定义非退化（non-degenerate）的概念。
+
+\begin{definition}\label{definitionofnondegenerateflatlayout}
+    设
+    \[
+    L = (s_1,\dots,s_m):(d_1,\dots,d_m)
+    \]
+    是扁平布局。若对任意 $1 \leq i \leq m$ 都有
+    \[
+    s_i = 1 \quad \Rightarrow \quad d_i = 0.
+    \]
+    则称 $L$ 是{\it 非退化}的。
+\end{definition}
+
+\begin{example}
+    布局
+    \begin{align*}
+        L_1 & = (4,1):(1,0)\\
+        L_2 & = (8,1,8,1):(2,0,16,0)
+    \end{align*}
+    是非退化的，而布局
+    \begin{align*}
+        L_3 & = (4,1):(1,4)\\
+        L_4 & = (8,1,8,1):(2,16,16,256)
+    \end{align*}
+    是退化的。
+\end{example}
+
+\begin{observation}
+假设布局 $L$ 非退化在实质上不损失一般性。更精确地说，若
+\begin{align*}
+    L & = (s_1,\dots,s_m):(d_1,\dots,d_m)\\
+    L' & = (s_1,\dots,s_m):(d_1',\dots,d_m')
+\end{align*}
+是形状相同的两个扁平布局，且只要 $s_i >1$ 就有 $d_i = d_i'$，那么 $\varphi_L = \varphi_{L'}$，且 $\Phi_{L} = \Phi_{L'}$。特别地，只要 $s_i = 1$，我们就可以自由地取 $d_i = 0$，而不会改变 $L$ 的坐标函数或布局函数。
+\end{observation}
+
+% \subsection{Swizzles}
+
+% Before moving on to layout operations, we will focus on a particularly important class of (flat) layouts called {\it swizzles}. These layouts are typically defined in terms of boolean, bit-wise operations. We opt instead to present swizzles using the framework we developed in the previous section.
+
+% \begin{definition}
+%     Suppose $b,m,s$ are integers with $b,m \geq 0$ and $s \neq 0$, and set $r = b + m + |s|$. Consider the $r \times r$ matrix $H_{b,m,s}$ with entries in $\mathbb{F}_2$ whose $i,j$th entry is
+%     \[
+%     (H_{b,m,s})_{i,j} = \begin{cases}
+%         1 & i \in \{j,j-s\}\\
+%         0 & \text{else}.
+%     \end{cases}
+%     \]
+%     For example, if $(b,m,s) = (4,3,2)$
+%     \[
+%     H_{b,m,s} = \begin{bmatrix}
+%          1&0&0&0&0&0&0&0&0\\
+%         0&1&0&0&0&0&0&0&0\\
+%         0&0&1&0&0&0&0&0&0\\
+%         0 &0&0&1&0&1&0&0&0\\
+%         0 &0&0&0&1&0&1&0&0\\
+%         0 &0&0&0&0&1&0&1&0\\
+%         0 &0&0&0&0&0&1&0&1\\
+%         0 &0&0&0&0&0&0&1&0\\
+%         0 &0&0&0&0&0&0&0&1\\
+%     \end{bmatrix}
+%     \]
+%     We define $Sw_{b,m,s}$ to be the flat layout whose coordinate function is the composite
+%     \[
+%     \begin{tikzcd}
+%     {[}0,2{)}^{\times r} = \mathbb{F}_2^{\times r} \ar[rr,"H_{b,m,s}"] & & \mathbb{F}_2^{\times r} = {[}0,2{)}^{\times r} \ar[r,"\colex"] & {[}0,2^r{)}
+%     \end{tikzcd}
+%     \]
+%     Explicitly, $\text{Sw}_{b,m,s}$ is the layout whose shape is
+%     \begin{align*}
+%     \shape(\text{Sw}_{b,m,s}) & = (s_1,\dots,s_r)\\
+%     & = (2,2,\dots,2)
+%     \end{align*}
+%     and whose stride
+%     \[\stride(\text{Sw}_{b,m,s}) = (d_1,\dots,d_r)\]
+%     where
+%     \[
+%     d_i =
+%     \begin{cases}
+%     2^{i-1} & i\leq m \text { or } i > r-s \\
+%     2^{i-1} + 2^{i+s-1} & m < i \leq r-s
+%     \end{cases}
+%     \]
+% \end{definition}
+
+% \begin{observation}
+%     The matrix $H_{b,m,s}$ is invertible. In fact,
+%     \[
+%     H_{b,m,s} H_{b,m,s} = \text{I}_{r \times r}
+%     \]
+%     so $H_{b,m,s} = H_{b,m,s}^{-1}$. This implies that the layout function
+%     \[
+%     \Phi_{\text{Sw}_{b,m,s}} : [0,2^r) \to [0,2^r)
+%     \]
+%     is an isomorphism. In other words, a swizzle specifies a permutation of the interval $[0,2^r)$.
+% \end{observation}
+
+% \begin{remark}
+%     A swizzle is an example of a {\it linear layout}. We will discuss these in full generality in section \ref{linearlayoutssection}.
