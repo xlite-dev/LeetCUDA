@@ -321,3 +321,28 @@
 | DefTruth | vLLM Triton Merge Attention States Kernel 详解 | 1904937907703243110 | 5 |
 | DefTruth | LeetCUDA v3.0 大升级（项目自述） | 19862356369 | 1,附录C |
 | DefTruth | WINT8/4-(00)~(03) 快速反量化系列 | 657072856 / 657070837 / 657073159 / 657073857 | **全书行文风格基线**（BOOK_PLAN §4.3，与图解 FA 系列同为风格样本） |
+
+## 15. 未来任务（论文翻译/导读，2026-09-18 登记）
+
+- [ ] **RFC-L（未来）Colfax《Categorical Foundations for CuTe Layouts》翻译入附录**。
+  作者 Jack Carlisle、Jay Shah、Reuben Stern、Paul VanKoughnett（Colfax Research，
+  arXiv:2601.05972，2026-01），共 **174 页**——范畴论视角的 CuTe Layout 严格化
+  （functor/monad 语义下的 shape/stride 与 layout algebra）。本地素材：
+  `/workspace/dev/vipshop/tmp/papers/colfax-cute-layout-202601.pdf` 与
+  `…/colfax-cute-layout-202601/`（`FinalVersion.tex` + `references.bib`）。
+  定位：**未来翻译为中文作为附录（拟 appF 或独立「进阶导读」）**，非 Part IV 必读；
+  依赖：第四部分 CuTe 篇（ch20-26）已稳定。注意它正是 CuTe 白皮书 Related Work
+  引用的 Carlisle et al. CategoryCuTe，翻译时与 ch20 术语表对齐（Product=乘积、
+  Composition=复合、Coalesce=合并、Complement=补、Divide=切分、Inverse=逆）。
+- [x] **CuTe 官方白皮书中文导读**（✅ 完成，2026-09-18）：Cris Cecka（NVIDIA
+  Research）《CuTe Layout Representation and Algebra》（arXiv:2603.02298v2，
+  35 页，34 张原生 TikZ 图、111 个公式），译为中文作为 **Part IV 开篇导读
+  （不编号章 `ch19b-cute-whitepaper-zh.tex` + `chapters/wp/wp0-7.tex` 分片）**，
+  已显著标注译源与原作者；图/表/公式编号冠 `W.` 前缀（图 W.1–W.12、表 W.1–W.7），
+  致谢（Acknowledgments）译附文末。机械核对全部对齐源论文：label 集合一致、
+  figure 12/12、tikzpicture 34/34、table 7/7、tabular 13/13、python 8/8、
+  cpp 10/10（源 9 cpp + 1 lstlisting 等价转换）、definition 20/20、align 26/26、
+  align* 85/85、ref 85/85；全书构建 459 页 0 错误 0 未定义引用 0 Overfull(≥1pt)
+  0 缺字，7 个关键图页 view 验收通过。本地素材：
+  `/workspace/dev/vipshop/tmp/papers/CUTE-LAYOUT-NV-2026.pdf` 与
+  `…/CUTE-LAYOUT-NV-2026/`（`CuTeWhitepaper.tex`，TikZ 直接移植）。

@@ -11,6 +11,11 @@
 \usepackage{booktabs}
 \usepackage{longtable}
 \usepackage{enumitem}
+\usepackage{tikz}
+\usetikzlibrary{matrix,positioning,patterns,arrows.meta,shapes,calc,fit}
+\usepackage{subcaption}
+\usepackage{array}
+\usepackage{adjustbox}
 
 % 长行内代码（\texttt 标识符/路径）混排中文时的断行弹性，压制 Overfull \hbox
 \emergencystretch=2em
@@ -199,3 +204,15 @@
   },
   keywordstyle=[3]\bfseries\color{vscAccent},
 }
+
+% CuTe 白皮书导读（ch19b）专用代码环境
+\lstnewenvironment{python}{%
+  \lstset{style=console,language=Python,tabsize=4,
+    keywordstyle=\bfseries\color{vscKeyword},
+    commentstyle=\color{vscComment},
+    stringstyle=\color{vscAccent}}}{}
+\lstnewenvironment{cpp}{%
+  \lstset{style=console,language=C++,tabsize=2,
+    keywordstyle=\bfseries\color{vscKeyword},
+    commentstyle=\color{vscComment},
+    stringstyle=\color{vscAccent}}}{}

@@ -1,0 +1,134 @@
+%% wp4 应用：COPY 与 GEMM（论文 Applications 小节）
+\wpsh{应用（Applications）}
+\label{sec:algorithms}
+
+\CuTe 为一组布局提供了紧凑的表示，这组布局严格大于用传统扁平形状（flat shape）与扁平步幅（flat stride）所能表示的布局集合。相比之下，CUTLASS v2（Kerr 等，2017）与 Thunderkittens（Spector 等，2024）等库对每种布局进行单独的手工实现。这种方式劳动密集、易出错，且需要大量开发时间。为直观说明其复杂度：CUTLASS v2 代码库中包含近 300 种分别实现的布局，分布在 87 个文件中，总计约 55,000 行代码。此外，CUTLASS v2 中的许多算法被设计为仅能配合这些布局中一个有限的子集工作，加剧了维护与可扩展性方面的挑战。作为对比，\CuTe 的核心布局表示连同操作布局的相关代数仅需 3,000 行代码，便足以表示 CUTLASS v2 中的全部 300 种布局乃至更多。用 \CuTe 实现的算法可以对其输入的秩（rank）或形状施加约束，但与任何满足这些前置条件的布局保持相容。将算法逻辑与具体的数据布局或线程布局解耦，使代码更灵活、更可组合。
+
+上述优势已获认可，\CuTe 如今构成了 CUTLASS v3、CUTLASS v4 与 CuTe DSL 的基础，它们全都构建在 \CuTe 的核心布局表示与代数之上。现代张量指令所需的复杂数据布局与分块（partitioning）模式，都通过 \CuTe 单一、一致且可组合的表示来表达与操作；这一表示在 NVIDIA 指令集体系结构的多个世代中始终保持稳健。
+
+本节中，我们详细说明如何仅凭布局与张量表示，为两种最基础的算法——{\tt COPY}（拷贝）与 {\tt GEMM}（矩阵乘）——提供强大的通用实现。这些算法以 \CuTe 张量实现，用以说明逻辑实现能够适用于广泛的应用场景。这些算法尽管自身往往已是最优，仍可作为各类优化版本的出色通用参考实现。第~\ref{sec:layoutalgebra} 节的布局代数提供了检查与操作布局的方法，用以完成这些优化。
+
+\wpssh{拷贝（COPY）}
+\label{sec:copy}
+
+用 \CuTe 张量编写的一个通用 {\tt COPY} 算法如下：
+
+\noindent
+\begin{minipage}[t]{0.55\textwidth}
+\begin{cpp}
+// 前置条件 size(src) == size(dst)
+template <class TS, class SLayout,
+          class TD, class DLayout>
+void
+copy(Tensor<TS,SLayout> const& src,  // N
+     Tensor<TD,DLayout>      & dst)  // N
+{
+  for (int i = 0; i < size(dst); ++i) {
+    dst(i) = src(i);
+  }
+}
+\end{cpp}
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.40\textwidth}
+\begin{python}
+# 前置条件 size(src) == size(dst)
+def copy(src : Tensor,   # N
+         dst : Tensor):  # N
+  for i in range(size(dst)):
+    dst[i] = src[i]
+\end{python}
+\end{minipage}
+
+\noindent 其中，前置条件规定两个张量的大小（size）相等；这一条件等价地写在张量参数的注释中——两个张量均与形状 $N$ 相容。
+
+只要改变源张量与目标张量的布局，这一简单的 \texttt{COPY} 实现便能覆盖广泛的应用。表~\ref{tab:copy} 给出了常见应用的例子及其相应的源布局与目标布局。
+
+\begin{table}[ht]
+\centering
+\begin{tabular}{|c|c|c|}
+\textbf{应用} & \textbf{源布局} & \textbf{目标布局} \\ \hline\hline
+一维数组 & $8:1$ & $8:1$ \\ \hline
+N 维数组 & $(8,2,3):(1,16,32)$ & $(8,2,3):(1,16,32)$ \\ \hline
+聚集（Gather） & $(2,3,2):(42,1,128)$ & $12:1$\\ \hline
+散射（Scatter） & $12:1$ & $(2,3,2):(42,1,128)$\\ \hline
+广播（Broadcast） & $7:0$ & $7:1$\\ \hline
+常量（Constant） & $7:0$ & $7:0$\\ \hline
+转置（Transpose） & $(8,3):(1,8)$ & $(8,3):(3,1)$\\ \hline
+张量转置（Tensor Transpose） & $(8,(3,5)):(1,(57,8))$ & $(8,15):(1,8)$\\ \hline
+\end{tabular}
+\caption{{\tt COPY} 的应用及示例源布局与目标布局。}
+\label{tab:copy}
+\end{table}
+
+任意秩的张量都可以拷贝到任意不同秩的张量。从这个意义上说，无论各实参的秩为何，{\tt COPY} 都是一个秩为 1 的算法。这是秩无关（rank-agnostic）编程的一种形式。
+
+当源张量与目标张量的 \texttt{idx2crd} 函数求值的计算开销很低时（例如张量形状为静态已知时），上述实现实际上从不会生成动态的坐标变换。在这类情形下，循环可以被展开，\texttt{idx2crd} 可以静态地作用于循环索引 \texttt{i}，而 \texttt{inner\_product} 计算在求取偏移时的开销微乎其微。这是静态分析与优化的一种形式，因为布局的形状和/或步幅往往在编译期便已可知、可被编译器利用。倘若 \texttt{idx2crd} 确实带来运行时开销，所给的这一实现仍可作为稳健的参考，用于验证那些可能进一步检查布局的定义域（domain）、并利用第~\ref{sec:layoutalgebra} 节详述的操作来变换布局的优化版本。
+
+\wpssh{GEMM（矩阵乘）}
+\label{sec:gemm}
+
+用 \CuTe 张量编写的一个通用 {\tt GEMM} 算法如下：
+
+\noindent
+\begin{minipage}[t]{0.54\textwidth}
+\begin{cpp}
+// 前置条件 M: size<0>(A) == size<0>(C)
+// 前置条件 N: size<0>(B) == size<1>(C)
+// 前置条件 K: size<1>(A) == size<1>(B)
+template <class TA, class ALayout,
+          class TB, class BLayout,
+          class TC, class CLayout>
+void
+gemm(Tensor<TA,ALayout> const& A,  // (M,K)
+     Tensor<TB,BLayout> const& B,  // (N,K)
+     Tensor<TC,CLayout>      & C)  // (M,N)
+{
+  for (int k = 0; k < size<1>(B); ++k) {
+    for (int n = 0; n < size<0>(B); ++n) {
+      for (int m = 0; m < size<0>(A); ++m) {
+        C(m,n) += A(m,k) * B(n,k);
+  } } }
+}
+\end{cpp}
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.43\textwidth}
+\begin{python}
+# 前置条件 M: size[0](A) == size[0](C)
+# 前置条件 N: size[0](B) == size[1](C)
+# 前置条件 K: size[1](A) == size[1](B)
+def gemm(A : Tensor,   # (M,K)
+         B : Tensor,   # (N,K)
+         C : Tensor):  # (M,N)
+  for k in range(size[1](B)):
+    for n in range(size[0](B)):
+      for m in range(size[0](A)):
+        C[m,n] += A[m,k] * B[n,k]
+\end{python}
+\end{minipage}
+其中，前置条件规定了 {\tt GEMM} 算法的逻辑约束；我们在每个张量参数的注释中写明了各张量必须相容的形状。
+
+只要改变各张量的布局，这一简单的 \texttt{GEMM} 实现（以及一个 \texttt{batched-GEMM} 扩展）便能覆盖多种应用。表~\ref{tab:gemm} 展示了一些常见应用与示例布局，其中包括 BLAS GEMM 的全部 N-T 变体，以及 BLIS GEMM 的通用步幅变体（\texttt{dm*}、\texttt{dn*}、\texttt{dk*}）。它还可以充当完全通用的张量-张量收缩（{\tt GETT}）：其中各张量按逻辑上的行模式（mode）、列模式、归约模式与批量模式分组，被折叠成适当的矩阵形状（Shi 等，2016）。构造一个实现 {\tt im2col} 变换的布局（作为 \CuTe 布局的函数复合）（Chetlur 等，2014），还能让 \texttt{GEMM} 实现 {\tt CONV}——许多现代机器学习应用的核心。
+
+\begin{table}[ht]
+\centering
+{\small
+\begin{tabular}{|c|c|c|c|}
+\textbf{应用} & $\v{A}$ \textbf{布局} & $\v{B}$ \textbf{布局} & $\v{C}$ \textbf{布局} \\ \hline\hline
+NT GEMM & $(M,K):(1,{\tt lda})$ & $(N,K):(1,{\tt ldb})$ & $(M,N):(1,{\tt ldc})$ \\ \hline
+TN GEMM & $(M,K):({\tt lda},1)$ & $(N,K):({\tt ldb},1)$ & $(M,N):(1,{\tt ldc})$ \\ \hline
+NTT GEMM & $(N,K):(1,{\tt ldb})$ & $(M,K):(1,{\tt lda})$ & $(N,M):(1,{\tt ldc})$ \\ \hline
+BLIS GEMM & $(M,K):({\tt dma},{\tt dka})$ & $(N,K):({\tt dnb},{\tt dkb})$ & $(M,N):({\tt dmc},{\tt dnc})$ \\ \hline
+% DOT  & $(1,K):(0,1)$ & $(1,K):(0,1)$ & $(1,1):(0,0)$ \\ \hline
+% GER  & $(M,1):(1,0)$ & $(N,1):(1,0)$ & $(M,N):(1,M)$ \\ \hline
+GETT & $((M_1,M_2),K):((1,W),X)$ & $(N,K):(K,1)$ & $((M_1,M_2),N):((1,Y),Z)$ \\ \hline
+GETT & $(M,(K_1,K_2)):(1,(W,X))$ & $(N,(K_1,K_2)):(Y,(1,Z))$ & $(M,N):(1,M)$ \\ \hline
+CONV & $(K,(C,T,R,S)):D_A$ & $((N,Z,P,Q),(C,T,R,S)):D_B$ & $(K,(N,Z,P,Q)):D_C$ \\ \hline
+\end{tabular}
+\caption{{\tt GEMM} 的应用及示例布局。}
+\label{tab:gemm}
+}
+\end{table}
+
+通过对融合乘加（fused-multiply-add）操作加以抽象、并提供足够强大的铺瓦（tiling）工具，这一算法可被适配并在体系结构层次结构的每一层递归地应用。
