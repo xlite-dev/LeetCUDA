@@ -1,6 +1,6 @@
 <div align="center">
   <div align='center'>
-      <img src='./docs/book.png' width='800px'><br>
+      <img src='https://github.com/xlite-dev/LeetCUDA/raw/main/docs/book.png' width='800px'><br>
       <img src=https://cdn.rawgit.com/sindresorhus/awesome/d7305f38d29fed78fa85652e3a63e154dd8e8829/media/badge.svg >
        <a href='./kernels/interview/book/book.pdf'><img src=https://img.shields.io/badge/PDF-available-hotpink.svg ></a>
       <img src=https://img.shields.io/badge/Language-CUDA-brightgreen.svg >
@@ -11,7 +11,7 @@
   </div>
 </div>
 
-**LeetCUDA**: includes **Tensor/CUDA Cores, TF32/F16/BF16/FP8**, [200+ CUDA Kernels](#cuda-kernel) with PyTorch, [HGEMM](./kernels/hgemm) which can achieve `98%~100%` TFLOPS of **cuBLAS**, and [flash-attn](./kernels/flash-attn) using Tensor Cores with pure MMA PTX. <i>Open sources book of <b>LeetCUDA</b> now is avaliable at <a href='./kernels/interview/book/book.pdf'>book.pdf (w/ 400+ pages)🔥🔥🔥</a>. </i> 
+**LeetCUDA**: includes **Tensor/CUDA Cores, TF32/F16/BF16/FP8**, [200+ CUDA Kernels](#cuda-kernel) with PyTorch, [HGEMM](./kernels/hgemm) which can achieve `98%~100%` TFLOPS of **cuBLAS**, and [flash-attn](./kernels/flash-attn) using Tensor Cores with pure MMA PTX. <i>Open sources book of <b>LeetCUDA</b> now is avaliable at <a href='https://github.com/xlite-dev/LeetCUDA/releases/download/v4.0.1/leetcuda-20260918.pdf'>LeetCUDA.pdf (w/ 400+ pages)🔥🔥🔥</a>. </i> 
 
 <div align='center'>
   <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-h20z_B1_H32_N8192_D512_T.png' width='200px'>
@@ -76,7 +76,7 @@ apt install -y cudnn9-cuda-13 ccache # Also install ccache for faster rebuilds
 LeetCUDA provides a [leetcuda-cpp-kernel](./kernels/interview/book/skills/leetcuda-cpp-kernel/) SKILL that reuse the knowledge and examples from the LeetCUDA open sources **book** and **repository**. Users can use it with Coding Agents, e.g, [GitHub Copilot](https://docs.github.com/en/copilot), [Claude Code](https://claude.ai), [Open Code](https://opencode.ai/). 
 
 <div align='center'>
- <img src='docs/leetcuda-cpp-kernel-skill.png'><br>
+ <img src='https://github.com/xlite-dev/LeetCUDA/raw/main/docs/leetcuda-cpp-kernel-skill.png'><br>
 </div>
 
 ## ©️Citations
