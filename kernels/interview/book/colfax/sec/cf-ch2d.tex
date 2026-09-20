@@ -162,7 +162,7 @@
     \depth(P) = 
     \begin{cases}
         0 & P = *\\
-        1 + \displaystyle\max_{1 \leq i \leq r} (\depth(P_i)) & P = (P_1,\dots,P_r) \text{ 是一个由轮廓组成的元组。}
+        1 + \displaystyle\max_{1 \leq i \leq r} (\depth(P_i)) & P = (P_1,\dots,P_r) \text{ 为轮廓元组。}
     \end{cases}
     \]
     \end{itemize}
@@ -341,10 +341,10 @@ X & = ((),(32,()),(4,8)) \quad & X^\flat & = (32,4,8) \quad & \profile(X) & = ((
 以下是一些整数嵌套元组的例子，连同它们的秩、长度、深度与大小：
 \[
 \begin{aligned}
-X &= 27 & \quad \rank(X) &= 1, \quad \len(X)  = 1, & \depth(X) &= 0, \quad \size(X) = 27 \\
-X &= (2,10,5) & \quad \rank(X) &= 3, \quad \len(X)  = 3, &\depth(X) &= 1, \quad \size(X) = 100 \\
-X &= (((3,4),2,2),8,9), & \quad \rank(X) &= 3, \quad \len(X)  = 6, & \depth(X) &= 3, \quad \size(X) = 3096 \\
-X &= (((),()),(2,(5,5))), & \quad \rank(X) &= 2, \quad \len(X)  = 3, & \depth(X) &= 3, \quad \size(X) = 50 \\
+X &= 27 & \rank(X) &= 1, \len(X)  = 1, & \depth(X) &= 0, \mspace{-9mu} \size(X) = 27 \\
+X &= (2,10,5) & \rank(X) &= 3, \len(X)  = 3, &\depth(X) &= 1, \mspace{-9mu} \size(X) = 100 \\
+X &= (((3,4),2,2),8,9), & \rank(X) &= 3, \len(X)  = 6, & \depth(X) &= 3, \mspace{-9mu} \size(X) = 3096 \\
+X &= (((),()),(2,(5,5))), & \rank(X) &= 2, \len(X)  = 3, & \depth(X) &= 3, \mspace{-9mu} \size(X) = 50 \\
 \end{aligned}
 \]
 \end{example}

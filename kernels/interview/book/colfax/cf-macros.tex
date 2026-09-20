@@ -53,7 +53,8 @@
 % Horizontal separator you can place inside the algorithm
 \newcommand{\algsep}{\Statex \rule{\linewidth}{0.6pt}}
 \renewcommand{\baselinestretch}{1.10}
-\usepackage[a4paper,margin=1.2in]{geometry}
+\usepackage[letterpaper,margin=1.2in]{geometry}  % 与原文版心一致（report 默认 letterpaper）
+\setlength{\emergencystretch}{3em}  % CJK 行文断行点少，吸收长引用/行内数学小溢出
 \usepackage[colorlinks=true, linkcolor=blue, urlcolor=blue, citecolor=blue]{hyperref}
 \usepackage{cleveref}
 \usepackage{listings}
