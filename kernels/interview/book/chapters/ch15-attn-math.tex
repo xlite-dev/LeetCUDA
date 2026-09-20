@@ -132,6 +132,68 @@ softmax 处于梯度健康的敏感区。两点考据说明：（1）Transformer
 $1/\sqrt{d}$ 仍是事实标准，方差更不均匀的情形由量化方案处理
 （15.3.7~节 FA3 的 smoothing/block 量化思想）。
 
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  tick/.style={font=\tiny, inner sep=1pt},
+]
+  \fill[gray!10] (-0.6,0) rectangle (0.6,2.5);
+  \draw[gray!30, dashed] (0,0.48) -- (4.5,0.48);
+  \draw[gray!30, dashed] (0,0.96) -- (4.5,0.96);
+  \draw[gray!30, dashed] (0,1.44) -- (4.5,1.44);
+  \draw[gray!30, dashed] (0,1.92) -- (4.5,1.92);
+  \draw[gray!30, dashed] (0,2.40) -- (4.5,2.40);
+  \draw[thick, domain=-15:15, samples=161, smooth]
+    plot ({0.3*\x},{exp(-abs(\x))/(1+exp(-abs(\x)))^2*9.6});
+  \draw[-{Stealth}] (-5.0,0) -- (5.15,0);
+  \draw[-{Stealth}] (0,0) -- (0,2.75);
+  \foreach \dv in {-15,-10,-5,5,10,15}{
+    \draw ({0.3*\dv},0.03) -- ({0.3*\dv},-0.03);
+    \node[tick, anchor=north] at ({0.3*\dv},-0.05) {$\dv$};
+  }
+  \node[tick, anchor=north east] at (-0.05,-0.05) {$0$};
+  \foreach \yv/\yl in {0.48/0.05,0.96/0.10,1.44/0.15,1.92/0.20,2.40/0.25}{
+    \draw (-0.04,\yv) -- (0.04,\yv);
+    \node[tick, anchor=east] at (-0.1,\yv) {$\yl$};
+  }
+  \node[font=\scriptsize, rotate=90] at (-0.95,1.25) {$\sigma(\Delta)(1{-}\sigma(\Delta))$};
+  \node[font=\scriptsize, anchor=north west] at (-4.9,-0.5) {$\Delta$（logit 差）};
+  \fill (0,2.4) circle (1.4pt);
+  \node[font=\scriptsize, anchor=south east] at (0.15,2.48) {峰值 $1/4$（$\Delta{=}0$）};
+  \node[font=\scriptsize, align=center, anchor=south] at (-3.4,2.42)
+    {÷$\sqrt{d}$ 定标后：Var $=1$，\\$\Delta = O(1)$ 梯度健康区（灰带）};
+  \draw[red, dashed, thick] (3.39,0) -- (3.39,1.9);
+  \fill[red] (3.39,0.04) circle (1.4pt);
+  \node[font=\scriptsize, red, align=left, anchor=north west] at (3.52,-0.5)
+    {$\Delta = 11.3$（$d{=}128$ 未定标，$\mathrm{std}(s)=\sqrt{d}$）：\\
+     $\sigma(1{-}\sigma) \approx 1.2\times10^{-5}$，\\
+     softmax 近 one-hot $\to$ 反向传播近乎断流};
+  \draw[thick] (5.7,0.55) rectangle (8.9,2.99);
+  \foreach \gk/\gy in {1/2.79, 2/2.39, 3/1.99, 4/1.59, 5/1.19, 6/0.79}{
+    \draw[gray!30, dashed] (5.7,\gy) -- (8.9,\gy);
+    \node[tick, anchor=west] at (8.95,\gy) {$10^{-\gk}$};
+  }
+  \foreach \dv in {0,5,10,15}{
+    \draw ({5.7+0.2*\dv},0.52) -- ({5.7+0.2*\dv},0.58);
+    \node[tick, anchor=north] at ({5.7+0.2*\dv},0.47) {$\dv$};
+  }
+  \draw[thick, domain=0:15, samples=101, smooth]
+    plot ({5.7+0.2*\x},{0.55+2.4*(1-((\x+2*ln(1+exp(-\x)))/2.302585-0.6)/6)});
+  \fill (5.7,2.95) circle (1.4pt);
+  \draw[red, dashed, thick] (7.96,0.55) -- (7.96,1.23);
+  \fill[red] (7.96,1.23) circle (1.4pt);
+  \node[font=\scriptsize, anchor=south] at (7.3,3.06) {对数纵轴（$\log_{10}$）放大};
+\end{tikzpicture}
+\caption{$1/\sqrt{d}$ 定标的饱和论证（15.3.2 节，式~\ref{eq:15-sat}）：sigmoid 梯度
+$\sigma(\Delta)(1-\sigma(\Delta))$ 的峰值 $1/4$ 在 $\Delta=0$；除以 $\sqrt{d}$ 后
+$\mathrm{Var}=1$、$\Delta=O(1)$（灰带），梯度处于健康敏感区。不定标时
+$\mathrm{std}(s)=\sqrt{d}$（式~\ref{eq:15-dot-var}），$d=128$ 即 $\Delta\approx11.3$，
+梯度跌到 $\approx1.2\times10^{-5}$——线性纵轴上贴地，右侧对数纵轴面板可见其仍在
+$10^{-5}$ 量级（红点，恰在 $10^{-5}$ 网格线上方），softmax 近 one-hot、反向传播
+近乎断流。曲线偶对称，$\Delta=-11.3$ 同理。}
+\label{fig:15-sqrt-d-scale}
+\end{figure}
+
 \subsection{朴素实现：FLOPs、显存与带宽三本账}
 
 \textbf{FLOPs 账}（约定：一次乘法 + 一次加法计 2 FLOP，故 $M{\times}K$ 乘 $K{\times}N$
@@ -175,6 +237,65 @@ $\approx 2.2\,\mathrm{ms}$，已是 $0.83\,\mathrm{ms}$ 计算下界的 $2.6$ �
 远低于现代 GPU 数百 TFLOPS 峰值除以 TB/s 级带宽得到的 roofline 拐点（$100{+}$
 FLOP/B 量级），kernel 被钉死在 memory-bound 区。修法只有一个方向：让 $N^{2}$
 中间量根本不经过 HBM。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  kbox/.style={draw, thick, minimum width=2.3cm, minimum height=1.1cm, font=\scriptsize, align=center},
+  arr/.style={-{Stealth[length=4pt]}, very thick},
+  tlab/.style={font=\scriptsize, align=center},
+  nlab/.style={font=\scriptsize, align=center},
+]
+  \node[nlab, font=\scriptsize\bfseries] at (6.1, 2.75)
+    {朴素三 kernel：中间量 HBM 往返 $\Sigma = 4\times 1\,\mathrm{GiB} \approx 4.3\,\mathrm{GB}$};
+  \node[nlab, anchor=east] at (-0.15, 1.6) {Q, K};
+  \draw[-{Stealth}] (-0.1, 1.6) -- (0.35, 1.6);
+  \node[kbox] at (1.6, 1.6) {GEMM ①\\$S = QK^{\top}$};
+  \node[kbox] at (6.1, 1.6) {softmax\\$S \to P$};
+  \node[kbox] at (10.6, 1.6) {GEMM ②\\$O = PV$（V 读入）};
+  \draw[-{Stealth}] (11.9, 1.6) -- (12.35, 1.6);
+  \node[nlab, anchor=west] at (12.4, 1.6) {O};
+  \fill[gray!75] (0.4, -1.35) rectangle (11.75, -0.75);
+  \node[white, font=\scriptsize\bfseries] at (6.1, -1.05) {HBM（$\sim$2 TB/s 量级）};
+  \draw[arr] (0.9, 1.05) -- node[tlab, right=1pt] {写 S\\1 GiB} (0.9, -0.75);
+  \draw[arr] (5.4, -0.75) -- node[tlab, right=1pt] {读 S\\1 GiB} (5.4, 1.05);
+  \draw[arr] (6.8, 1.05) -- node[tlab, right=1pt] {写 P\\1 GiB} (6.8, -0.75);
+  \draw[arr] (10.2, -0.75) -- node[tlab, right=1pt] {读 P\\1 GiB} (10.2, 1.05);
+  \node[font=\scriptsize, anchor=west] at (0.4, -2.05) {4.3 GB（全部往返）};
+  \fill[gray!70] (3.6, -2.25) rectangle (7.9, -1.95);
+  \node[font=\scriptsize, anchor=west] at (0.4, -2.75) {67 MB（有效数据）};
+  \fill[gray!40] (3.6, -2.95) rectangle (3.67, -2.65);
+  \node[font=\scriptsize, anchor=west] at (3.85, -2.8) {$\approx$ 1/64};
+  \node[nlab, align=left, anchor=west] at (8.25, -2.45)
+    {搬运 $\approx$ 2.2 ms（4.3 GB / 2 TB/s）\\$\gg$ 计算下界 0.83 ms $\Rightarrow$ \textbf{2.6$\times$}};
+  \node[nlab, font=\scriptsize\bfseries, anchor=south] at (4.3, -3.95)
+    {FlashAttention：Q 块常驻 SRAM/寄存器，K/V 流式扫过};
+  \node[draw, thick, dashed, minimum width=8.6cm, minimum height=2.0cm] at (4.3, -4.95) {};
+  \node[draw, fill=gray!15, minimum width=2.0cm, minimum height=0.9cm,
+        font=\scriptsize, align=center] at (1.5, -5.2) {Q 块 $B_r{\times}d$\\常驻 SRAM};
+  \node[draw, dashed, minimum width=2.6cm, minimum height=0.9cm,
+        font=\scriptsize, align=center] at (4.3, -5.2) {S/P 只在寄存器 fragment\\（不落 HBM）};
+  \node[draw, fill=gray!15, minimum width=2.0cm, minimum height=0.9cm,
+        font=\scriptsize, align=center] at (7.1, -5.2) {online 更新\\$(m, \ell, O)$};
+  \node[nlab, anchor=east] at (-0.35, -4.95) {Q, K, V\\（$4Nd \approx 67$ MB）};
+  \draw[-{Stealth}] (-0.3, -4.95) -- (0.0, -4.95);
+  \draw[-{Stealth}] (8.6, -4.95) -- (8.9, -4.95);
+  \node[nlab, anchor=west] at (8.95, -4.95) {O};
+  \node[draw, rounded corners=2pt, fill=gray!8, font=\scriptsize, align=left,
+        anchor=north west] at (9.5, -4.05)
+    {朴素：4.3 GB HBM 往返，\\搬运 2.2 ms vs 计算 0.83 ms\\（memory-bound，2.6$\times$）\\[2pt]
+     FA：$\Theta(Nd) \approx 67$ MB，\\S/P 全程不过 HBM\\$\to$ 带宽不再是瓶颈};
+\end{tikzpicture}
+\caption{朴素 attention 的 HBM 往返账 vs FlashAttention（15.3.3 节，
+$B{=}1$、$H{=}32$、$N{=}4096$、$d{=}64$）：上行三个 kernel 之间，$S$ 与 $P$
+（各 $\approx$1 GiB）必须经 HBM 往返——写 S、读 S、写 P、读 P 共
+$4\times1\,\mathrm{GiB}\approx4.3\,\mathrm{GB}$，而有效数据（Q,K,V 读入 $+$ O 写出）只有
+$\approx$67 MB，占全部流量的 1/64；按 2 TB/s 乐观带宽，仅搬运就要 $\approx$2.2 ms，
+已是 0.83 ms 计算下界的 2.6 倍——kernel 被钉死在 memory-bound 区。下行
+FlashAttention 把 $S$、$P$ 困在 SRAM/寄存器 fragment 里（虚线框），HBM 只见
+Q,K,V 进、O 出（$\Theta(Nd)$，式~\ref{eq:15-naive-io} 的另一端），中间量全程不过 HBM。}
+\label{fig:15-hbm-traffic}
+\end{figure}
 
 \subsection{分块计算与 online rescale：逐块推导}
 

@@ -187,6 +187,66 @@ setmaxnreg——\textbf{双向互等，纯挂死}：无 illegal instruction、�
 watchdog 超时前毫无征兆。而 alloc 从 224 降到 208（总 61440，余 4096）后一切
 正常。诊断口诀：kernel 无报错挂起、唯一变量是 setmaxnreg 数字时，先查池数学。
 
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  slb/.style={font=\scriptsize, align=center, anchor=east},
+  tnum/.style={font=\tiny, inner sep=1pt},
+]
+  \definecolor{poolred}{RGB}{163,21,21}
+  \node[fill=gray!35, minimum width=0.5cm, minimum height=0.25cm, inner sep=0pt] at (0.3, 0.85) {};
+  \node[font=\scriptsize, anchor=west] at (0.62, 0.85) {producer warp（\texttt{dealloc} 让出）};
+  \node[fill=gray!65, minimum width=0.5cm, minimum height=0.25cm, inner sep=0pt] at (4.3, 0.85) {};
+  \node[font=\scriptsize, anchor=west] at (4.62, 0.85) {consumer warp（\texttt{alloc} 补足）};
+  \node[pattern=north east lines, pattern color=gray!45, draw, minimum width=0.5cm, minimum height=0.25cm, inner sep=0pt] at (8.0, 0.85) {};
+  \node[font=\scriptsize, anchor=west] at (8.32, 0.85) {池剩余};
+  \draw[poolred, thick, dashed] (12.4, 0.55) -- (12.4, -4.95);
+  \node[poolred, font=\scriptsize, align=center, anchor=south] at (12.4, 0.6)
+    {安全 slack\\（池余 $\ge$ 2048）};
+  \node[slb] at (-0.25, 0) {本章源码\\dealloc\texttt{<40>} / alloc\texttt{<232>}};
+  \fill[gray!35] (0, -0.3) rectangle (1.0, 0.3);
+  \fill[gray!65] (1.0, -0.3) rectangle (6.8, 0.3);
+  \fill[pattern=north east lines, pattern color=gray!45] (6.8, -0.3) rectangle (12.8, 0.3);
+  \draw (6.8, -0.3) rectangle (12.8, 0.3);
+  \node[tnum] at (0.5, 0.08) {5120};
+  \node[tnum, white] at (3.9, 0) {29696};
+  \node[tnum] at (9.8, 0) {池余 30{,}720 $\to$ 安全};
+  \node[font=\scriptsize, anchor=east] at (12.8, 0.5) {$\Sigma=34{,}816$};
+  \node[slb] at (-0.25, -1.9) {死锁实录（ffpa-attn）\\dealloc\texttt{<64>} / 8 warp alloc\texttt{<224>}};
+  \fill[gray!35] (0, -2.2) rectangle (1.6, -1.6);
+  \fill[gray!65] (1.6, -2.2) rectangle (12.8, -1.6);
+  \draw[poolred, very thick] (0, -2.2) rectangle (12.8, -1.6);
+  \node[tnum] at (0.8, -1.52) {8192};
+  \node[tnum, white] at (6.4, -1.9) {57344};
+  \node[poolred, font=\scriptsize, anchor=east] at (12.8, -1.4) {$\Sigma=65{,}536$ 恰好占满};
+  \node[poolred, font=\scriptsize, align=center, anchor=north] at (6.4, -2.3)
+    {alloc\texttt{<224>} 的 \texttt{.inc} 永久阻塞 $\leftrightarrow$ producer 等 consumer 的 barrier arrive——双向互等，纯挂死（无报错）};
+  \node[slb] at (-0.25, -4.1) {修正\\alloc\texttt{<224>}$\to$\texttt{<208>}};
+  \fill[gray!35] (0, -4.4) rectangle (1.6, -3.8);
+  \fill[gray!65] (1.6, -4.4) rectangle (12.0, -3.8);
+  \fill[pattern=north east lines, pattern color=gray!45] (12.0, -4.4) rectangle (12.8, -3.8);
+  \draw (12.0, -4.4) rectangle (12.8, -3.8);
+  \node[tnum] at (0.8, -3.72) {8192};
+  \node[tnum, white] at (6.0, -4.1) {53248};
+  \node[font=\scriptsize, anchor=east] at (12.8, -3.6) {$\Sigma=61{,}440$，池余 4{,}096 $\to$ 正常};
+  \draw[->] (0, -4.95) -- (13.15, -4.95);
+  \foreach \v/\x in {0/0, 16384/3.2, 32768/6.4, 49152/9.6, 65536/12.8}{
+    \draw (\x, -4.95) -- (\x, -4.85);
+    \node[font=\scriptsize, anchor=south] at (\x, -4.8) {\v};
+  }
+\end{tikzpicture}
+\caption{setmaxnreg 的 CTA 寄存器池三配置对照（式~\ref{eq:14-pool}，每 SM 寄存器
+文件共 65{,}536 个 32-bit 寄存器）：条形按 $\sum_w 32\,r_w$ 堆叠 producer
+（dealloc 让出）与 consumer（alloc 补足）两段，红色虚线为工程安全界（池余
+$\ge$ 2048）。\textcircled{1} 本章源码 dealloc\texttt{<40>}/alloc\texttt{<232>}：
+$5120+29696=34816$，池余 30720，安全；\textcircled{2} ffpa-attn 调优实录的死锁配置
+dealloc\texttt{<64>} $+$ 8 warp $\times$ alloc\texttt{<224>}：$8192+57344=65536$ 恰好占满
+——有效池 $<65536$，\texttt{.inc} 永远凑不齐而阻塞在 setmaxnreg 上，与 producer 等
+barrier arrive 形成双向互等，纯挂死；\textcircled{3} alloc 降到 208：总 61440、池余
+4096，恢复正常。}
+\label{fig:14-regpool}
+\end{figure}
+
 \textbf{Blackwell 上的 TMA 地址空间陷阱与解法}：即便池数学正确，还有一道
 隐蔽的门槛——CUDA 13.2 的 ptxas 在 kernel 同时含有 setmaxnreg 与目的地址为
 \texttt{shared::cluster} 的 \texttt{cp.\allowbreak{}async.\allowbreak{}bulk.\allowbreak{}tensor} 时，会把后者当作隐式
@@ -267,6 +327,85 @@ base\_offset $= (\mathrm{addr} \gg 7) \,\&\, 7$ 让硬件补偿任意相位，�
 写入而软件按零相位读出，物理地址整体错位，输出全错（不越界、不报错，纯静默
 错误）。所以要么 1024B 对齐（本章做法），要么在软件公式里把基址相位加上
 （更繁琐且易错）。源码 L1898--1919 的注释对这段取舍有完整展开，值得逐行读。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  gbox/.style={draw, thick, minimum width=1.5cm, minimum height=1.0cm, font=\scriptsize, align=center},
+  rbox/.style={draw, thick, minimum width=2.4cm, minimum height=1.0cm, font=\scriptsize, align=center},
+  sw/.style={-{Stealth}, semithick},
+  hw/.style={-{Stealth}, very thick},
+  wlab/.style={font=\tiny, align=center},
+  sum/.style={font=\scriptsize, align=left, anchor=west},
+  rowlab/.style={font=\scriptsize\bfseries, align=center, anchor=east},
+]
+  \definecolor{poolred}{RGB}{163,21,21}
+  \draw[sw] (0.1, 1.25) -- (0.9, 1.25);
+  \node[font=\scriptsize, anchor=west] at (1.02, 1.25) {软件计算地址};
+  \draw[hw] (3.4, 1.25) -- (4.2, 1.25);
+  \node[font=\scriptsize, anchor=west] at (4.32, 1.25) {硬件引擎执行};
+  \begin{scope}[yshift=0cm]
+    \node[rowlab] at (-0.3, 0) {ch12\\cp.async +\\ldmatrix（sm\_80）};
+    \node[gbox] at (1.7, 0) {gmem};
+    \draw[sw] (2.55, 0) -- node[wlab, above=1pt] {cp.async + \texttt{swizzle<16>}\\手写 XOR} node[wlab, below=1pt] {（软件写）} (4.85, 0);
+    \draw[thick] (5.0, -0.75) rectangle (7.4, 0.75);
+    \foreach \r in {0,...,7}{
+      \foreach \cc in {0,...,3}{
+        \pgfmathtruncatemacro{\gf}{15+22*mod(\r+\cc,3)}
+        \node[fill=gray!\gf, minimum size=0.23cm, inner sep=0pt] at ({5.84+\cc*0.24}, {0.42-\r*0.24}) {};
+      }
+    }
+    \node[font=\scriptsize] at (6.2, -0.55) {smem};
+    \draw[sw] (7.55, 0) -- node[wlab, above=1pt] {ldmatrix\\同 \texttt{swizzle} 公式} node[wlab, below=1pt] {（软件读）} (9.85, 0);
+    \node[rbox] at (11.2, 0) {ldmatrix $\to$ reg\\$\to$ mma.sync};
+    \node[sum] at (12.45, 0) {软件写 $\leftrightarrow$ 软件读\\（对合：写读同函数）};
+  \end{scope}
+  \begin{scope}[yshift=-2.5cm]
+    \node[rowlab] at (-0.3, 0) {ch13\\TMA + WGMMA\\（sm\_90a）};
+    \node[gbox] at (1.7, 0) {gmem};
+    \draw[hw] (2.55, 0) -- node[wlab, above=1pt] {TMA \texttt{SWIZZLE\_128B}\\descriptor 声明} node[wlab, below=1pt] {（硬件写）} (4.85, 0);
+    \draw[thick] (5.0, -0.75) rectangle (7.4, 0.75);
+    \foreach \r in {0,...,7}{
+      \foreach \cc in {0,...,3}{
+        \pgfmathtruncatemacro{\gf}{15+22*mod(\r+\cc,3)}
+        \node[fill=gray!\gf, minimum size=0.23cm, inner sep=0pt] at ({5.84+\cc*0.24}, {0.42-\r*0.24}) {};
+      }
+    }
+    \node[font=\scriptsize] at (6.2, -0.55) {smem};
+    \draw[hw] (7.55, 0) -- node[wlab, above=1pt] {WGMMA smem descriptor\\base\_offset=(addr$\gg$7)\&7 补偿} node[wlab, below=1pt] {（硬件读）} (9.85, 0);
+    \node[rbox] at (11.2, 0) {WGMMA\\（A/B 直读 smem）};
+    \node[sum] at (12.45, 0) {硬件写 + 硬件读\\（零软件 swizzle 计算）};
+  \end{scope}
+  \begin{scope}[yshift=-5.0cm]
+    \node[rowlab] at (-0.3, 0) {ch14\\TMA + ldmatrix\\（sm\_120）};
+    \node[gbox] at (1.7, 0) {gmem};
+    \draw[hw] (2.55, 0) -- node[wlab, above=1pt] {TMA \texttt{SWIZZLE\_128B}\\descriptor 声明} node[wlab, below=1pt] {（硬件写）} (4.85, 0);
+    \draw[thick] (5.0, -0.75) rectangle (7.4, 0.75);
+    \foreach \r in {0,...,7}{
+      \foreach \cc in {0,...,3}{
+        \pgfmathtruncatemacro{\gf}{15+22*mod(\r+\cc,3)}
+        \node[fill=gray!\gf, minimum size=0.23cm, inner sep=0pt] at ({5.84+\cc*0.24}, {0.42-\r*0.24}) {};
+      }
+    }
+    \node[font=\scriptsize] at (6.2, -0.55) {smem};
+    \draw[sw] (7.55, 0) -- node[wlab, above=1pt] {ldmatrix + \texttt{swizzle<64>}\\软件公式，相位固定 0} node[wlab, below=1pt] {（软件读）} (9.85, 0);
+    \node[rbox] at (11.2, 0) {ldmatrix $\to$ reg\\$\to$ mma.sync};
+    \node[sum] at (12.45, 0) {硬件写 + 软件读\\（零相位公式，\\需 1024B 对齐）};
+    \node[draw=poolred, thick, rounded corners=2pt, font=\scriptsize, align=center]
+      at (6.2, -1.45)
+      {必须 \texttt{\_\_align\_\_(1024)}：基址只有 128B 对齐时，\\TMA 按非零相位写入而软件按零相位读出 $\to$ 地址整体错位（静默错误）};
+  \end{scope}
+\end{tikzpicture}
+\caption{swizzle 的三代演化——写入端与读取端的「软件/硬件」分工（14.4.2 节）：
+ch12 用 cp.async 手写 XOR 写入、ldmatrix 用同一个 swizzle 公式读出——软件写
+$\leftrightarrow$ 软件读，靠对合性（引理~\ref{lem:12-invol}）保证互逆；ch13 把两端都
+交给硬件——TMA 按 descriptor 声明的 SWIZZLE\_128B 直接写好重排布局，WGMMA 在
+smem descriptor 里编码 layout\_type 与 base\_offset 由硬件补偿任意相位，零软件
+swizzle 计算；ch14 折中——TMA 硬件写 $+$ 软件公式 \texttt{swizzle<64>} 零相位读，
+此时 smem 基址必须 \texttt{\_\_align\_\_(1024)}（红框）：否则 TMA 以非零相位写入而
+软件按零相位读出，物理地址整体错位，输出全错且不报错。}
+\label{fig:14-swizzle-evolution}
+\end{figure}
 
 \subsection{barrier 初始化}
 

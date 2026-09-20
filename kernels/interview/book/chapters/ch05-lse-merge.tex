@@ -178,6 +178,45 @@ causal mask 等机制会产生「空段」：某分块内全部打分被 mask �
         $t \cdot H \cdot D + h \cdot D$ 与 $h \cdot T + t$，一个是「行优先的块」
         一个是「转置的下标」，写测试时极易弄反（见 5.7~节坑二）。
 \end{itemize}
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[x={(0cm,-1cm)},y={(1cm,0cm)},%
+  every node/.style={minimum size=1cm, outer sep=0pt}]
+% 左面板：O[T,H,D] 的 (t,h) 平面，格内为线性偏移（T=2,H=2,D=8）
+\node[fill=gray!20,align=center] at (0,0) {0\\[-2pt]{\tiny (t0,h0)}};
+\node[fill=gray!40,align=center] at (0,1) {8\\[-2pt]{\tiny (t0,h1)}};
+\node[fill=gray!60,align=center] at (1,0) {16\\[-2pt]{\tiny (t1,h0)}};
+\node[fill=gray!80,align=center] at (1,1) {24\\[-2pt]{\tiny (t1,h1)}};
+\draw[color=black,thick,shift={(-0.5,-0.5)}] (0,0) grid (2,2);
+\node[minimum size=0mm, anchor=east] at (0,-0.7) {t0};
+\node[minimum size=0mm, anchor=east] at (1,-0.7) {t1};
+\node[minimum size=0mm] at (-0.7,0) {h0};
+\node[minimum size=0mm] at (-0.7,1) {h1};
+\node[minimum size=0mm, anchor=north, align=center] at (2.7,0.5)
+  {$O$：行 $t$、列 $h$\\\texttt{off} $= t\,H\,D + h\,D$};
+% 右面板：LSE[H,T]，格内为线性偏移
+\begin{scope}[shift={(0,5.2)}]
+\node[fill=gray!20,align=center] at (0,0) {0\\[-2pt]{\tiny (h0,t0)}};
+\node[fill=gray!60,align=center] at (0,1) {2\\[-2pt]{\tiny (h0,t1)}};
+\node[fill=gray!40,align=center] at (1,0) {1\\[-2pt]{\tiny (h1,t0)}};
+\node[fill=gray!80,align=center] at (1,1) {3\\[-2pt]{\tiny (h1,t1)}};
+\draw[color=black,thick,shift={(-0.5,-0.5)}] (0,0) grid (2,2);
+\node[minimum size=0mm, anchor=east] at (0,-0.7) {h0};
+\node[minimum size=0mm, anchor=east] at (1,-0.7) {h1};
+\node[minimum size=0mm] at (-0.7,0) {t0};
+\node[minimum size=0mm] at (-0.7,1) {t1};
+\node[minimum size=0mm, anchor=north, align=center] at (2.7,0.5)
+  {$\mathrm{LSE}$：行 $h$、列 $t$\\\texttt{off} $= h\,T + t$};
+\end{scope}
+\node[minimum size=0mm] at (1.0,4.4) {$\rightleftarrows$};
+\node[minimum size=0mm, anchor=north] at (3.6,2.6)
+  {{\small 同一逻辑 $(t,h)$：两面板同灰度格对应，布局互为转置}};
+\end{tikzpicture}
+\caption{坑二的布局转置陷阱（$T{=}2,H{=}2,D{=}8$）：同一个逻辑对 $(t,h)$（同灰度）在 $O[T,H,D]$ 中的偏移是 $t\cdot H\cdot D + h\cdot D$（行优先的块），在 $\mathrm{LSE}[H,T]$ 中的偏移是 $h\cdot T + t$（转置的下标）。索引公式写反不报任何错，但合并的是错配的 (token, head)。}
+\label{fig:5-2}
+\end{figure}
+
 线程规划是三维切分：\texttt{threads\_\allowbreak{}per\_\allowbreak{}head =\allowbreak{} head\_\allowbreak{}size /\allowbreak{} k\allowbreak{}Pack\allowbreak{}Size} 个线程
 覆盖一个 (token, head) 对的 $D$ 个元素，\texttt{total\_\allowbreak{}threads} 为全局有效线程数，
 超过它的线程直接返回（block 按 128 对齐分配，最后一个 block 会多出空闲线程）。
@@ -194,6 +233,46 @@ $0,1,0,1,0,1,0,1$。同一个 warp 里相邻线程访问相邻 pack，两次 $O$
 都是 128-bit 完全 coalesced——这是它跑出 TB/s 级带宽的直接原因。
 LSE 读取只有每 (token, head) 2 次标量加载（\texttt{p\_lse}、\texttt{s\_lse}），
 随后立即做 $+\infty \to -\infty$ 清洗（5.3~节）。
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[x={(0cm,-1cm)},y={(1cm,0cm)},%
+  every node/.style={minimum size=1cm, outer sep=0pt}]
+% 2×4 网格：行 = token，行内粗边框子块 = head，列 = pack；格内为 global_idx
+\node[fill=gray!12,align=center] at (0,0) {0\\[-2pt]{\tiny (t0,h0,p0)}};
+\node[fill=gray!12,align=center] at (0,1) {1\\[-2pt]{\tiny (t0,h0,p1)}};
+\node[fill=gray!12,align=center] at (0,2) {2\\[-2pt]{\tiny (t0,h1,p0)}};
+\node[fill=gray!12,align=center] at (0,3) {3\\[-2pt]{\tiny (t0,h1,p1)}};
+\node[fill=gray!35,align=center] at (1,0) {4\\[-2pt]{\tiny (t1,h0,p0)}};
+\node[fill=gray!35,align=center] at (1,1) {5\\[-2pt]{\tiny (t1,h0,p1)}};
+\node[fill=gray!35,align=center] at (1,2) {6\\[-2pt]{\tiny (t1,h1,p0)}};
+\node[fill=gray!35,align=center] at (1,3) {7\\[-2pt]{\tiny (t1,h1,p1)}};
+\draw[color=black,thick,shift={(-0.5,-0.5)}] (0,0) grid (2,4);
+\draw[very thick] (-0.5,-0.5) rectangle (1.5,1.5);
+\draw[very thick] (-0.5,1.5) rectangle (1.5,3.5);
+\node[minimum size=0mm, anchor=east] at (0,-0.7) {t0};
+\node[minimum size=0mm, anchor=east] at (1,-0.7) {t1};
+\node[minimum size=0mm] at (-0.6,0.5) {h0};
+\node[minimum size=0mm] at (-0.6,2.5) {h1};
+\node[minimum size=0mm] at (2.78,0) {p0};
+\node[minimum size=0mm] at (2.78,1) {p1};
+\node[minimum size=0mm] at (2.78,2) {p0};
+\node[minimum size=0mm] at (2.78,3) {p1};
+\draw[-{Latex[length=2mm]},thick] (3.25,-0.3) -- (3.25,3.3);
+\node[minimum size=0mm, anchor=north, align=center] at (3.65,1.5)
+  {warp 内相邻线程 $\to$ 相邻 pack\\{\scriptsize 128-bit coalesced}};
+\node[minimum size=0mm, anchor=east] at (-1.4,1.5) {$T{=}2,\;H{=}2,\;D{=}8$};
+\node[minimum size=0mm, anchor=west, align=left, font=\ttfamily\scriptsize,
+  text width=5.1cm] at (-0.7,4.7)
+  {三级解包（threads\_per\_head = D/4 = 2）：\\
+   token\_head\_idx = idx / 2\\
+   token = th\_idx / H,\; head = th\_idx \% H\\
+   pack\_idx = idx \% 2\\
+   head\_offset = t*H*D + h*D};
+\end{tikzpicture}
+\caption{\texttt{global\_idx} 三级解包（$T{=}2,H{=}2,D{=}8$，共 8 个线程）：行 = token（两级灰度区分），行内粗边框子块 = head，列 = pack（\texttt{threads\_per\_head = D/4 = 2}）；格内为 \texttt{global\_idx}，小字为解包结果 $(t,h,p)$。warp 内相邻线程命中相邻 pack，$O$ 的两次读与一次写均为 128-bit 完全 coalesced。}
+\label{fig:5-3}
+\end{figure}
 
 \lstinputlisting[linerange={487-497},firstnumber=auto,
   title={base.cuh L487-497（Step 1--3：max 归一、指数还原、归一化权重）}]{../base.cuh}

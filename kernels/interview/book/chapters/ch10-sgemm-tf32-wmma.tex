@@ -75,6 +75,68 @@ fp16 & 1 & 5 & 10 & 11 & $\approx 3.3$ \\
 位十进制，注释核校通过。注意 TF32 与 fp16 的\textbf{尾数}完全相同（10 位），
 差别全在指数：TF32 用 fp32 的 8 位指数换来与 fp32 相同的动态范围，
 代价是它通常只在 Tensor Core 数据路径里出现。
+四种格式按位宽比例的对照见图~\ref{fig:10-tf32-bits}。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\tiny]
+  \def\u{0.4}
+  \def\bh{0.5}
+  \fill[black] (0,0.72) rectangle (0.25,0.9);
+  \node[anchor=west] at (0.35,0.81) {符号 $s$（1 位）};
+  \fill[gray!70] (2.2,0.72) rectangle (2.45,0.9);
+  \node[anchor=west] at (2.55,0.81) {指数 $e$};
+  \fill[gray!30] (3.6,0.72) rectangle (3.85,0.9);
+  \node[anchor=west] at (3.95,0.81) {尾数 $m$（显式位）};
+  \node[anchor=east, font=\scriptsize\bfseries] at (-0.15,0.25) {fp32};
+  \fill[black] (0,0) rectangle (\u,\bh);
+  \node[white] at (0.5*\u,0.25) {1};
+  \fill[gray!70] (\u,0) rectangle ({9*\u},\bh);
+  \node at ({5*\u},0.25) {8};
+  \fill[gray!30] ({9*\u},0) rectangle ({32*\u},\bh);
+  \node at ({20.5*\u},0.25) {23};
+  \draw[thin] (0,0) rectangle ({32*\u},\bh);
+  \node[anchor=west] at ({32*\u+0.15},0.25) {32 位};
+  \node[anchor=east, font=\scriptsize\bfseries] at (-0.15,-1.05) {TF32};
+  \fill[black] (0,-1.3) rectangle (\u,{-1.3+\bh});
+  \node[white] at (0.5*\u,-1.05) {1};
+  \fill[gray!70] (\u,-1.3) rectangle ({9*\u},-0.8);
+  \node at ({5*\u},-1.05) {8};
+  \fill[gray!30] ({9*\u},-1.3) rectangle ({19*\u},-0.8);
+  \node at ({14*\u},-1.05) {10};
+  \node at ({25.5*\u},-1.05) {填 0 / 忽略（13 位）};
+  \draw[thin] (0,-1.3) rectangle ({32*\u},-0.8);
+  \draw[dashed, thick] ({19*\u},-1.3) rectangle ({32*\u},-0.8);
+  \draw[<->, >=Stealth] (0,-0.6) -- ({19*\u},-0.6);
+  \node[anchor=south] at ({9.5*\u},-0.54) {19 位有效（$1{+}8{+}10$）};
+  \node[anchor=west] at ({32*\u+0.15},-1.05) {19 位（占 32 位字）};
+  \node[anchor=east, font=\scriptsize\bfseries] at (-0.15,-2.25) {bf16};
+  \fill[black] (0,-2.5) rectangle (\u,-2.0);
+  \node[white] at (0.5*\u,-2.25) {1};
+  \fill[gray!70] (\u,-2.5) rectangle ({9*\u},-2.0);
+  \node at ({5*\u},-2.25) {8};
+  \fill[gray!30] ({9*\u},-2.5) rectangle ({16*\u},-2.0);
+  \node at ({12.5*\u},-2.25) {7};
+  \draw[thin] (0,-2.5) rectangle ({16*\u},-2.0);
+  \node[anchor=west] at ({16*\u+0.15},-2.25) {16 位};
+  \node[anchor=east, font=\scriptsize\bfseries] at (-0.15,-3.45) {fp16};
+  \fill[black] (0,-3.7) rectangle (\u,-3.2);
+  \node[white] at (0.5*\u,-3.45) {1};
+  \fill[gray!70] (\u,-3.7) rectangle ({6*\u},-3.2);
+  \node at ({3.5*\u},-3.45) {5};
+  \fill[gray!30] ({6*\u},-3.7) rectangle ({16*\u},-3.2);
+  \node at ({11*\u},-3.45) {10};
+  \draw[thin] (0,-3.7) rectangle ({16*\u},-3.2);
+  \node[anchor=west] at ({16*\u+0.15},-3.45) {16 位};
+  \node[anchor=north west, align=left, text width=13cm] at (0,-4.0)
+    {TF32 与 fp16 的尾数完全相同（10 位，$p=11$），精度一致；差别全在指数域——
+     TF32 用 fp32 的 8 位指数保住动态范围（约 $10^{\pm38}$）。
+     TF32 存储仍占一个 32 位字，低 13 位填 0 或被硬件路径直接忽略（虚线段），
+     通常只出现在 Tensor Core 数据通路里。};
+\end{tikzpicture}
+\caption{四种浮点格式的位域条（与表~\ref{tab:10-fmt} 同序，按位宽比例绘制）：黑 $=$ 符号位、灰 70 $=$ 指数、灰 30 $=$ 显式尾数。TF32 砍掉 fp32 尾数低 13 位（虚线段：填 0 / 忽略），保留 $1{+}8{+}10$ 共 19 位；bf16/fp16 只有 16 位，指数域分别为 8 与 5。}
+\label{fig:10-tf32-bits}
+\end{figure}
 
 \subsection{舍入误差界：TF32 内积到底差多少}
 
@@ -160,7 +222,69 @@ kernel 的 tile 配置由模板参数逐层相乘得到（sgemm.cuh~L225--236）
 （$4\times2$），而 \texttt{WARP\_\allowbreak{}TILE\_\allowbreak{}M/\allowbreak{}N} 才是 warp 内 fragment 的重复数
 （$2\times4$）——两个名字的直觉正好对调，读代码时务必对照
 \texttt{warp\_m = warp\_id / 2}、\texttt{warp\_n = warp\_id \% 2}（L247--249）
-来还原真实几何（见 10.7~节勘误四）。
+来还原真实几何（见 10.7~节勘误四）。三层分解全景见图~\ref{fig:10-wmma-hierarchy}。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize]
+  \foreach \wm in {0,...,3}{
+    \foreach \wn in {0,1}{
+      \pgfmathtruncatemacro{\wid}{2*\wm+\wn}
+      \pgfmathtruncatemacro{\gr}{6+10*\wid}
+      \fill[gray!\gr] ({3.2*\wn},{-1.6*\wm}) rectangle ++(3.2,-1.6);
+      \ifnum\gr<48
+        \node[font=\footnotesize\bfseries] at ({3.2*\wn+1.6},{-1.6*\wm-0.7}) {\wid};
+      \else
+        \node[font=\footnotesize\bfseries, text=white] at ({3.2*\wn+1.6},{-1.6*\wm-0.7}) {\wid};
+      \fi
+    }
+  }
+  \foreach \wm in {0,...,3}{
+    \draw[white, semithick] (0,{-1.6*\wm-0.8}) -- (6.4,{-1.6*\wm-0.8});
+  }
+  \foreach \x in {0.8,1.6,2.4,4.0,4.8,5.6}{
+    \draw[white, semithick] (\x,0) -- (\x,-6.4);
+  }
+  \draw[thick] (0,0) rectangle (6.4,-6.4);
+  \draw[thick] (3.2,0) -- (3.2,-6.4);
+  \foreach \wm in {1,2,3}{
+    \draw[thick] (0,{-1.6*\wm}) -- (6.4,{-1.6*\wm});
+  }
+  \foreach \mm/\ml in {0/0,1/32,2/64,3/96,4/128}{
+    \node[anchor=east, font=\tiny] at (-0.08,{-1.6*\mm}) {\ml};
+  }
+  \node[anchor=east, font=\tiny, rotate=90] at (-0.5,-3.2) {M（$32\cdot$warp\_m）};
+  \foreach \nn/\nl in {0/0,1/64,2/128}{
+    \node[anchor=south, font=\tiny] at ({3.2*\nn},0.08) {\nl};
+  }
+  \node[font=\tiny] at (3.2,0.42) {N（$64\cdot$warp\_n）};
+  \node[anchor=north west, font=\tiny] at (0,-6.5) {块内数字 $=$ warp\_id；每块为 $32\times64$ warp tile，白线切出 $2\times4$ 个 $m16n16$ fragment};
+  \draw[dashed, ->] (6.55,-0.9) -- (7.9,-0.9);
+  \begin{scope}[shift={(8.0,0)}]
+    \foreach \fmi in {0,1}{
+      \foreach \fj in {0,...,3}{
+        \pgfmathtruncatemacro{\fidx}{4*\fmi+\fj}
+        \pgfmathtruncatemacro{\fgr}{12+6*\fidx}
+        \fill[gray!\fgr] ({1.2*\fj},{-1.2*\fmi}) rectangle ++(1.2,-1.2);
+        \node[font=\tiny] at ({1.2*\fj+0.6},{-1.2*\fmi-0.6}) {f\fidx};
+      }
+    }
+    \draw[thick] (0,0) rectangle (4.8,-2.4);
+    \node[anchor=south, font=\tiny] at (2.4,0.1) {N：$4\times16=64$};
+    \node[anchor=east, font=\tiny, rotate=90] at (-0.12,-1.2) {M：$2\times16=32$};
+    \node[anchor=north west, font=\scriptsize] at (0,-2.55) {单个 warp 子块（$32\times64$）放大：};
+    \node[anchor=north west, font=\tiny, align=left] at (0,-2.95) {$2\times4=8$ 个 $m16n16k8$ fragment，\\强度 $=$ 块内位置 $f_0..f_7$};
+    \node[draw, align=left, anchor=north west, font=\scriptsize] at (0,-3.9)
+      {\textbf{命名陷阱}（两个名字直觉正好对调）：\\
+       \texttt{WMMA\_TILE\_M/N} $= 4/2$：warp \textbf{间}排布\\
+       \texttt{WARP\_TILE\_M/N} $= 2/4$：warp \textbf{内} fragment 重复\\[2pt]
+       \texttt{warp\_m} $=$ \texttt{warp\_id}/2，\texttt{warp\_n} $=$ \texttt{warp\_id}\%2\\
+       （主图灰度 $=$ warp\_id，第一列自上而下 0/2/4/6）};
+  \end{scope}
+\end{tikzpicture}
+\caption{$128\times128$ block tile 的三层分解：外层按 $4\times2$ 切 8 个 $32\times64$ warp 子块（灰度 $=$ warp\_id，$B_M = 16\times4\times2$、$B_N = 16\times2\times4$）；每子块内再摆 $2\times4=8$ 个 $m16n16k8$ fragment（右：放大图，强度 $=$ 块内位置）。侧栏：源码命名陷阱——\texttt{WMMA\_TILE\_M/N} 管 warp 间、\texttt{WARP\_TILE\_M/N} 管 warp 内，直觉正好对调。}
+\label{fig:10-wmma-hierarchy}
+\end{figure}
 
 \subsection{FP32 到 TF32 的原地转换}
 
@@ -220,6 +344,83 @@ $\mathrm{B\_PAD}=4$），两段共 $2\times128\times12 + 2\times8\times132 = 518
 同一组 bank，补 16~B 打散行首的对齐关系，避免 \texttt{load\_\allowbreak{}matrix\_\allowbreak{}sync}
 内部按行取数时的 bank conflict。（注意 L238 与 L242--243 注释里写的
 「16384 bytes」「1024 floats」是陈旧数字，实际值见 10.7~节勘误一、二。）
+两段布局的 PAD 与行距见图~\ref{fig:10-smem-pad}。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\tiny]
+  \def\cw{0.5}
+  \def\ch{0.5}
+  \node[anchor=south, font=\scriptsize] at ({6*\cw},0.32)
+    {$s\_a$ 单 stage：$128\times(8{+}4)$，行距 $\mathrm{ldm}=12$};
+  \foreach \rw in {0,...,5}{
+    \node[anchor=east] at (-0.1,{-\rw*\ch-\ch/2}) {$r{=}\rw$};
+    \foreach \cl in {0,...,11}{
+      \pgfmathtruncatemacro{\bnk}{mod(12*\rw+\cl,32)}
+      \ifnum\cl<8
+        \fill[gray!30] ({\cl*\cw},{-\rw*\ch-\ch}) rectangle ({\cl*\cw+\cw},{-\rw*\ch});
+      \else
+        \path[preaction={fill=gray!12}, pattern=north east lines, pattern color=black!45]
+          ({\cl*\cw},{-\rw*\ch-\ch}) rectangle ({\cl*\cw+\cw},{-\rw*\ch});
+      \fi
+      \node at ({(\cl+0.5)*\cw},{-\rw*\ch-\ch/2}) {\bnk};
+    }
+  }
+  \draw[thin] (0,0) grid[xstep=0.5cm, ystep=0.5cm] ({12*\cw},{-6*\ch});
+  \draw[semithick] (0,0) rectangle ({12*\cw},{-6*\ch});
+  \draw[semithick] ({8*\cw},0) -- ({8*\cw},{-6*\ch});
+  \foreach \cl in {0,...,7}{
+    \node[anchor=north] at ({(\cl+0.5)*\cw},-0.05) {\cl};
+  }
+  \node[anchor=north] at ({10*\cw},-0.05) {PAD$\times$4};
+  \node[anchor=north, align=center] at (0,-3.35) {$\vdots$\\共 128 行};
+  \node[anchor=north west, align=left, text width=5.9cm] at ({12*\cw},-3.35)
+    {格值 $=$ bank 号 $=(12r{+}c)\bmod32$：行首序列 $0,12,24,4,\dots$——
+     PAD $=4$ float $=16$~B 打散行首对齐；无 PAD 时行长 8~word $=32$~B，
+     每 4 行行首回到同一 bank。};
+  \begin{scope}[shift={(7.4,0)}]
+    \def\bw{0.42}
+    \node[anchor=south, font=\scriptsize] at (3.7,0.32)
+      {$s\_b$ 单 stage：$8\times(128{+}4)$，行距 $\mathrm{ldm}=132$};
+    \foreach \rw in {0,...,7}{
+      \node[anchor=east] at (-0.1,{-\rw*\bw-\bw/2}) {$k{=}\rw$};
+      \foreach \cl in {0,...,7}{
+        \pgfmathtruncatemacro{\bnk}{mod(4*\rw+\cl,32)}
+        \fill[gray!30] ({\cl*\bw},{-\rw*\bw-\bw}) rectangle ({\cl*\bw+\bw},{-\rw*\bw});
+        \node at ({(\cl+0.5)*\bw},{-\rw*\bw-\bw/2}) {\bnk};
+      }
+      \node at ({8*\bw+0.3},{-\rw*\bw-\bw/2}) {$\cdots$};
+      \foreach \cj in {0,...,3}{
+        \pgfmathtruncatemacro{\bnk}{mod(4*\rw+28+\cj,32)}
+        \fill[gray!30] ({8*\bw+0.6+\cj*\bw},{-\rw*\bw-\bw}) rectangle ({8*\bw+0.6+\cj*\bw+\bw},{-\rw*\bw});
+        \node at ({8*\bw+0.6+(\cj+0.5)*\bw},{-\rw*\bw-\bw/2}) {\bnk};
+      }
+      \foreach \cj in {0,...,3}{
+        \pgfmathtruncatemacro{\bnk}{mod(4*\rw+\cj,32)}
+        \path[preaction={fill=gray!12}, pattern=north east lines, pattern color=black!45]
+          ({12*\bw+0.6+\cj*\bw},{-\rw*\bw-\bw}) rectangle ({12*\bw+0.6+\cj*\bw+\bw},{-\rw*\bw});
+        \node at ({12*\bw+0.6+(\cj+0.5)*\bw},{-\rw*\bw-\bw/2}) {\bnk};
+      }
+    }
+    \draw[thin] (0,0) grid[xstep=0.42cm, ystep=0.42cm] ({8*\bw},{-8*\bw});
+    \draw[thin] ({8*\bw+0.6},0) grid[xstep=0.42cm, ystep=0.42cm] ({16*\bw+0.6},{-8*\bw});
+    \draw[semithick] (0,0) rectangle ({8*\bw},{-8*\bw});
+    \draw[semithick] ({8*\bw+0.6},0) rectangle ({16*\bw+0.6},{-8*\bw});
+    \draw[semithick] ({12*\bw+0.6},0) -- ({12*\bw+0.6},{-8*\bw});
+    \node[anchor=north] at ({4*\bw},-0.05) {$n=0..7$};
+    \node[anchor=north] at ({10*\bw+0.6},-0.05) {$n=124..127$};
+    \node[anchor=north] at ({14*\bw+0.6},-0.05) {PAD$\times$4};
+    \node[anchor=north west, align=left, text width=6.9cm] at (0,{-8*\bw-0.3})
+      {格值 $=$ bank 号 $=(132r{+}c)\bmod32$：行首序列 $0,4,8,\dots,28$——
+       8 行行首互异，\texttt{load\_matrix\_sync} 按行取数不撞同一组 bank。};
+  \end{scope}
+  \node[anchor=north, align=left, text width=13.5cm] at (7.4,-4.6)
+    {\texttt{load\_matrix\_sync} 的 \texttt{ldm} 传\textbf{行距}（12 / 132）而非逻辑宽度（8 / 128），
+     传错即整块错位（本章坑二）；\texttt{K\_STAGE}$=2$，两个 stage 同构轮转（图中单 stage）。};
+\end{tikzpicture}
+\caption{$s\_a$ / $s\_b$ 的 padded 行距布局（单 stage，格值为该 word 的 bank 号 $=$ 行距$\times r+$列 $\bmod 32$，斜线格为 PAD）。左 $s\_a$：$128\times(8{+}4)$，\texttt{ldm}=12，行首 bank 序列 $0,12,24,4,\dots$；右 $s\_b$：$8\times(128{+}4)$，\texttt{ldm}=132，行首 bank 序列 $0,4,\dots,28$。补 4 float（16~B）PAD 打散行首对齐、消除 \texttt{load\_matrix\_sync} 按行取数的 bank conflict——\texttt{ldm} 取行距而非逻辑宽度。}
+\label{fig:10-smem-pad}
+\end{figure}
 
 \subsection{GMEM 到 SMEM：每线程一个 float4}
 

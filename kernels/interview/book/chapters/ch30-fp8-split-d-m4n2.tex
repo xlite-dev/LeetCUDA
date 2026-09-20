@@ -115,6 +115,93 @@ row max/row sum」，所有 chunk 共享同一组 $(m,\ell)$，rescale 因子天
 chunk 循环各自把 $P V^{\top}_{\mathcal{D}_c}$ 加进
 \texttt{o\_acc\_storage[c]}（L678--756）。
 
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize, >=Stealth]
+  \node[anchor=south, font=\scriptsize\bfseries] at (6.6,0.62)
+    {split-D 分块恒等式：QK 归约维累加，PV 输出列维独立};
+  \node[anchor=south, font=\tiny] at (6.6,0.38)
+    {示例 $D{=}128$（$k_{VDChunk}{=}64\Rightarrow 2$ 个 chunk；通用 $D/k_{VDChunk}$ 个）};
+  \draw[fill=gray!18] (0,-0.75) rectangle (1.5,-0.15);
+  \draw[fill=gray!55] (0,-1.55) rectangle (1.5,-0.95);
+  \draw[thick] (0,-0.75) rectangle (1.5,-0.15);
+  \draw[thick] (0,-1.55) rectangle (1.5,-0.95);
+  \node at (0.75,-0.45) {$Q_{:,\mathcal{D}_0}$};
+  \node at (0.75,-1.25) {$Q_{:,\mathcal{D}_1}$};
+  \node[anchor=east, font=\tiny] at (-0.12,-0.45) {$Q$};
+  \node[anchor=east, font=\tiny] at (-0.12,-1.25) {（$M{\times}D$）};
+  \draw[fill=gray!18] (0,-2.45) rectangle (1.5,-1.85);
+  \draw[fill=gray!55] (0,-3.25) rectangle (1.5,-2.65);
+  \draw[thick] (0,-2.45) rectangle (1.5,-1.85);
+  \draw[thick] (0,-3.25) rectangle (1.5,-2.65);
+  \node at (0.75,-2.15) {$K^{\top}_{\mathcal{D}_0,:}$};
+  \node at (0.75,-3.0) {$K^{\top}_{\mathcal{D}_1,:}$};
+  \node[anchor=east, font=\tiny] at (-0.12,-2.15) {$K^{\top}$};
+  \node[anchor=east, font=\tiny] at (-0.12,-3.0) {（$D{\times}B_c$）};
+  \draw[->] (1.55,-0.45) -- (2.42,-0.82);
+  \draw[->] (1.55,-2.15) -- (2.42,-1.08);
+  \draw[->] (1.55,-1.25) -- (2.42,-2.38);
+  \draw[->] (1.55,-3.0) -- (2.42,-2.62);
+  \draw[thick] (2.5,-0.95) circle (0.40);
+  \node at (2.5,-0.95) {\tiny MMA};
+  \draw[thick] (2.5,-2.55) circle (0.40);
+  \node at (2.5,-2.55) {\tiny MMA};
+  \draw[->] (2.9,-1.15) -- (3.28,-1.48);
+  \draw[->] (2.9,-2.35) -- (3.28,-2.02);
+  \draw[thick] (3.62,-1.75) circle (0.34);
+  \node at (3.62,-1.75) {$\Sigma_c$};
+  \draw[->] (3.96,-1.75) -- (4.45,-1.75);
+  \draw[fill=white, thick] (4.5,-2.4) rectangle (6.0,-1.1);
+  \node at (5.25,-1.62) {$S$ fragment};
+  \node at (5.25,-2.12) {\tiny 同一 C 累加器};
+  \node[anchor=south, font=\tiny, align=center] at (5.25,-1.02)
+    {归约维：chunk 累加\\（式~\ref{eq:30-qk-split}，无新舍入点）};
+  \draw[->] (6.05,-1.75) -- (6.55,-1.75);
+  \node[above, font=\tiny] at (6.3,-1.68) {$P$};
+  \draw[fill=white, thick] (6.6,-2.3) rectangle (8.0,-1.2);
+  \node at (7.3,-1.62) {softmax};
+  \node at (7.3,-2.10) {\tiny 全 $D$ 一次};
+  \draw[->] (8.05,-1.6) -- (8.55,-1.08);
+  \draw[->] (8.05,-1.9) -- (8.55,-2.42);
+  \draw[thick] (8.95,-0.95) circle (0.40);
+  \node at (8.95,-0.95) {\tiny MMA};
+  \draw[thick] (8.95,-2.55) circle (0.40);
+  \node at (8.95,-2.55) {\tiny MMA};
+  \draw[fill=gray!18] (10.3,-0.85) rectangle (11.8,-0.25);
+  \draw[fill=gray!55] (10.3,-3.5) rectangle (11.8,-2.9);
+  \draw[thick] (10.3,-0.85) rectangle (11.8,-0.25);
+  \draw[thick] (10.3,-3.5) rectangle (11.8,-2.9);
+  \node at (11.05,-0.55) {$V^{\top}_{\mathcal{D}_0,:}$};
+  \node at (11.05,-3.2) {$V^{\top}_{\mathcal{D}_1,:}$};
+  \node[anchor=west, font=\tiny] at (11.92,-0.55) {$V^{\top}$};
+  \node[anchor=west, font=\tiny] at (11.92,-3.2) {（$D{\times}B_c$）};
+  \draw[->] (10.25,-0.55) -- (9.38,-0.9);
+  \draw[->] (10.25,-3.2) -- (9.38,-2.6);
+  \draw[fill=white, thick] (12.5,-1.25) rectangle (13.9,-0.65);
+  \node at (13.2,-0.95) {$O_{:,\mathcal{D}_0}$};
+  \draw[fill=white, thick] (12.5,-3.1) rectangle (13.9,-2.5);
+  \node at (13.2,-2.8) {$O_{:,\mathcal{D}_1}$};
+  \draw[->] (9.35,-0.95) -- (12.45,-1.05);
+  \draw[->] (9.35,-2.55) -- (12.45,-2.7);
+  \node[anchor=north, font=\tiny, align=center] at (13.2,-3.15)
+    {$O=[\,O_{:,\mathcal{D}_0}\mid O_{:,\mathcal{D}_1}\,]$：输出列维\\各 chunk 独立累加（式~\ref{eq:30-pv-split}）};
+  \draw[fill=white, thick] (1.8,-4.95) rectangle (12.6,-4.45);
+  \node[align=center] at (7.2,-4.7)
+    {行统计 $(m_r,\ell_r)$：\textbf{KV 行维的量}——与 $D$ 切分完全无关，所有 chunk
+     共享同一组（不产生 per-chunk 统计），rescale 因子天然一致};
+  \draw[densely dashed] (7.3,-2.3) -- (7.3,-4.45);
+  \draw[densely dashed] (8.95,-1.35) -- (8.95,-4.45);
+  \draw[densely dashed] (8.95,-2.95) -- (8.95,-4.45);
+\end{tikzpicture}
+\caption{split-D 分块恒等式的数据流（30.3.1~节）。QK 侧：$D$ 是\textbf{归约维}，
+各 chunk 的 $Q_{:,\mathcal{D}_c}K^{\top}_{\mathcal{D}_c,:}$ 累加进\textbf{同一个} $S$
+fragment（式~\ref{eq:30-qk-split}，f32/s32 累加，不引入新舍入点）；PV 侧：$D$ 是
+\textbf{输出列维}，各 chunk 独立累加出 $O_{:,\mathcal{D}_c}$ 列段
+（式~\ref{eq:30-pv-split}），无任何合并。softmax 的行统计 $(m_r,\ell_r)$ 是 KV 行维
+的量——与 $D$ 切分完全无关，所有 chunk 共享同一组（灰度 = chunk 身份，两图同语义）。}
+\label{fig:30-split-identity}
+\end{figure}
+
 需要真正「合并行统计」的不是 split-D，而是 M4N2 的 N-warp 劈分
 （\ref{sec:30-m4n2softmax}~节）。
 
@@ -185,6 +272,71 @@ $N_w$ \textbf{精确消去}：把输出列劈给更多 N-warp，同时把每-thr
 等比例压低，per-SM 总占用纹丝不动（M4N4 与 M4N2 同为 $D/1024$ 占比）。
 只有减 $M_w$ 有效；$M_w=2$（M2N4）时占比 $D/2048$，是 $D>1024$ 的正解。
 这不是实现细节，是「$N=1$ 列方向没有并行红利」的数学结构。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize]
+  \definecolor{limitred}{RGB}{178,34,34}
+  \draw[->] (0,0) -- (8.75,0);
+  \node[below] at (8.45,-0.05) {$D$};
+  \draw[->] (0,0) -- (0,8.75);
+  \node[left] at (0.02,8.55) {$O_{\mathrm{acc}}$（regs/thread）};
+  \foreach \dx/\dl in {0/64,0.533/128,1.067/192,1.6/256,2.667/384,3.733/512,5.867/768,6.933/896,8.0/1024}{
+    \draw (\dx,0) -- (\dx,-0.07);
+    \node[below, font=\tiny, inner sep=1pt] at (\dx,-0.08) {\dl};
+  }
+  \foreach \dy/\dl in {0/0,1.932/128,3.864/256,5.797/384,7.728/512}{
+    \draw (0,\dy) -- (-0.07,\dy);
+    \node[left, font=\tiny, inner sep=1pt] at (-0.08,\dy) {\dl};
+  }
+  \draw[limitred, thick, densely dashed] (0,3.849) -- (8.4,3.849);
+  \node[limitred, above, font=\tiny] at (2.0,3.87) {255 regs/thread 上限};
+  \draw[very thick] (0,0.483) -- (8,7.728);
+  \draw[thick, gray] (0,0.242) -- (8,3.864);
+  \foreach \px/\py in {0/0.483,0.533/0.966,1.067/1.449,1.6/1.932,2.667/2.898,3.733/3.864,5.867/5.797,6.933/6.755,8/7.728}{
+    \fill (\px,\py) circle (0.045);
+  }
+  \foreach \px/\py in {0/0.242,0.533/0.483,1.067/0.725,1.6/0.966,2.667/1.449,3.733/1.932,5.867/2.898,8/3.864}{
+    \fill[gray] (\px,\py) circle (0.045);
+  }
+  \node[anchor=west, font=\tiny] at (8.06,7.55) {M8N1（$D/2$）};
+  \node[anchor=west, gray, font=\tiny] at (8.06,3.55) {M4N2（$D/4$）};
+  \node[above right=-1pt and 2pt, font=\tiny, align=left] at (3.733,3.864)
+    {256：超上限 1 个\\（边缘 spill）};
+  \node[above right=-1pt and 2pt, font=\tiny] at (6.933,6.755) {448：大量 spill};
+  \node[left=2pt, font=\tiny, align=right] at (7.95,7.728) {512：溢出 local\\（$\sim$100T）};
+  \node[below=3pt, font=\tiny] at (7.55,3.80) {256：边缘 spill（154T）};
+  \node[anchor=south, font=\scriptsize\bfseries] at (4.3,8.95)
+    {per-thread $O$ 累加器 $=D/(2N_w)$（式~\ref{eq:30-regthread}）};
+  \begin{scope}[xshift=10.6cm]
+    \draw[->] (0,0) -- (3.5,0);
+    \node[below] at (3.2,-0.05) {$D{=}1024$};
+    \draw[->] (0,0) -- (0,7.6);
+    \node[left, font=\tiny] at (-0.05,7.4) {TFLOPS};
+    \fill[gray!30] (0.35,0) rectangle (1.45,4.50);
+    \fill[gray!60] (1.95,0) rectangle (3.05,6.93);
+    \node[above, font=\tiny] at (0.9,4.55) {M8N1 $\sim$100T};
+    \node[above, font=\tiny] at (2.5,6.98) {M4N2 154T};
+    \node[below, font=\tiny, inner sep=1pt] at (0.9,-0.08) {$O_{\mathrm{acc}}{=}512$};
+    \node[below, font=\tiny, inner sep=1pt] at (2.5,-0.08) {$O_{\mathrm{acc}}{=}256$};
+    \draw[->, thick] (1.52,4.75) -- (1.88,6.55);
+    \node[above, font=\tiny] at (1.55,6.15) {+55\%};
+    \node[anchor=south, font=\scriptsize\bfseries] at (1.75,7.9) {5090：D=1024 吞吐};
+  \end{scope}
+  \node[anchor=north west, align=left, text width=13.8cm, font=\tiny] at (0,-1.30)
+    {5090 实测（fp16 家族同构）：$D\le640$ 时 M8N1 快 2--16\%；$D\ge768$ 时 M4N2 快
+     +7\%@768、+11\%@896、+55\%@1024——交叉点 $D{=}768$。per-SM 池占比
+     $=D\cdot M_w/4096$（式~\ref{eq:30-smpool}）：$N_w$ 精确消去（M4N4$\equiv$M4N2），
+     只有减 $M_w$ 有效——$D{>}1024$ 的正解是 M2N4（$D/2048$）。};
+\end{tikzpicture}
+\caption{寄存器墙的定量视图。左：per-thread $O$ 累加器 $=D/(2N_w)$
+（式~\ref{eq:30-regthread}）——M8N1 的 $D/2$ 在 $D{=}512$ 达 256（超 255 上限
+1 个，边缘 spill）、$D\ge896$ 大量 spill、$D{=}1024$ 溢出 local memory
+（$\sim$100T）；M4N2 的 $D/4$ 同点仅 256（154T）。右：5090 实测 D=1024 吞吐对比
+（+55\%）。下：per-SM 池占比 $D\cdot M_w/4096$（式~\ref{eq:30-smpool}）中 $N_w$
+精确消去——加 N-warp 不降总量，$D{>}1024$ 只能走 M2N4。}
+\label{fig:30-reg-pressure}
+\end{figure}
 
 据此也排除了两个诱人的捷径。其一，\textbf{QK 用 M8N1、PV 用 M4N2 的
 混合布局}：QK/PV 共享同一 Q tile，M 维必须一致；$k_{Br}=128$ 强制下
@@ -284,6 +436,61 @@ group 按 128 行块编号（$g=(q_{\text{row}}/16)\cdot8+q_{\text{row}}\%8$）�
 \texttt{quant\_offset} 再查表，\texttt{quant\_rb} 单独换算块号。M8N1
 的 $k_{Br}=128$ 恰好与量化块同宽，天然无此事——这类「两套块宽不一致」
 的坑在 fp8 体系里反复出现（第~\ref{ch:28}~章 per-thread 64-group 同理）。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize]
+  \def\px{0.049}
+  \begin{scope}[xshift=0.34cm]
+    \fill[gray!12] (0,0) rectangle ({128*\px},0.52);
+    \fill[gray!30] ({128*\px},0) rectangle ({256*\px},0.52);
+    \draw[thick] (0,0) rectangle ({256*\px},0.52);
+    \draw[thick] ({128*\px},0) -- ({128*\px},0.52);
+    \foreach \gx in {1,...,15}{
+      \draw[gray!55, thin] ({\gx*16*\px},0) -- ({\gx*16*\px},0.52);
+    }
+    \node[font=\tiny] at ({64*\px},0.26) {\texttt{quant\_rb}${=}0$（128 行块）};
+    \node[font=\tiny] at ({192*\px},0.26) {\texttt{quant\_rb}${=}1$（128 行块）};
+    \foreach \t/\gt in {0/10,1/36,2/10,3/36}{
+      \pgfmathsetmacro{\xa}{\t*64*\px}
+      \fill[gray!\gt] (\xa,-1.18) rectangle ({\xa+64*\px},-0.66);
+      \draw[thick] (\xa,-1.18) rectangle ({\xa+64*\px},-0.66);
+      \node[font=\tiny] at ({\xa+32*\px},-0.92) {tile \t};
+    }
+    \draw[->, thick] ({96*\px},-0.60) -- ({96*\px},-0.06);
+    \node[anchor=west, font=\tiny, fill=white, inner sep=1pt] at ({98*\px},-0.33)
+      {tile 内行号 $+64$ 再查表};
+    \draw[->, thick] ({224*\px},-0.60) -- ({224*\px},-0.06);
+    \node[anchor=west, font=\tiny, fill=white, inner sep=1pt] at ({226*\px},-0.33)
+      {同一规则};
+    \node[anchor=north, font=\tiny, align=center, inner sep=1pt] at ({32*\px},-1.24)
+      {\texttt{quant\_offset}${}=0$};
+    \node[anchor=north, font=\tiny, align=center, inner sep=1pt] at ({96*\px},-1.24)
+      {\texttt{quant\_offset}${}=64$};
+    \node[anchor=north, font=\tiny, align=center, inner sep=1pt] at ({160*\px},-1.24)
+      {\texttt{quant\_offset}${}=0$};
+    \node[anchor=north, font=\tiny, align=center, inner sep=1pt] at ({224*\px},-1.24)
+      {\texttt{quant\_offset}${}=64$};
+    \foreach \rv in {0,64,128,192,256}{
+      \draw[thick] ({\rv*\px},-1.62) -- ({\rv*\px},-1.56);
+      \node[below, font=\tiny, inner sep=1pt] at ({\rv*\px},-1.62) {\rv};
+    }
+    \node[below, font=\tiny, inner sep=2pt] at ({128*\px},-1.92)
+      {q 行（相对 work 起始，128 对齐）};
+  \end{scope}
+  \node[anchor=north west, align=left, text width=16.0cm, font=\tiny] at (-0.34,-2.28)
+    {M4N2 的注意 tile（$k_{Br}{=}64$）比量化块（128 行）窄：tile 起始行在块内的偏移
+     \texttt{quant\_offset} 为 $0$ 或 $64$（源码 \texttt{split\_d\_m4n2.cuh} L301--307），
+     tile 内行号必须先加它再代 $g=(q_{\text{row}}/16)\cdot8+q_{\text{row}}\%8$ 查
+     scale 表（索引 $=\texttt{quant\_rb}\cdot64+g$）；块号 \texttt{quant\_rb} 由 tile 起始行单独
+     换算。M8N1 的 $k_{Br}{=}128$ 与量化块同宽，\texttt{quant\_offset} 恒 $0$，
+     天然无此事——两套块宽不一致时，错查邻块 scale 的误差温和、难肉眼发现。};
+\end{tikzpicture}
+\caption{量化 128 行块与 M4N2 注意 tile（$k_{Br}{=}64$）的错位对齐。tile 1/3 的
+起始行落在量化块内的偏移 64 处，其行号需先加 \texttt{quant\_offset} 再查 per-thread
+scale 表；tile 0/2 偏移为 0。M8N1 的 $k_{Br}{=}128$ 与量化块同宽，不存在该映射。}
+\label{fig:30-quant-align}
+\end{figure}
 
 \subsection{证伪记录与默认值}
 

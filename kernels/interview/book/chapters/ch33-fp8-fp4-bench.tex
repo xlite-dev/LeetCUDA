@@ -43,6 +43,74 @@
         用户也是误导。
 \end{itemize}
 
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize]
+  \definecolor{gearred}{RGB}{178,34,34}
+  \fill[gray!14] (0,0) rectangle (3.857,4.8);
+  \fill[gray!32] (3.857,0) rectangle (9.0,4.8);
+  \node[align=center, font=\tiny] at (1.95,4.42) {SDPA-FA2\\（融合 kernel）};
+  \node[align=center, font=\tiny] at (6.45,4.42) {SDPA-MATH：materialize\\$N_q{\times}N_{kv}$（8192$^2$）矩阵};
+  \draw[dashed, thick] (3.857,0) -- (3.857,4.8);
+  \node[above, font=\tiny] at (3.857,4.82) {换挡点 $D{=}256$};
+  \draw[->] (0,0) -- (9.6,0);
+  \node[below] at (9.3,-0.05) {$D$};
+  \draw[->] (0,0) -- (0,5.3);
+  \node[left] at (0.03,5.15) {speedup};
+  \foreach \dx/\dl in {0/64,1.286/128,3.857/256,9.0/512}{
+    \draw (\dx,0) -- (\dx,-0.07);
+    \node[below, font=\tiny, inner sep=1pt] at (\dx,-0.08) {\dl};
+  }
+  \foreach \dy/\dl in {0/1.0,1.091/1.5,2.182/2.0,3.273/2.5,4.364/3.0}{
+    \draw (0,\dy) -- (-0.07,\dy);
+    \node[left, font=\tiny, inner sep=1pt] at (-0.08,\dy) {\dl};
+  }
+  \draw[gray, thin] (0,0.567) -- (1.286,1.527) -- (3.857,0.655) -- (9.0,4.327);
+  \fill (0,0.567) circle (0.05);
+  \fill (1.286,1.527) circle (0.05);
+  \fill (3.857,0.655) circle (0.05);
+  \fill (9.0,4.327) circle (0.05);
+  \node[above right=-1pt and 1pt, font=\tiny] at (0,0.567) {1.26$\times$};
+  \node[above right=-1pt and 1pt, font=\tiny] at (1.286,1.527) {1.70$\times$};
+  \node[below right=-1pt and 1pt, font=\tiny] at (3.857,0.655) {1.30$\times$};
+  \node[above left=-1pt and 1pt, font=\tiny] at (9.0,4.327) {2.98$\times$};
+  \draw[->, gearred, thick] (4.1,0.95) to[bend left=18] (8.75,4.05);
+  \node[gearred, align=center, font=\tiny] at (6.35,2.1)
+    {同为 split-D 家族（D=256/512）\\1.30$\to$2.98 的跳变主要来自\\参照换挡（右图分解）};
+  \node[anchor=south, font=\scriptsize\bfseries] at (4.8,5.45)
+    {SDPA 参照后端换挡带（表~\ref{tab:33-fp8-matrix} self 行）};
+  \begin{scope}[xshift=10.5cm]
+    \draw[->] (0,0) -- (4.4,0);
+    \draw[->] (0,0) -- (0,7.4);
+    \node[left, font=\tiny] at (-0.05,7.2) {ms};
+    \fill[gray!22] (0.40,0) rectangle (1.40,2.28);
+    \fill[gray!45] (1.90,0) rectangle (2.90,2.96);
+    \fill[gray!68] (3.40,0) rectangle (4.40,6.80);
+    \node[above, font=\tiny] at (0.9,2.32) {21.71};
+    \node[above, font=\tiny] at (2.4,3.00) {$\approx$28.2};
+    \node[above, font=\tiny] at (3.9,6.84) {64.74};
+    \node[below, font=\tiny, align=center, inner sep=1pt] at (0.9,-0.08) {FFPA\\split-D};
+    \node[below, font=\tiny, align=center, inner sep=1pt] at (2.4,-0.08) {SDPA 若 FA2 级\\（外推）};
+    \node[below, font=\tiny, align=center, inner sep=1pt] at (3.9,-0.08) {SDPA-MATH\\实测};
+    \node[anchor=west, align=left, text width=1.6cm, font=\tiny] at (4.5,4.6)
+      {$64.74/21.71$\\{$=$} 2.98$\times$\\{$=$} 1.30$\times$（真）\\{$\times$} 2.29$\times$（参照）};
+    \node[anchor=south, font=\scriptsize\bfseries] at (2.2,7.7) {D=512 self 的 2.98$\times$ 归因};
+  \end{scope}
+  \node[anchor=north west, align=left, text width=14.5cm, font=\tiny] at (0,-1.20)
+    {「3$\times$」里一大半是 MATH 参照自身的低效，不是量化快（坑 6）——报告
+     $D{>}256$ 的 speedup 必须注明参照换挡。外推口径：D=256 同为 split-D 家族且参照是
+     FA2，实测 1.30$\times$ 借作「真加速」估计；$21.71\times1.30\approx28.2$ms，
+     $64.74/28.2\approx2.29\times$。};
+\end{tikzpicture}
+\caption{参照系视角看表~\ref{tab:33-fp8-matrix} 的 self 行。左：SDPA 参照随 $D$
+换挡——FA2 只覆盖 $D\le256$，更大 $D$ 静默落到 MATH（materialize
+$N_q\times N_{kv}$ 矩阵）；四个 speedup 点（1.26/1.70/1.30/2.98$\times$）落在换挡
+带上，D=512 的跳变与 kernel 无关。右：D=512 的 $2.98\times$ 归因——以 D=256 同
+家族（split-D、FA2 参照）实测 1.30$\times$ 为真加速估计，MATH 参照自身再慢
+$\times$2.29：「3$\times$」的大头是参照低效（坑 6）。}
+\label{fig:33-sdpa-gear}
+\end{figure}
+
 \textbf{度量陷阱二：精度口径}。allclose 是布尔值，信息量极低：
 \begin{itemize}[itemsep=0pt,topsep=2pt]
   \item fp4 的 e2m1 网格噪声决定了它的容差天然比 fp8 宽一个量级
@@ -97,6 +165,54 @@ $\alpha=0.3$、$S_{\mathrm{attn}}=2.5$x 时 $S_{\mathrm{e2e}}\approx1.22$x
 ——attention 只省下 $0.3T\times0.6=0.18T$，总时从 $T$ 降到
 $0.82T$。这解释了为什么扩散模型（attention 占比高、D 偏小）是量化 attention
 的第一落地场景，也是 Cache-DiT 集成（33.7 节）的价值前提。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize]
+  \def\axw{8.0}
+  \def\aysc{2.909}
+  \draw[->] (0,0) -- ({\axw+0.30},0);
+  \draw[->] (0,0) -- (0,7.05);
+  \node[left, font=\tiny, align=right] at (-0.05,6.95) {$S_{\mathrm{e2e}}$};
+  \foreach \sv in {1.0,1.5,2.0,2.5,3.0}{
+    \pgfmathsetmacro{\yv}{(\sv-1)*\aysc}
+    \draw (-0.07,\yv) -- (0.07,\yv);
+    \node[left, font=\tiny, inner sep=1pt] at (-0.10,\yv) {\sv};
+  }
+  \foreach \xt in {0.25,0.5,0.75}{
+    \pgfmathsetmacro{\xv}{\xt*\axw}
+    \draw (\xv,-0.07) -- (\xv,0.07);
+    \node[below, font=\tiny, inner sep=1pt] at (\xv,-0.09) {\xt};
+  }
+  \node[below, font=\tiny, inner sep=1pt] at (0,-0.09) {0};
+  \node[below, font=\tiny, inner sep=1pt] at (\axw,-0.09) {1};
+  \node[anchor=north east, font=\tiny] at ({\axw+0.28},-0.02) {$\alpha$};
+  \foreach \Sa/\gs in {1.5/16,2/34,2.5/52,3/72}{
+    \draw[gray!\gs, very thick, samples=100, domain=0:0.995]
+      plot ({\x*\axw},{(1/(1-\x*(1-1/\Sa))-1)*\aysc});
+  }
+  \node[anchor=west, font=\tiny] at (8.06,1.32) {$1.5\times$};
+  \node[anchor=west, font=\tiny] at (8.06,2.62) {$2\times$};
+  \node[anchor=west, font=\tiny] at (8.06,3.86) {$2.5\times$};
+  \node[anchor=west, font=\tiny] at (8.06,5.06) {$3\times$};
+  \node[anchor=west, font=\tiny, align=left] at (8.06,6.30)
+    {右端渐近\\$S_{\mathrm{attn}}$};
+  \fill (2.40,0.639) circle (0.05);
+  \draw[gray!60, thick, densely dashed] (2.40,0.72) -- (2.40,1.48);
+  \node[anchor=south west, align=left, font=\tiny] at (0.36,1.52)
+    {$\alpha{=}0.3$、$S_{\mathrm{attn}}{=}2.5$\\ $\Rightarrow S_{\mathrm{e2e}}{\approx}1.22\times$（总时 $0.82T$）};
+  \node[anchor=north west, align=left, text width=9.7cm, font=\tiny] at (-0.75,-0.60)
+    {曲线族 $S_{\mathrm{attn}}\in\{1.5,2,2.5,3\}$：attention 只省下
+     $\alpha(1-1/S_{\mathrm{attn}})$ 的比例，$\alpha\to1$ 时 $S_{\mathrm{e2e}}\to S_{\mathrm{attn}}$
+     （上界）。扩散模型（attention 占比高、D 偏小）是量化 attention 的第一落地场景；
+     NeMo Automodel 案例（$D{=}512$、全注意力层 10/60、训练 e2e $1.4\times$--$1.5\times$）
+     是同一公式在训练侧的实例。};
+\end{tikzpicture}
+\caption{端到端摊销曲线族（式~\ref{eq:33-e2e}）：单算子 $S_{\mathrm{attn}}$ 换算到
+管线收益由 attention 占比 $\alpha$ 封顶。$\alpha{=}0.3$、$S_{\mathrm{attn}}{=}2.5\times$
+时只剩 $1.22\times$；$\alpha\to1$ 的渐近线即 $S_{\mathrm{attn}}$。}
+\label{fig:33-e2e-amortize}
+\end{figure}
 
 \subsection{精度指标体系}
 

@@ -135,7 +135,43 @@ naive（AI $0.25$）计算上限 $\approx 0.23$ TFLOPS；
         被快的线程提前冲掉。
 \end{itemize}
 两道栅栏之间是「计算窗口」，之外是「搬运窗口」——本章两版 kernel 都是串行的
-「搬一算一」，第~\ref{ch:10}~章的双缓冲会让两个窗口重叠起来。
+「搬一算一」，空转时序见图~\ref{fig:09-single-barrier}；第~\ref{ch:10}~章的
+双缓冲会让两个窗口重叠起来。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[>=Stealth, font=\scriptsize]
+  \foreach \kk in {0,1,2}{
+    \pgfmathsetmacro{\xo}{5.05*\kk}
+    \fill[gray!15] ({\xo},0.55) rectangle ({\xo+1.55},1.15);
+    \node at ({\xo+0.775},0.85) {load k\kk};
+    \draw[very thick] ({\xo+1.86},1.45) -- ({\xo+1.86},-1.45);
+    \node[circle, draw, inner sep=0.5pt, font=\tiny] at ({\xo+1.86},1.66) {1};
+    \fill[gray!60] ({\xo+2.17},-1.15) rectangle ({\xo+4.12},-0.55);
+    \node at ({\xo+3.145},-0.85) {compute k\kk};
+    \draw[very thick] ({\xo+4.43},1.45) -- ({\xo+4.43},-1.45);
+    \node[circle, draw, inner sep=0.5pt, font=\tiny] at ({\xo+4.43},1.66) {2};
+    \ifnum\kk=0
+      \draw[dashed] ({\xo},-1.15) rectangle ({\xo+1.55},-0.55);
+      \node[font=\tiny] at ({\xo+0.775},-0.85) {CUDA Core idle};
+      \draw[dashed] ({\xo+2.17},1.15) rectangle ({\xo+4.12},0.55);
+      \node[font=\tiny] at ({\xo+3.145},0.85) {搬运 idle};
+    \fi
+  }
+  \node[anchor=east, align=right] at (-0.25,0.85) {搬运窗口\\{\tiny gmem$\to$smem}};
+  \node[anchor=east, align=right] at (-0.25,-0.85) {计算窗口\\{\tiny CUDA Core}};
+  \draw[->] (-0.1,-1.85) -- (15.2,-1.85) node[right, font=\tiny] {时间};
+  \node[anchor=north west, align=left, font=\tiny] at (0,-2.1)
+    {1：消费前 \texttt{\_\_syncthreads}——tile $k$ 全部写完才准读；\quad
+     2：覆写前 \texttt{\_\_syncthreads}——tile $k$ 全部读完才准覆写};
+  \node[draw, align=left, anchor=north west, font=\tiny] at (10.9,-2.6)
+    {对照第~\ref{ch:10}~章图~\ref{fig:10-1}（S$=$2 双缓冲）：\\
+     load $k{+}1$ 与 compute $k$ 重叠，\\两类空转消失};
+  \draw[->, dashed] (11.5,-2.6) -- (9.3,-1.25);
+\end{tikzpicture}
+\caption{单缓冲 k-slice 循环的双栅栏时序（3 个迭代）：load（灰 15）$\to$ 栅栏 1（消费前）$\to$ compute（灰 60）$\to$ 栅栏 2（覆写前）。load 期间 CUDA Core 空转、compute 期间搬运单元空转——「搬一算一」串行使两个窗口无法重叠；双缓冲（图~\ref{fig:10-1}）正是为消除这两类空转而来。}
+\label{fig:09-single-barrier}
+\end{figure}
 
 \section{设计与实现}
 
@@ -162,6 +198,45 @@ Vectorize）。L18--19 的两个 AI 公式经核校存在量纲问题（AI 实�
 $\mathrm{tid} \to (\mathrm{tid}/32,\ \mathrm{tid}\%32)$ 同时服务 $A$ 的 $(m, k)$ 与
 $B$ 的 $(k, n)$：一个 warp 的 32 个 lane 读 \texttt{a} 的一行连续 32 个 float
 （128B 合并事务），读 \texttt{b} 的一行连续 32 个 float——都是理想合并。
+两张网格全等、仅轴语义不同的「一图两读」见图~\ref{fig:09-tid-map}。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\tiny]
+  \def\cs{0.34}
+  \foreach \r [evaluate=\r as \gr using int(8+9*\r), evaluate=\r as \tb using int(32*\r)] in {0,...,7}{
+    \foreach \c in {0,...,31}{
+      \node[fill=gray!\gr, minimum size=\cs cm, inner sep=0pt, outer sep=0pt]
+        at ({\c*\cs},{-\r*\cs}) {\the\numexpr\tb+\c\relax};
+    }
+  }
+  \draw[thick] ({-0.5*\cs},{-0.5*\cs}) grid[step=0.34cm] ({31.5*\cs},{-7.5*\cs});
+  \node[anchor=south, font=\scriptsize] at ({16*\cs},0.55) {$s_a[m][k]$（A tile）：行 $m=\mathrm{tid}/32$，列 $k=\mathrm{tid}\%32$（连续）};
+  \foreach \r in {0,...,7}{
+    \node[anchor=west] at ({31.5*\cs+0.15},{-\r*\cs}) {warp \r};
+  }
+  \node[anchor=east, font=\tiny, rotate=90] at (-0.62,{-4*\cs}) {$m$（行 $=$ warp，灰度渐变）};
+  \draw[<->, thick] (0,-3.75) -- ({32*\cs},-3.75);
+  \node[anchor=north, font=\scriptsize] at ({16*\cs},-3.8) {warp 内列连续 32 float $=$ 128B $\to$ 1 个合并事务（两图网格全等，仅轴语义不同）};
+  \begin{scope}[shift={(0,-5.35)}]
+    \foreach \r [evaluate=\r as \gr using int(8+9*\r), evaluate=\r as \tb using int(32*\r)] in {0,...,7}{
+      \foreach \c in {0,...,31}{
+        \node[fill=gray!\gr, minimum size=\cs cm, inner sep=0pt, outer sep=0pt]
+          at ({\c*\cs},{-\r*\cs}) {\the\numexpr\tb+\c\relax};
+      }
+    }
+    \draw[thick] ({-0.5*\cs},{-0.5*\cs}) grid[step=0.34cm] ({31.5*\cs},{-7.5*\cs});
+    \node[anchor=south, font=\scriptsize] at ({16*\cs},0.55) {$s_b[k][n]$（B tile）：行 $k=\mathrm{tid}/32$，列 $n=\mathrm{tid}\%32$（连续）};
+    \node[anchor=east, font=\tiny, rotate=90] at (-0.62,{-4*\cs}) {$k$（行 $=$ warp，灰度渐变）};
+  \end{scope}
+  \node[draw, align=left, anchor=west, font=\scriptsize] at ({32*\cs+0.45},-4.15)
+    {映射法则（sgemm.cuh L45--48）\\
+     \texttt{/} $\to$ 跨步维：线程\textbf{不}连续（$M$、$N$ 维）\\
+     \texttt{\%} $\to$ stride-1 维：线程连续（$K$ 维）};
+\end{tikzpicture}
+\caption{Level 1 的 tid$\to$(m,k)/(k,n) 映射双网格（格内数字为 tid 0--255，行 $=\mathrm{tid}/32$、列 $=\mathrm{tid}\%32$，8 行即 8 个 warp 按灰度渐变）。上：$s_a[m][k]$；下：$s_b[k][n]$——两图数字排布完全相同，一条映射同时服务 A 与 B；warp 内 32 个列地址连续，构成 128B 合并事务。}
+\label{fig:09-tid-map}
+\end{figure}
 
 \lstinputlisting[linerange={55-79},firstnumber=auto,
   title={sgemm.cuh L55-79（Level 1：k-slice 主循环与写回）}]{../sgemm.cuh}
@@ -187,12 +262,112 @@ $32 \times 128$；row-major 下两条映射的 4 元素都连续，\texttt{float
 \textbf{计算映射}——与加载映射\textbf{完全解耦}（源码 L130--133 特意强调这一点）：
 线程 $\mathrm{tid}$ 负责输出的 $4 \times 4$ 子块，行基址 $(\mathrm{tid}/32) \cdot 4$、
 列基址 $(\mathrm{tid}\%32) \cdot 4$；$32 \times 32$ 个线程 $\times$ 每人 16 个输出
-$= 16384 = 128 \times 128$，不重不漏。
+$= 16384 = 128 \times 128$，不重不漏（vec4 落点见图~\ref{fig:09-vec4-map}）。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\tiny]
+  \def\aw{0.36}
+  \def\bw{0.26}
+  \def\ah{0.4}
+  \node[anchor=south, font=\scriptsize] at ({16*\aw},0.1)
+    {$s_a$ tile $128\times32$：行 $m=\mathrm{tid}/8$，列组 $k=(\mathrm{tid}\%8)\cdot4$——8 线程铺满一行 32 列};
+  \foreach \rw in {0,...,5}{
+    \node[anchor=east] at (-0.12,{-\rw*\ah-\ah/2}) {$m{=}\rw$};
+    \foreach \gp in {0,...,7}{
+      \pgfmathtruncatemacro{\tidn}{8*\rw+\gp}
+      \pgfmathtruncatemacro{\gr}{8+9*\gp}
+      \fill[gray!\gr] ({4*\gp*\aw},{-\rw*\ah-\ah}) rectangle ({4*\gp*\aw+4*\aw},{-\rw*\ah});
+      \foreach \sp in {1,2,3}{
+        \draw[white, thin] ({4*\gp*\aw+\sp*\aw},{-\rw*\ah-\ah}) -- ({4*\gp*\aw+\sp*\aw},{-\rw*\ah});
+      }
+      \node at ({(4*\gp+2)*\aw},{-\rw*\ah-\ah/2}) {\tidn};
+    }
+  }
+  \draw[very thick, vscAccent] ({12*\aw},{-2*\ah}) rectangle ({16*\aw},{-\ah});
+  \draw[thin] (0,0) grid[xstep=1.44cm, ystep=0.4cm] ({32*\aw},{-6*\ah});
+  \foreach \gp in {0,...,7}{
+    \node[anchor=north] at ({(4*\gp+2)*\aw},{-6*\ah-0.05}) {$\the\numexpr4*\gp\relax$--$\the\numexpr4*\gp+3\relax$};
+  }
+  \node at ({16*\aw},{-6*\ah-0.5}) {$\vdots$（共 128 行；1024 线程恰好铺满 $128\times32$）};
+  \begin{scope}[shift={(0,-4.8)}]
+    \node[anchor=south, font=\scriptsize] at ({24*\bw+0.6},0.1)
+      {$s_b$ tile $32\times128$：行 $k=\mathrm{tid}/32$，列组 $n=(\mathrm{tid}\%32)\cdot4$——32 线程铺满一行（图示前 12 组）};
+    \foreach \rw in {0,...,3}{
+      \node[anchor=east] at (-0.12,{-\rw*\ah-\ah/2}) {$k{=}\rw$};
+      \foreach \gp in {0,...,11}{
+        \pgfmathtruncatemacro{\tidn}{32*\rw+\gp}
+        \pgfmathtruncatemacro{\gr}{8+9*mod(\gp,8)}
+        \fill[gray!\gr] ({4*\gp*\bw},{-\rw*\ah-\ah}) rectangle ({4*\gp*\bw+4*\bw},{-\rw*\ah});
+        \foreach \sp in {1,2,3}{
+          \draw[white, thin] ({4*\gp*\bw+\sp*\bw},{-\rw*\ah-\ah}) -- ({4*\gp*\bw+\sp*\bw},{-\rw*\ah});
+        }
+        \node at ({(4*\gp+2)*\bw},{-\rw*\ah-\ah/2}) {\tidn};
+      }
+      \node at ({48*\bw+0.3},{-\rw*\ah-\ah/2}) {$\cdots$};
+    }
+    \draw[very thick, vscAccent] ({44*\bw},{-\ah}) rectangle ({48*\bw},0);
+    \draw[thin] (0,0) grid[xstep=1.04cm, ystep=0.4cm] ({48*\bw},{-4*\ah});
+    \foreach \gp in {0,...,11}{
+      \node[anchor=north] at ({(4*\gp+2)*\bw},{-4*\ah-0.05}) {$\the\numexpr4*\gp\relax$--$\the\numexpr4*\gp+3\relax$};
+    }
+    \node[anchor=west, align=left] at ({48*\bw+0.62},{-2*\ah}) {$n$ 至 127\\（共 32 个列组）};
+    \node at ({24*\bw},{-4*\ah-0.5}) {$\vdots$（共 32 行；1024 线程恰好铺满 $32\times128$）};
+  \end{scope}
+  \node[draw, very thick, vscAccent, minimum width=0.5cm, minimum height=0.26cm, inner sep=0pt] at (0.4,-7.55) {};
+  \node[anchor=west, align=left, text width=13.2cm] at (0.85,-7.55)
+    {红框 $=$ tid 11 的落点：A 取 $a[1][12..15]$（$m=11/8$、$k$ 起点 12），B 取 $b[0][44..47]$（$k=11/32$、$n$ 起点 44），各一条 16B \texttt{float4}（格内数字为 tid）。\\
+     覆盖算术：$1024$ 线程 $\times\,4$ 元素 $= 4096 = 128\times32 = 32\times128$，两 tile 恰好铺满；计算映射与加载映射解耦——每人 $4\times4$ 输出，$32\times32$ 线程 $\times\,16 = 16384 = 128\times128$。};
+\end{tikzpicture}
+\caption{Vec4 加载映射双网格（sgemm.cuh L93--98）：上 $s_a$，行 $m=\mathrm{tid}/8$、列组 $k=(\mathrm{tid}\%8)\cdot4$，8 线程铺满一行；下 $s_b$，行 $k=\mathrm{tid}/32$、列组 $n=(\mathrm{tid}\%32)\cdot4$，32 线程铺满一行。每个 4 小格组 $=$ 一个 tid 的一条 \texttt{float4}（row-major 下 4 元素连续，加载合法）；红框为 tid 11 在两 tile 中的落点。}
+\label{fig:09-vec4-map}
+\end{figure}
 
 注释 L99--102 的 bank conflict 预警也经推导属实：计算阶段读 \texttt{s\_b[k][n]}
 时，warp 内列地址步进 4 个 float（16B），32 个 lane 只命中 8 个 bank——
 4-way conflict；生产代码用 \texttt{s\_\allowbreak{}b[BK][BN+1]} 加一列 PAD 打散，
-本章保持最简布局，把系统解法（swizzle）留给第~\ref{ch:12}~章。
+本章保持最简布局，把系统解法（swizzle）留给第~\ref{ch:12}~章
+（bank 命中模式见图~\ref{fig:09-bank-conflict}）。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\tiny]
+  \def\bw{0.46}
+  \def\bh{0.42}
+  \node[anchor=south, font=\scriptsize] at ({16*\bw},0.55)
+    {计算阶段读 \texttt{s\_b[k][n]}：$n=4\cdot\mathrm{lane}$，$\mathrm{bank}=(4\cdot\mathrm{lane})\bmod 32$};
+  \foreach \wv in {0,...,3}{
+    \node[anchor=east, align=right] at (-0.12,{-\wv*\bh-\bh/2})
+      {事务 \the\numexpr\wv+1\relax\\lane \the\numexpr8*\wv\relax--\the\numexpr8*\wv+7\relax};
+    \foreach \bk in {0,...,31}{
+      \pgfmathtruncatemacro{\bmr}{mod(\bk,4)}
+      \ifnum\bmr=0
+        \pgfmathtruncatemacro{\grp}{\bk/4}
+        \pgfmathtruncatemacro{\lnt}{\grp+8*\wv}
+        \pgfmathtruncatemacro{\gr}{8+9*\grp}
+        \node[fill=gray!\gr, minimum width=\bw cm, minimum height=\bh cm, inner sep=0pt]
+          at ({(\bk+0.5)*\bw},{-\wv*\bh-\bh/2}) {L\lnt};
+      \fi
+    }
+  }
+  \draw[thin] (0,0) grid[xstep=0.46cm, ystep=0.42cm] ({32*\bw},{-4*\bh});
+  \foreach \bk in {0,...,31}{
+    \pgfmathtruncatemacro{\bmr}{mod(\bk,4)}
+    \ifnum\bmr=0
+      \node[anchor=north, font=\tiny\bfseries, text=vscAccent] at ({(\bk+0.5)*\bw},{-4*\bh-0.05}) {\bk};
+    \else
+      \node[anchor=north] at ({(\bk+0.5)*\bw},{-4*\bh-0.05}) {\bk};
+    \fi
+  }
+  \node[anchor=south, text=vscAccent] at ({16*\bw},{-4*\bh-0.6}) {红色 bank 号 $=$ 被命中的 8 个 bank（$0/4/8/\dots/28$）};
+  \node[draw, align=left, anchor=north west, text width=14.2cm] at (0,{-4*\bh-0.95})
+    {同一列的 4 个 lane（如 L0/L8/L16/L24 $\to$ bank 0）同时命中同一 bank 的不同地址——4-way conflict，
+     一次 warp 访问被拆成 4 个串行事务；其余 24 个 bank 本轮空闲（灰度 $=$ bank$/4$ 分组，8 档循环）。
+     生产代码用 \texttt{s\_b[BK][BN+1]} 补 1 列 PAD 打散；系统解法 XOR swizzle 见第~\ref{ch:12}~章。};
+\end{tikzpicture}
+\caption{$s\_b$ 计算访问的 4-way bank conflict：warp 内 32 lane 按 $n=4\cdot\mathrm{lane}$ 步进 4 个 float（16B），$\mathrm{bank}=(4\cdot\mathrm{lane})\bmod32$ 只命中 $0/4/8/\dots/28$ 共 8 个 bank——每列 4 个 lane（L$j$/L$j{+}8$/L$j{+}16$/L$j{+}24$）同 bank 不同地址，一次访问拆成 4 个事务。}
+\label{fig:09-bank-conflict}
+\end{figure}
 
 \subsection{Level 1+：\texttt{sgemm\_vec4} 的实现}
 

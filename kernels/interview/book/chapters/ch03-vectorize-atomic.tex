@@ -129,6 +129,44 @@ read-modify-write（RMW）。若两个线程同时 RMW 同一 bin 且无同步�
 数），仅当 $T > B$ 时才低于 $N$；$T \le B$ 时次数不变，收益来自 smem
 原子远快于全局原子与写模式去热点。
 
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\footnotesize,
+  box/.style={draw, align=center, inner sep=3pt, font=\scriptsize},
+  ar/.style={-{Stealth[length=1.8mm]}, semithick}]
+  \node[box, text width=3.0cm] (src) at (1.7, 5.2)
+    {histogram kernel\\atomicAdd(\&y[a[i]],~1)\\$\times\ N = 4{,}194{,}304$ 次};
+  \fill[gray!40] (4.6, 6.0) rectangle (13.56, 8.24);
+  \draw[black!12, very thin, step=0.28cm] (4.6, 6.0) grid (13.56, 8.24);
+  \draw[thick] (4.6, 6.0) rectangle (13.56, 8.24);
+  \node[font=\scriptsize, anchor=south] at (9.08, 8.34)
+    {均匀分布：每 bin $\approx$ 16K 次，全格同承压（灰 40）};
+  \fill[gray!10] (4.6, 1.3) rectangle (13.56, 3.54);
+  \draw[black!12, very thin, step=0.28cm] (4.6, 1.3) grid (13.56, 3.54);
+  \draw[thick] (4.6, 1.3) rectangle (13.56, 3.54);
+  \foreach \c/\r in {7/2, 8/2, 7/3, 8/3, 20/5, 21/5, 12/6}
+    \fill[gray!90] (4.6+0.28*\c, 1.3+0.28*\r) rectangle ++(0.28, 0.28);
+  \node[font=\scriptsize, anchor=south] at (9.08, 3.64)
+    {尖峰分布：少数 bin 深灰热点（灰 90），其余近乎空转（灰 10）};
+  \node[font=\tiny, anchor=north west] at (4.6, 5.9) {bin 0};
+  \node[font=\tiny, anchor=north east] at (13.56, 5.9) {bin 255};
+  \node[font=\tiny, anchor=north west] at (4.6, 1.2) {bin 0};
+  \node[font=\tiny, anchor=north east] at (13.56, 1.2) {bin 255};
+  \draw[ar] (src.east) -- (3.6, 5.2) -- (3.6, 7.12) -- (4.6, 7.12);
+  \draw[ar] (src.east) -- (3.6, 5.2) -- (3.6, 2.42) -- (4.6, 2.42);
+  \node[box, text width=4.6cm, fill=gray!5] (l2) at (5.8, -0.95)
+    {L2 原子单元：同 bin 串行（2.6 ns/op）\\异 bin 并行 $\to$ 吞吐 $\propto$ 活跃 bin 数};
+  \node[box, text width=5.2cm] (key) at (11.6, -0.95)
+    {实测 26.7 GB/s（vs elementwise\_add 2654，低两个数量级）\\
+     均摊 0.15 ns/op；理想 42 $\mu$s vs 实测 0.63 ms\\
+     （$\approx$ 15$\times$ 缺口：L1 侧原子路径排队）};
+  \draw[ar] (5.8, 1.3) -- (5.8, -0.46);
+  \draw[ar] (11.6, 1.3) -- (11.6, -0.24);
+\end{tikzpicture}
+\caption{256-bin 直方图的原子冲突热力图（bin 排成 $8\times32$ 网格示意）：4M 次 atomicAdd 从左侧注入；上格均匀分布时各 bin 等承压（灰 40），下格尖峰分布时少数 bin 形成深灰热点（灰 90）、其余近乎空转（灰 10）——bin 分布决定同址串行化程度。下方案框汇总实测：26.7 GB/s 比 elementwise\_add 的 2654 GB/s 低两个数量级，均摊 0.15 ns/op；按「256 bin 理想并行 + 同址 2.6 ns 串行」估算理想 42 $\mu$s，实测 0.63 ms（约 15 倍缺口来自 L1 侧原子路径排队）。}
+\label{fig:3-3}
+\end{figure}
+
 \section{设计与实现}
 
 Phase 2 的开场注释给出了本章的考点清单：
@@ -157,6 +195,51 @@ float4 引用，编译为一条 \texttt{LDG.E.128}；\texttt{FLOAT4\allowbreak{}
 同理是一条 \texttt{STG.E.128}。四个 fmaxf 是 4 条独立的寄存器指令——它们
 与 load/store 的比例恰好说明：\textbf{向量化后指令瓶颈从访存侧转移到了
 计算侧}，这正是「AI 低」的算子最乐意看到的结构。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize,
+  ibox/.style={draw, minimum width=0.95cm, minimum height=0.38cm, inner sep=1pt,
+    font=\tiny},
+  ld/.style={ibox, fill=gray!60},
+  cc/.style={ibox, fill=gray!25},
+  ar/.style={-{Stealth[length=1.3mm]}, semithick}]
+  \node[anchor=south west] at (0.05, 0.3)
+    {标量版：每元素一条 \texttt{LDG.E.32} + 一条 \texttt{fmaxf} + 一条 \texttt{STG.E.32}};
+  \foreach \gi in {0,1,2,3}{
+    \node[ld] (l\gi) at ({3.2*\gi+0.6}, 0) {LDG.32};
+    \node[cc] (c\gi) at ({3.2*\gi+1.7}, 0) {fmaxf};
+    \node[ld] (s\gi) at ({3.2*\gi+2.8}, 0) {STG.32};
+    \draw[ar] (l\gi) -- (c\gi);
+    \draw[ar] (c\gi) -- (s\gi);
+  }
+  \draw[black!55, semithick] (0.05,-0.42) -- (0.05,-0.56) -- (12.85,-0.56)
+    -- (12.85,-0.42);
+  \node[anchor=north] at (6.45,-0.64)
+    {4 个元素逐元素处理：$4\times3 = 12$ 条指令（访存 8、计算 4）};
+  \node[anchor=north west] at (0.05,-1.15)
+    {vec4 版：4 个元素打包——指令总数 $12 \to 6$，访存指令 $8 \to 2$（$1/4$）};
+  \node[ld, minimum width=1.6cm, minimum height=0.44cm] (vld) at (0.9,-2.7)
+    {LDG.E.128};
+  \foreach \ki in {0,1,2,3}{
+    \node[cc, minimum width=1.3cm] (vc\ki) at (3.25,{-1.8-0.6*\ki}) {fmaxf};
+    \draw[ar] (2.15,{-1.8-0.6*\ki}) -- (2.6,{-1.8-0.6*\ki});
+    \draw[ar] (3.9,{-1.8-0.6*\ki}) -- (4.35,{-1.8-0.6*\ki});
+  }
+  \draw[ar] (vld.east) -- (2.15,-2.7);
+  \draw[black!55] (2.15,-1.8) -- (2.15,-3.6);
+  \draw[black!55] (4.35,-1.8) -- (4.35,-3.6);
+  \draw[ar] (4.35,-2.7) -- (4.8,-2.7);
+  \node[ld, minimum width=1.6cm, minimum height=0.44cm] (vst) at (5.6,-2.7)
+    {STG.E.128};
+  \node[anchor=west, align=left, text width=6.6cm] at (6.7,-2.7)
+    {4 条 \texttt{fmaxf} 相互独立：ILP $\times4$，与 2 条访存指令之比 $2:1$\\
+     于是\textbf{指令瓶颈从访存侧转移到计算侧}——计算指令占比
+     $33\% \to 67\%$};
+\end{tikzpicture}
+\caption{标量与 vec4 的指令流对照（relu，以 4 个元素为例）：标量版每元素 $3$ 条指令（\texttt{LDG.E.32} $\to$ \texttt{fmaxf} $\to$ \texttt{STG.E.32}），4 元素共 $12$ 条、其中访存 $8$ 条；vec4 版用一条 \texttt{LDG.E.128} 取回 4 个元素，4 条 \texttt{fmaxf} 互不依赖（ILP $\times4$）后由一条 \texttt{STG.E.128} 写回，总数降到 $6$ 条、访存只剩 $2$ 条。访存 $:$ 计算从 $8:4$ 变为 $2:4$，指令瓶颈因此从访存侧移到计算侧。}
+\label{fig:3-4}
+\end{figure}
 
 \subsection{elementwise add：安全范式}
 
@@ -189,19 +272,29 @@ vec4 版的守卫值得逐行读：主路径 \texttt{(idx + 3) < N} 一次性保
 
 \begin{figure}[htbp]
 \centering
-\begin{lstlisting}[style=console]
-   elementwise kernel: 从朴素到峰值带宽
-   -------------------------------------------------------------
-   朴素(stride 访存)     需要搬运 8x 数据      有效性 3%~12.5%
-     -> coalesced        搬运 bytes 最小化      有效率 100%
-        (idx 连续映射)
-     -> + vectorize      指令数 /4, ILP x4      逼近峰值带宽
-        (float4, 16B 对齐, N 非 4 倍数走标量尾部)
-     -> + privatize      原子冲突域: 全局 -> smem
-        (histogram 专用: block 内 smem 直方图 + 少量全局合并)
-   -------------------------------------------------------------
-\end{lstlisting}
-\caption{逐元素算子的三级优化路线}
+\begin{tikzpicture}[font=\footnotesize]
+  \draw[thick, fill=gray!80] (0.9, 0) rectangle (3.8, 1.7);
+  \draw[thick, fill=gray!55] (4.15, 0) rectangle (7.05, 2.7);
+  \draw[thick, fill=gray!30] (7.4, 0) rectangle (10.3, 3.7);
+  \draw[thick, fill=gray!15] (10.65, 0) rectangle (13.55, 4.7);
+  \node[anchor=north, align=center, font=\scriptsize, text=white,
+    text width=2.7cm] at (2.35, 1.55)
+    {级 1：朴素 stride 访存\\搬运 $8\times$ 数据\\有效 3\%--12.5\%};
+  \node[anchor=north, align=center, font=\scriptsize, text width=2.7cm]
+    at (5.6, 2.55) {级 2：coalesced\\idx 连续映射\\$\eta = 100\%$，搬运字节最小化};
+  \node[anchor=north, align=center, font=\scriptsize, text width=2.7cm]
+    at (8.85, 3.55) {级 3：+ vectorize\\float4 单条 128-bit\\访存指令 /4、ILP $\times 4$\\16B 对齐 + 标量尾部};
+  \node[anchor=north, align=center, font=\scriptsize, text width=2.7cm]
+    at (12.1, 4.55) {级 4：+ privatize\\（histogram 专用）\\冲突域 全局 $\to$ smem\\block 内直方图 + $G \times B$ 合并写};
+  \draw[dashed, semithick, black!60, -{Stealth[length=2mm]}]
+    (0.9, 1.95) -- (4.15, 2.95) -- (7.4, 3.95) -- (10.65, 4.95);
+  \draw[-{Stealth[length=1.8mm]}] (0.35, 0) -- (0.35, 5.4);
+  \draw[-{Stealth[length=1.8mm]}] (0.35, 0) -- (14.1, 0);
+  \node[rotate=90, font=\scriptsize\bfseries, anchor=south] at (0.1, 2.8)
+    {逼近峰值带宽};
+  \node[anchor=west, font=\scriptsize] at (14.15, 0) {优化手段逐级叠加};
+\end{tikzpicture}
+\caption{逐元素算子的四级优化阶梯：朴素 stride → coalescing → 向量化 → smem 私有化，纵轴为逼近峰值带宽的程度，灰度越浅越接近上限（级 4 为 histogram 专用的原子冲突域收缩）。}
 \label{fig:3-2}
 \end{figure}
 

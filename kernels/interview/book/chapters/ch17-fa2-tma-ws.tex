@@ -175,6 +175,62 @@ producer arrive）——两边的 arrive 预算都是 257/轮，与 init 值精�
 （读到半新半旧数据，静默错误），多算则永不翻转（挂死）。这套守恒与第~\ref{ch:13}~章
 图~13-3 的 mbarrier 状态机完全同构，只是参与方从 $128+1$ 换成了 $256+1$。
 
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\tiny]
+  \def\rw{7.4}
+  % (1) producer 提交
+  \draw[thin, fill=gray!12] (0,-0.05) rectangle ({\rw},-0.90);
+  \node[anchor=north west, align=left] at (0.15,-0.16)
+    {(1) \textbf{producer}：提交 TMA，\texttt{tma\_arrive\_expect\_tx} 一条指令同时完成：};
+  \node[anchor=north west, align=left] at (0.15,-0.44)
+    {arrive $+1$（合并指令固定为 1）与期望事务量 $\Delta T =$ K tile 字节数};
+  \draw[-{Stealth}, thin] (1.0,-0.90) -- (1.0,-1.30);
+  \node[anchor=west] at (1.15,-1.10) {写 stage $s$};
+  % (2) full_K[s] 翻转
+  \draw[thin, fill=gray!12] (0,-1.30) rectangle ({\rw},-2.80);
+  \node[anchor=north west, align=left] at (0.15,-1.40)
+    {(2) \texttt{full\_K[s]} 翻转条件（预算 $257$ arrive/相位，与 init 精确对齐）};
+  \draw[thin, fill=gray!35] (0.15,-2.15) rectangle (5.55,-1.85);
+  \node at (2.85,-2.00) {256 consumer arrive（wait 时逐线程）};
+  \draw[thin, fill=gray!55] (5.62,-2.15) rectangle (6.45,-1.85);
+  \node at (6.035,-2.00) {1};
+  \node[anchor=north west, align=left, text width=7.1cm] at (0.15,-2.30)
+    {窄段 $=1$：producer 的 arrive\_tx；$\Delta T$ 字节由 TMA 硬件 complete-tx 记账};
+  \draw[-{Stealth}, thin] (1.0,-2.80) -- (1.0,-3.15);
+  \node[anchor=west] at (1.15,-2.97) {翻转 $\to$ wait 返回};
+  % (3) consumer 读
+  \draw[thin, fill=gray!12] (0,-3.15) rectangle ({\rw},-4.00);
+  \node[anchor=north west, align=left] at (0.15,-3.26)
+    {(3) \textbf{consumer} 256 线程：\texttt{full\_K[s].wait(arrive())} 返回，读 K 做 QK$^\top$};
+  \node[anchor=north west, align=left] at (0.15,-3.54)
+    {（softmax 与 PV 只碰寄存器与 V，不读 K smem）};
+  \draw[-{Stealth}, thin] (1.0,-4.00) -- (1.0,-4.35);
+  \node[anchor=west] at (1.15,-4.17) {读毕释放};
+  % (4) empty_K[s] 翻转
+  \draw[thin, fill=gray!12] (0,-4.45) rectangle ({\rw},-5.80);
+  \node[anchor=north west, align=left] at (0.15,-4.55)
+    {(4) \texttt{empty\_K[s]} 翻转条件（同样 $257$/相位）};
+  \draw[thin, fill=gray!35] (0.15,-5.25) rectangle (5.55,-4.95);
+  \node at (2.85,-5.10) {256 consumer arrive（QK 读毕即释放）};
+  \draw[thin, fill=gray!55] (5.62,-5.25) rectangle (6.45,-4.95);
+  \node at (6.035,-5.10) {1};
+  \node[anchor=north west, align=left, text width=7.1cm] at (0.15,-5.40)
+    {窄段 $=1$：producer 写前报到（下一轮要覆盖 stage $s$ 时）};
+  % 回到 (1)：下一轮迭代、相位 +1
+  \draw[thin] ({\rw},-5.12) -- (8.3,-5.12) -- (8.3,-0.45) -- ({\rw},-0.45);
+  \draw[-{Stealth}, thin] (8.3,-0.45) -- ({\rw+0.02},-0.45);
+  \node[rotate=90, anchor=center] at (8.78,-2.80) {下一轮 KV 迭代：相位 $\pi \to \pi{+}1$（循环闭合）};
+  % 两侧错算的后果
+  \node[anchor=north west, align=left, text=vscAccent] at (0.15,-6.15)
+    {少算一次 arrive $\to$ 屏障提前翻转：读到半新半旧的 K 数据（静默错误）};
+  \node[anchor=north west, align=left, text=vscAccent] at (0.15,-6.55)
+    {多算一次 arrive $\to$ 永不翻转：consumer 永远等不到 full（挂死）};
+\end{tikzpicture}
+\caption{固定 stage $s$ 上 full/empty 两张屏障的相位收支循环（式~\ref{eq:17-flip-full} 与式~\ref{eq:17-flip-empty} 的图形化）。每轮 KV 迭代：producer 提交 TMA 时用 \texttt{tma\_arrive\_expect\_tx} 一条指令完成「arrive $+1$」与「声明 $\Delta T$」两件事，TMA 硬件搬完后自动 complete-tx 记账；consumer 256 线程在 \texttt{full\_K[s].wait()} 时各贡献一份 arrive（$256+1+\text{tx}$ 构成翻转条件），读毕 K 再各 arrive 一次释放 \texttt{empty\_K[s]}，producer 下一轮写前补上第 257 份。两边的 arrive 预算都是 $257$/轮，与 init 值精确对齐——\textbf{多算一次挂死、少算一次静默错}。窄段为可读放大，实际只占 $1/257$。}
+\label{fig:17-arrive-cycle}
+\end{figure}
+
 最后是 \textbf{Q 与 V 的两个特例}。\texttt{full\_Q}：init 257，producer 装完
 Q tile 后 arrive\_tx 一次（$B_r D \times 2$ 字节，D$=$64 时 16 KB），consumer
 在进主循环前 \texttt{full\_\allowbreak{}Q.\allowbreak{}wait\allowbreak{}(arrive\allowbreak{}())} \textbf{一次}——此后再无人
@@ -294,6 +350,72 @@ $B_c = 8 \times 1 \times 8 = 64$；consumer 8 warp 排成 $8 \times 1$
         记账，\texttt{expect\_tx} 一次声明总字节——协议数学完全不变，只是
         $\Delta T$ 变成 $\mathrm{kTmaChunks} \times$ 单 chunk 字节。
 \end{itemize}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\tiny]
+  \def\cwd{0.5}
+  \def\chd{0.36}
+  \def\cxx{10.3}
+  % 左：gmem 逻辑视图 [B, D] 行主序（缩尺 8x16），cell = 逻辑线性 idx = b*16+d
+  \foreach \r in {0,...,7}{
+    \foreach \c [evaluate=\c as \gr using {int(25+30*int(\c/8)+7*mod(\r,2))}] in {0,...,15}{
+      \pgfmathtruncatemacro{\lgi}{16*\r+\c}
+      \node[fill=gray!\gr, minimum width=\cwd cm, minimum height=\chd cm, inner sep=0pt]
+        at ({(\c+0.5)*\cwd},{-(\r+0.5)*\chd}) {\lgi};
+    }
+  }
+  % 右：smem 物理视图，chunk-major 两个 8x8 面板，cell = 同一逻辑 idx
+  \foreach \k in {0,1}{
+    \foreach \r in {0,...,7}{
+      \foreach \c [evaluate=\c as \gr using {int(25+30*\k+7*mod(\r,2))}] in {0,...,7}{
+        \pgfmathtruncatemacro{\lgi}{16*\r+8*\k+\c}
+        \node[fill=gray!\gr, minimum width=\cwd cm, minimum height=\chd cm, inner sep=0pt]
+          at ({\cxx+(\c+0.5)*\cwd},{-\k*3.78-(\r+0.5)*\chd}) {\lgi};
+      }
+    }
+  }
+  \draw[thin] (0,0) grid[xstep=\cwd cm, ystep=\chd cm] ({16*\cwd},{-8*\chd});
+  \draw[very thick] (0,0) rectangle ({16*\cwd},{-8*\chd});
+  \draw[thick] ({8*\cwd},0) -- ({8*\cwd},{-8*\chd});
+  % \cxx=10.3cm 非 xstep 整数倍：grid 按坐标原点相位画线会整体错位半格并穿格内数字，故显式画格边界线
+  \foreach \cc in {0,...,8}{
+    \draw[thin] ({\cxx+\cc*\cwd},0) -- ({\cxx+\cc*\cwd},{-8*\chd});
+    \draw[thin] ({\cxx+\cc*\cwd},{-3.78}) -- ({\cxx+\cc*\cwd},{-3.78-8*\chd});
+  }
+  \foreach \rr in {0,...,8}{
+    \draw[thin] ({\cxx},{-\rr*\chd}) -- ({\cxx+8*\cwd},{-\rr*\chd});
+    \draw[thin] ({\cxx},{-3.78-\rr*\chd}) -- ({\cxx+8*\cwd},{-3.78-\rr*\chd});
+  }
+  \draw[very thick] ({\cxx},0) rectangle ({\cxx+8*\cwd},{-8*\chd});
+  \draw[very thick] ({\cxx},{-3.78}) rectangle ({\cxx+8*\cwd},{-3.78-8*\chd});
+  % TMA box 框：沿 head_dim 的两个 64 列半区
+  \draw[thick] (-0.10,0.10) rectangle ({8*\cwd+0.10},{-8*\chd-0.10});
+  \draw[thick, dashed] ({8*\cwd-0.10},0.10) rectangle ({16*\cwd+0.10},{-8*\chd-0.10});
+  \node[anchor=south, font=\tiny] at ({4*\cwd},0.22) {TMA box \#0：$(64,B)$};
+  \node[anchor=south, font=\tiny] at ({12*\cwd},0.22) {TMA box \#1：$(64,B)$};
+  \node[anchor=south, font=\scriptsize\bfseries] at ({8*\cwd},0.62)
+    {左：gmem 逻辑视图 $[B,D]$ 行主序（缩尺 $8{\times}16$，真实 $64{\times}128$）};
+  \node[anchor=south, font=\scriptsize\bfseries] at ({\cxx+4*\cwd},0.62)
+    {右：smem 物理视图 chunk-major $[D/64,B,64]$};
+  \node[anchor=north, font=\tiny] at ({8*\cwd},{-8*\chd-0.18})
+    {一行 $D{=}128 \to 256$~B $>$ 128~B 单 box 上限 $\to$ 沿 head\_dim 拆 $D/64$ 次 TMA};
+  \node[anchor=west, font=\tiny] at ({\cxx+8*\cwd+0.12},-1.44) {chunk 0（head\_dim 0--63）};
+  \node[anchor=west, font=\tiny] at ({\cxx+8*\cwd+0.12},{-3.78-1.44}) {chunk 1（64--127）};
+  \node[anchor=north, font=\tiny, align=center] at ({\cxx+4*\cwd},{-3.78-8*\chd-0.18})
+    {物理偏移 $=$ chunk$\,\cdot\!(B\cdot 64) + b\cdot 64 + d_{\mathrm{loc}}$\\
+     行 $b$ 的前 64 维 $\to$ chunk 0 行 $b$，后 64 维 $\to$ chunk 1 行 $b$};
+  % 两支 TMA 箭头
+  \draw[-{Stealth}, semithick] ({16*\cwd+0.22},{-1.44}) -- ({\cxx-0.12},{-1.44});
+  \node[anchor=south, font=\tiny] at ({\cxx+4*\cwd-2.8},{-1.36}) {TMA \#0 $\to$ chunk 0};
+  \draw[-{Stealth}, semithick] ({16*\cwd+0.22},{-2.30}) -- ({\cxx-0.12},{-3.78-2.16});
+  \node[anchor=south, font=\tiny] at ({\cxx+4*\cwd-2.4},{-3.02}) {TMA \#1 $\to$ chunk 1};
+  \node[anchor=north, font=\tiny] at (8.6,{-8*\chd-4.0})
+    {两次 TMA 共享同一 mbarrier：\texttt{expect\_tx} 一次声明 $2\times$8~KB，每次搬运各自 complete-tx 记账};
+\end{tikzpicture}
+\caption{chunk-major 布局与双 TMA 拆分（17.4.3 节，缩尺示意：$8\times 16$ 代表真实 $64\times 128$）。左：gmem 里 K/V 的逻辑视图 $[B,D]$ 行主序，cell 填逻辑线性 idx（$=b\cdot D+d$ 的缩尺版本）；$D{=}128$ 时一行 256~B 超出 128B swizzle box 的维上限，两个 box（head\_dim 0--63 / 64--127）各搬一半。右：smem 物理视图写成 chunk-major $[D/64,B,64]$——同一批数据（idx 一一对应）被拆成两个连续的 $64\times 64$ chunk 面板，行 $b$ 的前后 64 维分别落在 chunk 0/1 的行 $b$。两次 TMA 共享同一个 mbarrier，\texttt{expect\_tx} 一次声明总字节、两次 complete-tx 各自记账，协议数学不变。}
+\label{fig:17-chunk-major}
+\end{figure}
 
 消费端地址由 \texttt{swizzle\_fa} 统一给出（D $=$ 64 时退化为 ch12 的
 \texttt{swizzle<64>}，无回归）：

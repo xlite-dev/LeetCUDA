@@ -144,6 +144,83 @@ A fragment}：左 tile 给 A 的 $k$ 左半区（$a_0$--$a_3$），右 tile 给
 的布局契约}，不是「任意 MMA 的 C 与 A fragment 天然同构」的通用
 结论（见 16.7 节勘误与 16.8 节坑五）。
 
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\tiny]
+  \def\cwd{0.46}
+  \def\chd{0.30}
+  \def\px{9.96}
+  \def\gx{8.66}
+  % 面板 1：P 的 C fragment（两个列相邻 m16n8 tile，cell = 持有该元素的 lane 号）
+  \foreach \r in {0,...,15}{
+    \foreach \c [evaluate=\c as \gr using {int(8+8*mod(\r,8)+16*int(\r/8))}] in {0,...,15}{
+      \pgfmathtruncatemacro{\tlan}{4*mod(\r,8)+int(mod(\c,8)/2)}
+      \node[fill=gray!\gr, minimum width=\cwd cm, minimum height=\chd cm, inner sep=0pt]
+        at ({(\c+0.5)*\cwd},{-(\r+0.5)*\chd}) {\tlan};
+    }
+  }
+  % 面板 2：A fragment（m16k16），同一 lane 同灰度，标签换成寄存器号 a0..a7
+  \foreach \r in {0,...,15}{
+    \foreach \c [evaluate=\c as \gr using {int(8+8*mod(\r,8)+16*int(\r/8))},
+                 evaluate=\c as \aidx using {int(2*int(\r/8)+4*int(\c/8)+mod(\c,2))}] in {0,...,15}{
+      \node[fill=gray!\gr, minimum width=\cwd cm, minimum height=\chd cm, inner sep=0pt]
+        at ({\px+(\c+0.5)*\cwd},{-(\r+0.5)*\chd}) {$a_{\aidx}$};
+    }
+  }
+  \draw[thin] (0,0) grid[xstep=\cwd cm, ystep=\chd cm] ({16*\cwd},{-16*\chd});
+  \draw[very thick] (0,0) rectangle ({16*\cwd},{-16*\chd});
+  \draw[very thick] ({8*\cwd},0) -- ({8*\cwd},{-16*\chd});
+  \draw[dashed] (0,{-8*\chd}) -- ({16*\cwd},{-8*\chd});
+  \draw[thin] ({\px},0) grid[xstep=\cwd cm, ystep=\chd cm] ({\px+16*\cwd},{-16*\chd});
+  \draw[very thick] ({\px},0) rectangle ({\px+16*\cwd},{-16*\chd});
+  \draw[very thick] ({\px+8*\cwd},0) -- ({\px+8*\cwd},{-16*\chd});
+  \draw[dashed] ({\px},{-8*\chd}) -- ({\px+16*\cwd},{-8*\chd});
+  \foreach \c in {0,2,...,14}{
+    \node[anchor=south] at ({(\c+0.5)*\cwd},0.06) {\c};
+    \node[anchor=south] at ({\px+(\c+0.5)*\cwd},0.06) {\c};
+  }
+  \foreach \r in {0,2,...,14}{
+    \node[anchor=east] at (-0.06,{-\r*\chd-0.15}) {\r};
+  }
+  \node[anchor=south, font=\tiny] at ({8*\cwd},0.30) {列 $c_0{+}0..7$（左 tile）$\mid$ $c_0{+}8..15$（右 tile）};
+  \node[anchor=south, font=\tiny] at ({\px+8*\cwd},0.30) {列 $k_0{+}0..7$ $\mid$ $k_0{+}8..15$};
+  \node[anchor=south, font=\scriptsize\bfseries] at ({8*\cwd},0.62) {左：P 的 C fragment（QK$^\top$ 输出，\texttt{R\_S} 寄存器）};
+  \node[anchor=south, font=\scriptsize\bfseries] at ({\px+8*\cwd},0.62) {右：A fragment（PV 的 mma A 操作数）};
+  \node[anchor=east, font=\scriptsize, rotate=90] at (-0.42,{-8*\chd}) {行 $r$（0--15）};
+  % 中缝映射箭头：左 tile -> a0..a3，右 tile -> a4..a7
+  \draw[-{Stealth}, semithick] ({16*\cwd+0.10},{-1.0}) -- ({\px-0.10},{-1.0});
+  \node at (\gx,{-0.55}) {$R\_S[i][2t]$};
+  \node at (\gx,{-1.45}) {$\to a_0..a_3$};
+  \draw[-{Stealth}, semithick] ({16*\cwd+0.10},{-3.8}) -- ({\px-0.10},{-3.8});
+  \node at (\gx,{-3.35}) {$R\_S[i][2t{+}1]$};
+  \node at (\gx,{-4.25}) {$\to a_4..a_7$};
+  % 图例：灰度 = lane 组，深浅 = 寄存器号
+  \node[anchor=north west, font=\scriptsize] at (0,{-16*\chd-0.16}) {灰度 = lane 组 $\mathrm{g}=r\bmod 8$：};
+  \foreach \g [evaluate=\g as \gl using int(8+8*\g)] in {0,...,7}{
+    \node[fill=gray!\gl, draw, very thin, minimum width=0.30cm, minimum height=0.20cm, inner sep=0pt]
+      at ({0.22+\g*0.40},{-16*\chd-0.66}) {};
+    \node at ({0.22+\g*0.40},{-16*\chd-0.96}) {\g};
+  }
+  \node[anchor=west, font=\scriptsize, align=left] at (3.55,{-16*\chd-0.62})
+    {浅 = 行 0--7（\texttt{reg[0]}，$R\_S[i][w][0]$）\\深 = 行 8--15（\texttt{reg[1]}，$R\_S[i][w][1]$）};
+  % 底部横条：Bc=64 的 4 段 tile_V_Bc 消费表
+  \node[anchor=south, font=\scriptsize] at ({\px+8*\cwd},{-16*\chd-0.22})
+    {$B_c{=}64$：4 段 \texttt{tile\_V\_Bc} 覆盖全部列（$w=2t$，源码注释 L612--616）};
+  \node[very thick, draw, fill=gray!45, minimum width=1.78cm, minimum height=0.60cm, align=center]
+    at ({\px+0.89},{-16*\chd-0.85}) {\texttt{tile\_V\_Bc=0}\\$w{=}0$，列 0:16};
+  \node[thin, draw, fill=gray!12, minimum width=1.78cm, minimum height=0.60cm, align=center]
+    at ({\px+2.73},{-16*\chd-0.85}) {\texttt{tile\_V\_Bc=1}\\$w{=}2$，列 16:32};
+  \node[thin, draw, fill=gray!12, minimum width=1.78cm, minimum height=0.60cm, align=center]
+    at ({\px+4.57},{-16*\chd-0.85}) {\texttt{tile\_V\_Bc=2}\\$w{=}4$，列 32:48};
+  \node[thin, draw, fill=gray!12, minimum width=1.78cm, minimum height=0.60cm, align=center]
+    at ({\px+6.41},{-16*\chd-0.85}) {\texttt{tile\_V\_Bc=3}\\$w{=}6$，列 48:64};
+  \node[anchor=north, font=\tiny, align=center] at (\gx,{-16*\chd-1.75})
+    {\texttt{C layout: 8 x (16 x 8) layout -> A layout: 4 x (16 x 16) layout}\\（flash\_attn.cuh L620--621 注释原文）};
+\end{tikzpicture}
+\caption{P 如何不出寄存器直接变成 PV 的 A fragment——两个 $16\times 16$ 网格的逐 lane 对照（16.3.3 节式与源码注释 L602--621 的图形化）。左：softmax 后 P 在 \texttt{R\_S} 里的 C fragment 视角，两个列相邻 \texttt{m16n8} tile（列 $c_0{+}0..7$ 与 $c_0{+}8..15$），cell 填持有该元素的 lane 号 $=4(r\bmod 8)+\lfloor c/2\rfloor$；右：同一条 mma 需要的 \texttt{m16k16} A fragment，cell 填寄存器号 $a_0..a_7$（四象限：行 $\times$ 列半区）。灰度编码 lane 组 $\mathrm{g}=r\bmod 8$（8 档）、深浅区分 \texttt{reg[0]}/\texttt{reg[1]}——两面板同色格子即同 lane 同数据，只换解读、零搬运。中缝箭头：左 tile（\texttt{R\_S[i][2t]}）供 $a_0..a_3$、右 tile（\texttt{R\_S[i][2t+1]}）供 $a_4..a_7$。底部：$B_c{=}64$ 共 4 段 \texttt{tile\_V\_Bc}，每段消费两个 \texttt{m16n8} tile（$w=2t$），高亮段即上图所示的 16 列。}
+\label{fig:16-pa-fragment}
+\end{figure}
+
 B 操作数两侧不对称：$S=QK^\top$ 是 TN 姿势——K 以 $[B_c,d]$ 行主序
 存储，等价于 $K^\top$ 列主序，\texttt{ldmatrix.x2} 不带 \texttt{.trans}
 即得 \texttt{.col} 的 B fragment（与第~\ref{ch:11}~章 11.4.6 完全同型）；
@@ -160,6 +237,73 @@ $\mathrm{tig}=0..3$ 各持 2 个），行 $r{+}8$ 同一组 lane 的第二个寄
 \texttt{warp\_\allowbreak{}reduce\_\allowbreak{}sum\allowbreak{}<4>}（L500/L553）——XOR 掩码 $\{2,1\}$ 两步
 蝶形（第~\ref{ch:02}~章），只在本 4-lane 组内交换。若误用整宽 32
 的归约，会把\textbf{不同行}的 max/sum 混在一起，结果静默错误。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\tiny]
+  \def\cwd{0.55}
+  \def\chd{0.34}
+  % 单个 m16n8 tile：cell = lane 号 = 4*(r mod 8) + floor(c/2)
+  \foreach \r in {0,...,15}{
+    \foreach \c [evaluate=\c as \gr using {int(8+8*mod(\r,8)+16*int(\r/8))}] in {0,...,7}{
+      \pgfmathtruncatemacro{\tlan}{4*mod(\r,8)+int(\c/2)}
+      \node[fill=gray!\gr, minimum width=\cwd cm, minimum height=\chd cm, inner sep=0pt]
+        at ({(\c+0.5)*\cwd},{-(\r+0.5)*\chd}) {\tlan};
+    }
+  }
+  \draw[thin] (0,0) grid[xstep=\cwd cm, ystep=\chd cm] ({8*\cwd},{-16*\chd});
+  \draw[very thick] (0,0) rectangle ({8*\cwd},{-16*\chd});
+  \draw[dashed] (0,{-8*\chd}) -- ({8*\cwd},{-8*\chd});
+  \foreach \c in {0,...,7}{
+    \node[anchor=south] at ({(\c+0.5)*\cwd},0.06) {\c};
+  }
+  \node[anchor=south, font=\tiny] at ({4*\cwd},0.30) {列 $n$（$c\sb n$ 的下标即列号）};
+  \foreach \r in {0,2,...,14}{
+    \node[anchor=east] at (-0.06,{-\r*\chd-0.17}) {\r};
+  }
+  \node[anchor=south, font=\scriptsize\bfseries] at ({4*\cwd},0.62) {m16n8 C fragment：行 $\times$ lane 映射};
+  % 左侧寄存器半区括线
+  \draw[semithick] (-0.40,0.05) -- (-0.55,0.05) -- (-0.55,{-8*\chd-0.05}) -- (-0.40,{-8*\chd-0.05});
+  \node[anchor=east, font=\tiny, align=center] at (-0.64,{-4*\chd}) {行 0--7\\\texttt{reg[0]}};
+  \draw[semithick] (-0.40,{-8*\chd+0.05}) -- (-0.55,{-8*\chd+0.05}) -- (-0.55,{-16*\chd-0.05}) -- (-0.40,{-16*\chd-0.05});
+  \node[anchor=east, font=\tiny, align=center] at (-0.64,{-12*\chd}) {行 8--15\\\texttt{reg[1]}};
+  % 右侧：行 0 的 4-lane 组两步 XOR 蝶形归约
+  \node[anchor=west, font=\scriptsize, align=left] at (5.25,0.35)
+    {行 $r$ 的 8 个 half 由 lane $4r..4r{+}3$ 各持 2 个\\（列对 $2\,\mathrm{tig}{+}\{0,1\}$，$\mathrm{tig}=\mathrm{lane}\bmod 4$）};
+  \draw[-{Stealth}, dashed] ({8*\cwd+0.10},{-0.5*\chd}) -- (5.62,-0.45);
+  \node[circle, draw, fill=gray!8, minimum size=0.36cm, inner sep=0pt] at (5.9,-0.45) {0};
+  \node[circle, draw, fill=gray!8, minimum size=0.36cm, inner sep=0pt] at (5.9,-1.05) {1};
+  \node[circle, draw, fill=gray!8, minimum size=0.36cm, inner sep=0pt] at (5.9,-1.65) {2};
+  \node[circle, draw, fill=gray!8, minimum size=0.36cm, inner sep=0pt] at (5.9,-2.25) {3};
+  \node[circle, draw, fill=gray!16, minimum size=0.36cm, inner sep=0pt] at (7.5,-0.45) {0};
+  \node[circle, draw, fill=gray!16, minimum size=0.36cm, inner sep=0pt] at (7.5,-1.05) {1};
+  \node[circle, draw, fill=gray!16, minimum size=0.36cm, inner sep=0pt] at (7.5,-1.65) {2};
+  \node[circle, draw, fill=gray!16, minimum size=0.36cm, inner sep=0pt] at (7.5,-2.25) {3};
+  \node[circle, draw, fill=gray!24, minimum size=0.36cm, inner sep=0pt] at (9.1,-0.45) {0};
+  \node[circle, draw, fill=gray!24, minimum size=0.36cm, inner sep=0pt] at (9.1,-1.05) {1};
+  \node[circle, draw, fill=gray!24, minimum size=0.36cm, inner sep=0pt] at (9.1,-1.65) {2};
+  \node[circle, draw, fill=gray!24, minimum size=0.36cm, inner sep=0pt] at (9.1,-2.25) {3};
+  \draw[Stealth-Stealth, thin] (6.09,-0.52) -- (7.31,-1.58);
+  \draw[Stealth-Stealth, thin] (6.09,-1.58) -- (7.31,-0.52);
+  \draw[Stealth-Stealth, thin] (6.09,-1.12) -- (7.31,-2.18);
+  \draw[Stealth-Stealth, thin] (6.09,-2.18) -- (7.31,-1.12);
+  \node[anchor=north, font=\tiny] at (6.7,-2.42) {\texttt{shfl\_xor} mask=2};
+  \draw[Stealth-Stealth, thin] (7.69,-0.52) -- (8.91,-0.98);
+  \draw[Stealth-Stealth, thin] (7.69,-0.98) -- (8.91,-0.52);
+  \draw[Stealth-Stealth, thin] (7.69,-1.72) -- (8.91,-2.18);
+  \draw[Stealth-Stealth, thin] (7.69,-2.18) -- (8.91,-1.72);
+  \node[anchor=north, font=\tiny] at (8.3,-2.42) {mask=1};
+  \node[draw, anchor=west, font=\tiny, align=center] at (9.5,-1.35) {两步后组内 4 lane\\同持行 $r$ 的 max/$\ell$};
+  % 红色反例：整宽 32 会混入别的行
+  \node[anchor=north west, font=\scriptsize, align=left, text=vscAccent] at (5.25,-3.15)
+    {误用整宽 32（mask 16/8/4 也会交换）：\\会把行 1..7 的 max/sum 混进来——静默错误};
+  \node[anchor=north west, font=\scriptsize] at (0,{-16*\chd-0.22})
+    {行 $r$ 与 $r{+}8$ 由同一 4-lane 组分别用 \texttt{reg[0]}/\texttt{reg[1]} 归约——这正是
+     \texttt{warp\_reduce\_max<4>}/\texttt{sum<4>}（L500/L553）宽度取 4 的依据。};
+\end{tikzpicture}
+\caption{m16n8 C fragment 的行 $\times$ lane 映射与 \texttt{warp\_reduce<4>} 的宽度依据（源码注释 L458--474 的图形化）。左：行 $r$ 与 $r{+}8$ 的 8 个列元素同由 lane $4r..4r{+}3$ 持有（$\mathrm{tig}=0..3$ 各一对），行 0--7 走 \texttt{reg[0]}、行 8--15 走 \texttt{reg[1]}；右：组内两步 XOR 蝶形（mask 2 $\to$ mask 1）后 4 个 lane 同持该行归约值。若误用整宽 32，mask 16/8/4 的交换会把别的行的值混进来——这是 3c 步最典型的静默错误。}
+\label{fig:16-cfrag-lane}
+\end{figure}
 
 \section{设计与实现}
 
@@ -198,6 +342,61 @@ $\{4r{+}4h\}_{r=0}^{7}$ 恰好铺满 32 个 bank 各一次——conflict-free；
 全部压在 4 个 bank 上串行化。这与第~\ref{ch:07}~章 transpose 的
 padding 分析、第~\ref{ch:12}~章的 swizzle 是同一主题的三种解法；
 本章性能节会给出 pad 与 XOR swizzle 的实测对比（源码注释 L61--71）。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\tiny]
+  \def\cwd{0.60}
+  \def\chd{0.32}
+  % 上：pad=8，行距 72 half = 144 B = 36 bank 字，相邻行错开 4 bank
+  \foreach \r in {0,...,7}{
+    \foreach \c [evaluate=\c as \bk using {int(mod(4*\r+4*\c,32))},
+                 evaluate=\c as \gr using {int(10+8*mod(\r+\c,8))}] in {0,...,7}{
+      \node[fill=gray!\gr, minimum width=\cwd cm, minimum height=\chd cm, inner sep=0pt]
+        at ({(\c+0.5)*\cwd},{-(\r+0.5)*\chd}) {\bk};
+    }
+  }
+  \draw[thin] (0,0) grid[xstep=\cwd cm, ystep=\chd cm] ({8*\cwd},{-8*\chd});
+  \draw[very thick] (0,0) rectangle ({8*\cwd},{-8*\chd});
+  \node[anchor=south west, font=\scriptsize\bfseries] at (0,0.14)
+    {pad$=8$：行距 $36$ bank 字（$36 \bmod 32 = 4$）};
+  \foreach \r in {0,...,7}{
+    \node[anchor=east] at (-0.08,{-(\r+0.5)*\chd}) {\r};
+  }
+  \node[anchor=east, font=\scriptsize, rotate=90] at (-0.56,{-4*\chd}) {行 $r$};
+  \node[anchor=north, font=\tiny] at ({4*\cwd},{-8*\chd-0.10})
+    {每格 $=$ 一个 16~B 段，格内为该段的起始 bank 号（列 $c=0..7$ 覆盖 $D{=}64$ half）};
+  \draw[thick, gray!70] (5.15,0.14) -- (5.15,{-8*\chd});
+  \node[anchor=north west, font=\tiny, align=left, text width=6.4cm] at (5.35,0.14)
+    {同一列 $c$（ldmatrix 同一相位要读的 8 行）：\\
+     起始 bank $=\{4r{+}4c\}_{r=0}^{7}$ 互不相同，\\
+     取遍 $32$ 个 bank 各一次 $\to$ conflict-free};
+  % 下：不 pad —— 行距 32 bank 字，整周期回绕后 8 行起始 bank 全相同
+  \foreach \r in {0,...,7}{
+    \foreach \c [evaluate=\c as \bk using {int(4*\c)},
+                 evaluate=\c as \gr using {int(10+8*\c)}] in {0,...,7}{
+      \node[fill=gray!\gr, minimum width=\cwd cm, minimum height=\chd cm, inner sep=0pt]
+        at ({(\c+0.5)*\cwd},{-3.52-(\r+0.5)*\chd}) {\bk};
+    }
+  }
+  \draw[thin] (0,-3.52) grid[xstep=\cwd cm, ystep=\chd cm] ({8*\cwd},{-3.52-8*\chd});
+  \draw[very thick] (0,-3.52) rectangle ({8*\cwd},{-3.52-8*\chd});
+  \node[anchor=south west, font=\scriptsize\bfseries] at (0,-3.38)
+    {不 pad：行距 $32$ bank 字（$32 \bmod 32 = 0$）};
+  \foreach \r in {0,...,7}{
+    \node[anchor=east] at (-0.08,{-3.52-(\r+0.5)*\chd}) {\r};
+  }
+  \node[anchor=north, font=\tiny] at ({4*\cwd},{-3.52-8*\chd-0.22})
+    {同一列 8 行的起始 bank 全为 $4c$（行间整周期回绕，相位不变）};
+  \draw[thick, vscAccent] (5.15,-3.38) -- (5.15,{-3.52-8*\chd});
+  \node[anchor=north west, font=\tiny, align=left, text width=6.4cm, text=vscAccent] at (5.35,-3.38)
+    {$\to$ 同一相位的 8 段 16~B 全压在同一组 $4$ 个 bank 上，\\
+     8 个访问被迫串行化；\\
+     这就是「不 pad」的默认代价，pad$=$8 是三种解法中最省事的一种};
+\end{tikzpicture}
+\caption{pad$=$8 与不 pad 的 ldmatrix bank 相位对照（16.4.2 节 smem 三段布局中 pad 分析的图形化）。上：\texttt{kSmemStride}$=D{+}\mathrm{pad}=72$ half 时一行 144~B $=36$ bank 字，第 $r$ 行相对第 0 行整体错开 $36r \bmod 32 = 4r$ 个 bank；任一列 $c$（ldmatrix 同一相位读的 8 行）的起始 bank 为 $\{4r{+}4c\}$，取遍 32 个 bank 各一次——8 段 16~B 恰好铺满全部 bank，conflict-free。下：不 pad 时行距 128~B $=32$ bank 字，整周期回绕后 8 行起始 bank 全为 $4c$，同一相位的 8 段 16~B 压在同一组 4 个 bank 上串行化。格内数字为「该 16~B 段的起始 bank 号」，灰度按 bank 号每 4 个一档。}
+\label{fig:16-bank-phase}
+\end{figure}
 
 加载映射：256 线程协作搬 $B_r{=}128$ 行 Q，每线程负责半行
 （\texttt{load\_\allowbreak{}smem\_\allowbreak{}Q\_\allowbreak{}Br =\allowbreak{} tid/\allowbreak{}2}，$d$ 向 64 个 half 分给 2 线程
@@ -252,6 +451,67 @@ $K_{t+1}$ 则有整整一个迭代的余量。这与第~\ref{ch:11}~章 GEMM 的
 \texttt{\#pragma unroll 1}（L272）刻意不展开外循环——$T_c$ 是运行期
 值，展开只会膨胀代码。$kStagesK{=}1$ 的退化分支（L341--374）每轮
 现搬当前 K 并在 3b 前 wait(0)，无流水，用于消融对照。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\tiny]
+  \def\u{0.92}
+  \def\lh{0.40}
+  % 迭代标题与分隔线
+  \foreach \tk/\tn in {0/{t-1},1/{t},2/{t+1}}{
+    \node[anchor=south, font=\scriptsize\bfseries] at ({(4*\tk+2)*\u},0.55) {迭代 $\tn$};
+  }
+  \foreach \xx in {0,4,8,12}{
+    \draw[dashed, gray!60] ({\xx*\u},0.28) -- ({\xx*\u},-2.10);
+  }
+  % 迭代 t 的重叠窗口：V_t 在途区间与 3b+3c 完全重合
+  \fill[gray!12] ({(4+0.02)*\u},0.24) rectangle ({(4+2.40)*\u},-0.72);
+  % 计算泳道：3b QK / 3c softmax / 3d PV / 3e rescale
+  \foreach \tk [evaluate=\tk as \pa using {4*\tk+0.60},
+                evaluate=\tk as \pb using {4*\tk+1.80},
+                evaluate=\tk as \pc using {4*\tk+2.90},
+                evaluate=\tk as \pd using {4*\tk+3.70}] in {0,1,2}{
+    \node[thin, draw, fill=gray!68, minimum width=1.10cm, minimum height=\lh cm, inner sep=0pt]
+      at ({\pa*\u},-0.45) {3b QK};
+    \node[thin, draw, preaction={fill=gray!22}, pattern=north east lines, pattern color=gray!55,
+          minimum width=1.10cm, minimum height=\lh cm, inner sep=0pt]
+      at ({\pb*\u},-0.45) {3c softmax};
+    \node[thin, draw, fill=gray!68, minimum width=0.92cm, minimum height=\lh cm, inner sep=0pt]
+      at ({\pc*\u},-0.45) {3d PV};
+    \node[thin, draw, fill=gray!45, minimum width=0.55cm, minimum height=\lh cm, inner sep=0pt]
+      at ({\pd*\u},-0.45) {3e};
+  }
+  % 搬运泳道：每个迭代 3a 提交两组（先 V_t、后 K_{t+1}）
+  \foreach \tk/\tv/\tkv [evaluate=\tk as \va using {4*\tk+0.02},
+                         evaluate=\tk as \vb using {4*\tk+2.40},
+                         evaluate=\tk as \ka using {4*\tk+0.25},
+                         evaluate=\tk as \kb using {min(4*\tk+4.00,12)}] in {0/{t-1}/t,1/t/{t+1},2/{t+1}/{t+2}}{
+    \draw[thin, fill=gray!25] ({\va*\u},-1.23) rectangle ({\vb*\u},-0.97);
+    \node at ({(\va+\vb)/2*\u},-1.10) {$V_{\tv}$ 在途｜3b+3c};
+    \fill[black] ({\va*\u},-1.10) circle (0.045);
+    \draw[thin, fill=gray!15] ({\ka*\u},-1.83) rectangle ({\kb*\u},-1.57);
+    \node at ({(\ka+\kb)/2*\u},-1.70) {$K_{\tkv}$ 在途｜整迭代余量};
+    \node[draw, fill=white, minimum size=0.10cm, inner sep=0pt] at ({\ka*\u},-1.70) {};
+  }
+  % 等待点
+  \draw[dashed, thin] ({6.4*\u},0.28) -- ({6.4*\u},-2.30);
+  \draw[dashed, thin] ({8.0*\u},0.28) -- ({8.0*\u},-2.30);
+  \node[circle, draw, fill=white, minimum size=0.34cm, inner sep=0pt] at ({6.4*\u},-2.32) {1};
+  \node[circle, draw, fill=white, minimum size=0.34cm, inner sep=0pt] at ({8.0*\u},-2.32) {2};
+  \node[anchor=north west, align=left, text width=10.9cm] at (0.2,-2.72)
+    {(1) 3d 前 \texttt{wait\_group(1)}：只等 $V_t$——$K_{t+1}$ 是唯一允许继续在途的组};
+  \node[anchor=north west, align=left, text width=10.9cm] at (0.2,-3.16)
+    {(2) 迭代末 \texttt{wait\_group(0)}：$K_{t+1}$ 到齐后才进下一轮 3b（收口）};
+  \node[anchor=north west, align=left, text width=10.9cm] at (0.2,-3.60)
+    {实心圆 $=$ $V$ 的 commit；空心方 $=$ $K$ 的 commit（同一次 3a 内\textbf{先 V 后 K}，所以离栈顶最近的是 $K$）};
+  % 泳道标签
+  \node[anchor=east, font=\scriptsize] at (-0.12,-0.45) {计算（3b--3e）};
+  \node[anchor=east, font=\scriptsize] at (-0.12,-1.10) {搬运 $V$（3a）};
+  \node[anchor=east, font=\scriptsize] at (-0.12,-1.70) {搬运 $K$（3a 预取）};
+\end{tikzpicture}
+\caption{\textbf{K 双缓冲、V 单级}的流水时序（16.4.5 节 3a 步，源码 L273--340 与 L563--569、L710--714 的图形化）。三个稳态迭代 $t{-}1/t/t{+}1$：每个迭代内 3a 依次提交两组搬运——$V_t$（实心圆，写当前 V buffer）与 $K_{t+1}$（空心方，写 \texttt{smem\_sel\_next}）。$V_t$ 的在途窗口（灰条）恰好覆盖同迭代的 3b（QK mma）与 3c（softmax）——softmax 全在 CUDA Core/SFU 上跑，正好填掉 V 的搬运延迟；$K_{t+1}$ 则有整整一个迭代的余量。两处等待：(1) 3d 前的 \texttt{wait\_group(1)} 只等 $V_t$，把 $K_{t+1}$ 留在途；(2) 迭代末（3e 之后）的 \texttt{wait\_group(0)} 收口 $K_{t+1}$ 才进下一轮 3b。与第~\ref{ch:11}~章 GEMM 的「kStages 全操作数统一多级」不同——attention 两段 mma 之间夹着一段非 mma 计算，天然提供了第二级的隐藏窗口，所以 \texttt{kStagesK}$=$2 就够（源码注释 L281「one stage is enough for V」）。}
+\label{fig:16-kv-pipeline}
+\end{figure}
 
 \subsection{3b：$S=QK^\top$ 的 ldmatrix + mma}
 

@@ -213,7 +213,97 @@ shuffle} 使用（每 lane 持有的 8 个 A 元素共享一个 scale，scale �
 行常数）——粒度不是纯精度旋钮，而是「精度 $\times$ fragment 布局」的联合设计。
 其二，粒度谱系的两端有明确的失败模式：per-block 对 outlier 最脆弱（一个 outlier
 毁一整块），per-row/per-16 的 scale 数量与数据同阶（SF 本身成为新的访存项，
-第~\ref{ch:31}~章核算这笔账）。
+第~\ref{ch:31}~章核算这笔账）。图~\ref{fig:27-granularity} 用五个同形状微网格把
+整条谱系的「共享域」摆在一行：色块越碎，每个 scale 管的元素越少。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  axl/.style={font=\scriptsize, inner sep=1pt},
+  tnb/.style={font=\tiny, inner sep=0.5pt},
+]
+  % 顶部 trade-off 轴
+  \draw[{Stealth}-{Stealth},thick] (0.9,1.1) -- (14.38,1.1);
+  \node[axl,anchor=south] at (1.7,1.18) {开销低 $\cdot$ 精度低};
+  \node[axl,anchor=south] at (7.64,1.18) {粒度细化（scale 数 $1 \to 64 \to D \to 128 \to ND/16$）};
+  \node[axl,anchor=south] at (13.5,1.18) {精度高 $\cdot$ 开销高};
+  % 五联网格（同形状 16x16 缩略，格距 0.13cm；灰度 = 同一 scale 的覆盖域）
+  % 1) per-block：整块一色
+  \begin{scope}[shift={(0.9,0)},x=0.13cm,y=-0.13cm]
+    \fill[gray!25] (0,0) rectangle (16,16);
+    \draw[thick] (0,0) rectangle (16,16);
+  \end{scope}
+  % 2) per-thread：行 r 与 r+8 同色（8 档循环，行对共享）
+  \begin{scope}[shift={(3.75,0)},x=0.13cm,y=-0.13cm]
+    \foreach \rr in {0,...,15} {
+      \pgfmathtruncatemacro{\gra}{12+8*mod(\rr,8)}
+      \fill[gray!\gra] (0,\rr) rectangle (16,\rr+1);
+    }
+    \draw[thick] (0,0) rectangle (16,16);
+  \end{scope}
+  % 3) per-channel：每列一色（8 档循环，沿 D）
+  \begin{scope}[shift={(6.6,0)},x=0.13cm,y=-0.13cm]
+    \foreach \cc in {0,...,15} {
+      \pgfmathtruncatemacro{\gra}{12+8*mod(\cc,8)}
+      \fill[gray!\gra] (\cc,0) rectangle (\cc+1,16);
+    }
+    \draw[thick] (0,0) rectangle (16,16);
+  \end{scope}
+  % 4) per-row：每行一色（16 档线性渐变）
+  \begin{scope}[shift={(9.45,0)},x=0.13cm,y=-0.13cm]
+    \foreach \rr in {0,...,15} {
+      \pgfmathtruncatemacro{\gra}{8+4*\rr}
+      \fill[gray!\gra] (0,\rr) rectangle (16,\rr+1);
+    }
+    \draw[thick] (0,0) rectangle (16,16);
+  \end{scope}
+  % 5) per-16：每行一个 1x16 microblock（块界 + 细网格纹）
+  \begin{scope}[shift={(12.3,0)},x=0.13cm,y=-0.13cm]
+    \foreach \rr in {0,...,15} {
+      \fill[gray!18] (0,\rr) rectangle (16,\rr+1);
+      \draw[thin] (0,\rr) -- (16,\rr);
+    }
+    \fill[pattern=north east lines, pattern color=gray!32] (0,0) rectangle (16,16);
+    \draw[thick] (0,0) rectangle (16,16);
+  \end{scope}
+  % 联标题与 scale 数
+  \node[axl,font=\scriptsize\bfseries] at (1.94,0.32) {per-block};
+  \node[axl,font=\scriptsize\bfseries] at (4.79,0.32) {per-thread};
+  \node[axl,font=\scriptsize\bfseries] at (7.64,0.32) {per-channel};
+  \node[axl,font=\scriptsize\bfseries] at (10.49,0.32) {per-row};
+  \node[axl,font=\scriptsize\bfseries] at (13.34,0.32) {per-16 组};
+  \node[tnb,anchor=north] at (1.94,-2.22) {1 个 scale / 128 行 tile};
+  \node[tnb,anchor=north] at (4.79,-2.22) {64 个 / 128 行};
+  \node[tnb,anchor=north] at (7.64,-2.22) {$D$ 个（沿 $D$ 每通道）};
+  \node[tnb,anchor=north] at (10.49,-2.22) {128 个（softmax 行）};
+  \node[tnb,anchor=north] at (13.34,-2.22) {$ND/16$ 个（$1\times16$ 块）};
+  \node[tnb,anchor=north] at (1.94,-2.62) {fp8 Q/K/V 默认（SA1）};
+  \node[tnb,anchor=north] at (4.79,-2.62) {fp8 Q/K（\texttt{per\_thread}，SA2）};
+  \node[tnb,anchor=north] at (7.64,-2.62) {fp8 V（$\delta_V{=}\mathrm{colmax}/448$，SA2）};
+  \node[tnb,anchor=north] at (10.49,-2.62) {fp8 P（\texttt{kPQuantPerRow}，ffpa）};
+  \node[tnb,anchor=north] at (13.34,-2.62) {fp4 Q/K/V/P 的 SF（SA3）};
+  % 谱系两端失败模式与结构注记
+  \node[tnb,anchor=north,align=center] at (1.94,-3.15)
+    {失败模式：一个 outlier\\撑爆整块 scale};
+  \node[tnb,anchor=north,align=center] at (13.34,-3.15)
+    {失败模式：SF 数量与数据同阶，\\SF 本身成为新的访存项};
+  \node[axl,anchor=north west,align=left] at (0.9,-3.95)
+    {读法（灰度 = 同一个 scale 的覆盖域）：per-thread 的行 $r$ 与 $r{+}8$ 同色——
+     行对 $\{r,r{+}8\}$ 共享一个 scale，恰与 $m16n8$ C-fragment 的行对对齐};
+  \node[axl,anchor=north west,align=left] at (0.9,-4.45)
+    {（第~\ref{ch:28}~章 28.3.2 节展开的 64 槽位表）；per-row 为 16 档线性渐变示意 128 行；
+     per-16 每行一个 $1\times16$ microblock（细纹示意块内 16 元素共享一个 SF）。};
+\end{tikzpicture}
+\caption{量化粒度谱系五联网格（表~\ref{tab:27-granularity} 的视觉化，缩略网格为
+16 行 $\times$ 16 列）。从左到右：per-block 整块共享 1 个 scale；per-thread 按
+C-fragment 行对 $\{r,r+8\}$ 分档（128 行块共 $8\times8=64$ 个，零 shuffle 消费）；
+per-channel 沿 $D$ 每通道一个；per-row 每 softmax 行一个（128 个）；per-16 每行
+一个 $1\times16$ microblock（NVFP4 的 SF）。顶部双向轴是整条谱系的 trade-off：
+粒度越细精度越高，但 scale 的存储、传递与消去开销同步上涨，且必须与 MMA 的
+fragment 布局对齐——谱系两端的失败模式分别是对 outlier 的脆弱性与 SF 自身的
+访存账。}
+\label{fig:27-granularity}
+\end{figure}
 
 \subsection{attention 的 scale 流向总览}
 
@@ -268,7 +358,61 @@ $v_s$ 只出现在 P 侧的发射系数里。
 ffpa 默认 fixed（\texttt{FFPA\_FP8\_PQUANT\_PER\_ROW} 可开 per-row）；发射域
 $\tilde{P} = P \cdot v_s \cdot 448$ 与溢出约束的完整推导见第~\ref{ch:29}~章——本节
 只需记住结论：\textbf{scale 折叠使 fp8 路径除量化本身的 round() 外没有任何额外
-数学误差源，所有反量化都是精确代数操作}。
+数学误差源，所有反量化都是精确代数操作}。图~\ref{fig:27-pscale-modes} 把两种
+$p_{scale}$ 策略的发射域利用率摆在同一条量程轴上：差别就在平坦行用了多少格点。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  axl/.style={font=\scriptsize, inner sep=1pt},
+  nt/.style={font=\scriptsize, align=left, inner sep=1.5pt},
+]
+  % 公共量程轴：发射域 [0,448]
+  \draw[-{Stealth},thick] (0.9,0.5) -- (13.9,0.5);
+  \node[axl,anchor=south] at (7.4,0.6) {$\tilde P$ 的发射域：$0\to448$（e4m3 满量程）};
+  \node[axl,anchor=north] at (0.9,0.44) {0};
+  \node[axl,anchor=north] at (13.55,0.44) {448};
+  % fixed 行：平坦行只用左端 5 格，其余格点空着
+  \fill[gray!12] (3.65,-0.52) rectangle (13.75,-0.18);
+  \foreach \gi in {0,...,23} {
+    \pgfmathsetmacro{\gx}{0.9+0.55*\gi}
+    \ifnum\gi<5
+      \fill[black] (\gx,-0.35) circle (0.05);
+    \else
+      \draw[gray!55,thin] (\gx,-0.35) circle (0.05);
+    \fi
+  }
+  \node[axl,anchor=east] at (0.8,-0.35) {\textbf{fixed}};
+  \draw[dashed,thick] (3.65,-0.72) -- (3.65,-0.12);
+  \node[axl,anchor=south west] at (3.72,-0.1) {$\max(\tilde P)$ 只到这里};
+  \node[nt,anchor=north west,text width=15.4cm] at (0.2,-0.78)
+    {\textbf{fixed（ffpa 默认）}：$p_{scale}\equiv1/448$，平坦行（causal 三角顶部）$\max(P)\ll1$，
+     发射值只挤在左端几格（实心 $=$ 已用格点，浅带 $=$ 空转的量程）。收益是单累加域：
+     PV MMA 直接累加进 $o_{acc}$，epilogue 一步 $O=o_{acc}\cdot(1/448)/\ell$ 同时完成反量化与
+     归一化，且\textbf{可与 lazy rescale（27.3.6）组合}。};
+  % per-row 行：每行归一后铺满全量程
+  \foreach \gi in {0,...,23} {
+    \pgfmathsetmacro{\gx}{0.9+0.55*\gi}
+    \fill[black] (\gx,-2.0) circle (0.05);
+  }
+  \node[axl,anchor=east] at (0.8,-2.0) {\textbf{per-row}};
+  \node[nt,anchor=north west,text width=15.4cm] at (0.2,-2.43)
+    {\textbf{per-row}：$p_{scale}[row]=\mathrm{rowmax}(P)/448$，每行归一后铺满满量程，
+     精度最优；代价是跨 lane rowmax（两次 \texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor}）
+     $+$ 64-float $o_{tile}$ 暂存（每 KV tile 多一次乘加 pass），且\textbf{与 lazy rescale 互斥}。
+     \texttt{FFPA\_FP8\_PQUANT\_PER\_ROW} 打开 per-row。};
+  \node[nt,anchor=north west,text width=15.4cm] at (0.2,-3.5)
+    {格点是 e4m3 可表示值的示意（真实格点非均匀：近 $0$ 更密、指数越大越疏），
+     两组各 24 格只为把「用了几成量程」画出来；两种模式的乘积预算与溢出约束见
+     式~\eqref{eq:27-overflow} 与图~\ref{fig:27-lazy-rescale}。};
+\end{tikzpicture}
+\caption{fixed 与 per-row 两种 $p_{scale}$ 策略的发射域利用率（27.3.5 节）。
+上：fixed 的 $p_{scale}\equiv1/448$ 是编译期常数，平坦行的 $\max(P)\ll1$ 使发射值
+只占量程左端一小段，其余量程空转——换来的是单累加域与「可与 lazy rescale 组合」；
+下：per-row 用 $\mathrm{rowmax}(P)/448$ 把每一行拉满，精度最优，代价是跨 lane rowmax
+归约与 64-float 的 $o_{tile}$ 暂存，且与 lazy rescale 互斥。}
+\label{fig:27-pscale-modes}
+\end{figure}
 
 \subsection{SageAttention 谱系：1 $\to$ 2 $\to$ 2++ $\to$ 3}
 
@@ -307,7 +451,71 @@ K 深度是 32，若逐元素乘积幅度均匀，则每个元素需满足 $P_r 
 f16 acc 时发射 $\hat{V} \in [-2.25, 2.25]$，检验 $448 \times 2.25 = 1008 \le 2047$
 同样成立（\texttt{cute/fp8/smooth\_v.cuh} 注释，第~\ref{ch:28}~章展开）。两种分配
 的乘积预算相同，差别在「牺牲 P 分辨率还是 V 分辨率」——ffpa 选择保 P（softmax
-概率的相对结构更敏感）。
+概率的相对结构更敏感）。图~\ref{fig:27-pvbudget} 在 $P_r$--$V_r$ 平面上把这两种
+分配摆成同面积矩形：预算线之下是 f16 累加器的安全域。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  axl/.style={font=\scriptsize, inner sep=1pt},
+  tnb/.style={font=\tiny, inner sep=0.5pt},
+]
+  % 坐标：x = 1.2 + 0.02*P_r（1cm = 50），y = V_r（1cm = 1）
+  % ffpa 矩形 (448, 2.25) 先画，SA2++ (224, 4.5) 后画（区域嵌套，深色在内）
+  \fill[gray!32] (1.2,0) rectangle (10.16,2.25);
+  \draw[thick] (1.2,0) rectangle (10.16,2.25);
+  \fill[gray!62] (1.2,0) rectangle (5.68,4.5);
+  \draw[thick] (1.2,0) rectangle (5.68,4.5);
+  % 预算线 V = 2047/P_r 上方的超限区（斜纹）
+  \begin{scope}
+    \fill[pattern=north east lines, pattern color=gray!55]
+      (1.2+0.02*341.2,6.0) -- plot[domain=341.2:486,samples=50] ({1.2+0.02*\x},{2047/\x})
+      -- (1.2+0.02*486,6.0) -- cycle;
+  \end{scope}
+  \draw[dashed,thick]
+    plot[domain=341.2:486,samples=50] ({1.2+0.02*\x},{2047/\x});
+  \node[axl,anchor=west] at (9.0,5.65) {预算线 $P_r V_r = 2047 = 65504/32$};
+  \node[axl,anchor=west] at (9.0,5.3) {\tiny （$V_r = 2047/P_r$，超限区斜纹）};
+  % 448 满量程参考线
+  \draw[dotted,thick] (10.16,0) -- (10.16,6.0);
+  \node[axl,anchor=south,rotate=90] at (10.42,4.6) {P 满量程 448（e4m3）};
+  % 两矩形的角点与面积标注
+  \fill (5.68,4.5) circle (1.6pt);
+  \node[axl,anchor=south] at (5.68,4.62) {$(224,\,4.5)$};
+  \node[axl,anchor=north,align=center] at (3.4,4.2)
+    {SA2++\\$224\times4.5 = 1008 \le 2047$\\{\tiny 两侧各收窄一半}};
+  \fill (10.16,2.25) circle (1.6pt);
+  \node[axl,anchor=south] at (10.16,2.4) {$(448,\,2.25)$};
+  \node[axl,anchor=north,align=center] at (7.6,1.95)
+    {ffpa：$448\times2.25 = 1008 \le 2047$\\{\tiny P 保满量程、约束全压 V 侧（$\hat V\in[-2.25,2.25]$）}};
+  % 坐标轴（最后画，压在矩形之上）
+  \draw[-{Stealth},thick] (1.2,0) -- (11.9,0);
+  \draw[-{Stealth},thick] (1.2,0) -- (1.2,6.5);
+  \foreach \pv/\px in {0/1.2, 112/3.44, 224/5.68, 336/7.92, 448/10.16} {
+    \draw (\px,0) -- (\px,-0.08);
+    \node[axl,anchor=north] at (\px,-0.12) {\pv};
+  }
+  \node[axl,anchor=north] at (6.5,-0.55) {$P_r$（P 侧发射幅度）};
+  \foreach \vv in {1,...,6} {
+    \draw (1.2,\vv) -- (1.12,\vv);
+    \node[axl,anchor=east] at (1.08,\vv) {\vv};
+  }
+  \node[axl,anchor=south,rotate=90] at (0.72,3.2) {$V_r$（V 侧发射幅度）};
+  \node[axl,anchor=north west,align=left] at (1.2,-1.15)
+    {约束来源：\texttt{mma.f16.f8.f8.f16} 的 f16 累加器 $\pm65504$、\texttt{m16n8k32} 的 K 深度 32
+     $\Rightarrow$ 逐元素 $P_r\times V_r \le 2047$。};
+  \node[axl,anchor=north west,align=left] at (1.2,-1.7)
+    {两种分配面积相同（1008），差别在牺牲 P 还是 V 的分辨率——ffpa 保 P：
+     softmax 概率的相对结构更敏感。};
+\end{tikzpicture}
+\caption{f16 累加器域的乘积预算（27.3.5 节）：横轴 $P_r$、纵轴 $V_r$，虚线为
+预算线 $P_r V_r = 2047$（$=65504/32$，$K$ 深度 32），线上方斜纹区为超限区。
+SA2++ 取 $(224,4.5)$、ffpa 取 $(448,2.25)$，两者面积同为 $1008\le2047$——
+一个矩形高瘦（两侧各收窄一半），一个扁宽（P 顶满 448 量程、把约束全部压在
+V 侧，per-channel V + f16 acc 时 $\hat V\in[-2.25,2.25]$）。点线为 e4m3 满量程
+448 的参考线：ffpa 的 $P_r$ 恰好贴住它。}
+\label{fig:27-pvbudget}
+\end{figure}
 
 \subsection{FA-4 lazy rescale 与量化域的交互}
 
@@ -343,7 +551,66 @@ kernel 典型取 $\tau = 8$；fp8 发射域的天花板更紧，按 e4m3 满量�
 表述），得 $\mathrm{amax}(V) \le 28$
 的适用域，残余超调交给 \texttt{satfinite} 钳位（27.8~节坑三）。这也解释了
 27.3.4 的一个断言：\textbf{per-row 满量程模式与 lazy rescale 互斥}——满量程发射
-已经没有 headroom，任何 $2^{\tau}$ 膨胀都直接撞顶。
+已经没有 headroom，任何 $2^{\tau}$ 膨胀都直接撞顶。图~\ref{fig:27-lazy-rescale}
+把这条安全域计算摆上一根对数轴：两个 $\tau$ 的膨胀倍率都指向同一个 448 天花板。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  axl/.style={font=\scriptsize, inner sep=1pt},
+  tnb/.style={font=\tiny, inner sep=0.5pt},
+]
+  \definecolor{warnred}{RGB}{163,21,21}
+  % fp8 上溢警示区（448 右侧）
+  \fill[red!12] (10.93,0.3) rectangle (11.55,1.62);
+  \node[axl,warnred,anchor=south,align=center] at (11.05,1.55)
+    {fp8 上溢\\{\tiny satfinite 钳位兜底}};
+  % 主轴（log2 均匀刻度：x = 0.8 + 1.15*log2(v)）
+  \draw[-{Stealth},thick] (0.7,0) -- (11.75,0);
+  \foreach \vv/\vx in {2/1.95, 4/3.10, 8/4.25, 16/5.40, 32/6.55, 64/7.70, 128/8.85, 256/10.00} {
+    \draw (\vx,0) -- (\vx,-0.07);
+    \node[tnb,anchor=north] at (\vx,-0.10) {\vv};
+  }
+  \node[axl,anchor=north] at (6.2,-0.42) {$\mathrm{amax}(V)$（对数刻度，$\log_2$ 均匀）};
+  % 三条关键竖线
+  \draw[warnred,very thick,dashed] (10.93,0) -- (10.93,1.62);
+  \node[axl,warnred,anchor=south,align=center] at (10.35,1.32)
+    {e4m3 满量程 448\\{\tiny 天花板}};
+  \draw[thick] (6.33,0) -- (6.33,1.05);
+  \node[axl,anchor=south,align=center] at (5.6,1.02)
+    {$\tau{=}4$ 安全线：$\mathrm{amax}(V)\le 28$\\{\tiny $T=\texttt{FFPA\_RESCALE\_THRESHOLD\_FP8}$（fp8）}};
+  \draw[thick] (1.73,0) -- (1.73,0.55);
+  \node[axl,anchor=north,align=center] at (1.73,-0.68)
+    {$\tau{=}8$（BF16）：$\le 1.75$\\{\tiny fp8 下安全域仅 $448/256$，几乎不可用}};
+  % 两条膨胀弧：2^tau * amax(V) 直指 448
+  \draw[-{Stealth},thick] (6.33,0.16) to[bend left=22] (10.88,0.16);
+  \node[axl,anchor=south] at (8.6,0.78) {$\times 16 = 2^{4}$};
+  \draw[-{Stealth},thick] (1.73,0.62) to[bend left=13] (10.88,0.62);
+  \node[axl,anchor=south] at (6.1,1.62) {$\times 256 = 2^{8}$};
+  % 安全域色带
+  \fill[gray!62] (0.8,-0.55) rectangle (1.73,-0.33);
+  \fill[gray!22] (1.73,-0.55) rectangle (6.33,-0.33);
+  \fill[pattern=north east lines, pattern color=gray!50] (6.33,-0.55) rectangle (10.93,-0.33);
+  \fill[red!25] (10.93,-0.55) rectangle (11.55,-0.33);
+  \node[tnb,anchor=north] at (4.03,-0.6) {$\tau{=}4$ 安全域};
+  \node[tnb,anchor=north] at (8.63,-0.6) {28..448：satfinite 兜底残余超调};
+  % 底部公式注
+  \node[axl,anchor=north west,align=left,text width=10.9cm] at (0.8,-1.35)
+    {发射峰值 $\tilde{P}_{\max} = v_s\cdot 448 = \mathrm{amax}(V)$（per-block V 的 $v_s=\mathrm{amax}(V)/448$），
+     撞顶条件 $2^{\tau}\,\mathrm{amax}(V) \le 448$（式~\eqref{eq:27-overflow}）。};
+  \node[axl,anchor=north west,align=left,text width=10.9cm] at (0.8,-1.9)
+    {$\tau$ 的取值跨格式不可搬：BF16 天花板高（$\tau{=}8$ 可用），e4m3 满量程只有 448，
+     反推出更紧的 $\tau{=}4$；满量程发射（per-row）没有任何 headroom，与 lazy rescale 互斥。};
+\end{tikzpicture}
+\caption{lazy rescale 的 $2^{\tau}$ 膨胀 vs e4m3 天花板（27.3.6 节，式~\eqref{eq:27-overflow}）。
+横轴为 $\mathrm{amax}(V)$ 的对数刻度：lazy 跳过 rescale 让发射值停留在旧域，等效膨胀
+$2^{\tau}$ 倍，必须核算格式天花板 $448$。ffpa 取 $T=4$（$\times16$），安全域
+$\mathrm{amax}(V)\le 28$；FA-4 BF16 kernel 的典型 $\tau=8$（$\times256$）在 fp8 下
+安全域只剩 $1.75$，几乎不可用——$\tau$ 跨格式不可直接搬用。28 与 448 之间的
+残余超调由 \texttt{satfinite} 钳位兜底（27.8~节坑三）；448 右侧为 fp8 上溢区
+（红色警示）。}
+\label{fig:27-lazy-rescale}
+\end{figure}
 
 \subsection{ESS 误差模型：causal 早行的绝对误差放大}
 

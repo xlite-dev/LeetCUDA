@@ -35,6 +35,65 @@ $\lceil \log\sb 2 N \rceil$，1024 个数只要 10 层。树形化牺牲了一�
 就是讲清这套约定在 GPU 三级存储（寄存器/shuffle、smem、global/atomic）上的
 三种实现。
 
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\footnotesize,
+  sq/.style={draw, fill=gray!80, minimum size=0.48cm, inner sep=0pt,
+    font=\tiny},
+  ar/.style={-{Stealth[length=1.6mm]}, semithick}]
+  \node[font=\scriptsize, anchor=south] at (5.2, 6.3)
+    {串行链：$N=1024$，1023 次加法严格串行——每步依赖上一步，延迟一拍不少};
+  \draw[-{Stealth[length=1.6mm]}, semithick] (0.05, 6.1) -- (10.75, 6.1);
+  \foreach \k in {0,...,15}
+    \node[sq] at (0.35+0.62*\k, 5.6) {$x_{\k}$};
+  \node[font=\footnotesize] at (10.35, 5.6) {$\cdots$};
+  \node[sq, circle, minimum size=0.55cm, font=\scriptsize] (sum) at (11.1, 5.6)
+    {$\Sigma$};
+  \node[font=\scriptsize\bfseries, anchor=west] at (11.7, 5.6)
+    {串行深度 $= N-1 = 1023$ 步};
+  \draw[ar, dashed, semithick] (5.2, 5.3) -- (5.2, 4.62);
+  \node[font=\scriptsize\bfseries, anchor=west] at (5.45, 4.95)
+    {拍扁成浅树：$1023 \to 10$ 层};
+  \draw[-{Stealth[length=1.6mm]}, semithick] (0, 0) -- (0, 4.45);
+  \node[font=\scriptsize, rotate=90, anchor=south] at (-0.5, 2.2)
+    {树高 $\lceil\log_2 1024\rceil = 10$ 层};
+  \foreach \k in {0,...,15}
+    \node[draw, fill=gray!70, minimum size=0.28cm, inner sep=0pt]
+      at (0.6+0.42*\k, 0) {};
+  \foreach \k in {0,...,7}
+    \node[draw, fill=gray!60, minimum size=0.28cm, inner sep=0pt]
+      at (1.02+0.84*\k, 0.85) {};
+  \foreach \k in {0,...,3}
+    \node[draw, fill=gray!45, minimum size=0.28cm, inner sep=0pt]
+      at (1.86+1.68*\k, 1.7) {};
+  \node[font=\footnotesize] at (3.75, 2.5) {$\vdots$};
+  \node[draw, fill=gray!25, minimum size=0.28cm, inner sep=0pt]
+    at (2.92, 3.25) {};
+  \node[draw, fill=gray!25, minimum size=0.28cm, inner sep=0pt]
+    at (4.58, 3.25) {};
+  \node[draw, fill=gray!15, minimum size=0.34cm, inner sep=0pt]
+    at (3.75, 4.1) {};
+  \draw[thin, black!50] (0.6, 0.14) -- (1.02, 0.71);
+  \draw[thin, black!50] (1.02, 0.14) -- (1.02, 0.71);
+  \draw[thin, black!50] (1.44, 0.14) -- (1.86, 0.71);
+  \draw[thin, black!50] (1.86, 0.14) -- (1.86, 0.71);
+  \draw[thin, black!50] (1.02, 0.99) -- (1.86, 1.56);
+  \draw[thin, black!50] (1.86, 0.99) -- (1.86, 1.56);
+  \draw[thin, black!50] (2.92, 3.39) -- (3.75, 3.93);
+  \draw[thin, black!50] (4.58, 3.39) -- (3.75, 3.93);
+  \node[font=\scriptsize, anchor=west] at (7.25, 0) {层 1：512 个并行加法（$N/2$）};
+  \node[font=\scriptsize, anchor=west] at (7.25, 0.85) {层 2：256（$N/4$）};
+  \node[font=\scriptsize, anchor=west] at (7.25, 1.7) {层 3：128（$N/8$）};
+  \node[font=\scriptsize, anchor=west] at (7.25, 2.5) {层 4--8：64、32、16、8、4};
+  \node[font=\scriptsize, anchor=west] at (7.25, 3.25) {层 9：2};
+  \node[font=\scriptsize, anchor=west] at (7.25, 4.1) {层 10：1（全和 $\Sigma$）};
+  \node[font=\scriptsize, anchor=north] at (3.9, -0.45)
+    {每层内加法全部并行（层间汇合一次）：深度 $10 \ll 1023$};
+\end{tikzpicture}
+\caption{串行依赖链与二叉归约树对照（$N=1024$）：上半为串行链——1023 次加法严格依序，无论启动多少线程延迟一拍不少；下半为两两配对的归约树——树高 $\lceil\log_2 N\rceil = 10$ 层，每层内加法全部并行（灰度自底向上随节点数减半渐浅）。深度从 $N-1$ 压缩到 $\log_2 N$，代价是「谁跟谁配对」成为必须显式约定的结构信息。}
+\label{fig:2-4}
+\end{figure}
+
 \section{数学原理}\label{sec:ch02-math}
 
 \subsection{warp shuffle 与蝶形归约}
@@ -90,6 +149,68 @@ xor 模式所有 lane 每轮都做有效加法、结束时全员拿到结果—�
 L95 注释所说「xor 模式所有线程做相同工作量，更均衡」。后文 block 归约的
 广播步骤也因此免费：所有 lane 已经都有结果（sum 场景），或只需一次
 shfl 广播（见 \S\ref{sec:ch02-block}）。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\footnotesize,
+  cell/.style={draw, minimum size=0.52cm, inner sep=0pt, font=\tiny},
+  v/.style={cell, fill=gray!20},
+  iv/.style={cell, fill=gray!80}]
+  \node[font=\scriptsize\bfseries] at (4.68, 6.95)
+    {down 模式（\texttt{\_\_shfl\_down\_sync}）};
+  \node[font=\scriptsize\bfseries] at (10.58, 6.95)
+    {xor 模式（\texttt{\_\_shfl\_xor\_sync}）};
+  \node[font=\scriptsize, anchor=east] at (2.3, 6.1) {lane};
+  \foreach \c in {0,...,7}
+    \node[cell] at (2.86+0.52*\c, 6.1) {\c};
+  \foreach \c in {0,...,7}
+    \node[cell] at (9.02+0.52*\c, 6.1) {\c};
+  \node[font=\scriptsize, anchor=east] at (2.3, 5.25) {初始};
+  \foreach \c in {0,...,7}
+    \node[v] at (2.86+0.52*\c, 5.25) {$x_{\c}$};
+  \foreach \c in {0,...,7}
+    \node[v] at (9.02+0.52*\c, 5.25) {$x_{\c}$};
+  \node[font=\scriptsize, anchor=east] at (2.3, 4.4) {轮 1 m=4};
+  \foreach \c in {0,...,3}
+    \node[v] at (2.86+0.52*\c, 4.4) {};
+  \foreach \c in {4,...,7}
+    \node[iv] at (2.86+0.52*\c, 4.4) {};
+  \foreach \c in {0,...,7}
+    \node[v] at (9.02+0.52*\c, 4.4) {};
+  \node[font=\scriptsize, anchor=east] at (2.3, 3.55) {轮 2 m=2};
+  \foreach \c in {0,...,1}
+    \node[v] at (2.86+0.52*\c, 3.55) {};
+  \foreach \c in {2,...,7}
+    \node[iv] at (2.86+0.52*\c, 3.55) {};
+  \foreach \c in {0,...,7}
+    \node[v] at (9.02+0.52*\c, 3.55) {};
+  \node[font=\scriptsize, anchor=east] at (2.3, 2.7) {轮 3（终态）};
+  \node[v] at (2.86, 2.7) {$\Sigma$};
+  \foreach \c in {1,...,7}
+    \node[iv] at (2.86+0.52*\c, 2.7) {};
+  \foreach \c in {0,...,7}
+    \node[v] at (9.02+0.52*\c, 2.7) {$\Sigma$};
+  \node[font=\scriptsize, anchor=west] at (7.0, 4.4) {有效 4};
+  \node[font=\scriptsize, anchor=west] at (7.0, 3.55) {有效 2};
+  \node[font=\scriptsize, anchor=west, align=left, text width=1.55cm] at (7.0, 2.7)
+    {有效 1，仅 lane0 $=\Sigma$};
+  \node[font=\scriptsize, anchor=west] at (13.16, 4.4) {有效 8};
+  \node[font=\scriptsize, anchor=west] at (13.16, 3.55) {有效 8};
+  \node[font=\scriptsize, anchor=west] at (13.16, 2.7) {有效 8，全员 $=\Sigma$};
+  \node[font=\scriptsize, anchor=north, align=center, text width=4.4cm]
+    at (4.68, 2.15)
+    {lane $i$ 读 lane $i+m$；\\$i+m \ge 8$ 越界读自己（复制），\\污染逐轮扩散};
+  \node[font=\scriptsize, anchor=north, align=center, text width=4.4cm]
+    at (10.58, 2.15)
+    {lane $i$ 读 lane $i \oplus m$；\\配对对称，每轮全员\\做有效加法};
+  \node[draw, fill=gray!20, minimum size=0.3cm, inner sep=0pt] at (4.9, 0.5) {};
+  \node[font=\scriptsize, anchor=west] at (5.15, 0.5) {有效（正确部分和）};
+  \node[draw, fill=gray!80, minimum size=0.3cm, inner sep=0pt] at (8.4, 0.5) {};
+  \node[font=\scriptsize, anchor=west] at (8.65, 0.5) {无效 / 被污染（越界读自己）};
+\end{tikzpicture}
+\caption{down 与 xor 两种 shuffle 逐轮对比（$W{=}8$，与图~\ref{fig:2-1} 同尺度，灰 20 = 有效 / 灰 80 = 无效污染）：down 模式 lane $i$ 读 lane $i+m$，越界者读自己（复制），有效 lane 数逐轮减半（$4 \to 2 \to 1$），终态仅 lane0 持正确全和；xor 模式配对对称、每轮全员有效，终态 8 个 lane 全部持有 $\Sigma$（all-reduce）——block 归约的广播步骤因此免费。}
+\label{fig:2-5}
+\end{figure}
 
 \subsection{Block 两级归约的步数账}
 
@@ -205,25 +326,54 @@ ch06 的 norm（预变换平方）都是这个模板的填空题。dot\_vec4（L
 
 \begin{figure}[htbp]
 \centering
-\begin{lstlisting}[style=console]
-   block 两级归约 (T=256, W=8): 全员广播版 (block-reduce-sum)
-   -------------------------------------------------------------
-   warp0   warp1   warp2  ...  warp7        (warp 内 5 轮 shuffle)
-     |       |       |           |
-     v       v       v           v            lane0 写 smem
-   [s0]    [s1]    [s2]  ...  [s7]          syncthreads()
-     \       |       |          /
-      +------o-------+---------+             每个 warp 前 8 lane 读入
-                 (再 3 轮 shuffle)             再各自归约一遍
-                        |
-                  lane0 of each warp 持有全和
-                        |
-              shfl-sync(..., src=0, 32)       广播回全 block
-                        |
-                 256 线程全员持有结果
-   -------------------------------------------------------------
-   跨 block 版 (block-reduce-all): warp0 归约 -> tid0 -> atomicAdd(y)
-\end{lstlisting}
+\begin{tikzpicture}[
+  font=\footnotesize,
+  warp/.style={draw, fill=gray!10, minimum width=0.92cm, minimum height=0.7cm,
+    inner sep=1pt, font=\scriptsize},
+  flow/.style={draw, align=center, inner sep=3pt},
+  ar/.style={-{Stealth[length=1.8mm]}, semithick},
+  sl/.style={font=\scriptsize, align=right, anchor=east}
+]
+  \foreach \i in {0,...,7}
+    \node[warp] at (0.6+\i, 6.1) {warp\i};
+  \node[sl] at (-0.35, 6.1) {warp 内\\5 轮 shuffle};
+  \node[anchor=west, font=\scriptsize, align=left] at (8.6, 6.1)
+    {\_\_shfl\_xor\_sync\\蝶形归约};
+  \foreach \i in {0,...,7}
+    \draw[ar] (0.6+\i, 5.75) -- (0.6+\i, 4.99);
+  \node[anchor=west, font=\scriptsize] at (8.6, 5.35) {lane0 写 smem};
+  \draw[dashed, black!60] (-0.15, 4.95) -- (8.45, 4.95);
+  \node[sl] at (-0.35, 4.95) {\_\_syncthreads()};
+  \begin{scope}[every node/.style={minimum size=1cm, outer sep=0pt,
+    font=\footnotesize}]
+    \node[fill=gray!10] at (0.6, 4.2) {s0};
+    \node[fill=gray!20] at (1.6, 4.2) {s1};
+    \node[fill=gray!30] at (2.6, 4.2) {s2};
+    \node[fill=gray!40] at (3.6, 4.2) {s3};
+    \node[fill=gray!50] at (4.6, 4.2) {s4};
+    \node[fill=gray!60] at (5.6, 4.2) {s5};
+    \node[fill=gray!70] at (6.6, 4.2) {s6};
+    \node[fill=gray!80] at (7.6, 4.2) {s7};
+  \end{scope}
+  \draw[thick, shift={(-0.5,-0.5)}] (0.6,4.2) grid (8.1,4.2);
+  \node[anchor=west, font=\scriptsize, align=left] at (8.6, 4.2) {smem[0..7]\\灰度渐深};
+  \draw[dashed, black!60] (-0.15, 3.45) -- (8.45, 3.45);
+  \node[sl] at (-0.35, 3.45) {\_\_syncthreads()};
+  \draw[ar, thick] (4.3, 3.41) -- (4.3, 2.72);
+  \node[anchor=west, font=\scriptsize, align=left] at (4.55, 3.06)
+    {每 warp 前 8 lane\\读入全部 s0--s7};
+  \node[flow, text width=7.3cm, font=\scriptsize, fill=gray!5] (red2)
+    at (4.3, 2.15) {各 warp 前 8 lane \textbf{各自再归约一遍}（3 轮 shuffle）\\
+    冗余 $W-1$ 份 $\to$ 换掉第二次 smem 往返与第二次同步};
+  \draw[ar, thick] (4.3, 1.78) -- (4.3, 0.95);
+  \node[anchor=west, font=\scriptsize, align=left] at (4.55, 1.37)
+    {\_\_shfl\_sync(mask, v, src=0, width=32)\\lane0 结果广播到全 warp};
+  \node[flow, fill=gray!30, minimum width=8.35cm, minimum height=0.7cm]
+    at (4.3, 0.55) {256 线程全员持有结果（all-reduce 语义）};
+  \node[flow, dashed, text width=3.3cm, font=\scriptsize] (cross)
+    at (12.3, 2.15) {跨 block 版\\（block\_reduce\_all）\\warp0 二次归约 $\to$ tid0 写\\$\to$ atomicAdd(y)};
+  \draw[dashed, black!60] (8.0, 2.15) -- (10.45, 2.15);
+\end{tikzpicture}
 \caption{block 两级归约数据流}
 \label{fig:2-2}
 \end{figure}
@@ -261,6 +411,49 @@ dot\_vec4 把访存指令数降为 $1/4$（字节数不变），总时长却纹�
 $G$ 个数」，或 block 内先 smem 累积再少次原子—— atomic 次数从 $G$ 降到
 $\lceil G/K \rceil$，时间随之线性下降。这也是面试里「跨 block 归约怎么
 优化」的标准答案骨架。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  font=\footnotesize,
+  ar/.style={-{Stealth[length=1.8mm]}, semithick},
+  note/.style={font=\scriptsize, align=left}
+]
+  \node[note, anchor=south, align=center] at (1.33, 4.25) {16384 个 block（示意）};
+  \foreach \i in {0,...,3}
+    \foreach \j in {0,...,4}
+      \node[draw, fill=gray!20, minimum size=0.5cm, inner sep=0pt]
+        at (0.4+0.62*\i, 1.6+0.62*\j) {};
+  \node[font=\large] at (1.33, 1.05) {$\vdots$};
+  \node[note, anchor=north, align=center] at (1.33, 0.8)
+    {共 $G = 16384$ 个 block\\每 block 一次 \texttt{atomicAdd(\&y)}};
+  \foreach \y [count=\k from 0] in {3.85, 3.2, 2.55, 1.9, 1.25}
+    \draw[ar, black!70] (2.4, \y) -- (5.85, 3.55-0.6*\k);
+  \draw[thick, fill=gray!70] (5.95, 0.9) rectangle (6.65, 4.0);
+  \foreach \y in {1.21, 1.52, ..., 3.69}
+    \draw (5.95, \y) -- (6.65, \y);
+  \node[note, anchor=west] at (6.9, 3.6) {L2 原子单元};
+  \node[note, anchor=west] at (6.9, 3.0) {同一地址 y 的 RMW};
+  \node[note, anchor=west] at (6.9, 2.4) {逐格串行：2.6 ns/op};
+  \node[anchor=west, font=\footnotesize\bfseries]
+    at (6.9, 1.7) {$16384 \times 2.6\,\mathrm{ns} \approx 42\,\mu\mathrm{s}$};
+  \draw[fill=gray!70] (0.4, -1.0) rectangle (6.7, -0.5);
+  \draw (0.4, -1.0) rectangle (6.7, -0.5);
+  \node[anchor=west, font=\scriptsize] at (6.9, -0.75)
+    {atomicAdd 同址串行 $\approx 42\,\mu\mathrm{s}$};
+  \draw[fill=gray!40] (0.4, -1.6) rectangle (4.0, -1.1);
+  \draw (0.4, -1.6) rectangle (4.0, -1.1);
+  \node[anchor=west, font=\scriptsize] at (4.2, -1.35)
+    {dot 数据流 32MB / 1344GB/s $\approx 24\,\mu\mathrm{s}$};
+  \draw[-{Stealth[length=1.8mm]}, black!60] (0.4, -2.1) -- (7.0, -2.1);
+  \node[anchor=west, font=\scriptsize] at (7.05, -2.1) {时间};
+  \node[note, anchor=north west] at (0.4, -2.35)
+    {同一时间里数据搬运只需 24 $\mu\mathrm{s}$ $<$ 42 $\mu\mathrm{s}$
+     $\Rightarrow$ 瓶颈是同址原子的串行吞吐，不是带宽};
+\end{tikzpicture}
+\caption{全局原子串行化的几何证据：$G=16384$ 个 block 的 atomicAdd 全部汇入同一地址 y 的 L2 原子单元窄队列逐格串行（2.6 ns/op，共约 42 $\mu$s），长于 dot 本身的数据流时间（约 24 $\mu$s）。}
+\label{fig:2-3}
+\end{figure}
 
 \section{实践经验}\label{sec:ch02-kaogu}
 

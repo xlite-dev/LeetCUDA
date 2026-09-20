@@ -154,6 +154,81 @@ $\bigl(\lceil N/B_N\rceil,\lceil M/B_M\rceil\bigr)$。Phase~7c 的默认配置�
 $\supset$ 逻辑 MMA tile $32\times32\times16$（\texttt{TiledMMA} 一次展开多少条
 指令，见下节）$\supset$ atom $16\times8\times16$（一条 \texttt{mma.sync}）。
 CuTe 的层层 partition，本质就是在这座金字塔上做「从塔尖切到塔基」的坐标换算。
+三层之间的尺寸账见图~\ref{fig:24-tile-pyramid}。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\tiny]
+  \foreach \gr in {0,...,3}{
+    \foreach \gc in {0,...,7}{
+      \node[fill=gray!12, minimum width=0.5cm, minimum height=0.5cm, inner sep=0pt]
+        at ({\gc*0.5+0.25},{-\gr*0.5-0.25}) {};
+    }
+  }
+  \node[fill=gray!45, minimum width=0.5cm, minimum height=0.5cm, inner sep=0pt]
+    at (3.75,-0.75) {};
+  \draw[thin] (0,0) grid[xstep=0.5cm, ystep=0.5cm] (4.0,-2.0);
+  \draw[very thick] (0,0) rectangle (4.0,-2.0);
+  \node[anchor=south, align=center, font=\scriptsize\bfseries, text width=4.0cm]
+    at (2.0,0.12) {CTA tile\\ $B_M\times B_N=128\times256$};
+  \node[anchor=north, align=center, text width=4.6cm] at (2.0,-2.1)
+    {灰块 $=$ 一个 $32\times32$ MMA tile（$4\times8$ 个铺满整块）};
+  \draw[->, very thick] (4.25,-0.75) -- (5.1,-0.75);
+  \node[anchor=south] at (4.65,-0.72) {取 1 个};
+  \begin{scope}[shift={(5.2,0)}]
+    \foreach \wr in {0,...,1}{
+      \foreach \wc in {0,...,1}{
+        \pgfmathtruncatemacro{\wg}{2*\wr+\wc}
+        \pgfmathtruncatemacro{\gl}{25+15*\wg}
+        \node[fill=gray!\gl, minimum width=1.0cm, minimum height=1.0cm, inner sep=0pt]
+          at ({\wc*1.0+0.5},{-\wr*1.0-0.5}) {w\wg};
+      }
+    }
+    \draw[thin] (0,0) grid[xstep=1.0cm, ystep=1.0cm] (2.0,-2.0);
+    \draw[very thick] (0,0) rectangle (2.0,-2.0);
+    \node[anchor=south, align=center, font=\scriptsize\bfseries, text width=3.4cm]
+      at (1.0,0.12) {逻辑 MMA tile\\ $32\times32\times16$};
+    \node[anchor=north, align=center, text width=4.2cm] at (1.0,-2.1)
+      {AtomLayout$(M,N,K)=(2,2,1)$：$2\times2$ 个 warp，\\ 每个 warp 覆盖
+       $16\times16$（EURepeat$\times$atom）};
+  \end{scope}
+  \draw[->, very thick] (7.3,-0.5) -- (8.95,-0.5);
+  \node[anchor=south] at (8.1,-0.47) {每 warp 内};
+  \begin{scope}[shift={(9.0,-0.2)}]
+    \foreach \arow in {0,...,15}{
+      \foreach \acol in {0,...,7}{
+        \node[fill=gray!10, minimum width=0.16cm, minimum height=0.16cm, inner sep=0pt]
+          at ({\acol*0.16+0.08},{-\arow*0.16-0.08}) {};
+      }
+    }
+    \draw[thin] (0,0) grid[xstep=0.16cm, ystep=0.16cm] (1.28,-2.56);
+    \draw[very thick] (0,0) rectangle (1.28,-2.56);
+    \node[anchor=north west, align=left, text width=3.8cm] at (1.45,-0.25)
+      {$M$ 方向 $16$ 行（mode 0 向下）、$N$ 方向 $8$ 列（mode 1 向右）；
+       每线程 $4$ 个 float 累加器（m16n8k16 的 C fragment）。};
+  \end{scope}
+  \node[anchor=south west, font=\scriptsize\bfseries] at (8.8,0.12)
+    {atom $16\times8\times16$（一条 \texttt{mma.sync}）};
+  \node[anchor=north west, align=left, text width=15.5cm] at (0,-3.1)
+    {三层尺寸账：$\texttt{kMmaPM}=\mathrm{AtomLayout}_M(2)\times16=32$、
+     $\texttt{kMmaPN}=\mathrm{AtomLayout}_N(2)\times\mathrm{EURepeat}_N(2)
+     \times8=32$、$\texttt{kMmaPK}=1\times16=16$；线程数 $=32$ lanes
+     $\times$ $4$ warps $=128$；$n_{k\text{-step}}=B_K/\texttt{kMmaPK}=2$。
+     CTA tile 一次搬进来、一次算完：smem
+     $=128\cdot32\cdot2+256\cdot32\cdot2=24576$ half $=48$\,KiB
+     （式~\eqref{eq:24-smem}）。$B_N=256$ 只在 F16 累加下成立，F32 累加时
+     掉到 $128$——$128\times256/128=256$ 个 float 累加器已超过可用寄存器
+     的一半。};
+\end{tikzpicture}
+\caption{本章实际配置的三层 tile 金字塔（式~\eqref{eq:24-tile} 与
+式~\eqref{eq:24-tile-mma}）：外层 CTA tile $128\times256$ 一次搬进 smem、
+一次算完（F16 累加；F32 累加时 $B_N$ 降到 $128$）；中层逻辑 MMA tile
+$32\times32\times16$ 被 AtomLayout$(2,2,1)$ 切成 $2\times2$ 个 warp（每个
+warp 覆盖 $16\times16$，由 EURepeat$\times$atom 堆出）；内层 atom
+$16\times8\times16$ 就是一条 \texttt{mma.sync}。CuTe 的层层 partition 都
+是这座金字塔上的「塔尖到塔基」坐标换算。}
+\label{fig:24-tile-pyramid}
+\end{figure}
 
 $B_N$ 随累加精度切换是\textbf{经验性}的：F32 累加器每个元素占 4 字节，寄存器
 压力翻倍，$128\times256$ 的 C tile 在 128 线程下是
@@ -223,6 +298,75 @@ $B_K=32$ 相对 \texttt{kMmaPK}$=16$ 的倍数即 K 方向的切片数：
 一条 atom 只吃掉 $K$ 方向的 16 个元素，所以一件 $B_K=32$ 的 K-tile 要「装两次」
 才算完。这就是 kernel 里 \texttt{num\_\allowbreak{}k\_\allowbreak{}steps =\allowbreak{} size\allowbreak{}<2>\allowbreak{}(t\allowbreak{}Cr\allowbreak{}A)} 的来历——它不是
 一个 magic number，而是「K-mode 的 extent」被 CuTe 从类型里读出来的结果。
+两个语境下「EURepeat」的区别见图~\ref{fig:24-eurepeat-two-senses}。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\tiny]
+  \definecolor{eurRed}{RGB}{192,45,45}
+  \begin{scope}
+    \foreach \wr in {0,...,1}{
+      \foreach \wc in {0,...,1}{
+        \pgfmathtruncatemacro{\wg}{2*\wr+\wc}
+        \pgfmathtruncatemacro{\gl}{12+15*\wg}
+        \node[fill=gray!\gl, minimum width=1.2cm, minimum height=1.2cm,
+          inner sep=0pt, align=center] at ({\wc*1.2+0.6},{-\wr*1.2-0.6})
+          {w\wg\\[1pt]$16\times16$};
+      }
+    }
+    \draw[thin] (0,0) grid[xstep=1.2cm, ystep=1.2cm] (2.4,-2.4);
+    \draw[very thick] (0,0) rectangle (2.4,-2.4);
+    \node[anchor=south, align=center, font=\scriptsize\bfseries, text width=5.5cm]
+      at (1.2,0.15) {AtomLayout$(M,N,K)=(2,2,1)$（warp 排布）};
+    \node[anchor=north, align=center, text width=4.8cm] at (1.2,-2.7)
+      {源码常量 \texttt{kMmaEURepeatM/N/K}$=2/2/1$\\ 给的正是这组排布};
+  \end{scope}
+  \node[anchor=north west, align=left, text width=5.9cm] at (3.5,-0.1)
+    {$\texttt{kMmaPM}=2\,(\mathrm{AtomLayout}_M)\times16=32$；\\
+     $\texttt{kMmaPN}=2\,(\mathrm{AtomLayout}_N)\times2\,(\mathrm{EURepeat}_N)
+     \times8=32$；$\texttt{kMmaPK}=16$。};
+  \node[anchor=north west, align=left, text width=5.9cm, eurRed] at (3.5,-1.4)
+    {\textbf{同名不同义}：源码常量名里的「EURepeat」是
+     \texttt{make\_tiled\_mma} 的第 $2$ 个参数，CuTe 叫
+     \texttt{AtomLayout}；CuTe 语义下的真 EURepeat 由 Tile 推出，
+     是 $(1,2,1)$。};
+  \begin{scope}[shift={(10.0,0)}]
+    \foreach \mrow in {0,...,15}{
+      \foreach \mcol in {0,...,15}{
+        \node[fill=gray!10, minimum width=0.17cm, minimum height=0.17cm, inner sep=0pt]
+          at ({\mcol*0.17+0.085},{-\mrow*0.17-0.085}) {};
+      }
+    }
+    \draw[thin] (0,0) grid[xstep=0.17cm, ystep=0.17cm] (2.72,-2.72);
+    \draw[very thick] (0,0) rectangle (2.72,-2.72);
+    \draw[thick, dashed] (1.36,0) -- (1.36,-2.72);
+    \node[anchor=south, align=center, font=\scriptsize\bfseries, text width=5.6cm]
+      at (1.36,0.15) {真 EURepeat$(M,N,K)=(1,2,1)$（每线程视角）};
+    \node[anchor=north] at (0.68,-2.8) {atom 0};
+    \node[anchor=north] at (2.04,-2.8) {atom 1};
+    \node[anchor=north, align=center, text width=4.6cm] at (1.36,-3.1)
+      {$M$、$K$ 方向不重复，$N$ 方向每线程跨 $2$ 个 atom
+       （$8\times2=16$ 列）；每线程 $8$ 个 float 累加器。};
+  \end{scope}
+  \node[anchor=north west, align=left, text width=15.5cm] at (0,-4.0)
+    {两者的分工不同：\texttt{AtomLayout} 描述\emph{warp 之间}怎么排
+     （$2\times2$ 个 warp 铺满 $32\times32$），CuTe 语义的 EURepeat 描述
+     \emph{每线程}在自己的 warp 内把 atom 重复几份
+     （$1\times2\times1$）。二者相乘才得到逻辑 tile：
+     $\texttt{kMmaPM}=2\times1\times16=32$、
+     $\texttt{kMmaPN}=2\times2\times8=32$。读源码时按名字理解会把
+     $2/2/1$ 当成「每线程重复」，实际它是 warp 排布——本章配置下真
+     EURepeat 是 $(1,2,1)$。};
+\end{tikzpicture}
+\caption{EURepeat 的两种语境（式~\eqref{eq:24-tile-mma}）：左图是
+\texttt{make\_tiled\_mma} 的第 $2$ 个参数，CuTe 语义叫 AtomLayout
+$(2,2,1)$——$2\times2$ 个 warp 每个覆盖 $16\times16$；右图是 CuTe 语义下
+由 Tile 推出的真 EURepeat $(1,2,1)$——每线程只在自己 warp 内沿 $N$ 方向
+重复 $2$ 个 atom（$8\times2=16$ 列），$M$、$K$ 方向都是 $1$。源码常量名
+\texttt{kMmaEURepeatM/N/K} 装的是前者，两者相乘才是逻辑 tile
+$32\times32\times16$。}
+\label{fig:24-eurepeat-two-senses}
+\end{figure}
 
 \subsection{三件事：数据在哪、谁算哪块、谁搬哪块}
 

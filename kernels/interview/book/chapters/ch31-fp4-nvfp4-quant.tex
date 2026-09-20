@@ -12,7 +12,59 @@ $\{0,\pm0.5,\pm1,\pm1.5,\pm2,\pm3,\pm4,\pm6\}$，相对步长约 25\%（fp8 e4m3
 而是围绕它的一整套\textbf{尺度工程}：microscaling 块尺度（scale
 factor）、强制 smoothing、rank-1 修正、列置换、以及把所有这些步骤
 fused 进尽量少的 kernel。
-
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize]
+  \def\us{2.2}
+  \node[anchor=east, align=right] at (-0.35,0.25) {e4m3\\{\tiny 4E+3M}};
+  \draw[thick] (0,0) -- ({6*\us},0);
+  \draw[thick, ->] ({6*\us},0) -- ({6*\us+0.45},0);
+  \foreach \bi in {0,...,7}{
+    \foreach \m in {0,...,7}{
+      \pgfmathsetmacro{\vv}{2^(\bi-6)*(1+\m/8)}
+      \draw[gray!45] ({\vv*\us},0) -- ({\vv*\us},0.5);
+    }
+  }
+  \foreach \m in {0,...,4}{
+    \pgfmathsetmacro{\vv}{4+0.5*\m}
+    \draw[gray!45] ({\vv*\us},0) -- ({\vv*\us},0.5);
+  }
+  \foreach \vl/\xx in {0/0,1/2.2,2/4.4,4/8.8,6/13.2}{
+    \draw[thick] (\xx,0) -- (\xx,-0.14);
+    \node[below, font=\tiny, inner sep=1pt] at (\xx,-0.14) {$\vl$};
+  }
+  \node[anchor=west, font=\tiny] at ({6*\us+0.55},0.02) {$\to\ \cdots\ 448$（满量程）};
+  \node[anchor=south, font=\tiny, align=center] at ({3*\us},0.58)
+    {格点密（每 binade 8 点），相对步长 6.25\%；\\无 $\pm\infty$（\texttt{0x7F}=\texttt{NaN}），越界 \texttt{satfinite} 饱和};
+  \begin{scope}[yshift=-2.4cm]
+    \node[anchor=east, align=right] at (-0.35,0.30) {e2m1\\{\tiny 2E+1M}};
+    \draw[thick] (0,0) -- ({6*\us},0);
+    \draw[thick, ->] ({6*\us},0) -- ({6*\us+0.45},0);
+    \foreach \vl/\xx in {0/0,0.5/1.1,1/2.2,1.5/3.3,2/4.4,3/6.6,4/8.8,6/13.2}{
+      \draw[very thick] (\xx,0) -- (\xx,0.62);
+      \node[above, font=\tiny, inner sep=1pt] at (\xx,0.64) {\vl};
+    }
+    \node[anchor=south, font=\tiny, align=center] at ({3*\us},0.78)
+      {16 个码点中正半轴（含 0）仅 8 个，相对步长 $\approx$25\%\\格距 0.5/0.5/0.5/1/1/2 逐级加倍};
+    \foreach \gx/\gl in {0.55/0.5,1.65/0.5,2.75/0.5,3.85/1,5.5/1,7.7/2}{
+      \node[below, font=\tiny, inner sep=1pt] at (\gx,-0.16) {\gl};
+    }
+    \draw[thick] (8.8,-0.74) -- (8.8,-0.90) -- (13.2,-0.90) -- (13.2,-0.74);
+    \node[below, font=\tiny, inner sep=1pt] at (11.0,-0.92) {最大相对间距（4$\to$6，+50\%）};
+  \end{scope}
+  \node[anchor=north west, align=left, text width=15.2cm, font=\tiny] at (0,-4.15)
+    {两格式均有 $\pm0$，负半轴镜像对称（图示正半轴 $[0,6]$）。e2m1 无
+     \texttt{inf}/\texttt{NaN}，越界由 \texttt{cvt.rn.satfinite.e2m1x2.f32} 饱和到
+     $\pm6$。格点稀疏度 25\% vs 6.25\% 正是 fp4 容差（dense 0.15 / causal 0.70）比
+     fp8（5e-2）宽一个量级、以及 causal 尖峰行 max\_abs 0.5--0.75 的直接来源
+     （第~\ref{ch:33}~章 33.3.3~节的 tol 分档依据）。};
+\end{tikzpicture}
+\caption{e2m1 vs e4m3 的格点数轴（同一 $[0,6]$ 区间）。上：e4m3 每个 binade 8 个
+格点、相对步长 6.25\%，满量程 $\pm448$；下：e2m1 正半轴全部格点仅
+$\{0,0.5,1,1.5,2,3,4,6\}$、相对步长约 25\%，$[4,6]$ 段相对间距最大（+50\%）。
+fp4 的容差天然比 fp8 宽一个量级的格式层根源。}
+\label{fig:31-e2m1-grid}
+\end{figure}
 ffpa-attn 的 fp4 路径移植自 SageAttention3 的 Blackwell kernel
 （\texttt{quantize\_fp4.cuh} 头注释 L1--14），跑在自研的 persist-D 骨架
 上。本章讲\textbf{量化链}——主 kernel 之前的前处理；第~\ref{ch:32}~章
@@ -114,6 +166,41 @@ kernel 的 $S=\hat Q\hat K^\top+\Delta S$ 恰好等于 $q(k-\bar k)^\top$，
 的行常数会平移 lse 但不改变 $O$）。$\Delta S$ 在量化链里一次算好
 （fp32 物化，pad 列零填），主 kernel 每个 kv tile 加载即用。
 
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize, >=Stealth]
+  \node[draw, thick, rounded corners=1pt, fill=gray!10, align=center,
+        text width=7.6cm, inner sep=3pt] (exp) at (0,0)
+    {$S=q\,k^{\top}=(q-q_m)(k-\bar k)^{\top}+q_m k^{\top}+q\bar k^{\top}-q_m\bar k^{\top}$\\[1pt]
+     {\tiny 逐项展开：$K-\bar k$ 中间项要求把平滑后的 K 物化出来}};
+  \node[draw, thick, rounded corners=1pt, fill=gray!26, align=center,
+        text width=7.0cm, inner sep=3pt] (fold) at (0,-1.90)
+    {$S=\hat Q\hat K^{\top}+\Delta S$，\quad $\hat Q=\phi(Q-q_m)$、$\hat K=\phi(K^{\top}-\bar k)$\\[1pt]
+     {\tiny 残差 MMA（主 kernel 的 QK）$+$ 一次算好的修正项}};
+  \draw[->, thick] (exp) -- (fold)
+    node[midway, fill=white, inner sep=1.5pt, font=\tiny] {SA3 改写：消掉 $K-\bar k$};
+  \node[draw, thick, rounded corners=1pt, fill=gray!10, align=center,
+        text width=7.4cm, inner sep=3pt] (ds) at (0,-3.42)
+    {$\Delta S=\underbrace{q_m K^{\top}}_{\text{低秩 GEMM}}-\underbrace{q_m\bar k}_{\text{每行常数 }q_{km}}$\\[1pt]
+     {\tiny 左支 $\to$ fp32 物化、pad 列零填、量化链里一次算好；\\
+      右支 $\to$ epilogue 逐元素减一次，不改变 $O$}};
+  \draw[->, thick] (fold) -- (ds);
+  \node[anchor=north, align=center, font=\tiny, text width=7.4cm] at (0,-4.72)
+    {lse 修正只需 $scale\cdot\mathrm{dot}(q_{row},\bar k)$；主 kernel 每个 kv tile 把
+     $\Delta S$ 预载进 C 累加器即用};
+  \node[draw, dashed, thick, align=left, text width=4.9cm, inner sep=3pt, font=\tiny]
+    at (6.78,-1.66)
+    {\textbf{两条纪律}\\ 1. $K-\bar k$ \textbf{千万不要物化}——$\Delta S$ 必须走
+     $q_mK^{\top}-q_m\bar k$ 两支（\texttt{delta\_s.cuh} L3--8）；\\
+     2. $S$ 上任何多余的行常数只\textbf{平移 lse}、不改变 $O$；\\
+     3. 减除也可交换进旋转域：$\mathrm{dot}$ 用 $\bar k^{rot}$（31.3.5）。};
+\end{tikzpicture}
+\caption{$\Delta S$ 的 rank-1 恒等式。四项展开折叠为「残差 MMA $+$ 修正项」：
+$\Delta S$ 由低秩 GEMM $q_mK^{\top}$ 与每行常数 $q_m\bar k$ 两支等价构成，
+$K-\bar k$ 永不物化；行常数只平移 lse。}
+\label{fig:31-deltas}
+\end{figure}
+
 \subsection{smooth-V 的恒等式}
 
 V 的列均值减除是\textbf{数学精确}的，不是近似：
@@ -201,6 +288,66 @@ smooth-V 也 fused 在这里：$v_m$ 按 $d$ 减除发生在 smem 读出转 fp32
 之后、group absmax 之前（L443--456），一遍数据完成
 「转置 + 减均值 + 量化 + SF 打包」。
 
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize]
+  \def\cw{0.80}
+  \def\rh{0.44}
+  \foreach \r in {0,...,3}{
+    \foreach \c in {0,...,3}{
+      \pgfmathtruncatemacro{\idx}{int(\r*4+\c)}
+      \node[fill=gray!14, minimum width=\cw cm, minimum height=\rh cm, inner sep=0pt, font=\tiny]
+        at ({\c*\cw+0.5*\cw},{-\r*\rh-0.5*\rh}) {\idx};
+    }
+  }
+  \draw[thick] (0,0) rectangle ({4*\cw},{-4*\rh});
+  \node[anchor=south, font=\tiny, align=center] at ({2*\cw},0.08)
+    {若按行主序写（行 stride $=4$）};
+  \node[anchor=north, font=\tiny, align=center] at ({2*\cw},{-4*\rh-0.08}) {列组 $c$};
+  \node[anchor=east, font=\tiny, align=center] at (-0.08,{-2*\rh}) {行 $r$};
+  \begin{scope}[xshift=5.30cm]
+    \foreach \r in {0,...,3}{
+      \foreach \c in {0,...,3}{
+        \pgfmathtruncatemacro{\idxv}{int(\r*16+\c)}
+        \node[fill=gray!14, minimum width=\cw cm, minimum height=\rh cm, inner sep=0pt, font=\tiny]
+          at ({\c*\cw+0.5*\cw},{-\r*\rh-0.5*\rh}) {\idxv};
+      }
+    }
+    \draw[thick] (0,0) rectangle ({4*\cw},{-4*\rh});
+    \node[anchor=south, font=\tiny, align=center] at ({2*\cw},0.08)
+      {SfAtom 序（行 stride $=16$，实测写序）};
+    \node[anchor=north, font=\tiny, align=center] at ({2*\cw},{-4*\rh-0.08}) {列组 $c$};
+    \node[anchor=east, font=\tiny, align=center] at (-0.08,{-2*\rh}) {行 $r$};
+  \end{scope}
+  \begin{scope}[yshift=-3.30cm]
+    \def\gw{0.46}
+    \foreach \b/\ct in {0/12,1/12,2/12,3/12,4/26,5/26,6/26,7/26,
+                        8/40,9/40,10/40,11/40,12/54,13/54,14/54,15/54}{
+      \fill[gray!\ct] ({\b*\gw},0) rectangle ({\b*\gw+\gw},0.40);
+      \draw[thick] ({\b*\gw},0) rectangle ({\b*\gw+\gw},0.40);
+      \node[font=\tiny] at ({\b*\gw+0.5*\gw},0.20) {\b};
+    }
+    \node[anchor=south west, font=\tiny] at (0,0.44)
+      {gmem 线性字节 0--15（$64{\times}4$ atom 的前 16B）};
+    \node[anchor=north west, font=\tiny] at (0,-0.04)
+      {每 4 字节换一个 16 行子块（行 $0,16,32,48$），而不是换列组};
+  \end{scope}
+  \node[draw, align=left, text width=5.2cm, inner sep=3pt, font=\tiny] at (11.40,-1.10)
+    {\texttt{sf\_col\_offset}$=(c/4)\cdot256+(c\%4)$\\
+     \texttt{offset\_local}$=$\texttt{sf\_col\_offset}$+(r/16)\cdot4+(r\%16)\cdot16$\\
+     （\texttt{quantize\_fp4.cuh} L414/L482--485）\\[2pt]
+     \textbf{消费端定写序}：MMA 的 SF 操作数按 $64{\times}4$ block 布局消费，
+     写侧 offset 必须与 \texttt{BlockScaledConfig} 逐字节一致——两头任一侧
+     改动都要同步（与 fp8 的 VTPerm 同类问题）。};
+\end{tikzpicture}
+\caption{SF 字节的写序由消费端决定（V$^\top$ 量化链）。同一 $(r,c)$ 单元格在
+行主序假设下偏移 $4r+c$，在 SfAtom 序下偏移 $16r+c$：每 4 个列组构成
+$64{\times}4$ 的 256B atom，atom 内按 16 行子块交错。写侧
+（\texttt{sf\_col\_offset}/\texttt{offset\_local}）与 MMA 的
+\texttt{BlockScaledConfig} 必须逐字节一致。}
+\label{fig:31-sf-order}
+\end{figure}
+
 \subsection{fused 单 launch（$D\le128$）与 fused WHT}
 
 小 D 场景把整条 Q/K/V 量化链合成一个 launch：
@@ -219,6 +366,61 @@ thread-local 数组里原地做（\texttt{dist} 从 $k_E/2$ 递减到 1），
 只剩距离 $k_E$ 与 $2k_E$ 的两级跨线程交换用
 \texttt{shfl\_xor(1)}/\texttt{shfl\_xor(2)} 完成——整行 WHT 零
 smem、零额外寄存器数组。最后乘 $rsqrt(kHeadDim)$ 归一。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize, >=Stealth]
+  \def\sw{3.05}
+  \foreach \t/\gt in {0/10,1/22,2/10,3/22}{
+    \pgfmathsetmacro{\xa}{\t*\sw}
+    \fill[gray!\gt] (\xa,0) rectangle ({\xa+\sw},0.52);
+    \draw[thick] (\xa,0) rectangle ({\xa+\sw},0.52);
+    \node[font=\tiny] at ({\xa+\sw/2},0.26) {slice \t：$k_E{=}64$ 元素};
+  }
+  \node[anchor=south, font=\tiny, align=center] at (0,0.06) {};
+  \draw[<->, thick] ({0.5*\sw},0.62) -- ({1.5*\sw},0.62);
+  \node[above, font=\tiny] at ({\sw},0.62)
+    {\texttt{shfl\_xor(1)}：dist $k_E{=}64$（slice$\,0{\leftrightarrow}1$、$2{\leftrightarrow}3$）};
+  \draw[<->, thick] ({0.5*\sw},1.08) -- ({2.5*\sw},1.08);
+  \node[above, font=\tiny] at ({1.5*\sw},1.08)
+    {\texttt{shfl\_xor(2)}：dist $2k_E{=}128$（slice$\,0{\leftrightarrow}2$、$1{\leftrightarrow}3$）};
+  \node[anchor=east, font=\tiny, align=right] at (-0.10,0.26) {整行\\$D{=}256$};
+  \begin{scope}[yshift=-2.30cm]
+    \def\gw{0.42}
+    \foreach \c in {0,...,15}{
+      \fill[gray!8] ({\c*\gw},0) rectangle ({\c*\gw+\gw},0.40);
+      \draw[gray!45, thin] ({\c*\gw},0) rectangle ({\c*\gw+\gw},0.40);
+    }
+    \draw[thick] (0,0) rectangle ({16*\gw},0.40);
+    \node[anchor=south west, font=\tiny] at (0,0.44)
+      {slice 0 段内放大（$k_E{=}64$ 元素；一格 $=4$ 元素）};
+    \draw[<->, thick] ({0.5*\gw},-0.22) -- ({8.5*\gw},-0.22);
+    \node[below, font=\tiny] at ({4.5*\gw},-0.24) {dist 32};
+    \draw[<->, thick] ({0.5*\gw},-0.62) -- ({4.5*\gw},-0.62);
+    \node[below, font=\tiny] at ({2.5*\gw},-0.64) {dist 16};
+    \draw[<->, thick] ({0.5*\gw},-1.02) -- ({2.5*\gw},-1.02);
+    \node[below, font=\tiny] at ({1.5*\gw},-1.04) {dist 8};
+    \draw[<->, thick] ({0.5*\gw},-1.42) -- ({1.5*\gw},-1.42);
+    \node[below, font=\tiny] at ({1.0*\gw},-1.44) {dist 4};
+    \node[anchor=west, font=\tiny, align=left] at ({2.2*\gw},-1.80)
+      {dist 2、1：\\
+       同一格内};
+    \node[anchor=north west, align=left, text width=3.6cm, font=\tiny] at ({16*\gw+0.45},0.34)
+      {dist $\le k_E/2$ 的 6 级蝶形全部 thread-local 原地做；\\
+       只有 dist $k_E$/$2k_E$ 两级跨线程（每级一次 \texttt{shfl\_xor}）。};
+  \end{scope}
+  \node[anchor=north west, align=left, text width=16.0cm, font=\tiny] at (0.0,-4.30)
+    {蝶形对 $(j,\,j\oplus\mathrm{dist})$ 的加减在 $k_E{=}kHeadDim/4$ 个元素内完成：
+     6 级 thread-local（源码 \texttt{quantize\_fp4.cuh} L195--235 的 \texttt{dist} 循环）
+     $+$ 2 级 \texttt{shfl\_xor}；invalid token 装零，全 warp 在 shuffle 中保持收敛；
+     末端统一乘 $rsqrt(kHeadDim)$ 归一。整行 WHT 零 smem、零额外寄存器数组。};
+\end{tikzpicture}
+\caption{fused WHT 的蝶形距离分层（$D{=}256$，4 线程一 token、每线程 $k_E{=}64$
+连续元素）。距离 $<k_E$ 的 6 级蝶形全在 thread-local 数组内；dist $k_E$ 与
+$2k_E$ 两级各用一次 \texttt{shfl\_xor(1)}/\texttt{shfl\_xor(2)} 跨 slice 交换——
+零 smem、零额外寄存器数组。}
+\label{fig:31-wht-butterfly}
+\end{figure}
 
 \subsection{delta\_s：wmma 版与 CuTe/TMA 版}
 

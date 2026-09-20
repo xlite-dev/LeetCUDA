@@ -288,7 +288,97 @@ fragment 大小 $8\times1\times4 = 32$——与本章测试 case~C 的实测
 \texttt{\allowbreak{}(\allowbreak{}(2,\allowbreak{}2,\allowbreak{}2),\allowbreak{}1,\allowbreak{}4)} 完全一致（$(2,2,2)$ 是 8 的嵌套写法）。
 测试同时对 B 与 C 复算了这条链：QK 的 B 在 $(64,64)$ 上得
 $(4,8,4)$（$=128$ 个 half/线程，因为 4 个 M-warp 各持一份完整 B，重复因子 4，
-式~\eqref{eq:22-dup}）；C 得 $(4,1,8) = 32$（无重复，$4096/128$）。
+式~\eqref{eq:22-dup}）；C 得 $(4,1,8) = 32$（无重复，$4096/128$）。四步
+推导链的 shape 演化见图~\ref{fig:22-thrfrg-chain}。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\tiny]
+  \begin{scope}
+    \foreach \fk in {0,...,3}{
+      \ifnum\fk=0 \def\cfill{gray!45} \else \def\cfill{gray!10} \fi
+      \fill[\cfill] ({0.6*\fk},0) rectangle ({0.6*\fk+0.6},{-2.4});
+    }
+    \draw[thin] (0,0) grid[xstep=0.6cm, ystep=0.3cm] (2.4,-2.4);
+    \draw[very thick] (0,0) rectangle (2.4,-2.4);
+    \node[font=\tiny, rotate=90] at (0.3,-1.2) {tile $(64,16)$};
+    \node[font=\tiny, rotate=90] at (1.5,-1.2) {rest $(1,4)$：4 个 K 切片};
+    \node[anchor=south, font=\tiny] at (1.2,0.42) {$A$：$64\times64$，perm $=(64,16)$};
+    \node[anchor=south, font=\tiny\bfseries] at (1.2,0.14) {(1) logical\_divide};
+    \node[anchor=north, font=\tiny] at (1.2,-2.55) {$T_1=((64,16),(1,4))$};
+  \end{scope}
+  \draw[->, very thick] (2.6,-1.2) -- (3.3,-1.2);
+  \begin{scope}[shift={(3.5,0)}]
+    \foreach \am in {0,...,3}{
+      \foreach \ak in {0,...,3}{
+        \pgfmathtruncatemacro{\pk}{mod(\am+\ak,2)}
+        \ifnum\pk=0 \def\cfill{gray!22} \else \def\cfill{gray!52} \fi
+        \fill[\cfill] ({0.33*\ak},{-0.6*\am}) rectangle ({0.33*\ak+0.33},{-0.6*\am-0.6});
+      }
+    }
+    \draw[thin] (0,0) grid[xstep=0.33cm, ystep=0.6cm] (1.32,-2.4);
+    \draw[very thick] (0,0) rectangle (1.32,-2.4);
+    \node[anchor=south, font=\tiny] at (0.66,0.42) {atom $(16,16)$};
+    \node[anchor=south, font=\tiny\bfseries] at (0.66,0.14) {(2) zipped\_divide};
+    \node[anchor=north, font=\tiny, align=center] at (0.66,-2.55)
+      {$T_2=((16,16),(4,4))$，$R_M{=}R_K{=}4$\\（棋盘 $=$ atom 身份）};
+  \end{scope}
+  \draw[->, very thick] (5.0,-1.2) -- (5.4,-1.2);
+  \begin{scope}[shift={(5.6,0)}]
+    \foreach \gm/\gk in {0/0,0/1,0/8,0/9,8/0,8/1,8/8,8/9}{
+      \fill[gray!65] ({0.135*\gk},{-0.135*\gm}) rectangle ({0.135*\gk+0.135},{-0.135*\gm-0.135});
+    }
+    \draw[thin] (0,0) grid[xstep=0.135cm, ystep=0.135cm] (2.16,-2.16);
+    \draw[very thick] (0,0) rectangle (2.16,-2.16);
+    \node[anchor=south, font=\tiny] at (1.08,0.42) {atom $(16,16)\to(\mathrm{thr},\mathrm{val})$};
+    \node[anchor=south, font=\tiny\bfseries] at (1.08,0.14) {(3) $\circ$ LayoutA\_TV};
+    \node[anchor=north, font=\tiny, align=center] at (1.08,-2.3)
+      {深色 8 格 $=$ lane 0 的 FrgV：$\{(0,0),(0,1),(8,0),(8,1),$\\
+       $(0,8),(0,9),(8,8),(8,9)\}$（式~\eqref{eq:22-atom-a}）};
+    \node[anchor=north, font=\tiny] at (1.08,-3.1) {$T_3=((32,8),(4,4))$};
+  \end{scope}
+  \draw[->, very thick] (7.95,-1.2) -- (8.4,-1.2);
+  \begin{scope}[shift={(8.6,0)}]
+    \foreach \am in {0,...,3}{
+      \foreach \ak in {0,...,3}{
+        \ifnum\am=1 \def\cfill{gray!68} \else \def\cfill{gray!25} \fi
+        \fill[\cfill] ({0.33*\ak},{-0.6*\am}) rectangle ({0.33*\ak+0.33},{-0.6*\am-0.6});
+      }
+    }
+    \draw[thin] (0,0) grid[xstep=0.33cm, ystep=0.6cm] (1.32,-2.4);
+    \draw[very thick] (0,0) rectangle (1.32,-2.4);
+    \draw[thick] (0,-0.6) -- (1.32,-0.6);
+    \draw[thick] (0,-1.2) -- (1.32,-1.2);
+    \draw[thick] (0,-1.8) -- (1.32,-1.8);
+    \draw[->, thick] (1.5,-0.9) -- (1.36,-0.9);
+    \node[anchor=west, font=\tiny, align=left] at (1.56,-0.9)
+      {warp $w$（thrM $=w$）的行带；\\get\_slice$(t)$ 后 $R'_M{=}1$、$R'_K{=}4$};
+    \node[anchor=south, font=\tiny] at (0.66,0.42) {$(\_,(\mathrm{ThrM},\mathrm{ThrK}))=(4,1)$};
+    \node[anchor=south, font=\tiny\bfseries] at (0.66,0.14) {(4) zipped\_divide};
+    \foreach \ak in {0,...,3}{
+      \draw[fill=gray!55, thick] ({0.33*\ak},-3.35) rectangle ({0.33*\ak+0.33},-3.05);
+      \node[font=\tiny] at ({0.33*\ak+0.165},-3.2) {8};
+    }
+    \node[anchor=east, font=\tiny] at (-0.1,-3.2) {FrgV};
+    \node[anchor=north, font=\tiny, align=center] at (0.66,-3.5)
+      {$(\mathrm{FrgV},(R'_M,R'_K))=(8,(1,4))$\\$\mathrm{MMA}_K{=}4$ 个 atom $\times$ 每原子 8 half};
+  \end{scope}
+  \node[anchor=north west, font=\tiny, align=left] at (0,-4.35)
+    {fragment $=(\mathrm{MMA},\mathrm{MMA}_M,\mathrm{MMA}_K)=(8,1,4)$：每线程
+     $8\times1\times4=32$ half；\\ $\times\,128$ 线程 $=4096=64\times64$
+     （双射，case~C/D）；\\ B/C 同链只换 mode：B 得 $(4,8,4)$（4 倍重复）、
+     C 得 $(4,1,8)$。};
+\end{tikzpicture}
+\caption{thrfrg\_A 四步推导链（式~\eqref{eq:22-thrfrg-1}--\eqref{eq:22-thrfrg-4}）
+在 FFPA QK（tile $64\times64\times16$、AtomLayout $(4,1,1)$、Q 为
+$64\times64$）上的 shape 演化：(1) logical\_divide 按 tile 切出 $(64,16)$
+与 4 个 K 切片；(2) zipped\_divide 按 atom $(16,16)$ 切成 $4\times4$ 个
+原子块；(3) 复合 LayoutA\_TV 把原子内坐标换成（线程, 值），深色 8 格即
+lane 0 的 FrgV；(4) 按 $(\mathrm{ThrM},\mathrm{ThrK})=(4,1)$ 剥出 warp 行带，
+get\_slice$(t)$ 后每线程 fragment $=(8,(1,4))=32$ half（右下：FrgV $=8$
+$\times$ $\mathrm{MMA}_K=4$）。}
+\label{fig:22-thrfrg-chain}
+\end{figure}
 
 \begin{equation}
   \text{A 的重复因子} = \#\{\text{N-warp}\},\qquad
@@ -453,6 +543,126 @@ PV 一侧的使用（L339--345）：
 \texttt{tCrV} 用 \texttt{tCrV\_layout}（在循环外用 \texttt{Smem\allowbreak{}Layout\allowbreak{}Vt}
 的\emph{非 swizzle 部分}推导，L136--140）重新解释同一批寄存器——
 与第~\ref{ch:21}~章的 \texttt{retile} 是同一类「零拷贝重标记」手法。
+QK$\to$PV 这一步的两套寄存器坐标见图~\ref{fig:22-aregs-reuse}。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\tiny]
+  \begin{scope}
+    \foreach \row in {0,...,15}{
+      \foreach \cl in {0,...,15}{
+        \node[fill=white, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
+          at ({\cl*0.24+0.12},{-\row*0.24-0.12}) {};
+      }
+    }
+    \node[fill=gray!75, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
+      at (0.12,-0.12) {};
+    \node[fill=gray!75, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
+      at (0.36,-0.12) {};
+    \node[fill=gray!50, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
+      at (0.12,-2.04) {};
+    \node[fill=gray!50, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
+      at (0.36,-2.04) {};
+    \node[fill=gray!35, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
+      at (2.04,-0.12) {};
+    \node[fill=gray!35, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
+      at (2.28,-0.12) {};
+    \node[fill=gray!18, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
+      at (2.04,-2.04) {};
+    \node[fill=gray!18, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
+      at (2.28,-2.04) {};
+    \draw[thin] (0,0) grid[xstep=0.24cm, ystep=0.24cm] (3.84,-3.84);
+    \draw[very thick] (0,0) rectangle (3.84,-3.84);
+    \draw[thick, dashed] (1.92,0) -- (1.92,-3.84);
+    \foreach \tk in {0,4,8,12}{
+      \node[anchor=east] at (-0.05,{-\tk*0.24-0.12}) {\tk};
+      \node[anchor=south] at ({\tk*0.24+0.12},0.04) {\tk};
+    }
+    \node[anchor=south, font=\scriptsize\bfseries] at (1.92,0.55)
+      {C 视角：f32 累加器};
+    \node[anchor=north] at (0.96,-3.9) {atom 0};
+    \node[anchor=north] at (2.88,-3.9) {atom 1};
+  \end{scope}
+  \begin{scope}[shift={(4.7,0)}]
+    \foreach \ck in {0,...,7}{
+      \pgfmathtruncatemacro{\pr}{int(\ck/2)}
+      \ifnum\pr=0 \def\sfill{gray!75} \fi
+      \ifnum\pr=1 \def\sfill{gray!50} \fi
+      \ifnum\pr=2 \def\sfill{gray!35} \fi
+      \ifnum\pr=3 \def\sfill{gray!18} \fi
+      \node[fill=\sfill, draw=gray!70, minimum width=0.6cm, minimum height=0.34cm,
+        inner sep=0pt] (c\ck) at (0.3,{-0.3-0.44*\ck}) {$c_{\ck}$};
+    }
+    \node[anchor=south, align=center, text width=3.4cm] at (0.95,0.55)
+      {\texttt{convert\_type<half>}\\[1pt]\texttt{convert\_layout\_acc\_Aregs}};
+    \foreach \ak/\ay in {0/-0.52,1/-1.4,2/-2.28,3/-3.16}{
+      \pgfmathtruncatemacro{\pr}{\ak}
+      \ifnum\pr=0 \def\sfill{gray!75} \fi
+      \ifnum\pr=1 \def\sfill{gray!50} \fi
+      \ifnum\pr=2 \def\sfill{gray!35} \fi
+      \ifnum\pr=3 \def\sfill{gray!18} \fi
+      \node[fill=\sfill, draw=gray!70, minimum width=0.6cm, minimum height=0.4cm,
+        inner sep=0pt] (a\ak) at (1.9,\ay) {$a_{\ak}$};
+    }
+    \draw[->, thin] (0.62,-0.52) .. controls (1.1,-0.52) and (1.0,-1.0) .. (1.58,-1.0);
+    \draw[->, thin] (0.62,-1.4) .. controls (1.1,-1.4) and (1.0,-1.62) .. (1.58,-1.62);
+    \draw[->, thin] (0.62,-2.28) .. controls (1.1,-2.28) and (1.0,-2.24) .. (1.58,-2.24);
+    \draw[->, thin] (0.62,-3.16) .. controls (1.1,-3.16) and (1.0,-2.86) .. (1.58,-2.86);
+    \node[anchor=north, align=center, text width=2.8cm] at (1.2,-3.8)
+      {每 $2$ 个 float（相邻列对）\\ 并成 $1$ 个 u32（相邻 $k$ 对）};
+  \end{scope}
+  \begin{scope}[shift={(7.4,0)}]
+    \foreach \row in {0,...,15}{
+      \foreach \cl in {0,...,15}{
+        \node[fill=white, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
+          at ({\cl*0.24+0.12},{-\row*0.24-0.12}) {};
+      }
+    }
+    \node[fill=gray!75, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
+      at (0.12,-0.12) {};
+    \node[fill=gray!75, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
+      at (0.36,-0.12) {};
+    \node[fill=gray!50, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
+      at (0.12,-2.04) {};
+    \node[fill=gray!50, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
+      at (0.36,-2.04) {};
+    \node[fill=gray!35, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
+      at (2.04,-0.12) {};
+    \node[fill=gray!35, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
+      at (2.28,-0.12) {};
+    \node[fill=gray!18, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
+      at (2.04,-2.04) {};
+    \node[fill=gray!18, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
+      at (2.28,-2.04) {};
+    \draw[thin] (0,0) grid[xstep=0.24cm, ystep=0.24cm] (3.84,-3.84);
+    \draw[very thick] (0,0) rectangle (3.84,-3.84);
+    \draw[thick, dashed] (1.92,0) -- (1.92,-3.84);
+    \node[anchor=south, font=\scriptsize\bfseries] at (1.92,0.55)
+      {A 视角：f16 A fragment};
+    \node[anchor=north] at (0.96,-3.9) {K 切片 0};
+    \node[anchor=north] at (2.88,-3.9) {K 切片 1};
+  \end{scope}
+  \node[anchor=north west, align=left, text width=15.5cm] at (0,-4.7)
+    {转换式 $(\mathrm{MMA}{=}4,\ \mathrm{MMA}_M,\ \mathrm{MMA}_N)\to
+     ((\mathrm{MMA},2),\ \mathrm{MMA}_M,\ \mathrm{MMA}_N/2)$：
+     \texttt{logical\_divide} 把 $N$ 方向按 $2$ 切分，于是 C 的「相邻列对」成为
+     A 的「相邻 $k$ 对」，A 的 $K{=}16$ 由相邻两个 n8 atom 提供（$S$ 上相邻
+     的 $16$ 列）。两侧高亮的是\emph{同一个} lane 0 的同一批 $8$ 个逻辑
+     元素：左边是 $8$ 个 f32 槽，右边折成 $4$ 个 u32（每槽 $2$ 个相邻 $k$ 的
+     half）。全程零拷贝，且依赖 m16n8k16 的特定 fragment 约定——
+     不是 TiledMMA 的通用性质。};
+\end{tikzpicture}
+\caption{QK$\to$PV 的寄存器原地复用（ffpa\_attn.cuh L300--305、源码注释
+flash\_attn.cuh L2341--2372）：两侧网格是同一个 $16\times16$ 坐标空间
+（$S$ 的列 $=$ $P$ 的 $K$），高亮的是 lane 0 在同一批元素上的两套坐标。
+左（C 视角）：每个 n8 atom 给 lane 0 留下 $4$ 个 f32 累加器（$2$ 行
+$\times$ $2$ 相邻列），两个相邻 atom 共 $8$ 个；右（A 视角）：同样 $8$ 个
+逻辑元素被解释成 $4$ 个 u32，每槽 $2$ 个相邻 $k$ 的 half，可直接作为
+\texttt{gemm\_rs} 的 \texttt{tCrA}。\texttt{convert\_type<half>}
+（fp32$\to$fp16，寄存器减半）$+$ \texttt{convert\_layout\_acc\_Aregs}
+（$N$ 方向按 $2$ 切分的重标索引）就是这条「P 不写回 smem」路径的全部代价。}
+\label{fig:22-aregs-reuse}
+\end{figure}
 
 \needspace{122mm}
 

@@ -161,6 +161,67 @@ HW 调度器负载均衡——多数 work 的 $T_{c,eff}\ll T_c$，persistent �
 每 work 固定开销会占主导）。barrier 协议对任意 gridDim 都成立，
 non-persistent 只是每 barrier 只翻第一个 phase 的退化情形。
 
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize, >=Stealth]
+  \def\bw{1.18}
+  \def\bh{0.30}
+  \node[anchor=south west, font=\scriptsize\bfseries] at (0.62,0.34)
+    {persistent（dense 默认）：gridDim $=\min(\text{total\_work},\text{SMs})$};
+  \foreach \sm in {0,...,3}{
+    \pgfmathsetmacro{\ya}{-\sm*0.375}
+    \fill[gray!10] (0.62,\ya) rectangle (0.74,{\ya-\bh});
+    \draw[gray!60, thin] (0.62,\ya) rectangle (0.74,{\ya-\bh});
+    \foreach \w in {0,...,3}{
+      \pgfmathsetmacro{\xa}{0.74+\w*\bw}
+      \fill[gray!24] (\xa,\ya) rectangle ({\xa+\bw-0.03},{\ya-\bh});
+      \draw[thick] (\xa,\ya) rectangle ({\xa+\bw-0.03},{\ya-\bh});
+    }
+    \fill[gray!10] ({0.74+4*\bw-0.03},\ya) rectangle ({0.74+4*\bw+0.09},{\ya-\bh});
+    \draw[gray!60, thin] ({0.74+4*\bw-0.03},\ya) rectangle ({0.74+4*\bw+0.09},{\ya-\bh});
+    \node[left, font=\tiny] at (0.60,\ya-0.15) {SM \sm};
+  }
+  \fill[white, opacity=0.6] ({0.74+\bw-0.07},0) rectangle ({0.74+\bw+0.07},-0.30);
+  \draw[gray!60, thick, densely dashed] ({0.74+\bw-0.07},0) -- ({0.74+\bw-0.07},-0.30);
+  \foreach \w in {0,...,3}{
+    \node[font=\tiny] at ({0.74+\w*\bw+0.5*\bw-0.015},-0.15) {work \w};
+  }
+  \node[anchor=west, align=left, text width=3.3cm, font=\tiny] at (5.66,-0.42)
+    {白色窄带 $=$ producer 在 consumer 跑 epilogue 时预取下一 work 的 K/V；
+     fill/drain 与 warm 状态每 CTA 只摊一次。};
+  \node[anchor=north west, font=\scriptsize\bfseries] at (0.62,-1.52)
+    {block-per-work（causal 默认）：gridDim $=$ \texttt{total\_work}};
+  \foreach \sm/\wla in {0/1.15,1/0.92,2/0.70,3/0.50}{
+    \pgfmathsetmacro{\ya}{-1.92-\sm*0.375}
+    \pgfmathsetmacro{\xb}{0.74+\wla+0.10}
+    \pgfmathsetmacro{\xc}{\xb+\wla*0.72}
+    \fill[gray!24] (0.74,\ya) rectangle ({\xb-0.10},{\ya-\bh});
+    \draw[thick] (0.74,\ya) rectangle ({\xb-0.10},{\ya-\bh});
+    \fill[gray!24] (\xb,\ya) rectangle ({\xc},{\ya-\bh});
+    \draw[thick] (\xb,\ya) rectangle ({\xc},{\ya-\bh});
+    \draw[gray!45, densely dotted] ({\xc+0.04},{\ya-0.15}) -- (5.55,{\ya-0.15});
+    \node[left, font=\tiny] at (0.60,\ya-0.15) {SM \sm};
+  }
+  \node[anchor=west, align=left, text width=3.3cm, font=\tiny] at (5.66,-2.55)
+    {每 work 一个独立 CTA：块间 gap $=$ 每 work 的 setup；
+     短 work 早完早释放 SM（虚线 $=$ 已空闲），HW 调度器做负载均衡。};
+  \draw[->, thick] (0.62,-3.46) -- (5.72,-3.46);
+  \node[anchor=north, font=\tiny] at (3.10,-3.48) {时间 $\to$};
+  \node[anchor=north west, align=left, text width=16.1cm, font=\tiny] at (0.0,-3.70)
+    {单 kernel、单代码路径（strided work loop，注释 L92--120）：dense 用
+     $\min(total\_work,SMs)$ 的 persistent 风格，causal 用 $total\_work$ 的 classic
+     block-per-work（短 work $T_{c,eff}\ll T_c$ 时 persistent 的每 work 固定开销占主导）。
+     barrier phase 由 per-CTA 全局 kv-tile 计数器驱动、永不 re-init（PTX ISA
+     9.7.13.15.9 对活跃 mbarrier 的 re-init 是 UB），non-persistent 只是每 barrier
+     只翻第一个 phase 的退化情形。};
+\end{tikzpicture}
+\caption{dense persistent 与 causal block-per-work 的 grid 调度对比（同一
+kernel、同一代码路径，runtime grid 定风格）。上：$\min(total\_work,SMs)$ 个 CTA
+按 strided work loop 认领，fill/drain 每 CTA 摊一次，producer 在 epilogue
+期间预取下一 work 的 K/V；下：每 work 一个 CTA，短 work 早完早释放 SM。}
+\label{fig:32-grid-sched}
+\end{figure}
+
 \subsection{Q 的寄存器驻留与一个教科书级 bug}
 
 Q/SFQ 是 per-work 常量：s2r 一次进 \texttt{tSrQ}/\texttt{tSrSFQ} 寄存

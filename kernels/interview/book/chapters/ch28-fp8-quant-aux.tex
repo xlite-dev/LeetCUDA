@@ -215,7 +215,90 @@ per-thread 粒度是每 $kBc$ 块 4 个 scale（K 的 fragment 消费模式不�
   \underbrace{\text{per-block}}_{\text{1 scale/128 行}}
 \end{equation}
 粒度越细精度越高、但 scale 寄存器与消去开销越大；per-thread 是「精度贴近
-per-token、消费成本贴近 per-block」的工程甜点。
+per-token、消费成本贴近 per-block」的工程甜点。图~\ref{fig:28-perthread-slots}
+把 64 槽位的排布与 quad 的消费视角拼在一张图里：左列是 128 行块上 64 个
+scale 的覆盖域，右侧放大一个 quad 看「为什么零 shuffle」。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  axl/.style={font=\scriptsize, inner sep=1pt},
+  tnb/.style={font=\tiny, inner sep=0.5pt},
+]
+  % 左：128 行 x D 列缩略网格，64 个 scale 的覆盖域（行对 {r,r+8} 同色）
+  \foreach \rr in {0,...,127} {
+    \pgfmathtruncatemacro{\gra}{12+8*mod(\rr,8)}
+    \fill[gray!\gra] (1.3,-0.052*\rr) rectangle (4.3,-0.052*\rr-0.052);
+  }
+  \draw[thick] (1.3,0) rectangle (4.3,-6.664);
+  \foreach \gr in {16,32,48,64,80,96,112} {
+    \draw[very thick] (1.3,-0.052*\gr) -- (4.3,-0.052*\gr);
+  }
+  \foreach \rr in {0,16,...,112} {
+    \node[tnb,anchor=east] at (1.22,-0.052*\rr-0.026) {\rr};
+  }
+  \node[tnb,anchor=east] at (1.22,-6.638) {127};
+  \node[axl,anchor=south] at (2.8,0.1) {128 行量化块（$B_r$ 方向）};
+  \node[axl,anchor=north] at (2.8,-6.78) {$D$ 列方向：整行同一 scale 覆盖};
+  \node[axl,anchor=south,rotate=90] at (0.78,-3.33) {行 $r$（灰度 = 行对档 $r \bmod 8$）};
+  \node[tnb,anchor=west,align=left] at (1.5,-7.25)
+    {16 行一组粗分 8 组；组内按行对 $\{r,r{+}8\}$ 分 8 档——\\每个色块 $=$ 一个 scale 的覆盖域，共 $8\times8=64$ 个};
+  % 右上：quad 的 C-fragment 视图（2 行 x 8 列，lane = col/2）
+  \node[axl,anchor=west] at (5.4,-0.05) {\textbf{放大：一个 quad 的 C-fragment 视图（$m16n8$ 累加器）}};
+  \foreach \rq in {0,1} {
+    \foreach \cq in {0,...,7} {
+      \pgfmathtruncatemacro{\lane}{div(\cq,2)}
+      \pgfmathtruncatemacro{\gra}{12+12*\lane}
+      \fill[gray!\gra] (5.4+\cq*0.34,-0.55-\rq*0.34) rectangle (5.74+\cq*0.34,-0.89-\rq*0.34);
+      \ifnum\gra>46
+        \node[tnb,white] at (5.57+\cq*0.34,-0.72-\rq*0.34) {\lane};
+      \else
+        \node[tnb] at (5.57+\cq*0.34,-0.72-\rq*0.34) {\lane};
+      \fi
+      \draw[thin] (5.4+\cq*0.34,-0.55-\rq*0.34) rectangle (5.74+\cq*0.34,-0.89-\rq*0.34);
+    }
+  }
+  \draw[very thick] (5.4,-0.55) rectangle (8.12,-1.23);
+  \foreach \cq in {2,4,6} {
+    \draw[semithick] (5.4+\cq*0.34,-0.55) -- (5.4+\cq*0.34,-1.23);
+  }
+  \node[tnb,anchor=east] at (5.32,-0.72) {行 $r$};
+  \node[tnb,anchor=east] at (5.32,-1.06) {行 $r{+}8$};
+  \node[tnb,anchor=north] at (6.76,-1.3) {8 列（$n{=}0..7$）：4 个 lane 各持一个列对};
+  \node[tnb,anchor=west,align=left] at (8.5,-0.89)
+    {4 个 lane 持有\textbf{相同的 2 行}（灰度 = lane）\\$\Rightarrow$ 整块共享 1 个 scale\\$\Rightarrow$ 反量化 $=$ 提升时乘一个寄存器标量，零 shuffle};
+  % 右中：amax 归约树
+  \node[axl,anchor=west] at (5.4,-2.1) {\textbf{amax 归约树（量化期代价）}};
+  \node[tnb,anchor=west,align=left] at (5.4,-2.42)
+    {行内两半（\texttt{shfl\_xor} 1）$\to$ 行对（\texttt{shfl\_xor} 16）\\
+     写入下标 $g = (\text{seg\_row}/16)\cdot 8 + \text{seg\_row} \bmod 8$\\
+     （\texttt{quantize\_\allowbreak{}fp8\_\allowbreak{}perthread\_\allowbreak{}q\_kernel}）};
+  % 右下：谱系定位
+  \node[axl,anchor=west] at (5.4,-3.5) {\textbf{谱系定位：per-thread 是中间档}};
+  \foreach \nm/\ct/\bx in {per-token/128 scale/5.5, per-thread/64 scale/8.1, per-block/1 scale/10.7} {
+    \draw[thick,fill=gray!10] (\bx,-3.85) rectangle (\bx+2.2,-4.55);
+    \node[axl] at (\bx+1.1,-4.08) {\nm};
+    \node[tnb] at (\bx+1.1,-4.38) {\ct};
+  }
+  \draw[-{Stealth},thick] (7.75,-4.2) -- (8.05,-4.2);
+  \draw[-{Stealth},thick] (10.35,-4.2) -- (10.65,-4.2);
+  \node[tnb,anchor=north] at (8.95,-4.62) {scale 数递减、粒度变粗};
+  \node[tnb,anchor=west,align=left] at (5.4,-5.0)
+    {per-token：精度基准（128 scale/128 行）\quad per-block：成本基准（1 scale/128 行）\\
+     per-thread：精度贴近 per-token、消费成本贴近 per-block（SA2 的 fragment 对齐观察）};
+\end{tikzpicture}
+\caption{per-thread Q 量化的 64 槽位表与 quad 消费视角
+（\texttt{quantize\_\allowbreak{}fp8\_\allowbreak{}perthread\_\allowbreak{}q\_kernel}，28.3.2 节）。左：128 行量化块
+铺 $8\times8=64$ 个 scale——行维按 16 行一组粗分 8 组（粗边界），组内按行对
+$\{r,r+8\}$ 分 8 档灰度（行 $r$ 与 $r{+}8$ 同色），每个色块就是一个 scale 的
+覆盖域；写入下标 $g=(\text{seg\_row}/16)\cdot 8+\text{seg\_row}\bmod 8$。右上：放大一个
+quad 的 $m16n8$ C-fragment——4 个 lane 持有相同的 2 行、各占一个列对，因此
+整块共享一个 scale，反量化变成「fragment 提升时顺手乘一个寄存器标量」，
+\textbf{零 shuffle}；代价是 amax 归约树跨行对组合（行内两半 \texttt{shfl\_xor} 1、
+行对 \texttt{shfl\_xor} 16）。下：谱系定位——per-thread 是 per-token（128）与
+per-block（1）之间的工程甜点。}
+\label{fig:28-perthread-slots}
+\end{figure}
 
 \subsection{V 的预转置与列置换}\label{sec:28-vtperm}
 
@@ -237,6 +320,89 @@ B 操作数必须携带\textbf{同一个} $\pi$，保证槽位 $s$ 两侧对上�
 置换被刻意限制在\textbf{每个 32 列组内}，warp 的转置写不跨 32B sector，访存
 合并不受影响。这是「前处理链的输出布局由主 kernel 消费方式决定」的最典型例证：
 一个第~\ref{ch:30}~章的寄存器打包决策，提前到本章的量化 kernel 里兑现。
+图~\ref{fig:28-vtperm} 把 $\pi^{-1}$ 的位段重组画成双条带：上条是真实列序，
+下条是存储槽位，连线束的交叉形态就是置换本身。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  axl/.style={font=\scriptsize, inner sep=1pt},
+  tnb/.style={font=\tiny, inner sep=0.5pt},
+]
+  % 上条带：真实列 j（V^T 逻辑列），4 列组循环灰度
+  \node[axl,anchor=east] at (0.92,-0.42) {真实列 $j$};
+  \node[axl,anchor=south] at (7.56,0.02) {$V^{\top}$ 的 32 列组（量化输入的 kv 维；灰度按 $\lfloor j/4\rfloor \bmod 4$ 循环分组）};
+  \foreach \jj in {0,...,31} {
+    \pgfmathtruncatemacro{\grp}{mod(div(\jj,4),4)}
+    \pgfmathtruncatemacro{\gra}{18+16*\grp}
+    \fill[gray!\gra] (1.0+0.41*\jj,-0.15) rectangle (1.41+0.41*\jj,-0.66);
+    \ifnum\gra>46
+      \node[tnb,white] at (1.205+0.41*\jj,-0.405) {\jj};
+    \else
+      \node[tnb] at (1.205+0.41*\jj,-0.405) {\jj};
+    \fi
+  }
+  \draw[thick] (1.0,-0.15) rectangle (14.12,-0.66);
+  \draw[very thick] (7.56,-0.15) -- (7.56,-0.66);
+  % 连线束：真实列 j 落到存储槽 VTPermInv32(j)
+  \foreach \jj/\ss in {0/0, 1/1, 2/4, 3/5, 4/8, 5/9, 6/12, 7/13,
+                       8/2, 9/3, 10/6, 11/7, 12/10, 13/11, 14/14, 15/15,
+                       16/16, 17/17, 18/20, 19/21, 20/24, 21/25, 22/28, 23/29,
+                       24/18, 25/19, 26/22, 27/23, 28/26, 29/27, 30/30, 31/31} {
+    \pgfmathtruncatemacro{\grp}{mod(div(\jj,4),4)}
+    \pgfmathtruncatemacro{\gln}{18+16*\grp}
+    \draw[gray!\gln!black, thin]
+      (1.205+0.41*\jj,-0.66) -- (1.205+0.41*\ss,-1.75);
+  }
+  % 下条带：存储槽 s，格内填 pi(s)（该槽存的真实列），颜色跟随来源组
+  \node[axl,anchor=east] at (0.92,-2.0) {存储槽 $s$};
+  \foreach \ss/\pv in {0/0, 1/1, 2/8, 3/9, 4/2, 5/3, 6/10, 7/11,
+                       8/4, 9/5, 10/12, 11/13, 12/6, 13/7, 14/14, 15/15,
+                       16/16, 17/17, 18/24, 19/25, 20/18, 21/19, 22/26, 23/27,
+                       24/20, 25/21, 26/28, 27/29, 28/22, 29/23, 30/30, 31/31} {
+    \pgfmathtruncatemacro{\grp}{mod(div(\pv,4),4)}
+    \pgfmathtruncatemacro{\gra}{18+16*\grp}
+    \fill[gray!\gra] (1.0+0.41*\ss,-1.75) rectangle (1.41+0.41*\ss,-2.26);
+    \ifnum\gra>46
+      \node[tnb,white] at (1.205+0.41*\ss,-2.005) {\pv};
+    \else
+      \node[tnb] at (1.205+0.41*\ss,-2.005) {\pv};
+    \fi
+  }
+  \draw[thick] (1.0,-1.75) rectangle (14.12,-2.26);
+  \draw[very thick] (7.56,-1.75) -- (7.56,-2.26);
+  \foreach \ss in {0,4,...,28} {
+    \node[tnb,anchor=north] at (1.205+0.41*\ss,-2.32) {\ss};
+  }
+  \node[tnb,anchor=north] at (13.9,-2.32) {31};
+  \node[axl,anchor=north] at (7.56,-2.62)
+    {槽 $s$ 存真实列 $\pi(s)$（格内数字），槽位刻度见下方};
+  % sector 外框（32 列组 = 32B sector）
+  \draw[very thick] (0.88,0.14) rectangle (14.24,-2.4);
+  \node[axl,anchor=south] at (0.95,0.2) {32B sector 框};
+  \node[axl,anchor=south west,align=left] at (0.95,0.5)
+    {一个 32 列组 $=$ 32B sector（e4m3 每列 1B）；置换不跨组、warp 转置写不跨 sector，访存合并不受影响};
+  % 位段律与坑四注记
+  \node[axl,anchor=north west,align=left] at (1.0,-3.15)
+    {位段重组（式~\eqref{eq:28-vtperm}）：槽位低 4 位 $=\;4\cdot\big((j{\gg}1)\,\&\,3\big)
+     + 2\cdot\big((j{\gg}3)\,\&\,1\big) + (j\,\&\,1)$，bit4 原样保留——};
+  \node[axl,anchor=north west,align=left] at (1.0,-3.62)
+    {上下半组置换同构（$j$ 与 $j{+}16$ 的低 4 位走同一条重排），自检序列（$j=0..15$ 的落点）：
+     $0,1,4,5,8,9,12,13,2,3,6,7,10,11,14,15$。};
+  \node[axl,anchor=north west,align=left] at (1.0,-4.2)
+    {配对约束（坑四）：P 侧 \texttt{PackC8bitToA8bitPermVT} 与 $V^{\top}$ 侧必须携带
+     \textbf{同一个} $\pi$——槽位 $s$ 两侧对上同一 kv 位置，任一侧缺失即静默错位。};
+\end{tikzpicture}
+\caption{$\texttt{VTPermInv32}$ 列置换的双条带视图（式~\eqref{eq:28-vtperm}，
+\texttt{quantize\_fp8.cuh}）。上条带：$V^{\top}$ 组内的真实列序 $j=0..31$（4 列一组
+循环灰度）；下条带：置换后的存储槽位，格内数字为槽 $s$ 存的真实列 $\pi(s)$，
+灰度跟随数据来源组。连线束从列 $j$ 指向其落点槽 $\pi^{-1}(j)$——交叉形态即
+置换本身：$j$ 的 bit1、bit2 移到槽位的高两位、bit3 移到 bit1、bit0 与 bit4 不动，
+因此上下两个 16 列半组的置换同构。整个变换被限制在一个 32 列组（$=$ 一个 32B
+sector）内：warp 的转置写不跨 sector，coalescing 不受影响；P 侧
+\texttt{PackC8bitToA8bitPermVT} 与 $V^{\top}$ 侧必须携带同一个 $\pi$（坑四）。}
+\label{fig:28-vtperm}
+\end{figure}
 
 \subsection{NHD 零拷贝寻址}\label{sec:28-nhd}
 
@@ -432,7 +598,87 @@ __global__ void quantize_fp8_vt_kernel(
 \ref{eq:28-vtperm}）置换，与主 kernel 的 reorg-free 打包强制配对——launcher
 层面检查这对开关必须同开同关（注释：launcher-enforced pairing），错配即静默数值
 错误。per-channel 变体（\texttt{quantize\_fp8\_vt\_perchannel\_kernel}，L555 起）
-在同一框架下改用 28.3.2~节的 $(bh, D)$ scale 与均值剥离。
+在同一框架下改用 28.3.2~节的 $(bh, D)$ scale 与均值剥离。图~\ref{fig:28-vt-staging}
+把这条「行主序读 $\to$ smem 转置 $\to$ 列主序写」的三段式数据通路画出来，
+并标出两个同名却不同源的 16。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  axl/.style={font=\scriptsize, inner sep=1pt},
+  nt/.style={font=\scriptsize, align=left, inner sep=1.5pt},
+]
+  % 左：gmem (N, D) 行主序 tile
+  \foreach \rr in {0,...,4} {
+    \foreach \cc in {0,...,5} {
+      \fill[gray!15] (\cc*0.55,-\rr*0.55) rectangle (\cc*0.55+0.54,-\rr*0.55-0.54);
+    }
+  }
+  \draw[thick] (0,0) rectangle (3.3,-2.75);
+  \foreach \rr in {0,2,4} {
+    \draw[-{Stealth},thick] (0.08,-\rr*0.55-0.275) -- (3.22,-\rr*0.55-0.275);
+  }
+  \node[axl,anchor=south] at (1.65,0.06) {gmem $(N,\,D)$ 行主序};
+  \node[axl,anchor=north,text width=3.4cm,align=center] at (1.65,-2.85)
+    {128-bit 向量载入（$kVec{=}8$ 个 fp16），行内连续};
+  % 中：smem staging tile（数据列 + kPad 边距列）
+  \foreach \rr in {0,...,4} {
+    \foreach \cc in {0,...,4} {
+      \fill[gray!15] (5.9+\cc*0.55,-\rr*0.55) rectangle (5.9+\cc*0.55+0.54,-\rr*0.55-0.54);
+    }
+    \fill[pattern=north east lines,pattern color=gray!70]
+      (8.65,-\rr*0.55) rectangle (9.25,-\rr*0.55-0.54);
+  }
+  \draw[thick] (5.9,0) rectangle (9.25,-2.75);
+  \draw[very thick] (8.65,0) -- (8.65,-2.75);
+  \foreach \cc in {0,2,4} {
+    \draw[-{Stealth},thick] (5.98+\cc*0.55,-0.08) -- (5.98+\cc*0.55,-2.67);
+  }
+  \node[axl,anchor=south] at (7.575,0.06) {smem staging $(kBlockRows,\ kDChunk{+}kPad)$};
+  \node[axl,anchor=north,text width=4.4cm,align=center] at (7.575,-2.85)
+    {写按行、读按列（转置落在 smem）；斜纹 $=kPad{=}16$ 的 16\,B 行内边距};
+  % 右：gmem (D, N_{kv,pad}) 列主序
+  \foreach \rr in {0,...,4} {
+    \foreach \cc in {0,...,4} {
+      \fill[gray!15] (11.9+\cc*0.55,-\rr*0.55) rectangle (11.9+\cc*0.55+0.54,-\rr*0.55-0.54);
+    }
+  }
+  \foreach \rr in {0,...,4} {
+    \fill[pattern=north east lines,pattern color=gray!70]
+      (14.65,-\rr*0.55) rectangle (14.95,-\rr*0.55-0.54);
+  }
+  \draw[thick] (11.9,0) rectangle (14.95,-2.75);
+  \draw[very thick] (14.65,0) -- (14.65,-2.75);
+  \foreach \cc in {0,2,4} {
+    \draw[-{Stealth},thick] (11.98+\cc*0.55,-0.08) -- (11.98+\cc*0.55,-2.67);
+  }
+  \node[axl,anchor=south] at (13.425,0.06) {gmem $(D,\,N_{kv,pad})$ 列主序};
+  \node[axl,anchor=north,text width=4.4cm,align=center] at (13.425,-2.85)
+    {列向量写出（$V^{\top}$ 的 fp8 列）；尾列 pad 供 TMA 16\,B 对齐};
+  % 段间箭头
+  \draw[-{Stealth},thick] (3.42,-1.375) -- (5.78,-1.375);
+  \node[axl,anchor=south,align=center] at (4.6,-1.32) {128\,B 行 $\to$ 槽\\（含 pad 列）};
+  \draw[-{Stealth},thick] (9.37,-1.375) -- (11.78,-1.375);
+  \node[axl,anchor=south,align=center] at (10.575,-1.32) {32-bit 组转置读\\$\to$ 列向写出};
+  % 底部注记
+  \node[nt,anchor=north west,text width=15.6cm] at (0,-3.9)
+    {\textbf{两个 16 不同源}：$kPad{=}16$ 是 smem staging 的行内边距——转置读出的
+     32-bit（4 个 fp8）组因它错开 bank，是纯 smem 侧的考量；gmem $V^{\top}$ 的
+     TMA 16\,B 加载对齐由行宽 $N_{kv,pad}$（launcher 传入）保证，与 $kPad$ 没有
+     因果关系，两个 16 只是恰好同值。\\[2pt]
+     \textbf{$kDChunk=\min(D,256)$}：大 headdim 的整 tile 会破 48\,KB 静态 smem
+     上限，D 维分块后 staging 尺寸恒为 $kBlockRows\times(kDChunk+kPad)$，由 launcher
+     走动态 smem 分配（\texttt{extern \_\_shared\_\_}）。};
+\end{tikzpicture}
+\caption{$V^{\top}$ 转置量化的 smem staging（\texttt{quantize\_fp8.cuh}
+\texttt{quantize\_fp8\_vt\_kernel}）。左：gmem 上的 $(N,D)$ 行主序 tile 按 128-bit
+向量载入；中：smem staging tile 写按行、读按列——转置只在 smem 内发生，两侧
+gmem 访存都保持合并；斜纹是 $kPad{=}16$ 的行内边距，让转置读出的 32-bit 组
+错开 bank；右：$(D,N_{kv,pad})$ 列主序写出，尾列 pad 为 TMA 16\,B 对齐服务。
+\textbf{$kPad$ 与 $N_{kv,pad}$ 的 16 来源不同}：前者是 smem 侧的 bank 考量，
+后者是 gmem 侧的对齐要求，恰好同值而非同一个量。}
+\label{fig:28-vt-staging}
+\end{figure}
 
 \subsection{Hadamard butterfly kernel}\label{sec:28-wht-kernel}
 
@@ -504,7 +750,68 @@ $D$ 维 WHT 的 $\log_2 D$ 轮蝶形按\textbf{蝶形距离}二分：距离 $\ge
 $kWhtWidth$ 列（lane $\times$ $kVec$），无需跨 warp 通信；$1/\sqrt{n}$ 归一化
 折进 store 避免额外一轮乘法。launcher（\texttt{apply\_wht\_qk\_sm120}）按宽度规则
 选 $kWhtWidth \in \{D, 64\}$，输出 $kHeadDim$ 宽的旋转副本——含旋转后的 pad 列
-（28.3.3~节）。
+（28.3.3~节）。图~\ref{fig:28-wht-butterfly} 把 $D{=}128$ 的列归属与七轮蝶形的
+距离二分画在一起。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  cfl/.style={font=\tiny, inner sep=0.2pt},
+  axl/.style={font=\scriptsize, inner sep=1pt},
+  nt/.style={font=\scriptsize, align=left, inner sep=1.5pt},
+  bdg/.style={draw,circle,thick,font=\scriptsize,inner sep=1.2pt},
+]
+  % 列归属网格：4 个寄存器槽 j x 32 条 lane，格内 = col = lane + 32j
+  \foreach \jj in {0,...,3} {
+    \foreach \ln in {0,...,31} {
+      \pgfmathtruncatemacro{\colv}{\ln+32*\jj}
+      \fill[gray!12] (\ln*0.44,-\jj*0.5) rectangle (\ln*0.44+0.43,-\jj*0.5-0.49);
+      \node[cfl] at (\ln*0.44+0.215,-\jj*0.5-0.245) {\colv};
+    }
+  }
+  \draw[thick] (0,0) rectangle (14.08,-2.0);
+  \foreach \jj in {0,...,3} {
+    \node[axl,anchor=east] at (-0.1,-\jj*0.5-0.25) {$j{=}\jj$};
+  }
+  \foreach \ln in {0,8,16,24,31} {
+    \pgfmathsetmacro{\lx}{\ln*0.44+0.215}
+    \node[axl,anchor=north] at (\lx,-2.06) {\ln};
+  }
+  \node[axl,anchor=south west] at (0,0.08) {lane $0..31$（一条 warp；格内数字 $=col=lane+32j$）};
+  % 七轮蝶形：距离二分
+  \node[axl,anchor=south] at (1.35,-2.88) {蝶形位在 $j$：同 lane 的寄存器槽交换（无通信）};
+  \node[axl,anchor=south] at (8.35,-2.88) {蝶形位在 lane id：\texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor\_\allowbreak{}sync} 跨 lane};
+  \draw[thick] (0.1,-3.06) -- (2.9,-3.06);
+  \draw[thick] (4.2,-3.06) -- (12.4,-3.06);
+  \foreach \ri/\rt in {0/{$64$}, 1/{$32$}, 2/{$16$}, 3/{$8$}, 4/{$4$}, 5/{$2$}, 6/{$1$}} {
+    \pgfmathsetmacro{\bx}{0.1+\ri*2.05}
+    \node[bdg] at (\bx,-3.75) {\rt};
+    \ifnum\ri<2
+      \fill[gray!25] (\bx+0.75,-3.42) rectangle (\bx+1.07,-3.74);
+      \fill[gray!25] (\bx+0.75,-3.76) rectangle (\bx+1.07,-4.08);
+      \draw[<->,thick] (\bx+1.25,-3.58) -- (\bx+1.25,-3.92);
+    \else
+      \fill[gray!25] (\bx+0.6,-3.6) rectangle (\bx+0.92,-3.92);
+      \fill[gray!25] (\bx+1.1,-3.6) rectangle (\bx+1.42,-3.92);
+      \draw[<->,thick] (\bx+0.55,-4.08) -- (\bx+1.47,-4.08);
+    \fi
+  }
+  \node[nt,anchor=north west,text width=15.6cm] at (0,-4.28)
+    {每轮 $(a,b)\to(a{+}b,\ a{-}b)$：$dist\ge32$ 时 $jj=j\oplus(dist{\gg}5)$，两个寄存器槽
+     在同一条 lane 内直接结算；$dist<32$ 时 \texttt{\_\_shfl\_xor\_sync(x[j],\,dist)} 取回伙伴值，
+     $a{+}b$ 与 $b{-}a$ 由 $(lane\wedge dist)$ 选向。共 $\log_2 D=7$ 轮、无 bit-reversal；
+     pad 列（$col\_base+col\ge d\_og$）读 $0$，旋转后的 pad 列照常写回；$1/\sqrt{n}$ 折进 store。
+     一条 warp 恰好持有 $kWhtWidth$ 列（$kVec{=}kWhtWidth/32$，本例 $D{=}128\Rightarrow kVec{=}4$），
+     \textbf{无跨 warp 通信}。};
+\end{tikzpicture}
+\caption{radix-2 蝶形的距离二分（\texttt{hadamard.cuh} L40--92，本例 $D{=}128$、$kWhtWidth{=}D$）。
+上：列归属——$j$ 是寄存器槽、lane 是 warp 内线程，格内数字 $col=lane+32j$ 满足索引律，
+右下角 $127=\mathrm{size}-1$；一条 warp 覆盖整行 128 列。下：七轮的「距离阶梯」——
+$dist\ge32$ 的 bit 落在 $j$ 上（同 lane 两个寄存器槽直接加减，无通信），$dist<32$ 的 bit
+落在 lane id 上（\texttt{\_\_shfl\_xor\_sync} 跨 lane）；每轮一个 bit，$1/\sqrt n$ 折进
+store。}
+\label{fig:28-wht-butterfly}
+\end{figure}
 
 \section{图示}
 

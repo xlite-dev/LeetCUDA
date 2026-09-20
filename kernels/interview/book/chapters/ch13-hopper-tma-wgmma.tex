@@ -161,6 +161,154 @@ $(\mathrm{row}, \mathrm{col}+8)$、$(\mathrm{row}+8, \mathrm{col}+8)$）。
 个 K-step，每个 K-tile 需要发射 $2 \times 4 = 8$ 条 WGMMA（M 方向 2 个 atom
 $\times$ K 方向 4 次累加），每条用 $\mathrm{scaleD} = 1$ 在累加器上累加。
 
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  colab/.style={font=\tiny, anchor=south, inner sep=1pt},
+]
+  \foreach \m in {0,1}{
+    \foreach \k in {0,...,3}{
+      \pgfmathtruncatemacro{\gf}{10+9*\k}
+      \fill[gray!\gf] ({2.2+1.02*\k},{-1.02*\m}) rectangle ++(1.02,-1.02);
+    }
+  }
+  \draw[thick] (2.2,0) rectangle (6.28,-2.04);
+  \draw[thick] (2.2,-1.02) -- (6.28,-1.02);
+  \foreach \k in {1,2,3}{
+    \draw[thick] ({2.2+1.02*\k},0) -- ({2.2+1.02*\k},-2.04);
+  }
+  \node[colab] at (2.71,0.08) {0--15};
+  \node[colab] at (3.73,0.08) {16--31};
+  \node[colab] at (4.75,0.08) {32--47};
+  \node[colab] at (5.77,0.08) {48--63};
+  \node[font=\scriptsize, anchor=south] at (4.24,0.56)
+    {A tile $128\times64$：2 个 M-atom $\times$ 4 个 K-step};
+  \node[font=\scriptsize, anchor=east, align=center] at (2.05,-0.51)
+    {M-atom 0\\（行 0--63）};
+  \node[font=\scriptsize, anchor=east, align=center] at (2.05,-1.53)
+    {M-atom 1\\（行 64--127）};
+  \draw[-{Stealth}] (2.3,-2.3) -- (3.5,-2.3);
+  \node[font=\scriptsize, anchor=west] at (3.62,-2.3)
+    {\texttt{wgmma\_sA} 沿 K 前进（$+16$/步）};
+  \node[draw, very thick, rounded corners=2pt, fill=gray!8, font=\scriptsize,
+        align=center, text width=2.15cm, minimum height=1.5cm] (atom) at (8.2,-1.02)
+    {\textbf{wgmma}\\m64n128k16\\$A[64{\times}16] \times B[16{\times}128]$\\
+     $\to D[64{\times}128]$\\\texttt{scaleD}=1};
+  \node[circle, draw, fill=white, font=\tiny, minimum size=0.42cm,
+        anchor=south east] at (atom.north west) {$\times8$};
+  \node[font=\tiny, align=center, text width=2.7cm, anchor=north] at (8.2,-2.02)
+    {B 同步切片：$B_k=[16\times128]$（\texttt{s\_b} + k\_step $\cdot$ kWgmmaK）};
+  \draw[-{Stealth},thick] (6.29,-0.51) -- (7.03,-0.82);
+  \draw[-{Stealth},thick] (6.29,-1.53) -- (7.03,-1.24);
+  \draw[-{Stealth},thick] (9.37,-0.82) -- (10.04,-0.51);
+  \draw[-{Stealth},thick] (9.37,-1.24) -- (10.04,-1.53);
+  \foreach \bb in {0,1}{
+    \foreach \k in {1,...,4}{
+      \pgfmathtruncatemacro{\gf}{15*\k}
+      \fill[gray!\gf, draw=black, rounded corners=1pt, thin]
+        ({10.3+0.32*(\k-1)},{-1.02*\bb-0.14-0.08*(\k-1)}) rectangle ++(3.5,-0.6);
+      \node[font=\tiny] at ({10.3+0.32*(\k-1)+0.16},{-1.02*\bb-0.44-0.08*(\k-1)}) {k\k};
+    }
+  }
+  \draw[thick] (10.05,0) rectangle (15.55,-2.04);
+  \draw[thick] (10.05,-1.02) -- (15.55,-1.02);
+  \node[font=\scriptsize, anchor=south] at (12.8,0.56)
+    {C tile $128\times128$（累加器 $d[m]$，K-step 逐次累加）};
+  \node[font=\scriptsize, anchor=west] at (15.7,-0.51) {行 0--63};
+  \node[font=\scriptsize, anchor=west] at (15.7,-1.53) {行 64--127};
+  \node[font=\scriptsize, align=center, text width=13.5cm, anchor=north] at (8.0,-2.95)
+    {每个 K-tile 发射 2（M-atom）$\times$ 4（K-step）$=$ 8 条 WGMMA：M 方向 2 个 atom
+     各持独立累加器 $d[0]/d[1]$ 互不干扰；\\
+     K 方向 4 步靠 $\mathrm{scaleD}{=}1$ 在同一 $d[m]$ 上逐次累加（右侧 $k{=}1\to4$
+     灰度渐深、逐层覆盖，输出 D 的寄存器分布见图~\ref{fig:13-wgmma-dlayout}）};
+\end{tikzpicture}
+\caption{一个 K-tile 的 8 条 WGMMA 拼出 C tile（hgemm.cuh~L1744--1761 的 C2 双层
+循环）：A tile $128\times64$ 按 M 方向切 2 个 64 行 M-atom、K 方向切 4 个
+$kWgmmaK{=}16$ 的 K-step，对每个 (M-atom, K-step) 发射一条
+\texttt{wgmma.m64n128k16}——A 指针 \texttt{wgmma\_sA} 沿 K 每步前进 16（本 kernel
+即 $m$ 循环 $\times$ k\_step 循环），B 从 \texttt{s\_b} 同步切 $[16\times128]$ 片；
+4 次 K-step 靠 $\mathrm{scaleD}{=}1$ 在同一累加器 $d[m]$ 上逐次累加（C tile 内
+$k{=}1\to4$ 灰度渐深），2 个 M-atom 各持独立累加器 $d[0]/d[1]$。}
+\label{fig:13-wgmma-assembly}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  cell/.style={minimum size=0.42cm, inner sep=0pt, font=\tiny},
+  mblk/.style={draw, minimum size=0.6cm, inner sep=0pt},
+]
+  \foreach \w in {0,...,3}{
+    \foreach \g in {0,...,7}{
+      \pgfmathtruncatemacro{\gf}{18+16*\w}
+      \node[mblk, fill=gray!\gf] at (\g*0.64, -\w*0.64) {};
+    }
+  }
+  \draw[very thick] (-0.38, 0.38) rectangle (1.02, -0.38);
+  \foreach \w in {0,...,3}{
+    \node[font=\tiny, anchor=east] at (-0.48, -\w*0.64) {$w{=}\w$};
+  }
+  \node[font=\tiny, anchor=south] at (2.56, 0.52) {$g$};
+  \node[font=\scriptsize, align=left, anchor=north west] at (-0.45, -1.35)
+    {$D_{64\times128}$ 全局缩略：\\4 warp（行）$\times$ 8 组 $g$（列），\\每块 = 16 行 $\times$ 16 列；\\粗框 = 右侧放大的切片};
+  \draw[-{Stealth}, thick] (0.95, 0.7) .. controls (1.9, 1.35) .. (3.05, 1.35);
+  \foreach \r in {0,...,15}{
+    \foreach \cc in {0,...,15}{
+      \pgfmathtruncatemacro{\rr}{mod(\r,8)}
+      \pgfmathtruncatemacro{\th}{4*\rr + mod(\cc,4)}
+      \pgfmathtruncatemacro{\gf}{12+8*\rr}
+      \node[cell, fill=gray!\gf] at ({3.3+\cc*0.42}, {1.5-\r*0.42}) {\th};
+    }
+  }
+  \draw[thick] (3.09, 1.71) rectangle (9.81, -5.13);
+  \draw[thick] (6.45, 1.71) -- (6.45, -5.13);
+  \draw[dashed] (3.09, -1.65) -- (9.81, -1.65);
+  \draw[dashed] (4.77, 1.71) -- (4.77, -5.13);
+  \draw[dashed] (8.13, 1.71) -- (8.13, -5.13);
+  \node[font=\scriptsize\bfseries] at (4.77, 1.95) {$g{=}0$（col 0--15）};
+  \node[font=\scriptsize\bfseries] at (8.13, 1.95) {$g{=}1$（col 16--31）};
+  \node[font=\tiny, anchor=north] at (3.09, -5.2) {0};
+  \node[font=\tiny, anchor=north] at (4.77, -5.2) {8};
+  \node[font=\tiny, anchor=north] at (6.45, -5.2) {16};
+  \node[font=\tiny, anchor=north] at (8.13, -5.2) {24};
+  \node[font=\tiny, anchor=north] at (9.81, -5.2) {32};
+  \node[font=\tiny, anchor=south] at (6.45, -5.75) {列号 col（每格 = 2 列 half = 1 条 f16x2）};
+  \node[font=\tiny, anchor=east] at (3.0, 1.5) {$r{=}0$};
+  \node[font=\tiny, anchor=east] at (3.0, 0.24) {$r{=}3$};
+  \node[font=\tiny, anchor=east] at (3.0, -1.14) {$r{=}7$};
+  \node[font=\tiny, anchor=east] at (3.0, -1.56) {$r{=}8$};
+  \node[font=\tiny, anchor=east] at (3.0, -2.7) {$r{=}11$};
+  \node[font=\tiny, anchor=east] at (3.0, -4.92) {$r{=}15$};
+  \node[font=\scriptsize, anchor=west] at (0.2, 2.5)
+    {粗框（$g{=}0$）+ 虚框（$g{=}1$）= thread 5 持有的 8 格};
+  \foreach \px/\py in {3.72/1.08, 5.40/1.08, 3.72/-2.28, 5.40/-2.28}{
+    \draw[very thick, rounded corners=1pt] (\px-0.21, \py-0.21) rectangle (\px+0.21, \py+0.21);
+  }
+  \foreach \px/\py in {7.08/1.08, 8.76/1.08, 7.08/-2.28, 8.76/-2.28}{
+    \draw[dashed, thick, rounded corners=1pt] (\px-0.21, \py-0.21) rectangle (\px+0.21, \py+0.21);
+  }
+  \node[font=\scriptsize, align=left, anchor=north west] at (10.15, 0.35)
+    {\textbf{索引律}（式~\ref{eq:13-d-layout}）：\\
+     row $= 16w+\lfloor\mathrm{lane}/4\rfloor$\\
+     col $= 16g+2(\mathrm{lane}\bmod 4)$\\[3pt]
+     格内数字 = 持有者线程号\\（thread $=32w+$lane，此处 $w{=}0$）\\
+     灰度 = 行带 $\lfloor\mathrm{lane}/4\rfloor$\\[3pt]
+     每线程：8 组 $g$ $\times$ 4 象限 $\times$ 1 条\\
+     $= 32$ 个 f16x2 $= 64$ half};
+  \node[draw, rounded corners=2pt, fill=gray!8, font=\scriptsize, align=left,
+        anchor=north west] at (10.15, -2.85)
+    {\textbf{epilogue}：每线程 4 次写覆盖\\4 个 8$\times$8 象限——每象限 1 条\\uint32（f16x2），分别写\\(row, col)、(row+8, col)、\\(row, col+8)、(row+8, col+8)\\（hgemm.cuh L1843--1856）};
+\end{tikzpicture}
+\caption{WGMMA m64n128k16 输出 $D$ 的寄存器分布（13.3.4 节，式~\ref{eq:13-d-layout}）：
+左为 $64\times128$ 全局缩略（4 warp $\times$ 8 组 $g$，每块 16 行 $\times$ 16 列）；
+右侧放大 warp $w{=}0$ 的 16 行切片（$g{=}0,1$ 两组，每格一条 f16x2 = 相邻 2 列），
+格内数字为持有该输出的线程号、灰度按行带 $\lfloor\mathrm{lane}/4\rfloor$ 区分。索引律
+row $=16w+\lfloor\mathrm{lane}/4\rfloor$、col $=16g+2(\mathrm{lane}\bmod4)$ 使每个线程
+在每组 $g$ 内恰好持有 4 个 8$\times$8 象限里各一条寄存器（粗框/虚框标出 thread 5 的
+8 格），epilogue 据此用 4 次写覆盖 4 个象限。}
+\label{fig:13-wgmma-dlayout}
+\end{figure}
+
 \section{设计与实现}
 
 \subsection{warpgroup：Hopper 的最小「作战单元」}
@@ -335,6 +483,70 @@ common.cuh~L558--587 的注释表与图~\ref{fig:13-1} 逐字段一致，此处�
         严格对应——\textbf{写入端与读取端必须声明同一档 swizzle}，否则读到的是
         被 XOR 打乱的数据。
 \end{itemize}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  scell/.style={minimum size=0.5cm, inner sep=0pt, font=\tiny},
+  dcell/.style={scell, dashed},
+]
+  \foreach \cv [count=\idx from 0] in
+    {0,1,2,3,4,5,6,7, 1,0,3,2,5,4,7,6, 2,3,0,1,6,7,4,5, 3,2,1,0,7,6,5,4,
+     4,5,6,7,0,1,2,3, 5,4,7,6,1,0,3,2, 6,7,4,5,2,3,0,1, 7,6,5,4,3,2,1,0}{
+    \pgfmathtruncatemacro{\ci}{mod(\idx,8)}
+    \pgfmathtruncatemacro{\ri}{div(\idx,8)}
+    \pgfmathtruncatemacro{\gf}{4+9*\cv}
+    \node[scell, fill=gray!\gf] at ({2.55+0.5*\ci},{-0.25-0.5*\ri}) {\cv};
+  }
+  \draw[thin, gray!45] (2.3,0) grid (6.3,-4.0);
+  \draw[very thick] (2.3,0) rectangle (6.3,-4.0);
+  \draw[very thick] (2.24,-0.06) rectangle (2.86,-3.94);
+  \foreach \cv [count=\idx from 0] in {0,1,2,3,4,5,6,7, 1,0,3,2,5,4,7,6}{
+    \pgfmathtruncatemacro{\ci}{mod(\idx,8)}
+    \pgfmathtruncatemacro{\ri}{div(\idx,8)}
+    \pgfmathtruncatemacro{\gf}{4+9*\cv}
+    \node[dcell, fill=gray!\gf] at ({2.55+0.5*\ci},{-4.75-0.5*\ri}) {\cv};
+  }
+  \draw[dashed, thin, gray!45] (2.3,-4.5) grid (6.3,-5.5);
+  \draw[dashed, very thick] (2.3,-4.5) rectangle (6.3,-5.5);
+  \node at (4.3,-4.25) {$\vdots$};
+  \foreach \ri in {0,...,7}{
+    \node[font=\tiny, anchor=east] at (2.2,{-0.25-0.5*\ri}) {$i{=}\ri$};
+  }
+  \node[font=\tiny, anchor=east] at (2.2,-4.75) {$i{=}8$};
+  \node[font=\tiny, anchor=east] at (2.2,-5.25) {$i{=}9$};
+  \node[font=\scriptsize, rotate=90] at (0.9,-2.0) {行 $i$（每行 128\,B，64 half）};
+  \foreach \ci in {0,...,7}{
+    \node[font=\tiny, anchor=south] at ({2.55+0.5*\ci},0.06) {$c{=}\ci$};
+  }
+  \node[font=\scriptsize, anchor=south] at (4.3,0.5)
+    {逻辑 chunk $c$（每 chunk 16\,B $=$ 8 half）};
+  \draw[{Stealth}-{Stealth}, very thick] (6.55,0) -- (6.55,-4.5);
+  \node[font=\scriptsize, rotate=90] at (6.82,-2.25) {SBO $=$ 1024\,B（编码 64）};
+  \node[draw, rounded corners=3pt, fill=gray!6, font=\scriptsize, align=left,
+        text width=6.3cm, anchor=north west] at (7.7,-0.1)
+    {\textbf{descriptor 字段与 atom 几何}（位域图~\ref{fig:13-1}）\\[2pt]
+     SBO：「首个 8 行 $\to$ 下一个 8 行」的字节偏移 $=8\times64\times2$\,B$=1024$，
+     编码 $1024\gg4=64$；\\[2pt]
+     LBO：K-major swizzle 下不使用，填 16\,B $\to$ 编码 1；\\[2pt]
+     base\_offset $=(\mathrm{addr}\gg7)\,\&\,7$：tile 基址在 1024\,B 周期内的行相位，
+     \texttt{\_\_align\_\_(1024)} $\Rightarrow$ 恒 0；\\[2pt]
+     layout\_type $=1$（128B 档，TMA 写端与 WGMMA 读端必须同档）；\\[2pt]
+     周期 $=$ 8 行 $=$ 1024\,B：行 8 与行 0 图案相同（$i\,\&\,7$ 的来源）};
+  \node[font=\scriptsize, align=center, text width=11cm, anchor=north] at (5.0,-6.1)
+    {格内数字 $=$ 物理 chunk 号 $c' = c \oplus (i\,\&\,7)$，灰度按 $c'$ 渐变
+     （同灰度 $=$ 同 quad）；\\
+     任一固定逻辑列（粗框 $c{=}0$）沿 8 行取遍 8 个不同 quad——按列读不撞 bank};
+\end{tikzpicture}
+\caption{128B swizzle 的 atom 几何与 WGMMA descriptor 字段对应（13.4.5 节）：
+atom 为 8 行 $\times$ 8 chunk（每 chunk 16\,B，即 $8\times64$ half），TMA 写入后
+物理 chunk 号 $c'=c\oplus(i\,\&\,7)$——固定逻辑列（粗框 $c{=}0$）沿行取遍 8 个
+quad，按列读不撞 bank；周期 8 行 $=1024$\,B（行 8 与行 0 同图案），对应
+$\mathrm{SBO}=1024$\,B（编码 64）、base\_offset 为 tile 基址在周期内的行相位
+（\texttt{\_\_align\_\_(1024)} 时恒 0）。位域编码见图~\ref{fig:13-1}；CuTe 的 SW128
+原子视角（第~\ref{ch:23}~章图~\ref{fig:23-1}）与本章互为对照。}
+\label{fig:13-swizzle-atom}
+\end{figure}
 
 另一个高频考点是 \textbf{SS 与 RS 模式}：A 操作数可以来自 smem（SS 模式，用 descA
 描述，本 kernel 的选择）或来自寄存器（RS 模式，A fragment 以 4 个 \texttt{.f16x2}

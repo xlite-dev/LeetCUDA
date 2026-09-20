@@ -135,7 +135,53 @@ B 是 $k16 \times n8$，列主序参与。坐标公式：
 $R0 = \{b\sb 0,b\sb 1\}$ 是 $k \in \{2\mathrm{tig}, 2\mathrm{tig}{+}1\}$（上半
 $k$ 区），$R1 = \{b\sb 2,b\sb 3\}$ 再加 8（下半 $k$ 区）。8 个 lane 组
 （$\mathrm{g} = 0..7$）拼齐 8 列。与 A 对照记忆：A 按行分、B 按列分，
-$k$ 方向都是「4 个 lane 各持 2 个相邻元素」。
+$k$ 方向都是「4 个 lane 各持 2 个相邻元素」。B 侧逐格布局见
+图~\ref{fig:11-b-fragment}（图~\ref{fig:11-2a} 的 B 侧姊妹图）。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\tiny]
+  \def\cwd{0.62}
+  \def\chd{0.42}
+  \foreach \r in {0,...,15}{
+    \foreach \c [evaluate=\c as \gr using int(7+9*\c)] in {0,...,7}{
+      \pgfmathtruncatemacro{\tigan}{int(mod(\r,8)/2)}
+      \pgfmathtruncatemacro{\tbi}{int(mod(\r,2)+2*int(\r/8))}
+      \pgfmathtruncatemacro{\tlan}{4*\c+\tigan}
+      \node[fill=gray!\gr, minimum width=\cwd cm, minimum height=\chd cm, inner sep=0pt]
+        at ({(\c+0.5)*\cwd},{-(\r+0.5)*\chd}) {T\tlan\ b\tbi};
+    }
+  }
+  \draw[thin] (0,0) grid[xstep=0.62cm, ystep=0.42cm] ({8*\cwd},{-16*\chd});
+  \draw[very thick] (0,0) rectangle ({8*\cwd},{-16*\chd});
+  \draw[thick, dashed] (0,{-8*\chd}) -- ({8*\cwd},{-8*\chd});
+  \foreach \c in {0,...,7}{
+    \node[anchor=south] at ({(\c+0.5)*\cwd},0.08) {\c};
+  }
+  \node[anchor=south, font=\scriptsize] at ({4*\cwd},0.4) {列 $n=\mathrm{g}=\mathrm{lane}\gg2$（同列同灰度，8 档）};
+  \foreach \r in {0,...,15}{
+    \node[anchor=east] at (-0.08,{-\r*\chd-0.21}) {\r};
+  }
+  \node[anchor=east, font=\tiny, rotate=90] at (-0.42,{-8*\chd}) {行 $k$};
+  \node[anchor=east, font=\scriptsize] at (-0.62,{-4*\chd}) {上半 $k$ 区 $=RB[0]$};
+  \node[anchor=east, font=\scriptsize] at (-0.62,{-12*\chd}) {下半 $k$ 区 $=RB[1]$};
+  \node[anchor=west, font=\scriptsize\bfseries] at (5.7,{-8*\chd}) {每 lane 寄存器视图};
+  \node[anchor=west, font=\tiny, align=left] at (5.7,{-8*\chd-0.38})
+    {lane $=4\,\mathrm{g}+\mathrm{tig}$，持第 $\mathrm{g}$ 列的 4 个 f16，\\打包为 2 条 \texttt{.b32}：};
+  \draw[fill=gray!25, thick] (5.7,{-8*\chd-1.25}) rectangle (7.5,{-8*\chd-0.85});
+  \draw[thick] (6.6,{-8*\chd-1.25}) -- (6.6,{-8*\chd-0.85});
+  \node at (6.15,{-8*\chd-1.05}) {$b\sb 0$};
+  \node at (6.95,{-8*\chd-1.05}) {$b\sb 1$};
+  \node[anchor=west, font=\tiny] at (7.62,{-8*\chd-1.05}) {$RB[0]$：$k=2\,\mathrm{tig},\ 2\,\mathrm{tig}{+}1$};
+  \draw[fill=gray!45, thick] (5.7,{-8*\chd-1.95}) rectangle (7.5,{-8*\chd-1.55});
+  \draw[thick] (6.6,{-8*\chd-1.95}) -- (6.6,{-8*\chd-1.55});
+  \node at (6.15,{-8*\chd-1.75}) {$b\sb 2$};
+  \node at (6.95,{-8*\chd-1.75}) {$b\sb 3$};
+  \node[anchor=west, font=\tiny] at (7.62,{-8*\chd-1.75}) {$RB[1]$：$k=8{+}2\,\mathrm{tig},\ 8{+}2\,\mathrm{tig}{+}1$};
+\end{tikzpicture}
+\caption{B fragment（$k16\times n8$）寄存器布局，式~\ref{eq:11-bpos} 的网格化（图~\ref{fig:11-2a} 的 B 侧姊妹图）：列 $n=\mathrm{g}=\mathrm{lane}\gg2$（同列同灰度 8 档），行 $k$ 按 $b\sb 0\to2\,\mathrm{tig}$、$b\sb 1\to2\,\mathrm{tig}{+}1$、$b\sb 2/b\sb 3$ 再 $+8$ 分布。右：每 lane 4 个 f16 打包为 $RB[0]/RB[1]$ 两条 \texttt{.b32}。与 A 对照：A 按行分、B 按列分。}
+\label{fig:11-b-fragment}
+\end{figure}
 
 \subsection{C fragment：epilogue 的出发点}
 
@@ -148,7 +194,52 @@ C/D 是 $m16 \times n8$，fp16 版每 lane 2 个 \texttt{.b32}（4 个 f16）：
 每 lane 持两行（$\mathrm{g}$、$\mathrm{g}{+}8$）各一对相邻列；
 $RC[0]$（第一个 \texttt{.b32}）覆盖行 0--7，$RC[1]$ 覆盖行 8--15。
 源码 epilogue 的大注释（hgemm.cuh~L311--333）画的就是这张图，
-与式~\ref{eq:11-cpos} 逐格一致（核校通过）。
+与式~\ref{eq:11-cpos} 逐格一致（核校通过）；其 TikZ 版见
+图~\ref{fig:11-c-fragment}。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\tiny]
+  \def\cwd{0.62}
+  \def\chd{0.42}
+  \foreach \r in {0,...,15}{
+    \pgfmathtruncatemacro{\rg}{int(7+9*mod(\r,8))}
+    \foreach \c in {0,...,7}{
+      \pgfmathtruncatemacro{\tlan}{4*mod(\r,8)+int(\c/2)}
+      \node[fill=gray!\rg, minimum width=\cwd cm, minimum height=\chd cm, inner sep=0pt]
+        at ({(\c+0.5)*\cwd},{-(\r+0.5)*\chd}) {T\tlan\ c\c};
+    }
+  }
+  \draw[thin] (0,0) grid[xstep=0.62cm, ystep=0.42cm] ({8*\cwd},{-16*\chd});
+  \draw[very thick] (0,0) rectangle ({8*\cwd},{-16*\chd});
+  \draw[thick, dashed] (0,{-8*\chd}) -- ({8*\cwd},{-8*\chd});
+  \foreach \c in {0,...,7}{
+    \node[anchor=south] at ({(\c+0.5)*\cwd},0.08) {\c};
+  }
+  \node[anchor=south, font=\scriptsize] at ({4*\cwd},0.4) {列 $n$（$c\sb n$ 的下标即列号）};
+  \foreach \r in {0,...,15}{
+    \node[anchor=east] at (-0.08,{-\r*\chd-0.21}) {\r};
+  }
+  \node[anchor=east, font=\tiny, rotate=90] at (-0.42,{-8*\chd}) {行 $m$（灰度 $=\mathrm{g}=m\bmod 8$）};
+  \draw[semithick] ({8*\cwd+0.15},0.1) -- ({8*\cwd+0.3},0.1) -- ({8*\cwd+0.3},{-8*\chd-0.1}) -- ({8*\cwd+0.15},{-8*\chd-0.1});
+  \node[anchor=west, font=\scriptsize, align=left] at ({8*\cwd+0.4},{-4*\chd}) {$RC[0]$（.b32）\\行 0--7};
+  \draw[semithick] ({8*\cwd+0.15},{-8*\chd+0.1}) -- ({8*\cwd+0.3},{-8*\chd+0.1}) -- ({8*\cwd+0.3},{-16*\chd-0.1}) -- ({8*\cwd+0.15},{-16*\chd-0.1});
+  \node[anchor=west, font=\scriptsize, align=left] at ({8*\cwd+0.4},{-12*\chd}) {$RC[1]$（.b32）\\行 8--15};
+  \node[anchor=north west, font=\tiny, align=left] at ({8*\cwd+0.4},{-13.6*\chd})
+    {寄存器序（式~\ref{eq:11-cpos}）：\\$i=(n\bmod 2)+2\cdot[m\ge 8]$\\行 $=\mathrm{g}+8\cdot[i\ge2]$，列 $=2\,\mathrm{tig}+(i\bmod2)$};
+  \node[anchor=east, font=\scriptsize] at (-0.15,{-16*\chd-0.45}) {4-lane 组};
+  \foreach \t [evaluate=\t as \ca using int(2*\t), evaluate=\t as \cb using int(2*\t+1)] in {0,...,3}{
+    \node[draw, fill=gray!12, minimum width=1.15cm, minimum height=0.5cm, font=\tiny]
+      at ({\t*1.25+0.625},{-16*\chd-0.45}) {T\t\ $\{c\sb\ca,c\sb\cb\}$};
+    \node[font=\tiny] at ({\t*1.25+0.625},{-16*\chd-0.82}) {tig=\t};
+  }
+  \node[anchor=west, font=\tiny, align=left] at (5.35,{-16*\chd-0.55})
+    {同一 $\mathrm{g}$ 的 tig $=0..3$ 各持一对，\\拼出行 $\mathrm{g}$（与 $\mathrm{g}{+}8$）的 8 列};
+  \draw[->, dashed] (0.63,{-16*\chd-0.2}) -- (0.63,{-16*\chd+0.1});
+\end{tikzpicture}
+\caption{C fragment（$m16\times n8$）寄存器布局——hgemm.cuh~L311--333 字符画的 TikZ 版，与式~\ref{eq:11-cpos} 逐格一致：行 $m=\mathrm{g}=\mathrm{lane}\gg2$（灰度 8 档，行 0--7 与 8--15 由同批 lane 重复覆盖），列对由 $\mathrm{tig}=\mathrm{lane}\%4$ 决定；$RC[0]$ 装行 0--7、$RC[1]$ 装行 8--15。底部：4-lane 组内 tig $=0..3$ 各持一对 $\{c\sb{2t},c\sb{2t+1}\}$，拼齐一行 8 个 half——11.4.6 节 epilogue shuffle 的出发点。}
+\label{fig:11-c-fragment}
+\end{figure}
 
 \subsection{\texttt{ldmatrix}：warp 集体装载指令逐字段}
 
@@ -203,7 +294,65 @@ tile $k{+}2$ 的那组允许还没到。尾部（$k + \mathrm{kStages} - 1 \ge
 \mathrm{NUM\_K\_TILES}$，没有新 tile 可预取）切到 \texttt{wait\_\allowbreak{}group\allowbreak{}(0)}
 排空。与第~\ref{ch:10}~章对比：两级流水每个迭代都要 wait(0) 收口，
 三级流水稳态只 wait(1)——「组」这个记账单位让同步粒度从「每迭代全等」
-放松为「保持距离即可」。
+放松为「保持距离即可」。三级轮转的稳态与尾部时序见图~\ref{fig:11-kstages3}。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\tiny, >=Stealth]
+  \def\u{1.5}
+  \fill[gray!8] (-1.85,0.35) rectangle (0,-3.45);
+  \node[align=center, text width=1.8cm] at (-0.92,-1.35)
+    {prologue：\\装载 tile 0/1\\（wait\_group(0)）};
+  \foreach \kk in {0,...,7}{
+    \draw[dashed, black!55, thin] ({\u*(\kk+1)},0.5) -- ({\u*(\kk+1)},-3.5);
+    \node[anchor=south] at ({\u*(\kk+1)},0.56) {\ifnum\kk<6 w(1)\else w(0)\fi};
+  }
+  \node[anchor=east] at (-1.98,0) {cp.async};
+  \node[anchor=east] at (-1.98,-0.95) {mma};
+  \node[anchor=east] at (-1.98,-1.9) {$S\sb 0$};
+  \node[anchor=east] at (-1.98,-2.55) {$S\sb 1$};
+  \node[anchor=east] at (-1.98,-3.2) {$S\sb 2$};
+  \foreach \kk in {0,...,5}{
+    \pgfmathtruncatemacro{\tl}{\kk+2}
+    \pgfmathtruncatemacro{\glv}{20+25*mod(\tl,3)}
+    \fill[gray!\glv] ({\u*\kk+0.06},-0.2) rectangle ({\u*\kk+0.72},0.2);
+    \node at ({\u*\kk+0.39},0) {ld \tl};
+    \draw[dashed, semithick, gray!\glv] ({\u*\kk+0.72},0) -- ({\u*\kk+1.32},0);
+  }
+  \foreach \kk in {0,...,7}{
+    \pgfmathtruncatemacro{\glv}{20+25*mod(\kk,3)}
+    \fill[gray!\glv] ({\u*\kk+0.78},-1.15) rectangle ({\u*\kk+1.44},-0.75);
+    \node at ({\u*\kk+1.11},-0.95) {mma \kk};
+  }
+  \foreach \tl in {0,...,7}{
+    \pgfmathtruncatemacro{\srow}{mod(\tl,3)}
+    \pgfmathsetmacro{\ys}{-1.9-0.65*\srow}
+    \pgfmathsetmacro{\xs}{\tl<2 ? -1.8 : \u*(\tl-2)+0.05}
+    \pgfmathsetmacro{\xe}{\u*(\tl+1)-0.05}
+    \pgfmathsetmacro{\xw}{min(\xs+\u-0.1,\xe)}
+    \pgfmathtruncatemacro{\glv}{20+25*\srow}
+    \pgfmathtruncatemacro{\gll}{8+11*\srow}
+    \fill[gray!\gll] (\xs,{\ys-0.2}) rectangle (\xw,{\ys+0.2});
+    \fill[gray!\glv] (\xw,{\ys-0.2}) rectangle (\xe,{\ys+0.2});
+    \node at ({(\xs+\xe)/2},\ys) {tile \tl};
+    \draw[thin] (\xs,{\ys-0.2}) rectangle (\xe,{\ys+0.2});
+  }
+  \draw[->] (-1.85,-3.85) -- (12.35,-3.85);
+  \foreach \kk in {0,...,7}{
+    \node[anchor=north] at ({\u*(\kk+0.5)},-3.9) {\kk};
+  }
+  \node[anchor=east] at (-1.98,-3.85) {迭代 $k$};
+  \node[anchor=north west, align=left, text width=14.6cm] at (-1.98,-4.25)
+    {灰度 $=$ tile $\bmod 3$（即所在 stage）；stage 条内浅色段为 cp.async 写入期、
+     深色段为就绪驻留；w(1)/w(0) $=$ 迭代末 \texttt{wait\_group(1)/(0)}。\\
+     稳态 w(1)：tile $k{+}1$ 就位即可，tile $k{+}2$ 的搬运（load 泳道虚线尾）允许一组在途；
+     尾部（$k\ge6$，无新 tile 可预取）切 w(0) 排空。\\
+     对照图~\ref{fig:10-1}（S$=$2）：每迭代 wait(0) 收口，同步粒度「每迭代全等」；
+     三级流水放宽为「保持距离即可」。};
+\end{tikzpicture}
+\caption{kStages$=3$ 三级流水时序：迭代 $k$ 读 $S\sb{k\bmod3}$（tile $k$）、同时预取 $(k{+}2)\bmod3$（tile $k{+}2$），三个 stage 按 tile $\bmod 3$ 轮转。稳态迭代末 \texttt{wait\_group(1)} 允许一组搬运在途；尾部无 tile 可预取时切 \texttt{wait\_group(0)} 排空。与图~\ref{fig:10-1} 的两级流水（每迭代 wait(0)）相比，同步粒度从「每迭代全等」放松为「保持距离即可」。}
+\label{fig:11-kstages3}
+\end{figure}
 
 \section{设计与实现}
 
@@ -221,7 +370,73 @@ $kValTileM\times kValTileN = 4\times4$ 个 atom 重复）。
 用记号表写：$B\sb M = kMmaM \cdot kMmaTileM \cdot kValTileM = 16\cdot2\cdot4$，
 $B\sb N = 8\cdot4\cdot4$，$B\sb K = kMmaK = 16$。源码注释把两层重复分别对应到
 CuTe 的 TiledMMA 与 Value Tile 概念（L180--183），
-第~\ref{ch:22}~章会回到这个对应。
+第~\ref{ch:22}~章会回到这个对应。整个排布的几何全景见图~\ref{fig:11-mma-layout}。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize]
+  \foreach \wm in {0,1}{
+    \foreach \wn in {0,...,3}{
+      \pgfmathtruncatemacro{\midw}{2*\wn+\wm}
+      \pgfmathtruncatemacro{\mgr}{6+10*\midw}
+      \fill[gray!\mgr] ({1.6*\wn},{-3.2*\wm}) rectangle ++(1.6,-3.2);
+      \ifnum\mgr<48
+        \node[font=\footnotesize\bfseries] at ({1.6*\wn+0.8},{-3.2*\wm-1.45}) {MMA\midw};
+        \node[font=\tiny] at ({1.6*\wn+0.8},{-3.2*\wm-2.05}) {warp\midw};
+      \else
+        \node[font=\footnotesize\bfseries, text=white] at ({1.6*\wn+0.8},{-3.2*\wm-1.45}) {MMA\midw};
+        \node[font=\tiny, text=white] at ({1.6*\wn+0.8},{-3.2*\wm-2.05}) {warp\midw};
+      \fi
+    }
+  }
+  \foreach \wm in {0,1}{
+    \foreach \ai in {1,2,3}{
+      \draw[white, thin] (0,{-3.2*\wm-0.8*\ai}) -- (6.4,{-3.2*\wm-0.8*\ai});
+    }
+  }
+  \foreach \wn in {0,...,3}{
+    \foreach \aj in {1,2,3}{
+      \draw[white, thin] ({1.6*\wn+0.4*\aj},0) -- ({1.6*\wn+0.4*\aj},-6.4);
+    }
+  }
+  \draw[thick] (0,0) rectangle (6.4,-6.4);
+  \draw[thick] (0,-3.2) -- (6.4,-3.2);
+  \foreach \wn in {1,2,3}{
+    \draw[thick] ({1.6*\wn},0) -- ({1.6*\wn},-6.4);
+  }
+  \node[anchor=south, font=\tiny] at (3.2,0.1) {N direction（\texttt{warp\_n = warp\_id/2}，$0\to3$ 向右）};
+  \node[anchor=east, font=\tiny, rotate=90] at (-0.12,-3.2) {M direction（\texttt{warp\_m = warp\_id\%2}，变化快）};
+  \foreach \mm/\ml in {0/0,1/64,2/128}{
+    \node[anchor=east, font=\tiny] at (-0.45,{-3.2*\mm}) {\ml};
+  }
+  \foreach \nn/\nl in {0/0,1/32,2/64,3/96,4/128}{
+    \node[anchor=south, font=\tiny] at ({1.6*\nn},0.08) {\nl};
+  }
+  \node[anchor=north west, font=\tiny] at (0,-6.5) {MMA0--7 按列主序（$=$ hgemm.cuh L158--159 字符画）：warp\_id $= 2\cdot$warp\_n $+$ warp\_m};
+  \draw[dashed, ->] (6.55,-0.9) -- (7.9,-0.9);
+  \begin{scope}[shift={(8.0,0)}]
+    \foreach \ai in {0,...,3}{
+      \foreach \aj in {0,...,3}{
+        \pgfmathtruncatemacro{\aidx}{4*\ai+\aj}
+        \pgfmathtruncatemacro{\agr}{10+3*\aidx}
+        \fill[gray!\agr] ({0.6*\aj},{-1.2*\ai}) rectangle ++(0.6,-1.2);
+      }
+    }
+    \draw[thick] (0,0) rectangle (2.4,-4.8);
+    \node[font=\tiny, rotate=90] at (1.85,-0.9) {$m16n8$};
+    \node[anchor=south, font=\tiny] at (1.2,0.08) {N：$4\times8=32$};
+    \node[anchor=east, font=\tiny, rotate=90] at (-0.12,-2.4) {M：$4\times16=64$};
+    \node[anchor=west, font=\scriptsize] at (3.0,-0.55) {单 warp 块放大};
+    \node[anchor=west, font=\tiny, align=left] at (3.0,-0.95)
+      {（warp tile $64\times32$）：\\$4\times4=16$ 个 $m16n8k16$ atom，\\强度 $=$ 块内位置\\（$kValTileM\times kValTileN$）};
+    \node[draw, align=left, anchor=north west, font=\scriptsize] at (0,-5.3)
+      {三层相乘：MMA atom $m16n8k16$ $\to$ MMA tile $2\sb M\times4\sb N$\\warp（列主序 MMA0--7，$32\times32$）$\to$ warp tile $64\times32$\\$\to$ block tile $128\times128$\\[2pt]
+       $B\sb M = 16\cdot2\cdot4 = 128$，\quad $B\sb N = 8\cdot4\cdot4 = 128$};
+  \end{scope}
+\end{tikzpicture}
+\caption{MMA warp $2\times4$ 排布（左，$128\times128$ block tile，灰度 $=$ warp 身份）：MMA0--7 按列主序——N 向 MMA0/2/4/6、M 向 MMA1/3/5/7（\texttt{warp\_m = warp\_id\%2} 变化快），与 hgemm.cuh L158--159 原字符画一致；每 warp 块内 $4\times4$ 个 $m16n8$ atom 小格。右：单 warp 块放大（warp tile $64\times32$，强度 $=$ atom 块内位置）；侧栏三层记号 $B\sb M=16\cdot2\cdot4$、$B\sb N=8\cdot4\cdot4$。}
+\label{fig:11-mma-layout}
+\end{figure}
 
 \subsection{smem 布局与 cp.async 预载}
 
@@ -316,8 +531,64 @@ $\mathrm{g}$ 行与 $\mathrm{g}{+}8$ 行各写一条
 \texttt{warp\_n} 与 $j$ 平移。每个 warp 落笔 $64\times32$ 子块，
 与 11.4.1 的排布严丝合缝。写回没有经过 smem 中转——
 寄存器布局白盒后 epilogue 可以走「shuffle $\to$ 直接宽写」的捷径，
-这是 WMMA 做不到的（对照第~\ref{ch:10}~章坑五）。
+这是 WMMA 做不到的（对照第~\ref{ch:10}~章坑五）。收拢与写回的数据流见图~\ref{fig:11-epilogue-shuffle}。
 
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\tiny, >=Stealth]
+  \def\lw{2.6}
+  \foreach \ti in {0,...,3}{
+    \pgfmathsetmacro{\yc}{1.05-0.75*\ti}
+    \pgfmathtruncatemacro{\ca}{2*\ti}
+    \pgfmathtruncatemacro{\cb}{2*\ti+1}
+    \draw[fill=gray!8, thin] (0,{\yc-0.28}) rectangle (\lw,{\yc+0.28});
+    \node[font=\scriptsize\bfseries] at (0.4,{\yc+0.075}) {T\ti};
+    \node[anchor=east] at (-0.12,\yc) {lane $4\mathrm{g}{+}\ti$};
+    \node[anchor=east] at (0.98,{\yc+0.17}) {行 g};
+    \draw[fill=gray!25] (1.05,{\yc+0.03}) rectangle (1.75,{\yc+0.25});
+    \draw[fill=gray!25] (1.75,{\yc+0.03}) rectangle (2.45,{\yc+0.25});
+    \node at (1.4,{\yc+0.14}) {$c\sb\ca$};
+    \node at (2.1,{\yc+0.14}) {$c\sb\cb$};
+    \node[anchor=east] at (0.98,{\yc-0.20}) {行 g+8};
+    \draw[fill=gray!45] (1.05,{\yc-0.25}) rectangle (1.75,{\yc-0.03});
+    \draw[fill=gray!45] (1.75,{\yc-0.25}) rectangle (2.45,{\yc-0.03});
+    \node at (1.4,{\yc-0.14}) {$c\sb\ca$};
+    \node at (2.1,{\yc-0.14}) {$c\sb\cb$};
+  }
+  \draw[very thick, vscAccent] (0,0.77) rectangle (\lw,1.33);
+  \node[anchor=south, text=vscAccent] at (1.3,1.42) {\texttt{lane\%4==0} 出手};
+  \draw[->, thick] (2.7,0.3) .. controls +(0.5,0.1) and +(0.5,-0.12) .. (2.68,1.05);
+  \draw[->, thick] (2.7,-0.45) .. controls +(0.85,0.18) and +(0.85,-0.2) .. (2.68,1.05);
+  \draw[->, thick] (2.7,-1.2) .. controls +(1.2,0.28) and +(1.2,-0.3) .. (2.68,1.05);
+  \node[anchor=west, align=left] at (4.2,-0.85)
+    {\texttt{\_\_shfl\_sync}\\从 lane+1/+2/+3\\各收 2 个 half\\（RC0、RC1 同步收）};
+  \draw[->, thick] (2.68,1.05) .. controls +(2.2,0.55) .. (7.05,0.93);
+  \draw[->, thick] (2.68,0.85) .. controls +(2.2,-0.2) .. (7.05,0.33);
+  \foreach \sg in {0,1}{
+    \pgfmathsetmacro{\yb}{0.93-0.6*\sg}
+    \node[anchor=east] at (7.0,\yb) {\ifnum\sg=0 RC0[$j$]\else RC1[$j$]\fi};
+    \foreach \cc in {0,...,3}{
+      \pgfmathtruncatemacro{\ca}{2*\cc}
+      \pgfmathtruncatemacro{\cb}{2*\cc+1}
+      \draw[fill=gray!35, thin] ({7.1+0.85*\cc},{\yb-0.21}) rectangle ({7.95+0.85*\cc},{\yb+0.21});
+      \node at ({7.1+0.85*\cc+0.425},\yb) {$c\sb\ca\,c\sb\cb$};
+    }
+  }
+  \node[anchor=south] at ({8.8},1.19) {.b32$\times$4 $=$ float4 $=$ 16B $=$ 8 half};
+  \draw[->] (10.5,0.93) -- (10.9,0.93);
+  \node[anchor=west, align=left] at (10.95,0.93) {st.global.v4 $\to$ 行 $\mathrm{g}$\\（\texttt{lane\_id/4} $= \mathrm{g}$）};
+  \draw[->] (10.5,0.33) -- (10.9,0.33);
+  \node[anchor=west, align=left] at (10.95,0.33) {st.global.v4 $\to$ 行 $\mathrm{g}{+}8$\\（同一 16B 起点）};
+  \node[anchor=north west, align=left, text width=13.4cm] at (-0.12,-1.75)
+    {每个 4-lane 组的 T0--T3 各持一对 $\{c\sb{2t},c\sb{2t+1}\}$（上行：行 g 的 RC[i][j][0]；
+     下行：行 g{+}8 的 RC[i][j][1]，灰度同图~\ref{fig:11-b-fragment} 的寄存器条）。
+     shuffle 后首 lane 的 RC0[j]/RC1[j] 凑齐整行 8 个 half，仅 \texttt{lane\%4==0}
+     的 lane 每 $j$ 写两条 128-bit store——列起点由 \texttt{warp\_n} 与 $j$ 平移，
+     整 warp 铺满 $64\times32$ 子块，不经 smem 中转。};
+\end{tikzpicture}
+\caption{Epilogue shuffle 收拢与写回（hgemm.cuh L336--382）：4-lane 组内 T0--T3 各持一对 $\{c\sb{2t},c\sb{2t+1}\}$（上行 $=$ 行 g、下行 $=$ 行 g{+}8 的寄存器对），\texttt{\_\_shfl\_sync} 从 lane+1/+2/+3 各收 2 个 half，把 RC0[j]（行 g）与 RC1[j]（行 g{+}8）各凑成 4 条 \texttt{.b32} $=$ 一条 16B \texttt{float4}；随后仅 \texttt{lane\%4==0} 的 lane 出手，行号 $=$ \texttt{lane\_id/4} $=$ g，两条 128-bit store 分别写行 g 与 g{+}8。}
+\label{fig:11-epilogue-shuffle}
+\end{figure}
 \section{性能分析}
 
 每条 \texttt{mma.\allowbreak{}m16n8k16} 4096 FLOP、每 warp 每迭代 16 条、

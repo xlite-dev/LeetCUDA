@@ -145,8 +145,80 @@ layout，而 \texttt{cosize} 直接就是这块 smem 实际要占的元素数—
         与 C 数组的直觉相反（常见坑二）。
   \item 例 3（带孔洞）：$S=(8,4),D=(2,16)$：$f(c_0,c_1)=2c_0+16c_1$，
         $\mathrm{size}=32$ 但 $\mathrm{cosize}=1+2\cdot7+16\cdot3=63$，
-        值域只命中偶数——这是一个「每两个元素塞一个」的稀疏布局。
+        值域只命中偶数——这是一个「每两个元素塞一个」的稀疏布局
+        （图~\ref{fig:20-hole-size-cosize}）。
 \end{itemize}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\tiny]
+  \begin{scope}
+    \foreach \fr in {0,...,7}{
+      \foreach \fc in {0,...,3}{
+        \pgfmathtruncatemacro{\vv}{2*\fr+16*\fc}
+        \pgfmathtruncatemacro{\gl}{10+9*\fc}
+        \node[fill=gray!\gl, minimum width=0.66cm, minimum height=0.5cm, inner sep=0pt]
+          at ({(\fc+0.5)*0.66},{-(\fr+0.5)*0.5}) {\vv};
+      }
+    }
+    \draw[thin] (0,0) grid[xstep=0.66cm, ystep=0.5cm] (2.64,-4);
+    \draw[very thick] (0,0) rectangle (2.64,-4);
+    \foreach \fr in {0,...,7}{
+      \node[anchor=east] at (-0.05,{-\fr*0.5-0.25}) {\fr};
+    }
+    \foreach \fc in {0,...,3}{
+      \node[anchor=south] at ({\fc*0.66+0.33},0.05) {\fc};
+    }
+    \node[anchor=north, align=center] at (1.32,-4.3)
+      {$(8,4){:}(2,16)$，格内 $=2c_0+16c_1$；\\
+       行 $c_0$（mode 0）向下、列 $c_1$（mode 1）向右};
+  \end{scope}
+  \node[anchor=north west, align=left, text width=8.2cm] at (3.2,0.05)
+    {\textbf{$64$ 个坐标只落到 $32$ 个 offset 上}：行步长 $2$ 使 $c_0+1$ 跳过奇数
+     offset，列步长 $16$ 使 $c_1+1$ 跳过 $2$ 个 offset（$c_1{=}0$ 的最后一格是
+     $14$，下一格 $16$——中间的 $15$ 永远读不到）。最大 offset
+     $=2\cdot7+16\cdot3=62$，于是 $\mathrm{size}=32$ 而
+     $\mathrm{cosize}=63$：\textbf{$\mathrm{cosize}>\mathrm{size}$ 即「孔洞」}。
+     声明布局的同时把 smem 用量也算了出来——padding 过的 smem 行就是这类布局。};
+  \begin{scope}[shift={(0,-5.9)}]
+    \foreach \br in {0,...,3}{
+      \foreach \bc in {0,...,15}{
+        \pgfmathtruncatemacro{\off}{16*\br+\bc}
+        \ifnum\off<63
+          \pgfmathtruncatemacro{\odd}{mod(\off,2)}
+          \ifnum\odd=0
+            \node[fill=gray!35, minimum width=0.5cm, minimum height=0.4cm, inner sep=0pt]
+              at ({\bc*0.5+0.25},{-\br*0.4-0.2}) {};
+          \else
+            \node[pattern=north east lines, pattern color=gray!70, fill=white,
+              minimum width=0.5cm, minimum height=0.4cm, inner sep=0pt]
+              at ({\bc*0.5+0.25},{-\br*0.4-0.2}) {};
+          \fi
+        \fi
+      }
+      \pgfmathtruncatemacro{\ncol}{min(16,63-16*\br)}
+      \draw[thin] (0,{-\br*0.4}) grid[xstep=0.5cm, ystep=0.4cm]
+        ({0.5*\ncol},{-\br*0.4-0.4});
+      \node[anchor=east] at (-0.08,{-\br*0.4-0.2}) {$c_1{=}\br$};
+    }
+    \draw[very thick] (0,0) rectangle (8,-1.6);
+    \draw[thin, dashed, gray!70] (7.5,-1.2) rectangle (8,-1.6);
+    \node[anchor=south, font=\scriptsize\bfseries] at (4,0.36)
+      {下面板：offset 轴 $0$–$62$ 的命中分布（每格 $=$ 一个 offset）};
+    \node[anchor=west, align=left, text width=7.0cm] at (8.5,-0.8)
+      {灰格 $=$ 命中（$32$ 个偶数 offset，恰为 $\mathrm{size}$）；\\
+       斜线格 $=$ 孔洞（$31$ 个奇数 offset，任何坐标都读不到）；\\
+       最大 offset $62$ 加 $1$ 就是 $\mathrm{cosize}=63$，虚线格 $63$ 已越界。};
+  \end{scope}
+\end{tikzpicture}
+\caption{带孔洞布局的 size 与 cosize（例~3，$L=(8,4){:}(2,16)$）：
+上面板把 $64$ 个坐标的值列出来，行步长 $2$、列步长 $16$ 使值域只取偶数，
+同一行的 8 个值跨 $16$ 个 offset；下面板把 offset 轴 $0$–$62$ 铺开——
+$32$ 个灰格是命中（$=2c_0+16c_1$ 的全部取值）、$31$ 个斜线格是永远读不到
+的孔洞，虚线的第 $63$ 格已越界。$\mathrm{cosize}=1+\sum_i d_i(s_i-1)=63$
+即「最大偏移加一」，也就是这块 smem 实际要占的元素数。}
+\label{fig:20-hole-size-cosize}
+\end{figure}
 
 \subsection{五个运算，五类实际问题}
 
@@ -447,7 +519,94 @@ tile」的严格数学表达。测试做了三重核对（76 个断言）：(a) 
 $\mathrm{rank}=2$、$\mathrm{size}_0=16$、$\mathrm{size}_1=4$、
 $\mathrm{compatible}(T,\mathrm{layout}_0)$ 为真；(b) 坐标公式，64 组
 $(t,r)$ 全部满足式~\eqref{eq:20-zd-coord}；(c) \textbf{双射覆盖}，64 个输出
-恰好把 $[0,64)$ 各命中一次——这条最强：它同时排除了重叠与遗漏。
+恰好把 $[0,64)$ 各命中一次——这条最强：它同时排除了重叠与遗漏。两种
+tiler 下 tile 几何的正反例对照见图~\ref{fig:20-zd-tile-shape}。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\tiny]
+  \definecolor{zdA}{RGB}{209,226,243}
+  \definecolor{zdB}{RGB}{137,183,222}
+  \definecolor{zdC}{RGB}{254,232,200}
+  \definecolor{zdD}{RGB}{232,164,110}
+  \def\cwd{0.5}
+  \def\chh{0.5}
+  \foreach \fr in {0,...,7}{
+    \foreach \fc in {0,...,7}{
+      \pgfmathtruncatemacro{\voff}{\fr+8*\fc}
+      \pgfmathtruncatemacro{\ra}{\fr/4}
+      \pgfmathtruncatemacro{\rb}{\fc/4}
+      \ifnum\ra=0
+        \ifnum\rb=0 \def\cfill{zdA} \else \def\cfill{zdB} \fi
+      \else
+        \ifnum\rb=0 \def\cfill{zdC} \else \def\cfill{zdD} \fi
+      \fi
+      \node[fill=\cfill, minimum width=\cwd cm, minimum height=\chh cm, inner sep=0pt]
+        at ({(\fc+0.5)*\cwd},{-(\fr+0.5)*\chh}) {\voff};
+    }
+  }
+  \draw[thin] (0,0) grid[xstep=0.5cm, ystep=0.5cm] (4,-4);
+  \draw[very thick] (0,0) rectangle (4,-4);
+  \draw[thick] (2,0) -- (2,-4);
+  \draw[thick] (0,-2) -- (4,-2);
+  \foreach \fr in {0,...,7}{
+    \node[anchor=east] at (-0.07,{-\fr*0.5-0.25}) {\fr};
+  }
+  \foreach \fc in {0,...,7}{
+    \node[anchor=south] at ({\fc*0.5+0.25},0.07) {\fc};
+  }
+  \node[anchor=south] at (1,0.3) {$r_1{=}0$};
+  \node[anchor=south] at (3,0.3) {$r_1{=}1$};
+  \node[anchor=east] at (-0.55,-1) {$r_0{=}0$};
+  \node[anchor=east] at (-0.55,-3) {$r_0{=}1$};
+  \node[anchor=east, font=\tiny, rotate=90] at (-1.05,-2) {行 $i_0$（mode 0）};
+  \node[anchor=south, font=\scriptsize\bfseries] at (2,0.92)
+    {左：$T=(4,4){:}(1,8)$（与 $L$ 同 stride 族）};
+  \node[anchor=north, font=\tiny] at (2,-4.15)
+    {$\mathrm{zd}=\bigl((4,4),(2,2)\bigr){:}\bigl((1,8),(4,32)\bigr)$};
+  \node[anchor=north, font=\tiny, align=center] at (2,-4.6)
+    {tile $=$ $4\times4$ 方块 $\times\ 2\times2$ 个（色块 $=$ tile 身份 $(r_0,r_1)$）；\\
+     $r_0$ 步进 4 行、$r_1$ 步进 $4\times8{=}32$ offset};
+  \begin{scope}[shift={(5.9,0)}]
+    \foreach \fr in {0,...,7}{
+      \foreach \fc in {0,...,7}{
+        \pgfmathtruncatemacro{\voff}{\fr+8*\fc}
+        \pgfmathtruncatemacro{\fq}{\fc/2}
+        \pgfmathtruncatemacro{\gl}{8+14*\fq}
+        \node[fill=gray!\gl, minimum width=0.5cm, minimum height=0.5cm, inner sep=0pt]
+          at ({(\fc+0.5)*0.5},{-(\fr+0.5)*0.5}) {\voff};
+      }
+    }
+    \draw[thin] (0,0) grid[xstep=0.5cm, ystep=0.5cm] (4,-4);
+    \draw[very thick] (0,0) rectangle (4,-4);
+    \draw[thick] (1,0) -- (1,-4);
+    \draw[thick] (2,0) -- (2,-4);
+    \draw[thick] (3,0) -- (3,-4);
+    \foreach \fc in {0,...,7}{
+      \node[anchor=south] at ({\fc*0.5+0.25},0.07) {\fc};
+    }
+    \draw[very thick] (1,0) rectangle (2,-4);
+    \node[anchor=south, font=\scriptsize\bfseries] at (2,0.92)
+      {右：$T=(4,4){:}(1,4)$（compact，坑三反例）};
+    \node[anchor=north, font=\tiny] at (2,-4.15)
+      {$\mathrm{zd}=\bigl((4,4),(4)\bigr){:}\bigl((1,4),(16)\bigr)$};
+    \node[anchor=north, font=\tiny, align=center] at (2,-4.6)
+      {tile $=$ 16 个连续 offset $=$ 8 行 $\times$ 2 列条带\\（粗框 $=$ 条带 1：offset 16--31；灰度 $=$ 条带号）};
+    \node[anchor=north, font=\tiny, align=center] at (2,-5.5)
+      {（「方块」语义被静默换掉、不报错——常见坑三）};
+  \end{scope}
+  \draw[->, thick] (4.35,-2) -- (5.55,-2);
+  \node[font=\tiny, align=center] at (4.95,-1.55) {只改 tiler\\stride};
+\end{tikzpicture}
+\caption{zipped\_divide 的 8$\times$8 实测与坑三 compact-tiler 反例（测试
+case~F）：格内数字为 $L=(8,8){:}(1,8)$ 的线性 offset（$=i_0+8i_1$，64 格
+逐格满足式~\eqref{eq:20-zd-coord}）。左：tiler 与 $L$ 同 stride 族时，tile
+是 $2\times2$ 个 $4\times4$ 方块（色块 $=$ tile 身份）；右：compact tiler
+$(4,4){:}(1,4)$ 的「tile」退化为 16 个连续 offset 的「8 行 $\times$ 2 列」
+列条带——结果仍是合法 layout、双射覆盖不变，但「方块」语义被静默换掉、
+不报错（常见坑三）。}
+\label{fig:20-zd-tile-shape}
+\end{figure}
 
 \paragraph{实践须知}
 \begin{itemize}

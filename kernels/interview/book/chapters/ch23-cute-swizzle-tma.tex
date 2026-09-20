@@ -108,7 +108,92 @@ $B_K$ 都要重新推一遍补偿量。
 物理块取遍 $0..7$ 的 8 个不同值，8 根 $16$\,B 段各落一处 bank 组——冲突
 消失，容量零浪费。@reed《cute 之 Swizzle》正是从「逻辑矩阵位置与 bank 的
 对应关系」出发讲这件事的，并给出其硬件依据：\texttt{ldmatrix} 的地址通道
-与 TMA 都原生支持这种置换，因为它的代价只有一次 XOR。
+与 TMA 都原生支持这种置换，因为它的代价只有一次 XOR。成因与两种解法的
+三面板对照见图~\ref{fig:23-bank-conflict}。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\tiny]
+  \definecolor{bkred}{RGB}{192,45,45}
+  \begin{scope}
+    \foreach \fr in {0,...,7}{
+      \foreach \fc in {0,...,7}{
+        \pgfmathtruncatemacro{\gl}{8+9*\fc}
+        \node[fill=gray!\gl, minimum width=0.4cm, minimum height=0.4cm, inner sep=0pt]
+          at ({(\fc+0.5)*0.4},{-(\fr+0.5)*0.4}) {\fc};
+      }
+    }
+    \draw[thin] (0,0) grid[xstep=0.4cm, ystep=0.4cm] (3.2,-3.2);
+    \draw[very thick] (0,0) rectangle (3.2,-3.2);
+    \draw[bkred, very thick] (0,0) rectangle (0.4,-3.2);
+    \foreach \fr in {0,...,7}{
+      \node[anchor=east] at (-0.06,{-\fr*0.4-0.2}) {\fr};
+    }
+    \node[anchor=east, font=\tiny, rotate=90] at (-0.42,-1.6) {行 $r$};
+    \node[anchor=south, font=\tiny] at (1.6,0.32) {列块 $j$};
+    \node[anchor=south, font=\scriptsize\bfseries] at (1.6,0.62)
+      {(a) 无 swizzle（行步长 128\,B）};
+    \node[anchor=north, font=\tiny, align=center] at (1.6,-3.35)
+      {$\mathrm{bank}(r,j)=4j\bmod32$：行号被 $32r$ 项消掉，\\
+       同一列块 8 行同组（红框列：8 线程排队）$\to$ \textbf{8-way}};
+  \end{scope}
+  \begin{scope}[shift={(4.7,0)}]
+    \foreach \fr in {0,...,7}{
+      \foreach \fc in {0,...,7}{
+        \pgfmathtruncatemacro{\gb}{mod(\fr+\fc,8)}
+        \pgfmathtruncatemacro{\gl}{8+9*\gb}
+        \node[fill=gray!\gl, minimum width=0.4cm, minimum height=0.4cm, inner sep=0pt]
+          at ({(\fc+0.5)*0.4},{-(\fr+0.5)*0.4}) {\gb};
+      }
+      \node[pattern=north east lines, pattern color=gray!55,
+        minimum width=0.4cm, minimum height=0.4cm, inner sep=0pt]
+        at (3.4,{-(\fr+0.5)*0.4}) {};
+    }
+    \draw[thin] (0,0) grid[xstep=0.4cm, ystep=0.4cm] (3.2,-3.2);
+    \draw[thin] (3.2,0) grid[xstep=0.4cm, ystep=0.4cm] (3.6,-3.2);
+    \draw[very thick] (0,0) rectangle (3.6,-3.2);
+    \draw[thick] (3.2,0) -- (3.2,-3.2);
+    \node[anchor=south, font=\tiny] at (3.4,0.12) {pad};
+    \node[anchor=south, font=\scriptsize\bfseries] at (1.8,0.62)
+      {(b) padding（行步长 144\,B）};
+    \node[anchor=north, font=\tiny, align=center] at (1.8,-3.35)
+      {组号 $=(r{+}j)\bmod8$ 逐行错位：冲突消失；代价 $12.5\%$ 容量浪费，\\
+       行宽非 $2^{M+S}$ 标准形态——TMA 出局};
+  \end{scope}
+  \begin{scope}[shift={(9.7,0)}]
+    \foreach \fr in {0,...,7}{
+      \foreach \fc in {0,...,7}{
+        \pgfmathtruncatemacro{\gc}{mod(mod(\fc,2)+mod(\fr,2),2)
+          + 2*mod(int(\fc/2)+int(\fr/2),2)
+          + 4*mod(int(\fc/4)+int(\fr/4),2)}
+        \pgfmathtruncatemacro{\gl}{8+9*\gc}
+        \node[fill=gray!\gl, minimum width=0.4cm, minimum height=0.4cm, inner sep=0pt]
+          at ({(\fc+0.5)*0.4},{-(\fr+0.5)*0.4}) {\gc};
+      }
+    }
+    \draw[thin] (0,0) grid[xstep=0.4cm, ystep=0.4cm] (3.2,-3.2);
+    \draw[very thick] (0,0) rectangle (3.2,-3.2);
+    \node[anchor=south, font=\scriptsize\bfseries] at (1.6,0.62)
+      {(c) XOR swizzle（行步长 128\,B）};
+    \node[anchor=north, font=\tiny, align=center] at (1.6,-3.35)
+      {物理块 $j\to j\oplus r$ 对角散布：同列 8 格 8 组；\\
+       容量零浪费，代价仅 1 条 \texttt{LOP3}（式~\eqref{eq:23-chunk} 的前身）};
+  \end{scope}
+  \node[anchor=north, font=\tiny] at (6.5,-4.5)
+    {格内数字 $=$ bank 组号、灰度按组号渐变（0 浅 $\to$ 7 深）；每格 $=$ 一个
+     16\,B chunk $=$ 4 个 bank；三面板共用行轴 $r$（8 行）};
+\end{tikzpicture}
+\caption{bank conflict 成因与两种解法（式~\eqref{eq:23-bank}）：8 行
+$\times$ 8 chunk 的 fp16 smem tile，每格为一个 16\,B chunk（占 4 个
+bank），格内数字为 bank 组号、灰度按组号渐变。(a) 无 swizzle：
+$\mathrm{bank}(r,j)=4j\bmod32$——行号被 $32r$ 项消掉，同一列块 8 行同组
+（红框列 8 线程串行化）$\to$ 8-way conflict；(b) padding：行宽 144\,B 使
+$r$ 重新参与取模（组号 $=(r+j)\bmod8$ 逐行错位，冲突消失），代价是
+$12.5\%$ 容量浪费且行宽非 $2^{M+S}$ 标准形态——TMA 直接出局；(c) XOR
+swizzle：物理块 $j\to j\oplus r$ 对角散布，同列 8 格 8 组，容量零浪费、
+代价仅 1 条 \texttt{LOP3}。}
+\label{fig:23-bank-conflict}
+\end{figure}
 
 剩下的问题是把这个技巧写成可复用、可组合的类型——这是
 \texttt{Swizzle\allowbreak{}<B,\allowbreak{}M,\allowbreak{}S>} 的职责，也是 3.2--3.6 节的主题。
@@ -292,7 +377,93 @@ bit$[7,10)$ 而非字节偏移的 bit$[7,10)$，仅当行号满足
 $r\bmod 16\in\{0,2,4,6\}$（与列无关，恰为 $1/4$ 的行——两种口径取到的
 XOR 位段在这些行上恰好一致）时两者巧合相等——$1024/4096$ 正是这个规则的
 命中率（数值模拟 64 行 $\times$ 64 列逐点核对）。补上 recast、按正确字节口径
-求值，平铺布局同样 $4096$ 点全中。
+求值，平铺布局同样 $4096$ 点全中。基址对齐为什么是硬约束见
+图~\ref{fig:23-phase-align}。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\tiny]
+  \definecolor{phaseRed}{RGB}{192,45,45}
+  \definecolor{phaseGreen}{RGB}{39,120,62}
+  \definecolor{phaseBlue}{RGB}{150,185,220}
+  \definecolor{phaseSand}{RGB}{242,214,168}
+  \foreach \bk in {0,...,11}{
+    \ifnum\bk<4 \def\bfill{gray!15} \fi
+    \ifnum\bk>3 \ifnum\bk<7 \def\bfill{phaseBlue} \fi \fi
+    \ifnum\bk>6 \ifnum\bk<10 \def\bfill{phaseSand} \fi \fi
+    \ifnum\bk>9 \def\bfill{gray!15} \fi
+    \node[fill=\bfill, minimum width=0.42cm, minimum height=0.42cm, inner sep=0pt]
+      at ({\bk*0.42+0.21},-0.21) {\bk};
+  }
+  \draw[thin] (0,0) grid[xstep=0.42cm, ystep=0.42cm] (5.04,-0.42);
+  \draw[very thick] (0,0) rectangle (5.04,-0.42);
+  \foreach \flda/\fldb/\fname in {0/4/块内偏移,4/7/ZZZ,7/10/YYY $=r$,10/12/高位}{
+    \draw[thick] ({\flda*0.42},0.05) -- ({\flda*0.42},0.15)
+      -- ({\fldb*0.42},0.15) -- ({\fldb*0.42},0.05);
+    \node[anchor=south] at ({(\flda+\fldb)*0.21},0.18) {\fname};
+  }
+  \node[anchor=east] at (-0.1,-0.21) {字节地址};
+  \foreach \cc in {0,...,7}{
+    \pgfmathtruncatemacro{\swv}{1-mod(\cc,2)+2*(1-mod(int(\cc/2),2))+4*int(\cc/4)}
+    \pgfmathtruncatemacro{\hwv}{mod(\cc,2)+2*mod(int(\cc/2),2)+4*(1-int(\cc/4))}
+    \node[fill=gray!20, minimum width=0.42cm, minimum height=0.42cm, inner sep=0pt]
+      at ({\cc*0.42+0.21},-1.31) {\cc};
+    \node[fill=gray!20, minimum width=0.42cm, minimum height=0.42cm, inner sep=0pt]
+      at ({\cc*0.42+0.21},-1.91) {\swv};
+    \node[fill=gray!20, minimum width=0.42cm, minimum height=0.42cm, inner sep=0pt]
+      at ({\cc*0.42+0.21},-2.51) {\swv};
+    \node[fill=gray!20, minimum width=0.42cm, minimum height=0.42cm, inner sep=0pt]
+      at ({\cc*0.42+0.21},-3.51) {\cc};
+    \node[fill=gray!20, minimum width=0.42cm, minimum height=0.42cm, inner sep=0pt]
+      at ({\cc*0.42+0.21},-4.11) {\swv};
+    \node[fill=gray!20, minimum width=0.42cm, minimum height=0.42cm, inner sep=0pt]
+      at ({\cc*0.42+0.21},-4.71) {\hwv};
+  }
+  \foreach \ry in {-1.1,-1.7,-2.3,-3.3,-3.9,-4.5}{
+    \foreach \kx in {0,...,8}{
+      \draw[thin] ({\kx*0.42},\ry) -- ({\kx*0.42},{\ry-0.42});
+    }
+    \draw[thin] (0,\ry) -- (3.36,\ry);
+    \draw[thin] (0,{\ry-0.42}) -- (3.36,{\ry-0.42});
+  }
+  \draw[phaseGreen, very thick] (0,-2.3) rectangle (3.36,-2.72);
+  \draw[phaseRed, very thick] (0,-4.5) rectangle (3.36,-4.92);
+  \node[anchor=east] at (-0.06,-1.31) {逻辑块号 $j$};
+  \node[anchor=east] at (-0.06,-1.91) {位置无关：布局求值};
+  \node[anchor=east] at (-0.06,-2.51) {位置相关：硬件相位};
+  \node[anchor=east] at (-0.06,-3.51) {逻辑块号 $j$};
+  \node[anchor=east] at (-0.06,-4.11) {位置无关：布局求值};
+  \node[anchor=east] at (-0.06,-4.71) {位置相关：硬件相位};
+  \node[anchor=west, phaseGreen] at (3.5,-2.51) {两视角同址};
+  \node[anchor=west, phaseRed] at (3.5,-4.71) {两视角错位};
+  \node[font=\scriptsize\bfseries] at (-2.3,-1.91) {(a)};
+  \node[font=\scriptsize\bfseries] at (-2.3,-4.11) {(b)};
+  \node[anchor=north west, align=left, text width=8.4cm] at (5.9,-1.15)
+    {(a) 基址低 $10$ 位为零：绝对地址与 offset 的 bit$[4,7)$、bit$[7,10)$
+     完全一致，硬件按 YYY 取到的行号就是布局里的 $r=3$，XOR 值同为
+     $3$——两条路径落到同一 chunk。本章测试 case~E 的 $4096$ 点逐点相等
+     就是这个前提。};
+  \node[anchor=north west, align=left, text width=8.4cm] at (5.9,-3.35)
+    {(b) 基址的 bit$7$ 非零：硬件在绝对地址上取行号，$r$ 被整体抬 $1$
+     （模 $8$），XOR 值从 $3$ 变成 $4$——同一列 $8$ 个 chunk 全部错位，
+     写进去和读出来不是同一批地址。};
+  \node[anchor=north west, align=left, text width=15.5cm] at (0,-5.5)
+    {结论：\texttt{Swizzle} 在 CuTe 里既能当\emph{位置无关}的布局
+     （只作用在 offset 上）用，也会被硬件当\emph{位置相关}的置换
+     （作用在绝对地址上）用。两条路径要一致，基址的低 $10$ 位就必须为零
+     ——这就是 hgemm.cuh L1899--1917 把「TMA 路径 smem 基址 $1024$\,B
+     对齐」写成硬约定的原因。WGMMA 一侧还有 descriptor 的
+     \texttt{base\_offset}（bit$[49,52)$）可以事后补偿相位，
+     \texttt{ldmatrix} 的地址通道没有这个补偿位。};
+\end{tikzpicture}
+\caption{位置无关与位置相关：为什么 TMA 路径要求 smem 基址 $1024$\,B
+对齐（3.5 节）。上方把字节地址的位段摆开：bit$[4,7)$ 的 ZZZ 是 XOR
+目标（$16$\,B 块号），bit$[7,10)$ 的 YYY 是源（行号 $r$）。(a) 基址低
+$10$ 位为零时，绝对地址与 offset 的这两个字段一致，布局求值与硬件相位给
+出同一个物理 chunk；(b) 基址一旦带 bit$7$，硬件看到的行号整体抬 $1$，
+XOR 值随之改变，写/读两条路径错位。}
+\label{fig:23-phase-align}
+\end{figure}
 
 \subsection{tile\_to\_shape：从原子到多级 smem 布局}
 
@@ -354,7 +525,8 @@ $256\times32\times2=16384$ 个 half。这两个别名随后被
         减半）。注释宣称的「8 行 $\times$ 128\,B、覆盖 32 bank」描述的是
         \texttt{Swizzle\allowbreak{}<3,\allowbreak{}3,\allowbreak{}3>} 配 $B_K=64$ 的形态。\textbf{该差异不影响
         正确性}——读写两侧用的是同一个布局别名，只是 bank 收益比注释口径
-        小一半；本章测试 case F 逐点验证了这个退化形态。
+        小一半；本章测试 case F 逐点验证了这个退化形态
+        （图~\ref{fig:23-sw-degenerate}）。
   \item \textbf{换行宽时的参数映射，看 common.cuh 的镜像实现。}
         common.cuh 的 \texttt{Swizzle\allowbreak{}BMS\allowbreak{}<B,\allowbreak{}M,\allowbreak{}S>} 是 \texttt{cute::\allowbreak{}Swizzle}
         位公式的镜像，其 \texttt{kColStride} 映射给出工程速查口径：列步长
@@ -365,6 +537,75 @@ $256\times32\times2=16384$ 个 half。这两个别名随后被
         改，$B$ 与 $M$ 要一起改}——这就是 3.3 节实践须知「参数与单位绑定」
         的落地形态。
 \end{itemize}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\tiny]
+  \begin{scope}
+    \foreach \rr in {0,...,7}{
+      \foreach \cc in {0,...,3}{
+        \pgfmathtruncatemacro{\xr}{int(\rr/2)}
+        \pgfmathtruncatemacro{\xa}{mod(mod(\cc,2)+mod(\xr,2),2)}
+        \pgfmathtruncatemacro{\xb}{mod(int(\cc/2)+int(\xr/2),2)}
+        \pgfmathtruncatemacro{\phys}{\xa+2*\xb}
+        \pgfmathtruncatemacro{\gl}{15+20*\xr}
+        \node[fill=gray!\gl, minimum width=0.62cm, minimum height=0.46cm, inner sep=0pt]
+          at ({\cc*0.62+0.31},{-\rr*0.46-0.23}) {\phys};
+      }
+      \node[anchor=east] at (-0.06,{-\rr*0.46-0.23}) {\rr};
+    }
+    \draw[thin] (0,0) grid[xstep=0.62cm, ystep=0.46cm] (2.48,-3.68);
+    \draw[very thick] (0,0) rectangle (2.48,-3.68);
+    \foreach \pp in {0,...,3}{
+      \pgfmathsetmacro{\ytop}{-0.92*\pp}
+      \pgfmathsetmacro{\ybot}{-0.92*\pp-0.92}
+      \draw[thick] (-0.3,\ytop) -- (-0.46,\ytop) -- (-0.46,\ybot) -- (-0.3,\ybot);
+      \node[anchor=east] at (-0.52,{\ytop-0.46}) {$\oplus\,8{\cdot}\pp$};
+    }
+    \node[anchor=south] at (1.24,0.1) {chunk $j{=}0..3$（$16$\,B 块号）};
+    \node[anchor=south] at (-0.15,0.1) {$r$};
+    \node[anchor=north] at (1.24,-3.76)
+      {本章的 $8\times32$ 原子：$8$ 行 $\times$ $4$ 个 chunk，行宽 $64$\,B};
+    \node[anchor=north west, align=left, text width=6.1cm] at (3.2,0.2)
+      {格内 $=$ 物理 chunk 号 $j\oplus(r\gg1)$：同一列的相邻两行落到同一图样
+       （\textbf{2 行一循环}）。XOR 值只有四种——元素口径
+       $\{0,8,16,24\}$，chunk 口径 $\{0,1,2,3\}$（左侧括号）。};
+  \end{scope}
+  \begin{scope}[shift={(10.1,0)}]
+    \foreach \rr in {0,...,7}{
+      \foreach \cc in {0,...,7}{
+        \pgfmathtruncatemacro{\ya}{mod(mod(\cc,2)+mod(\rr,2),2)}
+        \pgfmathtruncatemacro{\yb}{mod(int(\cc/2)+int(\rr/2),2)}
+        \pgfmathtruncatemacro{\yc}{mod(int(\cc/4)+int(\rr/4),2)}
+        \pgfmathtruncatemacro{\phys}{\ya+2*\yb+4*\yc}
+        \pgfmathtruncatemacro{\gl}{8+9*\phys}
+        \node[fill=gray!\gl, minimum width=0.28cm, minimum height=0.28cm, inner sep=0pt]
+          at ({\cc*0.28+0.14},{-\rr*0.28-0.14}) {\phys};
+      }
+    }
+    \draw[thin] (0,0) grid[xstep=0.28cm, ystep=0.28cm] (2.24,-2.24);
+    \draw[very thick] (0,0) rectangle (2.24,-2.24);
+    \node[anchor=south, font=\scriptsize\bfseries] at (1.12,0.28)
+      {理想 SW128（$B_K{=}64$）};
+    \node[anchor=north, align=center, text width=3.6cm] at (1.12,-2.38)
+      {$j\oplus r$ 逐行不同：8 行一循环、8 种图样。};
+  \end{scope}
+  \node[anchor=north west, align=left, text width=15.5cm] at (0,-4.5)
+    {位公式的来源：把 $x=32r+c$（元素偏移，$c\in[0,32)$）代入
+     \texttt{Swizzle<3,3,3>}——源字段取 bit$[6,9)$，而 $32r$ 只贡献到 bit$5$
+     起，\textbf{行号的最低位落在源字段之外}，真正参与 XOR 的只有 $r$ 的高
+     两位，于是 \texttt{chunk}$'\gets$\texttt{chunk}$\oplus(r\gg1)$。正确性
+     不受影响（读写两侧用的是同一个布局别名），只是 bank 收益比注释宣称的
+     口径小一半（本章测试 case~F 逐点核对）。};
+\end{tikzpicture}
+\caption{hgemm 的 $8\times32$ 原子退化 swizzle（4.1 节实践须知，测试
+case~F）：$B_K=32$、行宽 $64$\,B 时把一个 $8\times32$ 的逻辑 tile 交给
+\texttt{Swizzle<3,3,3>}，行号最低位落在源字段 bit$[6,9)$ 之外，XOR 只用到
+$r$ 的高两位——物理 chunk 号退化为 $j\oplus(r\gg1)$，XOR 值集合从理想
+SW128 的 $8$ 种降到 $4$ 种、周期从 $8$ 行缩到 $2$ 行（右：理想
+SW128 的 $8\times8$ chunk 表作对照）。}
+\label{fig:23-sw-degenerate}
+\end{figure}
 
 \subsection{为什么不能直接套 \texttt{GMMA::\allowbreak{}Layout\_\allowbreak{}K\_\allowbreak{}SW128\_\allowbreak{}Atom}}
 

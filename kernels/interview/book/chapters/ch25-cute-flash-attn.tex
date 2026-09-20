@@ -298,7 +298,78 @@ $\mathrm{ncol}=2\cdot \mathrm{MMA\_N}$。实测（$D{=}64$、$B_r{=}128$）：
 式~\eqref{eq:25-rowcol-num} 里 $r$ 的第二个 mode（$\mathrm{MMA\_M}$ 的 rest）
 在 lane 内的宽度是 $2\times2=4$：$\mathrm{lane}/4$ 决定行号
 （寄存器对给 $+8$ 行），$\mathrm{lane}\bmod4$ 决定行内 4 个列片段
-之一——两次蝶形恰好把 4 条 lane 的行片段合并。
+之一——两次蝶形恰好把 4 条 lane 的行片段合并。图~\ref{fig:25-rowcol-shfl}
+把这次重排的两层拆开摆平：4 个寄存器怎么分成「行身份」与「列片段」，
+以及两次 \texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor\_\allowbreak{}sync} 如何把 quad 的 4 个片段并成整行。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  cl/.style={font=\tiny, inner sep=0.3pt},
+  axl/.style={font=\scriptsize, inner sep=1pt},
+  nt/.style={font=\scriptsize, align=left, inner sep=1.5pt},
+]
+  % 左：quad 内 4 条 lane x 4 个寄存器（行 = lane，列 = c0..c3）
+  \foreach \laneIdx in {0,...,3} {
+    \foreach \slotIdx in {0,...,3} {
+      \pgfmathtruncatemacro{\grX}{\slotIdx<2 ? 20 : 52}
+      \fill[gray!\grX] (\slotIdx*0.9,-\laneIdx*0.62)
+        rectangle (\slotIdx*0.9+0.89,-\laneIdx*0.62-0.61);
+      \ifnum\slotIdx<2
+        \node[cl] at (\slotIdx*0.9+0.445,-\laneIdx*0.62-0.305) {$r$};
+      \else
+        \node[cl] at (\slotIdx*0.9+0.445,-\laneIdx*0.62-0.305) {$r{+}8$};
+      \fi
+    }
+  }
+  \draw[thick] (0,0) rectangle (3.6,-2.48);
+  \foreach \slotIdx in {0,...,3} {
+    \node[axl,anchor=south] at (\slotIdx*0.9+0.445,0.06) {$c_{\slotIdx}$};
+  }
+  \foreach \laneIdx in {0,...,3} {
+    \node[axl,anchor=east] at (-0.08,-\laneIdx*0.62-0.305) {lane \laneIdx};
+  }
+  \node[axl,anchor=west] at (3.86,-0.305) {列片段 $n{=}0,1$};
+  \node[axl,anchor=west] at (3.86,-0.925) {列片段 $n{=}2,3$};
+  \node[axl,anchor=west] at (3.86,-1.545) {列片段 $n{=}4,5$};
+  \node[axl,anchor=west] at (3.86,-2.165) {列片段 $n{=}6,7$};
+  % 右：两次跨 lane 蝶形（步长 1、2）
+  \node[axl,anchor=south west] at (7.6,0.06) {跨 lane 蝶形（行与左图对齐）};
+  \foreach \laneIdx in {0,...,3} {
+    \draw[gray!55] (7.6,-\laneIdx*0.62-0.305) -- (10.6,-\laneIdx*0.62-0.305);
+    \node[axl,anchor=east] at (7.52,-\laneIdx*0.62-0.305) {\laneIdx};
+  }
+  \draw[thick] (7.9,-0.305) -- (8.5,-0.925);
+  \draw[thick] (7.9,-0.925) -- (8.5,-0.305);
+  \draw[thick] (7.9,-1.545) -- (8.5,-2.165);
+  \draw[thick] (7.9,-2.165) -- (8.5,-1.545);
+  \node[axl,fill=white,inner sep=1pt] at (8.2,-1.235) {(1) $\oplus\,1$};
+  \draw[thick] (9.1,-0.305) -- (9.7,-1.545);
+  \draw[thick] (9.1,-1.545) -- (9.7,-0.305);
+  \draw[thick] (9.1,-0.925) -- (9.7,-2.165);
+  \draw[thick] (9.1,-2.165) -- (9.7,-0.925);
+  \node[axl,fill=white,inner sep=1pt] at (9.4,-1.235) {(2) $\oplus\,2$};
+  \draw[-{Stealth},thick] (10.62,-1.235) -- (10.95,-1.235);
+  \node[draw,rounded corners,fill=gray!8,align=left,font=\scriptsize,
+    text width=4.3cm,inner sep=3pt,anchor=west] at (11.0,-1.235)
+    {两轮后 4 条 lane 都持有该行的完整片段（all-reduce）：行 max / 行 sum
+     可以直接开算};
+  % 底部注记
+  \node[nt,anchor=north west,text width=15.6cm] at (0,-2.86)
+    {bit0 $=$ 列（$d_0$，列 $+1$）、bit1 $=$ 行（$d_1$，行 $+8$）——\textbf{行身份只由值编号决定，与 lane 无关}；
+     $\mathrm{lane}\bmod4$ 决定的是列片段（每条 lane 2 列，4 条 lane 覆盖一个 $n8$ atom 的 8 列）。
+     rowcol 视图实测 $\mathrm{nrow}=2$、$\mathrm{ncol}=16$（$D{=}64$、$B_r{=}128$，式~\eqref{eq:25-rowcol-num}）：
+     寄存器内先做 16 列归约，再由此处两次蝶形补上跨 lane 的 4 个片段。};
+\end{tikzpicture}
+\caption{\texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}rowcol} 的两层拆解
+（式~\eqref{eq:25-rowcol}--\eqref{eq:25-rowcol-num}）。左：quad 内 4 条 lane 的 4 个寄存器
+$c_0..c_3$——两档灰度标出「行身份」：$c_0,c_1$ 属行 $r$、$c_2,c_3$ 属行 $r{+}8$；右侧标出该 lane
+覆盖的列片段（由 $\mathrm{lane}\bmod4$ 决定）。值编号的 bit0 是列偏移、bit1 是行 $+8$，所以
+同一行的 8 列散落在 quad 的 4 条 lane 上。右：两次 \texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor\_\allowbreak{}sync}
+的蝶形——第一轮并 $(0,1)$ 与 $(2,3)$（步长 1），第二轮并 $(0,2)$ 与 $(1,3)$（步长 2），
+两轮后每条 lane 都持有该行的完整片段，行 max / 行 sum 可以就地开算。}
+\label{fig:25-rowcol-shfl}
+\end{figure}
 
 \subsection{P 矩阵的布局变换：从 C-layout 到 A-layout}
 
@@ -314,7 +385,104 @@ A 的 K 向（$PV$ 的归约维）恰好是 C 的列向。也就是说：\textbf
 K 向相邻 2 值」}——数据一个比特都不用改，缺的只是「换一套坐标读同一批
 寄存器」。直接拿 C 的 layout 去调 \texttt{gemm}，会被 CuTe 以「layout 不
 符合 A 的约定」拒绝；@竹熙佳处 的教程正是拿这个场景当 layout 变换的入门
-例子。
+例子。图~\ref{fig:25-c2aregs} 把这套「两套坐标」摆成并排网格：同一批格子、
+同一批 lane 归属，只有分组框与值编号变了。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  ttx/.style={font=\tiny, inner sep=0.5pt},
+  axl/.style={font=\scriptsize, inner sep=1pt},
+]
+  % 左网格：C 视图（QK 累加器，两个 n8 atom 拼成 16 列视图）
+  \begin{scope}[x=0.36cm,y=-0.36cm]
+    \foreach \rr in {0,...,15} {
+      \foreach \cc in {0,...,15} {
+        \pgfmathtruncatemacro{\gra}{10+8*mod(\rr,8)}
+        \pgfmathtruncatemacro{\lno}{4*mod(\rr,8)+mod(div(\cc,2),4)}
+        \fill[gray!\gra] (\cc,\rr) rectangle (\cc+1,\rr+1);
+        \ifnum\lno=6
+          \pgfmathtruncatemacro{\vno}{mod(\cc,2)+2*div(\rr,8)}
+          \draw[very thick] (\cc+0.05,\rr+0.05) rectangle (\cc+0.95,\rr+0.95);
+          \node[ttx,font=\tiny\bfseries] at (\cc+0.5,\rr+0.5) {\vno};
+        \else
+          \ifnum\gra>46
+            \node[ttx,white] at (\cc+0.5,\rr+0.5) {\lno};
+          \else
+            \node[ttx] at (\cc+0.5,\rr+0.5) {\lno};
+          \fi
+        \fi
+      }
+    }
+    \draw[thick] (0,0) rectangle (16,16);
+    \draw[very thick] (8,0) -- (8,16);
+  \end{scope}
+  % 右网格：A 视图（m16k16 atom，16 列整体），格子 lane 归属与左图恒等
+  \begin{scope}[shift={(7.3,0)},x=0.36cm,y=-0.36cm]
+    \foreach \rr in {0,...,15} {
+      \foreach \cc in {0,...,15} {
+        \pgfmathtruncatemacro{\gra}{10+8*mod(\rr,8)}
+        \pgfmathtruncatemacro{\lno}{4*mod(\rr,8)+mod(div(\cc,2),4)}
+        \fill[gray!\gra] (\cc,\rr) rectangle (\cc+1,\rr+1);
+        \ifnum\lno=6
+          \pgfmathtruncatemacro{\vno}{mod(\cc,2)+2*div(\rr,8)+4*div(\cc,8)}
+          \draw[very thick] (\cc+0.05,\rr+0.05) rectangle (\cc+0.95,\rr+0.95);
+          \node[ttx,font=\tiny\bfseries] at (\cc+0.5,\rr+0.5) {\vno};
+        \else
+          \ifnum\gra>46
+            \node[ttx,white] at (\cc+0.5,\rr+0.5) {\lno};
+          \else
+            \node[ttx] at (\cc+0.5,\rr+0.5) {\lno};
+          \fi
+        \fi
+      }
+    }
+    \draw[thick] (0,0) rectangle (16,16);
+    \draw[dashed,thick] (8,0) -- (8,16);
+  \end{scope}
+  % 标题与轴
+  \node[font=\scriptsize\bfseries] at (2.88,0.42)
+    {C 视图：QK 累加器（两个 $n8$ atom）};
+  \node[font=\scriptsize\bfseries] at (10.18,0.42)
+    {A 视图：PV 左操作数（一个 $k16$ atom）};
+  \foreach \mr/\my in {0/0, 4/-1.44, 8/-2.88, 12/-4.32, 15/-5.4} {
+    \node[axl,anchor=east] at (-0.12,\my+0.18) {\mr};
+  }
+  \node[axl,anchor=south,rotate=90] at (-0.62,-2.7) {行 $m$};
+  \foreach \nx in {0,8,15} {
+    \node[axl,anchor=north] at (\nx*0.36,-5.82) {\nx};
+    \node[axl,anchor=north] at (7.3+\nx*0.36,-5.82) {\nx};
+  }
+  \node[axl,anchor=north] at (2.88,-6.2) {列 $n$（$B_c$ 向）};
+  \node[axl,anchor=north] at (10.18,-6.2) {K 向（$PV$ 归约维）};
+  % 中间箭头
+  \draw[-{Stealth},thick] (6.05,-2.52) -- (7.05,-2.52);
+  \node[font=\scriptsize,align=center,anchor=south] at (6.55,-2.42)
+    {\texttt{Aregs} 重解释\\{\footnotesize 换坐标、不搬数据}};
+  % 灰度图例（lane/4 分 8 组，每组 4 个 lane）
+  \node[axl,anchor=east] at (-0.12,0.95) {灰度};
+  \foreach \gk in {0,...,7} {
+    \pgfmathtruncatemacro{\ggra}{10+8*\gk}
+    \fill[gray!\ggra] (\gk*0.34+0.0,0.78) rectangle (\gk*0.34+0.3,1.08);
+  }
+  \node[axl,anchor=west] at (2.85,0.93) {$=$ $\mathrm{lane}/4$：4 个 lane 一组、共 8 档（同一行）};
+  \draw[very thick] (8.0,0.78) rectangle (8.3,1.08);
+  \node[axl,anchor=west] at (8.45,0.93) {加框格：lane 6 的 8 个寄存器（格内为值编号 $v$）};
+\end{tikzpicture}
+\caption{C fragment $\to$ A fragment 的零拷贝重解释
+（\texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}Aregs}，L2341--2372）。
+左右两图是\textbf{同一批寄存器}的两套坐标读法：每格标注持有它的 lane，灰度按
+$\mathrm{lane}/4$ 分 8 档（4 个 lane 一组，与第~\ref{ch:16}~章 fragment 图的分组语义
+一致），两图的格子位置与 lane 归属\textbf{逐格恒等}——这正是「数据一个比特都不用
+改」的几何形态。差别只在分组与编号：左图按 $n8$ 累加器约定，值编号
+$v=d_0+2d_1$ 在每个 atom 内各自循环 $0..3$（$(c_0,c_1)$ 同行相邻两列、
+$(c_2,c_3)$ 行偏移 $+8$，即 bit0$=$列、bit1$=$行）；右图按 $k16$ A 操作数约定读
+同一批格子，值编号变 $v=d_0+2d_1+4d_2$ 连续 $0..7$——第二个 $n8$ atom 的列对
+成为 K 向的 $k\in[8,16)$（虚线半块，$d_2{=}1$）。加框示例 lane 6 的 8 格在两图
+位置完全相同、编号从「两轮 $0..3$」变「一轮 $0..7$」，即式~\eqref{eq:25-aregs}
+的「列拆半 + 重新配对」。}
+\label{fig:25-c2aregs}
+\end{figure}
 
 \textbf{两条讲法}。对「同一批数据、换一套坐标」，中文社区有两位作者把各自
 的写法写透了，恰好构成一组对照：
@@ -423,6 +591,83 @@ CuTe 的 \texttt{arrive\_\allowbreak{}and\_\allowbreak{}expect\_\allowbreak{}tx}
 不 arrive；手写版的 257 则是把 producer 的 arrive\_tx 与 256 个 consumer
 的 arrive 合并计数。两种写法等价，但计数的\textbf{含义}不同：改 init
 值之前，先回到「谁 arrive、谁 wait」的角色表。
+
+图~\ref{fig:25-wait-semantics} 把这两套等待语义并排摆成两条独立的时间线：
+组栈数的是「还差几组没完成」，事务屏障数的是「字节是否到齐、phase 是否翻转」。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  stk/.style={draw,thick,font=\scriptsize,minimum width=1.7cm,
+    minimum height=0.5cm,inner sep=2pt},
+  prt/.style={draw,thick,font=\scriptsize,align=center,text width=3.5cm,
+    inner sep=2.5pt},
+  axl/.style={font=\scriptsize,inner sep=1pt},
+  nt/.style={font=\scriptsize,align=left,inner sep=1.5pt},
+]
+  % 上：cp.async 组栈
+  \node[axl,anchor=west] at (0,0.55) {\textbf{cp.async 组栈：数「未完成组数」}};
+  \node[stk] at (0.85,-0.35) {$K[t{+}k{-}1]$};
+  \node[stk] at (0.85,-0.95) {$\vdots$};
+  \node[stk] at (0.85,-1.55) {$V[t]$};
+  \node[axl,anchor=east] at (-0.05,-0.35) {栈顶};
+  \node[axl,anchor=east] at (-0.05,-1.55) {栈底};
+  \draw[dashed,thick] (-0.05,-0.7) rectangle (1.75,-1.8);
+  \node[axl,anchor=west] at (1.87,-1.25) {\texttt{wait}$<1>$ 的完成区：栈顶之外全部};
+  \node[nt,anchor=north west,text width=10.9cm] at (4.9,0.3)
+    {\texttt{wait\_group N} 等「已完成组数 $\ge$ 总组数 $-N$」，故
+     \texttt{wait}$<1>$ 等价于「$V[t]$ 就绪、$K$ 仍在途」——实现 1 靠这条栈语义把
+     V 与 K 的等待分开（L2743--2754）。\\[2pt]
+     \textbf{坑五（尾部退化）}：$kStagesK{-}1$ 个尾部 tile 不预取 K，栈里只剩 V 组，
+     PV 前必须退回 \texttt{wait}$<0>$——否则等的是不存在的组，
+     行为是「等很久后照样算完」，流水被拖成同步。\\[2pt]
+     \textbf{坑二（per-thread 记账）}：组编号按线程私有（PTX ISA
+     §9.7.9.25.3.3），所以每处 \texttt{wait} 后都跟一次
+     \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads()}，跨线程可见性靠它兜底，不是冗余。};
+  % 中：TMA 事务屏障
+  \node[axl,anchor=west] at (0,-2.55) {\textbf{TMA 事务屏障：数「字节到齐 $+$ phase 翻转」}};
+  \node[stk,minimum width=2.6cm] at (1.3,-3.1) {$k\_full[s]$：事务屏障};
+  \node[stk,minimum width=2.6cm] at (1.3,-3.7) {$k\_empty[s]$：普通屏障};
+  \draw[thick] (-0.05,-2.82) rectangle (2.65,-3.98);
+  \node[axl,anchor=north] at (1.3,-4.05) {每个 stage 一对（$s$ 环状复用）};
+  \node[nt,anchor=north west,text width=11.7cm] at (3.3,-2.62)
+    {\textbf{producer} 对 $k\_full[s]$：单线程 \texttt{arrive\_and\_expect\_tx(bytes)}
+     ——一次 arrive 加上「这批搬运将带来 bytes 字节」的声明；字节落盘后计数归零、phase 翻转，
+     consumer 只 wait 不 arrive。\\[2pt]
+     \textbf{consumer} 对 $k\_empty[s]$：普通屏障，init 计数 $=$ \texttt{kConsumerThreads}，
+     每个消费者线程读完该 stage 各 arrive 一次（「我已读完」）。\\[2pt]
+     phase 每绕一圈翻转：$\mathrm{phase}=\bigl(\lfloor t/S\rfloor\bigr)\bmod 2$
+     （式~\eqref{eq:25-proto3}）。init$=1$ 与第~\ref{ch:17}~章手写版 257 的差别不在数字，
+     在「谁 arrive」——两者等价，改 init 前先看角色表。};
+  % 下：协议链
+  \node[axl,anchor=west] at (0,-5.4) {\textbf{producer}};
+  \node[prt] at (3.8,-5.4) {\texttt{wait}$(k\_empty[s],\,phase)$};
+  \node[prt] at (8.0,-5.4) {\texttt{arrive\_expect\_tx}\\$(k\_full[s])$（声明 bytes）};
+  \node[prt] at (12.2,-5.4) {\texttt{copy(TMA, ...)}};
+  \draw[-{Stealth},thick] (5.75,-5.4) -- (6.15,-5.4);
+  \draw[-{Stealth},thick] (9.95,-5.4) -- (10.35,-5.4);
+  \node[axl,anchor=west] at (0,-6.2) {\textbf{consumer}};
+  \node[prt] at (3.8,-6.2) {\texttt{wait}$(k\_full[s],\,phase)$};
+  \node[prt] at (8.0,-6.2) {\texttt{ldmatrix} $+$ \texttt{mma}};
+  \node[prt] at (12.2,-6.2) {\texttt{arrive}$(k\_empty[s])$};
+  \draw[-{Stealth},thick] (5.75,-6.2) -- (6.15,-6.2);
+  \draw[-{Stealth},thick] (9.95,-6.2) -- (10.35,-6.2);
+  \node[nt,anchor=north west,text width=15.6cm] at (0,-6.7)
+    {两组语义的对照：组栈是\emph{单调递增}的组号（per-thread），屏障是\emph{环状复用}的 stage
+     （字节计数 $+$ phase）。式~\eqref{eq:25-proto1}--\eqref{eq:25-proto3} 的三条不变量正是
+     下图两条链的时序约束：生产者不覆盖未读完的 stage，消费者不读未落盘的 stage。};
+\end{tikzpicture}
+\caption{两种异步等待语义的时间线对照（\texttt{flash\_attn.cuh} L2743--2754 与
+\texttt{ffpa\_attn.cuh} 的 TMA 版）。上：cp.async 组栈——提交顺序
+$V[t]$（栈底）$\to K[t{+}k{-}1]$（栈顶），\texttt{wait}$<1>$ 停在「除栈顶 K 之外全部完成」，
+尾部 $kStagesK{-}1$ 个 tile 必须退回 \texttt{wait}$<0>$（坑五）；每处 \texttt{wait} 后跟一次
+\texttt{\_\allowbreak{}\_\allowbreak{}syncthreads()}（坑二：组计数按线程私有）。中下：TMA 的
+事务计数——每个 stage 一对 $k\_full[s]$（事务屏障，producer 单线程
+\texttt{arrive\_and\_expect\_tx}）与 $k\_empty[s]$（普通屏障，init
+$=$ \texttt{kConsumerThreads}），phase 由 $\lfloor t/S\rfloor \bmod 2$ 现算；
+最下一行是两条流水链的时序。}
+\label{fig:25-wait-semantics}
+\end{figure}
 
 \section{设计与实现}
 

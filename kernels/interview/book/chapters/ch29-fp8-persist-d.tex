@@ -162,6 +162,76 @@ $kBc=128$ 时 448 装不下，kernel 侧的编译期自动收窄
 （$128\times224\times2.25=64512$$\checkmark$）；f32 acc 时无 f16 溢出界，V 侧取满
 448、P 侧恒 448 无约束。
 
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize]
+  \definecolor{budgetok}{RGB}{40,110,60}
+  \definecolor{budgetbad}{RGB}{170,35,35}
+  \def\yup{2.62}
+  \draw[->] (0,0) -- (4.62,0);
+  \draw[->] (0,0) -- (0,6.68);
+  \foreach \yv/\yl in {0/0,1.6/40,3.2/80,4.8/120,6.4/160}{
+    \draw (-0.07,\yv) -- (0.07,\yv);
+    \node[left, font=\tiny, inner sep=1pt] at (-0.10,\yv) {\yl};
+  }
+  \node[anchor=south west, font=\tiny] at (0.03,6.44) {$\times10^3$};
+  \foreach \xl/\xr in {0.12/0.50,1.45/1.75,2.50/3.00,3.75/4.34}{
+    \draw[budgetbad, thick, densely dashed] (\xl,\yup) -- (\xr,\yup);
+  }
+  \node[budgetbad, anchor=west, font=\tiny, align=left] at (4.68,2.62)
+    {f16 溢出上限\\65504};
+  \fill[gray!30] (0.50,0) rectangle (1.45,2.58);
+  \draw[thick] (0.50,0) rectangle (1.45,2.58);
+  \fill[budgetbad!16] (1.75,0) rectangle (2.70,5.16);
+  \draw[budgetbad, thick] (1.75,0) rectangle (2.70,5.16);
+  \fill[gray!30] (3.00,0) rectangle (3.95,2.58);
+  \draw[thick] (3.00,0) rectangle (3.95,2.58);
+  \node[font=\tiny] at (0.975,2.08) {64512};
+  \node[font=\tiny] at (2.225,4.62) {129024};
+  \node[font=\tiny] at (3.475,2.08) {64512};
+  \node[budgetok, font=\scriptsize] at (0.975,3.02) {$\checkmark$};
+  \node[budgetbad, font=\scriptsize] at (2.225,5.62) {$\times$};
+  \node[budgetok, font=\scriptsize] at (3.475,3.02) {$\checkmark$};
+  \node[below, font=\tiny, align=center, inner sep=1pt] at (0.975,-0.10)
+    {$k_{Bc}{=}64$\\P 域 448};
+  \node[below, font=\tiny, align=center, inner sep=1pt] at (2.225,-0.10)
+    {$k_{Bc}{=}128$\\P 域 448};
+  \node[below, font=\tiny, align=center, inner sep=1pt] at (3.475,-0.10)
+    {$k_{Bc}{=}128$\\P 域 224};
+  \begin{scope}[xshift=7.30cm]
+    \draw[->] (0,0) -- (2.85,0);
+    \draw[->] (0,0) -- (0,3.42);
+    \foreach \yv/\yl in {0/0,0.68/500,1.37/1000,2.05/1500,2.73/2000}{
+      \draw (-0.07,\yv) -- (0.07,\yv);
+      \node[left, font=\tiny, inner sep=1pt] at (-0.10,\yv) {\yl};
+    }
+    \fill[gray!30] (0.45,0) rectangle (1.25,1.37);
+    \draw[thick] (0.45,0) rectangle (1.25,1.37);
+    \node[font=\tiny] at (0.85,0.56) {1008};
+    \node[budgetok, font=\scriptsize] at (0.85,1.62) {$\checkmark$};
+    \draw[budgetbad, thick, densely dashed] (0.08,2.79) -- (2.60,2.79);
+    \node[budgetbad, anchor=south west, font=\tiny] at (0.12,2.84) {2047};
+    \node[below, font=\tiny, align=center, inner sep=1pt] at (0.85,-0.10)
+      {$P_r{\times}V_r$\\$224{\times}4.5$};
+    \node[anchor=south, font=\tiny, align=center] at (1.45,3.50)
+      {SA2++ 单指令口径\\($K$ 深度 32)};
+  \end{scope}
+  \node[anchor=north west, align=left, text width=10.6cm, font=\tiny] at (-0.55,-1.30)
+    {ffpa 的界是\textbf{整 tile 累加}：PV 经 \texttt{gemm\_rs} 跨整个 $kBc$ 块累进同一组
+     f16 \texttt{inst\_buf}（之后才 FFMA 吸收进 f32 $o\_acc$），条件为
+     $kBc\cdot P_r\cdot V_r\le65504$——$kBc{=}64$ 等效 $P_r{\times}V_r\le1023$，
+     $448\times2.25=1008$ 恰好贴边；$kBc{=}128$ 装不下，编译期把 P 域收窄到 224
+     （\texttt{persist\_d.cuh} L723--732）。SA2++ 的单指令界（$65504/32=2047$，$K$ 深度更小）
+     更松。f32 acc 无 f16 溢出界：V 侧取满 448、P 侧恒 448。};
+\end{tikzpicture}
+\caption{f16 PV 累加器的整 tile 域预算（式~\ref{eq:29-f16tile}）。条形为
+$kBc\times P_r\times V_r$：$k_{Bc}{=}64$ 与「$k_{Bc}{=}128$ + P 域自动收窄到 224」
+都恰为 64512，贴住 65504 上限；$k_{Bc}{=}128$ 且 P 仍 448 则 129024 约 2 倍超限。
+右：SA2++ 按单条 MMA（$K{=}32$）核算的界 2047 更松（$P_r{=}224,V_r{=}4.5$ 双侧收窄）。
+f32 acc 路径无此约束。}
+\label{fig:29-f16-budget}
+\end{figure}
+
 \subsection{归约轴置换不变性与 reorg-free 打包}\label{sec:29-perm}
 
 softmax 产出的 $P$ fragment（QK MMA 的 C 布局）与 PV MMA 的 A 操作数布局
@@ -353,6 +423,114 @@ $+\mathrm{scale}\cdot q_s\cdot q_{km}$（28.4.2~节的点积在循环外预算�
 //        verify_layouts.py), hence the cross-lane ReorgC8bitToA8bit below.
 \end{lstlisting}
 
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\tiny]
+  \def\cwd{0.52}
+  \def\chd{0.38}
+  \def\cx{6.8}
+  \foreach \r in {0,...,15}{
+    \pgfmathtruncatemacro{\rg}{int(7+9*mod(\r,8))}
+    \foreach \c in {0,...,7}{
+      \pgfmathtruncatemacro{\lan}{4*mod(\r,8)+int(\c/2)}
+      \node[fill=gray!\rg, minimum width=\cwd cm, minimum height=\chd cm, inner sep=0pt]
+        at ({(\c+0.5)*\cwd},{-(\r+0.5)*\chd}) {T\lan};
+    }
+  }
+  \draw[thin] (0,0) grid[xstep=0.52cm, ystep=0.38cm] ({8*\cwd},{-16*\chd});
+  \draw[very thick] (0,0) rectangle ({8*\cwd},{-16*\chd});
+  \draw[thick, dashed] (0,{-8*\chd}) -- ({8*\cwd},{-8*\chd});
+  \foreach \c in {0,...,7}{
+    \node[anchor=south] at ({(\c+0.5)*\cwd},0.06) {\c};
+  }
+  \node[anchor=south, font=\scriptsize\bfseries] at ({4*\cwd},0.60) {QK C fragment（m16n8）};
+  \node[anchor=south] at ({4*\cwd},0.38) {kv 列（atom 内）};
+  \foreach \r in {0,...,15}{
+    \node[anchor=east] at (-0.06,{-\r*\chd-0.19}) {\r};
+  }
+  \node[anchor=east, rotate=90] at (-0.40,{-8*\chd}) {行 $m$};
+  \draw[very thick] (1.04,-0.76) rectangle (2.08,-0.38);
+  \draw[very thick] (1.04,-3.80) rectangle (2.08,-3.42);
+  \draw[thick, densely dashed] (2.08,-0.76) rectangle (4.16,-0.38);
+  \draw[thick, densely dashed] (2.08,-3.80) rectangle (4.16,-3.42);
+  \node[anchor=north, fill=white, inner sep=0.5pt] at (1.56,-0.80) {T5 的 $c_0,c_1$};
+  \node[anchor=north, fill=white, inner sep=0.5pt] at (3.12,-0.80) {T6/T7（T5 要的）};
+  \node[anchor=north, fill=white, inner sep=0.5pt] at (1.56,-3.84) {T5 的 $c_2,c_3$};
+  \node[anchor=north, fill=white, inner sep=0.5pt] at (3.12,-3.84) {T6/T7};
+  \node[anchor=north, align=center] at ({4*\cwd},{-16*\chd-0.10})
+    {一个 atom（$k_{Bc}{=}64$ 时 8 个并排）；\\$k{=}20..23$ 在 atom 2 的同款格};
+  \foreach \r in {0,...,15}{
+    \pgfmathtruncatemacro{\rg}{int(7+9*mod(\r,8))}
+    \foreach \s in {0,...,15}{
+      \pgfmathtruncatemacro{\ai}{2*int(\r/8)+4*int(\s/8)+int(mod(\s,2))}
+      \node[fill=gray!\rg, minimum width=\cwd cm, minimum height=\chd cm, inner sep=0pt]
+        at ({\cx+(\s+0.5)*\cwd},{-(\r+0.5)*\chd}) {a\ai};
+    }
+  }
+  \draw[thin] (\cx,0) grid[xstep=0.52cm, ystep=0.38cm] ({\cx+16*\cwd},{-16*\chd});
+  \draw[very thick] (\cx,0) rectangle ({\cx+16*\cwd},{-16*\chd});
+  \draw[thick, dashed] (\cx,{-8*\chd}) -- ({\cx+16*\cwd},{-8*\chd});
+  \draw[thick, dashed] ({\cx+8*\cwd},0) -- ({\cx+8*\cwd},{-16*\chd});
+  \foreach \sx/\kl in {0.5/0,4.5/8,8.5/16,12.5/24}{
+    \node[anchor=south] at ({\cx+\sx*\cwd},0.06) {$k{=}\kl$};
+  }
+  \node[anchor=south, font=\scriptsize\bfseries] at ({\cx+8*\cwd},0.60)
+    {PV A fragment（m16n8k32）：16$\times$16 半字视图};
+  \node[anchor=south] at ({\cx+8*\cwd},0.38) {槽 $s\leftrightarrow k\in\{2s,2s{+}1\}$};
+  \draw[very thick] (7.84,-0.76) rectangle (8.88,-0.38);
+  \draw[very thick] (7.84,-3.80) rectangle (8.88,-3.42);
+  \draw[very thick] (12.00,-0.76) rectangle (13.04,-0.38);
+  \draw[very thick] (12.00,-3.80) rectangle (13.04,-3.42);
+  \node[anchor=west] at (15.18,-0.57) {T5};
+  \node[anchor=north west] at (\cx,{-16*\chd-0.10})
+    {上行 = 行 $g$、下行 = 行 $g{+}8$；左半 $k\,0..15$（.b32 $a_0$ 区/$a_1$ 区）、右半 $k\,16..31$（$a_2$/$a_3$ 区）};
+  \draw[->, thick] (4.24,-0.57) -- (6.74,-0.57);
+  \node[anchor=south, fill=white, inner sep=0.5pt] at (5.5,-0.54) {T6/T7 $\to$ T5：$a_0/a_1$};
+  \draw[->, thick] (4.24,-3.61) -- (6.74,-3.61);
+  \node[anchor=south, fill=white, inner sep=0.5pt] at (5.5,-3.58) {T6/T7 $\to$ T5：$a_2/a_3$};
+  \draw[->, densely dashed] (4.24,-1.02) to[bend left=14] (6.74,-0.32);
+  \node[anchor=north, fill=white, inner sep=0.5pt, align=center] at (5.5,-1.12)
+    {T5 自己的字节\\也要寄给 T4};
+  \node[anchor=north, align=center] at (5.5,-4.75) {$k{=}20..23$（atom 2）\\同理 $\to a_4..a_7$};
+  \foreach \gl in {0,...,7}{
+    \pgfmathtruncatemacro{\gr}{int(7+9*\gl)}
+    \node[fill=gray!\gr, draw, thin, minimum width=0.30cm, minimum height=0.30cm, inner sep=0pt]
+      at ({0.15+0.36*\gl},-6.90) {};
+  }
+  \node[anchor=west] at (1.70,-6.90) {灰度 = lane 组 $g=$lane$\gg$2（T$4g$--T$4g{+}3$，8 档）};
+  \draw[thick] (6.80,-7.30) rectangle (7.75,-6.90);
+  \draw[thick] (7.75,-7.30) rectangle (8.70,-6.90);
+  \draw[thick] (8.70,-7.30) rectangle (9.65,-6.90);
+  \draw[thick] (9.65,-7.30) rectangle (10.60,-6.90);
+  \node at (7.275,-7.10) {0,1};
+  \node at (8.225,-7.10) {8,9};
+  \node at (9.175,-7.10) {2,3};
+  \node at (10.125,-7.10) {10,11};
+  \node[anchor=north] at (7.275,-7.34) {$s{=}0$};
+  \node[anchor=north] at (8.225,-7.34) {$s{=}1$};
+  \node[anchor=north] at (9.175,-7.34) {$s{=}2$};
+  \node[anchor=north] at (10.125,-7.34) {$s{=}3$};
+  \node[anchor=east] at (6.70,-7.10) {A 槽位 $s\to\pi(s)$：};
+  \node[anchor=west] at (10.75,-7.10) {……（每 32 列周期）};
+  \node[anchor=north west, align=left, text width=16.6cm] at (0,-7.80)
+    {kReorgFree（\texttt{PackC8bitToA8bitPermVT}）：A 槽位 $s$ 持真实列 $\pi(s)$
+     （$\pi=[0,1,8,9,2,3,10,11,\dots]$），$V^{\top}$ 由量化期按 $\pi^{-1}$ 预置换
+     （\texttt{VTPermInv32}）——槽位与真实列脱钩后无需跨 lane 借字节：4 条 lane 无关
+     \texttt{\_\_byte\_perm}（\texttt{0x5410}/\texttt{0x7632}/\texttt{0xDC98}/\texttt{0xFEBA}）、
+     零 SHFL；CONTRACT：绝不许对未置换的 $V^{\top}$ 运行（launcher 编译期强制配对）。};
+\end{tikzpicture}
+\caption{C$\to$A fragment 的 lane$\to$值映射（lst:29-reorg-bg 的网格化）。左：QK C
+fragment（m16n8），每 lane 4 值 $c_0$--$c_3$ 落在行 $g$/$g{+}8$ 的列对
+$\{2t,2t{+}1\}$；右：PV A fragment（m16n8k32）的 16$\times$16 半字视图，格值
+a0--a7 为 e4m3x2 半字寄存器，四象限对应源码 .b32 $a_0$--$a_3$；两面板灰度同语义
+（lane 组 $g=$lane$\gg$2，8 档）。中：$t{=}1$（T5）的自然 A 需要
+$k\in\{4..7\}\cup\{20..23\}$（行 $g$ 与 $g{+}8$），在 C 视图里属 T6/T7——纯 lane 内
+置换凑不齐，即 16 SHFL + 32 PRMT（\texttt{ReorgC8bitToA8bit}）的根源。下：kReorgFree
+的出路——槽位持 $\pi(s)$、$V^{\top}$ 预置换，4 条 lane 无关 \texttt{\_\_byte\_perm}、
+零 SHFL。}
+\label{fig:29-frag-map}
+\end{figure}
+
 C fragment 里 lane $t$ 持列对 $\{2t,2t{+}1\}$，A fragment 却要列
 $\{4t,\dots,4t{+}3\}$——后者横跨多个 lane 的字节。\texttt{ReorgC8bitToA8bit}
 用 16 SHFL + 32 PRMT 跨 lane 凑齐；而 \texttt{PackC8bitToA8bitPermVT}
@@ -471,6 +649,57 @@ allclose 失败（fp16/bf16 双双 $\times$），而 D=64/128 全绿。定位过
         （max=0.0001）$\Rightarrow$ 输入布局/TMA/寻址层无辜，责任圈定在
         fp8 专属代码。
 \end{enumerate}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize]
+  \definecolor{alertred}{RGB}{178,34,34}
+  \def\gw{0.86}
+  \def\gh{0.33}
+  \foreach \rb in {0,...,15}{
+    \foreach \c in {0,...,2}{
+      \ifnum\rb<8
+        \pgfmathtruncatemacro{\gr}{int(16+14*\c)}
+        \fill[gray!\gr] ({\c*\gw},{-(\rb+1)*\gh}) rectangle ({(\c+1)*\gw},{-\rb*\gh});
+      \else
+        \fill[alertred!45] ({\c*\gw},{-(\rb+1)*\gh}) rectangle ({(\c+1)*\gw},{-\rb*\gh});
+      \fi
+    }
+  }
+  \draw[thin] (0,0) grid[xstep=0.86cm, ystep=0.33cm] ({3*\gw},{-16*\gh});
+  \draw[very thick] (0,0) rectangle ({3*\gw},{-16*\gh});
+  \draw[alertred, very thick, dashed] (-0.10,{-8*\gh}) -- ({3*\gw+0.10},{-8*\gh});
+  \node[anchor=south] at ({0.5*\gw},0.06) {0--63};
+  \node[anchor=south] at ({1.5*\gw},0.06) {64--127};
+  \node[anchor=south] at ({2.5*\gw},0.06) {128--191};
+  \node[anchor=south, font=\scriptsize\bfseries] at ({1.5*\gw},0.60) {O 列（$D{=}192=3\times64$ 拼接视图）};
+  \node[anchor=south] at ({1.5*\gw},0.34) {persist-D，$k_{Bc}{=}64$ 变体};
+  \foreach \rb/\rl in {0/0,4/32,8/64,12/96,16/128}{
+    \node[anchor=east, font=\tiny] at (-0.08,{-\rb*\gh}) {\rl};
+  }
+  \node[anchor=east, font=\tiny, rotate=90] at (-0.52,{-8*\gh}) {row mod 128};
+  \node[alertred, font=\tiny, anchor=west] at ({3*\gw+0.16},{-8*\gh}) {64};
+  \node[anchor=west, align=left, text width=8.6cm] at ({3*\gw+0.85},-0.35)
+    {$\bullet$~\textbf{坏行区}：row mod 128 $\in[64,127]$——每个 128 行 Q tile
+     的后半（红色带，每带 = 8 行）；正常行灰度按 D chunk 区分。};
+  \node[anchor=west, align=left, text width=8.6cm] at ({3*\gw+0.85},-1.85)
+    {$\bullet$~\textbf{N 稀释}：N=512 几乎全错 $\to$ N=8192 仅 11\% 行错
+     ——错误随 N 稀释，说明是特定 (row, kv-tile) 组合而非系统性索引错位。};
+  \node[anchor=west, align=left, text width=8.6cm] at ({3*\gw+0.85},-3.35)
+    {$\bullet$~\textbf{max/mean 分裂}：max\_abs=2.66 vs mean\_abs=0.011
+     ——灾难级个别行 + 正常均值 $\Rightarrow$ 正确性 bug，非精度不足。};
+  \node[anchor=west, align=left, text width=8.6cm] at ({3*\gw+0.85},-4.85)
+    {$\bullet$~\textbf{嫌疑圈}（fp16 对照路径无辜）：$k_{Bc}{=}64$ 变体 /
+     SW64 swizzle / 量化侧 kBlockRows 一致性。};
+\end{tikzpicture}
+\caption{D=192 正确性 bug 的坏行定位（29.7.1~节五步法的可视化）：把 $O$ 视为
+3$\times$64 列拼接，坏行集中在 row mod 128 $\in[64,127]$（每个 128 行 Q tile 的
+后半）；N=512 几乎全错而 N=8192 仅 11\% 行错（N 稀释 $\Rightarrow$ 特定
+(row, kv-tile) 组合）；max\_abs=2.66 对 mean\_abs=0.011 的分裂是「个别行灾难」的
+强信号。}
+\label{fig:29-d192-rows}
+\end{figure}
+
 教训：\textbf{「速度好+均值好」不等于正确}——bench 的 allclose 是唯一
 硬门槛；误差的 max/mean 分裂是「个别行错」的强信号；行号模 tile 尺寸的
 直方图能直接把 bug 锚到 tile 结构的哪一半。

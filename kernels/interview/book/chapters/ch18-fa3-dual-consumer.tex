@@ -169,6 +169,67 @@ $S_v$ 个 V buffer 由 8 个 consumer warp 共用，屏障 \texttt{full\_K[s]} �
 $\mathrm{cid} = \mathrm{tile}\,\&\,1$ 投递数据，不存在「等另一个 WG 让出
 slot」的耦合。
 
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\tiny]
+  \def\blw{1.90}
+  \def\bh{0.42}
+  % 上：共享 Sk=2 —— 释放要等两个 WG 都 arrive，串行化
+  \node[anchor=west, font=\scriptsize\bfseries] at (-3.15,0.30)
+    {共享 $\mathrm{Sk}{=}2$（第~\ref{ch:17}~章形态）：一对 slot 与一对屏障（257）被两个 WG 共用};
+  \foreach \k [evaluate=\k as \cx using {0.95+2*\k},
+               evaluate=\k as \sl using {int(mod(\k,2))},
+               evaluate=\k as \gr using {int(28+28*\sl)}] in {0,...,4}{
+    \node[thin, draw, fill=gray!\gr, minimum width=\blw cm, minimum height=\bh cm, inner sep=0pt]
+      at ({\cx},-0.35) {$t_{\k}$};
+  }
+  \node[anchor=east, font=\scriptsize] at (-0.15,-0.35) {共享 slot 对};
+  \foreach \k [evaluate=\k as \cx using {0.95+4*\k}] in {0,1,2}{
+    \node[thin, draw, fill=gray!18, minimum width=\blw cm, minimum height=\bh cm, inner sep=0pt]
+      at ({\cx},-1.00) {算 $t_{2\k}$};
+  }
+  \foreach \k [evaluate=\k as \cx using {2.95+4*\k}] in {0,1}{
+    \node[dashed, thin, draw=vscAccent, fill=gray!8, minimum width=\blw cm, minimum height=\bh cm,
+          inner sep=0pt, text=vscAccent] at ({\cx},-1.00) {等另一 WG 让出};
+  }
+  \node[anchor=east, font=\scriptsize] at (-0.15,-1.00) {WG0（偶 tile）};
+  \foreach \k [evaluate=\k as \cx using {2.95+4*\k}] in {0,1}{
+    \node[thin, draw, fill=gray!18, minimum width=\blw cm, minimum height=\bh cm, inner sep=0pt]
+      at ({\cx},-1.65) {算 $t_{2\k+1}$};
+  }
+  \foreach \k [evaluate=\k as \cx using {0.95+4*\k}] in {0,1,2}{
+    \node[dashed, thin, draw=vscAccent, fill=gray!8, minimum width=\blw cm, minimum height=\bh cm,
+          inner sep=0pt, text=vscAccent] at ({\cx},-1.65) {等另一 WG 让出};
+  }
+  \node[anchor=east, font=\scriptsize] at (-0.15,-1.65) {WG1（奇 tile）};
+  \node[anchor=west, align=left, text width=12.9cm] at (-3.15,-2.25)
+    {每个 WG 的\textbf{有效深度 $\approx 1$}：屏障 257 要两个 WG 的 256 份 arrive 全到齐才翻转，谁也不能跑在前面（浅 $=$ slot 0，深 $=$ slot 1）};
+  % 下：每 WG 独立 bank —— 两个 WG 并行推进、互不相遇
+  \node[anchor=west, font=\scriptsize\bfseries] at (-3.15,-2.95)
+    {每 WG 独立 bank（本章）：\texttt{slot[cid][s]} 与 \texttt{full/empty\_K[cid][s]}，屏障各 $129$};
+  \foreach \k [evaluate=\k as \cx using {0.95+2*\k},
+               evaluate=\k as \sl using {int(mod(\k,2))},
+               evaluate=\k as \gr using {int(28+28*\sl)}] in {0,...,4}{
+    \node[thin, draw, fill=gray!\gr, minimum width=\blw cm, minimum height=\bh cm, inner sep=0pt]
+      at ({\cx},-3.60) {$t_{2\k}$};
+  }
+  \node[anchor=east, font=\scriptsize] at (-0.15,-3.60) {WG0 的 bank 0};
+  \foreach \k [evaluate=\k as \cx using {0.95+2*\k},
+               evaluate=\k as \sl using {int(mod(\k,2))},
+               evaluate=\k as \gr using {int(28+28*\sl)}] in {0,...,4}{
+    \node[thin, draw, fill=gray!\gr, minimum width=\blw cm, minimum height=\bh cm, inner sep=0pt]
+      at ({\cx},-4.25) {$t_{2\k+1}$};
+  }
+  \node[anchor=east, font=\scriptsize] at (-0.15,-4.25) {WG1 的 bank 1};
+  \node[anchor=west, align=left, text width=12.9cm] at (-3.15,-4.85)
+    {两 WG \textbf{绝不在同一个 slot 或同一张屏障上相遇}：各自 $129 = 128{+}1$ 的屏障独立翻转，\textbf{深度 2 名副其实}、行内无等待块};
+  \node[anchor=west, align=left, text width=12.9cm] at (-3.15,-5.45)
+    {$\mathrm{cid} = \mathrm{tile}\,\&\,1$ 一值三用：tile 路由（哪块 KV 归谁）$=$ smem bank（写哪一块）$=$ 屏障/槽下标};
+\end{tikzpicture}
+\caption{共享 $\mathrm{Sk}{=}2$ slot 与每 WG 独立 bank 的对照（18.3.3 节，头注释 L1458--1462 的图形化；浅 $=$ slot 0，深 $=$ slot 1，$t$ 的下标即 KV tile 号）。上：共享方案里两个 WG 抢同一对 slot 与同一对屏障——\texttt{full\_K[s]}/*\texttt{empty\_K[s]} 的 257 份 arrive 要求\textbf{两个} WG 的 256 个 consumer 线程全部到齐才翻转，于是任何一方都不能比另一方多跑一块：$t_0,t_1,t_2,\dots$ 被两 WG 交替消费，各自的有效流水深度只有 1。下：本章把 bank 按 \texttt{consumer\_id} 切开后，每个 WG 拥有自己的一套 $\mathrm{Sk}$ 个 slot 与自己的屏障（$129 = 128{+}1$），两个 WG 并行推进、互不相遇，深度 2 名副其实。}
+\label{fig:18-perwg-stage}
+\end{figure}
+
 \subsection{setmaxnreg 池数学：三 warpgroup 的寄存器预算}
 
 第~\ref{ch:14}~章已给出池不等式：每 SM 寄存器文件 65536 个 32-bit 寄存器，
@@ -196,6 +257,58 @@ $136 \times 128 = 17408$ 与 $312 \times 128 = 39936$ 个寄存器），远离�
 \textbf{双向互等、纯挂死}（无 illegal instruction、无 error code、无超时）。
 事故修复版（64/208/208 或 32/232/232）分别给出 $480$ 与 $496$，即「留 $\ge 16$
 的每线程等效余量」——恰好是工程规则「留 $\ge 2048$ slack」除以 128 的结果。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\tiny]
+  % 横轴标尺：512 个「每线程等效配额」= 65536/128，1 单位 = 0.0155 cm
+  \draw[dashed, thick, vscAccent] (7.936,0.45) -- (7.936,-3.30);
+  \node[anchor=south, text=vscAccent] at (7.936,0.62) {$512 = 65536/128$（每线程等效上限）};
+  % (a) 本章 D=128：40 + 2 x 168 = 376，余量 136
+  \node[thin, draw, preaction={fill=gray!8}, pattern=north east lines, pattern color=gray!50,
+        minimum width=2.108cm, minimum height=0.50cm, inner sep=0pt] at (6.882,0) {136};
+  \foreach \wc/\cx/\lb in {0.62/0.31/40, 2.604/1.922/168, 2.604/4.526/168}{
+    \node[thin, draw, fill=gray!32, minimum width=\wc cm, minimum height=0.50cm, inner sep=0pt]
+      at ({\cx},0) {\lb};
+  }
+  \node[anchor=east, font=\scriptsize] at (-0.15,0) {(a) 本章};
+  \node[anchor=west, align=left, text width=5.2cm] at (8.15,0)
+    {$40 + 2\times168 = 376$：余量 136/线程\\（$=17408$ 个寄存器，远离危险区）};
+  % (b) 事故配置：64 + 2 x 224 = 512，恰好触上限
+  \foreach \wc/\cx/\lb in {0.992/0.496/64, 3.472/2.728/224, 3.472/6.20/224}{
+    \node[thin, draw=vscAccent, fill=gray!32, minimum width=\wc cm, minimum height=0.50cm, inner sep=0pt]
+      at ({\cx},-1.05) {\lb};
+  }
+  \node[anchor=east, font=\scriptsize] at (-0.15,-1.05) {(b) 事故};
+  \node[anchor=west, align=left, text width=5.2cm, text=vscAccent] at (8.15,-1.05)
+    {$64 + 2\times224 = 512$：恰好触上限\\
+     驱动另有保留份额 $\to$ \texttt{alloc} 永远凑不齐：双向互等、纯挂死};
+  % (c) 修复版：480 与 496，各留 >=16 的余量
+  \node[thin, draw, preaction={fill=gray!8}, pattern=north east lines, pattern color=gray!50,
+        minimum width=0.496cm, minimum height=0.50cm, inner sep=0pt] at (7.688,-2.10) {};
+  \foreach \wc/\cx/\lb in {0.992/0.496/64, 3.224/2.604/208, 3.224/5.228/208}{
+    \node[thin, draw, fill=gray!32, minimum width=\wc cm, minimum height=0.50cm, inner sep=0pt]
+      at ({\cx},-2.10) {\lb};
+  }
+  \node[anchor=east, font=\scriptsize] at (-0.15,-2.10) {(c) 修复 1};
+  \node[anchor=west, align=left, text width=5.2cm] at (8.15,-2.10)
+    {$64 + 208 + 208 = 480$：余量 32/线程};
+  \node[thin, draw, preaction={fill=gray!8}, pattern=north east lines, pattern color=gray!50,
+        minimum width=0.248cm, minimum height=0.50cm, inner sep=0pt] at (7.812,-3.00) {};
+  \foreach \wc/\cx/\lb in {0.496/0.248/32, 3.596/2.294/232, 3.596/5.89/232}{
+    \node[thin, draw, fill=gray!32, minimum width=\wc cm, minimum height=0.50cm, inner sep=0pt]
+      at ({\cx},-3.00) {\lb};
+  }
+  \node[anchor=east, font=\scriptsize] at (-0.15,-3.00) {(c) 修复 2};
+  \node[anchor=west, align=left, text width=5.2cm] at (8.15,-3.00)
+    {$32 + 232 + 232 = 496$：余量 16/线程（$\ge 16$ 经验线）};
+  % 图例
+  \node[anchor=west, align=left, text width=13.3cm] at (-0.15,-3.72)
+    {每段宽 $=$ 每线程等效配额（producer $r_p$ 浅 $\mid$ 两个 consumer 各 $r_c$ 中、深）；斜纹 $=$ 余量（slack）；横轴口径 $=$ 三个 warpgroup 各 128 线程};
+\end{tikzpicture}
+\caption{65536 个寄存器按角色「切蛋糕」的三种切法（式~\ref{eq:18-pool} 与 18.3.4 节事故分析的图形化）。横轴为每线程等效配额 $r_p + 2r_c \le 512 = 65536/128$：(a) 本章 $D{=}128$ 的 $40+2\times168=376$，余量 136/线程（$=17408$ 个寄存器），远离危险区；(b) 第~\ref{ch:14}~章那次事故的 $64+2\times224$ 恰好等于 512——驱动对寄存器文件另有保留份额，有效池小于 65536，于是 consumer 卡在 \texttt{setmaxnreg}、producer 卡在等 barrier arrive，\textbf{双向互等、纯挂死}；(c) 修复版的 480 与 496 分别留出 32 与 16 的每线程余量，后者正是工程规则「$\ge 2048$ slack」除以 128 的下界。}
+\label{fig:18-reg-pool}
+\end{figure}
 
 为什么 FA3 这类结构\textbf{必须}做寄存器再分配？因为两个 consumer 要背的活跃
 集比自己发装载的 producer 大一个量级：每线程持有 $S$ fragment
@@ -331,6 +444,71 @@ ch16/ch17 逐行相同，不再重复。值得记一笔的是\textbf{写在谁�
 \texttt{consumer\_id}$=0$ 做归一化与写回（\texttt{if \allowbreak{}(consumer\_\allowbreak{}id =\allowbreak{}=\allowbreak{} 0)}，
 L2057），\texttt{consumer\_id}$=1$ 写完后直接退出——省掉单侧的重复计算。
 
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\tiny]
+  \def\mh{0.40}
+  % 顶部：两个 WG 与 scratch 的 wg_tid 对齐
+  \node[draw, fill=gray!10, minimum width=2.9cm, minimum height=0.72cm, align=center, font=\scriptsize]
+    at (1.6,-1.0) {WG1（\texttt{consumer\_id=0}）\\寄存器 $R\_D,\ m,\ \ell$};
+  \node[draw, fill=gray!10, minimum width=2.9cm, minimum height=0.72cm, align=center, font=\scriptsize]
+    at (11.2,-1.0) {WG2（\texttt{consumer\_id=1}）\\寄存器 $R\_D,\ m,\ \ell$};
+  % R_D 区（宽块）
+  \draw[fill=gray!20, thick] (4.35,-2.1) rectangle (6.75,{-2.1-8*\mh});
+  \node[anchor=south, font=\tiny] at (5.55,-2.02) {$R\_D$ 区：每 \texttt{wg\_tid} 一段 float4 包（16~KB）};
+  % m/l 区：8 行 x 2 列网格
+  \foreach \gi in {0,...,7}{
+    \pgfmathtruncatemacro{\rb}{\gi*16}
+    \pgfmathtruncatemacro{\re}{\gi*16+15}
+    \node[fill=gray!14, minimum width=1.05cm, minimum height=\mh cm, inner sep=0pt]
+      at (7.85,{-2.3-\gi*\mh}) {$[\gi][0]$};
+    \node[fill=gray!42, minimum width=1.05cm, minimum height=\mh cm, inner sep=0pt]
+      at (8.95,{-2.3-\gi*\mh}) {$[\gi][1]$};
+    \node[anchor=east, font=\tiny] at (7.27,{-2.3-\gi*\mh}) {rows \rb--\re};
+  }
+  % 行边界 -2.1-k*\mh 非 ystep 整数倍：grid 按坐标原点相位画线会错位穿字，故按格边界显式画线；
+  % 原 very thick 线 7.875 落在 [i][0] 文字内，对齐到列边界 8.375
+  \foreach \rr in {0,...,8}{
+    \draw[thin] (7.325,{-2.1-\rr*\mh}) -- (9.475,{-2.1-\rr*\mh});
+  }
+  \draw[thick] (7.325,-2.1) rectangle (9.475,{-2.1-8*\mh});
+  \draw[very thick] (8.375,-2.1) -- (8.375,{-2.1-8*\mh});
+  \draw[thick] (8.425,-2.1) -- (8.425,{-2.1-8*\mh});
+  \node[anchor=south, font=\tiny] at (8.4,-2.02) {m/$\ell$ interleaved 区（float4 $[m_0,m_1,\ell_0,\ell_1]$，2~KB）};
+  % 高亮行 i=2：同一 wg_tid 的两个 WG 命中同一行段
+  \draw[vscAccent, very thick] (7.30,{-2.1-2*\mh-0.02}) rectangle (9.50,{-2.1-3*\mh+0.02});
+  \draw[vscAccent, very thick] (4.32,{-2.1-2*\mh-0.02}) rectangle (6.78,{-2.1-3*\mh+0.02});
+  \draw[-{Stealth}, thick, vscAccent] (3.10,-1.30) -- (4.28,{-2.1-2.5*\mh});
+  \node[anchor=south, font=\tiny, text=vscAccent] at (3.35,-1.42) {读：同一 \texttt{wg\_tid} 槽位};
+  \draw[-{Stealth}, thick, vscAccent] (9.70,-1.30) -- ({8.4},{-2.1-2.5*\mh}) ;
+  \node[anchor=south, font=\tiny, text=vscAccent] at (9.9,-1.42) {写：按 \texttt{wg\_tid} 索引（128-bit store）};
+  \node[anchor=west, font=\scriptsize, text=vscAccent, align=left] at (10.0,{-2.1-2.5*\mh})
+    {同一 \texttt{wg\_tid} $\Rightarrow$ 相同 Q 行段\\$\Rightarrow$ 逐元素归并、零跨 lane 通信};
+  % 底部流程链
+  \node[draw, fill=gray!12, minimum width=2.30cm, minimum height=0.80cm, align=center, font=\tiny]
+    at (1.25,-6.5) {mainloop 退出\\（TMA 全部落账）};
+  \node[draw, fill=gray!12, minimum width=2.10cm, minimum height=0.80cm, align=center, font=\tiny]
+    at (3.65,-6.5) {(1) \texttt{\_\_syncthreads}\\然后才写 scratch};
+  \node[draw, fill=gray!12, minimum width=2.10cm, minimum height=0.80cm, align=center, font=\tiny]
+    at (6.05,-6.5) {WG2 写出\\$R\_D,\ m,\ \ell$};
+  \node[draw, fill=gray!12, minimum width=2.10cm, minimum height=0.80cm, align=center, font=\tiny]
+    at (8.45,-6.5) {(2) \texttt{\_\_syncthreads}\\WG1 可见全部写入};
+  \node[draw, fill=gray!12, minimum width=2.60cm, minimum height=0.80cm, align=center, font=\tiny]
+    at (11.05,-6.5) {WG1 归并：$m{=}\max$，$\alpha/\beta$\\$\ell$、$O_{\mathrm{acc}}$ 加权};
+  \node[draw, fill=gray!12, minimum width=2.60cm, minimum height=0.80cm, align=center, font=\tiny]
+    at (13.85,-6.5) {$O = O_{\mathrm{acc}}/\ell$，仅\\ \texttt{consumer\_id=0} 写 gmem};
+  \draw[-{Stealth}] (2.42,-6.5) -- (2.58,-6.5);
+  \draw[-{Stealth}] (4.72,-6.5) -- (4.98,-6.5);
+  \draw[-{Stealth}] (7.12,-6.5) -- (7.38,-6.5);
+  \draw[-{Stealth}] (9.52,-6.5) -- (9.73,-6.5);
+  \draw[-{Stealth}] (12.37,-6.5) -- (12.53,-6.5);
+  \node[anchor=north west, font=\tiny] at (0.4,-7.05)
+    {$T_c{=}1$ 退化分支：WG2 未进循环，$m_1{=}-\infty,\ \beta{=}0$，merge 自然退化为 WG1 单侧结果。};
+\end{tikzpicture}
+\caption{merge scratch 的 \texttt{wg\_tid} 对齐设计（18.4.4 节，源码 L2001--2101 注释的图形化）。scratch 复用主循环的 Q/K/V 动态 smem：$R\_D$ 区每 \texttt{wg\_tid} 一段 float4 包；m/$\ell$ 区按 $[i][0/1]$ 行段组织——$[i][0]$ 管 rows $i\cdot 16..{+}7$、$[i][1]$ 管 $+8..{+}15$，与 $R\_D$ fragment 覆盖的 Q 行严格对齐。WG2（\texttt{consumer\_id=1}）按 \texttt{wg\_tid} 写入（高亮行即某个 \texttt{wg\_tid} 命中的行段），WG1 用\textbf{同一个} \texttt{wg\_tid} 读回——两个 WG 的 partial 覆盖完全相同的 Q 行，可逐元素归并而无需任何跨 lane 通信。下方：两步 \texttt{\_\_\allowbreak{}syncthreads} 的完整时序（第一次保证 TMA/ldmatrix 全部落账后才写 scratch，第二次让 WG1 看到 WG2 的全部写入）。}
+\label{fig:18-merge-scratch}
+\end{figure}
+
 \subsection{与第~\ref{ch:14}~章 SM120 WS 的对照：同思想，不同硬件}
 
 两章都在 SM120（无 WGMMA）上做 warp specialization，骨架一致（单线程 TMA
@@ -362,6 +540,86 @@ GEMM 以喂满 Tensor Core。本 kernel 的 consumer 用\textbf{同步}的
 \textbf{统计性交错}（WG1 处于 MMA 段时 WG2 大概率处于 softmax 段），加上 TMA
 窗口被完整隐藏。这是「无 WGMMA」约束下的近似——第~\ref{ch:25}~章的 CuTe 版
 会在 sm\_90a 上用 \texttt{wgmma} 把这层差距补上。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\tiny]
+  \def\u{1.26}
+  \def\lh{0.44}
+  % 时间网格
+  \foreach \tk in {0,2,...,10}{
+    \draw[dashed, gray!60] ({\tk*\u},0.12) -- ({\tk*\u},-4.9);
+    \node[anchor=south, font=\tiny] at ({\tk*\u},0.12) {\tk};
+  }
+  \node[anchor=south, font=\scriptsize] at ({5*\u},0.42) {时间（一个 KV tile 的本 WG 工作量为 4 段；相位差 $= 1/4$ 周期）};
+  % WG1 泳道
+  \node[anchor=east, font=\scriptsize] at (-0.15,-0.97) {WG1（偶数 tile）};
+  \node[thin, draw, fill=gray!68, minimum width=2.48cm, minimum height=\lh cm, inner sep=0pt, font=\tiny]
+    at ({1*\u},{-0.97}) {QK MMA};
+  \node[thin, draw, preaction={fill=gray!22}, pattern=north east lines, pattern color=gray!55,
+        minimum width=2.48cm, minimum height=\lh cm, inner sep=0pt, font=\tiny]
+    at ({3*\u},{-0.97}) {softmax};
+  \node[thin, draw, fill=gray!68, minimum width=2.48cm, minimum height=\lh cm, inner sep=0pt, font=\tiny]
+    at ({5*\u},{-0.97}) {PV MMA};
+  \node[thin, draw, fill=gray!45, minimum width=1.22cm, minimum height=\lh cm, inner sep=0pt, font=\tiny]
+    at ({6.5*\u},{-0.97}) {rescale};
+  \node[dotted, draw, minimum width=1.22cm, minimum height=\lh cm, inner sep=0pt, font=\tiny]
+    at ({7.5*\u},{-0.97}) {等};
+  % WG2 泳道（相位差 1/4 周期 = 2 单位）
+  \node[anchor=east, font=\scriptsize] at (-0.15,-1.87) {WG2（奇数 tile）};
+  \node[thin, draw, fill=gray!68, minimum width=2.48cm, minimum height=\lh cm, inner sep=0pt, font=\tiny]
+    at ({3*\u},{-1.87}) {QK MMA};
+  \node[thin, draw, preaction={fill=gray!22}, pattern=north east lines, pattern color=gray!55,
+        minimum width=2.48cm, minimum height=\lh cm, inner sep=0pt, font=\tiny]
+    at ({5*\u},{-1.87}) {softmax};
+  \node[thin, draw, fill=gray!68, minimum width=2.48cm, minimum height=\lh cm, inner sep=0pt, font=\tiny]
+    at ({7*\u},{-1.87}) {PV MMA};
+  \node[thin, draw, fill=gray!45, minimum width=1.22cm, minimum height=\lh cm, inner sep=0pt, font=\tiny]
+    at ({8.5*\u},{-1.87}) {rescale};
+  \node[dotted, draw, minimum width=1.22cm, minimum height=\lh cm, inner sep=0pt, font=\tiny]
+    at ({9.5*\u},{-1.87}) {等};
+  % producer 泳道
+  \node[anchor=east, font=\scriptsize] at (-0.15,-2.7) {producer（TMA）};
+  \draw[-{Stealth}, very thick] ({0.3*\u},-2.7) -- ({9.7*\u},-2.7);
+  \node[anchor=south, font=\tiny] at ({5*\u},-2.58) {搬运 tile $t{+}1/t{+}2$ 的 K/V $\to$ 对应 stage（全程并行，隐藏在计算之下）};
+  \foreach \ta in {2,4,6,8}{
+    \draw[-{Stealth}, thin] ({\ta*\u},-2.55) -- ({\ta*\u},-2.32);
+  }
+  \node[anchor=north, font=\tiny] at ({6*\u},-2.86) {full[s] arrive-tx：TMA 落账即翻转};
+  % 资源占用条
+  \node[anchor=east, font=\scriptsize] at (-0.15,-3.7) {Tensor Core};
+  \node[thin, draw, fill=gray!68, minimum width=10.04cm, minimum height=0.30cm, inner sep=0pt] at ({4*\u},-3.7) {};
+  \node[dotted, draw, minimum width=2.48cm, minimum height=0.30cm, inner sep=0pt] at ({9*\u},-3.7) {空};
+  \node[anchor=east, font=\scriptsize] at (-0.15,-4.25) {CUDA Core/SFU};
+  \node[thin, draw, preaction={fill=gray!30}, pattern=north east lines, pattern color=gray!55,
+        minimum width=6.26cm, minimum height=0.30cm, inner sep=0pt] at ({4.5*\u},-4.25) {};
+  \node[thin, draw, preaction={fill=gray!30}, pattern=north east lines, pattern color=gray!55,
+        minimum width=1.22cm, minimum height=0.30cm, inner sep=0pt] at ({8.5*\u},-4.25) {};
+  \node[dotted, draw, minimum width=2.48cm, minimum height=0.30cm, inner sep=0pt] at ({1*\u},-4.25) {};
+  \node[dotted, draw, minimum width=1.22cm, minimum height=0.30cm, inner sep=0pt] at ({9.5*\u},-4.25) {};
+  \node[anchor=west, font=\tiny] at ({10.15*\u},-3.7) {被两 WG 的 MMA 段交替填满};
+  \node[anchor=west, font=\tiny] at ({10.15*\u},-4.25) {softmax/rescale 填另一通路};
+  % 对照：单 consumer
+  \node[anchor=west, font=\scriptsize\bfseries] at (0,-5.5) {对照：单 consumer（第~\ref{ch:17}~章形态）——softmax 段 Tensor Core 空转};
+  \node[anchor=east, font=\scriptsize] at (-0.15,-6.1) {单 WG};
+  \node[thin, draw, fill=gray!68, minimum width={1.7cm}, minimum height=0.40cm, inner sep=0pt, font=\tiny]
+    at (1.0,-6.1) {QK};
+  \node[thin, draw, preaction={fill=gray!22}, pattern=north east lines, pattern color=gray!55,
+        minimum width=1.7cm, minimum height=0.40cm, inner sep=0pt, font=\tiny] at (2.8,-6.1) {softmax};
+  \node[thin, draw, fill=gray!68, minimum width=1.7cm, minimum height=0.40cm, inner sep=0pt, font=\tiny]
+    at (4.6,-6.1) {PV};
+  \node[thin, draw, fill=gray!45, minimum width=1.2cm, minimum height=0.40cm, inner sep=0pt, font=\tiny]
+    at (6.1,-6.1) {rs};
+  \node[anchor=east, font=\scriptsize] at (-0.15,-6.75) {Tensor Core};
+  \node[thin, draw, fill=gray!68, minimum width=1.7cm, minimum height=0.30cm, inner sep=0pt] at (1.0,-6.75) {};
+  \node[thin, draw, fill=gray!68, minimum width=1.7cm, minimum height=0.30cm, inner sep=0pt] at (4.6,-6.75) {};
+  \node[draw=vscAccent, thick, preaction={fill=gray!8}, pattern=north east lines, pattern color=vscAccent,
+        minimum width=1.7cm, minimum height=0.30cm, inner sep=0pt] at (2.8,-6.75) {};
+  \node[font=\tiny, text=vscAccent] at (2.8,-7.12) {TC 空转};
+\end{tikzpicture}
+\caption{双 consumer 的相位交错时序（18.4.6 节统计性交错的图形化）。上：WG1/WG2 各按「QK MMA $\to$ softmax $\to$ PV MMA $\to$ rescale」四段推进自己的 KV tile 子序列，两 WG 相位差 $1/4$ 周期——WG1 处于 MMA 段时 WG2 大概率处于 softmax/rescale 段；producer 的 TMA 全程并行，落账即 arrive-tx 翻转 \texttt{full[s]}。中：Tensor Core 与 CUDA Core/SFU 两条资源条被两路计算交替填满（同步 \texttt{mma.sync} 做不到 WG 内重叠，靠两路独立流在硬件调度器上统计性交错）。下：单 consumer（第~\ref{ch:17}~章形态）的对照——softmax 段 Tensor Core 只能空转，这正是第二个 consumer 要填的洞。}
+\label{fig:18-dual-phase}
+\end{figure}
 
 \needspace{119mm}
 

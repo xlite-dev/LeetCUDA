@@ -282,7 +282,74 @@ $2\times2$ 的 warp 排布里，两个 N 方向的 warp 需要\textbf{同一份}
 式~\eqref{eq:21-dup} 是后面理解 fragment 寄存器占用的关键：本章测试 case~E
 对 A 拷贝的 128$\times$32 tile 做覆盖统计，实测每个元素恰好被 2 个
 (thread, value) 对覆盖（$\mathrm{multi}=8192$ 个覆盖点、$\mathrm{once}$ 结构
-$4096/2$），与式~\eqref{eq:21-dup} 完全一致。
+$4096/2$），与式~\eqref{eq:21-dup} 完全一致。该覆盖结构的网格化见
+图~\ref{fig:21-s2r-dup}。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\tiny]
+  \def\cwd{0.5}
+  \def\chh{0.3}
+  \foreach \fm in {0,...,31}{
+    \foreach \fk in {0,...,15}{
+      \pgfmathtruncatemacro{\lane}{mod(\fm,16)}
+      \pgfmathtruncatemacro{\cm}{\fm/16}
+      \pgfmathtruncatemacro{\bk}{\fk/8}
+      \pgfmathtruncatemacro{\bi}{2*\cm+\bk}
+      \pgfmathtruncatemacro{\gl}{6+13*\bi}
+      \node[fill=gray!\gl, minimum width=\cwd cm, minimum height=\chh cm, inner sep=0pt]
+        at ({(\fk+0.5)*\cwd},{-(\fm+0.5)*\chh}) {\lane};
+    }
+  }
+  \draw[thin] (0,0) grid[xstep=0.5cm, ystep=0.3cm] (8,-9.6);
+  \draw[very thick] (0,0) rectangle (8,-9.6);
+  \draw[thick] (4,0) -- (4,-9.6);
+  \draw[thick] (0,-4.8) -- (8,-4.8);
+  \foreach \fm in {0,4,...,28}{
+    \node[anchor=east] at (-0.07,{-\fm*0.3-0.15}) {\fm};
+  }
+  \foreach \fk in {0,2,...,14}{
+    \node[anchor=south] at ({\fk*0.5+0.5},0.07) {\fk};
+  }
+  \node[anchor=south, font=\tiny] at (4,0.32) {列 $k$（K，mode 1）};
+  \node[anchor=east, font=\tiny, rotate=90] at (-0.45,-4.8) {行 $m$（M，mode 0）};
+  \node[anchor=east, font=\tiny, align=right] at (-0.75,-2.4)
+    {m 0--15：\\warp 0 $\parallel$ warp 2};
+  \node[anchor=east, font=\tiny, align=right] at (-0.75,-7.2)
+    {m 16--31：\\warp 1 $\parallel$ warp 3};
+  \node[anchor=south, font=\scriptsize\bfseries] at (4,0.85)
+    {S$\to$R 的 A 拷贝（\texttt{make\_tiled\_copy\_A}）：tiler $(32,16)$ 的覆盖网格};
+  \draw[very thick] (0,-1.5) rectangle (0.5,-1.8);
+  \node[draw=gray!60, fill=gray!6, font=\tiny, align=left, anchor=north west, inner sep=3pt]
+    (blk) at (8.7,0.55)
+    {四块（16 行 $\times$ 8 列）的覆盖线程对（$t$，$t{+}64$）：\\[1pt]
+     左上（m$<$16, k$<$8）：$t=\ell$ $\parallel$ $64{+}\ell$（w0 $\parallel$ w2）\\
+     右上（m$<$16, k$\ge$8）：$t=16{+}\ell$ $\parallel$ $80{+}\ell$（w0 $\parallel$ w2）\\
+     左下（m$\ge$16, k$<$8）：$t=32{+}\ell$ $\parallel$ $96{+}\ell$（w1 $\parallel$ w3）\\
+     右下（m$\ge$16, k$\ge$8）：$t=48{+}\ell$ $\parallel$ $112{+}\ell$（w1 $\parallel$ w3）\\[2pt]
+     $\ell$ = 格内数字（warp 内 lane $=m\bmod16$）；每线程持\\
+     所在行块内 8 个连续 k（$v=0..7$，即 rA[0..7]）};
+  \node[draw, fill=gray!32, font=\tiny, align=center, minimum width=3.0cm] (tA) at (10.5,-4.6)
+    {T5：rA[0..7] $\leftarrow$ (m=5, k=0..7)\\（warp 0--1 组，thrN=0）};
+  \node[draw, fill=gray!78, font=\tiny, align=center, minimum width=3.0cm] (tB) at (10.5,-5.9)
+    {T69：rA[0..7] $\leftarrow$ 同一份 A\\（warp 2--3 组，thrN=1）};
+  \draw[->, thick] (0.5,-1.8) .. controls (4.5,-3.0) .. (tA.west);
+  \draw[->, thick] (0.5,-1.8) .. controls (4.5,-3.6) .. (tB.west);
+  \node[font=\tiny, align=left, anchor=north west] at (8.7,-6.8)
+    {TV 布局第 4 个线程模式 stride $=0$：$t$ 与 $t{+}64$ 同源；\\
+     守恒 $P\times V=128\times8=2\times512$（式~\eqref{eq:21-conserve}）；\\
+     覆盖统计：multi $=8192$ 点、once $=4096/2$（case~E）};
+\end{tikzpicture}
+\caption{S$\to$R A 拷贝的 2 倍重复因子（式~\eqref{eq:21-dup}、测试
+case~D/E）：tiler $(32,16)$ 的 A tile（M $\times$ K）上，每格标 warp 内
+lane 号 $\ell=m\bmod16$，格子的实际覆盖线程对为（基址 $+\ell$，基址
+$+64+\ell$），四块的基址见右上表（w0--w3 即 warp 0--3）。每个元素恰被
+2 个 (thread, value) 对覆盖：$t$ 与 $t{+}64$（两个 N 方向 warp，thrN
+$=0/1$）各持同一行块 8 个连续 k 的一份寄存器拷贝——TV 布局第 4 个线程
+模式 stride 为 0 的几何含义，守恒 $128\times8=2\times512$。对照
+图~\ref{fig:21-3} 的 G$\to$S 双射网格（每格恰一线程）。}
+\label{fig:21-s2r-dup}
+\end{figure}
 
 \subsection{partition 的数学}
 
@@ -516,8 +583,59 @@ $8\times32$ atom，C 的是 $32\times32$ atom，二者都含 \texttt{Swizzle\all
 但\textbf{不可互换读取}。容量上：一个 A stage 是 $128\times32=4096$ 个 half，
 C scratchpad 是 $32\times32\times4=4096$ 个 half，正好放得下（launch wrapper
 的 \texttt{static\_\allowbreak{}assert} 就是查这件事，实测 \texttt{cosize\allowbreak{}(Smem\allowbreak{}Layout\allowbreak{}A)}
-$=8192$（2 stage）、C 部分 $4096$）。
+$=8192$（2 stage）、C 部分 $4096$）。同一块地址带上的两种解释见
+图~\ref{fig:21-scratch-alias}。
 \end{sloppypar}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\tiny]
+  \node[anchor=east] at (-0.1,-0.3) {A pipe 视角};
+  \node[anchor=east] at (-0.1,-1.95) {C scratchpad 视角};
+  \foreach \ak in {0,...,15}{
+    \node[fill=gray!20, minimum width=0.4cm, minimum height=0.6cm, inner sep=0pt]
+      at ({\ak*0.4+0.2},-0.3) {};
+  }
+  \draw[thin] (0,0) grid[xstep=0.4cm, ystep=0.6cm] (6.4,-0.6);
+  \draw[very thick] (0,0) rectangle (6.4,-0.6);
+  \foreach \ck in {0,...,3}{
+    \node[fill=gray!20, minimum width=1.6cm, minimum height=0.6cm, inner sep=0pt]
+      at ({\ck*1.6+0.8},-1.95) {$32\times32$};
+  }
+  \foreach \ckx in {0,...,4}{
+    \draw[thin] ({\ckx*1.6},-1.65) -- ({\ckx*1.6},-2.25);
+  }
+  \draw[very thick] (0,-1.65) rectangle (6.4,-2.25);
+  \node[fill=gray!12, draw, thick, minimum width=6.4cm, minimum height=0.35cm,
+    inner sep=0pt] at (3.2,-1.125)
+    {$4096$ half $=$ 同一块 smem（\texttt{sA(...,ismem\_read).data()}）};
+  \draw[->, thick] (1.2,-0.64) -- (1.2,-0.92);
+  \draw[->, thick] (5.2,-0.64) -- (5.2,-0.92);
+  \draw[->, thick] (1.2,-1.61) -- (1.2,-1.33);
+  \draw[->, thick] (5.2,-1.61) -- (5.2,-1.33);
+  \node[anchor=north west, align=left, text width=7.6cm] at (7.2,0.25)
+    {\textbf{A 视角（pipe 布局）}：$(B_M,B_K,k_{\mathrm{stage}})=(128,32,2)$ 由
+     $8\times32$ 的 SW128 atom 铺成——沿 $B_M$ 方向 $16$ 个 atom（每个含
+     \texttt{Sw<3,3,3>}）；两个 stage 合计 \texttt{cosize}$=8192$。};
+  \node[anchor=north west, align=left, text width=7.6cm] at (7.2,-1.6)
+    {\textbf{C 视角（scratchpad 布局）}：$32\times32$ 的 atom $\times$ $4$ 个
+     pipe slot（\texttt{kSmemLayoutCBatch}$=4$）$=4096$ half，与一个 A stage
+     同容量。};
+  \node[anchor=north west, align=left, text width=15.4cm] at (0,-2.7)
+    {两种解释都含 \texttt{Swizzle<3,3,3>}，但 atom 形状（$8\times32$ 对
+     $32\times32$）与个数（$16$ 对 $4$）都不同——\textbf{不可互换读取}；
+     容量一致（$4096$ half）是这次空间复用的前提，launch wrapper 的
+     \texttt{static\_assert} 查的就是它。};
+\end{tikzpicture}
+\caption{epilogue scratchpad：同一块 $4096$ half 的 smem、两种布局视图
+（hgemm.cuh L1001）。上条带是 A 的 pipe 解释——$(128,32)$ 的 stage 按
+$8\times32$ 的 SW128 atom 沿 $B_M$ 切成 $16$ 段；下条带是 C 的
+scratchpad 解释——$32\times32$ 的 atom $\times$ $4$ 个 pipe slot
+（\texttt{kSmemLayoutCBatch}$=4$）。中间那条带是两者共用的地址带：
+\texttt{sC} 拿到的只是 \texttt{sA(\_,\_,ismem\_read).data()} 这个裸指针，
+没有 Tensor 类型转换，重复的只是「同一段地址的两种读法」。}
+\label{fig:21-scratch-alias}
+\end{figure}
 
 S$\to$G 一侧的 partition 与 \texttt{group\_modes} 合并：
 
