@@ -954,6 +954,7 @@ product = ((3,10,10),(2,2)):((200,1,20),(10,600))
 \begin{lstlisting}[language=cutedsl]
 tract.logical_product(f,g)
 \end{lstlisting}
+\clearpage
 例如，
 \begin{lstlisting}[language=cutedsl]
 f = tract.make_morphism(domain=(2,2), codomain=(2,2,5,5), map_=(1,2))
@@ -969,6 +970,8 @@ product = ((2,2),(5,5))--(1,2,4,3)-->(2,2,5,5)
 
 \section{记号}
 
+% 40 行记号表整体高于版心，必须允许行间分页，否则产生牺牲性空白页
+{\allowdisplaybreaks
 \begin{align*}
 \mathbb{Z} & = \{\dots,-1,0,1,2,\dots\}\\
 \mathbb{N} & = \{ 0 , 1, 2 ,\dots\}\\
@@ -1004,15 +1007,4 @@ A \otimes B & = A \text{ 与 } B \text{ 的逻辑乘积。} \\
 \catstyle{Nest} & = \text{嵌套元组与嵌套元组态射构成的范畴。}\\
 \catstyle{Ref} & = \text{嵌套元组与加细构成的范畴。}\\
 \catstyle{Cat} & = \text{（小）范畴与函子（functor）构成的范畴。}
-\end{align*}
-
-
-
-
-\newpage
-
-
-
-
-
-\newpage
+\end{align*}}
