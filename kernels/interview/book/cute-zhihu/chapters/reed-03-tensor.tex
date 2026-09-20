@@ -1,6 +1,6 @@
 \chapter{cute 之 Tensor}
 
-\begin{center}\small 作者：reed（知乎 @reed-84-49，专栏「CUDA高性能编程」）\quad 原文：\url{https://zhuanlan.zhihu.com/p/663093816}\quad 抓取：2026-09-20\end{center}
+\begin{center}\small 作者：reed（知乎 @reed-84-49，专栏「CUDA高性能编程」）\quad 原文：\url{https://zhuanlan.zhihu.com/p/663093816}\end{center}
 
 前面的章节介绍了cute Layout\footnote{\url{https://zhuanlan.zhihu.com/p/661182311}}以及Layout的代数和几何解释\footnote{\url{https://zhuanlan.zhihu.com/p/662089556}}，Layout描述了数据的排列和底层存储位置关系，但Layout并没有指定存储。Tensor就是在Layout的基础上包含了存储，即Tensor = Layout + storage，数据存储的具体表现上可以是指针表达的数据或则是栈上数据（GPU上表现为寄存器）。cute中的Tensor并不同于深度学习框架中的Tensor（如Pytorch、Tensorflow），深度学习框架中的Tensor更强调数据的表达实体，通过Tensor实体与实体之间的计算产生新的Tensor实体，即多份数据实体，cute中的Tensor更多的是对Tensor进行分解和组合等操作，而这些操作多是对Layout的变换（只是逻辑层面的数据组织形式），底层的数据实体一般不变更。也就是说深度学习框架中的Tensor是通过Tensor产生新Tensor，cute中是对数据表达形式的变换，底层数据一般不变更，指变更表达的形式，这个表达形式的变更是通过之前文章介绍的Layout上的运算实现的。之所以有这些差别是因为深度学习框架中的Tensor是用来表达数据实体，cute中的Tensor是偏向描述的实体。
 

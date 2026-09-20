@@ -1,6 +1,6 @@
 \chapter{cute 之 Swizzle}
 
-\begin{center}\small 作者：reed（知乎 @reed-84-49，专栏「CUDA高性能编程」）\quad 原文：\url{https://zhuanlan.zhihu.com/p/671419093}\quad 抓取：2026-09-20\end{center}
+\begin{center}\small 作者：reed（知乎 @reed-84-49，专栏「CUDA高性能编程」）\quad 原文：\url{https://zhuanlan.zhihu.com/p/671419093}\end{center}
 
 前面的文章我们介绍了GEMM中的流水线技术\footnote{\url{https://zhuanlan.zhihu.com/p/665082713}}，流水线的核心是将拷贝\footnote{\url{https://zhuanlan.zhihu.com/p/666232173}}和计算\footnote{\url{https://zhuanlan.zhihu.com/p/663092747}}并行或者说是将数据加载隐藏在计算过程中。矩阵计算中的数据加载是从全局内存到共享内存然后到寄存器。共享内存作为中间的媒介可以减少矩阵计算时对全局内存的访问数据量，从而提升计算访存比。共享内存为了提升访问的并行性采用多bank结构，这也造成了编程时的困难，cute通过提供swizzle抽象简化了逻辑空间和多bank存储空间的映射的复杂度。本文首先介绍了shared memory的多bank存储结构，之后介绍了矩阵计算中的ldmatrix指令对逻辑空间和存储空间的要求，再次我们介绍了异或运算的特性和Swizzle抽象，最后我们简单介绍了Thread Block Swizzle和对本文进行了总结。
 

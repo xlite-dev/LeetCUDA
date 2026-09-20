@@ -1,10 +1,10 @@
 \chapter{cute 之 GEMM流水线}
 
-\begin{center}\small 作者：reed（知乎 @reed-84-49，专栏「CUDA高性能编程」）\quad 原文：\url{https://zhuanlan.zhihu.com/p/665082713}\quad 抓取：2026-09-20\end{center}
+\begin{center}\small 作者：reed（知乎 @reed-84-49，专栏「CUDA高性能编程」）\quad 原文：\url{https://zhuanlan.zhihu.com/p/665082713}\end{center}
 
 前面文章我们介绍了cute的Copy抽象、MMA抽象，基于这些抽象我们进行了简单的GEMM实现。从逻辑上而言，cute的介绍已经结束了，但是对于我们要完成的GEMM运算而言还有很重要的一项优化需要考虑，那就是如何高效的、并行的利用GPU中的数据加载和计算单元，亦即如何组织cute中的Copy抽象和MMA抽象以完成高效的GEMM计算。这部分内容属于GEMM的策略部分，不是cute的功能范畴，但是为了这系列文章的标题的对称性，我们依然将题目取为"cute之GEMM流水线"，我们需要知道的是，本质而言流水线部分本身不属于cute，而是GEMM的优化策略。文章结构方面，本文首先通过回顾经典的RISC硬件实现的指令流水线引入流水线对性能提升的作用，然后由类比介绍了GEMM算法常用的软件流水线（Tile间和Tile内），其后介绍了NVidia Ampere架构提供的异步拷贝指令和MultiStage流水线，最后文章总结了GEMM流水线和cute的关系。
 
-\paragraph{RISC硬件流水线}
+\section{RISC硬件流水线}
 
 在当今的处理器微架构中，流水线技术是提升指令并行的核心技术。流水线处理器是指将每一个指令的执行过程分为多个阶段（Stage），并且允许不同指令的不同阶段可以被同时处理。以经典的RISC（Reduced Instruction Set Computer）流水线为例，一条指令的执行被分为五个阶段：取指（IF = Instruction Fetch），从指令缓存中根据程序运行的位置（PC = program counter）取出一条要执行的指令；译码（ID = Instruction Decode），将取出的二进制编码分解成要进行的运算类型、源寄存器和目的寄存器；执行（EX = EXecute），执行单元执行特定的运算；访存（MEM = MEMory），如果指令有对内存的访问需求，该阶段则负责相应的内存读写；写回（WB = Write Back），将执行单元的执行结果和（或）内存的访问结果写出到目的寄存器。
 
@@ -15,7 +15,7 @@
 
 图1对比了非流水线和流水线架构执行指令时的时间对比，可以看到非流水线结构执行每一条指令都需要执行所有的阶段，其执行三条指令（Inst-1, Inst-2, Inst-3）所需要的时间如图上半部分所示。在流水线结构下，第一条指令在做取指后进入译码阶段，这时候第二条指令则可以进入取指阶段，后续的指令阶段也是类似的可以产生重叠。如图中的下半部分所示，以流水线的形式执行三条指令所需的时间要比非流水线的模式小很多。流水线模式提升了指令执行中的各个阶段的不同单元的使用率，使得每一个时刻每一个单元都能充分利用，而不是非流水线结构中一个时间点只有一部分单元运行，而其他时间都在空闲等待。
 
-\paragraph{GEMM软件流水线（Tile间）}
+\section{GEMM软件流水线（Tile间）}
 
 我们看到指令流水线通过硬件的设计逻辑可以提升各个单元的利用情况，提升并行度既而提升运行效率。对于GEMM问题而言，我们也可以采用这种思路利用软件编程的过程的来实现更好的并行。
 
@@ -33,7 +33,7 @@
 
 这样三个阶段的执行便可以并行起来，通过流水线使得各个单元能够同时工作，提高了各个单元的利用效率，包括全局内存到共享内存到数据加载、共享内存到寄存器到数据加载、矩阵计算，提升GEMM的运行效率。
 
-\paragraph{Tile内的流水线}
+\section{Tile内的流水线}
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.9\textwidth]{figures/reed-12-gemm-pipeline/fig-04.jpg}
@@ -42,7 +42,7 @@
 
 对于矩阵乘法中的分块模式Tile内也可以使用流水线模式（本文称为tile内小k循环），如图4所示，对于Tile级别的矩阵乘，一般一个Tile内包含的矩阵大小需要若干个指令（MMA\_Atom中的指令）才能完成矩阵乘法，并且各个矩阵乘法的输入数据相互独立，所以我们可以将数据加载和计算组成流水线模式以提高数据加载单元和计算单元的利用率，如此便可以形成Tile内的流水线模式（二级流水线），如图中pipelined标记的部分，其可以通过重叠数据加载和计算提高Tile内完成矩阵计算的整体效率。
 
-\paragraph{异步拷贝和MultiStage流水线}
+\section{异步拷贝和MultiStage流水线}
 
 为了提升数据加载效率，NVidia在Ampere架构的GPU中提供了异步拷贝指令\lstinline|cp.async|（SASS汇编为LDGSTS = LoaD Global Store Shared）。该异步拷贝指令可以异步地完成全局内存到共享内存的数据加载。在Ampere架构之前，全局内存到共享内存数据的加载必须经过寄存器，所以在寄存器层面会产生数据依赖，由于GPU的顺序执行机制和scoreboard的依赖解决方法（in-order issue, in-order execute），使得全局内存到共享内存到数据有寄存器依赖引入到stall。而Ampere下提供的cp.async则克服了这个约束，直接做实现全局内存到共享内存到加载，由于数据是异步加载的，即指令发射出去后便可以执行后续指令而无需等待，所以该架构提供了commit和wait机制来做显式的同步。其中commit用于标记事件的同步点，wait用于同步到特定同步点，保证某个同步点之前到数据都已经拷贝完成。
 
@@ -66,11 +66,11 @@
 
 合适的stage大小本质是数据加载能力和矩阵计算能力的balance，其由Tile大小和硬件latency决定，在具体选择时可以通过micro-benchmark来获取相应的指令的latency来正向设计，也可以通过具体环境试验tuning得到。后面的文章中，我们会利用这种软件流水线方式实现更高效的GEMM。
 
-\paragraph{总结}
+\section{总结}
 
 我们回顾上面的流水线建立过程不难发现，软件流水线的本质是：合理的控制数据搬运和计算的大小和执行顺序，使得它们背后的硬件单元能够更充分的并行执行。cute提供了这两者的抽象：Copy和MMA，按照流水线的思路去组织这些Copy和MMA即可以完成高效的矩阵乘法。也就是说cute是工具，如何更好的使用这些工具来达到更好的硬件利用则属于设计，其已经超越了cute的范畴。后续文章我们会使用cute提供的Copy和MMA抽象，基于本文讨论的流水线模式实现高效的GEMM。
 
-\paragraph{参考}
+\section{参考}
 
 \url{https://en.wikipedia.org/wiki/Classic_RISC_pipeline}
 

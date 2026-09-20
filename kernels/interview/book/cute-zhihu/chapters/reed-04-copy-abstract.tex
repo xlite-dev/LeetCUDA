@@ -1,6 +1,6 @@
 \chapter{cute 之 Copy抽象}
 
-\begin{center}\small 作者：reed（知乎 @reed-84-49，专栏「CUDA高性能编程」）\quad 原文：\url{https://zhuanlan.zhihu.com/p/666232173}\quad 抓取：2026-09-20\end{center}
+\begin{center}\small 作者：reed（知乎 @reed-84-49，专栏「CUDA高性能编程」）\quad 原文：\url{https://zhuanlan.zhihu.com/p/666232173}\end{center}
 
 前面文章介绍了cute中的MMA抽象\footnote{\url{https://zhuanlan.zhihu.com/p/663092747}}，通过MMA我们可以利用Tensor Core完成寄存器上的\verb|D = AxB + C|计算。对于GPU编程而言，输入数据一般来被存储在全局内存之上。这就涉及到如何高效地将全局内存上的数据运到Tensor Core MMA计算所要求的寄存器上的问题。数据搬运的数学描述是 \verb|D = S|,其中D和S是前文中介绍的Tensor结构\footnote{\url{https://zhuanlan.zhihu.com/p/663093816}}，分别表示目标Tensor（Destination）和源Tensor（Source）。 它们一般存储在不同的存储层次上，它们有各自的Layout描述\footnote{\url{https://zhuanlan.zhihu.com/p/661182311}}。本文我们将围绕该问题，重点介绍cute在数据搬运的方面的数据结构的抽象。在文章结构上，本文首先介绍CUDA GPU中的存储层次和矩阵计算相关的ldmatrix指令，然后总体介绍cute中Copy相关的数据结构和函数的抽象以及各个结构之间的相互关系；然后我们依次对各个数据结构的核心函数和成员进行介绍，最后我们总结cute对Copy的抽象。
 

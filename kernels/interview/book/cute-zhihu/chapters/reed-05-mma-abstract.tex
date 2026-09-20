@@ -1,6 +1,6 @@
 \chapter{cute 之 MMA抽象}
 
-\begin{center}\small 作者：reed（知乎 @reed-84-49，专栏「CUDA高性能编程」）\quad 原文：\url{https://zhuanlan.zhihu.com/p/663092747}\quad 抓取：2026-09-20\end{center}
+\begin{center}\small 作者：reed（知乎 @reed-84-49，专栏「CUDA高性能编程」）\quad 原文：\url{https://zhuanlan.zhihu.com/p/663092747}\end{center}
 
 Layout和Tensor是描述数据逻辑排列和数据的抽象工具，在Tensor抽象之上我们可以完成矩阵乘法。前序文章我们介绍了Layout\footnote{\url{https://zhuanlan.zhihu.com/p/661182311}}、Layout解释\footnote{\url{https://zhuanlan.zhihu.com/p/662089556}}和Tensor\footnote{\url{https://zhuanlan.zhihu.com/p/663093816}}，本文将介绍cute中利用Tensor Core完成矩阵乘法（MMA = matrix multiply accumulate）所需要的数据结构抽象。在介绍这些抽象之前，我们先对NVida GPU上的Tensor Core作简单介绍。
 

@@ -1,10 +1,10 @@
 \chapter{cute 之 简单GEMM实现}
 
-\begin{center}\small 作者：reed（知乎 @reed-84-49，专栏「CUDA高性能编程」）\quad 原文：\url{https://zhuanlan.zhihu.com/p/667521327}\quad 抓取：2026-09-20\end{center}
+\begin{center}\small 作者：reed（知乎 @reed-84-49，专栏「CUDA高性能编程」）\quad 原文：\url{https://zhuanlan.zhihu.com/p/667521327}\end{center}
 
 前面的文章我们对cute提供的核心数据结构和抽象进行了一系列的介绍，包括Layout、Tensor、MMA和Copy。本文我们将利用这些概念和抽象实现一个简单版本的矩阵乘法。在介绍具体实现之前，我们首先介绍BLAS约定和深度学习对矩阵乘法的需求和约定，然后介绍cuda上的矩阵库cuBLAS和矩阵乘法任务到硬件执行单元的划分策略，最后我们从Tensor构建、切块、划分，执行、拷贝等方面结合代码实现具体介绍了矩阵乘法的实现，同时我们对该版本的实现选取了实际场景中遇到的问题规模进行了实验并对比了该实现的效率。
 
-\paragraph{BLAS约定和深度学习约定}
+\section{BLAS约定和深度学习约定}
 
 在科学计算和数值分析领域，经常需要解决矩阵特征值、线性方程（代数）等问题，形成了如EISPACK、LINPACK、LAPACK数学求解库。这些库解决的是偏上层的数学问题，它们共同依赖了更加底层的、更基础的数学库BLAS（Basic Linear Algebra Subprograms）。BLAS总共分为三个层次：第一层是向量操作，如 $\boldsymbol{y} = \alpha \boldsymbol{x} + \boldsymbol{y}$ 计算问题；第二层向量-矩阵操作，如 $\boldsymbol{y} = \alpha \boldsymbol{A} \boldsymbol{x} + \beta \boldsymbol{y}$ 计算问题；第三层矩阵-矩阵操作，如 $\boldsymbol{C} = \alpha \boldsymbol{A} \boldsymbol{B} + \beta \boldsymbol{C}$ 。
 
@@ -39,7 +39,7 @@ void linear_layer(T *D, const T *A, const *B, int m, int n, int k) {
 }
 \end{lstlisting}
 
-\paragraph{NVidia cuBLAS类库}
+\section{NVidia cuBLAS类库}
 
 NVidia使用GPU进行了BLAS加速实现，形成了cuBLAS加速库，cuBLAS除了实现BLAS中的API（Application Programming Interface）还扩展实现了多Batch支持、多GPU支持和针对深度学习加速的混合精度、低精度实现。对于我们深度学习中常用半精度（half precision）的gemm类似于之前的sgemm，在cuBLAS中提供了hgemm（half precision general matrix multiplation）。本质而言cuBLAS是一个大的kernel仓库，其中存储了NVidia针对不同数据类型，计算精度、矩阵维度、地址对齐等维度综合考虑的高度优化的kernel。当用户调用其进行矩阵运算时，cuBLAS会使用特定的方法从这些kernel中选择出一个针对该问题规模和约束的性能较好的实现版本。除了cuBLAS外，NVidia同时针对不同功能需求和性能追求提供了cuBLASLt库等，如图1所示，其对比了NVidia提供的BLAS类库的API复杂度和融合后处理能力。
 
@@ -50,7 +50,7 @@ NVidia使用GPU进行了BLAS加速实现，形成了cuBLAS加速库，cuBLAS除�
 
 cuBLASLt库是cuBLAS库的基础上提供针对人工智能和机器学习更灵活的应用，它允许用户指定更复杂的输入输出类型、计算类型（解决混合精度的多类型指定问题）等，同时它还提供了启发式算法，允许用户选择底层实现的性能更好的kernel。后续的文章中我们的实验会利用cuBLASLt的这种选择kernel能力，选择候选kernel中最好的那一个作为我们的baseline。本文中实验我们使用cuBLAS选定的kenrel作为baseline。
 
-\paragraph{Tensor表示}
+\section{Tensor表示}
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.9\textwidth]{figures/reed-11-simple-gemm/fig-02.jpg}
@@ -85,7 +85,7 @@ __global__ void gemm_simple(T *Cptr, const T *Aptr, const T *Bptr, int m, int n,
 
 其中\lstinline|make_gmem_ptr()| 函数用于标识tensor指针的存储层次，方便后续使用时能从指针中取出该指针的存储层次。同时，我们修改了Tensor B的矩阵表示形式把它的形状表示(n, k)，对应的stride 为(k, 1); 这样后续的循环的时候我们就可以写成reduce的形式。为了编译时决策和优化，我们把stride中的连续维度1表示为编译时常量的形式，即\lstinline|Int<1>{}|，这样后续对矩阵进行操作的时候如果需要用到stride的计算则可以利用编译时的决策和优化减少不必要的运行时运算。
 
-\paragraph{以C矩阵为中心的任务划分策略}
+\section{以C矩阵为中心的任务划分策略}
 
 GPU中有多个SM（Stream Multiprocessor）我们编程时以grid、block的软件层级进行编程来利用这些SM，在矩阵计算中，我们以输出矩阵C作为划分thead block的单元进行任务拆分，也就是说一个thread block完成C矩阵中的一个小块（TileC）的计算任务，如图3所示，我们定义矩阵TileC的大小为kTileM、kTileN，分别表示小块矩阵包含元素的行数目和列数目，根据块状矩阵乘法的公式完成TileC的计算需要A矩阵中的绿色高亮部分和B矩阵的黄色高亮部分，它们的形状分别为(kTileM, k)和(kTileN, k)。我们对AB矩阵的k轴按照kTileK的大小进行分块，则可以将TileC矩阵表达为AB矩阵块的点积运算
 
@@ -151,7 +151,7 @@ gC & (kTileM, kTileN) \\
 \caption{Figure 5. stream-k策略任务划分逻辑（引用自PPoPP23: Stream-K）}
 \end{figure}
 
-\paragraph{TiledMMA：主机端选择指令，设备端将分块划分到线程}
+\section{TiledMMA：主机端选择指令，设备端将分块划分到线程}
 
 前面经过把C++ pointer封装成Tensor，然后利用\lstinline|local_tile|将Tensor划分成小块，我们便可以得到一个thread block需要处理的任务。这时，假设我们通过前面MMA章节构造了一个TiledMMA能力，则借助其方法我们便可以通过ThrMMA的partition\_A/B/C方法实现对TileA、TileB、TileC、的划分，通过\lstinline|partition_fragment_A/B/C|便可以构造矩阵乘所需要的寄存器表示。通过\lstinline|cute::gemm|方法便可以完成线程级别寄存器表示的矩阵乘法。具体的kernel代码为
 
@@ -204,7 +204,7 @@ int main() {
 
 在main函数中，我们选择使用Ampere架构提供的16x8x16的Tensor Core矩阵乘法指令，数据精度和计算精度都为fp16。然后通过\lstinline|MMA_Traits|得到mma\_traits，继续将traits转换成\lstinline|MMA_Atom|。我们知道SM80的Tensor Core执行是warp level的，也就是说这个MMA\_Atom是32个线程，我们对\lstinline|MMA_Atom|能力通过增加线程的方式进行M、N方向的重复，同时我们让B矩阵C矩阵使用更多寄存器在N方向扩展2次，得到main函数中的MMA类型。这样，我们便可以得到TiledMMA需要32x2x2 = 128线程，其能处理的矩阵的大小: M = 16 x 2 x 1 = 32, N = 8 x 2 x 2 = 32, K = 16 x 1 x 1 = 16, 即TiledMMA能处理的MNK为32x32x16。
 
-\paragraph{Loop Over K}
+\section{Loop Over K}
 
 有了TiledMMA的数据划分之后，我们调用\lstinline|cute::gemm|即可以完成 \lstinline|C[kTileM, kTileN] =A[kTileM, kTilleK] B[kTileN, kTileK]|利用Tensor Core进行矩阵乘的能力，我们对其进行这个块沿着k方向循环便可以得到最总的矩阵计算结果，实现如下
 
@@ -267,7 +267,7 @@ int main() {
 
 通过gA我们可以获取k方向的tile需要循环的次数num\_tile\_k，然后利用sliced-k模式循环k方向的tile，通过\lstinline|cute::copy|实现全局内存到寄存器到直接copy，数据拷贝到寄存器后通过\lstinline|cute::gemm|完成Tile块的矩阵乘法。在循环结束后再次利用\lstinline|cute::copy|实现寄存器到全局内存的写出。\lstinline|cute::copy|在不指定\lstinline|Copy_Atom|时采用UniversalCopy实现，即简单的cuda语言层面的T d = s形式。到此，我们已经可以使用TileMMA 和 cute::copy实现简单的矩阵乘法。
 
-\paragraph{实验性能对比}
+\section{实验性能对比}
 
 我们选定了一个实际深度学习推理中会使用到的矩阵的大小(M, N, K) = （81920，256，256），选定(kTileM, kTileN, kTileK) = (128, 128, 32)，在RTX 3090显卡上进行了相应的实验，其中操作系统版本为Ubuntu 20.04.6 LTS，CUDA 驱动版本为535.113.01，编译器NVCC版本为V11.7.64。我们实现的kernel和cuBLAS选定的kernel分别调用100次取kernel平均的耗时，得到如下表格，实现及测试代码见\url{https://github.com/reed-lau/cute-gemm}。
 
@@ -285,11 +285,11 @@ gemm\_simple & 218 \\
 
 我们看到cuBLAS中选择的kernel为ampere架构的实现，我们的简单实现版本比cuBLAS中的实现还有很大差距，在后续的文章中我们会通过在该实现上进行优化最终达到甚至超越这个实现效率。
 
-\paragraph{总结}
+\section{总结}
 
 本文我们介绍了cuBLAS的矩阵乘法约定和深度学习中的约定，介绍了矩阵任务向硬件模型划分任务的常用方法，最后通过cute提供的Layout、Tensor，TiledMMA和Copy功能实现了简单的gemm，针对特定的规格进行了性能对比实验，结果显示该简单实现可以达到cuBLAS的60\%的效率。后续我们会在该版本基础上进行进一步优化，最终实现SOTA的gemm能力。
 
-\paragraph{参考}
+\section{参考}
 
 \url{http://history.siam.org/pdfs2/Dongarra_%20returned_SIAM_copy.pdf}
 
