@@ -1,0 +1,223 @@
+\chapter{写给大家看的 CuTe 教程：async pipeline}
+
+\begin{center}\small 作者：竹熙佳处（知乎专栏「CuTe 教程」）\quad 原文：\url{https://zhuanlan.zhihu.com/p/2024832248386528275}\quad 抓取：2026-09-20\end{center}
+
+\section{动机}
+
+在之前的文章[1][2]中，我们介绍了 Hopper 架构引入的 TMA 来提升数据搬运的能力。TMA 让我们能以一条指令搬运一整块 Tile 数据到 Shared Memory，mbarrier 则提供了约束异步操作的顺序的能力。
+
+由于本文介绍的 async pipeline 围绕 mbarrier 构成，我们首先高度精简地回顾一下：
+
+\begin{quote}
+mbarrier 是一个 64-bit 的 shared memory 变量，内部包含 phase、expect arrival count、expect transaction bytes 等字段。当实际的 arrival count 和 transaction bytes 都达到预期值时，phase 位翻转，正在 wait 这个 barrier 的操作即可继续执行。更多细节的可以参考:
+\end{quote}
+
+写给大家看的 CuTe 教程：TMA Copy
+
+构建于 TMA \& mbarrier 两大设计之上，针对 gemm / attention 这类 tensor core kernel，NVIDIA 在 Hopper 架构中推出了 Warp Specialization 编程范式，并在后续架构延续下来。以 gemm 为例来说明：
+
+\begin{itemize}
+  \item 让一小部分 Warp 专门做 Producer，只负责向 TMA 发送搬运指令，写 A/B tile 数据到 Shared Memory；
+  \item 让绝大部分 Warp 专门做 Consumer，只负责从 Shared Memory 读数据做 mma。
+\end{itemize}
+
+Producer 和 Consumer 各自独立运行，天然就具备了数据搬运与计算的重叠能力，同时也大大简化了编译器优化的压力。然而，这也引入了一个新问题：两者之间如何协调？ 具体地，我们需要解决两个问题：
+
+\begin{itemize}
+  \item \textbf{Consumer 怎么知道数据已经 ready 了？}—— 不能在 Producer 还没搬完的时候就去读 Shared Memory。
+  \item \textbf{Producer 怎么知道旧数据已经被用完了？}—— 不能在 Consumer 还在读 Shared Memory 的时候就覆盖写入下一轮数据。
+\end{itemize}
+
+如果只有一块 Shared Memory Buffer，那 Producer 搬完就得等 Consumer 算完，Consumer 算完又得等 Producer 搬下一轮，成为了串行模式，自然不是高效的。
+
+因此，我们引入 multi-stage，即，准备多块（如，3 块） Shared Memory Buffer，生产者往 Stage 1 写数据的同时，消费者可以从 Stage 0 的 shared mem 读上一轮的数据，两者在不同的 Stage 上交替工作，形成 load 数据以及计算的 overlap。即，我们需要维护一个stage-id 从  0 -$>$ 1 -$>$ 2 -$>$ 0 -$>$ …  的环形 buffer，我们在每一次 stage-id 变化时及时 arrive barrier，以让依赖这个 buffer 的 warp 可以解除 wait，继续执行。
+
+朴素地，我们可以手动地维护 stage-id 的循环逻辑与 barrier 的状态，但是真正写过复杂 tensor core kernel 的读者，大概会发现，这不是一个好的选择，一个不留神就容易 hang 住，或是 arrive 时机不对导致报错或是结果异常。因此，我们可以构建一个结构体来管理 barrier 以及 multi-stage 的状态、协调生产者和消费者在各个 Stage 上的访问权限，此即 AsyncPipeline。
+
+此外，AsyncPipeline 的适用范围不限于 TMA + MMA。MMA + Epilogue、Pingpong MMA 等场景同样可以用 Pipeline 来做交互，只要存在异步的 “生产” 和 “消费” 关系，AsyncPipeline 都能派上用场，因此我们在完成复杂 tensor core kernel（尤其是 sm100，引入了 umma 以及 tensor memory 后，tma -$>$ umma -$>$ tmem -$>$ epilogue 这套流程需要维护的异步状态变得异常烧脑，更不要说 flash atten v4 这样引入 softmax + 两次 umma 的用法），AsyncPipeline 就更是不可或缺的基础组件。
+
+因此，在本文接下来的内容中，我们结合 cutlass 中的具体实现，来了解其用法以及不可绕过的实现细节。
+
+\section{基本用法}
+
+我们首先来看一个简单的例子，借助其经典用法下 TMA + MMA，来了解 \textbf{AsyncPipeline 的基本用法}，然后逐一梳理各细节。
+
+\begin{lstlisting}[language=C++]
+// ===== 初始化 =====
+PipelineTmaAsync pipeline(shared_storage, params);
+PipelineState pipe_read;   
+PipelineState pipe_write; 
+
+  // --- 生产者：搬数据 ---
+  if (is_producer) {
+    pipeline.producer_acquire(pipe_write);          // wait EmptyBarrier
+    copy(tma_load.with(full_barrier(pipe_write)));  // issue tma copy
+    ++pipe_write;                                   // advance to next stage
+  }
+
+  // --- 消费者：算数据 ---
+  if (is_consumer) {
+    pipeline.consumer_wait(pipe_read);               // wait FullBarrier
+    gemm(acc, smem_A, smem_B);                       // issue mma
+    pipeline.consumer_release(pipe_read);            // arrive EmptyBarrier
+    ++pipe_read;                                     // advance to next stage
+  }
+\end{lstlisting}
+
+\section{AsyncPipeline：mbarrier 的封装}
+
+Async Pipeline 本质上是一个封装了 mbarrier 的结构体，并提供了对 barrier 操作的各项接口。那么，我们来推导一下这个结构体需要什么成员变量以及函数。首先我们思考，在 TMA + MMA 场景下，我们应该用多少个 mbarrier 来确保数据的使用不重不漏呢？
+
+答案是：每个 Stage 都配备一对 barrier，分别用来约束：
+
+\begin{itemize}
+  \item MMA warp 在此等待，直到 “TMA 已经 load 完数据到 buffer 了，MMA 可以使用了”，我们记为\textbf{ full barrier；}
+  \item TMA warp 在此等待，直到 “MMA 已经使用完 buffer 里的数据了，TMA 可以 load 下一轮数据了”，记为 \textbf{empty barrier。}
+\end{itemize}
+
+所以，我们可以看到，Pipeline 的成员变量 \verb|SharedStorage| 结构体如下：
+
+\begin{lstlisting}[language=C++]
+struct SharedStorage {
+  FullBarrier  full_barrier_[Stages];
+  EmptyBarrier empty_barrier_[Stages];
+}
+\end{lstlisting}
+
+除了 barrier 变量本身，这个结构体还提供对 barrier 操作的一系列函数，包括：
+
+\begin{lstlisting}[language=C++]
+void producer_acquire(state); 
+// producer 等待当前 state 的 empty barrier 就位
+
+void producer_commit(state);
+// producer 在发出当前 state 的数据生产任务后 arrive 对应的 full barrier，TMA load 场景下为 NOP
+
+void consumer_wait(state);
+// consumer 等待当前 state 的 full barrier 就位
+
+void consumer_release(state);
+// consumer 在发出当前 state 的数据消费后 arrive 对应的 empty barrier
+\end{lstlisting}
+
+我们逐个说明：
+
+\begin{itemize}
+  \item \textbf{producer\_acquire(state)}：\textbf{producer 等待当前 state 的 empty barrier 就位}，即，其在等待 consumer 将当前 stage 的 shared mem buffer 使用完毕。
+  \item \textbf{producer\_commit(state)}：\textbf{producer 在发出当前 state 的数据生产任务后 arrive 对应的 full barrier}。这一步在 TMA load 场景下是不需要的（当然写了也没事，会被编译为一个 NOP 操作），因为 TMA load 的 arrive 在 \verb|copy()| 函数中就已经提交了；但在如 umma + load tmem 这类 pipeline 场景下则是必要的。
+  \item \textbf{consumer\_wait(state)}：\textbf{consumer 等待当前 state 的 full barrier 就位}，即，等待 producer 将当前 stage 的 shared mem buffer 填满。
+  \item \textbf{consumer\_release(state)}：\textbf{consumer 在发出当前 state 的数据消费后 arrive 对应的 empty barrier。}
+\end{itemize}
+
+有了这 4 个函数，我们实际上再回头来看我们的代码，就很清晰了。语义上，每个 warp 每次都是 acquire 到需要的资源之后，就开始执行（copy/gemm），执行完成后 release 当前的资源。
+
+我们可以借助 Fig.1 来理解这个过程中是如何使用 AsyncPipeline的：
+
+\begin{figure}[htbp]\centering
+\includegraphics[width=0.9\textwidth]{figures/zhuxi-07-async-pipeline/fig-01.jpg}
+\caption{Figure 1. Producer 与 Consumer 通过 AsyncPipline 交互示意图；每个 Stage 都配备一对 barrier，full \& empty，分别用来表示 tma 已经填满当前 stage 的 shared mem buffer \& mma 已经使用完当前 stage 的 shared mem buffer}
+\end{figure}
+
+此外，由于一些指令如 tma copy，是由单 thread 发起的，而如 epilogue 或是 softmax 这样的指令，仍然由多条 thread 共同完成。
+
+这涉及到我们对 mbarrier 初始化，以及实际 arrive 的时候区别对待（即，arrive 一次还是多次），因此这就要求我们的 pipeline 带有身份信息，例如， “当前 warp 是 producer 还是 consumer？” 或是“这个 thread 是用来发射 TMA 指令的 leader thread 吗？” 。那么这段身份标识，就需要在 Pipeline 初始化的时候以 param 的方式传递给 pipeline 结构体。其核心代码可以展示为如下：
+
+\begin{lstlisting}[language=C++]
+enum class ThreadCategory {
+    NonParticipant,
+    Producer,
+    Consumer,
+    ProducerConsumer
+  };
+
+  struct Params {
+    uint32_t transaction_bytes = 0;
+    ThreadCategory role = ThreadCategory::NonParticipant;
+    uint32_t is_leader = 0;
+    uint32_t num_consumers = 0; // Number of consumer threads
+    uint32_t num_producers = 1; // Number of producer threads
+    int initializing_warp = 0; 
+  };
+  
+// PipelineTmaAsync constructor
+  template<class ClusterShape, class InitBarriers, class InitMasks>
+  CUTLASS_DEVICE
+  PipelineTmaAsync(SharedStorage& storage, Params params, ClusterShape cluster_shape, InitBarriers = {}, InitMasks = {})
+      : params_(params)
+      , full_barrier_ptr_(&storage.full_barrier_[0])
+      , empty_barrier_ptr_(&storage.empty_barrier_[0]) {
+      // ...
+  }
+\end{lstlisting}
+
+\section{PipelineState：流水线的状态机}
+
+我们观察到，pipeline 结构体提供了对 mbarrier 的各种操作，但在 multi-stage 下，我们仍然需要手动映射当前的 i-k-tile、i-stage 以及预期的 barrier 状态，实际上仍然是比较烧脑的。笔者曾经因为历史原因维护过一套不借助 cutlass 的函数写的 sm90 flash atten 算子，各种 barrier 状态的转移分析和 debug 真是遭老罪了。
+
+因此，CuTe 中提供了一个新的结构体来完成状态的管理：\verb|PipelineState|。其核心定义如下：
+
+\begin{lstlisting}[language=C++]
+// Circular Buffer Index + Associated Phase
+// Assumes only one operation possible - i.e., ++
+template<uint32_t Stages_>
+struct PipelineState {
+  static constexpr uint32_t Stages = Stages_;
+
+  int index_ = 0;
+  uint32_t phase_ = 0;
+  uint32_t count_ = 0;
+
+  CUTLASS_DEVICE
+  PipelineState(int index, uint32_t phase, uint32_t count)
+    : index_(index)
+    , phase_(phase)
+    , count_(count) {}
+
+  CUTLASS_DEVICE
+  void operator++() {
+    if constexpr (Stages > 0) {
+      ++index_;
+      ++count_;
+      if (index_ == Stages) {
+        index_ = 0;
+        phase_ ^= 1;
+      }
+    }
+  }
+}
+\end{lstlisting}
+
+具体来说，PipelineState 只是维护了三个变量：
+
+\begin{itemize}
+  \item count\_：自流水线启动以来，总共经历的 k-tile id，这个值是一直增长的。
+  \item index\_：当前 stage 的 id，如在 3-stage 设定下，其就是 0-$>$1-$>$2-$>$0-$>$1 … 的循环。
+  \item phase\_：当前 k-tile 下，我们等待的 mbarrier phase，只有 0 和 1 两个取值。若为 1，只有在 mbarrier phase 也会 1 的时候进行阻塞，mbarrier phase 为 0 的时候放行；反之则反。
+\end{itemize}
+
+index\_ 和 count\_ 的语义是较平凡的，关键在于 phase\_。我们用一个 3-Stage 的 producer\_state 的例子，随着 k-tile 的递增，来观察它们的变化规律。
+
+这里我们需要提一下一个细节（感谢读者朋友 @最光阴\footnote{\url{https://www.zhihu.com/people/7bb7911bb19edeb4bacade3815513a47}} 的提醒），由于 empty barrier 在初始化时，phase 位为 0，而，而我们第一次发起 TMA 时，shared mem buffer 都是空的，也就是不需要阻塞，所以我们会将 producer\_state 的状态初始化为 \{ index\_ == 0, phase\_ == 1, count\_ == 0 \}，否则 Producer 会等待一个无法解锁的 empty barrier，一上来就 hang 住。这个phase\_ == 1在 prodcuer\_state 上是必要的，在 consumer\_state 中则不必要。
+
+我们将时间线展开如 Fig.2 所示：
+
+\begin{figure}[htbp]\centering
+\includegraphics[width=0.9\textwidth]{figures/zhuxi-07-async-pipeline/fig-02.jpg}
+\caption{Figure 2. Producer 与 Consumer 在 k-tile 循环过程 \& producer\_state 中各变量变化情况；index 指向 stage-id，0,1,2,0,1,2 循环，count 随着 k-tile 进行不断递增，phase 则是每 3 次翻转一次。第一次发起 TMA 时，不需要阻塞，所以我们会将 producer\_state 的 phase\_ 初始化为 1}
+\end{figure}
+
+可以看到，从 0 开始，在每次完成 3 次 k-tile 后（即，所有 stage 的 shared mem buffer 都被用到了），phase\_ 会发生一次位翻转(0-$>$1 或是 1-$>$0)，这实际上代表着我们预期当前的 mbarrier 的状态应该发生了变化。因为在 multi-stage-buffer 场景下，同一个 stage 会被反复使用（第 0 轮用 stage 0，第 3 轮又轮到 stage 0），如果没有 phase 状态的标记，硬件就无法区分 "这是新一轮的通知" 还是 "上一轮留下来的残余状态"。
+
+phase 的巧妙之处在于，它让 barrier 的状态具备了代际区分能力，而无需在每轮开始前显式清理 barrier—— 硬件自动通过 phase 比对完成这一切。只有当 mbarrier 本身的 phase 位和我们在 PipelineState 里的这个需要等待的 phase\_ 不一致时，wait 之后的代码才能被放行。因此，通过这样一个结构体，我们就能很轻松的完成 multi-stage 下 mbarrier 状态的管理。
+
+\section{总结}
+
+Mbarrier 的引入，正式将 CuTe kernel 转变为 warp-specialized + producer \& consumer 范式，然而多个 producer \& consumer 的设定，叠加 multi-stage buffer，让 mbarrier 的状态维护变得极为复杂。
+
+为了解决这个问题，cutlass 提供了 AsyncPipeline 结构体，提供了对 full\_barrier 和 empty\_barrier 操作的封装。
+
+进一步地，我们在使用 AsyncPipeline 时，通常会同时再为 producer \& consumer 分别定义一个 PipelineState，用以管理 k-tile \& i-stage \& 预期的 phase 三者的映射关系。
+
+具体来说，我们只需在每次循环后将 PipelineState 作为参数传给 AsyncPipeline 的对应函数（acquire/commit/release），在每次循环结束前 ++PipelineState，就能让维护状态的复杂度在封装好的函数中消化掉。
+
+至此，我们已经梳理完 CuTe 中写好一个 tensor core kernel 所需的基本概念，包括 tiled\_copy[3]，tiled\_mma[4]，tma\_copy[1] 以及 async\_pipeline，因此接下来的文章，我们来尝试用这些组件搭建一个 SOTA 级别的 kernel（e.g gemm / attention @ RTX5080）。

@@ -1,0 +1,325 @@
+<!--
+author: 竹熙佳处
+author_id: zhuxi
+url: https://zhuanlan.zhihu.com/p/1937145378446226159
+fetched: 2026-09-20
+-->
+
+# 写给大家看的 CuTe 教程：tiled mma
+
+
+目录
+前序知识
+
+在上一篇 写给大家看的 CuTe 教程：tiled copy 我们介绍了 CuTe 中的 tiled copy 的使用方法，并引出了 CuTe 中的核心概念 TV-layout，本文的阅读同样也需要用到该概念。为方便阅读，我们在此简单回顾一下：
+
+CuTe 体系中最核心的概念：TV-layout。其作用是：给定一个 thread-id & value-id，一定能找到一个数据的坐标（这个数据可能在上文中 copy 指令的 src 或是 dst，也可以是本文中 mma 指令中的输入输出寄存器中），进而可以拿到对应数据；
+将 TV-layout 输入输出 inverse，即是 MN-layout，其作用是：给定一个数据的位置坐标 m-id & n-id，一定能找到其对应的 thread-id & value-id，通常用来展示数据视角下，每个 thread 会对应到哪些数据。
+
+对更多细节感兴趣的读者可以先读一下 tiled-copy 章节。
+
+动机：从 cuda 视角理解的 tiled mma
+
+Tiled mma 是 CuTe 中除 tiled copy 之外另一大核心组件，其目的是在解决 “如何正确调用 tensor core 完成矩阵乘” 这样一个问题。
+
+在传统 cuda 代码中，想要调用 tensor core 通常使用 mma 指令，而 mma 指令要求多个 threads 协同调用。我们以目前较为流行的 Ampere 架构 (sm80) 的 16x8x16 fp16 mma 指令为例，其主要功能是调用 tensor core 完成一次 m16n8k16 的矩阵乘法 C = A * B。具体的，这条指令以一个 warp 为单元，从这个 warp 中的每个 thread 中的寄存器中读入 A 矩阵 16x16，读入 B 矩阵 8x16，调用 tensor core 完成计算，然后把结果 C 矩阵写出到这个 warp 中每个 thread 中的寄存器 C 矩阵中。
+
+我们注意到，在构成 A/B/C 矩阵时，每个 thread 贡献一部分数据，且为了正确输出结果，我们需要知道每个 thread 去贡献哪一部分数据，并将其按固定顺序排布在寄存器中。具体的，我们以 16x8 的 C 矩阵为例，其需要的数据排布如 Fig.1 所示：
+
+Figure.1 m16n8k16 mma 指令 C 矩阵（16x8）的 thread-data 映射关系，以 thread0 为例，其在输出 C 矩阵时，会负责 4 个 data，分别对应坐标 (0, 0)，（0, 1)，（8, 0），（8, 1）。
+
+进一步的，我们刚刚思考的是一个 warp 完成一条 16x8x16 的 mma 指令，实际上我们在真实场景中所需的矩阵乘法可能是远大于这个尺寸的，例如， 128x128x16，那么如何去扩展到这个规格上呢，简单的想法就是在行方向上扩展 8 次，16 * 8 -> 128，列方向上扩展 16 次，8 * 16 -> 128。扩展的方式可以是：
+
+并行维度：一个 threadblock 中起多个 warps，每个 warp 都执行一个 16x8x16 的矩阵乘，共同完成一个 threadblock 级别的 mma；
+串行维度：这个 threadblock 循环执行多次 threadblock 级别矩阵乘来完成一个更大的 mma。
+
+例如，我们首先指定一个 threadblock 包含 4 warps，在行方向上分配 2 个，列方向上分配 2 个，那么这个 threadblock 就可以完成一次 32x16x16 mma 了；然后我们发现我们实际想完成的 tiled mma 是 128x128x16，因此我们需要再将整个 threadblock 进行行方向循环 4 次和列方向循环 8 次。
+
+当然，我们考虑到 threadblock 一次处理的数据在列方向上最好更大一点，以方便大字长访存，所以我们把 8 再拆解为 2x4，这样一个 threadblock 可以认为一次处理 32x32x16 mma，在列方向上循环 4 次。此即 tiled mma 完成的事情，我们可以把这个重复的过程总结为 Fig.2。
+
+Figure.2 threadblock-level-mma 与 tile data 的切分关系。其中每个 warp 一次调用 mma 指令可以输出 16x8 的 C 矩阵，一个 threadblock 包含 4 个 warp，并让每个 warp 重复调用 2 次 mma 指令，可以得到 32x32 的 C 矩阵。将这个 32x32 的块进一步重复调用，可以得到 tileM x tileN 的数据块。
+
+我们可以看到，对于 mma 指令，thread 和 data 的对应关系并不平凡，每次我们调用不同 mma 指令（例如，我们想调用更小规格的 fp16 指令 16x8x8，或是 int8 的指令 16x8x32）的时候，我们都需要去 ptx 手册上查类似 Fig.1 对应的数据排布，然后按照这个排布把寄存器分配好，才能完成一次正确调用 tensor core。进一步的，我们需要考虑 Fig.2 中的 threadblock mma 在 M 和 N 维度的循环，这个过程也容易让开发者迷失在各种坐标运算的细节中。
+
+除此之外，使用 cuda + ptx 的方式调用 mma 还有一个潜在的风险，就是在架构更新的时候，tensor core 所需的数据排布可能发生重大变化（例如，volta 架构所需的排布就与 ampere 所需的排布不同），这时候很多代码都需要重写。我们猜测 nv 内部写 cublas 库的工程师可能就是受其所扰，才会开始构建 CuTe 这样一个表达体系来兼容不同 tensor core 指令以及对应的 thread 和 data 映射关系。
+
+至此我们可以认为，CuTe 封装 tiled mma 的动机，是希望能够给定任意一个 mma 指令，我们能很方便的推导出其从 data tile 中找到每个 thread 所需要的部分，进而完成一次正确的 mma 指令调用。从这个动机出发，我们一起来梳理一下 tiled mma 的用法以及实现细节。
+
+CuTe Tiled mma 的使用
+
+我们首先来看 CuTe 定义 tiled mma 的一个简单例子，并逐一解释几大模块，为专注于 tiled mma，我们暂不引入 tiled copy，而改用最普通的 copy 来完成数据 g2r / r2g 的 copy（在这里读者可以尝试思考一下，为什么不引入 tiled copy 的情况下，copy 指令依然能正确找到要读的数据，提示： 从 TV-layout 的角度思考）：
+
+template <int kTileM, int kTileN, int kTileK>
+__global__ void my_tiled_mma(__half *Cptr, const __half *Aptr,
+                             const __half *Bptr, int m, int n, int k) {
+
+  int tid_in_block = threadIdx.x;
+  int i_tile_n = blockIdx.x;
+  int i_tile_m = blockIdx.y;
+
+  Tensor A = make_tensor(make_gmem_ptr(Aptr), make_shape(m, k),
+                         make_stride(k, Int<1>{}));
+  Tensor B = make_tensor(make_gmem_ptr(Bptr), make_shape(n, k),
+                         make_stride(k, Int<1>{}));
+  Tensor C = make_tensor(make_gmem_ptr(Cptr), make_shape(m, n),
+                         make_stride(n, Int<1>{}));
+
+  Tensor gA = local_tile(A, make_tile(Int<kTileM>{}, Int<kTileK>{}),
+                         make_coord(i_tile_m, _));
+  Tensor gB = local_tile(B, make_tile(Int<kTileN>{}, Int<kTileK>{}),
+                         make_coord(i_tile_n, _));
+  Tensor gC = local_tile(C, make_tile(Int<kTileM>{}, Int<kTileN>{}),
+                         make_coord(i_tile_m, i_tile_n));
+
+  // 0. 构造 tiled mma
+  using mma_op = SM80_16x8x16_F16F16F16F16_TN;
+  using mma_traits = MMA_Traits<mma_op>;
+  using mma_atom = MMA_Atom<mma_traits>;
+
+  static constexpr int kMmaEURepeatM = 2;
+  static constexpr int kMmaEURepeatN = 2;
+  static constexpr int kMmaEURepeatK = 1;
+
+  using mma_atom_shape = mma_traits::Shape_MNK;
+  static constexpr int kMmaPM = 32; // 32
+  static constexpr int kMmaPN = 32; // 32
+  static constexpr int kMmaPK = 16; // 16
+
+  using MMA_EU_RepeatT = decltype(make_layout(make_shape(
+      Int<kMmaEURepeatM>{}, Int<kMmaEURepeatN>{}, Int<kMmaEURepeatK>{})));
+  using MMA_P_T = Tile<Int<kMmaPM>, Int<kMmaPN>, Int<kMmaPK>>;
+
+  using MMA = decltype(make_tiled_mma(mma_atom{}, MMA_EU_RepeatT{}, MMA_P_T{}));
+
+  MMA tiled_mma;
+  
+  // 1. tiled mma partition
+  auto thr_mma = tiled_mma.get_slice(tid_in_block);
+  auto trA = thr_mma.partition_fragment_A(gA(_, _, 0)); 
+  auto tgA = thr_mma.partition_A(gA(_, _, 0)); 
+  
+  auto trB = thr_mma.partition_fragment_B(gB(_, _, 0));
+  auto tgB = thr_mma.partition_B(gB(_, _, 0)); 
+
+  auto trC = thr_mma.partition_fragment_C(gC);         
+  auto tgC = thr_mma.partition_C(gC);        
+
+  cute::copy(tgA, trA); 
+  cute::copy(tgB, trB);
+  
+  // 2. gemm 执行
+  cute::gemm(tiled_mma, trA, trB, trC);
+
+  cute::copy(trC, tgC);
+}
+
+Tiled mma 的构造
+using mma_op = SM80_16x8x16_F32F16F16F32_TN;
+
+using mma_traits = MMA_Traits<mma_op>;
+using mma_atom = MMA_Atom<mma_traits>;
+
+static constexpr int kMmaEURepeatM = 2; // 2-M-warp
+static constexpr int kMmaEURepeatN = 2; // 2-N-warp
+static constexpr int kMmaEURepeatK = 1; // always 1
+
+static constexpr int kMmaPM = 32; // Perm-M
+static constexpr int kMmaPN = 32; // Perm-N
+static constexpr int kMmaPK = 16; // always 16 when using 16x8x16 mma op
+
+using MMA_EU_RepeatT = decltype(make_layout(make_shape(
+      Int<kMmaEURepeatM>{}, Int<kMmaEURepeatN>{}, Int<kMmaEURepeatK>{})));
+using MMA_P_T = Tile<Int<kMmaPM>, Int<kMmaPN>, Int<kMmaPK>>;
+
+using MMA = decltype(make_tiled_mma(mma_atom{}, MMA_EU_RepeatT{}, MMA_P_T{}));
+
+
+
+和 tiled_copy 一样，其由三大元素构成：
+
+mma_atom：描述我们用什么 mma 指令（16x8x16 fp16，16x8x32 int8 等），同时也包含完成一次这样指令所需要的 atom-TV-layout。
+EU-layout：EU 指的是 execute unit，根据架构不同，实际上是指 1/4-warp (sm70) / warp (sm80) / warp-group (sm90)。也就是执行一条 mma 指令所需要的执行器粒度。如果我们查看 tiled mma 的构造过程就可以看到， CuTe 实现时是把 EU_layout 和 mma atom 中的 threads layout 做了一个 tiled_product 的，也即是把执行器 layout 转换为具体的 thread layout 了。
+permutation：指定了一次 threadblock 能做的的 mma 块大小，tiled mma 其实就是把这 permutation 块在 M 和 N 维度上重复多次。而 permutation 内部由多个 mma op 结果组成，这些所有的结果是由两个层面上的重复完成的，里层是按照 EU-layout 并行分的，外层是把每一个 EU 串行重复执行多条指令。
+
+具体的，我们可以将 Tile -> permutation -> atom 的关系可以展现为 Fig.3
+
+Figure.3 Tiled mma 中 Tile / permutation / atom 三层切分关系。tileM * tileN 会被切分为多个 permutation，而 permutation 由多个 atom 组合，permutation 包含了 warp 的并行重复，也包含指令的串行重复
+
+进一步的，我们借用 cute::print_latex 函数将我们构造出来的 tiled mma 打印出来如 Fig.4 ，其打印的其实就是 MN-layout，即每个给定一个行列坐标（M-id, N-id），能找到对应的 T-id 和 V-id，对于我们理解 thread - data 的映射关系是比较直观的。Fig4. 可以进一步验证我们构造出来的切分模型是正确的。
+
+Figure.4 Tiled mma 中 Tile / permutation 对比 print_latex 打印出来的 tiled mma。可知 tiled mma 是先并行排布 warp 构成一个 threadblock 32x16x16 的 mma，再串行排布指令完成一个 permutation 大小的 mma。在 CuTe 中默认排布是 col-major，因此 warp(0,1) 实际对应的是 thread 64~ thread
+
+另一个例子是 flash atten v2 中 QK 矩阵乘，其为了让同一行的数据都放在同一个 warp 里以达到 warp 内循环算 softmax 的效果，其设计 EU-layout 以及 permutation 把 warp 按竖着排列。
+
+using mma_op = SM80_16x8x16_F32F16F16F32_TN;
+
+using mma_traits = MMA_Traits<mma_op>;
+using mma_atom = MMA_Atom<mma_traits>;
+
+static constexpr int kMmaEURepeatM = 4; // 4-M-warp
+static constexpr int kMmaEURepeatN = 1; // 1-N-warp
+static constexpr int kMmaEURepeatK = 1; // always 1
+
+static constexpr int kMmaPM = 64; // Perm-M
+static constexpr int kMmaPN = 32; // Perm-N
+static constexpr int kMmaPK = 16; // always 16 when using 16x8x16 mma op
+
+using MMA_EU_RepeatT = decltype(make_layout(make_shape(
+      Int<kMmaEURepeatM>{}, Int<kMmaEURepeatN>{}, Int<kMmaEURepeatK>{})));
+using MMA_P_T = Tile<Int<kMmaPM>, Int<kMmaPN>, Int<kMmaPK>>;
+
+using MMA = decltype(make_tiled_mma(mma_atom{}, MMA_EU_RepeatT{}, MMA_P_T{}));
+
+
+那么其 C 矩阵对应的 tile -> permutation 可以按 Fig.5 描述 ：
+
+Figure.5 flash atten v2 中 Tiled mma 中 Tile / permutation 切分方式。为了保证一个 warp 能计算得到到一行中的所有数据（为了后续做 softmax），其将 warp 排布改成了 4x1
+
+在此，读者可能有疑问，有 EU-layout 并且加上 16x8 的 atom 之后，就已经有重复 mma 来划分 tileM x tileN 的能力了，为什么还需要一个 permutation 的维度呢？其实是因为一个 permutation 块在后续的 s2r / r2s tiled copy 的时候是作为一个整体去参与 copy 的，为了做到更大字长的 copy（如，ldsm.x4），通常 permutation 的 N 会设为 warpN * 16，而一次 atom 实际上只有 warpN * 8。
+
+另外，读者可能注意到，Permutation 似乎只是用来规定 threadblock mma 的 tile size，那为什么不直接叫 tile 呢？这是因为在一些高级用法上，我们想做到 tiled 中的多条 16x8x16 mma 指令算的数据的位置重新排列，例如，我们希望 warp 连续做多个 16x8x16 mma，这时候我们可以通过构造 Permutation 中的 stride 来完成，这就是为什么叫 “Permutation”。 详细的内容在我们进阶篇的教程中有单独的文章进行了介绍：
+
+感兴趣的读者可以跳转阅读。在一般场景下，我们将其当作 tile size 理解即可。
+
+Tiled mma partition
+
+接下来是 partition 过程。我们知道 partition 的目的是，将一个大块的 tensor 拆分成多个小 tensor，每个 thread 都获取一个小 tensor，我们称之为 thr-tensor。以 C 矩阵为例，我们从 Fig.1 和 Fig.2 的过程中了解到，一个 thread 所能拿到的数据取决于两个层次，其一是最原子的 16x8 中可以拿到的 4 个数据，其二是在 M，N 维度上循环而产生的多份数据。因此，对一个 tileM == 128，tileN == 128 的数据进行 partition 为例，partition 后得到的 thr-tensor layout 对应到我们的图解中，可以表示为 Fig.6。
+
+
+Figure.6 tiled mma partition 后的 thr-tensor 的 shape 解释。(2, 2) 代表一个 mma 指令的 16x8 C 矩阵被分配到 thread 后的 tensor，第二维 4 代表 M 维度上的重复，第三维 8 代表 N 维度上的重复。8 可以拆解为 4x2，4 代表 tile 到 permutation 的重复，2 代表 threadblock 整体做的指令重复
+
+我们在代码中打印一下 code1 中 tensor 的 layout，可以看到其 shape 与图示一致，针对 tgC 和 trC，其 stride 不一样，我们给定 m = 128, n = 128, kTileM = 128, kTileN = 128，打印结果如下：
+
+gC: (_128,_128):(128,_1)
+trC: ((_2,_2),_4,_8):((_1,_2),_4,_16)
+tgC: ((_2,_2),_4,_8):((_1,1024),4096,_16)
+
+Tiled mma gemm 执行
+cute::gemm(tiled_mma, trA, trB, trC);
+
+
+这一步实际上只是在循环调用 mma 指令。唯一需要注意的是 gemm 函数实际上是可以拆解为多次的 threadblock 级别的 mma 的，也就是说，其最少可以完成一个 threadblock 执行 32x16x16，其他维度都是 for loop 完成的，因此上述代码也可以写成：
+
+#pragma unroll
+  for(auto i_m = 0; i_m < size<1>(trC); i_m += 1){
+#pragma unroll
+    for(auto i_n = 0; i_n < size<2>(trC); i_n += 1){
+      cute::gemm(tiled_mma, trA(_, i_m, _), trB(_, i_n, _), trC(_, i_m, i_n));
+    }
+  }
+
+
+
+
+
+Tiled mma 延伸：s2r / r2s Tiled copy
+
+在我们上述的例子中，为专注在 tiled mma 上，我们省略了大部分优化的逻辑，然而在现实问题中，我们通常需要更多优化手段，例如使用 shared mem 来存放 A/B tile，这就涉及到我们之前介绍的 tiled copy。我们知道 g2s / s2g 的 tiled copy 通常是由我们自己定义 T-layout 和 V-layout 来构建，而涉及到 mma 相关的 s2r / r2s tiled copy 所需的 TV-layout 并不平凡，由我们自己来定义显然有些难度。
+
+好在，mma 的 tv-layout 除了能用来支持 mma 指令，我们还能用其来构建 s2r 和 r2s 的 tiled copy，这是因为我们已知 mma 所对应的 tv-layout（即，r 对应的 tv-layout），通过 s2r / r2s 的 copy atom 中隐含的 src-layout <-> ref-layout <-> dst-layout 的代数运算，可以推导出来其所需要的 shared tensor 的 tv-layout，进而知道 shared tensor 上每个位置应该 copy 哪些数值。mma 和 copy 居然还能组成 combo！不得不说是一个很精巧的设计。
+
+例如，我们通过如下方式可以构造出和我们的 tiled mma 绑定的 s2r / r2s tiled copy。以 C 的 r2s 为例，代码如下：
+
+extern __shared__ T shm_data[];
+
+T *Cshm = shm_data;
+auto sC = make_tensor(make_smem_ptr(Cshm), SmemLayoutC{});
+using SmemLayoutC = decltype(make_shape(Int<32>{}, Int<32>{});
+using R2SCopyAtomC = Copy_Atom<UniversalCopy<int>, cute::half_t>;
+
+// 从 tiled mma 延伸出 r2s tiled copy 
+auto r2s_tiled_copy_c = make_tiled_copy_C(R2SCopyAtomC{}, tiled_mma);
+auto r2s_thr_copy_c = r2s_tiled_copy_c.get_slice(idx);
+auto trC_r2s = r2s_thr_copy_c.retile_S(trC);   
+auto tsC_r2s = r2s_thr_copy_c.partition_D(sC);  
+  
+cute::copy(r2s_tiled_copy_c, tCrC_r2s, tCsC_r2s);
+
+__syncthreads();
+
+
+其中大部分接口与正常 tiled copy 一致，唯一需要说明的是 retile_S，其作用本质上是将 thr-tensor 进行 reshape，将其变换到 copy 所支持的形状，数据本身不发生变化。其实也挺合理的，因为对于寄存器来说变换 layout 是无开销的，怎么变都是一块连续空间。
+
+进阶：CuTe Tiled mma 的实现细节
+
+我们回顾我们调用 tensor core 完成 mma 的过程：每个 thread 提供一些数据，调用 mma 指令后，得到一些数据。也就是说，我们实际上是在思考，每个 thread 要提供哪些数据（A & B），以及计算完后会获得哪些数据 （C）。更具体的，我们希望给出 thread id，就能拿到 tile A/B/C 数据中的一部分。我们惊喜的发现，我们实际上就是需要一个 TV-layout：即，给定一个 t-id & v-id，我们一定能找到 tileM x tileN 这个数据中的坐标，进而通过 partition 拿到对应的数据，组成 thr-tensor。
+
+那么 Tiled mma 如何构建 tv-layout？我们在 copy 的过程中，会尝试用 thread-layout 以及 value-layout 来构建，因为 copy 场景下是比较好理解 thread 和 data 的映射关系的。
+然而在 mma 这种复杂映射下，我们其实是很难去想明白怎样的 thread-layout 以及 value-layout 能 product 出来一个合适的 TV-layout 的。幸运的是，mma 指令所需要的 TV-layout 是固定的，即，我们调用一条 mma 指令的时候，就知道一个 warp 中每个 thread 所对应的数据是怎么样的了。
+
+因此，CuTe 通过在 mma atom 中包含一个 warp 对应的 atom-tv-layout，再用这个 atom-tv-layout 不断重复去获得整个 tiled data 对应的 TV-layout 即可。这样使用者就不需要像 tiled copy 过程中一样，考虑怎么去定这个 thread layout 和 value layout 了，也屏蔽了不同架构下需要的 mma tv layout 的差别，不得不说是一个很优雅的设计。
+
+理解完上述的过程，我们再观察 CuTe 其如何构造 thr-tensor，也就是 partition 过程。其核心代码其实就是在做一件事，即将输入 tensor 的 MN layout，通过 layout divide 拆解到最内层，直到一个 mma-atom 能映射到 atom-MN-layout（对应注释中的 AtomM, AtomN），然后将这个 atom-MN-layout 转变为 atom-TV-layout，这样整个 tensor 的 TV-layout 就被转换出来了。
+
+  template <class CTensor>
+  CUTE_HOST_DEVICE constexpr
+  auto
+  partition_C(CTensor&& ctensor) const
+  {
+    auto thr_tensor = make_tensor(static_cast<CTensor&&>(ctensor).data(), this->thrfrg_C(ctensor.layout()));
+
+    auto thr_vmn = make_coord(get<0>(thr_vmnk_), make_coord(get<1>(thr_vmnk_), get<2>(thr_vmnk_)));
+    return thr_tensor(thr_vmn, make_coord(_, repeat<rank<1,1>(thr_tensor)>(_)));
+  }
+  
+  // Tile a tensor or a layout from shape
+  //   (M,N,...)
+  // to shape
+  //   ((ThrV,(ThrM,ThrN)),(FrgV,(RestM,RestN,...)))
+  // where
+  //   ThrV:  The threads local to an MMA. layout<0>(ThrLayoutVMNK): ThrV -> thread_idx
+  //   ThrM:  The threads tiled in M.      layout<1>(ThrLayoutVMNK): ThrM -> thread_idx
+  //   ThrN:  The threads tiled in N.      layout<2>(ThrLayoutVMNK): ThrN -> thread_idx
+  //   FrgV:  The values local to an MMA.
+  //   RestM: The values tiled in M.
+  //   RestN: The values tiled in N.
+  template <class CTensor>
+  CUTE_HOST_DEVICE constexpr
+  auto
+  thrfrg_C(CTensor&& ctensor) const
+  {
+    CUTE_STATIC_ASSERT_V(rank(ctensor) >= Int<2>{});
+    // Reorder the tensor for the TiledAtom
+    auto t_tile = make_tile(permutation_mnk<0>(),
+                            permutation_mnk<1>());
+    auto t_tensor = logical_divide(ctensor, t_tile);                 // (PermM,PermN)
+
+    // Tile the tensor for the Atom
+    auto c_tile = make_tile(make_layout(size<0>(AtomShape_MNK{})),
+                            make_layout(size<1>(AtomShape_MNK{})));
+    auto c_tensor = zipped_divide(t_tensor, c_tile);                 // ((AtomM,AtomN),(RestM,RestN))
+
+    // Transform the Atom mode from (M,K) to (Thr,Val)
+    auto tv_tensor = c_tensor.compose(AtomLayoutC_TV{},_);           // ((ThrV,FrgV),(RestM,RestN))
+
+    // Tile the tensor for the C-threads
+    auto thr_tile = make_tile(_,
+                              make_tile(make_layout(size<1>(thr_layout_vmnk_)),
+                                        make_layout(size<2>(thr_layout_vmnk_))));
+    auto thr_tensor = zipped_divide(tv_tensor, thr_tile);            // ((ThrV,(ThrM,ThrN)),(FrgV,(RestM,RestN)))
+
+    return thr_tensor;
+  }
+
+
+在明白 tiled mma partition 的原理之后，我们对于一个 tensor partition 前后的 layout 是多少，相信也是非常自然的了。
+
+至于为什么先并行再串行的循环，我想是因为 thread 的连续排布肯定是对数据加载更友好的，虽然单 warp 做到连续排布就已经能够合并访存了，但是 threadblock 级别的连续排布可以更进一步提高 cache 属性。而且，考虑到 volta 架构并是以 1/4-warp 为执行器的，为了保证一个 warp 访问的数据连续，先并行执行器排布明显是更优的选择。
+
+最后，值得注意的是，tiled mma 的大小实际上可以不和 g2s/s2g tiled copy 一致，例如，我们定义一个 64x64x16 tiled mma，实际对应的 tiled copy 规格可能是 128x128x16 的，后续我们需要再在两个方向上进行循环。之所以这样设计，是因为在 mma 问题中寄存器通常是受限的稀缺资源，通过这种设计可以让我们更自由的控制寄存器的行为，例如，我们可以计算一部分 C （例如 64x64），然后先输出到 shm 中，然后再复用 64x64 的寄存器来计算下一块 C，从而大大降低寄存器的用量，进而把 tile size 开到更大。而且数据的写出以及 mma 的计算也可以并行起来。更特别的，tiled mma 定义时其实并不考虑 tileM/tileN/tileK，而是只考虑一个 threadblock 能处理的 mma，也就是我们例子中的 32x32x16，其他维度其实是在 tensor partition 过程中用 divide 得到的。
+
+总结
+
+我们在本文中梳理了 tiled mma 的基础用法，包括 make_tiled_mma 构造 tiled mma 对象，以及 partition 对所需数据进行 thread 与 value 映射。我们对其实现原理也进行了探索，我们发现其核心仍然是我们在 tiled copy 一文中提到的 TV-layout。进一步的，tiled mma 提供的 TV-layout 可以被转换为 s2r / r2s copy 所需的 TV-layout，因而可以由 tiled mma 延伸出 s2r / r2s tiled copy。
+
+至此，我们认为，CuTe 的两大部分 tiled mma 和 tiled copy 都梳理完毕了，在此基础上完成一个高效 gemm 已经不是太难的事情，需要做的只是配合 tileK for 循环，并且排布好 load-compute-store 的 pipeline 即可。具体实现推荐 @reed 大师的这篇文章 cute 之 高效GEMM实现，以及其给出的高效 gemm 实现 https://github.com/reed-lau/cute-gemm，有兴趣的读者可以深入研究。
+
+最后，我们逐渐意识到，CuTe 的所有操作，就是围绕 TV-layout 在进行各种各样的变换，包括 inverse，product，divide，composite 等。因此，如果想要更进一步的从原理上理解 CuTe 的设计哲学（例如，我们想知道，为什么我们将 T-layout & V-layout 进行一个 raked_product 就可以得到 TV-layout，为什么 TV-layout inverse 之后就可以变换成 MN-layout，etc），对其 layout 代数逻辑的理解是无可避免，接下来的文章里，我们来尝试探索一下这些代数逻辑是怎么一回事，以及其设计动机是什么。
+
+## 图片URL
+https://pic2.zhimg.com/v2-7d083eb1d4628a889b88dcd08191a45b_1440w.jpg
+https://pic1.zhimg.com/v2-0b811ec9ca6816c85066da7588712fe4_1440w.jpg
+https://picx.zhimg.com/v2-c644458fe335516d0746ea42a90a1d0b_1440w.jpg
+https://pica.zhimg.com/v2-41f5ed4645d1bfcea089d9459e3a132c_1440w.jpg
+https://pic2.zhimg.com/v2-9c93ddd89020b438660764acaac6b1cd_1440w.jpg
+https://picx.zhimg.com/v2-f1f0e0b7017f8364d232e11149a216fb_1440w.jpg

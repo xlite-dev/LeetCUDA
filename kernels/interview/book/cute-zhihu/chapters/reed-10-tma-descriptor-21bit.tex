@@ -1,0 +1,251 @@
+\chapter{cute 之 TMA Descriptor编码与隐藏的第21bit}
+
+\begin{center}\small 作者：reed（知乎 @reed-84-49，专栏「CUDA高性能编程」）\quad 原文：\url{https://zhuanlan.zhihu.com/p/2037200219700449995}\quad 抓取：2026-09-20\end{center}
+
+在之前的文章"cute 之 Hopper TMA"中，我们介绍了 TMA（Tensor Memory Access）的基本概念和使用方式。TMA 用一个 128 字节的 opaque descriptor 描述 tensor 布局，硬件自动完成地址计算、越界 fill、swizzle 等工作。其中"越界自动 fill"是 TMA 对程序员最友好的承诺——你不需要手写边界 clamp，只要 tile 坐标超出 globalDim，硬件就会把越界元素填成 zero 或 NaN。
+
+我们在研究 cuTensorMapEncodeTiled的编码逻辑、并在不同驱动版本间做对比验证时，在 control word 的 bit[21] 位置发现了一个行为差异。在我们测试的 580 版本驱动中，该 bit 会根据 tensor 数据量是否达到 128KB 而被设置；而在我们测试的 530 版本驱动中，该 bit 始终为 0。进一步的实验表明，当 bit21=1 时，TMA 硬件会跳过 OOB 边界检查，直接对越界 tile 计算地址并发起内存请求——如果目标地址恰好落在未映射的虚拟地址区域，就会触发 illegal memory access。
+
+本文分三个部分展开：首先完整呈现 TMA descriptor 的 128 字节二进制布局（这是理解 bit21 位置的前提）；然后通过精确控制 GPU 虚拟地址映射的实验，验证 bit21 对 OOB 行为的影响；最后讨论这个未文档化 bit 在 tensormap.replace动态修改场景下引发的实际问题及规避方法。
+
+\paragraph{TMA Descriptor 的完整二进制布局}
+
+cuTensorMapEncodeTiled 构造的 CUtensorMap 是一个 128 字节、128 字节对齐的 opaque 结构体。NVIDIA 官方将其定义为 opaque type，没有公开内部编码方式。通过对大量参数组合下的输出做 byte-level 对比分析，结合 TMA 指令对 descriptor 各字段的访问行为，我们还原了完整的二进制布局。
+
+\begin{figure}[htbp]\centering
+\includegraphics[width=0.9\textwidth]{figures/reed-10-tma-descriptor-21bit/fig-01.png}
+\caption{Figure 1. TMA Descriptor Offset and Fields}
+\end{figure}
+
+\paragraph{整体结构}
+
+\begin{lstlisting}
+Offset   Size    Field
+------   ----    -----------------------------------------
+ 0- 7    8B      globalAddress (64-bit device pointer)
+ 8-11    4B      Control Word (bitfield, 见下文详解)
+12-27   16B      globalStrides[0..3] / 16 (各 32-bit, little-endian)
+28-29    2B      stride upper bits (每个 stride 的高 4 位, packed as nibbles)
+30-31    2B      reserved (=0)
+32-51   20B      globalDim[0..4] - 1 (各 32-bit)
+52-54    3B      elementStrides (每维 3 bits, packed)
+55-59    5B      boxDim[0..4] - 1 (各 8-bit)
+60-63    4B      reserved (=0)
+64-67    4B      smem box total bytes
+68-71    4B      reserved (=0)
+72-75    4B      smem swizzle stride
+76-127  52B      reserved (=0)
+\end{lstlisting}
+
+几个关键字段的说明：
+
+globalAddress (bytes 0-7): tensor 在 device global memory 中的起始地址。TMA 硬件以此为基地址，加上 coord $\times$ stride 计算每个 tile 的实际访问地址。这是 descriptor 中唯一的指针字段。
+
+globalStrides (bytes 12-29): 除最内层维度外的各维 stride，以字节为单位除以 16 后存储。采用 36-bit 编码（32-bit lower + 4-bit upper nibble），支持最大 64GB 的 stride 值。最内层维度的 stride 隐含为 elemSize，不编码在 descriptor 中。
+
+globalDim (bytes 32-51): 各维度大小减 1 后存储为 32-bit 值。TMA 硬件用此做越界判断——当 tile 的起始坐标超出此值时认为越界。这也是 \lstinline|tensormap.replace| 最常修改的字段。
+
+smem box total bytes (bytes 64-67): 一次 TMA tile load 搬运到 shared memory 的总字节数。计算方式为 \lstinline|product(boxDim[i] / elemStride[i])| $\times$ \lstinline|baseSize|，其中 \lstinline|baseSize| 在 interleave 模式下为 interleave 粒度（16B 或 32B），否则为 elemSize。
+
+\paragraph{Control Word 的 bitfield 布局}
+
+Control word（bytes 8-11）浓缩了 descriptor 的模式配置信息。通过逐 bit 变化各 API 参数并观察输出变化，我们确认了以下布局：
+
+\begin{figure}[htbp]\centering
+\includegraphics[width=0.9\textwidth]{figures/reed-10-tma-descriptor-21bit/fig-02.jpg}
+\caption{Figure 2. Control Word bitfield}
+\end{figure}
+
+\begin{lstlisting}
+bit 位置        含义
+----------      ----------------------------
+bits[ 3: 0]    tensor type (0 = tiled)
+bits[ 6: 4]    tensorRank - 1
+bits[10: 7]    internal dtype code (4 bits, 与 API enum 值有重映射)
+bits[12:11]    interleave (0=none, 1=16B, 2=32B)
+bits[14:13]    swizzle (0=none, 1=32B, 2=64B, 3=128B)
+bit [15]       oobFill (0=zero, 1=NaN)
+bit [16]       reserved (=0)
+bits[18:17]    l2Promotion (0=none, 1=64B, 2=128B, 3=256B)
+bits[20:19]    reserved (=0)
+bit [21]       OOB protection control <- 本文主角
+bits[31:22]    reserved (=0)
+\end{lstlisting}
+
+需要强调的是，以上布局完全基于实验还原，不来自任何 NVIDIA 公开文档。NVIDIA 未公开 CUtensorMap 的内部结构。
+
+\paragraph{开源参考实现}
+
+为了方便开发者理解和调试 TMA descriptor，我们提供了 \lstinline|cuTensorMapEncodeTiled_impl.h|一个纯软件的参考实现，具备两项核心能力：
+
+正向编码：给定相同的 API 参数，生成与 driver 580 输出 byte-level 一致的 128 字节 descriptor（含 bit21 逻辑）。我们在多组测试向量上验证了与官方驱动的完全一致性。
+
+解析打印：给定任意 CUtensorMap，将其内部字段完整解码并格式化打印——包括 globalAddress、各维度 dim/stride/box、control word 中的每个 bitfield。
+
+这在调试 \lstinline|tensormap.replace|后的 descriptor 状态时尤其有用：你可以直接将修改前后的 descriptor dump 出来，逐字段比对，快速定位不一致。
+
+\paragraph{bit21 的设置规则}
+
+在我们测试的两个驱动版本中，bit21 的行为如下：
+
+Driver 530: bit21 始终为 0，无论输入参数如何变化。
+
+Driver 580: bit21 根据以下条件设置：
+
+\begin{lstlisting}
+bit21 = (product(globalDim[0..rank-1]) * elemSize >= 131072)  // >= 128KB
+\end{lstlisting}
+
+\begin{table}[htbp]
+\centering
+\begin{tabular}{llll}
+\toprule
+dtype & dims & total bytes & bit21 (driver 580) \\
+\midrule
+UINT8(fp8) & [256, 511] & 130816 & 0 \\
+UINT8(fp8) & [256, 512] & 131072 & 1 \\
+FLOAT16 & [256, 256] & 131072 & 1 \\
+FLOAT32 & [128, 128] & 65535 & 0 \\
+FLOAT32 & [128, 256] & 131072 & 1 \\
+FLOAT32 & [32, 32, 32] & 131072 & 1 \\
+FLOAT32 & [32, 32, 31] & 126976 & 0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+阈值精确卡在 $2^{17}$ = 131072 字节。我们没有确认这个行为具体从哪个驱动版本开始引入——仅确认在 580 中存在、在 530 中不存在。
+
+\paragraph{bit21 的硬件语义：实验验证}
+
+知道了 bit21 的设置规则后，关键问题是：它控制什么硬件行为？
+
+\paragraph{实验设计}
+
+为了隔离 bit21 的影响，我们需要构造一个实验，使得除 bit21 外所有条件完全相同，然后观察 TMA 对 OOB tile 的处理差异。
+
+实验构造的核心挑战在于内存映射。cudaMalloc 的 suballocator 内部会映射远大于请求大小的虚拟地址区域（我们实测 cudaMalloc(2MB) 的有效映射达到 4MB 以上）。这意味着常规分配下 OOB 地址大概率仍在有效映射内——TMA 读到"垃圾数据"而不是 fault，无法区分"跳过检查直接读了"还是"检查后 fill 了"。
+
+因此我们使用 cuMemCreate + cuMemMap 精确控制映射边界：在连续的虚拟地址空间中只映射中间 1 个 page（2MB），前后都是 unmapped 区域。将 tensor 数据（100 行 $\times$ 256 列 = 25KB）放在 mapped 区域的末尾，使得 OOB tile（coord\_y=128）的计算地址一定落入末尾的 unmapped 区域。
+
+\begin{figure}[htbp]\centering
+\includegraphics[width=0.9\textwidth]{figures/reed-10-tma-descriptor-21bit/fig-03.jpg}
+\caption{Figure 3. Memory Layout and OOB Address}
+\end{figure}
+
+实验流程分两个 kernel 完成：
+
+Kernel 1（update）: 将模板 descriptor 拷贝到 shared memory $\rightarrow$ \lstinline|tensormap.replace| 修改 address 和 dim[1]=100 $\rightarrow$ \lstinline|tensormap.cp_fenceproxy| 写回 global memory
+
+Kernel 2（load）: \lstinline|fence.proxy.tensormap| acquire $\rightarrow$ TMA load at coord\_y=128（OOB: 128 $>$ dim[1]=100）
+
+两组实验的唯一差异是创建模板时的 dims——[256, 512] vs [256, 511]——前者导致 bit21=1，后者 bit21=0。
+
+\paragraph{实验结果}
+
+\begin{table}[htbp]
+\centering
+\begin{tabular}{lll}
+\toprule
+模板dims & bit21 & OOB TMA Load结果 \\
+\midrule
+{[}256, 512{]} = 128KB & 1 & illegal memory access \\
+{[}256, 511{]} $<$ 128KB & 0 & zero fill, 无fault \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+两个场景中 \lstinline|tensormap.replace| 后的实际状态完全相同——globalDim[1]=100，base address 相同，OOB 坐标相同，目标物理地址相同（均落入 unmapped 区域）。唯一的差异是 control word 中的 bit21。
+
+\paragraph{硬件行为模型}
+
+\begin{figure}[htbp]\centering
+\includegraphics[width=0.9\textwidth]{figures/reed-10-tma-descriptor-21bit/fig-04.jpg}
+\caption{Figure 4. TMA OOB Path for 21th Bit in Control Word}
+\end{figure}
+
+基于实验结果，我们得出 bit21 的硬件行为模型：
+
+bit21=0: TMA 前端在发起任何内存事务之前，先比较 tile 坐标与 globalDim。如果 coord $\geq$ globalDim，该 tile 被判定为 OOB，硬件在本地生成 fill value（zero 或 NaN，取决于 oobFill 配置），不产生任何内存请求。即使目标地址完全不可访问，也绝对安全。
+
+bit21=1: TMA 跳过上述前端检查，直接计算 globalAddress + coord $\times$ stride 并向内存子系统发起请求。如果该地址有效（落在已映射的 VA 范围内），TMA 会读到该位置的数据——可能是正确数据，也可能是不相关的垃圾。如果该地址无效（未映射），则触发 page fault，表现为 illegal memory access。
+
+bit21 本质上是一个性能优化开关：对于大 tensor，跳过逐 tile 的边界检查可以减少 TMA 前端延迟。猜测NVIDIA 的设计假设是——大 tensor 的实际内存分配通常有足够的对齐和 padding，正常使用中 OOB tile 的地址不会落在 page 边界之外。
+
+\paragraph{当性能优化遇到动态 Shape}
+
+理解了 bit21 的语义后，它引发实际问题的条件也就清楚了。
+
+NVIDIA 提供了 \lstinline|tensormap.replace| 指令，允许 kernel 在 device 上动态修改 descriptor 的 globalDim、globalAddress 等字段——这是处理 variable-length sequence（如 LLM 推理中的 group gemm、variable-length attention）的标准做法。问题在于：tensormap.replace 修改 dim 时不会联动更新 control word 中的 bit21。
+
+这意味着以下使用序列会产生一个自相矛盾的 descriptor：
+
+\begin{enumerate}
+  \item 用较大的 max shape 创建模板 descriptor $\rightarrow$ 因为 total $\geq$ 128KB，bit21 被设为 1
+  \item 运行时通过 \lstinline|tensormap.replace|将 dim 缩小为实际值 $\rightarrow$ bit21 仍为 1（replace 不更新 control word）
+  \item TMA load 遇到 OOB tile $\rightarrow$ bit21=1 $\rightarrow$ 跳过检查 $\rightarrow$ 计算地址
+\end{enumerate}
+
+在大多数场景下这不会 fault——因为 cudaMalloc映射的 VA 范围远大于实际分配，OOB 地址通常仍然"可访问"（只是读到垃圾）。但在以下条件同时满足时会触发 illegal memory access：模板 tensor 总大小恰好 $\geq$ 128KB（bit21=1）；运行时某些 batch/group 的实际 dim 远小于模板；对应的 OOB 地址刚好越过了实际的 page 映射边界（memory pool allocator 的分配边界、cuMemCreate精确映射等场景）。
+
+这不是误用 API。用户通过 NVIDIA 提供的标准 API 路径正确编程，得到的 descriptor 却进入了一个语义不一致的状态：globalDim 字段说"tensor 只有 100 行"，bit21 却告诉硬件"这个 tensor 很大，不需要 OOB 保护"。CuTe 中的 \lstinline|tma_descriptor_cp_fence_release| 和 \lstinline|tma_descriptor_fence_acquire|也不涉及 bit21 的同步更新。
+
+bit21 的引入使得 OOB 检查变为有条件的，但 tensormap.replace 的实现未能跟进这一变化——它更新了参与 OOB 判定的 globalDim 字段，却没有联动更新控制 OOB 检查是否执行的 bit21。这是一个优化引入后接口语义未完整适配的问题。
+
+\paragraph{规避方法}
+
+\paragraph{方法一：创建模板时强制清零 bit21}
+
+在调用 cuTensorMapEncodeTiled 后、将 descriptor 交给 kernel 使用之前，在 host 侧手动清除 bit21：
+
+\begin{lstlisting}[language=C++]
+// 创建 descriptor
+cuTensorMapEncodeTiled(&tmap, ...);
+// 强制清除 bit21，确保 OOB 保护始终开启
+uint32_t control;
+memcpy(&control, (uint8_t*)&tmap + 8, 4);
+control &= ~(1u << 21);
+memcpy((uint8_t*)&tmap + 8, &control, 4);
+\end{lstlisting}
+
+这种方法简单直接，代价是大 tensor 可能损失一点 TMA 前端性能（需要逐 tile 检查边界）。对于绝大多数应用场景，这个开销可以忽略。
+
+\paragraph{方法二：在 \texttt{tensormap.replace}[2] 修改 shape 时联动处理 bit21}
+
+如果需要保留 bit21 的性能优化（大 tensor 跳过检查），可以在每次 replace dim 后根据新的实际 tensor 大小重新决策 bit21。由于 tensormap.replace 不支持直接修改 control word，需要在 shared memory 中手动 patch 对应字节后再通过 \lstinline|tensormap.cp_fenceproxy| 写回：
+
+\begin{lstlisting}[language=C++]
+// 在 smem 中完成 replace 后，根据新 dims 更新 bit21
+uint64_t new_total = (uint64_t)new_dim0 * new_dim1 * elemSize;
+uint32_t* ctrl_ptr = (uint32_t*)((uint8_t*)&smem_tmap + 8);
+if (new_total >= 131072)
+    *ctrl_ptr |= (1u << 21);
+else
+    *ctrl_ptr &= ~(1u << 21);
+// 然后执行 cp_fenceproxy 写回 gmem
+\end{lstlisting}
+
+\paragraph{结论}
+
+TMA descriptor control word 的 bit[21] 是一个未文档化的硬件标志。在我们测试的 driver 580 中，当 product(globalDim) $\times$ elemSize $\geq$ 128KB 时被设置为 1；在我们测试的 driver 530 中始终为 0。
+
+bit21=1 时，TMA 硬件跳过 tile 坐标的越界检查（OOB fill 机制被禁用），直接计算并访问目标地址。
+
+\lstinline|tensormap.replace| 指令修改 globalDim 时不联动更新 bit21，可能导致 descriptor 进入"dim 小但 bit21=1"的不一致状态，在 OOB 地址恰好落入未映射区域时触发 illegal memory access。
+
+规避方式为：创建 descriptor 后强制清零 bit21，或在 replace 修改 dim 后根据新 tensor 大小手动更新 bit21。
+
+本文涉及的全部代码更新在\url{https://github.com/reed-lau/cute-gemm/tree/main/tma-desc}包括：
+
+\lstinline|cuTensorMapEncodeTiled_impl.h|：参考实现（正向编码 + 字段解析打印，与 driver 580 输出 bit-level 一致）
+
+\lstinline|test_bit21_oob.cu|：bit21 OOB 行为的最小复现
+
+main.cc + tests.txt：52 组测试向量的全量回归验证
+
+\paragraph{参考}
+
+\url{https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TENSOR__MEMORY.html}
+
+\url{https://github.com/NVIDIA/cutlass/blob/main/include/cute/arch/copy_sm90_desc.hpp}
+
+\url{https://patents.google.com/patent/US20230289292A1}
