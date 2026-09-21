@@ -768,7 +768,68 @@ $j\oplus r$。第~\ref{ch:12}~章的「对角线置换」在这里有了精确�
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.9\textwidth]{figures/drawio/fig-23-1-sw128/fig-23-1.png}
+% was: \includegraphics[width=0.9\textwidth]{figures/drawio/fig-23-1-sw128/fig-23-1.png}
+\begin{tikzpicture}[font=\tiny, x=0.01525cm, y=-0.01525cm]
+  \node[anchor=west, font=\footnotesize\bfseries] at (30,26)
+    {SW128 atom: 8$\times$64 half $=$ 8 rows $\times$ 128 B, 8 chunks of 16 B per row};
+  \node[anchor=west, font=\scriptsize] at (30,50)
+    {物理 chunk 位置 $= j \oplus (r \bmod 8)$：行长 128\,B 刚好翻 3 个地址位，
+     第~\ref{ch:12}~章的「对角线置换」在这里是位级精确的};
+  \node[anchor=west, font=\tiny, text=gray!80] at (24,81) {logical chunk};
+  \foreach \cc in {0,...,7}{
+    \node[draw=gray!45, fill=gray!12, font=\tiny\bfseries, minimum width=0.79cm,
+          minimum height=0.46cm, inner sep=0pt] at ({156+52*\cc},81) {c\cc};
+  }
+  \foreach \rr in {0,...,7}{
+    \node[anchor=east, font=\tiny\bfseries, text=gray!80, minimum height=0.58cm]
+      at (128,{115+38*\rr}) {r=\rr};
+    \foreach \cc in {0,...,7}{
+      \pgfmathtruncatemacro{\vv}{int(mod(\cc+\rr,2)) +
+        2*int(mod(int(\cc/2)+int(\rr/2),2)) + 4*int(mod(int(\cc/4)+int(\rr/4),2))}
+      \ifnum\rr=1
+        \node[draw=gray!45, fill=tkFillBlue, text=tkBlue, minimum width=0.79cm,
+              minimum height=0.58cm, inner sep=0pt] at ({156+52*\cc},{115+38*\rr}) {\vv};
+      \else\ifnum\rr=2
+        \node[draw=gray!45, fill=tkFillBlue, text=tkBlue, minimum width=0.79cm,
+              minimum height=0.58cm, inner sep=0pt] at ({156+52*\cc},{115+38*\rr}) {\vv};
+      \else\ifnum\rr=4
+        \node[draw=gray!45, fill=tkFillBlue, text=tkBlue, minimum width=0.79cm,
+              minimum height=0.58cm, inner sep=0pt] at ({156+52*\cc},{115+38*\rr}) {\vv};
+      \else\ifnum\rr=3
+        \node[draw=gray!45, fill=gray!6, minimum width=0.79cm, minimum height=0.58cm,
+              inner sep=0pt] at ({156+52*\cc},{115+38*\rr}) {\vv};
+      \else\ifnum\rr=5
+        \node[draw=gray!45, fill=gray!6, minimum width=0.79cm, minimum height=0.58cm,
+              inner sep=0pt] at ({156+52*\cc},{115+38*\rr}) {\vv};
+      \else\ifnum\rr=7
+        \node[draw=gray!45, fill=gray!6, minimum width=0.79cm, minimum height=0.58cm,
+              inner sep=0pt] at ({156+52*\cc},{115+38*\rr}) {\vv};
+      \else
+        \node[draw=gray!45, fill=white, minimum width=0.79cm, minimum height=0.58cm,
+              inner sep=0pt] at ({156+52*\cc},{115+38*\rr}) {\vv};
+      \fi\fi\fi\fi\fi\fi
+    }
+  }
+  \node[anchor=west, font=\tiny, text=gray!80] at (558,115) {identity};
+  \node[anchor=west, font=\tiny, text=gray!80] at (558,153) {swap pairs};
+  \node[anchor=west, font=\tiny, text=gray!80] at (558,267) {halves swap};
+  \node[anchor=west, font=\tiny, text=gray!80] at (558,381) {reverse};
+  \draw[-{Stealth[length=1.8mm]}, tkBlue, very thick] (138,142) -- (222,142);
+  \draw[-{Stealth[length=1.8mm]}, tkBlue, very thick] (138,180) -- (274,180);
+  \draw[-{Stealth[length=1.8mm]}, tkBlue, very thick] (138,256) -- (376,256);
+  \node[anchor=west, font=\tiny, text=gray!80] at (690,136)
+    {物理偏移$(r, c)$，half 单位：};
+  \node[anchor=west, draw=tkBlue, fill=tkFillBlue, text=tkBlue, font=\tiny,
+        inner sep=3pt] at (690,172)
+    {smem $= 64r + 8(j \oplus r) + (c \bmod 8)$};
+  \node[anchor=west, font=\tiny] at (690,211)
+    {与 \texttt{swizzle<64>}（第~\ref{ch:12}~章）同构；};
+  \node[anchor=west, font=\tiny] at (690,231)
+    {TMA \texttt{SWIZZLE\_128B} 写 $64\times64$ half tile 实测 $4096/4096$ 逐点一致};
+  \node[anchor=west, font=\tiny] at (30,424)
+    {蓝格行 $r=1/2/4$ 的箭头示例：逻辑 chunk $c_0$ 的物理落点分别翻 $1/2/4$
+     对应的地址位——同一张表就是 \texttt{Swizzle<3,4,3>} 在 128\,B 行上的全部行为};
+\end{tikzpicture}
 \caption{SW128 原子的物理排布：16\,B 块的列号 XOR 行号。横轴为 8 个
 逻辑 chunk（$c_0$--$c_7$），纵轴 8 行，格内为该行接受置换后的物理
 chunk 下标；蓝底行 $r=1/2/4$ 给出 chunk $c_0$ 落点翻转 $1/2/4$ 地址位的
@@ -780,7 +841,121 @@ chunk 下标；蓝底行 $r=1/2/4$ 给出 chunk $c_0$ 落点翻转 $1/2/4$ 地�
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-23-2-tma-copy-flow/fig-23-2.png}
+% was: \includegraphics[width=0.95\textwidth]{figures/drawio/fig-23-2-tma-copy-flow/fig-23-2.png}
+\begin{tikzpicture}[font=\tiny, x=0.015cm, y=-0.015cm]
+  \node[anchor=west, font=\footnotesize\bfseries] at (30,23)
+    {TMA Copy 数据流：一个 thread 发起，TMA 引擎按 tensormap 描述搬运整个 box};
+  \node[anchor=west, font=\tiny] at (30,48)
+    {CPU 将张量形状与 box 参数 encode 进 tensormap；gmem 的每个 box 由 TMA
+     引擎整块搬入 smem tile};
+  \node[anchor=west, font=\scriptsize, text=tkBlue] at (60,84) {gmem 全局张量};
+  \node[anchor=west, font=\tiny, text=tkOrange!80!black] at (456,84)
+    {当前 box $(3, 3)$};
+  \foreach \cc in {0,...,15}{
+    \node[font=\tiny, text=gray!80] at ({82+44*\cc},103) {\cc};
+  }
+  \foreach \rr in {0,...,5}{
+    \node[anchor=east, font=\tiny, text=gray!80] at (52,{138+44*\rr}) {\rr};
+    \foreach \cc in {0,...,15}{
+      \ifnum\rr<3
+        \ifnum\cc<9
+          \node[draw=gray!40, fill=tkFillGreen, minimum width=0.63cm, minimum height=0.63cm,
+                inner sep=0pt] at ({81+44*\cc},{137+44*\rr}) {};
+        \else\ifnum\cc<12
+          \node[draw=gray!40, fill=tkFillOrange, minimum width=0.63cm, minimum height=0.63cm,
+                inner sep=0pt] at ({81+44*\cc},{137+44*\rr}) {};
+        \else
+          \node[draw=gray!40, fill=white, minimum width=0.63cm, minimum height=0.63cm,
+                inner sep=0pt] at ({81+44*\cc},{137+44*\rr}) {};
+        \fi\fi
+      \else
+        \node[draw=gray!40, fill=white, minimum width=0.63cm, minimum height=0.63cm,
+              inner sep=0pt] at ({81+44*\cc},{137+44*\rr}) {};
+      \fi
+    }
+  }
+  \draw[tkGreen, very thick] (60,116) rectangle (192,248);
+  \draw[tkGreen, very thick] (192,116) rectangle (324,248);
+  \draw[tkGreen, very thick] (324,116) rectangle (456,248);
+  \draw[tkOrange, very thick] (456,116) rectangle (588,248);
+  \node[anchor=west, font=\tiny, text=gray!80] at (746,103) {globalX};
+  \node[anchor=west, font=\tiny, text=gray!80] at (24,393) {globalY};
+  \node[draw=gray!60, fill=white, minimum width=5.07cm, minimum height=3.9cm,
+        inner sep=0pt] at (981,204) {};
+  \node[anchor=west, font=\scriptsize, text=tkPurple] at (832,94)
+    {tensormap (CPU encode)};
+  \foreach \k/\t in {0/{box\_0 $= \{x = 0, y = 0\}$},
+                     1/{box\_1 $= \{x = 3, y = 0\}$},
+                     2/{box\_2 $= \{x = 6, y = 0\}$}}{
+    \node[anchor=west, font=\tiny] at (832,{125+26*\k}) {\t};
+  }
+  \node[anchor=west, font=\tiny, text=tkOrange!80!black] at (832,203)
+    {box\_3 $= \{x = 9, y = 0\}$ $\leftarrow$ 当前};
+  \node[anchor=west, font=\tiny] at (832,233) {boxDim $= (3, 3)$};
+  \node[anchor=west, font=\tiny] at (832,257) {globalStrides / elementStrides};
+  \node[anchor=west, font=\tiny, text=gray!90] at (832,287)
+    {坐标 / box 大小 / 形状等由};
+  \node[anchor=west, font=\tiny, text=gray!90] at (832,307) {CPU encode 写入 tensormap};
+  \node[draw=tkPurple, fill=tkPurple, text=white, font=\scriptsize\bfseries,
+        minimum width=3.9cm, minimum height=1.35cm, inner sep=0pt] at (770,457)
+    {TMA 引擎};
+  \node[draw=tkRed, fill=tkFillRed, text=tkRed, font=\tiny\bfseries,
+        minimum width=1.2cm, minimum height=1.05cm, inner sep=0pt] at (968,450)
+    {1 thread};
+  \node[anchor=west, font=\tiny, text=tkRed] at (908,501) {只需 1 个 thread 发起};
+  \node[draw=tkBlue, fill=tkFillBlue, minimum width=8.16cm, minimum height=3.21cm,
+        inner sep=0pt] at (322,563) {};
+  \node[anchor=west, font=\scriptsize, text=tkBlue] at (60,472) {smem tile};
+  \foreach \rr in {0,...,2}{
+    \node[anchor=east, font=\tiny, text=gray!90] at (52,{538+44*\rr}) {\rr};
+    \foreach \cc in {0,...,11}{
+      \ifnum\cc<9
+        \node[draw=gray!40, fill=tkFillGreen, minimum width=0.63cm, minimum height=0.63cm,
+              inner sep=0pt] at ({81+44*\cc},{537+44*\rr}) {};
+      \else
+        \node[draw=gray!40, fill=tkFillOrange, minimum width=0.63cm, minimum height=0.63cm,
+              inner sep=0pt] at ({81+44*\cc},{537+44*\rr}) {};
+      \fi
+    }
+  }
+  \draw[tkGreen, very thick] (60,516) rectangle (192,648);
+  \draw[tkGreen, very thick] (192,516) rectangle (324,648);
+  \draw[tkGreen, very thick] (324,516) rectangle (456,648);
+  \draw[tkOrange, very thick] (456,516) rectangle (588,648);
+  \foreach \cc in {0,...,11}{
+    \node[font=\tiny, text=gray!90] at ({82+44*\cc},503) {\cc};
+  }
+  \node[anchor=west, font=\tiny, text=gray!90] at (592,503) {tileX};
+  \node[anchor=west, font=\tiny, text=gray!90] at (56,661) {tileY};
+  \node[anchor=west, font=\tiny] at (118,661) {tile 坐标从 0 重新计数};
+  \draw[-{Stealth[length=2mm]}, tkOrange, very thick] (522,380) -- (522,440) -- (636,440);
+  \node[anchor=west, font=\tiny, text=tkOrange!80!black] at (384,424) {搬运整个 box};
+  \draw[-{Stealth[length=2mm]}, tkPurple, thick] (836,334) -- (872,409);
+  \node[anchor=west, font=\tiny, text=tkPurple] at (884,361) {encode 坐标/参数};
+  \draw[-{Stealth[length=2mm]}, tkBlue, very thick] (652,502) -- (588,546);
+  \node[anchor=west, font=\tiny, text=tkBlue] at (640,539) {写入 smem tile};
+  \draw[-{Stealth[length=2mm]}, tkRed, dashed, thick] (926,450) -- (904,450);
+  \foreach \k/\t in {0/{已搬完的 box 数据}, 1/{正在搬运的 box 数据},
+                     2/{未搬运的数据}, 3/{TMA 引擎}, 4/{发起拷贝的 1 个 thread}}{
+    \ifnum\k=0
+      \node[draw=tkGreen!60, fill=tkFillGreen, minimum width=0.27cm, minimum height=0.27cm,
+            inner sep=0pt] at (729,{557+26*\k}) {};
+    \else\ifnum\k=1
+      \node[draw=tkOrange!70, fill=tkFillOrange, minimum width=0.27cm, minimum height=0.27cm,
+            inner sep=0pt] at (729,{557+26*\k}) {};
+    \else\ifnum\k=2
+      \node[draw=gray!40, fill=white, minimum width=0.27cm, minimum height=0.27cm,
+            inner sep=0pt] at (729,{557+26*\k}) {};
+    \else\ifnum\k=3
+      \node[draw=tkPurple, fill=tkPurple, minimum width=0.27cm, minimum height=0.27cm,
+            inner sep=0pt] at (729,{557+26*\k}) {};
+    \else
+      \node[draw=tkRed, fill=tkFillRed, minimum width=0.27cm, minimum height=0.27cm,
+            inner sep=0pt] at (729,{557+26*\k}) {};
+    \fi\fi\fi\fi
+    \node[anchor=west, font=\tiny] at (746,{555+26*\k}) {\t};
+  }
+\end{tikzpicture}
 \caption{TMA copy 数据流：全局张量按 $3\times3$ box 切分（绿=已搬完、橙=搬运中），各 box 起始坐标与张量描述由 CPU encode 进 tensormap，TMA 引擎据此定位整块搬运。发起与搬运分离——单线程发起拷贝指令，box 内全部元素由 TMA 引擎异步搬入 smem；数据落地后改用 tile 局部坐标，与全局坐标脱钩。重建自 @竹熙佳处《写给大家看的 CuTe 教程：TMA Copy》。}
 \label{fig:23-2}
 \end{figure}

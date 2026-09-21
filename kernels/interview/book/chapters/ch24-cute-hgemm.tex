@@ -958,14 +958,175 @@ R2S $\to$ sC $\to$ S2G，映射进类型 \\
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-24-2-kstage-pipeline/fig-24-2.png}
+% was: \includegraphics[width=0.95\textwidth]{figures/drawio/fig-24-2-kstage-pipeline/fig-24-2.png}
+\begin{tikzpicture}[font=\tiny, >=Stealth,
+  hdr/.style={draw=gray!55, fill=gray!14, align=center, inner sep=1.5pt,
+    font=\fontsize{4}{4.5}\selectfont},
+  cB/.style={draw=tkBlue, fill=tkFillBlue, align=center, inner sep=1.5pt,
+    font=\fontsize{4}{4.5}\selectfont},
+  cW/.style={draw=tkBlue!50, fill=white, align=center, inner sep=1.5pt,
+    font=\fontsize{4}{4.5}\selectfont},
+  cO/.style={draw=tkOrange, fill=tkFillOrange, align=center, inner sep=1.5pt,
+    font=\fontsize{4}{4.5}\selectfont},
+  cG/.style={draw=tkGreen, fill=tkFillGreen, align=center, inner sep=1.5pt,
+    font=\fontsize{4}{4.5}\selectfont},
+  cEpi/.style={draw=gray!60, fill=gray!12, align=center, inner sep=1.5pt,
+    font=\fontsize{4}{4.5}\selectfont},
+]
+  % 时间列边界：0 / 1.75 / 4.10 / 6.45 / 8.80 / 11.15；epilogue 列 11.55-14.55
+  \node[hdr, text width=1.60cm] at (0.875,0.87) {prefetch};
+  \node[hdr, text width=2.20cm] at (2.925,0.87) {k\_tile$=$0\\ks$=$0};
+  \node[hdr, text width=2.20cm] at (5.275,0.87) {k\_tile$=$0\\ks$=$1};
+  \node[hdr, text width=2.20cm] at (7.625,0.87) {k\_tile$=$1\\ks$=$0};
+  \node[hdr, text width=2.20cm] at (9.975,0.87) {k\_tile$=$1\\ks$=$1};
+  \node[hdr, text width=2.85cm] at (13.05,0.87) {epilogue};
+  % 泳道一：G->S（cp.async 填 smem）
+  \node[cB, text width=1.60cm] at (0.875,-0.675)
+    {G$\to$S s0\\（1 tile）\\$+$ fence\\$+$ wait$\langle0\rangle$};
+  \node[cB, text width=2.20cm] at (2.925,-0.675) {G$\to$S 下一 tile $\to$ s1};
+  \node[cW, text width=2.20cm] at (5.275,-0.675)
+    {wait$\langle0\rangle$ $+$ \texttt{\_\_syncthreads}\\翻转 s0 $\to$ s1};
+  \node[cB, text width=2.20cm] at (7.625,-0.675) {G$\to$S $+1$ tile $\to$ s0};
+  \node[cB, text width=2.20cm] at (9.975,-0.675) {交替往复 $\cdots$};
+  % 泳道二：S->R（ldmatrix 双缓冲）
+  \node[cO, text width=2.20cm] at (2.925,-2.095) {S2R load (s0, k1)};
+  \node[cO, text width=2.20cm] at (7.625,-2.095) {S2R load (s1, k1)};
+  % 泳道三：MMA
+  \node[cG, text width=2.20cm] at (2.925,-3.515) {MMA(tCrA/B(s0, k0))};
+  \node[cG, text width=2.20cm] at (5.275,-3.515) {MMA(tCrA/B(s0, k1))};
+  \node[cG, text width=2.20cm] at (7.625,-3.515) {MMA(s1, k0)};
+  \node[cG, text width=2.20cm] at (9.975,-3.515) {MMA(s1, k1)};
+  % 泳道标签
+  \node[anchor=east, text=tkBlue, font=\bfseries\fontsize{4}{4.5}\selectfont]
+    at (-0.15,-0.675) {G$\to$S (LDGSTS)};
+  \node[anchor=east, text=tkOrange, font=\bfseries\fontsize{4}{4.5}\selectfont]
+    at (-0.15,-2.095) {S$\to$R (LDSM)};
+  \node[anchor=east, text=tkGreen, font=\bfseries\fontsize{4}{4.5}\selectfont]
+    at (-0.15,-3.515) {MMA};
+  % epilogue 四步（右列，不与三泳道同行）
+  \node[cEpi, text width=2.85cm] at (13.05,-0.475) {R2R cast（f32 $\to$ f16）};
+  \node[cEpi, text width=2.85cm] at (13.05,-1.575) {R2S 写入 sC（复用 pipe j）};
+  \node[cEpi, text width=2.85cm] at (13.05,-2.675) {\texttt{\_\_syncthreads}};
+  \node[cEpi, text width=2.85cm] at (13.05,-3.775) {S2G $\to$ gmem};
+  \node[align=center, font=\fontsize{4}{4.5}\selectfont, text width=3.4cm]
+    at (13.05,-4.56) {sC 与一个 A stage 别名：\\32$\times$32$\times$4 $=$ 128$\times$32 $=$ 4096 half};
+  % 底部：三重重叠
+  \node[draw=tkOrange, fill=tkFillOrange, text=tkOrange!80!black, align=center,
+    font=\fontsize{4.2}{4.8}\selectfont, text width=15.2cm, inner sep=2pt]
+    at (6.7,-5.18)
+    {三重重叠：MMA 消费 stage $s_k$ 的 k\_step，LDSM 预取同一 stage 的 k\_step$+1$，%
+     cp.async 同时填另一个 stage —— s0/s1 交替贯穿};
+\end{tikzpicture}
 \caption{CuTe HGEMM 的 $k_{\mathrm{stage}}=2$ 流水时序（含寄存器双缓冲）。上：G$\to$S（LDGSTS）；中：S$\to$R（LDSM）；下：MMA。MMA 消费 stage $s_k$ 的 k\_step 时，LDSM 预取同一 stage 的 k\_step+1，cp.async 同时填另一个 stage——三重重叠；左端 prefetch 一个 tile，右端 epilogue（R2R $\to$ R2S $\to$ S2G，sC 与一个 A stage 别名：$32{\times}32{\times}4 = 128{\times}32 = 4096$ half）。}
 \label{fig:24-2}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-24-3-gemm-3level-partition/fig-24-3.png}
+% was: \includegraphics[width=0.95\textwidth]{figures/drawio/fig-24-3-gemm-3level-partition/fig-24-3.png}
+\begin{tikzpicture}[font=\tiny, >=Stealth,
+  pnl/.style={font=\fontsize{4.6}{5.2}\selectfont, inner sep=1pt},
+  api/.style={draw=tkBlue, fill=tkFillBlue, rounded corners=1.5pt, text=tkBlue,
+    align=center, inner sep=2pt, font=\fontsize{4}{4.5}\selectfont},
+  small/.style={align=center, inner sep=1pt, font=\fontsize{4}{4.5}\selectfont},
+]
+  % 面板标题与 API 徽章（local_tile / local_partition 为所属层 API）
+  \node[api] at (5.65,0.22) {local\_tile};
+  \node[api] at (10.15,0.22) {local\_partition};
+  \node[pnl, anchor=west] at (0.55,0.02) {gmem 矩阵 C (M, N)};
+  \node[pnl, anchor=west] at (4.35,0.02) {CTA tile (128, 128)};
+  \node[pnl, anchor=west] at (8.25,0.02) {warp tile (64, 64)};
+  \node[small, anchor=west] at (8.25,-0.20) {64$\times$64 $=$ 4$\times$8 个 16$\times$8 MMA 输出 tile};
+  % 面板 A：gmem 矩阵 4x5 格，CTA tile 覆盖中心 2x2 格
+  \foreach \rr in {0,...,4} {
+    \foreach \cc in {0,...,3} {
+      \draw[gray!45, thin] ({0.55+0.60*\cc},{-0.45-0.54*\rr})
+        rectangle ({0.55+0.60*\cc+0.60},{-0.45-0.54*\rr-0.54});
+    }
+  }
+  \draw[gray!70, thick] (0.55,-0.45) rectangle (2.95,-3.15);
+  \fill[tkFillBlue, draw=tkBlue, thick] (1.15,-0.99) rectangle (2.35,-2.07);
+  \node[small] at (1.75,-1.37) {CTA tile};
+  \node[small] at (1.75,-1.65) {128 $\times$ 128};
+  \draw[->, gray!70, thin] (0.55,-0.30) -- (3.05,-0.30);
+  \node[small, anchor=west] at (3.10,-0.30) {N};
+  \draw[->, gray!70, thin] (0.32,-0.45) -- (0.32,-3.15);
+  \node[small, anchor=center] at (0.16,-1.80) {M};
+  \node[small, anchor=north, text width=2.60cm] at (2.00,-3.30)
+    {CTA tile 坐标 $=$ (blockIdx.y, blockIdx.x)};
+  % 面板 A -> B：local_tile 切出
+  \draw[->, tkBlue, semithick] (3.05,-1.53) -- (4.35,-1.53);
+  \node[small, text width=1.25cm] at (3.70,-1.72) {切出\\128$\times$128};
+  % 面板 B：CTA tile = 2x2 warp tile（高亮右上角一个 warp）
+  \foreach \rr in {0,...,1} {
+    \foreach \cc in {0,...,1} {
+      \pgfmathsetmacro{\xr}{4.35+1.30*\cc}
+      \pgfmathsetmacro{\yr}{-0.45-1.12*\rr}
+      \pgfmathtruncatemacro{\hi}{\cc - \rr}
+      \ifnum\hi=1
+        \fill[tkFillOrange] (\xr,\yr) rectangle (\xr+1.30,\yr-1.12);
+        \draw[tkOrange, thick] (\xr,\yr) rectangle (\xr+1.30,\yr-1.12);
+        \node[small, text=tkOrange!75!black] at (\xr+0.65,\yr-0.44) {warp tile};
+        \node[small, text=tkOrange!75!black] at (\xr+0.65,\yr-0.70) {64 $\times$ 64};
+      \else
+        \draw[gray!60, thick] (\xr,\yr) rectangle (\xr+1.30,\yr-1.12);
+        \node[small] at (\xr+0.65,\yr-0.44) {warp tile};
+        \node[small] at (\xr+0.65,\yr-0.70) {64 $\times$ 64};
+      \fi
+    }
+  }
+  \node[small, anchor=north, text width=3.0cm] at (5.65,-2.78)
+    {warp 布局 (2, 2)：4 个 warp 平分 CTA tile};
+  % 面板 B -> C：local_partition 分给单个 warp
+  \draw[->, dashed, tkOrange, semithick] (7.05,-1.10) -- (8.25,-1.10);
+  \node[small, text width=1.2cm] at (7.65,-1.30) {分 4 个\\warp};
+  % 面板 C：warp tile = 4x8 个 16x8 MMA 输出格；左下格放大为 thread 累加片段
+  \foreach \rr in {0,...,3} {
+    \foreach \cc in {0,...,7} {
+      \draw[gray!45, thin] ({8.25+0.40*\cc},{-0.45-0.36*\rr})
+        rectangle ({8.25+0.40*\cc+0.40},{-0.45-0.36*\rr-0.36});
+    }
+  }
+  \fill[tkFillGreen, draw=tkGreen, thick] (8.25,-1.89) rectangle (8.65,-1.53);
+  \draw[gray!70, thick] (8.25,-0.45) rectangle (11.45,-1.89);
+  \draw[->, dashed, tkGreen, semithick] (8.45,-1.96) -- (8.62,-2.30);
+  \foreach \rr in {0,...,1} {
+    \foreach \cc in {0,...,1} {
+      \pgfmathsetmacro{\xb}{8.25+0.55*\cc}
+      \pgfmathsetmacro{\yb}{-2.35-0.55*\rr}
+      \pgfmathtruncatemacro{\vi}{2*\rr+\cc}
+      \fill[tkFillGreen, draw=tkGreen, thick] (\xb,\yb) rectangle (\xb+0.50,\yb-0.50);
+      \node[font=\fontsize{4.6}{5.2}\selectfont, text=tkGreen!75!black]
+        at (\xb+0.25,\yb-0.25) {v\vi};
+    }
+  }
+  \node[font=\bfseries\fontsize{4}{4.5}\selectfont, text=tkGreen, anchor=west]
+    at (9.40,-2.52) {thread value};
+  \node[small, anchor=west] at (9.40,-2.76) {每 thread 4 个累加值 v0..v3};
+  \node[small, anchor=west] at (9.40,-3.00) {v0 v1 在第 $i$ 行，v2 v3 在第 $i{+}8$ 行};
+  \node[api, text width=1.95cm] at (10.50,-3.62) {partition\_fragment\_C};
+  \draw[->, tkBlue, semithick] (9.46,-3.55) -- (9.30,-3.42);
+  % 底部层级链：四层对象 + 三个 API
+  \node[draw=gray!65, fill=gray!12, align=center, inner sep=2pt,
+    font=\fontsize{4.2}{4.8}\selectfont, text width=1.50cm] at (1.65,-4.58) {gmem 矩阵};
+  \node[draw=tkBlue, fill=tkFillBlue, text=tkBlue, align=center, inner sep=2pt,
+    font=\fontsize{4.2}{4.8}\selectfont, text width=2.20cm] at (4.70,-4.58) {CTA tile (128,128)};
+  \node[draw=tkOrange, fill=tkFillOrange, text=tkOrange!80!black, align=center,
+    inner sep=2pt, font=\fontsize{4.2}{4.8}\selectfont, text width=2.20cm]
+    at (8.10,-4.58) {warp tile (64,64)};
+  \node[draw=tkGreen, fill=tkFillGreen, text=tkGreen!80!black, align=center,
+    inner sep=2pt, font=\fontsize{4.2}{4.8}\selectfont, text width=2.60cm]
+    at (11.70,-4.58) {thread value (v0..v3)};
+  \draw[->, gray!70, semithick] (2.44,-4.58) -- (3.56,-4.58);
+  \draw[->, gray!70, semithick] (5.84,-4.58) -- (6.96,-4.58);
+  \draw[->, gray!70, semithick] (9.24,-4.58) -- (10.36,-4.58);
+  \node[small, text=tkBlue] at (3.00,-4.86) {local\_tile};
+  \node[small, text=tkBlue] at (6.40,-4.86) {local\_partition};
+  \node[small, text=tkBlue] at (9.80,-4.86) {partition\_fragment\_C};
+  \node[small, anchor=west, text width=2.00cm] at (13.15,-4.45)
+    {逐层细化：\\128$\times$128 $=$ 4 $\times$ (64$\times$64)\\
+     $=$ 128 threads $\times$ 128 值/thread};
+\end{tikzpicture}
 \caption{CuTe GEMM 的三层 partition：\texttt{local\_tile} 以 \texttt{\allowbreak{}(block\allowbreak{}Idx.\allowbreak{}y,\allowbreak{} block\allowbreak{}Idx.\allowbreak{}x)} 为坐标从 gmem 切出 CTA tile $(128,128)$；warp 布局 $(2,2)$ 下 \texttt{local\_\allowbreak{}partition} 平分给 4 个 warp 得 $(64,64)$；warp tile 由 $4\times8$ 个 $16\times8$ atom 铺满，\texttt{partition\_\allowbreak{}fragment\_\allowbreak{}C} 为每 thread 生成累加器片段（单 MMA tile 内 $2\times2$ 四值，v0/v1 在第 $i$ 行、v2/v3 在第 $i+8$ 行）。层级换算 $128\times128=4\times(64\times64)=128$\,threads$\times128$ 值/thread。重建自 @reed《cute 之 简单 GEMM 实现》（示意图为经典 4-warp/$64\times64$ 配置；本章 kernel 实为 tile $32\times32$、warp $16\times16$，层级方法相同）。}
 \label{fig:24-3}
 \end{figure}

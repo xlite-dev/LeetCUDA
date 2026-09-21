@@ -528,7 +528,59 @@ m4n2 的 occupancy 已被 255 regs 锁死在 1 CTA，加深 stage 没有 occupan
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.98\textwidth]{figures/drawio/fig-30-1-split-d-walls/fig-30-1-split-d-walls.png}
+  % was: \includegraphics[width=0.98\textwidth]{figures/drawio/fig-30-1-split-d-walls/fig-30-1-split-d-walls.png}
+  \begin{tikzpicture}
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{7.4}{9.3}\selectfont \bfseries }] at (0.37,-0.354) {大 D 的两堵墙与 dispatch 三分路由（dispatch/cute\_fp8.cuh L60-64）};% w=17.433
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{6.1}{7.7}\selectfont \bfseries }] at (0.37,-1.078) {(1) D 轴三分（fp8 家族，fp16/fp4 同构）};% w=4.620
+    \node[draw=tkBlue, fill=tkFillBlue, line width=0.5pt, minimum width=3.85cm, minimum height=1.02cm, inner sep=1pt, align=center, text width=3.79cm, font={\fontsize{5.7}{7.1}\selectfont }] at (2.295,-1.833) {};
+    \node[anchor=center, inner sep=0pt, align=center, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkBlue} }] at (2.295,-1.555) {persist-D  D$\leq$224};% w=3.665
+    \node[anchor=center, inner sep=0pt, align=center, font={\fontsize{4.8}{6.0}\selectfont \color{black!65} }] at (2.295,-2.017) {WS 128P+256C $\cdot$ O=D/2};% w=3.665
+    \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=6.47cm, minimum height=1.02cm, inner sep=1pt, align=center, text width=6.41cm, font={\fontsize{5.7}{7.1}\selectfont }] at (7.454,-1.833) {};
+    \node[anchor=center, inner sep=0pt, align=center, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkGreen!70!black} }] at (7.454,-1.555) {split-D M8N1  224$<$D$<$768};% w=6.283
+    \node[anchor=center, inner sep=0pt, align=center, font={\fontsize{4.8}{6.0}\selectfont \color{black!65} }] at (7.454,-2.017) {kBr/kBc=128/128 $\cdot$ non-WS 256T $\cdot$ O=D/2};% w=6.283
+    \node[draw=tkOrange, fill=tkFillOrange, line width=0.5pt, minimum width=7.39cm, minimum height=1.02cm, inner sep=1pt, align=center, text width=7.33cm, font={\fontsize{5.7}{7.1}\selectfont }] at (13.614,-1.833) {};
+    \node[anchor=center, inner sep=0pt, align=center, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkOrange} }] at (13.614,-1.555) {split-D M4N2  D$\geq$768};% w=7.207
+    \node[anchor=center, inner sep=0pt, align=center, font={\fontsize{4.8}{6.0}\selectfont \color{black!65} }] at (13.614,-2.017) {kBr/kBc=64/64 $\cdot$ non-WS 256T $\cdot$ O=D/4};% w=7.207
+    \node[anchor=center, inner sep=0pt, align=center, font={\fontsize{5.2}{6.6}\selectfont \bfseries }] at (11.15,-1.001) {交叉点 D=768};% w=2.464
+    \node[draw=tkRed, fill=tkFillRed, line width=0.5pt, minimum width=8.32cm, minimum height=2.62cm, inner sep=1pt, align=center, text width=8.25cm, font={\fontsize{5.7}{7.1}\selectfont }] at (4.528,-4.235) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{6.1}{7.7}\selectfont \bfseries \color{tkRed} }] at (0.616,-3.219) {墙一 smem：K tile 字节 = Bc$\times$D$\times$1B，O(D)};% w=7.823
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (0.616,-3.634) {D=512、Bc=128 $\to$ K tile 64KB；加 V stage + Q 即超 99KB 预算};% w=7.823
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (0.616,-4.004) {persist-D 的 K stage-0 复用只在 D$\leq$224 挤得过};% w=7.823
+    \node[draw=tkRed, fill=none, line width=0.5pt, minimum width=3.70cm, minimum height=0.95cm, inner sep=1pt, align=center, text width=3.63cm, font={\fontsize{5.2}{6.6}\selectfont }] at (2.464,-4.759) {整块 K tile 一次进 smem\\（persist-D：D$\leq$224 专属）};
+    \node[draw=tkGreen, fill=none, line width=0.5pt, minimum width=3.70cm, minimum height=0.95cm, inner sep=1pt, align=center, text width=3.63cm, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkGreen!70!black} }] at (6.468,-4.759) {split-D：D 切 chunk 流水\\每 stage 与总 D 无关};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{black!55} }] at (0.616,-5.405) {chunk\_index = kv\_tile$\cdot$kDChunks + c，stage/phase 环形推进};% w=7.823
+    \node[draw=tkPurple, fill=tkFillPurple, line width=0.5pt, minimum width=8.62cm, minimum height=2.62cm, inner sep=1pt, align=center, text width=8.56cm, font={\fontsize{5.7}{7.1}\selectfont }] at (13.49,-4.235) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{6.1}{7.7}\selectfont \bfseries \color{tkPurple} }] at (9.425,-3.219) {墙二 寄存器：O 累加器 = D/(2N\_w) f32/线程};% w=8.131
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (9.425,-3.634) {M8N1 单 warp 独占整 D 列：D=512 $\to$ 256 regs 压线（上限 255）};% w=8.131
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (9.425,-4.004) {D$\geq$896 大量 spill 崩塌（D=1024 实测 \textasciitilde{}100T）};% w=8.131
+    \node[draw=tkPurple, fill=none, line width=0.5pt, minimum width=3.85cm, minimum height=0.95cm, inner sep=1pt, align=center, text width=3.79cm, font={\fontsize{5.2}{6.6}\selectfont }] at (11.35,-4.759) {M8N1 (8,1,1)：O=D/2\\D=1024 $\to$ 512 regs 溢出};
+    \node[draw=tkOrange, fill=none, line width=0.5pt, minimum width=3.85cm, minimum height=0.95cm, inner sep=1pt, align=center, text width=3.79cm, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkOrange!75!black} }] at (15.508,-4.759) {M4N2 (4,2,1)：O=D/4\\D=1024 $\to$ 256 regs 边缘 spill 154T};
+    \node[draw=gray!55, fill=black!2, line width=0.5pt, minimum width=17.43cm, minimum height=2.31cm, inner sep=1pt, align=center, text width=17.37cm, font={\fontsize{5.7}{7.1}\selectfont }] at (9.086,-7.253) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{6.1}{7.7}\selectfont \bfseries }] at (0.616,-6.391) {(2) 寄存器压力模型：N\_w 消去，只有减 M\_w 有效};% w=16.940
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont }] at (0.616,-6.868) {per-thread：O\_acc = 4$\cdot$(kBr/16M\_w)$\cdot$(D/8N\_w)/(kBr/16M\_w) = D/(2N\_w)};% w=9.856
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkPurple} }] at (0.616,-7.269) {per-SM 池占比：[D/(2N\_w)] / [65536/(32M\_wN\_w)] = D$\cdot$M\_w/4096};% w=9.856
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (0.616,-7.669) {N\_w 精确消去：M4N4 $\equiv$ M4N2（同为 D/1024）；M2N4 $\to$ D/2048 是 D$>$1024 正解};% w=9.856
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkRed} }] at (10.965,-7.099) {被否决的捷径(1)：QK M8N1 + PV M4N2 混合布局};% w=6.591
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont }] at (10.965,-7.623) {QK/PV 共享 Q tile，M 维须一致：\\kBr=128 $\to$ PV 仍 D/2\\kBr=64 $\to$ M8N1 空 4 warp};% w=6.591
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkRed} }] at (10.965,-8.177) {被否决的捷径(2)：WS 版 split-D};% w=6.591
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont }] at (10.965,-8.747) {setmaxnreg 上限 232 装不下 D=512 的 256-reg O};% w=6.591
+    \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=17.43cm, minimum height=2.31cm, inner sep=1pt, align=center, text width=17.37cm, font={\fontsize{5.7}{7.1}\selectfont }] at (9.086,-10.025) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{6.1}{7.7}\selectfont \bfseries \color{tkGreen!70!black} }] at (0.616,-9.163) {(3) 实测交叉点（5090，fp16 同构；PRO 5000 数据见正文 30.6）};% w=16.940
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (0.616,-9.579) {D$\leq$640：M8N1 快 +2\textasciitilde{}16\%（无 P roundtrip、kBr 大一倍）};% w=8.316
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries }] at (0.616,-9.948) {D$\geq$768：M4N2 快 +7\%@768、+11\%@896、+55\%@1024};% w=8.316
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!55} }] at (0.616,-10.318) {FFPA\_FP8\_FORCE\_KERNEL=split\_d|m4n2（224$<$D$\leq$1024）可强制 A/B};% w=8.316
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!55} }] at (0.616,-10.688) {PRO 5000 实测（本机 headdim 止于 512）：D=512 self 203T / 2.98x};% w=8.316
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkGreen!70!black} }] at (9.548,-9.579) {split-D 是精确变换：};% w=8.008
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (9.548,-9.948) {QK 侧 D 是归约维：$\Sigma$\_c Q\_c K\_c\^{}T 累加进同一 S（无新舍入点）};% w=8.008
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (9.548,-10.318) {PV 侧 D 是输出列维：各 chunk 的 O 段独立累加};% w=8.008
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries }] at (9.548,-10.688) {softmax 行统计 (m,$\ell$) 是 KV 行维的量------与 D 切分无关};% w=8.008
+    \draw[black!75, line width=0.8pt, dashed] (9.918,-1.14) -- (9.918,-2.464);
+    \draw[gray!55, line width=0.5pt, dashed] (4.22,-1.14) -- (4.22,-2.464);
+    \draw[tkGreen, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (4.312,-4.759) -- (4.62,-4.759);
+    \draw[tkOrange, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (13.275,-4.759) -- (13.583,-4.759);
+    \draw[gray!55, line width=0.5pt] (10.718,-6.714) -- (10.718,-8.1);
+    \draw[gray!55, line width=0.5pt] (9.302,-9.425) -- (9.302,-10.842);
+  \end{tikzpicture}
   \caption{大 $D$ 的两堵墙与 dispatch 三分路由。smem 墙由 split-D 拆
   （chunk 流水，smem 与 $D$ 解耦）；寄存器墙由 M4N2 拆（$N_w=2$ 把
   per-thread $O$ 从 $D/2$ 减到 $D/4$）；$D=768$ 是实测交叉点。}
@@ -537,7 +589,57 @@ m4n2 的 occupancy 已被 255 regs 锁死在 1 CTA，加深 stage 没有 occupan
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.98\textwidth]{figures/drawio/fig-30-2-m4n2-softmax/fig-30-2-m4n2-softmax.png}
+  % was: \includegraphics[width=0.98\textwidth]{figures/drawio/fig-30-2-m4n2-softmax/fig-30-2-m4n2-softmax.png}
+  \begin{tikzpicture}
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{7.4}{9.3}\selectfont \bfseries }] at (0.37,-0.354) {M4N2 (4,2,1) 布局与跨 N-warp softmax 单 barrier 协议};% w=17.433
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.6}{7.0}\selectfont \bfseries }] at (0.37,-0.862) {(1) 8 warps = 4 M-warp $\times$ 2 N-warp（kBr=64, kBc=64）};% w=8.624
+    \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=1.42cm, minimum height=0.71cm, inner sep=1pt, align=center, text width=1.36cm, font={\fontsize{6.1}{7.7}\selectfont \bfseries \color{tkGreen!70!black} }] at (1.078,-1.432) {W0};
+    \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=1.42cm, minimum height=0.71cm, inner sep=1pt, align=center, text width=1.36cm, font={\fontsize{6.1}{7.7}\selectfont \bfseries \color{tkGreen!70!black} }] at (2.618,-1.432) {W1};
+    \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=1.42cm, minimum height=0.71cm, inner sep=1pt, align=center, text width=1.36cm, font={\fontsize{6.1}{7.7}\selectfont \bfseries \color{tkGreen!70!black} }] at (4.158,-1.432) {W2};
+    \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=1.42cm, minimum height=0.71cm, inner sep=1pt, align=center, text width=1.36cm, font={\fontsize{6.1}{7.7}\selectfont \bfseries \color{tkGreen!70!black} }] at (5.698,-1.432) {W3};
+    \node[draw=tkOrange, fill=tkFillOrange, line width=0.5pt, minimum width=1.42cm, minimum height=0.71cm, inner sep=1pt, align=center, text width=1.36cm, font={\fontsize{6.1}{7.7}\selectfont \bfseries \color{tkOrange} }] at (1.078,-2.264) {W4};
+    \node[draw=tkOrange, fill=tkFillOrange, line width=0.5pt, minimum width=1.42cm, minimum height=0.71cm, inner sep=1pt, align=center, text width=1.36cm, font={\fontsize{6.1}{7.7}\selectfont \bfseries \color{tkOrange} }] at (2.618,-2.264) {W5};
+    \node[draw=tkOrange, fill=tkFillOrange, line width=0.5pt, minimum width=1.42cm, minimum height=0.71cm, inner sep=1pt, align=center, text width=1.36cm, font={\fontsize{6.1}{7.7}\selectfont \bfseries \color{tkOrange} }] at (4.158,-2.264) {W6};
+    \node[draw=tkOrange, fill=tkFillOrange, line width=0.5pt, minimum width=1.42cm, minimum height=0.71cm, inner sep=1pt, align=center, text width=1.36cm, font={\fontsize{6.1}{7.7}\selectfont \bfseries \color{tkOrange} }] at (5.698,-2.264) {W7};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkGreen!70!black} }] at (0.37,-2.941) {N-warp 0（列 0-31）};% w=6.406
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkOrange} }] at (0.37,-3.249) {N-warp 1（列 32-63）：peer = warp\_id $\oplus$ 4};% w=6.406
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{black!65} }] at (0.37,-3.788) {每 warp：16 行 $\times$ 32 列的 S 片段；\\行统计只持半行 Bc/2 列 $\to$ 必须跨 warp 合并};% w=6.622
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{6.1}{7.7}\selectfont \bfseries }] at (7.7,-0.862) {(2) P 的 SMEM roundtrip（每 N-warp 无法重建完整 A-operand）};% w=10.102
+    \node[draw=tkBlue, fill=tkFillBlue, line width=0.5pt, minimum width=2.31cm, minimum height=0.80cm, inner sep=1pt, align=center, text width=2.25cm, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkBlue} }] at (8.855,-1.54) {P e4m3x2\\（寄存器）};
+    \node[draw=tkGreen, fill=none, line width=0.5pt, minimum width=2.93cm, minimum height=0.80cm, inner sep=1pt, align=center, text width=2.86cm, font={\fontsize{5.0}{6.3}\selectfont }] at (12.089,-1.54) {SMEM P staging\\4KB $\cdot$ SW64 $\cdot$ DefaultCopy};
+    \node[draw=tkOrange, fill=tkFillOrange, line width=0.5pt, minimum width=2.31cm, minimum height=0.80cm, inner sep=1pt, align=center, text width=2.25cm, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkOrange!75!black} }] at (15.323,-1.54) {LDSM\_N 读回\\A-fragment};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{black!55} }] at (7.7,-2.171) {写侧 make\_tiled\_copy\_C(QK mma)，读侧 make\_tiled\_copy\_A(PV mma)};% w=8.778
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{tkRed} }] at (7.7,-2.449) {stmatrix 是 b16 操作写不了 1B e4m3 $\to$ DefaultCopy 向量化 store};% w=8.778
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkPurple} }] at (7.7,-2.787) {syncthreads 顺带发布 sum 段写入（协议(3)的便车）};% w=8.778
+    \node[draw=gray!55, fill=black!2, line width=0.5pt, minimum width=17.43cm, minimum height=6.16cm, inner sep=1pt, align=center, text width=17.37cm, font={\fontsize{5.7}{7.1}\selectfont }] at (9.086,-7.33) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{6.1}{7.7}\selectfont \bfseries }] at (0.616,-4.543) {(3) smem\_exchange 单 barrier 协议（1KB = max 段 [8][16] $\|$ sum 段 [8][16]）};% w=16.940
+    \node[draw=tkBlue, fill=tkFillBlue, line width=0.5pt, minimum width=5.08cm, minimum height=0.86cm, inner sep=1pt, align=center, text width=5.02cm, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkBlue} }] at (3.157,-5.298) {max 段 [8 warps][16 rows]};
+    \node[draw=tkOrange, fill=tkFillOrange, line width=0.5pt, minimum width=5.08cm, minimum height=0.86cm, inner sep=1pt, align=center, text width=5.02cm, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkOrange!75!black} }] at (3.157,-6.283) {sum 段 [8 warps][16 rows]};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{tkRed} }] at (0.616,-7.069) {两段分置：sum 写与 peer max 读无同步，\\合一块 = 偶发 RAW 覆写};% w=5.174
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkRed} }] at (0.616,-7.731) {一致性契约（违反即 O 列段错位）：};% w=5.236
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont }] at (0.616,-8.07) {max 合并：m = max(m\_C0, m\_C1)（顺序无关）};% w=5.236
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont }] at (0.616,-8.378) {sum 合并：$\ell$ = $\ell$\_C0 + $\ell$\_C1（舍入级差异）};% w=5.236
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{black!65} }] at (0.616,-8.686) {lse 只由 n\_warp==0 写（共享 Q 行，L970）};% w=5.236
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{black!55} }] at (0.616,-8.994) {writer = lane\%4==0；row\_local = lane/4+8r};% w=5.236
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{tkBlue} }] at (0.616,-9.302) {fp8 变体：offset=log2(v\_s$\cdot$448) 折 exp2};% w=5.236
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{tkBlue} }] at (0.616,-9.61) {tile sum 先 $\times$1/(v\_s$\cdot$448) 再入 sum 段};% w=5.236
+    \node[draw=tkBlue, fill=tkFillBlue, line width=0.5pt, minimum width=10.96cm, minimum height=1.48cm, inner sep=1pt, align=center, text width=10.90cm, font={\fontsize{5.7}{7.1}\selectfont }] at (11.95,-5.606) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkBlue} }] at (6.653,-5.128) {step 1 $\cdot$ 唯一显式 barrier（syncthreads）};% w=10.595
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (6.653,-5.467) {各 warp：tile max（shfl\_xor 1/2 归约）$\to$ 写 max 段};% w=10.595
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (6.653,-5.806) {随后全 CTA syncthreads------整个协议只有这一次};% w=10.595
+    \node[draw=tkOrange, fill=tkFillOrange, line width=0.5pt, minimum width=10.96cm, minimum height=1.85cm, inner sep=1pt, align=center, text width=10.90cm, font={\fontsize{5.7}{7.1}\selectfont }] at (11.95,-7.454) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkOrange!75!black} }] at (6.653,-6.791) {step 2 $\cdot$ 无 barrier};% w=10.595
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (6.653,-7.13) {读 max(自己, peer) $\to$ 全局 m；更新 (m, $\ell$, scale)};% w=10.595
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (6.653,-7.469) {发射 P = exp2(s$\cdot$$\gamma$ $-$ (m $-$ offset))------P 直接落在量化域};% w=10.595
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (6.653,-7.808) {本 warp tile sum $\times$ 1/(v\_s$\cdot$448) 写 sum 段（发布留给步骤(3)）};% w=10.595
+    \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=10.96cm, minimum height=1.48cm, inner sep=1pt, align=center, text width=10.90cm, font={\fontsize{5.7}{7.1}\selectfont }] at (11.95,-9.302) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkGreen!70!black} }] at (6.653,-8.824) {step 3 $\cdot$ 搭便车（P roundtrip barrier）};% w=10.595
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (6.653,-9.163) {P 写读 SMEM roundtrip 自带的 syncthreads 顺带发布 sum 写};% w=10.595
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (6.653,-9.502) {finalize\_row\_sum\_m4n2：$\ell$ = $\ell$$\cdot$scale + $\Sigma$(自己, peer)------省 2 次 barrier};% w=10.595
+    \draw[tkPurple, line width=0.8pt, dashed, -{Stealth[length=2.2pt,width=1.8pt]}] (1.078,-1.786) -- (1.54,-1.848) -- (1.54,-1.91);
+    \draw[black!75, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (10.01,-1.54) -- (10.626,-1.54);
+    \draw[black!75, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (13.552,-1.54) -- (14.168,-1.54);
+  \end{tikzpicture}
   \caption{M4N2 的 $(4,2,1)$ atom 布局与跨 N-warp softmax 单 barrier
   协议。max 段与 sum 段分置 \texttt{smem\_exchange} 防 RAW；sum 的
   发布搭 P roundtrip barrier 的便车。}

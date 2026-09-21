@@ -330,7 +330,42 @@ shared memory 被切成 32 个 bank（对应一个 warp 的 32 线程），每�
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-7-1-bank-pad/fig-7-1.png}
+\begin{tikzpicture}[font=\scriptsize]
+  \node[font=\small\bfseries] at (7.9,0)
+    {转置读的 bank 分布：PAD=1 使步长 64B 变 68B，$tx$ 项在 $\bmod 32$ 下重新出现};
+  \node[anchor=west, font=\scriptsize\bfseries, text=vscAccent] at (0,-0.75)
+    {[无 PAD] \texttt{tile[64][16]}：\texttt{addr = 64*tx + ty}};
+  \node[anchor=west, font=\tiny, text=gray!80] at (0,-1.18)
+    {$ty{=}0$ 列 16 线程与 $ty{=}1$ 列 16 线程落在同 2 个 bank};
+  \foreach \fmi/\xa in {0/0.3, 1/3.3} {
+    \node[draw=vscAccent!75, fill=gray!12, text=vscAccent, font=\scriptsize\bfseries,
+      minimum width=2.8cm, minimum height=0.6cm] at ({\xa+1.4},-1.85) {bank \fmi};
+    \node[text=vscAccent, font=\tiny] at ({\xa+1.4},-2.32) {16 线程};
+  }
+  \node[draw=vscAccent, fill=white, text=vscAccent, font=\scriptsize\bfseries,
+    minimum width=6.4cm, minimum height=0.62cm] at (3.2,-3.32)
+    {$\Rightarrow$ 16-way conflict，读 smem 吞吐 $1/16$};
+  \draw[-{Latex}, very thick, gray!75] (6.75,-1.85) -- (9.05,-1.85);
+  \node[font=\scriptsize\bfseries] at (7.9,-1.52) {+PAD=1};
+  \node[anchor=west, font=\scriptsize\bfseries, text=vscKeyword] at (9.4,-0.75)
+    {[PAD=1] \texttt{tile[64][17]}：\texttt{addr = 68*tx + 17*j + ty}};
+  \node[anchor=west, font=\tiny, text=gray!80] at (9.4,-1.18)
+    {$tx$ 步进 $+4$：8 个 bank 各 2 线程（$tx{=}0$ 与 $tx{=}8$ 同 bank）};
+  \foreach \fmi/\bv in {0/0, 1/4, 2/8, 3/12, 4/16, 5/20, 6/24, 7/28} {
+    \pgfmathsetmacro{\bx}{9.4+\fmi*0.78}
+    \node[draw=vscKeyword!75, fill=gray!12, text=vscKeyword, font=\tiny\bfseries,
+      minimum width=0.66cm, minimum height=0.6cm] at ({\bx+0.33},-1.85) {\bv};
+    \node[text=vscKeyword, font=\tiny] at ({\bx+0.33},-2.32) {2 线程};
+  }
+  \node[anchor=west, font=\tiny, text=gray!80] at (9.4,-2.72)
+    {bank 编号 $= 4\,tx \bmod 32$（$tx = 0..7$ 示意）};
+  \node[draw=vscKeyword, fill=white, text=vscKeyword, font=\scriptsize\bfseries,
+    minimum width=6.4cm, minimum height=0.62cm] at (12.6,-3.32)
+    {$\Rightarrow$ 2-way conflict，读 smem 吞吐 $1/2$};
+  \node[anchor=north west, align=left, font=\tiny, text width=15.8cm] at (0,-3.78)
+    {原因：$64 \bmod 32 = 0$（$tx$ 项被吞），$68 \bmod 32 = 4$（$tx$ 项以 $+4$ 步进重新出现）；\\
+     warp0: $ty=\{0,1\}$, $tx=0..15$, $j=0$（\texttt{base.cuh} 转置读 Step2）};
+\end{tikzpicture}
 \caption{bank conflict vs padding——PAD=1 使步长 64B 变为 68B，$tx$ 项在 mod 32 下重新出现，16-way 冲突降为 2-way（读 smem 吞吐 $1/16 \to 1/2$）。}
 \label{fig:7-1}
 \end{figure}

@@ -610,21 +610,173 @@ $m$ 个 $64 \times B\sb{K}$ 子块，K-step 每次前进 \texttt{kWgmmaK=16} 个
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-13-1-wgmma-desc/fig-13-1.png}
+\begin{tikzpicture}[
+  x=0.0158cm, y=-0.0158cm,
+  fld/.style={draw, line width=0.4pt, align=center, inner sep=1pt, font=\tiny,
+    minimum height={84*0.0158cm}},
+  card/.style={draw, line width=0.4pt, minimum height={34*0.0158cm},
+    minimum width={500*0.0158cm}, align=center, inner sep=3pt, font=\tiny},
+  ttl/.style={font=\small\bfseries, anchor=west},
+  sub/.style={font=\tiny, anchor=west},
+]
+  \definecolor{figgreen}{RGB}{46,133,64}
+  \definecolor{figorange}{RGB}{217,119,6}
+  \definecolor{figblue}{RGB}{33,113,181}
+  \node[ttl] at (30,27)
+    {WGMMA smem descriptor：64-bit 位域（enc(x) $=$ (x 和 0x3FFFF) 右移 4，18-bit 窗口 16B 对齐）};
+  \node[fld, fill=gray!12, draw=figblue, minimum width={86*0.0158cm}] at (83,108)
+    {63-62\\type\\2b $=$ 1};
+  \node[fld, fill=white, draw=black!45, minimum width={126*0.0158cm}] at (193,108)
+    {62-52\\unused\\10b};
+  \node[fld, fill=gray!45, draw=figorange, minimum width={106*0.0158cm}] at (313,108)
+    {51-49\\base off\\3b $=$ 0};
+  \node[fld, fill=white, draw=black!45, minimum width={66*0.0158cm}] at (403,108)
+    {48-46\\u\\3b};
+  \node[fld, fill=gray!18, draw=figgreen, minimum width={186*0.0158cm}] at (533,108)
+    {45-32 SBO enc\\14b\\1024 右移 4};
+  \node[fld, fill=white, draw=black!45, minimum width={56*0.0158cm}] at (658,108)
+    {31-30\\u\\2b};
+  \node[fld, fill=gray!18, draw=figgreen, minimum width={196*0.0158cm}] at (788,108)
+    {30-16* LBO enc\\14b\\16 右移 4 $=$ 1};
+  \node[fld, fill=white, draw=black!45, minimum width={56*0.0158cm}] at (918,108)
+    {15-14\\u\\2b};
+  \node[fld, fill=gray!12, draw=figblue, minimum width={186*0.0158cm}] at (1043,108)
+    {13-0\\addr enc\\14b\\smem 右移 4};
+  \node[sub] at (40,168)
+    {type$=$1（矩阵描述符）；u $=$ unused；数值列为本章 kernel BK$=$64 half $+$ 128B swizzle 取值};
+  \node[card, fill=gray!22, draw=figblue] at (290,213)
+    {swizzle 模式：0$=$none\quad 1$=$128B\quad 2$=$64B\quad 3$=$32B};
+  \node[card, fill=gray!22, draw=figblue] at (810,213)
+    {phase $=$ (addr 右移 7) mod 8（1024B 边界）};
+  \node[card, fill=gray!22, draw=figgreen] at (290,255)
+    {SBO：8 行 stripe 间隔（K-major swizzle 布局）};
+  \node[card, fill=gray!22, draw=figgreen] at (810,255)
+    {LBO：K 方向 stride；base addr：绝对 smem 偏移};
+  \node[sub] at (30,312)
+    {对照 common.cuh L532-565 注释与 PTX ISA 9.7.15.5.1.2.2 逐字段核校；enc 取 16B 单位使 14b 编码覆盖 256KB smem 空间（18-bit 窗口 右移 4）};
+\end{tikzpicture}
 \caption{WGMMA smem descriptor 的 64-bit 位域（对照 common.cuh L558--587 注释与 PTX ISA \S9.7.15.5.1.2.2 逐字段核校；u = unused；数值列为本章 kernel $B_K{=}64$ half + 128B swizzle 的取值；\texttt{enc(x)} = (x \& 0x3FFFF) 右移 4，18-bit 窗口 16B 对齐）。}
 \label{fig:13-1}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-13-2-ws-dataflow/fig-13-2.png}
+\begin{tikzpicture}[
+  x=0.0158cm, y=-0.0158cm,
+  colh/.style={draw, line width=0.4pt, fill=gray!22, draw=black!40,
+    align=center, inner sep=2pt, font=\footnotesize\bfseries},
+  tbox/.style={draw, line width=0.4pt, align=center, inner sep=2pt, font=\tiny},
+  ttl/.style={font=\small\bfseries, anchor=west},
+  code/.style={font=\tiny, anchor=west},
+  alab/.style={font=\tiny, anchor=west},
+  sub/.style={font=\tiny, anchor=west},
+]
+  \definecolor{figgreen}{RGB}{46,133,64}
+  \definecolor{figorange}{RGB}{217,119,6}
+  \definecolor{figblue}{RGB}{33,113,181}
+  \node[ttl] at (30,27) {Warp specialization 数据流（kStages $=$ 3）};
+  \node[colh] at (160,86) {HBM (global)};
+  \node[colh] at (560,86) {smem (per CTA)};
+  \node[colh] at (970,86) {C (global)};
+  \node[tbox, fill=gray!12, draw=figblue, minimum width={220*0.0158cm},
+    minimum height={30*0.0158cm}] at (160,131) {A tile 16KB};
+  \node[tbox, fill=gray!12, draw=figblue, minimum width={220*0.0158cm},
+    minimum height={30*0.0158cm}] at (160,167) {B tile 16KB};
+  \node[tbox, fill=gray!18, draw=figgreen, minimum width={260*0.0158cm},
+    minimum height={38*0.0158cm}] at (560,135) {s0: A $+$ B\quad full[0]};
+  \node[tbox, fill=white, draw=figgreen, minimum width={260*0.0158cm},
+    minimum height={38*0.0158cm}] at (560,181) {s1: A $+$ B\quad full[1]};
+  \node[tbox, fill=white, draw=figgreen, minimum width={260*0.0158cm},
+    minimum height={38*0.0158cm}] at (560,227) {s2: A $+$ B\quad full[2]};
+  \node[tbox, fill=gray!45, draw=figorange, minimum width={220*0.0158cm},
+    minimum height={60*0.0158cm}] at (970,146) {C tile 128 $\times$ 128};
+  \node[tbox, fill=gray!45, draw=figorange, minimum width={220*0.0158cm},
+    minimum height={56*0.0158cm}] at (970,212) {d[2][8][4] $=$ 64 $\times$ u32/thread};
+  \draw[-{Stealth}, figblue, line width=1.3pt] (270,131) -- (426,131);
+  \node[alab, text=figblue, font=\tiny\bfseries] at (280,106) {TMA（1 线程）};
+  \node[alab, text=figblue] at (280,158) {cp.async.bulk.tensor.2d};
+  \draw[-{Stealth}, figgreen, line width=1.3pt] (690,135) -- (856,135);
+  \node[alab, text=figgreen, font=\tiny\bfseries] at (700,110) {WGMMA（128 线程）};
+  \draw[-{Stealth}, figorange, line width=0.9pt] (970,178) -- (970,240) -- (790,240);
+  \draw[figblue, line width=0.6pt, fill=gray!12] (50,268) rectangle (530,448);
+  \draw[figgreen, line width=0.6pt, fill=gray!8] (560,268) rectangle (1040,448);
+  \node[colh, minimum width={480*0.0158cm}, minimum height={30*0.0158cm},
+    text=figblue] at (290,283) {WG0 producer（128 线程，1 活跃）};
+  \node[colh, minimum width={480*0.0158cm}, minimum height={30*0.0158cm},
+    text=figgreen] at (800,283) {WG1 consumer（128 线程 warpgroup）};
+  \node[code] at (64,314) {P1\quad wait(empty[s])\quad 等待 stage 被读空};
+  \node[code] at (64,338) {P2\quad TMA(A), TMA(B)\quad 单线程提交两笔搬运};
+  \node[code] at (64,362) {P3\quad arrive $+$ expect-tx(full[s], 32KB)};
+  \node[code] at (64,390) {相位翻转条件：129 次 arrive（128 consumer $+$ 1 producer）};
+  \node[code] at (64,408) {且 32768B 落盘 —— 二者同时成立};
+  \node[code] at (574,314) {C1\quad wait(full[s])};
+  \node[code] at (574,338) {C2\quad 8 $\times$ wgmma\quad m64n128k16（异步）};
+  \node[code] at (574,362) {C3\quad commit $+$ wait(0)};
+  \node[code] at (574,386) {C4\quad arrive(empty[s])\quad $\times$128（读空信号）};
+  \node[code] at (574,418) {epilogue：累加器 d[][] 写回 C tile};
+  \draw[-{Stealth}, figgreen, dashed, line width=0.9pt] (560,430) -- (300,430);
+  \node[alab, text=figgreen] at (300,442) {C4 arrive 喂 P1 的 wait};
+  \node[sub] at (30,476)
+    {kStages$=$3：计算与搬运最多重叠 2 个 tile；full[]/empty[] 双屏障阵列按 stage 解耦两支执行流};
+\end{tikzpicture}
 \caption{producer/consumer 双 warpgroup 数据流：TMA 单线程提交搬运，WGMMA 全 warpgroup 计算，\texttt{full[]}/\texttt{empty[]} 双屏障阵列按 stage 解耦两支执行流，kStages=3 使计算与搬运最多重叠 2 个 tile。}
 \label{fig:13-2}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-13-3-mbarrier/fig-13-3.png}
+\begin{tikzpicture}[
+  x=0.0158cm, y=-0.0158cm,
+  st/.style={draw, line width=0.5pt, align=center, inner sep=2pt},
+  ttl/.style={font=\small\bfseries, anchor=west},
+  code/.style={font=\tiny, anchor=west},
+]
+  \definecolor{figgreen}{RGB}{46,133,64}
+  \definecolor{figorange}{RGB}{217,119,6}
+  \definecolor{figblue}{RGB}{33,113,181}
+  \node[ttl] at (30,27) {mbarrier 状态机（单个 barrier 对象，如 full[s]）};
+  \node[st, fill=gray!22, draw=black!40, font=\footnotesize\bfseries,
+    minimum width={340*0.0158cm}, minimum height={50*0.0158cm}] at (510,85)
+    {init(bar, 129) $\to$ phase $= p$};
+  \draw[-{Stealth}, black!55, line width=0.8pt] (500,110) -- (500,146);
+  \node[st, fill=gray!12, draw=figblue, font=\footnotesize\bfseries,
+    minimum width={340*0.0158cm}, minimum height={64*0.0158cm}] at (510,182)
+    {pending $= P$, tx $= T$};
+  \node[st, fill=gray!45, draw=figorange, font=\tiny,
+    minimum width={220*0.0158cm}, minimum height={34*0.0158cm}] at (170,173)
+    {arrive（计数 1）：$P$ 减 1};
+  \draw[-{Stealth}, figorange, line width=0.8pt] (280,173) -- (336,173);
+  \node[st, fill=gray!45, draw=figorange, font=\tiny,
+    minimum width={220*0.0158cm}, minimum height={34*0.0158cm}] at (170,217)
+    {expect-tx（dT）：$T$ 加 dT};
+  \draw[-{Stealth}, figorange, line width=0.8pt] (280,217) -- (336,196);
+  \node[st, fill=white, draw=black!45, font=\scriptsize,
+    minimum width={300*0.0158cm}, minimum height={40*0.0158cm}] at (910,170)
+    {$P$ 大于 0 或 $T$ 大于 0 ?};
+  \draw[-{Stealth}, black!55, line width=0.8pt] (680,182) -- (756,172);
+  \node[font=\tiny, text=black!55, anchor=west] at (690,150) {未完成};
+  \draw[-{Stealth}, black!45, dashed, line width=0.7pt]
+    (1060,150) -- (1060,120) -- (682,120) -- (682,178);
+  \draw[-{Stealth}, figgreen, line width=1.3pt]
+    (760,176) -- (760,236) -- (500,236) -- (500,266);
+  \node[font=\tiny\bfseries, text=figgreen, anchor=west] at (540,248)
+    {$P == 0$ 且 $T == 0$（原子翻转）};
+  \node[st, fill=gray!18, draw=figgreen, font=\scriptsize\bfseries,
+    minimum width={340*0.0158cm}, minimum height={56*0.0158cm}] at (510,296)
+    {phase $= p + 1$，pending 重置为 expected};
+  \draw[-{Stealth}, figgreen, dashed, line width=0.8pt] (340,296) -- (150,296) -- (150,250);
+  \node[font=\tiny, text=figgreen, anchor=west] at (60,312) {waiter 按 parity 唤醒};
+  \draw[figorange, line width=0.5pt, fill=gray!8] (60,350) rectangle (540,426);
+  \draw[figorange, line width=0.5pt, fill=gray!8] (560,350) rectangle (1060,426);
+  \node[code] at (74,365)
+    {full[s] 翻转 $=$ 128 consumer arrive $+$ 1 producer arrive.expect-tx(32768B)};
+  \node[code] at (74,383) {$+$ 32768B complete-tx};
+  \node[code] at (74,401) {$\to$ 翻转后 consumer 读数据（TMA 字节落盘时 $T$ 减 dC）};
+  \node[code] at (574,365)
+    {empty[s] 翻转 $=$ 128 consumer arrive（C4 / C0 warmup）};
+  \node[code] at (574,383) {$+$ 1 producer arrive（P1）};
+  \node[code] at (574,401) {$\to$ 翻转后 producer 覆写该 stage（C0 预热补 128 次 arrive）};
+\end{tikzpicture}
 \caption{mbarrier 状态机：arrive 与 tx 两把独立的「锁」同时归零才翻转相位；翻转瞬间原子地重置 pending 为 expected。下半部分给出 \texttt{full[s]} 与 \texttt{empty[s]} 各自的翻转条件。}
 \label{fig:13-3}
 \end{figure}

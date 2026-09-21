@@ -130,7 +130,33 @@ base.cuh L16--21 给出了 H100 参考下的带宽数量级：HBM3 约 3.35 TB/s
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-1-1-mem-hierarchy/fig-1-1.png}
+\resizebox{0.95\textwidth}{!}{%
+\begin{tikzpicture}[font=\scriptsize,
+  tier/.style={draw=black!55, line width=0.5pt, anchor=west,
+    minimum height=0.9cm, inner xsep=4pt, font=\small\bfseries},
+  tag/.style={anchor=west, inner sep=1pt}]
+  \node[anchor=west, font=\small\bfseries] at (0.67, 5.24)
+    {速率/容量金字塔（H100 数量级参考，base.cuh L16--21）};
+  \node[tier, fill=gray!12, minimum width=3.17cm] at (1.33, 4.05) {Register};
+  \node[tier, fill=gray!25, minimum width=5.00cm] at (1.33, 2.95) {SMEM / L1};
+  \node[tier, fill=gray!40, minimum width=7.50cm] at (1.33, 1.85) {L2 Cache};
+  \node[tier, fill=gray!55, minimum width=10.67cm] at (1.33, 0.75) {HBM3};
+  \node[tag] at (4.85, 4.24) {$\sim$100+ TB/s};
+  \node[tag] at (4.85, 3.87) {256 KB/SM};
+  \node[tag] at (6.70, 3.14) {$\sim$19 TB/s};
+  \node[tag] at (6.70, 2.77) {$\sim$228 KB/SM};
+  \node[tag] at (9.20, 2.04) {$\sim$12 TB/s};
+  \node[tag] at (9.20, 1.67) {50 MB};
+  \node[tag] at (12.36, 0.94) {$\sim$3.35 TB/s};
+  \node[tag] at (12.36, 0.57) {80 GB};
+  \node[tag, text=black!55] at (14.15, 4.07) {(thread)};
+  \node[tag, text=black!55] at (14.15, 2.97) {(block)};
+  \node[tag, text=black!55] at (14.15, 1.87) {(device)};
+  \node[tag, text=black!55] at (14.15, 0.77) {(device)};
+  \draw[-{Stealth}, black!55, line width=0.8pt] (0.80, 4.60) -- (0.80, 0.27);
+  \node[anchor=center, text=black!70] at (8.17, -0.42)
+    {离 SM 越远：带宽越低、容量越大};
+\end{tikzpicture}}
 \caption{GPU 内存层级金字塔：离 SM 越远带宽越低、容量越大（H100 数量级，base.cuh L16--21 口径）。}
 \label{fig:1-1}
 \end{figure}
@@ -226,7 +252,39 @@ compute-bound。
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-1-2-roofline/fig-1-2.png}
+\resizebox{0.95\textwidth}{!}{%
+\begin{tikzpicture}[font=\scriptsize,
+  axlab/.style={anchor=west, black!65},
+  note/.style={anchor=west, black!70}]
+  \node[anchor=west, font=\small\bfseries] at (0.62, 7.32)
+    {Roofline 模型：$P = \min(P_{\mathrm{peak}},\ \mathrm{AI}\times\mathrm{BW})$};
+  \draw[-{Stealth}, black!65, line width=0.8pt] (1.85, 0.92) -- (13.54, 0.92);
+  \draw[-{Stealth}, black!65, line width=0.8pt] (1.85, 0.92) -- (1.85, 6.77);
+  \node[axlab] at (12.60, 0.62) {AI (FLOP/Byte)};
+  \node[axlab] at (1.20, 6.62) {P (TFLOPS)};
+  \draw[red, line width=1.2pt] (1.85, 0.92) -- (5.08, 6.77);
+  \draw[red, line width=1.2pt] (5.08, 6.77) -- (13.08, 6.77);
+  \draw[black!45, dashed, line width=0.6pt] (5.08, 0.92) -- (5.08, 6.77);
+  \node[anchor=west, red, font=\bfseries] at (6.00, 7.06)
+    {compute-bound: $P = P_{\mathrm{peak}}$};
+  \node[anchor=west, orange!85!black, font=\bfseries] at (2.82, 2.62)
+    {memory-bound: $P = \mathrm{AI}\times\mathrm{BW}$};
+  \node[anchor=west, orange!85!black] at (2.90, 2.28) {(斜率 $=$ BW)};
+  \node[axlab] at (4.40, 0.62)
+    {$\mathrm{AI}^* = P_{\mathrm{peak}}/\mathrm{BW}$};
+  \fill[blue!65!black] (10.25, 6.31) circle (2.2pt);
+  \node[anchor=west, blue!65!black, align=left, text width=5.8cm] at (7.70, 5.74)
+    {GEMM $K{=}4096$：$\mathrm{AI}{=}683$ 高于 $\mathrm{AI}^*{=}295$
+     $\to$ compute-bound};
+  \fill[green!50!black] (3.11, 1.51) circle (2.2pt);
+  \node[anchor=west, green!40!black, align=left, text width=5.8cm] at (3.30, 1.05)
+    {softmax $\mathrm{AI}{=}0.625$ 远低于 $\mathrm{AI}^*{=}20$
+     $\to$ 严重 memory-bound};
+  \node[note] at (0.62, 0.50)
+    {例：H100 SXM（base.cuh L84--86 口径）FP16 TC dense $P_{\mathrm{peak}}$ 约 989 TFLOPS，BW${=}3.35$ TB/s $\to$ $\mathrm{AI}^*$ 约 295；};
+  \node[note] at (0.62, 0.20)
+    {FP32 CUDA core 约 67 TFLOPS $\to$ $\mathrm{AI}^*$ 约 20};
+\end{tikzpicture}}
 \caption{Roofline 模型：$P = \min(P_{\mathrm{peak}}, \mathrm{AI} \times \mathrm{BW})$，脊点 $\mathrm{AI}^* = P_{\mathrm{peak}} / \mathrm{BW}$。GEMM $K{=}4096$（AI$=683$）落在计算屋顶，softmax（AI$=0.625$）落在带宽斜线区。}
 \label{fig:1-2}
 \end{figure}
@@ -382,41 +440,41 @@ RFC-H 升级为正式图（FIG-1-1、FIG-1-2）。这里补充一张「一次 HB
   seg/.style={draw, minimum height=0.75cm, inner sep=2pt, align=center,
     font=\scriptsize},
   bar/.style={draw, minimum height=0.5cm, inner sep=0pt},
-  lab/.style={font=\scriptsize, align=right},
+  lab/.style={font=\scriptsize, align=right, anchor=east},
   tlab/.style={font=\scriptsize, anchor=west}
 ]
-  \node[lab] at (-0.25, 3.3) {warp A\\（发射视角）};
-  \node[seg, fill=gray!30, minimum width=1.15cm] at (0.575, 3.3) {发射\\LDG};
-  \node[seg, fill=gray!75, minimum width=6.0cm] at (4.15, 3.3) {stall：等数据（warp 挂起）};
-  \node[seg, fill=gray!30, minimum width=1.45cm] at (7.875, 3.3) {数据到达\\恢复执行};
+  \node[lab] at (-0.4, 3.3) {warp A\\（发射视角）};
+  \node[seg, draw=tkBlue, fill=tkFillBlue, minimum width=1.15cm] at (0.575, 3.3) {发射\\LDG};
+  \node[seg, draw=tkOrange, fill=tkFillOrange, minimum width=6.0cm] at (4.15, 3.3) {stall：等数据（warp 挂起）};
+  \node[seg, draw=tkGreen, fill=tkFillGreen, minimum width=1.45cm] at (7.875, 3.3) {数据到达\\恢复执行};
   \draw[{Stealth[length=1.5mm]}-{Stealth[length=1.5mm]}] (0, 4.2) -- (8.6, 4.2);
   \draw (0, 4.05) -- (0, 4.35);
   \draw (8.6, 4.05) -- (8.6, 4.35);
   \node[anchor=south, font=\scriptsize] at (4.3, 4.3)
     {一次 HBM 读全程 $\approx 0.5\,\mu\mathrm{s}$（H100 参考）};
-  \node[lab] at (-0.25, 1.45) {访存路径\\（三档延迟）};
-  \node[bar, fill=gray!20, minimum width=0.9cm] at (1.6, 2.15) {};
+  \node[lab] at (-0.4, 1.45) {访存路径\\（三档延迟）};
+  \node[bar, draw=tkGreen, fill=tkFillGreen, minimum width=0.9cm] at (1.6, 2.15) {};
   \node[tlab] at (2.25, 2.15) {L1 命中：$\sim$30 cycle（最快，就地结束）};
-  \node[bar, fill=gray!45, minimum width=2.6cm] at (2.45, 1.45) {};
+  \node[bar, draw=tkOrange, fill=tkFillOrange, minimum width=2.6cm] at (2.45, 1.45) {};
   \node[tlab] at (3.95, 1.45) {L2 命中：$\sim$200 cycle（回填 L1）};
-  \node[bar, fill=gray!70, minimum width=6.0cm] at (4.15, 0.75) {};
+  \node[bar, draw=tkRed, fill=tkFillRed, minimum width=6.0cm] at (4.15, 0.75) {};
   \node[tlab] at (7.35, 0.75) {HBM：$\sim$500--800 cycle（经 L2 回填）};
   \node[font=\scriptsize, anchor=east, text=black!60] at (8.6, 2.75) {（横轴不按比例）};
-  \node[lab] at (-0.25, 0) {scheduler\\（发射口）};
-  \node[seg, fill=gray!30, minimum width=1.15cm, minimum height=0.6cm] at (0.575, 0) {A};
-  \node[seg, fill=gray!15, minimum width=1.4cm, minimum height=0.6cm] at (1.85, 0) {B};
-  \node[seg, fill=gray!25, minimum width=1.4cm, minimum height=0.6cm] at (3.25, 0) {C};
-  \node[seg, fill=gray!15, minimum width=1.4cm, minimum height=0.6cm] at (4.65, 0) {B};
-  \node[seg, fill=gray!25, minimum width=1.4cm, minimum height=0.6cm] at (6.05, 0) {C};
-  \node[seg, fill=gray!15, minimum width=0.4cm, minimum height=0.6cm, inner sep=1pt] at (6.95, 0) {B};
-  \node[seg, fill=gray!30, minimum width=1.45cm, minimum height=0.6cm] at (7.875, 0) {A};
+  \node[lab] at (-0.4, 0) {scheduler\\（发射口）};
+  \node[seg, draw=tkBlue, fill=tkFillBlue, minimum width=1.15cm, minimum height=0.6cm] at (0.575, 0) {A};
+  \node[seg, draw=tkGreen!75, fill=tkFillGreen!55, minimum width=1.4cm, minimum height=0.6cm] at (1.85, 0) {B};
+  \node[seg, draw=tkGreen, fill=tkFillGreen, minimum width=1.4cm, minimum height=0.6cm] at (3.25, 0) {C};
+  \node[seg, draw=tkGreen!75, fill=tkFillGreen!55, minimum width=1.4cm, minimum height=0.6cm] at (4.65, 0) {B};
+  \node[seg, draw=tkGreen, fill=tkFillGreen, minimum width=1.4cm, minimum height=0.6cm] at (6.05, 0) {C};
+  \node[seg, draw=tkGreen!75, fill=tkFillGreen!55, minimum width=0.4cm, minimum height=0.6cm, inner sep=1pt] at (6.95, 0) {B};
+  \node[seg, draw=tkBlue, fill=tkFillBlue, minimum width=1.45cm, minimum height=0.6cm] at (7.875, 0) {A};
   \draw[dashed, black!50] (7.15, -0.5) -- (7.15, 4.05);
   \node[anchor=north, font=\scriptsize, align=center] at (4.3, -0.55)
     {occupancy = 可切换的 warp 数：A 挂起期间 warp B / C 顶上，发射口不空转};
   \draw[-{Stealth[length=1.8mm]}] (0, -1.25) -- (9.3, -1.25);
   \node[anchor=west, font=\scriptsize] at (9.35, -1.25) {时间};
 \end{tikzpicture}
-\caption{一次访存的旅程与延迟隐藏}
+\caption{一次访存的旅程与延迟隐藏（蓝=发射/执行，橙=等待/过渡延迟，绿=命中与恢复，红=直落 HBM 的最长延迟）}
 \label{fig:1-3}
 \end{figure}
 

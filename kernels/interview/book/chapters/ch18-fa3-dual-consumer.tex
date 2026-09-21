@@ -627,7 +627,68 @@ GEMM 以喂满 Tensor Core。本 kernel 的 consumer 用\textbf{同步}的
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-18-1-fa3-dual-consumer/fig-18-1.png}
+\begin{tikzpicture}[font=\tiny, x=0.013966cm, y=-0.013966cm]
+  \definecolor{tBlue}{RGB}{33,100,160}
+  \definecolor{tGreen}{RGB}{40,105,60}
+  \node[anchor=west, font=\scriptsize\bfseries] at (24,26)
+    {FA3 双 consumer 角色图（384 线程，$B_r = B_c = 64$）};
+  \node[draw=tBlue, fill=gray!10, text=tBlue, font=\tiny\bfseries, inner sep=1pt,
+        minimum width=15.53cm, minimum height=0.45cm] at (580,64)
+    {WG0 [0,127] producer：单线程提交 TMA};
+  \node[draw=tBlue, fill=white, align=center, text width=4.4cm, inner sep=1pt,
+        minimum height=0.61cm] at (210,110)
+    {P0：TMA Q $\to$ full\_Q（257 $=$ 2 WG $\times$ 128 $+$ 1）};
+  \node[draw=tBlue, fill=white, align=center, text width=9.8cm, inner sep=1pt,
+        minimum height=0.61cm] at (758,110)
+    {P2：for tile：$\mathrm{cid} = \mathrm{tile}\,\&\,1$；K[tile]（$\mathrm{Sk}{=}1$）/ K[tile+2]（$\mathrm{Sk}{\ge}2$）$\to$ K\_smem[cid][stg]；V[tile] $\to$ V\_smem[cid]（wait empty $\to$ full）};
+  \node[draw=tBlue, fill=gray!10, text=tBlue, font=\tiny\bfseries, align=center,
+        text width=7.3cm, inner sep=1pt, minimum height=0.45cm] at (295,168)
+    {WG1 [128,255] $\mathrm{consumer\_id} = 0$：tiles 0,2,4,...（$\lceil T_c/2 \rceil$）};
+  \node[draw=tGreen, fill=gray!10, text=tGreen, font=\tiny\bfseries, align=center,
+        text width=7.3cm, inner sep=1pt, minimum height=0.45cm] at (865,168)
+    {WG2 [256,383] $\mathrm{consumer\_id} = 1$：tiles 1,3,5,...（$\lfloor T_c/2 \rfloor$）};
+  \node[draw=tBlue, fill=white, align=center, text width=7.3cm, inner sep=1pt,
+        minimum height=0.50cm] at (295,212)
+    {C0：128$\times$ arrive empty\_K[cid][s] $+$ empty\_V[cid]};
+  \node[draw=tGreen, fill=white, align=center, text width=7.3cm, inner sep=1pt,
+        minimum height=0.50cm] at (865,212)
+    {C0：128$\times$ arrive empty\_K[cid][s] $+$ empty\_V[cid]};
+  \node[draw=tBlue, fill=white, align=center, text width=7.3cm, inner sep=1pt,
+        minimum height=0.50cm] at (295,254)
+    {wait full\_Q（两 WG 共享同一屏障，257）};
+  \node[draw=tGreen, fill=white, align=center, text width=7.3cm, inner sep=1pt,
+        minimum height=0.50cm] at (865,254)
+    {wait full\_Q（两 WG 共享同一屏障，257）};
+  \node[draw=tBlue, fill=white, align=center, text width=7.3cm, inner sep=1pt,
+        minimum height=0.50cm] at (295,296)
+    {loop it：wait full\_K[cid][it \% Sk] $\to$ QK$^{\top}$（ldmatrix+HMMA）$-$ arrive empty\_K[cid][..]};
+  \node[draw=tGreen, fill=white, align=center, text width=7.3cm, inner sep=1pt,
+        minimum height=0.50cm] at (865,296)
+    {loop it：wait full\_K[cid][it \% Sk] $\to$ QK$^{\top}$（ldmatrix+HMMA）$-$ arrive empty\_K[cid][..]};
+  \node[draw=tBlue, fill=white, align=center, text width=7.3cm, inner sep=1pt,
+        minimum height=0.50cm] at (295,338) {softmax（$m$, $\ell$；纯寄存器）};
+  \node[draw=tGreen, fill=white, align=center, text width=7.3cm, inner sep=1pt,
+        minimum height=0.50cm] at (865,338) {softmax（$m$, $\ell$；纯寄存器）};
+  \node[draw=tBlue, fill=white, align=center, text width=7.3cm, inner sep=1pt,
+        minimum height=0.50cm] at (295,380)
+    {wait full\_V[cid] $\to$ PV（R\_S 复用 + X2\_T）$-$ arrive empty\_V[cid] $\to$ rescale R\_D};
+  \node[draw=tGreen, fill=white, align=center, text width=7.3cm, inner sep=1pt,
+        minimum height=0.50cm] at (865,380)
+    {wait full\_V[cid] $\to$ PV（R\_S 复用 + X2\_T）$-$ arrive empty\_V[cid] $\to$ rescale R\_D};
+  \node[draw=black!60, fill=gray!25, font=\tiny\bfseries, align=center,
+        text width=15.2cm, inner sep=1pt, minimum height=0.47cm] at (580,431)
+    {收尾：\_\_syncthreads（全部 TMA 落地，K/V smem 生命周期结束）};
+  \node[draw=tGreen, fill=white, align=center, text width=7.3cm, inner sep=1pt,
+        minimum height=0.67cm] at (295,484)
+    {WG2：$(R_D, m_1, \ell_1) \to$ smem scratch（按 wg\_tid 索引）后 \_\_syncthreads};
+  \node[draw=tBlue, fill=white, align=center, text width=7.3cm, inner sep=1pt,
+        minimum height=0.67cm] at (865,484)
+    {WG1：读 scratch 归并后写出 $O \to$ gmem};
+  \draw[-{Stealth}, tGreen, thick] (570,484) -- (594,484);
+  \node[draw=tGreen, fill=gray!15, text=tGreen!70!black, align=center,
+        text width=15.2cm, inner sep=1pt, minimum height=0.89cm] at (580,556)
+    {$m = \max(m_0, m_1)$；$a = \exp(m_0-m)$，$b = \exp(m_1-m)$；$\ell = a\,\ell_0 + b\,\ell_1$；$O_{acc} = a\,O_{acc0} + b\,O_{acc1}$；$O = O_{acc}/\ell$};
+\end{tikzpicture}
 \caption{FA3 双 consumer 的角色图：WG0 单线程提交 TMA，并按 $\mathrm{cid} = \mathrm{tile}\,\&\,1$ 把 K/V 投递到两个独立 bank；WG1/WG2 各自遍历一半 KV tile、维护独立 partial 与独立流水；收尾在 smem scratch 上做一次稳定归并后由 WG1 写出。}
 \label{fig:18-1}
 \end{figure}

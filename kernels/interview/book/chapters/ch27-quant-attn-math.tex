@@ -221,20 +221,35 @@ shuffle} 使用（每 lane 持有的 8 个 A 元素共享一个 scale，scale �
 \begin{tikzpicture}[
   axl/.style={font=\scriptsize, inner sep=1pt},
   tnb/.style={font=\tiny, inner sep=0.5pt},
+  cnt/.style={tnb, align=center, text width=2.7cm, anchor=north},
+  mp/.style={tnb, align=center, text width=2.7cm, anchor=north},
+  fail/.style={tnb, align=center, text width=3cm, anchor=north, text=tkOrange},
+  leg/.style={axl, align=left, text width=14cm, anchor=north west},
 ]
+  % 显式包围盒（内容关于 x=7.8 左右对称）：整图在版心中左右均分
+  \path[use as bounding box] (0.45,1.45) rectangle (15.15,-5.9);
   % 顶部 trade-off 轴
-  \draw[{Stealth}-{Stealth},thick] (0.9,1.1) -- (14.38,1.1);
-  \node[axl,anchor=south] at (1.7,1.18) {开销低 $\cdot$ 精度低};
-  \node[axl,anchor=south] at (7.64,1.18) {粒度细化（scale 数 $1 \to 64 \to D \to 128 \to ND/16$）};
-  \node[axl,anchor=south] at (13.5,1.18) {精度高 $\cdot$ 开销高};
-  % 五联网格（同形状 16x16 缩略，格距 0.13cm；灰度 = 同一 scale 的覆盖域）
+  \draw[{Stealth}-{Stealth},thick,tkBlue] (0.8,1.1) -- (14.8,1.1);
+  \node[axl,anchor=south west] at (0.8,1.16) {开销低 $\cdot$ 精度低};
+  \node[axl,anchor=south] at (7.8,1.16) {粒度细化（scale 数 $1 \to 64 \to D \to 128 \to ND/16$）};
+  \node[axl,anchor=south east] at (14.8,1.16) {精度高 $\cdot$ 开销高};
+  % 五列浅色卡：边框与标题随粒度递进 tkBlue$\to$tkPurple
+  \foreach \cx/\ccol/\cfill in {2.0/tkBlue/tkFillBlue,
+                                4.9/tkBlue!75!tkPurple/tkFillBlue!75!tkFillPurple,
+                                7.8/tkBlue!50!tkPurple/tkFillBlue!50!tkFillPurple,
+                                10.7/tkBlue!25!tkPurple/tkFillBlue!25!tkFillPurple,
+                                13.6/tkPurple/tkFillPurple} {
+    \fill[\cfill] (\cx-1.2,0.5) rectangle (\cx+1.2,-2.2);
+    \draw[\ccol,line width=0.9pt] (\cx-1.2,0.5) rectangle (\cx+1.2,-2.2);
+  }
+  % 缩略网格（同形状 16x16，格距 0.13cm；灰度 = 同一 scale 的覆盖域）
   % 1) per-block：整块一色
-  \begin{scope}[shift={(0.9,0)},x=0.13cm,y=-0.13cm]
+  \begin{scope}[shift={(0.96,0)},x=0.13cm,y=-0.13cm]
     \fill[gray!25] (0,0) rectangle (16,16);
     \draw[thick] (0,0) rectangle (16,16);
   \end{scope}
   % 2) per-thread：行 r 与 r+8 同色（8 档循环，行对共享）
-  \begin{scope}[shift={(3.75,0)},x=0.13cm,y=-0.13cm]
+  \begin{scope}[shift={(3.86,0)},x=0.13cm,y=-0.13cm]
     \foreach \rr in {0,...,15} {
       \pgfmathtruncatemacro{\gra}{12+8*mod(\rr,8)}
       \fill[gray!\gra] (0,\rr) rectangle (16,\rr+1);
@@ -242,7 +257,7 @@ shuffle} 使用（每 lane 持有的 8 个 A 元素共享一个 scale，scale �
     \draw[thick] (0,0) rectangle (16,16);
   \end{scope}
   % 3) per-channel：每列一色（8 档循环，沿 D）
-  \begin{scope}[shift={(6.6,0)},x=0.13cm,y=-0.13cm]
+  \begin{scope}[shift={(6.76,0)},x=0.13cm,y=-0.13cm]
     \foreach \cc in {0,...,15} {
       \pgfmathtruncatemacro{\gra}{12+8*mod(\cc,8)}
       \fill[gray!\gra] (\cc,0) rectangle (\cc+1,16);
@@ -250,7 +265,7 @@ shuffle} 使用（每 lane 持有的 8 个 A 元素共享一个 scale，scale �
     \draw[thick] (0,0) rectangle (16,16);
   \end{scope}
   % 4) per-row：每行一色（16 档线性渐变）
-  \begin{scope}[shift={(9.45,0)},x=0.13cm,y=-0.13cm]
+  \begin{scope}[shift={(9.66,0)},x=0.13cm,y=-0.13cm]
     \foreach \rr in {0,...,15} {
       \pgfmathtruncatemacro{\gra}{8+4*\rr}
       \fill[gray!\gra] (0,\rr) rectangle (16,\rr+1);
@@ -258,7 +273,7 @@ shuffle} 使用（每 lane 持有的 8 个 A 元素共享一个 scale，scale �
     \draw[thick] (0,0) rectangle (16,16);
   \end{scope}
   % 5) per-16：每行一个 1x16 microblock（块界 + 细网格纹）
-  \begin{scope}[shift={(12.3,0)},x=0.13cm,y=-0.13cm]
+  \begin{scope}[shift={(12.56,0)},x=0.13cm,y=-0.13cm]
     \foreach \rr in {0,...,15} {
       \fill[gray!18] (0,\rr) rectangle (16,\rr+1);
       \draw[thin] (0,\rr) -- (16,\rr);
@@ -266,33 +281,31 @@ shuffle} 使用（每 lane 持有的 8 个 A 元素共享一个 scale，scale �
     \fill[pattern=north east lines, pattern color=gray!32] (0,0) rectangle (16,16);
     \draw[thick] (0,0) rectangle (16,16);
   \end{scope}
-  % 联标题与 scale 数
-  \node[axl,font=\scriptsize\bfseries] at (1.94,0.32) {per-block};
-  \node[axl,font=\scriptsize\bfseries] at (4.79,0.32) {per-thread};
-  \node[axl,font=\scriptsize\bfseries] at (7.64,0.32) {per-channel};
-  \node[axl,font=\scriptsize\bfseries] at (10.49,0.32) {per-row};
-  \node[axl,font=\scriptsize\bfseries] at (13.34,0.32) {per-16 组};
-  \node[tnb,anchor=north] at (1.94,-2.22) {1 个 scale / 128 行 tile};
-  \node[tnb,anchor=north] at (4.79,-2.22) {64 个 / 128 行};
-  \node[tnb,anchor=north] at (7.64,-2.22) {$D$ 个（沿 $D$ 每通道）};
-  \node[tnb,anchor=north] at (10.49,-2.22) {128 个（softmax 行）};
-  \node[tnb,anchor=north] at (13.34,-2.22) {$ND/16$ 个（$1\times16$ 块）};
-  \node[tnb,anchor=north] at (1.94,-2.62) {fp8 Q/K/V 默认（SA1）};
-  \node[tnb,anchor=north] at (4.79,-2.62) {fp8 Q/K（\texttt{per\_thread}，SA2）};
-  \node[tnb,anchor=north] at (7.64,-2.62) {fp8 V（$\delta_V{=}\mathrm{colmax}/448$，SA2）};
-  \node[tnb,anchor=north] at (10.49,-2.62) {fp8 P（\texttt{kPQuantPerRow}，ffpa）};
-  \node[tnb,anchor=north] at (13.34,-2.62) {fp4 Q/K/V/P 的 SF（SA3）};
-  % 谱系两端失败模式与结构注记
-  \node[tnb,anchor=north,align=center] at (1.94,-3.15)
-    {失败模式：一个 outlier\\撑爆整块 scale};
-  \node[tnb,anchor=north,align=center] at (13.34,-3.15)
-    {失败模式：SF 数量与数据同阶，\\SF 本身成为新的访存项};
-  \node[axl,anchor=north west,align=left] at (0.9,-3.95)
+  % 列标题（语义主色 = 粒度谱系渐变）与第一行标注：scale 数
+  \node[axl,font=\scriptsize\bfseries,text=tkBlue] at (2.0,0.32) {per-block};
+  \node[axl,font=\scriptsize\bfseries,text=tkBlue!75!tkPurple] at (4.9,0.32) {per-thread};
+  \node[axl,font=\scriptsize\bfseries,text=tkBlue!50!tkPurple] at (7.8,0.32) {per-channel};
+  \node[axl,font=\scriptsize\bfseries,text=tkBlue!25!tkPurple] at (10.7,0.32) {per-row};
+  \node[axl,font=\scriptsize\bfseries,text=tkPurple] at (13.6,0.32) {per-16 组};
+  \node[cnt] at (2.0,-2.4) {1 个 scale / 128 行 tile};
+  \node[cnt] at (4.9,-2.4) {64 个 / 128 行};
+  \node[cnt] at (7.8,-2.4) {$D$ 个（沿 $D$ 每通道）};
+  \node[cnt] at (10.7,-2.4) {128 个（softmax 行）};
+  \node[cnt] at (13.6,-2.4) {$ND/16$ 个（$1\times16$ 块）};
+  % 第二行标注：fp8 实例 tkBlue / fp4 实例 tkPurple，限宽自动折行避免相邻叠印
+  \node[mp,text=tkBlue] at (2.0,-2.9) {fp8 Q/K/V 默认（SA1）};
+  \node[mp,text=tkBlue] at (4.9,-2.9) {fp8 Q/K（\texttt{per\_thread}，SA2）};
+  \node[mp,text=tkBlue] at (7.8,-2.9) {fp8 V（$\delta_V{=}\mathrm{colmax}/448$，SA2）};
+  \node[mp,text=tkBlue] at (10.7,-2.9) {fp8 P（\texttt{kPQuantPerRow}，ffpa）};
+  \node[mp,text=tkPurple] at (13.6,-2.9) {fp4 Q/K/V/P 的 SF（SA3）};
+  % 谱系两端失败模式与结构注记（误差代价警示 tkOrange）
+  \node[fail] at (2.0,-3.8) {失败模式：一个 outlier\\撑爆整块 scale};
+  \node[fail] at (13.6,-3.8) {失败模式：SF 数量与数据同阶，\\SF 本身成为新的访存项};
+  \node[leg] at (0.8,-4.6)
     {读法（灰度 = 同一个 scale 的覆盖域）：per-thread 的行 $r$ 与 $r{+}8$ 同色——
-     行对 $\{r,r{+}8\}$ 共享一个 scale，恰与 $m16n8$ C-fragment 的行对对齐};
-  \node[axl,anchor=north west,align=left] at (0.9,-4.45)
-    {（第~\ref{ch:28}~章 28.3.2 节展开的 64 槽位表）；per-row 为 16 档线性渐变示意 128 行；
-     per-16 每行一个 $1\times16$ microblock（细纹示意块内 16 元素共享一个 SF）。};
+     行对 $\{r,r{+}8\}$ 共享一个 scale，恰与 $m16n8$ C-fragment 的行对对齐
+     （第~\ref{ch:28}~章 28.3.2 节展开的 64 槽位表）；per-row 为 16 档线性渐变示意
+     128 行；per-16 每行一个 $1\times16$ microblock（细纹示意块内 16 元素共享一个 SF）。};
 \end{tikzpicture}
 \caption{量化粒度谱系五联网格（表~\ref{tab:27-granularity} 的视觉化，缩略网格为
 16 行 $\times$ 16 列）。从左到右：per-block 整块共享 1 个 scale；per-thread 按
@@ -742,7 +755,85 @@ $O$ 与 $\ell$ 全程共享同一 stale 域，$O/\ell$ 消去全部迟到缩放�
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.92\textwidth]{figures/drawio/fig-27-1-fp-bitfield/fig-27-1-fp-bitfield.png}
+  % was: \includegraphics[width=0.92\textwidth]{figures/drawio/fig-27-1-fp-bitfield/fig-27-1-fp-bitfield.png}
+  \begin{tikzpicture}[font=\tiny, >=Stealth,
+    rl/.style={anchor=east, font=\bfseries\fontsize{4.8}{5.4}\selectfont, inner sep=1pt},
+    bc/.style={draw, align=center, inner sep=1pt, minimum width=0.62cm,
+      minimum height=0.50cm, font=\bfseries\fontsize{4.6}{5.2}\selectfont},
+    an/.style={anchor=west, align=left, inner sep=1pt,
+      font=\fontsize{4.2}{5.4}\selectfont, text width=6.60cm},
+    sa/.style={anchor=west, font=\fontsize{4.2}{4.8}\selectfont, inner sep=1pt},
+  ]
+    % int8：均匀整数网格（8 位同权，无 S/E/M 之分）
+    \node[rl] at (1.85,-0.29) {int8（对称）};
+    \foreach \bb in {0,...,7} {
+      \pgfmathtruncatemacro{\dg}{7-\bb}
+      \node[bc, draw=tkBlue, fill=tkFillBlue] at ({2.36+0.62*\bb},-0.29) {d\dg};
+    }
+    \node[an] at (7.15,-0.29)
+      {均匀整数网格 $\pm 127$；无指数/尾数之分\\
+       误差只依赖步长 $\delta$：RMS $=\delta/\sqrt{12}$（绝对误差恒定）};
+    \node[sa] at (14.00,-0.29) {SA1：QK};
+    % e4m3：1 符号 + 4 指数 + 3 尾数
+    \node[rl] at (1.85,-1.16) {e4m3（FP8）};
+    \node[bc, draw=tkBlue, fill=tkFillBlue] at (2.36,-1.16) {S};
+    \foreach \bb in {0,...,3} {
+      \node[bc, draw=tkOrange, fill=tkFillOrange] at ({2.98+0.62*\bb},-1.16) {E};
+    }
+    \foreach \bb in {0,...,2} {
+      \node[bc, draw=tkGreen, fill=tkFillGreen] at ({5.46+0.62*\bb},-1.16) {M};
+    }
+    \node[an] at (7.15,-1.16)
+      {bias$=7$；max finite $=1.75\times 2^8=448$（E 全 1 时仅 M$=111$ 为 NaN）\\
+       相对步长 $2^{-(m+1)}=2^{-4}=6.25\%$（相对误差恒定）};
+    \node[sa] at (14.00,-1.16) {SA2：Q/K/V/P};
+    % e2m1：1 符号 + 2 指数 + 1 尾数
+    \node[rl] at (1.85,-2.03) {e2m1（FP4）};
+    \node[bc, draw=tkBlue, fill=tkFillBlue] at (2.36,-2.03) {S};
+    \foreach \bb in {0,...,1} {
+      \node[bc, draw=tkOrange, fill=tkFillOrange] at ({2.98+0.62*\bb},-2.03) {E};
+    }
+    \node[bc, draw=tkRed, fill=tkFillRed] at (4.22,-2.03) {M};
+    \node[an] at (7.15,-2.03)
+      {仅 16 个码点；正值 $\{0.5, 1, 1.5, 2, 3, 4, 6\}$——一个倍频程只有两格\\
+       \textcolor{tkRed}{相对步长 $2^{-2}=25\%$；动态范围最窄 $\to$ smoothing 强制}};
+    % e2m1 全部正值格点（等距排列；注明非等比）
+    \draw[gray!70, thin] (2.05,-2.75) -- (14.40,-2.75);
+    \foreach \bb in {0,...,7} {
+      \pgfmathsetmacro{\xv}{2.05+1.764*\bb}
+      \draw[gray!70, thin] (\xv,-2.81) -- (\xv,-2.69);
+    }
+    \node[align=center, font=\fontsize{4}{4.5}\selectfont, inner sep=1pt] at (2.05,-2.90) {0};
+    \node[align=center, font=\fontsize{4}{4.5}\selectfont, inner sep=1pt] at (3.81,-2.90) {0.5};
+    \node[align=center, font=\fontsize{4}{4.5}\selectfont, inner sep=1pt] at (5.58,-2.90) {1};
+    \node[align=center, font=\fontsize{4}{4.5}\selectfont, inner sep=1pt] at (7.34,-2.90) {1.5};
+    \node[align=center, font=\fontsize{4}{4.5}\selectfont, inner sep=1pt] at (9.10,-2.90) {2};
+    \node[align=center, font=\fontsize{4}{4.5}\selectfont, inner sep=1pt] at (10.87,-2.90) {3};
+    \node[align=center, font=\fontsize{4}{4.5}\selectfont, inner sep=1pt] at (12.63,-2.90) {4};
+    \node[align=center, font=\fontsize{4}{4.5}\selectfont, inner sep=1pt] at (14.40,-2.90) {6};
+    \node[an] at (2.05,-3.16)
+      {e2m1 全部正值格点（等距排列以示清楚；倍频程 $[2,4)$ 内只有 $\{2,3\}$ 两个格点）};
+    % ue4m3：无符号，4 指数 + 3 尾数
+    \node[rl] at (1.85,-3.59) {ue4m3};
+    \foreach \bb in {0,...,3} {
+      \node[bc, draw=tkOrange, fill=tkFillOrange] at ({2.36+0.62*\bb},-3.59) {E};
+    }
+    \foreach \bb in {0,...,2} {
+      \node[bc, draw=tkGreen, fill=tkFillGreen] at ({4.84+0.62*\bb},-3.59) {M};
+    }
+    \node[an] at (7.15,-3.59)
+      {无符号：$2^{-6} \sim 448$；用作 NVFP4 的 per-16 block scale（SF）\\
+       \textcolor{tkOrange}{scale 乘性作用：两级相对误差相加（两级 P 量化核算的账，ch31）}};
+    \node[sa] at (14.00,-3.59) {SA3：SF};
+    % 相对步长定理
+    \node[draw=gray!60, fill=gray!10, align=left, inner sep=3pt,
+      font=\fontsize{4.6}{5.2}\selectfont, text width=15.2cm] at (7.80,-4.85)
+      {\textbf{相对步长定理：规格化数 $x \in [2^e, 2^{e+1})$，$m$ 位尾数 $\Rightarrow$
+        ULP $= 2^{e-m}$，RN 误差 $\le$ ULP$/2$}\\
+       相对误差 $\le 2^{e-m-1}/2^e = 2^{-(m+1)}$：与 $e$ 无关——%
+       \textcolor{tkGreen}{e4m3 $\approx 6.25\%$}，\textcolor{tkRed}{e2m1 $\approx 25\%$}；%
+       int8 无此性质（均匀网格）};
+  \end{tikzpicture}
   \caption{四种量化格式的位域与值域对照（int8 / e4m3 / e2m1 / ue4m3）。e4m3 的
   指数全 1 时仅 $M{=}111$ 编码 NaN，故满量程 448；e2m1 全部 16 个码点在数轴上
   标出，直观呈现「一个倍频程内只有两格」。}
@@ -751,7 +842,82 @@ $O$ 与 $\ell$ 全程共享同一 stale 域，$O/\ell$ 消去全部迟到缩放�
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.95\textwidth]{figures/drawio/fig-27-2-quant-points/fig-27-2-quant-points.png}
+  % was: \includegraphics[width=0.95\textwidth]{figures/drawio/fig-27-2-quant-points/fig-27-2-quant-points.png}
+  \begin{tikzpicture}[font=\tiny, >=Stealth,
+    q/.style={draw=tkBlue, fill=tkFillBlue, text=tkBlue, align=center, inner sep=2pt,
+      font=\bfseries\fontsize{5.4}{6}\selectfont},
+    op/.style={draw=tkGreen, fill=tkFillGreen, text=tkGreen!75!black, align=center,
+      inner sep=2pt, font=\bfseries\fontsize{4.6}{5.2}\selectfont},
+    mid/.style={draw=gray!70, fill=white, align=center, inner sep=2pt,
+      font=\bfseries\fontsize{5.4}{6}\selectfont},
+    lit/.style={anchor=west, align=left, inner sep=1pt,
+      font=\fontsize{4.2}{4.8}\selectfont},
+    note/.style={anchor=west, align=left, inner sep=1pt,
+      font=\fontsize{4.2}{4.8}\selectfont},
+  ]
+    % 主链：Q/K -> QK^T MMA -> S -> softmax -> P -> PV MMA -> O
+    \node[q, text width=0.75cm] at (0.475,0.85) {Q};
+    \node[q, text width=0.75cm] at (0.475,-0.35) {K};
+    \node[op, text width=1.35cm] at (2.35,0.25) {QK$^{\top}$ MMA};
+    \node[mid] at (4.125,0.25) {$\hat{S}$};
+    \node[op, text width=1.35cm] at (5.90,0.25) {softmax\\(exp2 域)};
+    \node[mid] at (7.675,0.25) {P};
+    \node[op, text width=1.35cm] at (9.45,0.25) {PV MMA};
+    \node[draw=tkOrange, fill=tkFillOrange, text=tkOrange!80!black, align=center,
+      inner sep=2pt, font=\bfseries\fontsize{5.4}{6}\selectfont] at (11.30,0.25) {O};
+    \draw[->, gray!80, semithick] (0.98,0.85) -- (1.52,0.46);
+    \draw[->, gray!80, semithick] (0.98,-0.35) -- (1.52,0.06);
+    \draw[->, gray!80, semithick] (3.17,0.25) -- (3.71,0.25);
+    \draw[->, gray!80, semithick] (4.54,0.25) -- (5.06,0.25);
+    \draw[->, gray!80, semithick] (6.74,0.25) -- (7.26,0.25);
+    \draw[->, gray!80, semithick] (8.09,0.25) -- (8.61,0.25);
+    \draw[->, gray!80, semithick] (10.29,0.25) -- (10.81,0.25);
+    \node[q, text width=0.75cm] at (9.55,-1.05) {V};
+    \draw[->, gray!80, semithick] (9.55,-0.72) -- (9.55,-0.09);
+    % 量化点 1（离线 Q/K）
+    \node[draw=gray!60, fill=gray!10, align=left, inner sep=3pt,
+      font=\fontsize{4.4}{5}\selectfont, text width=7.6cm] at (11.00,1.72)
+      {\textbf{量化点 1（离线）：Q, K $\to$ e4m3 / int8}\\
+       per-thread 粒度与 mma fragment 对齐 $\to$ scale 零 shuffle 使用};
+    % scale 流 1：delta_Q*delta_K 折进 exp2 系数
+    \draw[->, tkPurple, semithick] (4.54,0.95) -- (5.90,0.95) -- (5.90,0.60);
+    \node[lit, text=tkPurple] at (1.55,1.14)
+      {$s_{\mathrm{dequant}} = \mathrm{scale}\cdot\delta_Q\delta_K\cdot\log_2 e$（单个 fp32）};
+    % scale 流 2：v_s 折进 P 发射（V 的左侧），及量化点 3
+    \draw[->, tkBlue, semithick] (9.55,-0.78) -- (7.90,-0.78) -- (7.90,-0.12);
+    \node[lit, text=tkBlue] at (2.95,-1.02) {$v_s$ 折进 P 发射：$\tilde{P} = P\cdot v_s\cdot 448$};
+    \node[lit] at (2.95,-1.30)
+      {$(P\cdot v_s/p_s)\cdot(V/v_s) = PV/p_s$ —— $v_s$ 精确消去};
+    \node[lit, text=tkOrange!80!black] at (10.35,-1.05)
+      {\textbf{量化点 3（离线）：V $\to$ e4m3（per-channel）}};
+    \node[lit] at (10.35,-1.32) {$\hat{V} = V/v_s$ 驻留 gmem，原样复用};
+    % scale 流 3：p_s 在 epilogue 收尾
+    \draw[->, dashed, tkOrange, semithick]
+      (11.05,-0.18) -- (11.05,-0.72) -- (11.75,-0.72) -- (11.75,-0.18);
+    \node[lit, text=tkOrange!80!black] at (8.15,-0.45)
+      {$p_s$ 收尾：$O \mathrel{+}=$ MMA$\cdot p_s$（fixed：并入 epilogue 常数）};
+    % 量化点 2（在线 P）：每 tile 重算，无法离线
+    \node[draw=tkRed, fill=tkFillRed, align=left, inner sep=3pt,
+      font=\fontsize{4.2}{4.8}\selectfont, text width=7.5cm] at (4.00,-2.45)
+      {\textbf{量化点 2（在线）：P 每 tile 重算 $\to$ 无法离线}\\
+       fixed：$p_s \equiv 1/448$（编译期常数），o\_acc 单一域直接累加；\\
+       epilogue 一步 $O = o\_acc\cdot(1/448)/\ell$ 完成反量化 $+$ 归一化\\
+       per-row：$p_s[\mathrm{row}] = \mathrm{rowmax}(P)/448$，满量程精度最优（费寄存器）};
+    \draw[->, dashed, tkRed, semithick] (7.65,-0.05) -- (7.65,-1.80);
+    % 底部要点与约束
+    \node[draw=gray!60, fill=gray!10, align=left, inner sep=3pt,
+      font=\fontsize{4.4}{5}\selectfont, text width=14.8cm] at (7.60,-3.90)
+      {要点 1：$\delta_Q\delta_K$ 折进 exp2 系数（softmax 前一次乘入，kMaxScaleAfter 再省 $B_c$ 次 FMUL）\\
+       要点 2：$v_s$ 在 P 侧精确消去 $\to$ gmem 的 $\hat{V}$ 不动；$p_s$ 只在 epilogue 出现一次\\
+       \textbf{\textcolor{tkGreen}{结论：除量化本身 round() 外无任何额外数学误差源——所有反量化都是精确代数操作}}};
+    \node[note, text=tkRed] at (0.10,-4.72)
+      {溢出约束（fixed $+$ FA-4 lazy rescale）：$2^T\cdot\mathrm{amax}(V) \le 448$，%
+       $T=4 \Rightarrow \mathrm{amax}(V) \le 28$，残余超调 satfinite 兜底};
+    \node[note, text=tkRed] at (0.10,-4.98)
+      {互斥约束：per-row 满量程发射没有 $2^T$ headroom —— per-row 与 lazy rescale 不能同时开};
+    \node[note, text=gray!80!black] at (0.10,-5.32)
+      {对照 ffpa-attn：cute/fp8/fp8\_pscale.cuh L17-37（三步协议）；kernel 化展开见 ch29（persist-D）};
+  \end{tikzpicture}
   \caption{attention 的三个量化点与 scale 流向：$\delta_Q\delta_K$ 折进 exp2
   系数（式~\ref{eq:27-qk-fold}）、$v_s$ 在 P 侧精确消去
   （式~\ref{eq:27-vs-cancel}）、$p_{scale}$ 在 epilogue 一步收尾。}
@@ -760,7 +926,83 @@ $O$ 与 $\ell$ 全程共享同一 stale 域，$O/\ell$ 消去全部迟到缩放�
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.9\textwidth]{figures/drawio/fig-27-3-ess-decompose/fig-27-3-ess-decompose.png}
+  % was: \includegraphics[width=0.9\textwidth]{figures/drawio/fig-27-3-ess-decompose/fig-27-3-ess-decompose.png}
+  \begin{tikzpicture}[font=\tiny, >=Stealth,
+    hd/.style={align=center, inner sep=2pt, font=\bfseries\fontsize{4.6}{5.2}\selectfont},
+    card/.style={draw=gray!55, fill=gray!8},
+    tl/.style={anchor=west, align=left, inner sep=1pt,
+      font=\fontsize{4.4}{5}\selectfont},
+    ax/.style={anchor=west, align=left, inner sep=1pt,
+      font=\fontsize{4.2}{4.8}\selectfont},
+  ]
+    % 左半：dense 行与 causal 早行（同一 ε 下幅度差异）
+    \node[hd, fill=gray!16, text width=7.10cm] at (3.70,-0.20)
+      {左：同一模型，两类行（$\varepsilon = 5\%$ 恒定）};
+    \draw[card] (0.15,-0.45) rectangle (7.25,-2.60);
+    \node[tl, font=\bfseries\fontsize{4.6}{5.2}\selectfont] at (0.30,-0.62)
+      {dense 行：P $\approx$ uniform over 8192};
+    \foreach \bb in {0,...,15} {
+      \pgfmathsetmacro{\xb}{0.30+0.16*\bb}
+      \fill[tkBlue] (\xb,-1.95) rectangle ({\xb+0.12},-1.73);
+    }
+    \draw[gray!60, thin] (0.30,-1.95) -- (2.86,-1.95);
+    \node[tl, text=tkBlue, font=\bfseries\fontsize{4.6}{5.2}\selectfont] at (3.20,-0.95)
+      {ESS $\approx$ 3000};
+    \node[tl] at (3.20,-1.20) {幅度 $\approx$ 0.05};
+    \node[tl] at (3.20,-1.45) {绝对误差 $\approx$ 0.003};
+    \node[tl, text=gray!80!black] at (3.20,-1.70) {（max\_abs 实测 0.015）};
+    \node[tl, text=gray!80!black] at (0.30,-2.28) {输出像大样本均值};
+    \draw[card, draw=tkRed, fill=tkFillRed] (0.15,-2.80) rectangle (7.25,-5.20);
+    \node[tl, text=tkRed, font=\bfseries\fontsize{4.6}{5.2}\selectfont] at (0.30,-2.97)
+      {causal row[0]：P $=$ one-hot（只能看自己）};
+    \foreach \bb in {0,...,15} {
+      \pgfmathsetmacro{\xb}{0.30+0.16*\bb}
+      \pgfmathsetmacro{\hh}{\bb == 0 ? 1.15 : 0.07}
+      \ifnum\bb=0
+        \fill[tkRed] (\xb,-4.55) rectangle ({\xb+0.12},{-4.55+\hh});
+      \else
+        \fill[gray!40] (\xb,-4.55) rectangle ({\xb+0.12},{-4.55+\hh});
+      \fi
+    }
+    \draw[gray!60, thin] (0.30,-4.55) -- (2.86,-4.55);
+    \node[tl, text=tkRed, font=\bfseries\fontsize{4.6}{5.2}\selectfont] at (3.20,-3.55)
+      {ESS $=$ 1};
+    \node[tl] at (3.20,-3.80) {幅度 $\approx$ 3.1};
+    \node[tl] at (3.20,-4.05) {绝对误差 $\approx$ 0.16};
+    \node[tl, text=gray!80!black] at (3.20,-4.30) {（max\_abs 实测 0.22）};
+    \node[tl, text=gray!80!black] at (0.30,-4.88) {输出 $\approx$ 单个 V 行};
+    \node[tl, font=\bfseries\fontsize{4.6}{5.2}\selectfont] at (0.25,-5.45)
+      {$15\times$ 的 abs 差距全部来自幅度；相对误差两者都是 $\sim$5\%};
+    \node[tl, text=gray!80!black] at (0.25,-5.72)
+      {（causal 5.5\% vs dense 9.1\%，PyTorch 仿真 B1H32N8192D128）};
+    % 右半：per-stage 误差贡献（单级 ε × 幅度）
+    \node[hd, fill=gray!16, text width=7.60cm] at (11.60,-0.20)
+      {右：误差贡献分解（独立 $\varepsilon \times$ 幅度）};
+    \draw[card] (7.80,-0.45) rectangle (15.40,-2.60);
+    \node[tl, font=\bfseries\fontsize{4.6}{5.2}\selectfont] at (7.95,-0.62)
+      {单级贡献（早行幅度 $\sim$1.3 下）};
+    \node[ax] at (7.95,-0.95) {V 量化};
+    \fill[tkRed] (9.15,-1.07) rectangle (13.15,-0.83);
+    \node[ax, text=tkRed, font=\bfseries\fontsize{4.6}{5.2}\selectfont] at (13.25,-0.95) {0.19};
+    \node[ax] at (7.95,-1.35) {QK 量化};
+    \fill[tkOrange] (9.15,-1.47) rectangle (11.89,-1.23);
+    \node[ax, text=tkOrange!80!black, font=\bfseries\fontsize{4.6}{5.2}\selectfont] at (11.99,-1.35) {0.13};
+    \node[ax] at (7.95,-1.75) {P 量化};
+    \fill[tkBlue] (9.15,-1.87) rectangle (11.47,-1.63);
+    \node[ax, text=tkBlue, font=\bfseries\fontsize{4.6}{5.2}\selectfont] at (11.57,-1.75) {0.11};
+    \node[tl, font=\bfseries\fontsize{4.6}{5.2}\selectfont] at (7.95,-2.20)
+      {V 0.19 $>$ QK 0.13 $>$ P 0.11 —— V 量化是最大单项};
+    \node[draw=tkOrange, fill=tkFillOrange, align=left, inner sep=3pt,
+      font=\fontsize{4.4}{5}\selectfont, text width=7.30cm] at (11.60,-3.30)
+      {\textbf{\textcolor{tkOrange!70!black}{推论（hybrid 的理论依据）：}}\\
+       「早行只换 QK 回 fp16」无效——V 项不动；\\
+       早行必须全链 fp16（hybrid 行分割，ch29）\\
+       或 per-channel V scale 压 V 相对误差（ch28）};
+    \node[ax] at (7.85,-4.75) {n\_early 不需很大：ESS 极小的行集中在前段（前 256 行已覆盖）};
+    \node[ax] at (7.85,-5.00) {fp4 同源：$\varepsilon$ 大一个量级，长尾由 V 主导、与行号无关};
+    \node[ax, text=gray!80!black] at (0.25,-6.05)
+      {对照 ffpa-attn：cute/fp8/sm\_120/persist\_d.cuh L19-49 头注释（PyTorch sim 数字与 ESS 推导）};
+  \end{tikzpicture}
   \caption{ESS 误差模型与 per-stage 误差分解：左半为 dense 行与 causal 早行的
   $P$ 分布/ESS/幅度对比（表~\ref{tab:27-ess} 的图形化），右半为
   V $>$ QK $>$ P 的误差贡献分解与「早行需全链 fp16」的结论。}

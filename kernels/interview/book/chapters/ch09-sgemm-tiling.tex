@@ -203,38 +203,40 @@ $B$ 的 $(k, n)$：一个 warp 的 32 个 lane 读 \texttt{a} 的一行连续 32
 \begin{figure}[H]
 \centering
 \begin{tikzpicture}[font=\tiny]
-  \def\cs{0.34}
-  \foreach \r [evaluate=\r as \gr using int(8+9*\r), evaluate=\r as \tb using int(32*\r)] in {0,...,7}{
+  \def\cs{0.37}
+  \foreach \r [evaluate={\r as \gr using int(10+12*mod(\r,2))}, evaluate=\r as \tb using int(32*\r)] in {0,...,7}{
     \foreach \c in {0,...,31}{
-      \node[fill=gray!\gr, minimum size=\cs cm, inner sep=0pt, outer sep=0pt]
-        at ({\c*\cs},{-\r*\cs}) {\the\numexpr\tb+\c\relax};
+      \node[fill=tkBlue!\gr, minimum size=\cs cm, inner sep=0pt, outer sep=0pt]
+        at ({\c*\cs},{-\r*\cs}) {{\fontsize{4}{4.5}\selectfont\the\numexpr\tb+\c\relax}};
     }
   }
-  \draw[thick] ({-0.5*\cs},{-0.5*\cs}) grid[step=0.34cm] ({31.5*\cs},{-7.5*\cs});
-  \node[anchor=south, font=\scriptsize] at ({16*\cs},0.55) {$s_a[m][k]$（A tile）：行 $m=\mathrm{tid}/32$，列 $k=\mathrm{tid}\%32$（连续）};
+  \foreach \k in {0,...,32} { \draw[tkBlue!70, thick] ({\k*\cs-0.5*\cs},{-0.5*\cs}) -- ({\k*\cs-0.5*\cs},{-7.5*\cs}); }
+  \foreach \k in {0,...,8} { \draw[tkBlue!70, thick] ({-0.5*\cs},{-\k*\cs-0.5*\cs}) -- ({31.5*\cs},{-\k*\cs-0.5*\cs}); }
+  \node[anchor=south, font=\scriptsize, text=tkBlue] at ({16*\cs},0.55) {$s_a[m][k]$（A tile）：行 $m=\mathrm{tid}/32$，列 $k=\mathrm{tid}\%32$（连续）};
   \foreach \r in {0,...,7}{
     \node[anchor=west] at ({31.5*\cs+0.15},{-\r*\cs}) {warp \r};
   }
-  \node[anchor=east, font=\tiny, rotate=90] at (-0.62,{-4*\cs}) {$m$（行 $=$ warp，灰度渐变）};
-  \draw[<->, thick] (0,-3.75) -- ({32*\cs},-3.75);
-  \node[anchor=north, font=\scriptsize] at ({16*\cs},-3.8) {warp 内列连续 32 float $=$ 128B $\to$ 1 个合并事务（两图网格全等，仅轴语义不同）};
+  \node[anchor=center, font=\tiny, rotate=90, text=tkBlue] at ({-0.5*\cs-0.22},{-4*\cs}) {$m$（行 $=$ warp）};
+  \draw[<->, thick, tkGreen] (0,-3.6) -- ({32*\cs},-3.6);
+  \node[anchor=north, font=\scriptsize, draw=tkGreen!65, fill=tkFillGreen, rounded corners=1pt, inner sep=2pt] at ({16*\cs},-3.85) {warp 内列连续 32 float $=$ 128B $\to$ 1 个合并事务（两图网格全等，仅轴语义不同）};
   \begin{scope}[shift={(0,-5.35)}]
-    \foreach \r [evaluate=\r as \gr using int(8+9*\r), evaluate=\r as \tb using int(32*\r)] in {0,...,7}{
+    \foreach \r [evaluate={\r as \gr using int(10+12*mod(\r,2))}, evaluate=\r as \tb using int(32*\r)] in {0,...,7}{
       \foreach \c in {0,...,31}{
-        \node[fill=gray!\gr, minimum size=\cs cm, inner sep=0pt, outer sep=0pt]
-          at ({\c*\cs},{-\r*\cs}) {\the\numexpr\tb+\c\relax};
+        \node[fill=tkPurple!\gr, minimum size=\cs cm, inner sep=0pt, outer sep=0pt]
+          at ({\c*\cs},{-\r*\cs}) {{\fontsize{4}{4.5}\selectfont\the\numexpr\tb+\c\relax}};
       }
     }
-    \draw[thick] ({-0.5*\cs},{-0.5*\cs}) grid[step=0.34cm] ({31.5*\cs},{-7.5*\cs});
-    \node[anchor=south, font=\scriptsize] at ({16*\cs},0.55) {$s_b[k][n]$（B tile）：行 $k=\mathrm{tid}/32$，列 $n=\mathrm{tid}\%32$（连续）};
-    \node[anchor=east, font=\tiny, rotate=90] at (-0.62,{-4*\cs}) {$k$（行 $=$ warp，灰度渐变）};
+    \foreach \k in {0,...,32} { \draw[tkPurple!70, thick] ({\k*\cs-0.5*\cs},{-0.5*\cs}) -- ({\k*\cs-0.5*\cs},{-7.5*\cs}); }
+    \foreach \k in {0,...,8} { \draw[tkPurple!70, thick] ({-0.5*\cs},{-\k*\cs-0.5*\cs}) -- ({31.5*\cs},{-\k*\cs-0.5*\cs}); }
+    \node[anchor=south, font=\scriptsize, text=tkPurple] at ({16*\cs},0.55) {$s_b[k][n]$（B tile）：行 $k=\mathrm{tid}/32$，列 $n=\mathrm{tid}\%32$（连续）};
+    \node[anchor=center, font=\tiny, rotate=90, text=tkPurple] at ({-0.5*\cs-0.22},{-4*\cs}) {$k$（行 $=$ warp）};
   \end{scope}
-  \node[draw, align=left, anchor=west, font=\scriptsize] at ({32*\cs+0.45},-4.15)
+  \node[draw=gray!60, fill=white, align=left, anchor=west, font=\scriptsize, inner sep=3pt] at ({32*\cs+0.45},-6.83)
     {映射法则（sgemm.cuh L45--48）\\
-     \texttt{/} $\to$ 跨步维：线程\textbf{不}连续（$M$、$N$ 维）\\
-     \texttt{\%} $\to$ stride-1 维：线程连续（$K$ 维）};
+     \textcolor{tkBlue}{\texttt{/}} $\to$ 跨步维：线程\textbf{不}连续（$M$、$N$ 维）\\
+     \textcolor{tkGreen}{\texttt{\%}} $\to$ stride-1 维：线程连续（$K$ 维）};
 \end{tikzpicture}
-\caption{Level 1 的 tid$\to$(m,k)/(k,n) 映射双网格（格内数字为 tid 0--255，行 $=\mathrm{tid}/32$、列 $=\mathrm{tid}\%32$，8 行即 8 个 warp 按灰度渐变）。上：$s_a[m][k]$；下：$s_b[k][n]$——两图数字排布完全相同，一条映射同时服务 A 与 B；warp 内 32 个列地址连续，构成 128B 合并事务。}
+\caption{Level 1 的 tid$\to$(m,k)/(k,n) 映射双网格（格内数字为 tid 0--255，行 $=\mathrm{tid}/32$、列 $=\mathrm{tid}\%32$，8 行即 8 个 warp，行间同色系深浅相间）。上：$s_a[m][k]$（蓝）；下：$s_b[k][n]$（紫）——两图数字排布完全相同，一条映射同时服务 A 与 B；warp 内 32 个列地址连续，构成 128B 合并事务。}
 \label{fig:09-tid-map}
 \end{figure}
 
@@ -398,7 +400,53 @@ $4 \times 128$ 的 C 横带}。金字塔的 warp 级在本章是「免费的」�
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-9-1-gemm-tiling/fig-9-1.png}
+\begin{tikzpicture}[font=\scriptsize]
+  \node[font=\small\bfseries] at (8.2,0)
+    {grid $\to$ block $\to$ warp $\to$ thread 四级 tiling（$C$ 矩阵视角）};
+  \node[anchor=west, fill=gray!18, inner sep=2.5pt, font=\scriptsize\bfseries] at (0,-0.62)
+    {grid 级：$C[M,N]$ 切成 $(M/BM) \times (N/BN)$ 个 block tile};
+  \node[draw=gray!70, fill=gray!25, font=\tiny\bfseries,
+    minimum width=1.75cm, minimum height=0.85cm] at (1.18,-1.75) {tile 0,0};
+  \node[draw=gray!50, fill=white, font=\tiny,
+    minimum width=1.75cm, minimum height=0.85cm] at (3.03,-1.75) {tile 0,1};
+  \node[draw=gray!50, fill=white, font=\tiny,
+    minimum width=1.75cm, minimum height=0.85cm] at (1.18,-2.7) {tile 1,0};
+  \node[anchor=north west, align=left, font=\tiny, text width=4.4cm] at (2.1,-2.35)
+    {\texttt{BM=BN=128}, \texttt{BK=32}：每 block 1024 线程；\\
+     \texttt{smem = sA[128][32]}\\\texttt{+ sB[32][128]} $= 32$KB；\\
+     沿 $K$ 循环 $K/32$ 轮，\\每轮两道栅栏夹计算窗口};
+  \node[anchor=west, fill=gray!18, inner sep=2.5pt, font=\scriptsize\bfseries] at (7.2,-0.62)
+    {warp 级（隐式）：一个 warp 承包 $4 \times 128$ C 横带};
+  \node[draw=gray!60, fill=gray!22, font=\tiny, minimum width=6.4cm, minimum height=0.34cm]
+    at (10.3,-1.55) {row band $(tid/32){\times}4$ \ $\times$ 128 cols};
+  \node[draw=gray!60, fill=white, font=\tiny, minimum width=6.4cm, minimum height=0.34cm]
+    at (10.3,-1.95) {row band $(tid/32){\times}3$ \ $\times$ 128 cols};
+  \node[draw=gray!60, fill=gray!22, font=\tiny, minimum width=6.4cm, minimum height=0.34cm]
+    at (10.3,-2.35) {row band $(tid/32){\times}2$ \ $\times$ 128 cols};
+  \node[draw=gray!60, fill=white, font=\tiny, minimum width=6.4cm, minimum height=0.34cm]
+    at (10.3,-2.75) {row band $(tid/32){\times}1$ \ $\times$ 128 cols};
+  \node[anchor=west, fill=gray!18, inner sep=2.5pt, font=\scriptsize\bfseries] at (0,-3.75)
+    {thread 级：每线程一个 $4 \times 4$ 寄存器 tile（16 输出 \texttt{sum[4][4]}）};
+  \node[anchor=west, font=\tiny] at (0.4,-4.25)
+    {$n$: $n_0..n_0{+}3$ \quad $n_0 = (tid \% 32) \times 4$};
+  \foreach \fmi in {0,...,3} {
+    \foreach \fj in {0,...,3} {
+      \node[fill=gray!30, font=\tiny, minimum width=0.5cm, minimum height=0.4cm, inner sep=0pt]
+        at ({0.65+\fj*0.5},{-4.75-\fmi*0.4}) {tt};
+    }
+  }
+  \foreach \fj in {1,...,3} {
+    \draw[thin] ({0.4+\fj*0.5},-4.55) -- ({0.4+\fj*0.5},-6.15);
+    \draw[thin] (0.4,{-4.55-\fj*0.4}) -- (2.4,{-4.55-\fj*0.4});
+  }
+  \draw[thick] (0.4,-4.55) rectangle (2.4,-6.15);
+  \node[anchor=north west, align=left, font=\scriptsize, text width=9.2cm] at (3.2,-4.62)
+    {每 $k$ 步：16 FMAs、8 次 smem 读（4 A $+$ 4 B）；\\
+     AI(smem) $= 1.0$ FLOP/B（naive 0.25）};
+  \node[draw=gray!50, fill=gray!14, font=\scriptsize\bfseries,
+    minimum width=16.2cm, minimum height=0.55cm] at (8.2,-6.6)
+    {AI 阶梯：naive 0.25 $\to$ block $32{\times}32$: 8 $\to$ block $128{\times}128$: 32 FLOP/B（乘 smem 复用逐级放大）};
+\end{tikzpicture}
 \caption{四级 tiling 递进：grid 级切 $C$ 为 block tile；block 级用 smem 承载 $A$/$B$ 切片；warp 级是隐式的 $4\times128$ 横带；thread 级是 $4\times4$ 寄存器 tile。AI 阶梯：naive $0.25 \to$ block $32{\times}32{:}\ 8 \to$ block $128{\times}128{:}\ 32$ FLOP/B。}
 \label{fig:9-1}
 \end{figure}

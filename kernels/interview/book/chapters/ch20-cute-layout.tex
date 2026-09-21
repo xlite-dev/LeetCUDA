@@ -759,7 +759,58 @@ dtype 变化引起的布局变换），但中间布局要 \texttt{with\_shape} �
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.92\textwidth]{figures/drawio/fig-20-1-colex/fig-20-1.png}
+% was: \includegraphics[width=0.92\textwidth]{figures/drawio/fig-20-1-colex/fig-20-1.png}
+\begin{tikzpicture}[font=\footnotesize, x=1cm, y=1cm]
+  % 单元格尺寸；表 = 行头列 + c0=0..3 列、列头行 + c1=0..7 行
+  \def\cw{0.90}
+  \def\chh{0.565}
+  % 左：坐标表 f(c0,c1) = c0 + 4 c1
+  \foreach \c in {0,...,5}{\draw[gray!45] (\c*\cw, 0) -- (\c*\cw, -9*\chh);}
+  \foreach \r in {0,...,9}{\draw[gray!45] (0, -\r*\chh) -- (5*\cw, -\r*\chh);}
+  \fill[gray!12] (0, -\chh) rectangle (\cw, -9*\chh);
+  \fill[gray!12] (\cw, 0) rectangle (5*\cw, -\chh);
+  \node at (0.5*\cw, -0.5*\chh) {$c_1\backslash c_0$};
+  \foreach \c in {0,1,2,3}{\node at ({(\c+1.5)*\cw}, -0.5*\chh) {\c};}
+  \foreach \r in {0,...,7}{\node at (0.5*\cw, {-(\r+1.5)*\chh}) {\r};}
+  \foreach \c in {0,1,2,3}{\foreach \r in {0,...,7}{%
+    \pgfmathsetmacro\val{int(\c+4*\r)}%
+    \node at ({(\c+1.5)*\cw}, {-(\r+1.5)*\chh}) {\val};}}
+  % 高亮 f(1,3)=13（蓝）与 f(3,1)=7（绿）
+  \fill[tkFillBlue] (2*\cw, -4*\chh) rectangle (3*\cw, -5*\chh);
+  \draw[tkBlue, semithick] (2*\cw, -4*\chh) rectangle (3*\cw, -5*\chh);
+  \node[text=tkBlue, font=\footnotesize\bfseries] at (2.5*\cw, -4.5*\chh) {13};
+  \fill[tkFillGreen] (4*\cw, -2*\chh) rectangle (5*\cw, -3*\chh);
+  \draw[tkGreen, semithick] (4*\cw, -2*\chh) rectangle (5*\cw, -3*\chh);
+  \node[text=tkGreen, font=\footnotesize\bfseries] at (4.5*\cw, -2.5*\chh) {7};
+  % 右：展平后的 1D 数带（列 j 自上而下为 8j..8j+7）
+  \def\bx{6.83}
+  \foreach \c in {0,...,4}{\draw[gray!45] ({\bx+\c*\cw}, -\chh) -- ({\bx+\c*\cw}, -9*\chh);}
+  \foreach \r in {1,...,9}{\draw[gray!45] (\bx, -\r*\chh) -- ({\bx+4*\cw}, -\r*\chh);}
+  \foreach \c in {0,...,3}{\foreach \r in {0,...,7}{%
+    \pgfmathsetmacro\val{int(8*\c+\r)}%
+    \node at ({\bx+(\c+0.5)*\cw}, {-(\r+1.5)*\chh}) {\val};}}
+  \fill[tkFillGreen] (\bx, -8*\chh) rectangle ({\bx+\cw}, -9*\chh);
+  \draw[tkGreen, semithick] (\bx, -8*\chh) rectangle ({\bx+\cw}, -9*\chh);
+  \node[text=tkGreen, font=\footnotesize\bfseries] at ({\bx+0.5*\cw}, -8.5*\chh) {7};
+  \fill[tkFillBlue] ({\bx+\cw}, -6*\chh) rectangle ({\bx+2*\cw}, -7*\chh);
+  \draw[tkBlue, semithick] ({\bx+\cw}, -6*\chh) rectangle ({\bx+2*\cw}, -7*\chh);
+  \node[text=tkBlue, font=\footnotesize\bfseries] at ({\bx+1.5*\cw}, -6.5*\chh) {13};
+  % 连线：绿沿表格右缘下行、经数带下方自 7 格底边进入；蓝沿数带行边界进入 13 格上边
+  \draw[tkGreen, semithick, -{Stealth[length=4pt]}]
+    (5*\cw, -2.5*\chh) -- (5*\cw, -9.75*\chh) -- ({\bx+0.5*\cw}, -9.75*\chh) -- ({\bx+0.5*\cw}, -9*\chh);
+  \draw[tkBlue, semithick, -{Stealth[length=4pt]}]
+    (5*\cw+0.12, -4.5*\chh) -- (5.55, -4.5*\chh) -- (5.55, -6*\chh) -- ({\bx+1.5*\cw}, -6*\chh);
+  % 右侧注记与标题
+  \node[anchor=west, text=tkBlue] at (10.75, -0.8) {$f(1,3) = 1\cdot 1 + 3\cdot 4 = 13$};
+  \node[anchor=west, text=tkGreen] at (10.75, -1.3) {$f(3,1) = 3\cdot 1 + 1\cdot 4 = 7$};
+  \node[anchor=west, text=black!55, font=\scriptsize] at (10.75, -1.85) {整数输入时 $f(x)=x$};
+  \node[anchor=west, text=black!55, font=\scriptsize] at (10.75, -2.15) {（compact $+$ col-major）};
+  \node[anchor=west] at (0, 0.95) {$\mathrm{Layout}\ \mathcal{L} = (4,8){:}(1,4)$：行 $= c_1$（慢），列 $= c_0$（快）};
+  \node[anchor=west, text=black!60, font=\scriptsize] at (0, 0.5) {$f(c_0,c_1) = c_0 + 4\,c_1$（colex 读法：$c_0$ 变化最快）};
+  \node[anchor=west] at (\bx, -0.12) {展平后 1D 数带（$\mathrm{offset} =$ 线性下标）};
+  \node[anchor=west, text=black!60, font=\scriptsize] at (0, -6.3)
+    {对照：row-major 版 $(4,8){:}(8,1)$ 的 $f(1,3) = 1\cdot 8 + 3\cdot 1 = 11$——同一 shape，stride 决定读序};
+\end{tikzpicture}
 \caption{colex 线性化：坐标 $(c_0,c_1)$ 与 offset 的对应表（左），同一
 布局展平后的 1D 数带（右）。$c_0$ 沿行方向变化最快，故
 $\mathrm{idx}=c_0+4c_1$；整数输入时 CuTe 用
@@ -771,56 +822,519 @@ $f(1,3)=11$——同一 shape，stride 决定读序。}
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-20-2-mode-ops/fig-20-2.png}
+% was: \includegraphics[width=0.95\textwidth]{figures/drawio/fig-20-2-mode-ops/fig-20-2.png}
+\begin{tikzpicture}[font=\footnotesize, x=1cm, y=1cm,
+    treenode/.style={draw=gray!60, fill=gray!12, align=center, inner sep=2pt, minimum height=0.66cm},
+    modebox/.style={draw=tkBlue!75, fill=tkFillBlue, text=tkBlue, align=center, inner sep=2pt, minimum height=0.72cm},
+    oprow/.style={draw, align=center, inner sep=2pt, minimum height=0.60cm, minimum width=10.4cm, anchor=west}]
+  % 左：mode 树
+  \node[treenode, minimum width=4.0cm] (root) at (2.30, -0.50) {$L_g$ 根节点（rank-2 嵌套布局）};
+  \node[modebox, minimum width=2.1cm] (m0) at (1.15, -1.75) {mode0 $= (2,4){:}(1,2)$};
+  \node[modebox, minimum width=2.1cm] (m1) at (3.45, -1.75) {mode1 $= (3,2){:}(8,24)$};
+  \draw[gray!65] (2.30, -0.83) -- (2.30, -1.20);
+  \draw[gray!65] (1.15, -1.20) -- (3.45, -1.20);
+  \draw[gray!65] (1.15, -1.20) -- (1.15, -1.39);
+  \draw[gray!65] (3.45, -1.20) -- (3.45, -1.39);
+  \node[anchor=west, text=black!60, font=\scriptsize] at (0.0, -2.50) {mode0：2 元素 stride 1，4 元素 stride 2};
+  \node[anchor=west, text=black!60, font=\scriptsize] at (0.0, -2.82) {mode1：3 元素 stride 8，2 元素 stride 24};
+  % 右：四种 mode 操作
+  \node[draw=gray!55, fill=gray!18, align=center, inner sep=2pt, minimum height=0.53cm, minimum width=10.4cm, anchor=west]
+    at (6.60, -0.415) {四种 mode 操作（结果 shape$\,$:$\,$stride）};
+  \node[oprow, draw=tkBlue!75] at (6.60, -0.98)
+    {projection：$\mathrm{layout}\vert(L_g) = (2,4){:}(1,2)$；$\mathrm{layout}\vert(L_g) = (3,2){:}(8,24)$};
+  \node[oprow, draw=tkGreen!75] at (6.60, -1.58)
+    {merge：$\mathrm{group}\vert(L_g) = ((2,4),(3,2)){:}((1,2),(8,24))$（rank-1）};
+  \node[oprow, draw=tkOrange!80] at (6.60, -2.18)
+    {flatten：$L_g = (2,4,3,2){:}(1,2,8,24)$};
+  \node[oprow, draw=tkGreen, fill=tkFillGreen, text=tkGreen!80!black, minimum height=0.66cm] at (6.60, -2.81)
+    {coalesce：$L_g = (48){:}(1)$——一段连续 48 格};
+  \node[anchor=west, text=black!60, font=\scriptsize] at (6.60, -3.55)
+    {strides 链式衔接：$1 \to 2 \to 8 \to 24$（$2 = 1\times2$，$8 = 2\times4$，$24 = 8\times3$），编译期消除冗余 mode};
+  % 底部结论条
+  \node[draw=tkOrange!80, fill=tkFillOrange, text=tkOrange!75!black, align=center, inner sep=3pt,
+    minimum height=0.70cm, minimum width=17.0cm] at (8.50, -4.45)
+    {kernel 里「fragment mode 与 rest mode 分离」就是一次投影；合并/展平把嵌套结构变成可直接索引的线性结构};
+  % 标题
+  \node at (8.50, 0.55) {mode 树与四种 mode 操作（$L_g = ((2,4),(3,2)){:}((1,2),(8,24))$）};
+\end{tikzpicture}
 \caption{mode 树与四种 mode 操作的结果（本章测试逐一核对了 shape/stride）。投影用于取子布局，合并/展平用于把嵌套结构变成可直接索引的线性结构，化简（coalesce）在编译期消除冗余 mode——kernel 里「fragment mode 与 rest mode 分离」就是一次投影。}
 \label{fig:20-2}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-20-3-layout-convert/fig-20-3.png}
+% was: \includegraphics[width=0.95\textwidth]{figures/drawio/fig-20-3-layout-convert/fig-20-3.png}
+\begin{tikzpicture}[font=\footnotesize, x=1cm, y=1cm,
+    bluebox/.style={draw=tkBlue!75, fill=tkFillBlue, text=tkBlue!85!black, align=center, inner sep=2pt},
+    stepbox/.style={draw=tkGreen!75, fill=white, text=black!85, align=center, inner sep=2pt},
+    band/.style={draw, fill=gray!18, align=center, inner sep=2pt}]
+  % 顶：源（C fragment）与目标（A fragment）
+  \node[bluebox, minimum width=4.48cm, minimum height=0.83cm] at (2.24, -1.075)
+    {S（C fragment）$(4,\ \mathrm{MMA\_M},\ \mathrm{MMA\_N})$};
+  \node[bluebox, minimum width=5.02cm, minimum height=0.83cm] at (14.09, -1.075)
+    {P（A fragment）$((4,2),\ \mathrm{MMA\_M},\ \mathrm{MMA\_N}/2)$};
+  % 路线 a：几何重排（本书采用）
+  \node[band, draw=tkBlue!75, text=tkBlue!85!black, font=\scriptsize, minimum width=16.60cm, minimum height=0.48cm]
+    at (8.30, -2.33) {路线 a（tri-dao，几何重排）——本书 \texttt{convert\_layout\_acc\_Aregs} 采用（flash\_attn.cuh，被 ffpa\_attn.cuh 复用）};
+  \node[draw=tkBlue!75, fill=white, align=center, inner sep=2pt, minimum width=7.76cm, minimum height=0.59cm]
+    at (4.12, -2.985) {\texttt{logical\_divide}：拆 $\mathrm{MMA\_N} \to (2,\ \mathrm{MMA\_N}/2)$};
+  \node[draw=tkBlue!75, fill=white, align=center, inner sep=2pt, minimum width=7.82cm, minimum height=0.59cm]
+    at (12.45, -2.985) {\texttt{regroup}：mode0 $+$ mode2.0，mode1，mode2.1（四碎片重组）};
+  % 路线 b：代数复合
+  \node[band, draw=tkGreen!75, text=tkGreen!85!black, font=\scriptsize, minimum width=16.60cm, minimum height=0.48cm]
+    at (8.30, -3.94) {路线 b（reed，代数复合）};
+  \node[stepbox, minimum width=5.07cm, minimum height=0.60cm] at (2.775, -4.60)
+    {\texttt{inv} $=$ \texttt{left\_inverse(Layout\_C)}};
+  \node[stepbox, minimum width=5.08cm, minimum height=0.60cm] at (8.15, -4.60)
+    {\texttt{a} $=$ \texttt{inv}\,$\cdot$\,\texttt{compose(Layout\_A)}};
+  \node[stepbox, minimum width=5.37cm, minimum height=0.60cm] at (13.675, -4.60)
+    {\texttt{out} $=$ \texttt{Layout\_C}\,$\cdot$\,\texttt{compose(a)}};
+  \node[font=\scriptsize, text=black!60, anchor=center] at (8.30, -5.15)
+    {映射语言：$(x_a, y_a)$ \texttt{--Layout\_A-->} offset0 \texttt{--inv-->} $(x_c, y_c)$ \texttt{--Layout\_C-->} offset1（compose 1/2 对应 \texttt{eq.\ 20-fa2-reed2/reed3}）};
+  \node[draw=tkGreen, fill=tkFillGreen, text=tkGreen!80!black, align=center, inner sep=3pt,
+    minimum width=16.60cm, minimum height=0.66cm] at (8.30, -5.91)
+    {两条路线结果等价：zero-copy——同一批寄存器，只是索引语言不同};
+  % 竖箭头：S -> 路线 a 首步；P -> regroup；两条路线各向下汇入
+  \draw[tkBlue, semithick, -{Stealth[length=3.5pt]}] (2.24, -1.49) -- (2.24, -2.69);
+  \draw[tkBlue, semithick, -{Stealth[length=3.5pt]}] (8.00, -2.985) -- (8.54, -2.985);
+  \draw[tkBlue, semithick, -{Stealth[length=3.5pt]}] (2.24, -3.28) -- (2.24, -3.70);
+  \draw[tkGreen, semithick, -{Stealth[length=3.5pt]}] (14.09, -1.49) -- (14.09, -2.69);
+  \draw[tkGreen, semithick, -{Stealth[length=3.5pt]}] (14.09, -3.28) -- (14.09, -3.70);
+  \draw[tkGreen, semithick, -{Stealth[length=3.5pt]}] (5.31, -4.60) -- (5.61, -4.60);
+  \draw[tkGreen, semithick, -{Stealth[length=3.5pt]}] (10.69, -4.60) -- (10.99, -4.60);
+  % 标题
+  \node at (8.30, -0.21) {FA2 $P$ 矩阵布局转换：两条路线，一个结果（zero-copy）};
+\end{tikzpicture}
 \caption{FA2 的 P 矩阵布局转换：tri-dao 的几何重排与 reed 的代数复合两条路线，结果等价。本书 flash\_attn.cuh 的 \texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}Aregs}（被 ffpa\_attn.cuh 复用）采用的是几何路线。}
 \label{fig:20-3}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-20-4-tensor-addr/fig-20-4.png}
+% was: \includegraphics[width=0.95\textwidth]{figures/drawio/fig-20-4-tensor-addr/fig-20-4.png}
+\begin{tikzpicture}[font=\footnotesize, x=1cm, y=1cm,
+    cell/.style={draw=gray!45, fill=white, minimum width=0.985cm, minimum height=0.746cm, inner sep=0pt, font=\ttfamily},
+    hitcell/.style={draw=tkGreen, fill=tkFillGreen, text=tkGreen!80!black, minimum width=0.985cm, minimum height=0.746cm, inner sep=0pt, font=\ttfamily},
+    eqbox/.style={draw, fill=white, align=center, inner sep=2pt, minimum height=0.55cm}]
+  % 4x4 元素网格（字符字面量，逻辑视图）
+  \foreach \c/\ch in {0/a,1/b,2/c,3/d}{\node[cell] at ({2.9725+\c*0.985}, -2.133) {\texttt{'\ch'}};}
+  \foreach \c/\ch in {0/e,1/f,2/g,3/h}{\node[cell] at ({2.9725+\c*0.985}, -2.879) {\texttt{'\ch'}};}
+  \foreach \c/\ch in {0/A,1/B,2/C,3/D}{\node[cell] at ({2.9725+\c*0.985}, -3.625) {\texttt{'\ch'}};}
+  \foreach \c/\ch in {0/E,1/F,2/G,3/H}{\node[cell] at ({2.9725+\c*0.985}, -4.371) {\texttt{'\ch'}};}
+  \node[hitcell] at (3.9575, -2.879) {\texttt{'f'}};
+  % 维度标注：N（列，上边）、M（行，左边）
+  \draw[gray!70, {Stealth[length=2.5pt]}-{Stealth[length=2.5pt]}] (2.48, -1.49) -- (6.42, -1.49);
+  \node[text=black!55] at (4.45, -1.33) {$N$};
+  \draw[gray!70, {Stealth[length=2.5pt]}-{Stealth[length=2.5pt]}] (2.15, -1.76) -- (2.15, -4.74);
+  \node[text=black!55] at (1.88, -3.25) {$M$};
+  \node[anchor=west, text=tkRed, font=\scriptsize] at (2.48, -5.10) {layoutA（逻辑视图，元素带引号）};
+  % 右侧：Layout 的代数定义与一次样例求值
+  \node[anchor=west, text=tkBlue] at (8.00, -1.76) {shape: $(M, N)$, i.e. $(4, 4)$};
+  \node[anchor=west, text=tkBlue] at (8.00, -2.18) {stride: $(N, 1)$, i.e. $(4, 1)$};
+  \node[anchor=west, text=tkRed] at (8.00, -2.90) {offset $= m \times N + n \times 1$};
+  \node[anchor=west, text=tkBlue] at (8.00, -3.55) {e.g. given input $(1, 1)$,};
+  \node[anchor=west, text=tkBlue] at (8.00, -3.97) {we got offset $= 1 \times 4 + 1 \times 1 = 5$};
+  \draw[tkGreen, semithick, -{Stealth[length=3.5pt]}] (6.80, -3.82) -- (4.42, -2.87);
+  % 底部：Tensor = Layout + Engine
+  \node[eqbox, draw=tkGreen, text=tkGreen!80!black, minimum width=2.09cm] at (1.285, -6.66) {CuTe Tensor};
+  \node[eqbox, draw=tkRed, text=tkRed, minimum width=2.24cm] at (4.64, -5.82) {Layout};
+  \node[eqbox, draw=tkRed, text=tkRed, minimum width=2.24cm] at (4.64, -7.52) {Engine};
+  \node[anchor=west, text=black!55, font=\scriptsize] at (5.91, -5.76) {（算 offset）};
+  \node[anchor=west, text=black!55, font=\scriptsize] at (5.91, -7.46) {（给 base\_ptr）};
+  \draw[tkRed, dashed, -{Stealth[length=3pt]}] (2.33, -6.66) -- (3.37, -5.82);
+  \draw[tkRed, dashed, -{Stealth[length=3pt]}] (3.37, -6.66) -- (3.37, -7.49);
+  % 最底：解引用
+  \node[anchor=west, text=tkGreen!80!black] at (0.24, -8.51) {base\_ptr};
+  \draw[tkPurple, semithick, -{Stealth[length=3.5pt]}] (1.43, -8.51) -- (2.78, -8.51);
+  \node[anchor=west, text=tkPurple] at (3.07, -8.51)
+    {*(base\_ptr $+$ offset)——线性索引 5 命中行主序第 5 号元素 \texttt{'f'}};
+  % 标题
+  \node at (8.00, -0.19) {CuTe Tensor $=$ Layout $+$ Engine：坐标 $\to$ offset $\to$ 解引用取数};
+  \node[text=black!60, font=\scriptsize] at (8.00, -0.60)
+    {Layout 只定义「坐标 $\to$ 偏移」的映射规则，Engine 提供可寻址的存储（base\_ptr）；二者相加才是一次真实的访存};
+\end{tikzpicture}
 \caption{CuTe Tensor 的寻址分工：Layout 负责「坐标 $\to$ offset」的代数——shape 限定输入范围、stride 决定各 mode 步长；Engine 只持有 \texttt{base\_ptr}。$(1,1)\to 5$，命中行主序（$(4,4){:}(4,1)$，列连续）第 5 号元素 \texttt{f}。重建自 @竹熙佳处《写给大家看的 CuTe 教程：Layout Compose \& Inverse》。}
 \label{fig:20-4}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-20-5-compose-flow/fig-20-5.png}
+% was: \includegraphics[width=0.95\textwidth]{figures/drawio/fig-20-5-compose-flow/fig-20-5.png}
+\begin{tikzpicture}[font=\footnotesize, x=1cm, y=1cm,
+    gcell/.style={draw=tkOrange!80, fill=white, minimum width=0.687cm, minimum height=0.448cm, inner sep=0pt},
+    hcell/.style={draw=tkGreen, fill=tkFillGreen, text=tkGreen!80!black, minimum width=0.687cm, minimum height=0.448cm, inner sep=0pt},
+    bgcell/.style={draw=gray!45, fill=white, minimum width=0.687cm, minimum height=0.448cm, inner sep=0pt},
+    bhcell/.style={draw=tkGreen, fill=tkFillGreen, text=tkGreen!80!black, minimum width=0.687cm, minimum height=0.448cm, inner sep=0pt}]
+  \def\gw{0.687}
+  \def\gh{0.448}
+  % 面板 1（step 1）：待填的 layoutC 网格，目标格未知
+  \begin{scope}[shift={(0.687, -1.313)}]
+    \foreach \c in {0,1}{\foreach \r in {0,...,7}{\draw[tkOrange!80, fill=white] (\c*\gw, -\r*\gh) rectangle ({\c*\gw+\gw}, {-\r*\gh-\gh});}}
+    \fill[tkFillGreen] (\gw, -4*\gh) rectangle (2*\gw, -5*\gh);
+    \draw[tkGreen, semithick] (\gw, -4*\gh) rectangle (2*\gw, -5*\gh);
+    \node[text=tkGreen] at (1.5*\gw, -4.5*\gh) {?};
+    \draw[gray!70, {Stealth[length=2.5pt]}-{Stealth[length=2.5pt]}] (0, 0.238) -- (2*\gw, 0.238);
+    \node[text=black!55, font=\scriptsize] at (\gw, 0.40) {$Q$};
+    \draw[gray!70, {Stealth[length=2.5pt]}-{Stealth[length=2.5pt]}] (-0.30, 0) -- (-0.30, -8*\gh);
+    \node[text=black!55, font=\scriptsize] at (-0.57, -4*\gh) {$P$};
+  \end{scope}
+  % 面板 2（step 3 的结果）：目标格已填 6
+  \begin{scope}[shift={(9.49, -1.313)}]
+    \foreach \c in {0,1}{\foreach \r in {0,...,7}{\draw[tkOrange!80, fill=white] (\c*\gw, -\r*\gh) rectangle ({\c*\gw+\gw}, {-\r*\gh-\gh});}}
+    \fill[tkFillGreen] (\gw, -4*\gh) rectangle (2*\gw, -5*\gh);
+    \draw[tkGreen, semithick] (\gw, -4*\gh) rectangle (2*\gw, -5*\gh);
+    \node[text=tkGreen!80!black] at (1.5*\gw, -4.5*\gh) {6};
+    \draw[gray!70, {Stealth[length=2.5pt]}-{Stealth[length=2.5pt]}] (0, 0.238) -- (2*\gw, 0.238);
+    \node[text=black!55, font=\scriptsize] at (\gw, 0.40) {$Q$};
+    \draw[gray!70, {Stealth[length=2.5pt]}-{Stealth[length=2.5pt]}] (-0.30, 0) -- (-0.30, -8*\gh);
+    \node[text=black!55, font=\scriptsize] at (-0.57, -4*\gh) {$P$};
+  \end{scope}
+  % 左下（step 2）：layoutB 的 8x2 元素带，查出 offset 9
+  \begin{scope}[shift={(0.687, -6.39)}]
+    \foreach \c in {0,1}{\foreach \r in {0,...,7}{%
+      \pgfmathsetmacro\val{int(2*\r+\c)}%
+      \draw[gray!45, fill=white] (\c*\gw, -\r*\gh) rectangle ({\c*\gw+\gw}, {-\r*\gh-\gh});
+      \node at ({\c*\gw+0.5*\gw}, {-\r*\gh-0.5*\gh}) {\val};}}
+    \fill[tkFillGreen] (\gw, -4*\gh) rectangle (2*\gw, -5*\gh);
+    \draw[tkGreen, semithick] (\gw, -4*\gh) rectangle (2*\gw, -5*\gh);
+    \node[text=tkGreen!80!black] at (1.5*\gw, -4.5*\gh) {9};
+    \draw[gray!70, {Stealth[length=2.5pt]}-{Stealth[length=2.5pt]}] (0, 0.238) -- (2*\gw, 0.238);
+    \node[text=black!55, font=\scriptsize] at (\gw, 0.40) {$Q$};
+    \draw[gray!70, {Stealth[length=2.5pt]}-{Stealth[length=2.5pt]}] (-0.30, 0) -- (-0.30, -8*\gh);
+    \node[text=black!55, font=\scriptsize] at (-0.57, -4*\gh) {$P$};
+  \end{scope}
+  % 右下（step 3）：layoutA 的 4x4 网格，按坐标 (1,2) 取值 6
+  \begin{scope}[shift={(9.49, -6.84)}]
+    \foreach \c in {0,...,3}{\foreach \r in {0,...,3}{%
+      \pgfmathsetmacro\val{int(4*\r+\c)}%
+      \draw[gray!45, fill=white] ({\c*0.806}, {-\r*0.627}) rectangle ({\c*0.806+0.806}, {-\r*0.627-0.627});
+      \node at ({\c*0.806+0.403}, {-\r*0.627-0.3135}) {\val};}}
+    \fill[tkFillGreen] ({2*0.806}, -0.627) rectangle ({3*0.806}, -2*0.627);
+    \draw[tkGreen, semithick] ({2*0.806}, -0.627) rectangle ({3*0.806}, -2*0.627);
+    \node[text=tkGreen!80!black] at ({2.5*0.806}, {-1.5*0.627}) {6};
+    \draw[gray!70, {Stealth[length=2.5pt]}-{Stealth[length=2.5pt]}] (0, 0.238) -- ({4*0.806}, 0.238);
+    \node[text=black!55, font=\scriptsize] at ({2*0.806}, 0.40) {$N$};
+    \draw[gray!70, {Stealth[length=2.5pt]}-{Stealth[length=2.5pt]}] (-0.30, 0) -- (-0.30, {-4*0.627});
+    \node[text=black!55, font=\scriptsize] at (-0.57, {-2*0.627}) {$M$};
+  \end{scope}
+  % 文字说明
+  \node[anchor=west, text=tkRed] at (3.07, -1.46) {layoutC $=$ compose(layoutA, layoutB)};
+  \node[anchor=west, text=tkRed] at (3.07, -1.88) {$=$ layoutA(layoutB(p, q))};
+  \node[anchor=west, text=tkGreen] at (3.07, -2.54) {how to fill coord $(4, 1)$ ?};
+  \node[anchor=west, text=tkPurple] at (3.07, -2.96) {access ``inside'' layout: layoutB$(4, 1)$};
+  \node[anchor=west, text=tkRed] at (11.88, -1.46) {layoutC $=$ compose(layoutA, layoutB)};
+  \node[anchor=west, text=tkGreen] at (11.88, -1.88) {for coord $(4, 1)$, we fill \texttt{'6'}};
+  \node[anchor=west, text=tkGreen] at (3.07, -6.48) {$\to$ given coord $(4, 1)$,};
+  \node[anchor=west, text=tkGreen] at (3.07, -6.90) {offset $= 4 \times 2 + 1 \times 1 = 9$};
+  \node[anchor=west, text=tkPurple] at (3.07, -7.55) {convert offset as col-major 2D-coord};
+  \node[anchor=west, text=tkPurple] at (3.07, -7.97) {of layoutA: $(9 \bmod 4,\ 9/4) = (1, 2)$};
+  \node[anchor=west, text=tkBlue] at (3.07, -8.92) {layoutB:};
+  \node[anchor=west, text=tkBlue] at (3.07, -9.28) {shape: $(P, Q)$, i.e. $(8, 2)$};
+  \node[anchor=west, text=tkBlue] at (3.07, -9.61) {stride: $(Q, 1)$, i.e. $(2, 1)$};
+  \node[anchor=west, text=tkRed] at (13.07, -6.84) {layoutA:};
+  \node[anchor=west, text=tkBlue] at (13.07, -7.19) {shape: $(M, N)$, i.e. $(4, 4)$};
+  \node[anchor=west, text=tkBlue] at (13.07, -7.52) {stride: $(N, 1)$, i.e. $(4, 1)$};
+  \node[anchor=west, text=tkPurple] at (13.07, -8.18) {$(1, 2)$ as input};
+  \node[anchor=west, text=tkOrange!90!black] at (13.07, -8.54) {we got \texttt{'6'}.};
+  % 步骤标签（与虚线同色）
+  \node[text=tkOrange!90!black, font=\scriptsize] at (2.03, -5.87) {step(1)};
+  \node[text=tkGreen, font=\scriptsize] at (8.90, -5.87) {step(3)};
+  \node[text=tkPurple, font=\scriptsize] at (6.51, -10.43) {step(2)};
+  % 分隔线：上半为「待填/结果」，下半为三层求值细节
+  \draw[gray!45, dashed] (0.24, -5.67) -- (15.91, -5.67);
+  % 步骤箭头（折线绕行，避免穿越网格）
+  \draw[tkOrange!90!black, semithick, dashed, -{Stealth[length=3.5pt]}]
+    (3.07, -3.16) -- (2.35, -3.16) -- (2.35, -6.05) -- (0.687, -6.05) -- (0.687, -6.39);
+  \draw[tkPurple, semithick, dashed, -{Stealth[length=3.5pt]}] (3.07, -8.18) -- (9.19, -8.18);
+  \draw[tkGreen, semithick, dashed, -{Stealth[length=3.5pt]}]
+    (11.91, -8.09) -- (12.85, -8.09) -- (12.85, -5.42) -- (10.40, -5.42);
+  % 标题
+  \node at (8.00, -0.19) {compose(layoutA, layoutB)：三步求 layoutC 的 coord $(4, 1)$};
+  \node[text=black!60, font=\scriptsize] at (8.00, -0.60)
+    {$C(p, q) = A(B(p, q))$：先在内层 $B$ 上查 offset，再按行主序换算成 $A$ 的坐标，最后在 $A$ 上取值回填};
+\end{tikzpicture}
 \caption{compose(A, B) 的三步求值：先查内层 B 得 offset，再按外层 A 的 shape 把 offset 换算回坐标，最后查 A 得最终值。例：$C(4,1)\to B(4,1)=9\to(9\bmod 4,\,9\div 4)=(1,2)\to A(1,2)=6$ 回填 $C$。重建自同上文。}
 \label{fig:20-5}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-20-6-inverse-reshape/fig-20-6.png}
+% was: \includegraphics[width=0.95\textwidth]{figures/drawio/fig-20-6-inverse-reshape/fig-20-6.png}
+\begin{tikzpicture}[font=\footnotesize, x=1cm, y=1cm]
+  % 左：layoutA 的 4x4 矩阵（行主序）
+  \begin{scope}[shift={(0.687, -1.612)}]
+    \foreach \c in {0,...,3}{\foreach \r in {0,...,3}{%
+      \pgfmathsetmacro\val{int(4*\r+\c)}%
+      \draw[gray!45, fill=white] ({\c*0.866}, {-\r*0.687}) rectangle ({\c*0.866+0.866}, {-\r*0.687-0.687});
+      \node at ({\c*0.866+0.433}, {-\r*0.687-0.3435}) {\val};}}
+    \fill[tkFillGreen] (0.866, -2*0.687) rectangle (2*0.866, -3*0.687);
+    \draw[tkGreen, semithick] (0.866, -2*0.687) rectangle (2*0.866, -3*0.687);
+    \node[text=tkGreen!80!black] at (1.5*0.866, -2.5*0.687) {9};
+    \draw[gray!70, {Stealth[length=2.5pt]}-{Stealth[length=2.5pt]}] (0, 0.239) -- ({4*0.866}, 0.239);
+    \node[text=black!55, font=\scriptsize] at ({2*0.866}, 0.40) {$N$};
+    \draw[gray!70, {Stealth[length=2.5pt]}-{Stealth[length=2.5pt]}] (-0.30, 0) -- (-0.30, {-4*0.687});
+    \node[text=black!55, font=\scriptsize] at (-0.57, {-2*0.687}) {$M$};
+  \end{scope}
+  \node[anchor=west, text=tkRed] at (0.687, -4.60) {layoutA};
+  \node[anchor=west, text=tkBlue] at (0.687, -4.96) {shape: $(4, 4)$, stride: $(4, 1)$};
+  % 中：反查原始 offset
+  \node[anchor=west, text=tkGreen] at (4.60, -1.76) {e.g. given coord $(2, 1)$,};
+  \node[anchor=west, text=tkGreen] at (4.60, -2.18) {offset $= 2 \times 4 + 1 \times 1 = 9$};
+  \node[anchor=west, text=tkGreen] at (4.60, -2.84) {col-major coord: 6};
+  \node[anchor=west, text=tkGreen] at (4.60, -3.25) {so $6 \to 9$, inverse as $9 \to 6$};
+  % 中：拉直成 1D 长条（16 格），第 9 格为 inverse 结果
+  \begin{scope}[shift={(8.00, -0.418)}]
+    \foreach \k in {0,...,15}{\draw[tkOrange!80, fill=white] (0, {-\k*0.403}) rectangle (1.343, {-\k*0.403-0.403});}
+    \fill[tkFillGreen] (0, -8*0.403) rectangle (1.343, -9*0.403);
+    \draw[tkGreen, semithick] (0, -8*0.403) rectangle (1.343, -9*0.403);
+    \node[text=tkGreen!80!black] at (0.6715, -8.5*0.403) {6};
+    \draw[gray!70, {Stealth[length=2.5pt]}-{Stealth[length=2.5pt]}] (-0.30, 0) -- (-0.30, {-16*0.403});
+  \end{scope}
+  \node[anchor=east, text=black!55, font=\scriptsize] at (7.65, -3.64) {$M \times N$};
+  \node[anchor=west, text=tkOrange!90!black] at (9.55, -3.55) {col-major reorder};
+  \node[anchor=west, text=tkOrange!90!black] at (9.55, -3.88) {with shape $(8, 2)$};
+  % 右：按 col-major 折回 (P, Q) = (8, 2)
+  \begin{scope}[shift={(11.58, -1.612)}]
+    \foreach \c in {0,1}{\foreach \r in {0,...,7}{\draw[tkOrange!80, fill=white] ({\c*0.925}, {-\r*0.597}) rectangle ({\c*0.925+0.925}, {-\r*0.597-0.597});}}
+    \fill[tkFillGreen] (0.925, 0) rectangle (2*0.925, -0.597);
+    \draw[tkGreen, semithick] (0.925, 0) rectangle (2*0.925, -0.597);
+    \node[text=tkGreen!80!black] at (1.5*0.925, -0.5*0.597) {6};
+    \draw[tkGreen, dashed, -{Stealth[length=3pt]}] (0.25, -0.10) -- (0.25, {-8*0.597+0.30});
+    \draw[tkGreen, dashed, -{Stealth[length=3pt]}] (1.62, -0.70) -- (1.62, {-8*0.597+0.30});
+    \draw[gray!70, {Stealth[length=2.5pt]}-{Stealth[length=2.5pt]}] (0, 0.272) -- ({2*0.925}, 0.272);
+    \node[text=black!55, font=\scriptsize] at (0.925, 0.43) {$Q$};
+    \draw[gray!70, {Stealth[length=2.5pt]}-{Stealth[length=2.5pt]}] (-0.30, 0) -- (-0.30, {-8*0.597});
+    \node[text=black!55, font=\scriptsize] at (-0.57, {-4*0.597}) {$P$};
+  \end{scope}
+  \node[anchor=west, text=tkGreen] at (11.58, -1.01) {layoutB$(9)$ $=$ layoutB$(1, 1)$ $=$ 6};
+  \node[anchor=west, text=tkRed] at (11.58, -6.70) {layoutB $=$ inverse(layoutA)};
+  \node[anchor=west, text=tkRed] at (11.58, -7.05) {.with\_shape$(P, Q)$};
+  % 流程箭头
+  \draw[tkGreen, dashed, -{Stealth[length=3pt]}] (7.13, -3.49) -- (7.40, -4.22);
+  \draw[tkOrange!90!black, dashed, -{Stealth[length=3pt]}] (9.37, -4.22) -- (11.51, -6.09);
+  % 标题
+  \node at (8.00, -0.19) {inverse 与 with\_shape：先拉直成 1D，再按新 shape 重排};
+  \node[anchor=west, text=black!60, font=\scriptsize] at (0.09, -0.58)
+    {inverse 把「值 $\to$ 坐标」倒过来查表；with\_shape 再把};
+  \node[anchor=west, text=black!60, font=\scriptsize] at (0.09, -0.86)
+    {1D 长条按 col-major 折回 2D——完成任意布局间的元素搬运};
+\end{tikzpicture}
 \caption{inverse 与 with\_shape：inverse 把「值 $\to$ 坐标」倒过来查表（$9\leftrightarrow 6$ 互逆），with\_shape 再把 1D 长条按新 shape $(8,2)$ 沿 col-major 折回 2D，得 $B(1,1)=6$。重建自同上文。}
 \label{fig:20-6}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-20-7-left-right-inverse/fig-20-7.png}
+% was: \includegraphics[width=0.95\textwidth]{figures/drawio/fig-20-7-left-right-inverse/fig-20-7.png}
+\begin{tikzpicture}[font=\footnotesize, x=1cm, y=1cm,
+    acell/.style={draw=gray!45, fill=white, minimum width=0.76cm, minimum height=0.535cm, inner sep=0pt},
+    ahit/.style={draw=tkBlue, fill=white, text=tkBlue, minimum width=0.76cm, minimum height=0.535cm, inner sep=0pt}]
+  % (a) broadcast case：layoutA 的 M 方向重复
+  \begin{scope}[shift={(0.60, -2.06)}]
+    \foreach \r in {0,...,3}{%
+      \node[acell] at ({0.5*0.76}, {-\r*0.535-0.2675}) {\r};
+      \node[acell] at ({1.5*0.76}, {-\r*0.535-0.2675}) {\r};}
+    \node[ahit] at ({1.5*0.76}, {-1*0.535-0.2675}) {1};
+    \draw[gray!70, {Stealth[length=2.5pt]}-{Stealth[length=2.5pt]}] (0, 0.34) -- ({2*0.76}, 0.34);
+    \node[text=black!55, font=\scriptsize] at ({1*0.76}, 0.50) {$N$};
+    \draw[gray!70, {Stealth[length=2.5pt]}-{Stealth[length=2.5pt]}] (-0.35, 0) -- (-0.35, {-4*0.535});
+    \node[text=black!55, font=\scriptsize] at (-0.62, {-2*0.535}) {$M$};
+  \end{scope}
+  \node[anchor=west, text=tkRed] at (0.30, -4.55) {layoutA};
+  \node[anchor=west, text=tkBlue] at (0.30, -4.86) {shape: $(4, 2)$, stride: $(1, 0)$};
+  % (a) 的两逆：均为去重投影后的 1D (4):(1)
+  \begin{scope}[shift={(4.70, -1.19)}]
+    \foreach \r in {0,...,3}{\draw[tkOrange!80, fill=white] (0, {-\r*0.50}) rectangle (0.75, {-\r*0.50-0.50});}
+    \foreach \r in {0,...,3}{\node at (0.375, {-\r*0.50-0.25}) {\r};}
+  \end{scope}
+  \begin{scope}[shift={(4.70, -5.20)}]
+    \foreach \r in {0,...,3}{\draw[tkBlue, fill=white] (0, {-\r*0.50}) rectangle (0.75, {-\r*0.50-0.50});}
+    \foreach \r in {0,...,3}{\node at (0.375, {-\r*0.50-0.25}) {\r};}
+  \end{scope}
+  \node[anchor=west, text=tkOrange!90!black, font=\scriptsize] at (2.00, -1.45) {left\_inverse(layoutA)};
+  \node[anchor=west, text=tkOrange!90!black, font=\scriptsize] at (5.65, -1.25) {left\_inv\_layoutA};
+  \node[anchor=west, text=tkOrange!90!black, font=\scriptsize] at (5.65, -1.55) {shape: $(4)$};
+  \node[anchor=west, text=tkOrange!90!black, font=\scriptsize] at (5.65, -1.85) {stride: $(1)$};
+  \node[anchor=west, text=tkBlue, font=\scriptsize] at (0.30, -5.60) {right\_inverse(layoutA)};
+  \node[anchor=west, text=tkBlue, font=\scriptsize] at (5.65, -5.60) {right\_inv\_layoutA};
+  \node[anchor=west, text=tkBlue, font=\scriptsize] at (5.65, -5.90) {shape: $(4)$};
+  \node[anchor=west, text=tkBlue, font=\scriptsize] at (5.65, -6.20) {stride: $(1)$};
+  % (b) stride case：layoutA 的双射跨步
+  \begin{scope}[shift={(8.90, -2.06)}]
+    \foreach \r in {0,...,3}{%
+      \node[acell] at ({0.5*0.76}, {-\r*0.535-0.2675}) {\pgfmathparse{int(4*\r)}\pgfmathresult};
+      \node[acell] at ({1.5*0.76}, {-\r*0.535-0.2675}) {\pgfmathparse{int(4*\r+1)}\pgfmathresult};}
+    \node[ahit] at ({1.5*0.76}, {-1*0.535-0.2675}) {5};
+    \draw[gray!70, {Stealth[length=2.5pt]}-{Stealth[length=2.5pt]}] (0, 0.34) -- ({2*0.76}, 0.34);
+    \node[text=black!55, font=\scriptsize] at ({1*0.76}, 0.50) {$N$};
+    \draw[gray!70, {Stealth[length=2.5pt]}-{Stealth[length=2.5pt]}] (-0.35, 0) -- (-0.35, {-4*0.535});
+    \node[text=black!55, font=\scriptsize] at (-0.62, {-2*0.535}) {$M$};
+  \end{scope}
+  \node[anchor=west, text=tkRed] at (8.90, -4.55) {layoutA};
+  \node[anchor=west, text=tkBlue] at (8.90, -4.86) {shape: $(4, 2)$, stride: $(4, 1)$};
+  % (b) 的两逆：均为 layoutA 自身（对合）
+  \begin{scope}[shift={(12.40, -1.10)}]
+    \foreach \c in {0,...,3}{\foreach \r in {0,...,3}{%
+      \pgfmathsetmacro\val{int(4*\r+\c)}%
+      \draw[tkOrange!80, fill=white] ({\c*0.725}, {-\r*0.60}) rectangle ({\c*0.725+0.725}, {-\r*0.60-0.60});
+      \node at ({\c*0.725+0.3625}, {-\r*0.60-0.30}) {\val};}}
+  \end{scope}
+  \begin{scope}[shift={(12.40, -5.20)}]
+    \foreach \c in {0,...,3}{\foreach \r in {0,...,3}{%
+      \pgfmathsetmacro\val{int(4*\r+\c)}%
+      \draw[tkBlue, fill=white] ({\c*0.725}, {-\r*0.60}) rectangle ({\c*0.725+0.725}, {-\r*0.60-0.60});
+      \node at ({\c*0.725+0.3625}, {-\r*0.60-0.30}) {\val};}}
+  \end{scope}
+  \node[anchor=west, text=tkOrange!90!black, font=\scriptsize] at (11.60, -0.95) {left\_inverse(layoutA)};
+  \node[anchor=west, text=tkOrange!90!black, font=\scriptsize] at (15.55, -1.30) {left\_inv};
+  \node[anchor=west, text=tkOrange!90!black, font=\scriptsize] at (15.55, -1.60) {shape: $(4,4)$};
+  \node[anchor=west, text=tkOrange!90!black, font=\scriptsize] at (15.55, -1.90) {stride: $(4,1)$};
+  \node[anchor=west, text=tkBlue, font=\scriptsize] at (11.60, -4.95) {right\_inverse(layoutA)};
+  \node[anchor=west, text=tkBlue, font=\scriptsize] at (12.40, -7.90) {right\_inv $=$ layoutA 自身};
+  \node[anchor=west, text=tkBlue, font=\scriptsize] at (12.40, -8.20) {shape: $(4, 4)$, stride: $(4, 1)$};
+  % 求逆箭头（折线绕开文字）
+  \draw[tkOrange!90!black, dashed, -{Stealth[length=3pt]}] (2.12, -2.20) -- (4.70, -1.69);
+  \draw[tkBlue, dashed, -{Stealth[length=3pt]}]
+    (2.12, -4.20) -- (3.90, -4.20) -- (3.90, -6.20) -- (4.70, -6.20);
+  \draw[tkOrange!90!black, dashed, -{Stealth[length=3pt]}] (10.42, -2.60) -- (12.40, -2.30);
+  \draw[tkBlue, dashed, -{Stealth[length=3pt]}]
+    (10.42, -4.20) -- (12.10, -4.20) -- (12.10, -6.40) -- (12.40, -6.40);
+  % 标题与脚注
+  \node at (8.00, -0.19) {left\_inverse 与 right\_inverse：两种典型 layoutA 的求逆结果};
+  \node[anchor=west, text=black!60, font=\scriptsize] at (0.30, -0.60)
+    {左逆对 $M$ 模式（行）求逆，右逆对 $N$ 模式（列）求逆；stride 出现 0（broadcast）与普通跨步两种情形的结果形状完全不同};
+  \node[anchor=west, text=black!60, font=\scriptsize] at (0.30, -8.55)
+    {CuTe v4.6.1 实测：stride 0 广播布局的两逆相同——去重投影 $(4){:}(1)$；双射且对合的布局，两逆均为其自身};
+  \node[anchor=west, font=\scriptsize] at (0.30, -1.12) {(a) broadcast access case};
+  \node[anchor=west, font=\scriptsize] at (8.90, -1.12) {(b) stride access case};
+\end{tikzpicture}
 \caption{left\_inverse / right\_inverse 的两种情形（CuTe v4.6.1 实测）：stride $(1,0)$ 广播布局两逆相同，均为去重投影 $(4){:}(1)$——stride 为 0 的维度被投影掉，每行只保留代表坐标 $m$；stride $(4,1)$ 的双射布局两逆均为其自身 $(4,4){:}(4,1)$（该布局是对合，$f\circ f=\mathrm{id}$）。重建自 @竹熙佳处《写给大家看的 CuTe 教程：Layout Compose \& Inverse》（数值按 CuTe v4.6.1 实测校正）。}
 \label{fig:20-7}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-20-8-layout-product/fig-20-8.png}
+% was: \includegraphics[width=0.95\textwidth]{figures/drawio/fig-20-8-layout-product/fig-20-8.png}
+\begin{tikzpicture}[font=\footnotesize, x=1cm, y=1cm]
+  % 左：layoutA（外层，块位）
+  \begin{scope}[shift={(0.687, -1.76)}]
+    \foreach \c in {0,1}{\foreach \r in {0,1}{%
+      \pgfmathsetmacro\val{int(2*\r+\c)}%
+      \draw[tkRed, fill=white] ({\c*0.836}, {-\r*0.687}) rectangle ({\c*0.836+0.836}, {-\r*0.687-0.687});
+      \node at ({\c*0.836+0.418}, {-\r*0.687-0.3435}) {\val};}}
+    \node[anchor=west, text=black!55, font=\scriptsize] at (1.94, -0.34) {$m$};
+    \node[anchor=east, text=black!55, font=\scriptsize] at (-0.17, -1.03) {$n$};
+  \end{scope}
+  \node[anchor=west, text=tkRed] at (0.687, -3.42) {layoutA};
+  \node[anchor=west, text=tkBlue] at (0.687, -3.75) {shape: $(2, 2)$, stride: $(2, 1)$};
+  \node[anchor=center, text=black!60] at (1.90, -4.30) {product};
+  % 左下：layoutB（内层，块内）
+  \begin{scope}[shift={(0.687, -5.04)}]
+    \foreach \c in {0,1}{\foreach \r in {0,1}{%
+      \pgfmathsetmacro\val{int(2*\r+\c)}%
+      \draw[tkBlue, fill=white] ({\c*0.836}, {-\r*0.687}) rectangle ({\c*0.836+0.836}, {-\r*0.687-0.687});
+      \node at ({\c*0.836+0.418}, {-\r*0.687-0.3435}) {\val};}}
+    \node[anchor=west, text=black!55, font=\scriptsize] at (1.94, -0.34) {$p$};
+    \node[anchor=east, text=black!55, font=\scriptsize] at (-0.17, -1.03) {$q$};
+  \end{scope}
+  \node[anchor=west, text=tkBlue] at (0.687, -6.72) {layoutB};
+  \node[anchor=west, text=tkBlue] at (0.687, -7.05) {shape: $(2, 2)$, stride: $(2, 1)$};
+  % 「每格放一份 B」：外层 A 的四个坐标位各展开成一份 B
+  \draw[tkPurple, dashed, -{Stealth[length=3pt]}] (4.42, -2.45) -- (4.57, -5.73);
+  \node[anchor=west, text=tkPurple, font=\scriptsize] at (4.75, -3.90) {每格放一份 B};
+  % 右：layoutA (x) layoutB —— 四个 2x2 块按 A 的值序拼接
+  \begin{scope}[shift={(8.00, -1.46)}]
+    \fill[tkFillBlue] (0, 0) rectangle ({2*1.045}, {-2*0.746});
+    \fill[tkFillOrange] ({2*1.045}, 0) rectangle ({4*1.045}, {-2*0.746});
+    \fill[gray!12] (0, {-2*0.746}) rectangle ({2*1.045}, {-4*0.746});
+    \fill[tkFillRed] ({2*1.045}, {-2*0.746}) rectangle ({4*1.045}, {-4*0.746});
+    \foreach \c in {0,...,3}{\foreach \r in {0,...,3}{%
+      \pgfmathsetmacro\val{int(4*\r+\c)}%
+      \draw[gray!50] ({\c*1.045}, {-\r*0.746}) rectangle ({\c*1.045+1.045}, {-\r*0.746-0.746});
+      \node at ({\c*1.045+0.5225}, {-\r*0.746-0.373}) {\val};}}
+    \fill[tkFillGreen] (1.045, {-3*0.746}) rectangle ({2*1.045}, {-4*0.746});
+    \draw[tkGreen, semithick] (1.045, {-3*0.746}) rectangle ({2*1.045}, {-4*0.746});
+    \node[text=tkGreen!80!black] at ({1.5*1.045}, {-3.5*0.746}) {11};
+    \draw[tkBlue, semithick] (0, 0) rectangle ({2*1.045}, {-2*0.746});
+    \draw[tkOrange, semithick] ({2*1.045}, 0) rectangle ({4*1.045}, {-2*0.746});
+    \draw[gray!60, semithick] (0, {-2*0.746}) rectangle ({2*1.045}, {-4*0.746});
+    \draw[tkRed, semithick] ({2*1.045}, {-2*0.746}) rectangle ({4*1.045}, {-4*0.746});
+  \end{scope}
+  \node[anchor=west, text=tkRed] at (8.00, -4.78) {layoutA (x) layoutB};
+  \node[anchor=west, text=tkBlue] at (8.00, -5.14) {shape: $((2,2), (2,2))$,  stride: $((8,4), (2,1))$};
+  \node[anchor=west, text=black!60, font=\scriptsize] at (8.00, -5.49) {块序 $=$ A 的值序（row-major 扫描）：左上 $\to$ 右上 $\to$ 左下 $\to$ 右下};
+  % 右侧：求值样例（(m,n)=(1,0)、(p,q)=(1,1) 命中 11）
+  \node[anchor=west, text=black!60, font=\scriptsize] at (13.37, -1.97) {value $= 8m + 4n$};
+  \node[anchor=west, text=black!60, font=\scriptsize] at (13.37, -2.33) {\qquad $+ 2p + 1q$};
+  \node[anchor=west, text=tkGreen, font=\scriptsize] at (13.37, -2.98) {e.g. $(m,n)=(1,0)$};
+  \node[anchor=west, text=tkGreen, font=\scriptsize] at (13.37, -3.25) {$(p,q)=(1,1)$};
+  \node[anchor=west, text=tkGreen, font=\scriptsize] at (13.37, -3.85) {$8+0+2+1 = 11$};
+  \node[anchor=west, text=black!60, font=\scriptsize] at (13.37, -4.55) {flatten 后仍合法;};
+  \node[anchor=west, text=black!60, font=\scriptsize] at (13.37, -4.80) {TiledCopy / TiledMMA};
+  \node[anchor=west, text=black!60, font=\scriptsize] at (13.37, -5.05) {的层级结构由 product 搭出};
+  % 标题
+  \node at (8.00, -0.19) {layout product：外层定块位、内层定块内，size 相乘成嵌套布局};
+  \node[anchor=west, text=black!60, font=\scriptsize] at (0.09, -0.60)
+    {A 的每个坐标位放一份 B 的拷贝：块偏移 $=$ A 的求值结果 $\times$ size(B)，块内排布即 B};
+\end{tikzpicture}
 \caption{layout product：A 的每个坐标位放一份 B 的拷贝（块偏移 $=$ A 的线性序号 $\times$ size(B)），得到嵌套布局 $((2,2),(2,2)){:}((8,4),(2,1))$。行值 $0,1,4,5\,/\,2,3,6,7\,/\cdots$ 的「块拷贝拼接」排布即 product 的几何签名——它不是 row-major。重建自 @竹熙佳处《写给大家看的 CuTe 教程：Layout Product \& Divide》。}
 \label{fig:20-8}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-20-9-layout-divide/fig-20-9.png}
+% was: \includegraphics[width=0.95\textwidth]{figures/drawio/fig-20-9-layout-divide/fig-20-9.png}
+\begin{tikzpicture}[font=\footnotesize, x=1cm, y=1cm]
+  % 左：原始 row-major 4x4
+  \begin{scope}[shift={(0.687, -1.76)}]
+    \foreach \c in {0,...,3}{\foreach \r in {0,...,3}{%
+      \pgfmathsetmacro\val{int(4*\r+\c)}%
+      \draw[gray!45, fill=white] ({\c*0.866}, {-\r*0.68}) rectangle ({\c*0.866+0.866}, {-\r*0.68-0.68});
+      \node at ({\c*0.866+0.433}, {-\r*0.68-0.34}) {\val};}}
+  \end{scope}
+  \node[anchor=west, text=tkRed] at (0.687, -4.74) {$L = (4, 4) : (4, 1)$};
+  \node[anchor=west, text=black!60, font=\scriptsize] at (0.687, -5.07) {16 格 row-major 0--15};
+  % 中：divide by (2,2) 的切块指示
+  \begin{scope}[shift={(5.46, -2.36)}]
+    \foreach \c in {0,1}{\foreach \r in {0,1}{\draw[tkOrange!80, fill=white] ({\c*0.567}, {-\r*0.478}) rectangle ({\c*0.567+0.567}, {-\r*0.478-0.478});}}
+  \end{scope}
+  \node[anchor=center, text=tkOrange!90!black] at (6.51, -3.70) {divide by $(2, 2)$};
+  \node[anchor=center, text=black!60, font=\scriptsize] at (6.66, -2.00) {每维切成 2 段};
+  \draw[tkOrange!90!black, dashed, -{Stealth[length=3pt]}] (6.96, -2.87) -- (7.70, -2.87);
+  % 右：同一网格按 2x2 重新分组（值排布不变）
+  \begin{scope}[shift={(8.90, -1.46)}]
+    \fill[tkFillBlue] (0, 0) rectangle ({2*0.985}, {-2*0.74});
+    \fill[tkFillOrange] ({2*0.985}, 0) rectangle ({4*0.985}, {-2*0.74});
+    \fill[gray!12] (0, {-2*0.74}) rectangle ({2*0.985}, {-4*0.74});
+    \fill[tkFillRed] ({2*0.985}, {-2*0.74}) rectangle ({4*0.985}, {-4*0.74});
+    \foreach \c in {0,...,3}{\foreach \r in {0,...,3}{%
+      \pgfmathsetmacro\val{int(4*\r+\c)}%
+      \draw[gray!50] ({\c*0.985}, {-\r*0.74}) rectangle ({\c*0.985+0.985}, {-\r*0.74-0.74});
+      \node at ({\c*0.985+0.4925}, {-\r*0.74-0.37}) {\val};}}
+    \fill[tkFillGreen] (0.985, {-3*0.74}) rectangle ({2*0.985}, {-4*0.74});
+    \draw[tkGreen, semithick] (0.985, {-3*0.74}) rectangle ({2*0.985}, {-4*0.74});
+    \node[text=tkGreen!80!black] at ({1.5*0.985}, {-3.5*0.74}) {13};
+    \draw[tkBlue, semithick] (0, 0) rectangle ({2*0.985}, {-2*0.74});
+    \draw[tkOrange, semithick] ({2*0.985}, 0) rectangle ({4*0.985}, {-2*0.74});
+    \draw[gray!60, semithick] (0, {-2*0.74}) rectangle ({2*0.985}, {-4*0.74});
+    \draw[tkRed, semithick] ({2*0.985}, {-2*0.74}) rectangle ({4*0.985}, {-4*0.74});
+  \end{scope}
+  % 两个 mode 层级：块位（外）与块内（内）
+  \node[anchor=west, text=tkPurple, font=\scriptsize] at (8.90, -1.00) {块位 $(2,2){:}(8,2)$};
+  \node[anchor=west, text=tkGreen, font=\scriptsize] at (12.93, -1.00) {块内 $(2,2){:}(4,1)$};
+  \draw[tkPurple, dashed, -{Stealth[length=3pt]}] (10.54, -1.25) -- (10.30, -1.42);
+  \draw[tkGreen, dashed, -{Stealth[length=3pt]}] (15.16, -1.25) -- (10.15, -1.42);
+  \node[anchor=west, text=tkRed] at (8.90, -4.78) {divide$(L, (2,2))$};
+  \node[anchor=west, text=tkBlue] at (8.90, -5.14) {shape: $((2,2), (2,2))$,  stride: $((4,1), (8,2))$};
+  \node[anchor=west, text=tkGreen, font=\scriptsize] at (8.90, -5.68)
+    {e.g. 同格 $(3,1)$: 块$(1,0)$ 内$(1,1)$ $\to$ $8\times1 + 2\times0 + 4\times1 + 1 = 13$};
+  \node[anchor=west, text=black!60, font=\scriptsize] at (8.90, -6.04)
+    {对比 product：其同格值为 11——product 生成新排布；divide 只改分组};
+  % 标题
+  \node at (8.00, -0.19) {logical\_divide：按 2x2 子块重组为嵌套布局（值排布不变）};
+  \node[anchor=west, text=black!60, font=\scriptsize] at (0.09, -0.60)
+    {divide 是 product 的逆：外层 $(2,2){:}(8,2)$ 索引块、内层 $(2,2){:}(4,1)$ 索引块内——同一网格换一种分组解释};
+\end{tikzpicture}
 \caption{logical\_divide：按 $2\times2$ 子块把 $(4,4){:}(4,1)$ 重组为 $((2,2),(2,2)){:}((4,1),(8,2))$（CuTe 实测的 zipped 形式：块内 mode 在前、块位 mode 在后）——值排布不变（仍 row-major），改变的只是索引方式（一组 $(4,1)$ 索引块内、一组 $(8,2)$ 索引块位）。与上图对比：同物理格 $(3,1)$ 的 product 值为 11（新排布），divide 后仍为 13（原排布）。重建自同上文。}
 \label{fig:20-9}
 \end{figure}

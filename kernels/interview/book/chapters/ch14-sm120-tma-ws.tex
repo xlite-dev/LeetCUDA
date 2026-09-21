@@ -512,14 +512,132 @@ epilogue 与 ch11/ch12 同款：mma m16n8k16 的 C fragment 中，同一 8$\time
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-14-1-tma-box/fig-14-1.png}
+\begin{tikzpicture}[
+  x=0.0155cm, y=-0.0155cm,
+  cell/.style={draw, line width=0.3pt, align=center, inner sep=0pt, font=\tiny,
+    minimum width={44*0.0155cm}, minimum height={32*0.0155cm}},
+  hcell/.style={cell, fill=gray!22, draw=black!40},
+  lcell/.style={cell, fill=gray!22, draw=black!40, minimum width={52*0.0155cm}},
+  ttl/.style={font=\small\bfseries, anchor=west},
+  sub/.style={font=\tiny, anchor=west},
+]
+  \definecolor{figgreen}{RGB}{46,133,64}
+  \definecolor{figorange}{RGB}{217,119,6}
+  \definecolor{figblue}{RGB}{33,113,181}
+  \node[ttl] at (30,27) {TMA box：global 张量 $\to$ smem 128B-swizzled tile};
+  \node[font=\footnotesize\bfseries, text=figblue, anchor=west] at (50,62)
+    {A in gmem（row-major [M,K]，minor $=$ K）};
+  \draw[black!45, line width=0.5pt] (80,80) rectangle (460,310);
+  \node[draw, line width=0.5pt, fill=gray!12, draw=figblue, align=center,
+    inner sep=2pt, font=\tiny\bfseries, text=figblue,
+    minimum width={120*0.0155cm}, minimum height={120*0.0155cm}] at (260,200)
+    {box 64x128\\$=$ 16KB};
+  \node[sub, text=black!55] at (96,101) {k0 $\to$};
+  \node[sub, text=black!55] at (96,195) {m0};
+  \node[sub] at (50,332)
+    {boxDim $=$ (BK$=$64, BM$=$128)，坐标 minor-first：A box (k*64, by*128)};
+  \node[font=\footnotesize\bfseries, text=figorange, anchor=west] at (560,50)
+    {smem tile（BM $\times$ BK，chunk $=$ 16B $=$ 8 half）};
+  \node[sub, text=figorange] at (560,70) {chunk 异或 行低 3 位};
+  \node[font=\tiny, text=black!55, anchor=east] at (616,98) {chunk};
+  \foreach \ci in {0,...,7}{
+    \pgfmathsetmacro{\cx}{642 + \ci*44}
+    \node[hcell] at (\cx,98) {$\ci$};
+  }
+  \foreach \ri in {0,...,7}{
+    \pgfmathsetmacro{\cy}{130 + \ri*32}
+    \node[lcell] at (590,\cy) {i$=\ri$};
+  }
+  \foreach \vx [count=\ki from 0] in {%
+      0,1,2,3,4,5,6,7, 1,0,3,2,5,4,7,6, 2,3,0,1,6,7,4,5, 3,2,1,0,7,6,5,4,
+      4,5,6,7,0,1,2,3, 5,4,7,6,1,0,3,2, 6,7,4,5,2,3,0,1, 7,6,5,4,3,2,1,0}{
+    \pgfmathtruncatemacro{\ri}{int(\ki/8)}
+    \pgfmathtruncatemacro{\ci}{mod(\ki,8)}
+    \pgfmathsetmacro{\cx}{642 + \ci*44}
+    \pgfmathsetmacro{\cy}{130 + \ri*32}
+    \ifnum\ri>0
+      \ifnum\ri<3
+        \ifnum\ci<4
+          \node[cell, fill=gray!45, draw=figorange, line width=0.6pt] at (\cx,\cy) {$\vx$};
+        \else
+          \node[cell, fill=white, draw=black!30] at (\cx,\cy) {$\vx$};
+        \fi
+      \else
+        \node[cell, fill=white, draw=black!30] at (\cx,\cy) {$\vx$};
+      \fi
+    \else
+      \node[cell, fill=white, draw=black!30] at (\cx,\cy) {$\vx$};
+    \fi
+  }
+  \node[sub] at (560,380)
+    {chunk 撇 $=$ chunk 异或 (i mod 8)：i$=$0 恒等，i$=$1 成对交换，i$=$7 全反};
+  \draw[-{Stealth}, figorange, line width=1.3pt] (470,195) -- (553,195);
+  \node[font=\tiny\bfseries, text=figorange, align=center] at (517,170) {SWIZZLE\\128B};
+  \node[draw, line width=0.5pt, fill=gray!18, draw=figgreen, align=center,
+    inner sep=2pt, font=\scriptsize\bfseries, text width={1000*0.0155cm},
+    minimum width={1030*0.0155cm}] at (565,422)
+    {smem 基址 1024B 对齐 $\to$ 硬件从相位 0 开始重排；consumer 用同一公式（chunk 异或 (i mod 8)）逆推零相位地址};
+\end{tikzpicture}
 \caption{TMA box：descriptor 以 minor-first 坐标指定 $64\times128$ 的 2D 搬运块，落盘时按 SWIZZLE\_128B 原子（16B chunk 号与行低 3 位 XOR）重排；smem 基址 1024B 对齐保证硬件从相位 0 开始重排，consumer 的软件公式才能按零相位逆推。}
 \label{fig:14-1}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-14-2-pc-timeline/fig-14-2.png}
+\begin{tikzpicture}[
+  x=0.0155cm, y=-0.0155cm,
+  slot/.style={draw, line width=0.5pt, align=center, inner sep=2pt, font=\tiny},
+  ttl/.style={font=\small\bfseries, anchor=west},
+  side/.style={font=\tiny\bfseries, anchor=west},
+  code/.style={font=\tiny, anchor=west, align=left},
+]
+  \definecolor{figgreen}{RGB}{46,133,64}
+  \definecolor{figorange}{RGB}{217,119,6}
+  \definecolor{figblue}{RGB}{33,113,181}
+  \node[ttl] at (30,27) {producer/consumer 时序（kStages $=$ 2，单 CTA）};
+  \draw[-{Stealth}, black!45, line width=0.7pt] (80,56) -- (1080,56);
+  \node[font=\tiny, text=black!55, anchor=west] at (1010,44) {time};
+  \node[side, text=figblue, font=\scriptsize\bfseries] at (30,94) {WG0 producer};
+  \node[font=\tiny, text=black!55, anchor=west] at (30,122) {（1 线程活跃）};
+  \node[slot, fill=gray!12, draw=figblue, text=figblue, font=\tiny\bfseries,
+    minimum width={230*0.0155cm}, minimum height={40*0.0155cm}] at (255,102)
+    {P1(s0) P2 P3};
+  \node[slot, fill=gray!12, draw=figblue, text=figblue, font=\tiny\bfseries,
+    minimum width={230*0.0155cm}, minimum height={40*0.0155cm}] at (515,102)
+    {P1(s1) P2 P3};
+  \node[slot, fill=gray!12, draw=figblue, text=figblue, font=\tiny\bfseries,
+    minimum width={230*0.0155cm}, minimum height={40*0.0155cm}] at (775,102)
+    {P1(s0) ...};
+  \node[side, text=figgreen, font=\scriptsize\bfseries] at (30,174) {WG1 consumers};
+  \node[font=\tiny, text=black!55, anchor=west] at (30,202) {（128 线程 $=$ 4 warp）};
+  \node[slot, fill=gray!22, draw=black!40, font=\scriptsize\bfseries,
+    minimum width={80*0.0155cm}, minimum height={44*0.0155cm}] at (180,180) {C0};
+  \node[slot, fill=gray!18, draw=figgreen, text=figgreen, font=\tiny\bfseries,
+    minimum width={300*0.0155cm}, minimum height={44*0.0155cm}] at (390,180)
+    {C1(s0) C2 mma x128};
+  \node[slot, fill=gray!18, draw=figgreen, text=figgreen, font=\tiny\bfseries,
+    minimum width={240*0.0155cm}, minimum height={44*0.0155cm}] at (680,180)
+    {C1(s1) C2};
+  \node[slot, fill=gray!18, draw=figgreen, text=figgreen, font=\tiny\bfseries,
+    minimum width={220*0.0155cm}, minimum height={44*0.0155cm}] at (930,180)
+    {C1(s0) ...};
+  \node[font=\tiny, text=figgreen, anchor=west] at (250,219) {在 s0 上计算（ldmatrix $+$ mma）};
+  \draw[-{Stealth}, figorange, dashed, line width=0.8pt] (400,122) -- (400,154);
+  \draw[-{Stealth}, figorange, dashed, line width=0.8pt] (560,156) -- (620,122);
+  \node[font=\tiny, text=figorange, anchor=west] at (430,141) {与 producer 灌 s1 重叠};
+  \draw[figorange, line width=0.5pt, fill=gray!8] (760,252) rectangle (1090,442);
+  \node[font=\scriptsize\bfseries, text=figorange, anchor=west] at (774,268) {屏障翻转条件};
+  \node[code] at (774,296) {full[s]：128 consumer arrive\\$+$ 1 producer arrive\\$+$ 32768B 落盘};
+  \node[code] at (774,356) {empty[s]：128 consumer arrive\\（C4 或 C0 预热）$+$ 1 producer arrive};
+  \node[code] at (774,412) {C0：启动时对 empty[0..S-1]\\各预存 128 次 arrive，点燃流水线};
+  \draw[-{Stealth}, black!45, dashed, line width=0.7pt]
+    (140,122) -- (100,122) -- (100,250) -- (250,250) -- (250,226);
+  \node[font=\tiny, text=black!55, anchor=west] at (60,268) {P1 等 empty[s0] 翻转};
+  \node[draw, line width=0.5pt, fill=gray!22, draw=figblue, align=center,
+    inner sep=3pt, font=\tiny\bfseries, text width={640*0.0155cm},
+    minimum width={660*0.0155cm}] at (380,306)
+    {overlap：TMA(s1) 在飞时 mma(s0) 在算 $\to$ 搬运延迟被掩盖；稳态 producer 领先至多 kStages-1 个 tile};
+\end{tikzpicture}
 \caption{producer/consumer 时序：C0 预热点燃流水线；此后 producer 的 TMA 提交与 consumer 的 ldmatrix+mma 在不同 stage 上重叠，搬运延迟被计算掩盖；稳态 producer 领先至多 kStages-1 个 tile。}
 \label{fig:14-2}
 \end{figure}

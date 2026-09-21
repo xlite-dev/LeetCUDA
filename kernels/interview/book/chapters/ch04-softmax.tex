@@ -371,7 +371,45 @@ block 级同步从 2 次降到 1 次；代价是归约算子从「单个加法�
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-4-1-softmax-flow/fig-4-1.png}
+\resizebox{0.95\textwidth}{!}{%
+\begin{tikzpicture}[font=\scriptsize,
+  card/.style={line width=0.5pt, minimum width=4.57cm, minimum height=3.51cm},
+  hdr/.style={line width=0.6pt, minimum width=4.57cm, minimum height=0.57cm,
+    font=\footnotesize\bfseries},
+  col/.style={anchor=west, inner sep=1pt}]
+  \node[anchor=west, font=\small\bfseries] at (0.43, 5.35)
+    {Softmax 三级递进：3-pass $\to$ 2-pass $\to$ 1-pass（online）};
+  \node[card, draw=red!75!black, fill=white] at (3.00, 2.47) {};
+  \node[card, draw=orange!75!black, fill=white] at (8.00, 2.47) {};
+  \node[card, draw=green!45!black, fill=green!8] at (13.00, 2.47) {};
+  \node[hdr, draw=red!75!black, fill=gray!12, text=red!75!black] at (3.00, 4.57)
+    {naive / textbook（3-pass）};
+  \node[hdr, draw=orange!75!black, fill=gray!12, text=orange!75!black] at (8.00, 4.57)
+    {safe / Level 2（2-pass）};
+  \node[hdr, draw=green!45!black, fill=gray!12, text=green!45!black] at (13.00, 4.57)
+    {online / Level 3（1-pass）};
+  \node[col] at (0.91, 3.90) {gmem x 第 1 遍: $m = \max(x)$};
+  \node[col] at (0.91, 3.41) {gmem x 第 2 遍: $s = \sum e^{x}$};
+  \node[col] at (0.91, 2.93) {$e^{x}$ 可能上溢 inf};
+  \node[col] at (0.91, 2.44) {gmem x 第 3 遍: $y = e^{x}/s$};
+  \node[col] at (0.91, 1.96) {3 次 gmem 全量读};
+  \node[col] at (5.91, 3.90) {gmem x $\to$ regs（第 1 次读）};
+  \node[col] at (5.91, 3.41) {block reduce max $\to$ $m$};
+  \node[col] at (5.91, 2.93) {gmem x 第 2 次读（L1 命中）};
+  \node[col] at (5.91, 2.44) {$e^{x-m}$ 不超 1，无溢出};
+  \node[col] at (5.91, 1.96) {reduce sum $\to$ $s$；$y = e^{x-m}/s$};
+  \node[col] at (5.91, 1.47) {2 次 block sync};
+  \node[col] at (10.91, 3.90) {gmem x $\to$ regs（唯一一次读）};
+  \node[col] at (10.91, 3.41) {init $(m, d) = (x, 1)$};
+  \node[col] at (10.91, 2.93) {MD 蝶形归约：};
+  \node[col] at (10.91, 2.44) {$\quad d = d_1 + d_2\,e^{m_2-m_1}$};
+  \node[col] at (10.91, 1.96) {$\quad m, d$ 同步重标定};
+  \node[col] at (10.91, 1.47) {$y = e^{x-m}/d$，1 次 sync};
+  \draw[-{Stealth}, black!60, line width=1.1pt] (5.43, 3.14) -- (5.74, 3.14);
+  \draw[-{Stealth}, black!60, line width=1.1pt] (10.43, 3.14) -- (10.74, 3.14);
+  \node[anchor=west, black!70] at (0.43, 0.26)
+    {箭头方向 = 演进：读 gmem 次数 $3 \to 2 \to 1$；溢出风险 $\to$ 无；block sync $3 \to 2 \to 1$（fast math：expf / \_\_fdividef）};
+\end{tikzpicture}}
 \caption{Softmax 三级递进的 3-pass $\to$ 2-pass $\to$ 1-pass 数据流：左为教科书三遍扫描（无 max 减法，$e^x$ 可能上溢）；中为 safe 版两次归约；右为 online 版 $(m,d)$ 状态一次融合归约。}
 \label{fig:4-1}
 \end{figure}

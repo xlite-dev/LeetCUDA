@@ -670,7 +670,67 @@ $\times$ $2$ 相邻列），两个相邻 atom 共 $8$ 个；右（A 视角）：
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.92\textwidth]{figures/drawio/fig-22-1-tiledmma/fig-22-1.png}
+% was: \includegraphics[width=0.92\textwidth]{figures/drawio/fig-22-1-tiledmma/fig-22-1.png}
+\begin{tikzpicture}[font=\tiny, x=0.016cm, y=-0.016cm]
+  \node[anchor=west, font=\footnotesize\bfseries] at (40,29)
+    {TiledMMA partition —— QK $(64,64,64)$ \& PV $(64,16,16)$ on 128 threads (4 warps)};
+  \node[anchor=west, font=\scriptsize] at (40,52)
+    {同一组线程承载两个 tile：QK 大 tile 吃满吞吐，PV 小 tile 压住 acc\_O 寄存器};
+  \node[anchor=west, font=\scriptsize, text=tkBlue] at (40,88)
+    {\textcircled{1} 线程划分：QK tile $(64\times64)$，4 个 warp 各覆盖 16 行};
+  \foreach \rr/\wr in {0/{warp 0: rows [0, 16)}, 1/{warp 1: rows [16, 32)},
+                       2/{warp 2: rows [32, 48)}, 3/{warp 3: rows [48, 64)}}{
+    \node[draw=gray!60, fill=gray!12, minimum width=1.92cm, minimum height=0.384cm,
+          inner sep=0pt] at (100,{114+30*\rr})
+      {{\fontsize{4.6}{5.4}\selectfont\wr}};
+    \foreach \cc in {0,...,7}{
+      \node[draw=gray!45, fill=gray!5, minimum width=1.504cm, minimum height=0.384cm,
+            inner sep=0pt] at ({227+101*\cc},{114+30*\rr})
+        {{\fontsize{4.6}{5.4}\selectfont n\cc: cols [\the\numexpr8*\cc\relax,
+          \the\numexpr8*\cc+8\relax)}};
+    }
+  }
+  \node[anchor=west, font=\tiny] at (40,233)
+    {warp 内沿 N 方向重复 8 个 m16n8 原子（MMA\_N $= 8$）};
+  \node[anchor=west, font=\scriptsize, text=tkGreen] at (40,258)
+    {\textcircled{2} fragment 账目：每线程形状 $(\mathrm{MMA}, \mathrm{MMA\_M}, \mathrm{MMA\_K})$，实测值};
+  \foreach \cx/\hd/\col in {165/{A (Q)}/tkBlue, 438/{B (K)}/tkGreen, 711/{C (S)}/tkOrange}{
+    \node[draw=\col, fill=white, minimum width=4.0cm, minimum height=1.344cm,
+          inner sep=0pt] at (\cx,314) {};
+    \node[fill=\col, text=white, font=\scriptsize\bfseries, minimum width=4.0cm,
+          minimum height=0.352cm, inner sep=0pt] at (\cx,283) {\hd};
+  }
+  \node[anchor=west, font=\scriptsize\bfseries] at (50,307) {fragment $= (8, 1, 4)$};
+  \node[anchor=west, font=\tiny] at (50,326) {32 half / thread};
+  \node[anchor=west, font=\tiny, text=gray!90] at (50,344) {双射（无重复）};
+  \node[anchor=west, font=\scriptsize\bfseries] at (323,307) {fragment $= (4, 8, 4)$};
+  \node[anchor=west, font=\tiny] at (323,326) {128 half / thread};
+  \node[anchor=west, font=\tiny, text=gray!90] at (323,344) {$\times4$ 重复（4 个 M-warp 共享）};
+  \node[anchor=west, font=\scriptsize\bfseries] at (596,307) {fragment $= (4, 1, 8)$};
+  \node[anchor=west, font=\tiny] at (596,326) {32 float / thread};
+  \node[anchor=west, font=\tiny, text=gray!90] at (596,344) {双射（无重复）};
+  \node[anchor=west, font=\tiny] at (40,371)
+    {守恒式：A 与 C 双射覆盖整个 tile；B 按 M-warp 数重复（式~\eqref{eq:22-dup}），
+     这是 warp 排布的代价所在};
+  \node[anchor=west, font=\scriptsize, text=tkOrange] at (40,406)
+    {\textcircled{3} PV 寄存器账：acc\_O 按堆叠条形图（d-chunk 0--7）};
+  \foreach \k in {0,...,7}{
+    \node[draw=tkOrange!70, fill=tkFillOrange, minimum width=1.408cm, minimum height=0.64cm,
+          inner sep=0pt] at ({84+96*\k},444) {chunk \k};
+    \node[font=\tiny, text=gray!90] at ({84+96*\k},491) {32 float};
+  }
+  \node[anchor=west, font=\scriptsize\bfseries, text=tkOrange!80!black] at (846,443)
+    {合计 $= 256$ 寄存器};
+  \draw[tkRed, very thick] (708,414) -- (708,474);
+  \node[anchor=west, font=\tiny, text=tkRed] at (40,511)
+    {警戒：PV 的 N tile 拉到 64 $\to$ 每 chunk 128 float $\to$ $8\times$ 超支，
+     寄存器不可能常驻（红线上即不可行）};
+  \node[anchor=west, font=\tiny] at (40,535)
+    {PV tile $(64,16,16)$：MMA\_N $= 2$（$16/8$），N 方向只重复 2 个原子——用吞吐换
+     acc\_O 可控，这是 FFPA 的核心权衡};
+  \node[anchor=west, font=\tiny, text=gray!90] at (40,559)
+    {实测：本章 case~C--F 对上述全部形状与覆盖逐点核对（\texttt{static\_assert} $+$ 打印）};
+\end{tikzpicture}
 \caption{TiledMMA partition：QK 的 $64\times64$ tile 上，4 个 warp 各覆盖
 16 行，warp 内 N 方向重复 8 个原子；A/B/C 三种 fragment 的每线程形状与
 重复因子（式~\eqref{eq:22-dup}）。下半部分是 PV 的 $(64,16,16)$ tile：
@@ -683,7 +743,129 @@ d-chunk 各自拷回，常驻 acc\_O 256 寄存器不变；N tile 拉到 64 只�
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-22-2-mma-atom-fragments/fig-22-2.png}
+% was: \includegraphics[width=0.95\textwidth]{figures/drawio/fig-22-2-mma-atom-fragments/fig-22-2.png}
+\begin{tikzpicture}[font=\tiny, x=0.015cm, y=-0.015cm]
+  \node[anchor=west, font=\scriptsize\bfseries] at (20,21)
+    {MMA atom 的 thread-value 布局：32 threads 分食 $16\times8$ tile（SM80 m16n8k16 f16）};
+  \node[anchor=west, font=\tiny] at (20,45)
+    {每 thread 持相邻 2 列 $\times$ 2 行（$m$ 与 $m{+}8$ 行）共 4 格；T $=$ thread
+     编号，颜色按 8 色循环};
+  \draw[{Stealth[length=1.6mm]}-{Stealth[length=1.6mm]}, gray!80, thin] (150,72) -- (518,72);
+  \node[font=\tiny] at (345,83) {N $= 8$};
+  \draw[{Stealth[length=1.6mm]}-{Stealth[length=1.6mm]}, gray!80, thin] (86,110) -- (86,400);
+  \node[anchor=east, font=\tiny] at (78,250) {M $= 16$};
+  \foreach \cc in {0,...,7}{
+    \node[font=\tiny, text=gray!80] at ({172+46*\cc},98) {n\cc};
+  }
+  \foreach \mm/\cy in {0/132, 1/178, 7/250, 8/296, 15/376}{
+    \node[anchor=east, font=\tiny, text=gray!80] at (144,\cy) {m$=$\mm};
+    \foreach \cc in {0,...,7}{
+      \pgfmathtruncatemacro{\grp}{mod(\mm*4 + int(\cc/2), 8)}
+      \pgfmathtruncatemacro{\tn}{\mm*4 + int(\cc/2)}
+      \ifcase\grp
+        \node[draw=tkRed!60, fill=tkFillRed, text=tkRed, minimum width=0.66cm,
+              minimum height=0.66cm, inner sep=0pt] at ({172+46*\cc},\cy) {T\tn};
+      \or
+        \node[draw=tkBlue!60, fill=tkFillBlue, text=tkBlue, minimum width=0.66cm,
+              minimum height=0.66cm, inner sep=0pt] at ({172+46*\cc},\cy) {T\tn};
+      \or
+        \node[draw=tkGreen!60, fill=tkFillGreen, text=tkGreen, minimum width=0.66cm,
+              minimum height=0.66cm, inner sep=0pt] at ({172+46*\cc},\cy) {T\tn};
+      \or
+        \node[draw=tkOrange!70, fill=tkFillOrange, text=tkOrange!80!black,
+              minimum width=0.66cm, minimum height=0.66cm, inner sep=0pt]
+          at ({172+46*\cc},\cy) {T\tn};
+      \or
+        \node[draw=tkPurple!60, fill=tkFillPurple, text=tkPurple, minimum width=0.66cm,
+              minimum height=0.66cm, inner sep=0pt] at ({172+46*\cc},\cy) {T\tn};
+      \or
+        \node[draw=gray!50, fill=gray!10, minimum width=0.66cm, minimum height=0.66cm,
+              inner sep=0pt] at ({172+46*\cc},\cy) {T\tn};
+      \or
+        \node[draw=gray!50, fill=gray!22, minimum width=0.66cm, minimum height=0.66cm,
+              inner sep=0pt] at ({172+46*\cc},\cy) {T\tn};
+      \else
+        \node[draw=gray!50, fill=gray!34, minimum width=0.66cm, minimum height=0.66cm,
+              inner sep=0pt] at ({172+46*\cc},\cy) {T\tn};
+      \fi
+    }
+  }
+  \foreach \yy in {206,214,222,330,338,346}{
+    \fill[gray!70] (334,\yy) circle (0.05cm);
+  }
+  \draw[tkRed, dashed, thick] (150,110) rectangle (240,154);
+  \draw[tkRed, dashed, thick] (150,274) rectangle (240,318);
+  \node[anchor=west, font=\tiny] at (150,415)
+    {行 $m$ 与行 $m{+}8$ 由同一组 threads 持有（T 编号重复出现）};
+  \node[anchor=west, font=\tiny] at (150,435)
+    {thread $t \to$ 行 $t/4$，列 $2(t \bmod 4)$ 与 $2(t \bmod 4){+}1$};
+  \node[anchor=west, font=\tiny] at (150,455)
+    {本图即 C/D（M$\times$N）的 fragment 视图；k8 atom 的 A 同构};
+  \draw[gray!45, thin] (580,100) rectangle (1150,256);
+  \node[anchor=west, font=\scriptsize, text=tkPurple] at (596,120)
+    {thread $==$ 0 拿到 4 个 data（两处红虚线框）};
+  \foreach \cx/\cy/\tx in {662/152/{data (0, 0)}, 800/152/{data (0, 1)},
+                           662/190/{data (8, 0)}, 800/190/{data (8, 1)}}{
+    \node[draw=gray!50, fill=gray!12, minimum width=1.98cm, minimum height=0.48cm,
+          inner sep=0pt] at (\cx,\cy) {\tx};
+  }
+  \node[anchor=west, font=\tiny, text=gray!90] at (890,143) {相邻 2 列 $\times$ 2 行（$m$ 与 $m{+}8$）};
+  \node[anchor=west, font=\tiny, text=gray!90] at (890,165) {4 值 $=$ 该 thread 的 fragment};
+  \node[anchor=west, font=\tiny, text=gray!90] at (890,187) {fragment 即 mma 指令的寄存器输入};
+  \draw[gray!45, thin] (580,272) rectangle (1150,492);
+  \node[anchor=west, font=\scriptsize] at (596,292)
+    {m16n8k16 f16 atom：每 thread 的 fragment 大小};
+  \node[fill=tkFillBlue, draw=tkBlue!60, minimum width=0.18cm, minimum height=0.63cm,
+        inner sep=0pt] at (602,333) {};
+  \node[anchor=west, font=\tiny, text=tkBlue] at (618,319)
+    {A（$16\times16$，M$\times$K）：每 thread 8 值};
+  \node[anchor=west, font=\tiny] at (618,341)
+    {m 行: a0 a1 a4 a5；m$+$8 行: a2 a3 a6 a7};
+  \node[fill=tkFillGreen, draw=tkGreen!60, minimum width=0.18cm, minimum height=0.63cm,
+        inner sep=0pt] at (602,381) {};
+  \node[anchor=west, font=\tiny, text=tkGreen] at (618,367)
+    {B（$16\times8$，K$\times$N）：每 thread 4 值};
+  \node[anchor=west, font=\tiny] at (618,389)
+    {n 列固定；k 行: b0 b1，k$+$8 行: b2 b3};
+  \node[fill=tkFillOrange, draw=tkOrange!70, minimum width=0.18cm, minimum height=0.63cm,
+        inner sep=0pt] at (602,429) {};
+  \node[anchor=west, font=\tiny, text=tkOrange!80!black] at (618,415)
+    {C/D（$16\times8$，M$\times$N）：每 thread 4 值};
+  \node[anchor=west, font=\tiny] at (618,437)
+    {即左图布局：m 行: c0 c1，m$+$8 行: c2 c3};
+  \node[anchor=west, font=\tiny] at (596,471)
+    {守恒：$32\times(8+4+4) = 512$ 值 $= 256+128+128$，恰为 $A+B+C$ 全部元素};
+  \node[draw=tkGreen, fill=tkFillGreen, minimum width=8.55cm, minimum height=2.82cm,
+        inner sep=0pt] at (865,602) {};
+  \node[anchor=west, font=\scriptsize, text=tkGreen!70!black] at (596,528)
+    {atom $=$ 最小可复制的 MMA 单元};
+  \node[anchor=west, font=\tiny, text=tkGreen!70!black] at (596,555)
+    {一条 \texttt{mma.sync}（m16n8k16 f16）由 32 threads 各出一个 fragment，};
+  \node[anchor=west, font=\tiny, text=tkGreen!70!black] at (596,577)
+    {协作算出 $16\times8$ 输出};
+  \node[anchor=west, font=\tiny, text=tkGreen!70!black] at (596,599)
+    {每 thread：A 8 值 / B 4 值 / C 4 值；D 累加回 C fragment};
+  \node[anchor=west, font=\tiny, text=tkGreen!70!black] at (596,621)
+    {tile 更大 $=$ atom 沿 M/N 复制堆叠（见左下），映射规律不变};
+  \node[anchor=west, font=\tiny, text=tkGreen!70!black] at (596,643)
+    {CuTe：\texttt{make\_tiled\_mma(atom, m, n)} 即按复制数生成 TiledMMA};
+  \node[anchor=west, font=\scriptsize] at (60,484) {atom 复制（tiling）$\to$ 更大的 GEMM tile};
+  \draw[gray!60, dashed, thin] (96,498) rectangle (396,622);
+  \foreach \cx/\cy in {174/536, 318/536, 174/590, 318/590}{
+    \node[draw=tkGreen, fill=tkFillGreen, text=tkGreen!70!black, minimum width=1.98cm,
+          minimum height=0.72cm, inner sep=0pt] at (\cx,\cy) {atom $16\times8$};
+  }
+  \node[anchor=west, font=\tiny] at (412,521) {2$\times$2 复制 $\to$};
+  \node[anchor=west, font=\tiny] at (412,541) {M32$\times$N16 tile};
+  \node[anchor=west, font=\tiny] at (412,561) {64 threads};
+  \node[anchor=west, font=\tiny] at (412,581) {映射不变};
+  \node[anchor=west, font=\tiny] at (60,649)
+    {TiledMMA 的 atom 数 $= (\mathrm{M}/16)\times(\mathrm{N}/8)$，每个 atom 内的映射与上图相同};
+  \draw[-{Stealth[length=2mm]}, tkPurple, dashed, thick]
+    (152,108) -- (152,64) -- (545,64) -- (545,122) -- (576,122);
+  \draw[-{Stealth[length=2mm]}, tkPurple, dashed, thick]
+    (196,320) -- (196,350) -- (556,350) -- (556,190) -- (576,190);
+\end{tikzpicture}
 \caption{m16n8k16 atom 的 C fragment thread-value 映射：thread $t$ 持行 $t/4$ 与 $t/4+8$、列 $2(t\bmod 4)$ 与 $2(t\bmod 4)+1$ 共 4 值——行 $m$ 与 $m+8$ 由同组线程重复持有。三个操作数每线程 A 8 值 / B 4 值 / C 4 值，守恒式 $32\times(8+4+4)=512$。更大的 tile 只是 atom 沿 M/N 的复制堆叠，thread-value 规律不变——\texttt{make\_\allowbreak{}tiled\_\allowbreak{}mma} 的构造基础。重建自 @竹熙佳处《写给大家看的 CuTe 教程：tiled mma》。}
 \label{fig:22-2}
 \end{figure}

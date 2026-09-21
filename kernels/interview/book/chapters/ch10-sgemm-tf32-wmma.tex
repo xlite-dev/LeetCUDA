@@ -491,7 +491,36 @@ L375 的条件等待被编译期剪掉。写回阶段每个 warp 把 8 个累加
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-10-1-double-buffer/fig-10-1.png}
+\begin{tikzpicture}[font=\scriptsize]
+  \node[font=\small\bfseries] at (8.2,0)
+    {2-stage double buffering：\texttt{load(k)} 与 \texttt{compute(k-1)} 重叠};
+  \draw[-{Latex}, thin, gray!70] (13.8,-0.55) -- (16.3,-0.55);
+  \node[anchor=south east, font=\tiny, text=gray!80] at (16.3,-0.45) {time};
+  \node[anchor=west, font=\scriptsize\bfseries] at (0,-1.4) {LD unit};
+  \foreach \fmi in {0,...,3} {
+    \node[draw=gray!60, fill=gray!12, font=\tiny\bfseries,
+      minimum width=2.8cm, minimum height=0.6cm] at ({3.0+\fmi*3.1},-1.4) {ld \fmi};
+  }
+  \node[anchor=west, font=\tiny, text=gray!80] at (1.6,-1.85)
+    {cp.async 分组：\ldots\ wait group 0 at first barrier\ \ldots};
+  \node[anchor=west, font=\tiny, text=gray!80] at (7.4,-1.85)
+    {首迭代 $k{=}1$：load 1 写 $S_1$，compute 0 读 $S_0$};
+  \draw[dashed, thin, gray!70] (4.7,-1.75) -- (4.7,-2.12);
+  \node[anchor=west, font=\scriptsize\bfseries] at (0,-2.45) {TC unit};
+  \foreach \fmi in {0,...,3} {
+    \node[draw=gray!70, fill=gray!32, font=\tiny\bfseries,
+      minimum width=2.8cm, minimum height=0.6cm] at ({4.55+\fmi*3.1},-2.45) {cp \fmi};
+  }
+  \node[anchor=west, font=\scriptsize\bfseries] at (0,-3.3)
+    {smem 双缓冲：$S_0$ 承载偶数 tile，$S_1$ 承载奇数 tile};
+  \node[draw=gray!55, fill=gray!10, font=\tiny, minimum width=7.7cm, minimum height=0.6cm]
+    at (4.05,-3.85) {$S_0$: tile 0 | tile 2 | tile 4 \ldots\ (even $k$)};
+  \node[draw=gray!55, fill=gray!10, font=\tiny, minimum width=7.7cm, minimum height=0.6cm]
+    at (12.35,-3.85) {$S_1$: tile 1 | tile 3 | tile 5 \ldots\ (odd $k$)};
+  \node[draw=gray!50, fill=gray!14, font=\scriptsize\bfseries,
+    minimum width=16.2cm, minimum height=0.55cm] at (8.2,-4.6)
+    {steady state：$T_{\mathrm{step}} = \max(T_{\mathrm{load}}, T_{\mathrm{compute}})$，短的一侧被完全隐藏；compute 读 $(k{-}1)\bmod 2$，load 写 $k\bmod 2$};
+\end{tikzpicture}
 \caption{cp.async 双缓冲时序：搬运单元与 Tensor Core 各自的流水线交替占用 $S_0/S_1$ 两级缓冲；迭代 $k$ 内「向 $k\bmod 2$ 写 tile $k$」与「从 $(k-1)\bmod 2$ 读 tile $k-1$」并行，稳态步长 $T_{\mathrm{step}} = \max(T_{\mathrm{load}}, T_{\mathrm{compute}})$。}
 \label{fig:10-1}
 \end{figure}

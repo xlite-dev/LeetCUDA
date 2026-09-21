@@ -73,7 +73,66 @@ sector 数。三种典型情形（图 ch03-1）：
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-3-1-coalescing/fig-3-1.png}
+\resizebox{0.95\textwidth}{!}{%
+\begin{tikzpicture}[font=\scriptsize,
+  hdr/.style={anchor=west, font=\bfseries},
+  cellG/.style={fill=green!35, draw=green!50!black, line width=0.3pt},
+  cellW/.style={fill=gray!12, draw=gray!40, line width=0.3pt},
+  lab/.style={anchor=west, font=\tiny, text=black!70},
+  box/.style={line width=0.5pt, minimum height=0.4cm, font=\scriptsize\bfseries}]
+  \node[anchor=west, font=\small\bfseries] at (0.32, 5.14)
+    {一条 warp 访存指令的合并过程（fp32，每格 4B，一个 sector = 8 格 = 32B）};
+  \node[hdr, green!45!black] at (0.53, 4.56)
+    {coalesced：lane0..31 访问连续 128B};
+  \foreach \sx/\nv in {40/8, 150/8, 260/8, 370/8}{
+    \foreach \gk in {0,...,7}{
+      \pgfmathsetmacro{\gx}{\sx/75 + 0.1733*\gk}
+      \ifnum\gk<\nv
+        \draw[cellG] (\gx, 3.95) rectangle (\gx+0.147, 4.35);
+      \else
+        \draw[cellW] (\gx, 3.95) rectangle (\gx+0.147, 4.35);
+      \fi}}
+  \foreach \sx in {40, 150, 260, 370}{
+    \pgfmathsetmacro{\lx}{\sx/75}
+    \node[lab] at (\lx, 3.80) {sector\pgfmathparse{int((\sx-40)/110)}\pgfmathresult};}
+  \node[box, fill=gray!10, draw=green!35!black] at (8.27, 4.15) {S = 4 个 sector};
+  \node[box, fill=gray!10, draw=green!35!black] at (11.28, 4.15) {有效率 100\%};
+  \node[hdr, orange!75!black] at (0.53, 3.23)
+    {stride = 2：访问 0, 2, 4, ..., 62 号元素，跨度 256B};
+  \foreach \sx/\nv in {40/4, 150/4, 260/4, 370/4, 480/4, 590/4}{
+    \foreach \gk in {0,...,7}{
+      \pgfmathsetmacro{\gx}{\sx/75 + 0.1733*\gk}
+      \ifnum\gk<\nv
+        \draw[cellG] (\gx, 2.61) rectangle (\gx+0.147, 3.01);
+      \else
+        \draw[cellW] (\gx, 2.61) rectangle (\gx+0.147, 3.01);
+      \fi}}
+  \foreach \sx in {40, 150, 260, 370, 480, 590}{
+    \pgfmathsetmacro{\lx}{\sx/75}
+    \node[lab] at (\lx, 2.46) {sector\pgfmathparse{int((\sx-40)/110)}\pgfmathresult};}
+  \node[anchor=center, text=black!70] at (9.47, 2.81) {...};
+  \node[box, fill=gray!18, draw=orange!75!black] at (11.28, 2.81) {S = 8，有效率 50\%};
+  \node[hdr, red!75!black] at (0.53, 1.89)
+    {大 stride：每线程各落一个 sector};
+  \foreach \sx/\nv in {40/1, 150/1, 260/1, 370/1, 480/1, 590/1}{
+    \foreach \gk in {0,...,7}{
+      \pgfmathsetmacro{\gx}{\sx/75 + 0.1733*\gk}
+      \ifnum\gk<\nv
+        \draw[cellG] (\gx, 1.28) rectangle (\gx+0.147, 1.68);
+      \else
+        \draw[cellW] (\gx, 1.28) rectangle (\gx+0.147, 1.68);
+      \fi}}
+  \foreach \sx in {40, 150, 260, 370, 480, 590}{
+    \pgfmathsetmacro{\lx}{\sx/75}
+    \node[lab] at (\lx, 1.13) {sector\pgfmathparse{int((\sx-40)/110)}\pgfmathresult};}
+  \node[anchor=center, text=black!70] at (9.60, 1.48) {... x32};
+  \node[box, fill=gray!24, draw=red!70!black] at (11.28, 1.48) {S = 32，有效率 12.5\%};
+  \node[anchor=west, black!70] at (0.53, 0.92)
+    {绿格 = 本次指令真正用到的字节；灰格 = 同 sector 内被一起搬上来的无用字节};
+  \node[draw=orange!75!black, line width=0.6pt, fill=gray!12, minimum width=14.8cm,
+    minimum height=0.56cm, font=\small\bfseries] at (7.73, 0.36)
+    {事务粒度 = 32B sector：无用字节照样从 HBM 搬上来 —— 有效率 = 有用字节 / 搬运字节};
+\end{tikzpicture}}
 \caption{coalescing 与非合并访存对比（fp32，每格 4B，一个 sector 8 格 32B）：coalesced 一条 指令落 4 个 sector 有效率 100\%；stride=2 落 8 个、50\%；大 stride 每线程各占一个 sector、仅 12.5\%——事务粒度是 32B sector，无用字节照样从 HBM 搬上来。}
 \label{fig:3-1}
 \end{figure}

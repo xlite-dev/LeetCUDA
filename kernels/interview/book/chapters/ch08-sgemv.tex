@@ -268,7 +268,50 @@ $16\,\dots\,31$ 之间可能分叉（$M$ 为奇数时的最后一个 warp），�
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-8-1-warp-per-row/fig-8-1.png}
+\begin{tikzpicture}[font=\scriptsize]
+  \node[font=\small\bfseries] at (8.2,0)
+    {warp-per-row：\texttt{block(32,4)} $\to$ 每 block 4 行，1 warp $=$ 1 行};
+  \foreach \fmi in {0,1,2} {
+    \node[draw=gray!60, fill=gray!12, font=\scriptsize\bfseries,
+      minimum width=1.9cm, minimum height=0.62cm] at ({1.15+\fmi*2.05},-0.75) {block\fmi};
+  }
+  \node[anchor=west, font=\tiny, text=gray!80] at (0.2,-1.28)
+    {\texttt{grid.x = ceil(M/4)}};
+  \foreach \fmi in {0,1,2,3} {
+    \node[anchor=west, font=\tiny] at (8.2,{-0.5-\fmi*0.3}) {warp \fmi\ ($ty{=}\fmi$)};
+    \node[anchor=west, font=\tiny, text=vscKeyword] at (10.3,{-0.5-\fmi*0.3})
+      {$\to$ row $m{+}\fmi$};
+  }
+  \node[anchor=west, font=\tiny, text=gray!80] at (8.2,-1.72)
+    {\texttt{block(32,4)} $=$ 4 warps，one block covers 4 rows};
+  \node[anchor=west, font=\scriptsize\bfseries] at (0,-2.25)
+    {\texttt{k32}（\texttt{K = 32 * NUM-ITERS}）：lane $l$ 取 $k = 32w + l$};
+  \foreach \fmi in {0,1} {
+    \pgfmathtruncatemacro{\xlo}{\fmi*32}
+    \pgfmathtruncatemacro{\xhi}{\fmi*32+31}
+    \node[draw=gray!60, fill=gray!12, font=\tiny, minimum width=7.4cm, minimum height=0.5cm]
+      at ({4.1+\fmi*8.0},-2.75)
+      {pass $w{=}\fmi$: \ lane0\ lane1\ \ldots\ lane31 $\ \to\ k = 32\times\fmi + l$};
+    \node[anchor=west, font=\tiny, text=gray!80] at ({0.4+\fmi*8.0},-3.14)
+      {$x[\xlo]$ \ldots\ $x[\xhi]$，每 lane 串行累加
+       \texttt{sum += a[m][k] * x[k]}};
+  }
+  \node[anchor=west, font=\tiny, text=gray!80] at (0.4,-3.55)
+    {累加完成后 5 步 XOR 蝶形归约 $\to$ lane 0 写 \texttt{y[m]}};
+  \node[anchor=west, font=\scriptsize\bfseries] at (0,-4.1)
+    {\texttt{k16}（\texttt{K=16}，\texttt{kRowPerWarp=2}）：段宽 16，两行各 16 lane};
+  \foreach \fmi in {0,1} {
+    \pgfmathtruncatemacro{\klo}{\fmi*16}
+    \pgfmathtruncatemacro{\khi}{\fmi*16+15}
+    \node[draw=gray!70, fill=gray!32, font=\tiny, minimum width=7.4cm, minimum height=0.52cm]
+      at ({4.1+\fmi*8.0},-4.6)
+      {lane \klo..\khi $\ \to\ $ row $m{+}\fmi$ \ \ ($k = \mathrm{lane} \bmod 16$)};
+  }
+  \node[anchor=north west, align=left, font=\tiny, text width=16.4cm] at (0,-4.95)
+    {reduce 小于 16 的 mask 序列 8,4,2,1；row-major $A$ 中 $m$ 与 $m{+}1$ 行连续
+     $\to$ 32 lane 仍是 1 个 128B 合并事务；\\
+     \texttt{k128} 变体：单行 \texttt{float4} 加宽（4 lane 一组）};
+\end{tikzpicture}
 \caption{warp-per-row 的划分：k32 单行 32 lane 铺满、k16 双行各 16 lane 分段归约（mask 8/4/2/1）；k128 变体单行 float4 加宽。}
 \label{fig:8-1}
 \end{figure}

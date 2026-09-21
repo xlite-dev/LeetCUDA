@@ -511,7 +511,75 @@ $\pi^{-1}$ 回到原始 token 位置判定。
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.98\textwidth]{figures/drawio/fig-31-1-nvfp4-block/fig-31-1-nvfp4-block.png}
+  % was: \includegraphics[width=0.98\textwidth]{figures/drawio/fig-31-1-nvfp4-block/fig-31-1-nvfp4-block.png}
+  \begin{tikzpicture}
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{7.4}{9.3}\selectfont \bfseries }] at (0.37,-0.354) {NVFP4 的 1$\times$16 microscaling 块：e2m1 数据 + ue4m3 块尺度};% w=16.940
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{6.1}{7.7}\selectfont \bfseries }] at (0.37,-0.862) {(1) 一个 1$\times$16 量化块};% w=8.316
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.46cm, minimum height=0.52cm, inner sep=1pt, align=center, text width=0.40cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (0.601,-1.371) {1.2};
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.46cm, minimum height=0.52cm, inner sep=1pt, align=center, text width=0.40cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (1.124,-1.371) {0.3};
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.46cm, minimum height=0.52cm, inner sep=1pt, align=center, text width=0.40cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (1.648,-1.371) {2.8};
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.46cm, minimum height=0.52cm, inner sep=1pt, align=center, text width=0.40cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (2.171,-1.371) {0.9};
+    \node[draw=tkRed, fill=tkFillRed, line width=0.5pt, minimum width=0.46cm, minimum height=0.52cm, inner sep=1pt, align=center, text width=0.40cm, font={\fontsize{4.4}{5.5}\selectfont \bfseries \color{tkRed} }] at (2.695,-1.371) {6.0};
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.46cm, minimum height=0.52cm, inner sep=1pt, align=center, text width=0.40cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (3.219,-1.371) {3.1};
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.46cm, minimum height=0.52cm, inner sep=1pt, align=center, text width=0.40cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (3.742,-1.371) {0.2};
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.46cm, minimum height=0.52cm, inner sep=1pt, align=center, text width=0.40cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (4.266,-1.371) {1.5};
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.46cm, minimum height=0.52cm, inner sep=1pt, align=center, text width=0.40cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (4.789,-1.371) {0.7};
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.46cm, minimum height=0.52cm, inner sep=1pt, align=center, text width=0.40cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (5.313,-1.371) {4.2};
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.46cm, minimum height=0.52cm, inner sep=1pt, align=center, text width=0.40cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (5.837,-1.371) {0.4};
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.46cm, minimum height=0.52cm, inner sep=1pt, align=center, text width=0.40cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (6.36,-1.371) {2.0};
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.46cm, minimum height=0.52cm, inner sep=1pt, align=center, text width=0.40cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (6.884,-1.371) {0.8};
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.46cm, minimum height=0.52cm, inner sep=1pt, align=center, text width=0.40cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (7.407,-1.371) {5.5};
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.46cm, minimum height=0.52cm, inner sep=1pt, align=center, text width=0.40cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (7.931,-1.371) {0.3};
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.46cm, minimum height=0.52cm, inner sep=1pt, align=center, text width=0.40cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (8.455,-1.371) {1.1};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkRed} }] at (0.37,-1.91) {amax(16 元素) = 6.0（红色格）$\to$ s = amax / 6 = 1.0};% w=8.393
+    \node[draw=tkBlue, fill=tkFillBlue, line width=0.5pt, minimum width=2.59cm, minimum height=0.71cm, inner sep=1pt, align=center, text width=2.53cm, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkBlue} }] at (1.663,-2.603) {$\hat{x}$ = round(x / s)};
+    \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=2.65cm, minimum height=0.71cm, inner sep=1pt, align=center, text width=2.59cm, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkGreen!70!black} }] at (4.651,-2.603) {$\in$ [-6, +6] 编码为 e2m1};
+    \node[draw=tkPurple, fill=tkFillPurple, line width=0.5pt, minimum width=2.40cm, minimum height=0.71cm, inner sep=1pt, align=center, text width=2.34cm, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkPurple} }] at (7.484,-2.603) {s 编码为 ue4m3};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (0.37,-3.234) {16 个数据共用 1 个 SF 字节：每元素均摊 4 + 8/16 = 4.5 bit};% w=8.393
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{tkRed} }] at (0.37,-3.573) {全零块：s = 0 $\to$ 倒数取 0（0/0 守卫），data=0 且 SF=0};% w=8.393
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{6.1}{7.7}\selectfont \bfseries }] at (9.394,-0.862) {(2) 数据与尺度的位域};% w=8.008
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkGreen!70!black} }] at (9.394,-1.247) {e2m1 数据（4 bit）：1 符号 + 2 指数 + 1 尾数};% w=8.008
+    \node[draw=tkRed, fill=tkFillRed, line width=0.5pt, minimum width=0.52cm, minimum height=0.49cm, inner sep=1pt, align=center, text width=0.46cm, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkRed} }] at (11.042,-1.725) {s};
+    \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=0.52cm, minimum height=0.49cm, inner sep=1pt, align=center, text width=0.46cm, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkGreen!70!black} }] at (11.612,-1.725) {e};
+    \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=0.52cm, minimum height=0.49cm, inner sep=1pt, align=center, text width=0.46cm, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkGreen!70!black} }] at (12.181,-1.725) {e};
+    \node[draw=tkBlue, fill=tkFillBlue, line width=0.5pt, minimum width=0.52cm, minimum height=0.49cm, inner sep=1pt, align=center, text width=0.46cm, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkBlue} }] at (12.751,-1.725) {m};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (9.394,-2.218) {值域 {0, $\pm$0.5, $\pm$1, $\pm$1.5, $\pm$2, $\pm$3, $\pm$4, $\pm$6}$\times$2\^{}e，满量程 6};% w=8.008
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkRed} }] at (9.394,-2.526) {相对步长 $\approx$ 25\%（fp8 e4m3 为 6.25\%）};% w=8.008
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkPurple} }] at (9.394,-2.972) {ue4m3 尺度（8 bit）：4 指数 + 3 尾数（无符号）};% w=8.008
+    \node[draw=tkPurple, fill=tkFillPurple, line width=0.5pt, minimum width=0.46cm, minimum height=0.49cm, inner sep=1pt, align=center, text width=0.40cm, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkPurple} }] at (11.011,-3.45) {e};
+    \node[draw=tkPurple, fill=tkFillPurple, line width=0.5pt, minimum width=0.46cm, minimum height=0.49cm, inner sep=1pt, align=center, text width=0.40cm, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkPurple} }] at (11.519,-3.45) {e};
+    \node[draw=tkPurple, fill=tkFillPurple, line width=0.5pt, minimum width=0.46cm, minimum height=0.49cm, inner sep=1pt, align=center, text width=0.40cm, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkPurple} }] at (12.027,-3.45) {e};
+    \node[draw=tkPurple, fill=tkFillPurple, line width=0.5pt, minimum width=0.46cm, minimum height=0.49cm, inner sep=1pt, align=center, text width=0.40cm, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkPurple} }] at (12.536,-3.45) {e};
+    \node[draw=tkBlue, fill=tkFillBlue, line width=0.5pt, minimum width=0.46cm, minimum height=0.49cm, inner sep=1pt, align=center, text width=0.40cm, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkBlue} }] at (13.044,-3.45) {m};
+    \node[draw=tkBlue, fill=tkFillBlue, line width=0.5pt, minimum width=0.46cm, minimum height=0.49cm, inner sep=1pt, align=center, text width=0.40cm, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkBlue} }] at (13.552,-3.45) {m};
+    \node[draw=tkBlue, fill=tkFillBlue, line width=0.5pt, minimum width=0.46cm, minimum height=0.49cm, inner sep=1pt, align=center, text width=0.40cm, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkBlue} }] at (14.06,-3.45) {m};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (9.394,-3.942) {值域 [0, 448]；SF 自身舍入 6.25\% 整体作用于 16 个元素};% w=8.008
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!45} }] at (9.394,-4.281) {MXFP4 对照：ue8m0/32 块，SF 步长 100\%（未采用）};% w=8.008
+    \node[draw=gray!55, fill=black!2, line width=0.5pt, minimum width=17.03cm, minimum height=6.78cm, inner sep=1pt, align=center, text width=16.97cm, font={\fontsize{5.7}{7.1}\selectfont }] at (8.886,-8.1) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{6.1}{7.7}\selectfont \bfseries }] at (0.616,-5.005) {(3) blockscale MMA：dequant 逐块隐含在乘法里（SM120 m16n32k64 mxf4nvf4）};% w=16.478
+    \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=3.08cm, minimum height=0.92cm, inner sep=1pt, align=center, text width=3.02cm, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkGreen!70!black} }] at (2.279,-6.037) {$\hat{A}$（e2m1 数据）\\+ s\_A（ue4m3，per-16）};
+    \node[draw=tkOrange, fill=tkFillOrange, line width=0.5pt, minimum width=3.08cm, minimum height=0.92cm, inner sep=1pt, align=center, text width=3.02cm, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkOrange!75!black} }] at (2.279,-7.577) {$\hat{B}$（e2m1 数据）\\+ s\_B（ue4m3，per-16）};
+    \node[draw=tkBlue, fill=tkFillBlue, line width=0.5pt, minimum width=3.08cm, minimum height=0.92cm, inner sep=1pt, align=center, text width=3.02cm, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkBlue} }] at (2.279,-9.117) {C（f32 累加器）\\S = QK 或 O = PV};
+    \node[draw=tkRed, fill=none, line width=0.5pt, minimum width=3.39cm, minimum height=2.00cm, inner sep=1pt, align=center, text width=3.33cm, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkRed} }] at (6.776,-7.561) {blockscale MMA\\逐块 ($\hat{A}$$\cdot$s\_A)($\hat{B}$$\cdot$s\_B)\\K=64 对齐 SF 旁路};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries }] at (9.24,-5.667) {块内视角（K 归约的每 16 一段）：};% w=7.700
+    \node[draw=tkBlue, fill=none, line width=0.5pt, minimum width=7.39cm, minimum height=0.71cm, inner sep=1pt, align=center, text width=7.33cm, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkBlue} }] at (12.936,-6.237) {acc += $\Sigma$$_1$$_6$ ($\hat{a}$$_i$$\cdot$s\_A[blk]) $\cdot$ ($\hat{b}$$_i$$\cdot$s\_B[blk])};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (9.24,-6.868) {$\cdot$ 数据通路 4 bit，SF 旁路 8 bit，硬件在累加处乘回尺度};% w=7.700
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (9.24,-7.207) {$\cdot$ K 维必须 64 对齐（SF atom 64 宽）$\to$ D pad 到 64 倍数};% w=7.700
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (9.24,-7.546) {$\cdot$ pad 列 data=0 且 SF=0 $\to$ 贡献恒 0（不产垃圾）};% w=7.700
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkRed} }] at (9.24,-7.885) {$\cdot$ SF 编码误差 = 尺度级错误：写序必须 match SF atom};% w=7.700
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries }] at (9.24,-8.408) {让 e2m1 可用的尺度工程（本章内容）：};% w=7.700
+    \node[draw=tkPurple, fill=tkFillPurple, line width=0.5pt, minimum width=2.31cm, minimum height=0.71cm, inner sep=1pt, align=center, text width=2.25cm, font={\fontsize{4.8}{6.0}\selectfont \bfseries \color{tkPurple} }] at (10.395,-8.978) {microscaling\\1$\times$16 块 + ue4m3};
+    \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=2.31cm, minimum height=0.71cm, inner sep=1pt, align=center, text width=2.25cm, font={\fontsize{4.8}{6.0}\selectfont \bfseries \color{tkGreen!70!black} }] at (13.013,-8.978) {smoothing\\q\_m / $\bar{k}$ 强制减除};
+    \node[draw=tkOrange, fill=tkFillOrange, line width=0.5pt, minimum width=2.16cm, minimum height=0.71cm, inner sep=1pt, align=center, text width=2.09cm, font={\fontsize{4.8}{6.0}\selectfont \bfseries \color{tkOrange!75!black} }] at (15.554,-8.978) {hadamard\\通道摊平（fused）};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (9.24,-9.579) {均值走 fp32 精确旁路（$\Delta$S / lse / epilogue 加回），};% w=7.700
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (9.24,-9.887) {残差交给 e2m1 ------ 量化预算全部留给有效信息};% w=7.700
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkPurple} }] at (0.616,-10.102) {P 的困难（online、值域 [0,1]、行内分布剧变）$\to$ 两级 P 量化，见下一章};% w=8.316
+    \draw[black!75, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (2.957,-2.603) -- (3.326,-2.603);
+    \draw[black!75, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (5.975,-2.603) -- (6.283,-2.603);
+    \draw[tkGreen, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (3.819,-6.037) -- (5.082,-7.022);
+    \draw[tkOrange, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (3.819,-7.577) -- (5.082,-7.946);
+    \draw[tkBlue, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (8.47,-7.561) -- (3.819,-9.117);
+  \end{tikzpicture}
   \caption{NVFP4 的 $1\times16$ microscaling 块：e2m1 数据位域与
   ue4m3 块尺度。$s_{block}=\mathrm{amax}/6$ 除进数据、乘回在
   blockscale MMA 内逐块完成。}
@@ -520,7 +588,59 @@ $\pi^{-1}$ 回到原始 token 位置判定。
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.98\textwidth]{figures/drawio/fig-31-2-fp4-pipeline/fig-31-2-fp4-pipeline.png}
+  % was: \includegraphics[width=0.98\textwidth]{figures/drawio/fig-31-2-fp4-pipeline/fig-31-2-fp4-pipeline.png}
+  \begin{tikzpicture}
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{7.4}{9.3}\selectfont \bfseries }] at (0.37,-0.354) {fp4 前处理链数据流：均值先行，量化居中，rank-1 修正收尾};% w=17.094
+    \node[draw=black!75, fill=none, line width=0.5pt, minimum width=2.93cm, minimum height=0.80cm, inner sep=1pt, align=center, text width=2.86cm, font={\fontsize{5.2}{6.6}\selectfont \bfseries }] at (1.833,-1.14) {Q (B,S,H,D)\\原生 stride 读};
+    \node[draw=black!75, fill=none, line width=0.5pt, minimum width=2.93cm, minimum height=0.80cm, inner sep=1pt, align=center, text width=2.86cm, font={\fontsize{5.2}{6.6}\selectfont \bfseries }] at (5.313,-1.14) {K (B,S,H,D)\\原生 stride 读};
+    \node[draw=black!75, fill=none, line width=0.5pt, minimum width=2.93cm, minimum height=0.80cm, inner sep=1pt, align=center, text width=2.86cm, font={\fontsize{5.2}{6.6}\selectfont \bfseries }] at (8.793,-1.14) {V (B,S,H,D)\\原生 stride 读};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries }] at (0.37,-1.879) {(1) 均值先行（是量化 kernel 的输入 bias，必须先算）};% w=17.094
+    \node[draw=tkPurple, fill=tkFillPurple, line width=0.5pt, minimum width=3.91cm, minimum height=0.89cm, inner sep=1pt, align=center, text width=3.85cm, font={\fontsize{4.8}{6.0}\selectfont \color{tkPurple} }] at (2.325,-2.572) {q\_m = mean(Q, 128 行块)\\fp32 + dtype 双份（fused 内产出）};
+    \node[draw=tkPurple, fill=tkFillPurple, line width=0.5pt, minimum width=2.93cm, minimum height=0.89cm, inner sep=1pt, align=center, text width=2.86cm, font={\fontsize{4.8}{6.0}\selectfont \color{tkPurple} }] at (6.36,-2.572) {$\bar{k}$ = mean(K, 序列)\\外部小 kernel};
+    \node[draw=tkPurple, fill=tkFillPurple, line width=0.5pt, minimum width=3.91cm, minimum height=0.89cm, inner sep=1pt, align=center, text width=3.85cm, font={\fontsize{4.8}{6.0}\selectfont \color{tkPurple} }] at (10.549,-2.572) {q\_km = q\_m $\cdot$ $\bar{k}$（每行常数）\\与 v\_m = mean(V, 列)（可选）};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries }] at (0.37,-3.388) {(2) 量化 kernel：减 bias $\to$ (WHT fused) $\to$ 1$\times$16 块 absmax $\to$ cvt e2m1/e4m3};% w=17.094
+    \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=4.13cm, minimum height=0.99cm, inner sep=1pt, align=center, text width=4.07cm, font={\fontsize{4.8}{6.0}\selectfont \color{tkGreen!70!black} }] at (2.433,-4.127) {Q 量化\\sub q\_m $\cdot$（WHT fused：蝶形 + 2$\times$shfl\_xor）};
+    \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=4.13cm, minimum height=0.99cm, inner sep=1pt, align=center, text width=4.07cm, font={\fontsize{4.8}{6.0}\selectfont \color{tkGreen!70!black} }] at (6.961,-4.127) {K 量化（perm32 写序）\\sub $\bar{k}$ $\cdot$ 列 j $\leftarrow$ token $\pi$(j)};
+    \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=4.13cm, minimum height=0.99cm, inner sep=1pt, align=center, text width=4.07cm, font={\fontsize{4.8}{6.0}\selectfont \color{tkGreen!70!black} }] at (11.488,-4.127) {V$^{\top}$ 量化（smem 转置）\\（可选 sub v\_m，恒等加回）};
+    \node[draw=tkRed, fill=none, line width=0.5pt, minimum width=13.71cm, minimum height=1.54cm, inner sep=1pt, align=center, text width=13.64cm, font={\fontsize{5.7}{7.1}\selectfont }] at (7.038,-4.066) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \bfseries \color{tkRed} }] at (0.246,-3.049) {D $\leq$ 128：三段合一个 launch（[Q|K|V] grid 段）};% w=6.160
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries }] at (0.37,-5.298) {(3) 输出 workspace（e2m1 数据 + ue4m3 SF，SF 按 atom 块序写）};% w=17.094
+    \node[draw=tkBlue, fill=tkFillBlue, line width=0.5pt, minimum width=4.13cm, minimum height=0.80cm, inner sep=1pt, align=center, text width=4.07cm, font={\fontsize{4.8}{6.0}\selectfont \color{tkBlue} }] at (2.433,-5.914) {$\hat{Q}$ + s\_Q\\(B,H,N,D/2)+(B,H,N,D/16)};
+    \node[draw=tkBlue, fill=tkFillBlue, line width=0.5pt, minimum width=4.13cm, minimum height=0.80cm, inner sep=1pt, align=center, text width=4.07cm, font={\fontsize{4.8}{6.0}\selectfont \color{tkBlue} }] at (6.961,-5.914) {$\hat{K}$$^{\top}$ + s\_K\\perm32 存储列序};
+    \node[draw=tkBlue, fill=tkFillBlue, line width=0.5pt, minimum width=4.13cm, minimum height=0.80cm, inner sep=1pt, align=center, text width=4.07cm, font={\fontsize{4.8}{6.0}\selectfont \color{tkBlue} }] at (11.488,-5.914) {$\hat{V}$$^{\top}$ + s\_V\\(B,H,D,N/2) 转置布局};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries }] at (0.37,-6.961) {(4) $\Delta$S rank-1 修正：q\_m K$^{\top}$ $-$ q\_km（免物化 K$-$$\bar{k}$）};% w=17.094
+    \node[draw=tkOrange, fill=tkFillOrange, line width=0.5pt, minimum width=4.62cm, minimum height=1.02cm, inner sep=1pt, align=center, text width=4.56cm, font={\fontsize{4.8}{6.0}\selectfont \color{tkOrange!75!black} }] at (2.68,-7.715) {delta\_s kernel（128$\times$128 tile）\\wmma 版 / CuTe+TMA 版 按 shape dispatch\\大 N：torch 链 1.4ms $\to$ \textasciitilde{}0.3ms};
+    \node[draw=tkRed, fill=tkFillRed, line width=0.5pt, minimum width=3.70cm, minimum height=1.02cm, inner sep=1pt, align=center, text width=3.63cm, font={\fontsize{4.8}{6.0}\selectfont \color{tkRed} }] at (7.392,-7.715) {$\Delta$S (B,H,M\_b,N\_kv) f32\\pad 列零填（主 kernel -inf）};
+    \node[draw=gray!55, fill=black!2, line width=0.5pt, minimum width=17.09cm, minimum height=1.20cm, inner sep=1pt, align=center, text width=17.03cm, font={\fontsize{5.7}{7.1}\selectfont }] at (8.917,-9.533) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries }] at (0.616,-9.178) {(5) fp4 persist-D 主 kernel（下一章）：S = $\hat{Q}$$\hat{K}$$^{\top}$ + $\Delta$S $\to$ 两级 P 量化 $\to$ PV blockscale $\to$ lse/epilogue 加回};% w=16.478
+    \node[draw=tkPurple, fill=none, line width=0.5pt, minimum width=3.08cm, minimum height=0.55cm, inner sep=1pt, align=center, text width=3.02cm, font={\fontsize{4.8}{6.0}\selectfont \color{tkPurple} }] at (2.464,-9.733) {lse 修正：\\scale $\cdot$ dot(q\_row, $\bar{k}$)};
+    \node[draw=tkPurple, fill=none, line width=0.5pt, minimum width=3.39cm, minimum height=0.55cm, inner sep=1pt, align=center, text width=3.33cm, font={\fontsize{4.8}{6.0}\selectfont \color{tkPurple} }] at (6.314,-9.733) {O epilogue：+ v\_m（可选，恒等）};
+    \node[draw=tkBlue, fill=none, line width=0.5pt, minimum width=3.85cm, minimum height=0.55cm, inner sep=1pt, align=center, text width=3.79cm, font={\fontsize{4.8}{6.0}\selectfont \color{tkBlue} }] at (10.549,-9.733) {O pad 后切回 d\_og 宽度输出};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{black!65} }] at (14.045,-4.066) {三不变性见正文\\（旁路 / WHT / pad）};% w=3.388
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \bfseries \color{tkRed} }] at (14.045,-7.731) {mask/bias 必须\\perm-aware（$\pi$$^{-1}$）};% w=3.388
+    \draw[tkPurple, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (1.848,-1.54) -- (1.848,-2.125);
+    \draw[tkPurple, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (5.313,-1.54) -- (5.313,-2.125);
+    \draw[tkPurple, line width=0.8pt, dashed, -{Stealth[length=2.2pt,width=1.8pt]}] (8.624,-1.54) -- (8.624,-2.125);
+    \draw[tkPurple, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (1.848,-3.018) -- (1.848,-3.634);
+    \draw[tkPurple, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (5.313,-3.018) -- (5.313,-3.634);
+    \draw[tkPurple, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (8.624,-3.018) -- (8.624,-3.634);
+    \draw[gray!55, line width=0.5pt, -{Stealth[length=2.2pt,width=1.8pt]}] (1.848,-1.54) -- (1.848,-2.125);
+    \draw[black!75, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (1.078,-1.54) -- (1.078,-3.634);
+    \draw[black!75, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (4.312,-1.54) -- (4.312,-3.634);
+    \draw[black!75, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (7.854,-1.54) -- (7.854,-3.634);
+    \draw[black!75, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (10.78,-1.54) -- (10.78,-3.634);
+    \draw[black!75, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (1.848,-4.62) -- (1.848,-5.513);
+    \draw[black!75, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (5.313,-4.62) -- (5.313,-5.513);
+    \draw[black!75, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (10.472,-4.62) -- (10.472,-5.513);
+    \draw[black!75, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (4.99,-7.715) -- (5.544,-7.715);
+    \draw[tkPurple, line width=0.5pt, -{Stealth[length=2.2pt,width=1.8pt]}] (1.54,-3.018) -- (1.54,-3.634);
+    \draw[tkPurple, line width=0.8pt, dashed, -{Stealth[length=2.2pt,width=1.8pt]}] (2.156,-3.018) -- (2.156,-4.558) -- (2.156,-7.207);
+    \draw[tkPurple, line width=0.8pt, dashed, -{Stealth[length=2.2pt,width=1.8pt]}] (5.082,-4.62) -- (5.082,-6.314) -- (5.082,-7.207);
+    \draw[tkBlue, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (1.848,-6.314) -- (1.848,-8.932);
+    \draw[tkBlue, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (5.313,-6.314) -- (5.313,-8.932);
+    \draw[tkBlue, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (10.472,-6.314) -- (10.472,-8.932);
+    \draw[tkRed, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (7.392,-8.224) -- (7.392,-8.932);
+  \end{tikzpicture}
   \caption{fp4 前处理链数据流（$D\le128$ 走 fused 单 launch 路径）：
   $\bar k$/$q_m$ 均值先行的原因是它们是量化 kernel 的输入 bias；
   hadamard 下 $q_m^{rot}$ 在 fused kernel 内顺带产出。}
@@ -529,7 +649,110 @@ $\pi^{-1}$ 回到原始 token 位置判定。
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.98\textwidth]{figures/drawio/fig-31-3-kv-perm32/fig-31-3-kv-perm32.png}
+  % was: \includegraphics[width=0.98\textwidth]{figures/drawio/fig-31-3-kv-perm32/fig-31-3-kv-perm32.png}
+  \begin{tikzpicture}
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{7.4}{9.3}\selectfont \bfseries }] at (0.37,-0.354) {kv\_perm32：32 列窗口双射置换与 perm-aware masking};% w=17.094
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{6.1}{7.7}\selectfont \bfseries }] at (0.37,-0.862) {(1) 为什么置换：对齐 C/A fragment 布局};% w=10.780
+    \node[draw=tkBlue, fill=tkFillBlue, line width=0.5pt, minimum width=2.93cm, minimum height=0.86cm, inner sep=1pt, align=center, text width=2.86cm, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkBlue} }] at (1.833,-1.571) {QK MMA\\C 累加器布局};
+    \node[draw=tkOrange, fill=tkFillOrange, line width=0.5pt, minimum width=2.93cm, minimum height=0.86cm, inner sep=1pt, align=center, text width=2.86cm, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkOrange!75!black} }] at (5.313,-1.571) {PV MMA\\A 操作数布局};
+    \node[draw=tkRed, fill=tkFillRed, line width=0.5pt, minimum width=4.00cm, minimum height=0.86cm, inner sep=1pt, align=center, text width=3.94cm, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkRed} }] at (9.178,-1.571) {列错位 $\to$ 不搬 P\\改搬 K（SA3 \S{}3.3）};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (11.858,-1.324) {fp8 的对照解法：16 SHFL + 32 PRMT 搬 P};% w=5.544
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (11.858,-1.663) {（reorg-free：第 29 章）；fp4 换成搬 K 列};% w=5.544
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (0.37,-2.31) {置换 fused 进 K/V$^{\top}$ 量化 kernel 写侧：存储列 j $\leftarrow$ 原 token $\pi$(j)};% w=10.780
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{6.1}{7.7}\selectfont \bfseries }] at (0.37,-2.834) {(2) 32 列窗口内的双射 $\pi$（跨窗口恒等；闭式 $\pi$(j) = (j\&\textasciitilde{}31) + (loc/8)$\cdot$2 + ((loc\%8)/2)$\cdot$8 + loc\%8）};% w=17.094
+    \node[anchor=east, inner sep=0pt, align=right, font={\fontsize{5.2}{6.6}\selectfont \bfseries }] at (2.372,-3.357) {存储列 j：};% w=2.002
+    \node[anchor=east, inner sep=0pt, align=right, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkPurple} }] at (2.372,-3.881) {原 token：};% w=2.002
+    \node[draw=gray!55, fill=black!4, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont }] at (2.803,-3.311) {0};
+    \node[draw=tkPurple, fill=tkFillPurple, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont \bfseries \color{tkPurple} }] at (2.803,-3.835) {0};
+    \node[draw=gray!55, fill=black!4, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont }] at (3.28,-3.311) {1};
+    \node[draw=tkPurple, fill=tkFillPurple, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont \bfseries \color{tkPurple} }] at (3.28,-3.835) {1};
+    \node[draw=gray!55, fill=black!4, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont }] at (3.758,-3.311) {2};
+    \node[draw=tkPurple, fill=tkFillPurple, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont \bfseries \color{tkPurple} }] at (3.758,-3.835) {8};
+    \node[draw=gray!55, fill=black!4, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont }] at (4.235,-3.311) {3};
+    \node[draw=tkPurple, fill=tkFillPurple, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont \bfseries \color{tkPurple} }] at (4.235,-3.835) {9};
+    \node[draw=gray!55, fill=black!4, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont }] at (4.712,-3.311) {4};
+    \node[draw=tkPurple, fill=tkFillPurple, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont \bfseries \color{tkPurple} }] at (4.712,-3.835) {16};
+    \node[draw=gray!55, fill=black!4, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont }] at (5.19,-3.311) {5};
+    \node[draw=tkPurple, fill=tkFillPurple, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont \bfseries \color{tkPurple} }] at (5.19,-3.835) {17};
+    \node[draw=gray!55, fill=black!4, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont }] at (5.667,-3.311) {6};
+    \node[draw=tkPurple, fill=tkFillPurple, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont \bfseries \color{tkPurple} }] at (5.667,-3.835) {24};
+    \node[draw=gray!55, fill=black!4, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont }] at (6.145,-3.311) {7};
+    \node[draw=tkPurple, fill=tkFillPurple, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont \bfseries \color{tkPurple} }] at (6.145,-3.835) {25};
+    \node[draw=gray!55, fill=black!4, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont }] at (6.622,-3.311) {8};
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (6.622,-3.835) {2};
+    \node[draw=gray!55, fill=black!4, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont }] at (7.099,-3.311) {9};
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (7.099,-3.835) {3};
+    \node[draw=gray!55, fill=black!4, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont }] at (7.577,-3.311) {10};
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (7.577,-3.835) {10};
+    \node[draw=gray!55, fill=black!4, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont }] at (8.054,-3.311) {11};
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (8.054,-3.835) {11};
+    \node[draw=gray!55, fill=black!4, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont }] at (8.532,-3.311) {12};
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (8.532,-3.835) {18};
+    \node[draw=gray!55, fill=black!4, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont }] at (9.009,-3.311) {13};
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (9.009,-3.835) {19};
+    \node[draw=gray!55, fill=black!4, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont }] at (9.486,-3.311) {14};
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (9.486,-3.835) {26};
+    \node[draw=gray!55, fill=black!4, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont }] at (9.964,-3.311) {15};
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (9.964,-3.835) {27};
+    \node[draw=gray!55, fill=black!4, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont }] at (10.441,-3.311) {16};
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (10.441,-3.835) {4};
+    \node[draw=gray!55, fill=black!4, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont }] at (10.919,-3.311) {17};
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (10.919,-3.835) {5};
+    \node[draw=gray!55, fill=black!4, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont }] at (11.396,-3.311) {18};
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (11.396,-3.835) {12};
+    \node[draw=gray!55, fill=black!4, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont }] at (11.873,-3.311) {19};
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (11.873,-3.835) {13};
+    \node[draw=gray!55, fill=black!4, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont }] at (12.351,-3.311) {20};
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (12.351,-3.835) {20};
+    \node[draw=gray!55, fill=black!4, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont }] at (12.828,-3.311) {21};
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (12.828,-3.835) {21};
+    \node[draw=gray!55, fill=black!4, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont }] at (13.306,-3.311) {22};
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (13.306,-3.835) {28};
+    \node[draw=gray!55, fill=black!4, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont }] at (13.783,-3.311) {23};
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (13.783,-3.835) {29};
+    \node[draw=gray!55, fill=black!4, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont }] at (14.26,-3.311) {24};
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (14.26,-3.835) {6};
+    \node[draw=gray!55, fill=black!4, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont }] at (14.738,-3.311) {25};
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (14.738,-3.835) {7};
+    \node[draw=gray!55, fill=black!4, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont }] at (15.215,-3.311) {26};
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (15.215,-3.835) {14};
+    \node[draw=gray!55, fill=black!4, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont }] at (15.693,-3.311) {27};
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (15.693,-3.835) {15};
+    \node[draw=gray!55, fill=black!4, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont }] at (16.17,-3.311) {28};
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (16.17,-3.835) {22};
+    \node[draw=gray!55, fill=black!4, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont }] at (16.647,-3.311) {29};
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (16.647,-3.835) {23};
+    \node[draw=gray!55, fill=black!4, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont }] at (17.125,-3.311) {30};
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (17.125,-3.835) {30};
+    \node[draw=gray!55, fill=black!4, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont }] at (17.602,-3.311) {31};
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=0.43cm, minimum height=0.46cm, inner sep=1pt, align=center, text width=0.37cm, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (17.602,-3.835) {31};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{black!65} }] at (2.587,-4.343) {紫色 = 每对 (8k, 8k+1) 的 token 被提前到窗口头部：取数步长呈 0,1,8,9,16,17,24,25,\ldots{} 的双指数节奏};% w=15.246
+    \node[draw=gray!55, fill=black!2, line width=0.5pt, minimum width=17.09cm, minimum height=6.78cm, inner sep=1pt, align=center, text width=17.03cm, font={\fontsize{5.7}{7.1}\selectfont }] at (8.917,-8.47) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{6.1}{7.7}\selectfont \bfseries }] at (0.616,-5.375) {(3) masking / bias 必须经 $\pi$ 回到原始 token 位置判定};% w=16.478
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkGreen!70!black} }] at (0.739,-5.883) {正确（perm-aware）:};% w=7.700
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=2.00cm, minimum height=0.68cm, inner sep=1pt, align=center, text width=1.94cm, font={\fontsize{5.2}{6.6}\selectfont }] at (1.74,-6.437) {smem 列 j};
+    \node[draw=tkPurple, fill=tkFillPurple, line width=0.5pt, minimum width=2.62cm, minimum height=0.68cm, inner sep=1pt, align=center, text width=2.56cm, font={\fontsize{4.8}{6.0}\selectfont \bfseries \color{tkPurple} }] at (4.666,-6.437) {pos = kv\_tile$\cdot$Bc\\+ kv\_perm32(j)};
+    \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=2.00cm, minimum height=0.68cm, inner sep=1pt, align=center, text width=1.94cm, font={\fontsize{4.8}{6.0}\selectfont \bfseries \color{tkGreen!70!black} }] at (7.5,-6.437) {causal 判定\\pos $\leq$ q\_row};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{black!65} }] at (0.739,-7.361) {S 的逻辑列 j 与 K 的存储列同步置换，语义列 = $\pi$(j)。\\attn\_bias 同款：bias 列索引进 gmem/smem 读时过 $\pi$(j)。\\tile 级跳过（mask\_start\_tile / Tc\_eff）不受影响：$\pi$ 是窗口内双射。};% w=8.008
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkRed} }] at (9.548,-5.883) {错误（上游 SA3 的真实 bug）:};% w=7.700
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=2.00cm, minimum height=0.68cm, inner sep=1pt, align=center, text width=1.94cm, font={\fontsize{5.2}{6.6}\selectfont }] at (10.549,-6.437) {smem 列 j};
+    \node[draw=tkRed, fill=tkFillRed, line width=0.5pt, minimum width=2.62cm, minimum height=0.68cm, inner sep=1pt, align=center, text width=2.56cm, font={\fontsize{4.8}{6.0}\selectfont \bfseries \color{tkRed} }] at (13.475,-6.437) {直接用 j 当 token\\位置做判定};
+    \node[draw=tkRed, fill=tkFillRed, line width=0.5pt, minimum width=1.82cm, minimum height=0.68cm, inner sep=1pt, align=center, text width=1.76cm, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkRed} }] at (16.216,-6.437) {causal\\算错};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{tkRed} }] at (9.548,-7.361) {置换只改存储位置，\\causal 边界在语义域：\\N=512 max\_abs 3.3（量级错误）};% w=7.700
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries }] at (0.739,-8.316) {fragment 视角（为什么这张表能对齐布局）:};% w=16.478
+    \node[draw=tkBlue, fill=tkFillBlue, line width=0.5pt, minimum width=5.08cm, minimum height=1.02cm, inner sep=1pt, align=center, text width=5.02cm, font={\fontsize{4.8}{6.0}\selectfont \color{tkBlue} }] at (3.28,-9.071) {QK 后 S fragment\\线程 t 持逻辑列 (t\%4)$\cdot$2, (t\%4)$\cdot$2+1 \ldots{}};
+    \node[draw=tkOrange, fill=tkFillOrange, line width=0.5pt, minimum width=5.08cm, minimum height=1.02cm, inner sep=1pt, align=center, text width=5.02cm, font={\fontsize{4.8}{6.0}\selectfont \color{tkOrange!75!black} }] at (9.071,-9.071) {PV 的 A 操作数\\线程 t 需要 K 行 (t\%4)$\cdot$8 \ldots{}（步长 8）};
+    \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=3.60cm, minimum height=1.02cm, inner sep=1pt, align=center, text width=3.54cm, font={\fontsize{4.8}{6.0}\selectfont \bfseries \color{tkGreen!70!black} }] at (14.122,-9.071) {$\pi$ 把步长-8 的取数\\变成连续存储列};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkRed} }] at (0.739,-9.856) {同一张 $\pi$ 表贯穿三处：量化写侧（load\_token\_id）、masking、attn\_bias------单侧改动即静默错位。};% w=16.478
+    \draw[black!75, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (3.296,-1.571) -- (3.85,-1.571);
+    \draw[black!75, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (6.776,-1.571) -- (7.176,-1.571);
+    \draw[black!75, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (2.741,-6.437) -- (3.357,-6.437);
+    \draw[black!75, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (5.975,-6.437) -- (6.499,-6.437);
+    \draw[black!75, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (11.55,-6.437) -- (12.166,-6.437);
+    \draw[black!75, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (14.784,-6.437) -- (15.308,-6.437);
+    \draw[black!75, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (5.821,-9.071) -- (6.53,-9.071);
+    \draw[black!75, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (11.612,-9.071) -- (12.32,-9.071);
+  \end{tikzpicture}
   \caption{kv\_perm32 的 32 列窗口双射与 perm-aware masking。置换让
   QK 的 C fragment 列直接匹配 PV 的 A 操作数布局；mask/bias 必须经
   \label{fig:31-3}

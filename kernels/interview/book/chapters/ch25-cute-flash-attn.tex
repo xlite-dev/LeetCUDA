@@ -885,7 +885,78 @@ KV 划分 & 单流全遍历 & 单流全遍历 & 奇偶拆给两个 consumer \\
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.98\textwidth]{figures/drawio/fig-25-1-cute-struct/fig-25-1.png}
+% was: \includegraphics[width=0.98\textwidth]{figures/drawio/fig-25-1-cute-struct/fig-25-1.png}
+\begin{tikzpicture}[font=\tiny, >=Stealth,
+  secl/.style={font=\bfseries\fontsize{4.6}{5.2}\selectfont, inner sep=1pt},
+  code/.style={font=\ttfamily\fontsize{4.2}{4.8}\selectfont, inner sep=1pt, anchor=west},
+  sub/.style={font=\fontsize{4.2}{4.8}\selectfont, inner sep=1pt, anchor=west,
+    align=left, text width=4.30cm},
+  tcard/.style={draw=tkBlue, fill=tkFillBlue, inner sep=3pt},
+  ihdr/.style={draw, fill=gray!14, align=center, inner sep=2pt,
+    font=\bfseries\fontsize{4.4}{5}\selectfont},
+]
+  \node[secl, text=tkBlue, anchor=west] at (0,0.34) {共享层（L2197-2490）：traits + 五个工具函数};
+  % 共享层：两个 traits 卡
+  \draw[tcard] (0,-0.02) rectangle (7.00,-1.78);
+  \node[code, text=tkBlue] at (0.10,-0.22) {\textbf{FlashAttn2CuTeTraits<D>}\ \ Br=128};
+  \node[code] at (0.10,-0.56) {SmemLayoutQ\ \ (128,D)\ SW128};
+  \node[code] at (0.10,-0.84) {SmemLayoutKV\ (64,D)\ SW128};
+  \node[code] at (0.10,-1.12) {SmemLayoutVt\ = comp(KV)};
+  \node[code] at (0.10,-1.40) {TiledMma\ \ (8,1,1)$\times$(128,16,16)};
+  \draw[tcard] (7.50,-0.02) rectangle (14.50,-1.78);
+  \node[code, text=tkBlue] at (7.60,-0.22) {\textbf{FlashAttn3CuTeTraits<D>}\ \ Br=64};
+  \node[code] at (7.60,-0.56) {SmemLayoutQKV (64,D) SW128};
+  \node[code] at (7.60,-0.84) {SmemLayoutVt\ = comp(QKV)};
+  \node[code] at (7.60,-1.12) {TiledMma\ \ (4,1,1)$\times$(64,16,16)};
+  % 共享层：工具函数横条
+  \draw[tcard] (0,-1.95) rectangle (14.50,-2.55);
+  \node[code] at (0.60,-2.25) {convert\_layout\_acc\_rowcol (4,MM,NN)$\to$((2,MM),(2,NN))};
+  \draw[tkBlue!45, thin] (5.55,-2.00) -- (5.55,-2.50);
+  \node[code] at (5.80,-2.25) {convert\_layout\_acc\_Aregs（零拷贝）};
+  \draw[tkBlue!45, thin] (10.05,-2.00) -- (10.05,-2.50);
+  \node[code] at (10.30,-2.25) {convert\_type\ /\ gemm\_ss\ /\ gemm\_rs};
+  % 三个实现的调度结构卡（各自保持自己一层的调度色）
+  \draw[draw=tkBlue, fill=white] (0,-3.00) rectangle (4.60,-5.00);
+  \draw[draw=tkOrange, fill=white] (4.95,-3.00) rectangle (9.55,-5.00);
+  \draw[draw=tkGreen, fill=white] (9.90,-3.00) rectangle (14.50,-5.00);
+  \node[ihdr, text=tkBlue] at (2.30,-3.21) {实现 1：cp.async};
+  \node[ihdr, text=tkOrange!85!black] at (7.25,-3.21) {实现 2：TMA + WS};
+  \node[ihdr, text=tkGreen] at (12.20,-3.21) {实现 3：FA3 双 consumer};
+  \node[sub] at (0.15,-3.66) {\textbf{256 threads}};
+  \node[sub] at (0.15,-3.92) {sQ(128,D) / sK[$S_k$](64,D)};
+  \node[sub] at (0.15,-4.18) {/ sV(64,D)};
+  \node[sub] at (0.15,-4.44) {cp.async 组栈 wait<N>};
+  \node[sub] at (0.15,-4.70) {全员搬运 $+$ 计算};
+  \node[sub] at (5.10,-3.66) {\textbf{384 = 128P + 256C}};
+  \node[sub] at (5.10,-3.92) {mbarrier 事务计数};
+  \node[sub] at (5.10,-4.18) {V-first, K-after};
+  \node[sub] at (5.10,-4.44) {早释放 K};
+  \node[sub] at (10.05,-3.66) {\textbf{384 = 128P + 2$\times$128C}};
+  \node[sub] at (10.05,-3.92) {cid = tile XOR 1 路由};
+  \node[sub] at (10.05,-4.18) {每 C 独立 bank 屏障};
+  \node[sub] at (10.05,-4.44) {收尾 smem scratch $+$ 归并};
+  \node[sub] at (10.05,-4.70) {(max pivot)};
+  % 共享层 -> 三实现（实线：复用同一份布局类型）
+  \draw[->, tkBlue, semithick] (2.30,-2.60) -- (2.30,-2.96);
+  \draw[->, tkOrange, semithick] (7.25,-2.60) -- (7.25,-2.96);
+  \draw[->, tkGreen, semithick] (12.20,-2.60) -- (12.20,-2.96);
+  % 实现 4：公共底座自检
+  \node[draw=tkOrange!85!black, fill=tkFillOrange, align=center, inner sep=2pt,
+    font=\fontsize{4.2}{4.8}\selectfont, text width=13.9cm]
+    at (7.25,-5.80)
+    {\textbf{实现 4 smoke（41 行，L3454-3495）：TMA descriptor $+$ SW128 布局 $+$ mbarrier 事务屏障的最小闭环}\\
+     不计算 attention——只验证「搬运 $+$ 布局 $+$ 屏障」三件套本身；三个实现的公共底座照此自检};
+  \draw[->, dashed, tkOrange, semithick] (2.30,-5.04) -- (2.30,-5.42);
+  \draw[->, dashed, tkOrange, semithick] (7.25,-5.04) -- (7.25,-5.42);
+  \draw[->, dashed, tkOrange, semithick] (12.20,-5.04) -- (12.20,-5.42);
+  % 图例
+  \fill[tkFillBlue, draw=tkBlue] (0.10,-6.60) rectangle (0.32,-6.82);
+  \node[sub] at (0.42,-6.71) {布局类型（共享层复用）};
+  \fill[gray!14, draw=tkOrange] (5.60,-6.60) rectangle (5.82,-6.82);
+  \node[sub] at (5.92,-6.71) {调度结构（三实现各异）};
+  \node[sub, text width=5.40cm] at (9.60,-6.71)
+    {实线 $=$ 复用同一份布局类型；虚线 $=$ 公共底座自检};
+\end{tikzpicture}
 \caption{CuTe 块的四层结构：共享 traits 与五个工具函数（上），三个 attention
 实现（中），以及 41 行的 TMA 搬运自检（底）。实线箭头表示「同一份布局类型被
 三种调度结构复用」，虚线表示三个实现共用实现~4 的底座自检。}

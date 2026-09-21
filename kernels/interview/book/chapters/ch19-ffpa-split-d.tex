@@ -805,14 +805,114 @@ $\times$ 2 个 N-warp，$R_O$ 降到 $D/4$）的原因，也是本章这版 kern
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-19-1-split-d-chunk/fig-19-1.png}
+\begin{tikzpicture}[font=\tiny, x=0.014464cm, y=-0.014464cm]
+  \definecolor{tBlue}{RGB}{33,100,160}
+  \definecolor{tGreen}{RGB}{40,105,60}
+  \definecolor{tOrange}{RGB}{165,95,15}
+  \node[anchor=west, font=\scriptsize\bfseries] at (24,26)
+    {Split-D：D 维切分（$D = 512 \to C = 8$ 个 64 宽 chunk）};
+  \node[anchor=west, text=tBlue, font=\tiny\bfseries] at (24,68)
+    {Q $[B_r{=}64, D{=}512]$};
+  \node[anchor=west, text=tGreen, font=\tiny\bfseries] at (24,112)
+    {K $[B_c{=}64, D{=}512]$};
+  \node[anchor=west, text=tOrange, font=\tiny\bfseries] at (24,156)
+    {V $[B_c{=}64, D{=}512]$};
+  \foreach \c in {0,...,7}{
+    \node[draw=tBlue, fill=gray!8, inner sep=0pt, minimum width=1.53cm,
+          minimum height=0.52cm, font=\tiny] at ({253+112*\c},66) {c\c};
+    \node[draw=tGreen, fill=gray!8, inner sep=0pt, minimum width=1.53cm,
+          minimum height=0.52cm, font=\tiny] at ({253+112*\c},110) {c\c};
+    \node[draw=tOrange, fill=gray!8, inner sep=0pt, minimum width=1.53cm,
+          minimum height=0.52cm, font=\tiny] at ({253+112*\c},154) {c\c};
+  }
+  \node[anchor=west, text=black!65] at (24,190)
+    {chunk $c$ = 64 个 f16 宽 = 恰好 1 个 SW128 swizzle atom};
+  \node[draw=tBlue, fill=gray!10, text=tBlue, font=\tiny\bfseries, align=center,
+        text width=15.2cm, inner sep=1pt, minimum height=0.64cm] at (560,235)
+    {Phase 1\ \ QK$^{\top}$：$S[64,64] \mathrel{+}= Q(c) @ K(c)^{\top}$，$c = 0..7$ —— 点积内部精确求和，无权重（共享同一个 $S$ acc）};
+  \node[draw=tGreen, fill=gray!10, text=tGreen, font=\tiny\bfseries, align=center,
+        text width=15.2cm, inner sep=1pt, minimum height=0.64cm] at (560,289)
+    {Phase 2\ \ $\mathrm{softmax}(S)$：$m$，$\ell$，$p = \mathrm{exp2}(S \cdot \mathrm{scale} - m)$ —— 与 $D$ 无关};
+  \node[draw=tOrange, fill=gray!10, text=tOrange, font=\tiny\bfseries, align=center,
+        text width=15.2cm, inner sep=1pt, minimum height=0.64cm] at (560,343)
+    {Phase 3\ \ PV：$O_c[64,64] \mathrel{*}= \rho$；$O_c \mathrel{+}= P @ V(c)$，$c = 0..7$ —— $C$ 个独立 $O$ acc，同一 $\rho$ 广播到全部};
+  \node[draw=black!55, fill=gray!20, align=center, text width=15.2cm, inner sep=1pt,
+        minimum height=0.58cm] at (560,395)
+    {Epi：$O_c \mathrel{/}= \ell$（$c = 0..7$）$\to$ 以 (q\_tile, c) 为坐标 store $[64,64]$ tile};
+  \node[anchor=west, font=\tiny\bfseries] at (24,440)
+    {流水槽位（TMA 版，$\mathrm{Sk} = S_v = 2$）：};
+  \node[draw=black!60, fill=white, align=center, text width=9.7cm, inner sep=1pt,
+        minimum height=0.64cm, font=\tiny\bfseries] at (374,479)
+    {$\mathrm{idx} = \mathrm{kv\_tile} \cdot C + c$；$\mathrm{stage} = \mathrm{idx} \bmod \mathrm{Sk}$；$\mathrm{phase} = (\mathrm{idx}/\mathrm{Sk})\,\&\,1$};
+  \node[draw=tBlue, fill=white, align=center, text width=4.7cm, inner sep=1pt,
+        minimum height=0.64cm, font=\tiny] at (922,479)
+    {$D{=}128$（$C{=}2$）：phase 周期 1 个 kv\_tile};
+  \node[draw=tGreen, fill=white, align=center, text width=4.7cm, inner sep=1pt,
+        minimum height=0.64cm, font=\tiny] at (922,533)
+    {$D{=}192$（$C{=}3$）：周期 2（$\gcd(C, \mathrm{Sk}) = 1$）};
+\end{tikzpicture}
 \caption{Split-D 的 D 维切分：Q/K/V 各切成 $C = D/64$ 个 64 宽 chunk（一个 chunk 等于一个 SW128 swizzle atom 宽）。QK 的 chunk 累加写进同一块 $S[64,64]$；PV 的每个 chunk 写进自己的 $O_c[64,64]$，共用同一个 $\rho$ 与 $\ell$；流水槽位由扁平计数器 $\mathrm{idx}$ 导出。}
 \label{fig:19-1}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-19-2-two-stage-merge/fig-19-2.png}
+\begin{tikzpicture}[font=\tiny, x=0.014464cm, y=-0.014464cm]
+  \definecolor{tBlue}{RGB}{33,100,160}
+  \definecolor{tGreen}{RGB}{40,105,60}
+  \definecolor{tOrange}{RGB}{165,95,15}
+  \definecolor{tRed}{RGB}{165,40,40}
+  \node[anchor=west, font=\scriptsize\bfseries] at (24,26)
+    {跨 chunk 两阶段合并（$C = 3$，$D = 192$ 示例）};
+  \node[draw=tBlue, fill=gray!12, text=tBlue, font=\tiny\bfseries, inner sep=1pt,
+        minimum width=15.53cm, minimum height=0.49cm] at (560,64)
+    {stage 1：单个点积内部的精确归约（QK$^{\top}$，无权重）};
+  \node[draw=tBlue, fill=white, align=center, text width=4.2cm, inner sep=1pt,
+        minimum height=0.58cm] at (190,112) {$S^{(0)} = Q_0 K_0^{\top}$};
+  \node[draw=tBlue, fill=white, align=center, text width=4.2cm, inner sep=1pt,
+        minimum height=0.58cm] at (536,112) {$S^{(1)} = Q_1 K_1^{\top}$};
+  \node[draw=tBlue, fill=white, align=center, text width=4.2cm, inner sep=1pt,
+        minimum height=0.58cm] at (882,112) {$S^{(2)} = Q_2 K_2^{\top}$};
+  \draw[-{Stealth}, tBlue, thick] (190,134) -- (420,168);
+  \draw[-{Stealth}, tBlue, thick] (536,134) -- (520,168);
+  \draw[-{Stealth}, tBlue, thick] (882,134) -- (620,168);
+  \node[draw=tBlue, fill=gray!20, align=center, text width=6.7cm, inner sep=1pt,
+        minimum height=0.58cm] at (560,190) {acc $\mathrel{+}=$（mma.sync 链）};
+  \node[draw=tBlue, fill=gray!12, text=tBlue, font=\scriptsize\bfseries, inner sep=1pt,
+        minimum width=15.53cm, minimum height=0.49cm] at (560,244)
+    {$S[64,64]$ 完整 score tile（D-free）};
+  \node[draw=tGreen, fill=gray!12, text=tGreen, font=\tiny\bfseries, inner sep=1pt,
+        minimum width=15.53cm, minimum height=0.49cm] at (560,306)
+    {stage 2：跨 KV tile 的 online softmax —— $\rho$ 必须广播到全部 $C$ 个 acc};
+  \node[draw=tGreen, fill=gray!15, text=tGreen!70!black, font=\scriptsize\bfseries,
+        align=center, text width=3.4cm, inner sep=1pt, minimum height=0.87cm]
+        at (154,366) {$\rho_t = \exp(m_{t-1} - m_t)$};
+  \node[draw=tOrange, fill=gray!12, align=center, text width=3.45cm, inner sep=1pt,
+        minimum height=0.87cm] at (442,366)
+    {$O_0 \mathrel{*}= \rho_t$；$O_0 \mathrel{+}= \exp(S-m_t)\,V_0$（列 0..63）};
+  \node[draw=tOrange, fill=gray!12, align=center, text width=3.45cm, inner sep=1pt,
+        minimum height=0.87cm] at (706,366)
+    {$O_1 \mathrel{*}= \rho_t$；$O_1 \mathrel{+}= \exp(S-m_t)\,V_1$（列 64..127）};
+  \node[draw=tOrange, fill=gray!12, align=center, text width=3.45cm, inner sep=1pt,
+        minimum height=0.87cm] at (970,366)
+    {$O_2 \mathrel{*}= \rho_t$；$O_2 \mathrel{+}= \exp(S-m_t)\,V_2$（列 128..191）};
+  \draw[-{Stealth}, tGreen, dashed, thick] (286,366) -- (316,366);
+  \draw[-{Stealth}, tGreen, dashed, thick] (286,366) -- (580,366);
+  \draw[-{Stealth}, tGreen, dashed, thick] (286,366) -- (844,366);
+  \node[draw=tGreen, fill=white, align=center, text width=10.4cm, inner sep=1pt,
+        minimum height=0.58cm] at (394,433)
+    {$\ell_t = \rho_t \cdot \ell_{t-1} + \mathrm{rowsum}(\exp(S - m_t))$ —— 每行全程只有一份 $\ell$};
+  \node[draw=black!55, fill=gray!20, align=center, text width=15.2cm, inner sep=1pt,
+        minimum height=0.58cm] at (560,487)
+    {最后一个 tile 后：$O_c \mathrel{/}= \ell_T$（全部 $c$）$\to$ concat $=$ 完整 $\mathrm{softmax}(QK^{\top}/\sqrt{D})\,V$};
+  \node[draw=tRed, fill=gray!22, text=tRed!70!black, align=center, text width=7.3cm,
+        inner sep=1pt, minimum height=0.81cm] at (287,552)
+    {对比 split-KV（ch18）：需要第二次 max —— $a = \exp(m_0-m)$，$b = \exp(m_1-m)$ 两套归并权重};
+  \node[draw=tGreen, fill=gray!15, text=tGreen!70!black, font=\scriptsize\bfseries,
+        align=center, text width=7.3cm, inner sep=1pt, minimum height=0.81cm]
+        at (833,552)
+    {对比 split-D：无第二次 max —— $\rho$ 构造上被全部 chunk 共享（定理~\ref{eq:19-invariant} 的不变量）};
+\end{tikzpicture}
 \caption{跨 chunk 的两阶段合并。第一阶段：QK${}^\top$ 的 chunk 求和是同一点积内部加数的分组，\textbf{精确且无需权重}；第二阶段：$PV$ 的每个 chunk 各持一个输出列段累加器，跨 KV tile 的在线 rescale 因子 $\rho_t$ \textbf{必须广播到全部 $C$ 个累加器}（定理~\ref{eq:19-invariant} 的不变量），$\ell$ 全程只有一份。}
 \label{fig:19-2}
 \end{figure}

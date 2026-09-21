@@ -451,55 +451,66 @@ ld conflict 仅 0.39\%，且 MUFU 等待被 MMA 掩盖，整个方向当场否�
 \begin{tikzpicture}[
   font=\footnotesize,
   box/.style={draw, rounded corners=2pt, align=center, inner sep=3pt,
-    text width=2.35cm, minimum height=8mm},
-  det/.style={draw=black!60, align=left, inner sep=3pt, font=\scriptsize,
-    text width=5.1cm},
-  badge/.style={circle, draw, fill=white, inner sep=0pt,
+    text width=2.6cm, minimum height=8mm},
+  dec/.style={box, draw=tkBlue, fill=tkFillBlue},
+  memb/.style={box, draw=tkOrange, fill=tkFillOrange},
+  cpub/.style={box, draw=tkPurple, fill=tkFillPurple},
+  latb/.style={box, draw=tkRed, fill=tkFillRed},
+  balb/.style={box, draw=tkGreen, fill=tkFillGreen},
+  det/.style={draw, align=left, inner sep=3pt, font=\scriptsize,
+    text width=5.1cm, fill=white},
+  detm/.style={det, draw=tkOrange!85},
+  detc/.style={det, draw=tkPurple!85},
+  detl/.style={det, draw=tkRed!70},
+  badge/.style={circle, draw=black!70, fill=white, inner sep=0pt,
     minimum size=3.6mm, font=\scriptsize\bfseries, anchor=south east},
-  ar/.style={-{Stealth[length=1.8mm]}, semithick}
+  ar/.style={-{Stealth[length=1.8mm]}, semithick},
+  arm/.style={ar, draw=tkOrange},
+  arc/.style={ar, draw=tkPurple},
+  arl/.style={ar, draw=tkRed!85}
 ]
-  \node[box, fill=gray!30] (root) at (0, 0.55) {读 SOL\\（SM\% / MEM\%）};
+  \node[dec] (root) at (0, 0.55) {读 SOL\\（SM\% / MEM\%）};
   \node[badge] at (root.north west) {1};
-  \node[box, fill=gray!70] (mcond) at (3.8, 3.5) {MEM\% $\gg$ SM\%\\（差 $>$20）};
-  \node[box, fill=gray!70] (mver) at (7.9, 3.5) {memory-bound\\分层归因};
+  \node[memb] (mcond) at (3.8, 4.2) {MEM\% $\gg$ SM\%\\（差 $>$20）};
+  \node[memb] (mver) at (7.9, 4.2) {memory-bound\\分层归因};
   \node[badge] at (mver.north west) {4};
-  \node[det] (md1) at (12.9, 4.5) {DRAM $>$70\% $\to$ 带宽墙\\对策：减流量（融合 / 低精度 / 去物化）};
-  \node[det] (md2) at (12.9, 3.5) {L2 hit $<$50\% 且 DRAM $>$40\%\\$\to$ 工作集 / L2 局部性（CTA swizzle）};
-  \node[det] (md3) at (12.9, 2.5) {L1 hit $<$20\% 而 L2 高\\$\to$ smem tiling / 复用不足};
-  \node[box, fill=gray!20] (ccond) at (3.8, 1.4) {SM\% $\gg$ MEM\%};
-  \node[box, fill=gray!20] (cver) at (7.9, 1.4) {compute-bound\\查饱和质量};
+  \node[detm] (md1) at (12.9, 5.4) {DRAM $>$70\% $\to$ 带宽墙\\对策：减流量（融合 / 低精度 / 去物化）};
+  \node[detm] (md2) at (12.9, 4.2) {L2 hit $<$50\% 且 DRAM $>$40\%\\$\to$ 工作集 / L2 局部性（CTA swizzle）};
+  \node[detm] (md3) at (12.9, 3.0) {L1 hit $<$20\% 而 L2 高\\$\to$ smem tiling / 复用不足};
+  \node[cpub] (ccond) at (3.8, 1.2) {SM\% $\gg$ MEM\%};
+  \node[cpub] (cver) at (7.9, 1.2) {compute-bound\\查饱和质量};
   \node[badge] at (cver.north west) {5};
-  \node[det] (cd1) at (12.9, 1.95) {tensor pipe 高 = 健康\\$\to$ 减 FLOPs 或更低精度};
-  \node[det] (cd2) at (12.9, 0.85) {pipe\_fma / alu 高、tensor 低\\$\to$ 该上 MMA 指令（ch10--11）};
-  \node[box, fill=gray!45] (lcond) at (3.8, -1.0) {双低\\（都 $<$40）};
-  \node[box, fill=gray!45] (lver) at (7.9, -1.0) {latency-bound\\stall 前二名分流};
+  \node[detc] (cd1) at (12.9, 1.8) {tensor pipe 高 = 健康\\$\to$ 减 FLOPs 或更低精度};
+  \node[detc] (cd2) at (12.9, 0.6) {pipe\_fma / alu 高、tensor 低\\$\to$ 该上 MMA 指令（ch10--11）};
+  \node[latb] (lcond) at (3.8, -1.8) {双低\\（都 $<$40）};
+  \node[latb] (lver) at (7.9, -1.8) {latency-bound\\stall 前二名分流};
   \node[badge] at (lver.north west) {2};
-  \node[det] (ld1) at (12.9, -0.25) {\texttt{wait} / \texttt{math\_pipe\_throttle} 主导\\$\to$ 拆链、增并行 warp};
-  \node[det] (ld2) at (12.9, -1.15) {\texttt{long\_scoreboard} 主导\\$\to$ 异步装载（TMA / cp.async）};
-  \node[det] (ld3) at (12.9, -2.05) {\texttt{sleeping} / \texttt{barrier} 主导\\$\to$ 重排 producer/consumer（WS）};
-  \node[det, dashed, text width=5.5cm] (occ) at (7.9, -3.35) {先查 occupancy 限制源：\\limiter = regs/smem $\to$ 先解资源\\（缩 tile、降 stage、launch\_bounds）\\「增并行 warp」以有 warp 可增为前提};
+  \node[detl] (ld1) at (12.9, -0.6) {\texttt{wait} / \texttt{math\_pipe\_throttle} 主导\\$\to$ 拆链、增并行 warp};
+  \node[detl] (ld2) at (12.9, -1.8) {\texttt{long\_scoreboard} 主导\\$\to$ 异步装载（TMA / cp.async）};
+  \node[detl] (ld3) at (12.9, -3.0) {\texttt{sleeping} / \texttt{barrier} 主导\\$\to$ 重排 producer/consumer（WS）};
+  \node[detl, dashed, text width=5.5cm] (occ) at (7.9, -4.55) {先查 occupancy 限制源：\\limiter = regs/smem $\to$ 先解资源\\（缩 tile、降 stage、launch\_bounds）\\「增并行 warp」以有 warp 可增为前提};
   \node[badge] at (occ.north west) {3};
-  \node[box, fill=gray!10] (dcond) at (3.8, -4.6) {双高\\（都 $>$60）};
-  \node[box, fill=gray!10] (dver) at (7.9, -4.6) {接近平衡上限\\$\to$ 停止优化};
-  \draw[ar] (root.east) -- (mcond.west);
-  \draw[ar] (root.east) -- (ccond.west);
-  \draw[ar] (root.east) -- (lcond.west);
-  \draw[ar] (root.east) -- (dcond.west);
-  \draw[ar] (mcond) -- (mver);
-  \draw[ar] (ccond) -- (cver);
-  \draw[ar] (lcond) -- (lver);
-  \draw[ar] (dcond) -- (dver);
-  \draw[ar] (mver.east) -- (md1.west);
-  \draw[ar] (mver.east) -- (md2.west);
-  \draw[ar] (mver.east) -- (md3.west);
-  \draw[ar] (cver.east) -- (cd1.west);
-  \draw[ar] (cver.east) -- (cd2.west);
-  \draw[ar] (lver.east) -- (ld1.west);
-  \draw[ar] (lver.east) -- (ld2.west);
-  \draw[ar] (lver.east) -- (ld3.west);
-  \draw[ar, dashed] (lver.south) -- (occ.north);
+  \node[balb] (dcond) at (3.8, -6.15) {双高\\（都 $>$60）};
+  \node[balb] (dver) at (7.9, -6.15) {接近平衡上限\\$\to$ 停止优化};
+  \draw[ar, draw=tkBlue] (root.east) -- (mcond.west);
+  \draw[ar, draw=tkBlue] (root.east) -- (ccond.west);
+  \draw[ar, draw=tkBlue] (root.east) -- (lcond.west);
+  \draw[ar, draw=tkBlue] (root.east) -- (dcond.west);
+  \draw[arm] (mcond) -- (mver);
+  \draw[arc] (ccond) -- (cver);
+  \draw[arl] (lcond) -- (lver);
+  \draw[ar, draw=tkGreen] (dcond) -- (dver);
+  \draw[arm] (mver.east) -- (md1.west);
+  \draw[arm] (mver.east) -- (md2.west);
+  \draw[arm] (mver.east) -- (md3.west);
+  \draw[arc] (cver.east) -- (cd1.west);
+  \draw[arc] (cver.east) -- (cd2.west);
+  \draw[arl] (lver.east) -- (ld1.west);
+  \draw[arl] (lver.east) -- (ld2.west);
+  \draw[arl] (lver.east) -- (ld3.west);
+  \draw[arl, dashed] (lver.south) -- (occ.north);
 \end{tikzpicture}
-\caption{瓶颈判断决策树：先读 SOL（SM\%/MEM\%）四分流，memory / compute / latency 三链灰度 70/20/45 区分，节点角标 1--5 对应正文 enumerate 步骤（阈值为工程经验值）。}
+\caption{瓶颈判断决策树：先读 SOL（SM\%/MEM\%）四分流——蓝为入口判断，橙为 memory-bound 链，紫为 compute-bound 链，红为 latency-bound 链，绿为双高（停止优化）；对策框白底、边框沿用所属分支色。节点角标 1--5 对应正文 enumerate 步骤（阈值为工程经验值）。}
 \label{fig:0-1}
 \end{figure}
 

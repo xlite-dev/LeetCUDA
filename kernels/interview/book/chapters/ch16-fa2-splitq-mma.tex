@@ -620,7 +620,63 @@ $\mathrm{g}{+}8$（L782--785），行号由 \texttt{Q\_tile\_id}、
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-16-1-split-q-warp/fig-16-1.png}
+\begin{tikzpicture}[font=\scriptsize, x=0.01966cm, y=-0.01966cm]
+  \definecolor{tBlue}{RGB}{33,100,160}
+  \definecolor{tGreen}{RGB}{40,105,60}
+  \definecolor{tOrange}{RGB}{165,95,15}
+  \definecolor{tRed}{RGB}{165,40,40}
+  \node[anchor=west, font=\small\bfseries] at (24,26)
+    {Split-Q warp 划分（$B_r{=}128$, $B_c{=}64$, $D{=}64$, 8 warps, $\mathrm{kStagesK}{=}2$）};
+  \node[anchor=west, text=black!65] at (24,50)
+    {（升级自 LeetCUDA README 的 4-warp ASCII 底稿）};
+  \node[anchor=west, text=tBlue, font=\footnotesize\bfseries] at (24,80)
+    {Q tile $[B_r{=}128, D]$（blockIdx.x）};
+  \node[anchor=west, text=tGreen, font=\footnotesize\bfseries] at (500,80)
+    {K/V tiles $[B_c{=}64, D] \times T_c$};
+  \foreach \w [evaluate=\w as \cy using {110.5+33*\w},
+               evaluate=\w as \gr using {int(0+8*mod(\w,2))}] in {0,...,7}{
+    \node[draw=tBlue, fill=gray!\gr, inner sep=1pt, minimum width=8.26cm,
+          minimum height=0.57cm, anchor=west] at (24,\cy)
+      {\texttt{warp\_QP \w}\quad rows $16\w$ -- $16\w{+}15$};
+  }
+  \node[anchor=west, text=black!65] at (24,372)
+    {Q 仅 Step1 加载一次，整个外循环驻留 smem};
+  \node[draw=tGreen, fill=gray!15, text=tGreen!70!black, align=center,
+        text width=5.4cm, inner sep=1pt, minimum height=1.49cm] at (650,134)
+    {K：2-stage 环形缓冲（$t$, $t{+}1$）};
+  \node[draw=tGreen, fill=gray!15, text=tGreen!70!black, align=center,
+        text width=5.4cm, inner sep=1pt, minimum height=1.49cm] at (650,218)
+    {V：1-stage，在 3b+3c 期间在途};
+  \node[anchor=west, text=black!65] at (500,266) {全部 8 warp 读同一 $K_t$ / $V_t$};
+  \node[anchor=west, text=black!65] at (500,286) {（$\mathrm{warp\_KV} = 0$，smem 广播）};
+  \draw[-{Stealth}, tGreen, thick] (498,134) -- (450,218);
+  \node[anchor=west, font=\footnotesize\bfseries] at (24,392)
+    {per-warp 私有状态（纯寄存器，零跨 warp 通信）：};
+  \node[draw=tBlue, fill=gray!8, align=center, text width=7.2cm, inner sep=1pt,
+        minimum height=0.79cm] at (214,426)
+    {$m, \ell \in \mathbb{R}^{16}$\quad lane\_block\_row\_max / sum\_old (fp32)};
+  \node[draw=tOrange, fill=gray!8, align=center, text width=7.2cm, inner sep=1pt,
+        minimum height=0.79cm] at (610,426)
+    {$O \in \mathbb{R}^{16 \times D}$\quad $R_D$ 累加器 fragment（f16/f32 acc）};
+  \node[anchor=west, font=\footnotesize\bfseries] at (24,467)
+    {per KV tile $t$，每个 warp 执行三段（全部落在寄存器 fragment）：};
+  \node[draw=tBlue, fill=white, align=center, text width=14.8cm, inner sep=1pt,
+        minimum height=0.75cm] at (412,501)
+    {$S_w = Q_w @ K_t^{\top} \to R_S$\quad（$8\times$ m16n8，32 条 HMMA）};
+  \node[draw=tGreen, fill=white, align=center, text width=14.8cm, inner sep=1pt,
+        minimum height=0.75cm] at (412,545)
+    {$P_w = \exp(S_w \cdot s - m) \to R_S$ 原地覆盖\quad（softmax pass 2）};
+  \node[draw=tOrange, fill=white, align=center, text width=14.8cm, inner sep=1pt,
+        minimum height=0.75cm] at (412,589)
+    {$O_w \mathrel{+}= P_w @ V_t \to R_O \to R_D$\quad（A 操作数 $=$ $R_S$ 直接复用）};
+  \node[draw=tRed, fill=gray!22, text=tRed!70!black, align=center, text width=7.0cm,
+        inner sep=1.5pt, minimum height=1.30cm] at (214,659)
+    {Split-KV（FA1 式）：warp 各持 16 列，行状态撕裂到多 warp，每 tile 走 smem 归并（merge\_attn\_states）};
+  \node[draw=tGreen, fill=gray!15, text=tGreen!70!black, font=\scriptsize\bfseries,
+        align=center, text width=7.0cm, inner sep=1.5pt, minimum height=1.30cm]
+        at (610,659)
+    {Split-Q：一个 warp 端到端独占 16 行 Q —— 零归并、零通信};
+\end{tikzpicture}
 \caption{Split-Q warp 行划分与状态私有化（默认 $B_r{=}128$/8-warp 配置；升级自 LeetCUDA README 的 4-warp ASCII 底稿）。左：Q 行按 warp 独占、KV 全 warp 共享；中：每 warp 私有的 $(m,\ell,O)$ 与每 tile 的三段计算；下：与 split-KV 的对比——后者行状态按列撕裂、须逐 tile 归并。}
 \label{fig:16-1}
 \end{figure}

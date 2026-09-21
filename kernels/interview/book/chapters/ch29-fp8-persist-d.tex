@@ -558,7 +558,48 @@ STSM + TMA 输出。图~\ref{fig:29-reorg-free} 则是 epilogue 侧的布局技�
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.98\textwidth]{figures/drawio/fig-29-1-scale-folding/fig-29-1-scale-folding.png}
+  % was: \includegraphics[width=0.98\textwidth]{figures/drawio/fig-29-1-scale-folding/fig-29-1-scale-folding.png}
+  \begin{tikzpicture}
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{7.4}{9.3}\selectfont \bfseries }] at (0.37,-0.354) {scale 折叠全链：$\delta$\_Q$\delta$\_K 折 exp2 系数 $\cdot$ v\_s 在 P 发射域精确消去 $\cdot$ p\_scale 收 epilogue};% w=17.125
+    \node[draw=tkBlue, fill=tkFillBlue, line width=0.5pt, minimum width=1.54cm, minimum height=0.80cm, inner sep=1pt, align=center, text width=1.48cm, font={\fontsize{6.1}{7.7}\selectfont \bfseries \color{tkBlue} }] at (1.14,-2.402) {Q8$\cdot$$\delta$\_Q};
+    \node[draw=tkBlue, fill=tkFillBlue, line width=0.5pt, minimum width=1.54cm, minimum height=0.80cm, inner sep=1pt, align=center, text width=1.48cm, font={\fontsize{6.1}{7.7}\selectfont \bfseries \color{tkBlue} }] at (1.14,-3.419) {K8$\cdot$$\delta$\_K};
+    \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=2.62cm, minimum height=0.86cm, inner sep=1pt, align=center, text width=2.56cm, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkGreen!70!black} }] at (4.235,-2.926) {QK\^{}T MMA\\(f8f8f32 / s8s8s32)};
+    \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=2.93cm, minimum height=0.86cm, inner sep=1pt, align=center, text width=2.86cm, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkGreen!70!black} }] at (7.993,-2.926) {log2 域 online softmax\\(exp2 偏移折叠)};
+    \node[draw=tkOrange, fill=tkFillOrange, line width=0.5pt, minimum width=2.31cm, minimum height=0.86cm, inner sep=1pt, align=center, text width=2.25cm, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkOrange!75!black} }] at (11.935,-2.926) {P 打包 e4m3x2\\(perm pack)};
+    \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=2.00cm, minimum height=0.86cm, inner sep=1pt, align=center, text width=1.94cm, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkGreen!70!black} }] at (15.015,-2.926) {PV MMA\\(f8f8f32/f16)};
+    \node[draw=tkBlue, fill=tkFillBlue, line width=0.5pt, minimum width=1.39cm, minimum height=0.71cm, inner sep=1pt, align=center, text width=1.32cm, font={\fontsize{4.1}{5.1}\selectfont \bfseries \color{tkBlue} }] at (14.245,-4.358) {V8\^{}T$\cdot$(1/v\_s)\\(gmem 预量化)};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkPurple} }] at (2.926,-1.54) {s\_dequant = $\delta$\_Q$\cdot$$\delta$\_K$\cdot$scale$\cdot$log2 e（单 fp32）};% w=5.852
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{black!55} }] at (2.926,-1.863) {tile max 归约后一次乘入（kMaxScaleAfter 再省 Bc 次 FMUL）};% w=5.852
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkBlue} }] at (7.238,-4.127) {softmax 直接发射 $\tilde{P}$ = P$\cdot$v\_s$\cdot$448};% w=5.082
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (7.238,-4.435) {exp\_offset = log2(v\_s$\cdot$448) 折进 exp2 偏移};% w=5.236
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (7.238,-4.743) {(P$\cdot$v\_s/p\_s)$\cdot$(V/v\_s) = PV/p\_s：v\_s 精确消去};% w=5.236
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!55} }] at (7.238,-5.067) {gmem 的 $\hat{V}$ 原样复用（kernel 不读 V 原件）};% w=5.544
+    \node[draw=tkRed, fill=tkFillRed, line width=0.5pt, minimum width=9.86cm, minimum height=1.85cm, inner sep=1pt, align=center, text width=9.79cm, font={\fontsize{5.7}{7.1}\selectfont }] at (5.298,-7.084) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkRed} }] at (0.616,-6.437) {epilogue 一步收尾（fixed：p\_s = 1/448 编译期常数）};% w=9.363
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont }] at (0.616,-6.807) {O = o\_acc $\cdot$ (1/448) / rowsum        $\leftarrow$ 反量化+归一化一步完成};% w=9.363
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont }] at (0.616,-7.176) {per-channel V：O $\times$= vs\_d[col]/p\_quant\_scale，再 += $\bar{v}$\_d（smooth-V）};% w=9.363
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont }] at (0.616,-7.546) {lse = (rowmax + log2 rowsum)$\cdot$ln2  +  scale$\cdot$$\delta$\_Q$\cdot$q\_km（smooth-K 修正）};% w=9.363
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.6}{5.8}\selectfont \bfseries \color{tkRed} }] at (6.622,-5.452) {o\_acc 全程单一 448$\times$ 域（fixed 统一域是 rescale 折进 FFMA 的前提）};% w=6.468
+    \node[draw=tkPurple, fill=tkFillPurple, line width=0.5pt, minimum width=6.71cm, minimum height=1.85cm, inner sep=1pt, align=center, text width=6.65cm, font={\fontsize{5.7}{7.1}\selectfont }] at (14.137,-7.084) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkPurple} }] at (11.026,-6.437) {发射域纪律（三条硬约束）};% w=6.222
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (11.026,-6.807) {(1) lazy rescale 与满量程 P 互斥：2\^{}T 膨胀撞 satfinite};% w=6.222
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.6}{5.8}\selectfont }] at (11.026,-7.176) {(2) f16 PV 累加域：kBc$\cdot$448$\cdot$2.25 $\leq$ 65504（kBc=128 时 P 收 224）};% w=6.222
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (11.026,-7.546) {(3) per-row p\_s 满量程 $\Longrightarrow$ 无 2\^{}T headroom $\Longrightarrow$ 与 (1) 互斥};% w=6.222
+    \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=17.12cm, minimum height=0.95cm, inner sep=1pt, align=center, text width=17.06cm, font={\fontsize{5.7}{7.1}\selectfont }] at (8.932,-8.917) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{6.1}{7.7}\selectfont \bfseries \color{tkGreen!70!black} }] at (0.678,-8.701) {结论：除 Q/K/V/P 各自的 round() 外，无任何额外数学误差源------所有反量化都是精确代数操作};% w=16.509
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!55} }] at (0.678,-9.086) {对照 ffpa-attn(861d75e)：fp8\_pscale.cuh L72-300 三步协议 $\cdot$ persist\_d.cuh Phase 1-5 $\cdot$ softmax.cuh L44-63};% w=16.509
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (0.37,-9.856) {粒度 $\times$ scale 读取：per-block ks 每 tile 一标量；per-thread ks 按 lane\%4 列组查 4 槽表、qs 按 {r,r+8} 行对查 64 槽表（零 shuffle）};% w=17.125
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (0.37,-10.256) {rowsum：tensor-core rowsum MMA（B 全 1）藏进 PV tensor pipe 气泡，CUDA-core FADD 版本实测 -4\%};% w=17.125
+    \draw[black!75, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (1.91,-2.402) -- (2.926,-2.772);
+    \draw[black!75, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (1.91,-3.419) -- (2.926,-3.08);
+    \draw[black!75, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (5.544,-2.926) -- (6.53,-2.926);
+    \draw[black!75, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (9.456,-2.926) -- (10.78,-2.926);
+    \draw[black!75, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (13.09,-2.926) -- (14.014,-2.926);
+    \draw[black!75, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (14.245,-4.004) -- (14.63,-3.357);
+    \draw[tkPurple, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (7.7,-2.495) -- (7.7,-2.094) -- (8.624,-2.094) -- (8.624,-2.433);
+    \draw[tkBlue, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (13.552,-4.358) -- (12.628,-4.358) -- (11.858,-3.419);
+    \draw[tkRed, line width=0.8pt, dashed, -{Stealth[length=2.2pt,width=1.8pt]}] (15.015,-3.357) -- (15.015,-5.236) -- (6.16,-5.236) -- (6.16,-6.16);
+  \end{tikzpicture}
   \caption{scale 折叠全链数据流：$\delta_Q\delta_K$ 折进 exp2 系数、$v_s$
   在 P 发射域消去、$p_{scale}$ 收在 epilogue——除 round() 外无额外误差源。}
   \label{fig:29-scale-folding}
@@ -566,7 +607,62 @@ STSM + TMA 输出。图~\ref{fig:29-reorg-free} 则是 epilogue 侧的布局技�
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.98\textwidth]{figures/drawio/fig-29-2-persist-d-ws/fig-29-2-persist-d-ws.png}
+  % was: \includegraphics[width=0.98\textwidth]{figures/drawio/fig-29-2-persist-d-ws/fig-29-2-persist-d-ws.png}
+  \begin{tikzpicture}
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{7.4}{9.3}\selectfont \bfseries }] at (0.37,-0.354) {persist-D WS 结构：128 producer + 256 consumer、Q s2r 常驻与 K stage-0 槽位复用};% w=17.125
+    \node[draw=gray!55, fill=black!3, line width=0.5pt, minimum width=5.85cm, minimum height=3.85cm, inner sep=1pt, align=center, text width=5.79cm, font={\fontsize{5.7}{7.1}\selectfont }] at (3.296,-2.849) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{6.1}{7.7}\selectfont \bfseries }] at (0.616,-1.186) {384 线程 \_\_launch\_bounds\_\_(384,1)};% w=5.359
+    \node[draw=tkBlue, fill=tkFillBlue, line width=0.5pt, minimum width=4.99cm, minimum height=0.80cm, inner sep=1pt, align=center, text width=4.93cm, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkBlue} }] at (3.296,-1.879) {producer WG $\cdot$ 128T $\cdot$ TMA 装载\\setmaxnreg dealloc $\to$ 32 regs};
+    \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=4.99cm, minimum height=0.80cm, inner sep=1pt, align=center, text width=4.93cm, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkGreen!70!black} }] at (3.296,-2.895) {consumer 8 warps $\cdot$ 256T $\cdot$ 全计算\\setmaxnreg alloc $\to$ 232 regs（fp8 无条件）};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{black!55} }] at (0.801,-3.604) {寄存器从 170 上限抬到 232：P 量化 + rowsum +};% w=4.990
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{black!55} }] at (0.801,-3.912) {rescale 状态；静态 170 会 spill \textasciitilde{}60 regs};% w=4.990
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{black!55} }] at (0.801,-4.266) {CTA 驻留寄存器受限恒 1/SM};% w=4.990
+    \node[draw=gray!55, fill=black!3, line width=0.5pt, minimum width=5.85cm, minimum height=3.85cm, inner sep=1pt, align=center, text width=5.79cm, font={\fontsize{5.7}{7.1}\selectfont }] at (9.702,-2.849) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries }] at (7.022,-1.186) {SMEM：[Q | K stages | V stages] $\to$ Q 区复用};% w=5.359
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (7.022,-1.617) {朴素（stages 2, D=128）：80KB};% w=5.359
+    \node[draw=none, fill=tkFillBlue, line width=0.5pt, minimum width=2.46cm, minimum height=0.52cm, inner sep=1pt, align=center, text width=2.40cm, font={\fontsize{5.7}{7.1}\selectfont \color{tkBlue} }] at (8.254,-2.079) {};
+    \node[draw=none, fill=tkFillGreen, line width=0.5pt, minimum width=2.00cm, minimum height=0.52cm, inner sep=1pt, align=center, text width=1.94cm, font={\fontsize{5.7}{7.1}\selectfont \color{tkBlue} }] at (10.487,-2.079) {};
+    \node[draw=none, fill=tkFillGreen, line width=0.5pt, minimum width=0.92cm, minimum height=0.52cm, inner sep=1pt, align=center, text width=0.86cm, font={\fontsize{5.7}{7.1}\selectfont \color{tkBlue} }] at (11.95,-2.079) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{tkBlue} }] at (7.022,-2.079) {Q 16KB（死区）};% w=2.464
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{tkGreen!70!black} }] at (9.486,-2.079) {K$\times$2};% w=2.002
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{tkGreen!70!black} }] at (11.488,-2.079) {V$\times$2};% w=0.924
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.3}{5.3}\selectfont \bfseries }] at (7.022,-2.757) {kPersistQs2r：Q 进寄存器，slot0 承接最后 K stage $\to$ 64KB};% w=5.359
+    \node[draw=none, fill=tkFillGreen, line width=0.5pt, minimum width=3.40cm, minimum height=0.52cm, inner sep=1pt, align=center, text width=3.34cm, font={\fontsize{5.7}{7.1}\selectfont \color{tkBlue} }] at (8.724,-3.219) {};
+    \node[draw=none, fill=tkFillGreen, line width=0.5pt, minimum width=1.00cm, minimum height=0.52cm, inner sep=1pt, align=center, text width=0.94cm, font={\fontsize{5.7}{7.1}\selectfont \color{tkBlue} }] at (10.926,-3.219) {};
+    \node[draw=none, fill=tkFillGreen, line width=0.5pt, minimum width=0.99cm, minimum height=0.52cm, inner sep=1pt, align=center, text width=0.92cm, font={\fontsize{5.7}{7.1}\selectfont \color{tkBlue} }] at (11.92,-3.219) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{tkGreen!70!black} }] at (7.022,-3.219) {K stages};% w=3.403
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{tkGreen!70!black} }] at (10.426,-3.219) {V};% w=1.001
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{tkGreen!70!black} }] at (11.427,-3.219) {K last};% w=0.986
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{black!55} }] at (7.022,-3.788) {省的 16KB 买 L1（共池 \textasciitilde{}4-5$\mu$s/16KB），不买 occupancy};% w=5.359
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{black!55} }] at (7.022,-4.127) {槽位轮转 kKSlot(s)=(s+1)\%S：复用区首写/首消费都在稳态，};% w=5.359
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{black!55} }] at (7.022,-4.435) {q\_consumed 等待藏进整整一 tile 计算};% w=5.359
+    \node[draw=gray!55, fill=black!3, line width=0.5pt, minimum width=4.25cm, minimum height=3.85cm, inner sep=1pt, align=center, text width=4.19cm, font={\fontsize{5.7}{7.1}\selectfont }] at (15.369,-2.849) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{6.1}{7.7}\selectfont \bfseries }] at (13.49,-1.186) {producer 装载序（时基$\downarrow$）};% w=3.758
+    \node[draw=tkBlue, fill=none, line width=0.5pt, minimum width=3.76cm, minimum height=0.52cm, inner sep=1pt, align=center, text width=3.70cm, font={\fontsize{4.8}{6.0}\selectfont }] at (15.369,-1.74) {Q TMA（一次性）};
+    \node[draw=tkGreen, fill=none, line width=0.5pt, minimum width=3.76cm, minimum height=0.52cm, inner sep=1pt, align=center, text width=3.70cm, font={\fontsize{4.8}{6.0}\selectfont }] at (15.369,-2.356) {V(0..S-2) 先于 K 发射};
+    \node[draw=tkGreen, fill=none, line width=0.5pt, minimum width=3.76cm, minimum height=0.52cm, inner sep=1pt, align=center, text width=3.70cm, font={\fontsize{4.8}{6.0}\selectfont }] at (15.369,-2.972) {K(0..S-2)（slot 1..，无 Q 依赖）};
+    \node[draw=tkGreen, fill=none, line width=0.5pt, minimum width=3.76cm, minimum height=0.52cm, inner sep=1pt, align=center, text width=3.70cm, font={\fontsize{4.8}{6.0}\selectfont }] at (15.369,-3.588) {稳态循环：V(t+S-1) $\to$ K(t+S-1)};
+    \node[draw=tkOrange, fill=none, line width=0.5pt, minimum width=3.76cm, minimum height=0.52cm, inner sep=1pt, align=center, text width=3.70cm, font={\fontsize{4.8}{6.0}\selectfont }] at (15.369,-4.204) {K stage0（复用区）等 q\_consumed};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.5}{5.6}\selectfont \color{black!55} }] at (13.49,-4.558) {consumer 先 arrive 全部初始 empty 再等 Q};% w=3.758
+    \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=17.12cm, minimum height=1.85cm, inner sep=1pt, align=center, text width=17.06cm, font={\fontsize{5.7}{7.1}\selectfont }] at (8.932,-6.16) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{6.1}{7.7}\selectfont \bfseries \color{tkGreen!70!black} }] at (0.616,-5.498) {consumer kv 循环（\#pragma unroll 1，每 tile 五个 Phase）};% w=16.509
+    \node[draw=tkGreen, fill=none, line width=0.5pt, minimum width=3.02cm, minimum height=1.17cm, inner sep=1pt, align=center, text width=2.96cm, font={\fontsize{4.4}{5.5}\selectfont }] at (2.187,-6.345) {(1) QK GEMM\\gemm\_rs（Q 常驻寄存器）\\int8: s32 原位 cast f32};
+    \node[draw=tkGreen, fill=none, line width=0.5pt, minimum width=3.02cm, minimum height=1.17cm, inner sep=1pt, align=center, text width=2.96cm, font={\fontsize{4.4}{5.5}\selectfont }] at (5.482,-6.345) {(2) log2 域 softmax\\exp\_offset=log2(v\_s$\cdot$448)\\发射 $\tilde{P}$（含 mask/两级剪枝）};
+    \node[draw=tkGreen, fill=none, line width=0.5pt, minimum width=3.02cm, minimum height=1.17cm, inner sep=1pt, align=center, text width=2.96cm, font={\fontsize{4.4}{5.5}\selectfont }] at (8.778,-6.345) {(3) P 打包\\perm pack 4 PRMT\\零 SHFL（reorg-free）};
+    \node[draw=tkGreen, fill=none, line width=0.5pt, minimum width=3.02cm, minimum height=1.17cm, inner sep=1pt, align=center, text width=2.96cm, font={\fontsize{4.4}{5.5}\selectfont }] at (12.074,-6.345) {(4) rowsum MMA + PV\\f16 acc: FFMA 吸收 rescale\\inst\_buf 摘出反馈链};
+    \node[draw=tkGreen, fill=none, line width=0.5pt, minimum width=3.02cm, minimum height=1.17cm, inner sep=1pt, align=center, text width=2.96cm, font={\fontsize{4.4}{5.5}\selectfont }] at (15.369,-6.345) {(5) epilogue\\O=(1/448)/rowsum$\cdot$o\_acc\\STSM$\to$smem$\to$TMA};
+    \node[draw=gray!55, fill=black!3, line width=0.5pt, minimum width=17.12cm, minimum height=1.32cm, inner sep=1pt, align=center, text width=17.06cm, font={\fontsize{5.7}{7.1}\selectfont }] at (8.932,-8.208) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (0.678,-7.792) {Q s2r 常驻：D=128 实测 -8$\mu$s（1028.5$\to$1020.5）、零 spill（NCU local ld/st = 0）；smooth-K 的 qkm 点积必须在循环前 hoist（Q 区会被覆盖）};% w=16.509
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (0.678,-8.162) {输出 epilogue：STSM 进已释放 smem（Q/K/V 全消费完）$\to$ 单次合并 TMA store；尾 tile 退化为行守卫直接 R$\to$G};% w=16.509
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (0.678,-8.532) {V\^{}T per-head (D,N) 平面 TMA；descriptor dim1 必须是 Nkv（列坐标才能正确 tile）};% w=16.509
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{tkRed} }] at (0.37,-9.394) {证伪清单（\S{}5.8 摘录）：WS 双 consumer 负优化 $\cdot$ persistent work loop 零收益 $\cdot$ stages 加深负 $\cdot$ 128P+128C +31.6\% $\cdot$ V 驻留寄存器 +48\%};% w=17.125
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{tkGreen!70!black} }] at (0.37,-9.794) {已落地：rescale+absorb FFMA 融合 $\cdot$ max-pass 延迟 scale $\cdot$ per-row rescale gating $\cdot$ Q quant 2 线程/行};% w=17.125
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!55} }] at (0.37,-10.426) {对照 ffpa-attn(861d75e)：cute/fp8/sm\_120/persist\_d.cuh L193-214（smem 复用）$\cdot$ L256-263/L406-409（reg 重分配）$\cdot$ L560-955（主循环）};% w=17.125
+    \draw[tkGreen, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (3.696,-6.345) -- (3.973,-6.345);
+    \draw[tkGreen, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (6.992,-6.345) -- (7.269,-6.345);
+    \draw[tkGreen, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (10.287,-6.345) -- (10.564,-6.345);
+    \draw[tkGreen, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (13.583,-6.345) -- (13.86,-6.345);
+  \end{tikzpicture}
   \caption{persist-D WS 结构：128P+256C、setmaxnreg 32/232、Q s2r 常驻与
   K 槽位 0（Q 区）复用给最后一个 K stage 的 smem 复用、STSM+TMA 输出。}
   \label{fig:29-persist-d-ws}
@@ -574,7 +670,72 @@ STSM + TMA 输出。图~\ref{fig:29-reorg-free} 则是 epilogue 侧的布局技�
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.98\textwidth]{figures/drawio/fig-29-3-reorg-free/fig-29-3-reorg-free.png}
+  % was: \includegraphics[width=0.98\textwidth]{figures/drawio/fig-29-3-reorg-free/fig-29-3-reorg-free.png}
+  \begin{tikzpicture}
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{7.4}{9.3}\selectfont \bfseries }] at (0.37,-0.354) {reorg-free 打包：跨 lane 重排（16 SHFL）$\to$ 就地打包 + V\^{}T 列置换（4 PRMT、零 SHFL）};% w=17.125
+    \node[draw=gray!55, fill=black!3, line width=0.5pt, minimum width=17.12cm, minimum height=2.71cm, inner sep=1pt, align=center, text width=17.06cm, font={\fontsize{5.7}{7.1}\selectfont }] at (8.932,-2.156) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries }] at (0.616,-1.047) {m16n8k32 的两个布局（g = lane$>$$>$2 组行，t = lane\&3 组内）：C 持列对 {2t,2t+1}，A 要列 {4t..4t+3} ------ 跨 lane};% w=16.509
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{tkBlue} }] at (0.924,-1.555) {C fragment（QK 累加器，fp32$\times$4）：lane t 持列对 {2t, 2t+1}};% w=7.700
+    \node[draw=none, fill=tkFillBlue, line width=0.5pt, minimum width=0.34cm, minimum height=0.34cm, inner sep=1pt, align=center, text width=0.28cm, font={\fontsize{4.6}{5.7}\selectfont }] at (1.093,-1.925) {2t};
+    \node[draw=none, fill=tkFillBlue, line width=0.5pt, minimum width=0.34cm, minimum height=0.34cm, inner sep=1pt, align=center, text width=0.28cm, font={\fontsize{4.6}{5.7}\selectfont }] at (1.432,-1.925) {+1};
+    \node[anchor=center, inner sep=0pt, align=center, font={\fontsize{4.4}{5.5}\selectfont \color{black!55} }] at (1.263,-2.264) {lane t};% w=0.678
+    \node[draw=none, fill=tkFillBlue, line width=0.5pt, minimum width=0.34cm, minimum height=0.34cm, inner sep=1pt, align=center, text width=0.28cm, font={\fontsize{4.6}{5.7}\selectfont }] at (1.956,-1.925) {2t};
+    \node[draw=none, fill=tkFillBlue, line width=0.5pt, minimum width=0.34cm, minimum height=0.34cm, inner sep=1pt, align=center, text width=0.28cm, font={\fontsize{4.6}{5.7}\selectfont }] at (2.295,-1.925) {+1};
+    \node[anchor=center, inner sep=0pt, align=center, font={\fontsize{4.4}{5.5}\selectfont \color{black!55} }] at (2.125,-2.264) {lane t};% w=0.678
+    \node[draw=none, fill=tkFillBlue, line width=0.5pt, minimum width=0.34cm, minimum height=0.34cm, inner sep=1pt, align=center, text width=0.28cm, font={\fontsize{4.6}{5.7}\selectfont }] at (2.818,-1.925) {2t};
+    \node[draw=none, fill=tkFillBlue, line width=0.5pt, minimum width=0.34cm, minimum height=0.34cm, inner sep=1pt, align=center, text width=0.28cm, font={\fontsize{4.6}{5.7}\selectfont }] at (3.157,-1.925) {+1};
+    \node[anchor=center, inner sep=0pt, align=center, font={\fontsize{4.4}{5.5}\selectfont \color{black!55} }] at (2.988,-2.264) {lane t};% w=0.678
+    \node[draw=none, fill=tkFillBlue, line width=0.5pt, minimum width=0.34cm, minimum height=0.34cm, inner sep=1pt, align=center, text width=0.28cm, font={\fontsize{4.6}{5.7}\selectfont }] at (3.681,-1.925) {2t};
+    \node[draw=none, fill=tkFillBlue, line width=0.5pt, minimum width=0.34cm, minimum height=0.34cm, inner sep=1pt, align=center, text width=0.28cm, font={\fontsize{4.6}{5.7}\selectfont }] at (4.019,-1.925) {+1};
+    \node[anchor=center, inner sep=0pt, align=center, font={\fontsize{4.4}{5.5}\selectfont \color{black!55} }] at (3.85,-2.264) {lane t};% w=0.678
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{tkOrange!75!black} }] at (9.24,-1.555) {A fragment（PV 的 P 操作数，8bit$\times$4/寄存器）：lane t 要列 {4t..4t+3}};% w=7.700
+    \node[draw=none, fill=tkFillOrange, line width=0.5pt, minimum width=0.34cm, minimum height=0.34cm, inner sep=1pt, align=center, text width=0.28cm, font={\fontsize{4.6}{5.7}\selectfont }] at (9.409,-1.925) {0};
+    \node[draw=none, fill=tkFillOrange, line width=0.5pt, minimum width=0.34cm, minimum height=0.34cm, inner sep=1pt, align=center, text width=0.28cm, font={\fontsize{4.6}{5.7}\selectfont }] at (9.409,-1.925) {1};
+    \node[draw=none, fill=tkFillOrange, line width=0.5pt, minimum width=0.34cm, minimum height=0.34cm, inner sep=1pt, align=center, text width=0.28cm, font={\fontsize{4.6}{5.7}\selectfont }] at (9.409,-1.925) {2};
+    \node[draw=none, fill=tkFillOrange, line width=0.5pt, minimum width=0.34cm, minimum height=0.34cm, inner sep=1pt, align=center, text width=0.28cm, font={\fontsize{4.6}{5.7}\selectfont }] at (9.409,-1.925) {3};
+    \node[anchor=center, inner sep=0pt, align=center, font={\fontsize{3.9}{4.9}\selectfont \color{tkRed} }] at (9.748,-2.264) {需要 lane 2t、2t+1 的字节};% w=1.016
+    \node[draw=none, fill=tkFillOrange, line width=0.5pt, minimum width=0.34cm, minimum height=0.34cm, inner sep=1pt, align=center, text width=0.28cm, font={\fontsize{4.6}{5.7}\selectfont }] at (10.611,-1.925) {4};
+    \node[draw=none, fill=tkFillOrange, line width=0.5pt, minimum width=0.34cm, minimum height=0.34cm, inner sep=1pt, align=center, text width=0.28cm, font={\fontsize{4.6}{5.7}\selectfont }] at (10.611,-1.925) {5};
+    \node[draw=none, fill=tkFillOrange, line width=0.5pt, minimum width=0.34cm, minimum height=0.34cm, inner sep=1pt, align=center, text width=0.28cm, font={\fontsize{4.6}{5.7}\selectfont }] at (10.611,-1.925) {6};
+    \node[draw=none, fill=tkFillOrange, line width=0.5pt, minimum width=0.34cm, minimum height=0.34cm, inner sep=1pt, align=center, text width=0.28cm, font={\fontsize{4.6}{5.7}\selectfont }] at (10.611,-1.925) {7};
+    \node[anchor=center, inner sep=0pt, align=center, font={\fontsize{3.9}{4.9}\selectfont \color{tkRed} }] at (10.949,-2.541) {需要 lane 2t、2t+1 的字节};% w=1.016
+    \node[draw=none, fill=tkFillOrange, line width=0.5pt, minimum width=0.34cm, minimum height=0.34cm, inner sep=1pt, align=center, text width=0.28cm, font={\fontsize{4.6}{5.7}\selectfont }] at (11.812,-1.925) {8};
+    \node[draw=none, fill=tkFillOrange, line width=0.5pt, minimum width=0.34cm, minimum height=0.34cm, inner sep=1pt, align=center, text width=0.28cm, font={\fontsize{4.6}{5.7}\selectfont }] at (11.812,-1.925) {9};
+    \node[draw=none, fill=tkFillOrange, line width=0.5pt, minimum width=0.34cm, minimum height=0.34cm, inner sep=1pt, align=center, text width=0.28cm, font={\fontsize{4.6}{5.7}\selectfont }] at (11.812,-1.925) {10};
+    \node[draw=none, fill=tkFillOrange, line width=0.5pt, minimum width=0.34cm, minimum height=0.34cm, inner sep=1pt, align=center, text width=0.28cm, font={\fontsize{4.6}{5.7}\selectfont }] at (11.812,-1.925) {11};
+    \node[anchor=center, inner sep=0pt, align=center, font={\fontsize{3.9}{4.9}\selectfont \color{tkRed} }] at (12.151,-2.264) {需要 lane 2t、2t+1 的字节};% w=1.016
+    \node[draw=none, fill=tkFillOrange, line width=0.5pt, minimum width=0.34cm, minimum height=0.34cm, inner sep=1pt, align=center, text width=0.28cm, font={\fontsize{4.6}{5.7}\selectfont }] at (13.013,-1.925) {12};
+    \node[draw=none, fill=tkFillOrange, line width=0.5pt, minimum width=0.34cm, minimum height=0.34cm, inner sep=1pt, align=center, text width=0.28cm, font={\fontsize{4.6}{5.7}\selectfont }] at (13.013,-1.925) {13};
+    \node[draw=none, fill=tkFillOrange, line width=0.5pt, minimum width=0.34cm, minimum height=0.34cm, inner sep=1pt, align=center, text width=0.28cm, font={\fontsize{4.6}{5.7}\selectfont }] at (13.013,-1.925) {14};
+    \node[draw=none, fill=tkFillOrange, line width=0.5pt, minimum width=0.34cm, minimum height=0.34cm, inner sep=1pt, align=center, text width=0.28cm, font={\fontsize{4.6}{5.7}\selectfont }] at (13.013,-1.925) {15};
+    \node[anchor=center, inner sep=0pt, align=center, font={\fontsize{3.9}{4.9}\selectfont \color{tkRed} }] at (13.352,-2.541) {需要 lane 2t、2t+1 的字节};% w=1.016
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries }] at (0.616,-2.603) {结论：纯线程内置换无法拼出自然 A 布局（pycute 数值验证）------要么跨 lane 搬字节，要么改数学};% w=16.509
+    \node[draw=tkRed, fill=tkFillRed, line width=0.5pt, minimum width=8.32cm, minimum height=3.63cm, inner sep=1pt, align=center, text width=8.25cm, font={\fontsize{5.7}{7.1}\selectfont }] at (4.528,-5.636) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkRed} }] at (0.616,-4.081) {方案 A：ReorgC8bitToA8bit（跨 lane，历史默认）};% w=7.823
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont }] at (0.616,-4.466) {每线程每 128 列 tile：16$\times$ \_\_shfl\_sync + 32$\times$ \_\_byte\_perm};% w=7.823
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont }] at (0.616,-4.836) {选择性 selector 按 lane\%4 分叉（构造器状态 + 分支）};% w=7.823
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont }] at (0.616,-5.205) {对 peer lane 的字节做 quad 内交换（peer map 2-bit 压缩）};% w=7.823
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkRed} }] at (0.616,-5.683) {代价：全部落在 QK$\to$softmax$\to$PV 关键路径上};% w=7.823
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!55} }] at (0.616,-6.068) {split-D 家族仍在使用（kBc 结构不同，未迁移）};% w=7.823
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!55} }] at (0.616,-6.622) {V\^{}T 存储无需置换（自然列序）};% w=7.823
+    \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=8.25cm, minimum height=3.63cm, inner sep=1pt, align=center, text width=8.19cm, font={\fontsize{5.7}{7.1}\selectfont }] at (13.367,-5.636) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkGreen!70!black} }] at (9.486,-4.081) {方案 B：PackC8bitToA8bitPermVT（reorg-free，默认）};% w=7.762
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont }] at (9.486,-4.466) {数学：$\Sigma$\_k P[m,k]V[k,n] 对任意双射 $\pi$ 不变 ------ P 不动，V 搬家};% w=7.762
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont }] at (9.486,-4.836) {就地打包：4$\times$ \_\_byte\_perm（0x5410/0x7632/0xDC98/0xFEBA）};% w=7.762
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont }] at (9.486,-5.205) {selector 与 lane 无关：无构造器状态、无分支};% w=7.762
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkGreen!70!black} }] at (9.486,-5.683) {A 槽位 s 携带置换索引 $\pi$(s) = 8(r$>$$>$1)+2t+(r\&1)（32 列周期）};% w=7.762
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (9.486,-6.068) {V\^{}T 按 $\pi$$^{-1}$(j)=4*((j$>$$>$1)\&3)+2*((j$>$$>$3)\&1)+(j\&1) 预置换列写};% w=7.762
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!55} }] at (9.486,-6.622) {置换不跨 32 列组 $\to$ V\^{}T 写仍同一 32B sector（quantize +0.5\%）};% w=7.762
+    \node[draw=tkPurple, fill=tkFillPurple, line width=0.5pt, minimum width=17.12cm, minimum height=1.48cm, inner sep=1pt, align=center, text width=17.06cm, font={\fontsize{5.7}{7.1}\selectfont }] at (8.932,-8.562) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkPurple} }] at (0.678,-8.07) {配对契约（CONTRACT）：pack 与 V\^{}T 置换必须同开同关 ------ 由 launcher 单一编译期常量 reorg\_free 强制，两侧永不发散};% w=16.509
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (0.678,-8.439) {注释原话加感叹号：this pack must NEVER run against an unpermuted V\^{}T ------ 错配 = 静默错值（allclose 才能抓到）};% w=16.509
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (0.678,-8.809) {rowsum MMA（B 全 1）与 PV 在双射下同样精确；等效性已 pycute 数值验证（.tmp/fp8\_persist\_d/verify\_layouts.py 同族）};% w=16.509
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (0.37,-9.764) {出处对照：SA2 的 per-warp token 重排思想（arXiv:2411.10958）；ffpa 的数学化重构 = 把跨 lane 搬运转嫁给前处理链的免费列置换};% w=17.125
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (0.37,-10.164) {拆分规则：K=32 组 = 4 个 n8 C-tile（w0..w3）$\to$ a0={0,1,4,5} a1={2,3,6,7} a2={8,9,12,13} a3={10,11,14,15}（字节序号）};% w=17.125
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!55} }] at (0.37,-10.795) {对照 ffpa-attn(861d75e)：cute/fp8/reg2reg\_8b.cuh L8-50（背景+跨 lane 版）$\cdot$ L96-141（perm pack）$\cdot$ quantize\_fp8.cuh L36-53（VTPermInv32）};% w=17.125
+    \draw[tkRed, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (8.624,-1.756) -- (9.178,-1.756);
+    \draw[black!75, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (8.686,-5.636) -- (9.24,-5.636);
+  \end{tikzpicture}
   \caption{reorg-free 打包对照：跨 lane 重排（16 SHFL）vs 就地打包 + $V^{\top}$
   列置换（4 PRMT、零 SHFL），归约轴双射不变性保证精确等价。}
   \label{fig:29-reorg-free}

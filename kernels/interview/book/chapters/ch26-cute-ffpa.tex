@@ -884,7 +884,76 @@ rescale 的操作对象是 \texttt{tCrO} 的 rowcol 视图：行方向乘
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.92\textwidth]{figures/drawio/fig-26-1-dual-mma/fig-26-1.png}
+% was: \includegraphics[width=0.92\textwidth]{figures/drawio/fig-26-1-dual-mma/fig-26-1.png}
+\begin{tikzpicture}[font=\tiny, >=Stealth,
+  hb/.style={align=center, inner sep=2pt, font=\bfseries\fontsize{4.6}{5.2}\selectfont},
+  bx/.style={align=center, inner sep=2pt, font=\fontsize{4.2}{4.8}\selectfont},
+  tx/.style={align=left, inner sep=1pt, font=\fontsize{4.2}{4.8}\selectfont, anchor=west},
+]
+  % 左栏：QK chunk 循环（S 累加器跨 chunk 存活）
+  \node[hb, fill=tkBlue, text=white, text width=4.20cm] at (2.10,-0.12)
+    {QK chunk 循环（$d = 0..C{-}1$）};
+  \node[bx, draw=tkBlue, fill=tkFillBlue, text width=3.90cm] at (2.10,-0.75)
+    {Q[$d$], K[$d$] $\xrightarrow{\texttt{cp.async}}$ smem};
+  \node[bx, draw=tkBlue, fill=tkFillBlue, text width=3.90cm] at (2.10,-1.51)
+    {S $+=$ Q[$d$] @ K[$d$]$^{\top}$};
+  \node[bx, draw=tkBlue, fill=tkFillBlue, text width=3.90cm] at (2.10,-2.27)
+    {gemm\_ss，4 个 k16 原子};
+  \node[bx, draw=tkBlue, fill=white, text=tkBlue, text width=3.90cm,
+    font=\bfseries\fontsize{4.2}{4.8}\selectfont] at (2.10,-3.03)
+    {S：32 个 f32/线程 $=$ ((2,2),1,8)};
+  \node[tx, text width=4.20cm] at (0,-3.55)
+    {C 个 [64,64] chunk 顺序累加，S 跨 chunk 存活};
+  % 中栏：Phase 2（rowcol 视图上的 softmax）
+  \node[hb, fill=tkOrange, text=white, text width=3.60cm] at (6.90,-0.12)
+    {Phase 2：rowcol 视图};
+  \node[bx, draw=tkOrange, fill=tkFillOrange, text width=3.30cm] at (6.90,-0.75)
+    {row max / sum（每 lane 2 行）};
+  \node[bx, draw=tkOrange, fill=tkFillOrange, text width=3.30cm] at (6.90,-1.51)
+    {P $=$ exp2(S$\cdot$scale $-$ m) 就地覆盖};
+  \node[bx, draw=tkOrange, fill=tkFillOrange, text width=3.30cm] at (6.90,-2.27)
+    {P：convert\_type $+$ Aregs 重解释};
+  \node[bx, text=tkOrange!80!black, text width=4.30cm] at (6.90,-3.05)
+    {row\_max[2], row\_sum[2]\\row\_scale[2] $=$ exp2($m_{\mathrm{old}} - m_{\mathrm{new}}$)};
+  % 右栏：PV chunk 循环（O 分量独立 rescale 与累加）
+  \node[hb, fill=tkGreen, text=white, text width=4.20cm] at (12.30,-0.12)
+    {PV chunk 循环（$v = 0..C{-}1$）};
+  \node[bx, draw=tkGreen, fill=tkFillGreen, text width=3.90cm] at (12.30,-0.75)
+    {O[$v$] $*=$ row\_scale（rescale）};
+  \node[bx, draw=tkGreen, fill=tkFillGreen, text width=3.90cm] at (12.30,-1.51)
+    {O[$v$] $+=$ P @ V[$v$]（ns 视图）};
+  \node[bx, draw=tkGreen, fill=white, text=tkGreen, text width=3.90cm,
+    font=\bfseries\fontsize{4.2}{4.8}\selectfont] at (12.30,-2.27)
+    {O：$C \times$ [64,16] 分量独立累加};
+  % 主数据流箭头：S -> Phase 2 -> P -> PV
+  \draw[->, tkOrange, semithick] (4.28,-1.45) -- (5.02,-1.45);
+  \node[tx, text=tkOrange] at (4.35,-1.28) {S (32)};
+  \draw[->, tkGreen, semithick] (8.78,-1.45) -- (10.18,-1.45);
+  \node[tx, text=tkGreen] at (8.85,-1.28) {P (Aregs)};
+  % row_scale 虚线耦合：Phase 2 尾部 -> PV 的 rescale 框
+  \draw[->, dashed, tkOrange!80!black, semithick]
+    (7.90,-3.42) -- (10.18,-3.42) -- (10.18,-2.42) -- (10.28,-2.42);
+  \node[align=center, inner sep=1pt, font=\fontsize{4.2}{4.8}\selectfont,
+    text=tkOrange!80!black] at (9.30,-3.68) {row\_scale（虚线）};
+  % 底部：寄存器账本
+  \node[font=\bfseries\fontsize{4.6}{5.2}\selectfont, anchor=west] at (0,-4.10)
+    {寄存器账本（每线程，$D=512 \to C=8$）};
+  \node[bx, draw=tkBlue, fill=white, text=tkBlue, text width=1.30cm,
+    font=\bfseries\fontsize{4.2}{4.8}\selectfont] at (0.75,-4.55) {S / P};
+  \node[bx, draw=gray!60, fill=gray!12, text width=2.10cm] at (2.90,-4.55) {32 f32};
+  \node[tx] at (0,-4.92) {Phase 2 就地覆盖，不新增};
+  \node[bx, draw=tkGreen, fill=white, text=tkGreen, text width=1.30cm,
+    font=\bfseries\fontsize{4.2}{4.8}\selectfont] at (5.95,-4.55) {O[$C$][32]};
+  \node[bx, draw=gray!60, fill=gray!12, text width=2.10cm] at (8.10,-4.55) {256 f32};
+  \node[tx] at (5.20,-4.92) {8 chunk $\times$ 32，acc 主体};
+  \node[bx, draw=tkOrange, fill=white, text=tkOrange!80!black, text width=1.30cm,
+    font=\bfseries\fontsize{4.2}{4.8}\selectfont] at (11.15,-4.55) {V frag};
+  \node[bx, draw=gray!60, fill=gray!12, text width=2.10cm] at (13.30,-4.55) {dup $\times$ M-warp};
+  \node[tx] at (10.40,-4.92) {ns 视图按需取，不常驻全量};
+  \node[tx, text width=15.0cm] at (0,-5.35)
+    {S、P、O 全程在寄存器：smem 只承载 Q/K/V 的 chunk 流水——这就是「split-D」把 softmax
+     从两遍访存变成一遍寄存器更新的全部代价结构};
+\end{tikzpicture}
 \caption{双 TiledMma 的数据流：QK 沿 $D$ 累加成 $S$（32 寄存器跨 chunk
 存活），softmax 就地覆盖为 $P$，Aregs 重解释后喂给 PV；$O$ 的每个 chunk
 分量独立 rescale 与累加，\texttt{row\_scale}（虚线）耦合两个循环。底部

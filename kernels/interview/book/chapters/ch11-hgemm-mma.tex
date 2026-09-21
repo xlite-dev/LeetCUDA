@@ -100,7 +100,58 @@ C 的 $16\times8$——每个 lane 持多少、在矩阵的什么位置，就是
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-11-2a-fragment/fig-11-2a.png}
+\begin{tikzpicture}[font=\tiny]
+  \node[font=\small\bfseries] at (8.2,0)
+    {A fragment 寄存器布局（$m16 \times k16$ row-major）：$g = \mathrm{lane} \gg 2$，$\mathrm{tig} = \mathrm{lane} \bmod 4$};
+  \node[text=gray!80] at (8.2,-0.45)
+    {T$n$ = lane $n$ 持有该元素；同一列对的 2 个相邻 f16 装一条 \texttt{.b32}；灰度 $=$ lane 组 $g = m \bmod 8$（行 $m$ 与 $m{+}8$ 同灰）};
+  \def\cwa{0.62}
+  \def\cha{0.42}
+  \foreach \fmi in {0,...,15} {
+    \pgfmathtruncatemacro{\gr}{7+9*mod(\fmi,8)}
+    \foreach \fj in {0,...,15} {
+      \pgfmathtruncatemacro{\gval}{mod(\fmi,8)}
+      \pgfmathtruncatemacro{\tigv}{mod(\fj,8)/2}
+      \pgfmathtruncatemacro{\lanv}{4*\gval+\tigv}
+      \pgfmathtruncatemacro{\aiv}{4*int(\fj/8)+2*int(\fmi/8)+mod(\fj,2)}
+      \node[fill=gray!\gr, minimum width=\cwa cm, minimum height=\cha cm, inner sep=0pt]
+        at ({(\fj+0.5)*\cwa},{-\fmi*\cha-\cha/2}) {T\lanv\ a\aiv};
+    }
+  }
+  \foreach \fj in {0,...,16} \draw[thin] ({\fj*\cwa},0) -- ({\fj*\cwa},{-16*\cha});
+  \foreach \fmi in {0,...,16} \draw[thin] (0,{-\fmi*\cha}) -- ({16*\cwa},{-\fmi*\cha});
+  \draw[very thick] (0,0) rectangle ({16*\cwa},{-16*\cha});
+  \draw[thick, dashed] ({8*\cwa},0) -- ({8*\cwa},{-16*\cha});
+  \draw[thick, dashed] (0,{-8*\cha}) -- ({16*\cwa},{-8*\cha});
+  \foreach \fj in {0,...,15}
+    \node[anchor=south, font=\tiny] at ({(\fj+0.5)*\cwa},0.04) {\fj};
+  \node[anchor=south, font=\scriptsize, fill=gray!16, inner sep=1.5pt] at ({4*\cwa},0.55)
+    {$k$ 0--7：$a_0$--$a_3$ 列区};
+  \node[anchor=south, font=\scriptsize, fill=gray!16, inner sep=1.5pt] at ({12*\cwa},0.55)
+    {$k$ 8--15：$a_4$--$a_7$ 列区};
+  \foreach \fmi in {0,...,15}
+    \node[anchor=east, font=\tiny] at (-0.08,{-\fmi*\cha-\cha/2}) {\fmi};
+  \node[rotate=90, font=\scriptsize, fill=gray!16, inner sep=1.5pt] at (-0.72,{-4*\cha})
+    {行 $m$ 0--7};
+  \node[rotate=90, font=\scriptsize, fill=gray!16, inner sep=1.5pt] at (-0.72,{-12*\cha})
+    {行 $m$ 8--15};
+  \node[anchor=north west, font=\scriptsize\bfseries] at (10.7,-0.35)
+    {每 lane 4 条 \texttt{.b32}：};
+  \node[draw=gray!55, fill=gray!10, anchor=north west, align=left, font=\scriptsize,
+    inner sep=3pt] at (10.7,-0.78) {\textbf{R0} $= a_0,a_1$（UL）\\行 $m$ 0--7，列 $k$ 0--7};
+  \node[draw=gray!55, fill=gray!10, anchor=north west, align=left, font=\scriptsize,
+    inner sep=3pt] at (10.7,-1.7) {\textbf{R1} $= a_2,a_3$（LL）\\行 $m$ 8--15，列 $k$ 0--7};
+  \node[draw=gray!55, fill=gray!10, anchor=north west, align=left, font=\scriptsize,
+    inner sep=3pt] at (10.7,-2.62) {\textbf{R2} $= a_4,a_5$（UR）\\行 $m$ 0--7，列 $k$ 8--15};
+  \node[draw=gray!55, fill=gray!10, anchor=north west, align=left, font=\scriptsize,
+    inner sep=3pt] at (10.7,-3.54) {\textbf{R3} $= a_6,a_7$（LR）\\行 $m$ 8--15，列 $k$ 8--15};
+  \node[anchor=north west, align=left, font=\tiny, text width=5.6cm] at (10.7,-4.55)
+    {虚线把 $m16{\times}k16$ 切成四象限：左/右半 $=$ 列对是否 $+8$（$a_0..a_3$ 与 $a_4..a_7$），\\
+     上/下半 $=$ 行号是否 $+8$；象限序 $\mathrm{R0}(UL), \mathrm{R1}(LL), \mathrm{R2}(UR), \mathrm{R3}(LR)$ 即 mma 期望的寄存器序。};
+  \node[anchor=north west, align=left, font=\tiny, text width=16.4cm] at (0,-6.95)
+    {每 lane 4 条 \texttt{.b32}：R0 取行 $g$ 的列 $(2\,\mathrm{tig},\,2\,\mathrm{tig}{+}1)$；R1 取行 $g{+}8$ 同列；R2/R3 再取列 $+8$。\\
+     每格为 1 个 f16（灰度 $=$ lane 组 $g$）：一行 16 个元素由 $\mathrm{tig}=0..3$ 的 4 个 lane 拼成，列对 $(2\mathrm{tig},2\mathrm{tig}{+}1)$ 归同一 lane。};
+\end{tikzpicture}
 \caption{A fragment 寄存器布局（依据 PTX ISA Figure 79 的行/列公式绘制；T$n$ 表示 lane $n$ 持有该元素，每格 2 个相邻 f16 装一条 \texttt{.b32}；四象限 $R0/R1/R2/R3$ 分别对应 UL/LL/UR/LR）。}
 \label{fig:11-2a}
 \end{figure}
@@ -279,7 +330,45 @@ lane $4r + \mathrm{tig}$ 的寄存器 $r\sb i$ 的 $\mathrm{tig}$ 列对——
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-11-1-ldmatrix/fig-11-1.png}
+\begin{tikzpicture}[font=\scriptsize]
+  \node[font=\small\bfseries] at (8.2,0)
+    {\texttt{ldmatrix} 寻址：A x4 一次装载 $m16k16$ 四象限；B x2 装载 $k16n8$};
+  \node[anchor=west, fill=gray!18, inner sep=2.5pt, font=\scriptsize\bfseries] at (0,-0.62)
+    {A $m16k16$ tile $\to$ four $8{\times}8$ matrices（x4，每 lane 一个地址）};
+  \node[draw=gray!55, fill=gray!10, align=center, font=\tiny,
+    minimum width=3.6cm, minimum height=0.82cm] at (2.2,-1.85)
+    {\textbf{matrix0}\ \ $m$ 0--7, $k$ 0--7\\rows $= t \bmod 16$\\cols $= (t/16)\times 8$};
+  \node[draw=gray!55, fill=gray!10, align=center, font=\tiny,
+    minimum width=3.6cm, minimum height=0.82cm] at (6.1,-1.85)
+    {\textbf{matrix1}\ \ $m$ 8--15, $k$ 0--7\\rows $= t \bmod 16$\\cols $= (t/16)\times 8$};
+  \node[draw=gray!55, fill=gray!10, align=center, font=\tiny,
+    minimum width=3.6cm, minimum height=0.82cm] at (2.2,-2.85)
+    {\textbf{matrix2}\ \ $m$ 0--7, $k$ 8--15\\rows $= t \bmod 16$\\cols $= (t/16)\times 8$};
+  \node[draw=gray!55, fill=gray!10, align=center, font=\tiny,
+    minimum width=3.6cm, minimum height=0.82cm] at (6.1,-2.85)
+    {\textbf{matrix3}\ \ $m$ 8--15, $k$ 8--15\\rows $= t \bmod 16$\\cols $= (t/16)\times 8$};
+  \node[anchor=west, font=\tiny, text=gray!80] at (0.4,-3.45)
+    {t=0-7 $\to$ m0; \ t=8-15 $\to$ m1; \ t=16-23 $\to$ m2; \ t=24-31 $\to$ m3};
+  \node[draw=gray!65, fill=gray!30, align=center, font=\tiny\bfseries,
+    minimum width=8.0cm, minimum height=0.5cm] at (4.0,-4.0)
+    {象限序 [UL, LL, UR, LR] $=$ mma 期望序（Eq 11.1），开箱即用};
+  \node[anchor=west, fill=gray!18, inner sep=2.5pt, font=\scriptsize\bfseries] at (8.8,-0.62)
+    {B $k16n8$（存成 $B^{\top}$ 的 $n16k16$ 行主序）$\to$ two $8{\times}8$（x2）};
+  \node[draw=gray!55, fill=gray!10, align=center, font=\tiny,
+    minimum width=3.6cm, minimum height=0.82cm] at (10.9,-1.85)
+    {\textbf{matrix0}\ \ $n$ 0--7, $k$ 0--7\\rows $= t \bmod 8$\\cols $= ((t/8) \bmod 2)\times 8$};
+  \node[draw=gray!55, fill=gray!10, align=center, font=\tiny,
+    minimum width=3.6cm, minimum height=0.82cm] at (14.6,-1.85)
+    {\textbf{matrix1}\ \ $n$ 0--7, $k$ 8--15\\rows $= t \bmod 8$\\cols $= ((t/8) \bmod 2)\times 8$};
+  \node[anchor=west, font=\tiny, text=gray!80] at (9.2,-3.45)
+    {t=0-7 $\to$ $k$ 低半；t=8-15 $\to$ $k$ 高半（只用 $t < 16$）};
+  \node[draw=gray!65, fill=gray!30, align=center, font=\tiny\bfseries,
+    minimum width=7.5cm, minimum height=0.5cm] at (12.6,-4.0)
+    {装载 $B^{\top}$ 的行 $=$ 装载 $B$ 的列：无需 \texttt{.trans}};
+  \node[anchor=north west, align=left, font=\tiny, text width=16.4cm] at (0,-4.45)
+    {地址公式：A row $=$ \texttt{warpM*64 + i*16 + (t\%16)}，col $k = (t/16)\times 8$；\\
+     B row $n =$ \texttt{warpN*32 + j*8 + (t\%8)}};
+\end{tikzpicture}
 \caption{本章 kernel 的 \texttt{ldmatrix} 寻址映射：A 用 x4 一次装载 $m16\times k16$ 的四象限（象限序恰为 mma 期望序）；B 用 x2 装载 $k16\times n8$（借 $B^{\top}$ 行主序存储，无需 .trans）。}
 \label{fig:11-1}
 \end{figure}
@@ -378,25 +467,23 @@ CuTe 的 TiledMMA 与 Value Tile 概念（L180--183），
   \foreach \wm in {0,1}{
     \foreach \wn in {0,...,3}{
       \pgfmathtruncatemacro{\midw}{2*\wn+\wm}
-      \pgfmathtruncatemacro{\mgr}{6+10*\midw}
-      \fill[gray!\mgr] ({1.6*\wn},{-3.2*\wm}) rectangle ++(1.6,-3.2);
-      \ifnum\mgr<48
-        \node[font=\footnotesize\bfseries] at ({1.6*\wn+0.8},{-3.2*\wm-1.45}) {MMA\midw};
-        \node[font=\tiny] at ({1.6*\wn+0.8},{-3.2*\wm-2.05}) {warp\midw};
-      \else
-        \node[font=\footnotesize\bfseries, text=white] at ({1.6*\wn+0.8},{-3.2*\wm-1.45}) {MMA\midw};
-        \node[font=\tiny, text=white] at ({1.6*\wn+0.8},{-3.2*\wm-2.05}) {warp\midw};
-      \fi
+      \pgfmathtruncatemacro{\mmod}{mod(\midw,3)}
+      \ifnum\mmod=0\relax\def\mfill{tkFillBlue}\fi
+      \ifnum\mmod=1\relax\def\mfill{tkFillPurple}\fi
+      \ifnum\mmod=2\relax\def\mfill{tkFillGreen}\fi
+      \fill[\mfill] ({1.6*\wn},{-3.2*\wm}) rectangle ++(1.6,-3.2);
+      \node[font=\footnotesize\bfseries] at ({1.6*\wn+0.8},{-3.2*\wm-1.45}) {MMA\midw};
+      \node[font=\tiny] at ({1.6*\wn+0.8},{-3.2*\wm-2.05}) {warp\midw};
     }
   }
   \foreach \wm in {0,1}{
     \foreach \ai in {1,2,3}{
-      \draw[white, thin] (0,{-3.2*\wm-0.8*\ai}) -- (6.4,{-3.2*\wm-0.8*\ai});
+      \draw[black!25, thin] (0,{-3.2*\wm-0.8*\ai}) -- (6.4,{-3.2*\wm-0.8*\ai});
     }
   }
   \foreach \wn in {0,...,3}{
     \foreach \aj in {1,2,3}{
-      \draw[white, thin] ({1.6*\wn+0.4*\aj},0) -- ({1.6*\wn+0.4*\aj},-6.4);
+      \draw[black!25, thin] ({1.6*\wn+0.4*\aj},0) -- ({1.6*\wn+0.4*\aj},-6.4);
     }
   }
   \draw[thick] (0,0) rectangle (6.4,-6.4);
@@ -404,37 +491,37 @@ CuTe 的 TiledMMA 与 Value Tile 概念（L180--183），
   \foreach \wn in {1,2,3}{
     \draw[thick] ({1.6*\wn},0) -- ({1.6*\wn},-6.4);
   }
-  \node[anchor=south, font=\tiny] at (3.2,0.1) {N direction（\texttt{warp\_n = warp\_id/2}，$0\to3$ 向右）};
-  \node[anchor=east, font=\tiny, rotate=90] at (-0.12,-3.2) {M direction（\texttt{warp\_m = warp\_id\%2}，变化快）};
+  \node[anchor=south, font=\tiny, text=tkBlue] at (3.2,0.42) {N direction（\texttt{warp\_n = warp\_id/2}，$0\to3$ 向右）};
+  \node[anchor=center, font=\tiny, rotate=90, text=tkBlue] at (-0.32,-3.2) {M direction（\texttt{warp\_m = warp\_id\%2}，变化快）};
   \foreach \mm/\ml in {0/0,1/64,2/128}{
     \node[anchor=east, font=\tiny] at (-0.45,{-3.2*\mm}) {\ml};
   }
   \foreach \nn/\nl in {0/0,1/32,2/64,3/96,4/128}{
     \node[anchor=south, font=\tiny] at ({1.6*\nn},0.08) {\nl};
   }
-  \node[anchor=north west, font=\tiny] at (0,-6.5) {MMA0--7 按列主序（$=$ hgemm.cuh L158--159 字符画）：warp\_id $= 2\cdot$warp\_n $+$ warp\_m};
-  \draw[dashed, ->] (6.55,-0.9) -- (7.9,-0.9);
+  \node[anchor=north west, font=\tiny, align=left, text width=6.5cm] at (0,-6.5) {MMA0--7 按列主序（$=$ hgemm.cuh L158--159 字符画）：warp\_id $= 2\cdot$warp\_n $+$ warp\_m};
+  \draw[dashed, ->, tkBlue] (6.55,-0.9) -- (7.9,-0.9);
   \begin{scope}[shift={(8.0,0)}]
     \foreach \ai in {0,...,3}{
       \foreach \aj in {0,...,3}{
         \pgfmathtruncatemacro{\aidx}{4*\ai+\aj}
         \pgfmathtruncatemacro{\agr}{10+3*\aidx}
-        \fill[gray!\agr] ({0.6*\aj},{-1.2*\ai}) rectangle ++(0.6,-1.2);
+        \fill[tkBlue!\agr] ({0.6*\aj},{-1.2*\ai}) rectangle ++(0.6,-1.2);
       }
     }
     \draw[thick] (0,0) rectangle (2.4,-4.8);
     \node[font=\tiny, rotate=90] at (1.85,-0.9) {$m16n8$};
-    \node[anchor=south, font=\tiny] at (1.2,0.08) {N：$4\times8=32$};
-    \node[anchor=east, font=\tiny, rotate=90] at (-0.12,-2.4) {M：$4\times16=64$};
+    \node[anchor=south, font=\tiny, text=tkBlue] at (1.2,0.08) {N：$4\times8=32$};
+    \node[anchor=center, font=\tiny, rotate=90, text=tkBlue] at (-0.3,-2.4) {M：$4\times16=64$};
     \node[anchor=west, font=\scriptsize] at (3.0,-0.55) {单 warp 块放大};
-    \node[anchor=west, font=\tiny, align=left] at (3.0,-0.95)
+    \node[anchor=north west, font=\tiny, align=left] at (3.0,-0.82)
       {（warp tile $64\times32$）：\\$4\times4=16$ 个 $m16n8k16$ atom，\\强度 $=$ 块内位置\\（$kValTileM\times kValTileN$）};
-    \node[draw, align=left, anchor=north west, font=\scriptsize] at (0,-5.3)
+    \node[draw=gray!60, fill=white, inner sep=3pt, align=left, anchor=north west, font=\scriptsize] at (0,-5.3)
       {三层相乘：MMA atom $m16n8k16$ $\to$ MMA tile $2\sb M\times4\sb N$\\warp（列主序 MMA0--7，$32\times32$）$\to$ warp tile $64\times32$\\$\to$ block tile $128\times128$\\[2pt]
        $B\sb M = 16\cdot2\cdot4 = 128$，\quad $B\sb N = 8\cdot4\cdot4 = 128$};
   \end{scope}
 \end{tikzpicture}
-\caption{MMA warp $2\times4$ 排布（左，$128\times128$ block tile，灰度 $=$ warp 身份）：MMA0--7 按列主序——N 向 MMA0/2/4/6、M 向 MMA1/3/5/7（\texttt{warp\_m = warp\_id\%2} 变化快），与 hgemm.cuh L158--159 原字符画一致；每 warp 块内 $4\times4$ 个 $m16n8$ atom 小格。右：单 warp 块放大（warp tile $64\times32$，强度 $=$ atom 块内位置）；侧栏三层记号 $B\sb M=16\cdot2\cdot4$、$B\sb N=8\cdot4\cdot4$。}
+\caption{MMA warp $2\times4$ 排布（左，$128\times128$ block tile，浅色 $=$ warp 身份）：MMA0--7 按列主序——N 向 MMA0/2/4/6、M 向 MMA1/3/5/7（\texttt{warp\_m = warp\_id\%2} 变化快），与 hgemm.cuh L158--159 原字符画一致；每 warp 块内 $4\times4$ 个 $m16n8$ atom 小格。右：单 warp 块放大（warp tile $64\times32$，蓝深 $=$ atom 块内位置）；侧栏三层记号 $B\sb M=16\cdot2\cdot4$、$B\sb N=8\cdot4\cdot4$。}
 \label{fig:11-mma-layout}
 \end{figure}
 

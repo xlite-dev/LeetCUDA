@@ -544,14 +544,122 @@ L1374--1399），Step 5 的写回是 ch16 的原版方案——warp 内 shuffle 
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-17-1-dual-pipeline/fig-17-1.png}
+\begin{tikzpicture}[font=\tiny, x=0.013729cm, y=-0.013729cm]
+  \definecolor{tBlue}{RGB}{33,100,160}
+  \definecolor{tGreen}{RGB}{40,105,60}
+  \definecolor{tOrange}{RGB}{165,95,15}
+  \node[anchor=west, font=\scriptsize\bfseries] at (24,26)
+    {producer/consumer 双流水时序（$\mathrm{Sk}{=}2$, $S_v{=}1$, $D{=}64$）};
+  \node[draw=tBlue, fill=gray!10, text=tBlue, font=\tiny\bfseries, inner sep=1pt,
+        minimum width=7.41cm, minimum height=0.44cm] at (294,66)
+    {producer WG0（1 个活跃线程，TMA 提交）};
+  \node[draw=tGreen, fill=gray!10, text=tGreen, font=\tiny\bfseries, inner sep=1pt,
+        minimum width=7.41cm, minimum height=0.44cm] at (886,66)
+    {consumer WG1（8 warps, 256 线程）};
+  \node[draw=tBlue, fill=white, align=center, text width=7.0cm, inner sep=1pt,
+        minimum height=0.52cm] at (294,111)
+    {P0：TMA Q $\overset{\text{expect\_tx 16KB}}{\longrightarrow}$ full\_Q};
+  \node[draw=tGreen, fill=white, align=center, text width=7.0cm, inner sep=1pt,
+        minimum height=0.52cm] at (886,111)
+    {C0：256$\times$ arrive empty\_K[0..1]；256$\times$ arrive empty\_V[0]};
+  \node[draw=tBlue, fill=white, align=center, text width=7.0cm, inner sep=1pt,
+        minimum height=0.52cm] at (294,157)
+    {P1：TMA K[0]$\to$st0；TMA K[1]$\to$st1（预取 $\mathrm{Sk}{-}1=1$ 个 tile）};
+  \node[draw=tGreen, fill=white, align=center, text width=7.0cm, inner sep=1pt,
+        minimum height=0.47cm] at (886,155) {wait full\_Q（一次，Q 就位）};
+  \node[anchor=west, text=tGreen, font=\tiny\bfseries] at (616,189)
+    {---- iter $k = 0$ ----};
+  \node[draw=tBlue, fill=white, align=center, text width=7.0cm, inner sep=1pt,
+        minimum height=0.82cm] at (294,214)
+    {P2（每轮 $k$）：TMA V[k]$\to$v0，随后 TMA K[k+2]$\to$st（覆盖已被 consumer 释放的空槽）};
+  \node[draw=tBlue, fill=gray!18, align=center, text width=7.0cm, inner sep=1pt,
+        minimum height=0.60cm] at (294,276)
+    {producer 领先 consumer 至多 $\mathrm{Sk}{-}1$ 个 K tile / $S_v$ 个 V tile};
+  \node[draw=tGreen, fill=white, align=center, text width=6.9cm, inner sep=1pt,
+        minimum height=0.47cm] at (891,219) {wait full\_K[0]：QK 用 K[0]};
+  \node[draw=tGreen, fill=white, align=center, text width=6.9cm, inner sep=1pt,
+        minimum height=0.47cm] at (891,259)
+    {3b QK$^{\top}$：ldmatrix + HMMA $\longrightarrow$ arrive empty\_K[0]（用完即提前释放）};
+  \node[draw=tGreen, fill=white, align=center, text width=6.9cm, inner sep=1pt,
+        minimum height=0.47cm] at (891,299) {3c softmax（纯寄存器，不碰 smem）};
+  \node[draw=tGreen, fill=white, align=center, text width=6.9cm, inner sep=1pt,
+        minimum height=0.47cm] at (891,339)
+    {wait full\_V[0]（恰在 3d 前）—— 3d PV：R\_S 复用 + X2\_T(V) —— arrive empty\_V[0]};
+  \node[draw=tGreen, fill=white, align=center, text width=6.9cm, inner sep=1pt,
+        minimum height=0.47cm] at (891,379) {3e rescale（$m$, $\ell$, $O$）};
+  \node[draw=tGreen, fill=gray!10, align=center, text width=7.0cm, inner sep=1pt,
+        minimum height=0.52cm] at (886,425)
+    {iter $k = 1$：同构（wait full\_K[1] $\to$ QK$^{\top}$ $\to$ softmax $\to$ PV $\to$ rescale）};
+  \draw[-{Stealth}, tOrange, dashed, thick] (564,214) -- (616,214);
+  \draw[-{Stealth}, tOrange, dashed, thick] (564,300) -- (616,300);
+  \node[draw=tOrange, fill=gray!12, text=tOrange!65!black, font=\tiny\bfseries,
+        inner sep=1pt, minimum width=15.54cm, minimum height=0.60cm] at (590,484)
+    {overlap：计算 tile $k$ 与搬运 tile $k{+}1$ 完全重叠 —— 搬运延迟被计算掩盖};
+  \node[draw=tBlue, fill=white, align=center, text width=15.2cm, inner sep=1pt,
+        minimum height=0.58cm] at (590,535)
+    {K[2] 装载窗口 $=$ QK[0] $+$ softmax[0] $+$ PV[0]（empty\_K[0] 在 QK[0] 结束即释放）};
+  \node[draw=tGreen, fill=white, align=center, text width=15.2cm, inner sep=1pt,
+        minimum height=0.58cm] at (590,583)
+    {V[1] 装载窗口 $=$ QK[0] $+$ softmax[0]（empty\_V[0] 在 PV[0] 结束才释放，$S_v{=}1$ 窗口更窄）};
+\end{tikzpicture}
 \caption{FA2 TMA + WS 的 producer/consumer 双流水时序（$\mathrm{Sk}{=}2$、$S_v{=}1$、$D{=}64$）。producer 的 P2 每轮先发 V 再预取 K；consumer 的 empty 释放点（K 在 QK 后、V 在 PV 后）决定了每个 stage 的可覆盖窗口。}
 \label{fig:17-1}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-17-2-mbarrier-topo/fig-17-2.png}
+\begin{tikzpicture}[font=\tiny, x=0.015283cm, y=-0.015283cm]
+  \definecolor{tBlue}{RGB}{33,100,160}
+  \definecolor{tGreen}{RGB}{40,105,60}
+  \definecolor{tOrange}{RGB}{165,95,15}
+  \node[anchor=west, font=\scriptsize\bfseries] at (24,26)
+    {mbarrier 阵列拓扑：谁 arrive / 谁 wait（init count $= 257$）};
+  \node[anchor=west, text=black!65] at (580,50)
+    {$D{=}128$：$\mathrm{kTmaChunks}$ 次 load 共享同一 full 屏障};
+  \node[anchor=west, text=tBlue, font=\scriptsize\bfseries] at (24,60)
+    {Q：一对一单屏障};
+  \node[draw=tBlue, fill=gray!10, text=tBlue, font=\scriptsize\bfseries, inner sep=1pt,
+        minimum width=3.67cm, minimum height=0.67cm] at (420,66) {full\_Q};
+  \draw[-{Stealth}, tBlue, thick] (280,66) -- (300,66);
+  \draw[-{Stealth}, tGreen, thick] (420,90) -- (420,68);
+  \node[anchor=west, text=black!65] at (580,70)
+    {多次 complete-tx 记账，一次 expect\_tx 声明总量};
+  \node[anchor=west, text=black!65] at (24,106)
+    {producer：arrive\_tx($\mathrm{kQTileBytes} = 16$KB, $D{=}64$)};
+  \node[anchor=west, text=black!65] at (300,102)
+    {consumer：256$\times$ arrive $+$ wait（一次性，无 empty\_Q）};
+  \node[draw=black!60, fill=gray!25, font=\tiny\bfseries, align=center,
+        text width=15.2cm, inner sep=1pt, minimum height=0.49cm] at (530,166)
+    {stage $s \in [0, \mathrm{Sk})$：K 屏障对（V 同形，$S_v$ 份；V 在 PV 后释放）};
+  \node[anchor=west, text=black!65] at (300,207) {producer：arrive\_tx(8/16KB)};
+  \node[draw=tBlue, fill=gray!10, text=tBlue, font=\scriptsize\bfseries, inner sep=1pt,
+        minimum width=3.21cm, minimum height=0.73cm] at (165,224) {full\_K[s]};
+  \draw[-{Stealth}, tBlue, thick] (296,207) -- (274,207);
+  \node[anchor=west, text=black!65] at (300,237)
+    {consumer：256$\times$ arrive（随后 wait —— QK$^{\top}$ 前阻塞在相位）};
+  \draw[-{Stealth}, tGreen, thick] (296,237) -- (274,237);
+  \node[draw=tGreen, fill=gray!20, text=tGreen!70!black, font=\scriptsize\bfseries,
+        inner sep=1pt, minimum width=3.21cm, minimum height=0.73cm] at (165,344)
+    {empty\_K[s]};
+  \node[anchor=west, text=black!65] at (300,327)
+    {consumer（QK$^{\top}$ 用完 K 即刻）：256$\times$ arrive(free)};
+  \draw[-{Stealth}, tGreen, thick] (296,327) -- (274,327);
+  \node[anchor=west, text=black!65] at (300,357)
+    {producer 写覆盖前：wait（等自己那一份 arrive 凑齐）};
+  \draw[-{Stealth}, tBlue, thick] (296,357) -- (274,357);
+  \node[anchor=west, font=\scriptsize\bfseries] at (24,412)
+    {per-phase 记账（每轮预算恰好 257/round，相位循环永不错位）：};
+  \node[draw=tGreen, fill=gray!15, text=tGreen!70!black, align=center,
+        text width=7.4cm, inner sep=1pt, minimum height=0.73cm] at (272,452)
+    {full[s] 每轮 $=$ 256（consumer arrive）$+$ 1（producer arrive\_tx）$+$ tx 落地};
+  \node[draw=tGreen, fill=gray!15, text=tGreen!70!black, align=center,
+        text width=7.4cm, inner sep=1pt, minimum height=0.73cm] at (788,452)
+    {empty[s] 每轮 $=$ 256（consumer free）$+$ 1（producer 写前 arrive）};
+  \node[draw=tOrange, fill=gray!12, text=tOrange!65!black, font=\tiny\bfseries,
+        align=center, text width=15.2cm, inner sep=1pt, minimum height=0.64cm]
+        at (530,509)
+    {$D = 128$ 时同一 tile 的多次 TMA 共享一个 full 屏障：多次 complete-tx 记账、一次 expect\_tx 声明总量};
+\end{tikzpicture}
 \caption{本章 kernel 的 mbarrier 阵列拓扑：Q 一对一单屏障、K/V 各 $\mathrm{Sk}/S_v$ 对 full/empty 屏障，全部 init 257。D $=$ 128 时同一 tile 的多次 TMA 共享一个 full 屏障（多次 complete-tx 记账、一次 expect\_tx 声明总量）。}
 \label{fig:17-2}
 \end{figure}

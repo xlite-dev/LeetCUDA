@@ -33,6 +33,19 @@
 \definecolor{vscText}{RGB}{31,35,40}
 \definecolor{vscLineNumber}{RGB}{142,142,142}
 \definecolor{vscKeyword}{RGB}{0,90,158}
+
+% TikZ 语义色板（2026-09-20：全图统一着色，替代纯灰度）
+% 用法：填充大面积用 tkFill* 浅色系，边框/文字/箭头用主色系；无语义的中性结构可保留灰度
+\definecolor{tkBlue}{RGB}{33,113,181}     % 结构/主数据/流水
+\definecolor{tkGreen}{RGB}{53,141,106}    % 修复/after/有效/命中
+\definecolor{tkOrange}{RGB}{216,130,28}   % 冲突/before/警示过渡
+\definecolor{tkRed}{RGB}{203,54,47}       % 错误/溢出/坏例
+\definecolor{tkPurple}{RGB}{122,82,158}   % 次要强调/对照
+\definecolor{tkFillBlue}{RGB}{232,241,250}
+\definecolor{tkFillGreen}{RGB}{230,243,236}
+\definecolor{tkFillOrange}{RGB}{252,240,224}
+\definecolor{tkFillRed}{RGB}{251,233,231}
+\definecolor{tkFillPurple}{RGB}{240,234,247}
 \definecolor{vscComment}{RGB}{0,128,0}
 \definecolor{vscAccent}{RGB}{163,21,21}
 \definecolor{vscEmphasis}{RGB}{43,145,175}

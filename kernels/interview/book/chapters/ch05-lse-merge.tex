@@ -316,7 +316,47 @@ $o = p \cdot \alpha + s \cdot \beta$（硬件可融合为 FMA），再整包写�
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-5-1-merge-states/fig-5-1.png}
+\resizebox{0.95\textwidth}{!}{%
+\begin{tikzpicture}[font=\scriptsize,
+  sbody/.style={line width=0.5pt, minimum width=6.0cm, minimum height=2.45cm},
+  shead/.style={line width=0.5pt, minimum width=6.0cm, minimum height=0.46cm,
+    font=\footnotesize\bfseries},
+  sline/.style={anchor=west, inner sep=1pt}]
+  \node[anchor=west, font=\small\bfseries] at (0.43, 7.66)
+    {两个分块 attention 状态的合并 $=$ 整体 softmax 加权（定理 5.1）};
+  \node[sbody, draw=vscKeyword, fill=gray!5] at (3.71, 5.92) {};
+  \node[shead, draw=vscKeyword, fill=gray!16, text=vscKeyword] at (3.71, 6.91)
+    {KV chunk A: $s(1..n)$};
+  \node[sline] at (0.94, 6.37) {$m(A) = \max\ s(1..n)$};
+  \node[sline] at (0.94, 5.91) {$l(A) = \sum e^{s - m(A)}$};
+  \node[sline] at (0.94, 5.46) {$O(A) = \sum e^{s-m(A)} \cdot V / l(A)$};
+  \node[sline] at (0.94, 5.00) {$\mathrm{LSE}(A) = m(A) + \log l(A)$};
+  \node[sbody, draw=green!45!black, fill=gray!5] at (11.71, 5.92) {};
+  \node[shead, draw=green!45!black, fill=gray!16, text=green!45!black] at (11.71, 6.91)
+    {KV chunk B: $s(n{+}1..n{+}m)$};
+  \node[sline] at (8.94, 6.37) {$m(B) = \max\ s(n{+}1..n{+}m)$};
+  \node[sline] at (8.94, 5.91) {$l(B) = \sum e^{s - m(B)}$};
+  \node[sline] at (8.94, 5.46) {$O(B) = \sum e^{s-m(B)} \cdot V / l(B)$};
+  \node[sline] at (8.94, 5.00) {$\mathrm{LSE}(B) = m(B) + \log l(B)$};
+  \draw[-{Stealth}, black!55, line width=0.7pt]
+    (3.71, 4.63) -- (6.14, 3.71) -- (7.14, 3.71);
+  \draw[-{Stealth}, black!55, line width=0.7pt]
+    (11.71, 4.63) -- (9.29, 3.71) -- (8.29, 3.71);
+  \node[draw=orange!75!black, fill=gray!8, minimum width=8.57cm,
+    minimum height=2.26cm] at (7.71, 2.50) {};
+  \node[draw=orange!75!black, fill=gray!16, minimum width=8.57cm,
+    minimum height=0.43cm, font=\footnotesize\bfseries, text=orange!75!black]
+    at (7.71, 3.41) {merge：以 $L = \max(\mathrm{LSE}(A), \mathrm{LSE}(B))$ 为 shift 基准};
+  \node[sline] at (3.66, 2.87)
+    {$w(A) = e^{\mathrm{LSE}(A)-L}$ \qquad $w(B) = e^{\mathrm{LSE}(B)-L}$};
+  \node[sline] at (3.66, 2.39)
+    {$\alpha = w(A)/(w(A)+w(B))$ \qquad $\beta = w(B)/(w(A)+w(B))$};
+  \node[sline] at (3.66, 1.90) {$O = \alpha \cdot O(A) + \beta \cdot O(B)$};
+  \draw[-{Stealth}, orange!75!black, line width=0.7pt] (7.71, 1.32) -- (7.71, 0.91);
+  \node[draw=green!45!black, fill=green!10, line width=0.6pt, minimum width=12.0cm,
+    minimum height=0.66cm, font=\small\bfseries] at (7.71, 0.53)
+    {$O = \mathrm{softmax}\bigl([s(1..n);\ s(n{+}1..n{+}m)]\bigr)$ 作用于 $[V(A);\ V(B)]$ —— 与一次性 attention 逐元素相等};
+\end{tikzpicture}}
 \caption{两个分块 attention 状态的合并：块内各自输出（已归一化 $O$ 与单标量 LSE），块间以 $L = \max(\mathrm{LSE})$ 为 shift 基准计算凸组合系数 $\alpha, \beta$，合并结果与整体 softmax 直接加权逐元素相等（定理~\ref{thm:merge-eq}）。}
 \label{fig:5-1}
 \end{figure}

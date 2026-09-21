@@ -828,7 +828,93 @@ $V$ 不改 $O$、WHT 两端同乘正交阵——右侧的 outlier 幅度示意�
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.98\textwidth]{figures/drawio/fig-28-1-quant-pipeline/fig-28-1-quant-pipeline.png}
+  % was: \includegraphics[width=0.98\textwidth]{figures/drawio/fig-28-1-quant-pipeline/fig-28-1-quant-pipeline.png}
+  \begin{tikzpicture}[font=\tiny, >=Stealth,
+    kin/.style={draw=tkBlue, fill=tkFillBlue, text=tkBlue, align=center, inner sep=2pt,
+      font=\bfseries\fontsize{4.2}{4.8}\selectfont},
+    kst/.style={draw=tkPurple, fill=tkFillPurple, align=center, inner sep=2pt,
+      font=\fontsize{4.2}{4.8}\selectfont},
+    kqu/.style={draw=tkGreen, fill=tkFillGreen, align=center, inner sep=2pt,
+      font=\fontsize{4.2}{4.8}\selectfont},
+    kout/.style={draw=tkOrange, fill=tkFillOrange, text=tkOrange!80!black, align=center,
+      inner sep=2pt, font=\bfseries\fontsize{4.2}{4.8}\selectfont},
+    pl/.style={anchor=west, align=left, inner sep=1pt,
+      font=\fontsize{4.2}{4.8}\selectfont},
+  ]
+    % 输入列：Q/K/V 的 fp16 张量与 NHD 零拷贝视图
+    \node[kin, text width=1.70cm] at (0.90,-0.55) {Q fp16/bf16\\(B,H,N,D\_og)};
+    \node[kin, text width=1.70cm] at (0.90,-2.05) {K fp16/bf16\\(B,H,N,D\_og)};
+    \node[kin, text width=1.70cm] at (0.90,-3.55) {V fp16/bf16\\(B,H,N,D\_og)};
+    \node[draw=gray!60, fill=gray!10, align=center, inner sep=2pt,
+      font=\fontsize{4.2}{4.8}\selectfont, text width=1.70cm] at (0.90,-4.45)
+      {NHD view\\零拷贝寻址};
+    \draw[dashed, gray!70, thin] (0.90,-4.16) -- (0.90,-4.00);
+    % Q 泳道：可选旋转 + per-block/per-thread 量化
+    \node[kst, text width=2.50cm] at (3.40,-0.55)
+      {wht\_qk\_kernel（可选）\\Hadamard 蝶形旋转\\显式开启（fp4 收益大）};
+    \node[kqu, text width=2.80cm] at (6.45,-0.55)
+      {quantize\_fp8\_q\\per-block: 1 scale/128 行\\per-thread: 64 scale/128 行};
+    \node[kout, text width=1.80cm] at (9.15,-0.55) {Q8 e4m3/int8\\(B,H,N,D) 行主序};
+    \draw[->, gray!80, semithick] (1.78,-0.55) -- (2.12,-0.55);
+    \draw[->, gray!80, semithick] (4.68,-0.55) -- (5.02,-0.55);
+    \draw[->, gray!80, semithick] (7.88,-0.55) -- (8.22,-0.55);
+    % K 泳道：两阶段列均值 + 融合量化
+    \node[kst, text width=2.50cm] at (3.40,-2.05)
+      {kv\_col\_sum $+$ finalize\\两阶段列均值 $\bar{k}$\\$\sim$50us（无 atomics）};
+    \node[kqu, text width=2.80cm] at (6.45,-2.05)
+      {quantize\_fp8\_k（fused）\\fp32 域减 $\bar{k}$ 再量化\\不物化 $K'$ 中间量};
+    \node[kout, text width=1.80cm] at (9.15,-2.05) {K8 e4m3/int8\\(B,H,N,D) 行主序};
+    \draw[->, gray!80, semithick] (1.78,-2.05) -- (2.12,-2.05);
+    \draw[->, gray!80, semithick] (4.68,-2.05) -- (5.02,-2.05);
+    \draw[->, gray!80, semithick] (7.88,-2.05) -- (8.22,-2.05);
+    \draw[->, dashed, tkPurple, thin] (6.45,-2.48) -- (6.45,-2.78) -- (8.18,-2.78);
+    \node[pl, text=tkPurple, font=\bfseries\fontsize{4.2}{4.8}\selectfont] at (8.25,-2.78)
+      {km\_f32（lse 修正用）};
+    % V 泳道：列统计 + smem 转置量化（列 pad + VTPerm）
+    \node[kst, text width=2.50cm] at (3.40,-3.55)
+      {v\_col\_stats $+$ finalize\\per-channel: sum/max/min\\
+       amax$=\max(|\mathrm{max}-\mu|,\ |\mathrm{min}-\mu|)$};
+    \node[kqu, text width=2.80cm] at (6.45,-3.55)
+      {quantize\_fp8\_vt\\smem staging 转置 (N,D)$\to$(D,N)\\kPad$=$16 $\cdot$ VTPerm 列置换};
+    \node[kout, text width=1.80cm] at (9.15,-3.55)
+      {V8$^{\top}$ e4m3\\flat [B$\cdot$Hkv$\cdot$D, N\_pad]\\TMA 16B 对齐};
+    \draw[->, gray!80, semithick] (1.78,-3.55) -- (2.12,-3.55);
+    \draw[->, gray!80, semithick] (4.68,-3.55) -- (5.02,-3.55);
+    \draw[->, gray!80, semithick] (7.88,-3.55) -- (8.22,-3.55);
+    % 右侧 workspace 面板
+    \node[draw=gray!60, fill=gray!10, align=left, inner sep=3pt,
+      font=\fontsize{4.2}{4.8}\selectfont, text width=3.90cm] at (12.60,-2.30)
+      {\textbf{Fp8QuantizedInputs}\\
+       q8, k8, vt8（workspace）\\
+       q\_scale / k\_scale（粒度随 knob）\\
+       v\_scale: (bh,n\_rb) 或 (bh,D)\\
+       \textcolor{tkPurple}{km\_f32 $\to$ epilogue lse 修正}\\
+       \textcolor{tkPurple}{vm $\to$ O 加回均值行}\\
+       \textcolor{tkGreen!80!black}{\textbf{布局由消费方决定：}}\\
+       \textcolor{tkGreen!80!black}{\textbf{行主序 / 列主序 / fragment 槽位}}};
+    \draw[->, tkOrange, semithick] (10.12,-0.55) -- (10.55,-1.10);
+    \draw[->, tkOrange, semithick] (10.12,-2.05) -- (10.55,-2.05);
+    \draw[->, tkOrange, semithick] (10.12,-3.55) -- (10.55,-3.10);
+    % 三个 fp8 主 kernel 家族共享工作区
+    \node[kin, text width=4.00cm, font=\bfseries\fontsize{4.4}{5}\selectfont] at (12.60,-5.05)
+      {persist-D / split-D / M4N2\\三个 fp8 主 kernel 家族共享（ch29-30）};
+    \draw[->, gray!80, semithick] (12.60,-4.35) -- (12.60,-4.72);
+    % 融合原则与带宽账
+    \node[draw=tkGreen, fill=tkFillGreen, align=left, inner sep=3pt,
+      font=\fontsize{4.4}{5}\selectfont, text width=14.6cm] at (7.55,-6.05)
+      {\textbf{融合原则：统计先行、变换融进量化 —— 永远不物化 $K' = K - 1\bar{k}^{\top}$
+        或 $V'$ 中间张量（省一整轮 DRAM 往返）}\\
+       单遍寄存器驻留：16B 向量读进寄存器后 amax 与量化同遍完成，全局内存只读一次\\
+       VTPerm 列置换：为 ch30 的 reorg-free PV 打包预铺列序（launcher 强制配对，防静默错值）};
+    \node[pl, font=\fontsize{4.2}{4.8}\selectfont] at (0.10,-6.90)
+      {带宽账（B1 H32 N8192 D128）：输入 $\sim$192MB fp16 $\to$ 输出 $\sim$96MB fp8；%
+       聚合有效带宽 $\sim$1.04 TB/s（贴峰）};
+    \node[pl, font=\fontsize{4.2}{4.8}\selectfont] at (0.10,-7.15)
+      {占比：aux 链 $\sim$0.3ms vs 主 kernel 3.0ms（N=8192）$\approx$10\%；%
+       N 翻倍时 O(N) vs O(N$^2$) $\to$ 占比衰减};
+    \node[pl, text=gray!80!black, font=\fontsize{4.2}{4.8}\selectfont] at (0.10,-7.48)
+      {对照 ffpa-attn(861d75e)：cute/fp8/\{smooth\_k, smooth\_v, quantize\_fp8, prepare\_inputs, input\_layout\}.cuh};
+  \end{tikzpicture}
   \caption{fp8 前处理链全景：三泳道（Q/K/V）各自的统计 $\to$ 变换 $\to$ 量化
   kernel 与输出 workspace 布局。smoothing 与量化融合在同一 kernel 内（无中间
   落盘）；$V^{\top}$ 的列 pad 兼顾 TMA 16B 对齐与置换写。}
@@ -837,7 +923,100 @@ $V$ 不改 $O$、WHT 两端同乘正交阵——右侧的 outlier 幅度示意�
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.98\textwidth]{figures/drawio/fig-28-2-invariants/fig-28-2-invariants.png}
+  % was: \includegraphics[width=0.98\textwidth]{figures/drawio/fig-28-2-invariants/fig-28-2-invariants.png}
+  \begin{tikzpicture}[font=\tiny, >=Stealth,
+    lbox/.style={draw=gray!55, fill=gray!8},
+    ltag/.style={draw=tkPurple, fill=tkFillPurple, text=tkPurple, align=center, inner sep=2pt,
+      font=\bfseries\fontsize{4.6}{5.2}\selectfont},
+    tl/.style={anchor=west, align=left, inner sep=1pt,
+      font=\fontsize{4.4}{5}\selectfont},
+    ib/.style={draw=tkBlue, fill=tkFillBlue, align=left, inner sep=2pt,
+      font=\fontsize{4.2}{4.8}\selectfont},
+    mi/.style={draw=gray!55, fill=white, inner sep=2pt},
+    mn/.style={anchor=west, align=left, inner sep=1pt, font=\fontsize{3.6}{4.2}\selectfont},
+  ]
+    \foreach \ttop/\tg in {{-0.05/{smooth-K（列均值平移）}},
+                            {-2.55/{smooth-V（均值剥离）}},
+                            {-5.05/{Hadamard 旋转}}} {
+      \draw[lbox] (0.10,\ttop) rectangle (15.40,{\ttop-2.30});
+      \node[ltag, text width=2.30cm] at (1.48,{\ttop-0.34}) {\tg};
+    }
+    % 泳道一：smooth-K —— softmax 行平移不变
+    \node[tl, font=\bfseries\fontsize{4.6}{5.2}\selectfont] at (0.35,-0.80)
+      {$K' = K - 1\cdot\bar{k}^{\top}$（$\bar{k} =$ 每列均值，逐行减同一向量）};
+    \node[tl] at (0.35,-1.13) {$S' = QK'^{\top} = S - q_s\cdot 1^{\top}$\quad 行内常数平移};
+    \node[tl] at (0.35,-1.46) {softmax($S'$) $=$ softmax($S$)：分子分母同乘 $e^{q_s}$};
+    \node[tl, text=tkGreen!80!black, font=\bfseries\fontsize{4.6}{5.2}\selectfont] at (0.35,-1.82)
+      {$\Rightarrow$ P、O 逐 bit 不变};
+    \node[ib, text width=3.85cm] at (8.00,-1.20)
+      {\textbf{\textcolor{tkBlue}{不变量来源：softmax 行平移不变性}}\\
+       唯一代价：lse($S'$) $=$ lse($S$) $- q_s$\\
+       epilogue 回加 $\delta_Q\delta_K\cdot(Q\cdot\bar{k})$\\
+       \textcolor{gray!80!black}{（smooth\_k\_qk\_dot，quad 内归约）}};
+    \draw[mi] (10.45,-0.63) rectangle (15.30,-2.20);
+    \node[mn, text=gray!85!black] at (10.55,-0.76) {logits 平移示意（同一条曲线整体左右移）};
+    \draw[gray!60, thin] (10.75,-1.88) -- (15.05,-1.88);
+    \draw[gray!60, thin] (12.90,-1.00) -- (12.90,-2.02);
+    \draw[tkRed, semithick] (10.95,-1.90) -- (12.20,-1.20) -- (13.10,-1.78) -- (14.00,-2.00);
+    % 泳道二：smooth-V —— 行和为 1 的精确还原
+    \node[tl, font=\bfseries\fontsize{4.6}{5.2}\selectfont] at (0.35,-3.30)
+      {$V' = V - 1\cdot\bar{v}^{\top}$（同 smooth-K 的列均值形态）};
+    \node[tl] at (0.35,-3.63) {$O' = P\cdot V' = PV - (P\cdot 1)\cdot\bar{v}^{\top} = O - \bar{v}^{\top}$};
+    \node[tl] at (0.35,-3.96) {$P\cdot 1 = 1$（softmax 行和恒为 1）};
+    \node[tl, text=tkGreen!80!black, font=\bfseries\fontsize{4.6}{5.2}\selectfont] at (0.35,-4.32)
+      {$\Rightarrow$ 输出每行减同一均值，最后加回 $\bar{v}$ 即精确还原};
+    \node[ib, text width=3.85cm] at (8.00,-3.70)
+      {\textbf{\textcolor{tkBlue}{残差对称化（sage recipe）}}\\
+       amax $=$ max$(|$max$-\mu|, |$min$-\mu|)$\\
+       中心化后对称 $\to$ e4m3 域两侧同时铺满\\
+       \textcolor{gray!80!black}{f16 PV 累加路径：v\_scale\_max 压缩留裕量}};
+    \draw[mi] (10.45,-3.13) rectangle (15.30,-4.70);
+    \node[mn, text=gray!85!black] at (10.55,-3.26) {减均值前后残差分布（示意）};
+    \draw[gray!60, thin] (10.75,-4.30) -- (15.05,-4.30);
+    \foreach \bb/\hh in {0/0.30, 1/0.42, 2/0.34, 3/0.24, 4/0.16, 5/0.10,
+                          6/0.06, 7/0.05, 8/0.03, 9/0.03, 10/0.45, 11/0.12} {
+      \pgfmathsetmacro{\xb}{10.85+0.16*\bb}
+      \fill[tkOrange] (\xb,-4.30) rectangle ({\xb+0.12},{-4.30+\hh});
+    }
+    \node[mn, text=gray!85!black, text width=4.50cm] at (10.55,-4.52)
+      {橙色 $=$ 原始（右偏 outlier）；剥离均值后分布趋对称、scale 收敛};
+    % 泳道三：Hadamard 旋转 —— 两端同乘正交阵
+    \node[tl, font=\bfseries\fontsize{4.6}{5.2}\selectfont] at (0.35,-5.80)
+      {$\hat{H} = H_n/\sqrt{n}$ 正交（$\hat{H}\hat{H}^{\top} = I$）};
+    \node[tl] at (0.35,-6.13)
+      {$(Q\cdot\hat{H})(K\cdot\hat{H})^{\top} = Q\cdot(\hat{H}\hat{H}^{\top})\cdot K^{\top} = QK^{\top}$};
+    \node[tl] at (0.35,-6.46) {逐元素精确、零修正项（连 lse 都不用动）};
+    \node[tl, text=tkGreen!80!black, font=\bfseries\fontsize{4.6}{5.2}\selectfont] at (0.35,-6.82)
+      {radix-2 蝶形：$(a,b) \to (a{+}b, a{-}b)$，每 bit 一轮};
+    \node[ib, text width=3.85cm] at (8.00,-6.20)
+      {\textbf{\textcolor{tkBlue}{whitening / Jackson 性质}}\\
+       每个输出坐标 $=$ 全部输入的带符号和\\
+       能量摊到所有坐标 $\to$ 块 scale 收敛\\
+       \textcolor{gray!80!black}{FA-3 incoherent proc.：FP8 RMSE $\downarrow 2.6\times$}};
+    \draw[mi] (10.45,-5.63) rectangle (15.30,-7.20);
+    \node[mn, text=gray!85!black] at (10.55,-5.76) {行幅度：旋转前（左）vs 旋转后（右）};
+    \draw[gray!60, thin] (10.75,-6.80) -- (15.05,-6.80);
+    \foreach \bb/\hh in {0/1.00, 1/0.16, 2/0.10, 3/0.07, 4/0.05, 5/0.03,
+                          6/0.03, 7/0.02, 8/0.02, 9/0.02, 10/0.02, 11/0.02} {
+      \pgfmathsetmacro{\xb}{10.85+0.13*\bb}
+      \fill[tkOrange] (\xb,-6.80) rectangle ({\xb+0.10},{-6.80+\hh});
+    }
+    \foreach \bb in {0,...,11} {
+      \pgfmathsetmacro{\xb}{13.25+0.09*\bb}
+      \fill[tkGreen] (\xb,-6.80) rectangle ({\xb+0.05},{-6.40});
+    }
+    \node[mn, text=gray!85!black, text width=4.50cm] at (10.55,-7.02)
+      {橙色 $=$ outlier 主导块 scale，绿色 $=$ 旋转后幅度均匀（各自独立坐标轴示意）};
+    % 结论
+    \node[draw=tkGreen, fill=tkFillGreen, align=left, inner sep=3pt,
+      font=\fontsize{4.4}{5}\selectfont, text width=14.6cm] at (7.75,-8.00)
+      {\textbf{\textcolor{tkGreen!80!black}{共同目的：在量化之前把 outlier 能量摊平 $\to$
+        block scale 收敛 $\to$ 量化步长利用率最大化}}\\
+       共同约束：变换必须保持输出精确不变（或仅需行级标量修正）——这是代数定理，不是近似};
+    \node[tl, text=gray!80!black] at (0.20,-8.60)
+      {对照 ffpa-attn(861d75e)：cute/fp8/smooth\_k.cuh $\cdot$ smooth\_v.cuh $\cdot$
+       cute/hadamard.cuh（宽度规则：pow2 $D \le 512$ 全宽，否则 blockdiag $H_{64}$）};
+  \end{tikzpicture}
   \caption{三条不变变换的代数结构对比：smooth-K 改 logits 不改概率（lse 回加）、
   smooth-V 改 V 不改 O（行和为 1）、WHT 两端同乘正交阵（收缩逐元素精确）。
   右侧为 outlier 幅度在变换前后的示意（块 scale 收敛）。}

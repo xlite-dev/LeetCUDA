@@ -136,7 +136,39 @@ $S(R, i) = \sum\sb j x\sb j$——\textbf{每个 lane 都持有完整的归约�
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-2-1-shuffle-butterfly/fig-2-1.png}
+\resizebox{0.95\textwidth}{!}{%
+\begin{tikzpicture}[font=\scriptsize,
+  lane/.style={draw=black!55, line width=0.4pt, minimum width=1.73cm,
+    minimum height=0.45cm, inner sep=1pt},
+  panel/.style={anchor=west, font=\bfseries}]
+  \node[anchor=west, font=\small\bfseries] at (0.32, 7.14)
+    {warp shuffle 蝶形归约（$W{=}8$，$R{=}3$ 轮；5 步同理，base.cuh L111--148）};
+  \node[panel, blue!55!black] at (0.53, 6.61) {round 1（mask $= 4$）};
+  \node[panel, green!45!black] at (5.49, 6.61) {round 2（mask $= 2$）};
+  \node[panel, orange!75!black] at (10.45, 6.61) {round 3（mask $= 1$）};
+  \foreach \li in {0,...,7}{
+    \node[lane, fill=gray!8] at (1.40, 6.12 - 0.533*\li) {lane \li};
+    \node[lane, fill=gray!8] at (6.36, 6.12 - 0.533*\li) {lane \li};
+    \node[lane, fill=gray!8] at (11.32, 6.12 - 0.533*\li) {lane \li};}
+  \foreach \lx/\la/\lb in {2.32/6.12/3.99, 2.53/5.59/3.45,
+      2.75/5.05/2.92, 2.96/4.52/2.39}{
+    \draw[-{Stealth}, blue!55!black, line width=0.7pt] (\lx, \la) -- (\lx, \lb);}
+  \foreach \lx/\la/\lb in {7.28/6.12/5.05, 7.49/5.59/4.52,
+      7.71/3.99/2.92, 7.92/3.45/2.39}{
+    \draw[-{Stealth}, green!45!black, line width=0.7pt] (\lx, \la) -- (\lx, \lb);}
+  \foreach \lx/\la/\lb in {12.24/6.12/5.59, 12.45/5.05/4.52,
+      12.67/3.99/3.45, 12.88/2.92/2.39}{
+    \draw[-{Stealth}, orange!75!black, line width=0.7pt] (\lx, \la) -- (\lx, \lb);}
+  \node[anchor=west, blue!55!black] at (0.53, 1.61)
+    {round1：lane $i$ 加上 lane $i^4$ —— $v$ = [0+4] [1+5] [2+6] [3+7] [4+0] [5+1] [6+2] [7+3]};
+  \node[anchor=west, green!45!black] at (0.53, 1.29)
+    {round2：lane $i$ 加上 lane $i^2$ —— lane 0..3 各含 $\{0,2,4,6\}$ 族的和，lane 4..7 各含 $\{1,3,5,7\}$ 族的和};
+  \node[anchor=west, orange!75!black] at (0.53, 0.97)
+    {round3：lane $i$ 加上 lane $i^1$ —— 全和 $x_0+\cdots+x_7$ 出现在每一个 lane};
+  \node[draw=black!60, line width=0.5pt, fill=gray!12, minimum width=14.7cm,
+    minimum height=0.56cm, font=\small\bfseries] at (7.73, 0.36)
+    {配对跨度 $4 \to 2 \to 1$：每轮 XOR 掩码减半，$\log_2(W)$ 轮后全 lane 持全和};
+\end{tikzpicture}}
 \caption{warp shuffle 蝶形归约：三轮 XOR 配对（mask $4 \to 2 \to 1$）后全和出现在每一个 lane（base.cuh L111--148 以 $W{=}8$ 为例，5 步同理）。}
 \label{fig:2-1}
 \end{figure}
