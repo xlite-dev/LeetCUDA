@@ -202,9 +202,9 @@ $\mathrm{AtomLayout}=(4,1,1)$ 的 4 个 warp 分完，列维的 atom 数相差 4
   \node[axl,anchor=north] at (5.3,-3.95) {atom 列序（$N$ 向，每块 8 列：QK 共 $8{\times}8{=}64$ 列）};
   \node[axl,anchor=north] at (11.95,-3.95) {共 16 列};
   % 交接箭头
-  \draw[-{Stealth},thick] (9.72,-1.72) -- (10.78,-1.72);
-  \node[font=\scriptsize,anchor=south] at (10.25,-1.66) {$P$};
-  \node[font=\tiny,align=center,anchor=north] at (10.25,-1.78) {softmax\\Aregs 交接};
+  \draw[-{Stealth},thick,tkPurple] (9.72,-1.72) -- (10.78,-1.72);
+  \node[font=\scriptsize,anchor=south,text=tkPurple] at (10.25,-1.66) {$P$};
+  \node[font=\tiny,align=center,anchor=north,text=tkPurple] at (10.25,-1.78) {softmax\\Aregs 交接};
   % 底部两行注记
   \node[axl,anchor=north west,align=left,text width=11.6cm] at (1.1,-4.35)
     {两个 TiledMma 的 frag 相同：$\mathrm{frag}_S=\mathrm{frag}_O=((2,2),1,8)=32$ 值/线程
@@ -345,8 +345,8 @@ inverse$\circ$compose 代数法都在讲同一件事）。放到 Split-D 的语�
     \foreach \cc in {0,...,15} {
       \pgfmathtruncatemacro{\hit}{(\rr==1 || \rr==9) && (\cc==4 || \cc==5 || \cc==12 || \cc==13) ? 1 : 0}
       \ifnum\hit=1
-        \fill[gray!45] (\cc*0.42,-\rr*0.42) rectangle (\cc*0.42+0.41,-\rr*0.42-0.41);
-        \draw[thick] (\cc*0.42,-\rr*0.42) rectangle (\cc*0.42+0.41,-\rr*0.42-0.41);
+        \fill[colorx6!45] (\cc*0.42,-\rr*0.42) rectangle (\cc*0.42+0.41,-\rr*0.42-0.41);
+        \draw[thick,colorx6!75!black] (\cc*0.42,-\rr*0.42) rectangle (\cc*0.42+0.41,-\rr*0.42-0.41);
       \else
         \fill[gray!10] (\cc*0.42,-\rr*0.42) rectangle (\cc*0.42+0.41,-\rr*0.42-0.41);
       \fi
@@ -372,8 +372,8 @@ inverse$\circ$compose 代数法都在讲同一件事）。放到 Split-D 的语�
     \foreach \cc in {0,...,15} {
       \pgfmathtruncatemacro{\hit}{(\rr==1 || \rr==9) && (\cc==4 || \cc==5 || \cc==12 || \cc==13) ? 1 : 0}
       \ifnum\hit=1
-        \fill[gray!45] (\cc*0.42+8.6,-\rr*0.42) rectangle (\cc*0.42+9.01,-\rr*0.42-0.41);
-        \draw[thick] (\cc*0.42+8.6,-\rr*0.42) rectangle (\cc*0.42+9.01,-\rr*0.42-0.41);
+        \fill[colorx6!45] (\cc*0.42+8.6,-\rr*0.42) rectangle (\cc*0.42+9.01,-\rr*0.42-0.41);
+        \draw[thick,colorx6!75!black] (\cc*0.42+8.6,-\rr*0.42) rectangle (\cc*0.42+9.01,-\rr*0.42-0.41);
       \else
         \fill[gray!10] (\cc*0.42+8.6,-\rr*0.42) rectangle (\cc*0.42+9.01,-\rr*0.42-0.41);
       \fi
@@ -491,7 +491,7 @@ $d_2{=}1$ 的 4 格来自 C 的第二个 $n8$ atom（虚线半块）。\textbf{�
     \draw[-{Stealth},gray!\gln!black,thick] (1.3+0.7*\cc,-1.78) -- (1.3+0.7*\cc,-2.42);
   }
   \node[axl,anchor=west] at (1.0,-1.12) {\tiny 同一批 32 寄存器反复被加：};
-  \draw[very thick,fill=gray!8] (1.0,-2.42) rectangle (6.6,-3.32);
+  \draw[very thick,tkBlue,fill=tkFillBlue] (1.0,-2.42) rectangle (6.6,-3.32);
   \node[axl] at (3.8,-2.72) {$\mathtt{tCrS}$：32 f32/线程};
   \node[axl] at (3.8,-3.08) {\tiny 跨迭代存活 $\cdot$ 先求和、再 softmax};
   % 右 panel：8 份独立 fragment，Phase 4 相加
@@ -510,8 +510,8 @@ $d_2{=}1$ 的 4 格来自 C 的第二个 $n8$ atom（虚线半块）。\textbf{�
   \node[axl,anchor=west] at (7.3,-1.12) {\tiny \texttt{o\_acc\_storage[c][32]}，各分量独立 rescale：};
   \draw[thick] (7.3,-1.4) rectangle (10.6,-4.12);
   \node[font=\large] at (11.55,-2.6) {$\sum_{c}$};
-  \draw[-{Stealth},thick] (11.85,-2.6) -- (12.35,-2.6);
-  \draw[very thick,fill=gray!8] (12.35,-2.95) rectangle (13.6,-2.25);
+  \draw[-{Stealth},thick,tkGreen] (11.85,-2.6) -- (12.35,-2.6);
+  \draw[very thick,tkGreen,fill=tkFillGreen] (12.35,-2.95) rectangle (13.6,-2.25);
   \node[axl,align=center] at (12.975,-2.6) {Phase 4\\$O=\sum_c O_c$};
   % 底部注记与对比标语
   \node[axl,anchor=north west] at (1.0,-3.45)
@@ -705,13 +705,13 @@ PV 要在循环里反复构造 V 的 B 操作数。FFPA 的做法是\textbf{把 
   }
   \node[axl,anchor=north] at (2.88,-4.35) {物理 16B chunk 槽位 $p$（一行 $=$ 128\,B $=8$ 槽）};
   % 两条引出箭头
-  \draw[-{Stealth},thick] (5.86,-0.9) -- (6.7,-0.9);
-  \draw[-{Stealth},thick] (5.86,-2.6) -- (6.7,-2.6);
-  \node[draw,rounded corners,fill=gray!8,align=left,font=\scriptsize,
+  \draw[-{Stealth},thick,tkBlue] (5.86,-0.9) -- (6.7,-0.9);
+  \draw[-{Stealth},thick,tkGreen] (5.86,-2.6) -- (6.7,-2.6);
+  \node[draw=tkBlue,rounded corners,fill=tkFillBlue,align=left,font=\scriptsize,
     text width=8.4cm,inner sep=3pt,anchor=west] at (6.8,-1.32)
     {\texttt{partition\_fragment\_B(sV\_stg)}——\textbf{带 swizzle 的 storage 视图}：
      管\emph{数据指针}。逻辑坐标经上式换成槽位 $p$，指针落在正确的 smem 槽上。};
-  \node[draw,rounded corners,fill=gray!8,align=left,font=\scriptsize,
+  \node[draw=tkGreen,rounded corners,fill=tkFillGreen,align=left,font=\scriptsize,
     text width=8.4cm,inner sep=3pt,anchor=west] at (6.8,-2.95)
     {\texttt{tCrV\_layout}——\textbf{nonswizzle portion}：管\emph{线程-值归属}。
      「哪个线程持有哪些逻辑元素」与 XOR 无关，推导必须先剥掉 swizzle。};

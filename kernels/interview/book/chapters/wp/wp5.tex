@@ -302,10 +302,10 @@ D'_r &= D_r \cdot \delta_r,
 左侧的例子无法被充分截断，而右侧的例子则无法被合并。
 
 
-\wpssh{应用：分块示例（Application: Partitioning Example）}
+\wpssh{应用：划分示例（Application: Partitioning Example）}
 \label{sec:layouttv}
 
-复合位于 \CuTe 布局代数的核心，支撑着重塑形（reshaping）、重定步幅（restriding）、置换（permuting）、分块（partitioning）、铺瓦（tiling）以及提取子布局等运算。本节演示如何利用复合、以任意的线程-值模式（thread-value pattern）对一个数据张量进行分块。
+复合位于 \CuTe 布局代数的核心，支撑着重塑形（reshaping）、重定步幅（restriding）、置换（permuting）、划分（partitioning）、分块（tiling）以及提取子布局等运算。本节演示如何利用复合、以任意的线程-值模式（thread-value pattern）对一个数据张量进行划分。
 
 \begin{figure}[ht]
 \centering
@@ -394,11 +394,11 @@ D'_r &= D_r \cdot \delta_r,
 \node at (-1,7) {\Large{\texttt{7}}};
 \end{tikzpicture}
 }
-\caption{Ampere FP64 Tensor Core 所要求的 $8 {\times} 8$ C 矩阵的线程-值分块。}
+\caption{Ampere FP64 Tensor Core 所要求的 $8 {\times} 8$ C 矩阵的线程-值划分。}
 \label{fig:TVLayout}
 \end{figure}
 
-考察一个细化了形状 $(8,8)$ 的数据布局。我们的目标是使用图~\ref{fig:TVLayout} 所示的线程-值模式对该数据进行分块，该模式是某个特定 Ampere Tensor Core 的逻辑分块模式。这条指令的线程-值分块模式可以用布局
+考察一个细化了形状 $(8,8)$ 的数据布局。我们的目标是使用图~\ref{fig:TVLayout} 所示的线程-值模式对该数据进行划分，该模式是某个特定 Ampere Tensor Core 的逻辑划分模式。这条指令的线程-值划分模式可以用布局
 \begin{align*}
 \texttt{ThrValLayoutC:} \quad ((4,8),2):((16,1),8),
 \end{align*}
@@ -421,7 +421,7 @@ D'_r &= D_r \cdot \delta_r,
 \label{tab:TVLayoutExamples}
 \end{table}
 
-下面的代码展示了一种使用线程-值分块的常见模式：
+下面的代码展示了一种使用线程-值划分的常见模式：
 \begin{python}
 smem_data = Tensor(MyAccessor, MyLayout8x8)     # Tensor：Coord -> Offset
 tv_layout   = Layout(((4,8),2), ((16,1),8))     # TV 布局：(Thr,Val) -> Coord
@@ -429,22 +429,22 @@ smem_tv     = composition(smem_data, tv_layout) # 复合：(Thr,Val) -> Offset
 smem_v      = smem_tv[thr_id, None]             # 按线程切片得到子张量
 copy(smem_v, rmem_data)                         # 拷贝到寄存器张量/数组
 \end{python}
-这一模式在 SIMD 编程中极为常见：每个处理元素接收某个父数据的一个对称分块。一般而言，\CuTe 认识到任意分块都可以定义为复合（置换和/或重塑形）之后再切片。如第~\ref{sec:slicing} 节所述，这种“复合-切片”模式把分块模式（{\tt ThrValLayoutC}）与实际切出的数据切片（以 {\tt thr\_id} 做的切片）分离开来。由于分块模式往往是指令或优化参数相关的编译期元数据，而切片往往是运行时的程序标识索引，这一模式更有能力传播静态信息并降低运行时开销。
+这一模式在 SIMD 编程中极为常见：每个处理元素接收某个父数据的一个对称划分。一般而言，\CuTe 认识到任意划分都可以定义为复合（置换和/或重塑形）之后再切片。如第~\ref{sec:slicing} 节所述，这种“复合-切片”模式把划分模式（{\tt ThrValLayoutC}）与实际切出的数据切片（以 {\tt thr\_id} 做的切片）分离开来。由于划分模式往往是指令或优化参数相关的编译期元数据，而切片往往是运行时的程序标识索引，这一模式更有能力传播静态信息并降低运行时开销。
 
-\wpssh{逐模复合与铺瓦器（By-mode Composition and Tilers）}
+\wpssh{逐模复合与分块器（By-mode Composition and Tilers）}
 \label{sec:tiler}
 
 群复合可以逐模应用，从而支持对布局的子定义域进行操作。例如，常常需要对矩阵的行与列独立地应用复合。我们使用式~\eqref{eqn:layout_combinator} 中的组合子，并把其中的 $\star$ 运算取为群复合 $\circ$，从而对布局的各个独立子布局分别应用复合。
 
-我们把式~\eqref{eqn:layout_combinator} 中的布局元组称为{\em 铺瓦器}（Tiler）。
+我们把式~\eqref{eqn:layout_combinator} 中的布局元组称为{\em 分块器}（Tiler）。
 \begin{definition}
-{\em 铺瓦器}（Tiler）是一个 $\texttt{HTuple}(\texttt{Tile})$，其中每个 \texttt{Tile} 是
+{\em 分块器}（Tiler）是一个 $\texttt{HTuple}(\texttt{Tile})$，其中每个 \texttt{Tile} 是
 \begin{compactitem}
 \item 一个 \textit{Layout} $S:D$，或
 \item 一个 \textit{Integer} $S$，等价地视作布局 $S:1$。
 \end{compactitem}
 \end{definition}
-该定义意味着所有布局都是铺瓦器，所有整数也都是铺瓦器，并且允许 $(4,8)$ 这样的形状用作铺瓦器。图~\ref{fig:48tile} 展示了这一常见情形：形状可以作为提取并操作子布局的便捷铺瓦器。
+该定义意味着所有布局都是分块器，所有整数也都是分块器，并且允许 $(4,8)$ 这样的形状用作分块器。图~\ref{fig:48tile} 展示了这一常见情形：形状可以作为提取并操作子布局的便捷分块器。
 
 \begin{figure}[ht]
 \centering
@@ -497,17 +497,17 @@ copy(smem_v, rmem_data)                         # 拷贝到寄存器张量/数�
 \end{tikzpicture}}
 \caption{$\langle 4:2,8:2 \rangle$}
 \end{subfigure}
-\caption{通过 $\v{L} \circ \v{T}$ 从任意 $8{\times}16$ 布局 $\v{L}$ 中提取 $4 {\times} 8$ 子布局的铺瓦器 $\v{T}$ 示例。}
+\caption{通过 $\v{L} \circ \v{T}$ 从任意 $8{\times}16$ 布局 $\v{L}$ 中提取 $4 {\times} 8$ 子布局的分块器 $\v{T}$ 示例。}
 \label{fig:tilers}
 \end{figure}
 
-图~\ref{fig:tilers} 展示了铺瓦器如何通过复合作用于任意布局。图中取一个与形状 $(8,16)$ 相容的任意布局，并应用各种铺瓦器分别从列和行中提取元素，从而产生与形状 $(4,8)$ 相容的子布局。例如，铺瓦器 $\langle 4:1, 8:1 \rangle$ 从每列提取前 4 个元素、从每行提取前 8 个元素，产生与形状 $(4,8)$ 相容的子布局。
+图~\ref{fig:tilers} 展示了分块器如何通过复合作用于任意布局。图中取一个与形状 $(8,16)$ 相容的任意布局，并应用各种分块器分别从列和行中提取元素，从而产生与形状 $(4,8)$ 相容的子布局。例如，分块器 $\langle 4:1, 8:1 \rangle$ 从每列提取前 4 个元素、从每行提取前 8 个元素，产生与形状 $(4,8)$ 相容的子布局。
 
-此外，铺瓦器的复合与坐标布局的复合之间存在等价关系。对布局 $\v{L} = (M,N) : (X,Y)$ 与铺瓦器 $\v{T} = \langle \v{T}_0, \v{T}_1 \rangle$，我们注意到
+此外，分块器的复合与坐标布局的复合之间存在等价关系。对布局 $\v{L} = (M,N) : (X,Y)$ 与分块器 $\v{T} = \langle \v{T}_0, \v{T}_1 \rangle$，我们注意到
 \begin{align*}
 \v{L} \ \circ \ \v{T} \ \equiv \ \v{L} \ \circ \ (M,N):(e_0,e_1) \ \circ \ \v{T}
 \end{align*}
-这意味着 $(M,N):(e_0,e_1) \ \circ \ \v{T}$ 对 $\v{L}$ 的作用与 $\v{T}$ 的作用相同。这里 $(M,N):(e_0,e_1)$ 是一个恒等布局，把二维自然坐标映射到二维坐标。铺瓦器的这种表述巩固了如下观念：形状可以被视为从坐标到自然坐标的映射，正如第~\ref{sec:layout} 节中 Layout 的定义所采用的那样。具体而言，在复合中以下对象应视为等价：
+这意味着 $(M,N):(e_0,e_1) \ \circ \ \v{T}$ 对 $\v{L}$ 的作用与 $\v{T}$ 的作用相同。这里 $(M,N):(e_0,e_1)$ 是一个恒等布局，把二维自然坐标映射到二维坐标。分块器的这种表述巩固了如下观念：形状可以被视为从坐标到自然坐标的映射，正如第~\ref{sec:layout} 节中 Layout 的定义所采用的那样。具体而言，在复合中以下对象应视为等价：
 \begin{align*}
 (4,8) \equiv \langle 4, 8 \rangle \equiv (4:1, 8:1) \equiv (4,8):(e_0,e_1)
 \end{align*}

@@ -168,13 +168,14 @@ non-persistent 只是每 barrier 只翻第一个 phase 的退化情形。
   \def\bh{0.30}
   \node[anchor=south west, font=\scriptsize\bfseries] at (0.62,0.34)
     {persistent（dense 默认）：gridDim $=\min(\text{total\_work},\text{SMs})$};
+  % work 块按序号取 hue 环（colorx6/5/4/3），跨 SM 同列同色 = strided 认领
   \foreach \sm in {0,...,3}{
     \pgfmathsetmacro{\ya}{-\sm*0.375}
     \fill[gray!10] (0.62,\ya) rectangle (0.74,{\ya-\bh});
     \draw[gray!60, thin] (0.62,\ya) rectangle (0.74,{\ya-\bh});
-    \foreach \w in {0,...,3}{
+    \foreach \w/\wcol in {0/colorx6,1/colorx5,2/colorx4,3/colorx3}{
       \pgfmathsetmacro{\xa}{0.74+\w*\bw}
-      \fill[gray!24] (\xa,\ya) rectangle ({\xa+\bw-0.03},{\ya-\bh});
+      \fill[\wcol!24] (\xa,\ya) rectangle ({\xa+\bw-0.03},{\ya-\bh});
       \draw[thick] (\xa,\ya) rectangle ({\xa+\bw-0.03},{\ya-\bh});
     }
     \fill[gray!10] ({0.74+4*\bw-0.03},\ya) rectangle ({0.74+4*\bw+0.09},{\ya-\bh});
@@ -195,9 +196,9 @@ non-persistent 只是每 barrier 只翻第一个 phase 的退化情形。
     \pgfmathsetmacro{\ya}{-1.92-\sm*0.375}
     \pgfmathsetmacro{\xb}{0.74+\wla+0.10}
     \pgfmathsetmacro{\xc}{\xb+\wla*0.72}
-    \fill[gray!24] (0.74,\ya) rectangle ({\xb-0.10},{\ya-\bh});
+    \fill[colorx6!24] (0.74,\ya) rectangle ({\xb-0.10},{\ya-\bh});
     \draw[thick] (0.74,\ya) rectangle ({\xb-0.10},{\ya-\bh});
-    \fill[gray!24] (\xb,\ya) rectangle ({\xc},{\ya-\bh});
+    \fill[colorx5!24] (\xb,\ya) rectangle ({\xc},{\ya-\bh});
     \draw[thick] (\xb,\ya) rectangle ({\xc},{\ya-\bh});
     \draw[gray!45, densely dotted] ({\xc+0.04},{\ya-0.15}) -- (5.55,{\ya-0.15});
     \node[left, font=\tiny] at (0.60,\ya-0.15) {SM \sm};

@@ -310,19 +310,19 @@ KPI，GEMM 类 kernel 用大 tile + 低 occupancy + 高 ILP 换性能是常态�
     }
   \draw (0, 5.52) -- (-0.08, 5.52);
   \node[lab, anchor=east, font=\scriptsize\bfseries] at (-0.1, 5.52) {48};
-  \draw[black!30, semithick] plot[smooth] coordinates
+  \draw[tkBlue, semithick] plot[smooth] coordinates
     {(1.80,5.89) (2.16,4.91) (2.52,4.21) (2.88,3.68) (3.24,3.27) (3.60,2.94)
      (4.32,2.45) (5.04,2.10) (5.76,1.84) (7.20,1.47) (8.64,1.23) (10.08,1.05)
      (11.52,0.92)};
-  \draw[black!45, semithick] (0.3, 3.68) -- (7.9, 3.68);
-  \draw[black!60, semithick] (0.3, 5.52) -- (11.8, 5.52);
+  \draw[tkOrange, semithick] (0.3, 3.68) -- (7.9, 3.68);
+  \draw[tkPurple, semithick] (0.3, 5.52) -- (11.8, 5.52);
   \draw[very thick]
     (0.3,3.68) -- (2.88,3.68) -- (2.88,2.76) -- (3.83,2.76) -- (3.83,1.84)
     -- (5.76,1.84) -- (5.76,0.92) -- (11.52,0.92);
-  \node[lab, anchor=south west] at (4.7, 5.72) {block/warp 槽位上限：48 warps};
-  \node[lab, anchor=south west, align=left] at (3.3, 3.9)
+  \node[lab, anchor=south west, text=tkPurple] at (4.7, 5.72) {block/warp 槽位上限：48 warps};
+  \node[lab, anchor=south west, align=left, text=tkOrange] at (3.3, 3.9)
     {smem 约束（示例：\\smem/block=32KB，T=256）\\$\to$ 上限 32 warps};
-  \node[lab, anchor=west, align=left] at (11.68, 0.92)
+  \node[lab, anchor=west, align=left, text=tkBlue] at (11.68, 0.92)
     {寄存器约束\\$65536/(32r)$};
   \node[lab, anchor=west, align=left] at (11.68, 2.35)
     {粗黑阶梯 = min\\（整 block 量化，\\T=256 $\to$ 8 warps/级）};

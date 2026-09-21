@@ -147,14 +147,14 @@ online softmax（Milakov \& Gimelshein，arXiv:1805.02867）的思路是：维�
 \begin{figure}[htbp]
 \centering
 \begin{tikzpicture}[font=\small,
-  statebox/.style={draw, rounded corners=3pt, fill=gray!15, inner sep=5pt, align=center, minimum height=9mm},
+  statebox/.style={draw=tkBlue, rounded corners=3pt, fill=tkFillBlue, inner sep=5pt, align=center, minimum height=9mm},
   branch/.style={draw, rounded corners=2pt, inner sep=4pt, align=center, text width=2.35cm, minimum height=12mm}]
   \node[statebox] (old) at (0,0.4) {旧状态\\$(m,\;\ell)$};
   \node[font=\scriptsize, align=center, anchor=north] at (0,-0.35)
     {$m$~$\leftrightarrow$~\texttt{MD.m}~$\leftrightarrow$~\texttt{block\_row\_max}\\
      $\ell$~$\leftrightarrow$~\texttt{MD.d}~$\leftrightarrow$~\texttt{block\_row\_sum}};
   \node[statebox] (newx) at (0,-2.6) {新元素\\$x^{(k+1)}$};
-  \draw[rounded corners=4pt, draw, fill=gray!5] (2.3,1.7) rectangle (7.6,-2.5);
+  \draw[rounded corners=4pt, draw=tkBlue!60, fill=tkFillBlue] (2.3,1.7) rectangle (7.6,-2.5);
   \node[align=center] at (4.95,1.35) {\textbf{合并算子}（式~\ref{eq:4-online}）};
   \node[align=center] at (4.95,0.75) {$m^{\mathrm{new}} = \max\bigl(m,\,x^{(k+1)}\bigr)$};
   \node[branch, fill=gray!10] (b1) at (3.55,-0.55)
@@ -169,10 +169,10 @@ online softmax（Milakov \& Gimelshein，arXiv:1805.02867）的思路是：维�
   \draw[-{Latex}] (7.6,0.4) -- (newst.west);
   \node[statebox] (out) at (13.3,0.4) {末轮输出\\$y^{(i)} = \dfrac{e^{\,x^{(i)}-m^{(n)}}}{\ell^{(n)}}$};
   \draw[-{Latex}] (newst.east) -- (out.west) node[midway, above, font=\scriptsize] {流过全部 $n$ 个元素};
-  \node[draw, dashed, rounded corners=2pt, fill=gray!10, inner sep=4pt, align=center,
+  \node[draw, dashed, rounded corners=2pt, fill=tkFillOrange, inner sep=4pt, align=center,
         font=\scriptsize, text width=3.7cm] (corr) at (9.9,-1.75)
     {输出修正：已累加的部分输出同乘 $e^{\,m-m^{\mathrm{new}}}$\\（FlashAttention 的 online rescale，第~\ref{ch:15}~章）};
-  \draw[-{Latex}, dashed, thick, gray] (b2.south) to[bend right=16] (corr.west);
+  \draw[-{Latex}, dashed, thick, tkOrange] (b2.south) to[bend right=16] (corr.west);
 \end{tikzpicture}
 \caption{online softmax 单步递推的数据流：旧状态 $(m,\ell)$ 与新元素 $x^{(k+1)}$ 经合并算子（式~\ref{eq:4-online}）产出新状态。新元素不刷新 max 时修正因子为 $1$、旧 $\ell$ 原样累加；刷新 max 时旧 $\ell$ 需乘 $e^{m-m^{\mathrm{new}}} < 1$ 做一次 rescale（最深灰），FlashAttention 中已写出的输出累加器 $O$ 同乘该因子。源码对照：$m$/$\ell$ 即本章 Level~3 的 \texttt{MD.m}/\texttt{MD.d}，对应 FlashAttention 源码的 \texttt{block\_row\_max}/\texttt{block\_row\_sum}。}
 \label{fig:4-2}
@@ -499,16 +499,16 @@ launch 与同步的固定开销占比大；附录~B 的汇总口径会注明这�
 \centering
 \begin{tikzpicture}[font=\scriptsize,
   cell/.style={minimum size=5mm, inner sep=0pt, font=\tiny},
-  cut/.style={cell, pattern=north east lines, pattern color=gray!60, fill=gray!12}]
+  cut/.style={cell, pattern=north east lines, pattern color=tkRed!60, fill=tkFillRed}]
   \node[anchor=south, font=\small\bfseries] at (1.52,1.24) {block 0（token 0）};
   \node[anchor=south, font=\small\bfseries] at (5.2,1.24) {block 1（token 1）};
   \draw[very thick, rounded corners=3pt] (-0.25,0.05) rectangle (3.3,0.95);
   \draw[very thick, rounded corners=3pt] (3.72,0.05) rectangle (6.68,0.95);
   \foreach \p/\idx in {0/0,1/1,2/2}
-    \node[cell, fill=gray!50] at ({0.25+\p*0.52},0.5) {\idx};
+    \node[cell, fill=tkFillGreen, draw=tkGreen, minimum size=5mm] at ({0.25+\p*0.52},0.5) {\idx};
   \node[font=\tiny] at (1.85,0.5) {$\cdots$};
   \foreach \p/\idx in {0/254,1/255}
-    \node[cell, fill=gray!50] at ({2.42+\p*0.52},0.5) {\idx};
+    \node[cell, fill=tkFillGreen, draw=tkGreen, minimum size=5mm] at ({2.42+\p*0.52},0.5) {\idx};
   \foreach \p/\idx in {0/256,1/257}
     \node[cut] at ({4.02+\p*0.52},0.5) {\idx};
   \node[font=\tiny] at (5.1,0.5) {$\cdots$};
@@ -520,15 +520,15 @@ launch 与同步的固定开销占比大；附录~B 的汇总口径会注明这�
   \node[anchor=north, align=center] at (3.51,-1.02)
     {grid$(S{=}2)$，block$(H{=}256)$：共 $512$ 线程\\
      守卫 \texttt{idx < N}，错传 $N=256$（应传 $S\times H=512$）};
-  \node[draw, very thick, fill=gray!70, text=white, minimum width=3.0cm,
+  \node[draw, very thick, draw=tkGreen, fill=tkFillGreen, text=tkGreen, minimum width=3.0cm,
         minimum height=0.62] (y0) at (11.9,0.5) {y[0]：新值};
-  \node[draw, dashed, fill=gray!8, minimum width=3.6cm,
+  \node[draw, dashed, draw=tkRed, fill=tkFillRed, text=tkRed, minimum width=3.6cm,
         minimum height=0.62] (y1) at (11.9,-0.55) {y[1]：旧值残留（\textbf{不写回}）};
   \node[anchor=south] at (11.9,1.05) {输出缓冲 y};
-  \draw[-{Latex}] (2.75,0.95) -- (2.75,1.75) -- (10.9,1.75) -- (10.9,0.84);
-  \node[above, font=\tiny] at (6.8,1.75) {写回 token 0};
-  \draw[-{Latex}, dashed, gray] (6.68,0.5) -- (7.75,0.5) -- (7.75,-1.35) -- (10.9,-1.35) -- (10.9,-0.88);
-  \node[above, font=\tiny, gray] at (9.3,-1.33) {$\times$ 静默不写回};
+  \draw[-{Latex}, draw=tkGreen] (2.75,0.95) -- (2.75,1.75) -- (10.9,1.75) -- (10.9,0.84);
+  \node[above, font=\tiny, text=tkGreen] at (6.8,1.75) {写回 token 0};
+  \draw[-{Latex}, dashed, draw=tkRed] (6.68,0.5) -- (7.75,0.5) -- (7.75,-1.35) -- (10.9,-1.35) -- (10.9,-0.88);
+  \node[above, font=\tiny, text=tkRed] at (9.3,-1.33) {$\times$ 静默不写回};
 \end{tikzpicture}
 \caption{坑一「$N$ 传错语义」的静默丢输出：grid$(S{=}2)$、block$(H{=}256)$ 时正确应传 $N=S\times H=512$；若按「每 token 长度」错传 $N=256$，\texttt{idx < N} 守卫线落在 block 0/block 1 边界上，block 1 的全部线程（idx $256$–$511$，斜线格）被剪掉，token 1 的输出缓冲残留旧值——不报错、不崩溃（见 4.6~节勘误一）。}
 \label{fig:4-4}

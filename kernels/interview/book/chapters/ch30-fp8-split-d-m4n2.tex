@@ -291,21 +291,22 @@ $N_w$ \textbf{精确消去}：把输出列劈给更多 N-warp，同时把每-thr
   }
   \draw[limitred, thick, densely dashed] (0,3.849) -- (8.4,3.849);
   \node[limitred, above, font=\tiny] at (2.0,3.87) {255 regs/thread 上限};
-  \draw[very thick] (0,0.483) -- (8,7.728);
-  \draw[thick, gray] (0,0.242) -- (8,3.864);
+  % M8N1 = 问题线（橙，spill/溢出），M4N2 = 解法线（绿，命中）
+  \draw[very thick,tkOrange] (0,0.483) -- (8,7.728);
+  \draw[thick,tkGreen] (0,0.242) -- (8,3.864);
   \foreach \px/\py in {0/0.483,0.533/0.966,1.067/1.449,1.6/1.932,2.667/2.898,3.733/3.864,5.867/5.797,6.933/6.755,8/7.728}{
-    \fill (\px,\py) circle (0.045);
+    \fill[tkOrange] (\px,\py) circle (0.045);
   }
   \foreach \px/\py in {0/0.242,0.533/0.483,1.067/0.725,1.6/0.966,2.667/1.449,3.733/1.932,5.867/2.898,8/3.864}{
-    \fill[gray] (\px,\py) circle (0.045);
+    \fill[tkGreen] (\px,\py) circle (0.045);
   }
-  \node[anchor=west, font=\tiny] at (8.06,7.55) {M8N1（$D/2$）};
-  \node[anchor=west, gray, font=\tiny] at (8.06,3.55) {M4N2（$D/4$）};
-  \node[above right=-1pt and 2pt, font=\tiny, align=left] at (3.733,3.864)
+  \node[anchor=west, font=\tiny, text=tkOrange] at (8.06,7.55) {M8N1（$D/2$）};
+  \node[anchor=west, font=\tiny, text=tkGreen] at (8.06,3.55) {M4N2（$D/4$）};
+  \node[above right=-1pt and 2pt, font=\tiny, align=left, text=tkOrange!85!black] at (3.733,3.864)
     {256：超上限 1 个\\（边缘 spill）};
-  \node[above right=-1pt and 2pt, font=\tiny] at (6.933,6.755) {448：大量 spill};
-  \node[left=2pt, font=\tiny, align=right] at (7.95,7.728) {512：溢出 local\\（$\sim$100T）};
-  \node[below=3pt, font=\tiny] at (7.55,3.80) {256：边缘 spill（154T）};
+  \node[above right=-1pt and 2pt, font=\tiny, text=tkOrange!85!black] at (6.933,6.755) {448：大量 spill};
+  \node[left=2pt, font=\tiny, align=right, text=tkOrange!85!black] at (7.95,7.728) {512：溢出 local\\（$\sim$100T）};
+  \node[below=3pt, font=\tiny, text=tkGreen!75!black] at (7.55,3.80) {256：边缘 spill（154T）};
   \node[anchor=south, font=\scriptsize\bfseries] at (4.3,8.95)
     {per-thread $O$ 累加器 $=D/(2N_w)$（式~\ref{eq:30-regthread}）};
   \begin{scope}[xshift=10.6cm]
@@ -313,8 +314,8 @@ $N_w$ \textbf{精确消去}：把输出列劈给更多 N-warp，同时把每-thr
     \node[below] at (3.2,-0.05) {$D{=}1024$};
     \draw[->] (0,0) -- (0,7.6);
     \node[left, font=\tiny] at (-0.05,7.4) {TFLOPS};
-    \fill[gray!30] (0.35,0) rectangle (1.45,4.50);
-    \fill[gray!60] (1.95,0) rectangle (3.05,6.93);
+    \fill[tkOrange!22] (0.35,0) rectangle (1.45,4.50);
+    \fill[tkGreen!30] (1.95,0) rectangle (3.05,6.93);
     \node[above, font=\tiny] at (0.9,4.55) {M8N1 $\sim$100T};
     \node[above, font=\tiny] at (2.5,6.98) {M4N2 154T};
     \node[below, font=\tiny, inner sep=1pt] at (0.9,-0.08) {$O_{\mathrm{acc}}{=}512$};
@@ -442,8 +443,9 @@ group 按 128 行块编号（$g=(q_{\text{row}}/16)\cdot8+q_{\text{row}}\%8$）�
 \begin{tikzpicture}[font=\scriptsize]
   \def\px{0.049}
   \begin{scope}[xshift=0.34cm]
-    \fill[gray!12] (0,0) rectangle ({128*\px},0.52);
-    \fill[gray!30] ({128*\px},0) rectangle ({256*\px},0.52);
+    % 量化 128 行块 = 蓝族两档（块身份 colorx6，强度区分 quant_rb）
+    \fill[colorx6!12] (0,0) rectangle ({128*\px},0.52);
+    \fill[colorx6!28] ({128*\px},0) rectangle ({256*\px},0.52);
     \draw[thick] (0,0) rectangle ({256*\px},0.52);
     \draw[thick] ({128*\px},0) -- ({128*\px},0.52);
     \foreach \gx in {1,...,15}{
@@ -451,10 +453,16 @@ group 按 128 行块编号（$g=(q_{\text{row}}/16)\cdot8+q_{\text{row}}\%8$）�
     }
     \node[font=\tiny] at ({64*\px},0.26) {\texttt{quant\_rb}${=}0$（128 行块）};
     \node[font=\tiny] at ({192*\px},0.26) {\texttt{quant\_rb}${=}1$（128 行块）};
-    \foreach \t/\gt in {0/10,1/36,2/10,3/36}{
+    % 注意 tile：对齐（offset=0）= 绿，错位（offset=64）= 橙警示
+    \foreach \t/\taln in {0/0,1/1,2/0,3/1}{
       \pgfmathsetmacro{\xa}{\t*64*\px}
-      \fill[gray!\gt] (\xa,-1.18) rectangle ({\xa+64*\px},-0.66);
-      \draw[thick] (\xa,-1.18) rectangle ({\xa+64*\px},-0.66);
+      \ifnum\taln=0
+        \fill[tkFillGreen] (\xa,-1.18) rectangle ({\xa+64*\px},-0.66);
+        \draw[thick,tkGreen!70!black] (\xa,-1.18) rectangle ({\xa+64*\px},-0.66);
+      \else
+        \fill[tkFillOrange] (\xa,-1.18) rectangle ({\xa+64*\px},-0.66);
+        \draw[thick,tkOrange] (\xa,-1.18) rectangle ({\xa+64*\px},-0.66);
+      \fi
       \node[font=\tiny] at ({\xa+32*\px},-0.92) {tile \t};
     }
     \draw[->, thick] ({96*\px},-0.60) -- ({96*\px},-0.06);

@@ -38,7 +38,7 @@ $\lceil \log\sb 2 N \rceil$，1024 个数只要 10 层。树形化牺牲了一�
 \begin{figure}[H]
 \centering
 \begin{tikzpicture}[font=\footnotesize,
-  sq/.style={draw, fill=gray!80, minimum size=0.48cm, inner sep=0pt,
+  sq/.style={draw=tkOrange, fill=tkFillOrange, minimum size=0.48cm, inner sep=0pt,
     font=\tiny},
   ar/.style={-{Stealth[length=1.6mm]}, semithick}]
   \node[font=\scriptsize, anchor=south] at (5.2, 6.3)
@@ -49,10 +49,10 @@ $\lceil \log\sb 2 N \rceil$，1024 个数只要 10 层。树形化牺牲了一�
   \node[font=\footnotesize] at (10.35, 5.6) {$\cdots$};
   \node[sq, circle, minimum size=0.55cm, font=\scriptsize] (sum) at (11.1, 5.6)
     {$\Sigma$};
-  \node[font=\scriptsize\bfseries, anchor=west] at (11.7, 5.6)
+  \node[font=\scriptsize\bfseries, anchor=west, text=tkOrange] at (11.7, 5.6)
     {串行深度 $= N-1 = 1023$ 步};
   \draw[ar, dashed, semithick] (5.2, 5.3) -- (5.2, 4.62);
-  \node[font=\scriptsize\bfseries, anchor=west] at (5.45, 4.95)
+  \node[font=\scriptsize\bfseries, anchor=west, text=tkGreen] at (5.45, 4.95)
     {拍扁成浅树：$1023 \to 10$ 层};
   \draw[-{Stealth[length=1.6mm]}, semithick] (0, 0) -- (0, 4.45);
   \node[font=\scriptsize, rotate=90, anchor=south] at (-0.5, 2.2)
@@ -360,7 +360,7 @@ ch06 的 norm（预变换平方）都是这个模板的填空题。dot\_vec4（L
 \centering
 \begin{tikzpicture}[
   font=\footnotesize,
-  warp/.style={draw, fill=gray!10, minimum width=0.92cm, minimum height=0.7cm,
+  warp/.style={draw=tkBlue, fill=tkFillBlue, minimum width=0.92cm, minimum height=0.7cm,
     inner sep=1pt, font=\scriptsize},
   flow/.style={draw, align=center, inner sep=3pt},
   ar/.style={-{Stealth[length=1.8mm]}, semithick},
@@ -394,15 +394,15 @@ ch06 的 norm（预变换平方）都是这个模板的填空题。dot\_vec4（L
   \draw[ar, thick] (4.3, 3.41) -- (4.3, 2.72);
   \node[anchor=west, font=\scriptsize, align=left] at (4.55, 3.06)
     {每 warp 前 8 lane\\读入全部 s0--s7};
-  \node[flow, text width=7.3cm, font=\scriptsize, fill=gray!5] (red2)
+  \node[flow, text width=7.3cm, font=\scriptsize, draw=tkGreen, fill=tkFillGreen] (red2)
     at (4.3, 2.15) {各 warp 前 8 lane \textbf{各自再归约一遍}（3 轮 shuffle）\\
     冗余 $W-1$ 份 $\to$ 换掉第二次 smem 往返与第二次同步};
   \draw[ar, thick] (4.3, 1.78) -- (4.3, 0.95);
   \node[anchor=west, font=\scriptsize, align=left] at (4.55, 1.37)
     {\_\_shfl\_sync(mask, v, src=0, width=32)\\lane0 结果广播到全 warp};
-  \node[flow, fill=gray!30, minimum width=8.35cm, minimum height=0.7cm]
+  \node[flow, draw=tkGreen, fill=tkFillGreen, minimum width=8.35cm, minimum height=0.7cm]
     at (4.3, 0.55) {256 线程全员持有结果（all-reduce 语义）};
-  \node[flow, dashed, text width=3.3cm, font=\scriptsize] (cross)
+  \node[flow, dashed, draw=tkPurple, text width=3.3cm, font=\scriptsize] (cross)
     at (12.3, 2.15) {跨 block 版\\（block\_reduce\_all）\\warp0 二次归约 $\to$ tid0 写\\$\to$ atomicAdd(y)};
   \draw[dashed, black!60] (8.0, 2.15) -- (10.45, 2.15);
 \end{tikzpicture}
@@ -461,20 +461,20 @@ $\lceil G/K \rceil$，时间随之线性下降。这也是面试里「跨 block 
     {共 $G = 16384$ 个 block\\每 block 一次 \texttt{atomicAdd(\&y)}};
   \foreach \y [count=\k from 0] in {3.85, 3.2, 2.55, 1.9, 1.25}
     \draw[ar, black!70] (2.4, \y) -- (5.85, 3.55-0.6*\k);
-  \draw[thick, fill=gray!70] (5.95, 0.9) rectangle (6.65, 4.0);
+  \draw[thick, draw=tkRed, fill=tkFillRed] (5.95, 0.9) rectangle (6.65, 4.0);
   \foreach \y in {1.21, 1.52, ..., 3.69}
-    \draw (5.95, \y) -- (6.65, \y);
+    \draw[tkRed!40] (5.95, \y) -- (6.65, \y);
   \node[note, anchor=west] at (6.9, 3.6) {L2 原子单元};
   \node[note, anchor=west] at (6.9, 3.0) {同一地址 y 的 RMW};
   \node[note, anchor=west] at (6.9, 2.4) {逐格串行：2.6 ns/op};
-  \node[anchor=west, font=\footnotesize\bfseries]
+  \node[anchor=west, font=\footnotesize\bfseries, text=tkRed]
     at (6.9, 1.7) {$16384 \times 2.6\,\mathrm{ns} \approx 42\,\mu\mathrm{s}$};
-  \draw[fill=gray!70] (0.4, -1.0) rectangle (6.7, -0.5);
-  \draw (0.4, -1.0) rectangle (6.7, -0.5);
+  \draw[fill=tkRed!70] (0.4, -1.0) rectangle (6.7, -0.5);
+  \draw[draw=tkRed] (0.4, -1.0) rectangle (6.7, -0.5);
   \node[anchor=west, font=\scriptsize] at (6.9, -0.75)
     {atomicAdd 同址串行 $\approx 42\,\mu\mathrm{s}$};
-  \draw[fill=gray!40] (0.4, -1.6) rectangle (4.0, -1.1);
-  \draw (0.4, -1.6) rectangle (4.0, -1.1);
+  \draw[fill=tkBlue!70] (0.4, -1.6) rectangle (4.0, -1.1);
+  \draw[draw=tkBlue] (0.4, -1.6) rectangle (4.0, -1.1);
   \node[anchor=west, font=\scriptsize] at (4.2, -1.35)
     {dot 数据流 32MB / 1344GB/s $\approx 24\,\mu\mathrm{s}$};
   \draw[-{Stealth[length=1.8mm]}, black!60] (0.4, -2.1) -- (7.0, -2.1);

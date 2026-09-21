@@ -193,7 +193,7 @@ read-modify-write（RMW）。若两个线程同时 RMW 同一 bin 且无同步�
 \begin{tikzpicture}[font=\footnotesize,
   box/.style={draw, align=center, inner sep=3pt, font=\scriptsize},
   ar/.style={-{Stealth[length=1.8mm]}, semithick}]
-  \node[box, text width=3.0cm] (src) at (1.7, 5.2)
+  \node[box, text width=3.0cm, draw=tkBlue, fill=tkFillBlue] (src) at (1.7, 5.2)
     {histogram kernel\\atomicAdd(\&y[a[i]],~1)\\$\times\ N = 4{,}194{,}304$ 次};
   \fill[gray!40] (4.6, 6.0) rectangle (13.56, 8.24);
   \draw[black!12, very thin, step=0.28cm] (4.6, 6.0) grid (13.56, 8.24);
@@ -213,9 +213,9 @@ read-modify-write（RMW）。若两个线程同时 RMW 同一 bin 且无同步�
   \node[font=\tiny, anchor=north east] at (13.56, 1.2) {bin 255};
   \draw[ar] (src.east) -- (3.6, 5.2) -- (3.6, 7.12) -- (4.6, 7.12);
   \draw[ar] (src.east) -- (3.6, 5.2) -- (3.6, 2.42) -- (4.6, 2.42);
-  \node[box, text width=4.6cm, fill=gray!5] (l2) at (5.8, -0.95)
+  \node[box, text width=4.6cm, draw=tkOrange, fill=tkFillOrange] (l2) at (5.8, -0.95)
     {L2 原子单元：同 bin 串行（2.6 ns/op）\\异 bin 并行 $\to$ 吞吐 $\propto$ 活跃 bin 数};
-  \node[box, text width=5.2cm] (key) at (11.6, -0.95)
+  \node[box, text width=5.2cm, draw=tkRed, fill=tkFillRed] (key) at (11.6, -0.95)
     {实测 26.7 GB/s（vs elementwise\_add 2654，低两个数量级）\\
      均摊 0.15 ns/op；理想 42 $\mu$s vs 实测 0.63 ms\\
      （$\approx$ 15$\times$ 缺口：L1 侧原子路径排队）};
@@ -260,8 +260,8 @@ float4 引用，编译为一条 \texttt{LDG.E.128}；\texttt{FLOAT4\allowbreak{}
 \begin{tikzpicture}[font=\scriptsize,
   ibox/.style={draw, minimum width=0.95cm, minimum height=0.38cm, inner sep=1pt,
     font=\tiny},
-  ld/.style={ibox, fill=gray!60},
-  cc/.style={ibox, fill=gray!25},
+  ld/.style={ibox, draw=tkBlue, fill=tkFillBlue},
+  cc/.style={ibox, draw=tkOrange, fill=tkFillOrange},
   ar/.style={-{Stealth[length=1.3mm]}, semithick}]
   \node[anchor=south west] at (0.05, 0.3)
     {标量版：每元素一条 \texttt{LDG.E.32} + 一条 \texttt{fmaxf} + 一条 \texttt{STG.E.32}};

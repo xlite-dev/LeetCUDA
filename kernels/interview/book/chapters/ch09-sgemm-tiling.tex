@@ -278,8 +278,8 @@ $= 16384 = 128 \times 128$，不重不漏（vec4 落点见图~\ref{fig:09-vec4-m
     \node[anchor=east] at (-0.12,{-\rw*\ah-\ah/2}) {$m{=}\rw$};
     \foreach \gp in {0,...,7}{
       \pgfmathtruncatemacro{\tidn}{8*\rw+\gp}
-      \pgfmathtruncatemacro{\gr}{8+9*\gp}
-      \fill[gray!\gr] ({4*\gp*\aw},{-\rw*\ah-\ah}) rectangle ({4*\gp*\aw+4*\aw},{-\rw*\ah});
+      \pgfmathtruncatemacro{\cidx}{mod(\gp,8)+1}
+      \fill[colorx\cidx!35] ({4*\gp*\aw},{-\rw*\ah-\ah}) rectangle ({4*\gp*\aw+4*\aw},{-\rw*\ah});
       \foreach \sp in {1,2,3}{
         \draw[white, thin] ({4*\gp*\aw+\sp*\aw},{-\rw*\ah-\ah}) -- ({4*\gp*\aw+\sp*\aw},{-\rw*\ah});
       }

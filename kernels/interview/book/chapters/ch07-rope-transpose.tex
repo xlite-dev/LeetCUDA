@@ -207,10 +207,10 @@ $R^{d}_{\Theta}$ 是 $d/2$ 个 $2\times 2$ 旋转块排布在主对角线上的\
 \centering
 \begin{tikzpicture}[font=\scriptsize]
   % 左面板：读 x —— 32 线程连续 32 格，单事务 128B
-  \node[anchor=west, font=\small\bfseries] at (0,0.97) {读 $x$：$r$ 固定、$c$ 连续——合并};
+  \node[anchor=west, font=\small\bfseries, text=tkGreen!65!black] at (0,0.97) {读 $x$：$r$ 固定、$c$ 连续——合并};
   \foreach \c in {0,...,31}
-    \node[fill=gray!60, minimum size=0.3cm, inner sep=0pt] at ({\c*0.3+0.15},0) {\phantom{0}};
-  \draw[very thick] (0,-0.15) rectangle (9.6,0.15);
+    \node[fill=tkGreen!45, minimum size=0.3cm, inner sep=0pt] at ({\c*0.3+0.15},0) {\phantom{0}};
+  \draw[very thick, draw=tkGreen!65!black] (0,-0.15) rectangle (9.6,0.15);
   \node[anchor=south] at (4.8,0.22) {1 个 128B 事务（32 线程 $\times$ 4B 连续段）};
   \foreach \c in {0,8,16,24,31}
     \node[below=1pt, font=\tiny] at ({\c*0.3+0.15},-0.15) {t\c};
@@ -218,10 +218,10 @@ $R^{d}_{\Theta}$ 是 $d/2$ 个 $2\times 2$ 旋转块排布在主对角线上的\
   \node[font=\tiny] at (4.8,-1.28) {线程 $c$ → 地址 $r\cdot\mathrm{col}+c$：$c{+}1$ 步长 4B（连续）};
   % 右面板：写 y —— 32 行同列各 1 有效格，每格独占一个 32B sector
   \begin{scope}[shift={(10.8,0)}]
-    \node[anchor=west, font=\small\bfseries] at (-0.3,0.97) {写 $y$：$c$ 连续、行号跨步——非合并};
+    \node[anchor=west, font=\small\bfseries, text=tkOrange!85!black] at (-0.3,0.97) {写 $y$：$c$ 连续、行号跨步——非合并};
     \foreach \r in {0,...,31} {
       \foreach \cc in {0,1,3,4,5,6,7}
-        \node[pattern=north east lines, pattern color=gray!75, minimum size=0.3cm, inner sep=0pt]
+        \node[pattern=north east lines, pattern color=tkRed!55, minimum size=0.3cm, inner sep=0pt]
           at ({\cc*0.3+0.15},{-\r*0.3+0.15}) {\phantom{0}};
       \node[fill=gray!60, minimum size=0.3cm, inner sep=0pt] at (0.75,{-\r*0.3+0.15}) {\phantom{0}};
       \draw[thick] (0,{-\r*0.3}) rectangle (2.4,{-\r*0.3+0.3});

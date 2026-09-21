@@ -608,10 +608,10 @@ __global__ void quantize_fp8_vt_kernel(
   axl/.style={font=\scriptsize, inner sep=1pt},
   nt/.style={font=\scriptsize, align=left, inner sep=1.5pt},
 ]
-  % 左：gmem (N, D) 行主序 tile
+  % 左：gmem (N, D) 行主序 tile（hue 环按数据通路分段：蓝=输入 gmem）
   \foreach \rr in {0,...,4} {
     \foreach \cc in {0,...,5} {
-      \fill[gray!15] (\cc*0.55,-\rr*0.55) rectangle (\cc*0.55+0.54,-\rr*0.55-0.54);
+      \fill[colorx6!12] (\cc*0.55,-\rr*0.55) rectangle (\cc*0.55+0.54,-\rr*0.55-0.54);
     }
   }
   \draw[thick] (0,0) rectangle (3.3,-2.75);
@@ -621,10 +621,10 @@ __global__ void quantize_fp8_vt_kernel(
   \node[axl,anchor=south] at (1.65,0.06) {gmem $(N,\,D)$ 行主序};
   \node[axl,anchor=north,text width=3.4cm,align=center] at (1.65,-2.85)
     {128-bit 向量载入（$kVec{=}8$ 个 fp16），行内连续};
-  % 中：smem staging tile（数据列 + kPad 边距列）
+  % 中：smem staging tile（青 = smem 转置段；数据列 + kPad 边距列）
   \foreach \rr in {0,...,4} {
     \foreach \cc in {0,...,4} {
-      \fill[gray!15] (5.9+\cc*0.55,-\rr*0.55) rectangle (5.9+\cc*0.55+0.54,-\rr*0.55-0.54);
+      \fill[colorx5!12] (5.9+\cc*0.55,-\rr*0.55) rectangle (5.9+\cc*0.55+0.54,-\rr*0.55-0.54);
     }
     \fill[pattern=north east lines,pattern color=gray!70]
       (8.65,-\rr*0.55) rectangle (9.25,-\rr*0.55-0.54);
@@ -637,10 +637,10 @@ __global__ void quantize_fp8_vt_kernel(
   \node[axl,anchor=south] at (7.575,0.06) {smem staging $(kBlockRows,\ kDChunk{+}kPad)$};
   \node[axl,anchor=north,text width=4.4cm,align=center] at (7.575,-2.85)
     {写按行、读按列（转置落在 smem）；斜纹 $=kPad{=}16$ 的 16\,B 行内边距};
-  % 右：gmem (D, N_{kv,pad}) 列主序
+  % 右：gmem (D, N_{kv,pad}) 列主序（绿青 = 输出 gmem）
   \foreach \rr in {0,...,4} {
     \foreach \cc in {0,...,4} {
-      \fill[gray!15] (11.9+\cc*0.55,-\rr*0.55) rectangle (11.9+\cc*0.55+0.54,-\rr*0.55-0.54);
+      \fill[colorx4!12] (11.9+\cc*0.55,-\rr*0.55) rectangle (11.9+\cc*0.55+0.54,-\rr*0.55-0.54);
     }
   }
   \foreach \rr in {0,...,4} {
@@ -655,10 +655,10 @@ __global__ void quantize_fp8_vt_kernel(
   \node[axl,anchor=south] at (13.425,0.06) {gmem $(D,\,N_{kv,pad})$ 列主序};
   \node[axl,anchor=north,text width=4.4cm,align=center] at (13.425,-2.85)
     {列向量写出（$V^{\top}$ 的 fp8 列）；尾列 pad 供 TMA 16\,B 对齐};
-  % 段间箭头
-  \draw[-{Stealth},thick] (3.42,-1.375) -- (5.78,-1.375);
+  % 段间箭头（tkBlue = 数据流）
+  \draw[-{Stealth},thick,tkBlue] (3.42,-1.375) -- (5.78,-1.375);
   \node[axl,anchor=south,align=center] at (4.6,-1.32) {128\,B 行 $\to$ 槽\\（含 pad 列）};
-  \draw[-{Stealth},thick] (9.37,-1.375) -- (11.78,-1.375);
+  \draw[-{Stealth},thick,tkBlue] (9.37,-1.375) -- (11.78,-1.375);
   \node[axl,anchor=south,align=center] at (10.575,-1.32) {32-bit 组转置读\\$\to$ 列向写出};
   % 底部注记
   \node[nt,anchor=north west,text width=15.6cm] at (0,-3.9)
@@ -762,10 +762,11 @@ $kWhtWidth$ 列（lane $\times$ $kVec$），无需跨 warp 通信；$1/\sqrt{n}$
   bdg/.style={draw,circle,thick,font=\scriptsize,inner sep=1.2pt},
 ]
   % 列归属网格：4 个寄存器槽 j x 32 条 lane，格内 = col = lane + 32j
-  \foreach \jj in {0,...,3} {
+  % hue = 寄存器槽 j 身份（colorx1..x4），intensity 恒定
+  \foreach \jj/\jcol in {0/colorx1,1/colorx2,2/colorx3,3/colorx4} {
     \foreach \ln in {0,...,31} {
       \pgfmathtruncatemacro{\colv}{\ln+32*\jj}
-      \fill[gray!12] (\ln*0.44,-\jj*0.5) rectangle (\ln*0.44+0.43,-\jj*0.5-0.49);
+      \fill[\jcol!12] (\ln*0.44,-\jj*0.5) rectangle (\ln*0.44+0.43,-\jj*0.5-0.49);
       \node[cfl] at (\ln*0.44+0.215,-\jj*0.5-0.245) {\colv};
     }
   }
@@ -778,22 +779,23 @@ $kWhtWidth$ 列（lane $\times$ $kVec$），无需跨 warp 通信；$1/\sqrt{n}$
     \node[axl,anchor=north] at (\lx,-2.06) {\ln};
   }
   \node[axl,anchor=south west] at (0,0.08) {lane $0..31$（一条 warp；格内数字 $=col=lane+32j$）};
-  % 七轮蝶形：距离二分
-  \node[axl,anchor=south] at (1.35,-2.88) {蝶形位在 $j$：同 lane 的寄存器槽交换（无通信）};
-  \node[axl,anchor=south] at (8.35,-2.88) {蝶形位在 lane id：\texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor\_\allowbreak{}sync} 跨 lane};
-  \draw[thick] (0.1,-3.06) -- (2.9,-3.06);
-  \draw[thick] (4.2,-3.06) -- (12.4,-3.06);
+  % 七轮蝶形：距离二分（寄存器槽交换 = tkBlue，跨 lane shfl = tkPurple）
+  \node[axl,anchor=south,text=tkBlue] at (1.35,-2.88) {蝶形位在 $j$：同 lane 的寄存器槽交换（无通信）};
+  \node[axl,anchor=south,text=tkPurple] at (8.35,-2.88) {蝶形位在 lane id：\texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor\_\allowbreak{}sync} 跨 lane};
+  \draw[thick,tkBlue] (0.1,-3.06) -- (2.9,-3.06);
+  \draw[thick,tkPurple] (4.2,-3.06) -- (12.4,-3.06);
   \foreach \ri/\rt in {0/{$64$}, 1/{$32$}, 2/{$16$}, 3/{$8$}, 4/{$4$}, 5/{$2$}, 6/{$1$}} {
     \pgfmathsetmacro{\bx}{0.1+\ri*2.05}
-    \node[bdg] at (\bx,-3.75) {\rt};
     \ifnum\ri<2
-      \fill[gray!25] (\bx+0.75,-3.42) rectangle (\bx+1.07,-3.74);
-      \fill[gray!25] (\bx+0.75,-3.76) rectangle (\bx+1.07,-4.08);
-      \draw[<->,thick] (\bx+1.25,-3.58) -- (\bx+1.25,-3.92);
+      \node[bdg,draw=tkBlue,text=tkBlue] at (\bx,-3.75) {\rt};
+      \fill[tkFillBlue] (\bx+0.75,-3.42) rectangle (\bx+1.07,-3.74);
+      \fill[tkFillBlue] (\bx+0.75,-3.76) rectangle (\bx+1.07,-4.08);
+      \draw[<->,thick,tkBlue] (\bx+1.25,-3.58) -- (\bx+1.25,-3.92);
     \else
-      \fill[gray!25] (\bx+0.6,-3.6) rectangle (\bx+0.92,-3.92);
-      \fill[gray!25] (\bx+1.1,-3.6) rectangle (\bx+1.42,-3.92);
-      \draw[<->,thick] (\bx+0.55,-4.08) -- (\bx+1.47,-4.08);
+      \node[bdg,draw=tkPurple,text=tkPurple] at (\bx,-3.75) {\rt};
+      \fill[tkFillPurple] (\bx+0.6,-3.6) rectangle (\bx+0.92,-3.92);
+      \fill[tkFillPurple] (\bx+1.1,-3.6) rectangle (\bx+1.42,-3.92);
+      \draw[<->,thick,tkPurple] (\bx+0.55,-4.08) -- (\bx+1.47,-4.08);
     \fi
   }
   \node[nt,anchor=north west,text width=15.6cm] at (0,-4.28)

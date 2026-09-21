@@ -180,11 +180,11 @@ $kBc=128$ 时 448 装不下，kernel 侧的编译期自动收窄
   }
   \node[budgetbad, anchor=west, font=\tiny, align=left] at (4.68,2.62)
     {f16 溢出上限\\65504};
-  \fill[gray!30] (0.50,0) rectangle (1.45,2.58);
+  \fill[budgetok!16] (0.50,0) rectangle (1.45,2.58);
   \draw[thick] (0.50,0) rectangle (1.45,2.58);
   \fill[budgetbad!16] (1.75,0) rectangle (2.70,5.16);
   \draw[budgetbad, thick] (1.75,0) rectangle (2.70,5.16);
-  \fill[gray!30] (3.00,0) rectangle (3.95,2.58);
+  \fill[budgetok!16] (3.00,0) rectangle (3.95,2.58);
   \draw[thick] (3.00,0) rectangle (3.95,2.58);
   \node[font=\tiny] at (0.975,2.08) {64512};
   \node[font=\tiny] at (2.225,4.62) {129024};
@@ -205,7 +205,7 @@ $kBc=128$ 时 448 装不下，kernel 侧的编译期自动收窄
       \draw (-0.07,\yv) -- (0.07,\yv);
       \node[left, font=\tiny, inner sep=1pt] at (-0.10,\yv) {\yl};
     }
-    \fill[gray!30] (0.45,0) rectangle (1.25,1.37);
+    \fill[budgetok!16] (0.45,0) rectangle (1.25,1.37);
     \draw[thick] (0.45,0) rectangle (1.25,1.37);
     \node[font=\tiny] at (0.85,0.56) {1008};
     \node[budgetok, font=\scriptsize] at (0.85,1.62) {$\checkmark$};

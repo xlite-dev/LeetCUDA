@@ -339,18 +339,18 @@ $\mathrm{ncol}=2\cdot \mathrm{MMA\_N}$。实测（$D{=}64$、$B_r{=}128$）：
     \draw[gray!55] (7.6,-\laneIdx*0.62-0.305) -- (10.6,-\laneIdx*0.62-0.305);
     \node[axl,anchor=east] at (7.52,-\laneIdx*0.62-0.305) {\laneIdx};
   }
-  \draw[thick] (7.9,-0.305) -- (8.5,-0.925);
-  \draw[thick] (7.9,-0.925) -- (8.5,-0.305);
-  \draw[thick] (7.9,-1.545) -- (8.5,-2.165);
-  \draw[thick] (7.9,-2.165) -- (8.5,-1.545);
-  \node[axl,fill=white,inner sep=1pt] at (8.2,-1.235) {(1) $\oplus\,1$};
-  \draw[thick] (9.1,-0.305) -- (9.7,-1.545);
-  \draw[thick] (9.1,-1.545) -- (9.7,-0.305);
-  \draw[thick] (9.1,-0.925) -- (9.7,-2.165);
-  \draw[thick] (9.1,-2.165) -- (9.7,-0.925);
-  \node[axl,fill=white,inner sep=1pt] at (9.4,-1.235) {(2) $\oplus\,2$};
+  \draw[thick,tkOrange] (7.9,-0.305) -- (8.5,-0.925);
+  \draw[thick,tkOrange] (7.9,-0.925) -- (8.5,-0.305);
+  \draw[thick,tkOrange] (7.9,-1.545) -- (8.5,-2.165);
+  \draw[thick,tkOrange] (7.9,-2.165) -- (8.5,-1.545);
+  \node[axl,fill=tkFillOrange,text=tkOrange!80!black,inner sep=1pt] at (8.2,-1.235) {(1) $\oplus\,1$};
+  \draw[thick,tkGreen] (9.1,-0.305) -- (9.7,-1.545);
+  \draw[thick,tkGreen] (9.1,-1.545) -- (9.7,-0.305);
+  \draw[thick,tkGreen] (9.1,-0.925) -- (9.7,-2.165);
+  \draw[thick,tkGreen] (9.1,-2.165) -- (9.7,-0.925);
+  \node[axl,fill=tkFillGreen,text=tkGreen!80!black,inner sep=1pt] at (9.4,-1.235) {(2) $\oplus\,2$};
   \draw[-{Stealth},thick] (10.62,-1.235) -- (10.95,-1.235);
-  \node[draw,rounded corners,fill=gray!8,align=left,font=\scriptsize,
+  \node[draw=tkGreen,rounded corners,fill=tkFillGreen,text=tkGreen!80!black,align=left,font=\scriptsize,
     text width=4.3cm,inner sep=3pt,anchor=west] at (11.0,-1.235)
     {两轮后 4 条 lane 都持有该行的完整片段（all-reduce）：行 max / 行 sum
      可以直接开算};
@@ -403,8 +403,8 @@ K 向相邻 2 值」}——数据一个比特都不用改，缺的只是「换�
         \fill[gray!\gra] (\cc,\rr) rectangle (\cc+1,\rr+1);
         \ifnum\lno=6
           \pgfmathtruncatemacro{\vno}{mod(\cc,2)+2*div(\rr,8)}
-          \draw[very thick] (\cc+0.05,\rr+0.05) rectangle (\cc+0.95,\rr+0.95);
-          \node[ttx,font=\tiny\bfseries] at (\cc+0.5,\rr+0.5) {\vno};
+          \draw[very thick,tkRed] (\cc+0.05,\rr+0.05) rectangle (\cc+0.95,\rr+0.95);
+          \node[ttx,font=\tiny\bfseries,text=tkRed] at (\cc+0.5,\rr+0.5) {\vno};
         \else
           \ifnum\gra>46
             \node[ttx,white] at (\cc+0.5,\rr+0.5) {\lno};
@@ -426,8 +426,8 @@ K 向相邻 2 值」}——数据一个比特都不用改，缺的只是「换�
         \fill[gray!\gra] (\cc,\rr) rectangle (\cc+1,\rr+1);
         \ifnum\lno=6
           \pgfmathtruncatemacro{\vno}{mod(\cc,2)+2*div(\rr,8)+4*div(\cc,8)}
-          \draw[very thick] (\cc+0.05,\rr+0.05) rectangle (\cc+0.95,\rr+0.95);
-          \node[ttx,font=\tiny\bfseries] at (\cc+0.5,\rr+0.5) {\vno};
+          \draw[very thick,tkRed] (\cc+0.05,\rr+0.05) rectangle (\cc+0.95,\rr+0.95);
+          \node[ttx,font=\tiny\bfseries,text=tkRed] at (\cc+0.5,\rr+0.5) {\vno};
         \else
           \ifnum\gra>46
             \node[ttx,white] at (\cc+0.5,\rr+0.5) {\lno};
@@ -456,8 +456,8 @@ K 向相邻 2 值」}——数据一个比特都不用改，缺的只是「换�
   \node[axl,anchor=north] at (2.88,-6.2) {列 $n$（$B_c$ 向）};
   \node[axl,anchor=north] at (10.18,-6.2) {K 向（$PV$ 归约维）};
   % 中间箭头
-  \draw[-{Stealth},thick] (6.05,-2.52) -- (7.05,-2.52);
-  \node[font=\scriptsize,align=center,anchor=south] at (6.55,-2.42)
+  \draw[-{Stealth},thick,tkPurple] (6.05,-2.52) -- (7.05,-2.52);
+  \node[font=\scriptsize,align=center,anchor=south,text=tkPurple] at (6.55,-2.42)
     {\texttt{Aregs} 重解释\\{\footnotesize 换坐标、不搬数据}};
   % 灰度图例（lane/4 分 8 组，每组 4 个 lane）
   \node[axl,anchor=east] at (-0.12,0.95) {灰度};
@@ -466,7 +466,7 @@ K 向相邻 2 值」}——数据一个比特都不用改，缺的只是「换�
     \fill[gray!\ggra] (\gk*0.34+0.0,0.78) rectangle (\gk*0.34+0.3,1.08);
   }
   \node[axl,anchor=west] at (2.85,0.93) {$=$ $\mathrm{lane}/4$：4 个 lane 一组、共 8 档（同一行）};
-  \draw[very thick] (8.0,0.78) rectangle (8.3,1.08);
+  \draw[very thick,tkRed] (8.0,0.78) rectangle (8.3,1.08);
   \node[axl,anchor=west] at (8.45,0.93) {加框格：lane 6 的 8 个寄存器（格内为值编号 $v$）};
 \end{tikzpicture}
 \caption{C fragment $\to$ A fragment 的零拷贝重解释
@@ -607,12 +607,12 @@ CuTe 的 \texttt{arrive\_\allowbreak{}and\_\allowbreak{}expect\_\allowbreak{}tx}
 ]
   % 上：cp.async 组栈
   \node[axl,anchor=west] at (0,0.55) {\textbf{cp.async 组栈：数「未完成组数」}};
-  \node[stk] at (0.85,-0.35) {$K[t{+}k{-}1]$};
-  \node[stk] at (0.85,-0.95) {$\vdots$};
-  \node[stk] at (0.85,-1.55) {$V[t]$};
+  \node[stk,draw=tkPurple,fill=tkFillPurple] at (0.85,-0.35) {$K[t{+}k{-}1]$};
+  \node[stk,draw=tkPurple,fill=tkFillPurple] at (0.85,-0.95) {$\vdots$};
+  \node[stk,draw=tkPurple,fill=tkFillPurple] at (0.85,-1.55) {$V[t]$};
   \node[axl,anchor=east] at (-0.05,-0.35) {栈顶};
   \node[axl,anchor=east] at (-0.05,-1.55) {栈底};
-  \draw[dashed,thick] (-0.05,-0.7) rectangle (1.75,-1.8);
+  \draw[dashed,thick,tkPurple] (-0.05,-0.7) rectangle (1.75,-1.8);
   \node[axl,anchor=west] at (1.87,-1.25) {\texttt{wait}$<1>$ 的完成区：栈顶之外全部};
   \node[nt,anchor=north west,text width=10.9cm] at (4.9,0.3)
     {\texttt{wait\_group N} 等「已完成组数 $\ge$ 总组数 $-N$」，故
@@ -626,9 +626,9 @@ CuTe 的 \texttt{arrive\_\allowbreak{}and\_\allowbreak{}expect\_\allowbreak{}tx}
      \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads()}，跨线程可见性靠它兜底，不是冗余。};
   % 中：TMA 事务屏障
   \node[axl,anchor=west] at (0,-2.55) {\textbf{TMA 事务屏障：数「字节到齐 $+$ phase 翻转」}};
-  \node[stk,minimum width=2.6cm] at (1.3,-3.1) {$k\_full[s]$：事务屏障};
-  \node[stk,minimum width=2.6cm] at (1.3,-3.7) {$k\_empty[s]$：普通屏障};
-  \draw[thick] (-0.05,-2.82) rectangle (2.65,-3.98);
+  \node[stk,minimum width=2.6cm,draw=tkBlue,fill=tkFillBlue] at (1.3,-3.1) {$k\_full[s]$：事务屏障};
+  \node[stk,minimum width=2.6cm,draw=tkBlue,fill=tkFillBlue] at (1.3,-3.7) {$k\_empty[s]$：普通屏障};
+  \draw[thick,tkBlue] (-0.05,-2.82) rectangle (2.65,-3.98);
   \node[axl,anchor=north] at (1.3,-4.05) {每个 stage 一对（$s$ 环状复用）};
   \node[nt,anchor=north west,text width=11.7cm] at (3.3,-2.62)
     {\textbf{producer} 对 $k\_full[s]$：单线程 \texttt{arrive\_and\_expect\_tx(bytes)}
@@ -641,17 +641,17 @@ CuTe 的 \texttt{arrive\_\allowbreak{}and\_\allowbreak{}expect\_\allowbreak{}tx}
      在「谁 arrive」——两者等价，改 init 前先看角色表。};
   % 下：协议链
   \node[axl,anchor=west] at (0,-5.4) {\textbf{producer}};
-  \node[prt] at (3.8,-5.4) {\texttt{wait}$(k\_empty[s],\,phase)$};
-  \node[prt] at (8.0,-5.4) {\texttt{arrive\_expect\_tx}\\$(k\_full[s])$（声明 bytes）};
-  \node[prt] at (12.2,-5.4) {\texttt{copy(TMA, ...)}};
-  \draw[-{Stealth},thick] (5.75,-5.4) -- (6.15,-5.4);
-  \draw[-{Stealth},thick] (9.95,-5.4) -- (10.35,-5.4);
+  \node[prt,draw=tkBlue,fill=tkFillBlue] at (3.8,-5.4) {\texttt{wait}$(k\_empty[s],\,phase)$};
+  \node[prt,draw=tkBlue,fill=tkFillBlue] at (8.0,-5.4) {\texttt{arrive\_expect\_tx}\\$(k\_full[s])$（声明 bytes）};
+  \node[prt,draw=tkBlue,fill=tkFillBlue] at (12.2,-5.4) {\texttt{copy(TMA, ...)}};
+  \draw[-{Stealth},thick,tkBlue] (5.75,-5.4) -- (6.15,-5.4);
+  \draw[-{Stealth},thick,tkBlue] (9.95,-5.4) -- (10.35,-5.4);
   \node[axl,anchor=west] at (0,-6.2) {\textbf{consumer}};
-  \node[prt] at (3.8,-6.2) {\texttt{wait}$(k\_full[s],\,phase)$};
-  \node[prt] at (8.0,-6.2) {\texttt{ldmatrix} $+$ \texttt{mma}};
-  \node[prt] at (12.2,-6.2) {\texttt{arrive}$(k\_empty[s])$};
-  \draw[-{Stealth},thick] (5.75,-6.2) -- (6.15,-6.2);
-  \draw[-{Stealth},thick] (9.95,-6.2) -- (10.35,-6.2);
+  \node[prt,draw=tkGreen,fill=tkFillGreen] at (3.8,-6.2) {\texttt{wait}$(k\_full[s],\,phase)$};
+  \node[prt,draw=tkGreen,fill=tkFillGreen] at (8.0,-6.2) {\texttt{ldmatrix} $+$ \texttt{mma}};
+  \node[prt,draw=tkGreen,fill=tkFillGreen] at (12.2,-6.2) {\texttt{arrive}$(k\_empty[s])$};
+  \draw[-{Stealth},thick,tkGreen] (5.75,-6.2) -- (6.15,-6.2);
+  \draw[-{Stealth},thick,tkGreen] (9.95,-6.2) -- (10.35,-6.2);
   \node[nt,anchor=north west,text width=15.6cm] at (0,-6.7)
     {两组语义的对照：组栈是\emph{单调递增}的组号（per-thread），屏障是\emph{环状复用}的 stage
      （字节计数 $+$ phase）。式~\eqref{eq:25-proto1}--\eqref{eq:25-proto3} 的三条不变量正是

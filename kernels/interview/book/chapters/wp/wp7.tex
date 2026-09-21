@@ -46,9 +46,9 @@
 \begin{align*}
 \v{A} \otimes \v{B} = (\v{A}, \v{A}^* \circ \v{B})
 \end{align*}
-其中 $\v{A}^*$ 是 $\v{A}$ 的补。注意，结果的第一个模（mode）恰好就是输入布局 $\v{A}$，而第二个模在元素形状（shape）与元素顺序上与输入布局 $\v{B}$ 相容。第一个模，即 $\v{A}$ 布局，通常被称为“瓦片”，它在“网格”布局 $\v{B}$ 上被重复。%Because the purpose of the logical product is to expand the domain and codomain of $\v{A}$, this does not require that $(\v{A},\v{A}^*)$ is surjective onto $\Z_{\norm{\v{B}}}$.
+其中 $\v{A}^*$ 是 $\v{A}$ 的补。注意，结果的第一个模（mode）恰好就是输入布局 $\v{A}$，而第二个模在元素形状（shape）与元素顺序上与输入布局 $\v{B}$ 相容。第一个模，即 $\v{A}$ 布局，通常被称为“块”，它在“网格”布局 $\v{B}$ 上被重复。%Because the purpose of the logical product is to expand the domain and codomain of $\v{A}$, this does not require that $(\v{A},\v{A}^*)$ is surjective onto $\Z_{\norm{\v{B}}}$.
 
-考虑这样的例子：行主序（row-major）布局 $(\textcolor{red}{3},\textcolor{red}{4}):(\textcolor{red}{4},\textcolor{red}{1})$ 瓦片，要在列主序（col-major）布局 $(\textcolor{blue}{2},\textcolor{blue}{5}):(\textcolor{blue}{1},\textcolor{blue}{2})$ 网格中复现：
+考虑这样的例子：行主序（row-major）布局 $(\textcolor{red}{3},\textcolor{red}{4}):(\textcolor{red}{4},\textcolor{red}{1})$ 块，要在列主序（col-major）布局 $(\textcolor{blue}{2},\textcolor{blue}{5}):(\textcolor{blue}{1},\textcolor{blue}{2})$ 网格中复现：
 \begin{align*}
 \begin{array}{cc} (\textcolor{red}{3}, & \textcolor{red}{4}) \\ (\textcolor{red}{4}, & \textcolor{red}{1}) \end{array}
 \ \otimes \
@@ -63,9 +63,9 @@
 \ = \
 \begin{array}{cccc}((\textcolor{red}{3}, & \textcolor{red}{4}), & (\textcolor{blue}{2}, & \textcolor{blue}{5})) \\ ((\textcolor{red}{4}, & \textcolor{red}{1}), & (\textcolor{blue}{12}, & \textcolor{blue}{24})) \end{array}
 \end{align*}
-其中布局 $1:12$ 是 $(\textcolor{red}{3},\textcolor{red}{4}):(\textcolor{red}{4},\textcolor{red}{1})$ 的补。在结果的第一个模中可以直接得到原始瓦片，而结果的第二个模以 $2\times 5$ 列主序的顺序将原始瓦片不重复地重复 10 次。
+其中布局 $1:12$ 是 $(\textcolor{red}{3},\textcolor{red}{4}):(\textcolor{red}{4},\textcolor{red}{1})$ 的补。在结果的第一个模中可以直接得到原始块，而结果的第二个模以 $2\times 5$ 列主序的顺序将原始块不重复地重复 10 次。
 
-作为另一个例子，考虑布局 $(\textcolor{red}{4},\textcolor{red}{8}):(\textcolor{red}{20},\textcolor{red}{2})$ 瓦片在行主序布局 $(\textcolor{blue}{3},\textcolor{blue}{2}):(\textcolor{blue}{2},\textcolor{blue}{1})$ 网格中复现：
+作为另一个例子，考虑布局 $(\textcolor{red}{4},\textcolor{red}{8}):(\textcolor{red}{20},\textcolor{red}{2})$ 块在行主序布局 $(\textcolor{blue}{3},\textcolor{blue}{2}):(\textcolor{blue}{2},\textcolor{blue}{1})$ 网格中复现：
 \begin{align*}
 \begin{array}{cc} (\textcolor{red}{4}, & \textcolor{red}{8}) \\ (\textcolor{red}{20}, & \textcolor{red}{2}) \end{array}
 \ \otimes \
@@ -80,11 +80,11 @@
 \ = \
 \begin{array}{cccc}((\textcolor{red}{4}, & \textcolor{red}{8}), & (\textcolor{blue}{3}, & \textcolor{blue}{2})) \\ ((\textcolor{red}{20}, & \textcolor{red}{2}), & (\textcolor{blue}{80}, & \textcolor{blue}{1})) \end{array}
 \end{align*}
-其中布局 $(2,1):(1,80)$ 是 $(\textcolor{red}{4},\textcolor{red}{8}):(\textcolor{red}{20},\textcolor{red}{2})$ 的补。注意，此时网格在交错排布这些瓦片，以产生结果的最小陪域。补布局告诉结果如何为布局 $\v{B}$ 设定步幅，而布局 $\v{B}$ 告诉结果如何为补布局排序并定形。
+其中布局 $(2,1):(1,80)$ 是 $(\textcolor{red}{4},\textcolor{red}{8}):(\textcolor{red}{20},\textcolor{red}{2})$ 的补。注意，此时网格在交错排布这些块，以产生结果的最小陪域。补布局告诉结果如何为布局 $\v{B}$ 设定步幅，而布局 $\v{B}$ 告诉结果如何为补布局排序并定形。
 
 \paragraph{相关乘积}
 
-逻辑乘积产生一个 2 阶布局，其中第一个模是原始瓦片，第二个模被解释为该瓦片的网格，即“铺瓦”。
+逻辑乘积产生一个 2 阶布局，其中第一个模是原始块，第二个模被解释为该块的网格，即“分块”。
 
 虽然逻辑乘积对 $\v{A}$ 与 $\v{B}$ 的阶（rank）或相容性没有任何限制，但操作 {\tt blocked\_product} 往往是一个更直观的版本，它利用输入的阶来构造结果的形状。我们可能会期望一个 $3 {\times} 4$ 布局与一个 $2 {\times} 5$ 布局的乘积产生一个 $6 {\times} 20$ 布局。{\tt blocked\_product} 要求 $\v{A}$ 与 $\v{B}$ 的阶相同，
 \begin{align*}
@@ -96,7 +96,7 @@
 \ \Longrightarrow \
 \begin{array}{cccc}((\textcolor{red}{3}, & \textcolor{blue}{2}), & (\textcolor{red}{4}, & \textcolor{blue}{5})) \\ ((\textcolor{red}{4}, & \textcolor{blue}{12}), & (\textcolor{red}{1}, & \textcolor{blue}{24})) \end{array}
 \end{align*}
-便得到一个 $6 {\times} 20$ 布局。图~\ref{fig:blockedproduct} 画出了得到的布局，其中每个 $3 {\times} 4$ 瓦片都施以底纹。之所以称其为“分块”，是因为结果布局中的每个 $3 {\times} 4$ 块都恰好是原始 $3 {\times} 4$ 瓦片的平移版本。
+便得到一个 $6 {\times} 20$ 布局。图~\ref{fig:blockedproduct} 画出了得到的布局，其中每个 $3 {\times} 4$ 块都施以底纹。之所以称其为“块状”，是因为结果布局中的每个 $3 {\times} 4$ 块都恰好是原始 $3 {\times} 4$ 块的平移版本。
 
 \begin{figure}[ht]
 \centering
@@ -253,17 +253,17 @@
 \node at (-1,19) {\Large{\texttt{19}}};
 \end{tikzpicture}
 }
-\caption{行主序 $(3,4):(4,1)$ 瓦片与列主序 $(2,5):(1,2)$ 铺瓦的 {\tt blocked\_product}。}
+\caption{行主序 $(3,4):(4,1)$ 块与列主序 $(2,5):(1,2)$ 分块的 {\tt blocked\_product}。}
 \label{fig:blockedproduct}
 \end{figure}
 
-操作 {\tt raked\_product} 与分块乘积类似，只是各模以相反的顺序拉链（zip）组合：
+操作 {\tt raked\_product} 与块状乘积类似，只是各模以相反的顺序拉链（zip）组合：
 \begin{align*}
 \begin{array}{cccc}((\textcolor{red}{3}, & \textcolor{red}{4}), & (\textcolor{blue}{2}, & \textcolor{blue}{5})) \\ ((\textcolor{red}{4}, & \textcolor{red}{1}), & (\textcolor{blue}{12}, & \textcolor{blue}{24})) \end{array}
 \ \Longrightarrow \
 \begin{array}{cccc}((\textcolor{blue}{2}, & \textcolor{red}{3}), & (\textcolor{blue}{5}, & \textcolor{red}{4})) \\ ((\textcolor{blue}{12}, & \textcolor{red}{4}), & (\textcolor{blue}{24}, & \textcolor{red}{1})) \end{array}
 \end{align*}
-其效果是 $3 {\times} 4$ 瓦片被“耙”（raked）在 $2 {\times} 5$ 瓦片之上，而非“分块”排布。图~\ref{fig:rakedproduct} 画出了得到的布局，其中每个 $3 {\times} 4$ 瓦片都施以底纹。
+其效果是 $3 {\times} 4$ 块被“耙”（raked）在 $2 {\times} 5$ 块之上，而非“块状”排布。图~\ref{fig:rakedproduct} 画出了得到的布局，其中每个 $3 {\times} 4$ 块都施以底纹。
 
 \begin{figure}[ht]
 \centering
@@ -421,7 +421,7 @@
 \node at (-1,19) {\Large{\texttt{19}}};
 \end{tikzpicture}
 }
-\caption{行主序 $(3,4):(4,1)$ 瓦片与列主序 $(2,5):(1,2)$ 铺瓦的 {\tt raked\_product}。}
+\caption{行主序 $(3,4):(4,1)$ 块与列主序 $(2,5):(1,2)$ 分块的 {\tt raked\_product}。}
 \label{fig:rakedproduct}
 \end{figure}
 
@@ -444,7 +444,7 @@
 \v{B}^+ \v{B}^\bigstar \v{B}^+ = \v{B}^+
 \end{align}
 
-与逻辑乘积操作类似，结果布局 $\v{A} \circ \v{B}$ 的第一个模通常被称为“瓦片”，它在“网格”（即“铺瓦”）布局 $\v{A} \circ \v{B}^*_{\abs{\v{A}}}$ 上被重复。参数 $\v{B}$ 被称为“铺瓦器”，它可以被扩展为不仅仅是布局，如第~\ref{sec:tiler}~节所述。
+与逻辑乘积操作类似，结果布局 $\v{A} \circ \v{B}$ 的第一个模通常被称为“块”，它在“网格”（即“分块”）布局 $\v{A} \circ \v{B}^*_{\abs{\v{A}}}$ 上被重复。参数 $\v{B}$ 被称为“分块器”，它可以被扩展为不仅仅是布局，如第~\ref{sec:tiler}~节所述。
 
 作为一个直接的例子，常见的需求是从另一个布局中取出某组逻辑元素。例如，要从布局中每隔三个取一个元素，可以使用复合：
 \begin{align*}
@@ -480,7 +480,7 @@
 \ &=& \
 \begin{array}{cccc} ((\textcolor{blue}{2}, & \textcolor{blue}{2}, & \textcolor{blue}{2}), & 3) \\ ((\textcolor{blue}{6}, & \textcolor{blue}{1}, & \textcolor{blue}{20}), & 2) \end{array}
 \end{align*}
-其中 $3:1$ 是 $8:3$ 在尺寸 24 之下的补。结果的第一模按要求仍然包含左手边布局中每隔三个取一个的元素，而结果的第二模是这些“瓦片”在原布局中的个数（本例中为 3）以及这些瓦片之间的步幅。补被用来确定缺失了哪些元素、以及以何种顺序保留它们。
+其中 $3:1$ 是 $8:3$ 在尺寸 24 之下的补。结果的第一模按要求仍然包含左手边布局中每隔三个取一个的元素，而结果的第二模是这些“块”在原布局中的个数（本例中为 3）以及这些块之间的步幅。补被用来确定缺失了哪些元素、以及以何种顺序保留它们。
 
 \paragraph{相关切分}
 
@@ -488,7 +488,7 @@
 \begin{align*}
 \v{A} \oslash \langle \v{B},\v{C} \rangle = (\v{A}_0,\v{A}_1) \oslash \langle \v{B},\v{C} \rangle = (\v{A}_0 \oslash \v{B}, \v{A}_1 \oslash \v{C}).
 \end{align*}
-其直觉在于：能够对列和行独立地执行这些操作，然后视需要重排这些模以构造新布局，这与布局乘积类似。例如，回到第~\ref{sec:tiler}~节中的铺瓦器，将这些铺瓦器用于逻辑切分而非复合，就得到铺瓦器所指向的 $4 {\times} 8$ 子布局组成的 $2 {\times} 2$ 布局。图~\ref{fig:tilers_divide} 展示了这一点，其中可以想象有一个 $2 {\times} 2$ 布局映射到每个单独施以底纹的数据瓦片。
+其直觉在于：能够对列和行独立地执行这些操作，然后视需要重排这些模以构造新布局，这与布局乘积类似。例如，回到第~\ref{sec:tiler}~节中的分块器，将这些分块器用于逻辑切分而非复合，就得到分块器所指向的 $4 {\times} 8$ 子布局组成的 $2 {\times} 2$ 布局。图~\ref{fig:tilers_divide} 展示了这一点，其中可以想象有一个 $2 {\times} 2$ 布局映射到每个单独施以底纹的数据块。
 
 \begin{figure}[ht]
 \centering
@@ -588,11 +588,11 @@
 \end{tikzpicture}}
 \caption{$\langle 4:2,8:2 \rangle$}
 \end{subfigure}
-\caption{将 $8 {\times} 16$ 布局切分为 $4 {\times} 8$ 瓦片、并以 $2 {\times} 2$ 铺瓦的铺瓦器示例。}
+\caption{将 $8 {\times} 16$ 布局切分为 $4 {\times} 8$ 块、并以 $2 {\times} 2$ 分块的分块器示例。}
 \label{fig:tilers_divide}
 \end{figure}
 
-例如，给定布局 $(\textcolor{red}{8},\textcolor{red}{16}):(\textcolor{red}{20},\textcolor{red}{1})$，我们想抽取一个“瓦片”：沿每列向下取 4 个连续元素、沿每行每隔一个取一个元素。按模的逻辑切分给出
+例如，给定布局 $(\textcolor{red}{8},\textcolor{red}{16}):(\textcolor{red}{20},\textcolor{red}{1})$，我们想抽取一个“块”：沿每列向下取 4 个连续元素、沿每行每隔一个取一个元素。按模的逻辑切分给出
 \begin{align*}
 \begin{array}{cc} (\textcolor{red}{8}, & \textcolor{red}{16})\\
                   (\textcolor{red}{20},& \textcolor{red}{1}) \end{array}
@@ -611,15 +611,15 @@
 \ = \
 \begin{array}{cccc}((\textcolor{blue}{4}, & \textcolor{black}{2}), & (\textcolor{blue}{8}, & \textcolor{black}{2})) \\ ((\textcolor{blue}{20}, & \textcolor{black}{80}), & (\textcolor{blue}{2}, & \textcolor{black}{1})) \end{array}
 \end{align*}
-其中“瓦片”模标为蓝色，“其余”模标为黑色。注意，结果布局仍保持 $8 {\times} 16$，而铺瓦器所指向的元素已被置换到最前面的 $4 {\times} 8$ 块中。
+其中“块”模标为蓝色，“其余”模标为黑色。注意，结果布局仍保持 $8 {\times} 16$，而分块器所指向的元素已被置换到最前面的 $4 {\times} 8$ 块中。
 
 操作 {\tt zipped\_divide} 先执行按模逻辑切分，再把同类模拉链式地组合在一起：
 \begin{align*}
 \begin{array}{cccc}((\textcolor{blue}{4}, & \textcolor{blue}{8}), & (\textcolor{black}{2}, & \textcolor{black}{2})) \\ ((\textcolor{blue}{20}, & \textcolor{blue}{2}), & (\textcolor{black}{80}, & \textcolor{black}{1})) \end{array}
 \end{align*}
-这生成了一个“瓦片”模（蓝色），它恰好是铺瓦器所指向的子布局；以及一个“其余”模（黑色），它是遍历各瓦片的子布局。操作 {\tt zipped\_divide} 总是返回一个 2 阶布局结果，其第一模恰好是与铺瓦器的复合，第二模是与补的复合。
+这生成了一个“块”模（蓝色），它恰好是分块器所指向的子布局；以及一个“其余”模（黑色），它是遍历各块的子布局。操作 {\tt zipped\_divide} 总是返回一个 2 阶布局结果，其第一模恰好是与分块器的复合，第二模是与补的复合。
 
-软件中一个非常常见的模式是：把数据布局铺瓦成一个瓦片网格，然后为每个处理单元选出特定的瓦片。在 Python 参考实现 PyCuTe（NVIDIA，2026）中，其形式如下：
+软件中一个非常常见的模式是：把数据布局分块成一个块网格，然后为每个处理单元选出特定的块。在 Python 参考实现 PyCuTe（NVIDIA，2026）中，其形式如下：
 \begin{python}
 data    = Tensor(MyPtr, MyLayoutMxN)   # Tensor：Crd -> Offset
 tiler   = (4,8)                        # Tiler：TileCoord -> Crd
@@ -627,13 +627,13 @@ data_vt = zipped_divide(data, tiler)   # Compose：(TileCrd,GridCrd) -> Offset
 tile    = data_vt[:, blk_id]           # 按一维 block id 切片
 tile    = data_vt[:, (blk_x, blk_y)]   # 按二维 block id 切片，二者等价
 \end{python}
-可以看出，这一模式与第~\ref{sec:layouttv}~节的线程-值分块非常相似，只不过这里真正指定的只有瓦片模，缺失的“网格”模作为铺瓦器的补被计算出来。这个形状为 $(\text{瓦片}, \text{网格})$ 的“补全”铺瓦器随后与数据复合，产生瓦片网格；再在第二模上按块标识符切片，即可为某个处理单元抽取特定的瓦片。
+可以看出，这一模式与第~\ref{sec:layouttv}~节的线程-值划分非常相似，只不过这里真正指定的只有块模，缺失的“网格”模作为分块器的补被计算出来。这个形状为 $(\text{块}, \text{网格})$ 的“补全”分块器随后与数据复合，产生块网格；再在第二模上按块标识符切片，即可为某个处理单元抽取特定的块。
 
 同样可以构造逻辑切分的许多其它版本，它们额外地对模进行分组与重排，以得到方便使用的结果。
 
 \wph{结论}
 
-本文提出了 \CuTe，一个用于表示与操纵张量布局的数学框架，以应对现代 GPU 架构日益增长的复杂性。凭借其分层布局表示，\CuTe 为编写与管理当代硬件上专用张量指令所需的复杂数据布局与分块（partition）模式提供了通用方法。凭借其丰富的代数运算，\CuTe 为高性能线性代数 kernel 开发中布局的操纵与新布局的生成提供了一条有原理依据的途径。二者结合，该表示与代数能够支持复杂的布局与分块、关注点分离，以及静态分析与优化。
+本文提出了 \CuTe，一个用于表示与操纵张量布局的数学框架，以应对现代 GPU 架构日益增长的复杂性。凭借其分层布局表示，\CuTe 为编写与管理当代硬件上专用张量指令所需的复杂数据布局与划分（partition）模式提供了通用方法。凭借其丰富的代数运算，\CuTe 为高性能线性代数 kernel 开发中布局的操纵与新布局的生成提供了一条有原理依据的途径。二者结合，该表示与代数能够支持复杂的布局与划分、关注点分离，以及静态分析与优化。
 
 \CuTe 布局表示的表达能力已在若干关键应用中被证明极具价值。\CuTe 便于将多种多样的算法——例如广义张量-张量收缩（GETT）与卷积（CONV）——表示为通用矩阵乘法（GEMM）的实例，从而促进代码复用与算法统一性。例如，\CuTe 允许矩阵无论其具体数据布局如何都用 $(m,n)$ 坐标（coordinate）索引，让通用算法与具体布局保持正交；同时，要求特定布局的算法或指令则能够静态地检查、验证并推演它们的张量参数。
 

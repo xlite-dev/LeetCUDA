@@ -396,8 +396,16 @@ $4096/2$），与式~\eqref{eq:21-dup} 完全一致。该覆盖结构的网格�
       \pgfmathtruncatemacro{\cm}{\fm/16}
       \pgfmathtruncatemacro{\bk}{\fk/8}
       \pgfmathtruncatemacro{\bi}{2*\cm+\bk}
-      \pgfmathtruncatemacro{\gl}{6+13*\bi}
-      \node[fill=gray!\gl, minimum width=\cwd cm, minimum height=\chh cm, inner sep=0pt]
+      \ifcase\bi
+        \def\cff{colorx4!18}%
+      \or
+        \def\cff{colorx5!30}%
+      \or
+        \def\cff{colorx6!42}%
+      \else
+        \def\cff{colorx7!54}%
+      \fi
+      \node[fill=\cff, minimum width=\cwd cm, minimum height=\chh cm, inner sep=0pt]
         at ({(\fk+0.5)*\cwd},{-(\fm+0.5)*\chh}) {\lane};
     }
   }
@@ -690,16 +698,16 @@ $=8192$（2 stage）、C 部分 $4096$）。同一块地址带上的两种解释
 \begin{figure}[H]
 \centering
 \begin{tikzpicture}[font=\tiny]
-  \node[anchor=east] at (-0.1,-0.3) {A pipe 视角};
-  \node[anchor=east] at (-0.1,-1.95) {C scratchpad 视角};
+  \node[anchor=east, text=tkBlue] at (-0.1,-0.3) {A pipe 视角};
+  \node[anchor=east, text=tkOrange!80!black] at (-0.1,-1.95) {C scratchpad 视角};
   \foreach \ak in {0,...,15}{
-    \node[fill=gray!20, minimum width=0.4cm, minimum height=0.6cm, inner sep=0pt]
+    \node[fill=tkFillBlue, minimum width=0.4cm, minimum height=0.6cm, inner sep=0pt]
       at ({\ak*0.4+0.2},-0.3) {};
   }
   \draw[thin] (0,0) grid[xstep=0.4cm, ystep=0.6cm] (6.4,-0.6);
   \draw[very thick] (0,0) rectangle (6.4,-0.6);
   \foreach \ck in {0,...,3}{
-    \node[fill=gray!20, minimum width=1.6cm, minimum height=0.6cm, inner sep=0pt]
+    \node[fill=tkFillOrange, minimum width=1.6cm, minimum height=0.6cm, inner sep=0pt]
       at ({\ck*1.6+0.8},-1.95) {$32\times32$};
   }
   \foreach \ckx in {0,...,4}{
@@ -774,7 +782,16 @@ step 整除——当前静态布局下这是编译期保证的。
   \node[font=\tiny\bfseries] at (114,63) {$m \backslash n$};
   \foreach \cc/\nb in {0/{n: 0--7},1/{n: 8--15},2/{n: 16--23},3/{n: 24--31}}{
     \node[font=\tiny\bfseries] at ({251+216*\cc},63) {\nb};
-    \node[draw=gray!60, fill=gray!12, font=\tiny\bfseries, minimum width=3.15cm,
+    \ifcase\cc
+      \def\chf{colorx4!12}%
+    \or
+      \def\chf{colorx4!24}%
+    \or
+      \def\chf{colorx4!36}%
+    \else
+      \def\chf{colorx4!48}%
+    \fi
+    \node[draw=colorx4!55, fill=\chf, font=\tiny\bfseries, minimum width=3.15cm,
           minimum height=0.6cm, inner sep=0pt] at ({251+216*\cc},98)
       {$t = 4m + \cc$};
   }
@@ -783,15 +800,18 @@ step 整除——当前静态布局下这是编译期保证的。
           inner sep=0pt] at (109,{144+46*\rr}) {$\rr$};
     \foreach \cc in {0,...,3}{
       \pgfmathtruncatemacro{\tn}{4*\rr+\cc}
-      \ifodd\cc
-        \node[draw=tkBlue, fill=white, minimum width=3.15cm, minimum height=0.6cm,
-              inner sep=0pt] at ({251+216*\cc},{144+46*\rr})
-          {$t = \tn$（$v = 0..7$）};
+      \ifcase\cc
+        \def\cff{colorx4!12}%
+      \or
+        \def\cff{colorx4!24}%
+      \or
+        \def\cff{colorx4!36}%
       \else
-        \node[draw=tkBlue, fill=tkFillBlue, minimum width=3.15cm, minimum height=0.6cm,
-              inner sep=0pt] at ({251+216*\cc},{144+46*\rr})
-          {$t = \tn$（$v = 0..7$）};
+        \def\cff{colorx4!48}%
       \fi
+      \node[draw=colorx4!55, fill=\cff, minimum width=3.15cm, minimum height=0.6cm,
+            inner sep=0pt] at ({251+216*\cc},{144+46*\rr})
+          {$t = \tn$（$v = 0..7$）};
     }
   }
   \node[anchor=west, font=\tiny] at (24,323)

@@ -16,18 +16,18 @@ fused 进尽量少的 kernel。
 \centering
 \begin{tikzpicture}[font=\scriptsize]
   \def\us{2.2}
-  \node[anchor=east, align=right] at (-0.35,0.25) {e4m3\\{\tiny 4E+3M}};
+  \node[anchor=east, align=right, text=tkBlue] at (-0.35,0.25) {e4m3\\{\tiny 4E+3M}};
   \draw[thick] (0,0) -- ({6*\us},0);
   \draw[thick, ->] ({6*\us},0) -- ({6*\us+0.45},0);
   \foreach \bi in {0,...,7}{
     \foreach \m in {0,...,7}{
       \pgfmathsetmacro{\vv}{2^(\bi-6)*(1+\m/8)}
-      \draw[gray!45] ({\vv*\us},0) -- ({\vv*\us},0.5);
+      \draw[tkBlue!55] ({\vv*\us},0) -- ({\vv*\us},0.5);
     }
   }
   \foreach \m in {0,...,4}{
     \pgfmathsetmacro{\vv}{4+0.5*\m}
-    \draw[gray!45] ({\vv*\us},0) -- ({\vv*\us},0.5);
+    \draw[tkBlue!55] ({\vv*\us},0) -- ({\vv*\us},0.5);
   }
   \foreach \vl/\xx in {0/0,1/2.2,2/4.4,4/8.8,6/13.2}{
     \draw[thick] (\xx,0) -- (\xx,-0.14);
@@ -37,11 +37,11 @@ fused 进尽量少的 kernel。
   \node[anchor=south, font=\tiny, align=center] at ({3*\us},0.58)
     {格点密（每 binade 8 点），相对步长 6.25\%；\\无 $\pm\infty$（\texttt{0x7F}=\texttt{NaN}），越界 \texttt{satfinite} 饱和};
   \begin{scope}[yshift=-2.4cm]
-    \node[anchor=east, align=right] at (-0.35,0.30) {e2m1\\{\tiny 2E+1M}};
+    \node[anchor=east, align=right, text=tkRed] at (-0.35,0.30) {e2m1\\{\tiny 2E+1M}};
     \draw[thick] (0,0) -- ({6*\us},0);
     \draw[thick, ->] ({6*\us},0) -- ({6*\us+0.45},0);
     \foreach \vl/\xx in {0/0,0.5/1.1,1/2.2,1.5/3.3,2/4.4,3/6.6,4/8.8,6/13.2}{
-      \draw[very thick] (\xx,0) -- (\xx,0.62);
+      \draw[very thick,tkRed] (\xx,0) -- (\xx,0.62);
       \node[above, font=\tiny, inner sep=1pt] at (\xx,0.64) {\vl};
     }
     \node[anchor=south, font=\tiny, align=center] at ({3*\us},0.78)
@@ -169,22 +169,23 @@ kernel 的 $S=\hat Q\hat K^\top+\Delta S$ 恰好等于 $q(k-\bar k)^\top$，
 \begin{figure}[H]
 \centering
 \begin{tikzpicture}[font=\scriptsize, >=Stealth]
-  \node[draw, thick, rounded corners=1pt, fill=gray!10, align=center,
+  % 语义色：逐项展开（橙，朴素 before）→ SA3 改写（蓝，结构）→ ΔS 恒等式（绿，命中）
+  \node[draw=tkOrange, thick, rounded corners=1pt, fill=tkFillOrange, align=center,
         text width=7.6cm, inner sep=3pt] (exp) at (0,0)
     {$S=q\,k^{\top}=(q-q_m)(k-\bar k)^{\top}+q_m k^{\top}+q\bar k^{\top}-q_m\bar k^{\top}$\\[1pt]
      {\tiny 逐项展开：$K-\bar k$ 中间项要求把平滑后的 K 物化出来}};
-  \node[draw, thick, rounded corners=1pt, fill=gray!26, align=center,
+  \node[draw=tkBlue, thick, rounded corners=1pt, fill=tkFillBlue, align=center,
         text width=7.0cm, inner sep=3pt] (fold) at (0,-1.90)
     {$S=\hat Q\hat K^{\top}+\Delta S$，\quad $\hat Q=\phi(Q-q_m)$、$\hat K=\phi(K^{\top}-\bar k)$\\[1pt]
      {\tiny 残差 MMA（主 kernel 的 QK）$+$ 一次算好的修正项}};
-  \draw[->, thick] (exp) -- (fold)
+  \draw[->, thick,tkBlue] (exp) -- (fold)
     node[midway, fill=white, inner sep=1.5pt, font=\tiny] {SA3 改写：消掉 $K-\bar k$};
-  \node[draw, thick, rounded corners=1pt, fill=gray!10, align=center,
+  \node[draw=tkGreen, thick, rounded corners=1pt, fill=tkFillGreen, align=center,
         text width=7.4cm, inner sep=3pt] (ds) at (0,-3.42)
     {$\Delta S=\underbrace{q_m K^{\top}}_{\text{低秩 GEMM}}-\underbrace{q_m\bar k}_{\text{每行常数 }q_{km}}$\\[1pt]
      {\tiny 左支 $\to$ fp32 物化、pad 列零填、量化链里一次算好；\\
       右支 $\to$ epilogue 逐元素减一次，不改变 $O$}};
-  \draw[->, thick] (fold) -- (ds);
+  \draw[->, thick,tkBlue] (fold) -- (ds);
   \node[anchor=north, align=center, font=\tiny, text width=7.4cm] at (0,-4.72)
     {lse 修正只需 $scale\cdot\mathrm{dot}(q_{row},\bar k)$；主 kernel 每个 kv tile 把
      $\Delta S$ 预载进 C 累加器即用};
@@ -371,9 +372,10 @@ smem、零额外寄存器数组。最后乘 $rsqrt(kHeadDim)$ 归一。
 \centering
 \begin{tikzpicture}[font=\scriptsize, >=Stealth]
   \def\sw{3.05}
-  \foreach \t/\gt in {0/10,1/22,2/10,3/22}{
+  % 4 个线程 slice = hue 环身份（colorx1..x4），下方放大条取 slice 0 同族色
+  \foreach \t/\tcol in {0/colorx1,1/colorx2,2/colorx3,3/colorx4}{
     \pgfmathsetmacro{\xa}{\t*\sw}
-    \fill[gray!\gt] (\xa,0) rectangle ({\xa+\sw},0.52);
+    \fill[\tcol!14] (\xa,0) rectangle ({\xa+\sw},0.52);
     \draw[thick] (\xa,0) rectangle ({\xa+\sw},0.52);
     \node[font=\tiny] at ({\xa+\sw/2},0.26) {slice \t：$k_E{=}64$ 元素};
   }
@@ -388,7 +390,7 @@ smem、零额外寄存器数组。最后乘 $rsqrt(kHeadDim)$ 归一。
   \begin{scope}[yshift=-2.30cm]
     \def\gw{0.42}
     \foreach \c in {0,...,15}{
-      \fill[gray!8] ({\c*\gw},0) rectangle ({\c*\gw+\gw},0.40);
+      \fill[colorx1!10] ({\c*\gw},0) rectangle ({\c*\gw+\gw},0.40);
       \draw[gray!45, thin] ({\c*\gw},0) rectangle ({\c*\gw+\gw},0.40);
     }
     \draw[thick] (0,0) rectangle ({16*\gw},0.40);

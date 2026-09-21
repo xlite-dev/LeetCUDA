@@ -475,31 +475,32 @@ f16 acc 时发射 $\hat{V} \in [-2.25, 2.25]$，检验 $448 \times 2.25 = 1008 \
 ]
   % 坐标：x = 1.2 + 0.02*P_r（1cm = 50），y = V_r（1cm = 1）
   % ffpa 矩形 (448, 2.25) 先画，SA2++ (224, 4.5) 后画（区域嵌套，深色在内）
-  \fill[gray!32] (1.2,0) rectangle (10.16,2.25);
-  \draw[thick] (1.2,0) rectangle (10.16,2.25);
-  \fill[gray!62] (1.2,0) rectangle (5.68,4.5);
-  \draw[thick] (1.2,0) rectangle (5.68,4.5);
+  % 语义色：SA2++ = 对照分配（橙），ffpa = 本书路径（蓝），超限区 = 红
+  \fill[tkFillBlue] (1.2,0) rectangle (10.16,2.25);
+  \draw[thick,tkBlue] (1.2,0) rectangle (10.16,2.25);
+  \fill[tkFillOrange] (1.2,0) rectangle (5.68,4.5);
+  \draw[thick,tkOrange] (1.2,0) rectangle (5.68,4.5);
   % 预算线 V = 2047/P_r 上方的超限区（斜纹）
   \begin{scope}
-    \fill[pattern=north east lines, pattern color=gray!55]
+    \fill[pattern=north east lines, pattern color=tkRed!55]
       (1.2+0.02*341.2,6.0) -- plot[domain=341.2:486,samples=50] ({1.2+0.02*\x},{2047/\x})
       -- (1.2+0.02*486,6.0) -- cycle;
   \end{scope}
-  \draw[dashed,thick]
+  \draw[dashed,thick,tkRed]
     plot[domain=341.2:486,samples=50] ({1.2+0.02*\x},{2047/\x});
-  \node[axl,anchor=west] at (9.0,5.65) {预算线 $P_r V_r = 2047 = 65504/32$};
-  \node[axl,anchor=west] at (9.0,5.3) {\tiny （$V_r = 2047/P_r$，超限区斜纹）};
+  \node[axl,anchor=west,text=tkRed] at (9.0,5.65) {预算线 $P_r V_r = 2047 = 65504/32$};
+  \node[axl,anchor=west,text=tkRed!80] at (9.0,5.3) {\tiny （$V_r = 2047/P_r$，超限区斜纹）};
   % 448 满量程参考线
   \draw[dotted,thick] (10.16,0) -- (10.16,6.0);
   \node[axl,anchor=south,rotate=90] at (10.42,4.6) {P 满量程 448（e4m3）};
   % 两矩形的角点与面积标注
   \fill (5.68,4.5) circle (1.6pt);
   \node[axl,anchor=south] at (5.68,4.62) {$(224,\,4.5)$};
-  \node[axl,anchor=north,align=center] at (3.4,4.2)
+  \node[axl,anchor=north,align=center,text=tkOrange!85!black] at (3.4,4.2)
     {SA2++\\$224\times4.5 = 1008 \le 2047$\\{\tiny 两侧各收窄一半}};
   \fill (10.16,2.25) circle (1.6pt);
   \node[axl,anchor=south] at (10.16,2.4) {$(448,\,2.25)$};
-  \node[axl,anchor=north,align=center] at (7.6,1.95)
+  \node[axl,anchor=north,align=center,text=tkBlue] at (7.6,1.95)
     {ffpa：$448\times2.25 = 1008 \le 2047$\\{\tiny P 保满量程、约束全压 V 侧（$\hat V\in[-2.25,2.25]$）}};
   % 坐标轴（最后画，压在矩形之上）
   \draw[-{Stealth},thick] (1.2,0) -- (11.9,0);
@@ -573,10 +574,9 @@ kernel 典型取 $\tau = 8$；fp8 发射域的天花板更紧，按 e4m3 满量�
   axl/.style={font=\scriptsize, inner sep=1pt},
   tnb/.style={font=\tiny, inner sep=0.5pt},
 ]
-  \definecolor{warnred}{RGB}{163,21,21}
-  % fp8 上溢警示区（448 右侧）
-  \fill[red!12] (10.93,0.3) rectangle (11.55,1.62);
-  \node[axl,warnred,anchor=south,align=center] at (11.05,1.55)
+  % fp8 上溢警示区（448 右侧，语义红）
+  \fill[tkFillRed] (10.93,0.3) rectangle (11.55,1.62);
+  \node[axl,tkRed,anchor=south,align=center] at (11.05,1.55)
     {fp8 上溢\\{\tiny satfinite 钳位兜底}};
   % 主轴（log2 均匀刻度：x = 0.8 + 1.15*log2(v)）
   \draw[-{Stealth},thick] (0.7,0) -- (11.75,0);
@@ -586,8 +586,8 @@ kernel 典型取 $\tau = 8$；fp8 发射域的天花板更紧，按 e4m3 满量�
   }
   \node[axl,anchor=north] at (6.2,-0.42) {$\mathrm{amax}(V)$（对数刻度，$\log_2$ 均匀）};
   % 三条关键竖线
-  \draw[warnred,very thick,dashed] (10.93,0) -- (10.93,1.62);
-  \node[axl,warnred,anchor=south,align=center] at (10.35,1.32)
+  \draw[tkRed,very thick,dashed] (10.93,0) -- (10.93,1.62);
+  \node[axl,tkRed,anchor=south,align=center] at (10.35,1.32)
     {e4m3 满量程 448\\{\tiny 天花板}};
   \draw[thick] (6.33,0) -- (6.33,1.05);
   \node[axl,anchor=south,align=center] at (5.6,1.02)
@@ -600,12 +600,12 @@ kernel 典型取 $\tau = 8$；fp8 发射域的天花板更紧，按 e4m3 满量�
   \node[axl,anchor=south] at (8.6,0.78) {$\times 16 = 2^{4}$};
   \draw[-{Stealth},thick] (1.73,0.62) to[bend left=13] (10.88,0.62);
   \node[axl,anchor=south] at (6.1,1.62) {$\times 256 = 2^{8}$};
-  % 安全域色带
+  % 安全域色带（τ=4 安全域 = 语义绿；satfinite 兜底段保持斜纹）
   \fill[gray!62] (0.8,-0.55) rectangle (1.73,-0.33);
-  \fill[gray!22] (1.73,-0.55) rectangle (6.33,-0.33);
+  \fill[tkFillGreen] (1.73,-0.55) rectangle (6.33,-0.33);
   \fill[pattern=north east lines, pattern color=gray!50] (6.33,-0.55) rectangle (10.93,-0.33);
-  \fill[red!25] (10.93,-0.55) rectangle (11.55,-0.33);
-  \node[tnb,anchor=north] at (4.03,-0.6) {$\tau{=}4$ 安全域};
+  \fill[tkFillRed] (10.93,-0.55) rectangle (11.55,-0.33);
+  \node[tnb,anchor=north,text=tkGreen!70!black] at (4.03,-0.6) {$\tau{=}4$ 安全域};
   \node[tnb,anchor=north] at (8.63,-0.6) {28..448：satfinite 兜底残余超调};
   % 底部公式注
   \node[axl,anchor=north west,align=left,text width=10.9cm] at (0.8,-1.35)

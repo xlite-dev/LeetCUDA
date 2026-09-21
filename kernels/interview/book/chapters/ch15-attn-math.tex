@@ -687,18 +687,18 @@ layout 必须\textbf{同时}看读端（ldmatrix）与写端（cp.async），只
 \begin{figure}[htbp]
 \centering
 \begin{tikzpicture}[font=\tiny, x=0.0149cm, y=-0.0149cm]
-  \definecolor{tBlue}{RGB}{33,100,160}
-  \definecolor{tGreen}{RGB}{40,105,60}
-  \definecolor{tOrange}{RGB}{165,95,15}
+  \colorlet{tBlue}{tkBlue}
+  \colorlet{tGreen}{tkGreen}
+  \colorlet{tOrange}{tkOrange}
   \node[anchor=west, font=\scriptsize\bfseries] at (24,26)
     {FlashAttention online softmax：单个 Q 块（$B_r$ 行）流式扫过全部 $T_c$ 个 KV 块};
-  \node[draw=tBlue, fill=gray!8, text=tBlue, font=\tiny\bfseries, inner sep=1pt,
+  \node[draw=tBlue, fill=tkFillBlue, text=tBlue, font=\tiny\bfseries, inner sep=1pt,
         minimum width=3.73cm, minimum height=0.69cm] at (149,73)
     {$m\ [B_r]$ 运行行最大};
-  \node[draw=tGreen, fill=gray!8, text=tGreen, font=\tiny\bfseries, inner sep=1pt,
+  \node[draw=tGreen, fill=tkFillGreen, text=tGreen, font=\tiny\bfseries, inner sep=1pt,
         minimum width=2.68cm, minimum height=0.69cm] at (376,73)
     {$\ell\ [B_r]$ 运行行和};
-  \node[draw=tOrange, fill=gray!8, text=tOrange, font=\tiny\bfseries, inner sep=1pt,
+  \node[draw=tOrange, fill=tkFillOrange, text=tOrange, font=\tiny\bfseries, inner sep=1pt,
         minimum width=3.87cm, minimum height=0.69cm] at (608,73)
     {$O\ [B_r,d]$ 未归一化累加器};
   \node[draw=black!55, fill=gray!18, align=center, text width=4.32cm, inner sep=1pt,
@@ -738,10 +738,10 @@ layout 必须\textbf{同时}看读端（ldmatrix）与写端（cp.async），只
         minimum height=0.63cm] at (340,503)
     {$O \leftarrow \mathrm{diag}\bigl(\exp(m - m_{\text{new}})\bigr)\,O + PV$};
   \node[anchor=west, text=tOrange, font=\tiny\bfseries] at (660,503) {(3e) rescale};
-  \node[draw=tGreen, fill=gray!12, text=tGreen!60!black, font=\tiny\bfseries,
+  \node[draw=tGreen, fill=tkFillGreen, text=tGreen!60!black, font=\tiny\bfseries,
         inner sep=1pt, minimum width=15.44cm, minimum height=0.63cm] at (542,569)
     {循环结束后：$O \leftarrow O/\ell$\quad（全程只做一次最终除法）(8) epilogue};
-  \node[draw=tOrange, fill=gray!12, text=tOrange!60!black, font=\tiny\bfseries,
+  \node[draw=tOrange, fill=tkFillOrange, text=tOrange!60!black, font=\tiny\bfseries,
         inner sep=1pt, minimum width=15.44cm, minimum height=0.63cm] at (542,619)
     {$N \times N$ 矩阵 $S$ 从不存在：任意时刻只有 $[B_r \times B_c]$ tile 活在 $R_S$
      寄存器里};
@@ -753,40 +753,40 @@ layout 必须\textbf{同时}看读端（ldmatrix）与写端（cp.async），只
 \begin{figure}[htbp]
 \centering
 \begin{tikzpicture}[font=\tiny, x=0.01446cm, y=-0.01446cm]
-  \definecolor{tBlue}{RGB}{33,100,160}
-  \definecolor{tGreen}{RGB}{40,105,60}
-  \definecolor{tOrange}{RGB}{165,95,15}
-  \definecolor{tRed}{RGB}{165,40,40}
+  \colorlet{tBlue}{tkBlue}
+  \colorlet{tGreen}{tkGreen}
+  \colorlet{tOrange}{tkOrange}
+  \colorlet{tRed}{tkRed}
   \node[anchor=west, font=\scriptsize\bfseries] at (24,26)
     {FA1 $\to$ FA2 $\to$ FA3：时间去哪了（时间结构示意）};
-  \node[draw=tBlue, fill=gray!10, text=tBlue, font=\tiny\bfseries, inner sep=1pt,
+  \node[draw=tBlue, fill=tkFillBlue, text=tBlue, font=\tiny\bfseries, inner sep=1pt,
         minimum width=15.50cm, minimum height=0.46cm] at (560,64)
     {FA1 (A100)：warp 沿 K/V 切分，softmax 串行夹在两次 GEMM 之间};
   \foreach \k/\lb in {0/GEMM1, 1/softmax, 2/GEMM2, 3/GEMM1, 4/softmax, 5/GEMM2}{
-    \ifnum\k=1 \node[draw=tRed, fill=gray!28, text=tRed, font=\tiny\bfseries,
+    \ifnum\k=1 \node[draw=tRed, fill=tkFillRed, text=tRed, font=\tiny\bfseries,
         inner sep=1pt, minimum width=2.39cm, minimum height=0.52cm]
         at ({106.5+170*\k},106) {\lb};
-    \else \ifnum\k=4 \node[draw=tRed, fill=gray!28, text=tRed, font=\tiny\bfseries,
+    \else \ifnum\k=4 \node[draw=tRed, fill=tkFillRed, text=tRed, font=\tiny\bfseries,
         inner sep=1pt, minimum width=2.39cm, minimum height=0.52cm]
         at ({106.5+170*\k},106) {\lb};
-    \else \node[draw=tBlue, fill=gray!10, text=tBlue, font=\tiny\bfseries,
+    \else \node[draw=tBlue, fill=tkFillBlue, text=tBlue, font=\tiny\bfseries,
         inner sep=1pt, minimum width=2.39cm, minimum height=0.52cm]
         at ({106.5+170*\k},106) {\lb};
     \fi\fi
   }
   \node[anchor=west, text=black!65] at (24,138)
     {... 串行重复；partial $(m, \ell, O)$ per warp，跨 warp 归约必须走 smem（merge\_attn\_states）};
-  \node[draw=tGreen, fill=gray!10, text=tGreen, font=\tiny\bfseries, inner sep=1pt,
+  \node[draw=tGreen, fill=tkFillGreen, text=tGreen, font=\tiny\bfseries, inner sep=1pt,
         minimum width=15.50cm, minimum height=0.46cm] at (560,178)
     {FA2 (A100/H100)：warp 沿 Q 行切分，消灭跨 warp 归约};
   \foreach \w in {0,...,3}{
     \node[anchor=west, text=black!75, font=\tiny\bfseries] at (24,{216+34*\w})
       {warp\w};
-    \node[draw=tGreen, fill=gray!10, text=tGreen, font=\tiny\bfseries, inner sep=1pt,
+    \node[draw=tGreen, fill=tkFillGreen, text=tGreen, font=\tiny\bfseries, inner sep=1pt,
           minimum width=2.17cm, minimum height=0.40cm] at (183,{216+34*\w}) {GEMM1};
-    \node[draw=tRed, fill=gray!28, text=tRed, font=\tiny\bfseries, inner sep=1pt,
+    \node[draw=tRed, fill=tkFillRed, text=tRed, font=\tiny\bfseries, inner sep=1pt,
           minimum width=2.17cm, minimum height=0.40cm] at (338,{216+34*\w}) {softmax};
-    \node[draw=tGreen, fill=gray!10, text=tGreen, font=\tiny\bfseries, inner sep=1pt,
+    \node[draw=tGreen, fill=tkFillGreen, text=tGreen, font=\tiny\bfseries, inner sep=1pt,
           minimum width=2.17cm, minimum height=0.40cm] at (493,{216+34*\w}) {GEMM2};
   }
   \node[anchor=west, text=black!65] at (620,220)
@@ -795,7 +795,7 @@ layout 必须\textbf{同时}看读端（ldmatrix）与写端（cp.async），只
     {另加 CTA 级并行：grid.x = N/Br，沿 seqlen(Q) 喂饱 SM};
   \node[anchor=west, text=black!65] at (620,276)
     {$O$ 保持未归一化 $\to$ 尾部一次 $\mathrm{diag}(1/\ell)$};
-  \node[draw=tOrange, fill=gray!10, text=tOrange, font=\tiny\bfseries, inner sep=1pt,
+  \node[draw=tOrange, fill=tkFillOrange, text=tOrange, font=\tiny\bfseries, inner sep=1pt,
         minimum width=15.50cm, minimum height=0.46cm] at (560,362)
     {FA3 (H100)：warp specialization + pingpong，softmax 与 GEMM 在不同运算单元上重叠};
   \node[draw=black!55, fill=gray!18, inner sep=1pt, align=center, text width=4.1cm,
@@ -803,12 +803,12 @@ layout 必须\textbf{同时}看读端（ldmatrix）与写端（cp.async），只
     {producer warp：TMA 异步提交（单线程）};
   \node[anchor=west, text=tOrange, font=\tiny\bfseries] at (24,433) {WG1 tensor};
   \foreach \k in {0,1,2}{
-    \node[draw=tOrange, fill=gray!10, text=tOrange, font=\tiny\bfseries, inner sep=1pt,
+    \node[draw=tOrange, fill=tkFillOrange, text=tOrange, font=\tiny\bfseries, inner sep=1pt,
           minimum width=2.53cm, minimum height=0.38cm] at ({195.5+190*\k},433) {GEMM};
   }
   \node[anchor=west, text=tRed, font=\tiny\bfseries] at (24,467) {WG2 CUDA};
   \foreach \k in {0,1,2}{
-    \node[draw=tRed, fill=gray!28, text=tRed, font=\tiny\bfseries, inner sep=1pt,
+    \node[draw=tRed, fill=tkFillRed, text=tRed, font=\tiny\bfseries, inner sep=1pt,
           minimum width=2.53cm, minimum height=0.38cm] at ({285.5+190*\k},467) {softmax};
   }
   \node[anchor=west, text=black!65] at (24,500)

@@ -272,7 +272,7 @@ $16\,\dots\,31$ 之间可能分叉（$M$ 为奇数时的最后一个 warp），�
   \node[font=\small\bfseries] at (8.2,0)
     {warp-per-row：\texttt{block(32,4)} $\to$ 每 block 4 行，1 warp $=$ 1 行};
   \foreach \fmi in {0,1,2} {
-    \node[draw=gray!60, fill=gray!12, font=\scriptsize\bfseries,
+    \node[draw=tkBlue, fill=tkFillBlue, font=\scriptsize\bfseries,
       minimum width=1.9cm, minimum height=0.62cm] at ({1.15+\fmi*2.05},-0.75) {block\fmi};
   }
   \node[anchor=west, font=\tiny, text=gray!80] at (0.2,-1.28)
@@ -289,7 +289,7 @@ $16\,\dots\,31$ 之间可能分叉（$M$ 为奇数时的最后一个 warp），�
   \foreach \fmi in {0,1} {
     \pgfmathtruncatemacro{\xlo}{\fmi*32}
     \pgfmathtruncatemacro{\xhi}{\fmi*32+31}
-    \node[draw=gray!60, fill=gray!12, font=\tiny, minimum width=7.4cm, minimum height=0.5cm]
+    \node[draw=tkBlue, fill=tkFillBlue, font=\tiny, minimum width=7.4cm, minimum height=0.5cm]
       at ({4.1+\fmi*8.0},-2.75)
       {pass $w{=}\fmi$: \ lane0\ lane1\ \ldots\ lane31 $\ \to\ k = 32\times\fmi + l$};
     \node[anchor=west, font=\tiny, text=gray!80] at ({0.4+\fmi*8.0},-3.14)
@@ -303,7 +303,7 @@ $16\,\dots\,31$ 之间可能分叉（$M$ 为奇数时的最后一个 warp），�
   \foreach \fmi in {0,1} {
     \pgfmathtruncatemacro{\klo}{\fmi*16}
     \pgfmathtruncatemacro{\khi}{\fmi*16+15}
-    \node[draw=gray!70, fill=gray!32, font=\tiny, minimum width=7.4cm, minimum height=0.52cm]
+    \node[draw=tkPurple, fill=tkFillPurple, font=\tiny, minimum width=7.4cm, minimum height=0.52cm]
       at ({4.1+\fmi*8.0},-4.6)
       {lane \klo..\khi $\ \to\ $ row $m{+}\fmi$ \ \ ($k = \mathrm{lane} \bmod 16$)};
   }

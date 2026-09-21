@@ -301,9 +301,9 @@ $\ell = \alpha \ell_0 + \beta \ell_1$、$O = \alpha O_0 + \beta O_1$。把两者
   \foreach \t in {0,...,3}{
     \foreach \c [evaluate=\c as \ix using {int(3*\t+\c)},
                  evaluate=\c as \stg using {int(mod(3*\t+\c,2))},
-                 evaluate=\c as \pht using {int(mod(int((3*\t+\c)/2),2))},
-                 evaluate=\c as \gr using {int(16+36*mod(3*\t+\c,2))}] in {0,...,2}{
-      \node[fill=gray!\gr, minimum width=\cw cm, minimum height=\chh cm, inner sep=0pt, align=center]
+                 evaluate=\c as \pht using {int(mod(int((3*\t+\c)/2),2))}] in {0,...,2}{
+      \ifnum\stg=0 \def\cfill{colorx6!15} \else \def\cfill{colorx2!32} \fi
+      \node[fill=\cfill, minimum width=\cw cm, minimum height=\chh cm, inner sep=0pt, align=center]
         at ({(\c+0.5)*\cw},{-(\t+0.5)*\chh}) {\bfseries \ix\\{\scriptsize $(s\stg,\,p\pht)$}};
     }
   }
@@ -325,9 +325,9 @@ $\ell = \alpha \ell_0 + \beta \ell_1$、$O = \alpha O_0 + \beta O_1$。把两者
   \node[anchor=north, font=\scriptsize] at ({1.5*\cw},{-4*\chh-0.24})
     {$\mathrm{Sk}{=}2$、$C{=}3$（互质）：联合周期 $\mathrm{lcm}(C,2\,\mathrm{Sk})/C = 4$ 个 KV tile 后 (s,p) 模式重复};
   % 图例
-  \node[anchor=west, fill=gray!16, draw, very thin, minimum width=0.5cm, minimum height=0.3cm, inner sep=0pt] at (5.4,{-0.9}) {};
+  \node[anchor=west, fill=colorx6!15, draw, very thin, minimum width=0.5cm, minimum height=0.3cm, inner sep=0pt] at (5.4,{-0.9}) {};
   \node[anchor=west, font=\scriptsize] at (6.0,-0.9) {$s{=}0$（stage 0 槽）};
-  \node[anchor=west, fill=gray!52, draw, very thin, minimum width=0.5cm, minimum height=0.3cm, inner sep=0pt] at (5.4,{-1.4}) {};
+  \node[anchor=west, fill=colorx2!32, draw, very thin, minimum width=0.5cm, minimum height=0.3cm, inner sep=0pt] at (5.4,{-1.4}) {};
   \node[anchor=west, font=\scriptsize] at (6.0,-1.4) {$s{=}1$（stage 1 槽）};
   \draw[very thick] (5.42,{-1.85}) rectangle (5.88,{-2.11});
   \node[anchor=west, font=\scriptsize] at (6.0,-1.98) {加粗框 $=$ phase $p{=}1$};
@@ -343,9 +343,9 @@ $\ell = \alpha \ell_0 + \beta \ell_1$、$O = \alpha O_0 + \beta O_1$。把两者
   \node[anchor=east, font=\scriptsize] at (-0.10,{-4*\chh-1.62}) {$C{=}2$};
   \foreach \t in {0,...,1}{
     \foreach \c [evaluate=\c as \stg using int(\c),
-                 evaluate=\c as \pht using int(\t),
-                 evaluate=\c as \gr using int(16+36*\c)] in {0,...,1}{
-      \node[fill=gray!\gr, minimum width=1.0cm, minimum height=0.44cm, inner sep=0pt, font=\tiny]
+                 evaluate=\c as \pht using int(\t)] in {0,...,1}{
+      \ifnum\stg=0 \def\cfill{colorx6!15} \else \def\cfill{colorx2!32} \fi
+      \node[fill=\cfill, minimum width=1.0cm, minimum height=0.44cm, inner sep=0pt, font=\tiny]
         at ({\t*2.14+\c*1.07+0.53},{-4*\chh-1.62}) {$(\stg,\pht)$};
     }
   }
@@ -357,9 +357,9 @@ $\ell = \alpha \ell_0 + \beta \ell_1$、$O = \alpha O_0 + \beta O_1$。把两者
   \node[anchor=east, font=\scriptsize] at (-0.10,{-4*\chh-2.26}) {$C{=}8$};
   \foreach \t in {0,...,1}{
     \foreach \c [evaluate=\c as \stg using {int(mod(\c,2))},
-                 evaluate=\c as \pht using {int(mod(int(\c/2),2))},
-                 evaluate=\c as \gr using {int(16+36*mod(\c,2))}] in {0,...,7}{
-      \node[fill=gray!\gr, minimum width=0.56cm, minimum height=0.44cm, inner sep=0pt, font=\tiny]
+                 evaluate=\c as \pht using {int(mod(int(\c/2),2))}] in {0,...,7}{
+      \ifnum\stg=0 \def\cfill{colorx6!15} \else \def\cfill{colorx2!32} \fi
+      \node[fill=\cfill, minimum width=0.56cm, minimum height=0.44cm, inner sep=0pt, font=\tiny]
         at ({\t*4.56+\c*0.57+0.285},{-4*\chh-2.26}) {$(\stg,\pht)$};
     }
   }
@@ -539,21 +539,21 @@ Phase 1 的内层是这个 kernel 的「心脏」，包含两个易错点：chun
   \node[anchor=south] at ({9.3*0.95},0.62) {Phase 3：PV chunk 流水};
   % QK 行：三个 chunk 累加到同一块 S[64,64]
   \foreach \k [evaluate=\k as \cx using {(2.1+1.4*\k)*0.95}] in {0,1,2}{
-    \node[thin, draw, fill=gray!60, minimum width=1.26cm, minimum height=\hh cm, inner sep=0pt]
+    \node[thin, draw=tkBlue, fill=tkFillBlue, minimum width=1.26cm, minimum height=\hh cm, inner sep=0pt]
       at ({\cx},0) {chunk $c_{\k}$};
   }
   \node[anchor=east, font=\scriptsize] at (-0.15,0) {QK chunk 流水};
   \node[anchor=north west, align=left, text width=9.9cm, fill=white] at ({1.33},-0.34)
     {每个 chunk：\texttt{cp.async} 预取 $d{+}\mathrm{Sk}{-}1$ $\to$ \texttt{wait<Sk$-$2>} $\to$ \texttt{gemm\_ss}（三次累加到同一块 $S[64,64]$）};
   % softmax 行：整段一次算完
-  \node[thin, draw, preaction={fill=gray!22}, pattern=north east lines, pattern color=gray!55,
+  \node[thin, draw=tkGreen, preaction={fill=tkFillGreen}, pattern=north east lines, pattern color=tkGreen!60,
         minimum width=1.52cm, minimum height=\hh cm, inner sep=0pt] at ({6.4*0.95},-1.10) {整段};
   \node[anchor=east, font=\scriptsize] at (-0.15,-1.10) {softmax};
   \node[anchor=north west, align=left, text width=9.9cm, fill=white] at ({1.33},-1.50)
     {chunk 循环\textbf{结束之后}才算：$S[64,64]$ 已完整 $\to$ $\rho_t$、$\ell_t$、原地覆盖成 $P$（顺序见 19.8 节坑三）};
   % PV 行：三个 chunk 先后乘 rho_t 再 gemm_rs
   \foreach \k [evaluate=\k as \cx using {(7.9+1.4*\k)*0.95}] in {0,1,2}{
-    \node[thin, draw, fill=gray!60, minimum width=1.26cm, minimum height=\hh cm, inner sep=0pt]
+    \node[thin, draw=tkOrange, fill=tkFillOrange, minimum width=1.26cm, minimum height=\hh cm, inner sep=0pt]
       at ({\cx},-2.20) {$v_{\k}$};
   }
   \node[anchor=east, font=\scriptsize] at (-0.15,-2.20) {PV chunk 流水};
@@ -806,9 +806,9 @@ $\times$ 2 个 N-warp，$R_O$ 降到 $D/4$）的原因，也是本章这版 kern
 \begin{figure}[htbp]
 \centering
 \begin{tikzpicture}[font=\tiny, x=0.014464cm, y=-0.014464cm]
-  \definecolor{tBlue}{RGB}{33,100,160}
-  \definecolor{tGreen}{RGB}{40,105,60}
-  \definecolor{tOrange}{RGB}{165,95,15}
+  \definecolor{tBlue}{RGB}{33,113,181}
+  \definecolor{tGreen}{RGB}{53,141,106}
+  \definecolor{tOrange}{RGB}{216,130,28}
   \node[anchor=west, font=\scriptsize\bfseries] at (24,26)
     {Split-D：D 维切分（$D = 512 \to C = 8$ 个 64 宽 chunk）};
   \node[anchor=west, text=tBlue, font=\tiny\bfseries] at (24,68)
@@ -818,22 +818,22 @@ $\times$ 2 个 N-warp，$R_O$ 降到 $D/4$）的原因，也是本章这版 kern
   \node[anchor=west, text=tOrange, font=\tiny\bfseries] at (24,156)
     {V $[B_c{=}64, D{=}512]$};
   \foreach \c in {0,...,7}{
-    \node[draw=tBlue, fill=gray!8, inner sep=0pt, minimum width=1.53cm,
+    \node[draw=tBlue, fill=tkFillBlue, inner sep=0pt, minimum width=1.53cm,
           minimum height=0.52cm, font=\tiny] at ({253+112*\c},66) {c\c};
-    \node[draw=tGreen, fill=gray!8, inner sep=0pt, minimum width=1.53cm,
+    \node[draw=tGreen, fill=tkFillGreen, inner sep=0pt, minimum width=1.53cm,
           minimum height=0.52cm, font=\tiny] at ({253+112*\c},110) {c\c};
-    \node[draw=tOrange, fill=gray!8, inner sep=0pt, minimum width=1.53cm,
+    \node[draw=tOrange, fill=tkFillOrange, inner sep=0pt, minimum width=1.53cm,
           minimum height=0.52cm, font=\tiny] at ({253+112*\c},154) {c\c};
   }
   \node[anchor=west, text=black!65] at (24,190)
     {chunk $c$ = 64 个 f16 宽 = 恰好 1 个 SW128 swizzle atom};
-  \node[draw=tBlue, fill=gray!10, text=tBlue, font=\tiny\bfseries, align=center,
+  \node[draw=tBlue, fill=tkFillBlue, text=tBlue, font=\tiny\bfseries, align=center,
         text width=15.2cm, inner sep=1pt, minimum height=0.64cm] at (560,235)
     {Phase 1\ \ QK$^{\top}$：$S[64,64] \mathrel{+}= Q(c) @ K(c)^{\top}$，$c = 0..7$ —— 点积内部精确求和，无权重（共享同一个 $S$ acc）};
-  \node[draw=tGreen, fill=gray!10, text=tGreen, font=\tiny\bfseries, align=center,
+  \node[draw=tGreen, fill=tkFillGreen, text=tGreen, font=\tiny\bfseries, align=center,
         text width=15.2cm, inner sep=1pt, minimum height=0.64cm] at (560,289)
     {Phase 2\ \ $\mathrm{softmax}(S)$：$m$，$\ell$，$p = \mathrm{exp2}(S \cdot \mathrm{scale} - m)$ —— 与 $D$ 无关};
-  \node[draw=tOrange, fill=gray!10, text=tOrange, font=\tiny\bfseries, align=center,
+  \node[draw=tOrange, fill=tkFillOrange, text=tOrange, font=\tiny\bfseries, align=center,
         text width=15.2cm, inner sep=1pt, minimum height=0.64cm] at (560,343)
     {Phase 3\ \ PV：$O_c[64,64] \mathrel{*}= \rho$；$O_c \mathrel{+}= P @ V(c)$，$c = 0..7$ —— $C$ 个独立 $O$ acc，同一 $\rho$ 广播到全部};
   \node[draw=black!55, fill=gray!20, align=center, text width=15.2cm, inner sep=1pt,
@@ -858,13 +858,13 @@ $\times$ 2 个 N-warp，$R_O$ 降到 $D/4$）的原因，也是本章这版 kern
 \begin{figure}[htbp]
 \centering
 \begin{tikzpicture}[font=\tiny, x=0.014464cm, y=-0.014464cm]
-  \definecolor{tBlue}{RGB}{33,100,160}
-  \definecolor{tGreen}{RGB}{40,105,60}
-  \definecolor{tOrange}{RGB}{165,95,15}
-  \definecolor{tRed}{RGB}{165,40,40}
+  \definecolor{tBlue}{RGB}{33,113,181}
+  \definecolor{tGreen}{RGB}{53,141,106}
+  \definecolor{tOrange}{RGB}{216,130,28}
+  \definecolor{tRed}{RGB}{203,54,47}
   \node[anchor=west, font=\scriptsize\bfseries] at (24,26)
     {跨 chunk 两阶段合并（$C = 3$，$D = 192$ 示例）};
-  \node[draw=tBlue, fill=gray!12, text=tBlue, font=\tiny\bfseries, inner sep=1pt,
+  \node[draw=tBlue, fill=tkFillBlue, text=tBlue, font=\tiny\bfseries, inner sep=1pt,
         minimum width=15.53cm, minimum height=0.49cm] at (560,64)
     {stage 1：单个点积内部的精确归约（QK$^{\top}$，无权重）};
   \node[draw=tBlue, fill=white, align=center, text width=4.2cm, inner sep=1pt,
@@ -876,24 +876,24 @@ $\times$ 2 个 N-warp，$R_O$ 降到 $D/4$）的原因，也是本章这版 kern
   \draw[-{Stealth}, tBlue, thick] (190,134) -- (420,168);
   \draw[-{Stealth}, tBlue, thick] (536,134) -- (520,168);
   \draw[-{Stealth}, tBlue, thick] (882,134) -- (620,168);
-  \node[draw=tBlue, fill=gray!20, align=center, text width=6.7cm, inner sep=1pt,
+  \node[draw=tBlue, fill=tkFillBlue, align=center, text width=6.7cm, inner sep=1pt,
         minimum height=0.58cm] at (560,190) {acc $\mathrel{+}=$（mma.sync 链）};
-  \node[draw=tBlue, fill=gray!12, text=tBlue, font=\scriptsize\bfseries, inner sep=1pt,
+  \node[draw=tBlue, fill=tkFillBlue, text=tBlue, font=\scriptsize\bfseries, inner sep=1pt,
         minimum width=15.53cm, minimum height=0.49cm] at (560,244)
     {$S[64,64]$ 完整 score tile（D-free）};
-  \node[draw=tGreen, fill=gray!12, text=tGreen, font=\tiny\bfseries, inner sep=1pt,
+  \node[draw=tGreen, fill=tkFillGreen, text=tGreen, font=\tiny\bfseries, inner sep=1pt,
         minimum width=15.53cm, minimum height=0.49cm] at (560,306)
     {stage 2：跨 KV tile 的 online softmax —— $\rho$ 必须广播到全部 $C$ 个 acc};
-  \node[draw=tGreen, fill=gray!15, text=tGreen!70!black, font=\scriptsize\bfseries,
+  \node[draw=tGreen, fill=tkFillGreen, text=tGreen!70!black, font=\scriptsize\bfseries,
         align=center, text width=3.4cm, inner sep=1pt, minimum height=0.87cm]
         at (154,366) {$\rho_t = \exp(m_{t-1} - m_t)$};
-  \node[draw=tOrange, fill=gray!12, align=center, text width=3.45cm, inner sep=1pt,
+  \node[draw=tOrange, fill=tkFillOrange, align=center, text width=3.45cm, inner sep=1pt,
         minimum height=0.87cm] at (442,366)
     {$O_0 \mathrel{*}= \rho_t$；$O_0 \mathrel{+}= \exp(S-m_t)\,V_0$（列 0..63）};
-  \node[draw=tOrange, fill=gray!12, align=center, text width=3.45cm, inner sep=1pt,
+  \node[draw=tOrange, fill=tkFillOrange, align=center, text width=3.45cm, inner sep=1pt,
         minimum height=0.87cm] at (706,366)
     {$O_1 \mathrel{*}= \rho_t$；$O_1 \mathrel{+}= \exp(S-m_t)\,V_1$（列 64..127）};
-  \node[draw=tOrange, fill=gray!12, align=center, text width=3.45cm, inner sep=1pt,
+  \node[draw=tOrange, fill=tkFillOrange, align=center, text width=3.45cm, inner sep=1pt,
         minimum height=0.87cm] at (970,366)
     {$O_2 \mathrel{*}= \rho_t$；$O_2 \mathrel{+}= \exp(S-m_t)\,V_2$（列 128..191）};
   \draw[-{Stealth}, tGreen, dashed, thick] (286,366) -- (316,366);
@@ -905,10 +905,10 @@ $\times$ 2 个 N-warp，$R_O$ 降到 $D/4$）的原因，也是本章这版 kern
   \node[draw=black!55, fill=gray!20, align=center, text width=15.2cm, inner sep=1pt,
         minimum height=0.58cm] at (560,487)
     {最后一个 tile 后：$O_c \mathrel{/}= \ell_T$（全部 $c$）$\to$ concat $=$ 完整 $\mathrm{softmax}(QK^{\top}/\sqrt{D})\,V$};
-  \node[draw=tRed, fill=gray!22, text=tRed!70!black, align=center, text width=7.3cm,
+  \node[draw=tRed, fill=tkFillRed, text=tRed!70!black, align=center, text width=7.3cm,
         inner sep=1pt, minimum height=0.81cm] at (287,552)
     {对比 split-KV（ch18）：需要第二次 max —— $a = \exp(m_0-m)$，$b = \exp(m_1-m)$ 两套归并权重};
-  \node[draw=tGreen, fill=gray!15, text=tGreen!70!black, font=\scriptsize\bfseries,
+  \node[draw=tGreen, fill=tkFillGreen, text=tGreen!70!black, font=\scriptsize\bfseries,
         align=center, text width=7.3cm, inner sep=1pt, minimum height=0.81cm]
         at (833,552)
     {对比 split-D：无第二次 max —— $\rho$ 构造上被全部 chunk 共享（定理~\ref{eq:19-invariant} 的不变量）};

@@ -8,14 +8,14 @@
 在本工作中，我们呈现 \CuTe 的基础概念。\CuTe 是一项针对 \underline{CU}DA \underline{Te}nsors（即 \underline{C}ompute \underline{U}nified \underline{Te}nsors）的规约，旨在为编写峰值性能的线性代数库提供建构基石。\CuTe 的核心是两项关键创新：
 \begin{compactitem}
 \item {\em 一种新颖的张量布局表示}：\CuTe 的形状（shape）、布局与张量天然是层次化的，由更小的嵌套实例构造而成。这种层次结构提供了表示现代张量指令所需复杂映射的手段，同时仍是 {\tt BLAS}、{\tt torch.tensor}、{\tt numpy.ndarray} 与 MATLAB 等库中既有的扁平形状与扁平步幅（stride）表示的严格扩展。
-\item {\em 一种定义在布局之上的新颖操作代数}：\CuTe 布局支持一组丰富的操作，包括拼接（concatenation）、合并（coalescence）、复合（composition）、补（complementation）、切分（division）、铺瓦（tiling）与求逆（inversion），它们的结果都仍是新的 \CuTe 布局。这些操作支撑现代张量指令所需的复杂分块（partitioning）、操纵、验证与推导。
+\item {\em 一种定义在布局之上的新颖操作代数}：\CuTe 布局支持一组丰富的操作，包括拼接（concatenation）、合并（coalescence）、复合（composition）、补（complementation）、切分（division）、分块（tiling）与求逆（inversion），它们的结果都仍是新的 \CuTe 布局。这些操作支撑现代张量指令所需的复杂划分（partitioning）、操纵、验证与推导。
 \end{compactitem}
 
 \CuTe 的布局表示为编写通用算法提供了一个直观的框架，用于管理线程与数据；\CuTe 的布局代数为高性能线性代数 kernel 的开发提供了一种富有表达力的途径，用于操纵布局并生成新布局。这些方法能够带来：
 \begin{compactitem}
-\item 对复杂布局与分块的支持：\CuTe 便于表示应用特定数据模式所需的精细布局，以及专用张量指令所需的复杂分块模式。
+\item 对复杂布局与划分的支持：\CuTe 便于表示应用特定数据模式所需的精细布局，以及专用张量指令所需的复杂划分模式。
 \item 关注点分离：数据布局独立于算法逻辑进行声明，提升清晰性与模块化。
-\item 静态分析与优化：精深的代数技术使我们能够依据体系结构约束对张量参数进行检查、重排与分块。
+\item 静态分析与优化：精深的代数技术使我们能够依据体系结构约束对张量参数进行检查、重排与划分。
 \end{compactitem}
 
 \wpsh{相关工作}
@@ -72,7 +72,7 @@ a.stride(2);  // 1
 
 \noindent \CuTe 支持这些表示，并对其做严格扩展：推广到层次化的形状与步幅，以表示更复杂的布局、非整数步幅以及非整数的布局陪域。
 
-对稠密张量表示的独立推广还包括 HeLayers（Aharoni 等，2023）、ThunderKittens（Spector 等，2024），以及 OpenAI 的 Triton 编译器（Tillet 等，2019）中所使用的 Linear Layouts（Zhou 等，2025）方法。ThunderKittens 为寄存器内存、共享内存、行主序/列主序瓦片、由行主序/列主序子瓦片组成的行主序/列主序瓦片，以及为 warp 与线程规定的访问模式实现了种类繁多的定制类型。这些类型的编写考虑了体系结构布局需求与内存层次，但其表示范围局限于既有的类型与模式。Linear Layouts 基于 $\mathbb{F}_2$ 线性代数，为张量布局提供了更一般的表示，也为布局分析与生成开辟了途径。但 Linear Layouts 对 $\mathbb{F}_2$ 的严格依赖使其中一些算子难以被人工检视，并将该工作限制在 2 的幂形状与步幅上，这对许多应用来说是不可接受的。
+对稠密张量表示的独立推广还包括 HeLayers（Aharoni 等，2023）、ThunderKittens（Spector 等，2024），以及 OpenAI 的 Triton 编译器（Tillet 等，2019）中所使用的 Linear Layouts（Zhou 等，2025）方法。ThunderKittens 为寄存器内存、共享内存、行主序/列主序块、由行主序/列主序子块组成的行主序/列主序块，以及为 warp 与线程规定的访问模式实现了种类繁多的定制类型。这些类型的编写考虑了体系结构布局需求与内存层次，但其表示范围局限于既有的类型与模式。Linear Layouts 基于 $\mathbb{F}_2$ 线性代数，为张量布局提供了更一般的表示，也为布局分析与生成开辟了途径。但 Linear Layouts 对 $\mathbb{F}_2$ 的严格依赖使其中一些算子难以被人工检视，并将该工作限制在 2 的幂形状与步幅上，这对许多应用来说是不可接受的。
 
 另一些启发了本工作部分内容的布局分析方法同样依赖 $\mathbb{F}_2$ 线性代数，例如 Edelman 等（1994）、Cormen（1993）与 Bouverot-Dupuis 及 Sheeran（2023）的工作。这些工作为分析与算法生成奠定了基础，但受限于其撰写时的应用语境。
 
@@ -281,4 +281,4 @@ for (int l = 0; l < L; ++l)
 \end{cpp}
 只要巧妙地构造折叠布局，这个简单的 {\tt batched-GEMM} 实现便可用于求值范围广泛、相互兼容的张量收缩，包括任意矩阵乘法（{\tt GEMM}）、张量收缩（{\tt GETT}）与卷积（{\tt CONV}）。通用 {\tt GEMM} 及其应用的细节见第~\ref{sec:gemm} 节。
 
-随后，优化便可专注于循环重排、铺瓦、向量化以及其它常见优化，其方式是变换循环嵌套的顺序与阶。事实证明，这些变换往往可以用布局表示为算法坐标空间上的置换。这些变换布局与数据布局进行函数式复合，生成新的循环嵌套，并保证与原始问题一致。布局复合及其在通用分块中的应用细节见第~\ref{sec:composition} 节。
+随后，优化便可专注于循环重排、分块、向量化以及其它常见优化，其方式是变换循环嵌套的顺序与阶。事实证明，这些变换往往可以用布局表示为算法坐标空间上的置换。这些变换布局与数据布局进行函数式复合，生成新的循环嵌套，并保证与原始问题一致。布局复合及其在通用划分中的应用细节见第~\ref{sec:composition} 节。

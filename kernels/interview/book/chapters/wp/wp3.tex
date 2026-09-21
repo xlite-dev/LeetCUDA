@@ -679,15 +679,15 @@ $\v{A}((1,\_),((\_,0),\_))$ & $\{4\} \circ (2,(2,2)):(1,(2,100))$ &
 # 为每个 thr_id 提取 TILE_SIZE 大小的数据
 thr_data = my_data[thr_id*TILE_SIZE:(thr_id+1)*TILE_SIZE]
 \end{python}
-来获取每个线程局部的一块数据“瓦片”（tile）。这种模式把 {\tt TILE\_SIZE}（通常正是程序想要在其上做优化的静态常量）与 {\tt thr\_id}（本质上是每个线程局部的动态索引）混为一谈。与之相反，\CuTe 更倾向于两阶段的“重排—切片”方法，例如
+来获取每个线程局部的一块数据“块”（tile）。这种模式把 {\tt TILE\_SIZE}（通常正是程序想要在其上做优化的静态常量）与 {\tt thr\_id}（本质上是每个线程局部的动态索引）混为一谈。与之相反，\CuTe 更倾向于两阶段的“重排—切片”方法，例如
 \begin{python}
 # 将 my_data 张量重排并重塑为形状 (TILE_SIZE,NumTiles)
 # 这是对更一般的 composition(my_data, Transform_Layout) 的封装
 tiled_data = logical_divide(my_data, TILE_SIZE)  # (TILE_SIZE, NumTiles)
 assert size[1](tiled_data) == NumThrs            # 验证 NumTiles == NumThrs
-# 对铺瓦后的张量切片，取 thr_id 局部的 TILE_SIZE 数据
+# 对分块后的张量切片，取 thr_id 局部的 TILE_SIZE 数据
 thr_data = thr_tile_data[None, thr_id]           # TILE_SIZE
 \end{python}
-它把 {\tt TILE\_SIZE} 与 {\tt thr\_id} 这两个性质不同的参数分开，更容易让编译器据此推理并传播静态信息（例如 {\tt thr\_data} 的大小为 {\tt TILE\_SIZE}），而且同样灵活。关于通用分块（partitioning）的细节与示例见第~\ref{sec:layouttv} 节，关于逻辑切分（logical divide）的细节与示例见第~\ref{sec:logical_divide} 节。
-\item 范围切片能够表达一些无法用 \CuTe 布局表示的切片。例如，取图~\ref{fig:slicing} 中的 $\v{A}$，切片 {\tt $\v{A}$(0,0:2:12)} 可以得到 $\{0\} \circ (3,2):(15,100)$，而切片 {\tt $\v{A}$(0:2:6,0)} 由于所请求的切片与 $\v{A}$ 的布局不相容而无法表示。这主要是由于所请求的瓦片与张量布局不相容，因此我们更希望这一错误在“重排—重塑”阶段（{\tt composition}）就被检测并暴露出来，而不是留到切片阶段。关于布局群复合可采纳性条件的细节与示例，见第~\ref{sec:composition_impl} 节。
+它把 {\tt TILE\_SIZE} 与 {\tt thr\_id} 这两个性质不同的参数分开，更容易让编译器据此推理并传播静态信息（例如 {\tt thr\_data} 的大小为 {\tt TILE\_SIZE}），而且同样灵活。关于通用划分（partitioning）的细节与示例见第~\ref{sec:layouttv} 节，关于逻辑切分（logical divide）的细节与示例见第~\ref{sec:logical_divide} 节。
+\item 范围切片能够表达一些无法用 \CuTe 布局表示的切片。例如，取图~\ref{fig:slicing} 中的 $\v{A}$，切片 {\tt $\v{A}$(0,0:2:12)} 可以得到 $\{0\} \circ (3,2):(15,100)$，而切片 {\tt $\v{A}$(0:2:6,0)} 由于所请求的切片与 $\v{A}$ 的布局不相容而无法表示。这主要是由于所请求的块与张量布局不相容，因此我们更希望这一错误在“重排—重塑”阶段（{\tt composition}）就被检测并暴露出来，而不是留到切片阶段。关于布局群复合可采纳性条件的细节与示例，见第~\ref{sec:composition_impl} 节。
 \end{compactitem}

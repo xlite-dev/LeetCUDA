@@ -90,22 +90,22 @@ GPU 是由大量 SM 组成的阵列。以本章测试机 RTX PRO 5000（Blackwel
   \node[anchor=south west, font=\footnotesize\bfseries] at (0.25, 8.15)
     {SM（Streaming Multiprocessor）};
   \foreach \i in {0,...,3}
-    \node[draw, fill=gray!40, minimum width=1.9cm, minimum height=1.3cm,
+    \node[draw=tkBlue, fill=tkFillBlue, minimum width=1.9cm, minimum height=1.3cm,
       align=center] at (3.25+2.15*\i, 7.0)
       {Warp\\Scheduler \i\\{\scriptsize 每周期发射 1 条}};
   \foreach \i in {0,...,3}
-    \draw[-{Stealth[length=1.8mm]}, semithick] (3.25+2.15*\i, 6.35)
+    \draw[-{Stealth[length=1.8mm]}, semithick, draw=tkBlue!70] (3.25+2.15*\i, 6.35)
       -- (3.25+2.15*\i, 1.58);
-  \draw[thick, fill=gray!15] (0.35, 2.2) rectangle (1.75, 7.4);
-  \node[rotate=90, font=\footnotesize\bfseries] at (1.05, 4.8)
+  \draw[thick, fill=tkFillPurple] (0.35, 2.2) rectangle (1.75, 7.4);
+  \node[rotate=90, font=\footnotesize\bfseries, text=tkPurple] at (1.05, 4.8)
     {Register File\ \ 256KB};
-  \draw[thick, fill=gray!25] (11.45, 2.2) rectangle (12.85, 7.4);
-  \node[rotate=90, font=\footnotesize\bfseries] at (12.15, 4.8)
+  \draw[thick, fill=tkFillGreen] (11.45, 2.2) rectangle (12.85, 7.4);
+  \node[rotate=90, font=\footnotesize\bfseries, text=tkGreen] at (12.15, 4.8)
     {Shared Memory / L1};
   \node[font=\scriptsize, text=black!55, align=center] at (6.6, 4.5)
     {驻留 warp 池\\occupancy $\le$ min(regs, smem, block 大小)};
   \foreach \i in {0,...,3}
-    \node[draw, fill=gray!60, minimum width=1.55cm, minimum height=1.0cm,
+    \node[draw=tkOrange, fill=tkFillOrange, minimum width=1.55cm, minimum height=1.0cm,
       align=center, font=\scriptsize] at (3.075+1.75*\i, 1.0) {Tensor\\Core};
   \node[draw, fill=gray!60, minimum width=2.1cm, minimum height=1.0cm,
     align=center, font=\scriptsize] at (10.2, 1.0) {CUDA Core\\ALU / LSU};
@@ -313,21 +313,21 @@ memory-bound（$100 < 295$）。这解释了一个反直觉的现象：\textbf{�
       \draw (0, \y) -- (-0.08, \y);
       \node[lab, anchor=east] at (-0.1, \y) {\t};
     }
-  \draw[black!70, thick] (0,0) -- (9.145,5.736) -- (12.4,5.736);
-  \draw[black!30, thick] (0,0) -- (0.62,0.389) -- (12.4,0.389);
-  \fill (0.62,0.389) circle (0.055);
-  \fill (9.145,5.736) circle (0.055);
-  \node[lab, anchor=north west] at (0.72, 0.33) {ridge = 20};
-  \node[lab, anchor=south east] at (8.55, 5.8) {ridge = 295};
-  \node[lab, anchor=south] at (11.2, 0.45) {FP32 屋顶 $P_{peak}=67$};
-  \node[lab, anchor=south] at (10.9, 5.82)
+  \draw[tkBlue, thick] (0,0) -- (9.145,5.736) -- (12.4,5.736);
+  \draw[tkOrange, thick] (0,0) -- (0.62,0.389) -- (12.4,0.389);
+  \fill[tkOrange] (0.62,0.389) circle (0.055);
+  \fill[tkBlue] (9.145,5.736) circle (0.055);
+  \node[lab, anchor=north west, text=tkOrange] at (0.72, 0.33) {ridge = 20};
+  \node[lab, anchor=south east, text=tkBlue] at (8.55, 5.8) {ridge = 295};
+  \node[lab, anchor=south, text=tkOrange] at (11.2, 0.45) {FP32 屋顶 $P_{peak}=67$};
+  \node[lab, anchor=south, text=tkBlue] at (10.9, 5.82)
     {FP16 TC 屋顶 $P_{peak}=989$（dense）};
   \draw[dashed, black!60] (3.1, 0) -- (3.1, 2.1);
-  \fill (3.1, 0.389) circle (0.055);
-  \fill (3.1, 1.943) circle (0.055);
-  \node[lab, anchor=south west, align=left] at (3.5, 0.58)
+  \fill[tkOrange] (3.1, 0.389) circle (0.055);
+  \fill[tkBlue] (3.1, 1.943) circle (0.055);
+  \node[lab, anchor=south west, align=left, text=tkOrange] at (3.5, 0.58)
     {FP32：$100 > 20$\\compute-bound（贴 67 屋顶）};
-  \node[lab, anchor=west, align=left] at (3.75, 1.94)
+  \node[lab, anchor=west, align=left, text=tkBlue] at (3.75, 1.94)
     {FP16 TC：$100 < 295$\\memory-bound（仍在斜坡：$P=335$）};
   \node[lab, anchor=north west, align=left] at (0.4, 4.6)
     {两条斜坡共线\\（同一带宽 BW = 3.35 TB/s，\\$P = AI \times BW$，H100 SXM）};

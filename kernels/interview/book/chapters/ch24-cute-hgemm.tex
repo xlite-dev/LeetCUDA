@@ -179,8 +179,16 @@ CuTe 的层层 partition，本质就是在这座金字塔上做「从塔尖切�
     \foreach \wr in {0,...,1}{
       \foreach \wc in {0,...,1}{
         \pgfmathtruncatemacro{\wg}{2*\wr+\wc}
-        \pgfmathtruncatemacro{\gl}{25+15*\wg}
-        \node[fill=gray!\gl, minimum width=1.0cm, minimum height=1.0cm, inner sep=0pt]
+        \ifcase\wg
+          \def\wcol{colorx6}%
+        \or
+          \def\wcol{colorx5}%
+        \or
+          \def\wcol{colorx4}%
+        \else
+          \def\wcol{colorx7}%
+        \fi
+        \node[fill=\wcol!40, minimum width=1.0cm, minimum height=1.0cm, inner sep=0pt]
           at ({\wc*1.0+0.5},{-\wr*1.0-0.5}) {w\wg};
       }
     }
@@ -308,8 +316,16 @@ $B_K=32$ 相对 \texttt{kMmaPK}$=16$ 的倍数即 K 方向的切片数：
     \foreach \wr in {0,...,1}{
       \foreach \wc in {0,...,1}{
         \pgfmathtruncatemacro{\wg}{2*\wr+\wc}
-        \pgfmathtruncatemacro{\gl}{12+15*\wg}
-        \node[fill=gray!\gl, minimum width=1.2cm, minimum height=1.2cm,
+        \ifcase\wg
+          \def\wcol{colorx6}%
+        \or
+          \def\wcol{colorx5}%
+        \or
+          \def\wcol{colorx4}%
+        \else
+          \def\wcol{colorx7}%
+        \fi
+        \node[fill=\wcol!40, minimum width=1.2cm, minimum height=1.2cm,
           inner sep=0pt, align=center] at ({\wc*1.2+0.6},{-\wr*1.2-0.6})
           {w\wg\\[1pt]$16\times16$};
       }
@@ -333,7 +349,12 @@ $B_K=32$ 相对 \texttt{kMmaPK}$=16$ 的倍数即 K 方向的切片数：
   \begin{scope}[shift={(10.0,0)}]
     \foreach \mrow in {0,...,15}{
       \foreach \mcol in {0,...,15}{
-        \node[fill=gray!10, minimum width=0.17cm, minimum height=0.17cm, inner sep=0pt]
+        \ifnum\mcol<8
+          \def\acol{colorx6!15}%
+        \else
+          \def\acol{colorx6!50}%
+        \fi
+        \node[fill=\acol, minimum width=0.17cm, minimum height=0.17cm, inner sep=0pt]
           at ({\mcol*0.17+0.085},{-\mrow*0.17-0.085}) {};
       }
     }

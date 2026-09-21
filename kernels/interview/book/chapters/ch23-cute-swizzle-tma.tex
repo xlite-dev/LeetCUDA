@@ -124,14 +124,14 @@ $B_K$ 都要重新推一遍补偿量。
       }
     }
     \draw[thin] (0,0) grid[xstep=0.4cm, ystep=0.4cm] (3.2,-3.2);
-    \draw[very thick] (0,0) rectangle (3.2,-3.2);
+    \draw[tkOrange, very thick] (0,0) rectangle (3.2,-3.2);
     \draw[bkred, very thick] (0,0) rectangle (0.4,-3.2);
     \foreach \fr in {0,...,7}{
       \node[anchor=east] at (-0.06,{-\fr*0.4-0.2}) {\fr};
     }
     \node[anchor=east, font=\tiny, rotate=90] at (-0.42,-1.6) {行 $r$};
     \node[anchor=south, font=\tiny] at (1.6,0.32) {列块 $j$};
-    \node[anchor=south, font=\scriptsize\bfseries] at (1.6,0.62)
+    \node[anchor=south, font=\scriptsize\bfseries, text=tkOrange] at (1.6,0.62)
       {(a) 无 swizzle（行步长 128\,B）};
     \node[anchor=north, font=\tiny, align=center] at (1.6,-3.35)
       {$\mathrm{bank}(r,j)=4j\bmod32$：行号被 $32r$ 项消掉，\\
@@ -151,10 +151,10 @@ $B_K$ 都要重新推一遍补偿量。
     }
     \draw[thin] (0,0) grid[xstep=0.4cm, ystep=0.4cm] (3.2,-3.2);
     \draw[thin] (3.2,0) grid[xstep=0.4cm, ystep=0.4cm] (3.6,-3.2);
-    \draw[very thick] (0,0) rectangle (3.6,-3.2);
+    \draw[tkBlue!70, very thick] (0,0) rectangle (3.6,-3.2);
     \draw[thick] (3.2,0) -- (3.2,-3.2);
     \node[anchor=south, font=\tiny] at (3.4,0.12) {pad};
-    \node[anchor=south, font=\scriptsize\bfseries] at (1.8,0.62)
+    \node[anchor=south, font=\scriptsize\bfseries, text=tkBlue] at (1.8,0.62)
       {(b) padding（行步长 144\,B）};
     \node[anchor=north, font=\tiny, align=center] at (1.8,-3.35)
       {组号 $=(r{+}j)\bmod8$ 逐行错位：冲突消失；代价 $12.5\%$ 容量浪费，\\
@@ -172,8 +172,8 @@ $B_K$ 都要重新推一遍补偿量。
       }
     }
     \draw[thin] (0,0) grid[xstep=0.4cm, ystep=0.4cm] (3.2,-3.2);
-    \draw[very thick] (0,0) rectangle (3.2,-3.2);
-    \node[anchor=south, font=\scriptsize\bfseries] at (1.6,0.62)
+    \draw[tkGreen, very thick] (0,0) rectangle (3.2,-3.2);
+    \node[anchor=south, font=\scriptsize\bfseries, text=tkGreen] at (1.6,0.62)
       {(c) XOR swizzle（行步长 128\,B）};
     \node[anchor=north, font=\tiny, align=center] at (1.6,-3.35)
       {物理块 $j\to j\oplus r$ 对角散布：同列 8 格 8 组；\\
@@ -368,7 +368,7 @@ Swizzle 只看布局内部的偏移量，与这段内存在 smem 里的绝对位
 phase 不一致，读出来就是错的。本章测试里有一条\textbf{刻意}分开的
 对照（case E）：把 \texttt{Swizzle\allowbreak{}<3,\allowbreak{}4,\allowbreak{}3>} 作用在字节偏移上得到的模式，
 与 sw\_120a 上实测 TMA \texttt{SWIZZLE\_\allowbreak{}128\allowbreak{}B} 的 4096 个元素逐点相等
-（$0$ 失配）；而用 \texttt{tile\_\allowbreak{}to\_\allowbreak{}shape} 得到的\emph{平铺布局求值}
+（$0$ 失配）；而用 \texttt{tile\_\allowbreak{}to\_\allowbreak{}shape} 得到的\emph{分块布局求值}
 去对同一块 smem 时，4096 点里只有 1024 点（$25\%$）能对上。这 $25\%$
 \textbf{不是}「位置无关 vs 位置相关」的语义分界，而是\textbf{单位错配}：
 裸求值把字节口径的 \texttt{Swizzle\allowbreak{}<3,\allowbreak{}4,\allowbreak{}3>} 直接作用在元素偏移上（缺了
@@ -377,7 +377,7 @@ bit$[7,10)$ 而非字节偏移的 bit$[7,10)$，仅当行号满足
 $r\bmod 16\in\{0,2,4,6\}$（与列无关，恰为 $1/4$ 的行——两种口径取到的
 XOR 位段在这些行上恰好一致）时两者巧合相等——$1024/4096$ 正是这个规则的
 命中率（数值模拟 64 行 $\times$ 64 列逐点核对）。补上 recast、按正确字节口径
-求值，平铺布局同样 $4096$ 点全中。基址对齐为什么是硬约束见
+求值，分块布局同样 $4096$ 点全中。基址对齐为什么是硬约束见
 图~\ref{fig:23-phase-align}。
 
 \begin{figure}[H]
@@ -548,8 +548,16 @@ $256\times32\times2=16384$ 个 half。这两个别名随后被
         \pgfmathtruncatemacro{\xa}{mod(mod(\cc,2)+mod(\xr,2),2)}
         \pgfmathtruncatemacro{\xb}{mod(int(\cc/2)+int(\xr/2),2)}
         \pgfmathtruncatemacro{\phys}{\xa+2*\xb}
-        \pgfmathtruncatemacro{\gl}{15+20*\xr}
-        \node[fill=gray!\gl, minimum width=0.62cm, minimum height=0.46cm, inner sep=0pt]
+        \ifcase\xr
+          \def\cff{colorx4!18}%
+        \or
+          \def\cff{colorx5!32}%
+        \or
+          \def\cff{colorx6!46}%
+        \else
+          \def\cff{colorx7!60}%
+        \fi
+        \node[fill=\cff, minimum width=0.62cm, minimum height=0.46cm, inner sep=0pt]
           at ({\cc*0.62+0.31},{-\rr*0.46-0.23}) {\phys};
       }
       \node[anchor=east] at (-0.06,{-\rr*0.46-0.23}) {\rr};
@@ -750,7 +758,7 @@ phase 恰好为零。
         \texttt{Swizzle\allowbreak{}<3,\allowbreak{}4,\allowbreak{}3>} 作用在字节偏移 $[0,1024)$ 上，软件公式
         算出的排布只有在基址为 $1024$ 的倍数时才与硬件写出的排布逐点一致
         ——这正是 \texttt{\_\allowbreak{}\_\allowbreak{}align\_\allowbreak{}\_\allowbreak{}(1024)} 的来历（本章测试 case E：
-        字节空间公式 $4096$ 点全中；平铺布局的裸求值只剩 $1024$ 点命中，
+        字节空间公式 $4096$ 点全中；分块布局的裸求值只剩 $1024$ 点命中，
         差的不是相位，而是 fp16 元素到字节的 $\times2$ recast，见
         3.5 节）。
 \end{itemize}
@@ -1085,7 +1093,7 @@ domain（$256+256$ 个坐标）；
 \item \textbf{case E}：硬件对照——sm\_120a 实测的 TMA
 \texttt{SWIZZLE\_\allowbreak{}128\allowbreak{}B} $8\times8$ chunk 掩码表（$64$ 槽）与
 \texttt{Swizzle\allowbreak{}<3,\allowbreak{}4,\allowbreak{}3>} 逐槽比较，再由该表导出 $4096$ 点排布逐点比较；
-同时统计 \texttt{tile\_\allowbreak{}to\_\allowbreak{}shape} 平铺布局\emph{裸求值}的命中数
+同时统计 \texttt{tile\_\allowbreak{}to\_\allowbreak{}shape} 分块布局\emph{裸求值}的命中数
 （$1024/4096$），用于说明把字节口径 swizzle 直接套在元素偏移上的
 单位错配（补上 $\times2$ recast 后应 $4096/4096$）；
 \item \textbf{case F}：$8\times32$ 原子的退化形态（4.1 节实践须知）——

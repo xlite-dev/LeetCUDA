@@ -296,7 +296,7 @@ $(4,8,4)$（$=128$ 个 half/线程，因为 4 个 M-warp 各持一份完整 B，
 \begin{tikzpicture}[font=\tiny]
   \begin{scope}
     \foreach \fk in {0,...,3}{
-      \ifnum\fk=0 \def\cfill{gray!45} \else \def\cfill{gray!10} \fi
+      \ifnum\fk=0 \def\cfill{colorx4!40} \else \def\cfill{gray!10} \fi
       \fill[\cfill] ({0.6*\fk},0) rectangle ({0.6*\fk+0.6},{-2.4});
     }
     \draw[thin] (0,0) grid[xstep=0.6cm, ystep=0.3cm] (2.4,-2.4);
@@ -312,7 +312,7 @@ $(4,8,4)$（$=128$ 个 half/线程，因为 4 个 M-warp 各持一份完整 B，
     \foreach \am in {0,...,3}{
       \foreach \ak in {0,...,3}{
         \pgfmathtruncatemacro{\pk}{mod(\am+\ak,2)}
-        \ifnum\pk=0 \def\cfill{gray!22} \else \def\cfill{gray!52} \fi
+        \ifnum\pk=0 \def\cfill{colorx4!15} \else \def\cfill{colorx6!40} \fi
         \fill[\cfill] ({0.33*\ak},{-0.6*\am}) rectangle ({0.33*\ak+0.33},{-0.6*\am-0.6});
       }
     }
@@ -326,7 +326,7 @@ $(4,8,4)$（$=128$ 个 half/线程，因为 4 个 M-warp 各持一份完整 B，
   \draw[->, very thick] (5.0,-1.2) -- (5.4,-1.2);
   \begin{scope}[shift={(5.6,0)}]
     \foreach \gm/\gk in {0/0,0/1,0/8,0/9,8/0,8/1,8/8,8/9}{
-      \fill[gray!65] ({0.135*\gk},{-0.135*\gm}) rectangle ({0.135*\gk+0.135},{-0.135*\gm-0.135});
+      \fill[colorx1!50] ({0.135*\gk},{-0.135*\gm}) rectangle ({0.135*\gk+0.135},{-0.135*\gm-0.135});
     }
     \draw[thin] (0,0) grid[xstep=0.135cm, ystep=0.135cm] (2.16,-2.16);
     \draw[very thick] (0,0) rectangle (2.16,-2.16);
@@ -341,7 +341,7 @@ $(4,8,4)$（$=128$ 个 half/线程，因为 4 个 M-warp 各持一份完整 B，
   \begin{scope}[shift={(8.6,0)}]
     \foreach \am in {0,...,3}{
       \foreach \ak in {0,...,3}{
-        \ifnum\am=1 \def\cfill{gray!68} \else \def\cfill{gray!25} \fi
+        \ifnum\am=1 \def\cfill{colorx3!45} \else \def\cfill{gray!12} \fi
         \fill[\cfill] ({0.33*\ak},{-0.6*\am}) rectangle ({0.33*\ak+0.33},{-0.6*\am-0.6});
       }
     }
@@ -356,7 +356,16 @@ $(4,8,4)$（$=128$ 个 half/线程，因为 4 个 M-warp 各持一份完整 B，
     \node[anchor=south, font=\tiny] at (0.66,0.42) {$(\_,(\mathrm{ThrM},\mathrm{ThrK}))=(4,1)$};
     \node[anchor=south, font=\tiny\bfseries] at (0.66,0.14) {(4) zipped\_divide};
     \foreach \ak in {0,...,3}{
-      \draw[fill=gray!55, thick] ({0.33*\ak},-3.35) rectangle ({0.33*\ak+0.33},-3.05);
+      \ifcase\ak
+        \def\cff{colorx4!15}%
+      \or
+        \def\cff{colorx4!30}%
+      \or
+        \def\cff{colorx4!45}%
+      \else
+        \def\cff{colorx4!60}%
+      \fi
+      \draw[fill=\cff, thick] ({0.33*\ak},-3.35) rectangle ({0.33*\ak+0.33},-3.05);
       \node[font=\tiny] at ({0.33*\ak+0.165},-3.2) {8};
     }
     \node[anchor=east, font=\tiny] at (-0.1,-3.2) {FrgV};
@@ -555,21 +564,21 @@ QK$\to$PV 这一步的两套寄存器坐标见图~\ref{fig:22-aregs-reuse}。
           at ({\cl*0.24+0.12},{-\row*0.24-0.12}) {};
       }
     }
-    \node[fill=gray!75, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
+    \node[fill=colorx4!55, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
       at (0.12,-0.12) {};
-    \node[fill=gray!75, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
+    \node[fill=colorx4!55, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
       at (0.36,-0.12) {};
-    \node[fill=gray!50, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
+    \node[fill=colorx5!45, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
       at (0.12,-2.04) {};
-    \node[fill=gray!50, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
+    \node[fill=colorx5!45, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
       at (0.36,-2.04) {};
-    \node[fill=gray!35, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
+    \node[fill=colorx6!35, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
       at (2.04,-0.12) {};
-    \node[fill=gray!35, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
+    \node[fill=colorx6!35, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
       at (2.28,-0.12) {};
-    \node[fill=gray!18, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
+    \node[fill=colorx7!25, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
       at (2.04,-2.04) {};
-    \node[fill=gray!18, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
+    \node[fill=colorx7!25, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
       at (2.28,-2.04) {};
     \draw[thin] (0,0) grid[xstep=0.24cm, ystep=0.24cm] (3.84,-3.84);
     \draw[very thick] (0,0) rectangle (3.84,-3.84);
@@ -586,10 +595,10 @@ QK$\to$PV 这一步的两套寄存器坐标见图~\ref{fig:22-aregs-reuse}。
   \begin{scope}[shift={(4.7,0)}]
     \foreach \ck in {0,...,7}{
       \pgfmathtruncatemacro{\pr}{int(\ck/2)}
-      \ifnum\pr=0 \def\sfill{gray!75} \fi
-      \ifnum\pr=1 \def\sfill{gray!50} \fi
-      \ifnum\pr=2 \def\sfill{gray!35} \fi
-      \ifnum\pr=3 \def\sfill{gray!18} \fi
+      \ifnum\pr=0 \def\sfill{colorx4!55} \fi
+      \ifnum\pr=1 \def\sfill{colorx5!45} \fi
+      \ifnum\pr=2 \def\sfill{colorx6!35} \fi
+      \ifnum\pr=3 \def\sfill{colorx7!25} \fi
       \node[fill=\sfill, draw=gray!70, minimum width=0.6cm, minimum height=0.34cm,
         inner sep=0pt] (c\ck) at (0.3,{-0.3-0.44*\ck}) {$c_{\ck}$};
     }
@@ -597,10 +606,10 @@ QK$\to$PV 这一步的两套寄存器坐标见图~\ref{fig:22-aregs-reuse}。
       {\texttt{convert\_type<half>}\\[1pt]\texttt{convert\_layout\_acc\_Aregs}};
     \foreach \ak/\ay in {0/-0.52,1/-1.4,2/-2.28,3/-3.16}{
       \pgfmathtruncatemacro{\pr}{\ak}
-      \ifnum\pr=0 \def\sfill{gray!75} \fi
-      \ifnum\pr=1 \def\sfill{gray!50} \fi
-      \ifnum\pr=2 \def\sfill{gray!35} \fi
-      \ifnum\pr=3 \def\sfill{gray!18} \fi
+      \ifnum\pr=0 \def\sfill{colorx4!55} \fi
+      \ifnum\pr=1 \def\sfill{colorx5!45} \fi
+      \ifnum\pr=2 \def\sfill{colorx6!35} \fi
+      \ifnum\pr=3 \def\sfill{colorx7!25} \fi
       \node[fill=\sfill, draw=gray!70, minimum width=0.6cm, minimum height=0.4cm,
         inner sep=0pt] (a\ak) at (1.9,\ay) {$a_{\ak}$};
     }
@@ -618,21 +627,21 @@ QK$\to$PV 这一步的两套寄存器坐标见图~\ref{fig:22-aregs-reuse}。
           at ({\cl*0.24+0.12},{-\row*0.24-0.12}) {};
       }
     }
-    \node[fill=gray!75, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
+    \node[fill=colorx4!55, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
       at (0.12,-0.12) {};
-    \node[fill=gray!75, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
+    \node[fill=colorx4!55, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
       at (0.36,-0.12) {};
-    \node[fill=gray!50, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
+    \node[fill=colorx5!45, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
       at (0.12,-2.04) {};
-    \node[fill=gray!50, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
+    \node[fill=colorx5!45, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
       at (0.36,-2.04) {};
-    \node[fill=gray!35, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
+    \node[fill=colorx6!35, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
       at (2.04,-0.12) {};
-    \node[fill=gray!35, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
+    \node[fill=colorx6!35, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
       at (2.28,-0.12) {};
-    \node[fill=gray!18, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
+    \node[fill=colorx7!25, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
       at (2.04,-2.04) {};
-    \node[fill=gray!18, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
+    \node[fill=colorx7!25, minimum width=0.24cm, minimum height=0.24cm, inner sep=0pt]
       at (2.28,-2.04) {};
     \draw[thin] (0,0) grid[xstep=0.24cm, ystep=0.24cm] (3.84,-3.84);
     \draw[very thick] (0,0) rectangle (3.84,-3.84);
@@ -680,7 +689,16 @@ $\times$ $2$ 相邻列），两个相邻 atom 共 $8$ 个；右（A 视角）：
     {\textcircled{1} 线程划分：QK tile $(64\times64)$，4 个 warp 各覆盖 16 行};
   \foreach \rr/\wr in {0/{warp 0: rows [0, 16)}, 1/{warp 1: rows [16, 32)},
                        2/{warp 2: rows [32, 48)}, 3/{warp 3: rows [48, 64)}}{
-    \node[draw=gray!60, fill=gray!12, minimum width=1.92cm, minimum height=0.384cm,
+    \ifcase\rr
+      \def\wfill{colorx4!16} \def\wline{colorx4!65}%
+    \or
+      \def\wfill{colorx5!16} \def\wline{colorx5!65}%
+    \or
+      \def\wfill{colorx6!16} \def\wline{colorx6!65}%
+    \else
+      \def\wfill{colorx7!16} \def\wline{colorx7!65}%
+    \fi
+    \node[draw=\wline, fill=\wfill, minimum width=1.92cm, minimum height=0.384cm,
           inner sep=0pt] at (100,{114+30*\rr})
       {{\fontsize{4.6}{5.4}\selectfont\wr}};
     \foreach \cc in {0,...,7}{
@@ -763,30 +781,37 @@ d-chunk 各自拷回，常驻 acc\_O 256 寄存器不变；N tile 拉到 64 只�
       \pgfmathtruncatemacro{\grp}{mod(\mm*4 + int(\cc/2), 8)}
       \pgfmathtruncatemacro{\tn}{\mm*4 + int(\cc/2)}
       \ifcase\grp
-        \node[draw=tkRed!60, fill=tkFillRed, text=tkRed, minimum width=0.66cm,
-              minimum height=0.66cm, inner sep=0pt] at ({172+46*\cc},\cy) {T\tn};
-      \or
-        \node[draw=tkBlue!60, fill=tkFillBlue, text=tkBlue, minimum width=0.66cm,
-              minimum height=0.66cm, inner sep=0pt] at ({172+46*\cc},\cy) {T\tn};
-      \or
-        \node[draw=tkGreen!60, fill=tkFillGreen, text=tkGreen, minimum width=0.66cm,
-              minimum height=0.66cm, inner sep=0pt] at ({172+46*\cc},\cy) {T\tn};
-      \or
-        \node[draw=tkOrange!70, fill=tkFillOrange, text=tkOrange!80!black,
+        \node[draw=colorx1!65!black, fill=colorx1!42, text=colorx1!85!black,
               minimum width=0.66cm, minimum height=0.66cm, inner sep=0pt]
           at ({172+46*\cc},\cy) {T\tn};
       \or
-        \node[draw=tkPurple!60, fill=tkFillPurple, text=tkPurple, minimum width=0.66cm,
-              minimum height=0.66cm, inner sep=0pt] at ({172+46*\cc},\cy) {T\tn};
+        \node[draw=colorx2!65!black, fill=colorx2!42, text=colorx2!85!black,
+              minimum width=0.66cm, minimum height=0.66cm, inner sep=0pt]
+          at ({172+46*\cc},\cy) {T\tn};
       \or
-        \node[draw=gray!50, fill=gray!10, minimum width=0.66cm, minimum height=0.66cm,
-              inner sep=0pt] at ({172+46*\cc},\cy) {T\tn};
+        \node[draw=colorx3!65!black, fill=colorx3!42, text=colorx3!85!black,
+              minimum width=0.66cm, minimum height=0.66cm, inner sep=0pt]
+          at ({172+46*\cc},\cy) {T\tn};
       \or
-        \node[draw=gray!50, fill=gray!22, minimum width=0.66cm, minimum height=0.66cm,
-              inner sep=0pt] at ({172+46*\cc},\cy) {T\tn};
+        \node[draw=colorx4!65!black, fill=colorx4!42, text=colorx4!85!black,
+              minimum width=0.66cm, minimum height=0.66cm, inner sep=0pt]
+          at ({172+46*\cc},\cy) {T\tn};
+      \or
+        \node[draw=colorx5!65!black, fill=colorx5!42, text=colorx5!85!black,
+              minimum width=0.66cm, minimum height=0.66cm, inner sep=0pt]
+          at ({172+46*\cc},\cy) {T\tn};
+      \or
+        \node[draw=colorx6!65!black, fill=colorx6!42, text=colorx6!85!black,
+              minimum width=0.66cm, minimum height=0.66cm, inner sep=0pt]
+          at ({172+46*\cc},\cy) {T\tn};
+      \or
+        \node[draw=colorx7!65!black, fill=colorx7!42, text=colorx7!85!black,
+              minimum width=0.66cm, minimum height=0.66cm, inner sep=0pt]
+          at ({172+46*\cc},\cy) {T\tn};
       \else
-        \node[draw=gray!50, fill=gray!34, minimum width=0.66cm, minimum height=0.66cm,
-              inner sep=0pt] at ({172+46*\cc},\cy) {T\tn};
+        \node[draw=colorx8!65!black, fill=colorx8!42, text=colorx8!85!black,
+              minimum width=0.66cm, minimum height=0.66cm, inner sep=0pt]
+          at ({172+46*\cc},\cy) {T\tn};
       \fi
     }
   }

@@ -85,32 +85,32 @@ RMSNorm（Zhang \& Sennrich, 2019）只保留「缩放」而不做「中心化�
 \centering
 \begin{tikzpicture}[font=\scriptsize]
   \node[anchor=east] at (-0.25,0.35) {$x$：总能量 $\frac{1}{K}\sum_k x_k^2$};
-  \fill[gray!70] (0,0) rectangle (5.2,0.7);
+  \fill[tkBlue!70] (0,0) rectangle (5.2,0.7);
   \node[white] at (2.6,0.35) {波动 $\sigma^2$（中心化后）};
-  \fill[gray!12] (5.2,0) rectangle (8.8,0.7);
-  \fill[pattern=north east lines, pattern color=gray!55] (5.2,0) rectangle (8.8,0.7);
+  \fill[tkFillOrange] (5.2,0) rectangle (8.8,0.7);
+  \fill[pattern=north east lines, pattern color=tkOrange!55] (5.2,0) rectangle (8.8,0.7);
   \node at (7.0,0.35) {直流 $\mu^2$};
   \draw[thick] (0,0) rectangle (8.8,0.7);
   \draw (5.2,0) -- (5.2,0.7);
-  \draw[thick] (0,-0.3) -- (0,-0.55) -- (5.2,-0.55) -- (5.2,-0.3);
-  \node[anchor=north] at (2.6,-0.72)
+  \draw[thick, draw=tkGreen] (0,-0.3) -- (0,-0.55) -- (5.2,-0.55) -- (5.2,-0.3);
+  \node[anchor=north, text=tkGreen] at (2.6,-0.72)
     {LayerNorm 分母 $\sqrt{\sigma^2+\epsilon}$（式~\eqref{eq:ch06-ln}）：只除「波动」};
-  \draw[thick] (0,-1.45) -- (0,-1.7) -- (8.8,-1.7) -- (8.8,-1.45);
-  \node[anchor=north] at (4.4,-1.87)
+  \draw[thick, draw=tkPurple] (0,-1.45) -- (0,-1.7) -- (8.8,-1.7) -- (8.8,-1.45);
+  \node[anchor=north, text=tkPurple] at (4.4,-1.87)
     {RMSNorm 分母 $\sqrt{\sigma^2+\mu^2+\epsilon}$（式~\eqref{eq:ch06-rms}）：「波动 $+$ 直流」全除};
   \node[anchor=east] at (-0.25,-2.85) {$x+c$（平移）};
-  \fill[gray!70] (0,-3.2) rectangle (5.2,-2.5);
+  \fill[tkBlue!70] (0,-3.2) rectangle (5.2,-2.5);
   \node[white] at (2.6,-2.85) {波动 $\sigma^2$（不变）};
-  \fill[gray!12] (5.2,-3.2) rectangle (11.6,-2.5);
-  \fill[pattern=north east lines, pattern color=gray!55] (5.2,-3.2) rectangle (11.6,-2.5);
+  \fill[tkFillOrange] (5.2,-3.2) rectangle (11.6,-2.5);
+  \fill[pattern=north east lines, pattern color=tkOrange!55] (5.2,-3.2) rectangle (11.6,-2.5);
   \node at (8.4,-2.85) {直流 $(\mu+c)^2$（变长）};
   \draw[thick] (0,-3.2) rectangle (11.6,-2.5);
   \draw (5.2,-3.2) -- (5.2,-2.5);
   \draw[-{Latex}] (8.8,-3.75) -- (11.6,-3.75);
   \node[anchor=north] at (10.2,-3.9) {$(\mu+c)^2 > \mu^2$：直流段增长};
-  \node[anchor=north, align=center, text width=5.0cm] at (2.5,-4.5)
+  \node[anchor=north, align=center, text width=5.0cm, text=tkGreen] at (2.5,-4.5)
     {LayerNorm：$\sigma^2$ 段不变\\$\Rightarrow$ \textbf{输出不变}（平移不变性）};
-  \node[anchor=north, align=center, text width=6.0cm] at (8.6,-4.5)
+  \node[anchor=north, align=center, text width=6.0cm, text=tkOrange!85!black] at (8.6,-4.5)
     {RMSNorm：分母变大 $\Rightarrow$ 不变式被破坏\\$\Rightarrow$ LLaMA 去 QKV 投影 bias};
 \end{tikzpicture}
 \caption{分母的能量分解（恒等式~\eqref{eq:ch06-var-identity}：$\frac{1}{K}\sum_k x_k^2 = \sigma^2 + \mu^2$）：LayerNorm 只除「波动」$\sigma^2$，RMSNorm 除「总能量（波动 $+$ 直流）」。平移 $x \to x+c$ 时 $\sigma^2$ 段宽度不变而 $\mu^2$ 段变长——LayerNorm 输出不变，RMSNorm 分母被推大，这就是去 bias 的架构连锁（3.3 节第 3 条）。}
@@ -256,8 +256,8 @@ vec4 化带来一个标量版没有的实现细节：Pass 2 需要再次用到 $
 \begin{tikzpicture}[font=\scriptsize,
   elem/.style={circle, draw, fill=gray!10, minimum size=4.6mm, inner sep=1pt, font=\tiny},
   op/.style={draw, rounded corners=2pt, fill=gray!12, inner sep=4pt, align=center, minimum height=6mm},
-  stat/.style={draw, rounded corners=2pt, fill=gray!30, inner sep=4pt, align=center, minimum height=6mm},
-  rdc/.style={draw, rounded corners=2pt, fill=gray!70, text=white, inner sep=4pt, align=center, minimum height=7mm},
+  stat/.style={draw=tkPurple, rounded corners=2pt, fill=tkFillPurple, inner sep=4pt, align=center, minimum height=6mm},
+  rdc/.style={draw=tkBlue, rounded corners=2pt, fill=tkFillBlue, text=tkBlue, inner sep=4pt, align=center, minimum height=7mm},
   cnt/.style={draw, fill=gray!18, inner sep=4pt, align=center, minimum height=6mm},
   arr/.style={-{Latex[length=1.8mm]}},
   sync/.style={anchor=east, font=\tiny}]
@@ -271,16 +271,16 @@ vec4 化带来一个标量版没有的实现细节：Pass 2 需要再次用到 $
   \node[font=\tiny, anchor=west] at (rd.east) {（warp 蝶形，第~\ref{ch:02}~章）};
   \node[stat] (st) at (-3.6,-4.0) {tid0：$s=\mathrm{rsqrtf}(S_2/K+\epsilon)$，写入 smem};
   \node[op] (el) at (-3.6,-5.6) {$y_k = x_k\cdot s\cdot g$};
-  \node[cnt] at (-3.6,-6.6) {归约 1 次\quad\texttt{\_\_syncthreads} 2 次};
+  \node[cnt, draw=tkGreen, fill=tkFillGreen] at (-3.6,-6.6) {归约 1 次\quad\texttt{\_\_syncthreads} 2 次};
   \draw[arr] (-4.4,-0.26) -- (-3.98,-0.68);
   \draw[arr] (-3.6,-0.26) -- (-3.6,-0.68);
   \draw[arr] (-2.8,-0.26) -- (-3.22,-0.68);
   \draw[arr] (sq.south) -- (rd.north);
-  \fill[gray!50] (-4.7,-3.31) rectangle (-2.5,-3.19);
+  \fill[tkOrange!55] (-4.7,-3.31) rectangle (-2.5,-3.19);
   \draw[arr] (rd.south) -- (-3.6,-3.31);
   \draw[arr] (-3.6,-3.19) -- (st.north);
   \node[sync, anchor=west] at (-2.44,-3.25) {（reduce 内部）};
-  \fill[gray!50] (-4.7,-4.91) rectangle (-2.5,-4.79);
+  \fill[tkOrange!55] (-4.7,-4.91) rectangle (-2.5,-4.79);
   \draw[arr] (st.south) -- (-3.6,-4.91);
   \draw[arr] (-3.6,-4.79) -- (el.north);
   \node[sync, anchor=west] at (-2.44,-4.85) {（显式）};
@@ -297,25 +297,25 @@ vec4 化带来一个标量版没有的实现细节：Pass 2 需要再次用到 $
   \node[rdc] (rd2) at (3.8,-5.3) {block reduce \#2\\$S_2'=\sum_k (x_k-\mu)^2$};
   \node[stat] (st2) at (3.8,-6.9) {tid0：$s=\mathrm{rsqrtf}(S_2'/K+\epsilon)$，写入 smem};
   \node[op] (el2) at (3.8,-8.5) {$y_k=(x_k-\mu)\cdot s\cdot g+b$};
-  \node[cnt] at (3.8,-9.5) {归约 2 次\quad\texttt{\_\_syncthreads} 4 次};
+  \node[cnt, draw=tkOrange, fill=tkFillOrange] at (3.8,-9.5) {归约 2 次\quad\texttt{\_\_syncthreads} 4 次};
   \draw[arr] (3.0,-0.26) -- (3.42,-0.53);
   \draw[arr] (3.8,-0.26) -- (3.8,-0.53);
   \draw[arr] (4.6,-0.26) -- (4.18,-0.53);
   \draw[arr] (rd1.south) -- (3.8,-1.86);
-  \fill[gray!50] (2.7,-1.96) rectangle (4.9,-1.84);
+  \fill[tkOrange!55] (2.7,-1.96) rectangle (4.9,-1.84);
   \draw[arr] (3.8,-1.84) -- (mu.north);
   \node[sync] at (2.62,-1.9) {（reduce \#1 内部）};
   \draw[arr] (mu.south) -- (3.8,-3.56);
-  \fill[gray!50] (2.7,-3.56) rectangle (4.9,-3.44);
+  \fill[tkOrange!55] (2.7,-3.56) rectangle (4.9,-3.44);
   \draw[arr] (3.8,-3.44) -- (sq2.north);
   \node[sync] at (2.62,-3.5) {（显式，广播 $\mu$）};
   \draw[arr] (sq2.south) -- (rd2.north);
   \draw[arr] (rd2.south) -- (3.8,-6.14);
-  \fill[gray!50] (2.7,-6.26) rectangle (4.9,-6.14);
+  \fill[tkOrange!55] (2.7,-6.26) rectangle (4.9,-6.14);
   \draw[arr] (3.8,-6.14) -- (st2.north);
   \node[sync] at (2.62,-6.2) {（reduce \#2 内部）};
   \draw[arr] (st2.south) -- (3.8,-7.86);
-  \fill[gray!50] (2.7,-7.86) rectangle (4.9,-7.74);
+  \fill[tkOrange!55] (2.7,-7.86) rectangle (4.9,-7.74);
   \draw[arr] (3.8,-7.74) -- (el2.north);
   \node[sync] at (2.62,-7.8) {（显式）};
   \draw[-{Latex[length=2mm]}, very thick] (mu.east) -- (5.9,-2.6) -- (5.9,-4.2) -- (sq2.east);

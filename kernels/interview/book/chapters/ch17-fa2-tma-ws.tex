@@ -358,19 +358,22 @@ $B_c = 8 \times 1 \times 8 = 64$；consumer 8 warp 排成 $8 \times 1$
   \def\chd{0.36}
   \def\cxx{10.3}
   % 左：gmem 逻辑视图 [B, D] 行主序（缩尺 8x16），cell = 逻辑线性 idx = b*16+d
-  \foreach \r in {0,...,7}{
-    \foreach \c [evaluate=\c as \gr using {int(25+30*int(\c/8)+7*mod(\r,2))}] in {0,...,15}{
+  % cute_gemm：hue = tile 身份（head_dim 前后 64 列半区），intensity = 行位置 ramp
+  \foreach \r [evaluate=\r as \rv using {10+15*mod(\r,4)}] in {0,...,7}{
+    \foreach \c [evaluate=\c as \ci using {int(\c/8)}] in {0,...,15}{
       \pgfmathtruncatemacro{\lgi}{16*\r+\c}
-      \node[fill=gray!\gr, minimum width=\cwd cm, minimum height=\chd cm, inner sep=0pt]
+      \ifnum\ci=0 \def\cfill{colorx6!\rv} \else \def\cfill{colorx2!\rv} \fi
+      \node[fill=\cfill, minimum width=\cwd cm, minimum height=\chd cm, inner sep=0pt]
         at ({(\c+0.5)*\cwd},{-(\r+0.5)*\chd}) {\lgi};
     }
   }
   % 右：smem 物理视图，chunk-major 两个 8x8 面板，cell = 同一逻辑 idx
   \foreach \k in {0,1}{
-    \foreach \r in {0,...,7}{
-      \foreach \c [evaluate=\c as \gr using {int(25+30*\k+7*mod(\r,2))}] in {0,...,7}{
+    \foreach \r [evaluate=\r as \rv using {10+15*mod(\r,4)}] in {0,...,7}{
+      \foreach \c in {0,...,7}{
         \pgfmathtruncatemacro{\lgi}{16*\r+8*\k+\c}
-        \node[fill=gray!\gr, minimum width=\cwd cm, minimum height=\chd cm, inner sep=0pt]
+        \ifnum\k=0 \def\cfill{colorx6!\rv} \else \def\cfill{colorx2!\rv} \fi
+        \node[fill=\cfill, minimum width=\cwd cm, minimum height=\chd cm, inner sep=0pt]
           at ({\cxx+(\c+0.5)*\cwd},{-\k*3.78-(\r+0.5)*\chd}) {\lgi};
       }
     }
@@ -389,28 +392,28 @@ $B_c = 8 \times 1 \times 8 = 64$；consumer 8 warp 排成 $8 \times 1$
   }
   \draw[very thick] ({\cxx},0) rectangle ({\cxx+8*\cwd},{-8*\chd});
   \draw[very thick] ({\cxx},{-3.78}) rectangle ({\cxx+8*\cwd},{-3.78-8*\chd});
-  % TMA box 框：沿 head_dim 的两个 64 列半区
-  \draw[thick] (-0.10,0.10) rectangle ({8*\cwd+0.10},{-8*\chd-0.10});
-  \draw[thick, dashed] ({8*\cwd-0.10},0.10) rectangle ({16*\cwd+0.10},{-8*\chd-0.10});
-  \node[anchor=south, font=\tiny] at ({4*\cwd},0.22) {TMA box \#0：$(64,B)$};
-  \node[anchor=south, font=\tiny] at ({12*\cwd},0.22) {TMA box \#1：$(64,B)$};
+  % TMA box 框：沿 head_dim 的两个 64 列半区；边界坐标 = cell 尺寸整数倍，与网格线完全重合
+  \draw[thick, dashed, colorx2!80!black] ({8*\cwd},0) rectangle ({16*\cwd},{-8*\chd});
+  \draw[thick, colorx6!75!black] (0,0) rectangle ({8*\cwd},{-8*\chd});
+  \node[anchor=south, font=\tiny, text=colorx6!75!black] at ({4*\cwd},0.22) {TMA box \#0：$(64,B)$};
+  \node[anchor=south, font=\tiny, text=colorx2!80!black] at ({12*\cwd},0.22) {TMA box \#1：$(64,B)$};
   \node[anchor=south, font=\scriptsize\bfseries] at ({8*\cwd},0.62)
     {左：gmem 逻辑视图 $[B,D]$ 行主序（缩尺 $8{\times}16$，真实 $64{\times}128$）};
   \node[anchor=south, font=\scriptsize\bfseries] at ({\cxx+4*\cwd},0.62)
     {右：smem 物理视图 chunk-major $[D/64,B,64]$};
   \node[anchor=north, font=\tiny] at ({8*\cwd},{-8*\chd-0.18})
     {一行 $D{=}128 \to 256$~B $>$ 128~B 单 box 上限 $\to$ 沿 head\_dim 拆 $D/64$ 次 TMA};
-  \node[anchor=west, font=\tiny] at ({\cxx+8*\cwd+0.12},-1.44) {chunk 0（head\_dim 0--63）};
-  \node[anchor=west, font=\tiny] at ({\cxx+8*\cwd+0.12},{-3.78-1.44}) {chunk 1（64--127）};
+  \node[anchor=west, font=\tiny, text=colorx6!75!black] at ({\cxx+8*\cwd+0.12},-1.44) {chunk 0（head\_dim 0--63）};
+  \node[anchor=west, font=\tiny, text=colorx2!80!black] at ({\cxx+8*\cwd+0.12},{-3.78-1.44}) {chunk 1（64--127）};
   \node[anchor=north, font=\tiny, align=center] at ({\cxx+4*\cwd},{-3.78-8*\chd-0.18})
     {物理偏移 $=$ chunk$\,\cdot\!(B\cdot 64) + b\cdot 64 + d_{\mathrm{loc}}$\\
      行 $b$ 的前 64 维 $\to$ chunk 0 行 $b$，后 64 维 $\to$ chunk 1 行 $b$};
   % 两支 TMA 箭头
-  \draw[-{Stealth}, semithick] ({16*\cwd+0.22},{-1.44}) -- ({\cxx-0.12},{-1.44});
-  \node[anchor=south, font=\tiny] at ({\cxx+4*\cwd-2.8},{-1.36}) {TMA \#0 $\to$ chunk 0};
-  \draw[-{Stealth}, semithick] ({16*\cwd+0.22},{-2.30}) -- ({\cxx-0.12},{-3.78-2.16});
-  \node[anchor=south, font=\tiny] at ({\cxx+4*\cwd-2.4},{-3.02}) {TMA \#1 $\to$ chunk 1};
-  \node[anchor=north, font=\tiny] at (8.6,{-8*\chd-4.0})
+  \draw[-{Stealth}, semithick, colorx6!75!black] ({16*\cwd+0.22},{-1.44}) -- ({\cxx-0.12},{-1.44});
+  \node[anchor=south, font=\tiny, text=colorx6!75!black] at ({\cxx+4*\cwd-2.8},{-1.36}) {TMA \#0 $\to$ chunk 0};
+  \draw[-{Stealth}, semithick, colorx2!80!black] ({16*\cwd+0.22},{-2.30}) -- ({\cxx-0.12},{-3.78-2.16});
+  \node[anchor=south, font=\tiny, text=colorx2!80!black] at ({\cxx+4*\cwd-2.4},{-3.02}) {TMA \#1 $\to$ chunk 1};
+  \node[anchor=north, font=\tiny] at (8.6,{-3.78-8*\chd-1.05})
     {两次 TMA 共享同一 mbarrier：\texttt{expect\_tx} 一次声明 $2\times$8~KB，每次搬运各自 complete-tx 记账};
 \end{tikzpicture}
 \caption{chunk-major 布局与双 TMA 拆分（17.4.3 节，缩尺示意：$8\times 16$ 代表真实 $64\times 128$）。左：gmem 里 K/V 的逻辑视图 $[B,D]$ 行主序，cell 填逻辑线性 idx（$=b\cdot D+d$ 的缩尺版本）；$D{=}128$ 时一行 256~B 超出 128B swizzle box 的维上限，两个 box（head\_dim 0--63 / 64--127）各搬一半。右：smem 物理视图写成 chunk-major $[D/64,B,64]$——同一批数据（idx 一一对应）被拆成两个连续的 $64\times 64$ chunk 面板，行 $b$ 的前后 64 维分别落在 chunk 0/1 的行 $b$。两次 TMA 共享同一个 mbarrier，\texttt{expect\_tx} 一次声明总字节、两次 complete-tx 各自记账，协议数学不变。}
@@ -545,15 +548,15 @@ L1374--1399），Step 5 的写回是 ch16 的原版方案——warp 内 shuffle 
 \begin{figure}[htbp]
 \centering
 \begin{tikzpicture}[font=\tiny, x=0.013729cm, y=-0.013729cm]
-  \definecolor{tBlue}{RGB}{33,100,160}
-  \definecolor{tGreen}{RGB}{40,105,60}
-  \definecolor{tOrange}{RGB}{165,95,15}
+  \colorlet{tBlue}{tkBlue}
+  \colorlet{tGreen}{tkGreen}
+  \colorlet{tOrange}{tkOrange}
   \node[anchor=west, font=\scriptsize\bfseries] at (24,26)
     {producer/consumer 双流水时序（$\mathrm{Sk}{=}2$, $S_v{=}1$, $D{=}64$）};
-  \node[draw=tBlue, fill=gray!10, text=tBlue, font=\tiny\bfseries, inner sep=1pt,
+  \node[draw=tBlue, fill=tkFillBlue, text=tBlue, font=\tiny\bfseries, inner sep=1pt,
         minimum width=7.41cm, minimum height=0.44cm] at (294,66)
     {producer WG0（1 个活跃线程，TMA 提交）};
-  \node[draw=tGreen, fill=gray!10, text=tGreen, font=\tiny\bfseries, inner sep=1pt,
+  \node[draw=tGreen, fill=tkFillGreen, text=tGreen, font=\tiny\bfseries, inner sep=1pt,
         minimum width=7.41cm, minimum height=0.44cm] at (886,66)
     {consumer WG1（8 warps, 256 线程）};
   \node[draw=tBlue, fill=white, align=center, text width=7.0cm, inner sep=1pt,
@@ -572,7 +575,7 @@ L1374--1399），Step 5 的写回是 ch16 的原版方案——warp 内 shuffle 
   \node[draw=tBlue, fill=white, align=center, text width=7.0cm, inner sep=1pt,
         minimum height=0.82cm] at (294,214)
     {P2（每轮 $k$）：TMA V[k]$\to$v0，随后 TMA K[k+2]$\to$st（覆盖已被 consumer 释放的空槽）};
-  \node[draw=tBlue, fill=gray!18, align=center, text width=7.0cm, inner sep=1pt,
+  \node[draw=tBlue, fill=tkFillBlue, align=center, text width=7.0cm, inner sep=1pt,
         minimum height=0.60cm] at (294,276)
     {producer 领先 consumer 至多 $\mathrm{Sk}{-}1$ 个 K tile / $S_v$ 个 V tile};
   \node[draw=tGreen, fill=white, align=center, text width=6.9cm, inner sep=1pt,
@@ -587,12 +590,12 @@ L1374--1399），Step 5 的写回是 ch16 的原版方案——warp 内 shuffle 
     {wait full\_V[0]（恰在 3d 前）—— 3d PV：R\_S 复用 + X2\_T(V) —— arrive empty\_V[0]};
   \node[draw=tGreen, fill=white, align=center, text width=6.9cm, inner sep=1pt,
         minimum height=0.47cm] at (891,379) {3e rescale（$m$, $\ell$, $O$）};
-  \node[draw=tGreen, fill=gray!10, align=center, text width=7.0cm, inner sep=1pt,
+  \node[draw=tGreen, fill=tkFillGreen, align=center, text width=7.0cm, inner sep=1pt,
         minimum height=0.52cm] at (886,425)
     {iter $k = 1$：同构（wait full\_K[1] $\to$ QK$^{\top}$ $\to$ softmax $\to$ PV $\to$ rescale）};
   \draw[-{Stealth}, tOrange, dashed, thick] (564,214) -- (616,214);
   \draw[-{Stealth}, tOrange, dashed, thick] (564,300) -- (616,300);
-  \node[draw=tOrange, fill=gray!12, text=tOrange!65!black, font=\tiny\bfseries,
+  \node[draw=tOrange, fill=tkFillOrange, text=tOrange!65!black, font=\tiny\bfseries,
         inner sep=1pt, minimum width=15.54cm, minimum height=0.60cm] at (590,484)
     {overlap：计算 tile $k$ 与搬运 tile $k{+}1$ 完全重叠 —— 搬运延迟被计算掩盖};
   \node[draw=tBlue, fill=white, align=center, text width=15.2cm, inner sep=1pt,
@@ -609,16 +612,16 @@ L1374--1399），Step 5 的写回是 ch16 的原版方案——warp 内 shuffle 
 \begin{figure}[htbp]
 \centering
 \begin{tikzpicture}[font=\tiny, x=0.015283cm, y=-0.015283cm]
-  \definecolor{tBlue}{RGB}{33,100,160}
-  \definecolor{tGreen}{RGB}{40,105,60}
-  \definecolor{tOrange}{RGB}{165,95,15}
+  \colorlet{tBlue}{tkBlue}
+  \colorlet{tGreen}{tkGreen}
+  \colorlet{tOrange}{tkOrange}
   \node[anchor=west, font=\scriptsize\bfseries] at (24,26)
     {mbarrier 阵列拓扑：谁 arrive / 谁 wait（init count $= 257$）};
   \node[anchor=west, text=black!65] at (580,50)
     {$D{=}128$：$\mathrm{kTmaChunks}$ 次 load 共享同一 full 屏障};
   \node[anchor=west, text=tBlue, font=\scriptsize\bfseries] at (24,60)
     {Q：一对一单屏障};
-  \node[draw=tBlue, fill=gray!10, text=tBlue, font=\scriptsize\bfseries, inner sep=1pt,
+  \node[draw=tBlue, fill=tkFillBlue, text=tBlue, font=\scriptsize\bfseries, inner sep=1pt,
         minimum width=3.67cm, minimum height=0.67cm] at (420,66) {full\_Q};
   \draw[-{Stealth}, tBlue, thick] (280,66) -- (300,66);
   \draw[-{Stealth}, tGreen, thick] (420,90) -- (420,68);
@@ -632,13 +635,13 @@ L1374--1399），Step 5 的写回是 ch16 的原版方案——warp 内 shuffle 
         text width=15.2cm, inner sep=1pt, minimum height=0.49cm] at (530,166)
     {stage $s \in [0, \mathrm{Sk})$：K 屏障对（V 同形，$S_v$ 份；V 在 PV 后释放）};
   \node[anchor=west, text=black!65] at (300,207) {producer：arrive\_tx(8/16KB)};
-  \node[draw=tBlue, fill=gray!10, text=tBlue, font=\scriptsize\bfseries, inner sep=1pt,
+  \node[draw=tBlue, fill=tkFillBlue, text=tBlue, font=\scriptsize\bfseries, inner sep=1pt,
         minimum width=3.21cm, minimum height=0.73cm] at (165,224) {full\_K[s]};
   \draw[-{Stealth}, tBlue, thick] (296,207) -- (274,207);
   \node[anchor=west, text=black!65] at (300,237)
     {consumer：256$\times$ arrive（随后 wait —— QK$^{\top}$ 前阻塞在相位）};
   \draw[-{Stealth}, tGreen, thick] (296,237) -- (274,237);
-  \node[draw=tGreen, fill=gray!20, text=tGreen!70!black, font=\scriptsize\bfseries,
+  \node[draw=tGreen, fill=tkFillGreen, text=tGreen!70!black, font=\scriptsize\bfseries,
         inner sep=1pt, minimum width=3.21cm, minimum height=0.73cm] at (165,344)
     {empty\_K[s]};
   \node[anchor=west, text=black!65] at (300,327)
@@ -649,13 +652,13 @@ L1374--1399），Step 5 的写回是 ch16 的原版方案——warp 内 shuffle 
   \draw[-{Stealth}, tBlue, thick] (296,357) -- (274,357);
   \node[anchor=west, font=\scriptsize\bfseries] at (24,412)
     {per-phase 记账（每轮预算恰好 257/round，相位循环永不错位）：};
-  \node[draw=tGreen, fill=gray!15, text=tGreen!70!black, align=center,
+  \node[draw=tGreen, fill=tkFillGreen, text=tGreen!70!black, align=center,
         text width=7.4cm, inner sep=1pt, minimum height=0.73cm] at (272,452)
     {full[s] 每轮 $=$ 256（consumer arrive）$+$ 1（producer arrive\_tx）$+$ tx 落地};
-  \node[draw=tGreen, fill=gray!15, text=tGreen!70!black, align=center,
+  \node[draw=tGreen, fill=tkFillGreen, text=tGreen!70!black, align=center,
         text width=7.4cm, inner sep=1pt, minimum height=0.73cm] at (788,452)
     {empty[s] 每轮 $=$ 256（consumer free）$+$ 1（producer 写前 arrive）};
-  \node[draw=tOrange, fill=gray!12, text=tOrange!65!black, font=\tiny\bfseries,
+  \node[draw=tOrange, fill=tkFillOrange, text=tOrange!65!black, font=\tiny\bfseries,
         align=center, text width=15.2cm, inner sep=1pt, minimum height=0.64cm]
         at (530,509)
     {$D = 128$ 时同一 tile 的多次 TMA 共享一个 full 屏障：多次 complete-tx 记账、一次 expect\_tx 声明总量};
