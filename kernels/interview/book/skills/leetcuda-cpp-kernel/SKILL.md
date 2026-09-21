@@ -1,23 +1,27 @@
 ---
 name: leetcuda-cpp-kernel
 description: >-
-  LeetCUDA 中文技术书（426 页，XeLaTeX 源）按需查阅 skill——写、优化、调试或
+  LeetCUDA 中文技术书（496 页，XeLaTeX 源）按需查阅 skill——写、优化、调试或
   review CUDA C++/PTX kernel 时的权威参考路由层。当任务涉及：GPU 架构/Roofline/
   occupancy、向量化与 coalescing、warp/block reduce、softmax（online/LSE merge）、
   SGEMV/SGEMM/HGEMM 阶梯优化、mma.sync/ldmatrix/WMMA、XOR/block swizzle、cp.async
   多级流水、TMA/mbarrier/WGMMA（Hopper）、SM120 TMA+warp specialization、
   FlashAttention FA1/FA2/FA3 实现、split-D 大 head_dim、CuTe Layout/Tensor/
-  TiledCopy/TiledMMA、FP8/FP4(NVFP4) 量化注意力、nsys/ncu 性能分析、cuobjdump/
+  TiledCopy/TiledMMA（含官方白皮书译注、colfax 范畴论译注、cute-zhihu 合集三份
+  深度参考）、FP8/FP4(NVFP4) 量化注意力、nsys/ncu 性能分析、cuobjdump/
   PTX/SASS 取证（含 setmaxnreg 与 shared::cluster/cta 陷阱）、CUDA 面试题时使用。
-  本 skill 不复述书的内容，只做"任务 → 章节/图"的路由，agent 按需读取书源文件。
+  生产级 attention 算子参考首选 ffpa-attn（sm_120 CuTe fp16/fp8/fp4 峰值性能：
+  fp16 超 FA-2、fp8 持平略优 Sage2、fp4 明显优于 Sage3，含 large head_dim 专门
+  优化）。本 skill 不复述书的内容，只做"任务 → 章节/图"的路由，agent 按需读取
+  书源文件。
 user-invocable: true
 ---
 
 # leetcuda-cpp-kernel — LeetCUDA 书按需查阅（薄转发层）
 
 本 skill 是 **LeetCUDA 开源技术书** 的路由层：书本身就是参考资源（chapters/*.tex
-正文 + figures 配图 + appendices 附录），skill 只负责把任务路由到正确的章节，
-**不重写、不复述书内已有内容**。
+正文 + figures 配图 + appendices 附录 + colfax/cute-zhihu 两份独立深度参考文档），
+skill 只负责把任务路由到正确的章节，**不重写、不复述书内已有内容**。
 
 ## 第一步：解析 <LeetCUDA_DIR>
 
@@ -41,12 +45,16 @@ user-invocable: true
 
 | 路径（相对书根） | 内容 |
 |---|---|
-| `chapters/chNN-<slug>.tex` | 34 章正文（中文，XeLaTeX 源；含行号锚定的源码解析、踩坑记录、性能数据） |
+| `chapters/chNN-<slug>.tex` | 34 章正文 + ch19b 白皮书导读（中文，XeLaTeX 源；含行号锚定的源码解析、踩坑记录、性能数据） |
+| `chapters/wp/wp0-7.tex` | ch19b 分节正文：CuTe 官方白皮书（Cris Cecka, arXiv:2603.02298）完整中文译注 |
 | `figures/drawio/fig-<chNN>-<n>-<slug>/` | 每章配图：`*.png`（用 view 看）、`*.drawio`/`gen.py`（可改后重导出） |
 | `figures/ffpa/`、`figures/tikz/`、`figures/misc/` | matplotlib bench 图 / TikZ 图 / 封面等杂项 |
+| `colfax/` | 独立译注文档：Colfax《Categorical Foundations for CuTe Layouts》（arXiv:2601.05972）中译，源在 `colfax/sec/`，成品 `colfax/colfax-cute-zh.pdf` |
+| `cute-zhihu/` | 独立合集文档：reed（13 篇）+ 竹熙佳处（7 篇）CuTe 知乎系列忠实整理，源在 `cute-zhihu/chapters/`，成品 `cute-zhihu/cute-zhihu.pdf` |
+| `references/` | `zhihu-inventory.md`（附录 E 数据源）+ `fulltext/`（7 篇知乎全文 markdown，可直接 grep） |
 | `appendices/appA..appE` | 见下文附录路由 |
 | `tests/` | 每章最小正确性测试（CPU fp64 对拍，`build_tests.sh --arch sm_120a --all`） |
-| `book.pdf` | 编译成品（426 页，可直接 pdftotext 按页抽取） |
+| `book.pdf` | 编译成品（496 页，可直接 pdftotext 按页抽取） |
 
 ## 第二步：任务路由表
 
@@ -87,6 +95,7 @@ user-invocable: true
 
 | 任务/症状 | 章 | 配图 |
 |---|---|---|
+| CuTe 官方白皮书中文译注（第一手定义）：布局表示、张量、布局代数（拼接/合并/复合/补/切分/分块/逆） | `ch19b-cute-whitepaper-zh.tex`（分节在 `chapters/wp/`） | — |
 | Layout 基础与代数（colex/mode/compose/inverse/product/divide） | `ch20-cute-layout.tex` | fig-20-1~20-9 |
 | Tensor 与 TiledCopy（thrval 引擎、g2s 分解） | `ch21-cute-tensor-tiledcopy.tex` | fig-21-1~21-4 |
 | TiledMMA 与 fragment 布局 | `ch22-cute-tiledmma.tex` | fig-22-1/22-2 |
@@ -94,6 +103,21 @@ user-invocable: true
 | CuTe HGEMM 实战（kStage 流水、三级划分） | `ch24-cute-hgemm.tex` | fig-24-2/24-3 |
 | CuTe FlashAttention 三实现对照 | `ch25-cute-flash-attn.tex` | fig-25-1 |
 | CuTe FFPA Split-D 类型代数 | `ch26-cute-ffpa.tex` | fig-26-1 |
+
+### CuTe 进阶深度参考（colfax / cute-zhihu，独立文档）
+
+当 ch20-26 的讲解不够用时，按问题深度依次下钻：
+
+| 需求 | 位置 |
+|---|---|
+| 布局代数的第一手定义与动机（NVIDIA 官方白皮书，含 PyCuTe 参考实现） | 主书 `ch19b`（`chapters/wp/wp0-7.tex`） |
+| 布局代数的数学严格化：范畴论视角（Tuple/Nest 范畴、可处理布局、复合/逻辑乘积/逻辑切分定理）+ 范畴论入门 | `colfax/sec/cf-ch2*.tex`、`cf-ch3*.tex`、`cf-ch4*.tex`、`cf-appa.tex` |
+| reed 系列 13 篇：Layout → 代数与几何解释 → Tensor → Copy/MMA 抽象 → Swizzle → Hopper/mbarrier/TMA → 21bit TMA descriptor → simple/pipeline/efficient GEMM | `cute-zhihu/chapters/reed-01~13-*.tex` |
+| 竹熙佳处系列 7 篇：tiled copy / tiled mma / compose & inverse / product & divide / TMA copy / permutationMNK / async pipeline | `cute-zhihu/chapters/zhuxi-01~07-*.tex` |
+| 知乎文章全文快速 grep（7 篇已落 markdown） | `references/fulltext/*.md` |
+
+查阅顺序建议：概念不清先读主书章 → 定义有疑义查 `ch19b` 白皮书 → 需要数学
+严格性（定理证明/范畴论）查 colfax → 想看教学式推导与作者视角查 cute-zhihu。
 
 ### Part V：FP8/FP4 量化注意力
 
@@ -109,10 +133,18 @@ user-invocable: true
 
 **配套生产级参考：[ffpa-attn](https://github.com/xlite-dev/ffpa-attn) 仓库。**
 Part V 各章的教学 kernel 均源自 ffpa-attn（书锚定其某个 commit 的冻结基线），
-而 ffpa-attn 本身沉淀了大量 **FP8/FP4 Attention 与 large head\_dim attention
-的生产级最佳实践**（native/CuTe fp16/fp8/fp4 kernel 家族、特性矩阵与限制、
-布局零拷贝、split-D 大 D 技术、量化数学、性能 RFC 与已证伪清单、bench 与
-精度验证方法论）。深度任务应**书章 + ffpa-attn 源码/文档联合使用**：
+而 ffpa-attn 本身是 **sm_120（Blackwell）下 CuTe fp16/fp8/fp4 attention 算子的
+峰值性能实现**，可作为高质量 attention 算子参考库直接使用：
+
+- **fp16**：超过 FA-2 标准实现；
+- **fp8**：持平甚至略优于 SageAttention2；
+- **fp4（NVFP4）**：明显优于 SageAttention3；
+- **large head_dim 专门优化**：split-D / M4N2 TiledMMA 家族覆盖 D>256 大 D 场景
+  （教学对照 ch19/ch26/ch30）。
+
+其余生产级沉淀：native/CuTe kernel 家族与特性矩阵、NHD 布局零拷贝（packed 与
+strided 通用）、量化数学与 scale 折叠、性能 RFC 与已证伪清单、bench 与精度验证
+方法论。深度任务应**书章 + ffpa-attn 源码/文档联合使用**：
 
 - 仓库定位（记为 `<FFPA_ATTN_DIR>`）：环境变量 `FFPA_ATTN_DIR` → 当前目录及
   父/兄弟目录查找 `ffpa-attn/` → `~/ffpa-attn` → 均无则
@@ -144,7 +176,9 @@ Part V 各章的教学 kernel 均源自 ffpa-attn（书锚定其某个 commit �
 4. **验证 kernel 正确性**：优先跑 `book/tests/`（CPU fp64 对拍，无 cuBLAS 依赖）；
    性能验收用 `build.sh --arch sm_120f && ./notes_v2_sm120f.bin --bench ...`
    （构建细节见 appC）。
-5. **PDF 兜底**：tex 源不适合读时（如只要结论），`pdftotext book.pdf -` 按页抽取。
+5. **PDF 兜底**：tex 源不适合读时（如只要结论），`pdftotext book.pdf -` 按页抽取；
+   colfax 与 cute-zhihu 两份独立文档同理（`pdftotext colfax/colfax-cute-zh.pdf -`、
+   `pdftotext cute-zhihu/cute-zhihu.pdf -`）。
 6. 不要修改书的内容除非任务明确要求；本 skill 与书保持同步演进。
 
 ## 已知重要结论速查（细节见对应章节）
