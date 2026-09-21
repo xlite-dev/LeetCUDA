@@ -1,0 +1,84 @@
+% cf-front.tex — 译序 + 术语表
+\chapter*{译序}
+\addcontentsline{toc}{chapter}{译序}
+
+本译注版译自 Colfax Research 技术报告《Categorical Foundations for CuTe Layouts》
+（Jack Carlisle、Jay Shah、Reuben Stern、Paul VanKoughnett，arXiv:2601.05972，
+2026 年 1 月）的官方 LaTeX 源。该文从范畴论（category theory）视角对 CUTLASS/CuTe
+中的布局（layout）代数给出严格刻画，是理解 CuTe 布局运算（复合、逻辑乘积、逻辑切分
+等）数学基础的进阶材料。
+
+\textbf{翻译说明：}
+\begin{itemize}
+  \item 数学公式、tikz 交换图、Python 代码清单全部保持原文原样，不做任何改动；
+  \item 定理/引理/定义/构造/注等环境名称已中文化，编号规则与原文完全一致
+        （定理按小节编号，主定理以大写字母 A、B、C\ldots 编号）；
+  \item 关键术语在每章首次出现时以「中文（English）」标注；
+  \item 术语译名与《LeetCUDA》一书第 20--26 章 CuTe 篇保持一致。
+\end{itemize}
+
+\textbf{版权声明：}原文版权归原文作者与 Colfax Research 所有；原文的 Python 参考实现
+见 \url{https://github.com/ColfaxResearch/layout-categories}。本中文译注版仅供个人学习
+交流使用，未经原文作者与译者同意，不得用于任何商业传播。
+
+\chapter*{术语表}
+\addcontentsline{toc}{chapter}{术语表}
+
+\begin{longtable}{@{}lll@{}}
+\toprule
+英文 & 中文 & 备注 \\
+\midrule
+\endhead
+\multicolumn{3}{l}{\textbf{CuTe 布局代数（与《LeetCUDA》ch20 一致）}} \\
+layout & 布局 & \\
+flat layout & 扁平布局 & \\
+nested tuple & 嵌套元组 & \\
+tractable layout & 可处理布局 & 全文核心概念 \\
+hierarchy & 层级 & \\
+profile & 轮廓 & \\
+composition & 复合 & \\
+logical product & 逻辑乘积 & \\
+logical division & 逻辑切分 & \\
+coalesce & 合并 & \\
+relative coalesce & 相对合并 & \\
+complement & 补 & \\
+inverse & 逆 & 左逆/右逆 \\
+concatenate & 拼接 & \\
+flatten / flat & 扁平化 / 扁平 & \\
+compact & 紧凑 & \\
+codomain & 陪域 & \\
+range & 值域 & 陪域中的像 \\
+domain & 定义域 & \\
+shape & 形状 & \\
+stride & 步长 & \\
+size / cosize & 大小 / 余大小 & \\
+depth / rank & 深度 / 秩 & \\
+mode & 模式 & \\
+slice & 切片 & \\
+sublayout & 子布局 & \\
+\midrule
+\multicolumn{3}{l}{\textbf{范畴论}} \\
+category & 范畴 & \\
+functor & 函子 & \\
+morphism & 态射 & \\
+object & 对象 & \\
+identity morphism & 恒等态射 & \\
+isomorphism & 同构 & \\
+natural transformation & 自然变换 & \\
+monad & 单子 & \\
+commutative diagram & 交换图 & \\
+categorical product & 范畴积 & 注意区别于 CuTe 的「乘积」 \\
+coproduct & 余积 & \\
+terminal / initial object & 终对象 / 始对象 & \\
+subcategory & 子范畴 & \\
+full subcategory & 满子范畴 & \\
+equivalence of categories & 范畴等价 & \\
+adjunction / adjoint & 伴随 & \\
+poset & 偏序集 & \\
+monoid & 幺半群 & \\
+comma category & 逗号范畴 & \\
+skeleton & 骨架 & \\
+forgetful functor & 遗忘函子 & \\
+generator & 生成元 & \\
+\bottomrule
+\end{longtable}

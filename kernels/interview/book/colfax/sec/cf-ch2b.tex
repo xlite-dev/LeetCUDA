@@ -1,0 +1,959 @@
+\subsection{基本运算}
+
+在建立了扁平布局（flat layout）的基本词汇之后，我们转而讨论它们所支持的运算。本节定义若干基本运算，构造诸如{\it 合并}（coalesce）、{\it 补}（complement）与{\it 复合}（composition）之类更复杂的运算时将会用到它们。
+
+\subsubsection{限制}
+
+设 $L$ 是扁平布局，将 $L$ 限制（restriction）到其模式（mode）的某个子集上往往很有用。回顾一下，对于非负整数 $m$，我们记
+\[
+\langle m \rangle = \{1,\dots,m\}.
+\]
+
+\begin{definition}
+    设
+    \[L = (s_1,\dots,s_m) : (d_1,\dots,d_m)\]
+    是扁平布局，并设
+    \[
+    I = \{i_1<\dots<i_k\} \subset \langle m \rangle
+    \]
+    是一个子集。我们定义 $L$ {\it 到} $I$ 的{\it 限制}为扁平布局
+    \[
+    L \mid_I = (s_{i_1},\dots,s_{i_k}):(d_{i_1},\dots,d_{i_k}).
+    \]
+\end{definition}
+
+\begin{example}
+    若
+
+\[
+\begin{tikzpicture}[x={(0cm,-1cm)},y={(1cm,0cm)},every node/.style={minimum size=1cm, outer sep=0pt}]
+
+\node[fill=gray!20] at (0,0) {0};
+\node[fill=gray!20] at (0,1) {5};
+\node[fill=gray!20] at (0,2) {10};
+\node[fill=gray!20] at (0,3) {15};
+\node[fill=gray!20] at (0,4) {20};
+\node[fill=gray!20] at (0,5) {25};
+\node[fill=gray!20] at (1,0) {10};
+\node[fill=gray!20] at (1,1) {15};
+\node[fill=gray!20] at (1,2) {20};
+\node[fill=gray!20] at (1,3) {25};
+\node[fill=gray!20] at (1,4) {30};
+\node[fill=gray!20] at (1,5) {35};
+\node[fill=gray!20] at (2,0) {20};
+\node[fill=gray!20] at (2,1) {25};
+\node[fill=gray!20] at (2,2) {30};
+\node[fill=gray!20] at (2,3) {35};
+\node[fill=gray!20] at (2,4) {40};
+\node[fill=gray!20] at (2,5) {45};
+\draw[color=black,thick,shift={(-0.5,-0.5)}] (0,0) grid (3,6);
+
+\node[anchor = east] at (1,-1) {$L = (3,6):(10,5) = $};
+\end{tikzpicture}
+\]
+且 $I = \{2\}$，则
+
+\[
+\begin{tikzpicture}[x={(0cm,-1cm)},y={(1cm,0cm)},every node/.style={minimum size=1cm, outer sep=0pt}]
+\node[fill=gray!20] at (0,0) {0};
+\node[fill=gray!20] at (0,1) {5};
+\node[fill=gray!20] at (0,2) {10};
+\node[fill=gray!20] at (0,3) {15};
+\node[fill=gray!20] at (0,4) {20};
+\node[fill=gray!20] at (0,5) {25};
+\draw[color=black,thick,shift={(-0.5,-0.5)}] (0,0) grid (1,6);
+
+\node[anchor = east] at (0,-1) {$L\mid_I  = (6):(5) = $};
+\end{tikzpicture}
+\]
+
+\end{example}
+
+% \begin{example}
+%     If
+%     \[L = (2,2,2,2,2):(16,8,4,2,1)\]
+%     and $I = \{2,5\}$, then
+%     \[
+%     L \mid_I = (2,2):(8,1).
+%     \]
+% \end{example}
+
+\begin{example}
+    若
+    \[L = (3,8,8,8):(1,3,24,192)\]
+    且 $I = \{1,2,3\}$，则
+    \[
+    L\mid_I = (3,8,8):(1,3,24).
+    \]
+\end{example}
+
+\begin{example}
+    若
+    \[L = (s_1,\dots,s_m):(d_1,\dots,d_m)\]
+    是扁平布局且 $I = \langle m \rangle$，则
+    \[
+    L \mid_I = L.
+    \]
+\end{example}
+
+\begin{example}
+若
+\[L = (s_1,\dots,s_m):(d_1,\dots,d_m)\]
+是扁平布局且 $I = \varnothing$ 为空集，则
+\[
+L \mid_I = ():()
+\]
+是空布局（empty layout）。
+\end{example}
+
+
+
+\subsubsection{压缩}
+
+若 $L$ 是扁平布局，则压缩（squeeze）运算 $L \mapsto \squeeze(L)$ 会移除 $L$ 中所有满足 $s_i = 1$ 的模式 $s_i:d_i$。
+
+\begin{construction}\label{Constructionofsqueeze}
+    设
+    \[L = (s_1,\dots,s_m):(d_1,\dots,d_m)\]
+    是扁平布局，并令
+    \[
+    I = \{ i \in \langle m \rangle \mid s_i > 1\}
+    \]
+    为对应形状（shape）元素（entry）不等于 $1$ 的指标组成的集合。我们定义
+    \[
+    \squeeze(L) = L \mid_I.
+    \]
+\end{construction}
+
+\begin{example}
+    若
+    \[L = (64,64,1):(1,64,0),\]
+    则
+    \[
+    \squeeze(L) = (64,64):(1,64).
+    \]
+\end{example}
+
+\begin{example}
+    若
+    \[
+    L = (64,64,1,32,1):(2048,32,0,1,0)
+    \]
+    则
+    \[
+    \squeeze(L) = (64,64,32):(2048,32,1).
+    \]
+\end{example}
+
+
+\begin{example}
+    若 $L$ 是扁平布局，则
+    \[
+    \squeeze(L) = L
+    \]
+    当且仅当 $\shape(L)$ 不含等于 $1$ 的元素。
+\end{example}
+
+\begin{example}
+    若 $L$ 是扁平布局，则
+    \[
+    \squeeze(L) = ():()
+    \]
+    是空布局当且仅当 $\shape(L)$ 的所有元素都等于 $1$。
+\end{example}
+
+
+\noindent 这一构造（construction）的一个本质性质是：$L \mapsto \squeeze(L)$ 保持 $L$ 的布局函数（layout function）不变。
+
+\begin{lemma}\label{squeezelemma}
+    若 $L$ 是扁平布局，则
+    \begin{enumerate}
+    \item $\size(\squeeze(L)) = \size(L)$，
+    \item $\cosize(\squeeze(L)) = \cosize(L)$，且
+    \item $\Phi_{\squeeze(L)} = \Phi_L$。
+    \end{enumerate}
+\end{lemma}
+
+\begin{proof} 令
+\[
+I = \{i_1<\dots<i_{k}\} \subset \langle m \rangle
+\] 表示满足 $s_{i_j} > 1$ 的指标组成的集合，于是
+\[
+    \squeeze(L) = (s_{i_1},\dots,s_{i_{k}}):(d_{i_1},\dots,d_{i_{k}}).
+\]
+对第一条断言，我们计算
+\begin{align*} \size(\squeeze(L))  = \prod_{j=1}^{k} s_{i_j} = \left( \prod_{j=1}^{k} s_{i_j} \right)\cdot\left( \prod_{\langle m \rangle \setminus I} 1 \right) = \prod_{i=1}^m s_i = \size(L).
+\end{align*}
+对第二条断言，我们计算
+\begin{align*} \cosize(\squeeze(L))  = 1 + \sum_{j=1}^{k} (s_{i_j} - 1)\cdot d_{i_j}
+& = 1 + \sum_{j=1}^{k} (s_{i_j}-1)\cdot d_{i_j} + \left( \sum_{\langle m \rangle \setminus I} 0 \right)\\
+& = 1 + \sum_{i=1}^m (s_i-1)\cdot d_i\\
+& = \cosize(L).
+\end{align*}
+对第三条断言，只需证明从扁平布局中移除形如 $1:d_i$ 的模式不改变布局函数。设 $L=(s_1,\dots,s_m):(d_1,\dots,d_m)$，并设某个 $s_i=1$。令
+    \begin{align*} L' & = (s_1',\dots,s_{m-1}'):(d_1',\dots,d_{m-1}')
+    \end{align*}
+    表示从 $L$ 中移除第 $i$ 个模式后得到的扁平布局，于是
+    \[
+    s_j' = \begin{cases} s_j & j < i\\
+    s_{j+1} & i \leq j < m,
+    \end{cases}
+    \hspace{0.2in}\text{ and } \hspace{0.2in} d_j'  = \begin{cases} d_j & j < i\\
+    d_{j+1} & i \leq j < m.
+    \end{cases}
+    \]
+
+    \noindent $L$ 的布局函数由
+    \[
+    \Phi_L(x) = x_1 d_1 + \cdots + x_m d_m
+    \]
+    给出，其中 $x_j = \left\lfloor \dfrac{x}{s_1\cdots s_{j-1}} \right \rfloor \mod s_j$；而 $L'$ 的布局函数由
+    \[
+    \Phi_{L'}(x) = x_1' d_1' + \cdots + x_{m-1}'d_{m-1}'
+    \]
+    给出，其中 $x_j' = \left\lfloor \dfrac{x}{s_1'\cdots s_{j-1}'} \right \rfloor \mod s_j'$。我们观察到
+    \[
+    x_j' = \begin{cases} x_j & j < i\\
+    x_{j+1} & i \leq j < m,
+    \end{cases}
+    \]
+    又由于 $x_i \in {[}0,1{)}$ 必然等于 $0$，我们有
+    \begin{align*}
+        \Phi_{L}(x) & = x_1 d_1 + \cdots + x_m d_m \\
+        & = x_1 d_1 + \cdots + x_{i-1} d_{i-1} + x_{i+1} d_{i+1} + \cdots + x_m d_m \\
+        & = x_1' d_1' + \cdots + x_{m-1}'d_{m-1}'\\
+        & = \Phi_{L'}(x).
+    \end{align*}
+\end{proof}
+
+
+\subsubsection{过滤零}
+若 $L$ 是扁平布局，则过滤零（filter zeros）运算 $L \mapsto \filter(L)$ 会移除所有满足 $d_i = 0$ 的模式 $s_i:d_i$。
+\begin{definition}\label{filterzerosdefinition}
+    设
+    \[L = (s_1,\dots,s_m):(d_1,\dots,d_m)\]
+    是扁平布局，并令
+    \[I = \{i \in \langle m \rangle \mid d_i >0 \}\]
+    为对应步长（stride）元素不等于 $0$ 的指标组成的集合。我们定义
+    \[
+    \filter(L) = L \mid_I.
+    \]
+\end{definition}
+
+\begin{example}
+    若
+    \[L = (64,8,8,128):(8,1,0,512)\]
+    则
+    \[
+    \filter(L) = (64,8,128):(8,1,512).
+    \]
+\end{example}
+
+\begin{example}
+    若
+\[
+\begin{tikzpicture}[x={(0cm,-1cm)},y={(1cm,0cm)},every node/.style={minimum size=1cm, outer sep=0pt}]
+
+\node[fill=gray!20] at (0,0) {0};
+\node[fill=gray!20] at (0,1) {0};
+\node[fill=gray!20] at (1,0) {12};
+\node[fill=gray!20] at (1,1) {12};
+\node[fill=gray!20] at (2,0) {24};
+\node[fill=gray!20] at (2,1) {24};
+\draw[color=black,thick,shift={(-0.5,-0.5)}] (0,0) grid (3,2);
+
+\node[anchor=east] at (1,-1) {$L = (3,2):(12,0) =$ };
+\end{tikzpicture}
+\]
+则
+\[
+\begin{tikzpicture}[x={(0cm,-1cm)},y={(1cm,0cm)},every node/.style={minimum size=1cm, outer sep=0pt}]
+
+\node[fill=gray!20] at (0,0) {0};
+\node[fill=gray!20] at (1,0) {12};
+\node[fill=gray!20] at (2,0) {24};
+
+\draw[color=black,thick,shift={(-0.5,-0.5)}] (0,0) grid (3,1);
+
+\node[anchor=east] at (1,-1) {$\filter(L) = (3):(12) =$ };
+\end{tikzpicture}
+\]
+\end{example}
+
+\begin{example}
+    若
+    \[
+    L = (3,8,8,8):(16,0,0,0)
+    \]
+    则
+    \[
+    \filter(L)  = (3):(16).
+    \]
+\end{example}
+
+\begin{example}
+    若 $L$ 是扁平布局，则
+    \[
+    \filter(L) = L
+    \]
+    当且仅当 $\stride(L)$ 的所有元素均非零。
+\end{example}
+
+\begin{example}
+    若 $L$ 是扁平布局，则
+    \[
+    \filter(L) = ():()
+    \]
+    是空布局当且仅当 $\stride(L)$ 的所有元素都等于 $0$。
+\end{example}
+
+
+
+\subsubsection{置换}
+
+回顾一下，若 $X = (x_1,\dots,x_m)$ 是长度为 $m$ 的元组（tuple），且 $\sigma \in \Sigma_m$ 是一个置换（permutation），则我们记
+\[
+X^\sigma = (x_{\sigma(1)},\dots,x_{\sigma(m)}).
+\]
+表示 $X$ 经 $\sigma$ 置换后的结果。
+
+\begin{definition}\label{definitionofpermutationofflatlayout} 若 $L=(s_1,\dots,s_m):(d_1,\dots,d_m)$ 是秩（rank）为 $m$ 的扁平布局，且 $\sigma \in \Sigma_m$ 是一个置换，我们定义
+\begin{align*}
+L^\sigma & =  \shape(L)^\sigma : \stride(L)^\sigma \\
+& = (s_{\sigma(1)},\dots,s_{\sigma(m)}) : (d_{\sigma(1)},\dots,d_{\sigma(m)}).
+\end{align*}
+\end{definition}
+
+\begin{example}
+    若
+\[
+\begin{tikzpicture}[x={(0cm,-1cm)},y={(1cm,0cm)},every node/.style={minimum size=1cm, outer sep=0pt}]
+
+\node[fill=gray!20] at (0,0) {0};
+\node[fill=gray!20] at (0,1) {2};
+\node[fill=gray!20] at (1,0) {12};
+\node[fill=gray!20] at (1,1) {14};
+\node[fill=gray!20] at (2,0) {24};
+\node[fill=gray!20] at (2,1) {26};
+\node[fill=gray!20] at (3,0) {36};
+\node[fill=gray!20] at (3,1) {38};
+\draw[color=black,thick,shift={(-0.5,-0.5)}] (0,0) grid (4,2);
+
+\node[anchor=east] at (1.5,-1) {$L = (4,2):(12,2) =$ };
+\end{tikzpicture}
+\]
+    且 $\sigma = (1\; 2) \in \Sigma_2$ 是对换（transposition），则
+
+\[
+\begin{tikzpicture}[x={(0cm,-1cm)},y={(1cm,0cm)},every node/.style={minimum size=1cm, outer sep=0pt}]
+
+\node[fill=gray!20] at (0,0) {0};
+\node[fill=gray!20] at (0,1) {12};
+\node[fill=gray!20] at (0,2) {24};
+\node[fill=gray!20] at (0,3) {36};
+\node[fill=gray!20] at (1,0) {2};
+\node[fill=gray!20] at (1,1) {14};
+\node[fill=gray!20] at (1,2) {26};
+\node[fill=gray!20] at (1,3) {38};
+\draw[color=black,thick,shift={(-0.5,-0.5)}] (0,0) grid (2,4);
+
+\node[anchor = east] at (0.5,-1) {$L^\sigma = (2,4):(2,12) = $};
+\end{tikzpicture}
+\]
+是转置后的布局。
+\end{example}
+
+\begin{example}
+    若
+    \[L = (15,12,10):(240,1,24)\]
+    且 $\sigma = (1 \; 2 ) \in \Sigma_3$，则
+    \[
+    L^\sigma = (12,15,10):(1,240,24).
+    \]
+\end{example}
+
+\begin{example}
+    若
+    \[L = (2,2,2,2,2):(1,2,4,8,16)\]
+    且 $\sigma = (1 \; 5)(3 \; 2 \; 4) \in \Sigma_5$，则
+    \[
+    L^\sigma = (2,2,2,2,2):(16,8,2,4,1).
+    \]
+\end{example}
+
+\begin{example}
+    若
+    \[
+    L = (s,\dots,s):(d,\dots,d)
+    \]
+    是所有模式都相同的扁平布局，则对任意 $\sigma \in \Sigma_m$，有
+    \[
+    L^\sigma = L.
+    \]
+\end{example}
+
+\subsubsection{排序}
+
+若 $L$ 是扁平布局，按以下意义置换 $L$ 使其模式递增往往很有用。
+
+\begin{definition}
+我们对整数对 $s:d$ 定义线性序（linear ordering）：
+\[
+s:d \preceq s':d' \hspace{0.2in} \Leftrightarrow \hspace{0.2in} \begin{matrix} d < d' \text{, or}\\
+d = d'\text{ and }s \leq s'.
+\end{matrix}
+\]
+
+\end{definition}
+
+\begin{example}
+    我们有
+    \[
+    5:8 \preceq 4:12 \preceq 5:12.
+    \]
+\end{example}
+
+\begin{definition}\label{definitionofsorted}
+    设 $L$ 是扁平布局。若对任意 $1 \leq i < \rank(L)$ 均有
+    \[
+    \mode_i(L) \preceq \mode_{i+1}(L),
+    \]
+    则称 $L$ 是{\it 已排序}（sorted）的。
+\end{definition}
+
+\begin{example}\label{sortedlayoutexample}
+布局
+\begin{align*}
+L_1 & = (128,64,2,2):(1,128,8192,16384)\\
+L_2 & = (2,2,2):(1,1,1)
+\end{align*}
+是已排序的，而布局
+\begin{align*}
+L_3 & = (2,4,8,16):(64,1,2,4)\\
+L_4 & = (5,32,16):(1,5,5)
+\end{align*}
+不是已排序的。
+\end{example}
+
+\begin{example}
+    空布局 $E = ():()$ 是已排序的。
+\end{example}
+
+\begin{example}
+    若
+    \[L = (s_1,\dots,s_m):(0,\dots,0)\]
+    是所有 $\stride(L)$ 元素均为 $0$ 的扁平布局，则 $L$ 已排序当且仅当
+    \[
+    s_1 \leq s_2 \leq \cdots \leq s_m.
+    \]
+\end{example}
+
+扁平布局 $L$ 是否已排序，与 $L$ 的布局函数 $\Phi_L$ 的性态密切相关，如下述引理所述。
+\begin{lemma}
+    设 $L$ 是扁平布局。若 $\Phi_L$ 非减（non-decreasing），则 $L$ 已排序。
+\end{lemma}
+\begin{proof}
+我们证明逆否命题（contrapositive）。设 $L$ 未排序。我们将证明在 $\Phi_L$ 的定义域（domain）中存在某个 $x \leq y$，使得 $\Phi_L(x)>\Phi_L(y)$。若存在某个 $1 \leq i < m$ 使得 $d_i > d_{i+1}$，则可取
+    \begin{align*}
+    x & = \prod_{j<i}s_j, \hspace{0.2in}\text{and}\hspace{0.2in} y = \prod_{j<i+1}s_j,
+    \end{align*}
+    此时 $x < y$，但
+    \begin{align*}
+    \Phi_L(x) & = (0,\dots,1,0,\dots,0) \cdot (d_1,\dots,d_i,d_{i+1},\dots,d_m) \\
+    & = d_i\\
+    & > d_{i+1}\\
+    & = (0,\dots,0,1,\dots,0) \cdot (d_1,\dots,d_m)\\
+    & = \Phi_L(y).
+    \end{align*}
+    另一方面，若存在某个 $1 \leq i < m$ 使得 $d_i = d_{i+1}$ 且 $s_i > s_{i+1}$，则可设
+    \begin{align*}
+    x & = (s_i-1)\left(\prod_{j<i} s_j\right),\hspace{0.2in} \text{ and } \hspace{0.2in}y = (s_{i+1} - 1)\left( \prod_{j<i+1}s_j\right),
+    \end{align*}
+    此时 $x < y$，但
+    \begin{align*}
+    \Phi_L(x) & = (0,\dots,s_i-1,0,\dots,0) \cdot (d_1,\dots,d_i,d_{i+1},\dots,d_m) \\
+    & = (s_i-1)d_i\\
+    & > (s_{i+1}-1)d_{i}\\
+    & = (s_{i+1}-1)d_{i+1}\\
+    & = (0,\dots,0,s_{i+1}-1,\dots,0) \cdot (d_1,\dots,d_m)\\
+    & = \Phi_L(y).
+    \end{align*}
+    由此得出 $\Phi_L$ 并非非减。
+\end{proof}
+
+\begin{remark}
+    上一引理的逆命题不成立。例如（example），扁平布局
+    \[L = (3,5,7):(1,1,1)\]
+    是已排序的，但
+    \[
+    \Phi_L(7) = (0,2,0) \cdot (1,1,1) = 2
+    \]
+    严格大于
+    \[\Phi_L(16) = (0,0,1)\cdot(1,1,1) = 1.
+    \]
+\end{remark}
+
+若 $L$ 是扁平布局，则我们可以置换 $L$ 的模式以获得已排序的布局 $\sort(L)$。
+
+\begin{construction}
+    设
+    \[L = (s_1,\dots,s_m):(d_1,\dots,d_m)\]
+    是扁平布局。在 $\langle m \rangle$ 上定义线性序 $\preceq$：$i \preceq j$ 当且仅当
+    \begin{enumerate}
+        \item $\mode_i(L) \preceq \mode_j(L)$，且
+        \item 若 $\mode_i(L) = \mode_j(L)$，则 $i \leq j$。
+    \end{enumerate}
+    令 $\sigma \in \Sigma_m$ 为与 $\langle m \rangle$ 上线性序 $\preceq$ 相关联的置换。我们定义 $\sort(L)$ 为 $L$ 经 $\sigma$ 置换的结果：
+    \[
+    \sort(L) = L^\sigma.
+    \]
+\end{construction}
+
+\begin{example}
+    若
+    \[L = (2,4,8,16):(64,1,2,4)\]
+    则
+    \[\sort(L) = (4,8,16,2):(1,2,4,64).\]
+\end{example}
+\begin{example}
+若
+\[L = (5,32,16):(1,5,5)\]
+则
+\[
+    \sort(L) = (5,16,32):(1,5,5).
+\]
+\end{example}
+\begin{example}
+    若 $L$ 已排序，则 $\sort(L) = L$。特别地，这蕴含 $\sort(-)$ 是幂等（idempotent）运算：
+    \[
+    \sort(\sort(L)) = \sort(L).
+    \]
+\end{example}
+
+
+\begin{observation}
+    若 $L$ 是扁平布局，则通常 $\Phi_{\sort(L)} \neq \Phi_{L}$。然而，布局函数 $\Phi_L$ 与 $\Phi_{\sort(L)}$ 总具有相同的像（image）。为说明这一点，记
+    \begin{align*} L & = (s_1,\dots,s_m):(d_1,\dots,d_m)\text{, and}\\
+    \sort(L) & = (s_{\sigma(1)},\dots,s_{\sigma(m)}):(d_{\sigma(1)},\dots,d_{\sigma(m)})
+    \end{align*}
+    其中 $\sigma \in \Sigma_m$ 是某个置换。若整数 $n$ 位于 $\Phi_L$ 的像中，则存在元组 $(x_1,\dots,x_m) \in \prod_{i=1}^m {[}0,s_i{)}$ 使得
+    \[
+    x_1d_1 + \cdots + x_m d_m = n
+    \]
+    此时元组 $(x_{\sigma(1)},\dots,x_{\sigma(m)}) \in \prod_{i=1}^m {[}0,s_{\sigma(i)}{)}$ 满足
+    \[
+    x_{\sigma(1)}d_{\sigma(1)} + \cdots + x_{\sigma(m)}d_{\sigma(m)} = n.
+    \]
+    这就证明了 $\Image(\Phi_\sort(L)) \subseteq \Image(\Phi_L)$，反向包含同理可证。
+\end{observation}
+
+\subsubsection{拼接}
+
+\noindent 回顾一下，若 $X= (x_1,\dots,x_m)$ 与 $Y  = (y_1,\dots,y_n)$ 是元组，则 $X$ 与 $Y$ 的拼接（concatenation）是元组
+    \[
+    X \star Y = (x_1,\dots,x_m,y_1,\dots,y_n).
+    \]
+这一定义（definition）可自然推广到扁平布局的拼接。
+
+\begin{definition}\label{definitionofflatconcatenate}
+    设
+    \begin{align*}
+        L_1 & = S_1:D_1\\
+        L_2 & = S_2:D_2
+    \end{align*}
+    是扁平布局。则 $L_1$ 与 $L_2$ 的{\it 拼接}是扁平布局
+    \[
+    L_1 \star L_2 = S_1 \star S_2 : D_1 \star D_2.
+    \]
+    扁平布局的拼接满足结合律，因此更一般地，若 $L_1,\dots,L_k$ 是扁平布局，我们可以构成拼接
+    \[
+    L_1 \star \cdots \star L_k.
+    \]
+\end{definition}
+
+\begin{example}\label{flatconcatenateexample1}
+    若 $L_1 = (7,2):(2,1)$ 且 $L_2 = (3,3,3):(0,10,30)$，则
+    \[
+    L_1 \star L_2 = (7,2,3,3,3):(2,1,0,10,30).
+    \]
+\end{example}
+
+\begin{example}\label{flatconcatenateexample2}
+    若 $E = ():()$ 是空布局，则对任意扁平布局 $L$ 有
+    \[
+    L \star E = L = E \star L.
+    \]
+\end{example}
+
+\begin{observation}
+    设
+    \[
+    L = (s_1,\dots,s_m):(d_1,\dots,d_m)
+    \]
+    是扁平布局。若记
+    \[L_i = (s_i):(d_i),\]
+    则我们可以把 $L$ 写成拼接
+    \[
+    L = L_1 \star \cdots \star L_m.
+    \]
+\end{observation}
+
+若 $L_1,\dots,L_k$ 是扁平布局，则拼接 $L_1 \star \cdots \star L_k$ 的布局函数由 $L_1,\dots,L_k$ 的布局函数按如下方式确定。
+
+\begin{proposition}\label{layoutfunctionofconcatenatedlayout}
+    设 $L_1,\dots,L_k$ 分别是形状为 $S_1,\dots,S_k$、大小（size）为 $N_1,\dots,N_k$ 的扁平布局。则 $L_1 \star \cdots \star L_k$ 的坐标函数（coordinate function）
+        \[ \begin{tikzcd}
+        {[}0,S_1 \star \cdots \star S_k{)} \ar[rr,"\varphi_{L_1 \star \cdots \star  L_k} "] & & \mathbb{Z}
+        \end{tikzcd}
+        \]
+        等于复合
+        \[\begin{tikzcd} [column sep = 30]
+     {[}0,S_1 \star \cdots \star S_k{)} \ar[r,"\cong"]  & {[}0,S_1{)} \times \cdots \times {[}0,S_k{)} \ar[rr,"\varphi_{L_1} +\cdots + \varphi_{L_k}"] & & \mathbb{Z} , \\
+     X_1 \star \cdots \star X_k \ar[r]  & \ar[l] (X_1,\dots,X_k) & & &
+    \end{tikzcd} \]
+        而布局函数
+    \[ \begin{tikzcd}
+     {[}0,N_1 \cdots N_k{)} \ar[rr,"\Phi_{L_1 \star \cdots \star  L_k} "] & & \mathbb{Z}
+    \end{tikzcd}
+    \]
+    等于复合
+    \[\begin{tikzcd} [column sep = 30]
+    {[}0,N_1\cdots N_k{)} \ar[rr,"\colex_{(N_1,\dots,N_k)}^{-1}"] & & {[}0,N_1{)} \times \cdots \times {[}0,N_k{)} \ar[rr,"\Phi_{L_1} + \cdots +\Phi_{L_k}"] & &  \mathbb{Z}.
+    \end{tikzcd} \]
+\end{proposition}
+
+\begin{proof}
+    对每个 $1 \leq i \leq k$，记 $L_i = S_i:D_i$。第一条断言成立，因为若
+    \[X \in [0,S_1 \star \cdots \star S_k)\]
+    在典范同构 $[0,S_1 \star \cdots \star S_k) \cong [0,S_1) \times \cdots \times [0,S_k)$ 下对应于
+    \[
+    X_1 \star \cdots \star X_k \in [0,S_1) \times \cdots \times [0,S_k)
+    \]
+    则
+    \begin{align*}
+        \varphi_{L_1 \star \cdots \star L_k}(X) & = X \cdot (D_1 \star \cdots \star D_k)\\
+        & = (X_1 \star \cdots \star X_k) \cdot (D_1 \star \cdots \star D_k)\\
+        & = (X_1 \cdot D_1) + \cdots + (X_k \cdot D_k)\\
+        & = \varphi_{L_1}(X_1) + \cdots + \varphi_{L_k}(X_k).
+    \end{align*}
+
+    对第二条断言，我们论证下图
+    \[\begin{tikzcd} [row sep = 20]
+    {[}0,N_1 {)} \times \cdots \times {[}0,N_1 {)} \ar[rrrr,"\colex_{S_1}^{-1} \times \cdots \times \colex_{S_k}^{-1} "] & & & & {[}0,S_1 {)} \times \cdots \times {[}0,S_1 {)} \ar[drr,"\varphi_{L_1} + \cdots + \varphi_{L_k}"] & & \\
+    {[}0,N_1 \cdots N_k {)} \ar[u,"\colex_{(N_1,\dots,N_k)}^{-1}"] \ar[rrrr,swap,"\colex_{S_1\star \cdots \star S_k}^{-1}"] & & & & {[}0,S_1 \star \cdots \star S_k{)} \ar[rr,swap,"\varphi_{L_1 \star \cdots \star L_k}"] \ar[u,"\cong"] & & \mathbb{Z}
+    \end{tikzcd} \]
+    交换。左侧的正方形交换，因为余字典序（colexicographic）同构满足结合律；右侧的三角形由第一条断言知其交换。
+\end{proof}
+
+我们可以如下描述拼接布局的重要属性。
+
+\begin{proposition}\label{attributesofconcatenatedflatlayouts}
+    设 $L_1,\dots,L_k$ 是扁平布局。则
+    \begin{enumerate}
+        \item $L_1 \star \cdots \star L_k$ 的秩为 \[\rank(L_1 \star \cdots \star L_k)  = \sum_{i=1}^k\rank(L_i),\]
+        \item $L_1 \star \cdots \star L_k$ 的大小为
+        \[\size(L_1 \star \cdots \star L_k) = \prod_{i=1}^k\size(L_i),\]
+        \item $L_1 \star \cdots \star L_k$ 的余大小（cosize）为
+        \[\cosize(L_1 \star \cdots \star L_k) = 1 - k + \sum_{i=1}^k\cosize(L_i).\]
+    \end{enumerate}
+\end{proposition}
+
+\begin{proof}
+    对每个 $1 \leq i \leq k$，记 $L_i = S_i:D_i$。对 1，我们计算
+    \begin{align*}
+        \rank(L_1 \star \cdots \star L_k) & = \len(S_1 \star \cdots \star S_k) = \sum_{i=1}^k \len(S_i) = \sum_{i=1}^k \rank(L_i).\\
+    \end{align*}
+    对 2，我们计算
+    \begin{align*}
+        \size(L_1 \star \cdots \star L_k) & = \size(S_1 \star \cdots \star S_k) = \prod_{i=1}^k \size(S_i) = \prod_{i=1}^k \size(L_i).
+    \end{align*}
+    对 3，我们计算
+    \begin{align*}
+    \cosize(L_1 \star \cdots \star L_k)  & = 1 + \max(\Phi_{L_1 \star \cdots \star L_k})\\
+    & = 1 + \sum_{i=1}^k\max(\Phi_{L_i})\\
+    & = 1 - k + \left( 1 + \max(\Phi_{L_1}) \right) + \cdots + \left( 1 + \max(\Phi_{L_1}) \right)\\
+    & = 1 - k + \cosize(L_1) + \cdots + \cosize(L_k).
+    \end{align*}
+    其中我们用到了命题 \ref{layoutfunctionofconcatenatedlayout} 对 $\Phi_{L_1 \star \cdots \star L_k}$ 的等同。
+\end{proof}
+
+
+
+\subsection{扁平合并}
+我们已经看到，扁平布局 $L$ 的布局函数 $\Phi_L$ 是一个重要的不变量（invariant）。在许多情形下，我们只关心布局函数 $\Phi_L$，因而可以自由地使用任何布局函数为 $\Phi_L$ 的布局。扁平合并（flat coalesce）运算
+\[L \mapsto \coalesce^\flat(L)\]
+为我们提供了布局函数为 $\Phi_L$ 的最简扁平布局（见命题 \ref{characterizationofflatcoalesce}）。
+
+我们先定义已合并扁平布局的概念。
+\begin{definition} \label{definitionofflatlayoutcoalesce}
+设 $L = (s_1,\dots,s_m):(d_1,\dots,d_m)$ 是扁平布局。若
+\begin{enumerate}
+    \item 对任意 $1 \leq i \leq m$，有 $s_i \neq 1$，且
+    \item 对任意 $1 \leq i <m$，有 $s_id_i \neq d_{i+1}$，
+\end{enumerate}
+则称 $L$ 是{\it 已合并}（coalesced）的。
+\end{definition}
+
+\begin{example}
+    扁平布局
+    \begin{align*} L =(3,5,2):(7,21,4)
+    \end{align*}
+    不是已合并的，因为 $3\cdot 7 = 21$。
+\end{example}
+\begin{example}扁平布局
+    \[
+    L = (2,7,6):(1,3,10)
+    \]
+    是已合并的。
+\end{example}
+\begin{example}
+    空布局 $E = ():()$ 是已合并的。
+\end{example}
+\begin{example}
+    若 $L=(s):(d)$ 且 $s \neq 1$，则 $L$ 是已合并的。
+\end{example}
+
+\begin{example}
+    若 $L = (s_1,\dots,s_m):(d_1,\dots,d_m)$ 是 $\rank(L)>1$ 的列主序（column-major）布局，则 $L$ 不是已合并的，因为对任意 $1 \leq i < m$，有
+    \[
+    s_id_i = s_i (s_1\cdots s_{i-1}) = s_1 \cdots s_i = d_{i+1}.
+    \]
+\end{example}
+
+\begin{example}
+    若 $L = (s_1,\dots,s_m):(d_1,\dots,d_m)$ 是行主序（row-major）布局且对所有 $1 \leq i \leq m$ 有 $s_i>1$，则 $L$ 是已合并的：若 $ 1\leq i < m$，则
+    \[
+    s_id_i = s_is_{i+1}\cdots s_m > s_{i+2}\cdots s_m = d_{i+1}.
+    \]
+\end{example}
+
+
+\begin{example}
+    形如
+    \[L = (s_1,\dots,s_m):(0,\dots,0)\]
+    的扁平布局是已合并的当且仅当 $m \leq 1$。
+\end{example}
+
+若 $L$ 是扁平布局，则我们可以通过移除满足 $s_i = 1$ 的模式、并合并满足 $s_id_i = d_{i+1}$ 的模式，得到一个与 $L$ 具有相同布局函数的已合并布局 $\coalesce^\flat(L)$。更确切地说，我们给出如下构造（construction）。
+
+\begin{construction}\label{constructionofflatcoalesce}
+设 $L$ 是扁平布局，记
+\[\squeeze(L) = (s_1,\dots,s_m):(d_1,\dots,d_m).\]
+令 $\sim$ 为 $\langle m \rangle$ 上由如下规则生成的等价关系（equivalence relation）：当
+\[
+s_id_i = d_{i+1}.
+\]
+时，规定 $i \sim i+1$。商（quotient）$\langle m \rangle / \sim$ 按如下方式定序：若 $i \leq i'$，则 $[i] \leq [i']$；于是我们可将 $\langle m \rangle / \sim$ 与 $\langle \bar{m} \rangle$ 等同，其中 $\bar{m}$ 是 $\langle m \rangle / \sim$ 的大小。若 $i \in \langle \bar{m} \rangle$ 对应等价类（equivalence class）
+\[I = \{i', i' + 1, \dots, i'+k\} \in \langle m \rangle/\sim,\]
+则我们定义整数 $\bar{s}_i$ 与 $\bar{d}_i$ 为
+\begin{align*}
+\bar{s}_i & = s_{i'} s_{i'+1}\cdots s_{i'+k}
+\end{align*}
+与
+\begin{align*}
+\bar{d}_i & = d_{i'},
+\end{align*}
+并定义
+\[
+\coalesce^\flat(L) = (\bar{s}_1,\dots,\bar{s}_{\bar{m}}):(\bar{d}_1,\dots,\bar{d}_{\bar{m}}).
+\]
+\end{construction}
+
+\begin{observation}\label{flatcoalesceobservation}
+    细察该定义（definition），我们可以等价地把 $\coalesce^\flat(L)$ 定义为：从
+    \[
+    \squeeze(L) = (s_1,\dots,s_m):(d_1,\dots,d_m)
+    \]
+    出发，反复执行操作
+    \[
+    s_i,s_{i+1} : d_i,s_id_i \hspace{0.2in} \rightsquigarrow \hspace{0.2in} s_is_{i+1} : d_i
+    \]
+    直至结果已合并，所得到的扁平布局。
+\end{observation}
+
+\begin{example}
+    若 $L = (2,2,2,2,2):(8,16,1024,2048,4096)$，则
+    \[
+    \coalesce^\flat(L) = (4,8):(8,1024).
+    \]
+\end{example}
+
+\begin{example}
+    若 $L = (3,4,1,5):(1,8,3,32)$，则
+    \[
+    \coalesce^\flat(L) = (3,20):(1,8).
+    \]
+\end{example}
+
+\begin{example}
+    若 $L = (s_1,\dots,s_m):(d_1,\dots,d_m)$ 是列主序的，且并非所有 $s_i$ 都等于 $1$，则
+    \[
+    \coalesce^\flat(L) = (s_1\cdots s_m):(1).
+    \]
+\end{example}
+
+\begin{example}
+    若 $L$ 是行主序的，则
+    \[
+    \coalesce^\flat(L) = \squeeze(L).
+    \]
+\end{example}
+
+我们来论证运算 $L \mapsto \coalesce^\flat(L)$ 的结果确为已合并布局。
+\begin{lemma}
+    若 $L$ 是扁平布局，则 $\coalesce^\flat(L)$ 是已合并的。
+\end{lemma}
+
+\begin{proof}
+沿用构造 \ref{constructionofflatcoalesce} 的记号（notation），令
+    \[
+    \squeeze(L) = (s_1,\dots,s_m):(d_1,\dots,d_m)
+    \]
+    并令
+    \[
+    \coalesce^\flat(L) = (\bar{s}_1,\dots,\bar{s}_{\bar{m}}) : ( \bar{d}_1,\dots,\bar{d}_{\bar{m}}).
+    \]
+    我们要证明 $\coalesce^\flat(L)$ 是已合并的。设 $1 \leq i \leq \bar{m}$。则 $i$ 对应一个（非空）等价类 $I \in \langle m \rangle / \sim$，且
+    \[
+    \bar{s}_i = \prod_{i' \in I} s_{i'}
+    \]
+    是一些整数 $s_{i'} > 1$ 的乘积，故 $\bar{s}_i >1$。
+
+    设 $1 \leq i < \bar{m}$。我们断言 $\bar{s}_i \bar{d}_i \neq \bar{d}_{i+1}$。设 $i$ 对应等价类
+    \[\{i',i' + 1 , \dots , i' + k\} \in \langle m \rangle / \sim,\] 并设 $i+1$ 对应等价类
+    \[ \{i'+k+1,i'+k+2,\dots,i'+k+\ell\} \in \langle m \rangle / \sim.\]
+    则利用对 $0 \leq t < k$ 成立的等式 $s_{i'+t}d_{i'+t} = d_{i'+t+1}$，我们可以写出
+    \begin{align*}
+        \bar{s}_i \bar{d}_i = \bar{d}_i \bar{s}_i & = d_{i'} s_{i'} s_{i' + 1 } \cdots s_{i'+k}\\
+        & = d_{i'+1}s_{i'+1} \cdots s_{i'+k}\\
+        & \hspace{0.08in} \vdots \\
+        & = d_{i'+k} s_{i'+k}\\
+        & = s_{i'+k}d_{i'+k}
+    \end{align*}
+    又由于 $i'+k$ 与 $i'+k+1$ 不属于同一等价类，我们有
+    \begin{align*}
+        \bar{s}_i\bar{d}_i = s_{i'+k}d_{i'+k} \neq d_{i'+k+1} = \bar{d}_{i+1}.
+    \end{align*}
+\end{proof}
+
+
+\begin{example}
+    若 $L$ 已合并，则 $\coalesce^\flat(L) = L$。特别地，这蕴含 $\coalesce^\flat(-)$ 是幂等运算：
+    \[
+    \coalesce^\flat(\coalesce^\flat(L)) = \coalesce^\flat(L).
+    \]
+\end{example}
+
+接下来，我们论证对扁平布局做合并不改变其布局函数。
+
+\begin{lemma} \label{coalescelemma}
+    若 $L$ 是扁平布局，则 $\Phi_{\coalesce^\flat(L)} = \Phi_L$。
+\end{lemma}
+
+\begin{proof}
+由观察 \ref{flatcoalesceobservation}，只需证明把 $s_i,s_{i+1}:d_i,s_id_i$ 的一处出现替换为 $s_is_{i+1}:d_i$ 不改变布局函数。设
+\[
+L = (s_1,\dots,s_m):(d_1,\dots,d_m)
+\]
+是扁平布局，且存在某个 $1 \leq i < m$ 使得 $d_{i+1} = s_id_i$。令
+    \begin{align*} L' & = (s_1',\dots,s_{m-1}'):(d_1',\dots,d_{m-1}')
+    \end{align*}
+    表示由 $L$ 合并其第 $i$ 个与第 $(i+1)$ 个模式后得到的扁平布局。更确切地说，我们有
+
+    \[
+    s_j' = \begin{cases} s_j & j < i\\
+    s_is_{i+1} & j = i \\
+    s_{j+1} & i<j<m,
+    \end{cases}
+    \hspace{0.2in}\text{ and } \hspace{0.2in} d_j' = \begin{cases} d_j & j \leq i\\
+    d_{j+1} & i<j<m.
+    \end{cases}
+    \]
+    $L$ 的布局函数由
+    \[
+    \Phi_L(x) = x_1 d_1 + \cdots + x_m d_m
+    \]
+    给出，其中 $x_j = \left\lfloor \dfrac{x}{s_1\cdots s_{j-1}} \right \rfloor \mod s_j$；而 $L'$ 的布局函数由
+    \[
+    \Phi_{L'}(x) = x_1' d_1' + \cdots + x_{m-1}'d_{m-1}'
+    \]
+    给出，其中 $x_j' = \left\lfloor \dfrac{x}{s_1'\cdots s_{j-1}'} \right \rfloor \mod s_j'$。我们观察到
+
+    \[
+    x_j' =
+    \begin{cases}
+        x_j & j < i \\
+        x_i + x_{i+1}s_i & j = i\\
+        x_{j+1} & i < j < m,
+    \end{cases}
+    \]
+    于是
+    \begin{align*}
+        \Phi_L(x) & = x_1 d_1 + \cdots + x_m d_m \\
+        & = x_1 d_1 + \cdots + x_i d_i + x_{i+1}s_id_i + \cdots + x_m d_m\\
+        & = x_1d_1 + \cdots + (x_i + x_{i+1} s_i) d_i + \cdots + x_m d_m \\
+        & = x_1'd_1' + \cdots + x_{m-1}'d_{m-1}'\\
+        & = \Phi_{L'}(x).
+    \end{align*}
+
+\end{proof}
+
+\noindent 我们可以利用合并运算来刻画两个扁平布局何时具有相同的布局函数。
+
+\begin{proposition} \label{coalesceproposition}
+    设 $A$ 与 $B$ 是扁平布局。则
+    \[
+    \Phi_A = \Phi_B \quad \Leftrightarrow \quad \coalesce^\flat(A) = \coalesce^\flat(B).
+    \]
+\end{proposition}
+\begin{proof}
+    若 $\coalesce^\flat(A) = \coalesce^\flat(B)$，则由引理 \ref{coalescelemma}，有
+    \[ \Phi_A = \Phi_{\coalesce^\flat(A)} = \Phi_{\coalesce^\flat(B)} = \Phi_B.\]
+
+    \noindent 反之，设 $\coalesce^\flat(A) \neq \coalesce^\flat(B)$。我们论证 $\Phi_A \neq \Phi_B$。记
+    \begin{align*}
+    \coalesce^\flat(A) & = (s_1,\dots,s_m) : (d_1,\dots,d_m)\text{,} \\
+    \coalesce^\flat(B) & = (t_1,\dots,t_n) : (e_1,\dots,e_m).
+    \end{align*}
+    若 $m,n$ 中一个非零而另一个为 $0$，则显然 $\Phi_A \neq \Phi_B$，故可设 $m,n\geq 1$。令 $i$ 为使得 $(s_i,d_i) \neq (t_i,e_i)$ 的最小整数。于是特别地，对任意 $j < i$ 有 $s_1 \cdots s_j = t_1 \cdots t_j$。分两种情形考虑：\\
+
+    \begin{itemize}
+    \item （情形 1）：设 $d_i \neq e_i$。令 $N = s_1 \cdots s_{i-1} = t_1 \cdots t_{i-1}$。则
+        \[
+        \Phi_{\coalesce^\flat(A)}(N) = d_i \neq e_i = \Phi_{\coalesce^\flat(B)}(N)
+        \]
+        故 $\Phi_{\coalesce^\flat(A)} \neq \Phi_{\coalesce^\flat(B)}$，从而 $\Phi_A \neq \Phi_B$。\\
+
+     \item （情形 2）：设 $d_i = e_i$，从而 $s_i \neq t_i$。不失一般性，可设 $s_i < t_i$。令 $N = s_1 \cdots s_i = (t_1 \cdots t_{i-1}) s_i$。则
+        \[
+        \Phi_{\coalesce^\flat(A)}(N)= d_{i+1}
+        \]
+        而
+        \begin{align*}
+        \Phi_{\coalesce^\flat(B)}(N) & = s_ie_i\\
+        & = s_id_i,
+        \end{align*}
+        又由于 $\coalesce^\flat(A)$ 已合并，有 $d_{i+1} \neq s_id_i$。我们推出 $\Phi_{\coalesce^\flat(A)} \neq \Phi_{\coalesce^\flat(B)}$，从而 $\Phi_A \neq \Phi_B$。
+    \end{itemize}
+\end{proof}
+
+上一命题给出了 $\coalesce^\flat(L)$ 的如下抽象刻画。
+
+\begin{proposition}\label{characterizationofflatcoalesce}
+    若 $L$ 是扁平布局，则 $\coalesce^\flat(L)$ 是唯一的秩最小且布局函数为 $\Phi_L$ 的扁平布局。
+\end{proposition}
+
+\begin{proof}
+    设 $L'$ 是满足 $\Phi_{L'} = \Phi_L$ 的扁平布局。则由命题 \ref{coalesceproposition}，有
+    \[
+    \coalesce^\flat(L) = \coalesce^\flat(L'),
+    \]
+    进而
+    \[
+    \rank(\coalesce^\flat(L)) = \rank(\coalesce^\flat(L')) \leq \rank(L'),
+    \]
+    其中等号成立当且仅当
+    \[
+    L ' = \coalesce^\flat (L') = \coalesce^\flat(L).
+    \]
+\end{proof}

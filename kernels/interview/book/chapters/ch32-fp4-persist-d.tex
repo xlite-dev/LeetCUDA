@@ -161,6 +161,68 @@ HW 调度器负载均衡——多数 work 的 $T_{c,eff}\ll T_c$，persistent �
 每 work 固定开销会占主导）。barrier 协议对任意 gridDim 都成立，
 non-persistent 只是每 barrier 只翻第一个 phase 的退化情形。
 
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize, >=Stealth]
+  \def\bw{1.18}
+  \def\bh{0.30}
+  \node[anchor=south west, font=\scriptsize\bfseries] at (0.62,0.34)
+    {persistent（dense 默认）：gridDim $=\min(\text{total\_work},\text{SMs})$};
+  % work 块按序号取 hue 环（colorx6/5/4/3），跨 SM 同列同色 = strided 认领
+  \foreach \sm in {0,...,3}{
+    \pgfmathsetmacro{\ya}{-\sm*0.375}
+    \fill[gray!10] (0.62,\ya) rectangle (0.74,{\ya-\bh});
+    \draw[gray!60, thin] (0.62,\ya) rectangle (0.74,{\ya-\bh});
+    \foreach \w/\wcol in {0/colorx6,1/colorx5,2/colorx4,3/colorx3}{
+      \pgfmathsetmacro{\xa}{0.74+\w*\bw}
+      \fill[\wcol!24] (\xa,\ya) rectangle ({\xa+\bw-0.03},{\ya-\bh});
+      \draw[thick] (\xa,\ya) rectangle ({\xa+\bw-0.03},{\ya-\bh});
+    }
+    \fill[gray!10] ({0.74+4*\bw-0.03},\ya) rectangle ({0.74+4*\bw+0.09},{\ya-\bh});
+    \draw[gray!60, thin] ({0.74+4*\bw-0.03},\ya) rectangle ({0.74+4*\bw+0.09},{\ya-\bh});
+    \node[left, font=\tiny] at (0.60,\ya-0.15) {SM \sm};
+  }
+  \fill[white, opacity=0.6] ({0.74+\bw-0.07},0) rectangle ({0.74+\bw+0.07},-0.30);
+  \draw[gray!60, thick, densely dashed] ({0.74+\bw-0.07},0) -- ({0.74+\bw-0.07},-0.30);
+  \foreach \w in {0,...,3}{
+    \node[font=\tiny] at ({0.74+\w*\bw+0.5*\bw-0.015},-0.15) {work \w};
+  }
+  \node[anchor=west, align=left, text width=3.3cm, font=\tiny] at (5.66,-0.42)
+    {白色窄带 $=$ producer 在 consumer 跑 epilogue 时预取下一 work 的 K/V；
+     fill/drain 与 warm 状态每 CTA 只摊一次。};
+  \node[anchor=north west, font=\scriptsize\bfseries] at (0.62,-1.52)
+    {block-per-work（causal 默认）：gridDim $=$ \texttt{total\_work}};
+  \foreach \sm/\wla in {0/1.15,1/0.92,2/0.70,3/0.50}{
+    \pgfmathsetmacro{\ya}{-1.92-\sm*0.375}
+    \pgfmathsetmacro{\xb}{0.74+\wla+0.10}
+    \pgfmathsetmacro{\xc}{\xb+\wla*0.72}
+    \fill[colorx6!24] (0.74,\ya) rectangle ({\xb-0.10},{\ya-\bh});
+    \draw[thick] (0.74,\ya) rectangle ({\xb-0.10},{\ya-\bh});
+    \fill[colorx5!24] (\xb,\ya) rectangle ({\xc},{\ya-\bh});
+    \draw[thick] (\xb,\ya) rectangle ({\xc},{\ya-\bh});
+    \draw[gray!45, densely dotted] ({\xc+0.04},{\ya-0.15}) -- (5.55,{\ya-0.15});
+    \node[left, font=\tiny] at (0.60,\ya-0.15) {SM \sm};
+  }
+  \node[anchor=west, align=left, text width=3.3cm, font=\tiny] at (5.66,-2.55)
+    {每 work 一个独立 CTA：块间 gap $=$ 每 work 的 setup；
+     短 work 早完早释放 SM（虚线 $=$ 已空闲），HW 调度器做负载均衡。};
+  \draw[->, thick] (0.62,-3.46) -- (5.72,-3.46);
+  \node[anchor=north, font=\tiny] at (3.10,-3.48) {时间 $\to$};
+  \node[anchor=north west, align=left, text width=16.1cm, font=\tiny] at (0.0,-3.70)
+    {单 kernel、单代码路径（strided work loop，注释 L92--120）：dense 用
+     $\min(total\_work,SMs)$ 的 persistent 风格，causal 用 $total\_work$ 的 classic
+     block-per-work（短 work $T_{c,eff}\ll T_c$ 时 persistent 的每 work 固定开销占主导）。
+     barrier phase 由 per-CTA 全局 kv-tile 计数器驱动、永不 re-init（PTX ISA
+     9.7.13.15.9 对活跃 mbarrier 的 re-init 是 UB），non-persistent 只是每 barrier
+     只翻第一个 phase 的退化情形。};
+\end{tikzpicture}
+\caption{dense persistent 与 causal block-per-work 的 grid 调度对比（同一
+kernel、同一代码路径，runtime grid 定风格）。上：$\min(total\_work,SMs)$ 个 CTA
+按 strided work loop 认领，fill/drain 每 CTA 摊一次，producer 在 epilogue
+期间预取下一 work 的 K/V；下：每 work 一个 CTA，短 work 早完早释放 SM。}
+\label{fig:32-grid-sched}
+\end{figure}
+
 \subsection{Q 的寄存器驻留与一个教科书级 bug}
 
 Q/SFQ 是 per-work 常量：s2r 一次进 \texttt{tSrQ}/\texttt{tSrSFQ} 寄存
@@ -232,7 +294,50 @@ exp2 参数——两级 scale 在数据通路里都不占显式乘法。图~\ref
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.98\textwidth]{figures/drawio/fig-32-1-two-level-p/fig-32-1-two-level-p.png}
+  % was: \includegraphics[width=0.98\textwidth]{figures/drawio/fig-32-1-two-level-p/fig-32-1-two-level-p.png}
+  \begin{tikzpicture}
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{7.4}{9.3}\selectfont \bfseries }] at (0.37,-0.354) {两级 P 量化：online softmax 下的域拉伸与 exp2 折叠};% w=17.094
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{6.1}{7.7}\selectfont \bfseries \color{tkRed} }] at (0.37,-0.862) {(1) 问题：直接块量化的 SF 窄域浪费（SA3 C2）};% w=8.316
+    \node[draw=tkRed, fill=tkFillRed, line width=0.5pt, minimum width=7.70cm, minimum height=1.39cm, inner sep=1pt, align=center, text width=7.64cm, font={\fontsize{5.2}{6.6}\selectfont \color{tkRed} }] at (4.22,-1.802) {P $\in$ [0,1]，行内分布剧变：\\causal 早行近 one-hot / dense 行小而均匀\\$\to$ s = amax(块)/6 $\in$ [0, 0.167]\\ue4m3 在窄域的有效位数被浪费（SF 自身先损）};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{6.1}{7.7}\selectfont \bfseries \color{tkGreen!70!black} }] at (9.394,-0.862) {(2) 方案：两级拉伸（SA3 \S{}3.2）};% w=8.162
+    \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=8.16cm, minimum height=1.39cm, inner sep=1pt, align=center, text width=8.10cm, font={\fontsize{5.2}{6.6}\selectfont \color{tkGreen!70!black} }] at (13.475,-1.802) {第一级：整行拉伸到满量程（s\_P1 = rowmax/2688）\\第二级：per-16 组 absmax 归一（s\_P2, ue4m3）\\$\to$ 组 amax 恰好铺满 ue4m3 域 [0, 448]\\2688 = 448（ue4m3 满）$\times$ 6（e2m1 满）};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{6.1}{7.7}\selectfont \bfseries }] at (0.37,-3.018) {(3) 域拉伸链（三个域的端点）};% w=17.094
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=4.62cm, minimum height=0.71cm, inner sep=1pt, align=center, text width=4.56cm, font={\fontsize{5.2}{6.6}\selectfont }] at (2.68,-3.619) {softmax 输出（已减行 max）\\值域 [0, 1]};
+    \node[draw=tkPurple, fill=tkFillPurple, line width=0.5pt, minimum width=4.93cm, minimum height=0.71cm, inner sep=1pt, align=center, text width=4.87cm, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkPurple} }] at (8.624,-3.619) {P$_2$ = $\tilde{P}$ $\times$ 2688\\值域 [0, 2688]（全局常数拉伸）};
+    \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=5.24cm, minimum height=0.71cm, inner sep=1pt, align=center, text width=5.17cm, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkGreen!70!black} }] at (14.938,-3.619) {$\hat{P}$$_2$ $\in$ (0, 6]（e2m1 数据）\\s\_P2 $\in$ (0, 448]（ue4m3 组 SF）};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.4}{5.5}\selectfont \bfseries \color{tkPurple} }] at (4.959,-3.958) {$\times$2688};% w=1.170
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.4}{5.5}\selectfont \bfseries \color{tkGreen!70!black} }] at (11.18,-3.958) {$\div$s\_P2};% w=1.109
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (0.37,-4.25) {还原：O = FP4MM($\hat{P}$$_2$, s\_P2, $\hat{V}$, s\_V) ------ 2688 在 O 与 row\_sum 同现，finalize 相除精确消去};% w=17.094
+    \node[draw=gray!55, fill=black!2, line width=0.5pt, minimum width=8.32cm, minimum height=3.39cm, inner sep=1pt, align=center, text width=8.25cm, font={\fontsize{5.7}{7.1}\selectfont }] at (4.528,-6.314) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries }] at (0.616,-4.897) {(4) 实现的红利：第一级退化成常数};% w=7.854
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkPurple} }] at (0.616,-5.452) {online softmax 先减运行行 max $\Rightarrow$\\rowmax($\tilde{P}$) $\equiv$ 1 $\Rightarrow$ s\_P1 $\equiv$ 1/(448$\times$6)};% w=7.854
+    \node[draw=black!30, fill=black!2, line width=0.5pt, minimum width=7.85cm, minimum height=0.92cm, inner sep=1pt, align=center, text width=7.79cm, font={\fontsize{4.8}{6.0}\selectfont \color{black!65} }] at (4.543,-6.376) {P$_2$ = exp2(S$\cdot$L $-$ m$\cdot$L + log2(1/2688)) $\in$ [0, 2688]\\s\_P2 = exp2(a$\cdot$L $-$ m\_sc + log2(1/6)) $\in$ (0, 448]\\（L = scale$\cdot$log2e；编译期常数 $-$11.392 / $-$2.585）};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkGreen!70!black} }] at (0.616,-7.115) {逐行的 s\_P1 存储与乘回全部消失};% w=7.854
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (0.616,-7.484) {组归一也折进 exp2：q = exp2((s$-$a)$\cdot$L + log2 6)};% w=7.854
+    \node[draw=gray!55, fill=black!2, line width=0.5pt, minimum width=3.85cm, minimum height=3.39cm, inner sep=1pt, align=center, text width=3.79cm, font={\fontsize{5.7}{7.1}\selectfont }] at (11.042,-6.314) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries }] at (9.363,-4.897) {(5) 同链双归约};% w=3.388
+    \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=3.36cm, minimum height=0.62cm, inner sep=1pt, align=center, text width=3.30cm, font={\fontsize{4.8}{6.0}\selectfont }] at (11.042,-5.482) {lane 持 8 元素\\组 = 2 lane $\times$ 8};
+    \node[draw=tkBlue, fill=tkFillBlue, line width=0.5pt, minimum width=3.36cm, minimum height=0.62cm, inner sep=1pt, align=center, text width=3.30cm, font={\fontsize{4.8}{6.0}\selectfont \bfseries \color{tkBlue} }] at (11.042,-6.283) {shfl\_xor(1)\\$\to$ 16 元素组 absmax};
+    \node[draw=tkOrange, fill=tkFillOrange, line width=0.5pt, minimum width=3.36cm, minimum height=0.62cm, inner sep=1pt, align=center, text width=3.30cm, font={\fontsize{4.8}{6.0}\selectfont \bfseries \color{tkOrange!75!black} }] at (11.042,-7.084) {shfl\_xor(2)\\$\to$ quad 内行 max};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{black!65} }] at (9.363,-7.669) {组尺度+行 max 冗余减半};% w=3.388
+    \node[draw=gray!55, fill=black!2, line width=0.5pt, minimum width=4.16cm, minimum height=3.39cm, inner sep=1pt, align=center, text width=4.10cm, font={\fontsize{5.7}{7.1}\selectfont }] at (15.477,-6.314) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries }] at (13.644,-4.897) {(6) 三个守卫};% w=3.696
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{tkRed} }] at (13.644,-5.298) {全 masked 组：clamp 防 NaN};% w=3.696
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{tkRed} }] at (13.644,-6.068) {InfCheck：全 masked 行守卫};% w=3.696
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{tkRed} }] at (13.644,-6.838) {FirstTile：$-$$\infty$ 重启防泄漏};% w=3.696
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \bfseries \color{tkGreen!70!black} }] at (13.644,-7.608) {ex2.approx.ftz.f32 单 MUFU};% w=3.696
+    \node[draw=gray!55, fill=black!2, line width=0.5pt, minimum width=8.32cm, minimum height=1.54cm, inner sep=1pt, align=center, text width=8.25cm, font={\fontsize{5.7}{7.1}\selectfont }] at (4.528,-9.178) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries }] at (0.616,-8.655) {(7) lazy rescale（PC-11 per-row 守卫）};% w=7.854
+    \node[draw=black!30, fill=black!2, line width=0.5pt, minimum width=7.85cm, minimum height=0.92cm, inner sep=1pt, align=center, text width=7.79cm, font={\fontsize{4.8}{6.0}\selectfont \color{black!65} }] at (4.543,-9.332) {跨 tile 行 max 更新不即时重乘 O；下一个 PV 累加前\\scores\_scale(mi) $<$ 1.0f 的行才补乘（dense 96.5\% 命中零 FMUL），\\FMUL 永不无守卫进入 MMA 依赖链};
+    \node[draw=gray!55, fill=black!2, line width=0.5pt, minimum width=8.44cm, minimum height=1.54cm, inner sep=1pt, align=center, text width=8.38cm, font={\fontsize{5.7}{7.1}\selectfont }] at (13.336,-9.178) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries }] at (9.363,-8.655) {(8) MXFP8 PV 变体的域常量切换};% w=8.008
+    \node[draw=black!30, fill=black!2, line width=0.5pt, minimum width=8.01cm, minimum height=0.92cm, inner sep=1pt, align=center, text width=7.95cm, font={\fontsize{4.8}{6.0}\selectfont \color{black!65} }] at (13.367,-9.332) {V$^{\top}$ 换 e4m3 + ue8m0（32 组）时：P 侧同换 32 粒度，\\域常量 2688 $\to$ 448（无 e2m1 因子）、SF 取 2 的幂；\\历史 latent bug：lse 无条件沿用 2688（差 ln 6）};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkPurple} }] at (0.37,-10.349) {口诀：两级量化在实现里只剩一组组 absmax------第一级被 online softmax 折成常数，第二级的除法被 exp2 参数吸收。};% w=17.094
+    \draw[tkPurple, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (4.99,-3.619) -- (6.16,-3.619);
+    \draw[tkGreen, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (11.088,-3.619) -- (12.32,-3.619);
+    \draw[black!75, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (11.042,-5.79) -- (11.042,-5.975);
+    \draw[black!75, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (11.042,-6.591) -- (11.042,-6.776);
+  \end{tikzpicture}
   \caption{两级 P 量化的域拉伸：online softmax 使第一级退化为全局常数
   $1/2688$ 并折进 exp2 shift；第二级 per-16 组 absmax 铺满 ue4m3 域，
   组归一化同样折进 exp2 参数。}
@@ -241,7 +346,67 @@ exp2 参数——两级 scale 在数据通路里都不占显式乘法。图~\ref
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.98\textwidth]{figures/drawio/fig-32-2-persist-d-loop/fig-32-2-persist-d-loop.png}
+  % was: \includegraphics[width=0.98\textwidth]{figures/drawio/fig-32-2-persist-d-loop/fig-32-2-persist-d-loop.png}
+  \begin{tikzpicture}
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{7.4}{9.3}\selectfont \bfseries }] at (0.37,-0.354) {fp4 persist-D 主循环：128T producer + 256T consumer 与每 tile 五步};% w=17.094
+    \node[draw=gray!55, fill=black!2, line width=0.5pt, minimum width=17.09cm, minimum height=1.02cm, inner sep=1pt, align=center, text width=17.03cm, font={\fontsize{5.7}{7.1}\selectfont }] at (8.917,-1.217) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries }] at (0.616,-0.955) {work loop：for (work\_id = blockIdx.x; work\_id $<$ total\_work; work\_id += gridDim.x)   // 单 kernel 单路径，runtime grid 定风格};% w=16.478
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{black!65} }] at (0.616,-1.386) {dense：grid = min(total\_work, SMs)，persistent，流水摊一次、跨 work 预取};% w=8.008
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{black!65} }] at (9.24,-1.386) {causal：grid = total\_work，block-per-work，短 work 早完早释放（多数 Tc\_eff $\ll$ Tc）};% w=8.008
+    \node[draw=tkGreen, fill=tkFillGreen!60!white, line width=0.5pt, minimum width=3.85cm, minimum height=4.62cm, inner sep=1pt, align=center, text width=3.79cm, font={\fontsize{5.7}{7.1}\selectfont }] at (2.295,-4.312) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{6.1}{7.7}\selectfont \bfseries \color{tkGreen!70!black} }] at (0.616,-2.279) {producer（128T）};% w=3.388
+    \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=3.36cm, minimum height=0.68cm, inner sep=1pt, align=center, text width=3.30cm, font={\fontsize{4.8}{6.0}\selectfont \color{tkGreen!70!black} }] at (2.295,-2.895) {TMA 装载\\K/SFK $\cdot$ V$^{\top}$/SFVt $\cdot$ $\Delta$S $\cdot$ bias};
+    \node[draw=tkGreen, fill=none, line width=0.5pt, minimum width=3.36cm, minimum height=0.68cm, inner sep=1pt, align=center, text width=3.30cm, font={\fontsize{4.8}{6.0}\selectfont }] at (2.295,-3.758) {Q/SFQ TMA（每 work）\\epilogue\_done 后才发};
+    \node[draw=tkGreen, fill=none, line width=0.5pt, minimum width=3.36cm, minimum height=0.68cm, inner sep=1pt, align=center, text width=3.30cm, font={\fontsize{4.8}{6.0}\selectfont }] at (2.295,-4.62) {等待 k\_empty / v\_empty\\（stage 释放信号）};
+    \node[draw=black!30, fill=tkFillGreen!60!white, line width=0.5pt, minimum width=3.36cm, minimum height=1.29cm, inner sep=1pt, align=center, text width=3.30cm, font={\fontsize{3.9}{4.9}\selectfont \color{black!65} }] at (2.295,-5.76) {反向 barrier 全集：\\k\_empty[s] $\cdot$ v\_empty[s]（256 arrivals）\\q\_consumed $\cdot$ epilogue\_done\\mbarrier 永不 re-init：\\全局 kv-tile 计数器驱动 phase};
+    \node[draw=gray!55, fill=black!3, line width=0.5pt, minimum width=2.93cm, minimum height=4.62cm, inner sep=1pt, align=center, text width=2.86cm, font={\fontsize{5.7}{7.1}\selectfont }] at (6.021,-4.312) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries }] at (4.805,-2.279) {smem stages};% w=2.464
+    \node[draw=tkBlue, fill=tkFillBlue, line width=0.5pt, minimum width=2.43cm, minimum height=0.80cm, inner sep=1pt, align=center, text width=2.37cm, font={\fontsize{4.8}{6.0}\selectfont \color{tkBlue} }] at (6.021,-2.957) {K + SFK\\kStages 级};
+    \node[draw=tkBlue, fill=tkFillBlue, line width=0.5pt, minimum width=2.43cm, minimum height=0.80cm, inner sep=1pt, align=center, text width=2.37cm, font={\fontsize{4.8}{6.0}\selectfont \color{tkBlue} }] at (6.021,-3.942) {V$^{\top}$ + SFVt\\（slot 0 可别名 Q 区）};
+    \node[draw=tkPurple, fill=tkFillPurple, line width=0.5pt, minimum width=2.43cm, minimum height=0.80cm, inner sep=1pt, align=center, text width=2.37cm, font={\fontsize{4.8}{6.0}\selectfont \color{tkPurple} }] at (6.021,-4.928) {Q + SFQ\\（消费后释放）};
+    \node[draw=tkOrange, fill=tkFillOrange, line width=0.5pt, minimum width=2.43cm, minimum height=0.80cm, inner sep=1pt, align=center, text width=2.37cm, font={\fontsize{4.8}{6.0}\selectfont \color{tkOrange!75!black} }] at (6.021,-5.914) {O staging\\SW128（叠 Q/K 区）};
+    \node[draw=tkOrange, fill=tkFillOrange!60!white, line width=0.5pt, minimum width=9.64cm, minimum height=4.62cm, inner sep=1pt, align=center, text width=9.58cm, font={\fontsize{5.7}{7.1}\selectfont }] at (12.643,-4.312) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{6.1}{7.7}\selectfont \bfseries \color{tkOrange!75!black} }] at (8.07,-2.279) {consumer（256T = 8 warp）：每 kv tile 五步};% w=9.086
+    \node[draw=tkPurple, fill=tkFillPurple, line width=0.5pt, minimum width=9.09cm, minimum height=0.68cm, inner sep=1pt, align=center, text width=9.02cm, font={\fontsize{5.7}{7.1}\selectfont }] at (12.613,-2.864) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkPurple} }] at (8.193,-2.71) {(1) add\_delta\_s};% w=2.618
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.4}{5.5}\selectfont }] at (10.78,-2.864) {rank-1 项预载 C 累加器（写 tSrS 寄存器）};% w=6.314
+    \node[draw=tkBlue, fill=tkFillBlue, line width=0.5pt, minimum width=9.09cm, minimum height=0.68cm, inner sep=1pt, align=center, text width=9.02cm, font={\fontsize{5.7}{7.1}\selectfont }] at (12.613,-3.634) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkBlue} }] at (8.193,-3.48) {(2) gemm\_ss\_fp4};% w=2.618
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.4}{5.5}\selectfont }] at (10.78,-3.634) {S += ($\hat{Q}$$\cdot$s\_Q)($\hat{K}$$\cdot$s\_K)：A 寄存器驻留 / B 流入 / zip 对};% w=6.314
+    \node[draw=tkRed, fill=tkFillRed, line width=0.5pt, minimum width=9.09cm, minimum height=0.68cm, inner sep=1pt, align=center, text width=9.02cm, font={\fontsize{5.7}{7.1}\selectfont }] at (12.613,-4.404) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkRed} }] at (8.193,-4.25) {(3) masking};% w=2.618
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.1}{5.1}\selectfont }] at (10.78,-4.404) {kv-tail + causal：pos = kv\_tile$\cdot$Bc + $\pi$(j)（perm-aware）；bias 注入同过 $\pi$};% w=6.314
+    \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=9.09cm, minimum height=0.68cm, inner sep=1pt, align=center, text width=9.02cm, font={\fontsize{5.7}{7.1}\selectfont }] at (12.613,-5.174) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.4}{5.5}\selectfont \bfseries \color{tkGreen!70!black} }] at (8.193,-5.02) {(4) softmax\_with\_quant};% w=2.618
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.4}{5.5}\selectfont }] at (10.78,-5.174) {P$_2$ 域融合：组 absmax + 行 max 同链；出寄存器即 $\hat{P}$$_2$/s\_P2};% w=6.314
+    \node[draw=tkOrange, fill=tkFillOrange, line width=0.5pt, minimum width=9.09cm, minimum height=0.68cm, inner sep=1pt, align=center, text width=9.02cm, font={\fontsize{5.7}{7.1}\selectfont }] at (12.613,-5.944) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkOrange} }] at (8.193,-5.79) {(5) gemm\_rs\_fp4};% w=2.618
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.4}{5.5}\selectfont }] at (10.78,-5.944) {O += ($\hat{P}$$_2$$\cdot$s\_P2)($\hat{V}$$\cdot$s\_V)：P 现场打包不过 smem；v\_full 在(4)后才等};% w=6.314
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.4}{5.5}\selectfont \color{black!65} }] at (8.07,-6.499) {kv\_tile $>$ 0 时 (5) 前插 rescale\_acc（per-row 守卫）};% w=9.086
+    \node[draw=gray!55, fill=black!2, line width=0.5pt, minimum width=8.32cm, minimum height=2.93cm, inner sep=1pt, align=center, text width=8.25cm, font={\fontsize{5.7}{7.1}\selectfont }] at (4.528,-8.485) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries }] at (0.616,-7.3) {Q 寄存器驻留（per-work 常量）};% w=7.854
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{black!65} }] at (0.616,-7.823) {Q/SFQ s2r 一次进寄存器，跨整个 kv 循环；\\gemm\_ss\_fp4 当 A 侧寄存器操作数消费（恒开）};% w=7.854
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{black!65} }] at (0.616,-8.408) {lse dot 提前（kQSmemReuse 下 Q 区会被 V 复用）};% w=7.854
+    \node[draw=tkRed!45, fill=tkFillRed!60!white, line width=0.5pt, minimum width=7.85cm, minimum height=1.14cm, inner sep=1pt, align=center, text width=7.79cm, font={\fontsize{4.8}{6.0}\selectfont \color{tkRed} }] at (4.543,-9.225) {历史 bug：不驻留时 A/SFA asm 操作数未初始化，\\cicc 折成 0 $\to$ QK 退化为 $\Delta$S（rank-1 均值 attention），\\probe 容差曾掩盖------要用「输出对 K 敏感性」探针};
+    \node[draw=gray!55, fill=black!2, line width=0.5pt, minimum width=8.44cm, minimum height=2.93cm, inner sep=1pt, align=center, text width=8.38cm, font={\fontsize{5.7}{7.1}\selectfont }] at (13.336,-8.485) {};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries }] at (9.363,-7.3) {epilogue（kv 循环后）};% w=8.008
+    \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=2.46cm, minimum height=0.62cm, inner sep=1pt, align=center, text width=2.40cm, font={\fontsize{4.8}{6.0}\selectfont \color{tkGreen!70!black} }] at (10.595,-7.823) {finalize\\$\div$ row\_sum（0 行守卫）};
+    \node[draw=tkPurple, fill=tkFillPurple, line width=0.5pt, minimum width=2.46cm, minimum height=0.62cm, inner sep=1pt, align=center, text width=2.40cm, font={\fontsize{4.8}{6.0}\selectfont \color{tkPurple} }] at (13.398,-7.823) {+ v\_m 加回\\（smooth-V 恒等）};
+    \node[draw=tkBlue, fill=tkFillBlue, line width=0.5pt, minimum width=2.34cm, minimum height=0.62cm, inner sep=1pt, align=center, text width=2.28cm, font={\fontsize{4.8}{6.0}\selectfont \color{tkBlue} }] at (16.139,-7.823) {lse 写出\\（式 32-lse）};
+    \node[draw=black!30, fill=black!2, line width=0.5pt, minimum width=7.95cm, minimum height=0.62cm, inner sep=1pt, align=center, text width=7.88cm, font={\fontsize{4.8}{6.0}\selectfont \color{black!65} }] at (13.336,-8.593) {named barrier（WAR）$\to$ SM90\_U32x2\_STSM\_N 进 SW128\\（叠 Q/K 释放区；blockscale C-fragment 用 U32x2 非 U32x4）};
+    \node[draw=black!30, fill=black!2, line width=0.5pt, minimum width=7.95cm, minimum height=0.62cm, inner sep=1pt, align=center, text width=7.88cm, font={\fontsize{4.8}{6.0}\selectfont \color{black!65} }] at (13.336,-9.302) {$\to$ 单条 TMA store（BHND / NHD 双布局，运行时选坐标）\\tail Q tile：R$\to$G 带行守卫};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkRed} }] at (0.37,-10.441) {五步环环相扣：(3) 的 $\pi$ 与 (2) 的 C 布局、(5) 的 A 布局三方锁定（SA3 adapter 逐字拷贝的自洽体系）。};% w=17.094
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (0.37,-10.811) {吞吐参考：D=192 self 474T（fp4 基线）；MXFP8 PV 变体 357T（精度保险丝，D$\leq$192）。};% w=17.094
+    \draw[tkGreen, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (4.22,-2.926) -- (4.558,-2.926);
+    \draw[tkGreen, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (4.22,-4.312) -- (4.558,-3.942);
+    \draw[black!75, line width=0.5pt, -{Stealth[length=2.2pt,width=1.8pt]}] (12.613,-3.203) -- (12.613,-3.296);
+    \draw[black!75, line width=0.5pt, -{Stealth[length=2.2pt,width=1.8pt]}] (12.613,-3.973) -- (12.613,-4.066);
+    \draw[black!75, line width=0.5pt, -{Stealth[length=2.2pt,width=1.8pt]}] (12.613,-4.743) -- (12.613,-4.836);
+    \draw[black!75, line width=0.5pt, -{Stealth[length=2.2pt,width=1.8pt]}] (12.613,-5.513) -- (12.613,-5.606);
+    \draw[tkBlue, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (7.484,-2.957) -- (7.823,-2.957);
+    \draw[tkBlue, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (7.484,-4.928) -- (7.823,-5.606);
+    \draw[tkOrange, line width=0.8pt, dashed, -{Stealth[length=2.2pt,width=1.8pt]}] (7.823,-3.542) -- (7.484,-4.004);
+  \end{tikzpicture}
   \caption{fp4 persist-D 主循环数据流（128T producer + 256T consumer）：
   每 kv tile 的五步（$\Delta S$ 预载 $\to$ QK $\to$ masking $\to$ 融合
   softmax/P 量化 $\to$ PV），barrier 永不 re-init，grid 由 runtime 定

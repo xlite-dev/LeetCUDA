@@ -324,16 +324,22 @@
 
 ## 15. 未来任务（论文翻译/导读，2026-09-18 登记）
 
-- [ ] **RFC-L（未来）Colfax《Categorical Foundations for CuTe Layouts》翻译入附录**。
-  作者 Jack Carlisle、Jay Shah、Reuben Stern、Paul VanKoughnett（Colfax Research，
-  arXiv:2601.05972，2026-01），共 **174 页**——范畴论视角的 CuTe Layout 严格化
-  （functor/monad 语义下的 shape/stride 与 layout algebra）。本地素材：
-  `/workspace/dev/vipshop/tmp/papers/colfax-cute-layout-202601.pdf` 与
-  `…/colfax-cute-layout-202601/`（`FinalVersion.tex` + `references.bib`）。
-  定位：**未来翻译为中文作为附录（拟 appF 或独立「进阶导读」）**，非 Part IV 必读；
-  依赖：第四部分 CuTe 篇（ch20-26）已稳定。注意它正是 CuTe 白皮书 Related Work
-  引用的 Carlisle et al. CategoryCuTe，翻译时与 ch20 术语表对齐（Product=乘积、
-  Composition=复合、Coalesce=合并、Complement=补、Divide=切分、Inverse=逆）。
+- [x] **RFC-L（✅ 完成，2026-09-18）Colfax《Categorical Foundations for CuTe Layouts》
+  独立中文译注版**。作者 Jack Carlisle、Jay Shah、Reuben Stern、Paul VanKoughnett
+  （Colfax Research，arXiv:2601.05972，2026-01，原文 174 页）。**用户决策：不并入
+  book.pdf，独立编译为 `book/colfax/colfax-cute-zh.pdf`（205 页，letterpaper 与原文
+  版心一致），供单独阅读学习**。源级翻译：移植官方源 preamble（tikz-cd/tcolorbox/
+  biblatex，定理环境中文化），数学/tikz-cd 交换图/Python 代码逐字保留，仅译正文；
+  15 片 Task agent 分批翻译+逐片环境计数复核。机械核对全部对齐源：tikzcd 297/297、
+  tikzpicture 35/35、lstlisting 50/50、BreakableAlgorithm 2/2、label 235/235；
+  构建验收（`colfax/build.sh`，xelatex×3+biber）：0 error、0 undefined、0 缺字、
+  Overfull≥1pt=0（原版自身基准为 1，译文更优；emergencystretch=3em 吸收 CJK
+  断行小溢出，另对 ch2d 一处 aligned 间距与 ch2c 一张超宽交换图 column sep
+  做了不改内容的排版微调）。
+  术语与 ch20/ch19b 对齐（Product=乘积、Composition=复合、Coalesce=合并、
+  Complement=补、Divide=切分、Inverse=逆、codomain=陪域），新增范畴论术语表
+  （categorical product 一律译「范畴积」≠CuTe 乘积）；源笔误与重复 label 照抄保留。
+  PDF 不入库（gitignore 默认忽略，用户自读）；tex 源入库（aed60bb…批 1-4 共 5 commit）。
 - [x] **CuTe 官方白皮书中文导读**（✅ 完成，2026-09-18）：Cris Cecka（NVIDIA
   Research）《CuTe Layout Representation and Algebra》（arXiv:2603.02298v2，
   35 页，34 张原生 TikZ 图、111 个公式），译为中文作为 **Part IV 开篇导读

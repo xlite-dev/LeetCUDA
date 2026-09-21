@@ -1,0 +1,436 @@
+% cf-ch3d.tex — 译自 FinalVersion.tex L9395-9832
+\subsection{加细}\label{categoryrefinements}
+本节中，我们从范畴（category）论的视角重新审视嵌套元组（nested tuple）的加细（refinement）。回顾 \ref{refinementsection} 节：若 $S'$ 可由 $S$ 把 $S$ 的每个元素（entry）替换为某个大小（size）相同的嵌套元组而得到，则嵌套元组 $S'$ {\it 加细} $S$，记为
+\[ \begin{tikzcd} S' \ar[r,two heads] &  S\end{tikzcd} \]
+例如，
+\[
+(2,(2,2)) \twoheadrightarrow 8,
+\]
+以及
+\[
+((2,2),(3,3),(5,5)) \twoheadrightarrow (4,9,25).
+\]
+若 $\len(S) = m$ 且 $\profile(S) = P$，则我们可以把
+\[
+S' = (S_1',\dots,S_m')_P
+\]
+写成诸相对模式（relative mode）
+\[
+S_i' = \mode_i(S',S).
+\]
+的 $P$-代入（substitution）。我们把普通拼接（concatenation）
+\[
+(S_1',\dots,S_m') = \flatten(S',S)
+\]
+称为 $S'$ 相对于 $S$ 的扁平化（flattening）。
+
+
+令 $\catstyle{Ref}$ 表示正整数的嵌套元组依加细关系构成的偏序集范畴（poset category），于是 $\catstyle{Ref}$ 中的态射（morphism）就是加细 $S' \twoheadrightarrow S$。若 $S$ 是嵌套元组，令
+\[
+\catstyle{Ref}(S) = \{ S' \mid S'\text{ 加细 }S \}
+\]
+表示由加细 $S$ 的嵌套元组构成的偏序集（poset）。等价地，$\catstyle{Ref}(S)$ 就是切片范畴（slice category）$\catstyle{Ref}_{/S}$。
+
+
+\begin{construction}\label{definitionofrelativemodeinclusions}[相对模式包含映射]
+设 $S' \twoheadrightarrow S$ 是一个加细，并把
+\[
+S_i' = \mode_i(S',S)
+\]
+记为 $S'$ 相对于 $S$ 的各模式（mode）。$S'$ 与 $(S_1',\dots,S_m')$ 有相同的扁平化，于是我们有一个重新加括号同构（reparenthesization isomorphism）
+\[
+\begin{tikzcd} 
+\id_{(S_1',\dots,S_m')}^{S'}:(S_1',\dots,S_m') \ar[r,"\cong"] & S'
+\end{tikzcd}
+\]
+并且我们定义
+\[
+\incl_i(S',S): S_i' \to S'
+\]
+为 $(S_1',\dots,S_m')$ 的第 $i$ 个模式包含映射与重新加括号同构 $(S_1',\dots,S_m') \cong S'$ 复合（composite）而成的态射
+\[
+\begin{tikzcd} 
+S_i' \ar[rrr,"\incl_i((S_1'{,}\dots{,}S_m'))"] & & & (S_1',\dots,S_m') \ar[rr,"\id_{(S_1',\dots,S_m')}^{S'}"] & & S'
+\end{tikzcd} 
+\]
+\end{construction}
+
+\begin{example}
+    若 $S = (4,(9,25))$ 且 $S' = ((2,2),((3,3),25))$，则 $S'$ 加细 $S$，且 $\incl_2(S',S)$ 是嵌套元组态射（nested tuple morphism）
+    \[ \begin{tikzcd} 
+    (3,3) \ar[rr,"\incl_2(S'{,}S)"] \ar[rr,swap,"(3{,}4)"] & & ((2,2),((3,3),25)).
+    \end{tikzcd} \]
+\end{example}
+
+\begin{construction}\label{definitionofrelativemodes}[相对模式]
+    设 $f':S' \to T'$ 是嵌套元组态射，且设 $S'$ 加细 $S$。我们定义 $f'$ {\it 相对于} $S$ 的第 $i${\it 个模式}，记为
+    \[
+    \mode_i(f',S) = f' \circ \incl_i(S',S): S_i' \to T'
+    \]
+    它是复合
+    \[
+    \begin{tikzcd} S_i' \ar[rr ,"\incl_i(S'{,}S)"] & & S' \ar[r,"f'"] &  T'
+    \end{tikzcd} 
+    \]
+    特别地，我们有
+    \[
+    \mode_i(\id_{S'},S) = \incl_i(S',S).
+    \]
+\end{construction}
+
+\begin{example}
+    设 $S = (4,(9,25))$ 且 $S' = ((2,2),((3,3),25))$，于是 $S'$ 加细 $S$。若 $f'$ 是嵌套元组态射
+    \[ \begin{tikzcd} 
+    ((2,2),((3,3),25)) \ar[rr,"f'"] \ar[rr,swap,"(1{,}3{,}2{,}*{,}4)"] & & (2,3,2,25).
+    \end{tikzcd} \]
+    则 $\mode_2(f',S)$ 是嵌套元组态射
+    \[ \begin{tikzcd} 
+    (3,3) \ar[rr,"\mode_2(f'{,}S)"] \ar[rr,swap,"(2{,}*)"] & & (2,3,2,25).
+    \end{tikzcd} \]
+\end{example}
+
+
+
+
+
+\begin{construction}[拉回]
+    设 $f:S \to T$ 是位于 $\alpha$ 之上（lies over）的嵌套元组态射，并设 $T' \twoheadrightarrow T$ 是一个加细。令
+    \[
+    T_j' = \mode_j(T',T)
+    \]
+    表示 $T'$ 相对于 $T$ 的第 $j$ 个模式，且对任意 $1 \leq i \leq \len(S)$，规定
+    \[
+    S_i' = 
+    \begin{cases} 
+    \entry_i(S) & \alpha(i) = *\\
+    T'_j & \alpha(i) = j.
+    \end{cases}
+    \] 
+    我们定义 $T'$ {\it 沿} $f$ 的{\it 拉回}（pullback）为嵌套元组
+    \[
+    S' = f^*T' = \sub(S,(S_1',\dots,S_m')).
+    \]
+    对任意 $1 \leq i \leq m$，令
+    \[
+    f_i' :S_i' \to T'
+    \]
+    在 $\alpha(i) = *$ 时为平凡映射（trivial map），在 $\alpha(i) = j$ 时为包含映射（inclusion）
+    \[
+    \incl_j(T',T):S_i' = T_j' \to T'
+    \]
+    诸映射 $f_1',\dots,f_m'$ 的像（image）两两不相交，因此我们作拼接
+    \[
+    (f_1',\dots,f_m') : (S_1',\dots,S_m') \to T'.
+    \]
+    我们定义 $f' = T'^*f$ 为复合
+    \[ \begin{tikzcd}
+    S' \ar[rrr,"\id_{S'}^{(S_1'{,}\dots{,}S_m')}"] & & &  (S_1',\dots,S_m') \ar[rr,"(f_1'{,}\dots{,}f_m')"] & & T'.
+    \end{tikzcd} \]
+    我们把 $f'$ 称为 $f$ 沿 $T$ 的拉回，并把这样的拉回描绘为一个方块
+    \[ \begin{tikzcd} 
+    S' \ar[r,"f'"] \ar[d, two heads] \arrow[dr, phantom, "\lrcorner", very near start] & T' \ar[d,two heads] \\
+    S \ar[r,swap,"f"] & T.
+    \end{tikzcd} \]
+\end{construction}
+
+\begin{example}
+    设 $f:(64,32) \to (4,64,4,32)$ 位于 $\alpha = (2,4)$ 之上。则我们有一个拉回方块（pullback square）
+    \[ \begin{tikzcd} 
+    ((16,4),(16,2)) \ar[d,two heads] \ar[r,"f'"] \arrow[dr, phantom, "\lrcorner", very near start] & ((2,2),(16,4),(2,2),(16,2)) \ar[d, two heads] \\
+    (64,32) \ar[r,swap,"f"] & (4,64,4,32) 
+    \end{tikzcd} \]
+    其中 $f'$ 位于 $\alpha' = (3,4,7,8)$ 之上。
+\end{example}
+
+\begin{example}
+    设 $S$ 是嵌套元组，其扁平化为
+    \[
+    S^\flat = (s_1,\dots,s_m),
+    \]
+    并设 $S' \twoheadrightarrow S$ 是一个加细，其相对扁平化（relative flattening）为
+    \[
+    (S_1',\dots,S_m').
+    \]
+    则 $S' \twoheadrightarrow S$ 沿去扁平化同构（unflattening isomorphism）
+    \[
+    \id_{(s_1,\dots,s_m)}^S :(s_1,\dots,s_m) \to S 
+    \]
+    的拉回是重新加括号同构
+    \[ \begin{tikzcd} 
+    (S_1',\dots,S_m') \ar[rr,"\id_{(S_1'{,}\dots{,}S_m')}^{S'}"] \ar[d, two heads] \arrow[drr, phantom, "\lrcorner", very near start] & & S' \ar[d,two heads] \\
+    (s_1,\dots,s_m) \ar[rr,swap,"\id_{(s_1{,}\dots{,}s_m)}^S"] & & S.
+    \end{tikzcd}
+    \]
+\end{example}
+
+\begin{example}
+    设 $S' \twoheadrightarrow S$ 是一个加细，并考虑第 $i$ 个元素包含映射
+    \[
+    s_i \to S.
+    \]
+    则 $S' \twoheadrightarrow S$ 沿 $s_i \to S$ 的拉回是第 $i$ 个相对模式包含映射
+        \[ \begin{tikzcd} 
+    S_i' \ar[rr,"\incl_i(S'{,}S)"] \ar[d, two heads] \arrow[drr, phantom, "\lrcorner", very near start] & & S' \ar[d,two heads] \\
+    s_i \ar[rr,swap] & & S.
+    \end{tikzcd}
+    \]
+\end{example}
+
+\begin{observation}
+    上面的拉回构造给出了一个反变函子（contravariant functor）
+    \[ \begin{tikzcd} 
+\catstyle{Nest}^\text{op} \ar[r] & \catstyle{Cat} \\
+    S \ar[r,mapsto] \ar[d,swap,"f"] & \catstyle{Ref}(S)  & f^*T' \leftarrow f^*T'' \\
+    T \ar[r,mapsto]  & \catstyle{Ref}(T) \ar[u,swap,"f^*"] & T' \leftarrow T'' \ar[u,mapsto] 
+    \end{tikzcd} \]
+\end{observation}
+
+拉回的关键性质是：$f'$ 的布局函数（layout function）与 $f$ 的布局函数相等。
+
+\begin{lemma}\label{pullbacklemma}
+    设
+    \[ \begin{tikzcd} 
+    S' \ar[r,"f'"] \ar[d, two heads] \arrow[dr, phantom, "\lrcorner", very near start] & T' \ar[d,two heads] \\
+    S \ar[r,swap,"f"] & T
+    \end{tikzcd} \]
+    是一个拉回方块，其中 $f$ 位于 $\alpha$ 之上。令
+    \[f_i' : S_i' \to T\]
+    表示 $f'$ 相对于 $S$ 的第 $i$ 个模式，
+    并令
+    \[(L_f)^\flat = (s_1,\dots,s_m):(d_1,\dots,d_m).\]
+    则对任意 $1 \leq i \leq m$，我们有
+    \[
+    \coalesce(L_{f_i'}) = s_i:d_i.
+    \]
+\end{lemma}
+\begin{proof}
+    设 $1 \leq i \leq m$。若 $\alpha(i) = *$，则 $f_i'$ 是平凡映射，于是
+    \[
+    L_{f_i'} = s_i : 0 = s_i : d_i.
+    \]
+    特别地，$\coalesce(L_{f_i'}) = s_i:0 = s_i:d_i$。接下来设 $\alpha(i) = j \neq *$。由 $f'$ 的构造，我们有
+    \[f_i' = \incl_j(T',T):T_j' \to T'.\]
+    它位于由 $t \mapsto \len_{<j}(T',T) + t$ 给出的映射 $\alpha'_i$ 之上。对每个 $1 \leq t < \len(T'_j)$，都有 $\alpha'_i(t) = \alpha'_i(t+1)$，因此 $L_{f_i'}$ 是大小为 $\size(T_j') = t_j = s_i$ 的列主序（column-major）布局。这意味着 $\coalesce(L_{f_i'})$ 是形如
+    \[
+    \coalesce(L_{f_i'}) = s_i : e
+    \]
+    的深度（depth）为 $0$ 的布局，其中 $e \geq 0$ 是某个整数。我们断言 $e = d_i$。若记 $t_{j'}' = \entry_{j'}(T')$，则我们有
+    \begin{align*}
+    e = \entry_1(\stride(L_{f_i'})) & = \prod_{j' < \alpha_i'(1)} t_{j'}'\\
+    & = \prod_{j' \leq  \len_{<j}(T',T)} t_{j'}'\\
+    & = \prod_{j' < j} \size(T_{j'}')\\
+    & = \prod_{j' < j} t_{j'}\\
+    & = d_i .
+    \end{align*}
+\end{proof}
+
+
+\begin{proposition}\label{pullbackproposition}
+    若
+    \[ \begin{tikzcd} 
+    S' \ar[r,"f'"] \ar[d, two heads] \arrow[dr, phantom, "\lrcorner", very near start] & T' \ar[d,two heads] \\
+    S \ar[r,swap,"f"] & T
+    \end{tikzcd} \]
+    是一个拉回方块，则 $\Phi_{L_f} = \Phi_{L_{f'}}$。
+\end{proposition}
+
+\begin{proof}
+    我们先固定记号。令 $m = \len(S)$，并令
+    \begin{align*}
+    S^\flat & = (s_1,\dots,s_m),\\
+    S_i' & = \mode_i(S',S),\\
+    T_j' & = \mode_j(T',T),\\
+    (L_f)^\flat & = (s_1,\dots,s_m):(d_1,\dots,d_m).
+    \end{align*}
+    考虑重新加括号同构
+    \[
+    \id_{(S_1',\dots,S_m')}^{S'}:(S_1',\dots,S_m') \to S'
+    \]
+    该映射与 $f'$ 的复合是拼接 $(f_1',\dots,f_m')$，其中 $f_i'$ 在 $\alpha(i) = *$ 时为平凡映射，否则为相对模式包含映射
+    \[
+    \incl_i(T',T):S_i' = T_j' \to T'
+    \]
+    利用引理 \ref{pullbacklemma} 以及 $L_{f'} = L_{(f_1',\dots,f_m')}$ 这一事实，我们计算出
+    \begin{align*}
+    \coalesce(L_{f'}) & = \coalesce(L_{(f_1',\dots,f_m')})\\
+    & = \coalesce((L_{f_1'},\dots,L_{f_m'}))\\
+    & = \coalesce((\coalesce(L_{f_1'}),\dots,\coalesce(L_{f_m'}) ) )\\
+    & = \coalesce((s_1,\dots,s_m):(d_1,\dots,d_m))\\
+    & = \coalesce(L_f).
+    \end{align*}
+    由命题 \ref{nestedcoalesceproposition}，我们推出 $\Phi_{L_{f'}} = \Phi_{L_f}$。
+\end{proof}
+
+\begin{construction}[前推]
+    设 $f:S \to T$ 是位于 $\alpha$ 之上的嵌套元组态射，并设 $S' \twoheadrightarrow S$ 是一个加细。令
+    \[
+    S_i' = \mode_i(S',S)
+    \]
+    表示 $S'$ 相对于 $S$ 的第 $i$ 个模式，且对任意 $1 \leq j \leq \len(T)$，规定
+    \[
+    T_j' = 
+    \begin{cases} 
+    \entry_j(T) & j \notin \Image(\alpha) \\
+    S'_i & \alpha(i) = j.
+    \end{cases}
+    \]
+    我们定义 $S'$ {\it 沿} $f$ 的{\it 前推}（pushforward）为嵌套元组
+    \[
+    T' = f_*S' = \sub(T,(T_1',\dots,T_n')).
+    \]
+    对任意 $1 \leq i \leq m$，令
+    \[
+    f_i':S_i' \to T' 
+    \]
+    在 $\alpha(i) = *$ 时为平凡映射，在 $\alpha(i) = j$ 时为相对模式包含映射
+    \[
+    \incl_j(T',T):S_i' = T_j' \to T'
+    \]
+    诸态射 $f_1',\dots,f_m'$ 的像两两不相交，因此我们可以作拼接
+    \[
+    (f_1',\dots,f_m'):(S_1',\dots,S_m') \to T'.
+    \]
+    我们定义 $f' = S'_*f$ 为复合
+    \[ \begin{tikzcd}
+    S' \ar[rrr,"\id_{S'}^{(S_1'{,}\dots{,}S_m')}"] & & &  (S_1',\dots,S_m') \ar[rr,"(f_1'{,}\dots{,}f_m')"] & & T'.
+    \end{tikzcd} \]
+    我们把 $f'$ 称为 $f$ 沿 $T$ 的前推。我们把这样的前推描绘为
+    \[ \begin{tikzcd} 
+    S' \ar[r,"f'"] \ar[d,two heads] & \arrow[dl, phantom, "\llcorner", very near start]T' \ar[d,two heads] \\
+    S \ar[r,swap,"f"] & T\\
+    \end{tikzcd} \]
+\end{construction}
+
+\begin{example}
+    若 $f:(64,32) \to (4,64,4,32)$ 位于 $\alpha = (2,4)$ 之上，则我们有一个前推方块（pushforward square）
+    \[ \begin{tikzcd} 
+    ((16,4),(16,2)) \ar[r,"f'"] \ar[d,two heads] & \arrow[dl, phantom, "\llcorner", very near start](4,(16,4),4,(16,2)) \ar[d, two heads] \\
+    (64,32) \ar[r,swap,"f"] & (4,64,4,32)\\
+    \end{tikzcd} \]
+\end{example}
+
+
+
+拉回的关键性质是：$f'$ 的布局函数与 $f$ 的布局函数相等。
+
+\begin{lemma}\label{pushforwardlemma}
+    设
+    \[ \begin{tikzcd} 
+    S' \ar[r,"f'"] \ar[d, two heads] & T' \ar[d,two heads]\arrow[dl, phantom, "\llcorner", very near start] \\
+    S \ar[r,swap,"f"] & T
+    \end{tikzcd} \]
+    是一个前推方块，其中 $f$ 位于 $\alpha$ 之上。令
+    \[f_i' : S_i' \to T\]
+    表示 $f'$ 相对于 $S$ 的第 $i$ 个模式，
+    并令
+    \[(L_f)^\flat = (s_1,\dots,s_m):(d_1,\dots,d_m).\]
+    则对任意 $1 \leq i \leq m$，我们有
+    \[
+    \coalesce(L_{f_i'}) = s_i:d_i.
+    \]
+\end{lemma}
+\begin{proof}
+其证明与引理 \ref{pullbacklemma} 的证明完全相同。
+\end{proof}
+
+
+\begin{proposition}\label{pushforwardproposition}
+    若
+    \[ \begin{tikzcd} 
+    S' \ar[r,"f'"] \ar[d, two heads]  & T' \ar[d,two heads]\arrow[dl, phantom, "\llcorner", very near start] \\
+    S \ar[r,swap,"f"] & T
+    \end{tikzcd} \]
+    是一个前推方块，则 $\Phi_{L_f} = \Phi_{L_{f'}}$。
+\end{proposition}
+
+\begin{proof}
+    其证明与命题 \ref{pullbackproposition} 的证明完全相同。
+\end{proof}
+
+
+
+\begin{observation}
+    上面定义的前推构造给出了一个协变函子（covariant functor）
+    \[ \begin{tikzcd} 
+    \catstyle{Nest} \ar[r] & \catstyle{Cat} \\
+    S \ar[r,mapsto] \ar[d,swap,"f"] & \catstyle{Ref}(S) \ar[d,"f_*"] & S'' \rightarrow S'\ar[d,mapsto]  \\
+    T \ar[r,mapsto]  & \catstyle{Ref}(T)  & f_*S'' \rightarrow f_*S'   
+    \end{tikzcd} \]
+\end{observation}
+
+\begin{observation}
+    若 $f:S \to T$ 是嵌套元组之间的一个同构（isomorphism），则
+    \[\begin{tikzcd}
+        \catstyle{Ref}(T) \ar[r,"f^*"] & \catstyle{Ref}(S)
+    \end{tikzcd}
+    \]
+    与
+    \[\begin{tikzcd}
+        \catstyle{Ref}(S) \ar[r,"f_*"] & \catstyle{Ref}(T)
+    \end{tikzcd}
+    \]
+    是一对互逆的范畴同构（isomorphism of categories）。具体而言，
+    \[
+    (f^{-1})^* = f_* \hspace{0.2in} \text{and} \hspace{0.2in} (f^{-1})_* = f^*.
+    \]
+\end{observation}
+
+\begin{observation}
+    若 $S_1$ 与 $S_2$ 是满足 $\flatten(S_1) = \flatten(S_2)$ 的嵌套元组，则存在一个典范（canonical）的嵌套元组同构 $S_1 \cong S_2$，从而存在一个典范的范畴同构
+    \[
+    \catstyle{Ref}(S_1) \cong \catstyle{Ref}(S_2).
+    \]
+\end{observation}
+
+我们还需要再规定一个概念，称为{\it 相互加细}（mutual refinement）。这一概念的重要性将在第 \ref{computationschapter} 章变得清晰，届时我们会在布局复合算法中使用这一概念。
+
+\begin{definition}
+设 $T$ 与 $U$ 是嵌套元组。$(T,U)$ 的一个{\it 相互加细}是形如
+\[ \begin{tikzcd} 
+T' \ar[r,rightarrowtail] \ar[d, two heads] & U' \ar[d,two heads] \\
+T & U
+\end{tikzcd} \]
+的图。确切地说，这是一对嵌套元组 $(T',U')$，满足\begin{enumerate}
+    \item $T'$ 加细 $T$，
+    \item $U'$ 加细 $U$，且
+    \item $T'$ 整除（divides）$U'$。 
+\end{enumerate}
+\end{definition}
+
+除相互加细的定义之外，我们还需要下面的事实。
+
+\begin{lemma}\label{mutualrefinementsofflattenings}
+    设 $T$ 与 $U$ 是嵌套元组。则 $(T,U)$ 的相互加细与 $(T^\flat,U^\flat)$ 的相互加细之间存在一一对应。 
+\end{lemma}
+\begin{proof}
+    若 $(T',U')$ 是 $(T,U)$ 的一个相互加细，则沿去扁平化同构 $\id_{T^\flat}^T$ 与 $\id_{U^\flat}^U$ 作拉回，得到 $(T^\flat, U^\flat)$ 的一个相互加细
+    \[ \begin{tikzcd} 
+ (\id_{T^\flat}^T)^*T' \ar[r,rightarrowtail] \ar[d, two heads] & (\id_{U^\flat}^U)^*U' \ar[d,two heads] \\
+T^\flat & U^\flat
+\end{tikzcd} \]
+    反之，若 $((T^\flat)',(U^\flat)')$ 是 $T^\flat,U^\flat$ 的一个相互加细，则沿扁平化同构（flattening isomorphism）$\id^{T^\flat}_T$ 与 $\id^{U^\flat}_U$ 作拉回，得到 $(T^\flat, U^\flat)$ 的一个相互加细
+    \[ \begin{tikzcd} 
+ (\id^{T^\flat}_T)^*(T^\flat)' \ar[r,rightarrowtail] \ar[d, two heads] & (\id^{U^\flat}_U)^*(U^\flat)' \ar[d,two heads] \\
+T & U
+\end{tikzcd} \]
+\end{proof}
+% \begin{construction}
+%     Suppose $S'$ is a refinement of $S$, and suppose $\len(S') = m'$ and $\len(S) = m$. We may define a pointed map 
+%     \[
+%     \mu:\langle m' \rangle_* \to \langle m \rangle_*
+%     \]
+%     by the formula 
+%     \[
+%     \mu(i') = \text{max}\{i \in \langle m \rangle \mid \len_i(S',S) < i' \}.
+%     \]
+% \end{construction}
+
+% \begin{example}
+%     If $S'=((2,2),(3,3),(5,5))$ and $S = (4,9,25)$, then $S' \twoheadrightarrow S$ lies over the map $\mu = (1,1,2,2,3,3)$.
+% \end{example}
+
+
+
+
+
+\newpage 

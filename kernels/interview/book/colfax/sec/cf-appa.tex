@@ -1,0 +1,221 @@
+% cf-appa.tex — 译自 FinalVersion.tex L11571-11794
+\chapter{范畴论入门}\label{categorytheoryappendix}
+
+在本书中，我们自由地使用\emph{范畴}（category）的语言；范畴是一类数学对象，它把{\it 态射}（morphism）及其{\it 复合}（composition）的概念抽象出来。本附录的目的，是对范畴的基础知识给出一份简明而友好的导引。特别地，我们旨在回答以下问题：
+\begin{enumerate}
+    \item 什么是范畴？
+    \item 什么是函子（functor）？
+\end{enumerate}
+能够自信地回答这些问题、并且脑中备有例子的读者，将能够理解本书中最重要的概念与构造。对于有意学习范畴论中更进阶概念（例如{\it 自然变换}（natural transformation）、{\it 伴随}（adjunction）与{\it （余）极限}（(co)limit））的读者，我们推荐 \cite{categoriesfortheworkingmathematician}。
+
+\section{什么是范畴？}
+我们从第一个问题开始。在给出定义之前，先考虑一个具有启发性的例子。设 $X$ 与 $Y$ 是集合（set）。{\it 映射}（function）$f:X \to Y$ 把每个元素 $x \in X$ 指派为某个元素 $f(x) \in Y$。我们把 $X$ 称为 $f$ 的{\it 定义域}（domain），把 $g$ 称为 $Y$ 的{\it 陪域}（codomain）。
+
+\begin{example}\label{functionexample1} 存在映射 $f:\mathbb{Z} \to \mathbb{Z}$，由
+\[
+f(x) = 2x.
+\]
+给出。
+\end{example}
+\begin{example}\label{functionexample2} 存在映射 $g:\mathbb{Z} \to \mathterm{Bool}$，其中 $\mathterm{Bool} = \{\mathbf{True},\mathbf{False}\}$，由
+\[
+g(x) = \begin{cases}\mathbf{True} & x \text{ 为偶数，}\\
+\mathbf{False} & x \text{ 为奇数。}
+\end{cases}.
+\]
+给出。
+\end{example}
+若 $f:X \to Y$ 与 $g:Y \to Z$ 是映射，则我们可以{\it 复合} $f$ 与 $g$：$f$ 与 $g$ 的复合（composite）是映射 $g \circ f:X \to Z$，由
+\[
+(g \circ f)(x) = g(f(x)).
+\]
+给出。
+\begin{example}若 $f$ 与 $g$ 是例 \ref{functionexample1} 与例 \ref{functionexample2} 中的映射，则复合 $g \circ f:\mathbb{Z} \to \mathterm{Bool}$ 由
+\[
+(g \circ f)(x) = \mathbf{True}.
+\]
+给出。
+\end{example}
+映射的复合满足两条本质性质。其一，复合是{\it 结合}（associative）的：若 $f$ 与 $g$ 可复合，且 $g$ 与 $h$ 可复合，则
+    \[
+    h \circ (g \circ f) = (h \circ g) \circ f.
+    \]
+其二，每个集合 $X$ 都有一个{\it 恒等映射}（identity function）$\id_X:X \to X$，由
+    \[\id_X(x) = x.\]
+    给出。若 $f:X \to Y$ 是任意映射，则与 $\id_X$ 预复合或与 $\id_Y$ 后复合都不改变映射 $f$：
+    \[
+    f \circ \id_X = f = \id_Y \circ f.
+    \]
+
+在纯数学与应用数学中，有许多这样的情形：我们有一个由{\bf 对象}（object）组成的类（collection），以及这些对象之间的{\bf 态射}，它们具有与集合和映射相同的形式行为：态射可以按结合的方式复合，且对象拥有恒等态射。虽然集合之间的映射是其原型性的例子，但范畴中的对象不必是集合，范畴中的态射也不必是映射。我们后面会看到许多这样的例子。为了捕捉这种反复出现的结构，我们定义{\bf 范畴}的概念。
+
+
+
+\begin{definition}
+一个{\it 范畴} $\catstyle{C}$ 由以下内容组成：
+\begin{enumerate}[left = 0pt]
+    \item 一个由{\it 对象}组成的类：
+    \[\ob(\catstyle{C})=\{X,Y,Z,\dots \}.\]
+    这些对象可以是集合、元组（tuple）、数、向量空间、矩阵（matrix），或某种别的数学结构，取决于范畴 $\catstyle{C}$。
+    \item 这些对象之间的{\it 态射}所组成的类：
+    \[
+    \mor(\catstyle{C}) = \{f,g,h,\dots\}.
+    \]
+    $\catstyle{C}$ 中每个态射 $f:X \to Y$ 都有一个{\it 定义域} $X$
+    和一个{\it 陪域} $Y$，它们都是 $\catstyle{C}$ 中的对象。
+    \item 一条{\it 复合法则}（composition rule）：若 $f:X \to Y$ 与 $g:Y \to Z$ 是 $\catstyle{C}$ 中的态射，则存在态射
+    \[g \circ f:X \to Z\]
+    称为 $f$ 与 $g$ 的{\it 复合}。$\catstyle{C}$ 中态射的复合是{\it 结合}的，即
+    \[h \circ (g \circ f) = (h \circ g) \circ f,\]
+    只要各式有定义。
+    \item {\it 恒等态射}（identity morphism）：若 $X$ 是 $\catstyle{C}$ 中的对象，则存在态射 \[\id_X:X \to X\]
+    称为 $X$ 上的{\it 恒等态射}。若 $f:X \to Y$ 是 $\catstyle{C}$ 中的任意态射，则
+    \begin{align*}
+    f \circ \id_X & = f = \id_Y \circ f.
+    \end{align*}
+    \end{enumerate}
+\end{definition}
+
+我们来看范畴的一些重要例子。先从前面那个具有启发性的例子开始。
+\begin{example}
+        存在一个范畴 $\catstyle{Set}$，其对象是集合，其态射是映射。态射的复合由函数复合给出：
+        \[
+        (g \circ f)(x) = g(f(x))
+        \]
+        而集合 $X$ 上的恒等态射是恒等映射
+        \[
+        \id_X(x) = x.
+        \]
+\end{example}
+
+
+\begin{example}
+        存在一个范畴 $\catstyle{Vect}$，其对象是向量空间 $\mathbb{R}^n$（$n \geq 0$），其态射是{\it 矩阵}。具体地说，$\catstyle{Vect}$ 中的态射
+        \[A: \mathbb{R}^n \to \mathbb{R}^m\]
+        是一个 $m \times n$ 矩阵 $A$。$\catstyle{Vect}$ 中的复合由矩阵乘积给出：
+        \[
+        B \circ A = BA,
+        \]
+        而 $\mathbb{R}^n$ 上的恒等态射是 $n \times n$ 矩阵
+        \[
+        \id_{\mathbb{R}^n} = I_n =  \begin{bmatrix}
+            1 & 0 & \cdots & &  0\\
+            0 & 1 &  & &  \\
+            \vdots  & & \ddots& &  \vdots \\
+             & & & 1 & 0 \\
+             0&  & \cdots  & 0 & 1
+        \end{bmatrix}.
+        \]
+\end{example}
+
+\begin{example}
+    存在一个范畴 $\catstyle{Div}$，其对象是整数 $a \geq 1$；并且当 $a$ 整除 $b$ 时，其中存在唯一的态射
+    \[
+    \mathterm{div}_{a}^b:a \to b
+    \]
+    若 $a$ 整除 $b$ 且 $b$ 整除 $c$，则 $a$ 整除 $c$，这意味着我们有一条良定义（well-defined）的复合法则
+    \[
+    \mathterm{div}_b^c \circ \mathterm{div}_a^b = \mathterm{div}_a^c,
+    \]
+    而恒等态射
+    \[
+    \id_a = \mathterm{div}_a^a
+    \]
+    存在，因为每个正整数 $a$ 都整除它自身。
+\end{example}
+
+除范畴的定义之外，还有几个重要的范畴学概念需要我们理解。例如，理解{\it 同构}（isomorphism）的概念就很重要，它推广了集合的{\it 双射}（bijection）这一概念。
+\begin{definition}
+设 $\catstyle{C}$ 是一个范畴，并设 $f:X \to Y$ 是 $\catstyle{C}$ 中的一个态射。若存在 $\catstyle{C}$ 中的态射 $f^{-1}: Y \to X$，使得
+\begin{enumerate}
+\item $f^{-1} \circ f = \id_X$，且
+\item $f \circ f^{-1} = \id_Y$，
+\end{enumerate}
+则称 $f$ 为{\it 同构}。
+\end{definition}
+
+\begin{example}
+    在范畴 $\catstyle{Set}$ 中，同构就是{\it 双射}，即这样的映射 $f:X \to Y$：对每个 $y \in Y$，存在唯一的 $x \in X$ 使得 $f(x) = y$。例如，映射 $f:\mathbb{Z} \to \mathbb{Z}$
+    \[f(x) = x+10\]
+    是一个双射，其逆（inverse）$f^{-1}:\mathbb{Z} \to \mathbb{Z}$ 由
+    \[
+    f^{-1}(x) = x-10.
+    \]
+    给出。
+\end{example}
+
+\begin{example}
+    在范畴 $\catstyle{Vect}$ 中，同构是{\it 可逆矩阵}（invertible matrix）。例如，矩阵
+    \[
+    A = \begin{bmatrix}
+        3 & 2\\
+        1 & 1\\
+    \end{bmatrix}
+    \]
+    可逆，其逆为
+    \[
+    A^{-1} = \begin{bmatrix}
+        1 & -2\\
+        -1 & 3\\
+    \end{bmatrix}
+    \]
+    因为
+    \[
+    A^{-1}A= \begin{bmatrix}
+        1 & 0\\
+        0 & 1\\
+    \end{bmatrix} = AA^{-1}
+    \]
+\end{example}
+
+\begin{example}
+    在范畴 $\catstyle{Div}$ 中，仅有的同构是恒等态射
+    \[\id_a = \mathterm{div}_a^a.\]
+    这是因为若 $a$ 整除 $b$ 且 $b$ 整除 $a$，则 $a = b$。
+\end{example}
+
+\section{什么是函子？}
+接下来，我们把注意力转向第二个问题。
+\begin{definition}
+设 $\catstyle{C}$ 与 $\catstyle{D}$ 是范畴。一个{\it 函子} $F:\catstyle{C} \to \catstyle{D}$ 由以下内容组成：
+\begin{enumerate}
+    \item 对 $\catstyle{C}$ 中的每个对象 $X$，指定 $\catstyle{D}$ 中的一个对象 $FX$；以及
+    \item 对 $\catstyle{C}$ 中的每个态射 $f:X \to Y$，指定 $\catstyle{D}$ 中的一个态射
+    \[Ff:FX \to FY\]
+\end{enumerate}
+并要求满足以下性质：
+\begin{enumerate}
+    \item $F$ 与复合相容：若 $f$ 与 $g$ 是 $\catstyle{C}$ 中可复合的态射，则
+    \[
+    F(g \circ f) = Fg \circ  Ff.
+    \]
+    \item $F$ 与恒等态射相容：若 $X$ 是 $\catstyle{C}$ 中的对象，则
+    \[
+    F\id_X = \id_{FX}.
+    \]
+\end{enumerate}
+\end{definition}
+
+\begin{example}
+    存在一个函子 $F:\catstyle{Div} \to \catstyle{Set}$，其定义如下。在对象上，$F$ 由
+    \begin{align*}
+    Fa & = [0,a] = \{x \in \mathbb{R} \mid 0 \leq x \leq a\}.
+    \end{align*}
+    给出；在态射上，$F$ 由
+    \[
+    \begin{tikzcd}
+        F\mathterm{div}_a^b(x) = \frac{b}{a}\cdot x.
+    \end{tikzcd}
+    \]
+    给出。我们来验证 $F$ 是一个函子。
+    \begin{enumerate}
+        \item $F$ 与复合相容：若 $a$ 整除 $b$ 且 $b$ 整除 $c$，则
+        \begin{align*}
+        (F \mathterm{div}_b^c \circ F \mathterm{div}_a^b)(x) = F \mathterm{div}_b^c ( F \mathterm{div}_a^b(x)) & = \frac{c}{b}\cdot(\frac{b}{a}\cdot x)  = \frac{c}{a}\cdot x  = F\mathterm{div}_a^c(x).
+        \end{align*}
+        \item $F$ 与恒等态射相容：若 $a \geq 1$，则
+        \begin{align*}
+            F\id_a(x) = F \mathterm{div}_a^a(x) = \frac{a}{a} \cdot x = \id_{Fa}(x).
+        \end{align*}
+    \end{enumerate}
+\end{example}

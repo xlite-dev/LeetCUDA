@@ -83,6 +83,56 @@ phase 内两 lane 落同一 bank 的不同 word 即冲突}：n-way 冲突把该 
 bank 周期。\texttt{ldmatrix.x4} 的 4 个 8$\times$8 矩阵正对应 4 个 phase（PTX 语义：
 每 8 个连续 lane 提供一个矩阵 8 行的地址）。
 
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  clab/.style={font=\tiny, anchor=south, align=center, inner sep=1pt},
+  pbox/.style={draw, rounded corners=2pt, inner sep=2pt, font=\scriptsize,
+    align=center, text width=1.95cm, minimum height=1.0cm},
+  pbox0/.style={pbox, very thick, tkBlue, fill=tkFillBlue},
+]
+  \foreach \c in {0,...,7}{
+    \pgfmathtruncatemacro{\gf}{6+9*\c}
+    \pgfmathtruncatemacro{\qv}{4*\c}
+    \fill[gray!\gf] ({1.36*\c},0) rectangle ({1.36*\c+1.36},-0.5);
+    \node[clab] at ({1.36*\c+0.68},0.06) {$c{=}\c$\\$q{=}\qv$};
+  }
+  \foreach \b in {1,...,31}{
+    \draw[gray!60,very thin] ({0.34*\b},0) -- ({0.34*\b},-0.5);
+  }
+  \foreach \c in {1,...,7}{
+    \draw[thick] ({1.36*\c},0) -- ({1.36*\c},-0.5);
+  }
+  \draw[thick] (0,0) rectangle (10.88,-0.5);
+  \node[font=\scriptsize,anchor=east] at (-0.12,-0.25) {128\,B};
+  \node[pbox0] at (1.55,-2.2) {\textbf{phase 0}\\lanes 0--7\\行 0--7 $\cdot$ $c{=}0$};
+  \node[pbox] at (4.15,-2.2) {phase 1\\lanes 8--15\\行 8--15 $\cdot$ $c{=}0$};
+  \node[pbox] at (6.75,-2.2) {phase 2\\lanes 16--23\\行 0--7 $\cdot$ $c{=}1$};
+  \node[pbox] at (9.35,-2.2) {phase 3\\lanes 24--31\\行 8--15 $\cdot$ $c{=}1$};
+  \draw[-{Stealth}, tkBlue] (1.55,-1.69) -- (0.55,-0.72);
+  \draw[-{Stealth}] (4.15,-1.69) -- (0.82,-0.72);
+  \draw[-{Stealth}] (6.75,-1.69) -- (1.90,-0.72);
+  \draw[-{Stealth}] (9.35,-1.69) -- (2.18,-0.72);
+  \node[font=\scriptsize, align=center, text width=12.8cm, anchor=north] at (5.3,-3.05)
+    {lane$\to$地址映射（hgemm.cuh~L526--528）：$\mathrm{row}=\mathrm{lane}\bmod 16$、
+     $c=\lfloor\mathrm{lane}/16\rfloor$（$c{=}0$ 取列 0--7，$c{=}1$ 取列 8--15）；\\
+     同一 phase 内 8 lane $\times$ 16\,B $=$ 128\,B 恰好用满 32 bank，仅当两 lane 落进
+     同一 quad 的不同 word 才冲突（$n$-way）；\\
+     这组 8 行各自落进哪个 quad 由 smem 行宽决定：BK=16（32\,B 行）2-way、
+     BK=64（128\,B 行）8-way（12.3.2/12.3.3 节推导）};
+\end{tikzpicture}
+\caption{bank/phase 硬件模型（12.3.1 节）：32 bank $\times$ 4\,B 一拍最多交付
+128\,B，任一连续 128\,B 地址窗切成 8 个 16\,B chunk，chunk $c$ 占一个 quad
+（起始 bank $q=4\lfloor a/16\rfloor \bmod 32$，同 quad 同灰度）。warp 的 32 lane
+按 phase 分 4 组依次服务，\texttt{ldmatrix.x4} 的 4 个 $8\times8$ 矩阵正对应 4 个
+phase：phase $p$ 由 lanes $8p \dots 8p{+}7$ 按 $\mathrm{row}=\mathrm{lane}\bmod 16$、
+$c=\lfloor\mathrm{lane}/16\rfloor$ 提供地址（高亮 phase 0 = lanes 0--7 读行 0--7 的
+chunk 0；phase 0/1 同读 chunk 0，phase 2/3 同读 chunk 1）。phase 内是否冲突取决于
+该组 8 行落进的 quad 分布——12.3.2/12.3.3 节按行宽推导 2-way/8-way、以及
+图~\ref{fig:12-quad-swizzle} 的三档 swizzle 对比，都建立在这个机制底座上。}
+\label{fig:12-bank-phase}
+\end{figure}
+
 本 kernel 中 A fragment 的 lane$\to$地址映射为（hgemm.cuh~L526--528）：
 $\mathrm{row}=\mathrm{lane}\bmod 16$，chunk $c=\lfloor \mathrm{lane}/16\rfloor$
 （$c=0$ 取列 0--7，$c=1$ 取列 8--15）。于是 phase 0 = lanes 0--7 = 行 0--7、
@@ -233,6 +283,58 @@ BK=16 基线 98{,}304 次；两版比值 $691067/297628=2.32$，与模型预测�
 冲突从 8-way 降到 4-way 后，剩余延迟由寄存器双缓冲的流水覆盖（表~\ref{tab:12-bank}
 耗时列）。
 
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  cell/.style={minimum width=2.05cm, minimum height=0.5cm, inner sep=1.5pt, font=\footnotesize},
+  pttl/.style={font=\scriptsize\bfseries, align=center},
+  psub/.style={font=\scriptsize, align=center},
+  pncu/.style={font=\scriptsize, align=center},
+]
+  \foreach \i/\qa/\ga/\qb/\gb/\qc/\gc in {
+      0/0/10/0/10/0/10, 1/0/10/0/10/4/19, 2/0/10/0/10/8/29,
+      3/0/10/0/10/12/38, 4/0/10/4/19/16/48, 5/0/10/4/19/20/57,
+      6/0/10/4/19/24/66, 7/0/10/4/19/28/76}{
+    \node[font=\scriptsize, anchor=east] at (-0.22, -0.62*\i) {$i=\i$};
+    \node[cell, fill=gray!\ga] at (1.02, -0.62*\i) {$q{=}\qa$};
+    \node[cell, fill=gray!\gb] at (3.32, -0.62*\i) {$q{=}\qb$};
+    \node[cell, fill=gray!\gc] at (5.62, -0.62*\i) {$q{=}\qc$};
+  }
+  \foreach \xa/\xc in {0/tkRed!55, 2.3/tkOrange!55, 4.6/tkGreen!55}{
+    \draw[thick, \xc] (\xa, 0.32) rectangle (\xa+2.04, -4.66);
+  }
+  \node[pttl, text=tkRed] at (1.02, 1.0) {(a) 无 swizzle};
+  \node[psub, text=tkRed] at (1.02, 0.58) {8 行同 quad：\textbf{8-way}};
+  \node[pttl, text=tkOrange] at (3.32, 1.0) {(b) per-slice \texttt{swizzle<16>}};
+  \node[psub, text=tkOrange] at (3.32, 0.58) {两组 quad：\textbf{4-way}};
+  \node[pttl, text=tkGreen] at (5.62, 1.0) {(c) \texttt{swizzle<64>}（SW128）};
+  \node[psub, text=tkGreen] at (5.62, 0.58) {铺满 32 bank：\textbf{1-way}};
+  \node[pncu] at (1.02, -5.15) {NCU 实测\\691{,}067 次/launch};
+  \node[pncu] at (3.32, -5.15) {NCU 实测\\297{,}628 次/launch};
+  \node[pncu] at (5.62, -5.15) {模型 1-way（BK=16 基线\\98{,}304 次 = 2-way 参照）};
+  \node[font=\scriptsize\bfseries] at (8.35, 1.0) {起始 bank 号 $q$};
+  \foreach \q/\g [count=\r from 0] in {0/10, 4/19, 8/29, 12/38, 16/48, 20/57, 24/66, 28/76}{
+    \node[fill=gray!\g, minimum width=0.62cm, minimum height=0.38cm, inner sep=0pt] at (7.55, 0.55-0.46*\r) {};
+    \node[font=\scriptsize, anchor=west] at (7.92, 0.55-0.46*\r) {$q{=}\q$};
+  }
+  \node[font=\scriptsize, anchor=north, align=center] at (8.35, -3.3)
+    {每格 = 一个 16\,B chunk\\（占 4 个连续 bank）\\同色 = 同 quad = 同 phase 冲突};
+  \node[font=\scriptsize, anchor=north west] at (0, -6.0)
+    {$q(i,s,c)=(8s+4c)\bmod 32$（式~\ref{eq:12-q64}）；phase~0 = lanes 0--7 = 行 $i{=}0$--7、$s{=}0$、chunk $c$ 固定；};
+  \node[font=\scriptsize, anchor=north west] at (0, -6.42)
+    {(b) 行 0--3 落 $q{=}8s$、行 4--7 落 $q{=}8s{+}4$；(c) $c'=c\oplus(i\,\&\,7)$，行 0--7 铺满 $q=0,4,\dots,28$。};
+\end{tikzpicture}
+\caption{BK=64（128\,B 行宽）下三档 swizzle 的 phase-0 quad 映射对比（12.3.7 节）：
+固定 $s{=}0$、$c{=}0$，逐行给出 ldmatrix 读到的起始 bank 号 $q$，灰度按 $q$ 着色——
+同色格即同一 quad、即同一 phase 内冲突。(a) 无 swizzle 时 $q=8s+4c$ 与行号无关，
+8 行全挤同一 quad，8-way 冲突（NCU 实测 691{,}067 次/launch）；(b) per-slice
+\texttt{swizzle<16>} 只拿行号 bit2 翻转 chunk 位，行 0--3 与行 4--7 分落两个 quad，
+降到 4-way（297{,}628 次）——单个 XOR bit 的下界；(c) \texttt{swizzle<64>}
+（SWIZZLE\_128B，$B{=}3$）以 $c'=c\oplus(i\,\&\,7)$ 让 8 行恰好铺满 32 个 bank，
+1-way（BK=16 基线 98{,}304 次为 2-way 参照）。数字与表~\ref{tab:12-bank} 对齐。}
+\label{fig:12-quad-swizzle}
+\end{figure}
+
 \subsection{Block Swizzle：坐标重映射与 L2 footprint 推导}
 
 默认 grid 的两个维度就是 $T_n$ 与 $T_m$（x 维即 N-tile 编号）。Block swizzle 改用
@@ -276,8 +378,30 @@ TFLOPS（+4.2\%）。形状越「宽」（$T_n\gg T_m$）收益越大；$T_n\le\
 
 \subsection{swizzle 函数族：v1、v2 与派发器}
 
-\lstinputlisting[linerange={110-128},firstnumber=auto,
-  title={common.cuh L110-128（swizzle 动机：bank conflict 成因与 XOR 方案）}]{../common.cuh}
+先看动机。Phase 7b-3 的 kernel 是 \texttt{m16n8k16} + multistage pipeline + TN
+布局 + XOR swizzle 消除 smem bank conflict 的统一循环版，其头部注释把
+swizzle 原理（smem Bank Conflict 消除）总结为五点：
+
+\begin{itemize}
+  \item \textbf{问题}：\texttt{ldmatrix} 以 $8\times8$ 片段（m8n8）从 smem 加载
+        $16\times16$ 的矩阵，同一 warp 中不同 lane 访问的地址在 bank 上产生
+        冲突 $\to$ 串行化（most common: 2/4-way）。
+  \item \textbf{XOR swizzle 方案}：对列地址做 \texttt{((j>>3)\^{}(i>>2))\%2<<3} 的
+        XOR 置换，将连续 4 行的 bank 映射打散。每 4 行为一组的 pattern 交替：
+        rows $0{\sim}3$：列 $0\to$ 地址偏移 $0$、列 $8\to$ 地址偏移 $8$；rows
+        $4{\sim}7$：列 $0\to$ 地址偏移 $8$、列 $8\to$ 地址偏移 $0$（XOR 翻转）；
+        rows $8{\sim}11$ 重复 rows $0{\sim}3$ 的 pattern，rows $12{\sim}15$ 重复
+        rows $4{\sim}7$ 的 pattern。
+  \item \textbf{效果}：原来 $n$-way 的 bank conflict 降低到 1-way（fully
+        conflict-free）。
+  \item \textbf{优势}：无需 smem PAD（不浪费空间），原理上完全消除特定
+        pattern 的 bank conflict。
+  \item \textbf{局限}：要求 kColStride $\le 16$（即 BK $\le 16$）、kStep
+        $\in \{4, 8\}$；对 MMA \texttt{m16n8k16} 的 BK$=16$ 而言刚好满足。
+\end{itemize}
+
+（参考实现 \texttt{hgemm\_mma\_stage\_tn\_swizzle.cu}；原理详解见
+\url{https://zhuanlan.zhihu.com/p/4746910252}。）
 
 \lstinputlisting[linerange={158-183},firstnumber=auto,
   title={common.cuh L158-183（permuted：v1 手写 XOR 分支，四档位展开）}]{../common.cuh}
@@ -288,8 +412,38 @@ v1 按 $k_{\mathrm{cs}}$ 模板分支：16 档位即式~\ref{eq:12-xor-v1}；32/
 的偏移由调用方保留——这是「地址 = 行基址 + slice 基址 + swizzle + chunk 内偏移」
 拼装式（hgemm.cuh~L497--500）的关键约定。
 
-\lstinputlisting[linerange={262-286},firstnumber=auto,
-  title={common.cuh L262-286（Swizzle$\langle$B,M,S$\rangle$ 位级公式与参数语义）}]{../common.cuh}
+v2 的位级实现与 \texttt{cutlass/include/cute/swizzle.hpp} 一致。byte offset 的
+bit 布局为 \texttt{0b\allowbreak{}xxxxxxxxxxxxxxx\allowbreak{}YYY\allowbreak{}xxxxxxx\allowbreak{}ZZZ\allowbreak{}xxxx}（自左向右高位$\to$低位）：
+低 $M$ 位（MBase）是基本元素内部偏移，保留、不参与置换；$\mathit{yyy}$ 与
+$\mathit{zzz}$ 两段各占 $B$ 位（BBits，XOR 掩码位数）；$\mathit{yyy}$ 相对 $\mathit{zzz}$
+的位移为 SShift。三条公式：
+
+\begin{itemize}
+  \item \texttt{apply(off) = off \^{} shiftr(off \& yyy\_msk, S)}；
+  \item \texttt{yyy\_msk = ((1<<B)-1) << (M + max(0,S))}\quad（$\mathit{yyy}$ 掩码位置）；
+  \item \texttt{zzz\_msk = ((1<<B)-1) << (M - min(0,S))}\quad（$\mathit{zzz}$ 掩码位置，
+        文档用）。
+\end{itemize}
+
+模板参数的物理/语义含义：
+
+\begin{itemize}
+  \item \textbf{B（BBits）}：二维逻辑空间的行数位 $= 2^B$ 行，即 swizzle 周期
+        覆盖 $2^B$ 个 chunk（这些 chunk 互相置换）；同时是 TMA 硬件 swizzle
+        模式 \texttt{SWIZZLE\_\{32,64,128\}B} 的位数（$B=1/2/3$）。
+  \item \textbf{M（MBase）}：基本元素宽度位 $= 2^M$ 个连续元素组成一个基本
+        元素。对 fp16 + 8-element chunk，基本元素 $= 16\,\mathrm{B} = 2^4$，故
+        $M=4$；地址 bit$[0..M{-}1]$ 在 apply 中保持不变（保留）。
+  \item \textbf{S（SShift）}：二维空间每行列数位 $= 2^S$ 个基本元素组成一行；
+        同时是 $\mathit{yyy}$ 掩码相对 $\mathit{zzz}$ 掩码的位移。$S>0$ 表示
+        $\mathit{yyy}$ 在更高位，向右移 $S$ 位到 $\mathit{zzz}$ 位置后 XOR。本
+        notes-v2 三模式 $S$ 恒为 3（$\mathit{yyy}$ 在 bit$[7..7{+}B{-}1]$，即行索引
+        $i$ 的低 $B$ 位；$\mathit{zzz}$ 在 bit$[4..4{+}B{-}1]$，即列 chunk 索引）。
+\end{itemize}
+
+完整 swizzle 周期覆盖 $2^{M+S+B}$ 个元素（fp16 下 $2^{M+S+B+1}$ 字节）：
+$(B,M,S)=(1,4,3)$：256 elem / 512B（SWIZZLE\_32B）；$(2,4,3)$：512 elem /
+1024B（SWIZZLE\_64B）；$(3,4,3)$：1024 elem / 2048B（SWIZZLE\_128B）。
 
 \lstinputlisting[linerange={288-316},firstnumber=auto,
   title={common.cuh L288-316（SwizzleBMS：cute::Swizzle 位级镜像，$\mathit{yyy}$ 掩码 + apply）}]{../common.cuh}
@@ -307,8 +461,49 @@ bit-exact 等价（12.3.6 节）。派发器只有 9 行，宏门控：
 
 \subsection{kernel 骨架：模板参数、block swizzle 重映射与 smem 布局}
 
-\lstinputlisting[linerange={398-430},firstnumber=auto,
-  title={hgemm.cuh L398-430（Phase 7b-3 设计注释：smem 布局与寄存器双缓冲时间线）}]{../hgemm.cuh}
+Phase 7b-3（\texttt{m16n8k16} + multistage pipeline + TN 布局 + XOR swizzle +
+Register Double Buffering，通用 \texttt{kValTileK}，默认 BK$=64$）在 Phase 7b-2
+的 smem XOR swizzle 基础上增加寄存器双缓冲，设计要点五条：
+
+\begin{itemize}
+  \item \texttt{kValTileK}：每个 BK tile 包含 \texttt{kValTileK} 个 \texttt{kMmaK}
+        slice（BK $=$ \texttt{kMmaK} $\times$ \texttt{kValTileK}）；
+  \item 统一 BK tile：所有 k\_step slice 连续存放在同一个 BK 宽的 smem tile 中；
+  \item \texttt{RA[2][kValTileM][4]} / \texttt{RB[2][kValTileN][2]}：双份寄存器
+        乒乓切换（与 \texttt{kValTileK} 无关）；
+  \item \texttt{ldmatrix} 与 MMA 计算重叠：加载 k\_step$+1$ 的同时用另一组
+        寄存器做 k\_step 计算；
+  \item 支持任意 \texttt{kValTileK} $\ge 2$；默认 \texttt{kValTileK}$=4$
+        （BK$=64$），\texttt{kStages}$=2$ 推荐 64\,KB smem。
+\end{itemize}
+
+smem 布局：\texttt{s\_a} 按 \texttt{[stage0][stage1]...[stage(kStages-1)]} 排布，
+每个 stage 为 $\mathrm{BM} \times \mathrm{BK} = 128 \times \mathrm{BK}$；\texttt{s\_b}
+紧接 \texttt{s\_a} 之后；每个 stage 内 k\_step slice 的列偏移为 k\_step $\times$
+\texttt{kMmaK}。寄存器双缓冲时间线（每个 k 迭代内五步）：
+
+\begin{enumerate}
+  \item G$\to$S：\texttt{cp.async} 预取 \texttt{stage(k+kStages-1)} 的全部
+        k\_step（条件）；
+  \item MMA k\_step$=0$（用 \texttt{reg[load]}，已在上轮 post-wait 中
+        \texttt{ldmatrix}）；
+  \item 对 k\_step$=1..\,$\texttt{kValTileK}$-1$ 循环：\texttt{ldmatrix}（列偏移
+        k\_step$\times$\texttt{kMmaK}）$\to$ \texttt{reg[store]}，flip，MMA $\to$
+        \texttt{reg[load]}；
+  \item adaptive wait + \texttt{\_\_syncthreads}；
+  \item S$\to$R：\texttt{ldmatrix} 预加载 \texttt{stage(k+1)} 的 k\_step$=0$
+        $\to$ \texttt{reg[store]}（条件）。
+\end{enumerate}
+
+Grid $((N{+}127)/128/S,\ (M{+}127)/128,\ S)$，$S=(N{+}2047)/2048$，3D block
+swizzle；Block $(256,1,1)$，8 warps；参考实现
+\texttt{hgemm\_mma\_stage\_tn\_swizzle\_x2.cu}。模板参数前七项定档：
+\texttt{kMmaM}$=16$ / \texttt{kMmaN}$=8$ / \texttt{kMmaK}$=16$（MMA atom
+\texttt{m16n8k16} 的 M/N/K 维）；\texttt{kMmaTileM}$=2$（warps along M，warp
+tile M $= 32$）、\texttt{kMmaTileN}$=4$（warps along N，warp tile N $= 32$）；
+\texttt{kValTileM}$=4$（value-repeat along M，$\mathrm{BM} = 16\times2\times4 =
+128$）、\texttt{kValTileN}$=4$（value-repeat along N，$\mathrm{BN} = 8\times4\times4
+= 128$）。
 
 \lstinputlisting[linerange={431-460},firstnumber=auto,
   title={hgemm.cuh L431-460（模板参数 + 式~\ref{eq:12-bs} 坐标重映射 + 双缓冲 smem）}]{../hgemm.cuh}
@@ -317,7 +512,7 @@ bit-exact 等价（12.3.6 节）。派发器只有 9 行，宏门控：
 $B_K=16\,k_{\mathrm{ValTileK}}$）与 \texttt{k\allowbreak{}Block\allowbreak{}Swizzle}。smem 侧是经典的
 kStages 级双缓冲：$S$ 个 stage 轮转，cp.async 预取 $k{+}S{-}1$、MMA 消费 $k$。
 \texttt{kValTileK}{=}4 时每 stage $128{\times}64$ half，$S{=}2$ 共 64\,KB——
-恰好是注释「kStages=2 推荐 64KB smem」的由来（$S{=}3$ 需 96\,KB，sm\_120 可容
+恰好是上文「\texttt{kStages}{=}2 推荐 64\,KB smem」的由来（$S{=}3$ 需 96\,KB，sm\_120 可容
 但常驻 block 数下降）。
 
 \subsection{G$\to$S：swizzle 进地址的 cp.async}
@@ -358,13 +553,154 @@ ldmatrix 到 \texttt{reg[st]}、随后 HMMA 吃 \texttt{reg[ld]}——加载 sli
 \texttt{WAIT\_\allowbreak{}GROUP\allowbreak{}(0)} 排空。Epilogue（L683--716）复用 \texttt{RA} 寄存器做
 warp shuffle 拼出 128-bit 向量写回 C，思路与第~\ref{ch:11}~章一致，此处不展开。
 
-\needspace{153mm}
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  blk/.style={draw, rounded corners=1pt, inner sep=2pt, font=\tiny, align=center},
+  lds/.style={blk, fill=tkFillPurple, draw=tkPurple},
+  mma/.style={blk, fill=white, pattern=north east lines, pattern color=black!55},
+  unit/.style={font=\tiny, inner sep=1pt},
+]
+  \foreach \x in {1.8, 5.8, 9.8}{
+    \draw[dashed, gray] (\x, 2.42) -- (\x, -1.1);
+  }
+  \node[font=\scriptsize\bfseries] at (0.9, 2.7) {prologue};
+  \node[font=\scriptsize\bfseries] at (3.8, 2.7) {k 迭代 0};
+  \node[font=\scriptsize\bfseries] at (7.8, 2.7) {k 迭代 1};
+  \node[font=\scriptsize\bfseries] at (10.9, 2.7) {$\cdots$};
+  \node[rotate=90, font=\scriptsize\bfseries] at (-0.85, 1.86) {cp.async 预取};
+  \node[blk, fill=tkFillBlue, draw=tkBlue, minimum width=1.5cm] at (0.9, 1.86) {tile 0 $\to$ S$_0$};
+  \node[blk, fill=tkFillBlue, draw=tkBlue, minimum width=3.5cm] at (3.8, 1.86)
+    {cp.async：tile $k{+}S{-}1$ $\to$ stage $(k{+}S{-}1)\bmod S$\\（tile 1 $\to$ S$_1$，$S{=}$kStages$=2$）};
+  \node[blk, fill=tkFillBlue, draw=tkBlue, minimum width=3.5cm] at (7.8, 1.86) {tile 2 $\to$ S$_0$};
+  \node[blk, fill=tkFillBlue, draw=tkBlue, minimum width=1.3cm] at (10.85, 1.86) {tile 3 $\to$ S$_1~\cdots$};
+  \node[rotate=90, font=\scriptsize\bfseries] at (-0.85, 0.0) {k\_step 乒乓};
+  \node[lds, minimum width=1.5cm] at (0.9, 0.45) {预装 ldmatrix\\slice 0 $\to$ reg[0]};
+  \foreach \j/\st/\ld in {0/1/0, 1/0/1, 2/1/0, 3/0/1}{
+    \node[lds, minimum width=0.9cm] at ({2.275+0.95*\j}, 0.45) {ldmatrix\\$\to$reg[\st]};
+    \node[mma, minimum width=0.9cm] at ({2.275+0.95*\j}, -0.35) {HMMA\\reg[\ld]};
+    \node[unit] at ({2.275+0.95*\j}, -0.95) {st\st~ld\ld};
+  }
+  \foreach \j in {0,...,3}{
+    \node[lds, minimum width=0.9cm] at ({6.275+0.95*\j}, 0.45) {ldmatrix};
+    \node[mma, minimum width=0.9cm] at ({6.275+0.95*\j}, -0.35) {HMMA};
+    \node[unit] at ({6.275+0.95*\j}, -0.95) {k\_step \j};
+  }
+  \draw[-{Stealth}, dashed, gray] (0.9, 1.45) to[bend right=20] node[font=\tiny, sloped, above]{wait 后消费} (2.75, 0.83);
+  \draw[-{Stealth}, dashed, gray] (3.8, 1.45) to[bend right=20] (6.75, 0.83);
+  \node[draw, rounded corners=2pt, fill=tkFillBlue, draw=tkBlue!70, text width=3.8cm, align=left,
+        font=\scriptsize, anchor=north west] at (12.0, 2.42)
+    {\textbf{自适应 wait}\\（cp.async 计数语义）：\\[1pt]
+     满载期：\texttt{wait\_group(kStages-2)}\\
+     \quad 允许还有 1 组在飞\\[1pt]
+     尾 tile：\texttt{wait\_group(0)} 排空\\[1pt]
+     （hgemm.cuh L642--681）};
+  \node[font=\scriptsize, align=center, anchor=north] at (5.8, -1.35)
+    {每个 k\_step 先 flip：\texttt{reg\_st\_idx\^{}=1}、\texttt{reg\_ld\_idx\^{}=1}——ldmatrix 预载 slice $t{+}1$ 进 reg[st]\\（末 k\_step 预载下一 tile 的 slice 0），HMMA 同拍吃 reg[ld] 里已就绪的 slice $t$，加载与计算交替发出};
+  \node[font=\scriptsize, align=center, anchor=north] at (5.8, -2.35)
+    {两级分工：\textbf{第一级} smem 双缓冲（kStages 轮转）盖住 gmem$\to$smem 的跨 k 迭代延迟；\\
+     \textbf{第二级} 寄存器双缓冲（reg[st]/reg[ld] 乒乓）盖住 k\_step 级 ldmatrix 延迟（含 12.3.7 节残余 4-way 冲突）};
+\end{tikzpicture}
+\caption{两级双缓冲叠加的流水时间线（12.4.4 节，hgemm.cuh~L514--681）：上泳道是
+第一级——cp.async 按 stage $(k{+}S{-}1)\bmod S$ 预取下一 K-tile（$S{=}$kStages$=2$ 时
+k 迭代 0 预取 tile 1 进 S$_1$、迭代 1 预取 tile 2 回 S$_0$）；下泳道是第二级——
+每个 k 迭代内 4 个 k\_step 逐个过：先 flip（\texttt{reg\_st\_idx}/\texttt{reg\_ld\_idx}
+各异或 1），ldmatrix 把 slice $t{+}1$ 写进 reg[st]，同拍 HMMA 吃 reg[ld] 里已就绪的
+slice $t$，tensor core 不必等 ldmatrix。右侧为自适应等待：满载期
+\texttt{wait\_group(kStages-2)} 允许 1 组在飞、尾 tile 退化为 \texttt{wait\_group(0)} 排空。}
+\label{fig:12-dual-pipeline}
+\end{figure}
 
 \section{图示}
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.98\textwidth]{figures/drawio/fig-12-1-smem-swizzle/fig-12-1.png}
+\begin{tikzpicture}[
+  x=0.0163cm, y=-0.0163cm,
+  c78/.style={draw, line width=0.3pt, inner sep=1pt, font=\scriptsize,
+    minimum width={78*0.0163cm}, minimum height={34*0.0163cm}},
+  c64/.style={c78, minimum width={64*0.0163cm}, fill=gray!22, draw=black!45},
+  q56/.style={draw, line width=0.3pt, inner sep=0pt, font=\scriptsize,
+    minimum width={56*0.0163cm}, minimum height={40*0.0163cm}},
+  cardL/.style={draw, line width=0.5pt, align=center, inner sep=2pt, font=\tiny,
+    minimum width={350*0.0163cm}, minimum height={60*0.0163cm}},
+  cardS/.style={draw, line width=0.5pt, align=center, inner sep=2pt, font=\tiny,
+    minimum width={350*0.0163cm}, minimum height={46*0.0163cm}},
+  ttl/.style={font=\small\bfseries, anchor=west},
+  hdr/.style={font=\footnotesize\bfseries, anchor=west},
+  sub/.style={font=\tiny, anchor=west},
+]
+  \definecolor{figred}{RGB}{163,21,21}
+  \definecolor{figgreen}{RGB}{46,133,64}
+  \definecolor{figorange}{RGB}{217,119,6}
+  \node[ttl] at (30,27)
+    {smem XOR swizzle 前后：$8\times16$ fp16 tile（32\,B 行宽），quad $=(8i{+}4c)\bmod 32$};
+  \node[sub] at (30,54)
+    {quad $=$ 16\,B 四联组（4 个 bank）；ldmatrix.x4 phase0 由 lanes 0..7 按行 0..7 读 chunk0};
+  \node[hdr, text=figred] at (80,126) {[before] 直接排布};
+  \node[sub, text=figred] at (290,126) {行 4--7 重复行 0--3 的 quad};
+  \node[hdr, text=figgreen] at (600,126) {[after] $c'=c\oplus((i\gg2)\,\&\,1)$};
+  \node[sub, text=figgreen] at (850,126) {行 4--7 两 chunk 对调};
+  \node[c64] at (112,165) {row $i$};
+  \node[c78, fill=gray!22, draw=black!45] at (187,165) {chunk0};
+  \node[c78, fill=gray!22, draw=black!45] at (269,165) {chunk1};
+  \node[c64] at (632,165) {row $i$};
+  \node[c78, fill=gray!22, draw=black!45] at (707,165) {chunk0};
+  \node[c78, fill=gray!22, draw=black!45] at (789,165) {chunk1};
+  \foreach \ri/\qa/\qb/\gf in {0/0/4/0, 1/8/12/4, 2/16/20/0, 3/24/28/4}{
+    \pgfmathsetmacro{\ry}{148 + (\ri+1.5)*34}
+    \node[c64] at (112,\ry) {$\ri$};
+    \node[c78, fill=gray!\gf] at (187,\ry) {$\qa$};
+    \node[c78, fill=gray!\gf] at (269,\ry) {$\qb$};
+    \node[c64] at (632,\ry) {$\ri$};
+    \node[c78, fill=gray!\gf] at (707,\ry) {$\qa$};
+    \node[c78, fill=gray!\gf] at (789,\ry) {$\qb$};
+  }
+  \foreach \ri/\qa/\qb/\hc/\hd in {4/0/4/0/4, 5/8/12/4/0, 6/16/20/0/4, 7/24/28/4/0}{
+    \pgfmathsetmacro{\ry}{148 + (\ri+1.5)*34}
+    \node[c64] at (112,\ry) {$\ri$};
+    \node[c78, fill=gray!45, draw=figred, line width=0.7pt] at (187,\ry) {$\qa$};
+    \node[c78, fill=gray!45, draw=figred, line width=0.7pt] at (269,\ry) {$\qb$};
+    \node[c64] at (632,\ry) {$\ri$};
+    \node[c78, fill=gray!18, draw=figgreen, line width=0.7pt] at (707,\ry) {$\hd$};
+    \node[c78, fill=gray!18, draw=figgreen, line width=0.7pt] at (789,\ry) {$\hc$};
+  }
+  \draw[-{Stealth}, figorange, line width=1.2pt] (384,301) -- (598,301);
+  \node[sub, text=figorange, font=\tiny\bfseries] at (452,285) {XOR $(i\gg2)\,\&\,1$};
+  \node[font=\footnotesize\bfseries, anchor=west] at (30,501)
+    {ldmatrix.x4 phase0 读到的 quad 序列（lanes 0..7 $=$ rows 0..7, chunk0）：};
+  \foreach \cq [count=\ki from 0] in {0,8,16,24,0,8,16,24}{
+    \pgfmathsetmacro{\qx}{80 + \ki*60}
+    \node[q56, fill=white] at ({\qx+28},540) {$\cq$};
+  }
+  \foreach \cq [count=\ki from 0] in {0,8,16,24,4,12,20,28}{
+    \pgfmathsetmacro{\qx}{80 + \ki*60}
+    \node[q56, fill=white] at ({\qx+28},644) {$\cq$};
+  }
+  \foreach \cq [count=\ki from 0] in {0,8,16,24,0,8,16,24}{
+    \pgfmathsetmacro{\qx}{80 + \ki*60}
+    \ifnum\ki>3
+      \node[q56, fill=gray!45, draw=figred, line width=0.7pt] at ({\qx+28},540) {$\cq$};
+      \node[q56, fill=gray!18, draw=figgreen, line width=0.7pt] at ({\qx+28},644) {$\cq$};
+    \fi
+  }
+  \foreach \lab [count=\ki from 0] in {row0,row1,row2,row3,row4,row5,row6,row7}{
+    \pgfmathsetmacro{\qx}{80 + \ki*60}
+    \node[font=\tiny, anchor=center] at ({\qx+28},573) {\lab};
+  }
+  \node[sub, text=figred, font=\tiny\bfseries] at (80,527) {before};
+  \node[sub, text=figgreen, font=\tiny\bfseries] at (80,631) {after};
+  \node[cardL, fill=gray!45, draw=figred] at (875,544)
+    {before: quads $\{0,8,16,24,0,8,16,24\}$};
+  \node[cardS, fill=white, draw=figred] at (875,603)
+    {每个 quad 服务 2 行 $\to$ 2-way bank conflict};
+  \node[cardL, fill=gray!18, draw=figgreen] at (875,682)
+    {after: quads $\{0,8,16,24,4,12,20,28\}$};
+  \node[cardS, fill=white, draw=figgreen] at (875,741)
+    {8 个互异 quad 铺满 32 bank $\to$ 1-way};
+  \node[sub] at (30,673) {chunk1（lanes 16..31）镜像同一模式。};
+  \node[sub] at (30,693) {BK=64 统一 tile 中只有 slice 内翻转存活 $\to$ 每 phase 4-way，见 FIG-12-3};
+\end{tikzpicture}
 \caption{smem XOR swizzle 前后的 bank 四联组分布（32\,B 行宽布局，即 BK=16 /
 FA 风格 $[\ast][16]$ tile）。同一 8$\times$16 tile：置换前每 4 行重复一轮 quad，
 按列读取 2-way 冲突；置换后行 4--7 的两个 chunk 对调，8 行恰好铺满 32 个
@@ -374,7 +710,86 @@ bank——ldmatrix.x4 phase0 读到的 quad 序列从 $\{0,8,16,24,0,8,16,24\}$
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.98\textwidth]{figures/drawio/fig-12-2-block-swizzle/fig-12-2.png}
+\begin{tikzpicture}[
+  x=0.0160cm, y=-0.0160cm,
+  gn/.style={line width=0.2pt, fill=gray!22, draw=black!25,
+    minimum width={17*0.0160cm}, minimum height={17*0.0160cm}, inner sep=0pt},
+  gr/.style={gn, fill=gray!45, draw=figorange},
+  gg/.style={gn, fill=gray!18, draw=figgreen},
+  ttl/.style={font=\small\bfseries, anchor=west},
+  ph/.style={font=\footnotesize\bfseries, anchor=west},
+  sub/.style={font=\tiny, anchor=west},
+  card/.style={draw, line width=0.5pt, minimum width={330*0.0160cm},
+    minimum height={70*0.0160cm}, align=center, inner sep=2pt}
+]
+  \definecolor{figred}{RGB}{163,21,21}
+  \definecolor{figgreen}{RGB}{46,133,64}
+  \definecolor{figorange}{RGB}{217,119,6}
+  \definecolor{figblue}{RGB}{33,113,181}
+  \node[ttl] at (30,25) {block swizzle：C-tile 光栅化前后（L2 footprint 对比）};
+  \node[sub] at (30,52)
+    {T\_m$=16 \times$ T\_n$=128$，常驻集 $R \approx 110$ blocks（110 SM $\times$ 1 block/SM），组宽 $S{=}16$；resident set $=$ 一个 wave 里同时驻留 SM 的 C-tile 集合};
+  \node[ph, text=figred] at (30,107) {[default] 2D grid：x 最快，行优先光栅};
+  \node[sub, text=figred] at (30,127) {y$=$0 一行即被 110 blocks 填满};
+  \foreach \ri in {0,...,7}{
+    \foreach \ci in {0,...,23}{
+      \pgfmathsetmacro{\gx}{88.5 + \ci*19}
+      \pgfmathsetmacro{\gy}{168.5 + \ri*19}
+      \ifnum\ri<1
+        \node[gr] at (\gx,\gy) {};
+      \else
+        \node[gn] at (\gx,\gy) {};
+      \fi
+    }
+  }
+  \draw[-{Stealth}, figred, line width=0.9pt] (66,160) -- (66,178);
+  \node[font=\tiny, text=figred, anchor=east] at (56,181) {H$=$1 行};
+  \node[sub] at (80,329) {x: 0 ......... 109（W$=$110 块，网格 T\_n$=$128 列）};
+  \node[sub, text=figred, font=\tiny\bfseries] at (80,350) {resident $=$ W$=$110 $\times$ H$=$1 宽条带};
+  \draw[-{Stealth}, figblue, line width=1.2pt] (546,240) -- (638,240);
+  \node[font=\tiny\bfseries, text=figblue, anchor=west] at (546,206) {bx $=$ z*gridDim.x};
+  \node[font=\tiny, text=figblue, anchor=west] at (546,228) {(z 组折叠进 bx)};
+  \node[ph, text=figgreen] at (656,107) {[swizzle] 3D grid：z 组内 16 列，近似方块};
+  \node[sub, text=figgreen] at (656,127) {z$=$0: bx$=$0..15；共 7 组 $\times$ 16 tiles（112 槽驻留 110 块）};
+  \foreach \ri in {0,...,10}{
+    \foreach \ci in {0,...,19}{
+      \pgfmathsetmacro{\gx}{664.5 + \ci*19}
+      \pgfmathsetmacro{\gy}{168.5 + \ri*19}
+      \ifnum\ri>1
+        \ifnum\ri<9
+          \ifnum\ci>1
+            \ifnum\ci<18
+              \node[gg] at (\gx,\gy) {};
+            \else
+              \node[gn] at (\gx,\gy) {};
+            \fi
+          \else
+            \node[gn] at (\gx,\gy) {};
+          \fi
+        \else
+          \node[gn] at (\gx,\gy) {};
+        \fi
+      \else
+        \node[gn] at (\gx,\gy) {};
+      \fi
+    }
+  }
+  \node[sub, text=figgreen, font=\tiny\bfseries] at (656,387)
+    {resident $=$ 16 $\times$ 7 近方块（同 110 tiles）};
+  \node[sub] at (656,408) {launch 顺序 x $\to$ y $\to$ z 不变，bx 重排实现};
+  \node[font=\footnotesize\bfseries, anchor=west] at (30,501)
+    {L2 footprint $F$（每个 K-slab 的 unique A$+$B tiles）：$F=(H{\cdot}\mathrm{BM} + W{\cdot}\mathrm{BN})\cdot K\cdot 2\mathrm{B}$};
+  \node[card, fill=gray!45, draw=figred] at (205,555) {};
+  \node[font=\tiny, anchor=center] at (211,540) {default：(1*128 $+$ 110*128) * K * 2B};
+  \node[font=\scriptsize\bfseries, anchor=center] at (211,568) {$=$ 14208 * K * 2B};
+  \node[card, fill=gray!18, draw=figgreen] at (565,555) {};
+  \node[font=\tiny, anchor=center] at (571,540) {swizzle：(7*128 $+$ 16*128) * K * 2B};
+  \node[font=\scriptsize\bfseries, anchor=center] at (571,568) {$=$ 2944 * K * 2B};
+  \node[card, fill=gray!22, draw=figblue, font=\footnotesize\bfseries] at (925,555)
+    {footprint 缩小 4.8x};
+  \node[sub] at (40,608)
+    {实测 L2 sector hit rate：64.45\% $\to$ 96.15\%，端到端 117.9 $\to$ 122.9 TFLOPS（$+$4.2\%，PRO 5000，2048x16384x4096 HGEMM）};
+\end{tikzpicture}
 \caption{Block swizzle 的 grid 重排前后：默认光栅的常驻集合是
 $W{\times}H$ 宽条带（$W{=}\min(T_n,R)$），重排后折叠为组宽 16 的近似方块，L2 footprint
 按式~\ref{eq:12-footprint} 缩小 4.8 倍；实测 L2 sector hit rate
@@ -383,7 +798,53 @@ $W{\times}H$ 宽条带（$W{=}\min(T_n,R)$），重排后折叠为组宽 16 的�
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-12-3-xor-bits/fig-12-3.png}
+\begin{tikzpicture}[
+  x=0.0158cm, y=-0.0158cm,
+  bf/.style={draw, line width=0.4pt, align=center, inner sep=1pt, font=\tiny},
+  ln/.style={draw, line width=0.4pt, align=center, inner sep=2pt, font=\tiny,
+    minimum height={34*0.0158cm}},
+  ttl/.style={font=\small\bfseries, anchor=west},
+  ph/.style={font=\footnotesize\bfseries, anchor=west},
+  sub/.style={font=\tiny, anchor=west},
+]
+  \definecolor{figgreen}{RGB}{46,133,64}
+  \definecolor{figorange}{RGB}{217,119,6}
+  \definecolor{figblue}{RGB}{33,113,181}
+  \node[ttl] at (30,27) {XOR swizzle 位运算：Swizzle$=$B,M,S（fp16 tile 字节偏移）};
+  \node[ph] at (50,66) {BK$=$16 tile 字节偏移 $a = 32i + 16c + w$ 的 bit 布局：};
+  \node[bf, fill=gray!12, draw=figblue, minimum width={240*0.0158cm},
+    minimum height={40*0.0158cm}] at (180,104) {bit 9-7: $i$（行）};
+  \node[bf, fill=white, draw=black!45, minimum width={180*0.0158cm},
+    minimum height={40*0.0158cm}] at (394,104) {bit 6-5: ...};
+  \node[bf, fill=gray!45, draw=figorange, minimum width={200*0.0158cm},
+    minimum height={40*0.0158cm}] at (588,104) {bit 4: $c$（chunk）};
+  \node[bf, fill=white, draw=black!45, minimum width={260*0.0158cm},
+    minimum height={40*0.0158cm}] at (822,104) {bit 3-0: $w$（chunk 内）};
+  \node[sub] at (60,142)
+    {行号从 bit5 起 $\to$ bit7 $=$ ($i$ 右移 2 且 mod 2) 是 XOR 源位；chunk 位 bit4 是 XOR 目标位};
+  \node[draw, line width=0.5pt, fill=gray!12, draw=figblue, align=center,
+    inner sep=2pt, minimum width={460*0.0158cm}, minimum height={60*0.0158cm}] at (290,194) {};
+  \node[font=\footnotesize\bfseries, text=figblue, anchor=center] at (294,181)
+    {apply($a$) $=$ a \textasciicircum{} ((a 和 0x80) 右移 3)};
+  \node[font=\tiny, anchor=center] at (294,205)
+    {$=$ a \textasciicircum{} (bit7(a) 左移 4) \quad //\ bit4 异或 bit7（B$=$1,M$=$4,S$=$3）};
+  \node[ph] at (50,254) {行宽决定「多少行号位能挤进 bank 位 [2,7)」$\to$ 最小冲突度：};
+  \node[ln, fill=gray!18, draw=figgreen, text width={960*0.0158cm},
+    minimum width={980*0.0158cm}] at (550,289)
+    {32B 行（BK$=$16）：bit4$=$c，bit7$=$row 右移 2 $\to$ 可达 1-way};
+  \node[ln, fill=gray!12, draw=figblue, text width={960*0.0158cm},
+    minimum width={980*0.0158cm}] at (550,329)
+    {128B 行（BK$=$64）：$a = 128i+32s+16c+w$，bits [i:7..][s:5-6][c:4][w:0-3]};
+  \node[ln, fill=white, draw=figblue, text width={460*0.0158cm},
+    minimum width={480*0.0158cm}] at (300,369)
+    {per-slice swizzle 小于 16：仅 bit4 异或 bit7 $\to$ 2 quad/phase $=$ 4-way};
+  \node[ln, fill=gray!18, draw=figgreen, text width={460*0.0158cm},
+    minimum width={480*0.0158cm}] at (800,369)
+    {全宽 swizzle 小于 64（B$=$3）：bits 4-6 异或 bits 7-9 $\to$ 8 quad $=$ 1-way};
+  \node[ln, fill=gray!22, draw=figblue, text width={960*0.0158cm},
+    minimum width={980*0.0158cm}] at (550,415)
+    {源位域 [M$+$S, M$+$S$+$B) 与目标位域 [M, M$+$B) 不相交（S 不小于 B）$\to$ 两次应用复原：对合（引理 12.1）};
+\end{tikzpicture}
 \caption{XOR 位运算示意：源位域（行号低位）经右移 $S$ 异或到目标位域（chunk 号）。行宽决定「有多少行号位能挤进 bank 位 $[2,7)$」，从而决定可达到的最小冲突度；源/目标位域不相交（$S \ge B$）保证对合性（引理 12.1）。}
 \label{fig:12-3}
 \end{figure}

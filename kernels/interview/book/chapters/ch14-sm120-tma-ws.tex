@@ -187,6 +187,65 @@ setmaxnreg——\textbf{双向互等，纯挂死}：无 illegal instruction、�
 watchdog 超时前毫无征兆。而 alloc 从 224 降到 208（总 61440，余 4096）后一切
 正常。诊断口诀：kernel 无报错挂起、唯一变量是 setmaxnreg 数字时，先查池数学。
 
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  slb/.style={font=\scriptsize, align=center, anchor=east},
+  tnum/.style={font=\tiny, inner sep=1pt},
+]
+  \node[fill=tkFillBlue, draw=tkBlue, minimum width=0.5cm, minimum height=0.25cm, inner sep=0pt] at (0.3, 0.85) {};
+  \node[font=\scriptsize, anchor=west] at (0.62, 0.85) {producer warp（\texttt{dealloc} 让出）};
+  \node[fill=tkFillGreen, draw=tkGreen, minimum width=0.5cm, minimum height=0.25cm, inner sep=0pt] at (4.3, 0.85) {};
+  \node[font=\scriptsize, anchor=west] at (4.62, 0.85) {consumer warp（\texttt{alloc} 补足）};
+  \node[pattern=north east lines, pattern color=gray!45, draw, minimum width=0.5cm, minimum height=0.25cm, inner sep=0pt] at (8.0, 0.85) {};
+  \node[font=\scriptsize, anchor=west] at (8.32, 0.85) {池剩余};
+  \draw[tkRed, thick, dashed] (12.4, 0.55) -- (12.4, -4.95);
+  \node[tkRed, font=\scriptsize, align=center, anchor=south] at (12.4, 0.6)
+    {安全 slack\\（池余 $\ge$ 2048）};
+  \node[slb] at (-0.25, 0) {本章源码\\dealloc\texttt{<40>} / alloc\texttt{<232>}};
+  \fill[tkFillBlue] (0, -0.3) rectangle (1.0, 0.3);
+  \fill[tkFillGreen] (1.0, -0.3) rectangle (6.8, 0.3);
+  \fill[pattern=north east lines, pattern color=gray!45] (6.8, -0.3) rectangle (12.8, 0.3);
+  \draw (6.8, -0.3) rectangle (12.8, 0.3);
+  \node[tnum] at (0.5, 0.08) {5120};
+  \node[tnum] at (3.9, 0) {29696};
+  \node[tnum] at (9.8, 0) {池余 30{,}720 $\to$ 安全};
+  \node[font=\scriptsize, anchor=east] at (12.8, 0.5) {$\Sigma=34{,}816$};
+  \node[slb] at (-0.25, -1.9) {死锁实录（ffpa-attn）\\dealloc\texttt{<64>} / 8 warp alloc\texttt{<224>}};
+  \fill[tkFillBlue] (0, -2.2) rectangle (1.6, -1.6);
+  \fill[tkFillGreen] (1.6, -2.2) rectangle (12.8, -1.6);
+  \draw[tkRed, very thick] (0, -2.2) rectangle (12.8, -1.6);
+  \node[tnum] at (0.8, -1.52) {8192};
+  \node[tnum] at (6.4, -1.9) {57344};
+  \node[tkRed, font=\scriptsize, anchor=east] at (12.8, -1.4) {$\Sigma=65{,}536$ 恰好占满};
+  \node[tkRed, font=\scriptsize, align=center, anchor=north] at (6.4, -2.3)
+    {alloc\texttt{<224>} 的 \texttt{.inc} 永久阻塞 $\leftrightarrow$ producer 等 consumer 的 barrier arrive——双向互等，纯挂死（无报错）};
+  \node[slb] at (-0.25, -4.1) {修正\\alloc\texttt{<224>}$\to$\texttt{<208>}};
+  \fill[tkFillBlue] (0, -4.4) rectangle (1.6, -3.8);
+  \fill[tkFillGreen] (1.6, -4.4) rectangle (12.0, -3.8);
+  \fill[pattern=north east lines, pattern color=gray!45] (12.0, -4.4) rectangle (12.8, -3.8);
+  \draw (12.0, -4.4) rectangle (12.8, -3.8);
+  \node[tnum] at (0.8, -3.72) {8192};
+  \node[tnum] at (6.0, -4.1) {53248};
+  \node[font=\scriptsize, anchor=east] at (12.8, -3.6) {$\Sigma=61{,}440$，池余 4{,}096 $\to$ 正常};
+  \draw[->] (0, -4.95) -- (13.15, -4.95);
+  \foreach \v/\x in {0/0, 16384/3.2, 32768/6.4, 49152/9.6, 65536/12.8}{
+    \draw (\x, -4.95) -- (\x, -4.85);
+    \node[font=\scriptsize, anchor=south] at (\x, -4.8) {\v};
+  }
+\end{tikzpicture}
+\caption{setmaxnreg 的 CTA 寄存器池三配置对照（式~\ref{eq:14-pool}，每 SM 寄存器
+文件共 65{,}536 个 32-bit 寄存器）：条形按 $\sum_w 32\,r_w$ 堆叠 producer
+（dealloc 让出）与 consumer（alloc 补足）两段，红色虚线为工程安全界（池余
+$\ge$ 2048）。\textcircled{1} 本章源码 dealloc\texttt{<40>}/alloc\texttt{<232>}：
+$5120+29696=34816$，池余 30720，安全；\textcircled{2} ffpa-attn 调优实录的死锁配置
+dealloc\texttt{<64>} $+$ 8 warp $\times$ alloc\texttt{<224>}：$8192+57344=65536$ 恰好占满
+——有效池 $<65536$，\texttt{.inc} 永远凑不齐而阻塞在 setmaxnreg 上，与 producer 等
+barrier arrive 形成双向互等，纯挂死；\textcircled{3} alloc 降到 208：总 61440、池余
+4096，恢复正常。}
+\label{fig:14-regpool}
+\end{figure}
+
 \textbf{Blackwell 上的 TMA 地址空间陷阱与解法}：即便池数学正确，还有一道
 隐蔽的门槛——CUDA 13.2 的 ptxas 在 kernel 同时含有 setmaxnreg 与目的地址为
 \texttt{shared::cluster} 的 \texttt{cp.\allowbreak{}async.\allowbreak{}bulk.\allowbreak{}tensor} 时，会把后者当作隐式
@@ -267,6 +326,84 @@ base\_offset $= (\mathrm{addr} \gg 7) \,\&\, 7$ 让硬件补偿任意相位，�
 写入而软件按零相位读出，物理地址整体错位，输出全错（不越界、不报错，纯静默
 错误）。所以要么 1024B 对齐（本章做法），要么在软件公式里把基址相位加上
 （更繁琐且易错）。源码 L1898--1919 的注释对这段取舍有完整展开，值得逐行读。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  gbox/.style={draw, thick, fill=gray!10, minimum width=1.5cm, minimum height=1.0cm, font=\scriptsize, align=center},
+  rbox/.style={draw, thick, minimum width=2.4cm, minimum height=1.0cm, font=\scriptsize, align=center},
+  sw/.style={-{Stealth}, semithick, tkBlue},
+  hw/.style={-{Stealth}, very thick, tkPurple},
+  wlab/.style={font=\tiny, align=center},
+  sum/.style={font=\scriptsize, align=left, anchor=west},
+  rowlab/.style={font=\scriptsize\bfseries, align=center, anchor=east},
+]
+  \draw[sw] (0.1, 1.25) -- (0.9, 1.25);
+  \node[font=\scriptsize, anchor=west] at (1.02, 1.25) {软件计算地址};
+  \draw[hw] (3.4, 1.25) -- (4.2, 1.25);
+  \node[font=\scriptsize, anchor=west] at (4.32, 1.25) {硬件引擎执行};
+  \begin{scope}[yshift=0cm]
+    \node[rowlab] at (-0.3, 0) {ch12\\cp.async +\\ldmatrix（sm\_80）};
+    \node[gbox] at (1.7, 0) {gmem};
+    \draw[sw] (2.55, 0) -- node[wlab, above=1pt] {cp.async + \texttt{swizzle<16>}\\手写 XOR} node[wlab, below=1pt] {（软件写）} (4.85, 0);
+    \draw[thick, tkBlue] (5.0, -0.75) rectangle (7.4, 0.75);
+    \foreach \r in {0,...,3}{
+      \foreach \cc in {0,...,7}{
+        \pgfmathtruncatemacro{\gf}{15+22*mod(\r+\cc,3)}
+        \node[fill=colorx6!\gf, minimum size=0.23cm, inner sep=0pt] at ({5.36+\cc*0.24}, {0.455-\r*0.24}) {};
+      }
+    }
+    \node[font=\scriptsize] at (6.2, -0.51) {smem};
+    \draw[sw] (7.55, 0) -- node[wlab, above=1pt] {ldmatrix\\同 \texttt{swizzle} 公式} node[wlab, below=1pt] {（软件读）} (9.85, 0);
+    \node[rbox, draw=tkBlue, fill=tkFillBlue] at (11.2, 0) {ldmatrix $\to$ reg\\$\to$ mma.sync};
+    \node[sum, text=tkBlue] at (12.45, 0) {软件写 $\leftrightarrow$ 软件读\\（对合：写读同函数）};
+  \end{scope}
+  \begin{scope}[yshift=-2.5cm]
+    \node[rowlab] at (-0.3, 0) {ch13\\TMA + WGMMA\\（sm\_90a）};
+    \node[gbox] at (1.7, 0) {gmem};
+    \draw[hw] (2.55, 0) -- node[wlab, above=1pt] {TMA \texttt{SWIZZLE\_128B}\\descriptor 声明} node[wlab, below=1pt] {（硬件写）} (4.85, 0);
+    \draw[thick, tkPurple] (5.0, -0.75) rectangle (7.4, 0.75);
+    \foreach \r in {0,...,3}{
+      \foreach \cc in {0,...,7}{
+        \pgfmathtruncatemacro{\gf}{15+22*mod(\r+\cc,3)}
+        \node[fill=colorx7!\gf, minimum size=0.23cm, inner sep=0pt] at ({5.36+\cc*0.24}, {0.455-\r*0.24}) {};
+      }
+    }
+    \node[font=\scriptsize] at (6.2, -0.51) {smem};
+    \draw[hw] (7.55, 0) -- node[wlab, above=1pt] {WGMMA smem descriptor\\base\_offset=(addr$\gg$7)\&7 补偿} node[wlab, below=1pt] {（硬件读）} (9.85, 0);
+    \node[rbox, draw=tkPurple, fill=tkFillPurple] at (11.2, 0) {WGMMA\\（A/B 直读 smem）};
+    \node[sum, text=tkPurple] at (12.45, 0) {硬件写 + 硬件读\\（零软件 swizzle 计算）};
+  \end{scope}
+  \begin{scope}[yshift=-5.0cm]
+    \node[rowlab] at (-0.3, 0) {ch14\\TMA + ldmatrix\\（sm\_120）};
+    \node[gbox] at (1.7, 0) {gmem};
+    \draw[hw] (2.55, 0) -- node[wlab, above=1pt] {TMA \texttt{SWIZZLE\_128B}\\descriptor 声明} node[wlab, below=1pt] {（硬件写）} (4.85, 0);
+    \draw[thick, tkOrange] (5.0, -0.75) rectangle (7.4, 0.75);
+    \foreach \r in {0,...,3}{
+      \foreach \cc in {0,...,7}{
+        \pgfmathtruncatemacro{\gf}{15+22*mod(\r+\cc,3)}
+        \node[fill=colorx2!\gf, minimum size=0.23cm, inner sep=0pt] at ({5.36+\cc*0.24}, {0.455-\r*0.24}) {};
+      }
+    }
+    \node[font=\scriptsize] at (6.2, -0.51) {smem};
+    \draw[sw] (7.55, 0) -- node[wlab, above=1pt] {ldmatrix + \texttt{swizzle<64>}\\软件公式，相位固定 0} node[wlab, below=1pt] {（软件读）} (9.85, 0);
+    \node[rbox, draw=tkOrange, fill=tkFillOrange] at (11.2, 0) {ldmatrix $\to$ reg\\$\to$ mma.sync};
+    \node[sum, text=tkOrange] at (12.45, 0) {硬件写 + 软件读\\（零相位公式，\\需 1024B 对齐）};
+    \node[draw=tkRed, thick, rounded corners=2pt, font=\scriptsize, align=center]
+      at (6.2, -1.45)
+      {必须 \texttt{\_\_align\_\_(1024)}：基址只有 128B 对齐时，\\TMA 按非零相位写入而软件按零相位读出 $\to$ 地址整体错位（静默错误）};
+  \end{scope}
+\end{tikzpicture}
+\caption{swizzle 的三代演化——写入端与读取端的「软件/硬件」分工（14.4.2 节）：
+ch12 用 cp.async 手写 XOR 写入、ldmatrix 用同一个 swizzle 公式读出——软件写
+$\leftrightarrow$ 软件读，靠对合性（引理~\ref{lem:12-invol}）保证互逆；ch13 把两端都
+交给硬件——TMA 按 descriptor 声明的 SWIZZLE\_128B 直接写好重排布局，WGMMA 在
+smem descriptor 里编码 layout\_type 与 base\_offset 由硬件补偿任意相位，零软件
+swizzle 计算；ch14 折中——TMA 硬件写 $+$ 软件公式 \texttt{swizzle<64>} 零相位读，
+此时 smem 基址必须 \texttt{\_\_align\_\_(1024)}（红框）：否则 TMA 以非零相位写入而
+软件按零相位读出，物理地址整体错位，输出全错且不报错。}
+\label{fig:14-swizzle-evolution}
+\end{figure}
 
 \subsection{barrier 初始化}
 
@@ -373,14 +510,129 @@ epilogue 与 ch11/ch12 同款：mma m16n8k16 的 C fragment 中，同一 8$\time
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-14-1-tma-box/fig-14-1.png}
+\begin{tikzpicture}[
+  x=0.0155cm, y=-0.0155cm,
+  cell/.style={draw, line width=0.3pt, align=center, inner sep=0pt, font=\tiny,
+    minimum width={44*0.0155cm}, minimum height={32*0.0155cm}},
+  hcell/.style={cell, fill=gray!22, draw=black!40},
+  lcell/.style={cell, fill=gray!22, draw=black!40, minimum width={52*0.0155cm}},
+  ttl/.style={font=\small\bfseries, anchor=west},
+  sub/.style={font=\tiny, anchor=west},
+]
+  \definecolor{figgreen}{RGB}{46,133,64}
+  \definecolor{figorange}{RGB}{217,119,6}
+  \definecolor{figblue}{RGB}{33,113,181}
+  \node[ttl] at (30,27) {TMA box：global 张量 $\to$ smem 128B-swizzled tile};
+  \node[font=\footnotesize\bfseries, text=figblue, anchor=west] at (50,62)
+    {A in gmem（row-major [M,K]，minor $=$ K）};
+  \draw[black!45, line width=0.5pt] (80,80) rectangle (460,310);
+  \node[draw, line width=0.5pt, fill=gray!12, draw=figblue, align=center,
+    inner sep=2pt, font=\tiny\bfseries, text=figblue,
+    minimum width={120*0.0155cm}, minimum height={120*0.0155cm}] at (260,200)
+    {box 64x128\\$=$ 16KB};
+  \node[sub, text=black!55] at (96,101) {k0 $\to$};
+  \node[sub, text=black!55] at (96,195) {m0};
+  \node[sub] at (50,332)
+    {boxDim $=$ (BK$=$64, BM$=$128)，坐标 minor-first：A box (k*64, by*128)};
+  \node[font=\footnotesize\bfseries, text=figorange, anchor=west] at (560,50)
+    {smem tile（BM $\times$ BK，chunk $=$ 16B $=$ 8 half）};
+  \node[sub, text=figorange] at (560,70) {chunk 异或 行低 3 位};
+  \node[font=\tiny, text=black!55, anchor=east] at (616,98) {chunk};
+  \foreach \ci in {0,...,7}{
+    \pgfmathsetmacro{\cx}{642 + \ci*44}
+    \node[hcell] at (\cx,98) {$\ci$};
+  }
+  \foreach \ri in {0,...,7}{
+    \pgfmathsetmacro{\cy}{130 + \ri*32}
+    \node[lcell] at (590,\cy) {i$=\ri$};
+  }
+  \foreach \vx [count=\ki from 0] in {%
+      0,1,2,3,4,5,6,7, 1,0,3,2,5,4,7,6, 2,3,0,1,6,7,4,5, 3,2,1,0,7,6,5,4,
+      4,5,6,7,0,1,2,3, 5,4,7,6,1,0,3,2, 6,7,4,5,2,3,0,1, 7,6,5,4,3,2,1,0}{
+    \pgfmathtruncatemacro{\ri}{int(\ki/8)}
+    \pgfmathtruncatemacro{\ci}{mod(\ki,8)}
+    \pgfmathsetmacro{\cx}{642 + \ci*44}
+    \pgfmathsetmacro{\cy}{130 + \ri*32}
+    \ifnum\ri>0
+      \ifnum\ri<3
+        \ifnum\ci<4
+          \node[cell, fill=gray!45, draw=figorange, line width=0.6pt] at (\cx,\cy) {$\vx$};
+        \else
+          \node[cell, fill=white, draw=black!30] at (\cx,\cy) {$\vx$};
+        \fi
+      \else
+        \node[cell, fill=white, draw=black!30] at (\cx,\cy) {$\vx$};
+      \fi
+    \else
+      \node[cell, fill=white, draw=black!30] at (\cx,\cy) {$\vx$};
+    \fi
+  }
+  \node[sub] at (560,380)
+    {chunk 撇 $=$ chunk 异或 (i mod 8)：i$=$0 恒等，i$=$1 成对交换，i$=$7 全反};
+  \draw[-{Stealth}, figorange, line width=1.3pt] (470,195) -- (553,195);
+  \node[font=\tiny\bfseries, text=figorange, align=center] at (517,170) {SWIZZLE\\128B};
+  \node[draw, line width=0.5pt, fill=gray!18, draw=figgreen, align=center,
+    inner sep=2pt, font=\scriptsize\bfseries, text width={1000*0.0155cm},
+    minimum width={1030*0.0155cm}] at (565,422)
+    {smem 基址 1024B 对齐 $\to$ 硬件从相位 0 开始重排；consumer 用同一公式（chunk 异或 (i mod 8)）逆推零相位地址};
+\end{tikzpicture}
 \caption{TMA box：descriptor 以 minor-first 坐标指定 $64\times128$ 的 2D 搬运块，落盘时按 SWIZZLE\_128B 原子（16B chunk 号与行低 3 位 XOR）重排；smem 基址 1024B 对齐保证硬件从相位 0 开始重排，consumer 的软件公式才能按零相位逆推。}
 \label{fig:14-1}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-14-2-pc-timeline/fig-14-2.png}
+\begin{tikzpicture}[
+  x=0.0155cm, y=-0.0155cm,
+  slot/.style={draw, line width=0.5pt, align=center, inner sep=2pt, font=\tiny},
+  ttl/.style={font=\small\bfseries, anchor=west},
+  side/.style={font=\tiny\bfseries, anchor=west},
+  code/.style={font=\tiny, anchor=west, align=left},
+]
+  \node[ttl] at (30,27) {producer/consumer 时序（kStages $=$ 2，单 CTA）};
+  \draw[-{Stealth}, black!45, line width=0.7pt] (80,56) -- (1080,56);
+  \node[font=\tiny, text=black!55, anchor=west] at (1010,44) {time};
+  \node[side, text=tkBlue, font=\scriptsize\bfseries] at (30,94) {WG0 producer};
+  \node[font=\tiny, text=black!55, anchor=west] at (30,122) {（1 线程活跃）};
+  \node[slot, fill=tkFillBlue, draw=tkBlue, text=tkBlue, font=\tiny\bfseries,
+    minimum width={230*0.0155cm}, minimum height={40*0.0155cm}] at (255,102)
+    {P1(s0) P2 P3};
+  \node[slot, fill=tkFillBlue, draw=tkBlue, text=tkBlue, font=\tiny\bfseries,
+    minimum width={230*0.0155cm}, minimum height={40*0.0155cm}] at (515,102)
+    {P1(s1) P2 P3};
+  \node[slot, fill=tkFillBlue, draw=tkBlue, text=tkBlue, font=\tiny\bfseries,
+    minimum width={230*0.0155cm}, minimum height={40*0.0155cm}] at (775,102)
+    {P1(s0) ...};
+  \node[side, text=tkGreen, font=\scriptsize\bfseries] at (30,174) {WG1 consumers};
+  \node[font=\tiny, text=black!55, anchor=west] at (30,202) {（128 线程 $=$ 4 warp）};
+  \node[slot, fill=gray!22, draw=black!40, font=\scriptsize\bfseries,
+    minimum width={80*0.0155cm}, minimum height={44*0.0155cm}] at (180,180) {C0};
+  \node[slot, fill=tkFillGreen, draw=tkGreen, text=tkGreen, font=\tiny\bfseries,
+    minimum width={300*0.0155cm}, minimum height={44*0.0155cm}] at (390,180)
+    {C1(s0) C2 mma x128};
+  \node[slot, fill=tkFillGreen, draw=tkGreen, text=tkGreen, font=\tiny\bfseries,
+    minimum width={240*0.0155cm}, minimum height={44*0.0155cm}] at (680,180)
+    {C1(s1) C2};
+  \node[slot, fill=tkFillGreen, draw=tkGreen, text=tkGreen, font=\tiny\bfseries,
+    minimum width={220*0.0155cm}, minimum height={44*0.0155cm}] at (930,180)
+    {C1(s0) ...};
+  \node[font=\tiny, text=tkGreen, anchor=west] at (250,219) {在 s0 上计算（ldmatrix $+$ mma）};
+  \draw[-{Stealth}, tkOrange, dashed, line width=0.8pt] (400,122) -- (400,154);
+  \draw[-{Stealth}, tkOrange, dashed, line width=0.8pt] (560,156) -- (620,122);
+  \node[font=\tiny, text=tkOrange, anchor=west] at (430,141) {与 producer 灌 s1 重叠};
+  \draw[tkOrange, line width=0.5pt, fill=tkFillOrange] (760,252) rectangle (1090,442);
+  \node[font=\scriptsize\bfseries, text=tkOrange, anchor=west] at (774,268) {屏障翻转条件};
+  \node[code] at (774,296) {full[s]：128 consumer arrive\\$+$ 1 producer arrive\\$+$ 32768B 落盘};
+  \node[code] at (774,356) {empty[s]：128 consumer arrive\\（C4 或 C0 预热）$+$ 1 producer arrive};
+  \node[code] at (774,412) {C0：启动时对 empty[0..S-1]\\各预存 128 次 arrive，点燃流水线};
+  \draw[-{Stealth}, black!45, dashed, line width=0.7pt]
+    (140,122) -- (100,122) -- (100,250) -- (250,250) -- (250,226);
+  \node[font=\tiny, text=black!55, anchor=west] at (60,268) {P1 等 empty[s0] 翻转};
+  \node[draw, line width=0.5pt, fill=tkFillBlue, draw=tkBlue, align=center,
+    inner sep=3pt, font=\tiny\bfseries, text width={640*0.0155cm},
+    minimum width={660*0.0155cm}] at (380,306)
+    {overlap：TMA(s1) 在飞时 mma(s0) 在算 $\to$ 搬运延迟被掩盖；稳态 producer 领先至多 kStages-1 个 tile};
+\end{tikzpicture}
 \caption{producer/consumer 时序：C0 预热点燃流水线；此后 producer 的 TMA 提交与 consumer 的 ldmatrix+mma 在不同 stage 上重叠，搬运延迟被计算掩盖；稳态 producer 领先至多 kStages-1 个 tile。}
 \label{fig:14-2}
 \end{figure}

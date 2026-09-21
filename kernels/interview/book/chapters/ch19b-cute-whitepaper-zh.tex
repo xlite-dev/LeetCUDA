@@ -86,13 +86,13 @@ Divide=切分、Inverse=逆）。
 shape）与扁平步幅（flat stride）张量表示的直接推广，能够表达现代硬件指令所需
 的复杂映射；（2）一套丰富的布局操作代数——包括拼接（concatenation）、合并
 （coalescence）、复合（composition）、补（complementation）、切分（division）、
-铺瓦（tiling）与求逆（inversion）——支持复杂的布局操作、推导、验证与静态分析。
+分块（tiling）与求逆（inversion）——支持复杂的布局操作、推导、验证与静态分析。
 \CuTe{} 布局为管理 GPU kernel 中的数据布局与线程排布提供了统一框架，而布局代数
 使得我们能够在编译期对布局性质进行强有力的推理，并简洁地表达通用张量变换。
 
 在本文中我们将展示：与传统方法相比，\CuTe{} 的抽象显著助力软件开发，推动对体系
 结构规定布局的编译期验证，便于实现可泛化到大量应用场景的算法原语，并能简洁地
-表达现代专用张量指令所需的铺瓦与分块（partitioning）模式。
+表达现代专用张量指令所需的分块（tiling）与划分（partitioning）模式。
 
 \CuTe{} 已成功部署于生产系统，是 NVIDIA CUTLASS 库以及包括 CuTe DSL 在内的一系
 列相关工作的基础。我们同时给出数学基础与 Python 参考实现（PyCuTe），确立 \CuTe{}

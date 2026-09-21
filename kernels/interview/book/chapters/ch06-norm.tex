@@ -81,6 +81,42 @@ RMSNorm（Zhang \& Sennrich, 2019）只保留「缩放」而不做「中心化�
   \item 由此产生一个重要差别：LayerNorm 具备\textbf{平移不变性}——$x \to x + c$ 时 $\mu \to \mu + c$、$\sigma^2$ 不变，输出不变；RMSNorm 不具备（$\mu^2$ 项改变）。所以 LLaMA 系列把 RMSNorm 前面的 QKV 线性投影的 bias 直接去掉（bias 只会给分母注入无信息的 $\mu^2$），这是架构层面的连锁设计。
 \end{enumerate}
 
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize]
+  \node[anchor=east] at (-0.25,0.35) {$x$：总能量 $\frac{1}{K}\sum_k x_k^2$};
+  \fill[tkBlue!70] (0,0) rectangle (5.2,0.7);
+  \node[white] at (2.6,0.35) {波动 $\sigma^2$（中心化后）};
+  \fill[tkFillOrange] (5.2,0) rectangle (8.8,0.7);
+  \fill[pattern=north east lines, pattern color=tkOrange!55] (5.2,0) rectangle (8.8,0.7);
+  \node at (7.0,0.35) {直流 $\mu^2$};
+  \draw[thick] (0,0) rectangle (8.8,0.7);
+  \draw (5.2,0) -- (5.2,0.7);
+  \draw[thick, draw=tkGreen] (0,-0.3) -- (0,-0.55) -- (5.2,-0.55) -- (5.2,-0.3);
+  \node[anchor=north, text=tkGreen] at (2.6,-0.72)
+    {LayerNorm 分母 $\sqrt{\sigma^2+\epsilon}$（式~\eqref{eq:ch06-ln}）：只除「波动」};
+  \draw[thick, draw=tkPurple] (0,-1.45) -- (0,-1.7) -- (8.8,-1.7) -- (8.8,-1.45);
+  \node[anchor=north, text=tkPurple] at (4.4,-1.87)
+    {RMSNorm 分母 $\sqrt{\sigma^2+\mu^2+\epsilon}$（式~\eqref{eq:ch06-rms}）：「波动 $+$ 直流」全除};
+  \node[anchor=east] at (-0.25,-2.85) {$x+c$（平移）};
+  \fill[tkBlue!70] (0,-3.2) rectangle (5.2,-2.5);
+  \node[white] at (2.6,-2.85) {波动 $\sigma^2$（不变）};
+  \fill[tkFillOrange] (5.2,-3.2) rectangle (11.6,-2.5);
+  \fill[pattern=north east lines, pattern color=tkOrange!55] (5.2,-3.2) rectangle (11.6,-2.5);
+  \node at (8.4,-2.85) {直流 $(\mu+c)^2$（变长）};
+  \draw[thick] (0,-3.2) rectangle (11.6,-2.5);
+  \draw (5.2,-3.2) -- (5.2,-2.5);
+  \draw[-{Latex}] (8.8,-3.75) -- (11.6,-3.75);
+  \node[anchor=north] at (10.2,-3.9) {$(\mu+c)^2 > \mu^2$：直流段增长};
+  \node[anchor=north, align=center, text width=5.0cm, text=tkGreen] at (2.5,-4.5)
+    {LayerNorm：$\sigma^2$ 段不变\\$\Rightarrow$ \textbf{输出不变}（平移不变性）};
+  \node[anchor=north, align=center, text width=6.0cm, text=tkOrange!85!black] at (8.6,-4.5)
+    {RMSNorm：分母变大 $\Rightarrow$ 不变式被破坏\\$\Rightarrow$ LLaMA 去 QKV 投影 bias};
+\end{tikzpicture}
+\caption{分母的能量分解（恒等式~\eqref{eq:ch06-var-identity}：$\frac{1}{K}\sum_k x_k^2 = \sigma^2 + \mu^2$）：LayerNorm 只除「波动」$\sigma^2$，RMSNorm 除「总能量（波动 $+$ 直流）」。平移 $x \to x+c$ 时 $\sigma^2$ 段宽度不变而 $\mu^2$ 段变长——LayerNorm 输出不变，RMSNorm 分母被推大，这就是去 bias 的架构连锁（3.3 节第 3 条）。}
+\label{fig:6-2}
+\end{figure}
+
 \subsection{1-pass 与 2-pass：归约结构的形式化}
 
 从 kernel 视角重新审视上述公式。记两个基本归约量为 $S_1 = \sum_k x_k$、$S_2 = \sum_k x_k^2$：
@@ -104,6 +140,58 @@ LayerNorm 能否也做成 1-pass？利用恒等式~\eqref{eq:ch06-var-identity}�
 \subsection{行划分：one-row-one-block}
 
 四个 kernel 采用同一网格设计：\texttt{grid(N)}, \texttt{block\allowbreak{}(k\allowbreak{}Num\allowbreak{}Threads=\allowbreak{}128)}，$N$ 是行数（$\text{batch} \times \text{seq\_len}$），$K = 128$ 是列数。一个 block 恰好负责一行的归约，行内 $K$ 个元素由 block 内 $K$ 个线程一一对应，天然 coalesced（warp 内 32 线程读连续 32 个 float）。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize]
+  \foreach \r in {0,...,3} {
+    \draw[thin, gray!60] (0,{-\r*0.42}) grid (3.2,{-\r*0.42-0.36});
+    \draw[very thick] (0,{-\r*0.42}) rectangle (3.2,{-\r*0.42-0.36});
+    \node[anchor=east, font=\tiny] at (-0.12,{-\r*0.42-0.18}) {行 \r};
+  }
+  \node[anchor=west, align=left] at (3.7,-0.75)
+    {grid$(N)$：一行归一个 block（$N=\mathrm{batch}\times\mathrm{seq\_len}$）\\
+     block$(128)$：行内 $K=128$ 列，一线程一列\\
+     （左图每行示意 $8$ 列）};
+  \node[anchor=south] at (1.45,-2.1) {warp 0：32 线程读连续 $128$B（1 事务，coalesced）};
+  \draw[dashed, thick] (-0.05,-2.42) rectangle (2.95,-2.66);
+  \node[anchor=east] at (-0.25,-3.26) {第 0 行放大（$1\times128$）};
+  \fill[gray!18] (0,-3.56) rectangle (2.9,-2.96);
+  \fill[gray!32] (3.08,-3.56) rectangle (5.98,-2.96);
+  \fill[gray!46] (6.16,-3.56) rectangle (9.06,-2.96);
+  \fill[gray!60] (9.24,-3.56) rectangle (12.14,-2.96);
+  \foreach \gs in {0,3.08,6.16,9.24} {
+    \foreach \s in {1,...,5}
+      \draw[thin, gray!85] ({\gs+\s*0.4},-3.56) -- ({\gs+\s*0.4},-2.96);
+    \node at ({\gs+2.55},-3.26) {$\cdots$};
+  }
+  \draw[thick] (0,-3.56) rectangle (12.14,-2.96);
+  \draw[very thick] (3.0,-3.56) -- (3.0,-2.96);
+  \draw[very thick] (6.08,-3.56) -- (6.08,-2.96);
+  \draw[very thick] (9.16,-3.56) -- (9.16,-2.96);
+  \node[anchor=north, font=\tiny] at (1.45,-3.62) {warp 0（k $0$–$31$）};
+  \node[anchor=north, font=\tiny] at (4.53,-3.62) {warp 1（k $32$–$63$）};
+  \node[anchor=north, font=\tiny] at (7.61,-3.62) {warp 2（k $64$–$95$）};
+  \node[anchor=north, font=\tiny] at (10.69,-3.62) {warp 3（k $96$–$127$）};
+  \node[anchor=north] at (6.07,-4.15)
+    {标量版：每线程 1 列，tid $=k$，\texttt{kNumThreads}$=128$（4 warp，两级归约）};
+  \node[anchor=east] at (-0.25,-5.96) {vec4 版};
+  \foreach \t/\ts in {0/0, 1/1.45, 2/2.9, 31/5.3} {
+    \fill[gray!30] ({\ts},-6.36) rectangle ({\ts+1.2},-5.76);
+    \draw[thin, gray!85] ({\ts+0.3},-6.36) -- ({\ts+0.3},-5.76);
+    \draw[thin, gray!85] ({\ts+0.6},-6.36) -- ({\ts+0.6},-5.76);
+    \draw[thin, gray!85] ({\ts+0.9},-6.36) -- ({\ts+0.9},-5.76);
+    \draw[thick] ({\ts},-5.76) -- ({\ts},-5.68) -- ({\ts+1.2},-5.68) -- ({\ts+1.2},-5.76);
+    \node[anchor=south, font=\tiny] at ({\ts+0.6},-5.62) {t\t};
+  }
+  \node at (4.55,-5.96) {$\cdots$};
+  \draw[thick] (0,-6.36) rectangle (6.5,-5.76);
+  \node[anchor=north, align=center] at (3.25,-6.52)
+    {\texttt{kNumThreads}$=32$（单 warp）：每线程一条 \texttt{float4}，连续 $4$ 列（16B）};
+\end{tikzpicture}
+\caption{one-row-one-block 行划分：上，$N\times K$ 矩阵每行归一个 block（\texttt{grid(N)}）；中，单行放大为 $1\times128$ 条带，4 个 warp 各占 32 列（各一档灰度），warp 0 的 32 线程读连续 $128$B，单事务合并；下，vec4 版改为 $32$ 线程、每线程一条 \texttt{float4}（连续 4 列），指令数降为 $1/4$。}
+\label{fig:6-3}
+\end{figure}
 
 归约本身直接复用第 \ref{ch:02} 章的 \texttt{block\_\allowbreak{}reduce\_\allowbreak{}sum}（base.cuh L179-196）：warp 内蝶形 shuffle 归约、warp leader 写 shared memory、\texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()}、第二级 warp 归约，最后 \texttt{\_\_shfl\_sync} 把结果广播到\textbf{每个}线程。最后这步广播对归一化至关重要——行内所有线程都要拿到同一个 $s$ 才能各自完成缩放。
 
@@ -165,26 +253,77 @@ vec4 化带来一个标量版没有的实现细节：Pass 2 需要再次用到 $
 
 \begin{figure}[htbp]
 \centering
-\begin{minipage}{0.92\textwidth}
-\begin{lstlisting}[style=console]
-      RMSNorm (1-pass)                       LayerNorm (2-pass)
-  x[0] x[1] ... x[K-1]                   x[0] x[1] ... x[K-1]
-    |    |         |                        |    |         |
-  (x_k)^2 全员平方                        S1 = sum(x)   [block reduce #1]
-    |    |         |                        |    |
-    +----+----+----+                       mu = S1/K  [tid0 -> smem, sync]
-             |                             |    |
-     S2 = sum(x^2)  [block reduce]       (x_k - mu)^2 全员平方
-             |                                |    |
-     s = rsqrtf(S2/K + eps)                  +----+
-             |  [tid0 -> smem, sync]   S2' = sum((x-mu)^2) [block reduce #2]
-    |    |         |                           |
-   y_k = x_k * s * g  (elementwise)      s = rsqrtf(S2'/K + eps)  [sync]
-    |    |         |                           |
-                                             y_k = (x_k-mu)*s*g + b
-  归约: 1 次   __syncthreads: 2 次         归约: 2 次   __syncthreads: 4 次
-\end{lstlisting}
-\end{minipage}
+\begin{tikzpicture}[font=\scriptsize,
+  elem/.style={circle, draw, fill=gray!10, minimum size=4.6mm, inner sep=1pt, font=\tiny},
+  op/.style={draw, rounded corners=2pt, fill=gray!12, inner sep=4pt, align=center, minimum height=6mm},
+  stat/.style={draw=tkPurple, rounded corners=2pt, fill=tkFillPurple, inner sep=4pt, align=center, minimum height=6mm},
+  rdc/.style={draw=tkBlue, rounded corners=2pt, fill=tkFillBlue, text=tkBlue, inner sep=4pt, align=center, minimum height=7mm},
+  cnt/.style={draw, fill=gray!18, inner sep=4pt, align=center, minimum height=6mm},
+  arr/.style={-{Latex[length=1.8mm]}},
+  sync/.style={anchor=east, font=\tiny}]
+  % 左泳道：RMSNorm（1-pass）
+  \node[font=\small\bfseries] at (-3.6,0.85) {RMSNorm（1-pass）};
+  \node[elem] at (-4.4,0) {$x_0$};
+  \node[elem] at (-3.6,0) {$x_1$};
+  \node[elem] at (-2.8,0) {$x_{K-1}$};
+  \node[op] (sq) at (-3.6,-1.15) {$(x_k)^{2}$（逐元素平方）};
+  \node[rdc] (rd) at (-3.6,-2.35) {block reduce\\$S_2=\sum_k x_k^2$};
+  \node[font=\tiny, anchor=west] at (rd.east) {（warp 蝶形，第~\ref{ch:02}~章）};
+  \node[stat] (st) at (-3.6,-4.0) {tid0：$s=\mathrm{rsqrtf}(S_2/K+\epsilon)$，写入 smem};
+  \node[op] (el) at (-3.6,-5.6) {$y_k = x_k\cdot s\cdot g$};
+  \node[cnt, draw=tkGreen, fill=tkFillGreen] at (-3.6,-6.6) {归约 1 次\quad\texttt{\_\_syncthreads} 2 次};
+  \draw[arr] (-4.4,-0.26) -- (-3.98,-0.68);
+  \draw[arr] (-3.6,-0.26) -- (-3.6,-0.68);
+  \draw[arr] (-2.8,-0.26) -- (-3.22,-0.68);
+  \draw[arr] (sq.south) -- (rd.north);
+  \fill[tkOrange!55] (-4.7,-3.31) rectangle (-2.5,-3.19);
+  \draw[arr] (rd.south) -- (-3.6,-3.31);
+  \draw[arr] (-3.6,-3.19) -- (st.north);
+  \node[sync, anchor=west] at (-2.44,-3.25) {（reduce 内部）};
+  \fill[tkOrange!55] (-4.7,-4.91) rectangle (-2.5,-4.79);
+  \draw[arr] (st.south) -- (-3.6,-4.91);
+  \draw[arr] (-3.6,-4.79) -- (el.north);
+  \node[sync, anchor=west] at (-2.44,-4.85) {（显式）};
+  \draw[-{Latex[length=1.8mm]}, dashed, gray] (st.east) -- (-1.2,-4.0) -- (-1.2,-5.6) -- (el.east);
+  \node[font=\tiny, gray, anchor=west] at (-1.12,-4.8) {$s$ 广播};
+  % 右泳道：LayerNorm（2-pass）
+  \node[font=\small\bfseries] at (3.8,0.85) {LayerNorm（2-pass）};
+  \node[elem] at (3.0,0) {$x_0$};
+  \node[elem] at (3.8,0) {$x_1$};
+  \node[elem] at (4.6,0) {$x_{K-1}$};
+  \node[rdc] (rd1) at (3.8,-1.0) {block reduce \#1\\$S_1=\sum_k x_k$};
+  \node[stat] (mu) at (3.8,-2.6) {tid0：$\mu = S_1/K$，写入 smem};
+  \node[op] (sq2) at (3.8,-4.2) {$(x_k-\mu)^{2}$（逐元素平方）};
+  \node[rdc] (rd2) at (3.8,-5.3) {block reduce \#2\\$S_2'=\sum_k (x_k-\mu)^2$};
+  \node[stat] (st2) at (3.8,-6.9) {tid0：$s=\mathrm{rsqrtf}(S_2'/K+\epsilon)$，写入 smem};
+  \node[op] (el2) at (3.8,-8.5) {$y_k=(x_k-\mu)\cdot s\cdot g+b$};
+  \node[cnt, draw=tkOrange, fill=tkFillOrange] at (3.8,-9.5) {归约 2 次\quad\texttt{\_\_syncthreads} 4 次};
+  \draw[arr] (3.0,-0.26) -- (3.42,-0.53);
+  \draw[arr] (3.8,-0.26) -- (3.8,-0.53);
+  \draw[arr] (4.6,-0.26) -- (4.18,-0.53);
+  \draw[arr] (rd1.south) -- (3.8,-1.86);
+  \fill[tkOrange!55] (2.7,-1.96) rectangle (4.9,-1.84);
+  \draw[arr] (3.8,-1.84) -- (mu.north);
+  \node[sync] at (2.62,-1.9) {（reduce \#1 内部）};
+  \draw[arr] (mu.south) -- (3.8,-3.56);
+  \fill[tkOrange!55] (2.7,-3.56) rectangle (4.9,-3.44);
+  \draw[arr] (3.8,-3.44) -- (sq2.north);
+  \node[sync] at (2.62,-3.5) {（显式，广播 $\mu$）};
+  \draw[arr] (sq2.south) -- (rd2.north);
+  \draw[arr] (rd2.south) -- (3.8,-6.14);
+  \fill[tkOrange!55] (2.7,-6.26) rectangle (4.9,-6.14);
+  \draw[arr] (3.8,-6.14) -- (st2.north);
+  \node[sync] at (2.62,-6.2) {（reduce \#2 内部）};
+  \draw[arr] (st2.south) -- (3.8,-7.86);
+  \fill[tkOrange!55] (2.7,-7.86) rectangle (4.9,-7.74);
+  \draw[arr] (3.8,-7.74) -- (el2.north);
+  \node[sync] at (2.62,-7.8) {（显式）};
+  \draw[-{Latex[length=2mm]}, very thick] (mu.east) -- (5.9,-2.6) -- (5.9,-4.2) -- (sq2.east);
+  \node[font=\tiny, align=left, anchor=west] at (6.0,-3.4)
+    {$\mu$ 广播（加粗）\\$\sigma^2$ 依赖 $\mu$：依赖链\\把结构拉长为两段};
+  \draw[-{Latex[length=1.8mm]}, dashed, gray] (st2.east) -- (6.3,-6.9) -- (6.3,-8.5) -- (el2.east);
+  \node[font=\tiny, gray, anchor=west] at (6.4,-7.7) {$s$ 广播};
+\end{tikzpicture}
 \caption{RMSNorm 1-pass 与 LayerNorm 2-pass 的归约结构对比}
 \label{fig:6-1}
 \end{figure}

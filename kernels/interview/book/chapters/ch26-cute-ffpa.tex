@@ -138,6 +138,91 @@ $\mathrm{Tile}_N/8$——QK 是 8，PV 是 2。也就是说：
   $O$ 的 16 列，$O$ 的其余列由外层 V-chunk 循环驱动。
 \end{quote}
 
+图~\ref{fig:26-dual-mma} 把这条对比摆成两个 tile 网格：行维同样被
+$\mathrm{AtomLayout}=(4,1,1)$ 的 4 个 warp 分完，列维的 atom 数相差 4 倍。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  blknum/.style={font=\footnotesize\bfseries, inner sep=1pt},
+  axl/.style={font=\scriptsize, inner sep=1pt},
+]
+  % 行轴：4 warp 分 M=64（AtomLayout=(4,1,1) 的 M 分量 = 4，每 warp 16 行）
+  \foreach \wr/\mlo/\mhi in {0/0/15, 1/16/31, 2/32/47, 3/48/63} {
+    \node[axl,anchor=east,align=right] at (1.02,-\wr*0.86-0.43)
+      {w\wr\\{\tiny $m\,\mlo..\mhi$}};
+  }
+  % 左网格：S = QK 的输出 tile 64x64（4 warp 行块 x 8 个 n8 atom 列块）
+  \foreach \wr in {0,...,3} {
+    \foreach \aa in {0,...,7} {
+      \pgfmathtruncatemacro{\gra}{12+8*\aa}
+      \pgfmathtruncatemacro{\mn}{\aa+1}
+      \fill[gray!\gra] (1.1+\aa*1.05,-\wr*0.86) rectangle (1.1+\aa*1.05+1.05,-\wr*0.86-0.86);
+      \ifnum\gra>46
+        \node[blknum,white] at (1.1+\aa*1.05+0.525,-\wr*0.86-0.43) {\mn};
+      \else
+        \node[blknum] at (1.1+\aa*1.05+0.525,-\wr*0.86-0.43) {\mn};
+      \fi
+    }
+  }
+  \draw[thick] (1.1,0) rectangle (9.5,-3.44);
+  \foreach \wr in {1,2,3} {
+    \draw[very thick] (1.1,-\wr*0.86) -- (9.5,-\wr*0.86);
+  }
+  \foreach \aa in {1,...,7} {
+    \draw[thin] (1.1+\aa*1.05,0) -- (1.1+\aa*1.05,-3.44);
+  }
+  % 右网格：O 的一个 chunk 分量 64x16（4 warp 行块 x 2 个 n8 atom 列块）
+  \foreach \wr in {0,...,3} {
+    \foreach \aa in {0,...,1} {
+      \pgfmathtruncatemacro{\gra}{12+8*\aa}
+      \pgfmathtruncatemacro{\mn}{\aa+1}
+      \fill[gray!\gra] (11.0+\aa*0.95,-\wr*0.86) rectangle (11.0+\aa*0.95+0.95,-\wr*0.86-0.86);
+      \node[blknum] at (11.0+\aa*0.95+0.475,-\wr*0.86-0.43) {\mn};
+    }
+  }
+  \draw[thick] (11.0,0) rectangle (12.9,-3.44);
+  \foreach \wr in {1,2,3} {
+    \draw[very thick] (11.0,-\wr*0.86) -- (12.9,-\wr*0.86);
+  }
+  \draw[thin] (11.95,0) -- (11.95,-3.44);
+  % 顶部标题与 atom 刻度
+  \node[font=\scriptsize\bfseries,align=center] at (5.3,0.85)
+    {QK TiledMma：Tile $=(64,64,16)$\\$\mathrm{EURepeat}=\langle 1,8,1\rangle$};
+  \node[font=\scriptsize\bfseries,align=center] at (11.95,0.85)
+    {PV TiledMma：Tile $=(64,16,16)$\\$\mathrm{EURepeat}=\langle 1,2,1\rangle$};
+  \node[axl,anchor=south] at (5.3,0.22) {$S$（每块 = 一个 $n8$ atom，格内数字 = 该 warp 本 k-step 发射的第几条 \texttt{mma.sync}）};
+  \node[axl,anchor=south] at (11.95,0.22) {$O$ 的 chunk $c$ 分量};
+  \foreach \aa in {0,...,7} {
+    \node[axl,anchor=north] at (1.1+\aa*1.05+0.525,-3.52) {\aa};
+  }
+  \foreach \aa in {0,...,1} {
+    \node[axl,anchor=north] at (11.0+\aa*0.95+0.475,-3.52) {\aa};
+  }
+  \node[axl,anchor=north] at (5.3,-3.95) {atom 列序（$N$ 向，每块 8 列：QK 共 $8{\times}8{=}64$ 列）};
+  \node[axl,anchor=north] at (11.95,-3.95) {共 16 列};
+  % 交接箭头
+  \draw[-{Stealth},thick,tkPurple] (9.72,-1.72) -- (10.78,-1.72);
+  \node[font=\scriptsize,anchor=south,text=tkPurple] at (10.25,-1.66) {$P$};
+  \node[font=\tiny,align=center,anchor=north,text=tkPurple] at (10.25,-1.78) {softmax\\Aregs 交接};
+  % 底部两行注记
+  \node[axl,anchor=north west,align=left,text width=11.6cm] at (1.1,-4.35)
+    {两个 TiledMma 的 frag 相同：$\mathrm{frag}_S=\mathrm{frag}_O=((2,2),1,8)=32$ 值/线程
+     （式~\eqref{eq:26-frag32}，第三 mode 的 8 来历不同）；行维同被 4 warp 分完，};
+  \node[axl,anchor=north west,align=left,text width=11.6cm] at (1.1,-4.85)
+    {差别全在 $N$ 向：QK 的 $\mathrm{EURepeat}_N{=}8$ ——8 条 \texttt{mma.sync} 一次覆盖 $S$ 整个 64 列，「N-tile 循环」消失；
+     PV 的 $\mathrm{EURepeat}_N{=}2$ 只覆盖 $O$ 的 16 列，其余列由外层 V-chunk 循环驱动。};
+\end{tikzpicture}
+\caption{双 TiledMma 的 Tile 分工（\texttt{ffpa\_\allowbreak{}attn\_.cuh} L52--58，式~\eqref{eq:26-qk}--\eqref{eq:26-pv}）。
+左：QK 的输出 $S[64,64]$——4 个 warp 各占 16 行（$\mathrm{AtomLayout}$ 的 $M$ 分量 4），
+列向 8 个 $n8$ atom 由\textbf{同一线程}在一个 k-step 里连发 8 条 \texttt{mma.sync} 覆盖
+（灰度 8 档标识 atom 身份，格内数字为发射序）；右：PV 的输出 $O$ 只有一个
+chunk 分量 $[64,16]$（2 个 atom、2 条 \texttt{mma.sync}）。中间箭头是 26.3.3 节的
+交接：$S$ 经 softmax 与 \texttt{Aregs} 零拷贝重解释成 $P$，作为 PV 的 A 操作数——
+共享的正是左侧那批 S 寄存器。}
+\label{fig:26-dual-mma}
+\end{figure}
+
 对照第~\ref{ch:25}~章 FA2 traits 的 $(8,1,1)\otimes(128,16,16)$：那里是
 8 个 warp 分 $M=128$，$N$ 向重复数为 2。同一套公式，两种分工——FA2 把线程
 堆在 $M$ 上换取更大的 $B_r$，FFPA 把线程堆在 $N$ 上换取「一次覆盖整行块
@@ -245,7 +330,85 @@ inverse$\circ$compose 代数法都在讲同一件事）。放到 Split-D 的语�
 记作「不是通用性质，换 atom 必须重推」（源码 L2360 附近的注释）；在 FFPA
 里它的意义更重：$P$ 的「K 向」就是 $S$ 的「列向」，而那一维正是 PV 的
 归约维——\textbf{重解释的方向恰好对齐 MMA 的约定，所以不需要 shuffle、
-不需要过 smem}。
+不需要过 smem}。图~\ref{fig:26-camap} 把这两条映射放到同一批格子上逐位核对：
+同一个 lane 在两图里高亮的位置完全相同，变的只是值编号与分组。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  cfl/.style={font=\tiny, inner sep=0.2pt},
+  axl/.style={font=\scriptsize, inner sep=1pt},
+  nt/.style={font=\scriptsize, align=left, inner sep=1.5pt},
+]
+  % 左：C 视图 m16 x 16（两个 n8 atom 拼成）；高亮 lane 6 的 8 个值
+  \foreach \rr in {0,...,15} {
+    \foreach \cc in {0,...,15} {
+      \pgfmathtruncatemacro{\hit}{(\rr==1 || \rr==9) && (\cc==4 || \cc==5 || \cc==12 || \cc==13) ? 1 : 0}
+      \ifnum\hit=1
+        \fill[colorx6!45] (\cc*0.42,-\rr*0.42) rectangle (\cc*0.42+0.41,-\rr*0.42-0.41);
+        \draw[thick,colorx6!75!black] (\cc*0.42,-\rr*0.42) rectangle (\cc*0.42+0.41,-\rr*0.42-0.41);
+      \else
+        \fill[gray!10] (\cc*0.42,-\rr*0.42) rectangle (\cc*0.42+0.41,-\rr*0.42-0.41);
+      \fi
+    }
+  }
+  \foreach \rr/\cc/\vv in {1/4/0, 1/5/1, 9/4/2, 9/5/3, 1/12/0, 1/13/1, 9/12/2, 9/13/3} {
+    \node[cfl,font=\tiny\bfseries] at (\cc*0.42+0.205,-\rr*0.42-0.205) {\vv};
+  }
+  \draw[thick] (0,0) rectangle (6.72,-6.72);
+  \draw[very thick] (3.36,0) -- (3.36,-6.72);
+  \foreach \rx in {0,4,8,12,15} {
+    \pgfmathsetmacro{\ry}{-\rx*0.42-0.21}
+    \node[axl,anchor=east] at (-0.1,\ry) {\rx};
+  }
+  \node[axl,anchor=south,rotate=90] at (-0.66,-3.36) {行 $m$};
+  \node[axl,anchor=north] at (1.68,-6.85) {$n8$ atom 0};
+  \node[axl,anchor=north] at (5.04,-6.85) {$n8$ atom 1};
+  \node[axl,anchor=north] at (3.36,-7.35) {C 视图：列 $n$（$S$ 的 $B_c$ 向）};
+  % 中间：同一批寄存器
+  \node[axl,rotate=90] at (7.66,-3.36) {同一批寄存器，换 A 的约定读（零拷贝）};
+  % 右：A 视图 m16 x 16（一个 k16 atom）
+  \foreach \rr in {0,...,15} {
+    \foreach \cc in {0,...,15} {
+      \pgfmathtruncatemacro{\hit}{(\rr==1 || \rr==9) && (\cc==4 || \cc==5 || \cc==12 || \cc==13) ? 1 : 0}
+      \ifnum\hit=1
+        \fill[colorx6!45] (\cc*0.42+8.6,-\rr*0.42) rectangle (\cc*0.42+9.01,-\rr*0.42-0.41);
+        \draw[thick,colorx6!75!black] (\cc*0.42+8.6,-\rr*0.42) rectangle (\cc*0.42+9.01,-\rr*0.42-0.41);
+      \else
+        \fill[gray!10] (\cc*0.42+8.6,-\rr*0.42) rectangle (\cc*0.42+9.01,-\rr*0.42-0.41);
+      \fi
+    }
+  }
+  \foreach \rr/\cc/\vv in {1/4/0, 1/5/1, 9/4/2, 9/5/3, 1/12/4, 1/13/5, 9/12/6, 9/13/7} {
+    \node[cfl,font=\tiny\bfseries] at (\cc*0.42+8.805,-\rr*0.42-0.205) {\vv};
+  }
+  \draw[thick] (8.6,0) rectangle (15.32,-6.72);
+  \draw[dashed,very thick] (11.96,0) -- (11.96,-6.72);
+  \foreach \rx in {0,4,8,12,15} {
+    \pgfmathsetmacro{\ry}{-\rx*0.42-0.21}
+    \node[axl,anchor=east] at (8.5,\ry) {\rx};
+  }
+  \node[axl,anchor=south,rotate=90] at (7.94,-3.36) {行 $m$};
+  \node[axl,anchor=north] at (10.28,-6.85) {$d_2{=}0$};
+  \node[axl,anchor=north] at (13.64,-6.85) {$d_2{=}1$};
+  \node[axl,anchor=north] at (11.96,-7.35) {A 视图：K 向 $k$（$PV$ 归约维，一个 $k16$ atom）};
+  % 底部：两条映射式
+  \node[nt,anchor=north west,text width=15.6cm] at (0,-7.65)
+    {C（$m16n8$）：$m=\frac{lane}{4}+8d_1$、$n=2\,(lane\bmod4)+d_0$、$v=d_0+2d_1$；
+     A（$m16k16$）：$m$ 同式、$k=2\,(lane\bmod4)+d_0+8d_2$、$v=d_0+2d_1+4d_2$
+     （式~\eqref{eq:26-cmap}/\eqref{eq:26-amap}）。示例 lane$=6$：两图高亮的 8 格位置逐格相同
+     （$m\in\{1,9\}$、列 $\{4,5\}\cup\{12,13\}$），C 的值编号在两个 atom 内各自 $0..3$ 循环，
+     A 因多出 $d_2$ 而连续成 $0..7$——\textbf{A 的 K 向 2 值 $=$ C 的列向 2 值，行维本来就一致}。};
+\end{tikzpicture}
+\caption{C 与 A fragment 的线程-值映射逐位对照（式~\eqref{eq:26-cmap}/\eqref{eq:26-amap}）。
+左：$S$ 的 C 视图——两个 $n8$ atom 拼成 16 列，格内数字是 lane 6 所持值的编号
+$v=d_0+2d_1$（在每个 atom 内循环 $0..3$）；右：$P$ 的 A 视图——同一个 $k16$ atom，
+lane 6 持有同样的 8 个格，值编号变成 $v=d_0+2d_1+4d_2$ 连续 $0..7$，其中
+$d_2{=}1$ 的 4 格来自 C 的第二个 $n8$ atom（虚线半块）。\textbf{两图高亮位置逐格相同、
+数据指针不换}：重解释只把「列向相邻 2 值」的约定换成「K 向相邻 2 值」，
+行维（$m$）的映射本来就一致。}
+\label{fig:26-camap}
+\end{figure}
 
 \begin{remark}
   如果 PV 的 atom 换成 $k8$（例如某些 f8 路径），式~\eqref{eq:26-amap}
@@ -290,7 +453,85 @@ inverse$\circ$compose 代数法都在讲同一件事）。放到 Split-D 的语�
 从数值角度论证过这一点（$\mathrm{softmax}$ 必须在完整 $S$ 上做），这里从
 类型角度再确认一遍：$S$ 是「一个 fragment 多次迭代」，$O$ 是「多个 fragment
 各存一份」，代码形状（\texttt{tCrS} vs \texttt{o\_\allowbreak{}acc\_\allowbreak{}storage[v]}）如实
-反映了这一点。
+反映了这一点。图~\ref{fig:26-splitd-struct} 把这组对比画成两棵形状不同的
+归约树：左边全部 chunk 汇进同一批 32 寄存器，右边每个 chunk 各占一份存储。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  axl/.style={font=\scriptsize, inner sep=1pt},
+  tnb/.style={font=\tiny, inner sep=0.5pt},
+]
+  % 顶部：D 维横条，8 个 64-wide chunk（灰度 8 档），每 chunk 4 个 k16 子块
+  \node[axl,anchor=east,align=right] at (0.92,-0.28) {Q/K 的\\$D$ 维};
+  \node[axl,anchor=south] at (7.0,0.06)
+    {$D=512\ \to\ C=8$ 个 64-wide chunk，每 chunk 内 4 个 $k16$ atom（式~\eqref{eq:26-splitd}）};
+  \foreach \cc in {0,...,7} {
+    \pgfmathtruncatemacro{\gra}{12+8*\cc}
+    \fill[gray!\gra] (1.0+1.5*\cc,0) rectangle (2.5+1.5*\cc,-0.55);
+    \foreach \ss in {1,2,3} {
+      \draw[thin] (1.0+1.5*\cc+0.375*\ss,0) -- (1.0+1.5*\cc+0.375*\ss,-0.55);
+    }
+    \ifnum\gra>46
+      \node[tnb,white] at (1.75+1.5*\cc,-0.28) {c\cc};
+    \else
+      \node[tnb] at (1.75+1.5*\cc,-0.28) {c\cc};
+    \fi
+  }
+  \draw[thick] (1.0,0) rectangle (13.0,-0.55);
+  % Phase 标签
+  \node[axl,anchor=west] at (1.0,-0.95) {\textbf{Phase 1（QK）：$S$ 的跨 chunk 累加}};
+  \node[axl,anchor=west] at (7.3,-0.95) {\textbf{Phase 3（PV）：$O$ 的分 chunk 存储}};
+  % 左 panel：8 棵 qk 子树汇入单个 S fragment
+  \foreach \cc in {0,...,7} {
+    \pgfmathtruncatemacro{\gra}{12+8*\cc}
+    \fill[gray!\gra] (1.0+0.7*\cc,-1.4) rectangle (1.6+0.7*\cc,-1.78);
+    \node[tnb] at (1.3+0.7*\cc,-1.59) {$qk_{\cc}$};
+    \pgfmathtruncatemacro{\gln}{0.6*\gra}
+    \draw[-{Stealth},gray!\gln!black,thick] (1.3+0.7*\cc,-1.78) -- (1.3+0.7*\cc,-2.42);
+  }
+  \node[axl,anchor=west] at (1.0,-1.12) {\tiny 同一批 32 寄存器反复被加：};
+  \draw[very thick,tkBlue,fill=tkFillBlue] (1.0,-2.42) rectangle (6.6,-3.32);
+  \node[axl] at (3.8,-2.72) {$\mathtt{tCrS}$：32 f32/线程};
+  \node[axl] at (3.8,-3.08) {\tiny 跨迭代存活 $\cdot$ 先求和、再 softmax};
+  % 右 panel：8 份独立 fragment，Phase 4 相加
+  \foreach \cc in {0,...,7} {
+    \pgfmathtruncatemacro{\gra}{12+8*\cc}
+    \pgfmathsetmacro{\yy}{-1.4-0.34*\cc}
+    \fill[gray!\gra] (7.3,\yy) rectangle (7.62,\yy-0.28);
+    \pgfmathtruncatemacro{\gfo}{0.4*\gra}
+    \pgfmathtruncatemacro{\gln}{0.6*\gra}
+    \foreach \gg in {0,...,7} {
+      \draw[thin,fill=gray!\gfo] (7.66+0.3*\gg,\yy) rectangle (7.96+0.3*\gg,\yy-0.28);
+    }
+    \node[tnb,anchor=west] at (7.99,\yy-0.14) {$O_{\cc}$：32 f32/线程};
+    \draw[-{Stealth},gray!\gln!black] (10.6,\yy-0.14) -- (11.25,\yy-0.14);
+  }
+  \node[axl,anchor=west] at (7.3,-1.12) {\tiny \texttt{o\_acc\_storage[c][32]}，各分量独立 rescale：};
+  \draw[thick] (7.3,-1.4) rectangle (10.6,-4.12);
+  \node[font=\large] at (11.55,-2.6) {$\sum_{c}$};
+  \draw[-{Stealth},thick,tkGreen] (11.85,-2.6) -- (12.35,-2.6);
+  \draw[very thick,tkGreen,fill=tkFillGreen] (12.35,-2.95) rectangle (13.6,-2.25);
+  \node[axl,align=center] at (12.975,-2.6) {Phase 4\\$O=\sum_c O_c$};
+  % 底部注记与对比标语
+  \node[axl,anchor=north west] at (1.0,-3.45)
+    {\tiny softmax 必须在\textbf{完整}的 $S$ 上做（第~\ref{ch:19}~章的数值论证）};
+  \node[axl,anchor=north west] at (1.0,-3.85)
+    {\tiny $S$ 的归约 = 加法进同一批寄存器（形状不变）；$O$ 的归约 = 末尾一次求和};
+  \node[axl,anchor=north west,align=left,text width=6.1cm] at (7.3,-4.4)
+    {\tiny $D{=}512$ 时 $8\times32=256$ f32/线程——全 kernel 最大的一笔寄存器（26.5 节账本）};
+  \node[font=\scriptsize\bfseries,anchor=west] at (1.0,-5.3)
+    {对比：$S$ 先求和再 softmax $\;\Vert\;$ $O$ 相加 $O=\sum_c O_c$——两种归约不能混};
+\end{tikzpicture}
+\caption{Split-D 改变的是循环结构与归约树，不是 fragment 形状（26.3.4 节）。
+顶条：$D=512$ 切成 $C=8$ 个 64-wide chunk（灰度 8 档贯穿全图），每 chunk 内
+4 个 $k16$ atom 对应 \texttt{gemm\_ss} 的 K 循环。左：8 棵 QK 子树全部加进
+\textbf{同一个} \texttt{tCrS} fragment——「一个 fragment 多次迭代」，softmax 必须等
+求和完成；右：每个 chunk 的 PV 结果各存一份 \texttt{o\_acc\_storage[c][32]}
+（每分量独立 rescale），Phase 4 才相加得 $O=\sum_c O_c$。$S$ 与 $O$ 的 32 值/线程
+形状完全相同，差别只在「谁在跨迭代累加、谁在分份驻留」。}
+\label{fig:26-splitd-struct}
+\end{figure}
 
 最后是 stage 与 chunk 的正交性。chunk 数 $C$ 是「问题尺寸」（由 head\_dim
 决定），stage 数 $\mathrm{Sk}/\mathrm{Sv}$ 是「流水深度」（由 smem 预算
@@ -430,6 +671,68 @@ PV 要在循环里反复构造 V 的 B 操作数。FFPA 的做法是\textbf{把 
   \item \texttt{tCrV\_layout}：把上面那份推导\emph{求值}成一个布局对象，
         循环里只需 \texttt{make\_\allowbreak{}tensor\allowbreak{}(数据指针,\allowbreak{} t\allowbreak{}Cr\allowbreak{}V\_\allowbreak{}layout)} 重新解释。
 \end{enumerate}
+
+图~\ref{fig:26-v-dualview} 把这两份视图的分工画在同一张 smem tile 上：
+底色是 SW128 的 XOR 置换模式，两条引出箭头分别指向「管指针」与「管归属」的两个角色。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  cfl/.style={font=\tiny, inner sep=0.2pt},
+  axl/.style={font=\scriptsize, inner sep=1pt},
+  nt/.style={font=\scriptsize, align=left, inner sep=1.5pt},
+]
+  % smem tile：8 行（一个 swizzle 周期）x 8 个 16B chunk
+  \foreach \rr in {0,...,7} {
+    \foreach \pp in {0,...,7} {
+      \pgfmathtruncatemacro{\lgc}{mod(\pp+\rr,2)+2*mod(div(\pp,2)+div(\rr,2),2)+4*mod(div(\pp,4)+div(\rr,4),2)}
+      \pgfmathtruncatemacro{\gra}{8+9*\lgc}
+      \fill[gray!\gra] (\pp*0.72,-\rr*0.5) rectangle (\pp*0.72+0.71,-\rr*0.5-0.49);
+      \ifnum\lgc>5
+        \node[cfl,white] at (\pp*0.72+0.355,-\rr*0.5-0.245) {\lgc};
+      \else
+        \node[cfl] at (\pp*0.72+0.355,-\rr*0.5-0.245) {\lgc};
+      \fi
+    }
+  }
+  \draw[thick] (0,0) rectangle (5.76,-4.0);
+  \foreach \rx in {0,7} {
+    \node[axl,anchor=east] at (-0.08,-\rx*0.5-0.25) {\rx};
+  }
+  \node[axl,anchor=south,rotate=90] at (-0.58,-2.0) {行 $r$};
+  \foreach \px in {0,7} {
+    \node[axl,anchor=south] at (\px*0.72+0.355,0.10) {\px};
+  }
+  \node[axl,anchor=north] at (2.88,-4.35) {物理 16B chunk 槽位 $p$（一行 $=$ 128\,B $=8$ 槽）};
+  % 两条引出箭头
+  \draw[-{Stealth},thick,tkBlue] (5.86,-0.9) -- (6.7,-0.9);
+  \draw[-{Stealth},thick,tkGreen] (5.86,-2.6) -- (6.7,-2.6);
+  \node[draw=tkBlue,rounded corners,fill=tkFillBlue,align=left,font=\scriptsize,
+    text width=8.4cm,inner sep=3pt,anchor=west] at (6.8,-1.32)
+    {\texttt{partition\_fragment\_B(sV\_stg)}——\textbf{带 swizzle 的 storage 视图}：
+     管\emph{数据指针}。逻辑坐标经上式换成槽位 $p$，指针落在正确的 smem 槽上。};
+  \node[draw=tkGreen,rounded corners,fill=tkFillGreen,align=left,font=\scriptsize,
+    text width=8.4cm,inner sep=3pt,anchor=west] at (6.8,-2.95)
+    {\texttt{tCrV\_layout}——\textbf{nonswizzle portion}：管\emph{线程-值归属}。
+     「哪个线程持有哪些逻辑元素」与 XOR 无关，推导必须先剥掉 swizzle。};
+  \node[draw,rounded corners,draw=red!70!black,text=red!70!black,align=left,
+    font=\scriptsize,text width=8.4cm,inner sep=3pt,anchor=west] at (6.8,-4.15)
+    {\textbf{坑一}：两份视图各管一半——拿带 swizzle 的视图推 fragment 布局，
+     XOR 会混进逻辑坐标，得到与真值错位的线程-值映射。};
+  % 底部：位公式
+  \node[nt,anchor=north west,text width=15.6cm] at (0,-4.85)
+    {SW128 的位公式（第~\ref{ch:23}~章）：$\mathrm{phys}=64r+8\cdot\bigl((c/8)\oplus(r\bmod8)\bigr)+(c\bmod8)$
+     ——行内 16\,B chunk 号与行号低 3 位异或（8 行一个周期）。格内数字是该槽实际承载的\emph{逻辑}
+     chunk（$c/8=p\oplus(r\bmod8)$），灰度跟随逻辑 chunk 身份，于是「对角线置换」一眼可见；
+     实际 tile 是 $64\times64$（$8$ 个周期），此处只画一个周期。};
+\end{tikzpicture}
+\caption{V 的双视图分工（\texttt{ffpa\_attn.cuh} L136--141）。同一张 SW128 smem tile：
+\texttt{sV\_stg}（带 swizzle 的 storage 视图）负责把逻辑坐标换算成物理槽位、给数据指针用；
+\texttt{tCrV\_layout}（由 nonswizzle portion 推导）负责回答「哪个线程持有哪些逻辑元素」。
+SW128 的 XOR 只改地址、不改归属，所以推 fragment 布局时必须先剥掉 swizzle——
+两份视图各管一半，混用即错（坑一）。}
+\label{fig:26-v-dualview}
+\end{figure}
 
 注意一个容易忽略的事实：B fragment 的布局对 4 个 M-warp 是\emph{重复}的
 （$K$ 向的 4 个 atom 都要被每个 warp 看到），所以 \texttt{partition\_\allowbreak{}fragment\_\allowbreak{}B}
@@ -581,7 +884,76 @@ rescale 的操作对象是 \texttt{tCrO} 的 rowcol 视图：行方向乘
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.92\textwidth]{figures/drawio/fig-26-1-dual-mma/fig-26-1.png}
+% was: \includegraphics[width=0.92\textwidth]{figures/drawio/fig-26-1-dual-mma/fig-26-1.png}
+\begin{tikzpicture}[font=\tiny, >=Stealth,
+  hb/.style={align=center, inner sep=2pt, font=\bfseries\fontsize{4.6}{5.2}\selectfont},
+  bx/.style={align=center, inner sep=2pt, font=\fontsize{4.2}{4.8}\selectfont},
+  tx/.style={align=left, inner sep=1pt, font=\fontsize{4.2}{4.8}\selectfont, anchor=west},
+]
+  % 左栏：QK chunk 循环（S 累加器跨 chunk 存活）
+  \node[hb, fill=tkBlue, text=white, text width=4.20cm] at (2.10,-0.12)
+    {QK chunk 循环（$d = 0..C{-}1$）};
+  \node[bx, draw=tkBlue, fill=tkFillBlue, text width=3.90cm] at (2.10,-0.75)
+    {Q[$d$], K[$d$] $\xrightarrow{\texttt{cp.async}}$ smem};
+  \node[bx, draw=tkBlue, fill=tkFillBlue, text width=3.90cm] at (2.10,-1.51)
+    {S $+=$ Q[$d$] @ K[$d$]$^{\top}$};
+  \node[bx, draw=tkBlue, fill=tkFillBlue, text width=3.90cm] at (2.10,-2.27)
+    {gemm\_ss，4 个 k16 原子};
+  \node[bx, draw=tkBlue, fill=white, text=tkBlue, text width=3.90cm,
+    font=\bfseries\fontsize{4.2}{4.8}\selectfont] at (2.10,-3.03)
+    {S：32 个 f32/线程 $=$ ((2,2),1,8)};
+  \node[tx, text width=4.20cm] at (0,-3.55)
+    {C 个 [64,64] chunk 顺序累加，S 跨 chunk 存活};
+  % 中栏：Phase 2（rowcol 视图上的 softmax）
+  \node[hb, fill=tkOrange, text=white, text width=3.60cm] at (6.90,-0.12)
+    {Phase 2：rowcol 视图};
+  \node[bx, draw=tkOrange, fill=tkFillOrange, text width=3.30cm] at (6.90,-0.75)
+    {row max / sum（每 lane 2 行）};
+  \node[bx, draw=tkOrange, fill=tkFillOrange, text width=3.30cm] at (6.90,-1.51)
+    {P $=$ exp2(S$\cdot$scale $-$ m) 就地覆盖};
+  \node[bx, draw=tkOrange, fill=tkFillOrange, text width=3.30cm] at (6.90,-2.27)
+    {P：convert\_type $+$ Aregs 重解释};
+  \node[bx, text=tkOrange!80!black, text width=4.30cm] at (6.90,-3.05)
+    {row\_max[2], row\_sum[2]\\row\_scale[2] $=$ exp2($m_{\mathrm{old}} - m_{\mathrm{new}}$)};
+  % 右栏：PV chunk 循环（O 分量独立 rescale 与累加）
+  \node[hb, fill=tkGreen, text=white, text width=4.20cm] at (12.30,-0.12)
+    {PV chunk 循环（$v = 0..C{-}1$）};
+  \node[bx, draw=tkGreen, fill=tkFillGreen, text width=3.90cm] at (12.30,-0.75)
+    {O[$v$] $*=$ row\_scale（rescale）};
+  \node[bx, draw=tkGreen, fill=tkFillGreen, text width=3.90cm] at (12.30,-1.51)
+    {O[$v$] $+=$ P @ V[$v$]（ns 视图）};
+  \node[bx, draw=tkGreen, fill=white, text=tkGreen, text width=3.90cm,
+    font=\bfseries\fontsize{4.2}{4.8}\selectfont] at (12.30,-2.27)
+    {O：$C \times$ [64,16] 分量独立累加};
+  % 主数据流箭头：S -> Phase 2 -> P -> PV
+  \draw[->, tkOrange, semithick] (4.28,-1.45) -- (5.02,-1.45);
+  \node[tx, text=tkOrange] at (4.35,-1.28) {S (32)};
+  \draw[->, tkGreen, semithick] (8.78,-1.45) -- (10.18,-1.45);
+  \node[tx, text=tkGreen] at (8.85,-1.28) {P (Aregs)};
+  % row_scale 虚线耦合：Phase 2 尾部 -> PV 的 rescale 框
+  \draw[->, dashed, tkOrange!80!black, semithick]
+    (7.90,-3.42) -- (10.18,-3.42) -- (10.18,-2.42) -- (10.28,-2.42);
+  \node[align=center, inner sep=1pt, font=\fontsize{4.2}{4.8}\selectfont,
+    text=tkOrange!80!black] at (9.30,-3.68) {row\_scale（虚线）};
+  % 底部：寄存器账本
+  \node[font=\bfseries\fontsize{4.6}{5.2}\selectfont, anchor=west] at (0,-4.10)
+    {寄存器账本（每线程，$D=512 \to C=8$）};
+  \node[bx, draw=tkBlue, fill=white, text=tkBlue, text width=1.30cm,
+    font=\bfseries\fontsize{4.2}{4.8}\selectfont] at (0.75,-4.55) {S / P};
+  \node[bx, draw=gray!60, fill=gray!12, text width=2.10cm] at (2.90,-4.55) {32 f32};
+  \node[tx] at (0,-4.92) {Phase 2 就地覆盖，不新增};
+  \node[bx, draw=tkGreen, fill=white, text=tkGreen, text width=1.30cm,
+    font=\bfseries\fontsize{4.2}{4.8}\selectfont] at (5.95,-4.55) {O[$C$][32]};
+  \node[bx, draw=gray!60, fill=gray!12, text width=2.10cm] at (8.10,-4.55) {256 f32};
+  \node[tx] at (5.20,-4.92) {8 chunk $\times$ 32，acc 主体};
+  \node[bx, draw=tkOrange, fill=white, text=tkOrange!80!black, text width=1.30cm,
+    font=\bfseries\fontsize{4.2}{4.8}\selectfont] at (11.15,-4.55) {V frag};
+  \node[bx, draw=gray!60, fill=gray!12, text width=2.10cm] at (13.30,-4.55) {dup $\times$ M-warp};
+  \node[tx] at (10.40,-4.92) {ns 视图按需取，不常驻全量};
+  \node[tx, text width=15.0cm] at (0,-5.35)
+    {S、P、O 全程在寄存器：smem 只承载 Q/K/V 的 chunk 流水——这就是「split-D」把 softmax
+     从两遍访存变成一遍寄存器更新的全部代价结构};
+\end{tikzpicture}
 \caption{双 TiledMma 的数据流：QK 沿 $D$ 累加成 $S$（32 寄存器跨 chunk
 存活），softmax 就地覆盖为 $P$，Aregs 重解释后喂给 PV；$O$ 的每个 chunk
 分量独立 rescale 与累加，\texttt{row\_scale}（虚线）耦合两个循环。底部

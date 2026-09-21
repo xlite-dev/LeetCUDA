@@ -1,0 +1,1056 @@
+
+\section{布局}\label{layoutssection}
+
+在建立了嵌套元组（nested tuple）的必要背景之后，我们将注意力转向{\it 布局}（layout）。布局是扁平布局（flat layout）的推广：其中允许形状与步长取嵌套元组，而不再是（扁平）元组。
+
+\subsection{基本定义}
+
+\begin{definition}\label{definitionofnestedlayout}
+    {\it 布局}是一个数对
+    \[
+    L = S:D
+    \]
+    它由一个正整数的嵌套元组
+    \[\shape(L) = S\]（称为 $L$ 的{\it 形状}（shape））与一个非负整数的嵌套元组
+    \[
+    \stride(L) = D
+    \]
+    （称为 $L$ 的{\it 步长}（stride））组成，且要求 $S$ 与 $D$ 同余（congruent）。
+\end{definition}
+
+\begin{definition} 若 $L=S:D$ 是布局，则 $L$ 的{\it 秩}（rank）、{\it 长度}（length）、{\it 深度}（depth）、{\it 大小}（size）与{\it 轮廓}（profile）分别定义为 $S$ 的秩、长度、深度、大小与轮廓。
+\end{definition}
+
+\begin{example} 布局 $L = (3,(3,2)):(3,(1,10))$ 可图示如下。
+\[
+\begin{tikzpicture}[x={(0cm,-1cm)},y={(1cm,0cm)},every node/.style={minimum size=1cm, outer sep=0pt}]
+
+\node[fill=gray!20] at (0,0) {0};
+\node[fill=gray!20] at (0,1) {1};
+\node[fill=gray!20] at (0,2) {2};
+\node[fill=gray!20] at (0,3) {10};
+\node[fill=gray!20] at (0,4) {11};
+\node[fill=gray!20] at (0,5) {12};
+\node[fill=gray!20] at (1,0) {3};
+\node[fill=gray!20] at (1,1) {4};
+\node[fill=gray!20] at (1,2) {5};
+\node[fill=gray!20] at (1,3) {13};
+\node[fill=gray!20] at (1,4) {14};
+\node[fill=gray!20] at (1,5) {15};
+\node[fill=gray!20] at (2,0) {6};
+\node[fill=gray!20] at (2,1) {7};
+\node[fill=gray!20] at (2,2) {8};
+\node[fill=gray!20] at (2,3) {16};
+\node[fill=gray!20] at (2,4) {17};
+\node[fill=gray!20] at (2,5) {18};
+\draw[color=black,thick,shift={(-0.5,-0.5)}] (0,0) grid (3,6);
+
+\node[anchor = east] at (1,-1) {$L = $};
+\end{tikzpicture}
+\]
+\end{example}
+
+\begin{example} 布局 $L = ((2,2),(2,2)):((1,4),(2,8))$ 可图示如下。
+\[
+\begin{tikzpicture}[x={(0cm,-1cm)},y={(1cm,0cm)},every node/.style={minimum size=1cm, outer sep=0pt}]
+
+\node[fill=gray!20] at (0,0) {0};
+\node[fill=gray!20] at (0,1) {2};
+\node[fill=gray!20] at (0,2) {8};
+\node[fill=gray!20] at (0,3) {10};
+\node[fill=gray!20] at (1,0) {1};
+\node[fill=gray!20] at (1,1) {3};
+\node[fill=gray!20] at (1,2) {9};
+\node[fill=gray!20] at (1,3) {11};
+\node[fill=gray!20] at (2,0) {4};
+\node[fill=gray!20] at (2,1) {6};
+\node[fill=gray!20] at (2,2) {12};
+\node[fill=gray!20] at (2,3) {14};
+\node[fill=gray!20] at (3,0) {5};
+\node[fill=gray!20] at (3,1) {7};
+\node[fill=gray!20] at (3,2) {13};
+\node[fill=gray!20] at (3,3) {15};
+\draw[color=black,thick,shift={(-0.5,-0.5)}] (0,0) grid (4,4);
+
+\node[anchor = east] at (1.5,-1) {$L = $};
+\end{tikzpicture}
+\]
+\end{example}
+
+
+\begin{example}
+    布局
+    \[
+    L = 10:4
+    \]
+    满足 $\rank(L) = 1$，$\len(L) = 1$，$\depth(L) = 0$，$\size(L) = 10$，且 $\profile(L) = *$。
+\end{example}
+
+\begin{example}
+    布局
+    \[
+    L = (7,(2,10,4),(3,7)) : (1,(7,14,140),(560,1680))
+    \]
+    满足 $\rank(L) = 3$，$\len(L) = 6$，$\depth(L) = 2$，$\size(L) = 11760$，且 $\profile(L) = (*,(*,*,*),(*,*)).$
+\end{example}
+
+\begin{example}
+    布局
+    \[
+    L = ((2,2,2,(2,2))) : ((1,0,8,(0,16)))
+    \]
+    满足 $\rank(L)= 1$，$\len(L) = 5$，$\depth(L) = 3$，$\size(L) = 32$，且 $\profile(L) = ((*,*,*,(*,*)))$。
+\end{example}
+
+\begin{example}
+    数对
+    \[
+    S:D = (2,(2,2)):(1,2,4)
+    \]
+    不是布局，因为 $S$ 与 $D$ 不同余。
+\end{example}
+
+\begin{definition}
+    若 $L = S:D$ 是布局，则对任意 $1 \leq i \leq \rank(L)$，定义 $L$ 的第 $i$ 个模式（mode）为布局
+    \[
+    \mode_i(L) = \mode_i(S) : \mode_i(D),
+    \]
+    且对任意 $1 \leq i \leq \len(L)$，定义 $L$ 的第 $i$ 个元素（entry）为布局
+    \[
+    \entry_i(L) = \entry_i(S) : \entry_i(D).
+    \]
+\end{definition}
+
+\begin{example}
+    若 $L = \bigl((2,2),9\bigr):\bigl((3,6),12\bigr)$，则 $L$ 的各模式为
+    \begin{align*}
+        \mode_1(L) & = (2,2):(3,6) \\
+        \mode_2(L) & = 9 : 12
+    \end{align*}
+    而 $L$ 的各元素为
+    \begin{align*}
+    \entry_1(L) & = 2:3\\
+      \entry_2(L) &=  2:6\\
+      \entry_3(L)&=   9:12 .
+    \end{align*}
+\end{example}
+
+\begin{remark}
+    若 $L$ 是布局，则 $L$ 的各模式也是布局，而 $L$ 的各元素是深度为 $0$ 的布局。
+\end{remark}
+
+\begin{remark}
+扁平布局 $L$ 恰是深度为 $1$ 的布局。反过来，若 $L$ 是布局，我们可以按如下方式得到一个扁平布局 $L^\flat$。
+\end{remark}
+
+
+\begin{definition}
+    若 $L = S:D$ 是布局，定义 $L$ 的{\it 扁平化}（flattening）为扁平布局
+    \[
+    L^\flat = S^\flat : D^\flat.
+    \]
+\end{definition}
+
+\begin{example}
+    布局 $L = 10:4$ 的扁平化是 $L^\flat = (10):(4)$。
+\end{example}
+
+\begin{example}
+布局
+    \[
+    L = \bigl((2,2,2,(2,2))\bigr) : \bigl((1,0,8,(0,16))\bigr)
+    \]
+    的扁平化是
+    \[
+    L^\flat = (2,2,2,2,2) : (1,0,8,0,16).
+    \]
+\end{example}
+
+\begin{remark}
+    若 $L$ 是布局，则 $\len(L) = \rank(L^\flat)$，且对任意 $1 \leq i \leq \len(L)$，有
+    \[\entry_i(L) = \mode_i(L^\flat).\]
+\end{remark}
+
+\noindent 我们可以利用上述扁平化构造，把扁平布局的许多概念推广到嵌套布局。例如：
+
+\begin{construction}[布局函数]
+    若 $L$ 是嵌套布局，我们把 $L$ 的布局函数（layout function）$\Phi_L$ 定义为
+    \[
+    \Phi_L = \Phi_{L^\flat},
+    \]
+    其中 $\Phi_{L^\flat}$ 是构造~\ref{constructionoflayoutfunctions} 中的布局函数。类似地，若 $N$ 满足 $\Image(\Phi_L) \subset [0,N)$，则把
+    \[
+    \Phi_L^N = \Phi_{L^\flat}^N
+    \]
+    定义为 $\Phi_L$ 经由包含映射（inclusion）$[0,N) \subset \mathbb{Z}$ 的分解。
+\end{construction}
+
+\begin{example}
+    若 $L = ((2,2),2):((3,0),10)$，则 $L$ 的布局函数
+    \[
+    \Phi_L:[0,8) \to \mathbb{Z}
+    \]
+    由
+    \[ \begin{tikzcd} [row sep = 2, column sep = 4]
+    & 0 \ar[dd,mapsto] & 1 \ar[dd,mapsto] & 2 \ar[dd,mapsto] & 3 \ar[dd,mapsto] & 4 \ar[dd,mapsto] & 5 \ar[dd,mapsto] & 6  \ar[dd,mapsto] &  7 \ar[dd,mapsto]\\
+    \Phi_L & & &  & & & & & & \\
+    & 0 & 3 & 0 & 3 & 10 & 13 & 10 & 13
+    \end{tikzcd} \]
+    给出。
+\end{example}
+
+给定布局 $L$，我们可以得到扁平布局 $L^\flat$ 以及轮廓 $P = \profile(L)$。反过来，若给定扁平布局 $L$ 以及与 $L$ 等长的轮廓 $P$，则可以按下述方式构造一个以 $L$ 为扁平化、以 $P$ 为轮廓的布局。
+
+\begin{construction}\label{layoutfromflatlayoutandprofile}
+若 $L$ 是扁平布局，$P$ 是满足 $\len(P) = \len(L)$ 的轮廓，则可以定义
+\[
+L = L_P
+\]
+为形状为
+\[
+\shape(L) = \shape(L)_P
+\]
+且步长为
+\[
+\stride(L) = \stride(L)_P
+\]
+的布局，其中 $(-)_P$ 是定义~\ref{definitionofPconcatenation} 中的 $P$-代入（$P$-substitution）运算。
+\end{construction}
+
+\begin{example}
+    若 $L = (8,8,8):(1,64,8)$ 且 $P = (*,(*,*))$，则
+    \[
+    L_P = (8,(8,8)),(1,(64,8)).
+    \]
+\end{example}
+
+\begin{example}
+    若 $L = (128):(2)$ 且 $P = *$，则
+    \[
+    L_P = 128:2.
+    \]
+\end{example}
+
+\begin{proposition}
+    若 $L'$ 是扁平布局，$P$ 是满足 $\len(L') = \len(P)$ 的轮廓，则存在唯一的布局 $L$，其扁平化为 $L^\flat = L'$、轮廓为 $\profile(L) = P$，即 $L = L'_P$。
+\end{proposition}
+
+\begin{proof}
+    这由嵌套元组的定义即得，因为嵌套元组由其扁平化与轮廓唯一确定。
+\end{proof}
+
+\begin{observation}
+    上一命题告诉我们，我们有如下拉回（pullback）方块
+    \[ \begin{tikzcd} 
+    \mathterm{Layout}\ar[rr,"\profile(-)"] \ar[d,swap,"(-)^\flat"] \arrow[drr, phantom, "\lrcorner", very near start] & & \mathterm{Profile}\ar[d,"\len(-)"] \\
+    \mathterm{FlatLayout} \ar[rr,swap,"\len(-)"] & & \mathbb{N}
+    \end{tikzcd} \]
+\end{observation}
+
+我们可以如下把非退化（non-degenerate）的概念推广到嵌套情形。
+
+\begin{definition}\label{definitionofnondegeneratelayout}
+    设 $L$ 是布局。若对所有 $1 \leq i\leq \len(L)$，下列条件成立：
+    \[
+    \entry_i(\shape(L)) \quad \Rightarrow \quad \entry_i(\stride(L))
+    \]
+    则称 $L$ 是{\it 非退化}的。
+\end{definition}
+
+\begin{example}
+    布局
+    \begin{align*}
+        L_1 & = ((2,2),1):((1,2),0)\\
+        L_2 & = ((8,8),(1,16)):((2,32),(0,128))
+    \end{align*}
+    是非退化的，而布局
+    \begin{align*}
+        L_3 & = ((2,2),1):((1,2),4)\\
+        L_4 & = ((8,8),(1,16)):((2,32),(1024,128))
+    \end{align*}
+    是退化（degenerate）的。
+\end{example}
+
+% \subsection{Linear layouts}
+
+% Before moving on to our discussion of layout operations, we will take a closer look at an especially important family of layouts called {\it linear layouts}.
+
+% \begin{definition}
+%     Suppose $s_1,\dots,s_m$ are positive integers, where each $s_i = 2^{r_i}$ is some positive power of $2$. Let $r = r_1 + \cdots + r_m$, so the size of $(s_1,\dots,s_m)$ is $2^r$. If $M$ is a $\ell \times r$ matrix with entries in $\mathbb{F}_2$, we may construct a layout $L_M$ whose coordinate function is the composite
+%     \[ \begin{tikzcd}
+%     {[}0,s_1{)} \times \cdots \times {[}0,s_m{)} \ar[dd,swap,"\colex^{-1} \times \cdots \times \colex^{-1}"] & & & & \\ 
+%      & & & & \\
+%     {[}0,2{)}^{\times r_1}  \times \cdots \times  {[}0,2{)}^{\times r_m} \cong \mathbb{F}_2^{\times r} \ar[rr,"M"] & & \mathbb{F}_2^{\times \ell} \cong {[}0,2{)}^{\times \ell} \ar[rr,"\colex"] & & {[}0,2^\ell{)}.
+%     \end{tikzcd} \]
+%     Explicitly, $L_M$ is the layout whose shape is
+%     \[
+%     \shape(L_M) = (S_1,\dots,S_m)
+%     \]
+%     where
+%     \[
+%     S_i = (2,\dots,2)
+%     \]
+% \end{definition}
+
+
+\subsection{基本运算}
+
+在建立了布局的基本词汇之后，我们转而讨论布局所支持的运算。本节定义一些基本运算，构造更复杂的运算——如{\it 合并}（coalesce）、{\it 补}（complement）、{\it 复合}（composition）、{\it 逻辑切分}（logical division）与{\it 逻辑乘积}（logical product）——时将会用到它们。
+
+\subsubsection{扁平化} 若 $L$ 是布局，则把 $L$ 的形状与步长扁平化，即可得到扁平布局 $L^\flat$。
+\begin{definition}
+    若 $L = S:D$ 是布局，定义 $L$ 的{\it 扁平化}为扁平布局
+    \[
+    L^\flat = S^\flat : D^\flat.
+    \]
+\end{definition}
+
+\begin{example}
+布局
+    \[
+    L = ((2,2,2,(2,2))) : ((1,0,8,(0,16)))
+    \]
+    的扁平化是
+    \[
+    L^\flat = (2,2,2,2,2) : (1,0,8,0,16).
+    \]
+\end{example}
+
+\begin{example}
+    布局 $L = 10:4$ 的扁平化是 $L^\flat = (10):(4)$。
+\end{example}
+
+
+\begin{example}
+    设 $L$ 是布局。则 $\depth(L) = 1$ 当且仅当 $L = L^\flat$。
+\end{example}
+
+\subsubsection{拼接}
+
+拼接两个布局，就是拼接它们的形状并拼接它们的步长。
+
+
+\begin{definition}\label{definitionoflayoutconcatenation}
+    若 $L=S:D$ 与 $L'=S':D'$ 是布局，则 $L$ 与 $L'$ 的{\it 拼接}（concatenation）是布局 $(L,L')$
+    \[
+    (L,L') = (S,S'):(D,D').
+    \]
+    更一般地，若 $L_1,\dots,L_k$ 是任意有限多个布局，其中 $L_i = S_i:D_i$，则 $L_1,\dots,L_k$ 的拼接是布局
+    \[
+    (L_1,\dots,L_k) = (S_1,\dots,S_k):(D_1,\dots,D_k).
+    \]
+\end{definition}
+
+\begin{remark}
+    嵌套元组（因而布局）的拼接不满足结合律。例如，取 $L_1 = 3:4$、$L_2 = 2:2$ 与 $L_3 = 5:1$。则
+    \[\bigl(L_1, (L_2, L_3)\bigr) = \bigl(3, (2, 5)\bigr):\bigl(4, (2, 1)\bigr) \neq \bigl((3, 2), 5\bigr):\bigl((4, 2), 1\bigr) = \bigl((L_1, L_2), L_3\bigr). \]
+    而且，这两个布局都不等于「三重」拼接 $(L_1,L_2,L_3) = (3,2,5):(4,2,1)$。不过，我们看到这些布局都有相同的扁平化，因此都有相同的布局函数。
+\end{remark}
+
+\begin{example} \label{concatenationoflayoutsexample}
+若 $L = (3,7,2):(1,3,6)$ 且 $L' = (2,(2,(4,3))):(5,3,(2,2))$，则
+\[
+(L,L') = ( (3,7,2), (2,(2,(4,3)))) : ( (1,3,6), (5,(3,(2,2))))
+\]
+\end{example}
+\begin{remark}
+    拼接会增加布局的深度。更精确地说，我们有
+    \[
+    \depth(L,L') = 1 + \text{max}(\depth(L),\depth(L')).
+    \]
+\end{remark}
+
+\begin{remark}
+    当 $L$ 与 $L'$ 都是扁平布局时，定义~\ref{definitionoflayoutconcatenation} 的拼接与定义~\ref{definitionofflatconcatenate} 的扁平布局拼接{\it 并不}一致。两个运算之间的关系由公式
+    \[
+    L \star L' = (L,L')^\flat.
+    \]
+    给出。
+\end{remark}
+
+\begin{remark}
+    若 $L$ 是满足 $\depth(L)>0$ 且 $\rank(L) = r$ 的任意布局，则可以把
+    \[
+    L = (\mode_1(L),\dots,\mode_{r}(L))
+    \]
+    写成其各模式的拼接。
+\end{remark}
+
+\begin{example}
+    若
+    \[
+    L = ((5,(7,7)),2,(4,5)):((1,(35,5)),0,(1,8))
+    \]
+    则 $L = (L_1,L_2,L_3)$，其中
+    \begin{align*}
+        L_1 & = \bigl(5,(7,7)\bigr) : \bigl(1,(35,5)\bigr),\\
+        L_2 & = 2:0\text{, and }\\
+        L_3 & = (4,5):(1,8).
+    \end{align*}
+\end{example}
+
+\subsubsection{代入}
+回顾一下，若 $X_1,\dots,X_k$ 是嵌套元组，$P$ 是满足 $\len(P) = k$ 的轮廓，则可以构成 $P$-代入
+\[
+(X_1,\dots,X_k)_P
+\]
+它是把 $P$ 的第 $i$ 个元素替换为嵌套元组 $X_i$ 得到的。我们可以如下把这一构造从嵌套元组推广到布局。
+
+\begin{definition}
+    设 $L = S:D$ 是布局，$P$ 是满足 $\len(P) = \rank(L)$ 的轮廓。定义
+    \[
+    L_P = S_P:D_P
+    \]
+    其中 $S_P$ 与 $D_P$ 是 $S$ 与 $D$（的各模式）的 $P$-代入。
+\end{definition}
+
+\begin{example}
+    若 $P = (*,(*,*))$ 且 $L = (8,8,8):(1,8,64)$，则
+    \[
+    L_P = (8,(8,8)):(1,(8,64)).
+    \]
+\end{example}
+\begin{example}
+    若 $P = (*,(*,*)))$ 且
+    \[L = ((2,2),(3,3),(5,5)):((2,1),(12,4),(180,36)),\]
+    则
+    \[
+    L_P = ((2,2),((3,3),(5,5))):((2,1),((12,4),(180,36))).
+    \]
+\end{example}
+\begin{example}
+    若 $L = (16):(1)$ 且 $P = *$，则
+    \[
+    L_P = 16:1.
+    \]
+\end{example}
+
+
+\subsection{合并}
+
+回顾一下，若 $L$ 是扁平布局，则 $\coalesce^\flat(L)$ 是唯一的、以 $\Phi_L$ 为布局函数且秩极小的扁平布局。在任意（嵌套）布局的情形下也可以做出类似的构造。我们先定义已合并布局的概念。
+
+
+\begin{definition}\label{definitionofnestedlayoutcoalesce}
+    设 $L$ 是布局。若下列条件之一成立，则称 $L$ 是{\it 已合并}（coalesced）的。
+    \begin{enumerate}
+    \item $L = 1:0$，
+    \item $\depth(L) = 0$ 且 $\shape(L) > 1$，或
+    \item $\depth(L) = 1$、$\rank(L) > 1$，且 $L$ 在定义~\ref{definitionofflatlayoutcoalesce} 的意义下已合并。
+    \end{enumerate}
+\end{definition}
+
+\begin{example}
+    布局
+    \[L = (2,(2,2)) : (1,(16,512))\]
+    不是已合并的，因为 $\depth(L)>1$。
+\end{example}
+\begin{example}
+    布局 \[L = (64):(2)\] 不是已合并的，而布局 \[L' = 64:2\] 是已合并的。
+\end{example}
+\begin{example}
+    布局 \[L = 1:8\] 不是已合并的，而布局 \[L' = 1:0\] 是已合并的。
+\end{example}
+\begin{example}
+    空布局（empty layout）
+    \[E = ():()\]
+    不是已合并的。
+\end{example}
+
+\begin{observation}
+    回顾一下，布局 $L$ 非退化的条件是
+    \[
+    \entry_i(\shape(L)) = 1 \quad \Rightarrow \quad  \entry_i(\stride(L)) = 0.
+    \]
+    若 $L$ 已合并，则 $L$ 非退化。
+\end{observation}
+若 $L$ 是任意布局，我们可以如下得到一个已合并布局 $\coalesce(L)$。
+
+\begin{construction}\label{constructionoflayoutcoalesce}
+    设 $L$ 是布局，并记
+    \[\coalesce^\flat(L^\flat) = (s_1,\dots,s_m):(d_1,\dots,d_m).\]
+    \begin{enumerate}
+        \item 若 $m > 1$，定义
+        \[
+        \coalesce(L) = \coalesce^\flat(L^\flat)
+        \]
+        \item 若 $m = 1$，定义
+        \[
+        \coalesce(L) = s_1:d_1
+        \]
+        \item 若 $m = 0$，定义
+        \[ \coalesce(L) = 1:0.\]
+    \end{enumerate}
+\end{construction}
+
+\begin{example}
+    若 $E = ():()$ 是空布局，则
+    \[
+    \coalesce(E) = 1:0.
+    \]
+\end{example}
+\begin{example}
+    若 $L = (1,1):(2,4)$，则
+    \[
+    \coalesce(L) = 1:0.
+    \]
+\end{example}
+\begin{example}
+    若 $L = (512):(4)$，则
+    \[
+    \coalesce(L) = 512:4.
+    \]
+\end{example}
+\begin{example}
+    若 $L = (2,2,2):(1,2,4)$，则
+    \[
+    \coalesce(L) = 8:1.
+    \]
+\end{example}
+\begin{example}
+    若 $L = ((2,2,2),(5,5)):((1,2,4),(10,50))$，则
+    \[
+    \coalesce(L) = (8,25):(1,10).
+    \]
+\end{example}
+
+\begin{remark} 若 $L$ 是布局，则 $\coalesce(L)$ 的深度为 $0$ 或 $1$。
+\end{remark}
+
+\begin{proposition}\label{nestedcoalesceproposition}
+    若 $A$ 与 $B$ 是布局，则
+    \[\Phi_A =\Phi_B \quad \Leftrightarrow \quad \coalesce(A) = \coalesce(B).\]
+\end{proposition}
+\begin{proof}
+    利用命题~\ref{coalesceproposition}，我们有
+    \begin{align*}
+    \Phi_A = \Phi_B \hspace{0.2in} & \Leftrightarrow \hspace{0.2in} \Phi_{A^\flat} = \Phi_{B^\flat} \\
+    & \Leftrightarrow \hspace{0.2in} \coalesce^\flat(A^\flat) = \coalesce^\flat ( B^\flat ) \\
+    & \Leftrightarrow \hspace{0.2in} \coalesce(A) = \coalesce ( B ).
+    \end{align*}
+\end{proof}
+
+\begin{definition}
+    若 $L$ 是布局，定义 $L$ 的{\it 复杂度}（complexity）为整数
+    \[
+    \complexity(L) = \len(L) + \depth(L).
+    \]
+\end{definition}
+
+\begin{proposition}
+    若 $L$ 是布局且 $\size(L) >1$，则 $\coalesce(L)$ 是唯一的以 $\Phi_L$ 为布局函数的复杂度极小布局。
+\end{proposition}
+
+\begin{proof}
+设 $L'$ 是与 $L$ 有相同布局函数的布局，并设 $\coalesce(L') \neq 1:0$。则
+\[
+\len(L') \geq \len(\coalesce(L')) = \len(\coalesce(L)).
+\]
+需分两种情形讨论。
+\begin{itemize}
+    \item （情形 1）：设 $\len(L') > 1$。则 $\depth(L') \geq 1 \geq \depth(\coalesce(L))$。综合这些不等式，我们观察到
+    \[
+    \complexity(L') \geq \complexity(\coalesce(L)),
+    \]
+    且等号成立当且仅当 $L' = \coalesce(L') = \coalesce(L)$。
+    \item （情形 2）：设 $\len(L') = 1$。则对某些整数 $s>1$ 与 $d \geq 0$，有 $L' = (s):(d)$ 或 $L' = s:d$。无论哪种情形，都有 $\coal(L') = s:d$，且
+    \[
+    \complexity(L') \geq \complexity(\coalesce(L)),
+    \]
+    其中等号成立当且仅当 $L' = s:d = \coalesce(L)$。
+\end{itemize}
+\end{proof}
+
+\begin{remark}
+    我们必须排除 $\size(L) = 1$ 的情形，唯一的原因在于：若 $\size(L) = 1$，则 $1:0$ 与空布局 $():()$ 是两个不同的布局，它们都具有极小复杂度，且与 $L$ 有相同的布局函数（即平凡布局函数 $0 \mapsto 0$）。
+\end{remark}
+
+
+\subsection{相对合并}
+合并有一个重要的不变量（invariant），称为{\it 相对合并}（relative coalesce），记作 $\coalesce(L,\bar{S})$。该运算额外接收一个嵌套元组 $\bar{S}$ 作为输入，要求 $\bar{S}$ 被 $\shape(L)$ 加细（refine）。此时，相对合并运算在保证所得形状仍加细 $\bar{S}$ 的前提下，尽可能地化简布局 $L$。
+
+
+\begin{definition}
+    设 $L = S:D$ 是布局，$\bar{S}$ 是被 $S$ 加细的、长度为 $m$ 的嵌套元组。回顾一下，对任意 $1 \leq i \leq m$，可以考虑 $S$ 相对于 $\bar{S}$ 的第 $i$ 个模式，记作
+    \[
+    \mode_i(S,\bar{S}).
+    \]
+    由于 $S$ 与 $D$ 同余，存在与 $\mode_i(S,\bar{S})$ 对应的嵌套元组
+    \[
+    \mode_i(D,\bar{S})
+    \]
+    我们定义 $L$ {\it 相对于} $\bar{S}$ 的第 $i$ 个{\it 模式}为布局
+    \[
+    \mode_i(L,\bar{S}) = \mode_i(S,\bar{S}):\mode_i(D,\bar{S}).
+    \]
+\end{definition}
+
+\begin{example}
+    若 $\bar{S} = (4,(9,25))$ 且
+    \[
+    L = ((2,2),((3,3),(5,(1,5)))):((1,2),((6,18),(90,(0,450))))
+    \]
+    则
+    \begin{align*}
+    \mode_1(L,\bar{S}) & = (2,2):(1,2)\\
+    \mode_2(L,\bar{S}) & = (3,3):(6,18)\\
+    \mode_3(L,\bar{S}) & = (5,(1,5)):(90,(0,450)).
+    \end{align*}
+\end{example}
+
+\begin{observation}
+    设 $L = S:D$ 是布局，$\bar{S}$ 是被 $S$ 加细的、长度为 $m$ 且轮廓为 $P$ 的嵌套元组。若对任意 $1 \leq i \leq m$，记
+    \[
+    L_i = \mode_i(L,\bar{S}),
+    \]
+    则
+    \[
+    L =(L_1,\dots,L_m)_P
+    \]
+    是其各相对模式的 $P$-代入。
+\end{observation}
+
+\begin{definition}\label{definitionofcoalescedoverSbar}
+    设 $L = S:D$ 是布局，$\bar{S}$ 是被 $S$ 加细的、长度为 $m$ 且轮廓为 $P$ 的嵌套元组。若每个相对模式
+    \[
+    \mode_i(L,\bar{S})
+    \]
+    都已合并，则称 $L$ 是{\it 相对于 $\bar{S}$ 已合并}的（coalesced over $\bar{S}$）。
+\end{definition}
+
+\begin{observation}\label{coalescedoverSbarimpliesnondegenerate}
+    在定义~\ref{definitionofcoalescedoverSbar} 的情形下，若 $L$ 相对于 $\bar{S}$ 已合并，则 $L$ 非退化。
+\end{observation}
+
+\begin{example}
+    若 $L$ 是布局，则 $L$ 相对于 $\shape(L)$ 已合并当且仅当 $L$ 非退化，即
+    \[
+    \entry_i(\shape(L)) =1 \quad \Rightarrow \quad \entry_i(\stride(L)) = 0.
+    \]
+\end{example}
+
+\begin{definition}[相对合并]\label{definitionofrelativecoalesce}
+    设 $L = S:D$ 是布局，$ \bar{S}$ 是被 $S$ 加细的、长度为 $m$ 且轮廓为 $P$ 的嵌套元组。定义
+    \[
+    \coalesce(L,\bar{S}) = (\coalesce(L_1),\dots,\coalesce(L_m))_P.
+    \]
+\end{definition}
+
+\begin{remark}
+     在定义~\ref{definitionofrelativecoalesce} 的情形下，$\coalesce(L,\bar{S})$ 的形状加细 $\bar{S}$。
+\end{remark}
+
+\begin{lemma}\label{relativecoalescepreserveslayoutfunction}
+    若 $L = S:D$ 是布局且 $S$ 加细 $\bar{S}$，则
+    \[
+    \Phi_{\coalesce(L,\bar{S})} = \Phi_L.
+    \]
+\end{lemma}
+
+\begin{proof}
+    如上，设
+    \[
+    L_i = \mode_i(L,S)
+    \]
+    表示 $L$ 相对于 $S$ 的第 $i$ 个模式，并记 $\bar{L}_i = \coalesce(L_i)$。则
+    \begin{align*}
+    \Phi_{\coalesce(L,\bar{S})} & = \Phi_{(\bar{L}_1,\dots,\bar{L}_m)_{\bar{S}}}\\
+    & = \Phi_{(\bar{L}_1,\dots,\bar{L}_m)}\\
+    & = \Phi_{\coalesce((\bar{L}_1,\dots,\bar{L}_m))}\\
+    & = \Phi_{\coalesce((L_1,\dots,L_m))}\\
+    & = \Phi_{(L_1,\dots,L_m)}\\
+    & = \Phi_{(L_1,\dots,L_m)_{\bar{S}}}\\
+    & = \Phi_L.
+    \end{align*}
+\end{proof}
+
+\begin{proposition}\label{relativecoalescedlayoutscharacterizedbylayoutfunction}
+    设 $A$ 与 $B$ 是布局，$\bar{S}$ 是长度为 $m$ 的嵌套元组，且 $\shape(A)$ 加细 $\bar{S}$、$\shape(B)$ 加细 $\bar{S}$。则
+    \[\Phi_A = \Phi_B \quad \Leftrightarrow \quad
+    \coalesce(A,\bar{S}) = \coalesce(B,\bar{S})
+    \]
+\end{proposition}
+
+\begin{proof}
+    若 $\coalesce(A,\bar{S}) = \coalesce(B,\bar{S})$，则利用
+    引理~\ref{relativecoalescepreserveslayoutfunction}，我们有
+    \[
+    \Phi_A = \Phi_{\coalesce(A,\bar{S})} = \Phi_{\coalesce(B,\bar{S})} = \Phi_B.
+    \]
+    反之，设 $\Phi_A = \Phi_B$。我们论证 $\coalesce(A,\bar{S}) = \coalesce(B,\bar{S})$。记 $P = \profile(\bar{S})$，且对任意 $1 \leq i \leq m$，记
+    \begin{align*}
+    A_i & = \mode_i(A,\bar{S})\\
+    B_i & = \mode_i(B,\bar{S}).
+    \end{align*}
+    由于
+    \[
+    \coalesce(A,\bar{S}) =(\coalesce(A_1),\dots,\coalesce(A_m))_P
+    \]
+    与
+    \[
+    \coalesce(B,\bar{S}) = (\coalesce(B_1),\dots,\coalesce(B_m))_P
+    \]
+    只需证明对所有 $1 \leq i \leq m$ 都有 $\coalesce(A_i) = \coalesce(B_i)$。由余字典序同构的结合律，$A$ 的布局函数 $\Phi_A$ 可以写成
+    \[
+    \begin{tikzcd} 
+    {[}0,\size(A){)} \ar[rr,"\colex^{-1}"] & & \prod_{j=1}^m {[}0,\size(A_j) {)} \ar[rr,"\prod \Phi_{A_j}"] & & \prod_{j=1}^m \mathbb{Z} \ar[rr,"+"] & & \mathbb{Z} 
+    \end{tikzcd} 
+    \]
+    而 $B$ 的布局函数 $\Phi_B$ 可以写成
+    \[
+    \begin{tikzcd} 
+    {[}0,\size(B){)} \ar[rr,"\colex^{-1}"] & & \prod_{j=1}^m {[}0,\size(B_j) {)} \ar[rr,"\prod \Phi_{B_j}"] & & \prod_{j=1}^m \mathbb{Z} \ar[rr,"+"] & & \mathbb{Z} 
+    \end{tikzcd} 
+    \]
+    对固定的 $1 \leq i \leq m$，考虑子集
+    \[
+    [0,\size(A_i)) \subset \prod_{j=1}^m [0,\size(A_j))
+    \]
+    及其像
+    \[
+    \colex([0,\size(A_i))) \subset [0,\size(A)).
+    \]
+    由于对所有 $1 \leq j \leq m$ 有 $\size(A_j) = \size(B_j)$，它等同于像
+    \[
+    \colex([0,\size(B_j))) \subset [0,\size(B)) = [0,\size(B)).
+    \]
+    $\Phi_A$ 在该子集上的限制为 $\Phi_{A_i}$，而 $B$ 在该子集上的限制为 $\Phi_{B_i}$，由此可得 $\Phi_{A_i} = \Phi_{B_i}$，再由命题~\ref{nestedcoalesceproposition}，有 $\coalesce(A_i) = \coalesce(B_i)$。于是我们推出
+    \[
+    \coalesce(A,\bar{S}) = \coalesce(B,\bar{S}),
+    \]
+    这正是所要证明的。
+\end{proof}
+
+% \color{purple}
+% \begin{proposition}
+%     Include characterization of relative coalesce!
+% \end{proposition}
+% \color{black}
+
+\subsection{紧凑布局}
+我们可以很容易地把紧凑布局的概念推广到嵌套情形。同样地，用刻画布局的标准网格图（grid diagram）来说，布局 $L$ 是紧凑（compact）的，如果每个整数 $0 \leq i < \size(L)$ 恰好出现一次。更精确地说，我们有如下定义。
+
+\begin{definition}\label{definitionofcompactnestedlayout}
+设 $L$ 是布局。若布局函数
+\[
+\Phi_L^{\cosize(L)} : [0,\size(L)) \to [0,\cosize(L))
+\]
+是同构（isomorphism），则称 $L$ 是{\it 紧凑}的。
+\end{definition}
+
+\begin{example} 布局
+\[
+\begin{tikzpicture}[x={(0cm,-1cm)},y={(1cm,0cm)},every node/.style={minimum size=1cm, outer sep=0pt}]
+
+\node[fill=gray!20] at (0,0) {0};
+\node[fill=gray!20] at (0,1) {2};
+\node[fill=gray!20] at (0,2) {8};
+\node[fill=gray!20] at (0,3) {10};
+\node[fill=gray!20] at (1,0) {1};
+\node[fill=gray!20] at (1,1) {3};
+\node[fill=gray!20] at (1,2) {9};
+\node[fill=gray!20] at (1,3) {11};
+\node[fill=gray!20] at (2,0) {4};
+\node[fill=gray!20] at (2,1) {6};
+\node[fill=gray!20] at (2,2) {12};
+\node[fill=gray!20] at (2,3) {14};
+\node[fill=gray!20] at (3,0) {5};
+\node[fill=gray!20] at (3,1) {7};
+\node[fill=gray!20] at (3,2) {13};
+\node[fill=gray!20] at (3,3) {15};
+\draw[color=black,thick,shift={(-0.5,-0.5)}] (0,0) grid (4,4);
+
+\node[anchor = east] at (1.5,-1) {$A = ((2,2),(2,2)):((1,4),(2,8))=$};
+\end{tikzpicture}
+\]
+是紧凑的，而布局
+\[
+\begin{tikzpicture}[x={(0cm,-1cm)},y={(1cm,0cm)},every node/.style={minimum size=1cm, outer sep=0pt}]
+
+\node[fill=gray!20] at (0,0) {0};
+\node[fill=gray!20] at (0,1) {2};
+\node[fill=gray!20] at (0,2) {32};
+\node[fill=gray!20] at (0,3) {34};
+\node[fill=gray!20] at (1,0) {1};
+\node[fill=gray!20] at (1,1) {3};
+\node[fill=gray!20] at (1,2) {33};
+\node[fill=gray!20] at (1,3) {35};
+\node[fill=gray!20] at (2,0) {4};
+\node[fill=gray!20] at (2,1) {6};
+\node[fill=gray!20] at (2,2) {36};
+\node[fill=gray!20] at (2,3) {38};
+\node[fill=gray!20] at (3,0) {5};
+\node[fill=gray!20] at (3,1) {7};
+\node[fill=gray!20] at (3,2) {37};
+\node[fill=gray!20] at (3,3) {39};
+\draw[color=black,thick,shift={(-0.5,-0.5)}] (0,0) grid (4,4);
+
+\node[anchor = east] at (1.5,-1) {$B = ((2,2),(2,2)):((1,4),(2,32))=$};
+\end{tikzpicture}
+\]
+与
+\[
+\begin{tikzpicture}[x={(0cm,-1cm)},y={(1cm,0cm)},every node/.style={minimum size=1cm, outer sep=0pt}]
+
+\node[fill=gray!20] at (0,0) {0};
+\node[fill=gray!20] at (0,1) {2};
+\node[fill=gray!20] at (0,2) {0};
+\node[fill=gray!20] at (0,3) {2};
+\node[fill=gray!20] at (1,0) {1};
+\node[fill=gray!20] at (1,1) {3};
+\node[fill=gray!20] at (1,2) {1};
+\node[fill=gray!20] at (1,3) {3};
+\node[fill=gray!20] at (2,0) {4};
+\node[fill=gray!20] at (2,1) {6};
+\node[fill=gray!20] at (2,2) {4};
+\node[fill=gray!20] at (2,3) {6};
+\node[fill=gray!20] at (3,0) {5};
+\node[fill=gray!20] at (3,1) {7};
+\node[fill=gray!20] at (3,2) {5};
+\node[fill=gray!20] at (3,3) {7};
+\draw[color=black,thick,shift={(-0.5,-0.5)}] (0,0) grid (4,4);
+
+\node[anchor = east] at (1.5,-1) {$C = ((2,2),(2,2)):((1,4),(2,0))=$};
+\end{tikzpicture}
+\]
+不是紧凑的。
+\end{example}
+
+\begin{example}
+    下列布局是紧凑的：
+    \begin{align*}
+        L_1 & = (2,(2,2)):(8,(1,4))\\
+        L_2 & = ((8,1),(8,32)):((2,0),(16,128))\\
+        L_3 & = 64:1
+    \end{align*}
+\end{example}
+
+\begin{example}
+    布局
+    \[
+    L = (2,(2,2)):(4,(8,16))
+    \]
+    不是紧凑的，因为整数 $1 \in [0,29) = [0,\cosize(L))$ 不在 $\Phi_L$ 的像中。更一般地，若 $\size(L) \neq \cosize(L)$，则 $L$ 不是紧凑的。
+\end{example}
+
+本节最后，我们列出布局 $L$ 紧凑的若干等价条件。
+\begin{proposition} \label{equivalentconditionsfornestedcompact}
+设 $L$ 是布局。则下列条件等价。
+\begin{enumerate}
+    \item $L$ 紧凑。
+    \item $L^\flat$ 紧凑。
+    \item $\coalesce(L)$ 紧凑。
+\end{enumerate}
+\end{proposition}
+\begin{proof}
+    这些条件的等价性由
+    \[
+    \Phi_L = \Phi_{L^\flat} = \Phi_{\coalesce(L)}.
+    \]
+    这一事实得出。
+\end{proof}
+
+\subsection{补}
+
+我们可以如下把补的概念轻易推广到嵌套情形。
+
+\begin{definition}
+    设 $A$ 与 $B$ 是布局。若拼接所得布局 $(A,B)$ 紧凑，则称 $B$ 是 $A$ 的{\it 补}（complement），记作 $A \perp B$。
+\end{definition}
+
+\begin{lemma}\label{flatteningcomplementationlemma}
+    设 $A$ 与 $B$ 是布局。则
+    \[
+    A \perp B \quad \Leftrightarrow \quad A^\flat \perp B^\flat.
+    \]
+\end{lemma}
+
+\begin{proof}
+    这由 $(A,B)^\flat = A^\flat \star B^\flat$ 这一观察得出。
+\end{proof}
+
+\begin{definition}
+    设 $A$ 是布局。若 $A^\flat$ 可求补，则称 $A$ 是{\it 可求补}的（complementable）。
+\end{definition}
+
+\begin{lemma}
+    设 $A$ 是布局。则存在 $A$ 的补 $B$ 当且仅当 $A$ 可求补。
+\end{lemma}
+\begin{proof}
+    若 $A$ 可求补，则 $A^\flat$ 可求补，故存在扁平布局 $B$ 使扁平拼接 $A^\flat \star B$ 紧凑。于是拼接 $(A , B)$ 也紧凑，故 $A$ 拥有补。反之，设存在布局 $B$ 使 $(A,B)$ 紧凑。则 $B^\flat$ 是 $A^\flat$ 的补，由命题~\ref{complementableproposition}，$A^\flat$ 可求补，从而由定义，$A$ 也可求补。
+\end{proof}
+
+\begin{definition}\label{definitionoflayoutcomplements}
+    设 $A$ 是布局。若 $A$ 可求补，则定义
+    \[
+    \comp(A) = \coalesce(\comp^\flat(A^\flat)),
+    \]
+    如构造~\ref{complementconstruction} 所述。若 $N$ 是正整数且 $A$ 是 $N$-可求补的，则定义
+    \[
+    \comp(A,N) = \coalesce(\comp^\flat(A^\flat,N))
+    \]
+    如构造~\ref{Ncomplementconstruction} 所述。
+\end{definition}
+\begin{remark}
+    设 $A$ 是可求补布局。则我们几乎总有 $\comp(A) = \comp^\flat(A^\flat)$。更精确地说，若 $\comp^\flat(A^\flat)$ 的长度 $>1$，则
+    \[
+    \comp(A) = \comp^\flat(A^\flat),
+    \]
+    若 $\comp^\flat(A^\flat) = (s):(d)$ 的长度为 $1$，则
+    \[
+    \comp(A) = s:d,
+    \]
+    而若 $\comp^\flat(A^\flat) = ():()$，则
+    \[
+    \comp(A) = 1:0.
+    \]
+\end{remark}
+
+\begin{definition}
+    设 $A$ 是布局，$N$ 是正整数。若 $A \perp B$，且
+    \[
+    \size(A) \cdot \size(B) = N.
+    \]
+    则称布局 $B$ 是 $A$ 的 $N${\it 补}（$N$-complement）。
+\end{definition}
+
+\begin{definition}
+    设 $A$ 是布局，$N$ 是正整数。若扁平布局 $A^\flat$ 如定义~\ref{definitionofNcomplementable} 那样是 $N$-可求补的，则称 $A$ 是 $N$-{\it 可求补}的。
+\end{definition}
+
+\begin{proposition}
+    设 $A$ 是布局。则存在 $A$ 的 $N$-补当且仅当 $A$ 是 $N$-可求补的。
+\end{proposition}
+
+\begin{proof}
+若 $B$ 是 $A$ 的 $N$-补，则 $B^\flat$ 是 $A^\flat$ 的 $N$-补，于是由命题~\ref{characterizationofexistenceofNcomplements}，$A^\flat$ 是 $N$-可求补的，从而 $A$ 也是。反之，若 $A$ 是 $N$-可求补的，则 $\comp(A,N)$ 是 $A$ 的 $N$-补。
+\end{proof}
+
+
+
+\begin{example}
+若 $A = ((4,2),(2,2)) : ((3,24),(192,96)) $ 且 $N = 768$，则
+\[\comp(A,N) = (3,2,2,2):(1,12,48,384).\]
+\end{example}
+
+\begin{example}
+    若 $A = ((16,4),64):((1,16),64)$ 且 $N = 4096$，则
+    \begin{align*}
+    \comp(A,N) & = \coalesce(():()) \\
+    & = 1:0.
+    \end{align*}
+\end{example}
+
+\begin{example}
+        若 $A = ((16,4),64):((1,16),64)$ 且 $N = 8192$，则
+    \begin{align*}
+    \comp(A,N) & = \coalesce((2):(4096)) \\
+    & = 2:4096.
+    \end{align*}
+\end{example}
+
+\begin{example}
+    若 $A = ((16,4),64):((8,1),128)$ 且 $N = 16384$，则
+    \begin{align*}
+    \comp(A,N) & = \coalesce((2,2):(4,8192)) \\
+    & = (2,2):(4,8192).
+    \end{align*}
+\end{example}
+
+
+\subsection{复合}
+
+本节讨论布局上最重要的运算，即{\it 复合}（composition）。若 $A$ 与 $B$ 是布局，则 $A$ 与 $B$ 的复合是一个布局 $B \circ A$，其布局函数是 $A$ 与 $B$ 的布局函数的复合。更精确地说，我们有如下定义。
+
+\begin{definition}[布局的复合]\label{definitionoflayoutcomposition}
+    设 $A$ 与 $B$ 是布局。$A$ 与 $B$ 的{\it 复合}是满足下列性质的唯一布局 $B \circ A$。
+    \begin{enumerate}
+    \item $\shape(B\circ A)$ 加细 $\shape(A)$，
+    \item $B \circ A$ 相对于 $\shape(A)$ 已合并，且
+    \item $\Phi_{B \circ A} = \Phi_B \circ \Phi_A^{\size(B)}$。
+    \end{enumerate}
+\end{definition}
+
+\begin{remark}
+    要使 $B \circ A$ 存在，必须
+    \[
+    \Image(\Phi_A) \subseteq [0,\size(B)).
+    \]
+\end{remark}
+
+\begin{remark}
+    布局复合的定义中隐含了一个断言：满足这三个条件的布局至多只有一个。其依据是命题~\ref{relativecoalescedlayoutscharacterizedbylayoutfunction}。我们可以把满足条件 1. 与 3.（但未必满足 2.）的布局 $C$ 定义为 $A$ 与 $B$ 的{\it 弱复合}（weak composite），此时
+    \[
+    B \circ A = \coalesce(C,\shape(A))
+    \]
+    我们将在后面看到，在尝试计算布局的复合时，先计算 $A$ 与 $B$ 的任意一个弱复合 $C$，再相对于 $\shape(A)$ 合并以得到真正的复合 $B \circ A$，是很有用的。
+\end{remark}
+
+\begin{remark}
+注意，由观察~\ref{coalescedoverSbarimpliesnondegenerate}，复合定义中的条件 2. 蕴含 $B \circ A$ 非退化。
+\end{remark}
+
+\begin{example}\label{compositionexample1}
+若 $A = (3,5):(10,2)$ 且 $B = (100):(7)$，则
+\[
+B \circ A = (3,5):(70,14).
+\]
+\end{example}
+
+\begin{example}\label{compositionexample2}
+    若 $A = (4):(2)$ 且 $B = (2,2,6):(12,6,1)$，则 $A$ 与 $B$ 的复合是
+    \[
+    B \circ A = ((2,2)):((6,1)).
+    \]
+\end{example}
+
+\begin{remark}
+    例~\ref{compositionexample2} 说明了一个事实：扁平布局 $A$ 与 $B$ 的复合未必是扁平的。
+\end{remark}
+
+\begin{example}
+    若 $A = ((2,4),8):((4,8),8)$ 且 $B = (4,4,4,4):(2,4,8,16)$，则
+    \[
+    B \circ A = ( (2,(2,2)),(2,4) ): ( (4,(8,8)) , (8,8) ).
+    \]
+\end{example}
+
+\begin{example}
+    若 $A = ((3,(2,2)),24):((3,(9,18)),72)$ 且 $B = (9,8,3,8):(24,3,1,384) $，则
+    \[
+    B \circ A = ((3,(2,2)),(3,8) ) : ((72,(3,6)),(1,384) )
+    \]
+\end{example}
+
+接下来，我们建立一些对计算布局复合有用的性质。
+
+\begin{proposition}\label{postcomposewithextension}
+    设 $A$ 是布局，$B$ 与 $\tilde{B}$ 是满足
+    \begin{itemize}
+        \item $\size(B) \leq \size(\tilde{B})$，且
+        \item $\Phi_{\tilde{B}} \mid_{\size(B)} = \Phi_B$
+    \end{itemize}
+    的布局。若 $A$ 与 $B$ 可复合（composable），则
+    \[
+    B \circ A = \tilde{B} \circ A.
+    \]
+\end{proposition}
+
+\begin{proof}
+    设 $A$ 与 $B$ 可复合。则 $\cosize(A) \leq \size(B)$，而 $B \circ A$ 是 $A$ 与 $\tilde{B}$ 的复合这一事实由等式
+    \begin{align*}
+        \Phi_{\tilde{B}} \circ \Phi_A^{\size(\tilde{B})} & = \left( \Phi_{\tilde{B}} \right) \mid_{\size(B)} \circ \Phi_A^{\size(B)}\\
+        & = \Phi_B \circ \Phi_A^{\size(B)}.
+    \end{align*}
+    得出。
+\end{proof}
+
+\begin{corollary}\label{postcomposewithcoalesce}
+    若 $A$ 与 $B$ 是布局，则 $A$ 与 $B$ 可复合当且仅当 $A$ 与 $\coalesce(B)$ 可复合，且
+    \[
+    B \circ A = \coalesce(B) \circ A.
+    \]
+\end{corollary}
+
+
+至此我们已建立了布局复合的基本性质，接下来将注意力转向复合的两个最重要特例，即{\it 逻辑切分}与{\it 逻辑乘积}。

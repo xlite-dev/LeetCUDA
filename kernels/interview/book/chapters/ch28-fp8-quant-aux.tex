@@ -215,7 +215,90 @@ per-thread 粒度是每 $kBc$ 块 4 个 scale（K 的 fragment 消费模式不�
   \underbrace{\text{per-block}}_{\text{1 scale/128 行}}
 \end{equation}
 粒度越细精度越高、但 scale 寄存器与消去开销越大；per-thread 是「精度贴近
-per-token、消费成本贴近 per-block」的工程甜点。
+per-token、消费成本贴近 per-block」的工程甜点。图~\ref{fig:28-perthread-slots}
+把 64 槽位的排布与 quad 的消费视角拼在一张图里：左列是 128 行块上 64 个
+scale 的覆盖域，右侧放大一个 quad 看「为什么零 shuffle」。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  axl/.style={font=\scriptsize, inner sep=1pt},
+  tnb/.style={font=\tiny, inner sep=0.5pt},
+]
+  % 左：128 行 x D 列缩略网格，64 个 scale 的覆盖域（行对 {r,r+8} 同色）
+  \foreach \rr in {0,...,127} {
+    \pgfmathtruncatemacro{\gra}{12+8*mod(\rr,8)}
+    \fill[gray!\gra] (1.3,-0.052*\rr) rectangle (4.3,-0.052*\rr-0.052);
+  }
+  \draw[thick] (1.3,0) rectangle (4.3,-6.664);
+  \foreach \gr in {16,32,48,64,80,96,112} {
+    \draw[very thick] (1.3,-0.052*\gr) -- (4.3,-0.052*\gr);
+  }
+  \foreach \rr in {0,16,...,112} {
+    \node[tnb,anchor=east] at (1.22,-0.052*\rr-0.026) {\rr};
+  }
+  \node[tnb,anchor=east] at (1.22,-6.638) {127};
+  \node[axl,anchor=south] at (2.8,0.1) {128 行量化块（$B_r$ 方向）};
+  \node[axl,anchor=north] at (2.8,-6.78) {$D$ 列方向：整行同一 scale 覆盖};
+  \node[axl,anchor=south,rotate=90] at (0.78,-3.33) {行 $r$（灰度 = 行对档 $r \bmod 8$）};
+  \node[tnb,anchor=west,align=left] at (1.5,-7.25)
+    {16 行一组粗分 8 组；组内按行对 $\{r,r{+}8\}$ 分 8 档——\\每个色块 $=$ 一个 scale 的覆盖域，共 $8\times8=64$ 个};
+  % 右上：quad 的 C-fragment 视图（2 行 x 8 列，lane = col/2）
+  \node[axl,anchor=west] at (5.4,-0.05) {\textbf{放大：一个 quad 的 C-fragment 视图（$m16n8$ 累加器）}};
+  \foreach \rq in {0,1} {
+    \foreach \cq in {0,...,7} {
+      \pgfmathtruncatemacro{\lane}{div(\cq,2)}
+      \pgfmathtruncatemacro{\gra}{12+12*\lane}
+      \fill[gray!\gra] (5.4+\cq*0.34,-0.55-\rq*0.34) rectangle (5.74+\cq*0.34,-0.89-\rq*0.34);
+      \ifnum\gra>46
+        \node[tnb,white] at (5.57+\cq*0.34,-0.72-\rq*0.34) {\lane};
+      \else
+        \node[tnb] at (5.57+\cq*0.34,-0.72-\rq*0.34) {\lane};
+      \fi
+      \draw[thin] (5.4+\cq*0.34,-0.55-\rq*0.34) rectangle (5.74+\cq*0.34,-0.89-\rq*0.34);
+    }
+  }
+  \draw[very thick] (5.4,-0.55) rectangle (8.12,-1.23);
+  \foreach \cq in {2,4,6} {
+    \draw[semithick] (5.4+\cq*0.34,-0.55) -- (5.4+\cq*0.34,-1.23);
+  }
+  \node[tnb,anchor=east] at (5.32,-0.72) {行 $r$};
+  \node[tnb,anchor=east] at (5.32,-1.06) {行 $r{+}8$};
+  \node[tnb,anchor=north] at (6.76,-1.3) {8 列（$n{=}0..7$）：4 个 lane 各持一个列对};
+  \node[tnb,anchor=west,align=left] at (8.5,-0.89)
+    {4 个 lane 持有\textbf{相同的 2 行}（灰度 = lane）\\$\Rightarrow$ 整块共享 1 个 scale\\$\Rightarrow$ 反量化 $=$ 提升时乘一个寄存器标量，零 shuffle};
+  % 右中：amax 归约树
+  \node[axl,anchor=west] at (5.4,-2.1) {\textbf{amax 归约树（量化期代价）}};
+  \node[tnb,anchor=west,align=left] at (5.4,-2.42)
+    {行内两半（\texttt{shfl\_xor} 1）$\to$ 行对（\texttt{shfl\_xor} 16）\\
+     写入下标 $g = (\text{seg\_row}/16)\cdot 8 + \text{seg\_row} \bmod 8$\\
+     （\texttt{quantize\_\allowbreak{}fp8\_\allowbreak{}perthread\_\allowbreak{}q\_kernel}）};
+  % 右下：谱系定位
+  \node[axl,anchor=west] at (5.4,-3.5) {\textbf{谱系定位：per-thread 是中间档}};
+  \foreach \nm/\ct/\bx in {per-token/128 scale/5.5, per-thread/64 scale/8.1, per-block/1 scale/10.7} {
+    \draw[thick,fill=gray!10] (\bx,-3.85) rectangle (\bx+2.2,-4.55);
+    \node[axl] at (\bx+1.1,-4.08) {\nm};
+    \node[tnb] at (\bx+1.1,-4.38) {\ct};
+  }
+  \draw[-{Stealth},thick] (7.75,-4.2) -- (8.05,-4.2);
+  \draw[-{Stealth},thick] (10.35,-4.2) -- (10.65,-4.2);
+  \node[tnb,anchor=north] at (8.95,-4.62) {scale 数递减、粒度变粗};
+  \node[tnb,anchor=west,align=left] at (5.4,-5.0)
+    {per-token：精度基准（128 scale/128 行）\quad per-block：成本基准（1 scale/128 行）\\
+     per-thread：精度贴近 per-token、消费成本贴近 per-block（SA2 的 fragment 对齐观察）};
+\end{tikzpicture}
+\caption{per-thread Q 量化的 64 槽位表与 quad 消费视角
+（\texttt{quantize\_\allowbreak{}fp8\_\allowbreak{}perthread\_\allowbreak{}q\_kernel}，28.3.2 节）。左：128 行量化块
+铺 $8\times8=64$ 个 scale——行维按 16 行一组粗分 8 组（粗边界），组内按行对
+$\{r,r+8\}$ 分 8 档灰度（行 $r$ 与 $r{+}8$ 同色），每个色块就是一个 scale 的
+覆盖域；写入下标 $g=(\text{seg\_row}/16)\cdot 8+\text{seg\_row}\bmod 8$。右上：放大一个
+quad 的 $m16n8$ C-fragment——4 个 lane 持有相同的 2 行、各占一个列对，因此
+整块共享一个 scale，反量化变成「fragment 提升时顺手乘一个寄存器标量」，
+\textbf{零 shuffle}；代价是 amax 归约树跨行对组合（行内两半 \texttt{shfl\_xor} 1、
+行对 \texttt{shfl\_xor} 16）。下：谱系定位——per-thread 是 per-token（128）与
+per-block（1）之间的工程甜点。}
+\label{fig:28-perthread-slots}
+\end{figure}
 
 \subsection{V 的预转置与列置换}\label{sec:28-vtperm}
 
@@ -237,6 +320,89 @@ B 操作数必须携带\textbf{同一个} $\pi$，保证槽位 $s$ 两侧对上�
 置换被刻意限制在\textbf{每个 32 列组内}，warp 的转置写不跨 32B sector，访存
 合并不受影响。这是「前处理链的输出布局由主 kernel 消费方式决定」的最典型例证：
 一个第~\ref{ch:30}~章的寄存器打包决策，提前到本章的量化 kernel 里兑现。
+图~\ref{fig:28-vtperm} 把 $\pi^{-1}$ 的位段重组画成双条带：上条是真实列序，
+下条是存储槽位，连线束的交叉形态就是置换本身。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  axl/.style={font=\scriptsize, inner sep=1pt},
+  tnb/.style={font=\tiny, inner sep=0.5pt},
+]
+  % 上条带：真实列 j（V^T 逻辑列），4 列组循环灰度
+  \node[axl,anchor=east] at (0.92,-0.42) {真实列 $j$};
+  \node[axl,anchor=south] at (7.56,0.02) {$V^{\top}$ 的 32 列组（量化输入的 kv 维；灰度按 $\lfloor j/4\rfloor \bmod 4$ 循环分组）};
+  \foreach \jj in {0,...,31} {
+    \pgfmathtruncatemacro{\grp}{mod(div(\jj,4),4)}
+    \pgfmathtruncatemacro{\gra}{18+16*\grp}
+    \fill[gray!\gra] (1.0+0.41*\jj,-0.15) rectangle (1.41+0.41*\jj,-0.66);
+    \ifnum\gra>46
+      \node[tnb,white] at (1.205+0.41*\jj,-0.405) {\jj};
+    \else
+      \node[tnb] at (1.205+0.41*\jj,-0.405) {\jj};
+    \fi
+  }
+  \draw[thick] (1.0,-0.15) rectangle (14.12,-0.66);
+  \draw[very thick] (7.56,-0.15) -- (7.56,-0.66);
+  % 连线束：真实列 j 落到存储槽 VTPermInv32(j)
+  \foreach \jj/\ss in {0/0, 1/1, 2/4, 3/5, 4/8, 5/9, 6/12, 7/13,
+                       8/2, 9/3, 10/6, 11/7, 12/10, 13/11, 14/14, 15/15,
+                       16/16, 17/17, 18/20, 19/21, 20/24, 21/25, 22/28, 23/29,
+                       24/18, 25/19, 26/22, 27/23, 28/26, 29/27, 30/30, 31/31} {
+    \pgfmathtruncatemacro{\grp}{mod(div(\jj,4),4)}
+    \pgfmathtruncatemacro{\gln}{18+16*\grp}
+    \draw[gray!\gln!black, thin]
+      (1.205+0.41*\jj,-0.66) -- (1.205+0.41*\ss,-1.75);
+  }
+  % 下条带：存储槽 s，格内填 pi(s)（该槽存的真实列），颜色跟随来源组
+  \node[axl,anchor=east] at (0.92,-2.0) {存储槽 $s$};
+  \foreach \ss/\pv in {0/0, 1/1, 2/8, 3/9, 4/2, 5/3, 6/10, 7/11,
+                       8/4, 9/5, 10/12, 11/13, 12/6, 13/7, 14/14, 15/15,
+                       16/16, 17/17, 18/24, 19/25, 20/18, 21/19, 22/26, 23/27,
+                       24/20, 25/21, 26/28, 27/29, 28/22, 29/23, 30/30, 31/31} {
+    \pgfmathtruncatemacro{\grp}{mod(div(\pv,4),4)}
+    \pgfmathtruncatemacro{\gra}{18+16*\grp}
+    \fill[gray!\gra] (1.0+0.41*\ss,-1.75) rectangle (1.41+0.41*\ss,-2.26);
+    \ifnum\gra>46
+      \node[tnb,white] at (1.205+0.41*\ss,-2.005) {\pv};
+    \else
+      \node[tnb] at (1.205+0.41*\ss,-2.005) {\pv};
+    \fi
+  }
+  \draw[thick] (1.0,-1.75) rectangle (14.12,-2.26);
+  \draw[very thick] (7.56,-1.75) -- (7.56,-2.26);
+  \foreach \ss in {0,4,...,28} {
+    \node[tnb,anchor=north] at (1.205+0.41*\ss,-2.32) {\ss};
+  }
+  \node[tnb,anchor=north] at (13.9,-2.32) {31};
+  \node[axl,anchor=north] at (7.56,-2.62)
+    {槽 $s$ 存真实列 $\pi(s)$（格内数字），槽位刻度见下方};
+  % sector 外框（32 列组 = 32B sector）
+  \draw[very thick] (0.88,0.14) rectangle (14.24,-2.4);
+  \node[axl,anchor=south] at (0.95,0.2) {32B sector 框};
+  \node[axl,anchor=south west,align=left] at (0.95,0.5)
+    {一个 32 列组 $=$ 32B sector（e4m3 每列 1B）；置换不跨组、warp 转置写不跨 sector，访存合并不受影响};
+  % 位段律与坑四注记
+  \node[axl,anchor=north west,align=left] at (1.0,-3.15)
+    {位段重组（式~\eqref{eq:28-vtperm}）：槽位低 4 位 $=\;4\cdot\big((j{\gg}1)\,\&\,3\big)
+     + 2\cdot\big((j{\gg}3)\,\&\,1\big) + (j\,\&\,1)$，bit4 原样保留——};
+  \node[axl,anchor=north west,align=left] at (1.0,-3.62)
+    {上下半组置换同构（$j$ 与 $j{+}16$ 的低 4 位走同一条重排），自检序列（$j=0..15$ 的落点）：
+     $0,1,4,5,8,9,12,13,2,3,6,7,10,11,14,15$。};
+  \node[axl,anchor=north west,align=left] at (1.0,-4.2)
+    {配对约束（坑四）：P 侧 \texttt{PackC8bitToA8bitPermVT} 与 $V^{\top}$ 侧必须携带
+     \textbf{同一个} $\pi$——槽位 $s$ 两侧对上同一 kv 位置，任一侧缺失即静默错位。};
+\end{tikzpicture}
+\caption{$\texttt{VTPermInv32}$ 列置换的双条带视图（式~\eqref{eq:28-vtperm}，
+\texttt{quantize\_fp8.cuh}）。上条带：$V^{\top}$ 组内的真实列序 $j=0..31$（4 列一组
+循环灰度）；下条带：置换后的存储槽位，格内数字为槽 $s$ 存的真实列 $\pi(s)$，
+灰度跟随数据来源组。连线束从列 $j$ 指向其落点槽 $\pi^{-1}(j)$——交叉形态即
+置换本身：$j$ 的 bit1、bit2 移到槽位的高两位、bit3 移到 bit1、bit0 与 bit4 不动，
+因此上下两个 16 列半组的置换同构。整个变换被限制在一个 32 列组（$=$ 一个 32B
+sector）内：warp 的转置写不跨 sector，coalescing 不受影响；P 侧
+\texttt{PackC8bitToA8bitPermVT} 与 $V^{\top}$ 侧必须携带同一个 $\pi$（坑四）。}
+\label{fig:28-vtperm}
+\end{figure}
 
 \subsection{NHD 零拷贝寻址}\label{sec:28-nhd}
 
@@ -432,7 +598,87 @@ __global__ void quantize_fp8_vt_kernel(
 \ref{eq:28-vtperm}）置换，与主 kernel 的 reorg-free 打包强制配对——launcher
 层面检查这对开关必须同开同关（注释：launcher-enforced pairing），错配即静默数值
 错误。per-channel 变体（\texttt{quantize\_fp8\_vt\_perchannel\_kernel}，L555 起）
-在同一框架下改用 28.3.2~节的 $(bh, D)$ scale 与均值剥离。
+在同一框架下改用 28.3.2~节的 $(bh, D)$ scale 与均值剥离。图~\ref{fig:28-vt-staging}
+把这条「行主序读 $\to$ smem 转置 $\to$ 列主序写」的三段式数据通路画出来，
+并标出两个同名却不同源的 16。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  axl/.style={font=\scriptsize, inner sep=1pt},
+  nt/.style={font=\scriptsize, align=left, inner sep=1.5pt},
+]
+  % 左：gmem (N, D) 行主序 tile（hue 环按数据通路分段：蓝=输入 gmem）
+  \foreach \rr in {0,...,4} {
+    \foreach \cc in {0,...,5} {
+      \fill[colorx6!12] (\cc*0.55,-\rr*0.55) rectangle (\cc*0.55+0.54,-\rr*0.55-0.54);
+    }
+  }
+  \draw[thick] (0,0) rectangle (3.3,-2.75);
+  \foreach \rr in {0,2,4} {
+    \draw[-{Stealth},thick] (0.08,-\rr*0.55-0.275) -- (3.22,-\rr*0.55-0.275);
+  }
+  \node[axl,anchor=south] at (1.65,0.06) {gmem $(N,\,D)$ 行主序};
+  \node[axl,anchor=north,text width=3.4cm,align=center] at (1.65,-2.85)
+    {128-bit 向量载入（$kVec{=}8$ 个 fp16），行内连续};
+  % 中：smem staging tile（青 = smem 转置段；数据列 + kPad 边距列）
+  \foreach \rr in {0,...,4} {
+    \foreach \cc in {0,...,4} {
+      \fill[colorx5!12] (5.9+\cc*0.55,-\rr*0.55) rectangle (5.9+\cc*0.55+0.54,-\rr*0.55-0.54);
+    }
+    \fill[pattern=north east lines,pattern color=gray!70]
+      (8.65,-\rr*0.55) rectangle (9.25,-\rr*0.55-0.54);
+  }
+  \draw[thick] (5.9,0) rectangle (9.25,-2.75);
+  \draw[very thick] (8.65,0) -- (8.65,-2.75);
+  \foreach \cc in {0,2,4} {
+    \draw[-{Stealth},thick] (5.98+\cc*0.55,-0.08) -- (5.98+\cc*0.55,-2.67);
+  }
+  \node[axl,anchor=south] at (7.575,0.06) {smem staging $(kBlockRows,\ kDChunk{+}kPad)$};
+  \node[axl,anchor=north,text width=4.4cm,align=center] at (7.575,-2.85)
+    {写按行、读按列（转置落在 smem）；斜纹 $=kPad{=}16$ 的 16\,B 行内边距};
+  % 右：gmem (D, N_{kv,pad}) 列主序（绿青 = 输出 gmem）
+  \foreach \rr in {0,...,4} {
+    \foreach \cc in {0,...,4} {
+      \fill[colorx4!12] (11.9+\cc*0.55,-\rr*0.55) rectangle (11.9+\cc*0.55+0.54,-\rr*0.55-0.54);
+    }
+  }
+  \foreach \rr in {0,...,4} {
+    \fill[pattern=north east lines,pattern color=gray!70]
+      (14.65,-\rr*0.55) rectangle (14.95,-\rr*0.55-0.54);
+  }
+  \draw[thick] (11.9,0) rectangle (14.95,-2.75);
+  \draw[very thick] (14.65,0) -- (14.65,-2.75);
+  \foreach \cc in {0,2,4} {
+    \draw[-{Stealth},thick] (11.98+\cc*0.55,-0.08) -- (11.98+\cc*0.55,-2.67);
+  }
+  \node[axl,anchor=south] at (13.425,0.06) {gmem $(D,\,N_{kv,pad})$ 列主序};
+  \node[axl,anchor=north,text width=4.4cm,align=center] at (13.425,-2.85)
+    {列向量写出（$V^{\top}$ 的 fp8 列）；尾列 pad 供 TMA 16\,B 对齐};
+  % 段间箭头（tkBlue = 数据流）
+  \draw[-{Stealth},thick,tkBlue] (3.42,-1.375) -- (5.78,-1.375);
+  \node[axl,anchor=south,align=center] at (4.6,-1.32) {128\,B 行 $\to$ 槽\\（含 pad 列）};
+  \draw[-{Stealth},thick,tkBlue] (9.37,-1.375) -- (11.78,-1.375);
+  \node[axl,anchor=south,align=center] at (10.575,-1.32) {32-bit 组转置读\\$\to$ 列向写出};
+  % 底部注记
+  \node[nt,anchor=north west,text width=15.6cm] at (0,-3.9)
+    {\textbf{两个 16 不同源}：$kPad{=}16$ 是 smem staging 的行内边距——转置读出的
+     32-bit（4 个 fp8）组因它错开 bank，是纯 smem 侧的考量；gmem $V^{\top}$ 的
+     TMA 16\,B 加载对齐由行宽 $N_{kv,pad}$（launcher 传入）保证，与 $kPad$ 没有
+     因果关系，两个 16 只是恰好同值。\\[2pt]
+     \textbf{$kDChunk=\min(D,256)$}：大 headdim 的整 tile 会破 48\,KB 静态 smem
+     上限，D 维分块后 staging 尺寸恒为 $kBlockRows\times(kDChunk+kPad)$，由 launcher
+     走动态 smem 分配（\texttt{extern \_\_shared\_\_}）。};
+\end{tikzpicture}
+\caption{$V^{\top}$ 转置量化的 smem staging（\texttt{quantize\_fp8.cuh}
+\texttt{quantize\_fp8\_vt\_kernel}）。左：gmem 上的 $(N,D)$ 行主序 tile 按 128-bit
+向量载入；中：smem staging tile 写按行、读按列——转置只在 smem 内发生，两侧
+gmem 访存都保持合并；斜纹是 $kPad{=}16$ 的行内边距，让转置读出的 32-bit 组
+错开 bank；右：$(D,N_{kv,pad})$ 列主序写出，尾列 pad 为 TMA 16\,B 对齐服务。
+\textbf{$kPad$ 与 $N_{kv,pad}$ 的 16 来源不同}：前者是 smem 侧的 bank 考量，
+后者是 gmem 侧的对齐要求，恰好同值而非同一个量。}
+\label{fig:28-vt-staging}
+\end{figure}
 
 \subsection{Hadamard butterfly kernel}\label{sec:28-wht-kernel}
 
@@ -504,7 +750,70 @@ $D$ 维 WHT 的 $\log_2 D$ 轮蝶形按\textbf{蝶形距离}二分：距离 $\ge
 $kWhtWidth$ 列（lane $\times$ $kVec$），无需跨 warp 通信；$1/\sqrt{n}$ 归一化
 折进 store 避免额外一轮乘法。launcher（\texttt{apply\_wht\_qk\_sm120}）按宽度规则
 选 $kWhtWidth \in \{D, 64\}$，输出 $kHeadDim$ 宽的旋转副本——含旋转后的 pad 列
-（28.3.3~节）。
+（28.3.3~节）。图~\ref{fig:28-wht-butterfly} 把 $D{=}128$ 的列归属与七轮蝶形的
+距离二分画在一起。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  cfl/.style={font=\tiny, inner sep=0.2pt},
+  axl/.style={font=\scriptsize, inner sep=1pt},
+  nt/.style={font=\scriptsize, align=left, inner sep=1.5pt},
+  bdg/.style={draw,circle,thick,font=\scriptsize,inner sep=1.2pt},
+]
+  % 列归属网格：4 个寄存器槽 j x 32 条 lane，格内 = col = lane + 32j
+  % hue = 寄存器槽 j 身份（colorx1..x4），intensity 恒定
+  \foreach \jj/\jcol in {0/colorx1,1/colorx2,2/colorx3,3/colorx4} {
+    \foreach \ln in {0,...,31} {
+      \pgfmathtruncatemacro{\colv}{\ln+32*\jj}
+      \fill[\jcol!12] (\ln*0.44,-\jj*0.5) rectangle (\ln*0.44+0.43,-\jj*0.5-0.49);
+      \node[cfl] at (\ln*0.44+0.215,-\jj*0.5-0.245) {\colv};
+    }
+  }
+  \draw[thick] (0,0) rectangle (14.08,-2.0);
+  \foreach \jj in {0,...,3} {
+    \node[axl,anchor=east] at (-0.1,-\jj*0.5-0.25) {$j{=}\jj$};
+  }
+  \foreach \ln in {0,8,16,24,31} {
+    \pgfmathsetmacro{\lx}{\ln*0.44+0.215}
+    \node[axl,anchor=north] at (\lx,-2.06) {\ln};
+  }
+  \node[axl,anchor=south west] at (0,0.08) {lane $0..31$（一条 warp；格内数字 $=col=lane+32j$）};
+  % 七轮蝶形：距离二分（寄存器槽交换 = tkBlue，跨 lane shfl = tkPurple）
+  \node[axl,anchor=south,text=tkBlue] at (1.35,-2.88) {蝶形位在 $j$：同 lane 的寄存器槽交换（无通信）};
+  \node[axl,anchor=south,text=tkPurple] at (8.35,-2.88) {蝶形位在 lane id：\texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor\_\allowbreak{}sync} 跨 lane};
+  \draw[thick,tkBlue] (0.1,-3.06) -- (2.9,-3.06);
+  \draw[thick,tkPurple] (4.2,-3.06) -- (12.4,-3.06);
+  \foreach \ri/\rt in {0/{$64$}, 1/{$32$}, 2/{$16$}, 3/{$8$}, 4/{$4$}, 5/{$2$}, 6/{$1$}} {
+    \pgfmathsetmacro{\bx}{0.1+\ri*2.05}
+    \ifnum\ri<2
+      \node[bdg,draw=tkBlue,text=tkBlue] at (\bx,-3.75) {\rt};
+      \fill[tkFillBlue] (\bx+0.75,-3.42) rectangle (\bx+1.07,-3.74);
+      \fill[tkFillBlue] (\bx+0.75,-3.76) rectangle (\bx+1.07,-4.08);
+      \draw[<->,thick,tkBlue] (\bx+1.25,-3.58) -- (\bx+1.25,-3.92);
+    \else
+      \node[bdg,draw=tkPurple,text=tkPurple] at (\bx,-3.75) {\rt};
+      \fill[tkFillPurple] (\bx+0.6,-3.6) rectangle (\bx+0.92,-3.92);
+      \fill[tkFillPurple] (\bx+1.1,-3.6) rectangle (\bx+1.42,-3.92);
+      \draw[<->,thick,tkPurple] (\bx+0.55,-4.08) -- (\bx+1.47,-4.08);
+    \fi
+  }
+  \node[nt,anchor=north west,text width=15.6cm] at (0,-4.28)
+    {每轮 $(a,b)\to(a{+}b,\ a{-}b)$：$dist\ge32$ 时 $jj=j\oplus(dist{\gg}5)$，两个寄存器槽
+     在同一条 lane 内直接结算；$dist<32$ 时 \texttt{\_\_shfl\_xor\_sync(x[j],\,dist)} 取回伙伴值，
+     $a{+}b$ 与 $b{-}a$ 由 $(lane\wedge dist)$ 选向。共 $\log_2 D=7$ 轮、无 bit-reversal；
+     pad 列（$col\_base+col\ge d\_og$）读 $0$，旋转后的 pad 列照常写回；$1/\sqrt{n}$ 折进 store。
+     一条 warp 恰好持有 $kWhtWidth$ 列（$kVec{=}kWhtWidth/32$，本例 $D{=}128\Rightarrow kVec{=}4$），
+     \textbf{无跨 warp 通信}。};
+\end{tikzpicture}
+\caption{radix-2 蝶形的距离二分（\texttt{hadamard.cuh} L40--92，本例 $D{=}128$、$kWhtWidth{=}D$）。
+上：列归属——$j$ 是寄存器槽、lane 是 warp 内线程，格内数字 $col=lane+32j$ 满足索引律，
+右下角 $127=\mathrm{size}-1$；一条 warp 覆盖整行 128 列。下：七轮的「距离阶梯」——
+$dist\ge32$ 的 bit 落在 $j$ 上（同 lane 两个寄存器槽直接加减，无通信），$dist<32$ 的 bit
+落在 lane id 上（\texttt{\_\_shfl\_xor\_sync} 跨 lane）；每轮一个 bit，$1/\sqrt n$ 折进
+store。}
+\label{fig:28-wht-butterfly}
+\end{figure}
 
 \section{图示}
 
@@ -521,7 +830,93 @@ $V$ 不改 $O$、WHT 两端同乘正交阵——右侧的 outlier 幅度示意�
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.98\textwidth]{figures/drawio/fig-28-1-quant-pipeline/fig-28-1-quant-pipeline.png}
+  % was: \includegraphics[width=0.98\textwidth]{figures/drawio/fig-28-1-quant-pipeline/fig-28-1-quant-pipeline.png}
+  \begin{tikzpicture}[font=\tiny, >=Stealth,
+    kin/.style={draw=tkBlue, fill=tkFillBlue, text=tkBlue, align=center, inner sep=2pt,
+      font=\bfseries\fontsize{4.2}{4.8}\selectfont},
+    kst/.style={draw=tkPurple, fill=tkFillPurple, align=center, inner sep=2pt,
+      font=\fontsize{4.2}{4.8}\selectfont},
+    kqu/.style={draw=tkGreen, fill=tkFillGreen, align=center, inner sep=2pt,
+      font=\fontsize{4.2}{4.8}\selectfont},
+    kout/.style={draw=tkOrange, fill=tkFillOrange, text=tkOrange!80!black, align=center,
+      inner sep=2pt, font=\bfseries\fontsize{4.2}{4.8}\selectfont},
+    pl/.style={anchor=west, align=left, inner sep=1pt,
+      font=\fontsize{4.2}{4.8}\selectfont},
+  ]
+    % 输入列：Q/K/V 的 fp16 张量与 NHD 零拷贝视图
+    \node[kin, text width=1.70cm] at (0.90,-0.55) {Q fp16/bf16\\(B,H,N,D\_og)};
+    \node[kin, text width=1.70cm] at (0.90,-2.05) {K fp16/bf16\\(B,H,N,D\_og)};
+    \node[kin, text width=1.70cm] at (0.90,-3.55) {V fp16/bf16\\(B,H,N,D\_og)};
+    \node[draw=gray!60, fill=gray!10, align=center, inner sep=2pt,
+      font=\fontsize{4.2}{4.8}\selectfont, text width=1.70cm] at (0.90,-4.45)
+      {NHD view\\零拷贝寻址};
+    \draw[dashed, gray!70, thin] (0.90,-4.16) -- (0.90,-4.00);
+    % Q 泳道：可选旋转 + per-block/per-thread 量化
+    \node[kst, text width=2.50cm] at (3.40,-0.55)
+      {wht\_qk\_kernel（可选）\\Hadamard 蝶形旋转\\显式开启（fp4 收益大）};
+    \node[kqu, text width=2.80cm] at (6.45,-0.55)
+      {quantize\_fp8\_q\\per-block: 1 scale/128 行\\per-thread: 64 scale/128 行};
+    \node[kout, text width=1.80cm] at (9.15,-0.55) {Q8 e4m3/int8\\(B,H,N,D) 行主序};
+    \draw[->, gray!80, semithick] (1.78,-0.55) -- (2.12,-0.55);
+    \draw[->, gray!80, semithick] (4.68,-0.55) -- (5.02,-0.55);
+    \draw[->, gray!80, semithick] (7.88,-0.55) -- (8.22,-0.55);
+    % K 泳道：两阶段列均值 + 融合量化
+    \node[kst, text width=2.50cm] at (3.40,-2.05)
+      {kv\_col\_sum $+$ finalize\\两阶段列均值 $\bar{k}$\\$\sim$50us（无 atomics）};
+    \node[kqu, text width=2.80cm] at (6.45,-2.05)
+      {quantize\_fp8\_k（fused）\\fp32 域减 $\bar{k}$ 再量化\\不物化 $K'$ 中间量};
+    \node[kout, text width=1.80cm] at (9.15,-2.05) {K8 e4m3/int8\\(B,H,N,D) 行主序};
+    \draw[->, gray!80, semithick] (1.78,-2.05) -- (2.12,-2.05);
+    \draw[->, gray!80, semithick] (4.68,-2.05) -- (5.02,-2.05);
+    \draw[->, gray!80, semithick] (7.88,-2.05) -- (8.22,-2.05);
+    \draw[->, dashed, tkPurple, thin] (6.45,-2.48) -- (6.45,-2.78) -- (8.18,-2.78);
+    \node[pl, text=tkPurple, font=\bfseries\fontsize{4.2}{4.8}\selectfont] at (8.25,-2.78)
+      {km\_f32（lse 修正用）};
+    % V 泳道：列统计 + smem 转置量化（列 pad + VTPerm）
+    \node[kst, text width=2.50cm] at (3.40,-3.55)
+      {v\_col\_stats $+$ finalize\\per-channel: sum/max/min\\
+       amax$=\max(|\mathrm{max}-\mu|,\ |\mathrm{min}-\mu|)$};
+    \node[kqu, text width=2.80cm] at (6.45,-3.55)
+      {quantize\_fp8\_vt\\smem staging 转置 (N,D)$\to$(D,N)\\kPad$=$16 $\cdot$ VTPerm 列置换};
+    \node[kout, text width=1.80cm] at (9.15,-3.55)
+      {V8$^{\top}$ e4m3\\flat [B$\cdot$Hkv$\cdot$D, N\_pad]\\TMA 16B 对齐};
+    \draw[->, gray!80, semithick] (1.78,-3.55) -- (2.12,-3.55);
+    \draw[->, gray!80, semithick] (4.68,-3.55) -- (5.02,-3.55);
+    \draw[->, gray!80, semithick] (7.88,-3.55) -- (8.22,-3.55);
+    % 右侧 workspace 面板
+    \node[draw=gray!60, fill=gray!10, align=left, inner sep=3pt,
+      font=\fontsize{4.2}{4.8}\selectfont, text width=3.90cm] at (12.60,-2.30)
+      {\textbf{Fp8QuantizedInputs}\\
+       q8, k8, vt8（workspace）\\
+       q\_scale / k\_scale（粒度随 knob）\\
+       v\_scale: (bh,n\_rb) 或 (bh,D)\\
+       \textcolor{tkPurple}{km\_f32 $\to$ epilogue lse 修正}\\
+       \textcolor{tkPurple}{vm $\to$ O 加回均值行}\\
+       \textcolor{tkGreen!80!black}{\textbf{布局由消费方决定：}}\\
+       \textcolor{tkGreen!80!black}{\textbf{行主序 / 列主序 / fragment 槽位}}};
+    \draw[->, tkOrange, semithick] (10.12,-0.55) -- (10.55,-1.10);
+    \draw[->, tkOrange, semithick] (10.12,-2.05) -- (10.55,-2.05);
+    \draw[->, tkOrange, semithick] (10.12,-3.55) -- (10.55,-3.10);
+    % 三个 fp8 主 kernel 家族共享工作区
+    \node[kin, text width=4.00cm, font=\bfseries\fontsize{4.4}{5}\selectfont] at (12.60,-5.05)
+      {persist-D / split-D / M4N2\\三个 fp8 主 kernel 家族共享（ch29-30）};
+    \draw[->, gray!80, semithick] (12.60,-4.35) -- (12.60,-4.72);
+    % 融合原则与带宽账
+    \node[draw=tkGreen, fill=tkFillGreen, align=left, inner sep=3pt,
+      font=\fontsize{4.4}{5}\selectfont, text width=14.6cm] at (7.55,-6.05)
+      {\textbf{融合原则：统计先行、变换融进量化 —— 永远不物化 $K' = K - 1\bar{k}^{\top}$
+        或 $V'$ 中间张量（省一整轮 DRAM 往返）}\\
+       单遍寄存器驻留：16B 向量读进寄存器后 amax 与量化同遍完成，全局内存只读一次\\
+       VTPerm 列置换：为 ch30 的 reorg-free PV 打包预铺列序（launcher 强制配对，防静默错值）};
+    \node[pl, font=\fontsize{4.2}{4.8}\selectfont] at (0.10,-6.90)
+      {带宽账（B1 H32 N8192 D128）：输入 $\sim$192MB fp16 $\to$ 输出 $\sim$96MB fp8；%
+       聚合有效带宽 $\sim$1.04 TB/s（贴峰）};
+    \node[pl, font=\fontsize{4.2}{4.8}\selectfont] at (0.10,-7.15)
+      {占比：aux 链 $\sim$0.3ms vs 主 kernel 3.0ms（N=8192）$\approx$10\%；%
+       N 翻倍时 O(N) vs O(N$^2$) $\to$ 占比衰减};
+    \node[pl, text=gray!80!black, font=\fontsize{4.2}{4.8}\selectfont] at (0.10,-7.48)
+      {对照 ffpa-attn(861d75e)：cute/fp8/\{smooth\_k, smooth\_v, quantize\_fp8, prepare\_inputs, input\_layout\}.cuh};
+  \end{tikzpicture}
   \caption{fp8 前处理链全景：三泳道（Q/K/V）各自的统计 $\to$ 变换 $\to$ 量化
   kernel 与输出 workspace 布局。smoothing 与量化融合在同一 kernel 内（无中间
   落盘）；$V^{\top}$ 的列 pad 兼顾 TMA 16B 对齐与置换写。}
@@ -530,7 +925,100 @@ $V$ 不改 $O$、WHT 两端同乘正交阵——右侧的 outlier 幅度示意�
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.98\textwidth]{figures/drawio/fig-28-2-invariants/fig-28-2-invariants.png}
+  % was: \includegraphics[width=0.98\textwidth]{figures/drawio/fig-28-2-invariants/fig-28-2-invariants.png}
+  \begin{tikzpicture}[font=\tiny, >=Stealth,
+    lbox/.style={draw=gray!55, fill=gray!8},
+    ltag/.style={draw=tkPurple, fill=tkFillPurple, text=tkPurple, align=center, inner sep=2pt,
+      font=\bfseries\fontsize{4.6}{5.2}\selectfont},
+    tl/.style={anchor=west, align=left, inner sep=1pt,
+      font=\fontsize{4.4}{5}\selectfont},
+    ib/.style={draw=tkBlue, fill=tkFillBlue, align=left, inner sep=2pt,
+      font=\fontsize{4.2}{4.8}\selectfont},
+    mi/.style={draw=gray!55, fill=white, inner sep=2pt},
+    mn/.style={anchor=west, align=left, inner sep=1pt, font=\fontsize{3.6}{4.2}\selectfont},
+  ]
+    \foreach \ttop/\tg in {{-0.05/{smooth-K（列均值平移）}},
+                            {-2.55/{smooth-V（均值剥离）}},
+                            {-5.05/{Hadamard 旋转}}} {
+      \draw[lbox] (0.10,\ttop) rectangle (15.40,{\ttop-2.30});
+      \node[ltag, text width=2.30cm] at (1.48,{\ttop-0.34}) {\tg};
+    }
+    % 泳道一：smooth-K —— softmax 行平移不变
+    \node[tl, font=\bfseries\fontsize{4.6}{5.2}\selectfont] at (0.35,-0.80)
+      {$K' = K - 1\cdot\bar{k}^{\top}$（$\bar{k} =$ 每列均值，逐行减同一向量）};
+    \node[tl] at (0.35,-1.13) {$S' = QK'^{\top} = S - q_s\cdot 1^{\top}$\quad 行内常数平移};
+    \node[tl] at (0.35,-1.46) {softmax($S'$) $=$ softmax($S$)：分子分母同乘 $e^{q_s}$};
+    \node[tl, text=tkGreen!80!black, font=\bfseries\fontsize{4.6}{5.2}\selectfont] at (0.35,-1.82)
+      {$\Rightarrow$ P、O 逐 bit 不变};
+    \node[ib, text width=3.85cm] at (8.00,-1.20)
+      {\textbf{\textcolor{tkBlue}{不变量来源：softmax 行平移不变性}}\\
+       唯一代价：lse($S'$) $=$ lse($S$) $- q_s$\\
+       epilogue 回加 $\delta_Q\delta_K\cdot(Q\cdot\bar{k})$\\
+       \textcolor{gray!80!black}{（smooth\_k\_qk\_dot，quad 内归约）}};
+    \draw[mi] (10.45,-0.63) rectangle (15.30,-2.20);
+    \node[mn, text=gray!85!black] at (10.55,-0.76) {logits 平移示意（同一条曲线整体左右移）};
+    \draw[gray!60, thin] (10.75,-1.88) -- (15.05,-1.88);
+    \draw[gray!60, thin] (12.90,-1.00) -- (12.90,-2.02);
+    \draw[tkRed, semithick] (10.95,-1.90) -- (12.20,-1.20) -- (13.10,-1.78) -- (14.00,-2.00);
+    % 泳道二：smooth-V —— 行和为 1 的精确还原
+    \node[tl, font=\bfseries\fontsize{4.6}{5.2}\selectfont] at (0.35,-3.30)
+      {$V' = V - 1\cdot\bar{v}^{\top}$（同 smooth-K 的列均值形态）};
+    \node[tl] at (0.35,-3.63) {$O' = P\cdot V' = PV - (P\cdot 1)\cdot\bar{v}^{\top} = O - \bar{v}^{\top}$};
+    \node[tl] at (0.35,-3.96) {$P\cdot 1 = 1$（softmax 行和恒为 1）};
+    \node[tl, text=tkGreen!80!black, font=\bfseries\fontsize{4.6}{5.2}\selectfont] at (0.35,-4.32)
+      {$\Rightarrow$ 输出每行减同一均值，最后加回 $\bar{v}$ 即精确还原};
+    \node[ib, text width=3.85cm] at (8.00,-3.70)
+      {\textbf{\textcolor{tkBlue}{残差对称化（sage recipe）}}\\
+       amax $=$ max$(|$max$-\mu|, |$min$-\mu|)$\\
+       中心化后对称 $\to$ e4m3 域两侧同时铺满\\
+       \textcolor{gray!80!black}{f16 PV 累加路径：v\_scale\_max 压缩留裕量}};
+    \draw[mi] (10.45,-3.13) rectangle (15.30,-4.70);
+    \node[mn, text=gray!85!black] at (10.55,-3.26) {减均值前后残差分布（示意）};
+    \draw[gray!60, thin] (10.75,-4.30) -- (15.05,-4.30);
+    \foreach \bb/\hh in {0/0.30, 1/0.42, 2/0.34, 3/0.24, 4/0.16, 5/0.10,
+                          6/0.06, 7/0.05, 8/0.03, 9/0.03, 10/0.45, 11/0.12} {
+      \pgfmathsetmacro{\xb}{10.85+0.16*\bb}
+      \fill[tkOrange] (\xb,-4.30) rectangle ({\xb+0.12},{-4.30+\hh});
+    }
+    \node[mn, text=gray!85!black, text width=4.50cm] at (10.55,-4.52)
+      {橙色 $=$ 原始（右偏 outlier）；剥离均值后分布趋对称、scale 收敛};
+    % 泳道三：Hadamard 旋转 —— 两端同乘正交阵
+    \node[tl, font=\bfseries\fontsize{4.6}{5.2}\selectfont] at (0.35,-5.80)
+      {$\hat{H} = H_n/\sqrt{n}$ 正交（$\hat{H}\hat{H}^{\top} = I$）};
+    \node[tl] at (0.35,-6.13)
+      {$(Q\cdot\hat{H})(K\cdot\hat{H})^{\top} = Q\cdot(\hat{H}\hat{H}^{\top})\cdot K^{\top} = QK^{\top}$};
+    \node[tl] at (0.35,-6.46) {逐元素精确、零修正项（连 lse 都不用动）};
+    \node[tl, text=tkGreen!80!black, font=\bfseries\fontsize{4.6}{5.2}\selectfont] at (0.35,-6.82)
+      {radix-2 蝶形：$(a,b) \to (a{+}b, a{-}b)$，每 bit 一轮};
+    \node[ib, text width=3.85cm] at (8.00,-6.20)
+      {\textbf{\textcolor{tkBlue}{whitening / Jackson 性质}}\\
+       每个输出坐标 $=$ 全部输入的带符号和\\
+       能量摊到所有坐标 $\to$ 块 scale 收敛\\
+       \textcolor{gray!80!black}{FA-3 incoherent proc.：FP8 RMSE $\downarrow 2.6\times$}};
+    \draw[mi] (10.45,-5.63) rectangle (15.30,-7.20);
+    \node[mn, text=gray!85!black] at (10.55,-5.76) {行幅度：旋转前（左）vs 旋转后（右）};
+    \draw[gray!60, thin] (10.75,-6.80) -- (15.05,-6.80);
+    \foreach \bb/\hh in {0/1.00, 1/0.16, 2/0.10, 3/0.07, 4/0.05, 5/0.03,
+                          6/0.03, 7/0.02, 8/0.02, 9/0.02, 10/0.02, 11/0.02} {
+      \pgfmathsetmacro{\xb}{10.85+0.13*\bb}
+      \fill[tkOrange] (\xb,-6.80) rectangle ({\xb+0.10},{-6.80+\hh});
+    }
+    \foreach \bb in {0,...,11} {
+      \pgfmathsetmacro{\xb}{13.25+0.09*\bb}
+      \fill[tkGreen] (\xb,-6.80) rectangle ({\xb+0.05},{-6.40});
+    }
+    \node[mn, text=gray!85!black, text width=4.50cm] at (10.55,-7.02)
+      {橙色 $=$ outlier 主导块 scale，绿色 $=$ 旋转后幅度均匀（各自独立坐标轴示意）};
+    % 结论
+    \node[draw=tkGreen, fill=tkFillGreen, align=left, inner sep=3pt,
+      font=\fontsize{4.4}{5}\selectfont, text width=14.6cm] at (7.75,-8.00)
+      {\textbf{\textcolor{tkGreen!80!black}{共同目的：在量化之前把 outlier 能量摊平 $\to$
+        block scale 收敛 $\to$ 量化步长利用率最大化}}\\
+       共同约束：变换必须保持输出精确不变（或仅需行级标量修正）——这是代数定理，不是近似};
+    \node[tl, text=gray!80!black] at (0.20,-8.60)
+      {对照 ffpa-attn(861d75e)：cute/fp8/smooth\_k.cuh $\cdot$ smooth\_v.cuh $\cdot$
+       cute/hadamard.cuh（宽度规则：pow2 $D \le 512$ 全宽，否则 blockdiag $H_{64}$）};
+  \end{tikzpicture}
   \caption{三条不变变换的代数结构对比：smooth-K 改 logits 不改概率（lse 回加）、
   smooth-V 改 V 不改 O（行和为 1）、WHT 两端同乘正交阵（收缩逐元素精确）。
   右侧为 outlier 幅度在变换前后的示意（块 scale 收敛）。}

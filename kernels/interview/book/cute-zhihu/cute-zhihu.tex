@@ -1,0 +1,124 @@
+% cute-zhihu.tex — CuTe 知乎优秀文章合集（reed & 竹熙佳处）
+% 构建：cd book/cute-zhihu/ && TEXMFCNF=../../tex: xelatex -interaction=nonstopmode cute-zhihu.tex（×2）
+\documentclass[9pt,openany]{ctexbook}
+\input{../preamble.tex}
+\usepackage[unicode,bookmarksnumbered,colorlinks,linkcolor=vscKeyword,citecolor=vscKeyword,urlcolor=vscEmphasis]{hyperref}
+\usepackage{xurl}
+\usepackage{float}
+\usepackage{placeins}
+
+% 压缩章标题前后距（默认 50/40pt），减少 20 篇文章式章节的章首/章末空白
+\ctexset{chapter/beforeskip=6pt, chapter/afterskip=16pt}
+
+\title{CuTe 知乎文章合集\\{\large reed \& 竹熙佳处系列文章忠实整理}}
+\author{整理：LeetCUDA Project}
+\date{2026 年 9 月}
+
+\begin{document}
+
+% ============ 封面（首页声明） ============
+\begin{titlepage}
+  \centering
+  \vspace*{3cm}
+  {\Huge\bfseries CuTe 知乎文章合集}\\[1.2em]
+  {\Large reed \& 竹熙佳处 优秀 CuTe 系列文章忠实整理}\\[4em]
+  \fbox{\parbox{0.88\textwidth}{\centering
+    {\Large\bfseries 郑重声明}\\[1em]
+    {\large
+    本书仅对知乎作者 \textbf{reed}（专栏「CUDA高性能编程」）与 \textbf{竹熙佳处}
+    （CuTe 教程系列）两位作者的 CuTe 系列优秀文章进行\textbf{忠实整理，不对原文内容做任何修改}。}\\[0.8em]
+    {\large 本书\textbf{仅用于开源学习}，\textbf{不得用于任何商业用途}。}\\[0.8em]
+    {\normalsize 全部文章著作权归原作者所有，转载请注明原文出处。}
+  }}\\[4em]
+  {\large 2026 年 9 月}
+  \vfill
+\end{titlepage}
+
+% ============ 前言 ============
+\chapter*{整理说明}
+\addcontentsline{toc}{chapter}{整理说明}
+
+本书系统整理了知乎作者 \textbf{reed}（专栏「CUDA高性能编程」）与 \textbf{竹熙佳处}
+两位作者的 CuTe（CUTLASS 3.x 张量抽象）系列文章，共 20 篇，按系列依赖/发表顺序编排。
+整理过程中\textbf{忠实保留原文内容与图片，不做任何修改}；仅做 Markdown 到 \LaTeX{}
+的排版映射（标题层级、代码块、公式、图片位置与图注均与原文一致）。
+
+全部文章于 2026-09-20 自知乎原文页面抓取，共 109 幅原图。两作者文章分别成篇（Part），
+每章章首标注作者与原文链接，便于溯源。
+
+本书仅用于开源学习，不得用于任何商业用途。
+
+\section*{reed 系列文章来源（13 篇）}
+\begingroup\small
+\begin{tabular}{@{}c>{\raggedright\arraybackslash}p{0.78\textwidth}@{}}
+  \toprule
+  章节 & 原文 \\
+  \midrule
+  01 & cute 之 Layout\newline\url{https://zhuanlan.zhihu.com/p/661182311} \\
+  02 & cute Layout 的代数和几何解释\newline\url{https://zhuanlan.zhihu.com/p/662089556} \\
+  03 & cute 之 Tensor\newline\url{https://zhuanlan.zhihu.com/p/663093816} \\
+  04 & cute 之 Copy抽象\newline\url{https://zhuanlan.zhihu.com/p/666232173} \\
+  05 & cute 之 MMA抽象\newline\url{https://zhuanlan.zhihu.com/p/663092747} \\
+  06 & cute 之 Swizzle\newline\url{https://zhuanlan.zhihu.com/p/671419093} \\
+  07 & cute 之 Hopper前言\newline\url{https://zhuanlan.zhihu.com/p/1948048832794427610} \\
+  08 & cute 之 Hopper MBarrier\newline\url{https://zhuanlan.zhihu.com/p/1962636004235153810} \\
+  09 & cute 之 Hopper TMA\newline\url{https://zhuanlan.zhihu.com/p/1985678344352731952} \\
+  10 & cute 之 TMA Descriptor编码与隐藏的第21bit\newline\url{https://zhuanlan.zhihu.com/p/2037200219700449995} \\
+  11 & cute 之 简单GEMM实现\newline\url{https://zhuanlan.zhihu.com/p/667521327} \\
+  12 & cute 之 GEMM流水线\newline\url{https://zhuanlan.zhihu.com/p/665082713} \\
+  13 & cute 之 高效GEMM实现\newline\url{https://zhuanlan.zhihu.com/p/675308830} \\
+  \bottomrule
+\end{tabular}
+\endgroup
+
+\section*{竹熙佳处系列文章来源（7 篇）}
+\begingroup\small
+\begin{tabular}{@{}c>{\raggedright\arraybackslash}p{0.78\textwidth}@{}}
+  \toprule
+  章节 & 原文 \\
+  \midrule
+  01 & 写给大家看的 CuTe 教程：tiled copy\newline\url{https://zhuanlan.zhihu.com/p/1930389542784964333} \\
+  02 & 写给大家看的 CuTe 教程：tiled mma\newline\url{https://zhuanlan.zhihu.com/p/1937145378446226159} \\
+  03 & 写给大家看的 CuTe 教程：Layout Compose \& Inverse\newline\url{https://zhuanlan.zhihu.com/p/1962625273636845008} \\
+  04 & 写给大家看的 CuTe 教程: Layout Product \& Divide\newline\url{https://zhuanlan.zhihu.com/p/1971945267294111573} \\
+  05 & 写给大家看的 CuTe 教程：TMA Copy\newline\url{https://zhuanlan.zhihu.com/p/2003198909405763007} \\
+  06 & 写给进阶开发的 CuTe 笔记：tiled mma 的 permutationMNK 参数\newline\url{https://zhuanlan.zhihu.com/p/1973526710105419953} \\
+  07 & 写给大家看的 CuTe 教程：async pipeline\newline\url{https://zhuanlan.zhihu.com/p/2024832248386528275} \\
+  \bottomrule
+\end{tabular}
+\endgroup
+
+\clearpage
+
+% ============ 目录 ============
+\tableofcontents
+
+% ============ Part I: reed ============
+\part{reed 系列（CUDA高性能编程）}
+
+\input{chapters/reed-01-layout.tex}
+\input{chapters/reed-02-layout-algebra-geometry.tex}
+\input{chapters/reed-03-tensor.tex}
+\input{chapters/reed-04-copy-abstract.tex}
+\input{chapters/reed-05-mma-abstract.tex}
+\input{chapters/reed-06-swizzle.tex}
+\input{chapters/reed-07-hopper-intro.tex}
+\input{chapters/reed-08-hopper-mbarrier.tex}
+\input{chapters/reed-09-hopper-tma.tex}
+\input{chapters/reed-10-tma-descriptor-21bit.tex}
+\input{chapters/reed-11-simple-gemm.tex}
+\input{chapters/reed-12-gemm-pipeline.tex}
+\input{chapters/reed-13-efficient-gemm.tex}
+
+% ============ Part II: 竹熙佳处 ============
+\part{竹熙佳处系列（CuTe 教程）}
+
+\input{chapters/zhuxi-01-tiled-copy.tex}
+\input{chapters/zhuxi-02-tiled-mma.tex}
+\input{chapters/zhuxi-03-compose-inverse.tex}
+\input{chapters/zhuxi-04-product-divide.tex}
+\input{chapters/zhuxi-05-tma-copy.tex}
+\input{chapters/zhuxi-06-permmnk.tex}
+\input{chapters/zhuxi-07-async-pipeline.tex}
+
+\end{document}

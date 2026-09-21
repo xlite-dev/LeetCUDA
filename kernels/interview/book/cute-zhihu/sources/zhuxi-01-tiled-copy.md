@@ -1,0 +1,344 @@
+<!--
+author: 竹熙佳处
+author_id: zhuxi
+url: https://zhuanlan.zhihu.com/p/1930389542784964333
+published: 1753025616
+updated: 1766583662
+fetched: 2026-09-20 (browser js-initialData)
+images: 7
+-->
+
+# 写给大家看的 CuTe 教程：tiled copy
+
+## 更新
+
+本篇文章的后续，写给大家看的 CuTe 教程：tiled mma(https://zhuanlan.zhihu.com/p/1937145378446226159) 已发布，有兴趣的读者可以在本文读完后查看
+
+## 动机
+
+NV GPU 编程体系下，tensor core 的使用越来越重要。那么如何利用好 tensor core 进行编程呢？在 CuTe 出现之前，我们有几种选择：
+
+- cuda + ptx 指令
+- cutlass 模版库
+- Triton
+
+其中 “cuda + ptx 指令” 的组合足够直白，掌控粒度也比较细，通常能够做到性能最优，然而其带来的代价就是开发者需要对 ptx 指令较为熟悉，并且存在跨架构时的兼容问题。
+
+Cutlass 模板库，能够提供高效 Gemm 融合后处理（i.e. epilogue）的能力，并且能够隐藏大部分实现细节（e.g. 指令选择，流水排布，etc），参考官方 example 就可以比较快速写出一个性能不错的 gemm kernel，然而，其缺点在于除了其提供的模板之外不再有能力写 kernel，例如，flash atten v2 就无法用 Cutlass 完成。
+
+Triton，编程最简单，也能有比较好的功能扩展能力，然而其性能本质上是依赖其后端编译过程的，因此很难做到对性能的极致掌控。
+
+而 CuTe 的出现，其实是希望改进 “cuda + ptx 指令” 这条路线，做到保障 kernel 性能的同时，隐藏掉 ptx 封装的过程以及坐标运算过程中的诸多细节，并且做到跨架构时的兼容（仅需少量代码修改，如 copy/mma 指令的选择）。同时，cutlass3.0 也是用 CuTe 重构过的，因此我们可以认为，熟练掌握 CuTe，可以写出与 cutlass 同样质量的 kernel 代码，而不失灵活性。
+
+更进一步的，CuTe 的表达能力以及其深层的数学体系很完备，能够同时兼顾传统 cuda core 编程体系以及 tensor core 编程体系，甚至有在类 gpu 的 ai 芯片上兼容 / 扩展的潜力。
+
+然而，代价是什么？
+
+其伴随而来的的学习曲线实在过于陡峭，笔者在很长一段时间都对于很多基础概念都是一知半解，写相关的代码也只是在 @reed(https://www.zhihu.com/people/2600b0313c76a175aa9e09a235382b79) 大师以及 tri Dao 的代码上做一些修改，经过相当一段时间的摸索后总算有些粗浅的认知。在这个过程中，我逐渐意识到其这里面的难点很大一部分在于没有一个足够 junior 的教程能够让开发者能够对 CuTe 的基本能力有一个直白的认知：cutlass CuTe 官方的 tutorial ，只能说很难评；reed 大师的系列文章(https://www.zhihu.com/people/reed-84-49)写的很好，高屋建瓴，干货满满。然而我认为其对初步接触的 CuTe 的同学来说仍然有些复杂。
+
+我认为，有很多概念其实可以解释的更直观，也可以结合我们已有的 cuda 经验来更好的理解。还有就是很多变量的命名，一些辅助函数，本身也包含了很多的信息，也值得和大家分享下。接下来这篇文章，我们以 tiled copy 为例，共同探索一下 CuTe 的用法。
+
+## Tiled copy 是为了解决什么问题？
+
+在现在的 gemm 体系下，通常会需要在一块大的数据中（e.g. 行数为 M，列数为 N），切分出一个小块的数据，此即 Tile 这个概念的来源。我们可定义这个 Tile 的行数为 kTileM，列数为 kTileN。
+
+对于一个 threadblock 而言，通常就是需要将这个 tile data 整体从某个 src-memory 中 copy 到某个 dst-memory 中。如，global to shared（以下表示为 g2s），shared to register (以下表示为 s2r)，shared to global（以下表示为 s2g）等。
+
+![img-1](https://pic3.zhimg.com/v2-b4afee1ba553dd4ed5dc6e144e39926c_r.jpg)
+*Figure1. 对数据分 tile，tileM 和 tileN 分别为我们需要 copy 的 tile 的行和列*
+
+而 Tiled copy 本质上是说，我们有一个 threadblock，有一个（kTileM, kTileN）的数据块，怎么去完成这个 copy。为画图方便，接下来的章节中我们以 4 threads 为一个 threadblocks （正常来说会选择 128 threads），完成一个（4，4）大小的 tile data 的 copy  为例。
+
+## CuTe Tiled copy 的设计哲学
+
+### Cuda 如何实现 tiled copy
+
+以 g2s 为例，首先我们可以思考，当我们用纯粹 cuda 的方式，来完成一块 2d tile data 的 g2s copy 时，我们的思路是什么？
+
+答案是我们通常会考虑，每个 thread 按照自己的 thread id，计算好自己的 src (i.e. global memory) 地址，以及 dst (i.e. shared memory) 地址，然后赋值过去。当然，我们考虑合并访存原则，也就是尽可能保证“连续的 thread 读 / 写 连续的地址”，我们通常会要求连续的 thread 尽可能排成一行，然后每个 thread 能够 copy 1 个 data-element，然后当每个 thread copy 完 1 个数据后，如果这个 Tile data 还没有被 copy 完成，我们进行第 2 轮 copy，然后是第 3 轮，第 4 轮。
+
+进一步的，然后我们考虑优化访存效率：大字长访存，也就是说，我们通常会考虑每个 thread 每轮次会 copy 多个 data-elements，我们假设为 2。
+
+按照这个思路，我们可以写出代码如下：
+
+template <int kTileM, int kTileN>
+__global__ void g2s_tiled_copy(float* global_data) {
+    // 为画图方便，以 4x4 的 data tile 为例
+    
+    __shared__ float shared_data[kTileM * kTileN];
+    
+    int n_threads_in_block = 4; 
+    // 为画图方便，以 4 threads 为 1 block 为例
+    
+    int tid = threadIdx.x;
+    
+    int total_elements = kTileM * kTileN;
+    
+    int n_threads_along_TileN = kTileN / 2; 
+    // 在列方向上分配多少个 thread
+    int n_threads_along_TileM = n_threads_in_block / n_threads_along_TileN; 
+    // 在行方向上分配多少个 thread
+    
+    int i_row_thread = tid / n_threads_along_TileN;
+    // 在行方向上的 thread-id
+    int i_col_thread = tid % n_threads_along_TileN;
+    // 在列方向上的 thread-id
+    
+    int n_elements_each_loop = n_threads_along_TileN * n_threads_along_TileM * 2;
+    // 每次 copy 每个 thread 需要 copy 2 个 float
+
+    int n_copy_loops = total_elements / n_elements_each_loop; 
+    // 完成这次的 tiled copy 需要多少轮次
+    
+    for (int i_loop = 0; i_loop < n_copy_loops; ++i_loop) {
+    
+        float* shared_data_i_loop = shared_data + i_loop * n_elements_each_loop;
+        float* global_data_i_loop = global_data + i_loop * n_elements_each_loop;
+        // 按轮次整体偏移指针
+        
+        // 实际执行 g2s copy，每个 thread 每次 copy 1 个 float2
+        ((*float2)(&shared_data_i_loop[i_row_thread * kTileN + i_col_thread * 2]))[0]
+                = ((*float2)(&global_data_i_loop[i_row_thread * kTileN + i_col_thread * 2]))[0];    
+    }
+    __syncthreads(); 
+ }
+
+我们把这个 thread 和第 0 和 1 轮次的 data-element 的映射关系以 Fig.2 的形式展示出来，为方便理解，我们认为我们的 data tile 里每一个位置都存了一个不同元素。为方便表示，我们认为第一轮 for-loop 访问 的都是小写字母 'a' / 'b' / 'c' / ...，第二轮访问的都是大写字母 'A' / 'B' / 'C' / ...。
+
+![img-2](https://pic4.zhimg.com/v2-10662c61d8b321db4d6a87d81cb7fcd1_r.jpg)
+*Figure2. 左图为 data tile 中存的元素；右图为 thread 和 data tile 的映射关系*
+
+至此，我们完成了 cuda 版本的 thread 和 data tile 的映射，有了这个表，我们实际上能够知道，给定任意一个 data tile 的 i-row 和 i-col，我们一定能知道这个是由“第几个 thread 负责 copy， 会存在 thread 中的第几个 data-element”，也就是 thread-id 以及 data-id。
+
+这对我们写代码有帮助吗？是，但不完全是。因为实际上我们写代码的时候，通常不是考虑 “我的这些数据里，每一个数据由哪个 thread 放在哪个 data-element 中？”，而是 “我发起了一些 thread，每个 thread 具体访问到了哪个数据”，也就是说，**我们希望给定一个 thread-id 以及 data-id，能拿到具体数据的坐标**。因此，我们需要对已有的表格做一次“inverse”，也就是说我们希望这个表格做如 Fig.3 的变化：
+
+![img-3](https://pic4.zhimg.com/v2-3e9b743dd5229db35903bb15b2812acb_r.jpg)
+*Figure.3 thread 和 data tile 的映射关系，变换为 thread-id 为行和 data-id 为列的形式*
+
+这样我们给定这个表格的行号（thread-id） 和列号（data-id），就可以拿到原始 data 了。
+
+这个表格在我们上述的简单例子中用处没有很大，然而，当我们考虑引入更多优化逻辑（如，避免 bank conflict 的 swizzle 逻辑， s2r 中的 ldmatrix 逻辑）的时候，复杂的地址计算会变得难以思考，此时这个表格就变得很重要了，因为不管坐标计算有多复杂，最后会统一变成这样一个表格，i.e. 一种映射。
+
+### CuTe 中如何实现 tiled copy
+
+我们先展示一下 CuTe 写这样一个 tiled copy 最简单的例子
+
+template <int kTileM, int kTileN>
+__global__ void g2s_tiled_copy(const float *input) {
+  // 为画图方便，以 4x4 的 data tile 为例，即，kTileM = 4，kTileN = 4
+
+  int tid = threadIdx.x;
+  
+  __shared__ float shm[kTileM * kTileN];
+  
+  Tensor g_input_tile = make_tensor(make_gmem_ptr((float *)input), 
+                               make_shape(Int<kTileM>{}, Int<kTileN>{}),
+                               make_stride(Int<kTileN>{}, Int<1>{})); 
+                               // (kTileM, kTileN)
+                               
+  Tensor s_tensor = make_tensor(make_smem_ptr((float *)shm), 
+                               make_shape(Int<kTileM>{}, Int<kTileN>{}),
+                               make_stride(Int<kTileN>{}, Int<1>{}));
+                               // (kTileM, kTileN)
+  
+  using g2s_copy_op = UniversalCopy<cute::uint64_t>;
+  using g2s_copy_traits = Copy_Traits<g2s_copy_op>;
+  using g2s_copy_atom = Copy_Atom<g2s_copy_traits, float>;
+
+  Layout thr_layout = make_layout(make_shape(Int<2>{}, Int<2>{}),
+                                  make_stride(Int<2>{}, Int<1>{}));
+  Layout val_layout = make_layout(make_shape(Int<1>{}, Int<2>{}));
+
+  auto tiled_copy_g2s =
+      make_tiled_copy(g2s_copy_atom{}, thr_layout, val_layout);
+
+  auto thr_copy_g2s = tiled_copy_g2s.get_slice(tid);
+  auto tgA_g2s = thr_copy_g2s.partition_S(g_input_tile);
+  auto tsA_g2s = thr_copy_g2s.partition_D(s_tensor);
+
+  copy(tiled_copy_g2s, tgA_g2s, tsA_g2s);
+  
+  __syncthreads();
+}
+
+在这个例子中，我们首先将 input 和 shm 封装为 g_tensor 以及 s_tensor，然后调用 make_tiled_copy 函数定义了一个 tiled_copy_g2s 对象，接着调用 get_slice 函数将这个对象与 tid 进行一个绑定，接下来调用这个对象的 partition_S / partition_D 函数对 g_tensor 以及 s_tensor 进行 partition，相当于每个 thread 拿到自己要读/写的数据块信息，最后调用一次 copy 函数即可完成。
+
+其中，make_tiled_copy 定义时需要三个参数，我们首先高度概括的总结一下，读者有个印象即可：
+
+- Copy-atom：描述我们用什么 copy 指令（ldg， ldg128，ldmatrix 等），同时也包含完成一次这样指令所需要的 thread 以及数据的对应信息。
+- Thread-layout：描述所有 thread 按照什么方式排布到整个 tile 中
+- Value-layout：描述单个 thread 读 or 写访问的数据元素的排布方式
+
+### CuTe make_tiled_copy 解读
+
+为了解释上面这些参数的含义，以及为什么 tiled copy 需要这些参数，我们接下来尝试理解一下，CuTe 中如何去构建出来我们在上一节中提到的 Fig.3。
+
+首先，在 CuTe 的命名体系下，thread 被命名为 T，data-element 被命名为 V (value)，因此对应的 thread-id 和 data-id 就被称为 t-id 和 v-id，因此上面的图可以被修改为：
+
+![img-4](https://pic2.zhimg.com/v2-e07abf50c387480118037a86abda2bf5_r.jpg)
+*Figure.4 thread 和 data tile 的映射关系（thread-id 为行和 data-id 为列）以 CuTe 的方式命名*
+
+进一步的，我们不再考虑数据本身，而是用一个数据坐标指代其中每一个元素，这个数据坐标其实是原始 m 行 n 列 data tile 的坐标（m-id, n-id），我们约定一种方式将这个二维坐标映射成 1D 坐标 mn = func0(m-id，n-id）。这个过程是可以反向的，给定这样一个 mn，我们一定能反向找到 （m-id, n-id），进而拿到我们需要的数据。那么这个 func0 是如何实现的呢？实际上这是 CuTe 通过构造出的一种特殊变换来完成的（所谓的 raked_product，我们先忽略细节，暂且认为其是由我们指定的 T-layout & V-layout 决定的一个变换），并且保证其是可逆且一一映射的。
+
+具体的，针对我们目前的例子，这个函数会被定义为如下公式，其中 2 为 Fig3.  中的左图中橙色框圈出的部分的行数：
+
+$mn = \text{func0}(m\text{-id}, n\text{-id}) = 2 \times n\text{-}id   m\text{-}id$ 
+
+同理，（t-id, v-id）也可以被映射为 1D 坐标，4 为 Fig3.  中的右图中橙色框圈出的部分的行数：
+
+$tv = \text{func1}(t\text{-id}, v\text{-id}) = 4 \times v\text{-}id   t\text{-}id$
+
+我们无需记住上述的函数细节，只需要知道：
+
+- 这个函数是根据我们给定的 T-layout & V-layout 决定的；
+- 作用是可以从 2D 坐标映射为 1D 坐标，1D 坐标也可以转换为 2D；
+- 可逆，即，给定输入可以得到输出，通过一个 inverse 变换，可以实现给定输出给定输入。
+
+至此，我们完成了（m-id, n-id）和（t-id, v-id）之间的映射关系。实际上这个映射关系的功能，就是给定行坐标和列坐标得到一个新的坐标，在 CuTe 表达体系中，把这种坐标映射的操作称为 layout，**这个 layout 的输入是 t-id 和 v-id，因此我们把这个 layout 命名为 TV-layout**。同理，我们把第一个表格也理解为 layout，其作用是给定 data 的 m-id 和 n-id，返回 t-id 和 v-id。也就是说**这个 layout 的输入是 m-id 和 n-id，因此我们可以把这个 layout 命名为 MN-layout**。
+
+至此，我们可以用 Fig. 5 来描述这个过程：
+
+![img-5](https://pic3.zhimg.com/v2-cad594eea128a0f8f9c46405e7f645ce_r.jpg)
+*Figure.5  CuTe 中 TV-layout 和 MN-layout 的构造方式示意图. TV-layout 是一个行为 t-id 列为 v-id 的 layout，以（t-id, v-id）为输入坐标能索引到的值是 mn，也就是 (m-id, n-id) 的 1D 形式。同理，MN-layout 是一个行为 m-id 列为 n-id 的 layout，以（m-id, n-id）为输入坐标能索引到的值是 tv.*
+
+事实上，我们看 **make_tiled_copy 的具体实现，其实就是在完成 TV-layout 和 MN-layout 的构建，并将 TV-layout 信息保存在 tiled_copy 对象中**。对应 CuTe 中 make_tiled_copy 函数的代码，本质上就是在完成我们上面描述的过程：
+
+template <class... Args,
+          class ThrLayout,
+          class ValLayout = Layout<_1>>
+CUTE_HOST_DEVICE
+auto
+make_tiled_copy(Copy_Atom<Args...> const& copy_atom,
+                ThrLayout          const& thr_layout = {},     // (m,n) -> thr_idx
+                ValLayout          const& val_layout = {})     // (m,n) -> val_idx
+{
+  // Take the raked_products to compute the Layout_MN
+  // (M,N) -> (thr_idx, val_idx)
+  auto layout_mn = raked_product(thr_layout, val_layout);
+  // (thr_idx, val_idx) -> (M,N)
+  auto layout_tv = right_inverse(layout_mn).with_shape(make_shape(size(thr_layout), size(val_layout)));
+  // Tiler for extracting relevant elements
+  // (M,N) -> tensor coord
+  auto tiler = product_each(shape(layout_mn));
+
+  return make_tiled_copy_impl(copy_atom, layout_tv, tiler);
+}
+
+我们可以用 cute 提供的 print_latex 函数，把 make_tiled_copy 中计算出来的 mn-layout 和 tv-layout 打印出来看看，我们能看到这个 layout 其实和我们自己画出来的是同样的语意。例如，在我们的例子中，我们构建的 TV-layout 和 MN-layout 对比 CuTe 打印输出的 TV-layout 和 MN-layout 如 Fig.6 所示：
+
+![img-6](https://pic1.zhimg.com/v2-86e3a7579fe700db282545d52d121ff6_r.jpg)
+*Figure.6  我们构建出的 TV-layout 和 MN-layout 与 CuTe 打印出来的 TV-layout 以及 MN-layout 对比*
+
+接下来，我们回顾一下我们在第一节中是如何得到 TV-layout 的：
+
+- 首先，根据我们的 tile data，思考我们怎样划分 thread，即，在每一行上有多少 thread，能够分多少行，每一个 thread 又一次需要负责多少个 value；
+- 从数据角度来看能够构建 (m-id, n-id) 到 (t-id, v-id) 的表格，即，MN-layout；
+- MN-layout 转换为 TV-layout，即，输入输出对调
+
+那么具体到 CuTe 的写法上，
+
+- 如何划分 thread，这对应 CuTe 中的 T-layout 怎么定义。比如，对应到我们的例子，我们希望一行有 2 个 thread，总共 4 threads 可以划分 2 行，那么 T-layout 可以定为 (2, 2)。同理，我们观察到每个 thread 会 copy 几个元素，在我们的例子里，每个 thread copy 2 个连续的元素，因此 V-layout 可以定义为 (1, 2)；
+- 我们观察我们要构建出来的 MN-layout，实际上如果对 CuTe layout 运算比较熟悉，是能够想到这里是用我们定义的 T-layout 和 V-layout 进行一个 product 运算来产生这样一个 layout 的。具体的，在 CuTe 中有一个 raked_product 可以完成我们的需求；
+- MN-layout 转换为 TV-layout，通过一个 layout-inverse 即可完成。
+
+上述过程中，我们实际上只考虑了单次循环中发生的事情，每个循环中，所有的 thread 会参与一次 copy，每次 copy v 个 element，这样的一个轮次被称为一个 threadblock 层级下的 atom copy。一个 tiled copy 实际上是对这种 atom 做循环，就像 Code.1. 中我们自己定义的 i-loop。虽然我们的例子中这个循环只有1D，但是实际使用中，这个循环通常是 2D 的，因此我们经常可以看到 CuTe 代码中会有类似这样的注释：
+
+auto tgA_g2s = thr_copy_g2s.partition_S(g_input_tile);  // (CPY_ATOM, CPY_M, CPY_N)
+
+这里的  CPY_M, CPY_N 就代表着对 atom 做 2d 循环的次数。至此，我们可以有个初步印象，“**atom 之外，皆是循环**”，我们先记住这句话，后面看看能否有更深入的理解。
+
+至此，我们基本梳理完了 make_tiled_copy 函数中做的事情。我们结合上面的理解，重新看看我们如何定义 make_tiled_copy 中的三大参数：
+
+- Copy-atom：因为我们 1 次要 copy 2 个 element，并且我们的 data type 是 float，因此我们选择 UniversalCopy<cute::uint64_t> 作为 copy 指令，并且通过 traits 出单条指令所需要的 thread-value layout 构建出一个 Copy-atom；
+- Thread-layout：我们总共有 4 个 thread，每次 copy 2 个连续的 element，考虑 data tile 每行有 4 个元素，因此每行分配 2 threads，总共可以分 2 行，因此设为 (2, 2)；
+- Value-layout：每个 thread 单次 copy 2 个连续的 element，因此设为 (1, 2)。
+
+值得一提的是，make_tiled_copy 在构建和 mma 相关的 copy 时，（例如：s2r / r2s copy），有着另一种用法，因为涉及到 tiled_mma，本文暂且不展开，后续我们在 tiled_mma 章节来继续探索。
+
+### CuTe partition 解读
+
+在 make_tiled_copy 的定义没有问题后，我们看看如何更进一步的理解 partition 里面的设计。
+
+Partition 的目的即是，将一个大块的 tensor 拆分成多个小 tensor，每个 thread 都获取一个小 tensor，我们称之为 thr-tensor。那么每个 thread 如何知道自己需要得到哪个 thr-tensor 呢？或者说，如何知道自己需要哪些 data?
+
+我们惊喜的发现，我们所需要的正是我们之前构建出来的 TV-layout，我们只需要给定一个 tid，然后取出 TV-layout 这一行的所有列对应的 mn 坐标，其对应的 element 即是我们所需要 thr-tensor。
+
+以及，由于我们上面说到的，我们构建出来的 TV-layout 其实只是一次 atom copy 的 TV-layout。为了完成整个 tile 的 partition，在 CuTe 的实现中，首先是将一个 tile 平均拆分成（CPY_M, CPY_N）个 atom 大小，然后构建出对应的 atom-TV-layout，进而拿到整个 tile 的 TV-layout。
+
+然后再取出 TV-layout，赋予一个 tid，然后取出所有的 value，组成一个  thr-tensor，这就是 partition 的过程。不得不感慨这个逻辑的确是很严谨的。
+
+整个过程可以描述为 Fig.7
+
+![img-7](https://pic2.zhimg.com/v2-e903cdcf65505e020d53d97fe278270b_r.jpg)
+*Figure.7  tiled copy 过程描述：首先分 tile，然后构建 TV-layout，最后 partition 给定一个 tid，取出所有的 value，即是我们所需要的 thr-tensor*
+
+### 进阶：CuTe Copy_Atom 解读
+
+进一步扩展，我们可以思考一下这样设计出来的 tiled copy 为什么能适配各种各样的 copy 场景？
+
+在上面的过程中，最核心的步骤就是获得这个 tile data 对应的 tv-layout：给定任意一种 copy 指令，无论是单 thread 完成还是 warp 完成，一旦能构建出来 tv-layout，我们就能给定 tid 拿到  thr-tensor 了。
+
+那么如何能够获得这个 tile data 的 TV-layout？我们在之前强调过了：“atom 之外，皆是循环”，对于 tile data 来说，只是在循环 atom 罢了。因此，我们关注这一小块的 atom 区域对应的 atom-tv-layout 是如何构建的即可。
+
+那么，atom-tv-layout 的构建，需要哪些信息呢？在之前的例子中，我们是用 t-layout 和 v-layout 做 raked_product 得到的，那么这个方法有什么问题呢？
+
+我们注意，在我们构建 g2s copy 的时候，我们似乎默认了我们构建出来的 atom-tv-layout 对于 src (即，global) 和 dst (即，shared) tensor 来说是一样的，这在 g2s 这种简单场景下是成立的。然而在实际使用中，我们也会遇到 src 和 dst 所需要的 tv-layout 不一致的情况，（例如 ldmatrix，每个 thread 读到的数据实际上会分发给不同 thread），这时候难道我们需要分别传入 src-atom-tv-layout 和 dst-atom-tv-layout 吗？
+
+直观上确实如此，然而 CuTe 的作者有着另一种解决思路：**让 src-atom-tv-layout 和 dst-atom-tv-layout 通过 layout 代数运算可以相互转换。我们将 src-atom-tv-layout 和 dst-atom-tv-layout 封装在构建 copy_atom 中，并且这个相互转换的方式可以就隐藏在我们所用的 Copy_Atom 之中。**
+
+也就是说，Copy atom 需要做到如下功能：
+
+- 有 copy 能力，也就是给定一个 src & dst 地址，能完成一次数据的搬移，此即 copy_op 能带来的信息；
+- 可以指定 src-atom-tv-layout / dst-atom-tv-layout 以及相互转换的能力，此即 copy_traits 能带来的信息。
+
+具体来说，在 Atom 中除了指定 src-layout / dst-layout，也会指定一个隐藏的中间 layout：ref-layout，其一定是 src 或 dst 中的一个。Src-layout <-> ref-layout <-> dst-layout，彼此用 layout inverse + compose 变换可以做到相互转换，通过这种转换，即可做到只关注 ref-layout，不太需要关注 ref 到 src-layout / dst-layout 是怎么变换的。
+
+我们观察 Copy_atom 中 Copy_tratis 的实现代码，其实就是在描述这样一件事，感兴趣的朋友可以自行查阅源码：
+
+/**
+ * concept Copy_Traits
+ * {
+ *   using ThrID     =    // Logical thread id (tid) -> tidx
+ *
+ *   using SrcLayout =    // (Logical src thread id (tid), Logical src value id (vid)) -> bit
+ *   using DstLayout =    // (Logical dst thread id (tid), Logical dst value id (vid)) -> bit
+ *   using RefLayout =    // (Logical ref thread id (tid), Logical ref value id (vid)) -> bit
+ * };
+ *
+ * The abstract bit ordering of the Copy_Traits (the codomain of SrcLayout, DstLayout, and RefLayout)
+ * is arbitrary and only used to construct maps
+ *   (ref-tid,ref-vid) -> (src-tid,src-vid)
+ *   (ref-tid,ref-vid) -> (dst-tid,dst-vid)
+ * in TiledCopy. The Layout_TV in TiledCopy is in accordance with the RefLayout of a Traits, then mapped to
+ * the Src or Dst (tid,vid) representation on demand.
+ *
+ */
+
+template <class CopyOperation, class... CopyOpArgs>
+struct Copy_Traits
+{
+  static_assert(dependent_false<CopyOperation>, "Copy_Traits not implemented for this CopyOperation.");
+};
+
+template <class S, class D>
+struct Copy_Traits<UniversalCopy<S,D>>
+{
+  // Logical thread id to thread idx (one-thread)
+  using ThrID = Layout<_1>;
+
+  // Map from (src-thr,src-val) to bit
+  using SrcLayout = Layout<Shape<_1,Int<sizeof_bits<S>::value>>>;
+  // Map from (dst-thr,dst-val) to bit
+  using DstLayout = Layout<Shape<_1,Int<sizeof_bits<D>::value>>>;
+
+  // Reference map from (thr,val) to bit
+  using RefLayout = SrcLayout;
+};
+
+## 总结
+
+本文以 tiled copy 为基础，讲解了 tiled_copy 的基础用法，以及其底层的核心概念：TV-layout，并以此为基础尝试探讨了 CuTe 的设计哲学。
+
+梳理完后，我们发现，CuTe 的设计逻辑是非常完备的，面对越来越复杂的 GPU 硬件体系，我们需要一套完备的编程模式可以兼容未来可能存在的任何 copy / mma 能力，CuTe 即是 NV 提出的这样一种编程模式，事实也证明其确实很好的处理了历代以来的 NV GPU。
+
+然而，CuTe 的代码确实需要一些耐心去梳理，这篇文章其实是一年前 reed 带领我们探索 CuTe 时就发给笔者的任务，直到最近笔者才真正开始慢慢领悟到其精髓，笔者将这次梳理的过程记录下来，也希望能够给大家学 CuTe 带来一点帮助。

@@ -1,0 +1,52 @@
+% 构建：cd kernels/interview/book/colfax && ./build.sh
+% 译自 Colfax Research《Categorical Foundations for CuTe Layouts》
+% （arXiv:2601.05972，官方 LaTeX 源 FinalVersion.tex），仅供学习交流。
+\documentclass[12pt,a4paper]{ctexrep}
+\input{cf-macros.tex}
+
+\title{ {\Huge CuTe 布局的范畴论基础} \\[0.4em] {\Large Categorical Foundations for CuTe Layouts（中文译注版）} }
+\author{Jack Carlisle \and Jay Shah \and Reuben Stern \and Paul VanKoughnett}
+\date{%
+  \begin{tabular}{c}
+    Colfax Research\\[0.5em]
+    2026 年 1 月（原文）\quad 中文译注版 2026-09
+  \end{tabular}%
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+NVIDIA 的 CUTLASS 库提供了一套健壮且富有表达力的方法，用于在 GPU 上描述与操纵多维张量数据。这些方法在概念上植根于 CuTe 布局（layout）这一抽象概念，以及关于布局的一整套丰富代数，其中包括复合（composition）、逻辑乘积（logical product）与逻辑切分（logical division）等运算。本文为理解这套布局代数提出一个范畴论框架，其核心是一类自然出现的{\it 可处理布局}（tractable layouts）。为此，我们定义了两个范畴 $\Tuple$ 与 $\catstyle{Nest}$，它们的态射可以生成布局。我们在这些范畴的态射上定义了一组运算，并证明这些运算与相应的布局运算相容。此外，我们对由该构造产生的布局给出了完整的刻画。最后，我们给出了上述范畴构造的一个 Python 实现，以及验证其与 CUTLASS 行为对齐的测试。该实现位于代码仓库 \url{https://github.com/ColfaxResearch/layout-categories}。
+\end{abstract}
+
+\newpage
+
+\input{sec/cf-front.tex}
+
+\newpage
+\setcounter{tocdepth}{2}
+\tableofcontents
+
+\newpage
+
+\input{sec/cf-ch1.tex}
+\input{sec/cf-ch2a.tex}
+\input{sec/cf-ch2b.tex}
+\input{sec/cf-ch2c.tex}
+\input{sec/cf-ch2d.tex}
+\input{sec/cf-ch2e.tex}
+\input{sec/cf-ch2f.tex}
+\input{sec/cf-ch3a.tex}
+\input{sec/cf-ch3b.tex}
+\input{sec/cf-ch3c.tex}
+\input{sec/cf-ch3d.tex}
+\input{sec/cf-ch3e.tex}
+\input{sec/cf-ch4a.tex}
+\input{sec/cf-ch4b.tex}
+\input{sec/cf-appa.tex}
+
+\printbibliography
+
+\end{document}

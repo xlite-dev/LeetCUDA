@@ -1,0 +1,1124 @@
+% cf-ch3b.tex — 译自 FinalVersion.tex L7836-8959
+\subsection{元组态射上的运算}
+
+
+\noindent 我们的下一个目标是发展一套「元组态射代数」，其中包括{\it 合并}（coalesce）、{\it 求补}（complement）、{\it 复合}（composition）、{\it 扁平切分}（flat division）以及{\it 扁平乘积}（flat products）等运算。我们将证明，这些运算中的每一个都与扁平布局（flat layout）上的相应运算相容。
+
+
+\subsubsection{和}
+元组态射 $f$ 与 $g$ 的和（sum）$f \oplus g$ 通过拼接 $f$ 与 $g$ 的定义域（domain）与陪域（codomain）得到。为了精确定义这个运算，我们先在 $\catstyle{Fin}_*$ 中的态射上定义一个相应的运算。
+
+\begin{definition}
+    设 $\alpha: \langle m \rangle_* \to \langle n \rangle_*$ 与 $\beta: \langle p \rangle_* \to \langle q \rangle_*$ 是 $\catstyle{Fin}_*$ 中的态射。我们把 $\alpha$ 与 $\beta$ 的{\it 和}定义为态射
+    \[
+    \alpha \oplus \beta : \langle m + p \rangle_* \to \langle n + q \rangle_*
+    \]
+    它由
+    \[
+(\alpha\oplus\beta)(x) = \begin{cases}
+    \alpha(x) & 1 \leq x \leq m\\
+    n + \beta( x - m) & m+1 \leq x \leq m + p\\
+    * & x = *.
+\end{cases}
+\]
+给出。该运算满足结合律，因此对 $\catstyle{Fin}_*$ 中任意有限组态射 $\alpha_1,\dots,\alpha_k$，可以考虑和 $\alpha_1 \oplus \cdots \oplus \alpha_k$。
+\end{definition}
+
+\begin{remark}
+    若 $\alpha$ 与 $\beta$ 是可处理（tractable）的基点映射（pointed map），则 $\alpha \oplus \beta$ 是可处理的。
+\end{remark}
+
+\noindent 现在我们可以定义 $\catstyle{Tuple}$ 中态射的和。
+
+\begin{definition}\label{sumofmorphismsinC} 设 $f:S \to T$ 与 $g:U \to V$ 是分别{\it 位于} $\alpha$ 与 $\beta$ {\it 之上}（lies over）的元组态射。我们把 $f$ 与 $g$ 的{\it 和}定义为元组态射
+\[f \oplus g: S \star U \to T \star V\]
+它位于 $\alpha \oplus \beta$ 之上。该运算满足结合律，因此对 $\catstyle{Tuple}$ 中任意有限组态射 $f_1,\dots,f_k$，可以考虑和 $f_1 \oplus \cdots \oplus f_k$。
+\end{definition}
+
+
+\begin{example} \label{concatenationexample}
+    下面给出元组态射 $f$ 与 $g$ 的和 $f \oplus g$ 的一个例子。
+        \[ 
+    \begin{tikzcd}[row sep = 1, column sep = 8]
+    & & & & & & & & 4  & & 4 \\
+      & & & & & & & &  4 \ar[rru,mapsto] & & 2\\
+    32 \ar[rr, mapsto] & & 32 & & 4  & & 4 & & 32 \ar[rr,mapsto] & & 32\\
+    16 \ar[rr,mapsto] & & 16 & & 4 \ar[rru ,mapsto]& & 2 & & 16 \ar[rr,mapsto] & & 16\\
+    & f & & & & g & & & & f \oplus g  &  \\
+    \end{tikzcd}
+    \]
+\end{example}
+
+\begin{example}
+    下面给出元组态射 $f$ 与 $g$ 的和 $f \oplus g$ 的另一个例子。
+            \[ 
+    \begin{tikzcd}[row sep = 1, column sep = 8]
+    & & & & & & & & 64 \ar[rr,mapsto] & & 64 \\
+    & & & & & & & & 512 \ar[rrd,mapsto]   & & 256 \\
+      & & & & 64 \ar[rr,mapsto] & & 64& &  256 \ar[rru,mapsto] & & 512\\
+    128 \ar[rrd, mapsto] & & 128 & & 512  \ar[rrd,mapsto] & & 256 & & 128 \ar[rrd,mapsto] & & 128\\
+    128 \ar[rru,mapsto] & & 128 & & 256 \ar[rru ,mapsto]& & 512 & & 128 \ar[rru,mapsto] & & 128\\
+    & f & & & & g & & & & f \oplus g  &  \\
+    \end{tikzcd}
+    \]
+\end{example}
+
+\begin{remark}
+    元组态射的和有一个范畴论解释：若 $f:S \to T$ 与 $g:U \to V$ 是元组态射，则
+    \[
+    f \oplus g: S \star U \to T \star V
+    \]
+    是箭头范畴（arrow category）$\mathterm{Ar}(\catstyle{Tuple})$ 中 $f$ 与 $g$ 的余积（coproduct）。
+\end{remark}
+
+\subsubsection{压缩}
+
+我们常常希望从元组中去掉所有等于整数 $1$ 的分量。这一任务由{\it 压缩}（squeeze）函子（functor）完成。
+
+\begin{definition}\label{squeeze} 
+我们定义函子
+\[ \begin{tikzcd} 
+\catstyle{Tuple} \ar[rr,"\squeeze(-)"] & & \catstyle{Tuple}
+\end{tikzcd} \]
+如下。若 $S = (s_1,\dots,s_m)$ 是 $\catstyle{Tuple}$ 中的对象（object），我们定义
+\[
+\squeeze(S) = (s_{i_1},\dots,s_{i_k})
+\]
+其中 $\{i_1<\dots<i_k\} \subset  \langle m \rangle$ 是满足 $s_{i_j} \neq 1$ 的那些指标。若 $f:(s_1,\dots,s_m) \to (t_1,\dots,t_n)$ 是元组态射，我们定义
+\[
+\squeeze(f):\squeeze(S) \to \squeeze(T)
+\]
+为元组态射
+\[
+\squeeze(f) = (f \mid_I )\mid^J
+\]
+其中 $f \mid_I$ 是 $f$ 到
+\[
+I = \{ i \in \langle m \rangle \mid s_i \neq 1\}
+\]
+的限制（restriction），见定义 \ref{definitionofrestriction}；而 $(f\mid_I)\mid^J$ 是 $f \mid_I$ 经由
+\[
+J = \{ j \in \langle n \rangle \mid t_j \neq 1\},
+\]
+的因子分解（factorization），见定义 \ref{definitionoffactorization}。
+\end{definition}
+
+\begin{example}\label{squeezeexample} 下面给出一个态射 $f$ 及相应态射 $\squeeze(f)$ 的例子。 
+
+\[ \begin{tikzcd}[row sep = 1, column sep = 12]
+ & & 256 & & & & & & \\
+256 \ar[rru ,mapsto] & & 128   & & & & & & 256 \\
+128 \ar[rru,mapsto] & & 1& & & & & & 128 \\
+1 & & 32 & & & & 256 \ar[uurr,mapsto] & & 32\\
+8 \ar[drr,mapsto] & & 32 & & \rightsquigarrow & & 128 \ar[uurr,mapsto]  & & 32 \\
+1 & & 8 & & & &  8 \ar[rr,mapsto] & & 8 \\
+& f & & & & & & \mathclap{\squeeze(f)} & 
+\end{tikzcd} \]
+    
+\end{example}
+
+\begin{example}
+    若 $f:(s_1,\dots,s_m) \to (t_1,\dots,t_n)$ 是元组态射，则
+    \[
+    f = \squeeze(f) \hspace{0.2in} \Leftrightarrow \hspace{0.2in} \text{没有 }s_i \text{、}t_j \text{ 等于 }1.
+    \]
+\end{example}
+
+\begin{proposition}\label{squeezecompatibility}
+    若 $f$ 是元组态射，则
+    \[
+    L_{\squeeze(f)} = \squeeze(L_f).
+    \]
+\end{proposition}
+
+\begin{proof}
+    设 $f:(s_1,\dots,s_m) \to (t_1,\dots,t_m)$ 是元组态射，并令
+    \[
+    L_f = (s_1,\dots,s_m):(d_1,\dots,d_m)
+    \]
+    为 $f$ 所关联的布局。令 $I = \{i_1<\cdots < i_{m'}\} \subset \langle m \rangle$ 表示满足 $s_{i_k} \neq 1$ 的指标子集。于是
+    \begin{align*}
+    L_{f \mid_I} & = (s_{i_1},\dots,s_{i_k}):(d_{i_1},\dots,d_{i_k})\\
+    & = \squeeze(L_f).
+    \end{align*}
+    
+    \noindent 令 $J = \{j_1<\dots<j_{n'}\} \subset \langle n \rangle$ 表示满足 $t_{j_k} \neq 1$ 的指标子集，于是 $\squeeze(f) = \left(f \mid_I \right)\mid^J$。令 $\beta$ 表示 $\squeeze(f)$ 所位于的映射。则
+    \begin{align*}
+        L_{\squeeze(f)} = L_{\left( f \mid_I \right)\mid^J} & = (s_{i_1},\dots,s_{i_k}) : (d_{i_1}',\dots,d_{i_k}')
+    \end{align*}
+    其中
+    \begin{align*}
+    d_{i_k}' & = \dfrac{d_{i_k}}{\left( \displaystyle\prod_{\ell < \beta(k) \text{ and }\ell \notin J } t_{\ell} \right)}\\
+    & = d_{i_k}
+    \end{align*}
+    因为对任意 $\ell \notin J$ 有 $t_\ell = 1$。我们得到
+    \begin{align*}
+    L_{\squeeze(f)} & = (s_{i_1},\dots,s_{i_k}):(d_{i_1},\dots,d_{i_k})\\
+    & = \squeeze(L_f).
+    \end{align*}
+\end{proof}
+
+\begin{observation}
+    若 $f$ 是元组态射，则
+    \[
+    \squeeze(\squeeze(f)) = \squeeze(f),
+    \]
+    因此
+    \[
+    \begin{tikzcd} 
+    \catstyle{Tuple} \ar[rr,"\squeeze(-)"] & & \catstyle{Tuple}
+    \end{tikzcd} \]
+    是一个幂等（idempotent）函子。
+\end{observation}
+
+
+
+\subsubsection{排序}
+\label{subsubsection.sort}
+
+排序（sort）运算 $f \mapsto \sort(f)$ 通过置换（permutation）$f$ 的定义域，使所得态射在下述意义上是{\it 已排序}（sorted）的。
+
+\begin{definition}\label{definitionofsortedmorphisminC}
+    我们称元组态射
+    \[\begin{tikzcd} (s_1,\dots,s_m) \ar[r,"f"] \ar[r,swap,"\alpha"] &  (t_1,\dots,t_n) \end{tikzcd} \]
+    为{\it 已排序}的，如果对任意 $1 \leq i,j \leq m$，以下条件成立。
+    \begin{enumerate}
+        \item 若 $\alpha(i) = * \neq \alpha(j)$，则 $i < j$。 
+        \item 若 $\alpha(i) = * = \alpha(j)$，则
+        \[
+        i \leq j \quad \Rightarrow \quad s_i \leq s_j.
+        \]
+        \item 若 $\alpha(i) \neq * \neq \alpha(j)$，则
+        \[
+        i \leq j \quad \Rightarrow \quad \alpha(i) \leq \alpha(j).
+        \]
+
+    \end{enumerate}
+\end{definition}
+
+
+\begin{example}\label{sortedmorphismsinCexample}
+    下面展示的态射 $f_1$、$f_2$ 与 $f_3$
+    \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+     & & & & &  & & 4 & & & 60 \ar[rr,mapsto] & & 60\\
+    128 \ar[drr,mapsto] & & & & & 4 \ar[urr,mapsto] & & 1 & & & 20 \ar[rrd,mapsto] & & 2\\
+    512 \ar[drr,mapsto] & & 128 & & & 1 & & 8 & & & 32 & & 20\\
+    3 & & 512 & & & 1 & & 64 & & & 8 & & 4 \\
+     & f_1 & & & & & f_2 & & & & & f_3 & \\
+    \end{tikzcd} \]
+    是已排序的，而下面展示的态射 $g_1$、$g_2$ 与 $g_3$
+    \[ \begin{tikzcd}[row sep = 1, column sep = 8]
+     & & 512 & & & & & & & & & & \\
+    512 \ar[urr,mapsto] & & 2 & & & 1  & & 4 & & & 2 \ar[rr,mapsto] & & 2 \\
+    32 \ar[drr,mapsto] & & 32 & & & 4 \ar[urr,mapsto] & & 8 & & & 8 & & 24\\
+    32 \ar[urr,mapsto] & & 32 & & & 8 \ar[urr,mapsto] & & 64 & & & 24 & & 16 \\
+    & g_1 & & & & & g_2 & & & & & g_3 & \\
+    \end{tikzcd} \]
+    不是已排序的。态射 $g_1$、$g_2$ 与 $g_3$ 分别违反条件 $3$、$1$ 与 $2$。
+\end{example}
+
+\begin{proposition}\label{sortmorphisminCproposition}
+    若 $f$ 是已排序的元组态射，则扁平布局 $L_f$ 是已排序的。 
+\end{proposition}
+
+\begin{proof}
+    设
+    \[\begin{tikzcd} (s_1,\dots,s_m) \ar[r,"f"] \ar[r,swap,"\alpha"] &  (t_1,\dots,t_n) \end{tikzcd} \]
+    已排序，并考虑布局
+    \[L_f = (s_1,\dots,s_m):(d_1,\dots,d_m).\] 设 $1 \leq i < m$。我们要证明 $d_i < d_{i+1}$，或 $d_i = d_{i+1}$ 且 $s_i \leq s_{i+1}$。分两种情形讨论。
+    \begin{itemize} 
+    \item （情形 1）设 $\alpha(i) = *$，于是 $d_i = 0$。若 $\alpha(i+1) = *$，则 $d_{i+1} = 0$，且由于 $f$ 已排序，有 $s_i \leq s_{i+1}$。若 $\alpha(i+1) \neq *$，则 $d_{i+1} \geq 1 > 0 = d_i$。 
+    
+    \item （情形 2）设 $\alpha(i) \neq *$，此时 $\alpha(i+1) \neq *$ 且 $\alpha(i) < \alpha(i+1)$。则
+        \[
+        d_i = \prod_{j<\alpha(i)}t_j \leq \prod_{j < \alpha(i+1)} = d_{i+1},
+        \]
+    其中等号仅当 $ s_i = t_{\alpha(i)} = 1$ 时成立，而这蕴含 $s_i \leq s_{i+1}$。
+    \end{itemize} 
+    我们得到 $L_f$ 是已排序的。
+    % Suppose next that $L_f = (s_1,\dots,s_m):(d_1,\dots,d_m)$ is sorted. We will argue that $f$ is sorted. Let $1 \leq i \leq m$. There are two cases to consider.
+    % \begin{itemize}
+    %     \item (Case 1) Suppose $i > 1$ and $\alpha(i) = *$. Then $d_i = 0$, and since $L_f$ is sorted we have $d_{i-1} \leq d_i = 0$. This implies that $d_{i-1} = 0$, so  $\alpha(i-1) = *$. Again, since $L_f$ is sorted, we must have $s_{i-1} \leq s_i$. 
+    %     \item (Case 2) Suppose $i < m$ and $\alpha(i) \neq *$. Then $d_i > 0$ which implies that $d_{i+1} > 0$, and so $\alpha(i+1) \neq *$. We need to argue that $\alpha(i) < \alpha(i+1)$. This follows from the fact that 
+    % \[
+    % \prod_{j < \alpha(i)} t_j = d_i \leq d_{i+1} = \prod_{j<\alpha(i+1)} t_j,
+    % \]
+    % and $t_\alpha(i) = s_i > 1$.
+    % \end{itemize} 
+    % We conclude that $f$ is sorted, as desired.     
+\end{proof}
+
+\noindent 接下来，我们定义 $\catstyle{Tuple}$ 上的 $\sort(-)$ 运算。若 $f$ 是元组态射，则 $\sort(f)$ 将通过用一个适当的置换 $g$ 预复合（precompose）$f$ 而得到。
+
+\begin{construction}\label{sortofmorphisminC}
+    设
+    \[ \begin{tikzcd} 
+    (s_1,\dots,s_m) \ar[r,"f"] \ar[r,swap,"\alpha"] &  (t_1,\dots,t_n)
+    \end{tikzcd}\]
+    是一个元组态射。我们如下定义一个置换 $\sigma \in \Sigma_m$。令
+    \begin{align*} P & = \{i \in \langle m \rangle \mid \alpha(i) = *\},\\
+Q & = \{ i \in \langle m \rangle \mid \alpha(i) \neq *\},
+    \end{align*}
+    于是 $\langle m \rangle$ 是 $P$ 与 $Q$ 的不相交并（disjoint union）。我们定义 $P$ 上的一个线性序（linear ordering）：$i_1 \preceq_P i_2$，如果
+    \begin{enumerate} 
+    \item $s_{i_1} < s_{i_2}$，或 
+    \item $s_{i_1} = s_{i_2}$ 且 $i_1 \leq i_2$。
+    \end{enumerate}
+    我们定义 $Q$ 上的线性序：若 $\alpha(i_1) \leq \alpha(i_2)$，则 $j_1 \preceq_Q j_2$。我们定义 $\langle m \rangle$ 上的线性序：$i_1 \preceq i_2$，如果
+    \begin{enumerate} 
+    \item $i_1 \in P$ 且 $i_2 \in Q$，
+    \item $i_1,i_2 \in P$ 且 $i_1 \preceq_P i_2$，或 
+    \item $i_1,i_2 \in Q$ 且 $i_1 \preceq_Q i_2$。 
+    \end{enumerate}
+    令 $\sigma$ 为与 $\langle m \rangle$ 的线性序 $\preceq$ 相关联的置换，并令 $\sigma^{-1}$ 为其逆（inverse）。映射 $\sigma^{-1}_*:\langle m \rangle_* \to \langle m \rangle_*$ 由一个元组态射覆盖（covered by）
+    \[
+    g: (s_{\sigma^{-1}(1)},\dots,s_{\sigma^{-1}(m)}) \to (s_1,\dots,s_m),
+    \]
+    我们定义 $\sort(f)$ 为复合
+    \[
+    \sort(f) = f \circ g.
+    \]
+\end{construction}
+
+\begin{example} 例 \ref{sortedmorphismsinCexample} 中态射 $g_1$、$g_2$ 与 $g_3$ 的排序结果如下所示。
+    \[ \begin{tikzcd} [row sep = 1, column sep = 16]
+    & & 512 & & & & & & 512\\
+    512 \ar[urr,mapsto] & & 2 & & & & 512 \ar[urr,mapsto] & & 2\\
+    32 \ar[drr,mapsto] & & 32 & & \rightsquigarrow & & 32 \ar[rr,mapsto] & & 32\\
+    32 \ar[urr,mapsto] & & 32 & & & & 32 \ar[rr,mapsto] & & 32\\
+    & g_1 & & & & & & \mathclap{\sort(g_1)} & \\
+ & \vspace{0.2in} & & &  & & & & \\
+        1 & & 4 & & & & 4\ar[rr,mapsto]  & & 4\\
+    4 \ar[urr,mapsto] & & 8 & & \rightsquigarrow & & 8 \ar[rr,mapsto] & & 8\\
+    8  \ar[urr,mapsto] & & 64 & & & & 1 & & 64\\
+    & g_2 & & & & & & \mathclap{\sort(g_2)} & \\
+     & \vspace{0.2in} & & &  & & & & \\
+     & & & & & & & & \\
+        2  \ar[rr,mapsto] & & 2 & & & & 2 \ar[rr,mapsto]  & & 2\\
+    8  & & 24 & & \rightsquigarrow & & 24  & & 24\\
+    24    & & 16 & & & & 8 & & 16\\
+    & g_3 & & & & & & \mathclap{\sort(g_3)} & \\
+    \end{tikzcd} \]
+\end{example}
+
+\begin{lemma}
+    设 $f:S \to T$ 是元组态射。则 $f$ 已排序当且仅当 $\sort(f) = f$。
+\end{lemma}
+\begin{proof}
+    我们对 $\sort(-)$ 的构造保证：对任意元组态射 $f$，$\sort(f)$ 都是已排序的。特别地，若 $f = \sort(f)$，则 $f$ 已排序。反之，若 $f$ 已排序，则构造 \ref{sortofmorphisminC} 中的置换 $\sigma \in \Sigma_m$ 是恒等置换，于是 $g = \id_S$，从而
+    \[
+    \sort(f) = f \circ \id_S = f.
+    \]
+\end{proof}
+
+\begin{proposition}\label{sortofmorphisminCcompatibility} 若 $f$ 是元组态射，则
+\[
+L_{\sort(f)} = \sort(L_f).
+\]
+\end{proposition}
+
+\begin{proof}
+    沿用构造 \ref{sortofmorphisminC} 的记号，我们有 $\sort(f) = f \circ g$，其中
+    \[
+    g : (s_{\sigma^{-1}(1)},\dots,s_{\sigma^{-1}(m)}) \to (s_1,\dots,s_m)
+    \]
+    位于 $\sigma^{-1}_*: \langle m \rangle_* \to \langle m \rangle_*$ 之上。若 $L_f = (s_1,\dots,s_m):(d_1,\dots,d_m)$，则
+    \begin{align*}
+    L_{\sort(f)} & = (s_1',\dots,s_m'):(d_1',\dots,d_m') \\
+    & = (s_{\sigma^{-1}(1)},\dots,s_{\sigma^{-1}(m)}):(d_{\sigma^{-1}(1)},\dots,d_{\sigma^{-1}(m)}). 
+    \end{align*}
+    由于 $L_{\sort(f)}$ 的各模式（mode）是 $L_f$ 的各模式的一个置换，只需证明 $L_{\sort(f)}$ 是已排序的。设 $1 \leq i <m$。先设 $\sigma^{-1}(i) \in P$，于是 $d_i' = d_{\sigma^{-1}(i)} = 0$。若 $\sigma^{-1}(i+1) \in P$，则 $d'_{i+1} = d_{\sigma^{-1}(i+1)} = 0$。由 $\sigma$ 的构造，有 $s_i' = s_{\sigma^{-1}(i)} \leq s_{\sigma^{-1}(i+1)} = s_{i+1}'$。若 $\sigma^{-1}(i+1) \in Q$，则 $d_{i+1}' = d_{\sigma^{-1}(i+1)}' > 0 = d_i'$。再设 $\sigma^{-1}(i) \in Q$。则由 $\sigma$ 的构造，有 $\sigma^{-1}(i+1) \in Q$ 且 $\alpha(\sigma^{-1}(i)) < \alpha(\sigma^{-1}(i+1))$，并且
+    \begin{align*}
+    d_i' = d_{\sigma^{-1}(i)} & = \prod_{j < \alpha(\sigma^{-1}(i))} t_j \\
+    & \leq \prod_{j<\alpha(\sigma^{-1}(i+1))} t_j \\
+    & = d_{\sigma^{-1}(i+1)}\\
+    & = d_{i+1}',
+    \end{align*}
+    其中等号成立当且仅当 $t_{\alpha(\sigma^{-1}(i))} =  \cdots = t_{\alpha(\sigma^{-1}(i+1))-1} = 1$。特别地，我们有 $s_i = s_{\sigma^{-1}(i)} = t_{\alpha(\sigma^{-1}(i))} = 1$，于是 $s_i' \leq s_{i+1}'$。我们得到 $L_{\text{sort(f)}}$ 是已排序的，因此 $L_{\sort(f)} = \sort(L_f)$。 
+\end{proof}
+
+\begin{remark}
+    运算 $\sort(-)$ 不具函子性。例如，考虑元组态射
+    \[ \begin{tikzcd} (2,3)\ar[r,"f"] \ar[r,swap,"(2{,}1)"] & (3,2) & \text{ and } & (10,25)\ar[r,"g"] \ar[r,swap,"(2{,}1)"] & (25,10)\end{tikzcd} \]
+    则 $f$ 与 $g$ 可复合，且 $g \circ f = \id_{(25,10)}$，但已排序的态射
+    \[ \begin{tikzcd} (10,25)\ar[rr,"\sort(f)"] \ar[rr,swap,"(1{,}2)"] & & (10,25) & \text{ and } & (25,10)\ar[rr,"\sort(g)"] \ar[rr,swap,"(1{,}2)"] & & (25,10)\end{tikzcd} \]
+    不可复合。
+\end{remark}
+
+\subsubsection{合并}
+\label{subsubsection.coalesce}
+
+\noindent 我们先引入已合并（coalesced）元组态射的概念。
+\begin{definition}\label{definitionofcoalescedmorphisminC}
+    设 $f:S \to T$ 是位于 $\alpha$ 之上的元组态射。我们称 $f$ 是{\it 已合并}的，如果
+    \begin{enumerate}
+        \item $S = \squeeze(S)$，且
+        \item 对任意 $ 1 \leq i < \len(S)$，以下条件中恰有一个成立： 
+        \begin{enumerate}
+            \item $\alpha(i) = * \neq \alpha(i+1)$，
+            \item $\alpha(i) \neq *=\alpha(i+1)$，
+            \item $\alpha(i) > \alpha(i+1)$，或 
+            \item $\alpha(i)<\alpha(i+1)$，且存在 $ \alpha(i) < j < \alpha(i+1)$ 使得 $t_j > 1$。 
+        \end{enumerate}
+    \end{enumerate}
+\end{definition}
+
+\begin{example}
+    若存在某个 $1 \leq i < \len(S)$ 使得 $\alpha(i+1) = \alpha(i)+1$，则 $f$ 不是已合并的。
+\end{example}
+
+\begin{remark}
+    若 $f:S \to T$ 是满足 $f = \squeeze(f)$ 的元组态射，则 $f$ 已合并当且仅当对任意 $1 \leq i < \len(S)$，以下条件之一成立：
+    \begin{enumerate}
+            \item $\alpha(i) = * \neq \alpha(i+1)$，
+            \item $\alpha(i) \neq * = \alpha(i+1)$，
+            \item $\alpha(i) > \alpha(i+1)$，或
+            \item $\alpha(i+1) \neq \alpha(i) + 1$。
+    \end{enumerate}
+\end{remark}
+
+\begin{example}\label{coalescedmorphismsinCexample}
+    态射
+    \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+    & & & & & & & 4 & & & & & \\
+     & & 48 & & & 4 \ar[urr,mapsto] & & 32 & & & & 2 \\
+    48 \ar[rru,mapsto] & & 8 & & & 2 & & 8 & & 2 \ar[rrdd,mapsto] & & 8 \\
+    32 & & 16 & & & 32 \ar[uurr,mapsto] & & 16 & & 32 \ar[rr,mapsto] & & 32 \\
+    16 \ar[rru,mapsto] & & 2 & & & 16 \ar[urr,mapsto] & & 8 & & 16 & & 2 \\
+    & f_1 & & & & & f_2 & & & &  f_3 & \\
+    \end{tikzcd} \]
+    是已合并的，而态射
+    \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+    & & & & & & & 4 & & & & & \\
+     & & 8 & & & 4 \ar[urr,mapsto] & & 32 & & & & 2 \\
+    32 & & 48 & & & 2 & & 1 & & 1 & & 8 \\
+    48 \ar[urr,mapsto] & & 16 & & & 32 \ar[uurr,mapsto] & & 16 & & 32 \ar[rr,mapsto] & & 32 \\
+    16 \ar[rru,mapsto] & & 2 & & & 16 \ar[urr,mapsto] & & 8 & & 16 & & 1 \\
+    & g_1 & & & & & g_2 & & & &  g_3 & \\
+    \end{tikzcd} \]
+    不是已合并的。
+\end{example}
+
+
+\begin{proposition}\label{coalescedmorphismcoalescedlayoutproposition}
+    设 $f$ 是元组态射。则 $f$ 已合并当且仅当 $L_f$ 已合并。 
+\end{proposition}
+\begin{proof} 设 $f:(s_1,\dots,s_m) \to (t_1,\dots,t_n)$ 是元组态射，并令
+\[L_f = (s_1,\dots,s_m):(d_1,\dots,d_m)\]
+为 $f$ 所编码的布局。 
+
+先设 $f$ 是已合并的。则 $\shape(L_f) = \domain(f)$ 中没有元素（entry）等于 $1$。设 $1 \leq i < m$。我们要证明 $s_id_i$ 不等于 $d_{i+1}$。若 $d_i = 0$，则 $\alpha(i) = *$，且
+\begin{align*}
+    s_id_i = d_{i+1} & \hspace{0.2in} \Leftrightarrow \hspace{0.2in} d_{i+1} = 0\\
+    & \hspace{0.2in} \Leftrightarrow \hspace{0.2in} \alpha(i+1) = *
+\end{align*}
+但由 $f$ 已合并的假设，有 $\alpha(i+1) \neq *$，因此 $s_id_i \neq d_{i+1}$。若 $d_i \neq 0$，则 $\alpha(i) \neq *$。若 $\alpha(i+1) = *$，则 $d_{i+1} = 0$，故 $s_id_i \neq d_{i+1}$。若 $\alpha(i+1) < \alpha(i)$，则 $d_i \geq d_{i+1}$，又因 $s_i \neq 1$，有 $s_id_i > d_{i+1}$。最后，若 $\alpha(i) < \alpha(i+1)$，则
+\begin{align*}
+s_id_i = s_i \cdot \left( \prod_{j< \alpha(i)} t_j\right) & = \prod_{j \leq \alpha(i)} t_j \\
+& < \prod_{j < \alpha(i+1)} t_j\\
+& = d_{i+1}.
+\end{align*}
+我们得到 $L_f$ 是已合并的。 
+
+再设布局 $L_f$ 是已合并的。则 $\domain(f) = \shape(L_f)$ 中没有元素等于 $1$。设 $1 \leq i < m$。若 $\alpha(i) = *$，则 $d_i = 0$，且由于 $L_f$ 已合并，必有 $d_{i+1} \neq s_id_i = 0$，因此 $\alpha(i+1) \neq *$。设 $\alpha(i) \neq *$ 且 $\alpha(i)<\alpha(i+1)$。由于 $L_f$ 已合并，有 $s_id_i \neq d_{i+1}$。但若记  
+\[
+s_i d_i = \prod_{j \leq \alpha(i)} t_j,
+\]
+与
+\[
+d_{i+1} = \prod_{j<\alpha(i+1)} t_j,
+\]
+则这蕴含 $\prod_{\alpha(i) < j < \alpha(i+1)}t_j \neq 1$。特别地，存在某个 $\alpha(i)<j<\alpha(i+1)$ 使得 $t_j >1$。我们得到 $f$ 是已合并的。 
+\end{proof}
+
+接下来，我们定义元组态射上的 $\coalesce(-)$ 运算。
+
+
+\begin{construction}\label{constructionofcoalesceofmorphisminC}
+    设 $f$ 是元组态射。我们如下定义一个态射 $\coalesce(f)$：
+    \begin{enumerate}
+    \item 首先，令 $g = \squeeze(f)$，并把 $g$ 所位于的映射记作 $\beta:\langle m \rangle_* \to \langle n \rangle_*$。 
+        \item 接着，我们在 $\langle m \rangle$ 上定义一个等价关系（equivalence relation）$\sim$：$i \sim i'$ 如果满足以下两条之一：
+        \begin{enumerate}
+            \item 对所有 $i \leq i'' \leq i'$ 有 $\beta(i'') = *$，或 
+            \item 对所有 $i \leq i'' \leq i'$ 有 $\beta(i'') = \beta(i) + (i'' - i)$。 
+        \end{enumerate}
+        商（quotient）$\langle m \rangle / \sim$ 按「若 $i_1 \leq i_2$ 则 $[i_1] \leq [i_2]$」定序，因此我们可以把这个商等同于 $\langle \bar{m} \rangle$，其中 $\bar{m}$ 是 $\langle m \rangle / \sim$ 的大小（size）。 
+        \item 接着，我们在 $\langle n \rangle$ 上定义等价关系 $\sim$：$j \sim j'$ 如果存在 $i \in \langle m \rangle$ 使得对所有 $j \leq j'' \leq j'$ 都有
+        \[\beta(i + (j''-j)) = \beta(i) + (j'' - j)\]
+        商 $\langle n \rangle / \sim$ 按「若 $j_1 \leq j_2$ 则 $[j_1] \leq [j_2]$」定序，因此我们可以把这个商等同于 $\langle \bar{n} \rangle$，其中 $\bar{n}$ 是 $\langle n \rangle / \sim$ 的大小。 
+        \item 接着，我们观察到映射 $\beta:\langle m \rangle_* \to \langle n \rangle_*$ 下降（descends to）为一个映射
+        \[
+        \bar{\beta}: \langle \bar{m} \rangle_* \to \langle \bar{n} \rangle_*
+        \]
+        它由 $\bar{\beta}([i]) = [\beta(i)]$ 给出。
+        \item $\coalesce(f)$ 的定义域 $\bar{S} = (\bar{s}_1,\dots,\bar{s}_{\bar{m}})$ 定义如下：若 $i \in \langle \bar{m} \rangle$ 对应于等价类（equivalence class）$I \in \langle m \rangle / \sim$，则令
+        \[
+        \bar{s}_i = \prod_{i' \in I} s_{i'}
+        \]
+        $\coalesce(f)$ 的陪域 $\bar{T} = (\bar{t}_1,\dots,\bar{t}_{\bar{n}})$ 定义如下：若 $j \in \langle \bar{n} \rangle$ 对应于等价类 $J \in \langle n \rangle / \sim$，则令
+        \[
+        \bar{t}_j = \prod_{j' \in J} t_{j'}
+        \]
+        然后我们把 \[\coalesce(f):\bar{S} \to \bar{T}\] 定义为位于 $\bar{\beta}$ 之上的元组态射。 
+    \end{enumerate}
+\end{construction}
+\color{black}
+
+\begin{example}
+    下面给出一个元组态射 $f$ 及已合并态射 $\coalesce(f)$ 的例子。
+    \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+    7 \ar[rr,mapsto] & & 7 & & & & & & \\
+    5 & & 2 & & & & & & \\
+    5 & & 3 & & & & & & \\
+    3 \ar[urr,mapsto] & & 3 & & & & & & 7\\
+    3 \ar[urr,mapsto] & & 2 & & & & 7 \ar[urr,mapsto] & & 2\\
+    2 \ar[rr,mapsto] & & 2 & & & & 25 & & 9\\
+    2 \ar[rr,mapsto] & & 2 & & \rightsquigarrow  & & 9 \ar[urr,mapsto] & & 2\\
+    2 \ar[rr,mapsto] & & 2 & & & & 8 \ar[rr,mapsto] & & 8\\
+    & f &  & & & & & \mathclap{\coalesce(f)} &\\
+    \end{tikzcd} \]
+\end{example}
+
+\begin{example} 我们可以把例 \ref{squeezeexample} 中的态射 $f$ 合并如下
+\[ \begin{tikzcd}[row sep = 1, column sep = 8]
+ & & 256 & & & & & & \\
+256 \ar[rru ,mapsto] & & 128   & & & & & & 256 \\
+128 \ar[rru,mapsto] & & 1& & & & & & 128 & & & & & & 32768 \\
+1 & & 32 & & & & 256 \ar[uurr,mapsto] & & 32 & & & & & & 32\\
+8 \ar[drr,mapsto] & & 32 & & \rightsquigarrow & & 128 \ar[uurr,mapsto]  & & 32 & & \rightsquigarrow & & 32768 \ar[uurr,mapsto] & & 32\\
+1 & & 8 & & & &  8 \ar[rr,mapsto] & & 8 & & & & 8 \ar[rr,mapsto] & & 8\\
+& f & & & & & & \mathclap{\squeeze(f)} & & & & & & \mathclap{\coalesce(f)} & 
+\end{tikzcd} \]
+\end{example}
+
+
+
+\begin{proposition}\label{coalesceinCproposition}
+    若 $f$ 是元组态射，则
+    \begin{enumerate}
+    \item $\coalesce(f)$ 是已合并的，且 
+    \item $ L_{\coalesce(f)} = \coalesce(L_f).$
+    \end{enumerate}
+\end{proposition}
+
+\begin{proof}
+首先，我们论证 $\coalesce(f)$ 是已合并的。这由我们的构造直接可得：施用 $\squeeze$ 消除了所有等于 $1$ 的模式，而在我们的构造中取商则归并了所有满足 $\alpha(i+1) = \alpha(i)+1$ 的相邻模式。 
+
+    接下来，我们证明 $L_{\coalesce(f)} = \coalesce(L_f)$。由命题 \ref{coalesceproposition} 与命题 \ref{coalescedmorphismcoalescedlayoutproposition}，只需证明 $\Phi_{\coalesce(f)} = \Phi_f$。对 $f$ 施用 $\squeeze(-)$ 当然不会影响所关联的布局函数（layout function），因此我们只需论证：在我们的构造中取商不会改变所关联布局的布局函数。这来自如下事实：我们的商可以分步构造，每一步合并满足 $\alpha(i) = * = \alpha(i+1)$ 或 $\alpha(i+1) = \alpha(i) + 1$ 的相邻模式。这两种情形分别对应于把形如 $s_i,s_{i+1}:0,0$ 的相邻模式替换为 $s_is_{i+1}:0$，以及把 $s_i,s_{i+1}:d_i,s_id_i$ 替换为 $s_is_{i+1}:d_i$。这两种操作都不改变布局的布局函数，于是我们得到 $\Phi_{L_{\coalesce(f)}} = \Phi_{\coalesce(L_f)}$，如所欲证。
+\end{proof}
+
+
+\subsubsection{拼接}
+\label{subsubsection.concatenate}
+
+接下来，我们将定义元组态射上的拼接（concatenate）运算。该运算可以作用于满足某个「不交性」（disjointness）条件的元组态射，我们将在下面具体说明。
+
+\begin{definition}\label{definitionofdisjointimagesinFin*}
+    设 $\alpha:\langle m \rangle_* \to \langle n \rangle_*$ 与 $\beta:\langle p \rangle_* \to \langle n \rangle_*$ 是 $\catstyle{Fin}_*$ 中陪域相同的态射。我们称 $\alpha$ 与 $\beta$ {\it 像不交}（disjoint images），如果
+    \[
+    \Image(\alpha) \cap \Image(\beta) = \{*\}.
+    \]
+\end{definition}
+
+\begin{construction}
+    若 $\alpha:\langle m \rangle_* \to \langle n \rangle_*$ 与 $\beta: \langle p \rangle_* \to \langle n \rangle_*$ 像不交，则我们有一个良定义（well-defined）的态射
+    \[
+    \alpha \star \beta: \langle m + p \rangle_* \to \langle n\rangle_*
+    \]
+    它由
+    \[
+    (\alpha \star \beta)(i) = \begin{cases}
+    * & i = *\\
+        \alpha(i) & 1 \leq i \leq m\\
+        \beta(i-m) & m+1 \leq i \leq m+p.
+    \end{cases}
+    \]
+    给出。该运算满足结合律，因此对 $\catstyle{Fin}_*$ 中任意一组两两像不交的态射 $\alpha_1,\dots,\alpha_k$，可以考虑 $\alpha_1 \star \cdots \star \alpha_k$。
+\end{construction}
+
+\begin{remark}
+    若 $\alpha$ 与 $\beta$ 是可处理的基点映射且 $\alpha$ 与 $\beta$ 像不交，则 $\alpha \star \beta$ 是可处理的。 
+\end{remark}
+
+\begin{definition}\label{definitionofdisjointimagesinC} 设
+\[
+f:S \to T
+\]
+与
+\[g:U \to T\]
+是分别位于 $\alpha$ 与 $\beta$ 之上的元组态射。我们称 $f$ 与 $g$ {\it 像不交}，如果态射 $\alpha$ 与 $\beta$ 像不交。 
+\end{definition}
+
+\begin{example}\label{exampleofdisjointimages}
+    考虑下面展示的元组态射 $f$、$g$ 与 $h$。 
+    \[ \begin{tikzcd}[row sep = 1, column sep = 8]
+    & & 64 & & & & & 64 & & & & & 64\\
+     & & 64 & & & 32 & & 64 & & & & & 64\\
+    64 \ar[rruu,mapsto] & & 64 & & &  3 \ar[rrd, mapsto] & & 64 & & & 64 \ar[urr,mapsto] & & 64\\
+    64 \ar[rru,mapsto]& & 3 & & &  64 \ar[rruu,mapsto] & & 3 & & & 64 \ar[urr,mapsto] & & 3\\
+    & f & & & & & g & & & & & h & \\
+    \end{tikzcd} \]
+    则 $f$ 与 $g$ 像不交，而 $h$ 与 $g$ 并非像不交。
+\end{example}
+
+
+
+\begin{construction}\label{constructionofflatconcatenation}
+    设
+    \[f:S \to T \text{, and }g:U \to T\]
+    是分别位于 $\alpha$ 与 $\beta$ 之上的元组态射，且 $f$ 与 $g$ 像不交。我们把 $f$ 与 $g$ 的{\it 拼接}定义为位于 $\alpha \star \beta$ 之上的态射
+    \[
+    f \star g: S \star U \to T
+    \]
+    该运算满足结合律，因此对任意有限组两两像不交的态射 $f_i$，可以考虑 $f_1\cdots f_k$。 
+\end{construction}
+
+\begin{example}\label{exampleofconcatenation}
+    若 $f$ 与 $g$ 是例 \ref{exampleofdisjointimages} 中 $\catstyle{Tuple}$ 的态射，则 $f$ 与 $g$ 的拼接是下面展示的态射。 
+    \[ \begin{tikzcd} [row sep = 1, column sep = 24]
+    32 & & \\
+    3 \ar[dddrr,mapsto]& & 64\\
+    64 \ar[rr,mapsto] & & 64\\
+    64 \ar[uurr,mapsto] & & 64 \\
+    64 \ar[urr,mapsto] & & 3 \\
+    \end{tikzcd} 
+    \]
+    \[ f \star g \]
+\end{example}
+
+\begin{example}
+设 $f:(s_1,\dots,s_m) \to (t_1,\dots,t_n)$ 是元组态射，且对任意 $1 \leq i \leq m$，令 
+\[f_i:(s_i) \to (t_1,\dots,t_n)\]
+表示 $f$ 的第 $i$ 个元素，如例 \ref{definitionofentriesoftuplemorphism} 所述。于是我们可以把 
+\[
+f = f_1 \star \cdots \star f_m
+\]
+写成它的诸元素的拼接。
+\end{example}
+
+\begin{lemma}\label{compositiondistributesoverconcatenation}
+    设 $f_1:S_1 \to T$ 与 $f_2: S_2 \to T$ 是像不交的元组态射。若 $g:T \to U$ 是任意元组态射，则
+    \[
+    g \circ (f_1 \star f_2) = (g \circ f_1) \star (g \circ f_2).
+    \]
+\end{lemma}
+
+\begin{proof}
+    设 $f_1$、$f_2$ 与 $g$ 分别位于 $\alpha_1:\langle m_1 \rangle_* \to \langle n \rangle$、$\alpha_2:\langle m_2 \rangle_* \to \langle n \rangle$ 与 $\beta: \langle n \rangle \to \langle p \rangle$ 之上。所讨论的两个映射有相同的定义域与相同的陪域，因此只需证明
+    \[
+    \beta \circ (\alpha_1 \star \alpha_2) = (\beta \circ \alpha_1) \star (\beta \circ \alpha_2). 
+    \]
+    我们计算 
+    \begin{align*}
+        (\beta \circ (\alpha_1 \star \alpha_2))(i) & = \beta((\alpha_1 \star \alpha_2)(i))\\
+        & = \begin{cases} 
+        \beta(*) & i = *\\
+        \beta(\alpha_1(i)) & 1 \leq i \leq m_1 \\
+        \beta (\alpha_2(i-m_1)) & m_1 + 1 \leq i \leq m_1 + m_2
+        \end{cases}\\
+        & = \begin{cases} 
+        * & i = *\\
+        (\beta\circ \alpha_1)(i) & 1 \leq i \leq m_1 \\
+        (\beta \circ \alpha_2)(i-m_1) & m_1 + 1 \leq i \leq m_1 + m_2
+        \end{cases}\\
+        & = ((\beta \circ \alpha_1)\star (\beta \circ \alpha_2))(i).
+    \end{align*}
+\end{proof}
+
+\begin{proposition}\label{concatenateinCproposition}
+    设 $f_1,\dots,f_k$ 是 $\catstyle{Tuple}$ 中陪域相同且两两像不交的态射。则布局 $L_{f_1},\dots,L_{f_k}$ 满足 
+    \[
+    L_{f_1 \star \cdots \star  f_k} = 
+    L_{f_1} \star \cdots \star  L_{f_k}.
+    \]
+\end{proposition}
+\begin{proof}
+    首先，我们证明 $k = 2$ 的情形。设
+    \[f = (s_1,\dots,s_m) \to (t_1,\dots,t_n)\text{, and } g:(u_1,\dots,u_p) \to (t_1,\dots,t_n)\]
+    像不交，并记
+    \[L_f = (s_1,\dots,s_m):(d_1,\dots,d_m)\text{, and }L_g = (u_1,\dots, u_p) :(d_1',\dots,d_{p}').\]
+    则布局 $L_{f \star g}$ 由
+    \[
+    L_{f \star g} = (s_1,\dots,s_m,u_1,\dots,u_p): (e_1,\dots,e_{m+m'})
+    \] 
+    给出，其中
+    \begin{align*}
+    e_i & = \prod_{j< (\alpha \star \beta)(i)} t_j \\
+    & = \begin{cases}
+        \displaystyle\prod_{j<\alpha(i)}t_j & 1 \leq i \leq m\\
+        \displaystyle\prod_{j<\beta(i-m)} t_j & m+1 \leq i \leq m+m'.
+    \end{cases}\\
+    & = \begin{cases}
+        d_i & 1 \leq i \leq m\\
+        d_{i-m}' & m+1 \leq i \leq m+m'.
+    \end{cases}
+    \end{align*}
+    这就完成了 $k = 2$ 情形的证明。一般情形可由元组态射拼接的结合律与扁平布局拼接的结合律得到。
+\end{proof}
+
+\subsubsection{补}
+\label{subsubsection.complement}
+
+我们先定义元组态射的补的概念。
+
+\begin{definition}\label{definitionofcomplementarymorphismsinC} 设 $f:S \to T$ 与 $g:U \to T$ 是元组态射。我们称 $g$ 是 $f$ 的一个{\it 补}，如果 
+\begin{enumerate} 
+\item $f$ 与 $g$ 像不交，且 
+\item 拼接
+\[ \begin{tikzcd} f \star g:S \star U \ar[r,"\cong"] &  T \end{tikzcd} \] 是一个同构（isomorphism）。
+\end{enumerate}
+\end{definition}
+
+\begin{example}
+    若 $f$ 与 $g$ 是下面展示的态射
+    \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+     & & 16 & & & & & & 16 \\
+     & & 32 & & & &  & & 32\\ 
+    32 \ar[rru,mapsto] & & 32 & & & & 10 \ar[rrd, bend left = 20, mapsto] & & 32\\
+    32 \ar[rru,mapsto] & & 10 & & & & 16 \ar[rruuu, mapsto]  & & 10 \\
+     & f & & & & & & g & 
+    \end{tikzcd} \]
+    则 $g$ 是 $f$ 的一个补。
+\end{example}
+
+\begin{example}
+    若 $f$ 是下面展示的态射
+    \[\begin{tikzcd}[row sep = 1, column sep = 8]
+    256 \ar[rrdd,mapsto] & & \\
+    128 & & 128\\ 
+    128 \ar[rru,bend left = 20,mapsto] & & 256 \\
+    & f & \\
+    \end{tikzcd} \]
+    则 $f$ 不容许（admit）有补。 
+\end{example}
+
+\noindent 接下来，我们证明互补的元组态射产生互补的扁平布局。
+
+\begin{proposition}\label{complementofmorphisminCproposition}
+    若 $f:S \to T$ 是元组态射且 $g$ 是 $f$ 的补，则 $L_{g}$ 是 $L_f$ 的一个 $\size(T)$-补。
+\end{proposition}
+
+\begin{proof}
+    记 $S = \domain(f)$、$U = \domain(g)$、$T = \codomain(f) = \codomain(g)$。首先，我们注意到
+    \begin{align*}
+    \size(L_f) \cdot \size(L_{g}) & = \size(L_f\star L_{g})\\
+    & = \size(L_{f \star g})\\
+    & = \size(S \star U)\\
+    & = \size(T).
+    \end{align*}
+    其次，我们注意到 $f \star g$ 是同构，因此
+    \[
+    |f \star g| = \Phi_{L_{f \star g}}^{\size(T)} 
+    \]
+    也是同构，这里我们使用了引理 \ref{layoutfunctionlemma} 中对 $\Phi^{\size(T)}_{L_{f \star g}}$ 的等同。
+\end{proof}
+
+\begin{proposition}\label{coalescedlayoutoftuplemorphismcomplement}
+    若 $f$ 是单射（injective）元组态射，则
+    \[
+    \coalesce^\flat(L_{f^c}) = \comp^\flat(L_f,\size(T)).
+    \]
+\end{proposition}
+
+\begin{proof}
+    由命题 \ref{complementofmorphisminCproposition}，我们知道 $L_{f^c}$ 是 $L_f$ 的一个 $\size(T)$-补。由于 $f^c$ 已排序，$L_{f^c}$ 亦然，于是由命题 \ref{characterizationofflatNcomplement} 可得
+    \[
+    \coalesce^\flat(L_{f^c}) = \comp^\flat(L_f,\size(T)),
+    \]
+    因为这两个布局都是 $L_f$ 的大小相同、扁平、已排序、已合并的补。 
+\end{proof}
+
+\begin{proposition}
+    若 $f:(s_1,\dots,s_m) \to (t_1,\dots,t_n)$ 是标准形式（standard form）的单射元组态射，则
+    \[
+    L_{f^c} = \comp^\flat(L_f).
+    \]
+\end{proposition}
+
+\begin{proof}
+    记
+    \[
+    L_f = (s_1,\dots,s_m):(d_1,\dots,d_m)
+    \]
+    为 $f$ 所编码的布局。由命题 \ref{complementofmorphisminCproposition}，我们知道 $L_{f^c}$ 是 $L_f$ 的一个 $\size(T)$-补，其中
+    \begin{align*}
+    \size(T) = t_1 \cdots t_n & = (t_1 \cdots t_{n-1})t_n\\
+    & = d_m s_m.
+    \end{align*}
+    按构造，$f^c$ 已排序，因此 $L_{f^c}$ 亦然。此外，由于 $f$ 具有标准形式，可得 $f^c$ 是已合并的。由命题 \ref{characterizationofflatcomplement}，我们推出
+        \[
+    L_{f^c} = \comp^\flat(L_f).
+    \]
+\end{proof}
+
+
+\begin{definition}\label{definitionofcomplementabletuplemorphism}
+    设 $f$ 是位于 $\alpha:\langle m \rangle_* \to \langle n \rangle_*$ 之上的元组态射。我们称 $f$ 是{\it 可求补}（complementable）的，如果 $\alpha$ 是单射。
+\end{definition}
+
+\begin{construction}\label{complementofmorphisminC}
+    设 $f:(s_1,\dots,s_m) \to (t_1,\dots,t_n)$ 是可求补的元组态射。令 $j_1 < \cdots < j_{n-m}$ 表示 $\langle n \rangle$ 中不在 $\alpha$ 的像（image）中的那些指标。我们把 $f$ 的{\it 补}定义为元组态射
+    \[
+    f^c :(t_{j_1},\dots,t_{j_k}) \to (t_1,\dots,t_n)
+    \]
+    它位于映射 $\complement(\alpha): \langle n-m \rangle_* \to \langle n \rangle_*$ 之上，该映射由 $k \mapsto j_k$ 给出。由构造可以观察到，$f^c$ 是定义 \ref{definitionofcomplementarymorphismsinC} 意义下 $f$ 的补
+\end{construction}
+
+\begin{example}
+    下面给出一个态射 $f$ 及其补 $ f^c$ 的例子。 
+        \[ \begin{tikzcd} [row sep = 1, column sep = 16]
+     & & 512 & & & & & & 512 \\
+     & & 512 & & & &  & & 512\\ 
+    512 \ar[rru,mapsto] & & 256 & & & & 512 \ar[rruu, mapsto] & & 256\\
+    256 \ar[rru,mapsto] & & 10 & & & & 10\ar[rr, mapsto]  & & 10 \\
+     & f & & & & & & f^c & 
+    \end{tikzcd} \]
+\end{example}
+
+\begin{proposition}
+    若 $f$ 是元组态射且 $g$ 是 $f$ 的补，则
+    \[
+    \sort(g) = f^c.
+    \]
+\end{proposition}
+\begin{proof}
+    设 $f$ 位于 $\alpha:\langle m \rangle_* \to \langle n \rangle_*$ 之上，$\sort(g)$ 位于 $\beta: \langle n - m \rangle_* \to \langle n \rangle_*$ 之上，$f^c$ 位于 $\alpha^c:\langle n - m \rangle_* \to \langle n \rangle_*$ 之上。则 $\beta$ 与 $\alpha^c$ 是有相同像的递增映射（increasing map），即
+    \[\Image(\beta) = \langle n \rangle \setminus \Image(\alpha) = \Image(\alpha^c),\]
+    因此 $\beta = \alpha^c$，从而 $\sort(g) = f^c$。 
+\end{proof}
+
+\begin{proposition}
+    设 $f$ 是元组态射。则 $f$ 容许有补当且仅当 $f$ 是定义 \ref{definitionofcomplementabletuplemorphism} 意义下可求补的。
+\end{proposition}
+
+\begin{proof}
+    若 $f$ 位于一个非单射的映射 $\alpha$ 之上，则对任意使 $f$ 与 $f^*$ 像不交的态射 $f^*$，态射 $f \star f^*$ 位于一个非单射的映射之上，因此 $f \star f^*$ 不是同构。反之，若 $f$ 位于一个单射映射之上，则构造 \ref{complementofmorphisminC} 中的态射 $f^c$ 是 $f$ 的补。
+\end{proof}
+
+\begin{proposition}
+    若 $f$ 是可求补的元组态射，则
+    \[
+    \sort(f) = (f^c)^c.
+    \]
+\end{proposition}
+
+\begin{proof}
+    这两个映射都是递增的、单射的，且有相同的像，因此它们相等。
+\end{proof}
+
+ 
+
+\subsubsection{扁平切分}
+\label{subsubsection.flatdivision}
+
+本节中，我们在元组态射上定义一种切分（division）运算。 
+
+\begin{definition}
+    若 $f$ 与 $g$ 是元组态射，我们称 $g$ {\it 整除} $f$，如果 $g$ 与 $f$ 可复合。换言之，
+    \[
+    \codomain(g) = \domain(f).
+    \]
+\end{definition}
+
+% In order to do so, we first need to define the notion of {\it divisibility} of tuple morphisms. Recall from section \ref{tuplessection} that a tuple $S'$ {\it divides} a tuple $S$ if there exists a tuple $S''$ with 
+% \[
+% S' \star S'' = S.
+% \]
+% For example, if $S' = (2,2)$ and $S = (2,2,2,3,16)$, then $S'$ divides $S$.
+
+% \begin{definition}
+%     Suppose 
+%     \[
+%     f:S \to T
+%     \]
+%     and
+%     \[ 
+%     g:U \to S'
+%     \]
+%     are tuple morphisms. We say $g$ {\it divides} $f$ if 
+%     \begin{enumerate}
+%         \item $S'$ divides $S$, and
+%         \item $g$ is injective.
+%     \end{enumerate}
+% \end{definition}
+
+% \begin{remark}
+%     We often have $S' = S$, so $g$ and $f$ are composable, but it is important to use this more flexible definition so that divisibility of tuple morphisms is a transitive relation. 
+% \end{remark}
+
+% \begin{example}\label{divisibletuplemorphismsexample1}
+%     If $f$ and $g$ are the morphisms shown below, then $g$ divides $f$.
+%     \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+%      & & 128& & & 128 \ar[rr,mapsto] & & 128\\
+%     128 \ar[rru,mapsto] & & 2 & & &  2 \ar[rr,mapsto] & & 2\\
+%     & g & & & & & f & 
+%     \end{tikzcd} \]
+% \end{example}
+
+% \begin{example}\label{divisibletuplemorphismsexample2}
+%     If $f$ and $g$ are the morphisms shown below, then $g$ divides $f$.
+%     \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+%      & & 5 & & & 5 \ar[rr,mapsto] & & 5 \\
+%      & & 5 & & & 5 \ar[rr,mapsto] & & 5\\
+%     5 \ar[uurr,mapsto] & & 2 & & & 2 \ar[rr,mapsto] & & 2\\
+%     5 \ar[uurr,mapsto] & & 2 & & & 2 \ar[rr,mapsto] & & 2\\
+%     & g & & & & & f & 
+%     \end{tikzcd} \]
+% \end{example}
+
+% \begin{example}\label{divisibletuplemorphismsexample3}
+%     If $f$ and $g$ are the morphisms shown below, then $g$ divides $f$.
+%     \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+%     & & & 512 & & 512 \ar[drr,mapsto] & & \\
+%      & & & 2 & & 2 & & 512 \\
+%      & & 8 &  & 8  & & 4\\
+%     8 \ar[urr,mapsto] & & 2 &  & 2 \ar[drr,mapsto]  & & 8\\
+%     8 \ar[rr,mapsto] & & 8 &  & 8 \ar[urr,mapsto] & &  2\\
+%     & g & & & & f & 
+%     \end{tikzcd} \]
+% \end{example}
+
+
+% \begin{definition}
+%     Suppose 
+%     \[
+%     f:S \to T
+%     \]
+%     and 
+%     \[
+%     g:U \to S'
+%     \]
+%     are tuple morphisms, and that $g$ divides $f$. Let $\bar{g}:U \to S$ denote the composite of $g$ with the canonical map $S' \rightarrowtail S$. Let 
+%     \[
+%     \bar{g}^c:U^* \to S
+%     \]
+%     denote the complement of $\bar{g}$. We define the {\it flat division}
+%     \[
+%     f/g:U \star U^* \to T
+%     \]
+%     of $f$ by $g$ to be the tuple morphism 
+%     \[
+%     f /g = f \circ (\bar{g} \star \bar{g}^c).
+%     \]
+% \end{definition}
+
+\begin{definition}
+    设 $g: S \to T$ 与 $f:T \to U$ 是元组态射。$f$ 除以 $g$ 的{\it 扁平切分}是元组态射 
+    \[
+    f \oslash^\flat g = f \circ (g \star g^c).
+    \]
+\end{definition}
+
+
+\begin{example}
+下面给出元组态射 $f$ 与 $g$ 及其扁平商（flat quotient）$f \oslash^\flat g$ 的一个例子。
+    \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+     & & 128& & & 128 \ar[rr,mapsto] & & 128 & & & 2 \ar[drr,mapsto] & & 128\\
+    128 \ar[rru,mapsto] & & 2 & & &  2 \ar[rr,mapsto] & & 2 & & & 128 \ar[urr,mapsto] & & 2\\
+    & g & & & & & f & & & & & f \oslash^\flat g & 
+    \end{tikzcd} \]
+\end{example}
+
+\begin{example}
+    下面给出元组态射 $f$ 与 $g$ 及其扁平商 $f \oslash^\flat g$ 的一个例子。
+    \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+     & &  5 \ar[rr,mapsto] & & 5 & & & 2 \ar[ddrr,mapsto] & & 5\\
+     & &  5 \ar[rr,mapsto] & & 5 & & & 2 \ar[ddrr,mapsto] & & 5\\
+    5 \ar[uurr,mapsto] & &  2 \ar[rr,mapsto] & & 2 & & & 5 \ar[uurr,mapsto] & & 2\\
+    5 \ar[uurr,mapsto] & &  2 \ar[rr,mapsto] & & 2 & & & 5 \ar[uurr,mapsto] & & 2\\
+    & g & & f & & & & & f\oslash^\flat g & 
+    \end{tikzcd} \]
+\end{example}
+
+\begin{example}
+   下面给出元组态射 $f$ 与 $g$ 及其扁平商 $f \oslash^\flat g$ 的一个例子。
+    \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+    & & 512 \ar[drr,mapsto] & & & & & 512 \ar[drr,mapsto] & & \\
+     & & 2 & & 512 & & & 2 & & 512\\
+     & & 8  & & 4 & & & 2 \ar[ddrr,mapsto] & & 4\\
+    8 \ar[urr,mapsto] & & 2  \ar[drr,mapsto]  & & 8 & & & 8 & & 8\\
+    8 \ar[rr,mapsto] & & 8 \ar[urr,mapsto] & &  2 & & & 8 \ar[urr,mapsto]  & & 2\\
+    & g & & f & & & &  & f \oslash^\flat g & 
+    \end{tikzcd} \]
+\end{example}
+
+
+% \begin{proposition}
+%     Suppose $f$, $g$, and $h$ are tuple morphisms such that $h$ divides $g$ and $g$ divides $f$. Then $g / h$ divides $f$, $h$ divides $f/g$, and 
+%     \[f/(g/h) = (f/g)/h.\]
+% \end{proposition}
+% \begin{proof}
+%     First, we will argue that $g/h$ divides $f$. We have 
+%     \[g/h = g \circ (\bar{h} \star \bar{h}^c),\]
+%     which is the composite of injective functions, so $g/h$ is injective. Moreover, the codomain of $g/h$ is the codomain of $g$, which by assumption, divides the domain of $f$. We conclude that $g/h$ divides $f$.
+
+%     Next, we will argue that $h$ divides $f/g$. By assumption, we have that $h$ is injective. Moreover, the codomain of $h$ divides the domain of $g$, which divides the domain of $\bar{g} \star \bar{g}^c$. This is the same as the domain of $f/g$, so be the transitivity of tuple divisibility, it follows that the codomain of $h$ divides the domain of $f/g$. We conclude that $h$ divides $g/f$. 
+
+%     Finally, we will argue that $f/(g/h) = (f/g)/h$. In order to do so, let's fix some notation. Let's write 
+%     \[
+%     h: S \to T',\hspace{ 0.1in} g:T \to U',\text{ and } f:U \to V.
+%     \]
+%     with $U = U'\star U''$ and $T = T' \star T''$. Let's also write
+%     \[
+%     \bar{h}:S \to T \text{, and } \bar{g}:T \to U
+%     \]
+%     for the relevant codomain expansions of $h$ and $g$. Then 
+%     \begin{align*}
+%         (f/g)/h & = (f/g) \circ (\bar{h} \circ \bar{h}^c)
+%     \end{align*}
+%     INCOMPLETE
+% \end{proof}
+
+
+\begin{proposition}
+    若 $f$ 与 $g$ 是非退化（non-degenerate）的可复合元组态射，则
+    \[
+    \coalesce^\flat(L_{f \oslash^\flat g}) = \coalesce^\flat(L_f \oslash^\flat L_g)
+    \]
+\end{proposition}
+
+\begin{proof}
+由命题 \ref{coalescedlayoutoftuplemorphismcomplement}，我们有
+\[
+\coalesce^\flat(L_{g^c}) = \comp^\flat(L_g,\size(L_f)),
+\]
+我们计算
+    \begin{align*}
+    \coalesce^\flat(L_f \oslash^\flat L_g) & = \coalesce^\flat(L_f \circ \left(L_g \star \comp(L_g,\size(L_f))\right))\\
+    & = \coalesce(L_f \circ \left( L_{g} \star L_{g^c} \right))\\
+    & = \coalesce(L_f \circ L_{g\star g^c})\\
+    & = \coalesce(L_{f \circ (g \star g^c)})\\
+    & = \coalesce(L_{f \oslash^\flat g}).
+    \end{align*}
+\end{proof}
+
+\subsubsection{扁平乘积}
+\label{subsubsection.flatproduct}
+
+本节中，我们在元组态射上定义一种乘积运算。 
+\begin{definition}
+设 $f$ 与 $g$ 是元组态射。我们称 $f$ 与 $g$ 是{\it 乘积可许}（product admissible）的，如果 $\codomain(g) = \domain(f^c)$。若 $f$ 与 $g$ 乘积可许，则我们把 $f$ 与 $g$ 的{\it 扁平乘积}定义为  
+    \[
+    f \otimes^\flat g = f \star (f^c \circ g).
+    \]
+\end{definition}
+
+
+
+\begin{example}
+    若 $f$ 与 $g$ 是下面展示的元组态射
+    \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+      & & & & & & & 16\\
+      & & & & & & & 16\\
+     16 \ar[rr,mapsto] & & 16 & & & 8 \ar[rr,mapsto] & & 8\\
+    16 \ar[rr,mapsto] & & 16 & & & 8 \ar[rr,mapsto] & & 8\\
+    & g & & & & & f & \\
+    \end{tikzcd} \]
+    则
+    $f$ 与 $g$ 乘积可许，且 $f \otimes^\flat g$ 是下面展示的元组态射。
+    \[ \begin{tikzcd}[row sep = 1, column sep = 8]
+    16 \ar[rr,mapsto] & & 16\\
+    16 \ar[rr,mapsto] & & 16 \\
+    8 \ar[rr,mapsto] & & 8\\
+    8 \ar[rr,mapsto] & & 8 \\
+    & f \otimes^\flat g & 
+    \end{tikzcd} \]
+\end{example}
+
+\begin{example}
+    若 $f$ 与 $g$ 是下面展示的元组态射
+    \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+      & & & & & & & 128\\
+      & & & & & & & 128\\
+      & & 32 & & & 128 \ar[uurr,mapsto] & & 32\\
+    32 \ar[urr,mapsto] & & 32 & & & 128 \ar[uurr,mapsto] & & 32\\
+    & g & & & & & f & \\
+    \end{tikzcd} \]
+    则
+    $f$ 与 $g$ 乘积可许，且 $f \otimes^\flat g$ 是下面展示的元组态射。
+    \[ \begin{tikzcd}[row sep = 1, column sep = 8]
+     & & 128\\
+    32 \ar[drr,mapsto] & & 128 \\
+    128 \ar[uurr,mapsto] & & 32\\
+    128 \ar[uurr,mapsto] & & 32 \\
+    & f \otimes^\flat g & 
+    \end{tikzcd} \]
+\end{example}
+
+
+\begin{lemma}\label{complementdistributesoverproducts}
+    若 $f$ 与 $g$ 乘积可许且 $g$ 是单射，则 $f \otimes^\flat g$ 是单射，且
+    \[
+    (f \otimes^\flat g)^c = f^c \circ g^c.
+    \]
+\end{lemma}
+\begin{proof}
+    元组态射 $(f \otimes^\flat g)^c$ 与 $f^c \circ g^c$ 都是单射、递增，且有相同的陪域，因此只需证明它们有相同的像。$(f \otimes^\flat g)^c = (f \star (f^c \circ g) )^c$ 的像由那些既不在 $f$ 的像中、也不在 $f^c \circ g$ 的像中的元素组成。$f^c$ 的像由那些不在 $f$ 的像中的元素组成，于是复合 $f^c \circ g^c$ 的像由那些既不在 $f$ 的像中、也不在 $f^c \circ g$ 的像中的元素组成。 
+\end{proof}
+
+\begin{proposition}
+    设 $f$ 与 $g$ 乘积可许，且 $g$ 与 $h$ 乘积可许。则
+    \begin{enumerate}
+        \item $f \otimes^\flat g$ 与 $h$ 乘积可许，
+        \item $f$ 与 $g \otimes^\flat h$ 乘积可许，且
+        \item $(f \otimes^\flat g) \otimes^\flat h = f \otimes^\flat (g \otimes^\flat h)$。
+    \end{enumerate}
+\end{proposition}
+
+\begin{proof}
+    利用引理 \ref{compositiondistributesoverconcatenation} 与引理 \ref{complementdistributesoverproducts}，我们计算 
+    \begin{align*}
+    f \otimes^\flat (g \otimes^\flat h) & = f \star (f^c \circ (g \otimes^\flat h))\\
+    & = f \star (f^c \circ (g \star (g^c \circ h) ) )\\
+    & = f \star ( (f^c \circ g) \star (f^c \circ (g^c \circ h) ) ) \\
+    & = f \star ( (f^c \circ g) \star ((f^c \circ g^c) \circ h ) ) \\
+    & = f \star (f^c \circ g) \star ( (f \otimes^\flat g)^c \circ h) \\
+    & = (f \otimes^\flat g) \star ( (f \otimes^\flat g)^c \circ h) \\
+    & = (f \otimes^\flat g) \otimes^\flat h.
+    \end{align*} 
+\end{proof}
+
+
+
+\begin{proposition}
+    设 $f$ 与 $g$ 是非退化的元组态射，且 $f$ 与 $g$ 乘积可许。则
+    \[
+    L_{f \otimes^\flat g} = L_f \otimes^\flat L_g.
+    \]
+\end{proposition}
+
+\begin{proof} 设 $f:S \to T$ 与 $g:U \to V$ 乘积可许，并令
+    \[
+    L_f^* = \comp^\flat(L_f,\size(L_f)\cdot \cosize(L_g)).
+    \]
+    由于 $f$ 是单射且 $g$ 的陪域是 $f^c$ 的定义域，可得
+    \[\size(L_f) \cdot \cosize(L_g) \leq \size(S) \cdot \size(V) = \size(T).\]
+    利用这一事实，以及事实
+    \[\Phi_{\comp(L_f,\size(T))} = \Phi_{L_{f^c}},\]
+    我们有
+    \begin{align*}
+    L_f^* \circ L_g & = \comp(L_f,\size(T)) \circ L_g\\
+    & = L_{f^c} \circ L_g.
+    \end{align*}
+    利用这一事实，我们计算 
+    \begin{align*}
+        L_f \otimes^\flat L_g & = L_f \star (L_f^* \circ L_g)\\
+        & = L_f \star (L_{f^c} \circ L_g)\\
+        & = L_f \star L_{f^c \circ g}\\
+        & = L_{f \star (f^c \circ g)}\\
+        & = L_{f \otimes^\flat g}
+    \end{align*}
+\end{proof}
+
+
+\newpage 
+
+
+
+
+
+
+
+
+\newpage

@@ -70,7 +70,112 @@ $d$ 维向量（$d$ 为偶数）不整体做一个 $d$ 维旋转，而是切成 
 \end{equation}
 $R^{d}_{\Theta}$ 是 $d/2$ 个 $2\times 2$ 旋转块排布在主对角线上的\textbf{分块对角}矩阵；位置 $m$ 的变换是 $R^{d}_{\Theta}(m)$，即每个块的角度乘 $m$。频率序列 $\theta_i = 10000^{-2i/d}$ 是等比数列：$i = 0$ 时 $\theta_0 = 1$（波长 $2\pi$，最高频，分辨局部），$i = d/2 - 1$ 时 $\theta_i \approx 10^{-4}$（波长 $\approx 2\pi \times 10^4$，最低频，分辨远距）。基 10000 与第 \ref{ch:15} 章 attention 的 $\mathrm{softmax}$ 温度一样是经验超参，控制「波长谱」的覆盖范围。
 
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize]
+  \node[anchor=south] at (2.48,0.4) {$R^{d}_{\Theta}\in\mathbb{R}^{d\times d}$（$d=8$ 示意）};
+  \node[anchor=south] at (8.1,0.4) {第一块展开：$2\times2$ 旋转};
+  \fill[gray!8] (0,0) rectangle (4.96,-4.96);
+  \fill[gray!85] (0,0) rectangle (1.24,-1.24);
+  \fill[gray!72] (1.24,-1.24) rectangle (2.48,-2.48);
+  \fill[gray!60] (2.48,-2.48) rectangle (3.72,-3.72);
+  \fill[gray!48] (3.72,-3.72) rectangle (4.96,-4.96);
+  \draw[thin, gray!55] (0,0) grid (4.96,-4.96);
+  \draw[very thick] (0,0) rectangle (1.24,-1.24);
+  \draw[very thick] (1.24,-1.24) rectangle (2.48,-2.48);
+  \draw[very thick] (2.48,-2.48) rectangle (3.72,-3.72);
+  \draw[very thick] (3.72,-3.72) rectangle (4.96,-4.96);
+  \node[white] at (0.62,-0.62) {$R(\theta_0)$};
+  \node at (1.86,-1.86) {$R(\theta_1)$};
+  \node at (3.1,-3.1) {$R(\theta_2)$};
+  \node at (4.34,-4.34) {$R(\theta_3)$};
+  \node[anchor=north, font=\tiny] at (0.62,-5.12) {$\theta_0=1$};
+  \node[anchor=north, font=\tiny] at (3.1,-5.12) {$\theta_2\approx10^{-2}$};
+  \node[anchor=north, font=\tiny] at (1.86,-5.56) {$\theta_1\approx10^{-1}$};
+  \node[anchor=north, font=\tiny] at (4.34,-5.56) {$\theta_3\approx10^{-3}$};
+  \draw[dashed, gray!60, thin] (1.24,0) -- (6.6,-0.7);
+  \draw[dashed, gray!60, thin] (1.24,-1.24) -- (6.6,-3.7);
+  \node[fill=gray!85, text=white] at (7.35,-1.45) {$\cos\theta_0$};
+  \node[fill=gray!85, text=white] at (8.85,-1.45) {$-\sin\theta_0$};
+  \node[fill=gray!85, text=white] at (7.35,-2.95) {$\sin\theta_0$};
+  \node[fill=gray!85, text=white] at (8.85,-2.95) {$\cos\theta_0$};
+  \draw[very thick] (6.6,-0.7) rectangle (9.6,-3.7);
+  \draw[thin, white] (8.1,-0.7) -- (8.1,-3.7);
+  \draw[thin, white] (6.6,-2.2) -- (9.6,-2.2);
+  \node[anchor=north, align=center] at (4.8,-6.15)
+    {非对角区全零（浅灰）：$d/2$ 个 2D 旋转互相独立；位置 $m$ 的变换为 $R^{d}_{\Theta}(m)$——每块角度 $\times m$\\
+     灰度语义同图~\ref{fig:7-2}：同 $\theta_i$ 同灰度，$\theta_0$ 最深（最高频）$\to$ 渐浅（最低频）};
+\end{tikzpicture}
+\caption{分块对角旋转矩阵 $R^{d}_{\Theta}$ 的结构（$d=8$ 示意，即 4 个 $2\times2$ 旋转块；式~\eqref{eq:ch07-blockdiag}）：第一块展开为 $\bigl(\begin{smallmatrix}\cos\theta_0 & -\sin\theta_0\\[3pt] \sin\theta_0 & \cos\theta_0\end{smallmatrix}\bigr)$，其余块同构、角度按 $\theta_i=10000^{-2i/d}$ 等比衰减；非对角区全零，各对独立旋转。块灰度沿 $i$ 渐变，与图~\ref{fig:7-2} 的配对灰度语义一致。}
+\label{fig:7-4}
+\end{figure}
+
 需要特别注意\textbf{配对约定}：式~\eqref{eq:ch07-blockdiag} 只规定了「哪两个分量组成一对」，没有规定配对的枚举顺序。常见的两种是\textbf{相邻对}（interleaved：$(x_0,x_1), (x_2,x_3), \dots$，原始论文与本源码采用）与\textbf{半分对}（half-split：$(x_0, x_{d/2}), (x_1, x_{d/2+1}), \dots$，HuggingFace transformers 的 \texttt{rotate\_half} 实现）。两者是同一数学对象在不同分量排列下的表现形式，逐对重排即可互相转换；但 checkpoint 权重与 KV cache 布局如果不做对应重排，结果就是错的——对齐 HuggingFace 权重时这是经典坑（见本章实践经验）。
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[font=\scriptsize,
+  cell/.style={minimum size=0mm, inner sep=0pt, align=center, text width=1.9em}]
+  \node[anchor=west, font=\small\bfseries] at (-0.3,1.42)
+    {相邻对（interleaved）——本源码：\texttt{idx*2, idx*2+1}};
+  \node[cell, fill=gray!85] at (0.310,0.350) {$x_{0}$\\[-1pt]{\tiny $\theta_{0}$}};
+  \node[cell, fill=gray!85] at (0.930,0.350) {$x_{1}$\\[-1pt]{\tiny $\theta_{0}$}};
+  \node[cell, fill=gray!72] at (1.550,0.350) {$x_{2}$\\[-1pt]{\tiny $\theta_{1}$}};
+  \node[cell, fill=gray!72] at (2.170,0.350) {$x_{3}$\\[-1pt]{\tiny $\theta_{1}$}};
+  \node[cell, fill=gray!60] at (2.790,0.350) {$x_{4}$\\[-1pt]{\tiny $\theta_{2}$}};
+  \node[cell, fill=gray!60] at (3.410,0.350) {$x_{5}$\\[-1pt]{\tiny $\theta_{2}$}};
+  \node[cell, fill=gray!48] at (4.030,0.350) {$x_{6}$\\[-1pt]{\tiny $\theta_{3}$}};
+  \node[cell, fill=gray!48] at (4.650,0.350) {$x_{7}$\\[-1pt]{\tiny $\theta_{3}$}};
+  \node[cell, fill=gray!36] at (5.270,0.350) {$x_{8}$\\[-1pt]{\tiny $\theta_{4}$}};
+  \node[cell, fill=gray!36] at (5.890,0.350) {$x_{9}$\\[-1pt]{\tiny $\theta_{4}$}};
+  \node[cell, fill=gray!27] at (6.510,0.350) {$x_{10}$\\[-1pt]{\tiny $\theta_{5}$}};
+  \node[cell, fill=gray!27] at (7.130,0.350) {$x_{11}$\\[-1pt]{\tiny $\theta_{5}$}};
+  \node[cell, fill=gray!18] at (7.750,0.350) {$x_{12}$\\[-1pt]{\tiny $\theta_{6}$}};
+  \node[cell, fill=gray!18] at (8.370,0.350) {$x_{13}$\\[-1pt]{\tiny $\theta_{6}$}};
+  \node[cell, fill=gray!10] at (8.990,0.350) {$x_{14}$\\[-1pt]{\tiny $\theta_{7}$}};
+  \node[cell, fill=gray!10] at (9.610,0.350) {$x_{15}$\\[-1pt]{\tiny $\theta_{7}$}};
+  \draw[thick] (0.000,0.000) grid (9.920,0.700);
+  \draw (0.000,0.760) -- (0.000,0.920) -- (1.240,0.920) -- (1.240,0.760);
+  \draw (1.240,0.760) -- (1.240,0.920) -- (2.480,0.920) -- (2.480,0.760);
+  \draw (2.480,0.760) -- (2.480,0.920) -- (3.720,0.920) -- (3.720,0.760);
+  \draw (3.720,0.760) -- (3.720,0.920) -- (4.960,0.920) -- (4.960,0.760);
+  \draw (4.960,0.760) -- (4.960,0.920) -- (6.200,0.920) -- (6.200,0.760);
+  \draw (6.200,0.760) -- (6.200,0.920) -- (7.440,0.920) -- (7.440,0.760);
+  \draw (7.440,0.760) -- (7.440,0.920) -- (8.680,0.920) -- (8.680,0.760);
+  \draw (8.680,0.760) -- (8.680,0.920) -- (9.920,0.920) -- (9.920,0.760);
+  \node[anchor=west, font=\tiny] at (10.55,0.55) {每对做一次 2D 旋转};
+  \draw[-{Latex[length=1.4mm]}] (10.35,0.05) arc[start angle=310, end angle=30, radius=0.20];
+  \node[anchor=west] at (10.62,0.18) {$R(m\theta_i)$};
+  \node[anchor=west, font=\small\bfseries] at (-0.3,-1.62)
+    {半分对（half-split）——HuggingFace：\texttt{rotate\_half}（$(x_i,\,x_{i+d/2})$）};
+  \node[cell, fill=gray!85] at (0.310,-2.250) {$x_{0}$\\[-1pt]{\tiny $\theta_{0}$}};
+  \node[cell, fill=gray!72] at (0.930,-2.250) {$x_{1}$\\[-1pt]{\tiny $\theta_{1}$}};
+  \node[cell, fill=gray!60] at (1.550,-2.250) {$x_{2}$\\[-1pt]{\tiny $\theta_{2}$}};
+  \node[cell, fill=gray!48] at (2.170,-2.250) {$x_{3}$\\[-1pt]{\tiny $\theta_{3}$}};
+  \node[cell, fill=gray!36] at (2.790,-2.250) {$x_{4}$\\[-1pt]{\tiny $\theta_{4}$}};
+  \node[cell, fill=gray!27] at (3.410,-2.250) {$x_{5}$\\[-1pt]{\tiny $\theta_{5}$}};
+  \node[cell, fill=gray!18] at (4.030,-2.250) {$x_{6}$\\[-1pt]{\tiny $\theta_{6}$}};
+  \node[cell, fill=gray!10] at (4.650,-2.250) {$x_{7}$\\[-1pt]{\tiny $\theta_{7}$}};
+  \node[cell, fill=gray!85] at (5.270,-2.250) {$x_{8}$\\[-1pt]{\tiny $\theta_{0}$}};
+  \node[cell, fill=gray!72] at (5.890,-2.250) {$x_{9}$\\[-1pt]{\tiny $\theta_{1}$}};
+  \node[cell, fill=gray!60] at (6.510,-2.250) {$x_{10}$\\[-1pt]{\tiny $\theta_{2}$}};
+  \node[cell, fill=gray!48] at (7.130,-2.250) {$x_{11}$\\[-1pt]{\tiny $\theta_{3}$}};
+  \node[cell, fill=gray!36] at (7.750,-2.250) {$x_{12}$\\[-1pt]{\tiny $\theta_{4}$}};
+  \node[cell, fill=gray!27] at (8.370,-2.250) {$x_{13}$\\[-1pt]{\tiny $\theta_{5}$}};
+  \node[cell, fill=gray!18] at (8.990,-2.250) {$x_{14}$\\[-1pt]{\tiny $\theta_{6}$}};
+  \node[cell, fill=gray!10] at (9.610,-2.250) {$x_{15}$\\[-1pt]{\tiny $\theta_{7}$}};
+  \draw[thick] (0.000,-2.600) grid (9.920,-1.900);
+  \draw[-{Latex[length=1.6mm]},thick] (0.310,-2.650) to[bend right=32] (5.270,-2.650);
+  \node at (2.790,-3.780) {$(x_0,x_8)$};
+  \draw[-{Latex[length=1.6mm]},thick] (4.650,-2.650) to[bend right=14] (9.610,-2.650);
+  \node at (7.130,-3.220) {$(x_7,x_{15})$};
+  \node[anchor=west, font=\tiny, align=left] at (0,-4.35)
+    {同灰度 = 同一旋转对（共用同一 $\theta_i$）；灰度随 $i$ 从最深（$\theta_0=1$，最高频）渐浅（$\theta_{d/2-1}\approx 10^{-4}$，最低频）。\\
+     两种排列逐对重排即可互相转换；checkpoint 权重 / KV cache 不做对应重排直接套用即错。};
+\end{tikzpicture}
+\caption{RoPE 两种配对约定（示意 $d{=}16$，即 8 对；源码测试为每 token $N{=}64$ 对）：相邻对 interleaved（源码 \texttt{idx*2}/\texttt{idx*2+1}）与半分对 half-split（HuggingFace \texttt{rotate\_half}）。同灰度格属于同一旋转对、共用同一 $\theta_i$；两行是同一分块对角旋转在不同分量排列下的形态。}
+\label{fig:7-2}
+\end{figure}
 
 \subsection{转置的「数学」}
 
@@ -98,9 +203,44 @@ $R^{d}_{\Theta}$ 是 $d/2$ 个 $2\times 2$ 旋转块排布在主对角线上的\
 
 每线程搬运一个元素：\texttt{y[c * row + r] = x[r * col + c]}。读侧：warp 内 32 线程的 $r$ 固定、$c$ 连续，读 128B 连续段，合并。写侧：$c$ 每加 1，地址跳一整行（\texttt{row} 个 float），32 线程写到 32 个互不相邻的 4B——每个 4B 落在各自的内存事务里，产生 32 次写事务（$32 \times 32\mathrm{B} = 1024\mathrm{B}$），只运了 128B 有效数据。源码注释「非合并写入 $\to$ 32 次内存事务」说的正是这个。读侧利用率 100\%，写侧仅 $1/8$（32B sector 口径；按 128B cache line 口径则 $1/32$），总带宽立刻被写侧拖垮（本章第 6 节实测 512 规模只有 $\sim 350\,\mathrm{GB/s}$，是 padded 版的 69\%）。
 
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[font=\scriptsize]
+  % 左面板：读 x —— 32 线程连续 32 格，单事务 128B
+  \node[anchor=west, font=\small\bfseries, text=tkGreen!65!black] at (0,0.97) {读 $x$：$r$ 固定、$c$ 连续——合并};
+  \foreach \c in {0,...,31}
+    \node[fill=tkGreen!45, minimum size=0.3cm, inner sep=0pt] at ({\c*0.3+0.15},0) {\phantom{0}};
+  \draw[very thick, draw=tkGreen!65!black] (0,-0.15) rectangle (9.6,0.15);
+  \node[anchor=south] at (4.8,0.22) {1 个 128B 事务（32 线程 $\times$ 4B 连续段）};
+  \foreach \c in {0,8,16,24,31}
+    \node[below=1pt, font=\tiny] at ({\c*0.3+0.15},-0.15) {t\c};
+  \node at (4.8,-0.85) {32 线程 / 1 事务 / 128B，\textbf{利用率 100\%}};
+  \node[font=\tiny] at (4.8,-1.28) {线程 $c$ → 地址 $r\cdot\mathrm{col}+c$：$c{+}1$ 步长 4B（连续）};
+  % 右面板：写 y —— 32 行同列各 1 有效格，每格独占一个 32B sector
+  \begin{scope}[shift={(10.8,0)}]
+    \node[anchor=west, font=\small\bfseries, text=tkOrange!85!black] at (-0.3,0.97) {写 $y$：$c$ 连续、行号跨步——非合并};
+    \foreach \r in {0,...,31} {
+      \foreach \cc in {0,1,3,4,5,6,7}
+        \node[pattern=north east lines, pattern color=tkRed!55, minimum size=0.3cm, inner sep=0pt]
+          at ({\cc*0.3+0.15},{-\r*0.3+0.15}) {\phantom{0}};
+      \node[fill=gray!60, minimum size=0.3cm, inner sep=0pt] at (0.75,{-\r*0.3+0.15}) {\phantom{0}};
+      \draw[thick] (0,{-\r*0.3}) rectangle (2.4,{-\r*0.3+0.3});
+    }
+    \foreach \r in {0,8,16,24,31}
+      \node[anchor=east, font=\tiny] at (-0.12,{-\r*0.3+0.15}) {c=\r};
+    \node[anchor=west, font=\tiny, align=left] at (2.6,-4.4)
+      {每格 4B；深灰 = 线程有效写\\斜纹 = 同一 32B sector\\\phantom{斜纹 =}内浪费的 28B};
+    \node at (1.2,-10.15) {32 线程 / 32 事务 $\times$ 32B $= 1024$B，\textbf{利用率 $1/8$}};
+    \node[font=\tiny] at (1.2,-10.58) {线程 $c$ → 地址 $c\cdot\mathrm{row}+r$：$c{+}1$ 步长 \texttt{row} 个 float};
+  \end{scope}
+\end{tikzpicture}
+\caption{naive 转置（一线程一元素）的访存矛盾：读侧 warp 32 线程（$r$ 固定、$c$ 连续）合并为 1 个 128B 事务、利用率 100\%（左）；写侧 32 个 4B 写分散到 $y$ 的 32 行（$c$ 固定列位置），各自命中独立的 32B sector，32 次事务共搬运 1024B 却只有 128B 有效，利用率 $1/8$（右，斜纹为浪费字节）。}
+\label{fig:7-3}
+\end{figure}
+
 \subsection{mat\_transpose\_padded：shared memory 中转 + PAD}
 
-\lstinputlisting[linerange={871-907},firstnumber=auto,
+\lstinputlisting[float=t,linerange={871-907},firstnumber=auto,
   title={base.cuh L871-907（mat\_transpose\_padded：smem 中转 + PAD = 1）}]{../base.cuh}
 
 整体思路是「两边各自合并，中间过一道 shared memory」：
@@ -111,8 +251,6 @@ $R^{d}_{\Theta}$ 是 $d/2$ 个 $2\times 2$ 旋转块排布在主对角线上的\
 两个坐标换算值得写慢一点：$y$ 的行号 $= x$ 的列号，故 \texttt{y\_r = blockIdx.x * TILE + ty}；$y$ 的列号 $= x$ 的行号 $\times 1$，但每线程覆盖 4 个连续行，故 \texttt{y\_c = (blockIdx.y * TILE + tx) * 4}。\texttt{FLOAT4} 写回要求 \texttt{y\_c} 起 4 个元素 16B 对齐，即 $x$ 的行号是 4 的倍数——这由 \texttt{y\_c} 的构造天然保证。
 
 smem tile 的形状是 \texttt{[TILE*4][TILE+PAD]} $= [64][17]$：第二维多出的 \texttt{PAD = 1} 不是防越界，而是\textbf{消除 bank conflict} 的关键——这就是下一节的主题。
-
-\needspace{77mm}
 
 \section{图示：Bank Conflict 专题}
 
@@ -138,7 +276,94 @@ shared memory 被切成 32 个 bank（对应一个 warp 的 32 线程），每�
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-7-1-bank-pad/fig-7-1.png}
+\begin{tikzpicture}[font=\scriptsize]
+  \node[anchor=east] at (-0.35,0.6) {写侧（ST）};
+  \node[anchor=east] at (-0.35,-3.0) {读侧（LD）};
+  \node[align=center, anchor=south] at (3.2,1.52)
+    {\textbf{Step 1 写 smem（ST）}：PAD=0（$W{=}16$）\\ bank $=(16i{+}tx)\bmod 32$，与 $ty$ 无关};
+  \foreach \bk in {0,...,15}
+    \fill[gray!50] ({\bk*0.2},0) rectangle ++(0.16,0.1625);
+  \draw[thin] (0,0) -- (6.4,0);
+  \foreach \bk in {0,8,16,24,31}
+    \node[anchor=north, font=\tiny] at ({\bk*0.2+0.08},-0.06) {\bk};
+  \node[anchor=north] at (3.2,-0.68) {\textbf{2-way}：$16$ bank $\times$ 2 线程};
+  \node[align=center, anchor=south] at (10.6,1.52)
+    {\textbf{Step 1 写 smem（ST）}：PAD=1（$W{=}17$）\\ bank $=(4ty{+}17i{+}tx)\bmod 32$，两排错开 4};
+  \foreach \bk in {0,...,3}
+    \fill[gray!50] ({7.4+\bk*0.2},0) rectangle ++(0.16,0.081);
+  \foreach \bk in {4,...,15}
+    \fill[gray!50] ({7.4+\bk*0.2},0) rectangle ++(0.16,0.1625);
+  \foreach \bk in {16,...,19}
+    \fill[gray!50] ({7.4+\bk*0.2},0) rectangle ++(0.16,0.081);
+  \draw[thin] (7.4,0) -- (13.8,0);
+  \foreach \bk in {0,8,16,24,31}
+    \node[anchor=north, font=\tiny] at ({7.4+\bk*0.2+0.08},-0.06) {\bk};
+  \node[anchor=north] at (10.6,-0.68) {\textbf{2-way}：$12\times2$ $+$ $8\times1$（PAD 无改善）};
+  \node[align=center, anchor=south] at (3.2,-2.08)
+    {\textbf{Step 2 读 smem（LD）}：PAD=0（$W{=}16$）\\ bank $=(16j{+}ty)\bmod 32$，与 $tx$ 无关};
+  \foreach \bk in {0,1}
+    \fill[gray!85] ({\bk*0.2},-3.6) rectangle ++(0.16,1.3);
+  \draw[thin] (0,-3.6) -- (6.4,-3.6);
+  \foreach \bk in {0,8,16,24,31}
+    \node[anchor=north, font=\tiny] at ({\bk*0.2+0.08},-3.66) {\bk};
+  \node[anchor=west, align=left, font=\tiny] at (0.62,-2.75)
+    {16 线程挤进同一 bank\\柱高 $=$ 该 bank 线程数};
+  \node[anchor=north] at (3.2,-4.28) {\textbf{16-way}：$2$ bank $\times$ 16 线程（吞吐 $1/16$）};
+  \node[align=center, anchor=south] at (10.6,-2.08)
+    {\textbf{Step 2 读 smem（LD）}：PAD=1（$W{=}17$）\\ bank $=(4tx{+}17j{+}ty)\bmod 32$};
+  \foreach \bk in {0,4,...,28} {
+    \fill[gray!50] ({\bk*0.2},-3.6) rectangle ++(0.16,0.1625);
+    \fill[gray!50] ({\bk*0.2+0.2},-3.6) rectangle ++(0.16,0.1625);
+  }
+  \draw[thin] (7.4,-3.6) -- (13.8,-3.6);
+  \foreach \bk in {0,8,16,24,31}
+    \node[anchor=north, font=\tiny] at ({7.4+\bk*0.2+0.08},-3.66) {\bk};
+  \node[anchor=north] at (10.6,-4.28) {\textbf{2-way}：$16$ bank $\times$ 2 线程（吞吐 $\times 8$）};
+  \node[anchor=north, align=center] at (6.9,-5.0)
+    {写侧 PAD 前后均为 2-way（无改善）；读侧 16-way $\to$ 2-way，读 smem 吞吐 $\times 8$（与图~\ref{fig:7-1} 及本章思考题衔接）};
+\end{tikzpicture}
+\caption{bank 占用直方图（2 指令 $\times$ 2 配置，每格为 32 bank 的线程计数，取 $i=j=0$ 的一条指令）：写侧（ST）PAD=0 与 PAD=1 都是每 bank 至多 2 线程——写侧 PAD 前后无改善；读侧（LD）PAD=0 时 32 线程挤进 2 个 bank（16-way，深灰柱），PAD=1 后 $tx$ 每加 1 bank 前进 4，16 个 bank 各 2 线程（2-way）。图~\ref{fig:7-1} 讲「步长 64B$\to$68B 为何打破对齐」，本图给出两指令两配置的完整占用结果。}
+\label{fig:7-5}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[font=\scriptsize]
+  \node[font=\small\bfseries] at (7.9,0)
+    {转置读的 bank 分布：PAD=1 使步长 64B 变 68B，$tx$ 项在 $\bmod 32$ 下重新出现};
+  \node[anchor=west, font=\scriptsize\bfseries, text=vscAccent] at (0,-0.75)
+    {[无 PAD] \texttt{tile[64][16]}：\texttt{addr = 64*tx + ty}};
+  \node[anchor=west, font=\tiny, text=gray!80] at (0,-1.18)
+    {$ty{=}0$ 列 16 线程与 $ty{=}1$ 列 16 线程落在同 2 个 bank};
+  \foreach \fmi/\xa in {0/0.3, 1/3.3} {
+    \node[draw=vscAccent!75, fill=gray!12, text=vscAccent, font=\scriptsize\bfseries,
+      minimum width=2.8cm, minimum height=0.6cm] at ({\xa+1.4},-1.85) {bank \fmi};
+    \node[text=vscAccent, font=\tiny] at ({\xa+1.4},-2.32) {16 线程};
+  }
+  \node[draw=vscAccent, fill=white, text=vscAccent, font=\scriptsize\bfseries,
+    minimum width=6.4cm, minimum height=0.62cm] at (3.2,-3.32)
+    {$\Rightarrow$ 16-way conflict，读 smem 吞吐 $1/16$};
+  \draw[-{Latex}, very thick, gray!75] (6.75,-1.85) -- (9.05,-1.85);
+  \node[font=\scriptsize\bfseries] at (7.9,-1.52) {+PAD=1};
+  \node[anchor=west, font=\scriptsize\bfseries, text=vscKeyword] at (9.4,-0.75)
+    {[PAD=1] \texttt{tile[64][17]}：\texttt{addr = 68*tx + 17*j + ty}};
+  \node[anchor=west, font=\tiny, text=gray!80] at (9.4,-1.18)
+    {$tx$ 步进 $+4$：8 个 bank 各 2 线程（$tx{=}0$ 与 $tx{=}8$ 同 bank）};
+  \foreach \fmi/\bv in {0/0, 1/4, 2/8, 3/12, 4/16, 5/20, 6/24, 7/28} {
+    \pgfmathsetmacro{\bx}{9.4+\fmi*0.78}
+    \node[draw=vscKeyword!75, fill=gray!12, text=vscKeyword, font=\tiny\bfseries,
+      minimum width=0.66cm, minimum height=0.6cm] at ({\bx+0.33},-1.85) {\bv};
+    \node[text=vscKeyword, font=\tiny] at ({\bx+0.33},-2.32) {2 线程};
+  }
+  \node[anchor=west, font=\tiny, text=gray!80] at (9.4,-2.72)
+    {bank 编号 $= 4\,tx \bmod 32$（$tx = 0..7$ 示意）};
+  \node[draw=vscKeyword, fill=white, text=vscKeyword, font=\scriptsize\bfseries,
+    minimum width=6.4cm, minimum height=0.62cm] at (12.6,-3.32)
+    {$\Rightarrow$ 2-way conflict，读 smem 吞吐 $1/2$};
+  \node[anchor=north west, align=left, font=\tiny, text width=15.8cm] at (0,-3.78)
+    {原因：$64 \bmod 32 = 0$（$tx$ 项被吞），$68 \bmod 32 = 4$（$tx$ 项以 $+4$ 步进重新出现）；\\
+     warp0: $ty=\{0,1\}$, $tx=0..15$, $j=0$（\texttt{base.cuh} 转置读 Step2）};
+\end{tikzpicture}
 \caption{bank conflict vs padding——PAD=1 使步长 64B 变为 68B，$tx$ 项在 mod 32 下重新出现，16-way 冲突降为 2-way（读 smem 吞吐 $1/16 \to 1/2$）。}
 \label{fig:7-1}
 \end{figure}

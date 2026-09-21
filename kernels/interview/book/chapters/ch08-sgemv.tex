@@ -130,14 +130,99 @@ lane $0\,\dots\,15$ 算第 $m$ 行、lane $16\,\dots\,31$ 算第 $m+1$ 行，每
 16-lane \textbf{segment} 之内——前 16 个 lane 与后 16 个 lane 各自独立收敛、互不串音。
 这正是第~\ref{ch:02}~章讲 \texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor\_\allowbreak{}sync} 时「width 参数划分 segment」的
 实战用法。写回条件相应变成 \texttt{k == 0}（\textbf{不是} \texttt{lane == 0}）：
-满足条件的 lane 是 0 和 16 两个，分别写 $y\sb{m}$ 与 $y\sb{m+1}$。
+满足条件的 lane 是 0 和 16 两个，分别写 $y\sb{m}$ 与 $y\sb{m+1}$，
+逐步数据流见图~\ref{fig:08-k16-butterfly}。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\tiny, >=Stealth]
+  \def\cs{0.42}
+  \foreach \li in {0,...,31}{
+    \pgfmathtruncatemacro{\kv}{mod(\li,16)}
+    \ifnum\li<16
+      \node[fill=gray!20, minimum width=\cs cm, minimum height=0.42cm, inner sep=0pt]
+        at ({(\li+0.5)*\cs},0) {\kv};
+    \else
+      \node[fill=gray!55, minimum width=\cs cm, minimum height=0.42cm, inner sep=0pt]
+        at ({(\li+0.5)*\cs},0) {\kv};
+    \fi
+    \node[anchor=south] at ({(\li+0.5)*\cs},0.28) {\li};
+  }
+  \draw[thick] (0,0.21) rectangle ({32*\cs},-0.21);
+  \draw[very thick, vscAccent] ({16*\cs},0.21) -- ({16*\cs},-0.21);
+  \node[anchor=south, text=vscAccent] at ({16*\cs},0.7) {segment 边界（width$=$16）};
+  \node[anchor=south, font=\scriptsize] at ({8*\cs},1.12) {行 $m$（lane 0--15）};
+  \node[anchor=south, font=\scriptsize] at ({24*\cs},1.12) {行 $m{+}1$（lane 16--31）};
+  \foreach \st/\mk/\sn in {0/8/1,1/4/2,2/2/3,3/1/4}{
+    \pgfmathsetmacro{\yr}{-0.85-1.0*\st}
+    \node[anchor=east, align=right] at (-0.3,\yr) {step \sn\\mask=\mk};
+    \foreach \li in {0,...,31}{
+      \fill ({(\li+0.5)*\cs},\yr) circle (0.6pt);
+    }
+    \foreach \sg in {0,16}{
+      \ifnum\mk=8
+        \foreach \q [evaluate=\q as \dp using 0.2+0.055*\q] in {0,...,7}{
+          \pgfmathtruncatemacro{\pa}{\sg+\q}
+          \pgfmathtruncatemacro{\pb}{\sg+\q+8}
+          \draw[thin] ({(\pa+0.5)*\cs},\yr) .. controls ({(\pa+0.5)*\cs},{\yr-\dp}) and ({(\pb+0.5)*\cs},{\yr-\dp}) .. ({(\pb+0.5)*\cs},\yr);
+        }
+      \fi
+      \ifnum\mk=4
+        \foreach \hh in {0,8}{
+          \foreach \q [evaluate=\q as \dp using 0.2+0.05*\q] in {0,...,3}{
+            \pgfmathtruncatemacro{\pa}{\sg+\hh+\q}
+            \pgfmathtruncatemacro{\pb}{\sg+\hh+\q+4}
+            \draw[thin] ({(\pa+0.5)*\cs},\yr) .. controls ({(\pa+0.5)*\cs},{\yr-\dp}) and ({(\pb+0.5)*\cs},{\yr-\dp}) .. ({(\pb+0.5)*\cs},\yr);
+          }
+        }
+      \fi
+      \ifnum\mk=2
+        \foreach \hh in {0,4,8,12}{
+          \foreach \q [evaluate=\q as \dp using 0.18+0.05*\q] in {0,1}{
+            \pgfmathtruncatemacro{\pa}{\sg+\hh+\q}
+            \pgfmathtruncatemacro{\pb}{\sg+\hh+\q+2}
+            \draw[thin] ({(\pa+0.5)*\cs},\yr) .. controls ({(\pa+0.5)*\cs},{\yr-\dp}) and ({(\pb+0.5)*\cs},{\yr-\dp}) .. ({(\pb+0.5)*\cs},\yr);
+          }
+        }
+      \fi
+      \ifnum\mk=1
+        \foreach \hh in {0,2,...,14}{
+          \pgfmathtruncatemacro{\pa}{\sg+\hh}
+          \pgfmathtruncatemacro{\pb}{\sg+\hh+1}
+          \draw[thin] ({(\pa+0.5)*\cs},\yr) .. controls ({(\pa+0.5)*\cs},{\yr-0.15}) and ({(\pb+0.5)*\cs},{\yr-0.15}) .. ({(\pb+0.5)*\cs},\yr);
+        }
+      \fi
+    }
+  }
+  \draw[->, thick, vscAccent] (0.21,-4.1) -- (0.21,-4.6);
+  \node[anchor=north, align=center] at (0.21,-4.68) {$y\sb m$\\{\tiny lane 0（\texttt{k==0}）}};
+  \draw[->, thick, vscAccent] ({16*\cs+0.21},-4.1) -- ({16*\cs+0.21},-4.6);
+  \node[anchor=north, align=center] at ({16*\cs+0.21},-4.68) {$y\sb{m+1}$\\{\tiny lane 16（\texttt{k==0}）}};
+  \node[draw, align=left, anchor=north west, text width=13.2cm] at (0,-5.35)
+    {条带格值 $=k=\mathrm{lane}\bmod 16$（灰 20：行 $m$；灰 55：行 $m{+}1$）。
+     4 步交换弧（lane$\leftrightarrow$lane$\oplus$mask）全部落在 segment 内部、
+     永不跨越红线的 segment 边界，两个 16-lane segment 各自收敛、互不串音；
+     收敛结果落在各自 segment 的 lane 0 与 lane 16，写回判据是 \texttt{k==0}
+     而非 \texttt{lane==0}。};
+\end{tikzpicture}
+\caption{k16 分段蝶形归约逐步数据流：width$=$16 把一个 32-lane warp 切成两套独立归约（红线为 segment 边界）。上：lane 条带（格值 $k=\mathrm{lane}\bmod 16$，前 16 个 lane 算行 $m$、后 16 个算行 $m{+}1$）；下：4 步 \texttt{\_\_shfl\_xor\_sync}（mask $8/4/2/1$）的交换弧，弧线均在 segment 内部；收敛后 lane 0 与 lane 16（\texttt{k==0}）分别写回 $y\sb{m}$、$y\sb{m+1}$（式~\ref{eq:8-k16-map}）。}
+\label{fig:08-k16-butterfly}
+\end{figure}
 
 \section{设计与实现}
 
-先看源码文件头的策略注释，它把 8.2~节的三个动机浓缩成了可执行的选型表：
+源码文件头的策略注释把 8.2~节的三个动机浓缩成了一张可执行的选型表：GEMV
+（$a \in \mathbb{R}^{M \times K}$，$x \in \mathbb{R}^{K}$，$y \in \mathbb{R}^{M}$，$y = a \cdot x$，
+$N = 1$）是典型的纯 memory-bound 算子——AI $\approx O(1)$，瓶颈在内存带宽；核心
+策略是 warp-per-row：每个 warp 负责矩阵的一行。不同 $K$ 值对应不同分块策略：
 
-\lstinputlisting[linerange={3-14},firstnumber=auto,
-  title={sgemv.cuh L3-14（头部：GEMV 的选型依据）}]{../sgemv.cuh}
+\begin{itemize}
+  \item $K$ 为 32 的倍数：一个 warp 的 32 线程恰好覆盖 $K$ 维；
+  \item $K$ 为 128 的倍数：每个线程用 \texttt{float4} 处理 4 个元素，一个 warp
+        覆盖 128 个 $K$ 元素；
+  \item $K = 16 < 32$：一个 warp 用不满，用
+        \texttt{k\allowbreak{}Row\allowbreak{}Per\allowbreak{}Warp=\allowbreak{}2} 让每个 warp 处理 2 行。
+\end{itemize}
 
 \subsection{sgemv\_k32：基础 warp-per-row}
 
@@ -191,7 +276,50 @@ $16\,\dots\,31$ 之间可能分叉（$M$ 为奇数时的最后一个 warp），�
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-8-1-warp-per-row/fig-8-1.png}
+\begin{tikzpicture}[font=\scriptsize]
+  \node[font=\small\bfseries] at (8.2,0)
+    {warp-per-row：\texttt{block(32,4)} $\to$ 每 block 4 行，1 warp $=$ 1 行};
+  \foreach \fmi in {0,1,2} {
+    \node[draw=tkBlue, fill=tkFillBlue, font=\scriptsize\bfseries,
+      minimum width=1.9cm, minimum height=0.62cm] at ({1.15+\fmi*2.05},-0.75) {block\fmi};
+  }
+  \node[anchor=west, font=\tiny, text=gray!80] at (0.2,-1.28)
+    {\texttt{grid.x = ceil(M/4)}};
+  \foreach \fmi in {0,1,2,3} {
+    \node[anchor=west, font=\tiny] at (8.2,{-0.5-\fmi*0.3}) {warp \fmi\ ($ty{=}\fmi$)};
+    \node[anchor=west, font=\tiny, text=vscKeyword] at (10.3,{-0.5-\fmi*0.3})
+      {$\to$ row $m{+}\fmi$};
+  }
+  \node[anchor=west, font=\tiny, text=gray!80] at (8.2,-1.72)
+    {\texttt{block(32,4)} $=$ 4 warps，one block covers 4 rows};
+  \node[anchor=west, font=\scriptsize\bfseries] at (0,-2.25)
+    {\texttt{k32}（\texttt{K = 32 * NUM-ITERS}）：lane $l$ 取 $k = 32w + l$};
+  \foreach \fmi in {0,1} {
+    \pgfmathtruncatemacro{\xlo}{\fmi*32}
+    \pgfmathtruncatemacro{\xhi}{\fmi*32+31}
+    \node[draw=tkBlue, fill=tkFillBlue, font=\tiny, minimum width=7.4cm, minimum height=0.5cm]
+      at ({4.1+\fmi*8.0},-2.75)
+      {pass $w{=}\fmi$: \ lane0\ lane1\ \ldots\ lane31 $\ \to\ k = 32\times\fmi + l$};
+    \node[anchor=west, font=\tiny, text=gray!80] at ({0.4+\fmi*8.0},-3.14)
+      {$x[\xlo]$ \ldots\ $x[\xhi]$，每 lane 串行累加
+       \texttt{sum += a[m][k] * x[k]}};
+  }
+  \node[anchor=west, font=\tiny, text=gray!80] at (0.4,-3.55)
+    {累加完成后 5 步 XOR 蝶形归约 $\to$ lane 0 写 \texttt{y[m]}};
+  \node[anchor=west, font=\scriptsize\bfseries] at (0,-4.1)
+    {\texttt{k16}（\texttt{K=16}，\texttt{kRowPerWarp=2}）：段宽 16，两行各 16 lane};
+  \foreach \fmi in {0,1} {
+    \pgfmathtruncatemacro{\klo}{\fmi*16}
+    \pgfmathtruncatemacro{\khi}{\fmi*16+15}
+    \node[draw=tkPurple, fill=tkFillPurple, font=\tiny, minimum width=7.4cm, minimum height=0.52cm]
+      at ({4.1+\fmi*8.0},-4.6)
+      {lane \klo..\khi $\ \to\ $ row $m{+}\fmi$ \ \ ($k = \mathrm{lane} \bmod 16$)};
+  }
+  \node[anchor=north west, align=left, font=\tiny, text width=16.4cm] at (0,-4.95)
+    {reduce 小于 16 的 mask 序列 8,4,2,1；row-major $A$ 中 $m$ 与 $m{+}1$ 行连续
+     $\to$ 32 lane 仍是 1 个 128B 合并事务；\\
+     \texttt{k128} 变体：单行 \texttt{float4} 加宽（4 lane 一组）};
+\end{tikzpicture}
 \caption{warp-per-row 的划分：k32 单行 32 lane 铺满、k16 双行各 16 lane 分段归约（mask 8/4/2/1）；k128 变体单行 float4 加宽。}
 \label{fig:8-1}
 \end{figure}

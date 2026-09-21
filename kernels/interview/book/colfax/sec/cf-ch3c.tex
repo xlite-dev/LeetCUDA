@@ -1,0 +1,434 @@
+% cf-ch3c.tex — 译自 FinalVersion.tex L8960-9394
+\section{范畴 $\catstyle{Nest}$}\label{thecategoryNestTuplesection}
+
+在上一节中，我们引入了一个范畴（category）$\catstyle{Tuple}$，其态射（morphism）编码扁平（flat）可处理布局（tractable layout）。本节中，我们引入一个范畴 $\catstyle{Nest}$，其态射编码允许任意嵌套（nesting）的可处理布局。
+
+\subsection{基本定义}
+
+回顾一下，对于嵌套元组（nested tuple）$S$，我们把 $S$ 的扁平化（flattening）记作 $S^\flat$。例如，若 $S = (64,(8,8))$，则 $S^\flat = (64,8,8)$。
+
+\begin{definition}\label{definitionofNest}
+    令 $\catstyle{Nest}$ 表示这样的范畴：其对象（object）是正整数的嵌套元组，其中 $\catstyle{Nest}$ 里的态射
+    \[f:S \to T\]
+    由一个元组态射（tuple morphism）
+    \[
+    f^\flat:S^\flat \to T^\flat.
+    \]
+指定。换言之，
+\[
+\Hom_{\catstyle{Nest}}(S,T) = \Hom_{\catstyle{Tuple}}(S^\flat,T^\flat).
+\]
+显式地，$\catstyle{Nest}$ 中的态射 $f:S \to T$ 由一个可处理的基点映射（pointed map）$\alpha:\langle \len(S) \rangle_* \to \langle \len(T) \rangle_*$ 指定，它满足以下性质：
+\begin{itemize}
+    \item 若 $1 \leq i \leq \len(S)$ 且 $\alpha(i) \neq *$，则 $\entry_i(S) = \entry_{\alpha(i)}(T)$。
+\end{itemize}
+    我们称这样的态射 $f$ {\it 位于} $\alpha$ {\it 之上}（lies over），并把 $f$ 称为{\it 嵌套元组态射}（nested tuple morphism）。
+\end{definition}
+
+\begin{notation}
+    若 $f:S \to T$ 是位于 $\alpha$ 之上的嵌套元组态射，我们把 $f$ 画成
+    \[ \begin{tikzcd}
+    S \ar[rr,"f"] \ar[rr,swap,"\alpha"] & & T
+    \end{tikzcd} \]
+\end{notation}
+
+\begin{example}
+    以下是一些嵌套元组态射的例子。
+    \[ \begin{tikzcd}
+    (64, (8,8)) \ar[rr,"f"] \ar[rr,swap,"(1{,}2{,}3)"] & &  (64, 8,8) \\
+    ((2,2),2) \ar[rr,"g"] \ar[rr,swap,"(*{,}5{,}2)"] & &  (10,2,2,(3,2,3)) \\
+    64 \ar[rr,"h"] \ar[rr,swap,"(2)"] & &  ((64,64),512).
+    \end{tikzcd} \]
+\end{example}
+
+\begin{observation}
+    若 $X$ 是集合，我们把 $X$ 上的余离散（indiscrete）范畴记作 $X^{\mathterm{ind}}$。这是这样的范畴：其对象是 $X$ 的元素，且任意两个对象之间存在唯一的（同构）态射。于是按 $\catstyle{Nest}$ 的定义，我们有一个拉回方块（pullback square）
+    \[\begin{tikzcd}
+        \catstyle{Nest} \ar[rr,"\profile(-)"] \ar[d,swap,"(-)^\flat"] \arrow[drr, phantom, "\lrcorner", very near start]& &  \mathterm{Profile}^{\mathterm{ind}}\ar[d,"\len(-)"] \\
+        \catstyle{Tuple} \ar[rr,swap,"\len(-)"] & & \mathbb{N}^{\mathterm{ind}}
+    \end{tikzcd}\]
+    我们可以把它视为拉回方块 \ref{nesttuplepullbacksquare} 的范畴化（categorification）。
+\end{observation}
+
+
+
+\begin{example}
+    设 $S$ 是长度（length）为 $m$ 的嵌套元组。若 $ 1 \leq i \leq m$，则存在一个嵌套元组态射
+    \[
+    \entry_i(S) \to S
+    \]
+    它位于由 $1 \mapsto i$ 给出的映射 $\langle 1 \rangle_* \to \langle m \rangle_*$ 之上。例如，若 $S = (64,(8,8))$ 且 $i = 1$，则我们有嵌套元组态射
+    \[ \begin{tikzcd}
+    64 \ar[rr,swap,"(1)"] & &  (64,(8,8)).
+    \end{tikzcd} \]
+\end{example}
+
+\begin{example}
+    设 $S$ 是秩（rank）为 $r$ 的嵌套元组。若 $1 \leq i \leq r$，则存在一个典范的嵌套元组态射
+    \[
+    \mode_i(S) \to S
+    \]
+    它位于由 $j \mapsto j + \len_{<i}(S)$ 给出的映射 $\langle \len_i(S) \rangle_* \to \langle \len(S) \rangle_*$ 之上。例如，若 $S = (64,(8,8))$，则我们有嵌套元组态射
+    \[ \begin{tikzcd}
+    (8,8) \ar[rr,swap,"(2{,}3)"] & & (64,(8,8)).
+    \end{tikzcd} \]
+\end{example}
+
+\begin{observation} 有一些函子（functor）把范畴 $\catstyle{Nest}$ 与 $\catstyle{Tuple}$ 联系起来。首先，有一个包含（inclusion）函子
+    \[ \begin{tikzcd}
+    \catstyle{Tuple} \ar[r,"\subset"] &  \catstyle{Nest}
+    \end{tikzcd} \]
+    它把元组态射 $f:S \to T$ 视为嵌套元组态射。其次，有一个{\it 扁平化}函子
+    \[ \begin{tikzcd}
+    \catstyle{Nest} \ar[r,"(-)^\flat"] & \catstyle{Tuple}
+    \end{tikzcd} \]
+    它把嵌套元组态射 $f:S \to T$ 送到其底层的元组态射 $f^\flat:S^\flat \to T^\flat$。复合（composite）
+    \[ \begin{tikzcd}
+    \catstyle{Tuple} \ar[r,"\subset"] & \catstyle{Nest} \ar[r,"(-)^\flat"] & \catstyle{Tuple}
+    \end{tikzcd} \]
+    是 $\catstyle{Tuple}$ 上的恒等函子，因此 $\catstyle{Tuple}$ 是 $\catstyle{Nest}$ 的收缩子范畴（retractive subcategory）。此外，这些函子构成范畴的一个伴随等价（adjoint equivalence）。
+\end{observation}
+
+\begin{remark}
+    人们可能希望考虑某个范畴 $\catstyle{C}$，其态射编码可处理布局，但它{\it 不}等价于 $\catstyle{Tuple}$。作者们已经考虑过若干这样的例子，但把对它们的研究留待未来工作。
+\end{remark}
+
+\subsection{从嵌套元组态射到布局}
+
+范畴 $\catstyle{Nest}$ 的关键特征在于：若 $f:S \to T$ 是嵌套元组态射，则 $f$ 编码一个布局 $L_f$。这个布局是通过给扁平布局 $L_{f^\flat}$ 配备 $S$ 的嵌套轮廓（profile）而得到的。更精确地说，我们有如下构造。
+
+\begin{construction}\label{layoutfromnestedtuplemorphism}
+    设
+    \[
+    f:S \to T
+    \]
+    是嵌套元组态射，并设 $P = \profile(S)$。我们定义 $L_f$
+    为布局
+    \[
+    L_f = (L_{f^\flat})_P
+    \]
+    其中 $(-)_P$ 是定义 \ref{layoutfromflatlayoutandprofile} 中的 $P$-代入（substitution）运算。我们把 $L_{f}$ 称为由 $f$ {\it 编码的布局}。
+\end{construction}
+
+\begin{construction}\label{layoutfromnestedtuplemorphism}
+    设
+\[\begin{tikzcd} (s_1,\dots,s_m)_P \ar[rr,"f"] \ar[rr,swap,"\alpha"] & &  (t_1,\dots,t_n)_Q\end{tikzcd} \]
+是嵌套元组态射。我们定义 $L_f$ 为这样的布局：其形状（shape）\[\shape(L_f) = (s_1,\dots,s_m)_P\]
+是 $f$ 的定义域（domain），其步长（stride）\[\stride(L_f) = (d_1,\dots,d_m)_P\] 的各元素由公式
+\[d_i = \begin{cases}
+0 & \alpha(i) = * \\
+\prod_{j < \alpha(i)} t_j & \alpha(i) \neq *.
+\end{cases}
+\]
+定义。我们把 $L_f$ 称为由 $f$ {\it 编码的布局}。
+\end{construction}
+
+\begin{example}
+    由
+    \[ \begin{tikzcd}
+    ((8,8),(4,4)) \ar[rr,"f"] \ar[rr,swap,"(1{,}4{,}3{,}2)"] & & (8,4,4,8)
+    \end{tikzcd} \]
+    编码的布局是
+    \[
+    L_f = ((8,8),(4,4)):((1,128),(32,8)).
+    \]
+\end{example}
+
+\begin{example}
+    由
+    \[ \begin{tikzcd}
+    (128,(4,4,2)) \ar[rr,"g"] \ar[rr,swap,"(3{,}1{,}2{,}*)"] & & ((4,4),128)
+    \end{tikzcd} \]
+    编码的布局是
+    \[
+    L_g = (128,(4,4,2)):(16,(1,4,0)).
+    \]
+\end{example}
+
+
+\begin{observation}\label{flatlayoutcompatibility}
+扁平化函子
+\[ \begin{tikzcd}
+\catstyle{Nest} \ar[r,"(-)^\flat"] & \catstyle{Tuple}
+\end{tikzcd} \]
+与布局的扁平化相容：若 $f$ 是嵌套元组态射，则
+\[
+(L_f)^\flat = L_{f^\flat}.
+\]
+\end{observation}
+
+若 $L$ 是可处理布局，则我们可以如下构造一个编码 $L$ 的嵌套元组态射。
+
+\begin{construction}\label{nestedtuplemorphismfromlayout}
+    设 $L$ 是可处理布局。我们定义 $L$ 的{\it 标准表示}（standard representation）为嵌套元组态射
+    \[f_L:S \to T\]
+    其中 $(f_L)^\flat  = f_{L^\flat}$ 是 $L^\flat$ 的标准表示，$S = \shape(L)$ 是 $L$ 的形状，而 $T$ 是 $f_{L^\flat}$ 的陪域（codomain）。
+\end{construction}
+
+\begin{example}
+    若
+    \[
+    L = (32,(2,2)):(192,(24,3))
+    \]
+    则 $L$ 的标准表示是
+    \[\begin{tikzcd}
+    (32,(2,2)) \ar[rr,"f_L"] \ar[rr,swap,"(6{,}4{,}2)"] & & (3,2,4,2,4,32).
+    \end{tikzcd}\]
+\end{example}
+
+\begin{lemma}\label{standardrepresentationlemma}
+    若 $L$ 是可处理布局，且 $f = f_L$ 是 $L$ 的标准表示，则
+    \[
+    L_f = L.
+    \]
+\end{lemma}
+
+\begin{proof}
+    我们有
+    \[
+    (L_f)^\flat = L_{f^\flat} = L^\flat
+    \]
+    以及
+    \begin{align*}
+        \shape(L_f) = \shape(L).
+    \end{align*}
+\end{proof}
+
+\begin{proposition}\label{tractablelayoutscomefromnestedtuplemorphisms}
+设 $L$ 是布局。则存在编码 $L$ 的嵌套元组态射 $f$，当且仅当 $L$ 是可处理的。
+\end{proposition}
+
+\begin{proof}
+    首先设对某个嵌套元组态射 $f$ 有 $L = L_f$。则 $(L_f)^\flat = L_{f^\flat}$，且由命题 \ref{tractableflatlayoutscomefromtuplemorphisms}，我们知道 $L^\flat$ 是可处理的，从而 $L$ 也是。反之，若 $L$ 可处理，则可取 $f = f_L$ 为 $L$ 的标准表示，于是由引理 \ref{standardrepresentationlemma}，有 $L_f = L$。
+\end{proof}
+
+为了在可处理布局与某些嵌套元组态射之间建立一一对应，我们为嵌套元组态射引入{\it 标准形式}（standard form）的概念。
+
+\begin{definition}\label{definitionofnestedstandardform}
+    设 $f:S \to T$ 是嵌套元组态射。若下列条件成立，则称 $f$ 具有{\it 标准形式}：
+    \begin{enumerate}
+        \item $f^\flat$ 具有标准形式（如定义 \ref{definitionofstandardform} 所述），且
+        \item $T$ 是扁平的。
+    \end{enumerate}
+\end{definition}
+
+\begin{example}
+    嵌套元组态射
+    \[\begin{tikzcd}
+    ((2,2),(3,3)) \ar[rr,"f"] \ar[rr,swap,"(4{,}6{,}2{,}3"] & & (10,3,3,2,10,2)
+    \end{tikzcd} \]
+    具有标准形式。
+\end{example}
+\begin{example}
+嵌套元组态射
+    \[\begin{tikzcd}
+    ((2,2),(3,3)) \ar[rr,"f"] \ar[rr,swap,"(4{,}6{,}2{,}3"] & & ((10,3,3),(2,10,2))
+    \end{tikzcd} \]
+    不具有标准形式，因为 $g$ 的陪域不是扁平的。
+\end{example}
+
+正如扁平情形那样，为了在具有标准形式的嵌套元组态射与可处理布局之间得到一一对应，我们需要排除非退化（non-degenerate）的嵌套元组态射与非退化布局。为此，我们给出以下定义。
+
+\begin{definition}
+    设
+    \[
+    \begin{tikzcd}
+S \ar[rr,"f"] \ar[rr,swap,"\alpha"] & & T
+    \end{tikzcd}
+    \]
+    是嵌套元组态射，并设
+    \[
+    L = S:D
+    \]
+    是布局。
+    \begin{enumerate}
+        \item 我们称 $f$ 是{\it 非退化的}，如果
+    \[
+    \entry_i(S) = 1 \quad \Rightarrow \quad \alpha(i) = *.
+    \]
+    \item 我们称 $L$ 是{\it 非退化的}，如果
+    \[
+    \entry_i(S) = 1 \quad \Rightarrow \quad \entry_i(D) = 0.
+    \]
+    \end{enumerate}
+\end{definition}
+
+\begin{remark}
+    若 $f$ 是嵌套元组态射，则 $f$ 非退化当且仅当 $f^\flat$ 非退化。若 $L$ 是布局，则 $L$ 非退化当且仅当 $L^\flat$ 非退化。
+\end{remark}
+
+\begin{proposition}\label{nestedonetoonecorrespondence}
+    构造 \ref{layoutfromnestedtuplemorphism} 与 \ref{nestedtuplemorphismfromlayout} 给出的映射
+    \[ \begin{tikzcd}
+    f \ar[r,mapsto] & L_f \\
+    \begin{Bmatrix}
+    \text{非退化}\\
+        \text{嵌套元组态射}\\
+        \text{（具有标准形式）}
+    \end{Bmatrix}
+    \ar[r] & \ar[l]
+    \begin{Bmatrix}
+    \text{非退化}\\
+        \text{可处理布局}
+    \end{Bmatrix} \\
+    f_L & \ar[l,mapsto] L
+    \end{tikzcd}
+    \]
+    在具有标准形式的嵌套元组态射与可处理布局之间建立了一一对应。
+\end{proposition}
+
+\begin{proof}
+    我们已在命题 \ref{tractablelayoutscomefromnestedtuplemorphisms} 中证明：若 $L$ 是可处理布局且 $f = f_L$ 是 $L$ 的标准形式，则 $L_f = L$。其次设 $f$ 具有标准形式，并令 $L = L_f$ 为 $f$ 编码的布局。我们要证 $f$ 等于 $L$ 的标准表示 $f_L$。由命题 \ref{flatcorrespondence}，我们知道 $f^\flat$ 等于 $L^\flat$ 的标准表示 $f_{L^\flat}$；又由于
+    \[
+    \domain(f) = \shape(L) = \domain(f_L),
+    \]
+    以及
+    \[
+    \codomain(f) = \codomain(f^\flat) = \codomain(f_{L^\flat}) = \codomain(f_L),
+    \]
+    可推得 $f = f_L$。
+\end{proof}
+
+\subsection{例子}
+
+本节列出嵌套元组态射的一些重要族。
+
+
+\begin{example}[重新加括号]\label{definitionofreparenthesizationisomorphisms}
+    设 $S_1$ 与 $S_2$ 是具有相同扁平化
+    \[
+    S_1^\flat = S_2^\flat.
+    \]
+    的嵌套元组，则存在一个{\it 重新加括号同构}（reparenthesization isomorphism）
+    \[\begin{tikzcd}
+    \id_{S_1}^{S_2} : S_1 \ar[r,"\cong"] & S_2
+    \end{tikzcd} \]
+    它位于恒等映射（identity map）之上。这些态射是传递的，即
+    \[
+    \id_{S_2}^{S_3} \circ \id_{S_1}^{S_2} = \id_{S_1}^{S_3},
+    \]
+    并且与恒等态射相容，即
+    \[
+    \id_S^S = \id_S.
+    \]
+    若 $f = \id_{S_1}^{S_2}$ 是重新加括号同构，则 $L_f$ 是形状为 $S_1$ 的列主序（column-major）布局。
+\end{example}
+
+\begin{example}[扁平化]\label{definitionofflatteningisomorphisms}
+    作为上一例的特殊情形，若 $S$ 是任意嵌套元组，则我们有一个扁平化同构（flattening isomorphism）
+    \[\begin{tikzcd}
+    \id_S^{S^\flat} : S \ar[r,"\cong"] & S^\flat
+    \end{tikzcd} \]
+    以及一个去扁平化同构（unflattening isomorphism）
+    \[\begin{tikzcd}
+    \id_{S^\flat}^{S} : S^\flat \ar[r,"\cong"] & S
+    \end{tikzcd}\]
+\end{example}
+
+\begin{observation}
+    若 $f:S \to T$ 是一个嵌套元组，则 $f$ 等于复合
+    \[ \begin{tikzcd}
+    S \ar[r,"\id_S^{S^\flat}"] \ar[rrr,swap,bend right = 30, "f"] & S^\flat \ar[r,"f^\flat"] & T^\flat \ar[r,"\id_{T^\flat}^T"] & T.
+    \end{tikzcd} \]
+    换言之，我们有一个典范因子分解（factorization）
+    \[
+    f = \id_{T^\flat}^T \circ f^\flat \circ \id_S^{S^\flat}.
+    \]
+\end{observation}
+
+\begin{example}[元素]\label{definitionofentriesofnestedtuplemorphisms}
+    设
+    \[ \begin{tikzcd}
+S \ar[rr,"f"] \ar[rr,swap,"\alpha"] & & T
+    \end{tikzcd}\]
+    是嵌套元组态射。设 $1 \leq i \leq \len(S)$，并记 $j = \alpha(i)$。
+    我们把嵌套元组态射
+    \[ \begin{tikzcd}
+    \entry_i(S) \ar[rr,"\entry_i(f)"] \ar[rr,swap,"(j)"]& & T
+    \end{tikzcd} \]
+    称为 $f$ 的第 $i$ 个元素（entry）。由 $\entry_i(f)$ 编码的布局是
+    \[
+    L_{\entry_i(f)} = \entry_i(L_f) .
+    \]
+\end{example}
+
+\begin{example}[元素包含]
+    作为上一例的特殊情形，若 $S$ 是嵌套元组且 $1 \leq i \leq \len(S)$，可取 $f = \id_S$，此时
+    \[ \begin{tikzcd}
+\entry_i(\id_S):\entry_i(S) \ar[rr] & & S
+    \end{tikzcd}\]
+    是 $S$ 的第 $i$ 个元素的包含映射（inclusion）。
+\end{example}
+
+\begin{example}[模式]\label{definitionofmodesofnestedtuplemorphisms}
+    设
+        \[ \begin{tikzcd}
+S \ar[rr,"f"] \ar[rr,swap,"\alpha"] & & T
+    \end{tikzcd}\]
+    是嵌套元组态射。设 $1 \leq i \leq \rank(S)$，并记
+    \begin{align*}
+    N & = \len_{<i}(S)\\
+    \ell & = \len_i(S).
+    \end{align*}
+    我们把嵌套元组态射
+    \[ \begin{tikzcd} [column sep = 30]
+    \mode_i(S) \ar[rr,"\mode_i(f)"] \ar[rr,swap,"(N+1{,}\dots{,}N+\ell)"]& & T
+    \end{tikzcd} \]
+    称为 $S$ 的第 $i$ 个模式（mode）。由 $\mode_i(L_f)$ 编码的布局是
+    \[
+    L_{\mode_i(f)} = \mode_i(L_f).
+    \]
+\end{example}
+
+\begin{example}[模式包含]\label{definitionofmodeinclusions} 作为上一例的特殊情形，我们可取 $f = \id_S$，此时
+\[
+\mode_i(\id_S) :\mode_i(S) \to S
+\]
+是 $S$ 的第 $i$ 个模式的包含映射。我们有时把这个映射记作
+\[
+\incl_i(S) = \mode_i(\id_S).
+\]
+\end{example}
+
+
+\subsection{嵌套元组态射的实现}\label{realizationofnestedtuplemorphisms}
+
+在扁平情形中，我们构造了一个实现函子（realization functor）
+\[\begin{tikzcd}
+\catstyle{Tuple} \ar[r,"{|} \; \cdot \; {|}"] & \catstyle{FinSet}
+\end{tikzcd} \]
+它把元组态射 $f$ 送到 $L_f$ 的布局函数（layout function）。通过用扁平化函子 $\catstyle{Nest} \to \catstyle{Tuple}$ 预复合（precompose），我们可以把它扩张为实现函子
+\[ \begin{tikzcd}
+\catstyle{Nest} \ar[r,"{|}\; \cdot \;{|}"] & \catstyle{FinSet}
+\end{tikzcd} \]
+
+\begin{definition}
+    我们定义{\it 实现函子}
+    \[\begin{tikzcd}
+        \catstyle{Nest}\ar[r,"{|}\;\cdot \;{|}"] & \catstyle{FinSet}
+    \end{tikzcd}
+    \]
+    为复合
+    \[\begin{tikzcd}
+\catstyle{Nest}\ar[r,"(-)^\flat"] & \catstyle{Tuple} \ar[r,"{|}\; \cdot \; {|}"] & \catstyle{FinSet}
+    \end{tikzcd}
+    \]
+\end{definition}
+
+
+\begin{lemma} \label{nestedlayoutfunctionlemma}
+    若 $f:S \to T$ 是嵌套元组态射，则 $f$ 的实现 $|f|$ 是 $L_f$ 的布局函数：
+    \[
+    |f| =
+    \Phi_{L_f}^{\size(T)}.
+    \]
+\end{lemma}
+
+\begin{proof}
+这由 \ref{layoutfunctionlemma} 立得，因为
+\[
+|f| = |f^\flat| = \Phi_{L_{f^\flat}}^{\size(T)} = \Phi_{L_f}^{\size(T)}
+\]
+\end{proof}
+
+\newpage

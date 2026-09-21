@@ -1,0 +1,1094 @@
+% cf-ch3a.tex — 译自 FinalVersion.tex L6745-7835
+\chapter{布局的范畴}\label{categorieschapter}
+
+在深入探讨了布局的代数之后，我们现在把注意力转向本书的数学核心：把布局（layout）实现为适当定义的范畴（category）中的态射（morphism）。在此过程中，我们将发展一套\emph{布局图的图像演算}，它使布局运算的计算更为直接。
+
+\section{范畴 $\catstyle{Tuple}$}\label{thecategoryTuplesection}
+
+本节中，我们定义一个范畴 $\catstyle{Tuple}$，其对象（object）是正整数元组（tuple），其态射我们称为{\it 元组态射}（tuple morphism）。每个元组态射 $f:S \to T$ 编码一个扁平布局（flat layout）$L_f$。元组态射的复合（composition）与布局复合相容：若 $f$ 与 $g$ 是可复合的元组态射，则
+\[
+L_{g \circ f}= L_g \circ L_f.
+\]
+我们定义一个实现函子（realization functor）（\Cref{constructionofrealizationfunctoronC}）
+\[
+| \cdot |: \catstyle{Tuple} \to \catstyle{FinSet}
+\]
+它通过公式
+\[
+|f| = \Phi_{L_f}^{\size(T)}.
+\]
+恢复 $L_f$ 的布局函数（layout function）。我们还将发展一套「元组态射代数」，其中包括{\it 排序}（sort）（\Cref{subsubsection.sort}）、{\it 合并}（coalesce）（\Cref{subsubsection.coalesce}）、{\it 求补}（complement）（\Cref{subsubsection.complement}）、{\it 拼接}（concatenate）（\Cref{subsubsection.concatenate}）、{\it 扁平切分}（flat division）（\Cref{subsubsection.flatdivision}）与{\it 扁平乘积}（flat products）（\Cref{subsubsection.flatproduct}）等运算，它们与扁平布局上的相应运算相容。
+
+\subsection{基本定义}
+
+
+
+\begin{definition}
+令 $\catstyle{Fin}_*$ 表示这样一个范畴：其对象是基点有限集（pointed finite set）
+\[
+\langle m \rangle_* = \{*,1,2,\dots,m\}
+\]
+其中 $m \geq 0$；其态射 $\alpha: \langle m \rangle_* \to \langle n \rangle_*$ 是满足 $\alpha(*) = *$ 的函数。我们称这类态射为{\it 基点映射}（pointed map），或简称{\it 映射}。
+\end{definition}
+
+\begin{aside}
+    $\Fin_*$ 是由有限基点集构成的范畴 $\FinSet_*$ 的一个\emph{骨架}（skeleton）。
+\end{aside}
+
+\begin{notation} 若基点映射 $\alpha:\langle m \rangle_* \to \langle n \rangle_*$ 的陪域（codomain）已知，我们有时把 $\alpha$ 写成
+\[
+\alpha = (\alpha(1),\dots,\alpha(m))
+\]
+即一个长度为 $m$、元素（entry）取自 $\langle n \rangle_*$ 的元组。
+\end{notation}
+\begin{example}\label{morphisminFinexample1}
+    在 $\catstyle{Fin}_*$ 中有一个态射 $\alpha : \langle 4 \rangle_* \to \langle 6 \rangle_*$，由
+    \[
+    \alpha = (2,1,*,6),
+    \]
+    给出，我们可以用下图来可视化它。
+    \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+          & & \bullet \\
+     & & \bullet \\
+    \bullet \ar[uurr,mapsto] & & \bullet \\
+    \bullet & & \bullet \\
+    \bullet  \ar[drr,mapsto] & & \bullet \\
+    \bullet\ar[urr,mapsto] & & \bullet \\
+    & \alpha & \\
+    \end{tikzcd} \]
+    注意，与元素 $3$ 对应的圆点不带有箭头，这反映了它被送到 $*$ 这一事实。
+\end{example}
+
+\begin{example}\label{morphisminFinexample2}
+    在 $\catstyle{Fin}_*$ 中有一个态射 $\beta:\langle 5 \rangle_* \to \langle 3 \rangle_*$，由
+    \[
+    \beta = (*,1,2,3,*)~,
+    \]
+    给出，我们可以用下图来可视化它。
+    \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+    \bullet & & \\
+    \bullet \ar[drr,mapsto]& & \\
+    \bullet \ar[drr,mapsto]& & \bullet\\
+    \bullet \ar[drr,bend left = 10, mapsto] & & \bullet\\
+    \bullet \ar[rr,mapsto] & & \bullet\\
+    & \beta & \\
+    \end{tikzcd} \]
+\end{example}
+
+\begin{example}\label{morphisminFinexample3}
+对任意 $m \geq 0$，$\catstyle{Fin}_*$ 中存在唯一形如 $\pi:\langle m \rangle_* \to \langle 0 \rangle_*$ 的态射，即
+\[
+\pi = (*,\dots,*).
+\]
+\end{example}
+
+\begin{example}
+对任意 $n \geq 0$，$\catstyle{Fin}_*$ 中存在唯一形如 $\delta : \langle 0 \rangle_* \to \langle m \rangle_*$ 的态射，即
+    \[
+    \delta = ().
+    \]
+\end{example}
+
+\begin{aside}
+    范畴 $\catstyle{Fin}_*$ 是交换 operad 的算子范畴（category of operators），因此我们有时记
+    \[\catstyle{Fin}_* = \catstyle{Comm}^\otimes.\]
+\end{aside}
+
+\noindent 我们尤其关注 $\catstyle{Fin}_*$ 中的{\it 可处理}（tractable）态射，其定义如下。
+
+\begin{definition}\label{definitionofessentiallyinjective}
+    我们称基点映射 $\alpha: \langle m \rangle_* \to \langle n \rangle_*$ 是{\it 可处理的}，如果对任意 $j \in \langle n \rangle \subset \langle n \rangle_*$，原像（preimage）$\alpha^{-1}(j)$ 为空或由单个元素组成。
+\end{definition}
+
+\begin{example}\label{essentiallyinjectivemorphismexample}
+    映射
+    \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+            & &          & & & \bullet & &        & & & \bullet \ar[drr,mapsto] & & \bullet \\
+            & &          & & & \bullet \ar[rr,mapsto] & & \bullet & & & \bullet \ar[urr,mapsto] & & \bullet \\
+            & & \bullet   & & & \bullet \ar[drr,mapsto] & & \bullet & & & \bullet \ar[drr,mapsto] & & \bullet \\
+    \bullet \ar[urr,mapsto] & & \bullet & & & \bullet & & \bullet & & & \bullet \ar[drr,mapsto]  & & \bullet \\
+    \bullet \ar[rr,mapsto]& & \bullet & & & \bullet & & \bullet & & & \bullet \ar[uurr,mapsto] & & \bullet \\
+    & \alpha_1 & & & & & \alpha_2 & & & & & \alpha_3 & & \\
+    \end{tikzcd} \]
+    是可处理的，而映射
+    \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+    & &          & & & \bullet & &        & & & \bullet \ar[drr,mapsto] & & \bullet \\
+    & &          & & & \bullet \ar[rr,mapsto] & & \bullet & & & \bullet \ar[urr,mapsto] & & \bullet \\
+    & & \bullet   & & & \bullet \ar[drr,mapsto] & & \bullet & & & \bullet \ar[drr,bend left = 10, mapsto] & & \bullet \\
+    \bullet \ar[drr,bend left = 10, mapsto] & & \bullet & & & \bullet & & \bullet & & & \bullet \ar[rr,mapsto]  & & \bullet \\
+    \bullet \ar[rr,mapsto]& & \bullet & & & \bullet \ar[urr,mapsto] & & \bullet & & & \bullet \ar[urr,bend right = 10, mapsto] & & \bullet \\
+    & \beta_1 & & & & & \beta_2 & & & & & \beta_3 & & \\
+    \end{tikzcd} \]
+    不是可处理的
+\end{example}
+
+\begin{remark}
+    若我们把 $\catstyle{Fin}_*$ 中的态射 $\alpha:\langle m \rangle_* \to \langle n \rangle_*$ 表示为元组，即
+    \[
+    \alpha = (\alpha(1),\dots,\alpha(m))
+    \]
+    则 $\alpha$ 可处理当且仅当 $\alpha$ 中没有正整数出现多于一次。
+\end{remark}
+
+\begin{aside} 由可处理基点映射确定的宽子范畴（wide subcategory）
+\[\catstyle{E}_0^\otimes \subset \catstyle{Comm}^\otimes = \catstyle{Fin}_*\]是 $\catstyle{E}_0$ operad 的算子范畴。
+\end{aside}
+
+
+
+\begin{definition}\label{definitionofTuple} 令 $\catstyle{Tuple}$ 表示这样一个范畴：其对象是正整数元组
+\[
+S = (s_1,\dots,s_m)
+\]
+其中的态射
+\[f:(s_1,\dots,s_m) \to (t_1,\dots,t_n)\]
+由一个可处理基点映射 $\alpha:\langle m \rangle_* \to \langle n \rangle_*$
+指定，且满足以下性质：
+\begin{itemize}
+\item 若 $ 1 \leq i \leq m$ 且 $\alpha(i) \neq *$，则 $s_i = t_{\alpha(i)}$~。
+\end{itemize}
+我们称这样的态射 $f$ {\it 位于} $\alpha$ {\it 之上}（lies over），并把 $f$ 称为{\it 元组态射}。
+\end{definition}
+
+\begin{notation}
+    若 $f:(s_1,\dots,s_m) \to (t_1,\dots,t_n)$ 是位于 $\alpha$ 之上的元组态射，我们有时把 $f$ 画成
+    \[
+    \begin{tikzcd}
+(s_1,\dots,s_m) \ar[rr,"f"] \ar[rr,swap,"\alpha"] & & (t_1,\dots,t_n).
+    \end{tikzcd}
+    \]
+\end{notation}
+
+我们所发展的布局图像演算，基于 $\Tuple$ 中态射的自然可视化，如下例所示。
+
+\begin{example}
+\label{morphismfinC} 元组态射
+\[
+\begin{tikzcd}
+(3,128,128) \ar[rr,"f"] \ar[rr,swap,"(1{,}3{,}5)"] & &  (3,2,128,2,128)
+\end{tikzcd} \]
+可以用下图来可视化。
+    \[
+    \begin{tikzcd}[row sep = 1, column sep = 8]
+     & & 128  \\
+     & & 2   \\
+     128 \ar[rruu, mapsto] & & 128  \\
+     128  \ar[rru,mapsto] & & 2  \\
+     3 \ar[rr,mapsto] & & 3  \\
+     & f &  \\
+    \end{tikzcd}
+    \]
+    \end{example}
+
+
+\begin{example}
+\label{morphismginC}
+元组态射
+\[\begin{tikzcd}
+(3,128,128) \ar[rr,"g"] \ar[rr,swap,"(*{,}2{,}1)"] & &  (128,128)
+\end{tikzcd} \]
+可以用下图来可视化。
+
+\[
+    \begin{tikzcd}[row sep = 1, column sep = 8]
+     128 \ar[rrdd, mapsto] & &  \\
+     128 \ar[rr,mapsto] & & 128 \\
+     3 & & 128 \\
+     & g & \\
+    \end{tikzcd}
+    \]
+\end{example}
+\begin{example}\label{morphismhinC}
+    元组态射
+    \[ \begin{tikzcd}
+    (16,16,16,1,32) \ar[rr,"h"] \ar[rr,swap,"(*{,}*{,}1{,}*{,}2)"] & &  (16,32,1,1)
+    \end{tikzcd} \]
+    可以用下图来可视化。
+    \[
+    \begin{tikzcd} [row sep = 1, column sep = 8]
+    32 \ar[dddrr,mapsto] & & \\
+    1 & & 1 \\
+    16 \ar[ddrr,mapsto] & & 1 \\
+    16 & & 32 \\
+    16 & & 16 \\
+    & h & \\
+    \end{tikzcd}
+    \]
+\end{example}
+
+\begin{observation}
+    我们可以如下把范畴 $\catstyle{Tuple}$ 与一些熟知的 operad 联系起来。令 $\mathbb{Z}_{>0}^{\mathterm{div}}$ 表示正整数依整除关系构成的偏序集（poset），并把它视为一个对称幺半范畴（symmetric monoidal category），其乘积由整数的乘法给出。令 $(\mathbb{Z}_{>0}^{\mathterm{div}})^\otimes$ 表示 $\mathbb{Z}_{>0}^{\mathterm{div}}$ 的算子范畴。于是存在显然的函子（functor）\[\catstyle{Tuple} \to (\mathbb{Z}_{>0}^{\mathterm{div}})^\otimes,\]与\[\catstyle{Tuple} \to \catstyle{E}_0^\otimes,\]使得图
+    \[ \begin{tikzcd}
+    \catstyle{Tuple} \ar[r] \ar[d] & (\mathbb{Z}_{>0}^{\mathterm{div}})^\otimes \ar[d] \\
+    \catstyle{E}_0^\otimes \ar[r] & \catstyle{Comm}^\otimes
+    \end{tikzcd} \]
+    交换。这把 $\catstyle{Tuple}$ 展现为拉回（pullback）operad
+    \[
+    \catstyle{Tuple} \subset \catstyle{E}_0^\otimes \times_{\catstyle{Comm}^\otimes}(\mathbb{Z}_{>0}^{\mathterm{div}})^\otimes\]
+    中由满足
+    \[
+    \alpha(i) \neq 1 \quad \Rightarrow \quad  s_i = t_{\alpha(i)}.
+    \]
+    的态射
+    \[\begin{tikzcd} (s_1,\dots,s_m) \ar[r,"f"] \ar[r,swap,"\alpha"] & (t_1,\dots,t_n)
+    \end{tikzcd}\]
+    构成的宽子范畴。
+\end{observation}
+
+\subsection{从元组态射到扁平布局}
+
+\noindent 使用范畴 $\Tuple$ 的动因在于：每个元组态射 $f$ 都编码一个扁平布局 $L_f$。而且，每个可处理布局 $L$ 都产生一个元组态射 $f_L$。我们在 \Cref{tractableflatlayoutscomefromtuplemorphisms} 中证明：这两个构造在某种意义上互为逆，且可处理布局恰是那些由元组态射编码的布局。
+
+\begin{construction} \label{layoutfrommorphisminTuple}
+设
+\[\begin{tikzcd} (s_1,\dots,s_m) \ar[rr,"f"] \ar[rr,swap,"\alpha"] & &  (t_1,\dots,t_n)\end{tikzcd} \]
+是一个元组态射。我们定义 $L_f$ 为这样一个扁平布局：其形状（shape）
+\[\shape(L_f) = (s_1,\dots,s_m)\]
+是 $f$ 的定义域（domain），其步长（stride）
+\[\stride(L_f) = (d_1,\dots,d_m)\] 由公式
+\[d_i = \begin{cases}
+0 & \alpha(i) = * \\
+\prod_{j < \alpha(i)} t_j & \alpha(i) \neq *.
+\end{cases}
+\]
+定义。我们把 $L_f$ 称为 $f$ 所{\it 编码的布局}（layout encoded by $f$），或 $f$ 所\emph{关联的布局}（layout associated to $f$）。
+\end{construction}
+
+
+
+
+\begin{example} 例 \ref{morphismfinC} 中的元组态射
+\[
+\begin{tikzcd}[row sep = 1, column sep = 8]
+ & & 128  \\
+ & & 2   \\
+ 128 \ar[rruu, mapsto] & & 128  \\
+ 128  \ar[rru,mapsto] & & 2  \\
+ 3 \ar[rr,mapsto] & & 3  \\
+ & f &  \\
+\end{tikzcd}
+\]
+编码布局
+\[
+L_f  = (3,128,128) : (1,6,1536).
+\]
+注意，按 \Cref{layoutfrommorphisminTuple} 中的公式计算步长，相当于沿着从某个形状元素指向其目标元素的箭头，把该目标元素下方的所有元素相乘（空积取为 $1$）。
+    % \[
+    % \begin{tikzcd}[row sep = 1, column sep = 8]
+    % & & & 128 & & & & &  \\
+    % & & & 2 & & & & &  \\
+    % & 128 \ar[rruu, mapsto] & & 128 & & & & & \\
+    % & 128 \ar[rru,mapsto] & & 2 & & & \rightsquigarrow & & L_f = (3,128,128) : (1,6,1536)\\
+    % & 3 \ar[rr,mapsto] & & 3 & & & & & \\
+    % & & f & & & & & &  \\
+    % \end{tikzcd}
+    % \]
+\end{example}
+
+\begin{example} 例 \ref{morphismginC} 中的元组态射
+\[\begin{tikzcd}
+(3,128,128) \ar[rr,"g"] \ar[rr,swap,"(*{,}2{,}1)"] & &  (128,128)
+\end{tikzcd} \]
+编码布局
+\[
+L_g = (3,128,128):(0,128,1).
+\]
+% \[
+%     \begin{tikzcd}[row sep = 1, column sep = 8]
+%     & 128 \ar[rrdd, mapsto] & & & & & & & \\
+%     & 128 \ar[rr,mapsto] & & 128 & & & \rightsquigarrow & & L_g = (3,128,128):(0,128,1)\\
+%     & 3 & & 128 & & & & & \\
+%     & & g & & & & & & \\
+%     \end{tikzcd}
+% \]
+\end{example}
+
+\begin{example} 例 \ref{morphismhinC} 中的元组态射
+    \[ \begin{tikzcd}
+    (16,16,16,1,32) \ar[rr,"h"] \ar[rr,swap,"(*{,}*{,}1{,}*{,}2)"] & &  (16,32,1,1)
+    \end{tikzcd} \]
+编码布局
+\[
+L_h = (16,16,16,1,32):(0,0,1,0,16).
+\]
+% \[
+%     \begin{tikzcd}[row sep = 1, column sep = 8]
+%     & 32\ar[rrddd,mapsto] & & & & & & & \\
+%     & 1 & & 1 & & & & & \\
+%     & 16 \ar[rrdd, mapsto] & & 1 & & & & & \\
+%     & 16  & & 32 & & & \rightsquigarrow & & L_h = (16,16,16,1,32):(0,0,1,0,16)\\
+%     & 16 & & 16 & & & & & \\
+%     & & h & & & & & & \\
+%     \end{tikzcd}
+% \]
+\end{example}
+
+我们已经看到如何计算由元组态射 $f$ 编码的扁平布局 $L_f$。另一方面，若 $L$ 是{\it 可处理的}，则我们可以沿相反方向进行，构造一个编码 $L$ 的元组态射 $f$。回顾定义 \ref{definitionoftractableflatlayouts}：扁平布局 $L$ 称为{\it 可处理的}，如果
+\[\sort(L) = (s_1,\dots,s_m):(d_1,\dots,d_m)\]
+满足以下性质：
+
+\[ \text{若 }1 \leq i < m\text{，则 }d_i = 0\text{，或 }s_id_i \text{ 整除 }d_{i+1}. \]
+
+\begin{construction}\label{tuplemorphismfromlayout}
+设 $L = (s_1,\dots,s_m):(d_1,\dots,d_m)$ 可处理，并设
+\[
+\sort(L) = (s_1',\dots,s_m'):(d_1',\dots,d_m'),
+\]
+于是存在某个置换（permutation）$\sigma \in \Sigma_m$ 使得 $\sort(L) = L^\sigma$。换言之，对每个 $1 \leq i \leq m$，有 $s_i' = s_{\sigma(i)}$ 且 $d_i' = d_{\sigma(i)}$。若每个 $d_i'$ 都非零，则令 $k = 0$；否则，令 $k$ 为使 $d_k' = 0$ 的最大整数。令 $\ell = 2(m-k)$，并令
+\begin{align*}
+ (t_1',\dots,t_{\ell}') = \left(d_{k+1}',s_{k+1}', \dfrac{d_{k+2}'}{s_{k+1}'d_{k+1}'} , s_{k+2}' , \dfrac{d_{k+3}'}{s'_{k+2}d'_{k+2}}, \dots,\dfrac{d'_m}{s'_{m-1}d'_{m-1}}, s'_m \right).
+\end{align*}
+我们把
+\[f_L':(s_1,\dots,s_m) \to (t_1',\dots,t_\ell')\]
+定义为位于映射 $\alpha : \langle m \rangle_* \to \langle \ell \rangle_*$ 之上的元组态射，$\alpha$ 由
+\[
+\alpha'(i) = \begin{cases}
+    * & \sigma^{-1}(i) \leq k\\
+    2(\sigma^{-1}(i)-k) & k+1 \leq \sigma^{-1}(i) \leq m.
+\end{cases}
+\]
+给出。令 $J = \{j_1 < \dots < j_n\} \subset \langle \ell \rangle$ 表示由满足「$j_i$ 为偶数或 $t_{j_i} \neq 1$」的指标构成的集合。令
+\[
+(t_1,\dots,t_n) = (t_{j_1}',\dots,t_{j_n}'),
+\]
+并令 $\iota:\langle n \rangle_* \to \langle \ell \rangle_*$ 为包含映射（inclusion）$i \mapsto j_i$。于是按构造，映射 $\alpha'$ 可分解为 $\alpha' = \iota \circ \alpha$，我们定义 $L$ 的{\it 标准表示}（standard representation）为元组态射
+\[
+\begin{tikzcd}
+    (s_1,\dots,s_m) \ar[rr,"f_L"] \ar[rr,swap,"\alpha"] & & (t_1,\dots,t_n). \\
+\end{tikzcd}
+\]
+\end{construction}
+
+\begin{example}
+    若
+    \[L = (2,2):(3,30),\]
+    则 $L$ 可处理，且 $L$ 的标准表示是元组态射
+% \[\begin{tikzcd}
+%     (64) \ar[rr,"f_L"] \ar[rr,swap,"(2)"]& & (7,64).
+% \end{tikzcd}\]
+    \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+     & & 2\\
+     & & 5\\
+    2 \ar[uurr,mapsto] & & 2 \\
+    2 \ar[urr,mapsto] & & 3 \\
+    & f_L & \\
+    \end{tikzcd} \]
+注意，非正式地说，按 \Cref{tuplemorphismfromlayout} 计算 $f_L$ 相当于：
+\begin{itemize}
+    \item 把陪域初始化为 $ ()$，
+    \item 按递增顺序遍历 $L$ 的非零步长，
+    \item 若 $d_j$ 是当前步长，而 $d_i$ 是上一个访问过的步长，则追加
+    \begin{itemize}
+    \item $(s_j)$（若 $s_{i}d_{i} = d_j$），或
+    \item $\left(\frac{d_j}{s_id_i},s_j\right)$（若 $s_id_i < d_j$），
+    \end{itemize}
+    以及
+    \item 把 $s_j$ 映到 $s_j$。
+\end{itemize}
+\end{example}
+
+\begin{example}
+    若
+    \[L = (128,128):(128,1),\]
+    则 $L$ 可处理，且 $L$ 的标准表示是元组态射
+%     \[\begin{tikzcd}
+%     (128,128) \ar[rr,"f_L"] \ar[rr,swap,"(4{,}2)"]& & (1,128,1,128).
+% \end{tikzcd}\]
+\[
+\begin{tikzcd}[row sep = 1, column sep = 8]
+128 \ar[drr,mapsto] & & 128 \\
+128 \ar[urr,mapsto] & & 128 \\
+& f_L &
+\end{tikzcd}
+\]
+\end{example}
+
+\begin{example}
+    若
+    \[L = (2,2,2,2):(24,0,3,480),\]
+    则 $L$ 可处理，且 $L$ 的标准表示是元组态射
+%     \[\begin{tikzcd}
+%     (2,2,2,2) \ar[rr,"f_L"] \ar[rr,swap,"(4{,}*{,}2{,}6)"]& & (3,2,4,2,10,2).
+% \end{tikzcd}\]
+    \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+     & & 2 \\
+     & & 10 \\
+    2 \ar[uurr,mapsto]& & 2 \\
+    2 \ar[drr,mapsto]& & 4 \\
+    2 & & 2 \\
+    2 \ar[uuurr,mapsto] & & 3 \\
+    & f_L & \\
+    \end{tikzcd} \]
+\end{example}
+
+我们来论证 \Cref{tuplemorphismfromlayout} 中的元组态射 $f_L$ 确实编码布局 $L$。
+
+\begin{lemma}\label{tuplemorphismfromlayoutagreement}
+设 $L$ 是可处理扁平布局，$f = f_L$ 是 $L$ 的标准表示。则 $f$ 编码的布局为
+\[
+L_{f} = L.
+\]
+\end{lemma}
+\begin{proof} 设 $L = (s_1,\dots,s_m):(d_1,\dots,d_m)$ 可处理，并令
+\[ \begin{tikzcd}
+(s_1,\dots,s_m) \ar[r,"f"] \ar[r,swap,"\alpha"] &  (t_1,\dots,t_n)
+\end{tikzcd} \]
+为 $L$ 的标准表示。显然
+\[
+\shape(L_f) = (s_1,\dots,s_m) = \shape(L).
+\]
+我们需要验证 $\stride(L_f) = \stride(L)$。换言之，需要验证对任意 $1 \leq i \leq m$，有
+\[
+d_i =
+\begin{cases}
+0 & \alpha(i) = *\\
+\prod_{j < \alpha(i)} t_j & \alpha(i) \neq *.
+\end{cases}
+\]
+我们沿用 \Cref{tuplemorphismfromlayout} 的记号。若 $\alpha(i) = *$，则 $\alpha'(i) = *$，于是 $\sigma^{-1}(i) \leq k$。由此可得
+\[
+d_i = d'_{\sigma^{-1}(i)} = 0.
+\]
+反之设 $\alpha(i) \neq *$。则 $\alpha'(i) \neq *$，于是 $k+1 \leq \sigma^{-1}(i) \leq m$。我们计算
+\begin{align*}
+\prod_{j < \alpha(i)} t_j = \prod_{\substack{j' < \alpha'(i)\\ t_{j'}' \neq 1} } t_{j'}' = \prod_{j' < \alpha'(i)} t_{j'}' = \prod_{j' < 2(\sigma^{-1}(i)-k)}t_{j'}' & = d_{k+1}' \cdot \left( \prod_{v = 1}^{\sigma^{-1}(i)-(k+1)} s'_{k+v} \dfrac{d'_{k+v+1}}{s_{k+v}'d_{k+v}'} \right)\\
+& = d_{\sigma^{-1}(i)}'\\
+& = d_i.
+\end{align*}
+\end{proof}
+
+我们已经证明：若 $L$ 是可处理扁平布局，则存在编码 $L$ 的元组态射 $f$。接下来证明逆命题，它蕴含可处理扁平布局恰是那些由元组态射编码的布局。
+
+\begin{proposition}\label{tractableflatlayoutscomefromtuplemorphisms}
+设 $L$ 是扁平布局。则存在编码 $L$ 的元组态射 $f$，当且仅当 $L$ 可处理。
+\end{proposition}
+
+\begin{proof}
+    首先，设 $L$ 是扁平布局，且 $f:(s_1,\dots,s_m) \to (t_1,\dots,t_n)$ 是满足 $L_f = L$ 的元组态射。我们要证 $L_f$ 可处理。令
+    \[
+    \sort(L) = (s_1',\dots,s_m'):(d_1,\dots,d_m)
+    \]
+    为 $L$ 的排序，并设 $ 1 \leq i < m$。我们将论证 $d_i = 0$，或 $s_i'd_i$ 整除（divides）$d_{i+1}$。若 $d_i = 0$，则已得证。设 $d_i \neq 0$。则对某个满足 $s_i' = t_k$ 的 $1 \leq k \leq n$，有
+    \[d_i = \prod_{j< k}t_j\]
+    由于 $d_{i+1} \geq d_i$，可知 $d_{i+1} \neq 0$，故 $d_{i+1}$ 形如
+    \[d_{i+1} = \prod_{j<\ell} t_j\]
+    其中 $1 \leq \ell \leq n$。分两种情形讨论：
+    \begin{itemize}
+        \item （情形 1）若 $\ell > k$，则
+        \begin{align*}
+            d_{i+1} = \prod_{j < \ell} t_j & = \left(\prod_{j \leq k} t_j \right) \left(\prod_{k < j < \ell} t_j \right) = s_i'd_i\left( \prod_{k<j<\ell} t_j \right),
+        \end{align*}
+        故 $s_i'd_i$ 整除 $d_{i+1}$。
+        \item （情形 2）若 $\ell \leq k$，则由
+        \[\prod_{j < \ell} t_j = d_{i+1}  \geq d_i =   \prod_{j < k} t_j,\]
+        必有
+        \[t_\ell  = \cdots = t_{k-1} = 1,\]
+        以及
+        \[
+        d_{i+1} = d_i.
+        \]
+        特别地，有 $s_{i+1}' = t_\ell = 1$。但由于 $\sort(L_f)$ 是已排序（sorted）的且 $d_{i+1} = d_i$，有 $s_i' \leq s_{i+1}' = 1$，故 $s_i' = 1$。我们推得
+        \[s_i' d_i  = d_{i+1},\]
+        特别地，$s_i'd_i$ 整除 $d_{i+1}$。
+    \end{itemize}
+    我们断定 $L$ 可处理。
+
+    其次，设 $L$ 可处理。此时可取 $f = f_L$ 为 $L$ 的标准表示（见构造 \ref{tuplemorphismfromlayout}），于是由引理 \ref{tuplemorphismfromlayoutagreement}，有 $L = L_f$。
+\end{proof}
+
+
+
+
+\begin{remark}\label{standardformmotivation} 值得注意的是，有许多不同的元组态射给出同一个布局。例如，下面展示的每个元组态射
+
+\[
+\begin{tikzcd}[row sep=1, column sep=8]
+  & &    & & &   & & 75 & & &   & & 4\\
+  & &    & & &   & & 53 & & &   & & 5\\
+  & &    & & &   & & 17 & & &   & & 5\\
+  & &  4 & & &   & & 4  & & &   & & 4\\
+  & & 25 & & &   & & 25 & & &   & & 1\\
+4 \ar[uurr,mapsto] & & 4 & & & 4 \ar[uurr,mapsto] & & 4 & & & 4 \ar[uuuuurr,mapsto] & & 4\\
+4 \ar[urr,mapsto] & & 4 & & & 4 \ar[urr,mapsto] & & 4 & & & 4 \ar[uuurr, mapsto] & & 7\\
+4 \ar[urr,mapsto] & &14 & & & 4 \ar[urr,mapsto] & &14 & & & 4 \ar[uurr,mapsto] & & 2\\
+  &f & & & & & g & & & & & h & \\
+\end{tikzcd}
+\]
+都编码布局
+\[
+L_{f} = L_{g} = L_{h} = (4,4,4):(14,56,5600).
+\]
+\noindent 其中 $f$ 最简单：在 $f$ 的像（image）上方没有多余的元素（不同于 $g$），且未被 $f$ 命中的元素是紧缩在一起的（不同于 $h$）。为把 $f$ 在这些态射中的简单性精确化，我们引入{\it 标准形式}（standard form）的概念。
+\end{remark}
+
+\begin{definition}\label{definitionofstandardform}
+    设
+    \[ \begin{tikzcd}
+    (s_1,\dots,s_m) \ar[rr,swap,"\alpha"] \ar[rr,"f"] & & (t_1,\dots,t_n)
+    \end{tikzcd} \]
+    是一个元组态射。若下列条件成立，则称 $f$ 具有{\it 标准形式}：
+    \begin{enumerate}
+        \item 若 $n > 1$，则 $n \in \Image(\alpha)$。
+        \item 若 $1 \leq j < n$，则
+        \[
+         j \notin \Image(\alpha) \quad \Rightarrow \quad \begin{matrix} t_j \neq 1\text{, and}\\
+        j+1 \in \Image(\alpha)
+         \end{matrix}
+        \]
+    \end{enumerate}
+\end{definition}
+
+\begin{example}
+    注记 \ref{standardformmotivation} 中的元组态射 $f$ 具有标准形式，而 $g$ 与 $h$ 不具有。
+\end{example}
+
+\begin{example}
+    元组态射
+
+    \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+ & & & & & & 64 & &  & &  \\
+ & &  & & & & 2 & & & & 128\\
+& &  & & 64 \ar[rruu,mapsto] & & 64 & &  128 \ar[urr,mapsto] & & 512\\
+& &  & & 64 \ar[rr,mapsto] & & 64 & & 128  & & 128\\
+8 \ar[rr,mapsto] & & 8 & & 64 \ar[rruu,mapsto] & & 2 & & 128 \ar[rru,mapsto]  & & 3\\
+& f_1 & & & & f_2 & & & & f_3 & \\
+\end{tikzcd} \]
+    具有标准形式，而元组态射
+
+    \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+ & & & & & & 64 & & & & 6\\
+ & & & & & & 2 & &  & & 128\\
+ & &  & & & & 64 & & & & 256\\
+& &  & & 64 \ar[rruuu,mapsto] & & 1 & &  128 \ar[uurr,mapsto] & & 2\\
+& & 8 & & 64 \ar[rr,mapsto] & & 64 & & 128  & & 128\\
+8 \ar[rru,mapsto] & & 1 & & 64 \ar[rruuu,mapsto] & & 2 & & 128 \ar[rru,mapsto]  & & 3\\
+& g_1 & & & & g_2 & & & & g_3 & \\
+\end{tikzcd} \]
+    不具有。
+\end{example}
+
+\begin{example}
+    若 $L$ 是可处理布局，则按构造，$L$ 的标准表示 $f_L$ 具有标准形式。
+\end{example}
+
+若我们把范围限制到具有标准形式的元组态射，则它与可处理布局之间几乎是一一对应的。然而，有一种需要排除的麻烦情形，如下例所阐明的。
+
+\begin{example}\label{badlayouts}
+考虑下面展示的元组态射 $f$ 与 $g$。
+\[ \begin{tikzcd}[row sep = 1, column sep = 8]
+1 \ar[rr,mapsto] & & 1 & & 1\ar[drr,mapsto]  & & 1\\
+1 \ar[rr,mapsto] & & 1 & & 1\ar[urr,mapsto]  & & 1\\
+8 \ar[rr,mapsto] & & 8 & & 8 \ar[rr,mapsto] & & 8\\
+ & f & & & & g &
+\end{tikzcd}\]
+$f$ 与 $g$ 都具有标准形式，且
+\[
+L_f = (8,1,1):(1,8,8) = L_g.
+\]
+本例说明：形如 $s_i = 1$ 且 $\alpha(i) \neq *$ 的元素的存在，可能导致具有标准形式的表示元组态射不唯一。在布局这一侧，这对应于形状元素 $s_i = 1$ 而步长 $d_i \neq 0$ 的情形。为了排除这类病态例子，我们引入{\it 非退化}（non-degeneracy）的概念。
+\end{example}
+
+
+
+\begin{definition}\label{definitionofflatnondegenerate}
+    设
+    \[
+    \begin{tikzcd}
+(s_1,\dots,s_m) \ar[rr,"f"] \ar[rr,swap,"\alpha"] & & (t_1,\dots,t_n)
+    \end{tikzcd}
+    \]
+    是一个元组态射，且
+    \[
+    L = (s_1,\dots,s_m):(d_1,\dots,d_m)
+    \]
+    是一个扁平布局。
+    \begin{enumerate}
+    \item 我们称 $f$ 是{\it 非退化的}，如果
+    \[
+    s_i = 1 \quad \Rightarrow \quad \alpha(i) = *.
+    \]
+    \item 我们称 $L$ 是{\it 非退化的}，如果
+    \[
+    s_i = 1 \quad \Rightarrow \quad d_i = 0.
+    \]
+    \end{enumerate}
+\end{definition}
+
+\begin{observation}
+    若 $f$ 是非退化元组态射，则 $f$ 编码的布局 $L_f$ 非退化。反之，若 $L$ 是非退化扁平布局，则 $L$ 的标准表示 $f_L$ 非退化。
+\end{observation}
+
+\begin{observation}
+    限制到非退化扁平布局并不真正损失一般性。若 $L$ 是任意扁平布局，则 $\filter(L)$ 是与 $L$ 具有相同坐标函数（coordinate function）与布局函数的非退化扁平布局。
+\end{observation}
+
+具有标准形式的非退化元组态射的一条本质性质是：它们由其所编码的布局刻画。精确表述如下。
+
+\begin{lemma}\label{nondegeneratestandardformtuplemorphisms}
+设 $f$ 与 $g$ 是具有标准形式的非退化元组态射。若 $L_f = L_g$，则 $f = g$。
+\end{lemma}
+
+\begin{proof}
+    设
+    \[\begin{tikzcd}
+        (s_1,\dots,s_m) \ar[rr,"f"] \ar[rr,swap,"\alpha"] & & (t_1,\dots,t_n)
+    \end{tikzcd}
+    \]
+    与
+    \[\begin{tikzcd}
+        (s_1,\dots,s_m) \ar[rr,"g"] \ar[rr,swap,"\beta"] & & (u_1,\dots,u_p)
+    \end{tikzcd}
+    \]
+    是具有标准形式的非退化元组态射，且
+    \[
+    L_f = (s_1,\dots,s_m):(d_1,\dots,d_m) = L_g.
+    \]
+    我们要证 $f = g$。首先论证 $(t_1,\dots,t_n) = (u_1,\dots,u_p)$。令
+    \begin{align*}
+    X & = \{ t_1 \cdots t_j \mid 1 \leq j \leq n\}\\
+    Y & = \{u_1\cdots u_k \mid 1 \leq k \leq p\}
+    \end{align*}
+    分别表示 $(t_1,\dots,t_n)$ 与 $(u_1,\dots,u_p)$ 的前缀积（prefix product）之集。我们断言 $X = Y$，因为这两个集合都等于
+    \[
+    Z = \{d_i, s_id_i \mid 1 \leq i \leq m \text{ and }d_i \neq 0\}.
+    \]
+    来论证 $X = Z$。设 $1 \leq j \leq n$。若存在某个 $i \in \langle m \rangle$ 使 $\alpha(i) = j$，则 $t_1 \cdots t_j = s_id_i$。另一方面，若 $j$ 不在 $\alpha$ 的像中，则由于 $f$ 具有标准形式，存在某个 $i \in \langle m \rangle$ 使 $\alpha(i) = j+1$，此时 $t_1 \cdots t_j = d_i$。这证明了 $X \subseteq Z$。反之，若 $1 \leq i \leq m$ 且 $d_i \neq 0$，则 $d_i = t_1 \cdots t_{\alpha(i)-1}$ 且 $s_id_i = t_1 \cdots t_{\alpha(i)}$，这证明 $Z \subseteq X$。于是 $X = Z$。同理可证 $Y = Z$。
+
+
+    由于 $f$ 与 $g$ 都是非退化且具有标准形式的，可知每个 $t_j$ 与每个 $u_k$ 都大于 $1$，从而
+    \begin{align*}
+    t_1  < t_1t_2 < & \cdots < t_1\cdots t_n,\\
+    u_1  < u_1u_2 < & \cdots < u_1\cdots u_p,
+    \end{align*}
+    又因 $X = Y$，可得 $n = p$，且对每个 $1 \leq j \leq n$ 有 $t_1 \cdots t_j = u_1 \cdots u_j$。我们推得 $(t_1,\dots,t_n) = (u_1,\dots,u_p)$。
+
+    接下来需要论证 $\alpha = \beta$。反设存在某个 $i \in \langle m \rangle$ 使 $\alpha(i) \neq \beta(i)$。分两种情形讨论。
+    \begin{itemize}
+        \item 若 $\alpha(i) = * \neq \beta(i)$，则
+        \[
+        0 = d_i = t_1 \cdots t_{\beta(i)-1},
+        \]
+        矛盾。情形 $\alpha(i) \neq * = \beta(i)$ 类似。
+        \item 若 $\alpha(i) \neq * \neq \beta(i)$，则不失一般性可设 $\alpha(i) < \beta(j)$，此时
+        \[
+        d_i = t_1 \cdots t_{\alpha(i)-1} < t_1 \cdots t_{\beta(i)-1} = d_i,
+        \]
+        矛盾。
+    \end{itemize}
+    我们推得 $\alpha = \beta$，故 $f = g$。
+\end{proof}
+
+现在我们可以证明对应定理了，它把具有标准形式的非退化元组态射与非退化可处理扁平布局等同起来。
+
+\begin{theorem}\label{flatcorrespondence}
+    构造 \ref{layoutfrommorphisminTuple} 与 \ref{tuplemorphismfromlayout} 给出的映射
+    \[ \begin{tikzcd}
+    f \ar[r,mapsto] & L_f \\
+    \begin{Bmatrix}
+    \text{非退化}\\
+        \text{具有标准形式的}\\
+        \text{元组态射}
+    \end{Bmatrix}
+    \ar[r] & \ar[l]
+    \begin{Bmatrix}
+    \text{非退化}\\
+        \text{可处理扁平}\\
+        \text{布局}
+    \end{Bmatrix} \\
+    f_L & \ar[l,mapsto] L
+    \end{tikzcd}
+    \]
+    在具有标准形式的非退化元组态射与非退化可处理扁平布局之间建立了一一对应。
+\end{theorem}
+
+\begin{proof}
+    我们要证：当限制到所述形式的元组态射与布局时，构造 $f \mapsto L_f$ 与 $L \mapsto f_L$ 互为逆。若 $L$ 是非退化可处理扁平布局，则由引理 \ref{tuplemorphismfromlayoutagreement}，有 $L_{f_L} = L$。其次设 $f$ 是具有标准形式的非退化元组态射，且 $L = L_f$ 是 $f$ 编码的布局。由于 $f$ 与 $f_{L_f}$ 都是具有标准形式的非退化元组态射，且它们编码的布局相等，由引理 \ref{nondegeneratestandardformtuplemorphisms} 得 $f = f_{L_f}$。
+\end{proof}
+
+
+\subsection{例子}
+
+本节引入若干重要的元组态射族，并描述由它们产生的扁平布局。
+
+\begin{example}[恒等态射]
+    我们称元组态射 $f$ 为{\it 恒等态射}（identity morphism），如果对某个元组 $S$ 有 $f = \id_S$。若 $f = \id_S$ 是恒等态射，则 $L_{f}$ 是形状为 $S$ 的列主序（column-major）布局。例如，下面给出一个恒等态射 $f$ 及其关联布局 $L_f$ 的例子。
+    \[
+    \begin{tikzcd}[row sep = 1, column sep = 8]
+    & 4 \ar[rr,mapsto] & & 4 & & & & & \\
+    & 4 \ar[rr,mapsto] & & 4 & & & & &  \\
+    & 2 \ar[rr, mapsto] & & 2 & & & & & \\
+    & 2 \ar[rr,mapsto] & & 2 & & & \rightsquigarrow & & L_f = (2,2,2,4,4):(1,2,4,8,32)\\
+    & 2 \ar[rr,mapsto] & & 2 & & & & & \\
+    & & f & & & & & & \\
+    \end{tikzcd}
+\]
+\end{example}
+
+\begin{example}[同构]
+元组态射 $f:S \to T$ 称为{\it 同构}（isomorphism），如果存在元组态射 $g:T \to S$ 使得 $g \circ f = \id_S$ 且 $f \circ g = \id_T$。若 $f$ 是同构，则其关联布局 $L_f$ 是紧凑（compact）的。例如，下面给出一个同构 $f$ 及其关联布局 $L_f$。
+    \[
+    \begin{tikzcd}[row sep = 1, column sep = 8]
+    & 4 \ar[rrd,mapsto] & & 2 & & & & & \\
+    & 4 \ar[rrd,mapsto] & & 4 & & & & &  \\
+    & 2 \ar[rruu, mapsto] & & 4 & & & & & \\
+    & 2 \ar[rrd,mapsto] & & 2 & & & \rightsquigarrow & & L_f = (2,2,2,4,4):(2,1,64,4,16)\\
+    & 2 \ar[rru,mapsto] & & 2 & & & & & \\
+    & & f & & & & & & \\
+    \end{tikzcd}
+\].
+\end{example}
+
+% \begin{example}[Permutations] \label{definitionofpermutation} Suppose $S = (s_1,\dots,s_m)$ is a tuple of positive integers, and suppose $\sigma \in \Sigma_m$ is a permutation. Then there is a tuple morphism
+% \[\begin{tikzcd} (s_1,\dots,s_m) \ar[rr,"f_\sigma"] \ar[rr,swap,"\sigma_*"] & &  (s_{\sigma(1)},\dots,s_{\sigma(m)})
+%     \end{tikzcd} \]
+% lying over the pointed map $\sigma_*: \langle m \rangle_* \to \langle m \rangle_*$ associated to $\sigma$. We call a tuple morphism of this form a {\it permutation morphism}, or simply a {\it permutation}. If $f_\sigma$ is permutation, then the layout encoded by $f_\sigma$ is compact. For instance, if $\sigma = (1 \; 2)(3 \; 4) \in \Sigma_4$ and $S = (4,1,10,10)$, then $f_\sigma$ and $L_{f_\sigma}$ are as shown below.
+%     \[
+%     \begin{tikzcd}[row sep = 1, column sep = 8]
+%     & 10 \ar[rrd, mapsto] & & 10 & & & &  \\
+%     & 10 \ar[rru, mapsto] & & 10 & & & & \\
+%     & 32 \ar[rrd, mapsto] & & 4 & & \rightsquigarrow & & L_{f_\sigma} = (4,32,10,10):(32,1,128,1280) \\
+%     & 4 \ar[rru, mapsto] & & 32 & & & & \\
+%         & & f_\sigma & & & & & \\
+%     \end{tikzcd}
+%     \]
+% \end{example}
+
+\begin{observation}\label{isomorphismsvspermutations}\label{definitionofpermutation}
+    注意，若元组态射
+    \[\begin{tikzcd} (s_1,\dots,s_m) \ar[rr,"f"] \ar[rr,swap,"\alpha"] & &  (t_1,\dots,t_n)
+    \end{tikzcd} \]
+    是同构，则 $\alpha : \langle m \rangle_* \to \langle m \rangle_*$ 是双射，从而 $\alpha \mid_{\langle m \rangle} \in \Sigma_m$ 是一个置换。反之，若 $\sigma \in \Sigma_m$ 是置换，且 $(s_1,\dots,s_m)$ 是正整数元组，则我们可以构造同构
+    \[\begin{tikzcd} (s_1,\dots,s_m) \ar[rr,"f"] \ar[rr,swap,"\sigma_*"] & &  (s_{\sigma(1)},\dots,s_{\sigma(m)}).
+    \end{tikzcd} \]
+    由此断定：以 $(s_1,\dots,s_m)$ 为定义域的元组同构 $f$ 与 $\Sigma_m$ 中的置换之间存在一一对应。
+\end{observation}
+
+
+
+\begin{example}[投影] \label{definitionofprojection} 设 $S = (s_1,\dots,s_m)$ 是一个形状，并设
+\[\{i_1<\dots<i_r\} \subset \langle m \rangle\]
+是某个子集。令
+\[\begin{tikzcd} (s_1,\dots,s_m) \ar[rr,"p"] \ar[rr,swap,"\alpha"] & &  (s_{i_1},\dots,s_{i_r})
+    \end{tikzcd} \]
+为位于映射 $\alpha$ 之上的元组态射，其中
+\[
+\alpha(x) =
+\begin{cases}
+    j & x = i_j\\
+    * & \text{否则。}
+\end{cases}
+\]
+我们称 $p$ 为 $(s_1,\dots,s_m)$ 到 $(s_{i_1},\dots,s_{i_r})$ 上的{\it 投影}（projection）。$p$ 编码的布局为
+\[L_p = (s_1,\dots,s_m):(d_1,\dots,d_m),
+\]
+其中
+\[
+d_i = \begin{cases}
+    s_{i_1}\cdots s_{i_{j-1}} & i = i_j \text{，对某个 }1 \leq j \leq r\\
+    0 & \text{其他情形。}\\
+\end{cases}
+\]
+例如，下面给出 $(64,64,3,8)$ 到 $(64,3)$ 的投影 $p$ 及其关联布局。
+    \[
+    \begin{tikzcd}[row sep = 1, column sep = 8]
+    & 8 & &  &  & & & & \\
+    & 3 \ar[rrd, mapsto] & & & & & & & \\
+    & 64 & & 3 & & & \rightsquigarrow & & L_p = (64,64,3,8):(1,0,64,0) \\
+    & 64 \ar[rr,mapsto] & & 64 & & & & & \\
+    & & p & & & & & & \\
+    \end{tikzcd}
+\]
+\end{example}
+
+\begin{example}[膨胀] \label{definitionofscaling} 设 $S = (s_1,\dots,s_m)$ 是一个形状，并设 $c_1,\dots,c_m$ 是正整数。元组态射
+\[\begin{tikzcd} (s_1,\dots,s_m) \ar[rrr,"f"] \ar[rrr,swap,"(*{,}2{,}*{,}4{,}\dots{,}*{,}2m)"] & & &  (c_1,s_1,\dots,c_m,s_m)
+    \end{tikzcd} \]
+称为 $(s_1,\dots,s_m)$ 经 $(c_1,\dots, c_m)$ 的{\it 膨胀}（dilation）。与该态射关联的布局 $L_f$ 为 $L_f = (s_1,\dots,s_m):(d_1,\dots,d_m)$，其中
+\[
+d_i = \prod_{j < i} c_js_j.
+\]
+例如，下面给出 $(512,512)$ 经 $(2,4)$ 的膨胀 $f$ 及其关联布局。
+    \[
+    \begin{tikzcd}[row sep = 1, column sep = 8]
+    &  & & 512 & & & & &  \\
+    &  & & 4 & & & & & \\
+    & 512 \ar[rruu,mapsto] & & 512 & & & \rightsquigarrow & & L_f = (512,512):(2,4096)\\
+    & 512 \ar[rru,mapsto] & & 2 & & & & & \\
+        & & f & & & & & & \\
+    \end{tikzcd}
+    \]
+\end{example}
+
+\begin{example}[扩张] \label{definitionofcodomainexpansion} 设 $S = (s_1,\dots,s_m)$ 是正整数元组，并设 $1 \leq i \leq m'$，使得 $S' = (s_1,\dots,s_{m'})$ 整除 $S$。则元组态射
+\[\begin{tikzcd} (s_1,\dots,s_{m'}) \ar[rr,"e"] \ar[rr,swap,"(1{,}2{,}\dots{,}m')"] & &  (s_1,\dots,s_{m'},\dots,s_m)
+    \end{tikzcd} \]
+称为 $S'$ 到 $S$ 的{\it 扩张}（expansion）。$e$ 编码的布局是形状为 $(s_1,\dots,s_{m'})$ 的列主序布局。例如，下面给出 $S' = (4,4)$ 到 $S = (4,4,8,8)$ 的扩张。
+    \[
+    \begin{tikzcd}[row sep = 1, column sep = 8]
+    &  & & 8 & & & & &  \\
+    &  & & 8 & & & & & \\
+    & 4 \ar[rr,mapsto] & & 4 & & & \rightsquigarrow & & L_e = (4,4):(1,4)\\
+    & 4 \ar[rr,mapsto] & & 4 & & & & & \\
+        & & e & & & & & & \\
+    \end{tikzcd}
+    \]
+扩张的一个重要性质是：若 $f:S \to T$ 是任意元组态射，且 $e: T \to T'$ 是扩张，则
+\[
+L_{e \circ f} = L_f.
+\]
+换言之，把 $f$ 与扩张后复合，不会改变 $f$ 编码的布局。
+\end{example}
+
+
+\begin{example}[限制]\label{definitionofrestriction}
+设
+\[\begin{tikzcd} (s_1,\dots,s_m) \ar[rr,"f"] \ar[rr,swap,"\alpha"] & &  (t_1,\dots,t_n)
+    \end{tikzcd} \]
+是一个元组态射，并设
+\[I = \{i_1 < \cdots < i_r \} \subset \langle m \rangle\]
+是一个指标子集。则元组态射
+\[\begin{tikzcd} (s_{i_1},\dots,s_{i_r}) \ar[rr,"f\mid_I"] \ar[rr,swap,"\alpha \circ \iota"] & &  (t_1,\dots,t_n)
+    \end{tikzcd} \]
+称为 $f$ 在 $I$ 上的{\it 限制}（restriction）。若 $f$ 编码的布局是
+ \[L_f = (s_1,\dots,s_m):(d_1,\dots,d_m),\]
+ 则 $f \mid_I$ 编码的布局是
+\[L_{f \mid_I} = (s_{i_1},\dots,s_{i_r}):(d_{i_1},\dots,d_{i_r}).\]
+例如，下面给出某个元组态射 $f$ 的限制 $f \mid_I$，其中 $I = \{2,4\}$。
+    \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+    4 \ar[rrd,mapsto] & & & & & & \\
+    8 \ar[ddrr,mapsto] & & 4 & & & & \\
+    16 \ar[rr,mapsto] & & 16 & & \rightsquigarrow & & L_f = (2,16,8,4):(0,8,1,128)\\
+    2 & & 8 & & & & \\
+    & f & & & & & \\
+    & & & \vspace{5.0in} & & & \\
+    & & & & & &  \\
+    & & 4 & & & & \\
+    4 \ar[rru,mapsto] & & 16 & & \rightsquigarrow & & L_{f\mid_I} = (16,4):(8,128)\\
+    16 \ar[urr,mapsto] & & 8 & &  & & \\
+    & f\mid_{I} & & & & & \\
+    \end{tikzcd} \]
+\end{example}
+
+\begin{example}[元素包含]\label{definitionofentriesoftuplemorphism}
+    前一个构造的一个重要特例如下。若 $f:(s_1,\dots,s_m) \to (t_1,\dots,t_m)$ 是元组态射，且 $1 \leq i \leq m$，则 $f$ 的第 $i${\it 个元素} $f_i$ 是
+\[\begin{tikzcd} (s_i) \ar[rr,"f_i"] \ar[rr,swap,"(i)"] & &  (t_1,\dots,t_n)
+    \end{tikzcd} \]
+    若 $f$ 编码的布局是
+    \[L_f = (s_1,\dots,s_m):(d_1,\dots,d_m),\]
+    则 $f_i$ 编码的布局是
+    \[
+    L_{f_i} = (s_i):(d_i).
+    \]
+    例如，下面给出一个元组态射 $f$ 及其第四个元素 $f_4$。
+    \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+    4 \ar[rrd,mapsto] & & & & & & \\
+    8 \ar[ddrr,mapsto] & & 4 & & & & \\
+    16 \ar[rr,mapsto] & & 16 & & \rightsquigarrow & & L_f = (2,16,8,4):(0,8,1,128)\\
+    2 & & 8 & & & & \\
+    & f & & & & & \\
+    & & & \vspace{5.0in} & & & \\
+    & & & & & &  \\
+    & & 4 & & & & \\
+    & & 16 & & \rightsquigarrow & & L_{f_4} = (4):(128)\\
+    4 \ar[uurr,mapsto] & & 8 & &  & & \\
+    & f_4 & & & & & \\
+    \end{tikzcd} \]
+\end{example}
+
+\begin{remark}
+    给定 $\Fin_*$ 中的 $\n_*$，对每个 $i \in \n$ 存在态射 $\varphi_i: \langle 1 \rangle_* \to \n_*$，它把 $* \mapsto *$、$1 \mapsto i$。对位于 $\alpha: \m_* \to \n_*$ 之上的元组态射 $f: (s_1, \dots, s_m) \to (t_1, \dots, t_n)$，其第 $i$ 个元素位于复合 $\alpha \circ \varphi_i: \langle 1 \rangle_* \to \n_*$ 之上。
+\end{remark}
+
+\begin{example}[因子分解]\label{definitionoffactorization}
+设
+\[\begin{tikzcd} (s_1,\dots,s_m) \ar[rr,"f"] \ar[rr,swap,"\alpha"] & &  (t_1,\dots,t_n)
+    \end{tikzcd} \]
+是一个元组态射，并设
+\[J = \{j_1< \cdots < j_\ell\} \subset \langle n \rangle\]
+是满足 $\Image(\alpha) \subseteq J \cup \{*\}$ 的子集。若记 $\iota:\langle \ell \rangle_* \to \langle n \rangle_*$ 为映射 $k\mapsto j_k$，则 $\alpha$ 可分解为 $\alpha = \iota \circ \bar{\alpha}$，其中映射 $\bar{\alpha}: \langle m \rangle_* \to \langle \ell \rangle_*$ 唯一；我们定义 $f$ 经由 $J$ 的{\it 因子分解}（factorization）为元组态射
+\[\begin{tikzcd} (s_1,\dots,s_m) \ar[rr,"f\mid^J"] \ar[rr,swap,"\bar{\alpha}"] & &  (t_{j_1},\dots,t_{j_\ell}).
+    \end{tikzcd} \]
+若 $f$ 编码的布局是
+\[L_f = (s_1,\dots,s_m):(d_1,\dots,d_m),\]
+则 $f \mid^J$ 编码的布局是
+\[L_{f \mid^J} = (s_1,\dots,s_m):(d_1',\dots,d_m'),\]
+其中
+\[
+d_i' = \dfrac{d_i}{\left(\displaystyle\prod_{ k < \alpha(i)\text{ and } k \notin J }t_j\right)}.
+\]
+例如，下面给出某个元组态射 $f$ 的因子分解 $f \mid^J$，其中 $J = \{2,4,5\}$。
+    \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+    & & 10 & & & & \\
+    & & 8 & & & & \\
+    & & 2 & & \rightsquigarrow & & L_f = (8,8):(32,2) \\
+    8 \ar[rr,mapsto] & & 8 & & & & \\
+    8 \ar[uuurr,mapsto] & & 2 & & & &  \\
+    & f & & & & & \\
+    & \vspace{5.0in} & & & & & \\
+    & & 10 & & & & \\
+    8 \ar[drr,mapsto] & & 8 & & \rightsquigarrow & & L_{f\mid^J} = (8,8):(8,1)\\
+    8 \ar[urr,mapsto] & & 8 & & & & \\
+    & f \mid^J & & & & & \\
+    \end{tikzcd}\]
+\end{example}
+
+\begin{remark}
+    因子分解有一个范畴论解释。沿用例 \ref{definitionoffactorization} 的记号，可以观察到一个位于 $\iota$ 之上的元组态射 $i:(t_{j_1},\dots,t_{j_\ell}) \to (t_1,\dots,t_n)$，而 $f \mid^J$ 是 $f$ 沿 $i$ 的拉回：
+    \[ \begin{tikzcd}
+    (s_1,\dots,s_m) \ar[r,"f \mid^J"] \ar[d,swap,"\id"] \arrow[dr, phantom, "\lrcorner", very near start] & (t_{j_1},\dots,t_{j_\ell}) \ar[d,"i"] \\
+     (s_1,\dots,s_m) \ar[r,swap,"f"] & (t_1,\dots,t_n) \\
+    \end{tikzcd} \]
+\end{remark}
+
+
+\subsection{元组态射的实现}
+\noindent 如我们所见，元组态射 $f:S \to T$ 编码一个扁平布局 $L_f$。本节将构造一个实现函子
+\[
+| \cdot |:\catstyle{Tuple} \to \catstyle{FinSet}.
+\]
+使这一编码显式化。实现函子 $| \cdot |$ 把元组态射 $f$ 送到 $L_f$ 的布局函数 $|f|$。为构造实现函子 $| \cdot |$，我们先构造一个辅助函子
+\[
+F:\catstyle{Tuple} \to \catstyle{FinSet}
+\]
+它将在我们的构造中使用。
+\begin{construction}\label{constructionofrealizationfunctoronC} 我们定义函子
+\[F:\catstyle{Tuple} \to \catstyle{FinSet}\]
+如下。
+\begin{itemize}
+\item 对 $\catstyle{Tuple}$ 中的对象 $S = (s_1,\dots,s_m)$，定义
+\[
+FS = [0,S) = \prod_{i=1}^m  [0,s_i).
+\]
+\item 对 $\catstyle{Tuple}$ 中位于 $\alpha$ 之上的态射 $f:(s_1,\dots,s_m) \to (t_1,\dots,t_n)$，定义 $Ff$ 为映射
+\[\begin{tikzcd}
+{[}0,S{)} \ar[rr,"Ff"] & & {[}0,T{)}
+\end{tikzcd} \]
+它由
+\[
+(Ff)(x_1,\dots,x_m) = (y_1,\dots,y_n)
+\]
+给出，其中
+\[
+y_j= \begin{cases}
+    x_i & \text{存在 }1 \leq i \leq m\text{ 使得 }\alpha(i) = j,\\
+    0 & \text{否则。}\\
+\end{cases}
+\]
+\end{itemize}
+\end{construction}
+
+\noindent 容易验证 $F(g \circ f) = Fg \circ Ff$ 且 $F \id_S = \id_{FS}$，故 $F$ 确为一个函子。
+
+\begin{example}
+    设 $f:(4,4) \to (4,4,4)$ 是位于 $\alpha = (1,3)$ 之上的元组态射。则
+    \[
+    Ff : [0,(4,4))
+    \to [0,(4,4,4))
+    \]
+    由
+    \[
+    (Ff)(x_1,x_2) = (x_1,0,x_2).
+    \]
+    给出。
+\end{example}
+
+\begin{example}
+    设 $g:(3,256,256,512) \to (3,256,256)$ 是位于 $\beta = (*,3,2,*)$ 之上的元组态射。则
+    \[
+    Fg : [0,(3,256,256,512))
+    \to [0,(3,256,256))
+    \]
+    由
+    \[
+    (Fg)(x_1,x_2,x_3,x_4) = (0,x_3,x_2).
+    \]
+    给出。
+\end{example}
+
+\begin{construction}\label{constructionofrealizationfunctoronC} 我们定义函子
+\[|\cdot |:\catstyle{Tuple} \to \catstyle{FinSet}\]
+如下。
+\begin{itemize}
+\item 对 $\catstyle{Tuple}$ 中的对象 $S = (s_1,\dots,s_m)$，定义
+\[
+|S| = [0,\size(S)) = \{0,1,\dots,\size(S)-1\}.
+\]
+\item 对元组态射 $f:S \to T$，定义
+\[
+|f| = \colex_T \circ Ff \circ \colex_S^{-1}
+\]
+（回顾 \Cref{definitionofcolex}）。
+\end{itemize}
+\end{construction}
+
+\noindent 若 $f:S \to T$ 与 $g:T \to U$ 是可复合的元组态射，则
+\begin{align*}
+    |g \circ f| & = \colex_U \circ F(g \circ f) \circ \colex_S^{-1}\\
+    & = \colex_U \circ Fg \circ Ff \circ \colex_S^{-1} \\
+    & = \colex_U \circ Fg \circ \colex_T^{-1} \circ \colex_T \circ Ff \circ \colex_S^{-1} \\
+    & = |g| \circ |f|
+\end{align*}
+而若 $f = \id_S$ 是恒等态射，则
+\begin{align*}
+|\id_S| & = \colex_S \circ F \id_S \circ \colex_S^{-1}\\
+& = \colex_S \circ \id_{S} \circ \colex_S^{-1}\\
+& = \colex_S \circ \colex_S^{-1}\\
+& = \id_{|S|}
+~,
+\end{align*}
+故 $| \cdot |$ 确实给出一个函子。接下来我们注意到：对 $\catstyle{Tuple}$ 中的态射 $f$，映射 $|f|$ 是 $L_f$ 的布局函数。由此容易推出 $\catstyle{Tuple}$ 中态射的复合与扁平布局的复合相容（见推论 \ref{compatibilityofcompositioninC}）。
+
+\begin{lemma} \label{layoutfunctionlemma}
+    若 $f:S \to T$ 是元组态射，则 $f$ 的实现 $|f|$ 是 $L_f$ 的布局函数：
+    \[ |f| = \Phi_{L_f}^{\size(T)}
+    \]
+\end{lemma}
+
+\begin{proof}
+    记 $S = (s_1,\dots,s_m)$，$T = (t_1,\dots,t_n)$，并令
+    \[L_f = (s_1,\dots,s_m):(d_1,\dots,d_m)\]
+    为与 $f$ 关联的布局，其步长 $d_i$ 由公式
+    \[d_i = \begin{cases}
+0 & \alpha(i) = * \\
+\prod_{j < \alpha(i)} t_j & \text{否则。}
+\end{cases}
+\]
+    定义。用 $\colex_S:\prod_{i=1}^m[0,s_i) \to [0,\size(S))$ 预复合后，只需证明：对任意 $(x_1,\dots,x_m) \in \prod_{i=1}^m [0,s_i)$，有
+    \[(\colex_T \circ Ff) (x_1,\dots,x_m) = (x_1,\dots,x_m) \cdot (d_1,\dots,d_m).\]
+    对一般输入 $(x_1,\dots,x_m) \in \prod_{i=1}^m [0,s_i)$，有
+    \[
+    (Ff) (x_1,\dots,x_m) = (y_1,\dots,y_n)
+    \]
+    其中 $y_j$ 在 $\alpha(i) = j$ 时等于 $x_i$，否则等于 $0$。由此可得
+    \begin{align*}
+    (\colex_T \circ Ff)(x_1,\dots,x_m) & = (y_1, \cdots ,y_n) \cdot (1,t_1 , \dots, t_1 \cdots t_{n-1}) \\
+    & = \sum_{j=1}^n y_j \cdot t_1 \cdots t_{j-1} \\
+    & = \sum_{i=1}^m x_i d_i \\
+    & = (x_1,\dots,x_m) \cdot (d_1,\dots,d_m),
+    \end{align*}
+    这正是所要证明的。
+\end{proof}
+
+
+
+\begin{corollary}\label{compatibilityofcompositioninC}
+    若 $f$ 与 $g$ 是可复合的非退化元组态射，则
+    \[
+    L_{g \circ f} = L_g \circ L_f
+    \]
+\end{corollary}
+
+\begin{proof}
+    设 $f:S \to T$ 与 $g:T \to U$ 是 $\catstyle{Tuple}$ 中分别位于 $\alpha$ 与 $\beta$ 之上的态射。记 $S = (s_1,\dots,s_m)$，$T = (t_1,\dots,t_n)$。我们需要验证：
+    \begin{enumerate}
+        \item {\it  $\shape(L_{g \circ f})$ 加细（refines）$\shape(L_f)$}：由于 $L_f$ 与 $L_{g \circ f}$ 的形状都等于 $S$，该条成立。
+        \item {\it $L_{g \circ f}$ 在 $\shape(L_f)$ 上已合并（coalesced）}：由于元组态射 $g \circ f$ 非退化，故布局 $L_{g \circ f}$ 亦非退化，该条成立。
+        \item {\it $\Phi_{L_{g\circ f}} = \Phi_{L_g} \circ \Phi_{L_f}^{\size(L_g)}$}：利用引理 \ref{layoutfunctionlemma}，有
+        \begin{align*}
+        \Phi_{L_{g \circ f}}^{\size(U)} &  = |g \circ f|\\
+        & = |g| \circ |f|\\
+        & = \Phi_{L_g}^{\size(U)} \circ \Phi_{L_f}^{\size(T)}.
+        \end{align*}
+        再以包含映射 $[0,\size(U)) \subset \mathbb{Z}$ 作后复合，并注意到 $\size(T) = \size(L_{g})$，即得结论。
+    \end{enumerate}
+\end{proof}

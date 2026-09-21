@@ -1,0 +1,147 @@
+% cf-ch4b.tex — 译自 FinalVersion.tex L11425-11570
+\section{逻辑切分与逻辑乘积}
+本节展示如何利用复合（composition）算法 \ref{tractablelayoutcompositionalgorithm} 来计算逻辑切分（logical division）与逻辑乘积（logical product）。
+\subsection{逻辑切分的例子}
+回顾：若 $A$ 与 $B$ 是布局（layout），则逻辑切分 $A \oslash B$ 定义为
+\[
+A \oslash B = A \circ (B,B^c)
+\]
+其中
+\[
+B^c = \comp(B, \size(A)).
+\]
+
+\begin{example}
+    设我们想要计算逻辑切分 $A \oslash B$，其中 $A = (8,8):(8,1)$，$B = (2,2):(1,4)$。于是可以把它们写作 $A = L_g$、$B = L_h$ 与 $B^c = L_{h^c}$，其中 $f$ 与 $f^c$ 是如下所示的元组态射（tuple morphism）。
+    \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+     & & 2 & & & & 2 & & & & \\
+     & & 2 & & & & 2 & & & & \\
+    2 \ar[urr,mapsto] & & 2 & & 2 \ar[uurr,mapsto] & & 2 & & 8 \ar[drr,mapsto] & & 8\\
+    2 \ar[rr,mapsto] & & 2 & & 2 \ar[urr,mapsto] & & 2 & & 8 \ar[urr,mapsto] & & 8\\
+     & h & & & & h^c & & & & g &   \\
+    \end{tikzcd} \]
+    由此可知，$(B,B^c)$ 由如下所示的嵌套元组态射（nested tuple morphism）$f = (h,h^c)$ 编码。
+    \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+      & & 2 \ar[rr,mapsto] & & 2 \\
+      & & 2 \ar[drr,mapsto] & & 2\\
+    4 \ar[urr,-] \ar[uurr,-] & & 2 \ar[urr,mapsto] & & 2 \\
+    4 \ar[rr,-] \ar[urr,-]  & & 2 \ar[rr,mapsto] & & 2\\
+    & & & f &
+    \end{tikzcd} \]
+    接下来，我们像之前那样执行复合算法。我们用算法 \ref{mutualrefinementalgorithm} 求出相互加细（mutual refinement）
+    \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+       & & 4 & & \\
+       2 \ar[rr,-] & & 2 & & \\
+       2 \ar[rr,-]& & 2 & & \\
+     2 \ar[rr,-] & & 2 & & \ar[uull,-] \ar[uuull,-] 8\\
+     2 \ar[rr,-] & & 2 & & \ar[ll,-] \ar[ull,-] \ar[uull,-] 8\\
+    \end{tikzcd} \]
+    构成图表
+    \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+      & & & & & & 4 & & & & \\
+      & & 2 \ar[rr,mapsto] & & 2 \ar[rr,-] & & 2 & & & & \\
+      & & 2 \ar[drr,mapsto] & & 2 \ar[rr,-]& & 2 & & & & \\
+    4 \ar[urr,-] \ar[uurr,-] & & 2 \ar[urr,mapsto] & & 2 \ar[rr,-] & & 2 & & \ar[uull,-] \ar[uuull,-] 8 \ar[drr,mapsto] & & 8\\
+    4 \ar[rr,-] \ar[urr,-]  & & 2 \ar[rr,mapsto] & & 2 \ar[rr,-] & & 2 & & \ar[ll,-] \ar[ull,-] \ar[uull,-] 8 \ar[urr,mapsto] & & 8\\
+    & & & f & & & & & &  g &
+    \end{tikzcd} \]
+    解出该图表，得到
+    \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+    & & & & 4 \ar[dddrr,mapsto]& & 2 \\
+      & & 2 \ar[rr,mapsto] & & 2  \ar[dddrr,mapsto] & & 2\\
+      & & 2 \ar[drr,mapsto] & & 2  \ar[uurr, mapsto] & & 2\\
+    4 \ar[urr,-] \ar[uurr,-] & & 2 \ar[urr,mapsto] & & 2 \ar[uurr,mapsto] & & 4\\
+    4 \ar[rr,-] \ar[urr,-]  & & 2 \ar[rr,mapsto] & & 2  \ar[uurr,mapsto] & & 2\\
+    & & & f & & g' &
+    \end{tikzcd} \]
+    并把 $f$ 与 $g'$ 复合，得到
+    \[
+    \begin{tikzcd} [row sep = 1, column sep = 8]
+      & &   & & 2\\
+      & & 2 \ar[dddrr,mapsto] & & 2\\
+      & & 2 \ar[urr,mapsto] & & 2\\
+    4 \ar[urr,-] \ar[uurr,-] & & 2 \ar[uuurr,mapsto] & & 4\\
+    4 \ar[rr,-] \ar[urr,-]  & & 2 \ar[uurr,mapsto] & & 2\\
+     & & & g' \circ f & \\
+    \end{tikzcd}
+    \]
+    该嵌套元组态射编码的布局是
+    \[
+    L_{g' \circ f} = ((2,2),(2,2)):((8,32),(16,1))
+    \]
+    它在 $((2,2),(2,2))$ 上已合并（coalesced），因此我们断定
+    \[
+    A \oslash B = ((2,2),(2,2)):((8,32),(16,1)).
+    \]
+\end{example}
+
+\subsection{逻辑乘积的例子}
+
+回顾：若 $A$ 与 $B$ 是布局，则逻辑乘积 $A \otimes B$ 定义为
+\[
+A \otimes B = (A, A^c \circ B)
+\]
+其中
+\[
+A^c= \comp(A, \size(A)\cdot \cosize(B)).
+\]
+特别地，若想手工计算 $A \otimes B$，只需算出 $A^c \circ B$，再把所得结果与 $A$ 拼接（concatenate）即可。
+
+\begin{example}
+    设我们想要计算逻辑乘积 $A \otimes B$，其中 $A = (2,2):(1,2)$，$B = (5,5):(5,1)$。于是
+    \begin{align*}
+    A^c & = \comp(A,\size(A)\cdot \cosize(B))\\
+     & = \comp(A, 100)\\
+     & = (25):(4).
+    \end{align*}
+    我们按上一节的方式进行。
+    \begin{enumerate}
+        \item 取 $B$ 与 $\coalesce(A^c) = A^c$ 的标准表示（standard representation）。
+        \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+        5 \ar[drr,mapsto] & & 5 & & & & 25\\
+        5 \ar[urr,mapsto] & & 5 & & 25 \ar[urr,mapsto] & & 4\\
+        & f & & & & g & \\
+        \end{tikzcd} \]
+        \item 应用算法 \ref{mutualrefinementalgorithm}，得到相互加细
+        \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+        5 \ar[rr,-] & & 5 & & \\
+        5 \ar[rr,-] & & 5 & & \ar[ll,-] \ar[ull,-] 25 \\
+        \end{tikzcd} \]
+        \item 构成图表
+        \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+        5 \ar[drr,mapsto] & & 5 \ar[rr,-] & & 5 & & & & 25 \\
+        5 \ar[urr,mapsto] & & 5 \ar[rr,-] & & 5 & & \ar[ll,-] \ar[ull,-] 25 \ar[urr,mapsto] & & 4\\
+         & f & & & & & & g & \\
+        \end{tikzcd} \]
+        \item 解出该图表，得到
+        \[ \begin{tikzcd}[row sep = 1, column sep = 8]
+         & & & & 5\\
+        5 \ar[drr,mapsto] & & 5 \ar[urr,mapsto] & & 5 \\
+        5 \ar[urr,mapsto] & & 5 \ar[urr,mapsto] & & 4\\
+        & f' & & g' & \\
+        \end{tikzcd} \]
+        \item 把 $f'$ 与 $g'$ 复合，得到
+        \[ \begin{tikzcd}[row sep = 1, column sep = 8]
+         & & 5\\
+        5 \ar[rr,mapsto] & & 5\\
+        5 \ar[uurr,mapsto] & & 4\\
+        & g' \circ f' & \\
+        \end{tikzcd} \]
+        \item 计算所编码的布局
+        \[
+        L_{g' \circ f'} = (5,5):(20,4).
+        \]
+        \item 布局 $L_{g' \circ f'}$ 在 $(5,5)$ 上已合并，因此
+        \[
+        A^c \circ B = (5,5):(20,4).
+        \]
+    \end{enumerate}
+我们断定
+        \[
+        A \otimes B = ((2,2),(5,5)):((1,2),(20,4)).
+        \]
+
+\end{example}
+
+\appendix
+

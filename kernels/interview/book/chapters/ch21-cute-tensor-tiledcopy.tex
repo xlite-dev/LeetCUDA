@@ -101,7 +101,58 @@ $(m,n)$ 坐标能落到 gmem/smem/reg 三种内存」的原因：换 engine，la
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-21-1-engine-layout/fig-21-1.png}
+% was: \includegraphics[width=0.95\textwidth]{figures/drawio/fig-21-1-engine-layout/fig-21-1.png}
+\begin{tikzpicture}[font=\tiny, x=0.015cm, y=-0.015cm]
+  \node[anchor=west, font=\scriptsize\bfseries] at (24,26)
+    {Tensor = Engine + Layout（2D 例子，每元素 4B）};
+  \node[anchor=west, font=\tiny\bfseries] at (24,68) {逻辑坐标 $(m, n)$};
+  \foreach \rr in {0,...,3}{
+    \foreach \cc in {0,...,3}{
+      \node[draw=gray!45, fill=white, minimum width=0.75cm, minimum height=0.57cm,
+            inner sep=0pt] at ({24+56*\cc+25},{88+44*\rr+19}) {$(\rr,\cc)$};
+    }
+  }
+  \node[draw=tkOrange, fill=tkFillOrange, text=tkOrange!75!black, font=\tiny\bfseries,
+        minimum width=0.75cm, minimum height=0.57cm, inner sep=0pt]
+    at ({24+56+25},{88+88+19}) {$(2,1)$};
+  \node[anchor=west, font=\tiny, text=tkOrange!75!black] at (24,278)
+    {$(2,1)$ 高亮：它的偏移是这一格算出来的};
+  \draw[-{Stealth[length=2mm]}, tkGreen, thick] (252,160) -- (297,160);
+  \node[draw=tkGreen, fill=tkFillGreen, text=tkGreen!70!black, align=center,
+        font=\scriptsize\bfseries, minimum width=4.2cm, minimum height=0.9cm,
+        inner sep=1pt] at (440,160) {layout：$f(m, n) = m + 4n$};
+  \node[anchor=north, font=\tiny\bfseries, text=tkGreen!70!black] at (440,196)
+    {$f(2,1) = 2 + 4\cdot 1 = 6$};
+  \draw[-{Stealth[length=2mm]}, tkGreen, thick] (580,160) -- (617,160);
+  \node[draw=gray!70, fill=white, text=black, align=center,
+        font=\scriptsize\bfseries, minimum width=3.0cm, minimum height=0.9cm,
+        inner sep=1pt] at (720,160) {offset $= 6$};
+  \draw[-{Stealth[length=2mm]}, tkBlue, thick] (820,160) -- (857,160);
+  \node[draw=tkBlue, fill=tkFillBlue, text=tkBlue, align=center, font=\tiny,
+        text width=3.8cm, minimum height=1.14cm, inner sep=2pt] at (998,160)
+    {engine：\texttt{base\_ptr} $+$ offset $\times$ 4B（C++ iterator：gmem / smem /
+     rmem 指针）};
+  \node[anchor=west, font=\tiny] at (860,224) {gmem 数带（\texttt{base} $+$ $6\times4$B 处的元素）};
+  \foreach \k/\v in {0/{..},1/{4},2/{5},3/{6},4/{7},5/{..}}{
+    \node[draw=gray!45, fill=white, minimum width=0.63cm, minimum height=0.6cm,
+          inner sep=0pt] at ({860+46*\k+21},256) {\v};
+  }
+  \node[draw=tkOrange, fill=tkFillOrange, text=tkOrange!75!black, font=\tiny\bfseries,
+        minimum width=0.63cm, minimum height=0.6cm, inner sep=0pt]
+    at ({860+46*3+21},256) {6};
+  \node[draw=tkGreen, fill=tkFillGreen, text=tkGreen!70!black, align=center,
+        font=\tiny, text width=4.7cm, minimum height=0.84cm, inner sep=2pt]
+    at (194,358) {layout：坐标 $\to$ offset 的函数（上一章全部内容）};
+  \node[draw=tkBlue, fill=tkFillBlue, text=tkBlue, align=center,
+        font=\tiny, text width=4.7cm, minimum height=0.84cm, inner sep=2pt]
+    at (558,358) {engine：offset $\to$ 数据（可加偏移的迭代器）};
+  \node[draw=tkOrange, fill=tkFillOrange, text=tkOrange!75!black, align=center,
+        font=\tiny\bfseries, text width=5.4cm, minimum height=0.84cm, inner sep=2pt]
+    at (944,358) {tensor $=$ (engine, layout)：两次映射串联成可索引对象};
+  \draw[-{Stealth[length=2mm]}, tkGreen, dashed, thick]
+    (194,386) -- (194,400) -- (944,400) -- (944,388);
+  \draw[-{Stealth[length=2mm]}, tkBlue, dashed, thick] (730,358) -- (748,358);
+\end{tikzpicture}
 \caption{Tensor 的两段结构：layout 把坐标映成偏移，engine 把偏移映成数据。同一个 layout 换不同 engine（gmem/smem/rmem/identity）就得到服务不同内存的 Tensor——这是第~\ref{ch:20}~章「布局与内存解耦」的落地方式。}
 \label{fig:21-1}
 \end{figure}
@@ -171,7 +222,56 @@ ldmatrix 或 bank 冲突考虑，地址公式会迅速膨胀，而「哪个数�
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-21-2-tv-table/fig-21-2.png}
+% was: \includegraphics[width=0.95\textwidth]{figures/drawio/fig-21-2-tv-table/fig-21-2.png}
+\begin{tikzpicture}[font=\tiny, x=0.015cm, y=-0.015cm]
+  \node[anchor=west, font=\scriptsize\bfseries] at (24,26)
+    {4 线程 $\times$ $(4,4)$ 小例：手算表 vs CuTe 打印（v4.6.1 实测）};
+  \node[anchor=west, font=\tiny\bfseries] at (24,64)
+    {hand table（朴素 CUDA 手算，一轮覆盖 $2\times4$）};
+  \node[font=\tiny\bfseries] at (114,98) {$t \backslash v$};
+  \node[font=\tiny\bfseries] at (200,98) {$v = 0$};
+  \node[font=\tiny\bfseries] at (308,98) {$v = 1$};
+  \foreach \rr in {0,...,3}{
+    \pgfmathtruncatemacro{\mm}{int(\rr/2)}
+    \pgfmathtruncatemacro{\nb}{2*mod(\rr,2)}
+    \node[draw=gray!45, fill=white, minimum width=0.75cm, minimum height=0.36cm,
+          inner sep=0pt] at (109,{132+46*\rr}) {$\rr$};
+    \foreach \cc in {0,1}{
+      \pgfmathtruncatemacro{\nn}{\nb+\cc}
+      \ifnum\rr<2
+        \node[draw=tkBlue, fill=tkFillBlue, minimum width=1.5cm, minimum height=0.6cm,
+              inner sep=0pt] at ({196+108*\cc},{132+46*\rr}) {$(\mm,\nn)$};
+      \else
+        \node[draw=tkBlue, fill=white, minimum width=1.5cm, minimum height=0.6cm,
+              inner sep=0pt] at ({196+108*\cc},{132+46*\rr}) {$(\mm,\nn)$};
+      \fi
+    }
+  }
+  \node[anchor=west, font=\tiny] at (24,311)
+    {蓝色两行 $=$ 第 1 轮（rows 0--1）；第 2 轮覆盖 rows 2--3，两轮拼满 $(4,4)$};
+  \draw[gray!60, thin] (580,52) rectangle (1136,302);
+  \node[anchor=west, font=\tiny\bfseries] at (596,71)
+    {CuTe printout（\texttt{make\_tiled\_copy} 实测）};
+  \foreach \k/\t in {0/{ThrLayout : (\_2,\_2):(\_2,\_1)},
+                     1/{ValLayout : (\_1,\_2)},
+                     2/{layout\_mn : ((\_1,\_2),(\_2,\_2)):((\_0,\_2),(\_4,\_1))},
+                     3/{layout\_tv : ((\_2,\_2),\_2):((\_4,\_1),\_2)},
+                     4/{tiler\phantom{X}: (\_2,\_4) $\to$ 2 rounds},
+                     5/{tvS(t,v)  : $m = t/2$；$n = 2(t\bmod 2) + v$}}{
+    \node[anchor=west, font=\tiny] at (600,{101+32*\k}) {\texttt{\t}};
+  }
+  \node[anchor=west, font=\tiny] at (596,290)
+    {tvS 公式与左表逐格一致（8 个 $(t,v)$ 逐点核对）};
+  \node[draw=tkBlue, fill=tkFillBlue, text=tkBlue, align=center, font=\tiny,
+        text width=7.7cm, minimum height=0.84cm, inner sep=2pt] at (295,358)
+    {MN-layout（数据视角）：$t = 2m + (n/2)$，$v = n \bmod 2$};
+  \node[font=\scriptsize\bfseries] at (592,358) {$\leftrightarrow$};
+  \node[draw=tkGreen, fill=tkFillGreen, text=tkGreen!70!black, align=center, font=\tiny,
+        text width=7.7cm, minimum height=0.84cm, inner sep=2pt] at (889,358)
+    {TV-layout（任务视角）：$m = t/2$，$n = 2(t \bmod 2) + v$};
+  \node[anchor=west, font=\tiny] at (24,407)
+    {两种语言互为逆映射，分别服务「哪个线程拥有这个数据」与「这个线程该搬哪些数据」};
+\end{tikzpicture}
 \caption{4 线程小例子的两种表格：左边是朴素 CUDA 手算的「线程 $\times$ 值 $\to$ 坐标」表（一轮覆盖 $2\times4$、两轮铺满 $(4,4)$），右边是 CuTe 的 \texttt{make\_\allowbreak{}tiled\_\allowbreak{}copy} 打印结果——\texttt{tvS} 的公式与手算逐格一致（8 个 $(t,v)$ 逐点核对）。MN-layout 与 TV-layout 互为逆映射，分别服务「数据视角」与「线程视角」。}
 \label{fig:21-2}
 \end{figure}
@@ -282,7 +382,82 @@ $2\times2$ 的 warp 排布里，两个 N 方向的 warp 需要\textbf{同一份}
 式~\eqref{eq:21-dup} 是后面理解 fragment 寄存器占用的关键：本章测试 case~E
 对 A 拷贝的 128$\times$32 tile 做覆盖统计，实测每个元素恰好被 2 个
 (thread, value) 对覆盖（$\mathrm{multi}=8192$ 个覆盖点、$\mathrm{once}$ 结构
-$4096/2$），与式~\eqref{eq:21-dup} 完全一致。
+$4096/2$），与式~\eqref{eq:21-dup} 完全一致。该覆盖结构的网格化见
+图~\ref{fig:21-s2r-dup}。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\tiny]
+  \def\cwd{0.5}
+  \def\chh{0.3}
+  \foreach \fm in {0,...,31}{
+    \foreach \fk in {0,...,15}{
+      \pgfmathtruncatemacro{\lane}{mod(\fm,16)}
+      \pgfmathtruncatemacro{\cm}{\fm/16}
+      \pgfmathtruncatemacro{\bk}{\fk/8}
+      \pgfmathtruncatemacro{\bi}{2*\cm+\bk}
+      \ifcase\bi
+        \def\cff{colorx4!18}%
+      \or
+        \def\cff{colorx5!30}%
+      \or
+        \def\cff{colorx6!42}%
+      \else
+        \def\cff{colorx7!54}%
+      \fi
+      \node[fill=\cff, minimum width=\cwd cm, minimum height=\chh cm, inner sep=0pt]
+        at ({(\fk+0.5)*\cwd},{-(\fm+0.5)*\chh}) {\lane};
+    }
+  }
+  \draw[thin] (0,0) grid[xstep=0.5cm, ystep=0.3cm] (8,-9.6);
+  \draw[very thick] (0,0) rectangle (8,-9.6);
+  \draw[thick] (4,0) -- (4,-9.6);
+  \draw[thick] (0,-4.8) -- (8,-4.8);
+  \foreach \fm in {0,4,...,28}{
+    \node[anchor=east] at (-0.07,{-\fm*0.3-0.15}) {\fm};
+  }
+  \foreach \fk in {0,2,...,14}{
+    \node[anchor=south] at ({\fk*0.5+0.5},0.07) {\fk};
+  }
+  \node[anchor=south, font=\tiny] at (4,0.32) {列 $k$（K，mode 1）};
+  \node[anchor=east, font=\tiny, rotate=90] at (-0.45,-4.8) {行 $m$（M，mode 0）};
+  \node[anchor=east, font=\tiny, align=right] at (-0.75,-2.4)
+    {m 0--15：\\warp 0 $\parallel$ warp 2};
+  \node[anchor=east, font=\tiny, align=right] at (-0.75,-7.2)
+    {m 16--31：\\warp 1 $\parallel$ warp 3};
+  \node[anchor=south, font=\scriptsize\bfseries] at (4,0.85)
+    {S$\to$R 的 A 拷贝（\texttt{make\_tiled\_copy\_A}）：tiler $(32,16)$ 的覆盖网格};
+  \draw[very thick] (0,-1.5) rectangle (0.5,-1.8);
+  \node[draw=gray!60, fill=gray!6, font=\tiny, align=left, anchor=north west, inner sep=3pt]
+    (blk) at (8.7,0.55)
+    {四块（16 行 $\times$ 8 列）的覆盖线程对（$t$，$t{+}64$）：\\[1pt]
+     左上（m$<$16, k$<$8）：$t=\ell$ $\parallel$ $64{+}\ell$（w0 $\parallel$ w2）\\
+     右上（m$<$16, k$\ge$8）：$t=16{+}\ell$ $\parallel$ $80{+}\ell$（w0 $\parallel$ w2）\\
+     左下（m$\ge$16, k$<$8）：$t=32{+}\ell$ $\parallel$ $96{+}\ell$（w1 $\parallel$ w3）\\
+     右下（m$\ge$16, k$\ge$8）：$t=48{+}\ell$ $\parallel$ $112{+}\ell$（w1 $\parallel$ w3）\\[2pt]
+     $\ell$ = 格内数字（warp 内 lane $=m\bmod16$）；每线程持\\
+     所在行块内 8 个连续 k（$v=0..7$，即 rA[0..7]）};
+  \node[draw, fill=gray!32, font=\tiny, align=center, minimum width=3.0cm] (tA) at (10.5,-4.6)
+    {T5：rA[0..7] $\leftarrow$ (m=5, k=0..7)\\（warp 0--1 组，thrN=0）};
+  \node[draw, fill=gray!78, font=\tiny, align=center, minimum width=3.0cm] (tB) at (10.5,-5.9)
+    {T69：rA[0..7] $\leftarrow$ 同一份 A\\（warp 2--3 组，thrN=1）};
+  \draw[->, thick] (0.5,-1.8) .. controls (4.5,-3.0) .. (tA.west);
+  \draw[->, thick] (0.5,-1.8) .. controls (4.5,-3.6) .. (tB.west);
+  \node[font=\tiny, align=left, anchor=north west] at (8.7,-6.8)
+    {TV 布局第 4 个线程模式 stride $=0$：$t$ 与 $t{+}64$ 同源；\\
+     守恒 $P\times V=128\times8=2\times512$（式~\eqref{eq:21-conserve}）；\\
+     覆盖统计：multi $=8192$ 点、once $=4096/2$（case~E）};
+\end{tikzpicture}
+\caption{S$\to$R A 拷贝的 2 倍重复因子（式~\eqref{eq:21-dup}、测试
+case~D/E）：tiler $(32,16)$ 的 A tile（M $\times$ K）上，每格标 warp 内
+lane 号 $\ell=m\bmod16$，格子的实际覆盖线程对为（基址 $+\ell$，基址
+$+64+\ell$），四块的基址见右上表（w0--w3 即 warp 0--3）。每个元素恰被
+2 个 (thread, value) 对覆盖：$t$ 与 $t{+}64$（两个 N 方向 warp，thrN
+$=0/1$）各持同一行块 8 个连续 k 的一份寄存器拷贝——TV 布局第 4 个线程
+模式 stride 为 0 的几何含义，守恒 $128\times8=2\times512$。对照
+图~\ref{fig:21-3} 的 G$\to$S 双射网格（每格恰一线程）。}
+\label{fig:21-s2r-dup}
+\end{figure}
 
 \subsection{partition 的数学}
 
@@ -503,10 +678,29 @@ side」，不是 shared memory；\texttt{retile\_D} 的 D 指 destination side�
 
 epilogue 的三段划定值得单独讲：寄存器 fragment 先按 32-bit 粒度写进
 smem scratchpad（R$\to$S），再从 scratchpad 按 128-bit 读回 gmem
-（S$\to$G）。中间这块 scratchpad 复用了当前 A stage 的空间：
+（S$\to$G）。中间这块 scratchpad 复用了当前 A stage 的空间，\texttt{sC}
+由 \texttt{make\_\allowbreak{}tensor\allowbreak{}(sA(\_,\allowbreak{}\_,\allowbreak{}ismem\_\allowbreak{}read).\allowbreak{}data\allowbreak{}(),\allowbreak{} SmemLayoutC\{\})}
+构造（L1001，下文展开）。R$\to$S 用的 \texttt{R2SCopyAtomC} 是
+\texttt{Copy\_Atom<UniversalCopy<int>,\allowbreak{} T>}：以 32-bit 粒度搬运
+\texttt{T} 数据，用 \texttt{UniversalCopy} 顺带完成类型转换，再经
+\texttt{make\_tiled\_copy\_C} 包装成 \texttt{r2s\_tiled\_copy\_c}。
 
-\lstinputlisting[linerange={1001-1020},firstnumber=auto,breakatwhitespace=true,
-  title={hgemm.cuh L1001-1020（C scratchpad 的重解释与 R2S 的 retile\_S）}]{../hgemm.cuh}
+\begin{sloppypar}
+被搬运的 \texttt{tCrD} 是 TiledMMA 产生的 accumulator fragment，逻辑形状为
+\texttt{(MMA, MMA\_M, MMA\_N)}：寄存器元素已经就位，但该 layout 是为 MMA
+accumulator 服务的，并不直接按 R2S copy atom 的 source-value 顺序表达。
+\texttt{retile\_S}（S 指「这个 TiledCopy 的 source side」，不是 shared
+memory）基于 \texttt{r2s\_tiled\_copy\_c} 的 reference layout 创建一个共享
+\texttt{tCrD.data()} 的 zero-copy layout view，把逻辑坐标从
+\texttt{(MMA, MMA\_M, MMA\_N)} 重新表示为 \texttt{(CPY, CPY\_M, CPY\_N)}
+（\texttt{tCrC\_r2s = r2s\_thr\_copy\_c.retile\_S(tCrD)}）。这一步不读取或
+写入寄存器/共享内存、不做 dtype conversion、不交换 lane 间数据；真正的
+R2S 数据搬运发生在后面的
+\texttt{cute::copy(r2s\_tiled\_copy\_c, ...,\allowbreak{} tCsC\_r2s(...))}。
+可与主循环的 \texttt{s2r\_thr\_copy\_a.retile\_D(tCrA)} 对照：二者都是为了让
+已有 fragment 的 per-thread value ordering 匹配某个 TiledCopy 的
+source/destination 角色，而不是另一次 memory transfer。
+\end{sloppypar}
 
 \begin{sloppypar}
 注意 L1001 的写法：\texttt{sC} 拿的是 \texttt{s\allowbreak{}A\allowbreak{}(\_\allowbreak{},\allowbreak{}\_\allowbreak{},\allowbreak{}ismem\_\allowbreak{}read).\allowbreak{}data\allowbreak{}()}
@@ -516,13 +710,73 @@ $8\times32$ atom，C 的是 $32\times32$ atom，二者都含 \texttt{Swizzle\all
 但\textbf{不可互换读取}。容量上：一个 A stage 是 $128\times32=4096$ 个 half，
 C scratchpad 是 $32\times32\times4=4096$ 个 half，正好放得下（launch wrapper
 的 \texttt{static\_\allowbreak{}assert} 就是查这件事，实测 \texttt{cosize\allowbreak{}(Smem\allowbreak{}Layout\allowbreak{}A)}
-$=8192$（2 stage）、C 部分 $4096$）。
+$=8192$（2 stage）、C 部分 $4096$）。同一块地址带上的两种解释见
+图~\ref{fig:21-scratch-alias}。
 \end{sloppypar}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\tiny]
+  \node[anchor=east, text=tkBlue] at (-0.1,-0.3) {A pipe 视角};
+  \node[anchor=east, text=tkOrange!80!black] at (-0.1,-1.95) {C scratchpad 视角};
+  \foreach \ak in {0,...,15}{
+    \node[fill=tkFillBlue, minimum width=0.4cm, minimum height=0.6cm, inner sep=0pt]
+      at ({\ak*0.4+0.2},-0.3) {};
+  }
+  \draw[thin] (0,0) grid[xstep=0.4cm, ystep=0.6cm] (6.4,-0.6);
+  \draw[very thick] (0,0) rectangle (6.4,-0.6);
+  \foreach \ck in {0,...,3}{
+    \node[fill=tkFillOrange, minimum width=1.6cm, minimum height=0.6cm, inner sep=0pt]
+      at ({\ck*1.6+0.8},-1.95) {$32\times32$};
+  }
+  \foreach \ckx in {0,...,4}{
+    \draw[thin] ({\ckx*1.6},-1.65) -- ({\ckx*1.6},-2.25);
+  }
+  \draw[very thick] (0,-1.65) rectangle (6.4,-2.25);
+  \node[fill=gray!12, draw, thick, minimum width=6.4cm, minimum height=0.35cm,
+    inner sep=0pt] at (3.2,-1.125)
+    {$4096$ half $=$ 同一块 smem（\texttt{sA(...,ismem\_read).data()}）};
+  \draw[->, thick] (1.2,-0.64) -- (1.2,-0.92);
+  \draw[->, thick] (5.2,-0.64) -- (5.2,-0.92);
+  \draw[->, thick] (1.2,-1.61) -- (1.2,-1.33);
+  \draw[->, thick] (5.2,-1.61) -- (5.2,-1.33);
+  \node[anchor=north west, align=left, text width=7.6cm] at (7.2,0.25)
+    {\textbf{A 视角（pipe 布局）}：$(B_M,B_K,k_{\mathrm{stage}})=(128,32,2)$ 由
+     $8\times32$ 的 SW128 atom 铺成——沿 $B_M$ 方向 $16$ 个 atom（每个含
+     \texttt{Sw<3,3,3>}）；两个 stage 合计 \texttt{cosize}$=8192$。};
+  \node[anchor=north west, align=left, text width=7.6cm] at (7.2,-1.6)
+    {\textbf{C 视角（scratchpad 布局）}：$32\times32$ 的 atom $\times$ $4$ 个
+     pipe slot（\texttt{kSmemLayoutCBatch}$=4$）$=4096$ half，与一个 A stage
+     同容量。};
+  \node[anchor=north west, align=left, text width=15.4cm] at (0,-2.7)
+    {两种解释都含 \texttt{Swizzle<3,3,3>}，但 atom 形状（$8\times32$ 对
+     $32\times32$）与个数（$16$ 对 $4$）都不同——\textbf{不可互换读取}；
+     容量一致（$4096$ half）是这次空间复用的前提，launch wrapper 的
+     \texttt{static\_assert} 查的就是它。};
+\end{tikzpicture}
+\caption{epilogue scratchpad：同一块 $4096$ half 的 smem、两种布局视图
+（hgemm.cuh L1001）。上条带是 A 的 pipe 解释——$(128,32)$ 的 stage 按
+$8\times32$ 的 SW128 atom 沿 $B_M$ 切成 $16$ 段；下条带是 C 的
+scratchpad 解释——$32\times32$ 的 atom $\times$ $4$ 个 pipe slot
+（\texttt{kSmemLayoutCBatch}$=4$）。中间那条带是两者共用的地址带：
+\texttt{sC} 拿到的只是 \texttt{sA(\_,\_,ismem\_read).data()} 这个裸指针，
+没有 Tensor 类型转换，重复的只是「同一段地址的两种读法」。}
+\label{fig:21-scratch-alias}
+\end{figure}
 
 S$\to$G 一侧的 partition 与 \texttt{group\_modes} 合并：
 
-\lstinputlisting[linerange={1036-1076},firstnumber=auto,breakatwhitespace=true,
-  title={hgemm.cuh L1036-1076（S2G 的划分与 group\_modes 合并 mode）}]{../hgemm.cuh}
+\begin{sloppypar}
+划分本身只有两行：\texttt{tCsC\_s2g = s2g\_thr\_copy\_c.partition\_S(sC)}，
+形状 \texttt{(CPY, \_1, \_1, pipe)}；\texttt{tCgC\_s2g = s2g\_thr\_copy\_c.partition\_D(gD)}，
+形状 \texttt{(CPY, CPY\_M, CPY\_N)}。\texttt{tCsC\_s2g} 与 \texttt{tCsC\_r2s}
+都从同一个 \texttt{sC} 产生，因而保留相同的 pipe$=$4——前者是 S2G 的
+source mapping，后者是 R2S 的 destination mapping；\texttt{tCgC\_s2g} 则面向
+完整的 $gD = (B_M, B_N) = (128, 256)$，相对于 S2G copy tiler 仍有非平凡的
+M/N repetition，所以保留 \texttt{CPY\_M}、\texttt{CPY\_N}。注释特别提醒：
+这里的 \texttt{CPY}/\texttt{CPY\_M}/\texttt{CPY\_N} 都是编译期 copy-partition
+的逻辑 mode，不应直接理解为固定的 lane 数、warp 数或物理连续维度。
+\end{sloppypar}
 
 \begin{sloppypar}
 \texttt{group\_\allowbreak{}modes\allowbreak{}<1,\allowbreak{}3>} 把 mode 区间 $[1,3)$ 合并成一个嵌套 mode：形状从
@@ -539,6 +793,35 @@ $\mathrm{CPY}_N$}，循环成立的前提是 $\mathrm{CPY}_M\cdot\mathrm{CPY}_N$
 step 整除——当前静态布局下这是编译期保证的。
 \end{sloppypar}
 
+\begin{sloppypar}
+那么为什么要对 \texttt{tCrC\_r2s} 与 \texttt{tCgC\_s2g} \textbf{同时} group
+（真代码就两行：\texttt{tCgC\_s2gx = group\_modes<1, 3>(tCgC\_s2g)}、
+\texttt{tCrC\_r2sx = group\_modes<1, 3>(tCrC\_r2s)}）？\texttt{tCrC\_r2s} 是
+每线程持有的寄存器 C fragment，原始形状 \texttt{(CPY, CPY\_M, CPY\_N)}；
+\texttt{tCgC\_s2g} 是该线程对应的 global-memory C 输出位置，形状与源
+Tensor 对齐；两者用相同的 $[1,3)$ 合并后，源/目的 Tensor 仍保持相同的
+坐标空间，\texttt{cute::copy} 便按相同的 \texttt{(CPY, i+j)} 坐标完成寄存器
+到 global 的对应搬运。而 \texttt{tCsC\_r2s}/\texttt{tCsC\_s2g} 不 group
+第 3 个 pipe mode——它们还需显式保留 shared-memory C scratchpad 的
+pipeline 维度，\texttt{step = size<3>(tCsC\_r2s)} 表示每轮可复用的 C
+smem pipeline 深度（\texttt{kSmemLayoutCBatch}$\,{=}\,4$，故 step$=$4）。
+外层 $i$ 在合并后的 C 元素空间中按 step 前进，内层 $j$ 选择当前 pipeline
+slot：寄存器先写入 \texttt{sC(\_, 0, 0, j)}，再从同一个 slot 写回 global
+memory。
+\end{sloppypar}
+
+注释对 grouped mode 的语义还有两点精确限定：其一，它更准确地说是「合并
+mode」而不是把底层数据拷贝或无条件 flatten 成普通一维数组——第二个 mode
+仍保存 \texttt{CPY\_M}/\texttt{CPY\_N} 的层次关系，grouped mode 的
+cardinality 是两个子 mode 的乘积，\texttt{size<1>(...)} 因此可作为一个
+标量范围遍历其全部 logical coordinate；其二，\texttt{(\_, i+j)} 中的
+$i{+}j$ 是该 nested mode 的\textbf{线性 logical coordinate}，不是在 C++
+中对二维 tuple 做加法，更不是 raw pointer offset——最终物理地址仍由各自
+Tensor 的 grouped layout 计算。此外，代码未对 $i{+}j$ 做尾部 predication，
+这个循环依赖当前静态 layout 中 grouped extent 能被 pipe depth 整除；不应
+把「每轮正好处理 4 个 fragment」误认为任意 tile/copy 配置都自动成立的
+通用规则。
+
 \needspace{106mm}
 
 \section{图示}
@@ -548,14 +831,173 @@ step 整除——当前静态布局下这是编译期保证的。
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-21-3-g2s-grid/fig-21-3.png}
+% was: \includegraphics[width=0.95\textwidth]{figures/drawio/fig-21-3-g2s-grid/fig-21-3.png}
+\begin{tikzpicture}[font=\tiny, x=0.015cm, y=-0.015cm]
+  \node[anchor=west, font=\scriptsize\bfseries] at (24,26)
+    {thread $\times$ value 网格：G$\to$S 拷贝（ThrLayout $(32,4){:}(4,1)$，
+     ValLayout $(1,8)$，$32\times32$ tile）};
+  \node[font=\tiny\bfseries] at (114,63) {$m \backslash n$};
+  \foreach \cc/\nb in {0/{n: 0--7},1/{n: 8--15},2/{n: 16--23},3/{n: 24--31}}{
+    \node[font=\tiny\bfseries] at ({251+216*\cc},63) {\nb};
+    \ifcase\cc
+      \def\chf{colorx4!12}%
+    \or
+      \def\chf{colorx4!24}%
+    \or
+      \def\chf{colorx4!36}%
+    \else
+      \def\chf{colorx4!48}%
+    \fi
+    \node[draw=colorx4!55, fill=\chf, font=\tiny\bfseries, minimum width=3.15cm,
+          minimum height=0.6cm, inner sep=0pt] at ({251+216*\cc},98)
+      {$t = 4m + \cc$};
+  }
+  \foreach \rr in {0,...,3}{
+    \node[draw=gray!45, fill=white, minimum width=0.75cm, minimum height=0.36cm,
+          inner sep=0pt] at (109,{144+46*\rr}) {$\rr$};
+    \foreach \cc in {0,...,3}{
+      \pgfmathtruncatemacro{\tn}{4*\rr+\cc}
+      \ifcase\cc
+        \def\cff{colorx4!12}%
+      \or
+        \def\cff{colorx4!24}%
+      \or
+        \def\cff{colorx4!36}%
+      \else
+        \def\cff{colorx4!48}%
+      \fi
+      \node[draw=colorx4!55, fill=\cff, minimum width=3.15cm, minimum height=0.6cm,
+            inner sep=0pt] at ({251+216*\cc},{144+46*\rr})
+          {$t = \tn$（$v = 0..7$）};
+    }
+  }
+  \node[anchor=west, font=\tiny] at (24,323)
+    {$m = 4..31$ 同构（$t = 4m + j$）；每线程 8 个连续元素 $=$ 一条 128-bit
+     \texttt{cp.async}};
+  \node[draw=tkBlue, fill=white, align=center, font=\tiny, text width=7.4cm,
+        minimum height=0.66cm, inner sep=2pt] at (295,366)
+    {正：$t = 4m + j$（$j =$ 哪个 8 宽列组）；$v = n \bmod 8$};
+  \node[draw=tkGreen, fill=white, align=center, font=\tiny, text width=7.1cm,
+        minimum height=0.66cm, inner sep=2pt] at (877,366)
+    {逆：$m = t/4$；$n = 8(t \bmod 4) + v$（式~\eqref{eq:21-g2s-tv}）};
+  \node[draw=gray!60, fill=white, align=center, font=\tiny, text width=7.4cm,
+        minimum height=0.66cm, inner sep=2pt] at (295,420)
+    {Tiler $=$ \texttt{product\_each(shape(Layout\_MN))} $= (32,32)$};
+  \node[draw=tkGreen, fill=tkFillGreen, text=tkGreen!70!black, align=center,
+        font=\tiny\bfseries, text width=7.1cm, minimum height=0.66cm, inner sep=2pt]
+    at (877,420) {守恒：NumThr $\times$ NumVal $= 128 \times 8 = 1024 = |$Tiler$|$};
+  \node[draw=tkRed, fill=tkFillRed, text=tkRed!80!black, align=center, font=\tiny,
+        text width=16.0cm, minimum height=0.72cm, inner sep=2pt] at (580,476)
+    {对照 S2R 拷贝：Tiler $= (32,16)$ 无全覆盖，$P\times V = 1024 \to 2\times$
+     重复（N 方向 warp 重读同一 A，式~\eqref{eq:21-dup}）};
+\end{tikzpicture}
 \caption{thread$\times$value 网格：G$\to$S 拷贝把 $32\times32$ 的 tile 划成 $t=4m+j$ 的网格，每个线程搬 8 个连续元素（一条 128-bit \texttt{cp.async}）。同一划分用 MN 语言或 TV 语言描述是等价的（式~\eqref{eq:21-g2s-mn} 与式~\eqref{eq:21-g2s-tv}）；本章测试 case~A/B 对 1024 个 $(t,v)$ 对与 4096 个坐标逐一核对了这两组公式。}
 \label{fig:21-3}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-21-4-tiled-copy-flow/fig-21-4.png}
+% was: \includegraphics[width=0.95\textwidth]{figures/drawio/fig-21-4-tiled-copy-flow/fig-21-4.png}
+\begin{tikzpicture}[font=\tiny, x=0.015cm, y=-0.015cm]
+  \node[anchor=west, font=\footnotesize\bfseries] at (30,21)
+    {tiled copy 全景数据流：gmem tile $\to$ smem tile $\to$ register fragment};
+  \node[anchor=west, font=\tiny] at (30,46)
+    {两步 TiledCopy：g2s 把 gmem 中 32 个数据拷到 smem；s2r 依 TV layout
+     分发到各 thread 的寄存器 fragment};
+  \node[anchor=west, font=\tiny\bfseries, text=tkBlue] at (30,68) {gmem tile};
+  \node[anchor=west, font=\tiny] at (30,88)
+    {$\mathrm{T}(64,)$ 的 $(8,8){:}(8,1)$ 视图；上 4 行 32 个元素参与拷贝};
+  \foreach \cc in {0,...,7}{
+    \node[font=\tiny, text=gray!80] at ({78+46*\cc},122) {\cc};
+  }
+  \foreach \rr in {0,...,7}{
+    \node[anchor=east, font=\tiny, text=gray!80] at (50,{156+46*\rr}) {\rr};
+    \foreach \cc in {0,...,7}{
+      \pgfmathtruncatemacro{\vv}{8*\rr+\cc}
+      \ifnum\rr>3
+        \node[draw=gray!40, fill=gray!15, text=gray!90, minimum width=0.66cm,
+              minimum height=0.66cm, inner sep=0pt] at ({78+46*\cc},{156+46*\rr}) {\vv};
+      \else
+        \ifnum\cc<4
+          \node[draw=gray!40, fill=tkFillGreen, minimum width=0.66cm, minimum height=0.66cm,
+                inner sep=0pt] at ({78+46*\cc},{156+46*\rr}) {\vv};
+        \else
+          \node[draw=gray!40, fill=tkFillOrange, minimum width=0.66cm, minimum height=0.66cm,
+                inner sep=0pt] at ({78+46*\cc},{156+46*\rr}) {\vv};
+        \fi
+      \fi
+    }
+  }
+  \node[anchor=west, font=\tiny\bfseries, text=tkBlue] at (478,172) {smem tile};
+  \node[anchor=west, font=\tiny, text=tkGreen] at (600,173)
+    {$\leftarrow$ 第一步：TiledCopy g2s};
+  \node[anchor=west, font=\tiny] at (478,193) {16 threads $\times$ 2 values / thread};
+  \foreach \cc in {0,...,7}{
+    \node[font=\tiny, text=gray!80] at ({532+46*\cc},216) {\cc};
+  }
+  \foreach \rr in {0,...,3}{
+    \node[anchor=east, font=\tiny, text=tkGreen!70!black] at (506,{250+46*\rr}) {c\rr};
+    \foreach \cc in {0,...,7}{
+      \pgfmathtruncatemacro{\vv}{8*\rr+\cc}
+      \ifnum\cc<4
+        \node[draw=gray!40, fill=tkFillGreen, minimum width=0.66cm, minimum height=0.66cm,
+              inner sep=0pt] at ({532+46*\cc},{250+46*\rr}) {\vv};
+      \else
+        \node[draw=gray!40, fill=tkFillOrange, minimum width=0.66cm, minimum height=0.66cm,
+              inner sep=0pt] at ({532+46*\cc},{250+46*\rr}) {\vv};
+      \fi
+    }
+  }
+  \node[anchor=west, font=\tiny\bfseries, text=tkBlue] at (932,110) {register fragment};
+  \node[anchor=west, font=\tiny, text=tkPurple] at (932,131)
+    {$\leftarrow$ 第二步：TiledCopy s2r};
+  \foreach \rr in {0,...,3}{
+    \foreach \cc in {0,...,3}{
+      \pgfmathtruncatemacro{\vv}{4*\rr+\cc}
+      \node[font=\tiny, text=gray!80] at ({955+53*\cc},{150+50*\rr}) {t\vv};
+      \ifnum\rr<2
+        \node[draw=tkGreen!60, fill=tkFillGreen, font=\tiny, minimum width=0.69cm,
+              minimum height=0.39cm, inner sep=0pt] at ({955+53*\cc},{171+50*\rr})
+          {\vv\ \ \the\numexpr\vv+16\relax};
+      \else
+        \node[draw=tkOrange!70, fill=tkFillOrange, font=\tiny, minimum width=0.69cm,
+              minimum height=0.39cm, inner sep=0pt] at ({955+53*\cc},{171+50*\rr})
+          {\vv\ \ \the\numexpr\vv+16\relax};
+      \fi
+    }
+  }
+  \node[anchor=west, font=\tiny, text=tkPurple] at (56,534)
+    {TV layout：决定哪个 thread 拷贝哪些数据};
+  \foreach \cc in {0,...,15}{
+    \node[font=\tiny, text=gray!80] at ({110+46*\cc},552) {t\cc};
+  }
+  \foreach \rr in {0,1}{
+    \node[anchor=east, font=\tiny, text=gray!80] at (84,{590+46*\rr}) {V\rr};
+    \foreach \cc in {0,...,15}{
+      \pgfmathtruncatemacro{\vv}{16*\rr+\cc}
+      \ifnum\cc<8
+        \node[draw=gray!40, fill=tkFillGreen, minimum width=0.66cm, minimum height=0.66cm,
+              inner sep=0pt] at ({110+46*\cc},{590+46*\rr}) {\vv};
+      \else
+        \node[draw=gray!40, fill=tkFillOrange, minimum width=0.66cm, minimum height=0.66cm,
+              inner sep=0pt] at ({110+46*\cc},{590+46*\rr}) {\vv};
+      \fi
+    }
+  }
+  \draw[-{Stealth[length=2mm]}, gray!70, very thick] (428,318) -- (502,318);
+  \draw[-{Stealth[length=2mm]}, gray!70, very thick] (882,262) -- (926,262);
+  \node[draw=tkGreen!60, fill=tkFillGreen, minimum width=0.24cm, minimum height=0.24cm,
+        inner sep=0pt] at (874,532) {};
+  \node[anchor=west, font=\tiny, text=tkGreen!70!black] at (890,532)
+    {t0--t7 拷贝的数据};
+  \node[draw=tkOrange!70, fill=tkFillOrange, minimum width=0.24cm, minimum height=0.24cm,
+        inner sep=0pt] at (874,560) {};
+  \node[anchor=west, font=\tiny, text=tkOrange!80!black] at (890,560)
+    {t8--t15 拷贝的数据};
+  \node[draw=gray!40, fill=gray!15, minimum width=0.24cm, minimum height=0.24cm,
+        inner sep=0pt] at (874,588) {};
+  \node[anchor=west, font=\tiny, text=gray!90] at (890,588) {gmem 灰色格：不参与拷贝};
+\end{tikzpicture}
 \caption{tiled copy 全景数据流：gmem tile（$(8,8)$ 视图，上半 32 个元素参与拷贝、下半灰色不参与）经 g2s TiledCopy 搬成连续 smem tile，再由 s2r 依 TV layout 切成每线程 fragment（thread $t$ 持 $\{t,\,t+16\}$ 两值）。两级 TiledCopy 的分工：g2s 把 strided 的全局块搬连续，s2r 按 thread$\times$value 分发到寄存器。重建自 @竹熙佳处《写给大家看的 CuTe 教程：tiled copy》。}
 \label{fig:21-4}
 \end{figure}

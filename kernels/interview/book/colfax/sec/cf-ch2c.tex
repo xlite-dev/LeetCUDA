@@ -1,0 +1,917 @@
+\subsection{紧凑扁平布局}
+
+在讨论布局的补（complement）之前，我们必须先定义一类重要的布局（layout），称为{\it 紧凑}（compact）扁平布局（flat layout）。这类扁平布局的布局函数（layout function）是双射（bijective）的。用刻画布局的标准网格图（grid diagram）来说，扁平布局 $L$ 是紧凑的，如果每个整数 $0 \leq i< \size(L)$ 恰好出现一次。例如，布局
+\[
+\begin{tikzpicture}[x={(0cm,-1cm)},y={(1cm,0cm)},every node/.style={minimum size=1cm, outer sep=0pt}]
+
+\node[fill=gray!20] at (0,0) {0};
+\node[fill=gray!20] at (0,1) {3};
+\node[fill=gray!20] at (0,2) {6};
+\node[fill=gray!20] at (0,3) {9};
+\node[fill=gray!20] at (0,4) {12};
+\node[fill=gray!20] at (0,5) {15};
+\node[fill=gray!20] at (1,0) {1};
+\node[fill=gray!20] at (1,1) {4};
+\node[fill=gray!20] at (1,2) {7};
+\node[fill=gray!20] at (1,3) {10};
+\node[fill=gray!20] at (1,4) {13};
+\node[fill=gray!20] at (1,5) {16};
+\node[fill=gray!20] at (2,0) {2};
+\node[fill=gray!20] at (2,1) {5};
+\node[fill=gray!20] at (2,2) {8};
+\node[fill=gray!20] at (2,3) {11};
+\node[fill=gray!20] at (2,4) {14};
+\node[fill=gray!20] at (2,5) {17};
+\draw[color=black,thick,shift={(-0.5,-0.5)}] (0,0) grid (3,6);
+
+\node[anchor = east] at (1,-1) {$A = (3,6):(1,3) = $};
+\end{tikzpicture}
+\]
+是紧凑的，而布局
+\[
+\begin{tikzpicture}[x={(0cm,-1cm)},y={(1cm,0cm)},every node/.style={minimum size=1cm, outer sep=0pt}]
+
+\node[fill=gray!20] at (0,0) {0};
+\node[fill=gray!20] at (0,1) {6};
+\node[fill=gray!20] at (0,2) {12};
+\node[fill=gray!20] at (0,3) {18};
+\node[fill=gray!20] at (0,4) {24};
+\node[fill=gray!20] at (0,5) {30};
+\node[fill=gray!20] at (1,0) {2};
+\node[fill=gray!20] at (1,1) {8};
+\node[fill=gray!20] at (1,2) {14};
+\node[fill=gray!20] at (1,3) {20};
+\node[fill=gray!20] at (1,4) {26};
+\node[fill=gray!20] at (1,5) {32};
+\node[fill=gray!20] at (2,0) {4};
+\node[fill=gray!20] at (2,1) {10};
+\node[fill=gray!20] at (2,2) {16};
+\node[fill=gray!20] at (2,3) {22};
+\node[fill=gray!20] at (2,4) {28};
+\node[fill=gray!20] at (2,5) {34};
+\draw[color=black,thick,shift={(-0.5,-0.5)}] (0,0) grid (3,6);
+
+\node[anchor = east] at (1,-1) {$B = (3,6):(2,6) = $};
+\end{tikzpicture}
+\]
+与
+\[
+\begin{tikzpicture}[x={(0cm,-1cm)},y={(1cm,0cm)},every node/.style={minimum size=1cm, outer sep=0pt}]
+
+\node[fill=gray!20] at (0,0) {0};
+\node[fill=gray!20] at (0,1) {2};
+\node[fill=gray!20] at (0,2) {4};
+\node[fill=gray!20] at (0,3) {6};
+\node[fill=gray!20] at (0,4) {8};
+\node[fill=gray!20] at (0,5) {10};
+\node[fill=gray!20] at (1,0) {1};
+\node[fill=gray!20] at (1,1) {3};
+\node[fill=gray!20] at (1,2) {5};
+\node[fill=gray!20] at (1,3) {7};
+\node[fill=gray!20] at (1,4) {9};
+\node[fill=gray!20] at (1,5) {11};
+\node[fill=gray!20] at (2,0) {2};
+\node[fill=gray!20] at (2,1) {4};
+\node[fill=gray!20] at (2,2) {6};
+\node[fill=gray!20] at (2,3) {8};
+\node[fill=gray!20] at (2,4) {10};
+\node[fill=gray!20] at (2,5) {12};
+\draw[color=black,thick,shift={(-0.5,-0.5)}] (0,0) grid (3,6);
+
+\node[anchor = east] at (1,-1) {$C = (3,6):(1,2) = $};
+\end{tikzpicture}
+\]
+不是紧凑的。更精确地说，我们有如下定义。
+
+\begin{definition}\label{definitionofcompact}
+    设 $L$ 是扁平布局。若
+    \[\begin{tikzcd}
+    {[}0,\size(L){)} \ar[rr,"\Phi_L^{\cosize(L)}"] & & {[}0,\cosize(L){)}
+    \end{tikzcd} \]
+    是同构（isomorphism），则称 $L$ 是{\it 紧凑}的。
+\end{definition}
+
+\begin{example}
+    扁平布局
+    \[
+    L = (2,2,2,2):(1,2,4,8)
+    \]
+    是紧凑的。更一般地，若 $L$ 是列主序（column-major）的，则 $L$ 是紧凑的。
+\end{example}
+
+\begin{example}
+    扁平布局
+    \[
+    L = (3,64,32):(2048,32,1)
+    \]
+    是紧凑的。更一般地，若 $L$ 是行主序（row-major）的，则 $L$ 是紧凑的。
+\end{example}
+
+\begin{example}
+    空布局（empty layout）
+    \[
+    E = ():()
+    \]
+    是紧凑的。
+\end{example}
+
+\begin{example}
+    设
+    \[
+    L = (s_1,\dots,s_m):(d_1,\dots,d_m)
+    \]
+    是扁平布局。若 $L$ 的某个模式（mode）满足 $s_i > 1$ 且 $d_i = 0$，则 $L$ 不是紧凑的。
+\end{example}
+
+我们可以如下给出紧凑布局的一个显式刻画。
+
+\begin{proposition}\label{compactisomorphismproposition}
+    设 $L$ 是扁平布局，并记
+    \[
+    \squeeze(L) = (s_1,\dots,s_m):(d_1,\dots,d_m).
+    \]
+    那么 $L$ 紧凑当且仅当存在置换（permutation）$\sigma \in \Sigma_m$，使得
+    \[
+    d_{\sigma(i)} = s_{\sigma(1)}\cdots s_{\sigma(i-1)}
+    \]
+    对所有 $1 \leq i \leq m$ 成立。换言之，$L$ 紧凑当且仅当存在置换 $\sigma \in \Sigma_m$ 使得 $\squeeze(L)^\sigma$ 是列主序的。
+\end{proposition}
+
+
+\begin{proof}
+    设 $L$ 是扁平布局，并记
+    \[
+    \squeeze(L) = (s_1,\dots,s_m):(d_1,\dots,d_m).
+    \]
+    首先设 $L$ 紧凑，于是存在置换 $\sigma \in \Sigma_m$ 使得对每个 $1 \leq i \leq m$ 都有 $d_{\sigma(i)} = s_{\sigma(1)} \cdots s_{\sigma(i-1)}$。若记 $S^\sigma = (s_{\sigma(1)},\dots,s_{\sigma(m)})$，则可以把 $\Phi_L^{\cosize(L)}$ 写成复合
+    \[ \begin{tikzcd} [column sep = 12]
+    {[}0,\size(L){)} \ar[rr,"\colex_S^{-1}"] & & {[}0,S{)} \ar[rr,"\cong"] & & {[}0,S^\sigma{)}\ar[rr,"\colex_{S^\sigma}"] & & {[}0,\cosize(L){)}\\
+    & & (x_1,\dots,x_m) \ar[rr,mapsto] & & (x_{\sigma(1)},\dots,x_{\sigma(m)})
+    \end{tikzcd} \]
+    由于其中每个映射都是同构，其复合 $\Phi_L^{\cosize(L)}$ 也是同构。
+
+    反之，设 $\Phi_L^{\cosize(L)}$ 是同构。首先，我们指出诸步长（stride）$d_1,\dots,d_m$ 必定两两不同：设 $d_i = d_j$，并令 $\delta_i^m$ 与 $\delta_j^m$ 表示第 $i$ 个（相应地，第 $j$ 个）元素为 $1$、其余元素均为 $0$ 的元组（tuple）。这些元组满足
+    \[
+    \delta_i^m \cdot (d_1,\dots,d_m) = d_i = d_j = \delta_j^m \cdot (d_1,\dots,d_m),
+    \]
+    而由于 $\Phi_L^{\cosize(L)}$ 是单射（injective）的，必有 $i=j$。给定步长 $d_1,\dots,d_m$ 两两不同，取 $\sigma \in \Sigma_m$ 为满足
+    \[d_{\sigma(1)} < d_{\sigma(2)} < \cdots < d_{\sigma(m)}.\]
+    的置换。我们对 $i \geq 1$ 作归纳，论证 $d_{\sigma(i)} = s_{\sigma(1)} \cdots s_{\sigma(i-1)}$。对基例 $i=1$，我们注意到 $1$ 在 $\Phi_L^{\cosize(L)}$ 的像（image）中，而 $\Phi_L^{\cosize(L)}$ 的最小非零值是 $d_{\sigma(1)}$，因此 $d_{\sigma(1)} = 1$。设 $i>1$，并设对所有 $j < i$ 命题已证。考虑步长 $d_{\sigma(i)}$。我们知道不存在形如 $(x_1,\dots,x_{i-1},0,\dots,0)^\sigma$ 的元组使得
+    \[(x_1,\dots,x_{i-1},0,\dots,0)^\sigma \cdot (d_1,\dots,d_m) = s_{\sigma(1)}\cdots s_{\sigma(i-1)},\] 因为这类表达式的最大可能值为
+    \[
+    \sum_{j = 1}^{i-1} (s_{\sigma(j)}-1)(s_{\sigma(1)}\cdots s_{\sigma(j-1)}) = s_{\sigma(1)} \cdots s_{\sigma(i-1)} - 1.
+    \]
+    由于 $\Phi_L^\cosize(L)$ 是满射（surjective）的，且 $d_{\sigma(i)} <  d_{\sigma(i+1)} <  \cdots <  d_{\sigma(m)}$，可知 $\Phi_L^{\cosize(L)}$ 接下来能取到的值就是 $d_{\sigma(i)}$，故必有 $d_{\sigma(i)} = s_{\sigma(1)}\cdots s_{\sigma(i-1)}$，即证。
+\end{proof}
+
+本节最后，我们给出一组扁平布局 $L$ 紧凑的等价条件。
+
+\begin{proposition}\label{equivalentconditionsforcompact}
+    设 $L$ 是扁平布局。则下列条件等价。
+    \begin{enumerate}
+        \item $L$ 是紧凑的。
+        \item $\coalesce^\flat(L)$ 是紧凑的。
+        \item $\squeeze(L)$ 是紧凑的。
+        \item $\sort(L)$ 是紧凑的。
+    \end{enumerate}
+\end{proposition}
+
+\begin{proof}
+    条件 1、2、3 的等价性来自
+    \[
+    \Phi_L = \Phi_{\coalesce^\flat(L)} = \Phi_{\squeeze(L)}.
+    \]
+    还需证明 $L$ 紧凑当且仅当 $\sort(L)$ 紧凑。利用
+    \[
+    \squeeze(\sort(L)) = \sort(\squeeze(L)),
+    \]
+    我们有
+    \begin{align*}
+    \sort(L)\ \text{是紧凑的。} \hspace{0.2in} & \Leftrightarrow \hspace{0.2in} \squeeze(\sort(L))\ \text{是紧凑的。}\\
+    & \Leftrightarrow \hspace{0.2in} \sort(\squeeze(L))\ \text{是紧凑的。}
+    \end{align*}
+    现在对某个置换 $\tau \in \Sigma_m$ 有 $\sort(\squeeze(L)) = \squeeze(L)^\tau$，因此存在置换 $\sigma$ 使 $\squeeze(L)^\sigma$ 是列主序的，当且仅当存在置换 $\sigma' \in \Sigma_m$ 使 $\sort(\squeeze(L))$ 是列主序的，即取 $\sigma' = \tau^{-1} \sigma$。于是
+        \begin{align*}
+    \sort(\squeeze(L))\ \text{是紧凑的。}
+    & \Leftrightarrow \hspace{0.2in} \squeeze(L)\ \text{是紧凑的。}\\
+    & \Leftrightarrow \hspace{0.2in} L\ \text{是紧凑的。}
+    \end{align*}
+\end{proof}
+
+
+
+
+
+
+
+
+
+
+
+\subsection{补}
+
+本节定义扁平布局互补的概念。回顾定义~\ref{definitionofcompact}：扁平布局 $L$ 称为{\it 紧凑}的，如果布局函数
+\[\Phi_L^{\cosize(L)}: [0,\size(L)) \to [0,\cosize(L))\]
+是同构。
+
+\begin{definition}\label{definitionofcomplement}
+设 $A$ 与 $B$ 是扁平布局。若拼接（concatenation）所得的布局 $A \star B$ 是紧凑的，则称 $B$ 是 $A$ 的{\it 补}（complement），记作 $A \perp B$。
+\end{definition}
+
+
+\begin{example}\label{flatcomplementexample1}
+若 $A=(3):(5)$ 且 $B= (5):(1)$，则 $A \perp B$，因为
+\[
+A \star B = (3,5):(5,1)
+\]
+是紧凑的。
+
+\[
+\begin{tikzpicture}[x={(0cm,-1cm)},y={(1cm,0cm)},every node/.style={minimum size=1cm, outer sep=0pt}]
+
+\node[fill=gray!20] at (-2,0) {0};
+\node[fill=gray!20] at (-2,1) {1};
+\node[fill=gray!20] at (-2,2) {2};
+\node[fill=gray!20] at (-2,3) {3};
+\node[fill=gray!20] at (-2,4) {4};
+\draw[color=black,thick,shift=
+{(-0.5,-0.5)}] (-2,0) grid (-1,5);
+\node[anchor=east] at (-2,-1) {$B = $};
+
+
+\node[fill=gray!20] at (0,-2) {0};
+\node[fill=gray!20] at (1,-2) {5};
+\node[fill=gray!20] at (2,-2) {10};
+\draw[color=black,thick,shift=
+{(-0.5,-0.5)}] (0,-2) grid (3,-1);
+\node[anchor = east] at (1,-3) {$A = $};
+
+
+\node[fill=gray!20] at (0,0) {0};
+\node[fill=gray!20] at (0,1) {1};
+\node[fill=gray!20] at (0,2) {2};
+\node[fill=gray!20] at (0,3) {3};
+\node[fill=gray!20] at (0,4) {4};
+\node[fill=gray!20] at (1,0) {5};
+\node[fill=gray!20] at (1,1) {6};
+\node[fill=gray!20] at (1,2) {7};
+\node[fill=gray!20] at (1,3) {8};
+\node[fill=gray!20] at (1,4) {9};
+\node[fill=gray!20] at (2,0) {10};
+\node[fill=gray!20] at (2,1) {11};
+\node[fill=gray!20] at (2,2) {12};
+\node[fill=gray!20] at (2,3) {13};
+\node[fill=gray!20] at (2,4) {14};
+\draw[color=black,thick,shift={(-0.5,-0.5)}] (0,0) grid (3,5);
+
+\node[anchor = west] at (1,5) {$= A \star B$};
+\end{tikzpicture}
+\]
+\end{example}
+
+\begin{example}\label{flatcomplementexample2}
+    若 $A = (4,2,10):(1400,2,20)$ 且 $B = (2,5,7,2):(1,4,200,5600)$，则 $A \perp B$，因为
+    \[
+    A \star B = (4,2,10,2,5,7,2) : (1400,2,20,1,4,200,5600)
+    \]
+    是紧凑的。
+\end{example}
+
+\begin{example}
+    若 $A$ 是扁平布局且 $E = ():()$ 是空布局，则 $A \perp A$ 当且仅当 $A$ 是紧凑的，因为
+    \[
+    A \star E = A.
+    \]
+\end{example}
+
+\begin{example}
+    若 $A$ 与 $B$ 是扁平布局，则
+    \[A \perp B \quad \Leftrightarrow \quad B \perp A.\]
+\end{example}
+
+\begin{example}
+    若 $A$ 是扁平布局，则 $A\perp A$ 当且仅当 $\size(A) = 1$。
+\end{example}
+
+\begin{observation}
+    要让 $A$ 拥有补，必要条件是 $\Phi_A$ 为单射。然而，确实存在这样的扁平布局 $A$：$\Phi_A$ 是单射，但 $A$ 没有补。例如，考虑布局
+    \[
+    A = (2,2):(1,3).
+    \]
+    $A$ 的布局函数是单射，因为
+    \begin{align*}
+    \Phi_A(0) = 0\text{, }\Phi_A(1) = 1\text{, } \Phi_A(2) = 3\text{，以及 }\Phi_A(3) = 4,
+    \end{align*}
+    但 $A$ 没有补：设
+    \[
+    B = (s_1,\dots,s_m):(d_1,\dots,d_m)
+    \]
+    是任意其它扁平布局。若不存在元组
+    \[
+    (x_1,x_2,y_1,\dots,y_m) \in [0,2) \times [0,2) \times [0,s_1) \times \cdots \times  [0,s_m)
+    \]
+    使得 $\varphi_{A \star B}(x_1,x_2,y_1,\dots,y_m) = 2$，
+    则 $A \star B$ 不是紧凑的。反之，设存在这样的元组 $(x_1,x_2,y_1,\dots,y_m)$，则 $\varphi_{B}(y_1,\dots,y_m) \in \{0,1,2\}$。
+    \begin{itemize}
+        \item （情形 1）：若 $\varphi_{B}(y_1,\dots,y_m) = 0$，则
+        \begin{align*}
+        \varphi_{A \star B}(0,0,0,\dots,0) = 0 = \varphi_{A \star B}(0,0,y_1,\dots,y_m).
+        \end{align*}
+        \item （情形 2）：若 $\varphi_{B}(y_1,\dots,y_m) = 1$，则
+        \begin{align*}
+        \varphi_{A \star B}(1,0,0,\dots,0) = 1 = \varphi_{A \star B}(0,0,y_1,\dots,y_m).
+        \end{align*}
+        \item （情形 3）：若 $\varphi_{B}(y_1,\dots,y_m) = 2$，则
+        \[
+        \varphi_{A \star B}(0,1,0,\dots,0) = 3 = \varphi_{A \star B}(1,0,y_1,\dots,y_m).
+        \]
+    \end{itemize}
+    无论哪种情形，我们都推出 $\varphi_{A\star B}$ 不是单射，因而 $\Phi_{A \star B}$ 也不是。这意味着 $A \star B$ 不是紧凑的，故 $B$ 不是 $A$ 的补。
+\end{observation}
+
+\begin{observation}
+补并不唯一。例如，若
+\[A = (8,8):(2,32),\]
+则布局
+\begin{align*}
+B_1 & = (2,2):(1,16)\\
+B_2 & = (2,2):(16,1)\\
+B_3 & = (5,2,2,1):(256,1,16,0)
+\end{align*}
+中的每一个都是 $A$ 的补。取而代之，我们有一个（可能为空的）集合
+    \[
+    \mathterm{complements}^\flat(A) = \{\text{扁平布局 }B \mid B \text{ 是 }A\text{ 的补}\}.
+    \]
+它由所有与 $A$ 互补的布局组成。
+\end{observation}
+
+给出 $B$ 是 $A$ 的补的一组等价条件将很有用（见命题~\ref{equivalentconditionsforcomplement}）。为此，我们需要下面这个技术性引理，它描述了拼接与运算 $\squeeze(-)$（压缩）、$\sort(-)$（排序）以及 $\coalesce^\flat(-)$（合并）之间的相互作用。
+
+\begin{lemma}\label{concatenationdistributions}
+    设 $A$ 与 $B$ 是扁平布局。则
+    \begin{enumerate}
+        \item $\squeeze(A\star B) = \squeeze(A)\star\squeeze(B)$，
+        \item $\sort(A \star B) = \sort(L \star \sort(B))$，以及
+        \item $\coalesce^\flat(A\star B) = \coalesce^\flat(A \star \coalesce^\flat(B))$。
+    \end{enumerate}
+\end{lemma}
+
+\begin{proof}
+    记
+    \begin{align*}
+        A & = (s_1,\dots,s_m):(d_1,\dots,d_m) \\
+        B & = (t_1,\dots,t_n):(e_1,\dots,e_n).
+    \end{align*}
+    令 $\{ i_1< \dots < i_{m'} \} \subset \langle m \rangle$ 表示满足 $s_{i_k} \neq 1$ 的指标，$\{j_1,\dots,j_{n'}\} \subset \langle n \rangle$ 表示满足 $t_{j_\ell} \neq 1$ 的指标，则
+    \begin{align*}
+    \squeeze(A \star B) & = (s_{i_1},\dots,s_{i_{m'}} , t_{j_1},\dots,t_{j_{n'}}) : (d_{i_1},\dots,d_{i_{m'}} , e_{j_1},\dots,e_{j_{n'}})\\
+    & = \squeeze(A) \star \squeeze(B).
+    \end{align*}
+    这就证明了 1。对于 2，我们注意到对任意扁平布局 $L$ 与任意置换 $\sigma \in \Sigma_{\len(L)}$，都有 $\sort(L) = \sort(L^\sigma)$。由
+    \[
+    A \star \sort(B) = (A \star B)^\sigma
+    \]
+    即得结论，其中 $\sigma$ 是形如 $\sigma = \id \times \sigma' \in \Sigma_m \times \Sigma_n \subset \Sigma_{m+n}$ 的块置换。对于 3，只需证明 $A \star B$ 与 $A \star \coalesce^\flat(B)$ 有相同的布局函数。这由命题~\ref{layoutfunctionofconcatenatedlayout} 立得。
+\end{proof}
+
+\begin{proposition}\label{equivalentconditionsforcomplement}
+    设 $A$ 与 $B$ 是扁平布局。则下列条件等价。
+    \begin{enumerate}
+        \item $A \perp B$。
+        \item $B \perp A$。
+        \item $A \perp \squeeze(B)$。
+        \item $A \perp \coalesce^\flat (B)$。
+        \item $A \perp \sort(B)$。
+    \end{enumerate}
+\end{proposition}
+
+\begin{proof}
+    我们利用命题~\ref{equivalentconditionsforcompact} 与引理~\ref{concatenationdistributions} 来证明这些条件的等价性。首先，我们注意到 $\sort(A \star B) = \sort(B \star A)$，由此可得条件 1 与 2 等价。其次，由引理~\ref{concatenationdistributions}，若 $\op(-)$ 是 $\squeeze(-)$、$\sort(-)$ 或 $\coalesce^\flat(-)$ 中的任一运算，则
+    \[
+    \op(A \star B) = \op(A \star \op(B)),
+    \]
+    于是
+    \begin{align*}
+    A \perp B \hspace{0.2in} & \Leftrightarrow \hspace{0.2in} A \star B\ \text{是紧凑的。} \\
+    & \Leftrightarrow \hspace{0.2in} \op(A \star B)\ \text{是紧凑的。} \\
+    & \Leftrightarrow \hspace{0.2in} \op(A \star \op(B))\ \text{是紧凑的。} \\
+    & \Leftrightarrow \hspace{0.2in} \op(B)\ \text{是 }A\text{ 的补}.
+    \end{align*}
+\end{proof}
+
+
+
+
+
+
+\noindent 我们想刻画扁平布局何时拥有补。为此，给出如下定义。
+
+\begin{definition}\label{definitionofcomplementable}
+    设 $A$ 是扁平布局，并记
+    \[\sort(\squeeze(A)) = (s_1,\dots,s_m):(d_1,\dots,d_m).\]
+    若对所有 $1 \leq i < m$，整数 $s_id_i$ 都整除（divides）$d_{i+1}$，则称 $A$ 是{\it 可求补}的（complementable）。
+\end{definition}
+
+
+\begin{example}
+    扁平布局
+    \[A_1 = (4,1,1,4,4):(64,0,0,1,8)\] 是可求补的，而扁平布局
+    \[ A_2 = (4,4,4):(64,1,1)\] 不是可求补的。
+\end{example}
+
+\begin{example}
+    扁平布局
+    \[A_1 = (10,2):(4,80)\] 是可求补的，而扁平布局
+    \[ A_2 = (10,2):(80,4)\] 不是可求补的。
+\end{example}
+
+\begin{example}
+    若 $A$ 是紧凑的，则由命题~\ref{compactisomorphismproposition}，$A$ 是可求补的。
+\end{example}
+
+\begin{example}
+    设
+    \[A = (s_1,\dots,s_m):(d_1,\dots,d_m)\]
+    是扁平布局。若存在某个 $1 \leq i \leq m$ 使得 $s_i \neq  1$ 且 $d_i = 0$，则 $A$ 不是可求补的。
+\end{example}
+
+若 $A$ 可求补，则可以如下构造 $A$ 的一个补。
+
+\begin{construction}\label{complementconstruction}
+    设 $A$ 是扁平布局，并记
+    \[\sort(\squeeze(A)) = (s_1,\dots,s_m):(d_1,\dots,d_m).\]
+    若 $A$ 可求补，则定义扁平布局 $\comp^\flat(A)$ 为
+    \[
+    \comp^\flat(A) = \coalesce^\flat(C)
+    \]
+    其中
+    \[C = \Bigl(d_1 , \dfrac{d_2}{s_1d_1} , \dfrac{d_3}{s_2d_2} , \dots ,\dfrac{d_m}{s_{m-1}d_{m-1}} \Bigr) : \Bigl(1 , s_1d_1 , s_2d_2, \dots ,s_{m-1}d_{m-1}\Bigr).
+    \]
+\end{construction}
+
+\begin{example}
+    若 $A = (8,8):(1,8)$，则
+    \[\comp^\flat(A) = ():()\]
+    是空布局。更一般地，若 $A$ 是紧凑的，则 $\comp^\flat(A) = ():() $ 是空布局。
+\end{example}
+
+\begin{example}
+    若 $A = (2,2):(2,8)$，则 \[\comp^\flat(A) = (2,2):(1,4).\]
+\end{example}
+
+\begin{example}
+    若 $A = (3,3,8):(16,96,1)$，则
+    \[\comp^\flat(A) = (2,2):(8,48).\]
+\end{example}
+
+\noindent 下面说明 $\comp^\flat(A)$ 确实是 $A$ 的一个补。
+
+\begin{lemma}\label{complementsarecomplements}
+    设 $A$ 是扁平布局。若 $A$ 可求补，则
+    \[A \perp \comp^\flat(A).\]
+\end{lemma}
+
+\begin{proof}
+    记
+    \[\sort(\squeeze(A)) = (s_1,\dots,s_m):(d_1,\dots,d_m),\]
+    于是 $\comp^\flat(A) = \coalesce^\flat(C)$，其中
+    \[C = \Bigl(d_1 , \dfrac{d_2}{s_1d_1} , \dfrac{d_3}{s_2d_2} , \dots ,\dfrac{d_m}{s_{m-1}d_{m-1}} \Bigr) : \Bigl(1 , s_1d_1 , s_2d_2, \dots ,s_{m-1}d_{m-1}\Bigr).
+    \]
+    由命题~\ref{equivalentconditionsforcomplement}，只需证明 $C$ 是 $\sort(\squeeze(A))$ 的补。事实如此，因为拼接
+    \[
+    \sort(\squeeze(A)) \star C
+    \]
+    等于
+    \begin{align*}
+    \left(s_1,\dots,s_m,d_1,\dfrac{d_2}{s_1d_1},\dots,\dfrac{d_m}{s_{m-1}d_{m-1}}\right):(d_1,\dots,d_m,1,s_1d_1,\dots, s_{m-1}d_{m-1}),
+    \end{align*}
+    而它的排序等于
+    \[
+    \left(d_1,s_1, \dfrac{d_2}{s_1d_1},\dots, \dfrac{d_m}{s_{m-1}{d_{m-1}}}, s_m \right):(1,d_1,s_1d_1, \dots ,s_{m-1}d_{m-1}, d_m)
+    \]
+    后者是列主序的。
+\end{proof}
+
+我们已经证明：若 $A$ 可求补，则 $A$ 拥有补。接下来证明其逆也成立。
+
+\begin{proposition}\label{complementableproposition}
+    设 $A$ 是扁平布局。则 $A$ 拥有补 $B$ 当且仅当 $A$ 可求补。
+\end{proposition}
+
+\begin{proof}
+    若 $A$ 可求补，则由引理~\ref{complementsarecomplements}，布局 $B = \comp^\flat(A)$ 是 $A$ 的补。反之，设 $A$ 有补 $B$，并考虑扁平布局
+    \begin{align*} L & = \sort\bigl(\squeeze(A)\star \squeeze(B)\bigr) \\
+    & = (s_1,\dots,s_m):(d_1,\dots,d_n).
+    \end{align*}
+    由于 $\Phi_L(0) = 0$ 且 $\Phi_L$ 是单射，可知 $d_1 \neq 0$。我们将论证 $d_i = s_1 \cdots s_{i-1}$，即 $L$ 是列主序的。由于
+    \[\Phi_L^{\cosize(L)} : [0,\size(L)) \to [0,\cosize(L))
+    \]
+    是双射，可知 $1$ 在 $\Phi_L$ 的像中，从而 $d_1 = 1$。设 $1 < i \leq m$，并设对所有 $j < i$ 已证 $d_j = s_1 \cdots s_{j-1}$。考虑步长 $d_{i}$。我们知道不存在 $(x_1,\dots,x_{i-1},0,\dots,0)$ 使得 $(x_1,\dots,x_{i-1},0,\dots,0) \cdot (d_1,\dots,d_m) = s_1\cdots s_{i-1}$，因为这类表达式的最大可能值为
+    \[
+    \sum_{j = 1}^{i-1} (s_j-1)(s_1\cdots s_{j-1}) = s_1 \cdots s_i - 1.
+    \]
+    由于 $\Phi_L$ 是满射，且 $d_i \leq  d_{i+1} \leq  \cdots \leq  d_m$，可知 $\Phi_L$ 接下来能取到的值就是 $d_i$，故必有 $d_i = s_1\cdots s_{i-1}$，即证。
+
+    回到主要目标，考虑布局
+    \[\sort(\squeeze(A)) = (s_1',\dots,s_{m'}'):(d_1',\dots,d_{m'}').\] 于是存在 $j_1 < \cdots < j_{m'}$，使得对每个 $1 \leq i \leq m'$ 有 $s_i' = s_{j_i}$ 且 $d_i' = d_{j_i}$。若 $1 \leq i < m'$，则
+    \[
+    s_i'd_i' = s_{j_i}d_{j_i} = s_{j_i} s_1 \cdots s_{j_i - 1}
+    \]
+    整除
+    \[
+    d_{i+1}' = s_1 \cdots s_{j_{i+1}-1},
+    \]
+    因此我们断定 $A$ 是可求补的。
+\end{proof}
+
+
+\noindent 我们的下一个目标是给出扁平布局 $A$ 的补 $\comp^\flat(A)$ 的一个抽象刻画。为此，我们需要下面的引理。
+
+\begin{lemma}\label{sortedcomplementablelayoutsareincreasing}
+    设 $A$ 是扁平布局。若 $A$ 既可求补又已排序（sorted），则布局函数
+    \[
+    \Phi_A:[0,\size(A)) \to \mathbb{Z}
+    \]
+    是递增的。
+\end{lemma}
+
+\begin{proof}
+    记
+    \[
+    A = (s_1,\dots,s_m):(d_1,\dots,d_m).
+    \]
+    若 $1 \leq k \leq m$，我们断言
+    \[
+    d_1(s_1-1) + d_2(s_2-1) + \cdots + d_{k-1}(s_{k-1}-1) \leq d_k.
+    \]
+    当 $k = 1$ 时该式空真（vacuously）成立，而对 $k$ 作归纳，有
+    \begin{align*}
+        d_1(s_1-1) + \cdots + d_{k-2}(s_{k-2}-1) + d_{k-1}(s_{k-1}-1) & \leq d_{k-1} + d_{k-1}(s_k-1)\\
+        & = d_{k-1}s_{k-1}\\
+        & \leq d_k.
+    \end{align*}
+    现设 $x,y \in [0,\size(A))$ 且 $x \leq y$。在余字典序（colexicographic）同构下，这些整数对应于元组
+    \[(x_1,\dots,x_m),(y_1,\dots,y_m) \in [0,s_1) \times \cdots \times [0,s_m)\]
+    由于 $x \leq y$，可知存在最大的 $1 \leq k \leq m$ 使得 $x_k<y_k$，且对所有 $k < \ell \leq m$ 有 $x_\ell = y_\ell$。于是可以计算
+    \begin{align*}
+    \Phi_A(x) & = d_1x_1 + \cdots + d_{k-1}x_{k-1} + d_k x_k + d_{k+1}x_{k+1} + \cdots + d_m x_m \\
+    & = d_1x_1 + \cdots + d_{k-1}x_{k-1} + d_k x_k + d_{k+1}y_{k+1} + \cdots + d_m y_m\\
+    & \leq d_1(s_1-1) + \cdots + d_{k-1}(s_{k-1}-1) + d_k x_k + d_{k+1}y_{k+1} + \cdots + d_m y_m\\
+    & \leq d_k + d_kx_k + d_{k+1}y_{k+1} + \cdots + d_m y_m\\
+    & = d_k(x_k+1) + d_{k+1}y_{k+1} + \cdots + d_m y_m\\
+    & \leq d_ky_k +  d_{k+1}y_{k+1} + \cdots + d_m y_m\\
+    & \leq d_1y_1 + \dots d_my_m\\
+    & = \Phi_A(y).
+    \end{align*}
+\end{proof}
+
+\begin{proposition}\label{characterizationofflatcomplement}
+    设 $A$ 与 $B$ 是扁平布局。若
+    \begin{enumerate}
+        \item $A \perp B$，
+        \item $\size(B) = \size(\comp^\flat(A))$，
+        \item $B$ 已合并（coalesced），且
+        \item $B$ 已排序，
+    \end{enumerate}
+    则 $B = \comp^\flat(A)$。
+\end{proposition}
+
+
+
+
+\begin{proof}
+    条件 1 与 2 蕴含 $\Phi_{B}$ 与 $\Phi_{\comp^\flat(A)}$ 有相同的像。由于 $B$ 与 $\comp^\flat(A)$ 都已排序，由引理~\ref{sortedcomplementablelayoutsareincreasing} 可知 $\Phi_{B}$ 与 $\Phi_{\comp^\flat(A)}$ 都是递增的。综合这两点，即得 $\Phi_{B} = \Phi_{\comp^\flat(A)}$。再由命题~\ref{coalesceproposition} 与条件 3 可得
+    \[
+    B = \coalesce^\flat(B) = \coalesce^\flat(\comp^\flat(A)) = \comp^\flat(A).
+    \]
+\end{proof}
+
+\begin{definition}\label{definitionofNcomplementable}
+    设 $A$ 与 $B$ 是扁平布局，$N$ 是正整数。若 $B$ 是 $A$ 的补，且
+    \[
+    \size(A)\cdot \size(B) = N.
+    \]
+    则称 $B$ 是 $A$ 的 $N${\it 补}（$N$-complement）。
+\end{definition}
+
+
+\begin{definition}
+    设 $A$ 是扁平布局，并记
+    \[
+    \sort(\squeeze(A)) = (s_1,\dots,s_m):(d_1,\dots,d_m).
+    \]
+    若满足
+    \begin{enumerate}
+    \item 对所有 $1 \leq i < m$，整数 $s_id_i$ 整除 $d_{i+1}$，且
+    \item 整数 $s_md_m$ 整除 $N$，
+    \end{enumerate}
+    则称 $A$ 是 $N$-可求补的（$N$-complementable）。
+\end{definition}
+
+
+\begin{observation}
+若 $A$ 可求补，且 $s_m:d_m$ 是布局 $\sort(\squeeze(A))$ 中的最后一个模式，则 $A$ 是 $N$-可求补的当且仅当 $N$ 是 $s_md_m$ 的正整数倍。
+\end{observation}
+
+\begin{observation}
+    $N$-补并不唯一。例如，若 $A = (2,2):(1,50)$ 且 $N = 100$，则布局 $B_1 = (25):(2)$ 与 $B_2 = (5,5):(2,10)$ 都是 $A$ 的 $N$-补。更一般地，若 $B$ 是 $A$ 的 $N$-补，则 $\coalesce^\flat(B)$ 也是 $A$ 的 $N$-补。
+\end{observation}
+
+\begin{remark}
+    设 $A$ 是扁平布局，$B_1$ 与 $B_2$ 是 $A$ 的 $N$-补。则布局函数 $\Phi_{B_1}$ 与 $\Phi_{B_2}$ 未必相等，但它们必然有相同的像。例如，若 $A = (4):(63)$ 且 $N = 252$，则 $B_1 = (7,9):(1,7)$ 与 $B_2 = (9,7):(7,1)$ 都是 $A$ 的 $N$-补，而 $\Phi_{B_1} \neq \Phi_{B_2}$，因为
+    \[
+    \Phi_{B_1}(1) = 1 \neq 7= \Phi_{B_2}(1).
+    \]
+    更一般地，若 $B$ 是 $A$ 的 $N$-补，则 $\sort(B)$ 也是 $A$ 的 $N$-补。
+\end{remark}
+
+
+\begin{construction}\label{Ncomplementconstruction}
+    设 $A$ 是扁平布局，$N$ 是正整数，且 $A$ 是 $N$-可求补的。若记
+    \[\sort(\squeeze(A)) = (s_1,\dots,s_m):(d_1,\dots,d_m),\]
+    则定义扁平布局 $\comp^\flat(A,N)$ 为
+    \[
+    \comp^\flat(A,N) = \coalesce^\flat(C)
+    \]
+    其中
+    \[C = \Bigl(d_1 , \dfrac{d_2}{s_1d_1} , \dfrac{d_3}{s_2d_2} , \dots ,\dfrac{N}{s_md_m} \Bigr) : \Bigl(1 , s_1d_1 , s_2d_2, \dots ,s_md_m \Bigr).
+    \]
+\end{construction}
+
+\begin{example}
+若 $A = (3,10):(80,4)$ 且 $N = 2400$，则
+\[
+\comp^\flat(A,N) = (4,2,10):(1,40,240).
+\]
+\end{example}
+
+
+
+\begin{lemma}\label{Ncomplementsarecomplements}
+    设 $A$ 是扁平布局，$N$ 是正整数，且 $A$ 是 $N$-可求补的。则 $\comp^\flat(A,N)$ 是 $A$ 的 $N$-补。
+\end{lemma}
+
+\begin{proof}
+    记
+    \[\sort(\squeeze(A)) = (s_1,\dots,s_m):(d_1,\dots,d_m),\]
+    于是 $\comp^\flat(A,N) = \coalesce^\flat(C)$，其中
+    \begin{align*}
+    C
+    & = \left(d_1 , \dfrac{d_2}{s_1d_1} , \dfrac{d_3}{s_2d_2} , \dots ,\dfrac{N}{s_md_m} \right) : \left(1 , s_1d_1 , s_2d_2, \dots ,s_md_m \right).
+    \end{align*}
+    首先，我们计算
+    \begin{align*}
+    \size(A) \cdot \size(B) & = \left(\prod_{i=1}^m s_i \right) \cdot \left( d_1 \cdot \left(\prod_{i=2}^m \dfrac{d_i}{s_{i-1}d_{i-1}}\right) \cdot \dfrac{N}{s_md_m} \right)\\
+    & = \dfrac{\left(\displaystyle\prod_{i=1}^m s_i\right)\left(\displaystyle\prod_{i=1}^m d_i \right)}{\left(\displaystyle\prod_{i=1}^m s_id_i \right)} \cdot N \\
+    & = N.
+    \end{align*}
+    我们需要验证 $A \star B$ 是紧凑的。等价地，需要验证 $\Phi_{A \star B}^N$ 是同构。由引理~\ref{compactisomorphismproposition}，只需证明
+    \[\squeeze(A)\star \squeeze(B)\]
+    是紧凑的。事实如此，因为该布局等于
+    \begin{align*}
+    \left(s_1,\dots,s_m,d_1,\dfrac{d_2}{s_1d_1},\dots,\dfrac{N}{s_md_m}\right):(d_1,\dots,d_m,1,s_1d_1,\dots, s_md_m)
+    \end{align*}
+    而其排序
+    \[\sort(\squeeze(A)\star \squeeze(B))\] 等于
+    \[
+    \left(d_1,s_1, \dfrac{d_2}{s_1d_1},\dots, \dfrac{d_m}{s_{m-1}{d_{m-1}}}, s_m , \dfrac{N}{s_md_m}\right):(1,d_1,s_1d_1, \dots ,s_{m-1}d_{m-1}, d_m,s_md_m)
+    \]
+    后者是列主序的。
+\end{proof}
+
+
+\begin{proposition}\label{characterizationofexistenceofNcomplements}
+    设 $A$ 是扁平布局，$N$ 是正整数。则存在 $A$ 的 $N$-补 $B$ 当且仅当 $A$ 是 $N$-可求补的。
+\end{proposition}
+
+\begin{proof}
+    若 $A$ 是 $N$-可求补的，则由引理~\ref{Ncomplementsarecomplements}，布局 $B = \comp^\flat(L,N)$
+    是 $A$ 的 $N$-补。
+
+    另一方面，设存在 $A$ 的 $N$-补 $B$。考虑扁平布局
+    \begin{align*} L & \coloneq \sort\bigl(\squeeze(A)\star \squeeze(B)\bigr) \\
+    & = (s_1,\dots,s_m):(d_1,\dots,d_n).
+    \end{align*}
+    由于 $\Phi_L(0) = 0$ 且 $\Phi_L$ 是单射，可知 $d_1 \neq 0$。我们将论证 $d_i = s_1 \cdots s_{i-1}$，即 $L$ 是列主序的。由于
+    \[\Phi_L^{N} : [0,N) \to [0,N)\]
+    是双射，可知 $1$ 在 $\Phi_L$ 的像中，从而 $d_1 = 1$。设 $1 < i \leq m$，并设对所有 $j < i$ 已证 $d_j = s_1 \cdots s_{j-1}$。考虑步长 $d_{i}$。我们知道不存在 $(x_1,\dots,x_{i-1},0,\dots,0)$ 使得 $(x_1,\dots,x_{i-1},0,\dots,0) \cdot (d_1,\dots,d_m) = s_1\cdots s_{i-1}$，因为这类表达式的最大可能值为
+    \[
+    \sum_{j = 1}^{i-1} (s_j-1)(s_1\cdots s_{j-1}) = s_1 \cdots s_i - 1.
+    \]
+    由于 $\Phi_L$ 是满射，且 $d_i \leq  d_{i+1} \leq  \cdots \leq  d_m$，可知 $\Phi_L$ 接下来能取到的值就是 $d_i$，故必有 $d_i = s_1\cdots s_{i-1}$，即证。
+
+    回到主要目标，考虑布局
+    \[\sort(\squeeze(A)) = (s_1',\dots,s_{m'}'):(d_1',\dots,d_{m'}').\] 于是存在 $j_1 < \cdots < j_{m'}$，使得对每个 $1 \leq i \leq m'$ 有 $s_i' = s_{j_i}$ 且 $d_i' = d_{j_i}$。若 $1 \leq i < m'$，则
+    \[
+    s_i'd_i' = s_{j_i}d_{j_i} = s_{j_i} s_1 \cdots s_{j_i - 1}
+    \]
+    整除
+    \[
+    d_{i+1}' = s_1 \cdots s_{j_{i+1}-1}.
+    \]
+    若 $i = m'$，则
+    \[
+    s_{m'}'d_{m'}' = s_{j_{m'}}d_{j_{m'}} = s_{j_{m'}} s_1 \cdots s_{j_{m'} - 1}
+    \]
+    整除
+    \[
+    N = s_1 \cdots s_m.
+    \]
+    于是我们断定 $A$ 是 $N$-可求补的。
+\end{proof}
+
+
+\begin{proposition}\label{characterizationofflatNcomplement}
+    设 $N$ 是正整数，$A$ 是 $N$-可求补的扁平布局。若扁平布局 $B$ 满足
+    \begin{enumerate}
+        \item $B$ 是 $L$ 的 $N$-补，
+        \item $B$ 已合并，且
+        \item $B$ 已排序，
+    \end{enumerate}
+    则 $B = \comp^\flat(A,N)$。
+\end{proposition}
+
+\begin{proof}
+    条件 1 与 2 蕴含 $\Phi_{B}$ 与 $\Phi_{\comp^\flat(A,N)}$ 有相同的像。由于 $B$ 与 $\comp^\flat(A,N)$ 都已排序，由引理~\ref{sortedcomplementablelayoutsareincreasing} 可知 $\Phi_{B}$ 与 $\Phi_{\comp^\flat(A,N)}$ 都是递增的。综合这两点，即得 $\Phi_{B} = \Phi_{\comp^\flat(A,N)}$。再由命题~\ref{coalesceproposition} 与条件 3 可得
+    \[
+    B = \coalesce^\flat(B) = \coalesce^\flat(\comp^\flat(A,N)) = \comp^\flat(A,N).
+    \]
+\end{proof}
+
+
+\begin{lemma}\label{compatibilityofNcomplements}
+    设 $A$ 是扁平布局。若 $N_1 \leq N_2$ 是正整数，且 $A$ 是 $N_1$-可求补的、$A$ 是 $N_2$-可求补的，则
+    \[
+    \Phi_{\comp^\flat(A,N_2)} \mid_{[0,N_1)} = \Phi_{\comp^\flat(A,N_1)}.
+    \]
+\end{lemma}
+
+\begin{proof}
+    记
+    \begin{align*}
+    \sort(\squeeze(A)) & = (s_1,\dots,s_m):(d_1,\dots,d_m), \\
+    C & = \Bigl(d_1 , \dfrac{d_2}{s_1d_1} , \dfrac{d_3}{s_2d_2} , \dots ,\dfrac{d_m}{s_{m-1}d_{m-1}} \Bigr) : \Bigl(1 , s_1d_1 , s_2d_2, \dots ,s_{m-1}d_{m-1}\Bigr)
+    \end{align*}
+    并记
+    \begin{align*}
+    E_1 & = \left( \dfrac{N_1}{s_md_m}\right):(s_md_m), \\
+    E_2 & = \left( \dfrac{N_2}{s_md_m}\right):(s_md_m), \\
+    C_1 & = C \star E_1,\\
+    C_2 & = C \star E_2,
+    \end{align*}
+    于是
+    \begin{align*}
+        \comp^\flat (A) & = \coalesce^\flat(C)\\
+        \comp^\flat(A,N_1) & = \coalesce^\flat(C_1)\\
+        \comp^\flat(A,N_2) & = \coalesce^\flat(C_2).
+    \end{align*}
+    我们有一个交换图（commutative diagram）
+    \[\begin{tikzcd}[column sep=0.8em]  % 原图略超版心 5pt，微调列距（内容不变）
+    {[}0,\size(C_1){)}\ar[rrr,"\text{colex}_{(\size(C),N_1)}^{-1}"] \ar[d,"\subseteq"] & & & {[}0,\size(C){)} \times {[}0,N_1 {)} \ar[rrr,"\Phi_C \times s_md_m "] \ar[d,"\id \times \subseteq"] & & & \mathbb{Z} \times \mathbb{Z} \ar[r,"+"] \ar[d,"\id" ] & \mathbb{Z} \ar[d,"\id"] \\
+    {[}0,\size(C_2){)}\ar[rrr,"\text{colex}_{(\size(C),N_2)}^{-1}"] & & & {[}0,\size(C){)} \times {[}0,N_2 {)} \ar[rrr,"\Phi_C \times s_md_m "] & & & \mathbb{Z} \times \mathbb{Z} \ar[r,"+"] & \mathbb{Z} \\
+    \end{tikzcd} \]
+    其中，由命题~\ref{layoutfunctionofconcatenatedlayout}，上行的复合是 $C_1 = C \star E_1$ 的布局函数，下行的复合是 $C_2 = C \star E_2$ 的布局函数。这告诉我们 $\Phi_{C_2}$ 在 $[0,\size(C_2))$ 上的限制就是 $\Phi_{C_1}$，再由
+    \begin{align*}
+    \Phi_{\comp^\flat (A,N_1)}&  = \Phi_{C_1}\\
+    \Phi_{\comp^\flat (A,N_2)}&  = \Phi_{C_2}.
+    \end{align*}
+    即得结论。
+\end{proof}
+
+
+\newpage
+
+\subsection{进一步的运算}
+
+本节定义扁平布局上的另外几个运算，即{\it 复合}（composition）、{\it 扁平切分}（flat division）与{\it 扁平乘积}（flat product）。它们是（嵌套）布局上更自然的运算经扁平化后的变体。我们不常使用这些运算，但为完整起见仍将其收入。
+
+\subsubsection{复合}
+若 $A$ 与 $B$ 是扁平布局，则复合 $B \circ A$ 是一个扁平布局，其布局函数是 $A$ 与 $B$ 的布局函数的复合。更精确地说，我们有如下定义。
+
+\begin{definition}\label{definitionofflatlayoutcomposition} 设 $A$ 与 $B$ 是扁平布局。若
+    \begin{enumerate}
+    \item $C$ 是非退化（non-degenerate）的，
+    \item $\shape(A) = \shape(R)$，
+    \item $\Phi_R = \Phi_B \circ \Phi_A^{\size(B)}$，
+    \end{enumerate}
+则称扁平布局 $C$ 是 $A$ 与 $B$ 的{\it 复合}，记作 $C = B \circ A$。
+\end{definition}
+
+\begin{remark}
+    注意，定义中的条件 2 保证 $\Phi_R$ 与 $\Phi_A$ 有相同的定义域（domain），条件 3 则蕴含 $\cosize(A) \leq \size(B)$。
+\end{remark}
+
+\begin{example}\label{flatcompositionexample1}
+若 $A = (2,3):(5,6)$ 且 $B = (80):(10)$，则
+\[
+B \circ A = (2,3):(50,60).
+\]
+更一般地，若
+\[
+A = (s_1,\dots,s_m):(d_1,\dots,d_m)
+\]
+是非退化扁平布局，且
+\[
+B = (t):(e)
+\]
+是满足 $t \geq \cosize(A)$ 的秩（rank）$1$ 扁平布局，则 $A$ 与 $B$ 可复合（composable），且
+\[
+B \circ A = (s_1,\dots,s_m):(td_1,\dots,td_m).
+\]
+\end{example}
+
+\begin{example}
+    若 $A = (128,128):(0,0)$ 且 $B = (64,32):(1,64)$，则
+    \[
+    B \circ A = (128,128):(0,0).
+    \]
+    更一般地，若 $A$ 是每个步长元素均为零的扁平布局，$B$ 是任意扁平布局，则 $A$ 与 $B$ 可复合，且 $B \circ A = A$。
+\end{example}
+
+\begin{example}
+    若 $A = (64,32):(2,256)$ 且 $B = (2048,2048):(1,2048)$，则
+    \[
+    B \circ A = (64,32):(2,256).
+    \]
+    更一般地，若 $A$ 是任意扁平布局，$B$ 是满足 $\cosize(A) \leq \size(B)$ 的列主序扁平布局，则 $B \circ A = A$。
+\end{example}
+
+\begin{example}\label{flatcompositionexample2}
+    若 $A = (4):(2)$ 且 $B = (2,2,6):(12,6,1)$，则不存在满足 $R = B \circ A$ 的扁平布局 $R$。
+\end{example}
+
+\begin{remark}
+    若 $B'$ 与 $B$ 有相同的布局函数，则 $B \circ A = B' \circ A$。
+\end{remark}
+
+\begin{remark} 扁平布局是更一般的概念{\it 布局}（layout，定义~\ref{definitionofnestedlayout}）的特例。事实上，存在这样的情形（例如例~\ref{flatcompositionexample2}）：不存在满足 $C = B \circ A$ 的扁平布局 $C$，却存在满足 $C = B \circ A$ 的（嵌套）布局 $C$（见例~\ref{compositionexample2}）。因此，我们把关于复合的进一步讨论与分析推迟到给出完全一般意义上的布局定义之后。
+\end{remark}
+
+
+\subsubsection{扁平切分}
+若 $A$ 与 $B$ 是扁平布局，则 $A$ 除以 $B$ 的扁平切分是布局更自然的{\it 逻辑切分}（logical division）经扁平化后的版本。细节见第~\ref{logicaldivisionsection}~节。
+\begin{definition}
+设 $A$ 与 $B$ 是扁平布局，且 $B$ 是 $\size(A)$-可求补的，其中
+\[
+B^c = \comp^\flat(B,\size(A)).
+\]
+我们定义 $A$ 除以 $B$ 的{\it 扁平切分}为扁平布局
+\[
+A\oslash^\flat B = A \circ (B \star B^c).
+\]
+\end{definition}
+
+\begin{example}
+    若 $A = (2,2,2,2):(1,4,2,8)$ 且 $B = (2,2):(4,2)$，则
+    \[
+    A\oslash^\flat B = (2,2,2,2):(4,2,1,8).
+    \]
+\end{example}
+
+\begin{example}
+    若 $A = (3,5,9,6):(54,0,6,1)$ 且 $B = (6,3):(135,1)$，则
+    \[
+    A\oslash^\flat B = (6,3,5,9):(1,54,0,6).
+    \]
+\end{example}
+
+\begin{example}
+    若 $A$ 是任意扁平布局且 $B = ():() $ 是空布局，则
+    \[
+    A\oslash^\flat B =  A.
+    \]
+\end{example}
+
+\subsubsection{扁平乘积}
+
+若 $A$ 与 $B$ 是扁平布局，则 $A$ 与 $B$ 的扁平乘积 $A \otimes^\flat B$ 是布局更自然的{\it 逻辑乘积}（logical product）经扁平化后的版本。细节见第~\ref{logicalproductsection}~节。
+\begin{definition}
+    设 $A$ 与 $B$ 是扁平布局，且 $A$ 是 $\size(A) \cdot \cosize(B)$-可求补的，其中
+    \[
+    A^c = \comp^\flat(A,\size(A)\cdot \cosize(B)).
+    \]
+    我们定义 $A$ 与 $B$ 的扁平乘积为
+    \[
+    A \otimes^\flat B = A \star (A^c \circ B).
+    \]
+\end{definition}
+\begin{example}
+    若 $A = (2,2,2):(1,2,4)$ 且 $B = (2,2,2):(1,2,4)$，则
+    \[
+    A \otimes^\flat B = (2,2,2,2,2,2):(1,2,4,8,16,32).
+    \]
+\end{example}
+
+\begin{example}
+    若 $A = (2,2,2):(1,2,4)$ 且 $B = (3,5):(5,1)$，则
+    \[
+    A \otimes^\flat B = (2,2,2,3,5):(1,2,4,40,8).
+    \]
+\end{example}
+
+\begin{example}
+    若 $A$ 是任意扁平布局且 $B = ():()$ 是空布局，则
+    \[
+    A \otimes^\flat B = A.
+    \]
+\end{example}

@@ -32,14 +32,25 @@ memory-bound 与 compute-bound、occupancy 与延迟隐藏。
 「访存-计算比例」决定}。一个向量加法（读两个数、加一次、写一个数）与一个
 矩阵乘法（读两个数要做几十上百次乘加）在 CPU 上差异不大，在 GPU 上却是天壤
 之别——前者把大部分时间花在等数据上（memory-bound），后者才能喂饱计算单元
-（compute-bound）。base.cuh L22--26 把这种判断浓缩成了三行注释：
+（compute-bound）。base.cuh L22--30 把这种判断浓缩成三条判据，外加一条
+occupancy 公式：
 
-\lstinputlisting[linerange={22-30},firstnumber=auto,
-  title={base.cuh L22-30（关键瓶颈判断与 occupancy 公式）}]{../base.cuh}
+\begin{itemize}
+\item \textbf{Memory-bound}：AI（Arithmetic Intensity，算术强度）低于
+  机器的 FLOPS$/$带宽比值；
+\item \textbf{Compute-bound}：AI 足够大，受限于计算吞吐；
+\item \textbf{Latency-bound}：线程不够多，无法隐藏内存延迟。
+\end{itemize}
 
-这三行注释就是本章的路线图。第一行与第二行给出判断标准——比较算术强度与
-机器的「转折点」；第三行点出第三种容易被忽略的瓶颈：latency-bound，它甚至
-与算法无关，纯粹是并行度不够、延迟藏不住的问题。要把这三行注释看懂，我们
+\begin{equation*}
+  \mathrm{occupancy} = \frac{\text{active\ warps}}{\text{max\ warps\ per\ SM}},
+\end{equation*}
+受三类资源分别取下限：每线程寄存器数 $\to$ threads/SM；每 block 的
+shared memory $\to$ blocks/SM；block 大小 $\to$ blocks/SM。
+
+这三条判据就是本章的路线图。前两条给出判断标准——比较算术强度与
+机器的「转折点」；第三条点出第三种容易被忽略的瓶颈：latency-bound，它甚至
+与算法无关，纯粹是并行度不够、延迟藏不住的问题。要把这三条判据看懂，我们
 需要先弄清两件事：机器的算力与带宽从哪里来（\S\ref{sec:ch01-sm}），以及
 「算术强度」怎么算（\S\ref{sec:ch01-math}）。
 
@@ -48,13 +59,26 @@ memory-bound 与 compute-bound、occupancy 与延迟隐藏。
 \subsection{SM：GPU 的基本计算单元}
 
 GPU 是由大量 SM 组成的阵列。以本章测试机 RTX PRO 5000（Blackwell，sm\_120）
-为例，一块芯片上有 110 个 SM；每个 SM 内部的关键部件在 base.cuh L8--14 中
-有一条速查清单：
+为例，一块芯片上有 110 个 SM；base.cuh L7--21 为 SM 内部结构与内存层级留了
+一份速查清单，部件规格如下：
 
-\lstinputlisting[linerange={7-21},firstnumber=auto,
-  title={base.cuh L7-21（SM 内部结构与内存层级速查）}]{../base.cuh}
+\begin{center}
+\begin{tabular}{lp{10.6cm}}
+\toprule
+部件 & 规格（速查口径） \\
+\midrule
+Warp Scheduler $\times$ 4 & 每 SM 4 个 warp scheduler，每个每周期可发射 1 条指令 \\
+Register File & 每 SM $65536 \times 32$-bit（4 bytes）$= 256$ KB \\
+Shared Memory / L1 & 可配置划分，最大 shared memory $\sim$228 KB（Hopper） \\
+Tensor Cores & Hopper 每 SM 4 个；Blackwell 数量随型号/定义不同，建议以官方 ISV guide 为准 \\
+Warp & 32 threads，最小调度单元，SIMT 执行模型 \\
+\bottomrule
+\end{tabular}
+\end{center}
 
-逐条展开：
+清单的另一半是内存层级带宽数量级（H100 参考：HBM3 $\sim$3.35 TB/s 理论、
+L2 $\sim$12 TB/s、L1/SMEM $\sim$19 TB/s、Register $\sim$100+ TB/s），
+见下一小节的速率/容量金字塔。部件清单逐条展开：
 
 \begin{itemize}
 \item \textbf{Warp Scheduler $\times$ 4}：每个 SM 有 4 个 warp scheduler，
@@ -83,6 +107,43 @@ GPU 是由大量 SM 组成的阵列。以本章测试机 RTX PRO 5000（Blackwel
   GPU 用少量控制逻辑驱动海量 ALU 的秘密。
 \end{itemize}
 
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\footnotesize]
+  \draw[very thick] (0, 0) rectangle (13.2, 8.6);
+  \node[anchor=south west, font=\footnotesize\bfseries] at (0.25, 8.15)
+    {SM（Streaming Multiprocessor）};
+  \foreach \i in {0,...,3}
+    \node[draw=tkBlue, fill=tkFillBlue, minimum width=1.9cm, minimum height=1.3cm,
+      align=center] at (3.25+2.15*\i, 7.0)
+      {Warp\\Scheduler \i\\{\scriptsize 每周期发射 1 条}};
+  \foreach \i in {0,...,3}
+    \draw[-{Stealth[length=1.8mm]}, semithick, draw=tkBlue!70] (3.25+2.15*\i, 6.35)
+      -- (3.25+2.15*\i, 1.58);
+  \draw[thick, fill=tkFillPurple] (0.35, 2.2) rectangle (1.75, 7.4);
+  \node[rotate=90, font=\footnotesize\bfseries, text=tkPurple] at (1.05, 4.8)
+    {Register File\ \ 256KB};
+  \draw[thick, fill=tkFillGreen] (11.45, 2.2) rectangle (12.85, 7.4);
+  \node[rotate=90, font=\footnotesize\bfseries, text=tkGreen] at (12.15, 4.8)
+    {Shared Memory / L1};
+  \node[font=\scriptsize, text=black!55, align=center] at (6.6, 4.5)
+    {驻留 warp 池\\occupancy $\le$ min(regs, smem, block 大小)};
+  \foreach \i in {0,...,3}
+    \node[draw=tkOrange, fill=tkFillOrange, minimum width=1.55cm, minimum height=1.0cm,
+      align=center, font=\scriptsize] at (3.075+1.75*\i, 1.0) {Tensor\\Core};
+  \node[draw, fill=gray!60, minimum width=2.1cm, minimum height=1.0cm,
+    align=center, font=\scriptsize] at (10.2, 1.0) {CUDA Core\\ALU / LSU};
+  \node[anchor=north, font=\scriptsize, align=center, text width=3.8cm]
+    at (1.05, -0.35) {64 regs/thread $\times$ 256T = 64KB/block\\$\to$ SM 最多驻留 4 个 block};
+  \node[anchor=north, font=\scriptsize\bfseries, align=center]
+    at (6.6, -0.35) {warp = 32 线程锁步执行（SIMT）};
+  \node[anchor=north, font=\scriptsize, align=center, text width=3.8cm]
+    at (12.15, -0.35) {SM120：SRAM 128KB 量级\\smem per-block opt-in 上限 99KB};
+\end{tikzpicture}
+\caption{SM 内部结构示意（Blackwell sm\_120 口径）：顶部 4 个 warp scheduler（各每周期发射 1 条指令），左侧 256KB 寄存器文件与右侧 smem/L1 共池 SRAM 共同钳制驻留 block 数，底部 4 个 Tensor Core 与 CUDA Core 阵列执行发射来的指令。}
+\label{fig:1-4}
+\end{figure}
+
 \subsection{内存层级：一场带宽与容量的交易}
 
 base.cuh L16--21 给出了 H100 参考下的带宽数量级：HBM3 约 3.35 TB/s（理论值，
@@ -93,7 +154,33 @@ base.cuh L16--21 给出了 H100 参考下的带宽数量级：HBM3 约 3.35 TB/s
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-1-1-mem-hierarchy/fig-1-1.png}
+\resizebox{0.95\textwidth}{!}{%
+\begin{tikzpicture}[font=\scriptsize,
+  tier/.style={draw=black!55, line width=0.5pt, anchor=west,
+    minimum height=0.9cm, inner xsep=4pt, font=\small\bfseries},
+  tag/.style={anchor=west, inner sep=1pt}]
+  \node[anchor=west, font=\small\bfseries] at (0.67, 5.24)
+    {速率/容量金字塔（H100 数量级参考，base.cuh L16--21）};
+  \node[tier, fill=gray!12, minimum width=3.17cm] at (1.33, 4.05) {Register};
+  \node[tier, fill=gray!25, minimum width=5.00cm] at (1.33, 2.95) {SMEM / L1};
+  \node[tier, fill=gray!40, minimum width=7.50cm] at (1.33, 1.85) {L2 Cache};
+  \node[tier, fill=gray!55, minimum width=10.67cm] at (1.33, 0.75) {HBM3};
+  \node[tag] at (4.85, 4.24) {$\sim$100+ TB/s};
+  \node[tag] at (4.85, 3.87) {256 KB/SM};
+  \node[tag] at (6.70, 3.14) {$\sim$19 TB/s};
+  \node[tag] at (6.70, 2.77) {$\sim$228 KB/SM};
+  \node[tag] at (9.20, 2.04) {$\sim$12 TB/s};
+  \node[tag] at (9.20, 1.67) {50 MB};
+  \node[tag] at (12.36, 0.94) {$\sim$3.35 TB/s};
+  \node[tag] at (12.36, 0.57) {80 GB};
+  \node[tag, text=black!55] at (14.15, 4.07) {(thread)};
+  \node[tag, text=black!55] at (14.15, 2.97) {(block)};
+  \node[tag, text=black!55] at (14.15, 1.87) {(device)};
+  \node[tag, text=black!55] at (14.15, 0.77) {(device)};
+  \draw[-{Stealth}, black!55, line width=0.8pt] (0.80, 4.60) -- (0.80, 0.27);
+  \node[anchor=center, text=black!70] at (8.17, -0.42)
+    {离 SM 越远：带宽越低、容量越大};
+\end{tikzpicture}}
 \caption{GPU 内存层级金字塔：离 SM 越远带宽越低、容量越大（H100 数量级，base.cuh L16--21 口径）。}
 \label{fig:1-1}
 \end{figure}
@@ -189,7 +276,39 @@ compute-bound。
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-1-2-roofline/fig-1-2.png}
+\resizebox{0.95\textwidth}{!}{%
+\begin{tikzpicture}[font=\scriptsize,
+  axlab/.style={anchor=west, black!65},
+  note/.style={anchor=west, black!70}]
+  \node[anchor=west, font=\small\bfseries] at (0.62, 7.32)
+    {Roofline 模型：$P = \min(P_{\mathrm{peak}},\ \mathrm{AI}\times\mathrm{BW})$};
+  \draw[-{Stealth}, black!65, line width=0.8pt] (1.85, 0.92) -- (13.54, 0.92);
+  \draw[-{Stealth}, black!65, line width=0.8pt] (1.85, 0.92) -- (1.85, 6.77);
+  \node[axlab] at (12.60, 0.62) {AI (FLOP/Byte)};
+  \node[axlab] at (1.20, 6.62) {P (TFLOPS)};
+  \draw[red, line width=1.2pt] (1.85, 0.92) -- (5.08, 6.77);
+  \draw[red, line width=1.2pt] (5.08, 6.77) -- (13.08, 6.77);
+  \draw[black!45, dashed, line width=0.6pt] (5.08, 0.92) -- (5.08, 6.77);
+  \node[anchor=west, red, font=\bfseries] at (6.00, 7.06)
+    {compute-bound: $P = P_{\mathrm{peak}}$};
+  \node[anchor=west, orange!85!black, font=\bfseries] at (2.82, 2.62)
+    {memory-bound: $P = \mathrm{AI}\times\mathrm{BW}$};
+  \node[anchor=west, orange!85!black] at (2.90, 2.28) {(斜率 $=$ BW)};
+  \node[axlab] at (4.40, 0.62)
+    {$\mathrm{AI}^* = P_{\mathrm{peak}}/\mathrm{BW}$};
+  \fill[blue!65!black] (10.25, 6.31) circle (2.2pt);
+  \node[anchor=west, blue!65!black, align=left, text width=5.8cm] at (7.70, 5.74)
+    {GEMM $K{=}4096$：$\mathrm{AI}{=}683$ 高于 $\mathrm{AI}^*{=}295$
+     $\to$ compute-bound};
+  \fill[green!50!black] (3.11, 1.51) circle (2.2pt);
+  \node[anchor=west, green!40!black, align=left, text width=5.8cm] at (3.30, 1.05)
+    {softmax $\mathrm{AI}{=}0.625$ 远低于 $\mathrm{AI}^*{=}20$
+     $\to$ 严重 memory-bound};
+  \node[note] at (0.62, 0.50)
+    {例：H100 SXM（base.cuh L84--86 口径）FP16 TC dense $P_{\mathrm{peak}}$ 约 989 TFLOPS，BW${=}3.35$ TB/s $\to$ $\mathrm{AI}^*$ 约 295；};
+  \node[note] at (0.62, 0.20)
+    {FP32 CUDA core 约 67 TFLOPS $\to$ $\mathrm{AI}^*$ 约 20};
+\end{tikzpicture}}
 \caption{Roofline 模型：$P = \min(P_{\mathrm{peak}}, \mathrm{AI} \times \mathrm{BW})$，脊点 $\mathrm{AI}^* = P_{\mathrm{peak}} / \mathrm{BW}$。GEMM $K{=}4096$（AI$=683$）落在计算屋顶，softmax（AI$=0.625$）落在带宽斜线区。}
 \label{fig:1-2}
 \end{figure}
@@ -201,6 +320,49 @@ memory-bound（$100 < 295$）。这解释了一个反直觉的现象：\textbf{�
 迁移到 Tensor Core 上未必变快}——如果它本是 memory-bound，算力翻 15 倍也
 无济于事。同理，把 ridge point 算错（比如把 sparse 峰值当 dense 用，见
 \S\ref{sec:ch01-pitfall}）会把 bound 类别判反，整个优化方向就全错了。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\footnotesize,
+  lab/.style={font=\scriptsize, inner sep=1pt}]
+  \draw[-{Stealth[length=1.8mm]}] (0, 0) -- (13.2, 0);
+  \draw[-{Stealth[length=1.8mm]}] (0, 0) -- (0, 6.7);
+  \foreach \x/\t in {3.1/100, 6.2/200, 9.3/300, 12.4/400}
+    {
+      \draw (\x, 0) -- (\x, -0.08);
+      \node[lab, anchor=north] at (\x, -0.1) {\t};
+    }
+  \foreach \y/\t in {1.45/250, 2.9/500, 4.35/750, 5.8/1000}
+    {
+      \draw (0, \y) -- (-0.08, \y);
+      \node[lab, anchor=east] at (-0.1, \y) {\t};
+    }
+  \draw[tkBlue, thick] (0,0) -- (9.145,5.736) -- (12.4,5.736);
+  \draw[tkOrange, thick] (0,0) -- (0.62,0.389) -- (12.4,0.389);
+  \fill[tkOrange] (0.62,0.389) circle (0.055);
+  \fill[tkBlue] (9.145,5.736) circle (0.055);
+  \node[lab, anchor=north west, text=tkOrange] at (0.72, 0.33) {ridge = 20};
+  \node[lab, anchor=south east, text=tkBlue] at (8.55, 5.8) {ridge = 295};
+  \node[lab, anchor=south, text=tkOrange] at (11.2, 0.45) {FP32 屋顶 $P_{peak}=67$};
+  \node[lab, anchor=south, text=tkBlue] at (10.9, 5.82)
+    {FP16 TC 屋顶 $P_{peak}=989$（dense）};
+  \draw[dashed, black!60] (3.1, 0) -- (3.1, 2.1);
+  \fill[tkOrange] (3.1, 0.389) circle (0.055);
+  \fill[tkBlue] (3.1, 1.943) circle (0.055);
+  \node[lab, anchor=south west, align=left, text=tkOrange] at (3.5, 0.58)
+    {FP32：$100 > 20$\\compute-bound（贴 67 屋顶）};
+  \node[lab, anchor=west, align=left, text=tkBlue] at (3.75, 1.94)
+    {FP16 TC：$100 < 295$\\memory-bound（仍在斜坡：$P=335$）};
+  \node[lab, anchor=north west, align=left] at (0.4, 4.6)
+    {两条斜坡共线\\（同一带宽 BW = 3.35 TB/s，\\$P = AI \times BW$，H100 SXM）};
+  \node[lab, anchor=west, align=left, font=\scriptsize\bfseries]
+    at (6.9, 3.5) {算力翻 15 倍 $\ne$ 更快\\（若 kernel 本就 memory-bound）};
+  \node[lab, anchor=north] at (6.6, -0.42) {算术强度 AI（FLOP/Byte）};
+  \node[lab, rotate=90, anchor=south] at (-0.95, 3.3) {可达性能 P（TFLOP/s）};
+\end{tikzpicture}
+\caption{同一 GPU 的两条屋顶线（H100 SXM）：FP32（$P_{peak}=67$ TFLOP/s，ridge $=20$）与 FP16 TC dense（$P_{peak}=989$，ridge $=295$）共用同一条带宽斜坡（BW = 3.35 TB/s），脊点相差约 15 倍。AI=100 的竖虚线在两条线上落点相反：FP32 侧已 compute-bound（$100>20$），FP16 TC 侧仍 memory-bound（$100<295$）——把 kernel 迁到 Tensor Core 未必变快；ridge 口径算错（如 sparse 当 dense）会把 bound 类别判反。}
+\label{fig:1-5}
+\end{figure}
 
 \subsection{Occupancy 与延迟隐藏}
 
@@ -224,10 +386,18 @@ setmaxnreg 干脆在 producer/consumer 之间\textbf{动态重新分配}寄存�
 \section{设计与实现}
 
 本章没有 device kernel——Phase 0 的资产是一张「速查表」，它的「实现」就是
-把 9 条优化手段清单（base.cuh L32--69）与全书章节对应起来，形成一张路线图：
+把 9 条优化手段清单（base.cuh L32--69）与全书章节对应起来，形成一张路线图。
+先把前三条摘出来：
 
-\lstinputlisting[linerange={34-45},firstnumber=auto,
-  title={base.cuh L34-45（优化手段 1--3：coalescing / tiling / vectorize）}]{../base.cuh}
+\begin{itemize}
+\item \textbf{Coalesced Memory Access（合并访问）}：同一 warp 的线程访问
+  连续的 128B 对齐地址，只需 1 次内存事务；否则产生多次事务（最坏 32 次）。
+\item \textbf{Tiling（分块）}：将数据从 HBM 分块加载到 shared memory 复用，
+  减少 HBM 访问；GEMM 的形态是 Block Tile（BM$\times$BN）加 K Tile（BK）。
+\item \textbf{Vectorized Memory Access（向量化）}：使用 \texttt{float4}/
+  \texttt{half2} 等向量类型，减少 load/store 指令数；\texttt{float4} 是
+  128-bit，单条指令加载 16 bytes。
+\end{itemize}
 
 清单的第 1--3 条正是 Part I 前三章的骨架：coalescing 是 ch03 的主题，
 vectorize 也在 ch03，tiling 的初级形态（warp/block reduce 中的两级结构）
@@ -235,6 +405,58 @@ vectorize 也在 ch03，tiling 的初级形态（warp/block reduce 中的两级�
 Part II GEMM 篇逐一兑现；第 7--9 条（Tensor Core、Warp Specialization、
 TMA）属于 Part II 后半与 Part III/IV。读到这里建议翻回本表：本书的章节
 顺序，就是这张清单逐条展开的顺序。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\footnotesize,
+  item/.style={draw, fill=white, align=center, inner sep=2.5pt,
+    font=\scriptsize, text width=2.55cm, minimum height=0.95cm},
+  tag/.style={font=\scriptsize, anchor=west},
+  ar/.style={-{Stealth[length=1.6mm]}, semithick}]
+  \fill[gray!15, rounded corners=3pt] (0.7, 3.5) rectangle (14.9, 5.0);
+  \fill[gray!40, rounded corners=3pt] (0.7, 1.7) rectangle (14.9, 3.2);
+  \fill[gray!65, rounded corners=3pt] (0.7, -0.1) rectangle (14.9, 1.4);
+  \node[rotate=90, align=center, font=\scriptsize\bfseries] at (1.05, 4.25)
+    {Part I\\（基础篇）};
+  \node[rotate=90, align=center, font=\scriptsize\bfseries] at (1.05, 2.45)
+    {Part II\\（GEMM 篇）};
+  \node[rotate=90, align=center, font=\scriptsize\bfseries] at (1.05, 0.65)
+    {Part II 后半\\+ III/IV};
+  \node[item] (i1) at (3.05, 4.25) {\textbf{1}~Coalescing\\（合并访问）};
+  \node[item] (i2) at (7.35, 4.25) {\textbf{2}~Tiling\\（分块复用）};
+  \node[item] (i3) at (11.65, 4.25) {\textbf{3}~Vectorize\\（向量化）};
+  \node[item] (i4) at (3.05, 2.45) {\textbf{4}~Thread Tile\\（寄存器分块）};
+  \node[item] (i5) at (7.35, 2.45) {\textbf{5}~Bank Conflict\\（冲突避免）};
+  \node[item] (i6) at (11.65, 2.45) {\textbf{6}~Pipeline\\（双缓冲）};
+  \node[item] (i7) at (3.05, 0.65) {\textbf{7}~Tensor Core\\（MMA / WGMMA）};
+  \node[item] (i8) at (7.35, 0.65) {\textbf{8}~Warp Spec.\\（warp 专业化）};
+  \node[item] (i9) at (11.65, 0.65) {\textbf{9}~TMA\\（硬件 DMA）};
+  \node[tag] (t1) at (4.5, 4.25) {ch03};
+  \node[tag] (t2) at (8.8, 4.25) {ch02, 09--12};
+  \node[tag] (t3) at (13.1, 4.25) {ch03};
+  \node[tag] (t4) at (4.5, 2.45) {ch09--11};
+  \node[tag] (t5) at (8.8, 2.45) {ch12};
+  \node[tag] (t6) at (13.1, 2.45) {ch13--14};
+  \node[tag] (t7) at (4.5, 0.65) {ch10--11+};
+  \node[tag] (t8) at (8.8, 0.65) {ch14, 17--18};
+  \node[tag] (t9) at (13.1, 0.65) {ch13--14, 17};
+  \draw[ar] (i1) -- (t1);
+  \draw[ar] (i2) -- (t2);
+  \draw[ar] (i3) -- (t3);
+  \draw[ar] (i4) -- (t4);
+  \draw[ar] (i5) -- (t5);
+  \draw[ar] (i6) -- (t6);
+  \draw[ar] (i7) -- (t7);
+  \draw[ar] (i8) -- (t8);
+  \draw[ar] (i9) -- (t9);
+  \node[font=\scriptsize, anchor=north west, align=left, text width=13.5cm]
+    at (0.75, -0.35)
+    {行分组沿用 base.cuh 清单 1--3 / 4--6 / 7--9：第 1--3 条是 Part I 前三章
+     骨架；第 7--9 条的兑现章节横跨 Part II 后半（ch13--14）与 Part III/IV};
+\end{tikzpicture}
+\caption{base.cuh 九条优化手段与全书章节路线图：第 1--3 条构成 Part I 前三章的骨架（coalescing 与 vectorize 在 ch03，tiling 的初级形态在 ch02）；第 4--6 条在 Part II GEMM 篇兑现；第 7--9 条横跨 Part II 后半与 Part III/IV。泳道灰度随 Part 递增（15\%/40\%/65\%）。}
+\label{fig:1-6}
+\end{figure}
 
 \section{图示}
 
@@ -245,18 +467,46 @@ RFC-H 升级为正式图（FIG-1-1、FIG-1-2）。这里补充一张「一次 HB
 
 \begin{figure}[htbp]
 \centering
-\begin{lstlisting}[style=console]
-   一次 float 读的完整旅程（约 0.5us 量级, H100 参考）
-   -------------------------------------------------------------
-   [LDG] warp 发射 load 指令
-     -> L1 命中?  ~30 cycle, 结束 (最快)
-     -> L2 命中?  ~200 cycle, 回填 L1
-     -> HBM:      ~500-800 cycle, 经 L2 回填
-          期间 warp 挂起, scheduler 切换到其他活跃 warp
-          (occupancy 就是「可以切换的 warp 数量」)
-   -------------------------------------------------------------
-\end{lstlisting}
-\caption{一次访存的旅程与延迟隐藏}
+\begin{tikzpicture}[
+  font=\footnotesize,
+  seg/.style={draw, minimum height=0.75cm, inner sep=2pt, align=center,
+    font=\scriptsize},
+  bar/.style={draw, minimum height=0.5cm, inner sep=0pt},
+  lab/.style={font=\scriptsize, align=right, anchor=east},
+  tlab/.style={font=\scriptsize, anchor=west}
+]
+  \node[lab] at (-0.4, 3.3) {warp A\\（发射视角）};
+  \node[seg, draw=tkBlue, fill=tkFillBlue, minimum width=1.15cm] at (0.575, 3.3) {发射\\LDG};
+  \node[seg, draw=tkOrange, fill=tkFillOrange, minimum width=6.0cm] at (4.15, 3.3) {stall：等数据（warp 挂起）};
+  \node[seg, draw=tkGreen, fill=tkFillGreen, minimum width=1.45cm] at (7.875, 3.3) {数据到达\\恢复执行};
+  \draw[{Stealth[length=1.5mm]}-{Stealth[length=1.5mm]}] (0, 4.2) -- (8.6, 4.2);
+  \draw (0, 4.05) -- (0, 4.35);
+  \draw (8.6, 4.05) -- (8.6, 4.35);
+  \node[anchor=south, font=\scriptsize] at (4.3, 4.3)
+    {一次 HBM 读全程 $\approx 0.5\,\mu\mathrm{s}$（H100 参考）};
+  \node[lab] at (-0.4, 1.45) {访存路径\\（三档延迟）};
+  \node[bar, draw=tkGreen, fill=tkFillGreen, minimum width=0.9cm] at (1.6, 2.15) {};
+  \node[tlab] at (2.25, 2.15) {L1 命中：$\sim$30 cycle（最快，就地结束）};
+  \node[bar, draw=tkOrange, fill=tkFillOrange, minimum width=2.6cm] at (2.45, 1.45) {};
+  \node[tlab] at (3.95, 1.45) {L2 命中：$\sim$200 cycle（回填 L1）};
+  \node[bar, draw=tkRed, fill=tkFillRed, minimum width=6.0cm] at (4.15, 0.75) {};
+  \node[tlab] at (7.35, 0.75) {HBM：$\sim$500--800 cycle（经 L2 回填）};
+  \node[font=\scriptsize, anchor=east, text=black!60] at (8.6, 2.75) {（横轴不按比例）};
+  \node[lab] at (-0.4, 0) {scheduler\\（发射口）};
+  \node[seg, draw=tkBlue, fill=tkFillBlue, minimum width=1.15cm, minimum height=0.6cm] at (0.575, 0) {A};
+  \node[seg, draw=tkGreen!75, fill=tkFillGreen!55, minimum width=1.4cm, minimum height=0.6cm] at (1.85, 0) {B};
+  \node[seg, draw=tkGreen, fill=tkFillGreen, minimum width=1.4cm, minimum height=0.6cm] at (3.25, 0) {C};
+  \node[seg, draw=tkGreen!75, fill=tkFillGreen!55, minimum width=1.4cm, minimum height=0.6cm] at (4.65, 0) {B};
+  \node[seg, draw=tkGreen, fill=tkFillGreen, minimum width=1.4cm, minimum height=0.6cm] at (6.05, 0) {C};
+  \node[seg, draw=tkGreen!75, fill=tkFillGreen!55, minimum width=0.4cm, minimum height=0.6cm, inner sep=1pt] at (6.95, 0) {B};
+  \node[seg, draw=tkBlue, fill=tkFillBlue, minimum width=1.45cm, minimum height=0.6cm] at (7.875, 0) {A};
+  \draw[dashed, black!50] (7.15, -0.5) -- (7.15, 4.05);
+  \node[anchor=north, font=\scriptsize, align=center] at (4.3, -0.55)
+    {occupancy = 可切换的 warp 数：A 挂起期间 warp B / C 顶上，发射口不空转};
+  \draw[-{Stealth[length=1.8mm]}] (0, -1.25) -- (9.3, -1.25);
+  \node[anchor=west, font=\scriptsize] at (9.35, -1.25) {时间};
+\end{tikzpicture}
+\caption{一次访存的旅程与延迟隐藏（蓝=发射/执行，橙=等待/过渡延迟，绿=命中与恢复，红=直落 HBM 的最长延迟）}
 \label{fig:1-3}
 \end{figure}
 

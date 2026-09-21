@@ -1,0 +1,659 @@
+% cf-ch3e.tex — 译自 FinalVersion.tex L9833-10487
+\subsection{嵌套元组态射上的运算}
+我们的下一个任务是发展一套「嵌套元组态射（nested tuple morphism）代数」。由于我们已经为元组态射建立过这样一套「代数」，我们可以通过为各种运算的输出配备适当的轮廓（profile），把这套代数推广到嵌套情形。
+
+
+
+\subsubsection{拼接}
+
+接下来，我们定义嵌套元组态射上的一个拼接（concatenate）运算，它与布局（layout）的拼接相容，即
+\[
+L_{(f,g)} = (L_f,L_g).
+\]
+我们通过拼接 $f$ 与 $g$ 的定义域（domain）来拼接嵌套元组态射 $f$ 与 $g$。为使这一定义良定义（well-defined），需要 $f$ 与 $g$ 满足一个不交性条件，其确切表述见下文。
+
+\begin{definition}\label{definitionofdisjointimagesinD} 设 $f$ 与 $g$ 是具有相同陪域（codomain）的嵌套元组态射。若 $f^\flat$ 与 $g^\flat$ 如定义 \ref{definitionofdisjointimagesinC} 中那样具有不交的像，则称 $f$ 与 $g$ 具有{\it 不交的像}（disjoint images）。
+\end{definition}
+
+\begin{example}
+\label{exampleofdisjointimagesinD1}
+    若
+    \[
+    f:(3,(512,512)) \to (2,512,2,512)
+    \]
+    位于（lies over）$(*,2,4)$ 之上，且
+    \[
+    g:(2,2) \to (2,512,2,512)
+    \]
+    位于 $(1,3)$ 之上，则 $f$ 与 $g$ 具有不交的像。
+\end{example}
+
+\begin{example}
+\label{exampleofdisjointimagesinD2}
+若
+\[f : (2,(32,64)) \to (32,(2,2,2),64)\]
+位于 $\alpha = (3,1,5)$ 之上，且
+\[g:((2,2)) \to (32,(2,2,2),64)\]
+位于 $\beta = (2,4)$ 之上，则 $f$ 与 $g$ 具有不交的像。
+\end{example}
+
+
+\begin{construction}\label{concatenationofmorphismsinD}
+    设 $f:S \to T$ 与 $g:U \to T$ 是分别位于 $\alpha$ 与 $\beta$ 之上的嵌套元组态射，且 $f$ 与 $g$ 具有不交的像。我们把 $f$ 与 $g$ 的{\it 拼接}定义为嵌套元组态射
+    \[
+    (f,g) : (S,U) \to T
+    \]
+    它满足
+    \begin{align*}
+        \flatten((f,g)) & = f^\flat \star g^\flat.
+    \end{align*}
+    更一般地，若 $f_i:S_i \to T$（$1 \leq i \leq k$）是嵌套元组态射，且 $f_1,\dots,f_k$ 两两具有不交的像，则我们把{\it 拼接}
+    \[
+    (f_1,\dots,f_k) : (S_1 , \dots , S_k) \to T.
+    \]
+    定义为满足
+    \begin{align*}
+        (f_1, \dots , f_k)^\flat & = f_1^\flat \star \cdots \star f_k^\flat.
+    \end{align*}
+
+\end{construction}
+
+\begin{example} 例 \ref{exampleofdisjointimagesinD1} 中态射 $f$ 与 $g$ 的拼接是嵌套元组态射
+\[(f,g): \left((3,(512,512)),(2,2)\right) \to (2,512,2,512)\]
+它位于 $\alpha \star \beta = (*,2,4,1,3)$ 之上。
+\end{example}
+
+\begin{example} 例 \ref{exampleofdisjointimagesinD2} 中态射 $f$ 与 $g$ 的拼接是嵌套元组态射
+\[(f,g): ( (2,(32,64)),((2,2))) \to (32,(2,2,2),64)\]
+它位于 $\alpha \star \beta = (3,1,5,2,4)$ 之上。
+\end{example}
+
+\begin{example}
+    若
+    \[
+    f:(2,2) \to (2,3,5,2,3,5)
+    \]
+    位于 $\alpha = (1,4)$ 之上，
+    \[
+    g:(3,3) \to (2,3,5,2,3,5)
+    \]
+    位于 $\beta = (2,5)$ 之上，且
+    \[
+    h: (5,5) \to (2,3,5,2,3,5)
+    \]
+    位于 $\gamma = (3,6)$ 之上，则 $f$、$g$ 与 $h$ 两两具有不交的像，且拼接
+    \[
+    (f,g,h):((2,2),(3,3),(5,5)) \to (2,3,5,2,3,5)
+    \]
+    位于 $\alpha \star \beta \star \gamma = (1,4,2,5,3,6)$ 之上。
+\end{example}
+
+\begin{example}
+设 $f:S \to T$ 是嵌套元组态射，并设
+\[
+S^\flat = (s_1,\dots,s_m).
+\]
+回顾例 \ref{definitionofentriesofnestedtuplemorphisms}：对任意 $1 \leq i \leq m$，存在嵌套元组态射
+\[
+f_i:s_i \to T.
+\]
+称为 $f$ 的第 $i$ 个元素（entry）。这些态射两两具有不交的像，而拼接
+\[
+(f_1,\dots,f_m):S^\flat \to T
+\]
+是例 \ref{definitionofflatteningisomorphisms} 中的复合（composite）
+\[
+(f_1,\dots,f_m) = f \circ \id_{S^\flat}^S
+\]
+\end{example}
+
+\begin{example}
+设 $f:S \to T$ 是嵌套元组态射，并设
+\[
+S = (S_1,\dots,S_r).
+\]
+回顾例 \ref{definitionofmodesofnestedtuplemorphisms}：对任意 $1 \leq i \leq r$，存在嵌套元组态射
+\[
+f_i:S_i \to T.
+\]
+称为 $f$ 的第 $i$ 个模式（mode）。这些态射两两具有不交的像，且拼接
+\[
+(f_1,\dots,f_r):S \to T
+\]
+等于 $f$。换言之，每个嵌套元组态射 $f$ 都可以写成它的各模式的拼接：
+\[f = (f_1,\dots,f_r).\]
+\end{example}
+
+
+
+
+\begin{proposition}\label{compatibilityofconcatenateinD}
+    若 $f_1,\dots,f_k$ 是具有相同陪域且两两具有不交像的嵌套元组态射，则
+    \[
+    L_{(f_1,\dots,f_k)} = (L_{f_1},\dots,L_{f_k}).
+    \]
+\end{proposition}
+
+\begin{proof}
+由构造（by construction）可知，我们有
+\begin{align*}
+ \shape((L_{f_1},\dots,L_{f_k})) & = (\shape(L_{f_1}),\dots,\shape(L_{f_k}))\\
+& = \shape(L_{(f_1,\dots,f_k)}).
+\end{align*}
+再利用命题 \ref{concatenateinCproposition}，可得
+\begin{align*}
+(L_{f_1},\dots,L_{f_k})^\flat & = L_{f_1}^\flat \star \cdots \star L_{f_k}^\flat\\
+& = L_{f_1^\flat} \star \cdots \star L_{f_k^\flat} \\
+& = L_{f_1^\flat \star \cdots \star f_k^\flat }\\
+& = L_{(f_1,\dots, f_k)^\flat}\\
+& = (L_{(f_1,\dots,f_k)})^\flat.
+\end{align*}
+\end{proof}
+
+
+\subsubsection{合并}
+
+若 $f$ 是嵌套元组态射，我们本可以把合并（coalesce）$\coalesce(f)$ 定义为 $\coalesce^\flat(f^\flat)$。从理论上讲，这是一个健全的定义。然而，为了让我们的定义与 \texttt{cute} 实现相容，我们要对 $\coalesce(f)$ 的定义做一点小修改。
+
+\begin{definition}
+\label{definitionofcoalesceofnestedtuplemorphism}
+    设 $f:S \to T$ 是嵌套元组态射，并记
+    \[
+    \coalesce^\flat(f^\flat):(s_1,\dots,s_m) \to (t_1,\dots,t_n).
+    \]
+    \begin{itemize}
+    \item （情形 1）：若 $m >1$，我们定义
+    \[\coalesce(f) = \coalesce^\flat(f^\flat).\]
+    \item （情形 2）：若 $m = 1$，我们把 $\coalesce(f)$ 定义为复合
+    \[
+    \begin{tikzcd}
+    s_1 \ar[r,swap,"(1)"] &  (s_1) \ar[rr,"\coalesce^\flat(f^\flat)"] & & (t_1,\dots,t_n).
+    \end{tikzcd}
+    \]
+    \item （情形 3）：若 $m = 0$，我们把 $\coalesce(f)$ 定义为复合
+    \[
+    \begin{tikzcd}
+    1 \ar[r,swap,"(*)"] &  () \ar[rr,"\coalesce^\flat(f^\flat)"] & & (t_1,\dots,t_n).
+    \end{tikzcd}
+    \]
+    \end{itemize}
+\end{definition}
+
+\begin{example}
+    若
+    \[f:((2,2),(3,3),(5,5)) \to (5,5,3,3,2,2)\]
+    位于 $\alpha = (5,6,3,4,1,2)$ 之上，则
+    \[
+    \coalesce(f):(4,9,25) \to (25,9,4)
+    \]
+    位于 $\alpha' = (3,2,1)$ 之上。
+\end{example}
+
+\begin{proposition}\label{coalesceagreement}
+    若 $f:S \to T$ 是嵌套元组态射，则
+    \[
+    \coalesce(L_f) = L_{\coalesce(f)}.
+    \]
+\end{proposition}
+
+\begin{proof}
+我们再次写出
+    \[ \begin{tikzcd}
+    (s_1,\dots,s_m) \ar[rr,"\coalesce^\flat(f^\flat)"] \ar[rr,swap,"\alpha"] & & (t_1,\dots,t_n).
+    \end{tikzcd} \]
+    需考虑三种情形。
+    \begin{itemize}
+        \item （情形 1）：设 $m > 1$。则
+        \begin{align*}
+        L_{\coalesce(f)} & = L_{\coalesce^\flat(f^\flat)}\\
+        & = \coalesce^\flat(L_{f^\flat})\\
+        & = \coalesce((L_f)^\flat)\\
+        & = \coalesce(L_f).
+    \end{align*}
+    \item （情形 2）：设 $m = 1$。则
+    \begin{align*}
+        L_{\coalesce(f)} & = s_1:t_1 \dots,t_{\alpha(1)-1}\\
+        & = \coalesce((s_1):(t_1\cdots
+        t_{\alpha(1)-1}))\\
+        &= \coalesce(L_{\coalesce^\flat(f^\flat)})\\
+        & = \coalesce(\coal^\flat(L_{f^\flat}))\\
+        & = \coalesce((L_f)^\flat)\\
+        & = \coalesce(L_f).
+    \end{align*}
+    \item （情形 3）：设 $m = 0$。则
+    \begin{align*}
+        L_{\coalesce(f)} & = 1:0 \\
+        & = \coalesce(():())\\
+        &= \coalesce(L_{\coalesce^\flat(f^\flat)})\\
+        & = \coalesce(\coal^\flat(L_{f^\flat}))\\
+        & = \coalesce((L_f)^\flat)\\
+        & = \coalesce(L_f).
+    \end{align*}
+    \end{itemize}
+
+\end{proof}
+
+% Our next goal is to define a "relative coalesce" operation. In order to do so, we first develop a multivariate flat coalesce as follows.
+% \begin{construction}
+%     Suppose we are given tuple morphisms $f_i:S_i \to T$ for $1 \leq i \leq k$ such that the $f_i$ have pairwise disjoint images. We define a tuple morphism
+%     \[
+%     \coalesce(f_1,\dots,f_k): S' \to T'
+%     \]
+%     as follows.
+%     \begin{enumerate}
+%         \item Let $g : \tilde{S} \to \tilde{T}$ denote the concatenated tuple morphism
+%         \[
+%         g = \squeeze(f_1 \star \cdots \star f_k) : \squeeze(S_1 \star \cdots \star S_k) \to \squeeze(T).
+%         \]
+%         and let $\beta:\langle m \rangle_* \to \langle n \rangle_*$ denote the pointed map over which $g$ lies.
+%         \item Next, we let $\sim$ be the equivalence relation on $\langle m \rangle$ where $i \sim i'$ if $\mu(i) = \mu(i')$ and either
+%         \begin{enumerate}
+%         \item $\beta(i'') = *$ for $i \leq i'' \leq i'$, or
+%         \item $\beta(i'') = \beta(i) + (i'' - i)$ for $i \leq i'' \leq i'$.
+%         \end{enumerate}
+%         The quotient $\langle m' \rangle / \sim$ has a natural ordering given by $[i_1] \leq [i_2]$ if $i_1 \leq i_2$, so we can identify this quotient with  $\langle \bar{m}' \rangle$ where $\bar{m}' = |\langle m '\rangle /\sim|$.
+%         \item Next, we let $\sim$ be the equivalence relation on $\langle n \rangle$ where $j \sim j'$ if
+%         \begin{enumerate}
+%         \item $j''$ is not in the image of $\beta$ for $j \leq j'' \leq j'$, or
+%         \item there exists $i \in \langle m \rangle$ such that $\mu(j'') = \mu(j)$ and $\beta(j'') = \beta(i) + (j'' - j)$ for $j \leq j'' \leq j'$.
+%         \end{enumerate}
+%         Again, the quotient $\langle n \rangle / \sim$ has a natural ordering given by $[j_1] \leq [j_2]$ if $j_1 \leq j_2$, so we can identify this quotient with $\langle \bar{n} \rangle$ where $\bar{n} = |\langle n \rangle /\sim|$.
+%         \item Next, we observe that the map $\alpha:\langle m \rangle_* \to \langle n \rangle_*$ descends to a map
+%         \[
+%         \bar{\alpha}: \langle \bar{m} \rangle_* \to \langle \bar{n} \rangle_*
+%         \]
+%         given by $\bar{\alpha}([i]) = [\alpha(i)]$.
+%         \item The domain $(\bar{s}_1,\dots,\bar{s}_{\bar{m}})$ of $\coalesce(f)$ is defined by setting
+%         \[
+%         \bar{s}_i = \prod_{i' \in I} s_{i'}
+%         \]
+%         if $i \in \langle \bar{m} \rangle$ corresponds to the equivalence class $I \in \langle m \rangle / \sim$. The codomain
+%         $(\bar{t}_1,\dots,\bar{t}_{\bar{n}})$ of $\coalesce(f)$ is defined by setting
+%         \[
+%         \bar{t}_j = \prod_{j' \in J} t_{j'}
+%         \]
+%         if $j \in \langle \bar{n} \rangle$ corresponds to the equivalence class $J \in \langle n \rangle / \sim$. We then define \[\coalesce(f):(\bar{s}_1,\dots,\bar{s}_{\bar{m}})  \to (\bar{t}_1,\dots,\bar{t}_{\bar{n}})\] to be the morphism lying over $\bar{\beta}$.
+%     \end{enumerate}
+% \end{construction}
+% Let's turn our attention to the relative coalesce operation. Suppose $f:S \to T$ is a nested tuple morphism and suppose $S$ refines $\bar{S}$. We will construct a nested tuple morphism
+% \[\coalesce(f,\bar{S}) : S' \to T'.\]
+% satisfying
+% \begin{enumerate}
+%     \item $S'$ refines $\bar{S}$,
+%     \item $\coalesce(\coalesce(f,\bar{S})) = \coalesce(f)$.
+% \end{enumerate}
+
+% Before making our definition, we illustrate the concept with a few examples.
+% \begin{example} Consider the refinement
+% \[((2,2,2),(3,3,3),(5,5,5)) \twoheadrightarrow (8,27,125)\]
+% and the nested tuple morphism
+% \[f:((2,2,2),(3,3,3),(5,5,5)) \to (2,2,2,2,3,3,3,3,5,5,5,5)\]
+% lying over
+% \[
+% \alpha = (1,2,4,5,6,8,9,10,12).
+% \]
+% Then $f$ and
+% \[\coalesce(f,\bar{S}) : ( (4,2), (9,3), (25,5) ) \to (4,2,2,9,3,3,25,5,5)\]
+% are as depicted below.
+
+% \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+%   & & 5 & & & & & & \\
+%   & & 5 & & & & & & \\
+%   & & 5 & & & & & & \\
+% 5 \ar[uuurr,mapsto] & & 5 & & & & & & 5\\
+% 5 \ar[uurr,mapsto] & & 3 & & & & & & 5\\
+% 5 \ar[uurr,mapsto] & & 3 & & & & & & 25\\
+% 3 \ar[uurr,mapsto] & & 3 & & & & 5 \ar[uuurr,mapsto] & & 3\\
+% 3 \ar[urr,mapsto] & & 3 & & & & 25 \ar[uurr,mapsto] & & 3\\
+% 3 \ar[urr,mapsto] & & 2 & & & & 3 \ar[uurr,mapsto] & & 9\\
+% 2 \ar[urr,mapsto] & & 2 & & & & 9 \ar[urr,mapsto] & & 2\\
+% 2 \ar[rr,mapsto] & & 2 & & & & 2 \ar[urr,mapsto] & & 2\\
+% 2 \ar[rr,mapsto] & & 2 & & & & 4 \ar[rr,mapsto] & & 4\\
+% & f & & & & & & \mathclap{\coalesce(f,\bar{S})}
+% \end{tikzcd} \]
+% \end{example}
+
+
+
+% \begin{construction} Suppose $f$ lies over $\alpha: \langle m \rangle_* \to \langle n \rangle_*$ and suppose $S \twoheadrightarrow \bar{S}$ lies over $\mu: \langle m \rangle_* \to \langle \bar{m} \rangle_*$. For each $1 \leq i \leq m$, let
+% \[
+% S_i = \mode_i(S,\bar{S})
+% \]
+% denote the $i$th mode of $S$ relative to $\bar{S}$. Let $f_i:S_i \to T$ denote the composite
+% \[\begin{tikzcd}
+% S_i \ar[r,"\subset"] \ar[rr,swap,bend right = 30,"f_i"] &  S \ar[r,"f"] & T
+% \end{tikzcd} \]
+% and let
+% \[\begin{tikzcd}
+% S_i^\flat \ar[r,"f_i^\flat"] &  T^\flat
+% \end{tikzcd} \] denote the flattening of $f_i$. We would like to form the concatenation of the morphisms $\coalesce(f_i^\flat)$, but these morphisms do not have the same domain. Instead, we need to
+
+% We define $\coalesce(f,\bar{S})$ as follows.
+% \color{purple}
+% \begin{enumerate}
+%     \item Let $\alpha:\langle m' \rangle_* \to \langle n \rangle_*$ denote the pointed map over which $f$ lies.
+%     \item Next, we let $\sim$ be the equivalence relation on $\langle m' \rangle$ where $i \sim i'$ if $\mu(i) = \mu(i')$ and either
+%     \begin{enumerate}
+%         \item $\beta(i'') = *$ for $i \leq i'' \leq i'$, or
+%         \item $\beta(i'') = \beta(i) + (i'' - i)$ for $i \leq i'' \leq i'$.
+%         \end{enumerate}
+%         The quotient $\langle m' \rangle / \sim$ has a natural ordering given by $[i_1] \leq [i_2]$ if $i_1 \leq i_2$, so we can identify this quotient with  $\langle \bar{m}' \rangle$ where $\bar{m}' = |\langle m '\rangle /\sim|$.
+%         \item Next, we let $\sim$ be the equivalence relation on $\langle n \rangle$ where $j \sim j'$ if
+%         \begin{enumerate}
+%         \item $j''$ is not in the image of $\beta$ for $j \leq j'' \leq j'$, or
+%         \item there exists $i \in \langle m \rangle$ such that $\mu(j'') = \mu(j)$ and $\beta(j'') = \beta(i) + (j'' - j)$ for $j \leq j'' \leq j'$.
+%         \end{enumerate}
+%         Again, the quotient $\langle n \rangle / \sim$ has a natural ordering given by $[j_1] \leq [j_2]$ if $j_1 \leq j_2$, so we can identify this quotient with $\langle \bar{n} \rangle$ where $\bar{n} = |\langle n \rangle /\sim|$.
+%         \item Next, we observe that the map $\alpha:\langle m \rangle_* \to \langle n \rangle_*$ descends to a map
+%         \[
+%         \bar{\alpha}: \langle \bar{m} \rangle_* \to \langle \bar{n} \rangle_*
+%         \]
+%         given by $\bar{\alpha}([i]) = [\alpha(i)]$.
+%         \item The domain $(\bar{s}_1,\dots,\bar{s}_{\bar{m}})$ of $\coalesce(f)$ is defined by setting
+%         \[
+%         \bar{s}_i = \prod_{i' \in I} s_{i'}
+%         \]
+%         if $i \in \langle \bar{m} \rangle$ corresponds to the equivalence class $I \in \langle m \rangle / \sim$. The codomain
+%         $(\bar{t}_1,\dots,\bar{t}_{\bar{n}})$ of $\coalesce(f)$ is defined by setting
+%         \[
+%         \bar{t}_j = \prod_{j' \in J} t_{j'}
+%         \]
+%         if $j \in \langle \bar{n} \rangle$ corresponds to the equivalence class $J \in \langle n \rangle / \sim$. We then define \[\coalesce(f):(\bar{s}_1,\dots,\bar{s}_{\bar{m}})  \to (\bar{t}_1,\dots,\bar{t}_{\bar{n}})\] to be the morphism lying over $\bar{\beta}$.
+%     \end{enumerate}
+%     \color{black}
+% \end{construction}
+
+
+\subsubsection{求补}
+
+本节中，我们定义嵌套元组态射互补的概念。
+
+\begin{definition} \label{definitionofcomplementarymorphismsinD}
+设 $f:S \to T$ 与 $g:U \to T$ 是具有不交像的嵌套元组态射。若
+\[
+(f,g):(S,U) \to T
+\]
+是一个同构（isomorphism），则称 $g$ 为 $f$ 的一个{\it 补}（complement）。
+\end{definition}
+
+\begin{remark}若 $f:S \to T$ 与 $g:U \to T$ 是嵌套元组态射，则 $g$ 是 $f$ 的补当且仅当 $g^\flat$ 是 $f^\flat$ 的补，因为 $(f,g)^\flat = f^\flat \star g^\flat$。
+\end{remark}
+
+
+
+
+\begin{proposition}\label{complementofmorphisminDproposition}
+    若 $f:S \to T$ 是嵌套元组态射，且 $g:U \to T$ 是 $f$ 的补，则 $L_{g}$ 是 $L_{f}$ 的 $\size(T)$-补。
+\end{proposition}
+
+\begin{proof}
+    观察 \ref{flatlayoutcompatibility} 蕴含
+    \begin{align*} (L_{f})^\flat & = L_{f^\flat}\text{, and }\\
+    (L_{g})^\flat & = L_{g^\flat}
+    \end{align*}
+    而引理 \ref{flatteningcomplementationlemma} 使我们可以化归到扁平情形（命题 \ref{complementofmorphisminCproposition}）。
+\end{proof}
+
+
+\begin{construction}\label{complementofmorphisminD}
+    设 $f:S \to T$ 是嵌套元组态射。我们把 $f$ 的{\it 补}定义为复合
+    \[ \begin{tikzcd}
+    U \ar[dr,swap,"(f^\flat)^c"] \ar[rr,"f^c"] & & T \\
+    & T^\flat \ar[ur,swap,"\id_{T^\flat}^T"]
+    \end{tikzcd} \]
+    其中 $(f^\flat)^c$ 如构造 \ref{complementofmorphisminC} 中所定义，而 $\id_{T^\flat}^T:T^\flat \cong T$ 是去扁平化同构（unflattening isomorphism）。
+\end{construction}
+
+\begin{example}
+    嵌套元组态射
+    \[\begin{tikzcd} ((2,2),(5,5)) \ar[rr,"f"] \ar[rr,swap,"(1{,}4{,}2{,}5)"]& &  ((2,5,7),(2,5,7))\end{tikzcd} \]
+    的补是
+    \[\begin{tikzcd} (7,7) \ar[rr,"f^c"] \ar[rr,swap,"(3{,}6)"]& &  ((2,5,7),(2,5,7)).\end{tikzcd} \]
+\end{example}
+
+\begin{proposition}
+    设 $f:S \to T$ 与 $g:U \to T$ 是嵌套元组态射。若 $f$ 是单射且 $g$ 是 $f$ 的补，则 $L_{g}$ 是 $L_f$ 的 $\size(T)$-补。
+\end{proposition}
+\begin{proof}
+    这由命题 \ref{complementofmorphisminCproposition} 与引理 \ref{flatteningcomplementationlemma} 即得，因为
+    \begin{align*}
+    (L_f)^\flat & = L_{f^\flat}\\
+    (L_{g})^\flat & = L_{g^\flat}.
+    \end{align*}
+\end{proof}
+
+
+\begin{proposition}\label{coalescedlayoutoftuplemorphismcomplement}
+    若 $f:S \to T$ 是单射嵌套元组态射，则
+    \[
+    \coalesce(L_{f^c}) = \comp(L_f,\size(T)).
+    \]
+\end{proposition}
+\begin{proof} 由于 $f^c$ 是由 $(f^\flat)^c$ 通过与一个重新加括号同构作后复合（post-compose）而得到的，于是
+\[
+L_{f^c} = L_{(f^\flat)^c}
+\]
+故由命题 \ref{coalescedlayoutoftuplemorphismcomplement} 可得
+\[
+\coal^\flat(L_{f^c})  = \comp^\flat(L_f,\size(T)).
+\]
+对两边应用 $\coal(-)$ 即得结论。
+\end{proof}
+
+
+\subsubsection{复合}
+
+我们可以利用第 \ref{realizationofnestedtuplemorphisms} 节的实现函子（realization functor）来证明嵌套元组态射的复合（composition）与相应布局的复合相容。
+\begin{theorem}\label{compatibilityofcompositioninD}
+    若 $f$ 与 $g$ 是非退化（non-degenerate）且可复合的嵌套元组态射，则
+    \[
+    L_{g\circ f} = L_{g} \circ L_{f}.
+    \]
+\end{theorem}
+
+\begin{proof}
+    设 $f:S \to T$ 与 $g: T \to U$ 是非退化嵌套元组态射。我们需要验证
+    \begin{enumerate}
+        \item {\it $\shape(L_{g \circ f})$ 加细（refine）$\shape(L_{f})$}：这成立，因为
+        \[\shape(L_f) = S = \shape(L_{g \circ f}).\]
+        \item {\it $L_{g \circ f}$ 在 $\shape(L_{f})$ 上是已合并（coalesced）的}：这成立，因为嵌套元组态射 $g \circ f$ 是非退化的，从而布局 $L_{g \circ f}$ 也是非退化的。
+        \item {\it $\Phi_{L_{g \circ f}} = \Phi_{L_{g}} \circ \Phi_{L_{f}}^{\size(L_{g})}$}：利用引理 \ref{nestedlayoutfunctionlemma}，我们有
+        \begin{align*}
+        \Phi_{L_{g \circ f}}^{\size(U)} &  = |g \circ f| \\
+        &  = |g| \circ |f| \\
+        & = \Phi_{L_g}^{\size(U)} \circ \Phi_{L_f}^{\size(T)}\\
+        \end{align*}
+        再与包含映射（inclusion）$[0,\size(U)) \subset \mathbb{Z}$ 作后复合，并注意到 $\size(T) = \size(L_{g})$，即得结论。
+    \end{enumerate}
+\end{proof}
+
+
+
+
+
+
+
+\subsubsection{逻辑切分}
+
+接下来，我们引入嵌套元组态射的逻辑切分（logical division）。这一构造（construction）由扁平切分（flat division）通过引入嵌套轮廓而得到，不带任何相容性约束。
+
+
+\begin{definition}
+     设 $f$ 与 $g$ 是嵌套元组态射。若 $g$ 与 $f$ 可复合，则称 $g$ {\it 整除}（divides）$f$。换言之，
+     \[
+     \codomain(g) = \domain(f).
+     \]
+\end{definition}
+
+% \begin{definition}
+%     Suppose $g:U \to S'$ and $f:S \to T$ are nested tuple morphisms, and that $g$ divides $f$. Let $\bar{g}$ be the composite
+%     \[\begin{tikzcd}
+%         U  \ar[r,"\cong"] & \flatten(U) \ar[rr,"g^\flat"]& & \flatten(S') \ar[r,rightarrowtail]  & S^\flat
+%     \end{tikzcd}\]
+%     and let $\bar{f}$ be the composite
+%     \[ \begin{tikzcd}
+%     S^\flat \ar[rr,"f^\flat"] & &  T^\flat \ar[r,"\cong"] & T.
+%     \end{tikzcd}\]
+%     We define the {\it logical division}
+%     \[
+%     f \oslash g: (U,U^*) \to T
+%     \]
+%     of $f$ by $g$ to be the nested tuple morphism
+%     \[
+%     f \oslash g = \bar{f} \circ (\bar{g},\bar{g}^c).
+%     \]
+% \end{definition}
+
+% \begin{remark}
+%     If $S' = S$, then we can define
+%     \[
+%     f \oslash g = f \circ (g,g^c).
+%     \]
+% \end{remark}
+
+\begin{definition}\label{definitionoflogicaldivisionofnestedtuplemorphisms}
+    设 $g:S \to T$ 与 $f:T \to U$ 是嵌套元组态射。我们把 $f$ 除以 $g$ 的逻辑切分定义为嵌套元组态射
+    \[
+    f \oslash g = f \circ (g,g^c).
+    \]
+\end{definition}
+
+\begin{example}
+    将
+    \[\begin{tikzcd} ((2,2),2) \ar[rr,"f"] \ar[rr,swap,"(2{,}4{,}*)
+"] & &  ((4,2),(4,2)) \end{tikzcd} \]
+    除以
+    \[ \begin{tikzcd} (2,2) \ar[rr,"g"] \ar[rr,swap,"(1{,}3)"] & &  ((2,2),2) \end{tikzcd} \]
+    所得的逻辑切分是
+    \[ \begin{tikzcd} ((2,2),2) \ar[rr,"f \oslash g"] \ar[rr,swap,"(2{,}*{,}4)"] & &  ((4,2),(4,2)). \end{tikzcd} \]
+\end{example}
+
+\begin{example}
+    将
+    \[\begin{tikzcd} (8,8,512,512,512) \ar[rr,"f"] \ar[rr,swap,"(*{,}*{,}1{,}2{,}3)"] & &  (512,512,512) \end{tikzcd} \]
+    除以
+    \[ \begin{tikzcd} (8,512) \ar[rr,"g"] \ar[rr,swap,"(1{,}5)"] & &  (8,8,512,512,512) \end{tikzcd} \]
+    所得的逻辑切分是
+    \[ \begin{tikzcd} ((8,512),(8,512,512)) \ar[rr,"f \oslash g"] \ar[rr,swap,"(*{,}1{,}*{,}2{,}3)"] & &  ((4,2),(4,2)). \end{tikzcd} \]
+\end{example}
+
+
+
+\begin{proposition}\label{coalesceoflogicaldivision}
+    若 $g:S \to T$ 与 $f:T \to U$ 是非退化嵌套元组态射，则
+    \[
+    \coalesce(L_{f \oslash g}) = \coalesce(L_f \oslash L_g).
+    \]
+\end{proposition}
+
+\begin{proof}
+由命题 \ref{coalescedlayoutoftuplemorphismcomplement}，我们有
+\[
+\coalesce(\comp(L_g,\size(L_f))) = \coalesce(L_{g^c})
+\]
+并且我们计算
+    \begin{align*}
+        \coalesce(L_f \oslash L_g) & = \coalesce(L_f \circ \left(L_g , \comp(L_g,\size(L_f))\right))\\
+        & = \coalesce( L_{f} \circ (L_g, L_{g^c}))\\
+        & = \coalesce(L_{f} \circ L_{(g,g^c)})\\
+        & = \coalesce(L_{f} \circ L_{(g,g^c)})\\
+        & = \coalesce(L_{f \circ (g,g^c)})\\
+        & = \coalesce(L_{f \oslash g}).
+    \end{align*}
+\end{proof}
+
+\begin{proposition}
+    若 $f$ 与 $g$ 是嵌套元组（nested tuple）且 $g$ 整除 $f$，则
+    \[
+    (f \oslash g)^\flat = f^\flat\oslash^\flat g^\flat.
+    \]
+\end{proposition}
+
+\begin{proof}
+    我们计算
+    \begin{align*}
+    (f \oslash g)^\flat & = (f \circ (g,g^c))^\flat\\
+    & = f^\flat \circ (g,g^c)^\flat\\
+    & = f^\flat \circ (g^\flat \star (g^c)^\flat)\\
+    & = f^\flat \circ (g^\flat \star (g^\flat)^c)\\
+    & = f^\flat \oslash^\flat g^\flat.
+    \end{align*}
+\end{proof}
+
+
+\subsubsection{逻辑乘积}
+本节中，我们定义嵌套元组态射的逻辑乘积。
+\begin{definition}\label{definitionoflogicalproductofnestedtuplemorphisms}
+设 $f$ 与 $g$ 是嵌套元组态射。若 $\codomain(g) = \domain(f^c)$，则称 $f$ 与 $g$ 是{\it 乘积可许的}（product admissible）。若 $f$ 与 $g$ 乘积可许，我们把 $f$ 与 $g$ 的{\it 逻辑乘积}（logical product）定义为嵌套元组态射
+\[
+f \otimes g = (f , f^c \circ g).
+\]
+\end{definition}
+
+
+
+
+\begin{example}
+    嵌套元组态射
+    \[\begin{tikzcd}
+    (8,8) \ar[rr,"f"] \ar[rr,swap,"(1{,}2)"] & &  (8,8,16,16)
+    \end{tikzcd} \]
+    与
+    \[\begin{tikzcd}
+    (16,16) \ar[rr,"g"] \ar[rr,swap,"(1{,}2)"] & &  (16,16)
+    \end{tikzcd} \]
+    是乘积可许的，它们的逻辑乘积是
+    \[\begin{tikzcd}
+    ((8,8),(16,16))  \ar[rr,"f\otimes g"] \ar[rr,swap,"(1{,}2{,}3{,}4)"] & &  (8,8,16,16).
+    \end{tikzcd} \]
+\end{example}
+\begin{example}
+    嵌套元组态射
+    \[\begin{tikzcd}
+    (128,128) \ar[rr,"f"] \ar[rr,swap,"(3{,}4)"] & &  (32,32,128,128)
+    \end{tikzcd} \]
+    与
+    \[\begin{tikzcd}
+    (32) \ar[rr,"g"] \ar[rr,swap,"(2)"] & &  (32,32)
+    \end{tikzcd} \]
+    是乘积可许的，它们的逻辑乘积是
+    \[\begin{tikzcd}
+    ((128,128),(32))  \ar[rr,"f\otimes g"] \ar[rr,swap,"(3{,}4{,}2)"] & &  (32,32,128,128).
+    \end{tikzcd} \]
+\end{example}
+
+
+
+
+\begin{proposition}\label{logicalproductcompatibility}
+    设 $f$ 与 $g$ 是非退化嵌套元组态射且 $f$ 与 $g$ 乘积可许。则
+    \[
+    L_{f \otimes g} = L_f \otimes L_g.
+    \]
+\end{proposition}
+
+\begin{proof} 设 $f:S \to T$ 与 $g:U \to V$ 乘积可许，并令
+    \[
+    L_f^* = \comp(L_f,\size(L_f)\cdot \cosize(L_g))
+    \]
+    由于 $f$ 是单射且 $\codomain(g) = \domain(f^c)$，可知
+    \[\size(L_f) \cdot \cosize(L_g) \leq \size(S) \cdot \size(V) = \size(T).\]
+    利用这一事实，以及事实
+    \[\Phi_{\comp(L_f,\size(T))} = \Phi_{L_{f^c}},\]
+    我们有
+    \begin{align*}
+    L_f^* \circ L_g & = \comp(L_f,\size(T)) \circ L_g\\
+    & = L_{f^c} \circ L_g.
+    \end{align*}
+    再利用这一事实，我们计算
+    \begin{align*}
+        L_f \otimes L_g & = (L_f , L_f^* \circ L_g)\\
+        & = (L_f , L_{f^c} \circ L_g)\\
+        & = (L_f , L_{f^c \circ g})\\
+        & = L_{(f , f^c \circ g)}\\
+        & = L_{f \otimes g}
+    \end{align*}
+\end{proof}
+
+\newpage
+

@@ -91,6 +91,48 @@ nsys 与 ncu 的采集原理完全不同：
 反着来的代价见本章开头的反例二：先 ncu 后 nsys，等于对着一个可能不重要的
 kernel 做了半天细胞级切片。
 
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  font=\footnotesize,
+  box/.style={draw, rounded corners=2pt, align=center, inner sep=3pt,
+    font=\scriptsize, text width=2.2cm, minimum height=1.0cm},
+  ar/.style={-{Stealth[length=1.8mm]}, semithick}
+]
+  \node[box, text width=1.3cm] (e2e) at (0.95, 0) {e2e\\落后};
+  \node[box, fill=gray!15] (nsys) at (3.4, 0)
+    {nsys 全局时间线\\\texttt{-t cuda} 单域\\kern\_sum 占比排序};
+  \node[box] (top) at (6.35, 0)
+    {Top-1/2 kernel\\主 kernel 占 86--92\%\\$\to$ 辅助链上限仅 14\%};
+  \node[box, fill=gray!40] (ncu) at (9.3, 0)
+    {ncu 单 kernel 深挖\\\texttt{-{}-set full}\\\texttt{regex:} 名字前缀};
+  \node[box] (judge) at (12.35, 0)
+    {指标判读\\（接决策树\\图~\ref{fig:0-1}）};
+  \draw[ar] (e2e.east) -- (nsys.west);
+  \draw[ar] (nsys.east) -- (top.west);
+  \draw[ar] (top.east) -- (ncu.west);
+  \draw[ar] (ncu.east) -- (judge.west);
+  \node[box, fill=gray!65] (modi) at (12.35, -2.35)
+    {单变量修改\\每次只改一处};
+  \node[box, fill=gray!65] (diff) at (8.9, -2.35)
+    {复测 \texttt{-{}-diff}\\前后指标对照};
+  \node[box] (keep) at (5.2, -2.35) {有效 $\to$ 保留};
+  \draw[ar] (judge.south) -- (modi.north);
+  \draw[ar] (modi.west) -- (diff.east);
+  \draw[ar] (diff.west) -- (keep.east)
+    node[midway, above, font=\scriptsize] {有效};
+  \node[box, dashed] (revert) at (8.9, -4.1)
+    {无效 / 负优化\\$\to$ 回退};
+  \draw[ar] (diff.south) -- (revert.north)
+    node[midway, right, font=\scriptsize] {无效};
+  \draw[ar, dashed] (revert.east) -- (14.1, -4.1) -- (14.1, 0) -- (judge.east);
+  \node[font=\scriptsize, anchor=west, text=black!60] at (14.25, -2.0)
+    {回到判读};
+\end{tikzpicture}
+\caption{nsys $\to$ ncu $\to$ 单变量修改 $\to$ 复测 \texttt{-{}-diff} 的闭环工作流：nsys 先给全局占比与优化预算（主 kernel 占 86--92\%，辅助链上限仅 14\%，对应 \S\ref{sec:ch00-cases} 例一）；ncu 只深挖 Top-1/2 kernel；每次只改一处，复测后无效立即回退、回到指标判读。泳道灰度：nsys 15\%、ncu 40\%、修改/复测 65\%。}
+\label{fig:0-2}
+\end{figure}
+
 \section{nsys 命令行实战}\label{sec:ch00-nsys}
 
 \subsection{最小采集}
@@ -250,6 +292,52 @@ fp8 attention kernel 的实例：REG:255 直接把 \texttt{Block Limit Registers
 （见 \S\ref{sec:ch00-cases} 例二）。注意 ch01 的告诫：occupancy 是手段不是
 KPI，GEMM 类 kernel 用大 tile + 低 occupancy + 高 ILP 换性能是常态。
 
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\footnotesize,
+  lab/.style={font=\scriptsize, inner sep=1pt}]
+  \draw[-{Stealth[length=1.8mm]}] (0, 0) -- (13.3, 0);
+  \draw[-{Stealth[length=1.8mm]}] (0, 0) -- (0, 6.75);
+  \foreach \x/\t in {1.44/32, 2.88/64, 5.76/128, 8.64/192, 11.52/256}
+    {
+      \draw (\x, 0) -- (\x, -0.08);
+      \node[lab, anchor=north] at (\x, -0.1) {\t};
+    }
+  \foreach \y/\t in {0.92/8, 1.84/16, 2.76/24, 3.68/32, 4.60/40}
+    {
+      \draw (0, \y) -- (-0.08, \y);
+      \node[lab, anchor=east] at (-0.1, \y) {\t};
+    }
+  \draw (0, 5.52) -- (-0.08, 5.52);
+  \node[lab, anchor=east, font=\scriptsize\bfseries] at (-0.1, 5.52) {48};
+  \draw[tkBlue, semithick] plot[smooth] coordinates
+    {(1.80,5.89) (2.16,4.91) (2.52,4.21) (2.88,3.68) (3.24,3.27) (3.60,2.94)
+     (4.32,2.45) (5.04,2.10) (5.76,1.84) (7.20,1.47) (8.64,1.23) (10.08,1.05)
+     (11.52,0.92)};
+  \draw[tkOrange, semithick] (0.3, 3.68) -- (7.9, 3.68);
+  \draw[tkPurple, semithick] (0.3, 5.52) -- (11.8, 5.52);
+  \draw[very thick]
+    (0.3,3.68) -- (2.88,3.68) -- (2.88,2.76) -- (3.83,2.76) -- (3.83,1.84)
+    -- (5.76,1.84) -- (5.76,0.92) -- (11.52,0.92);
+  \node[lab, anchor=south west, text=tkPurple] at (4.7, 5.72) {block/warp 槽位上限：48 warps};
+  \node[lab, anchor=south west, align=left, text=tkOrange] at (3.3, 3.9)
+    {smem 约束（示例：\\smem/block=32KB，T=256）\\$\to$ 上限 32 warps};
+  \node[lab, anchor=west, align=left, text=tkBlue] at (11.68, 0.92)
+    {寄存器约束\\$65536/(32r)$};
+  \node[lab, anchor=west, align=left] at (11.68, 2.35)
+    {粗黑阶梯 = min\\（整 block 量化，\\T=256 $\to$ 8 warps/级）};
+  \fill (11.48, 1.38) circle (0.07);
+  \draw[black!60, thin] (9.8, 4.1) -- (11.42, 1.47);
+  \node[lab, anchor=north west, align=left] at (8.45, 5.25)
+    {实测点（WS 结构，例二）：\\consumer REG 255 / producer 32\\
+     1 CTA/SM = 12 warps（384T）\\理论 occupancy 25\%（12/48）};
+  \node[lab, anchor=north] at (6.65, -0.42) {每线程寄存器数 $r$（regs/thread）};
+  \node[lab, rotate=90, anchor=south] at (-0.95, 3.3) {可驻留 warp/SM};
+\end{tikzpicture}
+\caption{理论 occupancy 的三限制源取 min（sm\_120，48 warp 槽位口径）：寄存器约束 $65536/(32r)$（warp 粒度简化）随每线程寄存器数 $r$ 下降；smem 与槽位为水平约束（示例：smem/block=32KB、T=256 $\to$ 32 warps）。粗黑阶梯为按整 block（T=256，8 warps/block）量化的 min 包络；实测点为 WS 结构（producer 32 / consumer 232 regs）1 CTA/SM = 12 warps（384T），理论 occupancy 25\%（12/48）。}
+\label{fig:0-3}
+\end{figure}
+
 \subsection{寄存器与 spill：255 墙}
 
 \texttt{launch\_\allowbreak{}\_\allowbreak{}registers\_\allowbreak{}per\_\allowbreak{}thread} 给出每线程寄存器数，硬上限
@@ -357,6 +445,74 @@ ld conflict 仅 0.39\%，且 MUFU 等待被 MMA 掩盖，整个方向当场否�
 \section{瓶颈判断决策树}\label{sec:ch00-tree}
 
 把上述指标串成一条判断流程（数值阈值为工程经验值，非硬边界）：
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  font=\footnotesize,
+  box/.style={draw, rounded corners=2pt, align=center, inner sep=3pt,
+    text width=2.6cm, minimum height=8mm},
+  dec/.style={box, draw=tkBlue, fill=tkFillBlue},
+  memb/.style={box, draw=tkOrange, fill=tkFillOrange},
+  cpub/.style={box, draw=tkPurple, fill=tkFillPurple},
+  latb/.style={box, draw=tkRed, fill=tkFillRed},
+  balb/.style={box, draw=tkGreen, fill=tkFillGreen},
+  det/.style={draw, align=left, inner sep=3pt, font=\scriptsize,
+    text width=5.1cm, fill=white},
+  detm/.style={det, draw=tkOrange!85},
+  detc/.style={det, draw=tkPurple!85},
+  detl/.style={det, draw=tkRed!70},
+  badge/.style={circle, draw=black!70, fill=white, inner sep=0pt,
+    minimum size=3.6mm, font=\scriptsize\bfseries, anchor=south east},
+  ar/.style={-{Stealth[length=1.8mm]}, semithick},
+  arm/.style={ar, draw=tkOrange},
+  arc/.style={ar, draw=tkPurple},
+  arl/.style={ar, draw=tkRed!85}
+]
+  \node[dec] (root) at (0, 0.55) {读 SOL\\（SM\% / MEM\%）};
+  \node[badge] at (root.north west) {1};
+  \node[memb] (mcond) at (3.8, 4.2) {MEM\% $\gg$ SM\%\\（差 $>$20）};
+  \node[memb] (mver) at (7.9, 4.2) {memory-bound\\分层归因};
+  \node[badge] at (mver.north west) {4};
+  \node[detm] (md1) at (12.9, 5.4) {DRAM $>$70\% $\to$ 带宽墙\\对策：减流量（融合 / 低精度 / 去物化）};
+  \node[detm] (md2) at (12.9, 4.2) {L2 hit $<$50\% 且 DRAM $>$40\%\\$\to$ 工作集 / L2 局部性（CTA swizzle）};
+  \node[detm] (md3) at (12.9, 3.0) {L1 hit $<$20\% 而 L2 高\\$\to$ smem tiling / 复用不足};
+  \node[cpub] (ccond) at (3.8, 1.2) {SM\% $\gg$ MEM\%};
+  \node[cpub] (cver) at (7.9, 1.2) {compute-bound\\查饱和质量};
+  \node[badge] at (cver.north west) {5};
+  \node[detc] (cd1) at (12.9, 1.8) {tensor pipe 高 = 健康\\$\to$ 减 FLOPs 或更低精度};
+  \node[detc] (cd2) at (12.9, 0.6) {pipe\_fma / alu 高、tensor 低\\$\to$ 该上 MMA 指令（ch10--11）};
+  \node[latb] (lcond) at (3.8, -1.8) {双低\\（都 $<$40）};
+  \node[latb] (lver) at (7.9, -1.8) {latency-bound\\stall 前二名分流};
+  \node[badge] at (lver.north west) {2};
+  \node[detl] (ld1) at (12.9, -0.6) {\texttt{wait} / \texttt{math\_pipe\_throttle} 主导\\$\to$ 拆链、增并行 warp};
+  \node[detl] (ld2) at (12.9, -1.8) {\texttt{long\_scoreboard} 主导\\$\to$ 异步装载（TMA / cp.async）};
+  \node[detl] (ld3) at (12.9, -3.0) {\texttt{sleeping} / \texttt{barrier} 主导\\$\to$ 重排 producer/consumer（WS）};
+  \node[detl, dashed, text width=5.5cm] (occ) at (7.9, -4.55) {先查 occupancy 限制源：\\limiter = regs/smem $\to$ 先解资源\\（缩 tile、降 stage、launch\_bounds）\\「增并行 warp」以有 warp 可增为前提};
+  \node[badge] at (occ.north west) {3};
+  \node[balb] (dcond) at (3.8, -6.15) {双高\\（都 $>$60）};
+  \node[balb] (dver) at (7.9, -6.15) {接近平衡上限\\$\to$ 停止优化};
+  \draw[ar, draw=tkBlue] (root.east) -- (mcond.west);
+  \draw[ar, draw=tkBlue] (root.east) -- (ccond.west);
+  \draw[ar, draw=tkBlue] (root.east) -- (lcond.west);
+  \draw[ar, draw=tkBlue] (root.east) -- (dcond.west);
+  \draw[arm] (mcond) -- (mver);
+  \draw[arc] (ccond) -- (cver);
+  \draw[arl] (lcond) -- (lver);
+  \draw[ar, draw=tkGreen] (dcond) -- (dver);
+  \draw[arm] (mver.east) -- (md1.west);
+  \draw[arm] (mver.east) -- (md2.west);
+  \draw[arm] (mver.east) -- (md3.west);
+  \draw[arc] (cver.east) -- (cd1.west);
+  \draw[arc] (cver.east) -- (cd2.west);
+  \draw[arl] (lver.east) -- (ld1.west);
+  \draw[arl] (lver.east) -- (ld2.west);
+  \draw[arl] (lver.east) -- (ld3.west);
+  \draw[arl, dashed] (lver.south) -- (occ.north);
+\end{tikzpicture}
+\caption{瓶颈判断决策树：先读 SOL（SM\%/MEM\%）四分流——蓝为入口判断，橙为 memory-bound 链，紫为 compute-bound 链，红为 latency-bound 链，绿为双高（停止优化）；对策框白底、边框沿用所属分支色。节点角标 1--5 对应正文 enumerate 步骤（阈值为工程经验值）。}
+\label{fig:0-1}
+\end{figure}
 
 \begin{enumerate}
 \item \textbf{先看 SOL}：MEM\% $\gg$ SM\%（差 $>$20）$\to$ memory-bound，

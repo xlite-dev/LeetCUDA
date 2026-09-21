@@ -43,6 +43,74 @@
         用户也是误导。
 \end{itemize}
 
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize]
+  \definecolor{gearred}{RGB}{178,34,34}
+  \fill[gray!14] (0,0) rectangle (3.857,4.8);
+  \fill[gray!32] (3.857,0) rectangle (9.0,4.8);
+  \node[align=center, font=\tiny] at (1.95,4.42) {SDPA-FA2\\（融合 kernel）};
+  \node[align=center, font=\tiny] at (6.45,4.42) {SDPA-MATH：materialize\\$N_q{\times}N_{kv}$（8192$^2$）矩阵};
+  \draw[dashed, thick] (3.857,0) -- (3.857,4.8);
+  \node[above, font=\tiny] at (3.857,4.82) {换挡点 $D{=}256$};
+  \draw[->] (0,0) -- (9.6,0);
+  \node[below] at (9.3,-0.05) {$D$};
+  \draw[->] (0,0) -- (0,5.3);
+  \node[left] at (0.03,5.15) {speedup};
+  \foreach \dx/\dl in {0/64,1.286/128,3.857/256,9.0/512}{
+    \draw (\dx,0) -- (\dx,-0.07);
+    \node[below, font=\tiny, inner sep=1pt] at (\dx,-0.08) {\dl};
+  }
+  \foreach \dy/\dl in {0/1.0,1.091/1.5,2.182/2.0,3.273/2.5,4.364/3.0}{
+    \draw (0,\dy) -- (-0.07,\dy);
+    \node[left, font=\tiny, inner sep=1pt] at (-0.08,\dy) {\dl};
+  }
+  \draw[gray, thin] (0,0.567) -- (1.286,1.527) -- (3.857,0.655) -- (9.0,4.327);
+  \fill (0,0.567) circle (0.05);
+  \fill (1.286,1.527) circle (0.05);
+  \fill (3.857,0.655) circle (0.05);
+  \fill (9.0,4.327) circle (0.05);
+  \node[above right=-1pt and 1pt, font=\tiny] at (0,0.567) {1.26$\times$};
+  \node[above right=-1pt and 1pt, font=\tiny] at (1.286,1.527) {1.70$\times$};
+  \node[below right=-1pt and 1pt, font=\tiny] at (3.857,0.655) {1.30$\times$};
+  \node[above left=-1pt and 1pt, font=\tiny] at (9.0,4.327) {2.98$\times$};
+  \draw[->, gearred, thick] (4.1,0.95) to[bend left=18] (8.75,4.05);
+  \node[gearred, align=center, font=\tiny] at (6.35,2.1)
+    {同为 split-D 家族（D=256/512）\\1.30$\to$2.98 的跳变主要来自\\参照换挡（右图分解）};
+  \node[anchor=south, font=\scriptsize\bfseries] at (4.8,5.45)
+    {SDPA 参照后端换挡带（表~\ref{tab:33-fp8-matrix} self 行）};
+  \begin{scope}[xshift=10.5cm]
+    \draw[->] (0,0) -- (4.4,0);
+    \draw[->] (0,0) -- (0,7.4);
+    \node[left, font=\tiny] at (-0.05,7.2) {ms};
+    \fill[gray!22] (0.40,0) rectangle (1.40,2.28);
+    \fill[gray!45] (1.90,0) rectangle (2.90,2.96);
+    \fill[gray!68] (3.40,0) rectangle (4.40,6.80);
+    \node[above, font=\tiny] at (0.9,2.32) {21.71};
+    \node[above, font=\tiny] at (2.4,3.00) {$\approx$28.2};
+    \node[above, font=\tiny] at (3.9,6.84) {64.74};
+    \node[below, font=\tiny, align=center, inner sep=1pt] at (0.9,-0.08) {FFPA\\split-D};
+    \node[below, font=\tiny, align=center, inner sep=1pt] at (2.4,-0.08) {SDPA 若 FA2 级\\（外推）};
+    \node[below, font=\tiny, align=center, inner sep=1pt] at (3.9,-0.08) {SDPA-MATH\\实测};
+    \node[anchor=west, align=left, text width=1.6cm, font=\tiny] at (4.5,4.6)
+      {$64.74/21.71$\\{$=$} 2.98$\times$\\{$=$} 1.30$\times$（真）\\{$\times$} 2.29$\times$（参照）};
+    \node[anchor=south, font=\scriptsize\bfseries] at (2.2,7.7) {D=512 self 的 2.98$\times$ 归因};
+  \end{scope}
+  \node[anchor=north west, align=left, text width=14.5cm, font=\tiny] at (0,-1.20)
+    {「3$\times$」里一大半是 MATH 参照自身的低效，不是量化快（坑 6）——报告
+     $D{>}256$ 的 speedup 必须注明参照换挡。外推口径：D=256 同为 split-D 家族且参照是
+     FA2，实测 1.30$\times$ 借作「真加速」估计；$21.71\times1.30\approx28.2$ms，
+     $64.74/28.2\approx2.29\times$。};
+\end{tikzpicture}
+\caption{参照系视角看表~\ref{tab:33-fp8-matrix} 的 self 行。左：SDPA 参照随 $D$
+换挡——FA2 只覆盖 $D\le256$，更大 $D$ 静默落到 MATH（materialize
+$N_q\times N_{kv}$ 矩阵）；四个 speedup 点（1.26/1.70/1.30/2.98$\times$）落在换挡
+带上，D=512 的跳变与 kernel 无关。右：D=512 的 $2.98\times$ 归因——以 D=256 同
+家族（split-D、FA2 参照）实测 1.30$\times$ 为真加速估计，MATH 参照自身再慢
+$\times$2.29：「3$\times$」的大头是参照低效（坑 6）。}
+\label{fig:33-sdpa-gear}
+\end{figure}
+
 \textbf{度量陷阱二：精度口径}。allclose 是布尔值，信息量极低：
 \begin{itemize}[itemsep=0pt,topsep=2pt]
   \item fp4 的 e2m1 网格噪声决定了它的容差天然比 fp8 宽一个量级
@@ -97,6 +165,54 @@ $\alpha=0.3$、$S_{\mathrm{attn}}=2.5$x 时 $S_{\mathrm{e2e}}\approx1.22$x
 ——attention 只省下 $0.3T\times0.6=0.18T$，总时从 $T$ 降到
 $0.82T$。这解释了为什么扩散模型（attention 占比高、D 偏小）是量化 attention
 的第一落地场景，也是 Cache-DiT 集成（33.7 节）的价值前提。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize]
+  \def\axw{8.0}
+  \def\aysc{2.909}
+  \draw[->] (0,0) -- ({\axw+0.30},0);
+  \draw[->] (0,0) -- (0,7.05);
+  \node[left, font=\tiny, align=right] at (-0.05,6.95) {$S_{\mathrm{e2e}}$};
+  \foreach \sv in {1.0,1.5,2.0,2.5,3.0}{
+    \pgfmathsetmacro{\yv}{(\sv-1)*\aysc}
+    \draw (-0.07,\yv) -- (0.07,\yv);
+    \node[left, font=\tiny, inner sep=1pt] at (-0.10,\yv) {\sv};
+  }
+  \foreach \xt in {0.25,0.5,0.75}{
+    \pgfmathsetmacro{\xv}{\xt*\axw}
+    \draw (\xv,-0.07) -- (\xv,0.07);
+    \node[below, font=\tiny, inner sep=1pt] at (\xv,-0.09) {\xt};
+  }
+  \node[below, font=\tiny, inner sep=1pt] at (0,-0.09) {0};
+  \node[below, font=\tiny, inner sep=1pt] at (\axw,-0.09) {1};
+  \node[anchor=north east, font=\tiny] at ({\axw+0.28},-0.02) {$\alpha$};
+  \foreach \Sa/\gs in {1.5/16,2/34,2.5/52,3/72}{
+    \draw[gray!\gs, very thick, samples=100, domain=0:0.995]
+      plot ({\x*\axw},{(1/(1-\x*(1-1/\Sa))-1)*\aysc});
+  }
+  \node[anchor=west, font=\tiny] at (8.06,1.32) {$1.5\times$};
+  \node[anchor=west, font=\tiny] at (8.06,2.62) {$2\times$};
+  \node[anchor=west, font=\tiny] at (8.06,3.86) {$2.5\times$};
+  \node[anchor=west, font=\tiny] at (8.06,5.06) {$3\times$};
+  \node[anchor=west, font=\tiny, align=left] at (8.06,6.30)
+    {右端渐近\\$S_{\mathrm{attn}}$};
+  \fill (2.40,0.639) circle (0.05);
+  \draw[gray!60, thick, densely dashed] (2.40,0.72) -- (2.40,1.48);
+  \node[anchor=south west, align=left, font=\tiny] at (0.36,1.52)
+    {$\alpha{=}0.3$、$S_{\mathrm{attn}}{=}2.5$\\ $\Rightarrow S_{\mathrm{e2e}}{\approx}1.22\times$（总时 $0.82T$）};
+  \node[anchor=north west, align=left, text width=9.7cm, font=\tiny] at (-0.75,-0.60)
+    {曲线族 $S_{\mathrm{attn}}\in\{1.5,2,2.5,3\}$：attention 只省下
+     $\alpha(1-1/S_{\mathrm{attn}})$ 的比例，$\alpha\to1$ 时 $S_{\mathrm{e2e}}\to S_{\mathrm{attn}}$
+     （上界）。扩散模型（attention 占比高、D 偏小）是量化 attention 的第一落地场景；
+     NeMo Automodel 案例（$D{=}512$、全注意力层 10/60、训练 e2e $1.4\times$--$1.5\times$）
+     是同一公式在训练侧的实例。};
+\end{tikzpicture}
+\caption{端到端摊销曲线族（式~\ref{eq:33-e2e}）：单算子 $S_{\mathrm{attn}}$ 换算到
+管线收益由 attention 占比 $\alpha$ 封顶。$\alpha{=}0.3$、$S_{\mathrm{attn}}{=}2.5\times$
+时只剩 $1.22\times$；$\alpha\to1$ 的渐近线即 $S_{\mathrm{attn}}$。}
+\label{fig:33-e2e-amortize}
+\end{figure}
 
 \subsection{精度指标体系}
 
@@ -186,53 +302,114 @@ CLI 默认值即推荐值：纯 fp8 QK + f32 累加 + Q/K/V 全 per-block
 （更细粒度、对齐 Sage 配置），两套默认不同——对比数据时必须对齐
 preset。knob 的边际效应见 33.6.3。
 
-\section{图示}
+\section{实测数据总览}
 
-四张图分两个数据源。图~\ref{fig:33-5090-fp8} 与图~\ref{fig:33-5090-fp4}
+四张表分两个数据源。表~\ref{tab:33-5090-fp8} 与表~\ref{tab:33-5090-fp4}
 是 ffpa-attn README 引用的 RTX 5090 结果（B1 H64 N=16384 D=128）：fp8 对
-Sage2/SDPA 的领先与 fp4 的 2.60x 满血区，用于建立「能到多少」的量级预期。
-图~\ref{fig:33-pro5000-fp8} 与图~\ref{fig:33-pro5000-fp4} 是本机 PRO 5000
-的复测（H32/Hkv8，bench 脚本默认 preset）：fp8 与 Sage 总体打平、互有
-胜负，fp4 全场景领先——绝对 TFLOPS 比 5090 低 $\sim$15\%（fp8）/$\sim$35\%
-（fp4），但形态一致。读图时记住本章动机节的三陷阱：参照系、preset 与
-GPU 状态是三个最常见的失真源。
+Sage2/SDPA 的领先与 fp4 非因果场景 2.2$\sim$2.3x 的满血区，用于建立
+「能到多少」的量级预期。表~\ref{tab:33-pro5000-fp8} 与
+表~\ref{tab:33-pro5000-fp4} 是本机 PRO 5000 的复测（H32/Hkv8，bench
+脚本默认 preset，2026-09-21）：fp8 与 Sage 总体打平、互有胜负（差距
+$\pm$4\% 内），fp4 全场景领先——绝对 TFLOPS 比 5090 低 $\sim$15\%
+（fp8）/$\sim$30\%（fp4），但形态一致。读表时记住本章动机节的三陷阱：
+参照系、preset 与 GPU 状态是三个最常见的失真源。
 
-\begin{figure}[!htbp]
-  \centering
-  \includegraphics[width=0.98\textwidth]{figures/ffpa/fp8/ffpa_speedup_nvidia-geforce-rtx-5090_B1_H64_N16384_D128_T.png}
-  \caption{RTX 5090 上的 fp8 speedup（D=128，B1 H64 N=16384；
-  FFPA-FP8 $\approx$441T vs Sage2 394T vs SDPA 291T）。图源：
-  ffpa-attn README，\texttt{bench\_fp8.py} 口径。}\label{fig:33-5090-fp8}
-\end{figure}
+\begin{table}[!htbp]
+  \centering\small
+  \caption{RTX 5090 fp8 对照（D=128，B1 H64 N=16384，TFLOPS；数据源：
+  ffpa-attn README，\texttt{bench\_fp8.py} 口径）}\label{tab:33-5090-fp8}
+  \begin{tabular}{lcccc}
+    \toprule
+    场景 & SDPA-FA2 & Sage2 & FFPA-FP8 & FFPA/SDPA \\
+    \midrule
+    self               & 353.35 & 396.83 & 445.60 & 1.26x \\
+    causal             & 349.34 & 390.34 & 440.04 & 1.26x \\
+    gqa                & 351.25 & 402.43 & 437.57 & 1.25x \\
+    gqa-causal         & 348.71 & 390.94 & 431.67 & 1.24x \\
+    cross-dense        & 349.58 & 389.53 & 441.74 & 1.26x \\
+    non-aligned-dense  & 352.75 & 392.46 & 437.51 & 1.24x \\
+    non-aligned-causal & 349.33 & 379.59 & 426.69 & 1.22x \\
+    \bottomrule
+  \end{tabular}
+\end{table}
 
-\begin{figure}[!htbp]
-  \centering
-  \includegraphics[width=0.98\textwidth]{figures/ffpa/fp4/ffpa_speedup_nvidia-geforce-rtx-5090_B1_H64_N16384_D128_T.png}
-  \caption{RTX 5090 上的 fp4 speedup（同形状；FFPA-FP4 $\approx$804T
-  / 2.60x，比同场 fp8 再快 1.8x——blockscale MMA 的满血区）。
-  图源同上；README 文本宣传口径（850--980 TOPS / 3.8x$\sim$4.4x，
-  D=128--256 区间）为不同期的后续版本，与本图（D=128 单点）不同期。}
-  \label{fig:33-5090-fp4}
-\end{figure}
+\begin{table}[!htbp]
+  \centering\small
+  \caption{RTX 5090 fp4 对照（同形状，TFLOPS；数据源同上。FFPA-FP4 在
+  非因果场景约为同场 fp8 的 1.8x——blockscale MMA 的满血区；README 文本
+  宣传口径（850--980 TOPS / 3.8x$\sim$4.4x，D=128--256 区间）为不同期
+  的后续版本，与本表（D=128 单点）不同期）}\label{tab:33-5090-fp4}
+  \begin{tabular}{lccccc}
+    \toprule
+    场景 & SDPA-FA2 & FFPA-FP8 & FFPA-FP4 & Sage3 & FP4/SDPA \\
+    \midrule
+    self               & 353.35 & 441.87 & 803.69 & 563.38 & 2.27x \\
+    causal             & 349.34 & 436.67 & 631.86 & 423.01 & 1.81x \\
+    gqa                & 351.25 & 449.12 & 822.32 & 609.79 & 2.34x \\
+    gqa-causal         & 348.71 & 441.07 & 771.13 & 564.42 & 2.21x \\
+    cross-dense        & 349.58 & 439.09 & 799.84 & 561.45 & 2.29x \\
+    non-aligned-dense  & 352.75 & 436.61 & 783.41 & 576.17 & 2.22x \\
+    non-aligned-causal & 349.33 & 429.62 & 608.88 & 437.60 & 1.74x \\
+    \bottomrule
+  \end{tabular}
+\end{table}
 
-\begin{figure}[!htbp]
-  \centering
-  \includegraphics[width=0.98\textwidth]{figures/ffpa/fp8/fig-33-3-pro5000-fp8-tflops.png}
-  \caption{本机 PRO 5000 复测（fp8，D=128 fp16，H32/Hkv8，
-  \texttt{bench\_fp8.py} 默认 preset，2026-09-16）：七个场景 $\times$
-  8K/16K。与 Sage 总体打平、互有胜负（self 8K FFPA +2.0\%，
-  gqa 16K Sage +1.4\%，最差差 2.6\%）；与 5090 图的形态一致，绝对
-  TFLOPS 低 $\sim$15\%（SM 数与功耗包络差异）。}\label{fig:33-pro5000-fp8}
-\end{figure}
+\begin{table}[!htbp]
+  \centering\small
+  \caption{本机 PRO 5000 fp8 复测（D=128 fp16，H32/Hkv8，
+  \texttt{bench\_fp8.py} 默认 preset，2026-09-21，TFLOPS；FFPA/Sage 为
+  两者 TFLOPS 之比，$\pm$4\% 内互有胜负）}\label{tab:33-pro5000-fp8}
+  \begin{tabular}{lcccccc}
+    \toprule
+    场景 & Nq & FFPA-FP8 & Sage2 & SDPA-FA2 & FFPA/SDPA & FFPA/Sage \\
+    \midrule
+    self               & 8192  & 354.5 & 345.8 & 213.8 & 1.66x & 1.025 \\
+    causal             & 8192  & 286.6 & 283.5 & 203.9 & 1.41x & 1.011 \\
+    gqa                & 8192  & 385.0 & 379.0 & 213.8 & 1.80x & 1.016 \\
+    gqa-causal         & 8192  & 327.1 & 329.0 & 204.2 & 1.60x & 0.994 \\
+    cross-dense        & 8192  & 365.3 & 351.3 & 215.8 & 1.69x & 1.040 \\
+    non-aligned-dense  & 8192  & 341.1 & 342.3 & 220.1 & 1.55x & 0.996 \\
+    non-aligned-causal & 8192  & 278.7 & 277.5 & 195.9 & 1.42x & 1.004 \\
+    \midrule
+    self               & 16384 & 382.1 & 375.7 & 216.3 & 1.77x & 1.017 \\
+    causal             & 16384 & 336.9 & 329.9 & 216.3 & 1.56x & 1.021 \\
+    gqa                & 16384 & 397.6 & 392.9 & 216.4 & 1.84x & 1.012 \\
+    gqa-causal         & 16384 & 364.9 & 362.2 & 216.4 & 1.69x & 1.007 \\
+    cross-dense        & 16384 & 378.5 & 377.9 & 215.9 & 1.75x & 1.002 \\
+    non-aligned-dense  & 16384 & 368.9 & 373.3 & 223.1 & 1.65x & 0.988 \\
+    non-aligned-causal & 16384 & 334.9 & 329.6 & 209.2 & 1.60x & 1.016 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
 
-\begin{figure}[!htbp]
-  \centering
-  \includegraphics[width=0.98\textwidth]{figures/ffpa/fp4/fig-33-4-pro5000-fp4-tflops.png}
-  \caption{本机 PRO 5000 复测（fp4，同形状，\texttt{bench\_fp4.py}，
-  2026-09-16）：FFPA-FP4（紫）在所有场景领先；Sage3 在 GQA 行缺席
-  （不支持），causal 行其 rel\_err 达 0.59（早期行 e2m1 噪声无
-  hybrid 抑制）而 FFPA-FP4 为 0.14。}\label{fig:33-pro5000-fp4}
-\end{figure}
+\begin{table}[!htbp]
+  \centering\small
+  \caption{本机 PRO 5000 fp4 复测（D=128，\texttt{bench\_fp4.py}，
+  2026-09-21，TFLOPS；Sage3 在 gqa 行缺席（不支持），其 causal 类行
+  rel\_err 达 0.57--0.59（早期行 e2m1 噪声无 hybrid 抑制），FFPA-FP4
+  为 0.14--0.15）}\label{tab:33-pro5000-fp4}
+  \begin{tabular}{lccccccc}
+    \toprule
+    场景 & Nq & FFPA-FP4 & FFPA-FP8 & Sage3 & SDPA-FA2 & FP4/SDPA & FP4/FP8 \\
+    \midrule
+    self               & 16384 & 528.7 & 382.1 & 411.7 & 216.6 & 2.44x & 1.38x \\
+    causal             & 16384 & 444.6 & 348.7 & 307.5 & 216.4 & 2.05x & 1.28x \\
+    gqa                & 16384 & 556.7 & 397.8 & ---   & 216.2 & 2.58x & 1.40x \\
+    gqa-causal         & 16384 & 480.7 & 368.0 & ---   & 216.4 & 2.22x & 1.31x \\
+    cross-dense        & 16384 & 553.9 & 378.5 & 421.6 & 217.5 & 2.55x & 1.46x \\
+    non-aligned-dense  & 16384 & 524.8 & 376.4 & 363.2 & 223.4 & 2.35x & 1.39x \\
+    non-aligned-causal & 16384 & 443.7 & 348.5 & 256.1 & 209.3 & 2.12x & 1.27x \\
+    \midrule
+    self               & 32768 & 570.1 & 390.8 & 443.7 & 219.4 & 2.60x & 1.46x \\
+    causal             & 32768 & 515.4 & 371.2 & 340.9 & 222.7 & 2.31x & 1.39x \\
+    gqa                & 32768 & 581.1 & 397.2 & ---   & 216.7 & 2.68x & 1.46x \\
+    gqa-causal         & 32768 & 530.7 & 385.6 & ---   & 219.9 & 2.41x & 1.38x \\
+    cross-dense        & 32768 & 578.0 & 391.3 & 447.5 & 214.4 & 2.70x & 1.48x \\
+    non-aligned-dense  & 32768 & 564.4 & 387.2 & 413.4 & 224.6 & 2.51x & 1.46x \\
+    non-aligned-causal & 32768 & 505.5 & 368.0 & 306.1 & 215.6 & 2.34x & 1.37x \\
+    \bottomrule
+  \end{tabular}
+\end{table}
 
 \FloatBarrier
 

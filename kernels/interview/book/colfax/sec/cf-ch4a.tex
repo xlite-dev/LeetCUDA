@@ -1,0 +1,932 @@
+% cf-ch4a.tex — 译自 FinalVersion.tex L10488-11424
+\chapter{计算}\label{computationschapter}
+
+范畴（category）$\catstyle{Tuple}$ 与 $\catstyle{Nest}$ 为可处理布局（tractable layout）的计算提供了一个强大的框架。然而在实践中经常出现这样的情形：我们遇到的两个可处理布局 $A$ 与 $B$ 在 \verb|cute| 的语境中是可复合（composable）的，但它们的标准表示在 $\catstyle{Tuple}$ 与 $\catstyle{Nest}$ 中都不可复合。本章专门阐明：如何仍然借助范畴 $\catstyle{Tuple}$ 与 $\catstyle{Nest}$，利用{\bf 相互加细}（mutual refinement）这一概念，来计算可处理布局的{\it 复合}、{\it 逻辑切分}与{\it 逻辑乘积}。我们将在 \Cref{subsectionmutualrefinements} 中引入这一概念，在算法 \ref{mutualrefinementalgorithm} 中给出一个计算相互加细的算法，并细致地演练许多具体例子。
+
+
+\section{可处理布局的复合}
+假设我们想要计算可处理布局
+\begin{align*}
+    A & = (6,6):(6,1),\\
+    B & = (12,3,6):(1,72,12).
+\end{align*}
+的复合 $B \circ A$。我们或许可以尝试通过计算 $A$ 与 $B$ 的标准表示 $f$ 与 $g$ 的复合来算出 $B \circ A$：
+\[ \begin{tikzcd} [row sep = 1, column sep = 8]
+         & & & & & & 6 \ar[drr,mapsto] & & 3\\
+        6 \ar[drr,mapsto] & & 6 & & & & 3 \ar[urr,mapsto] & & 6\\
+        6 \ar[urr,mapsto] & & 6 & & & & 12 \ar[rr,mapsto] & & 12\\
+        & f & & & & & & g & \\
+        \end{tikzcd} \]
+然而，这两个态射（morphism）并不可复合，因为 $f$ 的陪域（codomain）$(6,6)$ 不等于 $g$ 的定义域（domain）$(12,3,6)$。这意味着我们不能直接用态射 $f$ 与 $g$ 来计算复合 $B \circ A$。不过，我们可以通过求出 $(6,6)$ 与 $(12,3,6)$ 的一个{\it 相互加细}来继续我们的计算，如下图所示
+
+        \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+           & & 6 \ar[-,drr] & &  \\
+          & & 3 \ar[-,drr] & & 6 \\
+         6  \ar[-,urr] \ar[-,rr]  & & 2 \ar[-,drr] & & 3 \\
+        6 \ar[rr,-] & & 6 \ar[-,swap,rr] & & 12 \\
+           &  & &  &  \\
+        \end{tikzcd} \]
+
+\noindent 这是一个把 $f$ 与 $g$ 转换为可复合态射 $f'$ 与 $g'$ 的装置：
+
+
+\[
+\begin{tikzcd}[row sep = 1,column sep = 8]
+  & &   & & 6 & & & & & & & & 6\\
+  & &   & & 3 & & & &  & & 6 \ar[ddrr,mapsto] & & 3 \\
+6 \ar[drr,mapsto] & & 6 \ar[rr,-] \ar[rru,-] & & 2 & & \rightsquigarrow & & 6 \ar[urr,-]& & 3 \ar[urr,mapsto] & & 2\\
+6 \ar[urr,mapsto] & & 6 \ar[rr,-]  & & 6 & & & & 6 \ar[rr,-] \ar[urr,-] & & 2 \ar[urr,mapsto] & & 6\\
+ & f & & & & & & & & & & f' &  \\
+ & & & & & & & & & & & & \\[2em]
+6 \ar[drr,-] & &    & &    & & & & & & 6 \ar[drr,mapsto] & & 3\\
+3 \ar[drr,-] & & 6  \ar[drr,mapsto] & & 3  & & & & & & 3 \ar[urr,mapsto] & & 6\\
+2 \ar[drr,-] & & 3  \ar[urr,mapsto] & & 6  & & \rightsquigarrow & & & & 2 \ar[rr,mapsto] & & 2\\
+6 \ar[rr,-] & & 12 \ar[rr,mapsto] & & 12 & & & & & & 6 \ar[rr,mapsto] & & 6\\
+  & &    &g&    & & & & & &   &g'& \\
+\end{tikzcd}
+\]
+态射 $f'$ 与 $g'$ 是可复合的，因此我们可以作复合
+\[ \begin{tikzcd} [row sep = 1, column sep = 8]
+              & &        & &  6 \ar[drr,mapsto] & & 3 & & & & & &  & & 3\\
+        & &  6 \ar[ddrr,mapsto] & &  3 \ar[urr, mapsto] & & 6 & & & & & & 6 \ar[ddrr,mapsto] & & 6\\
+       6 \ar[rru,-] & & 3 \ar[urr,mapsto] & &   2 \ar[rr,mapsto] & & 2  & & \rightsquigarrow & & 6 \ar[urr,-] & & 3 \ar[uurr,mapsto] & & 2\\
+       6 \ar[rr,-] \ar[urr,-] & &  2 \ar[urr,mapsto] & &  6 \ar[rr,mapsto] & & 6 & & & & 6 \ar[rr,-] \ar[urr,-] & & 2 \ar[urr,mapsto] & & 6\\
+        & & & f' &  & g' & & & & & & & & g' \circ f'& \\
+        \end{tikzcd} \]
+而计算其编码的布局便得到
+        \begin{align*}
+        B \circ A & = L_{g' \circ f'} = ((2,3),6):((6,72),1).
+        \end{align*}
+
+\noindent 本节的目标是把这一计算过程形式化为一个计算可处理布局 $A$ 与 $B$ 之复合的{\it 算法}（algorithm）。正如我们在例子中所看到的，我们计算中非平凡的步骤是
+\begin{enumerate}
+    \item 求出某些（嵌套）元组的一个相互加细，以及
+    \item 利用该相互加细把 $f$ 与 $g$ 转换为可复合的态射 $f'$ 与 $g'$。
+\end{enumerate}
+下面两节将分别阐释这两个步骤。
+
+
+\subsection{相互加细}
+\label{subsectionmutualrefinements}
+
+在利用第 \ref{categorieschapter} 章的范畴论框架给出相互加细的精确定义之前，我们先作一个非正式的概述。考虑我们那个引例中的元组 $(6,6)$ 与 $(12,3,6)$。我们断言图
+        \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+           & & 6 \ar[-,drr] & &  \\
+          & & 3 \ar[-,drr] & & 6 \\
+         6  \ar[-,urr] \ar[-,rr]  & & 2 \ar[-,drr] & & 3 \\
+        6 \ar[rr,-] & & 6 \ar[-,swap,rr] & & 12 \\
+           &  & &  &  \\
+        \end{tikzcd} \]
+是 $(6,6)$ 与 $(12,3,6)$ 的一个相互加细。我们可以对这一相互加细给出更精确的描述如下。图的左半表示加细（refinement）$(6,6) \twoheadleftarrow (6,(2,3))$，图的右半表示加细 $((6,2),3,6) \twoheadrightarrow (12,3,6)$：
+\[ \begin{tikzcd} [row sep = 1, column sep = 8]
+ & & 3 & & & & & & & & \\
+6 \ar[rr,-] \ar[urr,-] & & 2 & & & & \leftrightsquigarrow & & (6,6) & & \ar[ll, two heads] (6,(2,3)) \\
+6 \ar[rr,-] & & 6 & & & & & & & & \\
+         & &  & & & & & &  & & \\[2em]
+ & & 6 \ar[drr,-] & & & & & & & & \\
+ & & 3 \ar[drr,-]& & 6 & & & & & & \\
+ & & 2 \ar[drr,-] & & 3 & & \leftrightsquigarrow & & ((6,2),3,6) \ar[rr,two heads] & & (12,3,6) \\
+ & & 6 \ar[rr,-] & & 12 & & & & & & \\
+\end{tikzcd} \]
+图的两半可以粘合在一起这一事实，对应于嵌套元组（nested tuple）$(6,(2,3))$ {\it 整除}（divides）$((6,2),3,6)$ 这一事实，我们把它记为
+\[
+\begin{tikzcd}
+(6,(2,3)) \ar[r,rightarrowtail] & ((6,2),3,6).
+\end{tikzcd}
+\]
+把这些观察合在一起，我们就可以把我们的相互加细精确地表达为
+        \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+           & & 6 \ar[-,drr] & & & & & &  & & \\
+          & & 3 \ar[-,drr] & & 6 & & & & (6,(2,3)) \ar[dd, two heads] \ar[rr,rightarrowtail] & & ((6,2),3,6) \ar[dd, two heads] \\
+         6  \ar[-,urr] \ar[-,rr]  & & 2 \ar[-,drr] & & 3 & & \leftrightsquigarrow & & & & \\
+        6 \ar[rr,-] & & 6 \ar[-,swap,rr] & & 12 & & & & (6,6) & & (12,3,6) \\
+           &  & &  &  & & & & \\
+        \end{tikzcd} \]
+其中我们选择把加细 $(6,6) \twoheadleftarrow (6,(2,3))$ 与 $((6,2),3,6) \twoheadrightarrow (12,3,6)$ 竖直地画出。现在我们可以给出相互加细的精确定义了。
+
+
+\begin{definition}
+设 $T$ 与 $U$ 是嵌套元组。$(T,U)$ 的一个{\it 相互加细}是形如
+\[ \begin{tikzcd}
+T' \ar[r,rightarrowtail] \ar[d, two heads] & U' \ar[d,two heads] \\
+T & U
+\end{tikzcd} \]
+的图。确切地说，这是一对嵌套元组 $(T',U')$，使得 \begin{enumerate}
+    \item $T'$ 加细 $T$，
+    \item $U'$ 加细 $U$，且
+    \item $T'$ 整除 $U'$。
+\end{enumerate}
+\end{definition}
+
+\begin{example}
+    $T = (6,6)$ 与 $U = (2,6,3)$ 的一个相互加细由
+    \[ \begin{tikzcd}
+((2,3),(2,3)) \ar[r,rightarrowtail] \ar[d, two heads] & (2,(3,2),3) \ar[d,two heads] \\
+(6,6) & (2,6,3)
+\end{tikzcd} \]
+给出。我们把这一相互加细描绘如下。
+\[ \begin{tikzcd} [row sep = 1, column sep = 8]
+  & & 3 & & \\
+6 \ar[rr,-] \ar[rru,-] & & 2 & & \ar[ull,-] 3\\
+ & & 3 & & \ar[ll,-] \ar[ull,-] 6\\
+6 \ar[rr,-] \ar[rru,-] & & 2 & & \ar[ll,-] 2\\
+\end{tikzcd} \]
+\end{example}
+
+\begin{example}
+    $T = (8,8,8)$ 与 $U = (2,8,8,8)$ 的一个相互加细由
+    \[ \begin{tikzcd}
+ ((2,4),(2,4),(2,4))\ar[r,rightarrowtail] \ar[d, two heads] & (2,(4,2),(4,2),(4,2)) \ar[d,two heads] \\
+(8,8,8) & (2,8,8,8)
+\end{tikzcd} \]
+给出。我们把这一相互加细描绘如下。
+\[ \begin{tikzcd} [row sep = 1, column sep = 8]
+  & & 2 & & \\
+  & & 4 & &\ar[ll,-] \ar[llu,-]  8\\
+8 \ar[rr,-] \ar[rru,-]& & 2 & & \\
+  & & 4 & &\ar[ll,-] \ar[llu,-]  8\\
+8 \ar[rr,-] \ar[rru,-]& & 2 & & \\
+  & & 4 & &\ar[ll,-] \ar[llu,-]  8\\
+8 \ar[rr,-] \ar[rru,-] & & 2 & & \ar[ll,-] 2\\
+\end{tikzcd} \]
+\end{example}
+
+\begin{example}
+$T = (4, 2, 2, 32)$ 与 $U = (32, 32)$ 的一个相互加细由
+    \[ \begin{tikzcd}
+ (4,2,2,(2,16))\ar[r,rightarrowtail] \ar[d, two heads] & ((4,2,2,2),(16,2)) \ar[d,two heads] \\
+(4,2,2,32) & (32,32)
+\end{tikzcd} \]
+给出。我们把这一相互加细描绘如下。
+
+\[ \begin{tikzcd} [row sep = 1, column sep = 8]
+ & & 2 & & \\
+ & & 16 & & \ar[ll,-]\ar[ull,-]32\\
+32\ar[rr,-] \ar[urr,-]  & & 2 & & \\
+2\ar[rr,-]  & & 2 & & \\
+2\ar[rr,-]  & & 2 & & \\
+4 \ar[rr,-] & & 4 & & \ar[ll,-]\ar[ull,-]\ar[uull,-]\ar[uuull,-] 32\\
+\end{tikzcd} \]
+\end{example}
+
+\begin{example}
+    若 $T = (8,8)$ 且 $U = (3,8,8)$，则不存在 $T$ 与 $U$ 的相互加细。
+\end{example}
+
+\begin{example}
+    若 $T$ 与 $U$ 是满足 $\size(T) = 2^k$ 与 $\size(L) = 2^\ell$（其中 $k \leq \ell$）的元组，则存在 $T$ 与 $U$ 的相互加细。更一般地，若 $T$ 与 $U$ 是元组，且 $\size(T) \leq \size(U)$ 均为某个固定整数的幂，则存在 $T$ 与 $U$ 的相互加细。
+\end{example}
+
+\begin{observation} 在前面的每个例子中，我们考虑的都是{\it 扁平}（flat）元组 $T$ 与 $U$ 的相互加细。不过，相互加细的定义允许 $T$ 与 $U$ 是任意{\it 嵌套}元组。无论如何，限制到扁平情形并不损失一般性，因为一对嵌套元组 $(T,U)$ 的相互加细与它们的扁平化（flattening）$(T^\flat,U^\flat)$ 的相互加细之间存在一一对应（见引理 \ref{mutualrefinementsofflattenings}）。特别地，$(T,U)$ 存在相互加细，当且仅当 $(T^\flat,U^\flat)$ 存在相互加细。
+\end{observation}
+
+在给出适当的定义之后，我们提供一个计算 $(T,U)$ 的相互加细的算法。
+
+\begin{BreakableAlgorithm}{相互加细算法}\label{mutualrefinementalgorithm}
+\begin{algorithmic}[1]
+\State \textbf{输入：}嵌套元组 $T$ 与 $U$。
+\State \textbf{输出：}$(T,U)$ 的一个相互加细 $(T',U')$（若存在），否则 $\mathbf{None}$。
+\algsep
+
+\State $X \gets T$; \ $Y \gets U$
+\State $X',\, Y',\, X_{\mode},\, Y_{\mode} \gets ()$
+\State $i \gets 1$; \ $j \gets 1$
+
+\While{$i \le \len(X)$ \textbf{ 且 } $j \le \len(Y)$}
+  \If{$\entry_i(X) = \entry_j(Y)$}
+    \State 将 $\entry_i(X)$ 追加到 $X_{\mode}$;
+    将 $X_{\mode}$ 追加到 $X'$;
+    $X_{\mode}\gets()$
+    \State 将 $\entry_j(Y)$ 追加到 $Y_{\mode}$;
+    \State 将 $Y_{\mode}$ 追加到 $Y'$;
+    \State $Y_{\mode}\gets()$
+    \State $i \gets i+1$;
+    \State $j \gets j+1$
+  \ElsIf{$\entry_i(X)$ 整除 $\entry_j(Y)$}
+    \State 将 $\entry_i(X)$ 追加到 $X_{\mode}$;
+    \State 将 $X_{\mode}$ 追加到 $X'$;
+    \State $X_{\mode}\gets()$
+    \State 将 $\entry_i(X)$ 追加到 $Y_{\mode}$
+    \State $\entry_j(Y) \gets \entry_j(Y)/\entry_i(X)$;
+    \State $i \gets i+1$
+  \ElsIf{$\entry_j(Y)$ 整除 $\entry_i(X)$}
+    \State 将 $\entry_j(Y)$ 追加到 $X_{\mode}$;
+    \State 将 $\entry_j(Y)$ 追加到 $Y_{\mode}$;
+    \State 将 $Y_{\mode}$ 追加到 $Y'$;
+    \State $Y_{\mode}\gets()$
+    \State $\entry_i(X) \gets \entry_i(X)/\entry_j(Y)$;
+    \State $j \gets j+1$
+  \Else
+    \State \Return $\mathbf{None}$
+  \EndIf
+\EndWhile
+
+\If{$Y_{\mode} \neq ()$}
+  \State 将 $\entry_j(Y)$ 追加到 $Y_{\mode}$;
+  \State 将 $Y_{\mode}$ 追加到 $Y'$;
+  \State $j \gets j+1$
+\EndIf
+\While{$j < \len(Y)$}
+  \State 将 $\entry_j(Y)$ 追加到 $Y'$;
+  \State $j \gets j+1$
+\EndWhile
+
+\State $T' \gets (X')_{\profile(T)}$;
+\State $U' \gets (Y')_{\profile(U)}$
+\State \Return $(T',U')$
+\end{algorithmic}
+\end{BreakableAlgorithm}
+
+
+\subsection{从相互加细到可复合态射}
+回顾：为了计算
+\begin{align*}
+    A & = (6,6):(6,1) \text{ and }\\
+    B & = (12,3,6):(1,72,12),
+\end{align*}
+的复合 $B \circ A$，我们构造了元组态射（tuple morphism）
+\[ \begin{tikzcd} [row sep = 1, column sep = 8]
+         & & & & & & 6 \ar[drr,mapsto] & & 3\\
+        6 \ar[drr,mapsto] & & 6 & & & & 3 \ar[urr,mapsto] & & 6\\
+        6 \ar[urr,mapsto] & & 6 & & & & 12 \ar[rr,mapsto] & & 12\\
+        & f & & & & & & g & \\
+        \end{tikzcd} \]
+以及一个相互加细。
+        \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+           & & 6 \ar[-,drr] & &  \\
+          & & 3 \ar[-,drr] & & 6 \\
+         6  \ar[-,urr] \ar[-,rr]  & & 2 \ar[-,drr] & & 3 \\
+        6 \ar[rr,-] & & 6 \ar[-,swap,rr] & & 12 \\
+           &  & &  &  \\
+        \end{tikzcd} \]
+
+\noindent 我们计算的下一步是利用我们的相互加细把 $f$ 与 $g$ 转换为可复合的态射 $f'$ 与 $g'$。在给出这一过程形式化的范畴论定义之前，我们先通过一个例子来演示该过程。
+
+我们由 $f$ 与我们相互加细的左半构造 $f'$：
+\[
+\begin{tikzcd}[row sep = 1,column sep = 8]
+  & &   & &  6 & & & & & & & & 6 \\
+  & &   & & 3 & & & &  & & 6 \ar[ddrr,mapsto] & & 3 \\
+6 \ar[drr,mapsto] & & 6 \ar[rr,-] \ar[rru,-] & & 2 & & \rightsquigarrow & & 6 \ar[urr,-]& & 3 \ar[urr,mapsto] & & 2\\
+6 \ar[urr,mapsto] & & 6 \ar[rr,-]  & & 6 & & & & 6 \ar[rr,-] \ar[urr,-] & & 2 \ar[urr,mapsto] & & 6\\
+ & f & & & & & & & & & & f' &  \\
+\end{tikzcd}
+\]
+这一构造是通过作替换
+\[ \begin{tikzcd} [row sep = 1, column sep = 8]
+                  % & &              & &   & &                  & &               & &       & &  \\
+6 \ar[drr,mapsto] & &              & &   & & \rightsquigarrow & & 6 \ar[rr,-]  & &   6 \ar[drr,mapsto]                 & &  \\
+                  & & 6  \ar[rr,-] & & 6 & &                  & &               & &                    & & 6\\
+\end{tikzcd} \]
+以及作替换
+\[ \begin{tikzcd} [row sep = 1, column sep = 8]
+ & & & & 3 & & & & & &  & & 3\\
+ & & 6 \ar[urr,-] \ar[rr,-] & & 2 & & \rightsquigarrow & &  & & 3 \ar[urr,mapsto] & & 2\\
+6 \ar[urr,mapsto] & & & & & & & & 6 \ar[rr,-] \ar[urr,-] & & 2 \ar[urr,mapsto] & & \\
+\end{tikzcd} \]
+完成的。更一般地，我们作替换
+\[ \begin{tikzcd} [row sep = 1, column sep = 8]
+ & & & & & & \bullet & & & & & & \bullet \ar[rr,mapsto] & & \bullet \\
+ & & & & & & \bullet & & & &  & & \bullet \ar[rr,mapsto] & & \bullet \\
+ \bullet \ar[rrrr,mapsto] & & & & \bullet \ar[rruu,-] \ar[rru,-]\ar[rrd,-] \ar[rrdd,-] & & \vdots  & & \rightsquigarrow & & \bullet \ar[uurr,-] \ar[urr,-] \ar[drr,-] \ar[ddrr,-]  & &  & \vdots &   \\
+ & & & & & & \bullet & &  & & & &  \bullet \ar[rr,mapsto] & & \bullet \\
+  & & & & & & \bullet & & & &  & &  \bullet \ar[rr,mapsto] & & \bullet \\
+\end{tikzcd} \]
+
+
+
+由 $g$ 与我们相互加细的右半构造 $g'$ 的过程是类似的。
+\[
+\begin{tikzcd}[row sep = 1,column sep = 8]
+6 \ar[drr,-] & &    & &    & & & & & & 6 \ar[drr,mapsto] & & 3\\
+3 \ar[drr,-] & & 6  \ar[drr,mapsto] & & 3  & & & & & & 3 \ar[urr,mapsto] & & 6\\
+2 \ar[drr,-] & & 3  \ar[urr,mapsto] & & 6  & & \rightsquigarrow & & & & 2 \ar[rr,mapsto] & & 2\\
+6 \ar[rr,-] & & 12 \ar[rr,mapsto] & & 12 & & & & & & 6 \ar[rr,mapsto] & & 6\\
+  & &    &g&    & & & & & &   &g'& \\
+\end{tikzcd}
+\]
+这一构造是通过作替换
+\[ \begin{tikzcd} [row sep = 1, column sep = 8]
+6 \ar[rr,-] & & 6  \ar[rr,mapsto] & & 6 & & \rightsquigarrow & & 6 \ar[rr,mapsto] & & 6\\
+& & & & & & & & & & \\[2em]
+3 \ar[rr,-] & & 3  \ar[rr,mapsto] & & 3 & & \rightsquigarrow & & 3 \ar[rr,mapsto] & & 3\\
+& & & & & & & & & & \\[2em]
+2 \ar[rrd,-] & & & & & & & &2 \ar[rr,mapsto] & & 2\\
+6 \ar[rr,-] & & 12 \ar[rr,mapsto] & & 12 & & \rightsquigarrow & & 6 \ar[rr,mapsto] & & 6\\
+\end{tikzcd} \]
+完成的。更一般地，我们作替换
+\[ \begin{tikzcd} [row sep = 1, column sep = 8]
+\bullet \ar[ddrr,-] & & & & & & & & \bullet \ar[rr,mapsto] & & \bullet \\
+\bullet \ar[drr,-]  & & & & & & & & \bullet \ar[rr,mapsto] & & \bullet \\
+\vdots              & & \bullet \ar[rr,mapsto] & & \bullet & & \rightsquigarrow & & & \vdots & \\
+\bullet \ar[urr,-]  & &  & & & & & &  \bullet \ar[rr,mapsto] & & \bullet \\
+\bullet \ar[uurr,-] & & & & & & & & \bullet \ar[rr,mapsto]  & & \bullet \\
+\end{tikzcd} \]
+
+在给出我们流程的非正式描述之后，我们现在把事情精确化如下。
+
+\begin{construction}\label{constructionofcomposablemorphismsfrommutualrefinement}
+    设 $f:S \to T$ 与 $g:U \to V$ 是嵌套元组态射（nested tuple morphism），且 $(T',U')$ 是 $(T,U)$ 的一个相互加细。于是我们可以利用 \ref{categoryrefinements} 节中的{\it 拉回}（pullback）与{\it 前推}（pushforward）构造来作出下图：
+    \[ \begin{tikzcd}
+    S' \ar[r,"\tilde{f}"] \ar[d,two heads] \arrow[dr, phantom, "\lrcorner", very near start] & T' \ar[d,two heads] \ar[r,"i",rightarrowtail] & U' \ar[r,"\tilde{g}"] \ar[d,two heads] & V' \ar[d,two heads]\arrow[dl, phantom, "\llcorner", very near start] \\
+    S \ar[r,swap,"f"] & T & U \ar[r,swap,"g"] & V
+    \end{tikzcd} \]
+    若令 $f' = i \circ \tilde{f}$ 且 $g' = \tilde{g}$，则
+    \[ \begin{tikzcd}
+    S' \ar[rr,"f'"] & & U' \ar[rr,"g'"] & & V'
+    \end{tikzcd} \]
+    是可复合的嵌套元组态射。
+\end{construction}
+
+
+\subsection{复合算法}
+
+\begin{BreakableAlgorithm}{可处理布局复合算法}
+\label{tractablelayoutcompositionalgorithm}
+\begin{algorithmic}[1]
+\State \textbf{输入：}可处理布局 $A$ 与 $B$。
+\State \textbf{输出：}$A$ 与 $B$ 的一个弱复合（weak composite）$C$（若存在），否则 $\mathbf{None}$..
+\algsep
+
+\State 分别取 $A$ 与 $\coalesce(B)$ 的标准表示
+\[
+\begin{tikzcd}
+S \ar[rr,"f"] & & T
+\qquad\qquad
+U \ar[rr,"g"] & & V
+\end{tikzcd}
+\]
+
+\State 用算法~\ref{mutualrefinementalgorithm} 求出 $(T,U)$ 的一个相互加细
+\[
+\begin{tikzcd}
+T' \ar[r,rightarrowtail] \ar[d,two heads] & U' \ar[d,two heads] \\
+T & U
+\end{tikzcd}
+\]
+若 $(T,U)$ 不存在相互加细，则返回 $\mathbf{None}$。
+
+\State 用构造~\ref{constructionofcomposablemorphismsfrommutualrefinement} 得到可复合的嵌套元组态射
+\[
+\begin{tikzcd}
+S' \ar[r,"f'"] & U' \ar[r,"g'"] & V'
+\end{tikzcd}
+\]
+
+\State 复合 $f'$ 与 $g'$，并计算编码的布局
+\[
+C = L_{g' \circ f'}
+\]
+
+\State \Return $C$
+\end{algorithmic}
+\end{BreakableAlgorithm}
+
+
+
+\begin{theorem}
+    若 $A$ 与 $B$ 是可处理布局，则前一算法的输出 $C$ 是 $A$ 与 $B$ 的一个弱复合。于是，
+    \[
+    B \circ A = \coalesce(C,\shape(A)).
+    \]
+\end{theorem}
+
+\begin{proof}
+    命题 \ref{pushforwardproposition} 告诉我们
+    \[\Phi_{L_{g'}} = \Phi_{L_g} = \Phi_{\coalesce(B)} = \Phi_B,\]
+    而命题 \ref{pullbackproposition} 与例 \ref{definitionofcodomainexpansion} 告诉我们
+    \[\Phi_{L_{f'}} = \Phi_{L_f}  = \Phi_A.\]
+    于是定理 \ref{compatibilityofcompositioninD} 蕴含
+    \begin{align*}
+    \Phi_C = \Phi_{L_{g' \circ f'}} & = \Phi_{g'} \circ \Phi_{f'}^{\size(U')}\\
+    & = \Phi_B \circ \Phi_A^{\size(B)}.
+    \end{align*}
+    按构造，$L_{f'}$ 的形状 $S'$ 加细 $A$ 的形状 $S$，因此我们断定 $C$ 是 $A$ 与 $B$ 的一个弱复合。
+\end{proof}
+
+
+% \begin{algorithm}[H]
+% \caption{Tractable layout composition algorithm}
+% \KwIn{Tractable layouts $A$ and $B$}
+% \KwOut{The composite $B \circ A$, if it exists, else $\mathbf{None}$.}
+
+
+% initialize $f = f_A:S \to T$\;
+% initialize $g = f_{\coalesce(B)}:U \to V$.\;
+% Use Algorithm \ref{mutualrefinementalgorithm} to produce a mutual refinement $T',U'$ of $T,U$, if one exists, else return $\mathbf{None}$.\;
+% set $f' = T'^*f$\;
+% set $i:T' \rightarrowtail U'$\;
+% set $g' = U'_*f$ \;
+% set $L = \coalesce(L_{g' \circ i \circ  f'},S)$\;
+% \Return{$L$}\;
+% \end{algorithm}
+
+
+\subsection{例子}
+
+本节中，我们展示如何用算法 \ref{tractablelayoutcompositionalgorithm} 来计算可处理布局 $A$ 与 $B$ 的复合 $B \circ A$。
+
+\begin{example}
+    设 $A = (4):(1)$，$B = (2,2):(2,1)$。
+    \begin{enumerate}
+        \item 取 $A$ 与 $\coalesce(B) = B$ 的标准表示。
+        % Present $A$ as $L_f$ and $\coalesce(B)$ as $L_g$, where $f$ and $g$ are as shown below.
+        % \[ \begin{tikzcd}
+        % f:(4) \ar[r,"(1)"] & (4)\\
+        % g:(2,2) \ar[r,"(2{,}1)"] & (2,2).
+        % \end{tikzcd} \]
+        \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+         & & & & & & 2 \ar[drr,mapsto] & & 2\\
+        4 \ar[rr,mapsto] & & 4 & & & & 2 \ar[urr,mapsto] & & 2\\
+        & f & & & & & & g & \\
+        \end{tikzcd} \]
+        \item 应用算法 \ref{mutualrefinementalgorithm} 得到相互加细
+        % \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+        %     T = (4) & & \rightsquigarrow & & T' = ((2,2))\\
+        %     U = (2,2) & & \rightsquigarrow & & U' = (2,2)\\
+        % \end{tikzcd}
+        % \]
+        \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+          & & 2 \ar[-,rr]& & 2  \\
+        4 \ar[-,rr] \ar[-,urr] & & 2 \ar[-,rr] & & 2 \\
+        \end{tikzcd} \]
+        \item 作图
+        % \[ \begin{tikzcd}
+        % ((2,2)) \ar[r,"{(}1{,}2{)}"] \ar[d,two heads] \arrow[dr, phantom, "\lrcorner", very near start]& ((2,2)) \ar[r,"{(}1{,}2{)}",rightarrowtail] \ar[d,two heads]& (2,2) \ar[r,"{(}2{,}1{)}"] \ar[d,two heads]& (2,2)\arrow[dl, phantom, "\llcorner", very near start] \ar[d,two heads]\\
+        % (4) \ar[r,swap,"(1)"] & (4) & (2,2) \ar[r,swap,"{(}2{,}1{)}"] & (2,2)
+        % \end{tikzcd} \]
+        \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+         & & & & 2 \ar[-,rr]& & 2 \ar[drr,mapsto] & & 2\\
+        4 \ar[rr,mapsto] & & 4 \ar[-,rr] \ar[-,urr] & & 2 \ar[-,rr] & & 2 \ar[urr,mapsto] & & 2\\
+        & f & & & & & & g & \\
+        \end{tikzcd}
+        \]
+        \item 解出该图表
+        \[
+        \begin{tikzcd}[row sep = 1, column sep = 8]
+        & &  2 \ar[rr,mapsto] & &  2 \ar[drr,mapsto ]& & 2 & & \\
+        4 \ar[rr,-] \ar[urr,-] & & 2 \ar[rr,mapsto] & & 2 \ar[urr,mapsto] & & 2 & & \\
+        & & & f' &  & g' & & & \\
+        \end{tikzcd} \]
+        \item 复合 $f'$ 与 $g'$，得到
+        \[ \begin{tikzcd}[row sep = 1, column sep = 8]
+        & & 2 \ar[drr,mapsto] & & 2\\
+        4 \ar[rr,-] \ar[urr,-] & & 2 \ar[urr,mapsto] & & 2\\
+        & & & \mathclap{g' \circ f'} &
+        \end{tikzcd} \]
+        % \[ \begin{tikzcd}
+        % ((2,2)) \ar[r,"(2{,}1)"] &(2,2)
+        % \end{tikzcd}
+        % \]
+        \item 计算关联的布局
+        \[
+        L_{g' \circ f'} = ((2,2)):((2,1)).
+        \]
+        \item $L_{g' \circ f'}$ 相对于 $(4)$ 已合并，所以
+        \[
+        B \circ A = ((2,2)):((2,1)).
+        \]
+    \end{enumerate}
+\end{example}
+
+
+
+
+
+
+
+\begin{example}
+    设 $A = (6,6):(6,1)$，$B = (12,3,6):(1,72,12)$。
+    \begin{enumerate}
+        \item 取 $A$ 与 $\coalesce(B) = B$ 的标准表示。
+        % Present $A$ as $L_f$ and $\coalesce(B)$ as $L_g$, where $f$ and $g$ are as shown below.
+        % \[ \begin{tikzcd}
+        % f:(4) \ar[r,"(1)"] & (4)\\
+        % g:(2,2) \ar[r,"(2{,}1)"] & (2,2).
+        % \end{tikzcd} \]
+        \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+         & & & & & & 6 \ar[drr,mapsto] & & 3\\
+        6 \ar[drr,mapsto] & & 6 & & & & 3 \ar[urr,mapsto] & & 6\\
+        6 \ar[urr,mapsto] & & 6 & & & & 12 \ar[rr,mapsto] & & 12\\
+        & f & & & & & & g & \\
+        \end{tikzcd} \]
+        \item 应用算法 \ref{mutualrefinementalgorithm} 得到相互加细
+        \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+           & & 6 \ar[-,drr] & &  \\
+          & & 3 \ar[-,drr] & & 6 \\
+         6  \ar[-,urr] \ar[-,rr]  & & 2 \ar[-,drr] & & 3 \\
+        6 \ar[rr,-] & & 6 \ar[-,swap,rr] & & 12 \\
+           &  & &  &  \\
+        \end{tikzcd} \]
+        \item 作图
+        \[
+\begin{tikzcd}[row sep = 1,column sep = 8]
+  & &   & & 6  \ar[drr,-] & &    & &\\
+  & &   & & 3 \ar[drr,-]  & & 6  \ar[drr,mapsto] & & 3\\
+6 \ar[drr,mapsto] & & 6 \ar[rr,-] \ar[rru,-] & & 2 \ar[drr,-]& & 3  \ar[urr,mapsto] & & 6\\
+6 \ar[urr,mapsto] & & 6 \ar[rr,-]  & & 6 \ar[rr,-] & & 12 \ar[rr,mapsto] & & 12 \\
+ & f & &  & & &    &g& \\
+\end{tikzcd}
+\]
+
+        \item 解出该图表，得到
+        \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+              & &        & &  6 \ar[drr,mapsto] & & 3 \\
+        & &  6 \ar[ddrr,mapsto] & &  3 \ar[urr, mapsto] & & 6 \\
+       6 \ar[rru,-] & & 3 \ar[urr,mapsto] & &   2 \ar[rr,mapsto] & & 2 \\
+       6 \ar[rr,-] \ar[urr,-] & &  2 \ar[urr,mapsto] & &  6 \ar[rr,mapsto] & & 6 \\
+        & & & f' &  & g' &  \\
+        \end{tikzcd} \]
+%         \[
+% \begin{tikzcd}[row sep = 1,column sep = 8]
+%   & &   & & 6 & & & & & & & & 6\\
+%   & &   & & 3 & & & &  & & 6 \ar[ddrr,mapsto] & & 3 \\
+% 6 \ar[drr,mapsto] & & 6 \ar[rr,-] \ar[rru,-] & & 2 & & \rightsquigarrow & & 6 \ar[urr,-]& & 3 \ar[urr,mapsto] & & 2\\
+% 6 \ar[urr,mapsto] & & 6 \ar[rr,-]  & & 6 & & & & 6 \ar[rr,-] \ar[urr,-] & & 2 \ar[urr,mapsto] & & 6\\
+%  & f & & & & & & & & & & f' &  \\
+%  & & & & & & & & & & & & \\[2em]
+% 6 \ar[drr,-] & &    & &    & & & & & & 6 \ar[drr,mapsto] & & 3\\
+% 3 \ar[drr,-] & & 6  \ar[drr,mapsto] & & 3  & & & & & & 3 \ar[urr,mapsto] & & 6\\
+% 2 \ar[drr,-] & & 3  \ar[urr,mapsto] & & 6  & & \rightsquigarrow & & & & 2 \ar[rr,mapsto] & & 2\\
+% 6 \ar[rr,-] & & 12 \ar[rr,mapsto] & & 12 & & & & & & 6 \ar[rr,mapsto] & & 6\\
+%   & &    &g&    & & & & & &   &g'& \\
+% \end{tikzcd}
+% \]
+        \item 复合 $f'$ 与 $g'$，得到
+        \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+         & &  & & 3\\
+         & & 6 \ar[ddrr,mapsto] & & 6\\
+        6 \ar[urr,-] & & 3 \ar[uurr,mapsto] & & 2\\
+        6 \ar[rr,-] \ar[urr,-] & & 2 \ar[urr,mapsto] & & 6\\
+        & & & g' \circ f'& \\
+        \end{tikzcd} \]
+        \item 计算关联的布局
+        \[
+        L_{g' \circ f'} = ((2,3),6):((6,72),1).
+        \]
+        \item $L_{g' \circ f'}$ 相对于 $(6,6)$ 已合并，因此
+        \[
+        B \circ A = ((2,3),6):((6,72),1).
+        \]
+    \end{enumerate}
+\end{example}
+
+\begin{example}
+       设 $A =(8,8):(8,1)$，$B = (16,16):(16,1)$。
+    \begin{enumerate}
+        \item 取 $A$ 与 $\coalesce(B) = B$ 的标准表示。
+        \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+        8 \ar[drr,mapsto] & & 8 & & & & 16 \ar[drr,mapsto] & & 16\\
+        8 \ar[urr,mapsto] & & 8 & & & & 16 \ar[urr,mapsto] & & 16\\
+        & f & & & & & & g & \\
+        \end{tikzcd} \]
+        \item 应用算法 \ref{mutualrefinementalgorithm} 得到相互加细
+        \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+         & & 4 & & \\
+         & & 4 & & \\
+        8 \ar[rr,-] \ar[urr,-] & & 2 & & \ar[ull,-] \ar[uull,-] 16\\
+        8 \ar[rr,-] & & 8 & & \ar[ll,-] \ar[ull,-] 16\\
+        \end{tikzcd} \]
+        \item 作图
+        \[
+\begin{tikzcd}[row sep = 1,column sep = 8]
+  & &   & & 4 \ar[ddrr,-] & &    & & \\
+  & &   & & 4 \ar[drr,-] & &    & & \\
+8 \ar[drr,mapsto] & & 8 \ar[rr,-] \ar[urr,-] & & 2 \ar[drr,-] & & 16 \ar[drr,mapsto] & & 16\\
+8 \ar[urr,mapsto] & & 8 \ar[rr,-] & & 8 \ar[rr,-] & & 16 \ar[urr,mapsto] & & 16\\
+  &f&   & &   & &   &g& \\
+\end{tikzcd}
+\]
+
+        \item 解出该图表，得到
+        \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+        & & & & 4 \ar[ddrr,mapsto] & & 2\\
+         & & 8 \ar[ddrr,mapsto] & & 4 \ar[ddrr,mapsto] & & 8\\
+        8 \ar[urr,-] & & 4 \ar[urr,mapsto] & & 2 \ar[uurr,mapsto] & & 4\\
+        8 \ar[rr,-] \ar[urr,-] & & 2 \ar[urr,mapsto] & & 8 \ar[uurr,mapsto] & & 4\\
+        & & & f' & & g' & \\
+        \end{tikzcd} \]
+
+        \item 复合 $f'$ 与 $g'$，得到
+        \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+         & & & & 2\\
+         & & 8 \ar[rr,mapsto] & & 8\\
+        8 \ar[urr,-] & & 4 \ar[drr,mapsto] & & 4\\
+        8 \ar[rr,-] \ar[urr,-] & & 2 \ar[uuurr,mapsto] & & 4\\
+         & & & g' \circ f' & \\
+        \end{tikzcd} \]
+        \item 计算关联的布局
+        \[L_{g' \circ f'} = ((2,4),8) : ((128,1),16)\]
+        \item $L_{g' \circ f'}$ 相对于 $(8,8)$ 已合并，因此
+        \[B \circ A = ((2,4),8) : ((128,1),16)\]
+    \end{enumerate}
+\end{example}
+
+\begin{example}
+    设 $A =(16,16):(16,1)$，$B = (8,8,8):(64,8,1)$。
+    \begin{enumerate}
+        \item 取 $A$ 与 $\coalesce(B) = B$ 的标准表示。
+        \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+         & & & & & & 8 \ar[ddrr,mapsto] & & 8\\
+        16 \ar[drr,mapsto] & & 16 & & & & 8 \ar[rr,mapsto] & & 8\\
+        16 \ar[urr,mapsto] & & 16 & & & & 8 \ar[uurr,mapsto] & & 8\\
+        & f & & & & & & g & \\
+        \end{tikzcd} \]
+        \item 应用算法 \ref{mutualrefinementalgorithm} 得到相互加细
+        \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+        & & 2 \ar[-,ddrr]& & \\
+           & & 4 \ar[-,drr] & &  \\
+          & & 4 \ar[-,drr] & & 8 \\
+         16  \ar[-,urr] \ar[-,uurr]  & & 2 \ar[-,rr] & & 8 \\
+        16 \ar[rr,-] \ar[urr,-]& & 8 \ar[-,swap,rr] & & 8 \\
+           &  & &  &  \\
+        \end{tikzcd} \]
+        \item 作图
+        \[
+\begin{tikzcd}[row sep = 1,column sep = 8]
+ & & & & 2 \ar[ddrr,-]& & & & \\
+  & &   & & 4  \ar[drr,-] & &    & &\\
+  & &   & & 4 \ar[drr,-]  & & 8  \ar[ddrr,mapsto] & & 8\\
+16 \ar[drr,mapsto] & & 16 \ar[urr,-] \ar[rruu,-] & & 2 \ar[rr,-]& & 8  \ar[rr,mapsto] & & 8\\
+16 \ar[urr,mapsto] & & 16 \ar[rr,-] \ar[urr,-] & & 8 \ar[rr,-] & & 8 \ar[uurr,mapsto] & & 8 \\
+ & f & &  & & &    &g& \\
+\end{tikzcd}
+\]
+
+        \item 解出该图表，得到
+        \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+         & & & & 2 \ar[rrddd,mapsto] & & 8 \\
+         & & 2 \ar[rrdd,mapsto] & & 4 \ar[rrddd,mapsto] & & 4 \\
+         & & 8 \ar[ddrr,mapsto] & & 4 \ar[urr,mapsto] & & 2 \\
+        16 \ar[urr,-] \ar[uurr,-] & & 4 \ar[uurr,mapsto] & & 2 \ar[urr,mapsto] & & 2\\
+        16 \ar[rr,-] \ar[urr,-] & & 4 \ar[uurr,mapsto] & & 8 \ar[uuuurr,mapsto] & & 4\\
+        & & & f' & & g' & \\
+        \end{tikzcd} \]
+
+        \item 复合 $f'$ 与 $g'$，得到
+        \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+        & & & & 8\\
+        & & 2 \ar[drr,mapsto] & & 4 \\
+        & & 8 \ar[uurr,mapsto] & & 2\\
+        16 \ar[urr,-] \ar[uurr,-] & & 4 \ar[drr,mapsto] & & 2\\
+        16 \ar[rr,-] \ar[urr,-] & & 4 \ar[uuurr,mapsto] & & 4\\
+        & & & g' \circ f'& \\
+        \end{tikzcd} \]
+        \item 计算关联的布局
+        \[
+        L_{g' \circ f'} = ((4,4),(8,2)):((16,1),(64,8)).
+        \]
+        \item $L_{g' \circ f'}$ 相对于 $(16,16)$ 已合并，因此
+        \[
+        B \circ A = ((4,4),(8,2)):((16,1),(64,8)).
+        \]
+    \end{enumerate}
+\end{example}
+
+
+
+\begin{example}
+    设 $A = (6,6):(5,60)$，$B = (10,360):(2,60)$。
+    \begin{enumerate}
+        \item 取 $A$ 与 $\coalesce(B) = B$ 的标准表示。
+        % \[ \begin{tikzcd}
+        % f:(6,6) \ar[r,"(2{,}4)"] & (5,6,2,6)\\
+        % g:(10,360) \ar[r,"(2{,}4)"] & (2,10,3,360).
+        % \end{tikzcd} \]
+        \[ \begin{tikzcd}[row sep = 1, column sep = 8]
+        & & 6 & & & & & & 360\\
+ & & 2 & & & & & & 3\\
+6 \ar[uurr,mapsto] & & 6 & & & & 360 \ar[uurr,mapsto] & & 10\\
+6 \ar[urr,mapsto] & & 5 & & & & 10 \ar[urr,mapsto] & & 2\\
+ & f & & & & & & g & \\
+        \end{tikzcd}\]
+        \item 应用算法 \ref{mutualrefinementalgorithm} 得到相互加细
+        % \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+        %     T = (5,6,2,6) & & \rightsquigarrow & & T' = (5,(2,3),2,6)\\
+        %     U = (10,360) & & \rightsquigarrow & & U' = ((5,2),(3,2,6,10))\\
+        % \end{tikzcd}
+        % \]
+                        \[ \begin{tikzcd}[row sep = 1, column sep = 8]
+   & & 10 & & \\
+   & & 6 & & \\
+ 6 \ar[urr,-] & & 2 & & \\
+ 2 \ar[urr,-] & & 3& & \\
+ 6 \ar[rr,-] \ar[urr,-] & & 2 & & \ar[ull,-] \ar[uull,-] \ar[uuull,-] \ar[uuuull,-] 360 \\
+ 5 \ar[rr,-]& & 5 & & \ar[ull,-] \ar[ll,-] 10 \\
+& & & & \\
+        \end{tikzcd}\]
+        \item 作图
+                \[ \begin{tikzcd}[row sep = 1, column sep = 8]
+& &   & & 10 & & & & \\
+& &   & & 6 & & & & \\
+& & 6 \ar[urr,-] & & 2 & & & & 360\\
+ & & 2 \ar[urr,-] & & 3& & & & 3\\
+6 \ar[uurr,mapsto] & & 6 \ar[rr,-] \ar[urr,-] & & 2 & & \ar[ull,-] \ar[uull,-] \ar[uuull,-] \ar[uuuull,-] 360 \ar[uurr,mapsto] & & 10\\
+6 \ar[urr,mapsto] & & 5 \ar[rr,-]& & 5 & & \ar[ull,-] \ar[ll,-] 10 \ar[urr,mapsto] & & 2\\
+ & f & & & & & & g & \\
+        \end{tikzcd}\]
+        \item 解出该图表，得到
+        % \[ \begin{tikzcd}[column sep = 12]
+        % ((2,3),6) \ar[rrr,"(2{,}3{,}5)"] \ar[d,two heads] \arrow[drrr, phantom, "\lrcorner", very near start] & & &  (5,(2,3),2,6) \ar[r,rightarrowtail] \ar[d,two heads]& ((5,2),(3,2,6,10)) \ar[rrr,"(2{,}3{,}5{,}6{,}7{,}8)"] \ar[d,two heads]& & & (2,(5,2),3,(3,2,6,10) ) \ar[d,two heads] \arrow[dlll, phantom, "\llcorner", very near start]\\
+        % (6,6) \ar[rrr,swap,"(2{,}4)"] & & & (5,6,2,6) & (10,360) \ar[rrr,swap,"(2{,}4)"] & & & (2,10,3,360)
+        % \end{tikzcd} \]
+        \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+         & &  & &   & & 10\\
+         & &  & &   & & 6 \\
+         & &  & &10 \ar[uurr,mapsto]& & 2 \\
+        & &   & & 6 \ar[uurr,mapsto]& & 3 \\
+        & &   & & 2 \ar[uurr,mapsto]& & 3 \\
+        & &  6 \ar[uurr,mapsto] & & 3 \ar[uurr,mapsto] & & 2 \\
+       6 \ar[rru,-]& &  3 \ar[urr,mapsto] & & 2 \ar[urr,mapsto] & & 5 \\
+       6  \ar[rr,-] \ar[urr,-] & & 2 \ar[urr,mapsto] & & 5 \ar[urr,mapsto]  & & 2 \\
+        & & & f' & & g' &
+        \end{tikzcd} \]
+        \item 复合 $f'$ 与 $g'$，得到
+        \[ \begin{tikzcd} [row sep = 1, column sep = 8]
+        & &  & & 10\\
+        & &  & & 6 \\
+        & &  & & 2 \\
+        & & & & 3 \\
+        & & & & 3 \\
+        & & 6 \ar[uuuurr,mapsto]& & 2 \\
+        6 \ar[rru,-]& &  3 \ar[uuurr,mapsto] & & 5 \\
+        6  \ar[rr,-] \ar[urr,-] & &  2 \ar[uurr,mapsto] & & 2 \\
+        & &  & \mathclap{g '\circ f'} &
+        \end{tikzcd} \]
+        \item 计算关联的布局
+        \[
+        L_{g' \circ f'} = ((2,3),6):((10,60),360).
+        \]
+        \item 布局 $L_{g' \circ f'}$ 相对于 $(6,6)$ 已合并，所以
+        \[
+        B \circ A = ((2,3),6):((10,60),360).
+        \]
+    \end{enumerate}
+\end{example}
+
+\subsection{更一般的复合}
+
+我们所发展的图形演算（graphical calculus）可以自然地推广，用来计算可处理布局 $A$ 与任意 CuTe 布局 $B$ 的复合 $B \circ A$。非正式地说，我们的做法是允许元组的元素取值于 $\mathbb{Q}_{>0} \supset \mathbb{Z}_{>0}$。我们用一个具体的计算例子来说明这一推广。
+
+考虑布局 $A = (4,4):(4,1)$ 与 $B = (8,8):(3,7)$。布局 $A$ 是可处理的，其标准表示是下图所示的元组态射 $f$。
+\[ \begin{tikzcd} [row sep = 1, column sep = 8]
+4 \ar[drr,mapsto] & & 4\\
+4 \ar[urr,mapsto] & & 4\\
+ & f & \\
+\end{tikzcd} \]
+布局 $B$ 不是可处理的，但我们仍可以用下图来描绘 $B$
+\[ \begin{tikzcd} [row sep = 1, column sep = 8]
+ & & 8\\
+ & & \frac{7}{24}\\
+8 \ar[uurr,mapsto] & & 8 \\
+8 \ar[urr,mapsto] & & 3\\
+  &g& \\
+\end{tikzcd} \]
+这个图并不对应于一个真正的元组态射，因为「陪域元组」$(3,8,\frac{7}{24},8) $ 含有非整数元素。然而，它仍然通过通常的前缀积（prefix product）公式编码布局 $B$，并且仍可作为我们复合算法的合法输入：我们可以应用算法 \ref{mutualrefinementalgorithm} 得到相互加细
+\[ \begin{tikzcd} [row sep = 1, column sep = 8]
+ & & 4 & & \\
+ & & 2 & & \\
+4 \ar[rr,-] \ar[urr,-] & & 2 & & \ar[llu,-] \ar[lluu,-] 8\\
+4 \ar[rr,-] & & 4 & & \ar[ll,-] \ar[llu,-] 8\\
+\end{tikzcd} \]
+作图
+\[ \begin{tikzcd} [row sep = 1, column sep = 8]
+& & & & 4 & & & &  8\\
+& & & & 2 & & & & \frac{7}{24}\\
+4 \ar[drr,mapsto] & & 4 \ar[rr,-] \ar[urr,-] & & 2 & & \ar[llu,-] \ar[lluu,-] 8 \ar[uurr,mapsto] & & 8 \\
+4 \ar[urr,mapsto] & & 4 \ar[rr,-] & & 4 & & \ar[ll,-] \ar[llu,-] 8 \ar[urr,mapsto] & & 3\\
+& f & & & & & & g & \\
+\end{tikzcd} \]
+解出该图表，得到
+\[ \begin{tikzcd} [row sep = 1, column sep = 8]
+ & & & & & & 4 \\
+ & & & & & & 2 \\
+ & & & & 4 \ar[uurr,mapsto] & & \frac{7}{24} \\
+ & & 4 \ar[ddrr,mapsto] & & 2 \ar[uurr,mapsto] & & 2 \\
+4 \ar[urr,-] & & 2 \ar[urr,mapsto] & & 2 \ar[urr,mapsto] & & 4\\
+4 \ar[rr,-] \ar[urr,-] & & 2 \ar[urr,mapsto] & & 4 \ar[urr,mapsto] & & 3 \\
+ & & & f' & & g' & \\
+\end{tikzcd} \]
+再复合 $f'$ 与 $g'$，得到图
+\[ \begin{tikzcd} [row sep = 1, column sep = 8]
+ & & & & 4 \\
+ & & & & 2 \\
+ & & & & \frac{7}{24} \\
+ & & 4 \ar[drr,mapsto] & & 2 \\
+4 \ar[urr,-] & & 2 \ar[uuurr,mapsto] & & 4\\
+4 \ar[rr,-] \ar[urr,-] & & 2 \ar[uurr,mapsto] & & 3\\
+ & & & g' \circ f' & \\
+\end{tikzcd} \]
+编码的布局为 $((2,2),4):((12,7),3)$，它相对于 $(4,4)$ 已合并，因此我们断定
+\[
+B \circ A = ((2,2),4):((12,7),3).
+\]
+
+\subsection{复合可许性}
+
+在 \cite{shah2024layout} 中，作者引入了{\it 复合可许}（admissibility for composition）的概念，它是布局 $A$ 与 $B$ 的复合 $B \circ A$ 存在的一个充分条件。我们来回顾复合可许的定义。与 \cite{shah2024layout} 一样，我们把注意力限制在不含等于 $1$ 的形状元素的扁平布局上，并假设我们复合中的第一个布局不含等于 $0$ 的步长。
+
+\begin{definition}\label{admissibilityforcomposition}
+    设
+    \[
+    A = (s_1,\dots,s_m):(d_1,\dots,d_m)
+    \]
+    是没有 $s_i = 1$ 且没有 $d_i = 0$ 的扁平布局。设 $B$ 是满足
+    \[
+    \shape(B) = (u_1,\dots,u_p).
+    \]
+    的扁平布局。若下列条件成立，则称 $A$ 与 $B$ 是{\it 复合可许}的。
+    \begin{enumerate}
+        \item 对每个 $ 1 \leq i \leq m$，存在 $1 \leq k \leq \ell \leq p$ 使得
+        \begin{enumerate}
+            \item $u_1 \cdots u_{k-1}$ 整除 $d_i$，
+            \item $d_i$ 整除 $u_1 \cdots u_k$（若 $k < p$，则为真整除（properly divides）），
+            \item $u_1 \cdots u_{\ell-1}$ 整除 $s_id_i$，
+            \item $s_i d_i$ 整除 $u_1 \cdots u_\ell$（若 $\ell < p$，则为真整除）。
+        \end{enumerate}
+        \item 区间
+        \[
+        [d_i, d_i(s_i-1)] \cap [1,s_1 \cdots s_{m-1})
+        \]
+        两两不交。
+    \end{enumerate}
+\end{definition}
+
+\begin{remark}
+    在上面的定义中，指标 $k,\ell$ 在 \cite{shah2024layout} 中被称为「切分指标」（division indices）。
+\end{remark}
+
+\begin{remark}
+    在 \cite{shah2024layout} 中，作者使用的是布局的「扩充布局函数」（extended layout function），它可以看作把布局的最后一个形状元素 $s_m$ 替换为 $\infty$ 后所得布局的布局函数。我们这里给出的定义是采用普通布局函数工作时的恰当类似物。
+\end{remark}
+
+\begin{lemma}\label{prefixproductdivisibilitylemma}
+    设 $T = (t_1,\dots,t_n)$ 与 $U = (u_1, \dots , u_p)$ 是正整数元组，并设 $(T,U)$ 容许一个相互加细。则对 $T$ 与 $U$ 的任意前缀积 $t_1 \cdots t_j$ 与 $u_1 \cdots u_k$，或者
+    \begin{enumerate}
+        \item $t_1 \cdots t_{j}$ 大于 $u_1 \cdots u_{k}$，或者
+        \item $t_1 \cdots t_{j}$ 整除 $u_1 \cdots u_{k}$。
+    \end{enumerate}
+\end{lemma}
+
+\begin{proof}
+    选取 $(T,U)$ 的某个相互加细 $(T',U')$，并记 $(u_1',\dots,u_{p'}')$ 为 $U'$ 的扁平化。$T$ 或 $U$ 的任何前缀积也是 $U'$ 的前缀积，而固定正整数元组的前缀积满足 $x \leq y \Rightarrow x \mid y$，结论由此得证。
+\end{proof}
+
+\begin{theorem}
+    设 $A$ 是不含等于 $1$ 的形状元素、也不含等于 $0$ 的步长元素的扁平可处理布局。设 $B$ 是扁平可处理布局。令 $f:S \to T$ 与 $g:U \to V$ 分别表示 $A$ 与 $\coalesce(B)$ 的标准表示。若 $T$ 与 $U$ 容许一个相互加细，则 $A$ 与 $B$ 是复合可许的。
+\end{theorem}
+
+\begin{proof}
+    记 $S = (s_1,\dots,s_m)$，$T = (t_1,\dots,t_n)$，$U = (u_1,\dots,u_p)$，并记 $\alpha: \langle m \rangle_* \to \langle n \rangle_*$ 为 $f$ 所位于（lies over）其上的映射。我们需要验证定义 \ref{admissibilityforcomposition} 中的条件成立。
+    \begin{enumerate}
+        \item 设 $1 \leq i \leq m$。则对某个 $j$ 有 $d_i = t_1 \cdots t_{j-1}$，即 $j = \alpha(i)$。设我们有 $(T,U)$ 的一个相互加细 $(T', U')$，并记 $(T')^\flat = (t_1',\dots,t_{n'}')$ 与 $(U')^\flat = (u_1',\dots,u_{p'}')$。
+        \begin{itemize}
+            \item (a) 与 (b)：由于 $T'$ 加细 $T$，存在某个 $1 \leq a \leq n'$ 使得
+            \[d_i = t_1 \cdots t_{j-1} = t_1' \cdots t_{a}' = u_1' \cdots u_a'.\]
+            取极大的 $k \in \langle p \rangle$ 使得 $u_1 \cdots u_{k-1} \leq u_1' \cdots u_a'$。
+            \begin{itemize}
+                \item 设 $k < p$。我们观察到
+                \[
+                u_1 \cdots u_{k-1} \leq d_i < u_1 \cdots u_{k}.
+                \]
+                其中第二个不等式由 $k \in \langle p \rangle$ 的极大性得出。引理 \ref{prefixproductdivisibilitylemma} 蕴含 $u_1 \cdots u_{k-1}$ 整除 $ d_i$，且 $d_i$ 真整除 $u_1 \cdots u_{k}$。
+                \item 设 $k = p$。我们观察到
+                \[
+                u_1 \cdots u_{k-1} \leq d_i = t_1 \cdots t_{j-1} < t_1 \cdots t_n \leq u_1 \cdots u_{p} = u_1 \cdots u_k.
+                \]
+                引理 \ref{prefixproductdivisibilitylemma} 蕴含 $u_1 \cdots u_{k-1}$ 整除 $ d_i$，且 $d_i$ 整除 $u_1 \cdots u_{k}$（虽为真整除，但我们并不需要这一点）。
+            \end{itemize}
+
+            \item (c) 与 (d)：同样，由于 $T'$ 加细 $T$，存在某个 $1 \leq b \leq n'$ 使得
+            \[
+            s_id_i = t_1 \cdots t_j = t_1' \cdots t_b' = u_1' \cdots u_b'.
+            \]
+            取极大的 $\ell \in \langle p \rangle $ 使得 $u_1 \cdots u_{\ell - 1} \leq u_1' \cdots u_b'$。
+            \begin{itemize}
+                \item 设 $\ell < p$。我们观察到
+                \[
+                u_1 \cdots u_{\ell-1} \leq s_i d_i < u_1 \cdots u_{\ell}.
+                \]
+                其中第二个不等式由 $\ell \in \langle p \rangle$ 的极大性得出。引理 \ref{prefixproductdivisibilitylemma} 蕴含 $u_1 \cdots u{\ell-1}$ 整除 $ s_id_i$，且 $s_id_i$ 真整除 $u_1 \cdots u_{\ell}$。
+                \item 设 $\ell = p$。我们观察到
+                \[
+                u_1 \cdots u_{\ell-1} \leq s_id_i = t_1 \cdots t_{j} \leq t_1 \cdots t_n \leq u_1 \cdots u_{p} = u_1 \cdots u_k.
+                \]
+                引理 \ref{prefixproductdivisibilitylemma} 蕴含 $u_1 \cdots u_{k-1}$ 整除 $ d_i$，且 $d_i$ 整除 $u_1 \cdots u_{k}$。
+            \end{itemize}
+        \end{itemize}
+        \item 对 $\langle m \rangle$ 中任意 $i \neq i'$，有 $d_i = t_1 \cdots t_{j-1}$，$s_i = t_j$，$d_{i'} = t_1 \cdots t_{j'-1}$，$s_{i'} = t_{j'}$，其中 $j = \alpha(i)$，$j' = \alpha(i')$。于是
+        \[
+        [d_i, d_i(s_i-1)] = [t_1 \cdots t_{j-1} , t_1 \cdots t_{j-1}(t_j - 1)]
+        \]
+        且
+        \[
+        [d_{i'}, d_{i'}(s_{i'}-1)] = [t_1 \cdots t_{{j'}-1} , t_1 \cdots t_{{j'}-1}(t_{j'} - 1)]
+        \]
+        若 $j' > j$，则
+        \[
+        t_1 \cdots t_{j-1}(t_j - 1) < t_1 \cdots t_{{j'}-1}
+        \]
+        故这些区间互不重叠，$j < j'$ 的情形同理。
+    \end{enumerate}
+\end{proof}

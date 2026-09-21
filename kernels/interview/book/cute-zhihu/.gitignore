@@ -1,0 +1,7 @@
+cute-zhihu.pdf
+*.aux
+*.log
+*.toc
+*.out
+.tmp/
+.tmp_build*.log

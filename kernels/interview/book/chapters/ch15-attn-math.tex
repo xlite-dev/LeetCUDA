@@ -132,6 +132,68 @@ softmax 处于梯度健康的敏感区。两点考据说明：（1）Transformer
 $1/\sqrt{d}$ 仍是事实标准，方差更不均匀的情形由量化方案处理
 （15.3.7~节 FA3 的 smoothing/block 量化思想）。
 
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  tick/.style={font=\tiny, inner sep=1pt},
+]
+  \fill[gray!10] (-0.6,0) rectangle (0.6,2.5);
+  \draw[gray!30, dashed] (0,0.48) -- (4.5,0.48);
+  \draw[gray!30, dashed] (0,0.96) -- (4.5,0.96);
+  \draw[gray!30, dashed] (0,1.44) -- (4.5,1.44);
+  \draw[gray!30, dashed] (0,1.92) -- (4.5,1.92);
+  \draw[gray!30, dashed] (0,2.40) -- (4.5,2.40);
+  \draw[thick, tkBlue, domain=-15:15, samples=161, smooth]
+    plot ({0.3*\x},{exp(-abs(\x))/(1+exp(-abs(\x)))^2*9.6});
+  \draw[-{Stealth}] (-5.0,0) -- (5.15,0);
+  \draw[-{Stealth}] (0,0) -- (0,2.75);
+  \foreach \dv in {-15,-10,-5,5,10,15}{
+    \draw ({0.3*\dv},0.03) -- ({0.3*\dv},-0.03);
+    \node[tick, anchor=north] at ({0.3*\dv},-0.05) {$\dv$};
+  }
+  \node[tick, anchor=north east] at (-0.05,-0.05) {$0$};
+  \foreach \yv/\yl in {0.48/0.05,0.96/0.10,1.44/0.15,1.92/0.20,2.40/0.25}{
+    \draw (-0.04,\yv) -- (0.04,\yv);
+    \node[tick, anchor=east] at (-0.1,\yv) {$\yl$};
+  }
+  \node[font=\scriptsize, rotate=90] at (-0.95,1.25) {$\sigma(\Delta)(1{-}\sigma(\Delta))$};
+  \node[font=\scriptsize, anchor=north west] at (-4.9,-0.5) {$\Delta$（logit 差）};
+  \fill[tkBlue] (0,2.4) circle (1.4pt);
+  \node[font=\scriptsize, anchor=south east] at (0.15,2.48) {峰值 $1/4$（$\Delta{=}0$）};
+  \node[font=\scriptsize, align=center, anchor=south] at (-3.4,2.42)
+    {÷$\sqrt{d}$ 定标后：Var $=1$，\\$\Delta = O(1)$ 梯度健康区（灰带）};
+  \draw[red, dashed, thick] (3.39,0) -- (3.39,1.9);
+  \fill[red] (3.39,0.04) circle (1.4pt);
+  \node[font=\scriptsize, red, align=left, anchor=north west] at (3.52,-0.5)
+    {$\Delta = 11.3$（$d{=}128$ 未定标，$\mathrm{std}(s)=\sqrt{d}$）：\\
+     $\sigma(1{-}\sigma) \approx 1.2\times10^{-5}$，\\
+     softmax 近 one-hot $\to$ 反向传播近乎断流};
+  \draw[thick] (5.7,0.55) rectangle (8.9,2.99);
+  \foreach \gk/\gy in {1/2.79, 2/2.39, 3/1.99, 4/1.59, 5/1.19, 6/0.79}{
+    \draw[gray!30, dashed] (5.7,\gy) -- (8.9,\gy);
+    \node[tick, anchor=west] at (8.95,\gy) {$10^{-\gk}$};
+  }
+  \foreach \dv in {0,5,10,15}{
+    \draw ({5.7+0.2*\dv},0.52) -- ({5.7+0.2*\dv},0.58);
+    \node[tick, anchor=north] at ({5.7+0.2*\dv},0.47) {$\dv$};
+  }
+  \draw[thick, tkBlue, domain=0:15, samples=101, smooth]
+    plot ({5.7+0.2*\x},{0.55+2.4*(1-((\x+2*ln(1+exp(-\x)))/2.302585-0.6)/6)});
+  \fill[tkBlue] (5.7,2.95) circle (1.4pt);
+  \draw[red, dashed, thick] (7.96,0.55) -- (7.96,1.23);
+  \fill[red] (7.96,1.23) circle (1.4pt);
+  \node[font=\scriptsize, anchor=south] at (7.3,3.06) {对数纵轴（$\log_{10}$）放大};
+\end{tikzpicture}
+\caption{$1/\sqrt{d}$ 定标的饱和论证（15.3.2 节，式~\ref{eq:15-sat}）：sigmoid 梯度
+$\sigma(\Delta)(1-\sigma(\Delta))$ 的峰值 $1/4$ 在 $\Delta=0$；除以 $\sqrt{d}$ 后
+$\mathrm{Var}=1$、$\Delta=O(1)$（灰带），梯度处于健康敏感区。不定标时
+$\mathrm{std}(s)=\sqrt{d}$（式~\ref{eq:15-dot-var}），$d=128$ 即 $\Delta\approx11.3$，
+梯度跌到 $\approx1.2\times10^{-5}$——线性纵轴上贴地，右侧对数纵轴面板可见其仍在
+$10^{-5}$ 量级（红点，恰在 $10^{-5}$ 网格线上方），softmax 近 one-hot、反向传播
+近乎断流。曲线偶对称，$\Delta=-11.3$ 同理。}
+\label{fig:15-sqrt-d-scale}
+\end{figure}
+
 \subsection{朴素实现：FLOPs、显存与带宽三本账}
 
 \textbf{FLOPs 账}（约定：一次乘法 + 一次加法计 2 FLOP，故 $M{\times}K$ 乘 $K{\times}N$
@@ -175,6 +237,65 @@ $\approx 2.2\,\mathrm{ms}$，已是 $0.83\,\mathrm{ms}$ 计算下界的 $2.6$ �
 远低于现代 GPU 数百 TFLOPS 峰值除以 TB/s 级带宽得到的 roofline 拐点（$100{+}$
 FLOP/B 量级），kernel 被钉死在 memory-bound 区。修法只有一个方向：让 $N^{2}$
 中间量根本不经过 HBM。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  kbox/.style={draw=tkBlue!70, thick, fill=tkFillBlue, minimum width=2.3cm, minimum height=1.1cm, font=\scriptsize, align=center},
+  arr/.style={-{Stealth[length=4pt]}, very thick, draw=tkOrange},
+  tlab/.style={font=\scriptsize, align=center},
+  nlab/.style={font=\scriptsize, align=center},
+]
+  \node[nlab, font=\scriptsize\bfseries] at (6.1, 2.75)
+    {朴素三 kernel：中间量 HBM 往返 $\Sigma = 4\times 1\,\mathrm{GiB} \approx 4.3\,\mathrm{GB}$};
+  \node[nlab, anchor=east] at (-0.15, 1.6) {Q, K};
+  \draw[-{Stealth}] (-0.1, 1.6) -- (0.35, 1.6);
+  \node[kbox] at (1.6, 1.6) {GEMM ①\\$S = QK^{\top}$};
+  \node[kbox] at (6.1, 1.6) {softmax\\$S \to P$};
+  \node[kbox] at (10.6, 1.6) {GEMM ②\\$O = PV$（V 读入）};
+  \draw[-{Stealth}] (11.9, 1.6) -- (12.35, 1.6);
+  \node[nlab, anchor=west] at (12.4, 1.6) {O};
+  \fill[gray!75] (0.4, -1.35) rectangle (11.75, -0.75);
+  \node[white, font=\scriptsize\bfseries] at (6.1, -1.05) {HBM（$\sim$2 TB/s 量级）};
+  \draw[arr] (0.9, 1.05) -- node[tlab, right=1pt] {写 S\\1 GiB} (0.9, -0.75);
+  \draw[arr] (5.4, -0.75) -- node[tlab, right=1pt] {读 S\\1 GiB} (5.4, 1.05);
+  \draw[arr] (6.8, 1.05) -- node[tlab, right=1pt] {写 P\\1 GiB} (6.8, -0.75);
+  \draw[arr] (10.2, -0.75) -- node[tlab, right=1pt] {读 P\\1 GiB} (10.2, 1.05);
+  \node[font=\scriptsize, anchor=west] at (0.4, -2.05) {4.3 GB（全部往返）};
+  \fill[tkOrange] (3.6, -2.25) rectangle (7.9, -1.95);
+  \node[font=\scriptsize, anchor=west] at (0.4, -2.75) {67 MB（有效数据）};
+  \fill[tkGreen] (3.6, -2.95) rectangle (3.67, -2.65);
+  \node[font=\scriptsize, anchor=west] at (3.85, -2.8) {$\approx$ 1/64};
+  \node[nlab, align=left, anchor=west] at (8.25, -2.45)
+    {搬运 $\approx$ 2.2 ms（4.3 GB / 2 TB/s）\\$\gg$ 计算下界 0.83 ms $\Rightarrow$ \textbf{2.6$\times$}};
+  \node[nlab, font=\scriptsize\bfseries, anchor=south, text=tkGreen] at (4.3, -3.95)
+    {FlashAttention：Q 块常驻 SRAM/寄存器，K/V 流式扫过};
+  \node[draw=tkGreen!70, thick, dashed, minimum width=8.6cm, minimum height=2.0cm] at (4.3, -4.95) {};
+  \node[draw=tkGreen!70, fill=tkFillGreen, minimum width=2.0cm, minimum height=0.9cm,
+        font=\scriptsize, align=center] at (1.5, -5.2) {Q 块 $B_r{\times}d$\\常驻 SRAM};
+  \node[draw=tkGreen!70, dashed, minimum width=2.6cm, minimum height=0.9cm,
+        font=\scriptsize, align=center] at (4.3, -5.2) {S/P 只在寄存器 fragment\\（不落 HBM）};
+  \node[draw=tkGreen!70, fill=tkFillGreen, minimum width=2.0cm, minimum height=0.9cm,
+        font=\scriptsize, align=center] at (7.1, -5.2) {online 更新\\$(m, \ell, O)$};
+  \node[nlab, anchor=east] at (-0.35, -4.95) {Q, K, V\\（$4Nd \approx 67$ MB）};
+  \draw[-{Stealth}] (-0.3, -4.95) -- (0.0, -4.95);
+  \draw[-{Stealth}] (8.6, -4.95) -- (8.9, -4.95);
+  \node[nlab, anchor=west] at (8.95, -4.95) {O};
+  \node[draw, rounded corners=2pt, fill=gray!8, font=\scriptsize, align=left,
+        anchor=north west] at (9.5, -4.05)
+    {朴素：4.3 GB HBM 往返，\\搬运 2.2 ms vs 计算 0.83 ms\\（memory-bound，2.6$\times$）\\[2pt]
+     FA：$\Theta(Nd) \approx 67$ MB，\\S/P 全程不过 HBM\\$\to$ 带宽不再是瓶颈};
+\end{tikzpicture}
+\caption{朴素 attention 的 HBM 往返账 vs FlashAttention（15.3.3 节，
+$B{=}1$、$H{=}32$、$N{=}4096$、$d{=}64$）：上行三个 kernel 之间，$S$ 与 $P$
+（各 $\approx$1 GiB）必须经 HBM 往返——写 S、读 S、写 P、读 P 共
+$4\times1\,\mathrm{GiB}\approx4.3\,\mathrm{GB}$，而有效数据（Q,K,V 读入 $+$ O 写出）只有
+$\approx$67 MB，占全部流量的 1/64；按 2 TB/s 乐观带宽，仅搬运就要 $\approx$2.2 ms，
+已是 0.83 ms 计算下界的 2.6 倍——kernel 被钉死在 memory-bound 区。下行
+FlashAttention 把 $S$、$P$ 困在 SRAM/寄存器 fragment 里（虚线框），HBM 只见
+Q,K,V 进、O 出（$\Theta(Nd)$，式~\ref{eq:15-naive-io} 的另一端），中间量全程不过 HBM。}
+\label{fig:15-hbm-traffic}
+\end{figure}
 
 \subsection{分块计算与 online rescale：逐块推导}
 
@@ -494,8 +615,50 @@ BOOK\_PLAN \S 1.3 核验表）：FA2 MMA 版
 
 \subsection{头注释导读：五条要点}
 
-\lstinputlisting[linerange={5-30},firstnumber=auto,
-  title={flash\_attn.cuh L5-30（面试要点：核心问题、三板斧、split-Q 与 online rescaling 公式）}]{../flash_attn.cuh}
+头注释 L5--30 自称「面试要点（FlashAttention-2 算法）」，共五条。
+
+\textbf{要点 1，核心问题}：标准 Attention 的 $O(N^{2})$ 中间矩阵
+（$S = QK^{\top}$）必须写入 HBM，但 HBM 带宽是瓶颈——FlashAttention-2 用
+tiling + online softmax 避免写回。
+
+\textbf{要点 2，FA 三板斧}：
+\begin{itemize}
+  \item \textbf{Tiling}：Q 分块 $[B_r, d]$，K/V 沿 seqlen 分块 $[B_c, d]$；
+  \item \textbf{Online Softmax}：迭代更新 $m$（行 max）与 $\ell$（行 sum），
+        无需全局同步；
+  \item \textbf{Recomputation}（反向）：反向传播时重新计算 S/P，而非存储
+        中间矩阵。
+\end{itemize}
+
+\textbf{要点 3，split-Q 设计}：所有 warp 共享同一块 K，各 warp 处理 Q 的不同
+行片段——\texttt{warp\_KV=0}（所有 warp 共享 K），\texttt{warp\_QP=warp\_id}
+（各 warp 不同 Q 行）；优点是减少 warp 间通信和 shuffle。
+
+\textbf{要点 4，online rescaling 公式}（FA 核心，arXiv:2307.08691）：对每个
+K/V tile，
+\begin{align*}
+  S_{\text{cur}} &= Q\,K^{\top}
+    && \text{（未缩放，存入 \texttt{R\_S}）}\\
+  m_{\text{new}} &= \max\bigl(m_{\text{old}},\
+    \mathrm{row\_max}(S_{\text{cur}} \cdot \mathrm{scale})\bigr)\\
+  P_{\text{cur}} &= \exp(S_{\text{cur}} \cdot \mathrm{scale} - m_{\text{new}})
+    && \text{（写回 \texttt{R\_S} 寄存器！）}\\
+  \ell_{\text{new}} &= \exp(m_{\text{old}} - m_{\text{new}})\,\ell_{\text{old}}
+    + \mathrm{row\_sum}(P_{\text{cur}})\\
+  O_{\text{new}} &= \mathrm{diag}\bigl(\exp(m_{\text{old}} - m_{\text{new}})\bigr)
+    \,O_{\text{old}} + P_{\text{cur}} V\\
+  O_{\text{final}} &= O_{\text{new}} \,/\, \ell_{\text{final}}
+\end{align*}
+
+\textbf{要点 5，为什么 \texttt{R\_S} 可以直接用作 $P@V$ 的 A 矩阵}：
+\begin{itemize}
+  \item \texttt{R\_S} 经过 softmax 后，存储的是 $P = \exp(S - m)$，数据仍然
+        是 half 精度；
+  \item 当前实现依赖 m16n8k16 这一路径下约定好的 fragment 布局，使 softmax
+        后的 P 可以继续留在 \texttt{R\_S} 中，供后面的 $P@V$ 直接消费；
+  \item 这是此实现的寄存器布局复用技巧，不要背成「所有 MMA A/C fragment
+        都天然同构」的通用结论。
+\end{itemize}
 
 要点 1（L8--9）即 15.3.3~节的带宽账：$O(N^{2})$ 中间矩阵必须过 HBM，而 HBM 是瓶颈。
 要点 2（L10--13）的「三板斧」中，tiling 对应式~\ref{eq:15-blocks}，online softmax
@@ -512,8 +675,21 @@ $P$ 直接写回 $S$ 的 fragment 寄存器 \texttt{R\_S} 供 $P@V$ 消费，省
 
 \subsection{launch 配置与 tile 参数化}
 
-\lstinputlisting[linerange={31-46},firstnumber=auto,
-  title={flash\_attn.cuh L31-46（出处、launch 配置与 tile 设计）}]{../flash_attn.cuh}
+头注释 L31--46 交代出处与 launch 口径：本实现参考 FlashAttention-2（Dao
+et al., arXiv:2307.08691），提取自 LeetCUDA
+\texttt{flash-attn/mma/basic/flash\_attn\_mma\_split\_q.cu}。张量形状：Q/K/V/O
+均为 \texttt{[batch\_size, num\_heads, seq\_len, head\_dim]}，简记 $[B, H, N, d]$。
+block 配置 $(128, 1, 1)$，线程数 \texttt{kNumThreads} $=$ \texttt{kWarpSize}
+$\times$ \texttt{kMmaTileSeqLenQ} $\times$ \texttt{kMmaTileSeqLenK} $= 128$。
+tile 设计（以 \texttt{kHeadDim=64} 为例）把两个块尺寸分解到 mma 原子：
+\begin{itemize}
+  \item $B_r$：\texttt{kMmaAtomM} $\times$ \texttt{kMmaTileSeqLenQ} $\times$
+        \texttt{kValTileSeqLenQ}，即 $16 \times \{4, 8\} \times 1 = \{64, 128\}$；
+  \item $B_c$：\texttt{kMmaAtomN} $\times$ \texttt{kMmaTileSeqLenK} $\times$
+        \texttt{kValTileSeqLenK}，即 $8 \times 1 \times 8 = 64$；
+  \item warp 布局：4 个 warp，\texttt{warp\_QP} 取 $0 \sim 3$ 各处理 16 行
+        Q，\texttt{warp\_KV} $= 0$ 共享 K。
+\end{itemize}
 
 \texttt{Grid = ((N + 63)/64,\ B*H,\ 1)} 把 FA2 的两层并行写得明明白白：
 \texttt{gridDim.x} 是 seqlen(Q) 维的 split-Q 并行（15.3.7~节 FA2 改动 2），
@@ -535,8 +711,29 @@ $B_r$ 的堆叠数、\texttt{k\allowbreak{}Mma\allowbreak{}Tile\allowbreak{}Seq\
 
 \subsection{执行流程：九步与本章公式的对应}
 
-\lstinputlisting[linerange={48-59},firstnumber=auto,
-  title={flash\_attn.cuh L48-59（执行流程九步）}]{../flash_attn.cuh}
+头注释 L48--59 的执行流程共九步（编号沿用源码：3a--3e 为外循环体，源码把
+它们计作步骤 3--7，故后续步骤直接从 8 接续）：
+\begin{itemize}
+  \item \textbf{1）}预加载 $Q[B_r, d]$ 到 smem（只加载一次，split-Q 的核心
+        优势）；
+  \item \textbf{2）}外循环：沿 K 的 seqlen 分块迭代（$T_c =
+        \mathrm{seqlen}/B_c$）；
+  \item \textbf{3a）}\texttt{cp.async} 加载当前 V $+$ 预加载下一个 K（多
+        stage pipeline）；
+  \item \textbf{3b）}$QK^{\top}$——沿 head dim 内循环 $\to$ \texttt{ldmatrix}
+        Q/K $\to$ \texttt{HMMA16816}；
+  \item \textbf{3c）}Online Safe Softmax——warp reduce max/row $\to$
+        $\exp(S \cdot \mathrm{scale} - \mathrm{max})$；关键：将 P 写回
+        \texttt{R\_S} 寄存器（替换 S），\texttt{R\_S} 现在存储 P matrix；
+  \item \textbf{3d）}$P@V$——沿 V 的 $B_c$ 维内循环 $\to$ \texttt{ldmatrix}
+        V (transposed) $\to$ 直接用 \texttt{R\_S} 做 A 矩阵；当前实现依赖
+        同一组寄存器布局约定，避免为 $P@V$ 额外重组 P fragment；
+  \item \textbf{3e）}Online rescaling——$O_{\text{new}} =
+        \exp(m_{\text{old}} - m_{\text{new}})\,O_{\text{old}} + P@V$；
+  \item \textbf{8）}最终 rescale：$O_{\text{final}} =
+        (1/\ell_{\text{final}})\,O_{\text{final}}$；
+  \item \textbf{9）}Epilogue：warp shuffle $+$ 128-bit collective store。
+\end{itemize}
 
 九步里每一步的归属：步骤 1（$Q$ 只加载一次）是 split-Q 的结构性优势；步骤 2 的外循环
 即 $j = 1..T_c$ 的 KV 分块遍历；步骤 3a 是 cp.async 多级预取（加载当前 $V$ 与下一个
@@ -548,8 +745,23 @@ epilogue。整个循环期间，每个 query 行的状态 $(m_i, \ell_i, O_i)$ �
 $S^{[j]}, P^{[j]}$ 只存在于 \texttt{R\_S} 的 fragment 里——$N \times N$ 的矩阵从头
 到尾没有存在过。
 
-\lstinputlisting[linerange={61-71},firstnumber=auto,
-  title={flash\_attn.cuh L61-71（Pad 与 XOR swizzle 的 profile 结论，SM120）}]{../flash_attn.cuh}
+头注释 L61--71 是 Pad 与手动 XOR swizzle 的 profile 结论（SM120）：
+\begin{itemize}
+  \item XOR 能消除目标 \texttt{ldmatrix} lane pattern 的 bank conflict，但
+        收益是局部的；XOR 本身及 \texttt{\% 2} 的计算不是主要瓶颈——nvcc
+        已能将该式化简为 bit operations；
+  \item compact Q/K/V XOR 改变了 \texttt{cp.async} 的 shared destination
+        pattern：LDGSTS wavefronts 从 pad 的 30.15M 增至 68.16M
+        （$2.26\times$），long-scoreboard、LG-throttle、MIO-throttle 分别约为
+        pad 的 $3.25\times$、$2.74\times$、$1.60\times$；
+  \item compact XOR 虽节省约 5\,KiB smem，但没有提高此 kernel 的 occupancy；
+        最终约 120.0 TFLOPS，显著低于 Q/K/V \texttt{kPad=8} 的 166.6
+        TFLOPS；
+  \item 所以当前 kernel 默认对 Q/K/V 都用 \texttt{kPad=8}。保留 swizzle
+        路径是为了学习和消融：评价 shared layout 必须同时观察
+        \texttt{ldmatrix} reads 与 \texttt{cp.async}/LDGSTS writes，不能只看
+        bank-conflict counter，也不能只优化 XOR 地址算术。
+\end{itemize}
 
 L61--71 是一段高质量的 profile 考据（SM120，$B{=}1, H{=}32, N{=}4096, D{=}64$）：
 compact XOR swizzle 消除了 ldmatrix 的 bank conflict，却使 cp.async（LDGSTS）的
@@ -565,14 +777,134 @@ layout 必须\textbf{同时}看读端（ldmatrix）与写端（cp.async），只
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-15-1-online-softmax/fig-15-1.png}
+\begin{tikzpicture}[font=\tiny, x=0.0149cm, y=-0.0149cm]
+  \colorlet{tBlue}{tkBlue}
+  \colorlet{tGreen}{tkGreen}
+  \colorlet{tOrange}{tkOrange}
+  \node[anchor=west, font=\scriptsize\bfseries] at (24,26)
+    {FlashAttention online softmax：单个 Q 块（$B_r$ 行）流式扫过全部 $T_c$ 个 KV 块};
+  \node[draw=tBlue, fill=tkFillBlue, text=tBlue, font=\tiny\bfseries, inner sep=1pt,
+        minimum width=3.73cm, minimum height=0.69cm] at (149,73)
+    {$m\ [B_r]$ 运行行最大};
+  \node[draw=tGreen, fill=tkFillGreen, text=tGreen, font=\tiny\bfseries, inner sep=1pt,
+        minimum width=2.68cm, minimum height=0.69cm] at (376,73)
+    {$\ell\ [B_r]$ 运行行和};
+  \node[draw=tOrange, fill=tkFillOrange, text=tOrange, font=\tiny\bfseries, inner sep=1pt,
+        minimum width=3.87cm, minimum height=0.69cm] at (608,73)
+    {$O\ [B_r,d]$ 未归一化累加器};
+  \node[draw=black!55, fill=gray!18, align=center, text width=4.32cm, inner sep=1pt,
+        minimum height=0.69cm] at (905,73)
+    {Q tile $[B_r,d]$：Step1 一次性进 smem，\\外循环不再读 HBM};
+  \node[anchor=west, text=black!65] at (24,108)
+    {三状态全程驻留寄存器，跨整个 KV 循环存活};
+  \node[draw=black!60, fill=gray!25, font=\tiny\bfseries, inner sep=1pt,
+        minimum width=15.44cm, minimum height=0.51cm] at (542,143)
+    {for $j = 1\,..\,T_c$\quad（外层循环流式扫 KV，每块一遍）};
+  \node[draw=tBlue, fill=white, inner sep=1pt, minimum width=8.94cm,
+        minimum height=0.63cm] at (340,191)
+    {$K^{[j]}\,[B_c,d] \overset{\text{cp.async / TMA}}{\longrightarrow} \mathrm{smem}$};
+  \node[anchor=west, text=tBlue, font=\tiny\bfseries] at (660,191) {(3a) load};
+  \node[draw=tBlue, fill=white, inner sep=1pt, minimum width=8.94cm,
+        minimum height=0.63cm] at (340,243)
+    {$S^{[j]} = Q\,(K^{[j]})^{\top}/\sqrt{d}$\quad$[B_r \times B_c]$};
+  \node[anchor=west, text=tBlue, font=\tiny\bfseries] at (660,243)
+    {$QK^{\top} \to R_S$};
+  \node[draw=tGreen, fill=white, inner sep=1pt, minimum width=8.94cm,
+        minimum height=0.63cm] at (340,295)
+    {$m_{\text{new}} = \max\bigl(m,\ \mathrm{rowmax}(S^{[j]})\bigr)$};
+  \node[anchor=west, text=tGreen, font=\tiny\bfseries] at (660,295) {(3c) online};
+  \node[draw=tGreen, fill=white, inner sep=1pt, minimum width=8.94cm,
+        minimum height=0.63cm] at (340,347)
+    {$P^{[j]} = \exp\bigl(S^{[j]} - m_{\text{new}}\bigr)$\quad$[B_r \times B_c]$};
+  \node[anchor=west, text=tGreen, font=\tiny\bfseries] at (660,347)
+    {softmax：$P$ 原地写回 $R_S$};
+  \node[draw=tGreen, fill=white, inner sep=1pt, minimum width=8.94cm,
+        minimum height=0.63cm] at (340,399)
+    {$\ell_{\text{new}} = \exp(m - m_{\text{new}})\cdot \ell + \mathrm{rowsum}(P^{[j]})$};
+  \node[draw=tOrange, fill=white, inner sep=1pt, minimum width=8.94cm,
+        minimum height=0.63cm] at (340,451)
+    {$PV = P^{[j]} V^{[j]}$\quad$[B_r \times d]$};
+  \node[anchor=west, text=tOrange, font=\tiny\bfseries] at (660,451) {(3d) PV};
+  \node[draw=tOrange, fill=white, inner sep=1pt, minimum width=8.94cm,
+        minimum height=0.63cm] at (340,503)
+    {$O \leftarrow \mathrm{diag}\bigl(\exp(m - m_{\text{new}})\bigr)\,O + PV$};
+  \node[anchor=west, text=tOrange, font=\tiny\bfseries] at (660,503) {(3e) rescale};
+  \node[draw=tGreen, fill=tkFillGreen, text=tGreen!60!black, font=\tiny\bfseries,
+        inner sep=1pt, minimum width=15.44cm, minimum height=0.63cm] at (542,569)
+    {循环结束后：$O \leftarrow O/\ell$\quad（全程只做一次最终除法）(8) epilogue};
+  \node[draw=tOrange, fill=tkFillOrange, text=tOrange!60!black, font=\tiny\bfseries,
+        inner sep=1pt, minimum width=15.44cm, minimum height=0.63cm] at (542,619)
+    {$N \times N$ 矩阵 $S$ 从不存在：任意时刻只有 $[B_r \times B_c]$ tile 活在 $R_S$
+     寄存器里};
+\end{tikzpicture}
 \caption{Attention 分块计算：单个 Q 块（$B_r$ 行）流式扫过全部 $T_c$ 个 KV 块（$B_c \times d$），每块依次执行 $S^{[j]} \to P^{[j]} \to P^{[j]}V^{[j]}$，并把 $(m, \ell, O)$ 三状态按式~\ref{eq:15-upd-m}--\ref{eq:15-upd-o} 联动更新，循环结束后统一除 $\ell$。步骤编号对齐 flash\_attn.cuh~L48--59 的执行流程。}
 \label{fig:15-1}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-15-2-fa1-fa2-fa3/fig-15-2.png}
+\begin{tikzpicture}[font=\tiny, x=0.01446cm, y=-0.01446cm]
+  \colorlet{tBlue}{tkBlue}
+  \colorlet{tGreen}{tkGreen}
+  \colorlet{tOrange}{tkOrange}
+  \colorlet{tRed}{tkRed}
+  \node[anchor=west, font=\scriptsize\bfseries] at (24,26)
+    {FA1 $\to$ FA2 $\to$ FA3：时间去哪了（时间结构示意）};
+  \node[draw=tBlue, fill=tkFillBlue, text=tBlue, font=\tiny\bfseries, inner sep=1pt,
+        minimum width=15.50cm, minimum height=0.46cm] at (560,64)
+    {FA1 (A100)：warp 沿 K/V 切分，softmax 串行夹在两次 GEMM 之间};
+  \foreach \k/\lb in {0/GEMM1, 1/softmax, 2/GEMM2, 3/GEMM1, 4/softmax, 5/GEMM2}{
+    \ifnum\k=1 \node[draw=tRed, fill=tkFillRed, text=tRed, font=\tiny\bfseries,
+        inner sep=1pt, minimum width=2.39cm, minimum height=0.52cm]
+        at ({106.5+170*\k},106) {\lb};
+    \else \ifnum\k=4 \node[draw=tRed, fill=tkFillRed, text=tRed, font=\tiny\bfseries,
+        inner sep=1pt, minimum width=2.39cm, minimum height=0.52cm]
+        at ({106.5+170*\k},106) {\lb};
+    \else \node[draw=tBlue, fill=tkFillBlue, text=tBlue, font=\tiny\bfseries,
+        inner sep=1pt, minimum width=2.39cm, minimum height=0.52cm]
+        at ({106.5+170*\k},106) {\lb};
+    \fi\fi
+  }
+  \node[anchor=west, text=black!65] at (24,138)
+    {... 串行重复；partial $(m, \ell, O)$ per warp，跨 warp 归约必须走 smem（merge\_attn\_states）};
+  \node[draw=tGreen, fill=tkFillGreen, text=tGreen, font=\tiny\bfseries, inner sep=1pt,
+        minimum width=15.50cm, minimum height=0.46cm] at (560,178)
+    {FA2 (A100/H100)：warp 沿 Q 行切分，消灭跨 warp 归约};
+  \foreach \w in {0,...,3}{
+    \node[anchor=west, text=black!75, font=\tiny\bfseries] at (24,{216+34*\w})
+      {warp\w};
+    \node[draw=tGreen, fill=tkFillGreen, text=tGreen, font=\tiny\bfseries, inner sep=1pt,
+          minimum width=2.17cm, minimum height=0.40cm] at (183,{216+34*\w}) {GEMM1};
+    \node[draw=tRed, fill=tkFillRed, text=tRed, font=\tiny\bfseries, inner sep=1pt,
+          minimum width=2.17cm, minimum height=0.40cm] at (338,{216+34*\w}) {softmax};
+    \node[draw=tGreen, fill=tkFillGreen, text=tGreen, font=\tiny\bfseries, inner sep=1pt,
+          minimum width=2.17cm, minimum height=0.40cm] at (493,{216+34*\w}) {GEMM2};
+  }
+  \node[anchor=west, text=black!65] at (620,220)
+    {每 warp 独占 16 行 Q：私有 $(m, \ell, O)$，K/V 全 warp 共享};
+  \node[anchor=west, text=black!65] at (620,248)
+    {另加 CTA 级并行：grid.x = N/Br，沿 seqlen(Q) 喂饱 SM};
+  \node[anchor=west, text=black!65] at (620,276)
+    {$O$ 保持未归一化 $\to$ 尾部一次 $\mathrm{diag}(1/\ell)$};
+  \node[draw=tOrange, fill=tkFillOrange, text=tOrange, font=\tiny\bfseries, inner sep=1pt,
+        minimum width=15.50cm, minimum height=0.46cm] at (560,362)
+    {FA3 (H100)：warp specialization + pingpong，softmax 与 GEMM 在不同运算单元上重叠};
+  \node[draw=black!55, fill=gray!18, inner sep=1pt, align=center, text width=4.1cm,
+        minimum height=0.43cm] at (174,401)
+    {producer warp：TMA 异步提交（单线程）};
+  \node[anchor=west, text=tOrange, font=\tiny\bfseries] at (24,433) {WG1 tensor};
+  \foreach \k in {0,1,2}{
+    \node[draw=tOrange, fill=tkFillOrange, text=tOrange, font=\tiny\bfseries, inner sep=1pt,
+          minimum width=2.53cm, minimum height=0.38cm] at ({195.5+190*\k},433) {GEMM};
+  }
+  \node[anchor=west, text=tRed, font=\tiny\bfseries] at (24,467) {WG2 CUDA};
+  \foreach \k in {0,1,2}{
+    \node[draw=tRed, fill=tkFillRed, text=tRed, font=\tiny\bfseries, inner sep=1pt,
+          minimum width=2.53cm, minimum height=0.38cm] at ({285.5+190*\k},467) {softmax};
+  }
+  \node[anchor=west, text=black!65] at (24,500)
+    {pingpong：WG1 跑 GEMM 时 WG2 跑 softmax（反之亦然）；再加 FP8 GEMM（block scaling + incoherent processing）};
+\end{tikzpicture}
 \caption{三代 FlashAttention 的时间结构：FA1 的 softmax 串行夹在两次 GEMM 之间且 warp 间需要归约；FA2 靠 warp 级 split-Q 消灭归约、靠 seqlen(Q) 维并行喂饱 SM、靠未归一化 $O$ 砍掉逐块对角修正；FA3 用 warp specialization + pingpong 让 softmax 与 GEMM 在不同运算单元上重叠，并引入 FP8。}
 \label{fig:15-2}
 \end{figure}

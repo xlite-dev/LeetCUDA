@@ -64,12 +64,20 @@ ldmatrix + \texttt{mma.sync} + online softmax。两支流之间没有任何
 （kStagesK）完整掩盖；producer 空闲出来的 127 个线程的执行资源与寄存器
 （经 \texttt{setmaxnreg} 让渡；TMA dst 须为 \texttt{shared::cta}，见 17.8~节坑七）归 consumer 使用。
 
-源码头注释把这套结构压缩成了六行「面试要点」，先原文引用，再逐条展开：
+源码头注释（L792--803）把这套结构压缩成了三条「面试要点」：
 
-\lstinputlisting[linerange={792-803},firstnumber=auto,breakatwhitespace=true,
-  title={flash\_attn.cuh L792-803（Phase 8b 头注释：FA TMA WS vs cp.async FA）}]{../flash_attn.cuh}
+\begin{itemize}
+  \item \textbf{Producer}（WG0, 128T）用 TMA 128B SWIZZLE 搬运 Q/K/V tile 到
+        smem；
+  \item \textbf{Consumer}（WG1, 256T）用 ldmatrix $+$
+        \texttt{mma.\allowbreak{}sync.\allowbreak{}m16n8k16} 做 $QK^\top$ / $PV$；
+  \item 与 \texttt{hgemm\_tma\_mma\_ws\_tn} 的对比：HGEMM 只做一次 GEMM、沿
+        K 维迭代，FA 做 $QK^\top$ 和 $PV$ 两次 GEMM、沿 KV seqlen 迭代；
+        HGEMM 的 A/B 都 staged，FA 中 Q 只 load 一次（split-Q）、K staged、
+        V 单 buffer。
+\end{itemize}
 
-第一行的角色划分、第三行的三处差异（两次 GEMM/KV 迭代/Q 只装一次）分别对应
+前两条的角色划分、第三条的三处差异（两次 GEMM/KV 迭代/Q 只装一次）分别对应
 17.4.1、17.3.1 与 17.4.3 节；其中「Q 只 load 一次」是 attention 特有的——
 GEMM 的 A/B 都随 K 迭代刷新，而 split-Q 的 Q tile 在整个 KV 遍历中不变，
 这让 Q 的同步协议退化成「一次性 full 屏障」，是本章协议里最省心的一环。
@@ -108,10 +116,16 @@ block 内的 online softmax 状态 $(m, \ell, O)$ 跨 $T_c$ 轮迭代持续更�
 $[B_r, D]$ 只需在进入 KV 循环前装载\textbf{一次}，此后 $T_c$ 轮迭代全部
 复用 smem 中的同一份 Q——对比「每轮都刷 A」的 GEMM，FA 的 Q 通道是
 \textbf{一次装载、全程只读}，因此 Q 只需要 full 屏障（数据就绪），不需要
-empty 屏障（没有谁会覆盖它）。头注释对这一点的表述值得原文引用：
+empty 屏障（没有谁会覆盖它）。头注释（L801--806）对 split-Q 语义的完整表述则澄清了「Q tile」的确切
+含义——它是 \textbf{block-level} 的，不是全局 Q：
 
-\lstinputlisting[linerange={801-806},firstnumber=auto,breakatwhitespace=true,
-  title={flash\_attn.cuh L801-806（split-Q 语义：Q 只装一次 $\to$ 只需 full\_Q）}]{../flash_attn.cuh}
+\begin{itemize}
+  \item grid $= (N/B_r,\; B \cdot H)$：每个 block 处理一个 block-level Q
+        tile $[B_r, D]$（不是全局 Q），对 Q 的 seqlen 做 block 级并行；
+  \item 每个 block 遍历\textbf{完整的 KV seqlen}（$T_c = N/B_c$ 次外循环）；
+  \item 因此每个 block 的 Q tile 只需 load 一次到 smem、在整个 KV 遍历中
+        复用 $\to$ 只需 \texttt{full\_Q} barrier（无 \texttt{empty\_Q}）。
+\end{itemize}
 
 \subsection{mbarrier arrive\_count 协议：257 的代数}
 
@@ -175,6 +189,62 @@ producer arrive）——两边的 arrive 预算都是 257/轮，与 init 值精�
 （读到半新半旧数据，静默错误），多算则永不翻转（挂死）。这套守恒与第~\ref{ch:13}~章
 图~13-3 的 mbarrier 状态机完全同构，只是参与方从 $128+1$ 换成了 $256+1$。
 
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\tiny]
+  \def\rw{7.4}
+  % (1) producer 提交
+  \draw[thin, fill=gray!12] (0,-0.05) rectangle ({\rw},-0.90);
+  \node[anchor=north west, align=left] at (0.15,-0.16)
+    {(1) \textbf{producer}：提交 TMA，\texttt{tma\_arrive\_expect\_tx} 一条指令同时完成：};
+  \node[anchor=north west, align=left] at (0.15,-0.44)
+    {arrive $+1$（合并指令固定为 1）与期望事务量 $\Delta T =$ K tile 字节数};
+  \draw[-{Stealth}, thin] (1.0,-0.90) -- (1.0,-1.30);
+  \node[anchor=west] at (1.15,-1.10) {写 stage $s$};
+  % (2) full_K[s] 翻转
+  \draw[thin, fill=gray!12] (0,-1.30) rectangle ({\rw},-2.80);
+  \node[anchor=north west, align=left] at (0.15,-1.40)
+    {(2) \texttt{full\_K[s]} 翻转条件（预算 $257$ arrive/相位，与 init 精确对齐）};
+  \draw[thin, fill=gray!35] (0.15,-2.15) rectangle (5.55,-1.85);
+  \node at (2.85,-2.00) {256 consumer arrive（wait 时逐线程）};
+  \draw[thin, fill=gray!55] (5.62,-2.15) rectangle (6.45,-1.85);
+  \node at (6.035,-2.00) {1};
+  \node[anchor=north west, align=left, text width=7.1cm] at (0.15,-2.30)
+    {窄段 $=1$：producer 的 arrive\_tx；$\Delta T$ 字节由 TMA 硬件 complete-tx 记账};
+  \draw[-{Stealth}, thin] (1.0,-2.80) -- (1.0,-3.15);
+  \node[anchor=west] at (1.15,-2.97) {翻转 $\to$ wait 返回};
+  % (3) consumer 读
+  \draw[thin, fill=gray!12] (0,-3.15) rectangle ({\rw},-4.00);
+  \node[anchor=north west, align=left] at (0.15,-3.26)
+    {(3) \textbf{consumer} 256 线程：\texttt{full\_K[s].wait(arrive())} 返回，读 K 做 QK$^\top$};
+  \node[anchor=north west, align=left] at (0.15,-3.54)
+    {（softmax 与 PV 只碰寄存器与 V，不读 K smem）};
+  \draw[-{Stealth}, thin] (1.0,-4.00) -- (1.0,-4.35);
+  \node[anchor=west] at (1.15,-4.17) {读毕释放};
+  % (4) empty_K[s] 翻转
+  \draw[thin, fill=gray!12] (0,-4.45) rectangle ({\rw},-5.80);
+  \node[anchor=north west, align=left] at (0.15,-4.55)
+    {(4) \texttt{empty\_K[s]} 翻转条件（同样 $257$/相位）};
+  \draw[thin, fill=gray!35] (0.15,-5.25) rectangle (5.55,-4.95);
+  \node at (2.85,-5.10) {256 consumer arrive（QK 读毕即释放）};
+  \draw[thin, fill=gray!55] (5.62,-5.25) rectangle (6.45,-4.95);
+  \node at (6.035,-5.10) {1};
+  \node[anchor=north west, align=left, text width=7.1cm] at (0.15,-5.40)
+    {窄段 $=1$：producer 写前报到（下一轮要覆盖 stage $s$ 时）};
+  % 回到 (1)：下一轮迭代、相位 +1
+  \draw[thin] ({\rw},-5.12) -- (8.3,-5.12) -- (8.3,-0.45) -- ({\rw},-0.45);
+  \draw[-{Stealth}, thin] (8.3,-0.45) -- ({\rw+0.02},-0.45);
+  \node[rotate=90, anchor=center] at (8.78,-2.80) {下一轮 KV 迭代：相位 $\pi \to \pi{+}1$（循环闭合）};
+  % 两侧错算的后果
+  \node[anchor=north west, align=left, text=vscAccent] at (0.15,-6.15)
+    {少算一次 arrive $\to$ 屏障提前翻转：读到半新半旧的 K 数据（静默错误）};
+  \node[anchor=north west, align=left, text=vscAccent] at (0.15,-6.55)
+    {多算一次 arrive $\to$ 永不翻转：consumer 永远等不到 full（挂死）};
+\end{tikzpicture}
+\caption{固定 stage $s$ 上 full/empty 两张屏障的相位收支循环（式~\ref{eq:17-flip-full} 与式~\ref{eq:17-flip-empty} 的图形化）。每轮 KV 迭代：producer 提交 TMA 时用 \texttt{tma\_arrive\_expect\_tx} 一条指令完成「arrive $+1$」与「声明 $\Delta T$」两件事，TMA 硬件搬完后自动 complete-tx 记账；consumer 256 线程在 \texttt{full\_K[s].wait()} 时各贡献一份 arrive（$256+1+\text{tx}$ 构成翻转条件），读毕 K 再各 arrive 一次释放 \texttt{empty\_K[s]}，producer 下一轮写前补上第 257 份。两边的 arrive 预算都是 $257$/轮，与 init 值精确对齐——\textbf{多算一次挂死、少算一次静默错}。窄段为可读放大，实际只占 $1/257$。}
+\label{fig:17-arrive-cycle}
+\end{figure}
+
 最后是 \textbf{Q 与 V 的两个特例}。\texttt{full\_Q}：init 257，producer 装完
 Q tile 后 arrive\_tx 一次（$B_r D \times 2$ 字节，D$=$64 时 16 KB），consumer
 在进主循环前 \texttt{full\_\allowbreak{}Q.\allowbreak{}wait\allowbreak{}(arrive\allowbreak{}())} \textbf{一次}——此后再无人
@@ -218,8 +288,29 @@ smem 需求是三个通道之和（half 元素 2 B）：
 （如 $\mathrm{Sk}{=}2, S_v{=}1, D{=}128$：$(128 + 2 \times 64 + 64) \times 128
 \times 2 = 80$ KB）：
 
-\lstinputlisting[linerange={825-842},firstnumber=auto,breakatwhitespace=true,
-  title={flash\_attn.cuh L825-842（smem 占用表 + SM120 optin 上限结论）}]{../flash_attn.cuh}
+\begin{center}
+\begin{tabular}{cccc}
+\toprule
+\texttt{kStagesK} & \texttt{kStagesV} & $D{=}64$ & $D{=}128$ \\
+\midrule
+1 & 1 & 32 KB & 64 KB \\
+2 & 1 & 40 KB & 80 KB \\
+2 & 2 & 48 KB & 96 KB \\
+3 & 1 & 48 KB & 96 KB \\
+3 & 2 & 56 KB & 112 KB \\
+4 & 1 & 56 KB & 112 KB \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+SM120（RTX PRO 5000）的 optin smem 上限约 100 KB：$D{=}64$ 时
+$\mathrm{Sk} = 1/2/3/4$ 全部可行（32--56 KB）；$D{=}128$ 时
+$\mathrm{Sk} = 1/2/3$ 可行（64--96 KB），$\mathrm{Sk}{=}4$（112 KB）超出
+optin 上限，会被 \texttt{check\_smem\_feasible} 兜底判为 SMEM SKIP，
+$D{=}128$ 的推荐档位是 $\mathrm{Sk}{=}2$（甜点：80 KB，2 blocks/SM，
+pipeline 深度足够隐藏 TMA 延迟）。另有 v1 限制：\texttt{kHeadDim} 只支持
+64 或 128，且要求 seqlen $\%\, B_r = 0$、seqlen $\%\, B_c = 0$（不处理
+尾 tile）。
 
 本机实测 optin 上限 $101376\,\mathrm{B} = 99.0$ KB（17.10~节测试首行输出），
 注释「$\sim$100KB」为近似正确的口径；$\mathrm{Sk}{=}4, D{=}128$ 的 112 KB
@@ -294,6 +385,75 @@ $B_c = 8 \times 1 \times 8 = 64$；consumer 8 warp 排成 $8 \times 1$
         记账，\texttt{expect\_tx} 一次声明总字节——协议数学完全不变，只是
         $\Delta T$ 变成 $\mathrm{kTmaChunks} \times$ 单 chunk 字节。
 \end{itemize}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\tiny]
+  \def\cwd{0.5}
+  \def\chd{0.36}
+  \def\cxx{10.3}
+  % 左：gmem 逻辑视图 [B, D] 行主序（缩尺 8x16），cell = 逻辑线性 idx = b*16+d
+  % cute_gemm：hue = tile 身份（head_dim 前后 64 列半区），intensity = 行位置 ramp
+  \foreach \r [evaluate=\r as \rv using {10+15*mod(\r,4)}] in {0,...,7}{
+    \foreach \c [evaluate=\c as \ci using {int(\c/8)}] in {0,...,15}{
+      \pgfmathtruncatemacro{\lgi}{16*\r+\c}
+      \ifnum\ci=0 \def\cfill{colorx6!\rv} \else \def\cfill{colorx2!\rv} \fi
+      \node[fill=\cfill, minimum width=\cwd cm, minimum height=\chd cm, inner sep=0pt]
+        at ({(\c+0.5)*\cwd},{-(\r+0.5)*\chd}) {\lgi};
+    }
+  }
+  % 右：smem 物理视图，chunk-major 两个 8x8 面板，cell = 同一逻辑 idx
+  \foreach \k in {0,1}{
+    \foreach \r [evaluate=\r as \rv using {10+15*mod(\r,4)}] in {0,...,7}{
+      \foreach \c in {0,...,7}{
+        \pgfmathtruncatemacro{\lgi}{16*\r+8*\k+\c}
+        \ifnum\k=0 \def\cfill{colorx6!\rv} \else \def\cfill{colorx2!\rv} \fi
+        \node[fill=\cfill, minimum width=\cwd cm, minimum height=\chd cm, inner sep=0pt]
+          at ({\cxx+(\c+0.5)*\cwd},{-\k*3.78-(\r+0.5)*\chd}) {\lgi};
+      }
+    }
+  }
+  \draw[thin] (0,0) grid[xstep=\cwd cm, ystep=\chd cm] ({16*\cwd},{-8*\chd});
+  \draw[very thick] (0,0) rectangle ({16*\cwd},{-8*\chd});
+  \draw[thick] ({8*\cwd},0) -- ({8*\cwd},{-8*\chd});
+  % \cxx=10.3cm 非 xstep 整数倍：grid 按坐标原点相位画线会整体错位半格并穿格内数字，故显式画格边界线
+  \foreach \cc in {0,...,8}{
+    \draw[thin] ({\cxx+\cc*\cwd},0) -- ({\cxx+\cc*\cwd},{-8*\chd});
+    \draw[thin] ({\cxx+\cc*\cwd},{-3.78}) -- ({\cxx+\cc*\cwd},{-3.78-8*\chd});
+  }
+  \foreach \rr in {0,...,8}{
+    \draw[thin] ({\cxx},{-\rr*\chd}) -- ({\cxx+8*\cwd},{-\rr*\chd});
+    \draw[thin] ({\cxx},{-3.78-\rr*\chd}) -- ({\cxx+8*\cwd},{-3.78-\rr*\chd});
+  }
+  \draw[very thick] ({\cxx},0) rectangle ({\cxx+8*\cwd},{-8*\chd});
+  \draw[very thick] ({\cxx},{-3.78}) rectangle ({\cxx+8*\cwd},{-3.78-8*\chd});
+  % TMA box 框：沿 head_dim 的两个 64 列半区；边界坐标 = cell 尺寸整数倍，与网格线完全重合
+  \draw[thick, dashed, colorx2!80!black] ({8*\cwd},0) rectangle ({16*\cwd},{-8*\chd});
+  \draw[thick, colorx6!75!black] (0,0) rectangle ({8*\cwd},{-8*\chd});
+  \node[anchor=south, font=\tiny, text=colorx6!75!black] at ({4*\cwd},0.22) {TMA box \#0：$(64,B)$};
+  \node[anchor=south, font=\tiny, text=colorx2!80!black] at ({12*\cwd},0.22) {TMA box \#1：$(64,B)$};
+  \node[anchor=south, font=\scriptsize\bfseries] at ({8*\cwd},0.62)
+    {左：gmem 逻辑视图 $[B,D]$ 行主序（缩尺 $8{\times}16$，真实 $64{\times}128$）};
+  \node[anchor=south, font=\scriptsize\bfseries] at ({\cxx+4*\cwd},0.62)
+    {右：smem 物理视图 chunk-major $[D/64,B,64]$};
+  \node[anchor=north, font=\tiny] at ({8*\cwd},{-8*\chd-0.18})
+    {一行 $D{=}128 \to 256$~B $>$ 128~B 单 box 上限 $\to$ 沿 head\_dim 拆 $D/64$ 次 TMA};
+  \node[anchor=west, font=\tiny, text=colorx6!75!black] at ({\cxx+8*\cwd+0.12},-1.44) {chunk 0（head\_dim 0--63）};
+  \node[anchor=west, font=\tiny, text=colorx2!80!black] at ({\cxx+8*\cwd+0.12},{-3.78-1.44}) {chunk 1（64--127）};
+  \node[anchor=north, font=\tiny, align=center] at ({\cxx+4*\cwd},{-3.78-8*\chd-0.18})
+    {物理偏移 $=$ chunk$\,\cdot\!(B\cdot 64) + b\cdot 64 + d_{\mathrm{loc}}$\\
+     行 $b$ 的前 64 维 $\to$ chunk 0 行 $b$，后 64 维 $\to$ chunk 1 行 $b$};
+  % 两支 TMA 箭头
+  \draw[-{Stealth}, semithick, colorx6!75!black] ({16*\cwd+0.22},{-1.44}) -- ({\cxx-0.12},{-1.44});
+  \node[anchor=south, font=\tiny, text=colorx6!75!black] at ({\cxx+4*\cwd-2.8},{-1.36}) {TMA \#0 $\to$ chunk 0};
+  \draw[-{Stealth}, semithick, colorx2!80!black] ({16*\cwd+0.22},{-2.30}) -- ({\cxx-0.12},{-3.78-2.16});
+  \node[anchor=south, font=\tiny, text=colorx2!80!black] at ({\cxx+4*\cwd-2.4},{-3.02}) {TMA \#1 $\to$ chunk 1};
+  \node[anchor=north, font=\tiny] at (8.6,{-3.78-8*\chd-1.05})
+    {两次 TMA 共享同一 mbarrier：\texttt{expect\_tx} 一次声明 $2\times$8~KB，每次搬运各自 complete-tx 记账};
+\end{tikzpicture}
+\caption{chunk-major 布局与双 TMA 拆分（17.4.3 节，缩尺示意：$8\times 16$ 代表真实 $64\times 128$）。左：gmem 里 K/V 的逻辑视图 $[B,D]$ 行主序，cell 填逻辑线性 idx（$=b\cdot D+d$ 的缩尺版本）；$D{=}128$ 时一行 256~B 超出 128B swizzle box 的维上限，两个 box（head\_dim 0--63 / 64--127）各搬一半。右：smem 物理视图写成 chunk-major $[D/64,B,64]$——同一批数据（idx 一一对应）被拆成两个连续的 $64\times 64$ chunk 面板，行 $b$ 的前后 64 维分别落在 chunk 0/1 的行 $b$。两次 TMA 共享同一个 mbarrier，\texttt{expect\_tx} 一次声明总字节、两次 complete-tx 各自记账，协议数学不变。}
+\label{fig:17-chunk-major}
+\end{figure}
 
 消费端地址由 \texttt{swizzle\_fa} 统一给出（D $=$ 64 时退化为 ch12 的
 \texttt{swizzle<64>}，无回归）：
@@ -422,14 +582,122 @@ L1374--1399），Step 5 的写回是 ch16 的原版方案——warp 内 shuffle 
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-17-1-dual-pipeline/fig-17-1.png}
+\begin{tikzpicture}[font=\tiny, x=0.013729cm, y=-0.013729cm]
+  \colorlet{tBlue}{tkBlue}
+  \colorlet{tGreen}{tkGreen}
+  \colorlet{tOrange}{tkOrange}
+  \node[anchor=west, font=\scriptsize\bfseries] at (24,26)
+    {producer/consumer 双流水时序（$\mathrm{Sk}{=}2$, $S_v{=}1$, $D{=}64$）};
+  \node[draw=tBlue, fill=tkFillBlue, text=tBlue, font=\tiny\bfseries, inner sep=1pt,
+        minimum width=7.41cm, minimum height=0.44cm] at (294,66)
+    {producer WG0（1 个活跃线程，TMA 提交）};
+  \node[draw=tGreen, fill=tkFillGreen, text=tGreen, font=\tiny\bfseries, inner sep=1pt,
+        minimum width=7.41cm, minimum height=0.44cm] at (886,66)
+    {consumer WG1（8 warps, 256 线程）};
+  \node[draw=tBlue, fill=white, align=center, text width=7.0cm, inner sep=1pt,
+        minimum height=0.52cm] at (294,111)
+    {P0：TMA Q $\overset{\text{expect\_tx 16KB}}{\longrightarrow}$ full\_Q};
+  \node[draw=tGreen, fill=white, align=center, text width=7.0cm, inner sep=1pt,
+        minimum height=0.52cm] at (886,111)
+    {C0：256$\times$ arrive empty\_K[0..1]；256$\times$ arrive empty\_V[0]};
+  \node[draw=tBlue, fill=white, align=center, text width=7.0cm, inner sep=1pt,
+        minimum height=0.52cm] at (294,157)
+    {P1：TMA K[0]$\to$st0；TMA K[1]$\to$st1（预取 $\mathrm{Sk}{-}1=1$ 个 tile）};
+  \node[draw=tGreen, fill=white, align=center, text width=7.0cm, inner sep=1pt,
+        minimum height=0.47cm] at (886,155) {wait full\_Q（一次，Q 就位）};
+  \node[anchor=west, text=tGreen, font=\tiny\bfseries] at (616,189)
+    {---- iter $k = 0$ ----};
+  \node[draw=tBlue, fill=white, align=center, text width=7.0cm, inner sep=1pt,
+        minimum height=0.82cm] at (294,214)
+    {P2（每轮 $k$）：TMA V[k]$\to$v0，随后 TMA K[k+2]$\to$st（覆盖已被 consumer 释放的空槽）};
+  \node[draw=tBlue, fill=tkFillBlue, align=center, text width=7.0cm, inner sep=1pt,
+        minimum height=0.60cm] at (294,276)
+    {producer 领先 consumer 至多 $\mathrm{Sk}{-}1$ 个 K tile / $S_v$ 个 V tile};
+  \node[draw=tGreen, fill=white, align=center, text width=6.9cm, inner sep=1pt,
+        minimum height=0.47cm] at (891,219) {wait full\_K[0]：QK 用 K[0]};
+  \node[draw=tGreen, fill=white, align=center, text width=6.9cm, inner sep=1pt,
+        minimum height=0.47cm] at (891,259)
+    {3b QK$^{\top}$：ldmatrix + HMMA $\longrightarrow$ arrive empty\_K[0]（用完即提前释放）};
+  \node[draw=tGreen, fill=white, align=center, text width=6.9cm, inner sep=1pt,
+        minimum height=0.47cm] at (891,299) {3c softmax（纯寄存器，不碰 smem）};
+  \node[draw=tGreen, fill=white, align=center, text width=6.9cm, inner sep=1pt,
+        minimum height=0.47cm] at (891,339)
+    {wait full\_V[0]（恰在 3d 前）—— 3d PV：R\_S 复用 + X2\_T(V) —— arrive empty\_V[0]};
+  \node[draw=tGreen, fill=white, align=center, text width=6.9cm, inner sep=1pt,
+        minimum height=0.47cm] at (891,379) {3e rescale（$m$, $\ell$, $O$）};
+  \node[draw=tGreen, fill=tkFillGreen, align=center, text width=7.0cm, inner sep=1pt,
+        minimum height=0.52cm] at (886,425)
+    {iter $k = 1$：同构（wait full\_K[1] $\to$ QK$^{\top}$ $\to$ softmax $\to$ PV $\to$ rescale）};
+  \draw[-{Stealth}, tOrange, dashed, thick] (564,214) -- (616,214);
+  \draw[-{Stealth}, tOrange, dashed, thick] (564,300) -- (616,300);
+  \node[draw=tOrange, fill=tkFillOrange, text=tOrange!65!black, font=\tiny\bfseries,
+        inner sep=1pt, minimum width=15.54cm, minimum height=0.60cm] at (590,484)
+    {overlap：计算 tile $k$ 与搬运 tile $k{+}1$ 完全重叠 —— 搬运延迟被计算掩盖};
+  \node[draw=tBlue, fill=white, align=center, text width=15.2cm, inner sep=1pt,
+        minimum height=0.58cm] at (590,535)
+    {K[2] 装载窗口 $=$ QK[0] $+$ softmax[0] $+$ PV[0]（empty\_K[0] 在 QK[0] 结束即释放）};
+  \node[draw=tGreen, fill=white, align=center, text width=15.2cm, inner sep=1pt,
+        minimum height=0.58cm] at (590,583)
+    {V[1] 装载窗口 $=$ QK[0] $+$ softmax[0]（empty\_V[0] 在 PV[0] 结束才释放，$S_v{=}1$ 窗口更窄）};
+\end{tikzpicture}
 \caption{FA2 TMA + WS 的 producer/consumer 双流水时序（$\mathrm{Sk}{=}2$、$S_v{=}1$、$D{=}64$）。producer 的 P2 每轮先发 V 再预取 K；consumer 的 empty 释放点（K 在 QK 后、V 在 PV 后）决定了每个 stage 的可覆盖窗口。}
 \label{fig:17-1}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/drawio/fig-17-2-mbarrier-topo/fig-17-2.png}
+\begin{tikzpicture}[font=\tiny, x=0.015283cm, y=-0.015283cm]
+  \colorlet{tBlue}{tkBlue}
+  \colorlet{tGreen}{tkGreen}
+  \colorlet{tOrange}{tkOrange}
+  \node[anchor=west, font=\scriptsize\bfseries] at (24,26)
+    {mbarrier 阵列拓扑：谁 arrive / 谁 wait（init count $= 257$）};
+  \node[anchor=west, text=black!65] at (580,50)
+    {$D{=}128$：$\mathrm{kTmaChunks}$ 次 load 共享同一 full 屏障};
+  \node[anchor=west, text=tBlue, font=\scriptsize\bfseries] at (24,60)
+    {Q：一对一单屏障};
+  \node[draw=tBlue, fill=tkFillBlue, text=tBlue, font=\scriptsize\bfseries, inner sep=1pt,
+        minimum width=3.67cm, minimum height=0.67cm] at (420,66) {full\_Q};
+  \draw[-{Stealth}, tBlue, thick] (280,66) -- (300,66);
+  \draw[-{Stealth}, tGreen, thick] (420,90) -- (420,68);
+  \node[anchor=west, text=black!65] at (580,70)
+    {多次 complete-tx 记账，一次 expect\_tx 声明总量};
+  \node[anchor=west, text=black!65] at (24,106)
+    {producer：arrive\_tx($\mathrm{kQTileBytes} = 16$KB, $D{=}64$)};
+  \node[anchor=west, text=black!65] at (300,102)
+    {consumer：256$\times$ arrive $+$ wait（一次性，无 empty\_Q）};
+  \node[draw=black!60, fill=gray!25, font=\tiny\bfseries, align=center,
+        text width=15.2cm, inner sep=1pt, minimum height=0.49cm] at (530,166)
+    {stage $s \in [0, \mathrm{Sk})$：K 屏障对（V 同形，$S_v$ 份；V 在 PV 后释放）};
+  \node[anchor=west, text=black!65] at (300,207) {producer：arrive\_tx(8/16KB)};
+  \node[draw=tBlue, fill=tkFillBlue, text=tBlue, font=\scriptsize\bfseries, inner sep=1pt,
+        minimum width=3.21cm, minimum height=0.73cm] at (165,224) {full\_K[s]};
+  \draw[-{Stealth}, tBlue, thick] (296,207) -- (274,207);
+  \node[anchor=west, text=black!65] at (300,237)
+    {consumer：256$\times$ arrive（随后 wait —— QK$^{\top}$ 前阻塞在相位）};
+  \draw[-{Stealth}, tGreen, thick] (296,237) -- (274,237);
+  \node[draw=tGreen, fill=tkFillGreen, text=tGreen!70!black, font=\scriptsize\bfseries,
+        inner sep=1pt, minimum width=3.21cm, minimum height=0.73cm] at (165,344)
+    {empty\_K[s]};
+  \node[anchor=west, text=black!65] at (300,327)
+    {consumer（QK$^{\top}$ 用完 K 即刻）：256$\times$ arrive(free)};
+  \draw[-{Stealth}, tGreen, thick] (296,327) -- (274,327);
+  \node[anchor=west, text=black!65] at (300,357)
+    {producer 写覆盖前：wait（等自己那一份 arrive 凑齐）};
+  \draw[-{Stealth}, tBlue, thick] (296,357) -- (274,357);
+  \node[anchor=west, font=\scriptsize\bfseries] at (24,412)
+    {per-phase 记账（每轮预算恰好 257/round，相位循环永不错位）：};
+  \node[draw=tGreen, fill=tkFillGreen, text=tGreen!70!black, align=center,
+        text width=7.4cm, inner sep=1pt, minimum height=0.73cm] at (272,452)
+    {full[s] 每轮 $=$ 256（consumer arrive）$+$ 1（producer arrive\_tx）$+$ tx 落地};
+  \node[draw=tGreen, fill=tkFillGreen, text=tGreen!70!black, align=center,
+        text width=7.4cm, inner sep=1pt, minimum height=0.73cm] at (788,452)
+    {empty[s] 每轮 $=$ 256（consumer free）$+$ 1（producer 写前 arrive）};
+  \node[draw=tOrange, fill=tkFillOrange, text=tOrange!65!black, font=\tiny\bfseries,
+        align=center, text width=15.2cm, inner sep=1pt, minimum height=0.64cm]
+        at (530,509)
+    {$D = 128$ 时同一 tile 的多次 TMA 共享一个 full 屏障：多次 complete-tx 记账、一次 expect\_tx 声明总量};
+\end{tikzpicture}
 \caption{本章 kernel 的 mbarrier 阵列拓扑：Q 一对一单屏障、K/V 各 $\mathrm{Sk}/S_v$ 对 full/empty 屏障，全部 init 257。D $=$ 128 时同一 tile 的多次 TMA 共享一个 full 屏障（多次 complete-tx 记账、一次 expect\_tx 声明总量）。}
 \label{fig:17-2}
 \end{figure}
