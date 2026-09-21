@@ -615,8 +615,50 @@ BOOK\_PLAN \S 1.3 核验表）：FA2 MMA 版
 
 \subsection{头注释导读：五条要点}
 
-\lstinputlisting[linerange={5-30},firstnumber=auto,
-  title={flash\_attn.cuh L5-30（面试要点：核心问题、三板斧、split-Q 与 online rescaling 公式）}]{../flash_attn.cuh}
+头注释 L5--30 自称「面试要点（FlashAttention-2 算法）」，共五条。
+
+\textbf{要点 1，核心问题}：标准 Attention 的 $O(N^{2})$ 中间矩阵
+（$S = QK^{\top}$）必须写入 HBM，但 HBM 带宽是瓶颈——FlashAttention-2 用
+tiling + online softmax 避免写回。
+
+\textbf{要点 2，FA 三板斧}：
+\begin{itemize}
+  \item \textbf{Tiling}：Q 分块 $[B_r, d]$，K/V 沿 seqlen 分块 $[B_c, d]$；
+  \item \textbf{Online Softmax}：迭代更新 $m$（行 max）与 $\ell$（行 sum），
+        无需全局同步；
+  \item \textbf{Recomputation}（反向）：反向传播时重新计算 S/P，而非存储
+        中间矩阵。
+\end{itemize}
+
+\textbf{要点 3，split-Q 设计}：所有 warp 共享同一块 K，各 warp 处理 Q 的不同
+行片段——\texttt{warp\_KV=0}（所有 warp 共享 K），\texttt{warp\_QP=warp\_id}
+（各 warp 不同 Q 行）；优点是减少 warp 间通信和 shuffle。
+
+\textbf{要点 4，online rescaling 公式}（FA 核心，arXiv:2307.08691）：对每个
+K/V tile，
+\begin{align*}
+  S_{\text{cur}} &= Q\,K^{\top}
+    && \text{（未缩放，存入 \texttt{R\_S}）}\\
+  m_{\text{new}} &= \max\bigl(m_{\text{old}},\
+    \mathrm{row\_max}(S_{\text{cur}} \cdot \mathrm{scale})\bigr)\\
+  P_{\text{cur}} &= \exp(S_{\text{cur}} \cdot \mathrm{scale} - m_{\text{new}})
+    && \text{（写回 \texttt{R\_S} 寄存器！）}\\
+  \ell_{\text{new}} &= \exp(m_{\text{old}} - m_{\text{new}})\,\ell_{\text{old}}
+    + \mathrm{row\_sum}(P_{\text{cur}})\\
+  O_{\text{new}} &= \mathrm{diag}\bigl(\exp(m_{\text{old}} - m_{\text{new}})\bigr)
+    \,O_{\text{old}} + P_{\text{cur}} V\\
+  O_{\text{final}} &= O_{\text{new}} \,/\, \ell_{\text{final}}
+\end{align*}
+
+\textbf{要点 5，为什么 \texttt{R\_S} 可以直接用作 $P@V$ 的 A 矩阵}：
+\begin{itemize}
+  \item \texttt{R\_S} 经过 softmax 后，存储的是 $P = \exp(S - m)$，数据仍然
+        是 half 精度；
+  \item 当前实现依赖 m16n8k16 这一路径下约定好的 fragment 布局，使 softmax
+        后的 P 可以继续留在 \texttt{R\_S} 中，供后面的 $P@V$ 直接消费；
+  \item 这是此实现的寄存器布局复用技巧，不要背成「所有 MMA A/C fragment
+        都天然同构」的通用结论。
+\end{itemize}
 
 要点 1（L8--9）即 15.3.3~节的带宽账：$O(N^{2})$ 中间矩阵必须过 HBM，而 HBM 是瓶颈。
 要点 2（L10--13）的「三板斧」中，tiling 对应式~\ref{eq:15-blocks}，online softmax
@@ -633,8 +675,21 @@ $P$ 直接写回 $S$ 的 fragment 寄存器 \texttt{R\_S} 供 $P@V$ 消费，省
 
 \subsection{launch 配置与 tile 参数化}
 
-\lstinputlisting[linerange={31-46},firstnumber=auto,
-  title={flash\_attn.cuh L31-46（出处、launch 配置与 tile 设计）}]{../flash_attn.cuh}
+头注释 L31--46 交代出处与 launch 口径：本实现参考 FlashAttention-2（Dao
+et al., arXiv:2307.08691），提取自 LeetCUDA
+\texttt{flash-attn/mma/basic/flash\_attn\_mma\_split\_q.cu}。张量形状：Q/K/V/O
+均为 \texttt{[batch\_size, num\_heads, seq\_len, head\_dim]}，简记 $[B, H, N, d]$。
+block 配置 $(128, 1, 1)$，线程数 \texttt{kNumThreads} $=$ \texttt{kWarpSize}
+$\times$ \texttt{kMmaTileSeqLenQ} $\times$ \texttt{kMmaTileSeqLenK} $= 128$。
+tile 设计（以 \texttt{kHeadDim=64} 为例）把两个块尺寸分解到 mma 原子：
+\begin{itemize}
+  \item $B_r$：\texttt{kMmaAtomM} $\times$ \texttt{kMmaTileSeqLenQ} $\times$
+        \texttt{kValTileSeqLenQ}，即 $16 \times \{4, 8\} \times 1 = \{64, 128\}$；
+  \item $B_c$：\texttt{kMmaAtomN} $\times$ \texttt{kMmaTileSeqLenK} $\times$
+        \texttt{kValTileSeqLenK}，即 $8 \times 1 \times 8 = 64$；
+  \item warp 布局：4 个 warp，\texttt{warp\_QP} 取 $0 \sim 3$ 各处理 16 行
+        Q，\texttt{warp\_KV} $= 0$ 共享 K。
+\end{itemize}
 
 \texttt{Grid = ((N + 63)/64,\ B*H,\ 1)} 把 FA2 的两层并行写得明明白白：
 \texttt{gridDim.x} 是 seqlen(Q) 维的 split-Q 并行（15.3.7~节 FA2 改动 2），
@@ -656,8 +711,29 @@ $B_r$ 的堆叠数、\texttt{k\allowbreak{}Mma\allowbreak{}Tile\allowbreak{}Seq\
 
 \subsection{执行流程：九步与本章公式的对应}
 
-\lstinputlisting[linerange={48-59},firstnumber=auto,
-  title={flash\_attn.cuh L48-59（执行流程九步）}]{../flash_attn.cuh}
+头注释 L48--59 的执行流程共九步（编号沿用源码：3a--3e 为外循环体，源码把
+它们计作步骤 3--7，故后续步骤直接从 8 接续）：
+\begin{itemize}
+  \item \textbf{1）}预加载 $Q[B_r, d]$ 到 smem（只加载一次，split-Q 的核心
+        优势）；
+  \item \textbf{2）}外循环：沿 K 的 seqlen 分块迭代（$T_c =
+        \mathrm{seqlen}/B_c$）；
+  \item \textbf{3a）}\texttt{cp.async} 加载当前 V $+$ 预加载下一个 K（多
+        stage pipeline）；
+  \item \textbf{3b）}$QK^{\top}$——沿 head dim 内循环 $\to$ \texttt{ldmatrix}
+        Q/K $\to$ \texttt{HMMA16816}；
+  \item \textbf{3c）}Online Safe Softmax——warp reduce max/row $\to$
+        $\exp(S \cdot \mathrm{scale} - \mathrm{max})$；关键：将 P 写回
+        \texttt{R\_S} 寄存器（替换 S），\texttt{R\_S} 现在存储 P matrix；
+  \item \textbf{3d）}$P@V$——沿 V 的 $B_c$ 维内循环 $\to$ \texttt{ldmatrix}
+        V (transposed) $\to$ 直接用 \texttt{R\_S} 做 A 矩阵；当前实现依赖
+        同一组寄存器布局约定，避免为 $P@V$ 额外重组 P fragment；
+  \item \textbf{3e）}Online rescaling——$O_{\text{new}} =
+        \exp(m_{\text{old}} - m_{\text{new}})\,O_{\text{old}} + P@V$；
+  \item \textbf{8）}最终 rescale：$O_{\text{final}} =
+        (1/\ell_{\text{final}})\,O_{\text{final}}$；
+  \item \textbf{9）}Epilogue：warp shuffle $+$ 128-bit collective store。
+\end{itemize}
 
 九步里每一步的归属：步骤 1（$Q$ 只加载一次）是 split-Q 的结构性优势；步骤 2 的外循环
 即 $j = 1..T_c$ 的 KV 分块遍历；步骤 3a 是 cp.async 多级预取（加载当前 $V$ 与下一个
@@ -669,8 +745,23 @@ epilogue。整个循环期间，每个 query 行的状态 $(m_i, \ell_i, O_i)$ �
 $S^{[j]}, P^{[j]}$ 只存在于 \texttt{R\_S} 的 fragment 里——$N \times N$ 的矩阵从头
 到尾没有存在过。
 
-\lstinputlisting[linerange={61-71},firstnumber=auto,
-  title={flash\_attn.cuh L61-71（Pad 与 XOR swizzle 的 profile 结论，SM120）}]{../flash_attn.cuh}
+头注释 L61--71 是 Pad 与手动 XOR swizzle 的 profile 结论（SM120）：
+\begin{itemize}
+  \item XOR 能消除目标 \texttt{ldmatrix} lane pattern 的 bank conflict，但
+        收益是局部的；XOR 本身及 \texttt{\% 2} 的计算不是主要瓶颈——nvcc
+        已能将该式化简为 bit operations；
+  \item compact Q/K/V XOR 改变了 \texttt{cp.async} 的 shared destination
+        pattern：LDGSTS wavefronts 从 pad 的 30.15M 增至 68.16M
+        （$2.26\times$），long-scoreboard、LG-throttle、MIO-throttle 分别约为
+        pad 的 $3.25\times$、$2.74\times$、$1.60\times$；
+  \item compact XOR 虽节省约 5\,KiB smem，但没有提高此 kernel 的 occupancy；
+        最终约 120.0 TFLOPS，显著低于 Q/K/V \texttt{kPad=8} 的 166.6
+        TFLOPS；
+  \item 所以当前 kernel 默认对 Q/K/V 都用 \texttt{kPad=8}。保留 swizzle
+        路径是为了学习和消融：评价 shared layout 必须同时观察
+        \texttt{ldmatrix} reads 与 \texttt{cp.async}/LDGSTS writes，不能只看
+        bank-conflict counter，也不能只优化 XOR 地址算术。
+\end{itemize}
 
 L61--71 是一段高质量的 profile 考据（SM120，$B{=}1, H{=}32, N{=}4096, D{=}64$）：
 compact XOR swizzle 消除了 ldmatrix 的 bank conflict，却使 cp.async（LDGSTS）的

@@ -177,14 +177,33 @@ naive（AI $0.25$）计算上限 $\approx 0.23$ TFLOPS；
 
 \subsection{五层金字塔总览}
 
-先读源码头部的金字塔注释——它是整个 Part II 的地图：
+源码头部的金字塔注释是整个 Part II 的地图：GEMM（矩阵矩阵乘）是 GPU 最重要的
+算子、面试核心考点，其优化路径是一张五层金字塔，各层的手段与计算密度递进
+见表~\ref{tab:9-pyramid}。
 
-\lstinputlisting[linerange={6-21},firstnumber=auto,
-  title={sgemm.cuh L6-21（GEMM 优化五层金字塔与计算密度递进）}]{../sgemm.cuh}
+\begin{table}[htbp]
+\centering
+\caption{GEMM 优化五层金字塔与计算密度递进（sgemm.cuh 头部注释整理）}
+\label{tab:9-pyramid}
+\begin{tabular}{cp{0.36\textwidth}p{0.40\textwidth}}
+\toprule
+Level & 手段 & 计算密度递进 \\
+\midrule
+1 & Tiling（分块 + shared memory）：将数据从 HBM 搬到 SMEM 复用 &
+  AI $\approx B\sb{K}/(2\times\mathrm{sizeof}) \approx 32/8 = 4$，仍是 memory-bound \\
+2 & Thread Tile（寄存器分块）：每个线程计算 $\mathrm{TM}\times\mathrm{TN}$ 个元素，提高计算密度 &
+  AI $\approx \mathrm{TM}{\times}\mathrm{TN}{\times}B\sb{K}/(2\times\mathrm{sizeof}) \approx 8\times8\times8/8 = 64$，compute-bound \\
+3 & Vectorize（向量化访存）：\texttt{float4}/\texttt{half2}，减少 load/store 指令数 & —— \\
+4 & Tensor Core（MMA \texttt{m16n8k16}）：硬件矩阵乘单元，warp 级指令 &
+  提供硬件加速的 256 FMA/cycle/warp，大幅提升吞吐 \\
+5 & Warp Specialization + TMA（WGMMA \texttt{m64n128k16}）：Hopper 异步执行 & —— \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-五级中本章覆盖 Level 1/2/3（注释 L10 的 Tiling、L11--12 的 Thread Tile 与
-Vectorize）。L18--19 的两个 AI 公式经核校存在量纲问题（AI 实际与 $B\sb{K}$ 无关，
-正确值见式~\ref{eq:9-ai-tile}），定性结论不受影响——详见 9.7~节勘误一。
+五级中本章覆盖 Level 1/2/3（Tiling、Thread Tile 与 Vectorize）。表中
+Level 1/2 两行的 AI 公式经核校存在量纲问题（AI 实际与 $B\sb{K}$ 无关，正确值见
+式~\ref{eq:9-ai-tile}），定性结论不受影响——详见 9.7~节勘误一。
 
 \subsection{Level 1：\texttt{sgemm}，Block Tile $32 \times 32 \times 32$}
 
@@ -253,8 +272,19 @@ $\mathrm{tid}\%32$ 连续（读 \texttt{s\_b[k][n]}，stride 1）。写回同样
 
 \subsection{Level 1+：\texttt{sgemm\_vec4} 的设计注释}
 
-\lstinputlisting[linerange={81-107},firstnumber=auto,
-  title={sgemm.cuh L81-107（Level 1+：Vec4+Thread Tile 的映射设计与 bank conflict 提示）}]{../sgemm.cuh}
+\texttt{sgemm\_vec4}（Block Tile $128\times128$ + K Tile 32 + Thread Tile
+$4\times4$）在 Level 1 基础上引入两层优化：其一，\texttt{float4} 向量化加载——
+$A$/$B$ 各用 1 条 128-bit load 取代 4 条 32-bit load；其二，Thread Tile
+$4\times4$——每线程计算 16 个 $C$ 元素，把计算/访存比从 $B\sb{K}/2\approx16$ 提升
+到 $\mathrm{TM}\cdot\mathrm{TN}\cdot B\sb{K}/2\approx256$，同时减少线程总数带来的同步开销。
+问题设定 $C = A \times B$，即 $C[M,N] = A[M,K] \times B[K,N]$（$A$/$B$ 均
+row-major）；$B\sb{M}=B\sb{N}=128$、$B\sb{K}=32$，block $(32,32)$ 共 1024 线程，
+每线程负责 $4\times4=16$ 个 $C$ 元素——$1024\times16=16384=128\times128$，恰好
+铺满；Grid $((N+127)/128,\ (M+127)/128,\ 1)$。边界假设与 Level 1 naive 版
+一致：$M$/$N$ 为 128 的倍数、$K$ 为 32 的倍数。线程到 $4\times4$ tile 的映射
+与加载映射\textbf{解耦}（独立计算更清晰）；注释还预警了计算阶段 \texttt{s\_b} 的
+bank conflict（4-way，生产代码可用 \texttt{s\_b[BK][BN+1]} PAD 打散，这里保持
+最简布局便于讲解）——映射与预警下文逐一验算。
 
 先独立验证注释里的两套映射（都能对上）：\textbf{加载映射}——$A$ 块 $128 \times 32$：
 每线程 4 个元素，$8$ 线程铺满一行 32 列（$\mathrm{tid}/8$ 定行、$(\mathrm{tid}\%8) \cdot 4$ 定列组），

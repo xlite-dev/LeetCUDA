@@ -273,8 +273,30 @@ $c<\mathrm{size}(B)$ 断言 $R(c)=A(B(c))$），本章测试沿用同一手法�
 全部提升为模板参数。先看 hgemm.cuh L788--805 的头注释，它概括了 CuTe 版
 kernel 的流水线结构，与第~\ref{ch:11}、\ref{ch:12}~章手写版一一对应：
 
-\lstinputlisting[linerange={788-805},firstnumber=auto,
-  title={hgemm.cuh L788-805（Phase 7c-1：CuTe HGEMM 的流水线与设计声明）}]{../hgemm.cuh}
+头注释（Phase 7c-1：TN 布局 $+$ Smem Swizzle $+$ Multistage Pipeline）先声明
+TN 布局：$C_{M \times N} = A_{M \times K} \cdot B^{\top}_{N \times K}$，$A$
+为 row-major，$B^{\top}$ 也为 row-major（等价于 $B$ 是 col-major 的
+$[K \times N]$）；在 CuTe 中由
+\texttt{make\_\allowbreak{}tensor\allowbreak{}(make\_\allowbreak{}gmem\_\allowbreak{}ptr\allowbreak{}(ptr),\allowbreak{} shape,\allowbreak{} stride)}
+描述。流水线流程（stage 是 K tile 的循环缓冲槽，不是一条完整计算链）：
+
+\begin{enumerate}
+  \item \textbf{PREFETCH}：预加载 kStage$-$1 个 K tile（G$\to$S via
+        \texttt{cp.async}），填满 stage。
+  \item \textbf{主循环 over K tiles}：(a)~从当前 stage 做 S$\to$R——
+        \texttt{cute::copy(...)}，落到 ldmatrix；(b)~对当前 K slice 做
+        MMA——\texttt{cute::gemm(...)}，落到 \texttt{mma.sync}；
+        (c)~在处理当前 tile 的首个 MMA slice 时，异步提交下一个 tile 的
+        G$\to$S；(d)~当前 tile 的最后一个 K slice 完成后，等待并切换
+        smem stage。
+  \item \textbf{Epilogue}：R$\to$S（\texttt{UniversalCopy} 写入 C
+        scratchpad）$\to$ S$\to$G（128-bit store）。
+\end{enumerate}
+
+头注释末尾是一组「面试对比」——手写 MMA 与 CuTe 的代码量：手写版要做
+ldmatrix PTX 地址计算 $+$ swizzle XOR $+$ mma PTX $+$ epilogue shuffle，
+约 200 行；CuTe 版只需 partition $+$ copy $+$ gemm，约 80 行，其余由
+launch wrapper 的类型推导完成。
 
 再看紧随其后的模板参数清单——本章主角「layout 是类型」在这里体现得最直接：
 

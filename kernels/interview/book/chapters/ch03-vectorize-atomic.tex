@@ -230,8 +230,13 @@ read-modify-write（RMW）。若两个线程同时 RMW 同一 bin 且无同步�
 
 Phase 2 的开场注释给出了本章的考点清单：
 
-\lstinputlisting[linerange={306-310},firstnumber=auto,
-  title={base.cuh L306-310（Phase 2 面试要点）}]{../base.cuh}
+\begin{itemize}
+\item 逐元素操作是最简单的 kernel，核心考点是 memory coalescing；
+\item \texttt{float4} 向量化可将内存事务数减为 $1/4$，大幅提升 bandwidth
+  utilization；
+\item grid/block 维度设计：\texttt{grid(N/threads)}、\texttt{block(threads)}，
+  一维即可。
+\end{itemize}
 
 \subsection{relu：标量基线与 vec4 对照}
 

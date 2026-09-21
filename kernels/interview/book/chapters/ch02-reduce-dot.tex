@@ -279,10 +279,19 @@ $G$ 个 block 的和汇成一个」的最后一步。base.cuh 用
 
 \subsection{第一层：warp 内蝶形归约}\label{sec:ch02-warp}
 
-先看入口（Phase 1 的面试要点自述）与实现：
+先看入口——Phase 1 的开场注释（L87--95）把要点自述为三条：
 
-\lstinputlisting[linerange={87-95},firstnumber=auto,
-  title={base.cuh L87-95（Phase 1 面试要点）}]{../base.cuh}
+\begin{itemize}
+\item \texttt{warp\_reduce}：用 \texttt{\_\_shfl\_xor\_sync} 做蝶形归约，
+  $O(\log N)$ 步，无需 shared memory；
+\item \texttt{block\_reduce}：两级归约（warp $\to$ shared memory $\to$
+  warp0 broadcast），注意最后必须 broadcast 回所有线程
+  （\texttt{\_\_shfl\_sync}），否则只有 warp0 知道结果；
+\item 为什么不用 \texttt{\_\_shfl\_down\_sync}？xor 模式所有线程做相同
+  工作量，更均衡。
+\end{itemize}
+
+再看实现：
 
 \lstinputlisting[linerange={105-110,149-156},firstnumber=auto,
   title={base.cuh L105-110, L149-156（warp reduce sum：模板参数与实现）}]{../base.cuh}
@@ -297,11 +306,31 @@ $W/2$ 降幕到 1，正是 \S\ref{sec:ch02-math} 推导中 $m\sb r = 2^{R-r}$ �
 shuffle。warp reduce max（L158--166）与 sum 完全同构，只是把 \texttt{+}
 换成 \texttt{max}，不再赘述。
 
-源码注释里还附了一张以 $W=8$ 为例的逐轮蝶形图（L111--148），它就是
-图 ch02-1 的底稿：
+源码注释里还附了一张以 $W=8$ 为例的逐轮配对图（L111--148），它就是
+图 ch02-1 的底稿：初始时每个 lane 持有自己的值 $v_0 \dots v_7$，此后每一轮
+lane $i$ 与 lane $i \oplus \mathrm{mask}$ 交换并累加，掩码 $4 \to 2 \to 1$
+逐轮减半，掩码归零后循环终止、归约完成。逐轮的配对与部分和演化如下
+（记 $\Sigma\{i_1, i_2, \dots\}$ 为括号内下标元素之和）：
 
-\lstinputlisting[float=t,linerange={111-148},firstnumber=auto,
-  title={base.cuh L111-148（蝶形归约逐轮示意注释）}]{../base.cuh}
+\begin{center}
+\begin{tabular}{clp{4.2cm}p{6.2cm}}
+\toprule
+轮次 & mask & 本轮配对 & 轮后各 lane 持有 \\
+\midrule
+初始 & --- & --- & 各持己值 $v_0,\, v_1,\, \dots,\, v_7$ \\
+1 & 4 & (0,4) (1,5) (2,6) (3,7) & $v_0{+}v_4,\ v_1{+}v_5,\ \dots,\ v_7{+}v_3$（两两之和） \\
+2 & 2 & (0,2) (1,3) (4,6) (5,7) & 偶数 lane 持 $\Sigma\{0,2,4,6\}$，奇数 lane 持 $\Sigma\{1,3,5,7\}$ \\
+3 & 1 & (0,1) (2,3) (4,5) (6,7) & 所有 lane 持全和 $v_0 + v_1 + \cdots + v_7$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+注释末尾还总结了蝶形配对的关键性质：XOR 配对对称（$(i \oplus m) \oplus m
+= i$），每轮每个 lane 恰与 1 个其他 lane 通信，一对一无冲突；每轮信息传递
+距离减半（$W{=}32$ 时 $16 \to 8 \to 4 \to 2 \to 1$）、信息量翻倍；全程
+$O(\log_2 N)$ 步、纯寄存器操作、无需 shared memory；\texttt{\_\_shfl\_xor\_sync}
+的第四个参数 \texttt{kWarpWidth} 限制 segment width（如 $W{=}4$ 时只有同
+segment 的 lane 参与 shuffle），即前文模板参数所述的通信域行为。
 
 \subsection{第二层：block 两级归约}\label{sec:ch02-block}
 

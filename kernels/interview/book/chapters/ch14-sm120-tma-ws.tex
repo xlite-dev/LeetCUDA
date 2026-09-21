@@ -347,13 +347,13 @@ base\_offset $= (\mathrm{addr} \gg 7) \,\&\, 7$ 让硬件补偿任意相位，�
     \node[gbox] at (1.7, 0) {gmem};
     \draw[sw] (2.55, 0) -- node[wlab, above=1pt] {cp.async + \texttt{swizzle<16>}\\手写 XOR} node[wlab, below=1pt] {（软件写）} (4.85, 0);
     \draw[thick, tkBlue] (5.0, -0.75) rectangle (7.4, 0.75);
-    \foreach \r in {0,...,7}{
-      \foreach \cc in {0,...,3}{
+    \foreach \r in {0,...,3}{
+      \foreach \cc in {0,...,7}{
         \pgfmathtruncatemacro{\gf}{15+22*mod(\r+\cc,3)}
-        \node[fill=colorx6!\gf, minimum size=0.23cm, inner sep=0pt] at ({5.84+\cc*0.24}, {0.42-\r*0.24}) {};
+        \node[fill=colorx6!\gf, minimum size=0.23cm, inner sep=0pt] at ({5.36+\cc*0.24}, {0.455-\r*0.24}) {};
       }
     }
-    \node[font=\scriptsize] at (6.2, -0.55) {smem};
+    \node[font=\scriptsize] at (6.2, -0.51) {smem};
     \draw[sw] (7.55, 0) -- node[wlab, above=1pt] {ldmatrix\\同 \texttt{swizzle} 公式} node[wlab, below=1pt] {（软件读）} (9.85, 0);
     \node[rbox, draw=tkBlue, fill=tkFillBlue] at (11.2, 0) {ldmatrix $\to$ reg\\$\to$ mma.sync};
     \node[sum, text=tkBlue] at (12.45, 0) {软件写 $\leftrightarrow$ 软件读\\（对合：写读同函数）};
@@ -363,13 +363,13 @@ base\_offset $= (\mathrm{addr} \gg 7) \,\&\, 7$ 让硬件补偿任意相位，�
     \node[gbox] at (1.7, 0) {gmem};
     \draw[hw] (2.55, 0) -- node[wlab, above=1pt] {TMA \texttt{SWIZZLE\_128B}\\descriptor 声明} node[wlab, below=1pt] {（硬件写）} (4.85, 0);
     \draw[thick, tkPurple] (5.0, -0.75) rectangle (7.4, 0.75);
-    \foreach \r in {0,...,7}{
-      \foreach \cc in {0,...,3}{
+    \foreach \r in {0,...,3}{
+      \foreach \cc in {0,...,7}{
         \pgfmathtruncatemacro{\gf}{15+22*mod(\r+\cc,3)}
-        \node[fill=colorx7!\gf, minimum size=0.23cm, inner sep=0pt] at ({5.84+\cc*0.24}, {0.42-\r*0.24}) {};
+        \node[fill=colorx7!\gf, minimum size=0.23cm, inner sep=0pt] at ({5.36+\cc*0.24}, {0.455-\r*0.24}) {};
       }
     }
-    \node[font=\scriptsize] at (6.2, -0.55) {smem};
+    \node[font=\scriptsize] at (6.2, -0.51) {smem};
     \draw[hw] (7.55, 0) -- node[wlab, above=1pt] {WGMMA smem descriptor\\base\_offset=(addr$\gg$7)\&7 补偿} node[wlab, below=1pt] {（硬件读）} (9.85, 0);
     \node[rbox, draw=tkPurple, fill=tkFillPurple] at (11.2, 0) {WGMMA\\（A/B 直读 smem）};
     \node[sum, text=tkPurple] at (12.45, 0) {硬件写 + 硬件读\\（零软件 swizzle 计算）};
@@ -379,13 +379,13 @@ base\_offset $= (\mathrm{addr} \gg 7) \,\&\, 7$ 让硬件补偿任意相位，�
     \node[gbox] at (1.7, 0) {gmem};
     \draw[hw] (2.55, 0) -- node[wlab, above=1pt] {TMA \texttt{SWIZZLE\_128B}\\descriptor 声明} node[wlab, below=1pt] {（硬件写）} (4.85, 0);
     \draw[thick, tkOrange] (5.0, -0.75) rectangle (7.4, 0.75);
-    \foreach \r in {0,...,7}{
-      \foreach \cc in {0,...,3}{
+    \foreach \r in {0,...,3}{
+      \foreach \cc in {0,...,7}{
         \pgfmathtruncatemacro{\gf}{15+22*mod(\r+\cc,3)}
-        \node[fill=colorx2!\gf, minimum size=0.23cm, inner sep=0pt] at ({5.84+\cc*0.24}, {0.42-\r*0.24}) {};
+        \node[fill=colorx2!\gf, minimum size=0.23cm, inner sep=0pt] at ({5.36+\cc*0.24}, {0.455-\r*0.24}) {};
       }
     }
-    \node[font=\scriptsize] at (6.2, -0.55) {smem};
+    \node[font=\scriptsize] at (6.2, -0.51) {smem};
     \draw[sw] (7.55, 0) -- node[wlab, above=1pt] {ldmatrix + \texttt{swizzle<64>}\\软件公式，相位固定 0} node[wlab, below=1pt] {（软件读）} (9.85, 0);
     \node[rbox, draw=tkOrange, fill=tkFillOrange] at (11.2, 0) {ldmatrix $\to$ reg\\$\to$ mma.sync};
     \node[sum, text=tkOrange] at (12.45, 0) {硬件写 + 软件读\\（零相位公式，\\需 1024B 对齐）};

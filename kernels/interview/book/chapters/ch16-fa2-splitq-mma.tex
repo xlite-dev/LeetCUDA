@@ -307,10 +307,40 @@ $\mathrm{tig}=0..3$ 各持 2 个），行 $r{+}8$ 同一组 lane 的第二个寄
 
 \section{设计与实现}
 
-先看源码头注释的执行流程总览（9 步），再逐步展开：
+先看源码头注释（L41--59）：它交代 tile 设计、warp 布局，再给出 9 步执行
+流程总览，后续各小节逐步展开。Q/K/V/O 的形状均为 $[B, H, N, d]$；tile 设计
+（以 \texttt{kHeadDim=64} 为例）：
+\begin{itemize}
+  \item $B_r$：\texttt{kMmaAtomM} $\times$ \texttt{kMmaTileSeqLenQ} $\times$
+        \texttt{kValTileSeqLenQ}，即 $16 \times \{4, 8\} \times 1 = \{64, 128\}$；
+  \item $B_c$：\texttt{kMmaAtomN} $\times$ \texttt{kMmaTileSeqLenK} $\times$
+        \texttt{kValTileSeqLenK}，即 $8 \times 1 \times 8 = 64$；
+  \item warp 布局：4 个 warp，\texttt{warp\_QP} 取 $0 \sim 3$ 各处理 16 行
+        Q，\texttt{warp\_KV} $= 0$ 共享 K。
+\end{itemize}
 
-\lstinputlisting[linerange={41-59},firstnumber=auto,
-  title={flash\_attn.cuh L41-59（头注释：tile 设计、warp 布局与 9 步执行流程）}]{../flash_attn.cuh}
+执行流程九步（编号沿用源码：3a--3e 为外循环体，后续步骤从 8 接续）：
+\begin{itemize}
+  \item \textbf{1）}预加载 $Q[B_r, d]$ 到 smem（只加载一次，split-Q 的核心
+        优势）；
+  \item \textbf{2）}外循环：沿 K 的 seqlen 分块迭代（$T_c =
+        \mathrm{seqlen}/B_c$）；
+  \item \textbf{3a）}\texttt{cp.async} 加载当前 V $+$ 预加载下一个 K（多
+        stage pipeline）；
+  \item \textbf{3b）}$QK^{\top}$——沿 head dim 内循环 $\to$ \texttt{ldmatrix}
+        Q/K $\to$ \texttt{HMMA16816}；
+  \item \textbf{3c）}Online Safe Softmax——warp reduce max/row $\to$
+        $\exp(S \cdot \mathrm{scale} - \mathrm{max})$；关键：将 P 写回
+        \texttt{R\_S} 寄存器（替换 S），\texttt{R\_S} 现在存储 P matrix；
+  \item \textbf{3d）}$P@V$——沿 V 的 $B_c$ 维内循环 $\to$ \texttt{ldmatrix}
+        V (transposed) $\to$ 直接用 \texttt{R\_S} 做 A 矩阵；当前实现依赖
+        同一组寄存器布局约定，避免为 $P@V$ 额外重组 P fragment；
+  \item \textbf{3e）}Online rescaling——$O_{\text{new}} =
+        \exp(m_{\text{old}} - m_{\text{new}})\,O_{\text{old}} + P@V$；
+  \item \textbf{8）}最终 rescale：$O_{\text{final}} =
+        (1/\ell_{\text{final}})\,O_{\text{final}}$；
+  \item \textbf{9）}Epilogue：warp shuffle $+$ 128-bit collective store。
+\end{itemize}
 
 （该注释以 $B_r{=}64$、4-warp 配置为例；本章默认实例化是
 $B_r{=}128$、8-warp，行划分逻辑相同——见 16.7 节勘误。）

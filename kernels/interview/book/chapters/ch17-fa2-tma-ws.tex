@@ -64,12 +64,20 @@ ldmatrix + \texttt{mma.sync} + online softmax。两支流之间没有任何
 （kStagesK）完整掩盖；producer 空闲出来的 127 个线程的执行资源与寄存器
 （经 \texttt{setmaxnreg} 让渡；TMA dst 须为 \texttt{shared::cta}，见 17.8~节坑七）归 consumer 使用。
 
-源码头注释把这套结构压缩成了六行「面试要点」，先原文引用，再逐条展开：
+源码头注释（L792--803）把这套结构压缩成了三条「面试要点」：
 
-\lstinputlisting[linerange={792-803},firstnumber=auto,breakatwhitespace=true,
-  title={flash\_attn.cuh L792-803（Phase 8b 头注释：FA TMA WS vs cp.async FA）}]{../flash_attn.cuh}
+\begin{itemize}
+  \item \textbf{Producer}（WG0, 128T）用 TMA 128B SWIZZLE 搬运 Q/K/V tile 到
+        smem；
+  \item \textbf{Consumer}（WG1, 256T）用 ldmatrix $+$
+        \texttt{mma.\allowbreak{}sync.\allowbreak{}m16n8k16} 做 $QK^\top$ / $PV$；
+  \item 与 \texttt{hgemm\_tma\_mma\_ws\_tn} 的对比：HGEMM 只做一次 GEMM、沿
+        K 维迭代，FA 做 $QK^\top$ 和 $PV$ 两次 GEMM、沿 KV seqlen 迭代；
+        HGEMM 的 A/B 都 staged，FA 中 Q 只 load 一次（split-Q）、K staged、
+        V 单 buffer。
+\end{itemize}
 
-第一行的角色划分、第三行的三处差异（两次 GEMM/KV 迭代/Q 只装一次）分别对应
+前两条的角色划分、第三条的三处差异（两次 GEMM/KV 迭代/Q 只装一次）分别对应
 17.4.1、17.3.1 与 17.4.3 节；其中「Q 只 load 一次」是 attention 特有的——
 GEMM 的 A/B 都随 K 迭代刷新，而 split-Q 的 Q tile 在整个 KV 遍历中不变，
 这让 Q 的同步协议退化成「一次性 full 屏障」，是本章协议里最省心的一环。
@@ -108,10 +116,16 @@ block 内的 online softmax 状态 $(m, \ell, O)$ 跨 $T_c$ 轮迭代持续更�
 $[B_r, D]$ 只需在进入 KV 循环前装载\textbf{一次}，此后 $T_c$ 轮迭代全部
 复用 smem 中的同一份 Q——对比「每轮都刷 A」的 GEMM，FA 的 Q 通道是
 \textbf{一次装载、全程只读}，因此 Q 只需要 full 屏障（数据就绪），不需要
-empty 屏障（没有谁会覆盖它）。头注释对这一点的表述值得原文引用：
+empty 屏障（没有谁会覆盖它）。头注释（L801--806）对 split-Q 语义的完整表述则澄清了「Q tile」的确切
+含义——它是 \textbf{block-level} 的，不是全局 Q：
 
-\lstinputlisting[linerange={801-806},firstnumber=auto,breakatwhitespace=true,
-  title={flash\_attn.cuh L801-806（split-Q 语义：Q 只装一次 $\to$ 只需 full\_Q）}]{../flash_attn.cuh}
+\begin{itemize}
+  \item grid $= (N/B_r,\; B \cdot H)$：每个 block 处理一个 block-level Q
+        tile $[B_r, D]$（不是全局 Q），对 Q 的 seqlen 做 block 级并行；
+  \item 每个 block 遍历\textbf{完整的 KV seqlen}（$T_c = N/B_c$ 次外循环）；
+  \item 因此每个 block 的 Q tile 只需 load 一次到 smem、在整个 KV 遍历中
+        复用 $\to$ 只需 \texttt{full\_Q} barrier（无 \texttt{empty\_Q}）。
+\end{itemize}
 
 \subsection{mbarrier arrive\_count 协议：257 的代数}
 
@@ -274,8 +288,29 @@ smem 需求是三个通道之和（half 元素 2 B）：
 （如 $\mathrm{Sk}{=}2, S_v{=}1, D{=}128$：$(128 + 2 \times 64 + 64) \times 128
 \times 2 = 80$ KB）：
 
-\lstinputlisting[linerange={825-842},firstnumber=auto,breakatwhitespace=true,
-  title={flash\_attn.cuh L825-842（smem 占用表 + SM120 optin 上限结论）}]{../flash_attn.cuh}
+\begin{center}
+\begin{tabular}{cccc}
+\toprule
+\texttt{kStagesK} & \texttt{kStagesV} & $D{=}64$ & $D{=}128$ \\
+\midrule
+1 & 1 & 32 KB & 64 KB \\
+2 & 1 & 40 KB & 80 KB \\
+2 & 2 & 48 KB & 96 KB \\
+3 & 1 & 48 KB & 96 KB \\
+3 & 2 & 56 KB & 112 KB \\
+4 & 1 & 56 KB & 112 KB \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+SM120（RTX PRO 5000）的 optin smem 上限约 100 KB：$D{=}64$ 时
+$\mathrm{Sk} = 1/2/3/4$ 全部可行（32--56 KB）；$D{=}128$ 时
+$\mathrm{Sk} = 1/2/3$ 可行（64--96 KB），$\mathrm{Sk}{=}4$（112 KB）超出
+optin 上限，会被 \texttt{check\_smem\_feasible} 兜底判为 SMEM SKIP，
+$D{=}128$ 的推荐档位是 $\mathrm{Sk}{=}2$（甜点：80 KB，2 blocks/SM，
+pipeline 深度足够隐藏 TMA 延迟）。另有 v1 限制：\texttt{kHeadDim} 只支持
+64 或 128，且要求 seqlen $\%\, B_r = 0$、seqlen $\%\, B_c = 0$（不处理
+尾 tile）。
 
 本机实测 optin 上限 $101376\,\mathrm{B} = 99.0$ KB（17.10~节测试首行输出），
 注释「$\sim$100KB」为近似正确的口径；$\mathrm{Sk}{=}4, D{=}128$ 的 112 KB

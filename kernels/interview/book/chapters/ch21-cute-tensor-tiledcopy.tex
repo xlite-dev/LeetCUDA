@@ -678,10 +678,29 @@ side」，不是 shared memory；\texttt{retile\_D} 的 D 指 destination side�
 
 epilogue 的三段划定值得单独讲：寄存器 fragment 先按 32-bit 粒度写进
 smem scratchpad（R$\to$S），再从 scratchpad 按 128-bit 读回 gmem
-（S$\to$G）。中间这块 scratchpad 复用了当前 A stage 的空间：
+（S$\to$G）。中间这块 scratchpad 复用了当前 A stage 的空间，\texttt{sC}
+由 \texttt{make\_\allowbreak{}tensor\allowbreak{}(sA(\_,\allowbreak{}\_,\allowbreak{}ismem\_\allowbreak{}read).\allowbreak{}data\allowbreak{}(),\allowbreak{} SmemLayoutC\{\})}
+构造（L1001，下文展开）。R$\to$S 用的 \texttt{R2SCopyAtomC} 是
+\texttt{Copy\_Atom<UniversalCopy<int>,\allowbreak{} T>}：以 32-bit 粒度搬运
+\texttt{T} 数据，用 \texttt{UniversalCopy} 顺带完成类型转换，再经
+\texttt{make\_tiled\_copy\_C} 包装成 \texttt{r2s\_tiled\_copy\_c}。
 
-\lstinputlisting[linerange={1001-1020},firstnumber=auto,breakatwhitespace=true,
-  title={hgemm.cuh L1001-1020（C scratchpad 的重解释与 R2S 的 retile\_S）}]{../hgemm.cuh}
+\begin{sloppypar}
+被搬运的 \texttt{tCrD} 是 TiledMMA 产生的 accumulator fragment，逻辑形状为
+\texttt{(MMA, MMA\_M, MMA\_N)}：寄存器元素已经就位，但该 layout 是为 MMA
+accumulator 服务的，并不直接按 R2S copy atom 的 source-value 顺序表达。
+\texttt{retile\_S}（S 指「这个 TiledCopy 的 source side」，不是 shared
+memory）基于 \texttt{r2s\_tiled\_copy\_c} 的 reference layout 创建一个共享
+\texttt{tCrD.data()} 的 zero-copy layout view，把逻辑坐标从
+\texttt{(MMA, MMA\_M, MMA\_N)} 重新表示为 \texttt{(CPY, CPY\_M, CPY\_N)}
+（\texttt{tCrC\_r2s = r2s\_thr\_copy\_c.retile\_S(tCrD)}）。这一步不读取或
+写入寄存器/共享内存、不做 dtype conversion、不交换 lane 间数据；真正的
+R2S 数据搬运发生在后面的
+\texttt{cute::copy(r2s\_tiled\_copy\_c, ...,\allowbreak{} tCsC\_r2s(...))}。
+可与主循环的 \texttt{s2r\_thr\_copy\_a.retile\_D(tCrA)} 对照：二者都是为了让
+已有 fragment 的 per-thread value ordering 匹配某个 TiledCopy 的
+source/destination 角色，而不是另一次 memory transfer。
+\end{sloppypar}
 
 \begin{sloppypar}
 注意 L1001 的写法：\texttt{sC} 拿的是 \texttt{s\allowbreak{}A\allowbreak{}(\_\allowbreak{},\allowbreak{}\_\allowbreak{},\allowbreak{}ismem\_\allowbreak{}read).\allowbreak{}data\allowbreak{}()}
@@ -747,8 +766,17 @@ scratchpad 解释——$32\times32$ 的 atom $\times$ $4$ 个 pipe slot
 
 S$\to$G 一侧的 partition 与 \texttt{group\_modes} 合并：
 
-\lstinputlisting[linerange={1036-1076},firstnumber=auto,breakatwhitespace=true,
-  title={hgemm.cuh L1036-1076（S2G 的划分与 group\_modes 合并 mode）}]{../hgemm.cuh}
+\begin{sloppypar}
+划分本身只有两行：\texttt{tCsC\_s2g = s2g\_thr\_copy\_c.partition\_S(sC)}，
+形状 \texttt{(CPY, \_1, \_1, pipe)}；\texttt{tCgC\_s2g = s2g\_thr\_copy\_c.partition\_D(gD)}，
+形状 \texttt{(CPY, CPY\_M, CPY\_N)}。\texttt{tCsC\_s2g} 与 \texttt{tCsC\_r2s}
+都从同一个 \texttt{sC} 产生，因而保留相同的 pipe$=$4——前者是 S2G 的
+source mapping，后者是 R2S 的 destination mapping；\texttt{tCgC\_s2g} 则面向
+完整的 $gD = (B_M, B_N) = (128, 256)$，相对于 S2G copy tiler 仍有非平凡的
+M/N repetition，所以保留 \texttt{CPY\_M}、\texttt{CPY\_N}。注释特别提醒：
+这里的 \texttt{CPY}/\texttt{CPY\_M}/\texttt{CPY\_N} 都是编译期 copy-partition
+的逻辑 mode，不应直接理解为固定的 lane 数、warp 数或物理连续维度。
+\end{sloppypar}
 
 \begin{sloppypar}
 \texttt{group\_\allowbreak{}modes\allowbreak{}<1,\allowbreak{}3>} 把 mode 区间 $[1,3)$ 合并成一个嵌套 mode：形状从
@@ -764,6 +792,35 @@ kernel 注释（L1077--1092）特别提醒：\textbf{step 是 pipe 深度，不�
 $\mathrm{CPY}_N$}，循环成立的前提是 $\mathrm{CPY}_M\cdot\mathrm{CPY}_N$ 能被
 step 整除——当前静态布局下这是编译期保证的。
 \end{sloppypar}
+
+\begin{sloppypar}
+那么为什么要对 \texttt{tCrC\_r2s} 与 \texttt{tCgC\_s2g} \textbf{同时} group
+（真代码就两行：\texttt{tCgC\_s2gx = group\_modes<1, 3>(tCgC\_s2g)}、
+\texttt{tCrC\_r2sx = group\_modes<1, 3>(tCrC\_r2s)}）？\texttt{tCrC\_r2s} 是
+每线程持有的寄存器 C fragment，原始形状 \texttt{(CPY, CPY\_M, CPY\_N)}；
+\texttt{tCgC\_s2g} 是该线程对应的 global-memory C 输出位置，形状与源
+Tensor 对齐；两者用相同的 $[1,3)$ 合并后，源/目的 Tensor 仍保持相同的
+坐标空间，\texttt{cute::copy} 便按相同的 \texttt{(CPY, i+j)} 坐标完成寄存器
+到 global 的对应搬运。而 \texttt{tCsC\_r2s}/\texttt{tCsC\_s2g} 不 group
+第 3 个 pipe mode——它们还需显式保留 shared-memory C scratchpad 的
+pipeline 维度，\texttt{step = size<3>(tCsC\_r2s)} 表示每轮可复用的 C
+smem pipeline 深度（\texttt{kSmemLayoutCBatch}$\,{=}\,4$，故 step$=$4）。
+外层 $i$ 在合并后的 C 元素空间中按 step 前进，内层 $j$ 选择当前 pipeline
+slot：寄存器先写入 \texttt{sC(\_, 0, 0, j)}，再从同一个 slot 写回 global
+memory。
+\end{sloppypar}
+
+注释对 grouped mode 的语义还有两点精确限定：其一，它更准确地说是「合并
+mode」而不是把底层数据拷贝或无条件 flatten 成普通一维数组——第二个 mode
+仍保存 \texttt{CPY\_M}/\texttt{CPY\_N} 的层次关系，grouped mode 的
+cardinality 是两个子 mode 的乘积，\texttt{size<1>(...)} 因此可作为一个
+标量范围遍历其全部 logical coordinate；其二，\texttt{(\_, i+j)} 中的
+$i{+}j$ 是该 nested mode 的\textbf{线性 logical coordinate}，不是在 C++
+中对二维 tuple 做加法，更不是 raw pointer offset——最终物理地址仍由各自
+Tensor 的 grouped layout 计算。此外，代码未对 $i{+}j$ 做尾部 predication，
+这个循环依赖当前静态 layout 中 grouped extent 能被 pipe depth 整除；不应
+把「每轮正好处理 4 个 fragment」误认为任意 tile/copy 配置都自动成立的
+通用规则。
 
 \needspace{106mm}
 

@@ -211,10 +211,18 @@ lane $0\,\dots\,15$ 算第 $m$ 行、lane $16\,\dots\,31$ 算第 $m+1$ 行，每
 
 \section{设计与实现}
 
-先看源码文件头的策略注释，它把 8.2~节的三个动机浓缩成了可执行的选型表：
+源码文件头的策略注释把 8.2~节的三个动机浓缩成了一张可执行的选型表：GEMV
+（$a \in \mathbb{R}^{M \times K}$，$x \in \mathbb{R}^{K}$，$y \in \mathbb{R}^{M}$，$y = a \cdot x$，
+$N = 1$）是典型的纯 memory-bound 算子——AI $\approx O(1)$，瓶颈在内存带宽；核心
+策略是 warp-per-row：每个 warp 负责矩阵的一行。不同 $K$ 值对应不同分块策略：
 
-\lstinputlisting[linerange={3-14},firstnumber=auto,
-  title={sgemv.cuh L3-14（头部：GEMV 的选型依据）}]{../sgemv.cuh}
+\begin{itemize}
+  \item $K$ 为 32 的倍数：一个 warp 的 32 线程恰好覆盖 $K$ 维；
+  \item $K$ 为 128 的倍数：每个线程用 \texttt{float4} 处理 4 个元素，一个 warp
+        覆盖 128 个 $K$ 元素；
+  \item $K = 16 < 32$：一个 warp 用不满，用
+        \texttt{k\allowbreak{}Row\allowbreak{}Per\allowbreak{}Warp=\allowbreak{}2} 让每个 warp 处理 2 行。
+\end{itemize}
 
 \subsection{sgemv\_k32：基础 warp-per-row}
 

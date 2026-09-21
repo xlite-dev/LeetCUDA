@@ -302,53 +302,114 @@ CLI 默认值即推荐值：纯 fp8 QK + f32 累加 + Q/K/V 全 per-block
 （更细粒度、对齐 Sage 配置），两套默认不同——对比数据时必须对齐
 preset。knob 的边际效应见 33.6.3。
 
-\section{图示}
+\section{实测数据总览}
 
-四张图分两个数据源。图~\ref{fig:33-5090-fp8} 与图~\ref{fig:33-5090-fp4}
+四张表分两个数据源。表~\ref{tab:33-5090-fp8} 与表~\ref{tab:33-5090-fp4}
 是 ffpa-attn README 引用的 RTX 5090 结果（B1 H64 N=16384 D=128）：fp8 对
-Sage2/SDPA 的领先与 fp4 的 2.60x 满血区，用于建立「能到多少」的量级预期。
-图~\ref{fig:33-pro5000-fp8} 与图~\ref{fig:33-pro5000-fp4} 是本机 PRO 5000
-的复测（H32/Hkv8，bench 脚本默认 preset）：fp8 与 Sage 总体打平、互有
-胜负，fp4 全场景领先——绝对 TFLOPS 比 5090 低 $\sim$15\%（fp8）/$\sim$35\%
-（fp4），但形态一致。读图时记住本章动机节的三陷阱：参照系、preset 与
-GPU 状态是三个最常见的失真源。
+Sage2/SDPA 的领先与 fp4 非因果场景 2.2$\sim$2.3x 的满血区，用于建立
+「能到多少」的量级预期。表~\ref{tab:33-pro5000-fp8} 与
+表~\ref{tab:33-pro5000-fp4} 是本机 PRO 5000 的复测（H32/Hkv8，bench
+脚本默认 preset，2026-09-21）：fp8 与 Sage 总体打平、互有胜负（差距
+$\pm$4\% 内），fp4 全场景领先——绝对 TFLOPS 比 5090 低 $\sim$15\%
+（fp8）/$\sim$30\%（fp4），但形态一致。读表时记住本章动机节的三陷阱：
+参照系、preset 与 GPU 状态是三个最常见的失真源。
 
-\begin{figure}[!htbp]
-  \centering
-  \includegraphics[width=0.98\textwidth]{figures/ffpa/fp8/ffpa_speedup_nvidia-geforce-rtx-5090_B1_H64_N16384_D128_T.png}
-  \caption{RTX 5090 上的 fp8 speedup（D=128，B1 H64 N=16384；
-  FFPA-FP8 $\approx$441T vs Sage2 394T vs SDPA 291T）。图源：
-  ffpa-attn README，\texttt{bench\_fp8.py} 口径。}\label{fig:33-5090-fp8}
-\end{figure}
+\begin{table}[!htbp]
+  \centering\small
+  \caption{RTX 5090 fp8 对照（D=128，B1 H64 N=16384，TFLOPS；数据源：
+  ffpa-attn README，\texttt{bench\_fp8.py} 口径）}\label{tab:33-5090-fp8}
+  \begin{tabular}{lcccc}
+    \toprule
+    场景 & SDPA-FA2 & Sage2 & FFPA-FP8 & FFPA/SDPA \\
+    \midrule
+    self               & 353.35 & 396.83 & 445.60 & 1.26x \\
+    causal             & 349.34 & 390.34 & 440.04 & 1.26x \\
+    gqa                & 351.25 & 402.43 & 437.57 & 1.25x \\
+    gqa-causal         & 348.71 & 390.94 & 431.67 & 1.24x \\
+    cross-dense        & 349.58 & 389.53 & 441.74 & 1.26x \\
+    non-aligned-dense  & 352.75 & 392.46 & 437.51 & 1.24x \\
+    non-aligned-causal & 349.33 & 379.59 & 426.69 & 1.22x \\
+    \bottomrule
+  \end{tabular}
+\end{table}
 
-\begin{figure}[!htbp]
-  \centering
-  \includegraphics[width=0.98\textwidth]{figures/ffpa/fp4/ffpa_speedup_nvidia-geforce-rtx-5090_B1_H64_N16384_D128_T.png}
-  \caption{RTX 5090 上的 fp4 speedup（同形状；FFPA-FP4 $\approx$804T
-  / 2.60x，比同场 fp8 再快 1.8x——blockscale MMA 的满血区）。
-  图源同上；README 文本宣传口径（850--980 TOPS / 3.8x$\sim$4.4x，
-  D=128--256 区间）为不同期的后续版本，与本图（D=128 单点）不同期。}
-  \label{fig:33-5090-fp4}
-\end{figure}
+\begin{table}[!htbp]
+  \centering\small
+  \caption{RTX 5090 fp4 对照（同形状，TFLOPS；数据源同上。FFPA-FP4 在
+  非因果场景约为同场 fp8 的 1.8x——blockscale MMA 的满血区；README 文本
+  宣传口径（850--980 TOPS / 3.8x$\sim$4.4x，D=128--256 区间）为不同期
+  的后续版本，与本表（D=128 单点）不同期）}\label{tab:33-5090-fp4}
+  \begin{tabular}{lccccc}
+    \toprule
+    场景 & SDPA-FA2 & FFPA-FP8 & FFPA-FP4 & Sage3 & FP4/SDPA \\
+    \midrule
+    self               & 353.35 & 441.87 & 803.69 & 563.38 & 2.27x \\
+    causal             & 349.34 & 436.67 & 631.86 & 423.01 & 1.81x \\
+    gqa                & 351.25 & 449.12 & 822.32 & 609.79 & 2.34x \\
+    gqa-causal         & 348.71 & 441.07 & 771.13 & 564.42 & 2.21x \\
+    cross-dense        & 349.58 & 439.09 & 799.84 & 561.45 & 2.29x \\
+    non-aligned-dense  & 352.75 & 436.61 & 783.41 & 576.17 & 2.22x \\
+    non-aligned-causal & 349.33 & 429.62 & 608.88 & 437.60 & 1.74x \\
+    \bottomrule
+  \end{tabular}
+\end{table}
 
-\begin{figure}[!htbp]
-  \centering
-  \includegraphics[width=0.98\textwidth]{figures/ffpa/fp8/fig-33-3-pro5000-fp8-tflops.png}
-  \caption{本机 PRO 5000 复测（fp8，D=128 fp16，H32/Hkv8，
-  \texttt{bench\_fp8.py} 默认 preset，2026-09-16）：七个场景 $\times$
-  8K/16K。与 Sage 总体打平、互有胜负（self 8K FFPA +2.0\%，
-  gqa 16K Sage +1.4\%，最差差 2.6\%）；与 5090 图的形态一致，绝对
-  TFLOPS 低 $\sim$15\%（SM 数与功耗包络差异）。}\label{fig:33-pro5000-fp8}
-\end{figure}
+\begin{table}[!htbp]
+  \centering\small
+  \caption{本机 PRO 5000 fp8 复测（D=128 fp16，H32/Hkv8，
+  \texttt{bench\_fp8.py} 默认 preset，2026-09-21，TFLOPS；FFPA/Sage 为
+  两者 TFLOPS 之比，$\pm$4\% 内互有胜负）}\label{tab:33-pro5000-fp8}
+  \begin{tabular}{lcccccc}
+    \toprule
+    场景 & Nq & FFPA-FP8 & Sage2 & SDPA-FA2 & FFPA/SDPA & FFPA/Sage \\
+    \midrule
+    self               & 8192  & 354.5 & 345.8 & 213.8 & 1.66x & 1.025 \\
+    causal             & 8192  & 286.6 & 283.5 & 203.9 & 1.41x & 1.011 \\
+    gqa                & 8192  & 385.0 & 379.0 & 213.8 & 1.80x & 1.016 \\
+    gqa-causal         & 8192  & 327.1 & 329.0 & 204.2 & 1.60x & 0.994 \\
+    cross-dense        & 8192  & 365.3 & 351.3 & 215.8 & 1.69x & 1.040 \\
+    non-aligned-dense  & 8192  & 341.1 & 342.3 & 220.1 & 1.55x & 0.996 \\
+    non-aligned-causal & 8192  & 278.7 & 277.5 & 195.9 & 1.42x & 1.004 \\
+    \midrule
+    self               & 16384 & 382.1 & 375.7 & 216.3 & 1.77x & 1.017 \\
+    causal             & 16384 & 336.9 & 329.9 & 216.3 & 1.56x & 1.021 \\
+    gqa                & 16384 & 397.6 & 392.9 & 216.4 & 1.84x & 1.012 \\
+    gqa-causal         & 16384 & 364.9 & 362.2 & 216.4 & 1.69x & 1.007 \\
+    cross-dense        & 16384 & 378.5 & 377.9 & 215.9 & 1.75x & 1.002 \\
+    non-aligned-dense  & 16384 & 368.9 & 373.3 & 223.1 & 1.65x & 0.988 \\
+    non-aligned-causal & 16384 & 334.9 & 329.6 & 209.2 & 1.60x & 1.016 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
 
-\begin{figure}[!htbp]
-  \centering
-  \includegraphics[width=0.98\textwidth]{figures/ffpa/fp4/fig-33-4-pro5000-fp4-tflops.png}
-  \caption{本机 PRO 5000 复测（fp4，同形状，\texttt{bench\_fp4.py}，
-  2026-09-16）：FFPA-FP4（紫）在所有场景领先；Sage3 在 GQA 行缺席
-  （不支持），causal 行其 rel\_err 达 0.59（早期行 e2m1 噪声无
-  hybrid 抑制）而 FFPA-FP4 为 0.14。}\label{fig:33-pro5000-fp4}
-\end{figure}
+\begin{table}[!htbp]
+  \centering\small
+  \caption{本机 PRO 5000 fp4 复测（D=128，\texttt{bench\_fp4.py}，
+  2026-09-21，TFLOPS；Sage3 在 gqa 行缺席（不支持），其 causal 类行
+  rel\_err 达 0.57--0.59（早期行 e2m1 噪声无 hybrid 抑制），FFPA-FP4
+  为 0.14--0.15）}\label{tab:33-pro5000-fp4}
+  \begin{tabular}{lccccccc}
+    \toprule
+    场景 & Nq & FFPA-FP4 & FFPA-FP8 & Sage3 & SDPA-FA2 & FP4/SDPA & FP4/FP8 \\
+    \midrule
+    self               & 16384 & 528.7 & 382.1 & 411.7 & 216.6 & 2.44x & 1.38x \\
+    causal             & 16384 & 444.6 & 348.7 & 307.5 & 216.4 & 2.05x & 1.28x \\
+    gqa                & 16384 & 556.7 & 397.8 & ---   & 216.2 & 2.58x & 1.40x \\
+    gqa-causal         & 16384 & 480.7 & 368.0 & ---   & 216.4 & 2.22x & 1.31x \\
+    cross-dense        & 16384 & 553.9 & 378.5 & 421.6 & 217.5 & 2.55x & 1.46x \\
+    non-aligned-dense  & 16384 & 524.8 & 376.4 & 363.2 & 223.4 & 2.35x & 1.39x \\
+    non-aligned-causal & 16384 & 443.7 & 348.5 & 256.1 & 209.3 & 2.12x & 1.27x \\
+    \midrule
+    self               & 32768 & 570.1 & 390.8 & 443.7 & 219.4 & 2.60x & 1.46x \\
+    causal             & 32768 & 515.4 & 371.2 & 340.9 & 222.7 & 2.31x & 1.39x \\
+    gqa                & 32768 & 581.1 & 397.2 & ---   & 216.7 & 2.68x & 1.46x \\
+    gqa-causal         & 32768 & 530.7 & 385.6 & ---   & 219.9 & 2.41x & 1.38x \\
+    cross-dense        & 32768 & 578.0 & 391.3 & 447.5 & 214.4 & 2.70x & 1.48x \\
+    non-aligned-dense  & 32768 & 564.4 & 387.2 & 413.4 & 224.6 & 2.51x & 1.46x \\
+    non-aligned-causal & 32768 & 505.5 & 368.0 & 306.1 & 215.6 & 2.34x & 1.37x \\
+    \bottomrule
+  \end{tabular}
+\end{table}
 
 \FloatBarrier
 

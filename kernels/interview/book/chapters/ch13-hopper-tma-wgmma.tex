@@ -442,11 +442,34 @@ $S = 3$ 个 empty 各预存 128 次到达，producer 的 1 次 arrive 恰好补�
 WGMMA 与 TMA 的「接头暗号」就是 smem descriptor：TMA 按 128B swizzle 写入 smem，
 WGMMA 按同一个 128B swizzle 读出，descriptor 告诉硬件「tile 在哪、怎么走、
 swizzle 模式是哪档」。64-bit 位域布局（PTX ISA §9.7.15.5.1.2.2；源码
-common.cuh~L558--587 的注释表与图~\ref{fig:13-1} 逐字段一致，此处不重复引用，
-直接看编码实现）：
+common.cuh~L558--587 的注释表与图~\ref{fig:13-1} 逐字段一致，此处不重复引用）。
+编码实现分上下两半，上半只动 start\_address 与 LBO 两个字段（表~\ref{tab:13-desc-upper}）：
 
-\lstinputlisting[linerange={596-610},firstnumber=auto,breakatwhitespace=true,
-  title={common.cuh L596-610（make\_smem\_desc 上半：start\_address 与 LBO）}]{../common.cuh}
+\begin{table}[htbp]
+\centering
+\caption{make\_smem\_desc 上半：start\_address 与 LBO（common.cuh~L596--610）}
+\label{tab:13-desc-upper}
+\small
+\begin{tabular}{@{}p{3.7cm}p{3.3cm}p{10.45cm}@{}}
+\toprule
+字段 & 填入与编码 & 语义 \\
+\midrule
+bits $[0,14)$ start\_address &
+  \texttt{SMEM\_\allowbreak{}DESC\_\allowbreak{}ENCODE(addr)}：右移 4 位
+  （丢弃低 4 个恒为 0 的 bit），只保留 14 位 &
+  硬件解码时左移 4 位恢复完整的 16B 对齐地址。可寻址范围
+  $2^{14+4} = 2^{18} = 256\mathrm{K}$ 个 half $= 512$\,KB 共享内存 \\
+bits $[16,30)$ leading\_byte\_offset &
+  填 16（字节），编码 $(16 \,\&\, \mathrm{0x3FFFF}) \gg 4 = 1$，再
+  \texttt{<< 16} 放进 bits $[16, 30)$ &
+  K-major + 128B swizzle 下该字段硬件未使用（assumed 为 1，PTX ISA
+  §9.7.15.5.1.2.1.1），填 16 仅为占位、使编码值为 1 满足硬件预期。若为
+  MN-major 或 INTERLEAVE 布局，LBO 有实际含义：INTERLEAVE 布局是同一
+  $8\times2$ brick 内第一列到第二列的字节偏移；MN-major swizzle 是首
+  $(\text{swizzle-byte-size}/16)$ 行到下一组行的偏移 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \lstinputlisting[linerange={612-631},firstnumber=auto,breakatwhitespace=true,
   title={common.cuh L612-631（make\_smem\_desc 下半：SBO 与 layout\_type）}]{../common.cuh}
@@ -575,8 +598,18 @@ warpgroup 内必须对齐执行（.aligned 限定符），且连续同 shape 的
 
 \subsection{kernel 主体：consumer 四拍与写回}
 
-\lstinputlisting[linerange={1713-1722},firstnumber=auto,breakatwhitespace=true,
-  title={hgemm.cuh L1713-1722（C1：wait full——等数据也等相位）}]{../hgemm.cuh}
+第一拍 C1（wait full——等数据也等相位）是
+\texttt{full[stage].wait(full[stage].arrive())}：等待 TMA 数据就绪的 full
+信号。这行「wait 自己的 arrive」初看别扭，把 mbarrier 的到达次数拆开数就
+自然了：
+\begin{itemize}
+  \item 128 个 consumer 线程各调用一次 \texttt{arrive()}，共 128 次到达；
+  \item 当前 phase 累积 $128/129$，phase 尚未翻转；
+  \item \texttt{wait(token)} 阻塞，直到 producer 的 \texttt{barrier\_arrive\_tx}
+        （P3）贡献第 129 次到达、且 TMA 字节全部写完 $\Rightarrow$ phase
+        翻转，\texttt{wait} 返回。
+\end{itemize}
+语义即 consumer 在说：「我准备好读当前 stage 了，数据到了没有？」
 
 \lstinputlisting[linerange={1724-1763},firstnumber=auto,breakatwhitespace=true,
   title={hgemm.cuh L1724-1763（C2：fence 后发射 2$\times$4 条 m64n128k16）}]{../hgemm.cuh}

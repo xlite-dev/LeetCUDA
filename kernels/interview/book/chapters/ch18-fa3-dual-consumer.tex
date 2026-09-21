@@ -335,10 +335,24 @@ ptxas 就会以 C7506 丢弃 \texttt{setmaxnreg}（CUDA 13.2，与 arch 后缀�
 
 \subsection{总体结构：三分线程与奇偶路由}
 
-头部注释先把「与 8b 的核心区别」摆明（L1445--1452）：
+头部注释（L1445--1452）先把「与 8b 的核心区别」摆明：
 
-\lstinputlisting[linerange={1445-1452},firstnumber=auto,breakatwhitespace=true,
-  title={flash\_attn.cuh L1445-1452（8b $\to$ 8c：consumer 从 1 个 WG 变 2 个，KV 奇偶拆分）}]{../flash_attn.cuh}
+\begin{itemize}
+  \item 8b：1 个 producer WG（128T）$+$ 1 个 consumer WG（256T，8 warp），
+        全 KV 遍历；
+  \item 8c：1 个 producer WG（128T）$+$ 2 个 consumer WG（各 128T，4 warp），
+        KV tile 奇偶拆分。
+\end{itemize}
+
+线程布局共 384 线程，三支 WG 的分工：
+
+\begin{itemize}
+  \item WG0 $[0,127]$：TMA producer（仅 thread 0 发 TMA）；
+  \item WG1 $[128,255]$：\texttt{consumer\_id}$\,{=}\,0$，处理偶数 KV tile
+        （0, 2, 4, $\dots$）；
+  \item WG2 $[256,383]$：\texttt{consumer\_id}$\,{=}\,1$，处理奇数 KV tile
+        （1, 3, 5, $\dots$）。
+\end{itemize}
 
 角色判定只有两行（L1577--1581）：\texttt{threadIdx.x < 128} 为 producer；
 其余按 \texttt{\allowbreak{}(thread\allowbreak{}Idx.\allowbreak{}x - 128) /\allowbreak{} 128} 得 \texttt{consumer\_id}

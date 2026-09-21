@@ -32,14 +32,25 @@ memory-bound 与 compute-bound、occupancy 与延迟隐藏。
 「访存-计算比例」决定}。一个向量加法（读两个数、加一次、写一个数）与一个
 矩阵乘法（读两个数要做几十上百次乘加）在 CPU 上差异不大，在 GPU 上却是天壤
 之别——前者把大部分时间花在等数据上（memory-bound），后者才能喂饱计算单元
-（compute-bound）。base.cuh L22--26 把这种判断浓缩成了三行注释：
+（compute-bound）。base.cuh L22--30 把这种判断浓缩成三条判据，外加一条
+occupancy 公式：
 
-\lstinputlisting[linerange={22-30},firstnumber=auto,
-  title={base.cuh L22-30（关键瓶颈判断与 occupancy 公式）}]{../base.cuh}
+\begin{itemize}
+\item \textbf{Memory-bound}：AI（Arithmetic Intensity，算术强度）低于
+  机器的 FLOPS$/$带宽比值；
+\item \textbf{Compute-bound}：AI 足够大，受限于计算吞吐；
+\item \textbf{Latency-bound}：线程不够多，无法隐藏内存延迟。
+\end{itemize}
 
-这三行注释就是本章的路线图。第一行与第二行给出判断标准——比较算术强度与
-机器的「转折点」；第三行点出第三种容易被忽略的瓶颈：latency-bound，它甚至
-与算法无关，纯粹是并行度不够、延迟藏不住的问题。要把这三行注释看懂，我们
+\begin{equation*}
+  \mathrm{occupancy} = \frac{\text{active\ warps}}{\text{max\ warps\ per\ SM}},
+\end{equation*}
+受三类资源分别取下限：每线程寄存器数 $\to$ threads/SM；每 block 的
+shared memory $\to$ blocks/SM；block 大小 $\to$ blocks/SM。
+
+这三条判据就是本章的路线图。前两条给出判断标准——比较算术强度与
+机器的「转折点」；第三条点出第三种容易被忽略的瓶颈：latency-bound，它甚至
+与算法无关，纯粹是并行度不够、延迟藏不住的问题。要把这三条判据看懂，我们
 需要先弄清两件事：机器的算力与带宽从哪里来（\S\ref{sec:ch01-sm}），以及
 「算术强度」怎么算（\S\ref{sec:ch01-math}）。
 
@@ -48,13 +59,26 @@ memory-bound 与 compute-bound、occupancy 与延迟隐藏。
 \subsection{SM：GPU 的基本计算单元}
 
 GPU 是由大量 SM 组成的阵列。以本章测试机 RTX PRO 5000（Blackwell，sm\_120）
-为例，一块芯片上有 110 个 SM；每个 SM 内部的关键部件在 base.cuh L8--14 中
-有一条速查清单：
+为例，一块芯片上有 110 个 SM；base.cuh L7--21 为 SM 内部结构与内存层级留了
+一份速查清单，部件规格如下：
 
-\lstinputlisting[linerange={7-21},firstnumber=auto,
-  title={base.cuh L7-21（SM 内部结构与内存层级速查）}]{../base.cuh}
+\begin{center}
+\begin{tabular}{lp{10.6cm}}
+\toprule
+部件 & 规格（速查口径） \\
+\midrule
+Warp Scheduler $\times$ 4 & 每 SM 4 个 warp scheduler，每个每周期可发射 1 条指令 \\
+Register File & 每 SM $65536 \times 32$-bit（4 bytes）$= 256$ KB \\
+Shared Memory / L1 & 可配置划分，最大 shared memory $\sim$228 KB（Hopper） \\
+Tensor Cores & Hopper 每 SM 4 个；Blackwell 数量随型号/定义不同，建议以官方 ISV guide 为准 \\
+Warp & 32 threads，最小调度单元，SIMT 执行模型 \\
+\bottomrule
+\end{tabular}
+\end{center}
 
-逐条展开：
+清单的另一半是内存层级带宽数量级（H100 参考：HBM3 $\sim$3.35 TB/s 理论、
+L2 $\sim$12 TB/s、L1/SMEM $\sim$19 TB/s、Register $\sim$100+ TB/s），
+见下一小节的速率/容量金字塔。部件清单逐条展开：
 
 \begin{itemize}
 \item \textbf{Warp Scheduler $\times$ 4}：每个 SM 有 4 个 warp scheduler，
@@ -362,10 +386,18 @@ setmaxnreg 干脆在 producer/consumer 之间\textbf{动态重新分配}寄存�
 \section{设计与实现}
 
 本章没有 device kernel——Phase 0 的资产是一张「速查表」，它的「实现」就是
-把 9 条优化手段清单（base.cuh L32--69）与全书章节对应起来，形成一张路线图：
+把 9 条优化手段清单（base.cuh L32--69）与全书章节对应起来，形成一张路线图。
+先把前三条摘出来：
 
-\lstinputlisting[linerange={34-45},firstnumber=auto,
-  title={base.cuh L34-45（优化手段 1--3：coalescing / tiling / vectorize）}]{../base.cuh}
+\begin{itemize}
+\item \textbf{Coalesced Memory Access（合并访问）}：同一 warp 的线程访问
+  连续的 128B 对齐地址，只需 1 次内存事务；否则产生多次事务（最坏 32 次）。
+\item \textbf{Tiling（分块）}：将数据从 HBM 分块加载到 shared memory 复用，
+  减少 HBM 访问；GEMM 的形态是 Block Tile（BM$\times$BN）加 K Tile（BK）。
+\item \textbf{Vectorized Memory Access（向量化）}：使用 \texttt{float4}/
+  \texttt{half2} 等向量类型，减少 load/store 指令数；\texttt{float4} 是
+  128-bit，单条指令加载 16 bytes。
+\end{itemize}
 
 清单的第 1--3 条正是 Part I 前三章的骨架：coalescing 是 ch03 的主题，
 vectorize 也在 ch03，tiling 的初级形态（warp/block reduce 中的两级结构）
