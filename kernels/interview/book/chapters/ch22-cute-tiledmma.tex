@@ -303,8 +303,8 @@ $(4,8,4)$（$=128$ 个 half/线程，因为 4 个 M-warp 各持一份完整 B，
     \draw[very thick] (0,0) rectangle (2.4,-2.4);
     \node[font=\tiny, rotate=90] at (0.3,-1.2) {tile $(64,16)$};
     \node[font=\tiny, rotate=90] at (1.5,-1.2) {rest $(1,4)$：4 个 K 切片};
-    \node[anchor=south, font=\tiny] at (1.2,0.42) {$A$：$64\times64$，perm $=(64,16)$};
-    \node[anchor=south, font=\tiny\bfseries] at (1.2,0.14) {(1) logical\_divide};
+    \node[anchor=south, font=\tiny] at (1.2,0.48) {$A$：$64\times64$，perm $=(64,16)$};
+    \node[anchor=south, font=\tiny\bfseries] at (1.2,0.11) {(1) logical\_divide};
     \node[anchor=north, font=\tiny] at (1.2,-2.55) {$T_1=((64,16),(1,4))$};
   \end{scope}
   \draw[->, very thick] (2.6,-1.2) -- (3.3,-1.2);
@@ -318,8 +318,8 @@ $(4,8,4)$（$=128$ 个 half/线程，因为 4 个 M-warp 各持一份完整 B，
     }
     \draw[thin] (0,0) grid[xstep=0.33cm, ystep=0.6cm] (1.32,-2.4);
     \draw[very thick] (0,0) rectangle (1.32,-2.4);
-    \node[anchor=south, font=\tiny] at (0.66,0.42) {atom $(16,16)$};
-    \node[anchor=south, font=\tiny\bfseries] at (0.66,0.14) {(2) zipped\_divide};
+    \node[anchor=south, font=\tiny] at (0.66,0.48) {atom $(16,16)$};
+    \node[anchor=south, font=\tiny\bfseries] at (0.66,0.11) {(2) zipped\_divide};
     \node[anchor=north, font=\tiny, align=center] at (0.66,-2.55)
       {$T_2=((16,16),(4,4))$，$R_M{=}R_K{=}4$\\（棋盘 $=$ atom 身份）};
   \end{scope}
@@ -330,8 +330,8 @@ $(4,8,4)$（$=128$ 个 half/线程，因为 4 个 M-warp 各持一份完整 B，
     }
     \draw[thin] (0,0) grid[xstep=0.135cm, ystep=0.135cm] (2.16,-2.16);
     \draw[very thick] (0,0) rectangle (2.16,-2.16);
-    \node[anchor=south, font=\tiny] at (1.08,0.42) {atom $(16,16)\to(\mathrm{thr},\mathrm{val})$};
-    \node[anchor=south, font=\tiny\bfseries] at (1.08,0.14) {(3) $\circ$ LayoutA\_TV};
+    \node[anchor=south, font=\tiny] at (1.08,0.48) {atom $(16,16)\to(\mathrm{thr},\mathrm{val})$};
+    \node[anchor=south, font=\tiny\bfseries] at (1.08,0.11) {(3) $\circ$ LayoutA\_TV};
     \node[anchor=north, font=\tiny, align=center] at (1.08,-2.3)
       {深色 8 格 $=$ lane 0 的 FrgV：$\{(0,0),(0,1),(8,0),(8,1),$\\
        $(0,8),(0,9),(8,8),(8,9)\}$（式~\eqref{eq:22-atom-a}）};
@@ -353,8 +353,8 @@ $(4,8,4)$（$=128$ 个 half/线程，因为 4 个 M-warp 各持一份完整 B，
     \draw[->, thick] (1.5,-0.9) -- (1.36,-0.9);
     \node[anchor=west, font=\tiny, align=left] at (1.56,-0.9)
       {warp $w$（thrM $=w$）的行带；\\get\_slice$(t)$ 后 $R'_M{=}1$、$R'_K{=}4$};
-    \node[anchor=south, font=\tiny] at (0.66,0.42) {$(\_,(\mathrm{ThrM},\mathrm{ThrK}))=(4,1)$};
-    \node[anchor=south, font=\tiny\bfseries] at (0.66,0.14) {(4) zipped\_divide};
+    \node[anchor=south, font=\tiny] at (0.66,0.48) {$(\_,(\mathrm{ThrM},\mathrm{ThrK}))=(4,1)$};
+    \node[anchor=south, font=\tiny\bfseries] at (0.66,0.11) {(4) zipped\_divide};
     \foreach \ak in {0,...,3}{
       \ifcase\ak
         \def\cff{colorx4!15}%
@@ -672,8 +672,6 @@ $\times$ $2$ 相邻列），两个相邻 atom 共 $8$ 个；右（A 视角）：
 （$N$ 方向按 $2$ 切分的重标索引）就是这条「P 不写回 smem」路径的全部代价。}
 \label{fig:22-aregs-reuse}
 \end{figure}
-
-\needspace{122mm}
 
 \section{图示}
 

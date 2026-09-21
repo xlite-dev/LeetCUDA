@@ -240,7 +240,7 @@ $R^{d}_{\Theta}$ 是 $d/2$ 个 $2\times 2$ 旋转块排布在主对角线上的\
 
 \subsection{mat\_transpose\_padded：shared memory 中转 + PAD}
 
-\lstinputlisting[linerange={871-907},firstnumber=auto,
+\lstinputlisting[float=t,linerange={871-907},firstnumber=auto,
   title={base.cuh L871-907（mat\_transpose\_padded：smem 中转 + PAD = 1）}]{../base.cuh}
 
 整体思路是「两边各自合并，中间过一道 shared memory」：
@@ -251,8 +251,6 @@ $R^{d}_{\Theta}$ 是 $d/2$ 个 $2\times 2$ 旋转块排布在主对角线上的\
 两个坐标换算值得写慢一点：$y$ 的行号 $= x$ 的列号，故 \texttt{y\_r = blockIdx.x * TILE + ty}；$y$ 的列号 $= x$ 的行号 $\times 1$，但每线程覆盖 4 个连续行，故 \texttt{y\_c = (blockIdx.y * TILE + tx) * 4}。\texttt{FLOAT4} 写回要求 \texttt{y\_c} 起 4 个元素 16B 对齐，即 $x$ 的行号是 4 的倍数——这由 \texttt{y\_c} 的构造天然保证。
 
 smem tile 的形状是 \texttt{[TILE*4][TILE+PAD]} $= [64][17]$：第二维多出的 \texttt{PAD = 1} 不是防越界，而是\textbf{消除 bank conflict} 的关键——这就是下一节的主题。
-
-\needspace{77mm}
 
 \section{图示：Bank Conflict 专题}
 
@@ -276,7 +274,7 @@ shared memory 被切成 32 个 bank（对应一个 warp 的 32 线程），每�
 
 \textbf{Step 1 写 smem}（每条 ST 指令，$i$ 固定）：地址 $(4\,ty + i)\,W + tx$。无 PAD 时 bank 号 $= (16i + tx) \bmod 32$ 与 $ty$ 无关——warp 的两排 $ty$ 并行写相同 bank 序列，每 bank 2 线程，\textbf{2-way}；PAD=1 时行距变为 $68 \equiv 4 \pmod{32}$，两排 bank 序列错开 4，仍有部分重叠，模拟结果\textbf{仍是 2-way}（写侧 PAD 前后无改善）。
 
-\begin{figure}[H]
+\begin{figure}[htbp]
 \centering
 \begin{tikzpicture}[font=\scriptsize]
   \node[anchor=east] at (-0.35,0.6) {写侧（ST）};

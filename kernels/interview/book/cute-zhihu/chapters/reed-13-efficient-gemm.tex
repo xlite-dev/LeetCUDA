@@ -56,7 +56,7 @@ GEMM中的核心计算部分是块状的矩阵乘法，针对输入为半精度�
 \caption{Figure 2. partition\_A/B/C逻辑示意图}
 \end{figure}
 
-如图2所示，其展示了ThrMMA提供的\lstinline|partition_A/B/C|和\lstinline|partition_fragment_A/B/C|函数的计算逻辑，给定一个静态大小的Tensor TileB（被划分维度为\lstinline|Int<>|编译时常量），则thr\_mma可以对其进行划分，其中划分的逻辑为：以TileMMA中描述的矩阵大小对目标Tensor进行周期性平铺，对高亮的部分进行选取形成新的矩阵，其中第一个维度为TiledMMA中单个线程的数据描述，第二个维度和第三个维度为行方向和列方向需要重复的次数。如果TileB的维度比两维高，则高出的部分继承到N,K维度之后。类似地，A/C的划分采用同样的逻辑。
+如图2所示，其展示了ThrMMA提供的\lstinline|partition_A/B/C|和\lstinline|partition_fragment_A/B/C|函数的计算逻辑，给定一个静态大小的Tensor TileB（被划分维度为\lstinline|Int<>|编译时常量），则thr\_mma可以对其进行划分，其中划分的逻辑为：以TileMMA中描述的矩阵大小对目标Tensor进行周期性分块，对高亮的部分进行选取形成新的矩阵，其中第一个维度为TiledMMA中单个线程的数据描述，第二个维度和第三个维度为行方向和列方向需要重复的次数。如果TileB的维度比两维高，则高出的部分继承到N,K维度之后。类似地，A/C的划分采用同样的逻辑。
 
 \section{访存高效}
 

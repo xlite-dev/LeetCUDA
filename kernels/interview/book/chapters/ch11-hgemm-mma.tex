@@ -101,9 +101,9 @@ C 的 $16\times8$——每个 lane 持多少、在矩阵的什么位置，就是
 \begin{figure}[htbp]
 \centering
 \begin{tikzpicture}[font=\tiny]
-  \node[font=\small\bfseries] at (8.2,0)
+  \node[font=\small\bfseries] at (8.2,1.30)
     {A fragment 寄存器布局（$m16 \times k16$ row-major）：$g = \mathrm{lane} \gg 2$，$\mathrm{tig} = \mathrm{lane} \bmod 4$};
-  \node[text=gray!80] at (8.2,-0.45)
+  \node[text=gray!80] at (8.2,0.92)
     {T$n$ = lane $n$ 持有该元素；同一列对的 2 个相邻 f16 装一条 \texttt{.b32}；灰度 $=$ lane 组 $g = m \bmod 8$（行 $m$ 与 $m{+}8$ 同灰）};
   \def\cwa{0.62}
   \def\cha{0.42}
@@ -123,27 +123,31 @@ C 的 $16\times8$——每个 lane 持多少、在矩阵的什么位置，就是
   \draw[very thick] (0,0) rectangle ({16*\cwa},{-16*\cha});
   \draw[thick, dashed] ({8*\cwa},0) -- ({8*\cwa},{-16*\cha});
   \draw[thick, dashed] (0,{-8*\cha}) -- ({16*\cwa},{-8*\cha});
+  \draw[thick, colorx6!65!black] (0,0) rectangle ({8*\cwa},{-8*\cha});
+  \draw[thick, colorx5!65!black] (0,{-8*\cha}) rectangle ({8*\cwa},{-16*\cha});
+  \draw[thick, colorx7!65!black] ({8*\cwa},0) rectangle ({16*\cwa},{-8*\cha});
+  \draw[thick, colorx8!65!black] ({8*\cwa},{-8*\cha}) rectangle ({16*\cwa},{-16*\cha});
   \foreach \fj in {0,...,15}
-    \node[anchor=south, font=\tiny] at ({(\fj+0.5)*\cwa},0.04) {\fj};
-  \node[anchor=south, font=\scriptsize, fill=gray!16, inner sep=1.5pt] at ({4*\cwa},0.55)
+    \node[anchor=south, font=\tiny] at ({(\fj+0.5)*\cwa},0.10) {\fj};
+  \node[anchor=south, font=\scriptsize, fill=gray!16, inner sep=1.5pt] at ({4*\cwa},0.42)
     {$k$ 0--7：$a_0$--$a_3$ 列区};
-  \node[anchor=south, font=\scriptsize, fill=gray!16, inner sep=1.5pt] at ({12*\cwa},0.55)
+  \node[anchor=south, font=\scriptsize, fill=gray!16, inner sep=1.5pt] at ({12*\cwa},0.42)
     {$k$ 8--15：$a_4$--$a_7$ 列区};
   \foreach \fmi in {0,...,15}
-    \node[anchor=east, font=\tiny] at (-0.08,{-\fmi*\cha-\cha/2}) {\fmi};
-  \node[rotate=90, font=\scriptsize, fill=gray!16, inner sep=1.5pt] at (-0.72,{-4*\cha})
+    \node[anchor=east, font=\tiny] at (-0.15,{-\fmi*\cha-\cha/2}) {\fmi};
+  \node[rotate=90, font=\scriptsize, fill=gray!16, inner sep=1.5pt] at (-0.85,{-4*\cha})
     {行 $m$ 0--7};
-  \node[rotate=90, font=\scriptsize, fill=gray!16, inner sep=1.5pt] at (-0.72,{-12*\cha})
+  \node[rotate=90, font=\scriptsize, fill=gray!16, inner sep=1.5pt] at (-0.85,{-12*\cha})
     {行 $m$ 8--15};
   \node[anchor=north west, font=\scriptsize\bfseries] at (10.7,-0.35)
     {每 lane 4 条 \texttt{.b32}：};
-  \node[draw=gray!55, fill=gray!10, anchor=north west, align=left, font=\scriptsize,
+  \node[draw=colorx6!80!black, fill=colorx6!8, anchor=north west, align=left, font=\scriptsize,
     inner sep=3pt] at (10.7,-0.78) {\textbf{R0} $= a_0,a_1$（UL）\\行 $m$ 0--7，列 $k$ 0--7};
-  \node[draw=gray!55, fill=gray!10, anchor=north west, align=left, font=\scriptsize,
+  \node[draw=colorx5!80!black, fill=colorx5!8, anchor=north west, align=left, font=\scriptsize,
     inner sep=3pt] at (10.7,-1.7) {\textbf{R1} $= a_2,a_3$（LL）\\行 $m$ 8--15，列 $k$ 0--7};
-  \node[draw=gray!55, fill=gray!10, anchor=north west, align=left, font=\scriptsize,
+  \node[draw=colorx7!80!black, fill=colorx7!8, anchor=north west, align=left, font=\scriptsize,
     inner sep=3pt] at (10.7,-2.62) {\textbf{R2} $= a_4,a_5$（UR）\\行 $m$ 0--7，列 $k$ 8--15};
-  \node[draw=gray!55, fill=gray!10, anchor=north west, align=left, font=\scriptsize,
+  \node[draw=colorx8!80!black, fill=colorx8!8, anchor=north west, align=left, font=\scriptsize,
     inner sep=3pt] at (10.7,-3.54) {\textbf{R3} $= a_6,a_7$（LR）\\行 $m$ 8--15，列 $k$ 8--15};
   \node[anchor=north west, align=left, font=\tiny, text width=5.6cm] at (10.7,-4.55)
     {虚线把 $m16{\times}k16$ 切成四象限：左/右半 $=$ 列对是否 $+8$（$a_0..a_3$ 与 $a_4..a_7$），\\
@@ -207,15 +211,15 @@ $k$ 方向都是「4 个 lane 各持 2 个相邻元素」。B 侧逐格布局见
   \draw[very thick] (0,0) rectangle ({8*\cwd},{-16*\chd});
   \draw[thick, dashed] (0,{-8*\chd}) -- ({8*\cwd},{-8*\chd});
   \foreach \c in {0,...,7}{
-    \node[anchor=south] at ({(\c+0.5)*\cwd},0.08) {\c};
+    \node[anchor=south] at ({(\c+0.5)*\cwd},0.12) {\c};
   }
-  \node[anchor=south, font=\scriptsize] at ({4*\cwd},0.4) {列 $n=\mathrm{g}=\mathrm{lane}\gg2$（同列同灰度，8 档）};
+  \node[anchor=south, font=\scriptsize] at ({4*\cwd},0.48) {列 $n=\mathrm{g}=\mathrm{lane}\gg2$（同列同灰度，8 档）};
   \foreach \r in {0,...,15}{
-    \node[anchor=east] at (-0.08,{-\r*\chd-0.21}) {\r};
+    \node[anchor=east] at (-0.14,{-\r*\chd-0.21}) {\r};
   }
-  \node[anchor=east, font=\tiny, rotate=90] at (-0.42,{-8*\chd}) {行 $k$};
-  \node[anchor=east, font=\scriptsize] at (-0.62,{-4*\chd}) {上半 $k$ 区 $=RB[0]$};
-  \node[anchor=east, font=\scriptsize] at (-0.62,{-12*\chd}) {下半 $k$ 区 $=RB[1]$};
+  \node[anchor=center, font=\tiny, rotate=90] at (-0.75,{-8*\chd}) {行 $k$};
+  \node[anchor=east, font=\scriptsize] at (-1.15,{-4*\chd}) {上半 $k$ 区 $=RB[0]$};
+  \node[anchor=east, font=\scriptsize] at (-1.15,{-12*\chd}) {下半 $k$ 区 $=RB[1]$};
   \node[anchor=west, font=\scriptsize\bfseries] at (5.7,{-8*\chd}) {每 lane 寄存器视图};
   \node[anchor=west, font=\tiny, align=left] at (5.7,{-8*\chd-0.38})
     {lane $=4\,\mathrm{g}+\mathrm{tig}$，持第 $\mathrm{g}$ 列的 4 个 f16，\\打包为 2 条 \texttt{.b32}：};
@@ -265,17 +269,17 @@ $RC[0]$（第一个 \texttt{.b32}）覆盖行 0--7，$RC[1]$ 覆盖行 8--15。
   \draw[very thick] (0,0) rectangle ({8*\cwd},{-16*\chd});
   \draw[thick, dashed] (0,{-8*\chd}) -- ({8*\cwd},{-8*\chd});
   \foreach \c in {0,...,7}{
-    \node[anchor=south] at ({(\c+0.5)*\cwd},0.08) {\c};
+    \node[anchor=south] at ({(\c+0.5)*\cwd},0.12) {\c};
   }
-  \node[anchor=south, font=\scriptsize] at ({4*\cwd},0.4) {列 $n$（$c\sb n$ 的下标即列号）};
+  \node[anchor=south, font=\scriptsize] at ({4*\cwd},0.48) {列 $n$（$c\sb n$ 的下标即列号）};
   \foreach \r in {0,...,15}{
-    \node[anchor=east] at (-0.08,{-\r*\chd-0.21}) {\r};
+    \node[anchor=east] at (-0.14,{-\r*\chd-0.21}) {\r};
   }
-  \node[anchor=east, font=\tiny, rotate=90] at (-0.42,{-8*\chd}) {行 $m$（灰度 $=\mathrm{g}=m\bmod 8$）};
-  \draw[semithick] ({8*\cwd+0.15},0.1) -- ({8*\cwd+0.3},0.1) -- ({8*\cwd+0.3},{-8*\chd-0.1}) -- ({8*\cwd+0.15},{-8*\chd-0.1});
-  \node[anchor=west, font=\scriptsize, align=left] at ({8*\cwd+0.4},{-4*\chd}) {$RC[0]$（.b32）\\行 0--7};
-  \draw[semithick] ({8*\cwd+0.15},{-8*\chd+0.1}) -- ({8*\cwd+0.3},{-8*\chd+0.1}) -- ({8*\cwd+0.3},{-16*\chd-0.1}) -- ({8*\cwd+0.15},{-16*\chd-0.1});
-  \node[anchor=west, font=\scriptsize, align=left] at ({8*\cwd+0.4},{-12*\chd}) {$RC[1]$（.b32）\\行 8--15};
+  \node[anchor=center, font=\tiny, rotate=90] at (-0.75,{-8*\chd}) {行 $m$（灰度 $=\mathrm{g}=m\bmod 8$）};
+  \draw[semithick, tkBlue] ({8*\cwd+0.15},0.1) -- ({8*\cwd+0.3},0.1) -- ({8*\cwd+0.3},{-8*\chd-0.1}) -- ({8*\cwd+0.15},{-8*\chd-0.1});
+  \node[anchor=west, font=\scriptsize, align=left, text=tkBlue] at ({8*\cwd+0.4},{-4*\chd}) {$RC[0]$（.b32）\\行 0--7};
+  \draw[semithick, tkPurple] ({8*\cwd+0.15},{-8*\chd+0.1}) -- ({8*\cwd+0.3},{-8*\chd+0.1}) -- ({8*\cwd+0.3},{-16*\chd-0.1}) -- ({8*\cwd+0.15},{-16*\chd-0.1});
+  \node[anchor=west, font=\scriptsize, align=left, text=tkPurple] at ({8*\cwd+0.4},{-12*\chd}) {$RC[1]$（.b32）\\行 8--15};
   \node[anchor=north west, font=\tiny, align=left] at ({8*\cwd+0.4},{-13.6*\chd})
     {寄存器序（式~\ref{eq:11-cpos}）：\\$i=(n\bmod 2)+2\cdot[m\ge 8]$\\行 $=\mathrm{g}+8\cdot[i\ge2]$，列 $=2\,\mathrm{tig}+(i\bmod2)$};
   \node[anchor=east, font=\scriptsize] at (-0.15,{-16*\chd-0.45}) {4-lane 组};
@@ -333,36 +337,36 @@ lane $4r + \mathrm{tig}$ 的寄存器 $r\sb i$ 的 $\mathrm{tig}$ 列对——
 \begin{tikzpicture}[font=\scriptsize]
   \node[font=\small\bfseries] at (8.2,0)
     {\texttt{ldmatrix} 寻址：A x4 一次装载 $m16k16$ 四象限；B x2 装载 $k16n8$};
-  \node[anchor=west, fill=gray!18, inner sep=2.5pt, font=\scriptsize\bfseries] at (0,-0.62)
+  \node[anchor=west, fill=tkFillBlue, draw=tkBlue, inner sep=2.5pt, font=\scriptsize\bfseries] at (0,-0.62)
     {A $m16k16$ tile $\to$ four $8{\times}8$ matrices（x4，每 lane 一个地址）};
-  \node[draw=gray!55, fill=gray!10, align=center, font=\tiny,
+  \node[draw=colorx6!70!black, fill=colorx6!12, align=center, font=\tiny,
     minimum width=3.6cm, minimum height=0.82cm] at (2.2,-1.85)
     {\textbf{matrix0}\ \ $m$ 0--7, $k$ 0--7\\rows $= t \bmod 16$\\cols $= (t/16)\times 8$};
-  \node[draw=gray!55, fill=gray!10, align=center, font=\tiny,
+  \node[draw=colorx6!70!black, fill=colorx6!20, align=center, font=\tiny,
     minimum width=3.6cm, minimum height=0.82cm] at (6.1,-1.85)
     {\textbf{matrix1}\ \ $m$ 8--15, $k$ 0--7\\rows $= t \bmod 16$\\cols $= (t/16)\times 8$};
-  \node[draw=gray!55, fill=gray!10, align=center, font=\tiny,
+  \node[draw=colorx6!70!black, fill=colorx6!28, align=center, font=\tiny,
     minimum width=3.6cm, minimum height=0.82cm] at (2.2,-2.85)
     {\textbf{matrix2}\ \ $m$ 0--7, $k$ 8--15\\rows $= t \bmod 16$\\cols $= (t/16)\times 8$};
-  \node[draw=gray!55, fill=gray!10, align=center, font=\tiny,
+  \node[draw=colorx6!70!black, fill=colorx6!36, align=center, font=\tiny,
     minimum width=3.6cm, minimum height=0.82cm] at (6.1,-2.85)
     {\textbf{matrix3}\ \ $m$ 8--15, $k$ 8--15\\rows $= t \bmod 16$\\cols $= (t/16)\times 8$};
   \node[anchor=west, font=\tiny, text=gray!80] at (0.4,-3.45)
     {t=0-7 $\to$ m0; \ t=8-15 $\to$ m1; \ t=16-23 $\to$ m2; \ t=24-31 $\to$ m3};
-  \node[draw=gray!65, fill=gray!30, align=center, font=\tiny\bfseries,
+  \node[draw=tkBlue, fill=tkFillBlue, align=center, font=\tiny\bfseries,
     minimum width=8.0cm, minimum height=0.5cm] at (4.0,-4.0)
     {象限序 [UL, LL, UR, LR] $=$ mma 期望序（Eq 11.1），开箱即用};
-  \node[anchor=west, fill=gray!18, inner sep=2.5pt, font=\scriptsize\bfseries] at (8.8,-0.62)
+  \node[anchor=west, fill=tkFillGreen, draw=tkGreen, inner sep=2.5pt, font=\scriptsize\bfseries] at (8.8,-0.62)
     {B $k16n8$（存成 $B^{\top}$ 的 $n16k16$ 行主序）$\to$ two $8{\times}8$（x2）};
-  \node[draw=gray!55, fill=gray!10, align=center, font=\tiny,
+  \node[draw=colorx4!70!black, fill=colorx4!12, align=center, font=\tiny,
     minimum width=3.6cm, minimum height=0.82cm] at (10.9,-1.85)
     {\textbf{matrix0}\ \ $n$ 0--7, $k$ 0--7\\rows $= t \bmod 8$\\cols $= ((t/8) \bmod 2)\times 8$};
-  \node[draw=gray!55, fill=gray!10, align=center, font=\tiny,
+  \node[draw=colorx4!70!black, fill=colorx4!22, align=center, font=\tiny,
     minimum width=3.6cm, minimum height=0.82cm] at (14.6,-1.85)
     {\textbf{matrix1}\ \ $n$ 0--7, $k$ 8--15\\rows $= t \bmod 8$\\cols $= ((t/8) \bmod 2)\times 8$};
   \node[anchor=west, font=\tiny, text=gray!80] at (9.2,-3.45)
     {t=0-7 $\to$ $k$ 低半；t=8-15 $\to$ $k$ 高半（只用 $t < 16$）};
-  \node[draw=gray!65, fill=gray!30, align=center, font=\tiny\bfseries,
+  \node[draw=tkGreen, fill=tkFillGreen, align=center, font=\tiny\bfseries,
     minimum width=7.5cm, minimum height=0.5cm] at (12.6,-4.0)
     {装载 $B^{\top}$ 的行 $=$ 装载 $B$ 的列：无需 \texttt{.trans}};
   \node[anchor=north west, align=left, font=\tiny, text width=16.4cm] at (0,-4.45)

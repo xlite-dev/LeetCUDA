@@ -189,7 +189,7 @@ __global__ void sgemm_vec4(float *a, float *b, float *c, int M, int N, int K) {
 //   - WMMA API：CUDA 提供的 warp-level matrix multiply 抽象，简化 Tensor Core 编程
 //   - m16n16k8：Ampere Tensor Core 的 TF32 基本 tile（16×16×8）
 //   - 256 线程/block = 8 warps，warp tiling 4×2（warp_m=0~3, warp_n=0~1）
-//   - K_STAGE=2 双缓冲 + cp.async 异步加载，掩盖 GMEM 延迟
+//   - kStages=2 双缓冲 + cp.async 异步加载，掩盖 GMEM 延迟
 //   - Dynamic SMEM：16KB（s_a 8KB + s_b 8KB），远低于 Ampere 48KB 上限
 //
 // 计算密度：
@@ -222,25 +222,25 @@ __global__ void f32x4_tf32x4_kernel(float *x, float *y, int N) {
 // Dynamic SMEM: 20736 bytes（s_a 12KB + s_b 8.5KB，含 bank-conflict padding）
 // 假设：M/N 为 128 的倍数，K 为 8 的倍数（简化边界处理）
 // source: LeetCUDA/kernels/sgemm/sgemm_wmma_tf32_stage.cu
-template <const int WMMA_M = 16, const int WMMA_N = 16, const int WMMA_K = 8,
-          const int WMMA_TILE_M = 4, const int WMMA_TILE_N = 2,
-          const int WARP_TILE_M = 2, const int WARP_TILE_N = 4,
-          const int A_PAD = 4, const int B_PAD = 4, const int K_STAGE = 2>
+template <const int kWMmaM = 16, const int kWMmaN = 16, const int kWMmaK = 8,
+          const int kWMmaTileM = 4, const int kWMmaTileN = 2, // warp 间排布数
+          const int kValTileM = 2, const int kValTileN = 4,   // warp 内 fragment 值重复数
+          const int kPadA = 4, const int kPadB = 4, const int kStages = 2>
 __global__ void sgemm_tf32(float *A, float *B, float *C, int M, int N, int K) {
   // 256 线程（8 warps）per block
   const int bx = blockIdx.x;
   const int by = blockIdx.y;
-  const int NUM_K_TILES = (K + WMMA_K - 1) / WMMA_K;
-  constexpr int BM = WMMA_M * WMMA_TILE_M * WARP_TILE_M; // 16×4×2 = 128
-  constexpr int BN = WMMA_N * WMMA_TILE_N * WARP_TILE_N; // 16×2×4 = 128
-  constexpr int BK = WMMA_K;                             // 8
+  const int NUM_K_TILES = (K + kWMmaK - 1) / kWMmaK;
+  constexpr int BM = kWMmaM * kWMmaTileM * kValTileM; // 16×4×2 = 128
+  constexpr int BN = kWMmaN * kWMmaTileN * kValTileN; // 16×2×4 = 128
+  constexpr int BK = kWMmaK;                             // 8
 
   // Dynamic shared memory（调用时指定大小：16384 bytes）
   extern __shared__ float smem_tf32[];
   float *s_a = smem_tf32;
-  float *s_b = smem_tf32 + K_STAGE * BM * (BK + A_PAD);
-  constexpr int s_a_stage_offset = BM * (BK + A_PAD); // 1024 floats
-  constexpr int s_b_stage_offset = BK * (BN + B_PAD); // 1024 floats
+  float *s_b = smem_tf32 + kStages * BM * (BK + kPadA);
+  constexpr int s_a_stage_offset = BM * (BK + kPadA); // 1024 floats
+  constexpr int s_b_stage_offset = BK * (BN + kPadB); // 1024 floats
 
   // 线程索引与 warp 分配
   const int tid = threadIdx.y * blockDim.x + threadIdx.x;
@@ -262,14 +262,14 @@ __global__ void sgemm_tf32(float *A, float *B, float *C, int M, int N, int K) {
   int load_gmem_a_m = by * BM + load_smem_a_m; // C 的行
   int load_gmem_b_n = bx * BN + load_smem_b_n; // C 的列
 
-  // ---- WMMA 累加器碎片（WARP_TILE_M × WARP_TILE_N = 2×4 = 8 个 m16n16k8 tile）----
-  wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float>
-      C_frag[WARP_TILE_M][WARP_TILE_N];
+  // ---- WMMA 累加器碎片（kValTileM × kValTileN = 2×4 = 8 个 m16n16k8 tile）----
+  wmma::fragment<wmma::accumulator, kWMmaM, kWMmaN, kWMmaK, float>
+      C_frag[kValTileM][kValTileN];
 
 #pragma unroll
-  for (int i = 0; i < WARP_TILE_M; ++i) {
+  for (int i = 0; i < kValTileM; ++i) {
 #pragma unroll
-    for (int j = 0; j < WARP_TILE_N; ++j) {
+    for (int j = 0; j < kValTileN; ++j) {
       wmma::fill_fragment(C_frag[i][j], 0.0f);
     }
   }
@@ -278,138 +278,138 @@ __global__ void sgemm_tf32(float *A, float *B, float *C, int M, int N, int K) {
   uint32_t smem_a_base_ptr = __cvta_generic_to_shared(s_a);
   uint32_t smem_b_base_ptr = __cvta_generic_to_shared(s_b);
 
-  // ---- Pipeline: 预加载前 K_STAGE-1 个 tile ----
+  // ---- Pipeline: 预加载前 kStages-1 个 tile ----
 #pragma unroll
-  for (int k = 0; k < K_STAGE - 1; ++k) {
-    int load_gmem_a_k = k * WMMA_K + load_smem_a_k;
+  for (int k = 0; k < kStages - 1; ++k) {
+    int load_gmem_a_k = k * kWMmaK + load_smem_a_k;
     int load_gmem_a_addr = load_gmem_a_m * K + load_gmem_a_k;
-    int load_gmem_b_k = k * WMMA_K + load_smem_b_k;
+    int load_gmem_b_k = k * kWMmaK + load_smem_b_k;
     int load_gmem_b_addr = load_gmem_b_k * N + load_gmem_b_n;
 
     uint32_t load_smem_a_ptr =
         smem_a_base_ptr +
-        (k * s_a_stage_offset + load_smem_a_m * (BK + A_PAD) + load_smem_a_k) *
+        (k * s_a_stage_offset + load_smem_a_m * (BK + kPadA) + load_smem_a_k) *
             sizeof(float);
     CP_ASYNC_CG(load_smem_a_ptr, &A[load_gmem_a_addr], 16);
 
     uint32_t load_smem_b_ptr =
         smem_b_base_ptr +
-        (k * s_b_stage_offset + load_smem_b_k * (BN + B_PAD) + load_smem_b_n) *
+        (k * s_b_stage_offset + load_smem_b_k * (BN + kPadB) + load_smem_b_n) *
             sizeof(float);
     CP_ASYNC_CG(load_smem_b_ptr, &B[load_gmem_b_addr], 16);
   }
   CP_ASYNC_COMMIT_GROUP();
-  CP_ASYNC_WAIT_GROUP(K_STAGE - 2); // K_STAGE=2 → wait_group(0)
+  CP_ASYNC_WAIT_GROUP(kStages - 2); // kStages=2 → wait_group(0)
   __syncthreads();
 
   // ---- Main loop: load + compute 流水线 ----
 #pragma unroll
-  for (int k = K_STAGE - 1; k < NUM_K_TILES; ++k) {
-    int smem_sel = (k + 1) % K_STAGE;     // 当前计算用的 stage
-    int smem_sel_next = k % K_STAGE;      // 下一轮加载用的 stage
+  for (int k = kStages - 1; k < NUM_K_TILES; ++k) {
+    int smem_sel = (k + 1) % kStages;     // 当前计算用的 stage
+    int smem_sel_next = k % kStages;      // 下一轮加载用的 stage
 
-    int load_gmem_a_k = k * WMMA_K + load_smem_a_k;
+    int load_gmem_a_k = k * kWMmaK + load_smem_a_k;
     int load_gmem_a_addr = load_gmem_a_m * K + load_gmem_a_k;
-    int load_gmem_b_k = k * WMMA_K + load_smem_b_k;
+    int load_gmem_b_k = k * kWMmaK + load_smem_b_k;
     int load_gmem_b_addr = load_gmem_b_k * N + load_gmem_b_n;
 
     // 异步加载下一轮数据到 smem_sel_next
     uint32_t load_smem_a_ptr =
         smem_a_base_ptr +
         (smem_sel_next * s_a_stage_offset +
-         load_smem_a_m * (BK + A_PAD) + load_smem_a_k) *
+         load_smem_a_m * (BK + kPadA) + load_smem_a_k) *
             sizeof(float);
     CP_ASYNC_CG(load_smem_a_ptr, &A[load_gmem_a_addr], 16);
 
     uint32_t load_smem_b_ptr =
         smem_b_base_ptr +
         (smem_sel_next * s_b_stage_offset +
-         load_smem_b_k * (BN + B_PAD) + load_smem_b_n) *
+         load_smem_b_k * (BN + kPadB) + load_smem_b_n) *
             sizeof(float);
     CP_ASYNC_CG(load_smem_b_ptr, &B[load_gmem_b_addr], 16);
     CP_ASYNC_COMMIT_GROUP();
 
     // TF32 WMMA 碎片
-    wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K,
+    wmma::fragment<wmma::matrix_a, kWMmaM, kWMmaN, kWMmaK,
                    wmma::precision::tf32, wmma::row_major>
-        A_frag[WARP_TILE_M];
-    wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K,
+        A_frag[kValTileM];
+    wmma::fragment<wmma::matrix_b, kWMmaM, kWMmaN, kWMmaK,
                    wmma::precision::tf32, wmma::row_major>
-        B_frag[WARP_TILE_N];
+        B_frag[kValTileN];
 
-    // 从 SMEM 加载 A 碎片（每个 warp 加载 WARP_TILE_M=2 个 m16n8k16 tile）
+    // 从 SMEM 加载 A 碎片（每个 warp 加载 kValTileM=2 个 m16n8k16 tile）
 #pragma unroll
-    for (int i = 0; i < WARP_TILE_M; ++i) {
+    for (int i = 0; i < kValTileM; ++i) {
       int warp_smem_a_m =
-          warp_m * (WMMA_M * WARP_TILE_M) + i * WMMA_M; // warp 在 SMEM 中的行偏移
+          warp_m * (kWMmaM * kValTileM) + i * kWMmaM; // warp 在 SMEM 中的行偏移
       float *load_smem_a_frag_ptr =
-          s_a + smem_sel * s_a_stage_offset + warp_smem_a_m * (BK + A_PAD);
-      wmma::load_matrix_sync(A_frag[i], load_smem_a_frag_ptr, BK + A_PAD);
+          s_a + smem_sel * s_a_stage_offset + warp_smem_a_m * (BK + kPadA);
+      wmma::load_matrix_sync(A_frag[i], load_smem_a_frag_ptr, BK + kPadA);
     }
 
-    // 从 SMEM 加载 B 碎片（每个 warp 加载 WARP_TILE_N=4 个 m16n8k16 tile）
+    // 从 SMEM 加载 B 碎片（每个 warp 加载 kValTileN=4 个 m16n8k16 tile）
 #pragma unroll
-    for (int j = 0; j < WARP_TILE_N; ++j) {
+    for (int j = 0; j < kValTileN; ++j) {
       int warp_smem_b_n =
-          warp_n * (WMMA_N * WARP_TILE_N) + j * WMMA_N; // warp 在 SMEM 中的列偏移
+          warp_n * (kWMmaN * kValTileN) + j * kWMmaN; // warp 在 SMEM 中的列偏移
       float *load_smem_b_frag_ptr =
           s_b + smem_sel * s_b_stage_offset + warp_smem_b_n;
-      wmma::load_matrix_sync(B_frag[j], load_smem_b_frag_ptr, BN + B_PAD);
+      wmma::load_matrix_sync(B_frag[j], load_smem_b_frag_ptr, BN + kPadB);
     }
 
     // MMA 计算：C_frag[i][j] += A_frag[i] × B_frag[j]
 #pragma unroll
-    for (int i = 0; i < WARP_TILE_M; ++i) {
+    for (int i = 0; i < kValTileM; ++i) {
 #pragma unroll
-      for (int j = 0; j < WARP_TILE_N; ++j) {
+      for (int j = 0; j < kValTileN; ++j) {
         wmma::mma_sync(C_frag[i][j], A_frag[i], B_frag[j], C_frag[i][j]);
       }
     }
 
-    CP_ASYNC_WAIT_GROUP(K_STAGE - 2);
+    CP_ASYNC_WAIT_GROUP(kStages - 2);
     __syncthreads();
   }
 
-  // ---- 处理尾部：最后 K_STAGE-1 个 tile 已加载但未计算 ----
+  // ---- 处理尾部：最后 kStages-1 个 tile 已加载但未计算 ----
   // 确保所有 cp.async 完成
-  if ((K_STAGE - 2) > 0) {
+  if ((kStages - 2) > 0) {
     CP_ASYNC_WAIT_GROUP(0);
     __syncthreads();
   }
-  // 计算剩余的 K_STAGE-1 个 tile
+  // 计算剩余的 kStages-1 个 tile
   {
 #pragma unroll
-    for (int k = 0; k < K_STAGE - 1; ++k) {
-      const int stage_sel = ((NUM_K_TILES - (K_STAGE - 1) + k) % K_STAGE);
+    for (int k = 0; k < kStages - 1; ++k) {
+      const int stage_sel = ((NUM_K_TILES - (kStages - 1) + k) % kStages);
 
-      wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K,
+      wmma::fragment<wmma::matrix_a, kWMmaM, kWMmaN, kWMmaK,
                      wmma::precision::tf32, wmma::row_major>
-          A_frag[WARP_TILE_M];
-      wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K,
+          A_frag[kValTileM];
+      wmma::fragment<wmma::matrix_b, kWMmaM, kWMmaN, kWMmaK,
                      wmma::precision::tf32, wmma::row_major>
-          B_frag[WARP_TILE_N];
+          B_frag[kValTileN];
 
 #pragma unroll
-      for (int i = 0; i < WARP_TILE_M; ++i) {
-        int warp_smem_a_m = warp_m * (WMMA_M * WARP_TILE_M) + i * WMMA_M;
+      for (int i = 0; i < kValTileM; ++i) {
+        int warp_smem_a_m = warp_m * (kWMmaM * kValTileM) + i * kWMmaM;
         float *load_smem_a_frag_ptr =
             smem_tf32 + stage_sel * s_a_stage_offset +
-            warp_smem_a_m * (BK + A_PAD);
-        wmma::load_matrix_sync(A_frag[i], load_smem_a_frag_ptr, BK + A_PAD);
+            warp_smem_a_m * (BK + kPadA);
+        wmma::load_matrix_sync(A_frag[i], load_smem_a_frag_ptr, BK + kPadA);
       }
 
 #pragma unroll
-      for (int j = 0; j < WARP_TILE_N; ++j) {
-        int warp_smem_b_n = warp_n * (WMMA_N * WARP_TILE_N) + j * WMMA_N;
+      for (int j = 0; j < kValTileN; ++j) {
+        int warp_smem_b_n = warp_n * (kWMmaN * kValTileN) + j * kWMmaN;
         float *load_smem_b_frag_ptr =
             s_b + stage_sel * s_b_stage_offset + warp_smem_b_n;
-        wmma::load_matrix_sync(B_frag[j], load_smem_b_frag_ptr, BN + B_PAD);
+        wmma::load_matrix_sync(B_frag[j], load_smem_b_frag_ptr, BN + kPadB);
       }
 
 #pragma unroll
-      for (int i = 0; i < WARP_TILE_M; ++i) {
+      for (int i = 0; i < kValTileM; ++i) {
 #pragma unroll
-        for (int j = 0; j < WARP_TILE_N; ++j) {
+        for (int j = 0; j < kValTileN; ++j) {
           wmma::mma_sync(C_frag[i][j], A_frag[i], B_frag[j], C_frag[i][j]);
         }
       }
@@ -418,13 +418,13 @@ __global__ void sgemm_tf32(float *A, float *B, float *C, int M, int N, int K) {
 
   // ---- Store: 将 WMMA 累加器写回 GMEM ----
 #pragma unroll
-  for (int i = 0; i < WARP_TILE_M; ++i) {
+  for (int i = 0; i < kValTileM; ++i) {
 #pragma unroll
-    for (int j = 0; j < WARP_TILE_N; ++j) {
-      int store_gmem_c_m = by * BM + warp_m * (WMMA_M * WARP_TILE_M) +
-                           i * WMMA_M;
-      int store_gmem_c_n = bx * BN + warp_n * (WMMA_N * WARP_TILE_N) +
-                           j * WMMA_N;
+    for (int j = 0; j < kValTileN; ++j) {
+      int store_gmem_c_m = by * BM + warp_m * (kWMmaM * kValTileM) +
+                           i * kWMmaM;
+      int store_gmem_c_n = bx * BN + warp_n * (kWMmaN * kValTileN) +
+                           j * kWMmaN;
       wmma::store_matrix_sync(C + store_gmem_c_m * N + store_gmem_c_n,
                               C_frag[i][j], N, wmma::mem_row_major);
     }

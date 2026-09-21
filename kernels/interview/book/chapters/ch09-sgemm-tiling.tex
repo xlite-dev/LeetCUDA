@@ -143,23 +143,23 @@ naive（AI $0.25$）计算上限 $\approx 0.23$ TFLOPS；
 \begin{tikzpicture}[>=Stealth, font=\scriptsize]
   \foreach \kk in {0,1,2}{
     \pgfmathsetmacro{\xo}{5.05*\kk}
-    \fill[gray!15] ({\xo},0.55) rectangle ({\xo+1.55},1.15);
-    \node at ({\xo+0.775},0.85) {load k\kk};
+    \node[draw=tkBlue!60, fill=tkFillBlue, minimum width=1.55cm, minimum height=0.6cm, inner sep=0pt]
+      at ({\xo+0.775},0.85) {load k\kk};
     \draw[very thick] ({\xo+1.86},1.45) -- ({\xo+1.86},-1.45);
     \node[circle, draw, inner sep=0.5pt, font=\tiny] at ({\xo+1.86},1.66) {1};
-    \fill[gray!60] ({\xo+2.17},-1.15) rectangle ({\xo+4.12},-0.55);
-    \node at ({\xo+3.145},-0.85) {compute k\kk};
+    \node[draw=tkPurple!60, fill=tkFillPurple, minimum width=1.95cm, minimum height=0.6cm, inner sep=0pt]
+      at ({\xo+3.145},-0.85) {compute k\kk};
     \draw[very thick] ({\xo+4.43},1.45) -- ({\xo+4.43},-1.45);
     \node[circle, draw, inner sep=0.5pt, font=\tiny] at ({\xo+4.43},1.66) {2};
     \ifnum\kk=0
-      \draw[dashed] ({\xo},-1.15) rectangle ({\xo+1.55},-0.55);
-      \node[font=\tiny] at ({\xo+0.775},-0.85) {CUDA Core idle};
-      \draw[dashed] ({\xo+2.17},1.15) rectangle ({\xo+4.12},0.55);
-      \node[font=\tiny] at ({\xo+3.145},0.85) {搬运 idle};
+      \node[draw=tkOrange!80, fill=tkFillOrange, dashed, minimum width=1.55cm, minimum height=0.6cm,
+            inner sep=0pt, text=tkOrange!60!black, font=\tiny] at ({\xo+0.775},-0.85) {CUDA Core idle};
+      \node[draw=tkOrange!80, fill=tkFillOrange, dashed, minimum width=1.95cm, minimum height=0.6cm,
+            inner sep=0pt, text=tkOrange!60!black, font=\tiny] at ({\xo+3.145},0.85) {搬运 idle};
     \fi
   }
-  \node[anchor=east, align=right] at (-0.25,0.85) {搬运窗口\\{\tiny gmem$\to$smem}};
-  \node[anchor=east, align=right] at (-0.25,-0.85) {计算窗口\\{\tiny CUDA Core}};
+  \node[anchor=east, align=right, text=tkBlue] at (-0.25,0.85) {搬运窗口\\{\tiny gmem$\to$smem}};
+  \node[anchor=east, align=right, text=tkPurple] at (-0.25,-0.85) {计算窗口\\{\tiny CUDA Core}};
   \draw[->] (-0.1,-1.85) -- (15.2,-1.85) node[right, font=\tiny] {时间};
   \node[anchor=north west, align=left, font=\tiny] at (0,-2.1)
     {1：消费前 \texttt{\_\_syncthreads}——tile $k$ 全部写完才准读；\quad
@@ -169,7 +169,7 @@ naive（AI $0.25$）计算上限 $\approx 0.23$ TFLOPS；
      load $k{+}1$ 与 compute $k$ 重叠，\\两类空转消失};
   \draw[->, dashed] (11.5,-2.6) -- (9.3,-1.25);
 \end{tikzpicture}
-\caption{单缓冲 k-slice 循环的双栅栏时序（3 个迭代）：load（灰 15）$\to$ 栅栏 1（消费前）$\to$ compute（灰 60）$\to$ 栅栏 2（覆写前）。load 期间 CUDA Core 空转、compute 期间搬运单元空转——「搬一算一」串行使两个窗口无法重叠；双缓冲（图~\ref{fig:10-1}）正是为消除这两类空转而来。}
+\caption{单缓冲 k-slice 循环的双栅栏时序（3 个迭代）：load（蓝）$\to$ 栅栏 1（消费前）$\to$ compute（紫）$\to$ 栅栏 2（覆写前）。load 期间 CUDA Core 空转、compute 期间搬运单元空转——「搬一算一」串行使两个窗口无法重叠；双缓冲（图~\ref{fig:10-1}）正是为消除这两类空转而来。}
 \label{fig:09-single-barrier}
 \end{figure}
 
@@ -299,8 +299,8 @@ $= 16384 = 128 \times 128$，不重不漏（vec4 落点见图~\ref{fig:09-vec4-m
       \node[anchor=east] at (-0.12,{-\rw*\ah-\ah/2}) {$k{=}\rw$};
       \foreach \gp in {0,...,11}{
         \pgfmathtruncatemacro{\tidn}{32*\rw+\gp}
-        \pgfmathtruncatemacro{\gr}{8+9*mod(\gp,8)}
-        \fill[gray!\gr] ({4*\gp*\bw},{-\rw*\ah-\ah}) rectangle ({4*\gp*\bw+4*\bw},{-\rw*\ah});
+        \pgfmathtruncatemacro{\cidx}{mod(\gp,8)+1}
+        \fill[colorx\cidx!35] ({4*\gp*\bw},{-\rw*\ah-\ah}) rectangle ({4*\gp*\bw+4*\bw},{-\rw*\ah});
         \foreach \sp in {1,2,3}{
           \draw[white, thin] ({4*\gp*\bw+\sp*\bw},{-\rw*\ah-\ah}) -- ({4*\gp*\bw+\sp*\bw},{-\rw*\ah});
         }
@@ -394,8 +394,6 @@ $(\mathrm{tid}\%32) \cdot 4$ 以 4 递增，于是\textbf{一个 warp 实际承�
 $4 \times 128$ 的 C 横带}。金字塔的 warp 级在本章是「免费的」；
 第~\ref{ch:10}~章的 WMMA 版会把它显式化为 $4 \times 2$ 的 warp 排布。
 
-\needspace{114mm}
-
 \section{图示}
 
 \begin{figure}[htbp]
@@ -403,35 +401,36 @@ $4 \times 128$ 的 C 横带}。金字塔的 warp 级在本章是「免费的」�
 \begin{tikzpicture}[font=\scriptsize]
   \node[font=\small\bfseries] at (8.2,0)
     {grid $\to$ block $\to$ warp $\to$ thread 四级 tiling（$C$ 矩阵视角）};
-  \node[anchor=west, fill=gray!18, inner sep=2.5pt, font=\scriptsize\bfseries] at (0,-0.62)
+  \node[anchor=west, fill=colorx1!12, inner sep=2.5pt, font=\scriptsize\bfseries] at (0,-0.62)
     {grid 级：$C[M,N]$ 切成 $(M/BM) \times (N/BN)$ 个 block tile};
-  \node[draw=gray!70, fill=gray!25, font=\tiny\bfseries,
+  \node[draw=colorx1!70, fill=colorx1!30, font=\tiny\bfseries,
     minimum width=1.75cm, minimum height=0.85cm] at (1.18,-1.75) {tile 0,0};
-  \node[draw=gray!50, fill=white, font=\tiny,
+  \node[draw=colorx1!45, fill=colorx1!8, font=\tiny,
     minimum width=1.75cm, minimum height=0.85cm] at (3.03,-1.75) {tile 0,1};
-  \node[draw=gray!50, fill=white, font=\tiny,
+  \node[draw=colorx1!45, fill=colorx1!8, font=\tiny,
     minimum width=1.75cm, minimum height=0.85cm] at (1.18,-2.7) {tile 1,0};
   \node[anchor=north west, align=left, font=\tiny, text width=4.4cm] at (2.1,-2.35)
     {\texttt{BM=BN=128}, \texttt{BK=32}：每 block 1024 线程；\\
      \texttt{smem = sA[128][32]}\\\texttt{+ sB[32][128]} $= 32$KB；\\
      沿 $K$ 循环 $K/32$ 轮，\\每轮两道栅栏夹计算窗口};
-  \node[anchor=west, fill=gray!18, inner sep=2.5pt, font=\scriptsize\bfseries] at (7.2,-0.62)
+  \node[anchor=west, fill=colorx6!12, inner sep=2.5pt, font=\scriptsize\bfseries] at (7.2,-0.62)
     {warp 级（隐式）：一个 warp 承包 $4 \times 128$ C 横带};
-  \node[draw=gray!60, fill=gray!22, font=\tiny, minimum width=6.4cm, minimum height=0.34cm]
+  \node[draw=colorx6!55, fill=colorx6!25, font=\tiny, minimum width=6.4cm, minimum height=0.34cm]
     at (10.3,-1.55) {row band $(tid/32){\times}4$ \ $\times$ 128 cols};
-  \node[draw=gray!60, fill=white, font=\tiny, minimum width=6.4cm, minimum height=0.34cm]
+  \node[draw=colorx6!55, fill=colorx6!10, font=\tiny, minimum width=6.4cm, minimum height=0.34cm]
     at (10.3,-1.95) {row band $(tid/32){\times}3$ \ $\times$ 128 cols};
-  \node[draw=gray!60, fill=gray!22, font=\tiny, minimum width=6.4cm, minimum height=0.34cm]
+  \node[draw=colorx6!55, fill=colorx6!25, font=\tiny, minimum width=6.4cm, minimum height=0.34cm]
     at (10.3,-2.35) {row band $(tid/32){\times}2$ \ $\times$ 128 cols};
-  \node[draw=gray!60, fill=white, font=\tiny, minimum width=6.4cm, minimum height=0.34cm]
+  \node[draw=colorx6!55, fill=colorx6!10, font=\tiny, minimum width=6.4cm, minimum height=0.34cm]
     at (10.3,-2.75) {row band $(tid/32){\times}1$ \ $\times$ 128 cols};
-  \node[anchor=west, fill=gray!18, inner sep=2.5pt, font=\scriptsize\bfseries] at (0,-3.75)
+  \node[anchor=west, fill=colorx2!15, inner sep=2.5pt, font=\scriptsize\bfseries] at (0,-3.75)
     {thread 级：每线程一个 $4 \times 4$ 寄存器 tile（16 输出 \texttt{sum[4][4]}）};
   \node[anchor=west, font=\tiny] at (0.4,-4.25)
     {$n$: $n_0..n_0{+}3$ \quad $n_0 = (tid \% 32) \times 4$};
   \foreach \fmi in {0,...,3} {
     \foreach \fj in {0,...,3} {
-      \node[fill=gray!30, font=\tiny, minimum width=0.5cm, minimum height=0.4cm, inner sep=0pt]
+      \pgfmathtruncatemacro{\ramp}{12+3*(\fmi*4+\fj)}
+      \node[fill=colorx2!\ramp, font=\tiny, minimum width=0.5cm, minimum height=0.4cm, inner sep=0pt]
         at ({0.65+\fj*0.5},{-4.75-\fmi*0.4}) {tt};
     }
   }

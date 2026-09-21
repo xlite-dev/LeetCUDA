@@ -46,7 +46,7 @@ GEMM 吞吐，就必须把循环核从「每线程一个 FMA」换成「每 warp
 全 block 同步等待：加载时 Tensor Core 闲着，计算时加载单元闲着。Ampere 起
 提供的 \texttt{cp.async} 让 global$\to$shared 的搬运绕过寄存器、由异步单元
 完成，程序员可以「先发出下一块的拷贝，再计算当前块」——用双缓冲把
-搬运延迟藏进计算时间里。本章 kernel 的 \texttt{K\_STAGE}=2 正是两级缓冲。
+搬运延迟藏进计算时间里。本章 kernel 的 \texttt{kStages}=2 正是两级缓冲。
 
 \section{数学原理}
 
@@ -209,20 +209,20 @@ $T\sb {\mathrm{ld}} + T\sb {\mathrm{cp}}$。双缓冲提供两份 smem 缓冲 $S
 kernel 的 tile 配置由模板参数逐层相乘得到（sgemm.cuh~L225--236）：
 \begin{itemize}
   \item \textbf{block tile}：$B\sb M \times B\sb N \times B\sb K = 128 \times 128 \times 8$，
-        其中 $B\sb M = \mathrm{WMMA\_M}\times\mathrm{WMMA\_TILE\_M}\times\mathrm{WARP\_TILE\_M}
-        = 16\times4\times2$，$B\sb N = 16\times2\times4$，$B\sb K = \mathrm{WMMA\_K} = 8$；
+        其中 $B\sb M = \mathrm{kWMma\_M}\times\mathrm{kWMmaTile\_M}\times\mathrm{kValTile\_M}
+        = 16\times4\times2$，$B\sb N = 16\times2\times4$，$B\sb K = \mathrm{kWMma\_K} = 8$；
   \item \textbf{warp tile}：256 线程 = 8 warp，按 $4\times2$ 排布
         （\texttt{warp\_m}=0--3、\texttt{warp\_n}=0--1），每 warp 负责
         $32\times64$ 的 C 子块；
   \item \textbf{fragment tile}：每 warp 内部再摆 $2\times4 = 8$ 个
-        $m16n16k8$ 的 WMMA fragment（源码命名 \texttt{WARP\_\allowbreak{}TILE\_\allowbreak{}M/\allowbreak{}N}），
+        $m16n16k8$ 的 WMMA fragment（源码命名 \texttt{kValTileM/N}），
         $32\times64$ 恰好被 $16\times16$ 的 fragment 阵列铺满。
 \end{itemize}
-注意源码的\textbf{命名陷阱}：\texttt{WMMA\_\allowbreak{}TILE\_\allowbreak{}M/\allowbreak{}N} 其实是 warp 之间的排布数
-（$4\times2$），而 \texttt{WARP\_\allowbreak{}TILE\_\allowbreak{}M/\allowbreak{}N} 才是 warp 内 fragment 的重复数
-（$2\times4$）——两个名字的直觉正好对调，读代码时务必对照
-\texttt{warp\_m = warp\_id / 2}、\texttt{warp\_n = warp\_id \% 2}（L247--249）
-来还原真实几何（见 10.7~节勘误四）。三层分解全景见图~\ref{fig:10-wmma-hierarchy}。
+参数命名即语义：\texttt{kWMmaTileM/N}（$4\times2$）是 warp \textbf{间}的排布数，
+\texttt{kValTileM/N}（$2\times4$）是 warp \textbf{内} fragment 的值重复数，
+与 \texttt{warp\_m = warp\_id / 2}、\texttt{warp\_n = warp\_id \% 2}（L247--249）
+给出的真实几何一一对应，读代码时可按名字直接还原排布
+（历史注记见 10.7~节）。三层分解全景见图~\ref{fig:10-wmma-hierarchy}。
 
 \begin{figure}[H]
 \centering
@@ -230,13 +230,9 @@ kernel 的 tile 配置由模板参数逐层相乘得到（sgemm.cuh~L225--236）
   \foreach \wm in {0,...,3}{
     \foreach \wn in {0,1}{
       \pgfmathtruncatemacro{\wid}{2*\wm+\wn}
-      \pgfmathtruncatemacro{\gr}{6+10*\wid}
-      \fill[gray!\gr] ({3.2*\wn},{-1.6*\wm}) rectangle ++(3.2,-1.6);
-      \ifnum\gr<48
-        \node[font=\footnotesize\bfseries] at ({3.2*\wn+1.6},{-1.6*\wm-0.7}) {\wid};
-      \else
-        \node[font=\footnotesize\bfseries, text=white] at ({3.2*\wn+1.6},{-1.6*\wm-0.7}) {\wid};
-      \fi
+      \pgfmathtruncatemacro{\cnum}{\wid+1}
+      \fill[colorx\cnum!55] ({3.2*\wn},{-1.6*\wm}) rectangle ++(3.2,-1.6);
+      \node[font=\footnotesize\bfseries] at ({3.2*\wn+1.6},{-1.6*\wm-0.7}) {\wid};
     }
   }
   \foreach \wm in {0,...,3}{
@@ -264,7 +260,7 @@ kernel 的 tile 配置由模板参数逐层相乘得到（sgemm.cuh~L225--236）
     \foreach \fmi in {0,1}{
       \foreach \fj in {0,...,3}{
         \pgfmathtruncatemacro{\fidx}{4*\fmi+\fj}
-        \pgfmathtruncatemacro{\fgr}{12+6*\fidx}
+        \pgfmathsetmacro{\fgr}{{5,20,40,60}[\fj]}
         \fill[gray!\fgr] ({1.2*\fj},{-1.2*\fmi}) rectangle ++(1.2,-1.2);
         \node[font=\tiny] at ({1.2*\fj+0.6},{-1.2*\fmi-0.6}) {f\fidx};
       }
@@ -273,16 +269,16 @@ kernel 的 tile 配置由模板参数逐层相乘得到（sgemm.cuh~L225--236）
     \node[anchor=south, font=\tiny] at (2.4,0.1) {N：$4\times16=64$};
     \node[anchor=east, font=\tiny, rotate=90] at (-0.12,-1.2) {M：$2\times16=32$};
     \node[anchor=north west, font=\scriptsize] at (0,-2.55) {单个 warp 子块（$32\times64$）放大：};
-    \node[anchor=north west, font=\tiny, align=left] at (0,-2.95) {$2\times4=8$ 个 $m16n16k8$ fragment，\\强度 $=$ 块内位置 $f_0..f_7$};
-    \node[draw, align=left, anchor=north west, font=\scriptsize] at (0,-3.9)
-      {\textbf{命名陷阱}（两个名字直觉正好对调）：\\
-       \texttt{WMMA\_TILE\_M/N} $= 4/2$：warp \textbf{间}排布\\
-       \texttt{WARP\_TILE\_M/N} $= 2/4$：warp \textbf{内} fragment 重复\\[2pt]
+    \node[anchor=north west, font=\tiny, align=left] at (0,-2.95) {$2\times4=8$ 个 $m16n16k8$ fragment，\\灰度 $=$ 块内位置 $f_0..f_7$};
+    \node[draw=tkBlue!70, fill=tkFillBlue, align=left, anchor=north west, font=\scriptsize] at (0,-3.9)
+      {\textbf{命名即语义}：\\
+       \texttt{kWMmaTileM/N} $= 4/2$：warp \textbf{间}排布\\
+       \texttt{kValTileM/N} $= 2/4$：warp \textbf{内} fragment 值重复\\[2pt]
        \texttt{warp\_m} $=$ \texttt{warp\_id}/2，\texttt{warp\_n} $=$ \texttt{warp\_id}\%2\\
-       （主图灰度 $=$ warp\_id，第一列自上而下 0/2/4/6）};
+       （主图色相 $=$ warp\_id，第一列自上而下 0/2/4/6）};
   \end{scope}
 \end{tikzpicture}
-\caption{$128\times128$ block tile 的三层分解：外层按 $4\times2$ 切 8 个 $32\times64$ warp 子块（灰度 $=$ warp\_id，$B_M = 16\times4\times2$、$B_N = 16\times2\times4$）；每子块内再摆 $2\times4=8$ 个 $m16n16k8$ fragment（右：放大图，强度 $=$ 块内位置）。侧栏：源码命名陷阱——\texttt{WMMA\_TILE\_M/N} 管 warp 间、\texttt{WARP\_TILE\_M/N} 管 warp 内，直觉正好对调。}
+\caption{$128\times128$ block tile 的三层分解：外层按 $4\times2$ 切 8 个 $32\times64$ warp 子块（色相 $=$ warp\_id，$B_M = 16\times4\times2$、$B_N = 16\times2\times4$）；每子块内再摆 $2\times4=8$ 个 $m16n16k8$ fragment（右：放大图，灰度 $=$ 块内位置）。侧栏：\texttt{kWMmaTileM/N} 表 warp 间排布、\texttt{kValTileM/N} 表 warp 内 fragment 值重复，名字即语义。}
 \label{fig:10-wmma-hierarchy}
 \end{figure}
 
@@ -314,7 +310,7 @@ WMMA 是 CUDA 对 warp 级矩阵乘的官方 C++ 抽象
         \texttt{float}（TF32 MMA 的累加在 fp32 精度执行）；
   \item \texttt{load\_\allowbreak{}matrix\_\allowbreak{}sync\allowbreak{}(frag,\allowbreak{} ptr,\allowbreak{} ldm)}：warp 协作地从 smem 装载
         fragment，\texttt{ldm} 是矩阵在 smem 里的\textbf{实际行距}——
-        本章 A 用 $B\sb K + \mathrm{A\_PAD} = 12$、B 用 $B\sb N + \mathrm{B\_PAD} = 132$，
+        本章 A 用 $B\sb K + \mathrm{kPadA} = 12$、B 用 $B\sb N + \mathrm{kPadB} = 132$，
         用错 ldm 是这类代码最典型的静默错误；
   \item \texttt{mma\_sync(D, A, B, C)}：一条（逻辑上的）warp 级矩阵乘累加
         $\mathrm{D} = \mathrm{A}\times\mathrm{B} + \mathrm{C}$；
@@ -335,10 +331,10 @@ $\approx 2{\times}4 + 4{\times}4 + 8{\times}8 = 88$ 个 32 位寄存器
 \lstinputlisting[linerange={225-243},firstnumber=auto,
   title={sgemm.cuh L225-243（模板参数、$B\sb M/B\sb N/B\sb K$ 与两级 smem 布局）}]{../sgemm.cuh}
 
-smem 分两段：\texttt{s\_a} 是 $\mathrm{K\_STAGE}\times 128\times(8+4)$ 的
-A tile（行距 12，$\mathrm{A\_PAD}=4$ 个 float），\texttt{s\_b} 是
-$\mathrm{K\_STAGE}\times 8\times(128+4)$ 的 B tile（行距 132，
-$\mathrm{B\_PAD}=4$），两段共 $2\times128\times12 + 2\times8\times132 = 5184$
+smem 分两段：\texttt{s\_a} 是 $\mathrm{kStages}\times 128\times(8+4)$ 的
+A tile（行距 12，$\mathrm{kPadA}=4$ 个 float），\texttt{s\_b} 是
+$\mathrm{kStages}\times 8\times(128+4)$ 的 B tile（行距 132，
+$\mathrm{kPadB}=4$），两段共 $2\times128\times12 + 2\times8\times132 = 5184$
 个 float $= 20736$~B。padding 的目的与第~\ref{ch:07}~章 transpose 的补列
 同理：bank 宽 4~B、32 个 bank 一轮，A 的行长恰好 32~B 时相邻行会映射到
 同一组 bank，补 16~B 打散行首的对齐关系，避免 \texttt{load\_\allowbreak{}matrix\_\allowbreak{}sync}
@@ -346,19 +342,19 @@ $\mathrm{B\_PAD}=4$），两段共 $2\times128\times12 + 2\times8\times132 = 518
 「16384 bytes」「1024 floats」是陈旧数字，实际值见 10.7~节勘误一、二。）
 两段布局的 PAD 与行距见图~\ref{fig:10-smem-pad}。
 
-\begin{figure}[H]
+\begin{figure}[htbp]
 \centering
 \begin{tikzpicture}[font=\tiny]
   \def\cw{0.5}
   \def\ch{0.5}
-  \node[anchor=south, font=\scriptsize] at ({6*\cw},0.32)
+  \node[anchor=south, font=\scriptsize, text=colorx6!75!black] at ({6*\cw},0.32)
     {$s\_a$ 单 stage：$128\times(8{+}4)$，行距 $\mathrm{ldm}=12$};
   \foreach \rw in {0,...,5}{
     \node[anchor=east] at (-0.1,{-\rw*\ch-\ch/2}) {$r{=}\rw$};
     \foreach \cl in {0,...,11}{
       \pgfmathtruncatemacro{\bnk}{mod(12*\rw+\cl,32)}
       \ifnum\cl<8
-        \fill[gray!30] ({\cl*\cw},{-\rw*\ch-\ch}) rectangle ({\cl*\cw+\cw},{-\rw*\ch});
+        \fill[colorx6!20] ({\cl*\cw},{-\rw*\ch-\ch}) rectangle ({\cl*\cw+\cw},{-\rw*\ch});
       \else
         \path[preaction={fill=gray!12}, pattern=north east lines, pattern color=black!45]
           ({\cl*\cw},{-\rw*\ch-\ch}) rectangle ({\cl*\cw+\cw},{-\rw*\ch});
@@ -380,19 +376,19 @@ $\mathrm{B\_PAD}=4$），两段共 $2\times128\times12 + 2\times8\times132 = 518
      每 4 行行首回到同一 bank。};
   \begin{scope}[shift={(7.4,0)}]
     \def\bw{0.42}
-    \node[anchor=south, font=\scriptsize] at (3.7,0.32)
+    \node[anchor=south, font=\scriptsize, text=colorx2!80!black] at (3.7,0.32)
       {$s\_b$ 单 stage：$8\times(128{+}4)$，行距 $\mathrm{ldm}=132$};
     \foreach \rw in {0,...,7}{
       \node[anchor=east] at (-0.1,{-\rw*\bw-\bw/2}) {$k{=}\rw$};
       \foreach \cl in {0,...,7}{
         \pgfmathtruncatemacro{\bnk}{mod(4*\rw+\cl,32)}
-        \fill[gray!30] ({\cl*\bw},{-\rw*\bw-\bw}) rectangle ({\cl*\bw+\bw},{-\rw*\bw});
+        \fill[colorx2!20] ({\cl*\bw},{-\rw*\bw-\bw}) rectangle ({\cl*\bw+\bw},{-\rw*\bw});
         \node at ({(\cl+0.5)*\bw},{-\rw*\bw-\bw/2}) {\bnk};
       }
       \node at ({8*\bw+0.3},{-\rw*\bw-\bw/2}) {$\cdots$};
       \foreach \cj in {0,...,3}{
         \pgfmathtruncatemacro{\bnk}{mod(4*\rw+28+\cj,32)}
-        \fill[gray!30] ({8*\bw+0.6+\cj*\bw},{-\rw*\bw-\bw}) rectangle ({8*\bw+0.6+\cj*\bw+\bw},{-\rw*\bw});
+        \fill[colorx2!20] ({8*\bw+0.6+\cj*\bw},{-\rw*\bw-\bw}) rectangle ({8*\bw+0.6+\cj*\bw+\bw},{-\rw*\bw});
         \node at ({8*\bw+0.6+(\cj+0.5)*\bw},{-\rw*\bw-\bw/2}) {\bnk};
       }
       \foreach \cj in {0,...,3}{
@@ -414,9 +410,9 @@ $\mathrm{B\_PAD}=4$），两段共 $2\times128\times12 + 2\times8\times132 = 518
       {格值 $=$ bank 号 $=(132r{+}c)\bmod32$：行首序列 $0,4,8,\dots,28$——
        8 行行首互异，\texttt{load\_matrix\_sync} 按行取数不撞同一组 bank。};
   \end{scope}
-  \node[anchor=north, align=left, text width=13.5cm] at (7.4,-4.6)
+  \node[anchor=north, align=left, text width=13.5cm, draw=tkBlue!60, fill=tkFillBlue, rounded corners=1pt, inner sep=3pt] at (7.4,-4.6)
     {\texttt{load\_matrix\_sync} 的 \texttt{ldm} 传\textbf{行距}（12 / 132）而非逻辑宽度（8 / 128），
-     传错即整块错位（本章坑二）；\texttt{K\_STAGE}$=2$，两个 stage 同构轮转（图中单 stage）。};
+     传错即整块错位（本章坑二）；\texttt{kStages}$=2$，两个 stage 同构轮转（图中单 stage）。};
 \end{tikzpicture}
 \caption{$s\_a$ / $s\_b$ 的 padded 行距布局（单 stage，格值为该 word 的 bank 号 $=$ 行距$\times r+$列 $\bmod 32$，斜线格为 PAD）。左 $s\_a$：$128\times(8{+}4)$，\texttt{ldm}=12，行首 bank 序列 $0,12,24,4,\dots$；右 $s\_b$：$8\times(128{+}4)$，\texttt{ldm}=132，行首 bank 序列 $0,4,\dots,28$。补 4 float（16~B）PAD 打散行首对齐、消除 \texttt{load\_matrix\_sync} 按行取数的 bank conflict——\texttt{ldm} 取行距而非逻辑宽度。}
 \label{fig:10-smem-pad}
@@ -436,7 +432,7 @@ $8\times32$ 个 4 元组（\texttt{tid/32} 定行、\texttt{tid\%32} 定列组�
 \subsection{cp.async 双缓冲流水线}
 
 \lstinputlisting[linerange={281-303},firstnumber=auto,
-  title={sgemm.cuh L281-303（预加载 $\mathrm{K\_STAGE}-1$ 个 tile 并等待）}]{../sgemm.cuh}
+  title={sgemm.cuh L281-303（预加载 $\mathrm{kStages}-1$ 个 tile 并等待）}]{../sgemm.cuh}
 
 三条 PTX 指令构成异步拷贝的完整协议（宏定义见 common.cuh~L41--51）：
 \texttt{cp.\allowbreak{}async.\allowbreak{}cg.\allowbreak{}shared.\allowbreak{}global} 发起 16~B 的 global$\to$shared 搬运
@@ -449,7 +445,7 @@ per-thread 的组；\texttt{cp.\allowbreak{}async.\allowbreak{}wait\_\allowbreak
 \lstinputlisting[linerange={307-330},firstnumber=auto,
   title={sgemm.cuh L307-330（主循环：先预取 tile $k$，再计算 tile $k-1$）}]{../sgemm.cuh}
 
-主循环的迭代索引故意从 $k = \mathrm{K\_STAGE}-1 = 1$ 开始：迭代 $k$ 发出
+主循环的迭代索引故意从 $k = \mathrm{kStages}-1 = 1$ 开始：迭代 $k$ 发出
 tile $k$ 的搬运（写入 stage $k \bmod 2$），然后计算 tile $k-1$
 （读 stage $(k+1)\bmod 2 = (k-1)\bmod 2$，见 L308 的 \texttt{smem\_sel}）。
 也就是说\textbf{搬运永远比计算领先一个 tile}，两个 stage 交替读/写，
@@ -459,7 +455,7 @@ tile $k$ 的搬运（写入 stage $k \bmod 2$），然后计算 tile $k-1$
   title={sgemm.cuh L332-348（TF32 fragment 声明与 A 碎片装载）}]{../sgemm.cuh}
 
 装载 A 碎片时，warp 只关心自己名下的 $32$ 行：起始行
-\texttt{warp\_\allowbreak{}m * \allowbreak{}(WMMA\_\allowbreak{}M * WARP\_\allowbreak{}TILE\_\allowbreak{}M)}（$=32\,w\sb m$），再由
+\texttt{warp\_\allowbreak{}m * \allowbreak{}(kWMmaM * kValTileM)}（$=32\,w\sb m$），再由
 $i\in\{0,1\}$ 平移 $16$。B 碎片同理按 \texttt{warp\_n} 平移列起点。
 注意 fragment 每次迭代都在循环体内重新声明、重新装载——WMMA 不提供
 寄存器双缓冲，这是它与第~\ref{ch:11}~章手写路径的重要差距之一。
@@ -480,12 +476,10 @@ $2\times128\times128\times8$ FLOP。迭代末尾 \texttt{wait\_\allowbreak{}grou
 
 主循环只计算到 tile $\mathrm{NUM\_K\_TILES}-2$，最后一个 tile 的数据已经在
 最后一次迭代里搬进 smem、但还没算——尾部块（L379--417，与主循环同构，节选）
-负责排空；K\_STAGE$=2$ 时主循环末尾的 \texttt{wait\_\allowbreak{}group\allowbreak{}(0)} 已保证拷贝完成，
+负责排空；kStages$=2$ 时主循环末尾的 \texttt{wait\_\allowbreak{}group\allowbreak{}(0)} 已保证拷贝完成，
 L375 的条件等待被编译期剪掉。写回阶段每个 warp 把 8 个累加器
 \texttt{store\_\allowbreak{}matrix\_\allowbreak{}sync} 到 C 的对应 $32\times64$ 子块，行距传
 \texttt{N}（C 是 row-major 全矩阵）。
-
-\needspace{86mm}
 
 \section{图示}
 
@@ -496,9 +490,9 @@ L375 的条件等待被编译期剪掉。写回阶段每个 warp 把 8 个累加
     {2-stage double buffering：\texttt{load(k)} 与 \texttt{compute(k-1)} 重叠};
   \draw[-{Latex}, thin, gray!70] (13.8,-0.55) -- (16.3,-0.55);
   \node[anchor=south east, font=\tiny, text=gray!80] at (16.3,-0.45) {time};
-  \node[anchor=west, font=\scriptsize\bfseries] at (0,-1.4) {LD unit};
+  \node[anchor=west, font=\scriptsize\bfseries, text=tkBlue] at (0,-1.4) {LD unit};
   \foreach \fmi in {0,...,3} {
-    \node[draw=gray!60, fill=gray!12, font=\tiny\bfseries,
+    \node[draw=tkBlue!70, fill=tkFillBlue, font=\tiny\bfseries,
       minimum width=2.8cm, minimum height=0.6cm] at ({3.0+\fmi*3.1},-1.4) {ld \fmi};
   }
   \node[anchor=west, font=\tiny, text=gray!80] at (1.6,-1.85)
@@ -506,18 +500,18 @@ L375 的条件等待被编译期剪掉。写回阶段每个 warp 把 8 个累加
   \node[anchor=west, font=\tiny, text=gray!80] at (7.4,-1.85)
     {首迭代 $k{=}1$：load 1 写 $S_1$，compute 0 读 $S_0$};
   \draw[dashed, thin, gray!70] (4.7,-1.75) -- (4.7,-2.12);
-  \node[anchor=west, font=\scriptsize\bfseries] at (0,-2.45) {TC unit};
+  \node[anchor=west, font=\scriptsize\bfseries, text=tkPurple] at (0,-2.45) {TC unit};
   \foreach \fmi in {0,...,3} {
-    \node[draw=gray!70, fill=gray!32, font=\tiny\bfseries,
+    \node[draw=tkPurple!75, fill=tkFillPurple, font=\tiny\bfseries,
       minimum width=2.8cm, minimum height=0.6cm] at ({4.55+\fmi*3.1},-2.45) {cp \fmi};
   }
   \node[anchor=west, font=\scriptsize\bfseries] at (0,-3.3)
     {smem 双缓冲：$S_0$ 承载偶数 tile，$S_1$ 承载奇数 tile};
-  \node[draw=gray!55, fill=gray!10, font=\tiny, minimum width=7.7cm, minimum height=0.6cm]
+  \node[draw=colorx6!70, fill=colorx6!12, font=\tiny, minimum width=7.7cm, minimum height=0.6cm]
     at (4.05,-3.85) {$S_0$: tile 0 | tile 2 | tile 4 \ldots\ (even $k$)};
-  \node[draw=gray!55, fill=gray!10, font=\tiny, minimum width=7.7cm, minimum height=0.6cm]
+  \node[draw=colorx2!75, fill=colorx2!12, font=\tiny, minimum width=7.7cm, minimum height=0.6cm]
     at (12.35,-3.85) {$S_1$: tile 1 | tile 3 | tile 5 \ldots\ (odd $k$)};
-  \node[draw=gray!50, fill=gray!14, font=\scriptsize\bfseries,
+  \node[draw=tkGreen!65, fill=tkFillGreen, font=\scriptsize\bfseries,
     minimum width=16.2cm, minimum height=0.55cm] at (8.2,-4.6)
     {steady state：$T_{\mathrm{step}} = \max(T_{\mathrm{load}}, T_{\mathrm{compute}})$，短的一侧被完全隐藏；compute 读 $(k{-}1)\bmod 2$，load 写 $k\bmod 2$};
 \end{tikzpicture}
@@ -583,11 +577,13 @@ k-tile（MMA 指令发射密度低）与每迭代一次的迭代末同步——�
   注释数字与独立推导一致。
 \end{kaogu}
 
-\begin{kaogu}[F3 命名辨析]{sgemm.cuh L228-229：WMMA\_TILE 与 WARP\_TILE 语义对调}
-  \texttt{WMMA\_\allowbreak{}TILE\_\allowbreak{}M/\allowbreak{}N}（4/2）实际是 \textbf{warp 间}排布数，
-  \texttt{WARP\_\allowbreak{}TILE\_\allowbreak{}M/\allowbreak{}N}（2/4）实际是 \textbf{warp 内} fragment 重复数，
-  与两个名字的直觉相反。代码自洽（$B\sb M = 16\times4\times2$ 仍为 128），
-  但读者极易把两组参数的几何含义读反，特此澄清（详见 10.4.1）。
+\begin{kaogu}[F3 历史注记]{sgemm.cuh L226-227：WMMA\_TILE/WARP\_TILE 命名陷阱已修正}
+  早期版本中，warp 间排布数叫 \texttt{WMMA\_TILE\_M/N}（4/2）、warp 内
+  fragment 重复数叫 \texttt{WARP\_TILE\_M/N}（2/4），两个名字的直觉正好
+  对调，读者极易把两组参数的几何含义读反。现已重命名为
+  \texttt{kWMmaTileM/N}（warp 间排布）与 \texttt{kValTileM/N}（warp 内
+  fragment 值重复），名字即语义，并与 hgemm 的 \texttt{kMmaTile}/
+  \texttt{kValTile} 命名体系对齐（详见 10.4.1）。
 \end{kaogu}
 
 \section{常见坑}
@@ -600,7 +596,7 @@ notes-v2 的三步：保存 fp32 参考 $\to$ 原地 TF32 转换 $\to$ 与 TF32 
 本章测试干脆用「转换后数据」的 CPU fp64 做参考，把舍入差异彻底移出判定。
 
 \textbf{坑二：\texttt{load\_\allowbreak{}matrix\_\allowbreak{}sync} 的 ldm 传了逻辑宽度而非物理行距。}
-A 碎片的 ldm 必须是 $B\sb K+\mathrm{A\_PAD}=12$（不是 8）、B 是 $132$（不是 128）。
+A 碎片的 ldm 必须是 $B\sb K+\mathrm{kPadA}=12$（不是 8）、B 是 $132$（不是 128）。
 padding 改变了 smem 行距，ldm 不跟着改，fragment 会按错误的 stride 拼装
 数据——不越界、不报错，结果悄悄错。
 
@@ -648,7 +644,7 @@ A：N 表示允许保留的未完成组数。流水建立期与排空期用 0（
 稳态满载期用 kStages$-$2（允许 $S{-}2$ 组跨迭代 in-flight）。本章
 $S{=}2$ 恒为 0；第~\ref{ch:11}~章 $S{=}3$ 稳态用 1。
 
-\textbf{Q5：为什么 A\_PAD/B\_PAD 都是 4？}\\
+\textbf{Q5：为什么 kPadA/kPadB 都是 4？}\\
 A：4 个 float = 16~B = 一条 \texttt{cp.async} 的搬运宽度；行长从 32~B 变
 48~B（A）后相邻行 bank 起点错开，消除 \texttt{load\_\allowbreak{}matrix\_\allowbreak{}sync} 按行取数的
 bank conflict。pad 同时要保证 16~B 对齐不被破坏（4 float 恰好满足）。
@@ -700,7 +696,7 @@ case~A 的括号里 rne 与 rna 都 4096/4096 命中：随机数据落在「恰�
 case~B/C 的误差 $10^{-5}$ 量级远小于容差，符合预期：输入舍入已被参考吸收，
 剩余差异只来自 fp32 累加顺序。动手实验建议：
 （1）用 \texttt{.\allowbreak{}/\allowbreak{}.\allowbreak{}build/\allowbreak{}ch10\_\allowbreak{}sgemm\_\allowbreak{}tf32 bench} 复现 28.19 TFLOPS；
-（2）把 \texttt{K\_STAGE} 改成 3 观察是否还能通过（模板会多占一级 smem，
+（2）把 \texttt{kStages} 改成 3 观察是否还能通过（模板会多占一级 smem，
 launch 字节数须同步改）；（3）构造低 13 位为 $0x1000$ 的 tie 输入，
 判定 GPU 转换的 tie 行为是 even 还是 away。
 

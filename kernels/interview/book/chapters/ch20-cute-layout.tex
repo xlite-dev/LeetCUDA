@@ -753,8 +753,6 @@ dtype 变化引起的布局变换），但中间布局要 \texttt{with\_shape} �
 
 两条路线的对照示意见图~\ref{fig:20-3}。
 
-\needspace{106mm}
-
 \section{图示}
 
 \begin{figure}[htbp]
@@ -1101,8 +1099,8 @@ $f(1,3)=11$——同一 shape，stride 决定读序。}
     \draw[gray!70, {Stealth[length=2.5pt]}-{Stealth[length=2.5pt]}] (-0.30, 0) -- (-0.30, {-16*0.403});
   \end{scope}
   \node[anchor=east, text=black!55, font=\scriptsize] at (7.65, -3.64) {$M \times N$};
-  \node[anchor=west, text=tkOrange!90!black] at (9.55, -3.55) {col-major reorder};
-  \node[anchor=west, text=tkOrange!90!black] at (9.55, -3.88) {with shape $(8, 2)$};
+  \node[anchor=west, text=tkOrange!90!black] at (9.55, -3.49) {col-major reorder};
+  \node[anchor=west, text=tkOrange!90!black] at (9.55, -3.99) {with shape $(8, 2)$};
   % 右：按 col-major 折回 (P, Q) = (8, 2)
   \begin{scope}[shift={(11.58, -1.612)}]
     \foreach \c in {0,1}{\foreach \r in {0,...,7}{\draw[tkOrange!80, fill=white] ({\c*0.925}, {-\r*0.597}) rectangle ({\c*0.925+0.925}, {-\r*0.597-0.597});}}
@@ -1118,7 +1116,7 @@ $f(1,3)=11$——同一 shape，stride 决定读序。}
   \end{scope}
   \node[anchor=west, text=tkGreen] at (11.58, -1.01) {layoutB$(9)$ $=$ layoutB$(1, 1)$ $=$ 6};
   \node[anchor=west, text=tkRed] at (11.58, -6.70) {layoutB $=$ inverse(layoutA)};
-  \node[anchor=west, text=tkRed] at (11.58, -7.05) {.with\_shape$(P, Q)$};
+  \node[anchor=west, text=tkRed] at (11.58, -7.20) {.with\_shape$(P, Q)$};
   % 流程箭头
   \draw[tkGreen, dashed, -{Stealth[length=3pt]}] (7.13, -3.49) -- (7.40, -4.22);
   \draw[tkOrange!90!black, dashed, -{Stealth[length=3pt]}] (9.37, -4.22) -- (11.51, -6.09);

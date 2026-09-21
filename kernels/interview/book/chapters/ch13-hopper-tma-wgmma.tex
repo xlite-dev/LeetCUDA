@@ -187,10 +187,10 @@ $\times$ K 方向 4 次累加），每条用 $\mathrm{scaleD} = 1$ 在累加器�
     {M-atom 0\\（行 0--63）};
   \node[font=\scriptsize, anchor=east, align=center] at (2.05,-1.53)
     {M-atom 1\\（行 64--127）};
-  \draw[-{Stealth}] (2.3,-2.3) -- (3.5,-2.3);
+  \draw[-{Stealth}, tkBlue] (2.3,-2.3) -- (3.5,-2.3);
   \node[font=\scriptsize, anchor=west] at (3.62,-2.3)
     {\texttt{wgmma\_sA} 沿 K 前进（$+16$/步）};
-  \node[draw, very thick, rounded corners=2pt, fill=gray!8, font=\scriptsize,
+  \node[draw, very thick, rounded corners=2pt, tkBlue, fill=tkFillBlue, font=\scriptsize,
         align=center, text width=2.15cm, minimum height=1.5cm] (atom) at (8.2,-1.02)
     {\textbf{wgmma}\\m64n128k16\\$A[64{\times}16] \times B[16{\times}128]$\\
      $\to D[64{\times}128]$\\\texttt{scaleD}=1};
@@ -198,10 +198,10 @@ $\times$ K 方向 4 次累加），每条用 $\mathrm{scaleD} = 1$ 在累加器�
         anchor=south east] at (atom.north west) {$\times8$};
   \node[font=\tiny, align=center, text width=2.7cm, anchor=north] at (8.2,-2.02)
     {B 同步切片：$B_k=[16\times128]$（\texttt{s\_b} + k\_step $\cdot$ kWgmmaK）};
-  \draw[-{Stealth},thick] (6.29,-0.51) -- (7.03,-0.82);
-  \draw[-{Stealth},thick] (6.29,-1.53) -- (7.03,-1.24);
-  \draw[-{Stealth},thick] (9.37,-0.82) -- (10.04,-0.51);
-  \draw[-{Stealth},thick] (9.37,-1.24) -- (10.04,-1.53);
+  \draw[-{Stealth},thick, tkBlue] (6.29,-0.51) -- (7.03,-0.82);
+  \draw[-{Stealth},thick, tkBlue] (6.29,-1.53) -- (7.03,-1.24);
+  \draw[-{Stealth},thick, tkBlue] (9.37,-0.82) -- (10.04,-0.51);
+  \draw[-{Stealth},thick, tkBlue] (9.37,-1.24) -- (10.04,-1.53);
   \foreach \bb in {0,1}{
     \foreach \k in {1,...,4}{
       \pgfmathtruncatemacro{\gf}{15*\k}
@@ -238,10 +238,9 @@ $k{=}1\to4$ 灰度渐深），2 个 M-atom 各持独立累加器 $d[0]/d[1]$。}
   cell/.style={minimum size=0.42cm, inner sep=0pt, font=\tiny},
   mblk/.style={draw, minimum size=0.6cm, inner sep=0pt},
 ]
-  \foreach \w in {0,...,3}{
+  \foreach \w/\wc in {0/colorx6, 1/colorx5, 2/colorx7, 3/colorx8}{
     \foreach \g in {0,...,7}{
-      \pgfmathtruncatemacro{\gf}{18+16*\w}
-      \node[mblk, fill=gray!\gf] at (\g*0.64, -\w*0.64) {};
+      \node[mblk, fill=\wc!25] at (\g*0.64, -\w*0.64) {};
     }
   }
   \draw[very thick] (-0.38, 0.38) rectangle (1.02, -0.38);
@@ -282,10 +281,10 @@ $k{=}1\to4$ 灰度渐深），2 个 M-atom 各持独立累加器 $d[0]/d[1]$。}
   \node[font=\scriptsize, anchor=west] at (0.2, 2.5)
     {粗框（$g{=}0$）+ 虚框（$g{=}1$）= thread 5 持有的 8 格};
   \foreach \px/\py in {3.72/1.08, 5.40/1.08, 3.72/-2.28, 5.40/-2.28}{
-    \draw[very thick, rounded corners=1pt] (\px-0.21, \py-0.21) rectangle (\px+0.21, \py+0.21);
+    \draw[very thick, tkGreen, rounded corners=1pt] (\px-0.21, \py-0.21) rectangle (\px+0.21, \py+0.21);
   }
   \foreach \px/\py in {7.08/1.08, 8.76/1.08, 7.08/-2.28, 8.76/-2.28}{
-    \draw[dashed, thick, rounded corners=1pt] (\px-0.21, \py-0.21) rectangle (\px+0.21, \py+0.21);
+    \draw[dashed, thick, tkOrange, rounded corners=1pt] (\px-0.21, \py-0.21) rectangle (\px+0.21, \py+0.21);
   }
   \node[font=\scriptsize, align=left, anchor=north west] at (10.15, 0.35)
     {\textbf{索引律}（式~\ref{eq:13-d-layout}）：\\
@@ -500,7 +499,7 @@ common.cuh~L558--587 的注释表与图~\ref{fig:13-1} 逐字段一致，此处�
   }
   \draw[thin, gray!45] (2.3,0) grid (6.3,-4.0);
   \draw[very thick] (2.3,0) rectangle (6.3,-4.0);
-  \draw[very thick] (2.24,-0.06) rectangle (2.86,-3.94);
+  \draw[very thick, tkBlue] (2.24,-0.06) rectangle (2.86,-3.94);
   \foreach \cv [count=\idx from 0] in {0,1,2,3,4,5,6,7, 1,0,3,2,5,4,7,6}{
     \pgfmathtruncatemacro{\ci}{mod(\idx,8)}
     \pgfmathtruncatemacro{\ri}{div(\idx,8)}
@@ -521,8 +520,8 @@ common.cuh~L558--587 的注释表与图~\ref{fig:13-1} 逐字段一致，此处�
   }
   \node[font=\scriptsize, anchor=south] at (4.3,0.5)
     {逻辑 chunk $c$（每 chunk 16\,B $=$ 8 half）};
-  \draw[{Stealth}-{Stealth}, very thick] (6.55,0) -- (6.55,-4.5);
-  \node[font=\scriptsize, rotate=90] at (6.82,-2.25) {SBO $=$ 1024\,B（编码 64）};
+  \draw[{Stealth}-{Stealth}, very thick, tkPurple] (6.55,0) -- (6.55,-4.5);
+  \node[font=\scriptsize, rotate=90, text=tkPurple] at (6.82,-2.25) {SBO $=$ 1024\,B（编码 64）};
   \node[draw, rounded corners=3pt, fill=gray!6, font=\scriptsize, align=left,
         text width=6.3cm, anchor=north west] at (7.7,-0.1)
     {\textbf{descriptor 字段与 atom 几何}（位域图~\ref{fig:13-1}）\\[2pt]

@@ -143,7 +143,7 @@ $1/\sqrt{d}$ 仍是事实标准，方差更不均匀的情形由量化方案处�
   \draw[gray!30, dashed] (0,1.44) -- (4.5,1.44);
   \draw[gray!30, dashed] (0,1.92) -- (4.5,1.92);
   \draw[gray!30, dashed] (0,2.40) -- (4.5,2.40);
-  \draw[thick, domain=-15:15, samples=161, smooth]
+  \draw[thick, tkBlue, domain=-15:15, samples=161, smooth]
     plot ({0.3*\x},{exp(-abs(\x))/(1+exp(-abs(\x)))^2*9.6});
   \draw[-{Stealth}] (-5.0,0) -- (5.15,0);
   \draw[-{Stealth}] (0,0) -- (0,2.75);
@@ -158,7 +158,7 @@ $1/\sqrt{d}$ 仍是事实标准，方差更不均匀的情形由量化方案处�
   }
   \node[font=\scriptsize, rotate=90] at (-0.95,1.25) {$\sigma(\Delta)(1{-}\sigma(\Delta))$};
   \node[font=\scriptsize, anchor=north west] at (-4.9,-0.5) {$\Delta$（logit 差）};
-  \fill (0,2.4) circle (1.4pt);
+  \fill[tkBlue] (0,2.4) circle (1.4pt);
   \node[font=\scriptsize, anchor=south east] at (0.15,2.48) {峰值 $1/4$（$\Delta{=}0$）};
   \node[font=\scriptsize, align=center, anchor=south] at (-3.4,2.42)
     {÷$\sqrt{d}$ 定标后：Var $=1$，\\$\Delta = O(1)$ 梯度健康区（灰带）};
@@ -177,9 +177,9 @@ $1/\sqrt{d}$ 仍是事实标准，方差更不均匀的情形由量化方案处�
     \draw ({5.7+0.2*\dv},0.52) -- ({5.7+0.2*\dv},0.58);
     \node[tick, anchor=north] at ({5.7+0.2*\dv},0.47) {$\dv$};
   }
-  \draw[thick, domain=0:15, samples=101, smooth]
+  \draw[thick, tkBlue, domain=0:15, samples=101, smooth]
     plot ({5.7+0.2*\x},{0.55+2.4*(1-((\x+2*ln(1+exp(-\x)))/2.302585-0.6)/6)});
-  \fill (5.7,2.95) circle (1.4pt);
+  \fill[tkBlue] (5.7,2.95) circle (1.4pt);
   \draw[red, dashed, thick] (7.96,0.55) -- (7.96,1.23);
   \fill[red] (7.96,1.23) circle (1.4pt);
   \node[font=\scriptsize, anchor=south] at (7.3,3.06) {对数纵轴（$\log_{10}$）放大};
@@ -241,8 +241,8 @@ FLOP/B 量级），kernel 被钉死在 memory-bound 区。修法只有一个方�
 \begin{figure}[H]
 \centering
 \begin{tikzpicture}[
-  kbox/.style={draw, thick, minimum width=2.3cm, minimum height=1.1cm, font=\scriptsize, align=center},
-  arr/.style={-{Stealth[length=4pt]}, very thick},
+  kbox/.style={draw=tkBlue!70, thick, fill=tkFillBlue, minimum width=2.3cm, minimum height=1.1cm, font=\scriptsize, align=center},
+  arr/.style={-{Stealth[length=4pt]}, very thick, draw=tkOrange},
   tlab/.style={font=\scriptsize, align=center},
   nlab/.style={font=\scriptsize, align=center},
 ]
@@ -262,20 +262,20 @@ FLOP/B 量级），kernel 被钉死在 memory-bound 区。修法只有一个方�
   \draw[arr] (6.8, 1.05) -- node[tlab, right=1pt] {写 P\\1 GiB} (6.8, -0.75);
   \draw[arr] (10.2, -0.75) -- node[tlab, right=1pt] {读 P\\1 GiB} (10.2, 1.05);
   \node[font=\scriptsize, anchor=west] at (0.4, -2.05) {4.3 GB（全部往返）};
-  \fill[gray!70] (3.6, -2.25) rectangle (7.9, -1.95);
+  \fill[tkOrange] (3.6, -2.25) rectangle (7.9, -1.95);
   \node[font=\scriptsize, anchor=west] at (0.4, -2.75) {67 MB（有效数据）};
-  \fill[gray!40] (3.6, -2.95) rectangle (3.67, -2.65);
+  \fill[tkGreen] (3.6, -2.95) rectangle (3.67, -2.65);
   \node[font=\scriptsize, anchor=west] at (3.85, -2.8) {$\approx$ 1/64};
   \node[nlab, align=left, anchor=west] at (8.25, -2.45)
     {搬运 $\approx$ 2.2 ms（4.3 GB / 2 TB/s）\\$\gg$ 计算下界 0.83 ms $\Rightarrow$ \textbf{2.6$\times$}};
-  \node[nlab, font=\scriptsize\bfseries, anchor=south] at (4.3, -3.95)
+  \node[nlab, font=\scriptsize\bfseries, anchor=south, text=tkGreen] at (4.3, -3.95)
     {FlashAttention：Q 块常驻 SRAM/寄存器，K/V 流式扫过};
-  \node[draw, thick, dashed, minimum width=8.6cm, minimum height=2.0cm] at (4.3, -4.95) {};
-  \node[draw, fill=gray!15, minimum width=2.0cm, minimum height=0.9cm,
+  \node[draw=tkGreen!70, thick, dashed, minimum width=8.6cm, minimum height=2.0cm] at (4.3, -4.95) {};
+  \node[draw=tkGreen!70, fill=tkFillGreen, minimum width=2.0cm, minimum height=0.9cm,
         font=\scriptsize, align=center] at (1.5, -5.2) {Q 块 $B_r{\times}d$\\常驻 SRAM};
-  \node[draw, dashed, minimum width=2.6cm, minimum height=0.9cm,
+  \node[draw=tkGreen!70, dashed, minimum width=2.6cm, minimum height=0.9cm,
         font=\scriptsize, align=center] at (4.3, -5.2) {S/P 只在寄存器 fragment\\（不落 HBM）};
-  \node[draw, fill=gray!15, minimum width=2.0cm, minimum height=0.9cm,
+  \node[draw=tkGreen!70, fill=tkFillGreen, minimum width=2.0cm, minimum height=0.9cm,
         font=\scriptsize, align=center] at (7.1, -5.2) {online 更新\\$(m, \ell, O)$};
   \node[nlab, anchor=east] at (-0.35, -4.95) {Q, K, V\\（$4Nd \approx 67$ MB）};
   \draw[-{Stealth}] (-0.3, -4.95) -- (0.0, -4.95);

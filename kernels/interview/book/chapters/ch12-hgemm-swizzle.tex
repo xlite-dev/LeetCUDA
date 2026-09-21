@@ -89,7 +89,7 @@ bank 周期。\texttt{ldmatrix.x4} 的 4 个 8$\times$8 矩阵正对应 4 个 ph
   clab/.style={font=\tiny, anchor=south, align=center, inner sep=1pt},
   pbox/.style={draw, rounded corners=2pt, inner sep=2pt, font=\scriptsize,
     align=center, text width=1.95cm, minimum height=1.0cm},
-  pbox0/.style={pbox, very thick, fill=gray!15},
+  pbox0/.style={pbox, very thick, tkBlue, fill=tkFillBlue},
 ]
   \foreach \c in {0,...,7}{
     \pgfmathtruncatemacro{\gf}{6+9*\c}
@@ -109,7 +109,7 @@ bank 周期。\texttt{ldmatrix.x4} 的 4 个 8$\times$8 矩阵正对应 4 个 ph
   \node[pbox] at (4.15,-2.2) {phase 1\\lanes 8--15\\行 8--15 $\cdot$ $c{=}0$};
   \node[pbox] at (6.75,-2.2) {phase 2\\lanes 16--23\\行 0--7 $\cdot$ $c{=}1$};
   \node[pbox] at (9.35,-2.2) {phase 3\\lanes 24--31\\行 8--15 $\cdot$ $c{=}1$};
-  \draw[-{Stealth}] (1.55,-1.69) -- (0.55,-0.72);
+  \draw[-{Stealth}, tkBlue] (1.55,-1.69) -- (0.55,-0.72);
   \draw[-{Stealth}] (4.15,-1.69) -- (0.82,-0.72);
   \draw[-{Stealth}] (6.75,-1.69) -- (1.90,-0.72);
   \draw[-{Stealth}] (9.35,-1.69) -- (2.18,-0.72);
@@ -300,15 +300,15 @@ BK=16 基线 98{,}304 次；两版比值 $691067/297628=2.32$，与模型预测�
     \node[cell, fill=gray!\gb] at (3.32, -0.62*\i) {$q{=}\qb$};
     \node[cell, fill=gray!\gc] at (5.62, -0.62*\i) {$q{=}\qc$};
   }
-  \foreach \xa in {0, 2.3, 4.6}{
-    \draw[thick] (\xa, 0.32) rectangle (\xa+2.04, -4.66);
+  \foreach \xa/\xc in {0/tkRed!55, 2.3/tkOrange!55, 4.6/tkGreen!55}{
+    \draw[thick, \xc] (\xa, 0.32) rectangle (\xa+2.04, -4.66);
   }
-  \node[pttl] at (1.02, 1.0) {(a) 无 swizzle};
-  \node[psub] at (1.02, 0.58) {8 行同 quad：\textbf{8-way}};
-  \node[pttl] at (3.32, 1.0) {(b) per-slice \texttt{swizzle<16>}};
-  \node[psub] at (3.32, 0.58) {两组 quad：\textbf{4-way}};
-  \node[pttl] at (5.62, 1.0) {(c) \texttt{swizzle<64>}（SW128）};
-  \node[psub] at (5.62, 0.58) {铺满 32 bank：\textbf{1-way}};
+  \node[pttl, text=tkRed] at (1.02, 1.0) {(a) 无 swizzle};
+  \node[psub, text=tkRed] at (1.02, 0.58) {8 行同 quad：\textbf{8-way}};
+  \node[pttl, text=tkOrange] at (3.32, 1.0) {(b) per-slice \texttt{swizzle<16>}};
+  \node[psub, text=tkOrange] at (3.32, 0.58) {两组 quad：\textbf{4-way}};
+  \node[pttl, text=tkGreen] at (5.62, 1.0) {(c) \texttt{swizzle<64>}（SW128）};
+  \node[psub, text=tkGreen] at (5.62, 0.58) {铺满 32 bank：\textbf{1-way}};
   \node[pncu] at (1.02, -5.15) {NCU 实测\\691{,}067 次/launch};
   \node[pncu] at (3.32, -5.15) {NCU 实测\\297{,}628 次/launch};
   \node[pncu] at (5.62, -5.15) {模型 1-way（BK=16 基线\\98{,}304 次 = 2-way 参照）};
@@ -409,7 +409,7 @@ bit-exact 等价（12.3.6 节）。派发器只有 9 行，宏门控：
 
 \subsection{kernel 骨架：模板参数、block swizzle 重映射与 smem 布局}
 
-\lstinputlisting[linerange={398-430},firstnumber=auto,
+\lstinputlisting[float=t,linerange={398-430},firstnumber=auto,
   title={hgemm.cuh L398-430（Phase 7b-3 设计注释：smem 布局与寄存器双缓冲时间线）}]{../hgemm.cuh}
 
 \lstinputlisting[linerange={431-460},firstnumber=auto,
@@ -464,7 +464,7 @@ warp shuffle 拼出 128-bit 向量写回 C，思路与第~\ref{ch:11}~章一致�
 \centering
 \begin{tikzpicture}[
   blk/.style={draw, rounded corners=1pt, inner sep=2pt, font=\tiny, align=center},
-  lds/.style={blk, fill=gray!30},
+  lds/.style={blk, fill=tkFillPurple, draw=tkPurple},
   mma/.style={blk, fill=white, pattern=north east lines, pattern color=black!55},
   unit/.style={font=\tiny, inner sep=1pt},
 ]
@@ -476,11 +476,11 @@ warp shuffle 拼出 128-bit 向量写回 C，思路与第~\ref{ch:11}~章一致�
   \node[font=\scriptsize\bfseries] at (7.8, 2.7) {k 迭代 1};
   \node[font=\scriptsize\bfseries] at (10.9, 2.7) {$\cdots$};
   \node[rotate=90, font=\scriptsize\bfseries] at (-0.85, 1.86) {cp.async 预取};
-  \node[blk, fill=gray!12, minimum width=1.5cm] at (0.9, 1.86) {tile 0 $\to$ S$_0$};
-  \node[blk, fill=gray!12, minimum width=3.5cm] at (3.8, 1.86)
+  \node[blk, fill=tkFillBlue, draw=tkBlue, minimum width=1.5cm] at (0.9, 1.86) {tile 0 $\to$ S$_0$};
+  \node[blk, fill=tkFillBlue, draw=tkBlue, minimum width=3.5cm] at (3.8, 1.86)
     {cp.async：tile $k{+}S{-}1$ $\to$ stage $(k{+}S{-}1)\bmod S$\\（tile 1 $\to$ S$_1$，$S{=}$kStages$=2$）};
-  \node[blk, fill=gray!12, minimum width=3.5cm] at (7.8, 1.86) {tile 2 $\to$ S$_0$};
-  \node[blk, fill=gray!12, minimum width=1.3cm] at (10.85, 1.86) {tile 3 $\to$ S$_1~\cdots$};
+  \node[blk, fill=tkFillBlue, draw=tkBlue, minimum width=3.5cm] at (7.8, 1.86) {tile 2 $\to$ S$_0$};
+  \node[blk, fill=tkFillBlue, draw=tkBlue, minimum width=1.3cm] at (10.85, 1.86) {tile 3 $\to$ S$_1~\cdots$};
   \node[rotate=90, font=\scriptsize\bfseries] at (-0.85, 0.0) {k\_step 乒乓};
   \node[lds, minimum width=1.5cm] at (0.9, 0.45) {预装 ldmatrix\\slice 0 $\to$ reg[0]};
   \foreach \j/\st/\ld in {0/1/0, 1/0/1, 2/1/0, 3/0/1}{
@@ -495,7 +495,7 @@ warp shuffle 拼出 128-bit 向量写回 C，思路与第~\ref{ch:11}~章一致�
   }
   \draw[-{Stealth}, dashed, gray] (0.9, 1.45) to[bend right=20] node[font=\tiny, sloped, above]{wait 后消费} (2.75, 0.83);
   \draw[-{Stealth}, dashed, gray] (3.8, 1.45) to[bend right=20] (6.75, 0.83);
-  \node[draw, rounded corners=2pt, fill=gray!8, text width=3.8cm, align=left,
+  \node[draw, rounded corners=2pt, fill=tkFillBlue, draw=tkBlue!70, text width=3.8cm, align=left,
         font=\scriptsize, anchor=north west] at (12.0, 2.42)
     {\textbf{自适应 wait}\\（cp.async 计数语义）：\\[1pt]
      满载期：\texttt{wait\_group(kStages-2)}\\
@@ -517,8 +517,6 @@ slice $t$，tensor core 不必等 ldmatrix。右侧为自适应等待：满载�
 \texttt{wait\_group(kStages-2)} 允许 1 组在飞、尾 tile 退化为 \texttt{wait\_group(0)} 排空。}
 \label{fig:12-dual-pipeline}
 \end{figure}
-
-\needspace{153mm}
 
 \section{图示}
 

@@ -189,8 +189,8 @@ slot」的耦合。
       at ({\cx},-1.00) {算 $t_{2\k}$};
   }
   \foreach \k [evaluate=\k as \cx using {2.95+4*\k}] in {0,1}{
-    \node[dashed, thin, draw=vscAccent, fill=gray!8, minimum width=\blw cm, minimum height=\bh cm,
-          inner sep=0pt, text=vscAccent] at ({\cx},-1.00) {等另一 WG 让出};
+    \node[dashed, thin, draw=tkOrange, fill=tkFillOrange, minimum width=\blw cm, minimum height=\bh cm,
+          inner sep=0pt, text=tkOrange] at ({\cx},-1.00) {等另一 WG 让出};
   }
   \node[anchor=east, font=\scriptsize] at (-0.15,-1.00) {WG0（偶 tile）};
   \foreach \k [evaluate=\k as \cx using {2.95+4*\k}] in {0,1}{
@@ -198,8 +198,8 @@ slot」的耦合。
       at ({\cx},-1.65) {算 $t_{2\k+1}$};
   }
   \foreach \k [evaluate=\k as \cx using {0.95+4*\k}] in {0,1,2}{
-    \node[dashed, thin, draw=vscAccent, fill=gray!8, minimum width=\blw cm, minimum height=\bh cm,
-          inner sep=0pt, text=vscAccent] at ({\cx},-1.65) {等另一 WG 让出};
+    \node[dashed, thin, draw=tkOrange, fill=tkFillOrange, minimum width=\blw cm, minimum height=\bh cm,
+          inner sep=0pt, text=tkOrange] at ({\cx},-1.65) {等另一 WG 让出};
   }
   \node[anchor=east, font=\scriptsize] at (-0.15,-1.65) {WG1（奇 tile）};
   \node[anchor=west, align=left, text width=12.9cm] at (-3.15,-2.25)
@@ -209,15 +209,15 @@ slot」的耦合。
     {每 WG 独立 bank（本章）：\texttt{slot[cid][s]} 与 \texttt{full/empty\_K[cid][s]}，屏障各 $129$};
   \foreach \k [evaluate=\k as \cx using {0.95+2*\k},
                evaluate=\k as \sl using {int(mod(\k,2))},
-               evaluate=\k as \gr using {int(28+28*\sl)}] in {0,...,4}{
-    \node[thin, draw, fill=gray!\gr, minimum width=\blw cm, minimum height=\bh cm, inner sep=0pt]
+               evaluate=\k as \gr using {int(22+23*\sl)}] in {0,...,4}{
+    \node[thin, draw, fill=tkGreen!\gr, minimum width=\blw cm, minimum height=\bh cm, inner sep=0pt]
       at ({\cx},-3.60) {$t_{2\k}$};
   }
   \node[anchor=east, font=\scriptsize] at (-0.15,-3.60) {WG0 的 bank 0};
   \foreach \k [evaluate=\k as \cx using {0.95+2*\k},
                evaluate=\k as \sl using {int(mod(\k,2))},
-               evaluate=\k as \gr using {int(28+28*\sl)}] in {0,...,4}{
-    \node[thin, draw, fill=gray!\gr, minimum width=\blw cm, minimum height=\bh cm, inner sep=0pt]
+               evaluate=\k as \gr using {int(22+23*\sl)}] in {0,...,4}{
+    \node[thin, draw, fill=tkGreen!\gr, minimum width=\blw cm, minimum height=\bh cm, inner sep=0pt]
       at ({\cx},-4.25) {$t_{2\k+1}$};
   }
   \node[anchor=east, font=\scriptsize] at (-0.15,-4.25) {WG1 的 bank 1};
@@ -267,8 +267,8 @@ $136 \times 128 = 17408$ 与 $312 \times 128 = 39936$ 个寄存器），远离�
   % (a) 本章 D=128：40 + 2 x 168 = 376，余量 136
   \node[thin, draw, preaction={fill=gray!8}, pattern=north east lines, pattern color=gray!50,
         minimum width=2.108cm, minimum height=0.50cm, inner sep=0pt] at (6.882,0) {136};
-  \foreach \wc/\cx/\lb in {0.62/0.31/40, 2.604/1.922/168, 2.604/4.526/168}{
-    \node[thin, draw, fill=gray!32, minimum width=\wc cm, minimum height=0.50cm, inner sep=0pt]
+  \foreach \wc/\cx/\lb/\fc in {0.62/0.31/40/18, 2.604/1.922/168/38, 2.604/4.526/168/58}{
+    \node[thin, draw, fill=tkBlue!\fc, minimum width=\wc cm, minimum height=0.50cm, inner sep=0pt]
       at ({\cx},0) {\lb};
   }
   \node[anchor=east, font=\scriptsize] at (-0.15,0) {(a) 本章};
@@ -276,18 +276,18 @@ $136 \times 128 = 17408$ 与 $312 \times 128 = 39936$ 个寄存器），远离�
     {$40 + 2\times168 = 376$：余量 136/线程\\（$=17408$ 个寄存器，远离危险区）};
   % (b) 事故配置：64 + 2 x 224 = 512，恰好触上限
   \foreach \wc/\cx/\lb in {0.992/0.496/64, 3.472/2.728/224, 3.472/6.20/224}{
-    \node[thin, draw=vscAccent, fill=gray!32, minimum width=\wc cm, minimum height=0.50cm, inner sep=0pt]
+    \node[thin, draw=tkRed, fill=tkFillRed, minimum width=\wc cm, minimum height=0.50cm, inner sep=0pt]
       at ({\cx},-1.05) {\lb};
   }
   \node[anchor=east, font=\scriptsize] at (-0.15,-1.05) {(b) 事故};
-  \node[anchor=west, align=left, text width=5.2cm, text=vscAccent] at (8.15,-1.05)
+  \node[anchor=west, align=left, text width=5.2cm, text=tkRed] at (8.15,-1.05)
     {$64 + 2\times224 = 512$：恰好触上限\\
      驱动另有保留份额 $\to$ \texttt{alloc} 永远凑不齐：双向互等、纯挂死};
   % (c) 修复版：480 与 496，各留 >=16 的余量
   \node[thin, draw, preaction={fill=gray!8}, pattern=north east lines, pattern color=gray!50,
         minimum width=0.496cm, minimum height=0.50cm, inner sep=0pt] at (7.688,-2.10) {};
-  \foreach \wc/\cx/\lb in {0.992/0.496/64, 3.224/2.604/208, 3.224/5.228/208}{
-    \node[thin, draw, fill=gray!32, minimum width=\wc cm, minimum height=0.50cm, inner sep=0pt]
+  \foreach \wc/\cx/\lb/\fc in {0.992/0.496/64/18, 3.224/2.604/208/38, 3.224/5.228/208/58}{
+    \node[thin, draw, fill=tkBlue!\fc, minimum width=\wc cm, minimum height=0.50cm, inner sep=0pt]
       at ({\cx},-2.10) {\lb};
   }
   \node[anchor=east, font=\scriptsize] at (-0.15,-2.10) {(c) 修复 1};
@@ -295,8 +295,8 @@ $136 \times 128 = 17408$ 与 $312 \times 128 = 39936$ 个寄存器），远离�
     {$64 + 208 + 208 = 480$：余量 32/线程};
   \node[thin, draw, preaction={fill=gray!8}, pattern=north east lines, pattern color=gray!50,
         minimum width=0.248cm, minimum height=0.50cm, inner sep=0pt] at (7.812,-3.00) {};
-  \foreach \wc/\cx/\lb in {0.496/0.248/32, 3.596/2.294/232, 3.596/5.89/232}{
-    \node[thin, draw, fill=gray!32, minimum width=\wc cm, minimum height=0.50cm, inner sep=0pt]
+  \foreach \wc/\cx/\lb/\fc in {0.496/0.248/32/18, 3.596/2.294/232/38, 3.596/5.89/232/58}{
+    \node[thin, draw, fill=tkBlue!\fc, minimum width=\wc cm, minimum height=0.50cm, inner sep=0pt]
       at ({\cx},-3.00) {\lb};
   }
   \node[anchor=east, font=\scriptsize] at (-0.15,-3.00) {(c) 修复 2};
@@ -449,10 +449,10 @@ L2057），\texttt{consumer\_id}$=1$ 写完后直接退出——省掉单侧的�
 \begin{tikzpicture}[font=\tiny]
   \def\mh{0.40}
   % 顶部：两个 WG 与 scratch 的 wg_tid 对齐
-  \node[draw, fill=gray!10, minimum width=2.9cm, minimum height=0.72cm, align=center, font=\scriptsize]
-    at (1.6,-1.0) {WG1（\texttt{consumer\_id=0}）\\寄存器 $R\_D,\ m,\ \ell$};
-  \node[draw, fill=gray!10, minimum width=2.9cm, minimum height=0.72cm, align=center, font=\scriptsize]
-    at (11.2,-1.0) {WG2（\texttt{consumer\_id=1}）\\寄存器 $R\_D,\ m,\ \ell$};
+  \node[draw=tkBlue, fill=tkFillBlue, minimum width=2.9cm, minimum height=0.72cm, align=center, font=\scriptsize]
+    at (1.6,-0.70) {WG1（\texttt{consumer\_id=0}）\\寄存器 $R\_D,\ m,\ \ell$};
+  \node[draw=tkGreen, fill=tkFillGreen, minimum width=2.9cm, minimum height=0.72cm, align=center, font=\scriptsize]
+    at (11.2,-0.70) {WG2（\texttt{consumer\_id=1}）\\寄存器 $R\_D,\ m,\ \ell$};
   % R_D 区（宽块）
   \draw[fill=gray!20, thick] (4.35,-2.1) rectangle (6.75,{-2.1-8*\mh});
   \node[anchor=south, font=\tiny] at (5.55,-2.02) {$R\_D$ 区：每 \texttt{wg\_tid} 一段 float4 包（16~KB）};
@@ -478,24 +478,24 @@ L2057），\texttt{consumer\_id}$=1$ 写完后直接退出——省掉单侧的�
   % 高亮行 i=2：同一 wg_tid 的两个 WG 命中同一行段
   \draw[vscAccent, very thick] (7.30,{-2.1-2*\mh-0.02}) rectangle (9.50,{-2.1-3*\mh+0.02});
   \draw[vscAccent, very thick] (4.32,{-2.1-2*\mh-0.02}) rectangle (6.78,{-2.1-3*\mh+0.02});
-  \draw[-{Stealth}, thick, vscAccent] (3.10,-1.30) -- (4.28,{-2.1-2.5*\mh});
-  \node[anchor=south, font=\tiny, text=vscAccent] at (3.35,-1.42) {读：同一 \texttt{wg\_tid} 槽位};
-  \draw[-{Stealth}, thick, vscAccent] (9.70,-1.30) -- ({8.4},{-2.1-2.5*\mh}) ;
-  \node[anchor=south, font=\tiny, text=vscAccent] at (9.9,-1.42) {写：按 \texttt{wg\_tid} 索引（128-bit store）};
+  \draw[-{Stealth}, thick, vscAccent] (3.10,-1.02) -- (4.28,{-2.1-2.5*\mh});
+  \node[anchor=east, font=\tiny, text=vscAccent] at (3.02,-1.56) {读：同一 \texttt{wg\_tid} 槽位};
+  \draw[-{Stealth}, thick, vscAccent] (9.70,-1.02) -- ({8.4},{-2.1-2.5*\mh}) ;
+  \node[anchor=west, font=\tiny, text=vscAccent] at (9.98,-1.56) {写：按 \texttt{wg\_tid} 索引（128-bit store）};
   \node[anchor=west, font=\scriptsize, text=vscAccent, align=left] at (10.0,{-2.1-2.5*\mh})
     {同一 \texttt{wg\_tid} $\Rightarrow$ 相同 Q 行段\\$\Rightarrow$ 逐元素归并、零跨 lane 通信};
   % 底部流程链
   \node[draw, fill=gray!12, minimum width=2.30cm, minimum height=0.80cm, align=center, font=\tiny]
     at (1.25,-6.5) {mainloop 退出\\（TMA 全部落账）};
-  \node[draw, fill=gray!12, minimum width=2.10cm, minimum height=0.80cm, align=center, font=\tiny]
+  \node[draw=tkOrange, fill=tkFillOrange, minimum width=2.10cm, minimum height=0.80cm, align=center, font=\tiny]
     at (3.65,-6.5) {(1) \texttt{\_\_syncthreads}\\然后才写 scratch};
-  \node[draw, fill=gray!12, minimum width=2.10cm, minimum height=0.80cm, align=center, font=\tiny]
+  \node[draw=tkGreen, fill=tkFillGreen, minimum width=2.10cm, minimum height=0.80cm, align=center, font=\tiny]
     at (6.05,-6.5) {WG2 写出\\$R\_D,\ m,\ \ell$};
-  \node[draw, fill=gray!12, minimum width=2.10cm, minimum height=0.80cm, align=center, font=\tiny]
+  \node[draw=tkOrange, fill=tkFillOrange, minimum width=2.10cm, minimum height=0.80cm, align=center, font=\tiny]
     at (8.45,-6.5) {(2) \texttt{\_\_syncthreads}\\WG1 可见全部写入};
-  \node[draw, fill=gray!12, minimum width=2.60cm, minimum height=0.80cm, align=center, font=\tiny]
+  \node[draw=tkBlue, fill=tkFillBlue, minimum width=2.60cm, minimum height=0.80cm, align=center, font=\tiny]
     at (11.05,-6.5) {WG1 归并：$m{=}\max$，$\alpha/\beta$\\$\ell$、$O_{\mathrm{acc}}$ 加权};
-  \node[draw, fill=gray!12, minimum width=2.60cm, minimum height=0.80cm, align=center, font=\tiny]
+  \node[draw=tkBlue, fill=tkFillBlue, minimum width=2.60cm, minimum height=0.80cm, align=center, font=\tiny]
     at (13.85,-6.5) {$O = O_{\mathrm{acc}}/\ell$，仅\\ \texttt{consumer\_id=0} 写 gmem};
   \draw[-{Stealth}] (2.42,-6.5) -- (2.58,-6.5);
   \draw[-{Stealth}] (4.72,-6.5) -- (4.98,-6.5);
@@ -541,7 +541,7 @@ GEMM 以喂满 Tensor Core。本 kernel 的 consumer 用\textbf{同步}的
 窗口被完整隐藏。这是「无 WGMMA」约束下的近似——第~\ref{ch:25}~章的 CuTe 版
 会在 sm\_90a 上用 \texttt{wgmma} 把这层差距补上。
 
-\begin{figure}[H]
+\begin{figure}[htbp]
 \centering
 \begin{tikzpicture}[font=\tiny]
   \def\u{1.26}
@@ -554,46 +554,46 @@ GEMM 以喂满 Tensor Core。本 kernel 的 consumer 用\textbf{同步}的
   \node[anchor=south, font=\scriptsize] at ({5*\u},0.42) {时间（一个 KV tile 的本 WG 工作量为 4 段；相位差 $= 1/4$ 周期）};
   % WG1 泳道
   \node[anchor=east, font=\scriptsize] at (-0.15,-0.97) {WG1（偶数 tile）};
-  \node[thin, draw, fill=gray!68, minimum width=2.48cm, minimum height=\lh cm, inner sep=0pt, font=\tiny]
+  \node[thin, draw=tkBlue, fill=tkBlue!45, minimum width=2.48cm, minimum height=\lh cm, inner sep=0pt, font=\tiny]
     at ({1*\u},{-0.97}) {QK MMA};
-  \node[thin, draw, preaction={fill=gray!22}, pattern=north east lines, pattern color=gray!55,
+  \node[thin, draw=tkPurple, preaction={fill=tkPurple!14}, pattern=north east lines, pattern color=tkPurple,
         minimum width=2.48cm, minimum height=\lh cm, inner sep=0pt, font=\tiny]
     at ({3*\u},{-0.97}) {softmax};
-  \node[thin, draw, fill=gray!68, minimum width=2.48cm, minimum height=\lh cm, inner sep=0pt, font=\tiny]
+  \node[thin, draw=tkBlue, fill=tkBlue!45, minimum width=2.48cm, minimum height=\lh cm, inner sep=0pt, font=\tiny]
     at ({5*\u},{-0.97}) {PV MMA};
-  \node[thin, draw, fill=gray!45, minimum width=1.22cm, minimum height=\lh cm, inner sep=0pt, font=\tiny]
+  \node[thin, draw=tkPurple, fill=tkPurple!35, minimum width=1.22cm, minimum height=\lh cm, inner sep=0pt, font=\tiny]
     at ({6.5*\u},{-0.97}) {rescale};
   \node[dotted, draw, minimum width=1.22cm, minimum height=\lh cm, inner sep=0pt, font=\tiny]
     at ({7.5*\u},{-0.97}) {等};
   % WG2 泳道（相位差 1/4 周期 = 2 单位）
   \node[anchor=east, font=\scriptsize] at (-0.15,-1.87) {WG2（奇数 tile）};
-  \node[thin, draw, fill=gray!68, minimum width=2.48cm, minimum height=\lh cm, inner sep=0pt, font=\tiny]
+  \node[thin, draw=tkBlue, fill=tkBlue!45, minimum width=2.48cm, minimum height=\lh cm, inner sep=0pt, font=\tiny]
     at ({3*\u},{-1.87}) {QK MMA};
-  \node[thin, draw, preaction={fill=gray!22}, pattern=north east lines, pattern color=gray!55,
+  \node[thin, draw=tkPurple, preaction={fill=tkPurple!14}, pattern=north east lines, pattern color=tkPurple,
         minimum width=2.48cm, minimum height=\lh cm, inner sep=0pt, font=\tiny]
     at ({5*\u},{-1.87}) {softmax};
-  \node[thin, draw, fill=gray!68, minimum width=2.48cm, minimum height=\lh cm, inner sep=0pt, font=\tiny]
+  \node[thin, draw=tkBlue, fill=tkBlue!45, minimum width=2.48cm, minimum height=\lh cm, inner sep=0pt, font=\tiny]
     at ({7*\u},{-1.87}) {PV MMA};
-  \node[thin, draw, fill=gray!45, minimum width=1.22cm, minimum height=\lh cm, inner sep=0pt, font=\tiny]
+  \node[thin, draw=tkPurple, fill=tkPurple!35, minimum width=1.22cm, minimum height=\lh cm, inner sep=0pt, font=\tiny]
     at ({8.5*\u},{-1.87}) {rescale};
   \node[dotted, draw, minimum width=1.22cm, minimum height=\lh cm, inner sep=0pt, font=\tiny]
     at ({9.5*\u},{-1.87}) {等};
   % producer 泳道
   \node[anchor=east, font=\scriptsize] at (-0.15,-2.7) {producer（TMA）};
-  \draw[-{Stealth}, very thick] ({0.3*\u},-2.7) -- ({9.7*\u},-2.7);
+  \draw[-{Stealth}, very thick, tkGreen] ({0.3*\u},-2.7) -- ({9.7*\u},-2.7);
   \node[anchor=south, font=\tiny] at ({5*\u},-2.58) {搬运 tile $t{+}1/t{+}2$ 的 K/V $\to$ 对应 stage（全程并行，隐藏在计算之下）};
   \foreach \ta in {2,4,6,8}{
-    \draw[-{Stealth}, thin] ({\ta*\u},-2.55) -- ({\ta*\u},-2.32);
+    \draw[-{Stealth}, thin, tkOrange] ({\ta*\u},-2.55) -- ({\ta*\u},-2.32);
   }
-  \node[anchor=north, font=\tiny] at ({6*\u},-2.86) {full[s] arrive-tx：TMA 落账即翻转};
+  \node[anchor=north, font=\tiny, text=tkOrange] at ({6*\u},-2.86) {full[s] arrive-tx：TMA 落账即翻转};
   % 资源占用条
   \node[anchor=east, font=\scriptsize] at (-0.15,-3.7) {Tensor Core};
-  \node[thin, draw, fill=gray!68, minimum width=10.04cm, minimum height=0.30cm, inner sep=0pt] at ({4*\u},-3.7) {};
+  \node[thin, draw=tkBlue, fill=tkBlue!45, minimum width=10.04cm, minimum height=0.30cm, inner sep=0pt] at ({4*\u},-3.7) {};
   \node[dotted, draw, minimum width=2.48cm, minimum height=0.30cm, inner sep=0pt] at ({9*\u},-3.7) {空};
   \node[anchor=east, font=\scriptsize] at (-0.15,-4.25) {CUDA Core/SFU};
-  \node[thin, draw, preaction={fill=gray!30}, pattern=north east lines, pattern color=gray!55,
+  \node[thin, draw=tkPurple, preaction={fill=tkPurple!14}, pattern=north east lines, pattern color=tkPurple,
         minimum width=6.26cm, minimum height=0.30cm, inner sep=0pt] at ({4.5*\u},-4.25) {};
-  \node[thin, draw, preaction={fill=gray!30}, pattern=north east lines, pattern color=gray!55,
+  \node[thin, draw=tkPurple, preaction={fill=tkPurple!14}, pattern=north east lines, pattern color=tkPurple,
         minimum width=1.22cm, minimum height=0.30cm, inner sep=0pt] at ({8.5*\u},-4.25) {};
   \node[dotted, draw, minimum width=2.48cm, minimum height=0.30cm, inner sep=0pt] at ({1*\u},-4.25) {};
   \node[dotted, draw, minimum width=1.22cm, minimum height=0.30cm, inner sep=0pt] at ({9.5*\u},-4.25) {};
@@ -602,26 +602,24 @@ GEMM 以喂满 Tensor Core。本 kernel 的 consumer 用\textbf{同步}的
   % 对照：单 consumer
   \node[anchor=west, font=\scriptsize\bfseries] at (0,-5.5) {对照：单 consumer（第~\ref{ch:17}~章形态）——softmax 段 Tensor Core 空转};
   \node[anchor=east, font=\scriptsize] at (-0.15,-6.1) {单 WG};
-  \node[thin, draw, fill=gray!68, minimum width={1.7cm}, minimum height=0.40cm, inner sep=0pt, font=\tiny]
+  \node[thin, draw=tkBlue, fill=tkBlue!45, minimum width={1.7cm}, minimum height=0.40cm, inner sep=0pt, font=\tiny]
     at (1.0,-6.1) {QK};
-  \node[thin, draw, preaction={fill=gray!22}, pattern=north east lines, pattern color=gray!55,
+  \node[thin, draw=tkPurple, preaction={fill=tkPurple!14}, pattern=north east lines, pattern color=tkPurple,
         minimum width=1.7cm, minimum height=0.40cm, inner sep=0pt, font=\tiny] at (2.8,-6.1) {softmax};
-  \node[thin, draw, fill=gray!68, minimum width=1.7cm, minimum height=0.40cm, inner sep=0pt, font=\tiny]
+  \node[thin, draw=tkBlue, fill=tkBlue!45, minimum width=1.7cm, minimum height=0.40cm, inner sep=0pt, font=\tiny]
     at (4.6,-6.1) {PV};
-  \node[thin, draw, fill=gray!45, minimum width=1.2cm, minimum height=0.40cm, inner sep=0pt, font=\tiny]
+  \node[thin, draw=tkPurple, fill=tkPurple!35, minimum width=1.2cm, minimum height=0.40cm, inner sep=0pt, font=\tiny]
     at (6.1,-6.1) {rs};
   \node[anchor=east, font=\scriptsize] at (-0.15,-6.75) {Tensor Core};
-  \node[thin, draw, fill=gray!68, minimum width=1.7cm, minimum height=0.30cm, inner sep=0pt] at (1.0,-6.75) {};
-  \node[thin, draw, fill=gray!68, minimum width=1.7cm, minimum height=0.30cm, inner sep=0pt] at (4.6,-6.75) {};
-  \node[draw=vscAccent, thick, preaction={fill=gray!8}, pattern=north east lines, pattern color=vscAccent,
+  \node[thin, draw=tkBlue, fill=tkBlue!45, minimum width=1.7cm, minimum height=0.30cm, inner sep=0pt] at (1.0,-6.75) {};
+  \node[thin, draw=tkBlue, fill=tkBlue!45, minimum width=1.7cm, minimum height=0.30cm, inner sep=0pt] at (4.6,-6.75) {};
+  \node[draw=tkRed, thick, preaction={fill=tkFillRed}, pattern=north east lines, pattern color=tkRed,
         minimum width=1.7cm, minimum height=0.30cm, inner sep=0pt] at (2.8,-6.75) {};
-  \node[font=\tiny, text=vscAccent] at (2.8,-7.12) {TC 空转};
+  \node[font=\tiny, text=tkRed] at (2.8,-7.12) {TC 空转};
 \end{tikzpicture}
 \caption{双 consumer 的相位交错时序（18.4.6 节统计性交错的图形化）。上：WG1/WG2 各按「QK MMA $\to$ softmax $\to$ PV MMA $\to$ rescale」四段推进自己的 KV tile 子序列，两 WG 相位差 $1/4$ 周期——WG1 处于 MMA 段时 WG2 大概率处于 softmax/rescale 段；producer 的 TMA 全程并行，落账即 arrive-tx 翻转 \texttt{full[s]}。中：Tensor Core 与 CUDA Core/SFU 两条资源条被两路计算交替填满（同步 \texttt{mma.sync} 做不到 WG 内重叠，靠两路独立流在硬件调度器上统计性交错）。下：单 consumer（第~\ref{ch:17}~章形态）的对照——softmax 段 Tensor Core 只能空转，这正是第二个 consumer 要填的洞。}
 \label{fig:18-dual-phase}
 \end{figure}
-
-\needspace{119mm}
 
 \section{图示}
 
@@ -678,13 +676,13 @@ GEMM 以喂满 Tensor Core。本 kernel 的 consumer 用\textbf{同步}的
   \node[draw=black!60, fill=gray!25, font=\tiny\bfseries, align=center,
         text width=15.2cm, inner sep=1pt, minimum height=0.47cm] at (580,431)
     {收尾：\_\_syncthreads（全部 TMA 落地，K/V smem 生命周期结束）};
-  \node[draw=tGreen, fill=white, align=center, text width=7.3cm, inner sep=1pt,
-        minimum height=0.67cm] at (295,484)
-    {WG2：$(R_D, m_1, \ell_1) \to$ smem scratch（按 wg\_tid 索引）后 \_\_syncthreads};
   \node[draw=tBlue, fill=white, align=center, text width=7.3cm, inner sep=1pt,
-        minimum height=0.67cm] at (865,484)
+        minimum height=0.67cm] at (295,484)
     {WG1：读 scratch 归并后写出 $O \to$ gmem};
-  \draw[-{Stealth}, tGreen, thick] (570,484) -- (594,484);
+  \node[draw=tGreen, fill=white, align=center, text width=7.3cm, inner sep=1pt,
+        minimum height=0.67cm] at (865,484)
+    {WG2：$(R_D, m_1, \ell_1) \to$ smem scratch（按 wg\_tid 索引）后 \_\_syncthreads};
+  \draw[-{Stealth}, tGreen, thick] (594,484) -- (570,484);
   \node[draw=tGreen, fill=gray!15, text=tGreen!70!black, align=center,
         text width=15.2cm, inner sep=1pt, minimum height=0.89cm] at (580,556)
     {$m = \max(m_0, m_1)$；$a = \exp(m_0-m)$，$b = \exp(m_1-m)$；$\ell = a\,\ell_0 + b\,\ell_1$；$O_{acc} = a\,O_{acc0} + b\,O_{acc1}$；$O = O_{acc}/\ell$};

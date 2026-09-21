@@ -49,7 +49,7 @@
 
 \bigskip
 
-\noindent 出于各种目的，我们可能希望对布局 $A$ 进行{\it 铺砌}（tile）。例如，下面给出了用几种不同布局 $B$ 对 $A$ 所作的铺砌（tiling）。
+\noindent 出于各种目的，我们可能希望对布局 $A$ 进行{\it 分块}（tile）。例如，下面给出了用几种不同布局 $B$ 对 $A$ 所作的分块（tiling）。
 
 \bigskip
 
@@ -201,7 +201,7 @@
 
 \bigskip 
 
-在处理这类经过铺砌的布局时，我们希望能够用形如 $(\texttt{tile}\_\texttt{coordinate},\texttt{tile})$ 的坐标对布局进行索引，其中 $\texttt{tile}$ 指明我们正在操作的是哪一个瓦片（tile），而 $\texttt{tile}\_\texttt{coordinate}$ 指明所给瓦片内部的一个坐标。例如，若 $A$ 与 $B$ 的秩（rank）均为 $2$，我们便希望把 $((i,j),(k,\ell))$ 写作 $A$ 的第 $(k,\ell)$ 个瓦片中第 $(i,j)$ 个元素（entry）的索引。逻辑切分 $A \oslash B$ 正是为我们提供这一能力的布局。
+在处理这类经过分块的布局时，我们希望能够用形如 $(\texttt{tile}\_\texttt{coordinate},\texttt{tile})$ 的坐标对布局进行索引，其中 $\texttt{tile}$ 指明我们正在操作的是哪一个块（tile），而 $\texttt{tile}\_\texttt{coordinate}$ 指明所给块内部的一个坐标。例如，若 $A$ 与 $B$ 的秩（rank）均为 $2$，我们便希望把 $((i,j),(k,\ell))$ 写作 $A$ 的第 $(k,\ell)$ 个块中第 $(i,j)$ 个元素（entry）的索引。逻辑切分 $A \oslash B$ 正是为我们提供这一能力的布局。
 
 
 
@@ -323,7 +323,7 @@ A \oslash B & = A \circ (B,B^c)\\
 \end{example}
 
 \begin{remark}
-    $A \oslash B$ 中每个元素的{\it 颜色}（color）表明它属于哪个瓦片，而 $A\oslash B$ 中每个元素的{\it 不透明度}（opacity）表明它代表该瓦片中的哪个元素。这正是 $A\oslash B$ 的每一列颜色相同、每一行不透明度相同的原因。
+    $A \oslash B$ 中每个元素的{\it 颜色}（color）表明它属于哪个块，而 $A\oslash B$ 中每个元素的{\it 不透明度}（opacity）表明它代表该块中的哪个元素。这正是 $A\oslash B$ 的每一列颜色相同、每一行不透明度相同的原因。
 \end{remark}
 
 
@@ -446,7 +446,7 @@ A \oslash B & = A \circ (B,B^c)\\
 
 
 \begin{remark}
-    注意前两个例子之间的差别。两个例子中对 $A$ 的铺砌完全相同，但每个瓦片内部的布局各不相同。在第一个例子中，各瓦片具有列主序（column-major）布局，而在第二个例子中，各瓦片具有行主序（row-major）布局。这导致进行逻辑切分时得到不同的布局。
+    注意前两个例子之间的差别。两个例子中对 $A$ 的分块完全相同，但每个块内部的布局各不相同。在第一个例子中，各块具有列主序（column-major）布局，而在第二个例子中，各块具有行主序（row-major）布局。这导致进行逻辑切分时得到不同的布局。
 \end{remark}
 
 
