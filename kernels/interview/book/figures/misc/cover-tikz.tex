@@ -1,0 +1,216 @@
+% cover-tikz.tex — LeetCUDA 书封面（CuTe layout 风格, 浅色 A4 满幅）
+% 构建: xelatex cover-tikz.tex (standalone 输出 A4 PDF)
+% 主网格 L = (8,16):(1,8), cell(i0,i1) = i0 + 8*i1 (gen_grid.py assert 双射 0..127);
+% 配色 = colfax quotient ramp: hue 按 2 列 tile 组 (colorx1..8), intensity 行渐变 8..64
+\documentclass[tikz,border=0pt]{standalone}
+\usetikzlibrary{arrows.meta,calc}
+\usepackage{xeCJK}
+\usepackage{amsmath}
+\setmainfont{TeX Gyre Heros}
+\setCJKmainfont{Noto Serif CJK SC}
+\setCJKsansfont{Noto Sans CJK SC}
+
+\definecolor{coverBg}{RGB}{248,249,251}
+\definecolor{coverInk}{RGB}{31,35,40}
+\definecolor{coverMuted}{RGB}{118,126,138}
+\definecolor{accentBlue}{RGB}{33,113,181}
+% 8 色 jewel-tone (降饱和版, 浅底雅致; 与网格/色条共用)
+\definecolor{colorx1}{RGB}{213,84,76}
+\definecolor{colorx2}{RGB}{232,163,61}
+\definecolor{colorx3}{RGB}{155,191,90}
+\definecolor{colorx4}{RGB}{76,182,149}
+\definecolor{colorx5}{RGB}{69,168,200}
+\definecolor{colorx6}{RGB}{62,124,192}
+\definecolor{colorx7}{RGB}{126,99,184}
+\definecolor{colorx8}{RGB}{194,88,158}
+
+\begin{document}
+\begin{tikzpicture}
+% ===== A4 背景 (cm), 极淡冷灰渐变 =====
+\shade[top color=coverBg, bottom color=coverBg!94!accentBlue] (0,0) rectangle (21,29.7);
+
+% ===== 背景装饰: 散落 size:stride 元组纹理 (浅灰) =====
+\node[rotate=13, anchor=center, text=coverMuted!35, font=\ttfamily\footnotesize] at (2.4,24.3) {(4,8):(8,1)};
+\node[rotate=-8, anchor=center, text=coverMuted!30, font=\ttfamily\footnotesize] at (18.6,21.4) {(128,128):(1,128)};
+\node[rotate=6, anchor=center, text=coverMuted!30, font=\ttfamily\footnotesize] at (2.6,7.0) {(16,8):(8,1)};
+\node[rotate=-13, anchor=center, text=coverMuted!30, font=\ttfamily\footnotesize] at (19.3,27.6) {((2,2),(2,2))};
+\node[rotate=11, anchor=center, text=coverMuted!28, font=\ttfamily\footnotesize] at (19.2,17.2) {(3):(1)};
+\node[rotate=-6, anchor=center, text=coverMuted!28, font=\ttfamily\footnotesize] at (2.2,2.4) {(8,16):(1,8)};
+
+% ===== 顶部小标签 =====
+\node[text=coverMuted, font=\ttfamily\bfseries\small] at (10.5,26.9)
+  {CUTE\; LAYOUT $\cdot$ TENSOR\; CORE $\cdot$ FLASH\; ATTENTION};
+
+% ===== 标题块 =====
+\node[text=coverInk, font=\fontsize{44}{48}\selectfont\bfseries] at (10.5,23.9) {LeetCUDA};
+\node[text=coverInk, font=\fontsize{25}{30}\selectfont\bfseries] at (10.5,21.3)
+  {\CJKfamily{zhsans}\sffamily CUDA Kernel 优化之路};
+\node[text=coverMuted, font=\fontsize{13}{16}\selectfont] at (10.5,19.5)
+  {从编程模型到 CuTe 与 FlashAttention};
+
+% colorx 八段细色条 (与网格 8 hue 呼应, 极细低调)
+\foreach \i in {0,...,7} {%
+  \fill[colorx\number\numexpr\i+1\relax!85] (3.3+\i*1.8,18.55) rectangle +(1.8,0.06);}
+
+% ===== 主视觉: CuTe layout 网格 (8x16) =====
+% L = (8,16):(1,8); hue = 2 列 tile 组, intensity = 行渐变 (quotient ramp)
+\begin{scope}[shift={(3.3,15.5)}, x={(0cm,-0.9cm)}, y={(0.9cm,0cm)},
+  every node/.style={minimum size=0.9cm, outer sep=0pt, text=coverInk!65,
+    font=\fontsize{7.5}{8.5}\selectfont}]
+  \node[fill=colorx1!8] at (0,0) {0};
+\node[fill=colorx1!8] at (0,1) {8};
+\node[fill=colorx2!8] at (0,2) {16};
+\node[fill=colorx2!8] at (0,3) {24};
+\node[fill=colorx3!8] at (0,4) {32};
+\node[fill=colorx3!8] at (0,5) {40};
+\node[fill=colorx4!8] at (0,6) {48};
+\node[fill=colorx4!8] at (0,7) {56};
+\node[fill=colorx5!8] at (0,8) {64};
+\node[fill=colorx5!8] at (0,9) {72};
+\node[fill=colorx6!8] at (0,10) {80};
+\node[fill=colorx6!8] at (0,11) {88};
+\node[fill=colorx7!8] at (0,12) {96};
+\node[fill=colorx7!8] at (0,13) {104};
+\node[fill=colorx8!8] at (0,14) {112};
+\node[fill=colorx8!8] at (0,15) {120};
+\node[fill=colorx1!16] at (1,0) {1};
+\node[fill=colorx1!16] at (1,1) {9};
+\node[fill=colorx2!16] at (1,2) {17};
+\node[fill=colorx2!16] at (1,3) {25};
+\node[fill=colorx3!16] at (1,4) {33};
+\node[fill=colorx3!16] at (1,5) {41};
+\node[fill=colorx4!16] at (1,6) {49};
+\node[fill=colorx4!16] at (1,7) {57};
+\node[fill=colorx5!16] at (1,8) {65};
+\node[fill=colorx5!16] at (1,9) {73};
+\node[fill=colorx6!16] at (1,10) {81};
+\node[fill=colorx6!16] at (1,11) {89};
+\node[fill=colorx7!16] at (1,12) {97};
+\node[fill=colorx7!16] at (1,13) {105};
+\node[fill=colorx8!16] at (1,14) {113};
+\node[fill=colorx8!16] at (1,15) {121};
+\node[fill=colorx1!24] at (2,0) {2};
+\node[fill=colorx1!24] at (2,1) {10};
+\node[fill=colorx2!24] at (2,2) {18};
+\node[fill=colorx2!24] at (2,3) {26};
+\node[fill=colorx3!24] at (2,4) {34};
+\node[fill=colorx3!24] at (2,5) {42};
+\node[fill=colorx4!24] at (2,6) {50};
+\node[fill=colorx4!24] at (2,7) {58};
+\node[fill=colorx5!24] at (2,8) {66};
+\node[fill=colorx5!24] at (2,9) {74};
+\node[fill=colorx6!24] at (2,10) {82};
+\node[fill=colorx6!24] at (2,11) {90};
+\node[fill=colorx7!24] at (2,12) {98};
+\node[fill=colorx7!24] at (2,13) {106};
+\node[fill=colorx8!24] at (2,14) {114};
+\node[fill=colorx8!24] at (2,15) {122};
+\node[fill=colorx1!32] at (3,0) {3};
+\node[fill=colorx1!32] at (3,1) {11};
+\node[fill=colorx2!32] at (3,2) {19};
+\node[fill=colorx2!32] at (3,3) {27};
+\node[fill=colorx3!32] at (3,4) {35};
+\node[fill=colorx3!32] at (3,5) {43};
+\node[fill=colorx4!32] at (3,6) {51};
+\node[fill=colorx4!32] at (3,7) {59};
+\node[fill=colorx5!32] at (3,8) {67};
+\node[fill=colorx5!32] at (3,9) {75};
+\node[fill=colorx6!32] at (3,10) {83};
+\node[fill=colorx6!32] at (3,11) {91};
+\node[fill=colorx7!32] at (3,12) {99};
+\node[fill=colorx7!32] at (3,13) {107};
+\node[fill=colorx8!32] at (3,14) {115};
+\node[fill=colorx8!32] at (3,15) {123};
+\node[fill=colorx1!40] at (4,0) {4};
+\node[fill=colorx1!40] at (4,1) {12};
+\node[fill=colorx2!40] at (4,2) {20};
+\node[fill=colorx2!40] at (4,3) {28};
+\node[fill=colorx3!40] at (4,4) {36};
+\node[fill=colorx3!40] at (4,5) {44};
+\node[fill=colorx4!40] at (4,6) {52};
+\node[fill=colorx4!40] at (4,7) {60};
+\node[fill=colorx5!40] at (4,8) {68};
+\node[fill=colorx5!40] at (4,9) {76};
+\node[fill=colorx6!40] at (4,10) {84};
+\node[fill=colorx6!40] at (4,11) {92};
+\node[fill=colorx7!40] at (4,12) {100};
+\node[fill=colorx7!40] at (4,13) {108};
+\node[fill=colorx8!40] at (4,14) {116};
+\node[fill=colorx8!40] at (4,15) {124};
+\node[fill=colorx1!48] at (5,0) {5};
+\node[fill=colorx1!48] at (5,1) {13};
+\node[fill=colorx2!48] at (5,2) {21};
+\node[fill=colorx2!48] at (5,3) {29};
+\node[fill=colorx3!48] at (5,4) {37};
+\node[fill=colorx3!48] at (5,5) {45};
+\node[fill=colorx4!48] at (5,6) {53};
+\node[fill=colorx4!48] at (5,7) {61};
+\node[fill=colorx5!48] at (5,8) {69};
+\node[fill=colorx5!48] at (5,9) {77};
+\node[fill=colorx6!48] at (5,10) {85};
+\node[fill=colorx6!48] at (5,11) {93};
+\node[fill=colorx7!48] at (5,12) {101};
+\node[fill=colorx7!48] at (5,13) {109};
+\node[fill=colorx8!48] at (5,14) {117};
+\node[fill=colorx8!48] at (5,15) {125};
+\node[fill=colorx1!56] at (6,0) {6};
+\node[fill=colorx1!56] at (6,1) {14};
+\node[fill=colorx2!56] at (6,2) {22};
+\node[fill=colorx2!56] at (6,3) {30};
+\node[fill=colorx3!56] at (6,4) {38};
+\node[fill=colorx3!56] at (6,5) {46};
+\node[fill=colorx4!56] at (6,6) {54};
+\node[fill=colorx4!56] at (6,7) {62};
+\node[fill=colorx5!56] at (6,8) {70};
+\node[fill=colorx5!56] at (6,9) {78};
+\node[fill=colorx6!56] at (6,10) {86};
+\node[fill=colorx6!56] at (6,11) {94};
+\node[fill=colorx7!56] at (6,12) {102};
+\node[fill=colorx7!56] at (6,13) {110};
+\node[fill=colorx8!56] at (6,14) {118};
+\node[fill=colorx8!56] at (6,15) {126};
+\node[fill=colorx1!64] at (7,0) {7};
+\node[fill=colorx1!64] at (7,1) {15};
+\node[fill=colorx2!64] at (7,2) {23};
+\node[fill=colorx2!64] at (7,3) {31};
+\node[fill=colorx3!64] at (7,4) {39};
+\node[fill=colorx3!64] at (7,5) {47};
+\node[fill=colorx4!64] at (7,6) {55};
+\node[fill=colorx4!64] at (7,7) {63};
+\node[fill=colorx5!64] at (7,8) {71};
+\node[fill=colorx5!64] at (7,9) {79};
+\node[fill=colorx6!64] at (7,10) {87};
+\node[fill=colorx6!64] at (7,11) {95};
+\node[fill=colorx7!64] at (7,12) {103};
+\node[fill=colorx7!64] at (7,13) {111};
+\node[fill=colorx8!64] at (7,14) {119};
+\node[fill=colorx8!64] at (7,15) {127};
+  \draw[white, line width=0.7pt, shift={(-0.5,-0.5)}] (0,0) grid (8,16);
+  \draw[coverInk!35, line width=0.7pt] (-0.5,-0.5) rectangle (7.5,15.5);
+\end{scope}
+
+% 高亮 tile B = (2,2):(1,8) (右上角 2x2 tile, accent 粗框; scope 内 i0 行 0-1, i1 列 14-15)
+\draw[accentBlue, line width=1.5pt, rounded corners=1.5pt,
+  shift={(3.3,15.5)}, x={(0cm,-0.9cm)}, y={(0.9cm,0cm)}]
+  (-0.5,13.5) rectangle (1.5,15.5);
+\node[anchor=south, text=accentBlue, font=\ttfamily\bfseries\footnotesize]
+  at (16.35,16.85) {$B=(2,2):(1,8)$};
+\draw[-{Stealth[length=1.8mm]}, accentBlue, line width=0.8pt] (16.35,16.7) -- (16.35,16.0);
+
+% layout 方程 (网格正下方, 居中)
+\node[text=coverInk, font=\fontsize{13}{16}\selectfont] at (10.5,7.55)
+  {$L = (8,16):(1,8)$};
+% mode 标注: mode0 (stride 1) 向下, mode1 (stride 8) 向右
+\node[rotate=90, anchor=center, text=coverMuted, font=\ttfamily\footnotesize] at (2.5,11.8) {mode\,0\,:\,(1)\;$\downarrow$};
+\node[text=coverMuted, font=\ttfamily\footnotesize] at (10.5,16.35) {$\rightarrow$\;mode\,1\,:\,(8)};
+\node[text=coverMuted, font=\ttfamily\footnotesize] at (10.5,6.8) {hue\,=\,2-col tile $\cdot$ ramp\,=\,row};
+
+% ===== 底部声明 (细线框) =====
+\node[draw=accentBlue!45, rounded corners=2pt, inner xsep=10pt, inner ysep=8pt,
+  text=coverInk, text width=15.4cm, align=center, font=\small] at (10.5,4.6)
+  {\CJKfamily{zhsans}\bfseries 郑重声明\\
+   \mdseries\CJKfamily{zhsong} 本书仅用于开源学习与技术交流，未经作者本人同意，不得用于任何商业用途。};
+\node[text=coverMuted, font=\small] at (10.5,2.85)
+  {LeetCUDA Project $\cdot$ 2026 年 9 月};
+\end{tikzpicture}
+\end{document}

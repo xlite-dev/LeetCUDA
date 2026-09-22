@@ -17,8 +17,9 @@
 % 封面：shipout 背景钩子满幅铺图，页面本体留空（newgeometry 会在此处
 % 先 clearpage 产生空白首页，故不用）；钩子 picture 原点在页左上、
 % y 轴向下，图参考点为左下角故放 (0,-\paperheight)
+% 封面源: figures/misc/cover-tikz.tex（CuTe layout 风格, standalone 矢量）
 \AddToHookNext{shipout/background}{%
-  \put(0,-\dimexpr\paperheight\relax){\includegraphics[width=\paperwidth,height=\paperheight]{figures/misc/cover.png}}}
+  \put(0,-\dimexpr\paperheight\relax){\includegraphics[width=\paperwidth,height=\paperheight]{figures/misc/cover.pdf}}}
 \thispagestyle{empty}
 \null
 \clearpage
