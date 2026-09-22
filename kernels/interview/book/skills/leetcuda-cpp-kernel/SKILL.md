@@ -166,6 +166,30 @@ strided 通用）、量化数学与 scale 折叠、性能 RFC 与已证伪清单
 | 源码索引：kernel 源文件+行号定位表 | `appendices/appD-source-index.tex` |
 | 参考文献与延伸阅读（含 PTX ISA 章节映射） | `appendices/appE-references.tex` |
 
+### 代码文件 references（kernels/interview 源码直定位）
+
+按任务路由到章后，配套可参考源码直接按此表打开（行数为实测值；行号级
+冻结映射见 `appendices/appD-source-index.tex`，基准 commit `6cd32de`）：
+
+| 文件（相对 `<LeetCUDA_DIR>/kernels/interview/`） | 行数 | 内容 | 对应章 |
+|---|---|---|---|
+| `base.cuh` | 909 | 架构/Roofline 速查、warp/block 归约与 dot、向量化与原子操作、softmax 三级递进、merge_attn_states、RMS/LayerNorm、RoPE 与转置 | ch01–07 |
+| `sgemv.cuh` | 102 | SGEMV 三种划分（warp-per-row K32/K128/K16） | ch08 |
+| `sgemm.cuh` | 434 | SGEMM 阶梯（block-tile/Vec4/双缓冲 → TF32 WMMA） | ch09–10 |
+| `hgemm.cuh` | 2100 | mma.sync m16n8k16 与 ldmatrix、XOR swizzle、TMA/WGMMA/mbarrier、SM120 TMA+WS、CuTe 对照片段与 CuTe HGEMM 实战 | ch11–14、ch20–21、ch23–24 |
+| `flash_attn.cuh` | 4179 | FA 原理头注释、FA2 split-Q+MMA、FA2 TMA+WS、FA3 双 consumer、CuTe FA 三实现、persist-D（`flash_attn_cute_persist_d_sm120` L3635 起） | ch15–18、ch25、ch26b |
+| `ffpa_attn.cuh` | 641 | FFPA Split-D 全篇、双 TiledMMA/traits（M4N2 对照） | ch19、ch22、ch26 |
+| `common.cuh` | 803 | TMA/mbarrier/setmaxnreg/WGMMA 宏封装与 swizzle 工具箱（逐段解析见 appA） | ch12–14、appA |
+| `notes-v2.cu` | 5219 | 面试背题主编译单元：include 全部 `.cuh`，~30 kernel 的 WHY+HOW 注释与 10 Phase 递进，`--bench` harness（`bin/notes_v2_*.bin` 源） | 全书总装、appC |
+| `bench/bench_attn.cu` | — | FA2 CuTe TMA+MMA+WS vs cuDNN SDPA 专项 bench | ch00、ch17/25 |
+| `bench/bench_ffpa.cu` | — | FFPA Split-D attention 专项 bench | ch19、ch33 |
+| `bench/bench_sgemm.cu` | — | `sgemm.cuh` 全 kernel 性能+精度 bench | ch09–12 |
+| `bench/bench_sdpa.py` | — | PyTorch SDPA 参照计时 | ch00、appB |
+| `book/tests/chNN_*.cu` | — | 每章最小正确性测试（CPU fp64 对拍），`build_tests.sh --arch sm_120a --all` | 各章 |
+
+Part V（ch27–33）教学 kernel 源码在 `<FFPA_ATTN_DIR>/csrc/cuffpa/`（appD 内
+附逐章 GitHub permalink）。
+
 ## 第三步：按需读取纪律
 
 1. **先路由后读取**：一次只读任务相关的 1-2 章；章内先看 `\section/\subsection`
