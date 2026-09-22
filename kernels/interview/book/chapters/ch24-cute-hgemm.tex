@@ -15,7 +15,7 @@
 （2048$\times$16384），Phase~7b 为 76.55\,TFLOPS（1024$^3$），但代价是同一组
 「形状与步长」的事实被反复重写：\texttt{ldmatrix} 的 lane 映射、swizzle 的
 XOR 掩码、epilogue 的 \texttt{\_\_shfl\_sync} 编排，每一处都要人工保证与其余
-四处的地址算术一致。本章把同一个 kernel 交给 CuTe 重写一遍——Phase~7c 的
+四处的地址算术一致。本章把同一个 kernel 交给 CuTe 重写一遍，用的是 Phase~7c 的
 \texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn\_\allowbreak{}cute}，并在最后用一张\textbf{对照表}
 （图~\ref{fig:24-1}）把两条路逐项摆开。
 
@@ -26,15 +26,15 @@ Swizzle 与 TMA）。本章是 Part~IV 的第一章「应用篇」，只用到�
 四个抽象：\texttt{Layout}、\texttt{Tensor}、\texttt{TiledCopy}、
 \texttt{TiledMMA}。
 
-\textbf{阅读路线}：本章沿 @reed 的 CuTe GEMM 三部曲——《cute 之 简单 GEMM
+\textbf{阅读路线}：本章沿 @reed 的 CuTe GEMM 三部曲《cute 之 简单 GEMM
 实现》《cute 之 GEMM 流水线》《cute 之 高效 GEMM 实现》（链接见文末
-「延伸阅读」）——的叙述顺序，按「先跑通 $\to$ 再重叠 $\to$ 后提速」三步渐进
+「延伸阅读」）的叙述顺序，按「先跑通 $\to$ 再重叠 $\to$ 后提速」三步渐进
 展开：每一步开头先说明\textbf{上一版留下了什么问题}，再给出这一版的代码，
 以及读者必须自己守住的约束。凡是源码注释与实现不一致、或表述容易被误读的
-地方，不再集中堆在章末的勘误节，而是就地写成\textbf{实践须知}——这类提醒出现
+地方，不再集中堆在章末的勘误节，而是就地写成\textbf{实践须知}：这类提醒出现
 在使用现场比事后查表更有用。
 
-\textbf{源码区间}：hgemm.cuh~L718--1427——Phase~7c 头注释（L718--778）、
+\textbf{源码区间}：hgemm.cuh~L718--1427：Phase~7c 头注释（L718--778）、
 宏块 \texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}CUTE}（L779--1427）内的 kernel
 \texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn\_\allowbreak{}cute}（L821 起）与 launch wrapper
 \texttt{launch\_\allowbreak{}hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn\_\allowbreak{}cute}（L1216 起）。\textbf{编译宏}：
@@ -91,7 +91,7 @@ cute::copy(s2r_tiled_copy_a, tAsA(_, _, k_step_next, ismem_read),
 铺垫四章的回报：\textbf{把布局从代码里提出来，变成一等公民}。
 
 本章要回答三个问题：这 118 行的 kernel 本体究竟做了什么？launch wrapper 的 86
-行「类型实例化」在配置什么？以及——最重要的——\textbf{哪些东西 CuTe 替你做了，
+行「类型实例化」在配置什么？以及第三个、也是最重要的问题：\textbf{哪些东西 CuTe 替你做了，
 哪些东西仍然要你自己做}？第三个问题决定了这套工具的能力边界，也是
 图~\ref{fig:24-1} 对照表要回答的。
 
@@ -115,7 +115,7 @@ row-major（\texttt{A[m][k]}、\texttt{Bt[n][k]}）。写成求和形式：
   \label{eq:24-tn}
 \end{equation}
 
-注意式~\eqref{eq:24-tn} 里 $B$ 的索引是 $(n,k)$——这正是 TN 的含义：MMA 指令
+注意式~\eqref{eq:24-tn} 里 $B$ 的索引是 $(n,k)$，这正是 TN 的含义：MMA 指令
 \texttt{mma.\allowbreak{}sync.\allowbreak{}aligned.\allowbreak{}m16n8k16.row.\allowbreak{}col} 要求 A 为 row-major、B 在 GEMM
 语义下为 col-major，而 col-major 的 $B[K,N]$ 与 row-major 的
 $B^{\mathsf T}[N,K]$ 是同一块内存。\textbf{这是本章第一个坑}：调用方必须自己
@@ -240,7 +240,7 @@ $16\times8\times16$ 就是一条 \texttt{mma.sync}。CuTe 的层层 partition �
 
 $B_N$ 随累加精度切换是\textbf{经验性}的：F32 累加器每个元素占 4 字节，寄存器
 压力翻倍，$128\times256$ 的 C tile 在 128 线程下是
-$128\cdot256/128=256$ 个 float 累加器——已经超过可用寄存器的一半，会溢出到
+$128\cdot256/128=256$ 个 float 累加器，已经超过可用寄存器的一半，会溢出到
 local memory。第~\ref{sec:24-step3b}~节把两种精度的寄存器账摆开，并用
 \texttt{ptxas -v} 的实测数字核对（口径讨论见第~\ref{sec:24-kaogu}~节）。
 $B_K=32$ 与 $k_{\mathrm{stage}}=2$ 一起决定了 smem 占用：
@@ -291,7 +291,7 @@ tile：
 即 AtomLayout$(M,N,K)=(2,2,1)$（$2\times2=4$ 个 warp）、EURepeat$(M,N,K)=(1,2,1)$
 （每线程的 atom 重复数，两种语境的区分见第~\ref{ch:22}~章实践须知）、逻辑
 MMA tile 为 $32\times32\times16$，线程数 $\mathrm{size}(\texttt{MMA})=
-32\ \text{lanes}\times4\ \text{warps}=128$——这个 128 就是 launch 配置里
+32\ \text{lanes}\times4\ \text{warps}=128$；这个 128 就是 launch 配置里
 \texttt{dim3 block\allowbreak{}(size\allowbreak{}(MMA\{\}))} 的来源。对表源码时注意：
 源码常量 \texttt{kMmaEURepeatM/N/K}$=2/2/1$（hgemm.cuh L1290--1292）承载的
 是 \texttt{make\_\allowbreak{}tiled\_\allowbreak{}mma} 的第二个参数，即此处的 AtomLayout；
@@ -304,7 +304,7 @@ $B_K=32$ 相对 \texttt{kMmaPK}$=16$ 的倍数即 K 方向的切片数：
 \end{equation}
 
 一条 atom 只吃掉 $K$ 方向的 16 个元素，所以一件 $B_K=32$ 的 K-tile 要「装两次」
-才算完。这就是 kernel 里 \texttt{num\_\allowbreak{}k\_\allowbreak{}steps =\allowbreak{} size\allowbreak{}<2>\allowbreak{}(t\allowbreak{}Cr\allowbreak{}A)} 的来历——它不是
+才算完。这就是 kernel 里 \texttt{num\_\allowbreak{}k\_\allowbreak{}steps =\allowbreak{} size\allowbreak{}<2>\allowbreak{}(t\allowbreak{}Cr\allowbreak{}A)} 的来历：它不是
 一个 magic number，而是「K-mode 的 extent」被 CuTe 从类型里读出来的结果。
 两个语境下「EURepeat」的区别见图~\ref{fig:24-eurepeat-two-senses}。
 
@@ -409,14 +409,14 @@ $32\times32\times16$。}
 
 三者分层的回报是「改一个维度不必动其它维度」：换 dtype 只换 atom 与 Copy
 Atom，换 tile 尺寸只改 \texttt{Int<>} 常量，换流水深度只改 \texttt{kStage}。
-@reed 在《cute 之 简单 GEMM 实现》里把这条路线压成三个动作——把裸指针包成
+@reed 在《cute 之 简单 GEMM 实现》里把这条路线压成三个动作：把裸指针包成
 \texttt{Tensor} 并切出 CTA tile、用 \texttt{TiledMMA} 把 tile 分到线程、
-调用 \texttt{cute::gemm}——这正是下一节第一步要走的骨架。
+调用 \texttt{cute::gemm}；这正是下一节第一步要走的骨架。
 
 但类型系统\textbf{不负责}另外两件事，它们构成后面的两步：
-搬运的\emph{时序}——什么时候发起 G$\to$S、什么时候才允许覆盖当前 smem 槽
-（第二步）；以及搬运的\emph{形态}——smem 怎么排布才不撞 bank、S$\to$R 用
-哪条指令、epilogue 怎么宽写（第三步）。
+搬运的\emph{时序}（什么时候发起 G$\to$S、什么时候才允许覆盖当前 smem 槽，
+第二步）；以及搬运的\emph{形态}（smem 怎么排布才不撞 bank、S$\to$R 用
+哪条指令、epilogue 怎么宽写，第三步）。
 
 \section{设计与实现}
 
@@ -450,7 +450,7 @@ kernel 本体把「全部配置」都收在模板参数里，函数体里没有�
 \end{center}
 
 注意函数体开头的两个 \texttt{static\_\allowbreak{}assert}（L824--825）：\texttt{Block\allowbreak{}Swizzle}
-只能是 0/1、\texttt{kStage} 至少 2——把「错误配置」变成编译期错误，而不是
+只能是 0/1、\texttt{kStage} 至少 2：把「错误配置」变成编译期错误，而不是
 运行时怪结果，这是「类型即配置」的直接收益。
 
 下面按三步展开，每一步开头先交代「上一步留下了什么问题」：第一步
@@ -461,11 +461,11 @@ kernel 本体把「全部配置」都收在模板参数里，函数体里没有�
 
 \subsection{第一步：切块、分区、\texttt{cute::gemm}}\label{sec:24-step1}
 
-\textbf{这一步要解决的问题}：手写版把同一组「形状与步长」的事实写了四遍——
+\textbf{这一步要解决的问题}：手写版把同一组「形状与步长」的事实写了四遍：
 smem 地址公式、swizzle 掩码、\texttt{ldmatrix} 的 lane 映射、epilogue 的
 shuffle 编排，改一处就得把其余三处跟着重推。第一步先不管性能，只验证一件事：
 \textbf{这些映射能不能由编译器从类型里推出来}。@reed 在《cute 之 简单 GEMM
-实现》里给出的最简骨架恰好是三个动作——切块、分区、\texttt{cute::gemm}——
+实现》里给出的最简骨架恰好是三个动作：切块、分区、\texttt{cute::gemm}；
 本章 kernel 的前三段代码与它逐字对应。
 
 \paragraph{第一个动作：把指针包成 \texttt{Tensor}}
@@ -492,7 +492,7 @@ $(m,k)$ 且 $k$ 连续（stride $=(k,1)$），D 是 $(m,n)$、$n$ 连续。
 \texttt{local\_tile} 的第二个参数是 tile 形状、第三个是 CTA 坐标：
 \texttt{make\_\allowbreak{}coord\allowbreak{}(iy,\allowbreak{} \_\allowbreak{})} 固定 M 方向的 CTA 坐标，
 下划线保留 K 方向没被切掉的部分，于是 \texttt{gA} 的 shape 变成
-$(B_M, B_K, n_{k\text{-tile}})$——第三维正是「K 方向还剩多少 tile」这个
+$(B_M, B_K, n_{k\text{-tile}})$；第三维正是「K 方向还剩多少 tile」这个
 remainder mode，主循环直接拿它当循环上界用。
 
 \paragraph{第二个动作：把 tile 分到线程}
@@ -511,7 +511,7 @@ remainder mode，主循环直接拿它当循环上界用。
 的视角」，\texttt{partition\_\allowbreak{}fragment\_\allowbreak{}}\allowbreak\texttt{A/B/C} 则给出该
 线程持有的寄存器 fragment。三个 fragment 的 shape 分别是 A 用
 $(MMA, MMA\_M, MMA\_K)$、B 用 $(MMA, MMA\_N, MMA\_K)$、C 用
-$(MMA, MMA\_M, MMA\_N)$——第一维是「单个 atom 内的值」，
+$(MMA, MMA\_M, MMA\_N)$：第一维是「单个 atom 内的值」，
 后两维是「CTA tile 被切成多少个 atom」。
 \texttt{tCrD} 是累加器，用 \texttt{clear()} 清零。
 
@@ -537,7 +537,7 @@ $(MMA, MMA\_M, MMA\_N)$——第一维是「单个 atom 内的值」，
 
 这段代码里没有一行地址算术：没有 \texttt{stage*BM*BK}、没有 XOR 掩码、没有
 lane 映射。\texttt{cute::gemm} 按 \texttt{tiled\_mma} 的类型把
-$(MMA\_M, MMA\_N)$ 两层循环\textbf{全部展开}成 \texttt{mma.sync} 指令序列——
+$(MMA\_M, MMA\_N)$ 两层循环\textbf{全部展开}成 \texttt{mma.sync} 指令序列，
 等价于手写版里 \texttt{for\allowbreak{}(i)\ for\allowbreak{}(j)\ HMMA16816\allowbreak{}(.\allowbreak{}.\allowbreak{}.\allowbreak{})} 的两层，只是写进了类型，
 源码里看不到。K 方向仍要作者显式推进：\texttt{cute::gemm} 不碰 K，因为每个
 $k$ 需要不同的 S$\to$R 拷贝（这正是第~\ref{sec:24-step2}~节寄存器双缓冲的落点）。
@@ -561,7 +561,7 @@ $k$ 需要不同的 S$\to$R 拷贝（这正是第~\ref{sec:24-step2}~节寄存�
 S$\to$R（LDSM）、MMA 三级，让不同 tile 的不同级重叠执行；Ampere 的
 \texttt{cp.async} 允许「发射后不等待」，配合 \texttt{commit}/\texttt{wait}
 显式同步，就得到 multi-stage 流水线。该文还有一句对本章尤其重要的判断：
-\textbf{流水线的组织不属于 CuTe 的能力范围，而属于 GEMM 自身的优化策略}——
+\textbf{流水线的组织不属于 CuTe 的能力范围，而属于 GEMM 自身的优化策略}：
 CuTe 提供的是搬运与计算的抽象，怎么把它们排成流水线，是 kernel 作者的设计工作。
 
 落到本章 kernel 上，流水线由三样东西组成：把 stage 填满的预取、主循环里
@@ -584,7 +584,7 @@ CuTe 提供的是搬运与计算的抽象，怎么把它们排成流水线，是
 注意 \texttt{partition\_S}/\texttt{partition\_D} 的
 \texttt{(CPY, CPY\_M, CPY\_K, \dots)} 四维 shape：前三维是 TiledCopy 的
 「线程 $\times$ tile 内重复」坐标，最后一维是 gmem 侧的 K-tile 数或 smem 侧的
-stage 数——正因为留着这一维，预取循环可以直接用 \texttt{istage} 去索引它。
+stage 数；正因为留着这一维，预取循环可以直接用 \texttt{istage} 去索引它。
 
 第二组是 S$\to$R 的视图（怎么把 smem 的数据装进 MMA 需要的寄存器布局）：
 
@@ -639,7 +639,7 @@ K-tile 序号，\texttt{ismem\_write} 是下一个要写入的 stage 槽位，
 
 即最多一个 tile inflight：这正是 $k_{\mathrm{stage}}=2$ 时 \texttt{wait} 的语义
 （\texttt{cp\_\allowbreak{}async\_\allowbreak{}wait\allowbreak{}<N>} 等的是「未完成组数不超过 $N$」）。把
-$k_{\mathrm{stage}}$ 加到 3、4 时循环体几乎不用改——放行更多inflight tile 靠的是
+$k_{\mathrm{stage}}$ 加到 3、4 时循环体几乎不用改：放行更多 inflight tile 靠的是
 \texttt{wait} 的模板参数与计数器的取模，而不是 CuTe 接管了流水线。
 
 主循环的骨架是一层 K-tile 循环套一层 k\_step 循环：前者由 runtime 决定
@@ -648,7 +648,7 @@ $k_{\mathrm{stage}}$ 加到 3、4 时循环体几乎不用改——放行更多i
 
 \lstinputlisting[linerange={942-981},firstnumber=auto]{../hgemm.cuh}
 
-四个细节值得单独指出：
+四个细节单独说明：
 
 \begin{enumerate}
   \item \textbf{寄存器双缓冲是显式写的}：\texttt{k\_step} 的 MMA 用当前寄存器，
@@ -693,7 +693,7 @@ multistage, 由 cute::copy 自动管理」（hgemm.cuh L729--733）。读代码�
 \subsection{第三步之一：swizzle 布局与 \texttt{ldmatrix} 装载}\label{sec:24-step3a}
 
 \textbf{这一步要解决的问题}：流水线解决了「等」，但没有解决「搬运的形态」。
-第二步里 smem 只是「一块能放下 tile 的地方」；要真把它用起来，还得定三件事——
+第二步里 smem 只是「一块能放下 tile 的地方」；要真把它用起来，还得定三件事：
 smem 里的数据怎么排（否则 \texttt{ldmatrix} 会撞 bank）、S$\to$R 用哪条指令装、
 G$\to$S 一次搬多少字节。@reed 在《cute 之 高效 GEMM 实现》里把这几件事归在
 「访存高效」名下，本章 kernel 的取舍与之一致。
@@ -723,7 +723,7 @@ $B_M\times B_K\times k_{\mathrm{stage}}$：
 \texttt{swizzle}\allowbreak\texttt{<kMmaK>()}（第~\ref{ch:12}~章），读侧
 （\texttt{ldmatrix}）、写侧（\texttt{cp.async}）、epilogue 各写一遍，三处
 必须逐位一致。CuTe 版把 XOR
-规则写进 \texttt{Swizzle\allowbreak{}<3,\allowbreak{}3,\allowbreak{}3>} 这一个类型，读和写各自从它导出地址——
+规则写进 \texttt{Swizzle\allowbreak{}<3,\allowbreak{}3,\allowbreak{}3>} 这一个类型，读和写各自从它导出地址：
 \textbf{同一个 swizzle 只声明一次}，连 smem 的容量
 （式~\eqref{eq:24-smem}）也由它算出。
 
@@ -731,7 +731,7 @@ $B_M\times B_K\times k_{\mathrm{stage}}$：
 \texttt{GMMA::}\allowbreak\texttt{Layout\_K\_}\allowbreak\texttt{SW128\_Atom}
 （列宽 64 个 half），\texttt{tile\_\allowbreak{}to\_\allowbreak{}shape}
 会因为「$64\nmid32$」直接编译报错。这里的原子按自己的行宽定制，swizzle 参数取
-$\langle B,M,S\rangle=\langle3,3,3\rangle$——对 fp16 而言「16\,B 一个基本元素
+$\langle B,M,S\rangle=\langle3,3,3\rangle$：对 fp16 而言「16\,B 一个基本元素
 （8 个 half）、8 个基本元素一行、8 行一周期」，与第~\ref{ch:12}~章的
 SWIZZLE\_128B 档位同名；@reed 在《cute 之 高效 GEMM 实现》里同样取
 $\langle3,3,3\rangle$ 配 $8\times B_K$ 原子，这是 fp16、128\,B 行宽的通用档位。
@@ -764,7 +764,7 @@ G2S 的 Copy Atom 取
 \texttt{uint128\_t}：一次搬 16\,B，\texttt{CACHEGLOBAL} 表示只经 L2、跳过 L1
 （数据马上要被 smem 消费，留在 L1 是浪费）。线程布局 $\{32,4\}$ 乘值布局
 $\{1,8\}$ 的含义是「每线程连续搬 8 个 half $=$ 128 位」：4 个线程 $\times$ 8 个
-half 铺满一行 $B_K=32$ 个 half，128 个线程每轮覆盖 32 行——\textbf{一条
+half 铺满一行 $B_K=32$ 个 half，128 个线程每轮覆盖 32 行：\textbf{一条
 \texttt{cp.async} 指令搬满 128 位，且不需要任何 predicate}。
 
 \paragraph{S$\to$R：\texttt{ldmatrix} 与「从 TiledMMA 反推」}
@@ -774,18 +774,18 @@ S$\to$R 用 \texttt{SM75\_\allowbreak{}U32x4\_\allowbreak{}LDSM\_\allowbreak{}N}
 的映射；CuTe 版把这件事变成一次推导：
 
 \texttt{make\_\allowbreak{}tiled\_\allowbreak{}copy\_\allowbreak{}A/\allowbreak{}B}（hgemm.cuh L881、L886）是 S$\to$R 里最「魔法」
-的两个调用，它们的 tiler 不来自参数，而是\textbf{从 \texttt{tiled\_mma} 反推}
-——S$\to$R 的线程映射必须与 MMA 的 A fragment 逐点对齐，否则装进寄存器的数据
+的两个调用，它们的 tiler 不来自参数，而是\textbf{从 \texttt{tiled\_mma} 反推}：
+S$\to$R 的线程映射必须与 MMA 的 A fragment 逐点对齐，否则装进寄存器的数据
 对不上指令的期望。这就是第~\ref{ch:22}~章讲的「TiledCopy 与 TiledMMA 必须
 共形」：既然 TiledMMA 已经精确描述了「谁算哪块」，以它为目标的拷贝就不需要
 用户再指定一遍线程布局，从而避免两处独立配置不一致。@reed 在《cute 之 高效
 GEMM 实现》里对这一步的总结是「不再是大块到小块的 \texttt{partition}，
-而是对已声明的寄存器做线程级 \texttt{retile}」——正是
+而是对已声明的寄存器做线程级 \texttt{retile}」，正是
 \texttt{retile\_\allowbreak{}D\allowbreak{}(t\allowbreak{}Cr\allowbreak{}A)} 做的那件事：\textbf{不搬运数据，只改视图}。
 
 \subsection{第三步之二：寄存器账目与 epilogue 宽写}\label{sec:24-step3b}
 
-\textbf{这一步要解决的问题}：搬运形态定下来之后，还剩两个「钱从哪来」的问题——
+\textbf{这一步要解决的问题}：搬运形态定下来之后，还剩两个「钱从哪来」的问题：
 累加器要占多少寄存器（它直接决定 $B_N$ 能取多大，式~\eqref{eq:24-tile}），
 以及 C 怎么从寄存器回到 gmem（它决定写回的效率）。
 
@@ -805,11 +805,11 @@ F32 & 128 & $128\cdot128/128=128$ 个 float & 128 \\
 \end{tabular}
 \end{center}
 
-两行都是 128 个寄存器——这说明「F32 累加就把 $B_N$ 减半」不是经验之谈，而是把
+两行都是 128 个寄存器；这说明「F32 累加就把 $B_N$ 减半」不是经验之谈，而是把
 寄存器预算配平：F16 累加把 4 个 half 塞进 2 个寄存器，F32 累加每个元素独占一个
 寄存器，$B_N$ 必须减半才能维持同样的占用。\texttt{-Xptxas -v} 的实测与之吻合：
 $B_N{=}256$/F16 用 254 个寄存器、$B_N{=}128$/F32 用 226 个，两者 stack frame
-均为 0 字节（0 spill）——离 255 的上限只剩一步，所以 \texttt{kBN} 由
+均为 0 字节（0 spill）；离 255 的上限只剩一步，所以 \texttt{kBN} 由
 \texttt{kAccF32} 单向决定，而不是留给调用方随便调（完整核对见
 第~\ref{sec:24-kaogu}~节）。
 
@@ -1207,7 +1207,7 @@ $M{=}N{=}K{=}8192$ 的 fp16 HGEMM，CuTe Swizzle 家族七个配置见
 f16 的 246.5\,TFLOPS，本家族 0.99$\sim$1.08$\times$，最高 1.08$\times$），F32Acc 档
 对比 cuBLAS f32（164.2\,TFLOPS）达 1.48$\times$；七个配置的 Max Err 全部为
 $0.000\mathrm{e}{+}00$，逐位零误差。这些地址算术在编译期被类型系统全部折叠成
-最终指令，实测说明这套抽象是\textbf{零开销}的——表达力的收益没有以性能为代价。
+最终指令，实测说明这套抽象是\textbf{零开销}的：表达力的收益没有以性能为代价。
 
 \begin{table}[H]
 \centering
@@ -1230,11 +1230,11 @@ HGEMM CuTe Swizzle (S=3, BLK\_SW=1, F32Acc) & 0.000e+00 & 242.4/164.2 (1.48x) \\
 \end{tabular}
 \end{table}
 
-需要强调的是：CuTe 版\textbf{不承诺}比手写版更快。两者的指令序列高度重合
+CuTe 版\textbf{不承诺}比手写版更快。两者的指令序列高度重合
 （SASS 层面都是 \texttt{LDGSTS} $+$ \texttt{LDSM} $+$ \texttt{HMMA}），差别在
 编译期把地址算术折叠掉、以及让 kernel 作者少写上百行易错的表达式。真正的加速
 来自第~\ref{ch:12}~章那样的\textbf{算法级}决策（swizzle 档位、block swizzle、
-寄存器双缓冲）；CuTe 的价值是让这些决策更容易被表达、被检查、被复用。
+寄存器双缓冲）；CuTe 的价值是让这些决策更容易表达、检查与复用。
 
 \section{常见坑}
 
