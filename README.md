@@ -11,7 +11,7 @@
   </div>
 </div>
 
-**LeetCUDA**: includes **Tensor/CUDA Cores, TF32/F16/BF16/FP8**, [200+ CUDA Kernels](#cuda-kernel) with PyTorch, [HGEMM](./kernels/hgemm) which can achieve `98%~100%` TFLOPS of **cuBLAS**, and [flash-attn](./kernels/flash-attn) using Tensor Cores with pure MMA PTX. <i>Open sources book of <b>LeetCUDA</b> now is avaliable at <a href='https://github.com/xlite-dev/LeetCUDA/releases/download/v4.0.2/leetcuda-20260921.pdf'>LeetCUDA.pdf (w/ 400+ pages)🔥🔥🔥</a>. </i> 
+**LeetCUDA**: An open-source book of modern CUDA learning notes. It covers **Tensor/CUDA Cores, TF32/F16/BF16/FP8**, [200+ CUDA kernels](#cuda-kernel) implemented in PyTorch, [HGEMM](./kernels/hgemm) achieving `98%~100%` of cuBLAS TFLOPS, and [flash-attn](./kernels/flash-attn) built on Tensor Cores with pure MMA PTX. <i>The open-source LeetCUDA book is now available at <a href='https://github.com/xlite-dev/LeetCUDA/releases/download/v4.0.2/leetcuda-20260921.pdf'>LeetCUDA.pdf (w/ 500+ pages)🔥🔥🔥</a>.</i>
 
 <div align='center'>
   <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-h20z_B1_H32_N8192_D512_T.png' width='200px'>
@@ -84,7 +84,7 @@ LeetCUDA provides a [leetcuda-cpp-kernel](./kernels/interview/book/skills/leetcu
 
 ```BibTeX
 @misc{LeetCUDA@2025,
-  title={LeetCUDA: A Modern CUDA Learn Notes with PyTorch for Beginners},
+  title={LeetCUDA: An Open-Source Book of Modern CUDA Learning Notes for Beginners},
   url={https://github.com/xlite-dev/LeetCUDA.git},
   note={Open-source software available at https://github.com/xlite-dev/LeetCUDA.git},
   author={DefTruth and Many Others},
