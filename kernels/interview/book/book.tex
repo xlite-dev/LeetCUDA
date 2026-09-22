@@ -31,6 +31,9 @@
 \tableofcontents
 \endgroup
 
+% openany 电子书不强制右页起始：否则目录尾(xix)后 \mainmatter 的
+% \cleardoublepage 会补一页空白 xx（fancyhdr 沿用目录页眉）。全书统一取消补页。
+\let\cleardoublepage\clearpage
 \mainmatter
 
 \part{基础篇：编程模型、访存与归约}
