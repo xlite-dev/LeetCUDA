@@ -146,11 +146,11 @@ min-of-N 而非均值：推理延迟的合同口径是「最好情况可稳定�
   \delta_{\mathrm{causal}}=
   \begin{cases}1 & \text{dense}\\[2pt] \tfrac{1}{2}+\tfrac{1}{2N_{kv}} & \text{causal}\end{cases}
 \end{equation}
-（QK$^\top$ 与 PV 各占 $2N_qN_{kv}DH_q$；causal 按三角mask 减半——
+（QK$^\top$ 与 PV 各占 $2N_qN_{kv}DH_q$；causal 按三角mask 减半：
 此因子在方阵 $N_q=N_{kv}$ 下与 \texttt{\_flops.py} 的精确 tail 对齐
 计数一致，非方阵 causal 的精确计数为
 $1-(N_q-1)/(2N_{kv})$，本章 bench 的 causal 均为方阵。）
-注意这是\textbf{数学} FLOPS——量化 kernel 实际吞吐的是低位宽 MMA，
+注意这是\textbf{数学} FLOPS：量化 kernel 实际吞吐的是低位宽 MMA，
 $S>1$ 的来源是「同样的数学量用快得多的数据通路完成」。
 
 \subsection{端到端摊销}
@@ -162,8 +162,8 @@ $\alpha$，则端到端 speedup 上界为：
   \xrightarrow{\ \alpha\to1\ }S_{\mathrm{attn}}
   \label{eq:33-e2e}
 \end{equation}
-$\alpha=0.3$、$S_{\mathrm{attn}}=2.5$x 时 $S_{\mathrm{e2e}}\approx1.22$x
-——attention 只省下 $0.3T\times0.6=0.18T$，总时从 $T$ 降到
+$\alpha=0.3$、$S_{\mathrm{attn}}=2.5$x 时 $S_{\mathrm{e2e}}\approx1.22$x：
+attention 只省下 $0.3T\times0.6=0.18T$，总时从 $T$ 降到
 $0.82T$。这解释了为什么扩散模型（attention 占比高、D 偏小）是量化 attention
 的第一落地场景，也是 Cache-DiT 集成（33.7 节）的价值前提。
 
@@ -233,7 +233,7 @@ bench 输出三层指标，各有分工：
         无 hybrid 抑制的地板量级取上界）。
 \end{itemize}
 读数纪律：\textbf{速度看 min、能量看 rel\_err、结构看 max\_abs、
-门禁看 allclose}，四者缺一不可——第~\ref{ch:29}~章 29.7.1 的正确性
+门禁看 allclose}，四者缺一不可。第~\ref{ch:29}~章 29.7.1 的正确性
 bug 就是「速度正常 + 均值正常 + max\_abs 结构性坏行」的组合。
 
 \section{设计与实现}
@@ -248,7 +248,7 @@ bug 就是「速度正常 + 均值正常 + max\_abs 结构性坏行」的组合�
 （默认 \texttt{--N 8192,16384}）+ 非 32 倍数对齐场景 + SageAttention
 竞品同场，preset
 体系（\texttt{bench\_fp8.py} L57：\texttt{default}/\texttt{cache-dit}/
-\texttt{perblock}）把「部署形态」编码进配置——\texttt{cache-dit} 预设
+\texttt{perblock}）把「部署形态」编码进配置：\texttt{cache-dit} 预设
 \texttt{hybrid\_n\_early}=256，\texttt{perblock} 预设
 sm89 cp.async 路径的 per-block 量化；NHD 零拷贝（diffusers E2E 布局）
 由独立的 \texttt{--with-permute} 启用，与 preset 正交。
@@ -300,7 +300,7 @@ CLI 默认值即推荐值：纯 fp8 QK + f32 累加 + Q/K/V 全 per-block
 （\texttt{--cuda-impl fp8} 的解析分支，\texttt{\_bench.py} L648--650
 显式设 V=per-block、L690--694 的 q/k fallback 同为 per-block）；注意
 \texttt{bench\_fp8.py} 脚本 default preset 用的是 per-thread/per-channel
-（更细粒度、对齐 Sage 配置），两套默认不同——对比数据时必须对齐
+（更细粒度、对齐 Sage 配置），两套默认不同：对比数据时必须对齐
 preset。knob 的边际效应见 33.6.3。
 
 \section{实测数据总览}
@@ -468,11 +468,10 @@ bench 脚本默认 preset，2026-09-21）：fp8 与 Sage2 总体打平、互有
   未随书归档。\par}
 \end{table}
 
-与 fp8 的三点对照：其一，D$\ge$128 后 fp4 稳定 2x 级且\textbf{随 D
-单调走强}（blockscale MMA 无 fp8 的 smem 交叉点问题）；其二，D=256
-同点 fp4 比 fp8 快 1.64x（4.96 vs 8.13ms）——第~\ref{ch:30}~章
-dispatch 表的实证；其三，cross 小 Q 场景两者同病（aux 链占比），
-fp4 也只有 0.99x--1.21x。
+与 fp8 对照，差别集中在三处：D$\ge$128 后 fp4 稳定 2x 级且\textbf{随 D
+单调走强}（blockscale MMA 无 fp8 的 smem 交叉点问题）；D=256 同点
+fp4 比 fp8 快 1.64x（4.96 vs 8.13ms），对应第~\ref{ch:30}~章 dispatch
+表；cross 小 Q 场景两者同病（aux 链占比），fp4 也只有 0.99x--1.21x。
 
 \subsection{knob 矩阵：数值通路中性，粒度有价目}
 
@@ -504,11 +503,11 @@ fp4 也只有 0.99x--1.21x。
 \end{table}
 
 读数：主权区里 kernel 主体是 QK+PV tensor pipe（占 77\%，第~\ref{ch:29}~
-章 29.6 节），数值通路 knob 全部落在 $\pm2.3\%$ 内——\textbf{精度
+章 29.6 节），数值通路 knob 全部落在 $\pm2.3\%$ 内，\textbf{精度
 选择可以按需开，速度代价可忽略}（int8 QK 略慢是 s8 通路 scale 折叠
 多一层）。粒度 knob 则有真实方向：默认的 per-block 恰是最快档
 （量化 kernel 的向量化红利，第~\ref{ch:28}~章），升到 per-thread
-（Q/K）或 per-channel（V）各付 1.7--2.7\%——精度换速度的真实价目表。
+（Q/K）或 per-channel（V）各付 1.7--2.7\%，这就是精度换速度的真实价目表。
 smooth-v 略快（+1.0\%）是 V 值域压缩后 PV 溢出重缩放更少。knob 真正
 的杠杆在两端：causal 精度（hybrid）与大 D dispatch（第~\ref{ch:30}~
 章），不在主权区的数值通路。
@@ -523,7 +522,7 @@ rel\_err 0.59/max 1.0（早期行 e2m1 噪声无 hybrid 抑制，
 的 fp4-hybrid 把 max 压到 0.28；GQA 场景 Sage3 直接缺席。fp8 侧
 \texttt{bench\_fp8.py} 与 Sage2 总体打平互有胜负（多数 $\pm$1.5\% 内，
 最差 non-aligned-dense 8K FFPA 快 2.6\%），
-这正是 preset 公平化的结果——2026-08 之前 cachedit preset 默认开
+这正是 preset 公平化的结果：2026-08 之前 cachedit preset 默认开
 hybrid+smooth-v，dense 场景「慢 3--8.7\%」全是功能成本，对齐后
 反超。除表~\ref{tab:33-5090} 的 5090 引用外，本章数字均出自本机
 PRO 5000（sm\_120）实测——\textbf{形态结论（谁快谁慢、随 D 怎么
@@ -551,13 +550,11 @@ PRO 5000（sm\_120）实测——\textbf{形态结论（谁快谁慢、随 D 怎
 \end{enumerate}
 
 \textbf{Cache-DiT $\times$ FFPA}。量化 attention 进入扩散模型管线
-的三个工程要点：其一，\textbf{布局}——diffusers 上游产 NHD
-[B,N,H,D]，FFPA 的 \texttt{tensor\_layout="NHD"} 走零拷贝 fast
-path（第~\ref{ch:28}~章~\ref{sec:28-nhd}~节），省掉两侧 permute；其二，
-\textbf{占比}——按式~\ref{eq:33-e2e}，attention 占比决定端到端
-收益上限，视频扩散（长序列、双流块）是最佳场景；其三，\textbf{逐层
- knob}——cache-dit 允许按层选 backend，因果块用 hybrid、双向块用
-纯 fp4，精度损失集中在最敏感的位置修。README 引用的 NeMo Automodel
+要处理三件事。布局上，diffusers 上游产 NHD [B,N,H,D]，FFPA 的
+\texttt{tensor\_layout="NHD"} 走零拷贝 fast path（第~\ref{ch:28}~章~\ref{sec:28-nhd}~节），省掉两侧 permute。占比上，按式~\ref{eq:33-e2e}，
+attention 占比决定端到端收益上限，视频扩散（长序列、双流块）是最佳
+场景。cache-dit 还允许按层选 backend：因果块用 hybrid、双向块用纯
+fp4，精度损失集中在最敏感的位置修。README 引用的 NeMo Automodel
 案例（D=512 全注意力层 10/60，训练 e2e 1.4x--1.5x）是同一公式在
 训练侧的实例。
 

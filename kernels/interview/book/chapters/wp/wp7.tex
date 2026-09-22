@@ -12,9 +12,9 @@
 \text{像有序：} && \forall a \in \Z_{\abs{\v{L}^*}}/\{0\}, \ &\v{L}^*(a-1) < \v{L}^*(a).
 %\text{\emph{???:}} && \v{L}^\dagger (\v{L}, \v{L}^*) \v{L}^\dagger = \v{L}^\dagger
 \end{align}
-布局的补是一个在原布局的陪域（codomain）之中、但不在其像（image）之中生成元素的布局。在复合（Composition）中，布局 $\v{L}$ 常被用作对另一个布局的间接寻址，因此补 $\v{L}^*$ 就是指向 $\v{L}$ 所遗漏元素的那个布局。{\tt complement} 操作使得可以经由\emph{逻辑切分}（logical divide）（第~\ref{sec:logical_divide}~节）切分布局，并经由\emph{逻辑乘积}（logical product）（第~\ref{sec:logical_product}~节）实现布局的重复与扩展。
+布局的补是一个在原布局的陪域（codomain）之中、但不在其像（image）之中生成元素的布局。在复合（Composition）中，布局 $\v{L}$ 常被用作对另一个布局的间接寻址，因此补 $\v{L}^*$ 就是指向 $\v{L}$ 所遗漏元素的那个布局。有了 {\tt complement}，就能经由\emph{逻辑切分}（logical divide）把布局切开（第~\ref{sec:logical_divide}~节），也能经由\emph{逻辑乘积}（logical product）把布局重复、扩展（第~\ref{sec:logical_product}~节）。
 
-本节只关注陪域 $\D$ 为 {\tt HTuple}($\Z$) 的布局：即整数，或对某个轮廓 D 而言 $\D = \Z^D$ 的坐标。这使得弱同余条件式~\eqref{eqn:comp:congruence} 得以成立。像互不相交条件（式~\eqref{eqn:comp:disjoint}）保证补所生成的值与原布局生成的值互不相同。注意，这里使用的是原布局的有限定义域 $\Z(\v{L})$，而使用的是补的无穷扩展定义域 $\Z^{\v{L}^*}$。这保证了无论补的形状被截断还是被扩展（例如通过与右侧的布局复合），它所生成的值始终与原布局不同。最后，像有序条件（式~\eqref{eqn:comp:ordered}）确立了补布局的唯一性。
+本节只关注陪域 $\D$ 为 {\tt HTuple}($\Z$) 的布局：即整数，或对某个轮廓 D 而言 $\D = \Z^D$ 的坐标。弱同余条件式~\eqref{eqn:comp:congruence} 因此成立。像互不相交条件（式~\eqref{eqn:comp:disjoint}）保证补所生成的值与原布局生成的值互不相同：原布局这边取的是有限定义域 $\Z(\v{L})$，补那边取的是无穷扩展定义域 $\Z^{\v{L}^*}$，因此无论补的形状被截断还是被扩展（例如通过与右侧的布局复合），它所生成的值始终与原布局不同。最后，像有序条件（式~\eqref{eqn:comp:ordered}）确立了补布局的唯一性。
 
 表~\ref{tab:complements} 给出了补的若干例子。
 
@@ -46,7 +46,7 @@
 \begin{align*}
 \v{A} \otimes \v{B} = (\v{A}, \v{A}^* \circ \v{B})
 \end{align*}
-其中 $\v{A}^*$ 是 $\v{A}$ 的补。注意，结果的第一个模（mode）恰好就是输入布局 $\v{A}$，而第二个模在元素形状（shape）与元素顺序上与输入布局 $\v{B}$ 相容。第一个模，即 $\v{A}$ 布局，通常被称为“块”，它在“网格”布局 $\v{B}$ 上被重复。%Because the purpose of the logical product is to expand the domain and codomain of $\v{A}$, this does not require that $(\v{A},\v{A}^*)$ is surjective onto $\Z_{\norm{\v{B}}}$.
+其中 $\v{A}^*$ 是 $\v{A}$ 的补。结果的第一个模（mode）恰好就是输入布局 $\v{A}$，而第二个模在元素形状（shape）与元素顺序上与输入布局 $\v{B}$ 相容。第一个模，即 $\v{A}$ 布局，通常被称为“块”，它在“网格”布局 $\v{B}$ 上被重复。%Because the purpose of the logical product is to expand the domain and codomain of $\v{A}$, this does not require that $(\v{A},\v{A}^*)$ is surjective onto $\Z_{\norm{\v{B}}}$.
 
 考虑这样的例子：行主序（row-major）布局 $(\textcolor{red}{3},\textcolor{red}{4}):(\textcolor{red}{4},\textcolor{red}{1})$ 块，要在列主序（col-major）布局 $(\textcolor{blue}{2},\textcolor{blue}{5}):(\textcolor{blue}{1},\textcolor{blue}{2})$ 网格中复现：
 \begin{align*}
@@ -63,9 +63,9 @@
 \ = \
 \begin{array}{cccc}((\textcolor{red}{3}, & \textcolor{red}{4}), & (\textcolor{blue}{2}, & \textcolor{blue}{5})) \\ ((\textcolor{red}{4}, & \textcolor{red}{1}), & (\textcolor{blue}{12}, & \textcolor{blue}{24})) \end{array}
 \end{align*}
-其中布局 $1:12$ 是 $(\textcolor{red}{3},\textcolor{red}{4}):(\textcolor{red}{4},\textcolor{red}{1})$ 的补。在结果的第一个模中可以直接得到原始块，而结果的第二个模以 $2\times 5$ 列主序的顺序将原始块不重复地重复 10 次。
+其中布局 $1:12$ 是 $(\textcolor{red}{3},\textcolor{red}{4}):(\textcolor{red}{4},\textcolor{red}{1})$ 的补。结果的第一个模中可以直接得到原始块，而第二个模以 $2\times 5$ 列主序的顺序把原始块铺 10 次，互不重叠。
 
-作为另一个例子，考虑布局 $(\textcolor{red}{4},\textcolor{red}{8}):(\textcolor{red}{20},\textcolor{red}{2})$ 块在行主序布局 $(\textcolor{blue}{3},\textcolor{blue}{2}):(\textcolor{blue}{2},\textcolor{blue}{1})$ 网格中复现：
+再换一个例子，考虑布局 $(\textcolor{red}{4},\textcolor{red}{8}):(\textcolor{red}{20},\textcolor{red}{2})$ 块在行主序布局 $(\textcolor{blue}{3},\textcolor{blue}{2}):(\textcolor{blue}{2},\textcolor{blue}{1})$ 网格中复现：
 \begin{align*}
 \begin{array}{cc} (\textcolor{red}{4}, & \textcolor{red}{8}) \\ (\textcolor{red}{20}, & \textcolor{red}{2}) \end{array}
 \ \otimes \
@@ -80,13 +80,13 @@
 \ = \
 \begin{array}{cccc}((\textcolor{red}{4}, & \textcolor{red}{8}), & (\textcolor{blue}{3}, & \textcolor{blue}{2})) \\ ((\textcolor{red}{20}, & \textcolor{red}{2}), & (\textcolor{blue}{80}, & \textcolor{blue}{1})) \end{array}
 \end{align*}
-其中布局 $(2,1):(1,80)$ 是 $(\textcolor{red}{4},\textcolor{red}{8}):(\textcolor{red}{20},\textcolor{red}{2})$ 的补。注意，此时网格在交错排布这些块，以产生结果的最小陪域。补布局告诉结果如何为布局 $\v{B}$ 设定步幅，而布局 $\v{B}$ 告诉结果如何为补布局排序并定形。
+其中布局 $(2,1):(1,80)$ 是 $(\textcolor{red}{4},\textcolor{red}{8}):(\textcolor{red}{20},\textcolor{red}{2})$ 的补。此时网格在交错排布这些块，以产生结果的最小陪域。补布局告诉结果如何为布局 $\v{B}$ 设定步幅，而布局 $\v{B}$ 告诉结果如何为补布局排序并定形。
 
 \paragraph{相关乘积}
 
 逻辑乘积产生一个 2 阶布局，其中第一个模是原始块，第二个模被解释为该块的网格，即“分块”。
 
-虽然逻辑乘积对 $\v{A}$ 与 $\v{B}$ 的阶（rank）或相容性没有任何限制，但操作 {\tt blocked\_product} 往往是一个更直观的版本，它利用输入的阶来构造结果的形状。我们可能会期望一个 $3 {\times} 4$ 布局与一个 $2 {\times} 5$ 布局的乘积产生一个 $6 {\times} 20$ 布局。{\tt blocked\_product} 要求 $\v{A}$ 与 $\v{B}$ 的阶相同，
+逻辑乘积对 $\v{A}$ 与 $\v{B}$ 的阶（rank）和相容性都没有限制；操作 {\tt blocked\_product} 则更直观，它利用输入的阶来构造结果的形状。直觉上，一个 $3 {\times} 4$ 布局与一个 $2 {\times} 5$ 布局相乘，就该得到一个 $6 {\times} 20$ 布局。{\tt blocked\_product} 要求 $\v{A}$ 与 $\v{B}$ 的阶相同，
 \begin{align*}
 \text{阶}(\v{A}) = \text{阶}(\v{B})
 \end{align*}
@@ -96,7 +96,7 @@
 \ \Longrightarrow \
 \begin{array}{cccc}((\textcolor{red}{3}, & \textcolor{blue}{2}), & (\textcolor{red}{4}, & \textcolor{blue}{5})) \\ ((\textcolor{red}{4}, & \textcolor{blue}{12}), & (\textcolor{red}{1}, & \textcolor{blue}{24})) \end{array}
 \end{align*}
-便得到一个 $6 {\times} 20$ 布局。图~\ref{fig:blockedproduct} 画出了得到的布局，其中每个 $3 {\times} 4$ 块都施以底纹。之所以称其为“块状”，是因为结果布局中的每个 $3 {\times} 4$ 块都恰好是原始 $3 {\times} 4$ 块的平移版本。
+便得到一个 $6 {\times} 20$ 布局。图~\ref{fig:blockedproduct} 画出了这个布局，其中每个 $3 {\times} 4$ 块都施以底纹。“块状”之名由此而来：结果布局中的每个 $3 {\times} 4$ 块，都恰好是原始 $3 {\times} 4$ 块的平移版本。
 
 \begin{figure}[ht]
 \centering
@@ -427,7 +427,7 @@
 
 %The operation {\tt tiled\_product} is another convenience function that simply flattens by one level the second mode of a logical product.
 
-还可以构造逻辑乘积的许多其它版本，它们额外地对模进行分组与重排，以得到方便使用的结果。
+逻辑乘积还有不少其它版本，都会对模额外分组与重排，让结果更便于使用。
 
 \wpssh{应用：逻辑切分}
 \label{sec:logical_divide}
@@ -438,15 +438,15 @@
 \begin{align*}
 \v{A} \oslash \v{B} = \v{A} \circ (\v{B}, \v{B}^*_{\abs{\v{A}}}) = \v{A} \circ \v{B}^\bigstar
 \end{align*}
-其中 $\v{B}^*_{\abs{\v{A}}}$ 是 $\v{B}$ 相对于布局 $\v{A}$ 的尺寸所取的补。由于该操作意在保留 $\v{A}$ 的全部元素、只是把布局 $\v{A}$ 一分为二，我们要求 $\v{B}^\bigstar = (\v{B},\v{B}^*_{\abs{\v{A}}})$ 满射到 $\Z_{\abs{A}}$。这通常涉及对 $\v{B}^*$ 尺寸的扩展，使得 $\abs{\v{B}^\bigstar} \geq \abs{\v{A}}$。此外，我们要求补 $\v{B}^*$ 在如下意义上“补全”布局 $\v{B}$：$\v{B}^\bigstar = (\v{B},\v{B}^*_{\abs{A}})$ 具有自反广义逆 $\v{B}^+$，满足
+其中 $\v{B}^*_{\abs{\v{A}}}$ 是 $\v{B}$ 相对于布局 $\v{A}$ 的尺寸所取的补。这个操作要保留 $\v{A}$ 的全部元素、只是把布局 $\v{A}$ 一分为二，所以我们要求 $\v{B}^\bigstar = (\v{B},\v{B}^*_{\abs{\v{A}}})$ 满射到 $\Z_{\abs{A}}$。这通常要扩展 $\v{B}^*$ 的尺寸，使 $\abs{\v{B}^\bigstar} \geq \abs{\v{A}}$。同时，我们还要求补 $\v{B}^*$ 在如下意义上“补全”布局 $\v{B}$：$\v{B}^\bigstar = (\v{B},\v{B}^*_{\abs{A}})$ 具有自反广义逆 $\v{B}^+$，满足
 \begin{align}
 \v{B}^\bigstar \v{B}^+ \v{B}^\bigstar = \v{B}^\bigstar \\
 \v{B}^+ \v{B}^\bigstar \v{B}^+ = \v{B}^+
 \end{align}
 
-与逻辑乘积操作类似，结果布局 $\v{A} \circ \v{B}$ 的第一个模通常被称为“块”，它在“网格”（即“分块”）布局 $\v{A} \circ \v{B}^*_{\abs{\v{A}}}$ 上被重复。参数 $\v{B}$ 被称为“分块器”，它可以被扩展为不仅仅是布局，如第~\ref{sec:tiler}~节所述。
+与逻辑乘积操作类似，结果布局 $\v{A} \circ \v{B}$ 的第一个模通常被称为“块”，它在“网格”（即“分块”）布局 $\v{A} \circ \v{B}^*_{\abs{\v{A}}}$ 上被重复。参数 $\v{B}$ 被称为“分块器”，它可以扩展到布局之外，第~\ref{sec:tiler}~节会讲到。
 
-作为一个直接的例子，常见的需求是从另一个布局中取出某组逻辑元素。例如，要从布局中每隔三个取一个元素，可以使用复合：
+先看个直接的例子。常见需求是从另一个布局中取出某组逻辑元素，比如每隔三个取一个，用复合就能做到：
 \begin{align*}
 \begin{array}{c} \textcolor{red}{24} \\ \textcolor{red}{3} \end{array}
 \ \circ \
@@ -480,15 +480,15 @@
 \ &=& \
 \begin{array}{cccc} ((\textcolor{blue}{2}, & \textcolor{blue}{2}, & \textcolor{blue}{2}), & 3) \\ ((\textcolor{blue}{6}, & \textcolor{blue}{1}, & \textcolor{blue}{20}), & 2) \end{array}
 \end{align*}
-其中 $3:1$ 是 $8:3$ 在尺寸 24 之下的补。结果的第一模按要求仍然包含左手边布局中每隔三个取一个的元素，而结果的第二模是这些“块”在原布局中的个数（本例中为 3）以及这些块之间的步幅。补被用来确定缺失了哪些元素、以及以何种顺序保留它们。
+其中 $3:1$ 是 $8:3$ 在尺寸 24 之下的补。结果的第一模按要求仍然包含左手边布局中每隔三个取一个的元素，而结果的第二模是这些“块”在原布局中的个数（本例中为 3）以及这些块之间的步幅。补用来确定缺失了哪些元素、以何种顺序保留它们。
 
 \paragraph{相关切分}
 
-与复合类似，人们经常希望按模施加逻辑切分。这里使用同样的记号与策略
+与复合类似，逻辑切分也经常按模来做，沿用同样的记号与策略
 \begin{align*}
 \v{A} \oslash \langle \v{B},\v{C} \rangle = (\v{A}_0,\v{A}_1) \oslash \langle \v{B},\v{C} \rangle = (\v{A}_0 \oslash \v{B}, \v{A}_1 \oslash \v{C}).
 \end{align*}
-其直觉在于：能够对列和行独立地执行这些操作，然后视需要重排这些模以构造新布局，这与布局乘积类似。例如，回到第~\ref{sec:tiler}~节中的分块器，将这些分块器用于逻辑切分而非复合，就得到分块器所指向的 $4 {\times} 8$ 子布局组成的 $2 {\times} 2$ 布局。图~\ref{fig:tilers_divide} 展示了这一点，其中可以想象有一个 $2 {\times} 2$ 布局映射到每个单独施以底纹的数据块。
+这么设计的道理是：列和行可以各自独立地执行这些操作，然后视需要重排这些模、构造新布局，与布局乘积类似。例如，回到第~\ref{sec:tiler}~节中的分块器，将这些分块器用于逻辑切分而非复合，就得到分块器所指向的 $4 {\times} 8$ 子布局组成的 $2 {\times} 2$ 布局。图~\ref{fig:tilers_divide} 画出了这一点：可以把每个单独施以底纹的数据块，想成有一个 $2 {\times} 2$ 布局映射到它上面。
 
 \begin{figure}[ht]
 \centering
@@ -611,7 +611,7 @@
 \ = \
 \begin{array}{cccc}((\textcolor{blue}{4}, & \textcolor{black}{2}), & (\textcolor{blue}{8}, & \textcolor{black}{2})) \\ ((\textcolor{blue}{20}, & \textcolor{black}{80}), & (\textcolor{blue}{2}, & \textcolor{black}{1})) \end{array}
 \end{align*}
-其中“块”模标为蓝色，“其余”模标为黑色。注意，结果布局仍保持 $8 {\times} 16$，而分块器所指向的元素已被置换到最前面的 $4 {\times} 8$ 块中。
+其中“块”模标为蓝色，“其余”模标为黑色。结果布局仍保持 $8 {\times} 16$，而分块器所指向的元素已被置换到最前面的 $4 {\times} 8$ 块中。
 
 操作 {\tt zipped\_divide} 先执行按模逻辑切分，再把同类模拉链式地组合在一起：
 \begin{align*}
@@ -627,23 +627,23 @@ data_vt = zipped_divide(data, tiler)   # Compose：(TileCrd,GridCrd) -> Offset
 tile    = data_vt[:, blk_id]           # 按一维 block id 切片
 tile    = data_vt[:, (blk_x, blk_y)]   # 按二维 block id 切片，二者等价
 \end{python}
-可以看出，这一模式与第~\ref{sec:layouttv}~节的线程-值划分非常相似，只不过这里真正指定的只有块模，缺失的“网格”模作为分块器的补被计算出来。这个形状为 $(\text{块}, \text{网格})$ 的“补全”分块器随后与数据复合，产生块网格；再在第二模上按块标识符切片，即可为某个处理单元抽取特定的块。
+这一模式与第~\ref{sec:layouttv}~节的线程-值划分非常相似，只不过真正指定的只有块模，缺失的“网格”模由分块器的补计算出来。这个形状为 $(\text{块}, \text{网格})$ 的“补全”分块器随后与数据复合，产生块网格；再在第二模上按块标识符切片，即可为某个处理单元抽取特定的块。
 
-同样可以构造逻辑切分的许多其它版本，它们额外地对模进行分组与重排，以得到方便使用的结果。
+逻辑切分同样可以构造出不少其它版本，做法相同：对模额外分组与重排，得到便于使用的结果。
 
 \wph{结论}
 
-本文提出了 \CuTe，一个用于表示与操纵张量布局的数学框架，以应对现代 GPU 架构日益增长的复杂性。凭借其分层布局表示，\CuTe 为编写与管理当代硬件上专用张量指令所需的复杂数据布局与划分（partition）模式提供了通用方法。凭借其丰富的代数运算，\CuTe 为高性能线性代数 kernel 开发中布局的操纵与新布局的生成提供了一条有原理依据的途径。二者结合，该表示与代数能够支持复杂的布局与划分、关注点分离，以及静态分析与优化。
+本文提出了 \CuTe，一个用于表示与操纵张量布局的数学框架，以应对日益复杂的现代 GPU 架构。它的分层布局表示，为编写与管理当代硬件上专用张量指令所需的复杂数据布局与划分（partition）模式提供了通用方法；它的丰富代数运算，则为高性能线性代数 kernel 开发中布局的操纵与新布局的生成提供了一条有原理依据的途径。二者结合，该表示与代数能够支持复杂的布局与划分、关注点分离，以及静态分析与优化。
 
-\CuTe 布局表示的表达能力已在若干关键应用中被证明极具价值。\CuTe 便于将多种多样的算法——例如广义张量-张量收缩（GETT）与卷积（CONV）——表示为通用矩阵乘法（GEMM）的实例，从而促进代码复用与算法统一性。例如，\CuTe 允许矩阵无论其具体数据布局如何都用 $(m,n)$ 坐标（coordinate）索引，让通用算法与具体布局保持正交；同时，要求特定布局的算法或指令则能够静态地检查、验证并推演它们的张量参数。
+\CuTe 布局表示的表达能力已在若干关键应用中得到体现。\CuTe 便于将多种多样的算法——例如广义张量-张量收缩（GETT）与卷积（CONV）——表示为通用矩阵乘法（GEMM）的实例，代码得以复用，算法也因此统一。例如，\CuTe 允许矩阵无论其具体数据布局如何都用 $(m,n)$ 坐标（coordinate）索引，让通用算法与具体布局保持正交；要求特定布局的算法或指令则能够静态地检查、验证并推演它们的张量参数。
 
-\CuTe 布局代数使得张量布局的静态分析与变换成为可能，用以实现并验证通用算法。例如，它可以为 \texttt{COPY} 操作推导最大向量化机会，验证矩阵乘累加（\texttt{MMA}）与 \texttt{COPY} 指令的输入输出布局，并推导出最优的共享内存布局，包括避免 bank 冲突的 swizzle 模式。这些能力把布局管理从易错的手工过程转变为一种系统化、可验证的方法论。为支持对本文定义的学习、实验与验证，纯 Python 参考实现 PyCuTe（NVIDIA，2026）已在 \url{https://github.com/NVlabs/CuTe} 公开发布。
+\CuTe 布局代数支持对张量布局做静态分析与变换，用以实现并验证通用算法。例如，它可以为 \texttt{COPY} 操作推导最大向量化机会，验证矩阵乘累加（\texttt{MMA}）与 \texttt{COPY} 指令的输入输出布局，并推导出最优的共享内存布局，包括避免 bank 冲突的 swizzle 模式。有了这些能力，布局管理从易错的手工过程变成了一套系统、可验证的做法。为支持对本文定义的学习、实验与验证，纯 Python 参考实现 PyCuTe（NVIDIA，2026）已在 \url{https://github.com/NVlabs/CuTe} 公开发布。
 
-\CuTe 的实际影响体现在它成功部署于生产系统，最显著的是作为 NVIDIA CUTLASS v3 与 v4 库的基础。在 CUTLASS 以及 FlashAttention 等应用中的性能评估表明，\CuTe 的抽象不引入任何性能开销，同时显著加速了软件开发。该框架的采用验证了它的双重承诺：在保持手工优化代码性能特征的同时，大幅降低开发复杂度与开发时间。
+\CuTe 的实际影响体现在它已成功部署于生产系统，最显著的就是 NVIDIA CUTLASS v3 与 v4 库都建在它之上。在 CUTLASS 以及 FlashAttention 等应用中的性能评估表明，\CuTe 的抽象不引入任何性能开销，软件开发却显著加快。采用这一框架的结果是：手工优化代码的性能特征得以保持，开发复杂度与开发时间大幅下降。
 
-展望未来，\CuTe 的数学基础与代数化方法使其成为一个能够持续适应未来架构创新的框架。通过将布局关注点与算法逻辑分离，并提供强大的编译期推理能力，\CuTe 确立了一种面向张量中心编程的方法论，能够满足各类计算系统与应用的需求。
+\CuTe 的数学基础与代数化方法，使它能够随着架构创新持续演进。将布局关注点与算法逻辑分离，并提供强大的编译期推理能力，\CuTe 确立了一种面向张量中心编程的方法论，能够满足各类计算系统与应用的需求。
 
 \section*{致谢}
 \addcontentsline{toc}{section}{致谢}
 
-作者感谢 Vijay Thakkar 作为 \CuTe 的早期使用者，感谢他在 \CuTe 的普及及其与 CUTLASS 的集成中发挥的关键作用，以及他对 \CuTe 基础设计与部署的重要贡献。他还感谢 Andrew Kerr、Pradeep Ramani 与 Manish Gupta，感谢他们对于在 CUTLASS 中使用 \CuTe 的洞见，以及他们推动 \CuTe 在高性能 kernel 开发中的早期采用。他感谢 Muhammad Osama 与 Duane Merrill 在 \CuTe 原型上的早期实验工作，以及在最初 \CuTe 示例中所做的底层性能优化。最后，作者感谢 Michael Garland、Bastian Hagedorn、Jay Shah 与 Amanda Liu 提出的富有洞见的反馈，以及他们对 \CuTe 规范一次次提出的挑战与质询。
+作者感谢 Vijay Thakkar 作为 \CuTe 的早期使用者，感谢他在 \CuTe 的普及及其与 CUTLASS 的集成中发挥的关键作用，以及他对 \CuTe 基础设计与部署的重要贡献。他还感谢 Andrew Kerr、Pradeep Ramani 与 Manish Gupta，感谢他们对于在 CUTLASS 中使用 \CuTe 的洞见，以及他们推动 \CuTe 在高性能 kernel 开发中的早期采用。他感谢 Muhammad Osama 与 Duane Merrill 在 \CuTe 原型上的早期实验工作，以及在最初 \CuTe 示例中所做的底层性能优化。最后，作者感谢 Michael Garland、Bastian Hagedorn、Jay Shah 与 Amanda Liu 提出的独到反馈，以及他们对 \CuTe 规范一次次提出的挑战与质询。

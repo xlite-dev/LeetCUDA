@@ -7,8 +7,8 @@
 
 第~\ref{ch:25}~章结束时，我们手里已经有三个 CuTe 版 FlashAttention：cp.async 统一流水、
 TMA + 单 consumer warp specialization、FA3 式双 consumer。它们回答的都是「布局事实搬进类型之后
-attention 长什么样」，但性能口径上还欠一个交代：\textbf{这些教学实现离厂商库到底有多远？}
-本章给出终局答案——把三个实现里各自最强的部分拼起来，再补上两个只有在「kernel 全权可控」时
+attention 长什么样」，但性能口径上还欠一个交代：这些教学实现离厂商库到底有多远？
+本章把三个实现里各自最强的部分拼起来，再补上两个只有在「kernel 全权可控」时
 才做得出的优化（softmax scale$\cdot\log_2 e$ 融合、persistent CTA），得到
 \texttt{flash\_\allowbreak{}attn\_\allowbreak{}cute\_\allowbreak{}persist\_\allowbreak{}d\_\allowbreak{}sm120}
 （flash\_attn.cuh L3635，\texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}CUTE}
@@ -17,7 +17,7 @@ $H{=}32$/$N{=}8192$/$D{=}128$ dense 场景实测 \textbf{240.1 TFLOPS，为 cuDN
 （230.2 TFLOPS）的 1.04 倍}。这是全书第一个（也是唯一一个）在绝对性能上越过厂商库的
 attention kernel。
 
-本章的四条主线，每条都对应「超越 cuDNN」的一个技术支柱：
+本章的四条主线，都指向「超越 cuDNN」：
 
 \begin{itemize}[itemsep=1pt,topsep=2pt]
   \item \textbf{WS 双角色}（\S\ref{sec:26b-arch}）：128 线程 producer（只发 TMA）+
@@ -48,7 +48,7 @@ softmax）、第~\ref{ch:17}~章（TMA 与 mbarrier 协议）、第~\ref{ch:21}-
 
 「手写 kernel 赢 cuDNN」在 Hopper（sm\_90）时代几乎不可信：cuDNN 在 H100 上用
 WGMMA + warp specialization + TMEM 调到了接近理论峰值，普通开发者用 CuTe 从零追赶
-成本极高。但 sm\_120（Blackwell 消费线/专业线）改变了博弈格局——这块芯片\textbf{没有}
+成本极高。但 sm\_120（Blackwell 消费线/专业线）不一样：这块芯片\textbf{没有}
 WGMMA（sm\_90 专属）、\textbf{没有} tcgen05/TMEM（sm\_100 专属），cuDNN 与我们一样，
 只剩同一条张量核路径：
 
@@ -76,12 +76,11 @@ cuDNN SDPA（\texttt{CUDNN\_ATTENTION} 后端） & 230.2 & 1.00$\times$ \\
 \texttt{exp2f} 替代 \texttt{expf}（\texttt{-{}-use\_\allowbreak{}fast\_\allowbreak{}math}，
 +2\%\textasciitilde4\%）、softmax scale 融合（+3\%\textasciitilde4\%）、persistent CTA
 （dense 中等序列 +2\%\textasciitilde6\%）、FA-4 条件重缩放（长序列收益，复用
-第~\ref{ch:16}~章结论）。没有任何一项是「黑魔法」，每一项都是把协议里的一次浪费
-换成零开销。
+第~\ref{ch:16}~章结论）。四项都是把协议里的一次浪费换成零开销，谈不上黑魔法。
 
 还有一个工程动机：厂商库的 SDPA 对\textbf{非标准形状}（GQA 折叠、滑窗 causal、
 head\_dim=96 这类非 2 的幂）经常落入慢速 fallback；专用 kernel 按自己的 tile 几何
-原生支持这些形状——这是性能之外的第二条护城河。
+原生支持这些形状，这是性能之外的另一个好处。
 
 \section{数学原理}\label{sec:26b-math}
 
@@ -265,7 +264,7 @@ empty = 消费完成），两者构成 \S\ref{sec:26b-tma} 的握手协议。}
 smem 按 \texttt{[Q persist | K stages | V stages]} 一维排布，总量编译期由
 \texttt{kSmemElems} 决定，D=128 时 $128{\times}128{\times}2 + 2{\times}(64{\times}128{\times}2)
 \times 2 = 96$\,KB（opt-in 上限 99\,KB）。每段用哪个 swizzle atom 由\textbf{行字节数}
-决定——这是第~\ref{ch:23}~章的结论在此处的落地：
+决定，用的正是第~\ref{ch:23}~章的结论：
 
 \begin{lstinputlisting}[linerange={3527-3565},firstnumber=auto,
   title={flash\_attn.cuh L3527-3565（\texttt{Flash\allowbreak{}Attn\allowbreak{}Persist\allowbreak{}D\allowbreak{}Cu\allowbreak{}Te\allowbreak{}Traits}：smem 布局与双 TiledMma）}]{../flash_attn.cuh}
@@ -336,7 +335,7 @@ descriptor、opt-in 动态 smem：
 进 stage」的协议。V 与 K 共用 \texttt{SmemLayoutKV} 与同一 box 几何，差别只在
 kernel 侧装载时用转置视图（\S\ref{sec:26b-smem}）。
 
-producer 的发射时序是本协议的精华：Q 先发（一次性全 $D$），然后
+producer 的发射时序值得细看：Q 先发（一次性全 $D$），然后
 K/V 各预取 $S{-}1$ 个 tile 填满流水，主循环里每个 tile 领先 $S{-}1$ 发射下一个。
 注意 \textbf{V-first-then-K} 的顺序——V 的消费点（PV GEMM）晚于 K 的消费点
 （QK GEMM）整整一段 softmax，先发 V 让 K 的 TMA 传输填进 QK 计算的空隙：
@@ -409,7 +408,7 @@ mbarrier 的相位会被多推一格，producer 的 wait 永远等不到正确�
   title={flash\_attn.cuh L3772-3802（producer 主循环：V-first-then-K 预取，$g$ 全局计数）}]{../flash_attn.cuh}
 \end{lstinputlisting}
 
-读这段代码的三个要点。第一，\textbf{发射顺序}：循环体里 \texttt{v\_g} 的
+这段代码要盯住三点。第一，\textbf{发射顺序}：循环体里 \texttt{v\_g} 的
 TMA 先于 \texttt{k\_g}——V 的消费点（PV GEMM）在 K 的消费点（QK GEMM）
 之后整整一段 softmax，先发 V 才能让 K 的传输填进 QK 计算窗口
 （图~\ref{fig:26b-pipeline}）。第二，\textbf{stage 与相位都由 $g$ 决定}：
@@ -659,7 +658,7 @@ persistent CTA dense 中等序列 +2\%\textasciitilde6\%、causal $-9\%\sim-21\%
 关闭）；FA-4 条件重缩放 dense 命中率 95\%+，与第~\ref{ch:16}~章结论一致。
 各项近似可加，合计与 1.04$\times$ 的总领先吻合。
 
-与第~\ref{ch:25}~章三个实现的纵向对比更能说明「协议设计」的价值：
+和第~\ref{ch:25}~章的三个实现纵向一比，「协议设计」的价值更清楚：
 实现 1（cp.async 统一流水）受限于装载与计算串行；实现 2（TMA+WS 单 consumer）
 解耦了搬运但 Q 每 tile 重装、softmax 带逐元素乘法、wave 尾损裸奔；
 本章在实现 2 的骨架上叠满四项优化，同一块 GPU 上从「勉强追平 SDPA」
@@ -671,7 +670,7 @@ persistent CTA dense 中等序列 +2\%\textasciitilde6\%、causal $-9\%\sim-21\%
 （\S\ref{sec:26b-arch}）：没有它，consumer 被编译器均分到 168 寄存器，O 累加器
 溢出 local memory，性能直接腰斩。但这条指令在 SM120 工具链上的「生死」曾被
 本书两次误诊（第~\ref{ch:14}~章坑二、本节末考据框），值得用专节把全部变量
-摊开。结论先行——指令的生死由\textbf{三个独立变量}决定，而 arch 后缀是其中
+摊开。指令的生死由\textbf{三个独立变量}决定，而 arch 后缀是其中
 唯一不构成威胁的一个：
 
 \begin{center}
@@ -694,7 +693,7 @@ TMA dst 状态空间 & \texttt{shared::cluster} & C7506：ptxas 视作隐式 ext
 \end{tabular}
 \end{center}
 
-两个静默丢弃触发的机理分别展开。\textbf{C7506（cluster 形式 TMA）}：
+下面分别看这两个静默丢弃触发的机理。\textbf{C7506（cluster 形式 TMA）}：
 \texttt{cp.\allowbreak{}async.\allowbreak{}bulk.\allowbreak{}tensor} 的目的地址写成
 \texttt{shared::cluster} 时，ptxas 把这条指令当作潜在的跨 CTA 副作用边界
 （cluster 语义下 smem 地址可能被映射到别的 CTA），进而按「extern 调用边界」

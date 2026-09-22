@@ -2,7 +2,7 @@
 \wpsh{张量（Tensor）}
 \label{sec:tensor}
 
-最后，我们定义张量（tensor）——\CuTe 的核心对象——做法是把一个布局（layout）绑定到一个访问器（accessor）上。访问器实际上是面向布局的、支持随机访问的类指针对象。
+最后来说 \CuTe 的核心对象张量（tensor）：把一个布局（layout）绑定到一个访问器（accessor）上，张量就定义出来了。访问器是面向布局、支持随机访问的类指针对象。
 
 \begin{definition}
 {\em 访问器}（accessor）是支持偏移（offset）与解引用（dereference）操作的对象：
@@ -32,13 +32,13 @@ T(c) = (e \circ \v{L})(c) = *(e + \v{L}(c)) = e[\v{L}(c)],
 *\{p\} &\to *p \\
 T &= \{p\} \circ \v{L}.
 \end{align*}
-此外，图~\ref{fig:layouts} 中所示的所有布局都可以通过与计数迭代器 $\{a\}$ 复合而变换为隐式张量，该迭代器解引用到所存储的偏移 $a \in \Z$，
+图~\ref{fig:layouts} 中的所有布局也可以与计数迭代器 $\{a\}$ 复合，得到隐式张量；该迭代器解引用到所存储的偏移 $a \in \Z$，
 \begin{align*}
 \{a\} + b &\to \{a+b\} \\
 *\{a\} &\to a \\
 T &= \{a\} \circ \v{L}.
 \end{align*}
-类似地，图~\ref{fig:layouts:coord0} 与图~\ref{fig:layouts:coord1} 中所示的坐标布局可以通过与访问器 $\{(a,b)\}$ 复合而变换为隐式张量，该访问器按坐标进行偏移，并解引用到所存储的坐标 $(a,b) \in \Z^{(\star,\star)}$，
+类似地，图~\ref{fig:layouts:coord0} 与图~\ref{fig:layouts:coord1} 中的坐标布局与访问器 $\{(a,b)\}$ 复合，也得到隐式张量：该访问器按坐标偏移，再解引用到所存储的坐标 $(a,b) \in \Z^{(\star,\star)}$，
 \begin{align*}
 \{(a,b)\} + (c,d) &\to \{(a+c,b+d)\} \\
 *\{(a,b)\} &\to (a,b) \\
@@ -53,7 +53,7 @@ T &= \{(a,b)\} \circ \v{L}.
 \wpssh{切片（Slicing）}
 \label{sec:slicing}
 
-张量既可以被{\em 完全求值}，也可以通过{\em 切片}（slicing）进行{\em 部分求值}。由于 \CuTe 的 Tensor 可以视为带偏移的 Layout，因此可以沿自然坐标的任意一个或多个模进行任意切片。
+张量既可以被{\em 完全求值}，也可以通过{\em 切片}（slicing）进行{\em 部分求值}。\CuTe 的 Tensor 可以视为带偏移的 Layout，能沿自然坐标的任意一个或多个模任意切片。
 
 \begin{itemize}[itemsep=0pt,topsep=2pt]
 \item \textbf{完全求值}：用完整坐标 $c$ 应用式~\eqref{eqn:tensor}，得到一个值。
@@ -669,9 +669,9 @@ $\v{A}((1,\_),((\_,0),\_))$ & $\{4\} \circ (2,(2,2)):(1,(2,100))$ &
 \label{fig:slicing}
 \end{figure}
 
-图~\ref{fig:slicing} 展示了在一个 $6 {\times} 12$ 矩阵中切片以提取行、列与子矩阵的示例。这些示例使用记号 $\{a\}$ 表示的计数迭代器访问器，以指明偏移 $a \in \Z$。切片的过程包括向张量偏移做累加，并确定布局中尚未求值的部分。
+图~\ref{fig:slicing} 给出在 $6 {\times} 12$ 矩阵里切出行、列与子矩阵的例子。这些例子用记号 $\{a\}$ 表示计数迭代器访问器，指明偏移 $a \in \Z$。切片会把偏移累加到张量上，并定出布局中尚未求值的部分。
 
-在许多张量库（如 {\tt numpy.ndarray}、{\tt torch.tensor} 和 MATLAB）中，切片以与上面类似的记法得到支持：写 {\tt my\_matrix[2,:]} 提取矩阵的第二行，写 {\tt my\_matrix[:,4]} 提取矩阵的第四列。这些库还支持范围切片（ranged slicing），例如 {\tt my\_matrix[2:4,1:3]} 提取从第二行到第四行、从第一列到第三列的子矩阵。\CuTe 不支持范围切片，因为它认为范围切片存在若干问题：
+张量库（如 {\tt numpy.ndarray}、{\tt torch.tensor} 和 MATLAB）都支持类似的切片记法：写 {\tt my\_matrix[2\allowbreak{},:]} 取出矩阵的第二行，写 {\tt my\_matrix[:,\allowbreak{}4]} 取出第四列。这些库还支持范围切片（ranged slicing），例如 {\tt my\_matrix[2:4\allowbreak{},1:3]} 取出从第二行到第四行、从第一列到第三列的子矩阵。\CuTe 不支持范围切片，因为范围切片本身有若干问题：
 \begin{compactitem}
 \item 范围切片无法表达图~\ref{fig:slicing} 中演示的所有切片。最后一个切片示例就无法仅凭矩阵行与列上的范围切片来表达。
 \item 范围切片助长如下模式

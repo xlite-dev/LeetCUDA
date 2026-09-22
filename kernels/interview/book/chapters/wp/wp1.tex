@@ -2,7 +2,7 @@
 
 \wph{布局表示（Layout Representation）}
 
-\CuTe 布局（layout）是一类功能多样的对象，能够表示范围广泛的数据排列与线程排列，在抽象物理地址、将迭代顺序与存储顺序相分离等方面极具实用价值。在本节中，我们定义形状（shape）、布局与张量（tensor）的 \CuTe 表示，并构建它们与坐标（coordinate）之间的相互作用。\CuTe 布局使得泛型算法只需单一实现，便可应用于任何可折叠为该算法规范形式（canonical form）的复杂数据布局。此类算法及其应用广度的示例见第~\ref{sec:algorithms}~节。
+\CuTe 布局（layout）是一类功能多样的对象，能够表示范围广泛的数据排列与线程排列，在抽象物理地址、将迭代顺序与存储顺序相分离等方面极具实用价值。在本节中，我们定义形状（shape）、布局与张量（tensor）的 \CuTe 表示，并说明它们与坐标（coordinate）如何相互作用。\CuTe 布局使得泛型算法只需单一实现，便可应用于任何可折叠为该算法规范形式（canonical form）的复杂数据布局。此类算法及其应用广度的示例见第~\ref{sec:algorithms}~节。
 
 \wpsh{元组与层次元组（Tuple 与 HTuple）}
 
@@ -94,26 +94,26 @@ S : \Z_{MN} \longleftrightarrow \Z_M \times \Z_N
 \end{align*}
 在一维整型坐标（integral coordinate）$i \in \Z_{MN}$ 与二维自然坐标（natural coordinate）$(m,n) \in \Z_M \times \Z_N$ 之间建立映射，二维形状 $(M,N)$ 也可以被解释为描述 $MN$ 个一维元素，并由整型坐标 $i$（$0 \leq i < MN$）索引。
 
-类似地，二维形状 $(M,NP)$ 可以被解释为层次形状 $(M,(N,P))$，由自然坐标 $(m,(n,p))$ 索引，其中 $0 \leq m < M$、$0 \leq n < N$、$0 \leq p < P$。类似地可以建立双射
+类似地，二维形状 $(M,NP)$ 可以被解释为层次形状 $(M,(N,P))$，由自然坐标 $(m,(n,p))$ 索引，其中 $0 \leq m < M$、$0 \leq n < N$、$0 \leq p < P$。相应的双射为
 \begin{align*}
 S : \Z_M \times \Z_{NP} \longleftrightarrow \Z_M \times (\Z_N \times \Z_P)
 \end{align*}
 在二维坐标 $(m,q) \in \Z_M \times \Z_{NP}$ 与自然坐标 $(m,(n,p)) \in \Z_M \times (\Z_N \times \Z_P)$ 之间建立映射。
 
-层次形状与坐标的一个直接推论是：张量算法可以按照对它们而言最自然的形状来编写（第~\ref{sec:algorithms}~节）——{\tt COPY} 中的向量用一维形状，{\tt GEMM} 中的矩阵用二维形状，{\tt batched-GEMM} 中的张量用三维形状，等等——同时仍能接受被折叠（fold）成与算法规约弱同余的层次化形状张量（第~\ref{sec:compatibility}~节）。数据张量的形状通常表示为一列扁平的整数，它可以被任意折叠成泛型张量算法所接受的形状。此外，由于张量的每个模都关联着一个用于索引数据的步幅（stride）（第~\ref{sec:stride}~节），这种模的折叠使得我们能够表示远比 {\tt COPY} 中的简单连续数组或 {\tt BLAS GEMM} 中的行主序、列主序矩阵复杂得多的数据布局（第~\ref{sec:layout}~节）。
+层次形状与坐标的一个直接推论是：张量算法可以按照对它们而言最自然的形状来编写（第~\ref{sec:algorithms}~节）——{\tt COPY} 中的向量用一维形状，{\tt GEMM} 中的矩阵用二维形状，{\tt batched-GEMM} 中的张量用三维形状，等等——同时仍能接受被折叠（fold）成与算法规约弱同余的层次化形状张量（第~\ref{sec:compatibility}~节）。数据张量的形状通常表示为一列扁平的整数，它可以被任意折叠成泛型张量算法所接受的形状。另外，由于张量的每个模都关联着一个用于索引数据的步幅（stride）（第~\ref{sec:stride}~节），这种模的折叠使得我们能够表示远比 {\tt COPY} 中的简单连续数组或 {\tt BLAS GEMM} 中的行主序、列主序矩阵复杂得多的数据布局（第~\ref{sec:layout}~节）。
 
-在接下来的小节中，我们将定义这种相容性（compatibility）的概念，以及形状内各坐标集合之间的这些关系。
+下一小节定义这种相容性（compatibility）的概念，以及形状内各坐标集合之间的这些关系。
 
 \wpssh{坐标集合与相容性（Coordinate Sets and Compatibility）}
 \label{sec:compatibility}
 
-如前所述，层次形状支持由多种坐标系索引。这里，我们为特定形状定义坐标集合（coordinate set），并定义形状之间的相容性概念，以便在形状之间共享坐标集合。
+层次形状支持由多种坐标系索引。这里，我们为特定形状定义坐标集合（coordinate set），并定义形状之间的相容性概念，以便在形状之间共享坐标集合。
 
 \begin{definition}
 \emph{坐标集合}是一个由非负整数构成的集合 $\Z_N = \{0, 1, 2, \ldots, N-1\}$，或坐标集合的笛卡尔积 $\Z_N \times \Z_M = \Z_{(N,M)}$。
 \end{definition}
 
-例如，下面是一些坐标集合的例子：
+下面是几个坐标集合：
 \begin{align*}
 \Z_6 &= \{ 0, 1, 2, 3, 4, 5 \} \\
 \Z_3 \times \Z_4 = \Z_{(3,4)} &= \{(0,0), (1,0), (2,0), (0,1), (1,1), (2,1), (0,2), (1,2), (2,2), (0,3), (1,3), (2,3) \} \\
@@ -310,7 +310,7 @@ i &\mapsto \Bigl(i \bmod \abs{S_0}, \floor{\frac{i}{\abs{S_0}}} \bmod \abs{S_1},
 \end{align}
 \end{definition}
 
-在大多数情况下，步幅也是 \texttt{HTuple($\Z$)}，即 $\D = \Z$。\texttt{inner\_product} 所产生的整数通常被解释为数据数组内的偏移。然而，步幅元素的概念可以推广为整数半模（integer-semimodule）中的任意元素，这为布局所能表示的函数范围提供了极大的灵活性。
+在大多数情况下，步幅也是 \texttt{HTuple($\Z$)}，即 $\D = \Z$。\texttt{inner\_product} 所产生的整数通常被解释为数据数组内的偏移。然而，步幅元素的概念可以推广为整数半模（integer-semimodule）中的任意元素，布局能表示的函数范围也宽得多。
 
 \wpssh{整数半模（Integer-Semimodules）}
 

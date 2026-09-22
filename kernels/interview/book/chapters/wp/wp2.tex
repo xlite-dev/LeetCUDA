@@ -26,7 +26,7 @@ D \ &\colon \ \Z_S \to \D
 \end{align*}
 其中最后一种写法强调：形状与步幅本身也可以被解释为函数，它们复合起来定义布局函数。
 
-由于布局的定义域由其形状决定，布局的性质与形状的性质紧密对齐。对于布局 $\v{L} = S : D$ 与 $\v{U} = X : Y$，我们定义：
+由于布局的定义域由其形状决定，布局的性质与形状的性质一一对应。对于布局 $\v{L} = S : D$ 与 $\v{U} = X : Y$，我们定义：
 \begin{compactitem}
 \item $\text{阶}(\v{L}) = \text{阶}(S)$：布局的阶（rank）是其形状的阶。
 \item $\text{深度}(\v{L}) = \text{深度}(S)$：布局的深度（depth）是其形状的深度。
@@ -52,7 +52,7 @@ D \ &\colon \ \Z_S \to \D
 
 \wpssh{布局示例}
 
-在定义了形状、步幅与布局之后，我们现在给出一些示例，说明 \CuTe 布局是对常见扁平 N 维布局的严格推广。
+下面给出几个示例，说明 \CuTe 布局是对常见扁平 N 维布局的严格推广。
 
 \begin{figure}[ht]
 \centering
@@ -192,7 +192,7 @@ D \ &\colon \ \Z_S \to \D
 \label{fig:layouts}
 \end{figure}
 
-图~\ref{fig:layouts} 展示了稠密线性代数库（如 CUTLASS）中常见的数据布局示例。每个布局都被表示为从逻辑坐标 $(m,n) \in \Z_{(4,8)}$ 到偏移 $k \in \Z$ 的映射。例如，这些偏移可用于索引数据数组中的元素。常见的行主序（row-major）、列主序（column-major）与填充（padded）布局都可以平凡地用 \CuTe 布局表示，而交错（interleaved）与混合（mixed）布局则表明：通过使用嵌套的形状与步幅，布局的表示集合被严格地扩大。特别地，可以清楚地看到，由数据块构成的网格（grids-of-tiles-of-data）可以直接用 \CuTe 布局表示。
+图~\ref{fig:layouts} 汇总了稠密线性代数库（如 CUTLASS）中常见的数据布局。每个布局都被表示为从逻辑坐标 $(m,n) \in \Z_{(4,8)}$ 到偏移 $k \in \Z$ 的映射。例如，这些偏移可用于索引数据数组中的元素。常见的行主序（row-major）、列主序（column-major）与填充（padded）布局都可以平凡地用 \CuTe 布局表示，而交错（interleaved）与混合（mixed）布局则表明：通过使用嵌套的形状与步幅，布局的表示集合被严格地扩大。特别地，由数据块构成的网格（grids-of-tiles-of-data）可以直接用 \CuTe 布局表示。
 
 \begin{figure}[ht]
 \centering
@@ -263,7 +263,7 @@ D \ &\colon \ \Z_S \to \D
 \label{fig:layouts2}
 \end{figure}
 
-图~\ref{fig:layouts2} 展示了用整数半模步幅而非整数步幅构造的布局示例。图~\ref{fig:layouts:coord0} 与图~\ref{fig:layouts:coord1} 演示了生成坐标的布局。在后续章节中我们将发现，这些坐标布局与其对应的数据布局对称地变换，并且常常作为检测数据张量越界访问并对其进行谓词化（predicating）的实用工具。此外，坐标张量已被证明对于 Hopper 与 Blackwell 中诸如 TMA 这类以坐标而非地址作为指令参数的指令非常有用。图~\ref{fig:layouts:swizzle} 使用了一个以二进制 XOR 替换群加法的整数半模。它可用于生成所谓的 swizzle 模式，这类模式有助于避免对共享内存读写访问模式中的 bank 冲突。这些示例突显了 \CuTe 布局概念的统一性以及它所能表示函数的普适性。
+图~\ref{fig:layouts2} 展示了用整数半模步幅而非整数步幅构造的布局示例。图~\ref{fig:layouts:coord0} 与图~\ref{fig:layouts:coord1} 演示了生成坐标的布局。在后续章节中我们将发现，这些坐标布局与其对应的数据布局对称地变换，并且常常作为检测数据张量越界访问并对其进行谓词化（predicating）的实用工具。另外，坐标张量对 Hopper 与 Blackwell 里的 TMA 这类以坐标而非地址作参数的指令也很有用。图~\ref{fig:layouts:swizzle} 使用了一个以二进制 XOR 替换群加法的整数半模。它可用于生成所谓的 swizzle 模式，这类模式有助于避免对共享内存读写访问模式中的 bank 冲突。这些例子说明 \CuTe 的布局概念是统一的，它能表示的函数范围也很广。
 
 \wpssh{完备性}
 
@@ -326,4 +326,4 @@ f(\v{v}) = \v{A} \v{v} + \v{b}
 \end{align}
 其中 $\v{A}$ 是一个 $m {\times} n$ 的二进制元素矩阵，$\v{v}$ 是长度为 $n$ 的二进制向量，$\v{b}$ 是长度为 $m$ 的二进制向量，且所有算术都以 2 为模（在只有两个元素的有限域 $\mathbb{F}_2$ 中）执行。
 
-本文的后续章节将定义 \CuTe 布局上的代数运算，这些运算是从线性代数推广而来的。\CuTe 布局上的群复合可以解释为矩阵乘法的推广。\CuTe 布局的右逆与左逆可以解释为线性代数中的 Moore-Penrose 伪逆。事实上，在 BCP 与 BMMC 分析中也可以找到类似的线性代数表达式（Edelman 等，1994；Cormen，1993；Bouverot-Dupuis 与 Sheeran，2023；Zhou 等，2025），它们都在算法分析中使用分解、逆与矩阵乘积。\CuTe 布局代数可以解释为线性代数的 BCP 与 BMMC 运算向 $\mathbb{F}_2$ 域之外的推广。特别地，\CuTe 布局代数的主要动机来自张量异构数据布局中常见的一般整数步幅。在本工作中，我们旨在证明：这些运算更一般的函数式定义对 \CuTe 布局而言通常是可计算的，并且对广泛的分析与应用都是有用的。
+本文的后续章节将定义 \CuTe 布局上的代数运算，这些运算是从线性代数推广而来的。\CuTe 布局上的群复合可以解释为矩阵乘法的推广。\CuTe 布局的右逆与左逆则对应线性代数中的 Moore-Penrose 伪逆。事实上，在 BCP 与 BMMC 分析中也可以找到类似的线性代数表达式（Edelman 等，1994；Cormen，1993；Bouverot-Dupuis 与 Sheeran，2023；Zhou 等，2025），它们都在算法分析中使用分解、逆与矩阵乘积。从这个角度看，\CuTe 布局代数是线性代数的 BCP 与 BMMC 运算向 $\mathbb{F}_2$ 域之外的推广。特别地，\CuTe 布局代数的主要动机来自张量异构数据布局中常见的一般整数步幅。在本工作中，我们旨在证明：这些运算更一般的函数式定义对 \CuTe 布局而言通常是可计算的，并且对广泛的分析与应用都是有用的。

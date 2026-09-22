@@ -6,10 +6,10 @@
 \section{本章导读}
 
 第~\ref{ch:28}~章把 fp16 输入变成了量化 workspace（$Q_8,K_8,V_8^{\top}$ 与
-scale 张量）；本章进入主 kernel——文件 \texttt{sm\_120/persist\_d.cuh} 里的
-\texttt{persist\_d\_ws\_fwd\_cute\_fp8\_sm120}（sm\_120 warp-specialized
+scale 张量）；本章进入主 kernel，即文件 \texttt{sm\_120/persist\_d.cuh} 里的
+\texttt{persist\_d\_ws\_fwd\allowbreak{}\_cute\_fp8\allowbreak{}\_sm120}（sm\_120 warp-specialized
 persist-D，全文件 1036 行）。它是 ffpa-attn 全仓库工程密度最高的单个文件，
-也是 Part V 的\textbf{核心章}——第~\ref{ch:30}~章的 split-D / M4N2 与
+也是 Part V 的\textbf{核心章}：第~\ref{ch:30}~章的 split-D / M4N2 与
 第~\ref{ch:31}--\ref{ch:32}~章的 fp4 家族都建立在它引入的机制之上。
 
 本章的主线只有一句话：\textbf{让所有量化 scale 因子要么精确消去、要么折进
@@ -39,8 +39,7 @@ persist-D，全文件 1036 行）。它是 ffpa-attn 全仓库工程密度最高
 \texttt{attn\_traits.cuh} L1--110、\texttt{softmax.cuh} L44--63；行号以
 附录~\ref{app:D}~的 commit permalink 为准。
 \textbf{验证方式}：\texttt{ffpa\_attn.bench} CLI，D=64/128 全绿；
-D=192 本机实测发现正确性 bug（29.7.1~节的完整定位过程——这本身是本书
-最有价值的一节）。
+D=192 本机实测发现正确性 bug，完整定位过程记在 29.7.1~节。
 
 \section{问题与动机}
 
@@ -58,7 +57,7 @@ scale（布局随粒度）、smooth-K 的 fp32 均值（lse 修正用）。主 k
 
 低精度 MMA 只会算 $\hat P\hat V$ 这样的整数/半字节域乘累加，而 attention 的
 数学在实数域。朴素的「每个操作数先乘回 scale」方案意味着每 tile 数千次
-额外 FMUL 与中间张量往返——fp8 MMA 吞吐翻倍的红利会被反量化开销吃掉大半。
+额外 FMUL 与中间张量往返，fp8 MMA 吞吐翻倍的红利会被反量化开销吃掉大半。
 第~\ref{ch:27}~章 27.3.4~节给过 scale 流向总览；本章把它们逐一落到代码：
 每个 scale 在哪个寄存器、哪条指令上被消去，以及哪些组合会互相冲突
 （如 lazy rescale 与满量程 P）。
@@ -87,8 +86,8 @@ $\log_2 e$ 融成单个 fp32 系数：
 \end{equation}
 该系数在\textbf{tile max 归约之后}一次乘入（配合
 \texttt{kMaxScaleAfter}：29.4.3~节），每元素省一次 FMUL。int8 变体走
-\texttt{s8xs8$\to$s32} MMA，s32 累加器原位 cast 到 f32 寄存器后同样处理
-——int8 均匀步长使 $S$ 的绝对误差有均匀上界，在近 max（大 $|S|$）的 softmax
+\texttt{s8xs8$\to$s32} MMA，s32 累加器原位 cast 到 f32 寄存器后同样处理。
+int8 均匀步长使 $S$ 的绝对误差有均匀上界，在近 max（大 $|S|$）的 softmax
 主导区相对误差更小，且 s32 累加精确（无 f8f8f32 累加舍入），这是 int8 QK 在
 大 $N$ 下更优的根源。
 
@@ -139,7 +138,7 @@ $\mathrm{amax}(V)$（29.3.2），lazy 的安全条件是膨胀后不越 e4m3 天
 $P\cdot448$ 已真正铺满量程、零 headroom，膨胀必然 satfinite 损坏 PV。而 f16
 inst\_buf 路径把 rescale 融进吸收 FFMA 后「立即 rescale 几乎免费」，
 lazy 的动机（省 rescale pass）本身就消失了。\textbf{满量程发射与延迟 rescale
-不可兼得}——这是发射域纪律的第一条。
+不可兼得}，这是发射域纪律的第一条。
 
 \subsection{f16 PV 累加器的域约束}\label{sec:29-f16acc}
 
@@ -244,9 +243,9 @@ softmax 产出的 $P$ fragment（QK MMA 的 C 布局）与 PV MMA 的 A 操作�
 \end{equation}
 既然 $\pi$ 任意，就让 P \textbf{留在本 lane}、按手头字节就地打包（4 条
 lane 无关 PRMT、零 SHFL），让 A 操作数携带一个置换的 k 索引 $\pi$；V 侧
-在量化期按 $\pi^{-1}$ 预置换列序（\texttt{VTPermInv32}，式~\ref{eq:28-vtperm}）
-——两侧槽位对上同一真实 kv 位置即可。row-sum MMA（B 为全 1）在双射下也
-精确。这是「前处理链的输出布局由主 kernel 消费方式决定」的终极形态：
+在量化期按 $\pi^{-1}$ 预置换列序（\texttt{VTPermInv32}，式~\ref{eq:28-vtperm}），
+两侧槽位对上同一真实 kv 位置即可。row-sum MMA（B 为全 1）在双射下也
+精确。「前处理链的输出布局由主 kernel 消费方式决定」这条原则落到实处就是：
 \textbf{一条数学等价，把 kernel 内的 16 次跨 lane shuffle 换成了量化期的
 免费列置换}。
 
@@ -277,7 +276,7 @@ struct FFPAAttnCuTePersistDFP8Traits {
       kBr * kHeadDim + kStagesK * kBc * kHeadDim + kStagesV * kBc * kHeadDim;
 \end{lstlisting}
 
-四处类型决策值得注意。\textbf{其一，$V^{\top}$ 的 B 操作数用与 Q/K 相同的
+有四处类型决策要交代。\textbf{其一，$V^{\top}$ 的 B 操作数用与 Q/K 相同的
 非转置 LDSM\_N atom}：V 已在 gmem 里转置好，kernel 里没有转置视角。
 \textbf{其二，TiledMma 的 K-tile 是 32}（atom 的 k16$\times$2），fp16 家族
 是 16。\textbf{其三，swizzle atom 按行字节选}（L45--50）：Q/K 行 $D$ 字节、
@@ -321,7 +320,7 @@ Q 在 kv 循环前一次性读进寄存器，之后 QK 步骤全是 gemm\_rs（K
 ——D=128 实测 $-8\mu s$、零 spill；Q 的 smem 区（slot 0）随即死亡。
 \textbf{槽位轮转}让复用区承接「最后一个 K stage」而非第一个：它的首次 TMA
 发射与首次消费都发生在稳态（隔着一整 tile 计算），\texttt{q\_consumed} 的
-等待被完全藏住。省下的 16KB smem 买的是 L1 容量而非 occupancy——smem/L1
+等待被完全藏住。省下的 16KB smem 买的是 L1 容量而非 occupancy：smem/L1
 共池，实测每 16KB $\approx$ 4--5$\mu s$，而 CTA 驻留本就被寄存器锁在
 1/SM。
 
@@ -347,10 +346,10 @@ lane$\to$列对映射），$q_s$ 按行查 \texttt{qs\_arr[row]}
 tail-aligned 的 \texttt{mask\_start\_tile}/\texttt{Tc\_eff} 两级剪枝，
 尾 tile 内逐元素 $-\infty$）；随后
 \texttt{online\_softmax\_fp8\_fixed} 以 $\log_2(p\_quant\_scale)$ 为
-exp2 偏移，softmax \textbf{直接发射} $\tilde P = P\cdot v_s\cdot448$——
+exp2 偏移，softmax \textbf{直接发射} $\tilde P = P\cdot v_s\cdot448$，即
 式~\ref{eq:29-threestep} 的 (1) 步折进 softmax 本身。\texttt{kMaxScaleAfter}
 （int8+f16acc 配置）：tile max 用未 scale 的原始 scores 归约、跨 lane
-归约完成后一次乘 $\delta_Q\delta_K\cdot$scale——max 临界路径上每元素省
+归约完成后一次乘 $\delta_Q\delta_K\cdot$scale，max 临界路径上每元素省
 一次 FMUL。
 
 \textbf{Phase 3 -- P 打包}（L813--831）：
@@ -383,13 +382,13 @@ fixed 模式下 softmax 已经发射满量程值，pack 只做 f32$\to$e4m3x2 �
 跑 \texttt{pscale\_rowsum\_mma}（B 操作数全 1 的 MMA 求行和，NCU 显示它
 藏进 PV 的 tensor pipe 气泡，CUDA-core FADD/shfl 版本实测更慢）。PV 主体
 分三路：f32 acc 直接 \texttt{gemm\_rs(o\_acc, tCrP, tCrV, ...)}；
-\textbf{f16 acc} 路线是本章最精彩的指令级融合——PV 先累进 f16
+\textbf{f16 acc} 路线是本章指令级融合的关键：PV 先累进 f16
 \texttt{inst\_buf}（把 $o\_acc$ 摘出 tensor-core 反馈链），随后吸收回
 f32 $o\_acc$ 时用 FFMA 把 online-softmax 的 rescale 一起折进去：
 \begin{equation}
   o\_acc \leftarrow \mathrm{FFMA}(o\_acc,\ row\_scale,\ float(inst\_buf)),
 \end{equation}
-\texttt{row\_scale} 恰为 1.0 的行（阈值跳过）免乘——独立的 rescale pass
+\texttt{row\_scale} 恰为 1.0 的行（阈值跳过）免乘，独立的 rescale pass
 整个消失。
 
 \textbf{Phase 5 -- epilogue}（L904--1031）：$O = o\_acc\cdot(1/448)/
@@ -397,7 +396,7 @@ f32 $o\_acc$ 时用 FFMA 把 online-softmax 的 rescale 一起折进去：
 $v_{s,d}$ 逐列消去、smooth-V 加回 $\bar v_d$；lse $=$
 $(\mathrm{rowmax}+\log_2\mathrm{rowsum})\ln2$，smooth-K 的修正
 $+\mathrm{scale}\cdot q_s\cdot q_{km}$（28.4.2~节的点积在循环外预算）。
-输出走 \textbf{STSM 进已释放的 smem（Q/K/V 全部消费完）再 TMA store}——
+输出走 \textbf{STSM 进已释放的 smem（Q/K/V 全部消费完）再 TMA store}，
 一次合并写出；尾 tile（不满 128 行）退化为带行守卫的直接 R$\to$G 写。
 
 \subsection{reorg-free 打包的布局推导}
@@ -532,21 +531,21 @@ $k\in\{4..7\}\cup\{20..23\}$（行 $g$ 与 $g{+}8$），在 C 视图里属 T6/T7
 \end{figure}
 
 C fragment 里 lane $t$ 持列对 $\{2t,2t{+}1\}$，A fragment 却要列
-$\{4t,\dots,4t{+}3\}$——后者横跨多个 lane 的字节。\texttt{ReorgC8bitToA8bit}
+$\{4t,\dots,4t{+}3\}$，后者横跨多个 lane 的字节。\texttt{ReorgC8bitToA8bit}
 用 16 SHFL + 32 PRMT 跨 lane 凑齐；而 \texttt{PackC8bitToA8bitPermVT}
 （L96--141）反问：为什么要凑\textbf{自然}布局？就地打包后 A 槽位
 $s$ 持真实列 $\pi(s)$（$\pi = [0,1,8,9, 2,3,10,11,\dots]$，每 32 列周期），
 V$^{\top}$ 列按 $\pi^{-1}$ 预置换即可。四个 \texttt{\_\_byte\_perm}
-选择器（0x5410/0x7632/0xDC98/0xFEBA）\textbf{lane 无关}——没有构造器
+选择器（0x5410/0x7632/0xDC98/0xFEBA）\textbf{lane 无关}：没有构造器
 状态、没有分支，且与 \texttt{ReorgC8bitToA8bit} 的对照已用 pycute 数值
 验证布局等价。注释末尾的 CONTRACT 加了感叹号：\textit{this pack must
-NEVER run against an unpermuted V\^{}T}——配对由 launcher 的单一
+NEVER run against an unpermuted V\^{}T}；配对由 launcher 的单一
 \texttt{reorg\_free} 编译期常量强制，两侧永不发散。
 
 \section{图示}
 
 三张图对应本章的三条主线。图~\ref{fig:29-scale-folding} 是数学层的总账：
-scale 从「显式乘法」变成「折叠」——$\delta_Q\delta_K$ 折进 exp2 系数、
+scale 从「显式乘法」变成「折叠」：$\delta_Q\delta_K$ 折进 exp2 系数、
 $v_s$ 在 P 的发射域消去、$p_{scale}$ 收在 epilogue，除 round() 外不引入
 任何额外误差源。图~\ref{fig:29-persist-d-ws} 是这套数学的宿主结构：
 128 producer + 256 consumer 的 warp specialization、\texttt{setmaxnreg}
@@ -554,7 +553,7 @@ $v_s$ 在 P 的发射域消去、$p_{scale}$ 收在 epilogue，除 round() 外�
 K stage 的槽位轮转，最后经
 STSM + TMA 输出。图~\ref{fig:29-reorg-free} 则是 epilogue 侧的布局技巧：
 跨 lane 重排（16 条 SHFL）与就地打包 + $V^{\top}$ 列置换（4 条 PRMT、
-零 SHFL）的对照——归约轴双射不变性保证两者精确等价。
+零 SHFL）的对照，归约轴双射不变性保证两者精确等价。
 
 \begin{figure}[htbp]
   \centering
@@ -773,14 +772,14 @@ v2/v3/v5（128P+128C、无 WS、V 驻留寄存器）分别 $+31.6\%$/$+1.4\%$/$+
 cluster 化无 DSMEM 需求、持平或更慢；CUDA-core row-sum 替代 tensor
 rowsum MMA $-4\%$。\textbf{已落地的优化}（D=128）：rescale+absorb FFMA
 融合、max-pass 延迟 scale、per-row rescale gating、Q quant 2 线程/行。
-这份「负结果清单」与正结果同样重要——它把后续优化方向的搜索空间
+这份「负结果清单」与正结果同样有用：它把后续优化方向的搜索空间
 压缩到了 engine 层（aux 链 overlap）。
 
 \subsection{带宽与算术的边界}
 
 D=128、N=8192 时主 kernel 365T FLOPS 对应的 DRAM 流量很小（$O(N\cdot D)$
-量级 workspace 单遍），瓶颈在 tensor pipe 与 softmax 的依赖链——与
-fp16 家族同构，但 fp8 的 MMA 吞吐翻倍使 softmax/P 打包的相对占比上升，
+量级 workspace 单遍），瓶颈在 tensor pipe 与 softmax 的依赖链，与
+fp16 家族同构；但 fp8 的 MMA 吞吐翻倍使 softmax/P 打包的相对占比上升，
 这也是 \texttt{kMaxScaleAfter}、FFMA 吸收融合这类\textbf{指令级}优化
 在此路径收益显著的原因。
 
@@ -789,8 +788,8 @@ fp16 家族同构，但 fp8 的 MMA 吞吐翻倍使 softmax/P 打包的相对占
 \subsection{案例：D=192 正确性 bug 的定位（真实故事）}\label{sec:29-d192}
 
 写本章的 bench 验证时发现 \texttt{--cuda-impl fp8 --D 192}
-allclose 失败（fp16/bf16 双双 $\times$），而 D=64/128 全绿。定位过程本身是
-一份方法论示范：
+allclose 失败（fp16/bf16 双双 $\times$），而 D=64/128 全绿。定位过程
+记在这里，可当方法论范本：
 \begin{enumerate}[itemsep=1pt,topsep=2pt]
   \item \textbf{误差量级分类}：max\_abs=2.66 vs mean\_abs=0.011——均值是
         正常 fp8 精度，最大值是灾难级 $\Rightarrow$ \textbf{正确性 bug}
@@ -859,7 +858,7 @@ allclose 失败（fp16/bf16 双双 $\times$），而 D=64/128 全绿。定位过
 \label{fig:29-d192-rows}
 \end{figure}
 
-教训：\textbf{「速度好+均值好」不等于正确}——bench 的 allclose 是唯一
+教训：\textbf{「速度好+均值好」不等于正确}。bench 的 allclose 是唯一
 硬门槛；误差的 max/mean 分裂是「个别行错」的强信号；行号模 tile 尺寸的
 直方图能直接把 bug 锚到 tile 结构的哪一半。
 
@@ -869,8 +868,8 @@ allclose 失败（fp16/bf16 双双 $\times$），而 D=64/128 全绿。定位过
 无 TMA/mbarrier，用 sm80 装载协议（cp.async + \texttt{wait<2S-1>}）复用
 sm120 的计算层（int8 QK / fixed p\_scale / f8f8f16 PV），256T non-WS。
 其 NCU 结论（依赖链/发射受限，\texttt{math\_pipe\_throttle} 1.32 $\gg$
-\texttt{wait} 0.82）与深流水零收益的证伪记录，是「同一算法在不同装载
-协议下瓶颈漂移」的绝佳对照。本节不展开，读者按需查阅仓库优化 RFC
+\texttt{wait} 0.82）与深流水零收益的证伪记录，正好构成「同一算法在不同
+装载协议下瓶颈漂移」的对照。本节不展开，读者按需查阅仓库优化 RFC
 （PC-16、附录 \#22）。
 
 \section{常见坑}
