@@ -3,12 +3,18 @@
 % 主网格 L = (8,16):(1,8), cell(i0,i1) = i0 + 8*i1 (gen_grid.py assert 双射 0..127);
 % 配色 = colfax quotient ramp: hue 按 2 列 tile 组 (colorx1..8), intensity 行渐变 8..64
 \documentclass[tikz,border=0pt]{standalone}
-\usetikzlibrary{arrows.meta,calc}
+\usetikzlibrary{arrows.meta,calc,decorations.pathmorphing}
 \usepackage{xeCJK}
 \usepackage{amsmath}
-\setmainfont{TeX Gyre Heros}
-\setCJKmainfont{Noto Serif CJK SC}
-\setCJKsansfont{Noto Sans CJK SC}
+\setmainfont{Humor Sans}
+\setsansfont{Humor Sans}
+\setmonofont{Comic Neue}
+\setCJKmainfont{LXGW WenKai}
+\setCJKsansfont{LXGW WenKai}
+
+\tikzset{
+  sketch/.style={decorate, decoration={random steps, segment length=2.5mm, amplitude=0.3mm}},
+  sketchfine/.style={decorate, decoration={random steps, segment length=8mm, amplitude=0.15mm}}}
 
 \definecolor{coverBg}{RGB}{248,249,251}
 \definecolor{coverInk}{RGB}{31,35,40}
@@ -30,12 +36,12 @@
 \shade[top color=coverBg, bottom color=coverBg!94!accentBlue] (0,0) rectangle (21,29.7);
 
 % ===== 背景装饰: 散落 size:stride 元组纹理 (浅灰) =====
-\node[rotate=13, anchor=center, text=coverMuted!35, font=\ttfamily\footnotesize] at (2.4,24.3) {(4,8):(8,1)};
-\node[rotate=-8, anchor=center, text=coverMuted!30, font=\ttfamily\footnotesize] at (18.6,21.4) {(128,128):(1,128)};
-\node[rotate=6, anchor=center, text=coverMuted!30, font=\ttfamily\footnotesize] at (2.6,7.0) {(16,8):(8,1)};
-\node[rotate=-13, anchor=center, text=coverMuted!30, font=\ttfamily\footnotesize] at (19.3,27.6) {((2,2),(2,2))};
-\node[rotate=11, anchor=center, text=coverMuted!28, font=\ttfamily\footnotesize] at (19.2,17.2) {(3):(1)};
-\node[rotate=-6, anchor=center, text=coverMuted!28, font=\ttfamily\footnotesize] at (2.2,2.4) {(8,16):(1,8)};
+\node[rotate=12, anchor=center, text=coverMuted!35, font=\ttfamily\footnotesize] at (2.3,24.3) {(4,8):(8,1)};
+\node[rotate=-12, anchor=center, text=coverMuted!35, font=\ttfamily\footnotesize] at (18.7,24.3) {(128,128):(1,128)};
+\node[rotate=7, anchor=center, text=coverMuted!30, font=\ttfamily\footnotesize] at (2.3,17.6) {((2,2),(2,2))};
+\node[rotate=-7, anchor=center, text=coverMuted!30, font=\ttfamily\footnotesize] at (18.7,17.6) {(3):(1)};
+\node[rotate=-6, anchor=center, text=coverMuted!28, font=\ttfamily\footnotesize] at (2.3,7.0) {(16,8):(8,1)};
+\node[rotate=6, anchor=center, text=coverMuted!28, font=\ttfamily\footnotesize] at (18.7,7.0) {(8,16):(1,8)};
 
 % ===== 顶部小标签 =====
 \node[text=coverMuted, font=\ttfamily\bfseries\small] at (10.5,26.9)
@@ -54,7 +60,7 @@
 
 % ===== 主视觉: CuTe layout 网格 (8x16) =====
 % L = (8,16):(1,8); hue = 2 列 tile 组, intensity = 行渐变 (quotient ramp)
-\begin{scope}[shift={(3.3,15.5)}, x={(0cm,-0.9cm)}, y={(0.9cm,0cm)},
+\begin{scope}[shift={(3.75,15.5)}, x={(0cm,-0.9cm)}, y={(0.9cm,0cm)},
   every node/.style={minimum size=0.9cm, outer sep=0pt, text=coverInk!65,
     font=\fontsize{7.5}{8.5}\selectfont}]
   \node[fill=colorx1!8] at (0,0) {0};
@@ -185,31 +191,40 @@
 \node[fill=colorx7!64] at (7,13) {111};
 \node[fill=colorx8!64] at (7,14) {119};
 \node[fill=colorx8!64] at (7,15) {127};
-  \draw[white, line width=0.7pt, shift={(-0.5,-0.5)}] (0,0) grid (8,16);
-  \draw[coverInk!35, line width=0.7pt] (-0.5,-0.5) rectangle (7.5,15.5);
+  % 手绘风: 只画内部网格线; 外边界由墨线框覆盖 (避免白线与墨框双层错位)
+  \foreach \a in {0.5,1.5,...,6.5} \draw[white, line width=0.7pt, sketchfine] (\a,-0.5) -- (\a,15.5);
+  \foreach \b in {0.5,1.5,...,14.5} \draw[white, line width=0.7pt, sketchfine] (-0.5,\b) -- (7.5,\b);
+  \draw[coverInk!35, line width=0.7pt, sketch] (-0.5,-0.5) rectangle (7.5,15.5);
 \end{scope}
 
 % 高亮 tile B = (2,2):(1,8) (右上角 2x2 tile, accent 粗框; scope 内 i0 行 0-1, i1 列 14-15)
-\draw[accentBlue, line width=1.5pt, rounded corners=1.5pt,
-  shift={(3.3,15.5)}, x={(0cm,-0.9cm)}, y={(0.9cm,0cm)}]
+\draw[accentBlue, line width=1.5pt, rounded corners=1.5pt, sketch,
+  shift={(3.75,15.5)}, x={(0cm,-0.9cm)}, y={(0.9cm,0cm)}]
   (-0.5,13.5) rectangle (1.5,15.5);
 \node[anchor=south, text=accentBlue, font=\ttfamily\bfseries\footnotesize]
-  at (16.35,16.85) {$B=(2,2):(1,8)$};
-\draw[-{Stealth[length=1.8mm]}, accentBlue, line width=0.8pt] (16.35,16.7) -- (16.35,16.0);
+  at (16.8,16.85) {B = (2,2):(1,8)};
+\draw[-{Stealth[length=1.8mm]}, accentBlue, line width=0.8pt, sketch] (16.8,16.7) -- (16.8,16.0);
 
 % layout 方程 (网格正下方, 居中)
-\node[text=coverInk, font=\fontsize{13}{16}\selectfont] at (10.5,7.55)
-  {$L = (8,16):(1,8)$};
+\node[text=coverInk, font=\fontsize{13}{16}\selectfont] at (10.5,7.7)
+  {L = (8,16):(1,8)};
 % mode 标注: mode0 (stride 1) 向下, mode1 (stride 8) 向右
-\node[rotate=90, anchor=center, text=coverMuted, font=\ttfamily\footnotesize] at (2.5,11.8) {mode\,0\,:\,(1)\;$\downarrow$};
+\node[rotate=90, anchor=center, text=coverMuted, font=\ttfamily\footnotesize] at (2.95,12.35) {mode\,0\,:\,(1)\;$\downarrow$};
 \node[text=coverMuted, font=\ttfamily\footnotesize] at (10.5,16.35) {$\rightarrow$\;mode\,1\,:\,(8)};
-\node[text=coverMuted, font=\ttfamily\footnotesize] at (10.5,6.8) {hue\,=\,2-col tile $\cdot$ ramp\,=\,row};
+
+% TiledMMA 代码块 (单行; 卡片与网格同宽对齐, 编辑器窗口风格)
+\draw[fill=white!30!coverBg!95!accentBlue, draw=coverInk!35, line width=0.6pt, rounded corners=2.5pt, sketch]
+  (3.3,6.0) rectangle (17.7,7.0);
+\foreach \i/\c in {0/colorx1,1/colorx2,2/colorx4}
+  \fill[\c!80] (3.62+\i*0.2,6.83) circle (0.052);
+\node[anchor=center, text=coverMuted, font=\ttfamily\small] at (10.5,6.36)
+  {auto tiled\_mma = {\color{accentBlue}make\_tiled\_mma}(SM80\_16x8x16\_F32F16F16F32\_TN\{\}, Layout<Shape<\_2,\_2,\_1>>\{\});};
 
 % ===== 底部声明 (细线框) =====
-\node[draw=accentBlue!45, rounded corners=2pt, inner xsep=10pt, inner ysep=8pt,
-  text=coverInk, text width=15.4cm, align=center, font=\small] at (10.5,4.6)
+\node[draw=accentBlue!45, sketch, rounded corners=2pt, inner xsep=10pt, inner ysep=8pt,
+  text=coverInk, text width=13.7cm, align=center, font=\small] at (10.5,4.75)
   {\CJKfamily{zhsans}\bfseries 郑重声明\\
-   \mdseries\CJKfamily{zhsong} 本书仅用于开源学习与技术交流，未经作者本人同意，不得用于任何商业用途。};
+   \mdseries\CJKfamily{zhsong} 本书仅用于开源学习与技术交流，\\未经作者本人同意，不得用于任何商业用途。};
 \node[text=coverMuted, font=\small] at (10.5,2.85)
   {LeetCUDA Project $\cdot$ 2026 年 9 月};
 \end{tikzpicture}
