@@ -4,36 +4,36 @@
 // 专注于 FFPA (Flash Prefill Attention) large head-dim kernel 的性能测试。
 // 支持 head_dim = 192, 256, 320, 384, 448, 512, 1024 等非标准维度。
 //
-// Build (SM120 RTX PRO 5000):
+// Build (SM120 RTX PRO 5000, run from bench/):
 //   nvcc -std=c++20 -O3 --expt-relaxed-constexpr --use_fast_math \
 //     -arch=sm_120a -DNOTES_V2_ENABLE_CUTE -DNOTES_V2_ENABLE_TMA_MMA_WS \
 //     -DNOTES_V2_ENABLE_CUDNN \
-//     -I ../../third-party/cutlass/include \
-//     -I ../../third-party/cudnn-frontend/include \
+//     -I ../../../third-party/cutlass/include \
+//     -I ../../../third-party/cudnn-frontend/include \
 //     -L/usr/local/cuda/targets/x86_64-linux/lib/stubs \
 //     -lcublas -lcudnn -lnvrtc -lcuda \
-//     bench_ffpa.cu -o bench_ffpa_sm120a.bin
+//     bench_ffpa.cu -o ../bin/bench_ffpa_sm120a.bin
 //
-// Build (SM90 H100):
+// Build (SM90 H100, run from bench/):
 //   nvcc -std=c++20 -O3 --expt-relaxed-constexpr --use_fast_math \
 //     -gencode arch=compute_90a,code=sm_90a -DNOTES_V2_ENABLE_CUTE \
 //     -DNOTES_V2_ENABLE_TMA_MMA_WS -DNOTES_V2_ENABLE_CUDNN \
-//     -I ../../third-party/cutlass/include \
-//     -I ../../third-party/cudnn-frontend/include \
+//     -I ../../../third-party/cutlass/include \
+//     -I ../../../third-party/cudnn-frontend/include \
 //     -L/usr/local/cuda/targets/x86_64-linux/lib/stubs \
 //     -lcublas -lcudnn -lnvrtc -lcuda \
-//     bench_ffpa.cu -o bench_ffpa_sm90a.bin
+//     bench_ffpa.cu -o ../bin/bench_ffpa_sm90a.bin
 //
 // Usage:
-//   ./bench_ffpa_sm120a.bin --bhnd 1,32,8192,512
-//   ./bench_ffpa_sm120a.bin --bhnd 1,32,8192,512 --sk 2 --sv 2
-//   ./bench_ffpa_sm120a.bin --bhnd 1,32,8192,512 --cudnn-only
+//   ../bin/bench_ffpa_sm120a.bin --bhnd 1,32,8192,512
+//   ../bin/bench_ffpa_sm120a.bin --bhnd 1,32,8192,512 --sk 2 --sv 2
+//   ../bin/bench_ffpa_sm120a.bin --bhnd 1,32,8192,512 --cudnn-only
 // =============================================================================
-#include "base.cuh"
-#include "common.cuh"
-#include "hgemm.cuh"
-#include "flash_attn.cuh"
-#include "ffpa_attn.cuh"
+#include "../base.cuh"
+#include "../common.cuh"
+#include "../hgemm.cuh"
+#include "../flash_attn.cuh"
+#include "../ffpa_attn.cuh"
 
 #include <cstdio>
 #include <cstdlib>

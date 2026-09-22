@@ -1,14 +1,14 @@
 // bench_sgemm.cu — SGEMM 性能与精度分析工具
 // 测试 sgemm.cuh 中所有 SGEMM kernel 的 benchmark
 //
-// 编译：
-//   nvcc -std=c++20 -O3 -arch=sm_86 -I ../../third-party/cutlass/include -lcublas -lcuda bench_sgemm.cu -o bench_sgemm
+// 编译 (run from bench/):
+//   nvcc -std=c++20 -O3 -arch=sm_86 -I ../../../third-party/cutlass/include -lcublas -lcuda bench_sgemm.cu -o ../bin/bench_sgemm
 //
-// 运行：
-//   ./bench_sgemm --mnk 1024,1024,1024
-//   ./bench_sgemm --mnk 4096,4096,4096 --warmup 5 --repeat 10
+// 运行:
+//   ../bin/bench_sgemm --mnk 1024,1024,1024
+//   ../bin/bench_sgemm --mnk 4096,4096,4096 --warmup 5 --repeat 10
 
-#include "sgemm.cuh"
+#include "../sgemm.cuh"
 
 #define DIV_UP(a, b) (((a) + (b) - 1) / (b))
 #define CUDA_CHECK(call)                                                       \

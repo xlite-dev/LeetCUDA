@@ -4,26 +4,26 @@
 // 仅关注 flash_attn_tma_mma_ws_split_q_cute kernel 和 cudnn SDPA kernel，
 // 避免引入 notes-v2.cu 中 30+ 算子的编译负担和无关干扰。
 //
-// Build (SM120 RTX PRO 5000):
+// Build (SM120 RTX PRO 5000, run from bench/):
 //   nvcc -std=c++20 -O3 --expt-relaxed-constexpr --use_fast_math \
 //     -arch=sm_120a -DNOTES_V2_ENABLE_CUTE -DNOTES_V2_ENABLE_TMA_MMA_WS \
 //     -DNOTES_V2_ENABLE_CUDNN \
-//     -I ../../third-party/cutlass/include \
-//     -I ../../third-party/cudnn-frontend/include \
+//     -I ../../../third-party/cutlass/include \
+//     -I ../../../third-party/cudnn-frontend/include \
 //     -L/usr/local/cuda/targets/x86_64-linux/lib/stubs \
 //     -lcublas -lcudnn -lnvrtc -lcuda \
-//     bench_attn.cu -o bench_attn_sm120a.bin
+//     bench_attn.cu -o ../bin/bench_attn_sm120a.bin
 //
 // Usage:
-//   ./bench_attn_sm120a.bin --bhnd 1,32,8192,64
-//   ./bench_attn_sm120a.bin --bhnd 1,32,8192,128 --sk 3
-//   ./bench_attn_sm120a.bin --bhnd 1,32,8192,64 --cudnn-only
+//   ../bin/bench_attn_sm120a.bin --bhnd 1,32,8192,64
+//   ../bin/bench_attn_sm120a.bin --bhnd 1,32,8192,128 --sk 3
+//   ../bin/bench_attn_sm120a.bin --bhnd 1,32,8192,64 --cudnn-only
 // =============================================================================
-#include "base.cuh"
-#include "common.cuh"
-#include "hgemm.cuh"
-#include "flash_attn.cuh"
-#include "ffpa_attn.cuh"
+#include "../base.cuh"
+#include "../common.cuh"
+#include "../hgemm.cuh"
+#include "../flash_attn.cuh"
+#include "../ffpa_attn.cuh"
 
 #include <cstdio>
 #include <cstdlib>
