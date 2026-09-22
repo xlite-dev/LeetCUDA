@@ -3487,4 +3487,686 @@ __global__ void flash_attn_3_cute_tma_copy_smoke(
 }
 #endif // NOTES_V2_ENABLE_CUTE
 
+#if defined(NOTES_V2_ENABLE_CUTE)
+// =============================================================================
+// Phase 8: sm_120 persist-D FlashAttention — WS(1 producer + 1 consumer)
+//          + persistent CTA + softmax scale*fused
+// =============================================================================
+// 参考实现: ffpa-attn csrc/cuffpa/cute/sm_120/persist_d.cuh
+// (persist_d_ws_fwd_cute_sm120) 的教学完整版: dense/causal/GQA 全支持,
+// PRO 5000 (sm_120, 96 SM) 实测 236.9 TFLOPS (H32/N8192/D128 dense),
+// 1.04x cuDNN SDPA。与 Phase 7 (FlashAttn2CuTeTraits 系) 的关键差异:
+//
+//   1. Q 寄存器持久化 (persist-D): Q smem->reg 只做一次 (Q tile 对整个
+//      KV 循环不变), 之后所有 QK GEMM 用 gemm_rs (A 常驻寄存器, 仅 K 从
+//      smem ldmatrix); Q smem 在 KV 循环外复用为 O epilogue 的 STSM 暂存。
+//   2. softmax scale*fused 进 Q fragment: Q s2r 后把 (scale*log2e) 一次性
+//      乘进 tCrQ, S 直达 log2 域 (S_fused = (s*Q)K^T = s*S_raw), softmax
+//      max/exp 两 pass 的逐元素乘法归零 (max(s*x)=s*max(x))。
+//   3. persistent CTA (仅 dense): grid = min(total_q_tiles, SM 数), 每 CTA
+//      串行处理多个 q-tile, 消除 wave 量化尾损; causal tile 负载前轻后重,
+//      线性分配锁死不均 (-9%~-21%), 回退全量 grid 让硬件调度器均衡。
+//   4. FA-4 conditional rescaling (log2 域 threshold=8=log2(256)): m 增长
+//      <=8 时跳过 O/sum 重缩放, 膨胀因子在 epilogue 的 1/sum 全部抵消。
+//   5. WS 双角色: 128T producer (TMA-only, warpgroup_reg_dealloc<32> 释放
+//      寄存器) + 256T consumer (MMA-only, warpgroup_reg_alloc<232>), 寄存器
+//      池数学 4w*32T*32 + 8w*32T*232 = 63488 < 64K/SM。
+//   6. Epilogue: O /= row_sum 后整 tile 走 R->S(STSM)->TMA store, 尾部
+//      tile 行 guard 直接 R->G; epi_done barrier 让 producer 在 consumer
+//      epilogue 期间安全预取下一个 q-tile 的 K/V。
+//
+// 编译目标必须 sm_120f: sm_120a 会触发 ptxas C7506 把 setmaxnreg 静默丢弃
+// (kernel 仍正确, 但 producer/consumer 寄存器再分配失效, 性能退化)。
+// =============================================================================
+
+#include <cutlass/arch/reg_reconfig.h>
+
+namespace fa_cute {
+
+// softmax scale*log2e 折叠进 Q fragment 后的常量 (见 Phase 8 头注释第 2 条)
+constexpr float FA4_LOG2E = 1.44269504088896340736f;
+constexpr float FA4_RESCALE_THRESHOLD = 8.0f;
+
+// persist-D traits: kBr=128 行 Q tile, kBc 列 K/V tile, K/V 独立 stage 池。
+// kBc 按 D 选择使 smem 预算 <= 99KB (Q tile + K 池 + V 池三段:
+// D=64 -> kBc=128: 16+32+32=80KB; D=96/128 -> kBc=64: 24/32 * 3=72/96KB)。
+// swizzle atom 按行字节数选择 (128B -> SW128, 64B -> SW64),
+// 与 FlashAttn2CuTeTraits 同策略。
+// kNumWarps = kBr/16: 8 个 consumer warp 沿 M 重复 m16n8k16 atom。
+template <int kHeadDim_, int kBr_ = 128, int kBc_ = 64, int kStages_ = 2>
+struct FlashAttnPersistDCuTeTraits {
+  static constexpr int kHeadDim = kHeadDim_;
+  static constexpr int kBr = kBr_;
+  static constexpr int kBc = kBc_;
+  static constexpr int kNumWarps = kBr / 16;
+  static constexpr int kStagesK = kStages_;
+  static constexpr int kStagesV = kStages_;
+  static constexpr float kRescaleThreshold = FA4_RESCALE_THRESHOLD;
+  static constexpr int kSmemElems =
+      kBr * kHeadDim + kStagesK * kBc * kHeadDim + kStagesV * kBc * kHeadDim;
+
+  using Element = cutlass::half_t;
+  using SmemAtom = std::conditional_t<
+      (kHeadDim * (int)sizeof(Element)) % 128 == 0,
+      GMMA::Layout_K_SW128_Atom<Element>,
+      std::conditional_t<(kHeadDim * (int)sizeof(Element)) % 64 == 0,
+                         GMMA::Layout_K_SW64_Atom<Element>,
+                         GMMA::Layout_K_SW32_Atom<Element>>>;
+  using SmemLayoutQ =
+      decltype(tile_to_shape(SmemAtom{}, Shape<Int<kBr>, Int<kHeadDim>>{}));
+  using SmemLayoutKV =
+      decltype(tile_to_shape(SmemAtom{}, Shape<Int<kBc>, Int<kHeadDim>>{}));
+  // V^T 转置视图: composition 叠加 row-major (D, kBc) (strides (kBc,1),
+  // FA2 的 V^T 技巧), PV 的 B operand 用 LDSM_T (U16x8) 直接装载, 免去
+  // kernel 外物化转置。
+  using SmemLayoutKVt = decltype(composition(
+      SmemLayoutKV{},
+      make_layout(Shape<Int<kHeadDim>, Int<kBc>>{}, GenRowMajor{})));
+  using SmemLayoutO =
+      decltype(tile_to_shape(SmemAtom{}, Shape<Int<kBr>, Int<kHeadDim>>{}));
+
+  using MmaAtom = MMA_Atom<SM80_16x8x16_F32F16F16F32_TN>;
+  using TiledMmaQK = decltype(make_tiled_mma(
+      MmaAtom{}, Layout<Shape<Int<kNumWarps>, _1, _1>>{},
+      Tile<Int<kBr>, Int<kBc>, _16>{}));
+  using TiledMmaPV = decltype(make_tiled_mma(
+      MmaAtom{}, Layout<Shape<Int<kNumWarps>, _1, _1>>{},
+      Tile<Int<kBr>, Int<kHeadDim>, _16>{}));
+
+  using SmemCopyAtom = Copy_Atom<SM75_U32x4_LDSM_N, Element>;
+  using SmemCopyAtomTransposed = Copy_Atom<SM75_U16x8_LDSM_T, Element>;
+};
+
+// Online safe softmax (log2 域 + FA-4 conditional rescaling), scale 已折叠
+// 进 Q fragment 版: scores 直达 log2 域, max/exp 循环内无逐元素乘法。
+// 行内 4-lane 蝴蝶归约 (m16n8k16 一行散在 4 个 lane: xor 1 + xor 2)。
+// 复用 Phase 7 的 convert_layout_acc_rowcol 行列视图。
+template <typename ScoresTensor, typename CoordTensor, int kRows>
+CUTE_DEVICE void online_safe_softmax_fa4(ScoresTensor& scores,
+                                         const CoordTensor& tScS_rc,
+                                         float* row_max, float* row_sum,
+                                         float* row_scale) {
+#pragma unroll
+  for (int row = 0; row < kRows; ++row) {
+    float tile_max = -INFINITY;
+#pragma unroll
+    for (int col = 0; col < cute::size<1>(scores); ++col)
+      tile_max = fmaxf(tile_max, scores(row, col));
+    tile_max = fmaxf(tile_max, __shfl_xor_sync(0xffffffff, tile_max, 1));
+    tile_max = fmaxf(tile_max, __shfl_xor_sync(0xffffffff, tile_max, 2));
+    const float next_max = fmaxf(row_max[row], tile_max);
+    const float log2_diff = row_max[row] - next_max;
+    float eff_max = next_max;
+    if (log2_diff >= -FA4_RESCALE_THRESHOLD) {
+      row_scale[row] = 1.0f;
+      eff_max = row_max[row];  // stale max; row_max 不更新
+    } else {
+      row_scale[row] = exp2f(log2_diff);
+      row_max[row] = next_max;
+    }
+    float tile_sum = 0.0f;
+#pragma unroll
+    for (int col = 0; col < cute::size<1>(scores); ++col) {
+      const float p = exp2f(scores(row, col) - eff_max);
+      scores(row, col) = p;
+      tile_sum += p;
+    }
+    tile_sum += __shfl_xor_sync(0xffffffff, tile_sum, 1);
+    tile_sum += __shfl_xor_sync(0xffffffff, tile_sum, 2);
+    row_sum[row] = row_sum[row] * row_scale[row] + tile_sum;
+  }
+}
+
+}  // namespace fa_cute
+
+// WS persist-D persistent kernel: 128T producer (TMA-only) + 256T consumer
+// (MMA-only)。Q/K/V/O 均为 BHND packed -> flat (B*H*N, D) 行的 2D TMA。
+// barrier 相位: K/V 用跨 q-tile 的全局 kv 计数 (stage=g%S, phase=(g/S)&1),
+// 与非 persistent 版的相对序完全一致; q_full/epi_done 用 q-tile 迭代号。
+template <typename Traits, typename TmaQ, typename TmaK, typename TmaV,
+          typename TmaO>
+__global__ void __launch_bounds__(384, 1) flash_attn_cute_persist_d_sm120(
+    CUTLASS_GRID_CONSTANT TmaQ const tma_q,
+    CUTLASS_GRID_CONSTANT TmaK const tma_k,
+    CUTLASS_GRID_CONSTANT TmaV const tma_v,
+    CUTLASS_GRID_CONSTANT TmaO const tma_o,
+    typename Traits::Element* __restrict__ O, int Nq, int Nkv, int Nh,
+    int Nh_kv, float scale, int Tc, int causal, int q_tiles, int total_q_tiles,
+    int total_q_rows, int total_kv_rows) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
+  using namespace cute;
+  using Element = typename Traits::Element;
+  using SmemLayoutQ = typename Traits::SmemLayoutQ;
+  using SmemLayoutKV = typename Traits::SmemLayoutKV;
+  using SmemLayoutKVt = typename Traits::SmemLayoutKVt;
+  using SmemLayoutO = typename Traits::SmemLayoutO;
+  using TiledMmaQK = typename Traits::TiledMmaQK;
+  using TiledMmaPV = typename Traits::TiledMmaPV;
+  using TmaBarrier = cutlass::arch::ClusterTransactionBarrier;
+  using CtaBarrier = cutlass::arch::ClusterBarrier;
+
+  constexpr int kBr = Traits::kBr;
+  constexpr int kBc = Traits::kBc;
+  constexpr int kHeadDim = Traits::kHeadDim;
+  constexpr int kStagesK = Traits::kStagesK;
+  constexpr int kStagesV = Traits::kStagesV;
+  constexpr int kProducerThreads = 128;
+  constexpr int kConsumerThreads = 256;
+
+  constexpr int kQTileElements = cosize(SmemLayoutQ{});
+  constexpr int kKVTileElements = cosize(SmemLayoutKV{});
+
+  const int tid = threadIdx.x;
+  const bool is_producer = tid < kProducerThreads;
+  const int wg_tid = is_producer ? tid : tid - kProducerThreads;
+  const int kv_offset = Nkv - Nq;
+
+  // SMEM: [Q persist | K stages | V stages]
+  extern __shared__ __align__(1024) Element shm[];
+  Element* q_base = shm;
+  Element* k_base = q_base + kQTileElements;
+  Element* v_base = k_base + kStagesK * kKVTileElements;
+
+  __shared__ uint64_t q_full;
+  __shared__ uint64_t epi_done;
+  __shared__ uint64_t k_full[kStagesK];
+  __shared__ uint64_t k_empty[kStagesK];
+  __shared__ uint64_t v_full[kStagesV];
+  __shared__ uint64_t v_empty[kStagesV];
+
+  if (tid == 0) {
+    TmaBarrier::init(&q_full, 1);
+    CtaBarrier::init(&epi_done, kConsumerThreads);
+    for (int s = 0; s < kStagesK; ++s) {
+      TmaBarrier::init(&k_full[s], 1);
+      CtaBarrier::init(&k_empty[s], kConsumerThreads);
+    }
+    for (int s = 0; s < kStagesV; ++s) {
+      TmaBarrier::init(&v_full[s], 1);
+      CtaBarrier::init(&v_empty[s], kConsumerThreads);
+    }
+  }
+  __syncthreads();
+
+  if (is_producer) {
+    // 释放寄存器给 consumer (pool 数学: 4w*32T*32 + 8w*32T*232 = 63488 < 65536)
+    cutlass::arch::warpgroup_reg_dealloc<32>();
+    if (wg_tid == 0) {
+      auto mQ = tma_q.get_tma_tensor(make_shape(total_q_rows, Int<kHeadDim>{}));
+      auto mK = tma_k.get_tma_tensor(make_shape(total_kv_rows, Int<kHeadDim>{}));
+      auto mV = tma_v.get_tma_tensor(make_shape(total_kv_rows, Int<kHeadDim>{}));
+      auto q_slice = tma_q.get_slice(_0{});
+      auto k_slice = tma_k.get_slice(_0{});
+      auto v_slice = tma_v.get_slice(_0{});
+      int kv_cursor = 0;  // 跨 q-tile 的全局 kv 预取计数
+
+      for (int cta = blockIdx.x, iter = 0; cta < total_q_tiles;
+           cta += gridDim.x, ++iter) {
+        const int bh = cta / q_tiles;
+        const int Q_tile_id = cta % q_tiles;
+        const int Nb_id = bh / Nh;
+        const int Nh_id = bh % Nh;
+        const int kv_head_idx = Nh_id / (Nh / Nh_kv);
+        const int Br_base = Q_tile_id * kBr;
+        const int q_row_offset = (Nb_id * Nh + Nh_id) * Nq;
+        const int kv_row_offset = (Nb_id * Nh_kv + kv_head_idx) * Nkv;
+        const int Tc_eff =
+            causal ? max(0, min(Tc, ((Br_base + kBr - 1 + kv_offset) / kBc) + 1))
+                   : Tc;
+
+        // 等 consumer 的 epilogue 腾出 Q smem (首轮免等)
+        if (iter > 0)
+          CtaBarrier::wait(&epi_done, (iter - 1) & 1);
+
+        auto mQh = domain_offset(make_coord(q_row_offset, 0), mQ);
+        auto mKh = domain_offset(make_coord(kv_row_offset, 0), mK);
+        auto mVh = domain_offset(make_coord(kv_row_offset, 0), mV);
+
+        // P0: Q 一次性全 D TMA
+        {
+          auto sQ = make_tensor(make_smem_ptr(q_base), SmemLayoutQ{});
+          auto gQ = local_tile(mQh, Shape<Int<kBr>, Int<kHeadDim>>{},
+                               make_coord(Q_tile_id, _0{}));
+          TmaBarrier::arrive_and_expect_tx(&q_full, sizeof(Element) * size(sQ));
+          copy(tma_q.with(q_full), q_slice.partition_S(gQ),
+               q_slice.partition_D(sQ));
+        }
+        // P1/P1b: K[0..Sk-2] 与 V[0..Sv-2] 预取 (全局 kv 计数定 stage/phase)
+        for (int s = 0; s < kStagesK - 1; ++s) {
+          const int g = kv_cursor + s;
+          if (s < Tc_eff) {
+            CtaBarrier::wait(&k_empty[g % kStagesK], (g / kStagesK) & 1);
+            auto sK = make_tensor(
+                make_smem_ptr(k_base + (g % kStagesK) * kKVTileElements),
+                SmemLayoutKV{});
+            auto gK = local_tile(mKh, Shape<Int<kBc>, Int<kHeadDim>>{},
+                                 make_coord(s, _0{}));
+            TmaBarrier::arrive_and_expect_tx(&k_full[g % kStagesK],
+                                             sizeof(Element) * size(sK));
+            copy(tma_k.with(k_full[g % kStagesK]), k_slice.partition_S(gK),
+                 k_slice.partition_D(sK));
+          }
+        }
+        for (int s = 0; s < kStagesV - 1; ++s) {
+          const int g = kv_cursor + s;
+          if (s < Tc_eff) {
+            CtaBarrier::wait(&v_empty[g % kStagesV], (g / kStagesV) & 1);
+            auto sV = make_tensor(
+                make_smem_ptr(v_base + (g % kStagesV) * kKVTileElements),
+                SmemLayoutKV{});
+            auto gV = local_tile(mVh, Shape<Int<kBc>, Int<kHeadDim>>{},
+                                 make_coord(s, _0{}));
+            TmaBarrier::arrive_and_expect_tx(&v_full[g % kStagesV],
+                                             sizeof(Element) * size(sV));
+            copy(tma_v.with(v_full[g % kStagesV]), v_slice.partition_S(gV),
+                 v_slice.partition_D(sV));
+          }
+        }
+        // P2: 领先 S-1 tile 预取 (V-first then K-after: V 消费晚于 K,
+        // 先发 V 让 K 的 TMA 填 QK 计算的空隙)
+        for (int tile = 0; tile < Tc_eff; ++tile) {
+          const int v_g = kv_cursor + tile + kStagesV - 1;
+          if (v_g < kv_cursor + Tc_eff) {
+            CtaBarrier::wait(&v_empty[v_g % kStagesV], (v_g / kStagesV) & 1);
+            auto sV = make_tensor(
+                make_smem_ptr(v_base + (v_g % kStagesV) * kKVTileElements),
+                SmemLayoutKV{});
+            auto gV = local_tile(mVh, Shape<Int<kBc>, Int<kHeadDim>>{},
+                                 make_coord(tile + kStagesV - 1, _0{}));
+            TmaBarrier::arrive_and_expect_tx(&v_full[v_g % kStagesV],
+                                             sizeof(Element) * size(sV));
+            copy(tma_v.with(v_full[v_g % kStagesV]), v_slice.partition_S(gV),
+                 v_slice.partition_D(sV));
+          }
+          const int k_g = kv_cursor + tile + kStagesK - 1;
+          if (k_g < kv_cursor + Tc_eff) {
+            CtaBarrier::wait(&k_empty[k_g % kStagesK], (k_g / kStagesK) & 1);
+            auto sK = make_tensor(
+                make_smem_ptr(k_base + (k_g % kStagesK) * kKVTileElements),
+                SmemLayoutKV{});
+            auto gK = local_tile(mKh, Shape<Int<kBc>, Int<kHeadDim>>{},
+                                 make_coord(tile + kStagesK - 1, _0{}));
+            TmaBarrier::arrive_and_expect_tx(&k_full[k_g % kStagesK],
+                                             sizeof(Element) * size(sK));
+            copy(tma_k.with(k_full[k_g % kStagesK]), k_slice.partition_S(gK),
+                 k_slice.partition_D(sK));
+          }
+        }
+        kv_cursor += Tc_eff;
+      }
+    }
+    return;
+  }
+
+  // Consumer (wg_tid 0..255): 无 TMA issue, 无 __syncthreads (producer 已退出)
+  cutlass::arch::warpgroup_reg_alloc<232>();
+
+  TiledMmaQK tiled_mma_qk;
+  TiledMmaPV tiled_mma_pv;
+  auto thr_mma_qk = tiled_mma_qk.get_thread_slice(wg_tid);
+  auto thr_mma_pv = tiled_mma_pv.get_thread_slice(wg_tid);
+
+  using SmemCopyAtom = typename Traits::SmemCopyAtom;
+  using SmemCopyAtomTransposed = typename Traits::SmemCopyAtomTransposed;
+  auto s2r_copy_q = make_tiled_copy_A(SmemCopyAtom{}, tiled_mma_qk);
+  auto s2r_copy_k = make_tiled_copy_B(SmemCopyAtom{}, tiled_mma_qk);
+  auto s2r_copy_v =
+      make_tiled_copy_B(SmemCopyAtomTransposed{}, tiled_mma_pv);
+  auto s2r_thr_q = s2r_copy_q.get_thread_slice(wg_tid);
+  auto s2r_thr_k = s2r_copy_k.get_thread_slice(wg_tid);
+  auto s2r_thr_v = s2r_copy_v.get_thread_slice(wg_tid);
+
+  // V 的 B-fragment 布局只依赖 SmemLayoutKVt (与 stage 无关), 循环外算一次
+  auto sV0 = make_tensor(make_smem_ptr(v_base), SmemLayoutKV{});
+  auto sVt0_ns =
+      make_tensor(sV0.data(), get_nonswizzle_portion(SmemLayoutKVt{}));
+  auto tCrV_layout = thr_mma_pv.partition_fragment_B(sVt0_ns).layout();
+
+  using OFragType = decltype(partition_fragment_C(
+      tiled_mma_pv, Shape<Int<kBr>, Int<kHeadDim>>{}));
+  using OFragLayout = typename OFragType::layout_type;
+  constexpr int kOElemsPerFrag = decltype(size(OFragType{}))::value;
+  constexpr int kORows = decltype(size<0>(
+      make_tensor((float*)nullptr,
+                  fa_cute::convert_layout_acc_rowcol(OFragLayout{}))))::value;
+  constexpr int kOCols = decltype(size<1>(
+      make_tensor((float*)nullptr,
+                  fa_cute::convert_layout_acc_rowcol(OFragLayout{}))))::value;
+
+  auto cS = make_identity_tensor(Shape<Int<kBr>, Int<kBc>>{});
+  auto tScS = thr_mma_qk.partition_C(cS);
+  auto tScS_rc = make_tensor(
+      tScS.data(), fa_cute::convert_layout_acc_rowcol(tScS.layout()));
+  constexpr int kSRows = decltype(size<0>(tScS_rc))::value;
+  constexpr int kSCols = decltype(size<1>(tScS_rc))::value;
+
+  auto sQ = make_tensor(make_smem_ptr(q_base), SmemLayoutQ{});
+  auto tCrQ = thr_mma_qk.partition_fragment_A(sQ);
+  auto tQsQ_s2r = s2r_thr_q.partition_S(sQ);
+  float o_acc[kOElemsPerFrag];
+  int kv_cursor = 0;
+
+  for (int cta = blockIdx.x, iter = 0; cta < total_q_tiles;
+       cta += gridDim.x, ++iter) {
+    const int bh = cta / q_tiles;
+    const int Q_tile_id = cta % q_tiles;
+    const int Nb_id = bh / Nh;
+    const int Nh_id = bh % Nh;
+    const int Br_base = Q_tile_id * kBr;
+    const int q_row_offset = (Nb_id * Nh + Nh_id) * Nq;
+    const int Tc_eff =
+        causal ? max(0, min(Tc, ((Br_base + kBr - 1 + kv_offset) / kBc) + 1))
+               : Tc;
+    const int mask_start_tile =
+        causal ? max(0, (Br_base + kv_offset + 1) / kBc) : INT_MAX;
+
+    TmaBarrier::wait(&q_full, iter & 1);
+    cutlass::arch::fence_view_async_shared();
+
+    // 初始标记所有 K/V slot 为 empty, 放行 producer 预取。仅首轮: 之后
+    // empty 的 phase 由每次消费的 arrive 维持, 与 producer 按全局 kv 计数
+    // 的 wait 序列精确配对; 多余的 arrive 会造成 phase 错位 (Missing wait)。
+    if (iter == 0) {
+      for (int s = 0; s < kStagesK; ++s)
+        CtaBarrier::arrive(&k_empty[s]);
+      for (int s = 0; s < kStagesV; ++s)
+        CtaBarrier::arrive(&v_empty[s]);
+    }
+
+    // Q s2r + scale*log2e 折叠: S 直接是 log2 域分数, softmax 无逐元素乘法
+    {
+      auto tXrQ = s2r_thr_q.retile_D(tCrQ);
+#pragma unroll
+      for (int tile_k = 0; tile_k < size<2>(tCrQ); ++tile_k)
+        copy(s2r_copy_q, tQsQ_s2r(_, _, tile_k), tXrQ(_, _, tile_k));
+#pragma unroll
+      for (int i = 0; i < size(tCrQ); ++i)
+        tCrQ(i) = (Element)(float(tCrQ(i)) * (scale * fa_cute::FA4_LOG2E));
+    }
+
+    float row_max[kORows];
+    float row_sum[kORows];
+#pragma unroll
+    for (int r = 0; r < kORows; ++r) {
+      row_max[r] = -INFINITY;
+      row_sum[r] = 0.0f;
+    }
+#pragma unroll
+    for (int i = 0; i < kOElemsPerFrag; ++i)
+      o_acc[i] = 0.0f;
+
+#pragma unroll 1
+    for (int kv_tile = 0; kv_tile < Tc_eff; ++kv_tile) {
+      const int k_stg = (kv_cursor + kv_tile) % kStagesK;
+      const int k_phase = ((kv_cursor + kv_tile) / kStagesK) & 1;
+      const int v_stg = (kv_cursor + kv_tile) % kStagesV;
+      const int v_phase = ((kv_cursor + kv_tile) / kStagesV) & 1;
+
+      // QK: gemm_rs, 常驻 Q A-fragment, 仅 K 从 smem 装载
+      TmaBarrier::wait(&k_full[k_stg], k_phase);
+      cutlass::arch::fence_view_async_shared();
+
+      auto sK = make_tensor(make_smem_ptr(k_base + k_stg * kKVTileElements),
+                            SmemLayoutKV{});
+      auto tCrK = thr_mma_qk.partition_fragment_B(sK);
+      auto tKsK_s2r = s2r_thr_k.partition_S(sK);
+
+      auto tCrS =
+          partition_fragment_C(tiled_mma_qk, Shape<Int<kBr>, Int<kBc>>{});
+      clear(tCrS);
+      fa_cute::gemm_rs(tCrS, tCrQ, tCrK, tKsK_s2r, tiled_mma_qk, s2r_copy_k,
+                       s2r_thr_k);
+      CtaBarrier::arrive(&k_empty[k_stg]);
+
+      auto scores = make_tensor(
+          tCrS.data(), fa_cute::convert_layout_acc_rowcol(tCrS.layout()));
+      float row_scale[kORows];
+
+      // KV 尾部 tile 越界列 mask
+      {
+        const int kv_valid = Nkv - kv_tile * kBc;
+        if (kv_valid < kBc) {
+#pragma unroll
+          for (int row = 0; row < kSRows; ++row)
+#pragma unroll
+            for (int col = 0; col < kSCols; ++col)
+              if (get<1>(tScS_rc(row, col)) >= kv_valid)
+                scores(row, col) = -INFINITY;
+        }
+      }
+
+      // causal mask (k_pos > q_pos, 滑窗: q_pos 含 kv_offset)
+      if (kv_tile >= mask_start_tile) {
+#pragma unroll
+        for (int row = 0; row < kSRows; ++row) {
+          const int q_pos = Br_base + get<0>(tScS_rc(row, 0)) + kv_offset;
+#pragma unroll
+          for (int col = 0; col < kSCols; ++col) {
+            const int k_pos = kv_tile * kBc + get<1>(tScS_rc(row, col));
+            if (k_pos > q_pos)
+              scores(row, col) = -INFINITY;
+          }
+        }
+      }
+
+      fa_cute::online_safe_softmax_fa4<decltype(scores), decltype(tScS_rc),
+                                       kORows>(scores, tScS_rc, row_max,
+                                               row_sum, row_scale);
+
+      bool local_need_rescale = false;
+#pragma unroll
+      for (int r = 0; r < kORows; ++r)
+        local_need_rescale = local_need_rescale || (row_scale[r] < 1.0f);
+      const bool need_rescale = __any_sync(0xffffffff, local_need_rescale);
+
+      // O 累加器重缩放 (FA-4 lazy: 多数 tile 跳过)
+      if (kv_tile > 0 && need_rescale) {
+        auto tCrO = make_tensor(make_rmem_ptr(o_acc), OFragLayout{});
+        auto tCrO_rc = make_tensor(
+            tCrO.data(), fa_cute::convert_layout_acc_rowcol(tCrO.layout()));
+#pragma unroll
+        for (int row = 0; row < kORows; ++row)
+#pragma unroll
+          for (int col = 0; col < kOCols; ++col)
+            tCrO_rc(row, col) *= row_scale[row];
+      }
+
+      // PV: 单个 gemm_rs, 全 D P x V
+      TmaBarrier::wait(&v_full[v_stg], v_phase);
+      cutlass::arch::fence_view_async_shared();
+
+      auto sV = make_tensor(make_smem_ptr(v_base + v_stg * kKVTileElements),
+                            SmemLayoutKV{});
+      auto sVt = make_tensor(sV.data(), SmemLayoutKVt{});
+      auto tCrVStorage = thr_mma_pv.partition_fragment_B(sV);
+      auto tCrV = make_tensor(tCrVStorage.data(), tCrV_layout);
+      auto tVsVt_s2r = s2r_thr_v.partition_S(sVt);
+
+      auto tCrP = fa_cute::convert_type<Element>(tCrS);
+      auto tCrPv = make_tensor(
+          tCrP.data(),
+          fa_cute::convert_layout_acc_Aregs<TiledMmaPV>(tCrP.layout()));
+      auto tCrO = make_tensor(make_rmem_ptr(o_acc), OFragLayout{});
+      fa_cute::gemm_rs(tCrO, tCrPv, tCrV, tVsVt_s2r, tiled_mma_pv, s2r_copy_v,
+                       s2r_thr_v);
+      CtaBarrier::arrive(&v_empty[v_stg]);
+    }
+    kv_cursor += Tc_eff;
+
+    // Epilogue: O /= row_sum, R->S->TMA store (整 tile) 或 R->G (尾部)。
+    // producer 已退出, __syncthreads 会死锁, 用 consumer-only NamedBarrier。
+    {
+      cutlass::arch::NamedBarrier::sync(kConsumerThreads, 0);
+
+      auto tCrO = make_tensor(make_rmem_ptr(o_acc), OFragLayout{});
+      auto tCrO_rc = make_tensor(
+          tCrO.data(), fa_cute::convert_layout_acc_rowcol(tCrO.layout()));
+#pragma unroll
+      for (int row = 0; row < kORows; ++row) {
+        // 全 mask 行 (causal Nkv<Nq 前段) row_sum=0: 输出 0 而非 NaN
+        const float inv_sum = row_sum[row] > 0.0f ? 1.0f / row_sum[row] : 0.0f;
+#pragma unroll
+        for (int col = 0; col < kOCols; ++col)
+          tCrO_rc(row, col) *= inv_sum;
+      }
+      auto tCrOHalf = fa_cute::convert_type<Element>(tCrO);
+
+      auto r2s_copy = make_tiled_copy_C(
+          Copy_Atom<SM90_U32x4_STSM_N, Element>{}, tiled_mma_pv);
+      auto r2s_thr = r2s_copy.get_slice(wg_tid);
+
+      if (Br_base + kBr <= Nq) {
+        // 整 tile: R->S (STSM, 复用已释放的 Q smem) -> TMA store
+        auto sO = make_tensor(make_smem_ptr(q_base), SmemLayoutO{});
+        auto tCrOHalf_src = r2s_thr.retile_S(tCrOHalf);
+        auto tCsO_dst = r2s_thr.partition_D(sO);
+        copy(r2s_copy, tCrOHalf_src, tCsO_dst);
+        cutlass::arch::fence_view_async_shared();
+        cutlass::arch::NamedBarrier::sync(kConsumerThreads, 0);
+
+        auto mO = domain_offset(
+            make_coord(q_row_offset, 0),
+            tma_o.get_tma_tensor(make_shape(total_q_rows, Int<kHeadDim>{})));
+        auto o_slice = tma_o.get_slice(_0{});
+        auto gO = local_tile(mO, Shape<Int<kBr>, Int<kHeadDim>>{},
+                             make_coord(Q_tile_id, _0{}));
+        auto tCgO = o_slice.partition_D(gO);
+        auto tOsO = o_slice.partition_S(sO);
+        if (wg_tid == 0)
+          copy(tma_o, tOsO, tCgO);
+        tma_store_arrive();
+        tma_store_wait<0>();
+      } else {
+        // 尾部 tile: 行 guard 直接 R->G
+        auto mO = make_tensor(
+            make_gmem_ptr(O + q_row_offset * kHeadDim),
+            make_shape(Nq, Int<kHeadDim>{}),
+            make_stride(Int<kHeadDim>{}, _1{}));
+        auto gO = local_tile(mO, Shape<Int<kBr>, Int<kHeadDim>>{},
+                             make_coord(Q_tile_id, _0{}));
+        auto tCgO = thr_mma_pv.partition_C(gO);
+        auto cO = make_identity_tensor(Shape<Int<kBr>, Int<kHeadDim>>{});
+        auto tOcO = thr_mma_pv.partition_C(cO);
+#pragma unroll
+        for (int i = 0; i < size(tCrOHalf); ++i) {
+          const int global_row = Br_base + get<0>(tOcO(i));
+          if (global_row < Nq)
+            tCgO(i) = tCrOHalf(i);
+        }
+      }
+      // 通知 producer: Q smem 已腾出, 可加载下一个 q-tile
+      CtaBarrier::arrive(&epi_done);
+    }
+  }
+#endif  // __CUDA_ARCH__ >= 900
+}
+
+// launcher: BHND packed Q/K/V/O (B,H,N,D 连续), 支持 dense/causal/GQA。
+// D 分派 kBc (D=64 -> kBc=128: 80KB; D=96/128 -> kBc=64), 见 traits 注释。
+// persistent 策略: dense 用 min(tiles, SM 数), causal 用全量 grid。
+template <typename Traits>
+void flash_attn_cute_persist_d_sm120_launch(
+    cutlass::half_t* Q, cutlass::half_t* K, cutlass::half_t* V,
+    cutlass::half_t* O, int Nb, int Nh, int Nh_kv, int Nq, int Nkv,
+    bool causal, float scale, cudaStream_t stream = 0) {
+  using namespace cute;
+  using Element = typename Traits::Element;
+  using SmemLayoutQ = typename Traits::SmemLayoutQ;
+  using SmemLayoutKV = typename Traits::SmemLayoutKV;
+  using SmemLayoutO = typename Traits::SmemLayoutO;
+
+  constexpr int kBr = Traits::kBr;
+  constexpr int kBc = Traits::kBc;
+  constexpr int kHeadDim = Traits::kHeadDim;
+  constexpr int kNumThreads = 384;
+
+  // GQA 映射要求 Nh 是 Nh_kv 的整数倍 (系统边界单点校验)
+  if (Nh % Nh_kv != 0) {
+    printf("persist-d cute: Nh (%d) must be divisible by Nh_kv (%d)\n", Nh,
+           Nh_kv);
+    return;
+  }
+
+  const int Tc = (Nkv + kBc - 1) / kBc;
+  const int total_q_rows = Nb * Nh * Nq;
+  const int total_kv_rows = Nb * Nh_kv * Nkv;
+  const int q_tiles = (Nq + kBr - 1) / kBr;
+  const int total_q_tiles = q_tiles * Nb * Nh;
+  constexpr int kSmemBytes = Traits::kSmemElems * (int)sizeof(Element);
+
+  auto gQ = make_tensor(
+      make_gmem_ptr(Q),
+      make_shape(total_q_rows, Int<kHeadDim>{}),
+      make_stride(Int<kHeadDim>{}, _1{}));
+  auto gK = make_tensor(
+      make_gmem_ptr(K),
+      make_shape(total_kv_rows, Int<kHeadDim>{}),
+      make_stride(Int<kHeadDim>{}, _1{}));
+  auto gV = make_tensor(
+      make_gmem_ptr(V),
+      make_shape(total_kv_rows, Int<kHeadDim>{}),
+      make_stride(Int<kHeadDim>{}, _1{}));
+  auto gO = make_tensor(
+      make_gmem_ptr(O),
+      make_shape(total_q_rows, Int<kHeadDim>{}),
+      make_stride(Int<kHeadDim>{}, _1{}));
+
+  auto tma_q = make_tma_copy(SM90_TMA_LOAD{}, gQ, SmemLayoutQ{},
+                             Shape<Int<kBr>, Int<kHeadDim>>{}, _1{});
+  auto tma_k = make_tma_copy(SM90_TMA_LOAD{}, gK, SmemLayoutKV{},
+                             Shape<Int<kBc>, Int<kHeadDim>>{}, _1{});
+  auto tma_v = make_tma_copy(SM90_TMA_LOAD{}, gV, SmemLayoutKV{},
+                             Shape<Int<kBc>, Int<kHeadDim>>{}, _1{});
+  auto tma_o = make_tma_copy(SM90_TMA_STORE{}, gO, SmemLayoutO{},
+                             Shape<Int<kBr>, Int<kHeadDim>>{}, _1{});
+
+  auto kernel = flash_attn_cute_persist_d_sm120<Traits, decltype(tma_q),
+                                                decltype(tma_k),
+                                                decltype(tma_v),
+                                                decltype(tma_o)>;
+  cudaError_t err = cudaFuncSetAttribute(
+      kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, kSmemBytes);
+  if (err != cudaSuccess) {
+    printf("persist-d cute set smem failed: %s\n", cudaGetErrorString(err));
+    return;
+  }
+  // persistent 消除 wave 量化尾损 (dense 负载均匀时最优); causal 的 tile
+  // 负载前轻后重, 全量 grid 让硬件调度器自然均衡填空, 反而更快
+  int num_sms = 0;
+  cudaDeviceGetAttribute(&num_sms, cudaDevAttrMultiProcessorCount,
+                         /*device=*/0);
+  const int grid =
+      causal ? total_q_tiles
+             : (total_q_tiles < num_sms ? total_q_tiles : num_sms);
+  kernel<<<dim3(grid, 1, 1), kNumThreads, kSmemBytes, stream>>>(
+      tma_q, tma_k, tma_v, tma_o, O, Nq, Nkv, Nh, Nh_kv, scale, Tc,
+      causal ? 1 : 0, q_tiles, total_q_tiles, total_q_rows, total_kv_rows);
+  err = cudaGetLastError();
+  if (err != cudaSuccess)
+    printf("persist-d cute launch failed: %s\n", cudaGetErrorString(err));
+}
+
+// 便捷入口: 按 head_dim 分派 kBc 几何 (D=64 -> kBc=128, 其余 -> kBc=64)
+inline void flash_attn_cute_persist_d_sm120_fwd(
+    cutlass::half_t* Q, cutlass::half_t* K, cutlass::half_t* V,
+    cutlass::half_t* O, int Nb, int Nh, int Nh_kv, int Nq, int Nkv, int D,
+    bool causal, float scale, cudaStream_t stream = 0) {
+  if (D == 64)
+    flash_attn_cute_persist_d_sm120_launch<
+        fa_cute::FlashAttnPersistDCuTeTraits<64, 128, 128, 2>>(
+        Q, K, V, O, Nb, Nh, Nh_kv, Nq, Nkv, causal, scale, stream);
+  else if (D == 96)
+    flash_attn_cute_persist_d_sm120_launch<
+        fa_cute::FlashAttnPersistDCuTeTraits<96, 128, 64, 2>>(
+        Q, K, V, O, Nb, Nh, Nh_kv, Nq, Nkv, causal, scale, stream);
+  else if (D == 128)
+    flash_attn_cute_persist_d_sm120_launch<
+        fa_cute::FlashAttnPersistDCuTeTraits<128, 128, 64, 2>>(
+        Q, K, V, O, Nb, Nh, Nh_kv, Nq, Nkv, causal, scale, stream);
+  else
+    printf("flash_attn_cute_persist_d_sm120_fwd: unsupported head_dim %d\n",
+           D);
+}
+#endif // NOTES_V2_ENABLE_CUTE
+
 

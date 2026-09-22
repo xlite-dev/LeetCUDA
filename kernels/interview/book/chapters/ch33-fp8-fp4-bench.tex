@@ -543,7 +543,7 @@ rel\_err 0.59/max 1.0（早期行 e2m1 噪声无 hybrid 抑制，
 最差 non-aligned-dense 8K FFPA 快 2.6\%），
 这正是 preset 公平化的结果——2026-08 之前 cachedit preset 默认开
 hybrid+smooth-v，dense 场景「慢 3--8.7\%」全是功能成本，对齐后
-反超。硬件对照：5090（图~\ref{fig:33-5090-fp4}）fp4 D=128 自测
+反超。硬件对照：5090（表~\ref{tab:33-5090-fp4}）fp4 D=128 自测
 $\approx$804T，PRO 5000 同形状 523T——同 sm\_120 微架构，差距
 来自 SM 数与功耗包络，\textbf{形态结论（谁快谁慢、随 D 怎么走）
 跨设备可迁移，绝对数字不可}。

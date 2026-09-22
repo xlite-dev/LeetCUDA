@@ -149,6 +149,7 @@
 | 24 | CuTe 应用(一)：HGEMM | hgemm.cuh L718-1427（宏块 L779-1427 内） | 11,12,21,22 | gemm_ss；SmemLayoutAtom+tile_to_shape；多级流水 CuTe 表达 | 与 ch11/12 手写版**对照表**（本章核心资产） | @reed 简单/高效 GEMM、GEMM 流水线；@朱小霖 cute 101；@进击的Killua 实战 |
 | 25 | CuTe 应用(二)：FlashAttention 三实现对照 | flash_attn.cuh L2196-3488（5 对宏块，见 §1.3） | 17,18,21-23 | fa_cute traits 复用结构；cp.async 版/TMA+WS 版/FA3 版演进 | 三实现结构对照图 | @66RING cute 复现 FA；@shengying.wei tiny-flash-attention；@Titus GEMM 流水线 |
 | 26 | CuTe 应用(三)：FFPA Split-D | ffpa_attn.cuh 全篇（重点 L31-79+两 kernel） | 19,22,23 | 双 TiledMma（QK Tile<64,64,16>/PV Tile<64,16,16>）；cp.async 与 TMA 两版对照 | 双 TiledMma 数据流图 | @DefTruth FFPA 文；ffpa-cuda-understand skill |
+| 26b | CuTe 应用(四)：超越 cuDNN 的 FlashAttention（sm_120 persist-D 压轴章，2026-09-22 增补） | flash_attn.cuh L3490-4158（Phase 8 块） | 17,18,22-26 | softmax scale·log2e 融合（$\exp2$ 域免乘）；persistent-CTA（dense min(tiles,SMs)/causal 全量 grid 策略）；WS 1P+1C setmaxnreg 128/232；TMA 预取协议（P1/P2 V-first）；V^T composition 零拷贝转置；swizzle atom 按行宽条件选；STSM+TMA epilogue；lazy rescale | scale 融合数据流、WS 架构、smem 布局、流水时序、persistent 调度、epilogue 共 6 张 TikZ inline | tmp/flash_cute_sm120.cu（PRO 5000 实测 236.9T vs cuDNN 227.5T=1.04x） |
 
 ### Part V FP8/FP4 Attention 篇：量化注意力的数学与 kernel 工程（2026-09-16 新增）
 

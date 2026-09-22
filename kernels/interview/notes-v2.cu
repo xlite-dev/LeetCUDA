@@ -507,6 +507,125 @@ static void test_flash_attn_tma_mma_ws_split_q_cute() {
 }
 #endif
 
+#if defined(NOTES_V2_ENABLE_CUTE) && defined(NOTES_V2_ENABLE_TMA_MMA_WS)
+// Phase 8: sm_120 persist-D FlashAttention (WS 1P+1C + persistent CTA +
+// softmax scale*fused)。CPU fp64 参考 (BHND packed, 含 causal mask + GQA
+// head 映射)。覆盖: dense 多 q-tile / causal / GQA / 尾部 tile (R->G)。
+// Nq=2048/H=8 时 total_q_tiles=128 > 96 SM, 触发 persistent 多 iter 路径
+// (epi_done wait + kv_cursor 跨 q-tile 累计)。
+template <int kHeadDim, int kNq, int kNkv, int kHq = 2, int kHkv = 2,
+          bool kCausal = false>
+static void test_flash_attn_cute_persist_d_sm120() {
+  constexpr int kCount = kNq * kHeadDim;
+  constexpr int kCountKV = kNkv * kHeadDim;
+
+  half* h_q = (half*)malloc(kCount * kHq * sizeof(half));
+  half* h_k = (half*)malloc(kCountKV * kHkv * sizeof(half));
+  half* h_v = (half*)malloc(kCountKV * kHkv * sizeof(half));
+  half* h_o = (half*)malloc(kCount * kHq * sizeof(half));
+  double* ref_o = (double*)malloc(kCount * kHq * sizeof(double));
+  srand(42 + kHeadDim + (kCausal ? 7 : 0) + kHq * 100);
+  for (int i = 0; i < kCount * kHq; ++i)
+    h_q[i] = __float2half(((float)rand() / RAND_MAX) * 2.0f - 1.0f);
+  for (int i = 0; i < kCountKV * kHkv; ++i) {
+    h_k[i] = __float2half(((float)rand() / RAND_MAX) * 2.0f - 1.0f);
+    h_v[i] = __float2half(((float)rand() / RAND_MAX) * 2.0f - 1.0f);
+  }
+
+  // CPU fp64 参考: O = softmax(scale * Q K^T [+ causal mask]) V
+  const double scale = 1.0 / sqrt((double)kHeadDim);
+  const int kv_offset = kNkv - kNq;
+  double* S = (double*)malloc(kNkv * sizeof(double));
+  for (int h = 0; h < kHq; ++h) {
+    const int hk = h / (kHq / kHkv);  // GQA head 映射
+    const half* q = h_q + (size_t)h * kCount;
+    const half* k = h_k + (size_t)hk * kCountKV;
+    const half* v = h_v + (size_t)hk * kCountKV;
+    double* o = ref_o + (size_t)h * kCount;
+    for (int qi = 0; qi < kNq; ++qi) {
+      double smax = -INFINITY;
+      for (int kj = 0; kj < kNkv; ++kj) {
+        if (kCausal && kj > qi + kv_offset) {
+          S[kj] = -INFINITY;
+          continue;
+        }
+        double s = 0.0;
+        for (int d = 0; d < kHeadDim; ++d)
+          s += (double)__half2float(q[(size_t)qi * kHeadDim + d]) *
+               (double)__half2float(k[(size_t)kj * kHeadDim + d]);
+        S[kj] = s * scale;
+        if (S[kj] > smax) smax = S[kj];
+      }
+      double sum_exp = 0.0;
+      for (int kj = 0; kj < kNkv; ++kj) {
+        S[kj] = exp(S[kj] - smax);  // softmax 权重 (exp(-inf)=0)
+        sum_exp += S[kj];
+      }
+      // 全 mask 行 (causal Nkv<Nq 前段): 与 kernel 一致输出 0 而非 NaN
+      if (sum_exp == 0.0) {
+        for (int d = 0; d < kHeadDim; ++d)
+          o[(size_t)qi * kHeadDim + d] = 0.0;
+        continue;
+      }
+      const double inv = 1.0 / sum_exp;
+      for (int d = 0; d < kHeadDim; ++d) {
+        double acc = 0.0;
+        for (int kj = 0; kj < kNkv; ++kj)
+          acc += S[kj] * (double)__half2float(v[(size_t)kj * kHeadDim + d]);
+        o[(size_t)qi * kHeadDim + d] = acc * inv;
+      }
+    }
+  }
+
+  half *d_q, *d_k, *d_v, *d_o;
+  check(cudaMalloc(&d_q, kCount * kHq * sizeof(half)), "pd alloc Q");
+  check(cudaMalloc(&d_k, kCountKV * kHkv * sizeof(half)), "pd alloc K");
+  check(cudaMalloc(&d_v, kCountKV * kHkv * sizeof(half)), "pd alloc V");
+  check(cudaMalloc(&d_o, kCount * kHq * sizeof(half)), "pd alloc O");
+  check(cudaMemcpy(d_q, h_q, kCount * kHq * sizeof(half),
+                   cudaMemcpyHostToDevice),
+        "pd H2D Q");
+  check(cudaMemcpy(d_k, h_k, kCountKV * kHkv * sizeof(half),
+                   cudaMemcpyHostToDevice),
+        "pd H2D K");
+  check(cudaMemcpy(d_v, h_v, kCountKV * kHkv * sizeof(half),
+                   cudaMemcpyHostToDevice),
+        "pd H2D V");
+
+  flash_attn_cute_persist_d_sm120_fwd(
+      reinterpret_cast<cutlass::half_t*>(d_q),
+      reinterpret_cast<cutlass::half_t*>(d_k),
+      reinterpret_cast<cutlass::half_t*>(d_v),
+      reinterpret_cast<cutlass::half_t*>(d_o),
+      /*Nb=*/1, kHq, kHkv, kNq, kNkv, kHeadDim, kCausal, (float)scale);
+  check(cudaDeviceSynchronize(), "pd sync");
+  check(cudaMemcpy(h_o, d_o, kCount * kHq * sizeof(half),
+                   cudaMemcpyDeviceToHost),
+        "pd D2H");
+
+  float max_err = 0.0f;
+  for (int i = 0; i < kCount * kHq; ++i)
+    max_err = max(max_err, fabsf(__half2float(h_o[i]) - ref_o[i]));
+  char label[96];
+  snprintf(label, sizeof(label),
+           "FA persist-D WS persistent CTA scale-fused (D=%d, Nq=%d, Nkv=%d, "
+           "Hq=%d, Hkv=%d%s)",
+           kHeadDim, kNq, kNkv, kHq, kHkv, kCausal ? ", causal" : "");
+  printf("| %-72s | %.3e |\n", label, max_err);
+
+  free(h_q);
+  free(h_k);
+  free(h_v);
+  free(h_o);
+  free(ref_o);
+  free(S);
+  cudaFree(d_q);
+  cudaFree(d_k);
+  cudaFree(d_v);
+  cudaFree(d_o);
+}
+#endif
+
 static void test_block_reduce(int N) {
 
   srand(42);
@@ -4809,6 +4928,20 @@ int main(int argc, char *argv[]) {
   }
 
 #if defined(NOTES_V2_ENABLE_TMA_MMA_WS)
+  if (argc >= 2 && strcmp(argv[1], "--pd-cute") == 0) {
+#if defined(NOTES_V2_ENABLE_CUTE) && defined(NOTES_V2_ENABLE_TMA_MMA_WS)
+    // Phase 8: persist-D WS + persistent CTA + scale fused 快速入口
+    test_flash_attn_cute_persist_d_sm120<64, 2048, 2048, 8, 8, false>();
+    test_flash_attn_cute_persist_d_sm120<128, 1024, 1024, 2, 2, false>();
+    test_flash_attn_cute_persist_d_sm120<128, 1024, 1024, 2, 2, true>();
+    test_flash_attn_cute_persist_d_sm120<64, 1024, 1024, 4, 2, false>();
+    test_flash_attn_cute_persist_d_sm120<128, 300, 512, 2, 2, false>();
+    test_flash_attn_cute_persist_d_sm120<128, 256, 300, 2, 2, false>();  // KV 尾 mask
+    test_flash_attn_cute_persist_d_sm120<128, 512, 256, 2, 2, true>();   // 反向全 mask
+#endif
+    printf("=== persist-D cute tests done ===\n");
+    return 0;
+  }
   if (argc >= 2 && strcmp(argv[1], "--tma-mma-ws") == 0) {
     int M = 128, N = 128, K = 64;
     if (argc > 4) {
@@ -4862,6 +4995,17 @@ int main(int argc, char *argv[]) {
   test_flash_attn_3_tma_ws(1024, 64);
   test_flash_attn_3_tma_ws(1024, 128);
 #endif
+#if defined(NOTES_V2_ENABLE_CUTE) && defined(NOTES_V2_ENABLE_TMA_MMA_WS)
+  // Phase 8: persist-D WS + persistent CTA + scale fused (dense 多 q-tile /
+  // causal / GQA / 尾部 tile; Nq=2048 H=8 -> 128 tiles > 96 SM 触发多 iter)
+  test_flash_attn_cute_persist_d_sm120<64, 2048, 2048, 8, 8, false>();
+  test_flash_attn_cute_persist_d_sm120<128, 1024, 1024, 2, 2, false>();
+  test_flash_attn_cute_persist_d_sm120<128, 1024, 1024, 2, 2, true>();
+  test_flash_attn_cute_persist_d_sm120<64, 1024, 1024, 4, 2, false>();
+  test_flash_attn_cute_persist_d_sm120<128, 300, 512, 2, 2, false>();
+  test_flash_attn_cute_persist_d_sm120<128, 256, 300, 2, 2, false>();  // KV 尾 mask
+  test_flash_attn_cute_persist_d_sm120<128, 512, 256, 2, 2, true>();   // 反向全 mask
+#endif
 
   printf("=== All tests done ===\n");
   return 0;
@@ -4899,6 +5043,15 @@ int main(int argc, char *argv[]) {
 // nvcc -std=c++20 -O2 -arch=sm_120a -DNOTES_V2_ENABLE_TMA_MMA_WS \
 //   -lcublas -lcuda notes-v2.cu -o notes_v2_tma_mma_ws_sm120.bin
 // ./notes_v2_tma_mma_ws_sm120.bin --tma-mma-ws 1024 1024 1024
+//
+// # sm_120f + CUTE + TMA_MMA_WS (Phase 8 persist-D FlashAttention 需要
+// #   sm_120f: sm_120a 会触发 ptxas C7506 把 setmaxnreg 静默丢弃;
+// #   CUDA Toolkit >= 13.2):
+// nvcc -std=c++20 -O2 -gencode arch=compute_120f,code=sm_120f \
+//   -DNOTES_V2_ENABLE_CUTE -DNOTES_V2_ENABLE_TMA_MMA_WS \
+//   -I ../../third-party/cutlass/include \
+//   -lcublas -lcuda notes-v2.cu -o notes_v2_persist_d_sm120f.bin
+// ./notes_v2_persist_d_sm120f.bin --pd-cute
 //
 // # sm_120a + CUTE + TMA_MMA_WS + cuDNN SDPA (CUDA Toolkit >= 13.2;
 //   requires cudnn-frontend submodule: git submodule update --init):

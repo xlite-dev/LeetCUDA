@@ -26,6 +26,7 @@
 | RFC-I | 附录 A-E | RFC-C..F（D 需收口） | 完成（2026-09-16，随 K-验收收口）|
 | RFC-J | 全书集成审校与验收 | 全部 | **完成（2026-09-18）**：J.1-J.10 全勾；十六-agent 数理复审修复 + CuTe 白皮书导读并入 commit df21bee/d08f6ea；终态 459 页、0 error、0 undefined、0 Overfull≥1pt、0 缺字（build.sh 验收） |
 | RFC-K | Part V FP8/FP4 Attention 篇 ch27-33（ffpa-attn CuTe sm_120） | RFC-E/F（前置章节） | 完成（K0-K7 + K-验收 2026-09-16：全书 425 页零 error 零 undefined、Overfull 清零）|
+| RFC-L | ch26b 增补章：sm_120 persist-D FlashAttention（超越 cuDNN 压轴章） | RFC-F/K（ch20-26 前置） | 完成（2026-09-22：源码整合 flash_attn.cuh L3490-4170 + notes-v2 接入 + 6/6 测试 PASS + bench 复测 230.5T；6 张 TikZ inline 图，用户指定例外于 drawio 主路径）|
 
 依赖图（执行实况）：`RFC-0 → RFC-A → RFC-C → RFC-D → RFC-E → RFC-F → (RFC-G ∥ RFC-H ∥ RFC-I) → RFC-J`；RFC-B 于 2026-09-18 取消（素材职能被附录 E + drawio 全量重建接管）；`RFC-K 依赖 RFC-E/F 素材，与 RFC-G/H/I 并行，完成后并入 RFC-J 收口`
 
@@ -174,6 +175,19 @@
 
 执行序：K0 → K1 → K2 → K3 → (K4 ∥ K5) → K6 → K7 → K-验收（K4/K5 无文件冲突可并行；每章完成即独立 commit）
 
+## 12-L. RFC-L ch26b 增补章：sm_120 persist-D FlashAttention（2026-09-22）
+
+> 用户指定：Part IV 压轴大章，写「如何在 sm_120 上写一个超越 cuDNN 的 flash-attention」，代码用 tmp/flash_cute_sm120.cu（PRO 5000 实测 236.9T vs cuDNN 227.5T=1.04x）。图统一 TikZ（例外于 drawio 主路径）。
+
+- [x] L.1 源码整合：`flash_attn.cuh` 追加 Phase 8 块（L3490-4170）：`FlashAttnPersistDCuTeTraits` + `online_safe_softmax_fa4` + kernel `flash_attn_cute_persist_d_sm120` + launcher + D∈{64,96,128} 分派；smem atom 条件选 SW128/64/32、V^T composition 零拷贝
+- [x] L.2 notes-v2 接入：`test_flash_attn_cute_persist_d_sm120`（CPU fp64 ref + causal + GQA + KV 尾 mask + 反向滑窗）7 case；`--pd-cute` 快速入口；**修 ref bug**（加权 V 误用原始 score 而非 softmax 权重，causal 因此 inf）→ 5/5 max_err 2.7e-5~3.5e-4
+- [x] L.3 `book/tests/ch26b_fa_persist_d.cu`：10 case（dense D64/D96/D128、causal 正反滑窗、GQA、Q 尾部 R→G、KV 尾 mask、persistent 多 iter H32）**10/10 PASS**，CHECKLOG 落 `book/.tmp/ch26b/`
+- [x] L.4 bench：`book/.tmp/ch26b/bench_pd.cu` min-of-30，8 case 数据落 `.tmp/book-bench/ch26b/bench.txt` + README（dense N8192 230.5T，与正文 236.9T 差 2.7% 时钟波动，佐证量级）
+- [x] L.5 正文 `chapters/ch26b-cute-persist-d-flash-attn.tex`：10 节 + 6 张 TikZ inline 图（scale 融合/WS 架构/smem 布局/流水时序/persistent/epilogue）+ 3 个 lstinputlisting（L3530-3567/L3870-3884/L4118-4136，行号已对源码复核）
+- [x] L.6 接线：book.tex Part IV ch26 后 `\input`；anchors.yaml 更新 flash_attn.cuh（sha/4160 行）+ notes-v2.cu + 新增 ch26b 条目（3490-4170）；verify_anchors --ch ch26b 全绿（顺手修 sgemm.cuh 过期 frozen sha——上游 5be940f 改动未同步登记，非本任务引入）
+- [x] L.7 验收：全书两遍 xelatex 0 error、0 undefined、0 missing char、ch26b Overfull 清零（剩 4 个历史 caption 微超 ≤3.2pt：ch12/16/20/23，非本任务引入不扩范围）；顺手修 ch15 TikZ ①② 豆腐块、ch33 fig→tab:33-5090-fp4 笔误
+- [x] L.8 code review（PASS with comments）修复：causal Nkv<Nq 时 Tc_eff 负值致 kv_cursor 负索引 OOB + 全 mask 行 NaN（max(0,...) 钳零 + row_sum=0 输出 0）；launcher 补 Nh%Nh_kv 校验；两处寄存器池算术错（60416→63488）与 smem 预算注释错（48/64→72/96KB）；SmemLayoutKVt 注释 col-major→row-major；测试补 KV 尾 mask/causal 正反滑窗/D=96 四 case（notes-v2 7/7、book tests 10/10 PASS）
+
 ## 13. 图清单登记表（写作期持续更新）
 
 | FIG | 章 | slug | 类型(A/B/D/C1/C2, 见 BOOK_PLAN §7.1) | 状态(占位/引用/重建完成/正式) | 出处或源文件 |
@@ -247,6 +261,12 @@
 | FIG-33-2 | 33 | 5090-fp4-speedup | C2 引用（2026-09-16，ffpa-attn README 5090 fp4 D=128 speedup：FFPA-FP4 804T/2.60x） | 正式（引用） | figures/ffpa/fp4/ |
 | FIG-33-3 | 33 | pro5000-fp8-tflops | C3 本机 plot（2026-09-16，bench_fp8.py 生成：PRO 5000 D=128 fp16 七场景 × 8K/16K，FFPA/Sage/SDPA 三系列） | 正式 | figures/ffpa/fp8/fig-33-3-pro5000-fp8-tflops.png（生成脚本 = ffpa-attn bench/bench_fp8.py） |
 | FIG-33-4 | 33 | pro5000-fp4-tflops | C3 本机 plot（2026-09-16，bench_fp4.py 生成：PRO 5000 同形状，FFPA-FP4/FP8/Sage3/SDPA 四系列） | 正式 | figures/ffpa/fp4/fig-33-4-pro5000-fp4-tflops.png（生成脚本 = ffpa-attn bench/bench_fp4.py） |
+| FIG-26B-1 | 26b | pd-scale-fused | C1 新建（2026-09-22，TikZ inline：scale·log2e 折进 Q 的 s2r 循环，softmax 免逐元素乘） | 正式 | chapters/ch26b-cute-persist-d-flash-attn.tex（用户指定本章全 TikZ） |
+| FIG-26B-2 | 26b | pd-ws-arch | C1 新建（2026-09-22，TikZ inline：WS 1P+1C 架构，128T dealloc<32>/256T alloc<232>） | 正式 | 同上 |
+| FIG-26B-3 | 26b | pd-smem-layout | C1 新建（2026-09-22，TikZ inline：smem 布局 Q+K/V 双 stage 池+O 复用 Q） | 正式 | 同上 |
+| FIG-26B-4 | 26b | pd-pipeline | C1 新建（2026-09-22，TikZ inline：TMA 预取 P1/P2 时序，V-first then K-after） | 正式 | 同上 |
+| FIG-26B-5 | 26b | pd-persistent | C1 新建（2026-09-22，TikZ inline：persistent CTA tile 环 + kv_cursor 相位） | 正式 | 同上 |
+| FIG-26B-6 | 26b | pd-epilogue | C1 新建（2026-09-22，TikZ inline：epilogue STSM→TMA store / R→G 尾部路径） | 正式 | 同上 |
 
 ## 14. CHECKLOG 摘要镜像（明细在 book/CHECKLOG.md）
 
