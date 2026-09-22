@@ -21,7 +21,8 @@
 \end{enumerate}
 素材锚定 ffpa-attn \texttt{861d75e} 的 \texttt{bench/bench\_fp8.py}、
 \texttt{bench/bench\_fp4.py} 与 \texttt{ffpa\_attn.bench} CLI；本机
-实测平台 RTX PRO 5000（sm\_120），对照引用 README 的 RTX 5090 数据。
+实测平台 RTX PRO 5000（sm\_120），5090 数据引自仓库
+\texttt{docs/assets/perf/} 归档实测图。
 
 \section{问题与动机}
 
@@ -304,54 +305,35 @@ preset。knob 的边际效应见 33.6.3。
 
 \section{实测数据总览}
 
-四张表分两个数据源。表~\ref{tab:33-5090-fp8} 与表~\ref{tab:33-5090-fp4}
-是 ffpa-attn README 引用的 RTX 5090 结果（B1 H64 N=16384 D=128）：fp8 对
-Sage2/SDPA 的领先与 fp4 非因果场景 2.2$\sim$2.3x 的满血区，用于建立
-「能到多少」的量级预期。表~\ref{tab:33-pro5000-fp8} 与
-表~\ref{tab:33-pro5000-fp4} 是本机 PRO 5000 的复测（H32/Hkv8，bench
-脚本默认 preset，2026-09-21）：fp8 与 Sage 总体打平、互有胜负（差距
-$\pm$4\% 内），fp4 全场景领先——绝对 TFLOPS 比 5090 低 $\sim$15\%
-（fp8）/$\sim$30\%（fp4），但形态一致。读表时记住本章动机节的三陷阱：
-参照系、preset 与 GPU 状态是三个最常见的失真源。
+三张表分两个平台。表~\ref{tab:33-5090} 是 RTX 5090（B1 H64
+N16384 D128）的对照——fp8 1.9$\sim$3.0x、fp4 2.0$\sim$4.0x，
+用于建立「大卡上能到多少」的量级预期。表~\ref{tab:33-pro5000-fp8}
+与表~\ref{tab:33-pro5000-fp4} 是本机 PRO 5000 的复测（H32/Hkv8，
+bench 脚本默认 preset，2026-09-21）：fp8 与 Sage2 总体打平、互有
+胜负（差距 $\pm$4\% 内），fp4 全场景领先。读表时记住本章动机节的
+三陷阱：参照系、preset 与 GPU 状态是三个最常见的失真源。
 
 \begin{table}[!htbp]
   \centering\small
-  \caption{RTX 5090 fp8 对照（D=128，B1 H64 N=16384，TFLOPS；数据源：
-  ffpa-attn README，\texttt{bench\_fp8.py} 口径）}\label{tab:33-5090-fp8}
-  \begin{tabular}{lcccc}
-    \toprule
-    场景 & SDPA-FA2 & Sage2 & FFPA-FP8 & FFPA/SDPA \\
-    \midrule
-    self               & 353.35 & 396.83 & 445.60 & 1.26x \\
-    causal             & 349.34 & 390.34 & 440.04 & 1.26x \\
-    gqa                & 351.25 & 402.43 & 437.57 & 1.25x \\
-    gqa-causal         & 348.71 & 390.94 & 431.67 & 1.24x \\
-    cross-dense        & 349.58 & 389.53 & 441.74 & 1.26x \\
-    non-aligned-dense  & 352.75 & 392.46 & 437.51 & 1.24x \\
-    non-aligned-causal & 349.33 & 379.59 & 426.69 & 1.22x \\
-    \bottomrule
-  \end{tabular}
-\end{table}
-
-\begin{table}[!htbp]
-  \centering\small
-  \caption{RTX 5090 fp4 对照（同形状，TFLOPS；数据源同上。FFPA-FP4 在
-  非因果场景约为同场 fp8 的 1.8x——blockscale MMA 的满血区；README 文本
-  宣传口径（850--980 TOPS / 3.8x$\sim$4.4x，D=128--256 区间）为不同期
-  的后续版本，与本表（D=128 单点）不同期）}\label{tab:33-5090-fp4}
+  \caption{RTX 5090 对照（B1 H64 N16384 D128；FWD TFLOPS；数值取自
+  仓库归档实测图）}\label{tab:33-5090}
   \begin{tabular}{lccccc}
     \toprule
-    场景 & SDPA-FA2 & FFPA-FP8 & FFPA-FP4 & Sage3 & FP4/SDPA \\
+    场景 & SDPA (BF16) & FFPA-FP8 & FP8/SDPA & FFPA-FP4 & FP4/SDPA \\
     \midrule
-    self               & 353.35 & 441.87 & 803.69 & 563.38 & 2.27x \\
-    causal             & 349.34 & 436.67 & 631.86 & 423.01 & 1.81x \\
-    gqa                & 351.25 & 449.12 & 822.32 & 609.79 & 2.34x \\
-    gqa-causal         & 348.71 & 441.07 & 771.13 & 564.42 & 2.21x \\
-    cross-dense        & 349.58 & 439.09 & 799.84 & 561.45 & 2.29x \\
-    non-aligned-dense  & 352.75 & 436.61 & 783.41 & 576.17 & 2.22x \\
-    non-aligned-causal & 349.33 & 429.62 & 608.88 & 437.60 & 1.74x \\
+    self-attn  & 214 & 611 & 2.86x & 819 & 3.83x \\
+    cross-attn & 165 & 306 & 1.85x & 322 & 1.95x \\
+    gqa        & 214 & 637 & 2.98x & 862 & 4.03x \\
+    causal     & 212 & 552 & 2.60x & 669 & 3.16x \\
     \bottomrule
   \end{tabular}
+
+  \par\vspace{4pt}
+  {\footnotesize 数据源：ffpa-attn 仓库
+  \texttt{docs/\allowbreak{}assets/\allowbreak{}perf/} 下 fp8/fp4 两组
+  5090 speedup 图（B1 H64 N16384 D128），数值取自图上标注；两图的
+  SDPA 参照各有 $\le$1T 漂移（fp8 图读数 215/166/215/212），本表
+  SDPA 列取 fp4 图口径，比值随之有 $\le$0.5\% 差异。\par}
 \end{table}
 
 \begin{table}[!htbp]
@@ -531,7 +513,7 @@ smooth-v 略快（+1.0\%）是 V 值域压缩后 PV 溢出重缩放更少。knob
 的杠杆在两端：causal 精度（hybrid）与大 D dispatch（第~\ref{ch:30}~
 章），不在主权区的数值通路。
 
-\subsection{竞品对照与硬件对照}
+\subsection{竞品对照}
 
 \texttt{bench\_fp4.py}（16K，fp16，H32/Hkv8）同场四backend：
 self 场景 FFPA-FP4 523T（2.45x）$>$ Sage3 410T（1.92x）$>$
@@ -543,10 +525,9 @@ rel\_err 0.59/max 1.0（早期行 e2m1 噪声无 hybrid 抑制，
 最差 non-aligned-dense 8K FFPA 快 2.6\%），
 这正是 preset 公平化的结果——2026-08 之前 cachedit preset 默认开
 hybrid+smooth-v，dense 场景「慢 3--8.7\%」全是功能成本，对齐后
-反超。硬件对照：5090（表~\ref{tab:33-5090-fp4}）fp4 D=128 自测
-$\approx$804T，PRO 5000 同形状 523T——同 sm\_120 微架构，差距
-来自 SM 数与功耗包络，\textbf{形态结论（谁快谁慢、随 D 怎么走）
-跨设备可迁移，绝对数字不可}。
+反超。除表~\ref{tab:33-5090} 的 5090 引用外，本章数字均出自本机
+PRO 5000（sm\_120）实测——\textbf{形态结论（谁快谁慢、随 D 怎么
+走）跨设备可迁移，绝对数字不可}，引用这类比值时必须带上设备名。
 
 \noindent{\footnotesize 注：本节 Sage3 对照的 rel\_err/max\_abs（0.59/1.0
 与 0.28/0.14）为写作期实测（2026-08，单卡 PRO 5000），原始 stdout
@@ -672,7 +653,7 @@ python bench/bench_fp4.py --dtype fp16
         （\texttt{--cuda-impl} 解析出的默认量化配置）；
   \item \texttt{cli/\_runner\_fwd.py} L413--419（tol 分档依据）；
   \item ffpa-attn README「Performance / End-to-End Inference」节
-        （5090/PRO 6000 数据与 Cache-DiT 集成入口）；
+        （Cache-DiT 集成入口）；
   \item 瓶颈归因方法论见第~\ref{ch:28}--\ref{ch:30}~章（aux 链
         1.04TB/s、tensor pipe 77\%、dispatch 三分）。
 \end{itemize}
