@@ -697,6 +697,30 @@ $B\sb K{=}16$ 的指令发射密度翻倍、三级流水的同步更松。
 生产环境常用 \texttt{HMMA16816\allowbreak{}F32} 的 fp32 累加变体换精度。
 （数值为共享开发机单次短测，仅供章节间相对对照。）
 
+更大形状的 A/B 复测（RTX PRO 5000 96~SM，CUDA 13.2；
+\texttt{notes\_\allowbreak{}v2\_\allowbreak{}sm120a.\allowbreak{}bin}
+\texttt{--bench} \texttt{--bench\_\allowbreak{}all}，
+$M{=}N{=}K{=}8192$ fp16，cuBLAS f16 参照 246.9~TFLOPS）见
+表~\ref{tab:ch11-perf}：
+
+\begin{table}[H]
+\centering
+\caption{HGEMM mma.sync 实测（RTX PRO 5000，M=N=K=8192，fp16）}
+\label{tab:ch11-perf}
+\small
+\begin{tabular}{lrr}
+\toprule
+Kernel & Max Err & TFLOPS/cuBLAS（加速比） \\
+\midrule
+HGEMM MMA (S=2, BLK\_SW=0) & 0.000e+00 & 119.7/246.9 (0.48x) \\
+HGEMM MMA (S=2, BLK\_SW=1) & 0.000e+00 & 124.6/246.9 (0.50x) \\
+HGEMM MMA (S=3, BLK\_SW=1) & 0.000e+00 & 127.3/246.9 (0.52x) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+三点读数：（1）mma.sync 基础实现仅达 cuBLAS 的约一半（0.48$\sim$0.52$\times$）——指令用对不等于流水编排到位，装载与计算的重叠窗口、epilogue 写回都还有可观浪费；（2）S=3 比 S=2 略好（同 BLK\_SW 下 +2.2\%），与 11.3.6 的判断一致：更深的缓冲摊薄 cp.async 的搬运抖动，但 smem 占用同步上涨，边际收益递减；（3）block swizzle（BLK\_SW 0 $\to$ 1）带来约 4\% 改善（119.7 $\to$ 124.6 TFLOPS），大形状下 CTA 的调度顺序对 gmem 局部性影响不可忽略。
+
 最后回答一个实操问题：\textbf{怎么确认 kernel 真的跑在 Tensor Core 上？}
 两级证据：（1）SASS 级——对可执行文件
 \texttt{cuobjdump -sass} 后检索 \texttt{HMMA.16816} 指令，

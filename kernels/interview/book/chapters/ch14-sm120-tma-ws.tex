@@ -670,6 +670,31 @@ cp.async 提交指令，ldmatrix 到 mma 的发射槽更纯粹；（2）TMA 单�
 （3）数据驱动的 full/empty 协议替代 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads} 栅栏，warp 间
 不再互相拖拽。
 
+\textbf{大矩阵实测}（RTX PRO 5000，sm\_120，CUDA 13.2，
+\texttt{notes\_\allowbreak{}v2\_\allowbreak{}sm120a.\allowbreak{}bin\allowbreak{} --bench\allowbreak{} --bench-all}，f16 累加，
+cuBLAS f16 参照 246.6~TFLOPS）：
+
+\begin{table}[H]
+\centering
+\caption{HGEMM TMA MMA WS 实测（RTX PRO 5000，M=N=K=8192，fp16）}
+\label{tab:ch14-perf}
+\small
+\begin{tabular}{lrr}
+\toprule
+Kernel & Max Err & TFLOPS/cuBLAS（加速比） \\
+\midrule
+HGEMM TMA MMA WS (S=1, BLK\_SW=0) & 0.000e+00 & 199.6/246.6 (0.81x) \\
+HGEMM TMA MMA WS (S=1, BLK\_SW=1) & 0.000e+00 & 231.4/246.6 (0.94x) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+$8192^3$ 规模下 TMA+MMA+WS 组合把纯 MMA 基础实现（第~\ref{ch:11}~章
+\texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn} 约 127~TFLOPS 量级）提升
+57\%--82\%，搬运端与同步协议的升级在大矩阵上依然成立；开启 block swizzle
+（BLK\_SW=1）后 f16 累加路径从 0.81x 抬到 0.94x——L2 局部性的收益与上文
+2048$^3$ 的结论一致，且两配置 Max Err 均为 0，性能收益未付出精度代价。
+
 \section{实践经验与考据说明}
 
 \begin{kaogu}[F2 核校通过]{「SWIZZLE\_128B 要求 smem 基地址 1024 字节对齐」的表述}

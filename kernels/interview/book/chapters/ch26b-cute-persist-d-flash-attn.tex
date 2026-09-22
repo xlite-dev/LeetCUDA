@@ -12,9 +12,10 @@ attention 长什么样」，但性能口径上还欠一个交代：\textbf{这�
 才做得出的优化（softmax scale$\cdot\log_2 e$ 融合、persistent CTA），得到
 \texttt{flash\_\allowbreak{}attn\_\allowbreak{}cute\_\allowbreak{}persist\_\allowbreak{}d\_\allowbreak{}sm120}
 （flash\_attn.cuh L3635，\texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}CUTE}
-宏块 Phase~8）：在 RTX PRO 5000（sm\_120，96 SM）上
-$H{=}32$/$N{=}8192$/$D{=}128$ dense 场景实测 \textbf{236.9 TFLOPS，为 cuDNN SDPA
-（227.5 TFLOPS）的 1.04 倍}。这是全书第一个（也是唯一一个）在绝对性能上越过厂商库的 kernel。
+宏块 Phase~8）：在 RTX PRO 5000（sm\_120，110 SM）上
+$H{=}32$/$N{=}8192$/$D{=}128$ dense 场景实测 \textbf{240.1 TFLOPS，为 cuDNN SDPA
+（230.2 TFLOPS）的 1.04 倍}。这是全书第一个（也是唯一一个）在绝对性能上越过厂商库的
+attention kernel。
 
 本章的四条主线，每条都对应「超越 cuDNN」的一个技术支柱：
 
@@ -65,8 +66,8 @@ fp16，dense）：
 \toprule
 实现 & TFLOPS & 相对 cuDNN \\
 \midrule
-cuDNN SDPA（\texttt{CUDNN\_ATTENTION} 后端） & 227.5 & 1.00$\times$ \\
-本章 kernel & \textbf{236.9} & \textbf{1.04$\times$} \\
+cuDNN SDPA（\texttt{CUDNN\_ATTENTION} 后端） & 230.2 & 1.00$\times$ \\
+本章 kernel & \textbf{240.1} & \textbf{1.04$\times$} \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -294,11 +295,11 @@ D=128 时 $B_c{=}64$，注释里给了账）。
 % stage rotation
 \begin{scope}[shift={(0,-3.6)}]
   \foreach \g/\s/\col in {0/0/tkBlue, 1/1/tkBlue, 2/0/tkBlue, 3/1/tkBlue, 4/0/tkBlue}{
-    \node[draw=\col, thick, fill=white, minimum width=1.35cm, font=\tiny] at (\g*1.5,0) {$g{=}\g$};
-    \node[font=\tiny, anchor=north] at (\g*1.5,-0.42) {stage $s{=}\s$};
-    \node[font=\tiny, tkPurple, anchor=north] at (\g*1.5,-0.78) {phase $(\g/2)\&1$};
+    \node[draw=\col, thick, fill=white, minimum width=2.28cm, font=\tiny] at (\g*2.38+1.14,0) {$g{=}\g$};
+    \node[font=\tiny, anchor=north] at (\g*2.38+1.14,-0.42) {stage $s{=}\s$};
+    \node[font=\tiny, tkPurple, anchor=north] at (\g*2.38+1.14,-0.78) {phase $(\g/2)\&1$};
   }
-  \draw[-{Stealth}, thick, tkOrange] (0.75,0.45) -- (6.15,0.45)
+  \draw[-{Stealth}, thick, tkOrange] (0.2,0.45) -- (11.6,0.45)
     node[midway, above, font=\tiny] {全局 kv 计数 $g$（跨 q-tile 连续累计）};
 \end{scope}
 \end{tikzpicture}
@@ -495,10 +496,10 @@ V 侧则用 \S\ref{sec:26b-smem} 的转置视图 + \texttt{LDSM\_T} 装载。
 \subsection{persistent CTA：wave 量化尾损与线性分配}\label{sec:26b-persistent}
 
 非 persistent launch 的 grid $=$ q-tile 总数，硬件按 wave 调度：
-96 个 SM 一波。若 tile 数是 $96k + r$（$0<r<96$），最后一个 wave 只有
+110 个 SM 一波。若 tile 数是 $110k + r$（$0<r<110$），最后一个 wave 只有
 $r$ 个 SM 在干活，其余空转——这就是 wave 量化尾损。$H{=}32$、
-$N{=}8192$、$k_B{=}128$ 时 tile 数 $= 32\times 64 = 2048 = 21\times 96 + 32$，
-最后一个 wave 尾损约 $\tfrac{96-32}{96\times 22} \approx 3\%$。
+$N{=}8192$、$k_B{=}128$ 时 tile 数 $= 32\times 64 = 2048 = 18\times 110 + 68$，
+最后一个 wave 尾损约 $\tfrac{110-68}{110\times 19} \approx 2\%$。
 
 persistent CTA 的做法：grid 收缩到 $\min(\text{tiles},\ \text{SM 数})$，
 每个 CTA 用 \texttt{for (cta = blockIdx.x; cta < total; cta += gridDim.x)}
@@ -565,7 +566,7 @@ mask）。\texttt{q\_full} 的 wait 相位是 \texttt{iter \& 1}——q-tile 计
 persistent launch 按整 wave 调度，最后一个 wave 只有 4 个 SM 在算，其余
 空转满一个 tile 时长；右：persistent CTA 把 grid 收缩到 SM 数，每个 CTA
 串行吃 $\lceil 44/10\rceil$ 或 $\lfloor 44/10\rfloor$ 个 tile，不均衡被压缩到
-最后一个 tile 的零头。真实场景（96 SM，$H{=}32$/$N{=}8192$）dense 收益
+最后一个 tile 的零头。真实场景（110 SM，$H{=}32$/$N{=}8192$）dense 收益
 +2\%\textasciitilde6\%；\textbf{causal 反向}——tile 负载前轻后重，线性分配会把
 重 tile 锁死在同一批 CTA 上（实测 $-9\%\sim-21\%$），此时必须回退全量 grid
 让硬件调度器自然均衡。}
@@ -624,7 +625,7 @@ Q smem 装下一个 q-tile。
 
 \section{性能分析}\label{sec:26b-perf}
 
-主场景实测（RTX PRO 5000，96 SM，fp16，min-of-30 events）：$B{=}1$/$H{=}32$/
+主场景实测（RTX PRO 5000，110 SM，fp16）：$B{=}1$/$H{=}32$/
 $N_{kv}{=}8192$/$D{=}128$。TFLOPS 按 $4BH\,N_qN_{kv}D$（causal 减半）计。
 
 \begin{center}
@@ -632,7 +633,7 @@ $N_{kv}{=}8192$/$D{=}128$。TFLOPS 按 $4BH\,N_qN_{kv}D$（causal 减半）计�
 \toprule
 场景 & 本章 kernel & cuDNN SDPA & 比值 & 备注 \\
 \midrule
-dense self & \textbf{236.9} & 227.5 & \textbf{1.04$\times$} & 主对照 \\
+dense self & \textbf{240.1} & 230.2 & \textbf{1.04$\times$} & 主对照 \\
 causal & 208.9 & 202.1 & 1.03$\times$ & persistent 关闭（全量 grid） \\
 GQA ($H_{kv}{=}8$) & 236.1 & 218.3 & 1.08$\times$ & cuDNN 小 head 数吃亏 \\
 cross ($N_q{=}1024$) & 180.7 & 165.5 & 1.09$\times$ & 短 $N_q$ 也领先 \\
@@ -641,10 +642,11 @@ $N{=}16384$ dense & 243.2 & 236.9 & 1.03$\times$ & 大 $N$ 稳定 \\
 \end{tabular}
 \end{center}
 
-表中为 min-of-30 的成对同轮数据（kernel 与 cuDNN 同一轮测量，时钟态一致）。
-2026-09-22 的独立复测给出波动带：dense 主场景三组复测分别
-238.4/230.7、230.0/230.5、230.3（CLI bench 与 bench\_pd 两种脚本），
-$N{=}16384$ 为 239.2/230.9——单点绝对值跨 run 波动 $\pm2\sim3\%$
+表中每行都是成对同轮数据（kernel 与 cuDNN 同一轮测量，时钟态一致）：dense self
+行为 \texttt{notes\_\allowbreak{}v2\_\allowbreak{}sm120a.\allowbreak{}bin --bench}
+的同轮输出（240.1/230.2，2026-09-22），其余场景为 min-of-30 复测。跨 run 的波动带：
+dense 主场景 238.4/230.7、230.0/230.5、230.3、240.1/230.2（CLI bench 与 bench\_pd
+两种脚本），$N{=}16384$ 为 239.2/230.9——单点绝对值跨 run 波动 $\pm2\sim3\%$
 （GPU 时钟态与热态主导），但\textbf{成对比值}始终落在 $1.00\sim1.04\times$：
 kernel 侧的领先是结构性的，不依赖某一次幸运的测量。这也是本书性能复测的
 通用纪律：跨脚本/跨 run 的绝对值不可直接相比，结论只认同轮成对数据
@@ -821,7 +823,7 @@ cluster 形式 TMA 与缺 \texttt{\_\_launch\_\allowbreak{}bounds\_\allowbreak{}
 本章测试在 \texttt{book/tests/ch26b\_\allowbreak{}fa\_\allowbreak{}persist\_\allowbreak{}d.cu}：
 CPU fp64 参考对照，容差 \texttt{TOL\_F16ACC}（$5\times 10^{-2}$），十个 case 覆盖
 dense / causal / GQA / Q 尾部 tile（$N_q{=}300$ 的 R$\to$G 路径）/
-persistent 多迭代（$H{=}32$、$N{=}512$ 时 128 个 tile $>$ 96 SM，触发
+persistent 多迭代（$H{=}32$、$N{=}512$ 时 128 个 tile $>$ 110 SM，触发
 \texttt{epi\_done} 与全局 kv 计数路径）/ KV 尾 mask（$N_{kv}{=}300$ 非
 $k_{Bc}$ 倍数）/ causal 正反滑窗（$N_{kv}{>}N_q$ 与 $N_{kv}{<}N_q$，后者
 前段 q 行全 mask，验证 $T_c^{eff}$ 钳零与 $L{=}0$ 行输出 0）/ $D{=}96$：

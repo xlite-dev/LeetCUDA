@@ -746,6 +746,35 @@ f16 写回之间反复 \texttt{\_\allowbreak{}\_\allowbreak{}float22half2\_\allo
 「两条路线在同一张卡上的量级对照」即可，不宜当作「FA3 比 FA2 快 $x\%$」
 的结论——真正受控的对照需要固定 tile 与流水深度，留给附录 B 的复测表。
 
+另一条数据线来自 \texttt{notes\_\allowbreak{}v2\_\allowbreak{}sm120a.bin --bench --bench-all} 的
+FA 基准（$B{=}1$、$H{=}32$、$N{=}8192$、$D{=}128$，dense，同机 RTX PRO 5000
+sm\_120、110 SM、CUDA 13.2），以同轮 cuDNN 为基线（表~\ref{tab:ch18-perf}）：
+F16Acc 对照 cuDNN f16（231.1），F32Acc 对照 cuDNN f32（230.2）。
+
+\begin{table}[H]
+\centering
+\caption{FA3 TMA MMA WS（2 Consumer WG）实测（RTX PRO 5000，B=1 H=32 N=8192 D=128）}
+\label{tab:ch18-perf}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrr}
+\toprule
+Kernel & Max Err & TFLOPS/cuDNN（加速比） \\
+\midrule
+FA3 TMA MMA WS (2 Consumer WG) (Sk=1, Sv=1, F16Acc) & 1.068e-04 & 206.2/231.1 (0.89x) \\
+FA3 TMA MMA WS (2 Consumer WG) (Sk=1, Sv=1, F32Acc) & 1.526e-05 & 205.7/230.2 (0.89x) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+两点读数。其一，\textbf{双 consumer（2 Consumer WG）把同规模吞吐从单 consumer
+的 188--204~TFLOPS（第~\ref{ch:17}~章）进一步抬到 206~TFLOPS 量级}（206.2 /
+205.7），「两条独立流交错填满发射槽」的结构收益在更大规模下依然成立。其二，
+\textbf{F16Acc 与 F32Acc 速度基本持平}（206.2 vs 205.7，差别 $<0.5\%$，落在
+run 间波动内），而 \textbf{F32Acc 精度更优}——最大误差 1.526e-05 比 F16Acc 的
+1.068e-04 小约一个量级，本规模下 F32Acc 是更划算的默认选择。两档对 cuDNN 均为
+0.89x，说明剩余差距在 kernel 结构而非累加精度。
+
 \section{实践经验与考据说明}
 
 \begin{kaogu}[F1·注释与代码相反]{L1606 「Per-tile load order: V first, then K」}

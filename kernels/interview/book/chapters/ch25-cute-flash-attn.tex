@@ -963,7 +963,8 @@ KV 划分 & 单流全遍历 & 单流全遍历 & 奇偶拆给两个 consumer \\
 
 \section{性能分析}
 
-本节分两段：先交代源码注释里的既有数字与口径，再给本书的复测。
+本节分三段：先交代源码注释里的既有数字与口径，再给本书的复测，
+最后汇总 CuTe 实测表并分析。
 
 \textbf{源码注释数字}。本章区间（L2196--3488）内\textbf{没有}任何
 TFLOPS/加速比断言——四个实现都是「能跑对」的对照样本，性能数字在相邻章节：
@@ -986,6 +987,37 @@ $D{=}128$ 的 Q tile 更大（$128\times128$ 个 half $=32$\,KB），
 (3) 本章全部实现是\textbf{非 causal、无 GQA/varlen} 的 self-attention，
 与手写版限制相同（源码注释 L2528--2529 明示），因此数字只应作为
 「CuTe 化不牺牲性能」的证据，而不是「哪个实现更快」的定论。
+
+\textbf{CuTe 实测}。表~\ref{tab:ch25-perf} 汇总
+\texttt{notes\_\allowbreak{}v2\_\allowbreak{}sm120a.\allowbreak{}bin}
+\texttt{--bench --bench-all} 的 FA CuTe 实测（RTX PRO 5000，sm\_120、110 SM、
+CUDA 13.2；$B{=}1$、$H{=}32$、$N{=}8192$、$D{=}128$ dense，全部 F32Acc，
+参照 cuDNN f32 的 230.2 TFLOPS）。
+
+\begin{table}[H]
+\centering
+\caption{FA CuTe 实测（RTX PRO 5000，B=1 H=32 N=8192 D=128）}
+\label{tab:ch25-perf}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrr}
+\toprule
+Kernel & Max Err & TFLOPS/cuDNN（加速比） \\
+\midrule
+FA2 CuTe MMA Stages (Sk=1, F32Acc) & 1.526e-05 & 184.4/230.2 (0.80x) \\
+FA2 CuTe MMA Stages (Sk=2, F32Acc) & 1.526e-05 & 196.5/230.2 (0.85x) \\
+FA2 CuTe TMA MMA WS (1 Consumer WG) (Sk=2, Sv=1, F32Acc) & 1.526e-05 & 218.6/230.2 (0.95x) \\
+FA2 CuTe TMA MMA WS (1 Consumer WG) (Sk=3, Sv=1, F32Acc) & 1.526e-05 & 221.4/230.2 (0.96x) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+三个台阶清晰可见：实现 1 的 CuTe MMA Stages 已到 cuDNN 的 0.80--0.85$\times$，
+纯 CuTe 抽象、无任何搬运特化就已接近厂商库；实现 2 的 CuTe TMA MMA WS 把
+搬运与计算解耦后升到 0.95--0.96$\times$、逼近 cuDNN——TMA + warp
+specialization 这条路线的收益在 CuTe 版上完整复现。再把 K 的 stage 从 2 加深到
+3 只多换约 1.3\%（218.6 $\to$ 221.4 TFLOPS），流水深度的收益已边际递减；
+更完整的 persistent-CTA WS 实现见第 26b 章。
 
 \section{常见坑}
 
