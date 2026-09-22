@@ -31,7 +31,7 @@ split-Q + MMA 多级流水）、第~\ref{ch:17}~章（FA2 TMA + Warp Specializat
 第~\ref{ch:09}~章（GEMM block tile 直觉，建议）。
 \textbf{源码区间}：flash\_attn.cuh~L5--110 头注释（本章只引用该区间，kernel 本体留待
 ch16--18 展开）；历史与性能指标陈述以 FA1/FA2/FA3 三篇论文为核验源（F5 类）。
-\textbf{测试}：本章无独立 kernel 测试——数学正确性由第~\ref{ch:04}~章（softmax 三级
+\textbf{测试}：本章无独立 kernel 测试，数学正确性由第~\ref{ch:04}~章（softmax 三级
 递进）与第~\ref{ch:05}~章（merge\_attn\_states）的测试覆盖，见 15.10~节的显式声明。
 
 \section{问题与动机}
@@ -50,16 +50,16 @@ $O = PV$（读 $N^2$）。仅中间矩阵的 HBM 往返就是
 $4 \times 1\,\mathrm{GiB} \approx 4.3\,\mathrm{GB}$ 的流量，而有效数据
 （Q/K/V 读入 + O 写出，$4Nd \cdot H \cdot 2\,\mathrm{B} \approx 67\,\mathrm{MB}$）
 只有它的 $1/64$。15.3.3~节会算出：在这类形状下，搬中间矩阵的时间下界就已经超过
-整个计算的时间下界——\textbf{显存带宽，而不是 Tensor Core，才是朴素 attention 的
+整个计算的时间下界，\textbf{显存带宽，而不是 Tensor Core，才是朴素 attention 的
 第一瓶颈}。
 
-第三，也是最本质的观察：$S$ 和 $P$ 是\textbf{一次性}的中间量——$S$ 算出来只为了做
+第三，也是最本质的观察：$S$ 和 $P$ 是\textbf{一次性}的中间量，$S$ 算出来只为了做
 softmax，$P$ 算出来只为了乘 $V$，之后再也无人问津。既然如此，何必让它离开芯片？
 直觉上的修法是分块：把 $Q,K,V$ 切成小块，在 SRAM/寄存器里完成「乘—归一化—乘」的
 全部中间步骤，只把最终 $O$ 写回 HBM。但 softmax 的\textbf{分母把整行耦合在一起}：
 某一行 query 的归一化需要它对所有 key 的分数，逐块处理时后面的块还没见到，分母从何
-而来？这正是第~\ref{ch:04}~章 online softmax（$(m,\ell)$ 联动更新）与第~\ref{ch:05}~章
-分块合并（LSE 等价拼回）已经解决掉的问题。本章把那两章的数学原封不动地搬进
+而来？第~\ref{ch:04}~章 online softmax（$(m,\ell)$ 联动更新）与第~\ref{ch:05}~章
+分块合并（LSE 等价拼回）解决的就是这个问题。本章把那两章的数学原封不动地搬进
 attention 的分块循环，再补上「带着 $V$ 一起 rescale」这一步，就得到 FlashAttention。
 
 \section{数学原理}
@@ -92,7 +92,7 @@ $O \triangleq PV \in \mathbb{R}^{N \times d}$ 是\textbf{输出}。按第 $i$ �
   O_i = \sum_{k=1}^{N} P_{ik}\, v_k ,
   \label{eq:15-attn-rows}
 \end{equation}
-即「打分 $\to$ 归一化成权重 $\to$ 对 value 加权求和」。行与行之间零依赖——这条
+即「打分 $\to$ 归一化成权重 $\to$ 对 value 加权求和」。行与行之间零依赖，这条
 \textbf{行内自足性}与 softmax 完全一致（第~\ref{ch:04}~章动机三），是后面能把一行
 query 的全部状态（$m_i, \ell_i, O_i$）塞进一个 block 的寄存器/共享内存的根本原因。
 
@@ -125,7 +125,7 @@ $s = q \cdot k = \sum_{i=1}^{d} q_i k_i$。均值显然为零：
 梯度从峰值 $0.25$ 跌到 $10^{-5}$ 量级，softmax 输出近似 one-hot，反向传播近乎断流。
 除以 $\sqrt{d}$ 后 $\mathrm{Var}(s/\sqrt{d}) = 1$，logit 回到 $O(1)$ 量级，
 softmax 处于梯度健康的敏感区。两点考据说明：（1）Transformer 原论文
-（Vaswani et al., 2017, \S 3.2.1）给出的其实是启发式陈述——「我们怀疑 $d_k$ 较大时
+（Vaswani et al., 2017, \S 3.2.1）给出的其实是启发式陈述：「我们怀疑 $d_k$ 较大时
 点积量级变大，把 softmax 推进极小梯度区，故除以 $\sqrt{d_k}$」；式~\ref{eq:15-dot-var}
 的方差推导是后续文献的通行严格化解读，并非原文内容（考据框注见 15.7~节）。
 （2）训练后的真实分布并不满足 i.i.d. 假设（Q/K 各维方差不等、存在 outlier），
@@ -214,7 +214,7 @@ FlashAttention kernel 在同形状 SM120 上的实测 $166.6\,\mathrm{TFLOPS}$
   \mathrm{mem} = \Theta(N^{2}) \;\text{每 (b,h)} ,
   \label{eq:15-naive-mem}
 \end{equation}
-上例中 $S$、$P$ 各 $\approx 1\,\mathrm{GiB}$。$N$ 翻倍它翻四倍——长上下文的显存墙。
+上例中 $S$、$P$ 各 $\approx 1\,\mathrm{GiB}$。$N$ 翻倍它翻四倍，这就是长上下文的显存墙。
 
 \textbf{带宽账}：朴素三 kernel 的 HBM 流量为
 读 $Q,K,V$（$3Nd$）$+$ 写 $S$、读 $S$、写 $P$、读 $P$（$4N^{2}$）$+$ 写 $O$（$Nd$），
@@ -228,7 +228,7 @@ FlashAttention kernel 在同形状 SM120 上的实测 $166.6\,\mathrm{TFLOPS}$
 （多数 GPU 的 HBM/显存带宽在数百 GB/s 到 $2$--$3\,\mathrm{TB/s}$ 量级），仅搬运就要
 $\approx 2.2\,\mathrm{ms}$，已是 $0.83\,\mathrm{ms}$ 计算下界的 $2.6$ 倍以上；而
 有效数据（$Q,K,V$ 读入 + $O$ 写出，$\approx 67\,\mathrm{MB}$）只占流量的 $1/64$。
-换句话说：\textbf{朴素 attention 把算术强度做没了}——按主导项计，
+一句话，\textbf{朴素 attention 把算术强度做没了}。按主导项计，
 \begin{equation}
   AI_{\text{naive}} \;\approx\; \frac{4N^{2}d\ \text{FLOP}}{4N^{2} \cdot 2\,\mathrm{B}}
   \;=\; \frac{d}{2}\ \text{FLOP/B} \;=\; 32\ \ (d{=}64, \text{fp16}) ,
@@ -335,7 +335,7 @@ $O_i \in \mathbb{R}^{1 \times d}$。走到第 $j$ 块时，逐项推导四步更
 
 \textbf{第三步：$\ell$ 更新}。目标 $\ell^{\mathrm{new}}_i =
 \sum_{k \le jB_c} e^{\,S_{ik} - m^{\mathrm{new}}_i}$，把求和拆成「旧块 + 新块」并
-在旧块上凑因子——与第~\ref{ch:04}~章式~\ref{eq:4-online-l} 的推导逐步同构：
+在旧块上凑因子，与第~\ref{ch:04}~章式~\ref{eq:4-online-l} 的推导逐步同构：
 \begin{align}
   \ell^{\mathrm{new}}
   &= \sum_{k \le (j{-}1)B_c} e^{\,S_{ik} - m^{\mathrm{new}}_i}
@@ -353,8 +353,8 @@ $O_i \in \mathbb{R}^{1 \times d}$。走到第 $j$ 块时，逐项推导四步更
   \label{eq:15-upd-l}
 \end{equation}
 
-\textbf{第四步：$O$ 更新——online rescale}。这才是 attention 比 bare softmax 多出来的
-一步：$V$ 也 riding 在指数权重上，旧块的加权和是以旧 max 为基准的，基准抬高后必须整体
+\textbf{第四步：$O$ 更新（online rescale）}。这一步是 bare softmax 没有的：
+$V$ 也 riding 在指数权重上，旧块的加权和是以旧 max 为基准的，基准抬高后必须整体
 缩放。目标 $O^{\mathrm{new}}_i = \sum_{k \le jB_c} e^{\,S_{ik} - m^{\mathrm{new}}_i}
 v_k$，同样拆「旧 + 新」并凑因子：
 \begin{align}
@@ -402,13 +402,13 @@ $O = \alpha O^{A} + \beta O^{B}$（式~\ref{eq:5-convex}）里，$O^{A}, O^{B}$ 
 \textbf{已归一化}的分块输出；把 $\alpha = W^{A}/(W^{A}{+}W^{B})$ 的分子分母同乘
 $W^{A}{+}W^{B}$ 展开即可改写成\textbf{未归一化}形式
 $O = \bigl(W^{A} O^{A}_{\text{norm}}\ell^{A} + W^{B} O^{B}_{\text{norm}}\ell^{B}
-\bigr)/\ell$——正是式~\ref{eq:15-upd-o} 逐块折叠的形态。ch05 是「事后合并」
+\bigr)/\ell$，正是式~\ref{eq:15-upd-o} 逐块折叠的形态。ch05 是「事后合并」
 （两块各自落盘 $O$ 与 LSE，再用一个 elementwise kernel 拼回，服务于 split-KV /
 FlashDecoding），本章是「在线合并」（寄存器里一份 $O$ 随 KV 循环滚动更新，从不物化
 两份 $O$）；式~\ref{eq:15-merge-o} 的结合律由引理~\ref{lem:md-assoc} 同样的
 「全集唯一决定」论证立刻推广到带 $O$ 的三元组。另注意一个精度口径：本仓库
 \texttt{merge\_\allowbreak{}attn\_\allowbreak{}states} 的接口要求输入 $O$ 已除过 $\ell$（ch05 坑一），而 FA
-主循环的累加器 $O$ 必须\textbf{未}归一化——两套口径的公式不可混搭（见 15.8~节坑一）。
+主循环的累加器 $O$ 必须\textbf{未}归一化，两套口径的公式不可混搭（见 15.8~节坑一）。
 
 \subsection{分块循环不变量与归纳法证明}
 
@@ -479,20 +479,20 @@ FlashDecoding），本章是「在线合并」（寄存器里一份 $O$ 随 KV �
 $e^{-\infty - m} = 0$，该项从 $\ell$ 与 $O$ 的求和中自然消失，不变量与定理不受影响。
 （2）\textbf{任意切分合法}：KV 可以按序列切（FlashAttention、FlashDecoding 的
 split-KV），也可以按 $d$ 维切后再拼（第~\ref{ch:19}~章 FFPA Split-D 跨 D-chunk 用
-同一族公式合并）——只要每块给出自己的 $(m, \ell, O)$ 状态。
+同一族公式合并），只要每块给出自己的 $(m, \ell, O)$ 状态。
 （3）\textbf{空行防护}：若某行所有位置都被 mask，$\ell = 0$，最终除法产生
-\texttt{NaN}——与第~\ref{ch:04}~章坑二、第~\ref{ch:05}~章坑四同源，工程上由调用方
+\texttt{NaN}，与第~\ref{ch:04}~章坑二、第~\ref{ch:05}~章坑四同源，工程上由调用方
 保证行非空或显式兜底。
 \end{remark}
 
 \subsection{复杂度总结与 IO 分析}
 
 \textbf{FLOPs 不变}：分块只是重排了计算顺序，两个 GEMM 的总工作量仍是
-$4N^{2}d$——FlashAttention \textbf{不省 FLOPs，省的是 HBM 流量与显存}。
+$4N^{2}d$，FlashAttention \textbf{不省 FLOPs，省的是 HBM 流量与显存}。
 \textbf{显存}：不再物化 $S, P$，每行只需标量 $(m_i, \ell_i)$ 与累加器行 $O_i \in
 \mathbb{R}^{d}$，加上 SRAM 里的 $B_r \times d$、$B_c \times d$ tile，激活显存从
-$\Theta(N^{2})$ 降到 $\Theta(Nd)$。这正是它叫 \emph{Flash}（不写中间矩阵到 HBM）
-的原因。
+$\Theta(N^{2})$ 降到 $\Theta(Nd)$。名字里的 \emph{Flash}（不写中间矩阵到 HBM）
+由此而来。
 
 \textbf{IO}：每个 Q 块要把 $K, V$ 从头到尾读一遍。设 SRAM 容量为 $M$（元素数），
 受 $B_r \cdot d + (\text{KV stage 数}) \cdot 2 B_c d \le M$ 约束，量级上
@@ -514,11 +514,11 @@ $8$--$32\,\mathrm{KB}$，远小于十万元素量级的 SRAM）时，$\mathrm{IO
   \;=\; B_r\ \text{FLOP/B} ,
   \label{eq:15-ai-fa}
 \end{equation}
-$B_r = 128$ 时约 $128\,\mathrm{FLOP/B}$——跨过 roofline 拐点进入 compute-bound 区。
+$B_r = 128$ 时约 $128\,\mathrm{FLOP/B}$，跨过 roofline 拐点进入 compute-bound 区。
 两个诚实的脚注：其一，该一阶模型未计 L2 cache 跨 thread block 的 $K/V$ 复用
 （实际 HBM 流量更低），也未计 softmax/归约的非 matmul 开销；其二，「compute-bound」
-是对\textbf{理想}实现的上界描述，真实 kernel 能吃到多少取决于流水线工程——这正是
-FA2/FA3 两代论文的主战场（下一节）。
+是对\textbf{理想}实现的上界描述，真实 kernel 能吃到多少取决于流水线工程，FA2/FA3
+两代论文争的就是这一段（下一节）。
 
 \subsection{FA1 $\to$ FA2 $\to$ FA3：三代演进}
 
@@ -526,7 +526,7 @@ FA2/FA3 两代论文的主战场（下一节）。
 
 \textbf{FA1（arXiv:2205.14135，NeurIPS 2022）}：Dao et al. 提出 IO-aware 的精确
 attention：tiling + online softmax（式~\ref{eq:15-upd-m}--\ref{eq:15-upd-o}），
-$S/P$ 从不落 HBM；反向传播用 \textbf{recomputation}——只存 $Q,K,V,O$ 与
+$S/P$ 从不落 HBM；反向传播用 \textbf{recomputation}，只存 $Q,K,V,O$ 与
 $\mathrm{LSE}$，反向时重算 $S, P$，以 $30\%$ 量级的重算换 $O(N^{2})$ 激活显存的
 节省；给出式~\ref{eq:15-io-fa} 的 IO 复杂度 $\Theta(N^{2}d^{2}/M)$。论文口径：
 BERT-large（$N{=}512$）训练比 MLPerf~1.1 纪录快 $15\%$，GPT-2（$N{=}1$K）端到端
@@ -541,12 +541,12 @@ $3\times$ 加速，激活显存省 $10$--$20\times$。
         只在式~\ref{eq:15-final} 除一次 $\ell$（FA1 每块维护已归一化 $O$，每步两次
         对角修正）。
   \item \textbf{并行度}。FA1 只在 $(B, H)$ 维开 thread block，长序列小 batch 时
-        SM 吃不饱；FA2 把 \textbf{seqlen(Q) 维}也做成并行——query 序列切成多段，
+        SM 吃不饱；FA2 把 \textbf{seqlen(Q) 维}也做成并行，query 序列切成多段，
         每段独立一个 thread block（本仓库 \texttt{flash\_\allowbreak{}attn\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}split\_\allowbreak{}q}
         的 \texttt{grid = ((N+63)/64, B*H)}，第~\ref{ch:16}~章展开）。
   \item \textbf{warp 分工}。FA1 的 4 个 warp 沿 KV 维切分，各算部分分数后必须经
         shared memory 做跨 warp 归约合并；FA2 改为 warp 沿 \textbf{$Q$ 行}切分
-        （split-Q）：4 个 warp 共享同一块 $K, V$、各持独立 $(m, \ell, O)$——零跨
+        （split-Q）：4 个 warp 共享同一块 $K, V$、各持独立 $(m, \ell, O)$，零跨
         warp 归约、零额外 shuffle，$Q$ 只加载一次。
 \end{enumerate}
 论文口径：比 FA1 快约 $2\times$；A100 前向最高 $230\,\mathrm{TFLOPS}$（峰值的
@@ -557,12 +557,12 @@ $73\%$）。
   \item \textbf{GEMM 与 softmax 的 overlap}。softmax 在 CUDA core 上跑、GEMM 在
         Tensor Core 上跑，二者本可并行。FA3 用 warp specialization：producer warp
         发 TMA 异步拷贝（第~\ref{ch:13}~章），两个 consumer warpgroup 以
-        pingpong 方式交替——一个 warpgroup 做 GEMM 时另一个做 softmax，
+        pingpong 方式交替：一个 warpgroup 做 GEMM 时另一个做 softmax，
         $15$--$25\%$ 的 softmax 时间被藏进 GEMM 的影子（第~\ref{ch:18}~章双
         consumer 结构图）。
   \item \textbf{FP8}。Hopper 的 FP8 Tensor Core 吞吐再翻一倍，但 naive 量化会伤
         精度。FA3 的两件护法：\emph{block 量化}（按块维护缩放因子，而非全局或
-        per-tensor）；\emph{incoherent processing}——对 $Q, K$ 右乘同一个正交矩阵
+        per-tensor）；\emph{incoherent processing}，对 $Q, K$ 右乘同一个正交矩阵
         $U$（随机化 Hadamard），点积严格不变：
         $(QU)(KU)^{\top} = QUU^{\top}K^{\top} = QK^{\top}$，
         而 outlier 能量被打散到各维，FP8 量化误差显著下降。
@@ -598,7 +598,7 @@ $1.5$--$2\times$ vs FA2；H100 fp16 $740$ TFLOPS（$75\%$）\\
 对照本仓库：flash\_attn.cuh~L5--790 是 FA2 的手写 MMA 版（第~\ref{ch:16}~章），
 L792--1440 是 FA2 的 TMA + Warp Specialization 版（第~\ref{ch:17}~章），
 L1441--2192 是 FA3 的双 consumer warpgroup 版（第~\ref{ch:18}~章），
-L2196--3488 是三者的 CuTe 复刻对照（第~\ref{ch:25}~章）——从 FA2 到 FA3 的
+L2196--3488 是三者的 CuTe 复刻对照（第~\ref{ch:25}~章），从 FA2 到 FA3 的
 每个演进点，都能在源码里找到对应的结构差异。
 
 \section{设计与实现}
@@ -618,7 +618,7 @@ BOOK\_PLAN \S 1.3 核验表）：FA2 MMA 版
 头注释 L5--30 自称「面试要点（FlashAttention-2 算法）」，共五条。
 
 \textbf{要点 1，核心问题}：标准 Attention 的 $O(N^{2})$ 中间矩阵
-（$S = QK^{\top}$）必须写入 HBM，但 HBM 带宽是瓶颈——FlashAttention-2 用
+（$S = QK^{\top}$）必须写入 HBM，但 HBM 带宽是瓶颈，FlashAttention-2 用
 tiling + online softmax 避免写回。
 
 \textbf{要点 2，FA 三板斧}：
@@ -631,7 +631,7 @@ tiling + online softmax 避免写回。
 \end{itemize}
 
 \textbf{要点 3，split-Q 设计}：所有 warp 共享同一块 K，各 warp 处理 Q 的不同
-行片段——\texttt{warp\_KV=0}（所有 warp 共享 K），\texttt{warp\_QP=warp\_id}
+行片段：\texttt{warp\_KV=0}（所有 warp 共享 K），\texttt{warp\_QP=warp\_id}
 （各 warp 不同 Q 行）；优点是减少 warp 间通信和 shuffle。
 
 \textbf{要点 4，online rescaling 公式}（FA 核心，arXiv:2307.08691）：对每个
@@ -663,14 +663,14 @@ K/V tile，
 要点 1（L8--9）即 15.3.3~节的带宽账：$O(N^{2})$ 中间矩阵必须过 HBM，而 HBM 是瓶颈。
 要点 2（L10--13）的「三板斧」中，tiling 对应式~\ref{eq:15-blocks}，online softmax
 对应式~\ref{eq:15-upd-m}--\ref{eq:15-upd-l}，recomputation 是 FA1 的反向技巧
-（15.3.7~节）——注意这组贡献按论文口径属 FA1，FA2 的主题是并行与分工，见 15.7~节
+（15.3.7~节），注意这组贡献按论文口径属 FA1，FA2 的主题是并行与分工，见 15.7~节
 考据框注一。要点 3（L14--16）是 FA2 的 warp 级 split-Q。要点 4（L17--24）的五行伪代码
 逐行对应式~\ref{eq:15-upd-m}（\texttt{m\_new}）、\ref{eq:15-upd-p}（\texttt{P\_cur}）、
 \ref{eq:15-upd-l}（\texttt{l\_new}）、\ref{eq:15-upd-o}（\texttt{O\_new}）与
-\ref{eq:15-final}（\texttt{O\_final}）——$O$ 保持未归一化、最后统一除 $\ell$，正是
-FA2 对 FA1 的关键改动。要点 5（L25--30）是一个值得单独记忆的工程细节：softmax 后的
+\ref{eq:15-final}（\texttt{O\_final}），$O$ 保持未归一化、最后统一除 $\ell$，这构成
+FA2 对 FA1 的关键改动。要点 5（L25--30）是值得单独记忆的工程细节：softmax 后的
 $P$ 直接写回 $S$ 的 fragment 寄存器 \texttt{R\_S} 供 $P@V$ 消费，省掉一次 fragment
-重组——但这是 m16n8k16 布局约定下的复用技巧，不是 MMA fragment 的通用性质
+重组。但这只是 m16n8k16 布局约定下的复用技巧，不是 MMA fragment 的通用性质
 （注释原文自己也强调了这一点；机制在第~\ref{ch:16}~章展开）。
 
 \subsection{launch 配置与 tile 参数化}
@@ -696,7 +696,7 @@ tile 设计（以 \texttt{kHeadDim=64} 为例）把两个块尺寸分解到 mma 
 \texttt{gridDim.y} 是 $(B, H)$ 维；每个 thread block 负责连续 $B_r = 64$ 行 query。
 $B_r, B_c$ 不是拍的：$B_r = 16 \times 4 = 64$ 来自 mma.sync.m16n8k16 原子
 （第~\ref{ch:11}~章）在 $M$ 维的 $4$ 倍堆叠，$B_c = 8 \times 8 = 64$ 来自 $N$ 维原子的
-$8$ 倍堆叠——tile 尺寸被 Tensor Core 指令形状整除，这是分块参数化的硬约束。
+$8$ 倍堆叠，tile 尺寸被 Tensor Core 指令形状整除，这是分块参数化的硬约束。
 
 \lstinputlisting[linerange={93-110},firstnumber=auto,
   title={flash\_attn.cuh L93-110（kernel 模板参数：tile 的原子化分解）}]{../flash_attn.cuh}
@@ -720,15 +720,15 @@ $B_r$ 的堆叠数、\texttt{k\allowbreak{}Mma\allowbreak{}Tile\allowbreak{}Seq\
         \mathrm{seqlen}/B_c$）；
   \item \textbf{3a）}\texttt{cp.async} 加载当前 V $+$ 预加载下一个 K（多
         stage pipeline）；
-  \item \textbf{3b）}$QK^{\top}$——沿 head dim 内循环 $\to$ \texttt{ldmatrix}
+  \item \textbf{3b）}$QK^{\top}$：沿 head dim 内循环 $\to$ \texttt{ldmatrix}
         Q/K $\to$ \texttt{HMMA16816}；
-  \item \textbf{3c）}Online Safe Softmax——warp reduce max/row $\to$
+  \item \textbf{3c）}Online Safe Softmax：warp reduce max/row $\to$
         $\exp(S \cdot \mathrm{scale} - \mathrm{max})$；关键：将 P 写回
         \texttt{R\_S} 寄存器（替换 S），\texttt{R\_S} 现在存储 P matrix；
-  \item \textbf{3d）}$P@V$——沿 V 的 $B_c$ 维内循环 $\to$ \texttt{ldmatrix}
+  \item \textbf{3d）}$P@V$：沿 V 的 $B_c$ 维内循环 $\to$ \texttt{ldmatrix}
         V (transposed) $\to$ 直接用 \texttt{R\_S} 做 A 矩阵；当前实现依赖
         同一组寄存器布局约定，避免为 $P@V$ 额外重组 P fragment；
-  \item \textbf{3e）}Online rescaling——$O_{\text{new}} =
+  \item \textbf{3e）}Online rescaling：$O_{\text{new}} =
         \exp(m_{\text{old}} - m_{\text{new}})\,O_{\text{old}} + P@V$；
   \item \textbf{8）}最终 rescale：$O_{\text{final}} =
         (1/\ell_{\text{final}})\,O_{\text{final}}$；
@@ -742,13 +742,13 @@ $K$ 重叠）；步骤 3b 对应 $S^{[j]} = QK^{[j]\top}$（式~\ref{eq:15-block
 要点 5；步骤 3d 对应 $P^{[j]}V^{[j]}$；步骤 3e 对应 online rescale
 式~\ref{eq:15-upd-o}；步骤 8 对应最终归一化式~\ref{eq:15-final}；步骤 9 是写出
 epilogue。整个循环期间，每个 query 行的状态 $(m_i, \ell_i, O_i)$ 常驻寄存器，
-$S^{[j]}, P^{[j]}$ 只存在于 \texttt{R\_S} 的 fragment 里——$N \times N$ 的矩阵从头
+$S^{[j]}, P^{[j]}$ 只存在于 \texttt{R\_S} 的 fragment 里，$N \times N$ 的矩阵从头
 到尾没有存在过。
 
 头注释 L61--71 是 Pad 与手动 XOR swizzle 的 profile 结论（SM120）：
 \begin{itemize}
   \item XOR 能消除目标 \texttt{ldmatrix} lane pattern 的 bank conflict，但
-        收益是局部的；XOR 本身及 \texttt{\% 2} 的计算不是主要瓶颈——nvcc
+        收益是局部的；XOR 本身及 \texttt{\% 2} 的计算不是主要瓶颈，nvcc
         已能将该式化简为 bit operations；
   \item compact Q/K/V XOR 改变了 \texttt{cp.async} 的 shared destination
         pattern：LDGSTS wavefronts 从 pad 的 30.15M 增至 68.16M
@@ -926,7 +926,7 @@ layout 必须\textbf{同时}看读端（ldmatrix）与写端（cp.async），只
         compute-bound 区。两个外部锚点：FA2 论文在 A100 前向实测峰值利用
         $73\%$（$230\,\mathrm{TFLOPS}$）；本仓库手写 FA2 在 SM120
         （$B{=}1, H{=}32, N{=}4096, D{=}64$，\texttt{kPad=8}）实测
-        $166.6\,\mathrm{TFLOPS}$（flash\_attn.cuh~L68 头注释口径，F4 类——完整
+        $166.6\,\mathrm{TFLOPS}$（flash\_attn.cuh~L68 头注释口径，F4 类，完整
         复测与本机峰值占比的口径在第~\ref{ch:16}~章给出）。
 \end{itemize}
 
@@ -934,7 +934,7 @@ layout 必须\textbf{同时}看读端（ldmatrix）与写端（cp.async），只
 （$120.0\,\mathrm{TFLOPS}$）反而输给 \texttt{kPad=8}（$166.6\,\mathrm{TFLOPS}$），
 因为 swizzle 把代价从 ldmatrix 读端转移到了 cp.async 写端。这说明进入 compute-bound
 区只是「拿到了 Tensor Core 的入场券」，shared memory 读写的两端平衡才是把 $73\%$
-变成 $90\%$ 的功课——第~\ref{ch:12}~章（swizzle）与第~\ref{ch:16}~章（FA 的
+变成 $90\%$ 的功课，第~\ref{ch:12}~章（swizzle）与第~\ref{ch:16}~章（FA 的
 smem 布局）接着讲。
 
 \section{实践经验与考据说明}
@@ -944,7 +944,7 @@ smem 布局）接着讲。
   softmax、recomputation。按论文口径，这三项是 \textbf{FA1}（arXiv:2205.14135）的
   算法贡献；FA2（arXiv:2307.08691）的主题是削减非 matmul FLOPs、seqlen 维并行与
   warp 级 split-Q 分工，其算法内核（online rescale）与 FA1 相同。注释把两代贡献
-  合并在 FA2 标签下叙述——不算错误（本仓库实现确实是 FA2 形态），但面试或引述时
+  合并在 FA2 标签下叙述，不算错误（本仓库实现确实是 FA2 形态），但面试或引述时
   应按 15.3.7~节的代际划分表述。已与论文逐条对照，无其它出入。
 \end{kaogu}
 
@@ -952,12 +952,12 @@ smem 布局）接着讲。
   与本章式~\ref{eq:15-upd-m}--\ref{eq:15-final} 逐项一致：\texttt{m\_new}、
   \texttt{P\_cur}（行减新 max）、\texttt{l\_new}（旧和乘 $e^{m^{old}-m^{new}}$ 再加
   新块行和）、\texttt{O\_new}（对角 rescale 后加 $PV$）、\texttt{O\_final} 统一除
-  $\ell$。$O$ 未归一化 + 最终单次除法，正是 FA2 论文 Algorithm~1 的形态。
+  $\ell$。$O$ 未归一化 + 最终单次除法，即 FA2 论文 Algorithm~1 的形态。
 \end{kaogu}
 
 \begin{kaogu}[F5]{flash\_attn.cuh L19--21：scale 的安放位置与 FA2 论文不同}
   注释按块缩放：\texttt{m\_\allowbreak{}new =\allowbreak{} max\allowbreak{}(m,\allowbreak{} row\_\allowbreak{}max\allowbreak{}(S\_\allowbreak{}cur * scale))}、
-  \texttt{P\_cur = exp(S\_cur * scale - m\_new)}——scale 在每个 KV 块内乘进 $S$
+  \texttt{P\_cur = exp(S\_cur * scale - m\_new)}，scale 在每个 KV 块内乘进 $S$
   （FA1 式）。FA2 论文为削减非 matmul FLOPs，把 $1/\sqrt{d}$ \textbf{预乘进 $Q$}，
   块内不再乘。数学上等价（scale 是常数，先乘后乘只影响舍入路径），工程上是 FA2
   「non-matmul 最小化」的一个条目。非错误，记录以备考。
@@ -989,7 +989,7 @@ $\ell$ 的 $O$ 再按式~\ref{eq:15-upd-o} 累加，等于漏乘旧块的 $\ell$
 \textbf{坑二：初始化与空行除零。}$m$ 初始化 $-\infty$（工程上 \texttt{-FLT\_MAX}）、
 $\ell = 0$、$O = \mathbf{0}$。首个有效块的 rescale 因子
 $e^{m^{(0)} - m^{(1)}} = 0$ 恰好把零状态丢弃，是安全的；但若某行所有块都被 mask
-（全 $-\infty$），最终 $\ell = 0$，式~\ref{eq:15-final} 除零得 \texttt{NaN}——与
+（全 $-\infty$），最终 $\ell = 0$，式~\ref{eq:15-final} 除零得 \texttt{NaN}，与
 ch04 坑二、ch05 坑四同源，由调用方保证行非空或显式兜底。
 
 \textbf{坑三：rescale 的时机。}必须\textbf{先}算出 $m^{\mathrm{new}}$、再同时用
@@ -1004,14 +1004,14 @@ $\mathrm{rowsum}(P^{[j]})$ 与 $P^{[j]}V^{[j]}$。顺序颠倒（例如先加 $P
 同样要防：先把 mask 位置洗成极小有限值（ch05 勘误的 $+\infty$ 清洗同族），或保证
 块内至少一个非 mask 位置。
 
-\textbf{坑五：精度分层——指数与累加必须在 fp32。}$P^{[j]} \le 1$ 但累加器 $O$ 要
+\textbf{坑五：精度分层要求指数与累加必须在 fp32。}$P^{[j]} \le 1$ 但累加器 $O$ 要
 跨 $T_c$ 个块累加，fp16 累加会迅速漂移；exp 的溢出界（第~\ref{ch:04}~章
 $88.72$）在 fp16 下只有 $11$。因此 exp、$(m, \ell)$、$O$ 的 rescale 全部走 fp32，
 $P$ 只在进 $PV$ 的 GEMM 时才降回 fp16（模板参数 \texttt{kMmaAccF32} 控制 mma 累加
 精度，第~\ref{ch:16}~章展开）。
 
 \textbf{坑六：scale 二次施加或漏施加。}若上游已把 $1/\sqrt{d}$ 预乘进 $Q$（FA2
-论文形态），kernel 内再乘 \texttt{S\_cur * scale} 就是二次缩放——表现为注意力过尖、
+论文形态），kernel 再乘 \texttt{S\_cur * scale} 就是二次缩放，表现为注意力过尖、
 输出塌缩；反过来两头都不乘则过平。本仓库 kernel 是「块内乘」形态（考据框注三），
 替换或对比实现时要先核对 scale 归属。
 
@@ -1060,7 +1060,7 @@ incoherent processing，H100 fp16 峰值 $75\%$、FP8 近 $1.2\,\mathrm{PFLOPS}$
 \textbf{Q8：FA2 的 warp 级 split-Q 为什么优于 FA1 的 split-KV？}\\
 A：split-KV 下各 warp 只拿到部分 key 的 $(m, \ell, O)$，必须经 shared memory 做
 跨 warp 合并（一次同步 + 一轮读写）；split-Q 下 4 个 warp 共享同一块 $K, V$、各持
-$Q$ 的不同行片段，行间零依赖（行内自足性），各自独立跑完全程——零跨 warp 归约，
+$Q$ 的不同行片段，行间零依赖（行内自足性），各自独立跑完全程，零跨 warp 归约，
 $Q$ 也只加载一次。
 
 \textbf{Q9：FP8 attention 为什么需要 incoherent processing？}\\
@@ -1072,7 +1072,7 @@ fp16。
 \section{最小测试与动手实验}
 
 \textbf{本章无独立 kernel 测试}，这是刻意的：ch15 是纯数学章，其全部可执行结论
-都由前两章的测试覆盖——
+都由前两章的测试覆盖：
 \begin{itemize}
   \item online rescale 的 $(m, \ell)$ 内核即第~\ref{ch:04}~章的三级 softmax 递进
         测试（\texttt{tests/\allowbreak{}ch04\_\allowbreak{}softmax.\allowbreak{}cu}：case~A/B/C 覆盖递推正确性、边界
@@ -1114,7 +1114,7 @@ print(abs(attn_online(Q, K, V) - attn_ref(Q, K, V)).max())  # ~1e-13
   \item \textbf{次序不变性}：把 \texttt{attn\_online} 的循环改为倒序或随机打乱块序，
         输出应逐元素不变（定理~\ref{thm:15-invariant} 的次序无关性）。
   \item \textbf{不变量逐块自检}：在循环内断言 $\ell_i \ge e^{0}$ 当
-        $\max$ 恰在本块、以及 $O/\ell$ 随块数增加单调收敛到参考值——直观感受
+        $\max$ 恰在本块、以及 $O/\ell$ 随块数增加单调收敛到参考值，直观感受
         「每一步都是部分 softmax 的严格等价物」。
 \end{enumerate}
 

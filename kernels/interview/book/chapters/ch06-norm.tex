@@ -4,7 +4,7 @@
 
 \section{本章导读}
 
-本章讲解深度学习推理引擎中出现频率最高的两类归一化算子——RMSNorm 与 LayerNorm——的数学原理与 GPU kernel 实现。它们与第 \ref{ch:04} 章的 softmax 同属一个计算家族：\textbf{一行（row）内所有元素协作计算出一个统计量，再把统计量广播回行内做逐元素缩放}。差别只在于统计量是 $\{\mu,\sigma\}$ 还是 RMS，以及由此带来的归约次数差异。
+深度学习推理引擎里出现频率最高的两类归一化算子，是 RMSNorm 与 LayerNorm。本章讲它们的数学原理与 GPU kernel 实现。这两类算子与第 \ref{ch:04} 章的 softmax 同属一个计算家族：\textbf{一行（row）内所有元素协作计算出一个统计量，再把统计量广播回行内做逐元素缩放}。差别只在于统计量是 $\{\mu,\sigma\}$ 还是 RMS，以及由此带来的归约次数差异。
 
 \textbf{前置章节}：第 \ref{ch:02} 章的 warp/block 归约原语（本章直接复用 \texttt{block\_\allowbreak{}reduce\_\allowbreak{}sum}）；第 \ref{ch:03} 章的向量化访存（本章 vec4 版本的前置）。
 
@@ -21,9 +21,9 @@ Transformer 的每个 block 至少包含两个归一化层（pre-norm 结构中�
   \item \textbf{逐元素变换}：读原值、减均值（LayerNorm）、乘缩放、加偏置、写回。
 \end{enumerate}
 
-这个结构与 softmax 的「行内 max/sum 归约 + 广播」同构，因此第 \ref{ch:04} 章的分析手段可以原样迁移。而 RMSNorm 与 LayerNorm 之间的差异，恰好落在「归约几次、同步几次」上——这使得这一对算子成为讲解 \textbf{1-pass 与 2-pass 归约结构}的最佳教学样本。
+这个结构与 softmax 的「行内 max/sum 归约 + 广播」同构，因此第 \ref{ch:04} 章的分析手段可以原样迁移。而 RMSNorm 与 LayerNorm 之间的差异，恰好落在「归约几次、同步几次」上，\textbf{1-pass 与 2-pass 归约结构}就用这一对算子来讲解。
 
-性能特征先给结论：归一化是典型的 memory-bound 算子。每个元素读 4B、写 4B，浮点运算只有 2-3 次，算术强度 $AI \approx 0.3$ FLOP/Byte，远低于现代 GPU Roofline 拐点（第 \ref{ch:01} 章）。优化的两条主线因此非常清晰：其一，把访存做满（coalescing 与向量化）；其二，减少归约与同步的开销（1-pass 优于 2-pass）。
+性能特征先给结论：归一化是典型的 memory-bound 算子。每个元素读 4B、写 4B，浮点运算只有 2-3 次，算术强度 $AI \approx 0.3$ FLOP/Byte，远低于现代 GPU Roofline 拐点（第 \ref{ch:01} 章）。优化的两条主线很清楚：其一，把访存做满（coalescing 与向量化）；其二，减少归约与同步的开销（1-pass 优于 2-pass）。
 
 \section{数学原理}
 
@@ -43,7 +43,7 @@ LayerNorm（Ba et al., 2016）对一行输入 $x = (x_1, x_2, \dots, x_K)$ 定�
   y_k = \hat{x}_k \cdot g + b ,
   \label{eq:ch06-ln}
 \end{equation}
-其中 $g$（gain/scale）与 $b$（bias）在源码实现中是标量；生产实现里它们是逐通道可学习参数向量，逐元素乘加的形状不变。$\epsilon = 10^{-5}$ 是数值稳定项，\textbf{加在根号之内}，即分母是 $\sqrt{\sigma^2 + \epsilon}$ 而不是 $\sqrt{\sigma^2} + \epsilon$——若一行全零，$\sigma^2=0$，没有 $\epsilon$ 时除零得到 NaN。
+其中 $g$（gain/scale）与 $b$（bias）在源码实现中是标量；生产实现里它们是逐通道可学习参数向量，逐元素乘加的形状不变。$\epsilon = 10^{-5}$ 是数值稳定项，\textbf{加在根号之内}，即分母是 $\sqrt{\sigma^2 + \epsilon}$ 而不是 $\sqrt{\sigma^2} + \epsilon$：若一行全零，$\sigma^2=0$，没有 $\epsilon$ 时除零得到 NaN。
 
 \subsection{RMSNorm：去掉中心化的单归约形式}
 
@@ -78,7 +78,7 @@ RMSNorm（Zhang \& Sennrich, 2019）只保留「缩放」而不做「中心化�
 \begin{enumerate}
   \item 当输入近似零中心（$\mu \approx 0$）时，$\mathrm{RMS}(x) \approx \sqrt{\sigma^2+\epsilon}$，RMSNorm 与 LayerNorm 几乎重合；神经网络中间激活的均值通常远小于二阶矩，这是「RMSNorm 效果不掉」的直观解释。
   \item RMSNorm 分母比 LayerNorm 分母多出 $\mu^2$ 项：LayerNorm 只除「波动幅度」，RMSNorm 除「总能量（波动 + 直流）」。
-  \item 由此产生一个重要差别：LayerNorm 具备\textbf{平移不变性}——$x \to x + c$ 时 $\mu \to \mu + c$、$\sigma^2$ 不变，输出不变；RMSNorm 不具备（$\mu^2$ 项改变）。所以 LLaMA 系列把 RMSNorm 前面的 QKV 线性投影的 bias 直接去掉（bias 只会给分母注入无信息的 $\mu^2$），这是架构层面的连锁设计。
+  \item 由此产生一个重要差别：LayerNorm 具备\textbf{平移不变性}，$x \to x + c$ 时 $\mu \to \mu + c$、$\sigma^2$ 不变，输出不变；RMSNorm 不具备（$\mu^2$ 项改变）。所以 LLaMA 系列把 RMSNorm 前面的 QKV 线性投影的 bias 直接去掉（bias 只会给分母注入无信息的 $\mu^2$），这是架构层面的连锁设计。
 \end{enumerate}
 
 \begin{figure}[H]
@@ -122,10 +122,10 @@ RMSNorm（Zhang \& Sennrich, 2019）只保留「缩放」而不做「中心化�
 从 kernel 视角重新审视上述公式。记两个基本归约量为 $S_1 = \sum_k x_k$、$S_2 = \sum_k x_k^2$：
 \begin{itemize}
   \item \textbf{RMSNorm 是 1-pass}：只需要 $S_2$ 一个归约量，一次 block reduce 完成，随后 $\mathrm{RMS}^{-1} = \mathrm{rsqrtf}(S_2/K + \epsilon)$ 广播，行内每个元素乘回去。全程只有一次归约、两次块级同步。
-  \item \textbf{LayerNorm 的定义式是 2-pass}：$\mu$ 依赖 $S_1$（第一次归约），而 $\sigma^2$ 依赖 $\mu$（定义式 $\frac{1}{K}\sum_k (x_k-\mu)^2$ 必须等 $\mu$ 广播后才能计算）——依赖链强制两次归约。
+  \item \textbf{LayerNorm 的定义式是 2-pass}：$\mu$ 依赖 $S_1$（第一次归约），而 $\sigma^2$ 依赖 $\mu$（定义式 $\frac{1}{K}\sum_k (x_k-\mu)^2$ 必须等 $\mu$ 广播后才能计算），依赖链强制两次归约。
 \end{itemize}
 
-LayerNorm 能否也做成 1-pass？利用恒等式~\eqref{eq:ch06-var-identity}，$\sigma^2 = S_2/K - \mu^2$，可以在一次归约中同时求 $S_1$ 与 $S_2$（warp shuffle 时打包两个 float，或在同一线程内做两次独立归约），从而把 LayerNorm 压成 1-pass。代价是数值风险：$S_2/K - \mu^2$ 是「大数减小数」，当 $|\mu| \gg \sigma$（分布整体远离零点，且数据动态范围大）时，两个相近的浮点数相减发生 catastrophic cancellation，fp32 精度下方差可能出现明显误差甚至为负。数值稳定且仍只过一遍数据的方案是 Welford 递推（增量维护 $\mu$ 与 $M_2 \equiv \sum_k (x_k-\bar{x})^2$，分块结果可用合并公式汇总），但它的归约合并逻辑复杂得多。工程权衡：fp32 输入下 2-pass 简单可靠；fp16/bf16 输入的生产 kernel 通常升 fp32 累加后沿用 2-pass，或采用 Welford。本章源码选择的是最直白的结构——RMSNorm 1-pass、LayerNorm 2-pass。
+LayerNorm 能否也做成 1-pass？利用恒等式~\eqref{eq:ch06-var-identity}，$\sigma^2 = S_2/K - \mu^2$，可以在一次归约中同时求 $S_1$ 与 $S_2$（warp shuffle 时打包两个 float，或在同一线程内做两次独立归约），从而把 LayerNorm 压成 1-pass。代价是数值风险：$S_2/K - \mu^2$ 是「大数减小数」，当 $|\mu| \gg \sigma$（分布整体远离零点，且数据动态范围大）时，两个相近的浮点数相减发生 catastrophic cancellation，fp32 精度下方差可能出现明显误差甚至为负。数值稳定且仍只过一遍数据的方案是 Welford 递推（增量维护 $\mu$ 与 $M_2 \equiv \sum_k (x_k-\bar{x})^2$，分块结果可用合并公式汇总），但它的归约合并逻辑复杂得多。工程权衡：fp32 输入下 2-pass 简单可靠；fp16/bf16 输入的生产 kernel 通常升 fp32 累加后沿用 2-pass，或采用 Welford。本章源码选择最直白的结构：RMSNorm 1-pass、LayerNorm 2-pass。
 
 \subsection{rsqrtf：倒数平方根的硬件路径}
 
@@ -193,12 +193,12 @@ LayerNorm 能否也做成 1-pass？利用恒等式~\eqref{eq:ch06-var-identity}�
 \label{fig:6-3}
 \end{figure}
 
-归约本身直接复用第 \ref{ch:02} 章的 \texttt{block\_\allowbreak{}reduce\_\allowbreak{}sum}（base.cuh L179-196）：warp 内蝶形 shuffle 归约、warp leader 写 shared memory、\texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()}、第二级 warp 归约，最后 \texttt{\_\_shfl\_sync} 把结果广播到\textbf{每个}线程。最后这步广播对归一化至关重要——行内所有线程都要拿到同一个 $s$ 才能各自完成缩放。
+归约本身直接复用第 \ref{ch:02} 章的 \texttt{block\_\allowbreak{}reduce\_\allowbreak{}sum}（base.cuh L179-196）：warp 内蝶形 shuffle 归约、warp leader 写 shared memory、\texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()}、第二级 warp 归约，最后 \texttt{\_\_shfl\_sync} 把结果广播到\textbf{每个}线程。这步广播省不掉：行内所有线程都要拿到同一个 $s$ 才能各自完成缩放。
 
 \lstinputlisting[linerange={179-196},firstnumber=auto,
   title={base.cuh L179-196（block\_reduce\_sum：两级归约 + 全员广播，详见第 \ref{ch:02} 章）}]{../base.cuh}
 
-值得注意模板参数的编译期特化：标量版传 \texttt{k\allowbreak{}Num\allowbreak{}Threads=\allowbreak{}128}（4 个 warp，两级归约）；vec4 版传 \texttt{k\allowbreak{}Num\allowbreak{}Threads=\allowbreak{}32}（单 warp，此时 \texttt{kNumWarps=1}，第二级归约的 shuffle 循环在编译期折叠为空，shared memory 中转退化成一次额外同步）。同一个模板，参数不同即得到两级或一级结构。
+再看模板参数的编译期特化：标量版传 \texttt{k\allowbreak{}Num\allowbreak{}Threads=\allowbreak{}128}（4 个 warp，两级归约）；vec4 版传 \texttt{k\allowbreak{}Num\allowbreak{}Threads=\allowbreak{}32}（单 warp，此时 \texttt{kNumWarps=1}，第二级归约的 shuffle 循环在编译期折叠为空，shared memory 中转退化成一次额外同步）。同一个模板，参数不同即得到两级或一级结构。
 
 \subsection{rms\_norm：单归约 + 单广播}
 
@@ -207,10 +207,10 @@ LayerNorm 能否也做成 1-pass？利用恒等式~\eqref{eq:ch06-var-identity}�
 
 逐段拆解：
 \begin{enumerate}
-  \item \textbf{载入与越界 padding}：\texttt{value = (idx < N*K) ? x[idx] : 0.0f}。越界线程贡献 $0$，而 $0^2 = 0$ 不影响平方和——padding 值的选择取决于归约量的物理含义。对照第 \ref{ch:04} 章 softmax 的行 max 归约必须 pad $-\mathrm{FLT\_MAX}$，如果这里错 pad 成 $\mathrm{FLT\_MAX}$，平方和直接溢出。
+  \item \textbf{载入与越界 padding}：\texttt{value = (idx < N*K) ? x[idx] : 0.0f}。越界线程贡献 $0$，而 $0^2 = 0$ 不影响平方和。padding 值的选择取决于归约量的物理含义。对照第 \ref{ch:04} 章 softmax 的行 max 归约必须 pad $-\mathrm{FLT\_MAX}$，如果这里错 pad 成 $\mathrm{FLT\_MAX}$，平方和直接溢出。
   \item \textbf{单次归约}：\texttt{block\_\allowbreak{}reduce\_\allowbreak{}sum\allowbreak{}<k\allowbreak{}Num\allowbreak{}Threads>\allowbreak{}(variance)} 一次得到整行平方和。变量名 \texttt{variance} 在此处尚不是方差，只是「平方和」的中间量，除以 $K$ 才是均方。
   \item \textbf{tid 0 写共享标量}：\texttt{if \allowbreak{}(tid =\allowbreak{}=\allowbreak{} 0) s\_\allowbreak{}variance =\allowbreak{} rsqrtf\allowbreak{}(variance /\allowbreak{} K + epsilon)}。先除 $K$ 再加 $\epsilon$ 再开根号取倒数，与式~\eqref{eq:ch06-rms} 逐项对应；顺序若写成 $\mathrm{rsqrtf}((v + \epsilon)/K)$，$\epsilon$ 的相对作用被缩小 $K$ 倍（近乎失效），分母偏小使输出系统性偏大。
-  \item \textbf{第二次同步}：\texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()}。\texttt{block\_\allowbreak{}reduce\_\allowbreak{}sum} 内部的同步只保证「warp leader 写 \texttt{shared[]}」的可见性；\texttt{s\_variance} 是另一个共享变量，写在 reduce 之后，必须再立一次屏障，否则其他线程可能读到未初始化的 \texttt{s\_variance}——这是数据竞争，后果是非确定性错误值。
+  \item \textbf{第二次同步}：\texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()}。\texttt{block\_\allowbreak{}reduce\_\allowbreak{}sum} 内部的同步只保证「warp leader 写 \texttt{shared[]}」的可见性；\texttt{s\_variance} 是另一个共享变量，写在 reduce 之后，必须再立一次屏障，否则其他线程可能读到未初始化的 \texttt{s\_variance}。这是数据竞争，错误值非确定。
   \item \textbf{缩放写回}：\texttt{y[idx] = (value * s\_variance) * g}。所有线程拿到同一个 $s = 1/\mathrm{RMS}$，乘各自的 $x_k$ 与 gain。
 \end{enumerate}
 
@@ -224,7 +224,7 @@ LayerNorm 能否也做成 1-pass？利用恒等式~\eqref{eq:ch06-var-identity}�
   \item 线程索引步长变为 4：\texttt{idx = (blockIdx * blockDim + tid) * 4}，block 线程数相应从 128 降到 32（$K/4$）。
   \item \texttt{FLOAT4} 宏把相邻 4 个 float 一次 16B 装入 \texttt{float4} 寄存器；写回同样一条 \texttt{FLOAT4} 存储。每线程的有效访存宽度翻 4 倍，load/store 指令数减为 1/4。
   \item 归约的输入改为局部 4 元素平方和 \texttt{reg\_\allowbreak{}x.\allowbreak{}x*reg\_\allowbreak{}x.\allowbreak{}x + .\allowbreak{}.\allowbreak{}.\allowbreak{} + reg\_\allowbreak{}x.\allowbreak{}w*reg\_\allowbreak{}x.\allowbreak{}w}：先在寄存器内串行折叠 4 项（编译器可映射为 FMA 链），再交给 block reduce。归约树形状变化带来的舍入差异在 fp32 下可以忽略（本章测试实测 $\sim 4 \times 10^{-7}$）。
-  \item \textbf{对齐前提}：\texttt{float4} 访问要求地址 16B 对齐——行首地址对齐（$K \% 4 = 0$ 保证行内不破对齐）加基址对齐（\texttt{cudaMalloc} 返回 256B 对齐，自然满足）。不满足时触发 misaligned address 错误而非静默出错。
+  \item \textbf{对齐前提}：\texttt{float4} 访问要求地址 16B 对齐，即行首地址对齐（$K \% 4 = 0$ 保证行内不破对齐）加基址对齐（\texttt{cudaMalloc} 返回 256B 对齐，自然满足）。不满足时触发 misaligned address 错误而非静默出错。
 \end{itemize}
 
 \subsection{layer\_norm：两次归约 + 两次同步}
@@ -234,18 +234,18 @@ LayerNorm 能否也做成 1-pass？利用恒等式~\eqref{eq:ch06-var-identity}�
 
 结构上相当于把 rms\_norm 的归约-广播结构做两遍，两次归约的依赖关系与第 \ref{ch:04} 章 safe softmax「先 max 后 sum」的依赖链如出一辙：
 \begin{itemize}
-  \item \textbf{Pass 1}：归约 $S_1$ 得 \texttt{s\_mean = sum / K}，\texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()} 广播。这一次同步不可省——Pass 2 中每个线程都要读 \texttt{s\_mean}。
+  \item \textbf{Pass 1}：归约 $S_1$ 得 \texttt{s\_mean = sum / K}，\texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()} 广播。这一次同步不可省：Pass 2 中每个线程都要读 \texttt{s\_mean}。
   \item \textbf{Pass 2}：用广播后的均值计算 $\sum_k (x_k - \mu)^2$，再次 block reduce，tid 0 写 \texttt{s\_\allowbreak{}variance =\allowbreak{} rsqrtf\allowbreak{}(variance /\allowbreak{} K + epsilon)}，再一次 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()} 广播。
   \item 输出 \texttt{y = ((value - s\_mean) * s\_variance) * g + b}，与式~\eqref{eq:ch06-ln} 逐项对应。
 \end{itemize}
-同步开销精确计数：layer\_norm 全程 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()} 共 4 次（两次 block reduce 内部各 1 次 + 显式 2 次），rms\_norm 只有 2 次——这就是源码注释「比 Layer Norm 少 1 次同步」的完整语境（少一次归约，连带少一次 reduce 内部同步与一次显式同步）。$K = 128$ 时每次块级同步的绝对延迟在微秒以下，但归一化算子本身极薄（一行 $128 \times 4\mathrm{B} \times 2$ 的访存在 $\sim\mathrm{TB/s}$ 带宽下不足 $1\,\mu s$），相对占比可观，本章第 6 节的实测数据会量化这一点。
+同步开销精确计数：layer\_norm 全程 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()} 共 4 次（两次 block reduce 内部各 1 次 + 显式 2 次），rms\_norm 只有 2 次，这就是源码注释「比 Layer Norm 少 1 次同步」的完整语境（少一次归约，连带少一次 reduce 内部同步与一次显式同步）。$K = 128$ 时每次块级同步的绝对延迟在微秒以下，但归一化算子本身极薄（一行 $128 \times 4\mathrm{B} \times 2$ 的访存在 $\sim\mathrm{TB/s}$ 带宽下不足 $1\,\mu s$），相对占比可观，本章第 6 节的实测数据会量化这一点。
 
 \subsection{layer\_norm\_vec4：寄存器复用的两遍结构}
 
 \lstinputlisting[linerange={765-800},firstnumber=auto,
   title={base.cuh L765-800（layer\_norm\_vec4：Vec4 的 2-pass 版本）}]{../base.cuh}
 
-vec4 化带来一个标量版没有的实现细节：Pass 2 需要再次用到 $x_k$，但 gmem 里的值早已读入 \texttt{reg\_x} 寄存器，重读 gmem 既慢又可能与其他线程的写入不一致。源码的做法是把 Pass 1 的减法结果直接物化到 \texttt{reg\_x\_hat}（4 个寄存器），Pass 2 的平方和与最后的缩放输出都从它出发——\textbf{一次读、全程寄存器复用}。中间量的生命周期管理（\texttt{reg\_x} 用完即弃、\texttt{reg\_x\_hat} 跨 Pass 存活）是 2-pass 向量化 kernel 的通用模式，第 \ref{ch:04} 章 online softmax 的 $m/\ell/O$ 寄存器组是同一思想的更复杂形态。
+vec4 化带来一个标量版没有的实现细节：Pass 2 需要再次用到 $x_k$，但 gmem 里的值早已读入 \texttt{reg\_x} 寄存器，重读 gmem 既慢又可能与其他线程的写入不一致。源码的做法是把 Pass 1 的减法结果直接物化到 \texttt{reg\_x\_hat}（4 个寄存器），Pass 2 的平方和与最后的缩放输出都从它出发，做到\textbf{一次读、全程寄存器复用}。中间量的生命周期管理（\texttt{reg\_x} 用完即弃、\texttt{reg\_x\_hat} 跨 Pass 存活）是 2-pass 向量化 kernel 的通用模式，第 \ref{ch:04} 章 online softmax 的 $m/\ell/O$ 寄存器组是同一思想的更复杂形态。
 
 \section{图示}
 
@@ -352,14 +352,14 @@ $N$（行） & rms\_norm & rms\_norm\_vec4 & layer\_norm & layer\_norm\_vec4 \\
 
 三个规模对应两种访存口径（工作集按读集 $x+y$ 合计计，与第 \ref{ch:07}~章
 同口径）：$N = 8192$ 时合计约 $8\,\mathrm{MB}$ 完全落在 96MB L2 之内，
-是 L2 口径；$N = 131072$ 时输入合计约 $128\,\mathrm{MB}$ 已超出 L2——输入
+是 L2 口径；$N = 131072$ 时输入合计约 $128\,\mathrm{MB}$ 已超出 L2：输入
 数组（$64\,\mathrm{MB}$）可基本驻留、写集引起部分逐出，实测带宽
 （1041--1212 GB/s）介于 HBM 饱和值与 L2 之间；
 $N = 524288$ 时读写流量 $512\,\mathrm{MB}$ 远超 L2，是 HBM 口径。两个结构性结论：
 
 \begin{enumerate}
-  \item \textbf{vec4 收益只在 L2 口径显著}：$N = 131072$ 行时 rms\_norm $1041 \to 1212\,\mathrm{GB/s}$（$+16\%$），layer\_norm $970 \to 1201\,\mathrm{GB/s}$（$+24\%$）。L2 带宽远高于 HBM，标量访存的指令发射与事务数成为瓶颈，向量化直接缩短指令路径。而 HBM 口径（$N = 524288$）下四个 kernel 全部收敛到 $1000\text{-}1070\,\mathrm{GB/s}$——带宽上限由 DRAM 决定，标量版也能喂饱，vec4 的收益被吸收。
-  \item \textbf{1-pass 收益在两种口径下都稳定约 $7\%$}：同精度对比标量版 rms\_norm vs layer\_norm：$0.1289$ vs $0.1384\,\mathrm{ms}$（L2 口径，$-6.9\%$）；$0.5019$ vs $0.5369\,\mathrm{ms}$（HBM 口径，$-6.5\%$）。减少的那一次 block reduce 与两次同步在两种口径下都没有被访存完全掩盖——归一化算子太薄，结构开销永远在关键路径上。这正是 LLaMA 选择 RMSNorm 在 kernel 层面的直接收益。
+  \item \textbf{vec4 收益只在 L2 口径显著}：$N = 131072$ 行时 rms\_norm $1041 \to 1212\,\mathrm{GB/s}$（$+16\%$），layer\_norm $970 \to 1201\,\mathrm{GB/s}$（$+24\%$）。L2 带宽远高于 HBM，标量访存的指令发射与事务数成为瓶颈，向量化直接缩短指令路径。而 HBM 口径（$N = 524288$）下四个 kernel 全部收敛到 $1000\text{-}1070\,\mathrm{GB/s}$，带宽上限由 DRAM 决定，标量版也能喂饱，vec4 的收益被吸收。
+  \item \textbf{1-pass 收益在两种口径下都稳定约 $7\%$}：同精度对比标量版 rms\_norm vs layer\_norm：$0.1289$ vs $0.1384\,\mathrm{ms}$（L2 口径，$-6.9\%$）；$0.5019$ vs $0.5369\,\mathrm{ms}$（HBM 口径，$-6.5\%$）。减少的那一次 block reduce 与两次同步在两种口径下都没有被访存完全掩盖：归一化算子太薄，结构开销永远在关键路径上。这正是 LLaMA 选择 RMSNorm 在 kernel 层面的直接收益。
 \end{enumerate}
 
 \section{实践经验}
@@ -373,7 +373,7 @@ $N = 524288$ 时读写流量 $512\,\mathrm{MB}$ 远超 L2，是 HBM 口径。两
 \end{kaogu}
 
 \begin{kaogu}[F1 | Llama 使用 RMSNorm 的陈述属实]
-「Llama 系列使用 RMS Norm」与公开实现一致（LLaMA/LLaMA 2/LLaMA 3 及 Mistral 等）。补充考据：这些模型同时移除了 RMSNorm 前线性投影的 bias——因为 RMSNorm 无平移不变性（本章第 3 节推导的 $\mu^2$ 项），bias 无归一化收益。
+「Llama 系列使用 RMS Norm」与公开实现一致（LLaMA/LLaMA 2/LLaMA 3 及 Mistral 等）。补充考据：这些模型同时移除了 RMSNorm 前线性投影的 bias，原因正是 RMSNorm 无平移不变性（本章第 3 节推导的 $\mu^2$ 项），bias 无归一化收益。
 \end{kaogu}
 
 \section{常见坑}
@@ -416,5 +416,5 @@ cd kernels/interview/book/tests && CUDA_VISIBLE_DEVICES=7 ./build_tests.sh --ch 
 \subsection*{延伸阅读}
 
 \begin{itemize}
-  \item 紫气东来，《OneFlow 之 LayerNorm 的 CUDA 实现拆解》：\url{https://zhuanlan.zhihu.com/p/694974164}——生产级 LayerNorm kernel（逐通道 gain/beta 向量、fp32 累加）的工程化拆解，与本章教学版互补。（其余参考待 RFC-B 资料全集补充。）
+  \item 紫气东来，《OneFlow 之 LayerNorm 的 CUDA 实现拆解》：\url{https://zhuanlan.zhihu.com/p/694974164}，生产级 LayerNorm kernel（逐通道 gain/beta 向量、fp32 累加）的工程化拆解，与本章教学版互补。（其余参考待 RFC-B 资料全集补充。）
 \end{itemize}
