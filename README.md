@@ -68,7 +68,7 @@ apt install -y cudnn9-cuda-13 ccache # Also install ccache for faster rebuilds
 ./notes_v2_sm120a.bin --bench --bhnd 1,32,16384,320 # Split-D for large headdims (e.g, D=320)
 | Kernel                                                   | Max Err   | TFLOPS/cu{BLAS,DNN} |
 |----------------------------------------------------------|-----------|---------------------|
-| FA Split-D CuTe TMA MMA WS (D=320, Sk=1, Sv=1)           | 1.526e-05 | 96.5/70.3 (1.37x)   |
+| FA Split-D CuTe TMA MMA WS (D=320, Sk=1, Sv=1)           | 1.526e-05 | 96.5/70.3  (1.37x)  |
 | FA Split-D CuTe TMA MMA WS (D=320, Sk=2, Sv=2)           | 1.526e-05 | 145.1/70.3 (2.06x)  |
 ```
 
