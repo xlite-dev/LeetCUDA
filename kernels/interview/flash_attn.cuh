@@ -3515,8 +3515,15 @@ __global__ void flash_attn_3_cute_tma_copy_smoke(
 //      tile 行 guard 直接 R->G; epi_done barrier 让 producer 在 consumer
 //      epilogue 期间安全预取下一个 q-tile 的 K/V。
 //
-// 编译目标必须 sm_120f: sm_120a 会触发 ptxas C7506 把 setmaxnreg 静默丢弃
-// (kernel 仍正确, 但 producer/consumer 寄存器再分配失效, 性能退化)。
+// setmaxnreg 生存条件 (2026-09-22 实证闭环, 详见 ch14 坑二): sm_120a 与
+// sm_120f 都完整支持, arch 后缀不是变量; 真正决定指令生死的是两个独立
+// 条件, 缺一即被 ptxas 静默丢弃 (默认不打印警告):
+//   1. TMA dst 状态空间必须是 shared::cta —— 写 shared::cluster 会被当作
+//      隐式 extern-call 边界, 同 kernel 全部 setmaxnreg 连同 C7506 丢弃;
+//   2. kernel 必须 __launch_bounds__(N, 1) —— 缺第二参数则 PTX 无
+//      .minnctapersm, ptxas 以 C7508 丢弃。
+// SASS 助记符是 USETMAXREG (无 N), grep "setmaxnreg" 在 SASS 层全程假阴性。
+// 本 kernel 已满足两条件: cute SM120 门控发 shared::cta + (384, 1)。
 // =============================================================================
 
 #include <cutlass/arch/reg_reconfig.h>

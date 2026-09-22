@@ -19,14 +19,14 @@ files:
     sha256: 40e330514d004bfd7e2330dea941a9d75922efca75d93db443373714ae503324
     lines: 2100
   flash_attn.cuh:
-    sha256: 8f38b4c4c74af0ace16810b6d5b69923454bb1ce9283d241f995fff7a83467a6
-    lines: 4172
+    sha256: d01c02e57b1ab0293b87c462ecb5b2d52c7092fd41c11c4f06b3ec9d916a20a4
+    lines: 4179
   ffpa_attn.cuh:
     sha256: c1eae5da4748dd15d91cf00e3006ba7be94dd8df428b0384c42b977ece4b479d
     lines: 641
   notes-v2.cu:
-    sha256: b3c5536e4c247997a5a9c6e6ec017c0ab40cea1f5bb41bb466314674e24b8ae2
-    lines: 5068
+    sha256: 4d8c166b4739f2612a3e48237dce22a5c0bbaa571bd22cca6fba127234ee6462
+    lines: 5219
 chapters:
   ch01:
     refs:
@@ -239,7 +239,7 @@ chapters:
     refs:
       - file: flash_attn.cuh
         start: 3490
-        end: 4170
+        end: 4177
         first_anchor: "#if defined(NOTES_V2_ENABLE_CUTE)"
         last_anchor: "#endif // NOTES_V2_ENABLE_CUTE"
   appA:
