@@ -1196,6 +1196,40 @@ R2S $\to$ sC $\to$ S2G，映射进类型 \\
         （图~\ref{fig:24-1}）。
 \end{itemize}
 
+\paragraph{实测性能：CuTe Swizzle 家族 vs cuBLAS}\label{sec:ch24-perf}
+
+前面几条都是「自证」，再给一组\textbf{对外}的数字：第~\ref{ch:20}--\ref{ch:23}~章
+铺垫的 layout 代数、\texttt{TiledCopy}、\texttt{TiledMMA}、swizzle 组合子落到
+真实负载上究竟值多少？用 \texttt{notes\_\allowbreak{}v2\_\allowbreak{}sm120a.\allowbreak{}bin} 的
+\texttt{--bench --bench-all} 在 RTX PRO 5000（sm\_120，110 SM，CUDA 13.2）上实测
+$M{=}N{=}K{=}8192$ 的 fp16 HGEMM，CuTe Swizzle 家族七个配置见
+表~\ref{tab:ch24-perf}：F16Acc 档追平乃至超越 cuBLAS f16（分母为同轮 cuBLAS
+f16 的 246.5\,TFLOPS，本家族 0.99$\sim$1.08$\times$，最高 1.08$\times$），F32Acc 档
+对比 cuBLAS f32（164.2\,TFLOPS）达 1.48$\times$；七个配置的 Max Err 全部为
+$0.000\mathrm{e}{+}00$，逐位零误差。这些地址算术在编译期被类型系统全部折叠成
+最终指令，实测说明这套抽象是\textbf{零开销}的——表达力的收益没有以性能为代价。
+
+\begin{table}[H]
+\centering
+\caption{HGEMM CuTe Swizzle 实测（RTX PRO 5000，M=N=K=8192，fp16）}
+\label{tab:ch24-perf}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrr}
+\toprule
+Kernel & Max Err & TFLOPS/cuBLAS（加速比） \\
+\midrule
+HGEMM CuTe Swizzle (S=2, BLK\_SW=0, F16Acc) & 0.000e+00 & 243.0/246.5 (0.99x) \\
+HGEMM CuTe Swizzle (S=2, BLK\_SW=0, F32Acc) & 0.000e+00 & 201.3/164.2 (1.23x) \\
+HGEMM CuTe Swizzle (S=2, BLK\_SW=1, F16Acc) & 0.000e+00 & 250.2/246.5 (1.01x) \\
+HGEMM CuTe Swizzle (S=2, BLK\_SW=1, F32Acc) & 0.000e+00 & 226.0/164.2 (1.38x) \\
+HGEMM CuTe Swizzle (S=3, BLK\_SW=0, F16Acc) & 0.000e+00 & 257.2/246.5 (1.04x) \\
+HGEMM CuTe Swizzle (S=3, BLK\_SW=1, F16Acc) & 0.000e+00 & 265.9/246.5 (1.08x) \\
+HGEMM CuTe Swizzle (S=3, BLK\_SW=1, F32Acc) & 0.000e+00 & 242.4/164.2 (1.48x) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
 需要强调的是：CuTe 版\textbf{不承诺}比手写版更快。两者的指令序列高度重合
 （SASS 层面都是 \texttt{LDGSTS} $+$ \texttt{LDSM} $+$ \texttt{HMMA}），差别在
 编译期把地址算术折叠掉、以及让 kernel 作者少写上百行易错的表达式。真正的加速

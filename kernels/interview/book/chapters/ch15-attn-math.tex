@@ -250,9 +250,9 @@ FLOP/B 量级），kernel 被钉死在 memory-bound 区。修法只有一个方�
     {朴素三 kernel：中间量 HBM 往返 $\Sigma = 4\times 1\,\mathrm{GiB} \approx 4.3\,\mathrm{GB}$};
   \node[nlab, anchor=east] at (-0.15, 1.6) {Q, K};
   \draw[-{Stealth}] (-0.1, 1.6) -- (0.35, 1.6);
-  \node[kbox] at (1.6, 1.6) {GEMM ①\\$S = QK^{\top}$};
+  \node[kbox] at (1.6, 1.6) {GEMM (1)\\$S = QK^{\top}$};
   \node[kbox] at (6.1, 1.6) {softmax\\$S \to P$};
-  \node[kbox] at (10.6, 1.6) {GEMM ②\\$O = PV$（V 读入）};
+  \node[kbox] at (10.6, 1.6) {GEMM (2)\\$O = PV$（V 读入）};
   \draw[-{Stealth}] (11.9, 1.6) -- (12.35, 1.6);
   \node[nlab, anchor=west] at (12.4, 1.6) {O};
   \fill[gray!75] (0.4, -1.35) rectangle (11.75, -0.75);

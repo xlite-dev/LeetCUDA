@@ -1,6 +1,6 @@
 <div align="center">
   <div align='center'>
-      <img src='https://github.com/xlite-dev/LeetCUDA/raw/main/docs/book.png' width='800px'><br>
+      <img src='./kernels/interview/book/figures/misc/cover.png' width='800px'><br>
       <img src=https://cdn.rawgit.com/sindresorhus/awesome/d7305f38d29fed78fa85652e3a63e154dd8e8829/media/badge.svg >
        <a href='./kernels/interview/book/book.pdf'><img src=https://img.shields.io/badge/PDF-available-hotpink.svg ></a>
       <img src=https://img.shields.io/badge/Language-CUDA-brightgreen.svg >
@@ -11,7 +11,7 @@
   </div>
 </div>
 
-**LeetCUDA**: includes **Tensor/CUDA Cores, TF32/F16/BF16/FP8**, [200+ CUDA Kernels](#cuda-kernel) with PyTorch, [HGEMM](./kernels/hgemm) which can achieve `98%~100%` TFLOPS of **cuBLAS**, and [flash-attn](./kernels/flash-attn) using Tensor Cores with pure MMA PTX. <i>Open sources book of <b>LeetCUDA</b> now is avaliable at <a href='https://github.com/xlite-dev/LeetCUDA/releases/download/v4.0.2/leetcuda-20260921.pdf'>LeetCUDA.pdf (w/ 400+ pages)🔥🔥🔥</a>. </i> 
+**LeetCUDA**: An open-source book of modern CUDA learning notes. It covers **Tensor/CUDA Cores, TF32/BF16/FP8**, [200+ CUDA kernels](#cuda-kernel), [HGEMM](./kernels/hgemm) achieving `98%~100%` of cuBLAS TFLOPS, and [flash-attn](./kernels/flash-attn) built on Tensor Cores with pure MMA PTX. <i>The open-source LeetCUDA book is now available at <a href='https://github.com/xlite-dev/LeetCUDA/releases/download/v4.0.2/leetcuda-20260921.pdf'>LeetCUDA.pdf (w/ 500+ pages)🔥🔥🔥</a>.</i>
 
 <div align='center'>
   <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-h20z_B1_H32_N8192_D512_T.png' width='200px'>
@@ -37,38 +37,39 @@ apt install -y cudnn9-cuda-13 ccache # Also install ccache for faster rebuilds
 ```
 
 ```bash
-# Then, run the notes_v2_sm120a.bin with bench mode (e.g., NVIDIA RTX 5090, Blackwell SM_120a)
-# Baseline: cuBLAS v13.3.0.5-1 (290T); cuDNN v9.25.0.15 SDPA (222T), PyTorch v2.11 SDPA (210T)
-# Speedup: Flash-Attention 2/3 -> ~1.37x (F16 Acc vs cuDNN), ~1.01x (F32 Acc vs cuDNN), ~1.07x
-# (F32 Acc vs PyTorch SDPA); HGEMM w/ Pipe & SMEM & Block Swizzle -> 1.07x (F16 Acc vs cuBLAS)
+# Then, run the notes_v2_sm120a.bin with bench mode (e.g., NVIDIA PRO 5000, Blackwell SM_120a)
 ./notes_v2_sm120a.bin --bench --mnk 4096,4096,4096 --bhnd 1,32,16384,128 # MMA ACC F16/F32 Acc
 | Kernel                                                   | Max Err   | TFLOPS/cu{BLAS,DNN} |
 |----------------------------------------------------------|-----------|---------------------|
-| HGEMM CuTe Swizzle (S=2, BLK_SW=0)                       | 0.000e+00 | 307.7/295.4 (1.04x) |
-| HGEMM CuTe Swizzle (S=2, BLK_SW=1)                       | 0.000e+00 | 307.3/295.4 (1.04x) |
-| HGEMM CuTe Swizzle (S=3, BLK_SW=0)                       | 0.000e+00 | 315.3/295.4 (1.07x) |
-| HGEMM CuTe Swizzle (S=3, BLK_SW=1)                       | 0.000e+00 | 317.4/295.4 (1.07x) |
-| FA2 MMA Stages (Sk=1, Pad, F16Acc)                       | 1.831e-04 | 220.2/222.9 (0.99x) |
-| FA2 MMA Stages (Sk=2, Pad, F16Acc)                       | 1.831e-04 | 254.7/222.9 (1.14x) |
-| FA2 MMA Stages (Sk=1, Pad, F32Acc)                       | 1.526e-05 | 165.6/221.6 (0.75x) |
-| FA2 MMA Stages (Sk=2, Pad, F32Acc)                       | 1.526e-05 | 180.1/221.6 (0.81x) |
-| FA2 CuTe MMA Stages (Sk=1, F32Acc)                       | 1.526e-05 | 199.0/221.6 (0.90x) |
-| FA2 CuTe MMA Stages (Sk=2, F32Acc)                       | 1.526e-05 | 201.2/221.6 (0.91x) |
-| FA2 TMA MMA WS (1 Consumer WG) (Sk=1, Sv=1, F16Acc)      | 1.831e-04 | 262.5/222.9 (1.18x) |
-| FA2 TMA MMA WS (1 Consumer WG) (Sk=2, Sv=1, F16Acc)      | 1.831e-04 | 292.0/222.9 (1.31x) |
-| FA2 TMA MMA WS (1 Consumer WG) (Sk=3, Sv=1, F16Acc)      | 1.831e-04 | 296.9/222.9 (1.33x) |
-| FA2 TMA MMA WS (1 Consumer WG) (Sk=2, Sv=1, F32Acc)      | 1.526e-05 | 201.9/221.6 (0.91x) |
-| FA2 TMA MMA WS (1 Consumer WG) (Sk=3, Sv=1, F32Acc)      | 1.526e-05 | 202.2/221.6 (0.91x) |
-| FA3 TMA MMA WS (2 Consumer WG) (Sk=1, Sv=1, F16Acc)      | 9.155e-05 | 305.2/222.9 (1.37x) |
-| FA3 TMA MMA WS (2 Consumer WG) (Sk=1, Sv=1, F32Acc)      | 1.526e-05 | 212.0/221.6 (0.96x) |
-| FA2 CuTe TMA MMA WS (1 Consumer WG) (Sk=2, Sv=1, F32Acc) | 1.526e-05 | 220.8/221.6 (1.00x) |
-| FA2 CuTe TMA MMA WS (1 Consumer WG) (Sk=3, Sv=1, F32Acc) | 1.526e-05 | 222.8/221.6 (1.01x) |
-# Speedup: Split-D for large headdim (e.g, D=320) ~2.20x faster than cuDNN SDPA (with F32 Acc)
+| HGEMM CuTe Swizzle (S=2, BLK_SW=0, F16Acc)               | 0.000e+00 | 229.5/236.9 (0.97x) |
+| HGEMM CuTe Swizzle (S=2, BLK_SW=0, F32Acc)               | 0.000e+00 | 213.0/163.7 (1.30x) |
+| HGEMM CuTe Swizzle (S=2, BLK_SW=1, F16Acc)               | 0.000e+00 | 231.1/236.9 (0.98x) |
+| HGEMM CuTe Swizzle (S=2, BLK_SW=1, F32Acc)               | 0.000e+00 | 217.2/163.7 (1.33x) |
+| HGEMM CuTe Swizzle (S=3, BLK_SW=0, F16Acc)               | 0.000e+00 | 245.6/236.9 (1.04x) |
+| HGEMM CuTe Swizzle (S=3, BLK_SW=0, F32Acc)               | 0.000e+00 | 242.6/163.7 (1.48x) |
+| HGEMM CuTe Swizzle (S=3, BLK_SW=1, F16Acc)               | 0.000e+00 | 246.7/236.9 (1.04x) |
+| HGEMM CuTe Swizzle (S=3, BLK_SW=1, F32Acc)               | 0.000e+00 | 243.5/163.7 (1.49x) |
+| FA2 MMA Stages (Sk=1, Pad, F16Acc)                       | 1.831e-04 | 131.5/232.4 (0.57x) |
+| FA2 MMA Stages (Sk=2, Pad, F16Acc)                       | 1.831e-04 | 157.9/232.4 (0.68x) |
+| FA2 MMA Stages (Sk=1, Pad, F32Acc)                       | 1.526e-05 | 145.6/232.4 (0.63x) |
+| FA2 MMA Stages (Sk=2, Pad, F32Acc)                       | 1.526e-05 | 166.5/232.4 (0.72x) |
+| FA2 CuTe MMA Stages (Sk=1, F32Acc)                       | 1.526e-05 | 189.6/232.4 (0.82x) |
+| FA2 CuTe MMA Stages (Sk=2, F32Acc)                       | 1.526e-05 | 197.0/232.4 (0.85x) |
+| FA2 TMA MMA WS (1 Consumer WG) (Sk=1, Sv=1, F16Acc)      | 1.831e-04 | 161.2/232.4 (0.69x) |
+| FA2 TMA MMA WS (1 Consumer WG) (Sk=2, Sv=1, F16Acc)      | 1.831e-04 | 189.4/232.4 (0.81x) |
+| FA2 TMA MMA WS (1 Consumer WG) (Sk=2, Sv=2, F16Acc)      | 1.831e-04 | 190.5/232.4 (0.82x) |
+| FA2 TMA MMA WS (1 Consumer WG) (Sk=2, Sv=1, F32Acc)      | 1.526e-05 | 204.9/232.4 (0.88x) |
+| FA3 TMA MMA WS (2 Consumer WG) (Sk=1, Sv=1, F16Acc)      | 9.155e-05 | 210.1/232.4 (0.90x) |
+| FA3 TMA MMA WS (2 Consumer WG) (Sk=1, Sv=1, F32Acc)      | 1.526e-05 | 210.8/232.4 (0.91x) |
+| FA2 CuTe TMA MMA WS (1 Consumer WG) (Sk=2, Sv=1, F32Acc) | 1.526e-05 | 220.0/232.4 (0.95x) |
+| FA2 CuTe TMA MMA WS (1 Consumer WG) (Sk=3, Sv=1, F32Acc) | 1.526e-05 | 223.4/232.4 (0.96x) |
+| FA2 CuTe TMA MMA Persistent-CTA WS (D=128)               | 1.526e-05 | 242.5/232.4 (1.04x) |
+# Speedup: Split-D for large headdim (e.g, D=320) ~2.06x faster than cuDNN SDPA (with F32 Acc)
 ./notes_v2_sm120a.bin --bench --bhnd 1,32,16384,320 # Split-D for large headdims (e.g, D=320)
 | Kernel                                                   | Max Err   | TFLOPS/cu{BLAS,DNN} |
 |----------------------------------------------------------|-----------|---------------------|
-| FA Split-D CuTe TMA MMA WS (D=320, Sk=1, Sv=1)           | 1.526e-05 | 127.2/83.1 (1.53x)  |
-| FA Split-D CuTe TMA MMA WS (D=320, Sk=2, Sv=2)           | 1.526e-05 | 182.6/83.1 (2.20x)  |
+| FA Split-D CuTe TMA MMA WS (D=320, Sk=1, Sv=1)           | 1.526e-05 | 96.5/70.3  (1.37x)  |
+| FA Split-D CuTe TMA MMA WS (D=320, Sk=2, Sv=2)           | 1.526e-05 | 145.1/70.3 (2.06x)  |
 ```
 
 ## 🤖 Agentic workflow 
@@ -83,7 +84,7 @@ LeetCUDA provides a [leetcuda-cpp-kernel](./kernels/interview/book/skills/leetcu
 
 ```BibTeX
 @misc{LeetCUDA@2025,
-  title={LeetCUDA: A Modern CUDA Learn Notes with PyTorch for Beginners},
+  title={LeetCUDA: An Open-Source Book of Modern CUDA Learning Notes for Beginners},
   url={https://github.com/xlite-dev/LeetCUDA.git},
   note={Open-source software available at https://github.com/xlite-dev/LeetCUDA.git},
   author={DefTruth and Many Others},

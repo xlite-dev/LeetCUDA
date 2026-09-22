@@ -2,8 +2,9 @@
 # build.sh — Compile notes-v2.cu for one or more SM architectures.
 #
 # Uses ccache (when available) in a two-step compile+link workflow:
-#   1. ccache nvcc ... -c notes-v2.cu -o notes-v2.o   (cached)
-#   2. nvcc notes-v2.o -o notes_v2_<arch>.bin ...       (uncached link)
+#   1. ccache nvcc ... -c notes-v2.cu -o bin/notes-v2.o   (cached)
+#   2. nvcc bin/notes-v2.o -o bin/notes_v2_<arch>.bin ... (uncached link)
+# Artifacts (.o/.bin) are written to ./bin (created if missing).
 #
 # Usage:
 #   ./build.sh --arch sm_89       # Ada (RTX 40 series)
@@ -16,6 +17,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
+
+# All build artifacts (.o and .bin) go to ./bin
+OUT_DIR="$SCRIPT_DIR/bin"
+mkdir -p "$OUT_DIR"
 
 # ── ccache detection ──────────────────────────────────────────────
 USE_CCACHE=0
@@ -116,7 +121,7 @@ Options:
 
 Generic arch notes:
   Generic arches use no NOTES_V2_XXX flags (no CuTe/WGMMA/TMA/CUDNN).
-  Output: notes_v2_smXX.bin (e.g., notes_v2_sm80.bin), linked with -lcublas -lcuda only.
+  Output: bin/notes_v2_smXX.bin (e.g., bin/notes_v2_sm80.bin), linked with -lcublas -lcuda only.
 EOF
   exit 0
 }
@@ -139,9 +144,9 @@ done
 
 # ── clean ─────────────────────────────────────────────────────────
 if [[ "$CLEAN_ONLY" == "1" ]]; then
-  echo "[clean] Removing build artifacts..."
-  rm -f notes-v2.o
-  rm -f notes_v2_*.bin
+  echo "[clean] Removing build artifacts in bin/ ..."
+  rm -f "$OUT_DIR/notes-v2.o"
+  rm -f "$OUT_DIR"/notes_v2_*.bin
   echo "[clean] Done."
   exit 0
 fi
@@ -175,19 +180,19 @@ build_one() {
     "${COMMON_FLAGS[@]}"
     $defines
     $gencode
-    -c notes-v2.cu -o notes-v2.o
+    -c notes-v2.cu -o "$OUT_DIR/notes-v2.o"
   )
   echo "  [compile] ${compile_cmd[*]}"
   "${compile_cmd[@]}"
 
   # Step 2: link
-  local link_cmd=("$NVCC" notes-v2.o -o "$output" $lib_path $libs)
+  local link_cmd=("$NVCC" "$OUT_DIR/notes-v2.o" -o "$OUT_DIR/$output" $lib_path $libs)
   echo "  [link]    ${link_cmd[*]}"
   "${link_cmd[@]}"
 
   local t1
   t1=$(date +%s)
-  echo "  [OK] $output  (${t1}-${t0}s, elapsed $((t1 - t0))s)"
+  echo "  [OK] bin/$output  (${t1}-${t0}s, elapsed $((t1 - t0))s)"
   echo ""
 }
 
@@ -219,18 +224,18 @@ else
     compile_cmd+=(
       "${COMMON_FLAGS[@]}"
       $local_gencode
-      -c notes-v2.cu -o notes-v2.o
+      -c notes-v2.cu -o "$OUT_DIR/notes-v2.o"
     )
     echo "  [compile] ${compile_cmd[*]}"
     "${compile_cmd[@]}"
 
     # Step 2: link
-    link_cmd=("$NVCC" notes-v2.o -o "$local_output" -L/usr/local/cuda/targets/x86_64-linux/lib/stubs -lcublas -lcuda)
+    link_cmd=("$NVCC" "$OUT_DIR/notes-v2.o" -o "$OUT_DIR/$local_output" -L/usr/local/cuda/targets/x86_64-linux/lib/stubs -lcublas -lcuda)
     echo "  [link]    ${link_cmd[*]}"
     "${link_cmd[@]}"
 
     t1=$(date +%s)
-    echo "  [OK] $local_output  (${t1}-${t0}s, elapsed $((t1 - t0))s)"
+    echo "  [OK] bin/$local_output  (${t1}-${t0}s, elapsed $((t1 - t0))s)"
   else
     echo "[ERROR] Unknown architecture: $ARCH. Valid: $VALID_ARCHS, all, sm_XX" >&2
     exit 1

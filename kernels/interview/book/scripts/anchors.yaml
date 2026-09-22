@@ -13,20 +13,20 @@ files:
     sha256: 5c539154353996e0bd51650bf03dde239e3133349ada31ba345ab14f05b25c2a
     lines: 102
   sgemm.cuh:
-    sha256: ad78cd403ac43b0f4b9798dc8695845fafb62dfe8c582e99d61d5096557114d6
+    sha256: 50b9d7b42d6be8ed0b05fe8c1bc4921c0e1ea90bc62681fc130e89aef37fa5e1
     lines: 434
   hgemm.cuh:
     sha256: 40e330514d004bfd7e2330dea941a9d75922efca75d93db443373714ae503324
     lines: 2100
   flash_attn.cuh:
-    sha256: c15b4150560438771098a96003f136a1f5a7108903ab57990e2d31d701791713
-    lines: 3490
+    sha256: d01c02e57b1ab0293b87c462ecb5b2d52c7092fd41c11c4f06b3ec9d916a20a4
+    lines: 4179
   ffpa_attn.cuh:
     sha256: c1eae5da4748dd15d91cf00e3006ba7be94dd8df428b0384c42b977ece4b479d
     lines: 641
   notes-v2.cu:
-    sha256: 9a58b997d13a0ffad75964a2f05cb107abe5eee7aa3c82c67fe64deebff6f26b
-    lines: 4915
+    sha256: 4d8c166b4739f2612a3e48237dce22a5c0bbaa571bd22cca6fba127234ee6462
+    lines: 5219
 chapters:
   ch01:
     refs:
@@ -235,6 +235,13 @@ chapters:
         end: 640
         first_anchor: "#if defined(NOTES_V2_ENABLE_CUTE) && defined(NOTES_V2_ENABLE_TMA_MMA_WS)"
         last_anchor: "#endif // NOTES_V2_ENABLE_CUTE && NOTES_V2_ENABLE_TMA_MMA_WS"
+  ch26b:
+    refs:
+      - file: flash_attn.cuh
+        start: 3490
+        end: 4177
+        first_anchor: "#if defined(NOTES_V2_ENABLE_CUTE)"
+        last_anchor: "#endif // NOTES_V2_ENABLE_CUTE"
   appA:
     refs:
       - file: common.cuh

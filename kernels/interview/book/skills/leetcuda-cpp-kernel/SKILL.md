@@ -1,12 +1,13 @@
 ---
 name: leetcuda-cpp-kernel
 description: >-
-  LeetCUDA 中文技术书（496 页，XeLaTeX 源）按需查阅 skill——写、优化、调试或
+  LeetCUDA 中文技术书（515 页，XeLaTeX 源）按需查阅 skill——写、优化、调试或
   review CUDA C++/PTX kernel 时的权威参考路由层。当任务涉及：GPU 架构/Roofline/
   occupancy、向量化与 coalescing、warp/block reduce、softmax（online/LSE merge）、
   SGEMV/SGEMM/HGEMM 阶梯优化、mma.sync/ldmatrix/WMMA、XOR/block swizzle、cp.async
   多级流水、TMA/mbarrier/WGMMA（Hopper）、SM120 TMA+warp specialization、
-  FlashAttention FA1/FA2/FA3 实现、split-D 大 head_dim、CuTe Layout/Tensor/
+  FlashAttention FA1/FA2/FA3 实现、SM120 持久化 FA（persist-D 超越 cuDNN）、
+  split-D 大 head_dim、CuTe Layout/Tensor/
   TiledCopy/TiledMMA（含官方白皮书译注、colfax 范畴论译注、cute-zhihu 合集三份
   深度参考）、FP8/FP4(NVFP4) 量化注意力、nsys/ncu 性能分析、cuobjdump/
   PTX/SASS 取证（含 setmaxnreg 与 shared::cluster/cta 陷阱）、CUDA 面试题时使用。
@@ -45,7 +46,7 @@ skill 只负责把任务路由到正确的章节，**不重写、不复述书内
 
 | 路径（相对书根） | 内容 |
 |---|---|
-| `chapters/chNN-<slug>.tex` | 34 章正文 + ch19b 白皮书导读（中文，XeLaTeX 源；含行号锚定的源码解析、踩坑记录、性能数据） |
+| `chapters/chNN-<slug>.tex` | 35 章正文（ch00–ch33、ch26b）+ ch19b 白皮书导读 + `_template.tex` 章模板（中文，XeLaTeX 源；含行号锚定的源码解析、踩坑记录、实测性能表） |
 | `chapters/wp/wp0-7.tex` | ch19b 分节正文：CuTe 官方白皮书（Cris Cecka, arXiv:2603.02298）完整中文译注 |
 | `figures/drawio/fig-<chNN>-<n>-<slug>/` | 每章配图：`*.png`（用 view 看）、`*.drawio`/`gen.py`（可改后重导出） |
 | `figures/ffpa/`、`figures/tikz/`、`figures/misc/` | matplotlib bench 图 / TikZ 图 / 封面等杂项 |
@@ -54,7 +55,7 @@ skill 只负责把任务路由到正确的章节，**不重写、不复述书内
 | `references/` | `zhihu-inventory.md`（附录 E 数据源）+ `fulltext/`（7 篇知乎全文 markdown，可直接 grep） |
 | `appendices/appA..appE` | 见下文附录路由 |
 | `tests/` | 每章最小正确性测试（CPU fp64 对拍，`build_tests.sh --arch sm_120a --all`） |
-| `book.pdf` | 编译成品（496 页，可直接 pdftotext 按页抽取） |
+| `book.pdf` | 编译成品（515 页，可直接 pdftotext 按页抽取） |
 
 ## 第二步：任务路由表
 
@@ -103,6 +104,7 @@ skill 只负责把任务路由到正确的章节，**不重写、不复述书内
 | CuTe HGEMM 实战（kStage 流水、三级划分） | `ch24-cute-hgemm.tex` | fig-24-2/24-3 |
 | CuTe FlashAttention 三实现对照 | `ch25-cute-flash-attn.tex` | fig-25-1 |
 | CuTe FFPA Split-D 类型代数 | `ch26-cute-ffpa.tex` | fig-26-1 |
+| **SM120 持久化 FlashAttention**（persist-D、WS 1+1、persistent CTA、scale 融合；全书唯一超越 cuDNN SDPA 的 attention kernel，240.1/230.2 = 1.04×） | `ch26b-cute-persist-d-flash-attn.tex`（书内第 28 章） | TikZ 内联 |
 
 ### CuTe 进阶深度参考（colfax / cute-zhihu，独立文档）
 
@@ -159,10 +161,34 @@ strided 通用）、量化数学与 scale 折叠、性能 RFC 与已证伪清单
 | 需求 | 附录 |
 |---|---|
 | common.cuh 逐段解析（TMA/mbarrier/setmaxnreg/WGMMA 宏封装、swizzle） | `appendices/appA-common-toolbox.tex` |
-| 全书性能数据汇总（各卡 TFLOPS 基线表） | `appendices/appB-perf-data.tex` |
+| 全书性能数据汇总（各卡 TFLOPS 基线表；ch11/12/14/16/17/18/24/25 章内另有 `tab:chNN-perf` 实测表） | `appendices/appB-perf-data.tex` |
 | 构建指南：build.sh 架构×宏矩阵、-arch 目标选择、book/tests 用法、**setmaxnreg 保留条件** | `appendices/appC-build-guide.tex` |
 | 源码索引：kernel 源文件+行号定位表 | `appendices/appD-source-index.tex` |
 | 参考文献与延伸阅读（含 PTX ISA 章节映射） | `appendices/appE-references.tex` |
+
+### 代码文件 references（kernels/interview 源码直定位）
+
+按任务路由到章后，配套可参考源码直接按此表打开（行数为实测值；行号级
+冻结映射见 `appendices/appD-source-index.tex`，基准 commit `6cd32de`）：
+
+| 文件（相对 `<LeetCUDA_DIR>/kernels/interview/`） | 行数 | 内容 | 对应章 |
+|---|---|---|---|
+| `base.cuh` | 909 | 架构/Roofline 速查、warp/block 归约与 dot、向量化与原子操作、softmax 三级递进、merge_attn_states、RMS/LayerNorm、RoPE 与转置 | ch01–07 |
+| `sgemv.cuh` | 102 | SGEMV 三种划分（warp-per-row K32/K128/K16） | ch08 |
+| `sgemm.cuh` | 434 | SGEMM 阶梯（block-tile/Vec4/双缓冲 → TF32 WMMA） | ch09–10 |
+| `hgemm.cuh` | 2100 | mma.sync m16n8k16 与 ldmatrix、XOR swizzle、TMA/WGMMA/mbarrier、SM120 TMA+WS、CuTe 对照片段与 CuTe HGEMM 实战 | ch11–14、ch20–21、ch23–24 |
+| `flash_attn.cuh` | 4179 | FA 原理头注释、FA2 split-Q+MMA、FA2 TMA+WS、FA3 双 consumer、CuTe FA 三实现、persist-D（`flash_attn_cute_persist_d_sm120` L3635 起） | ch15–18、ch25、ch26b |
+| `ffpa_attn.cuh` | 641 | FFPA Split-D 全篇、双 TiledMMA/traits（M4N2 对照） | ch19、ch22、ch26 |
+| `common.cuh` | 803 | TMA/mbarrier/setmaxnreg/WGMMA 宏封装与 swizzle 工具箱（逐段解析见 appA） | ch12–14、appA |
+| `notes-v2.cu` | 5219 | 面试背题主编译单元：include 全部 `.cuh`，~30 kernel 的 WHY+HOW 注释与 10 Phase 递进，`--bench` harness（`bin/notes_v2_*.bin` 源） | 全书总装、appC |
+| `bench/bench_attn.cu` | — | FA2 CuTe TMA+MMA+WS vs cuDNN SDPA 专项 bench | ch00、ch17/25 |
+| `bench/bench_ffpa.cu` | — | FFPA Split-D attention 专项 bench | ch19、ch33 |
+| `bench/bench_sgemm.cu` | — | `sgemm.cuh` 全 kernel 性能+精度 bench | ch09–12 |
+| `bench/bench_sdpa.py` | — | PyTorch SDPA 参照计时 | ch00、appB |
+| `book/tests/chNN_*.cu` | — | 每章最小正确性测试（CPU fp64 对拍），`build_tests.sh --arch sm_120a --all` | 各章 |
+
+Part V（ch27–33）教学 kernel 源码在 `<FFPA_ATTN_DIR>/csrc/cuffpa/`（appD 内
+附逐章 GitHub permalink）。
 
 ## 第三步：按需读取纪律
 
@@ -174,8 +200,9 @@ strided 通用）、量化数学与 scale 折叠、性能 RFC 与已证伪清单
 3. **图**：`figures/drawio/fig-*/` 下 png 用 view 工具直接看；需要改图时改同目录
    `gen.py`/`.drawio` 后用 `drawio-headless -x -f png -s 3` 重导出（输出落回同目录）。
 4. **验证 kernel 正确性**：优先跑 `book/tests/`（CPU fp64 对拍，无 cuBLAS 依赖）；
-   性能验收用 `build.sh --arch sm_120f && ./notes_v2_sm120f.bin --bench ...`
-   （构建细节见 appC）。
+   性能验收用 `bash build.sh --arch sm_120a && ./bin/notes_v2_sm120a.bin --bench
+   --bhnd 1,32,8192,128 [--bench-all]`（产物落 `bin/`，bench harness 源在
+   `kernels/interview/bench/`；构建细节见 appC）。
 5. **PDF 兜底**：tex 源不适合读时（如只要结论），`pdftotext book.pdf -` 按页抽取；
    colfax 与 cute-zhihu 两份独立文档同理（`pdftotext colfax/colfax-cute-zh.pdf -`、
    `pdftotext cute-zhihu/cute-zhihu.pdf -`）。
@@ -189,3 +216,10 @@ strided 通用）、量化数学与 scale 折叠、性能 RFC 与已证伪清单
   见 ch14 专门小节；SASS 助记符是 `USETMAXREG`（grep `setmaxnreg` 查 SASS 会假阴性）。
 - **bench A/B 口径**：同轮 SDPA 参照一致性、min-of-N、PSNR/Max-Err 双指标——见
   ch00 与 appB。
+- **GPU 规格口径（2026-09-22 运行时实测核准）**：PRO 5000 = **110 SM**
+  （`torch.cuda.get_device_properties().multi_processor_count`）；历史误传
+  "96 SM" 已全书清除（96 系与 Full GB202 裸 die 的 TPC 数混淆）；5090 = 170 SM、
+  PRO 6000 = 188 SM。硬件规格一律以运行时实测为准，书内不写其他卡的 SM 数。
+- **性能基线速查（PRO 5000，2026-09-22 `--bench --bench-all`）**：ch26b persist-D
+  240.1 TFLOPS = 1.04× cuDNN SDPA（230.2）；HGEMM CuTe Swizzle 追平/超越 cuBLAS
+  （最高 1.08× f16、1.48× f32）；明细见各章 `tab:ch11/12/14/16/17/18/24/25-perf`。

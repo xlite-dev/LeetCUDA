@@ -17,8 +17,9 @@
 % 封面：shipout 背景钩子满幅铺图，页面本体留空（newgeometry 会在此处
 % 先 clearpage 产生空白首页，故不用）；钩子 picture 原点在页左上、
 % y 轴向下，图参考点为左下角故放 (0,-\paperheight)
+% 封面源: figures/misc/cover-tikz.tex（CuTe layout 风格, standalone 矢量）
 \AddToHookNext{shipout/background}{%
-  \put(0,-\dimexpr\paperheight\relax){\includegraphics[width=\paperwidth,height=\paperheight]{figures/misc/cover.png}}}
+  \put(0,-\dimexpr\paperheight\relax){\includegraphics[width=\paperwidth,height=\paperheight]{figures/misc/cover.pdf}}}
 \thispagestyle{empty}
 \null
 \clearpage
@@ -30,6 +31,9 @@
 \tableofcontents
 \endgroup
 
+% openany 电子书不强制右页起始：否则目录尾(xix)后 \mainmatter 的
+% \cleardoublepage 会补一页空白 xx（fancyhdr 沿用目录页眉）。全书统一取消补页。
+\let\cleardoublepage\clearpage
 \mainmatter
 
 \part{基础篇：编程模型、访存与归约}
@@ -67,6 +71,7 @@
 \input{chapters/ch24-cute-hgemm}
 \input{chapters/ch25-cute-flash-attn}
 \input{chapters/ch26-cute-ffpa}
+\input{chapters/ch26b-cute-persist-d-flash-attn}
 
 \part{FP8/FP4 Attention 篇：量化注意力的数学与 Kernel 工程}
 \input{chapters/ch27-quant-attn-math}

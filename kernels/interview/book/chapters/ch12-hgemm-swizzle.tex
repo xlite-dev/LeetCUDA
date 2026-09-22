@@ -904,6 +904,42 @@ BK=64，swizzle（7b-3）    & 297{,}628 & 20.7 & 4-way；本章 kernel \\
 （3）绝对值口径为 fp16 累加（\texttt{f16.f16.f16.f16}）+ 本机 PRO 5000，与
 README 的 5090 口径不可直接比较。
 
+上述对照只覆盖手写版的三个配置；把 stage 数 $S$、block swizzle（BLK\_SW）与
+累加精度（F16Acc/F32Acc）全部扫开的全参数实测（
+\texttt{notes\_\allowbreak{}v2\_\allowbreak{}sm120a.bin --bench --bench-all}，
+$M{=}N{=}K{=}8192$，fp16）：
+
+\begin{table}[H]
+\centering
+\caption{HGEMM CuTe Swizzle 实测（RTX PRO 5000，M=N=K=8192，fp16）}
+\label{tab:ch12-perf}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrr}
+\toprule
+Kernel & Max Err & TFLOPS/cuBLAS（加速比） \\
+\midrule
+HGEMM CuTe Swizzle (S=2, BLK\_SW=0, F16Acc) & 0.000e+00 & 243.0/246.5 (0.99x) \\
+HGEMM CuTe Swizzle (S=2, BLK\_SW=0, F32Acc) & 0.000e+00 & 201.3/164.2 (1.23x) \\
+HGEMM CuTe Swizzle (S=2, BLK\_SW=1, F16Acc) & 0.000e+00 & 250.2/246.5 (1.01x) \\
+HGEMM CuTe Swizzle (S=2, BLK\_SW=1, F32Acc) & 0.000e+00 & 226.0/164.2 (1.38x) \\
+HGEMM CuTe Swizzle (S=3, BLK\_SW=0, F16Acc) & 0.000e+00 & 257.2/246.5 (1.04x) \\
+HGEMM CuTe Swizzle (S=3, BLK\_SW=1, F16Acc) & 0.000e+00 & 265.9/246.5 (1.08x) \\
+HGEMM CuTe Swizzle (S=3, BLK\_SW=1, F32Acc) & 0.000e+00 & 242.4/164.2 (1.48x) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+七个配置的 Max Err 全部为 $0$，即与 fp64 参考逐位一致，精度无一行妥协。
+F16Acc 各行对比 cuBLAS 的 f16 累加（246.5 TFLOPS）：最低 0.99x、
+S=3 + BLK\_SW=1 达 \textbf{1.08x}——CuTe Swizzle 流水全面追平并小幅反超
+cuBLAS。F32Acc 各行对比 cuBLAS 的 f32 累加（164.2 TFLOPS）则\textbf{大幅
+超越}，最高 \textbf{1.48x}——同样的双缓冲与 swizzle 骨架，换成 f32 累加后
+相对 cuBLAS f32 的优势远大于 f16 档位。两个旋钮的收益方向一致：$S$ 从 2
+加到 3、BLK\_SW 从 0 开到 1 都带来正收益（如 F16Acc 下 243.0$\to$250.2$\to$
+257.2$\to$265.9 TFLOPS 单调上行），与本章「多级流水盖 gmem 延迟、block
+swizzle 缩 L2 footprint」两条主线互相印证。
+
 \section{实践经验}
 
 \begin{kaogu}[F3 + NCU 实证]{common.cuh L124-125：「降低到 1-way（fully conflict-free）」对本章 kernel 不成立}

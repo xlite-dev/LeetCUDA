@@ -747,6 +747,37 @@ f16 写回 R\_S 之间反复转换（\texttt{\_\allowbreak{}\_\allowbreak{}float
 贴近 SM120 roofline 拐点，FA 是典型的「装载敏感型」算子，这也解释了为何
 TMA 专线化的收益（$+20\%$）远大于再加深一级流水（$\approx$ 0）。
 
+原版 harness 全量 bench（\texttt{notes\_\allowbreak{}v2\_\allowbreak{}sm120a\_\allowbreak{}bin --bench
+--bench-all}，B$=$1、H$=$32、$N{=}8192$、$D{=}128$，dense）的逐配置结果
+如下表，含与 cuDNN 同精度基线的加速比对照：
+
+\begin{table}[H]
+\centering
+\caption{FA2 TMA MMA WS 实测（RTX PRO 5000，B=1 H=32 N=8192 D=128）}
+\label{tab:ch17-perf}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrr}
+\toprule
+Kernel & Max Err & TFLOPS/cuDNN（加速比） \\
+\midrule
+{\footnotesize FA2 TMA MMA WS (1 Consumer WG) (Sk=1, Sv=1, F16Acc)} & 2.441e-04 & 156.9/231.1 (0.68x) \\
+{\footnotesize FA2 TMA MMA WS (1 Consumer WG) (Sk=2, Sv=1, F16Acc)} & 2.441e-04 & 188.6/231.1 (0.82x) \\
+{\footnotesize FA2 TMA MMA WS (1 Consumer WG) (Sk=2, Sv=2, F16Acc)} & 2.441e-04 & 189.7/231.1 (0.82x) \\
+{\footnotesize FA2 TMA MMA WS (1 Consumer WG) (Sk=2, Sv=1, F32Acc)} & 1.526e-05 & 203.9/230.2 (0.89x) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+四点读数：其一，\textbf{Sk $=$ 2 较 Sk $=$ 1 提升约 $+20\%$}（156.9 $\to$
+188.6），两级 K 流水把 TMA 延迟推出关键路径，与上文复测表的 Sk 饱和结论一致；
+其二，\textbf{Sv 由 1 加深到 2 的边际收益极小}（188.6 $\to$ 189.7，约
+$0.6\%$）——V 的单 buffer 消费已饱和，V tile 传输能被 QK $+$ softmax 段完全
+掩盖，再加深 V 流水只多耗 smem；其三，\textbf{F32Acc 达 0.89x}（203.9）为
+四配置最快，且 Max Err 由 2.441e-04 降至 1.526e-05，速度与精度双赢，印证
+上文「累加档位同时影响数值与速度」的读数；其四，四个配置均低于 cuDNN
+同精度基线（0.68x$\sim$0.89x），差距随流水参数与累加档位收窄。
+
 \section{实践经验与考据说明}
 
 \begin{kaogu}[F2/F3 核校通过]{mbarrier 257 协议注释 vs 实际代码（L808 起）}

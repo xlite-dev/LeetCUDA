@@ -842,7 +842,8 @@ $\approx 295$~FLOP/B：\textbf{单看一个 CTA 的装载流，访存仍是短�
 性能复测；源码头注释与 README 均未给出 WGMMA kernel 的量化 TFLOPS，正文不引用
 任何未经复现的数字。复现条件：H100/H200/H800 上以 13.10~节命令编译运行并扩展
 bench（对照 notes-v2 的 bench 口径），数据落 \texttt{.\allowbreak{}tmp/\allowbreak{}book-bench/\allowbreak{}ch13/\allowbreak{}}
-供附录~B 汇总。
+供附录~B 汇总。本章 TMA+mbarrier 协议在 SM120 上配 mma.sync 的落地实现
+（TMA+MMA+WS）已在本机实测，见表~\ref{tab:ch14-perf}（14.6~节）。
 
 \section{实践经验与考据说明}
 

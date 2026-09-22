@@ -757,6 +757,45 @@ long-scoreboard / LG-throttle / MIO-throttle stall 分别放大
 写两个方向}，只优化 bank-conflict counter 会顾此失彼（该结论出自
 源码注释，属作者实测口径；本章复测 pad 路径与其吻合）。
 
+\textbf{FA2 MMA Stages 全变体 bench}（RTX PRO 5000 72GB，sm\_120，
+110 SM，CUDA 13.2；\texttt{notes\_\allowbreak{}v2\_\allowbreak{}sm120a.\allowbreak{}bin}
+\texttt{\_\allowbreak{}bench\_\allowbreak{}bench\_\allowbreak{}all}；FA 问题规模
+\texttt{B=\allowbreak{}1,\allowbreak{}H=\allowbreak{}32,\allowbreak{}N=\allowbreak{}8192,\allowbreak{}D=\allowbreak{}128}，
+dense 无 causal，对比 cuDNN 同精度基线）：
+
+\begin{table}[H]
+\centering
+\caption{FA2 MMA Stages 实测（RTX PRO 5000，B=1 H=32 N=8192 D=128）}
+\label{tab:ch16-perf}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrr}
+\toprule
+Kernel & Max Err & TFLOPS/cuDNN（加速比） \\
+\midrule
+FA2 MMA Stages (Sk=1, Pad, F16Acc) & 2.441e-04 & 127.6/231.1 (0.55x) \\
+FA2 MMA Stages (Sk=2, Pad, F16Acc) & 2.441e-04 & 156.3/231.1 (0.68x) \\
+FA2 MMA Stages (Sk=1, Pad, F32Acc) & 1.526e-05 & 140.9/230.2 (0.61x) \\
+FA2 MMA Stages (Sk=2, Pad, F32Acc) & 1.526e-05 & 163.5/230.2 (0.71x) \\
+FA2 MMA Stages (Sk=2, SwizzleQ, F32Acc) & 1.526e-05 & 163.8/230.2 (0.71x) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+三点观察：（1）\textbf{$kStagesK{=}2$ 双 stage 相比 $kStagesK{=}1$
+提升明显}——f16 路径 127.6$\to$156.3（$+22\%$），f32 路径
+140.9$\to$163.5（$+16\%$），多一级 K 流水把 cp.async 的加载与
+mma 计算更好地重叠，掩盖了 $B_c$ 列 K tile 的装载延迟；（2）
+\textbf{F32Acc 在精度提升约 16 倍}（1.526e-05 vs 2.441e-04，f32
+vs f16 累加）\textbf{的同时速度反而更快}（同 Sk 下 $+10\%\sim11\%$），
+与上文复测结论一致——省掉 3c/3e 的 half$\leftrightarrow$float
+整簇转换指令比 f32 累加器的寄存器开销更值；（3）\textbf{SwizzleQ}
+相对 Pad 的边际改善很小（163.8 vs 163.5，$+0.2\%$），大 $N$ 下
+swizzle 只微调 bank/wavefront 分布，不改变 compute-bound 本质。
+整体上该教学 kernel 为可读性牺牲了不少优化（约为 cuDNN 的
+0.55--0.71x），但 stages 流水、累加精度两个旋钮的收益方向与
+生产级 FA 实现一致。
+
 \section{实践经验与考据说明}
 
 \begin{kaogu}[F5 配置口径]{头注释 L33--37「Br=64 / Block(128,1,1) / 4 warps」与默认实例化不符}
