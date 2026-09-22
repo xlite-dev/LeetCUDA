@@ -344,7 +344,7 @@ $N_w$ \textbf{精确消去}：把输出列劈给更多 N-warp，同时把每-thr
 PV M4N2 仍是 $D/2$，而 $k_{Br}=64$ 强制下 M8N1 的 8 个 M-warp 有 4 个
 在 PV 相空转（QK 算力浪费 50\%）。其二，\textbf{WS（warp
 specialization）版 split-D}：consumer 的 \texttt{setmaxnreg} 上限 232
-装不下 $D=512$ 的 256-reg $O$ 累加器——所以 split-D 家族保持非 WS
+装不下 $D=512$ 的 256-reg $O$ 累加器，所以 split-D 家族保持非 WS
 结构（全体线程做 MMA，\texttt{tid==0} 顺手发 TMA，L28--30 注释），这与
 persist-D 的 WS 选择形成对照（29.4.2~节）。
 
@@ -516,7 +516,7 @@ $-0.3\sim-0.4\%$，输出 bitwise 一致），现在 launcher 默认
 
 stage 数的教训方向相反（PC-8）：m4n2 每级仅 12KB，99KB 容得下 7 级，
 但实测 s2$\to$s3 e2e 快 $9\sim13\%$（D=768、N=4096$\sim$16384，
-self+causal 合并口径），s4$\sim$s7 非单调更慢——launcher 的 stage 下限
+self+causal 合并口径），s4$\sim$s7 非单调更慢：launcher 的 stage 下限
 从 2 抬到 3（\texttt{cute\_fp8\_split\_d\_m4n2.cuh} L127--133）。s2 的问题
 是 K/V TMA 流水饿死（NCU 里 \texttt{@BRA}+\texttt{@NANOSLEEP} barrier
 自旋主导）。这与 persist-D 的「加深 stages 证伪」结论相反，根源在于

@@ -33,7 +33,7 @@ chunk 循环让「归约维度被切开」这件事也必须落在类型上：
 在 host 端用 CuTe 原语验证），再逐相位读 kernel（26.4 节），最后是常见坑、
 面试速查与最小测试。全章跟一条\textbf{数据流}走：Q/K 的 chunk 从 smem
 切片进来、在 $S$ 的 32 个寄存器里跨 chunk 累加、经 rowcol 视图做 online
-softmax 就地变成 $P$、再被 Aregs 重解释成 PV 的 A 操作数——每一步都只用
+softmax 就地变成 $P$、再被 Aregs 重解释成 PV 的 A 操作数。每一步都只用
 \emph{类型}回答「数据在哪、什么形状、谁持有」。两处布局变换（rowcol 与
 Aregs）的通用讲法在第~\ref{ch:25}~章 25.3.4 节已经展开，本章只补 Split-D
 语境下的增量。涉及算法推导（chunk 分解的数学、online softmax 的不变量、
@@ -71,7 +71,7 @@ $[B_r, D]$、$[B_c, D]$，TiledMma 的 $K$ 向一次覆盖 16 列，循环在 $N
 \end{enumerate}
 
 四个问题的共同点：它们\emph{都不是数值问题}（谁的浮点和谁一样、归约顺序也定
-了），而是\textbf{类型与布局问题}——tile 怎么切、fragment 怎么换解释、寄存器
+了），而是\textbf{类型与布局问题}：tile 怎么切、fragment 怎么换解释、寄存器
 怎么编号、循环与 stage 怎么对应。把这四个问题逐个翻译成 CuTe 的类型与布局，
 就是「用 CuTe 抽象表达 Split-D」的全部内容。
 
@@ -129,7 +129,7 @@ atom 重复数」（源码注释称之为 \texttt{EURepeat}）：
 读法：$M$ 向的 4 个 atom 位置被 4 个 warp 分完（$\mathrm{AtomLayout}$ 的
 $M$ 分量 $=4$，每 warp 负责 16 行，故 $M$ 向的重复数为 1）；$N$ 向没有
 atom-layout 的分工（$N$ 分量 $=1$），所以 $N$ 向的重复数就是
-$\mathrm{Tile}_N/8$——QK 是 8，PV 是 2。也就是说：
+$\mathrm{Tile}_N/8$：QK 是 8，PV 是 2。也就是说：
 
 \begin{quote}
   \textbf{$\mathrm{EURepeat}_N$ 就是「每个线程每个 k-step 发射的
@@ -243,7 +243,7 @@ TiledMma 定下来之后，每个线程持有多少寄存器就定了。这里�
 \end{equation}
 
 FFPA 的两处调用（L152 与 L218）目标形状都是 $(64,64)$，线程数都是 128，
-所以 \textbf{QK 的 $S$ 与 PV 的 $O$ 都是每线程 32 个 f32}——实测：
+所以 \textbf{QK 的 $S$ 与 PV 的 $O$ 都是每线程 32 个 f32}。实测：
 
 \begin{equation}
   \mathrm{frag}_S = \bigl((2,2),1,8\bigr) = 32\ \text{值/tid},\qquad
@@ -251,10 +251,10 @@ FFPA 的两处调用（L152 与 L218）目标形状都是 $(64,64)$，线程数�
   \label{eq:26-frag32}
 \end{equation}
 
-注意 $\mathrm{frag}$ 的第三 mode 是 8——那是 QK 的 $\mathrm{EURepeat}_N$
+注意 $\mathrm{frag}$ 的第三 mode 是 8：那是 QK 的 $\mathrm{EURepeat}_N$
 在 $S$ 上的投影；$O$ 的第三 mode 数字恰好也是 8，但它来自 PV 的
 「$64$ 列梯子被重复 8 次」而不是 EURepeat（$O$ 的 $C$ 形状 $\times$ 线程数
-决定了 total）。\textbf{两个 32 的来历不同，大小相同——这是 $S\to P$ 与
+决定了 total）。\textbf{两个 32 的来历不同，大小相同：这是 $S\to P$ 与
 $P\to O$ 两条接手链条能成立的前提。}
 
 \textbf{恒等式二（rowcol 视图的行列数）}。online softmax 要在
@@ -273,7 +273,7 @@ $\bigl((2,\mathrm{MMA\_M}), (2,\mathrm{MMA\_N})\bigr)$。FFPA 用它推两个
 $\mathrm{nrow}=2$ 的含义：\emph{每个线程只「拥有」2 行}，行内 16 列。
 $n16$ 的 $C$ fragment 里，一个线程的 4 个值的一半（行偏移 $+8$ 的那对）
 属于另一行；4 个线程（lane 的 $\text{id}/4$ 相同、$\text{id}\bmod 4$ 不同）
-拼成完整的一行——这正是源码里行归约只用 \texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor\_\allowbreak{}sync}
+拼成完整的一行：这正是源码里行归约只用 \texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor\_\allowbreak{}sync}
 掩码 1 与 2（后者把 4 个 lane 的两两组合并）的原因。第~\ref{ch:25}~章在
 手写版同步链里数过的「谁和谁在同一行」，在 FFPA 里被压缩成两个常量。
 
@@ -324,11 +324,11 @@ inverse$\circ$compose 代数法都在讲同一件事）。放到 Split-D 的语�
 是\emph{同一行、相邻两列}（$d_0$ 即列 $+1$）；高 2 个值（$d_1=1$）是
 行 $+8$ 的另一对。而式~\eqref{eq:26-amap}
 的 $A$ 映射里，$d_0$ 同样是「$k$ 向相邻 2 值」。于是「C 的 4 个值」与
-「A 的 4 个值」在寄存器里一一对应——\textbf{A 的 $k$ 向 2 值 $=$ C 的
+「A 的 4 个值」在寄存器里一一对应：\textbf{A 的 $k$ 向 2 值 $=$ C 的
 列向 2 值，A 的行维与 C 的行维本来就一致}。第~\ref{ch:25}~章把这条性质
 记作「不是通用性质，换 atom 必须重推」（源码 L2360 附近的注释）；在 FFPA
 里它的意义更重：$P$ 的「K 向」就是 $S$ 的「列向」，而那一维正是 PV 的
-归约维——\textbf{重解释的方向恰好对齐 MMA 的约定，所以不需要 shuffle、
+归约维：\textbf{重解释的方向恰好对齐 MMA 的约定，所以不需要 shuffle、
 不需要过 smem}。图~\ref{fig:26-camap} 把这两条映射放到同一批格子上逐位核对：
 同一个 lane 在两图里高亮的位置完全相同，变的只是值编号与分组。
 
@@ -546,7 +546,7 @@ $d_2{=}1$ 的 4 格来自 C 的第二个 $n8$ atom（虚线半块）。\textbf{�
 第~\ref{ch:19}~章解释了「不用 stride-0 stage layout」的动机；从布局代数
 的角度补一句：给 tensor 加一个 stride-0 的伪维后，几乎所有布局变换
 （\texttt{composition}、\texttt{coalesce}、\texttt{tile\_\allowbreak{}to\_\allowbreak{}shape}）都会
-把它当作「同一元素重复」处理——\texttt{cosize} 不再等于池大小、
+把它当作「同一元素重复」处理：\texttt{cosize} 不再等于池大小、
 \texttt{partition} 的中间结果也要另算。CuTe 不阻止你写指针加法，但一旦
 把「物理偏移」伪装成「布局维度」，第~\ref{ch:20}~章的代数就会被你自己
 破坏。FFPA 的选择是：\textbf{布局只描述一块 chunk，池的偏移交给指针}。
@@ -555,11 +555,11 @@ $d_2{=}1$ 的 4 格来自 C 的第二个 $n8$ atom（虚线半块）。\textbf{�
 gmem 侧的 chunk 由 \texttt{local\_tile} 切出（坐标是 $(q\_tile, d\_chunk)$，
 $d$ 从 $0$ 滚到 $\mathrm{Sk}{-}1$）；smem 侧每轮把 \texttt{q\_base} 加上
 环状槽位偏移 \texttt{qk\_read} $\times$ \texttt{k\allowbreak{}QChunk\allowbreak{}Elements}，重新
-包成一个 \texttt{SmemLayoutQ} 的 tensor——\textbf{类型是常量、指针是
+包成一个 \texttt{SmemLayoutQ} 的 tensor。\textbf{类型是常量、指针是
 变量}：台子换了、剧本不变。随后 \texttt{partition\_\allowbreak{}fragment\_\allowbreak{}A} 与
 \texttt{s2r\_thr\_q} 的 \texttt{partition\_S} 在这个「一块 chunk」的视图
 上照常工作（两者的参数都是 \texttt{sQ\_stg}）。对照第~\ref{ch:25}~章的三级搭建，那里 smem 是常驻的几段静态视图，
-这里换成了\textbf{按 stage 轮转的池}——对 CuTe 而言两者没有区别，都是
+这里换成了\textbf{按 stage 轮转的池}：对 CuTe 而言两者没有区别，都是
 「带 layout 的 tensor」；流水的推进则是 \texttt{qk\_read}/\texttt{qk\_write}
 两个模 $\mathrm{Sk}$ 的计数器加 \texttt{cp\_\allowbreak{}async\_\allowbreak{}wait\allowbreak{}<Sk-2>}，与第~\ref{ch:25}~章
 实现 1 的组栈策略同构（细节见 26.4.5 节）。
@@ -645,7 +645,7 @@ $=128$\,bit，正好是 \texttt{cp.\allowbreak{}async.\allowbreak{}cg.\allowbrea
 线程数一旦与 TiledMma 的 warp 划分一致，G2S 的 \texttt{tid} 与 MMA 的
 \texttt{tid} 就是\emph{同一个坐标系}，\texttt{partition\_S} /
 \texttt{partition\_D} 的转换全部退化。代价是搬运带宽砍半（128 线程 vs 256），
-收益是零映射开销——第~\ref{ch:19}~章的性能节从吞吐角度讨论过这笔账。
+收益是零映射开销：第~\ref{ch:19}~章的性能节从吞吐角度讨论过这笔账。
 
 \subsection{V 的转置视图与 fragment 预计算}
 
@@ -735,7 +735,7 @@ SW128 的 XOR 只改地址、不改归属，所以推 fragment 布局时必须�
 
 还有一个容易忽略的点：B fragment 的布局对 4 个 M-warp 是\emph{重复}的
 （$K$ 向的 4 个 atom 都要被每个 warp 看到），所以 \texttt{partition\_\allowbreak{}fragment\_\allowbreak{}B}
-在 128 线程上给出的每线程元素数（$\ge$ 128）远大于 C 的 32——这部分寄存器
+在 128 线程上给出的每线程元素数（$\ge$ 128）远大于 C 的 32：这部分寄存器
 是「共享副本」而非私有状态，读寄存器压力账本时不能把它算进 \texttt{exp2}
 这类逐元素操作的成本里。
 
@@ -798,7 +798,7 @@ QK 段（L217--270）是整个 kernel 最能体现「循环结构 vs 类型」�
 \lstinputlisting[linerange={273-303},firstnumber=auto,
   title={ffpa\_attn.cuh L273-303（Phase 2：rowcol 视图上的 online softmax + \texttt{convert\_\allowbreak{}type} 与 \texttt{Aregs}）}]{../ffpa_attn.cuh}
 
-这段的每一行都值得对照第~\ref{ch:25}~章实现 1 的 softmax 段读——两者
+这段的每一行都值得对照第~\ref{ch:25}~章实现 1 的 softmax 段读：两者
 几乎逐字相同，因为 FFPA 复用同一套「rowcol 视图 + 4-lane \texttt{shfl\_xor}
 归约」的配方。其中三处是 FFPA 特有的：
 
@@ -826,10 +826,10 @@ PV 段（L307--353）分两半。前半是 chunk 流水与 $O$ 的 rescale：
   title={ffpa\_attn.cuh L307-331（Phase 3 前半：\texttt{v\_write\_pv} 与 Phase 0 对接；$O_c$ 的 rescale）}]{../ffpa_attn.cuh}
 
 注意 \texttt{v\_write\_pv = (kStagesV > 1) ? (kStagesV - 1) : 0} 这个初值：
-Phase 0 已经预取了 $\mathrm{Sv}-1$ 个 chunk，PV 循环延续同一套环状槽位——
+Phase 0 已经预取了 $\mathrm{Sv}-1$ 个 chunk，PV 循环延续同一套环状槽位：
 \textbf{两个相位共用一份槽位账本}，改任何一个都要改另一个（26.7 节坑四）。
 rescale 的操作对象是 \texttt{tCrO} 的 rowcol 视图：行方向乘
-\texttt{row\_\allowbreak{}scale[row]}——与 softmax 的行状态同一坐标系，行方向
+\texttt{row\_\allowbreak{}scale[row]}，与 softmax 的行状态同一坐标系，行方向
 「每线程 2 行」的约定再次复用。
 
 后半是交接的核心（L330--352）：
@@ -856,7 +856,7 @@ rescale 的操作对象是 \texttt{tCrO} 的 rowcol 视图：行方向乘
 \texttt{partition\_\allowbreak{}fragment\_\allowbreak{}B(sV\_stg)} 用\emph{带 swizzle 的 storage 视图}
 只是为了拿到「数据指针的划分」；元素的\emph{解释}立刻换回预计算的
 \texttt{tCrV\_layout}（来自 nonswizzle 推导）。前者保证指针落在正确的 smem
-槽位，后者保证逻辑坐标与 MMA 的约定一致——\textbf{两份视图各管一半，
+槽位，后者保证逻辑坐标与 MMA 的约定一致：\textbf{两份视图各管一半，
 混用任何一份都会错}。
 
 \subsection{Phase 4：归一化与写回}
@@ -977,7 +977,7 @@ M-warp 重复——smem 只承载 Q/K/V 的 chunk 流水。}
 
 读数时注意三点口径：（1）这是 \textbf{TMA + WS 版}（256 线程、双角色）的数字，
 不是本章精读的 cp.async 版；（2）设备标称 SM120a RTX PRO 5000，而本仓库
-README 的同类标称常写 RTX 5090——同一 sm120 家族的两种卡，绝对值不可直接
+README 的同类标称常写 RTX 5090，同一 sm120 家族的两种卡，绝对值不可直接
 互比（第~\ref{ch:19}~章的核对与 CHECKLOG 记录同此）；（3）「1.94x」是相对
 cuDNN SDPA 的加速比，比较对象与精度配置（f16 输入、f32 累加）需与 bench
 脚本核对后才可引用。
@@ -1004,9 +1004,9 @@ cuDNN SDPA 的加速比，比较对象与精度配置（f16 输入、f32 累加�
 \textbf{坑一：推 V 的 fragment 布局必须剥掉 swizzle。}
 \texttt{partition\_\allowbreak{}fragment\_\allowbreak{}B} 要的是「值的线程归属」，而 swizzle 只改变
 元素的 smem 地址。直接用带 SW128 的 \texttt{Smem\allowbreak{}Layout\allowbreak{}Vt} 去推，XOR
-置换会混进逻辑坐标，fragment 布局与真值错位——正确做法是
+置换会混进逻辑坐标，fragment 布局与真值错位：正确做法是
 \texttt{get\_\allowbreak{}nonswizzle\_\allowbreak{}portion} 之后再推（L137--141）。数据指针仍走
-\emph{带 swizzle} 的 storage 视图——两份视图各管一半。
+\emph{带 swizzle} 的 storage 视图：两份视图各管一半。
 
 \textbf{坑二：\texttt{convert\_\allowbreak{}type} 与 \texttt{Aregs} 的先后顺序。}
 必须先类型转换、再布局重解释（L301--303）。反序时，f16 的打包与
@@ -1026,7 +1026,7 @@ QK 每轮末尾（L269）与 PV 每轮末尾（L350）的同步不是装饰：�
 读过的 smem 槽位」在下一轮被覆写之前所有线程都已读完；删掉它，表现是
 高频偶发数值错误，且随 stage 数增大而加剧。
 
-\textbf{坑六：行状态只有 2 个，但列有 16 个——shfl 掩码只到 2。}
+\textbf{坑六：行状态只有 2 个，但列有 16 个：shfl 掩码只到 2。}
 \texttt{row\_max}/\texttt{row\_sum} 的长度是 \texttt{kORows}$=2$，
 行内归约靠 \texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor\_\allowbreak{}sync} 的掩码 1 与 2（4 个 lane 一组，
 L281--282 与 L291--292）。多加一层掩码 4 会把\emph{另一个 warp 段}的行
@@ -1035,7 +1035,7 @@ L281--282 与 L291--292）。多加一层掩码 4 会把\emph{另一个 warp 段
 \textbf{坑七：chunk 宽度、smem 池、TMA box 三者必须同步改。}
 把 \texttt{kDChunk} 从 64 改成别的值时，SW128 原子、TMA box
 （\texttt{Shape\allowbreak{}<\_\allowbreak{}64,\allowbreak{}\_\allowbreak{}64>}）、\texttt{kDChunks} 与 V 的 fragment 预计算
-全部要跟着动——「一个 64 改三处」是这一族 kernel 的固定税。
+全部要跟着动：「一个 64 改三处」是这一族 kernel 的固定税。
 
 \section{面试要点速查}
 

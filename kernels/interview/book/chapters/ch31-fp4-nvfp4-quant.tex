@@ -67,7 +67,7 @@ fp4 的容差天然比 fp8 宽一个量级的格式层根源。}
 \end{figure}
 ffpa-attn 的 fp4 路径移植自 SageAttention3 的 Blackwell kernel
 （\texttt{quantize\_fp4.cuh} 头注释 L1--14），跑在自研的 persist-D 骨架
-上。本章讲\textbf{量化链}——主 kernel 之前的前处理；第~\ref{ch:32}~章
+上。本章讲\textbf{量化链}：主 kernel 之前的前处理；第~\ref{ch:32}~章
 讲主 kernel 与两级 P 量化。源码锚点：
 \texttt{cute/fp4/quantize\_fp4.cuh}（1642 行）、
 \texttt{delta\_s.cuh}（451 行）、\texttt{fp4\_gemm.cuh}（276 行）、
@@ -99,7 +99,7 @@ smooth-Q/K 是\textbf{强制开启，不是选项}（skill §6.2）：e2m1 的 �
 \end{enumerate}
 
 \textbf{P 的困难留给下一章}。Q/K/V 都能离线校准，唯独 $P$ 是 kernel 内
-softmax 现场产物，其 scale 只能在固定域内做文章——SA3 的两级 P 量化是
+softmax 现场产物，其 scale 只能在固定域内做文章：SA3 的两级 P 量化是
 fp4 路径精度成立的关键一环，数学与实现见第~\ref{ch:32}~章。
 
 \section{数学原理}
@@ -128,7 +128,7 @@ Table 1 中精度低于 NVFP4（ue8m0 只有 8 bit 指数无尾数，SF 本身�
 100\%），ffpa 未采用。
 
 \textbf{SF 的双重身份}。$s_{block}$ 既是量化除数又是 dequant 乘数，
-而 ue4m3 只有 3 bit 尾数——SF 自身的舍入误差（6.25\%）会整体作用于
+而 ue4m3 只有 3 bit 尾数，SF 自身的舍入误差（6.25\%）会整体作用于
 16 个元素：若块 $\mathrm{amax}$ 落在 ue4m3 的窄域之外，或行内动态范围
 极端（causal 早行 $P$ 近 one-hot），SF 编码误差就会放大。两级 P 量化
 （下一章）正是 SA3 对 C2 挑战（$P$ 以小值为主的分布使块
@@ -354,7 +354,7 @@ $64{\times}4$ 的 256B atom，atom 内按 16 行子块交错。写侧
 小 D 场景把整条 Q/K/V 量化链合成一个 launch：
 \texttt{fp4\_quant\_fused\_qkv\_kernel}（L1024 起）。grid 的
 blockIdx.x 切成三段 [Q tiles | K tiles | V tiles]，Q 段顺带产出
-$q_m$——均值块恰等于量化 tile，归约是块内 smem 归约，原先整张量扫
+$q_m$：均值块恰等于量化 tile，归约是块内 smem 归约，原先整张量扫
 一遍的 \texttt{q\_mean} pass 直接消失（L1026--1032 注释）。
 \texttt{kHadamard} 下 Q 段还在 smem 里对 $q_m$ 做行内 WHT
 （ping-pong 蝶形），预旋转 bias $q_m^{rot}$ 不再需要独立 launch；
@@ -433,13 +433,13 @@ dispatch（launcher
 
 \textbf{wmma 版}（\texttt{delta\_s\_wmma\_kernel}，L37--161）：CTA
 算一个 $(128,128)$ 输出 tile，8 warp 各持 16 行、8 个 wmma n-tile。
-K 归约（$kHeadDim$）按 64 元素 chunk 分批 staging——全量 A/B 会要
+K 归约（$kHeadDim$）按 64 元素 chunk 分批 staging：全量 A/B 会要
 $128\times(D{+}8)\times2\times2$ B，$D\ge192$ 时破 99KB 预算；A/B 落在
 $2\times128\times72\times2=36$KB 窗口，epilogue 时同一片 smem 复用为
 $128\times136$ float 的 f32 累加器 staging（68KB，L40--46 注释）。
 行/列越界零填（无 OOB gmem 读），epilogue 逐元素减一次 $q_{km}$、
 tail 列混写零（L138--160）。MMA 用\textbf{普通 fp16 wmma 而非
-blockscale}——该 kernel 是 memory-bound（SM 占用 $\sim$10\%），低精度
+blockscale}：该 kernel 是 memory-bound（SM 占用 $\sim$10\%），低精度
 MMA 无收益（L10--13 注释）。
 
 \textbf{CuTe/TMA 版}（\texttt{delta\_s\_cute\_kernel}，L163 起）：同
@@ -485,13 +485,13 @@ $t\to t$ 直接对齐（\texttt{fp4\_pscale.cuh} L523--524）；置换补偿只
   \item \textbf{attn\_bias 注入}：bias 列同样要过 $kv\_perm32(j)$
         （\texttt{fp4\_gemm.cuh} L55--60），gmem 与 smem 两个变体同款。
 \end{itemize}
-tile 级跳过（\texttt{mask\_start\_tile}/$T_{c,eff}$）不受影响——
+tile 级跳过（\texttt{mask\_start\_tile}/$T_{c,eff}$）不受影响：
 $\pi$ 是每 32 列窗口内的双射，tile 粒度的 causal 边界公式保持原样。
 
 \subsection{subbyte 寻址的陷阱}
 
 e2m1 是 4 bit 类型。CuTe 里 e2m1 的 smem tensor \textbf{必须}用
-\texttt{make\_smem\_ptr<Element>(void*)} 构造——该重载包一个
+\texttt{make\_smem\_ptr<Element>(void*)} 构造：该重载包一个
 \texttt{subbyte\_iterator}，tensor 切片按 bit 推进；若手滑写成
 \texttt{reinterpret\_cast<Element*>}（对 1 字节指针语义取址），偏移按
 \texttt{sizeof==1B} 缩放，\textbf{实际地址差 2 倍}，stage$\ge$1 的
@@ -824,7 +824,7 @@ persist-D（第~\ref{ch:29}~章表 29.2 的 1.26--1.70x），来源不在 MMA
 直接受益（skill §6.6：attn kernel 本身快 $\sim$23\%）。(2) D=192 的
 474T 是全家族峰值，D=256 回落（kStages 从 3 降 2，L51--56）。(3)
 $\sim$1ms 量级的前处理链意味着\textbf{小 $N_q$（cross/decode）结构
-性不划算}——以 $D{=}192$（e2e 3.48ms）计占比约 30\%；$N_q$ 缩小
+性不划算}：以 $D{=}192$（e2e 3.48ms）计占比约 30\%；$N_q$ 缩小
 时主 kernel 按 $N_q\cdot N_{kv}$ 缩、前处理几乎不缩，占比急速恶
 化。
 

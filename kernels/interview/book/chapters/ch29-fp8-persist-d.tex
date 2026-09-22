@@ -13,7 +13,7 @@ persist-D，全文件 1036 行）。它是 ffpa-attn 全仓库工程密度最高
 第~\ref{ch:31}--\ref{ch:32}~章的 fp4 家族都建立在它引入的机制之上。
 
 本章的主线只有一句话：\textbf{让所有量化 scale 因子要么精确消去、要么折进
-本来就要做的操作}。理想境界是「除 round() 外无任何额外数学误差源」——所有
+本来就要做的操作}。理想境界是「除 round() 外无任何额外数学误差源」：所有
 反量化都是精确代数操作，不是近似。围绕这条主线展开五组机制：
 \begin{enumerate}[itemsep=0pt,topsep=2pt]
   \item \textbf{QK scale 折进 exp2 系数}：$\delta_Q\delta_K$ 与 softmax scale
@@ -66,7 +66,7 @@ scale（布局随粒度）、smooth-K 的 fp32 均值（lse 修正用）。主 k
 
 persist-D 服务 $D\in\{32,64,\dots,224\}$（32 的倍数）：Q tile 整块常驻、
 K/V 沿序列方向分块流过。$D$ 更大时 Q tile 无法整块驻留寄存器，交给
-split-D（M8N1，$224<D<768$）与 M4N2（$D\ge768$）——见第~\ref{ch:30}~章。
+split-D（M8N1，$224<D<768$）与 M4N2（$D\ge768$）：见第~\ref{ch:30}~章。
 本机（RTX PRO 5000）编译的 headdim 集为 $\{64,128,192,256,320,512\}$，
 本章 bench 覆盖 persist-D 域内的 64/128/192。
 
@@ -133,7 +133,7 @@ $\mathrm{amax}(V)$（29.3.2），lazy 的安全条件是膨胀后不越 e4m3 天
   T=4\Rightarrow \mathrm{amax}(V)\le28 .
 \end{equation}
 但 ffpa 的 traits 把 fp8 的 \texttt{kLazyRescale} 直接置 \texttt{false}
-（\texttt{attn\_traits.cuh} L31--37）：注释原话——跳过 rescale 会让发射 P
+（\texttt{attn\_traits.cuh} L31--37）：注释原话，跳过 rescale 会让发射 P
 以最高 $2^T$ 膨胀，而 per-channel V 路径（balanced narrowing）的发射
 $P\cdot448$ 已真正铺满量程、零 headroom，膨胀必然 satfinite 损坏 PV。而 f16
 inst\_buf 路径把 rescale 融进吸收 FFMA 后「立即 rescale 几乎免费」，
@@ -146,7 +146,7 @@ SA2++ 的 \texttt{mma.f16.f8.f8.f16} 让 PV 累加器走 f16 域（把 $o\_acc$
 从 tensor-core 反馈链上摘下来，避开 f8f8f32 累加器 22-bit 尾数损失）。
 SA2++ 论文的核算口径是\textbf{单条 MMA 指令}：$m16n8k32$ 的 K 深度 32，逐元素
 乘积需满足 $P_r\times V_r\le65504/32=2047$，两侧同收（$P_r=224,V_r=4.5$）。
-ffpa 的累加结构不同——PV 经 \texttt{gemm\_rs} 跨整个 $kBc$ 块累进同一组 f16
+ffpa 的累加结构不同：PV 经 \texttt{gemm\_rs} 跨整个 $kBc$ 块累进同一组 f16
 \texttt{inst\_buf} 寄存器、之后才一次性 FFMA 吸收进 f32 $o\_acc$
 （29.4.3~节 Phase 4），有效界是\textbf{整 tile 累加}：
 \begin{equation}
@@ -280,7 +280,7 @@ struct FFPAAttnCuTePersistDFP8Traits {
 非转置 LDSM\_N atom}：V 已在 gmem 里转置好，kernel 里没有转置视角。
 \textbf{其二，TiledMma 的 K-tile 是 32}（atom 的 k16$\times$2），fp16 家族
 是 16。\textbf{其三，swizzle atom 按行字节选}（L45--50）：Q/K 行 $D$ 字节、
-$V^{\top}$ 行 $kBc$ 字节，各自落 SW128/SW64/SW32——同一张 smem 图、两类
+$V^{\top}$ 行 $kBc$ 字节，各自落 SW128/SW64/SW32：同一张 smem 图、两类
 行宽各选各的 swizzle atom。
 \textbf{其四，kBc 随 D 切换}：launcher 对 $D\le128$ 实例化 $kBc{=}128$、
 $D>128$ 用 64（smem 预算）。
@@ -289,7 +289,7 @@ $D>128$ 用 64（smem 预算）。
 
 128 线程 producer（TMA 装载）+ 256 线程 consumer（全部计算），
 \texttt{\_\_launch\_bounds\_\_(384,1)}；寄存器经 \texttt{setmaxnreg}
-重分配——producer 释放到 32，consumer 拿到 232。fp8 路径的 consumer
+重分配：producer 释放到 32，consumer 拿到 232。fp8 路径的 consumer
 无条件拿 232（fp16 版在 D=128 时只需 170）：P 量化 + row-sum + rescale
 状态把寄存器压力抬上来了，注释记录「静态 170 上限会 spill 约 60 个寄存器」。
 
@@ -316,8 +316,8 @@ $D>128$ 用 64（smem 预算）。
 \end{lstlisting}
 
 两层设计叠加。\textbf{Q 的 s2r 常驻}（\texttt{kPersistQs2r} 默认 true）：
-Q 在 kv 循环前一次性读进寄存器，之后 QK 步骤全是 gemm\_rs（K-only smem 读）
-——D=128 实测 $-8\mu s$、零 spill；Q 的 smem 区（slot 0）随即死亡。
+Q 在 kv 循环前一次性读进寄存器，之后 QK 步骤全是 gemm\_rs（K-only smem 读）：
+D=128 实测 $-8\mu s$、零 spill；Q 的 smem 区（slot 0）随即死亡。
 \textbf{槽位轮转}让复用区承接「最后一个 K stage」而非第一个：它的首次 TMA
 发射与首次消费都发生在稳态（隔着一整 tile 计算），\texttt{q\_consumed} 的
 等待被完全藏住。省下的 16KB smem 买的是 L1 容量而非 occupancy：smem/L1
@@ -334,7 +334,7 @@ QK0+softmax 之后才被消费，先发永远安全）；consumer 在等 Q 之�
 consumer 的 kv 循环（\texttt{\#pragma unroll 1}，逐 tile）：
 
 \textbf{Phase 1 -- QK GEMM}（L583--601）：等 \texttt{k\_full}、fence、
-\texttt{gemm\_rs(tCrS, tCrQ, tCrK, ...)}——Q 在寄存器、K 从 smem 流入。
+\texttt{gemm\_rs(tCrS, tCrQ, tCrK, ...)}：Q 在寄存器、K 从 smem 流入。
 int8 变体把 s32 累加器\textbf{原位} cast 成 f32（复用同一组 4B 寄存器），
 零额外寄存器。scale 粒度在读取处分叉：per-block 的 $k_s$ 是每 tile 一个
 标量；per-thread 的 $k_s$ 按
@@ -374,7 +374,7 @@ exp2 偏移，softmax \textbf{直接发射} $\tilde P = P\cdot v_s\cdot448$，�
 \end{lstlisting}
 
 fixed 模式下 softmax 已经发射满量程值，pack 只做 f32$\to$e4m3x2 打包 +
-寄存器重排——\texttt{kReorgFree} 选择 29.3.5~节的置换打包（4 PRMT、
+寄存器重排：\texttt{kReorgFree} 选择 29.3.5~节的置换打包（4 PRMT、
 零 SHFL），fallback 的跨 lane \texttt{ReorgC8bitToA8bit} 保留编译、
 由 split-D 家族继续使用。
 
@@ -950,12 +950,12 @@ $ python -m ffpa_attn.bench --fwd-backend cuda --cuda-impl fp8 \
 
 \textbf{实验 1（scale 流向追踪）}：把 \texttt{persist\_d.cuh} 的
 Phase 1--5 各自在纸上标出「哪个 scale 在哪条指令上被乘/消去」，对照
-图~\ref{fig:29-scale-folding}——练到能默写三步协议。
+图~\ref{fig:29-scale-folding}，练到能默写三步协议。
 \textbf{实验 2（发射域 A/B）}：\texttt{FFPA\_FP8\_PQUANT\_PER\_ROW=1}
 重跑 [A]，观察精度提升与速度代价（per-row 归约 + $o\_tile$ 暂存）。
 \textbf{实验 3（bug 定位复演）}：按 29.7.1~节步骤用 PyTorch 复现 D=192
 的行模式直方图（脚本思路：per-row max diff $>$ 0.1 统计
-$row\bmod128$）——把「速度好+均值好 $\neq$ 正确」变成肌肉记忆。
+$row\bmod128$），把「速度好+均值好 $\neq$ 正确」变成肌肉记忆。
 \textbf{实验 4（lazy rescale 证伪）}：读 \texttt{attn\_traits.cuh}
 L31--37 注释，回答「为什么 fp8 关掉 lazy rescale 而 fp16 开着」。
 

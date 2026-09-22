@@ -100,7 +100,7 @@ S : \Z_M \times \Z_{NP} \longleftrightarrow \Z_M \times (\Z_N \times \Z_P)
 \end{align*}
 在二维坐标 $(m,q) \in \Z_M \times \Z_{NP}$ 与自然坐标 $(m,(n,p)) \in \Z_M \times (\Z_N \times \Z_P)$ 之间建立映射。
 
-层次形状与坐标的一个直接推论是：张量算法可以按照对它们而言最自然的形状来编写（第~\ref{sec:algorithms}~节）——{\tt COPY} 中的向量用一维形状，{\tt GEMM} 中的矩阵用二维形状，{\tt batched-GEMM} 中的张量用三维形状，等等——同时仍能接受被折叠（fold）成与算法规约弱同余的层次化形状张量（第~\ref{sec:compatibility}~节）。数据张量的形状通常表示为一列扁平的整数，它可以被任意折叠成泛型张量算法所接受的形状。另外，由于张量的每个模都关联着一个用于索引数据的步幅（stride）（第~\ref{sec:stride}~节），这种模的折叠使得我们能够表示远比 {\tt COPY} 中的简单连续数组或 {\tt BLAS GEMM} 中的行主序、列主序矩阵复杂得多的数据布局（第~\ref{sec:layout}~节）。
+层次形状与坐标的一个直接推论是：张量算法可以按照对它们而言最自然的形状来编写（第~\ref{sec:algorithms}~节）：{\tt COPY} 中的向量用一维形状，{\tt GEMM} 中的矩阵用二维形状，{\tt batched-GEMM} 中的张量用三维形状，等等，同时仍能接受被折叠（fold）成与算法规约弱同余的层次化形状张量（第~\ref{sec:compatibility}~节）。数据张量的形状通常表示为一列扁平的整数，它可以被任意折叠成泛型张量算法所接受的形状。另外，由于张量的每个模都关联着一个用于索引数据的步幅（stride）（第~\ref{sec:stride}~节），这种模的折叠使得我们能够表示远比 {\tt COPY} 中的简单连续数组或 {\tt BLAS GEMM} 中的行主序、列主序矩阵复杂得多的数据布局（第~\ref{sec:layout}~节）。
 
 下一小节定义这种相容性（compatibility）的概念，以及形状内各坐标集合之间的这些关系。
 
@@ -292,7 +292,7 @@ i &\mapsto \Bigl(i \bmod \abs{S_0}, \floor{\frac{i}{\abs{S_0}}} \bmod \abs{S_1},
 \Z^{(\ast,\ast)} = \{ (a,b) \ \mid \ a,b \in \Z \} \quad \text{且} \quad \Z^{(\ast,(\ast,\ast))} = \{ (a,(b,c)) \ \mid \ a,b,c \in \Z \}
 \end{align*}
 
-注意，{\tt idx2crd} 对所有整数——等价地说，对 $\Z^{\abs{S}}$ 中的坐标——都有良定义，而不仅限于 $\Z_{\abs{S}}$ 中的整数。当它在某个整数 $i \geq \abs{S}$ 上求值时，它总会返回一个相对于形状 $(\abs{S_0},\abs{S_1},\ldots,\abs{S_{r-1}})$ 越界的坐标 $(c_0,c_1,\ldots,c_{r-1})$。相比之下，{\tt crd2idx} 无法保证对越界坐标的输入给出越界的结果。因此，{\tt crd2idx} 与 {\tt idx2crd} 只有在界内坐标上求值时才互为逆。
+注意，{\tt idx2crd} 对所有整数（等价地说，对 $\Z^{\abs{S}}$ 中的坐标）都有良定义，而不仅限于 $\Z_{\abs{S}}$ 中的整数。当它在某个整数 $i \geq \abs{S}$ 上求值时，它总会返回一个相对于形状 $(\abs{S_0},\abs{S_1},\ldots,\abs{S_{r-1}})$ 越界的坐标 $(c_0,c_1,\ldots,c_{r-1})$。相比之下，{\tt crd2idx} 无法保证对越界坐标的输入给出越界的结果。因此，{\tt crd2idx} 与 {\tt idx2crd} 只有在界内坐标上求值时才互为逆。
 
 \wpsh{步幅（Stride）}
 \label{sec:stride}
