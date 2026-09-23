@@ -1,7 +1,7 @@
 ---
 name: write-leetcuda-book
 description: >-
-  把 LeetCUDA kernels/interview 教学源码（base/sgemv/sgemm/hgemm/flash_attn/ffpa_attn.cuh）+ ffpa-attn CuTe sm_120 源码（csrc/cuffpa/cute fp8/fp4，commit 861d75e）写成中文 CUDA 技术书（5 Part 35 章 + CuTe 白皮书导读 + 5 附录，XeLaTeX→PDF，终态 512 页零 error）。RFC-0..L 已全部完成（2026-09-22），当前任务形态 = 增补章（RFC-L 模式）/复审/勘误/图重绘。当任务涉及：撰写或修改书稿章节（chapters/chNN*.tex）、每章最小测试（book/tests/chNN_*.cu）、ffpa_attn.bench 验证、知乎资料收集与提炼、TikZ inline 图新建（主路径）与存量 drawio 图维护、源码注释核查、勾选 RFC 进度、构建/审校 book.pdf 时使用。规范源=BOOK_PLAN.md（章节结构/每章 DoD 八条/源码冻结/容差表/图片管线），执行跟踪=RFC.md（RFC-0..L 里程碑 + 各章卡片 + 图清单 + 知乎参考种子表）。
+  把 LeetCUDA kernels/interview 教学源码（base/sgemv/sgemm/hgemm/flash_attn/ffpa_attn.cuh）+ ffpa-attn CuTe sm_120 源码（csrc/cuffpa/cute fp8/fp4，commit 861d75e）写成中文 CUDA 技术书（5 Part 36 章 + CuTe 白皮书导读 + 5 附录，XeLaTeX→PDF，终态 530 页零 error）。RFC-0..M 已全部完成（2026-09-23），当前任务形态 = 增补章（RFC-L/M 模式）/复审/勘误/图重绘。当任务涉及：撰写或修改书稿章节（chapters/chNN*.tex）、每章最小测试（book/tests/chNN_*.cu）、ffpa_attn.bench 验证、知乎资料收集与提炼、TikZ inline 图新建（主路径）与存量 drawio 图维护、源码注释核查、勾选 RFC 进度、构建/审校 book.pdf 时使用。规范源=BOOK_PLAN.md（章节结构/每章 DoD 八条/源码冻结/容差表/图片管线），执行跟踪=RFC.md（RFC-0..M 里程碑 + 各章卡片 + 图清单 + 知乎参考种子表）。
 user-invocable: true
 ---
 
@@ -12,13 +12,13 @@ user-invocable: true
 | 文件 | 角色 |
 |---|---|
 | `BOOK_PLAN.md` | **规范源**：5 Part 35 章+导读结构、每章模板与 DoD 八条（含 Part V 特化 DoD）、素材/测试/图表/公式工程、LaTeX 管线、风险与验收 |
-| `RFC.md` | **执行跟踪**：RFC-0..L 里程碑 checkbox（B 已取消）、每章执行卡片、图清单登记表、知乎参考种子表 |
+| `RFC.md` | **执行跟踪**：RFC-0..M 里程碑 checkbox（B 已取消）、每章执行卡片、图清单登记表、知乎参考种子表 |
 
 绝对路径：`/workspace/dev/vipshop/LeetCUDA/kernels/interview/book/skills/write-leetcuda-book/`（已软链到 `/workspace/dev/vipshop/.github/skills/write-leetcuda-book`）。
 
 ## 工作流（每次任务）
 
-1. **领任务**：读 `RFC.md` 里程碑总览表 + 对应章节的执行卡片。RFC-0..L 已全部收口（RFC-B 于 2026-09-18 取消，职能归附录 E + drawio 全量重建），存量只剩零星复审项（如 B.5 RoPE 参考）；新需求 = 用户新点名的增补章/增强项，按 RFC-L 模式新开里程碑条目（源码整合→测试→bench→正文→接线→验收→code review→用户增强）逐项推进。
+1. **领任务**：读 `RFC.md` 里程碑总览表 + 对应章节的执行卡片。RFC-0..M 已全部收口（RFC-B 于 2026-09-18 取消，职能归附录 E + drawio 全量重建），存量只剩零星复审项（如 B.5 RoPE 参考）；新需求 = 用户新点名的增补章/增强项，按 RFC-L/M 模式新开里程碑条目（源码整合→测试→bench→正文→接线→验收→code review→用户增强）逐项推进。
 2. **读规范**：`BOOK_PLAN.md` §3 章节卡片（源码区间/宏/公式/图/参考/测试映射）+ §4 模板与 DoD + 相关工程节。
 3. **执行**：章节任务四合一 = 正文 tex + 最小测试 .cu + 注释核查 + 增量 bench。
 4. **验收**：对照 §4.2 DoD 八条逐条自检（编译零 error / 锚点断言 / CHECKLOG / 测试 PASS / bench 落盘 / 图表登记 / 延伸阅读 / pdftotext 抽查）。
@@ -78,7 +78,7 @@ python3 /workspace/dev/vipshop/LeetCUDA/kernels/interview/book/scripts/verify_an
 ```
 kernels/interview/book/
 ├── book.tex / preamble.tex / build.sh      # RFC-0 产出
-├── chapters/ch00-ch33 + ch19b/ch26b 增补 + wp/ 白皮书导读 … appendices/  # RFC-C..L 产出
+├── chapters/ch00-ch33 + ch19b/ch26b/ch26c 增补 + wp/ 白皮书导读 … appendices/  # RFC-C..M 产出
 ├── figures/{ascii,zhihu,drawio,ffpa,misc,tikz}/
 ├── tests/{common_test.h, chNN_*.cu, build_tests.sh}
 ├── notes/ references/ scripts/ CHECKLOG.md
@@ -92,8 +92,8 @@ kernels/interview/book/
 
 ## 关联 skill
 
-- `tikz-diagrams`（**图主路径**：TikZ inline 写在章节 tex 内——全书 35 章已含 171 处 tikzpicture（ch26b 全 TikZ 先例 + 上游 5be940f 大迁移）；提供模板/编译渲染/视觉 QA 工具链，产出 .tex+.pdf+.png）
+- `tikz-diagrams`（**图主路径**：TikZ inline 写在章节 tex 内——全书 36 章已含 176 处 tikzpicture（ch26b/ch26c 全 TikZ 先例 + 上游 5be940f 大迁移）；提供模板/编译渲染/视觉 QA 工具链，产出 .tex+.pdf+.png）
 - `drawio-reconstruction`（drawio **存量图维护**：ch20-32 仍有 36 处 drawio png 引用，重建走 inventory→审查闭环）、`drawio-diagram-builder` / `drawio-flow-forge`（存量 drawio 修改/新建）
 - `zhihu`（资料五步法）
 - `cuda-cpp-kernel`（ptx-docs=F2 核查源）、`cutlass-cpp-kernel`（arch guides=F1 核查源）、`cuda-auto-tune`（bench 复测方法论）
-- `ffpa-cuda-understand`（ch19/26 大 D split-D 背景）
+- `ffpa-cuda-understand`（ch19/26/26c 大 D split-D 背景）

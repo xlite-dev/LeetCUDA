@@ -27,6 +27,7 @@
 | RFC-J | 全书集成审校与验收 | 全部 | **完成（2026-09-18）**：J.1-J.10 全勾；十六-agent 数理复审修复 + CuTe 白皮书导读并入 commit df21bee/d08f6ea；终态 459 页、0 error、0 undefined、0 Overfull≥1pt、0 缺字（build.sh 验收） |
 | RFC-K | Part V FP8/FP4 Attention 篇 ch27-33（ffpa-attn CuTe sm_120） | RFC-E/F（前置章节） | 完成（K0-K7 + K-验收 2026-09-16：全书 425 页零 error 零 undefined、Overfull 清零）|
 | RFC-L | ch26b 增补章：sm_120 persist-D FlashAttention（超越 cuDNN 压轴章） | RFC-F/K（ch20-26 前置） | 完成（2026-09-22：源码整合 flash_attn.cuh L3490-4170 + notes-v2 接入 + 6/6 测试 PASS + bench 复测 230.5T；6 张 TikZ inline 图，用户指定例外于 drawio 主路径）|
+| RFC-M | ch26c 增补章：SM120 大 head_dim non-WS Split-D（ffpa-attn 同源移植 + K/V stages 解耦实验） | RFC-F/K/L（ch26 前置） | 完成（2026-09-23：ffpa_attn.cuh L643-1306 整合 + tests 12/12 + K/V stages 实验 (3,2) D320=204.1T=2.93x cuDNN + 正文 4967 字 5 TikZ 图）|
 
 依赖图（执行实况）：`RFC-0 → RFC-A → RFC-C → RFC-D → RFC-E → RFC-F → (RFC-G ∥ RFC-H ∥ RFC-I) → RFC-J`；RFC-B 于 2026-09-18 取消（素材职能被附录 E + drawio 全量重建接管）；`RFC-K 依赖 RFC-E/F 素材，与 RFC-G/H/I 并行，完成后并入 RFC-J 收口`
 
@@ -189,6 +190,18 @@
 - [x] L.8 code review（PASS with comments）修复：causal Nkv<Nq 时 Tc_eff 负值致 kv_cursor 负索引 OOB + 全 mask 行 NaN（max(0,...) 钳零 + row_sum=0 输出 0）；launcher 补 Nh%Nh_kv 校验；两处寄存器池算术错（60416→63488）与 smem 预算注释错（48/64→72/96KB）；SmemLayoutKVt 注释 col-major→row-major；测试补 KV 尾 mask/causal 正反滑窗/D=96 四 case（notes-v2 7/7、book tests 10/10 PASS）
 - [x] L.9 用户增强十项（2026-09-22 下午）：① test 改 **cuDNN SDPA ref**（cudnn-frontend 组图 + bottom-right causal + GQA 折叠；不可用自动回退 CPU fp64，`ref=` 字段标记；fp64 龟速→亚秒级）；② bench 接入 `bench_fa_persist_d_cute_launch`（`--bench --bhnd` 默认末位运行，label `FA2 CuTe TMA MMA Persistent-CTA WS (D=128)`，与 cuDNN 同轮成对 238.4/230.7=1.03x）；③ **setmaxnreg 专论节**（28.6：三变量决策树 + C7506/C7508 双触发 + USETMAXREG 排查方法论 + 三连误诊考据框；同日闭环 sm_120a/sm_120f 均支持，`launch_bounds(N,1)` 缺失是 probe 假阴性根因）；④ 正文 6 处行号引用校正（注释改动致 -3/+7 漂移）；⑤ 新增 6 个 listing（descriptor 构建/producer V-first 主循环/初始 arrive/softmax_fa4 全函数/双 mask/persistent 认领循环）+ 逐段讲解；⑥ 图 28.3 stage 轮转左对齐（shift 0.3→0）；⑦ 图 28.5 persistent 上下→左右并排；⑧ 标题 sm_120→SM120；⑨ 性能表加复测波动带说明（236.9/230.0/230.3/238.4 四组，成对比值恒 1.00-1.04x，单点 ±2~3% 时钟态）；⑩ anchors 重登（flash_attn.cuh 4179 行 / notes-v2.cu 5212 行 / ch26b 区间 end 4177）+ verify ALL GREEN。**PDF 目录丢失根因修复**：XeTeX `main_memory` 仅 fmt 生成期生效（texmf.cnf 写了 12M 但 fmt 固化 5M），TOC 全量装载时 capacity exceeded 崩溃→`fmtutil-sys --byfmt xelatex` 重建后 512 页 0 error 目录完整；另修 6 处新 listing 漏 `\end{lstinputlisting}`
 
+## 12-M. RFC-M ch26c 增补章：SM120 大 head_dim non-WS Split-D（2026-09-23）
+
+> ffpa-attn `csrc/cuffpa/cute/sm_120/split_d.cuh`（non-WS CuTe TMA）最小教学集移植 + K/V pipeline stages 解耦实验。本实现与 ffpa-attn 的 cute sm_120 split_d 实现同源；图延续 ch26b 全 TikZ 路径。
+
+- [x] M.1 源码整合：`ffpa_attn.cuh` L643-1306：`FFPAAttnNonWSCuTeSplitDTraits` + kernel `ffpa_attn_tma_split_d_cute`（256T 全员 MMA + tid=0 内联 TMA、kBr=kBc=128、kQKDChunk=32/kVDChunk=64 双流解耦、M8N1 TiledMma、FA-4 conditional rescale、STSM+TMA store bulk group epilogue）+ launcher 模板 `<kHeadDim, kStagesQK, kStagesPV>`
+- [x] M.2 notes-v2 接入：`bench_fa_split_d_non_ws_launch`（L4468 起，LSE buffer 覆盖 epilogue 写出路径）+ dispatch 四组合 (2,2)/(2,3)/(3,2)/(3,3)；`test_ffpa_split_d_non_ws_cute`（CPU fp64 ref；Nq≠Nkv、Nkv 尾 mask、多 head、stages 变体）+ `--sdnw-cute` 快速入口
+- [x] M.3 `book/tests/ch26c_ffpa_split_d_non_ws.cu`：run_case 双模板参数 `<D,Sk,Sv>`，8 用例（dense/stages 2-3/多 head/Nq≠Nkv/Nkv=192 尾 mask/LSE 输出）**12/12 ALL OK**（尾 mask err=7.95e-05）
+- [x] M.4 K/V stages 解耦实验（PRO 5000, B=1 H=32 N=8192）：D≤320 最优 **(Sk=3,Sv=2)**——D192:216.5/D256:211.2/D320:204.1T（D320 vs cuDNN **2.93x**）；D≥384 最优 (2,2)——D384 (3,3) 崩至 136.0T；寄存器证据：D320 (3,2) spill 52+36B vs (2,2) 224+356B（6.6x 差与性能完全同序），D≥384 基线 spill 544B+ 加深 stages 恶化；smem 账本：QK 16KB/stage（Q+K）、V 16KB/stage
+- [x] M.5 正文 `chapters/ch26c-cute-split-d-sm120.tex`：导读→动机（WS 四弱点）→协议设计（tile 几何/smem 预算、双 barrier 集 non-WS、相位流水、跨 kv_tile 预取、launcher）→性能分析（stages 实验+寄存器机理）→坑 6 条→面试要点→测试，4967 字 + 13 个 lstinputlisting（行号 grep 锚定）
+- [x] M.6 接线：book.tex ch26b 后 `\input`；ch31 硬编码「第 29 章」改 `\ref{ch:27}` 动态引用；anchors.yaml 更新 ffpa_attn.cuh（sha/1307 行）+ notes-v2.cu（sha/5472 行）+ 新增 ch26c 条目（643-1306 / 4468-4734）；verify_anchors ALL GREEN（29 章）
+- [x] M.7 验收：`./build.sh` 两遍 **530 页** 0 error、0 undefined、0 missing char、4 Overfull 均存量非新增；ch26c 为全书第 29 章（PDF 页 424-439）
+
 ## 13. 图清单登记表（写作期持续更新）
 
 | FIG | 章 | slug | 类型(A/B/D/C1/C2, 见 BOOK_PLAN §7.1) | 状态(占位/引用/重建完成/正式) | 出处或源文件 |
@@ -268,6 +281,11 @@
 | FIG-26B-4 | 26b | pd-pipeline | C1 新建（2026-09-22，TikZ inline：TMA 预取 P1/P2 时序，V-first then K-after） | 正式 | 同上 |
 | FIG-26B-5 | 26b | pd-persistent | C1 新建（2026-09-22，TikZ inline：persistent CTA tile 环 + kv_cursor 相位） | 正式 | 同上 |
 | FIG-26B-6 | 26b | pd-epilogue | C1 新建（2026-09-22，TikZ inline：epilogue STSM→TMA store / R→G 尾部路径） | 正式 | 同上 |
+| FIG-26C-1 | 26c | sdnw-arch | C1 新建（2026-09-23，TikZ inline：WS vs non-WS 对比，256T 全员 MMA + tid=0 内联 TMA） | 正式 | chapters/ch26c-cute-split-d-sm120.tex（延续 ch26b 全 TikZ 路径） |
+| FIG-26C-2 | 26c | sdnw-pipeline | C1 新建（2026-09-23，TikZ inline：QK/V 双 barrier 集相位时间线 + 跨 kv_tile 预取重叠） | 正式 | 同上 |
+| FIG-26C-3 | 26c | sdnw-epilogue | C1 新建（2026-09-23，TikZ inline：STSM 暂存 smem + TMA store bulk group 批量写回） | 正式 | 同上 |
+| FIG-26C-4 | 26c | sdnw-stages | C1 新建（2026-09-23，TikZ inline 柱状图：K/V stages 四组合 × D=192..512 TFLOPS，(3,2) D≤320 最优） | 正式 | 同上 |
+| FIG-26C-5 | 26c | sdnw-spill | C1 新建（2026-09-23，TikZ inline 折线图：各组合寄存器 spill 字节 vs D，与性能同序） | 正式 | 同上 |
 
 ## 14. CHECKLOG 摘要镜像（明细在 book/CHECKLOG.md）
 
