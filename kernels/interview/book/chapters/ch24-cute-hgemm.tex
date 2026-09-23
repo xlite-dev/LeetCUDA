@@ -161,11 +161,11 @@ CuTe 的层层 partition，本质就是在这座金字塔上做「从塔尖切�
 \begin{tikzpicture}[font=\tiny]
   \foreach \gr in {0,...,3}{
     \foreach \gc in {0,...,7}{
-      \node[fill=gray!12, minimum width=0.5cm, minimum height=0.5cm, inner sep=0pt]
+      \node[fill=gray!22, minimum width=0.5cm, minimum height=0.5cm, inner sep=0pt]
         at ({\gc*0.5+0.25},{-\gr*0.5-0.25}) {};
     }
   }
-  \node[fill=gray!45, minimum width=0.5cm, minimum height=0.5cm, inner sep=0pt]
+  \node[fill=tkOrange!30, draw=tkOrange!80!black, thin, minimum width=0.5cm, minimum height=0.5cm, inner sep=0pt]
     at (3.75,-0.75) {};
   \draw[thin] (0,0) grid[xstep=0.5cm, ystep=0.5cm] (4.0,-2.0);
   \draw[very thick] (0,0) rectangle (4.0,-2.0);
@@ -205,7 +205,7 @@ CuTe 的层层 partition，本质就是在这座金字塔上做「从塔尖切�
   \begin{scope}[shift={(9.0,-0.2)}]
     \foreach \arow in {0,...,15}{
       \foreach \acol in {0,...,7}{
-        \node[fill=gray!10, minimum width=0.16cm, minimum height=0.16cm, inner sep=0pt]
+        \node[fill=gray!18, minimum width=0.16cm, minimum height=0.16cm, inner sep=0pt]
           at ({\acol*0.16+0.08},{-\arow*0.16-0.08}) {};
       }
     }

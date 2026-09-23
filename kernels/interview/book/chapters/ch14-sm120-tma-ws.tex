@@ -641,7 +641,7 @@ epilogue 与 ch11/ch12 同款：mma m16n8k16 的 C fragment 中，同一 8$\time
 
 tile 级 roofline 与 ch13 同型：每 K-tile 装 32KB、算 $2.1\,\mathrm{M}$ FLOP，
 $AI = 64$~FLOP/B。按 PRO 5000（110 SMs，sm\_120a）与 GDDR7 $\approx$ 1.8TB/s
-档估，纯 HBM 供给的计算上限 $\approx 64 \times 1.8\,\mathrm{TB/s} \approx
+估算，纯 HBM 供给的计算上限 $\approx 64 \times 1.8\,\mathrm{TB/s} \approx
 115$ TFLOPS。实测 164.64 TFLOPS 已经\textbf{越过}这条线，说明 96MB 级 L2
 吸收了相当比例的 tile 流量（同行 CTA 复用 B tile、同列复用 A tile），有效
 带宽远高于 HBM 名义值；这也解释了 \texttt{k\allowbreak{}Block\allowbreak{}Swizzle} 3D 网格（L2 局部性）

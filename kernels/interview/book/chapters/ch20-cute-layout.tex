@@ -787,8 +787,8 @@ dtype 变化引起的布局变换），但中间布局要 \texttt{with\_shape} �
   % 左：坐标表 f(c0,c1) = c0 + 4 c1
   \foreach \c in {0,...,5}{\draw[gray!45] (\c*\cw, 0) -- (\c*\cw, -9*\chh);}
   \foreach \r in {0,...,9}{\draw[gray!45] (0, -\r*\chh) -- (5*\cw, -\r*\chh);}
-  \fill[gray!12] (0, -\chh) rectangle (\cw, -9*\chh);
-  \fill[gray!12] (\cw, 0) rectangle (5*\cw, -\chh);
+  \filldraw[fill=gray!22, draw=gray!55, thin] (0, -\chh) rectangle (\cw, -9*\chh);
+  \filldraw[fill=gray!22, draw=gray!55, thin] (\cw, 0) rectangle (5*\cw, -\chh);
   \foreach \r/\rh in {0/1,1/2,2/3,3/4,4/5,5/6,6/7,7/8}{
     \edef\cfill{colorx\rh!16}
     \fill[\cfill] (\cw, {-(\r+1)*\chh}) rectangle (5*\cw, {-(\r+2)*\chh});

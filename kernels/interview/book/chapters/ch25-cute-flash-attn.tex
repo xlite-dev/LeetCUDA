@@ -564,24 +564,43 @@ phase。消费者用 \texttt{wait(bar, phase)} 等待。实现 2/3 里每个 sta
 屏障（\texttt{k\_full[s]} / \texttt{k\_empty[s]}）：前者是事务屏障
 （init 计数 1，producer 的 expect\_tx 即那一次 arrive），后者是普通屏障
 （init 计数 $kConsumerThreads$，每个消费者线程各 arrive 一次表示
-「我已读完」）。三条不变量撑起整个协议：
+「我已读完」）。三条不变量撑起整个协议（图~\ref{fig:25-proto}）：
 
-\begin{align}
-  \text{生产者不覆盖未读完的 stage:}\quad & \texttt{wait\allowbreak{}(k\_\allowbreak{}empty[s],\allowbreak{} phase)} \to
-    \texttt{arrive\_\allowbreak{}and\_\allowbreak{}expect\_\allowbreak{}tx\allowbreak{}(k\_\allowbreak{}full[s])} \notag \\
-  & \to \texttt{copy(tma, ...)}, \label{eq:25-proto1}\\
-  \text{消费者不读未落盘的 stage:}\quad & \texttt{wait\allowbreak{}(k\_\allowbreak{}full[s],\allowbreak{} phase)} \to
-    \texttt{ldmatrix+mma} \notag \\
-  & \to \texttt{arrive\allowbreak{}(k\_\allowbreak{}empty[s])}, \label{eq:25-proto2}\\
-  \text{phase 每绕一圈翻转:}\quad & \mathrm{phase} = \bigl(\lfloor t/S \rfloor\bigr)
-    \bmod 2 . \label{eq:25-proto3}
-\end{align}
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  op/.style={draw, thick, rounded corners=2pt, fill=tkFillBlue,
+    font=\footnotesize\ttfamily, inner sep=3.5pt},
+  ph/.style={draw, thick, rounded corners=2pt, fill=tkFillPurple,
+    font=\footnotesize, inner sep=3.5pt},
+  ln/.style={font=\scriptsize\bfseries, anchor=west},
+  ar/.style={-{Stealth}, thick},
+]
+  \node[ln, text=tkBlue!80!black] at (0,0) {生产者不覆盖未读完的 stage：};
+  \node[op, anchor=west] (p1) at (0,-0.5) {wait(k\_empty[s], phase)};
+  \node[op, anchor=west, right=6pt of p1] (p2) {arrive\_and\_expect\_tx(k\_full[s])};
+  \node[op, anchor=west, right=6pt of p2] (p3) {copy(tma, ...)};
+  \draw[ar] (p1) -- (p2);
+  \draw[ar] (p2) -- (p3);
+  \node[ln, text=tkBlue!80!black] at (0,-1.3) {消费者不读未落盘的 stage：};
+  \node[op, anchor=west] (c1) at (0,-1.8) {wait(k\_full[s], phase)};
+  \node[op, anchor=west, right=6pt of c1] (c2) {ldmatrix+mma};
+  \node[op, anchor=west, right=6pt of c2] (c3) {arrive(k\_empty[s])};
+  \draw[ar] (c1) -- (c2);
+  \draw[ar] (c2) -- (c3);
+  \node[ln, text=tkPurple!85!black] at (0,-2.6) {phase 每绕一圈翻转：};
+  \node[ph, anchor=west] (pf) at (0,-3.1) {$\mathrm{phase} = \bigl(\lfloor t/S \rfloor\bigr) \bmod 2$};
+\end{tikzpicture}
+\caption{TMA 事务计数协议的三条不变量（26.3.5 节）：生产者 wait 到空 stage 才
+覆盖写入、消费者 wait 到满 stage 才读、phase 每绕 $S$ 个 stage 翻转一次。}
+\label{fig:25-proto}
+\end{figure}
 
 与第~\ref{ch:17}~章手写版的 257 协议相比，CuTe 版的 arrive 语义没有变化，
 变化的是\textbf{谁来数}:手写版用 \texttt{mbarrier\_\allowbreak{}arrive} 手写计数，
 CuTe 版把「一个 stage」打包成 \texttt{Cluster\allowbreak{}Transaction\allowbreak{}Barrier} +
 \texttt{Cluster\allowbreak{}Barrier} 两个对象，stage 索引与 phase 都由循环变量现算
-（式~\eqref{eq:25-proto3}）。
+（图~\ref{fig:25-proto}）。
 
 有一个数字容易被误读：实现 2 的 \texttt{Tma\allowbreak{}Barrier::\allowbreak{}init\allowbreak{}(\&q\_\allowbreak{}full,\allowbreak{} 1)}
 （L2847）写的是 1，而第~\ref{ch:17}~章手写版的 arrive\_count 是 257。
@@ -637,7 +656,7 @@ CuTe 的 \texttt{arrive\_\allowbreak{}and\_\allowbreak{}expect\_\allowbreak{}tx}
      \textbf{consumer} 对 $k\_empty[s]$：普通屏障，init 计数 $=$ \texttt{kConsumerThreads}，
      每个消费者线程读完该 stage 各 arrive 一次（「我已读完」）。\\[2pt]
      phase 每绕一圈翻转：$\mathrm{phase}=\bigl(\lfloor t/S\rfloor\bigr)\bmod 2$
-     （式~\eqref{eq:25-proto3}）。init$=1$ 与第~\ref{ch:17}~章手写版 257 的差别不在数字，
+     （图~\ref{fig:25-proto}）。init$=1$ 与第~\ref{ch:17}~章手写版 257 的差别不在数字，
      在「谁 arrive」——两者等价，改 init 前先看角色表。};
   % 下：协议链
   \node[axl,anchor=west] at (0,-5.4) {\textbf{producer}};
@@ -654,7 +673,7 @@ CuTe 的 \texttt{arrive\_\allowbreak{}and\_\allowbreak{}expect\_\allowbreak{}tx}
   \draw[-{Stealth},thick,tkGreen] (9.95,-6.2) -- (10.35,-6.2);
   \node[nt,anchor=north west,text width=15.6cm] at (0,-6.7)
     {两组语义的对照：组栈是\emph{单调递增}的组号（per-thread），屏障是\emph{环状复用}的 stage
-     （字节计数 $+$ phase）。式~\eqref{eq:25-proto1}--\eqref{eq:25-proto3} 的三条不变量正是
+     （字节计数 $+$ phase）。图~\ref{fig:25-proto} 的三条不变量正是
      下图两条链的时序约束：生产者不覆盖未读完的 stage，消费者不读未落盘的 stage。};
 \end{tikzpicture}
 \caption{两种异步等待语义的时间线对照（\texttt{flash\_attn.cuh} L2743--2754 与
@@ -765,7 +784,7 @@ $(32,8){:}(8,1)$ 铺满 256 个线程，值布局 $(1,8)$ 表示「每线程一�
   title={flash\_attn.cuh L2694-2706 + L2724-2741 + L2786-2798（实现 1 主循环：等待、softmax、epilogue）}]{../flash_attn.cuh}
 
 $kStagesK>1$ 时 QK 前\textbf{不等待}，因为 K[tile] 在上一轮循环末尾的
-\texttt{wait<0>} 里已经等过（式~\eqref{eq:25-proto1} 的 cp.async 版本）；
+\texttt{wait<0>} 里已经等过（图~\ref{fig:25-proto} 生产者流程的 cp.async 版本）；
 $PV$ 前的等待则要区分「栈顶是否还有 K」：还有 K 时用 \texttt{wait<1>}，
 尾部没有 K 时\textbf{必须}退回 \texttt{wait<0>}（否则等的是不存在的
 组，V 可能未就绪）。这类「栈深度随循环位置变化」的推理靠 6 个同步点逐点
@@ -1113,7 +1132,7 @@ CuTe 化没有牺牲吞吐（对照第~\ref{ch:17}/\ref{ch:18}~章复测）。
 A：mbarrier 是「相位对象」而非计数器：arrive 数到零后相位翻转、
 计数重置。stage 循环复用同一个 barrier 时，$t$ 号 tile 属于第
 $\lfloor t/S\rfloor$ 个相位，故 phase $=$ 该商 $\bmod\ 2$
-（式~\eqref{eq:25-proto3}）。写错 phase 的症状是「等一个已经过去的
+（图~\ref{fig:25-proto}）。写错 phase 的症状是「等一个已经过去的
 相位」：永久挂起或提前通过。
 
 \textbf{Q8：smoke kernel 为什么值得单独存在？（41 行）}\\

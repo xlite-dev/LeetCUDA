@@ -401,26 +401,18 @@ $+\mathrm{scale}\cdot q_s\cdot q_{km}$（28.4.2~节的点积在循环外预算�
 
 \subsection{reorg-free 打包的布局推导}
 
-\begin{lstlisting}[
-  caption={C$\to$A 重排为什么必要（\texttt{reg2reg\_8b.cuh} L14--34，节选）},
-  label={lst:29-reorg-bg}]
-// The QK C-fragment and the PV A-fragment distribute a 16x32 tile over the
-// warp DIFFERENTLY (PTX ISA, "Matrix Fragments for mma.m16n8k32"; with
-// groupID g = lane>>2 and threadID_in_group t = lane&3):
-//   C fragment (4 regs c0..c3, one value each; 2 cols per row):
-//     c0,c1: row g,   cols {2t, 2t+1}
-//     c2,c3: row g+8, cols {2t, 2t+1}
-//   A fragment (4 regs a0..a3, four 8-bit elems each; 4 k-cols per row):
-//     a0: row g,   k = 4t..4t+3
-//     a1: row g+8, k = 4t..4t+3
-//     a2: row g,   k = 16+4t..16+4t+3
-//     a3: row g+8, k = 16+4t..16+4t+3
-//     => thread t needs k-columns {4t..4t+3} which, expressed in the C-tile
-//        column pairs {2t',2t'+1}, belong to OTHER lanes (e.g. t=1 needs the
-//        bytes owned by t=2 and t=3). A purely in-thread permutation cannot
-//        build the natural A layout (proven in .tmp/fp8_persist_d/
-//        verify_layouts.py), hence the cross-lane ReorgC8bitToA8bit below.
-\end{lstlisting}
+\texttt{reg2reg\_8b.cuh} L14--34 的头注释先回答「C$\to$A 重排为什么必要」：
+QK 的 C-fragment 与 PV 的 A-fragment 把同一个 16$\times$32 tile 分给 warp 的
+方式不同（PTX ISA「Matrix Fragments for mma.m16n8k32」，记 $g=$ lane$\gg$2、
+$t=$ lane$\&$3）。C fragment 有 4 个寄存器 $c_0..c_3$，每寄存器 1 个值、每行
+2 列：$c_0,c_1$ 落在行 $g$ 的列 $\{2t,2t{+}1\}$，$c_2,c_3$ 落在行 $g{+}8$ 的
+同一列对。A fragment 有 4 个寄存器 $a_0..a_3$，每寄存器 4 个 8-bit 元素、
+每行 4 个 k 列：$a_0$ 取行 $g$ 的 $k=4t..4t{+}3$，$a_1$ 取行 $g{+}8$ 的同段，
+$a_2$、$a_3$ 分别取行 $g$、$g{+}8$ 的 $k=16{+}4t..16{+}4t{+}3$。这样线程 $t$
+需要的 k 列 $\{4t..4t{+}3\}$，换算成 C tile 的列对 $\{2t',2t'{+}1\}$ 后落在
+别的 lane 手里（比如 $t{=}1$ 要的是 $t{=}2$、$t{=}3$ 拥有的字节），纯 lane 内
+置换拼不出自然 A 布局（\texttt{.tmp/fp8\_persist\_d/verify\_layouts.py} 数值
+证明），于是才有了下面跨 lane 的 \texttt{ReorgC8bitToA8bit}。
 
 \begin{figure}[H]
 \centering
@@ -429,7 +421,7 @@ $+\mathrm{scale}\cdot q_s\cdot q_{km}$（28.4.2~节的点积在循环外预算�
   \def\chd{0.38}
   \def\cx{6.8}
   \foreach \r in {0,...,15}{
-    \pgfmathtruncatemacro{\rg}{int(7+9*mod(\r,8))}
+    \pgfmathtruncatemacro{\rg}{int(22+7*mod(\r,8))}
     \foreach \c in {0,...,7}{
       \pgfmathtruncatemacro{\lan}{4*mod(\r,8)+int(\c/2)}
       \node[fill=gray!\rg, minimum width=\cwd cm, minimum height=\chd cm, inner sep=0pt]
@@ -437,29 +429,29 @@ $+\mathrm{scale}\cdot q_s\cdot q_{km}$（28.4.2~节的点积在循环外预算�
     }
   }
   \draw[thin] (0,0) grid[xstep=0.52cm, ystep=0.38cm] ({8*\cwd},{-16*\chd});
-  \draw[very thick] (0,0) rectangle ({8*\cwd},{-16*\chd});
-  \draw[thick, dashed] (0,{-8*\chd}) -- ({8*\cwd},{-8*\chd});
+  \draw[tkBlue, very thick] (0,0) rectangle ({8*\cwd},{-16*\chd});
+  \draw[tkBlue!55, thick, dashed] (0,{-8*\chd}) -- ({8*\cwd},{-8*\chd});
   \foreach \c in {0,...,7}{
     \node[anchor=south] at ({(\c+0.5)*\cwd},0.06) {\c};
   }
-  \node[anchor=south, font=\scriptsize\bfseries] at ({4*\cwd},0.60) {QK C fragment（m16n8）};
+  \node[anchor=south, font=\scriptsize\bfseries\color{tkBlue}] at ({4*\cwd},0.60) {QK C fragment（m16n8）};
   \node[anchor=south] at ({4*\cwd},0.38) {kv 列（atom 内）};
   \foreach \r in {0,...,15}{
     \node[anchor=east] at (-0.06,{-\r*\chd-0.19}) {\r};
   }
   \node[anchor=east, rotate=90] at (-0.40,{-8*\chd}) {行 $m$};
-  \draw[very thick] (1.04,-0.76) rectangle (2.08,-0.38);
-  \draw[very thick] (1.04,-3.80) rectangle (2.08,-3.42);
-  \draw[thick, densely dashed] (2.08,-0.76) rectangle (4.16,-0.38);
-  \draw[thick, densely dashed] (2.08,-3.80) rectangle (4.16,-3.42);
-  \node[anchor=north, fill=white, inner sep=0.5pt] at (1.56,-0.80) {T5 的 $c_0,c_1$};
-  \node[anchor=north, fill=white, inner sep=0.5pt] at (3.12,-0.80) {T6/T7（T5 要的）};
-  \node[anchor=north, fill=white, inner sep=0.5pt] at (1.56,-3.84) {T5 的 $c_2,c_3$};
-  \node[anchor=north, fill=white, inner sep=0.5pt] at (3.12,-3.84) {T6/T7};
+  \draw[tkBlue, very thick] (1.04,-0.76) rectangle (2.08,-0.38);
+  \draw[tkBlue, very thick] (1.04,-3.80) rectangle (2.08,-3.42);
+  \draw[tkOrange, thick, densely dashed] (2.08,-0.76) rectangle (4.16,-0.38);
+  \draw[tkOrange, thick, densely dashed] (2.08,-3.80) rectangle (4.16,-3.42);
+  \node[anchor=north, fill=white, draw=tkBlue!60, inner sep=0.5pt] at (1.56,-0.42) {T5 的 $c_0,c_1$};
+  \node[anchor=north, fill=white, draw=tkOrange!60, inner sep=0.5pt] at (3.12,-0.42) {T6/T7（T5 要的）};
+  \node[anchor=north, fill=white, draw=tkBlue!60, inner sep=0.5pt] at (1.56,-3.46) {T5 的 $c_2,c_3$};
+  \node[anchor=north, fill=white, draw=tkOrange!60, inner sep=0.5pt] at (3.12,-3.46) {T6/T7};
   \node[anchor=north, align=center] at ({4*\cwd},{-16*\chd-0.10})
     {一个 atom（$k_{Bc}{=}64$ 时 8 个并排）；\\$k{=}20..23$ 在 atom 2 的同款格};
   \foreach \r in {0,...,15}{
-    \pgfmathtruncatemacro{\rg}{int(7+9*mod(\r,8))}
+    \pgfmathtruncatemacro{\rg}{int(22+7*mod(\r,8))}
     \foreach \s in {0,...,15}{
       \pgfmathtruncatemacro{\ai}{2*int(\r/8)+4*int(\s/8)+int(mod(\s,2))}
       \node[fill=gray!\rg, minimum width=\cwd cm, minimum height=\chd cm, inner sep=0pt]
@@ -467,40 +459,40 @@ $+\mathrm{scale}\cdot q_s\cdot q_{km}$（28.4.2~节的点积在循环外预算�
     }
   }
   \draw[thin] (\cx,0) grid[xstep=0.52cm, ystep=0.38cm] ({\cx+16*\cwd},{-16*\chd});
-  \draw[very thick] (\cx,0) rectangle ({\cx+16*\cwd},{-16*\chd});
-  \draw[thick, dashed] (\cx,{-8*\chd}) -- ({\cx+16*\cwd},{-8*\chd});
-  \draw[thick, dashed] ({\cx+8*\cwd},0) -- ({\cx+8*\cwd},{-16*\chd});
+  \draw[tkBlue, very thick] (\cx,0) rectangle ({\cx+16*\cwd},{-16*\chd});
+  \draw[tkBlue!55, thick, dashed] (\cx,{-8*\chd}) -- ({\cx+16*\cwd},{-8*\chd});
+  \draw[tkBlue!55, thick, dashed] ({\cx+8*\cwd},0) -- ({\cx+8*\cwd},{-16*\chd});
   \foreach \sx/\kl in {0.5/0,4.5/8,8.5/16,12.5/24}{
     \node[anchor=south] at ({\cx+\sx*\cwd},0.06) {$k{=}\kl$};
   }
-  \node[anchor=south, font=\scriptsize\bfseries] at ({\cx+8*\cwd},0.60)
+  \node[anchor=south, font=\scriptsize\bfseries\color{tkBlue}] at ({\cx+8*\cwd},0.60)
     {PV A fragment（m16n8k32）：16$\times$16 半字视图};
   \node[anchor=south] at ({\cx+8*\cwd},0.38) {槽 $s\leftrightarrow k\in\{2s,2s{+}1\}$};
-  \draw[very thick] (7.84,-0.76) rectangle (8.88,-0.38);
-  \draw[very thick] (7.84,-3.80) rectangle (8.88,-3.42);
-  \draw[very thick] (12.00,-0.76) rectangle (13.04,-0.38);
-  \draw[very thick] (12.00,-3.80) rectangle (13.04,-3.42);
+  \draw[tkOrange, very thick] (7.84,-0.76) rectangle (8.88,-0.38);
+  \draw[tkOrange, very thick] (7.84,-3.80) rectangle (8.88,-3.42);
+  \draw[tkOrange, very thick] (12.00,-0.76) rectangle (13.04,-0.38);
+  \draw[tkOrange, very thick] (12.00,-3.80) rectangle (13.04,-3.42);
   \node[anchor=west] at (15.18,-0.57) {T5};
   \node[anchor=north west] at (\cx,{-16*\chd-0.10})
     {上行 = 行 $g$、下行 = 行 $g{+}8$；左半 $k\,0..15$（.b32 $a_0$ 区/$a_1$ 区）、右半 $k\,16..31$（$a_2$/$a_3$ 区）};
-  \draw[->, thick] (4.24,-0.57) -- (6.74,-0.57);
+  \draw[->, tkOrange, thick] (4.24,-0.57) -- (6.74,-0.57);
   \node[anchor=south, fill=white, inner sep=0.5pt] at (5.5,-0.54) {T6/T7 $\to$ T5：$a_0/a_1$};
-  \draw[->, thick] (4.24,-3.61) -- (6.74,-3.61);
+  \draw[->, tkOrange, thick] (4.24,-3.61) -- (6.74,-3.61);
   \node[anchor=south, fill=white, inner sep=0.5pt] at (5.5,-3.58) {T6/T7 $\to$ T5：$a_2/a_3$};
-  \draw[->, densely dashed] (4.24,-1.02) to[bend left=14] (6.74,-0.32);
+  \draw[->, tkPurple, densely dashed] (4.24,-1.02) to[bend left=14] (6.74,-0.32);
   \node[anchor=north, fill=white, inner sep=0.5pt, align=center] at (5.5,-1.12)
     {T5 自己的字节\\也要寄给 T4};
   \node[anchor=north, align=center] at (5.5,-4.75) {$k{=}20..23$（atom 2）\\同理 $\to a_4..a_7$};
   \foreach \gl in {0,...,7}{
-    \pgfmathtruncatemacro{\gr}{int(7+9*\gl)}
-    \node[fill=gray!\gr, draw, thin, minimum width=0.30cm, minimum height=0.30cm, inner sep=0pt]
+    \pgfmathtruncatemacro{\gr}{int(22+7*\gl)}
+    \node[fill=gray!\gr, draw=gray!55, thin, minimum width=0.30cm, minimum height=0.30cm, inner sep=0pt]
       at ({0.15+0.36*\gl},-6.90) {};
   }
-  \node[anchor=west] at (1.70,-6.90) {灰度 = lane 组 $g=$lane$\gg$2（T$4g$--T$4g{+}3$，8 档）};
-  \draw[thick] (6.80,-7.30) rectangle (7.75,-6.90);
-  \draw[thick] (7.75,-7.30) rectangle (8.70,-6.90);
-  \draw[thick] (8.70,-7.30) rectangle (9.65,-6.90);
-  \draw[thick] (9.65,-7.30) rectangle (10.60,-6.90);
+  \node[anchor=west] at (0.00,-7.30) {灰度 = lane 组 $g=$lane$\gg$2（T$4g$--T$4g{+}3$，8 档）};
+  \draw[tkPurple, thick] (6.80,-7.30) rectangle (7.75,-6.90);
+  \draw[tkPurple, thick] (7.75,-7.30) rectangle (8.70,-6.90);
+  \draw[tkPurple, thick] (8.70,-7.30) rectangle (9.65,-6.90);
+  \draw[tkPurple, thick] (9.65,-7.30) rectangle (10.60,-6.90);
   \node at (7.275,-7.10) {0,1};
   \node at (8.225,-7.10) {8,9};
   \node at (9.175,-7.10) {2,3};
@@ -509,7 +501,7 @@ $+\mathrm{scale}\cdot q_s\cdot q_{km}$（28.4.2~节的点积在循环外预算�
   \node[anchor=north] at (8.225,-7.34) {$s{=}1$};
   \node[anchor=north] at (9.175,-7.34) {$s{=}2$};
   \node[anchor=north] at (10.125,-7.34) {$s{=}3$};
-  \node[anchor=east] at (6.70,-7.10) {A 槽位 $s\to\pi(s)$：};
+  \node[anchor=east, text=tkPurple] at (6.70,-7.10) {A 槽位 $s\to\pi(s)$：};
   \node[anchor=west] at (10.75,-7.10) {……（每 32 列周期）};
   \node[anchor=north west, align=left, text width=16.6cm] at (0,-7.80)
     {kReorgFree（\texttt{PackC8bitToA8bitPermVT}）：A 槽位 $s$ 持真实列 $\pi(s)$
@@ -518,7 +510,7 @@ $+\mathrm{scale}\cdot q_s\cdot q_{km}$（28.4.2~节的点积在循环外预算�
      \texttt{\_\_byte\_perm}（\texttt{0x5410}/\texttt{0x7632}/\texttt{0xDC98}/\texttt{0xFEBA}）、
      零 SHFL；CONTRACT：绝不许对未置换的 $V^{\top}$ 运行（launcher 编译期强制配对）。};
 \end{tikzpicture}
-\caption{C$\to$A fragment 的 lane$\to$值映射（lst:29-reorg-bg 的网格化）。左：QK C
+\caption{C$\to$A fragment 的 lane$\to$值映射（\texttt{reg2reg\_8b.cuh} L14--34 头注释的网格化）。左：QK C
 fragment（m16n8），每 lane 4 值 $c_0$--$c_3$ 落在行 $g$/$g{+}8$ 的列对
 $\{2t,2t{+}1\}$；右：PV A fragment（m16n8k32）的 16$\times$16 半字视图，格值
 a0--a7 为 e4m3x2 半字寄存器，四象限对应源码 .b32 $a_0$--$a_3$；两面板灰度同语义

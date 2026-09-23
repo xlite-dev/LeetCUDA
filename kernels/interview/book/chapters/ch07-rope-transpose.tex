@@ -73,18 +73,18 @@ $R^{d}_{\Theta}$ 是 $d/2$ 个 $2\times 2$ 旋转块排布在主对角线上的\
 \begin{figure}[H]
 \centering
 \begin{tikzpicture}[font=\scriptsize]
-  \node[anchor=south] at (2.48,0.4) {$R^{d}_{\Theta}\in\mathbb{R}^{d\times d}$（$d=8$ 示意）};
-  \node[anchor=south] at (8.1,0.4) {第一块展开：$2\times2$ 旋转};
-  \fill[gray!8] (0,0) rectangle (4.96,-4.96);
+  \node[anchor=south, text=tkBlue!85!black] at (2.48,0.4) {$R^{d}_{\Theta}\in\mathbb{R}^{d\times d}$（$d=8$ 示意）};
+  \node[anchor=south, text=tkPurple!85!black] at (8.1,0.4) {第一块展开：$2\times2$ 旋转};
+  \fill[gray!22, draw=gray!55] (0,0) rectangle (4.96,-4.96);
   \fill[gray!85] (0,0) rectangle (1.24,-1.24);
   \fill[gray!72] (1.24,-1.24) rectangle (2.48,-2.48);
   \fill[gray!60] (2.48,-2.48) rectangle (3.72,-3.72);
   \fill[gray!48] (3.72,-3.72) rectangle (4.96,-4.96);
   \draw[thin, gray!55] (0,0) grid (4.96,-4.96);
-  \draw[very thick] (0,0) rectangle (1.24,-1.24);
-  \draw[very thick] (1.24,-1.24) rectangle (2.48,-2.48);
-  \draw[very thick] (2.48,-2.48) rectangle (3.72,-3.72);
-  \draw[very thick] (3.72,-3.72) rectangle (4.96,-4.96);
+  \draw[very thick, draw=tkBlue!85!black] (0,0) rectangle (1.24,-1.24);
+  \draw[very thick, draw=tkBlue!85!black] (1.24,-1.24) rectangle (2.48,-2.48);
+  \draw[very thick, draw=tkBlue!85!black] (2.48,-2.48) rectangle (3.72,-3.72);
+  \draw[very thick, draw=tkBlue!85!black] (3.72,-3.72) rectangle (4.96,-4.96);
   \node[white] at (0.62,-0.62) {$R(\theta_0)$};
   \node at (1.86,-1.86) {$R(\theta_1)$};
   \node at (3.1,-3.1) {$R(\theta_2)$};
@@ -93,13 +93,13 @@ $R^{d}_{\Theta}$ 是 $d/2$ 个 $2\times 2$ 旋转块排布在主对角线上的\
   \node[anchor=north, font=\tiny] at (3.1,-5.12) {$\theta_2\approx10^{-2}$};
   \node[anchor=north, font=\tiny] at (1.86,-5.56) {$\theta_1\approx10^{-1}$};
   \node[anchor=north, font=\tiny] at (4.34,-5.56) {$\theta_3\approx10^{-3}$};
-  \draw[dashed, gray!60, thin] (1.24,0) -- (6.6,-0.7);
-  \draw[dashed, gray!60, thin] (1.24,-1.24) -- (6.6,-3.7);
+  \draw[dashed, draw=tkPurple!75!black, thin] (1.24,0) -- (6.6,-0.7);
+  \draw[dashed, draw=tkPurple!75!black, thin] (1.24,-1.24) -- (6.6,-3.7);
   \node[fill=gray!85, text=white] at (7.35,-1.45) {$\cos\theta_0$};
   \node[fill=gray!85, text=white] at (8.85,-1.45) {$-\sin\theta_0$};
   \node[fill=gray!85, text=white] at (7.35,-2.95) {$\sin\theta_0$};
   \node[fill=gray!85, text=white] at (8.85,-2.95) {$\cos\theta_0$};
-  \draw[very thick] (6.6,-0.7) rectangle (9.6,-3.7);
+  \draw[very thick, draw=tkPurple] (6.6,-0.7) rectangle (9.6,-3.7);
   \draw[thin, white] (8.1,-0.7) -- (8.1,-3.7);
   \draw[thin, white] (6.6,-2.2) -- (9.6,-2.2);
   \node[anchor=north, align=center] at (4.8,-6.15)
@@ -116,7 +116,7 @@ $R^{d}_{\Theta}$ 是 $d/2$ 个 $2\times 2$ 旋转块排布在主对角线上的\
 \centering
 \begin{tikzpicture}[font=\scriptsize,
   cell/.style={minimum size=0mm, inner sep=0pt, align=center, text width=1.9em}]
-  \node[anchor=west, font=\small\bfseries] at (-0.3,1.42)
+  \node[anchor=west, font=\small\bfseries, text=tkBlue!85!black] at (-0.3,1.42)
     {相邻对（interleaved）——本源码：\texttt{idx*2, idx*2+1}};
   \node[cell, fill=gray!85] at (0.310,0.350) {$x_{0}$\\[-1pt]{\tiny $\theta_{0}$}};
   \node[cell, fill=gray!85] at (0.930,0.350) {$x_{1}$\\[-1pt]{\tiny $\theta_{0}$}};
@@ -126,52 +126,52 @@ $R^{d}_{\Theta}$ 是 $d/2$ 个 $2\times 2$ 旋转块排布在主对角线上的\
   \node[cell, fill=gray!60] at (3.410,0.350) {$x_{5}$\\[-1pt]{\tiny $\theta_{2}$}};
   \node[cell, fill=gray!48] at (4.030,0.350) {$x_{6}$\\[-1pt]{\tiny $\theta_{3}$}};
   \node[cell, fill=gray!48] at (4.650,0.350) {$x_{7}$\\[-1pt]{\tiny $\theta_{3}$}};
-  \node[cell, fill=gray!36] at (5.270,0.350) {$x_{8}$\\[-1pt]{\tiny $\theta_{4}$}};
-  \node[cell, fill=gray!36] at (5.890,0.350) {$x_{9}$\\[-1pt]{\tiny $\theta_{4}$}};
-  \node[cell, fill=gray!27] at (6.510,0.350) {$x_{10}$\\[-1pt]{\tiny $\theta_{5}$}};
-  \node[cell, fill=gray!27] at (7.130,0.350) {$x_{11}$\\[-1pt]{\tiny $\theta_{5}$}};
-  \node[cell, fill=gray!18] at (7.750,0.350) {$x_{12}$\\[-1pt]{\tiny $\theta_{6}$}};
-  \node[cell, fill=gray!18] at (8.370,0.350) {$x_{13}$\\[-1pt]{\tiny $\theta_{6}$}};
-  \node[cell, fill=gray!10] at (8.990,0.350) {$x_{14}$\\[-1pt]{\tiny $\theta_{7}$}};
-  \node[cell, fill=gray!10] at (9.610,0.350) {$x_{15}$\\[-1pt]{\tiny $\theta_{7}$}};
-  \draw[thick] (0.000,0.000) grid (9.920,0.700);
-  \draw (0.000,0.760) -- (0.000,0.920) -- (1.240,0.920) -- (1.240,0.760);
-  \draw (1.240,0.760) -- (1.240,0.920) -- (2.480,0.920) -- (2.480,0.760);
-  \draw (2.480,0.760) -- (2.480,0.920) -- (3.720,0.920) -- (3.720,0.760);
-  \draw (3.720,0.760) -- (3.720,0.920) -- (4.960,0.920) -- (4.960,0.760);
-  \draw (4.960,0.760) -- (4.960,0.920) -- (6.200,0.920) -- (6.200,0.760);
-  \draw (6.200,0.760) -- (6.200,0.920) -- (7.440,0.920) -- (7.440,0.760);
-  \draw (7.440,0.760) -- (7.440,0.920) -- (8.680,0.920) -- (8.680,0.760);
-  \draw (8.680,0.760) -- (8.680,0.920) -- (9.920,0.920) -- (9.920,0.760);
+  \node[cell, fill=gray!40] at (5.270,0.350) {$x_{8}$\\[-1pt]{\tiny $\theta_{4}$}};
+  \node[cell, fill=gray!40] at (5.890,0.350) {$x_{9}$\\[-1pt]{\tiny $\theta_{4}$}};
+  \node[cell, fill=gray!33] at (6.510,0.350) {$x_{10}$\\[-1pt]{\tiny $\theta_{5}$}};
+  \node[cell, fill=gray!33] at (7.130,0.350) {$x_{11}$\\[-1pt]{\tiny $\theta_{5}$}};
+  \node[cell, fill=gray!27] at (7.750,0.350) {$x_{12}$\\[-1pt]{\tiny $\theta_{6}$}};
+  \node[cell, fill=gray!27] at (8.370,0.350) {$x_{13}$\\[-1pt]{\tiny $\theta_{6}$}};
+  \node[cell, fill=gray!22] at (8.990,0.350) {$x_{14}$\\[-1pt]{\tiny $\theta_{7}$}};
+  \node[cell, fill=gray!22] at (9.610,0.350) {$x_{15}$\\[-1pt]{\tiny $\theta_{7}$}};
+  \draw[thick, draw=tkBlue!60] (0.000,0.000) grid (9.920,0.700);
+  \draw[tkBlue!85!black] (0.000,0.760) -- (0.000,0.920) -- (1.240,0.920) -- (1.240,0.760);
+  \draw[tkBlue!85!black] (1.240,0.760) -- (1.240,0.920) -- (2.480,0.920) -- (2.480,0.760);
+  \draw[tkBlue!85!black] (2.480,0.760) -- (2.480,0.920) -- (3.720,0.920) -- (3.720,0.760);
+  \draw[tkBlue!85!black] (3.720,0.760) -- (3.720,0.920) -- (4.960,0.920) -- (4.960,0.760);
+  \draw[tkBlue!85!black] (4.960,0.760) -- (4.960,0.920) -- (6.200,0.920) -- (6.200,0.760);
+  \draw[tkBlue!85!black] (6.200,0.760) -- (6.200,0.920) -- (7.440,0.920) -- (7.440,0.760);
+  \draw[tkBlue!85!black] (7.440,0.760) -- (7.440,0.920) -- (8.680,0.920) -- (8.680,0.760);
+  \draw[tkBlue!85!black] (8.680,0.760) -- (8.680,0.920) -- (9.920,0.920) -- (9.920,0.760);
   \node[anchor=west, font=\tiny] at (10.55,0.55) {每对做一次 2D 旋转};
   \draw[-{Latex[length=1.4mm]}] (10.35,0.05) arc[start angle=310, end angle=30, radius=0.20];
   \node[anchor=west] at (10.62,0.18) {$R(m\theta_i)$};
-  \node[anchor=west, font=\small\bfseries] at (-0.3,-1.62)
+  \node[anchor=west, font=\small\bfseries, text=tkOrange!85!black] at (-0.3,-1.62)
     {半分对（half-split）——HuggingFace：\texttt{rotate\_half}（$(x_i,\,x_{i+d/2})$）};
   \node[cell, fill=gray!85] at (0.310,-2.250) {$x_{0}$\\[-1pt]{\tiny $\theta_{0}$}};
   \node[cell, fill=gray!72] at (0.930,-2.250) {$x_{1}$\\[-1pt]{\tiny $\theta_{1}$}};
   \node[cell, fill=gray!60] at (1.550,-2.250) {$x_{2}$\\[-1pt]{\tiny $\theta_{2}$}};
   \node[cell, fill=gray!48] at (2.170,-2.250) {$x_{3}$\\[-1pt]{\tiny $\theta_{3}$}};
-  \node[cell, fill=gray!36] at (2.790,-2.250) {$x_{4}$\\[-1pt]{\tiny $\theta_{4}$}};
-  \node[cell, fill=gray!27] at (3.410,-2.250) {$x_{5}$\\[-1pt]{\tiny $\theta_{5}$}};
-  \node[cell, fill=gray!18] at (4.030,-2.250) {$x_{6}$\\[-1pt]{\tiny $\theta_{6}$}};
-  \node[cell, fill=gray!10] at (4.650,-2.250) {$x_{7}$\\[-1pt]{\tiny $\theta_{7}$}};
+  \node[cell, fill=gray!40] at (2.790,-2.250) {$x_{4}$\\[-1pt]{\tiny $\theta_{4}$}};
+  \node[cell, fill=gray!33] at (3.410,-2.250) {$x_{5}$\\[-1pt]{\tiny $\theta_{5}$}};
+  \node[cell, fill=gray!27] at (4.030,-2.250) {$x_{6}$\\[-1pt]{\tiny $\theta_{6}$}};
+  \node[cell, fill=gray!22] at (4.650,-2.250) {$x_{7}$\\[-1pt]{\tiny $\theta_{7}$}};
   \node[cell, fill=gray!85] at (5.270,-2.250) {$x_{8}$\\[-1pt]{\tiny $\theta_{0}$}};
   \node[cell, fill=gray!72] at (5.890,-2.250) {$x_{9}$\\[-1pt]{\tiny $\theta_{1}$}};
   \node[cell, fill=gray!60] at (6.510,-2.250) {$x_{10}$\\[-1pt]{\tiny $\theta_{2}$}};
   \node[cell, fill=gray!48] at (7.130,-2.250) {$x_{11}$\\[-1pt]{\tiny $\theta_{3}$}};
-  \node[cell, fill=gray!36] at (7.750,-2.250) {$x_{12}$\\[-1pt]{\tiny $\theta_{4}$}};
-  \node[cell, fill=gray!27] at (8.370,-2.250) {$x_{13}$\\[-1pt]{\tiny $\theta_{5}$}};
-  \node[cell, fill=gray!18] at (8.990,-2.250) {$x_{14}$\\[-1pt]{\tiny $\theta_{6}$}};
-  \node[cell, fill=gray!10] at (9.610,-2.250) {$x_{15}$\\[-1pt]{\tiny $\theta_{7}$}};
-  \draw[thick] (0.000,-2.600) grid (9.920,-1.900);
-  \draw[-{Latex[length=1.6mm]},thick] (0.310,-2.650) to[bend right=32] (5.270,-2.650);
-  \node at (2.790,-3.780) {$(x_0,x_8)$};
-  \draw[-{Latex[length=1.6mm]},thick] (4.650,-2.650) to[bend right=14] (9.610,-2.650);
-  \node at (7.130,-3.220) {$(x_7,x_{15})$};
+  \node[cell, fill=gray!40] at (7.750,-2.250) {$x_{12}$\\[-1pt]{\tiny $\theta_{4}$}};
+  \node[cell, fill=gray!33] at (8.370,-2.250) {$x_{13}$\\[-1pt]{\tiny $\theta_{5}$}};
+  \node[cell, fill=gray!27] at (8.990,-2.250) {$x_{14}$\\[-1pt]{\tiny $\theta_{6}$}};
+  \node[cell, fill=gray!22] at (9.610,-2.250) {$x_{15}$\\[-1pt]{\tiny $\theta_{7}$}};
+  \draw[thick, draw=tkOrange!60] (0.000,-2.600) grid (9.920,-1.900);
+  \draw[-{Latex[length=1.6mm]},thick, draw=tkOrange!85!black] (0.310,-2.650) to[bend right=32] (5.270,-2.650);
+  \node[text=tkOrange!85!black] at (2.790,-3.780) {$(x_0,x_8)$};
+  \draw[-{Latex[length=1.6mm]},thick, draw=tkOrange!85!black] (4.650,-2.650) to[bend right=14] (9.610,-2.650);
+  \node[text=tkOrange!85!black] at (7.130,-3.220) {$(x_7,x_{15})$};
   \node[anchor=west, font=\tiny, align=left] at (0,-4.35)
     {同灰度 = 同一旋转对（共用同一 $\theta_i$）；灰度随 $i$ 从最深（$\theta_0=1$，最高频）渐浅（$\theta_{d/2-1}\approx 10^{-4}$，最低频）。\\
-     两种排列逐对重排即可互相转换；checkpoint 权重 / KV cache 不做对应重排直接套用即错。};
+     \textcolor{tkRed!85!black}{两种排列逐对重排即可互相转换；checkpoint 权重 / KV cache 不做对应重排直接套用即错。}};
 \end{tikzpicture}
 \caption{RoPE 两种配对约定（示意 $d{=}16$，即 8 对；源码测试为每 token $N{=}64$ 对）：相邻对 interleaved（源码 \texttt{idx*2}/\texttt{idx*2+1}）与半分对 half-split（HuggingFace \texttt{rotate\_half}）。同灰度格属于同一旋转对、共用同一 $\theta_i$；两行是同一分块对角旋转在不同分量排列下的形态。}
 \label{fig:7-2}

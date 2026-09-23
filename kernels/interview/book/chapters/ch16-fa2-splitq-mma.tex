@@ -168,13 +168,13 @@ A fragment}：左 tile 给 A 的 $k$ 左半区（$a_0$--$a_3$），右 tile 给
     }
   }
   \draw[thin] (0,0) grid[xstep=\cwd cm, ystep=\chd cm] ({16*\cwd},{-16*\chd});
-  \draw[very thick] (0,0) rectangle ({16*\cwd},{-16*\chd});
-  \draw[very thick] ({8*\cwd},0) -- ({8*\cwd},{-16*\chd});
-  \draw[dashed] (0,{-8*\chd}) -- ({16*\cwd},{-8*\chd});
+  \draw[very thick, tkBlue] (0,0) rectangle ({16*\cwd},{-16*\chd});
+  \draw[very thick, tkBlue] ({8*\cwd},0) -- ({8*\cwd},{-16*\chd});
+  \draw[dashed, tkBlue!55] (0,{-8*\chd}) -- ({16*\cwd},{-8*\chd});
   \draw[thin] ({\px},0) grid[xstep=\cwd cm, ystep=\chd cm] ({\px+16*\cwd},{-16*\chd});
-  \draw[very thick] ({\px},0) rectangle ({\px+16*\cwd},{-16*\chd});
-  \draw[very thick] ({\px+8*\cwd},0) -- ({\px+8*\cwd},{-16*\chd});
-  \draw[dashed] ({\px},{-8*\chd}) -- ({\px+16*\cwd},{-8*\chd});
+  \draw[very thick, tkBlue] ({\px},0) rectangle ({\px+16*\cwd},{-16*\chd});
+  \draw[very thick, tkBlue] ({\px+8*\cwd},0) -- ({\px+8*\cwd},{-16*\chd});
+  \draw[dashed, tkBlue!55] ({\px},{-8*\chd}) -- ({\px+16*\cwd},{-8*\chd});
   \foreach \c in {0,2,...,14}{
     \node[anchor=south] at ({(\c+0.5)*\cwd},0.06) {\c};
     \node[anchor=south] at ({\px+(\c+0.5)*\cwd},0.06) {\c};
@@ -188,16 +188,16 @@ A fragment}：左 tile 给 A 的 $k$ 左半区（$a_0$--$a_3$），右 tile 给
   \node[anchor=south, font=\scriptsize\bfseries] at ({\px+8*\cwd},0.62) {右：A fragment（PV 的 mma A 操作数）};
   \node[anchor=east, font=\scriptsize, rotate=90] at (-0.42,{-8*\chd}) {行 $r$（0--15）};
   % 中缝映射箭头：左 tile -> a0..a3，右 tile -> a4..a7
-  \draw[-{Stealth}, semithick] ({16*\cwd+0.10},{-1.0}) -- ({\px-0.10},{-1.0});
-  \node at (\gx,{-0.55}) {$R\_S[i][2t]$};
-  \node at (\gx,{-1.45}) {$\to a_0..a_3$};
-  \draw[-{Stealth}, semithick] ({16*\cwd+0.10},{-3.8}) -- ({\px-0.10},{-3.8});
-  \node at (\gx,{-3.35}) {$R\_S[i][2t{+}1]$};
-  \node at (\gx,{-4.25}) {$\to a_4..a_7$};
+  \draw[-{Stealth}, semithick, tkOrange] ({16*\cwd+0.10},{-1.0}) -- ({\px-0.10},{-1.0});
+  \node[text=tkOrange!80!black] at (\gx,{-0.55}) {$R\_S[i][2t]$};
+  \node[text=tkOrange!80!black] at (\gx,{-1.45}) {$\to a_0..a_3$};
+  \draw[-{Stealth}, semithick, tkOrange] ({16*\cwd+0.10},{-3.8}) -- ({\px-0.10},{-3.8});
+  \node[text=tkOrange!80!black] at (\gx,{-3.35}) {$R\_S[i][2t{+}1]$};
+  \node[text=tkOrange!80!black] at (\gx,{-4.25}) {$\to a_4..a_7$};
   % 图例：灰度 = lane 组，深浅 = 寄存器号
   \node[anchor=north west, font=\scriptsize] at (0,{-16*\chd-0.16}) {灰度 = lane 组 $\mathrm{g}=r\bmod 8$：};
   \foreach \g [evaluate=\g as \gl using int(8+8*\g)] in {0,...,7}{
-    \node[fill=gray!\gl, draw, very thin, minimum width=0.30cm, minimum height=0.20cm, inner sep=0pt]
+    \node[fill=gray!\gl, draw=gray!55, very thin, minimum width=0.30cm, minimum height=0.20cm, inner sep=0pt]
       at ({0.22+\g*0.40},{-16*\chd-0.66}) {};
     \node at ({0.22+\g*0.40},{-16*\chd-0.96}) {\g};
   }
@@ -206,13 +206,13 @@ A fragment}：左 tile 给 A 的 $k$ 左半区（$a_0$--$a_3$），右 tile 给
   % 底部横条：Bc=64 的 4 段 tile_V_Bc 消费表
   \node[anchor=south, font=\scriptsize] at ({\px+8*\cwd},{-16*\chd-0.22})
     {$B_c{=}64$：4 段 \texttt{tile\_V\_Bc} 覆盖全部列（$w=2t$，源码注释 L612--616）};
-  \node[very thick, draw, fill=gray!45, minimum width=1.78cm, minimum height=0.60cm, align=center]
+  \node[very thick, draw=tkOrange!80!black, fill=tkOrange!30, minimum width=1.78cm, minimum height=0.60cm, align=center]
     at ({\px+0.89},{-16*\chd-0.85}) {\texttt{tile\_V\_Bc=0}\\$w{=}0$，列 0:16};
-  \node[thin, draw, fill=gray!12, minimum width=1.78cm, minimum height=0.60cm, align=center]
+  \node[thin, draw=gray!55, fill=gray!22, minimum width=1.78cm, minimum height=0.60cm, align=center]
     at ({\px+2.73},{-16*\chd-0.85}) {\texttt{tile\_V\_Bc=1}\\$w{=}2$，列 16:32};
-  \node[thin, draw, fill=gray!12, minimum width=1.78cm, minimum height=0.60cm, align=center]
+  \node[thin, draw=gray!55, fill=gray!22, minimum width=1.78cm, minimum height=0.60cm, align=center]
     at ({\px+4.57},{-16*\chd-0.85}) {\texttt{tile\_V\_Bc=2}\\$w{=}4$，列 32:48};
-  \node[thin, draw, fill=gray!12, minimum width=1.78cm, minimum height=0.60cm, align=center]
+  \node[thin, draw=gray!55, fill=gray!22, minimum width=1.78cm, minimum height=0.60cm, align=center]
     at ({\px+6.41},{-16*\chd-0.85}) {\texttt{tile\_V\_Bc=3}\\$w{=}6$，列 48:64};
   \node[anchor=north, font=\tiny, align=center] at (\gx,{-16*\chd-1.75})
     {\texttt{C layout: 8 x (16 x 8) layout -> A layout: 4 x (16 x 16) layout}\\（flash\_attn.cuh L620--621 注释原文）};
@@ -252,8 +252,8 @@ $\mathrm{tig}=0..3$ 各持 2 个），行 $r{+}8$ 同一组 lane 的第二个寄
     }
   }
   \draw[thin] (0,0) grid[xstep=\cwd cm, ystep=\chd cm] ({8*\cwd},{-16*\chd});
-  \draw[very thick] (0,0) rectangle ({8*\cwd},{-16*\chd});
-  \draw[dashed] (0,{-8*\chd}) -- ({8*\cwd},{-8*\chd});
+  \draw[very thick, tkBlue] (0,0) rectangle ({8*\cwd},{-16*\chd});
+  \draw[dashed, tkBlue!55] (0,{-8*\chd}) -- ({8*\cwd},{-8*\chd});
   \foreach \c in {0,...,7}{
     \node[anchor=south] at ({(\c+0.5)*\cwd},0.06) {\c};
   }
@@ -263,39 +263,39 @@ $\mathrm{tig}=0..3$ 各持 2 个），行 $r{+}8$ 同一组 lane 的第二个寄
   }
   \node[anchor=south, font=\scriptsize\bfseries] at ({4*\cwd},0.62) {m16n8 C fragment：行 $\times$ lane 映射};
   % 左侧寄存器半区括线
-  \draw[semithick] (-0.40,0.05) -- (-0.55,0.05) -- (-0.55,{-8*\chd-0.05}) -- (-0.40,{-8*\chd-0.05});
-  \node[anchor=east, font=\tiny, align=center] at (-0.64,{-4*\chd}) {行 0--7\\\texttt{reg[0]}};
-  \draw[semithick] (-0.40,{-8*\chd+0.05}) -- (-0.55,{-8*\chd+0.05}) -- (-0.55,{-16*\chd-0.05}) -- (-0.40,{-16*\chd-0.05});
-  \node[anchor=east, font=\tiny, align=center] at (-0.64,{-12*\chd}) {行 8--15\\\texttt{reg[1]}};
+  \draw[semithick, tkBlue] (-0.40,0.05) -- (-0.55,0.05) -- (-0.55,{-8*\chd-0.05}) -- (-0.40,{-8*\chd-0.05});
+  \node[anchor=east, font=\tiny, align=center, text=tkBlue!80!black] at (-0.64,{-4*\chd}) {行 0--7\\\texttt{reg[0]}};
+  \draw[semithick, tkBlue] (-0.40,{-8*\chd+0.05}) -- (-0.55,{-8*\chd+0.05}) -- (-0.55,{-16*\chd-0.05}) -- (-0.40,{-16*\chd-0.05});
+  \node[anchor=east, font=\tiny, align=center, text=tkBlue!80!black] at (-0.64,{-12*\chd}) {行 8--15\\\texttt{reg[1]}};
   % 右侧：行 0 的 4-lane 组两步 XOR 蝶形归约
   \node[anchor=west, font=\scriptsize, align=left] at (5.25,0.35)
     {行 $r$ 的 8 个 half 由 lane $4r..4r{+}3$ 各持 2 个\\（列对 $2\,\mathrm{tig}{+}\{0,1\}$，$\mathrm{tig}=\mathrm{lane}\bmod 4$）};
-  \draw[-{Stealth}, dashed] ({8*\cwd+0.10},{-0.5*\chd}) -- (5.62,-0.45);
-  \node[circle, draw, fill=gray!8, minimum size=0.36cm, inner sep=0pt] at (5.9,-0.45) {0};
-  \node[circle, draw, fill=gray!8, minimum size=0.36cm, inner sep=0pt] at (5.9,-1.05) {1};
-  \node[circle, draw, fill=gray!8, minimum size=0.36cm, inner sep=0pt] at (5.9,-1.65) {2};
-  \node[circle, draw, fill=gray!8, minimum size=0.36cm, inner sep=0pt] at (5.9,-2.25) {3};
-  \node[circle, draw, fill=gray!16, minimum size=0.36cm, inner sep=0pt] at (7.5,-0.45) {0};
-  \node[circle, draw, fill=gray!16, minimum size=0.36cm, inner sep=0pt] at (7.5,-1.05) {1};
-  \node[circle, draw, fill=gray!16, minimum size=0.36cm, inner sep=0pt] at (7.5,-1.65) {2};
-  \node[circle, draw, fill=gray!16, minimum size=0.36cm, inner sep=0pt] at (7.5,-2.25) {3};
-  \node[circle, draw, fill=gray!24, minimum size=0.36cm, inner sep=0pt] at (9.1,-0.45) {0};
-  \node[circle, draw, fill=gray!24, minimum size=0.36cm, inner sep=0pt] at (9.1,-1.05) {1};
-  \node[circle, draw, fill=gray!24, minimum size=0.36cm, inner sep=0pt] at (9.1,-1.65) {2};
-  \node[circle, draw, fill=gray!24, minimum size=0.36cm, inner sep=0pt] at (9.1,-2.25) {3};
-  \draw[Stealth-Stealth, thin] (6.09,-0.52) -- (7.31,-1.58);
-  \draw[Stealth-Stealth, thin] (6.09,-1.58) -- (7.31,-0.52);
-  \draw[Stealth-Stealth, thin] (6.09,-1.12) -- (7.31,-2.18);
-  \draw[Stealth-Stealth, thin] (6.09,-2.18) -- (7.31,-1.12);
-  \node[anchor=north, font=\tiny] at (6.7,-2.42) {\texttt{shfl\_xor} mask=2};
-  \draw[Stealth-Stealth, thin] (7.69,-0.52) -- (8.91,-0.98);
-  \draw[Stealth-Stealth, thin] (7.69,-0.98) -- (8.91,-0.52);
-  \draw[Stealth-Stealth, thin] (7.69,-1.72) -- (8.91,-2.18);
-  \draw[Stealth-Stealth, thin] (7.69,-2.18) -- (8.91,-1.72);
-  \node[anchor=north, font=\tiny] at (8.3,-2.42) {mask=1};
-  \node[draw, anchor=west, font=\tiny, align=center] at (9.5,-1.35) {两步后组内 4 lane\\同持行 $r$ 的 max/$\ell$};
+  \draw[-{Stealth}, dashed, tkOrange] ({8*\cwd+0.10},{-0.5*\chd}) -- (5.62,-0.45);
+  \node[circle, draw=tkBlue!70!black, fill=tkFillBlue, minimum size=0.36cm, inner sep=0pt] at (5.9,-0.45) {0};
+  \node[circle, draw=tkBlue!70!black, fill=tkFillBlue, minimum size=0.36cm, inner sep=0pt] at (5.9,-1.05) {1};
+  \node[circle, draw=tkBlue!70!black, fill=tkFillBlue, minimum size=0.36cm, inner sep=0pt] at (5.9,-1.65) {2};
+  \node[circle, draw=tkBlue!70!black, fill=tkFillBlue, minimum size=0.36cm, inner sep=0pt] at (5.9,-2.25) {3};
+  \node[circle, draw=tkBlue!70!black, fill=tkBlue!18, minimum size=0.36cm, inner sep=0pt] at (7.5,-0.45) {0};
+  \node[circle, draw=tkBlue!70!black, fill=tkBlue!18, minimum size=0.36cm, inner sep=0pt] at (7.5,-1.05) {1};
+  \node[circle, draw=tkBlue!70!black, fill=tkBlue!18, minimum size=0.36cm, inner sep=0pt] at (7.5,-1.65) {2};
+  \node[circle, draw=tkBlue!70!black, fill=tkBlue!18, minimum size=0.36cm, inner sep=0pt] at (7.5,-2.25) {3};
+  \node[circle, draw=tkBlue!70!black, fill=tkBlue!30, minimum size=0.36cm, inner sep=0pt] at (9.1,-0.45) {0};
+  \node[circle, draw=tkBlue!70!black, fill=tkBlue!30, minimum size=0.36cm, inner sep=0pt] at (9.1,-1.05) {1};
+  \node[circle, draw=tkBlue!70!black, fill=tkBlue!30, minimum size=0.36cm, inner sep=0pt] at (9.1,-1.65) {2};
+  \node[circle, draw=tkBlue!70!black, fill=tkBlue!30, minimum size=0.36cm, inner sep=0pt] at (9.1,-2.25) {3};
+  \draw[Stealth-Stealth, thin, tkOrange] (6.09,-0.52) -- (7.31,-1.58);
+  \draw[Stealth-Stealth, thin, tkOrange] (6.09,-1.58) -- (7.31,-0.52);
+  \draw[Stealth-Stealth, thin, tkOrange] (6.09,-1.12) -- (7.31,-2.18);
+  \draw[Stealth-Stealth, thin, tkOrange] (6.09,-2.18) -- (7.31,-1.12);
+  \node[anchor=north, font=\tiny, text=tkOrange!80!black] at (6.7,-2.42) {\texttt{shfl\_xor} mask=2};
+  \draw[Stealth-Stealth, thin, tkOrange] (7.69,-0.52) -- (8.91,-0.98);
+  \draw[Stealth-Stealth, thin, tkOrange] (7.69,-0.98) -- (8.91,-0.52);
+  \draw[Stealth-Stealth, thin, tkOrange] (7.69,-1.72) -- (8.91,-2.18);
+  \draw[Stealth-Stealth, thin, tkOrange] (7.69,-2.18) -- (8.91,-1.72);
+  \node[anchor=north, font=\tiny, text=tkOrange!80!black] at (8.3,-2.42) {mask=1};
+  \node[draw=tkGreen!80!black, fill=tkFillGreen, anchor=west, font=\tiny, align=center, text=tkGreen!80!black] at (9.5,-1.35) {两步后组内 4 lane\\同持行 $r$ 的 max/$\ell$};
   % 红色反例：整宽 32 会混入别的行
-  \node[anchor=north west, font=\scriptsize, align=left, text=vscAccent] at (5.25,-3.15)
+  \node[anchor=north west, font=\scriptsize, align=left, text=tkRed] at (5.25,-3.15)
     {误用整宽 32（mask 16/8/4 也会交换）：\\会把行 1..7 的 max/sum 混进来——静默错误};
   \node[anchor=north west, font=\scriptsize] at (0,{-16*\chd-0.22})
     {行 $r$ 与 $r{+}8$ 由同一 4-lane 组分别用 \texttt{reg[0]}/\texttt{reg[1]} 归约——这正是
@@ -386,18 +386,18 @@ padding 分析、第~\ref{ch:12}~章的 swizzle 是同一主题的三种解法�
         at ({(\c+0.5)*\cwd},{-(\r+0.5)*\chd}) {\bk};
     }
   }
-  \draw[thin] (0,0) grid[xstep=\cwd cm, ystep=\chd cm] ({8*\cwd},{-8*\chd});
-  \draw[very thick] (0,0) rectangle ({8*\cwd},{-8*\chd});
-  \node[anchor=south west, font=\scriptsize\bfseries] at (0,0.14)
+  \draw[thin, draw=tkGreen!50] (0,0) grid[xstep=\cwd cm, ystep=\chd cm] ({8*\cwd},{-8*\chd});
+  \draw[very thick, tkGreen] (0,0) rectangle ({8*\cwd},{-8*\chd});
+  \node[anchor=south west, font=\scriptsize\bfseries, text=tkGreen!80!black] at (0,0.14)
     {pad$=8$：行距 $36$ bank 字（$36 \bmod 32 = 4$）};
   \foreach \r in {0,...,7}{
     \node[anchor=east] at (-0.08,{-(\r+0.5)*\chd}) {\r};
   }
-  \node[anchor=east, font=\scriptsize, rotate=90] at (-0.56,{-4*\chd}) {行 $r$};
+  \node[anchor=east, font=\scriptsize, rotate=90, text=tkGreen!80!black] at (-0.56,{-4*\chd}) {行 $r$};
   \node[anchor=north, font=\tiny] at ({4*\cwd},{-8*\chd-0.10})
     {每格 $=$ 一个 16~B 段，格内为该段的起始 bank 号（列 $c=0..7$ 覆盖 $D{=}64$ half）};
-  \draw[thick, gray!70] (5.15,0.14) -- (5.15,{-8*\chd});
-  \node[anchor=north west, font=\tiny, align=left, text width=6.4cm] at (5.35,0.14)
+  \draw[thick, tkGreen] (5.15,0.14) -- (5.15,{-8*\chd});
+  \node[anchor=north west, font=\tiny, align=left, text width=6.4cm, text=tkGreen!80!black] at (5.35,0.14)
     {同一列 $c$（ldmatrix 同一相位要读的 8 行）：\\
      起始 bank $=\{4r{+}4c\}_{r=0}^{7}$ 互不相同，\\
      取遍 $32$ 个 bank 各一次 $\to$ conflict-free};
@@ -409,17 +409,17 @@ padding 分析、第~\ref{ch:12}~章的 swizzle 是同一主题的三种解法�
         at ({(\c+0.5)*\cwd},{-3.52-(\r+0.5)*\chd}) {\bk};
     }
   }
-  \draw[thin] (0,-3.52) grid[xstep=\cwd cm, ystep=\chd cm] ({8*\cwd},{-3.52-8*\chd});
-  \draw[very thick] (0,-3.52) rectangle ({8*\cwd},{-3.52-8*\chd});
-  \node[anchor=south west, font=\scriptsize\bfseries] at (0,-3.38)
+  \draw[thin, draw=tkRed!45] (0,-3.52) grid[xstep=\cwd cm, ystep=\chd cm] ({8*\cwd},{-3.52-8*\chd});
+  \draw[very thick, tkRed] (0,-3.52) rectangle ({8*\cwd},{-3.52-8*\chd});
+  \node[anchor=south west, font=\scriptsize\bfseries, text=tkRed] at (0,-3.38)
     {不 pad：行距 $32$ bank 字（$32 \bmod 32 = 0$）};
   \foreach \r in {0,...,7}{
     \node[anchor=east] at (-0.08,{-3.52-(\r+0.5)*\chd}) {\r};
   }
-  \node[anchor=north, font=\tiny] at ({4*\cwd},{-3.52-8*\chd-0.22})
+  \node[anchor=north, font=\tiny, text=tkRed] at ({4*\cwd},{-3.52-8*\chd-0.22})
     {同一列 8 行的起始 bank 全为 $4c$（行间整周期回绕，相位不变）};
-  \draw[thick, vscAccent] (5.15,-3.38) -- (5.15,{-3.52-8*\chd});
-  \node[anchor=north west, font=\tiny, align=left, text width=6.4cm, text=vscAccent] at (5.35,-3.38)
+  \draw[thick, tkRed] (5.15,-3.38) -- (5.15,{-3.52-8*\chd});
+  \node[anchor=north west, font=\tiny, align=left, text width=6.4cm, text=tkRed] at (5.35,-3.38)
     {$\to$ 同一相位的 8 段 16~B 全压在同一组 $4$ 个 bank 上，\\
      8 个访问被迫串行化；\\
      这就是「不 pad」的默认代价，pad$=$8 是三种解法中最省事的一种};
@@ -503,7 +503,7 @@ $K_{t+1}$ 则有整整一个迭代的余量。这与第~\ref{ch:11}~章 GEMM 的
                 evaluate=\tk as \pd using {4*\tk+3.70}] in {0,1,2}{
     \node[thin, draw, fill=gray!68, minimum width=1.10cm, minimum height=\lh cm, inner sep=0pt]
       at ({\pa*\u},-0.45) {3b QK};
-    \node[thin, draw, preaction={fill=gray!22}, pattern=north east lines, pattern color=gray!55,
+    \node[thin, draw=tkPurple!80!black, preaction={fill=tkFillPurple}, pattern=north east lines, pattern color=tkPurple!45,
           minimum width=1.10cm, minimum height=\lh cm, inner sep=0pt]
       at ({\pb*\u},-0.45) {3c softmax};
     \node[thin, draw, fill=gray!68, minimum width=0.92cm, minimum height=\lh cm, inner sep=0pt]
@@ -516,30 +516,30 @@ $K_{t+1}$ 则有整整一个迭代的余量。这与第~\ref{ch:11}~章 GEMM 的
                          evaluate=\tk as \vb using {4*\tk+2.40},
                          evaluate=\tk as \ka using {4*\tk+0.25},
                          evaluate=\tk as \kb using {min(4*\tk+4.00,12)}] in {0/{t-1}/t,1/t/{t+1},2/{t+1}/{t+2}}{
-    \draw[thin, fill=gray!25] ({\va*\u},-1.23) rectangle ({\vb*\u},-0.97);
+    \draw[thin, draw=tkBlue!80!black, fill=tkFillBlue] ({\va*\u},-1.23) rectangle ({\vb*\u},-0.97);
     \node at ({(\va+\vb)/2*\u},-1.10) {$V_{\tv}$ 在途｜3b+3c};
-    \fill[black] ({\va*\u},-1.10) circle (0.045);
-    \draw[thin, fill=gray!15] ({\ka*\u},-1.83) rectangle ({\kb*\u},-1.57);
+    \fill[tkBlue] ({\va*\u},-1.10) circle (0.045);
+    \draw[thin, draw=tkGreen!80!black, fill=tkFillGreen] ({\ka*\u},-1.83) rectangle ({\kb*\u},-1.57);
     \node at ({(\ka+\kb)/2*\u},-1.70) {$K_{\tkv}$ 在途｜整迭代余量};
-    \node[draw, fill=white, minimum size=0.10cm, inner sep=0pt] at ({\ka*\u},-1.70) {};
+    \node[draw=tkGreen!80!black, fill=white, minimum size=0.10cm, inner sep=0pt] at ({\ka*\u},-1.70) {};
   }
   % 等待点
-  \draw[dashed, thin] ({6.4*\u},0.28) -- ({6.4*\u},-2.30);
-  \draw[dashed, thin] ({8.0*\u},0.28) -- ({8.0*\u},-2.30);
-  \node[circle, draw, fill=white, minimum size=0.34cm, inner sep=0pt] at ({6.4*\u},-2.32) {1};
-  \node[circle, draw, fill=white, minimum size=0.34cm, inner sep=0pt] at ({8.0*\u},-2.32) {2};
-  \node[anchor=north west, align=left, text width=10.9cm] at (0.2,-2.72)
+  \draw[dashed, thin, tkOrange!60] ({6.4*\u},0.28) -- ({6.4*\u},-2.30);
+  \draw[dashed, thin, tkOrange!60] ({8.0*\u},0.28) -- ({8.0*\u},-2.30);
+  \node[circle, draw=tkOrange!85!black, fill=tkFillOrange, minimum size=0.34cm, inner sep=0pt] at ({6.4*\u},-2.32) {1};
+  \node[circle, draw=tkOrange!85!black, fill=tkFillOrange, minimum size=0.34cm, inner sep=0pt] at ({8.0*\u},-2.32) {2};
+  \node[anchor=north west, align=left, text width=10.9cm, text=tkOrange!80!black] at (0.2,-2.72)
     {(1) 3d 前 \texttt{wait\_group(1)}：只等 $V_t$——$K_{t+1}$ 是唯一允许继续在途的组};
-  \node[anchor=north west, align=left, text width=10.9cm] at (0.2,-3.16)
+  \node[anchor=north west, align=left, text width=10.9cm, text=tkOrange!80!black] at (0.2,-3.16)
     {(2) 迭代末 \texttt{wait\_group(0)}：$K_{t+1}$ 到齐后才进下一轮 3b（收口）};
   \node[anchor=north west, align=left, text width=10.9cm] at (0.2,-3.60)
     {实心圆 $=$ $V$ 的 commit；空心方 $=$ $K$ 的 commit（同一次 3a 内\textbf{先 V 后 K}，所以离栈顶最近的是 $K$）};
   % 泳道标签
   \node[anchor=east, font=\scriptsize] at (-0.12,-0.45) {计算（3b--3e）};
-  \node[anchor=east, font=\scriptsize] at (-0.12,-1.10) {搬运 $V$（3a）};
-  \node[anchor=east, font=\scriptsize] at (-0.12,-1.70) {搬运 $K$（3a 预取）};
+  \node[anchor=east, font=\scriptsize, text=tkBlue!80!black] at (-0.12,-1.10) {搬运 $V$（3a）};
+  \node[anchor=east, font=\scriptsize, text=tkGreen!80!black] at (-0.12,-1.70) {搬运 $K$（3a 预取）};
 \end{tikzpicture}
-\caption{\textbf{K 双缓冲、V 单级}的流水时序（16.4.5 节 3a 步，源码 L273--340 与 L563--569、L710--714 的图形化）。三个稳态迭代 $t{-}1/t/t{+}1$：每个迭代内 3a 依次提交两组搬运——$V_t$（实心圆，写当前 V buffer）与 $K_{t+1}$（空心方，写 \texttt{smem\_sel\_next}）。$V_t$ 的在途窗口（灰条）恰好覆盖同迭代的 3b（QK mma）与 3c（softmax）——softmax 全在 CUDA Core/SFU 上跑，正好填掉 V 的搬运延迟；$K_{t+1}$ 则有整整一个迭代的余量。两处等待：(1) 3d 前的 \texttt{wait\_group(1)} 只等 $V_t$，把 $K_{t+1}$ 留在途；(2) 迭代末（3e 之后）的 \texttt{wait\_group(0)} 收口 $K_{t+1}$ 才进下一轮 3b。与第~\ref{ch:11}~章 GEMM 的「kStages 全操作数统一多级」不同——attention 两段 mma 之间夹着一段非 mma 计算，天然提供了第二级的隐藏窗口，所以 \texttt{kStagesK}$=$2 就够（源码注释 L281「one stage is enough for V」）。}
+\caption{\textbf{K 双缓冲、V 单级}的流水时序（16.4.5 节 3a 步，源码 L273--340 与 L563--569、L710--714 的图形化）。三个稳态迭代 $t{-}1/t/t{+}1$：每个迭代内 3a 依次提交两组搬运——$V_t$（实心圆，写当前 V buffer）与 $K_{t+1}$（空心方，写 \texttt{smem\_sel\_next}）。$V_t$ 的在途窗口（蓝条）恰好覆盖同迭代的 3b（QK mma）与 3c（softmax）——softmax 全在 CUDA Core/SFU 上跑，正好填掉 V 的搬运延迟；$K_{t+1}$ 则有整整一个迭代的余量。两处等待：(1) 3d 前的 \texttt{wait\_group(1)} 只等 $V_t$，把 $K_{t+1}$ 留在途；(2) 迭代末（3e 之后）的 \texttt{wait\_group(0)} 收口 $K_{t+1}$ 才进下一轮 3b。与第~\ref{ch:11}~章 GEMM 的「kStages 全操作数统一多级」不同——attention 两段 mma 之间夹着一段非 mma 计算，天然提供了第二级的隐藏窗口，所以 \texttt{kStagesK}$=$2 就够（源码注释 L281「one stage is enough for V」）。}
 \label{fig:16-kv-pipeline}
 \end{figure}
 

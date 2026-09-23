@@ -295,7 +295,7 @@ $(4,8,4)$（$=128$ 个 half/线程，因为 4 个 M-warp 各持一份完整 B，
 \begin{tikzpicture}[font=\tiny]
   \begin{scope}
     \foreach \fk in {0,...,3}{
-      \ifnum\fk=0 \def\cfill{colorx4!40} \else \def\cfill{gray!10} \fi
+      \ifnum\fk=0 \def\cfill{colorx4!40} \else \def\cfill{gray!22} \fi
       \fill[\cfill] ({0.6*\fk},0) rectangle ({0.6*\fk+0.6},{-2.4});
     }
     \draw[thin] (0,0) grid[xstep=0.6cm, ystep=0.3cm] (2.4,-2.4);
@@ -340,7 +340,7 @@ $(4,8,4)$（$=128$ 个 half/线程，因为 4 个 M-warp 各持一份完整 B，
   \begin{scope}[shift={(8.6,0)}]
     \foreach \am in {0,...,3}{
       \foreach \ak in {0,...,3}{
-        \ifnum\am=1 \def\cfill{colorx3!45} \else \def\cfill{gray!12} \fi
+        \ifnum\am=1 \def\cfill{colorx3!45} \else \def\cfill{gray!22} \fi
         \fill[\cfill] ({0.33*\ak},{-0.6*\am}) rectangle ({0.33*\ak+0.33},{-0.6*\am-0.6});
       }
     }

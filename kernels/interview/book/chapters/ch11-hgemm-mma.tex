@@ -104,7 +104,7 @@ C 的 $16\times8$。每个 lane 持多少、在矩阵的什么位置，就是 fr
   \node[font=\small\bfseries] at (8.2,1.30)
     {A fragment 寄存器布局（$m16 \times k16$ row-major）：$g = \mathrm{lane} \gg 2$，$\mathrm{tig} = \mathrm{lane} \bmod 4$};
   \node[text=gray!80] at (8.2,0.92)
-    {T$n$ = lane $n$ 持有该元素；同一列对的 2 个相邻 f16 装一条 \texttt{.b32}；灰度 $=$ lane 组 $g = m \bmod 8$（行 $m$ 与 $m{+}8$ 同灰）};
+    {T$n$ = lane $n$ 持有该元素；同一列对的 2 个相邻 f16 装一条 \texttt{.b32}；底色 $=$ lane 组 $g = m \bmod 8$（行 $m$ 与 $m{+}8$ 同色）};
   \def\cwa{0.62}
   \def\cha{0.42}
   \foreach \fmi in {0,...,15} {
@@ -114,47 +114,47 @@ C 的 $16\times8$。每个 lane 持多少、在矩阵的什么位置，就是 fr
       \pgfmathtruncatemacro{\tigv}{mod(\fj,8)/2}
       \pgfmathtruncatemacro{\lanv}{4*\gval+\tigv}
       \pgfmathtruncatemacro{\aiv}{4*int(\fj/8)+2*int(\fmi/8)+mod(\fj,2)}
-      \node[fill=gray!\gr, minimum width=\cwa cm, minimum height=\cha cm, inner sep=0pt]
+      \node[fill=tkPurple!\gr, minimum width=\cwa cm, minimum height=\cha cm, inner sep=0pt]
         at ({(\fj+0.5)*\cwa},{-\fmi*\cha-\cha/2}) {T\lanv\ a\aiv};
     }
   }
   \foreach \fj in {0,...,16} \draw[thin] ({\fj*\cwa},0) -- ({\fj*\cwa},{-16*\cha});
   \foreach \fmi in {0,...,16} \draw[thin] (0,{-\fmi*\cha}) -- ({16*\cwa},{-\fmi*\cha});
   \draw[very thick] (0,0) rectangle ({16*\cwa},{-16*\cha});
-  \draw[thick, dashed] ({8*\cwa},0) -- ({8*\cwa},{-16*\cha});
-  \draw[thick, dashed] (0,{-8*\cha}) -- ({16*\cwa},{-8*\cha});
-  \draw[thick, colorx6!65!black] (0,0) rectangle ({8*\cwa},{-8*\cha});
-  \draw[thick, colorx5!65!black] (0,{-8*\cha}) rectangle ({8*\cwa},{-16*\cha});
-  \draw[thick, colorx7!65!black] ({8*\cwa},0) rectangle ({16*\cwa},{-8*\cha});
-  \draw[thick, colorx8!65!black] ({8*\cwa},{-8*\cha}) rectangle ({16*\cwa},{-16*\cha});
+  \draw[thick, tkBlue] (0,0) rectangle ({8*\cwa},{-8*\cha});
+  \draw[thick, tkBlue!75!tkPurple] (0,{-8*\cha}) rectangle ({8*\cwa},{-16*\cha});
+  \draw[thick, tkBlue!50!tkPurple] ({8*\cwa},0) rectangle ({16*\cwa},{-8*\cha});
+  \draw[thick, tkBlue!25!tkPurple] ({8*\cwa},{-8*\cha}) rectangle ({16*\cwa},{-16*\cha});
+  \draw[thick, dashed, tkOrange] ({8*\cwa},0) -- ({8*\cwa},{-16*\cha});
+  \draw[thick, dashed, tkOrange] (0,{-8*\cha}) -- ({16*\cwa},{-8*\cha});
   \foreach \fj in {0,...,15}
     \node[anchor=south, font=\tiny] at ({(\fj+0.5)*\cwa},0.10) {\fj};
-  \node[anchor=south, font=\scriptsize, fill=gray!16, inner sep=1.5pt] at ({4*\cwa},0.42)
+  \node[anchor=south, font=\scriptsize, fill=gray!22, draw=gray!55, inner sep=1.5pt] at ({4*\cwa},0.42)
     {$k$ 0--7：$a_0$--$a_3$ 列区};
-  \node[anchor=south, font=\scriptsize, fill=gray!16, inner sep=1.5pt] at ({12*\cwa},0.42)
+  \node[anchor=south, font=\scriptsize, fill=gray!22, draw=gray!55, inner sep=1.5pt] at ({12*\cwa},0.42)
     {$k$ 8--15：$a_4$--$a_7$ 列区};
   \foreach \fmi in {0,...,15}
     \node[anchor=east, font=\tiny] at (-0.15,{-\fmi*\cha-\cha/2}) {\fmi};
-  \node[rotate=90, font=\scriptsize, fill=gray!16, inner sep=1.5pt] at (-0.85,{-4*\cha})
+  \node[rotate=90, font=\scriptsize, fill=gray!22, draw=gray!55, inner sep=1.5pt] at (-0.85,{-4*\cha})
     {行 $m$ 0--7};
-  \node[rotate=90, font=\scriptsize, fill=gray!16, inner sep=1.5pt] at (-0.85,{-12*\cha})
+  \node[rotate=90, font=\scriptsize, fill=gray!22, draw=gray!55, inner sep=1.5pt] at (-0.85,{-12*\cha})
     {行 $m$ 8--15};
   \node[anchor=north west, font=\scriptsize\bfseries] at (10.7,-0.35)
     {每 lane 4 条 \texttt{.b32}：};
-  \node[draw=colorx6!80!black, fill=colorx6!8, anchor=north west, align=left, font=\scriptsize,
+  \node[draw=tkBlue, fill=tkFillBlue, anchor=north west, align=left, font=\scriptsize,
     inner sep=3pt] at (10.7,-0.78) {\textbf{R0} $= a_0,a_1$（UL）\\行 $m$ 0--7，列 $k$ 0--7};
-  \node[draw=colorx5!80!black, fill=colorx5!8, anchor=north west, align=left, font=\scriptsize,
+  \node[draw=tkBlue!75!tkPurple, fill=tkFillBlue!75!tkFillPurple, anchor=north west, align=left, font=\scriptsize,
     inner sep=3pt] at (10.7,-1.7) {\textbf{R1} $= a_2,a_3$（LL）\\行 $m$ 8--15，列 $k$ 0--7};
-  \node[draw=colorx7!80!black, fill=colorx7!8, anchor=north west, align=left, font=\scriptsize,
+  \node[draw=tkBlue!50!tkPurple, fill=tkFillBlue!50!tkFillPurple, anchor=north west, align=left, font=\scriptsize,
     inner sep=3pt] at (10.7,-2.62) {\textbf{R2} $= a_4,a_5$（UR）\\行 $m$ 0--7，列 $k$ 8--15};
-  \node[draw=colorx8!80!black, fill=colorx8!8, anchor=north west, align=left, font=\scriptsize,
+  \node[draw=tkBlue!25!tkPurple, fill=tkFillBlue!25!tkFillPurple, anchor=north west, align=left, font=\scriptsize,
     inner sep=3pt] at (10.7,-3.54) {\textbf{R3} $= a_6,a_7$（LR）\\行 $m$ 8--15，列 $k$ 8--15};
   \node[anchor=north west, align=left, font=\tiny, text width=5.6cm] at (10.7,-4.55)
     {虚线把 $m16{\times}k16$ 切成四象限：左/右半 $=$ 列对是否 $+8$（$a_0..a_3$ 与 $a_4..a_7$），\\
      上/下半 $=$ 行号是否 $+8$；象限序 $\mathrm{R0}(UL), \mathrm{R1}(LL), \mathrm{R2}(UR), \mathrm{R3}(LR)$ 即 mma 期望的寄存器序。};
   \node[anchor=north west, align=left, font=\tiny, text width=16.4cm] at (0,-6.95)
     {每 lane 4 条 \texttt{.b32}：R0 取行 $g$ 的列 $(2\,\mathrm{tig},\,2\,\mathrm{tig}{+}1)$；R1 取行 $g{+}8$ 同列；R2/R3 再取列 $+8$。\\
-     每格为 1 个 f16（灰度 $=$ lane 组 $g$）：一行 16 个元素由 $\mathrm{tig}=0..3$ 的 4 个 lane 拼成，列对 $(2\mathrm{tig},2\mathrm{tig}{+}1)$ 归同一 lane。};
+     每格为 1 个 f16（底色 $=$ lane 组 $g$）：一行 16 个元素由 $\mathrm{tig}=0..3$ 的 4 个 lane 拼成，列对 $(2\mathrm{tig},2\mathrm{tig}{+}1)$ 归同一 lane。};
 \end{tikzpicture}
 \caption{A fragment 寄存器布局（依据 PTX ISA Figure 79 的行/列公式绘制；T$n$ 表示 lane $n$ 持有该元素，每格 2 个相邻 f16 装一条 \texttt{.b32}；四象限 $R0/R1/R2/R3$ 分别对应 UL/LL/UR/LR）。}
 \label{fig:11-2a}
@@ -203,17 +203,17 @@ $k$ 方向都是「4 个 lane 各持 2 个相邻元素」。B 侧逐格布局见
       \pgfmathtruncatemacro{\tigan}{int(mod(\r,8)/2)}
       \pgfmathtruncatemacro{\tbi}{int(mod(\r,2)+2*int(\r/8))}
       \pgfmathtruncatemacro{\tlan}{4*\c+\tigan}
-      \node[fill=gray!\gr, minimum width=\cwd cm, minimum height=\chd cm, inner sep=0pt]
+      \node[fill=tkPurple!\gr, minimum width=\cwd cm, minimum height=\chd cm, inner sep=0pt]
         at ({(\c+0.5)*\cwd},{-(\r+0.5)*\chd}) {T\tlan\ b\tbi};
     }
   }
   \draw[thin] (0,0) grid[xstep=0.62cm, ystep=0.42cm] ({8*\cwd},{-16*\chd});
   \draw[very thick] (0,0) rectangle ({8*\cwd},{-16*\chd});
-  \draw[thick, dashed] (0,{-8*\chd}) -- ({8*\cwd},{-8*\chd});
+  \draw[thick, dashed, tkOrange] (0,{-8*\chd}) -- ({8*\cwd},{-8*\chd});
   \foreach \c in {0,...,7}{
     \node[anchor=south] at ({(\c+0.5)*\cwd},0.12) {\c};
   }
-  \node[anchor=south, font=\scriptsize] at ({4*\cwd},0.48) {列 $n=\mathrm{g}=\mathrm{lane}\gg2$（同列同灰度，8 档）};
+  \node[anchor=south, font=\scriptsize] at ({4*\cwd},0.48) {列 $n=\mathrm{g}=\mathrm{lane}\gg2$（同列同底色，8 档）};
   \foreach \r in {0,...,15}{
     \node[anchor=east] at (-0.14,{-\r*\chd-0.21}) {\r};
   }
@@ -223,18 +223,18 @@ $k$ 方向都是「4 个 lane 各持 2 个相邻元素」。B 侧逐格布局见
   \node[anchor=west, font=\scriptsize\bfseries] at (5.7,{-8*\chd}) {每 lane 寄存器视图};
   \node[anchor=west, font=\tiny, align=left] at (5.7,{-8*\chd-0.38})
     {lane $=4\,\mathrm{g}+\mathrm{tig}$，持第 $\mathrm{g}$ 列的 4 个 f16，\\打包为 2 条 \texttt{.b32}：};
-  \draw[fill=gray!25, thick] (5.7,{-8*\chd-1.25}) rectangle (7.5,{-8*\chd-0.85});
+  \draw[draw=tkBlue, fill=tkFillBlue, thick] (5.7,{-8*\chd-1.25}) rectangle (7.5,{-8*\chd-0.85});
   \draw[thick] (6.6,{-8*\chd-1.25}) -- (6.6,{-8*\chd-0.85});
   \node at (6.15,{-8*\chd-1.05}) {$b\sb 0$};
   \node at (6.95,{-8*\chd-1.05}) {$b\sb 1$};
   \node[anchor=west, font=\tiny] at (7.62,{-8*\chd-1.05}) {$RB[0]$：$k=2\,\mathrm{tig},\ 2\,\mathrm{tig}{+}1$};
-  \draw[fill=gray!45, thick] (5.7,{-8*\chd-1.95}) rectangle (7.5,{-8*\chd-1.55});
+  \draw[draw=tkBlue!75!tkPurple, fill=tkFillBlue!55!tkPurple, thick] (5.7,{-8*\chd-1.95}) rectangle (7.5,{-8*\chd-1.55});
   \draw[thick] (6.6,{-8*\chd-1.95}) -- (6.6,{-8*\chd-1.55});
   \node at (6.15,{-8*\chd-1.75}) {$b\sb 2$};
   \node at (6.95,{-8*\chd-1.75}) {$b\sb 3$};
   \node[anchor=west, font=\tiny] at (7.62,{-8*\chd-1.75}) {$RB[1]$：$k=8{+}2\,\mathrm{tig},\ 8{+}2\,\mathrm{tig}{+}1$};
 \end{tikzpicture}
-\caption{B fragment（$k16\times n8$）寄存器布局，式~\ref{eq:11-bpos} 的网格化（图~\ref{fig:11-2a} 的 B 侧姊妹图）：列 $n=\mathrm{g}=\mathrm{lane}\gg2$（同列同灰度 8 档），行 $k$ 按 $b\sb 0\to2\,\mathrm{tig}$、$b\sb 1\to2\,\mathrm{tig}{+}1$、$b\sb 2/b\sb 3$ 再 $+8$ 分布。右：每 lane 4 个 f16 打包为 $RB[0]/RB[1]$ 两条 \texttt{.b32}。与 A 对照：A 按行分、B 按列分。}
+\caption{B fragment（$k16\times n8$）寄存器布局，式~\ref{eq:11-bpos} 的网格化（图~\ref{fig:11-2a} 的 B 侧姊妹图）：列 $n=\mathrm{g}=\mathrm{lane}\gg2$（同列同底色 8 档），行 $k$ 按 $b\sb 0\to2\,\mathrm{tig}$、$b\sb 1\to2\,\mathrm{tig}{+}1$、$b\sb 2/b\sb 3$ 再 $+8$ 分布。右：每 lane 4 个 f16 打包为 $RB[0]/RB[1]$ 两条 \texttt{.b32}。与 A 对照：A 按行分、B 按列分。}
 \label{fig:11-b-fragment}
 \end{figure}
 
@@ -261,13 +261,13 @@ $RC[0]$（第一个 \texttt{.b32}）覆盖行 0--7，$RC[1]$ 覆盖行 8--15。
     \pgfmathtruncatemacro{\rg}{int(7+9*mod(\r,8))}
     \foreach \c in {0,...,7}{
       \pgfmathtruncatemacro{\tlan}{4*mod(\r,8)+int(\c/2)}
-      \node[fill=gray!\rg, minimum width=\cwd cm, minimum height=\chd cm, inner sep=0pt]
+      \node[fill=tkPurple!\rg, minimum width=\cwd cm, minimum height=\chd cm, inner sep=0pt]
         at ({(\c+0.5)*\cwd},{-(\r+0.5)*\chd}) {T\tlan\ c\c};
     }
   }
   \draw[thin] (0,0) grid[xstep=0.62cm, ystep=0.42cm] ({8*\cwd},{-16*\chd});
   \draw[very thick] (0,0) rectangle ({8*\cwd},{-16*\chd});
-  \draw[thick, dashed] (0,{-8*\chd}) -- ({8*\cwd},{-8*\chd});
+  \draw[thick, dashed, tkOrange] (0,{-8*\chd}) -- ({8*\cwd},{-8*\chd});
   \foreach \c in {0,...,7}{
     \node[anchor=south] at ({(\c+0.5)*\cwd},0.12) {\c};
   }
@@ -275,24 +275,24 @@ $RC[0]$（第一个 \texttt{.b32}）覆盖行 0--7，$RC[1]$ 覆盖行 8--15。
   \foreach \r in {0,...,15}{
     \node[anchor=east] at (-0.14,{-\r*\chd-0.21}) {\r};
   }
-  \node[anchor=center, font=\tiny, rotate=90] at (-0.75,{-8*\chd}) {行 $m$（灰度 $=\mathrm{g}=m\bmod 8$）};
+  \node[anchor=center, font=\tiny, rotate=90] at (-0.75,{-8*\chd}) {行 $m$（底色 $=\mathrm{g}=m\bmod 8$）};
   \draw[semithick, tkBlue] ({8*\cwd+0.15},0.1) -- ({8*\cwd+0.3},0.1) -- ({8*\cwd+0.3},{-8*\chd-0.1}) -- ({8*\cwd+0.15},{-8*\chd-0.1});
   \node[anchor=west, font=\scriptsize, align=left, text=tkBlue] at ({8*\cwd+0.4},{-4*\chd}) {$RC[0]$（.b32）\\行 0--7};
-  \draw[semithick, tkPurple] ({8*\cwd+0.15},{-8*\chd+0.1}) -- ({8*\cwd+0.3},{-8*\chd+0.1}) -- ({8*\cwd+0.3},{-16*\chd-0.1}) -- ({8*\cwd+0.15},{-16*\chd-0.1});
-  \node[anchor=west, font=\scriptsize, align=left, text=tkPurple] at ({8*\cwd+0.4},{-12*\chd}) {$RC[1]$（.b32）\\行 8--15};
+  \draw[semithick, tkBlue!75!tkPurple] ({8*\cwd+0.15},{-8*\chd+0.1}) -- ({8*\cwd+0.3},{-8*\chd+0.1}) -- ({8*\cwd+0.3},{-16*\chd-0.1}) -- ({8*\cwd+0.15},{-16*\chd-0.1});
+  \node[anchor=west, font=\scriptsize, align=left, text=tkBlue!75!tkPurple] at ({8*\cwd+0.4},{-12*\chd}) {$RC[1]$（.b32）\\行 8--15};
   \node[anchor=north west, font=\tiny, align=left] at ({8*\cwd+0.4},{-13.6*\chd})
     {寄存器序（式~\ref{eq:11-cpos}）：\\$i=(n\bmod 2)+2\cdot[m\ge 8]$\\行 $=\mathrm{g}+8\cdot[i\ge2]$，列 $=2\,\mathrm{tig}+(i\bmod2)$};
   \node[anchor=east, font=\scriptsize] at (-0.15,{-16*\chd-0.45}) {4-lane 组};
   \foreach \t [evaluate=\t as \ca using int(2*\t), evaluate=\t as \cb using int(2*\t+1)] in {0,...,3}{
-    \node[draw, fill=gray!12, minimum width=1.15cm, minimum height=0.5cm, font=\tiny]
+    \node[draw=tkOrange, fill=tkFillOrange, minimum width=1.15cm, minimum height=0.5cm, font=\tiny]
       at ({\t*1.25+0.625},{-16*\chd-0.45}) {T\t\ $\{c\sb\ca,c\sb\cb\}$};
     \node[font=\tiny] at ({\t*1.25+0.625},{-16*\chd-0.82}) {tig=\t};
   }
   \node[anchor=west, font=\tiny, align=left] at (5.35,{-16*\chd-0.55})
     {同一 $\mathrm{g}$ 的 tig $=0..3$ 各持一对，\\拼出行 $\mathrm{g}$（与 $\mathrm{g}{+}8$）的 8 列};
-  \draw[->, dashed] (0.63,{-16*\chd-0.2}) -- (0.63,{-16*\chd+0.1});
+  \draw[->, dashed, tkOrange] (0.63,{-16*\chd-0.2}) -- (0.63,{-16*\chd+0.1});
 \end{tikzpicture}
-\caption{C fragment（$m16\times n8$）寄存器布局——hgemm.cuh~L311--333 字符画的 TikZ 版，与式~\ref{eq:11-cpos} 逐格一致：行 $m=\mathrm{g}=\mathrm{lane}\gg2$（灰度 8 档，行 0--7 与 8--15 由同批 lane 重复覆盖），列对由 $\mathrm{tig}=\mathrm{lane}\%4$ 决定；$RC[0]$ 装行 0--7、$RC[1]$ 装行 8--15。底部：4-lane 组内 tig $=0..3$ 各持一对 $\{c\sb{2t},c\sb{2t+1}\}$，拼齐一行 8 个 half——11.4.6 节 epilogue shuffle 的出发点。}
+\caption{C fragment（$m16\times n8$）寄存器布局——hgemm.cuh~L311--333 字符画的 TikZ 版，与式~\ref{eq:11-cpos} 逐格一致：行 $m=\mathrm{g}=\mathrm{lane}\gg2$（底色 8 档，行 0--7 与 8--15 由同批 lane 重复覆盖），列对由 $\mathrm{tig}=\mathrm{lane}\%4$ 决定；$RC[0]$ 装行 0--7、$RC[1]$ 装行 8--15。底部：4-lane 组内 tig $=0..3$ 各持一对 $\{c\sb{2t},c\sb{2t+1}\}$，拼齐一行 8 个 half——11.4.6 节 epilogue shuffle 的出发点。}
 \label{fig:11-c-fragment}
 \end{figure}
 
@@ -393,7 +393,10 @@ tile $k{+}2$ 的那组允许还没到。尾部（$k + \mathrm{kStages} - 1 \ge
 \centering
 \begin{tikzpicture}[font=\tiny, >=Stealth]
   \def\u{1.5}
-  \fill[gray!8] (-1.85,0.35) rectangle (0,-3.45);
+  \def\stageset#1{\ifcase#1 \def\sdark{tkBlue!45}\def\slight{tkBlue!18}\or
+    \def\sdark{tkGreen!45}\def\slight{tkGreen!18}\else
+    \def\sdark{tkOrange!45}\def\slight{tkOrange!18}\fi}
+  \draw[gray!55, fill=gray!22] (-1.85,0.35) rectangle (0,-3.45);
   \node[align=center, text width=1.8cm] at (-0.92,-1.35)
     {prologue：\\装载 tile 0/1\\（wait\_group(0)）};
   \foreach \kk in {0,...,7}{
@@ -402,19 +405,21 @@ tile $k{+}2$ 的那组允许还没到。尾部（$k + \mathrm{kStages} - 1 \ge
   }
   \node[anchor=east] at (-1.98,0) {cp.async};
   \node[anchor=east] at (-1.98,-0.95) {mma};
-  \node[anchor=east] at (-1.98,-1.9) {$S\sb 0$};
-  \node[anchor=east] at (-1.98,-2.55) {$S\sb 1$};
-  \node[anchor=east] at (-1.98,-3.2) {$S\sb 2$};
+  \node[anchor=east, text=tkBlue] at (-1.98,-1.9) {$S\sb 0$};
+  \node[anchor=east, text=tkGreen] at (-1.98,-2.55) {$S\sb 1$};
+  \node[anchor=east, text=tkOrange] at (-1.98,-3.2) {$S\sb 2$};
   \foreach \kk in {0,...,5}{
     \pgfmathtruncatemacro{\tl}{\kk+2}
-    \pgfmathtruncatemacro{\glv}{20+25*mod(\tl,3)}
-    \fill[gray!\glv] ({\u*\kk+0.06},-0.2) rectangle ({\u*\kk+0.72},0.2);
+    \pgfmathtruncatemacro{\sidx}{mod(\tl,3)}
+    \stageset{\sidx}
+    \fill[\sdark] ({\u*\kk+0.06},-0.2) rectangle ({\u*\kk+0.72},0.2);
     \node at ({\u*\kk+0.39},0) {ld \tl};
-    \draw[dashed, semithick, gray!\glv] ({\u*\kk+0.72},0) -- ({\u*\kk+1.32},0);
+    \draw[dashed, semithick, \sdark] ({\u*\kk+0.72},0) -- ({\u*\kk+1.32},0);
   }
   \foreach \kk in {0,...,7}{
-    \pgfmathtruncatemacro{\glv}{20+25*mod(\kk,3)}
-    \fill[gray!\glv] ({\u*\kk+0.78},-1.15) rectangle ({\u*\kk+1.44},-0.75);
+    \pgfmathtruncatemacro{\sidx}{mod(\kk,3)}
+    \stageset{\sidx}
+    \fill[\sdark] ({\u*\kk+0.78},-1.15) rectangle ({\u*\kk+1.44},-0.75);
     \node at ({\u*\kk+1.11},-0.95) {mma \kk};
   }
   \foreach \tl in {0,...,7}{
@@ -423,10 +428,9 @@ tile $k{+}2$ 的那组允许还没到。尾部（$k + \mathrm{kStages} - 1 \ge
     \pgfmathsetmacro{\xs}{\tl<2 ? -1.8 : \u*(\tl-2)+0.05}
     \pgfmathsetmacro{\xe}{\u*(\tl+1)-0.05}
     \pgfmathsetmacro{\xw}{min(\xs+\u-0.1,\xe)}
-    \pgfmathtruncatemacro{\glv}{20+25*\srow}
-    \pgfmathtruncatemacro{\gll}{8+11*\srow}
-    \fill[gray!\gll] (\xs,{\ys-0.2}) rectangle (\xw,{\ys+0.2});
-    \fill[gray!\glv] (\xw,{\ys-0.2}) rectangle (\xe,{\ys+0.2});
+    \stageset{\srow}
+    \fill[\slight] (\xs,{\ys-0.2}) rectangle (\xw,{\ys+0.2});
+    \fill[\sdark] (\xw,{\ys-0.2}) rectangle (\xe,{\ys+0.2});
     \node at ({(\xs+\xe)/2},\ys) {tile \tl};
     \draw[thin] (\xs,{\ys-0.2}) rectangle (\xe,{\ys+0.2});
   }
@@ -436,7 +440,7 @@ tile $k{+}2$ 的那组允许还没到。尾部（$k + \mathrm{kStages} - 1 \ge
   }
   \node[anchor=east] at (-1.98,-3.85) {迭代 $k$};
   \node[anchor=north west, align=left, text width=14.6cm] at (-1.98,-4.25)
-    {灰度 $=$ tile $\bmod 3$（即所在 stage）；stage 条内浅色段为 cp.async 写入期、
+    {填充色 $=$ tile $\bmod 3$（即所在 stage：蓝/绿/橙 $=S_0/S_1/S_2$）；stage 条内浅色段为 cp.async 写入期、
      深色段为就绪驻留；w(1)/w(0) $=$ 迭代末 \texttt{wait\_group(1)/(0)}。\\
      稳态 w(1)：tile $k{+}1$ 就位即可，tile $k{+}2$ 的搬运（load 泳道虚线尾）允许一组在途；
      尾部（$k\ge6$，无新 tile 可预取）切 w(0) 排空。\\
@@ -672,7 +676,7 @@ WMMA 做不到这一点（对照第~\ref{ch:10}~章坑五）。收拢与写回�
   \node[anchor=west, align=left] at (10.95,0.33) {st.global.v4 $\to$ 行 $\mathrm{g}{+}8$\\（同一 16B 起点）};
   \node[anchor=north west, align=left, text width=13.4cm] at (-0.12,-1.75)
     {每个 4-lane 组的 T0--T3 各持一对 $\{c\sb{2t},c\sb{2t+1}\}$（上行：行 g 的 RC[i][j][0]；
-     下行：行 g{+}8 的 RC[i][j][1]，灰度同图~\ref{fig:11-b-fragment} 的寄存器条）。
+     下行：行 g{+}8 的 RC[i][j][1]，深浅两档同图~\ref{fig:11-b-fragment} 的寄存器条）。
      shuffle 后首 lane 的 RC0[j]/RC1[j] 凑齐整行 8 个 half，仅 \texttt{lane\%4==0}
      的 lane 每 $j$ 写两条 128-bit store——列起点由 \texttt{warp\_n} 与 $j$ 平移，
      整 warp 铺满 $64\times32$ 子块，不经 smem 中转。};

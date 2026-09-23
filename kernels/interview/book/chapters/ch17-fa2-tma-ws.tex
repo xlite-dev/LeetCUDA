@@ -131,10 +131,13 @@ empty 屏障（没有谁会覆盖它）。头注释（L801--806）对 split-Q �
 
 第~\ref{ch:13}~章式~(13.4)（相位翻转条件）给出 mbarrier 的一般模型：pending
 arrivals 与 tx-count \textbf{双计数同时归零}才翻转相位。本章把这套代数落到
-attention 的具体数字上。协议注释原文只有四行：
-
-\lstinputlisting[linerange={808-811},firstnumber=auto,breakatwhitespace=true,
-  title={flash\_attn.cuh L808-811（Pipeline 同步协议：arrive\_count = 257）}]{../flash_attn.cuh}
+attention 的具体数字上。flash\_attn.cuh~L808--811 的头注释用四行给出整套
+Pipeline 同步协议：arrive\_count $=$ 257 $=$ 256 consumer $+$ 1 producer，
+三条通道各执屏障——Q 走 \texttt{full\_Q}，producer 发 \texttt{arrive\_tx}，
+consumer 在主循环前 wait 一次；K 走 \texttt{full\_K[kStagesK]} 与
+\texttt{empty\_K[kStagesK]}，多 stage pipeline；V 走 \texttt{full\_V} /
+\texttt{empty\_V} 单 buffer 串行，QK 前发 TMA、与 QK 重叠、PV 前等、
+PV 后释放。
 
 逐条拆解。首先是\textbf{为什么是 257}：
 \begin{equation}
@@ -462,10 +465,11 @@ $B_c = 8 \times 1 \times 8 = 64$；consumer 8 warp 排成 $8 \times 1$
   title={flash\_attn.cuh L849-870（box $\le$ 128B 约束、chunk-major 方案与 swizzle\_fa）}]{../flash_attn.cuh}
 
 V 通道的消费用 \texttt{ldmatrix.\allowbreak{}x2.trans}（转置读）。头注释对「swizzle 与
-trans 组合是否正确」给了专门的论证，逻辑值得背下来：
-
-\lstinputlisting[linerange={813-816},firstnumber=auto,breakatwhitespace=true,
-  title={flash\_attn.cuh L813-816（V ldmatrix.x2.trans 正确性论证）}]{../flash_attn.cuh}
+trans 组合是否正确」给了专门的论证（flash\_attn.cuh~L813--816），逻辑值得背下来：
+TMA 128B SWIZZLE 是一一映射，ldmatrix 按 \texttt{swizzle<64>(row,col)} 算出的
+物理地址就是 TMA 写入的物理地址（smem 1024B 对齐保证 phase $=$ 0）；而
+\texttt{ldmatrix.\allowbreak{}x2.trans} 的转置语义在寄存器层面工作，与 smem 物理布局
+无关，因此必然正确。
 
 \subsection{barrier 初始化与线程编队}
 

@@ -604,9 +604,9 @@ $((4,2),$\allowbreak$ MMA\_M,$\allowbreak$ MMA\_N/2)$——\textbf{零拷贝、�
   \def\chh{0.30}
   % 左面板：S 的累加器视角 (MMA=4, MMA_M, MMA_N) —— 4 段，每段 MMA_M x MMA_N
   \foreach \r in {0,...,7}{
-    \foreach \c [evaluate=\c as \sg using {int(2*int(\r/4)+int(\c/4))},
-                 evaluate=\c as \gr using {int(18+10*\sg+2*mod(\r,4))}] in {0,...,7}{
-      \fill[gray!\gr] ({\c*\cw},{-\r*\chh}) rectangle ({\c*\cw+\cw},{-\r*\chh-\chh});
+    \foreach \c [evaluate=\c as \sg using {int(2*int(\r/4)+int(\c/4))}] in {0,...,7}{
+      \ifcase\sg\relax\def\sc{tkBlue}\or\def\sc{tkGreen}\or\def\sc{tkOrange}\or\def\sc{tkPurple}\fi
+      \fill[\sc!70] ({\c*\cw},{-\r*\chh}) rectangle ({\c*\cw+\cw},{-\r*\chh-\chh});
     }
   }
   \draw[thin] (0,0) grid[xstep=\cw cm, ystep=\chh cm] ({8*\cw},{-8*\chh});
@@ -615,9 +615,11 @@ $((4,2),$\allowbreak$ MMA\_M,$\allowbreak$ MMA\_N/2)$——\textbf{零拷贝、�
   \draw[very thick] (0,{-4*\chh}) -- ({8*\cw},{-4*\chh});
   % 右面板：A 操作数视角 ((4,2), MMA_M, MMA_N/2) —— 8 段，每段 MMA_M x MMA_N/2
   \foreach \r in {0,...,7}{
-    \foreach \c [evaluate=\c as \sg using {int(4*int(\r/4)+int(\c/2))},
-                 evaluate=\c as \gr using {int(14+6*\sg+2*mod(\r,4))}] in {0,...,7}{
-      \fill[gray!\gr] ({\c*\cw+5.96},{-\r*\chh}) rectangle ({\c*\cw+5.96+\cw},{-\r*\chh-\chh});
+    \foreach \c [evaluate=\c as \sg using {int(4*int(\r/4)+int(\c/2))}] in {0,...,7}{
+      \pgfmathtruncatemacro{\sq}{int(\sg/2)}
+      \ifcase\sq\relax\def\sc{tkBlue}\or\def\sc{tkGreen}\or\def\sc{tkOrange}\or\def\sc{tkPurple}\fi
+      \ifodd\sg\def\sh{45}\else\def\sh{70}\fi
+      \fill[\sc!\sh] ({\c*\cw+5.96},{-\r*\chh}) rectangle ({\c*\cw+5.96+\cw},{-\r*\chh-\chh});
     }
   }
   \foreach \k in {0,...,8} {
@@ -648,7 +650,7 @@ $((4,2),$\allowbreak$ MMA\_M,$\allowbreak$ MMA\_N/2)$——\textbf{零拷贝、�
   \node[anchor=north west, align=left, text width=13.5cm] at (0,-3.85)
     {于是 softmax 后的 $P$ 不必写回 smem 再 \texttt{ldmatrix}；同一批寄存器的逐 lane 逐格对照见第~\ref{ch:25}~章 图~\ref{fig:25-c2aregs}};
   \node[anchor=north west, align=left, text width=13.5cm] at (0,-4.25)
-    {灰度 $=$ 段身份（新 MMA mode 的编号），深浅 $=$ 段内位置；两面板是同一批寄存器的两种读法（示意实例：$\mathrm{MMA\_M}{=}\mathrm{MMA\_N}{=}4$）};
+    {颜色 $=$ 段身份（新 MMA mode 的编号）；右面板同色的两小格 $=$ 同一左段沿 $\mathrm{MMA\_N}$ 对半切开的两半。两面板是同一批寄存器的两种读法（示意实例：$\mathrm{MMA\_M}{=}\mathrm{MMA\_N}{=}4$）};
 \end{tikzpicture}
 \caption{零拷贝的寄存器重解释（19.4.3 节 quote 块中 \texttt{convert\_layout\_acc\_Aregs}（L300--305）的模式级示意）。左：$S$ 的累加器 layout 是 $(\mathrm{MMA}{=}4,\ \mathrm{MMA\_M},\ \mathrm{MMA\_N})$——4 个 MMA 重复段，每段 $\mathrm{MMA\_M}\times\mathrm{MMA\_N}$；右：同一批寄存器被读成 $((4,2),\ \mathrm{MMA\_M},\ \mathrm{MMA\_N}/2)$——沿 $\mathrm{MMA\_N}$ 切一刀得到 $(2,\ \mathrm{MMA\_N}/2)$，切出的 $2$ 与原来的 $4$ 配对成新的 $8$ 段 MMA mode，正是 PV 的 A 操作数所需的「K 向连续 2 元素」（与第~\ref{ch:16}~章旗舰图的 $a_0/a_1$ 配对同族）。数据一个比特都没动：只是坐标重排，softmax 后的 $P$ 因此不需要写回 smem 再 \texttt{ldmatrix}。}
 \label{fig:19-aregs-reinterpret}

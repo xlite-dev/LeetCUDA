@@ -584,7 +584,7 @@ kernel 典型取 $\tau = 8$；fp8 发射域的天花板更紧，按 e4m3 满量�
     \draw (\vx,0) -- (\vx,-0.07);
     \node[tnb,anchor=north] at (\vx,-0.10) {\vv};
   }
-  \node[axl,anchor=north] at (6.2,-0.42) {$\mathrm{amax}(V)$（对数刻度，$\log_2$ 均匀）};
+  \node[axl,anchor=north] at (6.2,-0.85) {$\mathrm{amax}(V)$（对数刻度，$\log_2$ 均匀）};
   % 三条关键竖线
   \draw[tkRed,very thick,dashed] (10.93,0) -- (10.93,1.62);
   \node[axl,tkRed,anchor=south,align=center] at (10.35,1.32)
@@ -608,10 +608,10 @@ kernel 典型取 $\tau = 8$；fp8 发射域的天花板更紧，按 e4m3 满量�
   \node[tnb,anchor=north,text=tkGreen!70!black] at (4.03,-0.6) {$\tau{=}4$ 安全域};
   \node[tnb,anchor=north] at (8.63,-0.6) {28..448：satfinite 兜底残余超调};
   % 底部公式注
-  \node[axl,anchor=north west,align=left,text width=10.9cm] at (0.8,-1.35)
+  \node[axl,anchor=north west,align=left,text width=10.9cm] at (0.8,-1.6)
     {发射峰值 $\tilde{P}_{\max} = v_s\cdot 448 = \mathrm{amax}(V)$（per-block V 的 $v_s=\mathrm{amax}(V)/448$），
      撞顶条件 $2^{\tau}\,\mathrm{amax}(V) \le 448$（式~\eqref{eq:27-overflow}）。};
-  \node[axl,anchor=north west,align=left,text width=10.9cm] at (0.8,-1.9)
+  \node[axl,anchor=north west,align=left,text width=10.9cm] at (0.8,-3.0)
     {$\tau$ 的取值跨格式不可搬：BF16 天花板高（$\tau{=}8$ 可用），e4m3 满量程只有 448，
      反推出更紧的 $\tau{=}4$；满量程发射（per-row）没有任何 headroom，与 lazy rescale 互斥。};
 \end{tikzpicture}
@@ -690,11 +690,15 @@ $\varepsilon \times$ 幅度。ffpa 的仿真分解给出排序（内部仿真口
 \subsection{P 量化的三步协议}
 
 \texttt{fp8\_pscale.cuh} 的头注释把 27.3.4 的量化点 2/3 浓缩成三行公式与一条
-消去证明，是全书引用密度最高的一段注释：
-
-\lstinputlisting[linerange={17-37},firstnumber=auto,
-  title={ffpa-attn cute/fp8/fp8\_pscale.cuh L17-37（三步协议 + $v_s$ 精确消去 + 溢出安全）}]
-  {../../../../ffpa-attn/csrc/cuffpa/cute/fp8/fp8_pscale.cuh}
+消去证明，是全书引用密度最高的一段注释。它先回答「P 为什么需要 runtimescale」：Q/K/V 都已离线量化（\texttt{q\_scale}/\texttt{k\_scale}/\texttt{v\_scale}），
+而 $P = \mathrm{softmax}(S)$ 是每个 forward、每个 tile 都不一样的瞬态 fp32
+概率矩阵，只能在 kernel 内就地量化：$\mathrm{P8} = \mathrm{round}(P \cdot
+v_s / p_{\mathrm{scale}})$ 折叠发射，$\mathrm{MMA} = \mathrm{P8} @ \mathrm{V8}$
+做 fp8 PV，$O \mathrel{+}= \mathrm{MMA} \cdot p_{\mathrm{scale}}$ 回到真域，
+$v_s$ 全程精确消去。溢出安全一节预写了式~\ref{eq:27-overflow}：lazy rescale 按
+$2^{T}$ 膨胀发射值，$T = \texttt{FFPA\_RESCALE\_THRESHOLD\_FP8} = 4$ 时
+$2^{T}\,\mathrm{amax}(V) \le 448$ 对 $\mathrm{amax}(V) \le 28$ 成立，残余超调
+交给 \texttt{satfinite} 钳位。
 
 三行注释与式~\ref{eq:27-vs-cancel} 逐条对应：式 (1) 把 $v_s$ 折进 P 的发射系数；
 式 (2) 的关键是 $\hat V = V/v_s$ \textbf{已在 gmem}（离线量化点 3 的产物）；式

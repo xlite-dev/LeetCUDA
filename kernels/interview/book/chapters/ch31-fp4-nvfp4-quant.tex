@@ -297,7 +297,7 @@ smooth-V 也 fused 在这里：$v_m$ 按 $d$ 减除发生在 smem 读出转 fp32
   \foreach \r in {0,...,3}{
     \foreach \c in {0,...,3}{
       \pgfmathtruncatemacro{\idx}{int(\r*4+\c)}
-      \node[fill=gray!14, minimum width=\cw cm, minimum height=\rh cm, inner sep=0pt, font=\tiny]
+      \node[fill=tkFillOrange, draw=tkOrange, thin, minimum width=\cw cm, minimum height=\rh cm, inner sep=0pt, font=\tiny]
         at ({\c*\cw+0.5*\cw},{-\r*\rh-0.5*\rh}) {\idx};
     }
   }
@@ -310,7 +310,7 @@ smooth-V 也 fused 在这里：$v_m$ 按 $d$ 减除发生在 smem 读出转 fp32
     \foreach \r in {0,...,3}{
       \foreach \c in {0,...,3}{
         \pgfmathtruncatemacro{\idxv}{int(\r*16+\c)}
-        \node[fill=gray!14, minimum width=\cw cm, minimum height=\rh cm, inner sep=0pt, font=\tiny]
+        \node[fill=tkFillBlue, draw=tkBlue, thin, minimum width=\cw cm, minimum height=\rh cm, inner sep=0pt, font=\tiny]
           at ({\c*\cw+0.5*\cw},{-\r*\rh-0.5*\rh}) {\idxv};
       }
     }
@@ -322,10 +322,10 @@ smooth-V 也 fused 在这里：$v_m$ 按 $d$ 减除发生在 smem 读出转 fp32
   \end{scope}
   \begin{scope}[yshift=-3.30cm]
     \def\gw{0.46}
-    \foreach \b/\ct in {0/12,1/12,2/12,3/12,4/26,5/26,6/26,7/26,
-                        8/40,9/40,10/40,11/40,12/54,13/54,14/54,15/54}{
-      \fill[gray!\ct] ({\b*\gw},0) rectangle ({\b*\gw+\gw},0.40);
-      \draw[thick] ({\b*\gw},0) rectangle ({\b*\gw+\gw},0.40);
+    \foreach \b/\ct in {0/30,1/30,2/30,3/30,4/45,5/45,6/45,7/45,
+                        8/60,9/60,10/60,11/60,12/75,13/75,14/75,15/75}{
+      \fill[tkBlue!\ct] ({\b*\gw},0) rectangle ({\b*\gw+\gw},0.40);
+      \draw[tkBlue!80!black, thick] ({\b*\gw},0) rectangle ({\b*\gw+\gw},0.40);
       \node[font=\tiny] at ({\b*\gw+0.5*\gw},0.20) {\b};
     }
     \node[anchor=south west, font=\tiny] at (0,0.44)
@@ -333,7 +333,7 @@ smooth-V 也 fused 在这里：$v_m$ 按 $d$ 减除发生在 smem 读出转 fp32
     \node[anchor=north west, font=\tiny] at (0,-0.04)
       {每 4 字节换一个 16 行子块（行 $0,16,32,48$），而不是换列组};
   \end{scope}
-  \node[draw, align=left, text width=5.2cm, inner sep=3pt, font=\tiny] at (11.40,-1.10)
+  \node[draw=tkBlue!60, fill=tkFillBlue, align=left, text width=5.2cm, inner sep=3pt, font=\tiny] at (11.40,-1.10)
     {\texttt{sf\_col\_offset}$=(c/4)\cdot256+(c\%4)$\\
      \texttt{offset\_local}$=$\texttt{sf\_col\_offset}$+(r/16)\cdot4+(r\%16)\cdot16$\\
      （\texttt{quantize\_fp4.cuh} L414/L482--485）\\[2pt]

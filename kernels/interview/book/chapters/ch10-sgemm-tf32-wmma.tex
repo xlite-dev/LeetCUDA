@@ -82,49 +82,49 @@ fp16 & 1 & 5 & 10 & 11 & $\approx 3.3$ \\
 \begin{tikzpicture}[font=\tiny]
   \def\u{0.4}
   \def\bh{0.5}
-  \fill[black] (0,0.72) rectangle (0.25,0.9);
+  \fill[tkBlue] (0,0.72) rectangle (0.25,0.9);
   \node[anchor=west] at (0.35,0.81) {符号 $s$（1 位）};
-  \fill[gray!70] (2.2,0.72) rectangle (2.45,0.9);
+  \fill[tkGreen] (2.2,0.72) rectangle (2.45,0.9);
   \node[anchor=west] at (2.55,0.81) {指数 $e$};
-  \fill[gray!30] (3.6,0.72) rectangle (3.85,0.9);
+  \fill[tkOrange] (3.6,0.72) rectangle (3.85,0.9);
   \node[anchor=west] at (3.95,0.81) {尾数 $m$（显式位）};
   \node[anchor=east, font=\scriptsize\bfseries] at (-0.15,0.25) {fp32};
-  \fill[black] (0,0) rectangle (\u,\bh);
+  \fill[tkBlue] (0,0) rectangle (\u,\bh);
   \node[white] at (0.5*\u,0.25) {1};
-  \fill[gray!70] (\u,0) rectangle ({9*\u},\bh);
+  \fill[tkGreen] (\u,0) rectangle ({9*\u},\bh);
   \node at ({5*\u},0.25) {8};
-  \fill[gray!30] ({9*\u},0) rectangle ({32*\u},\bh);
+  \fill[tkOrange] ({9*\u},0) rectangle ({32*\u},\bh);
   \node at ({20.5*\u},0.25) {23};
   \draw[thin] (0,0) rectangle ({32*\u},\bh);
   \node[anchor=west] at ({32*\u+0.15},0.25) {32 位};
   \node[anchor=east, font=\scriptsize\bfseries] at (-0.15,-1.05) {TF32};
-  \fill[black] (0,-1.3) rectangle (\u,{-1.3+\bh});
+  \fill[tkBlue] (0,-1.3) rectangle (\u,{-1.3+\bh});
   \node[white] at (0.5*\u,-1.05) {1};
-  \fill[gray!70] (\u,-1.3) rectangle ({9*\u},-0.8);
+  \fill[tkGreen] (\u,-1.3) rectangle ({9*\u},-0.8);
   \node at ({5*\u},-1.05) {8};
-  \fill[gray!30] ({9*\u},-1.3) rectangle ({19*\u},-0.8);
+  \fill[tkOrange] ({9*\u},-1.3) rectangle ({19*\u},-0.8);
   \node at ({14*\u},-1.05) {10};
   \node at ({25.5*\u},-1.05) {填 0 / 忽略（13 位）};
   \draw[thin] (0,-1.3) rectangle ({32*\u},-0.8);
-  \draw[dashed, thick] ({19*\u},-1.3) rectangle ({32*\u},-0.8);
+  \draw[dashed, thick, tkRed] ({19*\u},-1.3) rectangle ({32*\u},-0.8);
   \draw[<->, >=Stealth] (0,-0.6) -- ({19*\u},-0.6);
   \node[anchor=south] at ({9.5*\u},-0.54) {19 位有效（$1{+}8{+}10$）};
   \node[anchor=west] at ({32*\u+0.15},-1.05) {19 位（占 32 位字）};
   \node[anchor=east, font=\scriptsize\bfseries] at (-0.15,-2.25) {bf16};
-  \fill[black] (0,-2.5) rectangle (\u,-2.0);
+  \fill[tkBlue] (0,-2.5) rectangle (\u,-2.0);
   \node[white] at (0.5*\u,-2.25) {1};
-  \fill[gray!70] (\u,-2.5) rectangle ({9*\u},-2.0);
+  \fill[tkGreen] (\u,-2.5) rectangle ({9*\u},-2.0);
   \node at ({5*\u},-2.25) {8};
-  \fill[gray!30] ({9*\u},-2.5) rectangle ({16*\u},-2.0);
+  \fill[tkOrange] ({9*\u},-2.5) rectangle ({16*\u},-2.0);
   \node at ({12.5*\u},-2.25) {7};
   \draw[thin] (0,-2.5) rectangle ({16*\u},-2.0);
   \node[anchor=west] at ({16*\u+0.15},-2.25) {16 位};
   \node[anchor=east, font=\scriptsize\bfseries] at (-0.15,-3.45) {fp16};
-  \fill[black] (0,-3.7) rectangle (\u,-3.2);
+  \fill[tkBlue] (0,-3.7) rectangle (\u,-3.2);
   \node[white] at (0.5*\u,-3.45) {1};
-  \fill[gray!70] (\u,-3.7) rectangle ({6*\u},-3.2);
+  \fill[tkGreen] (\u,-3.7) rectangle ({6*\u},-3.2);
   \node at ({3.5*\u},-3.45) {5};
-  \fill[gray!30] ({6*\u},-3.7) rectangle ({16*\u},-3.2);
+  \fill[tkOrange] ({6*\u},-3.7) rectangle ({16*\u},-3.2);
   \node at ({11*\u},-3.45) {10};
   \draw[thin] (0,-3.7) rectangle ({16*\u},-3.2);
   \node[anchor=west] at ({16*\u+0.15},-3.45) {16 位};
@@ -134,7 +134,7 @@ fp16 & 1 & 5 & 10 & 11 & $\approx 3.3$ \\
      TF32 存储仍占一个 32 位字，低 13 位填 0 或被硬件路径直接忽略（虚线段），
      通常只出现在 Tensor Core 数据通路里。};
 \end{tikzpicture}
-\caption{四种浮点格式的位域条（与表~\ref{tab:10-fmt} 同序，按位宽比例绘制）：黑 $=$ 符号位、灰 70 $=$ 指数、灰 30 $=$ 显式尾数。TF32 砍掉 fp32 尾数低 13 位（虚线段：填 0 / 忽略），保留 $1{+}8{+}10$ 共 19 位；bf16/fp16 只有 16 位，指数域分别为 8 与 5。}
+\caption{四种浮点格式的位域条（与表~\ref{tab:10-fmt} 同序，按位宽比例绘制）：蓝 $=$ 符号位、绿 $=$ 指数、橙 $=$ 显式尾数。TF32 砍掉 fp32 尾数低 13 位（红色虚线框：填 0 / 忽略），保留 $1{+}8{+}10$ 共 19 位；bf16/fp16 只有 16 位，指数域分别为 8 与 5。}
 \label{fig:10-tf32-bits}
 \end{figure}
 

@@ -406,17 +406,17 @@ XOR 位段在这些行上恰好一致）时两者巧合相等，$1024/4096$ 正�
   \foreach \cc in {0,...,7}{
     \pgfmathtruncatemacro{\swv}{1-mod(\cc,2)+2*(1-mod(int(\cc/2),2))+4*int(\cc/4)}
     \pgfmathtruncatemacro{\hwv}{mod(\cc,2)+2*mod(int(\cc/2),2)+4*(1-int(\cc/4))}
-    \node[fill=gray!20, minimum width=0.42cm, minimum height=0.42cm, inner sep=0pt]
+    \node[fill=tkFillBlue!60, minimum width=0.42cm, minimum height=0.42cm, inner sep=0pt]
       at ({\cc*0.42+0.21},-1.31) {\cc};
-    \node[fill=gray!20, minimum width=0.42cm, minimum height=0.42cm, inner sep=0pt]
+    \node[fill=tkFillBlue!60, minimum width=0.42cm, minimum height=0.42cm, inner sep=0pt]
       at ({\cc*0.42+0.21},-1.91) {\swv};
-    \node[fill=gray!20, minimum width=0.42cm, minimum height=0.42cm, inner sep=0pt]
+    \node[fill=tkFillBlue!60, minimum width=0.42cm, minimum height=0.42cm, inner sep=0pt]
       at ({\cc*0.42+0.21},-2.51) {\swv};
-    \node[fill=gray!20, minimum width=0.42cm, minimum height=0.42cm, inner sep=0pt]
+    \node[fill=tkFillOrange!50, minimum width=0.42cm, minimum height=0.42cm, inner sep=0pt]
       at ({\cc*0.42+0.21},-3.51) {\cc};
-    \node[fill=gray!20, minimum width=0.42cm, minimum height=0.42cm, inner sep=0pt]
+    \node[fill=tkFillOrange!50, minimum width=0.42cm, minimum height=0.42cm, inner sep=0pt]
       at ({\cc*0.42+0.21},-4.11) {\swv};
-    \node[fill=gray!20, minimum width=0.42cm, minimum height=0.42cm, inner sep=0pt]
+    \node[fill=tkFillOrange!50, minimum width=0.42cm, minimum height=0.42cm, inner sep=0pt]
       at ({\cc*0.42+0.21},-4.71) {\hwv};
   }
   \foreach \ry in {-1.1,-1.7,-2.3,-3.3,-3.9,-4.5}{
