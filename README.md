@@ -20,7 +20,7 @@
   <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-b200_B1_H32_N16384_D512_T.png' width='200px'><br>
 </div>
 
-Please also check out our production-ready **Kernel Library**: [**ffpa-attn**](https://github.com/xlite-dev/ffpa-attn) - Fast and Memory-Efficient Exact Attention (**BF16/FP16/FP8/FP4**) for Large Headdim, **1.5x~15x**🔥🔥 speedup over standard PyTorch SDPA. 
+Please also check out our production-ready **Kernel Library**: [**ffpa-attn**](https://github.com/xlite-dev/ffpa-attn) - Fast and Memory-Efficient Exact Attention (**BF16/FP16/FP8/FP4**) for Large Headdim, **1.5x~15x**🔥🔥 speedup over standard PyTorch SDPA.
 
 ## 📖 Quick Start
 
@@ -28,56 +28,22 @@ Please also check out our production-ready **Kernel Library**: [**ffpa-attn**](h
 git clone https://github.com/xlite-dev/LeetCUDA.git && cd LeetCUDA
 git submodule update --init --recursive --force && cd kernels/interview
 # Install the latest CUDNN library for benchmarks (remove the old version first)
-apt remove -y libcudnn9-cuda-13 libcudnn9-dev-cuda-13 libcudnn9-headers-cuda-13 
+apt remove -y libcudnn9-cuda-13 libcudnn9-dev-cuda-13 libcudnn9-headers-cuda-13
 apt install -y cudnn9-cuda-13 ccache # Also install ccache for faster rebuilds
 
 # Build for target architecture (ccache accelerated when available):
 ./build.sh --arch sm_120a   # Blackwell (RTX 5090 / PRO 5000/6000, CUDA Toolkit >= 13.2)
 ./build.sh --help           # Show help for build options
+# The following command runs the benchmark for the specified matrix and batch dimensions.
+cd bin && ./notes_v2_sm120a.bin --bench --mnk 4096,4096,4096 --bhnd 1,32,8192,128
 ```
+<div align='center'>
+  <img src='./docs/leetcuda_bench_table.png' alt='LeetCUDA Benchmark Table'>
+</div>
 
-```bash
-# Then, run the notes_v2_sm120a.bin with bench mode (e.g., NVIDIA PRO 5000, Blackwell SM_120a)
-./bin/notes_v2_sm120a.bin --bench --mnk 4096,4096,4096 --bhnd 1,32,16384,128 # MMA ACC F16/F32
-| Kernel                                                   | Max Err   | TFLOPS/cu{BLAS,DNN} |
-|----------------------------------------------------------|-----------|---------------------|
-| HGEMM CuTe Swizzle (S=2, BLK_SW=0, F16Acc)               | 0.000e+00 | 229.5/236.9 (0.97x) |
-| HGEMM CuTe Swizzle (S=2, BLK_SW=0, F32Acc)               | 0.000e+00 | 213.0/163.7 (1.30x) |
-| HGEMM CuTe Swizzle (S=2, BLK_SW=1, F16Acc)               | 0.000e+00 | 231.1/236.9 (0.98x) |
-| HGEMM CuTe Swizzle (S=2, BLK_SW=1, F32Acc)               | 0.000e+00 | 217.2/163.7 (1.33x) |
-| HGEMM CuTe Swizzle (S=3, BLK_SW=0, F16Acc)               | 0.000e+00 | 245.6/236.9 (1.04x) |
-| HGEMM CuTe Swizzle (S=3, BLK_SW=0, F32Acc)               | 0.000e+00 | 242.6/163.7 (1.48x) |
-| HGEMM CuTe Swizzle (S=3, BLK_SW=1, F16Acc)               | 0.000e+00 | 246.7/236.9 (1.04x) |
-| HGEMM CuTe Swizzle (S=3, BLK_SW=1, F32Acc)               | 0.000e+00 | 243.5/163.7 (1.49x) |
-| FA2 MMA Stages (Sk=1, Pad, F16Acc)                       | 1.831e-04 | 131.5/232.4 (0.57x) |
-| FA2 MMA Stages (Sk=2, Pad, F16Acc)                       | 1.831e-04 | 157.9/232.4 (0.68x) |
-| FA2 MMA Stages (Sk=1, Pad, F32Acc)                       | 1.526e-05 | 145.6/232.4 (0.63x) |
-| FA2 MMA Stages (Sk=2, Pad, F32Acc)                       | 1.526e-05 | 166.5/232.4 (0.72x) |
-| FA2 CuTe MMA Stages (Sk=1, F32Acc)                       | 1.526e-05 | 189.6/232.4 (0.82x) |
-| FA2 CuTe MMA Stages (Sk=2, F32Acc)                       | 1.526e-05 | 197.0/232.4 (0.85x) |
-| FA2 TMA MMA WS (1 Consumer WG) (Sk=1, Sv=1, F16Acc)      | 1.831e-04 | 161.2/232.4 (0.69x) |
-| FA2 TMA MMA WS (1 Consumer WG) (Sk=2, Sv=1, F16Acc)      | 1.831e-04 | 189.4/232.4 (0.81x) |
-| FA2 TMA MMA WS (1 Consumer WG) (Sk=2, Sv=2, F16Acc)      | 1.831e-04 | 190.5/232.4 (0.82x) |
-| FA2 TMA MMA WS (1 Consumer WG) (Sk=2, Sv=1, F32Acc)      | 1.526e-05 | 204.9/232.4 (0.88x) |
-| FA3 TMA MMA WS (2 Consumer WG) (Sk=1, Sv=1, F16Acc)      | 9.155e-05 | 210.1/232.4 (0.90x) |
-| FA3 TMA MMA WS (2 Consumer WG) (Sk=1, Sv=1, F32Acc)      | 1.526e-05 | 210.8/232.4 (0.91x) |
-| FA2 CuTe TMA MMA WS (1 Consumer WG) (Sk=2, Sv=1, F32Acc) | 1.526e-05 | 220.0/232.4 (0.95x) |
-| FA2 CuTe TMA MMA WS (1 Consumer WG) (Sk=3, Sv=1, F32Acc) | 1.526e-05 | 223.4/232.4 (0.96x) |
-| FA2 CuTe TMA MMA Persistent-CTA WS (D=128)               | 1.526e-05 | 242.5/232.4 (1.04x) |
-# Speedup: Split-D for large headdim (e.g, D=320) ~2.93x faster than cuDNN SDPA (with F32 Acc)
-./bin/notes_v2_sm120a.bin --bench --bhnd 1,32,8192,320 # Split-D for large headdims (e.g, 320)
-| Kernel                                                   | Max Err   | TFLOPS/cu{BLAS,DNN} |
-|----------------------------------------------------------|-----------|---------------------|
-| FA Split-D CuTe TMA MMA WS (D=320, Sk=1, Sv=1)           | 1.526e-05 |  86.6/69.8 (1.24x)  |
-| FA Split-D CuTe TMA MMA WS (D=320, Sk=2, Sv=2)           | 1.526e-05 | 139.9/69.8 (2.01x)  |
-| FA Split-D CuTe TMA non-WS (D=320, Sk=2, Sv=2)           | 3.052e-05 | 187.9/69.8 (2.69x)  |
-| FA Split-D CuTe TMA non-WS (D=320, Sk=2, Sv=3)           | 3.052e-05 | 188.8/69.8 (2.71x)  |
-| FA Split-D CuTe TMA non-WS (D=320, Sk=3, Sv=2)           | 3.052e-05 | 204.3/69.8 (2.93x)  |
-```
+## 🤖 Agentic workflow
 
-## 🤖 Agentic workflow 
-
-LeetCUDA provides a [leetcuda-cpp-kernel](./kernels/interview/book/skills/leetcuda-cpp-kernel/) SKILL that reuse the knowledge and examples from the LeetCUDA open sources **book** and **repository**. Users can use it with Coding Agents, e.g, [GitHub Copilot](https://docs.github.com/en/copilot), [Claude Code](https://claude.ai), [Open Code](https://opencode.ai/). 
+LeetCUDA provides a [leetcuda-cpp-kernel](./kernels/interview/book/skills/leetcuda-cpp-kernel/) SKILL that reuse the knowledge and examples from the LeetCUDA open sources **book** and **repository**. Users can use it with Coding Agents, e.g, [GitHub Copilot](https://docs.github.com/en/copilot), [Claude Code](https://claude.ai), [Open Code](https://opencode.ai/).
 
 <!-- <div align='center'>
  <img src='https://github.com/xlite-dev/LeetCUDA/raw/main/docs/leetcuda-cpp-kernel-skill.png'><br>
@@ -128,7 +94,7 @@ LeetCUDA provides a [leetcuda-cpp-kernel](./kernels/interview/book/skills/leetcu
 Currently, on NVIDIA L20, RTX 4090 and RTX 3080 Laptop, compared with cuBLAS's default Tensor Cores algorithm, the `HGEMM (WMMA/MMA/CuTe)` in this repo (`blue`🔵) can achieve `98%~100%` of its (`orange`🟠) performance. Please check [toy-hgemm library⚡️⚡️](./kernels/hgemm) or [HGEMM⚡️⚡️](https://github.com/xlite-dev/HGEMM) repo for more details.
 
 <div align="center" markdown="1">
-  
+
 ![toy-hgemm-library](https://github.com/user-attachments/assets/962bda14-b494-4423-b8eb-775da9f5503d)
 
 |📚Feature |📚Feature |📚Feature |📚Feature|
@@ -163,7 +129,7 @@ I have also implemented **FlashAttention-2** using pure MMA PTX instructions, wh
 Currently, for small-scale attention `(B<=4, H <=48, SeqLen <= 8192, D <= 64)` it can run faster than FA2/SDPA on some Devices. For example, on NVIDIA RTX 3080 Laptop, [📚 Split Q + Fully Shared QKV SMEM](#mma-share-qkv) method can achieve **55 TFLOPS (D=64)** that almost **~1.5x** 🎉 faster than FA2. On NVIDIA L20, 🤖[ffpa-attn](https://github.com/xlite-dev/ffpa-attn) method can achieve **104 TFLOPS (D=512)** that almost **~1.8x** 🎉 faster than SDPA (EFFICIENT ATTENTION). However, for large-scale attention, there remains a performance gap. Stay tuned for updates ~ (MMA Acc F16/F32, softmax Acc F32 vs FA2 MMA/softmax Acc F32, 👇Benchmark)
 
 <div align="center" markdown="1">
-  
+
 |Algorithm| (B,H,N,D) | RTX 3080 Laptop | L20 | RTX 4090 |
 |:---:|:---:|:---:|:---:|:---:|
 |FlashAttention-2|(1,8,8192,64)|37 TFLOPS|100 TFLOPS|145 TFLOPS|
@@ -276,7 +242,7 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 <div id="cuda-kernel-easy-medium"></div>
 
 <div align="center" markdown="1">
-  
+
 |📖 CUDA Kernel| 📖 Elem DType| 📖 Acc DType| 📖 Docs | 📖 Level |
 |:---|:---|:---|:---|:---|
 | ✔️ [elementwise_f32](./kernels/elementwise/elementwise.cu)|f32|/|[link](./kernels/elementwise/)|⭐️|
@@ -407,7 +373,7 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 <div id="cuda-kernel-hard"></div>
 
 <div align="center" markdown="1">
-  
+
 |📖 CUDA Kernel| 📖 Elem DType| 📖 Acc DType| 📖 Docs | 📖 Level |
 |:---|:---|:---|:---|:---|
 | ✔️ [sgemv_k32_f32](./kernels/sgemv/sgemv.cu)|f32|f32|[link](./kernels/sgemv/)|⭐️⭐️⭐️|
@@ -460,7 +426,7 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 <div id="cuda-kernel-hard-plus"></div>
 
 <div align="center" markdown="1">
-  
+
 |📖 CUDA Kernel| 📖 Elem DType| 📖 Acc DType| 📖 Docs | 📖 Level |
 |:---|:---|:---|:---|:---|
 | ✔️ [flash_attn_cute(naive)](./kernels/flash-attn/cutlass/flash_attn_cute.cu)|f16|f32|[link](./kernels/flash-attn/)|⭐️⭐️⭐️|
@@ -500,7 +466,7 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 - 📚 FFPA Attention MMA (**1.8x~3x**🎉faster vs SDPA EA, D > 256, FA2 not supported)
 
 <div align="center" markdown="1">
-  
+
 |📖 CUDA Kernel| 📖 Elem DType| 📖 Acc DType| 📖 Docs | 📖 Level |
 |:---|:---|:---|:---|:---|
 | ✔️ [ffpa_attn_split_d_fwd_template](https://github.com/xlite-dev/ffpa-attn/blob/main/csrc/cuffpa/ffpa_attn_fwd.cuh)|f16|f16|[link](https://github.com/xlite-dev/ffpa-attn)|⭐️⭐️⭐️⭐️|
@@ -519,7 +485,7 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 <div id="triton-kernel"></div>
 
 <div align="center" markdown="1">
-  
+
 |📖 Triton Kernel| 📖 Elem DType| 📖 Acc DType| 📖 Docs | 📖 Level |
 |:---|:---|:---|:---|:---|
 | ✔️ [triton_vector_add_kernel](./kernels/openai-triton/vector-add/)|all|all|[link](./kernels/openai-triton/vector-add/)|⭐️⭐️|
@@ -535,7 +501,7 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 <div id="cutlass-kernel"></div>
 
 <div align="center" markdown="1">
-  
+
 |📖 CUTLASS/CuTe Kernel| 📖 Elem DType| 📖 Acc DType| 📖 Docs | 📖 Level |
 |:---|:---|:---|:---|:---|
 | ✔️ [mat_transpose_cute](./kernels/mat-transpose/mat_transpose_cute.cu)|f32|/|[link](./kernels/mat-transpose/)|⭐️⭐️|
@@ -555,7 +521,7 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 ### 📚 高性能计算与分布式-个人技术专栏 ([©️back👆🏻](#contents))
 
 <div align="center" markdown="1">
-  
+
 |📖 类型-标题|📖 作者| 📖 推荐 |
 |:---|:---|:---|
 | [[Diffusion推理]📖简短的2025年总结，写在Cache-DiT v1.2.1之际](https://zhuanlan.zhihu.com/p/2001692370358539662)|@DefTruth|⭐️⭐️|
@@ -654,7 +620,7 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 💡说明: 本小节整理一些自己比较喜欢的文章。欢迎大家提PR推荐更多优秀的文章！
 
 <div align="center" markdown="1">
-  
+
 |📖 类型-标题|📖 作者| 📖 推荐 |
 |:---|:---|:---|
 | [[cute系列详解][入门]📖cutlass cute 101](https://zhuanlan.zhihu.com/p/660379052)|@朱小霖|⭐️⭐️⭐️|
@@ -739,12 +705,12 @@ The kernels listed here will guide you through a step-by-step progression, rangi
 
 </div>
 
-## ©️License 
+## ©️License
 <div id="License"></div>
 
 GNU General Public License v3.0
 
-## 🎉Contribute 
+## 🎉Contribute
 
 <div id="contribute"></div>
 
@@ -760,7 +726,7 @@ How to contribute? Star this repo or check [🌤🌤CONTRIBUTE🎉🎉](./CONTRI
 </a>
 </div> -->
 
-## 📖 References 
+## 📖 References
 <div id="ref"></div>
 
 - [flash-attention-minimal](https://github.com/tspeterkim/flash-attention-minimal)
