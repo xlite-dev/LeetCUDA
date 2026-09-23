@@ -157,15 +157,11 @@ $\mathrm{AtomLayout}=(4,1,1)$ 的 4 个 warp 分完，列维的 atom 数相差 4
     \foreach \aa in {0,...,7} {
       \pgfmathtruncatemacro{\gra}{12+8*\aa}
       \pgfmathtruncatemacro{\mn}{\aa+1}
-      \fill[gray!\gra] (1.1+\aa*1.05,-\wr*0.86) rectangle (1.1+\aa*1.05+1.05,-\wr*0.86-0.86);
-      \ifnum\gra>46
-        \node[blknum,white] at (1.1+\aa*1.05+0.525,-\wr*0.86-0.43) {\mn};
-      \else
-        \node[blknum] at (1.1+\aa*1.05+0.525,-\wr*0.86-0.43) {\mn};
-      \fi
+      \fill[tkBlue!\gra] (1.1+\aa*1.05,-\wr*0.86) rectangle (1.1+\aa*1.05+1.05,-\wr*0.86-0.86);
+      \node[blknum] at (1.1+\aa*1.05+0.525,-\wr*0.86-0.43) {\mn};
     }
   }
-  \draw[thick] (1.1,0) rectangle (9.5,-3.44);
+  \draw[thick, tkBlue] (1.1,0) rectangle (9.5,-3.44);
   \foreach \wr in {1,2,3} {
     \draw[very thick] (1.1,-\wr*0.86) -- (9.5,-\wr*0.86);
   }
@@ -175,24 +171,24 @@ $\mathrm{AtomLayout}=(4,1,1)$ 的 4 个 warp 分完，列维的 atom 数相差 4
   % 右网格：O 的一个 chunk 分量 64x16（4 warp 行块 x 2 个 n8 atom 列块）
   \foreach \wr in {0,...,3} {
     \foreach \aa in {0,...,1} {
-      \pgfmathtruncatemacro{\gra}{12+8*\aa}
+      \pgfmathtruncatemacro{\gra}{18+30*\aa}
       \pgfmathtruncatemacro{\mn}{\aa+1}
-      \fill[gray!\gra] (11.0+\aa*0.95,-\wr*0.86) rectangle (11.0+\aa*0.95+0.95,-\wr*0.86-0.86);
+      \fill[tkGreen!\gra] (11.0+\aa*0.95,-\wr*0.86) rectangle (11.0+\aa*0.95+0.95,-\wr*0.86-0.86);
       \node[blknum] at (11.0+\aa*0.95+0.475,-\wr*0.86-0.43) {\mn};
     }
   }
-  \draw[thick] (11.0,0) rectangle (12.9,-3.44);
+  \draw[thick, tkGreen] (11.0,0) rectangle (12.9,-3.44);
   \foreach \wr in {1,2,3} {
     \draw[very thick] (11.0,-\wr*0.86) -- (12.9,-\wr*0.86);
   }
   \draw[thin] (11.95,0) -- (11.95,-3.44);
   % 顶部标题与 atom 刻度
-  \node[font=\scriptsize\bfseries,align=center] at (5.3,0.85)
+  \node[font=\scriptsize\bfseries,align=center,text=tkBlue] at (5.3,0.85)
     {QK TiledMma：Tile $=(64,64,16)$\\$\mathrm{EURepeat}=\langle 1,8,1\rangle$};
-  \node[font=\scriptsize\bfseries,align=center] at (11.95,0.85)
+  \node[font=\scriptsize\bfseries,align=center,text=tkGreen!70!black] at (11.95,0.85)
     {PV TiledMma：Tile $=(64,16,16)$\\$\mathrm{EURepeat}=\langle 1,2,1\rangle$};
-  \node[axl,anchor=south] at (5.3,0.22) {$S$（每块 = 一个 $n8$ atom，格内数字 = 该 warp 本 k-step 发射的第几条 \texttt{mma.sync}）};
-  \node[axl,anchor=south] at (11.95,0.22) {$O$ 的 chunk $c$ 分量};
+  \node[axl,anchor=south,text=tkBlue] at (5.3,0.22) {$S$（每块 = 一个 $n8$ atom，格内数字 = 该 warp 本 k-step 发射的第几条 \texttt{mma.sync}）};
+  \node[axl,anchor=south,text=tkGreen!70!black] at (11.95,0.22) {$O$ 的 chunk $c$ 分量};
   \foreach \aa in {0,...,7} {
     \node[axl,anchor=north] at (1.1+\aa*1.05+0.525,-3.52) {\aa};
   }
@@ -210,14 +206,14 @@ $\mathrm{AtomLayout}=(4,1,1)$ 的 4 个 warp 分完，列维的 atom 数相差 4
     {两个 TiledMma 的 frag 相同：$\mathrm{frag}_S=\mathrm{frag}_O=((2,2),1,8)=32$ 值/线程
      （式~\eqref{eq:26-frag32}，第三 mode 的 8 来历不同）；行维同被 4 warp 分完，};
   \node[axl,anchor=north west,align=left,text width=11.6cm] at (1.1,-5.25)
-    {差别全在 $N$ 向：QK 的 $\mathrm{EURepeat}_N{=}8$ ——8 条 \texttt{mma.sync} 一次覆盖 $S$ 整个 64 列，「N-tile 循环」消失；
-     PV 的 $\mathrm{EURepeat}_N{=}2$ 只覆盖 $O$ 的 16 列，其余列由外层 V-chunk 循环驱动。};
+    {差别全在 $N$ 向：\textcolor{tkBlue}{QK} 的 $\mathrm{EURepeat}_N{=}8$ ——8 条 \texttt{mma.sync} 一次覆盖 $S$ 整个 64 列，「N-tile 循环」消失；
+     \textcolor{tkGreen!70!black}{PV} 的 $\mathrm{EURepeat}_N{=}2$ 只覆盖 $O$ 的 16 列，其余列由外层 V-chunk 循环驱动。};
 \end{tikzpicture}
 \caption{双 TiledMma 的 Tile 分工（\texttt{ffpa\_\allowbreak{}attn\_.cuh} L52--58，式~\eqref{eq:26-qk}--\eqref{eq:26-pv}）。
 左：QK 的输出 $S[64,64]$——4 个 warp 各占 16 行（$\mathrm{AtomLayout}$ 的 $M$ 分量 4），
 列向 8 个 $n8$ atom 由\textbf{同一线程}在一个 k-step 里连发 8 条 \texttt{mma.sync} 覆盖
-（灰度 8 档标识 atom 身份，格内数字为发射序）；右：PV 的输出 $O$ 只有一个
-chunk 分量 $[64,16]$（2 个 atom、2 条 \texttt{mma.sync}）。中间箭头是 26.3.3 节的
+（蓝深浅 8 档标识 atom 身份，格内数字为发射序）；右：PV 的输出 $O$ 只有一个
+chunk 分量 $[64,16]$（绿 2 档、2 个 atom、2 条 \texttt{mma.sync}）。中间箭头是 26.3.3 节的
 交接：$S$ 经 softmax 与 \texttt{Aregs} 零拷贝重解释成 $P$，作为 PV 的 A 操作数——
 共享的正是左侧那批 S 寄存器。}
 \label{fig:26-dual-mma}

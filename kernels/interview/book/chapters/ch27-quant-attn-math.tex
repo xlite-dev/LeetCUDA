@@ -757,7 +757,15 @@ $O$ 与 $\ell$ 全程共享同一 stale 域，$O/\ell$ 消去全部迟到缩放�
 
 \section{图示}
 
-\begin{figure}[htbp]
+三张大图对应本章的三条主线。图~\ref{fig:27-1} 是精度阶梯的位域对照：
+int8 的均匀网格与 e4m3/e2m1/ue4m3 的浮点结构并排展开，相对步长定理说明
+「尾数位决定相对误差」。图~\ref{fig:27-2} 把全章的 scale 流向画进一张
+数据流图：$\delta_Q\delta_K$ 折进 exp2 系数、$v_s$ 在 P 的发射域消去、
+$p_{scale}$ 收在 epilogue。图~\ref{fig:27-3} 是 ESS 误差模型：dense 行与
+causal 早行的 $P$ 分布/误差对比，以及 $V>QK>P$ 的 per-stage 误差贡献
+分解——「早行必须全链 fp16」的结论就来自右半的条形账。
+
+\begin{figure}[H]
   \centering
   % was: \includegraphics[width=0.92\textwidth]{figures/drawio/fig-27-1-fp-bitfield/fig-27-1-fp-bitfield.png}
   \begin{tikzpicture}[font=\tiny, >=Stealth,
@@ -844,7 +852,7 @@ $O$ 与 $\ell$ 全程共享同一 stale 域，$O/\ell$ 消去全部迟到缩放�
   \label{fig:27-1}
 \end{figure}
 
-\begin{figure}[htbp]
+\begin{figure}[H]
   \centering
   % was: \includegraphics[width=0.95\textwidth]{figures/drawio/fig-27-2-quant-points/fig-27-2-quant-points.png}
   \begin{tikzpicture}[font=\tiny, >=Stealth,
@@ -928,7 +936,7 @@ $O$ 与 $\ell$ 全程共享同一 stale 域，$O/\ell$ 消去全部迟到缩放�
   \label{fig:27-2}
 \end{figure}
 
-\begin{figure}[htbp]
+\begin{figure}[H]
   \centering
   % was: \includegraphics[width=0.9\textwidth]{figures/drawio/fig-27-3-ess-decompose/fig-27-3-ess-decompose.png}
   \begin{tikzpicture}[font=\tiny, >=Stealth,

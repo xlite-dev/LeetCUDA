@@ -269,8 +269,8 @@ scale 的覆盖域，右侧放大一个 quad 看「为什么零 shuffle」。
   \node[tnb,anchor=west,align=left] at (8.5,-0.89)
     {4 个 lane 持有\textbf{相同的 2 行}（灰度 = lane）\\$\Rightarrow$ 整块共享 1 个 scale\\$\Rightarrow$ 反量化 $=$ 提升时乘一个寄存器标量，零 shuffle};
   % 右中：amax 归约树
-  \node[axl,anchor=west] at (5.4,-2.1) {\textbf{amax 归约树（量化期代价）}};
-  \node[tnb,anchor=west,align=left] at (5.4,-2.42)
+  \node[axl,anchor=west] at (5.4,-2.05) {\textbf{amax 归约树（量化期代价）}};
+  \node[tnb,anchor=west,align=left] at (5.4,-2.6)
     {行内两半（\texttt{shfl\_xor} 1）$\to$ 行对（\texttt{shfl\_xor} 16）\\
      写入下标 $g = (\text{seg\_row}/16)\cdot 8 + \text{seg\_row} \bmod 8$\\
      （\texttt{quantize\_\allowbreak{}fp8\_\allowbreak{}perthread\_\allowbreak{}q\_kernel}）};
@@ -286,7 +286,7 @@ scale 的覆盖域，右侧放大一个 quad 看「为什么零 shuffle」。
   \draw[-{Stealth},thick] (7.75,-4.2) -- (8.05,-4.2);
   \draw[-{Stealth},thick] (10.35,-4.2) -- (10.65,-4.2);
   \node[tnb,anchor=north] at (8.95,-4.62) {scale 数递减、粒度变粗};
-  \node[tnb,anchor=west,align=left] at (5.4,-5.0)
+  \node[tnb,anchor=west,align=left] at (5.4,-5.12)
     {per-token：精度基准（128 scale/128 行）\quad per-block：成本基准（1 scale/128 行）\\
      per-thread：精度贴近 per-token、消费成本贴近 per-block（SA2 的 fragment 对齐观察）};
 \end{tikzpicture}
