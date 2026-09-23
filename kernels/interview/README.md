@@ -1,9 +1,3 @@
-<div align="center">
-  <div align='center'>
-      <img src='../../docs/book.png'>
-  </div>
-</div>
-
 ## 📖 快速开始 🔥🔥
 
 ```bash
@@ -20,7 +14,7 @@ apt install -y cudnn9-cuda-13 ccache # Also install ccache for faster rebuilds
 
 ```bash
 # Then, run the notes_v2_sm120a.bin with bench mode (e.g., NVIDIA PRO 5000, Blackwell SM_120a)
-./notes_v2_sm120a.bin --bench --mnk 4096,4096,4096 --bhnd 1,32,16384,128 # MMA ACC F16/F32 Acc
+./bin/notes_v2_sm120a.bin --bench --mnk 4096,4096,4096 --bhnd 1,32,16384,128 # MMA ACC F16/F32
 | Kernel                                                   | Max Err   | TFLOPS/cu{BLAS,DNN} |
 |----------------------------------------------------------|-----------|---------------------|
 | HGEMM CuTe Swizzle (S=2, BLK_SW=0, F16Acc)               | 0.000e+00 | 229.5/236.9 (0.97x) |
@@ -46,10 +40,13 @@ apt install -y cudnn9-cuda-13 ccache # Also install ccache for faster rebuilds
 | FA2 CuTe TMA MMA WS (1 Consumer WG) (Sk=2, Sv=1, F32Acc) | 1.526e-05 | 220.0/232.4 (0.95x) |
 | FA2 CuTe TMA MMA WS (1 Consumer WG) (Sk=3, Sv=1, F32Acc) | 1.526e-05 | 223.4/232.4 (0.96x) |
 | FA2 CuTe TMA MMA Persistent-CTA WS (D=128)               | 1.526e-05 | 242.5/232.4 (1.04x) |
-# Speedup: Split-D for large headdim (e.g, D=320) ~2.06x faster than cuDNN SDPA (with F32 Acc)
-./notes_v2_sm120a.bin --bench --bhnd 1,32,16384,320 # Split-D for large headdims (e.g, D=320)
+# Speedup: Split-D for large headdim (e.g, D=320) ~2.93x faster than cuDNN SDPA (with F32 Acc)
+./bin/notes_v2_sm120a.bin --bench --bhnd 1,32,8192,320 # Split-D for large headdims (e.g, 320)
 | Kernel                                                   | Max Err   | TFLOPS/cu{BLAS,DNN} |
 |----------------------------------------------------------|-----------|---------------------|
-| FA Split-D CuTe TMA MMA WS (D=320, Sk=1, Sv=1)           | 1.526e-05 | 96.5/70.3 (1.37x)   |
-| FA Split-D CuTe TMA MMA WS (D=320, Sk=2, Sv=2)           | 1.526e-05 | 145.1/70.3 (2.06x)  |
+| FA Split-D CuTe TMA MMA WS (D=320, Sk=1, Sv=1)           | 1.526e-05 |  86.6/69.8 (1.24x)  |
+| FA Split-D CuTe TMA MMA WS (D=320, Sk=2, Sv=2)           | 1.526e-05 | 139.9/69.8 (2.01x)  |
+| FA Split-D CuTe TMA non-WS (D=320, Sk=2, Sv=2)           | 3.052e-05 | 187.9/69.8 (2.69x)  |
+| FA Split-D CuTe TMA non-WS (D=320, Sk=2, Sv=3)           | 3.052e-05 | 188.8/69.8 (2.71x)  |
+| FA Split-D CuTe TMA non-WS (D=320, Sk=3, Sv=2)           | 3.052e-05 | 204.3/69.8 (2.93x)  |
 ```

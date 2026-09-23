@@ -22,11 +22,11 @@ files:
     sha256: d01c02e57b1ab0293b87c462ecb5b2d52c7092fd41c11c4f06b3ec9d916a20a4
     lines: 4179
   ffpa_attn.cuh:
-    sha256: c1eae5da4748dd15d91cf00e3006ba7be94dd8df428b0384c42b977ece4b479d
-    lines: 641
+    sha256: f5d6db34b8c7176bc8d74088692ecc82aec69d10a6946dcfc0d5fad1852b1b2b
+    lines: 1307
   notes-v2.cu:
-    sha256: 4d8c166b4739f2612a3e48237dce22a5c0bbaa571bd22cca6fba127234ee6462
-    lines: 5219
+    sha256: e7c8ba61c0a41610278fbd5003b6ba08659077e28f5609c29d681f9c4fc66f88
+    lines: 5474
 chapters:
   ch01:
     refs:
@@ -242,6 +242,18 @@ chapters:
         end: 4177
         first_anchor: "#if defined(NOTES_V2_ENABLE_CUTE)"
         last_anchor: "#endif // NOTES_V2_ENABLE_CUTE"
+  ch26c:
+    refs:
+      - file: ffpa_attn.cuh
+        start: 643
+        end: 1306
+        first_anchor: "// FFPA Split-D non-WS TMA 版 (ffpa-attn split_d.cuh 移植, 最小教学集)"
+        last_anchor: "#endif // NOTES_V2_ENABLE_CUTE && NOTES_V2_ENABLE_TMA_MMA_WS"
+      - file: notes-v2.cu
+        start: 4468
+        end: 4736
+        first_anchor: "// non-WS TMA split-D bench: tile 128x128, tid=0 内联发 TMA, STSM+TMA store。"
+        last_anchor: "}"
   appA:
     refs:
       - file: common.cuh

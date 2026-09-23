@@ -34,7 +34,7 @@ $D\ge 768$ & \texttt{split\_d\_m4n2.cuh}（本章） & M4N2 & $D/4$ \\
 
 本章先推导 split-D 的分块恒等式（为什么它是\textbf{精确}变换，一个比特
 都不差），再建立 M4N2 的寄存器压力模型（为什么 $N$ 维劈开是数学上的唯一
-出口），最后走读两个 kernel 的实现差异——特别是 M4N2 带来的多笔新代价：
+出口），最后走读两个 kernel 的实现差异，特别是 M4N2 带来的多笔新代价：
 P 的 SMEM roundtrip、跨 N-warp softmax 归约、$k_{Br}$ 减半与量化块
 错位等。所有机制均以
 fp8 家族为主线；fp16 家族同构（第~\ref{ch:25}~章已见其 fp16 版），fp4
@@ -56,8 +56,8 @@ M8N1 布局（8 个 M-warp、N 维单 warp 满编）下单 warp 独占输出的�
 O_{\text{acc}}=\frac{k_{Br}\cdot D}{256\ \text{threads}}=\frac{D}{2}
 \quad(\text{f32 regs/thread},\ k_{Br}=128),
 \end{equation}
-$D=512$ 时 256 个寄存器\textbf{超出上限 1 个}（255）——边缘 spill；$D\ge 896$ 大量
-spill 直接崩塌。实测（5090，fp16 家族同构）：$D=1024$ 时 M8N1 的
+$D=512$ 时 256 个寄存器\textbf{超上限 1 个}（255），属边缘 spill；
+$D\ge 896$ 大量 spill 直接崩塌。实测（5090，fp16 家族同构）：$D=1024$ 时 M8N1 的
 $O_{\text{acc}}=512$ regs 溢出到 local memory，吞吐掉到 $\sim$100T；
 而 M4N2 同 $D$ 边缘 spill 仍有 154T。
 
@@ -67,25 +67,25 @@ $O_{\text{acc}}=512$ regs 溢出到 local memory，吞吐掉到 $\sim$100T；
 chunk，K/V 的 TMA 与 MMA 都按 chunk 流水，smem 只需常驻
 $(k_{Br}+k_{Bc})\times k_{QKDChunk}+k_{Bc}\times k_{VDChunk}$ 每 stage，
 与总 $D$ 无关。\textbf{M4N2} 回答「寄存器怎么装下」：把 atom 布局从
-$(8,1,1)$ 换成 $(4,2,1)$——4 个 M-warp \textbf{乘} 2 个 N-warp——让每
+$(8,1,1)$ 换成 $(4,2,1)$（4 个 M-warp \textbf{乘} 2 个 N-warp），让每
 thread 的 $O$ 列持有量减半（\ref{sec:30-regmodel}~节的推导）。
 
 代价各自独立：split-D 多了每 chunk 一次 producer-consumer 握手；M4N2
 使 $k_{Br}$ 从 128 减到 64（CTA 数翻倍）、P 必须走 SMEM roundtrip、
 softmax 需要跨 N-warp 归约。交叉点在 $D=768$：之下 M8N1 更快（无
-roundtrip 开销、$k_{Br}$ 大一倍），之上 M4N2 的寄存器红利开始统治
+roundtrip 开销、$k_{Br}$ 大一倍），之上 M4N2 的寄存器红利开始占上风
 （30.6.2~节）。
 
 \subsection{causal 精度的已知边界}
 
 \texttt{split\_d.cuh} 的头注释（L40--43）声明了 causal 精度边界：
-逐元素误差上界——causal 早期行 attend 的 key 少，
-QK/P 量化误差无法被平均——
+逐元素误差上界（causal 早期行 attend 的 key 少，
+QK/P 量化误差无法被平均）：
 $O$ 误差可保持在 $10^{-1}$ 量级但 lse 误差可达 $\sim 6\times10^{-2}$
 （近 1 概率的 e4m3 舍入），dense 则 $\sim 4\times10^{-3}$（m4n2 头注释无同款
 声明，但精度结构相同）。本机实测
 （30.6~节）三个 $D$ 的 causal 误差模式完全一致：序列前
-$\sim$30\% 的行误差大、其余干净、dense 全绿——这是 fp8 路径的
+$\sim$30\% 的行误差大、其余干净、dense 全绿，这是 fp8 路径的
 \textbf{已知特性}而非 bug，工程解法是 hybrid（前若干行走 fp16
 stage-1，\texttt{dispatch/cute\_fp8.cuh} L55--58 的 FC-3 注释），
 不在本章展开。
@@ -100,15 +100,15 @@ $D$ 是\textbf{归约维}：
 S=QK^{\top}=\sum_{c}Q_{:,\mathcal{D}_c}\,K^{\top}_{:,\mathcal{D}_c},
 \end{equation}
 每个 chunk 一次 MMA \textbf{累加进同一个} $S$ fragment。fp8 路径 f32
-累加；int8 路径 s32 累加（精确，$\ll 2^{31}$）后一次性 cast（L495--503）
-——split 不引入任何新的舍入点。PV 侧 $D$ 是\textbf{输出列维}：
+累加；int8 路径 s32 累加（精确，$\ll 2^{31}$）后一次性 cast（L495--503），
+split 不引入任何新的舍入点。PV 侧 $D$ 是\textbf{输出列维}：
 \begin{equation}\label{eq:30-pv-split}
 O_{:,\mathcal{D}_c}=P\,V^{\top}_{\mathcal{D}_c,:},
 \end{equation}
 各 chunk 的 $O$ 段\textbf{独立累加}，互不干扰。
 
 关键观察：softmax 的行统计（$m_r$、$\ell_r$）是\textbf{KV 行维的量}，
-与 $D$ 的切分完全无关——split-D \textbf{不产生}「每 chunk 各自的
+与 $D$ 的切分完全无关：split-D \textbf{不产生}「每 chunk 各自的
 row max/row sum」，所有 chunk 共享同一组 $(m,\ell)$，rescale 因子天然
 一致。这就是 \texttt{split\_d.cuh} 的结构（L440--443 注释）：QK chunk
 循环在 softmax \textbf{之前}全部完成（L446--483），softmax 之后 V
@@ -124,74 +124,74 @@ chunk 循环各自把 $P V^{\top}_{\mathcal{D}_c}$ 加进
     {示例 $D{=}128$（$k_{VDChunk}{=}64\Rightarrow 2$ 个 chunk；通用 $D/k_{VDChunk}$ 个）};
   \draw[fill=gray!18] (0,-0.75) rectangle (1.5,-0.15);
   \draw[fill=gray!55] (0,-1.55) rectangle (1.5,-0.95);
-  \draw[thick] (0,-0.75) rectangle (1.5,-0.15);
-  \draw[thick] (0,-1.55) rectangle (1.5,-0.95);
+  \draw[tkBlue, thick] (0,-0.75) rectangle (1.5,-0.15);
+  \draw[tkBlue, thick] (0,-1.55) rectangle (1.5,-0.95);
   \node at (0.75,-0.45) {$Q_{:,\mathcal{D}_0}$};
   \node at (0.75,-1.25) {$Q_{:,\mathcal{D}_1}$};
   \node[anchor=east, font=\tiny] at (-0.12,-0.45) {$Q$};
   \node[anchor=east, font=\tiny] at (-0.12,-1.25) {（$M{\times}D$）};
   \draw[fill=gray!18] (0,-2.45) rectangle (1.5,-1.85);
   \draw[fill=gray!55] (0,-3.25) rectangle (1.5,-2.65);
-  \draw[thick] (0,-2.45) rectangle (1.5,-1.85);
-  \draw[thick] (0,-3.25) rectangle (1.5,-2.65);
+  \draw[tkBlue, thick] (0,-2.45) rectangle (1.5,-1.85);
+  \draw[tkBlue, thick] (0,-3.25) rectangle (1.5,-2.65);
   \node at (0.75,-2.15) {$K^{\top}_{\mathcal{D}_0,:}$};
   \node at (0.75,-3.0) {$K^{\top}_{\mathcal{D}_1,:}$};
   \node[anchor=east, font=\tiny] at (-0.12,-2.15) {$K^{\top}$};
   \node[anchor=east, font=\tiny] at (-0.12,-3.0) {（$D{\times}B_c$）};
-  \draw[->] (1.55,-0.45) -- (2.42,-0.82);
-  \draw[->] (1.55,-2.15) -- (2.42,-1.08);
-  \draw[->] (1.55,-1.25) -- (2.42,-2.38);
-  \draw[->] (1.55,-3.0) -- (2.42,-2.62);
-  \draw[thick] (2.5,-0.95) circle (0.40);
+  \draw[->, tkBlue] (1.55,-0.45) -- (2.42,-0.82);
+  \draw[->, tkBlue] (1.55,-2.15) -- (2.42,-1.08);
+  \draw[->, tkBlue] (1.55,-1.25) -- (2.42,-2.38);
+  \draw[->, tkBlue] (1.55,-3.0) -- (2.42,-2.62);
+  \draw[tkBlue, thick] (2.5,-0.95) circle (0.40);
   \node at (2.5,-0.95) {\tiny MMA};
-  \draw[thick] (2.5,-2.55) circle (0.40);
+  \draw[tkBlue, thick] (2.5,-2.55) circle (0.40);
   \node at (2.5,-2.55) {\tiny MMA};
-  \draw[->] (2.9,-1.15) -- (3.28,-1.48);
-  \draw[->] (2.9,-2.35) -- (3.28,-2.02);
-  \draw[thick] (3.62,-1.75) circle (0.34);
+  \draw[->, tkBlue] (2.9,-1.15) -- (3.28,-1.48);
+  \draw[->, tkBlue] (2.9,-2.35) -- (3.28,-2.02);
+  \draw[tkBlue, thick] (3.62,-1.75) circle (0.34);
   \node at (3.62,-1.75) {$\Sigma_c$};
-  \draw[->] (3.96,-1.75) -- (4.45,-1.75);
-  \draw[fill=white, thick] (4.5,-2.4) rectangle (6.0,-1.1);
+  \draw[->, tkBlue] (3.96,-1.75) -- (4.45,-1.75);
+  \draw[tkBlue, fill=white, thick] (4.5,-2.4) rectangle (6.0,-1.1);
   \node at (5.25,-1.62) {$S$ fragment};
   \node at (5.25,-2.12) {\tiny 同一 C 累加器};
   \node[anchor=south, font=\tiny, align=center] at (5.25,-1.02)
     {归约维：chunk 累加\\（式~\ref{eq:30-qk-split}，无新舍入点）};
-  \draw[->] (6.05,-1.75) -- (6.55,-1.75);
-  \node[above, font=\tiny] at (6.3,-1.68) {$P$};
-  \draw[fill=white, thick] (6.6,-2.3) rectangle (8.0,-1.2);
+  \draw[->, tkOrange] (6.05,-1.75) -- (6.55,-1.75);
+  \node[above, font=\tiny, text=tkOrange] at (6.3,-1.68) {$P$};
+  \draw[tkOrange, fill=white, thick] (6.6,-2.3) rectangle (8.0,-1.2);
   \node at (7.3,-1.62) {softmax};
   \node at (7.3,-2.10) {\tiny 全 $D$ 一次};
-  \draw[->] (8.05,-1.6) -- (8.55,-1.08);
-  \draw[->] (8.05,-1.9) -- (8.55,-2.42);
-  \draw[thick] (8.95,-0.95) circle (0.40);
+  \draw[->, tkOrange] (8.05,-1.6) -- (8.55,-1.08);
+  \draw[->, tkOrange] (8.05,-1.9) -- (8.55,-2.42);
+  \draw[tkOrange, thick] (8.95,-0.95) circle (0.40);
   \node at (8.95,-0.95) {\tiny MMA};
-  \draw[thick] (8.95,-2.55) circle (0.40);
+  \draw[tkOrange, thick] (8.95,-2.55) circle (0.40);
   \node at (8.95,-2.55) {\tiny MMA};
   \draw[fill=gray!18] (10.3,-0.85) rectangle (11.8,-0.25);
   \draw[fill=gray!55] (10.3,-3.5) rectangle (11.8,-2.9);
-  \draw[thick] (10.3,-0.85) rectangle (11.8,-0.25);
-  \draw[thick] (10.3,-3.5) rectangle (11.8,-2.9);
+  \draw[tkOrange, thick] (10.3,-0.85) rectangle (11.8,-0.25);
+  \draw[tkOrange, thick] (10.3,-3.5) rectangle (11.8,-2.9);
   \node at (11.05,-0.55) {$V^{\top}_{\mathcal{D}_0,:}$};
   \node at (11.05,-3.2) {$V^{\top}_{\mathcal{D}_1,:}$};
   \node[anchor=west, font=\tiny] at (11.92,-0.55) {$V^{\top}$};
   \node[anchor=west, font=\tiny] at (11.92,-3.2) {（$D{\times}B_c$）};
-  \draw[->] (10.25,-0.55) -- (9.38,-0.9);
-  \draw[->] (10.25,-3.2) -- (9.38,-2.6);
-  \draw[fill=white, thick] (12.5,-1.25) rectangle (13.9,-0.65);
+  \draw[->, tkOrange] (10.25,-0.55) -- (9.38,-0.9);
+  \draw[->, tkOrange] (10.25,-3.2) -- (9.38,-2.6);
+  \draw[tkOrange, fill=white, thick] (12.5,-1.25) rectangle (13.9,-0.65);
   \node at (13.2,-0.95) {$O_{:,\mathcal{D}_0}$};
-  \draw[fill=white, thick] (12.5,-3.1) rectangle (13.9,-2.5);
+  \draw[tkOrange, fill=white, thick] (12.5,-3.1) rectangle (13.9,-2.5);
   \node at (13.2,-2.8) {$O_{:,\mathcal{D}_1}$};
-  \draw[->] (9.35,-0.95) -- (12.45,-1.05);
-  \draw[->] (9.35,-2.55) -- (12.45,-2.7);
+  \draw[->, tkOrange] (9.35,-0.95) -- (12.45,-1.05);
+  \draw[->, tkOrange] (9.35,-2.55) -- (12.45,-2.7);
   \node[anchor=north, font=\tiny, align=center] at (13.2,-3.15)
     {$O=[\,O_{:,\mathcal{D}_0}\mid O_{:,\mathcal{D}_1}\,]$：输出列维\\各 chunk 独立累加（式~\ref{eq:30-pv-split}）};
-  \draw[fill=white, thick] (1.8,-4.95) rectangle (12.6,-4.45);
+  \draw[tkPurple, fill=white, thick] (1.8,-4.95) rectangle (12.6,-4.45);
   \node[align=center] at (7.2,-4.7)
     {行统计 $(m_r,\ell_r)$：\textbf{KV 行维的量}——与 $D$ 切分完全无关，所有 chunk
      共享同一组（不产生 per-chunk 统计），rescale 因子天然一致};
-  \draw[densely dashed] (7.3,-2.3) -- (7.3,-4.45);
-  \draw[densely dashed] (8.95,-1.35) -- (8.95,-4.45);
-  \draw[densely dashed] (8.95,-2.95) -- (8.95,-4.45);
+  \draw[tkPurple, densely dashed] (7.3,-2.3) -- (7.3,-4.45);
+  \draw[tkPurple, densely dashed] (8.95,-1.35) -- (8.95,-4.45);
+  \draw[tkPurple, densely dashed] (8.95,-2.95) -- (8.95,-4.45);
 \end{tikzpicture}
 \caption{split-D 分块恒等式的数据流（30.3.1~节）。QK 侧：$D$ 是\textbf{归约维}，
 各 chunk 的 $Q_{:,\mathcal{D}_c}K^{\top}_{\mathcal{D}_c,:}$ 累加进\textbf{同一个} $S$
@@ -271,7 +271,7 @@ $32M_wN_w$ 个 thread，每 thread 上限 $65536/(32M_wN_w)$。$O$ 累加器对
 $N_w$ \textbf{精确消去}：把输出列劈给更多 N-warp，同时把每-thread 上限
 等比例压低，per-SM 总占用纹丝不动（M4N4 与 M4N2 同为 $D/1024$ 占比）。
 只有减 $M_w$ 有效；$M_w=2$（M2N4）时占比 $D/2048$，是 $D>1024$ 的正解。
-这不是实现细节，是「$N=1$ 列方向没有并行红利」的数学结构。
+根源是「$N=1$ 列方向没有并行红利」的数学结构，与实现细节无关。
 
 \begin{figure}[H]
 \centering
@@ -344,7 +344,7 @@ $N_w$ \textbf{精确消去}：把输出列劈给更多 N-warp，同时把每-thr
 PV M4N2 仍是 $D/2$，而 $k_{Br}=64$ 强制下 M8N1 的 8 个 M-warp 有 4 个
 在 PV 相空转（QK 算力浪费 50\%）。其二，\textbf{WS（warp
 specialization）版 split-D}：consumer 的 \texttt{setmaxnreg} 上限 232
-装不下 $D=512$ 的 256-reg $O$ 累加器——所以 split-D 家族保持非 WS
+装不下 $D=512$ 的 256-reg $O$ 累加器，所以 split-D 家族保持非 WS
 结构（全体线程做 MMA，\texttt{tid==0} 顺手发 TMA，L28--30 注释），这与
 persist-D 的 WS 选择形成对照（29.4.2~节）。
 
@@ -373,7 +373,7 @@ stage 上限 & 6（99KB/16KB） & 7（(99KB$-$5KB)/12KB） \\
 \end{tabular}
 \end{center}
 
-两个工程细节值得抄走。第一，\textbf{swizzle atom 按行字节数选}：1B
+顺带记下两个工程细节。第一，\textbf{swizzle atom 按行字节数选}：1B
 元素的 64 列行 = 64B $\to$ SW64（L152--157 的
 \texttt{SmemAtomByBytes}），不硬编码。第二，\textbf{O staging 预算换算}：
 \texttt{kSmemElems} 数的是 1B 元素（恰等于字节数），而 $O$ 是 2B 的
@@ -426,8 +426,8 @@ atom 除不尽 64 列的 P tile（L685--688 注释）；smem 布局取 SW64 兼�
 QK C-fragment 写侧与 PV A-fragment 读侧两个坐标系（traits L279--284）。
 
 \textbf{跨 N-warp softmax}（L655--672 调用
-\texttt{online\_softmax\_fp8\_fixed\_m4n2}）。协议已在
-\ref{sec:30-m4n2softmax}~节拆解；\texttt{finalize\_row\_sum\_m4n2}
+\texttt{online\_softmax\allowbreak{}\_fp8\allowbreak{}\_fixed\allowbreak{}\_m4n2}）。协议已在
+\ref{sec:30-m4n2softmax}~节拆解；\texttt{finalize\_row\_sum\allowbreak{}\_m4n2}
 挂在 P roundtrip 的 barrier 之后（L700--704），一次
 \texttt{\_\_syncthreads()} 服务两个用途。
 
@@ -435,7 +435,7 @@ QK C-fragment 写侧与 PV A-fragment 读侧两个坐标系（traits L279--284�
 group 按 128 行块编号（$g=(q_{\text{row}}/16)\cdot8+q_{\text{row}}\%8$），
 但 M4N2 的 $k_{Br}=64$：奇数注意 tile 的行号要先加
 \texttt{quant\_offset} 再查表，\texttt{quant\_rb} 单独换算块号。M8N1
-的 $k_{Br}=128$ 恰好与量化块同宽，天然无此事——这类「两套块宽不一致」
+的 $k_{Br}=128$ 恰好与量化块同宽，天然无此事：这类「两套块宽不一致」
 的坑在 fp8 体系里反复出现（第~\ref{ch:28}~章 per-thread 64-group 同理）。
 
 \begin{figure}[H]
@@ -504,7 +504,7 @@ scale 表；tile 0/2 偏移为 0。M8N1 的 $k_{Br}{=}128$ 与量化块同宽，
 
 split-D 域的 fused-rescale（rescale 折进吸收 FFMA）自 persist-D 迁移而来，
 但 61d02c4 在 split-D 的 all-on 复测反而 $+8.2\%$ \textbf{变慢}
-（相对 81dbf75 基线，RTX PRO 5000）——复盘（PC-7）发现该结论捆绑了
+（相对 81dbf75 基线，RTX PRO 5000）。复盘（PC-7）发现该结论捆绑了
 reorg-free：reorg-free
 \textbf{单独}开启是正收益（D=320 $-3.4\sim-3.9\%$、D=512
 $-0.3\sim-0.4\%$，输出 bitwise 一致），现在 launcher 默认
@@ -516,7 +516,7 @@ $-0.3\sim-0.4\%$，输出 bitwise 一致），现在 launcher 默认
 
 stage 数的教训方向相反（PC-8）：m4n2 每级仅 12KB，99KB 容得下 7 级，
 但实测 s2$\to$s3 e2e 快 $9\sim13\%$（D=768、N=4096$\sim$16384，
-self+causal 合并口径），s4$\sim$s7 非单调更慢——launcher 的 stage 下限
+self+causal 合并口径），s4$\sim$s7 非单调更慢：launcher 的 stage 下限
 从 2 抬到 3（\texttt{cute\_fp8\_split\_d\_m4n2.cuh} L127--133）。s2 的问题
 是 K/V TMA 流水饿死（NCU 里 \texttt{@BRA}+\texttt{@NANOSLEEP} barrier
 自旋主导）。这与 persist-D 的「加深 stages 证伪」结论相反，根源在于
@@ -525,13 +525,13 @@ m4n2 的 occupancy 已被 255 regs 锁死在 1 CTA，加深 stage 没有 occupan
 
 \section{图示}
 
-图~\ref{fig:30-walls} 是全章的路线图：大 $D$ 的两堵墙——smem 随 $D$
+图~\ref{fig:30-walls} 是全章的路线图：大 $D$ 的两堵墙，smem 随 $D$
 线性膨胀（$k_{Bc}\times D$ 字节）、per-thread 的 $O$ 寄存器随 $D$ 线性
-增长——分别由 split-D
+增长，分别由 split-D
 （chunk 流水，smem 与 $D$ 解耦）与 M4N2（$N_w=2$ 把每线程 $O$ 从 $D/2$
 减到 $D/4$）拆掉，$D=768$ 是两者的实测交叉点，dispatch 据此三分路由。
 图~\ref{fig:30-m4n2} 深入寄存器墙解法的内部：$(4,2,1)$ atom 的线程-值
-布局，以及跨 N-warp softmax 的单 barrier 协议——max 段与 sum 段分置
+布局，以及跨 N-warp softmax 的单 barrier 协议：max 段与 sum 段分置
 \texttt{smem\_exchange} 防 RAW，sum 的发布搭 P roundtrip barrier 的便车。
 
 \begin{figure}[htbp]
@@ -682,13 +682,13 @@ $D$ & task & FFPA ms & SDPA ms & TFLOPS & speedup \\
 \end{tabular}
 \end{center}
 
-三条读数：其一，self-attn 的 speedup 从 $D=256$ 的 1.30x 跳到
-$D=320$ 的 3.76x——拐点不在 kernel 而在\textbf{参照系}：SDPA 在
+self-attn 的 speedup 从 $D=256$ 的 1.30x 跳到
+$D=320$ 的 3.76x，拐点不在 kernel 而在\textbf{参照系}：SDPA 在
 $D\notin\{64,128\}$ 时掉出最优 kernel 选择，fp8 的 1B 元素带宽优势
-立即显形。其二，TFLOPS 随 $D$ 单调下降（271$\to$203T）：$D$ 越大
+立即显形。TFLOPS 随 $D$ 单调下降（271$\to$203T），$D$ 越大
 softmax 与 P 量化等 $O(B_c)$ 项占比越高、$O$ 寄存器压力越大，这是
-split-D 无法消除的税。其三，causal 的 allclose 在 D=320 bf16 与
-D=512 fp16 两格临界失败——见 30.2.3~节的已知边界说明；dense 六格
+split-D 无法消除的税。causal 的 allclose 在 D=320 bf16 与
+D=512 fp16 两格临界失败（见 30.2.3~节的已知边界说明），dense 六格
 全绿，数据落盘 \texttt{.tmp/book-bench/ch30/}。
 
 \subsection{交叉点与 M4N2 的引用数据（本机无 $D\ge768$ 编译实例）}
@@ -708,7 +708,7 @@ $D\ge768$ 时 M4N2 快 $+7\%@768$、$+11\%@896$、$+55\%@1024$。崩塌侧
 fp8 split-D 在 $D=512$ 的 203T 大约是 fp8 persist-D 峰值（365T，
 表~29.2）的 56\%。差价的构成：$O$ 累加器随 $D$ 翻倍的寄存器税
 （occupancy 1 CTA）、chunk 循环多出的 barrier 握手、以及 epilogue
-批量 staging 的 smem 往返。这不是 split-D 的失败——绝对吞吐仍高于
+批量 staging 的 smem 往返。这并不构成 split-D 的失败：绝对吞吐仍高于
 fp16 家族同 $D$ 量级，带宽侧（1B/元素）更是 3.76x speedup 的直接
 来源。
 
@@ -719,7 +719,7 @@ fp16 家族同 $D$ 量级，带宽侧（1B/元素）更是 3.76x speedup 的直�
 30.6~节表格里有两格 \texttt{allclose} 失败：D=320（bf16）、
 D=512（fp16）。
 
-定性过程值得记录，脚本在 \texttt{.tmp/book-bench/ch30/}：
+定性过程记录如下，脚本在 \texttt{.tmp/book-bench/ch30/}：
 
 \begin{enumerate}[itemsep=0pt,topsep=2pt]
   \item \textbf{先看模式不看标量}。对 $D\in\{256,320,512\}$ 各跑
@@ -745,7 +745,7 @@ split-D/M4N2 是 $D>224$ 的\textbf{被迫选择}，不是普适更优。三条�
 证据：WS 版 split-D 被 setmaxnreg 232 上限否决；QK/PV 混合 atom 布局
 被 M 维一致性否决；fused-rescale 在 split-D 域被单 CTA 藏不住的
 tensor pipe 压力否决。三条都是「在 persist-D 域成立的优化不能平移」
-的实例——迁移优化前先核对 occupancy 与寄存器结构是否同型。
+的实例，迁移优化前先核对 occupancy 与寄存器结构是否同型。
 
 \section{常见坑}
 

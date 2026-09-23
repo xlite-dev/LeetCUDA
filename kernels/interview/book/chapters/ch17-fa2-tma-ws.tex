@@ -12,14 +12,14 @@
 算地址、等 commit group，装载与计算在同一支执行流里轮流占坑。本章讲它的进化版
 \texttt{flash\_\allowbreak{}attn\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}split\_\allowbreak{}q}（flash\_attn.cuh~L889）：把
 「搬运」整体剥离给一个专职的 producer warpgroup（TMA 单线程提交），把「计算」
-留给 8 个 consumer warp——两条执行流靠 mbarrier 的 full/empty 双屏障阵列解耦，
+留给 8 个 consumer warp。两条执行流靠 mbarrier 的 full/empty 双屏障阵列解耦，
 这就是 \textbf{warp specialization}（ws）在 attention 上的完整形态。SM120
 （Blackwell 消费级）没有 WGMMA（第~\ref{ch:13}~章坑一），所以这里的 consumer
-仍用 \texttt{mma.sync} + ldmatrix——\textbf{TMA/mbarrier 这套「基础设施」跨
+仍用 \texttt{mma.sync} + ldmatrix，\textbf{TMA/mbarrier 这套「基础设施」跨
 Hopper/Blackwell 通用，计算指令则按架构选型}。
 
 \textbf{源码区间}：flash\_attn.cuh~L792--1440；其中 L792--842 是约 50 行的
-头部设计注释，包含本章的核心素材——\textbf{mbarrier arrive\_count 协议注释}
+头部设计注释，包含本章的核心素材，即\textbf{mbarrier arrive\_count 协议注释}
 （L808 起：257 $=$ 256 consumer $+$ 1 producer、full/empty 相位循环、V 的
 装载时机）。本章将逐条解读这份协议注释，并与实际代码逐点核验一致性。
 
@@ -27,7 +27,7 @@ Hopper/Blackwell 通用，计算指令则按架构选型}。
 sm\_120a 可编译运行；要求 CUDART $\ge$ 13.0（common.cuh L21--23 有 \#error 兜底）。
 本机 GPU 为 sm\_120a（RTX PRO 5000），本章测试与 bench 复测均在本机完成。
 
-\textbf{前置}：第~\ref{ch:13}~章（TMA descriptor、mbarrier 双计数事务模型——本章
+\textbf{前置}：第~\ref{ch:13}~章（TMA descriptor、mbarrier 双计数事务模型，本章
 不再重复其机制，只回指）、第~\ref{ch:15}~章（attention 数学与 online softmax）、
 第~\ref{ch:16}~章（split-Q 划分与 FA2 的寄存器流）；\textbf{后继}：第~\ref{ch:18}~章
 把 consumer 从 1 个 warpgroup 扩成 2 个（FA3 双 consumer 结构）。
@@ -35,7 +35,7 @@ sm\_120a 可编译运行；要求 CUDART $\ge$ 13.0（common.cuh L21--23 有 \#e
 \section{问题与动机}
 
 第~\ref{ch:16}~章结尾的性能数据（见 17.6~节复测表）暴露了 cp.async 版的三个
-结构性短板，它们都指向同一个病根——\textbf{没有角色分工}：
+结构性短板，它们都指向同一个病根，即\textbf{没有角色分工}：
 
 \begin{itemize}
   \item \textbf{装载指令挤占计算发射槽}。cp.async 路径下，每个线程各自计算
@@ -55,7 +55,7 @@ sm\_120a 可编译运行；要求 CUDART $\ge$ 13.0（common.cuh L21--23 有 \#e
 \end{itemize}
 
 warp specialization 的回答是把 384 个线程切成两支：\textbf{producer WG}
-（128 线程，实际只有 1 个线程干活）专职提交 TMA——一条
+（128 线程，实际只有 1 个线程干活）专职提交 TMA，一条
 \texttt{cp.\allowbreak{}async.\allowbreak{}bulk.\allowbreak{}tensor.2d} 搬完整个 tile，地址计算/OOB 填充/128B swizzle
 全部由 descriptor 声明；\textbf{consumer WG}（256 线程 = 8 warp）专职
 ldmatrix + \texttt{mma.sync} + online softmax。两支流之间没有任何
@@ -78,7 +78,7 @@ ldmatrix + \texttt{mma.sync} + online softmax。两支流之间没有任何
 \end{itemize}
 
 前两条的角色划分、第三条的三处差异（两次 GEMM/KV 迭代/Q 只装一次）分别对应
-17.4.1、17.3.1 与 17.4.3 节；其中「Q 只 load 一次」是 attention 特有的——
+17.4.1、17.3.1 与 17.4.3 节；其中「Q 只 load 一次」是 attention 特有的：
 GEMM 的 A/B 都随 K 迭代刷新，而 split-Q 的 Q tile 在整个 KV 遍历中不变，
 这让 Q 的同步协议退化成「一次性 full 屏障」，是本章协议里最省心的一环。
 
@@ -114,10 +114,10 @@ block 内的 online softmax 状态 $(m, \ell, O)$ 跨 $T_c$ 轮迭代持续更�
 \end{equation}
 其中 $\gamma = 1/\sqrt{D}$。split-Q 的关键收益在装载侧：Q tile
 $[B_r, D]$ 只需在进入 KV 循环前装载\textbf{一次}，此后 $T_c$ 轮迭代全部
-复用 smem 中的同一份 Q——对比「每轮都刷 A」的 GEMM，FA 的 Q 通道是
+复用 smem 中的同一份 Q。对比「每轮都刷 A」的 GEMM，FA 的 Q 通道是
 \textbf{一次装载、全程只读}，因此 Q 只需要 full 屏障（数据就绪），不需要
 empty 屏障（没有谁会覆盖它）。头注释（L801--806）对 split-Q 语义的完整表述则澄清了「Q tile」的确切
-含义——它是 \textbf{block-level} 的，不是全局 Q：
+含义，即它是 \textbf{block-level} 的，不是全局 Q：
 
 \begin{itemize}
   \item grid $= (N/B_r,\; B \cdot H)$：每个 block 处理一个 block-level Q
@@ -131,10 +131,13 @@ empty 屏障（没有谁会覆盖它）。头注释（L801--806）对 split-Q �
 
 第~\ref{ch:13}~章式~(13.4)（相位翻转条件）给出 mbarrier 的一般模型：pending
 arrivals 与 tx-count \textbf{双计数同时归零}才翻转相位。本章把这套代数落到
-attention 的具体数字上。协议注释原文只有四行：
-
-\lstinputlisting[linerange={808-811},firstnumber=auto,breakatwhitespace=true,
-  title={flash\_attn.cuh L808-811（Pipeline 同步协议：arrive\_count = 257）}]{../flash_attn.cuh}
+attention 的具体数字上。flash\_attn.cuh~L808--811 的头注释用四行给出整套
+Pipeline 同步协议：arrive\_count $=$ 257 $=$ 256 consumer $+$ 1 producer，
+三条通道各执屏障——Q 走 \texttt{full\_Q}，producer 发 \texttt{arrive\_tx}，
+consumer 在主循环前 wait 一次；K 走 \texttt{full\_K[kStagesK]} 与
+\texttt{empty\_K[kStagesK]}，多 stage pipeline；V 走 \texttt{full\_V} /
+\texttt{empty\_V} 单 buffer 串行，QK 前发 TMA、与 QK 重叠、PV 前等、
+PV 后释放。
 
 逐条拆解。首先是\textbf{为什么是 257}：
 \begin{equation}
@@ -146,7 +149,7 @@ attention 的具体数字上。协议注释原文只有四行：
 与第~\ref{ch:13}~章 WGMMA 版的 129（$128 + 1$）同构，但 consumer 端的含义不同：
 WGMMA 是 warpgroup 对齐指令，consumer 的最小单位是\textbf{整个 128 线程
 warpgroup}；本章 consumer 用 warp 级的 \texttt{mma.sync} + ldmatrix，8 个 warp
-彼此独立推进，因此\textbf{每个线程}都必须在屏障上 arrive 一次——「数据到齐
+彼此独立推进，因此\textbf{每个线程}都必须在屏障上 arrive 一次，「数据到齐
 且全体 consumer 都已就位」才翻转。这是把 ws 协议从 Hopper 搬到 SM120 时最
 容易算错的数字（源码 L960--962 的 WARN 注释专门警告了另一个相关的除数错误，
 见 17.8~节坑一）。
@@ -184,7 +187,7 @@ warpgroup}；本章 consumer 用 warp 级的 \texttt{mma.sync} + ldmatrix，8 �
 两张屏障构成一个\textbf{每相位恰好闭合的收支循环}：对固定 stage $s$，
 每轮 KV 迭代消耗 full 相位 1 次（256 consumer arrive $+$ 1 producer
 arrive\_tx $+$ 字节落盘）、empty 相位 1 次（256 consumer arrive $+$ 1
-producer arrive）——两边的 arrive 预算都是 257/轮，与 init 值精确对齐。
+producer arrive）。两边的 arrive 预算都是 257/轮，与 init 值精确对齐。
 任何一边多算或少算一次，循环就会在几轮后「错位」：少算则屏障提前翻转
 （读到半新半旧数据，静默错误），多算则永不翻转（挂死）。这套守恒与第~\ref{ch:13}~章
 图~13-3 的 mbarrier 状态机完全同构，只是参与方从 $128+1$ 换成了 $256+1$。
@@ -247,7 +250,7 @@ producer arrive）——两边的 arrive 预算都是 257/轮，与 init 值精�
 
 最后是 \textbf{Q 与 V 的两个特例}。\texttt{full\_Q}：init 257，producer 装完
 Q tile 后 arrive\_tx 一次（$B_r D \times 2$ 字节，D$=$64 时 16 KB），consumer
-在进主循环前 \texttt{full\_\allowbreak{}Q.\allowbreak{}wait\allowbreak{}(arrive\allowbreak{}())} \textbf{一次}——此后再无人
+在进主循环前 \texttt{full\_\allowbreak{}Q.\allowbreak{}wait\allowbreak{}(arrive\allowbreak{}())} \textbf{一次}。此后再无人
 arrive，屏障永久停留在翻转后的相位，天然表达了「一次性事件」。
 \texttt{full\_\allowbreak{}V/\allowbreak{}empty\_\allowbreak{}V}：结构与 K 相同，但默认 $S_v = 1$（单 buffer），
 V[$k$] 的 TMA 与 QK$^\top$/softmax 同迭代重叠（17.4.5 节的时序细节）；
@@ -258,7 +261,7 @@ V[$k$] 的 TMA 与 QK$^\top$/softmax 同迭代重叠（17.4.5 节的时序细节
 把协议画成时间轴（图~\ref{fig:17-1}），producer 的装载流与 consumer 的计算流
 按 stage 错开。以 $\mathrm{Sk} = 2$、$S_v = 1$ 为例，稳态下第 $k$ 轮迭代：
 consumer 在算 tile $k$（QK$^\top \to$ softmax $\to$ PV $\to$ rescale），
-producer 在搬 tile $k{+}1$（V[$k{+}1$] 先发、K[$k{+}1$] 后发）——只要
+producer 在搬 tile $k{+}1$（V[$k{+}1$] 先发、K[$k{+}1$] 后发）。只要
 「搬一块」的时间短于「算一块」，TMA 延迟完全出不了关键路径。理论算术强度
 （不含 Q，Q 被 $T_c$ 轮摊薄）：
 \begin{equation}
@@ -270,7 +273,7 @@ producer 在搬 tile $k{+}1$（V[$k{+}1$] 先发、K[$k{+}1$] 后发）——只
 一个漂亮的结论：\textbf{FA tile 级算术强度恰好等于 $B_r$}，与 $D$ 无关
 （$D$ 同时放大分子分母）。128 FLOP/B 在 SM120 上处于 roofline 拐点附近
 （fp16 Tensor $\sim$ 400 TFLOPS 量级对 GDDR7 $\sim$ 1.7 TB/s 量级，拐点
-$\approx$ 230 FLOP/B），所以\textbf{装载效率直接决定 FA 性能}——这正是
+$\approx$ 230 FLOP/B），所以\textbf{装载效率直接决定 FA 性能}。这正是
 本章把装载交给 TMA 专线、并用 Sk 流水把它推出关键路径的动机；相邻 block
 共享 K/V tile 的 L2 复用（grid.y 方向同 (b,h) 的 $N/B_r$ 个 block 读同一份
 K/V）进一步抬升有效 AI。
@@ -347,7 +350,7 @@ consumer 扩到 80（$D{=}64$）或 168（$D{=}128$，对齐 Triton
 另注意该指令对 TMA 的目的地址空间敏感：dst 写成 \texttt{shared::cluster}
 会被 ptxas 以 C7506 丢弃（第~\ref{ch:14}~章已考据），写成
 \texttt{shared::cta} 则 sm\_120a/sm\_120f 都保留（build.sh 的 sm\_120f
-目标预设了正确组合）；默认编译宏关闭时是 no-op——寄存器
+目标预设了正确组合）；默认编译宏关闭时是 no-op，寄存器
 预算实际由编译器按 \texttt{\_\allowbreak{}\_\allowbreak{}launch\_\allowbreak{}bounds\_\allowbreak{}(384,\allowbreak{}1)} 自行分配（17.8~节坑七）。
 
 \subsection{模板参数与 tile 派生}
@@ -358,7 +361,7 @@ consumer 扩到 80（$D{=}64$）或 168（$D{=}128$，对齐 Triton
 tile 派生链与 ch16 同一套代数：$B_r = \mathrm{atom}_M \times
 \mathrm{tile}_Q \times \mathrm{val}_Q = 16 \times 8 \times 1 = 128$、
 $B_c = 8 \times 1 \times 8 = 64$；consumer 8 warp 排成 $8 \times 1$
-（warp\_QP $=$ warp\_id，各管 16 行 Q；warp\_KV $=$ 0 共享 KV）——
+（warp\_QP $=$ warp\_id，各管 16 行 Q；warp\_KV $=$ 0 共享 KV）。
 \textbf{consumer 侧的 warp 布局与 ch16 完全一致}，这就是「角色分化但计算
 几何不变」：把 ch16 kernel 的装载段整体替换成 barrier wait，计算段原样保留。
 值得一看的新增参数是 \texttt{kStagesV}（V 流水深度，1 $=$ 单 buffer）与
@@ -462,23 +465,24 @@ $B_c = 8 \times 1 \times 8 = 64$；consumer 8 warp 排成 $8 \times 1$
   title={flash\_attn.cuh L849-870（box $\le$ 128B 约束、chunk-major 方案与 swizzle\_fa）}]{../flash_attn.cuh}
 
 V 通道的消费用 \texttt{ldmatrix.\allowbreak{}x2.trans}（转置读）。头注释对「swizzle 与
-trans 组合是否正确」给了专门的论证，逻辑值得背下来：
-
-\lstinputlisting[linerange={813-816},firstnumber=auto,breakatwhitespace=true,
-  title={flash\_attn.cuh L813-816（V ldmatrix.x2.trans 正确性论证）}]{../flash_attn.cuh}
+trans 组合是否正确」给了专门的论证（flash\_attn.cuh~L813--816），逻辑值得背下来：
+TMA 128B SWIZZLE 是一一映射，ldmatrix 按 \texttt{swizzle<64>(row,col)} 算出的
+物理地址就是 TMA 写入的物理地址（smem 1024B 对齐保证 phase $=$ 0）；而
+\texttt{ldmatrix.\allowbreak{}x2.trans} 的转置语义在寄存器层面工作，与 smem 物理布局
+无关，因此必然正确。
 
 \subsection{barrier 初始化与线程编队}
 
 \lstinputlisting[linerange={958-977},firstnumber=auto,breakatwhitespace=true,
   title={flash\_attn.cuh L958-977（除数 WARN $+$ init 257 $+$ proxy fence）}]{../flash_attn.cuh}
 
-三个细节：其一，\textbf{除数 WARN}（L960--962）——\texttt{wg\_tid} 的划分
+三个细节：其一，\textbf{除数 WARN}（L960--962）。\texttt{wg\_tid} 的划分
 必须以 \texttt{k\allowbreak{}Producer\allowbreak{}Threads}（128）为阈值；若误用 256 做除数，384/256
 非整，producer 会分到 256 人而 consumer 只剩 128 人，屏障却等着 256 个
-consumer arrive——直接挂死。这类「编队算错 $\to$ 协议数字对不上」的故障
+consumer arrive，直接挂死。这类「编队算错 $\to$ 协议数字对不上」的故障
 没有任何编译期征兆。其二，\texttt{init} 全部由 thread 0 完成（cuda::barrier
 内联为 \texttt{mbarrier.\allowbreak{}init}，expected $=$ 257）；其三，init 之后的
-\texttt{fence.\allowbreak{}proxy.\allowbreak{}async.\allowbreak{}shared::\allowbreak{}cta} 与 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads}——前者
+\texttt{fence.\allowbreak{}proxy.\allowbreak{}async.\allowbreak{}shared::\allowbreak{}cta} 与 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads}：前者
 把「线程写好的 barrier 状态」对 async proxy 可见（第~\ref{ch:13}~章 13.4.4
 节），后者保证全员看到初始化完成的屏障后才进入角色分支。
 
@@ -488,11 +492,11 @@ consumer arrive——直接挂死。这类「编队算错 $\to$ 协议数字对�
   title={flash\_attn.cuh L979-1010（P0：Q 一次装载；P1：预取 Sk$-$1 个 K）}]{../flash_attn.cuh}
 
 P0 的坐标计算：\texttt{major\_coord} 要加上 \texttt{qkv\_\allowbreak{}major\_\allowbreak{}base} $=$
-$(N_b H + N_h) N$——descriptor 覆盖整个 $[B H N, D]$ 的 2D 大矩阵，producer
+$(N_b H + N_h) N$。descriptor 覆盖整个 $[B H N, D]$ 的 2D 大矩阵，producer
 必须把 (batch, head) 的行偏移折进坐标，否则所有 block 都在读 head 0（17.8~节
 坑四）。P1 只预取 $\mathrm{Sk} - 1$ 块：第 0 块由 consumer 的 C0 预热放行
 （empty 的首轮翻转靠 consumer 预存 256 arrive），后续块由 consumer 的
-「读毕释放」续供——预取量与放行量恰好配平，这是 257 收支循环的第一次
+「读毕释放」续供。预取量与放行量恰好配平，这是 257 收支循环的第一次
 实战。$S_v \ge 2$ 时 P1b 再预取 $S_v - 1$ 块 V（L1012--1025，结构同 P1，
 此处不引）。稳态循环 P2：
 
@@ -513,7 +517,7 @@ Tc}、\texttt{k + Sk - 1 < Tc}）处理流水排空的尾部：最后几轮不�
   title={flash\_attn.cuh L1066-1096（C0：REG\_ALLOC $+$ 预热全部 empty $+$ 等 Q）}]{../flash_attn.cuh}
 
 C0 是流水线的「点火钥匙」：256 个 consumer 线程把每个 \texttt{empty\_K[s]}、
-\texttt{empty\_V[s]} 各预存 256 次 arrive——producer 的 P1/P1b/P2 每次写
+\texttt{empty\_V[s]} 各预存 256 次 arrive；producer 的 P1/P1b/P2 每次写
 stage 前自己 arrive 一次补满 257，首轮立即放行。\textbf{漏掉 C0 $=$ 全体
 挂死}（与第~\ref{ch:13}~章坑二同型，本章坑二）。随后 \texttt{full\_Q.wait}
 一次，Q 到齐，进入主循环。寄存器声明（L1097--1112，不引）与 ch16 逐行相同：
@@ -533,7 +537,7 @@ generic proxy 读可见，第~\ref{ch:13}~章 13.4.4 节）；拍二 3b 沿 head
 $D/16$ 个 MMA k-slice 做 ldmatrix $+$ \texttt{HMMA16816}（F16Acc）或
 \texttt{HMMA16816\allowbreak{}F32}（F32Acc）。紧接着的「释放 K」是本章相对 ch16 的
 \textbf{时序收益点}：QK$^\top$ 一算完，K[$k$] 的 smem 就再无人读（softmax 只
-碰寄存器、PV 只读 V）——立刻 arrive \texttt{empty\_K}，producer 最早可在
+碰寄存器、PV 只读 V），立刻 arrive \texttt{empty\_K}，producer 最早可在
 consumer 的 softmax 阶段就开始覆盖该 stage。对比 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads}
 式的「整轮末尾统一释放」，这里把 K 的 stage 周期压缩了 softmax $+$ PV
 两段的长度。
@@ -542,7 +546,7 @@ consumer 的 softmax 阶段就开始覆盖该 stage。对比 \texttt{\_\allowbre
   title={flash\_attn.cuh L1185-1214（拍三 3c：online safe softmax，只碰寄存器）}]{../flash_attn.cuh}
 
 拍三的 online safe softmax（max pass $+$ exp pass，式~\ref{eq:17-online}）
-\textbf{只读写寄存器}——这正是 V 通道 TMA 的重叠窗口：V[$k$] 的搬运与整段
+\textbf{只读写寄存器}。这正是 V 通道 TMA 的重叠窗口：V[$k$] 的搬运与整段
 softmax 并行，因此 \texttt{full\_V} 的 wait 被刻意\textbf{推迟到 3d 之前}
 （下一代码段首行），一寸窗口都不浪费。exp 用 \texttt{\_\_expf} 快速近似、
 行归约用 \texttt{warp\_\allowbreak{}reduce\_\allowbreak{}max/\allowbreak{}sum\allowbreak{}<4>}（每线程持 2 行、4 线程组归约，
@@ -553,18 +557,18 @@ softmax 并行，因此 \texttt{full\_V} 的 wait 被刻意\textbf{推迟到 3d 
 
 拍四的 PV 沿 $B_c$ 的 4 个 k-slice 推进：V 用 \texttt{LDMATRIX\_\allowbreak{}X2\_\allowbreak{}T}
 （转置装载，正确性见 17.4.3 节引用的论证），A 操作数直接取
-\texttt{R\_S[i][w]}、\texttt{R\_S[i][w+1]}——softmax 写回 R\_S 的布局恰好
+\texttt{R\_S[i][w]}、\texttt{R\_S[i][w+1]}：softmax 写回 R\_S 的布局恰好
 就是 mma 的 A fragment 布局（ch16 的布局复用技巧，头注释 L24--27 有专门
 警告：这是\textbf{本路径的布局约定}，不是通用结论）。PV 完成即释放
 \texttt{empty\_\allowbreak{}V[stage\_\allowbreak{}v]}。拍五 3e 的 online rescale（L1314--1372，式~\ref{eq:17-rescale}
-的实现，逐行同 ch16）把 $O$、$\ell$、$m$ 三态更新，随后进入下一轮——
+的实现，逐行同 ch16）把 $O$、$\ell$、$m$ 三态更新，随后进入下一轮。
 $m^{\text{old}}$ 首轮为 $-\infty$ 的分支由 \texttt{tile\_\allowbreak{}K\_\allowbreak{}seqlen $> 0$}
 三目处理。
 
 \subsection{epilogue：终归一化与集体写回}
 
 循环结束后 Step 4 做 $O \leftarrow O / \ell$（\texttt{\_\_frcp\_rn}，
-L1374--1399），Step 5 的写回是 ch16 的原版方案——warp 内 shuffle 收拢
+L1374--1399），Step 5 的写回是 ch16 的原版方案，warp 内 shuffle 收拢
 128-bit、\texttt{lane\%4==0} 的线程一次写 8 个 half：
 
 \lstinputlisting[linerange={1401-1420},firstnumber=auto,breakatwhitespace=true,
@@ -572,7 +576,7 @@ L1374--1399），Step 5 的写回是 ch16 的原版方案——warp 内 shuffle 
 
 写回不走 TMA（epilogue 每 block 只发生一次、非关键路径，直接 \texttt{float4}
 写 gmem 已足够）。至此 384 线程全部退出：producer 循环比 consumer 早结束
-若干轮（尾部不再发预取），两支流各自「流到头」即可，无需终点汇合——ws
+若干轮（尾部不再发预取），两支流各自「流到头」即可，无需终点汇合。ws
 结构里\textbf{没有 kernel 级的收尾同步}，这本身就是 mbarrier 协议自洽的
 一个佐证。
 
@@ -730,10 +734,10 @@ $D{=}128$ 用 Sk$=$2 恰是这两股力量的平衡点）。其二，\textbf{TMA
 ch16 cp.async 版的稳定收益约 $+20\%$}：同卡同时刻原版 harness 对照
 （\texttt{notes\_\allowbreak{}v2 --bench --bhnd 1,\allowbreak{}32,\allowbreak{}16384,\allowbreak{}128}，warmup$=$2/repeat$=$3）
 测得 FA2 MMA Stages（Sk$=$2, Pad, F16Acc）158.7T $\to$ FA2 TMA WS（Sk$=$2）
-190.4T；装载专线化 $+$ stage 级同步的收益可见一斑。其三，\textbf{F32Acc
+190.4T；这 $+20\%$ 的收益来自装载专线化 $+$ stage 级同步。其三，\textbf{F32Acc
 反而快于 F16Acc}（195 vs 184）：F16Acc 路径的 softmax 需要在 f32 计算与
 f16 写回 R\_S 之间反复转换（\texttt{\_\allowbreak{}\_\allowbreak{}float22half2\_\allowbreak{}rn}），F32Acc 的 R\_S
-直接以 f32 存储、省掉双向转换——在 attention 这种 softmax 指令占比高的算子
+直接以 f32 存储、省掉双向转换。在 attention 这种 softmax 指令占比高的算子
 里，累加精度档位的选择同时影响\textbf{数值与速度}。
 
 \textbf{README 口径勘误（F4）}：README 的 SM120a 表给出 FA2 TMA WS
@@ -772,9 +776,9 @@ Kernel & Max Err & TFLOPS/cuDNN（加速比） \\
 四点读数：其一，\textbf{Sk $=$ 2 较 Sk $=$ 1 提升约 $+20\%$}（156.9 $\to$
 188.6），两级 K 流水把 TMA 延迟推出关键路径，与上文复测表的 Sk 饱和结论一致；
 其二，\textbf{Sv 由 1 加深到 2 的边际收益极小}（188.6 $\to$ 189.7，约
-$0.6\%$）——V 的单 buffer 消费已饱和，V tile 传输能被 QK $+$ softmax 段完全
+$0.6\%$）。V 的单 buffer 消费已饱和，V tile 传输能被 QK $+$ softmax 段完全
 掩盖，再加深 V 流水只多耗 smem；其三，\textbf{F32Acc 达 0.89x}（203.9）为
-四配置最快，且 Max Err 由 2.441e-04 降至 1.526e-05，速度与精度双赢，印证
+四配置最快，且 Max Err 由 2.441e-04 降至 1.526e-05，更快也更准，印证
 上文「累加档位同时影响数值与速度」的读数；其四，四个配置均低于 cuDNN
 同精度基线（0.68x$\sim$0.89x），差距随流水参数与累加档位收窄。
 
@@ -798,7 +802,7 @@ $0.6\%$）——V 的单 buffer 消费已饱和，V tile 传输能被 QK $+$ sof
 \begin{kaogu}[F4·口径差异]{README FA2 TMA WS 数字不可复现}
   见 17.6~节：README 292T（F16Acc）vs 本书复测 183.8T / 原版同卡 190.4T，
   F16/F32 相对高低亦相反。README 的 bench 打印经 \texttt{should\_\allowbreak{}print\_\allowbreak{}
-  tflops}（notes-v2.cu L60）max-of-N 过滤——只在超过本次运行历史最大值时
+  tflops}（notes-v2.cu L60）max-of-N 过滤，只在超过本次运行历史最大值时
   打印，天然系统性偏高；叠加 warmup$=$2/repeat$=$3 的小样本均值，口径与
   本书（warmup$=$5/iters$=$20 两轮复现）不可比。正文一律标注复测口径。
 \end{kaogu}
@@ -822,7 +826,7 @@ $0.6\%$）——V 的单 buffer 消费已饱和，V tile 传输能被 QK $+$ sof
 
 \begin{kaogu}[F5·依赖关系考据]{flash\_attn.cuh 未自含 swizzle 符号}
   \texttt{flash\_\allowbreak{}attn.\allowbreak{}cuh} 只 \#include \texttt{base.cuh}，但其 L212 起调用
-  的 \texttt{swizzle<64>} 定义在 \texttt{hgemm.cuh} L390——单编 flash\_attn.cuh
+  的 \texttt{swizzle<64>} 定义在 \texttt{hgemm.cuh} L390，单编 flash\_attn.cuh
   会报 identifier undefined，必须按 notes-v2.cu L23--27 的顺序先引 hgemm.cuh。
   属头文件依赖不闭环的历史遗留，book/tests 的 include 顺序已按此固定。
 \end{kaogu}
@@ -834,7 +838,7 @@ $0.6\%$）——V 的单 buffer 消费已饱和，V tile 传输能被 QK $+$ sof
 
 \textbf{坑一：线程编队的除数。}\texttt{wg\_idx}/\texttt{wg\_tid} 的阈值必须是
 \texttt{k\allowbreak{}Producer\allowbreak{}Threads}（128）。误用 256 时 384/256 非整，producer 拿 256
-人、consumer 剩 128 人，屏障却等 256 个 consumer arrive——挂死且无编译期征兆
+人、consumer 剩 128 人，屏障却等 256 个 consumer arrive，挂死且无编译期征兆
 （源码 L960--962 的 WARN 注释即为此而写）。
 
 \textbf{坑二：漏 C0 预热，静默挂死。}\allowbreak{}producer 首轮 \texttt{wait(empty)} 需要
@@ -844,18 +848,18 @@ $0.6\%$）——V 的单 buffer 消费已饱和，V tile 传输能被 QK $+$ sof
 
 \textbf{坑三：expect-tx 字节数按 chunk 记账。}\allowbreak{}D $=$ 128 时一个 tile 的 TMA
 拆成 2 次（box 内维 $\le$ 128B 硬约束），\texttt{expect\_tx} 却只发一次、
-声明\textbf{总量}——漏乘 kTmaChunks 则 tx 永不归零（挂死），多算则提前翻转
+声明\textbf{总量}。漏乘 kTmaChunks 则 tx 永不归零（挂死），多算则提前翻转
 （读半新半旧数据，静默错误）。少报挂死、多报静默，后者更危险（ch13 坑三
 同型）。
 
 \textbf{坑四：TMA 坐标忘了 major\_base。}\allowbreak{}descriptor 覆盖 $[BHN, D]$ 全量
 2D 矩阵，(batch, head) 的偏移 $(N_b H + N_h) N$ 必须折进
-\texttt{major\_coord}。漏加时所有 block 都读 head 0——\textbf{形状对、数值
+\texttt{major\_coord}。漏加时所有 block 都读 head 0，\textbf{形状对、数值
 错}，且 B$=$1 或 H$=$1 的测试单例恰好测不出来（偏移恒 0）。
 
 \textbf{坑五：\texttt{full\_V} 的 wait 不能提前也不能拖后。}提前到 QK 前：
 V TMA 的重叠窗口被白白砍掉（softmax 段本可继续装 V）；拖到 rescale 后：
-PV 等 V 到达，纯浪费。正确位置是「PV 前最后一条 wait」——源码 L1260--1264
+PV 等 V 到达，纯浪费。正确位置是「PV 前最后一条 wait」，源码 L1260--1264
 的位置就是最优点。
 
 \textbf{坑六：smem opt-in 与 stage 上限。}$D{=}128$、Sk$=$2 需 80 KB 动态
@@ -876,7 +880,7 @@ $\%$ $B_c{=}64$ $=$ 0（无尾 tile 处理），实际部署的变长序列需�
 \section{面试要点速查}
 
 \textbf{Q1：FA 的 TMA+WS 与 HGEMM 的 TMA+WS 差在哪？}\\
-A：三次「GEMM 结构」差异——HGEMM 一次 GEMM、K 维迭代、A/B 都 staged；FA
+A：三次「GEMM 结构」差异。HGEMM 一次 GEMM、K 维迭代、A/B 都 staged；FA
 两次 GEMM（QK$^\top$ 与 PV）共用一个 KV 迭代、K staged 但 V 独立通道
 （$S_v$ 可选深度）、Q 因 split-Q 只装一次（无 empty\_Q）。同步协议因此从
 「一对屏障走天下」变成「Q 单屏障 $+$ K/V 两对通道」。
@@ -899,7 +903,7 @@ A：QK$^\top$ 算完 K smem 即无人读（softmax 只碰寄存器、PV 只读 V
 \textbf{Q5：D $=$ 128 时 TMA 怎么装 256B 的行？}\\
 A：128B swizzle 模式硬约束 box 内维 $\le$ 128B（64 half）。拆成 2 次 box
 (64, B) 沿 head\_dim 发射，写 chunk-major 布局 $[2, B, 64]$；多次 TMA 共享
-同一 full 屏障——complete-tx 各自记账、expect\_tx 一次声明总量。
+同一 full 屏障，complete-tx 各自记账、expect\_tx 一次声明总量。
 
 \textbf{Q6：TMA swizzle 写入 + ldmatrix.trans 读取为何天然正确？}\\
 A：128B swizzle 是 smem 地址的 1-1 重排；ldmatrix 用同一 \texttt{swizzle\_fa}
@@ -907,20 +911,20 @@ A：128B swizzle 是 smem 地址的 1-1 重排；ldmatrix 用同一 \texttt{swiz
 的转置发生在\textbf{寄存器分配}层，与 smem 物理布局正交。
 
 \textbf{Q7：FA tile 级算术强度？}\\
-A：$AI = B_r$ FLOP/B（式~\ref{eq:17-ai}，与 D 无关）——Q 被整个 KV 遍历摊薄，
+A：$AI = B_r$ FLOP/B（式~\ref{eq:17-ai}，与 D 无关）。Q 被整个 KV 遍历摊薄，
 K/V 每 tile $2 B_c D \times 2$ B 撑起 $2 \times 2 B_r B_c D$ FLOP。$B_r$
 越大装载摊薄越狠，但 smem/寄存器/尾 tile 代价同步上涨，128 是当前平衡点。
 
 \textbf{Q8：ws kernel 的收尾为什么没有全局同步？}\\
 A：producer 尾部不再发预取、自然退出；consumer 算完最后一块做 epilogue
 退出。两支流通过 mbarrier 的相位闭合保证「consumer 读的一定是最后写入的
-数据」，无需 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads}——同步已按数据依赖局部化。
+数据」，无需 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads}，同步已按数据依赖局部化。
 
 \section{最小测试与动手实验}
 
 测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch17\_\allowbreak{}fa2\_\allowbreak{}tma\_\allowbreak{}ws.cu}（逻辑抽取自 notes-v2.cu
 \texttt{test\_\allowbreak{}flash\_\allowbreak{}attn\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}impl}@L2041，参考实现由 cuDNN SDPA
-换成 CPU fp64——softmax 全程 double 累加）。覆盖 $D \in \{64, 128\}$ $\times$
+换成 CPU fp64，softmax 全程 double 累加）。覆盖 $D \in \{64, 128\}$ $\times$
 seqlen $\in \{128, 512\}$ $\times$ F16Acc/F32Acc 共 8 例：seqlen $=$ 128 时
 $T_c{=}2$ 触发 stage 回绕（Sk$=$2 的 0$\to$1$\to$0）；512 时 8 轮迭代覆盖
 流水排空；$D{=}128$ 走 \texttt{swizzle\_fa} 的 chunk-major 双 TMA 路径。

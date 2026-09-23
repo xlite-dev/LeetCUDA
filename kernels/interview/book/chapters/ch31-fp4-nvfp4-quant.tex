@@ -5,7 +5,7 @@
 \section{本章导读}
 
 第~\ref{ch:27}--\ref{ch:29}~章建立了量化注意力的数学与 fp8 实现链。
-本章把数据格式推到极限——4 bit。NVFP4 不是「把 fp8 的量化代码换个
+本章把数据格式推到极限：4 bit。NVFP4 不是「把 fp8 的量化代码换个
 dtype」：e2m1 只有 2 bit 指数 + 1 bit 尾数，可表示值只有
 $\{0,\pm0.5,\pm1,\pm1.5,\pm2,\pm3,\pm4,\pm6\}$，相对步长约 25\%（fp8 e4m3
 是 6.25\%）。在这样的格式上做出可用的 attention，靠的不是数据格式本身，
@@ -67,7 +67,7 @@ fp4 的容差天然比 fp8 宽一个量级的格式层根源。}
 \end{figure}
 ffpa-attn 的 fp4 路径移植自 SageAttention3 的 Blackwell kernel
 （\texttt{quantize\_fp4.cuh} 头注释 L1--14），跑在自研的 persist-D 骨架
-上。本章讲\textbf{量化链}——主 kernel 之前的前处理；第~\ref{ch:32}~章
+上。本章讲\textbf{量化链}：主 kernel 之前的前处理；第~\ref{ch:32}~章
 讲主 kernel 与两级 P 量化。源码锚点：
 \texttt{cute/fp4/quantize\_fp4.cuh}（1642 行）、
 \texttt{delta\_s.cuh}（451 行）、\texttt{fp4\_gemm.cuh}（276 行）、
@@ -82,7 +82,7 @@ $\mathrm{amax}$ 与其余元素的分辨率差距被放大到无法忽略。更�
 入下均值不为零，真实模型里更明显），若直接量化
 $Q\to\hat Q$，均值占据 $\mathrm{amax}$ 预算，把有效信息压进 1--2 个
 量化台阶。fp8 的 smooth-K 是可选旋钮（第~\ref{ch:28}~章），fp4 的
-smooth-Q/K 是\textbf{强制开启，不是选项}（skill §6.2）——e2m1 的 ±6
+smooth-Q/K 是\textbf{强制开启，不是选项}（skill §6.2）：e2m1 的 ±6
 动态范围使均值平滑成为精度必需。
 
 \textbf{三条出路叠加}。ffpa 的答案是把三种尺度手段全部用上：
@@ -99,7 +99,7 @@ smooth-Q/K 是\textbf{强制开启，不是选项}（skill §6.2）——e2m1 �
 \end{enumerate}
 
 \textbf{P 的困难留给下一章}。Q/K/V 都能离线校准，唯独 $P$ 是 kernel 内
-softmax 现场产物，其 scale 只能在固定域内做文章——SA3 的两级 P 量化是
+softmax 现场产物，其 scale 只能在固定域内做文章：SA3 的两级 P 量化是
 fp4 路径精度成立的关键一环，数学与实现见第~\ref{ch:32}~章。
 
 \section{数学原理}
@@ -128,11 +128,11 @@ Table 1 中精度低于 NVFP4（ue8m0 只有 8 bit 指数无尾数，SF 本身�
 100\%），ffpa 未采用。
 
 \textbf{SF 的双重身份}。$s_{block}$ 既是量化除数又是 dequant 乘数，
-而 ue4m3 只有 3 bit 尾数——SF 自身的舍入误差（6.25\%）会整体作用于
+而 ue4m3 只有 3 bit 尾数，SF 自身的舍入误差（6.25\%）会整体作用于
 16 个元素：若块 $\mathrm{amax}$ 落在 ue4m3 的窄域之外，或行内动态范围
 极端（causal 早行 $P$ 近 one-hot），SF 编码误差就会放大。两级 P 量化
 （下一章）正是 SA3 对 C2 挑战（$P$ 以小值为主的分布使块
-$\mathrm{amax}$ 难铺满 SF 域）的回答——把块的 $\mathrm{amax}$ 铺满
+$\mathrm{amax}$ 难铺满 SF 域）的回答：把块的 $\mathrm{amax}$ 铺满
 ue4m3 的域。
 
 \subsection{smooth-Q/K 强制与 delta\_s 的 rank-1 恒等式}
@@ -154,7 +154,7 @@ $\hat Q=\phi(Q-q_m)$、$\hat K=\phi(K^\top-\bar k)$，score 的精确重构
   \label{eq:31-deltas}
 \end{equation}
 （GQA 下 K/V 按 kv 头 $h_{kv}$ 索引，MHA 时退化为 $h_{kv}=h$。）
-而式~\ref{eq:31-deltas} 右边的 $K-\bar k$ 千万不要物化——它等于
+而式~\ref{eq:31-deltas} 右边的 $K-\bar k$ 千万不要物化，它等于
 \begin{equation}
   \Delta S=\underbrace{q_m K^\top}_{\text{低秩 GEMM}}
   -\underbrace{q_m\bar k}_{\text{每行常数 }q_{km}}
@@ -215,9 +215,9 @@ $v_m[d]=\frac{1}{N_{kv}}\sum_n V[b,h,n,d]$（per-(b,hkv,d) 常数），
 \end{equation}
 （\texttt{quantize\_fp4.cuh} L437--455 的注释给出同一推导）。减除只缩
 小残差动态范围，让 e2m1 块量化的相对分辨率更细。fp8 的 smooth-V 走
-per-channel scale，fp4 因 e2m1 无 per-channel 余地，改用均值减除形
-形式（\texttt{--fp4-smooth-v}，Q/K/V 三段量化 kernel——含独立
-$V^\top$、MXFP8 $V^\top$ 与 fused 单 launch 变体——均支持）。
+per-channel scale，fp4 因 e2m1 无 per-channel 余地，改用均值减除
+形式（\texttt{--fp4-smooth-v}，Q/K/V 三段量化 kernel，含独立
+$V^\top$、MXFP8 $V^\top$ 与 fused 单 launch 变体，均支持）。
 
 \subsection{pad 零贡献与 hadamard 的线性性}
 
@@ -225,7 +225,7 @@ $V^\top$、MXFP8 $V^\top$ 与 fused 单 launch 变体——均支持）。
 （$D_{pad}=(D+63)\&\sim63$）：量化 kernel 读原始宽度 $d_{og}$、pad 列
 零填，Q/K/V 不物化 pad（仅输出 O pad 后切回）。pad 列的语义是
 \textbf{data=0 且 SF=0}：ue4m3 的 bits-0 是合法编码，零数据乘任何
-scale 仍是零，MMA 贡献恒为 0——QK 的 $D$ 归约与 PV 的 pad 行都不产生
+scale 仍是零，MMA 贡献恒为 0，QK 的 $D$ 归约与 PV 的 pad 行都不产生
 垃圾（\texttt{quantize\_fp4.cuh} L158--172 的 guarded load + L10--12
 注释）。workspace 另 pad 到 128 token 倍数（L10--12），tail 行同样零
 填，TMA 加载永远合法。
@@ -233,7 +233,7 @@ scale 仍是零，MMA 贡献恒为 0——QK 的 $D$ 归约与 PV 的 pad 行都
 \textbf{hadamard 融合的可行性}。WHT 线性
 （$\mathrm{mean}(Hq)=H\,\mathrm{mean}(q)$，$HH^\top=I$）$\Rightarrow$ 均值与旋转
 可交换：$q_m$、$\Delta S$、$q_{km}$ 全部可以在\textbf{未旋转域}计算；
-旋转域里需要替换的只有两处——Q 段量化 bias 的减除改用旋转副本
+旋转域里需要替换的只有两处：Q 段量化 bias 的减除改用旋转副本
 $q_m^{rot}$，lse 的 $\mathrm{dot}(q_{row},\bar k)$ 项用 $\bar
 k^{rot}$（L101--108 注释）。于是 WHT 旋转可以 fused 进量化 kernel
 的 load 路径（行内旋转零拷贝），量化链的 kernel 数不变。
@@ -263,8 +263,8 @@ $s_{block}=0$，除法变 0/0。实现里是
 \begin{lstlisting}[style=console]
 float SFValueInv = (SFValue == 0.0f) ? 0.0f : 1.0f / SFValue;
 \end{lstlisting}
-（L293、L460）——倒数为 0 使数据也归零，SF 字节本身写 0，dequant 端
-$0\times0=0$ 自洽。这个特判断面极小，却是全 masked 块不产 NaN 的唯
+（L293、L460）：倒数为 0 使数据也归零，SF 字节本身写 0，dequant 端
+$0\times0=0$ 自洽。这个特判的覆盖面极小，却是全 masked 块不产 NaN 的唯
 一守卫。
 
 \subsection{V$^\top$ 量化：smem 转置 + SF atom 布局}
@@ -277,7 +277,7 @@ token-major 协作读进 smem staging（每线程原 slice），同步后每线�
 （L342--343），超过 48KB 静态上限（$D\ge512$）切换 dynamic smem
 opt-in（L350--351 的 \texttt{kDynamicSmem}）。
 
-SF 字节的写序不是朴素行主序，而是 \textbf{SfAtom 分块序}——MMA 的 SF
+SF 字节的写序不是朴素行主序，而是 \textbf{SfAtom 分块序}：MMA 的 SF
 操作数按 64$\times$4 block 布局消费，写侧 offset 公式必须与
 \texttt{BlockScaledConfig} 逐字节一致（头注释 L13--14、
 L414 的 \texttt{sf\_col\_offset} 与 L482--485 的
@@ -297,7 +297,7 @@ smooth-V 也 fused 在这里：$v_m$ 按 $d$ 减除发生在 smem 读出转 fp32
   \foreach \r in {0,...,3}{
     \foreach \c in {0,...,3}{
       \pgfmathtruncatemacro{\idx}{int(\r*4+\c)}
-      \node[fill=gray!14, minimum width=\cw cm, minimum height=\rh cm, inner sep=0pt, font=\tiny]
+      \node[fill=tkFillOrange, draw=tkOrange, thin, minimum width=\cw cm, minimum height=\rh cm, inner sep=0pt, font=\tiny]
         at ({\c*\cw+0.5*\cw},{-\r*\rh-0.5*\rh}) {\idx};
     }
   }
@@ -310,7 +310,7 @@ smooth-V 也 fused 在这里：$v_m$ 按 $d$ 减除发生在 smem 读出转 fp32
     \foreach \r in {0,...,3}{
       \foreach \c in {0,...,3}{
         \pgfmathtruncatemacro{\idxv}{int(\r*16+\c)}
-        \node[fill=gray!14, minimum width=\cw cm, minimum height=\rh cm, inner sep=0pt, font=\tiny]
+        \node[fill=tkFillBlue, draw=tkBlue, thin, minimum width=\cw cm, minimum height=\rh cm, inner sep=0pt, font=\tiny]
           at ({\c*\cw+0.5*\cw},{-\r*\rh-0.5*\rh}) {\idxv};
       }
     }
@@ -322,10 +322,10 @@ smooth-V 也 fused 在这里：$v_m$ 按 $d$ 减除发生在 smem 读出转 fp32
   \end{scope}
   \begin{scope}[yshift=-3.30cm]
     \def\gw{0.46}
-    \foreach \b/\ct in {0/12,1/12,2/12,3/12,4/26,5/26,6/26,7/26,
-                        8/40,9/40,10/40,11/40,12/54,13/54,14/54,15/54}{
-      \fill[gray!\ct] ({\b*\gw},0) rectangle ({\b*\gw+\gw},0.40);
-      \draw[thick] ({\b*\gw},0) rectangle ({\b*\gw+\gw},0.40);
+    \foreach \b/\ct in {0/30,1/30,2/30,3/30,4/45,5/45,6/45,7/45,
+                        8/60,9/60,10/60,11/60,12/75,13/75,14/75,15/75}{
+      \fill[tkBlue!\ct] ({\b*\gw},0) rectangle ({\b*\gw+\gw},0.40);
+      \draw[tkBlue!80!black, thick] ({\b*\gw},0) rectangle ({\b*\gw+\gw},0.40);
       \node[font=\tiny] at ({\b*\gw+0.5*\gw},0.20) {\b};
     }
     \node[anchor=south west, font=\tiny] at (0,0.44)
@@ -333,7 +333,7 @@ smooth-V 也 fused 在这里：$v_m$ 按 $d$ 减除发生在 smem 读出转 fp32
     \node[anchor=north west, font=\tiny] at (0,-0.04)
       {每 4 字节换一个 16 行子块（行 $0,16,32,48$），而不是换列组};
   \end{scope}
-  \node[draw, align=left, text width=5.2cm, inner sep=3pt, font=\tiny] at (11.40,-1.10)
+  \node[draw=tkBlue!60, fill=tkFillBlue, align=left, text width=5.2cm, inner sep=3pt, font=\tiny] at (11.40,-1.10)
     {\texttt{sf\_col\_offset}$=(c/4)\cdot256+(c\%4)$\\
      \texttt{offset\_local}$=$\texttt{sf\_col\_offset}$+(r/16)\cdot4+(r\%16)\cdot16$\\
      （\texttt{quantize\_fp4.cuh} L414/L482--485）\\[2pt]
@@ -354,18 +354,18 @@ $64{\times}4$ 的 256B atom，atom 内按 16 行子块交错。写侧
 小 D 场景把整条 Q/K/V 量化链合成一个 launch：
 \texttt{fp4\_quant\_fused\_qkv\_kernel}（L1024 起）。grid 的
 blockIdx.x 切成三段 [Q tiles | K tiles | V tiles]，Q 段顺带产出
-$q_m$——均值块恰等于量化 tile，归约是块内 smem 归约，原先整张量扫
+$q_m$：均值块恰等于量化 tile，归约是块内 smem 归约，原先整张量扫
 一遍的 \texttt{q\_mean} pass 直接消失（L1026--1032 注释）。
 \texttt{kHadamard} 下 Q 段还在 smem 里对 $q_m$ 做行内 WHT
 （ping-pong 蝶形），预旋转 bias $q_m^{rot}$ 不再需要独立 launch；
 $\bar k^{rot}$ 因输入 $\bar k$ 早已就绪，保留外部小 kernel
 （L1032--1036）。
 
-fused WHT 的蝶形拆分值得抄（L195--235）：token 的 4 个线程连续分布，
+fused WHT 的蝶形拆分记在这里（L195--235）：token 的 4 个线程连续分布，
 每线程 $k_E=kHeadDim/4$ 个元素，距离 $<k_E$ 的蝶形对全在
 thread-local 数组里原地做（\texttt{dist} 从 $k_E/2$ 递减到 1），
 只剩距离 $k_E$ 与 $2k_E$ 的两级跨线程交换用
-\texttt{shfl\_xor(1)}/\texttt{shfl\_xor(2)} 完成——整行 WHT 零
+\texttt{shfl\_xor(1)}/\texttt{shfl\_xor(2)} 完成，整行 WHT 零
 smem、零额外寄存器数组。最后乘 $rsqrt(kHeadDim)$ 归一。
 
 \begin{figure}[H]
@@ -433,18 +433,18 @@ dispatch（launcher
 
 \textbf{wmma 版}（\texttt{delta\_s\_wmma\_kernel}，L37--161）：CTA
 算一个 $(128,128)$ 输出 tile，8 warp 各持 16 行、8 个 wmma n-tile。
-K 归约（$kHeadDim$）按 64 元素 chunk 分批 staging——全量 A/B 会要
+K 归约（$kHeadDim$）按 64 元素 chunk 分批 staging：全量 A/B 会要
 $128\times(D{+}8)\times2\times2$ B，$D\ge192$ 时破 99KB 预算；A/B 落在
 $2\times128\times72\times2=36$KB 窗口，epilogue 时同一片 smem 复用为
 $128\times136$ float 的 f32 累加器 staging（68KB，L40--46 注释）。
 行/列越界零填（无 OOB gmem 读），epilogue 逐元素减一次 $q_{km}$、
 tail 列混写零（L138--160）。MMA 用\textbf{普通 fp16 wmma 而非
-blockscale}——该 kernel 是 memory-bound（SM 占用 $\sim$10\%），低精度
+blockscale}：该 kernel 是 memory-bound（SM 占用 $\sim$10\%），低精度
 MMA 无收益（L10--13 注释）。
 
 \textbf{CuTe/TMA 版}（\texttt{delta\_s\_cute\_kernel}，L163 起）：同
 数学同 tiling，但 TMA 装载喂 3-stage 流水、HMMA \texttt{m16n8k16}
-atom，epilogue 保留 float4 union-staged 写。两个 TMA 细节教科书级：
+atom，epilogue 保留 float4 union-staged 写。另有两个 TMA 细节：
 超出 $d_{og}$ 的 K chunk 是全 OOB 的 TMA box，\textbf{TMA 单元内部零
 填、零 DRAM 流量}（等价旧版的 guarded load）；A 侧用 3D
 $(M_b,D,N_bN_h)$ descriptor，partial m-tile 的 tail 行按 (b,h) 精确
@@ -460,7 +460,7 @@ epilogue cast 的 $\sim$1ms torch 链（$N{=}16384$）；实测大 $N$
 fp4 的 PV 有一个 fp8 没有的结构性错位：blockscale MMA 的
 \textbf{C 累加器}布局（QK 产出 S 的列）与 P 作为 A 操作数的布局不同
 （SA3 §3.3 "Permutation for K"）。fp8 用 16 SHFL + 32 PRMT 搬 P
-（第~\ref{ch:29}~章 reorg）；SA3 的解法反过来——\textbf{不搬 P，搬
+（第~\ref{ch:29}~章 reorg）；SA3 的解法反过来，\textbf{不搬 P，搬
 K}：把 K 的列（token 维）按 32 列窗口内的双射置换后存储，C fragment
 的列布局就天然匹配 A 操作数。置换表
 \begin{lstlisting}[style=console]
@@ -471,7 +471,7 @@ fused 进 \textbf{K} 量化 kernel 的写侧（\texttt{quantize\_fp4.cuh}
 L135--141 的 \texttt{load\_token\_id}），闭式
 $\pi(j)=(j\&\sim31)+(\mathrm{loc}/8)\cdot2+((\mathrm{loc}\%8)/2)\cdot8+
 (\mathrm{loc}\%8)\%2$（\texttt{fp4\_gemm.cuh} L23--26）。注意
-\textbf{V$^\top$ 不置换}——它的存储是自然序，P 打包侧按 A 槽位
+\textbf{V$^\top$ 不置换}，它的存储是自然序，P 打包侧按 A 槽位
 $t\to t$ 直接对齐（\texttt{fp4\_pscale.cuh} L523--524）；置换补偿只
 发生在 K 与 P 两侧。
 
@@ -485,13 +485,13 @@ $t\to t$ 直接对齐（\texttt{fp4\_pscale.cuh} L523--524）；置换补偿只
   \item \textbf{attn\_bias 注入}：bias 列同样要过 $kv\_perm32(j)$
         （\texttt{fp4\_gemm.cuh} L55--60），gmem 与 smem 两个变体同款。
 \end{itemize}
-tile 级跳过（\texttt{mask\_start\_tile}/$T_{c,eff}$）不受影响——
+tile 级跳过（\texttt{mask\_start\_tile}/$T_{c,eff}$）不受影响：
 $\pi$ 是每 32 列窗口内的双射，tile 粒度的 causal 边界公式保持原样。
 
 \subsection{subbyte 寻址的陷阱}
 
 e2m1 是 4 bit 类型。CuTe 里 e2m1 的 smem tensor \textbf{必须}用
-\texttt{make\_smem\_ptr<Element>(void*)} 构造——该重载包一个
+\texttt{make\_smem\_ptr<Element>(void*)} 构造：该重载包一个
 \texttt{subbyte\_iterator}，tensor 切片按 bit 推进；若手滑写成
 \texttt{reinterpret\_cast<Element*>}（对 1 字节指针语义取址），偏移按
 \texttt{sizeof==1B} 缩放，\textbf{实际地址差 2 倍}，stage$\ge$1 的
@@ -502,12 +502,12 @@ TMA 访问越界直接 IMA（\texttt{sm\_120/persist\_d.cuh} L48--53 注
 \section{图示}
 
 三张图自底向上覆盖 fp4 的三个层面。图~\ref{fig:31-1} 是数据格式层：
-NVFP4 的 $1\times16$ microscaling 块——e2m1 位域配 ue4m3 块尺度，
+NVFP4 的 $1\times16$ microscaling 块：e2m1 位域配 ue4m3 块尺度，
 $s_{block}=\mathrm{amax}/6$ 除进数据、乘回发生在 blockscale MMA 内。
 图~\ref{fig:31-2} 是工程层：fp4 前处理链的数据流，$D\le128$ 走 fused
 单 launch 路径，$\bar k$/$q_m$ 均值先行（它们是量化 kernel 的输入
 bias），hadamard 下的 $q_m^{rot}$ 在 fused kernel 内顺带产出。
-图~\ref{fig:31-3} 是布局层：kv\_perm32 的 32 列窗口双射——置换让 QK 的
+图~\ref{fig:31-3} 是布局层：kv\_perm32 的 32 列窗口双射，置换让 QK 的
 C fragment 列直接匹配 PV 的 A 操作数布局，代价是 mask/bias 必须经
 $\pi^{-1}$ 回到原始 token 位置判定。
 
@@ -659,7 +659,7 @@ $\pi^{-1}$ 回到原始 token 位置判定。
     \node[draw=tkOrange, fill=tkFillOrange, line width=0.5pt, minimum width=2.93cm, minimum height=0.86cm, inner sep=1pt, align=center, text width=2.86cm, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkOrange!75!black} }] at (5.313,-1.571) {PV MMA\\A 操作数布局};
     \node[draw=tkRed, fill=tkFillRed, line width=0.5pt, minimum width=4.00cm, minimum height=0.86cm, inner sep=1pt, align=center, text width=3.94cm, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkRed} }] at (9.178,-1.571) {列错位 $\to$ 不搬 P\\改搬 K（SA3 \S{}3.3）};
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (11.858,-1.324) {fp8 的对照解法：16 SHFL + 32 PRMT 搬 P};% w=5.544
-    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (11.858,-1.663) {（reorg-free：第 29 章）；fp4 换成搬 K 列};% w=5.544
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (11.858,-1.663) {（reorg-free：第 \ref{ch:27} 章）；fp4 换成搬 K 列};% w=5.544
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (0.37,-2.31) {置换 fused 进 K/V$^{\top}$ 量化 kernel 写侧：存储列 j $\leftarrow$ 原 token $\pi$(j)};% w=10.780
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{6.1}{7.7}\selectfont \bfseries }] at (0.37,-2.834) {(2) 32 列窗口内的双射 $\pi$（跨窗口恒等；闭式 $\pi$(j) = (j\&\textasciitilde{}31) + (loc/8)$\cdot$2 + ((loc\%8)/2)$\cdot$8 + loc\%8）};% w=17.094
     \node[anchor=east, inner sep=0pt, align=right, font={\fontsize{5.2}{6.6}\selectfont \bfseries }] at (2.372,-3.357) {存储列 j：};% w=2.002
@@ -771,8 +771,8 @@ $\Delta S$ 的 wmma kernel 替换 torch 链（bmm + transpose copy +
 epilogue cast）是大头：$N{=}16384$ 级别从 $\sim$1.4ms 降到
 $\sim$0.3ms（\texttt{.tmp/book-bench/} 历史记录；头注释 L6--8 只记
 旧链 $\sim$1ms 量级）。
-fused WHT 是「零成本旋钮」的典范：D=128 实测
-\texttt{--fp4-hadamard} 与基线 2.52/1.67ms 完全一致（表~\ref{tab:31-knobs}）——旋转折进 load 路径后，
+fused WHT 实测零开销：D=128 下
+\texttt{--fp4-hadamard} 与基线 2.52/1.67ms 完全一致（表~\ref{tab:31-knobs}），旋转折进 load 路径后，
 quantize kernel 的瓶颈（gmem 带宽）没有变。
 
 \begin{table}[H]
@@ -818,13 +818,13 @@ MXFP8 PV 变体（$V^\top$ 走 e4m3 + ue8m0/32，精度更高）付出 37.7\%
 \end{table}
 
 三个观察：(1) fp4 的 e2e 加速比区间（1.2--2.1x）整体高于同机 fp8
-persist-D（第~\ref{ch:29}~章表 29.2 的 1.26--1.70x），来源不是 MMA
-吞吐——blockscale mxf4nvf4 的吞吐只与 fp8 dense 相当——而是
+persist-D（第~\ref{ch:29}~章表 29.2 的 1.26--1.70x），来源不在 MMA
+吞吐（blockscale mxf4nvf4 的吞吐只与 fp8 dense 相当），而在
 \textbf{带宽}：K/V/SF 的字节数减半以上，memory-bound 的 attention
 直接受益（skill §6.6：attn kernel 本身快 $\sim$23\%）。(2) D=192 的
 474T 是全家族峰值，D=256 回落（kStages 从 3 降 2，L51--56）。(3)
 $\sim$1ms 量级的前处理链意味着\textbf{小 $N_q$（cross/decode）结构
-性不划算}——以 $D{=}192$（e2e 3.48ms）计占比约 30\%；$N_q$ 缩小
+性不划算}：以 $D{=}192$（e2e 3.48ms）计占比约 30\%；$N_q$ 缩小
 时主 kernel 按 $N_q\cdot N_{kv}$ 缩、前处理几乎不缩，占比急速恶
 化。
 
@@ -833,9 +833,9 @@ $\sim$1ms 量级的前处理链意味着\textbf{小 $N_q$（cross/decode）结�
 \textbf{移植策略：fragment adapter 逐字拷贝}。kv\_perm32 体系、SF
 atom 布局、C/A fragment 映射这些内容是 SA3 在真实 hardware 上调试出
 来的位级布局知识，重写极易引入静默错位。ffpa 的选择是逐字拷贝
-adapter 层、自研外闱（骨架/pipeline/dispatch），只修正确性 bug
+adapter 层、自研外围（骨架/pipeline/dispatch），只修正确性 bug
 （perm-aware masking）。这与第~\ref{ch:28}--\ref{ch:29}~章自研 fp8
-链的策略不同——fp8 没有 SA3 级别的现成参照。
+链的策略不同：fp8 没有 SA3 级别的现成参照。
 
 \textbf{评估口径}。fp4 的 max\_abs 在 causal 尖峰行天然 0.5--0.75
 （e2m1 的 25\% 步长 × 尖峰行 P 近 one-hot 的误差结构，probe sim 与

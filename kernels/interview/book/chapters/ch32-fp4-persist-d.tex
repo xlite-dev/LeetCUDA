@@ -11,10 +11,10 @@
 128 线程 producer + 256 线程 consumer 的 warp-specialized 骨架上
 （第~\ref{ch:29}~章），数据路径移植自 SageAttention3 的 NVFP4 kernel。
 
-本章的主角是\textbf{两级 P 量化}——SA3 对「$P$ 无法离线校准」这一挑战
-的回答，也是 fp4 attention 精度成立的最后一块拼图。它不是独立的
-pass，而是与 online softmax \textbf{融合}在一起的
-（\texttt{fp4\_pscale.cuh} 的 \texttt{SoftmaxFused}）：softmax 吐出的
+本章的主角是\textbf{两级 P 量化}：SA3 用来回答「$P$ 无法离线校准」
+这一挑战的方案，fp4 attention 的精度靠它成立。它与 online softmax
+\textbf{融合}在一起（\texttt{fp4\_pscale.cuh} 的
+\texttt{SoftmaxFused}），不走单独一遍：softmax 吐出的
 每个数直接落进第二级量化的域，$s_{P1}$ 的常数折进 \texttt{exp2} 的
 shift，除法和归一化在到达寄存器之前就已经消失。
 
@@ -33,7 +33,7 @@ shift，除法和归一化在到达寄存器之前就已经消失。
         个元素。
 \end{enumerate}
 两级量化的思路：先把整行线性拉伸到 NVFP4 的满量程（第一级，全局
-常数），块内再用 e2m1 域归一（第二级，per-16 组 ue4m3）——让块的
+常数），块内再用 e2m1 域归一（第二级，per-16 组 ue4m3），让块的
 $\mathrm{amax}$ 恰好铺满 ue4m3 的域。
 
 \textbf{硬件侧的结构约束}。blockscale MMA
@@ -57,13 +57,13 @@ $2688=448\times6$：448 是 ue4m3 满量程（SF 域上限）、6 是 e2m1 满�
 （数据域上限），乘积 2688 是 SF$\times$数据的乘积极限域，第一级把
 行拉伸到这个域。dequant 端
 $O=\mathrm{FP4MM}(\hat P_2,s_{P2},\hat V,s_V)\times s_{P1}$，常数
-$s_{P1}$ 在 $O$ 与 row\_sum 中\textbf{同现同消}——finalize 相除后精确
+$s_{P1}$ 在 $O$ 与 row\_sum 中\textbf{同现同消}，finalize 相除后精确
 抵消（\texttt{fp4\_pscale.cuh} L327--330 注释）。
 
 \subsection{online softmax 下的退化：第一级变成常数}
 
-ffpa 实现的关键洞察（\texttt{fp4\_pscale.cuh} 头注释 L2--5）：online
-softmax 对当前 tile 已经减去运行行 max，所以
+ffpa 实现利用了 online softmax 的一条性质（\texttt{fp4\_pscale.cuh}
+头注释 L2--5）：它对当前 tile 已经减去运行行 max，所以
 $\mathrm{rowmax}(\tilde P)\equiv1$，逐行的 $s_{P1}$ \textbf{退化为全
 局常数} $1/(448\times6)$，可以直接折进 \texttt{exp2} 的 shift：
 \begin{equation}
@@ -91,13 +91,13 @@ shift 写作 $+\log_2(1/(448\cdot6))$，是同款符号笔误，以代码与值�
 组 absmax 归一化在 \texttt{exp2} 参数里完成，\textbf{rcp 与逐元素
 FMUL 在 softmax 与 pack 之间整段消失}；row\_sum 用 FMA 吸收 $s_{P2}$
 因子（\texttt{row\_sum = fmaf(q, sfp2, row\_sum)}，L195）。硬件只要
-一条 MUFU.EX2——\texttt{ex2.approx.ftz.f32} 的 \texttt{.ftz} 让 ptxas
+一条 MUFU.EX2：\texttt{ex2.approx.ftz.f32} 的 \texttt{.ftz} 让 ptxas
 不必包 range glue（L21--22 注释，非 ftz 形式每次调用要多出 FSETP/
 FSEL/FMUL 链，实测 -5.9\%）。
 
 \textbf{同一条 shuffle 链做两个归约}：C fragment 每 lane 持 8 元素，
 $\texttt{shfl\_xor}(1)$ 合成 16 元素组 absmax，$\texttt{shfl\_xor}(2)$
-完成 quad 内行 max（L160--167）——组尺度和行 max 的冗余
+完成 quad 内行 max（L160--167），组尺度和行 max 的冗余
 归约减半。
 
 \textbf{全 masked 组的退化}：$a=-\infty$ 时特判 $a\to0$（L187 的
@@ -109,7 +109,7 @@ causal 左上角（L169--175、L219--221 的 \texttt{scores\_max\_cur} 守卫）
 
 跨 tile 的行 max 更新沿用 fp8 的 lazy rescale（第~\ref{ch:29}~章）：
 $O$ 不即时重缩放，记 \texttt{scores\_scale}，下一个 tile 的 PV 累加前
-按行补乘（\texttt{rescale\_acc}，L299；PC-11 起为 per-row 守卫——
+按行补乘（\texttt{rescale\_acc}，L299；PC-11 起为 per-row 守卫：
 \texttt{scores\_scale(mi)<1.0f} 的行跳过 FMUL，
 \texttt{persist\_d.cuh} L968--975 注释；dense 路径 96.5\% 命中
 零开销为 bench 记录口径）。
@@ -124,7 +124,7 @@ lse 的复合公式（每项都有出处）：
 （行和处于 $P\cdot2688$ 域，要除回来），最后一项是 smooth-K 的修正
 $\mathrm{dot}(q_{row},\bar k)$（第~\ref{ch:31}~章
 式~31-deltas 的对应项；\texttt{lse\_qkm\_dot} 在 Q 寄存器拷贝后、kv
-循环之前算好，L583--591 与 \texttt{persist\_d.cuh} L757--758——Q 的
+循环之前算好，L583--591 与 \texttt{persist\_d.cuh} L757--758：Q 的
 smem 在 \texttt{kQSmemReuse} 下会被 V stage 复用，点积必须提前）。
 
 \subsection{MXFP8 PV 变体的数值契约}
@@ -135,7 +135,7 @@ smem 在 \texttt{kQSmemReuse} 下会被 V stage 复用，点积必须提前）�
 （\texttt{pow2\_to\_ue8m0}，L417；契约注释 L390--397）。SFA 的槽位排
 布按 \texttt{SM120\_16x8x128\_TN\_VS\_MXFP8} atom 的 A 布局走
 （L501--535 的 probe 结论）。历史上 MXFP8 PV 的 lse 曾无条件沿用
-2688 域——差 $\ln 6$ 的 latent bug，现按 \texttt{kPvMxfp8} 编译期分
+2688 域，差 $\ln 6$ 的 latent bug，现按 \texttt{kPvMxfp8} 编译期分
 流。
 
 \section{设计与实现}
@@ -146,7 +146,7 @@ WS 骨架与 fp8 persist-D 同构：128T producer（TMA 装载 K/V/SF/bias）+
 256T consumer（8 warp MMA），4 组反向 barrier
 （\texttt{k\_empty}/\texttt{v\_empty}/\texttt{q\_consumed}/
 \texttt{epilogue\_done}，L200--213 注释）。fp4 特有的协议纪律：所有
-mbarrier \textbf{永不 re-initialize}——per-CTA 全局 kv-tile 计数器驱动
+mbarrier \textbf{永不 re-initialize}：per-CTA 全局 kv-tile 计数器驱动
 每个 barrier 的 stage/phase 跨 work 连续翻转（对活跃 mbarrier 的
 re-init 是 UB，PTX ISA 9.7.13.15.9；L113--115、L316 注释）。
 
@@ -157,7 +157,7 @@ gridDim.x)} 的 strided work loop。dense 用
 $\min(total\_work, SMs)$（persistent，流水 fill/drain 每 CTA 摊一次，
 producer 可在 consumer 跑 epilogue 时预取下一个 work 的 K/V）；causal
 用 \texttt{total\_work}（经典 block-per-work，短 work 早完早释放 SM，
-HW 调度器负载均衡——多数 work 的 $T_{c,eff}\ll T_c$，persistent 的
+HW 调度器负载均衡：多数 work 的 $T_{c,eff}\ll T_c$，persistent 的
 每 work 固定开销会占主导）。barrier 协议对任意 gridDim 都成立，
 non-persistent 只是每 barrier 只翻第一个 phase 的退化情形。
 
@@ -227,11 +227,11 @@ kernel、同一代码路径，runtime grid 定风格）。上：$\min(total\_wor
 
 Q/SFQ 是 per-work 常量：s2r 一次进 \texttt{tSrQ}/\texttt{tSrSFQ} 寄存
 器，跨整个 kv 循环驻留，\texttt{gemm\_ss\_fp4} 把它们当 A 侧寄存器操
-作数消费、不再每 tile 读 Q smem（L747--753 注释——fp8 的
+作数消费、不再每 tile 读 Q smem（L747--753 注释，fp8 的
 \texttt{kPersistQs2r} 等价物，这里恒开）。这段注释同时记录了一个值得
 抄走的 bug：\textbf{没有}寄存器驻留时，A/SFA 的 asm 操作数未初始化，
-cicc 直接把它们折叠成 0，QK 退化成 $\Delta S$（rank-1 均值 attention）
-——probe 容差曾把它掩盖。教训：量化 kernel 的「输出恒为常数」类退化
+cicc 直接把它们折叠成 0，QK 退化成 $\Delta S$（rank-1 均值 attention），
+probe 容差曾把它掩盖。教训：量化 kernel 的「输出恒为常数」类退化
 要靠数据探针（输出对 K 的敏感性）而非容差卡。
 
 \subsection{主循环五步}
@@ -272,13 +272,13 @@ QK 数学与 V 的 TMA 传输重叠。slot 轮转按 work 内 tile 索引、barr
 
 循环后 \texttt{finalize} 除以 row\_sum（0 行守卫）；smooth-V 的
 $v_m$ 逐列加回（恒等推导见 \texttt{persist\_d.cuh} L981--1016 的完整
-注释——softmax 权重和为 1，$v_m$ 对所有列相同，从列和里提出后与
+注释：softmax 权重和为 1，$v_m$ 对所有列相同，从列和里提出后与
 归一化相消；masked 列 $P=0$ 不参与两个和，causal 下恒等式同样成立）。
 然后是 O 的批量 staging：consumer named barrier（WAR fence，确认所有
 PV 读与 lse dot 完成）$\to$ \texttt{SM90\_U32x2\_STSM\_N} 把
 \texttt{tCrOHalf} 写进 SW128 smem（叠在被释放的 Q/K 区上）$\to$
 单条 TMA store（L1018--1066）。tail Q tile 走 R$\to$G 带行守卫。
-注意 STSM 用 \texttt{U32x2} 而非 fp8 的 \texttt{U32x4}——blockscale
+注意 STSM 用 \texttt{U32x2} 而非 fp8 的 \texttt{U32x4}：blockscale
 PV 的 C fragment 每 lane 持数不同（头注释 L44--46）。
 
 \section{图示}
@@ -286,7 +286,7 @@ PV 的 C fragment 每 lane 持数不同（头注释 L44--46）。
 两张图分别对应本章的数学与实现。图~\ref{fig:32-1} 是两级 P 量化的域
 拉伸：online softmax 使第一级退化为全局常数 $1/2688$ 并折进 exp2
 shift；第二级按 per-16 组 absmax 铺满 ue4m3 域，组归一化同样折进
-exp2 参数——两级 scale 在数据通路里都不占显式乘法。图~\ref{fig:32-2}
+exp2 参数，两级 scale 在数据通路里都不占显式乘法。图~\ref{fig:32-2}
 是主循环数据流：128T producer 与 256T consumer 围绕每个 kv tile 的
 五步（$\Delta S$ 预载 $\to$ QK $\to$ masking $\to$ 融合 softmax/P
 量化 $\to$ PV），barrier 永不 re-init，grid 由 runtime 定 persistent
@@ -450,7 +450,7 @@ MXFP8 PV 付出 28--39\% 的代价：$V^\top$ 数据 8 bit 带宽翻倍、atom �
 \subsection{fp4 对 fp8 的相对收益}
 
 历史对照（RFC/skill 记录口径，非本机当日）：attn kernel 本身 fp4 比
-fp8 快 $\sim$23\%——blockscale mxf4nvf4 吞吐与 fp8 dense 相当，收益
+fp8 快 $\sim$23\%：blockscale mxf4nvf4 吞吐与 fp8 dense 相当，收益
 全部来自\textbf{带宽}（K/V/SF 字节减半以上）；D=192 的 e2e 比值
 self 1.47x / causal 1.29x / gqa 1.50x。本机同日对照可复算：fp4
 D=192 self 3.48ms（表 31.2）对 fp8 persist-D 同 shape 的表 29.2 数据。
@@ -464,17 +464,17 @@ D=192 self 3.48ms（表 31.2）对 fp8 persist-D 同 shape 的表 29.2 数据。
 
 已证伪（默认关闭/代码保留，勿重复）：Q smem 复用（fp4 的 L1TEX
 sector hit 已 96.75\% 饱和，fp8 的前提不成立，实测 +1.8\% 回退，
-\texttt{attn\_traits.cuh} L19--28 注释——与 fp8 章的同名机制结论相
+\texttt{attn\_traits.cuh} L19--28 注释，与 fp8 章的同名机制结论相
 反，很好的对照案例）；rescale merge in-place（把 FMUL 拉进 MMA 依赖
 链，+1.7\%）；V/SFV 首块 s2r 提前藏进 softmax（PC-4：+1.3--1.7\% 净
 负，LDSM 目的寄存器跨 softmax 链拉长 live-range；NCU 证实 B 供给非
-瓶颈，wait 主体在 A 操作数串行链——persist-D 微优化到顶的标志）。
+瓶颈，wait 主体在 A 操作数串行链，也是 persist-D 微优化到顶的标志）。
 
 \section{实践经验}
 
 \textbf{fragment adapter 是经验锁定的整体}。kv\_perm32、$\Delta S$
-槽位算术、\texttt{LayoutP}/\texttt{LayoutSFP} 打包、$V^\top$ 转置存储
-——SA3 的这套 adapter 相互补偿、自洽成体系（头注释 L25--37：empirical
+槽位算术、\texttt{LayoutP}/\texttt{LayoutSFP} 打包、$V^\top$ 转置存储：
+SA3 的这套 adapter 相互补偿、自洽成体系（头注释 L25--37：empirical
 lock 在 \texttt{.tmp} 的对齐探针里逐项验证过，dense e2e 与 dequant 仿真
 一致）。逐字拷贝 + 只修 masking 是正确的移植姿势；单独「改进」其中
 一环会破坏补偿关系。

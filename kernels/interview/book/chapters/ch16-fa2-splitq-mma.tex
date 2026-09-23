@@ -8,7 +8,7 @@
 第~\ref{ch:15}~章把 FlashAttention 的数学骨架立了起来：分块
 （tiling）+ online softmax 让 $O(N^2 d)$ 的计算不再伴随 $O(N^2)$ 的
 HBM 中间矩阵读写。本章进入\textbf{工程实现}：教学源码里的
-\texttt{flash\_\allowbreak{}attn\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}split\_\allowbreak{}q}（flash\_attn.cuh~L112）——
+\texttt{flash\_\allowbreak{}attn\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}split\_\allowbreak{}q}（flash\_attn.cuh~L112），
 一个用 \texttt{mma.\allowbreak{}sync.\allowbreak{}m16n8k16} 手写的 FlashAttention-2 前向 kernel，
 它把 FA2 论文（arXiv:2307.08691）的两项核心改造落到了寄存器级：
 \textbf{split-Q 的 warp 行划分}（更好的 work partitioning）与
@@ -23,7 +23,7 @@ $B_r{=}128$、$B_c{=}64$、256 线程（8 warp）。配套最小测试为
 
 \textbf{前置}：第~\ref{ch:15}~章（online softmax 与 online rescale 的
 推导，本章直接引用其结论）、第~\ref{ch:11}~章（mma.sync 指令逐字段、
-A/B/C fragment 坐标公式、ldmatrix 寻址协议——本章所有 fragment 几何
+A/B/C fragment 坐标公式、ldmatrix 寻址协议，本章所有 fragment 几何
 全部建立在式~\ref{eq:11-apos}--\ref{eq:11-cpos} 之上）、
 第~\ref{ch:10}~章（cp.async 的 commit/wait\_group 记账）、
 第~\ref{ch:04}/\ref{ch:05}~章（online softmax 与 LSE 合并）。
@@ -37,7 +37,7 @@ materialize $S=QK^\top$ 与 $P=\mathrm{softmax}(S)$，序列长 $N$ 时
 注意力计算被内存读写而非计算本身支配。FA 的答案是分块：$Q$ 按
 $B_r$ 行一块、K/V 按 $B_c$ 行一块，$S$/$P$ 只在寄存器/smem 里以
 $B_r\times B_c$ 的 tile 存在，配合 online softmax（第~\ref{ch:04}~章）
-跨 tile 维护 $(m,\ell)$ 状态——$O(N^2 d)$ 的 FLOPs 一个不少，但 HBM
+跨 tile 维护 $(m,\ell)$ 状态：$O(N^2 d)$ 的 FLOPs 一个不少，但 HBM
 读写降为 $O(Nd)$。这套推导在第~\ref{ch:15}~章已完成，本章不再重复。
 
 \textbf{动机二：split-KV 的 warp 划分把 softmax 状态撕碎了。}
@@ -45,19 +45,19 @@ $B_r\times B_c$ 的 tile 存在，配合 online softmax（第~\ref{ch:04}~章）
 LeetCUDA 的 FA1 式实现（\texttt{flash\_\allowbreak{}attn\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}split\_\allowbreak{}kv}）
 把 $B_r\times B_c$ 的 tile 同时按行列切给 warp：warp\_QP 分行、
 warp\_KV 分列（8-warp 版为 $2\times4$ warp 网格）。问题在列方向：行 $r$ 的 $S$ 值分布在多个 warp 手里，
-每个 warp 只见到该行\textbf{部分} KV 的打分——它们各自维护的
+每个 warp 只见到该行\textbf{部分} KV 的打分，它们各自维护的
 $(m,\ell,O)$ 都是\textbf{部分状态}，每个 KV tile 结束必须经 smem 中转、
 用第~\ref{ch:05}~章 \texttt{merge\_\allowbreak{}attn\_\allowbreak{}states} 的 LSE 合并语义跨
 warp 归并，通信与同步的开销随 tile 迭代次数 $T_c$ 线性重复。
 
 \textbf{动机三：split-Q 让 softmax 状态 warp 私有。}
 FA2 的观察（论文 §3.2）：既然 online softmax 的状态是\textbf{按行}的
-（每行一个 $m$、一个 $\ell$），那就按行切 warp——每个 warp 独占
+（每行一个 $m$、一个 $\ell$），那就按行切 warp，每个 warp 独占
 16 行 Q（一个 \texttt{m16} atom 的行数），KV tile 全 warp 共享
 （warp\_KV$\equiv$0）。行状态从头到尾留在本 warp 的寄存器里，
 跨 tile 迭代零归并、零 smem 中转。按「独立 online softmax 状态数」
 计并行度：split-KV 下列向分裂的状态终究要归并，行方向的有效并行
-单元是 warp\_QP 组；split-Q 下 8 个 warp 各持 16 行的\textbf{终态}——
+单元是 warp\_QP 组；split-Q 下 8 个 warp 各持 16 行的\textbf{终态}，
 并行度从 $B\cdot H\cdot\lceil N/B_r\rceil$（block 级）直接乘上 warp 数
 到 $B\cdot H\cdot\lceil N/B_r\rceil\cdot 8$，且每个单元免通信。
 附带收益：Q tile 整个外循环只从 gmem 搬一次，K/V 分块流过 smem。
@@ -80,7 +80,7 @@ running max/sum；$s = 1/\sqrt{D}$ 为缩放因子（源码
 指令的形状；\texttt{kMmaTile*} 决定 warp 数
 （\texttt{kNumThreads}$=32\cdot kMmaTileSeqLenQ\cdot kMmaTileSeqLenK$，
 L124）；\texttt{kValTile*} 是每 warp 在该方向上重复的次数
-（默认除 $kValTileSeqLenK{=}8$ 外全 1——每个 warp 一次算满 $B_c$ 列）。
+（默认除 $kValTileSeqLenK{=}8$ 外全 1，即每个 warp 一次算满 $B_c$ 列）。
 
 \subsection{Split-Q 行划分与状态的 warp 私有化}
 
@@ -97,7 +97,7 @@ $[\,\texttt{Q\_tile\_id}\cdot B_r,\ \texttt{Q\_tile\_id}\cdot B_r + B_r)$
 \end{equation}
 源码对应 \texttt{lane\_\allowbreak{}block\_\allowbreak{}row\_\allowbreak{}max/\allowbreak{}sum\_\allowbreak{}old}（L181--182，
 fp32 寄存器）与累加器 fragment \texttt{R\_D}（L194）。第~\ref{ch:15}~章
-的 online rescale 递推按 warp 局部化执行——对第 $t$ 个 KV tile：
+的 online rescale 递推按 warp 局部化执行。对第 $t$ 个 KV tile：
 \begin{align}
   S_w^{(t)} &= Q_w K_t^{\top}\cdot s
   &&\text{（\texttt{R\_S}，16 行}\times B_c\text{ 列）},\\
@@ -168,13 +168,13 @@ A fragment}：左 tile 给 A 的 $k$ 左半区（$a_0$--$a_3$），右 tile 给
     }
   }
   \draw[thin] (0,0) grid[xstep=\cwd cm, ystep=\chd cm] ({16*\cwd},{-16*\chd});
-  \draw[very thick] (0,0) rectangle ({16*\cwd},{-16*\chd});
-  \draw[very thick] ({8*\cwd},0) -- ({8*\cwd},{-16*\chd});
-  \draw[dashed] (0,{-8*\chd}) -- ({16*\cwd},{-8*\chd});
+  \draw[very thick, tkBlue] (0,0) rectangle ({16*\cwd},{-16*\chd});
+  \draw[very thick, tkBlue] ({8*\cwd},0) -- ({8*\cwd},{-16*\chd});
+  \draw[dashed, tkBlue!55] (0,{-8*\chd}) -- ({16*\cwd},{-8*\chd});
   \draw[thin] ({\px},0) grid[xstep=\cwd cm, ystep=\chd cm] ({\px+16*\cwd},{-16*\chd});
-  \draw[very thick] ({\px},0) rectangle ({\px+16*\cwd},{-16*\chd});
-  \draw[very thick] ({\px+8*\cwd},0) -- ({\px+8*\cwd},{-16*\chd});
-  \draw[dashed] ({\px},{-8*\chd}) -- ({\px+16*\cwd},{-8*\chd});
+  \draw[very thick, tkBlue] ({\px},0) rectangle ({\px+16*\cwd},{-16*\chd});
+  \draw[very thick, tkBlue] ({\px+8*\cwd},0) -- ({\px+8*\cwd},{-16*\chd});
+  \draw[dashed, tkBlue!55] ({\px},{-8*\chd}) -- ({\px+16*\cwd},{-8*\chd});
   \foreach \c in {0,2,...,14}{
     \node[anchor=south] at ({(\c+0.5)*\cwd},0.06) {\c};
     \node[anchor=south] at ({\px+(\c+0.5)*\cwd},0.06) {\c};
@@ -188,16 +188,16 @@ A fragment}：左 tile 给 A 的 $k$ 左半区（$a_0$--$a_3$），右 tile 给
   \node[anchor=south, font=\scriptsize\bfseries] at ({\px+8*\cwd},0.62) {右：A fragment（PV 的 mma A 操作数）};
   \node[anchor=east, font=\scriptsize, rotate=90] at (-0.42,{-8*\chd}) {行 $r$（0--15）};
   % 中缝映射箭头：左 tile -> a0..a3，右 tile -> a4..a7
-  \draw[-{Stealth}, semithick] ({16*\cwd+0.10},{-1.0}) -- ({\px-0.10},{-1.0});
-  \node at (\gx,{-0.55}) {$R\_S[i][2t]$};
-  \node at (\gx,{-1.45}) {$\to a_0..a_3$};
-  \draw[-{Stealth}, semithick] ({16*\cwd+0.10},{-3.8}) -- ({\px-0.10},{-3.8});
-  \node at (\gx,{-3.35}) {$R\_S[i][2t{+}1]$};
-  \node at (\gx,{-4.25}) {$\to a_4..a_7$};
+  \draw[-{Stealth}, semithick, tkOrange] ({16*\cwd+0.10},{-1.0}) -- ({\px-0.10},{-1.0});
+  \node[text=tkOrange!80!black] at (\gx,{-0.55}) {$R\_S[i][2t]$};
+  \node[text=tkOrange!80!black] at (\gx,{-1.45}) {$\to a_0..a_3$};
+  \draw[-{Stealth}, semithick, tkOrange] ({16*\cwd+0.10},{-3.8}) -- ({\px-0.10},{-3.8});
+  \node[text=tkOrange!80!black] at (\gx,{-3.35}) {$R\_S[i][2t{+}1]$};
+  \node[text=tkOrange!80!black] at (\gx,{-4.25}) {$\to a_4..a_7$};
   % 图例：灰度 = lane 组，深浅 = 寄存器号
   \node[anchor=north west, font=\scriptsize] at (0,{-16*\chd-0.16}) {灰度 = lane 组 $\mathrm{g}=r\bmod 8$：};
   \foreach \g [evaluate=\g as \gl using int(8+8*\g)] in {0,...,7}{
-    \node[fill=gray!\gl, draw, very thin, minimum width=0.30cm, minimum height=0.20cm, inner sep=0pt]
+    \node[fill=gray!\gl, draw=gray!55, very thin, minimum width=0.30cm, minimum height=0.20cm, inner sep=0pt]
       at ({0.22+\g*0.40},{-16*\chd-0.66}) {};
     \node at ({0.22+\g*0.40},{-16*\chd-0.96}) {\g};
   }
@@ -206,13 +206,13 @@ A fragment}：左 tile 给 A 的 $k$ 左半区（$a_0$--$a_3$），右 tile 给
   % 底部横条：Bc=64 的 4 段 tile_V_Bc 消费表
   \node[anchor=south, font=\scriptsize] at ({\px+8*\cwd},{-16*\chd-0.22})
     {$B_c{=}64$：4 段 \texttt{tile\_V\_Bc} 覆盖全部列（$w=2t$，源码注释 L612--616）};
-  \node[very thick, draw, fill=gray!45, minimum width=1.78cm, minimum height=0.60cm, align=center]
+  \node[very thick, draw=tkOrange!80!black, fill=tkOrange!30, minimum width=1.78cm, minimum height=0.60cm, align=center]
     at ({\px+0.89},{-16*\chd-0.85}) {\texttt{tile\_V\_Bc=0}\\$w{=}0$，列 0:16};
-  \node[thin, draw, fill=gray!12, minimum width=1.78cm, minimum height=0.60cm, align=center]
+  \node[thin, draw=gray!55, fill=gray!22, minimum width=1.78cm, minimum height=0.60cm, align=center]
     at ({\px+2.73},{-16*\chd-0.85}) {\texttt{tile\_V\_Bc=1}\\$w{=}2$，列 16:32};
-  \node[thin, draw, fill=gray!12, minimum width=1.78cm, minimum height=0.60cm, align=center]
+  \node[thin, draw=gray!55, fill=gray!22, minimum width=1.78cm, minimum height=0.60cm, align=center]
     at ({\px+4.57},{-16*\chd-0.85}) {\texttt{tile\_V\_Bc=2}\\$w{=}4$，列 32:48};
-  \node[thin, draw, fill=gray!12, minimum width=1.78cm, minimum height=0.60cm, align=center]
+  \node[thin, draw=gray!55, fill=gray!22, minimum width=1.78cm, minimum height=0.60cm, align=center]
     at ({\px+6.41},{-16*\chd-0.85}) {\texttt{tile\_V\_Bc=3}\\$w{=}6$，列 48:64};
   \node[anchor=north, font=\tiny, align=center] at (\gx,{-16*\chd-1.75})
     {\texttt{C layout: 8 x (16 x 8) layout -> A layout: 4 x (16 x 16) layout}\\（flash\_attn.cuh L620--621 注释原文）};
@@ -221,10 +221,10 @@ A fragment}：左 tile 给 A 的 $k$ 左半区（$a_0$--$a_3$），右 tile 给
 \label{fig:16-pa-fragment}
 \end{figure}
 
-B 操作数两侧不对称：$S=QK^\top$ 是 TN 姿势——K 以 $[B_c,d]$ 行主序
+B 操作数两侧不对称：$S=QK^\top$ 是 TN 姿势，K 以 $[B_c,d]$ 行主序
 存储，等价于 $K^\top$ 列主序，\texttt{ldmatrix.x2} 不带 \texttt{.trans}
 即得 \texttt{.col} 的 B fragment（与第~\ref{ch:11}~章 11.4.6 完全同型）；
-$P@V$ 则是 NN 姿势——B 是 $V_t$ 的 $[B_c,d]$，mma 要求列主序而 V 是
+$P@V$ 则是 NN 姿势：B 是 $V_t$ 的 $[B_c,d]$，mma 要求列主序而 V 是
 行主序存储，必须 \texttt{LDMATRIX\_\allowbreak{}X2\_\allowbreak{}T}（.trans，L600）转置装载。
 
 \subsection{行归约为什么是 4-lane 蝶形}
@@ -234,7 +234,7 @@ $r\in[0,8)$ 的 8 个列元素分布在 lane $4r..4r{+}3$（$\mathrm{g}=r$，
 $\mathrm{tig}=0..3$ 各持 2 个），行 $r{+}8$ 同一组 lane 的第二个寄存器。
 所以正确的归约宽度是 4：先在 lane 内跨 8 个 $j$ tile 做局部归约
 （覆盖 $B_c$ 列），再 \texttt{warp\_\allowbreak{}reduce\_\allowbreak{}max\allowbreak{}<4>} /
-\texttt{warp\_\allowbreak{}reduce\_\allowbreak{}sum\allowbreak{}<4>}（L500/L553）——XOR 掩码 $\{2,1\}$ 两步
+\texttt{warp\_\allowbreak{}reduce\_\allowbreak{}sum\allowbreak{}<4>}（L500/L553），用 XOR 掩码 $\{2,1\}$ 两步
 蝶形（第~\ref{ch:02}~章），只在本 4-lane 组内交换。若误用整宽 32
 的归约，会把\textbf{不同行}的 max/sum 混在一起，结果静默错误。
 
@@ -252,8 +252,8 @@ $\mathrm{tig}=0..3$ 各持 2 个），行 $r{+}8$ 同一组 lane 的第二个寄
     }
   }
   \draw[thin] (0,0) grid[xstep=\cwd cm, ystep=\chd cm] ({8*\cwd},{-16*\chd});
-  \draw[very thick] (0,0) rectangle ({8*\cwd},{-16*\chd});
-  \draw[dashed] (0,{-8*\chd}) -- ({8*\cwd},{-8*\chd});
+  \draw[very thick, tkBlue] (0,0) rectangle ({8*\cwd},{-16*\chd});
+  \draw[dashed, tkBlue!55] (0,{-8*\chd}) -- ({8*\cwd},{-8*\chd});
   \foreach \c in {0,...,7}{
     \node[anchor=south] at ({(\c+0.5)*\cwd},0.06) {\c};
   }
@@ -263,39 +263,39 @@ $\mathrm{tig}=0..3$ 各持 2 个），行 $r{+}8$ 同一组 lane 的第二个寄
   }
   \node[anchor=south, font=\scriptsize\bfseries] at ({4*\cwd},0.62) {m16n8 C fragment：行 $\times$ lane 映射};
   % 左侧寄存器半区括线
-  \draw[semithick] (-0.40,0.05) -- (-0.55,0.05) -- (-0.55,{-8*\chd-0.05}) -- (-0.40,{-8*\chd-0.05});
-  \node[anchor=east, font=\tiny, align=center] at (-0.64,{-4*\chd}) {行 0--7\\\texttt{reg[0]}};
-  \draw[semithick] (-0.40,{-8*\chd+0.05}) -- (-0.55,{-8*\chd+0.05}) -- (-0.55,{-16*\chd-0.05}) -- (-0.40,{-16*\chd-0.05});
-  \node[anchor=east, font=\tiny, align=center] at (-0.64,{-12*\chd}) {行 8--15\\\texttt{reg[1]}};
+  \draw[semithick, tkBlue] (-0.40,0.05) -- (-0.55,0.05) -- (-0.55,{-8*\chd-0.05}) -- (-0.40,{-8*\chd-0.05});
+  \node[anchor=east, font=\tiny, align=center, text=tkBlue!80!black] at (-0.64,{-4*\chd}) {行 0--7\\\texttt{reg[0]}};
+  \draw[semithick, tkBlue] (-0.40,{-8*\chd+0.05}) -- (-0.55,{-8*\chd+0.05}) -- (-0.55,{-16*\chd-0.05}) -- (-0.40,{-16*\chd-0.05});
+  \node[anchor=east, font=\tiny, align=center, text=tkBlue!80!black] at (-0.64,{-12*\chd}) {行 8--15\\\texttt{reg[1]}};
   % 右侧：行 0 的 4-lane 组两步 XOR 蝶形归约
   \node[anchor=west, font=\scriptsize, align=left] at (5.25,0.35)
     {行 $r$ 的 8 个 half 由 lane $4r..4r{+}3$ 各持 2 个\\（列对 $2\,\mathrm{tig}{+}\{0,1\}$，$\mathrm{tig}=\mathrm{lane}\bmod 4$）};
-  \draw[-{Stealth}, dashed] ({8*\cwd+0.10},{-0.5*\chd}) -- (5.62,-0.45);
-  \node[circle, draw, fill=gray!8, minimum size=0.36cm, inner sep=0pt] at (5.9,-0.45) {0};
-  \node[circle, draw, fill=gray!8, minimum size=0.36cm, inner sep=0pt] at (5.9,-1.05) {1};
-  \node[circle, draw, fill=gray!8, minimum size=0.36cm, inner sep=0pt] at (5.9,-1.65) {2};
-  \node[circle, draw, fill=gray!8, minimum size=0.36cm, inner sep=0pt] at (5.9,-2.25) {3};
-  \node[circle, draw, fill=gray!16, minimum size=0.36cm, inner sep=0pt] at (7.5,-0.45) {0};
-  \node[circle, draw, fill=gray!16, minimum size=0.36cm, inner sep=0pt] at (7.5,-1.05) {1};
-  \node[circle, draw, fill=gray!16, minimum size=0.36cm, inner sep=0pt] at (7.5,-1.65) {2};
-  \node[circle, draw, fill=gray!16, minimum size=0.36cm, inner sep=0pt] at (7.5,-2.25) {3};
-  \node[circle, draw, fill=gray!24, minimum size=0.36cm, inner sep=0pt] at (9.1,-0.45) {0};
-  \node[circle, draw, fill=gray!24, minimum size=0.36cm, inner sep=0pt] at (9.1,-1.05) {1};
-  \node[circle, draw, fill=gray!24, minimum size=0.36cm, inner sep=0pt] at (9.1,-1.65) {2};
-  \node[circle, draw, fill=gray!24, minimum size=0.36cm, inner sep=0pt] at (9.1,-2.25) {3};
-  \draw[Stealth-Stealth, thin] (6.09,-0.52) -- (7.31,-1.58);
-  \draw[Stealth-Stealth, thin] (6.09,-1.58) -- (7.31,-0.52);
-  \draw[Stealth-Stealth, thin] (6.09,-1.12) -- (7.31,-2.18);
-  \draw[Stealth-Stealth, thin] (6.09,-2.18) -- (7.31,-1.12);
-  \node[anchor=north, font=\tiny] at (6.7,-2.42) {\texttt{shfl\_xor} mask=2};
-  \draw[Stealth-Stealth, thin] (7.69,-0.52) -- (8.91,-0.98);
-  \draw[Stealth-Stealth, thin] (7.69,-0.98) -- (8.91,-0.52);
-  \draw[Stealth-Stealth, thin] (7.69,-1.72) -- (8.91,-2.18);
-  \draw[Stealth-Stealth, thin] (7.69,-2.18) -- (8.91,-1.72);
-  \node[anchor=north, font=\tiny] at (8.3,-2.42) {mask=1};
-  \node[draw, anchor=west, font=\tiny, align=center] at (9.5,-1.35) {两步后组内 4 lane\\同持行 $r$ 的 max/$\ell$};
+  \draw[-{Stealth}, dashed, tkOrange] ({8*\cwd+0.10},{-0.5*\chd}) -- (5.62,-0.45);
+  \node[circle, draw=tkBlue!70!black, fill=tkFillBlue, minimum size=0.36cm, inner sep=0pt] at (5.9,-0.45) {0};
+  \node[circle, draw=tkBlue!70!black, fill=tkFillBlue, minimum size=0.36cm, inner sep=0pt] at (5.9,-1.05) {1};
+  \node[circle, draw=tkBlue!70!black, fill=tkFillBlue, minimum size=0.36cm, inner sep=0pt] at (5.9,-1.65) {2};
+  \node[circle, draw=tkBlue!70!black, fill=tkFillBlue, minimum size=0.36cm, inner sep=0pt] at (5.9,-2.25) {3};
+  \node[circle, draw=tkBlue!70!black, fill=tkBlue!18, minimum size=0.36cm, inner sep=0pt] at (7.5,-0.45) {0};
+  \node[circle, draw=tkBlue!70!black, fill=tkBlue!18, minimum size=0.36cm, inner sep=0pt] at (7.5,-1.05) {1};
+  \node[circle, draw=tkBlue!70!black, fill=tkBlue!18, minimum size=0.36cm, inner sep=0pt] at (7.5,-1.65) {2};
+  \node[circle, draw=tkBlue!70!black, fill=tkBlue!18, minimum size=0.36cm, inner sep=0pt] at (7.5,-2.25) {3};
+  \node[circle, draw=tkBlue!70!black, fill=tkBlue!30, minimum size=0.36cm, inner sep=0pt] at (9.1,-0.45) {0};
+  \node[circle, draw=tkBlue!70!black, fill=tkBlue!30, minimum size=0.36cm, inner sep=0pt] at (9.1,-1.05) {1};
+  \node[circle, draw=tkBlue!70!black, fill=tkBlue!30, minimum size=0.36cm, inner sep=0pt] at (9.1,-1.65) {2};
+  \node[circle, draw=tkBlue!70!black, fill=tkBlue!30, minimum size=0.36cm, inner sep=0pt] at (9.1,-2.25) {3};
+  \draw[Stealth-Stealth, thin, tkOrange] (6.09,-0.52) -- (7.31,-1.58);
+  \draw[Stealth-Stealth, thin, tkOrange] (6.09,-1.58) -- (7.31,-0.52);
+  \draw[Stealth-Stealth, thin, tkOrange] (6.09,-1.12) -- (7.31,-2.18);
+  \draw[Stealth-Stealth, thin, tkOrange] (6.09,-2.18) -- (7.31,-1.12);
+  \node[anchor=north, font=\tiny, text=tkOrange!80!black] at (6.7,-2.42) {\texttt{shfl\_xor} mask=2};
+  \draw[Stealth-Stealth, thin, tkOrange] (7.69,-0.52) -- (8.91,-0.98);
+  \draw[Stealth-Stealth, thin, tkOrange] (7.69,-0.98) -- (8.91,-0.52);
+  \draw[Stealth-Stealth, thin, tkOrange] (7.69,-1.72) -- (8.91,-2.18);
+  \draw[Stealth-Stealth, thin, tkOrange] (7.69,-2.18) -- (8.91,-1.72);
+  \node[anchor=north, font=\tiny, text=tkOrange!80!black] at (8.3,-2.42) {mask=1};
+  \node[draw=tkGreen!80!black, fill=tkFillGreen, anchor=west, font=\tiny, align=center, text=tkGreen!80!black] at (9.5,-1.35) {两步后组内 4 lane\\同持行 $r$ 的 max/$\ell$};
   % 红色反例：整宽 32 会混入别的行
-  \node[anchor=north west, font=\scriptsize, align=left, text=vscAccent] at (5.25,-3.15)
+  \node[anchor=north west, font=\scriptsize, align=left, text=tkRed] at (5.25,-3.15)
     {误用整宽 32（mask 16/8/4 也会交换）：\\会把行 1..7 的 max/sum 混进来——静默错误};
   \node[anchor=north west, font=\scriptsize] at (0,{-16*\chd-0.22})
     {行 $r$ 与 $r{+}8$ 由同一 4-lane 组分别用 \texttt{reg[0]}/\texttt{reg[1]} 归约——这正是
@@ -343,7 +343,7 @@ $\mathrm{tig}=0..3$ 各持 2 个），行 $r{+}8$ 同一组 lane 的第二个寄
 \end{itemize}
 
 （该注释以 $B_r{=}64$、4-warp 配置为例；本章默认实例化是
-$B_r{=}128$、8-warp，行划分逻辑相同——见 16.7 节勘误。）
+$B_r{=}128$、8-warp，行划分逻辑相同，见 16.7 节勘误。）
 
 \subsection{模板参数、线程索引与 smem 布局}
 
@@ -355,7 +355,7 @@ $B_r{=}128$、8-warp，行划分逻辑相同——见 16.7 节勘误。）
 
 grid 为 $(\lceil N/B_r\rceil,\ B\cdot H)$：blockIdx.y 打包 batch 与
 head（L132--133 拆包），blockIdx.x 是 Q tile 号。\texttt{warp\_QP =
-warp\_id}、\texttt{warp\_KV = 0}（L137--138）——split-Q 的全部含义
+warp\_id}、\texttt{warp\_KV = 0}（L137--138），split-Q 的全部含义
 就这两行。Q/K/V/O 共享同一 per-head 基址（L143--145，
 self-attention 场景），O 与 Q 同形。
 
@@ -367,7 +367,7 @@ V 一段（L165--172）。行距 \texttt{k\allowbreak{}Smem\allowbreak{}Stride\a
 （L167--169），默认 pad$=$8 个 half：行距 $72$ half $=144$~B
 $=36$ 个 bank 字，相邻行错开 $36 \bmod 32 = 4$ 个 bank。ldmatrix 的
 每个 $8\times8$ 矩阵相位读 8 行 $\times$ 16~B：8 行的起始 bank
-$\{4r{+}4h\}_{r=0}^{7}$ 恰好铺满 32 个 bank 各一次——conflict-free；
+$\{4r{+}4h\}_{r=0}^{7}$ 恰好铺满 32 个 bank 各一次，conflict-free；
 若不 pad（行距 128~B），8 行起始 bank 全相同，同一相位的 8 段 16~B
 全部压在 4 个 bank 上串行化。这与第~\ref{ch:07}~章 transpose 的
 padding 分析、第~\ref{ch:12}~章的 swizzle 是同一主题的三种解法；
@@ -386,18 +386,18 @@ padding 分析、第~\ref{ch:12}~章的 swizzle 是同一主题的三种解法�
         at ({(\c+0.5)*\cwd},{-(\r+0.5)*\chd}) {\bk};
     }
   }
-  \draw[thin] (0,0) grid[xstep=\cwd cm, ystep=\chd cm] ({8*\cwd},{-8*\chd});
-  \draw[very thick] (0,0) rectangle ({8*\cwd},{-8*\chd});
-  \node[anchor=south west, font=\scriptsize\bfseries] at (0,0.14)
+  \draw[thin, draw=tkGreen!50] (0,0) grid[xstep=\cwd cm, ystep=\chd cm] ({8*\cwd},{-8*\chd});
+  \draw[very thick, tkGreen] (0,0) rectangle ({8*\cwd},{-8*\chd});
+  \node[anchor=south west, font=\scriptsize\bfseries, text=tkGreen!80!black] at (0,0.14)
     {pad$=8$：行距 $36$ bank 字（$36 \bmod 32 = 4$）};
   \foreach \r in {0,...,7}{
     \node[anchor=east] at (-0.08,{-(\r+0.5)*\chd}) {\r};
   }
-  \node[anchor=east, font=\scriptsize, rotate=90] at (-0.56,{-4*\chd}) {行 $r$};
+  \node[anchor=east, font=\scriptsize, rotate=90, text=tkGreen!80!black] at (-0.56,{-4*\chd}) {行 $r$};
   \node[anchor=north, font=\tiny] at ({4*\cwd},{-8*\chd-0.10})
     {每格 $=$ 一个 16~B 段，格内为该段的起始 bank 号（列 $c=0..7$ 覆盖 $D{=}64$ half）};
-  \draw[thick, gray!70] (5.15,0.14) -- (5.15,{-8*\chd});
-  \node[anchor=north west, font=\tiny, align=left, text width=6.4cm] at (5.35,0.14)
+  \draw[thick, tkGreen] (5.15,0.14) -- (5.15,{-8*\chd});
+  \node[anchor=north west, font=\tiny, align=left, text width=6.4cm, text=tkGreen!80!black] at (5.35,0.14)
     {同一列 $c$（ldmatrix 同一相位要读的 8 行）：\\
      起始 bank $=\{4r{+}4c\}_{r=0}^{7}$ 互不相同，\\
      取遍 $32$ 个 bank 各一次 $\to$ conflict-free};
@@ -409,17 +409,17 @@ padding 分析、第~\ref{ch:12}~章的 swizzle 是同一主题的三种解法�
         at ({(\c+0.5)*\cwd},{-3.52-(\r+0.5)*\chd}) {\bk};
     }
   }
-  \draw[thin] (0,-3.52) grid[xstep=\cwd cm, ystep=\chd cm] ({8*\cwd},{-3.52-8*\chd});
-  \draw[very thick] (0,-3.52) rectangle ({8*\cwd},{-3.52-8*\chd});
-  \node[anchor=south west, font=\scriptsize\bfseries] at (0,-3.38)
+  \draw[thin, draw=tkRed!45] (0,-3.52) grid[xstep=\cwd cm, ystep=\chd cm] ({8*\cwd},{-3.52-8*\chd});
+  \draw[very thick, tkRed] (0,-3.52) rectangle ({8*\cwd},{-3.52-8*\chd});
+  \node[anchor=south west, font=\scriptsize\bfseries, text=tkRed] at (0,-3.38)
     {不 pad：行距 $32$ bank 字（$32 \bmod 32 = 0$）};
   \foreach \r in {0,...,7}{
     \node[anchor=east] at (-0.08,{-3.52-(\r+0.5)*\chd}) {\r};
   }
-  \node[anchor=north, font=\tiny] at ({4*\cwd},{-3.52-8*\chd-0.22})
+  \node[anchor=north, font=\tiny, text=tkRed] at ({4*\cwd},{-3.52-8*\chd-0.22})
     {同一列 8 行的起始 bank 全为 $4c$（行间整周期回绕，相位不变）};
-  \draw[thick, vscAccent] (5.15,-3.38) -- (5.15,{-3.52-8*\chd});
-  \node[anchor=north west, font=\tiny, align=left, text width=6.4cm, text=vscAccent] at (5.35,-3.38)
+  \draw[thick, tkRed] (5.15,-3.38) -- (5.15,{-3.52-8*\chd});
+  \node[anchor=north west, font=\tiny, align=left, text width=6.4cm, text=tkRed] at (5.35,-3.38)
     {$\to$ 同一相位的 8 段 16~B 全压在同一组 $4$ 个 bank 上，\\
      8 个访问被迫串行化；\\
      这就是「不 pad」的默认代价，pad$=$8 是三种解法中最省事的一种};
@@ -442,7 +442,7 @@ $\times$ 4 段 16~B）；K/V 按 $B_c{=}64$ 行、每线程管 4 行的起点
 每 lane 常驻工作集（f16 acc 路径）：\texttt{R\_Q[1][4]} 4 个
 \texttt{.b32}、\texttt{R\_K[8][2]} 16 个、\texttt{R\_V[8][2]} 16 个、
 \texttt{R\_\allowbreak{}S[1][8][2]} 16 个、\texttt{R\_\allowbreak{}O/\allowbreak{}R\_\allowbreak{}D[1][8][2]} 各 16 个，
-加 $(m,\ell)$ 4 个 fp32 与地址变量，约百个寄存器——手写路径的
+加 $(m,\ell)$ 4 个 fp32 与地址变量，约百个寄存器。手写路径的
 「寄存器白盒」收益（第~\ref{ch:11}~章动机一）在 attention 里同样成立。
 \texttt{R\_S} 身兼两职（先 $S$ 后 $P$）、\texttt{R\_D} 跨 tile 持有
 未归一化的 $O$，是本 kernel 寄存器编排的两条主线。
@@ -455,7 +455,7 @@ $\times$ 4 段 16~B）；K/V 按 $B_c{=}64$ 行、每线程管 4 行的起点
 \lstinputlisting[linerange={228-266},firstnumber=auto,
   title={flash\_attn.cuh L228-266（Step 2：预载前 kStagesK$-$1 个 K tile 并 wait 排水）}]{../flash_attn.cuh}
 
-Step 1 结束只 \texttt{commit} 不 \texttt{wait}——Q 的搬运与 Step 2 的
+Step 1 结束只 \texttt{commit} 不 \texttt{wait}，Q 的搬运与 Step 2 的
 K 预载同批在途。Step 2 预载 $kStagesK{-}1=1$ 个 K tile 后
 \texttt{wait\_\allowbreak{}group\allowbreak{}(k\allowbreak{}Stages\allowbreak{}K$-$2)=\allowbreak{}wait\allowbreak{}(0)} 排水并同步（L264--265）。
 注意 Q 的就绪并没有单独的 wait：cp.async 的组计数对本线程是全局的，
@@ -471,14 +471,14 @@ Step 2 末的 wait(0) 已把 Q 组连带等完，L265 的一次
   title={flash\_attn.cuh L309-340（3a 续：$kStagesK{>}1$ 时预取下一 K tile）}]{../flash_attn.cuh}
 
 流水编排的要点：\textbf{K 双缓冲、V 单级}。迭代 $t$ 内 3a 依次提交
-两组搬运——$V_t$（当前）与 $K_{t+1}$（预取，写 \texttt{smem\_\allowbreak{}sel\_\allowbreak{}next}
+两组搬运：$V_t$（当前）与 $K_{t+1}$（预取，写 \texttt{smem\_\allowbreak{}sel\_\allowbreak{}next}
 缓冲）。$V_t$ 的在途窗口恰好覆盖 3b（QK mma）与 3c（softmax）两段
-计算——softmax 全在 CUDA Core/SFU 上跑，正好填掉 V 的搬运延迟；
+计算：softmax 全在 CUDA Core/SFU 上跑，正好填掉 V 的搬运延迟；
 $K_{t+1}$ 则有整整一个迭代的余量。这与第~\ref{ch:11}~章 GEMM 的
 「kStages 全操作数统一多级」不同：attention 的两段 mma 中间夹了一段
 非 mma 计算，天然提供了第二级的隐藏窗口，所以 \texttt{kStagesK}$=$2
 就够（源码注释 L281「one stage is enough for V」）。
-\texttt{\#pragma unroll 1}（L272）刻意不展开外循环——$T_c$ 是运行期
+\texttt{\#pragma unroll 1}（L272）刻意不展开外循环：$T_c$ 是运行期
 值，展开只会膨胀代码。$kStagesK{=}1$ 的退化分支（L341--374）每轮
 现搬当前 K 并在 3b 前 wait(0)，无流水，用于消融对照。
 
@@ -503,7 +503,7 @@ $K_{t+1}$ 则有整整一个迭代的余量。这与第~\ref{ch:11}~章 GEMM 的
                 evaluate=\tk as \pd using {4*\tk+3.70}] in {0,1,2}{
     \node[thin, draw, fill=gray!68, minimum width=1.10cm, minimum height=\lh cm, inner sep=0pt]
       at ({\pa*\u},-0.45) {3b QK};
-    \node[thin, draw, preaction={fill=gray!22}, pattern=north east lines, pattern color=gray!55,
+    \node[thin, draw=tkPurple!80!black, preaction={fill=tkFillPurple}, pattern=north east lines, pattern color=tkPurple!45,
           minimum width=1.10cm, minimum height=\lh cm, inner sep=0pt]
       at ({\pb*\u},-0.45) {3c softmax};
     \node[thin, draw, fill=gray!68, minimum width=0.92cm, minimum height=\lh cm, inner sep=0pt]
@@ -516,30 +516,30 @@ $K_{t+1}$ 则有整整一个迭代的余量。这与第~\ref{ch:11}~章 GEMM 的
                          evaluate=\tk as \vb using {4*\tk+2.40},
                          evaluate=\tk as \ka using {4*\tk+0.25},
                          evaluate=\tk as \kb using {min(4*\tk+4.00,12)}] in {0/{t-1}/t,1/t/{t+1},2/{t+1}/{t+2}}{
-    \draw[thin, fill=gray!25] ({\va*\u},-1.23) rectangle ({\vb*\u},-0.97);
+    \draw[thin, draw=tkBlue!80!black, fill=tkFillBlue] ({\va*\u},-1.23) rectangle ({\vb*\u},-0.97);
     \node at ({(\va+\vb)/2*\u},-1.10) {$V_{\tv}$ 在途｜3b+3c};
-    \fill[black] ({\va*\u},-1.10) circle (0.045);
-    \draw[thin, fill=gray!15] ({\ka*\u},-1.83) rectangle ({\kb*\u},-1.57);
+    \fill[tkBlue] ({\va*\u},-1.10) circle (0.045);
+    \draw[thin, draw=tkGreen!80!black, fill=tkFillGreen] ({\ka*\u},-1.83) rectangle ({\kb*\u},-1.57);
     \node at ({(\ka+\kb)/2*\u},-1.70) {$K_{\tkv}$ 在途｜整迭代余量};
-    \node[draw, fill=white, minimum size=0.10cm, inner sep=0pt] at ({\ka*\u},-1.70) {};
+    \node[draw=tkGreen!80!black, fill=white, minimum size=0.10cm, inner sep=0pt] at ({\ka*\u},-1.70) {};
   }
   % 等待点
-  \draw[dashed, thin] ({6.4*\u},0.28) -- ({6.4*\u},-2.30);
-  \draw[dashed, thin] ({8.0*\u},0.28) -- ({8.0*\u},-2.30);
-  \node[circle, draw, fill=white, minimum size=0.34cm, inner sep=0pt] at ({6.4*\u},-2.32) {1};
-  \node[circle, draw, fill=white, minimum size=0.34cm, inner sep=0pt] at ({8.0*\u},-2.32) {2};
-  \node[anchor=north west, align=left, text width=10.9cm] at (0.2,-2.72)
+  \draw[dashed, thin, tkOrange!60] ({6.4*\u},0.28) -- ({6.4*\u},-2.30);
+  \draw[dashed, thin, tkOrange!60] ({8.0*\u},0.28) -- ({8.0*\u},-2.30);
+  \node[circle, draw=tkOrange!85!black, fill=tkFillOrange, minimum size=0.34cm, inner sep=0pt] at ({6.4*\u},-2.32) {1};
+  \node[circle, draw=tkOrange!85!black, fill=tkFillOrange, minimum size=0.34cm, inner sep=0pt] at ({8.0*\u},-2.32) {2};
+  \node[anchor=north west, align=left, text width=10.9cm, text=tkOrange!80!black] at (0.2,-2.72)
     {(1) 3d 前 \texttt{wait\_group(1)}：只等 $V_t$——$K_{t+1}$ 是唯一允许继续在途的组};
-  \node[anchor=north west, align=left, text width=10.9cm] at (0.2,-3.16)
+  \node[anchor=north west, align=left, text width=10.9cm, text=tkOrange!80!black] at (0.2,-3.16)
     {(2) 迭代末 \texttt{wait\_group(0)}：$K_{t+1}$ 到齐后才进下一轮 3b（收口）};
   \node[anchor=north west, align=left, text width=10.9cm] at (0.2,-3.60)
     {实心圆 $=$ $V$ 的 commit；空心方 $=$ $K$ 的 commit（同一次 3a 内\textbf{先 V 后 K}，所以离栈顶最近的是 $K$）};
   % 泳道标签
   \node[anchor=east, font=\scriptsize] at (-0.12,-0.45) {计算（3b--3e）};
-  \node[anchor=east, font=\scriptsize] at (-0.12,-1.10) {搬运 $V$（3a）};
-  \node[anchor=east, font=\scriptsize] at (-0.12,-1.70) {搬运 $K$（3a 预取）};
+  \node[anchor=east, font=\scriptsize, text=tkBlue!80!black] at (-0.12,-1.10) {搬运 $V$（3a）};
+  \node[anchor=east, font=\scriptsize, text=tkGreen!80!black] at (-0.12,-1.70) {搬运 $K$（3a 预取）};
 \end{tikzpicture}
-\caption{\textbf{K 双缓冲、V 单级}的流水时序（16.4.5 节 3a 步，源码 L273--340 与 L563--569、L710--714 的图形化）。三个稳态迭代 $t{-}1/t/t{+}1$：每个迭代内 3a 依次提交两组搬运——$V_t$（实心圆，写当前 V buffer）与 $K_{t+1}$（空心方，写 \texttt{smem\_sel\_next}）。$V_t$ 的在途窗口（灰条）恰好覆盖同迭代的 3b（QK mma）与 3c（softmax）——softmax 全在 CUDA Core/SFU 上跑，正好填掉 V 的搬运延迟；$K_{t+1}$ 则有整整一个迭代的余量。两处等待：(1) 3d 前的 \texttt{wait\_group(1)} 只等 $V_t$，把 $K_{t+1}$ 留在途；(2) 迭代末（3e 之后）的 \texttt{wait\_group(0)} 收口 $K_{t+1}$ 才进下一轮 3b。与第~\ref{ch:11}~章 GEMM 的「kStages 全操作数统一多级」不同——attention 两段 mma 之间夹着一段非 mma 计算，天然提供了第二级的隐藏窗口，所以 \texttt{kStagesK}$=$2 就够（源码注释 L281「one stage is enough for V」）。}
+\caption{\textbf{K 双缓冲、V 单级}的流水时序（16.4.5 节 3a 步，源码 L273--340 与 L563--569、L710--714 的图形化）。三个稳态迭代 $t{-}1/t/t{+}1$：每个迭代内 3a 依次提交两组搬运——$V_t$（实心圆，写当前 V buffer）与 $K_{t+1}$（空心方，写 \texttt{smem\_sel\_next}）。$V_t$ 的在途窗口（蓝条）恰好覆盖同迭代的 3b（QK mma）与 3c（softmax）——softmax 全在 CUDA Core/SFU 上跑，正好填掉 V 的搬运延迟；$K_{t+1}$ 则有整整一个迭代的余量。两处等待：(1) 3d 前的 \texttt{wait\_group(1)} 只等 $V_t$，把 $K_{t+1}$ 留在途；(2) 迭代末（3e 之后）的 \texttt{wait\_group(0)} 收口 $K_{t+1}$ 才进下一轮 3b。与第~\ref{ch:11}~章 GEMM 的「kStages 全操作数统一多级」不同——attention 两段 mma 之间夹着一段非 mma 计算，天然提供了第二级的隐藏窗口，所以 \texttt{kStagesK}$=$2 就够（源码注释 L281「one stage is enough for V」）。}
 \label{fig:16-kv-pipeline}
 \end{figure}
 
@@ -557,12 +557,12 @@ $K_{t+1}$ 则有整整一个迭代的余量。这与第~\ref{ch:11}~章 GEMM 的
 沿 $d$ 方向 $D/kMmaAtomK = 4$ 次内循环，每次：Q 用
 \texttt{ldmatrix.x4} 装 \texttt{m16k16}（每 warp 只有 1 个
 \texttt{k\allowbreak{}Val\allowbreak{}Tile\allowbreak{}Seq\allowbreak{}Len\allowbreak{}Q} 块，地址 \texttt{warp\_QP*16 + lane\%16} 行、
-\texttt{tile\_K\_d*16 + (lane/16)*8} 列——与第~\ref{ch:11}~章
+\texttt{tile\_K\_d*16 + (lane/16)*8} 列，与第~\ref{ch:11}~章
 图~\ref{fig:11-1} 的四象限映射同型）；K 用 \texttt{ldmatrix.x2} 装
 \texttt{k16n8}（8 个 $j$ 块覆盖 $B_c$ 列，读 \texttt{smem\_sel} 级）；
 然后 8 条 \texttt{HMMA16816}。每 warp 每 tile 共 $4\times 8 = 32$ 条
 mma，产出 $\mathcal{R}_w$ 行 $\times$ $B_c$ 列的完整 $S_w$。Q fragment
-\texttt{R\_Q} 沿 $d$ 循环重装——它不像 GEMM 的 A 那样跨 $k$ 复用，
+\texttt{R\_Q} 沿 $d$ 循环重装。它不像 GEMM 的 A 那样跨 $k$ 复用，
 但 smem 源数据跨整个外循环 $T_c$ 次迭代不变，重装命中 L1 常驻数据，
 代价极低。\texttt{k\allowbreak{}Mma\allowbreak{}Acc\allowbreak{}F32=\allowbreak{}1} 时换 \texttt{HMMA16816\allowbreak{}F32}（fp32
 累加，4 个累加寄存器，L443--447），语义见第~\ref{ch:11}~章 11.3.1。
@@ -587,7 +587,7 @@ Pass 1 求本 tile 的行 max：每 lane 先在 8 个 $j$ tile 上局部归约
 完成 $m^{\text{new}}=\max(m^{\text{old}}, m_{\text{tile}})$（L512--515）、
 逐元素 $P=\exp(\mathrm{FMA}(S, s, -m^{\text{new}}))$ \textbf{原地写回
 \texttt{R\_S}}（f16 路径 \texttt{\_\allowbreak{}\_\allowbreak{}float22half2\_\allowbreak{}rn}，L545--546；
-f32 路径写 half 视图，L528--531——两条路径的 $P$ 都落 half 精度，
+f32 路径写 half 视图，L528--531，两条路径的 $P$ 都落 half 精度，
 这是精度分析的关键输入）、行内求和得 $\ell$ 增量并 4-lane 归约。
 exp 走 \texttt{\_\_expf}（SFU 快速近似），max/sum 全程 fp32。
 
@@ -604,7 +604,7 @@ exp 走 \texttt{\_\_expf}（SFU 快速近似），max/sum 全程 fp32。
 沿 KV 方向 $B_c/kMmaAtomK=4$ 次 \texttt{tile\_V\_Bc}，每次
 \texttt{ldmatrix.\allowbreak{}x2.trans} 装 16 行 $\times$ 8 列的 $V$ 块（B 侧），
 A 侧直接把 \texttt{R\_S[i][w]}, \texttt{R\_S[i][w+1]} 四个寄存器按
-[左上, 左下, 右上, 右下] 喂给 \texttt{HMMA16816}（L633--636）——
+[左上, 左下, 右上, 右下] 喂给 \texttt{HMMA16816}（L633--636），
 16.3.3 节的拼接几何在此落地。每 warp 每 tile 又是 $4\times 8=32$ 条
 mma，产出 \texttt{R\_O}（16 行 $\times$ 64 列，本 tile 的
 $P V_t$，未 rescale）。
@@ -624,8 +624,8 @@ $\alpha = e^{m^{\text{old}}-m^{\text{new}}}$ 在 L666--669 对 16 行各算
 一份（$\pm 8$ 行两个寄存器各一）。rescale 与累加融合：
 $\texttt{R\_D} = \mathrm{FMA}(\alpha, \texttt{R\_D}, \texttt{R\_O})$
 （L687--690），$(m,\ell)$ 同步推进（L699--705）。迭代末若还有下一轮，
-\texttt{wait\_\allowbreak{}group\allowbreak{}(0)} 确保 $K_{t+1}$ 就绪再进下一轮 3b（L710--714）
-——K 的等待点放在外循环\textbf{末}而非 3b 前，使 $K_{t+1}$ 的搬运
+\texttt{wait\_\allowbreak{}group\allowbreak{}(0)} 确保 $K_{t+1}$ 就绪再进下一轮 3b（L710--714）：
+K 的等待点放在外循环\textbf{末}而非 3b 前，使 $K_{t+1}$ 的搬运
 与整段 3b--3e 计算重叠，这是 \texttt{kStagesK}$=$2 流水时序的收口。
 
 \subsection{Step 4/5：最终归一化与 epilogue 写回}
@@ -716,7 +716,7 @@ $\mathrm{g}{+}8$（L782--785），行号由 \texttt{Q\_tile\_id}、
 \textbf{算术强度。}稳态下每个外循环迭代：计算量
 $4 B_r B_c D$ FLOP（$QK^\top$ 与 $PV$ 各 $2B_rB_cD$）；搬运量
 $(K_t + V_t) = 2 B_c D \cdot 2$~B（Q 已摊销到 $T_c$ 次迭代）。
-$AI = \frac{4 B_r B_c D}{4 B_c D} = B_r = 128$~FLOP/B（half 口径）——
+$AI = \frac{4 B_r B_c D}{4 B_c D} = B_r = 128$~FLOP/B（half 口径），
 与第~\ref{ch:11}~章 GEMM 的 $2B_K=32$~FLOP/B 相比高 4 倍，
 compute-bound 无悬念，优化重心在 mma 密度与流水，不在带宽。
 
@@ -740,7 +740,7 @@ F32Acc（kMmaAccF32$=$1） & 0.7814 & 175.88 & — \\
 
 两点观察：（1）F16Acc 复测与源码注释的 166.6 TFLOPS 几乎逐位吻合，
 说明该注释口径可复现（注释未注明 acc 变体，对照时应以 F16Acc 为准）；
-（2）\textbf{F32Acc 反而更快}（$+5.6\%$）——f32 累加寄存器翻倍（每 tile
+（2）\textbf{F32Acc 反而更快}（$+5.6\%$）：f32 累加寄存器翻倍（每 tile
 4 个 \texttt{.b32}）并不吃亏，反而省掉了 3c/3e 里 half$\leftrightarrow$float
 的整簇转换指令（f16 路径每元素两次打包/拆包），ALU 压力更小。
 这与第~\ref{ch:11}~章 GEMM 的直觉（f16 acc 更快）相反，是 attention
@@ -750,7 +750,7 @@ F32Acc（kMmaAccF32$=$1） & 0.7814 & 175.88 & — \\
 profile 消融）：compact XOR swizzle（kPad$=$0，物理布局
 $[\mathrm{col}/16][\mathrm{row}][16]$）虽省 5~KiB smem 并消除了目标
 ldmatrix pattern 的 bank conflict，却把 cp.async（LDGSTS）的
-destination pattern 打散——wavefront 从 30.15M 涨到 68.16M（2.26x），
+destination pattern 打散：wavefront 从 30.15M 涨到 68.16M（2.26x），
 long-scoreboard / LG-throttle / MIO-throttle stall 分别放大
 3.25x/2.74x/1.60x，整体只有 120.0 TFLOPS，显著低于 pad$=$8 的
 166.6。\textbf{评价 shared layout 必须同时看 ldmatrix 读与 cp.async
@@ -783,12 +783,12 @@ FA2 MMA Stages (Sk=2, SwizzleQ, F32Acc) & 1.526e-05 & 163.8/230.2 (0.71x) \\
 \end{table}
 
 三点观察：（1）\textbf{$kStagesK{=}2$ 双 stage 相比 $kStagesK{=}1$
-提升明显}——f16 路径 127.6$\to$156.3（$+22\%$），f32 路径
+提升明显}：f16 路径 127.6$\to$156.3（$+22\%$），f32 路径
 140.9$\to$163.5（$+16\%$），多一级 K 流水把 cp.async 的加载与
 mma 计算更好地重叠，掩盖了 $B_c$ 列 K tile 的装载延迟；（2）
 \textbf{F32Acc 在精度提升约 16 倍}（1.526e-05 vs 2.441e-04，f32
 vs f16 累加）\textbf{的同时速度反而更快}（同 Sk 下 $+10\%\sim11\%$），
-与上文复测结论一致——省掉 3c/3e 的 half$\leftrightarrow$float
+与上文复测结论一致：省掉 3c/3e 的 half$\leftrightarrow$float
 整簇转换指令比 f32 累加器的寄存器开销更值；（3）\textbf{SwizzleQ}
 相对 Pad 的边际改善很小（163.8 vs 163.5，$+0.2\%$），大 $N$ 下
 swizzle 只微调 bank/wavefront 分布，不改变 compute-bound 本质。
@@ -842,7 +842,7 @@ swizzle 只微调 bank/wavefront 分布，不改变 compute-bound 本质。
 
 \textbf{坑一：$N$ 不是 $B_c$ 的倍数。}外循环
 $T_c=\lceil N/B_c\rceil$ 用了 ceil 写法，但 3a 的 K/V 加载没有任何
-尾 tile 边界处理——最后一个不完整 tile 会\textbf{越界读} gmem 并把
+尾 tile 边界处理，最后一个不完整 tile 会\textbf{越界读} gmem 并把
 垃圾算进 softmax（L125--127 注释已自我声明「不等于当前实现已经完整
 处理了尾 tile」）。同理 store 侧要求 $N\%B_r=0$。正确用法：seqlen
 按 64/128 对齐，或在调用前 pad。
@@ -850,7 +850,7 @@ $T_c=\lceil N/B_c\rceil$ 用了 ceil 写法，但 3a 的 K/V 加载没有任何
 \textbf{坑二：smem 45~KiB 的悬崖。}默认配置
 $(128{+}2{\times}64{+}64)\times72\times2 = 46080$~B，恰在 48~KiB
 动态 smem 默认上限之下；把 $B_r$ 提到 256 或 \texttt{kStagesK}$=$3
-立刻超限，launch 报 \texttt{invalid argument}——必须先
+立刻超限，launch 报 \texttt{invalid argument}，必须先
 \texttt{cuda\allowbreak{}Func\allowbreak{}Set\allowbreak{}Attribute} 抬高
 \texttt{cuda\allowbreak{}Func\allowbreak{}Attribute\allowbreak{}Max\allowbreak{}Dynamic\allowbreak{}Shared\allowbreak{}Memory\allowbreak{}Size}。notes-v2 与
 本章测试即使在 45~KiB 下也显式设置，作为防御性习惯。
@@ -875,14 +875,14 @@ $\sim 1.4\times10^{-4}$（$N{=}256$）。但若输入幅值大、$N$ 上千，
 恰好按 mma 期望的四象限序拼成 \texttt{m16k16} A。换了 atom 形状
 （如 \texttt{m16n8k8}）、换了 tile 排布方向，或对 fragment 做了重排，
 这条捷径就静默出错。源码 L52--58 与 L618--620 两处注释都在防这个
-过度泛化——面试时也常拿它设陷阱。
+过度泛化，面试时也常拿它设陷阱。
 
 \textbf{坑六：cp.async 组记账要跨步骤对账。}一个迭代内两组 commit
 （$V_t$、$K_{t+1}$），等待点却分布在 3d 前（wait(1)，只保证 $V_t$）
 与 3e 后（wait(0)，保 $K_{t+1}$）；尾部迭代 $K$ 分支不 commit，
 组计数少一组但 wait(0) 语义仍是「在途组 $\le 0$」，安全。改造流水
 （如加 \texttt{kStagesV}$\ge$2）时必须重新推每处 wait 的在途组数，
-并与第~\ref{ch:10}~章的组语义对照——wait 等的是「未完成组
+并与第~\ref{ch:10}~章的组语义对照：wait 等的是「未完成组
 $\le N$」而非「第 $N$ 组完成」。
 
 \section{面试要点速查}
@@ -906,7 +906,7 @@ A：Q tile 由 blockIdx.x 固定，整个外循环复用，一次 cp.async 进 s
 A：布局契约（16.3.3 节）：列相邻两个 \texttt{m16n8} C fragment
 （\texttt{R\_S[i][w]}, \texttt{R\_S[i][w+1]}）的每 lane 寄存器对，
 按 [左上,左下]/[右上,右下] 恰好拼成 \texttt{m16k16} A fragment 的
-$\{a_0..a_3\}$/$\{a_4..a_7\}$——$w=2\,\texttt{tile\_V\_Bc}$ 的索引
+$\{a_0..a_3\}$/$\{a_4..a_7\}$，$w=2\,\texttt{tile\_V\_Bc}$ 的索引
 由此而来。仅对本 atom 与本 tile 排布成立。
 
 \textbf{Q4：online softmax 的行 max/sum 归约宽度为什么是 4 不是 32？}\\
@@ -916,7 +916,7 @@ $\mathrm{tig}$ 分列对），\texttt{warp\_\allowbreak{}reduce\_\allowbreak{}ma
 
 \textbf{Q5：K 用 ldmatrix 不加 \texttt{.trans}、V 却要加，为什么？}\\
 A：mma 的 B 一律要 \texttt{.col} fragment。K 以 $[B_c,d]$ 行主序
-存储，其行即 $K^\top$ 的列——非 trans 装载直接给出列主序 B
+存储，其行即 $K^\top$ 的列，非 trans 装载直接给出列主序 B
 （TN 姿势，同第~\ref{ch:11}~章）；V 参与 $P@V$（NN 姿势），B 是
 $V_t$ 本身而 V 按行主序存，必须 \texttt{.trans} 按列装载。
 

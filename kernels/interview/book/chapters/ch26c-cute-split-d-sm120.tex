@@ -1,0 +1,881 @@
+% ch26c-cute-split-d-sm120.tex — CuTe 应用（五）：SM120 大 head_dim Split-D
+% non-WS 全员 MMA 流水（2026-09-23，源码 ffpa_attn.cuh L642-1307）
+% 图：全 TikZ（沿用 ch26b 先例）；代码段引用 ../ffpa_attn.cuh linerange。
+\chapter{CuTe 应用（五）：SM120 大 head\_dim Split-D——non-WS 全员 MMA 流水}\label{ch:26c}
+
+\section{本章导读}
+
+第~\ref{ch:26}~章结束的时候，Split-D 的 CuTe 版是一台 145 TFLOPS 的机器：
+64$\times$64 tile、TMA + warp specialization、单 consumer warpgroup。它把
+「大 $D$ 怎么分块」的类型代数讲清楚了，但执行协议还是教学级的。本章
+把 ffpa-attn 的 non-WS CuTe TMA kernel（\texttt{csrc/cuffpa/cute/sm\_120/split\_d.cuh}）
+以最小教学集移植进本书源码（ffpa\_attn.cuh L642--1307，\texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}CUTE}
+与 \texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}TMA\_\allowbreak{}MMA\_\allowbreak{}WS}
+双宏块）——本实现与 ffpa-attn 的 cute sm\_120 split\_d \textbf{同源}，
+在 RTX PRO 5000 上把 $B{=}1$/$H{=}32$/$N{=}8192$/$D{=}320$
+dense 场景推到 \textbf{204.1 TFLOPS}——cuDNN SDPA（69.7）的 2.93 倍、
+上一章 WS 教学版（140.2）的 1.46 倍。这是全书大 head\_dim 路线的性能终点。
+
+本章的四条主线，每一条都是对 WS 教学版某个具体弱点的回应：
+
+\begin{itemize}[itemsep=1pt,topsep=2pt]
+  \item \textbf{tile 128$\times$128 与 M8N1 TiledMma}（\S\ref{sec:26c-tile}）：
+        同一份 K/V smem 数据服务的 Q 行翻倍，算术强度上一档；
+        8 个 warp 全部沿 M 堆叠、N 不切分，每 warp 持整行，
+        softmax 行归约退化为 warp 内 4-lane 蝴蝶，零跨 warp 通信；
+  \item \textbf{non-WS 执行模型}（\S\ref{sec:26c-nonws}）：256 线程全员
+        MMA，\texttt{tid=0} 在消费循环里内联发射 TMA——WS 版一半线程专职
+        producer 不产 FLOPs，SM 的 MMA 吞吐直接砍半，这是 145$\to$190 的
+        最大单项；QK 与 PV 两套互不相交的 barrier 集撑起独立流水深度，
+        并让「下一 kv\_tile 的 QK 预取」与「本 tile 的 softmax+PV」重叠；
+  \item \textbf{STSM + TMA store 批量 epilogue}（\S\ref{sec:26c-epilogue}）：
+        O 累加器经 \texttt{stmatrix} 暂存（复用已释放的 QKV smem）再按
+        bulk group 批量 TMA 写回，替代 WS 版的逐元素寄存器直写 gmem；
+  \item \textbf{FA-4 条件重缩放与流水深度解耦}（\S\ref{sec:26c-rescale}、
+        \S\ref{sec:26c-perf}）：max 增长不足 $2^8$ 时跳过整个
+        $O$ 重缩放循环（warp vote 保证无分支发散）；$S_K$ 与 $S_V$
+        作为独立模板参数分开调，实测 D$\le$320 最优组合是 $(3,2)$——
+        加深 QK 流水 +8.4\%，加深 V 流水反而亏。
+\end{itemize}
+
+\textbf{前置章节}：第~\ref{ch:15}--\ref{ch:16}~章（attention 数学与 online
+softmax）、第~\ref{ch:17}~章（TMA 与 mbarrier 协议）、第~\ref{ch:19}~章
+（Split-D 的 chunk 分解数学与寄存器账本——本章不再重推）、第~\ref{ch:21}--\ref{ch:23}~章
+（TiledCopy/TiledMMA/swizzle）、第~\ref{ch:25}--\ref{ch:26}~章（CuTe FA
+工具函数与 WS 版类型代数）、第~\ref{ch:26b}~章（FA-4 条件重缩放的数学，
+式~(26b.4)）。\textbf{源码区间}：ffpa\_attn.cuh L642--1307。\textbf{编译宏}：
+\texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}CUTE} +
+\texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}TMA\_\allowbreak{}MMA\_\allowbreak{}WS}，
+目标 \texttt{sm\_120a}。kernel 只依赖 sm\_80 级 mma.sync 与 sm\_90 级
+TMA/mbarrier/STSM，任何 Blackwell 显卡可运行。\textbf{教学裁剪}：无
+bias/dropout/GQA/NHD/causal；保留 Nkv 边界 mask 与 LSE 输出；
+要求 $N_q \bmod 128 = 0$（epilogue 恒走整 tile STSM+TMA 路径）。
+
+\section{问题与动机：WS 教学版输在哪里}\label{sec:26c-motivation}
+
+先把账摊开。同一块 RTX PRO 5000（110 SM）、同一 bench 口径
+（$B{=}1$/$H{=}32$/$D{=}320$ fp16 dense，成对同轮测量）：
+
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+实现 & TFLOPS & 相对 cuDNN & 相对 WS(2,2) \\
+\midrule
+cuDNN SDPA & 69.7 & 1.00$\times$ & --- \\
+WS 教学版 (1,1)（第~\ref{ch:26}~章） & 86.7 & 1.24$\times$ & 0.62$\times$ \\
+WS 教学版 (2,2) & 140.2 & 2.01$\times$ & 1.00$\times$ \\
+本章 non-WS (2,2) & 188.3 & 2.70$\times$ & 1.34$\times$ \\
+本章 non-WS (3,3) & 188.5 & 2.70$\times$ & 1.34$\times$ \\
+\textbf{本章 non-WS (3,2)} & \textbf{204.1} & \textbf{2.93$\times$} & \textbf{1.46$\times$} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+（本章实现与 ffpa-attn 的 cute sm\_120 split\_d 同源，stages 同样
+经模板参数独立可调；上表只对照本章自有的 WS 教学版与 cuDNN。）
+
+从 140 到 204 的 45\% 差距，逐项拆开是四个结构性问题。
+
+\textbf{第一，WS 的代价：producer 不产 FLOPs。}WS 教学版 256 线程里
+128 个是 producer（只发 TMA），真正做 MMA 的只有单 consumer warpgroup
+的 128 线程。SM 上张量核的喂料 warp 数直接砍半。第~\ref{ch:26b}~章的
+D=128 场景里，WS 换来的是 Q 持久化与 \texttt{setmaxnreg} 的寄存器让渡，
+划算；但 Split-D 的 O 累加器（$32 \times C$ 个 f32/线程，第~\ref{ch:19}~章
+寄存器账本）本来就把寄存器预算吃到 255 上限附近，
+\texttt{setmaxnreg} 让渡不了多少，WS 的收益侧消失、成本侧全留——
+这是大 $D$ 路线选 non-WS 的根本理由。
+
+\textbf{第二，tile 64$\times$64 的算术强度太低。}K/V 的一个
+$64\times D$ chunk 从 gmem 搬进 smem，只服务 64 行 Q。tile 升到
+$128\times128$ 后同一份 K/V 服务 128 行 Q，搬运量减半而计算量不变。
+更关键的是 smem 预算：64$\times$64 时代 chunk 宽 64，128$\times$128
+时代若 chunk 仍取 64，$Q{+}K$ 每 stage 要
+$128{\times}64{\times}2 \times 2 = 32$\,KB；把 Q/K chunk 降到 32（V/O 保持
+64），每 stage 只要 16\,KB——同预算装下更宽的 tile 与更深的流水。
+chunk 宽 32 的 swizzle 相应从 SW128 退到 SW64（行 64\,B 恰好一个
+swizzle 周期，\S\ref{sec:26c-tile}）。
+
+\textbf{第三，写回通道逐元素化。}WS 教学版的 epilogue 是寄存器逐元素
+直写 gmem（每线程 32 个 $C$ 分量循环写）。non-WS 版走完整反向链：
+f16 转换 $\to$ \texttt{stmatrix}（STSM）暂存 smem $\to$ TMA store 批量
+写回，与装载的 TMA 全链对称。
+
+\textbf{第四，每 tile 的 rescale 白做。}FA-2 式无条件重缩放在
+$D{=}320$（每 kv\_tile 10 个 QK chunk、5 个 PV chunk）下，每个 tile
+都要对 160 个 f32 寄存器的 O 累加器乘一次 \texttt{row\_scale}。FA-4 的
+条件重缩放（第~\ref{ch:26b}~章式~(26b.4)，$\tau = 8$）让 95\%+ 的 tile
+整个跳过这个循环。
+
+还有一项只赚不赔的结构红利：\textbf{跨 kv\_tile 预取}。WS 版的
+producer/consumer 分工里，下一 tile 的装载要等本 tile 消费腾出 stage；
+non-WS 版把 QK 与 V 拆成两套互不相交的 barrier 集，下一 tile 的 QK
+初始 chunk 可以在本 tile 的 softmax+PV 窗口里提前发出（\S\ref{sec:26c-prefetch}）。
+
+\section{协议设计}
+
+\subsection{tile 几何与 smem 预算：chunk 解耦}\label{sec:26c-tile}
+
+协议全部参数集中在 traits 里，先看账本：
+
+\begin{lstinputlisting}[linerange={699-721},firstnumber=auto,
+  title={ffpa\_attn.cuh L699-721（traits：协议参数与 smem 公式）}]{../ffpa_attn.cuh}
+\end{lstinputlisting}
+
+四组参数各司其职。\textbf{tile 几何}：$k_{Br}{=}k_{Bc}{=}128$，
+$k_{NumThreads} = 128/16 \times 32 = 256$。\textbf{chunk 解耦}：
+$k_{QKDChunk}{=}32$、$k_{VDChunk}{=}64$——Q/K 与 V/O 的 D 向切块宽度
+不同，$k_{DChunksQK} = D/32$ 个 QK chunk 对 $k_{DChunksV} = D/64$ 个
+PV chunk（D=320 时 10 对 5）。\textbf{流水深度解耦}：
+$k_{StagesQK}$ 与 $k_{StagesPV}$ 是两个独立模板参数，\S\ref{sec:26c-perf}
+的实验会证明最优值是 $(3,2)$ 而不是对称的 $(3,3)$。\textbf{smem 公式}：
+\begin{equation}\label{eq:26c-smem}
+  \text{smem} = \underbrace{S_K \cdot (128{\times}32 + 128{\times}32)}_{\text{Q+K，每 stage }16\text{KB}}
+  \;+\; \underbrace{S_V \cdot 128{\times}64}_{\text{V，每 stage }16\text{KB}}
+  \;=\; 16\,(S_K + S_V)\ \text{KB} ,
+\end{equation}
+$(2,2){=}64$\,KB、$(3,2)/(2,3){=}80$\,KB、$(3,3){=}96$\,KB（fp16）。
+Q 每 kv\_tile 重装（它不属于持久化协议），所以 Q 也吃 $S_K$ 份 stage。
+注意 smem 与 $D$ 无关——chunk 宽度固定，$D$ 只决定 chunk 个数。
+
+chunk 宽度还决定 swizzle atom 的选择，规则与第~\ref{ch:23}~章一致
+（行字节数 $\times$ 2B 对 128/64 的整除性），但这里按 chunk 而不是按
+$D$ 选：
+
+\begin{lstinputlisting}[linerange={736-756},firstnumber=auto,
+  title={ffpa\_attn.cuh L736-756（chunk 尺寸决定 swizzle；M8N1 双 TiledMma；装载/写回 atom）}]{../ffpa_attn.cuh}
+\end{lstinputlisting}
+
+Q/K chunk 行宽 32$\times$2$=$64\,B，SW64 的一个 swizzle 周期恰好覆盖，
+用 SW128 反而浪费（padding 到 128\,B 行）；V/O chunk 行宽 128\,B 落回
+SW128。\texttt{SmemLayoutVt} 是 V 的转置\textbf{视图}（composition，不
+物化），PV 的 B-operand 以 $D_c \times B_c$ 列主视图交给
+\texttt{LDSM\_T}。\texttt{SmemLayoutO} 与 V 同 atom——epilogue 复用已
+释放的 QKV smem 时布局对得上（\S\ref{sec:26c-epilogue}）。
+
+\subsection{M8N1 TiledMma：warp 持整行，softmax 归约零跨 warp}\label{sec:26c-mma}
+
+QK 与 PV 共用 m16n8k16 atom（sm\_120 唯一张量核路径，第~\ref{ch:26b}~章
+已论证），差别在 TiledMma 的 warp 摆法。两处 \texttt{Layout<Shape<8,1,1>>}
+把 8 个 warp \textbf{全部沿 M 堆叠、N 不切分}（M8N1）：每个 warp 独占
+$S$ tile 的 16 行\textbf{整行}。这带来一个 softmax 侧的直接收益——
+m16n8k16 的 C-fragment 约定下，一行 128 个分数散在同 warp 的 4 个 lane
+（每 lane 2$\times$8 列块中的 2 份），行 max / 行 sum 的归约只需要
+warp 内 \texttt{\_\_shfl\_xor} 两轮（1 与 2 的蝴蝶，\S\ref{sec:26c-rescale}），
+\textbf{没有任何跨 warp 的 smem 归约}。第~\ref{ch:26}~章 WS 版的
+64$\times$64 tile 下 warp 沿 N 也要切，归约需要先跨 warp——M8N1 是
+128 宽 tile 买一送一的礼物。代价是 PV 的 N 维只有 $k_{VDChunk}{=}64$：
+单 warp 的 PV MMA 每次算 $16\times64$，由
+\texttt{gemm\_rs}（第~\ref{ch:25}~章）内部按 atom 循环展开，不影响
+协议。
+
+装载/写回 atom：Q/K 用 \texttt{U32x4\_LDSM\_N}（128 bit 对齐直读），
+V 用 \texttt{U16x8\_LDSM\_T}（转置装载），O 写回用
+\texttt{SM90\_U32x4\_STSM\_N}（\texttt{stmatrix}，\S\ref{sec:26c-epilogue}）。
+
+\subsection{non-WS 执行模型：全员 MMA 与内联 TMA}\label{sec:26c-nonws}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  font=\footnotesize,
+  wg/.style={draw, thick, rounded corners=2pt, minimum width=5.2cm, minimum height=1.35cm, inner sep=4pt, align=center},
+  arr/.style={-{Stealth[length=2.2mm]}, thick},
+]
+% WS side
+\begin{scope}
+  \node[wg, draw=tkBlue, fill=tkFillBlue] (prod) at (0,0)
+    {\textbf{producer}：128 T（4 warp）\\
+     {\scriptsize 专职 TMA 发射 + mbarrier，产 0 FLOPs}};
+  \node[wg, draw=tkGreen, fill=tkGreen!8] (cons) at (0,-2.9)
+    {\textbf{consumer}：128 T（4 warp）\\
+     {\scriptsize LDSM + mma.sync + softmax}};
+  \node[wg, draw=tkPurple, fill=white, minimum width=2.2cm, minimum height=2.6cm] (smem) at (4.4,-1.45) {SMEM\\{\scriptsize 64$\times$64}\\{\scriptsize tile}};
+  \draw[arr, tkBlue] (prod.east) -- node[above, font=\tiny, sloped] {TMA} (smem.north west);
+  \draw[arr, tkGreen] (smem.south west) -- node[above, font=\tiny, sloped] {LDSM} (cons.east);
+  \node[font=\scriptsize, anchor=north] at (2.0,-4.4) {MMA warp 数 = 4/SM slot};
+\end{scope}
+% non-WS side
+\begin{scope}[shift={(9.6,0)}]
+  \node[wg, draw=tkGreen, fill=tkGreen!8] (all) at (0,-1.45)
+    {\textbf{全员 consumer}：256 T（8 warp）\\
+     {\scriptsize LDSM + mma.sync + softmax + rescale}\\
+     {\scriptsize \texttt{tid=0} 兼职发 TMA（内联，非专职）}};
+  \node[wg, draw=tkPurple, fill=white, minimum width=2.2cm, minimum height=2.6cm] (smem2) at (4.4,-1.45) {SMEM\\{\scriptsize 128$\times$128}\\{\scriptsize tile}};
+  \draw[arr, tkOrange] (all.east) to[bend left=18] node[above, font=\tiny, sloped] {tid=0 TMA} (smem2.north west);
+  \draw[arr, tkGreen] (smem2.south west) -- node[above, font=\tiny, sloped] {全员 LDSM} (all.east);
+  \node[font=\scriptsize, anchor=north] at (2.0,-4.4) {MMA warp 数 = 8/SM slot（翻倍）};
+\end{scope}
+% vs marker（两图空隙中点：左 smem 右缘 5.5，右 consumer 左缘 7.0）
+\node[font=\large\bfseries, tkRed] at (6.25,-1.45) {vs};
+\end{tikzpicture}
+\caption{WS 与 non-WS 执行模型对照。左（第~\ref{ch:26}~章 WS 教学版）：
+128 线程专职 producer 与 128 线程 consumer 分工，smem 为交接面——搬运与
+计算解耦的代价是 SM 上做 MMA 的 warp 只剩一半。右（本章）：256 线程全员
+consumer，\texttt{tid=0} 在消费循环内联发射 TMA（发射指令本身不占独立
+warp 的时间片，只占少量指令槽）；tile 同步升到 128$\times$128，MMA warp
+数翻倍、算术强度上一档。大 $D$ 下 O 累加器吃满寄存器预算，
+\texttt{setmaxnreg} 让渡不动，WS 的收益侧消失——non-WS 成为唯一选择。}
+\label{fig:26c-arch}
+\end{figure}
+
+non-WS 不是「没有 warp specialization」这么简单，它要求发射 TMA 的
+线程同时是消费线程，协议上有两个硬约束。其一，\textbf{发射点必须
+挂在消费依赖之后}：\texttt{tid=0} 要复写某个 stage，必须先等全 CTA 的
+256 个线程都消费完（\texttt{qk\_empty} 的 init count 是
+$k_{NumThreads}$），而 \texttt{tid=0} 自己也是消费者之一——预取代码若
+挪到 \texttt{gemm\_ss} 之前，\texttt{tid=0} 会卡在等待一个需要它自己
+参与释放的 barrier 上，确定性死锁（源码注释原话）。其二，\textbf{发射
+路径要短}：发射代码混在 MMA 循环里，每次发射的指令数直接挤占
+tensor core 喂料带宽——所以发射被封装成两个 lambda，每个只做
+\texttt{fence} + \texttt{arrive\_and\_expect\_tx} + \texttt{copy} 三步。
+
+smem 与 barrier 的静态布局如下，注意 Q/K 共用 $S_K$ 份、V 独占
+$S_V$ 份：
+
+\begin{lstinputlisting}[linerange={880-913},firstnumber=auto,
+  title={ffpa\_attn.cuh L880-913（smem 三段池；full/empty 双 barrier 集初始化）}]{../ffpa_attn.cuh}
+\end{lstinputlisting}
+
+\texttt{qk\_full}/\texttt{v\_full} 是\textbf{事务屏障}（TmaBarrier，
+init$=$1）：\texttt{tid=0} \texttt{arrive\_and\_expect\_tx} 声明本 stage
+期望的字节数，TMA 写完自动翻转。\texttt{qk\_empty}/\texttt{v\_empty} 是
+\textbf{计数屏障}（CtaBarrier，init$=$256）：每个消费线程 arrive 一次，
+凑满后 \texttt{tid=0} 才能复写。两套 barrier 集合完全不相交——这是
+\S\ref{sec:26c-prefetch} 跨 tile 预取零死锁的全部秘密。QK 与 PV 的
+chunk 序号统一编址：
+\begin{equation}\label{eq:26c-phase}
+  \text{chunk\_index} = \text{kv\_tile} \cdot k_{DChunks} + d,\qquad
+  \text{stage} = \text{chunk\_index} \bmod S,\qquad
+  \text{phase} = \big\lfloor \text{chunk\_index}/S \big\rfloor \,\&\,1,
+\end{equation}
+与第~\ref{ch:19}~章 19.2.5 节的相位账本同构，区别只有：QK 流水与
+V 流水各自维护一套 \texttt{chunk\_index}（除数分别是
+$k_{DChunksQK}$/$k_{DChunksV}$），互不干扰。
+
+发射 lambda 本体（两个结构对称，QK 版多一个 Q 的 co-copy）：
+
+\begin{lstinputlisting}[linerange={975-1006},firstnumber=auto,
+  title={ffpa\_attn.cuh L975-1006（\texttt{issue\_qk\_tma}/\texttt{issue\_v\_tma}：tid=0 内联发射）}]{../ffpa_attn.cuh}
+\end{lstinputlisting}
+
+Q 与 K 的 chunk 在同一个 \texttt{expect\_tx} 里声明（字节数相加，
+一次事务屏障管两份拷贝），\texttt{local\_tile} 的第五参 \texttt{\_1\{\}}
+声明沿 minor 维一次搬满。K/V 的 gmem 坐标要先经
+\texttt{domain\_offset} 偏到 head 段（$h \cdot N_{kv}$ 未必 128 对齐，
+$N_{kv}$ 非 $k_{Bc}$ 倍数时直接用全局 tile 索引会串到相邻 head 的行，
+本章测试的 $N_{kv}{=}192$ 用例就是为这条边界写的）。
+
+初始预取在主循环之前把两条流水都填满：
+
+\begin{lstinputlisting}[linerange={1008-1026},firstnumber=auto,
+  title={ffpa\_attn.cuh L1008-1026（初始预取：QK 填满 $S_K$，V 填满 $S_V$）}]{../ffpa_attn.cuh}
+\end{lstinputlisting}
+
+值得看的是 \textbf{V 的初始预取位置}：V 与 QK 无数据依赖，在第一个
+QK GEMM 之前就把 $S_V$ 份 V chunk 发出去，V 的 TMA 传输重叠掉整个
+首个 QK GEMM + softmax 窗口。此后每个 kv\_tile 开头再补发本 tile 的
+首批 V（L1030--1040），同样领先于 QK 消费。
+
+\subsection{Phase 1：QK split-D 累加与领先预取}\label{sec:26c-qk}
+
+主循环体（\texttt{\#pragma unroll 1}：kv\_tile 循环不展开，控制
+icache 与寄存器压力）内的 QK 相位：
+
+\begin{lstinputlisting}[linerange={1043-1082},firstnumber=auto,
+  title={ffpa\_attn.cuh L1043-1082（Phase 1：chunk 流水上的 $S=\sum_d Q_d K_d^\top$）}]{../ffpa_attn.cuh}
+\end{lstinputlisting}
+
+逐行拆解。\textbf{L1043--1044}：S 的 f32 累加器 fragment 每 tile 清零
+（split-D 的 $S$ 是 tile 内变量，不跨 tile）。\textbf{L1047--1052}：
+按式~\eqref{eq:26c-phase} 分解出 (stage, phase)，等 \texttt{qk\_full}
+的数据就绪。\textbf{L1054--1064}：\texttt{partition\_fragment\_A/B} 在
+寄存器里切出本线程的 Q/K fragment，\texttt{gemm\_ss}（第~\ref{ch:25}~章
+工具）完成 LDSM + mma.sync 的 k-loop——10 个 chunk 循环下来
+$S = \sum_{d} Q_{[:,d]} K_{[:,d]}^\top$，正是第~\ref{ch:19}~章 19.2.2 节
+「精确、无权重」的分块分解在 CuTe 上的直接落地。
+\textbf{L1066}：全线程 arrive \texttt{qk\_empty}，stage 归还。
+\textbf{L1072--1081}：\texttt{tid=0} 领先 $S_K$ 个 chunk 预取下一个
+（\texttt{d\_next = d\_chunk + kStagesQK}）。注释里的死锁警告值得原文
+复读：预取不能移到 \texttt{gemm\_ss} 之前，因为
+$s_{next} = stage$ 且 $phase_{next} = 1 - phase$，wait 门控在\textbf{本
+迭代}的 arrive 上，提前了 \texttt{tid=0} 就在等一个需要它自己参与
+\texttt{gemm\_ss} 才能释放的 barrier。
+
+\subsection{跨 tile 预取：barrier 集不相交的红利}\label{sec:26c-prefetch}
+
+QK 相位结束时，本 tile 的 K 已消费完、Q 也不再需要，但 softmax 与
+PV 还要跑一整段。此时 QK 的 stage 池整体空闲——下一 tile 的初始
+QK chunk 现在就发：
+
+\begin{lstinputlisting}[linerange={1083-1094},firstnumber=auto,
+  title={ffpa\_attn.cuh L1083-1094（跨 tile 预取：下一 tile 的 QK 初始 chunk）}]{../ffpa_attn.cuh}
+\end{lstinputlisting}
+
+这段代码能放在 softmax/PV 之前的前提，是 \textbf{QK barrier 集与
+V barrier 集不相交}：它等待的 \texttt{qk\_empty} 由 Phase 1 的 arrive
+释放，与 softmax 要等的 \texttt{v\_full}、PV 要 arrive 的
+\texttt{v\_empty} 没有任何交集，所以不可能与后续相位互相等待。
+时序上的效果是：下一个 tile 的 Q chunk + K chunk 的 TMA 传输，
+完全被本 tile 的 softmax（纯寄存器 + shfl）与 PV GEMM 掩盖。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  font=\scriptsize,
+  lane/.style={minimum height=0.55cm, inner sep=1pt, align=center},
+  arr/.style={-{Stealth[length=1.8mm]}, thick},
+]
+\def\lw{15.4}
+% time axis
+\draw[-{Stealth}] (0,1.5) -- (\lw,1.5) node[right, font=\tiny] {时间};
+% tid=0 lane
+\node[anchor=east, font=\scriptsize\bfseries] at (-0.2,0.85) {tid=0 发射};
+\node[lane, draw=tkBlue, fill=tkFillBlue, minimum width=2.2cm] at (1.3,0.85) {QK$_0$..$_1$ 初装};
+\node[lane, draw=tkPurple, fill=tkPurple!8, minimum width=1.7cm] at (3.3,0.85) {V$_0$..$_1$ 初装};
+\node[lane, draw=tkBlue, fill=tkFillBlue, minimum width=3.4cm] at (6.4,0.85) {QK$_2$..$_9$ 领先 2 发射};
+\node[lane, draw=tkGreen!40, draw=tkGreen, minimum width=3.6cm] at (10.6,0.85) {下一 tile QK 初装（跨 tile 预取）};
+\node[lane, draw=tkPurple, fill=tkPurple!8, minimum width=2.4cm] at (14.0,0.85) {下一 tile V};
+% compute lanes
+\node[anchor=east, font=\scriptsize\bfseries] at (-0.2,0.0) {全员 MMA};
+\node[lane, draw=tkOrange, fill=orange!10, minimum width=3.4cm] at (3.0,0.0) {Phase 1：QK$_{0..9}$ GEMM};
+\node[lane, draw=gray, fill=gray!12, minimum width=2.6cm] at (6.3,0.0) {Phase 2：softmax+P};
+\node[lane, draw=orange!15, draw=tkOrange, minimum width=3.2cm] at (9.5,0.0) {Phase 3：PV$_{0..4}$ GEMM};
+\node[lane, draw=tkOrange, fill=orange!10, minimum width=3.4cm] at (13.2,0.0) {下一 tile Phase 1};
+% overlap marker
+\draw[tkRed, very thick, <->] (8.8,1.15) -- (12.4,1.15)
+  node[midway, above, font=\tiny, tkRed, align=center] {跨 tile 预取窗口：\\TMA 与 softmax+PV 重叠};
+% barrier annotation
+\node[anchor=east, font=\tiny, tkPurple, align=right] at (-0.25,-0.95) {V 流水独立};
+\node[lane, draw=tkPurple, fill=white, minimum width=6.0cm, font=\tiny] at (3.4,-0.95) {v\_full/v\_empty 与 qk\_\{full,empty\} 零交集};
+\draw[arr, tkPurple, dashed] (3.3,0.5) -- (5.0,-0.65);
+\draw[arr, tkBlue, dashed] (10.6,0.5) -- (11.5,-0.32);
+\end{tikzpicture}
+\caption{单 kv\_tile 内的相位时间线与跨 tile 预取（$S_K{=}S_V{=}2$、
+D=320 的 10+5 chunk 结构示意）。上线是 \texttt{tid=0} 的发射序列：初始
+预取填满两条流水，主循环内每个 QK chunk 消费完领先 $S_K$ 发下一个，
+V 预取每 tile 开头补一批；本 tile QK 相位一结束（stage 池整体空闲），
+立刻发射下一 tile 的初始 QK chunk。下线是全员 MMA 的计算序列。红色
+双箭头是本章协议的核心红利：下一 tile 的 QK 装载与本 tile 的
+softmax（纯寄存器 + shfl）和 PV GEMM 完全重叠——QK/V 两套 barrier 集
+不相交保证这段发射不会与后续相位互相等待。}
+\label{fig:26c-pipeline}
+\end{figure}
+
+\subsection{Phase 2：边界 mask、lazy rescale 与 P 的零拷贝}\label{sec:26c-rescale}
+
+softmax 相位从 Nkv 边界 mask 开始，到 P fragment 准备好结束：
+
+\begin{lstinputlisting}[linerange={1096-1131},firstnumber=auto,
+  title={ffpa\_attn.cuh L1096-1131（Phase 2：mask + online softmax + warp vote + P 零拷贝）}]{../ffpa_attn.cuh}
+\end{lstinputlisting}
+
+三段各有讲究。\textbf{mask（L1102--1117）}：尾部 kv\_tile 的越界列置
+$-\infty$——TMA 对 OOB 行不写 smem，残留值由 mask 覆盖；坐标来自
+identity tensor 经 TiledMMA C-partition 的行列重解释（第~\ref{ch:26}~章
+讲透的 \texttt{tScS\_rc} 技巧），mask 只剩坐标比较。
+\textbf{softmax（L1119--1121）}：\texttt{online\_safe\_softmax\_scaled}
+是本章的变体，与第~\ref{ch:26b}~章 \texttt{fa4} 版的差异只有一处——
+scale 没有折叠进 Q fragment（Q 每 tile 重装，折叠收益减半，不如直接在
+max/exp 循环里乘），数学上仍是式~(26b.1)--(26b.3) 加 FA-4 条件重缩放：
+
+\begin{lstinputlisting}[linerange={758-793},firstnumber=auto,
+  title={ffpa\_attn.cuh L758-793（\texttt{online\_safe\_softmax\_scaled}：蝴蝶归约 + 条件重缩放判定）}]{../ffpa_attn.cuh}
+\end{lstinputlisting}
+
+每行先在本地列里扫 tile max（乘 scale，log2 域），\texttt{shfl\_xor(1)}
+与 \texttt{shfl\_xor(2)} 两轮把 4 个 lane 的局部 max 归并成行 max——
+M8N1 布局（\S\ref{sec:26c-mma}）保证这 4 个 lane 就在同 warp，蝴蝶
+两轮全覆盖，\textbf{没有跨 warp 归约}。判定段是 FA-4 的原样移植：
+$\log_2\_\text{diff} \ge -\tau$（$\tau{=}8$）时 \texttt{row\_scale=1}、
+\texttt{row\_max} 保持 stale 值，\textbf{跳过对 $O$/$\ell$ 的历史修正}；
+膨胀的常数因子在 epilogue 的 $1/\ell$ 里分子分母同乘抵消（第~\ref{ch:26b}~章
+式~(26b.4) 的推导）。调用方的 \texttt{\_\_any\_sync}（L1121--1129）
+把 per-row 判定聚合成 warp 粒度的统一分支：全 warp 的 row\_scale 都是
+1 才跳过，warp 内零分歧。\textbf{P 零拷贝（L1127--1131）}：
+softmax 后的 f32 scores 经 \texttt{convert\_type} 压 fp16，再经
+\texttt{convert\_layout\_acc\_Aregs} 原地重排成 PV 的 A-operand 布局
+——P 不落 smem，寄存器直通下一个 MMA（第~\ref{ch:26}~章 26.3.3 节
+的布局重解释，本章原样复用）。
+
+\subsection{Phase 3：PV split-D 与条件重缩放的落点}\label{sec:26c-pv}
+
+\begin{lstinputlisting}[linerange={1133-1165},firstnumber=auto,
+  title={ffpa\_attn.cuh L1133-1165（Phase 3：$O_v \mathrel{+}= P V_v$ 与 lazy rescale）}]{../ffpa_attn.cuh}
+\end{lstinputlisting}
+
+PV 相位逐 v\_chunk 消费（D=320 时 5 个），每个 chunk：等
+\texttt{v\_full}（式~\eqref{eq:26c-phase} 的 V 侧编址）、构造 V 的
+转置视图 fragment、\texttt{gemm\_rs} 完成 PV GEMM、arrive
+\texttt{v\_empty}、\texttt{tid=0} 领先 $S_V$ 预取下一个 V chunk。
+\textbf{重缩放的位置（L1151--1161）}：\texttt{need\_rescale} 为真时，
+\textbf{先}对本 v\_chunk 的 $O$ 分量乘 \texttt{row\_scale}，\textbf{再}
+累加新 P 的贡献——顺序不可换，否则新贡献也会被缩掉。注意
+\texttt{kv\_tile > 0} 的 guard：首个 tile 无历史可缩。$O$ 累加器是
+跨全部 kv\_tile 常驻的 \texttt{o\_acc\_storage[kDChunksV][32]}，
+D=320 时 $5\times32=160$ 个 f32/线程——第~\ref{ch:19}~章 19.4.6 节
+$32 \times C$ 账本的 $C{=}5$ 情形，single-pass online softmax 的结构性
+寄存器成本，rescale 需要所有 $C$ 个切片同时在位，不能提前流出。
+（V fragment 的寄存器布局在 kernel 开头用 nonswizzle 视图预计算一次
+——布局与 swizzle 无关，LDSM\_T 实际读仍走 swizzled 的 \texttt{sVt}，
+bank 冲突由 TMA 写入侧的 swizzle 消解，flash-attention
+\texttt{kernel\_traits.h} 同款技巧。）
+
+\subsection{Phase 4：STSM 批量暂存与 TMA store bulk group}\label{sec:26c-epilogue}
+
+KV 循环结束后，O 除以 $\ell$（FA-4 的膨胀在此全部抵消），走与装载
+对称的反向 TMA 全链。先把 $C$ 个 v\_chunk 分批：每批
+$k_{VChunksPerBatch}$ 个 chunk 共享一个 TMA store bulk group，
+批内 STSM 暂存 + 一次发射 + 一次 arrive；D=320 时
+$k_{VChunksPerBatch}{=}5$、$k_{NBatches}{=}1$（全部一批，bulk
+group 数最少）。暂存段（R$\to$S）：
+
+\begin{lstinputlisting}[linerange={1204-1226},firstnumber=auto,
+  title={ffpa\_attn.cuh L1204-1226（epilogue 批 I：$\div\ell$、f16、STSM 暂存复用 QKV smem）}]{../ffpa_attn.cuh}
+\end{lstinputlisting}
+
+入口的 \texttt{\_\_syncthreads()} 保证 V smem 读完后 R$\to$S 才能
+覆写；\texttt{SmemLayoutO} 与 V 同 SW128 atom，暂存直接落在已释放的
+QKV smem 上。\texttt{SM90\_U32x4\_STSM\_N}（\texttt{stmatrix}）是
+\texttt{ldmatrix} 的镜像：每线程 4 个 32 bit 寄存器按 fragment 布局
+写进 swizzled smem，O 的 $128\times64$ 分量一段写完。写回段
+（S$\to$G）：
+
+\begin{lstinputlisting}[linerange={1227-1246},firstnumber=auto,
+  title={ffpa\_attn.cuh L1227-1246（epilogue 批 II：TMA store bulk group + drain）}]{../ffpa_attn.cuh}
+\end{lstinputlisting}
+
+只有 \texttt{tid=0} 发 \texttt{copy(tma\_o, ...)}，
+\texttt{tma\_store\_arrive} 把批内所有 store 提交进 bulk group。
+随后的 \texttt{tma\_store\_wait<0>} 是 \textbf{drain race 的解}：
+非发射线程的 wait 是空操作，若无 CTA 级同步，下一批的 STSM 会覆写
+in-flight TMA 仍在读的 smem——$k_{NBatches} \ge 2$ 时确定性写坏。
+批末的 \texttt{\_\_syncthreads()} 让全线程等 drain（批条件 CTA 一致，
+不会死锁）。LSE 的写出与最后一批 drain 重叠（log2 域转回 ln），
+\texttt{softmax\_lse} 为 null 时整体跳过。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  font=\footnotesize,
+  box/.style={draw, thick, rounded corners=1.5pt, minimum height=0.85cm, inner sep=3pt, align=center},
+  arr/.style={-{Stealth[length=2.2mm]}, thick},
+]
+% regs
+\node[box, draw=tkGreen, fill=tkGreen!10, minimum width=3.2cm] (acc) at (0,0)
+  {\texttt{o\_acc\_storage[5][32]}\\{\scriptsize 160 f32/线程}};
+\node[box, draw=tkGreen, fill=tkGreen!10, minimum width=2.4cm] (div) at (3.6,0) {$\div\,\ell$、f16};
+% batches
+\node[box, draw=tkBlue, fill=tkFillBlue, minimum width=3.6cm] (b1) at (0,-2.0)
+  {批 $b$：STSM $\times$ VCPB 个 chunk\\{\scriptsize 复用已释放的 QKV smem（SW128）}};
+\node[box, draw=tkPurple, fill=white, minimum width=3.6cm] (t1) at (0,-3.7)
+  {tid=0：\texttt{copy(tma\_o)} $\times$ VCPB\\{\scriptsize 一个 bulk group，一次 arrive}};
+\node[box, draw=tkOrange, fill=orange!8, minimum width=3.6cm] (w1) at (0,-5.4)
+  {\texttt{tma\_store\_wait<0>} + \texttt{\_\_syncthreads}\\{\scriptsize drain：in-flight TMA 读完 smem}};
+% gmem
+\node[box, draw=tkRed, fill=white, minimum width=2.6cm, minimum height=4.6cm] (g) at (6.2,-3.2) {gmem O\\{\scriptsize $[B{\cdot}H{\cdot}N_q, D]$}\\{\scriptsize BHND packed}};
+% arrows
+\draw[arr] (acc) -- (div);
+\draw[arr] (div.south) -- node[right, font=\tiny] {R$\to$S} (b1.north);
+\draw[arr] (b1) -- node[right, font=\tiny] {\_\_syncthreads} (t1);
+\draw[arr] (t1) -- node[right, font=\tiny] {arrive} (w1);
+\draw[arr, tkPurple] (t1.east) -- node[above, font=\tiny, sloped] {TMA store} (g.west);
+\draw[arr, dashed, tkOrange] (w1.west) ++(-0.9,0) -- node[left, font=\tiny, align=right] {$b{<}N_B{-}1$ 才 drain\\否则直接出} (w1.west);
+% loop back
+\draw[arr, dashed, gray] (w1.east) ++(0.4,0) -- ++(0.9,0) -- ++(0,3.0) node[midway, right, font=\tiny, align=left] {下一批 STSM\\（覆写前必须 drain）} -- (b1.east);
+\end{tikzpicture}
+\caption{epilogue 的批量写出协议（D=320：5 个 v\_chunk 一批，VCPB
+$=k_{VChunksPerBatch}$）。$O$ 累加器除以 $\ell$ 转 f16 后，STSM 把每
+chunk 的 $128\times64$ 分量暂存进复用的 QKV smem；\texttt{tid=0} 对批内
+所有 chunk 发 TMA store 并提交一个 bulk group。灰色回边是 drain race
+的约束：下一批的 STSM 要覆写同一段 smem，必须等 in-flight TMA 读完
+（\texttt{tma\_store\_wait<0>} 只对发射线程有意义，配套
+\texttt{\_\_syncthreads} 让全 CTA 对齐；末批免等直接收尾）。对比 WS
+教学版的逐元素寄存器直写 gmem：指令数从每线程 $32C$ 次标量 store
+降到 VCPB 次 STSM + 一次 bulk 提交。}
+\label{fig:26c-epilogue}
+\end{figure}
+
+\subsection{launcher：BHND 压平与四方向 descriptor}\label{sec:26c-launcher}
+
+\begin{lstinputlisting}[linerange={1277-1304},firstnumber=auto,
+  title={ffpa\_attn.cuh L1277-1304（launcher：2D 压平 + 四方向 TMA + opt-in smem）}]{../ffpa_attn.cuh}
+\end{lstinputlisting}
+
+与第~\ref{ch:26b}~章同一套「BHND 压成 2D \texttt{(rows, D)}」的
+descriptor 方案：$B/H/N$ 折叠进行坐标，head 段偏移留给 kernel 内
+\texttt{domain\_offset}（\S\ref{sec:26c-nonws}）。差异有二：其一，
+Q 与 KV 的行数\textbf{解耦}（\texttt{rows\_q} vs \texttt{rows\_kv}，
+支持 $N_q \ne N_{kv}$ 的 cross-attention 教学用例），K/V 的
+\texttt{domain\_offset} 偏移量用 $h \cdot N_{kv}$；其二，O 用
+\texttt{SM90\_TMA\_STORE}（store 方向的 descriptor），box 与 V 对称
+（$128\times64$）。grid 是 $(N_q/128,\ B\cdot H)$ 的 2D 形态，smem
+按式~\eqref{eq:26c-smem} opt-in。
+
+\section{性能分析}\label{sec:26c-perf}
+
+\subsection{主场景与 stages 解耦实验}
+
+四条流水深度组合在同一 bench 里成对同轮测量（RTX PRO 5000，110 SM，
+fp16 dense）。$B{=}1$/$H{=}32$/$D{=}320$：
+
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+实现 & $N{=}8192$ & $N{=}16384$ & 备注 \\
+\midrule
+WS 教学版 (1,1) & 86.7 & 96.2 & 第~\ref{ch:26}~章 \\
+WS 教学版 (2,2) & 140.2 & 144.8 & \\
+non-WS (2,2) & 188.3 & 183.6 & \\
+non-WS (2,3) & 189.3 & 186.8 & \\
+\textbf{non-WS (3,2)} & \textbf{204.1} & \textbf{194.3} & 最优 \\
+non-WS (3,3) & 188.5 & 188.4 & \\
+cuDNN SDPA & 69.7 & 69.9 & 同轮参照 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+两个立刻能读出的结论：\textbf{(3,2) 全面最优}（$N{=}8192$ 比 (2,2)
+高 8.4\%）；\textbf{V 流水加深几乎恒亏}（
+(2,3) 比 (2,2) 只高 0.5\%，(3,3) 比 (3,2) 低 7.6\%）。复测带：用户
+独立一轮实测 non-WS (2,2)/(3,3) 在 $N{=}16384$ 为 184.4/189.0，与
+表中 183.6/188.4 跨 run 吻合 $\pm$0.5\%，成对结论稳定。
+
+全 $D$ 扫描（$N{=}8192$，其余同上）把「stages 最优值分段」的规律
+摊开：
+
+\begin{center}
+\begin{tabular}{lccccc}
+\toprule
+$D$ & (2,2) & (2,3) & (3,2) & (3,3) & 最优 \\
+\midrule
+192 & 202.2 & 177.4 & \textbf{216.5} & 187.8 & (3,2) \\
+256 & 206.4 & 190.3 & \textbf{211.2} & 198.5 & (3,2) \\
+320 & 188.3 & 189.3 & \textbf{204.1} & 188.5 & (3,2) \\
+384 & \textbf{187.2} & 167.4 & 158.3 & 136.0 & (2,2) \\
+448 & 167.4 & \textbf{180.0} & 169.9 & 173.0 & (2,3) \\
+512 & \textbf{170.9} & 168.5 & 169.5 & 163.4 & (2,2) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize, scale=0.80]
+% 手绘分组柱状图：6 组 D × 4 系列（柱宽 0.55，组距 2.7，组间隙 0.5）
+\def\w{0.55}
+% y 轴：150-220 T 映射到 0-7cm
+\def\y#1{{7.0*(#1-130)/90}}
+% 网格线与刻度
+\foreach \t in {140,160,180,200}{
+  \draw[gray!40] (0,\y{\t}) -- (15.6,\y{\t});
+  \node[anchor=east, font=\tiny] at (-0.15,\y{\t}) {\t};
+}
+\node[rotate=90, font=\footnotesize] at (-0.95,3.5) {TFLOPS};
+% 6 组 D × 4 系列柱，组中心 c = 1.05 + (i-1)*2.7：
+\begin{scope}
+% D=192 (c=1.05)
+\fill[tkBlue!75]   (1.05-1.5*\w,0) rectangle (1.05-0.5*\w,\y{202.2});
+\fill[tkPurple!70] (1.05-0.5*\w,0) rectangle (1.05+0.5*\w,\y{177.4});
+\fill[tkGreen!75]  (1.05+0.5*\w,0) rectangle (1.05+1.5*\w,\y{216.5});
+\fill[orange!80]   (1.05+1.5*\w,0) rectangle (1.05+2.5*\w,\y{187.8});
+% D=256 (c=3.75)
+\fill[tkBlue!75]   (3.75-1.5*\w,0) rectangle (3.75-0.5*\w,\y{206.4});
+\fill[tkPurple!70] (3.75-0.5*\w,0) rectangle (3.75+0.5*\w,\y{190.3});
+\fill[tkGreen!75]  (3.75+0.5*\w,0) rectangle (3.75+1.5*\w,\y{211.2});
+\fill[orange!80]   (3.75+1.5*\w,0) rectangle (3.75+2.5*\w,\y{198.5});
+% D=320 (c=6.45)
+\fill[tkBlue!75]   (6.45-1.5*\w,0) rectangle (6.45-0.5*\w,\y{188.3});
+\fill[tkPurple!70] (6.45-0.5*\w,0) rectangle (6.45+0.5*\w,\y{189.3});
+\fill[tkGreen!75]  (6.45+0.5*\w,0) rectangle (6.45+1.5*\w,\y{204.1});
+\fill[orange!80]   (6.45+1.5*\w,0) rectangle (6.45+2.5*\w,\y{188.5});
+% D=384 (c=9.15)
+\fill[tkBlue!75]   (9.15-1.5*\w,0) rectangle (9.15-0.5*\w,\y{187.2});
+\fill[tkPurple!70] (9.15-0.5*\w,0) rectangle (9.15+0.5*\w,\y{167.4});
+\fill[tkGreen!75]  (9.15+0.5*\w,0) rectangle (9.15+1.5*\w,\y{158.3});
+\fill[orange!80]   (9.15+1.5*\w,0) rectangle (9.15+2.5*\w,\y{136.0});
+% D=448 (c=11.85)
+\fill[tkBlue!75]   (11.85-1.5*\w,0) rectangle (11.85-0.5*\w,\y{167.4});
+\fill[tkPurple!70] (11.85-0.5*\w,0) rectangle (11.85+0.5*\w,\y{180.0});
+\fill[tkGreen!75]  (11.85+0.5*\w,0) rectangle (11.85+1.5*\w,\y{169.9});
+\fill[orange!80]   (11.85+1.5*\w,0) rectangle (11.85+2.5*\w,\y{173.0});
+% D=512 (c=14.55)
+\fill[tkBlue!75]   (14.55-1.5*\w,0) rectangle (14.55-0.5*\w,\y{170.9});
+\fill[tkPurple!70] (14.55-0.5*\w,0) rectangle (14.55+0.5*\w,\y{168.5});
+\fill[tkGreen!75]  (14.55+0.5*\w,0) rectangle (14.55+1.5*\w,\y{169.5});
+\fill[orange!80]   (14.55+1.5*\w,0) rectangle (14.55+2.5*\w,\y{163.4});
+\end{scope}
+% 最优标记（各 D 的最优柱顶：柱 k 中心 = c + (k-1)*w）
+\foreach \x/\lab in {1.60/216.5, 4.30/211.2, 7.00/204.1, 8.60/187.2, 11.85/180.0, 14.00/170.9}{
+  \pgfmathsetmacro{\ytop}{7.0*(\lab-130)/90+0.08}
+  \node[font=\tiny, anchor=south] at (\x,\ytop) {\lab};
+}
+% x 轴标签
+\foreach \c/\d in {1.05/192, 3.75/256, 6.45/320, 9.15/384, 11.85/448, 14.55/512}
+  \node[anchor=north, font=\footnotesize] at (\c,0) {$D{=}\d$};
+\draw[thick] (0,0) -- (15.6,0);
+\draw[thick] (0,0) -- (0,7.0);
+% legend（顶部横排）
+\begin{scope}[shift={(1.0,7.35)}]
+\fill[tkBlue!75]   (0,0) rectangle (0.45,0.20); \node[anchor=west, font=\tiny] at (0.55,0.10) {(2,2)};
+\fill[tkPurple!70] (2.4,0) rectangle (2.85,0.20); \node[anchor=west, font=\tiny] at (2.95,0.10) {(2,3)};
+\fill[tkGreen!75]  (4.8,0) rectangle (5.25,0.20); \node[anchor=west, font=\tiny] at (5.35,0.10) {(3,2)，$D\le320$ 最优};
+\fill[orange!80]   (8.8,0) rectangle (9.25,0.20); \node[anchor=west, font=\tiny] at (9.35,0.10) {(3,3)};
+\end{scope}
+% 分界线（D=256 组右缘 4.58 与 D=320 组左缘 5.63 的中点）
+\draw[tkRed, dashed, thick] (5.10,0) -- (5.10,7.6);
+\node[font=\tiny, tkRed, anchor=south, align=center] at (5.10,7.65) {spill 首现（$D{=}320$）};
+\end{tikzpicture}
+\caption{K/V 流水深度解耦实验（$B{=}1$/$H{=}32$/$N{=}8192$，PRO 5000，
+成对同轮）。$D\le320$：$(S_K,S_V){=}(3,2)$ 一致最优，绿色系柱全面领先；
+$D\ge384$：最优回落到 $(2,2)/(2,3)$，$(3,3)$ 在 $D{=}384$ 崩至 136.0
+（比 (2,2) 低 27\%）。红色虚线是分界：恰在寄存器 spill 首次出现处
+（表~见下，$D{=}320$ 全组合 spill、$D{\le}256$ 零 spill）。}
+\label{fig:26c-stages}
+\end{figure}
+
+\subsection{机理：寄存器 spill 决定 stages 的最优值}
+
+stages 影响性能的通道不是 smem（式~\eqref{eq:26c-smem} 的 64--96\,KB
+离上限都远），而是\textbf{寄存器溢出}。用
+\texttt{nvcc -Xptxas -v} 对各组合显式实例化取证：
+
+\begin{center}
+\footnotesize
+\begin{tabular}{lccccc}
+\toprule
+组合 & 寄存器 & spill stores & spill loads & $N{=}8192$ TFLOPS & 相对 \\
+\midrule
+D=192 (2,2) & 254 & 0 B & 0 B & 202.2 & --- \\
+D=256 (2,2) & 255 & 0 B & 0 B & 206.4 & --- \\
+D=256 (3,2) & 251 & 0 B & 0 B & 211.2 & +2.3\% \\
+D=320 (2,2) & 255 & 224 B & 356 B & 188.3 & --- \\
+D=320 (2,3) & 255 & 216 B & 180 B & 189.3 & +0.5\% \\
+D=320 (3,2) & 255 & \textbf{52 B} & \textbf{36 B} & \textbf{204.1} & +8.4\% \\
+D=320 (3,3) & 255 & 52 B & 36 B & 188.5 & +0.1\% \\
+D=384 (2,2) & 255 & 584 B & 544 B & 187.2 & --- \\
+D=384 (3,2) & 255 & 676 B & 1000 B & 158.3 & $-$15.5\% \\
+D=384 (3,3) & 255 & 928 B & 1256 B & 136.0 & $-$27.4\% \\
+D=448 (2,2) & 255 & 1084 B & 852 B & 167.4 & --- \\
+D=448 (2,3) & 255 & 996 B & 688 B & 180.0 & +7.5\% \\
+D=512 (2,2) & 255 & 1436 B & 1024 B & 170.9 & --- \\
+D=512 (3,3) & 255 & 1124 B & 752 B & 163.4 & $-$4.4\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize, scale=0.92]
+% x: D (192-512) -> 0.5-12.5cm；y: spill 总字节 -> 0-2600 映射 0-5.2cm
+\def\x#1{{12.0*(#1-192)/320}}
+\def\yy#1{{5.2*#1/2600}}
+% 网格线与刻度
+\foreach \t in {500,1000,1500,2000,2500}{
+  \draw[gray!40] (0,\yy{\t}) -- (13.0,\yy{\t});
+  \node[anchor=east, font=\tiny] at (-0.15,\yy{\t}) {\t};
+}
+\node[rotate=90, font=\footnotesize] at (-1.0,2.6) {spill bytes（stores$+$loads）};
+% (2,2) 全 D 折线
+\draw[very thick, tkBlue, mark=*, mark size=1.5pt] plot coordinates {
+  (\x{192},0) (\x{256},0) (\x{320},\yy{580}) (\x{384},\yy{1128}) (\x{448},\yy{1936}) (\x{512},\yy{2460})};
+% (3,2) 散点（仅 D=256/320/384 实例化取证）
+\draw[very thick, tkGreen, mark=triangle*, mark size=2.2pt] plot coordinates {
+  (\x{256},0) (\x{320},\yy{88}) (\x{384},\yy{1676})};
+% (3,3) 散点（D=320/384/512）
+\draw[thick, orange!90!black, mark=square*, mark size=1.6pt] plot coordinates {
+  (\x{320},\yy{88}) (\x{384},\yy{2184}) (\x{512},\yy{1876})};
+% x 轴标签与轴
+\foreach \d in {192,256,320,384,448,512}
+  \node[anchor=north, font=\footnotesize] at (\x{\d},0) {\d};
+\draw[thick] (0,0) -- (13.0,0);
+\draw[thick] (0,0) -- (0,5.2);
+% 分界标注（D=320 的 x = 12*(320-192)/320 = 4.8）
+\draw[tkRed, dashed, thick] (4.65,0) -- (4.65,5.0);
+\node[font=\tiny, tkRed, anchor=south, align=center] at (4.65,5.05) {spill 首现\\$D{=}320$};
+% D=320 处的放大注记（y: 88B->0.176, 580B->1.16, 中点 0.668）
+\draw[tkRed, <->, thick] (4.92,0.176) -- (4.92,1.16);
+\node[font=\tiny, tkRed, anchor=west, align=left] at (5.02,0.668) {6.6$\times$：\\(3,2) 88B vs\\(2,2) 580B};
+% legend
+\begin{scope}[shift={(7.6,4.3)}]
+\draw[very thick, tkBlue, mark=*, mark size=1.5pt] (0,0) -- (0.6,0);
+  \node[anchor=west, font=\tiny] at (0.7,0) {(2,2) 全 $D$};
+\draw[very thick, tkGreen, mark=triangle*, mark size=2.2pt] (0,-0.42) -- (0.6,-0.42);
+  \node[anchor=west, font=\tiny] at (0.7,-0.42) {(3,2)（实测三点）};
+\draw[thick, orange!90!black, mark=square*, mark size=1.6pt] (0,-0.84) -- (0.6,-0.84);
+  \node[anchor=west, font=\tiny] at (0.7,-0.84) {(3,3)（实测三点）};
+\end{scope}
+\end{tikzpicture}
+\caption{寄存器溢出随 $D$ 的增长（\texttt{nvcc -Xptxas -v}，$-O2$，
+sm\_120a，各组合显式实例化）。$D\le256$ 全组合零 spill；$D{=}320$
+（红色虚线）是分水岭——所有组合顶到 255 寄存器上限并开始溢出，
+且 (3,2)/(3,3) 的 88\,B 与 (2,2) 的 580\,B 相差 6.6 倍，与
+TFLOPS 排序（204.1 对 188.3）完全同序；$D\ge384$ 后 spill 基线
+过千，stages 加深进一步推高溢出（(3,2) 1676\,B、(3,3) 2184\,B，
+均高于 (2,2)），流水掩蔽收益被吞掉，最优组合回落 $(2,2)$。}
+\label{fig:26c-spill}
+\end{figure}
+三个事实链。\textbf{第一}，$D\le256$ 零 spill：stages 加深的收益全部
+来自 QK 流水掩蔽——QK 是主计算路径（每 tile $D/32$ 个 chunk 要喂），
+$S_K{=}3$ 让 tid=0 的发射领先更远、TMA 传输更深地藏进 GEMM 窗口；
+而 V 每 tile 只消费 $D/64$ 个 chunk 且消费点稀疏（只在 softmax 之后），
+$S_V{=}2$ 已够用，第 3 级 stage 的 barrier 簿记纯属开销——这就是
+$(3,2)$ 全胜的 $D\le320$ 段。\textbf{第二}，$D\ge320$ 后
+\texttt{o\_acc\_storage}（$D/64 \times 32$ 个 f32）把寄存器顶到 255
+上限、spill 出现，stages 与 spill 的交互主导排序：D=320 时 $(3,2)/(3,3)$
+的 spill 总量（52$+$36$=$88\,B）只有 $(2,2)$（224$+$356$=$580\,B）的
+六分之一——浅流水下发射地址簿与消费循环的活跃变量生命周期重叠更长、
+峰值压力更高，深一档反而把发射路径的变量错开，性能与 spill 字节数
+\textbf{完全同序}（204.1/188.5 对 188.3/189.3，图~\ref{fig:26c-spill}）；$(3,2)$ 与 $(3,3)$ 同 spill 但
+差 15T，V 侧第 3 级 stage 的簿记开销与 96\,KB smem 的副作用是剩余
+差距。\textbf{第三}，$D\ge384$ 时 spill 基线本身已高（544 B+），再加
+stage 挤占的寄存器超过流水掩蔽的收益，$(3,2)$ 开始亏、$(3,3)$ 崩
+27\%；此段最优回到 $(2,2)$（或 $D{=}448$ 的 $(2,3)$）。
+
+这条分段规律的工程含义：\textbf{$S_K$ 与 $S_V$ 必须是独立模板参数}。
+对称的 $(S,S)$ 在任何 $D$ 都拿不到最优——本 kernel（与 ffpa-attn 的
+cute sm\_120 split\_d 同源）的 launcher 把 $S_K$/$S_V$ 作为独立模板
+参数暴露，正是为了按 $D$ 分段选参；默认对称 $(2,2)$ 只是保守起点。
+寄存器账本（第~\ref{ch:19}~章 19.4.6）在
+这里从「预算说明」变成「调优依据」：spill 出现的 $D$ 就是 stages
+策略的切换点。
+
+\subsection{与 WS 版的逐项对照收尾}
+
+把 \S\ref{sec:26c-motivation} 的四个结构性问题对回数字：全员 MMA +
+128 tile（协议主体）贡献了 140$\to$188 的主要段（(2,2) 对
+WS(2,2) +34\%）；跨 tile 预取与 FA-4 rescale 在其上叠加；stages
+从对称 (2,2) 调到 (3,2) 再拿 +8\%（188$\to$204）；epilogue 的
+STSM+TMA 通道在 $D{=}320$ 的占比不大（每 tile 只有一次 128$\times$320
+的写出），但在更短 $N$、更小 tile 数的场景（写出占比上升）会放大。
+精确到逐项的独立 A/B 需要 fork kernel 消融，本章按「结构差异 +
+stages 实验」的口径给出，消融矩阵留给 \S\ref{sec:26c-test} 的动手
+实验。对比 cuDNN 的 2.93$\times$ 里还有一部分来自大 $D$ 本身——
+厂商库在 $D{=}320$ 这类非 2 的幂 head\_dim 上没有专门调优的 tile
+形状，这是第~\ref{ch:26b}~章「非标准形状」论点在 head\_dim 维度的
+重演。
+
+\section{常见坑}\label{sec:26c-pitfalls}
+
+\begin{enumerate}[itemsep=2pt]
+  \item \textbf{non-WS 预取的位置死锁}：\texttt{tid=0} 的预取不能移到
+        \texttt{gemm\_ss} 之前——$s_{next} = s$ 且 $phase_{next} =
+        1{-}phase$，wait 门控在本迭代的 arrive 上，提前了
+        \texttt{tid=0} 在等一个需要它自己参与释放的 barrier。跨 tile
+        预取同理只能挂在「本 tile 的 QK 相位结束、softmax/PV 之前」
+        这个窗口。
+  \item \textbf{K/V 坐标必须 domain\_offset 到 head 段}：$h\cdot N_{kv}$
+        未必 128 对齐（$N_{kv}$ 非 $k_{Bc}$ 倍数时），直接用全局
+        tile 索引会静默串到相邻 head 的行——结果错但无任何报错，
+        只有 $N_{kv} \bmod 128 \ne 0$ 的用例能抓到（err $\sim$0.1，
+        正常用例 $\sim$1e-5）。Q 侧因 host 保证 $N_q \bmod 128 = 0$
+        免疫。
+  \item \textbf{epilogue 的 drain race}：\texttt{tma\_store\_wait<0>}
+        对非发射线程是空操作，$k_{NBatches}\ge2$ 时缺了批末
+        \texttt{\_\_syncthreads} 的话，下一批 STSM 会覆写 in-flight
+        TMA 仍在读的 smem——确定性写坏，且写坏的是已经算完的 O。
+  \item \textbf{rescale 先缩后加}：Phase 3 的重缩放必须先乘
+        \texttt{row\_scale} 再 \texttt{gemm\_rs} 累加，顺序反了会把
+        新 tile 的贡献也缩掉；\texttt{kv\_tile > 0} 的 guard 不能少
+        （首 tile 无历史）。
+  \item \textbf{V fragment 布局要 nonswizzle 视图预计算}：
+        \texttt{partition\_fragment\_B} 若直接在 swizzled 布局上做，
+        会把 swizzle 混进寄存器布局；正确做法是在
+        \texttt{get\_nonswizzle\_portion} 视图上取布局（寄存器布局与
+        swizzle 无关），实际装载仍读 swizzled 的 \texttt{sVt}。
+  \item \textbf{stages 对称调参错过最优点}：$(3,3)$ 在 $D{=}384$ 比
+        $(2,2)$ 低 27\%。$S_K$/$S_V$ 必须独立扫描，切换点在 spill
+        首次出现的 $D$（\S\ref{sec:26c-perf} 的寄存器表）。
+\end{enumerate}
+
+\section{面试要点速查}\label{sec:26c-interview}
+
+\begin{itemize}[itemsep=1pt]
+  \item \textbf{Q：大 head\_dim 为什么选 non-WS 而不是 WS？}\\
+        A：Split-D 的 O 累加器（$32{\times}C$ f32/线程）把寄存器吃到
+        255 上限，\texttt{setmaxnreg} 让渡不动，WS 的收益侧（寄存器
+        再分配）消失、成本侧（producer 不产 FLOPs，MMA warp 砍半）
+        全留。D=128 场景两者可打成平手（第~\ref{ch:26b}~章），大 $D$
+        只剩 non-WS。
+  \item \textbf{Q：$S_K{=}3,S_V{=}2$ 为什么不对称？}\\
+        A：QK 是主计算路径（每 tile $D/32$ 个 chunk），深流水加宽
+        TMA 掩蔽窗口；V 每 tile 只有 $D/64$ 个 chunk 且消费点在
+        softmax 之后，$S_V{=}2$ 够用，第 3 级只有 barrier 簿记开销。
+        且 $D\ge384$ 后 spill 主导，最优回落 $(2,2)$——stages 策略
+        的切换点由寄存器账本决定。
+  \item \textbf{Q：跨 tile 预取为什么不死锁？}\\
+        A：QK 与 V 两套 barrier 集不相交。下一 tile 的 QK 预取只等
+        \texttt{qk\_empty}（由本 tile Phase 1 的 arrive 释放），与
+        softmax 要等的 \texttt{v\_full}、PV 要 arrive 的
+        \texttt{v\_empty} 零交集，不存在环。
+  \item \textbf{Q：non-WS 里 TMA 发射为什么不会拖慢 MMA？}\\
+        A：发射封装成三步 lambda（fence + expect\_tx + copy），只在
+        chunk 边界执行，每次十几条指令；相比专职 producer 损失整 128
+        线程的 MMA 吞吐，这点指令槽开销可以忽略——实测全员 MMA 的
+        收益是 45\% 段的主体。
+  \item \textbf{Q：STSM + TMA store 比逐元素直写好在哪？}\\
+        A：写出通道对称于装载：\texttt{stmatrix} 一条指令写
+        128 bit/线程进 swizzled smem，TMA store 批量搬运且 bulk
+        group 把 arrive/wait 摊到每批一次；逐元素直写每线程 $32C$
+        次标量 store，且完全不 swizzle、不合并。
+\end{itemize}
+
+\section{最小测试与动手实验}\label{sec:26c-test}
+
+本章测试在 \texttt{book/tests/ch26c\_\allowbreak{}ffpa\_\allowbreak{}split\_\allowbreak{}d\_\allowbreak{}non\_ws.cu}：
+CPU fp64 参考（O 与 LSE 双输出），容差 \texttt{TOL\_F16ACC}（$5\times10^{-2}$）
+与 LSE 绝对容差 0.1。八个 case 覆盖：基础形状（D=128/320）、多
+batch/head、$N_{kv} \bmod 128 \ne 0$ 的边界 mask（$N_{kv}{=}192$，
+正是「常见坑」第 2 条的抓虫用例）、stages 解耦组合 $(2,3)/(3,2)$
+（G/H 两 case）与 $S{=}3$：
+
+\begin{lstlisting}[style=console]
+$ cd book/tests && ./build_tests.sh --ch ch26c
+# PASS ffpa split-D non-WS A D=128 B=1 H=2 Nq=256 Nkv=256 s=2,2: 7.032e-05
+# PASS ffpa split-D non-WS B D=320 B=1 H=2 Nq=256 Nkv=256 s=2,2: 7.755e-05
+# PASS ffpa split-D non-WS B LSE D=320 Nq=256 Nkv=256: 7.068e-07
+# PASS ffpa split-D non-WS D D=320 B=1 H=2 Nq=128 Nkv=192 s=2,2: 8.254e-05
+# PASS ffpa split-D non-WS E D=320 B=1 H=2 Nq=256 Nkv=256 s=3,3: 7.578e-05
+# PASS ffpa split-D non-WS G D=320 B=1 H=2 Nq=256 Nkv=256 s=2,3: 6.267e-05
+# PASS ffpa split-D non-WS H D=320 B=1 H=2 Nq=128 Nkv=192 s=3,2: 8.602e-05
+# ALL OK
+\end{lstlisting}
+
+集成入口在 notes-v2.cu：\texttt{-{}-sdnw-cute} 快速正确性（五用例，
+含 $N_{kv}{=}192$ 边界）与 \texttt{-{}-bench -{}-bhnd 1,32,8192,320}
+的 stages 四组合实验（\texttt{Sk}/\texttt{Sv} 直接体现在输出 label）：
+
+\begin{lstlisting}[style=console]
+$ ./notes_v2_sm120a.bin --bench --bhnd 1,32,8192,320
+| FA Split-D CuTe TMA MMA WS (D=320, Sk=1, Sv=1)  | 1.526e-05 |  86.7/69.7 (1.24x) |
+| FA Split-D CuTe TMA MMA WS (D=320, Sk=2, Sv=2)  | 1.526e-05 | 140.2/69.7 (2.01x) |
+| FA Split-D CuTe TMA non-WS (D=320, Sk=2, Sv=2)  | 3.052e-05 | 188.3/69.7 (2.70x) |
+| FA Split-D CuTe TMA non-WS (D=320, Sk=2, Sv=3)  | 3.052e-05 | 189.3/69.7 (2.71x) |
+| FA Split-D CuTe TMA non-WS (D=320, Sk=3, Sv=2)  | 3.052e-05 | 204.1/69.7 (2.93x) |
+| FA Split-D CuTe TMA non-WS (D=320, Sk=3, Sv=3)  | 3.052e-05 | 188.5/69.7 (2.70x) |
+\end{lstlisting}
+
+（non-WS 的 max\_err 是 3.052e-05 而非 WS 的 1.526e-05：exp2 域
+softmax 的 fp16 重舍入路径略不同，两者都在 f32 累加精度内。）
+bench 数据与 \texttt{-Xptxas -v} 的寄存器/spill 探针全部归档
+\texttt{book/.tmp/ch26c/}。动手实验建议：(1) 把 dispatch 里的
+$(3,2)$ 换成 $(4,2)$ 重编，观察 $S_K{=}4$ 在 D=320 是否继续涨
+（提示：smem 到 112\,KB，spill 未必友好）；(2) 删掉跨 tile 预取块
+（L1083--1094）重编复测，量化 \S\ref{sec:26c-prefetch} 红利的绝对值；
+(3) 把 \texttt{FA4\_RESCALE\_THRESHOLD} 置 0 复测，看 FA-4 跳过率
+归零的代价；(4) 用 \texttt{-Xptxas -v} 亲手复现 \S\ref{sec:26c-perf}
+的寄存器表，验证 D=320 各组合的 spill 差异。
+
+\section*{延伸阅读}
+
+\begin{itemize}[itemsep=1pt]
+  \item ffpa-attn \texttt{csrc/cuffpa/cute/sm\_120/split\_d.cuh}（本章
+        移植源：生产版含 bias/dropout/GQA/NHD 的完整特性矩阵与
+        fp8/fp4 量化家族，本章是最小教学集）；
+  \item FlashAttention-3 论文 \S3.1.4（conditional rescaling，与
+        第~\ref{ch:26b}~章同源）；
+  \item flash-attention \texttt{kernel\_traits.h} 的
+        \texttt{SmemLayoutVtransposedNoSwizzle}（V fragment 布局
+        预计算的出处，「常见坑」第 5 条）；
+  \item 第~\ref{ch:19}~章 19.4.6 节（O 累加器的 $32\times C$
+        寄存器账本——本章 stages 调优的理论基础）。
+\end{itemize}

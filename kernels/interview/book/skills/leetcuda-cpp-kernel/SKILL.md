@@ -1,7 +1,7 @@
 ---
 name: leetcuda-cpp-kernel
 description: >-
-  LeetCUDA 中文技术书（515 页，XeLaTeX 源）按需查阅 skill——写、优化、调试或
+  LeetCUDA 中文技术书（530 页，XeLaTeX 源）按需查阅 skill——写、优化、调试或
   review CUDA C++/PTX kernel 时的权威参考路由层。当任务涉及：GPU 架构/Roofline/
   occupancy、向量化与 coalescing、warp/block reduce、softmax（online/LSE merge）、
   SGEMV/SGEMM/HGEMM 阶梯优化、mma.sync/ldmatrix/WMMA、XOR/block swizzle、cp.async
@@ -46,7 +46,7 @@ skill 只负责把任务路由到正确的章节，**不重写、不复述书内
 
 | 路径（相对书根） | 内容 |
 |---|---|
-| `chapters/chNN-<slug>.tex` | 35 章正文（ch00–ch33、ch26b）+ ch19b 白皮书导读 + `_template.tex` 章模板（中文，XeLaTeX 源；含行号锚定的源码解析、踩坑记录、实测性能表） |
+| `chapters/chNN-<slug>.tex` | 36 章正文（ch00–ch33、ch26b、ch26c）+ ch19b 白皮书导读 + `_template.tex` 章模板（中文，XeLaTeX 源；含行号锚定的源码解析、踩坑记录、实测性能表） |
 | `chapters/wp/wp0-7.tex` | ch19b 分节正文：CuTe 官方白皮书（Cris Cecka, arXiv:2603.02298）完整中文译注 |
 | `figures/drawio/fig-<chNN>-<n>-<slug>/` | 每章配图：`*.png`（用 view 看）、`*.drawio`/`gen.py`（可改后重导出） |
 | `figures/ffpa/`、`figures/tikz/`、`figures/misc/` | matplotlib bench 图 / TikZ 图 / 封面等杂项 |
@@ -55,7 +55,7 @@ skill 只负责把任务路由到正确的章节，**不重写、不复述书内
 | `references/` | `zhihu-inventory.md`（附录 E 数据源）+ `fulltext/`（7 篇知乎全文 markdown，可直接 grep） |
 | `appendices/appA..appE` | 见下文附录路由 |
 | `tests/` | 每章最小正确性测试（CPU fp64 对拍，`build_tests.sh --arch sm_120a --all`） |
-| `book.pdf` | 编译成品（515 页，可直接 pdftotext 按页抽取） |
+| `book.pdf` | 编译成品（530 页，可直接 pdftotext 按页抽取） |
 
 ## 第二步：任务路由表
 
@@ -105,6 +105,7 @@ skill 只负责把任务路由到正确的章节，**不重写、不复述书内
 | CuTe FlashAttention 三实现对照 | `ch25-cute-flash-attn.tex` | fig-25-1 |
 | CuTe FFPA Split-D 类型代数 | `ch26-cute-ffpa.tex` | fig-26-1 |
 | **SM120 持久化 FlashAttention**（persist-D、WS 1+1、persistent CTA、scale 融合；全书唯一超越 cuDNN SDPA 的 attention kernel，240.1/230.2 = 1.04×） | `ch26b-cute-persist-d-flash-attn.tex`（书内第 28 章） | TikZ 内联 |
+| **SM120 大 head_dim non-WS Split-D**（tile 128×128、256T 全员 MMA + tid=0 内联 TMA、K/V stages 解耦：(3,2) D320=204.1T=2.93× cuDNN；ffpa-attn split_d 同源教学集，含寄存器 spill 机理） | `ch26c-cute-split-d-sm120.tex`（书内第 29 章） | TikZ 内联 |
 
 ### CuTe 进阶深度参考（colfax / cute-zhihu，独立文档）
 

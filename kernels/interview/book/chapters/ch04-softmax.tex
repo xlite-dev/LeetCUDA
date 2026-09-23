@@ -10,16 +10,16 @@ $\mathrm{softmax}(QK^{\top}/\sqrt{d})$（第~\ref{ch:15}~章的主角）、MoE �
 本章沿着教学源码的三级递进，把这两道坎各击破一次：
 
 \begin{itemize}
-  \item \textbf{Level 1 naive}（base.cuh~L544，\texttt{softmax\_\allowbreak{}per\_\allowbreak{}token}）——
+  \item \textbf{Level 1 naive}（base.cuh~L544，\texttt{softmax\_\allowbreak{}per\_\allowbreak{}token}）：
         直接按定义实现，演示溢出风险与最基本的 block 归约用法；
-  \item \textbf{Level 2 safe}（base.cuh~L564，\texttt{safe\_\allowbreak{}softmax\_\allowbreak{}per\_\allowbreak{}token}）——
+  \item \textbf{Level 2 safe}（base.cuh~L564，\texttt{safe\_\allowbreak{}softmax\_\allowbreak{}per\_\allowbreak{}token}）：
         减 max 的两遍扫描（2 次 block reduce），数值稳定的工业标配形态；
-  \item \textbf{Level 3 online}——\texttt{online\_\allowbreak{}safe\_\allowbreak{}softmax\_\allowbreak{}per\_\allowbreak{}token}
+  \item \textbf{Level 3 online}：\texttt{online\_\allowbreak{}safe\_\allowbreak{}softmax\_\allowbreak{}per\_\allowbreak{}token}
         （base.cuh~L632）：$(m,\ell)$ 双状态单遍联动更新（1 次融合归约），
         是 FlashAttention online rescale 的数学内核。
 \end{itemize}
 
-\textbf{前置章节}：第~\ref{ch:02}~章的 warp/block 归约原语——本章的三版实现分别建立在其
+\textbf{前置章节}：第~\ref{ch:02}~章的 warp/block 归约原语，本章的三版实现分别建立在其
 \texttt{block\_\allowbreak{}reduce\_\allowbreak{}sum}、\allowbreak\texttt{block\_\allowbreak{}reduce\_\allowbreak{}max} 与 XOR 蝶形归约之上；不熟悉
 \texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor\_\allowbreak{}sync}
 蝶形归约的读者请先回看第~\ref{ch:02}~章。
@@ -35,7 +35,7 @@ online rescale。
 attention 里，logit 是 $Q$、$K$ 行向量的内积，量级随训练状态与序列位置漂移；语言模型
 logits 在训练早期破百也不罕见。而 fp32 能表示的最大正规数约 $3.4\times 10^{38}$，
 $e^{89}$ 就已经越界变成 \texttt{inf}。一旦分子或分母出现 \texttt{inf}，输出就是
-\texttt{inf}/\texttt{inf} 型的 \texttt{NaN}——模型直接产出垃圾。所以「减 max」不是锦上添花的技巧，
+\texttt{inf}/\texttt{inf} 型的 \texttt{NaN}，模型直接产出垃圾。所以「减 max」不是锦上添花的技巧，
 而是正确性的底线。
 
 \textbf{动机二：每多一遍扫描，就多一遍代价。}教科书的 safe softmax 要对输入做三次遍历：
@@ -45,7 +45,7 @@ $e^{89}$ 就已经越界变成 \texttt{inf}。一旦分子或分母出现 \textt
 
 \textbf{动机三：softmax 的「行内自足性」。}\allowbreak{}softmax 沿一行（一个 token、一个 query）独立计算，
 行与行之间零依赖。这意味着一行数据可以完整驻留在一个 block 的寄存器/共享内存里，
-为「一遍扫描」的 online 形态提供了舞台——这也是它后来能被 FlashAttention 塞进
+为「一遍扫描」的 online 形态提供了舞台：这也是它后来能被 FlashAttention 塞进
 「KV 分块流水线」里的根本原因：分块后的部分结果可以用一个 $(m,\ell)$（或 LSE）状态无损概括。
 
 \section{数学原理}
@@ -67,7 +67,7 @@ $e^{89}$ 就已经越界变成 \texttt{inf}。一旦分子或分母出现 \textt
   \label{eq:4-shift}
 \end{equation}
 即 $\mathrm{softmax}(x - c\cdot \mathbf{1}) = \mathrm{softmax}(x)$：分子分母同乘
-$e^{-c}$，严格约掉。平移不变性就是一切数值稳定手段的数学基础——
+$e^{-c}$，严格约掉。平移不变性就是一切数值稳定手段的数学基础：
 \textbf{减 max 不改变结果，只改变中间量的量级}。
 
 \subsection{为什么必须减 max：$e^{x}$ 的溢出界}
@@ -180,7 +180,7 @@ online softmax（Milakov \& Gimelshein，arXiv:1805.02867）的思路是：维�
 
 全部 $n$ 个元素流过后，输出为 $y^{(i)} = e^{x^{(i)} - m^{(n)}} / \ell^{(n)}$。
 注意：真正的 online 实现（含 FlashAttention）里，$x$ 之外还有加权对象 $V$，
-输出 $O$ 也要跟着 rescale——那正是第~\ref{ch:15}~章 online rescale 的内容，
+输出 $O$ 也要跟着 rescale，那正是第~\ref{ch:15}~章 online rescale 的内容，
 本章先只盯着 $(m, \ell)$ 这对状态。符号约定上，本章的 $m$、$\ell$ 即全书记号表中的
 running max / running sum，在 FlashAttention 实现里对应源码变量
 \texttt{block\_\allowbreak{}row\_\allowbreak{}max} 与 \texttt{block\_\allowbreak{}row\_\allowbreak{}sum}（联动更新量为
@@ -200,7 +200,7 @@ $S^{(1)}$）与 $\bigl(m^{(2)}, \ell^{(2)}\bigr)$（覆盖集合 $S^{(2)}$），
 \end{equation}
 推导与式~\ref{eq:4-online-l} 同构：合并后的基准是两段 max 的较大者，两段的和各乘一个
 「基准抬升修正因子」后相加。当 $m^{(1)} \ge m^{(2)}$ 时退化为
-$\ell = \ell^{(1)} + \ell^{(2)} e^{m^{(2)} - m^{(1)}}$——只有较小者需要 rescale，
+$\ell = \ell^{(1)} + \ell^{(2)} e^{m^{(2)} - m^{(1)}}$，只有较小者需要 rescale，
 较大者原样保留。把式~\ref{eq:4-online} 看作式~\ref{eq:4-merge} 的特例也很自然：
 单元素 $x^{(k+1)}$ 就是一个 $\bigl(x^{(k+1)}, 1\bigr)$ 状态（$e^{0}=1$）。
 
@@ -236,7 +236,7 @@ $\ell = \ell^{(1)} + \ell^{(2)} e^{m^{(2)} - m^{(1)}}$——只有较小者需�
 是分块合并的主角。其二是 FlashAttention 的 online rescale：在 attention 里，
 与 $(m,\ell)$ 联动更新的还有输出累加器
 $O^{\mathrm{new}} = e^{m - m^{\mathrm{new}}}\, O + e^{s - m^{\mathrm{new}}} V$，
-分母 $\ell$ 留到最后统一除——第~\ref{ch:15}~章展开。
+分母 $\ell$ 留到最后统一除，第~\ref{ch:15}~章展开。
 
 \section{设计与实现}
 
@@ -271,8 +271,8 @@ $2^{8}$ 个指数加起来（warp 内蝶形 + shared memory 二级 + 广播，�
         \texttt{block\_\allowbreak{}reduce\_\allowbreak{}sum} 求和并广播；
   \item \textbf{写回}：除法与写回融合，不再单独占一遍扫描。
 \end{itemize}
-值得指出的一个实现细节：Pass~2 里 \texttt{expf(x[idx] - max\_val)} 重新读了一次
-\texttt{x[idx]}——$x$ 实际被全局读了两次（第二次通常 L1 命中，代价远小于一次完整 DRAM 遍历，
+实现上有个细节：Pass~2 里 \texttt{expf(x[idx] - max\_val)} 重新读了一次
+\texttt{x[idx]}，$x$ 实际被全局读了两次（第二次通常 L1 命中，代价远小于一次完整 DRAM 遍历，
 但不是零）。同步开销上是 2 次 block 级同步（两次归约各一次）。safe 版换来的保证是：
 \textbf{任何有限输入都不产生 \texttt{inf}/\texttt{NaN}}，这是它成为推理引擎默认形态的原因。
 
@@ -350,13 +350,13 @@ $2^{8}$ 个指数加起来（warp 内蝶形 + shared memory 二级 + 广播，�
   title={base.cuh L631-664（Level 3：online safe softmax 主 kernel）}]{../base.cuh}
 
 主 kernel 的流程：
-（1）初始化——每个线程把\textbf{自己的那一个元素}打包成状态
+（1）初始化：每个线程把\textbf{自己的那一个元素}打包成状态
 $\bigl(x^{(i)}, 1\bigr)$（边界线程填 $\bigl(\texttt{-FLT\_MAX}, 0\bigr)$：
 max 用单位元，$d$ 用加法单位元 0，这样它们参与归约但不污染结果）；
 （2）第一级：warp 内 5 步 \texttt{warp\_\allowbreak{}reduce\_\allowbreak{}md} 蝶形；
 （3）warp leader 把 warp 状态写入 shared memory，\texttt{\_\allowbreak{}\_\allowbreak{}syncthreads} 一次；
 （4）第二级：每个 warp 的所有 lane 重新读出 8 个 warp 状态再做一次
-\texttt{warp\_\allowbreak{}reduce\_\allowbreak{}md}——注释里「用 kWarpSize 确保每个 lane 都拿到最终结果」的用意是：
+\texttt{warp\_\allowbreak{}reduce\_\allowbreak{}md}，注释里「用 kWarpSize 确保每个 lane 都拿到最终结果」的用意是：
 第二级不只在 warp 0 做，而是\textbf{每个 warp 都独立算一遍}，从而免去第二次
 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads} 加广播；
 （5）写回 $y^{(i)} = e^{x^{(i)} - m} \cdot d^{-1}$，除法用近似倒数
@@ -416,7 +416,7 @@ block 级同步从 2 次降到 1 次；代价是归约算子从「单个加法�
 
 图~\ref{fig:4-1} 的三条泳道对应本章三级实现。读图的关键是「全局扫描次数」这一维度：
 3-pass 版本每遍历一次 $x$ 都要付一遍 DRAM 带宽；2-pass 版本把 $x$ 装进寄存器后只需
-两次 block 归约；1-pass 版本连归约都只剩一次——$(m, d)$ 在蝶形归约里同步长大。
+两次 block 归约；1-pass 版本连归约都只剩一次：$(m, d)$ 在蝶形归约里同步长大。
 FlashAttention 把右列的 $(m,d)$ 再加一列 $O$，就是第~\ref{ch:15}~章的 online rescale。
 
 \section{性能分析}
@@ -424,7 +424,7 @@ FlashAttention 把右列的 $(m,d)$ 再加一列 $O$，就是第~\ref{ch:15}~章
 \textbf{算术强度}：per-token softmax 每个元素的有效访存是读 4~B + 写 4~B = 8~B；
 计算上除一次超越函数 $e^{x}$（SFU 指令，不占 FMA 流水）外只有 $O(1)$ 次乘加。
 按「每元素 2 FLOP」的乐观口径，$AI \approx 2/8 = 0.25$ FLOP/B，远低于现代 GPU
-数十至上百 FLOP/B 的 roofline 拐点——softmax 是典型的 \textbf{memory-bound} 算子，
+数十至上百 FLOP/B 的 roofline 拐点，softmax 是典型的 \textbf{memory-bound} 算子，
 优化重心在扫描遍数与同步次数，而不是 FLOP。
 
 本章 bench 复测（RTX PRO 5000 72GB Blackwell，sm\_120，2026-09-11；
@@ -446,7 +446,7 @@ online（1 次 MD 融合归约）     & 0.0142 & 591.6 \\
 \end{table}
 
 三个观察：
-（1）naive 最快——它比 safe 少一次 block 归约（少一次全局同步），比 online 的合并运算轻；
+（1）naive 最快：它比 safe 少一次 block 归约（少一次全局同步），比 online 的合并运算轻；
 在输入保证有界时它确实是三者中最便宜的，可惜这个前提在生产环境不可保证。
 （2）online 比 safe 略快：扫描遍数与同步次数的优势
 （1 次 vs 2 次）压过了更重的合并算子与快速数学指令；差距在小 $N$ 下不明显，
@@ -492,7 +492,7 @@ launch 与同步的固定开销占比大；附录~B 的汇总口径会注明这�
 
 \textbf{坑一：$N$ 传错语义，静默丢输出。}见 4.6~节勘误一：grid$(S)$ 且 $S>1$ 时
 必须传 $N = S \times H$，否则 block $1, \dots, S-1$ 整体被 \texttt{idx < N} 剪掉，
-输出缓冲残留旧值——不报错、不崩溃，纯静默。建议自测时先以 $S=2$ 跑一遍
+输出缓冲残留旧值：不报错、不崩溃，纯静默。建议自测时先以 $S=2$ 跑一遍
 「输出缓冲先 memset 成哨兵值」的检查。
 
 \begin{figure}[H]
@@ -537,7 +537,7 @@ launch 与同步的固定开销占比大；附录~B 的汇总口径会注明这�
 \textbf{坑二：边界填充值要和运算匹配。}求和的填充是 $0$（加法单位元），
 求 max 的填充是 \texttt{-FLT\_MAX}（max 单位元），online 版状态填充是
 $\bigl(\texttt{-FLT\_MAX},\, 0\bigr)$。三者各自配对，混用（比如 max 归约填 0）
-会让 max 被钳在 0——基准被抬高，指数参数 $x - 0$ 比正确的 $x - m$ 整体
+会让 max 被钳在 0：基准被抬高，指数参数 $x - 0$ 比正确的 $x - m$ 整体
 偏小（$m$ 为真实行最大值；输出在不下溢时因平移不变性式~\ref{eq:4-shift}
 逐位不变），真正的风险
 是整行强负值（$x \lesssim -87$）时 $e^{x}$ 全部下溢为 0，得到 $0/0$ 的

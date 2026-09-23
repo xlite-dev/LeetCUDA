@@ -4,7 +4,7 @@
 
 \section{本章导读}
 
-本章处理两个表面无关、内核相通的算子。\textbf{RoPE}（Rotary Position Embedding，旋转位置编码）是逐元素数学型算子：每对分量做一个 2D 旋转，难点在数学形式的等价变换与超越函数的计算策略。\textbf{矩阵转置}是访存型算子的经典教具：读合并则写不合并的矛盾逼出 shared memory 中转，而中转本身又引出本章的真正主角——\textbf{bank conflict}。转置 kernel 中学到的 padding 思想，会在第 \ref{ch:12} 章升级为 XOR swizzle。
+本章处理两个表面无关、内核相通的算子。\textbf{RoPE}（Rotary Position Embedding，旋转位置编码）是逐元素数学型算子：每对分量做一个 2D 旋转，难点在数学形式的等价变换与超越函数的计算策略。\textbf{矩阵转置}是访存型算子的经典教具：读合并则写不合并的矛盾逼出 shared memory 中转，而中转本身又引出本章的重头戏：\textbf{bank conflict}。转置 kernel 中学到的 padding 思想，会在第 \ref{ch:12} 章升级为 XOR swizzle。
 
 \textbf{前置章节}：第 \ref{ch:03} 章 coalescing（合并访存事务的概念）；第 \ref{ch:01} 章 shared memory 层级。
 
@@ -12,15 +12,15 @@
 
 \section{问题与动机}
 
-RoPE 是当前 LLM 位置编码的事实标准（LLaMA、Qwen、PaLM、Mistral 等全部采用），每层 attention 的 Q/K 在进 attention 之前都要经过一次 RoPE 变换。它的核心性质——\textbf{内积只依赖相对位置}——使其天然兼容 KV cache 的增量推理。作为独立算子，RoPE 是逐元素访存 + 少量超越函数；作为融合对象，它常被并入 attention kernel（第 \ref{ch:16} 章起会看到 attention kernel 的结构，RoPE 的预计算与融合策略是工程上的常见分叉点）。
+RoPE 是当前 LLM 位置编码的事实标准（LLaMA、Qwen、PaLM、Mistral 等全部采用），每层 attention 的 Q/K 在进 attention 之前都要经过一次 RoPE 变换。它的核心性质是\textbf{内积只依赖相对位置}，这让它天然兼容 KV cache 的增量推理。作为独立算子，RoPE 是逐元素访存 + 少量超越函数；作为融合对象，它常被并入 attention kernel（第 \ref{ch:16} 章起会看到 attention kernel 的结构，RoPE 的预计算与融合策略是工程上的常见分叉点）。
 
-矩阵转置则无处不在：内存布局变换（NHWC $\leftrightarrow$ NCHW）、attention 的 QKV 重排、GEMM 中把 B 矩阵预先转置成行主以获得合并访存（第 \ref{ch:09} 章起大量出现）。它的计算量为零，性能完全由访存模式决定——而这恰好构成了一个教科书级的矛盾：
+矩阵转置则无处不在：内存布局变换（NHWC $\leftrightarrow$ NCHW）、attention 的 QKV 重排、GEMM 中把 B 矩阵预先转置成行主以获得合并访存（第 \ref{ch:09} 章起大量出现）。它的计算量为零，性能完全由访存模式决定，于是有个绕不开的矛盾：
 
 \begin{center}
 \textit{按行读就是合并的，那么按列写必然是跨步的。}
 \end{center}
 
-naive 转置一半访存（写）退化到 $1/8$ 的有效利用率（32B sector 口径；若按 L1$\leftrightarrow$L2 的 128B cache line 口径则 $1/32$）；引入 shared memory 中转可以两边都合并，但「按列读 shared memory」又会撞上 shared memory 的物理结构限制——32 个 bank。如何量化冲突、如何用最小的改动消除主要冲突，就是本章 bank conflict 专题的全部内容。
+naive 转置一半访存（写）退化到 $1/8$ 的有效利用率（32B sector 口径；若按 L1$\leftrightarrow$L2 的 128B cache line 口径则 $1/32$）；引入 shared memory 中转可以两边都合并，但「按列读 shared memory」又会撞上 shared memory 的物理结构限制：32 个 bank。如何量化冲突、如何用最小的改动消除主要冲突，就是本章 bank conflict 专题的全部内容。
 
 \section{数学原理}
 
@@ -51,11 +51,11 @@ RoPE 的基本动作是把一对分量 $(x_1, x_2)$ 视作平面上的一个点�
    = z_q^{*}\, R\big((n-m)\theta\big)\, z_k .
   \label{eq:ch07-relative}
 \end{align}
-第一步用了共轭 $ (e^{im\theta})^{*} = e^{-im\theta}$ 与乘法结合律；结果只含位置差 $n - m$，与绝对位置 $m, n$ 无关——这就是「内积只依赖相对位置」。矩阵语言同样干净：旋转矩阵是正交阵且 $R(a)^{\top} = R(-a)$，故
+第一步用了共轭 $ (e^{im\theta})^{*} = e^{-im\theta}$ 与乘法结合律；结果只含位置差 $n - m$，与绝对位置 $m, n$ 无关，这就是「内积只依赖相对位置」。矩阵语言同样干净：旋转矩阵是正交阵且 $R(a)^{\top} = R(-a)$，故
 \begin{equation}
   R(m\theta)^{\top} R(n\theta) = R(-m\theta)\,R(n\theta) = R\big((n-m)\theta\big).
 \end{equation}
-训练时模型看到的打分只随相对位移变化，位置信息以「旋转相位」的形式注入，这正是 RoPE 外推性质的数学根基。
+训练时模型看到的打分只随相对位移变化，位置信息以「旋转相位」的形式注入，RoPE 的外推性质就建立在这条数学性质上。
 
 \subsection{高维形式：分块对角旋转矩阵}
 
@@ -73,18 +73,18 @@ $R^{d}_{\Theta}$ 是 $d/2$ 个 $2\times 2$ 旋转块排布在主对角线上的\
 \begin{figure}[H]
 \centering
 \begin{tikzpicture}[font=\scriptsize]
-  \node[anchor=south] at (2.48,0.4) {$R^{d}_{\Theta}\in\mathbb{R}^{d\times d}$（$d=8$ 示意）};
-  \node[anchor=south] at (8.1,0.4) {第一块展开：$2\times2$ 旋转};
-  \fill[gray!8] (0,0) rectangle (4.96,-4.96);
+  \node[anchor=south, text=tkBlue!85!black] at (2.48,0.4) {$R^{d}_{\Theta}\in\mathbb{R}^{d\times d}$（$d=8$ 示意）};
+  \node[anchor=south, text=tkPurple!85!black] at (8.1,0.4) {第一块展开：$2\times2$ 旋转};
+  \fill[gray!22, draw=gray!55] (0,0) rectangle (4.96,-4.96);
   \fill[gray!85] (0,0) rectangle (1.24,-1.24);
   \fill[gray!72] (1.24,-1.24) rectangle (2.48,-2.48);
   \fill[gray!60] (2.48,-2.48) rectangle (3.72,-3.72);
   \fill[gray!48] (3.72,-3.72) rectangle (4.96,-4.96);
   \draw[thin, gray!55] (0,0) grid (4.96,-4.96);
-  \draw[very thick] (0,0) rectangle (1.24,-1.24);
-  \draw[very thick] (1.24,-1.24) rectangle (2.48,-2.48);
-  \draw[very thick] (2.48,-2.48) rectangle (3.72,-3.72);
-  \draw[very thick] (3.72,-3.72) rectangle (4.96,-4.96);
+  \draw[very thick, draw=tkBlue!85!black] (0,0) rectangle (1.24,-1.24);
+  \draw[very thick, draw=tkBlue!85!black] (1.24,-1.24) rectangle (2.48,-2.48);
+  \draw[very thick, draw=tkBlue!85!black] (2.48,-2.48) rectangle (3.72,-3.72);
+  \draw[very thick, draw=tkBlue!85!black] (3.72,-3.72) rectangle (4.96,-4.96);
   \node[white] at (0.62,-0.62) {$R(\theta_0)$};
   \node at (1.86,-1.86) {$R(\theta_1)$};
   \node at (3.1,-3.1) {$R(\theta_2)$};
@@ -93,13 +93,13 @@ $R^{d}_{\Theta}$ 是 $d/2$ 个 $2\times 2$ 旋转块排布在主对角线上的\
   \node[anchor=north, font=\tiny] at (3.1,-5.12) {$\theta_2\approx10^{-2}$};
   \node[anchor=north, font=\tiny] at (1.86,-5.56) {$\theta_1\approx10^{-1}$};
   \node[anchor=north, font=\tiny] at (4.34,-5.56) {$\theta_3\approx10^{-3}$};
-  \draw[dashed, gray!60, thin] (1.24,0) -- (6.6,-0.7);
-  \draw[dashed, gray!60, thin] (1.24,-1.24) -- (6.6,-3.7);
+  \draw[dashed, draw=tkPurple!75!black, thin] (1.24,0) -- (6.6,-0.7);
+  \draw[dashed, draw=tkPurple!75!black, thin] (1.24,-1.24) -- (6.6,-3.7);
   \node[fill=gray!85, text=white] at (7.35,-1.45) {$\cos\theta_0$};
   \node[fill=gray!85, text=white] at (8.85,-1.45) {$-\sin\theta_0$};
   \node[fill=gray!85, text=white] at (7.35,-2.95) {$\sin\theta_0$};
   \node[fill=gray!85, text=white] at (8.85,-2.95) {$\cos\theta_0$};
-  \draw[very thick] (6.6,-0.7) rectangle (9.6,-3.7);
+  \draw[very thick, draw=tkPurple] (6.6,-0.7) rectangle (9.6,-3.7);
   \draw[thin, white] (8.1,-0.7) -- (8.1,-3.7);
   \draw[thin, white] (6.6,-2.2) -- (9.6,-2.2);
   \node[anchor=north, align=center] at (4.8,-6.15)
@@ -110,13 +110,13 @@ $R^{d}_{\Theta}$ 是 $d/2$ 个 $2\times 2$ 旋转块排布在主对角线上的\
 \label{fig:7-4}
 \end{figure}
 
-需要特别注意\textbf{配对约定}：式~\eqref{eq:ch07-blockdiag} 只规定了「哪两个分量组成一对」，没有规定配对的枚举顺序。常见的两种是\textbf{相邻对}（interleaved：$(x_0,x_1), (x_2,x_3), \dots$，原始论文与本源码采用）与\textbf{半分对}（half-split：$(x_0, x_{d/2}), (x_1, x_{d/2+1}), \dots$，HuggingFace transformers 的 \texttt{rotate\_half} 实现）。两者是同一数学对象在不同分量排列下的表现形式，逐对重排即可互相转换；但 checkpoint 权重与 KV cache 布局如果不做对应重排，结果就是错的——对齐 HuggingFace 权重时这是经典坑（见本章实践经验）。
+需要特别注意\textbf{配对约定}：式~\eqref{eq:ch07-blockdiag} 只规定了「哪两个分量组成一对」，没有规定配对的枚举顺序。常见的两种是\textbf{相邻对}（interleaved：$(x_0,x_1), (x_2,x_3), \dots$，原始论文与本源码采用）与\textbf{半分对}（half-split：$(x_0, x_{d/2}), (x_1, x_{d/2+1}), \dots$，HuggingFace transformers 的 \texttt{rotate\_half} 实现）。两者是同一数学对象在不同分量排列下的表现形式，逐对重排即可互相转换；但 checkpoint 权重与 KV cache 布局如果不做对应重排，结果就是错的，对齐 HuggingFace 权重时这是经典坑（见本章实践经验）。
 
 \begin{figure}[htbp]
 \centering
 \begin{tikzpicture}[font=\scriptsize,
   cell/.style={minimum size=0mm, inner sep=0pt, align=center, text width=1.9em}]
-  \node[anchor=west, font=\small\bfseries] at (-0.3,1.42)
+  \node[anchor=west, font=\small\bfseries, text=tkBlue!85!black] at (-0.3,1.42)
     {相邻对（interleaved）——本源码：\texttt{idx*2, idx*2+1}};
   \node[cell, fill=gray!85] at (0.310,0.350) {$x_{0}$\\[-1pt]{\tiny $\theta_{0}$}};
   \node[cell, fill=gray!85] at (0.930,0.350) {$x_{1}$\\[-1pt]{\tiny $\theta_{0}$}};
@@ -126,52 +126,52 @@ $R^{d}_{\Theta}$ 是 $d/2$ 个 $2\times 2$ 旋转块排布在主对角线上的\
   \node[cell, fill=gray!60] at (3.410,0.350) {$x_{5}$\\[-1pt]{\tiny $\theta_{2}$}};
   \node[cell, fill=gray!48] at (4.030,0.350) {$x_{6}$\\[-1pt]{\tiny $\theta_{3}$}};
   \node[cell, fill=gray!48] at (4.650,0.350) {$x_{7}$\\[-1pt]{\tiny $\theta_{3}$}};
-  \node[cell, fill=gray!36] at (5.270,0.350) {$x_{8}$\\[-1pt]{\tiny $\theta_{4}$}};
-  \node[cell, fill=gray!36] at (5.890,0.350) {$x_{9}$\\[-1pt]{\tiny $\theta_{4}$}};
-  \node[cell, fill=gray!27] at (6.510,0.350) {$x_{10}$\\[-1pt]{\tiny $\theta_{5}$}};
-  \node[cell, fill=gray!27] at (7.130,0.350) {$x_{11}$\\[-1pt]{\tiny $\theta_{5}$}};
-  \node[cell, fill=gray!18] at (7.750,0.350) {$x_{12}$\\[-1pt]{\tiny $\theta_{6}$}};
-  \node[cell, fill=gray!18] at (8.370,0.350) {$x_{13}$\\[-1pt]{\tiny $\theta_{6}$}};
-  \node[cell, fill=gray!10] at (8.990,0.350) {$x_{14}$\\[-1pt]{\tiny $\theta_{7}$}};
-  \node[cell, fill=gray!10] at (9.610,0.350) {$x_{15}$\\[-1pt]{\tiny $\theta_{7}$}};
-  \draw[thick] (0.000,0.000) grid (9.920,0.700);
-  \draw (0.000,0.760) -- (0.000,0.920) -- (1.240,0.920) -- (1.240,0.760);
-  \draw (1.240,0.760) -- (1.240,0.920) -- (2.480,0.920) -- (2.480,0.760);
-  \draw (2.480,0.760) -- (2.480,0.920) -- (3.720,0.920) -- (3.720,0.760);
-  \draw (3.720,0.760) -- (3.720,0.920) -- (4.960,0.920) -- (4.960,0.760);
-  \draw (4.960,0.760) -- (4.960,0.920) -- (6.200,0.920) -- (6.200,0.760);
-  \draw (6.200,0.760) -- (6.200,0.920) -- (7.440,0.920) -- (7.440,0.760);
-  \draw (7.440,0.760) -- (7.440,0.920) -- (8.680,0.920) -- (8.680,0.760);
-  \draw (8.680,0.760) -- (8.680,0.920) -- (9.920,0.920) -- (9.920,0.760);
+  \node[cell, fill=gray!40] at (5.270,0.350) {$x_{8}$\\[-1pt]{\tiny $\theta_{4}$}};
+  \node[cell, fill=gray!40] at (5.890,0.350) {$x_{9}$\\[-1pt]{\tiny $\theta_{4}$}};
+  \node[cell, fill=gray!33] at (6.510,0.350) {$x_{10}$\\[-1pt]{\tiny $\theta_{5}$}};
+  \node[cell, fill=gray!33] at (7.130,0.350) {$x_{11}$\\[-1pt]{\tiny $\theta_{5}$}};
+  \node[cell, fill=gray!27] at (7.750,0.350) {$x_{12}$\\[-1pt]{\tiny $\theta_{6}$}};
+  \node[cell, fill=gray!27] at (8.370,0.350) {$x_{13}$\\[-1pt]{\tiny $\theta_{6}$}};
+  \node[cell, fill=gray!22] at (8.990,0.350) {$x_{14}$\\[-1pt]{\tiny $\theta_{7}$}};
+  \node[cell, fill=gray!22] at (9.610,0.350) {$x_{15}$\\[-1pt]{\tiny $\theta_{7}$}};
+  \draw[thick, draw=tkBlue!60] (0.000,0.000) grid (9.920,0.700);
+  \draw[tkBlue!85!black] (0.000,0.760) -- (0.000,0.920) -- (1.240,0.920) -- (1.240,0.760);
+  \draw[tkBlue!85!black] (1.240,0.760) -- (1.240,0.920) -- (2.480,0.920) -- (2.480,0.760);
+  \draw[tkBlue!85!black] (2.480,0.760) -- (2.480,0.920) -- (3.720,0.920) -- (3.720,0.760);
+  \draw[tkBlue!85!black] (3.720,0.760) -- (3.720,0.920) -- (4.960,0.920) -- (4.960,0.760);
+  \draw[tkBlue!85!black] (4.960,0.760) -- (4.960,0.920) -- (6.200,0.920) -- (6.200,0.760);
+  \draw[tkBlue!85!black] (6.200,0.760) -- (6.200,0.920) -- (7.440,0.920) -- (7.440,0.760);
+  \draw[tkBlue!85!black] (7.440,0.760) -- (7.440,0.920) -- (8.680,0.920) -- (8.680,0.760);
+  \draw[tkBlue!85!black] (8.680,0.760) -- (8.680,0.920) -- (9.920,0.920) -- (9.920,0.760);
   \node[anchor=west, font=\tiny] at (10.55,0.55) {每对做一次 2D 旋转};
   \draw[-{Latex[length=1.4mm]}] (10.35,0.05) arc[start angle=310, end angle=30, radius=0.20];
   \node[anchor=west] at (10.62,0.18) {$R(m\theta_i)$};
-  \node[anchor=west, font=\small\bfseries] at (-0.3,-1.62)
+  \node[anchor=west, font=\small\bfseries, text=tkOrange!85!black] at (-0.3,-1.62)
     {半分对（half-split）——HuggingFace：\texttt{rotate\_half}（$(x_i,\,x_{i+d/2})$）};
   \node[cell, fill=gray!85] at (0.310,-2.250) {$x_{0}$\\[-1pt]{\tiny $\theta_{0}$}};
   \node[cell, fill=gray!72] at (0.930,-2.250) {$x_{1}$\\[-1pt]{\tiny $\theta_{1}$}};
   \node[cell, fill=gray!60] at (1.550,-2.250) {$x_{2}$\\[-1pt]{\tiny $\theta_{2}$}};
   \node[cell, fill=gray!48] at (2.170,-2.250) {$x_{3}$\\[-1pt]{\tiny $\theta_{3}$}};
-  \node[cell, fill=gray!36] at (2.790,-2.250) {$x_{4}$\\[-1pt]{\tiny $\theta_{4}$}};
-  \node[cell, fill=gray!27] at (3.410,-2.250) {$x_{5}$\\[-1pt]{\tiny $\theta_{5}$}};
-  \node[cell, fill=gray!18] at (4.030,-2.250) {$x_{6}$\\[-1pt]{\tiny $\theta_{6}$}};
-  \node[cell, fill=gray!10] at (4.650,-2.250) {$x_{7}$\\[-1pt]{\tiny $\theta_{7}$}};
+  \node[cell, fill=gray!40] at (2.790,-2.250) {$x_{4}$\\[-1pt]{\tiny $\theta_{4}$}};
+  \node[cell, fill=gray!33] at (3.410,-2.250) {$x_{5}$\\[-1pt]{\tiny $\theta_{5}$}};
+  \node[cell, fill=gray!27] at (4.030,-2.250) {$x_{6}$\\[-1pt]{\tiny $\theta_{6}$}};
+  \node[cell, fill=gray!22] at (4.650,-2.250) {$x_{7}$\\[-1pt]{\tiny $\theta_{7}$}};
   \node[cell, fill=gray!85] at (5.270,-2.250) {$x_{8}$\\[-1pt]{\tiny $\theta_{0}$}};
   \node[cell, fill=gray!72] at (5.890,-2.250) {$x_{9}$\\[-1pt]{\tiny $\theta_{1}$}};
   \node[cell, fill=gray!60] at (6.510,-2.250) {$x_{10}$\\[-1pt]{\tiny $\theta_{2}$}};
   \node[cell, fill=gray!48] at (7.130,-2.250) {$x_{11}$\\[-1pt]{\tiny $\theta_{3}$}};
-  \node[cell, fill=gray!36] at (7.750,-2.250) {$x_{12}$\\[-1pt]{\tiny $\theta_{4}$}};
-  \node[cell, fill=gray!27] at (8.370,-2.250) {$x_{13}$\\[-1pt]{\tiny $\theta_{5}$}};
-  \node[cell, fill=gray!18] at (8.990,-2.250) {$x_{14}$\\[-1pt]{\tiny $\theta_{6}$}};
-  \node[cell, fill=gray!10] at (9.610,-2.250) {$x_{15}$\\[-1pt]{\tiny $\theta_{7}$}};
-  \draw[thick] (0.000,-2.600) grid (9.920,-1.900);
-  \draw[-{Latex[length=1.6mm]},thick] (0.310,-2.650) to[bend right=32] (5.270,-2.650);
-  \node at (2.790,-3.780) {$(x_0,x_8)$};
-  \draw[-{Latex[length=1.6mm]},thick] (4.650,-2.650) to[bend right=14] (9.610,-2.650);
-  \node at (7.130,-3.220) {$(x_7,x_{15})$};
+  \node[cell, fill=gray!40] at (7.750,-2.250) {$x_{12}$\\[-1pt]{\tiny $\theta_{4}$}};
+  \node[cell, fill=gray!33] at (8.370,-2.250) {$x_{13}$\\[-1pt]{\tiny $\theta_{5}$}};
+  \node[cell, fill=gray!27] at (8.990,-2.250) {$x_{14}$\\[-1pt]{\tiny $\theta_{6}$}};
+  \node[cell, fill=gray!22] at (9.610,-2.250) {$x_{15}$\\[-1pt]{\tiny $\theta_{7}$}};
+  \draw[thick, draw=tkOrange!60] (0.000,-2.600) grid (9.920,-1.900);
+  \draw[-{Latex[length=1.6mm]},thick, draw=tkOrange!85!black] (0.310,-2.650) to[bend right=32] (5.270,-2.650);
+  \node[text=tkOrange!85!black] at (2.790,-3.780) {$(x_0,x_8)$};
+  \draw[-{Latex[length=1.6mm]},thick, draw=tkOrange!85!black] (4.650,-2.650) to[bend right=14] (9.610,-2.650);
+  \node[text=tkOrange!85!black] at (7.130,-3.220) {$(x_7,x_{15})$};
   \node[anchor=west, font=\tiny, align=left] at (0,-4.35)
     {同灰度 = 同一旋转对（共用同一 $\theta_i$）；灰度随 $i$ 从最深（$\theta_0=1$，最高频）渐浅（$\theta_{d/2-1}\approx 10^{-4}$，最低频）。\\
-     两种排列逐对重排即可互相转换；checkpoint 权重 / KV cache 不做对应重排直接套用即错。};
+     \textcolor{tkRed!85!black}{两种排列逐对重排即可互相转换；checkpoint 权重 / KV cache 不做对应重排直接套用即错。}};
 \end{tikzpicture}
 \caption{RoPE 两种配对约定（示意 $d{=}16$，即 8 对；源码测试为每 token $N{=}64$ 对）：相邻对 interleaved（源码 \texttt{idx*2}/\texttt{idx*2+1}）与半分对 half-split（HuggingFace \texttt{rotate\_half}）。同灰度格属于同一旋转对、共用同一 $\theta_i$；两行是同一分块对角旋转在不同分量排列下的形态。}
 \label{fig:7-2}
@@ -179,7 +179,7 @@ $R^{d}_{\Theta}$ 是 $d/2$ 个 $2\times 2$ 旋转块排布在主对角线上的\
 
 \subsection{转置的「数学」}
 
-转置本身没有数学难度：$y_{ji} = x_{ij}$。值得形式化的是访存代价。行主存储下 $x_{ij}$ 位于地址 $i \cdot \mathrm{col} + j$。第 \ref{ch:03} 章的 coalescing 原则要求同 warp 的 32 线程访问连续地址；转置的读与写不可能同时满足——行主读合并意味着列主写跨步，反之亦然。这就是下一节用 shared memory 中转的动机。
+转置本身没有数学难度：$y_{ji} = x_{ij}$。值得形式化的是访存代价。行主存储下 $x_{ij}$ 位于地址 $i \cdot \mathrm{col} + j$。第 \ref{ch:03} 章的 coalescing 原则要求同 warp 的 32 线程访问连续地址；转置的读与写不可能同时满足：行主读合并意味着列主写跨步，反之亦然。这就是下一节用 shared memory 中转的动机。
 
 \section{设计与实现}
 
@@ -190,18 +190,18 @@ $R^{d}_{\Theta}$ 是 $d/2$ 个 $2\times 2$ 旋转块排布在主对角线上的\
 
 \textbf{索引解码}。\texttt{idx} 是「维度对」的全局编号，范围 $[0, \text{seq\_len} \times N)$，其中参数 $N$ 是\textbf{每 token 的对数}（$N = d/2$，hidden size 为 $2N$）。\texttt{token\_pos = idx / N} 解出序列位置 $m$，\texttt{token\_idx = idx \% N} 解出 token 内的对号 $i$。一对分量占两个连续地址 \texttt{x[idx*2]} 与 \texttt{x[idx*2+1]}。
 
-\textbf{频率计算}。\texttt{exp\_\allowbreak{}v =\allowbreak{} 1.0f /\allowbreak{} powf\allowbreak{}(10000.0f,\allowbreak{} 2 * token\_\allowbreak{}idx /\allowbreak{} (N * 2.0f))} 实现式~\eqref{eq:ch07-blockdiag} 的 $\theta_i = 10000^{-2i/d}$：分子 \texttt{2 * token\_idx} 是整数乘法，除以 \texttt{(N * 2.0f)}（即 $d$）时提升为浮点除法，不会截断。角度 \texttt{token\_pos * exp\_v} 即 $m\theta_i$。注意分母用的是 $d = N \times 2$ 而不是 $N$——若误用 $N$，频率谱整体偏移一个平方量级，这是把「对数」当「维度数」的经典笔误。
+\textbf{频率计算}。\texttt{exp\_\allowbreak{}v =\allowbreak{} 1.0f /\allowbreak{} powf\allowbreak{}(10000.0f,\allowbreak{} 2 * token\_\allowbreak{}idx /\allowbreak{} (N * 2.0f))} 实现式~\eqref{eq:ch07-blockdiag} 的 $\theta_i = 10000^{-2i/d}$：分子 \texttt{2 * token\_idx} 是整数乘法，除以 \texttt{(N * 2.0f)}（即 $d$）时提升为浮点除法，不会截断。角度 \texttt{token\_pos * exp\_v} 即 $m\theta_i$。注意分母用的是 $d = N \times 2$ 而不是 $N$：若误用 $N$，频率谱整体偏移一个平方量级，这是把「对数」当「维度数」的经典笔误。
 
 \textbf{旋转与写回}。两行乘加 $x_1' = x_1\cos\theta - x_2\sin\theta$、$x_2' = x_1\sin\theta + x_2\cos\theta$ 与式~\eqref{eq:ch07-2d-rot} 逐项对应，编译器可映射为 FMA。
 
-\textbf{访存与计算策略}。相邻线程访问相邻对，warp 的 32 线程读 64 个连续 float（256B，合并为 2 个事务），写同理——接近最优但差一步：一对元素本可用一条 \texttt{float2} load 完成。更值得注意的是计算侧：\texttt{powf/\allowbreak{}sinf/\allowbreak{}cosf} 三个超越函数在每个线程重算，而 $\theta_i$ 只依赖对号 $i$（整张 batch 复用）、$m\theta_i$ 只依赖 $(m, i)$（每层每次 forward 都相同）。生产实现普遍改为预计算 cos/sin 缓存表（\texttt{seq\_len} $\times d/2$ 个元素，启动时一次生成）或把 RoPE 融合进 attention/elementwise 链。本章 kernel 保留「每线程重算」的教学形态，把「算得少」作为优化讨论留给读者实验。
+\textbf{访存与计算策略}。相邻线程访问相邻对，warp 的 32 线程读 64 个连续 float（256B，合并为 2 个事务），写同理，已接近最优但还差一步：一对元素本可用一条 \texttt{float2} load 完成。计算侧的问题更大：\texttt{powf/\allowbreak{}sinf/\allowbreak{}cosf} 三个超越函数在每个线程重算，而 $\theta_i$ 只依赖对号 $i$（整张 batch 复用）、$m\theta_i$ 只依赖 $(m, i)$（每层每次 forward 都相同）。生产实现普遍改为预计算 cos/sin 缓存表（\texttt{seq\_len} $\times d/2$ 个元素，启动时一次生成）或把 RoPE 融合进 attention/elementwise 链。本章 kernel 保留「每线程重算」的教学形态，把「算得少」作为优化讨论留给读者实验。
 
 \subsection{mat\_transpose：矛盾的直接呈现}
 
 \lstinputlisting[linerange={839-865},firstnumber=auto,
   title={base.cuh L839-865（mat\_transpose：naive 转置及其访存注释）}]{../base.cuh}
 
-每线程搬运一个元素：\texttt{y[c * row + r] = x[r * col + c]}。读侧：warp 内 32 线程的 $r$ 固定、$c$ 连续，读 128B 连续段，合并。写侧：$c$ 每加 1，地址跳一整行（\texttt{row} 个 float），32 线程写到 32 个互不相邻的 4B——每个 4B 落在各自的内存事务里，产生 32 次写事务（$32 \times 32\mathrm{B} = 1024\mathrm{B}$），只运了 128B 有效数据。源码注释「非合并写入 $\to$ 32 次内存事务」说的正是这个。读侧利用率 100\%，写侧仅 $1/8$（32B sector 口径；按 128B cache line 口径则 $1/32$），总带宽立刻被写侧拖垮（本章第 6 节实测 512 规模只有 $\sim 350\,\mathrm{GB/s}$，是 padded 版的 69\%）。
+每线程搬运一个元素：\texttt{y[c * row + r] = x[r * col + c]}。读侧：warp 内 32 线程的 $r$ 固定、$c$ 连续，读 128B 连续段，合并。写侧：$c$ 每加 1，地址跳一整行（\texttt{row} 个 float），32 线程写到 32 个互不相邻的 4B，每个 4B 落在各自的内存事务里，产生 32 次写事务（$32 \times 32\mathrm{B} = 1024\mathrm{B}$），只运了 128B 有效数据。源码注释「非合并写入 $\to$ 32 次内存事务」说的正是这个。读侧利用率 100\%，写侧仅 $1/8$（32B sector 口径；按 128B cache line 口径则 $1/32$），总带宽立刻被写侧拖垮（本章第 6 节实测 512 规模只有 $\sim 350\,\mathrm{GB/s}$，是 padded 版的 69\%）。
 
 \begin{figure}[htbp]
 \centering
@@ -246,11 +246,11 @@ $R^{d}_{\Theta}$ 是 $d/2$ 个 $2\times 2$ 旋转块排布在主对角线上的\
 整体思路是「两边各自合并，中间过一道 shared memory」：
 \begin{enumerate}
   \item \textbf{Step 1（gmem $\to$ smem，合并读）}：\texttt{tile[ty*4+i][tx] =\allowbreak{} x[\allowbreak{}(x\_\allowbreak{}r*4+i)*col + x\_\allowbreak{}c]}。每线程负责 4 行 $\times$ 1 列（\texttt{\#pragma unroll} 展开 4 次读），warp 内 $x\_c$ 连续，读合并。写入 smem 是按行连续写。
-  \item \textbf{Step 2（smem 转置读 $\to$ gmem，合并写）}：\texttt{reg\_trans} 的 4 个分量取 \texttt{tile[tx*4+j][ty]}（$j = 0..3$）——行号与列号互换，正是「转置读 smem」。随后 \texttt{FLOAT4\allowbreak{}(y[y\_\allowbreak{}r * row + y\_\allowbreak{}c]) =\allowbreak{} reg\_\allowbreak{}trans} 把 4 个连续输出元素一条 16B 指令写回；同 warp 内 16 线程覆盖 64 个连续输出 float，合并写。
+  \item \textbf{Step 2（smem 转置读 $\to$ gmem，合并写）}：\texttt{reg\_trans} 的 4 个分量取 \texttt{tile[tx*4+j][ty]}（$j = 0..3$）：行号与列号互换，正是「转置读 smem」。随后 \texttt{FLOAT4\allowbreak{}(y[y\_\allowbreak{}r * row + y\_\allowbreak{}c]) =\allowbreak{} reg\_\allowbreak{}trans} 把 4 个连续输出元素一条 16B 指令写回；同 warp 内 16 线程覆盖 64 个连续输出 float，合并写。
 \end{enumerate}
-两个坐标换算值得写慢一点：$y$ 的行号 $= x$ 的列号，故 \texttt{y\_r = blockIdx.x * TILE + ty}；$y$ 的列号 $= x$ 的行号 $\times 1$，但每线程覆盖 4 个连续行，故 \texttt{y\_c = (blockIdx.y * TILE + tx) * 4}。\texttt{FLOAT4} 写回要求 \texttt{y\_c} 起 4 个元素 16B 对齐，即 $x$ 的行号是 4 的倍数——这由 \texttt{y\_c} 的构造天然保证。
+两个坐标换算值得写慢一点：$y$ 的行号 $= x$ 的列号，故 \texttt{y\_r = blockIdx.x * TILE + ty}；$y$ 的列号 $= x$ 的行号 $\times 1$，但每线程覆盖 4 个连续行，故 \texttt{y\_c = (blockIdx.y * TILE + tx) * 4}。\texttt{FLOAT4} 写回要求 \texttt{y\_c} 起 4 个元素 16B 对齐，即 $x$ 的行号是 4 的倍数，这由 \texttt{y\_c} 的构造天然保证。
 
-smem tile 的形状是 \texttt{[TILE*4][TILE+PAD]} $= [64][17]$：第二维多出的 \texttt{PAD = 1} 不是防越界，而是\textbf{消除 bank conflict} 的关键——这就是下一节的主题。
+smem tile 的形状是 \texttt{[TILE*4][TILE+PAD]} $= [64][17]$：第二维多出的 \texttt{PAD = 1} 不是防越界，而是\textbf{消除 bank conflict} 的关键，下一节就讲它。
 
 \section{图示：Bank Conflict 专题}
 
@@ -268,11 +268,11 @@ shared memory 被切成 32 个 bank（对应一个 warp 的 32 线程），每�
 
 \textbf{Step 2 转置读}（每条 LD 指令，$j$ 固定）：地址 $(4\,tx + j)\,W + ty$。
 \begin{itemize}
-  \item 无 PAD（$W = 16$）：$64\,tx + 16j + ty$，对 32 取模后 $tx$ 项整体消失（$64 \equiv 0 \pmod{32}$），bank 号 $= (16j + ty) \bmod 32$ \textbf{与 $tx$ 无关}——32 个线程全部挤进 2 个 bank，每个 bank 16 线程等待，\textbf{16-way conflict}，读 shared memory 的吞吐掉到 $1/16$。
-  \item PAD=1（$W = 17$）：地址 $68\,tx + 17j + ty$，而 $68 \equiv 4 \pmod{32}$：$tx$ 每加 1，bank 号前进 4。16 个线程的 bank 号构成 $\{b, b{+}4, b{+}8, \dots, b{+}60\} \bmod 32$，恰好覆盖 8 个 bank、每个 bank 2 线程——\textbf{16-way 降到 2-way}，事务数从 16 降到 2（读吞吐 $\times 8$）。
+  \item 无 PAD（$W = 16$）：$64\,tx + 16j + ty$，对 32 取模后 $tx$ 项整体消失（$64 \equiv 0 \pmod{32}$），bank 号 $= (16j + ty) \bmod 32$ \textbf{与 $tx$ 无关}，32 个线程全部挤进 2 个 bank，每个 bank 16 线程等待，\textbf{16-way conflict}，读 shared memory 的吞吐掉到 $1/16$。
+  \item PAD=1（$W = 17$）：地址 $68\,tx + 17j + ty$，而 $68 \equiv 4 \pmod{32}$：$tx$ 每加 1，bank 号前进 4。16 个线程的 bank 号构成 $\{b, b{+}4, b{+}8, \dots, b{+}60\} \bmod 32$，恰好覆盖 8 个 bank、每个 bank 2 线程，\textbf{16-way 降到 2-way}，事务数从 16 降到 2（读吞吐 $\times 8$）。
 \end{itemize}
 
-\textbf{Step 1 写 smem}（每条 ST 指令，$i$ 固定）：地址 $(4\,ty + i)\,W + tx$。无 PAD 时 bank 号 $= (16i + tx) \bmod 32$ 与 $ty$ 无关——warp 的两排 $ty$ 并行写相同 bank 序列，每 bank 2 线程，\textbf{2-way}；PAD=1 时行距变为 $68 \equiv 4 \pmod{32}$，两排 bank 序列错开 4，仍有部分重叠，模拟结果\textbf{仍是 2-way}（写侧 PAD 前后无改善）。
+\textbf{Step 1 写 smem}（每条 ST 指令，$i$ 固定）：地址 $(4\,ty + i)\,W + tx$。无 PAD 时 bank 号 $= (16i + tx) \bmod 32$ 与 $ty$ 无关：warp 的两排 $ty$ 并行写相同 bank 序列，每 bank 2 线程，\textbf{2-way}；PAD=1 时行距变为 $68 \equiv 4 \pmod{32}$，两排 bank 序列错开 4，仍有部分重叠，模拟结果\textbf{仍是 2-way}（写侧 PAD 前后无改善）。
 
 \begin{figure}[htbp]
 \centering
@@ -368,7 +368,7 @@ shared memory 被切成 32 个 bank（对应一个 warp 的 32 线程），每�
 \label{fig:7-1}
 \end{figure}
 
-两个思考题留给自己：（1）为什么经典「一线程一元素」的 $32 \times 32$ tile 加 PAD=1 能做到零冲突，而本 kernel 的 4 行版本不能？（提示：经典版 warp 内 32 线程读同一列，地址步长 $33 \times 4\mathrm{B} \equiv 4\mathrm{B}$，32 线程 bank 号两两不同；本版每线程 4 行、warp 只跨 2 列，自由度更小。）（2）残留的 2-way 怎么彻底消除？把行距从 4 改成别的值、或干脆重排 tile 内的物理布局——第 \ref{ch:12} 章的 XOR swizzle 会给出系统性答案：用地址位异或代替加法 padding，在不浪费 smem 容量的前提下打散 bank 映射。
+两个思考题留给自己：（1）为什么经典「一线程一元素」的 $32 \times 32$ tile 加 PAD=1 能做到零冲突，而本 kernel 的 4 行版本不能？（提示：经典版 warp 内 32 线程读同一列，地址步长 $33 \times 4\mathrm{B} \equiv 4\mathrm{B}$，32 线程 bank 号两两不同；本版每线程 4 行、warp 只跨 2 列，自由度更小。）（2）残留的 2-way 怎么彻底消除？把行距从 4 改成别的值、或干脆重排 tile 内的物理布局，第 \ref{ch:12} 章的 XOR swizzle 会给出系统性答案：用地址位异或代替加法 padding，在不浪费 smem 容量的前提下打散 bank 映射。
 
 \subsection{模拟验证}
 
@@ -402,13 +402,13 @@ $M$ & mat\_transpose (naive) & mat\_transpose\_padded & 加速比 \\
 
 \begin{enumerate}
   \item \textbf{L2 口径下收益放大到 2.4$\times$}：L2 延迟低、带宽高，事务数（而非 DRAM 流量）成为第一瓶颈。naive 的 32 次写事务在 L2 上全额计费；padded 的 float4 合并写加上 smem 读从 16-way 修到 2-way，双双把事务开销压掉。$M = 2048$ 时 padded 有效带宽 2320 GB/s，这是 L2 量级的数字，不代表 HBM。
-  \item \textbf{HBM 口径下收益缩到 1.11$\times$}：$M = 8192$ 时数据穿透 L2 落到 DRAM，L2 的 write-back 聚合会把 naive 分散的 4B 写在写回 DRAM 前重新拼成整段，非合并写的惩罚被部分吸收；此时两者都逼近 DRAM 带宽，剩余差距主要来自 smem 2-way 与调度差异。结论很实用：\textbf{转置优化的收益必须按数据规模/L2 行为分口径报告}，拿 L2 口径的 2.4$\times$ 去外推大矩阵会严重高估。
+  \item \textbf{HBM 口径下收益缩到 1.11$\times$}：$M = 8192$ 时数据穿透 L2 落到 DRAM，L2 的 write-back 聚合会把 naive 分散的 4B 写在写回 DRAM 前重新拼成整段，非合并写的惩罚被部分吸收；此时两者都逼近 DRAM 带宽，剩余差距主要来自 smem 2-way 与调度差异。结论：\textbf{转置优化的收益必须按数据规模/L2 行为分口径报告}，拿 L2 口径的 2.4$\times$ 去外推大矩阵会严重高估。
 \end{enumerate}
 
 \section{实践经验}
 
 \begin{kaogu}[F3 | 「PAD 消除 bank conflict」在本 kernel 中是大幅降低而非消除]
-源码注释把 PAD 表述为「Bank conflict fix：每行多 1 个元素，打破 32-bank 对齐」与「解决方案：PAD……打破地址对齐」。按本章第 5 节的逐指令 bank 直方图：PAD=1 把 Step 2 转置读从 16-way 降到 2-way（主要收益），Step 1 写侧 PAD 前后均为 2-way。即注释的结论在数量级上成立（读事务 16 $\to$ 2），但「消除」并不准确——彻底消除需要第 \ref{ch:12} 章的 swizzle 或改变每线程 4 行的分工。经典「一线程一元素 + $32\times33$ tile」布局才是 PAD 完全消除冲突的形态。
+源码注释把 PAD 表述为「Bank conflict fix：每行多 1 个元素，打破 32-bank 对齐」与「解决方案：PAD……打破地址对齐」。按本章第 5 节的逐指令 bank 直方图：PAD=1 把 Step 2 转置读从 16-way 降到 2-way（主要收益），Step 1 写侧 PAD 前后均为 2-way。即注释的结论在数量级上成立（读事务 16 $\to$ 2），但「消除」并不准确，要彻底消除需要第 \ref{ch:12} 章的 swizzle 或改变每线程 4 行的分工。经典「一线程一元素 + $32\times33$ tile」布局才是 PAD 完全消除冲突的形态。
 \end{kaogu}
 
 \begin{kaogu}[F5 | RoPE 的配对约定考据]
@@ -425,7 +425,7 @@ rope 的参数 $N$ 是每 token 的\textbf{对数}（$d/2$），而非 hidden si
   \item \textbf{padded 版的对齐前提}：grid 按 $(col+15)/16 \times (row+63)/64$ 覆盖，分支只判 \texttt{x\_r*4 < row}；若 $row$ 不是 64 的倍数，边界 tile 的 4 行批读写会越界（例如 $row = 66$ 时访问第 66、67 行）。\texttt{FLOAT4} 写回还要求 \texttt{row \% 4 == 0}（行首 16B 对齐）。测试与 bench 全部使用 64 的倍数规模。
   \item \textbf{warp 到 $(tx,ty)$ 的映射想当然}：bank 分析第一步就是确认映射，\texttt{(16,16)} block 是 \texttt{tid = tx + 16*ty}（x 优先）。映射记错，直方图全错，冲突度结论跟着全错。
   \item \textbf{同地址是 broadcast 不是 conflict}：同 bank 同地址（全 warp 读同一标量）一个周期完成；先判地址是否相同，再判 bank 是否相同。
-  \item \textbf{grid 尺寸复制粘贴}：naive 的 $y$ 向是 $(row+15)/16$，padded 是 $(row+63)/64$——每线程覆盖行数变了 4 倍，漏改 grid 会让输出一半是旧值（本测试刻意先清零 $y$ 再启动 padded kernel，防止「读到残值也算对」的假阳性）。
+  \item \textbf{grid 尺寸复制粘贴}：naive 的 $y$ 向是 $(row+15)/16$，padded 是 $(row+63)/64$，每线程覆盖行数变了 4 倍，漏改 grid 会让输出一半是旧值（本测试刻意先清零 $y$ 再启动 padded kernel，防止「读到残值也算对」的假阳性）。
   \item \textbf{超越函数精度}：\texttt{powf} 相对误差 $\sim 10^{-6}$，经 $m\theta_i$ 放大后（$m = 512, \theta_0 = 1$ 时角度绝对误差 $\sim 5 \times 10^{-4}$）仍在本章容差内；长序列（$m$ 上万）时误差线性放大，生产实现用 fp64 预计算或查表规避。
   \item \textbf{转置 kernel 的写侧假阳性}：若不清零输出缓冲，未覆盖区域的旧值可能与参考「碰巧一致」，掩盖 grid 覆盖不全的 bug。
 \end{enumerate}
@@ -454,7 +454,7 @@ cd kernels/interview/book/tests && CUDA_VISIBLE_DEVICES=7 ./build_tests.sh --ch 
   ch07 ALL PASS
 \end{lstlisting}
 
-性能实验：\texttt{./\allowbreak{}.build/\allowbreak{}ch07\_\allowbreak{}rope\_\allowbreak{}transpose --bench} 复现本章第 6 节表格；bank 直方图可用本章第 5 节的模拟复现。建议动手：把 \texttt{PAD} 改成 2、4，观察 Step 2 的冲突度如何随步长变化（模拟脚本改一行即可）；把每线程 4 行改成 2 行（tile 变 $[32][17]$、grid 相应调整），看 2-way 残留是否消失，并核对第 \ref{ch:12} 章 swizzle 动机的自然浮现。
+性能实验：\texttt{./\allowbreak{}.build/\allowbreak{}ch07\_\allowbreak{}rope\_\allowbreak{}transpose --bench} 复现本章第 6 节表格；bank 直方图可用本章第 5 节的模拟复现。建议动手：把 \texttt{PAD} 改成 2、4，观察 Step 2 的冲突度如何随步长变化（模拟脚本改一行即可）；把每线程 4 行改成 2 行（tile 变 $[32][17]$、grid 相应调整），看 2-way 残留是否消失，同时体会第 \ref{ch:12} 章为什么需要 swizzle。
 
 \subsection*{延伸阅读}
 
@@ -464,6 +464,6 @@ cd kernels/interview/book/tests && CUDA_VISIBLE_DEVICES=7 ./build_tests.sh --ch 
         arXiv:2104.09864, 2021（RoPE 的第一出处：$\theta_i = 10000^{-2i/d}$
         等比频率谱、内积只依赖相对位置与原始 interleaved 配对约定的来源，
         对应本章式~\eqref{eq:ch07-2d-rot} 与配对约定考据）。
-  \item 懒蚂蚁呀不嘿，《CUDA matrix transpose 优化（bank conflict 消除）专题》：\url{https://zhuanlan.zhihu.com/p/1899760505733756129}——转置四步演进（naive $\to$ smem $\to$ padding $\to$ merge write）的完整实验，与本章源码的 Level 1/Level 4 对照阅读。
-  \item frankshi，《GPU shared memory bank conflict 与 swizzle》：\url{https://zhuanlan.zhihu.com/p/4746910252}——swizzle 的位运算原理，本章 padding 残留问题的进阶答案，第 \ref{ch:12} 章的预告篇。
+  \item 懒蚂蚁呀不嘿，《CUDA matrix transpose 优化（bank conflict 消除）专题》：\url{https://zhuanlan.zhihu.com/p/1899760505733756129}，转置四步演进（naive $\to$ smem $\to$ padding $\to$ merge write）的完整实验，与本章源码的 Level 1/Level 4 对照阅读。
+  \item frankshi，《GPU shared memory bank conflict 与 swizzle》：\url{https://zhuanlan.zhihu.com/p/4746910252}，swizzle 的位运算原理，本章 padding 残留问题的进阶答案，第 \ref{ch:12} 章的预告篇。
 \end{itemize}
