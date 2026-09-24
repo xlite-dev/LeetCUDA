@@ -1,6 +1,6 @@
 <div align="center">
   <div align='center'>
-      <img src='./kernels/interview/book/figures/misc/cover.png' width='800px'><br>
+      <img src='./docs/leetcuda_cover_bench.png' width='800px'><br>
       <img src=https://cdn.rawgit.com/sindresorhus/awesome/d7305f38d29fed78fa85652e3a63e154dd8e8829/media/badge.svg >
        <a href='./kernels/interview/book/book.pdf'><img src=https://img.shields.io/badge/PDF-available-hotpink.svg ></a>
       <img src=https://img.shields.io/badge/Language-CUDA-brightgreen.svg >
@@ -37,9 +37,10 @@ apt install -y cudnn9-cuda-13 ccache # Also install ccache for faster rebuilds
 # The following command runs the benchmark for the specified MNK and batch dimensions.
 cd bin && ./notes_v2_sm120a.bin --bench --mnk 8192,8192,8192 --bhnd 1,32,8192,128
 ```
-<div align='center'>
+
+<!-- <div align='center'>
   <img src='./docs/leetcuda_bench_table.png' alt='LeetCUDA Benchmark Table'>
-</div>
+</div> -->
 
 ## 🤖 Agentic workflow
 
