@@ -1,6 +1,6 @@
 <div align="center">
   <div align='center'>
-      <img src='./docs/leetcuda_cover_bench.png' width='800px'><br>
+      <img src='./docs/leetcuda_cover_bench.png'><br>
       <img src=https://cdn.rawgit.com/sindresorhus/awesome/d7305f38d29fed78fa85652e3a63e154dd8e8829/media/badge.svg >
        <a href='./kernels/interview/book/book.pdf'><img src=https://img.shields.io/badge/PDF-available-hotpink.svg ></a>
       <img src=https://img.shields.io/badge/Language-CUDA-brightgreen.svg >
@@ -14,10 +14,10 @@
 **LeetCUDA**: An open-source book of modern CUDA learning notes. It covers **Tensor/CUDA Cores, TF32/BF16/FP8**, [200+ CUDA kernels](#cuda-kernel), [HGEMM](./kernels/hgemm) achieving `98%~100%` of cuBLAS TFLOPS, and [flash-attn](./kernels/flash-attn) built on Tensor Cores with pure MMA PTX. <i>The open-source LeetCUDA book is now available at <a href='https://github.com/xlite-dev/LeetCUDA/releases/download/v4.0.4/leetcuda-20260923.pdf'>©️LeetCUDA.pdf (w/ 500+ pages)🔥🔥🔥</a>.</i>
 
 <div align='center'>
-  <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-h20z_B1_H32_N8192_D512_T.png' width='197px'>
-  <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-h20z_B1_H32_N16384_D512_T.png' width='197px'>
-  <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-b200_B1_H32_N8192_D512_T.png' width='197px'>
-  <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-b200_B1_H32_N16384_D512_T.png' width='197px'><br>
+  <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-h20z_B1_H32_N8192_D512_T.png' width='200px'>
+  <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-h20z_B1_H32_N16384_D512_T.png' width='200px'>
+  <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-b200_B1_H32_N8192_D512_T.png' width='200px'>
+  <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-b200_B1_H32_N16384_D512_T.png' width='200px'><br>
 </div>
 
 Please also check out our production-ready **Kernel Library**: [**ffpa-attn**](https://github.com/xlite-dev/ffpa-attn) - Fast and Memory-Efficient Exact Attention (**BF16/FP16/FP8/FP4**) for Large Headdim, **1.5x~15x**🔥🔥 speedup over standard PyTorch SDPA.
