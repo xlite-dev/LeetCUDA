@@ -9,7 +9,7 @@
 scale 张量）；本章进入主 kernel，即文件 \texttt{sm\_120/persist\_d.cuh} 里的
 \texttt{persist\_d\_ws\_fwd\allowbreak{}\_cute\_fp8\allowbreak{}\_sm120}（sm\_120 warp-specialized
 persist-D，全文件 1036 行）。它是 ffpa-attn 全仓库工程密度最高的单个文件，
-也是 Part V 的\textbf{核心章}：第~\ref{ch:30}~章的 split-D / M4N2 与
+也是 Part VI 的\textbf{核心章}：第~\ref{ch:30}~章的 split-D / M4N2 与
 第~\ref{ch:31}--\ref{ch:32}~章的 fp4 家族都建立在它引入的机制之上。
 
 本章的主线只有一句话：\textbf{让所有量化 scale 因子要么精确消去、要么折进

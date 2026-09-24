@@ -184,6 +184,15 @@
     % FFPA（ffpa_attn.cuh）
     FFPAAttnSplitDCuTeTraits,ffpa_split_d_cute,
     ffpa_attn_tma_mma_ws_split_d_cute,
+    % FP8 GEMM（fp8_gemm.cuh，ch34/ch35）
+    fp8_gemm_bf16,fp8_gemm_tma_fwd,fp8_gemm_workspace_size,
+    fp8_gemm_tma_kernel,fp8_gemm_tma_ws_kernel,Fp8GemmTraits,Fp8GemmWorkspace,
+    Fp8GemmScaleMode,quantize_a_perrow_kernel,quantize_a_perblock_kernel,
+    quantize_bt_kernel,cvt_f2_to_e4m3x2,Vec8BF16,
+    __nv_bfloat16,__float2bfloat16,__bfloat162float,__nv_fp8_e4m3,
+    __nv_cvt_float2_to_fp8x2,make_uint4,float_e4m3_t,bfloat16_t,
+    cutlass::arch::ClusterTransactionBarrier,cutlass::arch::ClusterBarrier,
+    fence_view_async_shared,SM89_16x8x32_F32E4M3E4M3F32_TN,
     % 辅助
     fill_2D_regs,fill_3D_regs,div_ceil,make_smem_desc,test_hgemm_cute,
     expf,fmaxf,sinf,cosf,powf,sqrtf,rsqrtf,

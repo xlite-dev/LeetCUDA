@@ -27,12 +27,13 @@
   \draw[#1, decorate, decoration={random steps, segment length=7pt, amplitude=0.55pt}]
     (#2,#4) -- (#3,#4);}
 
-% TFLOPS bars, left table scaled to 250, right tables to 250 / 210
+% TFLOPS bars, left table scaled to 250, right tables to 500 / 210
+% (right top holds both HGEMM and FP8, so it needs one axis wide enough for ~490 T)
 \newcommand{\lbar}[3]{%
   \pgfmathsetmacro{\bw}{#2/250*1.8}%
   \fill[#3] (5.95,{#1-0.075}) rectangle ++(\bw cm,0.15);}
 \newcommand{\rbarA}[3]{%
-  \pgfmathsetmacro{\bw}{#2/250*1.65}%
+  \pgfmathsetmacro{\bw}{#2/500*1.65}%
   \fill[#3] (14.80,{#1-0.075}) rectangle ++(\bw cm,0.15);}
 \newcommand{\rbarB}[3]{%
   \pgfmathsetmacro{\bw}{#2/210*1.65}%
@@ -113,66 +114,71 @@
 
 \wrule[line width=1.1pt]{0}{7.75}{-13.22}
 
-% ===================== RIGHT TOP: HGEMM vs cuBLAS =====================
+% ===================== RIGHT TOP: HGEMM / FP8 vs cuBLAS =====================
 \node[anchor=west, font=\subfont, text=black!85] at (8.60,-0.35)
   {HGEMM CuTe Swizzle vs cuBLAS};
 \node[anchor=north west, font=\capfont, text=black!60, align=left, inner sep=0pt] at (8.60,-0.62)
-  {NVIDIA RTX PRO 5000 (sm\_120a) --- M=N=K=4096, F16Acc};
+  {NVIDIA RTX PRO 5000 (sm\_120a) --- M=N=K=4096, F16Acc; FP8 4096/8192};
 
 \wrule[line width=1.1pt]{8.60}{17.55}{-1.00}
-\node[anchor=west, font=\hdffont, text=black!72] at (8.60,-1.25) {Configuration};
-\node[anchor=east, font=\hdffont, text=black!72] at (13.10,-1.25) {TFLOPS};
-\node[anchor=east, font=\hdffont, text=black!72] at (14.50,-1.25) {Speedup};
-\node[anchor=west, font=\hdffont, text=black!72] at (14.80,-1.25) {Relative};
-\wrule[line width=0.8pt]{8.60}{17.55}{-1.50}
+\node[anchor=west, font=\hdffont, text=black!72] at (8.60,-1.24) {Configuration};
+\node[anchor=east, font=\hdffont, text=black!72] at (13.10,-1.24) {TFLOPS};
+\node[anchor=east, font=\hdffont, text=black!72] at (14.50,-1.24) {Speedup};
+\node[anchor=west, font=\hdffont, text=black!72] at (14.80,-1.24) {Relative};
+\wrule[line width=0.8pt]{8.60}{17.55}{-1.48}
 
-\rrowA{-1.810}{cuBLAS baseline}{236.9}{1.00x}{colGray}
+\rrowA{-1.75}{cuBLAS baseline}{236.9}{1.00x}{colGray}
 
-\rgrp{1}{-2.360}{colBlue}{HGEMM CuTe Swizzle (F16Acc)}
-\rrowA{-2.910}{S=2, BLK\_SW=0}{229.5}{0.97x}{colBlue}
-\rrowA{-3.460}{S=2, BLK\_SW=1}{231.1}{0.98x}{colBlue}
-\rrowA{-4.010}{S=3, BLK\_SW=0}{245.6}{1.04x}{colBlue}
-\rrowA{-4.560}{S=3, BLK\_SW=1}{246.7}{1.04x}{colBlue}
+\rgrp{1}{-2.30}{colBlue}{HGEMM CuTe Swizzle (F16Acc)}
+\rrowA{-2.77}{S=2, BLK\_SW=0}{229.5}{0.97x}{colBlue}
+\rrowA{-3.24}{S=2, BLK\_SW=1}{231.1}{0.98x}{colBlue}
+\rrowA{-3.71}{S=3, BLK\_SW=0}{245.6}{1.04x}{colBlue}
+\rrowA{-4.18}{S=3, BLK\_SW=1}{246.7}{1.04x}{colBlue}
 
-\wrule[line width=1.1pt]{8.60}{17.55}{-4.82}
+\rgrp{1}{-4.75}{colPurple}{FP8 CuTe GEMM (F32Acc)}
+\rrowA{-5.22}{WS S2 128x256, 4096$^3$}{443.7}{1.87x}{colPurple}
+\rrowA{-5.69}{WS S2 128x256, 8192$^3$}{487.8}{2.06x}{colPurple}
 
-\node[anchor=north west, font=\capfont, text=black!62, align=left, inner sep=5pt]
-  at (8.90,-5.40) {Speedup is relative to the vendor baseline\\\hspace*{1.2em}(cuBLAS for HGEMM, cuDNN SDPA for attention).};
+\wrule[line width=1.1pt]{8.60}{17.55}{-5.93}
+
+\node[anchor=north west, font=\fontsize{7pt}{8.2pt}\selectfont, text=black!62,
+      align=left, inner sep=4pt]
+  at (8.90,-6.30) {Speedup is relative to the vendor baseline\\\hspace*{1.2em}(cuBLAS for HGEMM, cuDNN SDPA for attention).};
 \draw[draw=black!28, line width=0.8pt, decorate,
       decoration={random steps, segment length=9pt, amplitude=0.8pt}, rounded corners=5pt]
-  (8.60,-5.20) rectangle (17.55,-6.40);
+  (8.60,-6.22) rectangle (17.55,-7.15);
 
 % ===================== RIGHT BOTTOM: FA Split-D vs cuDNN SDPA =====================
-\node[anchor=west, font=\subfont, text=black!85] at (8.60,-6.80)
+\node[anchor=west, font=\subfont, text=black!85] at (8.60,-7.45)
   {FA \textcolor{colAccent}{Split-D} vs cuDNN SDPA};
-\node[anchor=north west, font=\capfont, text=black!60, align=left, inner sep=0pt] at (8.60,-7.07)
+\node[anchor=north west, font=\capfont, text=black!60, align=left, inner sep=0pt] at (8.60,-7.72)
   {NVIDIA RTX PRO 5000 (sm\_120a) --- B=1, H=32, N=8192, D=320};
 
-\wrule[line width=1.1pt]{8.60}{17.55}{-7.45}
-\node[anchor=west, font=\hdffont, text=black!72] at (8.60,-7.70) {Configuration};
-\node[anchor=east, font=\hdffont, text=black!72] at (13.10,-7.70) {TFLOPS};
-\node[anchor=east, font=\hdffont, text=black!72] at (14.50,-7.70) {Speedup};
-\node[anchor=west, font=\hdffont, text=black!72] at (14.80,-7.70) {Relative};
-\wrule[line width=0.8pt]{8.60}{17.55}{-7.95}
+\wrule[line width=1.1pt]{8.60}{17.55}{-8.10}
+\node[anchor=west, font=\hdffont, text=black!72] at (8.60,-8.34) {Configuration};
+\node[anchor=east, font=\hdffont, text=black!72] at (13.10,-8.34) {TFLOPS};
+\node[anchor=east, font=\hdffont, text=black!72] at (14.50,-8.34) {Speedup};
+\node[anchor=west, font=\hdffont, text=black!72] at (14.80,-8.34) {Relative};
+\wrule[line width=0.8pt]{8.60}{17.55}{-8.58}
 
-\rrowB{-8.26}{cuDNN SDPA baseline}{69.8}{1.00x}{colGray}
+\rrowB{-8.82}{cuDNN SDPA baseline}{69.8}{1.00x}{colGray}
 
-\rgrp{1}{-8.81}{colBlue}{Split-D TMA WS}
-\rrowB{-9.36}{Sk=1, Sv=1}{86.6}{1.24x}{colBlue}
-\rrowB{-9.91}{Sk=2, Sv=2}{139.9}{2.01x}{colBlue}
+\rgrp{1}{-9.35}{colBlue}{Split-D TMA WS}
+\rrowB{-9.82}{Sk=1, Sv=1}{86.6}{1.24x}{colBlue}
+\rrowB{-10.29}{Sk=2, Sv=2}{139.9}{2.01x}{colBlue}
 
-\rgrp{1}{-10.47}{colGreen}{Split-D TMA non-WS}
-\rrowB{-11.02}{Sk=2, Sv=2}{187.9}{2.69x}{colGreen}
-\rrowB{-11.57}{Sk=2, Sv=3}{188.8}{2.71x}{colGreen}
-\rrowB{-12.13}{Sk=3, Sv=2}{204.3}{2.93x}{colGreen}
+\rgrp{1}{-10.82}{colGreen}{Split-D TMA non-WS}
+\rrowB{-11.29}{Sk=2, Sv=2}{187.9}{2.69x}{colGreen}
+\rrowB{-11.76}{Sk=2, Sv=3}{188.8}{2.71x}{colGreen}
+\rrowB{-12.23}{Sk=3, Sv=2}{204.3}{2.93x}{colGreen}
 
-\wrule[line width=1.1pt]{8.60}{17.55}{-12.42}
+\wrule[line width=1.1pt]{8.60}{17.55}{-12.48}
 
-\node[anchor=west, font=\capfont, text=black!62, inner sep=0pt] at (9.02,-12.97)
+\node[anchor=west, font=\capfont, text=black!62, inner sep=0pt] at (9.02,-13.03)
   {Sk = K Stages (FA), Sv = V Stages (FA), S = Stages (HGEMM)};
 \draw[draw=black!28, line width=0.8pt, decorate,
       decoration={random steps, segment length=9pt, amplitude=0.8pt}, rounded corners=5pt]
-  (8.60,-12.72) rectangle (17.55,-13.22);
+  (8.60,-12.78) rectangle (17.55,-13.28);
 
 \end{tikzpicture}
 \end{document}

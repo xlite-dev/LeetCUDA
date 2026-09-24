@@ -758,7 +758,7 @@ PV 段的消费者循环与 cp.async 版同构，只是等待/释放换成屏障
 流水账本 & 每线程私有组 FIFO；每 KV tile 排空后重置 &
   扁平 \texttt{idx} 导出的 (stage, phase)；跨 KV tile 连续 \\
 寄存器池 & 无 \texttt{setmaxnreg} & \texttt{dealloc(32)} / \texttt{alloc(232)}
-  （与 TMA 同 kernel 时在 sm\_120a 被 ptxas 以 C7506 丢弃） \\
+  （dst 为 \texttt{shared::cluster} 时被 C7506 丢弃，与 arch 后缀无关） \\
 Q 的装载 & 每 KV tile 重装（与 K 同 stage） & 每 KV tile 重发 TMA（同样的冗余） \\
 计算段组织 & QK $\to$ softmax $\to$ PV 串行 & consumer 串行；producer 全程并行装载 \\
 架构门槛 & sm\_80$+$ & sm\_90a / sm\_120a（TMA） \\

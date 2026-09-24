@@ -152,9 +152,46 @@ swizzle 正确性 & v1/v2 30{,}720 点 bit-exact & \texttt{Swizzle\allowbreak{}<
 \end{tabular}
 \end{center}
 
-\section{Part V：FP8/FP4 量化 attention 明细}
+\section{Part V：FP8 GEMM 明细}
 
-Part V（第~\ref{ch:27}--\ref{ch:33}~章）的性能口径与前三篇不同：基准是
+Part V（第~\ref{ch:34}--\ref{ch:35}~章）是量化矩阵乘的教学链：基准是
+cuBLAS BF16 GEMM（\texttt{CUBLAS\_COMPUTE\_32F} 累加），数字为
+\texttt{notes\_v2\_sm120a.bin --bench --mnk M,N,K} 标准表复测
+（PRO 5000，2026-09-24；输入均匀随机 $[-1,1]$，warmup 2 / repeat 3）。
+kernel-only 行只循环 GEMM kernel，e2e 行含量化前处理（第~\ref{ch:34}~章
+三个 kernel）。四种 scale 粒度组合差异 $<1.5\%$，表取 per-row$\times$
+per-col 代表，tile 取库默认档（$128\times256\times128$/s2，即 35.8.4 节的
+扫描最快档）。基线口径注意：cuBLAS 在 sm\_120 的 32F-acc 档只有 sm\_80
+旧 kernel（\texttt{nsys} 取证见第~\ref{ch:35}~章 35.8.1~节，cublasLt
+完整池遍历也只有 191.7~T），因此表中加速比是「库现状」口径；对手写
+bf16 HGEMM 上限（$\approx$243~T）的口径为 1.81$\times$（4096$^3$）。
+
+\begingroup\small
+\begin{longtable}{p{1.6cm}p{3.4cm}p{2.4cm}p{3.2cm}p{3.0cm}}
+\toprule
+章 & kernel 家族 & 形状 & 成绩 & 备注 \\
+\midrule
+\endfirsthead
+\toprule
+章 & kernel 家族 & 形状 & 成绩 & 备注 \\
+\midrule
+\endhead
+\endfoot
+\bottomrule
+\endlastfoot
+第34 & fp8 量化前处理链 & $4096^3$（e2e 与 kernel-only 之差） & $\approx$424~$\mu$s/次 & 纯带宽工序；两遍读+staging 有 $\sim$2$\times$ 优化空间（35.8.2 习题） \\
+第35 & fp8 GEMM CuTe nonws & 2048$^3$/4096$^3$/8192$^3$ & 244/441/484~T（1.77/2.70/2.96$\times$） & kernel-only vs cuBLAS BF16；上限口径 1.81$\times$（4096$^3$）；WS 版 +0$\sim$0.9\% \\
+第35 & fp8 GEMM+Quant e2e & 同上 & 76/187/315~T（0.55/1.14/1.93$\times$） & 量化开销随 shape 缩小占比放大；2048$^3$ 反亏 \\
+第35 & fp8 GEMM+A-Quant e2e（$B$ 离线） & 同上 & 226/411/429~T（1.64/2.52/2.63$\times$） & 权重量化一次后落盘，每步只量化 A（$O(MK)$）；数值与全链路逐 bit 一致（35.8.3 节）；WS 版 +0.5$\sim$1.1\% \\
+第35 & fp8 WS + setmaxnreg & 4096$^3$ & 440.9~T（2.70$\times$） & 直调 cutlass::arch API；SASS 4 实例 $\times$ 2 条 USETMAXREG 实证；sm\_120a/f 均可 \\
+第35 & fp8 tile/深度扫描（non-WS） & 4096$^3$/8192$^3$ & 225$\sim$442 / 240$\sim$485~T & tile $\{64,128,256\}^2\times$ stages $\{2,3,4\}$：$BN$ 比 $BM$ 值钱（$128\times256$ vs $256\times128$ 两档都 $\approx+8.5\%$），s2/s3 差 $\le2\%$、s4 无收益，$256\times256$ 超 99\,KB 装不下（35.8.4 节）\\
+第35 & fp8 最优 tile（ws 128$\times$256/s2） & 4096$^3$/8192$^3$ & 443.7/487.8~T（2.72/2.99$\times$） & 即库默认档（同时是大形状全场最优）；比 128$^3$/s3 快 7.7\%/5.9\%；$2048^3$ 上因波次量化反慢 17\%；NCU：pipe\_tensor 80.9\%（elapsed）、寄存器 168/线程、bank conflict 0、smem 读波前 $-5.6\%$（35.8.5 节） \\
+\end{longtable}
+\endgroup
+
+\section{Part VI：FP8/FP4 量化 attention 明细}
+
+Part VI（第~\ref{ch:27}--\ref{ch:33}~章）的性能口径与前三篇不同：基准是
 PyTorch SDPA（FA2 后端，$D>256$ 自动落 MATH），数字为 \texttt{ffpa\_attn.bench}
 CLI 复测（B1 H32 Hkv8 N=8192，fp16，PRO 5000，2026-09-16；tol 分档
 fp8 5e-2 / fp4 dense 0.15、causal 0.70）。speedup 一律对 SDPA 同形状。
@@ -211,7 +248,10 @@ layout/TiledCopy/TiledMMA 全部编译期折叠，SASS 与手写同构、寄存�
 代码量约减半——它不直接产生加速，但让 swizzle 档位、tile 形状、流水深度这些
 \textbf{真正带来加速的算法级决策}更容易被表达、被检查、被复用。
 
-\textbf{主线四：量化（低位宽数据通路）。}\allowbreak{}Part V 把 attention 的
+\textbf{主线四：量化（低位宽数据通路）。}\allowbreak{}Part V 先在矩阵乘上
+打通「量化数学 $\to$ 前处理 kernel $\to$ 主 kernel 折叠 $\to$ BF16 输出」
+的完整链路（fp8 GEMM 对 cuBLAS BF16 最高 2.75$\times$），Part VI 把
+attention 的
 数据通路从 fp16 一路降到 fp8/fp4：fp8 persist-D 1.70$\times$（D=128）起步，
 fp4 同点 2.04$\times$、大 D 靠 split-D/M4N2 3$\times$ 级。这条线的规律与
 前三条不同——收益不来自新结构，而来自\textbf{同样的数学量换更宽的通路}
