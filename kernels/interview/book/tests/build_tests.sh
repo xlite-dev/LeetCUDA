@@ -35,7 +35,7 @@ else
   SOURCES=""
   for ch in ch01 ch02 ch03 ch04 ch05 ch06 ch07 ch08 ch09 ch10 ch11 ch12 ch13 ch14 \
             ch15 ch16 ch17 ch18 ch19 ch20 ch21 ch22 ch23 ch24 ch25 ch26 ch26b ch26c \
-            ch34 ch35; do
+            ch34 ch35 ch36 ch37; do
     f=$(ls ${ch}_*.cu 2>/dev/null || true)
     SOURCES="$SOURCES $f"
   done
@@ -55,7 +55,7 @@ FAIL=0
 for src in $SOURCES; do
   exe=".build/${src%.cu}"
   echo "== $src ($ARCH)"
-  if ! $NVCC -arch "$ARCH" -std=c++20 -O2 $INCLUDES -o "$exe" "$src" 2> ".build/${src%.cu}.buildlog"; then
+  if ! $NVCC -gencode arch=compute_${ARCH#sm_},code=$ARCH -std=c++20 -O2 $INCLUDES -o "$exe" "$src" 2> ".build/${src%.cu}.buildlog"; then
     echo "BUILD FAIL: $src"; cat ".build/${src%.cu}.buildlog"; FAIL=1; continue
   fi
   if [[ $RUN -eq 1 ]]; then
