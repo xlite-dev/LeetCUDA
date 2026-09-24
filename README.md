@@ -11,7 +11,7 @@
   </div>
 </div>
 
-**LeetCUDA**: An open-source book of modern CUDA learning notes. It covers **Tensor/CUDA Cores, TF32/BF16/FP8**, [200+ CUDA kernels](#cuda-kernel), [HGEMM](./kernels/hgemm) achieving `98%~100%` of cuBLAS TFLOPS, and [flash-attn](./kernels/flash-attn) built on Tensor Cores with pure MMA PTX. <i>The open-source LeetCUDA book is now available at <a href='https://github.com/xlite-dev/LeetCUDA/releases/download/v4.0.4/leetcuda-20260923.pdf'>©️LeetCUDA.pdf (w/ 500+ pages)🔥🔥🔥</a>.</i>
+**LeetCUDA**: An open-source book of modern CUDA learning notes. It covers **Tensor/CUDA Cores, TF32/BF16/FP8**, [200+ CUDA kernels](#cuda-kernel), [HGEMM](./kernels/hgemm) achieving `98%~100%` of cuBLAS TFLOPS, and [flash-attn](./kernels/flash-attn) built on Tensor Cores with pure MMA PTX. <i>The open-source LeetCUDA book is now available at <a href='https://github.com/xlite-dev/LeetCUDA/releases/download/v4.0.5/leetcuda-20260924.pdf'>©️LeetCUDA.pdf (w/ 500+ pages)🔥🔥🔥</a>.</i>
 
 <div align='center'>
   <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-h20z_B1_H32_N8192_D512_T.png' width='200px'>
@@ -30,7 +30,8 @@ git submodule update --init --recursive --force && cd kernels/interview
 # Install the latest cuBLAS & cuDNN for bench (remove the old version)
 apt remove -y libcublas-cuda-13 libcudnn9-cuda-13 libcudnn9-dev-cuda-13
 apt install -y cublas-cuda-13 cudnn9-cuda-13 && apt install -y ccache
-
+```
+```bash
 # Blackwell (e.g., RTX 5090 or PRO 5000/6000, recommended: CUDA >= 13.2)
 ./build.sh --arch sm_120a && ./bin/notes_v2_sm120a.bin --bench --mnk 8192
 ```
@@ -44,7 +45,7 @@ apt install -y cublas-cuda-13 cudnn9-cuda-13 && apt install -y ccache
 LeetCUDA provides a [leetcuda-cpp-kernel](./kernels/interview/book/skills/leetcuda-cpp-kernel/) SKILL that reuse the knowledge and examples from the LeetCUDA open sources **book** and **repository**. Users can use it with Coding Agents, e.g, [GitHub Copilot](https://docs.github.com/en/copilot), [Claude Code](https://claude.ai), [Open Code](https://opencode.ai/).
 
 ```bash
-# Install the skill for different coding agents (requires gh >= 2.101.0).
+# Install the skill for different coding agents (recommended: gh >= 2.101.0).
 gh skill install xlite-dev/LeetCUDA leetcuda-cpp-kernel --agent codex
 gh skill install xlite-dev/LeetCUDA leetcuda-cpp-kernel --agent claude-code
 gh skill install xlite-dev/LeetCUDA leetcuda-cpp-kernel --agent github-copilot
