@@ -43,9 +43,9 @@ apt install -y cublas-cuda-13 cudnn9-cuda-13 && apt install -y ccache
 
 LeetCUDA provides a [leetcuda-cpp-kernel](./kernels/interview/book/skills/leetcuda-cpp-kernel/) SKILL that reuse the knowledge and examples from the LeetCUDA open sources **book** and **repository**. Users can use it with Coding Agents, e.g, [GitHub Copilot](https://docs.github.com/en/copilot), [Claude Code](https://claude.ai), [Open Code](https://opencode.ai/).
 
-<!-- <div align='center'>
- <img src='https://github.com/xlite-dev/LeetCUDA/raw/main/docs/leetcuda-cpp-kernel-skill.png'><br>
-</div> -->
+```bash
+gh skill install <LeetCUDA>/kernels/interview/book/skills/leetcuda-cpp-kernel --from-local
+```
 
 ## ©️Citations
 
