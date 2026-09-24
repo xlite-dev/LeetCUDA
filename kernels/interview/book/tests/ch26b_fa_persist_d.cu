@@ -17,7 +17,8 @@
 //   case J: D=96  dense B=1 H=2 N=256（D=96 分派数值验证）
 // 参考实现：CPU fp64 的 softmax(scale·Q K^T [+ causal]) V（GQA head 映射）
 // 约束：Nq/Nkv 满足 TMA 对齐（kBc=64/128 的倍数或尾部 guard）；D ∈ {64,96,128}
-// 编译：-gencode arch=compute_120f,code=sm_120f（setmaxnreg 必须 sm_120f）
+// 编译：-gencode arch=compute_120f,code=sm_120f（sm_120a 同样保留 setmaxnreg：
+// 生死取决于 TMA dst 用 shared::cta 与 launch_bounds(N,1)，与 arch 后缀无关）
 #define NOTES_V2_ENABLE_CUTE 1
 #include "../../hgemm.cuh"
 #include "../../flash_attn.cuh"

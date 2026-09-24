@@ -34,8 +34,8 @@ apt install -y cudnn9-cuda-13 ccache # Also install ccache for faster rebuilds
 # Build for target architecture (ccache accelerated when available):
 ./build.sh --arch sm_120a   # Blackwell (RTX 5090 / PRO 5000/6000, CUDA Toolkit >= 13.2)
 ./build.sh --help           # Show help for build options
-# The following command runs the benchmark for the specified matrix and batch dimensions.
-cd bin && ./notes_v2_sm120a.bin --bench --mnk 4096,4096,4096 --bhnd 1,32,8192,128
+# The following command runs the benchmark for the specified MNK and batch dimensions.
+cd bin && ./notes_v2_sm120a.bin --bench --mnk 8192,8192,8192 --bhnd 1,32,8192,128
 ```
 <div align='center'>
   <img src='./docs/leetcuda_bench_table.png' alt='LeetCUDA Benchmark Table'>

@@ -28,7 +28,7 @@
 | RFC-K | Part V FP8/FP4 Attention 篇 ch27-33（ffpa-attn CuTe sm_120） | RFC-E/F（前置章节） | 完成（K0-K7 + K-验收 2026-09-16：全书 425 页零 error 零 undefined、Overfull 清零）|
 | RFC-L | ch26b 增补章：sm_120 persist-D FlashAttention（超越 cuDNN 压轴章） | RFC-F/K（ch20-26 前置） | 完成（2026-09-22：源码整合 flash_attn.cuh L3490-4170 + notes-v2 接入 + 6/6 测试 PASS + bench 复测 230.5T；6 张 TikZ inline 图，用户指定例外于 drawio 主路径）|
 | RFC-M | ch26c 增补章：SM120 大 head_dim non-WS Split-D（ffpa-attn 同源移植 + K/V stages 解耦实验） | RFC-F/K/L（ch26 前置） | 完成（2026-09-23：ffpa_attn.cuh L643-1306 整合 + tests 12/12 + K/V stages 实验 (3,2) D320=204.1T=2.93x cuDNN + 正文 4967 字 5 TikZ 图）|
-
+| RFC-N | Part V FP8/FP4 HGEMM 篇 ch34-35（fp8_gemm.cuh 新增冻结件 + 双口径加速比 + cuBLAS 基线剖析 + B 离线量化） | RFC-D/F/K（ch22-24、ch27 前置） | 完成（2026-09-24：fp8_gemm.cuh 943 行 + tests 28 条 PASS 断言（ch34 8 + ch35 20，含 6 条逐 bit 等价）+ 4096³ 400.5T=2.45x/上限 1.66x + B 离线量化 376.8T=2.30x + 8 TikZ 图 + 全书改号 Part V→VI）|
 依赖图（执行实况）：`RFC-0 → RFC-A → RFC-C → RFC-D → RFC-E → RFC-F → (RFC-G ∥ RFC-H ∥ RFC-I) → RFC-J`；RFC-B 于 2026-09-18 取消（素材职能被附录 E + drawio 全量重建接管）；`RFC-K 依赖 RFC-E/F 素材，与 RFC-G/H/I 并行，完成后并入 RFC-J 收口`
 
 ## 2. RFC-0 脚手架
@@ -202,6 +202,35 @@
 - [x] M.6 接线：book.tex ch26b 后 `\input`；ch31 硬编码「第 29 章」改 `\ref{ch:27}` 动态引用；anchors.yaml 更新 ffpa_attn.cuh（sha/1307 行）+ notes-v2.cu（sha/5472 行）+ 新增 ch26c 条目（643-1306 / 4468-4734）；verify_anchors ALL GREEN（29 章）
 - [x] M.7 验收：`./build.sh` 两遍 **530 页** 0 error、0 undefined、0 missing char、4 Overfull 均存量非新增；ch26c 为全书第 29 章（PDF 页 424-439）
 
+## 12-N. RFC-N Part V FP8/FP4 HGEMM 篇：ch34-35 量化 GEMM（2026-09-24）
+
+> 用户新增第五部分（原 FP8/FP4 Attention 篇顺延为第六部分）：`kernels/interview/fp8_gemm.cuh` 教学案例——BF16 输入 → FP8 动态量化（per-block/per-row）→ CuTe FP8 GEMM（在线反量化 epilogue）→ BF16 输出，C++ API `fp8_gemm_bf16` 一次调用，与 cuBLAS BF16 GEMM 对比性能与精度。setmaxnreg 按用户指定直接调 `cutlass::arch::warpgroup_reg_{de,}alloc`（不走 NOTES_V2_REG_* 宏，ffpa-attn persist-D 同款）。
+
+- [x] N.1 源码新增：`fp8_gemm.cuh`（Phase 9.1-9.8，成稿 943 行）：量化数学（kE4M3Max/Vec8BF16/cvt_f2_to_e4m3x2）+ 三个量化 kernel（quantize_a_perrow / quantize_a_perblock / quantize_bt_kernel<kPerCol> 双朝向 staging）+ Fp8GemmTraits（SM89_16x8x32_F32E4M3E4M3_TN atom、M8N1 TiledMMA、BM=BN=BK=128 SW128、kStages=3）+ non-WS/WS 双 kernel + fp8_gemm_bf16 API + workspace（N.1 交付时为 872 行/Phase 9.1-9.7）
+- [x] N.2 notes-v2 接入：test_fp8_gemm（7 case，CPU fp64 ref）+ bench_fp8_gemm（FP8_TIMED_RUN 宏：4 粒度 nonws + ws + 2 e2e）+ `--fp8-gemm` 入口 + `--bench --mnk` 分发；`--bench --mnk 4096,4096,4096` 输出 FP8 vs cuBLAS 精度+TFLOPS 完整链（用户验收路径）
+- [x] N.3 book tests：ch34_fp8_quantize.cu 8/8 PASS（scale max_abs≈9.98e-11，roundtrip worst 0.896-0.938 of bound）+ ch35_fp8_gemm.cu 8/8 PASS（rel_fro 0.0356-0.0363 vs tol 0.08）；build_tests.sh 默认列表加 ch34 ch35（N.10 后扩到 14 case / 20 条 PASS 断言）
+- [x] N.4 bench 矩阵（PRO 5000, sm_120a, warmup2/repeat3）：2048/4096/8192³ nonws 286.5/401.2/449.1T（2.09/2.48/2.75x vs cuBLAS）；ws 292.1/404.7/452.9；e2e 80.3/181.5/299.7（0.58/1.12/1.84x）；M=4097 无悬崖（397.3T，-1%）；sm_120f ws 411.8T（+2.6% vs nonws，寄存器再分配收益）；4 粒度差 <1.5%
+- [x] N.5 setmaxnreg 实证：SASS 4 实例 × 2 条 USETMAXREG（cuobjdump awk 归属法）；措辞对齐 repo 定论（sm_120a/f 均支持，生死条件 = cta TMA + `__launch_bounds__(N,1)` 双参数，arch 后缀非变量）
+- [x] N.6 cuBLAS 基线剖析（35.8.1 节）：nsys 取证三 kernel（fp16+F16acc 235.6T `cutlass_80_..._256x128_32x3` / fp16+F32acc 163.9T / bf16+F32acc 161.8T 均 `cutlass_80_..._128x64_64x3`）——根因 = sm_120 消费卡 COMPUTE_32F 档只有 sm80 旧 kernel 池；cublasLt heuristic top-8 遍历（64MB ws）bf16 best 191.7T / fp16 best 193.1T，全 sm80 → 非调用姿势问题；ch24 CuTe HGEMM F32acc 242T 佐证硬件无折扣；**加速比双口径**：vs cuBLAS 2.48x（库现状）、vs 手写 bf16 上限 1.66x（量化物理收益）；bench 参照保持 cublasGemmEx 现状（用户指定）
+- [x] N.7 正文：ch34-fp8-quant-gemm.tex（量化数学/粒度谱系/误差模型 √K/三 kernel 工程，~450 行）+ ch35-fp8-gemm-cute.tex（traits/主循环/epilogue/WS+API/实测+cuBLAS 剖析，~560 行）；7 张 TikZ inline 图；preamble keywords 增 FP8 GEMM 段
+- [x] N.8 接线与改号：book.tex 新 `\part` + input；原 FP8/FP4 Attention 篇改号 Part VI（ch27-33 正文 ×9、appB ×3、appC ×2、appD ×2、appE ×1）；appB 增「Part V：FP8 GEMM 明细」节；appD 增补章 multicolumn 说明 + 基准 commit 段更新
+- [x] N.9 验收：全书两遍 xelatex 0 error、0 undefined；pdftotext 抽查 ch34/35；DoD 八条自检；code review + 分阶段 commit（fp8_gemm.cuh+notes-v2 接线 / 书稿+registry）
+- [x] N.10 用户增强：权重 B 离线量化（`fp8_gemm.cuh` Phase 9.8，L889-940）——`fp8_gemm_quantize_b` 抽为全链路/离线共用的 B 量化入口、`Fp8GemmActivation`（A 侧 $O(MK)$ 暂存，B 段退出 workspace）、`fp8_gemm_bf16_b_offline<kPerRowA,kPerColB,kWS>`（注释含 B8T/sb 形状与 kPerColB 绑定的契约）；notes-v2 bench 加 `FP8_TIMED_RUN_BOFF` + 2 行（B offline / B offline ws）；ch35 新增 35.8.3 节（部署形态 + 两条路数值等价 + A 侧残留开销账 + 尾部融合说明）+ 实测表 6 行 + 图 caption 补注 + 导读/小结/延伸阅读同步；appB 加 1 行；ch35_fp8_gemm.cu 扩至 6 个 `boff` 用例（四种粒度组合 + 尾部 shape，覆盖全部模板实例化），每个用例额外与同 mode 全链路做逐 bit 比对 `bit-exact=YES (diff=0)`；bench 复测 4096³ B-off 376.8T（2.30x）/ ws 386.7T（2.36x）（2026-09-24）
+- [x] N.12 图与引用修订（2026-09-24）：fig:35-pipeline-timing 重绘为方块/矩阵风格（stage 泳道 = 矩阵行、K-tile 迭代 = 列刻度、TMA/MMA 用实心色块，替代原细线泳道）；ch35 全部 8 处 `lstinputlisting` 的 linerange 与 title 行号对齐（Phase 9.8 插入后整体漂移，修订前 7 处区间与标题不符、且部分区间截断在函数中部）；正文补「激活量化开销消除 = 并进上游 norm/rope 尾部」的说明（模型相关、无通用写法）
+- [x] N.11 源码注释标点回退：上一会话把 `notes-v2.cu` 中文注释标点全角→半角（`，。；：、` 等 81 处），经查证**无必要**——`hgemm.cuh` 含 1345 个全角标点、全书 2976 个，经 `\lstinputlisting` 渲染正常；两处 `Missing character` 的真实成因是 ch34 的 66.56pt Overfull 把 `，` 挤过 CJK/latin 边界 + ch35 小结段缺 `\\` 换行，与源码标点无关。已用 `.tmp/fp8gemm/nv2_edits.json`（会话 13 次编辑原文）逐处恢复，`git diff` = 303 插入 / 0 删除（HEAD 行逐字节不变）；`fp8_gemm.cuh` 为新文件无 HEAD 基线，标点保持原样（2026-09-24）
+- [x] N.13 图覆盖与排版收尾（2026-09-24）：①TikZ 坐标误用控制空格（`(\k*0.95,\ -0.42)`）触发 16 处 `Missing number` 级联报错、并让图内文字失去正确落位，改纯逗号后归零；②用户「图后有字被覆盖」经查为三因叠加——ch34 的 66.56pt Overfull 把全角 `，` 挤过 CJK/latin 边界、ch35 小结段缺 `\\`、数学模式内 `\text{}` 之外的全角标点静默丢字（`Missing character`）致字体串切换，视觉上似"被图盖住"；单页 `pdftotext -bbox` 复核图框内确无正文词；③ch35 itemize 一处 7.82pt Overfull（mono 长词 `warpgroup_reg_dealloc<32>()` 落行尾不可断）经精简措辞消除；Overfull ≥1pt 6→5，余 5 处（ch12/ch16/ch20/ch23/ch33）均在旧章，按「旧章不动」约束保留；④book.pdf 重建：554 页、0 error、Missing characters 0
+- [x] N.14 tile 几何 $\times$ 流水深度扫描 + 最快配置 NCU（2026-09-24，用户追加需求）：①`fp8_gemm.cuh` 把 `Fp8GemmTraits` 的 $BM,BN,k_{Stages}$ 全部模板参数化（原为硬编码 `128/128/128/3`），加 4 条 `static_assert`（$BK{=}128$ 钉死、$BM\%16$、$BN\%64$、$k_{Stages}\ge2$ 与 O-staging 装得下）；WS kernel 的 `__launch_bounds__`、线程数、setmaxnreg 寄存器预算一并随 tile 推导（$k_{BM}{=}256$ 触发 `static_assert(128*32 + N_c*232 <= 65536)` 编译期拦截——512 consumer 线程需 122K 寄存器）；②notes-v2 新增 `--fp8-gemm-sweep` 入口 + `FP8_SWEEP_CFG="128x256x128 s2 ws"` 单配置选择器（`ncu -k` 无法区分模板实例化，靠进程只发目标配置 + `--launch-skip 1 --launch-count 1` 隔离）；③实测：4096³ 扫 20 组 + 8192³ 复测，**最优 = ws $128\times256$/s2**（443.7 / 487.8 T，比默认 $128^3$/s3 的 412.1 / 460.8 快 7.7\% / 5.9\%），全组合 Max Err 4.50（4096³）/ 6.25（8192³）与主表 rc 行同值；④NCU 三配置对照（nonws $128^3$/s3、ws $128^3$/s3、ws $128\times256$/s2）：pipe\_tensor 74.4→76.9→80.9\%（elapsed）、寄存器 168/线程、bank conflict 精确 0、smem 读波前 37.75M→35.65M（$-5.6\%$，与 $8+128/BN$ 模型逐字节吻合）、DRAM 仅 8\%；⑤ch35 正文：新增 35.8.4（tab:35-sweep + fig:35-sweep 双面板柱状图 + 三条结论）与 35.8.5（tab:35-ncu + 四段机理）两节，导读/小结同步；ch34 五处 + ch35 八处 `lstinputlisting` 行号随源码 +4 漂移重新对齐；appB 加 2 行、appD 行数 L872→L955
+- [x] N.15 陷阱留档（2026-09-24）：①`snprintf(want, n, "%dx%dx128x%s", bm, bn, ws?...)` 三方参数两个 `%d` → 级数被当成 `char*` 传给 `strcmp` 直接段错误（用 host-only 最小复现 `.tmp/fp8bs/repro.cpp` 定位；C++ 语义问题不必上 GPU）；②sweep 只计主 kernel 时必须先跑一次完整 `fp8_gemm_bf16` 预热 workspace——否则 `a8/b8t/sa/sb` 全是未初始化数据，Max Err 报 1.145e+02（表里立刻显形，是这条检查的价值）
+- [x] N.16 §35.9「FP4 展望：从 e4m3 到 NVFP4」整节删除（2026-09-24，用户指示）：原文对 NVFP4 的块内规模自相矛盾（先写「块内 16 元素一个 e4m3 micro-scale」，紧接着又写「32 个 fp4 一组配一个 e4m3 scale」），且真正的两级 scale 细节已在第 31/32 章展开，此处只是路标、价值低于出错风险。删除后 ch35 = 35.7 API + 35.8 实测 + 小结；导读对应句改为「FP4（NVFP4）GEMM 单独成章，本章不展开」。**后续任务：新写独立一章 FP4 GEMM（e2m1 编码 + micro-scale 布局 + MMA 间重缩放 + 与本章 epilogue 折叠的对照），完成后再接入 Part V。**
+- [ ] N.17（待用户决策，2026-09-24 发现）**正文小节引用用的是「内部章号」，与 PDF 打印章号系统性偏差 4**：book.tex 里 Part V（ch34/35 量化 GEMM）排在 Part VI（ch27-33 量化 attention）**之前**，因此打印为 30/31 与 32-38；但正文 prose 里的硬编码引用仍用内部章号（ch34 写「34.4 节」、ch35 写「35.8.4 节」、ch27 写「27.3 节」、ch33 写「30.7/31.7 节」、appB 表首列写「第28/29/30/32/33」）。**这是全篇一致的做法，不是局部笔误**，故未单独改 ch34/35（避免制造风格不一致）。两种统一方案：(A) 正文全部改为打印章号（ch34/35 约 50 处 + Part VI 七章 + appB，机械但量大）；(B) 把 Part V 移回 Part VI 之后，则内部章号 34/35 自动正确（但与「HGEMM 为第五部分、attention 顺延第六」的既定编排相反）。**建议等 Part V 的 FP4 GEMM 章写完后一次性决定**（后续加章会让 Part VI 再顺延，过早改会返工）。
+
+- [x] N.18 默认 tile 改 128×256×128/s2 + 全章数字同步（2026-09-24，用户指示）：
+  1. **代码**：`fp8_gemm.cuh` `Fp8GemmTraits` 默认实参 128³/s3 → 128×256×128/s2（头注释、traits 注释、kSmemBytes 注释同步；listing 行号端点 366/400/486/512/514/543/545/586/667/697/831/845/847/901/922/955 全部复验不变）。`notes-v2.cu` 标准表未改代码——kernel-only 行调 `fp8_gemm_tma_fwd<PRA,PCB,kWS>` 走默认 Traits，自动跑新默认档；扫描表本来就是显式实例化。
+  2. **实测复测**（warmup2/repeat3，sm_120a，`.tmp/fp8bs/std31_*.log`）：kernel-only 2048³/4096³/8192³ = 243.6/440.7/483.6 T（1.77/2.70/2.96× vs cuBLAS BF16）；e2e 76.3/186.8/315.1；B 离线 e2e 225.9/411.2/429.4；ws 244.6/440.9/487.8。Max Err 与 rel_fro 与旧版逐位一致（tile 只改分块不改数学）。
+  3. **新发现（已写入 §35.8.4 其四）**：**2048³ 上宽 tile 反成负优化**——128×256/s2 的 grid 只有 128 CTA，本卡 110 SM → 波次填充率 58%；128×128/s3 有 256 CTA（78%），实测 292.8 vs 243.6 T，**宽 tile 慢 17%**。结论：最优 tile 是问题尺寸的函数，默认档只在 M,N≥4096 上最优（正文已明确标注）。
+  4. **正文同步范围**：ch35 摘要/35.3/35.6/35.8 全表/35.8.1/35.8.2/35.8.3/35.8.4/35.8.5/小结；appB Part V 明细表；appD 源码索引（L1--L958）；BOOK_PLAN 性能基线与 ch35 行。**35.4--35.6 的结构讲解与 3 张示意图仍以 128³/s3 为主线**，并在 35.3 节末显式声明这一取舍（smem 边界点 + 协议最对称点），避免读者困惑。
+  5. **顺手修正的两处旧错**：§35.8.2 量化开销原写「830 µs / 160 GB/s」（算术与旧表数字不符）→ 按 4096³ 时间差重算为 **424 µs / 316 GB/s**（对照 PRO 5000 GDDR7 理论 1344 GB/s）；§35.6 原写「WS 在 4096³ 快约 1%（404.7 vs 401.2）、再分配后 411.8（+2.6%）」——404.7/411.8 是旧构建下的一次性读数，已改为可复现的扫描表对照（128³/s3 上 WS +2.6%~2.9%；默认宽 tile 上仅 +0.05%，并解释原因）。
+
 ## 13. 图清单登记表（写作期持续更新）
 
 | FIG | 章 | slug | 类型(A/B/D/C1/C2, 见 BOOK_PLAN §7.1) | 状态(占位/引用/重建完成/正式) | 出处或源文件 |
@@ -286,11 +315,20 @@
 | FIG-26C-3 | 26c | sdnw-epilogue | C1 新建（2026-09-23，TikZ inline：STSM 暂存 smem + TMA store bulk group 批量写回） | 正式 | 同上 |
 | FIG-26C-4 | 26c | sdnw-stages | C1 新建（2026-09-23，TikZ inline 柱状图：K/V stages 四组合 × D=192..512 TFLOPS，(3,2) D≤320 最优） | 正式 | 同上 |
 | FIG-26C-5 | 26c | sdnw-spill | C1 新建（2026-09-23，TikZ inline 折线图：各组合寄存器 spill 字节 vs D，与性能同序） | 正式 | 同上 |
+| FIG-34-1 | 34 | e4m3 | C1 新建（2026-09-24，TikZ inline：e4m3 位域 1+4+3 布局与码点间隔） | 正式 | chapters/ch34-fp8-quant-gemm.tex（延续 ch26b/c 全 TikZ 路径） |
+| FIG-34-2 | 34 | granularity | C1 新建（2026-09-24，TikZ inline：per-tensor/row/block 粒度谱系） | 正式 | 同上 |
+| FIG-34-3 | 34 | bt-staging | C1 新建（2026-09-24，TikZ inline：B^T 双朝向 tile staging 两遍法） | 正式 | 同上 |
+| FIG-35-1 | 35 | pipeline | C1 新建（2026-09-24，TikZ inline：128³ tile + 3 stage 流水架构） | 正式 | chapters/ch35-fp8-gemm-cute.tex |
+| FIG-35-2 | 35 | pipeline-timing | C1 新建（2026-09-24，TikZ inline：mbarrier full/empty 相位时间线） | 正式 | 同上 |
+| FIG-35-3 | 35 | epilogue | C1 新建（2026-09-24，TikZ inline：rowcol 查表→cvt→STSM→TMA store 四步） | 正式 | 同上 |
+| FIG-35-4 | 35 | perf | C1 新建（2026-09-24，TikZ inline 柱状图：2048/4096/8192³ cuBLAS/nonws/ws/e2e 四系列） | 正式 | 同上 |
+| FIG-35-5 | 35 | sweep | C1 新建（2026-09-24，TikZ inline 双面板柱状图：(a) 8 个可行 tile 几何 s2 吞吐 + 256×256「装不下」占位；(b) 两个 tile 的 s2/s3/s4 深度对比） | 正式 | 同上（35.8.4 节） |
 
 ## 14. CHECKLOG 摘要镜像（明细在 book/CHECKLOG.md）
 
 | 日期 | 位置 | 类别 | 摘要 | 状态 |
 |---|---|---|---|---|
+| 2026-09-24 | ch00 §1.8.2 / ch19 对照表 / tests/ch26b 头注释 | F2 | 「setmaxnreg 在 sm_120a 被 C7506 静默忽略、必须 sm_120f」残留三处（与 ch14/ch18/ch26b 已修正结论矛盾）；实为 arch 后缀无关，变量是 TMA dst（cluster→C7506）与 launch_bounds(N,1)（缺→C7508）。全书一致性复查后修正，PDF 重建 530 页零 error | 已入正文 |
 | 2026-09-11 | ffpa_attn.cuh 头注释 L17-18 | F4 | 性能口径 PRO 5000 与 README（5090）不一致，成书需统一口径标注 | 待 ch19 核查 |
 
 ## 15. 知乎参考种子清单（RFC-B 并入 zhihu-inventory.md）

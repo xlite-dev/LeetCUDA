@@ -593,8 +593,12 @@ warp group（128T，专职 TMA）+ 1 个 consumer（256T，全计算），用
   而是选一个让 tile、并行度与 spill 同时可接受的工作点。
 \end{itemize}
 
-（注意 \texttt{setmaxnreg} 在 sm\_120a 上会被 ptxas C7506 静默忽略，
-必须用 sm\_120f 构建，见 ch14。）
+（注意 \texttt{setmaxnreg} 的生死与 arch 后缀无关：\texttt{sm\_120a} 与
+\texttt{sm\_120f} 都完整支持并保留该指令。真正决定它的是 TMA 的目的地址
+空间——写成 \texttt{shared::cluster} 会被 ptxas 以 C7506 静默丢弃，写成
+\texttt{shared::cta} 则保留——以及
+\texttt{\_\allowbreak{}\_\allowbreak{}launch\_\allowbreak{}bounds\_\allowbreak{}} 的第二参数
+（缺则 C7508 丢弃）。见第~\ref{ch:14}~章坑二。）
 
 \subsection{例三：stall 证据链——好 stall 与坏 stall 的判读}
 

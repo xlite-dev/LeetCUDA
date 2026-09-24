@@ -1,7 +1,7 @@
 ---
 name: write-leetcuda-book
 description: >-
-  把 LeetCUDA kernels/interview 教学源码（base/sgemv/sgemm/hgemm/flash_attn/ffpa_attn.cuh）+ ffpa-attn CuTe sm_120 源码（csrc/cuffpa/cute fp8/fp4，commit 861d75e）写成中文 CUDA 技术书（5 Part 36 章 + CuTe 白皮书导读 + 5 附录，XeLaTeX→PDF，终态 530 页零 error）。RFC-0..M 已全部完成（2026-09-23），当前任务形态 = 增补章（RFC-L/M 模式）/复审/勘误/图重绘。当任务涉及：撰写或修改书稿章节（chapters/chNN*.tex）、每章最小测试（book/tests/chNN_*.cu）、ffpa_attn.bench 验证、知乎资料收集与提炼、TikZ inline 图新建（主路径）与存量 drawio 图维护、源码注释核查、勾选 RFC 进度、构建/审校 book.pdf 时使用。规范源=BOOK_PLAN.md（章节结构/每章 DoD 八条/源码冻结/容差表/图片管线），执行跟踪=RFC.md（RFC-0..M 里程碑 + 各章卡片 + 图清单 + 知乎参考种子表）。
+  把 LeetCUDA kernels/interview 教学源码（base/sgemv/sgemm/hgemm/flash_attn/ffpa_attn/fp8_gemm.cuh）+ ffpa-attn CuTe sm_120 源码（csrc/cuffpa/cute fp8/fp4，commit 861d75e）写成中文 CUDA 技术书（6 Part 38 章 + CuTe 白皮书导读 + 5 附录，XeLaTeX→PDF，终态 530 页零 error）。RFC-0..N 已全部完成（2026-09-24，Part V=FP8/FP4 HGEMM 篇 ch34-35 新增，原 FP8/FP4 Attention 篇顺延为第六部分），当前任务形态 = 增补章（RFC-L/M/N 模式）/复审/勘误/图重绘。当任务涉及：撰写或修改书稿章节（chapters/chNN*.tex）、每章最小测试（book/tests/chNN_*.cu）、ffpa_attn.bench 验证、知乎资料收集与提炼、TikZ inline 图新建（主路径）与存量 drawio 图维护、源码注释核查、勾选 RFC 进度、构建/审校 book.pdf 时使用。规范源=BOOK_PLAN.md（章节结构/每章 DoD 八条/源码冻结/容差表/图片管线），执行跟踪=RFC.md（RFC-0..N 里程碑 + 各章卡片 + 图清单 + 知乎参考种子表）。
 user-invocable: true
 ---
 

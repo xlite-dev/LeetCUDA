@@ -7,11 +7,11 @@
 
 前四个部分走完了一条「精度不变」的优化链：编程模型与访存（Part I）$\to$ Tensor Core
 GEMM（Part II）$\to$ FlashAttention（Part III）$\to$ CuTe 现代化工程（Part IV）。每一步
-都在\textbf{同等数值精度}下压时间。Part V 换一个维度发力：\textbf{把精度本身当作可
+都在\textbf{同等数值精度}下压时间。Part VI 换一个维度发力：\textbf{把精度本身当作可
 交易的资源}，用 8-bit 甚至 4-bit 数值格式跑 attention 的两个 GEMM（$QK^{\top}$ 与
 $PV$），换 Tensor Core 吞吐的成倍提升。代码链路是 ffpa-attn 仓库的 CuTe fp8/fp4 kernel
 家族（commit \texttt{861d75e}，只讲 sm\_120 路径）：它是 SageAttention 2/3 思想的一次
-CuTe 化高效复现。本章是 Part V 的「理论总纲」，后面第~\ref{ch:28}--\ref{ch:32}~章
+CuTe 化高效复现。本章是 Part VI 的「理论总纲」，后面第~\ref{ch:28}--\ref{ch:32}~章
 里的每一个 kernel 决策（scale 折进哪条指令、粒度对齐哪个 fragment、发射域铺满哪个
 量程），都能回指到本章的某条公式或某个表格。
 
@@ -39,7 +39,7 @@ CuTe 化高效复现。本章是 Part V 的「理论总纲」，后面第~\ref{c
 \textbf{源码区间}：ffpa-attn \texttt{cute/fp8/fp8\_pscale.cuh} 头注释（L17--37 三步
 协议）与 \texttt{cute/softmax.cuh} L44--63（lazy rescale）；完整源码锚定与行号以
 附录~\ref{app:D}~的 commit permalink 为准。
-\textbf{验证方式}：本章无独立 kernel 测试（Part V 以
+\textbf{验证方式}：本章无独立 kernel 测试（Part VI 以
 \texttt{ffpa\_attn.bench} CLI 替代 \texttt{book/tests}，见 27.10~节）。
 
 \section{问题与动机}
@@ -53,7 +53,7 @@ sm\_120（GeForce RTX 5090 / RTX PRO 5000，Blackwell）为例，warp 级
 RTX 5090 上 FP4 attention kernel 达到 1038 TOPS、约为该卡上最快 FlashAttention
 的 $5\times$（arXiv:2505.11594）。对 attention 这种在长序列下被两个 $O(N^2 d)$
 GEMM 主导的算子，「把 GEMM 降到低精度」是 fp16 域内任何 tiling / 流水线优化都
-无法企及的收益量级。Part V 的动机全在于此。
+无法企及的收益量级。Part VI 的动机全在于此。
 
 \subsection{attention 的三个量化点与「P 无法离线」困难}
 
@@ -207,7 +207,7 @@ $\delta$ 的定义域 $\mathcal{B}$（式~\ref{eq:27-quant-op}）就是\textbf{�
   \end{tabular}
 \end{table}
 
-两条工程要点贯穿 Part V：其一，per-thread 粒度之所以存在，是因为 SA2 观察到
+两条工程要点贯穿 Part VI：其一，per-thread 粒度之所以存在，是因为 SA2 观察到
 scale 与 \texttt{mma.m16n8k16} fragment 的 thread-data 映射对齐后可以\textbf{零
 shuffle} 使用（每 lane 持有的 8 个 A 元素共享一个 scale，scale 直接乘进 exp2 的
 行常数）。粒度因此是「精度 $\times$ fragment 布局」的联合设计，
@@ -1105,7 +1105,7 @@ $ FFPA_CUDA_ALLOW_SMALL_D=1 CUDA_VISIBLE_DEVICES=7 \
 
 \section{最小测试与动手实验}
 
-Part V 不新增 \texttt{book/tests}，验证链路统一为 \texttt{ffpa\_attn.bench} CLI
+Part VI 不新增 \texttt{book/tests}，验证链路统一为 \texttt{ffpa\_attn.bench} CLI
 （ffpa-attn 0.2.5.dev25 editable 安装，本机 PRO 5000，卡位 7）。本章实验聚焦
 「fp8 基线口径」：
 

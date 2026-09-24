@@ -24,9 +24,12 @@ files:
   ffpa_attn.cuh:
     sha256: f5d6db34b8c7176bc8d74088692ecc82aec69d10a6946dcfc0d5fad1852b1b2b
     lines: 1307
+  fp8_gemm.cuh:
+    sha256: 60ef4408cfac016fa4b6cf3db8cec1d29b54665a294967290e07d4ce54ce7ce2
+    lines: 958
   notes-v2.cu:
-    sha256: e7c8ba61c0a41610278fbd5003b6ba08659077e28f5609c29d681f9c4fc66f88
-    lines: 5474
+    sha256: daba0ac9a47ad957a4eed71a1ee89c1fe415ba36423c11658c1718639edb0cf5
+    lines: 5988
 chapters:
   ch01:
     refs:
@@ -250,10 +253,24 @@ chapters:
         first_anchor: "// FFPA Split-D non-WS TMA 版 (ffpa-attn split_d.cuh 移植, 最小教学集)"
         last_anchor: "#endif // NOTES_V2_ENABLE_CUTE && NOTES_V2_ENABLE_TMA_MMA_WS"
       - file: notes-v2.cu
-        start: 4468
-        end: 4736
+        start: 4955
+        end: 5223
         first_anchor: "// non-WS TMA split-D bench: tile 128x128, tid=0 内联发 TMA, STSM+TMA store。"
         last_anchor: "}"
+  ch34:
+    refs:
+      - file: fp8_gemm.cuh
+        start: 49
+        end: 300
+        first_anchor: "// ============================================================================="
+        last_anchor: "}"
+  ch35:
+    refs:
+      - file: fp8_gemm.cuh
+        start: 302
+        end: 957
+        first_anchor: "// ============================================================================="
+        last_anchor: "}  // namespace fp8_gemm"
   appA:
     refs:
       - file: common.cuh

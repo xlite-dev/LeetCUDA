@@ -5,6 +5,7 @@
 
 | 日期 | 位置 | 原文摘要 | 类别 | 证据 | 建议 | 状态 |
 |---|---|---|---|---|---|---|
+| 2026-09-24 | ch00 §1.8.2 正文 / ch19 两实现对照表 / tests/ch26b_fa_persist_d.cu 头注释 | 「`setmaxnreg` 在 sm_120a 上会被 ptxas C7506 静默忽略，必须用 sm_120f 构建」：把 arch 后缀当成变量，与 ch14/ch18/ch26b 已修正的结论自相矛盾 | F2 | 2026-09-22 终版矩阵（最小 probe + notes-v2 全量重编）：sm_120a 与 sm_120f 均 6/6 保留 USETMAXREG、零 C750x；真正变量是 TMA dst 状态空间（cluster→C7506）与 `__launch_bounds__(N,1)`（缺→C7508） | 三处改为「与 arch 后缀无关 + 两个静默丢弃触发」表述；全书 setmaxnreg 表述一致性复查（ch13/ch14/ch17/ch18/ch19/ch26b/ch26c/ch29/ch30 + appA/appC 无残留） | 已入正文 |
 | 2026-09-14 | ffpa_attn.cuh L432/L484 | `NOTES_V2_REG_DEALLOC(40)/ALLOC(255)`：255 非 8 的倍数，违反 PTX ISA §9.7.19.5（imm ∈ [24,256] 且 8 倍数）；宏默认关闭展开为 ((void)0) 故从未暴露 | F2 | ptx-docs 9.7.19.5 + FA3 论文约束链（NVCC 每线程 ≤255，合法顶格 248）+ ffpa-attn repo persist_d 原版 32/232 | 已改为 32/232（对齐 ffpa-attn repo），ch19 五处表述同步（含 sm120 丢弃条件限定）；anchors.yaml SHA 已更新 | 已回写源码+入正文 |
 | 2026-09-14 | ch14 表格/正文 | 「默认目标 sm_120a 丢弃 setmaxnreg」缺「与 TMA 同 kernel」条件，与 PTX ISA Target ISA Notes（sm_120a 在支持列表）矛盾 | F2 | ptx-docs Target ISA Notes：sm_90a/100a/110a/120a + 100f/110f/120f | 三处改为条件表述+精确支持列表 | 已入正文 |
 | 2026-09-11 | ffpa_attn.cuh L17-18 头注释 | 性能口径为 PRO 5000 | F4 | README 同项数据口径为 RTX 5090 | ch19 正文双口径标注（PRO 5000 复测 + README 5090 引用） | 待 ch19 核查 |
