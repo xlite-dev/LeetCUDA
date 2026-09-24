@@ -29,7 +29,7 @@ git clone https://github.com/xlite-dev/LeetCUDA.git && cd LeetCUDA
 git submodule update --init --recursive --force && cd kernels/interview
 # Install the latest CUDNN library for benchmarks (remove the old version first)
 apt remove -y libcudnn9-cuda-13 libcudnn9-dev-cuda-13 libcudnn9-headers-cuda-13
-apt install -y cudnn9-cuda-13 ccache # Also install ccache for faster rebuilds
+apt install -y cublas-cuda-13 cudnn9-cuda-13 ccache # ccache for faster rebuilds
 
 # Build for target architecture (ccache accelerated when available):
 ./build.sh --arch sm_120a   # Blackwell (RTX 5090 / PRO 5000/6000, CUDA Toolkit >= 13.2)
