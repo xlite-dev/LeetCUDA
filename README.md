@@ -27,11 +27,11 @@ Please also check out our production-ready **Kernel Library**: [**ffpa-attn**](h
 ```bash
 git clone https://github.com/xlite-dev/LeetCUDA.git && cd LeetCUDA
 git submodule update --init --recursive --force && cd kernels/interview
-# Install the latest CUDNN library for benchmarks (remove the old version first)
-apt remove -y libcudnn9-cuda-13 libcudnn9-dev-cuda-13 libcudnn9-headers-cuda-13
-apt install -y cublas-cuda-13 cudnn9-cuda-13 ccache # ccache for faster rebuilds
+# Install the latest cuBLAS & cuDNN for bench (remove the old version)
+apt remove -y libcublas-cuda-13 libcudnn9-cuda-13 libcudnn9-dev-cuda-13
+apt install -y cublas-cuda-13 cudnn9-cuda-13 && apt install -y ccache
 
-./build.sh --arch sm_120a # Blackwell (RTX 5090 / PRO 5000/6000, CUDA >= 13.2)
+./build.sh --arch sm_120a # Blackwell (e.g., 5090/PRO 5000, CUDA >= 13.2)
 # The following command runs the benchmark for the specified MNK and BHND.
 ./bin/notes_v2_sm120a.bin --bench --mnk 8192,8192,8192 --bhnd 1,32,8192,128
 ```
