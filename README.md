@@ -1,6 +1,6 @@
 <div align="center">
   <div align='center'>
-      <img src='./kernels/interview/book/figures/misc/cover.png' width='800px'><br>
+      <img src='./docs/leetcuda_cover_bench.png' width='810px'><br>
       <img src=https://cdn.rawgit.com/sindresorhus/awesome/d7305f38d29fed78fa85652e3a63e154dd8e8829/media/badge.svg >
        <a href='./kernels/interview/book/book.pdf'><img src=https://img.shields.io/badge/PDF-available-hotpink.svg ></a>
       <img src=https://img.shields.io/badge/Language-CUDA-brightgreen.svg >
@@ -27,27 +27,28 @@ Please also check out our production-ready **Kernel Library**: [**ffpa-attn**](h
 ```bash
 git clone https://github.com/xlite-dev/LeetCUDA.git && cd LeetCUDA
 git submodule update --init --recursive --force && cd kernels/interview
-# Install the latest CUDNN library for benchmarks (remove the old version first)
-apt remove -y libcudnn9-cuda-13 libcudnn9-dev-cuda-13 libcudnn9-headers-cuda-13
-apt install -y cudnn9-cuda-13 ccache # Also install ccache for faster rebuilds
+# Install the latest cuBLAS & cuDNN for bench (remove the old version)
+apt remove -y libcublas-cuda-13 libcudnn9-cuda-13 libcudnn9-dev-cuda-13
+apt install -y cublas-cuda-13 cudnn9-cuda-13 && apt install -y ccache
 
-# Build for target architecture (ccache accelerated when available):
-./build.sh --arch sm_120a   # Blackwell (RTX 5090 / PRO 5000/6000, CUDA Toolkit >= 13.2)
-./build.sh --help           # Show help for build options
-# The following command runs the benchmark for the specified MNK and batch dimensions.
-cd bin && ./notes_v2_sm120a.bin --bench --mnk 8192,8192,8192 --bhnd 1,32,8192,128
+# Blackwell (e.g., RTX 5090 or PRO 5000/6000, recommended: CUDA >= 13.2)
+./build.sh --arch sm_120a && ./bin/notes_v2_sm120a.bin --bench --mnk 8192
 ```
-<div align='center'>
+
+<!-- <div align='center'>
   <img src='./docs/leetcuda_bench_table.png' alt='LeetCUDA Benchmark Table'>
-</div>
+</div> -->
 
 ## 🤖 Agentic workflow
 
 LeetCUDA provides a [leetcuda-cpp-kernel](./kernels/interview/book/skills/leetcuda-cpp-kernel/) SKILL that reuse the knowledge and examples from the LeetCUDA open sources **book** and **repository**. Users can use it with Coding Agents, e.g, [GitHub Copilot](https://docs.github.com/en/copilot), [Claude Code](https://claude.ai), [Open Code](https://opencode.ai/).
 
-<!-- <div align='center'>
- <img src='https://github.com/xlite-dev/LeetCUDA/raw/main/docs/leetcuda-cpp-kernel-skill.png'><br>
-</div> -->
+```bash
+# Install the skill for different coding agents (requires gh >= 2.101.0).
+gh skill install xlite-dev/LeetCUDA leetcuda-cpp-kernel --agent codex
+gh skill install xlite-dev/LeetCUDA leetcuda-cpp-kernel --agent claude-code
+gh skill install xlite-dev/LeetCUDA leetcuda-cpp-kernel --agent github-copilot
+```
 
 ## ©️Citations
 
