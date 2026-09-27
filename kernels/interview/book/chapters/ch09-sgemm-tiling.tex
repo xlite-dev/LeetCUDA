@@ -181,7 +181,7 @@ naive（AI $0.25$）计算上限 $\approx 0.23$ TFLOPS；
 
 \begin{table}[htbp]
 \centering
-\caption{GEMM 优化五层金字塔与计算密度递进（sgemm.cuh 头部注释整理）}
+\caption{GEMM 优化五层金字塔与计算密度递进}
 \label{tab:9-pyramid}
 \begin{tabular}{cp{0.36\textwidth}p{0.40\textwidth}}
 \toprule
@@ -349,7 +349,7 @@ $= 16384 = 128 \times 128$，不重不漏（vec4 落点见图~\ref{fig:09-vec4-m
     {红框 $=$ tid 11 的落点：A 取 $a[1][12..15]$（$m=11/8$、$k$ 起点 12），B 取 $b[0][44..47]$（$k=11/32$、$n$ 起点 44），各一条 16B \texttt{float4}（格内数字为 tid）。\\
      覆盖算术：$1024$ 线程 $\times\,4$ 元素 $= 4096 = 128\times32 = 32\times128$，两 tile 恰好铺满；计算映射与加载映射解耦——每人 $4\times4$ 输出，$32\times32$ 线程 $\times\,16 = 16384 = 128\times128$。};
 \end{tikzpicture}
-\caption{Vec4 加载映射双网格（sgemm.cuh L93--98）：上 $s_a$，行 $m=\mathrm{tid}/8$、列组 $k=(\mathrm{tid}\%8)\cdot4$，8 线程铺满一行；下 $s_b$，行 $k=\mathrm{tid}/32$、列组 $n=(\mathrm{tid}\%32)\cdot4$，32 线程铺满一行。每个 4 小格组 $=$ 一个 tid 的一条 \texttt{float4}（row-major 下 4 元素连续，加载合法）；红框为 tid 11 在两 tile 中的落点。}
+\caption{Vec4 加载映射双网格：上 $s_a$，行 $m=\mathrm{tid}/8$、列组 $k=(\mathrm{tid}\%8)\cdot4$，8 线程铺满一行；下 $s_b$，行 $k=\mathrm{tid}/32$、列组 $n=(\mathrm{tid}\%32)\cdot4$，32 线程铺满一行。每个 4 小格组 $=$ 一个 tid 的一条 \texttt{float4}（row-major 下 4 元素连续，加载合法）；红框为 tid 11 在两 tile 中的落点。}
 \label{fig:09-vec4-map}
 \end{figure}
 

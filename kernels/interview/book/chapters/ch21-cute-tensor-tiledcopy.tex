@@ -272,7 +272,7 @@ ldmatrix 或 bank 冲突考虑，地址公式会迅速膨胀，而「哪个数�
   \node[anchor=west, font=\tiny] at (24,407)
     {两种语言互为逆映射，分别服务「哪个线程拥有这个数据」与「这个线程该搬哪些数据」};
 \end{tikzpicture}
-\caption{4 线程小例子的两种表格：左边是朴素 CUDA 手算的「线程 $\times$ 值 $\to$ 坐标」表（一轮覆盖 $2\times4$、两轮铺满 $(4,4)$），右边是 CuTe 的 \texttt{make\_\allowbreak{}tiled\_\allowbreak{}copy} 打印结果——\texttt{tvS} 的公式与手算逐格一致（8 个 $(t,v)$ 逐点核对）。MN-layout 与 TV-layout 互为逆映射，分别服务「数据视角」与「线程视角」。}
+\caption{4 线程小例子的两种表格：左边是朴素 CUDA 手算的「线程 $\times$ 值 $\to$ 坐标」表（一轮覆盖 $2\times4$、两轮铺满 $(4,4)$），右边是 CuTe 的 \texttt{make\_\allowbreak{}tiled\_\allowbreak{}copy} 打印结果——\texttt{tvS} 的公式与手算逐格一致。MN-layout 与 TV-layout 互为逆映射，分别服务「数据视角」与「线程视角」。}
 \label{fig:21-2}
 \end{figure}
 
@@ -481,7 +481,7 @@ half，而 \texttt{ldmatrix} 的目的寄存器顺序与源地址顺序并不相
 每个线程拿到的视图形状是
 
 \begin{equation}
-  \mathrm{partition\_S}(T) = \bigl(\underbrace{V}_{V_\mathrm{atom}},\ 
+  \mathrm{partition\_S}(T) = \bigl(\underbrace{V}_{V_\mathrm{atom}},\
   (F_V, F_X),\ \underbrace{R_M, R_N, \dots}_{\text{remainder}}\bigr),
   \label{eq:21-partition-shape}
 \end{equation}
@@ -754,8 +754,7 @@ $=8192$（2 stage）、C 部分 $4096$）。同一块地址带上的两种解释
      容量一致（$4096$ half）是这次空间复用的前提，launch wrapper 的
      \texttt{static\_assert} 查的就是它。};
 \end{tikzpicture}
-\caption{epilogue scratchpad：同一块 $4096$ half 的 smem、两种布局视图
-（hgemm.cuh L1001）。上条带是 A 的 pipe 解释——$(128,32)$ 的 stage 按
+\caption{epilogue scratchpad：同一块 $4096$ half 的 smem、两种布局视图。上条带是 A 的 pipe 解释——$(128,32)$ 的 stage 按
 $8\times32$ 的 SW128 atom 沿 $B_M$ 切成 $16$ 段；下条带是 C 的
 scratchpad 解释——$32\times32$ 的 atom $\times$ $4$ 个 pipe slot
 （\texttt{kSmemLayoutCBatch}$=4$）。中间那条带是两者共用的地址带：
@@ -891,7 +890,7 @@ Tensor 的 grouped layout 计算。代码未对 $i{+}j$ 做尾部 predication，
     {对照 S2R 拷贝：Tiler $= (32,16)$ 无全覆盖，$P\times V = 1024 \to 2\times$
      重复（N 方向 warp 重读同一 A，式~\eqref{eq:21-dup}）};
 \end{tikzpicture}
-\caption{thread$\times$value 网格：G$\to$S 拷贝把 $32\times32$ 的 tile 划成 $t=4m+j$ 的网格，每个线程搬 8 个连续元素（一条 128-bit \texttt{cp.async}）。同一划分用 MN 语言或 TV 语言描述是等价的（式~\eqref{eq:21-g2s-mn} 与式~\eqref{eq:21-g2s-tv}）；本章测试 case~A/B 对 1024 个 $(t,v)$ 对与 4096 个坐标逐一核对了这两组公式。}
+\caption{thread$\times$value 网格：G$\to$S 拷贝把 $32\times32$ 的 tile 划成 $t=4m+j$ 的网格，每个线程搬 8 个连续元素（一条 128-bit \texttt{cp.async}）。同一划分用 MN 语言或 TV 语言描述是等价的（式~\eqref{eq:21-g2s-mn} 与式~\eqref{eq:21-g2s-tv}）。}
 \label{fig:21-3}
 \end{figure}
 
@@ -1201,4 +1200,3 @@ ALL OK
         \url{https://zhuanlan.zhihu.com/p/702818267}
         （ldmatrix 的转置/非转置选择，与第~\ref{ch:11}~章的手写版互证）。
 \end{itemize}
-

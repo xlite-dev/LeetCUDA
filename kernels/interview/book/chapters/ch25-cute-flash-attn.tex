@@ -104,7 +104,7 @@ ldmatrix 形态）；三件事都不再出现在 kernel 正文里。
 \begin{table}[htbp]
 \centering
 \caption{手写版与 CuTe 版的有效代码行数对照（flash\_attn.cuh，2026-09-11 统计）。
-「结构件」指 FA2/FA3 traits 与五个工具函数（L2197--2490），它们被后四个实现共享。}
+「结构件」指 FA2/FA3 traits 与五个工具函数，它们被后四个实现共享。}
 \label{tab:25-code}
 \begin{tabular}{llrr}
 \toprule
@@ -470,7 +470,7 @@ K 向相邻 2 值」}：数据一个比特都不用改，缺的只是「换一�
   \node[axl,anchor=west] at (8.45,0.93) {加框格：lane 6 的 8 个寄存器（格内为值编号 $v$）};
 \end{tikzpicture}
 \caption{C fragment $\to$ A fragment 的零拷贝重解释
-（\texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}Aregs}，L2341--2372）。
+（\texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}Aregs}）。
 左右两图是\textbf{同一批寄存器}的两套坐标读法：每格标注持有它的 lane，灰度按
 $\mathrm{lane}/4$ 分 8 档（4 个 lane 一组，与第~\ref{ch:16}~章 fragment 图的分组语义
 一致），两图的格子位置与 lane 归属\textbf{逐格恒等}——这正是「数据一个比特都不用
@@ -676,7 +676,7 @@ CuTe 的 \texttt{arrive\_\allowbreak{}and\_\allowbreak{}expect\_\allowbreak{}tx}
      （字节计数 $+$ phase）。图~\ref{fig:25-proto} 的三条不变量正是
      下图两条链的时序约束：生产者不覆盖未读完的 stage，消费者不读未落盘的 stage。};
 \end{tikzpicture}
-\caption{两种异步等待语义的时间线对照（\texttt{flash\_attn.cuh} L2743--2754 与
+\caption{两种异步等待语义的时间线对照（\texttt{flash\_attn.cuh} 与
 \texttt{ffpa\_attn.cuh} 的 TMA 版）。上：cp.async 组栈——提交顺序
 $V[t]$（栈底）$\to K[t{+}k{-}1]$（栈顶），\texttt{wait}$<1>$ 停在「除栈顶 K 之外全部完成」，
 尾部 $kStagesK{-}1$ 个 tile 必须退回 \texttt{wait}$<0>$（坑五）；每处 \texttt{wait} 后跟一次
@@ -870,7 +870,7 @@ $(r,c)$ 反查寄存器编号，用来在 smem scratch 里定位对方的 partia
 
 \begin{table}[htbp]
 \centering
-\caption{四个 CuTe 实现的结构对照（源码：flash\_attn.cuh L2493--3488）。
+\caption{四个 CuTe 实现的结构对照（源码：flash\_attn.cuh）。
 $kStages$ 列给出默认实例化；「共享」列标出手写版中被抽象层吃掉的部分。}
 \label{tab:25-struct}
 \begin{tabular}{p{2.6cm}p{3.3cm}p{3.3cm}p{3.3cm}}

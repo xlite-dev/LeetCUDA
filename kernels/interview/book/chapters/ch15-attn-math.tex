@@ -159,7 +159,7 @@ $1/\sqrt{d}$ 仍是事实标准，方差更不均匀的情形由量化方案处�
   \node[font=\scriptsize, rotate=90] at (-0.95,1.25) {$\sigma(\Delta)(1{-}\sigma(\Delta))$};
   \node[font=\scriptsize, anchor=north west] at (-4.9,-0.5) {$\Delta$（logit 差）};
   \fill[tkBlue] (0,2.4) circle (1.4pt);
-  \node[font=\scriptsize, anchor=south east] at (0.15,2.48) {峰值 $1/4$（$\Delta{=}0$）};
+  \node[font=\scriptsize, anchor=south west] at (0.28,2.44) {峰值 $1/4$（$\Delta{=}0$）};
   \node[font=\scriptsize, align=center, anchor=south] at (-3.4,2.42)
     {÷$\sqrt{d}$ 定标后：Var $=1$，\\$\Delta = O(1)$ 梯度健康区（灰带）};
   \draw[red, dashed, thick] (3.39,0) -- (3.39,1.9);
@@ -168,6 +168,7 @@ $1/\sqrt{d}$ 仍是事实标准，方差更不均匀的情形由量化方案处�
     {$\Delta = 11.3$（$d{=}128$ 未定标，$\mathrm{std}(s)=\sqrt{d}$）：\\
      $\sigma(1{-}\sigma) \approx 1.2\times10^{-5}$，\\
      softmax 近 one-hot $\to$ 反向传播近乎断流};
+  \begin{scope}[shift={(0,-0.55)}]
   \draw[thick] (5.7,0.55) rectangle (8.9,2.99);
   \foreach \gk/\gy in {1/2.79, 2/2.39, 3/1.99, 4/1.59, 5/1.19, 6/0.79}{
     \draw[gray!30, dashed] (5.7,\gy) -- (8.9,\gy);
@@ -183,6 +184,7 @@ $1/\sqrt{d}$ 仍是事实标准，方差更不均匀的情形由量化方案处�
   \draw[red, dashed, thick] (7.96,0.55) -- (7.96,1.23);
   \fill[red] (7.96,1.23) circle (1.4pt);
   \node[font=\scriptsize, anchor=south] at (7.3,3.06) {对数纵轴（$\log_{10}$）放大};
+  \end{scope}
 \end{tikzpicture}
 \caption{$1/\sqrt{d}$ 定标的饱和论证（15.3.2 节，式~\ref{eq:15-sat}）：sigmoid 梯度
 $\sigma(\Delta)(1-\sigma(\Delta))$ 的峰值 $1/4$ 在 $\Delta=0$；除以 $\sqrt{d}$ 后
@@ -837,7 +839,7 @@ layout 必须\textbf{同时}看读端（ldmatrix）与写端（cp.async），只
     {$N \times N$ 矩阵 $S$ 从不存在：任意时刻只有 $[B_r \times B_c]$ tile 活在 $R_S$
      寄存器里};
 \end{tikzpicture}
-\caption{Attention 分块计算：单个 Q 块（$B_r$ 行）流式扫过全部 $T_c$ 个 KV 块（$B_c \times d$），每块依次执行 $S^{[j]} \to P^{[j]} \to P^{[j]}V^{[j]}$，并把 $(m, \ell, O)$ 三状态按式~\ref{eq:15-upd-m}--\ref{eq:15-upd-o} 联动更新，循环结束后统一除 $\ell$。步骤编号对齐 flash\_attn.cuh~L48--59 的执行流程。}
+\caption{Attention 分块计算：单个 Q 块（$B_r$ 行）流式扫过全部 $T_c$ 个 KV 块（$B_c \times d$），每块依次执行 $S^{[j]} \to P^{[j]} \to P^{[j]}V^{[j]}$，并把 $(m, \ell, O)$ 三状态按式~\ref{eq:15-upd-m}--\ref{eq:15-upd-o} 联动更新，循环结束后统一除 $\ell$。}
 \label{fig:15-1}
 \end{figure}
 

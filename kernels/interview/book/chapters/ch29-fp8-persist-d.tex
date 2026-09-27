@@ -510,7 +510,7 @@ $a_2$、$a_3$ 分别取行 $g$、$g{+}8$ 的 $k=16{+}4t..16{+}4t{+}3$。这样�
      \texttt{\_\_byte\_perm}（\texttt{0x5410}/\texttt{0x7632}/\texttt{0xDC98}/\texttt{0xFEBA}）、
      零 SHFL；CONTRACT：绝不许对未置换的 $V^{\top}$ 运行（launcher 编译期强制配对）。};
 \end{tikzpicture}
-\caption{C$\to$A fragment 的 lane$\to$值映射（\texttt{reg2reg\_8b.cuh} L14--34 头注释的网格化）。左：QK C
+\caption{C$\to$A fragment 的 lane$\to$值映射。左：QK C
 fragment（m16n8），每 lane 4 值 $c_0$--$c_3$ 落在行 $g$/$g{+}8$ 的列对
 $\{2t,2t{+}1\}$；右：PV A fragment（m16n8k32）的 16$\times$16 半字视图，格值
 a0--a7 为 e4m3x2 半字寄存器，四象限对应源码 .b32 $a_0$--$a_3$；两面板灰度同语义

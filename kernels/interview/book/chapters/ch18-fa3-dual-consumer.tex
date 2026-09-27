@@ -226,7 +226,7 @@ slot」的耦合。
   \node[anchor=west, align=left, text width=12.9cm] at (-3.15,-5.45)
     {$\mathrm{cid} = \mathrm{tile}\,\&\,1$ 一值三用：tile 路由（哪块 KV 归谁）$=$ smem bank（写哪一块）$=$ 屏障/槽下标};
 \end{tikzpicture}
-\caption{共享 $\mathrm{Sk}{=}2$ slot 与每 WG 独立 bank 的对照（18.3.3 节，头注释 L1458--1462 的图形化；浅 $=$ slot 0，深 $=$ slot 1，$t$ 的下标即 KV tile 号）。上：共享方案里两个 WG 抢同一对 slot 与同一对屏障——\texttt{full\_K[s]}/*\texttt{empty\_K[s]} 的 257 份 arrive 要求\textbf{两个} WG 的 256 个 consumer 线程全部到齐才翻转，于是任何一方都不能比另一方多跑一块：$t_0,t_1,t_2,\dots$ 被两 WG 交替消费，各自的有效流水深度只有 1。下：本章把 bank 按 \texttt{consumer\_id} 切开后，每个 WG 拥有自己的一套 $\mathrm{Sk}$ 个 slot 与自己的屏障（$129 = 128{+}1$），两个 WG 并行推进、互不相遇，深度 2 名副其实。}
+\caption{共享 $\mathrm{Sk}{=}2$ slot 与每 WG 独立 bank 的对照（18.3.3 节；浅 $=$ slot 0，深 $=$ slot 1，$t$ 的下标即 KV tile 号）。上：共享方案里两个 WG 抢同一对 slot 与同一对屏障——\texttt{full\_K[s]}/*\texttt{empty\_K[s]} 的 257 份 arrive 要求\textbf{两个} WG 的 256 个 consumer 线程全部到齐才翻转，于是任何一方都不能比另一方多跑一块：$t_0,t_1,t_2,\dots$ 被两 WG 交替消费，各自的有效流水深度只有 1。下：本章把 bank 按 \texttt{consumer\_id} 切开后，每个 WG 拥有自己的一套 $\mathrm{Sk}$ 个 slot 与自己的屏障（$129 = 128{+}1$），两个 WG 并行推进、互不相遇，深度 2 名副其实。}
 \label{fig:18-perwg-stage}
 \end{figure}
 
@@ -467,9 +467,12 @@ L2057），\texttt{consumer\_id}$=1$ 写完后直接退出，省掉单侧的重�
     at (1.6,-0.70) {WG1（\texttt{consumer\_id=0}）\\寄存器 $R\_D,\ m,\ \ell$};
   \node[draw=tkGreen, fill=tkFillGreen, minimum width=2.9cm, minimum height=0.72cm, align=center, font=\scriptsize]
     at (11.2,-0.70) {WG2（\texttt{consumer\_id=1}）\\寄存器 $R\_D,\ m,\ \ell$};
-  % R_D 区（宽块）
+  % R_D 区（宽块，8 段 wg_tid 行段与右侧 m/l 网格对齐）
   \draw[fill=gray!20, thick] (4.35,-2.1) rectangle (6.75,{-2.1-8*\mh});
-  \node[anchor=south, font=\tiny] at (5.55,-2.02) {$R\_D$ 区：每 \texttt{wg\_tid} 一段 float4 包（16~KB）};
+  \foreach \rr in {1,...,7}{
+    \draw[thin] (4.35,{-2.1-\rr*\mh}) -- (6.75,{-2.1-\rr*\mh});
+  }
+  \node[anchor=south, font=\tiny] at (5.55,-1.70) {$R\_D$ 区（16~KB）};
   % m/l 区：8 行 x 2 列网格
   \foreach \gi in {0,...,7}{
     \pgfmathtruncatemacro{\rb}{\gi*16}
@@ -478,7 +481,7 @@ L2057），\texttt{consumer\_id}$=1$ 写完后直接退出，省掉单侧的重�
       at (7.85,{-2.3-\gi*\mh}) {$[\gi][0]$};
     \node[fill=gray!42, minimum width=1.05cm, minimum height=\mh cm, inner sep=0pt]
       at (8.95,{-2.3-\gi*\mh}) {$[\gi][1]$};
-    \node[anchor=east, font=\tiny] at (7.27,{-2.3-\gi*\mh}) {rows \rb--\re};
+    \node[anchor=east, font=\tiny] at (6.6,{-2.3-\gi*\mh}) {rows \rb--\re};
   }
   % 行边界 -2.1-k*\mh 非 ystep 整数倍：grid 按坐标原点相位画线会错位穿字，故按格边界显式画线；
   % 原 very thick 线 7.875 落在 [i][0] 文字内，对齐到列边界 8.375
@@ -488,13 +491,13 @@ L2057），\texttt{consumer\_id}$=1$ 写完后直接退出，省掉单侧的重�
   \draw[thick] (7.325,-2.1) rectangle (9.475,{-2.1-8*\mh});
   \draw[very thick] (8.375,-2.1) -- (8.375,{-2.1-8*\mh});
   \draw[thick] (8.425,-2.1) -- (8.425,{-2.1-8*\mh});
-  \node[anchor=south, font=\tiny] at (8.4,-2.02) {m/$\ell$ interleaved 区（float4 $[m_0,m_1,\ell_0,\ell_1]$，2~KB）};
+  \node[anchor=south, font=\tiny] at (8.4,-1.38) {m/$\ell$ interleaved 区（2~KB）};
   % 高亮行 i=2：同一 wg_tid 的两个 WG 命中同一行段
   \draw[vscAccent, very thick] (7.30,{-2.1-2*\mh-0.02}) rectangle (9.50,{-2.1-3*\mh+0.02});
   \draw[vscAccent, very thick] (4.32,{-2.1-2*\mh-0.02}) rectangle (6.78,{-2.1-3*\mh+0.02});
-  \draw[-{Stealth}, thick, vscAccent] (3.10,-1.02) -- (4.28,{-2.1-2.5*\mh});
+  \draw[-{Stealth}, thick, vscAccent] (3.10,-1.02) -- (3.10,{-2.1-2.5*\mh}) -- (4.20,{-2.1-2.5*\mh});
   \node[anchor=east, font=\tiny, text=vscAccent] at (3.02,-1.56) {读：同一 \texttt{wg\_tid} 槽位};
-  \draw[-{Stealth}, thick, vscAccent] (9.70,-1.02) -- ({8.4},{-2.1-2.5*\mh}) ;
+  \draw[-{Stealth}, thick, vscAccent] (9.70,-1.02) -- (9.70,{-2.1-2.5*\mh}) -- (9.62,{-2.1-2.5*\mh});
   \node[anchor=west, font=\tiny, text=vscAccent] at (9.98,-1.56) {写：按 \texttt{wg\_tid} 索引（128-bit store）};
   \node[anchor=west, font=\scriptsize, text=vscAccent, align=left] at (10.0,{-2.1-2.5*\mh})
     {同一 \texttt{wg\_tid} $\Rightarrow$ 相同 Q 行段\\$\Rightarrow$ 逐元素归并、零跨 lane 通信};
@@ -519,7 +522,7 @@ L2057），\texttt{consumer\_id}$=1$ 写完后直接退出，省掉单侧的重�
   \node[anchor=north west, font=\tiny] at (0.4,-7.05)
     {$T_c{=}1$ 退化分支：WG2 未进循环，$m_1{=}-\infty,\ \beta{=}0$，merge 自然退化为 WG1 单侧结果。};
 \end{tikzpicture}
-\caption{merge scratch 的 \texttt{wg\_tid} 对齐设计（18.4.4 节，源码 L2001--2101 注释的图形化）。scratch 复用主循环的 Q/K/V 动态 smem：$R\_D$ 区每 \texttt{wg\_tid} 一段 float4 包；m/$\ell$ 区按 $[i][0/1]$ 行段组织——$[i][0]$ 管 rows $i\cdot 16..{+}7$、$[i][1]$ 管 $+8..{+}15$，与 $R\_D$ fragment 覆盖的 Q 行严格对齐。WG2（\texttt{consumer\_id=1}）按 \texttt{wg\_tid} 写入（高亮行即某个 \texttt{wg\_tid} 命中的行段），WG1 用\textbf{同一个} \texttt{wg\_tid} 读回——两个 WG 的 partial 覆盖完全相同的 Q 行，可逐元素归并而无需任何跨 lane 通信。下方：两步 \texttt{\_\_\allowbreak{}syncthreads} 的完整时序（第一次保证 TMA/ldmatrix 全部落账后才写 scratch，第二次让 WG1 看到 WG2 的全部写入）。}
+\caption{merge scratch 的 \texttt{wg\_tid} 对齐设计（18.4.4 节）。scratch 复用主循环的 Q/K/V 动态 smem：$R\_D$ 区每 \texttt{wg\_tid} 一段 float4 包；m/$\ell$ 区按 $[i][0/1]$ 行段组织——$[i][0]$ 管 rows $i\cdot 16..{+}7$、$[i][1]$ 管 $+8..{+}15$，与 $R\_D$ fragment 覆盖的 Q 行严格对齐。WG2（\texttt{consumer\_id=1}）按 \texttt{wg\_tid} 写入（高亮行即某个 \texttt{wg\_tid} 命中的行段），WG1 用\textbf{同一个} \texttt{wg\_tid} 读回——两个 WG 的 partial 覆盖完全相同的 Q 行，可逐元素归并而无需任何跨 lane 通信。下方：两步 \texttt{\_\_\allowbreak{}syncthreads} 的完整时序（第一次保证 TMA/ldmatrix 全部落账后才写 scratch，第二次让 WG1 看到 WG2 的全部写入）。}
 \label{fig:18-merge-scratch}
 \end{figure}
 

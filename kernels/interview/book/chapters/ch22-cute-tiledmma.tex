@@ -329,12 +329,12 @@ $(4,8,4)$（$=128$ 个 half/线程，因为 4 个 M-warp 各持一份完整 B，
     }
     \draw[thin] (0,0) grid[xstep=0.135cm, ystep=0.135cm] (2.16,-2.16);
     \draw[very thick] (0,0) rectangle (2.16,-2.16);
-    \node[anchor=south, font=\tiny] at (1.08,0.48) {atom $(16,16)\to(\mathrm{thr},\mathrm{val})$};
+    \node[anchor=south, font=\tiny, align=center] at (1.08,0.44) {atom $(16,16)\to$\\$(\mathrm{thr},\mathrm{val})$};
     \node[anchor=south, font=\tiny\bfseries] at (1.08,0.11) {(3) $\circ$ LayoutA\_TV};
-    \node[anchor=north, font=\tiny, align=center] at (1.08,-2.3)
+    \node[anchor=north west, font=\tiny, align=left] at (5.75,-2.52)
       {深色 8 格 $=$ lane 0 的 FrgV：$\{(0,0),(0,1),(8,0),(8,1),$\\
        $(0,8),(0,9),(8,8),(8,9)\}$（式~\eqref{eq:22-atom-a}）};
-    \node[anchor=north, font=\tiny] at (1.08,-3.1) {$T_3=((32,8),(4,4))$};
+    \node[anchor=north, font=\tiny] at (1.08,-3.32) {$T_3=((32,8),(4,4))$};
   \end{scope}
   \draw[->, very thick] (7.95,-1.2) -- (8.4,-1.2);
   \begin{scope}[shift={(8.6,0)}]
@@ -660,8 +660,7 @@ QK$\to$PV 这一步的两套寄存器坐标见图~\ref{fig:22-aregs-reuse}。
      half）。全程零拷贝，且依赖 m16n8k16 的特定 fragment 约定——
      不是 TiledMMA 的通用性质。};
 \end{tikzpicture}
-\caption{QK$\to$PV 的寄存器原地复用（ffpa\_attn.cuh L300--305、源码注释
-flash\_attn.cuh L2341--2372）：两侧网格是同一个 $16\times16$ 坐标空间
+\caption{QK$\to$PV 的寄存器原地复用：两侧网格是同一个 $16\times16$ 坐标空间
 （$S$ 的列 $=$ $P$ 的 $K$），高亮的是 lane 0 在同一批元素上的两套坐标。
 左（C 视角）：每个 n8 atom 给 lane 0 留下 $4$ 个 f32 累加器（$2$ 行
 $\times$ $2$ 相邻列），两个相邻 atom 共 $8$ 个；右（A 视角）：同样 $8$ 个
@@ -751,8 +750,7 @@ $\times$ $2$ 相邻列），两个相邻 atom 共 $8$ 个；右（A 视角）：
 重复因子（式~\eqref{eq:22-dup}）。下半部分是 PV 的 $(64,16,16)$ tile：
 N 方向只重复 2 个原子，代价换来 per-call C 视图与拷贝粒度可控（8 个
 d-chunk 各自拷回，常驻 acc\_O 256 寄存器不变；N tile 拉到 64 只是单次
-调用的 C fragment 临时 4 倍）。本章测试 case~C--F
-对全部形状与覆盖做了逐点核对。}
+调用的 C fragment 临时 4 倍）。}
 \label{fig:22-1}
 \end{figure}
 
@@ -1107,4 +1105,3 @@ ALL OK
         （把 LDSM 的 lane 映射与 MMA fragment 放在一起推，与第~\ref{ch:21}~章
         case~D、本章 case~A 互补）。
 \end{itemize}
-

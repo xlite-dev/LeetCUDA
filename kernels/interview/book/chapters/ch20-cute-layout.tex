@@ -845,7 +845,7 @@ dtype 变化引起的布局变换），但中间布局要 \texttt{with\_shape} �
 布局展平后的 1D 数带（右）。$c_0$ 沿行方向变化最快，故
 $\mathrm{idx}=c_0+4c_1$；整数输入时 CuTe 用
 式~\eqref{eq:20-colex-decomp} 先把 $x$ 分解回坐标。compact 且 col-major 时
-$f(x)=x$（本章测试 128 点核对）。对照 row-major 版 $(4,8){:}(8,1)$：
+$f(x)=x$。对照 row-major 版 $(4,8){:}(8,1)$：
 $f(1,3)=11$——同一 shape，stride 决定读序。}
 \label{fig:20-1}
 \end{figure}
@@ -887,7 +887,7 @@ $f(1,3)=11$——同一 shape，stride 决定读序。}
   % 标题
   \node at (8.50, 0.55) {mode 树与四种 mode 操作（$L_g = ((2,4),(3,2)){:}((1,2),(8,24))$）};
 \end{tikzpicture}
-\caption{mode 树与四种 mode 操作的结果（本章测试逐一核对了 shape/stride）。投影用于取子布局，合并/展平用于把嵌套结构变成可直接索引的线性结构，化简（coalesce）在编译期消除冗余 mode——kernel 里「fragment mode 与 rest mode 分离」就是一次投影。}
+\caption{mode 树与四种 mode 操作的结果。投影用于取子布局，合并/展平用于把嵌套结构变成可直接索引的线性结构，化简（coalesce）在编译期消除冗余 mode——kernel 里「fragment mode 与 rest mode 分离」就是一次投影。}
 \label{fig:20-2}
 \end{figure}
 
@@ -1121,8 +1121,8 @@ $f(1,3)=11$——同一 shape，stride 决定读序。}
     \draw[gray!70, {Stealth[length=2.5pt]}-{Stealth[length=2.5pt]}] (-0.30, 0) -- (-0.30, {-16*0.403});
   \end{scope}
   \node[anchor=east, text=black!55, font=\scriptsize] at (7.65, -3.64) {$M \times N$};
-  \node[anchor=west, text=tkOrange!90!black] at (9.55, -3.49) {col-major reorder};
-  \node[anchor=west, text=tkOrange!90!black] at (9.55, -3.99) {with shape $(8, 2)$};
+  \node[anchor=west, text=tkOrange!90!black] at (9.55, -3.24) {col-major reorder};
+  \node[anchor=west, text=tkOrange!90!black] at (9.55, -3.70) {with shape $(8, 2)$};
   % 右：按 col-major 折回 (P, Q) = (8, 2)
   \begin{scope}[shift={(11.58, -1.612)}]
     \foreach \c in {0,1}{\foreach \r in {0,...,7}{\draw[tkOrange!80, fill=white] ({\c*0.925}, {-\r*0.597}) rectangle ({\c*0.925+0.925}, {-\r*0.597-0.597});}}
@@ -1136,7 +1136,7 @@ $f(1,3)=11$——同一 shape，stride 决定读序。}
     \draw[gray!70, {Stealth[length=2.5pt]}-{Stealth[length=2.5pt]}] (-0.30, 0) -- (-0.30, {-8*0.597});
     \node[text=black!55, font=\scriptsize] at (-0.57, {-4*0.597}) {$P$};
   \end{scope}
-  \node[anchor=west, text=tkGreen] at (11.58, -1.01) {layoutB$(9)$ $=$ layoutB$(1, 1)$ $=$ 6};
+  \node[anchor=west, text=tkGreen] at (11.58, -0.88) {layoutB$(9)$ $=$ layoutB$(1, 1)$ $=$ 6};
   \node[anchor=west, text=tkRed] at (11.58, -6.70) {layoutB $=$ inverse(layoutA)};
   \node[anchor=west, text=tkRed] at (11.58, -7.20) {.with\_shape$(P, Q)$};
   % 流程箭头
@@ -1219,7 +1219,7 @@ $f(1,3)=11$——同一 shape，stride 决定读序。}
   \node[anchor=west, text=tkOrange!90!black, font=\scriptsize] at (15.55, -1.30) {left\_inv};
   \node[anchor=west, text=tkOrange!90!black, font=\scriptsize] at (15.55, -1.60) {shape: $(4,4)$};
   \node[anchor=west, text=tkOrange!90!black, font=\scriptsize] at (15.55, -1.90) {stride: $(4,1)$};
-  \node[anchor=west, text=tkBlue, font=\scriptsize] at (11.60, -4.95) {right\_inverse(layoutA)};
+  \node[anchor=west, text=tkBlue, font=\scriptsize] at (12.30, -4.95) {right\_inverse(layoutA)};
   \node[anchor=west, text=tkBlue, font=\scriptsize] at (12.40, -7.90) {right\_inv $=$ layoutA 自身};
   \node[anchor=west, text=tkBlue, font=\scriptsize] at (12.40, -8.20) {shape: $(4, 4)$, stride: $(4, 1)$};
   % 求逆箭头（折线绕开文字）
@@ -1279,12 +1279,11 @@ $f(1,3)=11$——同一 shape，stride 决定读序。}
     \fill[colorx5!20] (0, {-2*0.746}) rectangle ({2*1.045}, {-4*0.746});
     \fill[colorx7!20] ({2*1.045}, {-2*0.746}) rectangle ({4*1.045}, {-4*0.746});
     \foreach \c in {0,...,3}{\foreach \r in {0,...,3}{%
-      \pgfmathsetmacro\val{int(4*\r+\c)}%
+      \pgfmathsetmacro\val{int(8*floor(\r/2)+4*floor(\c/2)+2*mod(\r,2)+mod(\c,2))}%
       \draw[gray!50] ({\c*1.045}, {-\r*0.746}) rectangle ({\c*1.045+1.045}, {-\r*0.746-0.746});
       \node at ({\c*1.045+0.5225}, {-\r*0.746-0.373}) {\val};}}
     \fill[tkFillGreen] (1.045, {-3*0.746}) rectangle ({2*1.045}, {-4*0.746});
     \draw[tkGreen, semithick] (1.045, {-3*0.746}) rectangle ({2*1.045}, {-4*0.746});
-    \node[text=tkGreen!80!black] at ({1.5*1.045}, {-3.5*0.746}) {11};
     \draw[colorx1, semithick] (0, 0) rectangle ({2*1.045}, {-2*0.746});
     \draw[colorx3, semithick] ({2*1.045}, 0) rectangle ({4*1.045}, {-2*0.746});
     \draw[colorx5, semithick] (0, {-2*0.746}) rectangle ({2*1.045}, {-4*0.746});
@@ -1294,14 +1293,14 @@ $f(1,3)=11$——同一 shape，stride 决定读序。}
   \node[anchor=west, text=tkBlue] at (8.00, -5.14) {shape: $((2,2), (2,2))$,  stride: $((8,4), (2,1))$};
   \node[anchor=west, text=black!60, font=\scriptsize] at (8.00, -5.49) {块序 $=$ A 的值序（row-major 扫描）：左上 $\to$ 右上 $\to$ 左下 $\to$ 右下};
   % 右侧：求值样例（(m,n)=(1,0)、(p,q)=(1,1) 命中 11）
-  \node[anchor=west, text=black!60, font=\scriptsize] at (13.37, -1.97) {value $= 8m + 4n$};
-  \node[anchor=west, text=black!60, font=\scriptsize] at (13.37, -2.33) {\qquad $+ 2p + 1q$};
-  \node[anchor=west, text=tkGreen, font=\scriptsize] at (13.37, -2.98) {e.g. $(m,n)=(1,0)$};
-  \node[anchor=west, text=tkGreen, font=\scriptsize] at (13.37, -3.25) {$(p,q)=(1,1)$};
-  \node[anchor=west, text=tkGreen, font=\scriptsize] at (13.37, -3.85) {$8+0+2+1 = 11$};
-  \node[anchor=west, text=black!60, font=\scriptsize] at (13.37, -4.55) {flatten 后仍合法;};
-  \node[anchor=west, text=black!60, font=\scriptsize] at (13.37, -4.80) {TiledCopy / TiledMMA};
-  \node[anchor=west, text=black!60, font=\scriptsize] at (13.37, -5.05) {的层级结构由 product 搭出};
+  \node[anchor=west, text=black!60, font=\scriptsize] at (13.62, -1.97) {value $= 8m + 4n$};
+  \node[anchor=west, text=black!60, font=\scriptsize] at (13.62, -2.33) {\qquad $+ 2p + 1q$};
+  \node[anchor=west, text=tkGreen, font=\scriptsize] at (13.62, -2.98) {e.g. $(m,n)=(1,0)$};
+  \node[anchor=west, text=tkGreen, font=\scriptsize] at (13.62, -3.25) {$(p,q)=(1,1)$};
+  \node[anchor=west, text=tkGreen, font=\scriptsize] at (13.62, -3.85) {$8+0+2+1 = 11$};
+  \node[anchor=west, text=black!60, font=\scriptsize] at (13.62, -4.55) {flatten 后仍合法;};
+  \node[anchor=west, text=black!60, font=\scriptsize] at (13.62, -4.80) {TiledCopy / TiledMMA};
+  \node[anchor=west, text=black!60, font=\scriptsize] at (13.62, -5.05) {的层级结构由 product 搭出};
   % 标题
   \node at (8.00, -0.19) {layout product：外层定块位、内层定块内，size 相乘成嵌套布局};
   \node[anchor=west, text=black!60, font=\scriptsize] at (0.09, -0.60)

@@ -366,11 +366,11 @@ $\mathrm{kPadB}=4$），两段共 $2\times128\times12 + 2\times8\times132 = 5184
   \draw[semithick] (0,0) rectangle ({12*\cw},{-6*\ch});
   \draw[semithick] ({8*\cw},0) -- ({8*\cw},{-6*\ch});
   \foreach \cl in {0,...,7}{
-    \node[anchor=north] at ({(\cl+0.5)*\cw},-0.05) {\cl};
+    \node[anchor=south] at ({(\cl+0.5)*\cw},0.04) {\cl};
   }
-  \node[anchor=north] at ({10*\cw},-0.05) {PAD$\times$4};
+  \node[anchor=south] at ({10*\cw},0.04) {PAD$\times$4};
   \node[anchor=north, align=center] at (0,-3.35) {$\vdots$\\共 128 行};
-  \node[anchor=north west, align=left, text width=5.9cm] at ({12*\cw},-3.35)
+  \node[anchor=north west, align=left, text width=5.6cm] at (1.3,-3.35)
     {格值 $=$ bank 号 $=(12r{+}c)\bmod32$：行首序列 $0,12,24,4,\dots$——
      PAD $=4$ float $=16$~B 打散行首对齐；无 PAD 时行长 8~word $=32$~B，
      每 4 行行首回到同一 bank。};
@@ -403,9 +403,9 @@ $\mathrm{kPadB}=4$），两段共 $2\times128\times12 + 2\times8\times132 = 5184
     \draw[semithick] (0,0) rectangle ({8*\bw},{-8*\bw});
     \draw[semithick] ({8*\bw+0.6},0) rectangle ({16*\bw+0.6},{-8*\bw});
     \draw[semithick] ({12*\bw+0.6},0) -- ({12*\bw+0.6},{-8*\bw});
-    \node[anchor=north] at ({4*\bw},-0.05) {$n=0..7$};
-    \node[anchor=north] at ({10*\bw+0.6},-0.05) {$n=124..127$};
-    \node[anchor=north] at ({14*\bw+0.6},-0.05) {PAD$\times$4};
+    \node[anchor=south] at ({4*\bw},0.04) {$n=0..7$};
+    \node[anchor=south] at ({10*\bw+0.6},0.04) {$n=124..127$};
+    \node[anchor=south] at ({14*\bw+0.6},0.04) {PAD$\times$4};
     \node[anchor=north west, align=left, text width=6.9cm] at (0,{-8*\bw-0.3})
       {格值 $=$ bank 号 $=(132r{+}c)\bmod32$：行首序列 $0,4,8,\dots,28$——
        8 行行首互异，\texttt{load\_matrix\_sync} 按行取数不撞同一组 bank。};

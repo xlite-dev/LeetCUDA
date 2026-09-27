@@ -798,7 +798,7 @@ $kWhtWidth$ 列（lane $\times$ $kVec$），无需跨 warp 通信；$1/\sqrt{n}$
      一条 warp 恰好持有 $kWhtWidth$ 列（$kVec{=}kWhtWidth/32$，本例 $D{=}128\Rightarrow kVec{=}4$），
      \textbf{无跨 warp 通信}。};
 \end{tikzpicture}
-\caption{radix-2 蝶形的距离二分（\texttt{hadamard.cuh} L40--92，本例 $D{=}128$、$kWhtWidth{=}D$）。
+\caption{radix-2 蝶形的距离二分（本例 $D{=}128$、$kWhtWidth{=}D$）。
 上：列归属——$j$ 是寄存器槽、lane 是 warp 内线程，格内数字 $col=lane+32j$ 满足索引律，
 右下角 $127=\mathrm{size}-1$；一条 warp 覆盖整行 128 列。下：七轮的「距离阶梯」——
 $dist\ge32$ 的 bit 落在 $j$ 上（同 lane 两个寄存器槽直接加减，无通信），$dist<32$ 的 bit

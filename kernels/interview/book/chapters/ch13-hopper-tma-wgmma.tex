@@ -222,7 +222,7 @@ $\times$ K 方向 4 次累加），每条用 $\mathrm{scaleD} = 1$ 在累加器�
      K 方向 4 步靠 $\mathrm{scaleD}{=}1$ 在同一 $d[m]$ 上逐次累加（右侧 $k{=}1\to4$
      灰度渐深、逐层覆盖，输出 D 的寄存器分布见图~\ref{fig:13-wgmma-dlayout}）};
 \end{tikzpicture}
-\caption{一个 K-tile 的 8 条 WGMMA 拼出 C tile（hgemm.cuh~L1744--1761 的 C2 双层
+\caption{一个 K-tile 的 8 条 WGMMA 拼出 C tile（C2 双层
 循环）：A tile $128\times64$ 按 M 方向切 2 个 64 行 M-atom、K 方向切 4 个
 $kWgmmaK{=}16$ 的 K-step，对每个 (M-atom, K-step) 发射一条
 \texttt{wgmma.m64n128k16}——A 指针 \texttt{wgmma\_sA} 沿 K 每步前进 16（本 kernel
@@ -447,7 +447,7 @@ common.cuh~L558--587 的注释表与图~\ref{fig:13-1} 逐字段一致，此处�
 
 \begin{table}[htbp]
 \centering
-\caption{make\_smem\_desc 上半：start\_address 与 LBO（common.cuh~L596--610）}
+\caption{make\_smem\_desc 上半：start\_address 与 LBO}
 \label{tab:13-desc-upper}
 \small
 \begin{tabular}{@{}p{3.7cm}p{3.3cm}p{10.45cm}@{}}
@@ -687,7 +687,7 @@ $m$ 个 $64 \times B\sb{K}$ 子块，K-step 每次前进 \texttt{kWgmmaK=16} 个
   \node[sub] at (30,312)
     {对照 common.cuh L532-565 注释与 PTX ISA 9.7.15.5.1.2.2 逐字段核校；enc 取 16B 单位使 14b 编码覆盖 256KB smem 空间（18-bit 窗口 右移 4）};
 \end{tikzpicture}
-\caption{WGMMA smem descriptor 的 64-bit 位域（对照 common.cuh L558--587 注释与 PTX ISA \S9.7.15.5.1.2.2 逐字段核校；u = unused；数值列为本章 kernel $B_K{=}64$ half + 128B swizzle 的取值；\texttt{enc(x)} = (x \& 0x3FFFF) 右移 4，18-bit 窗口 16B 对齐）。}
+\caption{WGMMA smem descriptor 的 64-bit 位域（对照 PTX ISA \S9.7.15.5.1.2.2；u = unused；数值列为本章 kernel $B_K{=}64$ half + 128B swizzle 的取值；\texttt{enc(x)} = (x \& 0x3FFFF) 右移 4，18-bit 窗口 16B 对齐）。}
 \label{fig:13-1}
 \end{figure}
 
@@ -1030,4 +1030,3 @@ $ CUDA_VISIBLE_DEVICES=7 .build/ch13_hgemm_wgmma
         （cp.async.bulk.tensor），本章全部指令语义的核查基准
         （本地镜像：cuda-cpp-kernel skill 的 ptx-docs）。
 \end{itemize}
-
