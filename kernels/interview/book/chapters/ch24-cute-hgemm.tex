@@ -497,6 +497,10 @@ remainder mode，主循环直接拿它当循环上界用。
 
 \paragraph{第二个动作：把 tile 分到线程}
 
+上一步切好的 tile 仍是「整个 CTA 共享」的视角，这一步用 \texttt{TiledMMA}
+把它拆到线程：\texttt{get\_slice} 换到本线程的视角，三个
+\texttt{partition\_fragment\_*} 给出该线程实际持有的寄存器 fragment。
+
 \begin{lstlisting}
   // -- hgemm.cuh L860-866（节选）--
   TiledMMA tiled_mma;

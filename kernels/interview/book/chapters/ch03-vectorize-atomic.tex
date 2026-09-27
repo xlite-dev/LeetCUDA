@@ -8,7 +8,7 @@
 却浓缩了 GPU 性能工程的两条第一性原理：\textbf{coalescing}（访存合并）与
 \textbf{向量化}（vectorized load/store）。前者决定「一次访存搬多少有效数据」，
 后者决定「一条指令搬多少数据」。本章以 base.cuh Phase 2（L306--386）的
-五个实现为线索：relu / relu\_vec4（激活）、elementwise\_add / 
+五个实现为线索：relu / relu\_vec4（激活）、elementwise\_add /
 elementwise\_add\_vec4（残差连接的原型）、histogram（原子操作出场）。
 
 前四个 kernel 是「如何把带宽吃满」的正反教材；histogram 则引入本章第二个
@@ -334,7 +334,7 @@ vec4 版的守卫值得逐行读：主路径 \texttt{(idx + 3) < N} 一次性保
 图 ch03-1（coalescing 对比）已见 \S\ref{sec:ch03-math}。补充一张三条
 优化路线的「收益分解」图，把本章与 ch02 的实测串起来：
 
-\begin{figure}[htbp]
+\begin{figure}[H]
 \centering
 \begin{tikzpicture}[font=\footnotesize]
   \draw[thick, fill=gray!80] (0.9, 0) rectangle (3.8, 1.7);

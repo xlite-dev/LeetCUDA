@@ -296,7 +296,7 @@ $\ell = \alpha \ell_0 + \beta \ell_1$、$O = \alpha O_0 + \beta O_1$。把两者
 \centering
 \begin{tikzpicture}[font=\tiny]
   \def\cw{1.52}
-  \def\chh{0.78}
+  \def\chh{0.88}
   % 主网格：行 t=0..3，列 c=0..2，cell = idx 与 (stage, phase)
   \foreach \t in {0,...,3}{
     \foreach \c [evaluate=\c as \ix using {int(3*\t+\c)},
@@ -304,7 +304,7 @@ $\ell = \alpha \ell_0 + \beta \ell_1$、$O = \alpha O_0 + \beta O_1$。把两者
                  evaluate=\c as \pht using {int(mod(int((3*\t+\c)/2),2))}] in {0,...,2}{
       \ifnum\stg=0 \def\cfill{colorx6!15} \else \def\cfill{colorx2!32} \fi
       \node[fill=\cfill, minimum width=\cw cm, minimum height=\chh cm, inner sep=0pt, align=center]
-        at ({(\c+0.5)*\cw},{-(\t+0.5)*\chh}) {\bfseries \ix\\{\scriptsize $(s\stg,\,p\pht)$}};
+        at ({(\c+0.5)*\cw},{-(\t+0.5)*\chh}) {\bfseries \ix\\$(s\stg,\,p\pht)$};
     }
   }
   % phase=1 的格子加粗描边：idx 2,3 / 6,7 / 10,11
@@ -321,8 +321,8 @@ $\ell = \alpha \ell_0 + \beta \ell_1$、$O = \alpha O_0 + \beta O_1$。把两者
   \foreach \t in {0,...,3}{
     \node[anchor=east, font=\scriptsize] at (-0.10,{-\t*\chh-0.5*\chh}) {$t{=}\t$};
   }
-  \node[anchor=east, font=\scriptsize, rotate=90] at (-0.52,{-2*\chh}) {KV tile $t$};
-  \node[anchor=north, font=\scriptsize] at ({1.5*\cw},{-4*\chh-0.24})
+  \node[anchor=east, font=\scriptsize, rotate=90] at (-0.85,{-2*\chh}) {KV tile $t$};
+  \node[anchor=north, font=\scriptsize, align=center, text width=6.2cm] at ({1.5*\cw},{-4*\chh-0.24})
     {$\mathrm{Sk}{=}2$、$C{=}3$（互质）：联合周期 $\mathrm{lcm}(C,2\,\mathrm{Sk})/C = 4$ 个 KV tile 后 (s,p) 模式重复};
   % 图例
   \node[anchor=west, fill=colorx6!15, draw, very thin, minimum width=0.5cm, minimum height=0.3cm, inner sep=0pt] at (5.4,{-0.9}) {};
@@ -337,9 +337,9 @@ $\ell = \alpha \ell_0 + \beta \ell_1$、$O = \alpha O_0 + \beta O_1$。把两者
   \draw[-{Stealth}, semithick] ({3*\cw+0.30},{-1.5*\chh}) -- (5.30,{-0.55});
   \node[anchor=south, font=\tiny] at (7.90,{-0.48}) {生产端：idx$=4$ $\to$ TMA 写 $s{=}0$ 槽、complete-tx 记账};
   \draw[-{Stealth}, semithick] ({3*\cw+0.30},{-2.5*\chh}) -- (5.30,{-3.35});
-  \node[anchor=north, font=\tiny] at (5.45,{-3.42}) {消费端：wait 同一格的 phase 后读 $s{=}0$ 槽——同公式对账、零通信};
+  \node[anchor=west, font=\tiny] at (6.1,{-3.50}) {消费端：wait 同一格的 phase 后读 $s{=}0$ 槽——同公式对账、零通信};
   % 下方对照带：C=2 与 C=8
-  \node[anchor=north west, font=\scriptsize\bfseries] at (0,{-4*\chh-1.10}) {对照带（Sk=2）};
+  \node[anchor=north west, font=\scriptsize\bfseries] at (0,{-4*\chh-0.96}) {对照带（Sk=2）};
   \node[anchor=east, font=\scriptsize] at (-0.10,{-4*\chh-1.62}) {$C{=}2$};
   \foreach \t in {0,...,1}{
     \foreach \c [evaluate=\c as \stg using int(\c),
@@ -353,7 +353,7 @@ $\ell = \alpha \ell_0 + \beta \ell_1$、$O = \alpha O_0 + \beta O_1$。把两者
     \draw[thin] ({\k*1.07},{-4*\chh-1.40}) -- ({\k*1.07},{-4*\chh-1.84});
   }
   \draw[dashed] (1.07,{-4*\chh-1.40}) -- (1.07,{-4*\chh-1.84});
-  \node[anchor=west, font=\tiny] at (2.35,{-4*\chh-1.62}) {$D{=}128$：phase $= t\bmod 2$，逐 tile 翻转};
+  \node[anchor=west, font=\tiny] at (4.5,{-4*\chh-1.62}) {$D{=}128$：phase $= t\bmod 2$，逐 tile 翻转};
   \node[anchor=east, font=\scriptsize] at (-0.10,{-4*\chh-2.26}) {$C{=}8$};
   \foreach \t in {0,...,1}{
     \foreach \c [evaluate=\c as \stg using {int(mod(\c,2))},
@@ -367,7 +367,7 @@ $\ell = \alpha \ell_0 + \beta \ell_1$、$O = \alpha O_0 + \beta O_1$。把两者
     \draw[thin] ({\k*0.57},{-4*\chh-2.04}) -- ({\k*0.57},{-4*\chh-2.48});
   }
   \draw[dashed] (2.28,{-4*\chh-2.04}) -- (2.28,{-4*\chh-2.48});
-  \node[anchor=west, font=\tiny] at (4.77,{-4*\chh-2.26}) {$D{=}512$：两行逐 tile 相同（相位模式固定）};
+  \node[anchor=west, font=\tiny] at (9.4,{-4*\chh-2.26}) {$D{=}512$：两行逐 tile 相同（相位模式固定）};
 \end{tikzpicture}
 \caption{idx $= t\cdot C + c \to$ (stage, phase) 的相位展开（式~\ref{eq:19-phase} 的图形化，$\mathrm{Sk}{=}2$）。主网格取 $C{=}3$（$D{=}192$，与 $\mathrm{Sk}$ 互质的最易错档）：行方向为 KV tile $t$、列方向为 chunk $c$，cell 填 idx 与其 (stage, phase)——灰度编码 stage 槽位、加粗框标记 phase $=1$；4 个 KV tile 后 (s,p) 模式才重复（周期 $=\mathrm{lcm}(C,2\,\mathrm{Sk})/C$）。右：生产/消费两端用\textbf{同一个公式}各自推导（写/读同一 stage 槽、按同一 phase 对账），不需要额外通信。下：$C{=}2$（逐 tile 翻转）与 $C{=}8$（逐 tile 相同）两条对照带，覆盖 19.10 节测试矩阵的三种形态。}
 \label{fig:19-phase-idx}
@@ -573,7 +573,7 @@ Phase 1 的内层是这个 kernel 的「心脏」，包含两个易错点：chun
   \node[anchor=north west, align=left, text width=9.9cm] at ({1.33},-4.80)
     {$\mathrm{Sk}{\ge}3$：\texttt{wait<Sk-2>} 允许 $\mathrm{Sk}{-}2$ 组仍在途 $\to$ 循环内重叠才真正建立};
 \end{tikzpicture}
-\caption{cp.async 版的四阶段流水（19.4.3 节主循环 L202--348 的图形化，任取一轮 KV tile 周期）。Phase 0 先把 $S_v{-}1$ 个 V chunk 发出去（提前发射）；Phase 1 沿 head\_dim 逐个 chunk 走「预取 $d{+}\mathrm{Sk}{-}1$ $\to$ \texttt{wait<Sk-2>} $\to$ \texttt{gemm\_ss}」，三次累加到同一块 $S[64,64]$；Phase 2 在 chunk 循环结束之后对完整的 $S$ 一次算完在线 softmax；Phase 3 每个 chunk 先乘 $\rho_t$ 再 \texttt{gemm\_rs}。灰底为 V 的在途窗口：从 Phase 0 发射一直横跨整个 Phase 1 与 Phase 2，直到 Phase 3 才被消费——这是本 kernel 唯一在循环内建立的重叠。$\mathrm{Sk}{=}2$ 与 $\mathrm{Sk}{\ge}3$ 的差别只落在 Phase 1 的 \texttt{wait} 口径上（19.6 节的性能差异来源）。}
+\caption{cp.async 版的四阶段流水（19.4.3 节主循环，任取一轮 KV tile 周期）。Phase 0 先把 $S_v{-}1$ 个 V chunk 发出去（提前发射）；Phase 1 沿 head\_dim 逐个 chunk 走「预取 $d{+}\mathrm{Sk}{-}1$ $\to$ \texttt{wait<Sk-2>} $\to$ \texttt{gemm\_ss}」，三次累加到同一块 $S[64,64]$；Phase 2 在 chunk 循环结束之后对完整的 $S$ 一次算完在线 softmax；Phase 3 每个 chunk 先乘 $\rho_t$ 再 \texttt{gemm\_rs}。灰底为 V 的在途窗口：从 Phase 0 发射一直横跨整个 Phase 1 与 Phase 2，直到 Phase 3 才被消费——这是本 kernel 唯一在循环内建立的重叠。$\mathrm{Sk}{=}2$ 与 $\mathrm{Sk}{\ge}3$ 的差别只落在 Phase 1 的 \texttt{wait} 口径上（19.6 节的性能差异来源）。}
 \label{fig:19-four-phase}
 \end{figure}
 
@@ -652,7 +652,7 @@ $((4,2),$\allowbreak$ MMA\_M,$\allowbreak$ MMA\_N/2)$——\textbf{零拷贝、�
   \node[anchor=north west, align=left, text width=13.5cm] at (0,-4.25)
     {颜色 $=$ 段身份（新 MMA mode 的编号）；右面板同色的两小格 $=$ 同一左段沿 $\mathrm{MMA\_N}$ 对半切开的两半。两面板是同一批寄存器的两种读法（示意实例：$\mathrm{MMA\_M}{=}\mathrm{MMA\_N}{=}4$）};
 \end{tikzpicture}
-\caption{零拷贝的寄存器重解释（19.4.3 节 quote 块中 \texttt{convert\_layout\_acc\_Aregs}（L300--305）的模式级示意）。左：$S$ 的累加器 layout 是 $(\mathrm{MMA}{=}4,\ \mathrm{MMA\_M},\ \mathrm{MMA\_N})$——4 个 MMA 重复段，每段 $\mathrm{MMA\_M}\times\mathrm{MMA\_N}$；右：同一批寄存器被读成 $((4,2),\ \mathrm{MMA\_M},\ \mathrm{MMA\_N}/2)$——沿 $\mathrm{MMA\_N}$ 切一刀得到 $(2,\ \mathrm{MMA\_N}/2)$，切出的 $2$ 与原来的 $4$ 配对成新的 $8$ 段 MMA mode，正是 PV 的 A 操作数所需的「K 向连续 2 元素」（与第~\ref{ch:16}~章旗舰图的 $a_0/a_1$ 配对同族）。数据一个比特都没动：只是坐标重排，softmax 后的 $P$ 因此不需要写回 smem 再 \texttt{ldmatrix}。}
+\caption{零拷贝的寄存器重解释（19.4.3 节 quote 块中 \texttt{convert\_layout\_acc\_Aregs} 的模式级示意）。左：$S$ 的累加器 layout 是 $(\mathrm{MMA}{=}4,\ \mathrm{MMA\_M},\ \mathrm{MMA\_N})$——4 个 MMA 重复段，每段 $\mathrm{MMA\_M}\times\mathrm{MMA\_N}$；右：同一批寄存器被读成 $((4,2),\ \mathrm{MMA\_M},\ \mathrm{MMA\_N}/2)$——沿 $\mathrm{MMA\_N}$ 切一刀得到 $(2,\ \mathrm{MMA\_N}/2)$，切出的 $2$ 与原来的 $4$ 配对成新的 $8$ 段 MMA mode，正是 PV 的 A 操作数所需的「K 向连续 2 元素」（与第~\ref{ch:16}~章旗舰图的 $a_0/a_1$ 配对同族）。数据一个比特都没动：只是坐标重排，softmax 后的 $P$ 因此不需要写回 smem 再 \texttt{ldmatrix}。}
 \label{fig:19-aregs-reinterpret}
 \end{figure}
 

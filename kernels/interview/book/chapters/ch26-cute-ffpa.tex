@@ -209,7 +209,7 @@ $\mathrm{AtomLayout}=(4,1,1)$ 的 4 个 warp 分完，列维的 atom 数相差 4
     {差别全在 $N$ 向：\textcolor{tkBlue}{QK} 的 $\mathrm{EURepeat}_N{=}8$ ——8 条 \texttt{mma.sync} 一次覆盖 $S$ 整个 64 列，「N-tile 循环」消失；
      \textcolor{tkGreen!70!black}{PV} 的 $\mathrm{EURepeat}_N{=}2$ 只覆盖 $O$ 的 16 列，其余列由外层 V-chunk 循环驱动。};
 \end{tikzpicture}
-\caption{双 TiledMma 的 Tile 分工（\texttt{ffpa\_\allowbreak{}attn\_.cuh} L52--58，式~\eqref{eq:26-qk}--\eqref{eq:26-pv}）。
+\caption{双 TiledMma 的 Tile 分工（式~\eqref{eq:26-qk}--\eqref{eq:26-pv}）。
 左：QK 的输出 $S[64,64]$——4 个 warp 各占 16 行（$\mathrm{AtomLayout}$ 的 $M$ 分量 4），
 列向 8 个 $n8$ atom 由\textbf{同一线程}在一个 k-step 里连发 8 条 \texttt{mma.sync} 覆盖
 （蓝深浅 8 档标识 atom 身份，格内数字为发射序）；右：PV 的输出 $O$ 只有一个
@@ -721,7 +721,7 @@ PV 要在循环里反复构造 V 的 B 操作数。FFPA 的做法是\textbf{把 
      chunk（$c/8=p\oplus(r\bmod8)$），灰度跟随逻辑 chunk 身份，于是「对角线置换」一眼可见；
      实际 tile 是 $64\times64$（$8$ 个周期），此处只画一个周期。};
 \end{tikzpicture}
-\caption{V 的双视图分工（\texttt{ffpa\_attn.cuh} L136--141）。同一张 SW128 smem tile：
+\caption{V 的双视图分工。同一张 SW128 smem tile：
 \texttt{sV\_stg}（带 swizzle 的 storage 视图）负责把逻辑坐标换算成物理槽位、给数据指针用；
 \texttt{tCrV\_layout}（由 nonswizzle portion 推导）负责回答「哪个线程持有哪些逻辑元素」。
 SW128 的 XOR 只改地址、不改归属，所以推 fragment 布局时必须先剥掉 swizzle——

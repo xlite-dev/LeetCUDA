@@ -88,7 +88,7 @@ smem / SM & 228KB & 100KB（L1 共 128KB） & kStages $\le$ 3 \\
 \bottomrule
 \end{tabular}
 \caption{SM120 与 Hopper 在本章流水线相关能力上的差集（依据 cutlass sm120
-optimization guide 与 PTX ISA Target ISA Notes 核校）。}
+optimization guide 与 PTX ISA Target ISA Notes）。}
 \end{table}
 
 \subsection{producer/consumer 到达数：逐 phase 账本}
@@ -195,12 +195,12 @@ watchdog 超时前毫无征兆。而 alloc 从 224 降到 208（总 61440，余 
 ]
   \node[fill=tkFillBlue, draw=tkBlue, minimum width=0.5cm, minimum height=0.25cm, inner sep=0pt] at (0.3, 0.85) {};
   \node[font=\scriptsize, anchor=west] at (0.62, 0.85) {producer warp（\texttt{dealloc} 让出）};
-  \node[fill=tkFillGreen, draw=tkGreen, minimum width=0.5cm, minimum height=0.25cm, inner sep=0pt] at (4.3, 0.85) {};
-  \node[font=\scriptsize, anchor=west] at (4.62, 0.85) {consumer warp（\texttt{alloc} 补足）};
-  \node[pattern=north east lines, pattern color=gray!45, draw, minimum width=0.5cm, minimum height=0.25cm, inner sep=0pt] at (8.0, 0.85) {};
-  \node[font=\scriptsize, anchor=west] at (8.32, 0.85) {池剩余};
+  \node[fill=tkFillGreen, draw=tkGreen, minimum width=0.5cm, minimum height=0.25cm, inner sep=0pt] at (5.1, 0.85) {};
+  \node[font=\scriptsize, anchor=west] at (5.42, 0.85) {consumer warp（\texttt{alloc} 补足）};
+  \node[pattern=north east lines, pattern color=gray!45, draw, minimum width=0.5cm, minimum height=0.25cm, inner sep=0pt] at (9.9, 0.85) {};
+  \node[font=\scriptsize, anchor=west] at (10.22, 0.85) {池剩余};
   \draw[tkRed, thick, dashed] (12.4, 0.55) -- (12.4, -4.95);
-  \node[tkRed, font=\scriptsize, align=center, anchor=south] at (12.4, 0.6)
+  \node[tkRed, font=\scriptsize, align=center, anchor=south] at (12.4, 0.78)
     {安全 slack\\（池余 $\ge$ 2048）};
   \node[slb] at (-0.25, 0) {本章源码\\dealloc\texttt{<40>} / alloc\texttt{<232>}};
   \fill[tkFillBlue] (0, -0.3) rectangle (1.0, 0.3);

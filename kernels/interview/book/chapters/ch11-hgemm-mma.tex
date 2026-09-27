@@ -292,7 +292,7 @@ $RC[0]$（第一个 \texttt{.b32}）覆盖行 0--7，$RC[1]$ 覆盖行 8--15。
     {同一 $\mathrm{g}$ 的 tig $=0..3$ 各持一对，\\拼出行 $\mathrm{g}$（与 $\mathrm{g}{+}8$）的 8 列};
   \draw[->, dashed, tkOrange] (0.63,{-16*\chd-0.2}) -- (0.63,{-16*\chd+0.1});
 \end{tikzpicture}
-\caption{C fragment（$m16\times n8$）寄存器布局——hgemm.cuh~L311--333 字符画的 TikZ 版，与式~\ref{eq:11-cpos} 逐格一致：行 $m=\mathrm{g}=\mathrm{lane}\gg2$（底色 8 档，行 0--7 与 8--15 由同批 lane 重复覆盖），列对由 $\mathrm{tig}=\mathrm{lane}\%4$ 决定；$RC[0]$ 装行 0--7、$RC[1]$ 装行 8--15。底部：4-lane 组内 tig $=0..3$ 各持一对 $\{c\sb{2t},c\sb{2t+1}\}$，拼齐一行 8 个 half——11.4.6 节 epilogue shuffle 的出发点。}
+\caption{C fragment（$m16\times n8$）寄存器布局（式~\ref{eq:11-cpos}）：行 $m=\mathrm{g}=\mathrm{lane}\gg2$（底色 8 档，行 0--7 与 8--15 由同批 lane 重复覆盖），列对由 $\mathrm{tig}=\mathrm{lane}\%4$ 决定；$RC[0]$ 装行 0--7、$RC[1]$ 装行 8--15。底部：4-lane 组内 tig $=0..3$ 各持一对 $\{c\sb{2t},c\sb{2t+1}\}$，拼齐一行 8 个 half——11.4.6 节 epilogue shuffle 的出发点。}
 \label{fig:11-c-fragment}
 \end{figure}
 
@@ -529,7 +529,7 @@ CuTe 的 TiledMMA 与 Value Tile 概念（L180--183），
        $B\sb M = 16\cdot2\cdot4 = 128$，\quad $B\sb N = 8\cdot4\cdot4 = 128$};
   \end{scope}
 \end{tikzpicture}
-\caption{MMA warp $2\times4$ 排布（左，$128\times128$ block tile，浅色 $=$ warp 身份）：MMA0--7 按列主序——N 向 MMA0/2/4/6、M 向 MMA1/3/5/7（\texttt{warp\_m = warp\_id\%2} 变化快），与 hgemm.cuh L158--159 原字符画一致；每 warp 块内 $4\times4$ 个 $m16n8$ atom 小格。右：单 warp 块放大（warp tile $64\times32$，蓝深 $=$ atom 块内位置）；侧栏三层记号 $B\sb M=16\cdot2\cdot4$、$B\sb N=8\cdot4\cdot4$。}
+\caption{MMA warp $2\times4$ 排布（左，$128\times128$ block tile，浅色 $=$ warp 身份）：MMA0--7 按列主序——N 向 MMA0/2/4/6、M 向 MMA1/3/5/7（\texttt{warp\_m = warp\_id\%2} 变化快）；每 warp 块内 $4\times4$ 个 $m16n8$ atom 小格。右：单 warp 块放大（warp tile $64\times32$，蓝深 $=$ atom 块内位置）；侧栏三层记号 $B\sb M=16\cdot2\cdot4$、$B\sb N=8\cdot4\cdot4$。}
 \label{fig:11-mma-layout}
 \end{figure}
 
@@ -681,7 +681,7 @@ WMMA 做不到这一点（对照第~\ref{ch:10}~章坑五）。收拢与写回�
      的 lane 每 $j$ 写两条 128-bit store——列起点由 \texttt{warp\_n} 与 $j$ 平移，
      整 warp 铺满 $64\times32$ 子块，不经 smem 中转。};
 \end{tikzpicture}
-\caption{Epilogue shuffle 收拢与写回（hgemm.cuh L336--382）：4-lane 组内 T0--T3 各持一对 $\{c\sb{2t},c\sb{2t+1}\}$（上行 $=$ 行 g、下行 $=$ 行 g{+}8 的寄存器对），\texttt{\_\_shfl\_sync} 从 lane+1/+2/+3 各收 2 个 half，把 RC0[j]（行 g）与 RC1[j]（行 g{+}8）各凑成 4 条 \texttt{.b32} $=$ 一条 16B \texttt{float4}；随后仅 \texttt{lane\%4==0} 的 lane 出手，行号 $=$ \texttt{lane\_id/4} $=$ g，两条 128-bit store 分别写行 g 与 g{+}8。}
+\caption{Epilogue shuffle 收拢与写回：4-lane 组内 T0--T3 各持一对 $\{c\sb{2t},c\sb{2t+1}\}$（上行 $=$ 行 g、下行 $=$ 行 g{+}8 的寄存器对），\texttt{\_\_shfl\_sync} 从 lane+1/+2/+3 各收 2 个 half，把 RC0[j]（行 g）与 RC1[j]（行 g{+}8）各凑成 4 条 \texttt{.b32} $=$ 一条 16B \texttt{float4}；随后仅 \texttt{lane\%4==0} 的 lane 出手，行号 $=$ \texttt{lane\_id/4} $=$ g，两条 128-bit store 分别写行 g 与 g{+}8。}
 \label{fig:11-epilogue-shuffle}
 \end{figure}
 \section{性能分析}

@@ -168,7 +168,7 @@ $S(R, i) = \sum\sb j x\sb j$，即\textbf{每个 lane 都持有完整的归约�
     minimum height=0.56cm, font=\small\bfseries] at (7.73, 0.36)
     {配对跨度 $4 \to 2 \to 1$：每轮 XOR 掩码减半，$\log_2(W)$ 轮后全 lane 持全和};
 \end{tikzpicture}}
-\caption{warp shuffle 蝶形归约：三轮 XOR 配对（mask $4 \to 2 \to 1$）后全和出现在每一个 lane（base.cuh L111--148 以 $W{=}8$ 为例，5 步同理）。}
+\caption{warp shuffle 蝶形归约：三轮 XOR 配对（mask $4 \to 2 \to 1$）后全和出现在每一个 lane（以 $W{=}8$ 为例，5 步同理）。}
 \label{fig:2-1}
 \end{figure}
 

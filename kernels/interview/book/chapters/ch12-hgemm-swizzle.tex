@@ -331,7 +331,7 @@ BK=16 基线 98{,}304 次；两版比值 $691067/297628=2.32$，与模型预测�
 \texttt{swizzle<16>} 只拿行号 bit2 翻转 chunk 位，行 0--3 与行 4--7 分落两个 quad，
 降到 4-way（297{,}628 次）——单个 XOR bit 的下界；(c) \texttt{swizzle<64>}
 （SWIZZLE\_128B，$B{=}3$）以 $c'=c\oplus(i\,\&\,7)$ 让 8 行恰好铺满 32 个 bank，
-1-way（BK=16 基线 98{,}304 次为 2-way 参照）。数字与表~\ref{tab:12-bank} 对齐。}
+1-way（BK=16 基线 98{,}304 次为 2-way 参照）。数字见表~\ref{tab:12-bank}。}
 \label{fig:12-quad-swizzle}
 \end{figure}
 
@@ -601,7 +601,7 @@ warp shuffle 拼出 128-bit 向量写回 C，思路与第~\ref{ch:11}~章一致�
     {两级分工：\textbf{第一级} smem 双缓冲（kStages 轮转）盖住 gmem$\to$smem 的跨 k 迭代延迟；\\
      \textbf{第二级} 寄存器双缓冲（reg[st]/reg[ld] 乒乓）盖住 k\_step 级 ldmatrix 延迟（含 12.3.7 节残余 4-way 冲突）};
 \end{tikzpicture}
-\caption{两级双缓冲叠加的流水时间线（12.4.4 节，hgemm.cuh~L514--681）：上泳道是
+\caption{两级双缓冲叠加的流水时间线（12.4.4 节）：上泳道是
 第一级——cp.async 按 stage $(k{+}S{-}1)\bmod S$ 预取下一 K-tile（$S{=}$kStages$=2$ 时
 k 迭代 0 预取 tile 1 进 S$_1$、迭代 1 预取 tile 2 回 S$_0$）；下泳道是第二级——
 每个 k 迭代内 4 个 k\_step 逐个过：先 flip（\texttt{reg\_st\_idx}/\texttt{reg\_ld\_idx}
@@ -705,7 +705,7 @@ slice $t$，tensor core 不必等 ldmatrix。右侧为自适应等待：满载�
 FA 风格 $[\ast][16]$ tile）。同一 8$\times$16 tile：置换前每 4 行重复一轮 quad，
 按列读取 2-way 冲突；置换后行 4--7 的两个 chunk 对调，8 行恰好铺满 32 个
 bank——ldmatrix.x4 phase0 读到的 quad 序列从 $\{0,8,16,24,0,8,16,24\}$
-变为 $\{0,8,16,24,4,12,20,28\}$。蓝本：common.cuh~L185--235 布局表。}\label{fig:12-1}
+变为 $\{0,8,16,24,4,12,20,28\}$。}\label{fig:12-1}
 \end{figure}
 
 \begin{figure}[htbp]
@@ -972,7 +972,7 @@ swizzle 缩 L2 footprint」两条主线互相印证。
   swizzle 模式编码一致（第~\ref{ch:13}~章 descriptor 位域、第~\ref{ch:23}~章
   CuTe Swizzle 将再次用到该映射）。
 \end{kaogu}
- 
+
 \begin{kaogu}[位置考据]{common.cuh L344-347 注释悬置}
   「swizzle: 公开派发器……」这条注释紧接在 \texttt{swizzle\_\allowbreak{}v2\_\allowbreak{}impl} 之后，
   但 common.cuh 内\textbf{并没有}它描述的 \texttt{swizzle\allowbreak{}<k\allowbreak{}Col\allowbreak{}Stride>} 函数，

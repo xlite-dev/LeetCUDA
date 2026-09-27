@@ -180,7 +180,7 @@ base.cuh L16--21 给出了 H100 参考下的带宽数量级：HBM3 约 3.35 TB/s
   \node[anchor=center, text=black!70] at (8.17, -0.42)
     {离 SM 越远：带宽越低、容量越大};
 \end{tikzpicture}}
-\caption{GPU 内存层级金字塔：离 SM 越远带宽越低、容量越大（H100 数量级，base.cuh L16--21 口径）。}
+\caption{GPU 内存层级金字塔：离 SM 越远带宽越低、容量越大（H100 数量级）。}
 \label{fig:1-1}
 \end{figure}
 
@@ -278,33 +278,33 @@ compute-bound。
 \begin{tikzpicture}[font=\scriptsize,
   axlab/.style={anchor=west, black!65},
   note/.style={anchor=west, black!70}]
-  \node[anchor=west, font=\small\bfseries] at (0.62, 7.32)
+  \node[anchor=west, font=\small\bfseries] at (0.62, 7.75)
     {Roofline 模型：$P = \min(P_{\mathrm{peak}},\ \mathrm{AI}\times\mathrm{BW})$};
   \draw[-{Stealth}, black!65, line width=0.8pt] (1.85, 0.92) -- (13.54, 0.92);
   \draw[-{Stealth}, black!65, line width=0.8pt] (1.85, 0.92) -- (1.85, 6.77);
-  \node[axlab] at (12.60, 0.62) {AI (FLOP/Byte)};
+  \node[axlab] at (12.60, 0.66) {AI (FLOP/Byte)};
   \node[axlab] at (1.20, 6.62) {P (TFLOPS)};
   \draw[red, line width=1.2pt] (1.85, 0.92) -- (5.08, 6.77);
   \draw[red, line width=1.2pt] (5.08, 6.77) -- (13.08, 6.77);
   \draw[black!45, dashed, line width=0.6pt] (5.08, 0.92) -- (5.08, 6.77);
   \node[anchor=west, red, font=\bfseries] at (6.00, 7.06)
     {compute-bound: $P = P_{\mathrm{peak}}$};
-  \node[anchor=west, orange!85!black, font=\bfseries] at (2.82, 2.62)
-    {memory-bound: $P = \mathrm{AI}\times\mathrm{BW}$};
+  \node[anchor=west, orange!85!black, font=\bfseries, align=left] at (3.22, 2.88)
+    {memory-bound: \\ $P = \mathrm{AI}\times\mathrm{BW}$};
   \node[anchor=west, orange!85!black] at (2.90, 2.28) {(斜率 $=$ BW)};
-  \node[axlab] at (4.40, 0.62)
+  \node[axlab] at (4.40, 0.66)
     {$\mathrm{AI}^* = P_{\mathrm{peak}}/\mathrm{BW}$};
   \fill[blue!65!black] (10.25, 6.31) circle (2.2pt);
   \node[anchor=west, blue!65!black, align=left, text width=5.8cm] at (7.70, 5.74)
     {GEMM $K{=}4096$：$\mathrm{AI}{=}683$ 高于 $\mathrm{AI}^*{=}295$
      $\to$ compute-bound};
   \fill[green!50!black] (3.11, 1.51) circle (2.2pt);
-  \node[anchor=west, green!40!black, align=left, text width=5.8cm] at (3.30, 1.05)
+  \node[anchor=west, green!40!black, align=left, text width=3.4cm] at (3.30, 1.72)
     {softmax $\mathrm{AI}{=}0.625$ 远低于 $\mathrm{AI}^*{=}20$
      $\to$ 严重 memory-bound};
-  \node[note] at (0.62, 0.50)
-    {例：H100 SXM（base.cuh L84--86 口径）FP16 TC dense $P_{\mathrm{peak}}$ 约 989 TFLOPS，BW${=}3.35$ TB/s $\to$ $\mathrm{AI}^*$ 约 295；};
   \node[note] at (0.62, 0.20)
+    {例：H100 SXM（base.cuh L84--86 口径）FP16 TC dense $P_{\mathrm{peak}}$ 约 989 TFLOPS，BW${=}3.35$ TB/s $\to$ $\mathrm{AI}^*$ 约 295；};
+  \node[note] at (0.62, -0.10)
     {FP32 CUDA core 约 67 TFLOPS $\to$ $\mathrm{AI}^*$ 约 20};
 \end{tikzpicture}}
 \caption{Roofline 模型：$P = \min(P_{\mathrm{peak}}, \mathrm{AI} \times \mathrm{BW})$，脊点 $\mathrm{AI}^* = P_{\mathrm{peak}} / \mathrm{BW}$。GEMM $K{=}4096$（AI$=683$）落在计算屋顶，softmax（AI$=0.625$）落在带宽斜线区。}
