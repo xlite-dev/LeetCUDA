@@ -42,11 +42,10 @@ apt install -y cublas-cuda-13 cudnn9-cuda-13 && apt install -y ccache
 
 ## 🤖 Agentic workflow
 
-LeetCUDA provides a [leetcuda-cpp-kernel](./kernels/interview/book/skills/leetcuda-cpp-kernel/) SKILL that reuse the knowledge and examples from the LeetCUDA open sources **book** and **repository**. Users can use it with Coding Agents, e.g, [GitHub Copilot](https://docs.github.com/en/copilot), [Claude Code](https://claude.ai), [Open Code](https://opencode.ai/).
+LeetCUDA provides a [leetcuda-cpp-kernel](./kernels/interview/book/skills/leetcuda-cpp-kernel/) SKILL that reuse the knowledge and examples from the LeetCUDA Open-Source **book** and **repository**. Users can use it with Coding Agents, e.g, [GitHub Copilot](https://docs.github.com/en/copilot), [Claude Code](https://claude.ai), [Open Code](https://opencode.ai/).
 
 ```bash
 # Install the skill for different coding agents (recommended: gh >= 2.101.0).
-gh skill install xlite-dev/LeetCUDA leetcuda-cpp-kernel --agent codex
 gh skill install xlite-dev/LeetCUDA leetcuda-cpp-kernel --agent opencode
 gh skill install xlite-dev/LeetCUDA leetcuda-cpp-kernel --agent claude-code
 gh skill install xlite-dev/LeetCUDA leetcuda-cpp-kernel --agent github-copilot
