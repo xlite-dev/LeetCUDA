@@ -1,4 +1,4 @@
-<div align="center">
+<!-- <div align="center">
   <div align='center'>
       <img src='./docs/leetcuda_cover_bench.png' width='810px'><br>
       <img src=https://cdn.rawgit.com/sindresorhus/awesome/d7305f38d29fed78fa85652e3a63e154dd8e8829/media/badge.svg >
@@ -9,18 +9,37 @@
       <img src=https://img.shields.io/badge/License-GPLv3.0-turquoise.svg >
       <a href="https://hellogithub.com/repository/98348655a96640ca8ddcbc298edc901d" target="_blank"><img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=98348655a96640ca8ddcbc298edc901d&claim_uid=ofSCbzTmdeQk3FD&theme=small" alt="Featured｜HelloGitHub" /></a>
   </div>
+</div> -->
+
+<div align="center">
+  <div align='center'>
+      <h2>📖 LeetCUDA: An open-source book of modern CUDA learning notes</h2>
+      <img src=https://cdn.rawgit.com/sindresorhus/awesome/d7305f38d29fed78fa85652e3a63e154dd8e8829/media/badge.svg >
+       <a href='./kernels/interview/book/book.pdf'><img src=https://img.shields.io/badge/PDF-available-hotpink.svg ></a>
+      <img src=https://img.shields.io/badge/Language-CUDA-brightgreen.svg >
+      <img src=https://img.shields.io/github/forks/xlite-dev/LeetCUDA.svg?style=dark >
+      <img src=https://img.shields.io/github/stars/xlite-dev/LeetCUDA.svg?style=dark >
+      <img src=https://img.shields.io/badge/License-GPLv3.0-turquoise.svg >
+      <a href="https://hellogithub.com/repository/98348655a96640ca8ddcbc298edc901d" target="_blank"><img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=98348655a96640ca8ddcbc298edc901d&claim_uid=ofSCbzTmdeQk3FD&theme=small" alt="Featured｜HelloGitHub" /></a>
+  </div>
 </div>
 
-**LeetCUDA**: An open-source book of modern CUDA learning notes. It covers **Tensor/CUDA Cores, TF32/BF16/FP8**, [200+ CUDA kernels](#cuda-kernel), [HGEMM](./kernels/hgemm) achieving `98%~100%` of cuBLAS TFLOPS, and [flash-attn](./kernels/flash-attn) built on Tensor Cores with pure MMA PTX. <i>The open-source LeetCUDA book is now available at <a href='https://github.com/xlite-dev/LeetCUDA/releases/download/v4.0.5/leetcuda-20260924.pdf'>©️LeetCUDA.pdf (w/ 500+ pages)🔥🔥🔥</a>.</i>
+It covers **Tensor/CUDA Cores, TF32/BF16/FP8/FP4**, [200+ CUDA kernels](#cuda-kernel), [HGEMM](./kernels/hgemm) achieving `98%~100%` of cuBLAS TFLOPS, and [flash-attn](./kernels/flash-attn) built on Tensor Cores with pure MMA PTX. <i>The open-source LeetCUDA book is now available at <a href='https://github.com/xlite-dev/LeetCUDA/releases/download/v4.0.5/leetcuda-20260924.pdf'>©️LeetCUDA.pdf (w/ 500+ pages)🔥🔥🔥</a>.</i>
+
+<div align="center">
+  <div align='center'>
+      <img src='./docs/leetcuda_cover_bench.png' width='810px'>
+  </div>
+</div>
+
+Please also check out our production-ready **Kernel Library**: [**ffpa-attn**](https://github.com/xlite-dev/ffpa-attn) - Fast and Memory-Efficient Exact Attention (**BF16/FP16/FP8/FP4**) for Large Headdim, **1.5x~15x**🔥🔥 speedup over standard PyTorch SDPA.
 
 <div align='center'>
   <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-h20z_B1_H32_N8192_D512_T.png' width='200px'>
   <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-h20z_B1_H32_N16384_D512_T.png' width='200px'>
   <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-b200_B1_H32_N8192_D512_T.png' width='200px'>
-  <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-b200_B1_H32_N16384_D512_T.png' width='200px'><br>
+  <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-b200_B1_H32_N16384_D512_T.png' width='200px'>
 </div>
-
-Please also check out our production-ready **Kernel Library**: [**ffpa-attn**](https://github.com/xlite-dev/ffpa-attn) - Fast and Memory-Efficient Exact Attention (**BF16/FP16/FP8/FP4**) for Large Headdim, **1.5x~15x**🔥🔥 speedup over standard PyTorch SDPA.
 
 ## 📖 Quick Start
 
@@ -42,7 +61,7 @@ apt install -y cublas-cuda-13 cudnn9-cuda-13 && apt install -y ccache
 
 ## 🤖 Agentic workflow
 
-LeetCUDA provides a [leetcuda-cpp-kernel](./kernels/interview/book/skills/leetcuda-cpp-kernel/) SKILL that reuse the knowledge and examples from the LeetCUDA Open-Source **book** and **repository**. Users can use it with Coding Agents, e.g, [GitHub Copilot](https://docs.github.com/en/copilot), [Claude Code](https://claude.ai), [Open Code](https://opencode.ai/).
+LeetCUDA provides a [leetcuda-cpp-kernel](./kernels/interview/book/skills/leetcuda-cpp-kernel/) SKILL that reuse the knowledge and examples from the open-source **book** and **repository**. Users can use it with Coding Agents, e.g, [GitHub Copilot](https://docs.github.com/en/copilot), [Claude Code](https://claude.ai), [Open Code](https://opencode.ai/).
 
 ```bash
 # Install the skill for different coding agents (recommended: gh >= 2.101.0).
