@@ -233,6 +233,196 @@
 
 - [x] N.19 全书图排版修复 + caption 开发日志清理（2026-09-27，用户点名 7 处）：①图 2.3 Roofline（ch01）：标题/红字相切、绿注穿 x 轴、底部 H100 两行注与 AI*/AI 轴标签同带互叠——纵向分区重排（标题 y7.75、绿注 text width 3.4cm 上移至轴上完整区、底部注独立带 y0.20/-0.10），并修橙色 memory-bound 单行被红斜线切字（改两行块）；②4.5「图示」节空节（ch03）：fig:3-2 `[htbp]` 大图漂移致 4.6 正文顶入 4.5 标题下——改 `[H]` 就地放置；③图 11.3（ch10）：左右两条注释 node 在 x∈[7.4,11.9] 同带叠印——左注释改锚左网格下方 (1.3,-3.35)/5.6cm；④图 12.3 caption（ch11）删「hgemm.cuh L311--333 字符画的 TikZ 版」「与式逐格一致」开发日志；⑤图 15.1（ch14）：图例色块后画盖住先画文字尾部——色块/文字组重排（4.3→5.1、8.0→9.9）+ slack 标签上移；⑥图 18.2（ch17）：TMA 标签压 chunk 网格数字/边框——`\cxx` 10.3→11.0 加宽走廊、标签 #0 走廊居中、箭头 #1 改三段折线走空白区、标签 #1 随之迁移；⑦图 19.3（ch18）：两段块标题同基线互叠 + 斜箭头穿标题、箭尖压双竖线——标题缩短分列两基线、箭头改「竖降+水平指向」折线、箭尖指高亮框外缘。**caption 全书扫描**（用户确认扩大范围）：37 章 238 个 caption 命中 40 处开发日志（源码行号/字符画对照/逐格核对/.tmp 路径），20 文件清理，保留式/节交叉引用与实测 provenance；flagged 未改 4 类（tests/.build 运行日志指引 4 处、外部教程出处 10 处、位置索引表行号、手算逐格自证）。图清单 64 条 drawio 登记整体标注留档（见 §13 注）。构建 556 页零 error，7 图逐页 150dpi 视觉验收 + 图 2.3 绿注 300dpi 放大复核通过；Overfull ≥1pt 仍 5 处（旧章正文，N.13 已记录，未新增）。⑧用户复核追加两处存量修复（2026-09-27）：图 11.3 左右网格顶部列头（数字 0-7/`PAD×4`/`n=0..7`/`n=124..127`/`PAD×4`）原 `anchor=north` @y=-0.05 向下垂入网格首行与 bank 号叠印——翻转 `anchor=south` @y=0.04 抬到网格上方；图 19.3 `rows xx--xx` 标签原 anchor=east @7.27 向左最长延伸 ~1.2cm 压在 R_D 块（右缘 6.75）内部——标签移入 R_D 块内 @6.6 并给 R_D 块补画 8 段行分隔线（对应「每 wg_tid 一段」，与 m/ℓ 行段对齐），两图 standalone 预览 + 书内 p120/p251 复核通过。⑨用户逐页复核迭代修复（2026-09-28，bbox 程序化重叠检测驱动）：图 16.1（ch15）右对数面板整体 `scope shift(0,-0.55)` 与左侧面板底对齐、峰值标签改 anchor=south west；图 20.1（ch19）行高 `\chh` 0.78→0.88、格内两行字号降档、consumer/C=2/C=8 侧注重排、底注两行化、对照带（Sk=2）标签上移 -1.10→-0.96 避让 C=2 带矩形（p260 bbox 验证标签底 522.0 vs 带顶 525.15）；图 21.8/21.9（ch20）layoutB 标签/橙注/right_inverse 标签坐标微调；图 21.10=fig20-8（ch20）**网格数据 bug**：原行主序公式改为积木序 `int(8*floor(r/2)+4*floor(c/2)+2*mod(r,2)+mod(c,2))`、删重复"11"格、右列右移 13.37→13.62；图 23.1（ch22）panel-3 顶部标签两行化、FrgV/T_3 注记坐标；ch24「第二个动作」段补代码前引导正文。另：p342 底部疑似空 listing 框经五层取证（pdftotext 文本层/pdfimages/mutool trace/pymupdf drawings+annots/内容流矩形扫描）确认为 poppler 系渲染器专属 artifact（MuPDF 渲染干净，PDF 各层均无此对象），未改动源码，留档观察。
 
+## 12-O. RFC-O Part V FP8/FP4 HGEMM 篇：ch36-37 NVFP4 量化 GEMM（2026-09-24）
+
+> 用户需求原文：「接着写 fp4 gemm 的教学示例和章节（在 book 中放在 FP8 GEMM 之后），
+> 可以分析参考 ffpa-attn fp4 cute sm_120 persist-d kernel 的链路，主要参考其 fp4 QK/PV GEMM
+> (ACC F32 路径) 以及 fp4 量化（两级量化），代码保存在 kernels/interview/fp4_gemm.cuh 中，
+> 做成在线量化的 kernel（参考 fp8 gemm）。book 中章节撰写要图文并茂，讲清楚 nvfp4 的指令特点，
+> 理论误差等（结合量化算法来讲）。和 fp8 gemm 一样，要打通 notes-v2.cu 的 benchmark。」
+> 硬约束：**ch34/ch35 不再改动**（「旧的你不要再动了」）。
+
+- [x] O.1 源码新增：`kernels/interview/fp4_gemm.cuh`（Phase 10.1-10.8，1277 行）
+  - Phase 10.1 常数与线格式工具：`kE2M1Max=6`/`kUe4m3Max=448`/`kFp4ScaleMax=2688`/`kSFVec=16`/`kRowBlock=128`；
+    `Fp4GemmScaleMode`（kSingleLevel/kLevel1A/kLevel1B/kTwoLevel）；`cvt_f2_to_e2m1x2`（PTX
+    `cvt.rn.satfinite.e2m1x2.f32` + `mov.b32`）、`cvt_f2_to_ue4m3`（经 `__nv_cvt_float2_to_fp8x2` E4M3）、
+    `cvt_ue4m3_to_f32`、`sf_byte_offset`/`sf_buffer_bytes`/`sf_gmem_layout`（512B 原子）
+  - Phase 10.2 量化前处理：`row_amax_fp4_kernel`（A 行 amax）+ `quantize_a_fp4_kernel<kLevel1>`（含补零行 SF 显式清零）
+  - Phase 10.2b **B 侧重构**（见 O.9）：`col_amax_fp4_kernel`（K 切 8 片 + 整数 `atomicMax`）
+    + `quantize_bt_tile_fp4_kernel<kLevel1>`（$128(n)\times64(k)$ 一 tile，`tile_t` 补 1 列防 bank 冲突）
+  - Phase 10.3/10.3b CuTe 工具 + `sf_partition`（`thrfrg_sfa/sfb`、`partition_fragment_sfa/sfb`、
+    `layout_sfa/sfb_tv`，逐行抄自 CUTLASS `sm120_blockscaled_mma_tma.hpp`）
+  - Phase 10.4 `SfSmemAtom<TiledMma,kMN,kBK>` + `Fp4GemmTraits<kBN,kStages>`（`SM120_16x8x64_TN_VS`
+    atom / `AtomLayoutMNK=(4,2,1)` / SW32 数据 + 512B SF 原子 / `kOStagingFits` 断言）
+  - Phase 10.5/10.6 non-WS（全员 MMA + tid0 内联 4 路 TMA）与 WS（128 producer + 256 consumer）双 kernel
+  - Phase 10.7 `fp4_gemm_tma_fwd`（4 个 TMA descriptor，SF 用 `uint16_t` 内部类型）+ `fp4_gemm_bf16` API
+    + `Fp4GemmWorkspace`/`fp4_gemm_workspace_size`
+  - Phase 10.8 B 离线量化（`Fp4GemmActivation` + `fp4_gemm_bf16_b_offline`）
+- [x] O.2 build.sh：`ARCH_DEFINES[sm_120a]` 与 `ARCH_DEFINES[sm_120f]` 各加 `-DNOTES_V2_ENABLE_SM120_FP4`；
+  `notes-v2.cu` 顶部 `#include "fp4_gemm.cuh"`（`NOTES_V2_ENABLE_CUTE && TMA_MMA_WS && SM120_FP4` 三重门控）
+- [x] O.3 notes-v2 接入：`test_fp4_gemm_once/test_fp4_gemm`（7 case，CPU fp64 ref）；`bench_fp4_gemm`
+  （`FP4_TIMED_RUN` 类宏：4 种 scale 模式 nonws + 两级 ws + 3 条 e2e + 2 条 B 离线 + 2 条 randn(±0.25)，
+  共 12 行）；`--bench` 分发追加 `bench_fp4_gemm` 调用；`--fp4-gemm` 与 `--fp4-gemm-sweep` 两个新 CLI
+- [x] O.4 book tests：`ch36_fp4_quantize.cu`（SF 落点枚举 13824 个 + A/B 两侧 SF 与数据码点逐 bit +
+  补零行 SF + 硬件平局行为，全 PASS）、`ch37_fp4_gemm.cu`（17 条 PASS，含 4 条 `bit-exact=YES`
+  的 B 离线 vs 全链路比对）；`build_tests.sh` 默认列表加 ch36 ch37，并把编译命令从 `-arch $ARCH`
+  改为 `-gencode arch=compute_${ARCH#sm_},code=$ARCH`
+- [x] O.5 硬件事实探针（可复现证据链，落盘 `.tmp/fp4bs/`）：`probe_tie.cu`（`cvt.rn` **平局取奇**：
+  `ue4m3(432)=0x7e`、`e2m1(0.25)=0x0`、`e2m1(1.75)=0x4`、`e2m1(3.5)=0x6`，satfinite 生效）、
+  `probe_sf_atom.cu`（**SF 的 smem 原子与 gmem 512B 原子逐字节同序，512 个落点 mismatch=0**）、
+  `probe_smem_atom.cu`（SW32/SW64 原子的 size vs cosize）、`probe_bn.cu`（BN 约束）、
+  `probe_tma_sf.cu` / `probe_frag.cu` / `probe_layout.cu`
+- [x] O.6 误差模型：e2m1 格宽模型（最外侧两格码点在格边上，格内二阶矩 $w^2/3$）→ 单侧
+  $\sqrt{0.14583/12}=11.02\%$ → 计入 max 归一与 ue4m3 SF 舍入 10.2\% → 双侧 $\sqrt2\times$ =
+  **14.4\%**，与 kernel 实测 14.37\% 吻合（推导脚本 `.tmp/fp4bs/error_model.py`）
+- [x] O.7 正文：`ch36-fp4-gemm-quant.tex`（NVFP4 线格式 / 两级量化折叠恒等式 / 量化前处理 kernel /
+  格宽误差模型 + 三项修正 / 实测；3 张 TikZ inline 图）、`ch37-fp4-gemm-cute.tex`
+  （指令与 traits / SF smem 原子与四路 TMA / non-WS 主 kernel / epilogue / WS 死锁 / API 与
+  bench / 实测 + tile 扫描；4 张 TikZ inline 图）；`book.tex` 在 ch35 之后 `\input` 两章
+- [x] O.8 WS 死锁修复：WS kernel 里 `empty[s]` 的 init 是 consumer 线程数，而 consumer 首次 arrive
+  依赖 producer 首次 TMA → 开机即死锁。修复 = consumer 分支前先
+  `if (tid >= kProducerThreads) for (s) CtaBarrier::arrive(&empty[s]);`。non-WS 无此问题
+  （全体线程 arrive，初始 release 由身兼二职的线程完成）
+- [x] O.9 B 侧量化重构（并行度 + bank 冲突）：旧版把逐列 amax 与转置量化压在一个 kernel（grid 只
+  $N/128$ = 32 CTA = 29\% SM；逐列归约 smem 步长 128 元素 = 32 bank 整数倍 = 32 路冲突），
+  实测吞吐 ~194 GB/s。拆成 `col_amax_fp4_kernel`（K 切 8 片 → 256 CTA）+ `quantize_bt_tile_fp4_kernel`
+  （$N/128\times K/64$ = 2048 CTA），并用「先除 2688 再 max + 非负浮点位序 = 无符号整数序」保证
+  `atomicMax` 版本与单块归约**逐位一致**；`fp4_gemm_quantize_b` 签名从
+  `(level1, per_col_b, stream)` 收敛为 `(level1, stream)`（`per_col_b` 与 `level1` 在两条调用路径上
+  恒等，是死参数）；ch36/ch37 测试与 notes-v2 调用点同步
+- [x] O.10 实测与验收（PRO 5000 sm_120a，warmup2/repeat3，`--bench --mnk`）：FP4 nonws/ws 标准表行 +
+  `--fp4-gemm` 精度 + `--fp4-gemm-sweep` 全矩阵（$BN\in\{128,256\}\times k_{Stages}\in\{2..12\}$）+
+  8192³ 复测；验收路径 = `./bin/notes_v2_sm120a.bin --bench --mnk 4096,4096,4096`
+  与 `--fp4-gemm-sweep --mnk 4096,4096,4096`（全链路 CLI，非 tests）
+- [x] O.11 关键发现（写入 ch37）：①**$BN$ 是本 kernel 唯一旋钮，也是收益最大的一个**——
+  $128\times256$/s6 的 ws 档 614.6 T vs 库默认 $128\times128$/s4 的 460.7 T = **+33\%**；
+  ②**流水深度几乎不影响性能**（$BN{=}128$ 时 s4→s8 只 ±1\%；与 FP8 版本「2 级 > 3 级」的结论相反），
+  机制是 FP4 一个 stage 只有一跳 MMA、MMA 块窄 TMA 块粗；③`$BM{=}128$、$BK{=}64$ 是唯一合法解`
+  （SF 的 TMA box 必须恰好等于一个 512B 原子）；④bench kernel-only 行必须先跑一次全链路
+  prime workspace，否则误差列报 49（读未初始化显存）
+- [x] O.12 code review + 分阶段 commit：`fp4_gemm.cuh` + build.sh + notes-v2 接线（核心代码）；
+  书稿 ch36/ch37 + book.tex + build_tests.sh + RFC/registry（文档）
+- [x] O.14 收尾：B 侧重构后的全量复测 + 数据固化为书稿唯一口径（2026-09-24）
+  - 复测口径：单次 `--bench --mnk 4096,8192` + `--fp4-gemm-sweep --mnk 4096,8192`
+    （日志 `.tmp/fp4bs/opt_bench4*.log` / `opt_sweep4*.log` / `opt_harness.log`），
+    ch37 的**标准表 / bar 图 / 扫描表 / 小结**全部换成本轮读数（不再混用重构前的旧数）
+  - kernel-only：$128^2$/s4 = 460.7 / 475.7 T（4096³ / 8192³）；
+    $128{\times}256$/s6 ws = **614.6 / 648.7 T**（各 family 最大值，s5~s7 在 ±1% 内持平）
+  - e2e：FP4 两级 = **334.2 / 373.4 T**，**反超**同表 FP8 版本（186.7 / 314.7 T）= 1.79× / 1.19×；
+    $B$ 离线 = 430.9$\sim$438.9 T（各自 kernel 的 93$\sim$97%）
+  - 量化开销（e2e 时间 − kernel-only 时间）：4096³ FP8 **424 µs（58%）vs FP4 109 µs（26%）**；
+    8192³ FP8 **1221 µs（35%）vs FP4 632 µs（21%）**——差距的根源是「写出的字节数」
+    （FP8 每量化值 1 B、FP4 0.5 B），不是数据量（两者相同）
+  - $B$ 侧反推吞吐：194 → **792 GB/s**（$4.1\times$；4096³，逻辑流量 $B$ 读两遍 + 写 $B_4^{\top}$
+    与 SFB ≈ 73 MB）。该口径会含 L2 命中（L2 = 96 MB，$B$ = 32 MB），因此高于 DRAM 标称带宽
+    属正常，书稿里已显式说明它的意义是「同口径相对改善」
+  - 新增探针：`probe_bw.cu`（本卡标称 1344 GB/s / 纯读 907 GB/s / 拷贝 1047 GB/s / L2 96 MB）、
+    `probe_tail.cu`（尾块 e2e：4097³ 329.0 T vs 4096³ 337.9 T = −2.6%；8193³ 368.9 vs 372.8 = −1.0%）
+  - ch36 的 `fp4_gemm.cuh` listing 行号随重构更新（`L287-311` → `L287-361`，原区间会截断函数）；
+    ch37 新增「量化开销的账」两形状对照表
+  - 源码冻结：`book/scripts/anchors.yaml` re-freeze（notes-v2.cu 6525 行 / fp4_gemm.cuh 1278 行）
+    \+ 新增 ch36/ch37 refs + ch26c 的 notes-v2.cu 区间随 +505 行平移；`verify_anchors.py`
+    **ALL GREEN (33 chapters)**
+  - 构建门禁：`book/build.sh` → 585 页、0 error、0 Missing character、overfull ≥1pt = 5
+    （全部落在 ch12/16/20/23/33 等老章，与基线一致）
+  - book tests：`ch36_fp4_quantize.cu`（10 条 PASS）/ `ch37_fp4_gemm.cu`（17 条 PASS，含 4 条
+    `bit-exact=YES`）全绿
+- [x] O.16 重构后的 code review 整改 + 二轮封版（2026-09-24）
+  - review 命中 2 处真问题，均已修（`fp4_gemm.cuh` 1278 → **1289 行**）：
+    ①`quantize_bt_tile_fp4_kernel` 的**补零行 SFB 必须显式写 0**——原实现 `if (n0+n >= N) continue;`
+    把补零区的 SF 字节留成未初始化，而 TMA 的 SFB box 会读到该区（与 A 侧早已修过的同一条理由）；
+    ②`fp4_gemm_quantize_b` 补入口自检 `K%64==0 && N%8==0`——原先 `K%64≠0` 时 `grid.y = K/64`
+    截断，会**静默算错**而不报错
+  - 另一处为注释勘误：「194 GB/s 是一成的可达带宽」→「五分之一」（本卡实测拷贝带宽 1047 GB/s）
+  - 行号级联：ch36 的 `L287-361` → `L287-365`、`L366-382` → `L367-393`；ch37 的 7 个
+    listing 区间与标题全部 +11（`543-573→554-584`、`516-536→527-547`、`757-773→768-784`、
+    `784-800→795-811`、`810-842→821-853`、`949-955→960-966`、`1153-1217→1164-1228`）
+  - 测试加厚：ch36 新增 3 条 B 侧转置量化用例（$K{=}1024$/$512$/$768$，$k_{\text{Split}}{=}8$
+    多片列 amax + 列幅度按 $2^{-j}$ 分档的异质列），并把 `sB`（= 列 amax/2688）的判定从绝对
+    `TOL_F32ACC` 收紧为**相对 1e-6**（实测 0.00e+00 = 逐位相等）；ch37 17 条不变，两章全绿
+  - 测试头部注释纠正（此前的「需 sm\_120f gencode」是错的）：真实约束是 `-gencode` 的
+    `code=sm_120a/f` 形式；`-arch=sm_120a` 简写会让 PTX 虚拟目标落到 `compute_120`，被 ptxas
+    以 `Feature 'cvt.e2m1x2.f32' not supported` 拒绝
+  - 整改后复测（重建二进制，build.sh 267 s）：`--fp4-gemm` 精度块与记录**逐字节相同**；
+    `--bench-hgemm --mnk 4096,4096,4096` 的 12 条 FP4 行与记录差 ≤0.8%（运行间噪声，cuBLAS
+    分母亦同步 −0.5%）→ 性能结论不变，ch37 数字**不需**改写
+  - 源码冻结二次 re-freeze：`anchors.yaml` 的 fp4_gemm.cuh sha/行数（1289）+ ch36 ref（55-393）
+    / ch37 ref（395-1288）→ `verify_anchors.py` **ALL GREEN (33 chapters)**；`book/build.sh`
+    → 585 页、0 error、0 Missing character、overfull ≥1pt = 5（老章基线）
+  - 2026-09-28 与 origin/dev（c59c931，N.19 全书图排版修复，与本章无关）rebase 同步：
+    RFC N.19/O 卡合并无语义冲突，复建 book.pdf = **583 页**（图排版修复压缩 2 页）、
+    0 error、overfull 仍 5；`verify_anchors.py` 仍 ALL GREEN（冻结的 .cuh 未受同步影响）
+- [x] O.17 bench 标准行按形状自适应（2026-09-28，用户点名）
+  - 需求原文：「notes-v2 bench中，fp4 gemm的配置改成按照shape判断，当MNK>=4096,
+    使用最优配置128x256，否则使用保守配置128X128」
+  - 库侧：`fp4_gemm_bf16` 加可选 `Traits` 模板参（默认保守档不变，原调用点零改动）；
+    新增 `fp4_gemm_use_wide_tile(M,N,K)` = `M>=4096 && N>=4096 && K>=4096`
+  - bench 侧：kernel-only / e2e / B 离线三类行的运行入口统一按该判定双实例派发
+    （`Fp4BenchWide=Fp4GemmTraits<256,6>` / `Fp4BenchCons=Fp4GemmTraits<>`）；
+    行标签由 `tile_tag` 动态拼接——同一份行名在 4096³ 显示 `128x256/s6`、
+    2048³ 显示 `128x128/s4`，行名与实际 kernel 不可能再脱钩
+  - 实测（warmup2/repeat3）：4096³ kernel-only 两级 nonws/ws = 603.4/614.1 T
+    （3.69x/3.76x），e2e 408.2/414.5，B 离线 550.5/561.2（= kernel 的 91~93%）；
+    8192³ = 639.6/648.6、e2e 467.4/472.3、B 离线 541.1/549.7；2048³ 回落保守档
+    345.0/376.6（小形状不反噬，与 FP8 的 2048³ 反转教训一致）
+  - e2e 因此整表反超 FP8（4096³ 408 vs 187；8192³ 467 vs 315）；量化成本
+    109 µs 是加性的，保守档占 e2e 26%、宽档占 32%——**占比上升是主 kernel
+    变快所致**（书里专门加了一句防误读）
+  - 尾部探针（宽档 `fp4_gemm_bf16<Fp4GemmTraits<256,6>>`）：4097³ = 408.2 T
+    （−1.4%）、8193³ = 467.6 T（−0.8%），宽档同样无尾部惩罚
+  - ch37 同步：标准表 / bar 图 / 量化账 / 尾部 bullet / 33.9.4 形状规则段 / 小结
+    全部换成自适应口径；顺手修 3 处陈旧行号（源码区间 `L384-1277→L395-1299`、
+    `sf_partition L392-495→L425-521` ×2——rebase 后遗留，本轮 grep 抓出）
+  - 复冻结：fp4_gemm.cuh 1300 行 / notes-v2.cu 6589 行 / ch37 ref 395-1299 /
+    ch26c 的 notes-v2 区间 +64（5460-5728→5524-5792）；`verify_anchors.py`
+    **ALL GREEN (33 chapters)**
+  - 门禁：book 583 页 0 error overfull 5（基线）；ch36/ch37 book tests 全绿；
+    `--fp4-gemm` 精度块与改前**逐字节相同**（精度路径零改动）
+- [x] O.18 用户复核图排版修复 + ch37 三项杂项（2026-09-28，用户红框点名）
+  - 图重叠 6 处（3 个 task agent 并行 + 主 agent 书内 PDF 逐页验收）：
+    图 32.1（fig:36-two-level）数值示例块压红色反例框——红框中心下移
+    (7.2,-3.0)→(7.2,-3.85)；图 32.3（fig:36-sf-layout）顶部蓝盒标签互压——
+    盒宽 1.4→2.2、节距 1.55→2.4；图 33.2（fig:37-mma-ops）SFB 文字压箭头/C
+    矩形、箭头穿绿条带——SFB 抬到箭头上方、箭头改走 (6.05,1.2)→(9.3,1.2)、
+    C 矩阵右移 9.35-10.85；图 33.3（fig:37-sf-atom）底部注释压绿矩形——移到
+    矩形下方 north west 锚、上部注释下移留隙；图 34.3（fig:27-pvbudget）竖排
+    「P 满量程 448」按用户要求改横排 + 5 处标注/点线互压重排；图 34.4
+    （fig:27-lazy-rescale）e4m3 天花板/τ=4/×16/×256 标注与弧线走线 7 处重排
+    （×16 弧 bend 22→14）。34.3 的 $V_r$ 竖排标签验收无重叠保留
+  - 内容 bug：图 32.3 标签 `$k\in[16\i,16\i{+}16)$` 的 foreach 变量被文本替换
+    渲染成 `[160,160+16)`——改显式区间表 `{0/0/16,1/16/32,2/32/48,3/48/64}`
+    渲染为 `[0,16)…[48,64)`
+  - ch37 三项：PTX 指令块 verbatim→lstlisting（跟随全书代码块风格）；延伸阅读
+    删 `Zhihu-analysis` 本地目录引用（读者不可见）；p464 workspace 布局
+    行内方括号串→TikZ 六段横条图 `fig:37-ws-layout`（成为图 33.4，后续图号
+    顺延；公式对 `fp4_gemm_workspace_size` 逐项核对）
+  - 小结 FP8 e2e 参照校准 186.7/314.7→186.5/314.6（与 adaptive log 一致）；
+    bar 图注口径补注（461=扫描表 / 476=默认档实测）；FP4_RUN_E2E 死变量
+    l1a/l1b 删除（code review nit）→ notes-v2 复编 + `--fp4-gemm 2048` smoke
+    通过；probe_tail 输出落盘 `.tmp/fp4bs/probe_tail.log`
+  - 复冻结：notes-v2.cu 6589→6585 行（sha 随之）、ch26c 区间 5524-5792→
+    5520-5788；`verify_anchors.py` ALL GREEN；book = **584 页**、0 error、
+    0 Missing character、overfull ≥1pt = 5（基线）；7 页 150dpi view_image
+    逐页验收通过
+- [x] O.19 编译告警清理 + bench 中文标签对齐（2026-09-28，用户点名）
+  - fp4_gemm.cuh 两处 kernel 内死别名 `kSFBStageBytes`（L684/L901，sm_120a
+    编译 #177-D）删除——Traits 成员本身（L622 定义、L624/628 smem 求和）保留；
+    bench 数值与改前逐项一致（±0.1%），确认 codegen 不变
+  - notes-v2.cu：bench 大表 FP4 行（单级/两级/A 行/B 列）与 FP8 行错列——
+    `%-56s` 按字符数 pad、CJK 双宽字符超出；新增 `bench_pad56()`（UTF-8
+    显示宽度，CJK lead byte 0xE4-0xE9 记 2 列）替换 FP4_EMIT_ROW 与
+    test_fp4_gemm_once 共 3 处 printf；大表 field-1 显示宽度统一 58 列
+  - 按用户要求删除大表中「FP4 行的误差列 = relFro…」说明行（relFro 语义
+    已在 ch36/ch37 正文与独立模式表头讲过）
+  - 复冻结：fp4_gemm.cuh 1300→1298（ch37 ref 395-1297、5 个 listing 区间
+    平移 -1/-2）、notes-v2.cu 6585→6595（ch26c 区间 5530-5798）；
+    ALL GREEN；book 584 页 overfull 5；--bench 全表 + --fp4-gemm 复跑通过
+- [~] O.13 章号偏差（发现于 2026-09-24，与 N.17 同源）：Part V 内部章号 34-37 与 PDF 打印章号
+  （30-33）系统性偏差 4，导致 prose 里的 `37.9.4~节` / `35.8.4~节` 这类**硬编号引用**指向错误章节。
+  **本轮已把 ch36/ch37 全部改成打印章号**（`37.x→33.x`、`36.x→32.x`、`35.x→31.x`，共 18 处，
+  ch36 另修 1 处 `36.6→32.5`）；**ch30$\sim$ch35 仍有同类硬编号**（ch34 6 处 / ch35 21 处 /
+  ch30 6 处 / ch31 1 处），需用户确认后再做一次机械全改（会触碰「不再改动」的 ch34/ch35）
+
 ## 13. 图清单登记表（写作期持续更新）
 
 > **2026-09-27 全量核实**：chapters 中全部 36 处 `\includegraphics` 均已是 `% was:` 历史注释——全书章内图（ch00–ch35，含增补章）现为 **100% TikZ inline**。下表登记 `figures/drawio/` 的 64 条均为历史制作记录，其状态列「正式」一律读作「留档（已迁 TikZ）」；`figures/drawio/` 下 `.drawio`/`gen.py`/`.png` 三件套按用户决定留档保留（不删除）。各图现行 TikZ 源位于对应章节 tex 内。

@@ -1,0 +1,1013 @@
+% ch37-fp4-gemm-cute.tex — FP4 GEMM（二）：blockscaled MMA、SF 流水与 cuBLAS 对比（RFC-O）
+% 源码：kernels/interview/fp4_gemm.cuh（Phase 10.3-10.8，L395-1297）+ notes-v2.cu bench 接线
+\chapter{FP4 GEMM（二）：blockscaled MMA、SF 流水与 cuBLAS 对比}\label{ch:37}
+
+\section{本章导读}
+
+第~\ref{ch:36}~章把 NVFP4 的数值语义冻结了：e2m1 的格、ue4m3 的 SF、
+512\,B 原子布局、14.4\% 的误差界，以及两侧量化 kernel 的逐 bit 行为。
+本章写主 GEMM kernel——把 $A_4,B_4^{\top}$ 与两组 SF 送入 sm\_120 的
+\textbf{blockscaled \texttt{mma.sync}}，由硬件消费 level-2 的 scale。
+
+整章可以概括成一句话：\textbf{FP4 GEMM 的主 kernel 比 FP8 的更简单，也更难
+写。}简单是因为 epilogue 只剩一个乘法（SF 由 MMA 硬件消费，不需要按块查表），
+难是因为多出来一条 SF 数据流——4 条 TMA、两套 smem 原子、一个把数据与 SF
+成对的 zip 张量，以及一类 FP8 版本里不存在的死锁陷阱
+（33.7~节）。
+
+本章的构件全部来自前文：TMA descriptor（第~\ref{ch:23}~章）、SW32 smem
+swizzle（\texttt{Layout\_K\_SW32\_Atom}，第~\ref{ch:23}~章）、mbarrier
+多级流水（第~\ref{ch:26b}~章）、全员 MMA 的 non-WS 协议
+（第~\ref{ch:26c}~章）、warp specialization 与 \texttt{setmaxnreg}
+（第~\ref{ch:26b}~章）、epilogue 的 STSM + TMA store（第~\ref{ch:26b}~章）。
+真正的新东西只有三件：\textbf{block scale 形式的 \texttt{mma.sync}}
+（33.3~节）、\textbf{SF 的 smem 原子与 TMA descriptor}
+（33.4~节）、以及 \textbf{数据与 SF 的成对装载}
+（33.5~节的 zip 张量）。
+
+\begin{table}[H]
+\centering
+\footnotesize
+\begin{tabular}{lll}
+\toprule
+维度 & 第~\ref{ch:35}~章 FP8 & 本章 NVFP4 \\
+\midrule
+数据元素 & e4m3（8\,bit） & e2m1（4\,bit） \\
+MMA 指令 & \texttt{SM89\_16x8x32}（$K{=}32$） & \texttt{SM120\_16x8x64\_TN\_VS}（$K{=}64$） \\
+scale 的消费方式 & epilogue 里两次 fp32 查表乘 & level-2 由 MMA 硬件乘；level-1 在 epilogue 乘 \\
+每 stage 的 A/B smem & $BK{=}128$：16\,KB + $BN{\cdot}128$\,B & $BK{=}64$：4\,KB + $BN{\cdot}64/2$\,B \\
+每 stage 的 SF smem & 无 & $512\,\mathrm{B}\times 2$（SFA + SFB） \\
+TMA 通道 & 2（A、B） & 4（A、B、SFA、SFB） \\
+O staging 约束 & $\le$ 整个 A+B 区 & $\le$ 整个 A+B+SF 区 \\
+$BK$ 的自由度 & 可调（SW128 限定为 128） & \textbf{固定 64}（= MMA 原子 K 宽 + 一个 SF 原子） \\
+$BM$ 的自由度 & 可调（16 的倍数） & \textbf{固定 128}（= SF 原子的行块） \\
+epilogue 的数学 & 反量化两步 & 只有 $s_{A,m}\cdot s_{B,n}$ 一步 \\
+\bottomrule
+\end{tabular}
+\caption{FP8 与 NVFP4 主 kernel 的逐项对照。两个固定值是本章的技术核心：
+$BK{=}64$ 让「一个 K-tile $=$ 一个 MMA 原子 $=$ 一个 SF 原子」，
+$BM{=}128$ 让 SF 的 TMA box 恰好等于一个 512\,B 原子（33.4~节）。
+自由度换来的是约束，代价是 tile 空间的形状从「$BM\times BN\times BK$ 立方体」
+收缩成「$128\times BN\times 64$ 的一根柱子」。}
+\label{tab:37-fp8-vs-fp4}
+\end{table}
+
+\textbf{前置章节}：第~\ref{ch:36}~章（NVFP4 线格式与量化，必须）、
+第~\ref{ch:23}~章（TMA/swizzle）、第~\ref{ch:26c}~章（non-WS 协议）、
+第~\ref{ch:26b}~章（WS 与 \texttt{setmaxnreg}）、第~\ref{ch:35}~章
+（本章的骨架与它逐节对应，可对照阅读）。
+\textbf{源码区间}：\texttt{fp4\_gemm.cuh} L395--1297（Phase 10.3--10.8），
+\texttt{notes-v2.cu} 的 \texttt{bench\_fp4\_gemm}/
+\texttt{bench\_fp4\_gemm\_tile\_sweep} 接线。
+\textbf{验证方式}：\texttt{notes\_v2\_sm120a.bin --fp4-gemm}（精度全组合）、
+\texttt{--bench --mnk 4096,4096,4096}（标准表）、
+\texttt{--fp4-gemm-sweep}（tile/流水深度扫描）、
+\texttt{book/\allowbreak tests/\allowbreak ch37\_fp4\_gemm.cu}（17 条断言的单文件复现）。
+
+\section{总体架构}
+
+本章要写的整条链画在图~\ref{fig:37-pipeline} 里：
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  font=\footnotesize,
+  stage/.style={draw, thick, rounded corners=2pt, minimum height=1.5cm, inner sep=5pt, align=center},
+  arr/.style={-{Stealth[length=2.2mm]}, thick},
+]
+\node[stage, draw=tkBlue, minimum width=3.3cm] (quant) at (0,0)
+  {\textbf{量化前处理}\\{\scriptsize 4 个纯 CUDA kernel}\\{\scriptsize BF16$\to$e2m1 + ue4m3 SF}};
+\node[stage, draw=tkGreen, minimum width=4.6cm] (gemm) at (5.7,0)
+  {\textbf{CuTe NVFP4 GEMM 主 kernel}\\{\scriptsize 4 路 TMA $\to$ blockscaled mma 流水}\\{\scriptsize $\to$ level-1 折回 $\to$ TMA store}};
+\node[stage, draw=tkPurple, minimum width=2.6cm] (out) at (11.2,0)
+  {\textbf{BF16 输出}\\{\scriptsize $C[M,N]$}};
+\node[stage, draw=tkOrange, minimum width=3.3cm, minimum height=1.1cm] (ws) at (5.7,-2.6)
+  {\scriptsize workspace: $A_4$/$B_4^{\top}$/SFA/SFB/$s_A$/$s_B$\\{\scriptsize 调用方分配，跨调用复用}};
+\draw[arr] (quant.east) -- (gemm.west);
+\draw[arr] (gemm.east) -- (out.west);
+\draw[arr, tkOrange, dashed] (ws.north) -- (gemm.south);
+\draw[arr, tkOrange, dashed] (quant.south) to[bend right=18] (ws.west);
+\end{tikzpicture}
+\caption{\texttt{fp4\_gemm\_bf16} 全链路。与第~\ref{ch:35}~章
+（图~\ref{fig:35-pipeline}）同构，唯一的结构差异是 workspace 里多出两份 SF：
+$A$ 侧的 SFA 是 $\lceil M/128\rceil\cdot(K/64)$ 个 512\,B 原子，$B$ 侧的 SFB
+同理。SF 不是「辅助数据」，它是 MMA 指令的操作数——主 kernel 必须为它单独
+开一条 TMA 通道、一块 smem、一个寄存器 fragment（33.4 与 33.5~节）。}
+\label{fig:37-pipeline}
+\end{figure}
+
+主 kernel 的输入输出契约与第~\ref{ch:35}~章的 FP8 版本完全一致：
+$C[M,N] = A_4[M,K]\cdot B_4^{\top}[N,K]$，三者行主序、4-bit/bf16 混搭。
+「$B^{\top}$ 行主序」同样是量化阶段完成的（32.4.3~节）。约束比 fp8 更紧：
+$K \% 64 = 0$（SF 以 64 个 K 元素为一整块）与 $N \% 8 = 0$（TMA 对齐），
+$M$ 任意（TMA load 自动零填充、store 自动裁剪）。
+
+\section{指令与 Traits}
+
+\subsection{block scale 形式的 \texttt{mma.sync}}
+
+sm\_120 上 NVFP4 的矩阵乘是一条带 block scale 的 \texttt{mma.sync}
+（PTX ISA \S9.7.14.3 的 \texttt{.kind::mxf4nvf4} 家族，本机文档在
+\texttt{.github/\allowbreak skills/\allowbreak cuda-cpp-kernel/\allowbreak
+references/\allowbreak ptx-docs/\allowbreak 9-instruction-set/}）；
+CUTLASS 把它包成 \texttt{SM120\_16x8x64\_TN\_VS} 这个 atom。PTX 形态：
+
+\begin{lstlisting}[numbers=none]
+mma.sync.aligned.m16n8k64.row.col.kind::mxf4nvf4.block_scale.scale_vec::4X
+    .f32.e2m1.e2m1.f32.ue4m3
+    {d0,d1,d2,d3},               // f32 x 4  = 16x8 的输出（每线程 4 个）
+    {a0,a1,a2,a3},               // b32 x 4  = 16 字节 = 32 个 e2m1
+    {b0,b1},                     // b32 x 2  = 8 字节  = 16 个 e2m1
+    {c0,c1,c2,c3},               // f32 x 4
+    scaleAData, {bidA, tidA},    // 每个 scale 是 1 个 b32（4 字节 = 4 个 SF）
+    scaleBData, {bidB, tidB};
+\end{lstlisting}
+
+三个必须读懂的细节：
+
+\textbf{第一，\texttt{.scale\_vec::4X} 是强制的。}PTX 文档
+（\S9.7.14.5，Table 36）规定：\texttt{.kind::mxf4nvf4} 搭配
+\texttt{.stype = .ue4m3} 时，\texttt{.scale\_vec\_size} 只能是
+\texttt{.scale\_vec::4X}——这正是 NVFP4 的线格式：$A$ 的每一行被切成
+\texttt{SFA\_N}$=4$ 段（$K{=}64$ 除以 16），每段一个 SF。文档里那句
+「for \texttt{.kind::mxf4nvf4}, it is mandatory to provide valid
+\texttt{.scale\_vec\_size}」翻译成工程语言就是：\emph{这条指令必须提供合法
+的 scale}，SF 是操作数而不是可选项。
+
+\textbf{第二，SF 也是寄存器操作数，而且每个 SF 只由 4 个线程里的 1 个提供。}
+\texttt{scaleAData}/\texttt{scaleBData} 各是一个 \texttt{b32}（4 字节 $=$
+4 个 \texttt{.scale\_vec::4X} 的 SF），\texttt{\{bidA,tidA\}} 与
+\texttt{\{bidB,tidB\}} 是选择器：\texttt{tidA} 选 quad 里的哪一对线程提供
+$A$ 的 SF（$0$ 取 \texttt{laneid\%4}$\in\{0,1\}$，$1$ 取 $\{2,3\}$），
+\texttt{tidB} 选 quad 里的哪一个线程提供 $B$ 的 SF。这就是「一个 32 位的
+寄存器装 4 个 SF，但硬件只从特定 lane 取值」的全部含义。对 kernel 作者的
+实际含义是：\textbf{SF 在寄存器里的 fragment 布局与数据完全不同}，不能把
+SF 当成「每线程正好 4 个」这么简单——它在每条 lane 上装的东西由
+\texttt{tidA}/\texttt{tidB} 决定。第~\ref{ch:36}~章把这件事记成一句话：
+SF 的 gmem 布局、smem 布局、寄存器 fragment 布局是三套不同的映射。
+
+\textbf{第三，$K{=}64$ 是「四个 SF」的另一种说法。}
+一条指令处理 $16\times8\times64$ 的乘积（图~\ref{fig:37-mma-ops} 把
+它的操作数明细画了出来），$A$ 侧的 SF 需求量是
+$16\times4 = 64$ 个字节、$B$ 侧是 $4\times8=32$ 个字节；而 $A$ 的操作数
+只有 16 字节（32 个 e2m1）——\textbf{SF 的操作数字节数比数据还多}。
+这解释了为什么 SF 必须走自己的一条 TMA 通道与一块 smem：它是数据量的
+$1/8$（每 16 个 4-bit $= 8$ 字节配 1 字节 SF），却与数据同等重要。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize, x=1cm, y=1cm]
+% 左侧：A 操作数 16x64
+\draw[thick] (0,0) rectangle (2.4,2.4);
+\node[align=center] at (1.2,1.2) {$A$ 片段\\32 个 e2m1};
+\node[below] at (1.2,-0.08) {\texttt{b32}$\times$4 $=$ 16\,B/线程};
+% 中间的 x
+\node[font=\large] at (3.2,1.2) {$\times$};
+% 右侧：B 操作数 64x8
+\draw[thick] (4.0,0) rectangle (5.4,2.4);
+\node[align=center] at (4.7,1.2) {$B$\\16 个\\e2m1};
+\node[below, align=center] at (4.7,-0.35) {\texttt{b32}$\times$2\\8\,B/线程};
+% SF 条带
+\foreach \i/\x in {0/0.6, 1/1.2, 2/1.8} {
+  \fill[tkOrange!55] (\x,2.55) rectangle (\x+0.55,2.95);
+}
+\node[above, font=\tiny, tkOrange!90!black, align=center] at (1.2,3.05)
+  {SFA: 4 个 SF = 4\,B/线程（b32），\\由 \texttt{tidA} 指定的 lane 提供};
+\foreach \i/\y in {0/0.6, 1/1.2, 2/1.8} {
+  \fill[tkGreen!45] (5.55,\y) rectangle (5.95,\y+0.55);
+}
+\node[anchor=south west, font=\tiny, tkGreen!70!black, align=left] at (6.15,1.5)
+  {SFB: 4 个 SF\\= 4\,B/线程\\由 \texttt{tidB} 指定的\\单个 lane 提供};
+% 输出
+\draw[thick, tkPurple] (9.35,0.6) rectangle (10.85,1.8);
+\node[align=center] at (10.1,1.2) {$C$ 片段\\4 个 f32};
+\node[below, font=\tiny, tkPurple] at (10.1,0.5) {$16\times8$ 输出};
+\draw[-{Stealth[length=2mm]}, thick] (6.05,1.2) -- (9.3,1.2);
+\end{tikzpicture}
+\caption{\texttt{SM120\_16x8x64\_TN\_VS} 一条指令的操作数明细。数据侧共
+$16+8 = 24$\,B/线程，SF 侧 8\,B/线程——SF 的字节数达到数据的 $1/3$。
+注意 SF 的「字节数/线程」与「SF 数/线程」是一回事（\texttt{ue4m3} 是
+1\,字节），但\textbf{哪些 lane 的字节作数}由指令的
+\texttt{tidA}/\texttt{tidB} 选择器决定，这就是 SF 的寄存器 fragment
+必须由 CuTe 的 \texttt{partition\_fragment\_sfa} 从权威布局推导、
+而不能手写的原因。}
+\label{fig:37-mma-ops}
+\end{figure}
+
+\subsection{Traits：两个被固定的参数}\label{sec:37-traits}
+
+\begin{lstinputlisting}[linerange={554-584},firstnumber=auto,
+  title={fp4\_gemm.cuh L554-584（Fp4GemmTraits：tile 几何与 static\_assert）}]{../fp4_gemm.cuh}
+\end{lstinputlisting}
+
+与第~\ref{ch:35}~章 FP8 的 \texttt{Fp8GemmTraits}（$BM,BN,BK$ 全开放）
+相比，这里只剩 $BN$ 一个自由度，另两个被两条\textbf{物理约束}固定：
+
+\begin{itemize}[itemsep=2pt,topsep=3pt]
+  \item $BK \equiv 64$：等于 MMA 原子的 K 宽。FP8 的 $BK{=}128$ 是
+        「K 方向切 4 个 k-slice」（原子 $K{=}32$），$BK$ 加大只是让
+        k-slice 变多；而 FP4 的 SF 语义要求 K 以 16 为一组，
+        \texttt{.scale\_vec::4X} 要求一条指令恰好消费 4 组——即 $K{=}64$。
+        $BK$ 一旦大于 64，同一个 stage 里就会出现多个「SF 块」，
+        SF 的 smem 原子与 TMA box 的对齐关系立即被破坏。所以
+        \textbf{FP4 的 K-tile 只能等于 MMA 的 K 宽}：一个 K-tile
+        一步 MMA，没有 k-slice 内层循环（33.5~节）。
+  \item $BM \equiv 128$：等于 SF 原子的行块（\texttt{Blk\_MN}）。
+        SF 的 TMA box 必须与 smem 原子的顶层 size 相等，$BM<128$ 时
+        box 填不满一个行块，CuTe 在编译期直接报 TMA size 不等价——
+        这就是源码里那条 \texttt{static\_assert} 表达的约束（33.4~节
+        会完整推导这条约束）。
+  \item $BN$ 必须是 128 的倍数，理由与 $BM$ 相同但方向在 N：$B$ 侧的 SF
+        原子行块也是 128，$BN$ 是 128 的倍数才能让 SFB 的 TMA box 由
+        整数个原子拼成。
+\end{itemize}
+
+于是 tile 空间从 FP8 的「立方体」收缩成一根柱子：
+$128 \times BN \times 64$。$BN$ 也就成了唯一值得扫的旋钮——33.9.4~节的
+扫描会给出结论：\textbf{$BN$ 从 128 翻到 256，吞吐从 461\,T 升到 603\,T
+（$+31\%$）}，这是本章最大的一个单项性能发现。
+
+\section{SF 的 smem 原子与四路 TMA}\label{sec:37-sf}
+
+第~\ref{ch:36}~章讲了 SF 在显存里是 512\,B 的原子（128 行 $\times$ 4 个
+SF）。本章要回答下一个问题：\textbf{这个原子怎么进 smem，又怎么变成
+寄存器 fragment？}
+
+\subsection{smem 原子的四段式子}
+
+CUTLASS 给出了 smem 版本的原子，本书把它写成
+\texttt{SfSmemAtom}。源头在
+\begin{center}
+\texttt{sm120/\allowbreak blockscaled/\allowbreak mma\_builder.inl}
+\end{center}
+里给 TMA 用的那段 \texttt{make\_tiled\_copy\_sfa/sfb}：
+
+\begin{lstinputlisting}[linerange={527-547},firstnumber=auto,
+  title={fp4\_gemm.cuh L527-547（SfSmemAtom：四个 shape/stride 三元组）}]{../fp4_gemm.cuh}
+\end{lstinputlisting}
+
+这段代码初看不易理解：四个 \texttt{shape}/\texttt{stride} 三元组、一个
+\texttt{prepend}、一个把 $kMN$ 包进 \texttt{Int<kMN/128>} 的外层。
+把它拆成「gmem 的 512\,B 原子是什么结构」与「smem 需要什么结构」两句话，
+一切就清楚了。
+
+\textbf{gmem 原子}（第~\ref{ch:36}~章「SF 的 gmem 布局」小节，图~\ref{fig:36-sf-layout}）
+的行内偏移是 $16\,(m\bmod 32) + 4\,(\lfloor m/32\rfloor\bmod 4) + s$。
+把它读成一个嵌套布局：行方向 $\bigl((32,4){:}(16,4)\bigr)$——先铺 32 行、
+步长 16，再铺 4 组、步长 4；K 方向 $(16,4){:}(0,1)$——16 个元素共享一个
+SF（步长 0，这正是 NVFP4 的「16 元素共享 scale」在线格式上的体现），
+4 个 K 组步长 1。这正是源码里 \texttt{mnBlockShape}/\texttt{kBlockShape}
+两行。
+
+\textbf{smem 原子}要满足的是 MMA 的取数需求：一条指令里，一个 warp 的
+每条 lane 要一次拿 4 个连续字节（4 个 SF）做 \texttt{b32} 操作数。
+于是 \texttt{SfSmemAtom} 就是在同一个 512\,B 里换一种字节排序，把
+「4 个 SF 连续」放到对 lane 友好的位置上。
+
+\subsection{一条可验证的结论：smem 原子与 gmem 原子逐字节同序}
+
+「换一种排序」听起来像是有 swizzle，实际\textbf{不是}（图~\ref{fig:37-sf-atom}）。
+把两套式子写成
+\begin{align}
+  \mathrm{off}_{\mathrm{gmem}}(m,s) &= 16\,(m\bmod 32) + 4\,(\lfloor m/32\rfloor\bmod 4) + s, \\
+  \mathrm{off}_{\mathrm{smem}}(m,k) &= 16\,(m\bmod 32) + 4\,(\lfloor m/32\rfloor\bmod 4) + \lfloor k/16\rfloor,
+\end{align}
+其中第二式的 $k$ 是\textbf{数据 K 索引}（16 个共享一个 SF），第一式的 $s$
+是\textbf{SF 索引}。因为 $s = \lfloor k/16\rfloor$，两式完全相等。
+
+本书用 \texttt{.tmp/\allowbreak fp4bs/\allowbreak probe\_sf\_atom.cu} 把这件事枚举验证了一遍：
+$128\times4 = 512$ 个 $(\text{行}, \mathrm{SF})$ 落点\textbf{全部一致}（mismatch $=0$）。
+这条结论值得单独记录，因为它澄清了 SF 数据通路上最不直观的一段：
+
+\begin{itemize}[itemsep=2pt,topsep=3pt]
+  \item \textbf{SF 的 TMA 不需要 swizzle}：gmem 里 512\,B 连续的一组
+        字节，在 smem 里还是那 512\,B、同样顺序。数据侧（$A/B$）需要
+        SW32 swizzle 是因为 4-bit 数据的 bank 冲突，而 SF 的 512\,B
+        原子本身就是为「一次 32-bit LDS 取 4 个 SF」设计的，天然无冲突。
+  \item \textbf{「四段式子」只是同一映射的另一种写法}：它描述的是
+        「smem 坐标 $(\text{行}, K)$ 怎么落到字节」这个方向。CuTe 需要的
+        正是这个方向（给坐标求偏移），所以代码里是 layout 而不是公式。
+  \item \textbf{cosize 与 size 分离}：这个 layout 的 \texttt{size}（逻辑
+        元素数）是 $128\times64 = 8192$，\texttt{cosize}（实际占用字节）
+        只有 512——因为 K 方向有 $16{:}0$ 的广播维。smem 预算要按
+        \texttt{cosize} 算（每 stage 512\,B），这一点在
+        \texttt{kSFAStageBytes = cosize(...)/\allowbreak kStages} 这行里体现。
+\end{itemize}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize, x=1cm, y=1cm]
+% 上半：gmem 512B 原子按 SF 索引切 4 块
+\node[anchor=west, font=\footnotesize\bfseries] at (0,3.35)
+  {gmem 512\,B 原子：按 SF 索引 $s$ 切成 4 个 32 行块交错};
+\foreach \b in {0,1,2,3} {
+  \ifnum\b=0 \def\fillc{tkBlue!25}\fi
+  \ifnum\b=1 \def\fillc{tkBlue!40}\fi
+  \ifnum\b=2 \def\fillc{tkBlue!55}\fi
+  \ifnum\b=3 \def\fillc{tkBlue!70}\fi
+  \draw[thick, fill=\fillc] (\b*2.5+0.2, 2.05) rectangle (\b*2.5+2.2, 2.95);
+  \node[align=center, font=\tiny] at (\b*2.5+1.2, 2.5)
+    {$s{=}\b$\\$m\in[32\b,32\b{+}32)$};
+}
+\node[anchor=west, font=\tiny, black!65, align=left] at (0.2,1.70)
+  {行内偏移 $=16\,(m\bmod 32)+4\,(\lfloor m/32\rfloor\bmod 4)+s$
+   ——同一 $s$ 的 128 行被切成 4 个 32 行块交错存放};
+% 箭头
+\draw[-{Stealth[length=2.4mm]}, thick] (5.2,1.72) -- (5.2,1.30);
+\node[anchor=west, font=\tiny\bfseries, tkGreen!60!black] at (5.5,1.51)
+  {TMA 原样搬运（无 swizzle）};
+% 下半：smem 原子
+\node[anchor=west, font=\footnotesize\bfseries] at (0,1.02)
+  {smem 512\,B 原子：逐字节同序};
+\foreach \b in {0,1,2,3} {
+  \ifnum\b=0 \def\fillc{tkGreen!25}\fi
+  \ifnum\b=1 \def\fillc{tkGreen!40}\fi
+  \ifnum\b=2 \def\fillc{tkGreen!55}\fi
+  \ifnum\b=3 \def\fillc{tkGreen!70}\fi
+  \draw[thick, fill=\fillc] (\b*2.5+0.2, 0.12) rectangle (\b*2.5+2.2, 0.82);
+  \foreach \q in {0,1,2,3} {
+    \draw[white, line width=0.8pt] (\b*2.5+0.2+\q*0.5, 0.12) rectangle
+      (\b*2.5+0.7+\q*0.5, 0.82);
+  }
+}
+\node[anchor=north west, font=\tiny, black!65, align=left] at (0.2,-0.02)
+  {每格 1 字节 = 1 个 SF；一条 lane 一次 \texttt{ld.shared.u32} 取 4 个
+   连续字节（4 个 K 组）$\Rightarrow$ SF 读取无 bank 冲突};
+\end{tikzpicture}
+\caption{SF 从显存到共享内存的完整通路：\textbf{没有任何变换}。
+512\,B 原子里的行内交错（同一 $s$ 的 128 行被切成 4 个 32 行块）
+本身就是「为 MMA 取数设计」的顺序，smem 只是它的一次原样拷贝。
+这是 CUTLASS 把 \texttt{Blk\_MN} 定为 128 的原因，也是本章 kernel 里
+SF 的 TMA 描述符不带 swizzle 的原因。}
+\label{fig:37-sf-atom}
+\end{figure}
+
+\subsection{TMA box $=$ 一个 SF 原子：两个固定值的来源}
+
+有了上面的结论，$BM{=}128$ 与 $BK{=}64$ 的来历就很直接了：SF 的
+TMA box 是 $\mathrm{Shape}\langle BM, BK\rangle$，而一个 SF 原子覆盖
+$128$ 行 $\times$ $64$ 个 K 元素。
+box 必须\emph{恰好}等于原子的顶层 size——多一个元素少一个元素都会让
+CuTe 在 \texttt{make\_tma\_copy} 里报错，或者让 TMA 写出错误字节数。
+所以：
+
+$$ BM = 128,\qquad BK = 64 \quad\Longleftrightarrow\quad
+   \text{TMA box} = \text{一个 512\,B SF 原子}.$$
+
+这不是「选了一个好数字」，而是「唯一的合法组合」。$BM>128$ 时 box 要跨
+两个原子（TMA 的 box 是矩形，跨原子意味着 K 方向必须同时前进，做不到）；
+$BK>64$ 同理（一个 box 里出现第二个 512\,B 原子而 box 的行宽还是 128）。
+第~\ref{ch:36}~章提到 ffpa/SA3 用的是 \texttt{Blk\_MN}$=$\texttt{\_64}
+（256\,B 原子）的另一种口径——那种口径下 $BM$ 会被固定在 64。本书选
+CUTLASS 口径，是因为它是 \texttt{SM120\_16x8x64\_TN\_VS} 的官方搭配。
+
+四路 TMA 的发射代码：
+
+\begin{lstinputlisting}[linerange={767-783},firstnumber=auto,
+  title={fp4\_gemm.cuh L767-783（issue\_tma：一个 barrier 覆盖四段字节）}]{../fp4_gemm.cuh}
+\end{lstinputlisting}
+
+与第~\ref{ch:35}~章的 FP8 版本相比，这里只是把 2 条 \texttt{copy} 变成
+4 条、把 \texttt{kTxBytes} 加上两段 SF 的字节数。SF 的 TMA 有一个
+不显然的地方：
+
+\begin{itemize}[itemsep=2pt,topsep=3pt]
+  \item \texttt{make\_tma\_copy} 的\textbf{模板实参是 \texttt{uint16\_t}}，
+        而张量的元素类型是 \texttt{float\_ue4m3\_t}。原因是 SF 布局在 K
+        方向有一个 $16{:}0$ 的广播维（16 个元素共享一个 SF），
+        这个「16 字节共享 1 字节」的模式 TMA 描述符无法直接表达；
+        换用一个 2 字节的「内部元素类型」后，广播维变成 8 个可步进的
+        \texttt{u16} 单元，描述符的 \texttt{ScaledBasis} 就能装下它
+        （源码注释里那句「g\_shape 必须与它嵌套同构」说的就是这件事，
+        CUTLASS 的 collective 用的是同一种做法）。
+  \item SF 张量的\textbf{形状}不能用 \texttt{make\_shape(M, K)} 造，必须
+        用 \texttt{shape(sf\_gmem\_layout(M,K))}——因为描述符的
+        \texttt{g\_stride} 里含 \texttt{ScaledBasis}，\texttt{g\_shape}
+        必须与它同构。这是「布局即协议」的一个典型例子：布局不是给
+        软件算偏移用的，是被写进硬件描述符的。
+\end{itemize}
+
+\section{non-WS 主 kernel：四路装载与 zip 张量}
+
+执行协议与第~\ref{ch:26c}、\ref{ch:35}~两章的 non-WS 模式逐行同构：
+256 线程全员 consumer，\texttt{tid=0} 兼任 TMA 发射；\texttt{full[stage]}
+（事务屏障，init$=$1）标记数据就绪，\texttt{empty[stage]}（普通屏障，
+init$=$256）标记 stage 可覆写。差异集中在循环体里的四行拷贝与一次
+\texttt{gemm}：
+
+\begin{lstinputlisting}[linerange={794-810},firstnumber=auto,
+  title={fp4\_gemm.cuh L794-810（主循环：四路 s2r + zip 张量 + 一跳一 stage）}]{../fp4_gemm.cuh}
+\end{lstinputlisting}
+
+\textbf{数据走 LDSM，SF 走 32-bit LDS。}$A/B$ 用
+\texttt{SM75\_U32x4\_LDSM\_N}（\texttt{ldmatrix.x4}，一个 warp 一次搬
+512\,B、每条 lane 16\,B $=$ 32 个 4-bit；而
+\texttt{Layout\_K\_SW32\_Atom<uint4\_t>} 一个原子是
+$8\times64$ 个 4-bit $=$ 256\,B，故一次 LDSM 覆盖两个原子）；
+SF 用 \texttt{UniversalCopy<ElementSF>}——因为它每线程只要 4 个字节，
+\texttt{ldmatrix} 的 8$\times$8 矩阵语义在这里反而是负担，
+直接四次 32-bit \texttt{ld.shared} 更省（CuTe 会把它自动向量化）。
+两种拷贝共用同一套 fragment（\texttt{tCrSFA}），
+fragment 的布局由 \texttt{sf\_partition::partition\_fragment\_sfa} 从
+CUTLASS 的权威定义移植过来（\texttt{fp4\_gemm.cuh} L425--521，
+逐行抄自 \texttt{sm120\_blockscaled\_mma\_tma.hpp} 的
+\texttt{thrfrg\_sfa} 系列）。
+
+\textbf{zip 张量是「数据 $+$ SF」的成对打包。}blockscaled MMA 的两个 A 操作数
+（数据与 SF）在寄存上是分开的 fragment，但 MMA 的调用接口要求一次给出
+两者，于是 CuTe 用 \texttt{make\_zip\_tensor(tCrA, tCrSFA)} 把它们
+\textbf{按列并成}一个「元素是 pair」的张量：
+
+\begin{verbatim}
+gemm(tiled_mma,
+     make_zip_tensor(tCrA,  tCrSFA),   // (A, SFA) 成对
+     make_zip_tensor(tCrB,  tCrSFB),   // (B, SFB) 成对
+     tCrC);
+\end{verbatim}
+
+这不是语法糖：\texttt{cute::gemm} 会把 zip 张量的每个「pair 元素」当作
+一条 MMA 的完整 A 操作数（数据 $+$ 局部的 scale），然后沿着 K 与
+tile 维遍历。
+
+\textbf{一跳一 stage：K 方向没有内层循环。}$BK{=}64$ 等于原子的 K 宽，
+所以每个 stage 的 K 方向只对应\textbf{一次} atom 调用；\texttt{gemm} 里
+剩下的展开只是 tile 维——\texttt{AtomLayoutMNK}$=(4,2,1)$ 把
+$128\times BN$ 的输出切成每 warp $16\times BN/2$ 的块，$BN{=}128$ 时
+每个 warp 要做 $8$ 条 \texttt{m16n8k64}（$N$ 方向切 8 次），
+一个 CTA 每 stage 共 $8\,\text{warp}\times8 = 64$ 条。第~\ref{ch:35}~章
+FP8 的一个 stage 要跑 $BK/32 = 4$ 个 k-slice、每个 k-slice 里还有
+tile 维展开；FP4 把 k-slice 这一层直接删掉了（图~\ref{fig:37-pipeline-timing}
+的对比）。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\footnotesize, x=1.42cm, y=0.72cm,
+  lane/.style={fill=black!5, draw=black!25, rounded corners=1.5pt},
+  tma/.style={fill=tkBlue!75, draw=tkBlue!85, line width=0.3pt},
+  mma/.style={fill=tkGreen!65, draw=tkGreen!85, line width=0.3pt},
+  blk/.style={font=\tiny\bfseries, text=white},
+]
+\foreach \s in {0,1,2,3} {
+  \fill[lane] (0,\s*0.95-0.27) rectangle (7.15,\s*0.95+0.27);
+  \node[anchor=east, font=\scriptsize\bfseries, tkPurple] at (-0.12,\s*0.95) {stage \s};
+}
+\foreach \k in {0,...,7} {
+  \draw[black!20, line width=0.25pt] (\k*0.95,-0.4) -- (\k*0.95,3.15);
+  \node[below, font=\tiny, black!65] at (\k*0.95,-0.44) {\k};
+}
+\foreach \k/\y in {0/0, 4/0, 1/1, 5/1, 2/2, 3/3} {
+  \fill[tma] (\k*0.95+0.40,\y*0.95-0.17) rectangle (\k*0.95+1.32,\y*0.95+0.17);
+  \node[blk] at (\k*0.95+0.86,\y*0.95) {TMA};
+}
+\foreach \k/\y in {0/0, 4/0, 1/1, 2/2, 3/3} {
+  \fill[mma] (\k*0.95+1.37,\y*0.95-0.17) rectangle (\k*0.95+2.72,\y*0.95+0.17);
+  \node[blk] at (\k*0.95+2.045,\y*0.95) {MMA};
+}
+\draw[-{Stealth[length=2mm]}, thick] (0,-0.8) -- (7.35,-0.8) node[below]{$t$};
+\node[anchor=west, font=\tiny, tkOrange] at (0,3.42)
+  {\textbf{full}$_s$: 一次 TMA 事务覆盖 A$+$B$+$SFA$+$SFB 四段（$128{\cdot}64/2\times2 + 512\times2 = 9216$\,B）};
+\node[anchor=west, font=\tiny, tkOrange] at (0,3.76)
+  {\textbf{empty}$_s$: 256 消费线程各 arrive 一次（init$=$256）};
+\foreach \x/\c/\l in {0/tma/TMA 装载, 2.4/mma/MMA 计算} {
+  \fill[\c] (\x,4.15) rectangle (\x+0.42,4.33);
+  \node[anchor=west, font=\tiny] at (\x+0.5,4.24) {\l};
+}
+\end{tikzpicture}
+\caption{四级流水的时序示意（$BN$ 取 128 的默认档；本卡 $k_{Stages}$
+可用到 8$\sim$10 级，见 33.9.4~节扫描表）。与第~\ref{ch:35}~章
+图~\ref{fig:35-pipeline-timing} 的结构差别在 MMA 块的\textbf{宽度}：
+FP4 的一个 stage 只有一跳原子（$BK{=}64$），K 方向不再有内层循环，
+MMA 块相对 TMA 块更窄——这意味着\textbf{流水线对 TMA 延迟的容忍度更低}，
+是 $BN$ 翻倍的收益来源之一（$BN$ 翻倍 $=$ MMA 块宽翻倍，
+而 TMA 字节数只增加 $B$ 与 SFB 的部分）。}
+\label{fig:37-pipeline-timing}
+\end{figure}
+
+\section{Epilogue：只剩一项乘法}\label{sec:37-epilogue}
+
+\begin{lstinputlisting}[linerange={820-852},firstnumber=auto,
+  title={fp4\_gemm.cuh L820-852（epilogue：level-1 折回 $\to$ bf16 $\to$ STSM $\to$ TMA store）}]{../fp4_gemm.cuh}
+\end{lstinputlisting}
+
+与第~\ref{ch:35}~章 FP8 的 epilogue（四步、含按块查 $\delta$）相比，
+这里的\textbf{反量化只剩一个乘法}：$C_{m,n} \leftarrow C_{m,n}\cdot
+s_{A,m}\cdot s_{B,n}$，其中 $s_A,s_B$ 是量化阶段算好的行/列级 fp32 数组
+（式~\ref{eq:36-fold}）。level-2 的 SF 已经在 MMA 里乘掉了——
+这不是软件省掉的，是\textbf{由硬件完成的}：一条
+\texttt{m16n8k64} 内部完成了 4 个 K 组各一次的 $A\cdot\mathrm{SF}_A$ 与
+$B\cdot\mathrm{SF}_B$。
+
+三处工程细节：
+
+\begin{itemize}[itemsep=2pt,topsep=3pt]
+  \item \textbf{行列坐标视图}：\texttt{convert\_layout\_acc\_rowcol}
+        把 acc 的 fragment 布局重排成 $(r,c)$ 二维，才能按
+        $(m,n)$ 查 $s_A[m]$/$s_B[n]$。这个工具从第~\ref{ch:24}~章起
+        就在用，FP4 版本一字不改。
+  \item \textbf{尾块保护}：$m\ge M$ 或 $n\ge N$ 的 fragment 元素取
+        $s=0$。TMA store 会自动裁掉越界行列，但\textbf{acc 里的越界
+        元素在裁掉之前不得成为 NaN/Inf}——乘 0 是最省的保护。
+  \item \textbf{O staging 复用整个 A/B/SF 区}。$BM\times BN$ 的 bf16
+        结果（$BN{=}128$ 时 32\,KB、$BN{=}256$ 时 64\,KB）不能放在
+        单个 stage 里（一个 stage 只有 9\,KB / 13.5\,KB），
+        K 循环结束后整个 smem 池空闲，直接 rebind。约束写成
+        \texttt{kOStagingFits}（$BM\times BN\times 2 \le k_{Stages}\cdot
+        \text{stage bytes}$）并 \texttt{static\_assert}——这条断言是
+        33.9.4~节解释「为什么 $128\times256$ 至少要 5 级流水」的根据。
+\end{itemize}
+
+\section{WS 变体与一个 FP8 里不存在的死锁}\label{sec:37-ws}
+
+warp specialization 版本与第~\ref{ch:26b}~章的 FA2/FA3 WS 变体同构：
+128 个 producer 线程只发 TMA，256 个 consumer 线程只做 MMA 与
+epilogue；前者 \texttt{warpgroup\_reg\_dealloc<32>}、后者
+\texttt{warpgroup\_reg\_alloc<224>}，两侧的寄存器预算写成一条
+\texttt{static\_assert}：$128\times32 + 256\times224 = 61440\le 65536$。
+
+\subsection{死锁与修复：empty 必须由 consumer 侧预置}
+
+WS 版本有一个 non-WS 版本\textbf{不存在}的死锁陷阱，具体如下：
+
+\begin{itemize}[itemsep=2pt,topsep=3pt]
+  \item \texttt{empty[s]} 的 init 是 \texttt{kNumThreads}（256），
+        只有 consumer 会 arrive——因为只有 consumer 知道「我读完了」。
+  \item 于是 producer 在发出第一个 TMA 之前，必须先等
+        \texttt{empty[0]} 翻转；而 \texttt{empty[0]} 要翻转，
+        必须等 256 个 consumer 各 arrive 一次；而 consumer 要 arrive
+        的前提是它先 \texttt{wait(full[0])} 成功，即\textbf{第一个 TMA
+        已经完成}。
+  \item 环闭合了：producer 等 consumer、consumer 等 producer 的 TMA。
+        \textbf{启动即死锁。}
+\end{itemize}
+
+修复只有一行，放在 K 循环之前、producer/consumer 分支之前：
+
+\begin{lstinputlisting}[linerange={958-964},firstnumber=auto,
+  title={fp4\_gemm.cuh L958-964（WS 的 empty 预置：consumer 先行 arrive）}]{../fp4_gemm.cuh}
+\end{lstinputlisting}
+
+即「\textbf{consumer 在进入循环前先把所有 empty arrive 一遍}」，构造出
+流水线的初始条件。这么写合法的理由是：在第一个 TMA 完成之前，
+consumer 本来就没有任何东西可读，让它们先声明「stage 是空的」是
+\textbf{对初始状态的正确描述}，而不是取巧的做法。
+
+non-WS 版本没有这个问题，因为那里是「全体线程 arrive」——
+\texttt{empty} 的 init 等于参与线程数，而全体线程在进入循环前就各
+arrive 了一次（第~\ref{ch:26c}~章的那三行初始 release），
+同一个动作由身兼二职的线程完成了。\textbf{warp specialization 把
+「谁 arrive」这件事拆开之后，初始条件就必须重新核对}——这是本章
+唯一的实质性 bug，也是本书 ws 系列最值得记住的一条教训。
+
+\subsection{命名屏障}
+
+WS 版本的 epilogue 里 sync 用的是 \texttt{NamedBarrier::arrive\_and\_wait(256, 0)}
+而不是 \texttt{\_\_syncthreads()}——因为 CTA 里有 384 个线程，
+\texttt{\_\_syncthreads()} 会把已经退出的 producer 也算进去，
+而命名屏障只同步注册了 256 个 consumer。（producer 发完最后一个 TMA
+就直接结束，不再参与后续任何屏障。）
+
+\section{C++ API 与 bench 接线}\label{sec:37-api}
+
+\begin{lstinputlisting}[linerange={1162-1226},firstnumber=auto,
+  title={fp4\_gemm.cuh L1162-1226（fp4\_gemm\_bf16：约束自检 + 4 模式派发）}]{../fp4_gemm.cuh}
+\end{lstinputlisting}
+
+API 形状与第~\ref{ch:35}~章的 \texttt{fp8\_gemm\_bf16} 完全一致：
+\texttt{BF16 in $\to$ 量化 $\to$ GEMM $\to$ BF16 out}，workspace 由调用方
+持有并复用，同步语义与 cuBLAS 相同（入队即返回）。workspace 的布局
+如图~\ref{fig:37-ws-layout} 所示。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize, x=1cm, y=1cm]
+% 六段横条：A4 | B4T | SFA | SFB | sa | sb
+\draw[thick, fill=tkFillBlue, draw=tkBlue]     (0,0)    rectangle (2.6,1.1);
+\draw[thick, fill=tkFillBlue, draw=tkBlue]     (2.6,0)  rectangle (5.2,1.1);
+\draw[thick, fill=tkFillOrange, draw=tkOrange] (5.2,0)  rectangle (8.6,1.1);
+\draw[thick, fill=tkFillOrange, draw=tkOrange] (8.6,0)  rectangle (12.0,1.1);
+\draw[thick, fill=tkFillGreen, draw=tkGreen]   (12.0,0) rectangle (13.6,1.1);
+\draw[thick, fill=tkFillGreen, draw=tkGreen]   (13.6,0) rectangle (15.2,1.1);
+\node[align=center] at (1.3,0.55)  {$A_4$\\$M\cdot K/2$\,B};
+\node[align=center] at (3.9,0.55)  {$B_4^{\top}$\\$N\cdot K/2$\,B};
+\node[align=center] at (6.9,0.55)  {SFA\\$\lceil M/128\rceil\cdot K/64\cdot 512$\,B};
+\node[align=center] at (10.3,0.55) {SFB\\$\lceil N/128\rceil\cdot K/64\cdot 512$\,B};
+\node[align=center] at (12.8,0.55) {$s_A$\\$4M$\,B};
+\node[align=center] at (14.4,0.55) {$s_B$\\$4N$\,B};
+% 段间 256B 对齐分隔线
+\foreach \x in {2.6,5.2,8.6,12.0,13.6} {
+  \draw[thick, tkRed] (\x,-0.12) -- (\x,1.22);
+  \node[above, font=\tiny, tkRed] at (\x,1.26) {256B};
+}
+\node[anchor=north, font=\tiny, black!65] at (7.6,-0.22)
+  {每段字节数向上取整到 256\,B 对齐（\texttt{fp4\_gemm\_align256}）后顺序拼接};
+\end{tikzpicture}
+\caption{\texttt{fp4\_gemm\_bf16} 一次性 workspace 的六段布局
+（\texttt{fp4\_gemm.cuh} 的 \texttt{fp4\_gemm\_\allowbreak workspace\_size}）。
+$A_4$ 与 $B_4^{\top}$ 是量化产物（4\,bit/元素）；SFA/SFB 的行数按 128
+向上取整——每个 512\,B 原子覆盖 128 行 $\times$ 64 个 K 元素；
+$s_A$/$s_B$ 是 level-1 的行/列 scale（$M$/$N$ 个 float）。每段字节数
+向上取整到 256\,B（\texttt{fp4\_gemm\_align256}）后顺序拼接。}
+\label{fig:37-ws-layout}
+\end{figure}
+
+四个 \texttt{Fp4GemmScaleMode} 通过模板参数\texttt{双重}派发
+（level-1 作用在哪一侧 $\times$ 是否 WS），共 8 个 kernel 实例。
+$A$ 侧先跑行 amax 再跑量化（两趟），$B$ 侧跑
+\texttt{fp4\_gemm\_quantize\_b}（32.4 节的两段式）。
+
+\textbf{B 离线量化}是部署形态：把
+$(B_4^{\top}, \mathrm{SFB}, s_B)$ 量化一次后常驻显存。入口就是
+\texttt{fp4\_gemm\_bf16\_b\_offline}，
+\texttt{Fp4GemmActivation} 只负责 $A$ 侧的激活量化。与 FP8 的差别是
+离线产物\textbf{多一份 SFB}：以 $K{=}N{=}4096$ 计，$B_4^{\top}$ 占
+8\,MB、SFB 占 1\,MB，即权重的显存占用是 BF16 的
+$9/32\approx28\%$。
+
+\texttt{notes-v2.cu} 的 bench 接线：
+
+\begin{itemize}[itemsep=2pt,topsep=3pt]
+  \item \texttt{--fp4-gemm}：7 条正确性 case（4 种 scale 模式 $+$ WS
+        $+$ 两个尾部 shape），CPU fp64 参考，报 relFro。
+  \item \texttt{--bench}：在 FP8 行之后追加 12 行 FP4。
+        其中 \texttt{FP4 GEMM CuTe nonws/ws} 是 \textbf{kernel-only}
+        口径（量化在计时窗口外），\texttt{FP4 GEMM+Quant e2e} 是
+        全链路，\texttt{FP4 GEMM+A Quant e2e (B offline)} 是部署口径。
+  \item \texttt{--fp4-gemm-sweep}：$BN\in\{128,256\}$ $\times$
+        $k_{Stages}\in\{2,3,4,5,6,7,8,10,12\}$ 的完整扫描，
+        不合法组合打印 SKIP 理由（33.9.4~节）。
+\end{itemize}
+
+\textbf{写 kernel-only 行时的一个反向陷阱。}
+kernel-only 行直接调 \texttt{fp4\_gemm\_tma\_fwd}（跳过量化），
+但这个入口\textbf{不会自己填 workspace}——里面的
+$A_4/B_4^{\top}$/SFA/SFB 全是量化 kernel 的产物。
+本轮实测遇到过：kernel-only 行第一次跑出
+\texttt{relFro}$=49$（相对误差 4900\%）这种物理上不可能的读数，
+原因就是它读了一整块未初始化的显存。修复是在
+\texttt{FP4\_RUN\_KERNEL} 宏的第一行先跑一次完整的
+\texttt{fp4\_gemm\_bf16} 把 workspace 填好，之后才计时纯 kernel。
+教训：\textbf{凡是要「拆开计时」的加速比，先确认被拆掉的阶段
+留下的是有效数据}——否则量到的是显存的随机内容。
+
+\section{实测：精度与性能 vs cuBLAS BF16}\label{sec:37-perf}
+
+平台：RTX PRO 5000（sm\_120a），CUDA 13.x，cuBLAS 随附版本；
+\texttt{--warmup 2 --repeat 3}。输入均匀随机 $[-1,1]$（\texttt{srand(42)}）。
+FP4 行的误差列是 relFro 相对 Frobenius 误差。
+
+\begin{center}
+\scriptsize
+\begin{tabular}{llcccc}
+\toprule
+形状 & Kernel（tile/stage） & relFro & TFLOPS & vs cuBLAS BF16 & vs our CuTe HGEMM \\
+\midrule
+4096$^3$ & cuBLAS BF16 (F32 acc)              & ---   & 163.5 & 1.00x & 0.67x \\
+         & our CuTe HGEMM (S=3, BLK\_SW=1, F32Acc) & $\approx$0 & 242.8 & 1.48x & 1.00x \\
+         & FP8 GEMM nonws (rc, $128^2{\times}128$/s2) & 4.50 & 438.5 & 2.68x & 1.81x \\
+         & FP4 nonws 单级 level-2 ($128{\times}256{\times}64$/s6) & 0.144 & 600.4 & 3.67x & 2.47x \\
+         & FP4 nonws 两级 ($128{\times}256{\times}64$/s6) & 0.145 & 603.4 & 3.69x & 2.49x \\
+         & \textbf{FP4 ws 两级 ($128{\times}256{\times}64$/s6)} & 0.145 & \textbf{614.1} & \textbf{3.76x} & \textbf{2.53x} \\
+         & FP4+Quant e2e nonws ($128{\times}256{\times}64$/s6) & 0.145 & 408.2 & 2.50x & 1.68x \\
+         & FP4+A-Quant e2e, $B$ off nonws & 0.145 & 550.5 & 3.37x & 2.27x \\
+         & FP4+A-Quant e2e, $B$ off ws    & 0.145 & 561.2 & 3.43x & 2.31x \\
+\midrule
+8192$^3$ & cuBLAS BF16 (F32 acc)              & ---   & 163.3 & 1.00x & 0.68x \\
+         & our CuTe HGEMM (S=3, BLK\_SW=1, F32Acc) & $\approx$0 & 241.7 & 1.48x & 1.00x \\
+         & FP8 GEMM nonws (rc, $128^2{\times}128$/s2) & 6.25 & 479.2 & 2.93x & 1.98x \\
+         & FP4 nonws 单级 level-2 ($128{\times}256{\times}64$/s6) & 0.144 & 644.8 & 3.95x & 2.67x \\
+         & FP4 nonws 两级 ($128{\times}256{\times}64$/s6) & 0.145 & 639.6 & 3.92x & 2.65x \\
+         & \textbf{FP4 ws 两级 ($128{\times}256{\times}64$/s6)} & 0.145 & \textbf{648.6} & \textbf{3.97x} & \textbf{2.68x} \\
+         & FP4+Quant e2e nonws ($128{\times}256{\times}64$/s6) & 0.145 & 467.4 & 2.86x & 1.93x \\
+         & FP4+A-Quant e2e, $B$ off nonws & 0.145 & 541.1 & 3.31x & 2.24x \\
+         & FP4+A-Quant e2e, $B$ off ws    & 0.145 & 549.7 & 3.37x & 2.27x \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+（tile 记法 = $BM{\times}BN{\times}BK$；s6 = 6 级流水。2026-09-28 起
+\texttt{--bench} 的 FP4 标准行按形状自适应（\texttt{fp4\_gemm\_\allowbreak
+use\_wide\_tile}）：$MNK\ge4096$ 用宽档 $128{\times}256{\times}64$/s6，
+小形状回落库默认档 $128^2{\times}64$/s4——本表两个形状都落在宽档上，
+库默认档的读数（460.7 / 474.5\,T 等）见 33.9.4 的扫描表。两列的
+加速比一律以本表 cuBLAS 行的读数（4096$^3$: 163.5，
+8192$^3$: 163.3）与手写 HGEMM 行（242.8 / 241.7，均为 F32 累加）
+为分母；同一张表里 cuBLAS 会被重复计时，各行分母因此相差
+$\pm1\%$。「relFro 0.144 vs 0.145」的差别就是 \texttt{kSingleLevel}
+与两级量化的差别——$U(-1,1)$ 数据下 level-1 几乎无用，
+第~\ref{ch:36}~章的误差模型解释了为什么。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize]
+% 刻度: 1 TFLOPS = 0.0112 cm, ymax 700 -> 7.84cm
+\foreach \g/\xa in {0/0.0, 1/5.1, 2/10.2} {
+  \begin{scope}[xshift=\xa cm]
+    \draw[gray!50] (0,0) rectangle (4.1,7.84);
+  \end{scope}
+}
+\foreach \yv/\yl in {0/0, 1.12/100, 2.24/200, 3.36/300, 4.48/400, 5.60/500, 6.72/600, 7.84/700}
+  \draw[gray!40] (0,\yv) -- (14.3,\yv) node[left, font=\tiny, inner sep=1pt] at (0,\yv) {\yl};
+% group 1: 4096 -> cuBLAS, FP8, FP4(128x128 s4, 扫描口径), FP4(128x256 s6), FP4 e2e
+\fill[tkPurple!35] (0.30,0) rectangle (1.00,1.83);
+\fill[tkBlue!45]   (1.10,0) rectangle (1.80,4.91);
+\fill[tkGreen!60]  (1.90,0) rectangle (2.60,5.16);
+\fill[tkGreen!85]  (2.70,0) rectangle (3.40,6.88);
+\fill[tkOrange!60] (3.50,0) rectangle (4.20,4.57);
+% group 2: 8192
+\fill[tkPurple!35] (5.40,0) rectangle (6.10,1.83);
+\fill[tkBlue!45]   (6.20,0) rectangle (6.90,5.37);
+\fill[tkGreen!60]  (7.00,0) rectangle (7.70,5.33);
+\fill[tkGreen!85]  (7.80,0) rectangle (8.50,7.27);
+\fill[tkOrange!60] (8.60,0) rectangle (9.30,5.23);
+% group 3: 4096 B-offline
+\fill[tkPurple!35] (10.50,0) rectangle (11.20,1.83);
+\fill[tkBlue!45]   (11.30,0) rectangle (12.00,4.60);
+\fill[tkGreen!60]  (12.10,0) rectangle (12.80,6.17);
+\fill[tkGreen!85]  (12.90,0) rectangle (13.60,6.29);
+\foreach \x/\h/\v in {0.65/1.83/164, 1.45/4.91/439, 2.25/5.16/461, 3.05/6.88/614, 3.85/4.57/408,
+  5.75/1.83/163, 6.55/5.37/479, 7.35/5.33/476, 8.15/7.27/649, 8.95/5.23/467,
+  10.85/1.83/164, 11.65/4.60/411, 12.45/6.17/551, 13.25/6.29/561}
+  \node[above, font=\tiny, inner sep=1pt] at (\x,\h) {\v};
+\foreach \x/\l in {2.25/4096$^3$, 7.35/8192$^3$, 12.05/4096$^3$ ($B$ off)} {
+  \node[below, font=\scriptsize\bfseries] at (\x,-0.14) {\l};
+}
+\draw[->] (0,0) -- (14.55,0);
+\draw[->] (0,0) -- (0,8.25);
+\node[left, font=\tiny] at (-0.05,8.1) {TFLOPS};
+\foreach \i/\c/\l in {0/tkPurple!35/cuBLAS BF16, 1/tkBlue!45/FP8 GEMM,
+  2/tkGreen!60/FP4 GEMM, 3/tkGreen!85/FP4 (宽 tile), 4/tkOrange!60/FP4+Quant e2e} {
+  \fill[\c] (0.55+\i*2.85, 8.52) rectangle (0.90+\i*2.85, 8.82);
+  \node[right, font=\tiny, inner sep=2pt] at (0.93+\i*2.85, 8.67) {\l};
+}
+\end{tikzpicture}
+\caption{NVFP4 GEMM vs cuBLAS BF16（PRO 5000，越高越好）。
+三条读法：其一，\textbf{kernel-only 口径下 FP4 只比 FP8 快
+$6\sim40\%$}——库默认档（$128^2$/s4，柱取口径：4096$^3$ 取扫描表 461\,T，
+8192$^3$ 取默认档实测 476\,T）
+只快 $6\%$，宽 tile 档才快 $40\%$，
+远不是比特数暗示的 $2\times$；原因是本 kernel 走 bf16 输出、f32
+累加，且 $BK{=}64$ 让 K 方向的算术强度下降（表~\ref{tab:37-fp8-vs-fp4}
+的两条固定约束）；其二，\textbf{宽 tile（$128{\times}256$）是本章最大
+的单项收益}（$+31\%$，33.9.4~节），也是 \texttt{--bench} 标准行在
+$MNK\ge4096$ 上的自适应选择；其三，\textbf{e2e 口径下 FP4 反超
+FP8}（4096$^3$: 408 vs 187\,T；8192$^3$: 467 vs 315\,T）——量化的
+写出字节数只有 FP8 的一半，$B$ 侧重构后这个差距进一步扩大
+（33.9.3~节）；第三组（$B$ 离线）把 FP4 的 e2e 拉回
+551$\sim$561\,T（FP8 为 411\,T），是各自 kernel 的 $91\sim93\%$。}
+\label{fig:37-perf}
+\end{figure}
+
+\subsection{对照基线：cuBLAS BF16 为什么还是 165\,T}
+
+第~\ref{ch:35}~章 31.8.1~节已经用 \texttt{nsys} 拆过这件事：cuBLAS 在
+本卡上对 BF16 输入选择的 kernel 只有约 165\,T，而同一张卡的 fp16 HGEMM
+能跑 246\,T——它的 heuristic 把 BF16 输入降级到了非最优的 kernel。
+这不是本书的 kernel 特别强，而是\textbf{基线本身偏弱}。为了把「FP4
+到底有多快」这件事说清楚，本章的标准表同时给出三个参照系：
+cuBLAS BF16（2.9$\sim$3.7$\times$）、本书手写 bf16 HGEMM
+（$1.8\sim2.5\times$）、以及第~\ref{ch:35}~章的 FP8 版本
+（$1.07\sim1.38\times$）。\textbf{做量化 GEMM 的性能声明时，
+「相对谁」比「多少倍」重要得多。}
+
+\subsection{精度}
+
+\texttt{--fp4-gemm} 的 7 条 case（$512^3$，CPU fp64 参考）与
+第~\ref{ch:36}~章的实测表逐位一致：单级 $0.1437$、level-2$\times$A 行
+$0.1448$、level-2$\times$B 列 $0.1443$、两级（非 WS/WS）$0.1454$、
+尾部 shape $0.1454$。三点读法：
+
+\begin{itemize}[itemsep=2pt,topsep=3pt]
+  \item \textbf{WS 与 non-WS 数值完全相同}（$0.1454$ 对 $0.1454$，
+        逐位）。它们走同一套量化产物、同一段 epilogue 数学，
+        warp specialization 只改「谁来发 TMA、谁来算」，不改任何
+        数值路径。这也是 WS 版本可以直接作为默认推荐的前提。
+  \item 尾部 shape（$M{=}300,N{=}264,K{=}192$）与齐整 shape 一致，
+        说明 TMA 的零填充、store 裁剪、补零行 SF 显式清零
+        （32.4.2~节）三处都正确处理了。
+  \item 尾部 shape 的\emph{耗时}也没有惩罚：$M$ 从 4096 改成 4097
+        （网格在 M 方向多一整行 tile）只从 414.0 降到 408.2\,T
+        （$-1.4\%$），$M$ 从 8192 改成 8193 只从 471.2 降到 467.6\,T
+        （$-0.8\%$；nonws 同口径 407.3/402.1 与 466.0/464.4）；
+        多算的只是一个 $128{\times}256$ 的输出行带，浪费的 FLOP
+        不到 $0.03\%$。这一条不在 \texttt{--bench} 表里
+        （\texttt{--mnk} 只接受方形形状），数字由同一条
+        \texttt{fp4\_gemm\_bf16} 入口（宽档）用 CUDA event 单独计时得到。
+  \item \textbf{$B$ 离线量化与全链路\textbf{逐位一致}}
+        （\texttt{ch37\_fp4\_gemm.cu} 里 4 条 \texttt{bit-exact=YES}）。
+        这条断言的价值不在于「测出对了」，而在于它是一个
+        \textbf{回归护栏}：以后任何改动只要让这两条路分叉，
+        测试立刻报红。
+\end{itemize}
+
+\subsection{量化开销，以及一次重构}
+
+先算开销。e2e 行减去 kernel-only 行，就是两侧量化真正花掉的时间
+（4096$^3$：FP8 得 424\,$\mu$s、FP4 得 109\,$\mu$s；8192$^3$：
+1221\,$\mu$s 对 633\,$\mu$s；FP4 侧按本章的自适应宽档算）：
+
+\begin{center}
+\footnotesize
+\begin{tabular}{lcccc}
+\toprule
+ & \multicolumn{2}{c}{4096$^3$} & \multicolumn{2}{c}{8192$^3$} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+ & 量化 & 占 e2e & 量化 & 占 e2e \\
+\midrule
+FP8 GEMM & 424\,$\mu$s & 58\% & 1221\,$\mu$s & 35\% \\
+FP4 GEMM（重构后） & \textbf{109\,$\mu$s} & \textbf{32\%} &
+  \textbf{633\,$\mu$s} & \textbf{27\%} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+两个反直觉的读法：其一，FP4 的量化\textbf{不该}比 FP8 开销更小——它多产出一份
+SFB，而且 $A_4/B_4^{\top}$ 的 SF 排版比 FP8 的 per-row/per-col scale 复杂
+得多；其二，8192$^3$ 上 FP4 的量化绝对值（633\,$\mu$s）比 FP8
+（1221\,$\mu$s）小一半，但两者的\emph{数据量相同}（都读 $MK{+}NK$ 个
+bf16、写 $MK{+}NK$ 个量化值）——差别只在\textbf{写出的字节数}：
+FP8 每个量化值 1\,B，FP4 只有 0.5\,B。这与本卡实测带宽相符
+（纯读 907\,GB/s、拷贝 1047\,GB/s，DRAM 标称 1344\,GB/s）：
+8192$^3$ 时 $A$/$B$ 两侧各跑在 $\approx1.0$\,TB/s，已经在拷贝带宽上。
+还有一个容易误读的数：量化是\textbf{加性}成本（109\,$\mu$s 不随 tile 档
+变化），主 kernel 从保守档换到宽档快了 $33\%$ 之后，它的占比反而从
+26\% 升到 32\%——\emph{占比上升说明主 kernel 变快了}，不是量化变慢了。
+
+本书在这一章对 $B$ 侧量化做过一次\textbf{重构}，过程值得记下来，
+因为它是用带宽数据定位问题的典型例子。
+
+\begin{itemize}[itemsep=2pt,topsep=3pt]
+  \item \textbf{第一版}（与第~\ref{ch:34}~章 FP8 版本同构）把逐列 amax
+        与转置量化压进同一个 kernel 的两个 pass：一个 block 负责连续
+        128 列 $\times$ 全部 $K$。这个划分有两个缺陷：
+        \emph{第一，并行度}——grid 只有 $N/128$ 个 CTA，4096$^3$ 时
+        32 个 CTA 只填满 29\% 的 SM；
+        \emph{第二，bank 冲突}——逐列归约读 smem 的步长是 128 个元素
+        $= 64$ 个字 $= 32$（bank 数）的整数倍，每读一次都是 32 路冲突。
+        按「$B$ 读两遍 $+$ 写 $B_4^{\top}$ 与 SFB $\approx73$\,MB」的
+        逻辑流量反推，第一版的有效吞吐只有 \textbf{194\,GB/s}
+        （377\,$\mu$s）——本卡拷贝带宽的五分之一。
+  \item \textbf{第二版}把两件事拆成两个全并行 kernel：
+        \emph{列 amax}沿 K 切 8 片（4096$^2$ 时 256 个 CTA），
+        每线程持 8 列、K 方向步进 16（一次 \texttt{Vec8BF16} 载入拿满
+        8 列），块内归约到 128 个列值后落到一次整数 \texttt{atomicMax}
+        （非负 IEEE754 的位模式与无符号整数同序，可以直接按
+        \texttt{unsigned} 比大小）；
+        \emph{转置量化}按 $128(n)\times64(k)$ 一个 tile 铺
+        $(N/128)\times(K/64)$ 个 CTA（4096$^2$ 时 2048 个），
+        per-16 组的 amax 完全落在块内，不需要任何跨块归约，
+        smem 里的转置缓冲加 1 列 padding（$128{\times}65$）消除
+        写回时的 bank 冲突。
+  \item \textbf{一个 bit 都不许变}是这个重构的硬约束。列 amax 拆成
+        8 片后要用 \texttt{atomicMax} 合并，而原子操作只支持整数——
+        这里靠两步做到逐位等价：第一，「先除以 2688 再取 max」与
+        「先取 max 再除以 2688」在浮点下逐位相同（除以正常数保序）；
+        第二，非负浮点的位模式与无符号整数序一致。调用方必须先把
+        $s_B$ 清零这一点也被写进契约（\texttt{cudaMemsetAsync}，
+        浮点 $0$ 的位模式正是 \texttt{atomicMax} 的单位元）。
+        转置量化的写法改动（tile 从「128 列 $\times$ 全 K」变成
+        「128 列 $\times$ 64 K」）不改变任何中间值。
+        \texttt{book/\allowbreak tests/\allowbreak ch36\_fp4\_quantize.cu} 的 13824 个 SF 落点
+        与逐 bit 数据比对、以及 ch37 的
+        \texttt{bit-exact=YES} 断言，就是这条约束的验证手段。
+  \item \textbf{收益}：$B$ 侧量化的反推吞吐从 194\,GB/s 提到
+        \textbf{792\,GB/s}（$4.1\times$，4096$^3$；同口径的逻辑流量），
+        e2e 从 196.8\,T 提到 \textbf{334.2\,T}（$+70\%$），
+        量化占 e2e 的比例从 57\% 降到 26\%。
+        注意 792\,GB/s 里有一部分是第一遍读到的 $B$（32\,MB）
+        留在 96\,MB L2 里、第二遍直接命中——\textbf{这个数高于
+        DRAM 带宽是正常的，它的意义是「同一口径下的相对改善」}，
+        而不是「DRAM 吞吐」。
+\end{itemize}
+
+$s_B$ 的数值语义在这里有一个微妙的点：第一版把 $\mathrm{amax}/2688$
+先存进 smem 再原地改成倒数，第二版改成「$s_B$ 落显存、倒数在量化 kernel
+里现算」。两者在 $\mathrm{amax}=0$ 的行上都必须走同一条特殊分支
+（$\mathrm{inv}=0$，整列归零），否则会出现 $0/0$。
+
+\subsection{tile 几何与流水深度：$128^3$ 不是最优，$128\times256$ 才是}
+
+\texttt{--fp4-gemm-sweep} 把 $BN\in\{128,256\}$ 与
+$k_{Stages}\in\{2,3,4,5,6,7,8,10,12\}$ 全扫一遍（4096$^3$，两级量化），
+不合法的组合打印 SKIP 理由：
+
+\begin{center}
+\footnotesize
+\begin{tabular}{llcccc}
+\toprule
+$BN$ & $k_{Stages}$ & smem & nonws TFLOPS & ws TFLOPS & 结论 \\
+\midrule
+128 & 2  & 18\,KB & SKIP & --- & O staging 32\,KB $>$ 18\,KB \\
+128 & 3  & 27\,KB & SKIP & --- & O staging 32\,KB $>$ 27\,KB \\
+128 & 4  & 36\,KB & 460.7 & 474.5 & 库默认档 \\
+128 & 6  & 54\,KB & 458.1 & 469.7 & 与 s4 持平 \\
+128 & 8  & 72\,KB & 462.1 & 473.3 & 与 s4 持平 \\
+128 & 10 & 90\,KB & 453.4 & --- & 略降 \\
+128 & 12 & 108\,KB & SKIP & --- & 超过 99\,KB 上限 \\
+256 & 4  & 54\,KB & SKIP & --- & O staging 64\,KB $>$ 54\,KB \\
+256 & 5  & 67\,KB & 599.0 & 610.9 & 与 s6 持平 \\
+256 & 6  & 81\,KB & \textbf{602.9} & \textbf{614.6} & \textbf{最快档} \\
+256 & 7  & 94\,KB & 603.5 & --- & 与 s5/s6 持平 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+三个规律：
+
+\begin{itemize}[itemsep=2pt,topsep=3pt]
+  \item \textbf{流水深度在这个 kernel 上几乎不影响性能。}
+        $BN{=}128$ 时 $k_{Stages}$ 从 4 加到 8（36\,KB $\to$ 72\,KB，
+        把预算用掉两倍）只换来 $\pm1\%$；$BN{=}256$ 时 5/6/7 级也持平。
+        与第~\ref{ch:35}~章 FP8 版本（2 级 $>$ 3 级，$+7.7\%$）不同，
+        FP4 的结论是「流水深度够用就行」。
+        原因见图~\ref{fig:37-pipeline-timing}：FP4 的一个 stage
+        只有一跳 MMA，MMA 块窄、TMA 块相对粗，\textbf{瓶颈不是
+        「等下一块数据」，所以加深流水没有收益}。
+  \item \textbf{$BN$ 从 128 翻到 256 带来 $+31\%$（461 $\to$ 603\,T）。}
+        这一项远超其他所有旋钮。机制是 MMA 与 TMA 的比值：
+        $BN$ 翻倍让每 stage 的 $B$ 区（$BN{\cdot}64/2$ 字节）与 SFB
+        （512\,B）跟着涨，但 $A$ 区与 SFA 完全不变；而 MMA 的工作量
+        随 $BN$ 线性翻倍。于是\textbf{每字节 smem 数据摊到的
+        MMA 翻倍}——这就是「算术强度」在 tile 几何层面的直接体现。
+        代价是 O staging 翻倍（64\,KB），要求 $k_{Stages}\ge5$。
+  \item \textbf{WS 的价值随 $BN$ 变大而显现。}
+        $BN{=}128$ 时 ws 比 nonws 快 $3.0\%$（474.5 vs 460.7），
+        $BN{=}256$ 时快 $2.0\%$（614.6 vs 602.9）。差距不大但方向稳定：
+        WS 让 TMA 发射与 MMA 彻底解耦后，\texttt{tid0} 不再是
+        「算完还要负责发 TMA」的瓶颈。
+        \textbf{$BN{=}256$/s6 的 ws 档（614.6\,T）是本章的最快配置}，
+        比库默认档（$BN{=}128$/s4）快 $29\%$。
+\end{itemize}
+
+\textbf{为什么库默认档不直接取 $128\times256$/s6？}因为它是\textbf{形状
+依赖}的：$BN{=}256$ 时 grid 的 N 方向 tile 数减半，小形状上 CTA 数不足会
+导致性能明显下降（第~\ref{ch:35}~章 FP8 的 $2048^3$ 就出现过这种反转）。
+库默认取 $128\times128$/s4 是保守选择——它在所有形状上都不差；
+本书的折中是把判定写死成一条形状规则（\texttt{fp4\_gemm.cuh} 的
+\texttt{fp4\_gemm\_\allowbreak use\_wide\_tile}）：$MNK\ge4096$ 走
+$128\times256$/s6，其余回落 $128^2$/s4，\texttt{--bench} 的 FP4 标准
+行与探针都按这条规则计时（本节开头的标准表因此整表都是宽档）。
+这与第~\ref{ch:35}~章 31.8.4~节的结论同一形态：\textbf{量化 GEMM
+的「默认」不该是一个 tile，是一条形状规则}。
+
+\section{小结}
+
+\begin{itemize}[itemsep=2pt,topsep=3pt]
+  \item \textbf{block scale 的 \texttt{mma.sync} 把 SF 纳入了操作数}：
+        \texttt{m16n8k64.kind::mxf4nvf4.scale\_vec::4X} 的数据操作数是
+        24\,B/线程、SF 操作数是 8\,B/线程——SF 的字节数达到数据的
+        $1/3$。SF 不是元数据，它是\textbf{第二个输入矩阵}，必须有自己的
+        TMA 通道、smem 缓冲与寄存器 fragment。
+  \item \textbf{SF 的 smem 原子与 gmem 原子逐字节同序}（
+        \texttt{probe\_sf\_atom.cu} 枚举 512 个落点验证）。
+        这一条消除了「SF 需要 swizzle 吗」的疑问：
+        512\,B 原子本身就是为「一次 32-bit LDS 取 4 个 SF」设计的，
+        smem 只是原样拷贝。
+  \item \textbf{$BM{=}128$、$BK{=}64$ 不是调参，是唯一合法解}：
+        二者分别等于 SF 原子的行块与 K 覆盖范围，也就是 SF 的
+        TMA box 的尺寸。tile 空间因此从立方体收缩成
+        $128\times BN\times64$ 的柱子，$BN$ 成了唯一旋钮——
+        而它恰好是收益最大的那个（$+31\%$）。
+  \item \textbf{epilogue 只剩一个乘法}：level-2 的 SF 由 MMA 硬件消费，
+        level-1 按 $(m,n)$ 折回。反量化的复杂度从「按块查表」
+        （FP8）降到「一次标量乘」（FP4），代价全部前移到指令形态与
+        数据通路上。
+  \item \textbf{死锁教训}：WS 版本里 \texttt{empty} 的 init 是
+        消费者线程数，而消费者的第一次 arrive 依赖 producer 的第一次
+        TMA——环闭合。修复是让消费者在进入循环前把 \texttt{empty}
+        全部 arrive 一遍。\textbf{当「谁 arrive」被 warp specialization
+        拆开，流水线的初始条件必须重新核对}。
+  \item \textbf{性能结论}：宽档 $128\times256$/s6 的 WS 变体在 4096$^3$
+        跑 614.1\,T（8192$^3$: 648.6\,T），是 cuBLAS BF16 的
+        $3.76\times$、本书手写 bf16 HGEMM 的 $2.53\times$、FP8 版本的
+        $1.40\times$。\texttt{--bench} 标准行自 2026-09-28 起按
+        $MNK\ge4096$ 自适应取宽档、其余回落 $128^2$/s4。比特数减半
+        只换来 $1.4\times$——\textbf{存储收益与算力收益不是一回事}，
+        $BK$ 被固定在 64 让 K 方向的算术强度下降是主要原因。
+  \item \textbf{量化开销}：重构后 $B$ 侧量化从 194\,GB/s 提到
+        792\,GB/s；量化成本 109\,$\mu$s（4096$^3$）是加性的、不随
+        tile 档变化，保守档下占 e2e 的 26\%，宽档下占 32\%。
+        e2e 也因此反超 FP8 版本：宽档 408.2 对 186.5\,T
+        （8192$^3$: 467.4 对 314.6\,T）。部署口径（$B$ 离线）把 e2e
+        拉到 550.5$\sim$561.2\,T，是主 kernel 的 $91\sim93\%$。
+\end{itemize}
+
+\section*{延伸阅读}
+\addcontentsline{toc}{section}{延伸阅读}
+
+\begin{enumerate}[itemsep=2pt,topsep=3pt]
+  \item PTX ISA \S9.7.14.3 \emph{Block Scaling for \texttt{mma.sync}} 与
+        \S9.7.14.5 的 \texttt{mxf4nvf4} 示例（本机路径
+        \texttt{.github/\allowbreak skills/\allowbreak cuda-cpp-kernel/\allowbreak
+        references/\allowbreak ptx-docs/\allowbreak 9-instruction-set/}）：
+        \texttt{.scale\_vec\_size} 的合法组合表、
+        \texttt{scale-a-data} 的 \texttt{\{byte-id, thread-id\}} 选择器语义。
+  \item CUTLASS \texttt{include/\allowbreak cutlass/\allowbreak gemm/\allowbreak}
+        \texttt{sm120\_blockscaled\_mma\_tma.hpp}：SF 的
+        \texttt{thrfrg} 片段布局权威定义（本书
+        \texttt{fp4\_gemm.cuh} L425--521 的 \texttt{sf\_partition}
+        逐行抄自此处）。同一目录下的
+        \texttt{sm120\_\allowbreak blockscaled\_\allowbreak mma\_builder.inl}
+        给出了 \texttt{SfSmemAtom} 的四段式子。
+  \item 知乎 @DefTruth《WINT8/4》系列：低比特 GEMM 的量化方案与
+        Blackwell 上的实测吞吐讨论。
+\end{enumerate}

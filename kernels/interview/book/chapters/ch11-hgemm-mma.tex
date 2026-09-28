@@ -3,11 +3,11 @@
 
 \section{本章导读}
 
-第~\ref{ch:10}~章用 WMMA 摸到了 Tensor Core 的门，但 WMMA 是一层
+第~\ref{ch:10}~章用 WMMA 用上了 Tensor Core，但 WMMA 是一层
 「厚抽象」：fragment 布局是黑盒、寄存器数量不可控、没有寄存器双缓冲、
-流水线只能两级。本章把这层抽象整个掀掉，直接用 PTX 内联汇编写
+流水线只能两级。本章把这层抽象整个去掉，直接用 PTX 内联汇编写
 HGEMM：\texttt{mma.\allowbreak{}sync.\allowbreak{}aligned.\allowbreak{}m16n8k16} 矩阵指令 + \texttt{ldmatrix}
-碎片装载 + \texttt{cp.async} 三级流水（kStages$=$3）。主角是教学源码里的
+碎片装载 + \texttt{cp.async} 三级流水（kStages$=$3）。本章的教学源码是
 \texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn}（hgemm.cuh~L129，TN 布局，
 $B\sb M\times B\sb N\times B\sb K = 128\times128\times16$，block 256 线程）。
 
@@ -26,20 +26,20 @@ $B\sb M\times B\sb N\times B\sb K = 128\times128\times16$，block 256 线程）�
 
 \section{问题与动机}
 
-\textbf{动机一：WMMA 的四宗罪。}（1）布局黑盒：fragment 里哪个元素落在
+\textbf{动机一：WMMA 的四个局限。}（1）布局黑盒：fragment 里哪个元素落在
 哪个寄存器不可知，epilogue 只能整块 \texttt{store\_\allowbreak{}matrix\_\allowbreak{}sync}；
-（2）寄存器失控：fragment 数组完全交给编译器，溢出与否靠运气；
+（2）寄存器失控：fragment 数组完全交给编译器，溢出与否取决于编译器；
 （3）无寄存器双缓冲：每迭代必须等 ldmatrix 完成才能 mma，装载延迟裸露；
-（4）流水线深度只有 2，搬运抖动一大就会戳穿。手写 PTX 后这四点全部可控：
+（4）流水线深度只有 2，搬运延迟稍有波动就覆盖不住。手写 PTX 后这四点全部可控：
 布局白盒（11.3.2--11.3.4）、寄存器显式声明（\texttt{RA/RB/RC} 数组）、
 装载与计算的重叠可以手工编排。
 
 \textbf{动机二：TN 布局让 ldmatrix 零转置。}\allowbreak{}BLAS 的布局记号
-T/N 来自 Fortran 列主序世界：N（Normal）$=$ 列主序原生、
+T/N 来自 Fortran 的列主序约定：N（Normal）$=$ 列主序原生、
 T（Transposed）$=$ 行主序。于是 \textbf{TN} $=$ A 行主序 $+$ B 列主序，
 即 $C\sb {M\times N} = A\sb {M\times K}\times B\sb {K\times N}$，其中 B 以
 $B^{\top}\sb {N\times K}$ 行主序存放（源码头注释 hgemm.cuh~L10--22 对此有一段
-很好的辨析）。这个「转置存储」的妙处：A 与 $B^{\top}$ \textbf{都是行主序、
+很好的辨析）。这个「转置存储」的好处：A 与 $B^{\top}$ \textbf{都是行主序、
 内维都是 K}，cp.async 搬运完全对称；而 mma 指令要求的
 \texttt{.row.col}（A 行、B 列）恰好被「逐行装载 $B^{\top}$ $=$ 逐列装载 B」
 天然满足，\texttt{ldmatrix} 一个 \texttt{.trans} 都不用加（11.4.4）。
@@ -81,7 +81,7 @@ mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16
 \end{tabular}
 \end{table}
 
-三条精度语义（PTX 原文，写作 epilogue 时必须心里有数）：
+三条精度语义（PTX 原文，写 epilogue 时必须了解）：
 （1）\textbf{元素乘至少单精度}执行；
 （2）当 C 与 D 都是 \texttt{.f16} 时，\textbf{累加至少半精度}，
 也就是说本章 \texttt{f16.f16.f16.f16} 变体的累加链每条 \texttt{mma} 指令
@@ -173,7 +173,7 @@ $\mathrm{tig} = \mathrm{lane} \bmod 4$）：元素 $a\sb i$（$i = 0..7$，每
   \mathrm{col}(a\sb i) = 2\,\mathrm{tig} + (i \bmod 2) + 8\cdot[i \ge 4].
   \label{eq:11-apos}
 \end{equation}
-翻译成人话：每个 lane 持 A 的\textbf{两行}（$\mathrm{g}$ 与 $\mathrm{g}{+}8$）、
+翻译成直观表述：每个 lane 持 A 的\textbf{两行}（$\mathrm{g}$ 与 $\mathrm{g}{+}8$）、
 每行\textbf{两个相邻列对}（$k$ 半区的 $2\,\mathrm{tig}, 2\,\mathrm{tig}{+}1$）；
 四个寄存器恰好按 [左上, 左下, 右上, 右下] 四象限排布（图~\ref{fig:11-2a}）。
 一行 16 个元素由 4 个 lane（$\mathrm{tig} = 0..3$）拼成。
@@ -321,14 +321,14 @@ ldmatrix.sync.aligned.m8n8.x2.shared.b16 {r0, r1},         [addr];
 \end{tabular}
 \end{table}
 
-寻址协议是 \texttt{ldmatrix} 的灵魂：\textbf{每个矩阵 8 行，需要 8 个地址
+寻址协议是 \texttt{ldmatrix} 的核心：\textbf{每个矩阵 8 行，需要 8 个地址
 （每地址是一行的 16~B 起点）}；x4 共 32 个地址由 32 个 lane 一人一个提供，
 lane $t$ 的地址属于第 $t/8$ 个矩阵的第 $t\bmod 8$ 行；x2 只需 16 个地址
 （lane 16--31 的地址被忽略，PTX 允许把低位 lane 的地址复制过来凑数）。
 装载结果天然匹配 mma fragment：矩阵 $i$ 的行 $r$ 落在
 lane $4r + \mathrm{tig}$ 的寄存器 $r\sb i$ 的 $\mathrm{tig}$ 列对，
-恰好是式~\ref{eq:11-apos} 要求的分布。「\texttt{ldmatrix} 为
-\texttt{mma} 而生」说的就是这件事：一条指令完成 32 lane 的碎片协同装载，
+恰好是式~\ref{eq:11-apos} 要求的分布。这正是 \texttt{ldmatrix} 与
+\texttt{mma} 配套设计之处：一条指令完成 32 lane 的碎片协同装载，
 若用普通 \texttt{ld.shared}，同样的事需要每 lane 独立寻址 4 次
 且极易 bank conflict。
 
@@ -355,7 +355,7 @@ lane $4r + \mathrm{tig}$ 的寄存器 $r\sb i$ 的 $\mathrm{tig}$ 列对，
     {t=0-7 $\to$ m0; \ t=8-15 $\to$ m1; \ t=16-23 $\to$ m2; \ t=24-31 $\to$ m3};
   \node[draw=tkBlue, fill=tkFillBlue, align=center, font=\tiny\bfseries,
     minimum width=8.0cm, minimum height=0.5cm] at (4.0,-4.0)
-    {象限序 [UL, LL, UR, LR] $=$ mma 期望序（Eq 11.1），开箱即用};
+    {象限序 [UL, LL, UR, LR] $=$ mma 期望序（Eq 11.1），无需重排};
   \node[anchor=west, fill=tkFillGreen, draw=tkGreen, inner sep=2.5pt, font=\scriptsize\bfseries] at (8.8,-0.62)
     {B $k16n8$（存成 $B^{\top}$ 的 $n16k16$ 行主序）$\to$ two $8{\times}8$（x2）};
   \node[draw=colorx4!70!black, fill=colorx4!12, align=center, font=\tiny,
@@ -386,7 +386,7 @@ in-flight，即迭代 $k$ 结束时，tile $k{+}1$ 必须就位（供迭代 $k{+
 tile $k{+}2$ 的那组允许还没到。尾部（$k + \mathrm{kStages} - 1 \ge
 \mathrm{NUM\_K\_TILES}$，没有新 tile 可预取）切到 \texttt{wait\_\allowbreak{}group\allowbreak{}(0)}
 排空。与第~\ref{ch:10}~章对比：两级流水每个迭代都要 wait(0) 收口，
-三级流水稳态只 wait(1)。「组」这个记账单位让同步粒度从「每迭代全等」
+三级流水稳态只 wait(1)。「组」这个计数单位让同步粒度从「每迭代全等」
 放松为「保持距离即可」。三级轮转的稳态与尾部时序见图~\ref{fig:11-kstages3}。
 
 \begin{figure}[H]
@@ -529,7 +529,7 @@ CuTe 的 TiledMMA 与 Value Tile 概念（L180--183），
        $B\sb M = 16\cdot2\cdot4 = 128$，\quad $B\sb N = 8\cdot4\cdot4 = 128$};
   \end{scope}
 \end{tikzpicture}
-\caption{MMA warp $2\times4$ 排布（左，$128\times128$ block tile，浅色 $=$ warp 身份）：MMA0--7 按列主序——N 向 MMA0/2/4/6、M 向 MMA1/3/5/7（\texttt{warp\_m = warp\_id\%2} 变化快）；每 warp 块内 $4\times4$ 个 $m16n8$ atom 小格。右：单 warp 块放大（warp tile $64\times32$，蓝深 $=$ atom 块内位置）；侧栏三层记号 $B\sb M=16\cdot2\cdot4$、$B\sb N=8\cdot4\cdot4$。}
+\caption{MMA warp $2\times4$ 排布（左，$128\times128$ block tile，浅色 $=$ warp\_id）：MMA0--7 按列主序——N 向 MMA0/2/4/6、M 向 MMA1/3/5/7（\texttt{warp\_m = warp\_id\%2} 变化快）；每 warp 块内 $4\times4$ 个 $m16n8$ atom 小格。右：单 warp 块放大（warp tile $64\times32$，蓝深 $=$ atom 块内位置）；侧栏三层记号 $B\sb M=16\cdot2\cdot4$、$B\sb N=8\cdot4\cdot4$。}
 \label{fig:11-mma-layout}
 \end{figure}
 
@@ -556,7 +556,7 @@ CuTe 的 TiledMMA 与 Value Tile 概念（L180--183），
 \lstinputlisting[linerange={212-241},firstnumber=auto,
   title={hgemm.cuh L212-241（统一主循环：条件预取 tile $k{+}\mathrm{kStages}{-}1$）}]{../hgemm.cuh}
 
-与第~\ref{ch:10}~章「主循环从 $k{=}\mathrm{K\_STAGE}{-}1$ 起跳 + 尾部单独
+与第~\ref{ch:10}~章「主循环从 $k{=}\mathrm{K\_STAGE}{-}1$ 开始 + 尾部单独
 排空」的写法不同，这里用\textbf{统一循环}：$k$ 从 0 开始、迭代 $k$ 负责计算
 tile $k$、同时预取 tile $k+\mathrm{kStages}-1$（前 $\mathrm{kStages}{-}1$
 个 tile 已由预载填满）。预取带边界条件（L220 的 \texttt{if}），
@@ -615,7 +615,7 @@ $8\times16 = 128$ 条指令 $\times 4096$ FLOP $= 524{,}288$ FLOP。
 向量化写回，每个 lane 先把邻居的半行 shuffle 过来：
 \texttt{RC0[j]} 凑「$\mathrm{g}$ 行」（行 0--7 之一）的 4 条 \texttt{.b32}，
 \texttt{RC1[j]} 凑「$\mathrm{g}{+}8$ 行」的。随后只有
-\texttt{lane\%4==0} 的 lane 真正出手：
+\texttt{lane\%4==0} 的 lane 执行写回：
 
 \lstinputlisting[linerange={365-382},firstnumber=auto,
   title={hgemm.cuh L365-382（每 4-lane 组的首 lane 两条 128-bit store 写回）}]{../hgemm.cuh}
@@ -623,8 +623,8 @@ $8\times16 = 128$ 条指令 $\times 4096$ FLOP $= 524{,}288$ FLOP。
 行号映射 \texttt{lane\_id/4} $= \mathrm{g}$：lane 0/4/8/.../28 分别对
 $\mathrm{g}$ 行与 $\mathrm{g}{+}8$ 行各写一条
 \texttt{float4}（即 16~B）store，各覆盖 8 个 half；列起点由
-\texttt{warp\_n} 与 $j$ 平移。每个 warp 落笔 $64\times32$ 子块，
-与 11.4.1 的排布严丝合缝。写回没有经过 smem 中转：
+\texttt{warp\_n} 与 $j$ 平移。每个 warp 负责 $64\times32$ 子块，
+与 11.4.1 的排布完全一致。写回没有经过 smem 中转：
 寄存器布局白盒后 epilogue 可以走「shuffle $\to$ 直接宽写」的捷径，
 WMMA 做不到这一点（对照第~\ref{ch:10}~章坑五）。收拢与写回的数据流见图~\ref{fig:11-epilogue-shuffle}。
 
@@ -651,7 +651,7 @@ WMMA 做不到这一点（对照第~\ref{ch:10}~章坑五）。收拢与写回�
     \node at (2.1,{\yc-0.14}) {$c\sb\cb$};
   }
   \draw[very thick, vscAccent] (0,0.77) rectangle (\lw,1.33);
-  \node[anchor=south, text=vscAccent] at (1.3,1.42) {\texttt{lane\%4==0} 出手};
+  \node[anchor=south, text=vscAccent] at (1.3,1.42) {\texttt{lane\%4==0} 写回};
   \draw[->, thick] (2.7,0.3) .. controls +(0.5,0.1) and +(0.5,-0.12) .. (2.68,1.05);
   \draw[->, thick] (2.7,-0.45) .. controls +(0.85,0.18) and +(0.85,-0.2) .. (2.68,1.05);
   \draw[->, thick] (2.7,-1.2) .. controls +(1.2,0.28) and +(1.2,-0.3) .. (2.68,1.05);
@@ -681,7 +681,7 @@ WMMA 做不到这一点（对照第~\ref{ch:10}~章坑五）。收拢与写回�
      的 lane 每 $j$ 写两条 128-bit store——列起点由 \texttt{warp\_n} 与 $j$ 平移，
      整 warp 铺满 $64\times32$ 子块，不经 smem 中转。};
 \end{tikzpicture}
-\caption{Epilogue shuffle 收拢与写回：4-lane 组内 T0--T3 各持一对 $\{c\sb{2t},c\sb{2t+1}\}$（上行 $=$ 行 g、下行 $=$ 行 g{+}8 的寄存器对），\texttt{\_\_shfl\_sync} 从 lane+1/+2/+3 各收 2 个 half，把 RC0[j]（行 g）与 RC1[j]（行 g{+}8）各凑成 4 条 \texttt{.b32} $=$ 一条 16B \texttt{float4}；随后仅 \texttt{lane\%4==0} 的 lane 出手，行号 $=$ \texttt{lane\_id/4} $=$ g，两条 128-bit store 分别写行 g 与 g{+}8。}
+\caption{Epilogue shuffle 收拢与写回：4-lane 组内 T0--T3 各持一对 $\{c\sb{2t},c\sb{2t+1}\}$（上行 $=$ 行 g、下行 $=$ 行 g{+}8 的寄存器对），\texttt{\_\_shfl\_sync} 从 lane+1/+2/+3 各收 2 个 half，把 RC0[j]（行 g）与 RC1[j]（行 g{+}8）各凑成 4 条 \texttt{.b32} $=$ 一条 16B \texttt{float4}；随后仅 \texttt{lane\%4==0} 的 lane 执行写回，行号 $=$ \texttt{lane\_id/4} $=$ g，两条 128-bit store 分别写行 g 与 g{+}8。}
 \label{fig:11-epilogue-shuffle}
 \end{figure}
 \section{性能分析}
@@ -689,7 +689,7 @@ WMMA 做不到这一点（对照第~\ref{ch:10}~章坑五）。收拢与写回�
 每条 \texttt{mma.\allowbreak{}m16n8k16} 4096 FLOP、每 warp 每迭代 16 条、
 每 block（8 warp）每 k-迭代 $2\times128\times128\times16 = 524{,}288$ FLOP、
 搬入 $(128{+}128)\times16\times2$~B $= 8$~KB，smem 口径
-$AI = 64$ FLOP/B，compute-bound 没有悬念。
+$AI = 64$ FLOP/B，判定为 compute-bound。
 本章复测（RTX PRO 5000 72GB，sm\_120，2026-09-11；$M{=}N{=}K{=}1024$，
 warmup 3 + 10 次均值；\texttt{.\allowbreak{}tmp/\allowbreak{}book-bench/\allowbreak{}ch11/\allowbreak{}}）：
 \texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn} 76.55 TFLOPS（f16 累加）。
@@ -734,7 +734,7 @@ HGEMM MMA (S=3, BLK\_SW=1) & 0.000e+00 & 127.3/246.9 (0.52x) \\
 \texttt{sm\_\allowbreak{}\_\allowbreak{}inst\_\allowbreak{}executed\_\allowbreak{}pipe\_\allowbreak{}tensor\_\allowbreak{}op} 应占主导。
 若 HMMA 计数为零而 \texttt{FFMA}/\texttt{HFMA2} 居高，
 说明源码被宏门控剪掉、走了 CUDA Core 的 fallback 路径，
-这是改造这类教学 kernel 时最常见的「白忙一场」。
+这是改造这类教学 kernel 时最常见的失败模式。
 
 \section{实践经验}
 
@@ -758,7 +758,7 @@ HGEMM MMA (S=3, BLK\_SW=1) & 0.000e+00 & 127.3/246.9 (0.52x) \\
 \begin{kaogu}[F2 核校通过]{hgemm.cuh L311-333：epilogue C fragment 大注释}
   注释的行/列映射（\texttt{row = t/4}、列对 \texttt{t\%4}、
   RC[0] 行 0--7 / RC[1] 行 8--15）与 PTX Figure 83 公式逐格一致，
-  是源码里少见的「自带答案」注释。
+  是源码注释中少见的完整准确版本。
 \end{kaogu}
 
 \begin{kaogu}[F3 核校通过]{common.cuh L46-53：commit/wait 语义注释}
@@ -769,13 +769,13 @@ HGEMM MMA (S=3, BLK\_SW=1) & 0.000e+00 & 127.3/246.9 (0.52x) \\
 
 \section{常见坑}
 
-\textbf{坑一：B 没转置直接喂 kernel。}\allowbreak{}kernel 吃的是 $B^{\top}$（$N\times K$
+\textbf{坑一：B 没转置直接传入 kernel。}\allowbreak{}kernel 要求的输入是 $B^{\top}$（$N\times K$
 行主序）。把 $K\times N$ 的 B 原样传入，gmem 索引
 \texttt{n*K + k} 会按错误布局取数：不越界（总元素数相同）、不报错、
 结果系统性错误。测试须像 notes-v2 一样显式构造 $B^{\top}$
 （本章测试的 \texttt{hbt} 循环）。
 
-\textbf{坑二：\texttt{.aligned} 与 early return 打架。}\allowbreak{}mma/ldmatrix 要求
+\textbf{坑二：\texttt{.aligned} 与 early return 不相容。}\allowbreak{}mma/ldmatrix 要求
 全 warp 无分歧。本 kernel L174--175 的
 \texttt{if (... >= M ...) return;} 依赖
 「M/N 按 128 对齐时条件恒假」这一前提才安全；若形状未对齐，
@@ -784,7 +784,7 @@ HGEMM MMA (S=3, BLK\_SW=1) & 0.000e+00 & 127.3/246.9 (0.52x) \\
 改造 kernel 支持非对齐形状时必须先处理这里。
 
 \textbf{坑三：x2/x1 的高位 lane 地址。}\allowbreak{}PTX 允许 x2 时 lane 16--31 传
-「复制低位」的地址；但传\textbf{垃圾}（未映射地址）在部分架构上仍是雷。
+「复制低位」的地址；但传\textbf{无效值}（未映射地址）在部分架构上仍会出错。
 本 kernel 的 \texttt{lane\%8} / \texttt{(lane/8)\%2} 天然循环复用合法行号，
 属安全写法；自己写 kernel 时建议保持这种「地址周期化」的习惯。
 
@@ -797,9 +797,9 @@ HGEMM MMA (S=3, BLK\_SW=1) & 0.000e+00 & 127.3/246.9 (0.52x) \\
 而 \texttt{commit\_\allowbreak{}group} 在分支内。尾部迭代不 commit 却 wait(0)，
 per-thread 组计数对不上会提前放行（好在上一次的 sync 兜底；
 本 kernel 尾部迭代 \texttt{wait\_\allowbreak{}group\allowbreak{}(0)} 等到的是「至多 0 组」，
-语义仍安全）。改造时保持 commit/wait 配对的对称性。
+语义仍安全）。改造时保持 commit/wait 匹配的对称性。
 
-\textbf{坑五：f16 累加的精度悬崖。}\texttt{f16.f16.f16.f16} 的累加
+\textbf{坑五：f16 累加的精度陡降。}\texttt{f16.f16.f16.f16} 的累加
 「至少半精度」：每条 mma 边界舍回 f16。K$=$128 实测
 $1.5\times10^{-2}$；K 到千级、或输入幅值大于 1 时，误差进入
 $10^{-1}$ 量级并在个别元素上溢出 f16 范围（65504）。
@@ -820,7 +820,7 @@ $10^{-1}$ 量级并在个别元素上溢出 f16 范围（65504）。
 A：见表~\ref{tab:11-mma-fields}。要点：$m16n8k16$ 是
 A$16\times16$、B$16\times8$、C$16\times8$；\texttt{.row/.col} 是 A/B 的
 fragment 主序；四个类型依次 D/A/B/C；一条 4096 FLOP；
-\texttt{.\allowbreak{}sync/\allowbreak{}.\allowbreak{}aligned} 要求全 warp 齐步走。
+\texttt{.\allowbreak{}sync/\allowbreak{}.\allowbreak{}aligned} 要求全 warp 同步执行同一条指令。
 
 \textbf{Q2：A/B/C fragment 每个 lane 持哪些元素？}\\
 A：A：每 lane 8 个 f16、四个象限寄存器（行 $\mathrm{g}$/$\mathrm{g}{+}8$
@@ -829,13 +829,13 @@ B：每 lane 4 个、按列（列 $\mathrm{g}$、行 $2\mathrm{tig}$/$+8$）；
 C：每 lane 4 个、两行各一对（式~\ref{eq:11-apos}--\ref{eq:11-cpos}）。
 口诀：$\mathrm{g} = \mathrm{lane} \gg 2$ 管行/列块，$\mathrm{tig} = \mathrm{lane} \bmod 4$ 管 2 元素对。
 
-\textbf{Q3：\texttt{ldmatrix} 的寻址协议？为什么它和 mma 是天作之合？}\\
+\textbf{Q3：\texttt{ldmatrix} 的寻址协议？为什么它的装载结果直接匹配 mma？}\\
 A：每矩阵 8 行 $\to$ 8 个 lane 各供一行 16~B 首地址；x4 全 warp 4 矩阵、
 x2 前 16 lane 2 矩阵。装载结果直接落在 mma fragment 的期望分布上，
 一条指令替代 32 lane 各自的 \texttt{ld.shared} 寻址，且天然规避多数
 bank conflict。\texttt{.trans} 才是列装载（见 11.6 勘误）。
 
-\textbf{Q4：TN 布局为什么是 Tensor Core GEMM 的默认姿势？}\\
+\textbf{Q4：TN 布局为什么是 Tensor Core GEMM 的默认选择？}\\
 A：A 行主序、$B^{\top}$ 行主序 $\Rightarrow$ 内维都是 K：gmem$\to$smem
 搬运两侧对称且 16~B 连续；$B^{\top}$ 的行 $=$ B 的列，
 非 trans 的 \texttt{ldmatrix} 直接给出 \texttt{.col} 的 B fragment；
@@ -885,7 +885,7 @@ B & hgemm\_mma $256\times128\times64$  & 7.919e-03 & 5.0e-02 \\
 \end{table}
 
 两个 case 的误差量级（$10^{-2}$）远大于第~\ref{ch:10}~章 TF32 版的
-$10^{-5}$，这正是 f16 累加（11.3.1 语义（2））的实测指纹：
+$10^{-5}$，这正是 f16 累加（11.3.1 语义（2））的实测特征：
 fp64 参考没有半精度舍入，差异全部来自每条 mma 边界的 f16 舍回。
 动手实验建议：
 （1）把 \texttt{HMMA16816} 换成 \texttt{HMMA16816\allowbreak{}F32}（C 寄存器改 4 个、

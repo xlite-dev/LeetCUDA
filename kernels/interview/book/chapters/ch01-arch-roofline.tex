@@ -5,7 +5,7 @@
 \section{本章导读}
 
 这是全书的第一章。动手写任何 kernel 之前，先回答一个更基本的问题：
-GPU 到底是怎么跑代码的，瓶颈到底藏在哪里？这一章把 base.cuh 开头的
+GPU 到底是怎么跑代码的，瓶颈到底在哪里？这一章把 base.cuh 开头的
 Phase 0「面试速查表」（L1--86）扩写成一篇完整的第一课：从 SM（Streaming
 Multiprocessor，流式多处理器）的内部结构讲起，穿过 SIMT 执行模型与内存层级，
 最后落到 \textbf{Roofline 模型}：只靠乘除法就能预估 kernel 的性能上限。
@@ -29,9 +29,9 @@ memory-bound 与 compute-bound、occupancy 与延迟隐藏。
 
 直接后果是：\textbf{同一个算法在 GPU 上快慢与否，几乎完全由它的
 「访存-计算比例」决定}。一个向量加法（读两个数、加一次、写一个数）与一个
-矩阵乘法（读两个数要做几十上百次乘加）在 CPU 上差异不大，在 GPU 上却是天壤
-之别：前者把大部分时间花在等数据上（memory-bound），后者才能喂饱计算单元
-（compute-bound）。base.cuh L22--30 把这种判断浓缩成三条判据，外加一条
+矩阵乘法（读两个数要做几十上百次乘加）在 CPU 上差异不大，在 GPU 上差异
+极大：前者把大部分时间花在等数据上（memory-bound），后者才能让计算单元
+饱和（compute-bound）。base.cuh L22--30 把这种判断浓缩成三条判据，外加一条
 occupancy 公式：
 
 \begin{itemize}
@@ -98,12 +98,12 @@ L2 $\sim$12 TB/s、L1/SMEM $\sim$19 TB/s、Register $\sim$100+ TB/s），
 \item \textbf{Tensor Cores}：Hopper 每 SM 4 个第四代 Tensor Core，专门执行
   矩阵乘加（MMA）；Blackwell 的数量与形态随型号有差异，源码注释提醒「以
   官方 ISV guide 为准」，本书 Part II--IV 的大量篇幅都在围绕
-  如何喂饱这些 Tensor Core。
+  如何充分利用这些 Tensor Core。
 \item \textbf{Warp = 32 threads}：warp 是\textbf{最小调度与指令发射单元}，
   32 个线程锁步执行同一条指令（SIMT）。注意区分两个概念：线程是\textbf{执行}
   的最小粒度，warp 是\textbf{调度与发射}的最小粒度。硬件把 32 条「线程通道」
   捆绑成一个 warp，用一套取指-译码-发射逻辑服务 32 个计算 lane，控制逻辑
-  因此能以一当十地驱动海量 ALU。
+  的开销因此被摊薄，能以少量控制电路驱动大量 ALU。
 \end{itemize}
 
 \begin{figure}[H]
@@ -143,7 +143,7 @@ L2 $\sim$12 TB/s、L1/SMEM $\sim$19 TB/s、Register $\sim$100+ TB/s），
 \label{fig:1-4}
 \end{figure}
 
-\subsection{内存层级：一场带宽与容量的交易}
+\subsection{内存层级：带宽与容量的权衡}
 
 base.cuh L16--21 给出了 H100 参考下的带宽数量级：HBM3 约 3.35 TB/s（理论值，
 实际约 2.5--3.0 TB/s）、L2 约 12 TB/s、L1/SMEM 约 19 TB/s、寄存器等效带宽
@@ -184,8 +184,8 @@ base.cuh L16--21 给出了 H100 参考下的带宽数量级：HBM3 约 3.35 TB/s
 \label{fig:1-1}
 \end{figure}
 
-这张图给出 GPU 编程的一条基本规律：\textbf{数据每向上爬一层，就快一个台阶；
-kernel 优化的本质就是让数据尽量停在高层}。ch02 让归约的中间量全部驻留寄存器
+这张图给出 GPU 编程的一条基本规律：\textbf{数据每上移一层，带宽就高一级；
+kernel 优化的本质就是让数据尽量驻留在高层级}。ch02 让归约的中间量全部驻留寄存器
 （warp shuffle），ch09--12 用 tiling 把矩阵块搬进 smem 复用，ch13--14 用
 TMA+Warp Specialization 把「搬运」与「计算」解耦成流水线，走的都是同一条路。
 
@@ -205,7 +205,7 @@ Bytes 是它必然要在\textbf{最外层存储}（通常是 HBM）上搬运的�
 
 三个注意点。第一，FLOPs 数「算法固有」的量：乘加各记 1 次，因此一个点积
 $a\cdot b$（$N$ 项）是 $2N$ 次。第二，Bytes 是\textbf{不可再省的下界}：
-若算法要读一遍 $a$ 写一遍 $y$，无论 cache 多聪明，HBM 流量都不会低于
+若算法要读一遍 $a$ 写一遍 $y$，无论 cache 命中率多高，HBM 流量都不会低于
 $4(|a|+|y|)$ 字节（fp32）。第三，中间量不算：softmax 的逐元素 max、exp、
 sum 都在寄存器里完成，不出 HBM，所以不计入 Bytes。
 
@@ -229,7 +229,7 @@ Bytes 按「三个矩阵各读写一次」计：
 $K = 4096$ 时 $AI = 682.7$ FLOP/Byte，base.cuh L75--79 注释中
 「$\approx 685$」由此而来（注释取了 $137\mathrm{G}/200\mathrm{M}$ 的粗略值，
 精确值是 682.67，见 \S\ref{sec:ch01-kaogu}）。AI 随 $K$ \textbf{线性增长}：
-GEMM 是天生的 compute-bound 算法，矩阵越大越「划算」，这也是它适合 GPU 与
+GEMM 天然是 compute-bound 算法，矩阵越大每字节访存对应的计算量越多，这也是它适合 GPU 与
 Tensor Core 的根本原因。
 
 \textbf{GEMV（$y = Ax$）。}$A$ 是 $M{\times}K$，$x$ 是 $K$ 维向量，$y$ 是
@@ -239,7 +239,7 @@ $M$ 维输出。$y$ 的每个元素要 $K$ 次乘 $K$ 次加，$\mathrm{FLOPs} =
   AI\sb{\mathrm{GEMV}} \approx \frac{2MK}{4MK} = 0.5 \ \mathrm{FLOP/Byte}.
 \end{equation}
 矩阵 $A$ 里的每个元素只用一次就被扔掉，没有任何复用，AI 被「读一次只用
-一次」钉死在 0.5，比 GEMM 低三个数量级，是彻底的 memory-bound。ch08 将看到
+一次」固定在 0.5，比 GEMM 低三个数量级，是彻底的 memory-bound。ch08 将看到
 三种 warp 划分方式如何逼近这 0.5 对应的理论带宽。
 
 \textbf{Softmax（逐 token，宽度 $N$）。}对长度 $N$ 的行做 softmax：1 次 max
@@ -250,8 +250,8 @@ FLOPs；访存是读入 $x$、写出 $y$ 各一次，$4 \times 2N$ 字节：
 \end{equation}
 与 base.cuh L85 的口径一致。ch04 的三级递进（naive $\to$ safe $\to$ online）
 优化的是访存\textbf{趟数}（3-pass $\to$ 1-pass），而 AI 的上限 0.625 告诉
-我们：无论怎么优化，它始终是 memory-bound，最终成绩用「离理论带宽多近」来
-打分。
+我们：无论怎么优化，它始终是 memory-bound，最终性能用「离理论带宽多近」来
+衡量。
 
 \subsection{Roofline 模型与 ridge point}
 
@@ -315,8 +315,8 @@ compute-bound。
 $P\sb{peak}$ 相差约 15 倍，于是 ridge point 也相差 15 倍：在 H100 上，
 AI=100 的算子用 FP32 跑是 compute-bound（$100 > 20$），切到 FP16 TC 反而是
 memory-bound（$100 < 295$）。这解释了一个反直觉的现象：\textbf{把 kernel
-迁移到 Tensor Core 上未必变快}：如果它本是 memory-bound，算力翻 15 倍也
-无济于事。同理，把 ridge point 算错（比如把 sparse 峰值当 dense 用，见
+迁移到 Tensor Core 上未必变快}：如果它本是 memory-bound，算力提高 15 倍也
+无法提升性能。同理，把 ridge point 算错（比如把 sparse 峰值当 dense 用，见
 \S\ref{sec:ch01-pitfall}）会把 bound 类别判反，整个优化方向就全错了。
 
 \begin{figure}[H]
@@ -348,13 +348,13 @@ memory-bound（$100 < 295$）。这解释了一个反直觉的现象：\textbf{�
   \fill[tkOrange] (3.1, 0.389) circle (0.055);
   \fill[tkBlue] (3.1, 1.943) circle (0.055);
   \node[lab, anchor=south west, align=left, text=tkOrange] at (3.5, 0.58)
-    {FP32：$100 > 20$\\compute-bound（贴 67 屋顶）};
+    {FP32：$100 > 20$\\compute-bound（落在 67 屋顶）};
   \node[lab, anchor=west, align=left, text=tkBlue] at (3.75, 1.94)
     {FP16 TC：$100 < 295$\\memory-bound（仍在斜坡：$P=335$）};
   \node[lab, anchor=north west, align=left] at (0.4, 4.6)
     {两条斜坡共线\\（同一带宽 BW = 3.35 TB/s，\\$P = AI \times BW$，H100 SXM）};
   \node[lab, anchor=west, align=left, font=\scriptsize\bfseries]
-    at (6.9, 3.5) {算力翻 15 倍 $\ne$ 更快\\（若 kernel 本就 memory-bound）};
+    at (6.9, 3.5) {算力差 15 倍 $\ne$ 更快\\（若 kernel 本就 memory-bound）};
   \node[lab, anchor=north] at (6.6, -0.42) {算术强度 AI（FLOP/Byte）};
   \node[lab, rotate=90, anchor=south] at (-0.95, 3.3) {可达性能 P（TFLOP/s）};
 \end{tikzpicture}
@@ -368,18 +368,18 @@ Roofline 描述「算法-机器」的匹配，occupancy 描述「实现」的并
 GPU 隐藏内存延迟靠的不是 cache（容量太小），而是\textbf{warp 切换}：当
 warp A 因等 HBM 数据而停顿时，scheduler 立刻切到 warp B 发射指令；等到
 A 的数据到了再切回来。设单次 HBM 访问约 $500 \sim 800$ 个时钟周期，若要
-把发射口喂满，SM 上必须常驻足够多的活跃 warp。活跃 warp 数与硬件上限之比
+发射口持续有指令可发，SM 上必须常驻足够多的活跃 warp。活跃 warp 数与硬件上限之比
 就是 occupancy（base.cuh L27--30）：
 \begin{equation}
   \mathrm{occupancy} = \frac{\text{active warps / SM}}
                             {\text{max warps / SM}},
 \end{equation}
 它同时受三类资源钳制，实际值取各约束下的最小值：每线程寄存器数（寄存器
-用得越猛，能驻留的 warp 越少）、每 block 的 smem 用量（smem 用得多，
+用得越多，能驻留的 warp 越少）、每 block 的 smem 用量（smem 用得多，
 block 数就少）、block 大小（block 太小则凑不满 SM 的线程槽位）。本书后续
 反复出现这类权衡：ch12 的寄存器双缓冲用更多寄存器换流水线，ch14 的
 setmaxnreg 干脆在 producer/consumer 之间\textbf{动态重新分配}寄存器池，
-都是在 occupancy 这杆秤上做加减法。
+都是在 occupancy 这个维度上做取舍。
 
 \section{设计与实现}
 
@@ -460,7 +460,7 @@ TMA）属于 Part II 后半与 Part III/IV。读到这里建议翻回本表：�
 
 图 ch01-1（内存层级金字塔）与图 ch01-2（Roofline 示意）已分别在
 \S\ref{sec:ch01-sm} 与 \S\ref{sec:ch01-math} 给出 ASCII 占位版，二者将随
-RFC-H 升级为正式图（FIG-1-1、FIG-1-2）。这里补充一张「一次 HBM 读的一生」，
+RFC-H 升级为正式图（FIG-1-1、FIG-1-2）。这里补充一张「一次 HBM 读的全程」，
 把本章的概念串成时间线：
 
 \begin{figure}[htbp]
@@ -500,11 +500,11 @@ RFC-H 升级为正式图（FIG-1-1、FIG-1-2）。这里补充一张「一次 HB
   \node[seg, draw=tkBlue, fill=tkFillBlue, minimum width=1.45cm, minimum height=0.6cm] at (7.875, 0) {A};
   \draw[dashed, black!50] (7.15, -0.5) -- (7.15, 4.05);
   \node[anchor=north, font=\scriptsize, align=center] at (4.3, -0.55)
-    {occupancy = 可切换的 warp 数：A 挂起期间 warp B / C 顶上，发射口不空转};
+    {occupancy = 可切换的 warp 数：A 挂起期间切到 warp B / C，发射口不空转};
   \draw[-{Stealth[length=1.8mm]}] (0, -1.25) -- (9.3, -1.25);
   \node[anchor=west, font=\scriptsize] at (9.35, -1.25) {时间};
 \end{tikzpicture}
-\caption{一次访存的旅程与延迟隐藏（蓝=发射/执行，橙=等待/过渡延迟，绿=命中与恢复，红=直落 HBM 的最长延迟）}
+\caption{一次访存的全程与延迟隐藏（蓝=发射/执行，橙=等待/过渡延迟，绿=命中与恢复，红=直达 HBM 的最长延迟）}
 \label{fig:1-3}
 \end{figure}
 
@@ -592,15 +592,15 @@ GFLOP（运算\textbf{量}），FLOPS（每秒）是速率单位；该段实为 
   warp 内的分支两条路径串行执行，等效指令数翻倍。
 \item \textbf{Q：一句话说清 memory-bound 与 compute-bound？}\\
   A：算 AI，与 ridge point $AI^{*} = P\sb{peak}/BW$ 比较：低于则带宽瓶颈，
-  高于则算力瓶颈。优化方向完全不同：前者想 coalescing/向量化/tiling，
-  后者想 Tensor Core/指令效率。
+  高于则算力瓶颈。优化方向完全不同：前者靠 coalescing/向量化/tiling，
+  后者靠 Tensor Core/指令效率。
 \item \textbf{Q：为什么需要 occupancy？}\\
   A：延迟隐藏。GPU 不做分支预测与深级乱序，靠大量活跃 warp 之间的快速切换
   填满发射口；occupancy 低则切换不了，HBM 延迟（约 500--800 cycle）直接
   暴露。但 occupancy 受寄存器/smem/block 大小三重钳制，是权衡不是越大越好。
 \item \textbf{Q：寄存器溢出（spill）是什么？}\\
   A：每线程寄存器需求超过分配上限时，编译器把局部变量挪到 local memory
-  （实际在 HBM/L1），访存量暴涨、延迟暴露。用
+  （实际在 HBM/L1），访存量大幅增加、延迟暴露。用
   \texttt{-{}-ptxas-options=\allowbreak{}-v} 观察 spill 次数，出现即优先 reconsider
   thread tile 大小。
 \item \textbf{Q：L1 与 shared memory 的关系？}\\

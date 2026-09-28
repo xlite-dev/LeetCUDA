@@ -80,7 +80,7 @@ ARCH_OUTPUT[sm_90a]="notes_v2_sm90a.bin"
 
 # sm_120a — Blackwell (RTX 5090 / PRO 5000/6000)
 ARCH_GENCODE[sm_120a]="-gencode arch=compute_120a,code=sm_120a"
-ARCH_DEFINES[sm_120a]="-DNOTES_V2_ENABLE_CUTE -DNOTES_V2_ENABLE_TMA_MMA_WS -DNOTES_V2_ENABLE_CUDNN"
+ARCH_DEFINES[sm_120a]="-DNOTES_V2_ENABLE_CUTE -DNOTES_V2_ENABLE_TMA_MMA_WS -DNOTES_V2_ENABLE_CUDNN -DNOTES_V2_ENABLE_SM120_FP4"
 ARCH_LIB_PATH[sm_120a]="-L/usr/local/cuda/targets/x86_64-linux/lib/stubs"
 ARCH_LIBS[sm_120a]="-lcublas -lcudnn -lnvrtc -lcuda"
 ARCH_OUTPUT[sm_120a]="notes_v2_sm120a.bin"
@@ -94,7 +94,7 @@ ARCH_OUTPUT[sm_120a]="notes_v2_sm120a.bin"
 # survives on sm_120a AND sm_120f alike (112 USETMAXREG == PTX count on both);
 # sm_120f additionally keeps the whole sm_120 family binary-compatible.
 ARCH_GENCODE[sm_120f]="-gencode arch=compute_120f,code=sm_120f"
-ARCH_DEFINES[sm_120f]="-DNOTES_V2_ENABLE_CUTE -DNOTES_V2_ENABLE_TMA_MMA_WS -DNOTES_V2_ENABLE_CUDNN -DNOTES_V2_ENABLE_SETMAXNREGS -DNOTES_V2_FORCE_INLINE_ASYNC_PROXY"
+ARCH_DEFINES[sm_120f]="-DNOTES_V2_ENABLE_CUTE -DNOTES_V2_ENABLE_TMA_MMA_WS -DNOTES_V2_ENABLE_CUDNN -DNOTES_V2_ENABLE_SETMAXNREGS -DNOTES_V2_FORCE_INLINE_ASYNC_PROXY -DNOTES_V2_ENABLE_SM120_FP4"
 ARCH_LIB_PATH[sm_120f]="-L/usr/local/cuda/targets/x86_64-linux/lib/stubs"
 ARCH_LIBS[sm_120f]="-lcublas -lcudnn -lnvrtc -lcuda"
 ARCH_OUTPUT[sm_120f]="notes_v2_sm120f.bin"

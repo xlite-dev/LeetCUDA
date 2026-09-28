@@ -1,22 +1,22 @@
-% ch30-fp8-split-d-m4n2.tex — FP8(三)：split-D 与 M4N2——大 D 的两堵墙（RFC-K4）
+% ch30-fp8-split-d-m4n2.tex — FP8(三)：split-D 与 M4N2——大 D 的两个瓶颈（RFC-K4）
 % 源码：ffpa-attn(861d75e) cute/fp8/sm_120/split_d.cuh(956L) + split_d_m4n2.cuh(989L)
 %       + attn_traits.cuh(L109-311) + softmax.cuh(L74-231) + dispatch/cute_fp8.cuh
-\chapter{FP8（三）：split-D 与 M4N2——大 $D$ 的两堵墙}\label{ch:30}
+\chapter{FP8（三）：split-D 与 M4N2——大 $D$ 的两个瓶颈}\label{ch:30}
 
 \section{本章导读}
 
 第~\ref{ch:29}~章的 persist-D 把整个 $K$ tile（$B_c\times D$）一次装进
 smem、让单个 warp 独占 $O$ 的全部 $D$ 列。这在 $D\le 224$ 时是最优解；
-但 $D$ 继续增大，会同时撞上\textbf{两堵墙}：
+但 $D$ 继续增大，会同时遇到\textbf{两个瓶颈}：
 
 \begin{enumerate}[itemsep=0pt,topsep=2pt]
-  \item \textbf{smem 墙}：$K$ tile 字节数 $O(D)$，99KB 预算装不下——
+  \item \textbf{smem 瓶颈}：$K$ tile 字节数 $O(D)$，99KB 预算装不下——
         由 \textbf{split-D}（D 维分块）解决；
-  \item \textbf{寄存器墙}：$O$ 累加器 $O(D)$ 个 f32 寄存器/线程，逼近
+  \item \textbf{寄存器瓶颈}：$O$ 累加器 $O(D)$ 个 f32 寄存器/线程，逼近
         255 上限——由 \textbf{M4N2 TiledMMA}（atom 布局重排）解决。
 \end{enumerate}
 
-两堵墙正交：只做 split-D，寄存器照旧 $O(D)$；只做 M4N2，smem 照旧装不下。
+两个瓶颈正交：只做 split-D，寄存器照旧 $O(D)$；只做 M4N2，smem 照旧装不下。
 ffpa-attn 的 dispatch 按 $D$ 三分（\texttt{dispatch/\allowbreak{}cute\_fp8.cuh}
 L60--64）：
 
@@ -33,8 +33,8 @@ $D\ge 768$ & \texttt{split\_d\_m4n2.cuh}（本章） & M4N2 & $D/4$ \\
 \end{center}
 
 本章先推导 split-D 的分块恒等式（为什么它是\textbf{精确}变换，一个比特
-都不差），再建立 M4N2 的寄存器压力模型（为什么 $N$ 维劈开是数学上的唯一
-出口），最后走读两个 kernel 的实现差异，特别是 M4N2 带来的多笔新代价：
+都不差），再建立 M4N2 的寄存器压力模型（为什么 $N$ 维划分是数学上的唯一
+出路），最后走读两个 kernel 的实现差异，特别是 M4N2 带来的多笔新代价：
 P 的 SMEM roundtrip、跨 N-warp softmax 归约、$k_{Br}$ 减半与量化块
 错位等。所有机制均以
 fp8 家族为主线；fp16 家族同构（第~\ref{ch:25}~章已见其 fp16 版），fp4
@@ -42,14 +42,13 @@ fp8 家族为主线；fp16 家族同构（第~\ref{ch:25}~章已见其 fp16 版�
 
 \section{问题与动机}
 
-\subsection{两堵墙的数量级}
+\subsection{两个瓶颈的数量级}
 
-smem 墙好算：fp8 下 1B/元素，$B_c=128$ 的 $K$ tile 在 $D=512$ 时是
+smem 瓶颈容易估算：fp8 下 1B/元素，$B_c=128$ 的 $K$ tile 在 $D=512$ 时是
 64KB，加上 V stage 与 Q 就超 99KB 预算。persist-D 靠「K 槽位 0（Q 区）
-复用给最后一个 K stage」
-挤过去的前提是 $D\le 224$；$D$ 再大，唯一的路是把 $D$ 切块流水。
+复用给最后一个 K stage」勉强装下的前提是 $D\le 224$；$D$ 再大，唯一的办法是把 $D$ 切块流水。
 
-寄存器墙隐蔽一些。m16n8k32 atom 的 C-fragment 每 thread 持 4 个 f32；
+寄存器瓶颈隐蔽一些。m16n8k32 atom 的 C-fragment 每 thread 持 4 个 f32；
 M8N1 布局（8 个 M-warp、N 维单 warp 满编）下单 warp 独占输出的完整 $D$
 列，$k_{Br}=128$ 时 $O$ 累加器寄存器数是
 \begin{equation}\label{eq:30-oacc-m8n1}
@@ -57,11 +56,11 @@ O_{\text{acc}}=\frac{k_{Br}\cdot D}{256\ \text{threads}}=\frac{D}{2}
 \quad(\text{f32 regs/thread},\ k_{Br}=128),
 \end{equation}
 $D=512$ 时 256 个寄存器\textbf{超上限 1 个}（255），属边缘 spill；
-$D\ge 896$ 大量 spill 直接崩塌。实测（5090，fp16 家族同构）：$D=1024$ 时 M8N1 的
+$D\ge 896$ 大量 spill，性能急剧下降。实测（5090，fp16 家族同构）：$D=1024$ 时 M8N1 的
 $O_{\text{acc}}=512$ regs 溢出到 local memory，吞吐掉到 $\sim$100T；
 而 M4N2 同 $D$ 边缘 spill 仍有 154T。
 
-\subsection{split-D 与 M4N2 各管一堵墙}
+\subsection{split-D 与 M4N2 各解决一个瓶颈}
 
 \textbf{split-D} 回答「smem 怎么装下」：把 $D$ 切成 $D/k_{VDChunk}$ 个
 chunk，K/V 的 TMA 与 MMA 都按 chunk 流水，smem 只需常驻
@@ -73,7 +72,7 @@ thread 的 $O$ 列持有量减半（\ref{sec:30-regmodel}~节的推导）。
 代价各自独立：split-D 多了每 chunk 一次 producer-consumer 握手；M4N2
 使 $k_{Br}$ 从 128 减到 64（CTA 数翻倍）、P 必须走 SMEM roundtrip、
 softmax 需要跨 N-warp 归约。交叉点在 $D=768$：之下 M8N1 更快（无
-roundtrip 开销、$k_{Br}$ 大一倍），之上 M4N2 的寄存器红利开始占上风
+roundtrip 开销、$k_{Br}$ 大一倍），之上 M4N2 的寄存器收益开始占优
 （30.6.2~节）。
 
 \subsection{causal 精度的已知边界}
@@ -82,7 +81,7 @@ roundtrip 开销、$k_{Br}$ 大一倍），之上 M4N2 的寄存器红利开始�
 逐元素误差上界（causal 早期行 attend 的 key 少，
 QK/P 量化误差无法被平均）：
 $O$ 误差可保持在 $10^{-1}$ 量级但 lse 误差可达 $\sim 6\times10^{-2}$
-（近 1 概率的 e4m3 舍入），dense 则 $\sim 4\times10^{-3}$（m4n2 头注释无同款
+（近 1 概率的 e4m3 舍入），dense 则 $\sim 4\times10^{-3}$（m4n2 头注释无相同
 声明，但精度结构相同）。本机实测
 （30.6~节）三个 $D$ 的 causal 误差模式完全一致：序列前
 $\sim$30\% 的行误差大、其余干净、dense 全绿，这是 fp8 路径的
@@ -202,12 +201,12 @@ fragment（式~\ref{eq:30-qk-split}，f32/s32 累加，不引入新舍入点）�
 \label{fig:30-split-identity}
 \end{figure}
 
-需要真正「合并行统计」的不是 split-D，而是 M4N2 的 N-warp 劈分
+需要真正「合并行统计」的不是 split-D，而是 M4N2 的 N-warp 划分
 （\ref{sec:30-m4n2softmax}~节）。
 
-\subsection{M4N2 的 N-warp 劈分与 softmax 合并协议}\label{sec:30-m4n2softmax}
+\subsection{M4N2 的 N-warp 划分与 softmax 合并协议}\label{sec:30-m4n2softmax}
 
-M4N2 把 $B_c$（以及每个 $V$ chunk 的 $D$ 列）劈给 2 个 N-warp。于是
+M4N2 把 $B_c$（以及每个 $V$ chunk 的 $D$ 列）划分给 2 个 N-warp。于是
 每行 softmax 的统计量只持有一半：
 \begin{align}
 m_r &= \max\bigl(m_r^{(C_0)},\ m_r^{(C_1)}\bigr),\label{eq:30-maxmerge}\\
@@ -229,13 +228,13 @@ N-warp 位）。协议刻意\textbf{只留一个 barrier}：
         发射 $P=\exp2(s\cdot\gamma-(m-\text{offset}))$，本 warp 的
         tile sum 写 sum 段——\textbf{不再 barrier}（L112--141）；
   \item 调用方紧接着的 P 写读 roundtrip 自带
-        \texttt{\_\_syncthreads()}，顺带发布 sum 写；
+        \texttt{\_\_syncthreads()}，一并发布 sum 写；
         \texttt{finalize\_row\_sum\_m4n2}（L147--163）在 barrier 之后
         读两 warp 的 sum 相加，折进全局 $\ell_r$（L700--704）。
 \end{enumerate}
 
 省掉的是 3-sync 版本里专门的 sum 交换 barrier（每 KV tile 净省一次
-CTA sync，sum 的发布搭 P roundtrip 便车）；代价是 max 段与 sum 段
+CTA sync，sum 写入的发布复用 P roundtrip 的 barrier）；代价是 max 段与 sum 段
 \textbf{必须分开}，否则快 warp 可能在 peer 读走 max 之前用 sum 覆写它
 （L92--95 的 RAW 注释）。fp8 变体 \texttt{online\_softmax\_fp8\_fixed\_m4n2}
 （L174--239）在此基础上把第~\ref{ch:29}~章的
@@ -268,10 +267,10 @@ $32M_wN_w$ 个 thread，每 thread 上限 $65536/(32M_wN_w)$。$O$ 累加器对
 \begin{equation}\label{eq:30-smpool}
 \frac{D/(2N_w)}{65536/(32M_wN_w)}=\frac{D\cdot M_w}{4096}.
 \end{equation}
-$N_w$ \textbf{精确消去}：把输出列劈给更多 N-warp，同时把每-thread 上限
-等比例压低，per-SM 总占用纹丝不动（M4N4 与 M4N2 同为 $D/1024$ 占比）。
-只有减 $M_w$ 有效；$M_w=2$（M2N4）时占比 $D/2048$，是 $D>1024$ 的正解。
-根源是「$N=1$ 列方向没有并行红利」的数学结构，与实现细节无关。
+$N_w$ \textbf{精确消去}：把输出列划分给更多 N-warp，同时把每-thread 上限
+等比例压低，per-SM 总占用保持不变（M4N4 与 M4N2 同为 $D/1024$ 占比）。
+只有减 $M_w$ 有效；$M_w=2$（M2N4）时占比 $D/2048$，是 $D>1024$ 的正确选择。
+根源是「$N=1$ 列方向没有并行收益」的数学结构，与实现细节无关。
 
 \begin{figure}[H]
 \centering
@@ -330,7 +329,7 @@ $N_w$ \textbf{精确消去}：把输出列劈给更多 N-warp，同时把每-thr
      $=D\cdot M_w/4096$（式~\ref{eq:30-smpool}）：$N_w$ 精确消去（M4N4$\equiv$M4N2），
      只有减 $M_w$ 有效——$D{>}1024$ 的正解是 M2N4（$D/2048$）。};
 \end{tikzpicture}
-\caption{寄存器墙的定量视图。左：per-thread $O$ 累加器 $=D/(2N_w)$
+\caption{寄存器瓶颈的定量视图。左：per-thread $O$ 累加器 $=D/(2N_w)$
 （式~\ref{eq:30-regthread}）——M8N1 的 $D/2$ 在 $D{=}512$ 达 256（超 255 上限
 1 个，边缘 spill）、$D\ge896$ 大量 spill、$D{=}1024$ 溢出 local memory
 （$\sim$100T）；M4N2 的 $D/4$ 同点仅 256（154T）。右：5090 实测 D=1024 吞吐对比
@@ -339,13 +338,13 @@ $N_w$ \textbf{精确消去}：把输出列劈给更多 N-warp，同时把每-thr
 \label{fig:30-reg-pressure}
 \end{figure}
 
-据此也排除了两个诱人的捷径。其一，\textbf{QK 用 M8N1、PV 用 M4N2 的
+据此也排除了两条看似可行的捷径。其一，\textbf{QK 用 M8N1、PV 用 M4N2 的
 混合布局}：QK/PV 共享同一 Q tile，M 维必须一致；$k_{Br}=128$ 强制下
 PV M4N2 仍是 $D/2$，而 $k_{Br}=64$ 强制下 M8N1 的 8 个 M-warp 有 4 个
 在 PV 相空转（QK 算力浪费 50\%）。其二，\textbf{WS（warp
 specialization）版 split-D}：consumer 的 \texttt{setmaxnreg} 上限 232
 装不下 $D=512$ 的 256-reg $O$ 累加器，所以 split-D 家族保持非 WS
-结构（全体线程做 MMA，\texttt{tid==0} 顺手发 TMA，L28--30 注释），这与
+结构（全体线程做 MMA，\texttt{tid==0} 兼发 TMA，L28--30 注释），这与
 persist-D 的 WS 选择形成对照（29.4.2~节）。
 
 \section{设计与实现}
@@ -395,8 +394,8 @@ QK 与 V 两条流水独立计数（$k_{QKDChunk}=32$、$k_{VDChunk}=64$，QK �
 \texttt{full[stage]} $\to$ fence $\to$ MMA $\to$ arrive
 \texttt{empty[stage]} $\to$ \texttt{tid==0} 若
 \texttt{chunk+kStages} 未越界则等 empty 后发下一 chunk 的 TMA
-（Phase 1 L446--483、Phase 3 L678--756）。这正是第~\ref{ch:25}~章
-Flash Attention 流水的分形：多出来的只是「一个 KV tile 内部再分
+（Phase 1 L446--483、Phase 3 L678--756）。这与第~\ref{ch:25}~章
+Flash Attention 的流水同构：多出来的只是「一个 KV tile 内部再分
 chunk」这一层嵌套。
 
 量化侧全部沿用第~\ref{ch:28}--\ref{ch:29}~章的机制，无新增数学：
@@ -407,7 +406,7 @@ epilogue 的 $O=o_{\text{acc}}\cdot(1/448)/\ell$ 与批量
 R$\to$S(STSM)$\to$TMA（L759--936）。split-D 域内
 $k_{Bc}=128$，f16 PV acc 下 per-channel P 量化域
 $128\times448\times2.25>65504$
-会自动收窄到 224（29.3.4~节同款 constexpr，L426--436；f32 PV acc
+会自动收窄到 224（29.3.4~节同机制 constexpr，L426--436；f32 PV acc
 则恒为 448，不受此约束）。
 
 \subsection{M4N2 的三笔新代价}
@@ -435,7 +434,7 @@ QK C-fragment 写侧与 PV A-fragment 读侧两个坐标系（traits L279--284�
 group 按 128 行块编号（$g=(q_{\text{row}}/16)\cdot8+q_{\text{row}}\%8$），
 但 M4N2 的 $k_{Br}=64$：奇数注意 tile 的行号要先加
 \texttt{quant\_offset} 再查表，\texttt{quant\_rb} 单独换算块号。M8N1
-的 $k_{Br}=128$ 恰好与量化块同宽，天然无此事：这类「两套块宽不一致」
+的 $k_{Br}=128$ 恰好与量化块同宽，天然不存在此问题：这类「两套块宽不一致」
 的坑在 fp8 体系里反复出现（第~\ref{ch:28}~章 per-thread 64-group 同理）。
 
 \begin{figure}[H]
@@ -494,7 +493,7 @@ group 按 128 行块编号（$g=(q_{\text{row}}/16)\cdot8+q_{\text{row}}\%8$）�
      换算。M8N1 的 $k_{Br}{=}128$ 与量化块同宽，\texttt{quant\_offset} 恒 $0$，
      天然无此事——两套块宽不一致时，错查邻块 scale 的误差温和、难肉眼发现。};
 \end{tikzpicture}
-\caption{量化 128 行块与 M4N2 注意 tile（$k_{Br}{=}64$）的错位对齐。tile 1/3 的
+\caption{量化 128 行块与 M4N2 注意 tile（$k_{Br}{=}64$）的错位关系。tile 1/3 的
 起始行落在量化块内的偏移 64 处，其行号需先加 \texttt{quant\_offset} 再查 per-thread
 scale 表；tile 0/2 偏移为 0。M8N1 的 $k_{Br}{=}128$ 与量化块同宽，不存在该映射。}
 \label{fig:30-quant-align}
@@ -511,34 +510,34 @@ $-0.3\sim-0.4\%$，输出 bitwise 一致），现在 launcher 默认
 \texttt{reorg\_free=true}（\texttt{cute\_fp8\_split\_d.cuh} L105--124）；
 只有 fused-rescale 对保持关闭（\texttt{split\_d.cuh} L609--618 与
 \texttt{split\_d\_m4n2.cuh} L638--641 的缩略注释）。机理：split-D
-单 CTA/SM（256 线程）藏不住 FADD$\to$FFMA 多出来的 tensor pipe 压力，
-而 persist-D 是 384 线程 WS 藏得住。
+单 CTA/SM（256 线程）掩盖不了 FADD$\to$FFMA 多出来的 tensor pipe 压力，
+而 persist-D 是 384 线程 WS 能掩盖。
 
 stage 数的教训方向相反（PC-8）：m4n2 每级仅 12KB，99KB 容得下 7 级，
 但实测 s2$\to$s3 e2e 快 $9\sim13\%$（D=768、N=4096$\sim$16384，
 self+causal 合并口径），s4$\sim$s7 非单调更慢：launcher 的 stage 下限
 从 2 抬到 3（\texttt{cute\_fp8\_split\_d\_m4n2.cuh} L127--133）。s2 的问题
-是 K/V TMA 流水饿死（NCU 里 \texttt{@BRA}+\texttt{@NANOSLEEP} barrier
+是 K/V TMA 流水饥饿（NCU 里 \texttt{@BRA}+\texttt{@NANOSLEEP} barrier
 自旋主导）。这与 persist-D 的「加深 stages 证伪」结论相反，根源在于
-m4n2 的 occupancy 已被 255 regs 锁死在 1 CTA，加深 stage 没有 occupancy
+m4n2 的 occupancy 已被 255 寄存器上限限制在 1 CTA，加深 stage 没有 occupancy
 代价，只剩 TMA 遮蔽收益。
 
 \section{图示}
 
-图~\ref{fig:30-walls} 是全章的路线图：大 $D$ 的两堵墙，smem 随 $D$
-线性膨胀（$k_{Bc}\times D$ 字节）、per-thread 的 $O$ 寄存器随 $D$ 线性
+图~\ref{fig:30-walls} 是全章的路线图：大 $D$ 的两个瓶颈，smem 占用随 $D$
+线性增长（$k_{Bc}\times D$ 字节）、per-thread 的 $O$ 寄存器随 $D$ 线性
 增长，分别由 split-D
 （chunk 流水，smem 与 $D$ 解耦）与 M4N2（$N_w=2$ 把每线程 $O$ 从 $D/2$
-减到 $D/4$）拆掉，$D=768$ 是两者的实测交叉点，dispatch 据此三分路由。
-图~\ref{fig:30-m4n2} 深入寄存器墙解法的内部：$(4,2,1)$ atom 的线程-值
+减到 $D/4$）解决，$D=768$ 是两者的实测交叉点，dispatch 据此三分路由。
+图~\ref{fig:30-m4n2} 深入寄存器瓶颈解法的内部：$(4,2,1)$ atom 的线程-值
 布局，以及跨 N-warp softmax 的单 barrier 协议：max 段与 sum 段分置
-\texttt{smem\_exchange} 防 RAW，sum 的发布搭 P roundtrip barrier 的便车。
+\texttt{smem\_exchange} 防 RAW，sum 写入的发布复用 P roundtrip 的 barrier。
 
 \begin{figure}[htbp]
   \centering
   % was: \includegraphics[width=0.98\textwidth]{figures/drawio/fig-30-1-split-d-walls/fig-30-1-split-d-walls.png}
   \begin{tikzpicture}
-    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{7.4}{9.3}\selectfont \bfseries }] at (0.37,-0.354) {大 D 的两堵墙与 dispatch 三分路由（dispatch/cute\_fp8.cuh L60-64）};% w=17.433
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{7.4}{9.3}\selectfont \bfseries }] at (0.37,-0.354) {大 D 的两个瓶颈与 dispatch 三分路由（dispatch/cute\_fp8.cuh L60-64）};% w=17.433
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{6.1}{7.7}\selectfont \bfseries }] at (0.37,-1.078) {(1) D 轴三分（fp8 家族，fp16/fp4 同构）};% w=4.620
     \node[draw=tkBlue, fill=tkFillBlue, line width=0.5pt, minimum width=3.85cm, minimum height=1.02cm, inner sep=1pt, align=center, text width=3.79cm, font={\fontsize{5.7}{7.1}\selectfont }] at (2.295,-1.833) {};
     \node[anchor=center, inner sep=0pt, align=center, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkBlue} }] at (2.295,-1.555) {persist-D  D$\leq$224};% w=3.665
@@ -551,16 +550,16 @@ m4n2 的 occupancy 已被 255 regs 锁死在 1 CTA，加深 stage 没有 occupan
     \node[anchor=center, inner sep=0pt, align=center, font={\fontsize{4.8}{6.0}\selectfont \color{black!65} }] at (13.614,-2.017) {kBr/kBc=64/64 $\cdot$ non-WS 256T $\cdot$ O=D/4};% w=7.207
     \node[anchor=center, inner sep=0pt, align=center, font={\fontsize{5.2}{6.6}\selectfont \bfseries }] at (11.15,-1.001) {交叉点 D=768};% w=2.464
     \node[draw=tkRed, fill=tkFillRed, line width=0.5pt, minimum width=8.32cm, minimum height=2.62cm, inner sep=1pt, align=center, text width=8.25cm, font={\fontsize{5.7}{7.1}\selectfont }] at (4.528,-4.235) {};
-    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{6.1}{7.7}\selectfont \bfseries \color{tkRed} }] at (0.616,-3.219) {墙一 smem：K tile 字节 = Bc$\times$D$\times$1B，O(D)};% w=7.823
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{6.1}{7.7}\selectfont \bfseries \color{tkRed} }] at (0.616,-3.219) {瓶颈一 smem：K tile 字节 = Bc$\times$D$\times$1B，O(D)};% w=7.823
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (0.616,-3.634) {D=512、Bc=128 $\to$ K tile 64KB；加 V stage + Q 即超 99KB 预算};% w=7.823
-    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (0.616,-4.004) {persist-D 的 K stage-0 复用只在 D$\leq$224 挤得过};% w=7.823
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (0.616,-4.004) {persist-D 的 K stage-0 复用只在 D$\leq$224 装得下};% w=7.823
     \node[draw=tkRed, fill=none, line width=0.5pt, minimum width=3.70cm, minimum height=0.95cm, inner sep=1pt, align=center, text width=3.63cm, font={\fontsize{5.2}{6.6}\selectfont }] at (2.464,-4.759) {整块 K tile 一次进 smem\\（persist-D：D$\leq$224 专属）};
     \node[draw=tkGreen, fill=none, line width=0.5pt, minimum width=3.70cm, minimum height=0.95cm, inner sep=1pt, align=center, text width=3.63cm, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkGreen!70!black} }] at (6.468,-4.759) {split-D：D 切 chunk 流水\\每 stage 与总 D 无关};
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{black!55} }] at (0.616,-5.405) {chunk\_index = kv\_tile$\cdot$kDChunks + c，stage/phase 环形推进};% w=7.823
     \node[draw=tkPurple, fill=tkFillPurple, line width=0.5pt, minimum width=8.62cm, minimum height=2.62cm, inner sep=1pt, align=center, text width=8.56cm, font={\fontsize{5.7}{7.1}\selectfont }] at (13.49,-4.235) {};
-    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{6.1}{7.7}\selectfont \bfseries \color{tkPurple} }] at (9.425,-3.219) {墙二 寄存器：O 累加器 = D/(2N\_w) f32/线程};% w=8.131
-    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (9.425,-3.634) {M8N1 单 warp 独占整 D 列：D=512 $\to$ 256 regs 压线（上限 255）};% w=8.131
-    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (9.425,-4.004) {D$\geq$896 大量 spill 崩塌（D=1024 实测 \textasciitilde{}100T）};% w=8.131
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{6.1}{7.7}\selectfont \bfseries \color{tkPurple} }] at (9.425,-3.219) {瓶颈二 寄存器：O 累加器 = D/(2N\_w) f32/线程};% w=8.131
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (9.425,-3.634) {M8N1 单 warp 独占整 D 列：D=512 $\to$ 256 regs 超上限（255）};% w=8.131
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (9.425,-4.004) {D$\geq$896 大量 spill（D=1024 实测 \textasciitilde{}100T）};% w=8.131
     \node[draw=tkPurple, fill=none, line width=0.5pt, minimum width=3.85cm, minimum height=0.95cm, inner sep=1pt, align=center, text width=3.79cm, font={\fontsize{5.2}{6.6}\selectfont }] at (11.35,-4.759) {M8N1 (8,1,1)：O=D/2\\D=1024 $\to$ 512 regs 溢出};
     \node[draw=tkOrange, fill=none, line width=0.5pt, minimum width=3.85cm, minimum height=0.95cm, inner sep=1pt, align=center, text width=3.79cm, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkOrange!75!black} }] at (15.508,-4.759) {M4N2 (4,2,1)：O=D/4\\D=1024 $\to$ 256 regs 边缘 spill 154T};
     \node[draw=gray!55, fill=black!2, line width=0.5pt, minimum width=17.43cm, minimum height=2.31cm, inner sep=1pt, align=center, text width=17.37cm, font={\fontsize{5.7}{7.1}\selectfont }] at (9.086,-7.253) {};
@@ -589,8 +588,8 @@ m4n2 的 occupancy 已被 255 regs 锁死在 1 CTA，加深 stage 没有 occupan
     \draw[gray!55, line width=0.5pt] (10.718,-6.714) -- (10.718,-8.1);
     \draw[gray!55, line width=0.5pt] (9.302,-9.425) -- (9.302,-10.842);
   \end{tikzpicture}
-  \caption{大 $D$ 的两堵墙与 dispatch 三分路由。smem 墙由 split-D 拆
-  （chunk 流水，smem 与 $D$ 解耦）；寄存器墙由 M4N2 拆（$N_w=2$ 把
+  \caption{大 $D$ 的两个瓶颈与 dispatch 三分路由。smem 瓶颈由 split-D 解决
+  （chunk 流水，smem 与 $D$ 解耦）；寄存器瓶颈由 M4N2 解决（$N_w=2$ 把
   per-thread $O$ 从 $D/2$ 减到 $D/4$）；$D=768$ 是实测交叉点。}
   \label{fig:30-walls}
 \end{figure}
@@ -618,7 +617,7 @@ m4n2 的 occupancy 已被 255 regs 锁死在 1 CTA，加深 stage 没有 occupan
     \node[draw=tkOrange, fill=tkFillOrange, line width=0.5pt, minimum width=2.31cm, minimum height=0.80cm, inner sep=1pt, align=center, text width=2.25cm, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkOrange!75!black} }] at (15.323,-1.54) {LDSM\_N 读回\\A-fragment};
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{black!55} }] at (7.7,-2.171) {写侧 make\_tiled\_copy\_C(QK mma)，读侧 make\_tiled\_copy\_A(PV mma)};% w=8.778
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{tkRed} }] at (7.7,-2.449) {stmatrix 是 b16 操作写不了 1B e4m3 $\to$ DefaultCopy 向量化 store};% w=8.778
-    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkPurple} }] at (7.7,-2.787) {syncthreads 顺带发布 sum 段写入（协议(3)的便车）};% w=8.778
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkPurple} }] at (7.7,-2.787) {syncthreads 顺带发布 sum 段写入（复用协议(3) barrier）};% w=8.778
     \node[draw=gray!55, fill=black!2, line width=0.5pt, minimum width=17.43cm, minimum height=6.16cm, inner sep=1pt, align=center, text width=17.37cm, font={\fontsize{5.7}{7.1}\selectfont }] at (9.086,-7.33) {};
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{6.1}{7.7}\selectfont \bfseries }] at (0.616,-4.543) {(3) smem\_exchange 单 barrier 协议（1KB = max 段 [8][16] $\|$ sum 段 [8][16]）};% w=16.940
     \node[draw=tkBlue, fill=tkFillBlue, line width=0.5pt, minimum width=5.08cm, minimum height=0.86cm, inner sep=1pt, align=center, text width=5.02cm, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkBlue} }] at (3.157,-5.298) {max 段 [8 warps][16 rows]};
@@ -641,7 +640,7 @@ m4n2 的 occupancy 已被 255 regs 锁死在 1 CTA，加深 stage 没有 occupan
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (6.653,-7.469) {发射 P = exp2(s$\cdot$$\gamma$ $-$ (m $-$ offset))------P 直接落在量化域};% w=10.595
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (6.653,-7.808) {本 warp tile sum $\times$ 1/(v\_s$\cdot$448) 写 sum 段（发布留给步骤(3)）};% w=10.595
     \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=10.96cm, minimum height=1.48cm, inner sep=1pt, align=center, text width=10.90cm, font={\fontsize{5.7}{7.1}\selectfont }] at (11.95,-9.302) {};
-    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkGreen!70!black} }] at (6.653,-8.824) {step 3 $\cdot$ 搭便车（P roundtrip barrier）};% w=10.595
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkGreen!70!black} }] at (6.653,-8.824) {step 3 $\cdot$ 复用 P roundtrip barrier};% w=10.595
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (6.653,-9.163) {P 写读 SMEM roundtrip 自带的 syncthreads 顺带发布 sum 写};% w=10.595
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (6.653,-9.502) {finalize\_row\_sum\_m4n2：$\ell$ = $\ell$$\cdot$scale + $\Sigma$(自己, peer)------省 2 次 barrier};% w=10.595
     \draw[tkPurple, line width=0.8pt, dashed, -{Stealth[length=2.2pt,width=1.8pt]}] (1.078,-1.786) -- (1.54,-1.848) -- (1.54,-1.91);
@@ -649,8 +648,8 @@ m4n2 的 occupancy 已被 255 regs 锁死在 1 CTA，加深 stage 没有 occupan
     \draw[black!75, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (13.552,-1.54) -- (14.168,-1.54);
   \end{tikzpicture}
   \caption{M4N2 的 $(4,2,1)$ atom 布局与跨 N-warp softmax 单 barrier
-  协议。max 段与 sum 段分置 \texttt{smem\_exchange} 防 RAW；sum 的
-  发布搭 P roundtrip barrier 的便车。}
+  协议。max 段与 sum 段分置 \texttt{smem\_exchange} 防 RAW；sum 写入的
+  发布复用 P roundtrip 的 barrier。}
   \label{fig:30-m4n2}
 \end{figure}
 
@@ -684,10 +683,10 @@ $D$ & task & FFPA ms & SDPA ms & TFLOPS & speedup \\
 
 self-attn 的 speedup 从 $D=256$ 的 1.30x 跳到
 $D=320$ 的 3.76x，拐点不在 kernel 而在\textbf{参照系}：SDPA 在
-$D\notin\{64,128\}$ 时掉出最优 kernel 选择，fp8 的 1B 元素带宽优势
-立即显形。TFLOPS 随 $D$ 单调下降（271$\to$203T），$D$ 越大
+$D\notin\{64,128\}$ 时不再命中最优 kernel，fp8 的 1B 元素带宽优势
+立即显现。TFLOPS 随 $D$ 单调下降（271$\to$203T），$D$ 越大
 softmax 与 P 量化等 $O(B_c)$ 项占比越高、$O$ 寄存器压力越大，这是
-split-D 无法消除的税。causal 的 allclose 在 D=320 bf16 与
+split-D 无法消除的固有开销。causal 的 allclose 在 D=320 bf16 与
 D=512 fp16 两格临界失败（见 30.2.3~节的已知边界说明），dense 六格
 全绿，数据落盘 \texttt{.tmp/book-bench/ch30/}。
 
@@ -695,7 +694,7 @@ D=512 fp16 两格临界失败（见 30.2.3~节的已知边界说明），dense �
 
 本机 headdim 编译集止于 512，M4N2 只能引用 5090 数据（fp16 家族同构、
 同一 dispatch 交叉点）：$D\le640$ 时 M8N1 快 $2\sim16\%$；
-$D\ge768$ 时 M4N2 快 $+7\%@768$、$+11\%@896$、$+55\%@1024$。崩塌侧
+$D\ge768$ 时 M4N2 快 $+7\%@768$、$+11\%@896$、$+55\%@1024$。劣化一侧
 的数字更有教学价值：$D=1024$ 时 M8N1 的 $O_{\text{acc}}=512$ regs
 溢出 local memory，吞吐 $\sim$100T；M4N2 同 $D$ 边缘 spill 仍有
 154T。\texttt{FFPA\_FP8\_FORCE\_KERNEL=split\_d|m4n2}（$224<D\le1024$，
@@ -706,7 +705,7 @@ $D\ge768$ 时 M4N2 快 $+7\%@768$、$+11\%@896$、$+55\%@1024$。崩塌侧
 \subsection{roofline 视角}
 
 fp8 split-D 在 $D=512$ 的 203T 大约是 fp8 persist-D 峰值（365T，
-表~29.2）的 56\%。差价的构成：$O$ 累加器随 $D$ 翻倍的寄存器税
+表~29.2）的 56\%。差距的构成：$O$ 累加器随 $D$ 翻倍的寄存器开销
 （occupancy 1 CTA）、chunk 循环多出的 barrier 握手、以及 epilogue
 批量 staging 的 smem 往返。这并不构成 split-D 的失败：绝对吞吐仍高于
 fp16 家族同 $D$ 量级，带宽侧（1B/元素）更是 3.76x speedup 的直接
@@ -743,7 +742,7 @@ D=512（fp16）。
 
 split-D/M4N2 是 $D>224$ 的\textbf{被迫选择}，不是普适更优。三条负面
 证据：WS 版 split-D 被 setmaxnreg 232 上限否决；QK/PV 混合 atom 布局
-被 M 维一致性否决；fused-rescale 在 split-D 域被单 CTA 藏不住的
+被 M 维一致性否决；fused-rescale 在 split-D 域被单 CTA 掩盖不了的
 tensor pipe 压力否决。三条都是「在 persist-D 域成立的优化不能平移」
 的实例，迁移优化前先核对 occupancy 与寄存器结构是否同型。
 
@@ -754,7 +753,7 @@ tensor pipe 压力否决。三条都是「在 persist-D 域成立的优化不能
         \texttt{tiled\_mma\_qk} 构造 \texttt{make\_tiled\_copy\_C}，
         读侧从 PV 的 \texttt{tiled\_mma\_pv} 构造
         \texttt{make\_tiled\_copy\_A}；手写 A-operand 映射与 LDSM
-        读侧不对称会数值爆炸（sm80 家族血泪，L685--698 用
+        读侧不对称会产生错误数值（sm80 家族的实测教训，L685--698 用
         \texttt{DefaultCopy} 规避向量化陷阱）。
   \item \textbf{max/sum 同区覆写}：单 barrier 协议里 sum 写与 peer
         max 读之间没有同步，两段必须分置；合成一块省下的 512B 换来
@@ -769,8 +768,8 @@ tensor pipe 压力否决。三条都是「在 persist-D 域成立的优化不能
         字节数；O staging 断言要乘 \texttt{sizeof(ElementO)}，否则
         预算虚大一倍（L105--108）。
   \item \textbf{stage 下限的家族差异}：persist-D 抬 stages 已证伪、
-        m4n2 抬到 3 是全局最优——差别只在 occupancy 是否已被锁死；
-        跨家族抄 stage 配置前先想清楚这一条。
+        m4n2 抬到 3 是全局最优——差别只在 occupancy 是否已被限制；
+        跨家族照搬 stage 配置前先想清楚这一条。
 \end{enumerate}
 
 \section{面试要点速查}
@@ -780,21 +779,21 @@ tensor pipe 压力否决。三条都是「在 persist-D 域成立的优化不能
         进同一 fragment（式~\ref{eq:30-qk-split}）；PV 侧是输出列维，
         各 chunk 独立（式~\ref{eq:30-pv-split}）；softmax 行统计与
         $D$ 切分无关——不产生 per-chunk 的 $(m,\ell)$。
-  \item \textbf{M4N2 减的是哪一维}？$N$ 维（输出列劈 2 warp），
+  \item \textbf{M4N2 减的是哪一维}？$N$ 维（输出列划分给 2 个 warp），
         per-thread $O$ 从 $D/2$ 到 $D/4$；但 per-SM 池占比
         $D\cdot M_w/4096$ 里 $N_w$ 消去（式~\ref{eq:30-smpool}），
-        只有减 $M_w$ 才降总量——所以 $D>1024$ 的正解是 M2N4。
+        只有减 $M_w$ 才降总量——所以 $D>1024$ 应选 M2N4。
   \item \textbf{跨 N-warp softmax 协议}？max 段交换 + 单 barrier；
-        sum 搭 P roundtrip barrier 的便车由 \texttt{finalize} 折叠；
+        sum 写入的发布复用 P roundtrip 的 barrier，由 \texttt{finalize} 折叠；
         两 N-warp 必须持有相同 $(m,\ell)$ 否则 rescale 因子分裂。
   \item \textbf{P 为什么要过 SMEM}？M4N2 每 N-warp 只持半行
         $B_c$ 列，A-operand 无法 warp 内重建；roundtrip 4KB/tile。
   \item \textbf{交叉点为何在 $D=768$}？之下 M8N1 无 roundtrip 且
         $k_{Br}=128$ 效率高；之上 $D/2$ 逼近/超过 255 寄存器上限，
-        M4N2 的 $D/4$ 开始统治（5090：+7\%@768 $\to$ +55\%@1024）。
+        M4N2 的 $D/4$ 开始占优（5090：+7\%@768 $\to$ +55\%@1024）。
   \item \textbf{split-D 为何非 WS}？setmaxnreg consumer 上限 232
         装不下 $D\ge512$ 的 256-reg $O$ 累加器；全线程 MMA +
-        tid==0 发 TMA 是被迫也是合理。
+        tid==0 发 TMA 既是被迫也是合理的。
   \item \textbf{fp8 causal 早期行为何误差大}？attend 的 key 少，
         $P$ 分布尖，e4m3 相对舍入不被平均；dense 无此问题；
         工程解法是 hybrid 前若干行 fp16。
@@ -816,7 +815,7 @@ tensor pipe 压力否决。三条都是「在 persist-D 域成立的优化不能
         \texttt{FFPA\_FP8\_\allowbreak FORCE\_KERNEL} 为
         \texttt{split\_d} 或 \texttt{m4n2}，
         跑 $D\in\{512,768,1024\}$，复现交叉点与 D=1024 的
-        崩塌/边缘 spill 对比。
+        劣化/边缘 spill 对比。
 \end{enumerate}
 
 \section*{延伸阅读}

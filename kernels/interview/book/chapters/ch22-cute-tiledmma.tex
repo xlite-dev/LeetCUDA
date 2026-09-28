@@ -12,7 +12,7 @@
 \textbf{计算怎么分给线程}。一条 \texttt{mma.\allowbreak{}sync.\allowbreak{}aligned.\allowbreak{}m16n8k16} 是硬件
 给出的最小计算单元，它规定了 32 个 lane 各自的 4（或 8）个寄存器里装哪几个
 元素；而一个真实 kernel 的 tile 远大于 $16\times8\times16$，于是「拿多个
-MMA 原子去铺满 tile」这件事必须有个说法：这就是 \textbf{TiledMMA}：
+MMA 原子去铺满 tile」需要一个统一的描述：这就是 \textbf{TiledMMA}：
 原子 $\times$ 原子的排布 $\times$ 目标 tile 尺寸。
 
 本章沿着第~\ref{ch:21}~章的 (thread, value) 语言继续：第~\ref{ch:21}~章里
@@ -58,8 +58,8 @@ tensor core，算完再把 $16\times8$ 的 C 分散写回 32 个 lane 的寄存�
   \label{eq:22-ptx-a}
 \end{equation}
 
-外加「$+8$ 行」与「$+8$ 列」两套偏移把 8 个 half 填满。B（$8\times16$）也是
-类似的故事。手写版（第~\ref{ch:11}~章）的做法是：把这些式子连同 ldmatrix
+外加「$+8$ 行」与「$+8$ 列」两套偏移把 8 个 half 填满。B（$8\times16$）的
+对应关系类似。手写版（第~\ref{ch:11}~章）的做法是：把这些式子连同 ldmatrix
 的 lane 地址表一起写在 kernel 里。这条路能走通，但三个痛点随规模一起放大：
 
 \begin{itemize}
@@ -174,14 +174,14 @@ A 为 $(8,1,1)$（8 个 half）、B 为 $(4,1,1)$、C 为 $(4,1,1)$，与
 价值（tile 放大后的 remainder 与多 warp 的重复因子）要到 3.2--3.3 节才
 显现。
 
-\subsection{TiledMMA：原子、排布、tile 三件套}
+\subsection{TiledMMA：原子、排布、tile 三个参数}
 
 再回到动机里那两层「重复」：\textbf{并行维度}（多起执行器）与\textbf{串行
 维度}（一个执行器循环执行）。CuTe 把两者装进
 \texttt{make\_\allowbreak{}tiled\_\allowbreak{}mma\allowbreak{}(atom,\allowbreak{} Atom\allowbreak{}Layout\allowbreak{}MNK,\allowbreak{} Permutation\allowbreak{}MNK)} 的三个参数：
 原子是硬件粒度，第二个参数是\textbf{warp 排布}（哪个 warp 覆盖哪个原子位置，
 负责并行重复），第三个是\textbf{目标 tile 尺寸}（含 K，决定一个 threadblock
-一次「打出去」的计算块）。内核把两者合成为
+一次执行的计算块）。内核把两者合成为
 
 \begin{equation}
   \mathrm{ThrLayoutVMNK} = \mathrm{tiled\_product}(\mathrm{ThrID},\
@@ -215,8 +215,7 @@ $\mathrm{ThrM}$、N 对应 $\mathrm{ThrN}$、K 对应 $\mathrm{ThrK}$）。
 用映射语言说：\texttt{Thr\allowbreak{}Layout\allowbreak{}VMNK} 把\textbf{线程编号}拆成
 $(\mathrm{ThrV},(\mathrm{ThrM},\mathrm{ThrN},\mathrm{ThrK}))$ 四层：先看
 warp 内部（$\mathrm{ThrV}$），再看「第几个 warp 落在哪个方向」。
-「谁并行、谁重复」这两个问题的答案，就藏在把线程编号拆成 VMNK 的
-那一刻。
+「谁并行、谁重复」这两个问题的答案，都由线程编号到 VMNK 的分解给出。
 
 一个自然的疑问是：既然 warp 排布 $+$ 原子尺寸已经能划分 tile，为什么还要
 第三个（tile）参数？@竹熙佳处给出两条理由，读 tiled mma 时值得记住。其一
@@ -229,7 +228,7 @@ warp 内部（$\mathrm{ThrV}$），再看「第几个 warp 落在哪个方向」
 \subsection{q 的推导链：从 tile 到 fragment}
 
 真正的工作在 \texttt{thrfrg\_\allowbreak{}A/\allowbreak{}B/\allowbreak{}C} 里，它是四步 layout 代数
-（第~\ref{ch:20}~章的全部工具在这里合体）。四步走的是一条固定流水线：
+（第~\ref{ch:20}~章的全部工具在这里综合使用）。四步走的是一条固定流水线：
 \textbf{先按 tile 切、再按原子切、把原子坐标换成 (线程, 值)、最后按 warp
 排布把线程剥出来}。以 A 为例（B/C 只是把 mode 换成 $(N,K)$ / $(M,N)$）：
 
@@ -257,8 +256,9 @@ warp 内部（$\mathrm{ThrV}$），再看「第几个 warp 落在哪个方向」
 坐标，再经 \texttt{LayoutA\_TV} 换成 (线程, 值)}。四步里的三个量各司其职：
 第 (1) 步的 $\mathrm{perm}$ 决定「一个 tile 多大」，第 (2) 步的
 $\mathrm{atom}$ 决定「一条指令多大」，第 (4) 步的
-$\mathrm{ThrM/ThrK}$ 决定「多少 warp 分摊」，正是 3.2 节三件套的第三次
-出场；对线程 $t$ 来说，前三步的结果人人相同，只有第 (4) 步把他自己摘出来。
+$\mathrm{ThrM/ThrK}$ 决定「多少 warp 分摊」，正是 3.2 节三个参数的第三次
+出现；对线程 $t$ 来说，前三步的结果对所有线程相同，只有第 (4) 步把该线程
+自己区分出来。
 
 把第 (4) 步的线程坐标 $(\mathrm{ThrV},\mathrm{ThrM},\mathrm{ThrK})$ 用
 \texttt{get\_\allowbreak{}slice\allowbreak{}(t)} 固定住，剩下的就是该线程的 fragment 形状：
@@ -399,10 +399,10 @@ $\times$ $\mathrm{MMA}_K=4$）。}
 
 把三个 fragment 的每线程元素数乘以线程数，得到的是「数据被读了几遍」：
 C 恰好等于 tile 元素数（$128\times32 = 4096 = 64\times64$，双射），
-A 也是（$\mathrm{ThrK}=1$ 时无 K-warp 重复），B 是 4 倍。这条账在选 tile 时
+A 也是（$\mathrm{ThrK}=1$ 时无 K-warp 重复），B 是 4 倍。这个重复因子在选 tile 时
 必须算清楚：B 的 4 倍重复意味着 128 个 half/线程的寄存器开销，它不占
-smem，但吃寄存器预算。守恒式也是最便宜的自检：两边对不上，说明有数据没有
-线程负责、或有线程在空转（本章测试 case D 就是这条账的逐点版本）。
+smem，但占用寄存器预算。守恒式也是最便宜的自检：两边对不上，说明有数据没有
+线程负责、或有线程在空转（本章测试 case D 就是这条守恒式的逐点版本）。
 
 当 tensor 比 tile 大时，partition 会多出「tile 重复」mode：$64\times64$ 的
 tile 作用在 $64\times256$ 的 C 上，$\mathrm{MMA}_N$ 从 8 变成 32。这不是新
@@ -447,7 +447,7 @@ $[0,64)$，这就是 $\mathrm{ThrM}=4$、$\mathrm{atom}_M=16$ 的直接推论。
         Q/KV 的 smem 视图；$64\times64$ 的 tile 实测
         \texttt{cosize} $=4096$（与 $64\times64$ 个 half 一致，无空洞）；
   \item \texttt{Smem\allowbreak{}Layout\allowbreak{}Vt}：把 KV 的布局\emph{转置}成「$d$ 为行、$kv$ 为列」，
-        供 PV 的 B（$V^T$）使用，这是 ch19 讲过的「$V$ 以转置形态喂给
+        供 PV 的 B（$V^T$）使用，这是 ch19 讲过的「$V$ 以转置形态交给
         MMA」的布局表达；
   \item \texttt{Mma\allowbreak{}Atom =\allowbreak{} MMA\_\allowbreak{}Atom\allowbreak{}<SM80\_\allowbreak{}16x8x16\_\allowbreak{}F32\allowbreak{}F16\allowbreak{}F16\allowbreak{}F32\_\allowbreak{}TN>}：
         F32 累加（attention 的数值要求），与 3.1 节的 fragment 一致；
@@ -469,7 +469,7 @@ $\mathrm{MMA}_N = 8$（$8$ 个 $8$ 列的原子），全部落在同一个 warp 
 \textbf{为什么 PV 用 $64\times16$？}因为 acc\_O 是「$64\times D$-chunk $\times$
 $D$ 方向 chunk 数」的大数组。每线程每个 chunk 32 个 float，
 $D=512$ 时 $8$ 个 chunk 共 \textbf{256 个寄存器}，这已经逼近寄存器文件的上限
-（第~\ref{ch:19}~章的寄存器压力讨论）。若把 PV 的 N 也拉到 64，单次 gemm
+（第~\ref{ch:19}~章的寄存器压力讨论）。若把 PV 的 N 也取 64，单次 gemm
 调用的 C 视图会从 8 涨到 32、B fragment 随之线性增长，S$\to$R 拷贝粒度
 变粗，常驻 acc\_O 并不变。实测 PV 在 $(64,16)$ 的 C 上
 每线程 $(4,1,2) = 8$ 个 float，与注释「EURepeat$=<1,2,1>$」一致。
@@ -680,7 +680,7 @@ $\times$ $2$ 相邻列），两个相邻 atom 共 $8$ 个；右（A 视角）：
   \node[anchor=west, font=\footnotesize\bfseries] at (40,29)
     {TiledMMA partition —— QK $(64,64,64)$ \& PV $(64,16,16)$ on 128 threads (4 warps)};
   \node[anchor=west, font=\scriptsize] at (40,52)
-    {同一组线程承载两个 tile：QK 大 tile 吃满吞吐，PV 小 tile 压住 acc\_O 寄存器};
+    {同组线程承载两个 tile：QK 大 tile 达吞吐上限，PV 小 tile 压住 acc\_O 寄存器};
   \node[anchor=west, font=\scriptsize, text=tkBlue] at (40,88)
     {\textcircled{1} 线程划分：QK tile $(64\times64)$，4 个 warp 各覆盖 16 行};
   \foreach \rr/\wr in {0/{warp 0: rows [0, 16)}, 1/{warp 1: rows [16, 32)},
@@ -707,7 +707,7 @@ $\times$ $2$ 相邻列），两个相邻 atom 共 $8$ 个；右（A 视角）：
   \node[anchor=west, font=\tiny] at (40,233)
     {warp 内沿 N 方向重复 8 个 m16n8 原子（MMA\_N $= 8$）};
   \node[anchor=west, font=\scriptsize, text=tkGreen] at (40,258)
-    {\textcircled{2} fragment 账目：每线程形状 $(\mathrm{MMA}, \mathrm{MMA\_M}, \mathrm{MMA\_K})$，实测值};
+    {\textcircled{2} fragment 明细：每线程形状 $(\mathrm{MMA}, \mathrm{MMA\_M}, \mathrm{MMA\_K})$，实测值};
   \foreach \cx/\hd/\col in {165/{A (Q)}/tkBlue, 438/{B (K)}/tkGreen, 711/{C (S)}/tkOrange}{
     \node[draw=\col, fill=white, minimum width=4.0cm, minimum height=1.344cm,
           inner sep=0pt] at (\cx,314) {};
@@ -727,7 +727,7 @@ $\times$ $2$ 相邻列），两个相邻 atom 共 $8$ 个；右（A 视角）：
     {守恒式：A 与 C 双射覆盖整个 tile；B 按 M-warp 数重复（式~\eqref{eq:22-dup}），
      这是 warp 排布的代价所在};
   \node[anchor=west, font=\scriptsize, text=tkOrange] at (40,406)
-    {\textcircled{3} PV 寄存器账：acc\_O 按堆叠条形图（d-chunk 0--7）};
+    {\textcircled{3} PV 寄存器占用：acc\_O 按堆叠条形图（d-chunk 0--7）};
   \foreach \k in {0,...,7}{
     \node[draw=tkOrange!70, fill=tkFillOrange, minimum width=1.408cm, minimum height=0.64cm,
           inner sep=0pt] at ({84+96*\k},444) {chunk \k};
@@ -737,7 +737,7 @@ $\times$ $2$ 相邻列），两个相邻 atom 共 $8$ 个；右（A 视角）：
     {合计 $= 256$ 寄存器};
   \draw[tkRed, very thick] (708,414) -- (708,474);
   \node[anchor=west, font=\tiny, text=tkRed] at (40,511)
-    {警戒：PV 的 N tile 拉到 64 $\to$ 每 chunk 128 float $\to$ $8\times$ 超支，
+    {注意：PV 的 N tile 取 64 $\to$ 每 chunk 128 float $\to$ $8\times$ 超支，
      寄存器不可能常驻（红线上即不可行）};
   \node[anchor=west, font=\tiny] at (40,535)
     {PV tile $(64,16,16)$：MMA\_N $= 2$（$16/8$），N 方向只重复 2 个原子——用吞吐换
@@ -749,7 +749,7 @@ $\times$ $2$ 相邻列），两个相邻 atom 共 $8$ 个；右（A 视角）：
 16 行，warp 内 N 方向重复 8 个原子；A/B/C 三种 fragment 的每线程形状与
 重复因子（式~\eqref{eq:22-dup}）。下半部分是 PV 的 $(64,16,16)$ tile：
 N 方向只重复 2 个原子，代价换来 per-call C 视图与拷贝粒度可控（8 个
-d-chunk 各自拷回，常驻 acc\_O 256 寄存器不变；N tile 拉到 64 只是单次
+d-chunk 各自拷回，常驻 acc\_O 256 寄存器不变；N tile 取 64 只是单次
 调用的 C fragment 临时 4 倍）。}
 \label{fig:22-1}
 \end{figure}
@@ -759,7 +759,7 @@ d-chunk 各自拷回，常驻 acc\_O 256 寄存器不变；N tile 拉到 64 只�
 % was: \includegraphics[width=0.95\textwidth]{figures/drawio/fig-22-2-mma-atom-fragments/fig-22-2.png}
 \begin{tikzpicture}[font=\tiny, x=0.015cm, y=-0.015cm]
   \node[anchor=west, font=\scriptsize\bfseries] at (20,21)
-    {MMA atom 的 thread-value 布局：32 threads 分食 $16\times8$ tile（SM80 m16n8k16 f16）};
+    {MMA atom 的 thread-value 布局：32 threads 平分 $16\times8$ tile（SM80 m16n8k16 f16）};
   \node[anchor=west, font=\tiny] at (20,45)
     {每 thread 持相邻 2 列 $\times$ 2 行（$m$ 与 $m{+}8$ 行）共 4 格；T $=$ thread
      编号，颜色按 8 色循环};
@@ -894,9 +894,9 @@ d-chunk 各自拷回，常驻 acc\_O 256 寄存器不变；N tile 拉到 64 只�
 
 本章同样没有独立 bench：TiledMMA 的开销体现在它选择的 tile 形状上，端到端
 数字在第~\ref{ch:19}、\ref{ch:26}~章（FFPA）与第~\ref{ch:24}~章（HGEMM）。
-本节把「tile 选择」翻译成三条可计算的账。
+本节把「tile 选择」化成三个可计算的指标。
 
-\textbf{账一（寄存器）}：acc\_O $=kD_{\mathrm{chunks}}\times\mathrm{ThrLD}
+\textbf{指标一（寄存器）}：acc\_O $=kD_{\mathrm{chunks}}\times\mathrm{ThrLD}
 \times\mathrm{MMA}_M\times\mathrm{MMA}_N\times\mathrm{Nrep}$（ThrLD 是单个
 atom 每线程的 C 值数 $4$，Nrep 是 chunk 内 N 方向的重复数 $64/16=4$）
 $=8\times4\times1\times2\times4=256$。PV 的
@@ -907,20 +907,20 @@ $=$ 256 float）不变，超支的是每次调用的临时视图与 B fragment�
 累加器。FFPA 注释「PV 保持小 tile」的算术依据正在于此：压的是每次调用的
 临时开销，而非 acc\_O。
 
-\textbf{账二（重复因子）}：B 的 fragment 按 M-warp 数重复（式~\eqref{eq:22-dup}）。
+\textbf{指标二（重复因子）}：B 的 fragment 按 M-warp 数重复（式~\eqref{eq:22-dup}）。
 QK 用 $(4,1,1)$ 排布时 B 重复 4 倍（$4\times32=128$ 个 half/线程），
 A 不重复；若改成 $(2,2,1)$（各方向 2 个 warp），A 与 B 各重复 2 倍，
 总寄存器开销几乎不变，但 warp 覆盖的行会从 16 行变成 32 行。warp 排布的选择
 因此是「谁重复」的问题，而不是「重复多少」的问题。
 
-\textbf{账三（指令数）}：一次 TiledMMA 调用的指令数
+\textbf{指标三（指令数）}：一次 TiledMMA 调用的指令数
 $=\mathrm{MMA}_M\times\mathrm{MMA}_N\times\mathrm{MMA}_K$，注意这是
 \emph{每线程（每 warp）}的条数。QK 的 $(1,8,4)=32$ 条是每个 warp 的量，
 覆盖该 warp 的 $16\times64\times64$；4 个 warp 共 128 条才铺满 CTA 的
 $64\times64\times64$：512 KFLOP/128 条，每条 $16\times8\times16$ 共
 $4096$ FLOP（约 4.1 KFLOP）；PV 同口径：$(1,2,4)=8$ 条/warp 覆盖
 $16\times16\times64$，CTA 的 $64\times16\times64$ 需 4 warp 共 32 条。
-两个 tile 都让「每条 MMA 指令」吃满原子尺寸，没有浪费，因为它们都是从
+两个 tile 都让「每条 MMA 指令」用满原子尺寸，没有浪费，因为它们都是从
 $\mathrm{AtomShape}$ 出发、只用排布与 tile 尺寸做整数分块推出来的。
 
 \textbf{口径说明}：本节所有数字都是 host 端类型推导的实测值（
@@ -947,12 +947,12 @@ QK 的 C fragment 是 $(4,1,8)$，PV 的 A fragment 是 $(8,1,4)$：形状、元
 类型（float/half）都不同。FFPA 的复用之所以成立，是因为它做了
 \emph{类型转换 $+$ 布局重解释}两步（\texttt{convert\_\allowbreak{}type} $+$
 \texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}Aregs}），且只对 m16n8k16 这一族成立。
-把 C 直接喂给 PV 是经典的静默错位。
+把 C 直接交给 PV 是经典的静默错位。
 
 \textbf{坑三：tile 必须是原子的整数倍，warp 排布必须与线程数自洽。}
 $\mathrm{perm\_M}$ 不是 $16$ 的倍数、或 $\mathrm{ThrM}\times 32$ 与
 \texttt{blockDim} 不一致时，partition 会产生多余/缺失的 remainder mode
-（编译期静态断言或运行期越界）。判据：\texttt{size(mma)} 是线程数的权威，
+（编译期静态断言或运行期越界）。判据：\texttt{size(mma)} 是线程数的权威来源，
 用它来配 \texttt{dim3 block\allowbreak{}(size\allowbreak{}(mma))}。
 
 \textbf{坑四：\texttt{get\_slice} 的坐标是 $(\mathrm{ThrV},(\mathrm{ThrM},
@@ -1043,7 +1043,7 @@ partition 断言，不启动 kernel；直接 include
         (线程, 值) 对覆盖）；
   \item \textbf{E warp 边界}：QK 的 C fragment 逐线程回投坐标，四个 warp 的
         行带为 $[0,16),[16,32),[32,48),[48,64)$，互不重叠；
-  \item \textbf{F PV 的 acc\_O 账目}：
+  \item \textbf{F PV 的 acc\_O 占用}：
         \texttt{partition\_\allowbreak{}fragment\_\allowbreak{}C\allowbreak{}(tiled\_\allowbreak{}mma\_\allowbreak{}pv,\allowbreak{} Shape\allowbreak{}<\_\allowbreak{},\allowbreak{}64,\allowbreak{}\_\allowbreak{}64>\{\})}
         每线程 32 个值，$\times$ 8 个 d-chunk（$D=512$）$=256$ 个寄存器，
         与源码注释的寄存器压力说法互证；并核对 PV 的 C 覆盖

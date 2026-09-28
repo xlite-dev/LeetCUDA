@@ -13,7 +13,7 @@ persist-D，全文件 1036 行）。它是 ffpa-attn 全仓库工程密度最高
 第~\ref{ch:31}--\ref{ch:32}~章的 fp4 家族都建立在它引入的机制之上。
 
 本章的主线只有一句话：\textbf{让所有量化 scale 因子要么精确消去、要么折进
-本来就要做的操作}。理想境界是「除 round() 外无任何额外数学误差源」：所有
+本来就要做的操作}。理想目标是「除 round() 外无任何额外数学误差源」：所有
 反量化都是精确代数操作，不是近似。围绕这条主线展开五组机制：
 \begin{enumerate}[itemsep=0pt,topsep=2pt]
   \item \textbf{QK scale 折进 exp2 系数}：$\delta_Q\delta_K$ 与 softmax scale
@@ -21,8 +21,8 @@ persist-D，全文件 1036 行）。它是 ffpa-attn 全仓库工程密度最高
   \item \textbf{$v_s$ 在 P 侧精确消去}：P 发射 $\tilde P = P\cdot v_s\cdot448$，
         gmem 中的 $\hat V = V/v_s$ 原样复用，$v_s$ 从 PV MMA 中代数消失
         （29.3.2~节的三步协议）；
-  \item \textbf{归约轴置换不变性}：P fragment 打包零 SHFL，代价转嫁给
-        $V^{\top}$ 的列置换（29.3.5~节，第~\ref{ch:28}~章预告的兑现）；
+  \item \textbf{归约轴置换不变性}：P fragment 打包零 SHFL，代价转移到
+        $V^{\top}$ 的列置换（29.3.5~节，第~\ref{ch:28}~章预告内容的展开）；
   \item \textbf{WS persist-D 结构}：128 producer + 256 consumer、
         \texttt{setmaxnreg} 32/232、Q 的 s2r 常驻与 K 槽位 0（Q 区）复用给
         最后一个 K stage（29.4.2--29.4.3~节）；
@@ -57,7 +57,7 @@ scale（布局随粒度）、smooth-K 的 fp32 均值（lse 修正用）。主 k
 
 低精度 MMA 只会算 $\hat P\hat V$ 这样的整数/半字节域乘累加，而 attention 的
 数学在实数域。朴素的「每个操作数先乘回 scale」方案意味着每 tile 数千次
-额外 FMUL 与中间张量往返，fp8 MMA 吞吐翻倍的红利会被反量化开销吃掉大半。
+额外 FMUL 与中间张量往返，fp8 MMA 吞吐翻倍的收益会被反量化开销抵消大半。
 第~\ref{ch:27}~章 27.3.4~节给过 scale 流向总览；本章把它们逐一落到代码：
 每个 scale 在哪个寄存器、哪条指令上被消去，以及哪些组合会互相冲突
 （如 lazy rescale 与满量程 P）。
@@ -126,7 +126,7 @@ $\tilde P = P\cdot v_s\cdot448$。fixed 模式下 $p_{scale}\equiv1/448$（编�
 
 FA-4 式 lazy rescale（27.3.6~节）允许 stale max 落后 $T$ 位才补 rescale，
 期间发射的 $P$ 按 stale max 膨胀 $2^T$。fixed + per-block V 的发射上界是
-$\mathrm{amax}(V)$（29.3.2），lazy 的安全条件是膨胀后不越 e4m3 天花板：
+$\mathrm{amax}(V)$（29.3.2），lazy 的安全条件是膨胀后不越 e4m3 上限：
 \begin{equation}
   2^T\cdot\mathrm{amax}(V)\le448
   \;\Longrightarrow\;
@@ -135,15 +135,15 @@ $\mathrm{amax}(V)$（29.3.2），lazy 的安全条件是膨胀后不越 e4m3 天
 但 ffpa 的 traits 把 fp8 的 \texttt{kLazyRescale} 直接置 \texttt{false}
 （\texttt{attn\_traits.cuh} L31--37）：注释原话，跳过 rescale 会让发射 P
 以最高 $2^T$ 膨胀，而 per-channel V 路径（balanced narrowing）的发射
-$P\cdot448$ 已真正铺满量程、零 headroom，膨胀必然 satfinite 损坏 PV。而 f16
-inst\_buf 路径把 rescale 融进吸收 FFMA 后「立即 rescale 几乎免费」，
+$P\cdot448$ 已铺满量程、零 headroom，膨胀必然触发 satfinite 钳位、破坏 PV 结果。而 f16
+inst\_buf 路径把 rescale 融进吸收 FFMA 后「立即 rescale 几乎零开销」，
 lazy 的动机（省 rescale pass）本身就消失了。\textbf{满量程发射与延迟 rescale
 不可兼得}，这是发射域纪律的第一条。
 
 \subsection{f16 PV 累加器的域约束}\label{sec:29-f16acc}
 
 SA2++ 的 \texttt{mma.f16.f8.f8.f16} 让 PV 累加器走 f16 域（把 $o\_acc$
-从 tensor-core 反馈链上摘下来，避开 f8f8f32 累加器 22-bit 尾数损失）。
+从 tensor-core 反馈链上移出来，避开 f8f8f32 累加器 22-bit 尾数损失）。
 SA2++ 论文的核算口径是\textbf{单条 MMA 指令}：$m16n8k32$ 的 K 深度 32，逐元素
 乘积需满足 $P_r\times V_r\le65504/32=2047$，两侧同收（$P_r=224,V_r=4.5$）。
 ffpa 的累加结构不同：PV 经 \texttt{gemm\_rs} 跨整个 $kBc$ 块累进同一组 f16
@@ -153,10 +153,10 @@ ffpa 的累加结构不同：PV 经 \texttt{gemm\_rs} 跨整个 $kBc$ 块累进�
   kBc\cdot P_r\cdot V_r \le 65504 .
   \label{eq:29-f16tile}
 \end{equation}
-ffpa 的分配\textbf{只压 V 侧}：per-channel V + f16 acc 时发射
+ffpa 的分配\textbf{只收紧 V 侧}：per-channel V + f16 acc 时发射
 $\hat V\in[-2.25,2.25]$（即 28.3.2~节的 $v_{scale\_max}=2.25$）；P 侧在
 $kBc\le64$ 时保持 448 满量程（$64\times448\times2.25=64512\le65504$$\checkmark$），
-$kBc=128$ 时 448 装不下，kernel 侧的编译期自动收窄
+$kBc=128$ 时预算超限，kernel 侧的编译期自动收窄
 （\texttt{persist\_d.cuh} L723--732）把 P 域收到 224
 （$128\times224\times2.25=64512$$\checkmark$）；f32 acc 时无 f16 溢出界，V 侧取满
 448、P 侧恒 448 无约束。
@@ -219,13 +219,13 @@ $kBc=128$ 时 448 装不下，kernel 侧的编译期自动收窄
     {ffpa 的界是\textbf{整 tile 累加}：PV 经 \texttt{gemm\_rs} 跨整个 $kBc$ 块累进同一组
      f16 \texttt{inst\_buf}（之后才 FFMA 吸收进 f32 $o\_acc$），条件为
      $kBc\cdot P_r\cdot V_r\le65504$——$kBc{=}64$ 等效 $P_r{\times}V_r\le1023$，
-     $448\times2.25=1008$ 恰好贴边；$kBc{=}128$ 装不下，编译期把 P 域收窄到 224
+     $448\times2.25=1008$ 恰好在上限内；$kBc{=}128$ 装不下，编译期把 P 域收窄到 224
      （\texttt{persist\_d.cuh} L723--732）。SA2++ 的单指令界（$65504/32=2047$，$K$ 深度更小）
      更松。f32 acc 无 f16 溢出界：V 侧取满 448、P 侧恒 448。};
 \end{tikzpicture}
 \caption{f16 PV 累加器的整 tile 域预算（式~\ref{eq:29-f16tile}）。条形为
 $kBc\times P_r\times V_r$：$k_{Bc}{=}64$ 与「$k_{Bc}{=}128$ + P 域自动收窄到 224」
-都恰为 64512，贴住 65504 上限；$k_{Bc}{=}128$ 且 P 仍 448 则 129024 约 2 倍超限。
+都恰为 64512，接近 65504 上限；$k_{Bc}{=}128$ 且 P 仍 448 则 129024 约 2 倍超限。
 右：SA2++ 按单条 MMA（$K{=}32$）核算的界 2047 更松（$P_r{=}224,V_r{=}4.5$ 双侧收窄）。
 f32 acc 路径无此约束。}
 \label{fig:29-f16-budget}
@@ -241,13 +241,13 @@ softmax 产出的 $P$ fragment（QK MMA 的 C 布局）与 PV MMA 的 A 操作�
   \qquad(\pi\ \text{任意双射}) .
   \label{eq:29-perm-inv}
 \end{equation}
-既然 $\pi$ 任意，就让 P \textbf{留在本 lane}、按手头字节就地打包（4 条
+既然 $\pi$ 任意，就让 P \textbf{留在本 lane}、按本 lane 已持有的字节就地打包（4 条
 lane 无关 PRMT、零 SHFL），让 A 操作数携带一个置换的 k 索引 $\pi$；V 侧
 在量化期按 $\pi^{-1}$ 预置换列序（\texttt{VTPermInv32}，式~\ref{eq:28-vtperm}），
-两侧槽位对上同一真实 kv 位置即可。row-sum MMA（B 为全 1）在双射下也
+两侧槽位对应同一真实 kv 位置即可。row-sum MMA（B 为全 1）在双射下也
 精确。「前处理链的输出布局由主 kernel 消费方式决定」这条原则落到实处就是：
-\textbf{一条数学等价，把 kernel 内的 16 次跨 lane shuffle 换成了量化期的
-免费列置换}。
+\textbf{一条数学等价，把 kernel 内的 16 次跨 lane shuffle 换成了量化期
+顺带完成的列置换}。
 
 \section{设计与实现}
 
@@ -281,7 +281,7 @@ struct FFPAAttnCuTePersistDFP8Traits {
 \textbf{其二，TiledMma 的 K-tile 是 32}（atom 的 k16$\times$2），fp16 家族
 是 16。\textbf{其三，swizzle atom 按行字节选}（L45--50）：Q/K 行 $D$ 字节、
 $V^{\top}$ 行 $kBc$ 字节，各自落 SW128/SW64/SW32：同一张 smem 图、两类
-行宽各选各的 swizzle atom。
+行宽分别选择各自的 swizzle atom。
 \textbf{其四，kBc 随 D 切换}：launcher 对 $D\le128$ 实例化 $kBc{=}128$、
 $D>128$ 用 64（smem 预算）。
 
@@ -289,9 +289,9 @@ $D>128$ 用 64（smem 预算）。
 
 128 线程 producer（TMA 装载）+ 256 线程 consumer（全部计算），
 \texttt{\_\_launch\_bounds\_\_(384,1)}；寄存器经 \texttt{setmaxnreg}
-重分配：producer 释放到 32，consumer 拿到 232。fp8 路径的 consumer
-无条件拿 232（fp16 版在 D=128 时只需 170）：P 量化 + row-sum + rescale
-状态把寄存器压力抬上来了，注释记录「静态 170 上限会 spill 约 60 个寄存器」。
+重分配：producer 释放到 32，consumer 得到 232。fp8 路径的 consumer
+无条件使用 232（fp16 版在 D=128 时只需 170）：P 量化 + row-sum + rescale
+状态推高了寄存器压力，注释记录「静态 170 上限会 spill 约 60 个寄存器」。
 
 \begin{lstlisting}[
   caption={Q smem 复用与槽位轮转（\texttt{persist\_d.cuh} L193--215，节选）},
@@ -317,19 +317,19 @@ $D>128$ 用 64（smem 预算）。
 
 两层设计叠加。\textbf{Q 的 s2r 常驻}（\texttt{kPersistQs2r} 默认 true）：
 Q 在 kv 循环前一次性读进寄存器，之后 QK 步骤全是 gemm\_rs（K-only smem 读）：
-D=128 实测 $-8\mu s$、零 spill；Q 的 smem 区（slot 0）随即死亡。
+D=128 实测 $-8\mu s$、零 spill；Q 的 smem 区（slot 0）随即空闲。
 \textbf{槽位轮转}让复用区承接「最后一个 K stage」而非第一个：它的首次 TMA
 发射与首次消费都发生在稳态（隔着一整 tile 计算），\texttt{q\_consumed} 的
-等待被完全藏住。省下的 16KB smem 买的是 L1 容量而非 occupancy：smem/L1
-共池，实测每 16KB $\approx$ 4--5$\mu s$，而 CTA 驻留本就被寄存器锁在
+等待被完全隐藏。省下的 16KB smem 换来的是 L1 容量而非 occupancy：smem/L1
+共池，实测每 16KB $\approx$ 4--5$\mu s$，而 CTA 驻留本就被寄存器限制在
 1/SM。
 
 producer 的装载序还有两处细节：\texttt{V prologue 先于 K}（V0 只在
-QK0+softmax 之后才被消费，先发永远安全）；consumer 在等 Q 之前先
+QK0+softmax 之后才被消费，提前发射是安全的）；consumer 在等 Q 之前先
 \texttt{arrive} 全部初始 \texttt{k\_empty}/\texttt{v\_empty}（这些 arrive
-不依赖 Q 数据，提前放行让 K(0)/V(0) 的 TMA 与 Q 的 TMA inflight中重叠）。
+不依赖 Q 数据，提前放行让 K(0)/V(0) 的 TMA 与 Q 的 TMA 在传输中重叠）。
 
-\subsection{主循环：五个 Phase 的字节旅程}
+\subsection{主循环：五个 Phase 的数据通路}
 
 consumer 的 kv 循环（\texttt{\#pragma unroll 1}，逐 tile）：
 
@@ -383,19 +383,18 @@ fixed 模式下 softmax 已经发射满量程值，pack 只做 f32$\to$e4m3x2 �
 藏进 PV 的 tensor pipe 气泡，CUDA-core FADD/shfl 版本实测更慢）。PV 主体
 分三路：f32 acc 直接 \texttt{gemm\_rs(o\_acc, tCrP, tCrV, ...)}；
 \textbf{f16 acc} 路线是本章指令级融合的关键：PV 先累进 f16
-\texttt{inst\_buf}（把 $o\_acc$ 摘出 tensor-core 反馈链），随后吸收回
+\texttt{inst\_buf}（把 $o\_acc$ 移出 tensor-core 反馈链），随后吸收回
 f32 $o\_acc$ 时用 FFMA 把 online-softmax 的 rescale 一起折进去：
 \begin{equation}
   o\_acc \leftarrow \mathrm{FFMA}(o\_acc,\ row\_scale,\ float(inst\_buf)),
 \end{equation}
-\texttt{row\_scale} 恰为 1.0 的行（阈值跳过）免乘，独立的 rescale pass
-整个消失。
+\texttt{row\_scale} 恰为 1.0 的行（阈值跳过）免乘，不再需要独立的 rescale pass。
 
 \textbf{Phase 5 -- epilogue}（L904--1031）：$O = o\_acc\cdot(1/448)/
 \mathrm{rowsum}$（fixed 单步反量化+归一化）；per-channel V 按 D 列查
 $v_{s,d}$ 逐列消去、smooth-V 加回 $\bar v_d$；lse $=$
 $(\mathrm{rowmax}+\log_2\mathrm{rowsum})\ln2$，smooth-K 的修正
-$+\mathrm{scale}\cdot q_s\cdot q_{km}$（28.4.2~节的点积在循环外预算）。
+$+\mathrm{scale}\cdot q_s\cdot q_{km}$（28.4.2~节的点积在循环外预先计算）。
 输出走 \textbf{STSM 进已释放的 smem（Q/K/V 全部消费完）再 TMA store}，
 一次合并写出；尾 tile（不满 128 行）退化为带行守卫的直接 R$\to$G 写。
 
@@ -410,9 +409,9 @@ $t=$ lane$\&$3）。C fragment 有 4 个寄存器 $c_0..c_3$，每寄存器 1 �
 每行 4 个 k 列：$a_0$ 取行 $g$ 的 $k=4t..4t{+}3$，$a_1$ 取行 $g{+}8$ 的同段，
 $a_2$、$a_3$ 分别取行 $g$、$g{+}8$ 的 $k=16{+}4t..16{+}4t{+}3$。这样线程 $t$
 需要的 k 列 $\{4t..4t{+}3\}$，换算成 C tile 的列对 $\{2t',2t'{+}1\}$ 后落在
-别的 lane 手里（比如 $t{=}1$ 要的是 $t{=}2$、$t{=}3$ 拥有的字节），纯 lane 内
-置换拼不出自然 A 布局（\texttt{.tmp/fp8\_persist\_d/verify\_layouts.py} 数值
-证明），于是才有了下面跨 lane 的 \texttt{ReorgC8bitToA8bit}。
+别的 lane（比如 $t{=}1$ 需要的是 $t{=}2$、$t{=}3$ 持有的字节），纯 lane 内
+置换无法得到自然 A 布局（\texttt{.tmp/fp8\_persist\_d/verify\_layouts.py} 数值
+证明），因此需要下面跨 lane 的 \texttt{ReorgC8bitToA8bit}。
 
 \begin{figure}[H]
 \centering
@@ -481,7 +480,7 @@ $a_2$、$a_3$ 分别取行 $g$、$g{+}8$ 的 $k=16{+}4t..16{+}4t{+}3$。这样�
   \node[anchor=south, fill=white, inner sep=0.5pt] at (5.5,-3.58) {T6/T7 $\to$ T5：$a_2/a_3$};
   \draw[->, tkPurple, densely dashed] (4.24,-1.02) to[bend left=14] (6.74,-0.32);
   \node[anchor=north, fill=white, inner sep=0.5pt, align=center] at (5.5,-1.12)
-    {T5 自己的字节\\也要寄给 T4};
+    {T5 自己的字节\\也要传给 T4};
   \node[anchor=north, align=center] at (5.5,-4.75) {$k{=}20..23$（atom 2）\\同理 $\to a_4..a_7$};
   \foreach \gl in {0,...,7}{
     \pgfmathtruncatemacro{\gr}{int(22+7*\gl)}
@@ -502,13 +501,13 @@ $a_2$、$a_3$ 分别取行 $g$、$g{+}8$ 的 $k=16{+}4t..16{+}4t{+}3$。这样�
   \node[anchor=north] at (9.175,-7.34) {$s{=}2$};
   \node[anchor=north] at (10.125,-7.34) {$s{=}3$};
   \node[anchor=east, text=tkPurple] at (6.70,-7.10) {A 槽位 $s\to\pi(s)$：};
-  \node[anchor=west] at (10.75,-7.10) {……（每 32 列周期）};
+  \node[anchor=west] at (10.75,-7.10) {（列号续排，每 32 列周期）};
   \node[anchor=north west, align=left, text width=16.6cm] at (0,-7.80)
     {kReorgFree（\texttt{PackC8bitToA8bitPermVT}）：A 槽位 $s$ 持真实列 $\pi(s)$
      （$\pi=[0,1,8,9,2,3,10,11,\dots]$），$V^{\top}$ 由量化期按 $\pi^{-1}$ 预置换
      （\texttt{VTPermInv32}）——槽位与真实列脱钩后无需跨 lane 借字节：4 条 lane 无关
      \texttt{\_\_byte\_perm}（\texttt{0x5410}/\texttt{0x7632}/\texttt{0xDC98}/\texttt{0xFEBA}）、
-     零 SHFL；CONTRACT：绝不许对未置换的 $V^{\top}$ 运行（launcher 编译期强制配对）。};
+     零 SHFL；CONTRACT：绝不许对未置换的 $V^{\top}$ 运行（launcher 编译期强制匹配）。};
 \end{tikzpicture}
 \caption{C$\to$A fragment 的 lane$\to$值映射。左：QK C
 fragment（m16n8），每 lane 4 值 $c_0$--$c_3$ 落在行 $g$/$g{+}8$ 的列对
@@ -516,7 +515,7 @@ $\{2t,2t{+}1\}$；右：PV A fragment（m16n8k32）的 16$\times$16 半字视图
 a0--a7 为 e4m3x2 半字寄存器，四象限对应源码 .b32 $a_0$--$a_3$；两面板灰度同语义
 （lane 组 $g=$lane$\gg$2，8 档）。中：$t{=}1$（T5）的自然 A 需要
 $k\in\{4..7\}\cup\{20..23\}$（行 $g$ 与 $g{+}8$），在 C 视图里属 T6/T7——纯 lane 内
-置换凑不齐，即 16 SHFL + 32 PRMT（\texttt{ReorgC8bitToA8bit}）的根源。下：kReorgFree
+置换无法拼出，即 16 SHFL + 32 PRMT（\texttt{ReorgC8bitToA8bit}）的根源。下：kReorgFree
 的出路——槽位持 $\pi(s)$、$V^{\top}$ 预置换，4 条 lane 无关 \texttt{\_\_byte\_perm}、
 零 SHFL。}
 \label{fig:29-frag-map}
@@ -524,19 +523,19 @@ $k\in\{4..7\}\cup\{20..23\}$（行 $g$ 与 $g{+}8$），在 C 视图里属 T6/T7
 
 C fragment 里 lane $t$ 持列对 $\{2t,2t{+}1\}$，A fragment 却要列
 $\{4t,\dots,4t{+}3\}$，后者横跨多个 lane 的字节。\texttt{ReorgC8bitToA8bit}
-用 16 SHFL + 32 PRMT 跨 lane 凑齐；而 \texttt{PackC8bitToA8bitPermVT}
-（L96--141）反问：为什么要凑\textbf{自然}布局？就地打包后 A 槽位
+用 16 SHFL + 32 PRMT 的跨 lane 交换解决；而 \texttt{PackC8bitToA8bitPermVT}
+（L96--141）换了一个思路：无需构造\textbf{自然}布局——就地打包后 A 槽位
 $s$ 持真实列 $\pi(s)$（$\pi = [0,1,8,9, 2,3,10,11,\dots]$，每 32 列周期），
 V$^{\top}$ 列按 $\pi^{-1}$ 预置换即可。四个 \texttt{\_\_byte\_perm}
 选择器（0x5410/0x7632/0xDC98/0xFEBA）\textbf{lane 无关}：没有构造器
 状态、没有分支，且与 \texttt{ReorgC8bitToA8bit} 的对照已用 pycute 数值
 验证布局等价。注释末尾的 CONTRACT 加了感叹号：\textit{this pack must
-NEVER run against an unpermuted V\^{}T}；配对由 launcher 的单一
+NEVER run against an unpermuted V\^{}T}；匹配由 launcher 的单一
 \texttt{reorg\_free} 编译期常量强制，两侧永不发散。
 
 \section{图示}
 
-三张图对应本章的三条主线。图~\ref{fig:29-scale-folding} 是数学层的总账：
+三张图对应本章的三条主线。图~\ref{fig:29-scale-folding} 是数学层的总览：
 scale 从「显式乘法」变成「折叠」：$\delta_Q\delta_K$ 折进 exp2 系数、
 $v_s$ 在 P 的发射域消去、$p_{scale}$ 收在 epilogue，除 round() 外不引入
 任何额外误差源。图~\ref{fig:29-persist-d-ws} 是这套数学的宿主结构：
@@ -624,7 +623,7 @@ STSM + TMA 输出。图~\ref{fig:29-reorg-free} 则是 epilogue 侧的布局技�
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{tkGreen!70!black} }] at (7.022,-3.219) {K stages};% w=3.403
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{tkGreen!70!black} }] at (10.426,-3.219) {V};% w=1.001
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{tkGreen!70!black} }] at (11.427,-3.219) {K last};% w=0.986
-    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{black!55} }] at (7.022,-3.788) {省的 16KB 买 L1（共池 \textasciitilde{}4-5$\mu$s/16KB），不买 occupancy};% w=5.359
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{black!55} }] at (7.022,-3.788) {省的 16KB 换 L1（共池 \textasciitilde{}4-5$\mu$s/16KB），不换 occupancy};% w=5.359
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{black!55} }] at (7.022,-4.127) {槽位轮转 kKSlot(s)=(s+1)\%S：复用区首写/首消费都在稳态，};% w=5.359
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{black!55} }] at (7.022,-4.435) {q\_consumed 等待藏进整整一 tile 计算};% w=5.359
     \node[draw=gray!55, fill=black!3, line width=0.5pt, minimum width=4.25cm, minimum height=3.85cm, inner sep=1pt, align=center, text width=4.19cm, font={\fontsize{5.7}{7.1}\selectfont }] at (15.369,-2.849) {};
@@ -711,17 +710,17 @@ STSM + TMA 输出。图~\ref{fig:29-reorg-free} 则是 epilogue 侧的布局技�
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!55} }] at (0.616,-6.622) {V\^{}T 存储无需置换（自然列序）};% w=7.823
     \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=8.25cm, minimum height=3.63cm, inner sep=1pt, align=center, text width=8.19cm, font={\fontsize{5.7}{7.1}\selectfont }] at (13.367,-5.636) {};
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkGreen!70!black} }] at (9.486,-4.081) {方案 B：PackC8bitToA8bitPermVT（reorg-free，默认）};% w=7.762
-    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont }] at (9.486,-4.466) {数学：$\Sigma$\_k P[m,k]V[k,n] 对任意双射 $\pi$ 不变 ------ P 不动，V 搬家};% w=7.762
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont }] at (9.486,-4.466) {数学：$\Sigma$\_k P[m,k]V[k,n] 对任意双射 $\pi$ 不变 ------ P 不动，V 换列};% w=7.762
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont }] at (9.486,-4.836) {就地打包：4$\times$ \_\_byte\_perm（0x5410/0x7632/0xDC98/0xFEBA）};% w=7.762
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont }] at (9.486,-5.205) {selector 与 lane 无关：无构造器状态、无分支};% w=7.762
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkGreen!70!black} }] at (9.486,-5.683) {A 槽位 s 携带置换索引 $\pi$(s) = 8(r$>$$>$1)+2t+(r\&1)（32 列周期）};% w=7.762
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (9.486,-6.068) {V\^{}T 按 $\pi$$^{-1}$(j)=4*((j$>$$>$1)\&3)+2*((j$>$$>$3)\&1)+(j\&1) 预置换列写};% w=7.762
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!55} }] at (9.486,-6.622) {置换不跨 32 列组 $\to$ V\^{}T 写仍同一 32B sector（quantize +0.5\%）};% w=7.762
     \node[draw=tkPurple, fill=tkFillPurple, line width=0.5pt, minimum width=17.12cm, minimum height=1.48cm, inner sep=1pt, align=center, text width=17.06cm, font={\fontsize{5.7}{7.1}\selectfont }] at (8.932,-8.562) {};
-    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkPurple} }] at (0.678,-8.07) {配对契约（CONTRACT）：pack 与 V\^{}T 置换必须同开同关 ------ 由 launcher 单一编译期常量 reorg\_free 强制，两侧永不发散};% w=16.509
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkPurple} }] at (0.678,-8.07) {匹配约定（CONTRACT）：pack 与 V\^{}T 置换必须同开同关 ------ 由 launcher 单一编译期常量 reorg\_free 强制，两侧永不发散};% w=16.509
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (0.678,-8.439) {注释原话加感叹号：this pack must NEVER run against an unpermuted V\^{}T ------ 错配 = 静默错值（allclose 才能抓到）};% w=16.509
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (0.678,-8.809) {rowsum MMA（B 全 1）与 PV 在双射下同样精确；等效性已 pycute 数值验证（.tmp/fp8\_persist\_d/verify\_layouts.py 同族）};% w=16.509
-    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (0.37,-9.764) {出处对照：SA2 的 per-warp token 重排思想（arXiv:2411.10958）；ffpa 的数学化重构 = 把跨 lane 搬运转嫁给前处理链的免费列置换};% w=17.125
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (0.37,-9.764) {出处对照：SA2 的 per-warp token 重排思想（arXiv:2411.10958）；ffpa 的数学化重构 = 把跨 lane 搬运转嫁给前处理链的顺带列置换};% w=17.125
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (0.37,-10.164) {拆分规则：K=32 组 = 4 个 n8 C-tile（w0..w3）$\to$ a0={0,1,4,5} a1={2,3,6,7} a2={8,9,12,13} a3={10,11,14,15}（字节序号）};% w=17.125
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!55} }] at (0.37,-10.795) {对照 ffpa-attn(861d75e)：cute/fp8/reg2reg\_8b.cuh L8-50（背景+跨 lane 版）$\cdot$ L96-141（perm pack）$\cdot$ quantize\_fp8.cuh L36-53（VTPermInv32）};% w=17.125
     \draw[tkRed, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (8.624,-1.756) -- (9.178,-1.756);
@@ -754,7 +753,7 @@ $^{*}$D=192 存在正确性 bug（29.7.1~节），速度数据仅供参考。D=6
 上升。kernel 级与 SageAttention 对比稳定 $+1.1\sim2.3\%$（仓库 nsys
 per-kernel 记录）。
 
-\subsection{微优化到顶：一份「证伪清单」的价值}
+\subsection{微优化上限：一份「证伪清单」的价值}
 
 persist-D 的结构优化路线已被系统实测证伪（完整清单见仓库 RFC
 \S5.8）：WS 双 consumer（FA3 式 2$\times$128T）负优化；persistent work
@@ -777,14 +776,14 @@ fp16 家族同构；但 fp8 的 MMA 吞吐翻倍使 softmax/P 打包的相对占
 
 \section{实践经验}
 
-\subsection{案例：D=192 正确性 bug 的定位（真实故事）}\label{sec:29-d192}
+\subsection{案例：D=192 正确性 bug 的定位（定位实录）}\label{sec:29-d192}
 
 写本章的 bench 验证时发现 \texttt{--cuda-impl fp8 --D 192}
 allclose 失败（fp16/bf16 双双 $\times$），而 D=64/128 全绿。定位过程
-记在这里，可当方法论范本：
+记在这里，可作为同类问题的排查参考：
 \begin{enumerate}[itemsep=1pt,topsep=2pt]
   \item \textbf{误差量级分类}：max\_abs=2.66 vs mean\_abs=0.011——均值是
-        正常 fp8 精度，最大值是灾难级 $\Rightarrow$ \textbf{正确性 bug}
+        正常 fp8 精度，最大值远超正常量化误差 $\Rightarrow$ \textbf{正确性 bug}
         （个别行错），不是精度不足；
   \item \textbf{行模式定位}：per-row max 直方图显示坏行集中在
         $row\bmod128\in[64,127]$（每个 128 行 Q tile 的后半）；
@@ -796,7 +795,7 @@ allclose 失败（fp16/bf16 双双 $\times$），而 D=64/128 全绿。定位过
         bug 在 D=192 特有的主 kernel 路径（$kBc{=}64$ 变体、SW64 swizzle、
         或 quantize 侧 kBlockRows 与 kBc 的一致性）；
   \item \textbf{fp16 对照}：fp16 CUTE 路径 D=192 完全正确
-        （max=0.0001）$\Rightarrow$ 输入布局/TMA/寻址层无辜，责任圈定在
+        （max=0.0001）$\Rightarrow$ 输入布局、TMA 与寻址层没有问题，问题范围缩小到
         fp8 专属代码。
 \end{enumerate}
 
@@ -837,16 +836,15 @@ allclose 失败（fp16/bf16 双双 $\times$），而 D=64/128 全绿。定位过
      ——错误随 N 稀释，说明是特定 (row, kv-tile) 组合而非系统性索引错位。};
   \node[anchor=west, align=left, text width=8.6cm] at ({3*\gw+0.85},-3.35)
     {$\bullet$~\textbf{max/mean 分裂}：max\_abs=2.66 vs mean\_abs=0.011
-     ——灾难级个别行 + 正常均值 $\Rightarrow$ 正确性 bug，非精度不足。};
+     ——个别行严重错误 + 正常均值 $\Rightarrow$ 正确性 bug，非精度不足。};
   \node[anchor=west, align=left, text width=8.6cm] at ({3*\gw+0.85},-4.85)
-    {$\bullet$~\textbf{嫌疑圈}（fp16 对照路径无辜）：$k_{Bc}{=}64$ 变体 /
+    {$\bullet$~\textbf{嫌疑范围}（fp16 对照路径已排除）：$k_{Bc}{=}64$ 变体 /
      SW64 swizzle / 量化侧 kBlockRows 一致性。};
 \end{tikzpicture}
 \caption{D=192 正确性 bug 的坏行定位（29.7.1~节五步法的可视化）：把 $O$ 视为
 3$\times$64 列拼接，坏行集中在 row mod 128 $\in[64,127]$（每个 128 行 Q tile 的
 后半）；N=512 几乎全错而 N=8192 仅 11\% 行错（N 稀释 $\Rightarrow$ 特定
-(row, kv-tile) 组合）；max\_abs=2.66 对 mean\_abs=0.011 的分裂是「个别行灾难」的
-强信号。}
+(row, kv-tile) 组合）；max\_abs=2.66 对 mean\_abs=0.011 的分裂说明错误集中在个别行。}
 \label{fig:29-d192-rows}
 \end{figure}
 
@@ -873,12 +871,12 @@ sm120 的计算层（int8 QK / fixed p\_scale / f8f8f16 PV），256T non-WS。
         这是量化 attention 精度损失的主要根源之一（实测 P 0.11 与 QK 0.13
         同量级、V 0.19 最大）。
   \item \textbf{满量程发射与 lazy rescale 互斥}：per-channel V 的发射
-        $P\cdot448$ 真正铺满量程，stale max
+        $P\cdot448$ 铺满量程，stale max
         的 $2^T$ 膨胀必然 satfinite（29.3.3~节）；fp8 traits 直接关掉
         lazy rescale，且 f16 acc 路径把 rescale 融进吸收 FFMA 后延迟惩罚
         消失。
-  \item \textbf{kVTPerm 配对是编译期纪律}：\texttt{PackC8bitToA8bitPermVT}
-        对未置换的 $V^{\top}$ 运行 = 静默错值。配对由 launcher 单一常量
+  \item \textbf{kVTPerm 的匹配是编译期纪律}：\texttt{PackC8bitToA8bitPermVT}
+        对未置换的 $V^{\top}$ 运行 = 静默错值。匹配由 launcher 单一常量
         强制；绕过 launcher 直接调 kernel 没有保护。
   \item \textbf{f16 PV 累加域}：$kBc\cdot448\cdot2.25\le65504$ 的编译期
         检查不过时 P 域自动收到 224——不理解这条约束会以为 P 域「有时
@@ -906,7 +904,7 @@ sm120 的计算层（int8 QK / fixed p\_scale / f8f8f16 PV），256T non-WS。
         P 448、$kBc{=}128$ 收到 224；SA2++ 单指令口径 $65504/32=2047$、
         双侧收窄 $224\times4.5$。）
   \item reorg-free 打包省了什么、代价是什么？（16 SHFL+32 PRMT $\to$
-        4 PRMT 零 SHFL；代价 $V^{\top}$ 列置换预写 + 编译期配对纪律，
+        4 PRMT 零 SHFL；代价 $V^{\top}$ 列置换预写 + 编译期匹配纪律，
         式~\ref{eq:29-perm-inv}。）
   \item Q 的 s2r 常驻为什么省钱？省的是 occupancy 吗？
         （不是——省 smem（16KB Q 区复用）$\to$ 买 L1 共池容量，
@@ -947,7 +945,7 @@ Phase 1--5 各自在纸上标出「哪个 scale 在哪条指令上被乘/消去�
 重跑 [A]，观察精度提升与速度代价（per-row 归约 + $o\_tile$ 暂存）。
 \textbf{实验 3（bug 定位复演）}：按 29.7.1~节步骤用 PyTorch 复现 D=192
 的行模式直方图（脚本思路：per-row max diff $>$ 0.1 统计
-$row\bmod128$），把「速度好+均值好 $\neq$ 正确」变成肌肉记忆。
+$row\bmod128$），把「速度好+均值好 $\neq$ 正确」固化成检查习惯。
 \textbf{实验 4（lazy rescale 证伪）}：读 \texttt{attn\_traits.cuh}
 L31--37 注释，回答「为什么 fp8 关掉 lazy rescale 而 fp16 开着」。
 

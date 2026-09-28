@@ -1,7 +1,7 @@
 # anchors.yaml — LeetCUDA 成书源码冻结登记（RFC-A.3）
 # 登记后源文件零改动（BOOK_PLAN §5.3）；校验脚本 verify_anchors.py
-frozen_at: "2026-09-18"
-repo_commit: "6cd32deca683d6c4aae2011988c9f4a35bc5f528"
+frozen_at: "2026-09-24"
+repo_commit: "3b52c5cd3332c5e992c7aef63087d43f67f23b8e"
 files:
   base.cuh:
     sha256: cda419930ad0a0670f0695372a8599f398ac7b48479e5fcb317262b5dc232ac0
@@ -28,8 +28,11 @@ files:
     sha256: 60ef4408cfac016fa4b6cf3db8cec1d29b54665a294967290e07d4ce54ce7ce2
     lines: 958
   notes-v2.cu:
-    sha256: daba0ac9a47ad957a4eed71a1ee89c1fe415ba36423c11658c1718639edb0cf5
-    lines: 5988
+    sha256: 9e20cb4047458e3ba39d46fd807702bb4b519d5a199cc0b7d7446dd94760b892
+    lines: 6595
+  fp4_gemm.cuh:
+    sha256: fcdeb7263a2a3fe7fc81c029afcc643485b705f09141a29f20728907f0705c9e
+    lines: 1298
 chapters:
   ch01:
     refs:
@@ -253,8 +256,8 @@ chapters:
         first_anchor: "// FFPA Split-D non-WS TMA 版 (ffpa-attn split_d.cuh 移植, 最小教学集)"
         last_anchor: "#endif // NOTES_V2_ENABLE_CUTE && NOTES_V2_ENABLE_TMA_MMA_WS"
       - file: notes-v2.cu
-        start: 4955
-        end: 5223
+        start: 5530
+        end: 5798
         first_anchor: "// non-WS TMA split-D bench: tile 128x128, tid=0 内联发 TMA, STSM+TMA store。"
         last_anchor: "}"
   ch34:
@@ -271,6 +274,20 @@ chapters:
         end: 957
         first_anchor: "// ============================================================================="
         last_anchor: "}  // namespace fp8_gemm"
+  ch36:
+    refs:
+      - file: fp4_gemm.cuh
+        start: 55
+        end: 393
+        first_anchor: "namespace fp4_gemm {"
+        last_anchor: "}"
+  ch37:
+    refs:
+      - file: fp4_gemm.cuh
+        start: 395
+        end: 1297
+        first_anchor: "// ============================================================================="
+        last_anchor: "}  // namespace fp4_gemm"
   appA:
     refs:
       - file: common.cuh

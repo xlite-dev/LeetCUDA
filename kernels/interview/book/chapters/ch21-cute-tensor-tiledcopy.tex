@@ -38,7 +38,7 @@ tile 尺寸与 SmemLayout 声明归第~\ref{ch:23}~章。\textbf{编译宏}：
 
 \section{问题与动机}
 
-先看一次「搬运映射」的完整账目。第~\ref{ch:12}~章 swizzle 版 HGEMM 的主循环里，
+先看一次「搬运映射」的完整清单。第~\ref{ch:12}~章 swizzle 版 HGEMM 的主循环里，
 每个线程要搬到 smem 的 A 数据、要从 smem 读进寄存器的 A/B fragment、
 epilogue 里要写回 gmem 的 C 元素，各自都有一份映射：
 
@@ -181,7 +181,7 @@ Tensor 上最重要的两个操作在本章反复出现：
 
 \subsection{小例子：4 个线程搬一块 $(4,4)$}
 
-在跳进公式之前，先按 @竹熙佳处的建议走一遍最小场景：\emph{一个 threadblock
+在进入公式之前，先按 @竹熙佳处的建议走一遍最小场景：\emph{一个 threadblock
 要把一块 $(k_{\mathrm{TileM}},k_{\mathrm{TileN}})$ 的数据从 src 搬到 dst}
 （g2s / s2r / s2g 同理）。为了能手算，取 4 个线程、$(4,4)$ 的 tile、
 每线程每轮搬 2 个连续元素。
@@ -213,7 +213,7 @@ ldmatrix 或 bank 冲突考虑，地址公式会迅速膨胀，而「哪个数�
 \begin{itemize}
   \item \textbf{写代码用的是「反向」的那张表}：我们想的从来不是「数据
         $(0,1)$ 归谁」，而是「\emph{线程 0 的值 1 去哪取}」，把行列对调
-        看一次，就是第~\ref{ch:20}~章 inverse 运算要干的事。CuTe 的
+        看一次，就是第~\ref{ch:20}~章 inverse 运算的内容。CuTe 的
         TV-layout 直接以「$(t,v)\to$ 坐标」的形式存储，就是这张对调后的表。
   \item \textbf{引入更多优化后，表仍然存在}（只是格子里要额外绕 swizzle、
         ldmatrix 的地址映射）。表画得出来，说明「这个映射」是独立于循环
@@ -248,7 +248,7 @@ ldmatrix 或 bank 冲突考虑，地址公式会迅速膨胀，而「哪个数�
     }
   }
   \node[anchor=west, font=\tiny] at (24,311)
-    {蓝色两行 $=$ 第 1 轮（rows 0--1）；第 2 轮覆盖 rows 2--3，两轮拼满 $(4,4)$};
+    {蓝色两行 $=$ 第 1 轮（rows 0--1）；第 2 轮覆盖 rows 2--3，两轮铺满 $(4,4)$};
   \draw[gray!60, thin] (580,52) rectangle (1136,302);
   \node[anchor=west, font=\tiny\bfseries] at (596,71)
     {CuTe printout（\texttt{make\_tiled\_copy} 实测）};
@@ -310,7 +310,7 @@ CuTe 两个方向都提供，并且用同一个 layout 表示：
 上节小例子里我们直接画了表；在 CuTe 里，「画表」被拆成两个更好写的动作：
 \textbf{声明线程怎么排（ThrLayout）、声明每线程搬的值怎么排（ValLayout）}，
 再由 \texttt{make\_\allowbreak{}tiled\_\allowbreak{}copy} 合成完整的 MN 表。
-\texttt{make\_\allowbreak{}tiled\_\allowbreak{}copy\allowbreak{}(atom,\allowbreak{} Thr\allowbreak{}Layout,\allowbreak{} Val\allowbreak{}Layout)} 的两个人肉参数是
+\texttt{make\_\allowbreak{}tiled\_\allowbreak{}copy\allowbreak{}(atom,\allowbreak{} Thr\allowbreak{}Layout,\allowbreak{} Val\allowbreak{}Layout)} 的两个需要手动指定的参数是
 \textbf{坐标$\to$thr/val} 的两个函数（注意方向：它们把坐标映到线程号/值号，
 不是反过来）：
 
@@ -622,7 +622,7 @@ G$\to$S 的 TiledCopy 类型定义在 launch wrapper 里（L1303--1318），kern
 \lstinputlisting[linerange={868-888},firstnumber=auto,breakatwhitespace=true,
   title={hgemm.cuh L868-888（G2S 与 S2R 的 partition：同一份数据、两种划分）}]{../hgemm.cuh}
 
-这段代码是本章的「一图胜千言」：\textbf{同一个} \texttt{sA} Tensor 被两种
+这段代码集中体现了本章的核心关系：\textbf{同一个} \texttt{sA} Tensor 被两种
 TiledCopy 各分区一次，\texttt{tAsA\_copy} 是 G$\to$S 的视角
 （$(V,4,1,k_{\mathrm{Stage}})$），\texttt{tAsA} 是 S$\to$R 的视角
 （$(V,4,2,k_{\mathrm{Stage}})$，多出的 2 是 K 方向的 MMA 切片数）。为什么
@@ -632,7 +632,7 @@ S$\to$R 的 K 方向重复更多？因为 copy 原子不同：G$\to$S 一次搬�
 \subsection{S$\to$R：从 TiledMMA 推导，并用 retile\_D 对齐目的}
 
 \begin{sloppypar}
-式~\eqref{eq:21-mtca} 的实现在 L881--888，其中真正巧妙的一行是
+式~\eqref{eq:21-mtca} 的实现在 L881--888，其中起关键作用的一行是
 \texttt{retile\_D}：\texttt{tCrA} 是 \emph{MMA 视角}的寄存器 fragment
 （$(\mathrm{MMA}, \mathrm{MMA}_M, \mathrm{MMA}_K) = (8,4,2)$，
 本章测试 case~C 实测），\texttt{tCrA\_view} 是 \emph{copy 视角}的同一个
@@ -647,7 +647,7 @@ S$\to$R 的 K 方向重复更多？因为 copy 原子不同：G$\to$S 一次搬�
 \end{equation}
 
 这一步是 \texttt{cute::\allowbreak{}copy\allowbreak{}(s2r\_\allowbreak{}tiled\_\allowbreak{}copy\_\allowbreak{}a,\allowbreak{} tAsA\allowbreak{}(\dots),\allowbreak{} tCrA\_\allowbreak{}view)}
-能成立的前提：copy 按「源的第 $i$ 个值 $\to$ 目的的第 $i$ 个值」逐元素配对，
+能成立的前提：copy 按「源的第 $i$ 个值 $\to$ 目的的第 $i$ 个值」逐元素对应，
 而 \texttt{retile} 保证目的视图的「第 $i$ 个值」就是本线程寄存器的第 $i$ 个
 槽位。它\textbf{不搬数据、不转换类型、不 shuffle}，真正跨线程的重组发生在
 后面 epilogue 的 smem 往返里。
@@ -1016,7 +1016,7 @@ kernel 的流水线里。所以本节回答的是「这套抽象的代价结构�
 \textbf{结论二（搬运划分影响访存质量）}：式~\eqref{eq:21-g2s-tv} 保证每个线程
 的 8 个值是连续的，所以一条 128-bit 指令就够了；如果 Thr/Val 写反（比如
 \texttt{Val\allowbreak{}Layout=\allowbreak{}(8,\allowbreak{}1)}），每个线程的 8 个值会跨行分布，128-bit 拷贝会退化成
-8 条 16-bit 访问。这不是性能调优技巧，而是\textbf{类型写错就直接吃 8 倍
+8 条 16-bit 访问。这不是性能调优技巧，而是\textbf{类型写错就直接产生 8 倍
 访存指令}的硬约束。第~\ref{ch:12}~章的合并访问分析在这里变成了类型选择。
 
 \textbf{结论三（epilogue 的额外成本）}：CuTe 版 epilogue 走
@@ -1048,7 +1048,7 @@ TiledCopy 只是把它如实反映到 partition 的形状里。
 （\texttt{partition\_\allowbreak{}D\allowbreak{}(s\allowbreak{}A)}），同时也是 S$\to$R 的 S
 （\texttt{partition\_\allowbreak{}S\allowbreak{}(s\allowbreak{}A)}）。
 
-\textbf{坑三：\texttt{retile} 不搬数据，别指望它对齐线程。}
+\textbf{坑三：\texttt{retile} 不搬数据，也不能用来对齐线程。}
 \texttt{retile\_D}/\texttt{retile\_S} 只重标索引，同一线程内的元素顺序被
 重新解释；跨线程的重组必须靠 smem（或 shuffle）完成。写错方向的后果是
 每个线程读到自己不该有的元素：数值错、不报错。
@@ -1059,17 +1059,17 @@ TiledCopy 只是把它如实反映到 partition 的形状里。
 kernel 模板参数一律用 \texttt{Int<N>} 包住正是为此（第~\ref{ch:20}~章坑五的
 同一件事，在 copy 上的表现）。
 
-\textbf{坑五：\texttt{local\_tile} 之后别忘了 remainder。}
+\textbf{坑五：\texttt{local\_tile} 之后仍带 remainder。}
 \texttt{local\_\allowbreak{}tile\allowbreak{}(A,\allowbreak{} tile,\allowbreak{} coord)} 返回的 Tensor 仍带未切出的 mode
 （gA 是三维的）；直接当二维用会在 \texttt{partition} 时报 rank 不匹配，
-或者更隐蔽地，被 \texttt{\_} 占位符悄悄吞掉一维。
+或者更隐蔽地，被 \texttt{\_} 占位符隐式丢掉一维。
 
 \textbf{坑六：copy 的源/目的 shape 必须逐 mode 匹配。}
-\texttt{cute::\allowbreak{}copy\allowbreak{}(tiled\_\allowbreak{}copy,\allowbreak{} src,\allowbreak{} dst)} 内部按元素配对，前提是
+\texttt{cute::\allowbreak{}copy\allowbreak{}(tiled\_\allowbreak{}copy,\allowbreak{} src,\allowbreak{} dst)} 内部按元素对应，前提是
 \texttt{src} 与 \texttt{dst} 的（值 $\times$ 剩余 mode）结构一致：这正是
 \texttt{partition\_\allowbreak{}S\allowbreak{}(s\allowbreak{}A\_\allowbreak{}slice)} 与 \texttt{retile\_\allowbreak{}D\allowbreak{}(t\allowbreak{}Cr\allowbreak{}A)} 必须成对出现的
 原因。只 partition 一侧、另一侧手写一个 shape 相近的 Tensor，会在
-\texttt{copy} 内部静态断言炸掉（或者更糟，静默错位）。
+\texttt{copy} 内部的静态断言处编译失败（或者更糟，静默错位）。
 
 \section{面试要点速查}
 
@@ -1100,7 +1100,7 @@ fragment 约定已经规定了「哪个线程持有哪个元素」，拷贝只�
 
 \textbf{Q6：\texttt{retile\_S}/\texttt{retile\_D} 做了什么？}\\
 A：零拷贝重标记：把 fragment 的（MMA, MMA\_M, MMA\_K）索引重排成 copy 视角的
-（值, 重复）索引，\texttt{data()} 不变。它是 \texttt{copy} 逐元素配对的
+（值, 重复）索引，\texttt{data()} 不变。它是 \texttt{copy} 逐元素对应的
 前提，不做数据搬运、不做类型转换、不做 shuffle。
 
 \textbf{Q7：\texttt{group\_modes} 与 \texttt{group} 的区别？}\\
@@ -1169,7 +1169,7 @@ ALL OK
   \item 把 case~A 的 \texttt{ThrLayout} 从 $(32,4){:}(4,1)$ 改成
         $(4,32){:}(32,1)$（线程坐标 i/j 与 stride 一起换），观察
         \texttt{tv layout} 的公式断言如何失效，从而理解「线程坐标的顺序」与
-        「物理线程号的编法」是两件事；
+        「物理线程号的编号方式」是两件事；
   \item 把 case~B 的源 Tensor 从 $(128,32)$ 换成 $(64,32)$，观察
         \texttt{partition\_S} 的剩余 mode 从 4 变 2、而每线程值数不变
         （8 个），并检查本轮覆盖统计是否有空洞；

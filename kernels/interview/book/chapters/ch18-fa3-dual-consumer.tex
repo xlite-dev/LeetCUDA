@@ -28,7 +28,7 @@ sm\_120a 均可编译；要求 CUDART $\ge$ 13.0（common.cuh L21--23 有 \#erro
 
 \textbf{前置}：第~\ref{ch:15}~章（attention 数学与 online softmax）、
 第~\ref{ch:16}~章（split-Q 与 fragment 流转）、第~\ref{ch:17}~章（TMA + WS 的
-mbarrier 协议、full/empty 账本、early release 时机）、第~\ref{ch:14}~章
+mbarrier 协议、full/empty 计数、early release 时机）、第~\ref{ch:14}~章
 （SM120 上的 warp specialization 与 \texttt{setmaxnreg} 池数学）、
 第~\ref{ch:13}~章（TMA descriptor 与 mbarrier 双计数事务模型）。
 \textbf{后续}：第~\ref{ch:25}~章会看到同一结构的 CuTe 重写
@@ -36,20 +36,20 @@ mbarrier 协议、full/empty 账本、early release 时机）、第~\ref{ch:14}~
 
 \section{问题与动机}
 
-第~\ref{ch:17}~章的复测给出一组耐人寻味的数据：TMA $+$ WS 相对 cp.async 版的
+第~\ref{ch:17}~章的复测给出一组值得注意的数据：TMA $+$ WS 相对 cp.async 版的
 收益稳定在 $+20\%$ 量级，但再加深 K 流水（$\mathrm{Sk}: 2 \to 3$）几乎不再涨
 （$<0.5\%$）。这说明\textbf{装载已经不在关键路径上了}，瓶颈退回到计算侧的两件
 事：其一，consumer 内部的 \texttt{mma.sync} 与 softmax 是串行的，QK$^\top$
-算完才能算 softmax，softmax 算完才能发 PV，任何一个 warp 都逃不出这条依赖链；
+算完才能算 softmax，softmax 算完才能发 PV，任何一个 warp 都处于这条依赖链内；
 其二，\texttt{mma.sync} 是\textbf{同步指令}，指令在 Tensor Core 上执行期间该
-warp 只能干等（第~\ref{ch:13}~章的 WGMMA 则可以把 GEMM「发出去就返回」，
+warp 只能空等（第~\ref{ch:13}~章的 WGMMA 则可以把 GEMM「发出去就返回」，
 指令与后续 CUDA Core 指令并行）。
 
 FA3 论文给出的定量背景是：在 Hopper 上，一次 $128 \times 128$ tile 的
 attention 里两个 GEMM 合计 $8.4$ MFLOP（FP16 Tensor Core
 $\approx 4096$ FLOP/cycle $\Rightarrow \approx 2048$ cycles），而 softmax 的
 $128 \times 128$ 个 $\exp$（MUFU.EX2 吞吐 $\approx 16$ OPS/cycle）要
-$\approx 1024$ cycles，\textbf{softmax 吃掉了约三分之一的时间}；若 GEMM 降到
+$\approx 1024$ cycles，\textbf{softmax 占约三分之一的时间}；若 GEMM 降到
 FP8（算力翻倍），softmax 的占比还要涨到一半。这些非 matmul 的「慢指令」若不
 被 overlap，Tensor Core 就有一段时间在空转。注意上述数字是 Hopper 口径
 （论文与@杨远航解析一致），本机 sm\_120a 的绝对吞吐不同，本章只取「量级」
@@ -108,7 +108,7 @@ $e^{S_{ik}-m_0} = e^{S_{ik}-m}\cdot e^{m-m_0}$，两个求和因此可以逐项�
 第~\ref{ch:15}~章 online rescale 的 $e^{m^{\mathrm{old}}-m^{\mathrm{new}}}$
 是同一个思想，只是从「跨迭代」搬到了「跨 warpgroup」。
 
-一个容易忽略的记账细节：$\ell$ 的合并与 $O$ 的合并必须用\textbf{同一组}
+一个容易忽略的细节：$\ell$ 的合并与 $O$ 的合并必须用\textbf{同一组}
 $\alpha, \beta$，而它们又必须由合并后的 $m$ 定义；源码里是先取 max、再算
 两个 exp（L2091--2096），顺序勿调换；反过来写虽然数值上仍近似正确，却会
 引入一次多余的 $e^{m-m}$ 往返。
@@ -123,12 +123,12 @@ $\ell = 1 \cdot \ell_0 + 0 \cdot 0 = \ell_0$，$O = O_0$，
 \textbf{自然退化为单 WG 结果}，不需要任何特判分支（头注释 L1495--1496 即此
 结论）。
 
-这里藏着一个数值陷阱，也是「未归一化累加」这一约定的第二个理由（第一个是
+这里存在一个数值陷阱，也是「未归一化累加」这一约定的第二个理由（第一个是
 第~\ref{ch:15}~章 FA2 省掉每块对角修正）：如果 $O$ 以\textbf{已归一化}形态
 参与合并，就必须算 $O_1/\ell_1$，$0/0$ 直接产 NaN 并污染整个输出。而
 式~\ref{eq:18-merge} 只做乘加（$0 \times 0 = 0$，$e^{-\infty} = 0$ 由硬件
 \texttt{ex2.approx} 精确给出），NaN 无从产生。「$O$ 全程未归一化、只在
-epilogue 除一次 $\ell$」在本章获得了回报。
+epilogue 除一次 $\ell$」的收益在本章显现。
 
 \textbf{奇数 $T_c$} 也不需要特判：$T_c = 3$ 时 $\mathcal{T}_0 = \{0,2\}$、
 $\mathcal{T}_1 = \{1\}$，两流 partial 规模不等，但式~\ref{eq:18-merge} 对任意
@@ -136,7 +136,7 @@ $\mathcal{T}_1 = \{1\}$，两流 partial 规模不等，但式~\ref{eq:18-merge}
 条件 \texttt{tile < Tc}（L1742）：warpgroup 之间\textbf{不交换}「我做了几个
 tile」这类元信息，归并公式对不对称划分天然鲁棒。
 
-\subsection{每 WG 独立 stage：屏障账本从 257 缩到 129}
+\subsection{每 WG 独立 stage：屏障计数从 257 缩到 129}
 
 第~\ref{ch:17}~章的 K/V 是\textbf{跨 WG 共享}的：$\mathrm{Sk}$ 个 K slot 与
 $S_v$ 个 V buffer 由 8 个 consumer warp 共用，屏障 \texttt{full\_K[s]} 的期望
@@ -160,13 +160,13 @@ $S_v$ 个 V buffer 由 8 个 consumer warp 共用，屏障 \texttt{full\_K[s]} �
 
 数字 129 与第~\ref{ch:14}~章 hgemm 版\textbf{完全相同}，含义却不同：那边是
 「128 consumer 线程 $+$ 1 producer 线程」，这边是「\textbf{一个} consumer WG 的
-128 线程 $+$ 1 producer 线程」。协议只认线程数、不认角色，两个 kernel 恰好
-撞号。把「共享 $\mathrm{Sk}$ 个 slot」改成「每 WG 各 $\mathrm{Sk}$ 个」的收益
+128 线程 $+$ 1 producer 线程」。协议只认线程数、不认角色，两个 kernel 的数字
+恰好相同。把「共享 $\mathrm{Sk}$ 个 slot」改成「每 WG 各 $\mathrm{Sk}$ 个」的收益
 写在头注释 L1461--1462：$\mathrm{Sk} = 2$ 时，共享方案里每个 WG 的实际深度
-只有 1（两个 WG 抢同一对 slot 与同一对屏障），而现在每个 WG 都拿到
-\textbf{名副其实}的深度 2，两个 WG 绝不在同一个 slot 或同一张屏障上相遇
+只有 1（两个 WG 竞争同一对 slot 与同一对屏障），而现在每个 WG 都获得
+真正的深度 2，两个 WG 不会使用同一个 slot 或同一张屏障
 （L1458--1459），producer 因此可以连续不断地按
-$\mathrm{cid} = \mathrm{tile}\,\&\,1$ 投递数据，不存在「等另一个 WG 让出
+$\mathrm{cid} = \mathrm{tile}\,\&\,1$ 投递数据，不存在「等另一个 WG 释放
 slot」的耦合。
 
 \begin{figure}[H]
@@ -190,7 +190,7 @@ slot」的耦合。
   }
   \foreach \k [evaluate=\k as \cx using {2.95+4*\k}] in {0,1}{
     \node[dashed, thin, draw=tkOrange, fill=tkFillOrange, minimum width=\blw cm, minimum height=\bh cm,
-          inner sep=0pt, text=tkOrange] at ({\cx},-1.00) {等另一 WG 让出};
+          inner sep=0pt, text=tkOrange] at ({\cx},-1.00) {等另一 WG 释放};
   }
   \node[anchor=east, font=\scriptsize] at (-0.15,-1.00) {WG0（偶 tile）};
   \foreach \k [evaluate=\k as \cx using {2.95+4*\k}] in {0,1}{
@@ -199,11 +199,11 @@ slot」的耦合。
   }
   \foreach \k [evaluate=\k as \cx using {0.95+4*\k}] in {0,1,2}{
     \node[dashed, thin, draw=tkOrange, fill=tkFillOrange, minimum width=\blw cm, minimum height=\bh cm,
-          inner sep=0pt, text=tkOrange] at ({\cx},-1.65) {等另一 WG 让出};
+          inner sep=0pt, text=tkOrange] at ({\cx},-1.65) {等另一 WG 释放};
   }
   \node[anchor=east, font=\scriptsize] at (-0.15,-1.65) {WG1（奇 tile）};
   \node[anchor=west, align=left, text width=12.9cm] at (-3.15,-2.25)
-    {每个 WG 的\textbf{有效深度 $\approx 1$}：屏障 257 要两个 WG 的 256 份 arrive 全到齐才翻转，谁也不能跑在前面（浅 $=$ slot 0，深 $=$ slot 1）};
+    {每个 WG 的\textbf{有效深度 $\approx 1$}：屏障 257 要两个 WG 的 256 份 arrive 全到齐才翻转，谁也不能领先（浅 $=$ slot 0，深 $=$ slot 1）};
   % 下：每 WG 独立 bank —— 两个 WG 并行推进、互不相遇
   \node[anchor=west, font=\scriptsize\bfseries] at (-3.15,-2.95)
     {每 WG 独立 bank（本章）：\texttt{slot[cid][s]} 与 \texttt{full/empty\_K[cid][s]}，屏障各 $129$};
@@ -222,11 +222,11 @@ slot」的耦合。
   }
   \node[anchor=east, font=\scriptsize] at (-0.15,-4.25) {WG1 的 bank 1};
   \node[anchor=west, align=left, text width=12.9cm] at (-3.15,-4.85)
-    {两 WG \textbf{绝不在同一个 slot 或同一张屏障上相遇}：各自 $129 = 128{+}1$ 的屏障独立翻转，\textbf{深度 2 名副其实}、行内无等待块};
+    {两 WG \textbf{不再共享任何 slot 或屏障}：各自 $129 = 128{+}1$ 的屏障独立翻转，\textbf{有效深度即 2}、行内无等待块};
   \node[anchor=west, align=left, text width=12.9cm] at (-3.15,-5.45)
-    {$\mathrm{cid} = \mathrm{tile}\,\&\,1$ 一值三用：tile 路由（哪块 KV 归谁）$=$ smem bank（写哪一块）$=$ 屏障/槽下标};
+    {$\mathrm{cid} = \mathrm{tile}\,\&\,1$ 三处复用：tile 路由（哪块 KV 归谁）$=$ smem bank（写哪一块）$=$ 屏障/槽下标};
 \end{tikzpicture}
-\caption{共享 $\mathrm{Sk}{=}2$ slot 与每 WG 独立 bank 的对照（18.3.3 节；浅 $=$ slot 0，深 $=$ slot 1，$t$ 的下标即 KV tile 号）。上：共享方案里两个 WG 抢同一对 slot 与同一对屏障——\texttt{full\_K[s]}/*\texttt{empty\_K[s]} 的 257 份 arrive 要求\textbf{两个} WG 的 256 个 consumer 线程全部到齐才翻转，于是任何一方都不能比另一方多跑一块：$t_0,t_1,t_2,\dots$ 被两 WG 交替消费，各自的有效流水深度只有 1。下：本章把 bank 按 \texttt{consumer\_id} 切开后，每个 WG 拥有自己的一套 $\mathrm{Sk}$ 个 slot 与自己的屏障（$129 = 128{+}1$），两个 WG 并行推进、互不相遇，深度 2 名副其实。}
+\caption{共享 $\mathrm{Sk}{=}2$ slot 与每 WG 独立 bank 的对照（18.3.3 节；浅 $=$ slot 0，深 $=$ slot 1，$t$ 的下标即 KV tile 号）。上：共享方案里两个 WG 竞争同一对 slot 与同一对屏障——\texttt{full\_K[s]}/*\texttt{empty\_K[s]} 的 257 份 arrive 要求\textbf{两个} WG 的 256 个 consumer 线程全部到齐才翻转，于是任何一方都不能比另一方多跑一块：$t_0,t_1,t_2,\dots$ 被两 WG 交替消费，各自的有效流水深度只有 1。下：本章把 bank 按 \texttt{consumer\_id} 切开后，每个 WG 拥有自己的一套 $\mathrm{Sk}$ 个 slot 与自己的屏障（$129 = 128{+}1$），两个 WG 并行推进、互不干扰，深度 2 为实际深度。}
 \label{fig:18-perwg-stage}
 \end{figure}
 
@@ -235,7 +235,7 @@ slot」的耦合。
 第~\ref{ch:14}~章已给出池不等式：每 SM 寄存器文件 65536 个 32-bit 寄存器，
 CTA 池按 warp 配额回收/发放，任意配置须满足
 $\sum_{w} 32\,r_w < 65536$ 并留 $\ge 2048$ 的 slack；同时
-\texttt{setmaxnreg.\allowbreak{}inc} 是\textbf{阻塞语义}，池里凑不齐就原地挂死
+\texttt{setmaxnreg.\allowbreak{}inc} 是\textbf{阻塞语义}，池中寄存器不足时永久阻塞
 （PTX ISA §9.7.19.5，本地镜像 ptx-docs）。本章的配置是三个 warpgroup：
 producer 128 线程 \texttt{dealloc(40)}、两个 consumer 各 128 线程
 \texttt{alloc(168)}（$D{=}128$）或 \texttt{alloc(80)}（$D{=}64$），见
@@ -254,7 +254,7 @@ $136 \times 128 = 17408$ 与 $312 \times 128 = 39936$ 个寄存器），远离�
 各 224，$64 + 2 \times 224 = 512$ \textbf{恰好等于}上界。驱动对寄存器文件
 另有保留份额，有效池小于 65536，\texttt{alloc} 永远凑不齐，于是 consumer
 卡在 \texttt{setmaxnreg}、producer 卡在等 consumer 的 barrier arrive，
-\textbf{双向互等、纯挂死}（无 illegal instruction、无 error code、无超时）。
+\textbf{双向互等导致挂死}（无 illegal instruction、无 error code、无超时）。
 事故修复版（64/208/208 或 32/232/232）分别给出 $480$ 与 $496$，即「留 $\ge 16$
 的每线程等效余量」，恰好是工程规则「留 $\ge 2048$ slack」除以 128 的结果。
 
@@ -282,7 +282,7 @@ $136 \times 128 = 17408$ 与 $312 \times 128 = 39936$ 个寄存器），远离�
   \node[anchor=east, font=\scriptsize] at (-0.15,-1.05) {(b) 事故};
   \node[anchor=west, align=left, text width=5.2cm, text=tkRed] at (8.15,-1.05)
     {$64 + 2\times224 = 512$：恰好触上限\\
-     驱动另有保留份额 $\to$ \texttt{alloc} 永远凑不齐：双向互等、纯挂死};
+     驱动另有保留份额 $\to$ \texttt{alloc} 永远凑不齐：双向互等导致挂死};
   % (c) 修复版：480 与 496，各留 >=16 的余量
   \node[thin, draw, preaction={fill=gray!8}, pattern=north east lines, pattern color=gray!50,
         minimum width=0.496cm, minimum height=0.50cm, inner sep=0pt] at (7.688,-2.10) {};
@@ -306,19 +306,19 @@ $136 \times 128 = 17408$ 与 $312 \times 128 = 39936$ 个寄存器），远离�
   \node[anchor=west, align=left, text width=13.3cm] at (-0.15,-3.72)
     {每段宽 $=$ 每线程等效配额（producer $r_p$ 浅 $\mid$ 两个 consumer 各 $r_c$ 中、深）；斜纹 $=$ 余量（slack）；横轴口径 $=$ 三个 warpgroup 各 128 线程};
 \end{tikzpicture}
-\caption{65536 个寄存器按角色「切蛋糕」的三种切法（式~\ref{eq:18-pool} 与 18.3.4 节事故分析的图形化）。横轴为每线程等效配额 $r_p + 2r_c \le 512 = 65536/128$：(a) 本章 $D{=}128$ 的 $40+2\times168=376$，余量 136/线程（$=17408$ 个寄存器），远离危险区；(b) 第~\ref{ch:14}~章那次事故的 $64+2\times224$ 恰好等于 512——驱动对寄存器文件另有保留份额，有效池小于 65536，于是 consumer 卡在 \texttt{setmaxnreg}、producer 卡在等 barrier arrive，\textbf{双向互等、纯挂死}；(c) 修复版的 480 与 496 分别留出 32 与 16 的每线程余量，后者正是工程规则「$\ge 2048$ slack」除以 128 的下界。}
+\caption{65536 个寄存器按角色分配的三种方案（式~\ref{eq:18-pool} 与 18.3.4 节事故分析的图形化）。横轴为每线程等效配额 $r_p + 2r_c \le 512 = 65536/128$：(a) 本章 $D{=}128$ 的 $40+2\times168=376$，余量 136/线程（$=17408$ 个寄存器），远离危险区；(b) 第~\ref{ch:14}~章那次事故的 $64+2\times224$ 恰好等于 512——驱动对寄存器文件另有保留份额，有效池小于 65536，于是 consumer 卡在 \texttt{setmaxnreg}、producer 卡在等 barrier arrive，\textbf{双向互等导致挂死}；(c) 修复版的 480 与 496 分别留出 32 与 16 的每线程余量，后者正是工程规则「$\ge 2048$ slack」除以 128 的下界。}
 \label{fig:18-reg-pool}
 \end{figure}
 
-为什么 FA3 这类结构\textbf{必须}做寄存器再分配？因为两个 consumer 要背的活跃
+为什么 FA3 这类结构\textbf{必须}做寄存器再分配？因为两个 consumer 需要持有的活跃
 集比自己发装载的 producer 大一个量级：每线程持有 $S$ fragment
 （\texttt{k\allowbreak{}Val\allowbreak{}Tile\allowbreak{}Seq\allowbreak{}Len\allowbreak{}K}$=8$ 列 $\times$ \texttt{kNRegs}）、$O/D$ 累加器
 （\texttt{k\allowbreak{}Val\allowbreak{}Tile\allowbreak{}Head\allowbreak{}Dim\allowbreak{}V}$= D/8$ 列 $\times$ \texttt{kNRegs}$\in\{2,4\}$）、
 Q/K/V 操作数碎片与 $m/\ell$ 统计量（L1725--1731）。$D{=}128$ 的 F16Acc 路径
 下，单是 $R\_D$ 就占 $16 \times 2 = 32$ 个 \texttt{uint32}，$R\_O$ 又是 32 个；
-不给它 168 的上限，ptxas 只能把溢出量丢进 local memory，每轮 KV 迭代多出
+不给它 168 的上限，ptxas 只能把溢出量写入 local memory，每轮 KV 迭代多出
 成百上千字节的 local 往返。producer 侧正相反：它只做地址计算与 TMA 提交，
-40 个就够。\textbf{同一份 64K 寄存器文件，按角色重新切蛋糕}。这就是 warp
+40 个就够。\textbf{同一份 64K 寄存器文件，按角色重新分配}。这就是 warp
 specialization 收益的另一半来源。
 
 必须补一句现实约束（第~\ref{ch:14}~章已考据）：若
@@ -329,13 +329,13 @@ ptxas 就会以 C7506 丢弃 \texttt{setmaxnreg}（CUDA 13.2，与 arch 后缀�
 \textbf{意图注释}而非既成事实，真正决定分配的是
 \texttt{\_\allowbreak{}\_\allowbreak{}launch\_\allowbreak{}bounds\_\allowbreak{}\_\allowbreak{}(384,\allowbreak{} 1)}（L1515）与 ptxas 的分配器。池数学的
 价值在于：一旦开启寄存器再分配（正确的 TMA 形式 + 宏），这套数字必须\textbf{先
-算对}，否则就是上面那次挂死事故。
+算对}，否则会重演上面那次挂死事故。
 
 \section{设计与实现}
 
 \subsection{总体结构：三分线程与奇偶路由}
 
-头部注释（L1445--1452）先把「与 8b 的核心区别」摆明：
+头部注释（L1445--1452）先列明「与 8b 的核心区别」：
 
 \begin{itemize}
   \item 8b：1 个 producer WG（128T）$+$ 1 个 consumer WG（256T，8 warp），
@@ -357,10 +357,10 @@ ptxas 就会以 C7506 丢弃 \texttt{setmaxnreg}（CUDA 13.2，与 arch 后缀�
 角色判定只有两行（L1577--1581）：\texttt{threadIdx.x < 128} 为 producer；
 其余按 \texttt{\allowbreak{}(thread\allowbreak{}Idx.\allowbreak{}x - 128) /\allowbreak{} 128} 得 \texttt{consumer\_id}
 $\in \{0, 1\}$，组内序号 \texttt{wg\_tid} $\in [0, 128)$ 再切 warp/lane。
-注意 \texttt{consumer\_id} 在本 kernel 里\textbf{一值三用}：既标识「我处理
+注意 \texttt{consumer\_id} 在本 kernel 里\textbf{三处复用}：既标识「我处理
 哪一半 tile」（\texttt{tile =\allowbreak{} consumer\_\allowbreak{}id; tile +=\allowbreak{} 2}），也标识「我用哪一套
 smem bank / 屏障」（\texttt{[cid]} 下标），还标识「我用哪些 stage 槽」。这种
-「数据划分 $=$ 存储划分 $=$ 同步划分」的三合一，是奇偶拆分最大的工程优势
+「数据划分 $=$ 存储划分 $=$ 同步划分」的对应关系，是奇偶拆分最大的工程优势
 （三者的完整角色与数据流见图~\ref{fig:18-1}）。
 
 \lstinputlisting[linerange={1550-1565},firstnumber=auto,breakatwhitespace=true,
@@ -377,12 +377,12 @@ smem 于是是三段之和（half 元素 2 B）：
 40.0/56.0/72.0/88.0 KB；$D{=}128$ 时 Sk $=1$ 为 80.0 KB，Sk $=2$ 则是
 \textbf{112 KB $>$ 99 KB} 的 optin 上限（本机实测 101376 B $=$ 99.0 KB，
 18.7~节的考据框核对注释口径），因此 $D{=}128$ \textbf{只支持 Sk $= 1$}
-（头注释 L1500--1501）。这解释了为什么「更深流水」在本章不是免费午餐：
+（头注释 L1500--1501）。这解释了为什么「更深流水」在本章并非没有代价：
 bank 一分为二后，smem 的 $O(\mathrm{Sk})$ 项直接翻倍。
 
 \subsection{producer：单线程 TMA 与 cid 路由}
 
-producer 仍是「128 线程里只有 \texttt{wg\_tid == 0} 干活」的老套路：
+producer 仍是「128 线程里只有 \texttt{wg\_tid == 0} 执行装载」的原有结构：
 \texttt{dealloc(40)} 之后先装 Q（P0，两 WG 共用，一次 \texttt{arrive\_tx}
 声明 $B_r D \times 2$ 字节），再进入\textbf{全局顺序}的 tile 循环（P2）。
 与第~\ref{ch:17}~章的关键差异只有一处：每轮的
@@ -396,7 +396,7 @@ $\mathrm{cid} = \mathrm{tile}\,\&\,1$ 决定数据落到哪个 bank、走哪张�
 
 「先 K 后 V」是刻意的发射顺序：K 的 empty 信号在 consumer 的 QK 阶段末尾
 （最后一组 \texttt{ldmatrix} 之后）就发出，V 的 empty 信号要等 PV 的
-\texttt{ldmatrix} 完毕，故 K 的等待窗口比 V 短，早发早通。Sk $\ge 2$ 时 K 走
+\texttt{ldmatrix} 完毕，故 K 的等待窗口比 V 短，应先发射 K。Sk $\ge 2$ 时 K 走
 真正的乒乓预取：第 $t$ 轮把 tile $t+2$ 装进
 $\mathrm{stg}_{\mathrm{next}} = (\mathrm{local\_tile}+1) \bmod \mathrm{Sk}$；
 注意 \texttt{local\_tile} $= (t - \mathrm{cid})/2$ 是\textbf{本 WG 视角}的
@@ -405,7 +405,7 @@ $\mathrm{stg}_{\mathrm{next}} = (\mathrm{local\_tile}+1) \bmod \mathrm{Sk}$；
 
 \subsection{consumer 主循环：五拍与两个 early release}
 
-consumer 的入口是「C0 点火」：先给\textbf{自己}那套 \texttt{empty\_\allowbreak{}K[cid][*]}
+consumer 的入口是 C0 预热：先给\textbf{自己}那套 \texttt{empty\_\allowbreak{}K[cid][*]}
 与 \texttt{empty\_\allowbreak{}V[cid]} 各预存 128 次 arrive（不是第~\ref{ch:17}~章的 256
 次，每张屏障只放行一个 WG），然后等 \texttt{full\_Q}：
 
@@ -425,7 +425,7 @@ rescale），只有两处 \textbf{early release} 的位置值得复述，它们�
 
 两处共同点：\textbf{smem 一进寄存器就放行}。K 的最后一组 \texttt{LDMATRIX\_X2}
 之后 K 数据已全部在 $R\_K$，后续 HMMA 与 softmax 不再读 K smem；V 同理
-（$R\_V$）。放行越早，producer 的下一笔 TMA 越早起飞。在
+（$R\_V$）。放行越早，producer 的下一笔 TMA 越早发出。在
 $\mathrm{Sk}{=}1$ 的 $D{=}128$ 配置下，这几乎是唯一的重叠窗口。
 
 \subsection{merge epilogue：scratch 复用与两步同步}
@@ -454,7 +454,7 @@ $i\cdot16 \sim i\cdot16{+}7$，\texttt{[i][1]} 管 $+8 \sim +15$，见 L2069
 
 随后是一次 $O = O_{\mathrm{acc}}/\ell$ 的终归一化（L2127--2152）与
 第~\ref{ch:16}~章的 shuffle $+$ 128-bit 集体写回（L2154--2190），二者与
-ch16/ch17 逐行相同，不再重复。值得记一笔的是\textbf{写在谁身上}：只有
+ch16/ch17 逐行相同，不再重复。值得指出的是\textbf{由谁写回}：只有
 \texttt{consumer\_id}$=0$ 做归一化与写回（\texttt{if \allowbreak{}(consumer\_\allowbreak{}id =\allowbreak{}=\allowbreak{} 0)}，
 L2057），\texttt{consumer\_id}$=1$ 写完后直接退出，省掉单侧的重复计算。
 
@@ -503,7 +503,7 @@ L2057），\texttt{consumer\_id}$=1$ 写完后直接退出，省掉单侧的重�
     {同一 \texttt{wg\_tid} $\Rightarrow$ 相同 Q 行段\\$\Rightarrow$ 逐元素归并、零跨 lane 通信};
   % 底部流程链
   \node[draw, fill=gray!12, minimum width=2.30cm, minimum height=0.80cm, align=center, font=\tiny]
-    at (1.25,-6.5) {mainloop 退出\\（TMA 全部落账）};
+    at (1.25,-6.5) {mainloop 退出\\（TMA 全部完成）};
   \node[draw=tkOrange, fill=tkFillOrange, minimum width=2.10cm, minimum height=0.80cm, align=center, font=\tiny]
     at (3.65,-6.5) {(1) \texttt{\_\_syncthreads}\\然后才写 scratch};
   \node[draw=tkGreen, fill=tkFillGreen, minimum width=2.10cm, minimum height=0.80cm, align=center, font=\tiny]
@@ -522,7 +522,7 @@ L2057），\texttt{consumer\_id}$=1$ 写完后直接退出，省掉单侧的重�
   \node[anchor=north west, font=\tiny] at (0.4,-7.05)
     {$T_c{=}1$ 退化分支：WG2 未进循环，$m_1{=}-\infty,\ \beta{=}0$，merge 自然退化为 WG1 单侧结果。};
 \end{tikzpicture}
-\caption{merge scratch 的 \texttt{wg\_tid} 对齐设计（18.4.4 节）。scratch 复用主循环的 Q/K/V 动态 smem：$R\_D$ 区每 \texttt{wg\_tid} 一段 float4 包；m/$\ell$ 区按 $[i][0/1]$ 行段组织——$[i][0]$ 管 rows $i\cdot 16..{+}7$、$[i][1]$ 管 $+8..{+}15$，与 $R\_D$ fragment 覆盖的 Q 行严格对齐。WG2（\texttt{consumer\_id=1}）按 \texttt{wg\_tid} 写入（高亮行即某个 \texttt{wg\_tid} 命中的行段），WG1 用\textbf{同一个} \texttt{wg\_tid} 读回——两个 WG 的 partial 覆盖完全相同的 Q 行，可逐元素归并而无需任何跨 lane 通信。下方：两步 \texttt{\_\_\allowbreak{}syncthreads} 的完整时序（第一次保证 TMA/ldmatrix 全部落账后才写 scratch，第二次让 WG1 看到 WG2 的全部写入）。}
+\caption{merge scratch 的 \texttt{wg\_tid} 对齐设计（18.4.4 节）。scratch 复用主循环的 Q/K/V 动态 smem：$R\_D$ 区每 \texttt{wg\_tid} 一段 float4 包；m/$\ell$ 区按 $[i][0/1]$ 行段组织——$[i][0]$ 管 rows $i\cdot 16..{+}7$、$[i][1]$ 管 $+8..{+}15$，与 $R\_D$ fragment 覆盖的 Q 行严格对齐。WG2（\texttt{consumer\_id=1}）按 \texttt{wg\_tid} 写入（高亮行即某个 \texttt{wg\_tid} 命中的行段），WG1 用\textbf{同一个} \texttt{wg\_tid} 读回——两个 WG 的 partial 覆盖完全相同的 Q 行，可逐元素归并而无需任何跨 lane 通信。下方：两步 \texttt{\_\_\allowbreak{}syncthreads} 的完整时序（第一次保证 TMA/ldmatrix 全部完成后才写 scratch，第二次让 WG1 看到 WG2 的全部写入）。}
 \label{fig:18-merge-scratch}
 \end{figure}
 
@@ -547,12 +547,12 @@ consumer 间通信 & 无（写同一份输出） & 终态 merge（smem scratch�
 \end{tabular}
 \end{center}
 
-一句话总结：ch14 的 WS 是「把搬运从计算里摘出去」，本章的 WS 是「把搬运摘
-出去之后，再用第二个 consumer 把\textbf{计算与计算}叠起来」。前者解决 memory
-latency，后者冲着 softmax 与 GEMM 的 overlap 去。FA3 论文（§3.2/§3.3）把后者
+一句话总结：ch14 的 WS 是「把搬运从计算中分离」，本章的 WS 是「在搬运分离
+之后，再用第二个 consumer 把\textbf{计算与计算}重叠」。前者解决 memory
+latency，后者针对 softmax 与 GEMM 的 overlap。FA3 论文（§3.2/§3.3）把后者
 的完整形态称为 \emph{pingpong scheduling}：借助 WGMMA 的异步性，同一 WG 内部
 GEMM 与 softmax 也能重叠（intra-warpgroup overlapping），两个 WG 再交替执行
-GEMM 以喂满 Tensor Core。本 kernel 的 consumer 用\textbf{同步}的
+GEMM 以填满 Tensor Core。本 kernel 的 consumer 用\textbf{同步}的
 \texttt{mma.sync}，做不到 WG 内重叠；它靠的是两个独立流在硬件调度器上
 \textbf{统计性交错}（WG1 处于 MMA 段时 WG2 大概率处于 softmax 段），加上 TMA
 窗口被完整隐藏。这是「无 WGMMA」约束下的近似；第~\ref{ch:25}~章的 CuTe 版
@@ -602,7 +602,7 @@ GEMM 以喂满 Tensor Core。本 kernel 的 consumer 用\textbf{同步}的
   \foreach \ta in {2,4,6,8}{
     \draw[-{Stealth}, thin, tkOrange] ({\ta*\u},-2.55) -- ({\ta*\u},-2.32);
   }
-  \node[anchor=north, font=\tiny, text=tkOrange] at ({6*\u},-2.86) {full[s] arrive-tx：TMA 落账即翻转};
+  \node[anchor=north, font=\tiny, text=tkOrange] at ({6*\u},-2.86) {full[s] arrive-tx：TMA 完成即翻转};
   % 资源占用条
   \node[anchor=east, font=\scriptsize] at (-0.15,-3.7) {Tensor Core};
   \node[thin, draw=tkBlue, fill=tkBlue!45, minimum width=10.04cm, minimum height=0.30cm, inner sep=0pt] at ({4*\u},-3.7) {};
@@ -634,7 +634,7 @@ GEMM 以喂满 Tensor Core。本 kernel 的 consumer 用\textbf{同步}的
         minimum width=1.7cm, minimum height=0.30cm, inner sep=0pt] at (2.8,-6.75) {};
   \node[font=\tiny, text=tkRed] at (2.8,-7.12) {TC 空转};
 \end{tikzpicture}
-\caption{双 consumer 的相位交错时序（18.4.6 节统计性交错的图形化）。上：WG1/WG2 各按「QK MMA $\to$ softmax $\to$ PV MMA $\to$ rescale」四段推进自己的 KV tile 子序列，两 WG 相位差 $1/4$ 周期——WG1 处于 MMA 段时 WG2 大概率处于 softmax/rescale 段；producer 的 TMA 全程并行，落账即 arrive-tx 翻转 \texttt{full[s]}。中：Tensor Core 与 CUDA Core/SFU 两条资源条被两路计算交替填满（同步 \texttt{mma.sync} 做不到 WG 内重叠，靠两路独立流在硬件调度器上统计性交错）。下：单 consumer（第~\ref{ch:17}~章形态）的对照——softmax 段 Tensor Core 只能空转，这正是第二个 consumer 要填的洞。}
+\caption{双 consumer 的相位交错时序（18.4.6 节统计性交错的图形化）。上：WG1/WG2 各按「QK MMA $\to$ softmax $\to$ PV MMA $\to$ rescale」四段推进自己的 KV tile 子序列，两 WG 相位差 $1/4$ 周期——WG1 处于 MMA 段时 WG2 大概率处于 softmax/rescale 段；producer 的 TMA 全程并行，完成即 arrive-tx 翻转 \texttt{full[s]}。中：Tensor Core 与 CUDA Core/SFU 两条资源条被两路计算交替填满（同步 \texttt{mma.sync} 做不到 WG 内重叠，靠两路独立流在硬件调度器上统计性交错）。下：单 consumer（第~\ref{ch:17}~章形态）的对照——softmax 段 Tensor Core 只能空转，这正是第二个 consumer 要填补的空档。}
 \label{fig:18-dual-phase}
 \end{figure}
 
@@ -692,7 +692,7 @@ GEMM 以喂满 Tensor Core。本 kernel 的 consumer 用\textbf{同步}的
     {wait full\_V[cid] $\to$ PV（R\_S 复用 + X2\_T）$-$ arrive empty\_V[cid] $\to$ rescale R\_D};
   \node[draw=black!60, fill=gray!25, font=\tiny\bfseries, align=center,
         text width=15.2cm, inner sep=1pt, minimum height=0.47cm] at (580,431)
-    {收尾：\_\_syncthreads（全部 TMA 落地，K/V smem 生命周期结束）};
+    {收尾：\_\_syncthreads（全部 TMA 完成，K/V smem 生命周期结束）};
   \node[draw=tBlue, fill=white, align=center, text width=7.3cm, inner sep=1pt,
         minimum height=0.67cm] at (295,484)
     {WG1：读 scratch 归并后写出 $O \to$ gmem};
@@ -734,7 +734,7 @@ Sk$=$2, F32Acc & 153.7 & — & — \\
 190.4 T（F16Acc）/ 194.2 T（F32Acc），而同卡同刻 FA2 TMA WS（$B_r{=}128$，
 Sk$=2$）为 172.5 / 191.1 T。FA3 式的 $B_r{=}64$ 小 tile 尽管算术强度只有
 $AI = B_r = 64$ FLOP/B（第~\ref{ch:17}~章「$AI = B_r$」结论的一半，因为
-Q tile 行数减半），却靠「两条独立流交错」把多余的线程预算换了回来；$D{=}64$
+Q tile 行数减半），却靠「两条独立流交错」用多余的线程预算换回了吞吐；$D{=}64$
 上差距更明显（159.8 vs 141.8 T，$+13\%$）。其二，\textbf{Sk 加深在本章不再有收益}
 （$D{=}64$：Sk$=1$ 159.8 $>$ Sk$=2$ 155.1 $>$ Sk$=3$ 154.3）：per-WG bank
 把 smem 的 $O(\mathrm{Sk})$ 项翻倍（式~\ref{eq:18-smem}），而装载早已不在
@@ -742,7 +742,7 @@ Q tile 行数减半），却靠「两条独立流交错」把多余的线程预�
 的饱和点更低。其三，\textbf{F32Acc 依旧不慢于 F16Acc}（170.0 vs 159.8；
 194.2 vs 190.4），与第~\ref{ch:17}~章观察一致：F16Acc 路径要在 f32 计算与
 f16 写回之间反复 \texttt{\_\allowbreak{}\_\allowbreak{}float22half2\_\allowbreak{}rn}，而 attention 的 softmax
-指令占比高，这笔转换开销比累计精度更显眼。
+指令占比高，这笔转换开销对速度的影响比累加精度更大。
 
 这组数字\textbf{不是受控 A/B}：两个 kernel 的 $B_r$ 不同
 （128 vs 64）、Sk 不同，网格形状（$N/B_r$ 与 $B_c$ 的块数）也不同，读作
@@ -775,7 +775,7 @@ FA3 TMA MMA WS (2 Consumer WG) (Sk=1, Sv=1, F32Acc) & 1.526e-05 & 205.7/230.2 (0
 205.7），「两条独立流交错填满发射槽」的结构收益在更大规模下依然成立。其二，
 \textbf{F16Acc 与 F32Acc 速度基本持平}（206.2 vs 205.7，差别 $<0.5\%$，落在
 run 间波动内），而 \textbf{F32Acc 精度更优}：最大误差 1.526e-05 比 F16Acc 的
-1.068e-04 小约一个量级，本规模下 F32Acc 是更划算的默认选择。两档对 cuDNN 均为
+1.068e-04 小约一个量级，本规模下 F32Acc 是更合适的默认选择。两档对 cuDNN 均为
 0.89x，说明剩余差距在 kernel 结构而非累加精度。
 
 \section{实践经验与考据说明}
@@ -833,7 +833,7 @@ run 间波动内），而 \textbf{F32Acc 精度更优}：最大误差 1.526e-05 
   L1648、L1742 一致；（3）arrive 数：\texttt{init\allowbreak{}(\&full\_\allowbreak{}Q,\allowbreak{} 256 + 1)}
   （L1584，注释「2 consumer WGs * 128 $+$ 1 producer」）与 per-WG 屏障
   \texttt{k\allowbreak{}Consumer\allowbreak{}Threads\allowbreak{}Per\allowbreak{}WG + 1 =\allowbreak{} 129}（L1587--1591）与式~\ref{eq:18-pool}
-  上方的账本一致；（4）稳定归并公式（L1487--1493）与 L2091--2123 实现一致
+  上方的计数表一致；（4）稳定归并公式（L1487--1493）与 L2091--2123 实现一致
   （含 F16Acc 提升到 float2 计算的写法）；（5）$T_c{=}1$ 退化结论
   （L1495--1496）与 L2035 注释、以及 18.3.2 节的推导一致。
 \end{kaogu}
@@ -851,7 +851,7 @@ TMA」。}\allowbreak{}producer 退出 mainloop 只说明事务\textbf{已声明
 $m_1 = -\infty$、$\ell_1 = 0$，若按「先归一化再合并」的写法会算出
 $0/0$。本章 kernel 用未归一化 $O_{\mathrm{acc}}$ 只做乘加，天然安全
 （18.3.2 节）；换成「归一化后相加」的实现必须显式特判。测试里的
-\texttt{N=64}（$T_c{=}1$）例就是这条路径的守门员。
+\texttt{N=64}（$T_c{=}1$）例专门覆盖这条路径。
 
 \textbf{坑三：\texttt{local\_tile}/\texttt{local\_iter} 必须严格对齐。}
 producer 在 L1663 重算本 WG 视角的序号 $(t-\mathrm{cid})/2$ 以确定
@@ -863,7 +863,7 @@ producer 在 L1663 重算本 WG 视角的序号 $(t-\mathrm{cid})/2$ 以确定
 \textbf{坑四：两套屏障数字不能混用。}\texttt{full\_Q} 是
 $2 \times 128 + 1 = 257$（两 WG 共用），per-WG 的 K/V 屏障是
 $128 + 1 = 129$。把两套数字写混（例如把 per-WG 屏障也 \texttt{init} 成
-257）只会通向两种结局：\textbf{多算则首轮挂死}，\textbf{少算则读到半新半旧
+257）只会出现两种结果：\textbf{多算则首轮挂死}，\textbf{少算则读到半新半旧
 的数据}（静默错误）。C0 预热也必须\textbf{逐 WG} 进行（每张
 \texttt{empty\_\allowbreak{}K[cid][s]}/\texttt{empty\_\allowbreak{}V[cid]} 各 128 次 arrive），
 漏一个 bank 就死一个 WG。
@@ -886,7 +886,7 @@ C7506）。}\allowbreak{}TMA dst 为 \texttt{shared::cluster} 时（\texttt{cp.\
 ptxas 视其为隐式 extern-call 边界，丢弃同 kernel 的 \texttt{setmaxnreg}；
 dst 为 \texttt{shared::cta} 时 sm\_120a/sm\_120f 均保留（第~\ref{ch:14}~章
 坑二取证，与 arch 后缀无关）。
-所以默认构建跑出的性能里\textbf{没有}寄存器再分配的功劳；用 build.sh
+所以默认构建跑出的性能里\textbf{不包含}寄存器再分配的贡献；用 build.sh
 的 sm\_120f 目标重建、或在 sm\_90a 上复测才是式~\ref{eq:18-pool} 的真实检验。
 
 \textbf{坑八：seqlen 对齐。}\allowbreak{}v1 要求 $N \% B_r = 0$ 且 $N \% B_c = 0$，
@@ -905,14 +905,14 @@ producer 用 TMA 异步搬运，两个 consumer warpgroup 让 softmax（CUDA Cor
 A：producer 必须按\textbf{全局顺序} 0,1,2,\dots 连续投递 TMA，而 bank 由
 $\mathrm{cid} = \mathrm{tile}\,\&\,1$ 静态路由（L1459、L1475）。奇偶拆分下
 两 WG 当前消费的 tile 永远相邻（$t$ 与 $t+1$），producer 的单一顺序流正好
-按 1:1 喂饱两个 bank；若改成前后半区，过渡期两个 WG 的需求会同时压向同一个
+按 1:1 供给两个 bank；若改成前后半区，过渡期两个 WG 的需求会同时压向同一个
 cid，另一个 bank 空转，且远端 tile 的数据可能还没被搬运到（注释 L1479--1480）。
 
 \textbf{Q3：per-WG 独立 stage 带来什么？}\\
-A：共享方案里 $\mathrm{Sk}$ 个 slot 是两个 WG 抢着用的（每个 WG 实际深度
+A：共享方案里 $\mathrm{Sk}$ 个 slot 由两个 WG 竞争使用（每个 WG 实际深度
 $\approx \mathrm{Sk}/2$）；独立 bank 后每个 WG 真正拥有 $\mathrm{Sk}$ 级深度，
-且两个 WG 永不在同一 slot/屏障上相遇（L1456--1462），屏障到达数从 257 降到
-129（18.3.3 节的账本表）。
+且两个 WG 不会使用同一 slot/屏障（L1456--1462），屏障到达数从 257 降到
+129（18.3.3 节的计数表）。
 
 \textbf{Q4：merge 为什么要用 $\max$ 作 pivot？}\\
 A：式~\ref{eq:18-merge} 用全局 $m = \max(m_0, m_1)$，使
@@ -927,7 +927,7 @@ $T_c{=}1$ 时 WG2 的 $m_1 = -\infty, \ell_1 = 0, O_1 = 0$，$\beta = 0$，
 退化回单 WG 结果（18.3.2 节）。前提是全程用未归一化的 $O_{\mathrm{acc}}$。
 
 \textbf{Q6：为什么需要 \texttt{setmaxnreg}？}\\
-A：consumer 要背 $S/O/D$ fragment 与 Q/K/V 操作数，producer 只发 TMA。
+A：consumer 需要持有 $S/O/D$ fragment 与 Q/K/V 操作数，producer 只发 TMA。
 把 producer 降到 40、consumer 升到 168（$D{=}128$），等于把同一份 64K
 寄存器文件按角色重切，避免 consumer 溢出到 local memory。约束是
 $r_p + 2r_c \le 496$（留 $\ge 2048$ slack）；\texttt{.inc} 是阻塞语义，
@@ -953,10 +953,10 @@ WG1 看到 WG2 的写入）。
 \texttt{test\_\allowbreak{}flash\_\allowbreak{}attn\_\allowbreak{}3\_\allowbreak{}tma\_\allowbreak{}ws\_\allowbreak{}impl}@L2318；参考实现由 cuDNN SDPA 换成
 CPU fp64，softmax 全程 double 累加）。覆盖 14 例：$D{=}64$（$\mathrm{Sk}
 \in \{1,2,3\}$，$N \in \{64, 128, 512\}$）与 $D{=}128$（$\mathrm{Sk}{=}1$，
-$N \in \{128, 512\}$），每例 F16Acc/F32Acc 双档，其中 $N{=}64$ 专门打
+$N \in \{128, 512\}$），每例 F16Acc/F32Acc 双档，其中 $N{=}64$ 专门覆盖
 $T_c{=}1$ 的 merge 退化路径，
 $N{=}128$ 是两 WG 各一个 tile 的最小非退化形态，$N{=}512$（$T_c{=}8$）让每个
-WG 跑满 4 个 tile 并触发 $\mathrm{Sk}{\ge}2$ 的 stage 回绕。判定用容差表：
+WG 完成 4 个 tile 并触发 $\mathrm{Sk}{\ge}2$ 的 stage 回绕。判定用容差表：
 F16Acc $5\times10^{-2}$、F32Acc $10^{-3}$。工程细节与
 第~\ref{ch:17}~章的测试一致：\texttt{cu\allowbreak{}Tensor\allowbreak{}Map\allowbreak{}Encode\allowbreak{}Tiled} 经
 \texttt{dlopen} 解析（build\_tests.sh 不带 \texttt{-lcuda}）；include 顺序先引
@@ -985,7 +985,7 @@ bench 子命令输出 18.6~节的复测表（\texttt{.\allowbreak{}/\allowbreak{
 prefetch 目标从 $t+2$ 改成 $t+1$（Sk$=$2 时），观察数值立刻出错（坑三），
 这是两处 \texttt{local\_*} 索引错位的直接演示；（3）把 consumer 的
 \texttt{empty\_K} early release 上移到 HMMA 之前，观察挂死或读脏数据
-（第~\ref{ch:17}~章坑五的姊妹版）；（4）给测试补一行 $D{=}128$、$\mathrm{Sk}{=}2$
+（第~\ref{ch:17}~章坑五的同型问题）；（4）给测试补一行 $D{=}128$、$\mathrm{Sk}{=}2$
 的实例化，确认 harness 打出
 \texttt{SKIP(ch18): smem 114688 B > optin 101376 B}（坑六）。
 
