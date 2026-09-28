@@ -21,7 +21,7 @@ user-invocable: true
 1. **领任务**：读 `RFC.md` 里程碑总览表 + 对应章节的执行卡片。RFC-0..M 已全部收口（RFC-B 于 2026-09-18 取消，职能归附录 E + drawio 全量重建），存量只剩零星复审项（如 B.5 RoPE 参考）；新需求 = 用户新点名的增补章/增强项，按 RFC-L/M 模式新开里程碑条目（源码整合→测试→bench→正文→接线→验收→code review→用户增强）逐项推进。
 2. **读规范**：`BOOK_PLAN.md` §3 章节卡片（源码区间/宏/公式/图/参考/测试映射）+ §4 模板与 DoD + 相关工程节。
 3. **执行**：章节任务四合一 = 正文 tex + 最小测试 .cu + 注释核查 + 增量 bench。
-4. **验收**：对照 §4.2 DoD 八条逐条自检（编译零 error / 锚点断言 / CHECKLOG / 测试 PASS / bench 落盘 / 图表登记 / 延伸阅读 / pdftotext 抽查）。
+4. **验收**：对照 §4.2 DoD 八条逐条自检（编译零 error / 锚点断言 / CHECKLOG / 测试 PASS / bench 落盘 / 图表登记 / 延伸阅读 / pdftotext 抽查）。**新章/增补章写完后，强制用 `remove-tech-ai-tone` skill 做文风自检**（八类 AI 味模式 + 词表逐词 grep，存疑保留；图内文字只做等宽替换），通过后才进入下一步。
 5. **回写**：RFC.md 勾选 `- [x]` + 追加日期；发现问题记 CHECKLOG / RFC 对应位置。
 
 ## 硬规则速查（违反必返工）
@@ -93,6 +93,7 @@ kernels/interview/book/
 
 ## 关联 skill
 
+- `remove-tech-ai-tone`（**文风自检（强制）**：新章/增补章完成、commit 前必跑——技术文去 AI 味八类模式 + 高频词表 + 保留词表 + 验证工作流；目标文风「精确、简洁、沉稳、直接」。全书 2026-09-28 四轮扫描（~305 处）沉淀的词表源于此 skill）
 - `tikz-diagrams`（**图主路径**：TikZ inline 写在章节 tex 内——全书 36 章已含 176 处 tikzpicture（ch26b/ch26c 全 TikZ 先例 + 上游 5be940f 大迁移）；提供模板/编译渲染/视觉 QA 工具链，产出 .tex+.pdf+.png）
 - `drawio-reconstruction`（drawio **存量图维护**：ch20-32 仍有 36 处 drawio png 引用，重建走 inventory→审查闭环）、`drawio-diagram-builder` / `drawio-flow-forge`（存量 drawio 修改/新建）
 - `zhihu`（资料五步法）
