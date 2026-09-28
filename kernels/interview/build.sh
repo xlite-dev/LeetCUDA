@@ -1,18 +1,25 @@
 #!/usr/bin/env bash
-# build.sh — Compile notes-v2.cu for one or more SM architectures.
+# build.sh — Compile notes-v2 (multi-TU) for one or more SM architectures.
 #
-# Uses ccache (when available) in a two-step compile+link workflow:
-#   1. ccache nvcc ... -c notes-v2.cu -o bin/notes-v2.o   (cached)
-#   2. nvcc bin/notes-v2.o -o bin/notes_v2_<arch>.bin ... (uncached link)
-# Artifacts (.o/.bin) are written to ./bin (created if missing).
+# notes-v2.cu 已按模块拆分为多个翻译单元并行编译（--jobs）：
+#   base / sgemv / sgemm / hgemm / fp8_gemm / fp4_gemm / flash_attn / ffpa_attn
+#   / utils .cu + notes-v2.cu（仅 main 与原型声明）。
+# 每个 TU 一个 .o（ccache 缓存粒度 = 单 TU），落 bin/<arch>/，最后链接成单个 bin。
+#
+# 为什么需要 weaken 步骤：base.cuh 的非模板 __global__ kernel 会经 include 链
+# 进入多个 TU（nvcc 为其生成强符号 host stub，多 TU 重复定义 = 链接错误）。
+# 约定 base.o 为这些符号的规范定义；链接前对 sgemv/sgemm/hgemm/flash_attn/
+# ffpa_attn 五个 .o 执行 objcopy --weaken-symbols（列表由 nm base.o 动态提取，
+# objcopy 写临时文件再 mv，避免污染 ccache 硬链接产物）。
 #
 # Usage:
-#   ./build.sh --arch sm_89       # Ada (RTX 40 series)
-#   ./build.sh --arch sm_90a      # Hopper (H100/H200)
-#   ./build.sh --arch sm_120a     # Blackwell (RTX 5090 / PRO 5000/6000)
-#   ./build.sh --arch sm_120f     # Blackwell family target (keeps setmaxnreg; CUDA >= 13.2)
-#   ./build.sh --arch all         # All five architectures (sm_86/sm_89/sm_90a/sm_120a/sm_120f)
-#   ./build.sh --clean            # Remove build artifacts
+#   ./build.sh --arch sm_89 --jobs 8     # Ada (RTX 40 series)
+#   ./build.sh --arch sm_90a --jobs 8    # Hopper (H100/H200)
+#   ./build.sh --arch sm_120a --jobs 8   # Blackwell (RTX 5090 / PRO 5000/6000)
+#   ./build.sh --arch sm_120f --jobs 8   # Blackwell family target (CUDA >= 13.2)
+#   ./build.sh --arch all --jobs 8       # All five architectures (逐 arch，arch 内并行)
+#   ./build.sh --arch sm_XX --jobs 8     # Generic SM arch (无 NOTES_V2_XXX 宏)
+#   ./build.sh --clean                   # Remove build artifacts
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -22,7 +29,7 @@ cd "$SCRIPT_DIR"
 OUT_DIR="$SCRIPT_DIR/bin"
 mkdir -p "$OUT_DIR"
 
-# ── ccache detection ──────────────────────────────────────────────
+# ccache detection
 USE_CCACHE=0
 if command -v ccache &>/dev/null; then
   USE_CCACHE=1
@@ -39,7 +46,7 @@ if [[ ! -x "$NVCC" ]]; then
   exit 1
 fi
 
-# ── common flags (shared across all architectures) ────────────────
+# common flags (shared across all architectures)
 COMMON_FLAGS=(
   -std=c++20
   -O3
@@ -49,8 +56,7 @@ COMMON_FLAGS=(
   -I ../../third-party/cudnn-frontend/include
 )
 
-# ── architecture configurations ───────────────────────────────────
-# Each arch is described by: gencode, extra defines, stubs lib path, extra libs, output name.
+# architecture configurations
 declare -A ARCH_GENCODE
 declare -A ARCH_DEFINES
 declare -A ARCH_LIB_PATH
@@ -101,10 +107,16 @@ ARCH_OUTPUT[sm_120f]="notes_v2_sm120f.bin"
 
 VALID_ARCHS="sm_86 sm_89 sm_90a sm_120a sm_120f"
 
-# ── CLI ───────────────────────────────────────────────────────────
+# translation units（链接用显式列表，防 stale .o 混入；weaken 后 base.o 强符号恒胜）
+TUS=(base sgemv sgemm hgemm fp8_gemm fp4_gemm flash_attn ffpa_attn utils notes-v2)
+# 经 .cuh include 链传递包含 base.cuh（非模板 kernel = 强符号）的 TU；
+# base.o 之外的这些 TU 需要 weaken 去重。
+WEAKEN_TUS=(sgemv sgemm hgemm flash_attn ffpa_attn)
+
+# CLI
 usage() {
   cat <<EOF
-Usage: $0 --arch <name>   [--clean] [-h]
+Usage: $0 --arch <name> [--jobs N] [--clean] [-h]
 
 Architectures:
   sm_86     Ampere (RTX 30 series)
@@ -116,6 +128,7 @@ Architectures:
   sm_XX     Generic SM arch (e.g., sm_80 for A100)
 
 Options:
+  --jobs N  并行编译的 TU 数（默认: min(nproc --all, 32)）
   --clean   Remove .o and .bin files, then exit
   -h, --help  Show this help
 
@@ -126,27 +139,46 @@ EOF
   exit 0
 }
 
+resolve_default_jobs() {
+  local n
+  n="$(nproc --all 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 8)"
+  n="${n//[!0-9]/}"
+  [[ -z "$n" || "$n" -lt 1 ]] && n=8
+  (( n > 32 )) && n=32
+  echo "$n"
+}
+
 ARCH=""
+JOBS="$(resolve_default_jobs)"
 CLEAN_ONLY=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --arch)
+      [[ $# -lt 2 ]] && { echo "[ERROR] --arch requires a value" >&2; exit 1; }
       ARCH="$2"; shift 2 ;;
+    --jobs)
+      [[ $# -lt 2 ]] && { echo "[ERROR] --jobs requires a value" >&2; exit 1; }
+      JOBS="$2"; shift 2 ;;
     --clean)
       CLEAN_ONLY=1; shift ;;
     -h|--help)
       usage ;;
     *)
-      echo "[ERROR] Unknown option: $1" >&2; usage ;;
+      echo "[ERROR] Unknown option: $1 (see --help)" >&2; exit 1 ;;
   esac
 done
 
-# ── clean ─────────────────────────────────────────────────────────
+if [[ ! "$JOBS" =~ ^[1-9][0-9]*$ ]]; then
+  echo "[ERROR] --jobs must be a positive integer (got: $JOBS)" >&2
+  exit 1
+fi
+
+# clean
 if [[ "$CLEAN_ONLY" == "1" ]]; then
   echo "[clean] Removing build artifacts in bin/ ..."
-  rm -f "$OUT_DIR/notes-v2.o"
-  rm -f "$OUT_DIR"/notes_v2_*.bin
+  rm -rf "$OUT_DIR"
+  rm -f "$SCRIPT_DIR/notes-v2.o"
   echo "[clean] Done."
   exit 0
 fi
@@ -156,90 +188,110 @@ if [[ -z "$ARCH" ]]; then
   exit 1
 fi
 
-# ── build one architecture ────────────────────────────────────────
-build_one() {
-  local arch="$1"
-  local gencode="${ARCH_GENCODE[$arch]}"
-  local defines="${ARCH_DEFINES[$arch]}"
-  local lib_path="${ARCH_LIB_PATH[$arch]}"
-  local libs="${ARCH_LIBS[$arch]}"
-  local output="${ARCH_OUTPUT[$arch]}"
+# compile one TU (background-safe)
+compile_tu() {
+  local tu="$1" objdir="$2" gencode="$3" defines="$4"
+  local cmd
+  if [[ "$USE_CCACHE" == "1" ]]; then
+    cmd=(ccache "$NVCC")
+  else
+    cmd=("$NVCC")
+  fi
+  cmd+=("${COMMON_FLAGS[@]}" $defines $gencode -c "${tu}.cu" -o "${objdir}/${tu}.o")
+  echo "  [compile:${tu}] ${cmd[*]}"
+  "${cmd[@]}"
+}
 
-  echo "=== Building $arch -> $output ==="
+# build one architecture (compile in parallel, weaken, link)
+# build_one <tag> <gencode> <defines> <lib_path> <libs> <output>
+build_one() {
+  local tag="$1" gencode="$2" defines="$3" lib_path="$4" libs="$5" output="$6"
+  local objdir="$OUT_DIR/$tag"
+  rm -rf "$objdir"
+  mkdir -p "$objdir"
+
+  echo "=== Building $tag -> $output ($JOBS jobs) ==="
   local t0
   t0=$(date +%s)
 
-  # Step 1: compile (ccache-cached when available)
-  local compile_cmd
-  if [[ "$USE_CCACHE" == "1" ]]; then
-    compile_cmd=(ccache "$NVCC")
-  else
-    compile_cmd=("$NVCC")
+  # Step 1: 并行编译全部 TU（wait -n 限流，失败即终止并杀掉其余 job 及其 nvcc 子进程）
+  local pids=() tu p rc failed=0
+  kill_jobs() {
+    local p
+    for p in "${pids[@]}"; do
+      pkill -P "$p" 2>/dev/null || true
+      kill "$p" 2>/dev/null || true
+    done
+  }
+  for tu in "${TUS[@]}"; do
+    compile_tu "$tu" "$objdir" "$gencode" "$defines" &
+    pids+=($!)
+    while (( $(jobs -rp | wc -l) >= JOBS )); do
+      wait -n || {
+        rc=$?
+        echo "[ERROR] a compile job failed (rc=$rc); killing siblings" >&2
+        kill_jobs
+        exit "$rc"
+      }
+    done
+  done
+  for p in "${pids[@]}"; do
+    wait "$p" || { echo "[ERROR] compile job (pid $p) failed" >&2; failed=1; }
+  done
+  if (( failed != 0 )); then
+    kill_jobs
+    exit 1
   fi
-  compile_cmd+=(
-    "${COMMON_FLAGS[@]}"
-    $defines
-    $gencode
-    -c notes-v2.cu -o "$OUT_DIR/notes-v2.o"
-  )
-  echo "  [compile] ${compile_cmd[*]}"
-  "${compile_cmd[@]}"
 
-  # Step 2: link
-  local link_cmd=("$NVCC" "$OUT_DIR/notes-v2.o" -o "$OUT_DIR/$output" $lib_path $libs)
-  echo "  [link]    ${link_cmd[*]}"
+  # Step 2: weaken base.cuh 派生的重复强符号（base.o 为规范定义）
+  local weaken_list="$objdir/weaken_syms.txt"
+  nm "$objdir/base.o" | awk '$2 ~ /^[TDB]$/ { print $3 }' | sort -u > "$weaken_list"
+  local nweak
+  nweak=$(wc -l < "$weaken_list")
+  for tu in "${WEAKEN_TUS[@]}"; do
+    objcopy --weaken-symbols="$weaken_list" "$objdir/$tu.o" "$objdir/$tu.o.w" \
+      && mv "$objdir/$tu.o.w" "$objdir/$tu.o"
+    echo "  [weaken:${tu}] weakened $nweak base.o strong symbols"
+  done
+
+  # Step 3: link（显式 TU 列表，防 stale .o 混入；weaken 后 base.o 的强符号恒胜弱符号）
+  local link_cmd=("$NVCC")
+  for tu in "${TUS[@]}"; do
+    link_cmd+=("$objdir/$tu.o")
+  done
+  link_cmd+=(-o "$OUT_DIR/$output" $lib_path $libs)
+  echo "  [link]     ${link_cmd[*]}"
   "${link_cmd[@]}"
 
   local t1
   t1=$(date +%s)
-  echo "  [OK] bin/$output  (${t1}-${t0}s, elapsed $((t1 - t0))s)"
+  echo "  [OK] bin/$output  (elapsed $((t1 - t0))s)"
   echo ""
 }
 
-# ── main ──────────────────────────────────────────────────────────
+# main
 if [[ "$ARCH" == "all" ]]; then
   for a in $VALID_ARCHS; do
-    build_one "$a"
+    build_one "$a" "${ARCH_GENCODE[$a]}" "${ARCH_DEFINES[$a]}" \
+      "${ARCH_LIB_PATH[$a]}" "${ARCH_LIBS[$a]}" "${ARCH_OUTPUT[$a]}"
   done
+elif [[ -n "${ARCH_GENCODE[$ARCH]:-}" ]]; then
+  # Predefined arch (sm_86/sm_89/sm_90a/sm_120a/sm_120f)
+  build_one "$ARCH" "${ARCH_GENCODE[$ARCH]}" "${ARCH_DEFINES[$ARCH]}" \
+    "${ARCH_LIB_PATH[$ARCH]}" "${ARCH_LIBS[$ARCH]}" "${ARCH_OUTPUT[$ARCH]}"
+elif [[ "$ARCH" == sm_* ]]; then
+  # Generic arch (e.g., sm_80): no NOTES_V2_XXX flags, cublas/cuda only
+  echo "[build.sh] Generic architecture: $ARCH (no NOTES_V2_XXX flags)"
+  local_arch_num="${ARCH#sm_}"
+  build_one "$ARCH" \
+    "-gencode arch=compute_${local_arch_num},code=sm_${local_arch_num}" \
+    "" \
+    "-L/usr/local/cuda/targets/x86_64-linux/lib/stubs" \
+    "-lcublas -lcuda" \
+    "notes_v2_sm${local_arch_num}.bin"
 else
-  if [[ -n "${ARCH_GENCODE[$ARCH]:-}" ]]; then
-    # Predefined arch (sm_86/sm_89/sm_90a/sm_120a/sm_120f)
-    build_one "$ARCH"
-  elif [[ "$ARCH" == sm_* ]]; then
-    # Generic arch (e.g., sm_80): no NOTES_V2_XXX flags, cublas/cuda only
-    echo "[build.sh] Generic architecture: $ARCH (no NOTES_V2_XXX flags)"
-    arch_num="${ARCH#sm_}"
-    local_gencode="-gencode arch=compute_${arch_num},code=sm_${arch_num}"
-    local_output="notes_v2_sm${arch_num}.bin"
-
-    echo "=== Building $ARCH -> $local_output ==="
-    t0=$(date +%s)
-
-    # Step 1: compile
-    if [[ "$USE_CCACHE" == "1" ]]; then
-      compile_cmd=(ccache "$NVCC")
-    else
-      compile_cmd=("$NVCC")
-    fi
-    compile_cmd+=(
-      "${COMMON_FLAGS[@]}"
-      $local_gencode
-      -c notes-v2.cu -o "$OUT_DIR/notes-v2.o"
-    )
-    echo "  [compile] ${compile_cmd[*]}"
-    "${compile_cmd[@]}"
-
-    # Step 2: link
-    link_cmd=("$NVCC" "$OUT_DIR/notes-v2.o" -o "$OUT_DIR/$local_output" -L/usr/local/cuda/targets/x86_64-linux/lib/stubs -lcublas -lcuda)
-    echo "  [link]    ${link_cmd[*]}"
-    "${link_cmd[@]}"
-
-    t1=$(date +%s)
-    echo "  [OK] bin/$local_output  (${t1}-${t0}s, elapsed $((t1 - t0))s)"
-  else
-    echo "[ERROR] Unknown architecture: $ARCH. Valid: $VALID_ARCHS, all, sm_XX" >&2
-    exit 1
-  fi
+  echo "[ERROR] Unknown architecture: $ARCH. Valid: $VALID_ARCHS, all, sm_XX" >&2
+  exit 1
 fi
 
 echo "=== All builds complete ==="
