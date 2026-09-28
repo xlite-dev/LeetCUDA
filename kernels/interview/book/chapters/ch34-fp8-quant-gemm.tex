@@ -63,7 +63,7 @@ attention 的三量化点里，$P$（softmax 输出）必须在线量化，$Q,K,
 教学上这是一条「从第~\ref{ch:27}~章的量化数学到工程 kernel」的最短路径：数学
 恒等式一章讲透，kernel 工程两章讲透，不引入 online softmax 这类复杂度。
 
-\subsection{约束与 API 契约}
+\subsection{约束与 API 约定}
 
 整套实现的形状约束由\textbf{TMA 对齐}与\textbf{量化向量化}共同决定，集中在 API
 层检查（第~\ref{ch:35}~章 \texttt{fp8\_gemm\_bf16}）：

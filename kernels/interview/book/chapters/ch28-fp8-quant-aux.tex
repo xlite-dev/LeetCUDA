@@ -540,7 +540,7 @@ DRAM 延迟靠更多 in-flight warp 隐藏；行内两半与行对分别用 \tex
 1 与 16 合并成组 amax，组 amax 与每个量化字节都和 1-thread/row 形态逐 bit
 一致。
 
-两处值得注意的细节。\textbf{每行两个线程}（而非一个线程整行）：行向量两半分给
+两个实现细节。\textbf{每行两个线程}（而非一个线程整行）：行向量两半分给
 两个线程，网格规模翻倍，用更多inflight warp 隐藏冷输入的 DRAM 延迟；两条
 \texttt{shfl\_xor}（1 与 16）把两半与行对合并成组 amax，注释强调结果与
 1-thread/row 形态\textbf{逐 bit 一致}：粒度变更不能隐式改变数值。
@@ -1074,7 +1074,7 @@ knob 化设计正是建立在这个落差上：精度敏感场景上调粒度，
         全在 \texttt{kRowsPerIter} 的映射细节（28.4.2~节）；新 headdim 接入要先
         验证这一映射。
   \item \textbf{冷输入的延迟隐藏}：量化 kernel 的输入往往刚被上游 kernel 写出
-        （cache 冷），「每行两线程」这类拉高并发度的朴素手段收益显著，胜过任何
+        （cache 冷），「每行两线程」这类提高并发度的朴素手段收益显著，胜过任何
         复杂的访存模式。
 \end{itemize}
 

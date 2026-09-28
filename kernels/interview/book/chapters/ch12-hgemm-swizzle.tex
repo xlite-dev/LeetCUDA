@@ -33,7 +33,7 @@ conflict} 让 \texttt{ldmatrix} 的读取被串行化；\textbf{k\_step 内 ldma
 \section{问题与动机}
 
 HGEMM 是 compute-bound 算子：$2MNK$ 次乘加对着 $O(MN+MK+NK)$ 的访存，算术强度极高。
-此时优化的全部要义只有一句话：\textbf{不让 Tensor Core 空等数据}。第~\ref{ch:11}~章的
+此时优化的全部要义只有一条：\textbf{不让 Tensor Core 空等数据}。第~\ref{ch:11}~章的
 多级流水已经把 gmem$\to$smem 的一段用 cp.async 双缓冲盖住了，但数据链路还有两段、调度
 还有一层，各有一个具体的瓶颈：
 
@@ -49,7 +49,7 @@ stride，代价是浪费 smem、且破坏 16\,B 对齐粒度；XOR swizzle 用�
 \textbf{瓶颈二：k\_step 内 ldmatrix 与 MMA 的串行（R$\to$计算段）。}一个 BK tile 内含
 多个 $k_{\mathrm{step}}$ slice；若只有一套 fragment 寄存器，每个 slice 都要
 「ldmatrix 等 smem $\to$ MMA 等寄存器」顺序执行，lsu 与 tensor core 交替空转。
-寄存器双缓冲让「加载 slice $t{+}1$」与「用 slice $t$ 计算」同拍进行：它是
+寄存器双缓冲让「加载 slice $t{+}1$」与「用 slice $t$ 计算」同周期进行：它是
 smem 双缓冲（盖 gmem 延迟）之下的第二级流水，两者分工明确。
 
 \textbf{瓶颈三：grid 光栅化把 L2 复用摊薄（调度层）。}\allowbreak{}CUDA block 的分发顺序是
@@ -121,7 +121,7 @@ bank 周期。\texttt{ldmatrix.x4} 的 4 个 8$\times$8 矩阵正对应 4 个 ph
      这组 8 行各自落进哪个 quad 由 smem 行宽决定：BK=16（32\,B 行）2-way、
      BK=64（128\,B 行）8-way（12.3.2/12.3.3 节推导）};
 \end{tikzpicture}
-\caption{bank/phase 硬件模型（12.3.1 节）：32 bank $\times$ 4\,B 一拍最多交付
+\caption{bank/phase 硬件模型（12.3.1 节）：32 bank $\times$ 4\,B 每周期最多交付
 128\,B，任一连续 128\,B 地址窗切成 8 个 16\,B chunk，chunk $c$ 占一个 quad
 （起始 bank $q=4\lfloor a/16\rfloor \bmod 32$，同 quad 同灰度）。warp 的 32 lane
 按 phase 分 4 组依次服务，\texttt{ldmatrix.x4} 的 4 个 $8\times8$ 矩阵正对应 4 个
@@ -181,7 +181,7 @@ Phase 7b-3 把 4 个 $k_{\mathrm{step}}$ slice 统一进 $[128][64]$ 的宽 tile
 
 \subsection{XOR swizzle：v1 的位运算与逐 bit 解释}
 
-XOR swizzle 的想法一句话：\textbf{在写入 smem 时就把 chunk 的物理位置按行号置换，
+XOR swizzle 的想法：\textbf{在写入 smem 时就把 chunk 的物理位置按行号置换，
 让「按列读」的 lanes 天然散开}。对 16 列（两个 chunk）的 tile，v1 的置换是
 （common.cuh~L116、L176）：
 \begin{equation}
@@ -596,7 +596,7 @@ warp shuffle 拼出 128-bit 向量写回 C，思路与第~\ref{ch:11}~章一致�
      尾 tile：\texttt{wait\_group(0)} 排空\\[1pt]
      （hgemm.cuh L642--681）};
   \node[font=\scriptsize, align=center, anchor=north] at (5.8, -1.35)
-    {每个 k\_step 先 flip：\texttt{reg\_st\_idx\^{}=1}、\texttt{reg\_ld\_idx\^{}=1}——ldmatrix 预载 slice $t{+}1$ 进 reg[st]\\（末 k\_step 预载下一 tile 的 slice 0），HMMA 同拍用 reg[ld] 里已就绪的 slice $t$，加载与计算交替发出};
+    {每个 k\_step 先 flip：\texttt{reg\_st\_idx\^{}=1}、\texttt{reg\_ld\_idx\^{}=1}——ldmatrix 预载 slice $t{+}1$ 进 reg[st]\\（末 k\_step 预载下一 tile 的 slice 0），HMMA 同时用 reg[ld] 里已就绪的 slice $t$，加载与计算交替发出};
   \node[font=\scriptsize, align=center, anchor=north] at (5.8, -2.35)
     {两级分工：\textbf{第一级} smem 双缓冲（kStages 轮转）盖住 gmem$\to$smem 的跨 k 迭代延迟；\\
      \textbf{第二级} 寄存器双缓冲（reg[st]/reg[ld] 乒乓）盖住 k\_step 级 ldmatrix 延迟（含 12.3.7 节残余 4-way 冲突）};
@@ -605,7 +605,7 @@ warp shuffle 拼出 128-bit 向量写回 C，思路与第~\ref{ch:11}~章一致�
 第一级——cp.async 按 stage $(k{+}S{-}1)\bmod S$ 预取下一 K-tile（$S{=}$kStages$=2$ 时
 k 迭代 0 预取 tile 1 进 S$_1$、迭代 1 预取 tile 2 回 S$_0$）；下泳道是第二级——
 每个 k 迭代内 4 个 k\_step 逐个过：先 flip（\texttt{reg\_st\_idx}/\texttt{reg\_ld\_idx}
-各异或 1），ldmatrix 把 slice $t{+}1$ 写进 reg[st]，同拍 HMMA 使用 reg[ld] 里已就绪的
+各异或 1），ldmatrix 把 slice $t{+}1$ 写进 reg[st]，同周期 HMMA 使用 reg[ld] 里已就绪的
 slice $t$，tensor core 不必等 ldmatrix。右侧为自适应等待：满载期
 \texttt{wait\_group(kStages-2)} 允许 1 组在飞、尾 tile 退化为 \texttt{wait\_group(0)} 排空。}
 \label{fig:12-dual-pipeline}
@@ -1029,7 +1029,7 @@ pad 量。
 \textbf{Q4：寄存器双缓冲和 smem 多级流水各盖什么延迟？}\\
 A：smem 双缓冲（kStages 个 stage + cp.async）盖 gmem$\to$smem 的跨 k 迭代
 延迟；寄存器双缓冲（RA/RB 两套乒乓）盖 smem$\to$寄存器的 k\_step 级
-ldmatrix 延迟，让「加载下一 slice」与「MMA 上一 slice」同拍发射。
+ldmatrix 延迟，让「加载下一 slice」与「MMA 上一 slice」同周期发射。
 
 \textbf{Q5：block swizzle 为什么能提升 L2 命中？}\\
 A：默认光栅常驻集合是 $T_n\times\lceil R/T_n\rceil$ 宽条带，footprint

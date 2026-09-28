@@ -364,8 +364,8 @@ $N = 524288$ 时读写流量 $512\,\mathrm{MB}$ 远超 L2，是 HBM 口径。两
 
 \section{实践经验}
 
-\begin{kaogu}[F3 | 模板参数与 K 的隐含契约]
-源码注释只提示「kNumThreads=K=128（K>128 时调整模板参数）」，但 $K < 128$ 且不改模板参数同样出错：网格按 \texttt{idx =\allowbreak{} block\allowbreak{}Idx*128 + tid} 线性展开，一个 block 会覆盖到相邻行的数据，行归约被跨行污染（\texttt{idx < N*K} 只防全局越界，不防跨行）。正确契约是 $K$ 必须等于模板参数；支持任意 $K$ 需要行内 padding 或行内循环分块，当前实现未包含。
+\begin{kaogu}[F3 | 模板参数与 K 的隐含约定]
+源码注释只提示「kNumThreads=K=128（K>128 时调整模板参数）」，但 $K < 128$ 且不改模板参数同样出错：网格按 \texttt{idx =\allowbreak{} block\allowbreak{}Idx*128 + tid} 线性展开，一个 block 会覆盖到相邻行的数据，行归约被跨行污染（\texttt{idx < N*K} 只防全局越界，不防跨行）。正确约定是 $K$ 必须等于模板参数；支持任意 $K$ 需要行内 padding 或行内循环分块，当前实现未包含。
 \end{kaogu}
 
 \begin{kaogu}[F3 | $\epsilon$ 的语义未在注释中写明]

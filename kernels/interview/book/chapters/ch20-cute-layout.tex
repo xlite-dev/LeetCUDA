@@ -725,7 +725,7 @@ hgemm.cuh~L1073 的 \texttt{group\_\allowbreak{}modes\allowbreak{}<1,\allowbreak
 左操作数 P 要按 A fragment 排布；m16n8k16 下虽然都是 4 个寄存器，但 C 的
 4 个按「2 行 $\times$ 2 列」组织、A 的 4 个按「2 行 $\times$ 2 个 K 向
 切片」组织，把 C 直接当 A 用会得到寄存器对齐错误（\texttt{cute::gemm}
-静态报错拒绝）。第~\ref{ch:16}~章的手写版靠一份「P 布局契约」注释 $+$
+静态报错拒绝）。第~\ref{ch:16}~章的手写版靠一份「P 布局约定」注释 $+$
 人工挑寄存器位置（\texttt{R\_S[i][w]}、\texttt{R\_S[i][w+1]} 送入
 \texttt{HMMA16816}）绕开这个问题；到了 CuTe 里，同一件事必须写成一个
 \textbf{layout 变换}。

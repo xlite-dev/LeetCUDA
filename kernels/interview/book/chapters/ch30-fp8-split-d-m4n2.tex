@@ -623,7 +623,7 @@ m4n2 的 occupancy 已被 255 寄存器上限限制在 1 CTA，加深 stage 没�
     \node[draw=tkBlue, fill=tkFillBlue, line width=0.5pt, minimum width=5.08cm, minimum height=0.86cm, inner sep=1pt, align=center, text width=5.02cm, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkBlue} }] at (3.157,-5.298) {max 段 [8 warps][16 rows]};
     \node[draw=tkOrange, fill=tkFillOrange, line width=0.5pt, minimum width=5.08cm, minimum height=0.86cm, inner sep=1pt, align=center, text width=5.02cm, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkOrange!75!black} }] at (3.157,-6.283) {sum 段 [8 warps][16 rows]};
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{tkRed} }] at (0.616,-7.069) {两段分置：sum 写与 peer max 读无同步，\\合一块 = 偶发 RAW 覆写};% w=5.174
-    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkRed} }] at (0.616,-7.731) {一致性契约（违反即 O 列段错位）：};% w=5.236
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkRed} }] at (0.616,-7.731) {一致性约定（违反即 O 列段错位）：};% w=5.236
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont }] at (0.616,-8.07) {max 合并：m = max(m\_C0, m\_C1)（顺序无关）};% w=5.236
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont }] at (0.616,-8.378) {sum 合并：$\ell$ = $\ell$\_C0 + $\ell$\_C1（舍入级差异）};% w=5.236
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{black!65} }] at (0.616,-8.686) {lse 只由 n\_warp==0 写（共享 Q 行，L970）};% w=5.236
@@ -744,7 +744,7 @@ split-D/M4N2 是 $D>224$ 的\textbf{被迫选择}，不是普适更优。三条�
 证据：WS 版 split-D 被 setmaxnreg 232 上限否决；QK/PV 混合 atom 布局
 被 M 维一致性否决；fused-rescale 在 split-D 域被单 CTA 掩盖不了的
 tensor pipe 压力否决。三条都是「在 persist-D 域成立的优化不能平移」
-的实例，迁移优化前先核对 occupancy 与寄存器结构是否同型。
+的实例，迁移优化前先核对 occupancy 与寄存器结构是否相同。
 
 \section{常见坑}
 

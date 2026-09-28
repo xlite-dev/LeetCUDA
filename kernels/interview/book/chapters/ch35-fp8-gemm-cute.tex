@@ -72,7 +72,7 @@ smem 读波前反而更少）。FP4（NVFP4）GEMM 单独成章，本章不展�
 \label{fig:35-pipeline}
 \end{figure}
 
-主 kernel 的输入输出契约（TN 布局，与第~\ref{ch:24}~章 CuTe HGEMM 一致）：
+主 kernel 的输入输出约定（TN 布局，与第~\ref{ch:24}~章 CuTe HGEMM 一致）：
 $C[M,N] = A_8[M,K]\cdot B_8^{\top}[N,K]$，三者都行主序、e4m3 输入/bf16 输出。
 「$B^{\top}$ 行主序」就是「$B$ 列主序」——量化阶段已经完成转置
 （34.5.3~节），主 kernel 里 A/B 两条装载路径完全对称。

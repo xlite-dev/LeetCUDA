@@ -141,7 +141,7 @@ A fragment}：左 tile 给 A 的 $k$ 左半区（$a_0$--$a_3$），右 tile 给
 4 次 \texttt{tile\_V\_Bc}，第 $t$ 段消费 \texttt{R\_S[i][2t]} 与
 \texttt{R\_\allowbreak{}S[i][2t+1]}，恰覆盖列 $16t..16t{+}15$。源码注释
 （L602--621）画了 4-warp 版的整表，并特别提醒：这是 \textbf{本路径
-的布局契约}，不是「任意 MMA 的 C 与 A fragment 天然同构」的通用
+的布局约定}，不是「任意 MMA 的 C 与 A fragment 天然同构」的通用
 结论（见 16.7 节勘误与 16.8 节坑五）。
 
 \begin{figure}[H]
@@ -223,7 +223,7 @@ A fragment}：左 tile 给 A 的 $k$ 左半区（$a_0$--$a_3$），右 tile 给
 
 B 操作数两侧不对称：$S=QK^\top$ 是 TN 布局，K 以 $[B_c,d]$ 行主序
 存储，等价于 $K^\top$ 列主序，\texttt{ldmatrix.x2} 不带 \texttt{.trans}
-即得 \texttt{.col} 的 B fragment（与第~\ref{ch:11}~章 11.4.6 完全同型）；
+即得 \texttt{.col} 的 B fragment（与第~\ref{ch:11}~章 11.4.6 完全相同）；
 $P@V$ 则是 NN 布局：B 是 $V_t$ 的 $[B_c,d]$，mma 要求列主序而 V 是
 行主序存储，必须 \texttt{LDMATRIX\_\allowbreak{}X2\_\allowbreak{}T}（.trans，L600）转置装载。
 
@@ -558,7 +558,7 @@ $K_{t+1}$ 则有整整一个迭代的余量。这与第~\ref{ch:11}~章 GEMM 的
 \texttt{ldmatrix.x4} 装 \texttt{m16k16}（每 warp 只有 1 个
 \texttt{k\allowbreak{}Val\allowbreak{}Tile\allowbreak{}Seq\allowbreak{}Len\allowbreak{}Q} 块，地址 \texttt{warp\_QP*16 + lane\%16} 行、
 \texttt{tile\_K\_d*16 + (lane/16)*8} 列，与第~\ref{ch:11}~章
-图~\ref{fig:11-1} 的四象限映射同型）；K 用 \texttt{ldmatrix.x2} 装
+图~\ref{fig:11-1} 的四象限映射相同）；K 用 \texttt{ldmatrix.x2} 装
 \texttt{k16n8}（8 个 $j$ 块覆盖 $B_c$ 列，读 \texttt{smem\_sel} 级）；
 然后 8 条 \texttt{HMMA16816}。每 warp 每 tile 共 $4\times 8 = 32$ 条
 mma，产出 $\mathcal{R}_w$ 行 $\times$ $B_c$ 列的完整 $S_w$。Q fragment
@@ -597,7 +597,7 @@ exp 用 \texttt{\_\_expf}（SFU 快速近似），max/sum 全程 fp32。
   title={flash\_attn.cuh L562-601（V 就绪等待 + \texttt{ldmatrix.\allowbreak{}x2.trans} 装载 V）}]{../flash_attn.cuh}
 
 \lstinputlisting[linerange={602-641},firstnumber=auto,
-  title={flash\_attn.cuh L602-641（P 布局契约注释、$w{=}2t$ 索引与 $R\_O = P \times R\_V$）}]{../flash_attn.cuh}
+  title={flash\_attn.cuh L602-641（P 布局约定注释、$w{=}2t$ 索引与 $R\_O = P \times R\_V$）}]{../flash_attn.cuh}
 
 进 3d 前先等 $V_t$：非尾部迭代 \texttt{wait\_\allowbreak{}group\allowbreak{}(1)}（允许 $K_{t+1}$
 那一组仍在途），尾部 \texttt{wait\_\allowbreak{}group\allowbreak{}(0)}（L562--571）。装载侧
@@ -828,7 +828,7 @@ swizzle 只微调 bank/wavefront 分布，不改变 compute-bound 本质。
 \begin{kaogu}[F3 核校通过]{L17--24 online rescaling 公式注释}
   注释的五步递推（$S\to m^{\text{new}}\to P\to \ell^{\text{new}}\to O$
   rescale）与 FA2 论文 Eq.(2)(3) 及第~\ref{ch:15}~章推导一致；
-  「P 写回 R\_S」的前提条件在 L52--58 有专门 caveat（布局契约，非
+  「P 写回 R\_S」的前提条件在 L52--58 有专门 caveat（布局约定，非
   通用结论），表述严谨。
 \end{kaogu}
 
@@ -859,7 +859,7 @@ $(128{+}2{\times}64{+}64)\times72\times2 = 46080$~B，恰在 48~KiB
 \texttt{if \allowbreak{}(load\_\allowbreak{}gmem\_\allowbreak{}Q\_\allowbreak{}Br >=\allowbreak{} N) return;} 依赖「$N\%B_r=0$ 时条件
 恒假」才安全：一旦部分线程早退，后续 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()} 数量
 不齐（死锁）且 ldmatrix/mma 的 \texttt{.aligned} 语义被破坏
-（同第~\ref{ch:11}~章坑二）。形状对齐假设要写进 kernel 的调用契约。
+（同第~\ref{ch:11}~章坑二）。形状对齐假设要写进 kernel 的调用约定。
 
 \textbf{坑四：f16 累加路径的精度预算。}$P$ 写回 \texttt{R\_S} 是 half
 （两 acc 路径都是），且 f16 acc 下 \texttt{R\_O/R\_D} 每条 mma 边界
@@ -871,7 +871,7 @@ $\sim 1.4\times10^{-4}$（$N{=}256$）。但若输入幅值大、$N$ 上千，
 
 \textbf{坑五：把「C fragment 拼 A fragment」当通用结论。}$P$ 直接
 留在 \texttt{R\_S} 直接作下一段 mma 的输入，依赖 16.3.3 节推导的
-\textbf{特定布局契约}：列相邻两个 \texttt{m16n8} C tile 的寄存器对，
+\textbf{特定布局约定}：列相邻两个 \texttt{m16n8} C tile 的寄存器对，
 恰好按 mma 期望的四象限序拼成 \texttt{m16k16} A。换了 atom 形状
 （如 \texttt{m16n8k8}）、换了 tile 排布方向，或对 fragment 做了重排，
 这条捷径就静默出错。源码 L52--58 与 L618--620 两处注释都在防这个
@@ -903,7 +903,7 @@ A：Q tile 由 blockIdx.x 固定，整个外循环复用，一次 cp.async 进 s
 一开始就要读它，没有其他计算段可以掩盖其装载延迟。
 
 \textbf{Q3：softmax 后的 P 为什么可以不搬出寄存器直接做 mma 的 A？}\\
-A：布局契约（16.3.3 节）：列相邻两个 \texttt{m16n8} C fragment
+A：布局约定（16.3.3 节）：列相邻两个 \texttt{m16n8} C fragment
 （\texttt{R\_S[i][w]}, \texttt{R\_S[i][w+1]}）的每 lane 寄存器对，
 按 [左上,左下]/[右上,右下] 恰好拼成 \texttt{m16k16} A fragment 的
 $\{a_0..a_3\}$/$\{a_4..a_7\}$，$w=2\,\texttt{tile\_V\_Bc}$ 的索引

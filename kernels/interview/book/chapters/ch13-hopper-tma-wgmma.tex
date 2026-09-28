@@ -369,7 +369,7 @@ TMA descriptor 在 host 侧由 driver API \texttt{cu\allowbreak{}Tensor\allowbre
   （评论区指出 driver $\ge$ 13010 已修复，CUTLASS/Triton 均按此规避）。
   本章 kernel 网格不越界、无 replace，不受影响；但「变长场景优先重建 descriptor
   而非 replace」应记入风险清单。以本地 ptx-docs 为准的结论：\textbf{该 bit 属实现
-  细节，非指令集契约}，依赖它（无论利用还是规避）都应锁 driver 版本。
+  细节，非指令集约定}，依赖它（无论利用还是规避）都应锁 driver 版本。
 \end{kaogu}
 
 \subsection{发起搬运：cp.async.bulk.tensor.2d}

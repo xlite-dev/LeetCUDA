@@ -22,7 +22,7 @@ attention kernel。
 \begin{itemize}[itemsep=1pt,topsep=2pt]
   \item \textbf{WS 双角色}（\S\ref{sec:26b-arch}）：128 线程 producer（只发 TMA）+
         256 线程 consumer（只做 MMA），\texttt{setmaxnreg} 把 producer 的寄存器
-        让渡给 consumer——这是 sm\_120 上把「搬运」与「计算」物理解耦的唯一手段；
+        划给 consumer——这是 sm\_120 上把「搬运」与「计算」物理解耦的唯一手段；
   \item \textbf{Q 寄存器持久化}（\S\ref{sec:26b-persistq}）：Q tile 对整个 KV 循环
         不变，smem$\to$寄存器只搬一次，之后每次 $QK^\top$ 都是 A-operand 常驻的
         \texttt{gemm\_rs}；

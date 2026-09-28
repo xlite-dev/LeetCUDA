@@ -600,7 +600,7 @@ $32^2 \to 8$、$128^2 \to 32$ FLOP/B。naive 的 0.25 是常数，与 $K$ 无关
 \textbf{Q2：两道 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads} 各防什么？}\\
 A：第一道防「读到没写完的 smem」（生产者/消费者），第二道防「读还没读完就被
 下一轮覆写」（消费者/生产者）。双缓冲（第~\ref{ch:10}~章）用两份 smem 交替，
-可以把第二道栅栏变成流水线节拍。
+可以把第二道栅栏变成流水线的一个同步点。
 
 \textbf{Q3：block tile 与 thread tile 分别优化哪一层的复用？}\\
 A：block tile 优化 gmem$\to$smem（AI 式~\ref{eq:9-ai-tile}）；
