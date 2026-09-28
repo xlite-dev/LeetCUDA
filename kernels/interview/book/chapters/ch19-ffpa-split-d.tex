@@ -112,7 +112,7 @@ QK 流水需要 $2\mathrm{Sk}$ 个 chunk（每个 stage 一份 Q、一份 K）�
 48\,KB，同一张卡上 $D=512$ 的左端是 192\,KB。\textbf{「整块」是 $O(D)$，
 「chunk 池」是 $O(\mathrm{Sk} + \mathrm{Sv})$：这就是 Split-D 用切分换来的收益}。
 
-\textbf{Split-D 是什么。}一句话：把 $D$ 方向按 64 宽切成 $C = D/64$ 个 chunk，
+\textbf{Split-D 是什么。}把 $D$ 方向按 64 宽切成 $C = D/64$ 个 chunk，
 让\textbf{两次 GEMM 都沿 chunk 方向流水}。
 
 \begin{itemize}[itemsep=2pt,topsep=2pt]
@@ -276,7 +276,7 @@ $\ell = \alpha \ell_0 + \beta \ell_1$、$O = \alpha O_0 + \beta O_1$。把两者
 \end{tabular}
 \end{center}
 
-一句话：\textbf{split-KV 的「合并」是数值问题（要把两份不同基准的 partial 归一
+\textbf{split-KV 的「合并」是数值问题（要把两份不同基准的 partial 归一
 到同一基准），split-D 的「合并」是索引问题（不同 chunk 落在不同的输出列上，
 互不重叠）}。这也是大 head dim 能保持 FA2 级数值性质的原因。
 

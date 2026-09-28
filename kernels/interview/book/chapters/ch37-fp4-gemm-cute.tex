@@ -9,7 +9,7 @@
 本章写主 GEMM kernel——把 $A_4,B_4^{\top}$ 与两组 SF 送入 sm\_120 的
 \textbf{blockscaled \texttt{mma.sync}}，由硬件消费 level-2 的 scale。
 
-整章可以概括成一句话：\textbf{FP4 GEMM 的主 kernel 比 FP8 的更简单，也更难
+整章可以概括为：\textbf{FP4 GEMM 的主 kernel 比 FP8 的更简单，也更难
 写。}简单是因为 epilogue 只剩一个乘法（SF 由 MMA 硬件消费，不需要按块查表），
 难是因为多出来一条 SF 数据流——4 条 TMA、两套 smem 原子、一个把数据与 SF
 成对的 zip 张量，以及一类 FP8 版本里不存在的死锁陷阱
@@ -96,7 +96,7 @@ $A$ 侧的 SFA 是 $\lceil M/128\rceil\cdot(K/64)$ 个 512\,B 原子，$B$ 侧�
 \label{fig:37-pipeline}
 \end{figure}
 
-主 kernel 的输入输出契约与第~\ref{ch:35}~章的 FP8 版本完全一致：
+主 kernel 的输入输出约定与第~\ref{ch:35}~章的 FP8 版本完全一致：
 $C[M,N] = A_4[M,K]\cdot B_4^{\top}[N,K]$，三者行主序、4-bit/bf16 混搭。
 「$B^{\top}$ 行主序」同样是量化阶段完成的（32.4.3~节）。约束比 fp8 更紧：
 $K \% 64 = 0$（SF 以 64 个 K 元素为一整块）与 $N \% 8 = 0$（TMA 对齐），
@@ -143,7 +143,7 @@ $A$ 的 SF（$0$ 取 \texttt{laneid\%4}$\in\{0,1\}$，$1$ 取 $\{2,3\}$），
 寄存器装 4 个 SF，但硬件只从特定 lane 取值」的全部含义。对 kernel 作者的
 实际含义是：\textbf{SF 在寄存器里的 fragment 布局与数据完全不同}，不能把
 SF 当成「每线程正好 4 个」这么简单——它在每条 lane 上装的东西由
-\texttt{tidA}/\texttt{tidB} 决定。第~\ref{ch:36}~章把这件事记成一句话：
+\texttt{tidA}/\texttt{tidB} 决定。第~\ref{ch:36}~章对此的总结是：
 SF 的 gmem 布局、smem 布局、寄存器 fragment 布局是三套不同的映射。
 
 \textbf{第三，$K{=}64$ 是「四个 SF」的另一种说法。}
@@ -414,7 +414,7 @@ CUTLASS 的权威定义移植过来（\texttt{fp4\_gemm.cuh} L425--521，
 \texttt{thrfrg\_sfa} 系列）。
 
 \textbf{zip 张量是「数据 $+$ SF」的成对打包。}blockscaled MMA 的两个 A 操作数
-（数据与 SF）在寄存上是分开的 fragment，但 MMA 的调用接口要求一次给出
+（数据与 SF）在寄存器上是分开的 fragment，但 MMA 的调用接口要求一次给出
 两者，于是 CuTe 用 \texttt{make\_zip\_tensor(tCrA, tCrSFA)} 把它们
 \textbf{按列并成}一个「元素是 pair」的张量：
 
@@ -752,7 +752,7 @@ $6\sim40\%$}——库默认档（$128^2$/s4，柱取口径：4096$^3$ 取扫描�
 $MNK\ge4096$ 上的自适应选择；其三，\textbf{e2e 口径下 FP4 反超
 FP8}（4096$^3$: 408 vs 187\,T；8192$^3$: 467 vs 315\,T）——量化的
 写出字节数只有 FP8 的一半，$B$ 侧重构后这个差距进一步扩大
-（33.9.3~节）；第三组（$B$ 离线）把 FP4 的 e2e 拉回
+（33.9.3~节）；第三组（$B$ 离线）FP4 的 e2e 回到
 551$\sim$561\,T（FP8 为 411\,T），是各自 kernel 的 $91\sim93\%$。}
 \label{fig:37-perf}
 \end{figure}
@@ -821,7 +821,7 @@ FP4 GEMM（重构后） & \textbf{109\,$\mu$s} & \textbf{32\%} &
 \end{center}
 
 两个反直觉的读法：其一，FP4 的量化\textbf{不该}比 FP8 开销更小——它多产出一份
-SFB，而且 $A_4/B_4^{\top}$ 的 SF 排版比 FP8 的 per-row/per-col scale 复杂
+SFB，而且 $A_4/B_4^{\top}$ 的 SF 布局比 FP8 的 per-row/per-col scale 复杂
 得多；其二，8192$^3$ 上 FP4 的量化绝对值（633\,$\mu$s）比 FP8
 （1221\,$\mu$s）小一半，但两者的\emph{数据量相同}（都读 $MK{+}NK$ 个
 bf16、写 $MK{+}NK$ 个量化值）——差别只在\textbf{写出的字节数}：
@@ -862,7 +862,7 @@ FP8 每个量化值 1\,B，FP4 只有 0.5\,B。这与本卡实测带宽相符
         这里靠两步做到逐位等价：第一，「先除以 2688 再取 max」与
         「先取 max 再除以 2688」在浮点下逐位相同（除以正常数保序）；
         第二，非负浮点的位模式与无符号整数序一致。调用方必须先把
-        $s_B$ 清零这一点也被写进契约（\texttt{cudaMemsetAsync}，
+        $s_B$ 清零这一点也被写进约定（\texttt{cudaMemsetAsync}，
         浮点 $0$ 的位模式正是 \texttt{atomicMax} 的单位元）。
         转置量化的写法改动（tile 从「128 列 $\times$ 全 K」变成
         「128 列 $\times$ 64 K」）不改变任何中间值。
@@ -988,7 +988,7 @@ $128\times256$/s6，其余回落 $128^2$/s4，\texttt{--bench} 的 FP4 标准
         tile 档变化，保守档下占 e2e 的 26\%，宽档下占 32\%。
         e2e 也因此反超 FP8 版本：宽档 408.2 对 186.5\,T
         （8192$^3$: 467.4 对 314.6\,T）。部署口径（$B$ 离线）把 e2e
-        拉到 550.5$\sim$561.2\,T，是主 kernel 的 $91\sim93\%$。
+        提到 550.5$\sim$561.2\,T，是主 kernel 的 $91\sim93\%$。
 \end{itemize}
 
 \section*{延伸阅读}

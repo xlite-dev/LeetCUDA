@@ -100,7 +100,7 @@ smooth-Q/K 是\textbf{强制开启，不是选项}（skill §6.2）：e2m1 的 �
 
 \textbf{P 的困难留给下一章}。Q/K/V 都能离线校准，唯独 $P$ 是 kernel 内
 softmax 现场产物，其 scale 只能在固定值域内设计：SA3 的两级 P 量化是
-fp4 路径精度成立的关键一环，数学与实现见第~\ref{ch:32}~章。
+fp4 路径精度成立的关键，数学与实现见第~\ref{ch:32}~章。
 
 \section{数学原理}
 
@@ -865,7 +865,7 @@ fp4 前处理与 prefill 阶段绑定，decode 回 fp8/fp16 路径。
         存在非 satfinite 的裸变体），越界值饱和到 $\pm$6、NaN 转 $+6$，
         均不产 NaN；真正的风险在绕开 \texttt{cvt} 的手工编码（无饱和
         语义）与上游 0/0（见坑 2），不在 \texttt{cvt} 本身（L41/L64）。
-  \item \textbf{mxfp8 的 stage 数学史}：早期 build 因一次 3-stage
+  \item \textbf{mxfp8 的 stage 数的历史}：早期 build 因一次 3-stage
         D=128 NaN 把全部 D 固定在 2 stage；后来定位不复现（16 shape 组合
         + 5 次新数据复测全无 NaN），D=128 恢复 3 stage 换回 1.2\% kernel
         时间（\texttt{attn\_traits.cuh} L56--62）。教训：一次异常
@@ -926,7 +926,7 @@ python -m ffpa_attn.bench --fwd-backend cuda --cuda-impl fp4 \
 
 \begin{itemize}[itemsep=0pt,topsep=2pt]
   \item \texttt{cute/fp4/quantize\_fp4.cuh} 头注释（L1--14）：SA3
-        移植边界与 padding 契约；
+        移植边界与 padding 约定；
   \item \texttt{cute/fp4/delta\_s.cuh} 头注释（L1--18）：rank-1 恒等式
         与 memory-bound 判断；
   \item \texttt{cute/fp4/fp4\_gemm.cuh}（L24--30）：kv\_perm32 闭式与

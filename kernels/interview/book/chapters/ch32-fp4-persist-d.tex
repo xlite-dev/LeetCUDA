@@ -127,12 +127,12 @@ $\mathrm{dot}(q_{row},\bar k)$（第~\ref{ch:31}~章
 循环之前算好，L583--591 与 \texttt{persist\_d.cuh} L757--758：Q 的
 smem 在 \texttt{kQSmemReuse} 下会被 V stage 复用，点积必须提前）。
 
-\subsection{MXFP8 PV 变体的数值契约}
+\subsection{MXFP8 PV 变体的数值约定}
 
 \texttt{--fp4-pv-mm-type fp8} 把 $V^\top$ 换成 e4m3 + ue8m0（32 元素
 组），P 侧同样换 32 粒度两级量化：域常量从 2688 换成 $448$（e4m3 满
 量程，无第二级 e2m1 因子），SF 是 2 的幂
-（\texttt{pow2\_to\_ue8m0}，L417；契约注释 L390--397）。SFA 的槽位排
+（\texttt{pow2\_to\_ue8m0}，L417；约定注释 L390--397）。SFA 的槽位排
 布遵循 \texttt{SM120\_16x8x128\_TN\_VS\_MXFP8} atom 的 A 布局
 （L501--535 的 probe 结论）。历史上 MXFP8 PV 的 lse 曾无条件沿用
 2688 域，差 $\ln 6$ 的 latent bug，现按 \texttt{kPvMxfp8} 编译期分
@@ -140,7 +140,7 @@ smem 在 \texttt{kQSmemReuse} 下会被 V stage 复用，点积必须提前）�
 
 \section{设计与实现}
 
-\subsection{骨架复用与 grid 调度契约}
+\subsection{骨架复用与 grid 调度约定}
 
 WS 骨架与 fp8 persist-D 同构：128T producer（TMA 装载 K/V/SF/bias）+
 256T consumer（8 warp MMA），4 组反向 barrier
@@ -150,7 +150,7 @@ mbarrier \textbf{永不 re-initialize}：per-CTA 全局 kv-tile 计数器驱动
 每个 barrier 的 stage/phase 跨 work 连续翻转（对活跃 mbarrier 的
 re-init 是 UB，PTX ISA 9.7.13.15.9；L113--115、L316 注释）。
 
-grid 调度契约是「\textbf{单 kernel、单代码路径、runtime grid 定风格}」
+grid 调度约定是「\textbf{单 kernel、单代码路径、runtime grid 定风格}」
 （L92--120 注释）：kernel 体是
 \texttt{for (work\_id = blockIdx.x; work\_id < total\_work; work\_id +=
 gridDim.x)} 的 strided work loop。dense 用
@@ -477,7 +477,7 @@ sector hit 已 96.75\% 饱和，fp8 的前提不成立，实测 +1.8\% 回退，
 SA3 的这套 adapter 相互补偿、自洽成体系（头注释 L25--37：empirical
 lock 在 \texttt{.tmp} 的对齐探针里逐项验证过，dense e2e 与 dequant 仿真
 一致）。逐字拷贝 + 只修 masking 是正确的移植方式；单独「改进」其中
-一环会破坏补偿关系。
+一项会破坏补偿关系。
 
 \textbf{精度评估的口径}。e2m1 的相对量化误差（主区间 $\sim$20\%、
 0.75 中点最坏 $\sim$33\%）使 P/V 两级误差叠

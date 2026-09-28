@@ -91,7 +91,7 @@ cp.async 的 CuTe 抽象；sm80+ 可编）；后三个实现另需
 \texttt{TiledCopy} 的 TV 划分、连 V 的转置视图都是
 \texttt{composition} 表达式的类型。kernel 正文里只剩三类语句：
 数据流（\texttt{copy}/\texttt{gemm}）、同步（barrier / \texttt{cp.\allowbreak{}async.\allowbreak{}wait}）
-与 online softmax 的标量运算。用一句话核对「抽象掉了什么」：\textbf{坐标计算}
+与 online softmax 的标量运算。核对「抽象掉了什么」：\textbf{坐标计算}
 收进 \texttt{local\_tile}/\texttt{partition} 的类型、\textbf{fragment 手工索引}
 收进 \texttt{partition\_\allowbreak{}fragment} 的返回布局、\textbf{拷贝指令的选择}
 收进 \texttt{TiledCopy} 的原子类型（G2S 选 cp.async 还是 TMA、S2R 选哪个
@@ -711,7 +711,7 @@ traits 外就是五个函数：\texttt{convert\_\allowbreak{}layout\_\allowbreak
 发射当前 MMA」构成 2 级软件流水。\texttt{gemm\_rs} 是同构的，只是
 \texttt{A} 不再有 smem 源（P 在寄存器里），省掉一半 ldmatrix。这条
 「A 在寄存器」的路径正是 \texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}Aregs} 存在的理由，
-也是本章三个实现里唯一不能省的一环：\textbf{没有它，P 就得经 smem 中转}。
+也是本章三个实现里唯一不能省的一步：\textbf{没有它，P 就得经 smem 中转}。
 
 \begin{remark}
   \texttt{gemm\_ss}/\texttt{gemm\_rs} 的 K 循环上界写成
@@ -752,7 +752,7 @@ traits 外就是五个函数：\texttt{convert\_\allowbreak{}layout\_\allowbreak
 attention 写对}，调度上不做特殊设计（@reed 的简单 GEMM 怎么组装，这里就怎么
 组装）。没有 warp specialization，256 个线程既搬数据也算 MMA，
 $B_r{=}128$、$B_c{=}64$，K 多级、V 单 buffer，用 cp.async 的组栈管理等待。
-它的结构可以概括成一句话：
+它的结构可以概括为：
 \textbf{V 提前发、K 提前一步、softmax 填 V 的延迟}。
 
 \lstinputlisting[linerange={2530-2546,2556-2566,2571-2586},firstnumber=auto,

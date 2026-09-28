@@ -339,13 +339,13 @@ segment 的 lane 参与 shuffle），即前文模板参数所述的通信域行�
 对照 \S\ref{sec:ch02-math} 的步数统计读这段代码：第 1 步
 \texttt{warp\_\allowbreak{}reduce\_\allowbreak{}sum\allowbreak{}<k\allowbreak{}Warp\allowbreak{}Size>} 是 warp 内 5 轮；第 2 步 lane 0 把
 warp 部分和写进 smem；\texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()} 划出读写边界：没有它，
-先写完的 warp 可能被后写的覆盖；第 3 步是本实现的精髓：\textbf{不是让
+先写完的 warp 可能被后写的覆盖；第 3 步是本实现的关键：\textbf{不是让
 warp 0 独自做二次归约，而是每个 warp 的前 $W$ 个 lane 都读入全部 $W$ 个
 部分和、各自再归约一遍}。多余的 $W-1$ 份计算是冗余的（只是寄存器加法），
 换来的是不需要第二次 smem 往返与第二次同步。第 4 步
 \texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}sync\allowbreak{}(0xffffffff,\allowbreak{} value,\allowbreak{} 0,\allowbreak{} 32)} 把 lane 0 的结果广播给
 \textbf{所有} 256 个线程。源码注释「关键！否则每个 warp 只有 lane 小于
-kNumWarps 知道结果」说的就是这一步：归约函数的契约是「block 内全员可见」，
+kNumWarps 知道结果」说的就是这一步：归约函数的约定是「block 内全员可见」，
 后续 softmax 除以 $\ell$、norm 除以 $\sigma$ 都依赖它。block reduce max
 （L198--214）同构，初值从 0 换成 \texttt{-FLT\_MAX}。
 

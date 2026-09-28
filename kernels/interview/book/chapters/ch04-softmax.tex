@@ -110,7 +110,7 @@ online softmax（Milakov \& Gimelshein，arXiv:1805.02867）的思路是：维�
   \label{eq:4-invariant}
 \end{equation}
 即 $\ell^{(k)}$ 永远是「以前 $k$ 个元素自己的 max 为基准的指数和」。
-现在考虑第 $k+1$ 个元素 $x^{(k+1)}$，逐项推导新状态。第一步，新 max 显然是
+现在考虑第 $k+1$ 个元素 $x^{(k+1)}$，逐项推导新状态。第一步，新 max 是
 \begin{equation}
   m^{\mathrm{new}} = \max\bigl(m,\; x^{(k+1)}\bigr) .
 \end{equation}
@@ -211,7 +211,7 @@ $\ell = \ell^{(1)} + \ell^{(2)} e^{m^{(2)} - m^{(1)}}$，只有较小者需要 r
   且 $\oplus$ 满足结合律。
 \end{lemma}
 \begin{proof}
-  合并后的 max 显然是 $\max\bigl(S^{(1)} \cup S^{(2)}\bigr)$；而
+  合并后的 max 是 $\max\bigl(S^{(1)} \cup S^{(2)}\bigr)$；而
   \begin{equation*}
     \ell^{(1)} e^{m^{(1)}-m} + \ell^{(2)} e^{m^{(2)}-m}
     = \sum\sb{x \in S^{(1)}} e^{x-m^{(1)}} e^{m^{(1)}-m}

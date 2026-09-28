@@ -545,7 +545,7 @@ CuTe 的 TiledMMA 与 Value Tile 概念（L180--183），
 \lstinputlisting[linerange={190-210},firstnumber=auto,
   title={hgemm.cuh L190-210（预载 kStages-1 级；每线程每矩阵一个 16~B 搬运）}]{../hgemm.cuh}
 
-加载坐标与第~\ref{ch:10}~章同型但搬 half：\texttt{tid/2} 定行（0--127）、
+加载坐标与第~\ref{ch:10}~章相同但搬 half：\texttt{tid/2} 定行（0--127）、
 \texttt{tid\%2} 选 16~B 半行（$k$ 的 0--7 或 8--15，恰 8 个 half $=$ 16~B）。
 注意两个 gmem 索引\textbf{形式对称}：A 用 \texttt{m*K + k}、B 用
 \texttt{n*K + k}，后者就是「B 以 $B^{\top}$ 行主序存储」的落点，

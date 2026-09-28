@@ -333,7 +333,7 @@ CuTe 两个方向都提供，并且用同一个 layout 表示：
 而不是把 tile 先按线程切成大块、再在线程内切小块（回看 3.2 节的小例子：
 Thr \texttt{(2,2):(2,1)} 与 Val \texttt{(1,2)} 按同样方式合成出来的，正是
 那张手画的表）。式~\eqref{eq:21-raked} 的
-一句话版本就是 kernel 注释里的「128 个线程，每线程搬运 1$\times$8=8 个 half」
+最简版本就是 kernel 注释里的「128 个线程，每线程搬运 1$\times$8=8 个 half」
 （hgemm.cuh~L1308--1309）。把式~\eqref{eq:21-raked} 按坐标写开：坐标 $(i,j')$
 （$i\in[0,32)$、$j'\in[0,32)$）满足 $j' = 8j+v$，于是
 
@@ -352,7 +352,7 @@ Thr \texttt{(2,2):(2,1)} 与 Val \texttt{(1,2)} 按同样方式合成出来的�
 
 \textbf{读法}：线程 $t$ 负责第 $\lfloor t/4\rfloor$ 行的第 $8(t\bmod 4)$
 到 $8(t\bmod 4)+7$ 列，即连续 8 个元素，正好对齐一条 128-bit \texttt{cp.async}。
-这就是「G$\to$S 划分」的一句话结论，它在手写版里是两行 $\mathrm{idx}$ 算术，
+这就是「G$\to$S 划分」的结论，它在手写版里是两行 $\mathrm{idx}$ 算术，
 在 CuTe 里是式~\eqref{eq:21-raked} 的类型。
 
 \subsection{守恒律与重复因子}
@@ -461,7 +461,7 @@ $=0/1$）各持同一行块 8 个连续 k 的一份寄存器拷贝——TV 布�
 
 \subsection{partition 的数学}
 
-\texttt{partition\_S}/\texttt{partition\_D} 做的事情可以一句话写完：把
+\texttt{partition\_S}/\texttt{partition\_D} 做的事情可以概括为：把
 \textbf{数据 Tensor 按 Tiler 切块}（第~\ref{ch:20}~章的
 \texttt{zipped\_\allowbreak{}divide}），再把每块的内部坐标交给 copy 原子的 TV 布局：
 

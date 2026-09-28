@@ -99,7 +99,7 @@ warp 的 32 个线程如果同时访问落在同一 bank 的多个地址，硬�
 
 \textbf{朴素解法：padding}。每行尾部补 8 个 half（行宽从 $64$ 变 $72$ 个
 元素，即 $144$\,B），行步长不再是 128 的倍数，$r$ 重新参与取模，冲突消失。
-代价有三条：$12.5\%$ 的容量被浪费；行宽不再是「$2^{M+S}$ 字节」的标准形态；
+代价有四条：$12.5\%$ 的容量被浪费；行宽不再是「$2^{M+S}$ 字节」的标准形态；
 后面会看到，TMA 硬件只认标准形态，padding 方案无法用于 TMA；每次换元素类型或
 $B_K$ 都要重新推一遍补偿量。
 
@@ -727,7 +727,7 @@ TMA 版 kernel 里，数据的写入由\textbf{硬件}完成，读取由\textbf{
 必须作为「列坐标」的一部分进入 swizzle 内部；而
 \texttt{swizzle\allowbreak{}<k\allowbreak{}Mma\allowbreak{}K>}（$k_{\text{MmaK}}=16$，即 \texttt{SWIZZLE\_32B}）
 的跨度只有 16 列，每个 slice 内部自洽，偏移可以加在 swizzle 外部。
-这条规则用式~\eqref{eq:23-chunk} 一句话就能推出：XOR 是否跨越
+这条规则由式~\eqref{eq:23-chunk} 直接推出：XOR 是否跨越
 slice 边界，取决于 slice 宽度是否整除 swizzle 周期。
 
 \subsection{对齐与 phase}

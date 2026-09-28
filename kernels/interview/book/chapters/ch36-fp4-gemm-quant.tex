@@ -354,7 +354,7 @@ atom 的官方搭配（第~\ref{ch:37}~章会看到 SF 的 smem 原子也来自�
 逐点说明这段代码里三个不显然的地方：
 
 \begin{itemize}[itemsep=2pt,topsep=3pt]
-  \item \textbf{一线的映射}：一个线程负责 $(m, \text{16-K 组})$ 一个单位。
+  \item \textbf{线程映射}：一个线程负责 $(m, \text{16-K 组})$ 一个单位。
         $K{=}256$ 时一行有 16 个组，一个 warp 覆盖 2 行——32\,B 的向量读
         与 8\,B 的写都天然满足合并访问（\texttt{Vec8BF16} 读两次拼 16 个
         元素，\texttt{uint2} 写一次落 16 个 nibble）。

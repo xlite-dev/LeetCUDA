@@ -590,7 +590,7 @@ GFLOP（运算\textbf{量}），FLOPS（每秒）是速率单位；该段实为 
   A：最小调度与指令发射单元，32 线程锁步（SIMT）。32 与 warp scheduler 的
   每周期发射粒度、寄存器文件 bank 宽度匹配；发散（divergence）会让一个
   warp 内的分支两条路径串行执行，等效指令数翻倍。
-\item \textbf{Q：一句话说清 memory-bound 与 compute-bound？}\\
+\item \textbf{Q：怎么区分 memory-bound 与 compute-bound？}\\
   A：算 AI，与 ridge point $AI^{*} = P\sb{peak}/BW$ 比较：低于则带宽瓶颈，
   高于则算力瓶颈。优化方向完全不同：前者靠 coalescing/向量化/tiling，
   后者靠 Tensor Core/指令效率。

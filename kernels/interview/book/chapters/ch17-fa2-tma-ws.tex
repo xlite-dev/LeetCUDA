@@ -80,7 +80,7 @@ ldmatrix + \texttt{mma.sync} + online softmax。两支流之间没有任何
 前两条的角色划分、第三条的三处差异（两次 GEMM/KV 迭代/Q 只装一次）分别对应
 17.4.1、17.3.1 与 17.4.3 节；其中「Q 只 load 一次」是 attention 特有的：
 GEMM 的 A/B 都随 K 迭代刷新，而 split-Q 的 Q tile 在整个 KV 遍历中不变，
-这让 Q 的同步协议退化成「一次性 full 屏障」，是本章协议中最简单的一环。
+这让 Q 的同步协议退化成「一次性 full 屏障」，是本章协议中最简单的一个。
 
 \section{数学原理}
 
@@ -486,7 +486,7 @@ consumer arrive，直接挂死。这类「编队算错 $\to$ 协议数字对不�
 把「线程写好的 barrier 状态」对 async proxy 可见（第~\ref{ch:13}~章 13.4.4
 节），后者保证全员看到初始化完成的屏障后才进入角色分支。
 
-\subsection{producer：P0/P1/P1b/P2 四拍}
+\subsection{producer：P0/P1/P1b/P2 四个阶段}
 
 \lstinputlisting[linerange={979-1010},firstnumber=auto,breakatwhitespace=true,
   title={flash\_attn.cuh L979-1010（P0：Q 一次装载；P1：预取 Sk$-$1 个 K）}]{../flash_attn.cuh}
@@ -511,7 +511,7 @@ P2 内部的\textbf{发射顺序}（V 先于 K）是刻意的：consumer 第 $k$
 Tc}、\texttt{k + Sk - 1 < Tc}）处理流水排空的尾部：最后几轮不再发无用的
 预取，producer 自然退出循环。
 
-\subsection{consumer：C0 预热 $+$ 五拍主循环}
+\subsection{consumer：C0 预热 $+$ 五个阶段主循环}
 
 \lstinputlisting[linerange={1066-1096},firstnumber=auto,breakatwhitespace=true,
   title={flash\_attn.cuh L1066-1096（C0：REG\_ALLOC $+$ 预热全部 empty $+$ 等 Q）}]{../flash_attn.cuh}
@@ -519,21 +519,21 @@ Tc}、\texttt{k + Sk - 1 < Tc}）处理流水排空的尾部：最后几轮不�
 C0 负责启动流水线：256 个 consumer 线程把每个 \texttt{empty\_K[s]}、
 \texttt{empty\_V[s]} 各预存 256 次 arrive；producer 的 P1/P1b/P2 每次写
 stage 前自己 arrive 一次补满 257，首轮立即放行。\textbf{漏掉 C0 $=$ 全体
-挂死}（与第~\ref{ch:13}~章坑二同型，本章坑二）。随后 \texttt{full\_Q.wait}
+挂死}（与第~\ref{ch:13}~章坑二相同，本章坑二）。随后 \texttt{full\_Q.wait}
 一次，Q 到齐，进入主循环。寄存器声明（L1097--1112，不引）与 ch16 逐行相同：
 online softmax 状态 $m/\ell$（每 warp 每行对 2 份）、Q/K/V/S/O/D 六组
 fragment，$S$ 与 $O$ 的 fragment 布局复用技巧（softmax 后的 $P$ 直接作
-PV 的 A 操作数）也原样继承。主循环五拍：
+PV 的 A 操作数）也原样继承。主循环五个阶段：
 
 \lstinputlisting[linerange={1113-1145},firstnumber=auto,breakatwhitespace=true,
-  title={flash\_attn.cuh L1113-1145（拍一：等 K 就绪 $+$ 3b 前半：ldmatrix Q/K）}]{../flash_attn.cuh}
+  title={flash\_attn.cuh L1113-1145（阶段一：等 K 就绪 $+$ 3b 前半：ldmatrix Q/K）}]{../flash_attn.cuh}
 
 \lstinputlisting[linerange={1147-1183},firstnumber=auto,breakatwhitespace=true,
   title={flash\_attn.cuh L1147-1183（3b 后半：HMMA 累加 $+$ 尽早释放 K stage）}]{../flash_attn.cuh}
 
-拍一的核心是 \textbf{wait 与 arrive 合并为一条调用}（\texttt{full\_\allowbreak{}K[stage].\allowbreak{}wait\allowbreak{}(
+阶段一的核心是 \textbf{wait 与 arrive 合并为一条调用}（\texttt{full\_\allowbreak{}K[stage].\allowbreak{}wait\allowbreak{}(
 full\_\allowbreak{}K[stage].\allowbreak{}arrive\allowbreak{}())}）与随后的 \texttt{fence.\allowbreak{}proxy.\allowbreak{}async}（TMA 写入对
-generic proxy 读可见，第~\ref{ch:13}~章 13.4.4 节）；拍二 3b 沿 head\_dim 的
+generic proxy 读可见，第~\ref{ch:13}~章 13.4.4 节）；阶段二 3b 沿 head\_dim 的
 $D/16$ 个 MMA k-slice 做 ldmatrix $+$ \texttt{HMMA16816}（F16Acc）或
 \texttt{HMMA16816\allowbreak{}F32}（F32Acc）。紧接着的「释放 K」是本章相对 ch16 的
 \textbf{时序收益点}：QK$^\top$ 一算完，K[$k$] 的 smem 就再无人读（softmax 只
@@ -543,9 +543,9 @@ consumer 的 softmax 阶段就开始覆盖该 stage。对比 \texttt{\_\allowbre
 两段的长度。
 
 \lstinputlisting[linerange={1185-1214},firstnumber=auto,breakatwhitespace=true,
-  title={flash\_attn.cuh L1185-1214（拍三 3c：online safe softmax，只碰寄存器）}]{../flash_attn.cuh}
+  title={flash\_attn.cuh L1185-1214（阶段三 3c：online safe softmax，只碰寄存器）}]{../flash_attn.cuh}
 
-拍三的 online safe softmax（max pass $+$ exp pass，式~\ref{eq:17-online}）
+阶段三的 online safe softmax（max pass $+$ exp pass，式~\ref{eq:17-online}）
 \textbf{只读写寄存器}。这正是 V 通道 TMA 的重叠窗口：V[$k$] 的搬运与整段
 softmax 并行，因此 \texttt{full\_V} 的 wait 被刻意\textbf{推迟到 3d 之前}
 （下一代码段首行），不牺牲任何重叠窗口。exp 用 \texttt{\_\_expf} 快速近似、
@@ -553,14 +553,14 @@ softmax 并行，因此 \texttt{full\_V} 的 wait 被刻意\textbf{推迟到 3d 
 第~\ref{ch:02}~章），与 ch16 相同。
 
 \lstinputlisting[linerange={1260-1306},firstnumber=auto,breakatwhitespace=true,
-  title={flash\_attn.cuh L1260-1306（拍四 3d：PV 前 wait full\_V $+$ R\_S 复用 $+$ 释放 V）}]{../flash_attn.cuh}
+  title={flash\_attn.cuh L1260-1306（阶段四 3d：PV 前 wait full\_V $+$ R\_S 复用 $+$ 释放 V）}]{../flash_attn.cuh}
 
-拍四的 PV 沿 $B_c$ 的 4 个 k-slice 推进：V 用 \texttt{LDMATRIX\_\allowbreak{}X2\_\allowbreak{}T}
+阶段四的 PV 沿 $B_c$ 的 4 个 k-slice 推进：V 用 \texttt{LDMATRIX\_\allowbreak{}X2\_\allowbreak{}T}
 （转置装载，正确性见 17.4.3 节引用的论证），A 操作数直接取
 \texttt{R\_S[i][w]}、\texttt{R\_S[i][w+1]}：softmax 写回 R\_S 的布局恰好
 就是 mma 的 A fragment 布局（ch16 的布局复用技巧，头注释 L24--27 有专门
 警告：这是\textbf{本路径的布局约定}，不是通用结论）。PV 完成即释放
-\texttt{empty\_\allowbreak{}V[stage\_\allowbreak{}v]}。拍五 3e 的 online rescale（L1314--1372，式~\ref{eq:17-rescale}
+\texttt{empty\_\allowbreak{}V[stage\_\allowbreak{}v]}。阶段五 3e 的 online rescale（L1314--1372，式~\ref{eq:17-rescale}
 的实现，逐行同 ch16）把 $O$、$\ell$、$m$ 三态更新，随后进入下一轮。
 $m^{\text{old}}$ 首轮为 $-\infty$ 的分支由 \texttt{tile\_\allowbreak{}K\_\allowbreak{}seqlen $> 0$}
 三目处理。
@@ -728,7 +728,7 @@ $D{=}64$，\;Sk$=$2，Sv$=$1，F16Acc & 141.8 & 151.8 \\
 \end{center}
 
 三点读数：其一，\textbf{Sk $=$ 2 即达饱和}（Sk 2 $\to$ 3 收益 $<$ 0.5\%）：
-$B_r{=}128$ 的计算节拍足够长，两级 K 流水已把 TMA 延迟推出关键路径，更深的
+$B_r{=}128$ 的计算阶段足够长，两级 K 流水已把 TMA 延迟推出关键路径，更深的
 流水只多耗 smem（Sk$=$3 的 96 KB 使 2 blocks/SM 的驻留不再可行，头注释推荐
 $D{=}128$ 用 Sk$=$2 恰是两者的平衡点）。其二，\textbf{TMA+WS 相对
 ch16 cp.async 版的稳定收益约 $+20\%$}：同卡同时刻原版 harness 对照
@@ -850,7 +850,7 @@ $0.6\%$）。V 的单 buffer 消费已饱和，V tile 传输能被 QK $+$ softma
 拆成 2 次（box 内维 $\le$ 128B 硬约束），\texttt{expect\_tx} 却只发一次、
 声明\textbf{总量}。漏乘 kTmaChunks 则 tx 永不归零（挂死），多算则提前翻转
 （读半新半旧数据，静默错误）。少报挂死、多报静默，后者更危险（ch13 坑三
-同型）。
+相同）。
 
 \textbf{坑四：TMA 坐标忘了 major\_base。}\allowbreak{}descriptor 覆盖 $[BHN, D]$ 全量
 2D 矩阵，(batch, head) 的偏移 $(N_b H + N_h) N$ 必须折进

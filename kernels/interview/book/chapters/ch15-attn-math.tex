@@ -101,7 +101,7 @@ query 的全部状态（$m_i, \ell_i, O_i$）塞进一个 block 的寄存器/共
 式~\ref{eq:15-attn-def} 里的 $1/\sqrt{d}$ 不是工程调参，而是有统计动机的定标。设
 $q, k \in \mathbb{R}^{d}$ 的各分量独立同分布、零均值、单位方差（网络初始化附近的
 大致情形）。考察点积
-$s = q \cdot k = \sum_{i=1}^{d} q_i k_i$。均值显然为零：
+$s = q \cdot k = \sum_{i=1}^{d} q_i k_i$。均值为零：
 \begin{equation}
   \mathbb{E}[s] = \sum_{i=1}^{d} \mathbb{E}[q_i]\,\mathbb{E}[k_i] = 0 .
 \end{equation}
@@ -230,7 +230,7 @@ FlashAttention kernel 在同形状 SM120 上的实测 $166.6\,\mathrm{TFLOPS}$
 （多数 GPU 的 HBM/显存带宽在数百 GB/s 到 $2$--$3\,\mathrm{TB/s}$ 量级），仅搬运就要
 $\approx 2.2\,\mathrm{ms}$，已是 $0.83\,\mathrm{ms}$ 计算下界的 $2.6$ 倍以上；而
 有效数据（$Q,K,V$ 读入 + $O$ 写出，$\approx 67\,\mathrm{MB}$）只占流量的 $1/64$。
-一句话：\textbf{中间矩阵往返使朴素 attention 的算术强度降到极低}。按主导项计，
+\textbf{中间矩阵往返使朴素 attention 的算术强度降到极低}。按主导项计，
 \begin{equation}
   AI_{\text{naive}} \;\approx\; \frac{4N^{2}d\ \text{FLOP}}{4N^{2} \cdot 2\,\mathrm{B}}
   \;=\; \frac{d}{2}\ \text{FLOP/B} \;=\; 32\ \ (d{=}64, \text{fp16}) ,
@@ -582,7 +582,7 @@ $73\%$）。
  & FA1 (2022) & FA2 (2023) & FA3 (2024) \\
 \midrule
 论文 & arXiv:2205.14135 & arXiv:2307.08691 & arXiv:2407.08608 \\
-一句话 & tiling + online softmax，中间矩阵不落 HBM；反向 recomputation &
+概括 & tiling + online softmax，中间矩阵不落 HBM；反向 recomputation &
 少非 matmul FLOPs、加 seqlen(Q) 并行、warp 改 split-Q &
 异步 overlap（warp spec.\ + pingpong）+ FP8 \\
 硬件口径 & A100 & A100 / H100 & H100 \\
@@ -1053,7 +1053,7 @@ A：省的是 HBM 流量与显存：IO 从 $\Theta(Nd + N^{2})$ 降到 $\Theta(N
 激活显存从 $\Theta(N^{2})$ 降到 $\Theta(Nd)$；算术强度从 $d/2$ 升到 $B_r$ 量级，
 kernel 从 memory-bound 变 compute-bound，Tensor Core 才能达到高利用率。
 
-\textbf{Q7：FA1、FA2、FA3 各自的贡献一句话？}\\
+\textbf{Q7：FA1、FA2、FA3 各自的贡献？}\\
 A：FA1 = tiling + online softmax + 反向 recomputation（IO-aware，$\Theta(N^{2}d^{2}/M)$）；
 FA2 = 削非 matmul FLOPs + seqlen(Q) 维并行 + warp 级 split-Q（A100 峰值 $73\%$）；
 FA3 = warp specialization + pingpong 让 softmax 与 GEMM 重叠 + FP8（block 量化 +

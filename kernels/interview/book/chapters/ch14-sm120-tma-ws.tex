@@ -37,7 +37,7 @@ sm\_90+，本章在 sm\_120a 上编译运行。\textbf{前置}：第~\ref{ch:11}
 SM120 的能力是 Blackwell 的一个子集：它有第五代 Tensor Core（与数据中心
 GB100 同代，支持 FP4/FP8）、GDDR7 与超大 L2（96--128MB），但\textbf{没有}
 WGMMA、没有 tcgen05、没有 TMEM、没有 cluster 与 multicast TMA。CUTLASS 的
-sm120 优化指南一句话总结：sm120 在 warp 组织与 block 限制上更接近 Ada（sm\_89），
+sm120 优化指南总结：sm120 在 warp 组织与 block 限制上更接近 Ada（sm\_89），
 只是额外暴露了 TMA。对 GEMM 而言，这意味着第~\ref{ch:13}~章流水线的三层收益
 必须逐层重估：
 
@@ -83,7 +83,7 @@ WGMMA（warpgroup MMA） & 有 & \textbf{无} & mma.sync + ldmatrix（ch11） \\
 swizzle 相位补偿 & descriptor base\_offset & \textbf{无} & \_\_align\_\_(1024) \\
 setmaxnreg & 可用 & 支持；避免 cluster 形式 TMA & cta dst + 宏开启 \\
 cluster / TMEM & cluster 有 / TMEM 无 & 均无 & 不涉及 \\
-每 SM 寄存器 & 65536 & 65536 & 池数学同型（14.3.3） \\
+每 SM 寄存器 & 65536 & 65536 & 池数学相同（14.3.3） \\
 smem / SM & 228KB & 100KB（L1 共 128KB） & kStages $\le$ 3 \\
 \bottomrule
 \end{tabular}
@@ -295,7 +295,7 @@ CU\_TENSOR\_MAP\_SWIZZLE\_128B 按 128B 原子重排，重排公式与 consumer 
 \lstinputlisting[linerange={1863-1893},firstnumber=auto,breakatwhitespace=true,
   title={hgemm.cuh L1863-1893（模板参数即 tile 层级，MMA atom 与 ch11 相同）}]{../hgemm.cuh}
 
-tile 层级的乘法结构与第~\ref{ch:11}~章完全同型：$B\sb{M} = 16 \times 2 \times 4$、
+tile 层级的乘法结构与第~\ref{ch:11}~章完全相同：$B\sb{M} = 16 \times 2 \times 4$、
 $B\sb{N} = 8 \times 2 \times 8$、$B\sb{K} = 16 \times 4$，四条 static\_assert 把
 「atom $=$ m16n8k16、consumer 恰好 4 warp、tile 恰好 128$\times$128$\times$64」
 固定为硬约束，因为 TMA descriptor 的 box 与 128B swizzle 都按这套数字硬编码。与
@@ -639,7 +639,7 @@ epilogue 与 ch11/ch12 相同：mma m16n8k16 的 C fragment 中，同一 8$\time
 
 \section{性能分析}
 
-tile 级 roofline 与 ch13 同型：每 K-tile 装 32KB、算 $2.1\,\mathrm{M}$ FLOP，
+tile 级 roofline 与 ch13 相同：每 K-tile 装 32KB、算 $2.1\,\mathrm{M}$ FLOP，
 $AI = 64$~FLOP/B。按 PRO 5000（110 SMs，sm\_120a）与 GDDR7 $\approx$ 1.8TB/s
 估算，纯 HBM 供给的计算上限 $\approx 64 \times 1.8\,\mathrm{TB/s} \approx
 115$ TFLOPS。实测 164.64 TFLOPS 已经\textbf{越过}这条线，说明 96MB 级 L2

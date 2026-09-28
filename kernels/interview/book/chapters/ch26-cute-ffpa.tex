@@ -629,7 +629,7 @@ $d$ 从 $0$ 滚到 $\mathrm{Sk}{-}1$）；smem 侧每轮把 \texttt{q\_base} 加
 \texttt{make\_\allowbreak{}tiled\_\allowbreak{}copy} 的两个 layout 分别是「线程布局 $(16,8):(8,1)$」
 （128 个线程铺满，行优先）与「值布局 $(1,8)$」（每线程一次搬 8 个 half
 $=128$\,bit，正好是 \texttt{cp.\allowbreak{}async.\allowbreak{}cg.\allowbreak{}shared.\allowbreak{}global} 的 16 字节形态）。
-但真正值得记的是源码注释（L73--78）里那句话：
+但值得记的是源码注释（L73--78）里那句话：
 
 \begin{quote}
   \textit{128 线程：与 TiledMmaQK/PV 的 Layout$\langle4,1,1\rangle$ 一致，

@@ -36,7 +36,7 @@ mbarrier 协议、full/empty 计数、early release 时机）、第~\ref{ch:14}~
 
 \section{问题与动机}
 
-第~\ref{ch:17}~章的复测给出一组值得注意的数据：TMA $+$ WS 相对 cp.async 版的
+第~\ref{ch:17}~章的复测给出一组数据：TMA $+$ WS 相对 cp.async 版的
 收益稳定在 $+20\%$ 量级，但再加深 K 流水（$\mathrm{Sk}: 2 \to 3$）几乎不再涨
 （$<0.5\%$）。这说明\textbf{装载已经不在关键路径上了}，瓶颈退回到计算侧的两件
 事：其一，consumer 内部的 \texttt{mma.sync} 与 softmax 是串行的，QK$^\top$
@@ -100,8 +100,8 @@ $\mathcal{T}_0 \cup \mathcal{T}_1 = \{0, \dots, T_c-1\}$ 且两半互不相交�
   \alpha = e^{m_0 - m} \le 1, \qquad \beta = e^{m_1 - m} \le 1 ,
   \label{eq:18-weights}
 \end{equation}
-即 kernel 头注释 L1489--1490 的 \texttt{WG1/WG2 rescale factor}。推导只有
-一句话：把式~\ref{eq:18-partial} 的指数统一改写成以全局 $m$ 为基准，
+即 kernel 头注释 L1489--1490 的 \texttt{WG1/WG2 rescale factor}。
+把式~\ref{eq:18-partial} 的指数统一改写成以全局 $m$ 为基准，
 $e^{S_{ik}-m_0} = e^{S_{ik}-m}\cdot e^{m-m_0}$，两个求和因此可以逐项相加；
 由于 $m \ge m_0$ 且 $m \ge m_1$，式~\ref{eq:18-weights} 的两个指数
 \textbf{非正}，绝不会上溢。这正是「以全局 max 为 pivot」的数值意义，与
@@ -403,7 +403,7 @@ $\mathrm{stg}_{\mathrm{next}} = (\mathrm{local\_tile}+1) \bmod \mathrm{Sk}$；
 序号（L1663），producer 侧重新算了一遍，必须与 consumer 的
 \texttt{local\_iter}（L1743）严格对齐。
 
-\subsection{consumer 主循环：五拍与两个 early release}
+\subsection{consumer 主循环：五个阶段与两个 early release}
 
 consumer 的入口是 C0 预热：先给\textbf{自己}那套 \texttt{empty\_\allowbreak{}K[cid][*]}
 与 \texttt{empty\_\allowbreak{}V[cid]} 各预存 128 次 arrive（不是第~\ref{ch:17}~章的 256
@@ -412,7 +412,7 @@ consumer 的入口是 C0 预热：先给\textbf{自己}那套 \texttt{empty\_\al
 \lstinputlisting[linerange={1702-1717},firstnumber=auto,breakatwhitespace=true,
   title={flash\_attn.cuh L1702-1717（REG\_ALLOC 分支 $+$ C0 预热 $+$ 等 Q）}]{../flash_attn.cuh}
 
-主循环 \texttt{for \allowbreak{}(tile =\allowbreak{} consumer\_\allowbreak{}id; tile \allowbreak{}< Tc; tile +=\allowbreak{} 2)} 内的五拍与
+主循环 \texttt{for \allowbreak{}(tile =\allowbreak{} consumer\_\allowbreak{}id; tile \allowbreak{}< Tc; tile +=\allowbreak{} 2)} 内的五个阶段与
 第~\ref{ch:17}~章逐行同构（QK$^\top$ $\to$ safe softmax $\to$ PV $\to$
 rescale），只有两处 \textbf{early release} 的位置值得复述，它们决定 producer
 的重填窗口：
@@ -454,7 +454,7 @@ $i\cdot16 \sim i\cdot16{+}7$，\texttt{[i][1]} 管 $+8 \sim +15$，见 L2069
 
 随后是一次 $O = O_{\mathrm{acc}}/\ell$ 的终归一化（L2127--2152）与
 第~\ref{ch:16}~章的 shuffle $+$ 128-bit 集体写回（L2154--2190），二者与
-ch16/ch17 逐行相同，不再重复。值得指出的是\textbf{由谁写回}：只有
+ch16/ch17 逐行相同，不再重复。关键在\textbf{由谁写回}：只有
 \texttt{consumer\_id}$=0$ 做归一化与写回（\texttt{if \allowbreak{}(consumer\_\allowbreak{}id =\allowbreak{}=\allowbreak{} 0)}，
 L2057），\texttt{consumer\_id}$=1$ 写完后直接退出，省掉单侧的重复计算。
 
@@ -547,7 +547,7 @@ consumer 间通信 & 无（写同一份输出） & 终态 merge（smem scratch�
 \end{tabular}
 \end{center}
 
-一句话总结：ch14 的 WS 是「把搬运从计算中分离」，本章的 WS 是「在搬运分离
+总结：ch14 的 WS 是「把搬运从计算中分离」，本章的 WS 是「在搬运分离
 之后，再用第二个 consumer 把\textbf{计算与计算}重叠」。前者解决 memory
 latency，后者针对 softmax 与 GEMM 的 overlap。FA3 论文（§3.2/§3.3）把后者
 的完整形态称为 \emph{pingpong scheduling}：借助 WGMMA 的异步性，同一 WG 内部
@@ -985,7 +985,7 @@ bench 子命令输出 18.6~节的复测表（\texttt{.\allowbreak{}/\allowbreak{
 prefetch 目标从 $t+2$ 改成 $t+1$（Sk$=$2 时），观察数值立刻出错（坑三），
 这是两处 \texttt{local\_*} 索引错位的直接演示；（3）把 consumer 的
 \texttt{empty\_K} early release 上移到 HMMA 之前，观察挂死或读脏数据
-（第~\ref{ch:17}~章坑五的同型问题）；（4）给测试补一行 $D{=}128$、$\mathrm{Sk}{=}2$
+（第~\ref{ch:17}~章坑五的相同问题）；（4）给测试补一行 $D{=}128$、$\mathrm{Sk}{=}2$
 的实例化，确认 harness 打出
 \texttt{SKIP(ch18): smem 114688 B > optin 101376 B}（坑六）。
 

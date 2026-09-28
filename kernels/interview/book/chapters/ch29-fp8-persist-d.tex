@@ -12,7 +12,7 @@ persist-D，全文件 1036 行）。它是 ffpa-attn 全仓库工程密度最高
 也是 Part VI 的\textbf{核心章}：第~\ref{ch:30}~章的 split-D / M4N2 与
 第~\ref{ch:31}--\ref{ch:32}~章的 fp4 家族都建立在它引入的机制之上。
 
-本章的主线只有一句话：\textbf{让所有量化 scale 因子要么精确消去、要么折进
+本章的主线只有一条：\textbf{让所有量化 scale 因子要么精确消去、要么折进
 本来就要做的操作}。理想目标是「除 round() 外无任何额外数学误差源」：所有
 反量化都是精确代数操作，不是近似。围绕这条主线展开五组机制：
 \begin{enumerate}[itemsep=0pt,topsep=2pt]
@@ -43,7 +43,7 @@ D=192 本机实测发现正确性 bug，完整定位过程记在 29.7.1~节。
 
 \section{问题与动机}
 
-\subsection{主 kernel 的输入契约}
+\subsection{主 kernel 的输入约定}
 
 从第~\ref{ch:28}~章的 \texttt{Fp8QuantizedInputs} 出发，主 kernel 消费：
 $Q_8\in$ e4m3/int8 $(N,kD)$ 行主序、$K_8$ 同构、$V_8^{\top}\in$ e4m3

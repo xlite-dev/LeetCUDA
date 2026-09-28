@@ -780,8 +780,8 @@ S$\to$R 用 \texttt{SM75\_\allowbreak{}U32x4\_\allowbreak{}LDSM\_\allowbreak{}N}
 \texttt{make\_\allowbreak{}tiled\_\allowbreak{}copy\_\allowbreak{}A/\allowbreak{}B}（hgemm.cuh L881、L886）是 S$\to$R 里最不容易
 直接看懂的两个调用，它们的 tiler 不来自参数，而是\textbf{从 \texttt{tiled\_mma} 反推}：
 S$\to$R 的线程映射必须与 MMA 的 A fragment 逐点对齐，否则装进寄存器的数据
-对不上指令的期望。这就是第~\ref{ch:22}~章讲的「TiledCopy 与 TiledMMA 必须
-共形」：既然 TiledMMA 已经精确描述了「谁算哪块」，以它为目标的拷贝就不需要
+对不上指令的期望。这就是第~\ref{ch:22}~章讲的 TiledCopy 与 TiledMMA 必须
+共形：既然 TiledMMA 已经精确描述了「谁算哪块」，以它为目标的拷贝就不需要
 用户再指定一遍线程布局，从而避免两处独立配置不一致。@reed 在《cute 之 高效
 GEMM 实现》里对这一步的总结是「不再是大块到小块的 \texttt{partition}，
 而是对已声明的寄存器做线程级 \texttt{retile}」，正是
