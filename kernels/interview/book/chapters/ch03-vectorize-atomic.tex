@@ -484,8 +484,8 @@ elementwise\_add\_vec4（L358--374）的 \texttt{(idx + 3) < N} 主路径 + 标�
 
 \section{最小测试与动手实验}
 
-测试文件：book/tests/ch03\_elementwise.cu，逻辑抽取自 notes-v2.cu 的
-test\_relu（L596）/ test\_elementwise（L641）/ test\_histogram（L689），
+测试文件：book/tests/ch03\_elementwise.cu，逻辑抽取自 base.cu 的
+test\_relu（L108）/ test\_elementwise（L153）/ test\_histogram（L201），
 改用 common\_test.h 判定：$N = 512$ 验证 relu/relu\_vec4 与 CPU 逐元素
 精确一致（误差 0）、elementwise\_add 两版误差 $6 \times 10^{-8}$、
 histogram（16 bins）与 CPU 计数完全一致；另附 5 个 kernel 的 cudaEvent

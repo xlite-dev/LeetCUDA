@@ -29,7 +29,7 @@ swizzle 与 TMA 两个难点上。
 hgemm.cuh L1859--2100（宏块 \texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}TMA\_\allowbreak{}MMA\_\allowbreak{}WS}
 内的 kernel \texttt{hgemm\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}tn}：模板参数、对齐约定、
 生产者/消费者两侧的 swizzle 地址算术）、common.cuh L262--350（本仓库自带的
-\texttt{SwizzleBMS} 位级镜像与 kColStride 映射表）、notes-v2.cu L124--130
+\texttt{SwizzleBMS} 位级镜像与 kColStride 映射表）、flash\_attn.cu L79--85
 （\texttt{make\_\allowbreak{}tma\_\allowbreak{}copy} 的最小用法）。\textbf{编译宏}：
 \texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}CUTE}（CuTe 布局部分）与
 \texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}TMA\_\allowbreak{}MMA\_\allowbreak{}WS}（TMA 部分，需要
@@ -688,10 +688,10 @@ __global__ void __launch_bounds__(kNumThreads)
 
 \textbf{路径二（CuTe）：} \texttt{make\_\allowbreak{}tma\_\allowbreak{}copy} 把 gmem 张量、smem
 布局原子、CTA tile 与 cluster 大小一起收进去，返回一个
-\texttt{TiledCopy}。notes-v2.cu 的最小用法是
+\texttt{TiledCopy}。flash\_attn.cu 的最小用法是
 
-\lstinputlisting[linerange={124-130},firstnumber=auto,
-  title={notes-v2.cu L124-130（make\_tma\_copy：gmem 张量 $+$ smem 原子 $+$ CTA tile）}]{../notes-v2.cu}
+\lstinputlisting[linerange={79-85},firstnumber=auto,
+  title={flash\_attn.cu L79-85（make\_tma\_copy：gmem 张量 $+$ smem 原子 $+$ CTA tile）}]{../flash_attn.cu}
 
 注意第一个实参是 \texttt{SM90\_\allowbreak{}TMA\_\allowbreak{}LOAD\{\}}，CuTe 把 TMA 建模成一种
 \emph{copy op}，于是它能和 \texttt{copy()} 一样被

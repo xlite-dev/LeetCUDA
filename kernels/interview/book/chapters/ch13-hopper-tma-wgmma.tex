@@ -883,7 +883,7 @@ bench（对照 notes-v2 的 bench 口径），数据落 \texttt{.\allowbreak{}tm
   被 ptxas 以 "not supported on .target sm\_90" 拒绝；而同参数的 \texttt{-ptx}
   模式正确产出 \texttt{.target sm\_90a}。规避：完整编译一律改用
   \texttt{-gencode} 双参形式（\texttt{arch=\allowbreak{}compute\_\allowbreak{}90a} 与
-  \texttt{code=sm\_90a}，notes-v2.cu 文件尾命令即此形式）。该事实影响 \texttt{book/\allowbreak{}tests/\allowbreak{}build\_\allowbreak{}tests.\allowbreak{}sh}（内部传 \texttt{-arch}
+  \texttt{code=sm\_90a}，build.sh 内的单 arch 命令即此形式）。该事实影响 \texttt{book/\allowbreak{}tests/\allowbreak{}build\_\allowbreak{}tests.\allowbreak{}sh}（内部传 \texttt{-arch}
   形式），13.8~节坑一与 13.10~节命令给出替代方案。
 \end{kaogu}
 
@@ -980,8 +980,8 @@ tensor memory）路线，不含 wgmma。SM120 的替代组合是 TMA + \texttt{m
 
 \section{最小测试与动手实验}
 
-测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch13\_\allowbreak{}hgemm\_\allowbreak{}wgmma.cu}（逻辑抽取自 notes-v2.cu 的
-\texttt{test\_\allowbreak{}hgemm\_\allowbreak{}wgmma}@L1648，参考实现由 cuBLAS F16 换成 CPU fp64）。
+测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch13\_\allowbreak{}hgemm\_\allowbreak{}wgmma.cu}（逻辑抽取自 hgemm.cu 的
+\texttt{test\_\allowbreak{}hgemm\_\allowbreak{}wgmma}@L272，参考实现由 cuBLAS F16 换成 CPU fp64）。
 规模 $M = N = K = 256$：被 $B\sb{M} = B\sb{N} = 128$、$B\sb{K} = 64$ 整除，
 $K / B\sb{K} = 4$ 个 K-tile 恰好覆盖 kStages=3 的 stage 回绕（$0 \to 1 \to 2 \to 0$）；
 输入压到 $[-0.25, 0.25]$，使 f16 累加误差稳定落在 F16Acc 档 $5 \times 10\sp{-2}$ 内

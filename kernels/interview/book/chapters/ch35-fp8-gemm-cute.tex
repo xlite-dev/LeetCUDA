@@ -1,5 +1,5 @@
 % ch35-fp8-gemm-cute.tex — FP8 GEMM（二）：CuTe 主 Kernel、在线反量化与 cuBLAS 对比（RFC-N）
-% 源码：kernels/interview/fp8_gemm.cuh（Phase 9.3-9.8，L303-955）+ notes-v2.cu bench 接线
+% 源码：kernels/interview/fp8_gemm.cuh（Phase 9.3-9.8，L303-955）+ fp8_gemm.cu bench 接线
 \chapter{FP8 GEMM（二）：CuTe 主 Kernel、在线反量化与 cuBLAS 对比}\label{ch:35}
 
 \section{本章导读}
@@ -36,7 +36,7 @@ smem 读波前反而更少）。FP4（NVFP4）GEMM 单独成章，本章不展�
 第~\ref{ch:23}~章（TMA/swizzle）、第~\ref{ch:26c}~章（non-WS 协议）、
 第~\ref{ch:26b}~章（epilogue 与 STSM）。
 \textbf{源码区间}：\texttt{fp8\_gemm.cuh} L303--955（Phase 9.3--9.8），
-\texttt{notes-v2.cu} 的 \texttt{bench\_fp8\_gemm}/\texttt{bench\_fp8\_gemm\_tile\_sweep}
+\texttt{fp8\_gemm.cu} 的 \texttt{bench\_fp8\_gemm}/\texttt{bench\_fp8\_gemm\_tile\_sweep}
 接线。
 \textbf{验证方式}：\texttt{notes\_v2\_sm120a.bin --fp8-gemm}（精度全组合）、
 \texttt{--bench --mnk 4096,4096,4096}（标准表）、

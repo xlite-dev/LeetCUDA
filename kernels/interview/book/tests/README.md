@@ -1,6 +1,6 @@
 # book/tests — 每章最小测试
 
-规范源：BOOK_PLAN §6。目标：**取代巨型 notes-v2.cu harness 的正确性验证角色**（notes-v2.cu 保留为集成 bench harness，见附录 C 角色声明）。
+规范源：BOOK_PLAN §6。目标：**取代巨型 notes-v2.cu harness 的正确性验证角色**（harness 拆分后 notes-v2.cu 仅剩 main + CLI 总装，集成 bench 见附录 C 角色声明）。
 
 ## 约定
 

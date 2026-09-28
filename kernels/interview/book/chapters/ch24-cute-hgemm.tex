@@ -1299,8 +1299,8 @@ CuTe 版\textbf{不承诺}比手写版更快。两者的指令序列高度重合
 
 \section{最小测试与动手实验}\label{sec:24-minitest}
 
-\texttt{book/\allowbreak{}tests/\allowbreak{}ch24\_\allowbreak{}hgemm\_\allowbreak{}cute.cu} 的逻辑照抄 \texttt{notes-v2.cu}
-L1568 的 \texttt{test\_\allowbreak{}hgemm\_\allowbreak{}cute}，但按本书测试规范改造：参考值换成
+\texttt{book/\allowbreak{}tests/\allowbreak{}ch24\_\allowbreak{}hgemm\_\allowbreak{}cute.cu} 的逻辑照抄 \texttt{hgemm.cu}
+L192 的 \texttt{test\_\allowbreak{}hgemm\_\allowbreak{}cute}，但按本书测试规范改造：参考值换成
 \textbf{CPU fp64 三重循环}（不依赖 cuBLAS），判定走 \texttt{book\_check}
 容差三档。测试跑两组配置：
 

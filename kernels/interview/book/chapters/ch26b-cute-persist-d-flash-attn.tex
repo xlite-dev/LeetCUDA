@@ -844,7 +844,7 @@ nvcc -std=c++20 -O2 -gencode arch=compute_120f,code=sm_120f \
 # ALL OK
 \end{lstlisting}
 
-集成入口在 notes-v2.cu（\texttt{test\_\allowbreak{}flash\_\allowbreak{}attn\_\allowbreak{}cute\_\allowbreak{}persist\_\allowbreak{}d\_\allowbreak{}sm120}，
+集成入口在 flash\_attn.cu（\texttt{test\_\allowbreak{}flash\_\allowbreak{}attn\_\allowbreak{}cute\_\allowbreak{}persist\_\allowbreak{}d\_\allowbreak{}sm120}，
 含 $N_q{=}2048$/$H{=}8$ 的多 q-tile 大 case）。参考实现用 \textbf{cuDNN SDPA}
 （\texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_CUDNN} 构建下经 cudnn-frontend 组图：
 GQA 按 $h\mapsto h/(H/H_{kv})$ 折叠、causal 用 bottom-right 对齐，恰是本

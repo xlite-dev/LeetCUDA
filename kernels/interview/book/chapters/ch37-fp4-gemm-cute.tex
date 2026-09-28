@@ -1,5 +1,5 @@
 % ch37-fp4-gemm-cute.tex — FP4 GEMM（二）：blockscaled MMA、SF 流水与 cuBLAS 对比（RFC-O）
-% 源码：kernels/interview/fp4_gemm.cuh（Phase 10.3-10.8，L395-1297）+ notes-v2.cu bench 接线
+% 源码：kernels/interview/fp4_gemm.cuh（Phase 10.3-10.8，L395-1297）+ fp4_gemm.cu bench 接线
 \chapter{FP4 GEMM（二）：blockscaled MMA、SF 流水与 cuBLAS 对比}\label{ch:37}
 
 \section{本章导读}
@@ -57,7 +57,7 @@ $BM{=}128$ 让 SF 的 TMA box 恰好等于一个 512\,B 原子（33.4~节）。
 第~\ref{ch:26b}~章（WS 与 \texttt{setmaxnreg}）、第~\ref{ch:35}~章
 （本章的骨架与它逐节对应，可对照阅读）。
 \textbf{源码区间}：\texttt{fp4\_gemm.cuh} L395--1297（Phase 10.3--10.8），
-\texttt{notes-v2.cu} 的 \texttt{bench\_fp4\_gemm}/
+\texttt{fp4\_gemm.cu} 的 \texttt{bench\_fp4\_gemm}/
 \texttt{bench\_fp4\_gemm\_tile\_sweep} 接线。
 \textbf{验证方式}：\texttt{notes\_v2\_sm120a.bin --fp4-gemm}（精度全组合）、
 \texttt{--bench --mnk 4096,4096,4096}（标准表）、
@@ -623,7 +623,7 @@ $(B_4^{\top}, \mathrm{SFB}, s_B)$ 量化一次后常驻显存。入口就是
 8\,MB、SFB 占 1\,MB，即权重的显存占用是 BF16 的
 $9/32\approx28\%$。
 
-\texttt{notes-v2.cu} 的 bench 接线：
+\texttt{fp4\_gemm.cu} 的 bench 接线（CLI flag 入口在 \texttt{notes-v2.cu}）：
 
 \begin{itemize}[itemsep=2pt,topsep=3pt]
   \item \texttt{--fp4-gemm}：7 条正确性 case（4 种 scale 模式 $+$ WS

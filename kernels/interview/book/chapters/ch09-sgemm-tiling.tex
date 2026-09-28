@@ -623,8 +623,8 @@ WMMA 版出现。
 
 \section{最小测试与动手实验}
 
-测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch09\_\allowbreak{}sgemm.\allowbreak{}cu}（逻辑抽取自 notes-v2.cu 的
-test\_sgemm，L1289，对照由 cuBLAS 改为 CPU fp64 参考）。两个 case：
+测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch09\_\allowbreak{}sgemm.\allowbreak{}cu}（逻辑抽取自 sgemm.cu 的
+test\_sgemm，L21，对照由 cuBLAS 改为 CPU fp64 参考）。两个 case：
 A（$128^3$：naive 16 blocks vs vec4 1 block）；B（$256^3$：64 vs 4 blocks）。
 两版 kernel 输出与参考逐元素比对，容差取 F32Acc 档（$10^{-3}$）。
 

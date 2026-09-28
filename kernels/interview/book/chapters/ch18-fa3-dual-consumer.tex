@@ -949,8 +949,8 @@ WG1 看到 WG2 的写入）。
 
 \section{最小测试与动手实验}
 
-测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch18\_\allowbreak{}fa3.cu}（逻辑抽取自 notes-v2.cu
-\texttt{test\_\allowbreak{}flash\_\allowbreak{}attn\_\allowbreak{}3\_\allowbreak{}tma\_\allowbreak{}ws\_\allowbreak{}impl}@L2318；参考实现由 cuDNN SDPA 换成
+测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch18\_\allowbreak{}fa3.cu}（逻辑抽取自 flash\_attn.cu
+\texttt{test\_\allowbreak{}flash\_\allowbreak{}attn\_\allowbreak{}3\_\allowbreak{}tma\_\allowbreak{}ws\_\allowbreak{}impl}@L1085；参考实现由 cuDNN SDPA 换成
 CPU fp64，softmax 全程 double 累加）。覆盖 14 例：$D{=}64$（$\mathrm{Sk}
 \in \{1,2,3\}$，$N \in \{64, 128, 512\}$）与 $D{=}128$（$\mathrm{Sk}{=}1$，
 $N \in \{128, 512\}$），每例 F16Acc/F32Acc 双档，其中 $N{=}64$ 专门覆盖
