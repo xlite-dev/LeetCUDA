@@ -11,7 +11,9 @@
   </div>
 </div>
 
-It covers **Tensor/CUDA Cores**, [200+ CUDA kernels](#cuda-kernel), [HGEMM](https://github.com/xlite-dev/LeetCUDA/releases/download/v4.0.5/leetcuda-20260924.pdf) achieving `98%~100%` of cuBLAS TFLOPS, [FP8 & FP4 GEMM](https://github.com/xlite-dev/LeetCUDA/releases/download/v4.0.5/leetcuda-20260924.pdf), and [Flash-Attention](https://github.com/xlite-dev/LeetCUDA/releases/download/v4.0.5/leetcuda-20260924.pdf) built on Tensor Cores with pure MMA PTX. The LeetCUDA's open-source book is now available at <i><a href='https://github.com/xlite-dev/LeetCUDA/releases/download/v4.0.5/leetcuda-20260924.pdf'>©️LeetCUDA.pdf</a></i> (with 600+ pages, 40+ chapters and detailed explanations). 🔥🔥🔥
+[leetcuda-pdf]: https://github.com/xlite-dev/LeetCUDA/releases/download/v4.0.5/leetcuda-20260924.pdf
+
+It covers **Tensor/CUDA Cores**, [200+ CUDA kernels](leetcuda-pdf), [HGEMM][leetcuda-pdf] achieving `98%~100%` of cuBLAS TFLOPS, [FP8 & FP4 GEMM][leetcuda-pdf], and [Flash-Attention][leetcuda-pdf] built on Tensor Cores with pure MMA PTX. The LeetCUDA's open-source book is now available at [©️LeetCUDA.pdf][leetcuda-pdf] (with 600+ pages, 40+ chapters and detailed explanations). 🔥🔥🔥
 
 <div align="center">
   <div align='center'>
