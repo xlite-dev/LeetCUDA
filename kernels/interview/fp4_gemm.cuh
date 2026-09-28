@@ -1165,6 +1165,9 @@ inline size_t fp4_gemm_workspace_size(int M, int N, int K) {
 // 同步约定：与 cuBLAS 一致，入队后由调用方在 stream 上同步。
 // 约束：K%64==0, N%8==0(TMA 对齐), M 任意。
 // mode 决定 level-1 的有无与作用侧；use_ws 走 warp-specialized 变体。
+// Traits 默认保守档 128x128/s4；大形状可显式传 Fp4GemmTraits<256, 6>
+// （形状判定的阈值见 fp4_gemm_use_wide_tile）。
+template <typename Traits = Fp4GemmTraits<>>
 inline void fp4_gemm_bf16(const __nv_bfloat16 *A, const __nv_bfloat16 *B,
                           __nv_bfloat16 *C, int M, int N, int K,
                           Fp4GemmScaleMode mode, Fp4GemmWorkspace &ws,
@@ -1208,13 +1211,13 @@ inline void fp4_gemm_bf16(const __nv_bfloat16 *A, const __nv_bfloat16 *B,
 #define FP4_GEMM_LAUNCH(L1A, L1B)                                        \
   do {                                                                   \
     if (use_ws)                                                          \
-      fp4_gemm_tma_fwd<L1A, L1B, true>(a4, b4t, sfa, sfb, sa, sb,        \
-                                       reinterpret_cast<cutlass::bfloat16_t *>(C), \
-                                       M, N, K, stream);                 \
+      fp4_gemm_tma_fwd<L1A, L1B, true, Traits>(a4, b4t, sfa, sfb, sa, sb, \
+                                               reinterpret_cast<cutlass::bfloat16_t *>(C), \
+                                               M, N, K, stream);         \
     else                                                                 \
-      fp4_gemm_tma_fwd<L1A, L1B, false>(a4, b4t, sfa, sfb, sa, sb,       \
-                                        reinterpret_cast<cutlass::bfloat16_t *>(C), \
-                                        M, N, K, stream);                \
+      fp4_gemm_tma_fwd<L1A, L1B, false, Traits>(a4, b4t, sfa, sfb, sa, sb, \
+                                                reinterpret_cast<cutlass::bfloat16_t *>(C), \
+                                                M, N, K, stream);        \
   } while (0)
   if (level1_a && level1_b)
     FP4_GEMM_LAUNCH(true, true);
@@ -1283,6 +1286,14 @@ inline void fp4_gemm_bf16_b_offline(const __nv_bfloat16 *A,
   fp4_gemm_tma_fwd<kLevel1A, kLevel1B, kWS, Traits>(
       a4, B4T, sfa, sfb, sa, sb, reinterpret_cast<cutlass::bfloat16_t *>(C), M,
       N, K, stream);
+}
+
+// 形状自适应档位（ch37 部署口径）：MNK 全 >= 4096 用宽 tile 最优档
+// 128x256/s6（81KB smem），否则保守档 128x128/s4（36KB）。BN=256 会让
+// grid 的 N 向 tile 数减半，小形状 CTA 数不足反噬（FP8 在 2048^3 实测
+// -17%）；保守档在所有形状上都不差。
+inline bool fp4_gemm_use_wide_tile(int M, int N, int K) {
+  return M >= 4096 && N >= 4096 && K >= 4096;
 }
 
 }  // namespace fp4_gemm

@@ -3631,9 +3631,36 @@ static void bench_fp8_gemm_tile_sweep(int M, int N, int K) {
 // BF16 out。参照 cuBLAS BF16 GEMM（同样的输入输出），误差列 = relFro。
 // 行结构与 FP8 版对应（kernel-only / e2e / B 离线 / randn 幅度对照），
 // 差别在：① 多了"单级 vs 两级"的量化开销对照 ② 误差量级 0.14 vs 0.03。
-// 所有行走库默认 tile（Fp4GemmTraits<> = 128x128x64 s4，36KB smem）；
+// 标准行按形状自适应（fp4_gemm_use_wide_tile）：MNK>=4096 用最优档
+// 128x256x64 s6（81KB smem），否则保守档 128x128x64 s4（36KB）；
 // tile/stage 扫描见 bench_fp4_gemm_tile_sweep。
 // =============================================================================
+using Fp4BenchWide = fp4_gemm::Fp4GemmTraits<256, 6>;  // MNK>=4096 最优档
+using Fp4BenchCons = fp4_gemm::Fp4GemmTraits<>;        // 保守档 128x128/s4
+
+template <bool kWS, typename Traits>
+static void fp4_run_kernel_l1_impl(bool l1a, bool l1b,
+                                   const cutlass::float_e2m1_t *a4,
+                                   const cutlass::float_e2m1_t *b4t,
+                                   const cutlass::float_ue4m3_t *sfa,
+                                   const cutlass::float_ue4m3_t *sfb,
+                                   const float *sa, const float *sb,
+                                   cutlass::bfloat16_t *cO, int M, int N,
+                                   int K) {
+  if (l1a && l1b)
+    fp4_gemm::fp4_gemm_tma_fwd<true, true, kWS, Traits>(a4, b4t, sfa, sfb, sa,
+                                                       sb, cO, M, N, K, 0);
+  else if (l1a)
+    fp4_gemm::fp4_gemm_tma_fwd<true, false, kWS, Traits>(a4, b4t, sfa, sfb, sa,
+                                                        sb, cO, M, N, K, 0);
+  else if (l1b)
+    fp4_gemm::fp4_gemm_tma_fwd<false, true, kWS, Traits>(a4, b4t, sfa, sfb, sa,
+                                                        sb, cO, M, N, K, 0);
+  else
+    fp4_gemm::fp4_gemm_tma_fwd<false, false, kWS, Traits>(a4, b4t, sfa, sfb, sa,
+                                                         sb, cO, M, N, K, 0);
+}
+
 template <bool kWS>
 static void fp4_run_kernel_l1(bool l1a, bool l1b,
                               const cutlass::float_e2m1_t *a4,
@@ -3642,18 +3669,50 @@ static void fp4_run_kernel_l1(bool l1a, bool l1b,
                               const cutlass::float_ue4m3_t *sfb, const float *sa,
                               const float *sb, cutlass::bfloat16_t *cO, int M,
                               int N, int K) {
-  if (l1a && l1b)
-    fp4_gemm::fp4_gemm_tma_fwd<true, true, kWS>(a4, b4t, sfa, sfb, sa, sb, cO, M,
-                                                N, K, 0);
-  else if (l1a)
-    fp4_gemm::fp4_gemm_tma_fwd<true, false, kWS>(a4, b4t, sfa, sfb, sa, sb, cO,
-                                                 M, N, K, 0);
-  else if (l1b)
-    fp4_gemm::fp4_gemm_tma_fwd<false, true, kWS>(a4, b4t, sfa, sfb, sa, sb, cO,
-                                                 M, N, K, 0);
+  if (fp4_gemm::fp4_gemm_use_wide_tile(M, N, K))
+    fp4_run_kernel_l1_impl<kWS, Fp4BenchWide>(l1a, l1b, a4, b4t, sfa, sfb, sa,
+                                             sb, cO, M, N, K);
   else
-    fp4_gemm::fp4_gemm_tma_fwd<false, false, kWS>(a4, b4t, sfa, sfb, sa, sb, cO,
-                                                  M, N, K, 0);
+    fp4_run_kernel_l1_impl<kWS, Fp4BenchCons>(l1a, l1b, a4, b4t, sfa, sfb, sa,
+                                             sb, cO, M, N, K);
+}
+
+template <bool kWS>
+static void fp4_run_e2e(const __nv_bfloat16 *d_a, const __nv_bfloat16 *d_b,
+                       __nv_bfloat16 *d_c, int M, int N, int K,
+                       fp4_gemm::Fp4GemmScaleMode mode,
+                       fp4_gemm::Fp4GemmWorkspace &ws) {
+  if (fp4_gemm::fp4_gemm_use_wide_tile(M, N, K))
+    fp4_gemm::fp4_gemm_bf16<Fp4BenchWide>(d_a, d_b, d_c, M, N, K, mode, ws, 0,
+                                          kWS);
+  else
+    fp4_gemm::fp4_gemm_bf16<Fp4BenchCons>(d_a, d_b, d_c, M, N, K, mode, ws, 0,
+                                          kWS);
+}
+
+template <bool kWS, typename Traits>
+static void fp4_run_offline_impl(bool l1a, bool l1b, const __nv_bfloat16 *d_a,
+                                 const cutlass::float_e2m1_t *b4t,
+                                 const cutlass::float_ue4m3_t *sfb,
+                                 const float *sb, __nv_bfloat16 *d_c, int M,
+                                 int N, int K,
+                                 fp4_gemm::Fp4GemmActivation &act) {
+  if (l1a && l1b)
+    fp4_gemm::fp4_gemm_bf16_b_offline<true, true, kWS, Traits>(d_a, b4t, sfb,
+                                                              sb, d_c, M, N, K,
+                                                              act, 0);
+  else if (l1a)
+    fp4_gemm::fp4_gemm_bf16_b_offline<true, false, kWS, Traits>(d_a, b4t, sfb,
+                                                               sb, d_c, M, N, K,
+                                                               act, 0);
+  else if (l1b)
+    fp4_gemm::fp4_gemm_bf16_b_offline<false, true, kWS, Traits>(d_a, b4t, sfb,
+                                                               sb, d_c, M, N, K,
+                                                               act, 0);
+  else
+    fp4_gemm::fp4_gemm_bf16_b_offline<false, false, kWS, Traits>(d_a, b4t, sfb,
+                                                                sb, d_c, M, N, K,
+                                                                act, 0);
 }
 
 template <bool kWS>
@@ -3662,18 +3721,12 @@ static void fp4_run_offline(bool l1a, bool l1b, const __nv_bfloat16 *d_a,
                             const cutlass::float_ue4m3_t *sfb, const float *sb,
                             __nv_bfloat16 *d_c, int M, int N, int K,
                             fp4_gemm::Fp4GemmActivation &act) {
-  if (l1a && l1b)
-    fp4_gemm::fp4_gemm_bf16_b_offline<true, true, kWS>(d_a, b4t, sfb, sb, d_c, M,
-                                                       N, K, act, 0);
-  else if (l1a)
-    fp4_gemm::fp4_gemm_bf16_b_offline<true, false, kWS>(d_a, b4t, sfb, sb, d_c,
-                                                        M, N, K, act, 0);
-  else if (l1b)
-    fp4_gemm::fp4_gemm_bf16_b_offline<false, true, kWS>(d_a, b4t, sfb, sb, d_c,
-                                                        M, N, K, act, 0);
+  if (fp4_gemm::fp4_gemm_use_wide_tile(M, N, K))
+    fp4_run_offline_impl<kWS, Fp4BenchWide>(l1a, l1b, d_a, b4t, sfb, sb, d_c, M,
+                                            N, K, act);
   else
-    fp4_gemm::fp4_gemm_bf16_b_offline<false, false, kWS>(d_a, b4t, sfb, sb, d_c,
-                                                         M, N, K, act, 0);
+    fp4_run_offline_impl<kWS, Fp4BenchCons>(l1a, l1b, d_a, b4t, sfb, sb, d_c, M,
+                                            N, K, act);
 }
 
 static void bench_fp4_gemm(int M, int N, int K) {
@@ -3741,27 +3794,25 @@ static void bench_fp4_gemm(int M, int N, int K) {
     printf("| %-56s | %.3e | %-19s |\n", label, sqrt(num / den), tflops_str); \
   } while (0)
 
-#define FP4_RUN_E2E(MODE, kWS, label)                                      \
+#define FP4_RUN_E2E(MODE, kWS, stem)                                       \
   do {                                                                     \
-    const bool l1a = (MODE == Fp4GemmScaleMode::kTwoLevel ||               \
-                      MODE == Fp4GemmScaleMode::kLevel1A);                 \
-    const bool l1b = (MODE == Fp4GemmScaleMode::kTwoLevel ||               \
-                      MODE == Fp4GemmScaleMode::kLevel1B);                 \
-    fp4_gemm::fp4_gemm_bf16(d_a, d_b, d_c, M, N, K, MODE, ws, 0, kWS);     \
+    fp4_run_e2e<kWS>(d_a, d_b, d_c, M, N, K, MODE, ws);                    \
     for (int w = 0; w < g_warmup; ++w)                                     \
-      fp4_gemm::fp4_gemm_bf16(d_a, d_b, d_c, M, N, K, MODE, ws, 0, kWS);   \
+      fp4_run_e2e<kWS>(d_a, d_b, d_c, M, N, K, MODE, ws);                  \
     cudaDeviceSynchronize();                                               \
     cudaEventRecord(start);                                                \
     for (int r = 0; r < g_repeat; ++r)                                     \
-      fp4_gemm::fp4_gemm_bf16(d_a, d_b, d_c, M, N, K, MODE, ws, 0, kWS);   \
+      fp4_run_e2e<kWS>(d_a, d_b, d_c, M, N, K, MODE, ws);                  \
     cudaEventRecord(stop);                                                 \
     cudaEventSynchronize(stop);                                            \
     float time_ms = 0;                                                     \
     cudaEventElapsedTime(&time_ms, start, stop);                           \
+    char label[96];                                                        \
+    snprintf(label, sizeof(label), "%s, %s)", stem, tile_tag);            \
     FP4_EMIT_ROW(label, time_ms / g_repeat);                               \
   } while (0)
 
-#define FP4_RUN_KERNEL(MODE, kWS, label)                                   \
+#define FP4_RUN_KERNEL(MODE, kWS, stem)                                   \
   do {                                                                     \
     const bool l1a = (MODE == Fp4GemmScaleMode::kTwoLevel ||               \
                       MODE == Fp4GemmScaleMode::kLevel1A);                 \
@@ -3769,7 +3820,7 @@ static void bench_fp4_gemm(int M, int N, int K) {
                       MODE == Fp4GemmScaleMode::kLevel1B);                 \
     /* 先跑一次全链路把 workspace（A4/B4T/SFA/SFB/sa/sb）填好；否则          \
        kernel-only 读到的是未初始化数据，误差列会立刻爆表 */               \
-    fp4_gemm::fp4_gemm_bf16(d_a, d_b, d_c, M, N, K, MODE, ws, 0, false);   \
+    fp4_run_e2e<false>(d_a, d_b, d_c, M, N, K, MODE, ws);                  \
     fp4_run_kernel_l1<kWS>(l1a, l1b, a4, b4t, sfa, sfb, sa, sb, cO, M, N,  \
                            K);                                             \
     for (int w = 0; w < g_warmup; ++w)                                     \
@@ -3784,10 +3835,12 @@ static void bench_fp4_gemm(int M, int N, int K) {
     cudaEventSynchronize(stop);                                            \
     float time_ms = 0;                                                     \
     cudaEventElapsedTime(&time_ms, start, stop);                           \
+    char label[96];                                                        \
+    snprintf(label, sizeof(label), "%s, %s)", stem, tile_tag);            \
     FP4_EMIT_ROW(label, time_ms / g_repeat);                               \
   } while (0)
 
-#define FP4_RUN_BOFF(MODE, kWS, label)                                     \
+#define FP4_RUN_BOFF(MODE, kWS, stem)                                     \
   do {                                                                     \
     const bool l1a = (MODE == Fp4GemmScaleMode::kTwoLevel ||               \
                       MODE == Fp4GemmScaleMode::kLevel1A);                 \
@@ -3804,36 +3857,43 @@ static void bench_fp4_gemm(int M, int N, int K) {
     cudaEventSynchronize(stop);                                            \
     float time_ms = 0;                                                     \
     cudaEventElapsedTime(&time_ms, start, stop);                           \
+    char label[96];                                                        \
+    snprintf(label, sizeof(label), "%s, %s)", stem, tile_tag);            \
     FP4_EMIT_ROW(label, time_ms / g_repeat);                               \
   } while (0)
 
   // 行为诊断：relFro 只在 K 足够大时才稳定，K=64 的单 stage 情形顺带断言
+  // 档位标签与 fp4_run_* 内部的形状判定同源（MNK>=4096 -> 128x256/s6）
+  char tile_tag[16];
+  snprintf(tile_tag, sizeof(tile_tag), "%s",
+           fp4_gemm::fp4_gemm_use_wide_tile(M, N, K) ? "128x256/s6"
+                                                     : "128x128/s4");
   printf("（FP4 行的误差列 = relFro 相对 Frobenius 误差，E2M1 只有 3 个数值位；"
          "kernel-only = 量化在计时窗口外）\n");
   FP4_RUN_KERNEL(Fp4GemmScaleMode::kSingleLevel, false,
-                 "FP4 GEMM CuTe nonws (单级 level-2, 128x128/s4)");
+                 "FP4 GEMM CuTe nonws (单级 level-2");
   FP4_RUN_KERNEL(Fp4GemmScaleMode::kLevel1A, false,
-                 "FP4 GEMM CuTe nonws (level-2 x A 行, 128x128/s4)");
+                 "FP4 GEMM CuTe nonws (level-2 x A 行");
   FP4_RUN_KERNEL(Fp4GemmScaleMode::kLevel1B, false,
-                 "FP4 GEMM CuTe nonws (level-2 x B 列, 128x128/s4)");
+                 "FP4 GEMM CuTe nonws (level-2 x B 列");
   FP4_RUN_KERNEL(Fp4GemmScaleMode::kTwoLevel, false,
-                 "FP4 GEMM CuTe nonws (两级 A 行 x B 列, 128x128/s4)");
+                 "FP4 GEMM CuTe nonws (两级 A 行 x B 列");
   FP4_RUN_KERNEL(Fp4GemmScaleMode::kTwoLevel, true,
-                 "FP4 GEMM CuTe ws   (两级 A 行 x B 列, 128x128/s4)");
+                 "FP4 GEMM CuTe ws   (两级 A 行 x B 列");
   FP4_RUN_E2E(Fp4GemmScaleMode::kSingleLevel, false,
-              "FP4 GEMM+Quant e2e nonws (单级 level-2, 128x128/s4)");
+              "FP4 GEMM+Quant e2e nonws (单级 level-2");
   FP4_RUN_E2E(Fp4GemmScaleMode::kTwoLevel, false,
-              "FP4 GEMM+Quant e2e nonws (两级 A 行 x B 列, 128x128/s4)");
+              "FP4 GEMM+Quant e2e nonws (两级 A 行 x B 列");
   FP4_RUN_E2E(Fp4GemmScaleMode::kTwoLevel, true,
-              "FP4 GEMM+Quant e2e ws   (两级 A 行 x B 列, 128x128/s4)");
+              "FP4 GEMM+Quant e2e ws   (两级 A 行 x B 列");
   // 权重 B 离线量化：模拟"加载已量化的权重 checkpoint"，B 的量化 + 转置只做
   // 一次且不计入计时；每次前向只剩 A 侧在线量化 -> NVFP4 GEMM. 部署真实形态.
   fp4_gemm::fp4_gemm_quantize_b(d_b, b4t, sfb, sb, N, K, true, 0);
   cudaDeviceSynchronize();
   FP4_RUN_BOFF(Fp4GemmScaleMode::kTwoLevel, false,
-               "FP4 GEMM+A Quant e2e nonws (B offline, 128x128/s4)");
+               "FP4 GEMM+A Quant e2e nonws (B offline");
   FP4_RUN_BOFF(Fp4GemmScaleMode::kTwoLevel, true,
-               "FP4 GEMM+A Quant e2e ws   (B offline, 128x128/s4)");
+               "FP4 GEMM+A Quant e2e ws   (B offline");
   // randn(-0.25, 0.25) data shape: 幅度缩小 4x，验证 relFro 与信号幅度无关；
   // 两级量化里 level-1 的 per-row scale 正是在这里体现价值（见 ch36 误差模型）
   {
@@ -3854,9 +3914,9 @@ static void bench_fp4_gemm(int M, int N, int K) {
         bench_cublas_bf16_gemm_tflops(handle, M, N, K, d_a, d_b, d_ref);
     cudaMemcpy(h_ref, d_ref, (size_t)M * N * 2, cudaMemcpyDeviceToHost);
     FP4_RUN_KERNEL(Fp4GemmScaleMode::kTwoLevel, false,
-                   "FP4 GEMM CuTe nonws (两级, randn(+-0.25), 128x128/s4)");
+                   "FP4 GEMM CuTe nonws (两级, randn(+-0.25)");
     FP4_RUN_KERNEL(Fp4GemmScaleMode::kTwoLevel, true,
-                   "FP4 GEMM CuTe ws   (两级, randn(+-0.25), 128x128/s4)");
+                   "FP4 GEMM CuTe ws   (两级, randn(+-0.25)");
   }
 #undef FP4_RUN_E2E
 #undef FP4_RUN_KERNEL

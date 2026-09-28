@@ -28,11 +28,11 @@ files:
     sha256: 60ef4408cfac016fa4b6cf3db8cec1d29b54665a294967290e07d4ce54ce7ce2
     lines: 958
   notes-v2.cu:
-    sha256: cc2915982938c3500ce6a2b3089b4ceda95b716e00abcfb91d1fdd0207c37b74
-    lines: 6525
+    sha256: 360fb75a4cfe29710dfd3dfe8825aabc86665ddb08ec442e2d6d9f783c02e89f
+    lines: 6585
   fp4_gemm.cuh:
-    sha256: 4b7a02aeef8a944d42fb1e23b7189984c6b38aad57f48cd13840f7e9baa35769
-    lines: 1289
+    sha256: 1e584e895573caf302cf10079d1daf20043912e9d2a7e08261aad8fceb681cda
+    lines: 1300
 chapters:
   ch01:
     refs:
@@ -256,8 +256,8 @@ chapters:
         first_anchor: "// FFPA Split-D non-WS TMA 版 (ffpa-attn split_d.cuh 移植, 最小教学集)"
         last_anchor: "#endif // NOTES_V2_ENABLE_CUTE && NOTES_V2_ENABLE_TMA_MMA_WS"
       - file: notes-v2.cu
-        start: 5460
-        end: 5728
+        start: 5520
+        end: 5788
         first_anchor: "// non-WS TMA split-D bench: tile 128x128, tid=0 内联发 TMA, STSM+TMA store。"
         last_anchor: "}"
   ch34:
@@ -285,7 +285,7 @@ chapters:
     refs:
       - file: fp4_gemm.cuh
         start: 395
-        end: 1288
+        end: 1299
         first_anchor: "// ============================================================================="
         last_anchor: "}  // namespace fp4_gemm"
   appA:
