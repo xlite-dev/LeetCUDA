@@ -12,7 +12,7 @@
 </div> -->
 
 <div align="center">
-  <h2>📖 LeetCUDA: An open-source book of modern CUDA learning notes</h2>
+  <h2>📚 LeetCUDA: An open-source book of modern CUDA learning notes</h2>
   <div align='center'>
       <img src=https://cdn.rawgit.com/sindresorhus/awesome/d7305f38d29fed78fa85652e3a63e154dd8e8829/media/badge.svg >
        <a href='./kernels/interview/book/book.pdf'><img src=https://img.shields.io/badge/PDF-available-hotpink.svg ></a>
