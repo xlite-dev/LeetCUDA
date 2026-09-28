@@ -623,3 +623,31 @@
   0 缺字，7 个关键图页 view 验收通过。本地素材：
   `/workspace/dev/vipshop/tmp/papers/CUTE-LAYOUT-NV-2026.pdf` 与
   `…/CUTE-LAYOUT-NV-2026/`（`CuTeWhitepaper.tex`，TikZ 直接移植）。
+
+## 16. 工程变更记录
+
+- [x] **notes-v2.cu 多 TU 拆分（冷启动并行编译）（2026-09-28，完成）**
+  - 动机：notes-v2.cu 拆分前为 6595 行单 TU，冷启动全量编译 ~271s
+    （`CCACHE_DISABLE=1` 实测，`.tmp/notes-split-baseline/old_cold_build.log`）；
+    按模块拆 TU 后 `build.sh --jobs`（默认 `min(nproc --all, 32)`）并行编译。
+  - 10 TU 布局（共 6872 行）：notes-v2.cu（440，main+CLI 总装：extern 声明 +
+    模板实例化 wrapper 调用）；base.cu 730（基础算子 test 家族）/ sgemv.cu 117 /
+    sgemm.cu 145 / hgemm.cu 1187 / fp8_gemm.cu 466 / fp4_gemm.cu 593 /
+    flash_attn.cu 2695（FA1/2/3 + persist-D）/ ffpa_attn.cu 415（split-D）
+    分载 host 侧 test/bench（函数体自 notes-v2.cu 原样搬移，仅去 static）；
+    utils.cu 83 收纳跨模块共享符号（check/check_smem_feasible/
+    bench_hgemm_tflops/bench_fa_tflops/fp8_smem_optin_limit/
+    bench_cublas_bf16_gemm_tflops + g_debug 等全局，各模块 .cu 以 extern 引用）。
+  - 链接去重：base.cuh 非模板 kernel 经 include 链在多个 TU 生成重复强符号；
+    base.o 为规范定义，build.sh 对 sgemv/sgemm/hgemm/flash_attn/ffpa_attn 五个
+    .o 执行 `objcopy --weaken-symbols`（列表由 `nm base.o` 动态提取，写临时文件
+    再 mv，不污染 ccache 硬链接产物），链接时 base.o 强符号胜出。
+  - 验证：所有 `.cuh` 未动（源码冻结体系不变）；二进制输出不变
+    （`bin/notes_v2_sm120a.bin`），16 场景（default/fa2-cute/fa2-cute-cpasync/
+    fa3-cute/fa3-cute-tma-smoke/tma-mma-ws/swizzle-eq/pd-cute/sdnw-cute/
+    fp8-gemm/fp8-sweep/fp4-gemm/fp4-sweep/bench-mnk8192/bench-fa-d64-swizzle/
+    bench-fa-d256）输出与拆分前**逐行一致**（`.tmp/notes-split-verify/`）。
+  - 冻结与引用同步：anchors.yaml 复冻结——notes-v2.cu 新 sha（440 行）+ 新登记
+    9 个模块 .cu；ch26c 的 notes-v2.cu 引用区间迁移为 ffpa_attn.cu L136-268；
+    `verify_anchors.py` ALL GREEN；全书 tex 行号引用同步（约 25 个文件：19 个
+    章节 .tex + anchors.yaml + 顶层文档 BOOK_PLAN/两个 SKILL/README）。

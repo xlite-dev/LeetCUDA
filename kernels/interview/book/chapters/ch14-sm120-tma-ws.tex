@@ -841,7 +841,7 @@ SASS \texttt{USETMAXREG}=112=PTX 计数；FA bench Max Err 与基线一致；
 
 \textbf{坑七：忘记转置 B。}\allowbreak{}kernel 的 TMA descriptor 期望 B 以 $[N, K]$
 row-major（TN 布局）存储，host 侧要先转置；未转置时 box 形状仍匹配、
-数值全错。本章测试与 notes-v2 相同：host 显式转置后再上传。
+数值全错。本章测试与 hgemm.cu 相同：host 显式转置后再上传。
 
 \section{面试要点速查}
 
@@ -891,7 +891,7 @@ A：cp.async 每线程一条 16B 指令 + 软件成组等待；TMA 每 tile 一�
 \section{最小测试与动手实验}
 
 测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch14\_\allowbreak{}hgemm\_\allowbreak{}tma\_\allowbreak{}ws.cu}（逻辑抽取自
-notes-v2.cu 的 \texttt{test\_\allowbreak{}hgemm\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws}@L1809 与 launch wrapper，
+hgemm.cu 的 \texttt{test\_\allowbreak{}hgemm\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws}@L435 与 launch wrapper（L382），
 参考实现由 cuBLAS F16 换成 CPU fp64）。两个正确性 case 均 $256^3$：
 被 $B\sb{M} = B\sb{N} = 128$、$B\sb{K} = 64$ 整除，$K/B\sb{K} = 4$ 个 K-tile
 覆盖 kStages=2 与 3 两种回绕；case A（S=2、block swizzle=0）走主线协议，

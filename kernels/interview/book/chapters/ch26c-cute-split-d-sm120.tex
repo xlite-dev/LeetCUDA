@@ -840,7 +840,8 @@ $ cd book/tests && ./build_tests.sh --ch ch26c
 # ALL OK
 \end{lstlisting}
 
-集成入口在 notes-v2.cu：\texttt{-{}-sdnw-cute} 快速正确性（五用例，
+集成入口（CLI flag 仍在 notes-v2.cu）：\texttt{-{}-sdnw-cute} 快速正确性
+（ffpa\_attn.cu 的 \texttt{run\_sdnw\_cute\_tests()}，L408；五用例，
 含 $N_{kv}{=}192$ 边界）与 \texttt{-{}-bench -{}-bhnd 1,32,8192,320}
 的 stages 四组合实验（\texttt{Sk}/\texttt{Sv} 直接体现在输出 label）：
 

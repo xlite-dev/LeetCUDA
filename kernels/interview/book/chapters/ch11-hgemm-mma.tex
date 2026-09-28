@@ -772,7 +772,7 @@ HGEMM MMA (S=3, BLK\_SW=1) & 0.000e+00 & 127.3/246.9 (0.52x) \\
 \textbf{坑一：B 没转置直接传入 kernel。}\allowbreak{}kernel 要求的输入是 $B^{\top}$（$N\times K$
 行主序）。把 $K\times N$ 的 B 原样传入，gmem 索引
 \texttt{n*K + k} 会按错误布局取数：不越界（总元素数相同）、不报错、
-结果系统性错误。测试须像 notes-v2 一样显式构造 $B^{\top}$
+结果系统性错误。测试须像 hgemm.cu 一样显式构造 $B^{\top}$
 （本章测试的 \texttt{hbt} 循环）。
 
 \textbf{坑二：\texttt{.aligned} 与 early return 不相容。}\allowbreak{}mma/ldmatrix 要求
@@ -850,7 +850,7 @@ A：不是。深流水容忍更长的搬运延迟（稳态 \texttt{wait\_\allowb
 \section{最小测试与动手实验}
 
 测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch11\_\allowbreak{}hgemm\_\allowbreak{}mma.cu}（逻辑抽取自
-notes-v2.cu 的 \texttt{test\_\allowbreak{}hgemm\_\allowbreak{}mma}，L1416；参考改为 CPU fp64：
+hgemm.cu 的 \texttt{test\_\allowbreak{}hgemm\_\allowbreak{}mma}，L40；参考改为 CPU fp64：
 half 输入转 double 精确累加，half 输出 \texttt{\_\allowbreak{}\_\allowbreak{}half2float} 后比较）。
 case A（$128\times128\times128$，grid $1\times1$，K 为 8 个 k-tile，
 覆盖满载 + 尾部排空）、case B（$256\times128\times64$，grid $(1,2)$，

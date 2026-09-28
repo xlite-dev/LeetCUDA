@@ -465,7 +465,7 @@ launch 与同步的固定开销占比大；附录~B 的汇总口径会注明这�
   \texttt{softmax.cu} 入口有 \texttt{const int N = S * H;}，base.cuh 精简版丢掉了这行）。
   本章测试曾因按「每 token 长度」理解 $N$ 并以 $S=2$ 调用而复现故障：
   block 1 的全部线程被守卫剪掉，token 1 的输出\textbf{不写回}（旧值残留）。
-  抽取源 notes-v2.cu 的 test\_softmax（L847）固定 grid$(1)$、$N = 256$（单 token），
+  抽取源 base.cu 的 test\_softmax（L359）固定 grid$(1)$、$N = 256$（单 token），
   恰好绕开了该歧义。建议读者牢记约定：grid$(S)$ 时必须传 $N = S \times H$，
   且 $H$ 恰等于 blockDim（一个 token 装满一个 block）。
 \end{kaogu}
@@ -586,8 +586,8 @@ softmax 依附在 KV 分块循环上流式完成，$S$ 从不被完整物化，�
 
 \section{最小测试与动手实验}
 
-测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch04\_\allowbreak{}softmax.\allowbreak{}cu}（逻辑抽取自 notes-v2.cu 的
-test\_softmax，L847，对照改为 CPU fp64 参考）。三个 case：
+测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch04\_\allowbreak{}softmax.\allowbreak{}cu}（逻辑抽取自 base.cu 的
+test\_softmax，L359，对照改为 CPU fp64 参考）。三个 case：
 A（$S=2$、$N=256$，$x \in [-5,5]$，三版正确性 + 两两一致性）；
 B（$S=1$、$N=100$、block=128，边界线程守卫路径）；
 C（$x \in [80,120]$，naive 必然溢出 vs safe/online 稳定的演示）。

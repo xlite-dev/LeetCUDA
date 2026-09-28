@@ -437,7 +437,7 @@ $\mathit{zzz}$ 两段各占 $B$ 位（BBits，XOR 掩码位数）；$\mathit{yyy
   \item \textbf{S（SShift）}：二维空间每行列数位 $= 2^S$ 个基本元素组成一行；
         同时是 $\mathit{yyy}$ 掩码相对 $\mathit{zzz}$ 掩码的位移。$S>0$ 表示
         $\mathit{yyy}$ 在更高位，向右移 $S$ 位到 $\mathit{zzz}$ 位置后 XOR。本
-        notes-v2 三模式 $S$ 恒为 3（$\mathit{yyy}$ 在 bit$[7..7{+}B{-}1]$，即行索引
+        common.cuh 三模式 $S$ 恒为 3（$\mathit{yyy}$ 在 bit$[7..7{+}B{-}1]$，即行索引
         $i$ 的低 $B$ 位；$\mathit{zzz}$ 在 bit$[4..4{+}B{-}1]$，即列 chunk 索引）。
 \end{itemize}
 
@@ -962,7 +962,7 @@ swizzle 缩 L2 footprint」两条主线互相印证。
   bit $[4,4{+}B)$ 恰为 $(j{\gg}3)$ 低 $B$ 位、bit $[7,7{+}B)$ 恰为 $i$ 低 $B$
   位（$k_{\mathrm{cs}}\in\{16,32,64\}$ 逐一验证），apply 的异或结果与 v1 的
   \texttt{chunk\^{}xor\_\allowbreak{}mask} 逐位相同。host 全遍历 30{,}720 点 bit-exact
-  （本章 case~C，复现 notes-v2.cu \texttt{test\_\allowbreak{}swizzle\_\allowbreak{}equiv} L4657）。
+  （本章 case~C，复现 base.cu \texttt{test\_\allowbreak{}swizzle\_\allowbreak{}equiv} L721）。
   注释证明无误。
 \end{kaogu}
 
@@ -1051,8 +1051,8 @@ $S$ = 每行 chunk 数位（8 chunk $\Rightarrow S{=}3$，也是源/目标 bit �
 
 \section{最小测试与动手实验}
 
-测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch12\_\allowbreak{}hgemm\_\allowbreak{}swizzle.cu}（逻辑抽取自 notes-v2.cu
-的 test\_hgemm\_swizzle（L1491）与 test\_swizzle\_equiv（L4657），正确性对照改为
+测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch12\_\allowbreak{}hgemm\_\allowbreak{}swizzle.cu}（逻辑抽取自 hgemm.cu
+的 test\_hgemm\_swizzle（L115）与 base.cu 的 test\_swizzle\_equiv（L721），正确性对照改为
 CPU fp64 参考；文件顶部 \texttt{\#define NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}SWIZZLE\_\allowbreak{}V2 1}，使
 kernel 走 v2 路径，build\_tests.sh 不传额外宏，宏必须写在 include 之前）。
 三个 case：A（$256^3$，swizzle kernel vs fp64）；B（$M{=}384$、$N{=}512$、

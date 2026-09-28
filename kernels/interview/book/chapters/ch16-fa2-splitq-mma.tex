@@ -821,7 +821,7 @@ swizzle 只微调 bank/wavefront 分布，不改变 compute-bound 本质。
   定义在 \textbf{hgemm.cuh~L389--396}（common.cuh 里只有
   \texttt{swizzle\_\allowbreak{}v1\_\allowbreak{}impl/\allowbreak{}swizzle\_\allowbreak{}v2\_\allowbreak{}impl}）。单独 include
   flash\_attn.cuh 编译报 ``identifier swizzle is undefined''；
-  notes-v2.cu 靠 L26--27 的 include 顺序（hgemm 在前）才通过。
+  flash\_attn.cu 靠 L4--5 的 include 顺序（hgemm.cuh 在前）才通过。
   本章测试按同序 include。已记 CHECKLOG（F5 工程类）。
 \end{kaogu}
 
@@ -929,7 +929,7 @@ cp.async 写侧 pattern：LDGSTS wavefront 2.26x、多种 stall 放大，
 \section{最小测试与动手实验}
 
 测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch16\_\allowbreak{}fa2\_\allowbreak{}mma.\allowbreak{}cu}（逻辑抽取自
-notes-v2.cu 的 \texttt{test\_\allowbreak{}flash\_\allowbreak{}attn}，L1895；参考改为 CPU fp64
+flash\_attn.cu 的 \texttt{test\_\allowbreak{}flash\_\allowbreak{}attn}，L662；参考改为 CPU fp64
 直接算 softmax attention，half 输出 \texttt{\_\allowbreak{}\_\allowbreak{}half2float} 转 float
 比较）。case A（$B{=}1,H{=}2,N{=}256$：多 head、每 head 2 个 Q tile，$T_c{=}4$
 覆盖流水满载与尾部排空）、case B（$B{=}1,H{=}1,N{=}512$：grid.x$=$4

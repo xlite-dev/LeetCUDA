@@ -189,7 +189,8 @@ strided 通用）、量化数学与 scale 折叠、性能 RFC 与已证伪清单
 
 按任务路由到章后，配套可参考源码直接按此表打开（行数为实测值；行号级
 冻结映射见 `appendices/appD-source-index.tex`，老文件基准 commit `6cd32de`；
-`fp8_gemm.cuh`/`fp4_gemm.cuh` 的行号冻结以 `book/scripts/anchors.yaml` 为准）：
+`fp8_gemm.cuh`/`fp4_gemm.cuh` 及 notes-v2 系 `.cu`（多 TU 拆分：notes-v2.cu +
+9 模块 .cu）的行号冻结以 `book/scripts/anchors.yaml` 为准）：
 
 | 文件（相对 `<LeetCUDA_DIR>/kernels/interview/`） | 行数 | 内容 | 对应章 |
 |---|---|---|---|
@@ -202,7 +203,7 @@ strided 通用）、量化数学与 scale 折叠、性能 RFC 与已证伪清单
 | `fp8_gemm.cuh` | 958 | e4m3 量化前处理（per-row/per-block，L45-284）+ CuTe 主 GEMM、在线反量化（L303-955） | ch34-35 |
 | `fp4_gemm.cuh` | 1300 | NVFP4 在线量化 GEMM：A/B 两级量化 kernel 与误差模型（L58-366）+ block-scaled MMA 主 kernel、SF 流水、workspace（L395-1299）；形状自适应入口 `fp4_gemm_use_wide_tile`（MNK≥4096 用 128×256/s6，否则保守 128×128/s4） | ch36-37 |
 | `common.cuh` | 803 | TMA/mbarrier/setmaxnreg/WGMMA 宏封装与 swizzle 工具箱（逐段解析见 appA） | ch12–14、appA |
-| `notes-v2.cu` | 6585 | 面试背题主编译单元：include 全部 `.cuh`，~30 kernel 的 WHY+HOW 注释与 10 Phase 递进，`--bench` harness + `--fp8-gemm`/`--fp4-gemm`/`--fp4-gemm-sweep` GEMM 专项 bench（`bin/notes_v2_*.bin` 源） | 全书总装、appC |
+| `notes-v2.cu` | 440 | main+CLI 总装（多 TU）：extern 声明 + 模板实例化 wrapper 调用；host test/bench 拆入 `base/sgemv/sgemm/hgemm/fp8_gemm/fp4_gemm/flash_attn/ffpa_attn.cu` + `utils.cu` 共享符号（~30 kernel 的 WHY+HOW 注释与 10 Phase 递进在 `.cuh` 内）；`--bench` harness 与 `--fp8-gemm`/`--fp4-gemm`/`--fp4-gemm-sweep` GEMM 专项 bench CLI 不变（`bin/notes_v2_*.bin` 源，`build.sh --arch sm_120a --jobs 8` 并行编译） | 全书总装、appC |
 | `bench/bench_attn.cu` | — | FA2 CuTe TMA+MMA+WS vs cuDNN SDPA 专项 bench | ch00、ch17/25 |
 | `bench/bench_ffpa.cu` | — | FFPA Split-D attention 专项 bench | ch19、ch33 |
 | `bench/bench_sgemm.cu` | — | `sgemm.cuh` 全 kernel 性能+精度 bench | ch09–12 |

@@ -8,15 +8,19 @@
 
 \begin{itemize}
   \item \texttt{kernels/\allowbreak{}interview/\allowbreak{}build.\allowbreak{}sh}——编译集成 bench harness
-        \texttt{notes-v2.cu}（带 cuBLAS/cuDNN 对照与性能计时）。检测到
+        （多 TU：\texttt{notes-v2.cu} 总装 $+$ 模块 .cu，带 cuBLAS/cuDNN 对照
+        与性能计时）。检测到
         ccache 时走两段式：\texttt{ccache nvcc -c} 产 \texttt{.o}（可缓存），
         再裸 \texttt{nvcc} 链接产 \texttt{notes\_\allowbreak{}v2\_\allowbreak{}<arch>.\allowbreak{}bin}（不缓存）。
         公共 flags：\texttt{-std=\allowbreak{}c++20 -O3 --expt-relaxed-constexpr
         --use\_\allowbreak{}fast\_\allowbreak{}math} + cutlass/cudnn-frontend include。
   \item \texttt{book/\allowbreak{}tests/\allowbreak{}build\_\allowbreak{}tests.\allowbreak{}sh}——编译并运行每章最小正确性测试。
-        本书的作用是\textbf{取代 notes-v2.cu 的正确性验证角色}：对拍一律
-        CPU fp64，无 cuBLAS/cuDNN 依赖，可在任何机器复现；notes-v2.cu
-        保留为集成 bench harness。
+        本书的作用是\textbf{取代集成 harness 的正确性验证角色}：对拍一律
+        CPU fp64，无 cuBLAS/cuDNN 依赖，可在任何机器复现；harness 保留为
+        集成 bench，现为多 TU——\texttt{notes-v2.cu}（440 行）只剩 main 与
+        CLI 解析，host 侧 test/bench 拆到 base/sgemv/sgemm/hgemm/
+        fp8\_gemm/fp4\_gemm/flash\_attn/ffpa\_attn 八个模块 .cu 与
+        \texttt{utils.cu} 共享工具。
 \end{itemize}
 
 \noindent build.sh 的架构 $\times$ 编译宏矩阵（决定 common.cuh 哪些段参与

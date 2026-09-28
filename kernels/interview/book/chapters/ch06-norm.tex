@@ -400,7 +400,7 @@ $N = 524288$ 时读写流量 $512\,\mathrm{MB}$ 远超 L2，是 HBM 口径。两
 
 \section{最小测试与动手实验}
 
-测试文件 \texttt{tests/\allowbreak{}ch06\_\allowbreak{}norm.\allowbreak{}cu}（$\le 300$ 行），逻辑抽取自 \texttt{notes-v2.cu} 的 \texttt{test\_\allowbreak{}rms\_\allowbreak{}norm}（L920）与 \texttt{test\_\allowbreak{}layer\_\allowbreak{}norm}（L978），对照参考改为 CPU fp64 手算（\texttt{double} 累加求 $S_1, S_2$，再按式~\eqref{eq:ch06-rms}~\eqref{eq:ch06-ln} 生成参考），容差取 \texttt{TOL\_F32ACC} $= 10^{-3}$。规模 $N=512, K=128$，覆盖 4 个 kernel：
+测试文件 \texttt{tests/\allowbreak{}ch06\_\allowbreak{}norm.\allowbreak{}cu}（$\le 300$ 行），逻辑抽取自 \texttt{base.cu} 的 \texttt{test\_\allowbreak{}rms\_\allowbreak{}norm}（L432）与 \texttt{test\_\allowbreak{}layer\_\allowbreak{}norm}（L490），对照参考改为 CPU fp64 手算（\texttt{double} 累加求 $S_1, S_2$，再按式~\eqref{eq:ch06-rms}~\eqref{eq:ch06-ln} 生成参考），容差取 \texttt{TOL\_F32ACC} $= 10^{-3}$。规模 $N=512, K=128$，覆盖 4 个 kernel：
 
 \begin{lstlisting}[style=console]
 cd kernels/interview/book/tests && CUDA_VISIBLE_DEVICES=7 ./build_tests.sh --ch ch06

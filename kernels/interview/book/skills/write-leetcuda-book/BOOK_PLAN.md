@@ -46,10 +46,19 @@
 | hgemm.cuh | 2100 | Phase7b `hgemm_mma_stages_tn`@129；swizzle 版 L399-716（`#if SWIZZLE_V2` L391，kernel @434）；CuTe L718-1427（`#if CUTE` L779-1427，Phase7c L718、7c-1 L788、kernel `hgemm_mma_stages_tn_cute`@821、launch wrapper L1197）；WGMMA L1428-1857（`hgemm_wgmma_stages_tn`@1477，仅 sm_90a）；TMA+WS L1859-2100（`hgemm_tma_mma_ws_tn`@1874，SM120） |
 | flash_attn.cuh | 3490 | FA2 MMA `flash_attn_mma_stages_split_q`@112（L5-790）；`#if TMA_MMA_WS` L791-2194：FA2 TMA+WS `flash_attn_tma_mma_ws_stages_split_q`@889（L792-1440）、FA3 `flash_attn_3_tma_ws_stages_split_q`@1516（L1441-2192）；`#if CUTE` 5 块 L2196-3488：fa_cute traits（`FlashAttn2CuTeTraits` L2226、`FlashAttn3CuTeTraits` L2296）、FA2 CuTe MMA `flash_attn_mma_stages_split_q_cute`@2532、FA2 CuTe TMA+WS `flash_attn_tma_mma_ws_split_q_cute`@2811、FA3 CuTe `flash_attn_3_tma_mma_ws_split_q_cute`@3130、TMA smoke `flash_attn_3_cute_tma_copy_smoke`@3449 |
 | ffpa_attn.cuh | 641 | 头部设计注释 L1-29；`FFPAAttnSplitDCuTeTraits` L31-79（QK Tile<64,64,16> / PV Tile<64,16,16>）；cp.async 版 `ffpa_split_d_cute`@81-375；TMA+WS 版 `ffpa_attn_tma_mma_ws_split_d_cute`@380-641。头注释性能口径为 PRO 5000（与 README 的 5090 口径不同，F4 类核查样本） |
-| notes-v2.cu | 4915 | FALayout enum L43；cute 系 test L102-510；test_* L510-2470；bench_* L2470-4370；`test_swizzle_equiv` L4657；main L4668（CLI：`--bench*`/`--fa-layout`/`--fa2-cute`/`--fa3-cute`/`--fa2-cute-cpasync`/`--fa3-cute-tma-smoke`/`--tma-mma-ws`/`--swizzle-eq-check`）；文件尾 L4836-4915 有各 arch 快速编译命令 |
+| notes-v2.cu | 440 | main+CLI 总装（多 TU 拆分后）：extern 声明 + 模板实例化 wrapper 调用 + main（CLI：`--bench*`/`--fa-layout`/`--fa2-cute`/`--fa3-cute`/`--fa2-cute-cpasync`/`--fa3-cute-tma-smoke`/`--tma-mma-ws`/`--swizzle-eq-check`）；构建由 build.sh 统一管理（--arch/--jobs 并行编译） |
+| base.cu | 730 | 基础算子 test 家族：block_reduce/dot/relu/elementwise/histogram/merge_attn_states/softmax/rms_norm/layer_norm/rope/mat_transpose×2/swizzle_equiv（kernel 在 base.cuh/common.cuh） |
+| sgemv.cu | 117 | SGEMV host 侧 test/bench（kernel 在 sgemv.cuh） |
+| sgemm.cu | 145 | SGEMM host 侧 test/bench（kernel 在 sgemm.cuh） |
+| hgemm.cu | 1187 | HGEMM host 侧 test/bench 家族：mma/swizzle/cute/wgmma/tma_ws（kernel 在 hgemm.cuh） |
+| fp8_gemm.cu | 466 | FP8 GEMM host 侧 test/bench：`--fp8-gemm` 数据源（kernel 在 fp8_gemm.cuh） |
+| fp4_gemm.cu | 593 | FP4 GEMM host 侧 test/bench：`--fp4-gemm`/`--fp4-gemm-sweep` 数据源（kernel 在 fp4_gemm.cuh） |
+| flash_attn.cu | 2695 | FA1/2/3 + persist-D host 侧 test/bench 家族（kernel 在 flash_attn.cuh） |
+| ffpa_attn.cu | 415 | FFPA split-D host 侧 test/bench（kernel 在 ffpa_attn.cuh） |
+| utils.cu | 83 | 跨模块共享符号唯一定义点：check/check_smem_feasible/bench_hgemm_tflops/bench_fa_tflops/fp8_smem_optin_limit/bench_cublas_bf16_gemm_tflops + g_debug 等全局（各模块 .cu 以 extern 引用） |
 | bench_*.cu/py | 1737 | bench_attn.cu 711、bench_ffpa.cu 649（含 ffpa test）、bench_sgemm.cu 254、bench_sdpa.py 123 |
 
-**注意**：notes-v2.cu 的 GEMM/FA test 以 cuBLAS/cuDNN 为参考（如 `test_hgemm_mma` 用 `CUBLAS_COMPUTE_16F`+`COMPUTE_32F` 双参考）；最小测试需换 CPU fp64 参考（见 §6）。
+**注意**：notes-v2 各模块 .cu 的 GEMM/FA test 以 cuBLAS/cuDNN 为参考（如 `test_hgemm_mma` 用 `CUBLAS_COMPUTE_16F`+`COMPUTE_32F` 双参考）；最小测试需换 CPU fp64 参考（见 §6）。链接去重：base.o 为 base.cuh 非模板 kernel 的规范定义，sgemv/sgemm/hgemm/flash_attn/ffpa_attn 五个 TU 由 build.sh 以 `objcopy --weaken-symbols` 弱化重复强符号；所有 `.cuh` 未动（源码冻结体系不变）。
 
 ### 1.4 编译宏 × arch 矩阵（build.sh 实测）
 
@@ -153,7 +162,7 @@
 
 ### Part V FP8/FP4 HGEMM 篇：量化矩阵乘的数学与 Kernel 工程（2026-09-24 新增，RFC-N）
 
-> **代码链路**：LeetCUDA `kernels/interview/fp8_gemm.cuh`（958 行，新增冻结件）+ `notes-v2.cu` 接线（test/bench/CLI 三处）。BF16→FP8 动态量化（per-block/per-row）→ CuTe FP8 GEMM（在线反量化 epilogue）→ BF16 输出，对标 cuBLAS BF16 GEMM（性能 + 精度）。
+> **代码链路**：LeetCUDA `kernels/interview/fp8_gemm.cuh`（958 行，新增冻结件）+ notes-v2 多 TU 接线（`fp8_gemm.cu` test/bench + `notes-v2.cu` CLI）。BF16→FP8 动态量化（per-block/per-row）→ CuTe FP8 GEMM（在线反量化 epilogue）→ BF16 输出，对标 cuBLAS BF16 GEMM（性能 + 精度）。
 > **验证方式**：`book/tests/ch34_*.cu`、`ch35_*.cu` + notes-v2 `--fp8-gemm` / `--bench --mnk 4096,4096,4096`（PRO 5000，CUDA_VISIBLE_DEVICES=7，warmup2/repeat3）。
 > **性能基线**（PRO 5000 实测，**默认档 = 128×256×128/s2，2026-09-24 起**）：kernel-only 440.7 TFLOPS @4096³（2.70x vs cuBLAS BF16 163.5；手写 bf16 HGEMM 上限口径 1.81x）；ws 440.9；e2e 含量化 186.8（1.14x）；B 离线 e2e 411.2（2.52x）；tile 扫描最优档 443.7/487.8 T @4096³/8192³（比 128³/s3 快 7.7%/5.9%）——但 2048³ 上宽 tile 因波次量化反慢 17%（128³/s3 292.8 T vs 128×256/s2 243.6 T）；rel_fro=0.036 全粒度组合。
 
@@ -193,7 +202,7 @@
 |---|---|---|
 | A | 基础设施工具箱：MMA/WGMMA PTX 宏、swizzle v1/v2、TMA/mbarrier helpers、TensorMap、setmaxnreg | common.cuh 773 行 |
 | B | 性能数据与口径：README SM120a 表 + 补「对应章节/函数名」列 + 复测数据（统一注明 GPU/库版本/日期）+ **Part V FP8 GEMM 段（ch34/35 明细）** + **Part VI fp8/fp4 段（5090 README 图 + PRO 5000 本机 bench CLI 数据）** | README + RFC-G |
-| C | 构建、运行与最小测试指南：build.sh、CLI、**章×编译宏×arch 开关矩阵**（§1.4 扩展）、cutlass include、notes-v2.cu 角色声明（保留为集成 bench harness）+ **ffpa-attn 安装与 bench CLI（Part VI 验证链路）** | build.sh、notes-v2.cu |
+| C | 构建、运行与最小测试指南：build.sh、CLI、**章×编译宏×arch 开关矩阵**（§1.4 扩展）、cutlass include、notes-v2 多 TU 布局与角色声明（notes-v2.cu 主入口 + 9 模块 .cu，保留为集成 bench harness）+ **ffpa-attn 安装与 bench CLI（Part VI 验证链路）** | build.sh、notes-v2*.cu |
 | D | 源码索引：topic ↔ file:line ↔ **GitHub commit permalink**（固定 hash）——正文的完整代码入口；**Part V 段含 fp8_gemm.cuh（本仓冻结件）**；**Part VI 段锚定 ffpa-attn commit `861d75e`** | 全书 |
 | E | 参考资料全集：知乎作者/文章/链接/对应章节/引用日期/图片引用清单 + **SA1/SA2/SA2++/SA3、FA-2/3/4 论文条目** | RFC-B |
 
@@ -266,7 +275,7 @@
 
 ### 5.3 注释核查与源码冻结
 
-**源码冻结（硬规则）**：RFC-A 登记各 `.cuh`/notes-v2.cu 的 SHA256 之后，**源文件零改动**。发现的注释错误一律记入 `book/CHECKLOG.md`（记录：位置/原文/问题/证据/建议），正文以「勘误与考据」框注呈现。**不回写源码**——任何回写都会使全书 linerange 与锚点断言失效。
+**源码冻结（硬规则）**：RFC-A 登记各 `.cuh` 与 notes-v2 系 `.cu`（notes-v2.cu + 9 个模块 .cu，多 TU 拆分后均入 anchors.yaml）的 SHA256 之后，**源文件零改动**。发现的注释错误一律记入 `book/CHECKLOG.md`（记录：位置/原文/问题/证据/建议），正文以「勘误与考据」框注呈现。**不回写源码**——任何回写都会使全书 linerange 与锚点断言失效。
 
 核查五类及证据来源：
 
@@ -300,7 +309,7 @@ kernels/interview/book/tests/
 - 行数分级：基础章（ch1-8）≤300 行；GEMM/FA/CuTe 章（ch9-26）≤500 行；共享逻辑进 `common_test.h`。
 - arch-gated kernel 用宏保护，目标 arch 不在位时打印 `SKIP(chNN): requires sm_90a` 并返回 0。
 - 测试规模上限 ≤512（CPU 三重循环时限约束）。
-- 从 notes-v2.cu `test_*` 抽最小逻辑（抽取源行号见 RFC.md 执行卡片）；notes-v2.cu **保留**为集成 bench harness（角色分工写入附录 C）。
+- 从 notes-v2 各模块 .cu 的 `test_*` 抽最小逻辑（抽取源行号见 RFC.md 执行卡片）；notes-v2 多 TU（notes-v2.cu + 9 模块 .cu）**保留**为集成 bench harness（角色分工写入附录 C）。
 
 ### 6.2 容差分级表（common_test.h 实现）
 
@@ -496,7 +505,7 @@ CWD 必须是 `book/`；源码引用写 `../base.cuh` 形式。
 
 **包含**：`book/` 下 LaTeX 源、测试、脚本、RFC、CHECKLOG、参考资料清单、PDF 产出。
 **不包含**：KDP 元数据、封面设计、HTML 输出、上架流程。
-**不改动**：`*.cuh`、notes-v2.cu、bench_*.cu 等教学源码（**源码冻结**，§5.3）。书通过 linerange 引用，源文件保持唯一事实来源。
+**不改动**：`*.cuh`、notes-v2 系 `.cu`（notes-v2.cu + 9 模块 .cu）、bench_*.cu 等教学源码（**源码冻结**，§5.3）。书通过 linerange 引用，源文件保持唯一事实来源。
 
 ---
 

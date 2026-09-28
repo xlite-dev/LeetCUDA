@@ -444,7 +444,7 @@ rope 的参数 $N$ 是每 token 的\textbf{对数}（$d/2$），而非 hidden si
 
 \section{最小测试与动手实验}
 
-测试文件 \texttt{tests/\allowbreak{}ch07\_\allowbreak{}rope\_\allowbreak{}transpose.\allowbreak{}cu}（$\le 300$ 行），逻辑抽取自 \texttt{notes-v2.cu} 的 \texttt{test\_rope}（L1042）与 \texttt{test\_\allowbreak{}mat\_\allowbreak{}transpose}（L1098、L1144）。RoPE 的 CPU 参考用 \texttt{double} 直接按旋转矩阵计算（\texttt{std::\allowbreak{}pow/\allowbreak{}std::\allowbreak{}cos/\allowbreak{}std::\allowbreak{}sin}）；转置的参考是纯数据搬运，两个 kernel 的 \texttt{max\_abs\_err} 应为 0，且测试显式断言两 kernel 输出逐元素 bitwise 一致。规模：RoPE \texttt{seq\_len}=128、$N=64$（对/token）；转置 $512 \times 512$。
+测试文件 \texttt{tests/\allowbreak{}ch07\_\allowbreak{}rope\_\allowbreak{}transpose.\allowbreak{}cu}（$\le 300$ 行），逻辑抽取自 \texttt{base.cu} 的 \texttt{test\_rope}（L554）与 \texttt{test\_\allowbreak{}mat\_\allowbreak{}transpose}（L610）、\texttt{test\_\allowbreak{}mat\_\allowbreak{}transpose\_\allowbreak{}padded}（L656）。RoPE 的 CPU 参考用 \texttt{double} 直接按旋转矩阵计算（\texttt{std::\allowbreak{}pow/\allowbreak{}std::\allowbreak{}cos/\allowbreak{}std::\allowbreak{}sin}）；转置的参考是纯数据搬运，两个 kernel 的 \texttt{max\_abs\_err} 应为 0，且测试显式断言两 kernel 输出逐元素 bitwise 一致。规模：RoPE \texttt{seq\_len}=128、$N=64$（对/token）；转置 $512 \times 512$。
 
 \begin{lstlisting}[style=console]
 cd kernels/interview/book/tests && CUDA_VISIBLE_DEVICES=7 ./build_tests.sh --ch ch07
