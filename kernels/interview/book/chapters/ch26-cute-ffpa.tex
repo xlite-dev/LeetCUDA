@@ -249,7 +249,7 @@ FFPA 的两处调用（L152 与 L218）目标形状都是 $(64,64)$，线程数�
 
 注意 $\mathrm{frag}$ 的第三 mode 是 8：那是 QK 的 $\mathrm{EURepeat}_N$
 在 $S$ 上的投影；$O$ 的第三 mode 数字恰好也是 8，但它来自 PV 的
-「$64$ 列梯子被重复 8 次」而不是 EURepeat（$O$ 的 $C$ 形状 $\times$ 线程数
+「$64$ 列输出被重复 8 次」而不是 EURepeat（$O$ 的 $C$ 形状 $\times$ 线程数
 决定了 total）。\textbf{两个 32 的来历不同，大小相同：这是 $S\to P$ 与
 $P\to O$ 两条交接链路能成立的前提。}
 

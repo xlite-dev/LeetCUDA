@@ -321,7 +321,7 @@ ldmatrix.sync.aligned.m8n8.x2.shared.b16 {r0, r1},         [addr];
 \end{tabular}
 \end{table}
 
-寻址协议是 \texttt{ldmatrix} 的灵魂：\textbf{每个矩阵 8 行，需要 8 个地址
+寻址协议是 \texttt{ldmatrix} 的核心：\textbf{每个矩阵 8 行，需要 8 个地址
 （每地址是一行的 16~B 起点）}；x4 共 32 个地址由 32 个 lane 一人一个提供，
 lane $t$ 的地址属于第 $t/8$ 个矩阵的第 $t\bmod 8$ 行；x2 只需 16 个地址
 （lane 16--31 的地址被忽略，PTX 允许把低位 lane 的地址复制过来凑数）。
@@ -623,7 +623,7 @@ $8\times16 = 128$ 条指令 $\times 4096$ FLOP $= 524{,}288$ FLOP。
 行号映射 \texttt{lane\_id/4} $= \mathrm{g}$：lane 0/4/8/.../28 分别对
 $\mathrm{g}$ 行与 $\mathrm{g}{+}8$ 行各写一条
 \texttt{float4}（即 16~B）store，各覆盖 8 个 half；列起点由
-\texttt{warp\_n} 与 $j$ 平移。每个 warp 落笔 $64\times32$ 子块，
+\texttt{warp\_n} 与 $j$ 平移。每个 warp 负责 $64\times32$ 子块，
 与 11.4.1 的排布完全一致。写回没有经过 smem 中转：
 寄存器布局白盒后 epilogue 可以走「shuffle $\to$ 直接宽写」的捷径，
 WMMA 做不到这一点（对照第~\ref{ch:10}~章坑五）。收拢与写回的数据流见图~\ref{fig:11-epilogue-shuffle}。

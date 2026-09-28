@@ -179,7 +179,7 @@ nsys 的中间数据默认写到 \texttt{/\allowbreak{}tmp/\allowbreak{}nvidia/\
   \texttt{-t cuda}，关采样。
 \item \textbf{优先 torch.profiler}：只想看 kernel 时间表时，
   \texttt{torch.\allowbreak{}profiler} 输出 chrome trace 落在 \texttt{.tmp/}，零外部临时
-  文件风险；nsys 只在必须看时间线/同步事件时出场。
+  文件风险；nsys 只在必须看时间线/同步事件时使用。
 \end{enumerate}
 
 \subsection{窗口化采集：cudaProfilerApi}
@@ -621,7 +621,7 @@ warp group（128T，专职 TMA）+ 1 个 consumer（256T，全计算），用
 
 同族的「坏 stall」案例：bias 注入的 smem tile 版本 \texttt{sleeping} 从
 3.5\% 涨到 22.3\%（SASS 采样里 \texttt{SYNCS.\allowbreak{}PHASECHK} mbarrier 自旋占
-18\%）：LDS 进了 consumer 关键路径、两级 QK 流水断供，全 warp 自旋等 K，
+18\%）：LDS 进了 consumer 关键路径、两级 QK 流水供不上，全 warp 自旋等 K，
 该版本被指标否决。
 
 \section{常见坑}

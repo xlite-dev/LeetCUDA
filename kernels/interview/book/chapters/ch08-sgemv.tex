@@ -20,7 +20,7 @@ GEMV（GEneral Matrix-Vector multiplication，矩阵向量乘）是 GEMM 在 $N 
 第~\ref{ch:03}~章的向量化访存与合并访问。
 \textbf{源码区间}：sgemv.cuh~L1--102，无编译宏限定，全部架构适用；
 配套最小测试为 \texttt{book/\allowbreak{}tests/\allowbreak{}ch08\_\allowbreak{}sgemv.\allowbreak{}cu}。
-\textbf{后继}：第~\ref{ch:09}~章把 $N$ 维度搬上舞台，复用维度回归，算术强度从 $O(1)$
+\textbf{后继}：第~\ref{ch:09}~章把 $N$ 维度放开，复用维度回归，算术强度从 $O(1)$
 变为随 tile 尺寸增长，重点也从带宽利用转向分块复用。
 
 \section{问题与动机}
@@ -76,7 +76,7 @@ $4MK$ 字节，读 $x$、写 $y$ 各 $4K$、$4M$ 字节。关键在 $x$ 怎么�
 可达带宽以 8.6~节 k128 实测的 $934$~GB/s 为参照），拐点约
 $66.9 / 0.934 \approx 71.6$~FLOP/B。GEMV 的 AI $\approx 0.25 \sim 0.5$ 落在拐点左侧
 两个数量级：计算上限 $\approx 0.5 \times 934 \approx 0.47$ TFLOPS，只占峰值的
-$0.7\%$。\textbf{kernel 写得再「聪明」，FLOPs 侧也毫无收益；唯一的战场是带宽}：
+$0.7\%$。\textbf{kernel 写得再「聪明」，FLOPs 侧也毫无收益；能优化的只有带宽}：
 减少指令数（向量化）、消灭闲置 lane（多行复用）、保证合并访问（coalescing），
 目标都是使 DRAM 带宽达到饱和。
 
@@ -263,7 +263,7 @@ $N = 1$）是典型的纯 memory-bound 算子：AI $\approx O(1)$，瓶颈在内
 做成编译期常量，\texttt{k\allowbreak{}Num\allowbreak{}Lane\allowbreak{}Per\allowbreak{}Row} 随之推导为 16；（2）每个 lane 只做一次乘加
 （$K=16$ 恰好等于 segment 宽度，无循环）；（3）\texttt{warp\_\allowbreak{}reduce\_\allowbreak{}sum\allowbreak{}<16>} 内部
 蝶形掩码从 8 开始递减，width 参数保证前 16 与后 16 两个 segment 互不干扰；
-（4）写回判据 \texttt{k == 0} 有两个命中 lane（0 与 16），分别落笔两行的结果。
+（4）写回判据 \texttt{k == 0} 有两个命中 lane（0 与 16），分别写回两行的结果。
 一个附带的好处：row-major 下第 $m$ 行与第 $m+1$ 行在内存里首尾相接，
 warp 的 32 个 lane 恰好拼出一段 128B 连续地址，\textbf{合并访问没有因为 K=16 而损失}。
 但要注意行守卫的粒度变了：\texttt{if (m < M)} 在 lane $0\,\dots\,15$ 与

@@ -369,7 +369,7 @@ $8/D$~B。计算是每元素 3 FLOP（2 乘 1 加）。$D = 128$ 时
 $AI \approx 3 / 12.06 \approx 0.25$ FLOP/B，位于 roofline 拐点左侧，
 是典型的 \textbf{severely memory-bound} 算子，头注释的结论正确，
 但「20 bytes」的口径把 LSE 读按每元素计了（见 5.6~节勘误二）。
-优化抓手也因此明确：向量化宽度（128-bit 已到位）、coalescing（三维解包保证）、
+优化方向也因此明确：向量化宽度（128-bit 已到位）、coalescing（三维解包保证）、
 以及避免任何分支/同步（本 kernel 无共享内存、无同步点）。
 
 本章 bench 复测（RTX PRO 5000 72GB Blackwell，sm\_120，2026-09-11；

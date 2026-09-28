@@ -8,7 +8,7 @@
 
 第~\ref{ch:16}~章的 \texttt{flash\_\allowbreak{}attn\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}split\_\allowbreak{}q} 用 cp.async +
 \texttt{mma.sync} 把 FlashAttention-2 跑到了可用的水平，但它的 256 个线程
-\textbf{既是搬运工又是计算者}：每个 warp 在 ldmatrix/mma 的间隙里还要发 cp.async、
+\textbf{既负责搬运又负责计算}：每个 warp 在 ldmatrix/mma 的间隙里还要发 cp.async、
 算地址、等 commit group，装载与计算在同一支执行流里交替占用发射资源。本章讲它的后续版本
 \texttt{flash\_\allowbreak{}attn\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}split\_\allowbreak{}q}（flash\_attn.cuh~L889）：把
 「搬运」整体剥离给一个专职的 producer warpgroup（TMA 单线程提交），把「计算」
@@ -184,7 +184,7 @@ warpgroup}；本章 consumer 用 warp 级的 \texttt{mma.sync} + ldmatrix，8 �
         \end{equation}
 \end{itemize}
 
-两张屏障构成一个\textbf{每相位恰好闭合的收支循环}：对固定 stage $s$，
+两张屏障构成一个\textbf{每相位恰好闭合的计数循环}：对固定 stage $s$，
 每轮 KV 迭代消耗 full 相位 1 次（256 consumer arrive $+$ 1 producer
 arrive\_tx $+$ 字节落盘）、empty 相位 1 次（256 consumer arrive $+$ 1
 producer arrive）。两边的 arrive 预算都是 257/轮，与 init 值精确对齐。
@@ -244,7 +244,7 @@ producer arrive）。两边的 arrive 预算都是 257/轮，与 init 值精确�
   \node[anchor=north west, align=left, text=vscAccent] at (0.15,-6.55)
     {多算一次 arrive $\to$ 永不翻转：consumer 永远等不到 full（挂死）};
 \end{tikzpicture}
-\caption{固定 stage $s$ 上 full/empty 两张屏障的相位收支循环（式~\ref{eq:17-flip-full} 与式~\ref{eq:17-flip-empty} 的图形化）。每轮 KV 迭代：producer 提交 TMA 时用 \texttt{tma\_arrive\_expect\_tx} 一条指令完成「arrive $+1$」与「声明 $\Delta T$」两件事，TMA 硬件搬完后自动 complete-tx 计数；consumer 256 线程在 \texttt{full\_K[s].wait()} 时各贡献一份 arrive（$256+1+\text{tx}$ 构成翻转条件），读毕 K 再各 arrive 一次释放 \texttt{empty\_K[s]}，producer 下一轮写前补上第 257 份。两边的 arrive 预算都是 $257$/轮，与 init 值精确对齐——\textbf{多算一次挂死、少算一次静默错}。窄段为可读放大，实际只占 $1/257$。}
+\caption{固定 stage $s$ 上 full/empty 两张屏障的相位循环（式~\ref{eq:17-flip-full} 与式~\ref{eq:17-flip-empty} 的图形化）。每轮 KV 迭代：producer 提交 TMA 时用 \texttt{tma\_arrive\_expect\_tx} 一条指令完成「arrive $+1$」与「声明 $\Delta T$」两件事，TMA 硬件搬完后自动 complete-tx 计数；consumer 256 线程在 \texttt{full\_K[s].wait()} 时各贡献一份 arrive（$256+1+\text{tx}$ 构成翻转条件），读毕 K 再各 arrive 一次释放 \texttt{empty\_K[s]}，producer 下一轮写前补上第 257 份。两边的 arrive 预算都是 $257$/轮，与 init 值精确对齐——\textbf{多算一次挂死、少算一次静默错}。窄段为可读放大，实际只占 $1/257$。}
 \label{fig:17-arrive-cycle}
 \end{figure}
 
@@ -496,7 +496,7 @@ $(N_b H + N_h) N$。descriptor 覆盖整个 $[B H N, D]$ 的 2D 大矩阵，prod
 必须把 (batch, head) 的行偏移折进坐标，否则所有 block 都在读 head 0（17.8~节
 坑四）。P1 只预取 $\mathrm{Sk} - 1$ 块：第 0 块由 consumer 的 C0 预热放行
 （empty 的首轮翻转靠 consumer 预存 256 arrive），后续块由 consumer 的
-「读毕释放」继续放行。预取量与放行量恰好配平，这是 257 收支循环的首次
+「读毕释放」继续放行。预取量与放行量恰好配平，这是 257 计数循环的首次
 应用。$S_v \ge 2$ 时 P1b 再预取 $S_v - 1$ 块 V（L1012--1025，结构同 P1，
 此处不引）。稳态循环 P2：
 
@@ -893,7 +893,7 @@ A：consumer 是 256 线程（8 warp \texttt{mma.sync}，warp 级指令无 warpg
 \textbf{Q3：full 与 empty 各在什么时机翻转？}\\
 A：full[s]：256 consumer arrive（wait 时）$+$ producer arrive\_tx（1 次）$+$
 TMA 字节落盘（complete-tx 硬件计数）三者齐；empty[s]：256 consumer arrive
-（读毕释放）$+$ producer arrive（写前报到）。每相位预算恒 257，收支闭合。
+（读毕释放）$+$ producer arrive（写前报到）。每相位预算恒 257，计数闭合。
 
 \textbf{Q4：为什么 empty\_K 的释放点在 QK 之后而不是轮末？}\\
 A：QK$^\top$ 算完 K smem 即无人读（softmax 只访问寄存器、PV 只读 V），早释放

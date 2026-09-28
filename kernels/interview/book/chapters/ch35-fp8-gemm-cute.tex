@@ -101,7 +101,7 @@ fp16 tile 的本质差异：同样 128\,B 行宽，fp8 的 $BK$ 是 fp16 的两�
 48\,KB，launcher 里 \texttt{cudaFuncSetAttribute} opt-in
 （第~\ref{ch:26b}~章同款）。PRO 5000 的 opt-in 上限是 99\,KB（不是 Hopper 的
 227\,KB）：$128\times256$ 几何下 96\,KB 已是极限，3 级要 144\,KB 装不下；
-换回 $128\times128$ 则每 stage 32\,KB、要塞到 3 级才用满同一笔预算。
+换回 $128\times128$ 则每 stage 32\,KB、需要 3 级才用满同一笔预算。
 「几何 $\times$ 深度」共用一块 smem，两者此消彼长——这正是 35.8.4~节那张
 扫描表要回答的问题。
 
@@ -551,7 +551,7 @@ heuristic 偏保守，而是库在这张卡上收录的 32F-acc kernel 只有这
 
 \begin{itemize}[itemsep=1pt,topsep=2pt]
   \item \textbf{vs cuBLAS BF16（163.5~T）}：$2.70\times$（4096$^3$）。
-        这是「开箱即用替换」的真实收益——用户直接把
+        这是「直接替换」的真实收益——用户直接把
         \texttt{fp8\_gemm\_bf16} 替换掉 \texttt{cublasGemmEx} 调用就能
         拿到的数字，bench 口径与本表一致。
   \item \textbf{vs 手写 bf16 HGEMM 上限（$\approx$243~T）}：$1.81\times$

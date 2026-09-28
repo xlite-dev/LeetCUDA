@@ -255,7 +255,7 @@ compatibility into 'extern' call"）一起丢弃。历史上这里曾发生过�
 pingpong 示例的 cluster 写法）在 sm\_120a/sm\_120f 下都受影响，而 CuTe 路径
 kernel（cute 在 SM120 门控下发射 \texttt{shared::cta}）不受影响。「被保留的 kernel
 恰好都用了 sm\_120f 构建」的巧合，让旧版本文档得出了「必须 family-specific
-目标」的错误结论。2026-09-17 的 PTX 级手术取证证明：把指令改成
+目标」的错误结论。2026-09-17 的 PTX 级取证证明：把指令改成
 \texttt{shared::cta} 后，\textbf{sm\_120a 与 sm\_120f 都完整保留 setmaxnreg}
 （112/112），arch 后缀根本不是变量；完整证据链见 14.8~节坑二的取证记录。
 本仓 kernel 从不使用 cluster launch 与分布式 smem，dst 恒为 CTA 本地，两种
@@ -267,7 +267,7 @@ kernel（cute 在 SM120 门控下发射 \texttt{shared::cta}）不受影响。�
 PTX ISA 的 Target ISA Notes 确认 setmaxnreg 的支持列表覆盖 sm\_90a、
 sm\_100a/sm\_110a/sm\_120a 架构目标与 sm\_100f/sm\_110f/sm\_120f 家族目标
 （sm\_100f/sm\_120f 自 PTX 8.8、sm\_110f 自 PTX 9.0 起），指令集对两种
-后缀都支持，把指令挡在门外的是 ptxas 对 cluster 形式 TMA 的边界认定，
+后缀都支持，真正丢弃指令的是 ptxas 对 cluster 形式 TMA 的边界认定，
 不是目标后缀。
 
 \subsection{TMA box：回指与本章坐标}
@@ -717,7 +717,7 @@ $8192^3$ 规模下 TMA+MMA+WS 组合把纯 MMA 基础实现（第~\ref{ch:11}~�
 \begin{kaogu}[F1·2026-09-17 修正]{setmaxnreg 丢失的归因：地址空间，非目标后缀}
   旧版注释（common.cuh L462--475，本书初版引用）断言「sm\_120a 上 ptxas 把
   \texttt{cp.\allowbreak{}async.\allowbreak{}bulk.\allowbreak{}tensor} 的使用当作隐式 extern-call 边界丢弃
-  setmaxnreg，改用 \texttt{-arch sm\_120f} 则保留」。该结论后被 PTX 级手术
+  setmaxnreg，改用 \texttt{-arch sm\_120f} 则保留」。该结论后被 PTX 级
   取证推翻：真正的触发条件是 TMA 的目的状态空间 \texttt{shared::cluster}
   （两个 arch 目标下都丢），\texttt{shared::cta} 则两个目标下都保留
   （各 112/112）。旧结论是 cluster 写法 + 「存活 kernel 恰好用 120f 构建」

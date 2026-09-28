@@ -836,7 +836,7 @@ layout 必须\textbf{同时}看读端（ldmatrix）与写端（cp.async），只
     {循环结束后：$O \leftarrow O/\ell$\quad（全程只做一次最终除法）(8) epilogue};
   \node[draw=tOrange, fill=tkFillOrange, text=tOrange!60!black, font=\tiny\bfseries,
         inner sep=1pt, minimum width=15.44cm, minimum height=0.63cm] at (542,619)
-    {$N \times N$ 矩阵 $S$ 从不存在：任意时刻只有 $[B_r \times B_c]$ tile 活在 $R_S$
+    {$N \times N$ 矩阵 $S$ 从不存在：任意时刻只有 $[B_r \times B_c]$ tile 驻留 $R_S$
      寄存器里};
 \end{tikzpicture}
 \caption{Attention 分块计算：单个 Q 块（$B_r$ 行）流式扫过全部 $T_c$ 个 KV 块（$B_c \times d$），每块依次执行 $S^{[j]} \to P^{[j]} \to P^{[j]}V^{[j]}$，并把 $(m, \ell, O)$ 三状态按式~\ref{eq:15-upd-m}--\ref{eq:15-upd-o} 联动更新，循环结束后统一除 $\ell$。}

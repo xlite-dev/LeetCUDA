@@ -9,7 +9,7 @@
 \textbf{向量化}（vectorized load/store）。前者决定「一次访存搬多少有效数据」，
 后者决定「一条指令搬多少数据」。本章以 base.cuh Phase 2（L306--386）的
 五个实现为线索：relu / relu\_vec4（激活）、elementwise\_add /
-elementwise\_add\_vec4（残差连接的原型）、histogram（原子操作出场）。
+elementwise\_add\_vec4（残差连接的原型）、histogram（原子操作）。
 
 前四个 kernel 是「如何达到峰值带宽」的正反教材；histogram 则引入本章第二个
 关键机制 atomicAdd：它把访问模式从「读-算-写」扩展到「读-改-写」，ch02
@@ -395,7 +395,7 @@ histogram (256 bins) & 0.62860 & 26.69 GB/s & 按读 4B/元素计，原子另计
 2612，差异在 $\pm 2\%$ 噪声内）。因为此时瓶颈在 L2/互联的搬运能力而非
 指令发射：4 倍的指令缩减没有释放空间。但不要据此断言 vec4 无用：当
 数据集大于 L2（HBM 直读）、或 block 数受 grid 限制（指令发射成为瓶颈）
-时，vec4 的 1/4 指令量与 4 倍 ILP 优势会显性化。工程结论是\textbf{先看清
+时，vec4 的 1/4 指令量与 4 倍 ILP 优势才会显现。工程结论是\textbf{先看清
 瓶颈层级，再选优化手段}。
 
 \textbf{其三，histogram 比 elementwise 慢两个数量级}（26.7 vs 2654 GB/s，

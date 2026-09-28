@@ -447,7 +447,7 @@ $[0,64)$，这就是 $\mathrm{ThrM}=4$、$\mathrm{atom}_M=16$ 的直接推论。
         Q/KV 的 smem 视图；$64\times64$ 的 tile 实测
         \texttt{cosize} $=4096$（与 $64\times64$ 个 half 一致，无空洞）；
   \item \texttt{Smem\allowbreak{}Layout\allowbreak{}Vt}：把 KV 的布局\emph{转置}成「$d$ 为行、$kv$ 为列」，
-        供 PV 的 B（$V^T$）使用，这是 ch19 讲过的「$V$ 以转置形态喂给
+        供 PV 的 B（$V^T$）使用，这是 ch19 讲过的「$V$ 以转置形态交给
         MMA」的布局表达；
   \item \texttt{Mma\allowbreak{}Atom =\allowbreak{} MMA\_\allowbreak{}Atom\allowbreak{}<SM80\_\allowbreak{}16x8x16\_\allowbreak{}F32\allowbreak{}F16\allowbreak{}F16\allowbreak{}F32\_\allowbreak{}TN>}：
         F32 累加（attention 的数值要求），与 3.1 节的 fragment 一致；
@@ -469,7 +469,7 @@ $\mathrm{MMA}_N = 8$（$8$ 个 $8$ 列的原子），全部落在同一个 warp 
 \textbf{为什么 PV 用 $64\times16$？}因为 acc\_O 是「$64\times D$-chunk $\times$
 $D$ 方向 chunk 数」的大数组。每线程每个 chunk 32 个 float，
 $D=512$ 时 $8$ 个 chunk 共 \textbf{256 个寄存器}，这已经逼近寄存器文件的上限
-（第~\ref{ch:19}~章的寄存器压力讨论）。若把 PV 的 N 也拉到 64，单次 gemm
+（第~\ref{ch:19}~章的寄存器压力讨论）。若把 PV 的 N 也取 64，单次 gemm
 调用的 C 视图会从 8 涨到 32、B fragment 随之线性增长，S$\to$R 拷贝粒度
 变粗，常驻 acc\_O 并不变。实测 PV 在 $(64,16)$ 的 C 上
 每线程 $(4,1,2) = 8$ 个 float，与注释「EURepeat$=<1,2,1>$」一致。
@@ -737,7 +737,7 @@ $\times$ $2$ 相邻列），两个相邻 atom 共 $8$ 个；右（A 视角）：
     {合计 $= 256$ 寄存器};
   \draw[tkRed, very thick] (708,414) -- (708,474);
   \node[anchor=west, font=\tiny, text=tkRed] at (40,511)
-    {警戒：PV 的 N tile 拉到 64 $\to$ 每 chunk 128 float $\to$ $8\times$ 超支，
+    {注意：PV 的 N tile 取 64 $\to$ 每 chunk 128 float $\to$ $8\times$ 超支，
      寄存器不可能常驻（红线上即不可行）};
   \node[anchor=west, font=\tiny] at (40,535)
     {PV tile $(64,16,16)$：MMA\_N $= 2$（$16/8$），N 方向只重复 2 个原子——用吞吐换
@@ -749,7 +749,7 @@ $\times$ $2$ 相邻列），两个相邻 atom 共 $8$ 个；右（A 视角）：
 16 行，warp 内 N 方向重复 8 个原子；A/B/C 三种 fragment 的每线程形状与
 重复因子（式~\eqref{eq:22-dup}）。下半部分是 PV 的 $(64,16,16)$ tile：
 N 方向只重复 2 个原子，代价换来 per-call C 视图与拷贝粒度可控（8 个
-d-chunk 各自拷回，常驻 acc\_O 256 寄存器不变；N tile 拉到 64 只是单次
+d-chunk 各自拷回，常驻 acc\_O 256 寄存器不变；N tile 取 64 只是单次
 调用的 C fragment 临时 4 倍）。}
 \label{fig:22-1}
 \end{figure}
@@ -947,7 +947,7 @@ QK 的 C fragment 是 $(4,1,8)$，PV 的 A fragment 是 $(8,1,4)$：形状、元
 类型（float/half）都不同。FFPA 的复用之所以成立，是因为它做了
 \emph{类型转换 $+$ 布局重解释}两步（\texttt{convert\_\allowbreak{}type} $+$
 \texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}Aregs}），且只对 m16n8k16 这一族成立。
-把 C 直接喂给 PV 是经典的静默错位。
+把 C 直接交给 PV 是经典的静默错位。
 
 \textbf{坑三：tile 必须是原子的整数倍，warp 排布必须与线程数自洽。}
 $\mathrm{perm\_M}$ 不是 $16$ 的倍数、或 $\mathrm{ThrM}\times 32$ 与

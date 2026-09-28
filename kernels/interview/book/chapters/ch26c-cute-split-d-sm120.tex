@@ -13,7 +13,7 @@
 与 \texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}TMA\_\allowbreak{}MMA\_\allowbreak{}WS}
 双宏块）——本实现与 ffpa-attn 的 cute sm\_120 split\_d \textbf{同源}，
 在 RTX PRO 5000 上把 $B{=}1$/$H{=}32$/$N{=}8192$/$D{=}320$
-dense 场景推到 \textbf{204.1 TFLOPS}——cuDNN SDPA（69.7）的 2.93 倍、
+dense 场景做到 \textbf{204.1 TFLOPS}——cuDNN SDPA（69.7）的 2.93 倍、
 上一章 WS 教学版（140.2）的 1.46 倍。这一性能是全书大 head\_dim 路线的最高值。
 
 本章的四条主线，每一条都是对 WS 教学版某个具体弱点的回应：
@@ -214,7 +214,7 @@ V 用 \texttt{U16x8\_LDSM\_T}（转置装载），O 写回用
 consumer，\texttt{tid=0} 在消费循环内联发射 TMA（发射指令本身不占独立
 warp 的时间片，只占少量指令槽）；tile 同步升到 128$\times$128，MMA warp
 数从 4 增至 8，算术强度随之提高。大 $D$ 下 O 累加器占满寄存器预算，
-\texttt{setmaxnreg} 让渡不动，WS 的收益侧消失——non-WS 成为唯一选择。}
+\texttt{setmaxnreg} 让渡不了，WS 的收益侧消失——non-WS 成为唯一选择。}
 \label{fig:26c-arch}
 \end{figure}
 
@@ -792,7 +792,7 @@ stages 实验」的口径给出，消融矩阵留给 \S\ref{sec:26c-test} 的动
 \begin{itemize}[itemsep=1pt]
   \item \textbf{Q：大 head\_dim 为什么选 non-WS 而不是 WS？}\\
         A：Split-D 的 O 累加器（$32{\times}C$ f32/线程）把寄存器占用到
-        255 上限，\texttt{setmaxnreg} 让渡不动，WS 的收益侧（寄存器
+        255 上限，\texttt{setmaxnreg} 让渡不了，WS 的收益侧（寄存器
         再分配）消失、成本侧（producer 不产 FLOPs，MMA warp 数降低一半）
         全留。D=128 场景两者性能相当（第~\ref{ch:26b}~章），大 $D$
         只剩 non-WS。

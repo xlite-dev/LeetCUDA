@@ -160,8 +160,8 @@ $S_v$ 个 V buffer 由 8 个 consumer warp 共用，屏障 \texttt{full\_K[s]} �
 
 数字 129 与第~\ref{ch:14}~章 hgemm 版\textbf{完全相同}，含义却不同：那边是
 「128 consumer 线程 $+$ 1 producer 线程」，这边是「\textbf{一个} consumer WG 的
-128 线程 $+$ 1 producer 线程」。协议只认线程数、不认角色，两个 kernel 恰好
-撞号。把「共享 $\mathrm{Sk}$ 个 slot」改成「每 WG 各 $\mathrm{Sk}$ 个」的收益
+128 线程 $+$ 1 producer 线程」。协议只认线程数、不认角色，两个 kernel 的数字
+恰好相同。把「共享 $\mathrm{Sk}$ 个 slot」改成「每 WG 各 $\mathrm{Sk}$ 个」的收益
 写在头注释 L1461--1462：$\mathrm{Sk} = 2$ 时，共享方案里每个 WG 的实际深度
 只有 1（两个 WG 竞争同一对 slot 与同一对屏障），而现在每个 WG 都获得
 真正的深度 2，两个 WG 不会使用同一个 slot 或同一张屏障

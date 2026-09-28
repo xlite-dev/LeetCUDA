@@ -525,7 +525,7 @@ amax pass 与量化 pass 都在寄存器完成，全局内存只读一次，纯�
 smooth 与 quantize。\textbf{其三，e4m3 与 int8 的统一}：\texttt{kQKInt8} 模板参
 切换输出类型与 scale 分母（448 vs 127），其余代码路径零分叉：int8 对称量化
 （round-nearest-even、clamp $[-127,127]$、留 $-128$ 不用）是 SageAttention 的
-QK 精修配方（\texttt{quant\_sym\_int8}，L29--34）。
+QK 精修方案（\texttt{quant\_sym\_int8}，L29--34）。
 
 \subsection{per-thread 量化：面向 fragment 的 scale 布局}\label{sec:28-quant-perthread}
 
