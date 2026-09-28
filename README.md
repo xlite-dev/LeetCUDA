@@ -1,16 +1,3 @@
-<!-- <div align="center">
-  <div align='center'>
-      <img src='./docs/leetcuda_cover_bench.png' width='810px'><br>
-      <img src=https://cdn.rawgit.com/sindresorhus/awesome/d7305f38d29fed78fa85652e3a63e154dd8e8829/media/badge.svg >
-       <a href='./kernels/interview/book/book.pdf'><img src=https://img.shields.io/badge/PDF-available-hotpink.svg ></a>
-      <img src=https://img.shields.io/badge/Language-CUDA-brightgreen.svg >
-      <img src=https://img.shields.io/github/forks/xlite-dev/LeetCUDA.svg?style=dark >
-      <img src=https://img.shields.io/github/stars/xlite-dev/LeetCUDA.svg?style=dark >
-      <img src=https://img.shields.io/badge/License-GPLv3.0-turquoise.svg >
-      <a href="https://hellogithub.com/repository/98348655a96640ca8ddcbc298edc901d" target="_blank"><img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=98348655a96640ca8ddcbc298edc901d&claim_uid=ofSCbzTmdeQk3FD&theme=small" alt="Featured｜HelloGitHub" /></a>
-  </div>
-</div> -->
-
 <div align="center">
   <h2>📚 LeetCUDA: An open-source book of modern CUDA learning notes</h2>
   <div align='center'>
@@ -24,7 +11,7 @@
   </div>
 </div>
 
-It covers **Tensor/CUDA Cores, BF16/FP8/FP4**, [200+ CUDA kernels](#cuda-kernel), [HGEMM](./kernels/hgemm) achieving `~100%` of cuBLAS TFLOPS, and [flash-attn](./kernels/flash-attn) built with pure MMA PTX. <i>The open-source book is now available at <a href='https://github.com/xlite-dev/LeetCUDA/releases/download/v4.0.5/leetcuda-20260924.pdf'>©️LeetCUDA.pdf 🔥🔥🔥</a>.</i>
+It covers **Tensor/CUDA Cores, BF16/FP8/FP4**, [200+ CUDA kernels](#cuda-kernel), [HGEMM](./kernels/hgemm) achieving `~100%` of cuBLAS TFLOPS, and [flash-attn](./kernels/flash-attn) built with pure MMA PTX. <i>The open-source book is now available at <a href='https://github.com/xlite-dev/LeetCUDA/releases/download/v4.0.5/leetcuda-20260924.pdf'>©️LeetCUDA.pdf (500+ pages) 🔥🔥</a>.</i>
 
 <div align="center">
   <div align='center'>
