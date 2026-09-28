@@ -18,7 +18,7 @@ split-Q + MMA 多级流水）、第~\ref{ch:17}~章（FA2 TMA + Warp Specializat
 \begin{enumerate}[itemsep=0pt,topsep=2pt]
   \item $\mathrm{softmax}\!\left(QK^{\top}/\sqrt{d}\right)V$ 逐项是什么？点积为什么要
         除以 $\sqrt{d}$（15.3.2~节：点积方差 $=d$ 的推导与 softmax 饱和论证）；
-  \item 朴素实现的 FLOPs、显存、HBM 流量三本账（15.3.3~节：为什么显存带宽才是真瓶颈）；
+  \item 朴素实现的 FLOPs、显存、HBM 流量三项开销（15.3.3~节：为什么显存带宽才是真瓶颈）；
   \item 分块计算 + online rescale 的逐块推导（15.3.4~节：核心更新式
         $O \leftarrow O\,\mathrm{diag}\bigl(e^{\,m^{\mathrm{old}}-m^{\mathrm{new}}}\bigr)
         + PV$，与 ch04/ch05 显式衔接）；
@@ -167,7 +167,7 @@ $1/\sqrt{d}$ 仍是事实标准，方差更不均匀的情形由量化方案处�
   \node[font=\scriptsize, red, align=left, anchor=north west] at (3.52,-0.5)
     {$\Delta = 11.3$（$d{=}128$ 未定标，$\mathrm{std}(s)=\sqrt{d}$）：\\
      $\sigma(1{-}\sigma) \approx 1.2\times10^{-5}$，\\
-     softmax 近 one-hot $\to$ 反向传播近乎断流};
+     softmax 近 one-hot $\to$ 反向传播梯度消失};
   \begin{scope}[shift={(0,-0.55)}]
   \draw[thick] (5.7,0.55) rectangle (8.9,2.99);
   \foreach \gk/\gy in {1/2.79, 2/2.39, 3/1.99, 4/1.59, 5/1.19, 6/0.79}{
@@ -190,15 +190,15 @@ $1/\sqrt{d}$ 仍是事实标准，方差更不均匀的情形由量化方案处�
 $\sigma(\Delta)(1-\sigma(\Delta))$ 的峰值 $1/4$ 在 $\Delta=0$；除以 $\sqrt{d}$ 后
 $\mathrm{Var}=1$、$\Delta=O(1)$（灰带），梯度处于健康敏感区。不定标时
 $\mathrm{std}(s)=\sqrt{d}$（式~\ref{eq:15-dot-var}），$d=128$ 即 $\Delta\approx11.3$，
-梯度跌到 $\approx1.2\times10^{-5}$——线性纵轴上贴地，右侧对数纵轴面板可见其仍在
+梯度跌到 $\approx1.2\times10^{-5}$——线性纵轴上接近零，右侧对数纵轴面板可见其仍在
 $10^{-5}$ 量级（红点，恰在 $10^{-5}$ 网格线上方），softmax 近 one-hot、反向传播
 梯度近乎消失。曲线偶对称，$\Delta=-11.3$ 同理。}
 \label{fig:15-sqrt-d-scale}
 \end{figure}
 
-\subsection{朴素实现：FLOPs、显存与带宽三本账}
+\subsection{朴素实现：FLOPs、显存与带宽三项开销}
 
-\textbf{FLOPs 账}（约定：一次乘法 + 一次加法计 2 FLOP，故 $M{\times}K$ 乘 $K{\times}N$
+\textbf{FLOPs 量}（约定：一次乘法 + 一次加法计 2 FLOP，故 $M{\times}K$ 乘 $K{\times}N$
 的 GEMM 为 $2MNK$ FLOP）。式~\ref{eq:15-attn-def} 的两个矩阵乘是对称的两大项：
 $S = QK^{\top}$ 为 $2N^{2}d$，$O = PV$ 为 $2N^{2}d$；softmax 本身只有指数与求和，
 是 $O(N^{2})$ 的非 matmul 项。合计每 (b,h)
@@ -211,14 +211,14 @@ $4 \times 4096^{2} \times 64 \times 32 \approx 137\,\mathrm{GFLOP}$；参照本�
 FlashAttention kernel 在同形状 SM120 上的实测 $166.6\,\mathrm{TFLOPS}$
 （flash\_attn.cuh~L68，头注释口径），纯计算时间下界约 $0.83\,\mathrm{ms}$。
 
-\textbf{显存账}：$S$ 与 $P$ 各占 $N^{2}$ 元素，
+\textbf{显存占用}：$S$ 与 $P$ 各占 $N^{2}$ 元素，
 \begin{equation}
   \mathrm{mem} = \Theta(N^{2}) \;\text{每 (b,h)} ,
   \label{eq:15-naive-mem}
 \end{equation}
 上例中 $S$、$P$ 各 $\approx 1\,\mathrm{GiB}$。$N$ 翻倍它翻四倍，这就是长上下文的显存墙。
 
-\textbf{带宽账}：朴素三 kernel 的 HBM 流量为
+\textbf{带宽需求}：朴素三 kernel 的 HBM 流量为
 读 $Q,K,V$（$3Nd$）$+$ 写 $S$、读 $S$、写 $P$、读 $P$（$4N^{2}$）$+$ 写 $O$（$Nd$），
 即 FA1 论文所述的 $\Theta(Nd + N^{2})$：
 \begin{equation}
@@ -288,7 +288,7 @@ FLOP/B 量级），kernel 落在 memory-bound 区。改进方向只有一个：�
     {朴素：4.3 GB HBM 往返，\\搬运 2.2 ms vs 计算 0.83 ms\\（memory-bound，2.6$\times$）\\[2pt]
      FA：$\Theta(Nd) \approx 67$ MB，\\S/P 全程不过 HBM\\$\to$ 带宽不再是瓶颈};
 \end{tikzpicture}
-\caption{朴素 attention 的 HBM 往返账 vs FlashAttention（15.3.3 节，
+\caption{朴素 attention 与 FlashAttention 的 HBM 往返流量对比（15.3.3 节，
 $B{=}1$、$H{=}32$、$N{=}4096$、$d{=}64$）：上行三个 kernel 之间，$S$ 与 $P$
 （各 $\approx$1 GiB）必须经 HBM 往返——写 S、读 S、写 P、读 P 共
 $4\times1\,\mathrm{GiB}\approx4.3\,\mathrm{GB}$，而有效数据（Q,K,V 读入 $+$ O 写出）只有
@@ -662,7 +662,7 @@ K/V tile，
         都天然同构」的通用结论。
 \end{itemize}
 
-要点 1（L8--9）即 15.3.3~节的带宽账：$O(N^{2})$ 中间矩阵必须过 HBM，而 HBM 是瓶颈。
+要点 1（L8--9）即 15.3.3~节的带宽需求：$O(N^{2})$ 中间矩阵必须过 HBM，而 HBM 是瓶颈。
 要点 2（L10--13）的三项机制中，tiling 对应式~\ref{eq:15-blocks}，online softmax
 对应式~\ref{eq:15-upd-m}--\ref{eq:15-upd-l}，recomputation 是 FA1 的反向技巧
 （15.3.7~节），注意这组贡献按论文口径属 FA1，FA2 的主题是并行与分工，见 15.7~节
@@ -851,7 +851,7 @@ layout 必须\textbf{同时}看读端（ldmatrix）与写端（cp.async），只
   \colorlet{tOrange}{tkOrange}
   \colorlet{tRed}{tkRed}
   \node[anchor=west, font=\scriptsize\bfseries] at (24,26)
-    {FA1 $\to$ FA2 $\to$ FA3：时间去哪了（时间结构示意）};
+    {FA1 $\to$ FA2 $\to$ FA3：三代时间结构对照};
   \node[draw=tBlue, fill=tkFillBlue, text=tBlue, font=\tiny\bfseries, inner sep=1pt,
         minimum width=15.50cm, minimum height=0.46cm] at (560,64)
     {FA1 (A100)：warp 沿 K/V 切分，softmax 串行夹在两次 GEMM 之间};
@@ -871,7 +871,7 @@ layout 必须\textbf{同时}看读端（ldmatrix）与写端（cp.async），只
     {... 串行重复；partial $(m, \ell, O)$ per warp，跨 warp 归约必须走 smem（merge\_attn\_states）};
   \node[draw=tGreen, fill=tkFillGreen, text=tGreen, font=\tiny\bfseries, inner sep=1pt,
         minimum width=15.50cm, minimum height=0.46cm] at (560,178)
-    {FA2 (A100/H100)：warp 沿 Q 行切分，消灭跨 warp 归约};
+    {FA2 (A100/H100)：warp 沿 Q 行切分，消除跨 warp 归约};
   \foreach \w in {0,...,3}{
     \node[anchor=west, text=black!75, font=\tiny\bfseries] at (24,{216+34*\w})
       {warp\w};
@@ -885,7 +885,7 @@ layout 必须\textbf{同时}看读端（ldmatrix）与写端（cp.async），只
   \node[anchor=west, text=black!65] at (620,220)
     {每 warp 独占 16 行 Q：私有 $(m, \ell, O)$，K/V 全 warp 共享};
   \node[anchor=west, text=black!65] at (620,248)
-    {另加 CTA 级并行：grid.x = N/Br，沿 seqlen(Q) 喂饱 SM};
+    {另加 CTA 级并行：grid.x = N/Br，沿 seqlen(Q) 提高 SM 占用};
   \node[anchor=west, text=black!65] at (620,276)
     {$O$ 保持未归一化 $\to$ 尾部一次 $\mathrm{diag}(1/\ell)$};
   \node[draw=tOrange, fill=tkFillOrange, text=tOrange, font=\tiny\bfseries, inner sep=1pt,
@@ -1030,7 +1030,7 @@ $\sqrt d$ 使 softmax 饱和、梯度消失（两元素情形梯度 $\le 1/4$，
 $10^{-5}$ 量级）；除以 $\sqrt d$ 后方差归一为 1。（原论文是启发式陈述，方差推导是
 通行解读。）
 
-\textbf{Q3：朴素 attention 的三本账？}\\
+\textbf{Q3：朴素 attention 的三项开销？}\\
 A：FLOPs $4N^{2}d$（两大 GEMM 各 $2N^{2}d$）；显存 $\Theta(N^{2})$（$S, P$ 物化）；
 HBM 流量 $\Theta(Nd + N^{2})$，主导项 $4N^{2}$ 的中间矩阵往返。算术强度只有
 $d/2\,\mathrm{FLOP/B}$，memory-bound。

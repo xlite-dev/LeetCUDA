@@ -2,7 +2,7 @@
 % 源码冻结基线：ffpa_attn.cuh L1-641（anchors.yaml ch19）。
 %   结构：头注释 L1-28 / FFPAAttnSplitDCuTeTraits L31-79 / cp.async 版 L80-375 / TMA+WS 版 L377-641。
 % 主线：三个瓶颈（smem / 寄存器 / ldmatrix 几何）→ 跨 chunk 的在线 rescale 推导 →
-%   两实现（cp.async 与 TMA+WS）对照 → O 累加器的寄存器账本。
+%   两实现（cp.async 与 TMA+WS）对照 → O 累加器的寄存器占用。
 % 图 FIG-19-1/2 已 drawio 化（figures/drawio/fig-19-*/）。
 \chapter{FFPA Split-D：大 head\_dim 分块注意力}\label{ch:19}
 
@@ -22,7 +22,7 @@ chunk 流式推进}。这套结构叫 \textbf{Split-D}，也是生产库
 归约，PV 的 chunk 输出各占一部分\textbf{列}，两者都不需要 LSE 式的重标定；真正要
 小心的是\textbf{跨 chunk 广播同一个在线 rescale 因子}（19.3~节给出不变量及其归纳
 证明）。其三，两版实现如何驱动 chunk 流水：cp.async 版用 \texttt{cp.async}
-的 group 计数，TMA+WS 版用 mbarrier 的 (stage, phase) 账本，两者对 Q、K、V 的
+的 group 计数，TMA+WS 版用 mbarrier 的 (stage, phase) 计数，两者对 Q、K、V 的
 chunk 池是同一套布局（19.4~节）。其四，Split-D 的代价是什么：O 累加器每线程
 $D/2$ 个 f32，$D = 512$ 时是 256 个，已经越过 255 的硬上限（19.4.6~节）。
 
@@ -136,7 +136,7 @@ $(\ell, m)$，合并只是「先沿列拼起来、再统一除一次 $\ell$」�
 persist-D（Q 常驻寄存器的 WS 结构），中段走 split-D（非 WS，即本章这版形态），
 $D \ge 768$ 换成 M4N2（\texttt{atom\_layout} $(4,2,1)$，4 个 M-warp $\times$ 2 个
 N-warp（共 8 warp）分摊，O 寄存器降到 $D/4$）。交叉点大约在 $D \approx 768$，与式~\ref{eq:19-oacc} 算出的
-寄存器账本一致（19.4.6~节）。本章的两个 kernel 是这条路线在教学仓库里的最小形态。
+寄存器占用一致（19.4.6~节）。本章的两个 kernel 是这条路线在教学仓库里的最小形态。
 
 \section{数学原理}
 
@@ -335,9 +335,9 @@ $\ell = \alpha \ell_0 + \beta \ell_1$、$O = \alpha O_0 + \beta O_1$。把两者
     {stage $=$ idx mod Sk（TMA 写哪个 smem 槽）\\phase $=$ $\lfloor$idx/Sk$\rfloor$ mod 2（mbarrier 第几圈）\\idx $=$ t$\cdot$C $+$ c：每 KV tile 前进 $C{=}3$ 格};
   % 生产/消费两端同公式
   \draw[-{Stealth}, semithick] ({3*\cw+0.30},{-1.5*\chh}) -- (5.30,{-0.55});
-  \node[anchor=south, font=\tiny] at (7.90,{-0.48}) {生产端：idx$=4$ $\to$ TMA 写 $s{=}0$ 槽、complete-tx 记账};
+  \node[anchor=south, font=\tiny] at (7.90,{-0.48}) {生产端：idx$=4$ $\to$ TMA 写 $s{=}0$ 槽、complete-tx 计数};
   \draw[-{Stealth}, semithick] ({3*\cw+0.30},{-2.5*\chh}) -- (5.30,{-3.35});
-  \node[anchor=west, font=\tiny] at (6.1,{-3.50}) {消费端：wait 同一格的 phase 后读 $s{=}0$ 槽——同公式对账、零通信};
+  \node[anchor=west, font=\tiny] at (6.1,{-3.50}) {消费端：wait 同一格的 phase 后读 $s{=}0$ 槽——同公式推导、零通信};
   % 下方对照带：C=2 与 C=8
   \node[anchor=north west, font=\scriptsize\bfseries] at (0,{-4*\chh-0.96}) {对照带（Sk=2）};
   \node[anchor=east, font=\scriptsize] at (-0.10,{-4*\chh-1.62}) {$C{=}2$};
@@ -369,7 +369,7 @@ $\ell = \alpha \ell_0 + \beta \ell_1$、$O = \alpha O_0 + \beta O_1$。把两者
   \draw[dashed] (2.28,{-4*\chh-2.04}) -- (2.28,{-4*\chh-2.48});
   \node[anchor=west, font=\tiny] at (9.4,{-4*\chh-2.26}) {$D{=}512$：两行逐 tile 相同（相位模式固定）};
 \end{tikzpicture}
-\caption{idx $= t\cdot C + c \to$ (stage, phase) 的相位展开（式~\ref{eq:19-phase} 的图形化，$\mathrm{Sk}{=}2$）。主网格取 $C{=}3$（$D{=}192$，与 $\mathrm{Sk}$ 互质的最易错档）：行方向为 KV tile $t$、列方向为 chunk $c$，cell 填 idx 与其 (stage, phase)——灰度编码 stage 槽位、加粗框标记 phase $=1$；4 个 KV tile 后 (s,p) 模式才重复（周期 $=\mathrm{lcm}(C,2\,\mathrm{Sk})/C$）。右：生产/消费两端用\textbf{同一个公式}各自推导（写/读同一 stage 槽、按同一 phase 对账），不需要额外通信。下：$C{=}2$（逐 tile 翻转）与 $C{=}8$（逐 tile 相同）两条对照带，覆盖 19.10 节测试矩阵的三种形态。}
+\caption{idx $= t\cdot C + c \to$ (stage, phase) 的相位展开（式~\ref{eq:19-phase} 的图形化，$\mathrm{Sk}{=}2$）。主网格取 $C{=}3$（$D{=}192$，与 $\mathrm{Sk}$ 互质的最易错档）：行方向为 KV tile $t$、列方向为 chunk $c$，cell 填 idx 与其 (stage, phase)——灰度编码 stage 槽位、加粗框标记 phase $=1$；4 个 KV tile 后 (s,p) 模式才重复（周期 $=\mathrm{lcm}(C,2\,\mathrm{Sk})/C$）。右：生产/消费两端用\textbf{同一个公式}各自推导（写/读同一 stage 槽、以同一 phase 为准），不需要额外通信。下：$C{=}2$（逐 tile 翻转）与 $C{=}8$（逐 tile 相同）两条对照带，覆盖 19.10 节测试矩阵的三种形态。}
 \label{fig:19-phase-idx}
 \end{figure}
 
@@ -646,13 +646,13 @@ $((4,2),$\allowbreak$ MMA\_M,$\allowbreak$ MMA\_N/2)$——\textbf{零拷贝、�
   \node[anchor=north] at (4.66,-1.34) {零拷贝、只改逻辑坐标};
   % 底部注记
   \node[anchor=north west, align=left, text width=13.5cm] at (0,-3.45)
-    {$(4,2)$ 的 $2$ 是 $\mathrm{MMA\_N}$ 新切出的内层：把 C 的相邻列对配对成 A 的 K 向连续 2 元素（与第~\ref{ch:16}~章图的 $a_0/a_1$ 同族约定）};
+    {$(4,2)$ 的 $2$ 是 $\mathrm{MMA\_N}$ 新切出的内层：把 C 的相邻列对组合成 A 的 K 向连续 2 元素（与第~\ref{ch:16}~章图的 $a_0/a_1$ 同族约定）};
   \node[anchor=north west, align=left, text width=13.5cm] at (0,-3.85)
     {于是 softmax 后的 $P$ 不必写回 smem 再 \texttt{ldmatrix}；同一批寄存器的逐 lane 逐格对照见第~\ref{ch:25}~章 图~\ref{fig:25-c2aregs}};
   \node[anchor=north west, align=left, text width=13.5cm] at (0,-4.25)
-    {颜色 $=$ 段身份（新 MMA mode 的编号）；右面板同色的两小格 $=$ 同一左段沿 $\mathrm{MMA\_N}$ 对半切开的两半。两面板是同一批寄存器的两种读法（示意实例：$\mathrm{MMA\_M}{=}\mathrm{MMA\_N}{=}4$）};
+    {颜色 $=$ 段身份（新 MMA mode 的编号）；右面板同色的两小格 $=$ 同一左段沿 $\mathrm{MMA\_N}$ 拆出的两半。两面板是同一批寄存器的两种读法（示意实例：$\mathrm{MMA\_M}{=}\mathrm{MMA\_N}{=}4$）};
 \end{tikzpicture}
-\caption{零拷贝的寄存器重解释（19.4.3 节 quote 块中 \texttt{convert\_layout\_acc\_Aregs} 的模式级示意）。左：$S$ 的累加器 layout 是 $(\mathrm{MMA}{=}4,\ \mathrm{MMA\_M},\ \mathrm{MMA\_N})$——4 个 MMA 重复段，每段 $\mathrm{MMA\_M}\times\mathrm{MMA\_N}$；右：同一批寄存器被读成 $((4,2),\ \mathrm{MMA\_M},\ \mathrm{MMA\_N}/2)$——沿 $\mathrm{MMA\_N}$ 切一刀得到 $(2,\ \mathrm{MMA\_N}/2)$，切出的 $2$ 与原来的 $4$ 配对成新的 $8$ 段 MMA mode，正是 PV 的 A 操作数所需的「K 向连续 2 元素」（与第~\ref{ch:16}~章核心图的 $a_0/a_1$ 配对同族）。数据本身未被修改：只是坐标重排，softmax 后的 $P$ 因此不需要写回 smem 再 \texttt{ldmatrix}。}
+\caption{零拷贝的寄存器重解释（19.4.3 节 quote 块中 \texttt{convert\_layout\_acc\_Aregs} 的模式级示意）。左：$S$ 的累加器 layout 是 $(\mathrm{MMA}{=}4,\ \mathrm{MMA\_M},\ \mathrm{MMA\_N})$——4 个 MMA 重复段，每段 $\mathrm{MMA\_M}\times\mathrm{MMA\_N}$；右：同一批寄存器被读成 $((4,2),\ \mathrm{MMA\_M},\ \mathrm{MMA\_N}/2)$——沿 $\mathrm{MMA\_N}$ 拆成 $(2,\ \mathrm{MMA\_N}/2)$，拆出的 $2$ 与原来的 $4$ 组合成新的 $8$ 段 MMA mode，正是 PV 的 A 操作数所需的「K 向连续 2 元素」（与第~\ref{ch:16}~章核心图的 $a_0/a_1$ 同族约定）。数据本身未被修改：只是坐标重排，softmax 后的 $P$ 因此不需要写回 smem 再 \texttt{ldmatrix}。}
 \label{fig:19-aregs-reinterpret}
 \end{figure}
 
@@ -665,7 +665,7 @@ Phase 3 的 rescale 是本章数学结论落地的位置：\textbf{同一个 \te
 \texttt{if (kv\_tile > 0)} 是必要的：第一轮时累加器全零，乘不乘都一样，跳过可以
 省 $C \times$ 32 次乘法（$D=512$ 时是 256 次/线程）。
 
-\subsection{TMA+WS 版：单线程 TMA 与 (stage, phase) 账本}
+\subsection{TMA+WS 版：单线程 TMA 与 (stage, phase) 计数}
 
 \texttt{ffpa\_\allowbreak{}attn\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}split\_\allowbreak{}d\_\allowbreak{}cute}（L377--641）把「搬」与「算」拆成
 两个 warpgroup：\textbf{128 producer $+$ 128 consumer $= 256$ 线程}，
@@ -675,7 +675,7 @@ Phase 3 的 rescale 是本章数学结论落地的位置：\textbf{同一个 \te
   title={ffpa\_attn.cuh L380-392（TMA 版签名：CUTLASS\_GRID\_CONSTANT 描述符 $+$ 256 线程）}]{../ffpa_attn.cuh}
 
 消费者侧与 cp.async 版的\textbf{计算逻辑逐行相同}（头注释 L70--73 明确写了这一点），
-差别全在流水记账上。账本由四组 mbarrier 组成（L409--412、L414--429）：
+差别全在流水计数上。计数由四组 mbarrier 承担（L409--412、L414--429）：
 
 \lstinputlisting[linerange={414-429},firstnumber=auto,breakatwhitespace=true,
   title={ffpa\_attn.cuh L414-429（角色划分与 mbarrier 初始化：full 的到达数是 1，empty 是 128）}]{../ffpa_attn.cuh}
@@ -755,7 +755,7 @@ TMA 版必须用扁平相位、cp.async 版却可以每轮重置，原因在于�
   \texttt{cp.async.}\allowbreak\texttt{bulk.}\allowbreak\texttt{tensor}（TMA，单线程发起） \\
 完成检测 & \texttt{cp.\allowbreak{}async.\allowbreak{}wait\_\allowbreak{}group} $+$ \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads} &
   mbarrier：full（tx-count）$+$ empty（128 arrive）$+$ phase \\
-流水账本 & 每线程私有组 FIFO；每 KV tile 排空后重置 &
+流水计数 & 每线程私有组 FIFO；每 KV tile 排空后重置 &
   扁平 \texttt{idx} 导出的 (stage, phase)；跨 KV tile 连续 \\
 寄存器池 & 无 \texttt{setmaxnreg} & \texttt{dealloc(32)} / \texttt{alloc(232)}
   （dst 为 \texttt{shared::cluster} 时被 C7506 丢弃，与 arch 后缀无关） \\
@@ -770,7 +770,7 @@ Q 的装载 & 每 KV tile 重装（与 K 同 stage） & 每 KV tile 重发 TMA�
 \textbf{Split-D 的结构（chunk 池、双 TiledMma、$\rho$ 广播）与用哪种搬运指令无关}；
 TMA 与 WS 换掉的是「数据怎么来、什么时候到」这一层。
 
-\subsection{O 累加器的寄存器账本}
+\subsection{O 累加器的寄存器占用}
 
 把寄存器用量算完整。$O$ 的碎片形状是 $[B_r, B_c] = [64,64]$ 的 f32 累加器（每个 chunk
 一份），按 128 个消费者线程均分；$C$ 个 chunk 的累加器合起来就是 $[64, D]$：
@@ -794,7 +794,7 @@ $D {=} 512$ 这一行的结论很重要：\textbf{单是 O 累加器就越界了
 $\times$ 2 个 N-warp，$R_O$ 降到 $D/4$）的原因，也是本章这版 kernel 把
 \textbf{$D \le 384$ 视为性能最佳区间}的依据（$D=384$ 时 $R_O = 192$）。
 
-寄存器账本还解释了另一件事：\textbf{为什么这版 WS 不用双 consumer}
+寄存器占用还解释了另一件事：\textbf{为什么这版 WS 不用双 consumer}
 （第~\ref{ch:18}~章的形态）。双 consumer 意味着两套 partial 状态与两套寄存器池，
 而这里 consumer 单个就已经达到 232 的寄存器配额；生产库在 split-D WS 变体上的记录是
 「\texttt{setmaxnreg} 的 consumer 上限装不下 $D{=}512$ 的 256 寄存器累加器，
@@ -1020,7 +1020,7 @@ $\mathrm{Sk}{=}5$ 会直接超预算。数据请落
   该顺序在 cutlass 头下自足）。
 \end{kaogu}
 
-\begin{kaogu}[F2/F3·协议账本核校通过]{mbarrier 到达数与 TMA 事务字节数}
+\begin{kaogu}[F2/F3·协议计数核校通过]{mbarrier 到达数与 TMA 事务字节数}
   逐条核验：（1）线程数与角色：L380 \texttt{\_\_launch\_}\allowbreak\texttt{bounds\_\allowbreak{}\_\allowbreak{}(256,\allowbreak{}1)}、
   L399--400 \texttt{k\allowbreak{}Producer\allowbreak{}Threads}$=$\texttt{k\allowbreak{}Consumer\allowbreak{}Threads}$=$128，
   与头注释 L14/L28「128 producer $+$ 128 consumer $=$ 256 total threads
@@ -1028,7 +1028,7 @@ $\mathrm{Sk}{=}5$ 会直接超预算。数据请落
   128 producer $+$ 256 consumer）；（2）full 屏障初始到达数 1（L421/L425）、
   empty 屏障 128（L422/L426），与消费者侧「每线程消费完 arrive 一次」
   （L555、L616）以及生产者侧 \texttt{arrive\_\allowbreak{}and\_\allowbreak{}expect\_\allowbreak{}tx}
-  （L459--460、L477）配对；（3）每次 QK 槽位的期望字节数是
+  （L459--460、L477）匹配；（3）每次 QK 槽位的期望字节数是
   $2 \times 64 \times 64 \times 2 = 16384$\,B（Q 与 K 各一个 chunk），
   V 槽位 $8192$\,B，与 \texttt{size\allowbreak{}(s\allowbreak{}Q)+size\allowbreak{}(s\allowbreak{}K)} / \texttt{size(sV)} 的写法一致；
   （4）相位公式在生产者（L443--445）与消费者（L539--541、L591--593）三处
@@ -1126,12 +1126,12 @@ A：因为 SW128 swizzle atom 的行宽是 128\,B $=$ 64 个 f16，且 \texttt{l
 \textbf{Q6：两版实现的差别在哪一层？}\\
 A：算法层没有差别（头注释 L70--73 明确「消费者逻辑完全一致」），差别全在
 「数据怎么来、什么时候到」：cp.async 版 128 线程全员搬、用每线程私有的组 FIFO
-记账、每 KV tile 排空；TMA+WS 版 256 线程分工、单线程发起 TMA、用共享 mbarrier 的
-(stage, phase) 记账、跨 KV tile 连续不排空。同步原语的性质（私有 FIFO vs 共享
+计数、每 KV tile 排空；TMA+WS 版 256 线程分工、单线程发起 TMA、用共享 mbarrier 的
+(stage, phase) 计数、跨 KV tile 连续不排空。同步原语的性质（私有 FIFO vs 共享
 对象）直接决定了流水能否跨 tile 连续。
 
 \textbf{Q7：为什么这版 WS 只有一个 consumer warpgroup？}\\
-A：寄存器账本（式~\ref{eq:19-oacc}）。consumer 单 warpgroup 已达到 232 配额，
+A：寄存器占用（式~\ref{eq:19-oacc}）。consumer 单 warpgroup 已达到 232 配额，
 $D{=}512$ 时 O 累加器一项就是 256 个 f32；再加第二套 partial 状态与寄存器池
 放不下。生产库的记录同样是「split-D WS 变体因消费者寄存器上限装不下大 D 累加器
 而禁用，大 $D$ 转 M4N2」。
@@ -1141,7 +1141,7 @@ A：看 $R_O = D/2$。$D \le 384$（$R_O \le 192$）在本结构下寄存器占�
 必然 spill；$D \ge 768$ 生产库改用 \texttt{atom\_layout} $(4,2,1)$ 的 M4N2
 （$R_O = D/4$）。本章测试覆盖到 $D{=}512$，就是为了把这条边界纳入测试覆盖。
 
-\textbf{Q9：相位账本为什么不能用「每轮重置」？}\\
+\textbf{Q9：相位计数为什么不能用「每轮重置」？}\\
 A：mbarrier 是共享对象，phase 是它自身的状态位。跨 KV tile 复用同一批屏障时，
 两端只有用同一个全局公式（式~\ref{eq:19-phase}）才能对上；$C$ 与 $\mathrm{Sk}$
 互质时（如 $D{=}192$、$\mathrm{Sk}{=}2$）相位周期是 4 个 KV tile，手写特判几乎

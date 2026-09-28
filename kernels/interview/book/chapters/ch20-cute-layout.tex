@@ -932,7 +932,7 @@ $f(1,3)=11$——同一 shape，stride 决定读序。}
   \draw[tkGreen, semithick, -{Stealth[length=3.5pt]}] (5.31, -4.60) -- (5.61, -4.60);
   \draw[tkGreen, semithick, -{Stealth[length=3.5pt]}] (10.69, -4.60) -- (10.99, -4.60);
   % 标题
-  \node at (8.30, -0.21) {FA2 $P$ 矩阵布局转换：两条路线，一个结果（zero-copy）};
+  \node at (8.30, -0.21) {FA2 $P$ 矩阵布局转换：两条路线（zero-copy）};
 \end{tikzpicture}
 \caption{FA2 的 P 矩阵布局转换：tri-dao 的几何重排与 reed 的代数复合两条路线，结果等价。本书 flash\_attn.cuh 的 \texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}Aregs}（被 ffpa\_attn.cuh 复用）采用的是几何路线。}
 \label{fig:20-3}

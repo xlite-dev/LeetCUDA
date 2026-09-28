@@ -4,7 +4,7 @@
 \section{本章导读}
 
 Softmax 是深度学习里使用最频繁的归一化算子：语言模型输出头的概率分布、注意力机制中的
-$\mathrm{softmax}(QK^{\top}/\sqrt{d})$（第~\ref{ch:15}~章的核心算子）、MoE 的门控权重……都离不开它。
+$\mathrm{softmax}(QK^{\top}/\sqrt{d})$（第~\ref{ch:15}~章的核心算子）、MoE 的门控权重，都离不开它。
 它的数学定义只有一行，但在 GPU 上写对一个\textbf{又快又稳}的 softmax，要同时解决两个问题：
 \textbf{数值稳定性}（$e^{x}$ 的溢出）与\textbf{归约遍数}（多一遍全局扫描就多一倍同步与访存）。
 本章沿着教学源码的三级递进，依次解决这两个问题：
@@ -342,7 +342,7 @@ $2^{8}$ 个指数加起来（warp 内蝶形 + shared memory 二级 + 广播，�
     {初始每 lane 打包 $\bigl(x^{(i)},1\bigr)$（边界 lane 填 $(-\texttt{FLT\_MAX},0)$）；轮 3 后\textbf{每个 lane 都持有全行} $(m,\ell)$\\
      结合律（引理~\ref{lem:md-assoc}）$\Rightarrow$ 任意归约顺序结果相同；真实 warp 为 32 lane、5 步（mask $=16,8,4,2,1$），本图以 8 lane 示意};
 \end{tikzpicture}
-\caption{MD 状态的 XOR 蝶形归约（8 lane 示意，mask $=4\to2\to1$）：每轮 lane $i$ 与 $i\oplus\text{mask}$ 互换 $(m,d)$ 并按式~\ref{eq:4-merge} 合并——$m$ 较大一侧（中灰点）$d$ 原样保留，较小一侧（深灰点）$d$ 乘 \texttt{\_\_expf(s\_m.m - b\_m.m)} 做 rescale（深粗线强调首对交换）。配对骨架同第~\ref{ch:02}~章图~\ref{fig:2-1}，本图聚焦 MD 合并语义；结合律（引理~\ref{lem:md-assoc}）保证归约顺序无关。}
+\caption{MD 状态的 XOR 蝶形归约（8 lane 示意，mask $=4\to2\to1$）：每轮 lane $i$ 与 $i\oplus\text{mask}$ 互换 $(m,d)$ 并按式~\ref{eq:4-merge} 合并——$m$ 较大一侧（中灰点）$d$ 原样保留，较小一侧（深灰点）$d$ 乘 \texttt{\_\_expf(s\_m.m - b\_m.m)} 做 rescale（深粗线强调首对交换）。成对骨架同第~\ref{ch:02}~章图~\ref{fig:2-1}，本图聚焦 MD 合并语义；结合律（引理~\ref{lem:md-assoc}）保证归约顺序无关。}
 \label{fig:4-3}
 \end{figure}
 
@@ -357,7 +357,7 @@ max 用单位元，$d$ 用加法单位元 0，这样它们参与归约但不污�
 （3）warp leader 把 warp 状态写入 shared memory，\texttt{\_\allowbreak{}\_\allowbreak{}syncthreads} 一次；
 （4）第二级：每个 warp 的所有 lane 重新读出 8 个 warp 状态再做一次
 \texttt{warp\_\allowbreak{}reduce\_\allowbreak{}md}，注释里「用 kWarpSize 确保每个 lane 都拿到最终结果」的用意是：
-第二级不只在 warp 0 做，而是\textbf{每个 warp 都独立算一遍}，从而免去第二次
+第二级不只在 warp 0 做，而是\textbf{每个 warp 都独立算一遍}，免去了第二次
 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads} 加广播；
 （5）写回 $y^{(i)} = e^{x^{(i)} - m} \cdot d^{-1}$，除法用近似倒数
 \texttt{\_\_fdividef} 配一次乘法完成，指数用快速数学 \texttt{\_\_expf}。
@@ -493,7 +493,7 @@ launch 与同步的固定开销占比大；附录~B 的汇总口径会注明这�
 \textbf{坑一：$N$ 传错语义，静默丢输出。}见 4.6~节勘误一：grid$(S)$ 且 $S>1$ 时
 必须传 $N = S \times H$，否则 block $1, \dots, S-1$ 整体被 \texttt{idx < N} 剪掉，
 输出缓冲残留旧值：不报错、不崩溃，纯静默。建议自测时先以 $S=2$ 跑一遍
-「输出缓冲先 memset 成哨兵值」的检查。
+「输出缓冲先 memset 填充特定值」的检查。
 
 \begin{figure}[H]
 \centering
@@ -536,7 +536,7 @@ launch 与同步的固定开销占比大；附录~B 的汇总口径会注明这�
 
 \textbf{坑二：边界填充值要和运算匹配。}求和的填充是 $0$（加法单位元），
 求 max 的填充是 \texttt{-FLT\_MAX}（max 单位元），online 版状态填充是
-$\bigl(\texttt{-FLT\_MAX},\, 0\bigr)$。三者各自配对，混用（比如 max 归约填 0）
+$\bigl(\texttt{-FLT\_MAX},\, 0\bigr)$。三者各自成对，混用（比如 max 归约填 0）
 会让 max 被钳在 0：基准被抬高，指数参数 $x - 0$ 比正确的 $x - m$ 整体
 偏小（$m$ 为真实行最大值；输出在不下溢时因平移不变性式~\ref{eq:4-shift}
 逐位不变），真正的风险

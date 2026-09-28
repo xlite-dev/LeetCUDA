@@ -212,7 +212,7 @@ SM 寄存器池（sm\_120 为 64K/SM）里重新分配：
 \end{equation}
 
 producer 在入口执行 \texttt{warpgroup\_\allowbreak{}reg\_\allowbreak{}dealloc<32>}
-（让出 96 个/线程），consumer 执行 \texttt{warpgroup\_\allowbreak{}reg\_\allowbreak{}alloc<232>}
+（释放 96 个/线程），consumer 执行 \texttt{warpgroup\_\allowbreak{}reg\_\allowbreak{}alloc<232>}
 （分配到硬件上限的可用额度）。没有这一步，consumer 会被编译器压到每线程 168 个寄存器，
 O 累加器溢出到 local memory，性能直接降低一半。
 
@@ -227,12 +227,12 @@ O 累加器溢出到 local memory，性能直接降低一半。
 \node[wg, draw=tkBlue, fill=tkFillBlue] (prod) at (0,0)
   {\textbf{producer}：128 T（4 warp）\\
    {\scriptsize TMA 发射（Q/K/V/O）+ mbarrier}\\
-   {\scriptsize \texttt{reg\_dealloc<32>}：人均 32}};
+   {\scriptsize \texttt{reg\_dealloc<32>}：32/线程}};
 % consumer
 \node[wg, draw=tkGreen, fill=tkGreen!8] (cons) at (0,-3.2)
   {\textbf{consumer}：256 T（8 warp）\\
    {\scriptsize LDSM + mma.sync + softmax + rescale}\\
-   {\scriptsize \texttt{reg\_alloc<232>}：人均 232}};
+   {\scriptsize \texttt{reg\_alloc<232>}：232/线程}};
 % smem
 \node[wg, draw=tkPurple, fill=white, minimum width=2.6cm] (smem) at (5.6,-1.6)
   {SMEM\\{\scriptsize Q persist +}\\{\scriptsize K/V stage 池}};
@@ -396,7 +396,7 @@ kv 计数 $g$ 决定：
 \end{equation}
 
 $g$ 在 producer 与 consumer 两侧各自按消费序列连续累计（跨 q-tile 不清零），
-wait 与 arrive 的奇偶序自然配对。配套有一条铁律：\texttt{k\_\allowbreak{}empty}/\texttt{v\_\allowbreak{}empty}
+wait 与 arrive 的奇偶序自然匹配。配套有一条铁律：\texttt{k\_\allowbreak{}empty}/\texttt{v\_\allowbreak{}empty}
 的\textbf{初始} arrive 只在第一个 q-tile 开头做一次，之后每个 stage 的
 「空」信号完全由上一轮消费 arrive 维持。若每轮 q-tile 都补一次初始 arrive，
 mbarrier 的相位会被多推一格，producer 的 wait 永远等不到正确的奇偶
@@ -427,7 +427,7 @@ wait 永远不满足（挂死而非出错）。consumer 侧对应的是「初始
 \texttt{if (iter == 0)} 把全部 $S_K{+}S_V$ 个 stage 的 empty 各 arrive 一次
 （256 线程 \texttt{CtaBarrier} 的满额 arrive），此后每个 stage 的「空」由
 每次消费后的 \texttt{arrive(k\_empty[k\_stg])} 自持，与 producer 按 $g$
-推进的 wait 序列恰好逐格配对，一轮不多一轮不少。
+推进的 wait 序列恰好逐格对齐，一轮不多一轮不少。
 \subsection{Q 寄存器持久化与 \texttt{gemm\_rs}：TiledMMA/TiledCopy 组合}\label{sec:26b-persistq}
 
 FA2 的 split-Q 布局里 Q 每个 tile 都要从 smem 重装；persist-D 的观察是：
@@ -543,7 +543,7 @@ mask）。\texttt{q\_full} 的 wait 相位是 \texttt{iter \& 1}：q-tile 计数
   \node[font=\tiny, anchor=north] at (3.1,2.55) {wave 1（10 tile/CTA）};
   \node[font=\tiny, anchor=north] at (3.1,-0.08) {wave 3};
   \node[font=\tiny, tkRed, align=center, anchor=west] at (6.4,2.25)
-    {wave 4：只有 4 个\\SM 有活\\{\bfseries 尾损 $\tfrac{6}{44}\approx 14\%$}};
+    {wave 4：只有 4 个\\SM 在算\\{\bfseries 尾损 $\tfrac{6}{44}\approx 14\%$}};
 \end{scope}
 % persistent
 \begin{scope}[shift={(9.0,0)}]
@@ -809,11 +809,11 @@ cluster 形式 TMA 与缺 \texttt{\_\_launch\_\allowbreak{}bounds\_\allowbreak{}
         CTA；全量 grid 让硬件调度器自然均衡。负载均匀才适合 persistent。
   \item \textbf{Q：\texttt{setmaxnreg} 的池数学？}\\
         A：$4w\times 32T\times 32 + 8w\times 32T\times 232 = 63488 < 64K$；
-        producer 让出的正是 consumer 多拿的。无此指令则编译器均分 168/线程，
+        producer 释放的正是 consumer 多拿的。无此指令则编译器均分 168/线程，
         O 累加器溢出。
   \item \textbf{Q：mbarrier 相位为什么用全局计数？}\\
         A：persistent 下 producer 可能跨 q-tile 领先消费，每 tile 重置相位
-        无法与全局发射序配对；$g$ 连续累计 + $\lfloor g/S\rfloor\&1$ 保持
+        无法与全局发射序对应；$g$ 连续累计 + $\lfloor g/S\rfloor\&1$ 保持
         wait/arrive 奇偶一致。
 \end{itemize}
 

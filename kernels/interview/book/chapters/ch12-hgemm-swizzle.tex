@@ -129,7 +129,7 @@ phase：phase $p$ 由 lanes $8p \dots 8p{+}7$ 按 $\mathrm{row}=\mathrm{lane}\bm
 $c=\lfloor\mathrm{lane}/16\rfloor$ 提供地址（高亮 phase 0 = lanes 0--7 读行 0--7 的
 chunk 0；phase 0/1 同读 chunk 0，phase 2/3 同读 chunk 1）。phase 内是否冲突取决于
 该组 8 行落进的 quad 分布——12.3.2/12.3.3 节按行宽推导 2-way/8-way、以及
-图~\ref{fig:12-quad-swizzle} 的三档 swizzle 对比，都建立在这个机制底座上。}
+图~\ref{fig:12-quad-swizzle} 的三档 swizzle 对比，都基于这个机制。}
 \label{fig:12-bank-phase}
 \end{figure}
 
@@ -303,15 +303,15 @@ BK=16 基线 98{,}304 次；两版比值 $691067/297628=2.32$，与模型预测�
   \foreach \xa/\xc in {0/tkRed!55, 2.3/tkOrange!55, 4.6/tkGreen!55}{
     \draw[thick, \xc] (\xa, 0.32) rectangle (\xa+2.04, -4.66);
   }
-  \node[pttl, text=tkRed] at (1.02, 1.0) {(a) 无 swizzle};
-  \node[psub, text=tkRed] at (1.02, 0.58) {8 行同 quad：\textbf{8-way}};
-  \node[pttl, text=tkOrange] at (3.32, 1.0) {(b) per-slice \texttt{swizzle<16>}};
-  \node[psub, text=tkOrange] at (3.32, 0.58) {两组 quad：\textbf{4-way}};
-  \node[pttl, text=tkGreen] at (5.62, 1.0) {(c) \texttt{swizzle<64>}（SW128）};
-  \node[psub, text=tkGreen] at (5.62, 0.58) {铺满 32 bank：\textbf{1-way}};
+  \node[pttl, text=tkRed] at (1.02, 1.05) {(a) 无 swizzle};
+  \node[psub, text=tkRed] at (1.02, 0.5) {8 行同 quad：\textbf{8-way}};
+  \node[pttl, text=tkOrange] at (3.32, 1.05) {(b) per-slice\\\texttt{swizzle<16>}};
+  \node[psub, text=tkOrange] at (3.32, 0.5) {两组 quad：\textbf{4-way}};
+  \node[pttl, text=tkGreen] at (5.62, 1.05) {(c) \texttt{swizzle<64>}\\（SW128）};
+  \node[psub, text=tkGreen] at (5.62, 0.5) {铺满 32 bank：\textbf{1-way}};
   \node[pncu] at (1.02, -5.15) {NCU 实测\\691{,}067 次/launch};
   \node[pncu] at (3.32, -5.15) {NCU 实测\\297{,}628 次/launch};
-  \node[pncu] at (5.62, -5.15) {模型 1-way（BK=16 基线\\98{,}304 次 = 2-way 参照）};
+  \node[pncu] at (5.62, -5.15) {模型 1-way\\BK=16 基线 98{,}304 次\\（2-way 参照）};
   \node[font=\scriptsize\bfseries] at (8.35, 1.0) {起始 bank 号 $q$};
   \foreach \q/\g [count=\r from 0] in {0/10, 4/19, 8/29, 12/38, 16/48, 20/57, 24/66, 28/76}{
     \node[fill=gray!\g, minimum width=0.62cm, minimum height=0.38cm, inner sep=0pt] at (7.55, 0.55-0.46*\r) {};
@@ -327,7 +327,7 @@ BK=16 基线 98{,}304 次；两版比值 $691067/297628=2.32$，与模型预测�
 \caption{BK=64（128\,B 行宽）下三档 swizzle 的 phase-0 quad 映射对比（12.3.7 节）：
 固定 $s{=}0$、$c{=}0$，逐行给出 ldmatrix 读到的起始 bank 号 $q$，灰度按 $q$ 着色——
 同色格即同一 quad、即同一 phase 内冲突。(a) 无 swizzle 时 $q=8s+4c$ 与行号无关，
-8 行全挤同一 quad，8-way 冲突（NCU 实测 691{,}067 次/launch）；(b) per-slice
+8 行落在同一 quad，8-way 冲突（NCU 实测 691{,}067 次/launch）；(b) per-slice
 \texttt{swizzle<16>} 只拿行号 bit2 翻转 chunk 位，行 0--3 与行 4--7 分落两个 quad，
 降到 4-way（297{,}628 次）——单个 XOR bit 的下界；(c) \texttt{swizzle<64>}
 （SWIZZLE\_128B，$B{=}3$）以 $c'=c\oplus(i\,\&\,7)$ 让 8 行恰好铺满 32 个 bank，
@@ -596,7 +596,7 @@ warp shuffle 拼出 128-bit 向量写回 C，思路与第~\ref{ch:11}~章一致�
      尾 tile：\texttt{wait\_group(0)} 排空\\[1pt]
      （hgemm.cuh L642--681）};
   \node[font=\scriptsize, align=center, anchor=north] at (5.8, -1.35)
-    {每个 k\_step 先 flip：\texttt{reg\_st\_idx\^{}=1}、\texttt{reg\_ld\_idx\^{}=1}——ldmatrix 预载 slice $t{+}1$ 进 reg[st]\\（末 k\_step 预载下一 tile 的 slice 0），HMMA 同拍吃 reg[ld] 里已就绪的 slice $t$，加载与计算交替发出};
+    {每个 k\_step 先 flip：\texttt{reg\_st\_idx\^{}=1}、\texttt{reg\_ld\_idx\^{}=1}——ldmatrix 预载 slice $t{+}1$ 进 reg[st]\\（末 k\_step 预载下一 tile 的 slice 0），HMMA 同拍用 reg[ld] 里已就绪的 slice $t$，加载与计算交替发出};
   \node[font=\scriptsize, align=center, anchor=north] at (5.8, -2.35)
     {两级分工：\textbf{第一级} smem 双缓冲（kStages 轮转）盖住 gmem$\to$smem 的跨 k 迭代延迟；\\
      \textbf{第二级} 寄存器双缓冲（reg[st]/reg[ld] 乒乓）盖住 k\_step 级 ldmatrix 延迟（含 12.3.7 节残余 4-way 冲突）};
@@ -828,7 +828,7 @@ $W{\times}H$ 宽条带（$W{=}\min(T_n,R)$），重排后折叠为组宽 16 的�
     {apply($a$) $=$ a \textasciicircum{} ((a 和 0x80) 右移 3)};
   \node[font=\tiny, anchor=center] at (294,205)
     {$=$ a \textasciicircum{} (bit7(a) 左移 4) \quad //\ bit4 异或 bit7（B$=$1,M$=$4,S$=$3）};
-  \node[ph] at (50,254) {行宽决定「多少行号位能挤进 bank 位 [2,7)」$\to$ 最小冲突度：};
+  \node[ph] at (50,254) {行宽决定「多少行号位能进入 bank 位 [2,7)」$\to$ 最小冲突度：};
   \node[ln, fill=gray!18, draw=figgreen, text width={960*0.0158cm},
     minimum width={980*0.0158cm}] at (550,289)
     {32B 行（BK$=$16）：bit4$=$c，bit7$=$row 右移 2 $\to$ 可达 1-way};
@@ -845,7 +845,7 @@ $W{\times}H$ 宽条带（$W{=}\min(T_n,R)$），重排后折叠为组宽 16 的�
     minimum width={980*0.0158cm}] at (550,415)
     {源位域 [M$+$S, M$+$S$+$B) 与目标位域 [M, M$+$B) 不相交（S 不小于 B）$\to$ 两次应用复原：对合（引理 12.1）};
 \end{tikzpicture}
-\caption{XOR 位运算示意：源位域（行号低位）经右移 $S$ 异或到目标位域（chunk 号）。行宽决定「有多少行号位能挤进 bank 位 $[2,7)$」，从而决定可达到的最小冲突度；源/目标位域不相交（$S \ge B$）保证对合性（引理 12.1）。}
+\caption{XOR 位运算示意：源位域（行号低位）经右移 $S$ 异或到目标位域（chunk 号）。行宽决定「有多少行号位能进入 bank 位 $[2,7)$」，从而决定可达到的最小冲突度；源/目标位域不相交（$S \ge B$）保证对合性（引理 12.1）。}
 \label{fig:12-3}
 \end{figure}
 

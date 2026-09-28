@@ -198,7 +198,7 @@ scale 张量的形状与 epilogue 的查表方式：
     \foreach \c in {0,...,7}
       \node[cell] at (\c*0.30, -\r*0.30) {};
   \draw[grpA, rounded corners=1pt] (-0.21, 0.21) rectangle (2.31, -1.71);
-  \node[note, anchor=north] at (1.2, -1.85) {A per-block：$\delta_a[m/128]$，$M/128$ 个\\{\tiny 整块单一 amax（ffpa Q/K 同构），outlier 摊最粗}};
+  \node[note, anchor=north] at (1.2, -1.85) {A per-block：$\delta_a[m/128]$，$M/128$ 个\\{\tiny 整块单一 amax（ffpa Q/K 同构），outlier 影响大}};
 \end{scope}
 % --- B: per-col(列方向框) ---
 \begin{scope}[shift={(0,-4.3)}]

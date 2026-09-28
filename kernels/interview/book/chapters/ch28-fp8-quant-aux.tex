@@ -16,7 +16,7 @@ per-channel scale 统计。这些 kernel 单个都不复杂，但它们决定了
   \item \textbf{性能下界}：aux 链是一次额外的全量 DRAM 往返（读 fp16 写 fp8，
         字节量与主 kernel 同为 $O(BHND)$，但时间是 $O(N)$、主 kernel 是
         $O(N^2)$，占比随 $N$ 以 $1/N$ 衰减），在短序列 / 小批量场景会成为
-        可观的开销——28.6~节的带宽账说明它为什么必须达到带宽峰值。
+        可观的开销——28.6~节的带宽需求分析说明它为什么必须达到带宽峰值。
 \end{enumerate}
 
 本章代码全部来自 ffpa-attn 仓库（commit \texttt{861d75e}）的
@@ -394,7 +394,7 @@ B 操作数必须携带\textbf{同一个} $\pi$，保证槽位 $s$ 两侧对应�
     {上下半组置换同构（$j$ 与 $j{+}16$ 的低 4 位走同一条重排），自检序列（$j=0..15$ 的落点）：
      $0,1,4,5,8,9,12,13,2,3,6,7,10,11,14,15$。};
   \node[axl,anchor=north west,align=left] at (1.0,-4.2)
-    {配对约束（坑四）：P 侧 \texttt{PackC8bitToA8bitPermVT} 与 $V^{\top}$ 侧必须携带
+    {匹配约束（坑四）：P 侧 \texttt{PackC8bitToA8bitPermVT} 与 $V^{\top}$ 侧必须携带
      \textbf{同一个} $\pi$——槽位 $s$ 两侧对上同一 kv 位置，任一侧缺失即静默错位。};
 \end{tikzpicture}
 \caption{$\texttt{VTPermInv32}$ 列置换的双条带视图（式~\eqref{eq:28-vtperm}，
@@ -532,7 +532,7 @@ QK 精修配方（\texttt{quant\_sym\_int8}，L29--34）。
 28.3.4~节推导了粒度；实现上的关键在\textbf{归约树的构造}。\texttt{quantize\_fp8.cuh}
 L695--741 的头注释先给布局：per-thread Q 量化按 fragment 对齐而非
 per-token——每个 128 行块铺 64 个 scale，每组覆盖一个 C-fragment 行对
-$\{r,\,r{+}8\}$（2 行），行对经 \texttt{shfl\_xor}(amax, 8) 配对。两个极端作
+$\{r,\,r{+}8\}$（2 行），行对经 \texttt{shfl\_xor}(amax, 8) 合并。两个极端作
 对照：per-token 要 128 个 scale（每行一个），per-block 只要 1 个；这个中间档
 换来 zero-shuffle 反量化（每线程 C-frag 的两行共享一个 scale），代价是 amax
 跨多行共享。行内再一分为二，每行两个线程各管半行，网格因此翻倍，冷输入的
@@ -593,7 +593,7 @@ __global__ void quantize_fp8_vt_kernel(
 16 只是恰好同值。\textbf{kDChunk=256 动态 smem}：大 headdim 的整 tile 会超出 48KB 静态
 上限，D 维分块后 staging 尺寸恒为 $kBlockRows\times(kDChunk+kPad)$，动态 smem
 按需分配。\textbf{kVTPerm 置换写}：写出列号经 \texttt{VTPermInv32}（式
-\ref{eq:28-vtperm}）置换，与主 kernel 的 reorg-free 打包强制配对：launcher
+\ref{eq:28-vtperm}）置换，与主 kernel 的 reorg-free 打包强制匹配：launcher
 层面检查这对开关必须同开同关（注释：launcher-enforced pairing），错配即静默数值
 错误。per-channel 变体（\texttt{quantize\_fp8\_vt\_perchannel\_kernel}，L555 起）
 在同一框架下改用 28.3.2~节的 $(bh, D)$ scale 与均值剥离。图~\ref{fig:28-vt-staging}
@@ -800,7 +800,7 @@ $kWhtWidth$ 列（lane $\times$ $kVec$），无需跨 warp 通信；$1/\sqrt{n}$
 \end{tikzpicture}
 \caption{radix-2 蝶形的距离二分（本例 $D{=}128$、$kWhtWidth{=}D$）。
 上：列归属——$j$ 是寄存器槽、lane 是 warp 内线程，格内数字 $col=lane+32j$ 满足索引律，
-右下角 $127=\mathrm{size}-1$；一条 warp 覆盖整行 128 列。下：七轮的「距离阶梯」——
+右下角 $127=\mathrm{size}-1$；一条 warp 覆盖整行 128 列。下：七轮的距离二分——
 $dist\ge32$ 的 bit 落在 $j$ 上（同 lane 两个寄存器槽直接加减，无通信），$dist<32$ 的 bit
 落在 lane id 上（\texttt{\_\_shfl\_xor\_sync} 跨 lane）；每轮一个 bit，$1/\sqrt n$ 折进
 store。}
@@ -893,16 +893,16 @@ $V$ 不改 $O$、WHT 两端同乘正交阵；右侧的 outlier 幅度示意给�
     \node[kin, text width=4.00cm, font=\bfseries\fontsize{4.4}{5}\selectfont] at (12.60,-5.05)
       {persist-D / split-D / M4N2\\三个 fp8 主 kernel 家族共享（ch29-30）};
     \draw[->, gray!80, semithick] (12.60,-4.35) -- (12.60,-4.72);
-    % 融合原则与带宽账
+    % 融合原则与带宽需求
     \node[draw=tkGreen, fill=tkFillGreen, align=left, inner sep=3pt,
       font=\fontsize{4.4}{5}\selectfont, text width=14.6cm] at (7.55,-6.05)
       {\textbf{融合原则：统计先行、变换融进量化 —— 永远不物化 $K' = K - 1\bar{k}^{\top}$
         或 $V'$ 中间张量（省一整轮 DRAM 往返）}\\
        单遍寄存器驻留：16B 向量读进寄存器后 amax 与量化同遍完成，全局内存只读一次\\
-       VTPerm 列置换：为 ch30 的 reorg-free PV 打包预铺列序（launcher 强制配对，防静默错值）};
+       VTPerm 列置换：为 ch30 的 reorg-free PV 打包预铺列序（launcher 强制匹配，防静默错值）};
     \node[pl, font=\fontsize{4.2}{4.8}\selectfont] at (0.10,-6.90)
-      {带宽账（B1 H32 N8192 D128）：输入 $\sim$192MB fp16 $\to$ 输出 $\sim$96MB fp8；%
-       聚合有效带宽 $\sim$1.04 TB/s（贴峰）};
+      {带宽需求（B1 H32 N8192 D128）：输入 $\sim$192MB fp16 $\to$ 输出 $\sim$96MB fp8；%
+       聚合有效带宽 $\sim$1.04 TB/s（接近带宽峰值）};
     \node[pl, font=\fontsize{4.2}{4.8}\selectfont] at (0.10,-7.15)
       {占比：aux 链 $\sim$0.3ms vs 主 kernel 3.0ms（N=8192）$\approx$10\%；%
        N 翻倍时 O(N) vs O(N$^2$) $\to$ 占比衰减};
@@ -1021,7 +1021,7 @@ $V$ 不改 $O$、WHT 两端同乘正交阵；右侧的 outlier 幅度示意给�
 
 \section{性能分析}
 
-\subsection{带宽账：为什么 aux 链必须达到带宽峰值}
+\subsection{带宽需求：为什么 aux 链必须达到带宽峰值}
 
 设 $B\cdot H = 32$、$N = 8192$、$D = 128$、fp16 输入。Q/K/V 总输入字节
 $3\times32\times8192\times128\times2\,\mathrm{B} \approx 192\,\mathrm{MB}$；量化
@@ -1092,7 +1092,7 @@ knob 化设计正是建立在这个落差上：精度敏感场景上调粒度，
   \item \textbf{pad 列的 0/0}：列统计对 pad 列求均值会得 0/0 = NaN；
         \texttt{v\_stats\_finalize\_kernel} 对 pad 列强制 $v\_scale = 1$。所有
         「统计 + pad」的组合都要过一遍这个检查。
-  \item \textbf{kVTPerm 的配对约束}：置换写只改 $V^{\top}$ 的列序，主 kernel 侧
+  \item \textbf{kVTPerm 的匹配约束}：置换写只改 $V^{\top}$ 的列序，主 kernel 侧
         的 \texttt{PackC8bitToA8bitPermVT} 必须同开。launcher 做了强制检查，但
         绕过 launcher 直接调 kernel 就没有保护——错配是静默错值。
   \item \textbf{e4m3 的 448 与 f16 累加域}：$v_{scale\_max}$ 在 f16 PV 累加路径

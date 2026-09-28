@@ -348,13 +348,13 @@ memory-bound（$100 < 295$）。这解释了一个反直觉的现象：\textbf{�
   \fill[tkOrange] (3.1, 0.389) circle (0.055);
   \fill[tkBlue] (3.1, 1.943) circle (0.055);
   \node[lab, anchor=south west, align=left, text=tkOrange] at (3.5, 0.58)
-    {FP32：$100 > 20$\\compute-bound（贴 67 屋顶）};
+    {FP32：$100 > 20$\\compute-bound（落在 67 屋顶）};
   \node[lab, anchor=west, align=left, text=tkBlue] at (3.75, 1.94)
     {FP16 TC：$100 < 295$\\memory-bound（仍在斜坡：$P=335$）};
   \node[lab, anchor=north west, align=left] at (0.4, 4.6)
     {两条斜坡共线\\（同一带宽 BW = 3.35 TB/s，\\$P = AI \times BW$，H100 SXM）};
   \node[lab, anchor=west, align=left, font=\scriptsize\bfseries]
-    at (6.9, 3.5) {算力翻 15 倍 $\ne$ 更快\\（若 kernel 本就 memory-bound）};
+    at (6.9, 3.5) {算力差 15 倍 $\ne$ 更快\\（若 kernel 本就 memory-bound）};
   \node[lab, anchor=north] at (6.6, -0.42) {算术强度 AI（FLOP/Byte）};
   \node[lab, rotate=90, anchor=south] at (-0.95, 3.3) {可达性能 P（TFLOP/s）};
 \end{tikzpicture}
@@ -500,11 +500,11 @@ RFC-H 升级为正式图（FIG-1-1、FIG-1-2）。这里补充一张「一次 HB
   \node[seg, draw=tkBlue, fill=tkFillBlue, minimum width=1.45cm, minimum height=0.6cm] at (7.875, 0) {A};
   \draw[dashed, black!50] (7.15, -0.5) -- (7.15, 4.05);
   \node[anchor=north, font=\scriptsize, align=center] at (4.3, -0.55)
-    {occupancy = 可切换的 warp 数：A 挂起期间 warp B / C 顶上，发射口不空转};
+    {occupancy = 可切换的 warp 数：A 挂起期间切到 warp B / C，发射口不空转};
   \draw[-{Stealth[length=1.8mm]}] (0, -1.25) -- (9.3, -1.25);
   \node[anchor=west, font=\scriptsize] at (9.35, -1.25) {时间};
 \end{tikzpicture}
-\caption{一次访存的全程与延迟隐藏（蓝=发射/执行，橙=等待/过渡延迟，绿=命中与恢复，红=直落 HBM 的最长延迟）}
+\caption{一次访存的全程与延迟隐藏（蓝=发射/执行，橙=等待/过渡延迟，绿=命中与恢复，红=直达 HBM 的最长延迟）}
 \label{fig:1-3}
 \end{figure}
 

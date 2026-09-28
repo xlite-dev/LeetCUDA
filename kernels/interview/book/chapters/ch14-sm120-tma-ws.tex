@@ -7,7 +7,7 @@
 
 \section{本章导读}
 
-第~\ref{ch:13}~章在 Hopper（sm\_90a）上把「TMA 搬运 + mbarrier 记账 + WGMMA 计算」
+第~\ref{ch:13}~章在 Hopper（sm\_90a）上把「TMA 搬运 + mbarrier 计数 + WGMMA 计算」
 组装成 producer/consumer 双 warpgroup 流水线。本章把同一套基础设施搬到
 \textbf{SM120}，即消费级与工作站 Blackwell（RTX 5090 / PRO 5000 / PRO 6000，
 compute capability 12.0）：TMA 与 mbarrier \textbf{原样保留}，但 WGMMA
@@ -44,7 +44,7 @@ sm120 优化指南一句话总结：sm120 在 warp 组织与 block 限制上更�
 \begin{itemize}
   \item \textbf{搬运层（保留）}。TMA 的收益与计算指令完全正交：单线程提交整块
         2D tile、地址计算与 OOB 填充零寄存器开销、搬运完成由硬件对 mbarrier
-        complete-tx 记账。这些收益在 SM120 上全部保留；
+        执行 complete-tx 计数。这些收益在 SM120 上全部保留；
   \item \textbf{同步层（保留）}。mbarrier 的 arrive/tx 双计数与相位轮转是
         sm\_90+ 的通用机制，「数据到齐」语义不依赖任何计算指令；
   \item \textbf{计算层（退化）}。WGMMA 不可用，consumer 只能回到
@@ -57,7 +57,7 @@ sm120 优化指南一句话总结：sm120 在 warp 组织与 block 限制上更�
 \end{itemize}
 
 但退化的计算层并不推翻 warp specialization 的价值：producer/consumer 分工
-消除的是「搬运与计算争抢发射槽」的结构性开销，这与计算指令是哪一代无关。
+消除的是「搬运与计算竞争发射槽」的结构性开销，这与计算指令是哪一代无关。
 SM120 的 \texttt{setmaxnreg}（寄存器池再分配）\textbf{指令存在且可以
 生效}，但存在一个隐蔽的工程陷阱：当 kernel 里的
 \texttt{cp.\allowbreak{}async.\allowbreak{}bulk.\allowbreak{}tensor} 把目的地址写成
@@ -91,7 +91,7 @@ smem / SM & 228KB & 100KB（L1 共 128KB） & kStages $\le$ 3 \\
 optimization guide 与 PTX ISA Target ISA Notes）。}
 \end{table}
 
-\subsection{producer/consumer 到达数：逐 phase 账本}
+\subsection{producer/consumer 到达数：逐 phase 计数}
 
 mbarrier 的双计数模型（arrive 计数与 tx 字节数同时归零才翻转相位）已在
 13.3.2~节形式化，本章直接用其结论给\textbf{数字}。每个 stage 配一对屏障：
@@ -112,7 +112,7 @@ mbarrier 的双计数模型（arrive 计数与 tx 字节数同时归零才翻转
   \;=\; (128 \times 64 + 128 \times 64) \times 2 \;=\; 32768\ \mathrm{B} ,
   \label{eq:14-tx}
 \end{equation}
-由 A、B 两次 TMA（各 16KB）搬运完成时硬件自动 complete-tx 记账。
+由 A、B 两次 TMA（各 16KB）搬运完成时硬件自动执行 complete-tx 计数。
 于是 \texttt{full[s]} 第 $p$ 相位的翻转条件是：
 \begin{equation}
   \underbrace{128\ \text{consumer arrive}}\sb{\texttt{full[s].\allowbreak{}wait\allowbreak{}(full[s].\allowbreak{}arrive\allowbreak{}())}}
@@ -139,14 +139,14 @@ $\pi = 1$ & C4：上一轮 128 个 consumer 读空该 stage 后 arrive & produce
 $\pi = 2$ & 同 $\pi = 1$，循环 & \ldots \\
 \bottomrule
 \end{tabular}
-\caption{\texttt{empty[s]} 的逐相位到达账本：consumer 的「读空信号」与 producer
+\caption{\texttt{empty[s]} 的逐相位到达计数：consumer 的「读空信号」与 producer
 的「就位信号」在不同时间点到达，同一计数器把它们合并进同一相位。}
 \end{table}
 
 \textbf{为什么漏掉 C0 预热会挂死}：producer 首轮在 \texttt{empty[0]} 上只有自己
 1 次 arrive，$P = 129 - 1 = 128 \ne 0$ 且无 tx，相位永不翻转，GPU 上表现为
 kernel 永不返回。C0（hgemm.cuh~L1967--1969）把 $S$ 个 empty 各预存 128 次，
-producer 的 1 次补满即翻。这套账本与 ch13 完全一致，本章不再重复状态机图
+producer 的 1 次补满即翻。这套计数规则与 ch13 完全一致，本章不再重复状态机图
 （见图~\ref{fig:13-3}），差异只在 consumer 的 128 线程从「WGMMA warpgroup 整体
 arrive」变成「4 个 warp 各自 arrive」，对 mbarrier 而言无区别。
 
@@ -194,7 +194,7 @@ watchdog 超时前没有任何征兆。而 alloc 从 224 降到 208（总 61440�
   tnum/.style={font=\tiny, inner sep=1pt},
 ]
   \node[fill=tkFillBlue, draw=tkBlue, minimum width=0.5cm, minimum height=0.25cm, inner sep=0pt] at (0.3, 0.85) {};
-  \node[font=\scriptsize, anchor=west] at (0.62, 0.85) {producer warp（\texttt{dealloc} 让出）};
+  \node[font=\scriptsize, anchor=west] at (0.62, 0.85) {producer warp（\texttt{dealloc} 释放）};
   \node[fill=tkFillGreen, draw=tkGreen, minimum width=0.5cm, minimum height=0.25cm, inner sep=0pt] at (5.1, 0.85) {};
   \node[font=\scriptsize, anchor=west] at (5.42, 0.85) {consumer warp（\texttt{alloc} 补足）};
   \node[pattern=north east lines, pattern color=gray!45, draw, minimum width=0.5cm, minimum height=0.25cm, inner sep=0pt] at (9.9, 0.85) {};
@@ -219,7 +219,7 @@ watchdog 超时前没有任何征兆。而 alloc 从 224 降到 208（总 61440�
   \node[tnum] at (6.4, -1.9) {57344};
   \node[tkRed, font=\scriptsize, anchor=east] at (12.8, -1.4) {$\Sigma=65{,}536$ 恰好占满};
   \node[tkRed, font=\scriptsize, align=center, anchor=north] at (6.4, -2.3)
-    {alloc\texttt{<224>} 的 \texttt{.inc} 永久阻塞 $\leftrightarrow$ producer 等 consumer 的 barrier arrive——双向互等，纯挂死（无报错）};
+    {alloc\texttt{<224>} 的 \texttt{.inc} 永久阻塞 $\leftrightarrow$ producer 等 consumer 的 barrier arrive——双向互等死锁（无报错）};
   \node[slb] at (-0.25, -4.1) {修正\\alloc\texttt{<224>}$\to$\texttt{<208>}};
   \fill[tkFillBlue] (0, -4.4) rectangle (1.6, -3.8);
   \fill[tkFillGreen] (1.6, -4.4) rectangle (12.0, -3.8);
@@ -236,7 +236,7 @@ watchdog 超时前没有任何征兆。而 alloc 从 224 降到 208（总 61440�
 \end{tikzpicture}
 \caption{setmaxnreg 的 CTA 寄存器池三配置对照（式~\ref{eq:14-pool}，每 SM 寄存器
 文件共 65{,}536 个 32-bit 寄存器）：条形按 $\sum_w 32\,r_w$ 堆叠 producer
-（dealloc 让出）与 consumer（alloc 补足）两段，红色虚线为工程安全界（池余
+（dealloc 释放）与 consumer（alloc 补足）两段，红色虚线为工程安全界（池余
 $\ge$ 2048）。\textcircled{1} 本章源码 dealloc\texttt{<40>}/alloc\texttt{<232>}：
 $5120+29696=34816$，池余 30720，安全；\textcircled{2} ffpa-attn 调优实录的死锁配置
 dealloc\texttt{<64>} $+$ 8 warp $\times$ alloc\texttt{<224>}：$8192+57344=65536$ 恰好占满
@@ -426,7 +426,7 @@ mbarrier，这就是 warp specialization 的定义性特征。
   title={hgemm.cuh L1944-1961（WG0：dealloc 后单线程 P1/P2/P3 循环）}]{../hgemm.cuh}
 
 P1 \texttt{empty[stage].\allowbreak{}wait\allowbreak{}(empty[stage].\allowbreak{}arrive\allowbreak{}())}：先 arrive 后 wait，
-producer 的 1 次到达补足 empty 相位翻转所需的第 129 次 arrive（表 14.2 的账本），
+producer 的 1 次到达补足 empty 相位翻转所需的第 129 次 arrive（表 14.2 的逐相位计数），
 翻转即代表「上一轮 consumer 已读空该 stage」。P2 两条
 \texttt{tma\_load\_2d}：A box 从 $(k \cdot 64,\ \mathrm{by} \cdot 128)$、
 B$^T$ box 从 $(k \cdot 64,\ \mathrm{bx} \cdot 128)$，各 16KB，目标分别是
@@ -441,7 +441,7 @@ producer 只发 3 类共 3--4 条指令，寄存器占用几乎为零，\texttt{
 \lstinputlisting[linerange={1962-1991},firstnumber=auto,breakatwhitespace=true,
   title={hgemm.cuh L1962-1991（WG1：alloc、C0 预 arrive、wait full + proxy fence）}]{../hgemm.cuh}
 
-C0 预热（L1967--1969）的 128 次 arrive 已在 14.3.2 节入账。主循环头
+C0 预热（L1967--1969）的 128 次 arrive 已在 14.3.2 节计入。主循环头
 （L1987--1988）是 consumer 版的 arrive-then-wait 加一条
 \texttt{tma\_\allowbreak{}fence\_\allowbreak{}proxy\_\allowbreak{}async\_\allowbreak{}shared\_\allowbreak{}cta\allowbreak{}()}。为什么整条 consumer 路径
 \textbf{不需要 \_\_syncthreads}？源码 L1990--2013 的注释给了三条理由，归纳：
@@ -492,7 +492,7 @@ $64 \times 64 \times 16$；一轮 K-tile 4 个 k\_step，4 个 warp 合计
 $2 \times 128 \times 128 \times 64$ FLOP，与一个 16KB+16KB 的 TMA 装载量
 对应，算术强度 64 FLOP/B（同 ch13）。循环尾
 \texttt{empty[stage].\allowbreak{}arrive\allowbreak{}()}（L2062）是 C4：128 线程各贡献 1 次到达，
-为 empty 的\textbf{下一相位}攒账（表 14.2 的 $\pi = 1$ 行）。
+为 empty 的\textbf{下一相位}累计到达数（表 14.2 的 $\pi = 1$ 行）。
 
 \lstinputlisting[linerange={2064-2098},firstnumber=auto,breakatwhitespace=true,
   title={hgemm.cuh L2064-2098（epilogue：shuffle 汇聚 fragment + float4 写回）}]{../hgemm.cuh}
@@ -568,7 +568,7 @@ epilogue 与 ch11/ch12 相同：mma m16n8k16 的 C fragment 中，同一 8$\time
     \fi
   }
   \node[sub] at (560,380)
-    {chunk 撇 $=$ chunk 异或 (i mod 8)：i$=$0 恒等，i$=$1 成对交换，i$=$7 全反};
+    {c$'$ $=$ c 异或 (i mod 8)：i$=$0 恒等，i$=$1 成对交换，i$=$7 逆序};
   \draw[-{Stealth}, figorange, line width=1.3pt] (470,195) -- (553,195);
   \node[font=\tiny\bfseries, text=figorange, align=center] at (517,170) {SWIZZLE\\128B};
   \node[draw, line width=0.5pt, fill=gray!18, draw=figgreen, align=center,
@@ -619,12 +619,12 @@ epilogue 与 ch11/ch12 相同：mma m16n8k16 的 C fragment 中，同一 8$\time
   \node[font=\tiny, text=tkGreen, anchor=west] at (250,219) {在 s0 上计算（ldmatrix $+$ mma）};
   \draw[-{Stealth}, tkOrange, dashed, line width=0.8pt] (400,122) -- (400,154);
   \draw[-{Stealth}, tkOrange, dashed, line width=0.8pt] (560,156) -- (620,122);
-  \node[font=\tiny, text=tkOrange, anchor=west] at (430,141) {与 producer 灌 s1 重叠};
+  \node[font=\tiny, text=tkOrange, anchor=west] at (430,141) {与 producer 写 s1 重叠};
   \draw[tkOrange, line width=0.5pt, fill=tkFillOrange] (760,252) rectangle (1090,442);
   \node[font=\scriptsize\bfseries, text=tkOrange, anchor=west] at (774,268) {屏障翻转条件};
   \node[code] at (774,296) {full[s]：128 consumer arrive\\$+$ 1 producer arrive\\$+$ 32768B 落盘};
   \node[code] at (774,356) {empty[s]：128 consumer arrive\\（C4 或 C0 预热）$+$ 1 producer arrive};
-  \node[code] at (774,412) {C0：启动时对 empty[0..S-1]\\各预存 128 次 arrive，点燃流水线};
+  \node[code] at (774,412) {C0：启动时对 empty[0..S-1]\\各预存 128 次 arrive，预热流水线};
   \draw[-{Stealth}, black!45, dashed, line width=0.7pt]
     (140,122) -- (100,122) -- (100,250) -- (250,250) -- (250,226);
   \node[font=\tiny, text=black!55, anchor=west] at (60,268) {P1 等 empty[s0] 翻转};
@@ -633,7 +633,7 @@ epilogue 与 ch11/ch12 相同：mma m16n8k16 的 C fragment 中，同一 8$\time
     minimum width={660*0.0155cm}] at (380,306)
     {overlap：TMA(s1) 在飞时 mma(s0) 在算 $\to$ 搬运延迟被掩盖；稳态 producer 领先至多 kStages-1 个 tile};
 \end{tikzpicture}
-\caption{producer/consumer 时序：C0 预热点燃流水线；此后 producer 的 TMA 提交与 consumer 的 ldmatrix+mma 在不同 stage 上重叠，搬运延迟被计算掩盖；稳态 producer 领先至多 kStages-1 个 tile。}
+\caption{producer/consumer 时序：C0 预热启动流水线；此后 producer 的 TMA 提交与 consumer 的 ldmatrix+mma 在不同 stage 上重叠，搬运延迟被计算掩盖；稳态 producer 领先至多 kStages-1 个 tile。}
 \label{fig:14-2}
 \end{figure}
 
@@ -744,7 +744,7 @@ $8192^3$ 规模下 TMA+MMA+WS 组合把纯 MMA 基础实现（第~\ref{ch:11}~�
 
 \section{常见坑}
 
-\textbf{坑一：setmaxnreg 满池死锁，纯挂死无报错。}式~\ref{eq:14-pool} 的池数学
+\textbf{坑一：setmaxnreg 满池死锁，静默挂死无报错。}式~\ref{eq:14-pool} 的池数学
 必须规划期就算：$\sum 32 r\sb{w} < 65536$ 且留 $\ge$ 2048 slack。
 \texttt{setmaxnreg.\allowbreak{}inc} 是阻塞语义，凑不齐就永远停在那，kernel 表现为
 「无 error、无 illegal access、永不返回」。调试口诀：唯一变量是 setmaxnreg
@@ -852,8 +852,8 @@ consumer 用 mma.sync + ldmatrix 同样获得 $1.57\times$（本章实测）。
 
 \textbf{Q2：full[s] 与 empty[s] 的 arrive count 各是多少？怎么推？}\\
 A：都是 129 $=$ 128 consumer 线程各 1 次 $+$ 1 producer 提交线程。full 的翻转
-还需 32768B complete-tx（A+B 两 box）；empty 靠 C0 预热攒首轮 128 次，
-此后每轮由 consumer 的 C4 攒 128 次、producer 的 P1 补最后 1 次。
+还需 32768B complete-tx（A+B 两 box）；empty 靠 C0 预热预存首轮 128 次，
+此后每轮由 consumer 的 C4 累计 128 次、producer 的 P1 补最后 1 次。
 
 \textbf{Q3：为什么本章 consumer 全程不需要 \_\_syncthreads？}\\
 A：完成性由 barrier 保证（wait 返回即数据落盘）、内存序由
@@ -885,7 +885,7 @@ A：swizzle 周期覆盖整行 64 列时，k\_step 偏移参与 chunk 号高位�
 
 \textbf{Q8：TMA 与 cp.async 的指令开销对比？}\\
 A：cp.async 每线程一条 16B 指令 + 软件成组等待；TMA 每 tile 一条指令（A、B
-共 2 条）+ 硬件记账，地址/OOB/swizzle 全在 descriptor。producer 全轮
+共 2 条）+ 硬件计数，地址/OOB/swizzle 全在 descriptor。producer 全轮
 3--4 条指令 vs 256 线程数千条地址算术。
 
 \section{最小测试与动手实验}

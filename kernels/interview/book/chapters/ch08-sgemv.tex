@@ -49,7 +49,7 @@ head 维度、或某些量化场景下的 16）时，一个 warp 铺不满一行
 
 \section{数学原理}
 
-\subsection{定义与算术强度：两种记账口径}
+\subsection{定义与算术强度：两种计数口径}
 
 GEMV 的定义为
 \begin{equation}
@@ -59,7 +59,7 @@ GEMV 的定义为
 \end{equation}
 即 $A \in \mathbb{R}^{M \times K}$（row-major）、$x \in \mathbb{R}^{K}$、
 $y \in \mathbb{R}^{M}$。总 FLOPs 为 $2MK$（乘、加各计一次）；访存量：读 $A$ 一遍
-$4MK$ 字节，读 $x$、写 $y$ 各 $4K$、$4M$ 字节。关键在 $x$ 怎么记账：
+$4MK$ 字节，读 $x$、写 $y$ 各 $4K$、$4M$ 字节。关键在 $x$ 怎么计数：
 \begin{align}
   \text{AI}\sb{\text{乐观}} &\approx \frac{2MK}{4MK + 4K + 4M} \;\approx\; \frac{1}{2}
   && \text{（$x$ 只读一次：$M$ 大时 $x$ 常驻 L2，边际成本趋零），}
@@ -201,7 +201,7 @@ lane $0\,\dots\,15$ 算第 $m$ 行、lane $16\,\dots\,31$ 算第 $m+1$ 行，每
   \node[draw, align=left, anchor=north west, text width=13.2cm] at (0,-5.35)
     {条带格值 $=k=\mathrm{lane}\bmod 16$（灰 20：行 $m$；灰 55：行 $m{+}1$）。
      4 步交换弧（lane$\leftrightarrow$lane$\oplus$mask）全部落在 segment 内部、
-     永不跨越红线的 segment 边界，两个 16-lane segment 各自收敛、互不串音；
+     永不跨越红线的 segment 边界，两个 16-lane segment 各自收敛、互不干扰；
      收敛结果落在各自 segment 的 lane 0 与 lane 16，写回判据是 \texttt{k==0}
      而非 \texttt{lane==0}。};
 \end{tikzpicture}
@@ -421,7 +421,7 @@ $M = 8$ 时 grid 只有 2 个 block，110 个 SM 中 108 个空闲。正确做�
 \section{面试要点速查}
 
 \textbf{Q1：为什么 GEMV 是 memory-bound？给出数量级。}\\
-A：$AI = 2MK / (4MK + \dots) \approx 0.25 \sim 0.5$ FLOP/B（$x$ 记账口径不同），
+A：$AI = 2MK / (4MK + \dots) \approx 0.25 \sim 0.5$ FLOP/B（$x$ 计数口径不同），
 与 $M$、$K$ 无关；对现代 GPU（拐点数十 FLOP/B）低两个数量级，计算上限不足峰值 1\%，
 优化只剩带宽一件事。
 

@@ -62,7 +62,7 @@ nsys 与 ncu 的采集原理完全不同：
   空隙（gap）、CPU launch 是否跟不上、多流是否真的在重叠。代价低：不需要
   GPU 性能计数器权限，任何环境都能跑，被测程序几乎不失真。
 \item \textbf{ncu（Nsight Compute）}：\textbf{counter replay} 型。要读一个
-  kernel 的成百上千个硬件计数器（SM 吞吐、cache 命中、warp stall……），
+  kernel 的成百上千个硬件计数器（SM 吞吐、cache 命中、warp stall 等），
   而一遍执行采不完这么多计数器，于是 ncu 把 kernel \textbf{回放多遍}，
   每遍采一组；为了数据可比还会锁定时钟。它回答「\textbf{这个 kernel 内部
   慢在哪}」。代价高：单 kernel 深挖、时间被串行化与放大，\textbf{ncu 报告
@@ -207,7 +207,7 @@ ncu --import .tmp/ch00/report_v1.ncu-rep --page raw --csv > report_v1.csv
 \end{lstlisting}
 
 \texttt{-{}-set full} 采全部 section（roofline、occupancy、warp state、
-memory workload、instruction mix……），单 kernel 回放多遍、耗时可观；快速
+memory workload、instruction mix 等），单 kernel 回放多遍、耗时可观；快速
 确认可用默认 basic set。交互式 \texttt{ncu-ui} 看报告，命令行用
 \texttt{-{}-page details}（rule-based 汇总）或 \texttt{-{}-page raw}（原始
 metric，见下）。

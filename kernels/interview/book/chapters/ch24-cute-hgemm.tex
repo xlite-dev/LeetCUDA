@@ -100,7 +100,7 @@ cute::copy(s2r_tiled_copy_a, tAsA(_, _, k_step_next, ismem_read),
 \texttt{cute::gemm}」，把地址算术从代码里拿掉；第~\ref{sec:24-step2}~节
 （第二步）引入 smem 与 \texttt{cp.async}，让搬运与计算重叠；
 第~\ref{sec:24-step3a}、\ref{sec:24-step3b}~节（第三步）再压搬运的形态与
-寄存器账目。每一步的末尾都会点明「这一步留下了什么」，接上后一步的动机。
+寄存器占用。每一步的末尾都会点明「这一步留下了什么」，接上后一步的动机。
 
 \section{数学原理}
 
@@ -154,7 +154,7 @@ $\bigl(\lceil N/B_N\rceil,\lceil M/B_M\rceil\bigr)$。Phase~7c 的默认配置�
 $\supset$ 逻辑 MMA tile $32\times32\times16$（\texttt{TiledMMA} 一次展开多少条
 指令，见下节）$\supset$ atom $16\times8\times16$（一条 \texttt{mma.sync}）。
 CuTe 的层层 partition，本质就是在这座金字塔上做「从塔尖切到塔基」的坐标换算。
-三层之间的尺寸账见图~\ref{fig:24-tile-pyramid}。
+三层之间的尺寸关系见图~\ref{fig:24-tile-pyramid}。
 
 \begin{figure}[H]
 \centering
@@ -218,7 +218,7 @@ CuTe 的层层 partition，本质就是在这座金字塔上做「从塔尖切�
   \node[anchor=south west, font=\scriptsize\bfseries] at (8.8,0.12)
     {atom $16\times8\times16$（一条 \texttt{mma.sync}）};
   \node[anchor=north west, align=left, text width=15.5cm] at (0,-3.1)
-    {三层尺寸账：$\texttt{kMmaPM}=\mathrm{AtomLayout}_M(2)\times16=32$、
+    {三层尺寸关系：$\texttt{kMmaPM}=\mathrm{AtomLayout}_M(2)\times16=32$、
      $\texttt{kMmaPN}=\mathrm{AtomLayout}_N(2)\times\mathrm{EURepeat}_N(2)
      \times8=32$、$\texttt{kMmaPK}=1\times16=16$；线程数 $=32$ lanes
      $\times$ $4$ warps $=128$；$n_{k\text{-step}}=B_K/\texttt{kMmaPK}=2$。
@@ -241,7 +241,7 @@ $16\times8\times16$ 就是一条 \texttt{mma.sync}。CuTe 的层层 partition �
 $B_N$ 随累加精度切换是\textbf{经验性}的：F32 累加器每个元素占 4 字节，寄存器
 压力翻倍，$128\times256$ 的 C tile 在 128 线程下是
 $128\cdot256/128=256$ 个 float 累加器，已经超过可用寄存器的一半，会溢出到
-local memory。第~\ref{sec:24-step3b}~节把两种精度的寄存器账摆开，并用
+local memory。第~\ref{sec:24-step3b}~节把两种精度的寄存器占用摆开，并用
 \texttt{ptxas -v} 的实测数字核对（口径讨论见第~\ref{sec:24-kaogu}~节）。
 $B_K=32$ 与 $k_{\mathrm{stage}}=2$ 一起决定了 smem 占用：
 
@@ -457,7 +457,7 @@ kernel 本体把「全部配置」都收在模板参数里，函数体里没有�
 （第~\ref{sec:24-step1}~节）只留「切块 $\to$ 分区 $\to$ \texttt{cute::gemm}」；
 第二步（第~\ref{sec:24-step2}~节）引入 smem 与 \texttt{cp.async}，把搬运与计算
 重叠起来；第三步（第~\ref{sec:24-step3a}、\ref{sec:24-step3b}~节）把搬运的
-形态、寄存器账目与 epilogue 压到高效。三步共用同一份源码，可以逐段对照读。
+形态、寄存器占用与 epilogue 压到高效。三步共用同一份源码，可以逐段对照读。
 
 \subsection{第一步：切块、分区、\texttt{cute::gemm}}\label{sec:24-step1}
 
@@ -787,16 +787,16 @@ GEMM 实现》里对这一步的总结是「不再是大块到小块的 \texttt{
 而是对已声明的寄存器做线程级 \texttt{retile}」，正是
 \texttt{retile\_\allowbreak{}D\allowbreak{}(t\allowbreak{}Cr\allowbreak{}A)} 做的那件事：\textbf{不搬运数据，只改视图}。
 
-\subsection{第三步之二：寄存器账目与 epilogue 宽写}\label{sec:24-step3b}
+\subsection{第三步之二：寄存器占用与 epilogue 宽写}\label{sec:24-step3b}
 
 \textbf{这一步要解决的问题}：搬运形态定下来之后，还剩两个问题：
 累加器要占多少寄存器（它直接决定 $B_N$ 能取多大，式~\eqref{eq:24-tile}），
 以及 C 怎么从寄存器回到 gmem（它决定写回的效率）。
 
-\paragraph{寄存器账目：$B_N$ 是算出来的，不是挑出来的}
+\paragraph{寄存器占用：$B_N$ 是算出来的，不是挑出来的}
 
 累加器占多少寄存器，只取决于「每个线程负责多少个 C 元素」：$B_M B_N$ 个元素摊
-到 128 个线程上，每线程拿 $B_M B_N/128$ 个。按这个口径把两种配置的账摆开：
+到 128 个线程上，每线程拿 $B_M B_N/128$ 个。按这个口径把两种配置的寄存器占用摆开：
 
 \begin{center}
 \begin{tabular}{llll}

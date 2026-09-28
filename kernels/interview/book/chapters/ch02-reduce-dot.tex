@@ -5,7 +5,7 @@
 \section{本章导读}
 
 归约（reduce）是 GPU 上一切「多对一」计算的总称：求和、求 max、点积、softmax
-的分母、LayerNorm 的均值方差、attention 里的 $\mathrm{LSE}$……全部是归约的
+的分母、LayerNorm 的均值方差、attention 里的 $\mathrm{LSE}$ 等，全部是归约的
 变体。归约写得好不好，直接决定上层算子的下限。本章拆解
 base.cuh Phase 1（L87--305）的四个实现：warp 内蝶形归约（warp\_reduce\_sum /
 warp\_reduce\_max）、block 两级归约（block\_reduce\_sum / block\_reduce\_max）、
@@ -27,10 +27,10 @@ base.cuh L87--305。\textbf{无编译宏限定}。
 放进 GPU 的语境，问题就来了：无论你启动多少线程，一条长依赖链上的
 指令永远无法并行，延迟（数周期的 ALU + 数百周期的访存）完全无法隐藏。
 
-归约优化的核心，就是把这条深链\textbf{改造成浅树}：$N$ 个数两两配对
-相加（$N/2$ 个并行加法），再对结果两两配对（$N/4$ 个）……树高
+归约优化的核心，就是把这条深链条\textbf{改造成浅树}：$N$ 个数两两
+相加（$N/2$ 个并行加法），再对结果两两相加（$N/4$ 个），如此递推，树高
 $\lceil \log\sb 2 N \rceil$，1024 个数只要 10 层。树形化也有代价：
-「谁跟谁配对」变成了结构化的信息，硬件与代码都要按约定交换数据。本章的任务
+「谁跟谁相加」变成了结构化的信息，硬件与代码都要按约定交换数据。本章的任务
 就是讲清这套约定在 GPU 三级存储（寄存器/shuffle、smem、global/atomic）上的
 三种实现。
 
@@ -41,7 +41,7 @@ $\lceil \log\sb 2 N \rceil$，1024 个数只要 10 层。树形化也有代价�
     font=\tiny},
   ar/.style={-{Stealth[length=1.6mm]}, semithick}]
   \node[font=\scriptsize, anchor=south] at (5.2, 6.3)
-    {串行链：$N=1024$，1023 次加法严格串行——每步依赖上一步，延迟一拍不少};
+    {串行链：$N=1024$，1023 次加法严格串行——每步依赖上一步，延迟无法缩短};
   \draw[-{Stealth[length=1.6mm]}, semithick] (0.05, 6.1) -- (10.75, 6.1);
   \foreach \k in {0,...,15}
     \node[sq] at (0.35+0.62*\k, 5.6) {$x_{\k}$};
@@ -52,7 +52,7 @@ $\lceil \log\sb 2 N \rceil$，1024 个数只要 10 层。树形化也有代价�
     {串行深度 $= N-1 = 1023$ 步};
   \draw[ar, dashed, semithick] (5.2, 5.3) -- (5.2, 4.62);
   \node[font=\scriptsize\bfseries, anchor=west, text=tkGreen] at (5.45, 4.95)
-    {拍扁成浅树：$1023 \to 10$ 层};
+    {压缩成浅树：$1023 \to 10$ 层};
   \draw[-{Stealth[length=1.6mm]}, semithick] (0, 0) -- (0, 4.45);
   \node[font=\scriptsize, rotate=90, anchor=south] at (-0.5, 2.2)
     {树高 $\lceil\log_2 1024\rceil = 10$ 层};
@@ -89,7 +89,7 @@ $\lceil \log\sb 2 N \rceil$，1024 个数只要 10 层。树形化也有代价�
   \node[font=\scriptsize, anchor=north] at (3.9, -0.45)
     {每层内加法全部并行（层间汇合一次）：深度 $10 \ll 1023$};
 \end{tikzpicture}
-\caption{串行依赖链与二叉归约树对照（$N=1024$）：上半为串行链——1023 次加法严格依序，无论启动多少线程延迟都无法隐藏；下半为两两配对的归约树——树高 $\lceil\log_2 N\rceil = 10$ 层，每层内加法全部并行（灰度自底向上随节点数减半渐浅）。深度从 $N-1$ 压缩到 $\log_2 N$，代价是「谁跟谁配对」成为必须显式约定的结构信息。}
+\caption{串行依赖链与二叉归约树对照（$N=1024$）：上半为串行链——1023 次加法严格依序，无论启动多少线程延迟都无法隐藏；下半为两两相加的归约树——树高 $\lceil\log_2 N\rceil = 10$ 层，每层内加法全部并行（灰度自底向上随节点数减半渐浅）。深度从 $N-1$ 压缩到 $\log_2 N$，代价是「谁跟谁相加」成为必须显式约定的结构信息。}
 \label{fig:2-4}
 \end{figure}
 
@@ -109,8 +109,8 @@ CUDA 提供 warp 级寄存器交换指令 shuffle：同 warp 的线程可以\tex
   srcLane 的值，用于\textbf{广播}。
 \end{itemize}
 
-蝶形归约（butterfly reduction）用 xor 指令构造配对序列。设 warp 宽度
-$W = 2^{R}$（$R = 5$），第 $r$ 轮（$r = 1, \dots, R$）的掩码为
+蝶形归约（butterfly reduction）用 xor 指令构造两两相对的 lane 对。设 warp
+宽度 $W = 2^{R}$（$R = 5$），第 $r$ 轮（$r = 1, \dots, R$）的掩码为
 $m\sb r = 2^{R-r}$，每个 lane 把自己的值与 lane $i \oplus m\sb r$ 的值相加。
 这个过程有一个干净的解析刻画。定义 $S(r, i)$ 为「$r$ 轮之后 lane $i$ 持有的
 部分和」，则
@@ -128,8 +128,8 @@ $S(0, i) = x\sb i$，成立。归纳步：第 $r$ 轮掩码 $m\sb r = 2^{R-r}$�
 
 $R$ 轮之后 $2^{R-R} = 1$，「模 1 相同」对所有 $j$ 成立，于是
 $S(R, i) = \sum\sb j x\sb j$，即\textbf{每个 lane 都持有完整的归约结果}
-（all-reduce 语义）。这个证明顺带给出 xor 配对的三条性质，源码注释
-（L144--147）把它们总结为：配对对称（$(i \oplus m) \oplus m = i$）、每轮
+（all-reduce 语义）。这个证明顺带给出 xor 成对交换的三条性质，源码注释
+（L144--147）把它们总结为：成对对称（$(i \oplus m) \oplus m = i$）、每轮
 一对一无冲突（$m \neq 0$ 时 $i \oplus m \neq i$）、距离逐轮减半而信息量
 翻倍。
 
@@ -166,9 +166,9 @@ $S(R, i) = \sum\sb j x\sb j$，即\textbf{每个 lane 都持有完整的归约�
     {round3：lane $i$ 加上 lane $i^1$ —— 全和 $x_0+\cdots+x_7$ 出现在每一个 lane};
   \node[draw=black!60, line width=0.5pt, fill=gray!12, minimum width=14.7cm,
     minimum height=0.56cm, font=\small\bfseries] at (7.73, 0.36)
-    {配对跨度 $4 \to 2 \to 1$：每轮 XOR 掩码减半，$\log_2(W)$ 轮后全 lane 持全和};
+    {成对跨度 $4 \to 2 \to 1$：每轮 XOR 掩码减半，$\log_2(W)$ 轮后全 lane 持全和};
 \end{tikzpicture}}
-\caption{warp shuffle 蝶形归约：三轮 XOR 配对（mask $4 \to 2 \to 1$）后全和出现在每一个 lane（以 $W{=}8$ 为例，5 步同理）。}
+\caption{warp shuffle 蝶形归约：三轮 XOR 成对相加（mask $4 \to 2 \to 1$）后全和出现在每一个 lane（以 $W{=}8$ 为例，5 步同理）。}
 \label{fig:2-1}
 \end{figure}
 
@@ -233,17 +233,17 @@ shfl 广播（见 \S\ref{sec:ch02-block}）。
     {lane $i$ 读 lane $i+m$；\\$i+m \ge 8$ 越界读自己（复制），\\污染逐轮扩散};
   \node[font=\scriptsize, anchor=north, align=center, text width=4.4cm]
     at (10.58, 2.15)
-    {lane $i$ 读 lane $i \oplus m$；\\配对对称，每轮全员\\做有效加法};
+    {lane $i$ 读 lane $i \oplus m$；\\成对对称，每轮全员\\做有效加法};
   \node[draw, fill=gray!20, minimum size=0.3cm, inner sep=0pt] at (4.9, 0.5) {};
   \node[font=\scriptsize, anchor=west] at (5.15, 0.5) {有效（正确部分和）};
   \node[draw, fill=gray!80, minimum size=0.3cm, inner sep=0pt] at (8.4, 0.5) {};
   \node[font=\scriptsize, anchor=west] at (8.65, 0.5) {无效 / 被污染（越界读自己）};
 \end{tikzpicture}
-\caption{down 与 xor 两种 shuffle 逐轮对比（$W{=}8$，与图~\ref{fig:2-1} 同尺度，灰 20 = 有效 / 灰 80 = 无效污染）：down 模式 lane $i$ 读 lane $i+m$，越界者读自己（复制），有效 lane 数逐轮减半（$4 \to 2 \to 1$），终态仅 lane0 持正确全和；xor 模式配对对称、每轮全员有效，终态 8 个 lane 全部持有 $\Sigma$（all-reduce）——block 归约的广播步骤因此免费。}
+\caption{down 与 xor 两种 shuffle 逐轮对比（$W{=}8$，与图~\ref{fig:2-1} 同尺度，灰 20 = 有效 / 灰 80 = 无效污染）：down 模式 lane $i$ 读 lane $i+m$，越界者读自己（复制），有效 lane 数逐轮减半（$4 \to 2 \to 1$），终态仅 lane0 持正确全和；xor 模式成对对称、每轮全员有效，终态 8 个 lane 全部持有 $\Sigma$（all-reduce）——block 归约的广播步骤因此不再需要。}
 \label{fig:2-5}
 \end{figure}
 
-\subsection{Block 两级归约的步数账}
+\subsection{Block 两级归约的步数统计}
 
 一个 block 有 $T$ 个线程、$W = T/32$ 个 warp。两级归约的总开销：
 \begin{equation}
@@ -300,21 +300,21 @@ $G$ 个 block 的和汇成一个」的最后一步。base.cuh 用
 当它小于 32 时（如后续 FA 章节的 $W = 4$），异或被限制在 segment 内，
 相邻 segment 互不串扰，一个模板参数同时实现了「归约宽度」与「通信域」，
 这是本书第一处「用编译期参数把语义固化进指令」的示范。\texttt{mask} 从
-$W/2$ 降幕到 1，正是 \S\ref{sec:ch02-math} 推导中 $m\sb r = 2^{R-r}$ 的代码
+$W/2$ 递减到 1，正是 \S\ref{sec:ch02-math} 推导中 $m\sb r = 2^{R-r}$ 的代码
 形态；\texttt{\#pragma unroll} 让 5 轮循环在编译期完全展开成 5 条独立
 shuffle。warp reduce max（L158--166）与 sum 完全同构，只是把 \texttt{+}
 换成 \texttt{max}，不再赘述。
 
-源码注释里还附了一张以 $W=8$ 为例的逐轮配对图（L111--148），它就是
+源码注释里还附了一张以 $W=8$ 为例的逐轮成对图（L111--148），它就是
 图 ch02-1 的底稿：初始时每个 lane 持有自己的值 $v_0 \dots v_7$，此后每一轮
 lane $i$ 与 lane $i \oplus \mathrm{mask}$ 交换并累加，掩码 $4 \to 2 \to 1$
-逐轮减半，掩码归零后循环终止、归约完成。逐轮的配对与部分和演化如下
+逐轮减半，掩码归零后循环终止、归约完成。逐轮的成对相加与部分和演化如下
 （记 $\Sigma\{i_1, i_2, \dots\}$ 为括号内下标元素之和）：
 
 \begin{center}
 \begin{tabular}{clp{4.2cm}p{6.2cm}}
 \toprule
-轮次 & mask & 本轮配对 & 轮后各 lane 持有 \\
+轮次 & mask & 本轮成对元素 & 轮后各 lane 持有 \\
 \midrule
 初始 & --- & --- & 各持己值 $v_0,\, v_1,\, \dots,\, v_7$ \\
 1 & 4 & (0,4) (1,5) (2,6) (3,7) & $v_0{+}v_4,\ v_1{+}v_5,\ \dots,\ v_7{+}v_3$（两两之和） \\
@@ -324,7 +324,7 @@ lane $i$ 与 lane $i \oplus \mathrm{mask}$ 交换并累加，掩码 $4 \to 2 \to
 \end{tabular}
 \end{center}
 
-注释末尾还总结了蝶形配对的关键性质：XOR 配对对称（$(i \oplus m) \oplus m
+注释末尾还总结了蝶形成对交换的关键性质：XOR 成对对称（$(i \oplus m) \oplus m
 = i$），每轮每个 lane 恰与 1 个其他 lane 通信，一对一无冲突；每轮信息传递
 距离减半（$W{=}32$ 时 $16 \to 8 \to 4 \to 2 \to 1$）、信息量翻倍；全程
 $O(\log_2 N)$ 步、纯寄存器操作、无需 shared memory；\texttt{\_\_shfl\_xor\_sync}
@@ -336,7 +336,7 @@ segment 的 lane 参与 shuffle），即前文模板参数所述的通信域行�
 \lstinputlisting[linerange={172-197},firstnumber=auto,
   title={base.cuh L172-197（block reduce sum：注释与实现）}]{../base.cuh}
 
-对照 \S\ref{sec:ch02-math} 的步数账读这段代码：第 1 步
+对照 \S\ref{sec:ch02-math} 的步数统计读这段代码：第 1 步
 \texttt{warp\_\allowbreak{}reduce\_\allowbreak{}sum\allowbreak{}<k\allowbreak{}Warp\allowbreak{}Size>} 是 warp 内 5 轮；第 2 步 lane 0 把
 warp 部分和写进 smem；\texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()} 划出读写边界：没有它，
 先写完的 warp 可能被后写的覆盖；第 3 步是本实现的精髓：\textbf{不是让
@@ -347,7 +347,7 @@ warp 0 独自做二次归约，而是每个 warp 的前 $W$ 个 lane 都读入�
 \textbf{所有} 256 个线程。源码注释「关键！否则每个 warp 只有 lane 小于
 kNumWarps 知道结果」说的就是这一步：归约函数的契约是「block 内全员可见」，
 后续 softmax 除以 $\ell$、norm 除以 $\sigma$ 都依赖它。block reduce max
-（L198--214）同构，哨兵值从 0 换成 \texttt{-FLT\_MAX}。
+（L198--214）同构，初值从 0 换成 \texttt{-FLT\_MAX}。
 
 \subsection{第三层：跨 block 全局归约与点积}\label{sec:ch02-global}
 
@@ -358,7 +358,7 @@ kNumWarps 知道结果」说的就是这一步：归约函数的契约是「bloc
   title={base.cuh L248-277（dot：elementwise 乘法 + block reduce + atomicAdd）}]{../base.cuh}
 
 两个 kernel 共享同一骨架：守卫式加载（\texttt{idx < N} 时取数、否则取
-加法单位元 0，这保证不满的最后一个 block 不污染求和；max 版对应哨兵
+加法单位元 0，这保证不满的最后一个 block 不污染求和；max 版对应
 \texttt{-FLT\_MAX}）$\to$ warp 归约 $\to$ smem 汇合 $\to$ \textbf{warp 0}
 二次归约 $\to$ \textbf{单个线程}写全局。与 block\_reduce\_sum 的两处差异
 值得逐条分析：其一，二次归约只留给 warp 0（\texttt{if (warp == 0)}），
@@ -511,7 +511,7 @@ $\lceil G/K \rceil$，时间随之线性下降。这也是面试里「跨 block 
     {同一时间里数据搬运只需 24 $\mu\mathrm{s}$ $<$ 42 $\mu\mathrm{s}$
      $\Rightarrow$ 瓶颈是同址原子的串行吞吐，不是带宽};
 \end{tikzpicture}
-\caption{全局原子串行化的几何证据：$G=16384$ 个 block 的 atomicAdd 全部汇入同一地址 y 的 L2 原子单元窄队列逐格串行（2.6 ns/op，共约 42 $\mu$s），长于 dot 本身的数据流时间（约 24 $\mu$s）。}
+\caption{全局原子串行化的量化证据：$G=16384$ 个 block 的 atomicAdd 全部汇入同一地址 y 的 L2 原子单元窄队列逐格串行（2.6 ns/op，共约 42 $\mu$s），长于 dot 本身的数据流时间（约 24 $\mu$s）。}
 \label{fig:2-3}
 \end{figure}
 
@@ -557,7 +557,7 @@ vec4 kernel（dot/relu/eadd）统一。relu\_vec4 有同样问题，详见 ch03�
   调度不定序 $\Rightarrow$ run-to-run 抖动；对齐测试要么用容差，要么改
   用确定序的两级归约。
 \item \textbf{warp 内归约后忘记处理 partial warp}。若活跃线程数不足 32
-  （如最后一个不满的 warp），参与归约的 lane 携带哨兵值即可（sum 用 0、
+  （如最后一个不满的 warp），参与归约的 lane 携带中性值即可（sum 用 0、
   max 用 \texttt{-FLT\_MAX}），本实现的守卫式加载已处理；自行修改实现时别丢掉这一步。
 \end{enumerate}
 
@@ -565,7 +565,7 @@ vec4 kernel（dot/relu/eadd）统一。relu\_vec4 有同样问题，详见 ch03�
 
 \begin{itemize}
 \item \textbf{Q：warp reduce 为什么用 \_\_shfl\_xor\_sync 而不是 down？}\\
-  A：xor 配对对称、每轮全员有效、结束后 all-reduce（全员持有结果）；
+  A：xor 成对对称、每轮全员有效、结束后 all-reduce（全员持有结果）；
   down 只有 lane0 有结果、每轮有效 lane 减半。见 \S\ref{sec:ch02-math}
   的不变量证明。
 \item \textbf{Q：写出一个 block 求和的完整步骤？}\\

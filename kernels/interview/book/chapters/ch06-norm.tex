@@ -113,7 +113,7 @@ RMSNorm（Zhang \& Sennrich, 2019）只保留「缩放」而不做「中心化�
   \node[anchor=north, align=center, text width=6.0cm, text=tkOrange!85!black] at (8.6,-4.5)
     {RMSNorm：分母变大 $\Rightarrow$ 不变式被破坏\\$\Rightarrow$ LLaMA 去 QKV 投影 bias};
 \end{tikzpicture}
-\caption{分母的能量分解（恒等式~\eqref{eq:ch06-var-identity}：$\frac{1}{K}\sum_k x_k^2 = \sigma^2 + \mu^2$）：LayerNorm 只除「波动」$\sigma^2$，RMSNorm 除「总能量（波动 $+$ 直流）」。平移 $x \to x+c$ 时 $\sigma^2$ 段宽度不变而 $\mu^2$ 段变长——LayerNorm 输出不变，RMSNorm 分母被推大，这就是去 bias 的架构连锁（3.3 节第 3 条）。}
+\caption{分母的能量分解（恒等式~\eqref{eq:ch06-var-identity}：$\frac{1}{K}\sum_k x_k^2 = \sigma^2 + \mu^2$）：LayerNorm 只除「波动」$\sigma^2$，RMSNorm 除「总能量（波动 $+$ 直流）」。平移 $x \to x+c$ 时 $\sigma^2$ 段宽度不变而 $\mu^2$ 段变长——LayerNorm 输出不变，RMSNorm 分母增大，这就是去 bias 的架构连锁（3.3 节第 3 条）。}
 \label{fig:6-2}
 \end{figure}
 
@@ -320,7 +320,7 @@ vec4 化带来一个标量版没有的实现细节：Pass 2 需要再次用到 $
   \node[sync] at (2.62,-7.8) {（显式）};
   \draw[-{Latex[length=2mm]}, very thick] (mu.east) -- (5.9,-2.6) -- (5.9,-4.2) -- (sq2.east);
   \node[font=\tiny, align=left, anchor=west] at (6.0,-3.4)
-    {$\mu$ 广播（加粗）\\$\sigma^2$ 依赖 $\mu$：依赖链\\把结构拉长为两段};
+    {$\mu$ 广播（加粗）\\$\sigma^2$ 依赖 $\mu$：依赖链\\流程分为两段};
   \draw[-{Latex[length=1.8mm]}, dashed, gray] (st2.east) -- (6.3,-6.9) -- (6.3,-8.5) -- (el2.east);
   \node[font=\tiny, gray, anchor=west] at (6.4,-7.7) {$s$ 广播};
 \end{tikzpicture}

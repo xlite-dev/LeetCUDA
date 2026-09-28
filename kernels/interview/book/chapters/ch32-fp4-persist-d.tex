@@ -38,7 +38,7 @@ $\mathrm{amax}$ 恰好铺满 ue4m3 的域。
 
 \textbf{硬件侧的结构约束}。blockscale MMA
 （\texttt{m16n32k64 kind::mxf4nvf4}，\texttt{attn\_traits.cuh} L77）要
-求 K 维 64 对齐、SF 以 \texttt{scale\_vec::4X} 旁路喂入；P 作为 A 操作
+求 K 维 64 对齐、SF 以 \texttt{scale\_vec::4X} 旁路输入；P 作为 A 操作
 数必须以 data+SF 的 zip 形式出现（\texttt{fp4\_pscale.cuh} L314--346 的
 pack 注释）。这套约束决定了 P 量化必须发生在寄存器里、紧贴 MMA。
 
@@ -309,7 +309,7 @@ exp2 参数，两级 scale 在数据通路里都不占显式乘法。图~\ref{fi
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.4}{5.5}\selectfont \bfseries \color{tkGreen!70!black} }] at (11.18,-3.958) {$\div$s\_P2};% w=1.109
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (0.37,-4.25) {还原：O = FP4MM($\hat{P}$$_2$, s\_P2, $\hat{V}$, s\_V) ------ 2688 在 O 与 row\_sum 同现，finalize 相除精确消去};% w=17.094
     \node[draw=gray!55, fill=black!2, line width=0.5pt, minimum width=8.32cm, minimum height=3.39cm, inner sep=1pt, align=center, text width=8.25cm, font={\fontsize{5.7}{7.1}\selectfont }] at (4.528,-6.314) {};
-    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries }] at (0.616,-4.897) {(4) 实现的红利：第一级退化成常数};% w=7.854
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries }] at (0.616,-4.897) {(4) 实现的收益：第一级退化成常数};% w=7.854
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkPurple} }] at (0.616,-5.452) {online softmax 先减运行行 max $\Rightarrow$\\rowmax($\tilde{P}$) $\equiv$ 1 $\Rightarrow$ s\_P1 $\equiv$ 1/(448$\times$6)};% w=7.854
     \node[draw=black!30, fill=black!2, line width=0.5pt, minimum width=7.85cm, minimum height=0.92cm, inner sep=1pt, align=center, text width=7.79cm, font={\fontsize{4.8}{6.0}\selectfont \color{black!65} }] at (4.543,-6.376) {P$_2$ = exp2(S$\cdot$L $-$ m$\cdot$L + log2(1/2688)) $\in$ [0, 2688]\\s\_P2 = exp2(a$\cdot$L $-$ m\_sc + log2(1/6)) $\in$ (0, 448]\\（L = scale$\cdot$log2e；编译期常数 $-$11.392 / $-$2.585）};
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkGreen!70!black} }] at (0.616,-7.115) {逐行的 s\_P1 存储与乘回全部消失};% w=7.854

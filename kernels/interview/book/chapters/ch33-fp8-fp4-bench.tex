@@ -100,7 +100,7 @@
   \node[anchor=north west, align=left, text width=14.5cm, font=\tiny] at (0,-1.20)
     {「3$\times$」里一大半是 MATH 参照自身的低效，不是量化快（坑 6）——报告
      $D{>}256$ 的 speedup 必须注明参照换挡。外推口径：D=256 同为 split-D 家族且参照是
-     FA2，实测 1.30$\times$ 借作「真加速」估计；$21.71\times1.30\approx28.2$ms，
+     FA2，实测 1.30$\times$ 用作「真加速」估计；$21.71\times1.30\approx28.2$ms，
      $64.74/28.2\approx2.29\times$。};
 \end{tikzpicture}
 \caption{参照系视角看表~\ref{tab:33-fp8-matrix} 的 self 行。左：SDPA 参照随 $D$
@@ -210,7 +210,7 @@ $0.82T$。这解释了为什么扩散模型（attention 占比高、D 偏小）�
      是同一公式在训练侧的实例。};
 \end{tikzpicture}
 \caption{端到端摊销曲线族（式~\ref{eq:33-e2e}）：单算子 $S_{\mathrm{attn}}$ 换算到
-管线收益由 attention 占比 $\alpha$ 封顶。$\alpha{=}0.3$、$S_{\mathrm{attn}}{=}2.5\times$
+管线收益由 attention 占比 $\alpha$ 决定上界。$\alpha{=}0.3$、$S_{\mathrm{attn}}{=}2.5\times$
 时只剩 $1.22\times$；$\alpha\to1$ 的渐近线即 $S_{\mathrm{attn}}$。}
 \label{fig:33-e2e-amortize}
 \end{figure}
@@ -567,10 +567,10 @@ fp4，精度损失只在最敏感的位置修正。README 引用的 NeMo Automod
   \item \textbf{小 D 静默回退}：D$\le$256 不设
         \texttt{FFPA\_CUDA\_ALLOW\_SMALL\_D=1} 时 FFPA 静默走
         SDPA fallback——看到 TFLOPS 只有 200T 级、profiler 里是
-        \texttt{flash\_fwd\_kernel} 就是中招；
+        \texttt{flash\_fwd\_kernel} 就是静默回退的表现；
   \item \textbf{功耗墙顺序偏置}：高功耗卡上单顺序 bench 谁排后面
         谁吃亏（实测差 466--491$\mu$s）；必须 pre-heat + 固定顺序，
-        关键结论用配对窗口交替复核；
+        关键结论用匹配窗口交替复核；
   \item \textbf{grad-on 测推理}：autograd 链每调用多 $\sim$30$\mu$s
         Python 开销，且 fast path 永不命中——推理 bench 必须
         \texttt{no\_grad}；

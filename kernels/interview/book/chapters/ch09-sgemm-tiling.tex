@@ -77,7 +77,7 @@ $\mathrm{addr}(A\sb{m,k}) = mK + k$、$\mathrm{addr}(B\sb{k,n}) = kN + n$
 
 一个 block 负责 $C$ 的 $B\sb{M} \times B\sb{N}$ 子块。沿 $K$ 按 $B\sb{K}$ 切片循环，
 每个 k-slice 从 gmem 搬入 $A$ 的 $B\sb{M} \times B\sb{K}$ 与 $B$ 的 $B\sb{K} \times B\sb{N}$
-两块 smem，然后完成 $B\sb{M} \times B\sb{N} \times B\sb{K}$ 的乘加。按 block 记账：
+两块 smem，然后完成 $B\sb{M} \times B\sb{N} \times B\sb{K}$ 的乘加。按 block 计数：
 \begin{equation}
   \mathrm{AI}\sb{tile}
   \;=\; \frac{2\, B\sb{M} B\sb{N} B\sb{K}}
@@ -91,7 +91,7 @@ $B\sb{K}$ 在分子分母间相消，\textbf{加深 $B\sb{K}$ 不提升 AI}，�
 $128 \times 128 \to \mathrm{AI} = 32$~FLOP/B，恰好是四级递进（naive $0.25 \to 8 \to 32$）。
 方型 tile 时式~\ref{eq:9-ai-tile} 简化为 $B/4$：每边翻倍，AI 翻倍。
 
-\subsection{Thread Tile：换一层记账——smem 到寄存器}
+\subsection{Thread Tile：换一层计数——smem 到寄存器}
 
 Thread tile \textbf{不改变} gmem 流量（那是 block tile 决定的），它优化的是
 smem$\to$寄存器这一跳。每线程算 $T\sb{M} \times T\sb{N}$ 个输出，则沿 $k$ 每一步：
@@ -168,7 +168,7 @@ naive（AI $0.25$）计算上限 $\approx 0.23$ TFLOPS；
      load $k{+}1$ 与 compute $k$ 重叠，\\两类空转消失};
   \draw[->, dashed] (11.5,-2.6) -- (9.3,-1.25);
 \end{tikzpicture}
-\caption{单缓冲 k-slice 循环的双栅栏时序（3 个迭代）：load（蓝）$\to$ 栅栏 1（消费前）$\to$ compute（紫）$\to$ 栅栏 2（覆写前）。load 期间 CUDA Core 空转、compute 期间搬运单元空转——「搬一算一」串行使两个窗口无法重叠；双缓冲（图~\ref{fig:10-1}）正是为消除这两类空转而来。}
+\caption{单缓冲 k-slice 循环的双栅栏时序（3 个迭代）：load（蓝）$\to$ 栅栏 1（消费前）$\to$ compute（紫）$\to$ 栅栏 2（覆写前）。load 期间 CUDA Core 空转、compute 期间搬运单元空转——「搬一算一」串行使两个窗口无法重叠；双缓冲（图~\ref{fig:10-1}）正是为消除这两类空转而设计。}
 \label{fig:09-single-barrier}
 \end{figure}
 
@@ -280,9 +280,9 @@ row-major）；$B\sb{M}=B\sb{N}=128$、$B\sb{K}=32$，block $(32,32)$ 共 1024 �
 每线程负责 $4\times4=16$ 个 $C$ 元素，$1024\times16=16384=128\times128$，恰好
 铺满；Grid $((N+127)/128,\ (M+127)/128,\ 1)$。边界假设与 Level 1 naive 版
 一致：$M$/$N$ 为 128 的倍数、$K$ 为 32 的倍数。线程到 $4\times4$ tile 的映射
-与加载映射\textbf{解耦}（独立计算更清晰）；注释还预警了计算阶段 \texttt{s\_b} 的
+与加载映射\textbf{解耦}（独立计算更清晰）；注释还提示了计算阶段 \texttt{s\_b} 的
 bank conflict（4-way，生产代码可用 \texttt{s\_b[BK][BN+1]} PAD 打散，这里保持
-最简布局便于讲解）。映射与预警下文逐一验算。
+最简布局便于讲解）。映射与提示下文逐一验算。
 
 先独立验证注释里的两套映射（都能对上）：\textbf{加载映射}，$A$ 块 $128 \times 32$：
 每线程 4 个元素，$8$ 线程铺满一行 32 列（$\mathrm{tid}/8$ 定行、$(\mathrm{tid}\%8) \cdot 4$ 定列组），
@@ -353,7 +353,7 @@ $= 16384 = 128 \times 128$，不重不漏（vec4 落点见图~\ref{fig:09-vec4-m
 \label{fig:09-vec4-map}
 \end{figure}
 
-注释 L99--102 的 bank conflict 预警也经推导属实：计算阶段读 \texttt{s\_b[k][n]}
+注释 L99--102 的 bank conflict 提示也经推导属实：计算阶段读 \texttt{s\_b[k][n]}
 时，warp 内列地址步进 4 个 float（16B），32 个 lane 只命中 8 个 bank，
 4-way conflict；生产代码用 \texttt{s\_\allowbreak{}b[BK][BN+1]} 加一列 PAD 打散，
 本章保持最简布局，把系统解法（swizzle）留给第~\ref{ch:12}~章
@@ -442,7 +442,7 @@ $4 \times 128$ 的 C 横带}。金字塔的 warp 级在本章无需额外代码�
      \texttt{smem = sA[128][32]}\\\texttt{+ sB[32][128]} $= 32$KB；\\
      沿 $K$ 循环 $K/32$ 轮，\\每轮两道栅栏夹计算窗口};
   \node[anchor=west, fill=colorx6!12, inner sep=2.5pt, font=\scriptsize\bfseries] at (7.2,-0.62)
-    {warp 级（隐式）：一个 warp 承包 $4 \times 128$ C 横带};
+    {warp 级（隐式）：每个 warp 负责 $4 \times 128$ C 横带};
   \node[draw=colorx6!55, fill=colorx6!25, font=\tiny, minimum width=6.4cm, minimum height=0.34cm]
     at (10.3,-1.55) {row band $(tid/32){\times}4$ \ $\times$ 128 cols};
   \node[draw=colorx6!55, fill=colorx6!10, font=\tiny, minimum width=6.4cm, minimum height=0.34cm]
@@ -472,7 +472,7 @@ $4 \times 128$ 的 C 横带}。金字塔的 warp 级在本章无需额外代码�
      AI(smem) $= 1.0$ FLOP/B（naive 0.25）};
   \node[draw=gray!50, fill=gray!14, font=\scriptsize\bfseries,
     minimum width=16.2cm, minimum height=0.55cm] at (8.2,-6.6)
-    {AI 阶梯：naive 0.25 $\to$ block $32{\times}32$: 8 $\to$ block $128{\times}128$: 32 FLOP/B（乘 smem 复用逐级放大）};
+    {AI 阶梯：naive 0.25 $\to$ block $32{\times}32$: 8 $\to$ block $128{\times}128$: 32 FLOP/B（借 smem 复用逐级放大）};
 \end{tikzpicture}
 \caption{四级 tiling 递进：grid 级切 $C$ 为 block tile；block 级用 smem 承载 $A$/$B$ 切片；warp 级是隐式的 $4\times128$ 横带；thread 级是 $4\times4$ 寄存器 tile。AI 阶梯：naive $0.25 \to$ block $32{\times}32{:}\ 8 \to$ block $128{\times}128{:}\ 32$ FLOP/B。}
 \label{fig:9-1}
@@ -534,7 +534,7 @@ $4 \times 4 = 16$ 个 block，110 个 SM 有 94 个空闲；naive 同形状有 2
   问题一：正确的 block tile 推导（式~\ref{eq:9-ai-tile}）中 $B\sb{K}$ 在分子分母间
   \textbf{相消}，AI 与 $B\sb{K}$ 无关，把 $B\sb{K}$ 放进分子会得出「加深 K 切片
   就能提升 AI」的错误直觉；数值上 $32 \times 32$ tile 的 AI 是 8 而非 4。
-  问题二：Level 2 公式代入 $T\sb{M}{=}T\sb{N}{=}B\sb{K}{=}8$ 得 64，与任何记账口径都对不上：
+  问题二：Level 2 公式代入 $T\sb{M}{=}T\sb{N}{=}B\sb{K}{=}8$ 得 64，与任何计数口径都对不上：
   thread tile 不改变 gmem AI（仍由 block tile 决定），它提升的是 smem 级计算密度
   （式~\ref{eq:9-ai-thread}，$1 \times 1$ 的 0.25 到 $4 \times 4$ 的 1.0，即 4 倍）。
   两个公式的\textbf{定性结论}（Level 1 仍 memory-bound、Level 2 起向 compute-bound

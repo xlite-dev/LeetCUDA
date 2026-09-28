@@ -355,7 +355,7 @@ lane $4r + \mathrm{tig}$ 的寄存器 $r\sb i$ 的 $\mathrm{tig}$ 列对，
     {t=0-7 $\to$ m0; \ t=8-15 $\to$ m1; \ t=16-23 $\to$ m2; \ t=24-31 $\to$ m3};
   \node[draw=tkBlue, fill=tkFillBlue, align=center, font=\tiny\bfseries,
     minimum width=8.0cm, minimum height=0.5cm] at (4.0,-4.0)
-    {象限序 [UL, LL, UR, LR] $=$ mma 期望序（Eq 11.1），开箱即用};
+    {象限序 [UL, LL, UR, LR] $=$ mma 期望序（Eq 11.1），无需重排};
   \node[anchor=west, fill=tkFillGreen, draw=tkGreen, inner sep=2.5pt, font=\scriptsize\bfseries] at (8.8,-0.62)
     {B $k16n8$（存成 $B^{\top}$ 的 $n16k16$ 行主序）$\to$ two $8{\times}8$（x2）};
   \node[draw=colorx4!70!black, fill=colorx4!12, align=center, font=\tiny,
@@ -386,7 +386,7 @@ in-flight，即迭代 $k$ 结束时，tile $k{+}1$ 必须就位（供迭代 $k{+
 tile $k{+}2$ 的那组允许还没到。尾部（$k + \mathrm{kStages} - 1 \ge
 \mathrm{NUM\_K\_TILES}$，没有新 tile 可预取）切到 \texttt{wait\_\allowbreak{}group\allowbreak{}(0)}
 排空。与第~\ref{ch:10}~章对比：两级流水每个迭代都要 wait(0) 收口，
-三级流水稳态只 wait(1)。「组」这个记账单位让同步粒度从「每迭代全等」
+三级流水稳态只 wait(1)。「组」这个计数单位让同步粒度从「每迭代全等」
 放松为「保持距离即可」。三级轮转的稳态与尾部时序见图~\ref{fig:11-kstages3}。
 
 \begin{figure}[H]
@@ -529,7 +529,7 @@ CuTe 的 TiledMMA 与 Value Tile 概念（L180--183），
        $B\sb M = 16\cdot2\cdot4 = 128$，\quad $B\sb N = 8\cdot4\cdot4 = 128$};
   \end{scope}
 \end{tikzpicture}
-\caption{MMA warp $2\times4$ 排布（左，$128\times128$ block tile，浅色 $=$ warp 身份）：MMA0--7 按列主序——N 向 MMA0/2/4/6、M 向 MMA1/3/5/7（\texttt{warp\_m = warp\_id\%2} 变化快）；每 warp 块内 $4\times4$ 个 $m16n8$ atom 小格。右：单 warp 块放大（warp tile $64\times32$，蓝深 $=$ atom 块内位置）；侧栏三层记号 $B\sb M=16\cdot2\cdot4$、$B\sb N=8\cdot4\cdot4$。}
+\caption{MMA warp $2\times4$ 排布（左，$128\times128$ block tile，浅色 $=$ warp\_id）：MMA0--7 按列主序——N 向 MMA0/2/4/6、M 向 MMA1/3/5/7（\texttt{warp\_m = warp\_id\%2} 变化快）；每 warp 块内 $4\times4$ 个 $m16n8$ atom 小格。右：单 warp 块放大（warp tile $64\times32$，蓝深 $=$ atom 块内位置）；侧栏三层记号 $B\sb M=16\cdot2\cdot4$、$B\sb N=8\cdot4\cdot4$。}
 \label{fig:11-mma-layout}
 \end{figure}
 
@@ -651,7 +651,7 @@ WMMA 做不到这一点（对照第~\ref{ch:10}~章坑五）。收拢与写回�
     \node at (2.1,{\yc-0.14}) {$c\sb\cb$};
   }
   \draw[very thick, vscAccent] (0,0.77) rectangle (\lw,1.33);
-  \node[anchor=south, text=vscAccent] at (1.3,1.42) {\texttt{lane\%4==0} 出手};
+  \node[anchor=south, text=vscAccent] at (1.3,1.42) {\texttt{lane\%4==0} 写回};
   \draw[->, thick] (2.7,0.3) .. controls +(0.5,0.1) and +(0.5,-0.12) .. (2.68,1.05);
   \draw[->, thick] (2.7,-0.45) .. controls +(0.85,0.18) and +(0.85,-0.2) .. (2.68,1.05);
   \draw[->, thick] (2.7,-1.2) .. controls +(1.2,0.28) and +(1.2,-0.3) .. (2.68,1.05);
@@ -797,7 +797,7 @@ HGEMM MMA (S=3, BLK\_SW=1) & 0.000e+00 & 127.3/246.9 (0.52x) \\
 而 \texttt{commit\_\allowbreak{}group} 在分支内。尾部迭代不 commit 却 wait(0)，
 per-thread 组计数对不上会提前放行（好在上一次的 sync 兜底；
 本 kernel 尾部迭代 \texttt{wait\_\allowbreak{}group\allowbreak{}(0)} 等到的是「至多 0 组」，
-语义仍安全）。改造时保持 commit/wait 配对的对称性。
+语义仍安全）。改造时保持 commit/wait 匹配的对称性。
 
 \textbf{坑五：f16 累加的精度陡降。}\texttt{f16.f16.f16.f16} 的累加
 「至少半精度」：每条 mma 边界舍回 f16。K$=$128 实测

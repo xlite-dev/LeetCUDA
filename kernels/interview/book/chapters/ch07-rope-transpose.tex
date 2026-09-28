@@ -106,11 +106,11 @@ $R^{d}_{\Theta}$ 是 $d/2$ 个 $2\times 2$ 旋转块排布在主对角线上的\
     {非对角区全零（浅灰）：$d/2$ 个 2D 旋转互相独立；位置 $m$ 的变换为 $R^{d}_{\Theta}(m)$——每块角度 $\times m$\\
      灰度语义同图~\ref{fig:7-2}：同 $\theta_i$ 同灰度，$\theta_0$ 最深（最高频）$\to$ 渐浅（最低频）};
 \end{tikzpicture}
-\caption{分块对角旋转矩阵 $R^{d}_{\Theta}$ 的结构（$d=8$ 示意，即 4 个 $2\times2$ 旋转块；式~\eqref{eq:ch07-blockdiag}）：第一块展开为 $\bigl(\begin{smallmatrix}\cos\theta_0 & -\sin\theta_0\\[3pt] \sin\theta_0 & \cos\theta_0\end{smallmatrix}\bigr)$，其余块同构、角度按 $\theta_i=10000^{-2i/d}$ 等比衰减；非对角区全零，各对独立旋转。块灰度沿 $i$ 渐变，与图~\ref{fig:7-2} 的配对灰度语义一致。}
+\caption{分块对角旋转矩阵 $R^{d}_{\Theta}$ 的结构（$d=8$ 示意，即 4 个 $2\times2$ 旋转块；式~\eqref{eq:ch07-blockdiag}）：第一块展开为 $\bigl(\begin{smallmatrix}\cos\theta_0 & -\sin\theta_0\\[3pt] \sin\theta_0 & \cos\theta_0\end{smallmatrix}\bigr)$，其余块同构、角度按 $\theta_i=10000^{-2i/d}$ 等比衰减；非对角区全零，各对独立旋转。块灰度沿 $i$ 渐变，与图~\ref{fig:7-2} 的分组灰度语义一致。}
 \label{fig:7-4}
 \end{figure}
 
-需要特别注意\textbf{配对约定}：式~\eqref{eq:ch07-blockdiag} 只规定了「哪两个分量组成一对」，没有规定配对的枚举顺序。常见的两种是\textbf{相邻对}（interleaved：$(x_0,x_1), (x_2,x_3), \dots$，原始论文与本源码采用）与\textbf{半分对}（half-split：$(x_0, x_{d/2}), (x_1, x_{d/2+1}), \dots$，HuggingFace transformers 的 \texttt{rotate\_half} 实现）。两者是同一数学对象在不同分量排列下的表现形式，逐对重排即可互相转换；但 checkpoint 权重与 KV cache 布局如果不做对应重排，结果就是错的，对齐 HuggingFace 权重时这是经典坑（见本章实践经验）。
+需要特别注意\textbf{分组约定}：式~\eqref{eq:ch07-blockdiag} 只规定了「哪两个分量组成一对」，没有规定分组的枚举顺序。常见的两种是\textbf{相邻对}（interleaved：$(x_0,x_1), (x_2,x_3), \dots$，原始论文与本源码采用）与\textbf{半分对}（half-split：$(x_0, x_{d/2}), (x_1, x_{d/2+1}), \dots$，HuggingFace transformers 的 \texttt{rotate\_half} 实现）。两者是同一数学对象在不同分量排列下的表现形式，两两重排即可互相转换；但 checkpoint 权重与 KV cache 布局如果不做对应重排，结果就是错的，对齐 HuggingFace 权重时这是经典坑（见本章实践经验）。
 
 \begin{figure}[htbp]
 \centering
@@ -171,9 +171,9 @@ $R^{d}_{\Theta}$ 是 $d/2$ 个 $2\times 2$ 旋转块排布在主对角线上的\
   \node[text=tkOrange!85!black] at (7.130,-3.220) {$(x_7,x_{15})$};
   \node[anchor=west, font=\tiny, align=left] at (0,-4.35)
     {同灰度 = 同一旋转对（共用同一 $\theta_i$）；灰度随 $i$ 从最深（$\theta_0=1$，最高频）渐浅（$\theta_{d/2-1}\approx 10^{-4}$，最低频）。\\
-     \textcolor{tkRed!85!black}{两种排列逐对重排即可互相转换；checkpoint 权重 / KV cache 不做对应重排直接套用即错。}};
+     \textcolor{tkRed!85!black}{两种排列两两重排即可互相转换；checkpoint 权重 / KV cache 不做对应重排直接套用即错。}};
 \end{tikzpicture}
-\caption{RoPE 两种配对约定（示意 $d{=}16$，即 8 对；源码测试为每 token $N{=}64$ 对）：相邻对 interleaved（源码 \texttt{idx*2}/\texttt{idx*2+1}）与半分对 half-split（HuggingFace \texttt{rotate\_half}）。同灰度格属于同一旋转对、共用同一 $\theta_i$；两行是同一分块对角旋转在不同分量排列下的形态。}
+\caption{RoPE 两种分组约定（示意 $d{=}16$，即 8 对；源码测试为每 token $N{=}64$ 对）：相邻对 interleaved（源码 \texttt{idx*2}/\texttt{idx*2+1}）与半分对 half-split（HuggingFace \texttt{rotate\_half}）。同灰度格属于同一旋转对、共用同一 $\theta_i$；两行是同一分块对角旋转在不同分量排列下的形态。}
 \label{fig:7-2}
 \end{figure}
 
@@ -186,7 +186,7 @@ $R^{d}_{\Theta}$ 是 $d/2$ 个 $2\times 2$ 旋转块排布在主对角线上的\
 \subsection{rope：每线程一对元素}
 
 \lstinputlisting[linerange={805-834},firstnumber=auto,
-  title={base.cuh L805-834（rope：相邻对配对的 RoPE kernel）}]{../base.cuh}
+  title={base.cuh L805-834（rope：按相邻对分组的 RoPE kernel）}]{../base.cuh}
 
 \textbf{索引解码}。\texttt{idx} 是「维度对」的全局编号，范围 $[0, \text{seq\_len} \times N)$，其中参数 $N$ 是\textbf{每 token 的对数}（$N = d/2$，hidden size 为 $2N$）。\texttt{token\_pos = idx / N} 解出序列位置 $m$，\texttt{token\_idx = idx \% N} 解出 token 内的对号 $i$。一对分量占两个连续地址 \texttt{x[idx*2]} 与 \texttt{x[idx*2+1]}。
 
@@ -307,7 +307,7 @@ shared memory 被切成 32 个 bank（对应一个 warp 的 32 线程），每�
   \foreach \bk in {0,8,16,24,31}
     \node[anchor=north, font=\tiny] at ({\bk*0.2+0.08},-3.66) {\bk};
   \node[anchor=west, align=left, font=\tiny] at (0.62,-2.75)
-    {16 线程挤进同一 bank\\柱高 $=$ 该 bank 线程数};
+    {16 线程落在同一 bank\\柱高 $=$ 该 bank 线程数};
   \node[anchor=north] at (3.2,-4.28) {\textbf{16-way}：$2$ bank $\times$ 16 线程（吞吐 $1/16$）};
   \node[align=center, anchor=south] at (10.6,-2.08)
     {\textbf{Step 2 读 smem（LD）}：PAD=1（$W{=}17$）\\ bank $=(4tx{+}17j{+}ty)\bmod 32$};
@@ -361,7 +361,7 @@ shared memory 被切成 32 个 bank（对应一个 warp 的 32 线程），每�
     minimum width=6.4cm, minimum height=0.62cm] at (12.6,-3.32)
     {$\Rightarrow$ 2-way conflict，读 smem 吞吐 $1/2$};
   \node[anchor=north west, align=left, font=\tiny, text width=15.8cm] at (0,-3.78)
-    {原因：$64 \bmod 32 = 0$（$tx$ 项被吞），$68 \bmod 32 = 4$（$tx$ 项以 $+4$ 步进重新出现）；\\
+    {原因：$64 \bmod 32 = 0$（$tx$ 项消失），$68 \bmod 32 = 4$（$tx$ 项以 $+4$ 步进重新出现）；\\
      warp0: $ty=\{0,1\}$, $tx=0..15$, $j=0$（\texttt{base.cuh} 转置读 Step2）};
 \end{tikzpicture}
 \caption{bank conflict vs padding——PAD=1 使步长 64B 变为 68B，$tx$ 项在 mod 32 下重新出现，16-way 冲突降为 2-way（读 smem 吞吐 $1/16 \to 1/2$）。}
@@ -411,8 +411,8 @@ $M$ & mat\_transpose (naive) & mat\_transpose\_padded & 加速比 \\
 源码注释把 PAD 表述为「Bank conflict fix：每行多 1 个元素，打破 32-bank 对齐」与「解决方案：PAD……打破地址对齐」。按本章第 5 节的逐指令 bank 直方图：PAD=1 把 Step 2 转置读从 16-way 降到 2-way（主要收益），Step 1 写侧 PAD 前后均为 2-way。即注释的结论在数量级上成立（读事务 16 $\to$ 2），但「消除」并不准确，要彻底消除需要第 \ref{ch:12} 章的 swizzle 或改变每线程 4 行的分工。经典「一线程一元素 + $32\times33$ tile」布局才是 PAD 完全消除冲突的形态。
 \end{kaogu}
 
-\begin{kaogu}[F5 | RoPE 的配对约定考据]
-本 kernel 为相邻对（interleaved）配对：\texttt{idx*2} 与 \texttt{idx*2+1} 成对，$\theta_i$ 作用于 $(x_{2i}, x_{2i+1})$。HuggingFace transformers 主流实现（\texttt{rotate\_half}）为半分（half-split）配对：$(x_i, x_{i+d/2})$。两者经逐对重排后数学等价，但直接套用权重不做重排会得到错误结果；社区若干「RoPE 精度不对」的 issue 根因即在此。
+\begin{kaogu}[F5 | RoPE 的分组约定考据]
+本 kernel 按相邻对（interleaved）分组：\texttt{idx*2} 与 \texttt{idx*2+1} 成对，$\theta_i$ 作用于 $(x_{2i}, x_{2i+1})$。HuggingFace transformers 主流实现（\texttt{rotate\_half}）按半分（half-split）分组：$(x_i, x_{i+d/2})$。两者经两两重排后数学等价，但直接套用权重不做重排会得到错误结果；社区若干「RoPE 精度不对」的 issue 根因即在此。
 \end{kaogu}
 
 \begin{kaogu}[F3 | 参数 N 的语义易误读]
@@ -438,7 +438,7 @@ rope 的参数 $N$ 是每 token 的\textbf{对数}（$d/2$），而非 hidden si
   \item \textbf{Q：为什么 +1 padding 能打破冲突？} A：Step 2 中相邻 tx 相隔 4 行，字步长从 $4 \times 16 = 64 \equiv 0 \pmod{32}$（对 32 bank 周期整除，列访问全部命中同一 bank）变为 $4 \times 17 = 68 \equiv 4 \pmod{32}$（行距 $17 \times 4 = 68\mathrm{B}$），bank 号每线程前进 4，不再对齐回绕。代价是每行多 4B smem（本例 64 行多 256B，约 $6\%$）。
   \item \textbf{Q：RoPE 为什么满足相对位置不变性？} A：旋转矩阵正交，$R(m\theta)^{\top}R(n\theta) = R((n-m)\theta)$；复数形式即 $e^{-im\theta}e^{in\theta} = e^{i(n-m)\theta}$。
   \item \textbf{Q：$\theta_i = 10000^{-2i/d}$ 的设计意图？} A：波长 $\lambda_i = 2\pi/\theta_i$ 构成 $2\pi$ 到 $\sim 2\pi \times 10^4$ 的等比谱，高频分量分辨局部、低频分量分辨远距，多尺度覆盖长程依赖。
-  \item \textbf{Q：interleaved 与 half-split 配对的区别？} A：同一分块对角旋转的不同分量排列，逐对重排互相等价；权重/cache 对齐时必须按 checkpoint 约定处理。
+  \item \textbf{Q：interleaved 与 half-split 分组的区别？} A：同一分块对角旋转的不同分量排列，两两重排互相等价；权重/cache 对齐时必须按 checkpoint 约定处理。
   \item \textbf{Q：转置为什么要经过 shared memory？} A：读合并与写合并不可兼得（行主存储下二者互斥）；smem 中转让 gmem 两侧都合并，代价是 smem 容量、一次 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()} 与潜在的 bank conflict。
 \end{enumerate}
 
@@ -462,8 +462,8 @@ cd kernels/interview/book/tests && CUDA_VISIBLE_DEVICES=7 ./build_tests.sh --ch 
   \item Jianlin Su, Yu Lu, Shengfeng Pan, Ahmed Murtadha, Bo Wen, Yunfeng
         Liu. RoFormer: Enhanced Transformer with Rotary Position Embedding.
         arXiv:2104.09864, 2021（RoPE 的第一出处：$\theta_i = 10000^{-2i/d}$
-        等比频率谱、内积只依赖相对位置与原始 interleaved 配对约定的来源，
-        对应本章式~\eqref{eq:ch07-2d-rot} 与配对约定考据）。
+        等比频率谱、内积只依赖相对位置与原始 interleaved 分组约定的来源，
+        对应本章式~\eqref{eq:ch07-2d-rot} 与分组约定考据）。
   \item 懒蚂蚁呀不嘿，《CUDA matrix transpose 优化（bank conflict 消除）专题》：\url{https://zhuanlan.zhihu.com/p/1899760505733756129}，转置四步演进（naive $\to$ smem $\to$ padding $\to$ merge write）的完整实验，与本章源码的 Level 1/Level 4 对照阅读。
   \item frankshi，《GPU shared memory bank conflict 与 swizzle》：\url{https://zhuanlan.zhihu.com/p/4746910252}，swizzle 的位运算原理，本章 padding 残留问题的进阶答案，第 \ref{ch:12} 章的预告篇。
 \end{itemize}

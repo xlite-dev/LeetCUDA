@@ -41,7 +41,7 @@ $2 \times 128 \times 128 \times 64 \approx 2.1\,\mathrm{M}$ FLOP，算术强度�
 \begin{itemize}
   \item \textbf{每线程地址算术}。cp.async 路径下每个线程都要计算自己的 gmem 源地址、
         smem 目的地址、边界掩码，一个 $128 \times 64$ 的 tile 意味着数百条整数指令，
-        它们与 Tensor Core 指令争抢同一个发射端口；
+        它们与 Tensor Core 指令竞争同一个发射端口；
   \item \textbf{搬运线程的开销}。smem$\to$寄存器的 \texttt{ldmatrix} 也占线程、占寄存器、
         占发射槽；「搬运」与「计算」没有分工，全部线程既搬运又计算；
   \item \textbf{同步粒度太粗}。\texttt{\_\allowbreak{}\_\allowbreak{}syncthreads} 只能回答「所有线程是否都到达」，
@@ -54,7 +54,7 @@ Hopper 的解法是让三类工作分别交给专用机制：\textbf{搬运交�
 2D tile，地址计算、边界处理（OOB 填充）、smem swizzle 全部在 descriptor 里声明式配置，
 搬运过程零寄存器开销；\textbf{「数据到齐」交给 mbarrier}，屏障自带
 arrive count（多少个线程/信号到达）与 tx count（多少字节的事务完成）两个独立计数器，
-TMA 搬完指定字节数后硬件自动「记账」，phase 翻转即代表数据可见；
+TMA 搬完指定字节数后硬件自动计数，phase 翻转即代表数据可见；
 \textbf{计算交给 WGMMA}，矩阵乘从 warp 级（32 线程）升级到 warpgroup 级（128 线程），
 A/B 操作数直接从 shared memory 读取（无需 ldmatrix 中转），且指令异步执行：发射后
 warpgroup 可以继续推进，用 \texttt{wgmma.\allowbreak{}wait\_\allowbreak{}group} 等待并取回结果。三者组合带来 Hopper
@@ -108,7 +108,7 @@ $(\pi, E, P, T)$ 置为 $(0, N, N, 0)$。三类操作各改一个计数器：
   \label{eq:13-complete}
 \end{align}
 其中 complete-tx 不由软件调用：TMA 指令带 \texttt{.mbarrier::\allowbreak{}complete\_\allowbreak{}tx::\allowbreak{}bytes}
-限定符，DMA 引擎在数据\textbf{真正写入 smem} 时自动按搬运字节数记账
+限定符，DMA 引擎在数据\textbf{真正写入 smem} 时自动按搬运字节数计数
 （PTX ISA §9.7.9.25）。相位翻转的条件是\textbf{两个计数器同时归零}：
 \begin{equation}
   P = 0 \;\wedge\; T = 0
@@ -317,7 +317,7 @@ PTX ISA §9.7.15.1 定义 warpgroup 为「4 个连续 warp 的集合，且首 wa
 z \cdot n\sb{x} n\sb{y}$ 除以 32 得出。本 kernel 启动 256 线程 $=$ 2 个 warpgroup：
 WG0（线程 0--127）做 producer，WG1（线程 128--255）做 consumer；
 \texttt{\_\allowbreak{}\_\allowbreak{}launch\_\allowbreak{}bounds\_\allowbreak{}(256,\allowbreak{} 1)} 为 \texttt{setmaxnreg} 寄存器再分配
-（producer 让出、consumer 多占）预留编译器许可，该机制留待第~\ref{ch:14}~章展开。
+（producer 释放、consumer 多占）预留编译器许可，该机制留待第~\ref{ch:14}~章展开。
 
 \lstinputlisting[linerange={1468-1481},firstnumber=auto,breakatwhitespace=true,
   title={hgemm.cuh L1468-1481（模板参数即 tile 层级与 kernel 签名）}]{../hgemm.cuh}
@@ -382,11 +382,11 @@ TMA descriptor 在 host 侧由 driver API \texttt{cu\allowbreak{}Tensor\allowbre
 \texttt{\_\allowbreak{}\_\allowbreak{}cvta\_\allowbreak{}generic\_\allowbreak{}to\_\allowbreak{}shared} 转换）；\texttt{tensorMap} 是 descriptor 的
 \textbf{generic 地址}（device 显存中的 \texttt{CUtensorMap} 指针）；坐标
 $\{c\sb{0}, c\sb{1}\} = (k\sb{0}, m\sb{0})$ 是 box 左上角（minor 在前，元素坐标而非
-字节）；\texttt{[mbar]} 是与该 stage 配对的 mbarrier 地址。语义上它是
+字节）；\texttt{[mbar]} 是与该 stage 配套的 mbarrier 地址。语义上它是
 \textbf{非阻塞单线程提交}：一条指令、一个线程，DMA 引擎搬运整个 $64 \times 128$
-tile，完成后自动对 mbarrier 执行 complete-tx（记账字节数 $=$ 实际搬运量）。
+tile，完成后自动对 mbarrier 执行 complete-tx（计入的字节数 $=$ 实际搬运量）。
 与 cp.async 的对比是本节的重点：cp.async 是\textbf{每线程}一条 16B 搬运指令 +
-软件 commit/wait group；TMA 是\textbf{每 tile 一条}指令 + 硬件 mbarrier 记账，
+软件 commit/wait group；TMA 是\textbf{每 tile 一条}指令 + 硬件 mbarrier 计数，
 寄存器开销为零。producer 只需要 1 个线程的根源也在这里，其余 127 个 producer
 线程仅用于满足 warpgroup 对齐要求（warp specialization 的角色以 warpgroup 为粒度划分）。
 
@@ -428,7 +428,7 @@ arrive 与 expect\_tx 合并时 count 固定为 1）。此后相位翻转的条�
 consumer 侧的 C0「预热」是新手最容易漏的一步：
 
 \lstinputlisting[linerange={1682-1695},firstnumber=auto,breakatwhitespace=true,
-  title={hgemm.cuh L1682-1695（C0：128 线程预 arrive 所有 empty——流水线的点火）}]{../hgemm.cuh}
+  title={hgemm.cuh L1682-1695（C0：128 线程预 arrive 所有 empty——流水线的启动）}]{../hgemm.cuh}
 
 不做 C0 的后果是：producer 第一轮 P1 在 \texttt{empty[0]} 上只有自己 1 次 arrive，
 $P = 129 - 1 = 128 \ne 0$，相位永不翻转，整个 kernel 挂死。C0 用 128 个线程把
@@ -558,12 +558,12 @@ bits $[16,30)$ leading\_byte\_offset &
   \node[font=\scriptsize, align=center, text width=11cm, anchor=north] at (5.0,-6.1)
     {格内数字 $=$ 物理 chunk 号 $c' = c \oplus (i\,\&\,7)$，灰度按 $c'$ 渐变
      （同灰度 $=$ 同 quad）；\\
-     任一固定逻辑列（粗框 $c{=}0$）沿 8 行取遍 8 个不同 quad——按列读不撞 bank};
+     任一固定逻辑列（粗框 $c{=}0$）沿 8 行取遍 8 个不同 quad——按列读无冲突};
 \end{tikzpicture}
 \caption{128B swizzle 的 atom 几何与 WGMMA descriptor 字段对应（13.4.5 节）：
 atom 为 8 行 $\times$ 8 chunk（每 chunk 16\,B，即 $8\times64$ half），TMA 写入后
 物理 chunk 号 $c'=c\oplus(i\,\&\,7)$——固定逻辑列（粗框 $c{=}0$）沿行取遍 8 个
-quad，按列读不撞 bank；周期 8 行 $=1024$\,B（行 8 与行 0 同图案），对应
+quad，按列读无 bank 冲突；周期 8 行 $=1024$\,B（行 8 与行 0 同图案），对应
 $\mathrm{SBO}=1024$\,B（编码 64）、base\_offset 为 tile 基址在周期内的行相位
 （\texttt{\_\_align\_\_(1024)} 时恒 0）。位域编码见图~\ref{fig:13-1}；CuTe 的 SW128
 原子视角（第~\ref{ch:23}~章图~\ref{fig:23-1}）与本章互为对照。}
@@ -737,7 +737,7 @@ $m$ 个 $64 \times B\sb{K}$ 子块，K-step 每次前进 \texttt{kWgmmaK=16} 个
   \node[colh, minimum width={480*0.0158cm}, minimum height={30*0.0158cm},
     text=figgreen] at (800,283) {WG1 consumer（128 线程 warpgroup）};
   \node[code] at (64,314) {P1\quad wait(empty[s])\quad 等待 stage 被读空};
-  \node[code] at (64,338) {P2\quad TMA(A), TMA(B)\quad 单线程提交两笔搬运};
+  \node[code] at (64,338) {P2\quad TMA(A), TMA(B)\quad 单线程提交两次搬运};
   \node[code] at (64,362) {P3\quad arrive $+$ expect-tx(full[s], 32KB)};
   \node[code] at (64,390) {相位翻转条件：129 次 arrive（128 consumer $+$ 1 producer）};
   \node[code] at (64,408) {且 32768B 落盘 —— 二者同时成立};
@@ -747,7 +747,7 @@ $m$ 个 $64 \times B\sb{K}$ 子块，K-step 每次前进 \texttt{kWgmmaK=16} 个
   \node[code] at (574,386) {C4\quad arrive(empty[s])\quad $\times$128（读空信号）};
   \node[code] at (574,418) {epilogue：累加器 d[][] 写回 C tile};
   \draw[-{Stealth}, figgreen, dashed, line width=0.9pt] (560,430) -- (300,430);
-  \node[alab, text=figgreen] at (300,442) {C4 arrive 喂 P1 的 wait};
+  \node[alab, text=figgreen] at (300,442) {C4 arrive 满足 P1 的 wait};
   \node[sub] at (30,476)
     {kStages$=$3：计算与搬运最多重叠 2 个 tile；full[]/empty[] 双屏障阵列按 stage 解耦两支执行流};
 \end{tikzpicture}
@@ -834,7 +834,7 @@ $\approx 295$~FLOP/B：\textbf{单看一个 CTA 的装载流，访存仍是短�
 \textbf{指令数与发射开销}：一条 \texttt{m64n128k16} 承载 262K FLOP，是
 \texttt{m16n8k16} 的 64 倍；每 K-tile 只需 8 条 WGMMA 加少量 fence/commit/wait
 指令，指令发射不再成为 Tensor Core 吞吐的约束。同时 TMA 把「数百条地址整数
-指令」压缩成 2 条搬运指令，producer 让出的发射槽与寄存器（配合
+指令」压缩成 2 条搬运指令，producer 释放的发射槽与寄存器（配合
 \texttt{setmaxnreg} 可转移百个以上）全部转移给 consumer，warp specialization
 的本质就是\textbf{把一个 SM 的执行资源按角色重新分配}。
 
@@ -936,7 +936,7 @@ minor（连续维）在前；\texttt{global\allowbreak{}Strides} 又要跳过隐
 A：一条 \texttt{cp.\allowbreak{}async.\allowbreak{}bulk.\allowbreak{}tensor.2d} 就能搬完整个 2D tile，TMA 是
 单线程提交的块级 DMA；对比 cp.async 的线程级 4/8/16B 搬运 + 软件
 commit/wait group，TMA 把地址生成、OOB 填充、smem swizzle 全部声明在
-descriptor 里，零寄存器开销，完成时硬件自动对 mbarrier complete-tx 记账。
+descriptor 里，零寄存器开销，完成时硬件自动对 mbarrier 执行 complete-tx 计数。
 
 \textbf{Q2：mbarrier 的相位翻转条件？}\\
 A：pending arrivals 与 tx-count \textbf{同时}归零（式~\ref{eq:13-phase-flip}）；

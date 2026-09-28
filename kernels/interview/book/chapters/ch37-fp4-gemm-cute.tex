@@ -12,7 +12,7 @@
 整章可以概括成一句话：\textbf{FP4 GEMM 的主 kernel 比 FP8 的更简单，也更难
 写。}简单是因为 epilogue 只剩一个乘法（SF 由 MMA 硬件消费，不需要按块查表），
 难是因为多出来一条 SF 数据流——4 条 TMA、两套 smem 原子、一个把数据与 SF
-配对的 zip 张量，以及一类 FP8 版本里不存在的死锁陷阱
+成对的 zip 张量，以及一类 FP8 版本里不存在的死锁陷阱
 （33.7~节）。
 
 本章的构件全部来自前文：TMA descriptor（第~\ref{ch:23}~章）、SW32 smem
@@ -22,7 +22,7 @@ swizzle（\texttt{Layout\_K\_SW32\_Atom}，第~\ref{ch:23}~章）、mbarrier
 （第~\ref{ch:26b}~章）、epilogue 的 STSM + TMA store（第~\ref{ch:26b}~章）。
 真正的新东西只有三件：\textbf{block scale 形式的 \texttt{mma.sync}}
 （33.3~节）、\textbf{SF 的 smem 原子与 TMA descriptor}
-（33.4~节）、以及 \textbf{数据与 SF 的配对装载}
+（33.4~节）、以及 \textbf{数据与 SF 的成对装载}
 （33.5~节的 zip 张量）。
 
 \begin{table}[H]
@@ -148,7 +148,7 @@ SF 的 gmem 布局、smem 布局、寄存器 fragment 布局是三套不同的�
 
 \textbf{第三，$K{=}64$ 是「四个 SF」的另一种说法。}
 一条指令处理 $16\times8\times64$ 的乘积（图~\ref{fig:37-mma-ops} 把
-它的操作数账画了出来），$A$ 侧的 SF 需求量是
+它的操作数明细画了出来），$A$ 侧的 SF 需求量是
 $16\times4 = 64$ 个字节、$B$ 侧是 $4\times8=32$ 个字节；而 $A$ 的操作数
 只有 16 字节（32 个 e2m1）——\textbf{SF 的操作数字节数比数据还多}。
 这解释了为什么 SF 必须走自己的一条 TMA 通道与一块 smem：它是数据量的
@@ -184,7 +184,7 @@ $1/8$（每 16 个 4-bit $= 8$ 字节配 1 字节 SF），却与数据同等重�
 \node[below, font=\tiny, tkPurple] at (10.1,0.5) {$16\times8$ 输出};
 \draw[-{Stealth[length=2mm]}, thick] (6.05,1.2) -- (9.3,1.2);
 \end{tikzpicture}
-\caption{\texttt{SM120\_16x8x64\_TN\_VS} 一条指令的操作数账。数据侧共
+\caption{\texttt{SM120\_16x8x64\_TN\_VS} 一条指令的操作数明细。数据侧共
 $16+8 = 24$\,B/线程，SF 侧 8\,B/线程——SF 的字节数达到数据的 $1/3$。
 注意 SF 的「字节数/线程」与「SF 数/线程」是一回事（\texttt{ue4m3} 是
 1\,字节），但\textbf{哪些 lane 的字节作数}由指令的
@@ -413,15 +413,15 @@ CUTLASS 的权威定义移植过来（\texttt{fp4\_gemm.cuh} L425--521，
 逐行抄自 \texttt{sm120\_blockscaled\_mma\_tma.hpp} 的
 \texttt{thrfrg\_sfa} 系列）。
 
-\textbf{zip 张量是「数据 $+$ SF」的配对。}blockscaled MMA 的两个 A 操作数
+\textbf{zip 张量是「数据 $+$ SF」的成对打包。}blockscaled MMA 的两个 A 操作数
 （数据与 SF）在寄存上是分开的 fragment，但 MMA 的调用接口要求一次给出
 两者，于是 CuTe 用 \texttt{make\_zip\_tensor(tCrA, tCrSFA)} 把它们
-\textbf{按列配对}成一个「元素是 pair」的张量：
+\textbf{按列并成}一个「元素是 pair」的张量：
 
 \begin{verbatim}
 gemm(tiled_mma,
-     make_zip_tensor(tCrA,  tCrSFA),   // (A, SFA) 配对
-     make_zip_tensor(tCrB,  tCrSFB),   // (B, SFB) 配对
+     make_zip_tensor(tCrA,  tCrSFA),   // (A, SFA) 成对
+     make_zip_tensor(tCrB,  tCrSFB),   // (B, SFB) 成对
      tCrC);
 \end{verbatim}
 
@@ -555,7 +555,7 @@ non-WS 版本没有这个问题，因为那里是「全体线程 arrive」——
 \texttt{empty} 的 init 等于参与线程数，而全体线程在进入循环前就各
 arrive 了一次（第~\ref{ch:26c}~章的那三行初始 release），
 同一个动作由身兼二职的线程完成了。\textbf{warp specialization 把
-「谁 arrive」这件事拆开之后，初始条件就必须重新对账}——这是本章
+「谁 arrive」这件事拆开之后，初始条件就必须重新核对}——这是本章
 唯一的实质性 bug，也是本书 ws 系列最值得记住的一条教训。
 
 \subsection{命名屏障}
@@ -799,9 +799,9 @@ $0.1448$、level-2$\times$B 列 $0.1443$、两级（非 WS/WS）$0.1454$、
         测试立刻报红。
 \end{itemize}
 
-\subsection{量化开销的账，以及一次重构}
+\subsection{量化开销，以及一次重构}
 
-先算账。e2e 行减去 kernel-only 行，就是两侧量化真正花掉的时间
+先算开销。e2e 行减去 kernel-only 行，就是两侧量化真正花掉的时间
 （4096$^3$：FP8 得 424\,$\mu$s、FP4 得 109\,$\mu$s；8192$^3$：
 1221\,$\mu$s 对 633\,$\mu$s；FP4 侧按本章的自适应宽档算）：
 
@@ -975,7 +975,7 @@ $128\times256$/s6，其余回落 $128^2$/s4，\texttt{--bench} 的 FP4 标准
         消费者线程数，而消费者的第一次 arrive 依赖 producer 的第一次
         TMA——环闭合。修复是让消费者在进入循环前把 \texttt{empty}
         全部 arrive 一遍。\textbf{当「谁 arrive」被 warp specialization
-        拆开，流水线的初始条件必须重新对账}。
+        拆开，流水线的初始条件必须重新核对}。
   \item \textbf{性能结论}：宽档 $128\times256$/s6 的 WS 变体在 4096$^3$
         跑 614.1\,T（8192$^3$: 648.6\,T），是 cuBLAS BF16 的
         $3.76\times$、本书手写 bf16 HGEMM 的 $2.53\times$、FP8 版本的
@@ -983,7 +983,7 @@ $128\times256$/s6，其余回落 $128^2$/s4，\texttt{--bench} 的 FP4 标准
         $MNK\ge4096$ 自适应取宽档、其余回落 $128^2$/s4。比特数减半
         只换来 $1.4\times$——\textbf{存储收益与算力收益不是一回事}，
         $BK$ 被固定在 64 让 K 方向的算术强度下降是主要原因。
-  \item \textbf{量化开销的账}：重构后 $B$ 侧量化从 194\,GB/s 提到
+  \item \textbf{量化开销}：重构后 $B$ 侧量化从 194\,GB/s 提到
         792\,GB/s；量化成本 109\,$\mu$s（4096$^3$）是加性的、不随
         tile 档变化，保守档下占 e2e 的 26\%，宽档下占 32\%。
         e2e 也因此反超 FP8 版本：宽档 408.2 对 186.5\,T

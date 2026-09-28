@@ -219,7 +219,7 @@ $kBc=128$ 时预算超限，kernel 侧的编译期自动收窄
     {ffpa 的界是\textbf{整 tile 累加}：PV 经 \texttt{gemm\_rs} 跨整个 $kBc$ 块累进同一组
      f16 \texttt{inst\_buf}（之后才 FFMA 吸收进 f32 $o\_acc$），条件为
      $kBc\cdot P_r\cdot V_r\le65504$——$kBc{=}64$ 等效 $P_r{\times}V_r\le1023$，
-     $448\times2.25=1008$ 恰好贴边；$kBc{=}128$ 装不下，编译期把 P 域收窄到 224
+     $448\times2.25=1008$ 恰好在上限内；$kBc{=}128$ 装不下，编译期把 P 域收窄到 224
      （\texttt{persist\_d.cuh} L723--732）。SA2++ 的单指令界（$65504/32=2047$，$K$ 深度更小）
      更松。f32 acc 无 f16 溢出界：V 侧取满 448、P 侧恒 448。};
 \end{tikzpicture}
@@ -480,7 +480,7 @@ $a_2$、$a_3$ 分别取行 $g$、$g{+}8$ 的 $k=16{+}4t..16{+}4t{+}3$。这样�
   \node[anchor=south, fill=white, inner sep=0.5pt] at (5.5,-3.58) {T6/T7 $\to$ T5：$a_2/a_3$};
   \draw[->, tkPurple, densely dashed] (4.24,-1.02) to[bend left=14] (6.74,-0.32);
   \node[anchor=north, fill=white, inner sep=0.5pt, align=center] at (5.5,-1.12)
-    {T5 自己的字节\\也要寄给 T4};
+    {T5 自己的字节\\也要传给 T4};
   \node[anchor=north, align=center] at (5.5,-4.75) {$k{=}20..23$（atom 2）\\同理 $\to a_4..a_7$};
   \foreach \gl in {0,...,7}{
     \pgfmathtruncatemacro{\gr}{int(22+7*\gl)}
@@ -501,13 +501,13 @@ $a_2$、$a_3$ 分别取行 $g$、$g{+}8$ 的 $k=16{+}4t..16{+}4t{+}3$。这样�
   \node[anchor=north] at (9.175,-7.34) {$s{=}2$};
   \node[anchor=north] at (10.125,-7.34) {$s{=}3$};
   \node[anchor=east, text=tkPurple] at (6.70,-7.10) {A 槽位 $s\to\pi(s)$：};
-  \node[anchor=west] at (10.75,-7.10) {……（每 32 列周期）};
+  \node[anchor=west] at (10.75,-7.10) {（列号续排，每 32 列周期）};
   \node[anchor=north west, align=left, text width=16.6cm] at (0,-7.80)
     {kReorgFree（\texttt{PackC8bitToA8bitPermVT}）：A 槽位 $s$ 持真实列 $\pi(s)$
      （$\pi=[0,1,8,9,2,3,10,11,\dots]$），$V^{\top}$ 由量化期按 $\pi^{-1}$ 预置换
      （\texttt{VTPermInv32}）——槽位与真实列脱钩后无需跨 lane 借字节：4 条 lane 无关
      \texttt{\_\_byte\_perm}（\texttt{0x5410}/\texttt{0x7632}/\texttt{0xDC98}/\texttt{0xFEBA}）、
-     零 SHFL；CONTRACT：绝不许对未置换的 $V^{\top}$ 运行（launcher 编译期强制配对）。};
+     零 SHFL；CONTRACT：绝不许对未置换的 $V^{\top}$ 运行（launcher 编译期强制匹配）。};
 \end{tikzpicture}
 \caption{C$\to$A fragment 的 lane$\to$值映射。左：QK C
 fragment（m16n8），每 lane 4 值 $c_0$--$c_3$ 落在行 $g$/$g{+}8$ 的列对
@@ -530,12 +530,12 @@ V$^{\top}$ 列按 $\pi^{-1}$ 预置换即可。四个 \texttt{\_\_byte\_perm}
 选择器（0x5410/0x7632/0xDC98/0xFEBA）\textbf{lane 无关}：没有构造器
 状态、没有分支，且与 \texttt{ReorgC8bitToA8bit} 的对照已用 pycute 数值
 验证布局等价。注释末尾的 CONTRACT 加了感叹号：\textit{this pack must
-NEVER run against an unpermuted V\^{}T}；配对由 launcher 的单一
+NEVER run against an unpermuted V\^{}T}；匹配由 launcher 的单一
 \texttt{reorg\_free} 编译期常量强制，两侧永不发散。
 
 \section{图示}
 
-三张图对应本章的三条主线。图~\ref{fig:29-scale-folding} 是数学层的总账：
+三张图对应本章的三条主线。图~\ref{fig:29-scale-folding} 是数学层的总览：
 scale 从「显式乘法」变成「折叠」：$\delta_Q\delta_K$ 折进 exp2 系数、
 $v_s$ 在 P 的发射域消去、$p_{scale}$ 收在 epilogue，除 round() 外不引入
 任何额外误差源。图~\ref{fig:29-persist-d-ws} 是这套数学的宿主结构：
@@ -623,7 +623,7 @@ STSM + TMA 输出。图~\ref{fig:29-reorg-free} 则是 epilogue 侧的布局技�
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{tkGreen!70!black} }] at (7.022,-3.219) {K stages};% w=3.403
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{tkGreen!70!black} }] at (10.426,-3.219) {V};% w=1.001
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{tkGreen!70!black} }] at (11.427,-3.219) {K last};% w=0.986
-    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{black!55} }] at (7.022,-3.788) {省的 16KB 买 L1（共池 \textasciitilde{}4-5$\mu$s/16KB），不买 occupancy};% w=5.359
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{black!55} }] at (7.022,-3.788) {省的 16KB 换 L1（共池 \textasciitilde{}4-5$\mu$s/16KB），不换 occupancy};% w=5.359
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{black!55} }] at (7.022,-4.127) {槽位轮转 kKSlot(s)=(s+1)\%S：复用区首写/首消费都在稳态，};% w=5.359
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{black!55} }] at (7.022,-4.435) {q\_consumed 等待藏进整整一 tile 计算};% w=5.359
     \node[draw=gray!55, fill=black!3, line width=0.5pt, minimum width=4.25cm, minimum height=3.85cm, inner sep=1pt, align=center, text width=4.19cm, font={\fontsize{5.7}{7.1}\selectfont }] at (15.369,-2.849) {};
@@ -710,17 +710,17 @@ STSM + TMA 输出。图~\ref{fig:29-reorg-free} 则是 epilogue 侧的布局技�
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!55} }] at (0.616,-6.622) {V\^{}T 存储无需置换（自然列序）};% w=7.823
     \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=8.25cm, minimum height=3.63cm, inner sep=1pt, align=center, text width=8.19cm, font={\fontsize{5.7}{7.1}\selectfont }] at (13.367,-5.636) {};
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkGreen!70!black} }] at (9.486,-4.081) {方案 B：PackC8bitToA8bitPermVT（reorg-free，默认）};% w=7.762
-    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont }] at (9.486,-4.466) {数学：$\Sigma$\_k P[m,k]V[k,n] 对任意双射 $\pi$ 不变 ------ P 不动，V 搬家};% w=7.762
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont }] at (9.486,-4.466) {数学：$\Sigma$\_k P[m,k]V[k,n] 对任意双射 $\pi$ 不变 ------ P 不动，V 换列};% w=7.762
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont }] at (9.486,-4.836) {就地打包：4$\times$ \_\_byte\_perm（0x5410/0x7632/0xDC98/0xFEBA）};% w=7.762
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont }] at (9.486,-5.205) {selector 与 lane 无关：无构造器状态、无分支};% w=7.762
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkGreen!70!black} }] at (9.486,-5.683) {A 槽位 s 携带置换索引 $\pi$(s) = 8(r$>$$>$1)+2t+(r\&1)（32 列周期）};% w=7.762
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (9.486,-6.068) {V\^{}T 按 $\pi$$^{-1}$(j)=4*((j$>$$>$1)\&3)+2*((j$>$$>$3)\&1)+(j\&1) 预置换列写};% w=7.762
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!55} }] at (9.486,-6.622) {置换不跨 32 列组 $\to$ V\^{}T 写仍同一 32B sector（quantize +0.5\%）};% w=7.762
     \node[draw=tkPurple, fill=tkFillPurple, line width=0.5pt, minimum width=17.12cm, minimum height=1.48cm, inner sep=1pt, align=center, text width=17.06cm, font={\fontsize{5.7}{7.1}\selectfont }] at (8.932,-8.562) {};
-    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkPurple} }] at (0.678,-8.07) {配对契约（CONTRACT）：pack 与 V\^{}T 置换必须同开同关 ------ 由 launcher 单一编译期常量 reorg\_free 强制，两侧永不发散};% w=16.509
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkPurple} }] at (0.678,-8.07) {匹配约定（CONTRACT）：pack 与 V\^{}T 置换必须同开同关 ------ 由 launcher 单一编译期常量 reorg\_free 强制，两侧永不发散};% w=16.509
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (0.678,-8.439) {注释原话加感叹号：this pack must NEVER run against an unpermuted V\^{}T ------ 错配 = 静默错值（allclose 才能抓到）};% w=16.509
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (0.678,-8.809) {rowsum MMA（B 全 1）与 PV 在双射下同样精确；等效性已 pycute 数值验证（.tmp/fp8\_persist\_d/verify\_layouts.py 同族）};% w=16.509
-    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (0.37,-9.764) {出处对照：SA2 的 per-warp token 重排思想（arXiv:2411.10958）；ffpa 的数学化重构 = 把跨 lane 搬运转嫁给前处理链的免费列置换};% w=17.125
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (0.37,-9.764) {出处对照：SA2 的 per-warp token 重排思想（arXiv:2411.10958）；ffpa 的数学化重构 = 把跨 lane 搬运转嫁给前处理链的顺带列置换};% w=17.125
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (0.37,-10.164) {拆分规则：K=32 组 = 4 个 n8 C-tile（w0..w3）$\to$ a0={0,1,4,5} a1={2,3,6,7} a2={8,9,12,13} a3={10,11,14,15}（字节序号）};% w=17.125
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!55} }] at (0.37,-10.795) {对照 ffpa-attn(861d75e)：cute/fp8/reg2reg\_8b.cuh L8-50（背景+跨 lane 版）$\cdot$ L96-141（perm pack）$\cdot$ quantize\_fp8.cuh L36-53（VTPermInv32）};% w=17.125
     \draw[tkRed, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (8.624,-1.756) -- (9.178,-1.756);
@@ -836,9 +836,9 @@ allclose 失败（fp16/bf16 双双 $\times$），而 D=64/128 全绿。定位过
      ——错误随 N 稀释，说明是特定 (row, kv-tile) 组合而非系统性索引错位。};
   \node[anchor=west, align=left, text width=8.6cm] at ({3*\gw+0.85},-3.35)
     {$\bullet$~\textbf{max/mean 分裂}：max\_abs=2.66 vs mean\_abs=0.011
-     ——灾难级个别行 + 正常均值 $\Rightarrow$ 正确性 bug，非精度不足。};
+     ——个别行严重错误 + 正常均值 $\Rightarrow$ 正确性 bug，非精度不足。};
   \node[anchor=west, align=left, text width=8.6cm] at ({3*\gw+0.85},-4.85)
-    {$\bullet$~\textbf{嫌疑圈}（fp16 对照路径无辜）：$k_{Bc}{=}64$ 变体 /
+    {$\bullet$~\textbf{嫌疑范围}（fp16 对照路径已排除）：$k_{Bc}{=}64$ 变体 /
      SW64 swizzle / 量化侧 kBlockRows 一致性。};
 \end{tikzpicture}
 \caption{D=192 正确性 bug 的坏行定位（29.7.1~节五步法的可视化）：把 $O$ 视为
@@ -875,8 +875,8 @@ sm120 的计算层（int8 QK / fixed p\_scale / f8f8f16 PV），256T non-WS。
         的 $2^T$ 膨胀必然 satfinite（29.3.3~节）；fp8 traits 直接关掉
         lazy rescale，且 f16 acc 路径把 rescale 融进吸收 FFMA 后延迟惩罚
         消失。
-  \item \textbf{kVTPerm 配对是编译期纪律}：\texttt{PackC8bitToA8bitPermVT}
-        对未置换的 $V^{\top}$ 运行 = 静默错值。配对由 launcher 单一常量
+  \item \textbf{kVTPerm 的匹配是编译期纪律}：\texttt{PackC8bitToA8bitPermVT}
+        对未置换的 $V^{\top}$ 运行 = 静默错值。匹配由 launcher 单一常量
         强制；绕过 launcher 直接调 kernel 没有保护。
   \item \textbf{f16 PV 累加域}：$kBc\cdot448\cdot2.25\le65504$ 的编译期
         检查不过时 P 域自动收到 224——不理解这条约束会以为 P 域「有时
@@ -904,7 +904,7 @@ sm120 的计算层（int8 QK / fixed p\_scale / f8f8f16 PV），256T non-WS。
         P 448、$kBc{=}128$ 收到 224；SA2++ 单指令口径 $65504/32=2047$、
         双侧收窄 $224\times4.5$。）
   \item reorg-free 打包省了什么、代价是什么？（16 SHFL+32 PRMT $\to$
-        4 PRMT 零 SHFL；代价 $V^{\top}$ 列置换预写 + 编译期配对纪律，
+        4 PRMT 零 SHFL；代价 $V^{\top}$ 列置换预写 + 编译期匹配纪律，
         式~\ref{eq:29-perm-inv}。）
   \item Q 的 s2r 常驻为什么省钱？省的是 occupancy 吗？
         （不是——省 smem（16KB Q 区复用）$\to$ 买 L1 共池容量，

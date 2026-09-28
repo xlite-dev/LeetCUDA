@@ -130,7 +130,7 @@ fp16 & 1 & 5 & 10 & 11 & $\approx 3.3$ \\
   \node[anchor=west] at ({16*\u+0.15},-3.45) {16 位};
   \node[anchor=north west, align=left, text width=13cm] at (0,-4.0)
     {TF32 与 fp16 的尾数完全相同（10 位，$p=11$），精度一致；差别全在指数域——
-     TF32 用 fp32 的 8 位指数保住动态范围（约 $10^{\pm38}$）。
+     TF32 用 fp32 的 8 位指数保留动态范围（约 $10^{\pm38}$）。
      TF32 存储仍占一个 32 位字，低 13 位填 0 或被硬件路径直接忽略（虚线段），
      通常只出现在 Tensor Core 数据通路里。};
 \end{tikzpicture}
@@ -317,7 +317,7 @@ WMMA 是 CUDA 对 warp 级矩阵乘的官方 C++ 抽象
   \item \texttt{store\_\allowbreak{}matrix\_\allowbreak{}sync\allowbreak{}(ptr,\allowbreak{} frag,\allowbreak{} ldm,\allowbreak{} mem\_\allowbreak{}row\_\allowbreak{}major)}：把累加器
         写回 global。
 \end{itemize}
-寄存器账本：$m16n16k8$ 的 TF32 fragment 每 warp 持
+寄存器占用：$m16n16k8$ 的 TF32 fragment 每 warp 持
 $16\times8 = 128$ 个 A 元素（每 lane 4 个 32 位寄存器）、B 同为 128、
 累加器 $16\times16 = 256$ 个 fp32（每 lane 8 个）。本章每 warp 同时持有
 $2$ 个 A fragment $+\ 4$ 个 B fragment $+\ 8$ 个累加器
@@ -408,7 +408,7 @@ $\mathrm{kPadB}=4$），两段共 $2\times128\times12 + 2\times8\times132 = 5184
     \node[anchor=south] at ({14*\bw+0.6},0.04) {PAD$\times$4};
     \node[anchor=north west, align=left, text width=6.9cm] at (0,{-8*\bw-0.3})
       {格值 $=$ bank 号 $=(132r{+}c)\bmod32$：行首序列 $0,4,8,\dots,28$——
-       8 行行首互异，\texttt{load\_matrix\_sync} 按行取数不撞同一组 bank。};
+       8 行行首互异，\texttt{load\_matrix\_sync} 按行取数避开同一组 bank。};
   \end{scope}
   \node[anchor=north, align=left, text width=13.5cm, draw=tkBlue!60, fill=tkFillBlue, rounded corners=1pt, inner sep=3pt] at (7.4,-4.6)
     {\texttt{load\_matrix\_sync} 的 \texttt{ldm} 传\textbf{行距}（12 / 132）而非逻辑宽度（8 / 128），
@@ -608,7 +608,7 @@ float4（16~B）才用 \texttt{.cg}；若加载映射是 4 元素一组的其它
 \textbf{坑四：wait 之后必须 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads}。}
 \texttt{cp.async} 的组是 \textbf{per-thread} 的：wait 只保证「本线程」发出的
 搬运完成。计算要读的 smem 可能由\textbf{别的线程}搬入，所以
-wait 后必须再全 block 同步一次（L302--303、L369--370 两处都是这个配对）。
+wait 后必须再全 block 同步一次（L302--303、L369--370 两处都是这个匹配）。
 漏掉 sync 是 warp 间数据竞争，症状是偶发错数，属于最难查的一类。
 
 \textbf{坑五：fragment 布局不可假设。}\allowbreak{}WMMA 规范不保证 fragment 内元素到

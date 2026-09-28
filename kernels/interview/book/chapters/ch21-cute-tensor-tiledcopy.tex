@@ -248,7 +248,7 @@ ldmatrix 或 bank 冲突考虑，地址公式会迅速膨胀，而「哪个数�
     }
   }
   \node[anchor=west, font=\tiny] at (24,311)
-    {蓝色两行 $=$ 第 1 轮（rows 0--1）；第 2 轮覆盖 rows 2--3，两轮拼满 $(4,4)$};
+    {蓝色两行 $=$ 第 1 轮（rows 0--1）；第 2 轮覆盖 rows 2--3，两轮铺满 $(4,4)$};
   \draw[gray!60, thin] (580,52) rectangle (1136,302);
   \node[anchor=west, font=\tiny\bfseries] at (596,71)
     {CuTe printout（\texttt{make\_tiled\_copy} 实测）};
@@ -647,7 +647,7 @@ S$\to$R 的 K 方向重复更多？因为 copy 原子不同：G$\to$S 一次搬�
 \end{equation}
 
 这一步是 \texttt{cute::\allowbreak{}copy\allowbreak{}(s2r\_\allowbreak{}tiled\_\allowbreak{}copy\_\allowbreak{}a,\allowbreak{} tAsA\allowbreak{}(\dots),\allowbreak{} tCrA\_\allowbreak{}view)}
-能成立的前提：copy 按「源的第 $i$ 个值 $\to$ 目的的第 $i$ 个值」逐元素配对，
+能成立的前提：copy 按「源的第 $i$ 个值 $\to$ 目的的第 $i$ 个值」逐元素对应，
 而 \texttt{retile} 保证目的视图的「第 $i$ 个值」就是本线程寄存器的第 $i$ 个
 槽位。它\textbf{不搬数据、不转换类型、不 shuffle}，真正跨线程的重组发生在
 后面 epilogue 的 smem 往返里。
@@ -1065,7 +1065,7 @@ kernel 模板参数一律用 \texttt{Int<N>} 包住正是为此（第~\ref{ch:20
 或者更隐蔽地，被 \texttt{\_} 占位符隐式丢掉一维。
 
 \textbf{坑六：copy 的源/目的 shape 必须逐 mode 匹配。}
-\texttt{cute::\allowbreak{}copy\allowbreak{}(tiled\_\allowbreak{}copy,\allowbreak{} src,\allowbreak{} dst)} 内部按元素配对，前提是
+\texttt{cute::\allowbreak{}copy\allowbreak{}(tiled\_\allowbreak{}copy,\allowbreak{} src,\allowbreak{} dst)} 内部按元素对应，前提是
 \texttt{src} 与 \texttt{dst} 的（值 $\times$ 剩余 mode）结构一致：这正是
 \texttt{partition\_\allowbreak{}S\allowbreak{}(s\allowbreak{}A\_\allowbreak{}slice)} 与 \texttt{retile\_\allowbreak{}D\allowbreak{}(t\allowbreak{}Cr\allowbreak{}A)} 必须成对出现的
 原因。只 partition 一侧、另一侧手写一个 shape 相近的 Tensor，会在
@@ -1100,7 +1100,7 @@ fragment 约定已经规定了「哪个线程持有哪个元素」，拷贝只�
 
 \textbf{Q6：\texttt{retile\_S}/\texttt{retile\_D} 做了什么？}\\
 A：零拷贝重标记：把 fragment 的（MMA, MMA\_M, MMA\_K）索引重排成 copy 视角的
-（值, 重复）索引，\texttt{data()} 不变。它是 \texttt{copy} 逐元素配对的
+（值, 重复）索引，\texttt{data()} 不变。它是 \texttt{copy} 逐元素对应的
 前提，不做数据搬运、不做类型转换、不做 shuffle。
 
 \textbf{Q7：\texttt{group\_modes} 与 \texttt{group} 的区别？}\\

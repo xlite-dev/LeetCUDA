@@ -276,13 +276,13 @@ online softmax 需要按行操作 S（行 max、行内 exp、行和）。但
   \label{eq:25-rowcol}
 \end{equation}
 
-为什么是「前 2 与 $\mathrm{MMA\_M}$ 配对、后 2 与 $\mathrm{MMA\_N}$ 配对」？
+为什么是「前 2 与 $\mathrm{MMA\_M}$ 对应、后 2 与 $\mathrm{MMA\_N}$ 对应」？
 看 $m16n8$ 的 C fragment 约定：4 个寄存器 $(c_0,c_1,c_2,c_3)$ 中
 $(c_0,c_1)$ 是同一行、相邻两列（列偏移 $+1$），$(c_2,c_3)$ 是行偏移 $+8$ 的
 另一组两列。即「寄存器编号的 bit0 = 列、bit1 = 行（$+8$）」，这正是
 $\mathrm{MMA}=4 \to (2_{\text{行}},2_{\text{列}})$ 的
 \texttt{logical\_\allowbreak{}divide} 分解；再与 $\mathrm{MMA\_M}/\mathrm{MMA\_N}$
-里的 rest 段配对后，$\mathrm{nrow}=2\cdot \mathrm{MMA\_M}$、
+里的 rest 段对应后，$\mathrm{nrow}=2\cdot \mathrm{MMA\_M}$、
 $\mathrm{ncol}=2\cdot \mathrm{MMA\_N}$。实测（$D{=}64$、$B_r{=}128$）：
 
 \begin{equation}
@@ -353,7 +353,7 @@ $\mathrm{ncol}=2\cdot \mathrm{MMA\_N}$。实测（$D{=}64$、$B_r{=}128$）：
   \node[draw=tkGreen,rounded corners,fill=tkFillGreen,text=tkGreen!80!black,align=left,font=\scriptsize,
     text width=4.3cm,inner sep=3pt,anchor=west] at (11.0,-1.235)
     {两轮后 4 条 lane 都持有该行的完整片段（all-reduce）：行 max / 行 sum
-     可以直接开算};
+     可以直接计算};
   % 底部注记
   \node[nt,anchor=north west,text width=15.6cm] at (0,-2.86)
     {bit0 $=$ 列（$d_0$，列 $+1$）、bit1 $=$ 行（$d_1$，行 $+8$）——\textbf{行身份只由值编号决定，与 lane 无关}；
@@ -367,7 +367,7 @@ $c_0..c_3$——两档灰度标出「行身份」：$c_0,c_1$ 属行 $r$、$c_2,
 覆盖的列片段（由 $\mathrm{lane}\bmod4$ 决定）。值编号的 bit0 是列偏移、bit1 是行 $+8$，所以
 同一行的 8 列散落在 quad 的 4 条 lane 上。右：两次 \texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor\_\allowbreak{}sync}
 的蝶形——第一轮并 $(0,1)$ 与 $(2,3)$（步长 1），第二轮并 $(0,2)$ 与 $(1,3)$（步长 2），
-两轮后每条 lane 都持有该行的完整片段，行 max / 行 sum 可以就地开算。}
+两轮后每条 lane 都持有该行的完整片段，行 max / 行 sum 可以就地计算。}
 \label{fig:25-rowcol-shfl}
 \end{figure}
 
@@ -480,7 +480,7 @@ $(c_2,c_3)$ 行偏移 $+8$，即 bit0$=$列、bit1$=$行）；右图按 $k16$ A 
 同一批格子，值编号变 $v=d_0+2d_1+4d_2$ 连续 $0..7$——第二个 $n8$ atom 的列对
 成为 K 向的 $k\in[8,16)$（虚线半块，$d_2{=}1$）。加框示例 lane 6 的 8 格在两图
 位置完全相同、编号从「两轮 $0..3$」变「一轮 $0..7$」，即式~\eqref{eq:25-aregs}
-的「列对半拆分 + 重新配对」。}
+的「列对半拆分 + 重新组合」。}
 \label{fig:25-c2aregs}
 \end{figure}
 
@@ -491,9 +491,9 @@ $(c_2,c_3)$ 行偏移 $+8$，即 bit0$=$列、bit1$=$行）；右图按 $k16$ A 
   \item \textbf{几何法（Tri Dao 的 \texttt{logical\_\allowbreak{}divide}）}：把
         $(\mathrm{MMA}{=}4,\ \mathrm{MMA\_M},\ \mathrm{MMA\_N})$ 在列方向
         做一次划分——令 $\mathrm{MMA\_N}=(2,\ \mathrm{MMA\_N}/2)$，再用
-        \texttt{make\_layout} 把切出的分量按 A 的约定重新配对。@竹熙佳处
+        \texttt{make\_layout} 把切出的分量按 A 的约定重新组合。@竹熙佳处
         把它概括为「在几何层面上做一次重排」：思考单位是 shape 的拆分
-        与配对；
+        与组合；
   \item \textbf{代数法（@reed 的 inverse $\circ$ compose）}：不碰 shape，
         把变换写成函数复合——先取 layout 的「坐标 $\leftrightarrow$
         offset」关系（\texttt{left\_\allowbreak{}inverse}），再把「A 坐标 $\to$ offset
@@ -519,7 +519,7 @@ $(c_2,c_3)$ 行偏移 $+8$，即 bit0$=$列、bit1$=$行）；右图按 $k16$ A 
 
 
 
-把上面的几何法写成代数动作，就是「列对半拆分 + 重新配对」：
+把上面的几何法写成代数动作，就是「列对半拆分 + 重新组合」：
 
 \begin{equation}
   (\underbrace{4}_{\text{值}}, \mathrm{MMA\_M}, \underbrace{(2, \mathrm{MMA\_N}/2)}_{\text{列拆半}})
@@ -552,7 +552,7 @@ K 向连续 2 个元素。实测结果是 $((2,2),2),1,4$：仍是 32 个元素�
 \texttt{wait\_group 1} 的含义是「除栈顶的 K 之外全部完成」=「V[tile] 已就绪、
 K[next] 还inflight」。实现 1 就是靠这条栈语义把 V 与 K 的等待分开的
 （L2743--2754）：$kStagesK>1$ 且非尾部时用 \texttt{cp\_\allowbreak{}async\_\allowbreak{}wait\allowbreak{}<1>}，
-尾部退回 \texttt{wait<0>}。注意组编号是 \textbf{per-thread 记账}的
+尾部退回 \texttt{wait<0>}。注意组编号是 \textbf{按线程独立计数}的
 （PTX ISA §9.7.9.25.3.3：wait 只保证\emph{本线程}提交的组完成），所以实现 1
 里每一处 \texttt{wait} 后面都跟着一次 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()}；
 跨线程可见性靠那次同步兜底，不是冗余。
@@ -588,7 +588,7 @@ phase。消费者用 \texttt{wait(bar, phase)} 等待。实现 2/3 里每个 sta
   \node[op, anchor=west, right=6pt of c2] (c3) {arrive(k\_empty[s])};
   \draw[ar] (c1) -- (c2);
   \draw[ar] (c2) -- (c3);
-  \node[ln, text=tkPurple!85!black] at (0,-2.6) {phase 每绕一圈翻转：};
+  \node[ln, text=tkPurple!85!black] at (0,-2.6) {phase 每回绕一轮翻转：};
   \node[ph, anchor=west] (pf) at (0,-3.1) {$\mathrm{phase} = \bigl(\lfloor t/S \rfloor\bigr) \bmod 2$};
 \end{tikzpicture}
 \caption{TMA 事务计数协议的三条不变量（26.3.5 节）：生产者 wait 到空 stage 才
@@ -640,7 +640,7 @@ CuTe 的 \texttt{arrive\_\allowbreak{}and\_\allowbreak{}expect\_\allowbreak{}tx}
      \textbf{坑五（尾部退化）}：$kStagesK{-}1$ 个尾部 tile 不预取 K，栈里只剩 V 组，
      PV 前必须退回 \texttt{wait}$<0>$——否则等的是不存在的组，
      行为是「等很久后照样算完」，流水被拖成同步。\\[2pt]
-     \textbf{坑二（per-thread 记账）}：组编号按线程私有（PTX ISA
+     \textbf{坑二（按线程独立计数）}：组编号按线程私有（PTX ISA
      §9.7.9.25.3.3），所以每处 \texttt{wait} 后都跟一次
      \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads()}，跨线程可见性靠它兜底，不是冗余。};
   % 中：TMA 事务屏障
@@ -655,7 +655,7 @@ CuTe 的 \texttt{arrive\_\allowbreak{}and\_\allowbreak{}expect\_\allowbreak{}tx}
      consumer 只 wait 不 arrive。\\[2pt]
      \textbf{consumer} 对 $k\_empty[s]$：普通屏障，init 计数 $=$ \texttt{kConsumerThreads}，
      每个消费者线程读完该 stage 各 arrive 一次（「我已读完」）。\\[2pt]
-     phase 每绕一圈翻转：$\mathrm{phase}=\bigl(\lfloor t/S\rfloor\bigr)\bmod 2$
+     phase 每回绕一轮翻转：$\mathrm{phase}=\bigl(\lfloor t/S\rfloor\bigr)\bmod 2$
      （图~\ref{fig:25-proto}）。init$=1$ 与第~\ref{ch:17}~章手写版 257 的差别不在数字，
      在「谁 arrive」——两者等价，改 init 前先看角色表。};
   % 下：协议链
@@ -1002,7 +1002,7 @@ $D\in\{64,128\}$、$N\in\{4096\}$。三点预期：(1) 实现 1 与实现 2 的�
 $D{=}128$ 的 Q tile 更大（$128\times128$ 个 half $=32$\,KB），
 实现 1 的 G2S 负载更重，两者差距应主要体现在大 $D$；
 (2) 实现 3（双 consumer）与第~\ref{ch:18}~章手写 FA3 在 $B_r{=}64$ 上的
-结构性差异只有「谁搬」，可对照式~\ref{eq:18-smem} 的 smem 账本；
+结构性差异只有「谁搬」，可对照式~\ref{eq:18-smem} 的 smem 占用；
 (3) 本章全部实现是\textbf{非 causal、无 GQA/varlen} 的 self-attention，
 与手写版限制相同（源码注释 L2528--2529 明示），因此数字只应作为
 「CuTe 化不牺牲性能」的证据，而不是「哪个实现更快」的定论。
@@ -1114,7 +1114,7 @@ A：$m16n8$ 的 C fragment 里，同一行的 2 个片段分布在 lane $\bmod 4
 
 \textbf{Q4：P 为什么会「零拷贝」地变成 A 操作数？}\\
 A：因为 $B_c$（S 的列）与 $PV$ 的 K 维是同一个物理维度，$m16n8k16$ 的
-C 与 A 在该维度上的 2 元素配对方式恰好兼容（式~\eqref{eq:25-aregs}）。
+C 与 A 在该维度上的 2 元素的对应方式恰好兼容（式~\eqref{eq:25-aregs}）。
 这是寄存器复用的经典技巧，CuTe 用一次 \texttt{logical\_\allowbreak{}divide} 表达，
 代价是把它从「技巧」变成了「有条件的等式」，条件写在注释 L2360--2362。
 
@@ -1128,7 +1128,7 @@ A：本章不做这个断言（25.6 节）：四者的 tile、线程、流水深
 受控对照需要在同一 $B_r/B_c/kStages$ 下比较。可确认的是：
 CuTe 化没有牺牲吞吐（对照第~\ref{ch:17}/\ref{ch:18}~章复测）。
 
-\textbf{Q7：TMA 的 mbarrier 协议里，phase 为什么每绕一圈翻转？}\\
+\textbf{Q7：TMA 的 mbarrier 协议里，phase 为什么每回绕一轮翻转？}\\
 A：mbarrier 是「相位对象」而非计数器：arrive 数到零后相位翻转、
 计数重置。stage 循环复用同一个 barrier 时，$t$ 号 tile 属于第
 $\lfloor t/S\rfloor$ 个相位，故 phase $=$ 该商 $\bmod\ 2$

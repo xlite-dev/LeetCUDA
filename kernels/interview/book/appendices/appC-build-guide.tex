@@ -55,7 +55,7 @@ bash ./build.sh --arch sm_120f --headdim default --ext all --jobs 64
 
 \noindent bench 验收用 \texttt{ffpa\_attn.bench} CLI（第~\ref{ch:33}~章的
 矩阵与 knob 口径）。小 headdim 必须先放开环境变量，否则 FFPA
-\textbf{静默回退 SDPA}（TFLOPS 掉到 200T 级是中招信号）：
+\textbf{静默回退 SDPA}（TFLOPS 掉到 200T 级说明已回退）：
 
 \begin{lstlisting}[style=console]
 export CUDA_VISIBLE_DEVICES=7 FFPA_CUDA_ALLOW_SMALL_D=1
@@ -158,7 +158,7 @@ ptxas error : Entry function '_Z1kPf' uses too much shared data (0x28000 bytes, 
 \end{lstlisting}
 
 另一类「不报错但全错」的运行期坑（系统性错值而非随机数）见第~\ref{ch:14}~章
-常见坑一节：smem 基址未对齐 1024B、swizzle 档位选错、期望字节数没喂给
+常见坑一节：smem 基址未对齐 1024B、swizzle 档位选错、期望字节数没传给
 mbarrier。
 
 \section{全书 139 个测试：运行与期望输出}

@@ -23,7 +23,7 @@ L306--386。\textbf{无编译宏限定}。
 
 \section{问题与动机}
 
-先算一笔 roofline 账（口径沿用 ch01）：relu 每元素读 4B 写 4B、做 1 FLOP，
+先把这两个算子放上 roofline（口径沿用 ch01）：relu 每元素读 4B 写 4B、做 1 FLOP，
 $AI = 1/8 = 0.125$；elementwise\_add 读 $a,b$ 写 $c$ 共 12B、做 1 FLOP，
 $AI = 1/12 \approx 0.083$。对照本机 ridge point（约 49.8 FLOP/Byte），它们
 是纯粹的 memory-bound 算子，性能上限就是带宽本身。于是问题转化为：
@@ -133,7 +133,7 @@ sector 数。三种典型情形（图 ch03-1）：
     minimum height=0.56cm, font=\small\bfseries] at (7.73, 0.36)
     {事务粒度 = 32B sector：无用字节照样从 HBM 搬上来 —— 有效率 = 有用字节 / 搬运字节};
 \end{tikzpicture}}
-\caption{coalescing 与非合并访存对比（fp32，每格 4B，一个 sector 8 格 32B）：coalesced 一条 指令落 4 个 sector 有效率 100\%；stride=2 落 8 个、50\%；大 stride 每线程各占一个 sector、仅 12.5\%——事务粒度是 32B sector，无用字节照样从 HBM 搬上来。}
+\caption{coalescing 与非合并访存对比（fp32，每格 4B，一个 sector 8 格 32B）：coalesced 一条指令落 4 个 sector 有效率 100\%；stride=2 落 8 个、50\%；大 stride 每线程各占一个 sector、仅 12.5\%——事务粒度是 32B sector，无用字节照样从 HBM 搬上来。}
 \label{fig:3-1}
 \end{figure}
 
@@ -170,7 +170,7 @@ $[4t, 4t+3]$，warp 的 32 个线程覆盖连续 512B $= 16$ 个 sector，$\eta$
 存在越界读隐患，一个（elementwise\_add\_vec4）用 \texttt{idx + 3 < N}
 加标量尾部兜底，见 \S\ref{sec:ch03-kaogu} 的逐条核查。
 
-\subsection{原子操作与直方图的冲突账}
+\subsection{原子操作与直方图的冲突量}
 
 histogram 要维护 $y[a\sb i] \mathrel{+}= 1$：读 $y[a\sb i]$、加 1、写回，
 即 read-modify-write（RMW）。若两个线程同时 RMW 同一 bin 且无同步，两次加法
@@ -325,7 +325,7 @@ vec4 版的守卫值得逐行读：主路径 \texttt{(idx + 3) < N} 一次性保
 
 一行有效代码。\texttt{atomic\allowbreak{}Add\allowbreak{}(\&\allowbreak{}(y[a[idx]]),\allowbreak{} 1)} 把 RMW 交给硬件：地址
 相同则串行、不同则并行，正确性由硬件保证。按 \S\ref{sec:ch03-math} 的
-冲突账：bin 分布越尖（少数 bin 承压越多），串行化越严重。调用契约也别忽略：
+冲突量估算：bin 分布越尖（少数 bin 承压越多），串行化越严重。调用契约也别忽略：
 输入值必须落在 $[0, B)$ 内，越界即写坏全局内存：kernel 层不检查（性能
 优先），这是调用方的责任，也是「kernel 信任调用方」设计哲学的一个小注脚。
 

@@ -392,7 +392,7 @@ merge\_attn\_states & 0.7849 & 1031.4 \\
 
 单 kernel 0.78~ms 完成 809.5~MB 访存，有效带宽 $1031~\text{GB/s}$，
 已达到该卡理论带宽的约 77\%，对「读两份写一份」的纯流式访存是合理水平
-（读写翻转与 LSE 的零散标量访问会损失一部分）。作为对比参照：同卡上
+（读写切换与 LSE 的零散标量访问会损失一部分）。作为对比参照：同卡上
 ch04 的 softmax 小形状只有数百 GB/s，差距主要来自形状规模
 （本 kernel 每次迭代有 1600 万个线程、13 万个 block，launch 开销完全摊薄）。
 若要继续提升，可尝试的方向是 256-bit 访问或 LSE 的 warp 级广播复用，
@@ -419,7 +419,7 @@ ch04 的 softmax 小形状只有数百 GB/s，差距主要来自形状规模
   \texttt{threads\_\allowbreak{}per\_\allowbreak{}head =\allowbreak{} head\_\allowbreak{}size /\allowbreak{} k\allowbreak{}Pack\allowbreak{}Size} 是整除写法：若
   head\_size 不是 4 的倍数，尾部 head\_size\,\% 4 个元素\textbf{没有任何线程覆盖}，
   输出静默不写（无报错）。而 L501 的守卫 \texttt{if \allowbreak{}(pack\_\allowbreak{}offset \allowbreak{}< head\_\allowbreak{}size)}
-  在整除约定下恒为真，非整除时也救不回尾部元素，属防御性死代码。
+  在整除约定下恒为真，非整除时也覆盖不到尾部元素，属防御性死代码。
   调用方应保证 head\_size \% 4 == 0（现实中 attention 的 head\_dim 均满足），
   泛化改造则需补尾部标量路径。
 \end{kaogu}
