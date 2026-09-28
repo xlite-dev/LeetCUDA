@@ -11,9 +11,9 @@
 五个实现为线索：relu / relu\_vec4（激活）、elementwise\_add /
 elementwise\_add\_vec4（残差连接的原型）、histogram（原子操作出场）。
 
-前四个 kernel 是「如何把带宽吃满」的正反教材；histogram 则引入本章第二个
-主角 atomicAdd：它既是从「读-算-写」跨向「读-改-写」的钥匙，也是 ch02
-末尾埋下的伏笔（跨 block 归约）的正式登场。LLM 推理引擎里，激活、残差、
+前四个 kernel 是「如何达到峰值带宽」的正反教材；histogram 则引入本章第二个
+关键机制 atomicAdd：它把访问模式从「读-算-写」扩展到「读-改-写」，ch02
+末尾的跨 block 归约已经用到它，这里系统讨论它的代价。LLM 推理引擎里，激活、残差、
 直方图统计（如 MoE 路由计数）无处不在，这几个「小算子」在端到端延迟里的
 占比常被低估。
 
@@ -26,8 +26,8 @@ L306--386。\textbf{无编译宏限定}。
 先算一笔 roofline 账（口径沿用 ch01）：relu 每元素读 4B 写 4B、做 1 FLOP，
 $AI = 1/8 = 0.125$；elementwise\_add 读 $a,b$ 写 $c$ 共 12B、做 1 FLOP，
 $AI = 1/12 \approx 0.083$。对照本机 ridge point（约 49.8 FLOP/Byte），它们
-比 memory-bound 还要「纯」，性能天花板就是带宽本身。于是问题转化为：
-怎么把每一个字节、每一条访存指令都花在刀刃上？
+是纯粹的 memory-bound 算子，性能上限就是带宽本身。于是问题转化为：
+怎么让每一个字节、每一条访存指令都发挥最大作用？
 
 两个互补的杠杆。其一是 coalescing：硬件以 32B sector 为粒度搬运数据，若
 一个 warp 的 32 个线程访问的是连续地址，128B 恰好铺满 4 个 sector，零浪费；
@@ -35,12 +35,12 @@ $AI = 1/12 \approx 0.083$。对照本机 ridge point（约 49.8 FLOP/Byte），�
 其二是向量化：用 float4 让一条指令搬 16B，指令数降为 1/4。这两个杠杆都
 不改变算法的 FLOPs 与 Bytes（roofline 位置不变），改变的是
 \textbf{实际带宽向理论带宽的逼近程度}，这正是 memory-bound 算子优化
-的全部战场。
+的全部内容。
 
 而 histogram 提出另一个问题：当多个线程要\textbf{写同一个位置}时怎么办？
 朴素方案会丢失更新（lost update）；atomicAdd 给出正确性保证，代价是
 冲突串行化。ch02 的 bench 已经量化过全局原子的代价（约 2.6 ns/op），本章
-在一个更极端的场景（256-bin 直方图、四百万次插入）里再看它一次。
+在一个更极端的场景（256-bin 直方图、四百万次插入）里进一步量化它。
 
 \section{数学原理}\label{sec:ch03-math}
 
@@ -177,7 +177,7 @@ histogram 要维护 $y[a\sb i] \mathrel{+}= 1$：读 $y[a\sb i]$、加 1、写�
 会丢失一次（lost update）。atomicAdd 把 RMW 变成硬件级的不可分割操作：
 在 L2 的原子处理单元上排队执行，同地址操作\textbf{串行化}，不同地址并行。
 串行化的代价可以直接建模：设一次全局原子延迟约 $\tau$（ch02 实测约
-2.6 ns），若全部 $N$ 次插入都砸向同一个 bin，吞吐被钉死在 $1/\tau$；
+2.6 ns），若全部 $N$ 次插入都落在同一个 bin，吞吐上限为 $1/\tau$；
 若 $B$ 个 bin 均匀承压，理论上限约 $B/\tau$ op/s。真实情形介于两者之间，
 且 L1 侧的 atomic 路径与请求排队会进一步压低实测值：
 \S\ref{sec:ch03-perf} 的 bench 会看到，4M 次 256-bin 插入实测有效带宽只有
@@ -258,7 +258,7 @@ rsqrt 中反复出现。
 float4 引用，编译为一条 \texttt{LDG.E.128}；\texttt{FLOAT4\allowbreak{}(y[idx]) =\allowbreak{} reg\_\allowbreak{}y}
 同理是一条 \texttt{STG.E.128}。四个 fmaxf 是 4 条独立的寄存器指令，它们
 与 load/store 的比例恰好说明：\textbf{向量化后指令瓶颈从访存侧转移到了
-计算侧}，这正是「AI 低」的算子最乐意看到的结构。
+计算侧}，这正是「AI 低」算子的理想结构。
 
 \begin{figure}[H]
 \centering
@@ -318,14 +318,14 @@ vec4 版的守卫值得逐行读：主路径 \texttt{(idx + 3) < N} 一次性保
 跑 2 次，正确但慢：\textbf{尾部牺牲性能换正确性}，主路径保住 99\% 的
 流量。
 
-\subsection{histogram：原子操作的正式登场}
+\subsection{histogram：原子操作的应用}
 
 \lstinputlisting[linerange={376-385},firstnumber=auto,
   title={base.cuh L376-385（histogram：atomicAdd 计数）}]{../base.cuh}
 
 一行有效代码。\texttt{atomic\allowbreak{}Add\allowbreak{}(\&\allowbreak{}(y[a[idx]]),\allowbreak{} 1)} 把 RMW 交给硬件：地址
 相同则串行、不同则并行，正确性由硬件保证。按 \S\ref{sec:ch03-math} 的
-冲突账：bin 分布越尖（少数 bin 承压越多），串行化越狠。调用契约也别忽略：
+冲突账：bin 分布越尖（少数 bin 承压越多），串行化越严重。调用契约也别忽略：
 输入值必须落在 $[0, B)$ 内，越界即写坏全局内存：kernel 层不检查（性能
 优先），这是调用方的责任，也是「kernel 信任调用方」设计哲学的一个小注脚。
 
@@ -396,7 +396,7 @@ histogram (256 bins) & 0.62860 & 26.69 GB/s & 按读 4B/元素计，原子另计
 指令发射：4 倍的指令缩减没有释放空间。但不要据此断言 vec4 无用：当
 数据集大于 L2（HBM 直读）、或 block 数受 grid 限制（指令发射成为瓶颈）
 时，vec4 的 1/4 指令量与 4 倍 ILP 优势会显性化。工程结论是\textbf{先看清
-瓶颈层级，再选武器}。
+瓶颈层级，再选优化手段}。
 
 \textbf{其三，histogram 比 elementwise 慢两个数量级}（26.7 vs 2654 GB/s，
 0.63 ms vs 0.019 ms）。4M 次原子均摊每次约 $0.63\,\mathrm{ms}/4.2\mathrm{M}
@@ -421,7 +421,7 @@ bin 数）。注意本配置 $T{=}B{=}256$ 时 $G \times B = N$，次数并不�
 \end{kaogu}
 
 \begin{kaogu}[F1]{L324--329 relu\_vec4 边界守卫不足（越界读隐患）}
-与 ch02 的 dot\_vec4 同病：守卫只有 \texttt{idx < N}，而 FLOAT4 一次读 4
+与 ch02 的 dot\_vec4 有同样问题：守卫只有 \texttt{idx < N}，而 FLOAT4 一次读 4
 元素，$N$ 非 4 倍数时最后一个线程越界读 \texttt{x[idx.\allowbreak{}.\allowbreak{}idx+3]}。注释
 「最适合 N 按 4 对齐的场景」是隐含免责，未明示越界后果。同文件
 elementwise\_add\_vec4（L358--374）的 \texttt{(idx + 3) < N} 主路径 + 标量
@@ -479,7 +479,7 @@ elementwise\_add\_vec4（L358--374）的 \texttt{(idx + 3) < N} 主路径 + 标�
 \item \textbf{Q：逐元素 kernel 怎么打到峰值带宽？}\\
   A：连续 idx 映射（coalesced）+ 足够多的线程覆盖访存延迟（occupancy）
   + vec4 降指令量 + 尾部安全处理；最后用「实测带宽/所在层级理论带宽」
-  打分（本机 L2 口径实测 1862--2654 GB/s）。
+  衡量（本机 L2 口径实测 1862--2654 GB/s）。
 \end{itemize}
 
 \section{最小测试与动手实验}

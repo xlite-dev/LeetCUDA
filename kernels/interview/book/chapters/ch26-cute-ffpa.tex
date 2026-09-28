@@ -3,18 +3,18 @@
 
 \section{本章导读}
 
-第~\ref{ch:19}~章把 Split-D 当作\emph{算法}讲透了：为什么大 head\_dim 会撞上
-smem 墙、$S$ 如何沿 $D$ 切成 chunk、$O$ 如何拆成分量并在收尾合并、chunk 数与
-流水级数的相位关系如何推导。本章换一副眼镜：把同一份代码（\texttt{ffpa\_\allowbreak{}attn.\allowbreak{}cuh}
+第~\ref{ch:19}~章把 Split-D 当作\emph{算法}讲透了：为什么大 head\_dim 会触及
+smem 容量上限、$S$ 如何沿 $D$ 切成 chunk、$O$ 如何拆成分量并在收尾合并、chunk 数与
+流水级数的相位关系如何推导。本章换一个视角：把同一份代码（\texttt{ffpa\_\allowbreak{}attn.\allowbreak{}cuh}
 的 CuTe 版）当作\emph{类型系统}来读，回答一个第~\ref{ch:19}~章刻意没有展开的问题：
 
 \begin{quote}
   Split-D 的每一个结构决策（双 TiledMma、chunk 循环、独立 $O$ 累加器），
   在 CuTe 里究竟长什么\emph{类型}？哪些事实可以在 host 端离线断言，
-  而不必等到 device 上跑出错数？
+  而不必等到 device 上跑出错误结果？
 \end{quote}
 
-这个视角不是炫技。第~\ref{ch:25}~章已经演示过一次：手写 attention 里靠注释和
+这个视角有直接的工程收益。第~\ref{ch:25}~章已经演示过一次：手写 attention 里靠注释和
 纪律维持的 lane 映射、tile 计数、转置视图，在 CuTe 版里变成了
 \texttt{print\allowbreak{}(layout)} 可以打印、\texttt{static\_\allowbreak{}assert} 可以断言、host 端
 测试可以离线核对的\emph{类型事实}。FFPA 把这件事推得更远一步：Split-D 引入的
@@ -22,7 +22,7 @@ chunk 循环让「归约维度被切开」这件事也必须落在类型上：
 
 \begin{itemize}[itemsep=2pt,topsep=2pt]
   \item QK 与 PV 用\emph{两个不同形状}的 TiledMma，却共享同一批 128 个线程；
-        两个 fragment 为什么能「无缝交接」？
+        两个 fragment 为什么能「零拷贝交接」？
   \item $S$ 的归约维（$D$）被切成 $C$ 个 chunk，但 $S$ 的 fragment 形状
         \emph{一次都没有变}——chunk 循环到底切开了什么？
   \item 每个 chunk 一份 $O$ 累加器——$C\times 32$ 个 f32 寄存器是怎么被类型
@@ -31,7 +31,7 @@ chunk 循环让「归约维度被切开」这件事也必须落在类型上：
 
 本章的叙述顺序与第~\ref{ch:25}~章一致：先给类型代数（26.3 节，所有公式都能
 在 host 端用 CuTe 原语验证），再逐相位读 kernel（26.4 节），最后是常见坑、
-面试速查与最小测试。全章跟一条\textbf{数据流}走：Q/K 的 chunk 从 smem
+面试速查与最小测试。全章沿一条\textbf{数据流}展开：Q/K 的 chunk 从 smem
 切片进来、在 $S$ 的 32 个寄存器里跨 chunk 累加、经 rowcol 视图做 online
 softmax 就地变成 $P$、再被 Aregs 重解释成 PV 的 A 操作数。每一步都只用
 \emph{类型}回答「数据在哪、什么形状、谁持有」。两处布局变换（rowcol 与
@@ -70,8 +70,8 @@ $[B_r, D]$、$[B_c, D]$，TiledMma 的 $K$ 向一次覆盖 16 列，循环在 $N
         从「整块 $[64,D]$」变成「$C$ 个 $[64,64]$」。
 \end{enumerate}
 
-四个问题的共同点：它们\emph{都不是数值问题}（谁的浮点和谁一样、归约顺序也定
-了），而是\textbf{类型与布局问题}：tile 怎么切、fragment 怎么换解释、寄存器
+四个问题的共同点：它们\emph{都不是数值问题}（数值精度与归约顺序都已确
+定），而是\textbf{类型与布局问题}：tile 怎么切、fragment 怎么换解释、寄存器
 怎么编号、循环与 stage 怎么对应。把这四个问题逐个翻译成 CuTe 的类型与布局，
 就是「用 CuTe 抽象表达 Split-D」的全部内容。
 
@@ -93,7 +93,7 @@ L118--128 & G2S \texttt{TiledCopy} & TV 布局与 MMA 对齐（26.4.2） \\
 L136--141 & V 的 fragment 布局预计算 & 转置视图与 nonswizzle（26.4.3） \\
 L152--176 & fragment 尺寸与寄存器账本 & 可断言的常量（26.3.2） \\
 L217--271 & Phase 1：QK 的 chunk 流水 & 归约维的循环表达（26.4.5） \\
-L273--303 & Phase 2：softmax 与 $P$ 的诞生 & rowcol 与 Aregs（26.3.3） \\
+L273--303 & Phase 2：softmax 与 $P$ 的生成 & rowcol 与 Aregs（26.3.3） \\
 L307--353 & Phase 3：PV 的 chunk 循环 & 双 TiledMma 的交接（26.4.6） \\
 L355--374 & Phase 4：归一化与写回 & 收尾的布局复用（26.4.7） \\
 \bottomrule
@@ -226,7 +226,7 @@ $S$」。\textbf{线程布局是资源分配问题，TiledMma 的三元组就是
 
 \subsection{fragment 的元素计数：两个恒等式}
 
-TiledMma 定下来之后，每个线程持有多少寄存器就定了。这里有两个恒等式，后面要讲的「无缝交接」就建立在它们上。
+TiledMma 定下来之后，每个线程持有多少寄存器就定了。这里有两个恒等式，后面要讲的「零拷贝交接」就建立在它们上。
 
 \textbf{恒等式一（C fragment 的大小）}：
 \texttt{partition\_\allowbreak{}fragment\_\allowbreak{}C} 把\emph{目标输出形状}按 TiledMma 的线程布局
@@ -251,7 +251,7 @@ FFPA 的两处调用（L152 与 L218）目标形状都是 $(64,64)$，线程数�
 在 $S$ 上的投影；$O$ 的第三 mode 数字恰好也是 8，但它来自 PV 的
 「$64$ 列梯子被重复 8 次」而不是 EURepeat（$O$ 的 $C$ 形状 $\times$ 线程数
 决定了 total）。\textbf{两个 32 的来历不同，大小相同：这是 $S\to P$ 与
-$P\to O$ 两条接手链条能成立的前提。}
+$P\to O$ 两条交接链路能成立的前提。}
 
 \textbf{恒等式二（rowcol 视图的行列数）}。online softmax 要在
 「行」上做 max/sum，所以第~\ref{ch:25}~章的工具函数
@@ -292,7 +292,7 @@ inverse$\circ$compose 代数法都在讲同一件事）。放到 Split-D 的语�
 补三点增量：
 
 \begin{itemize}[itemsep=2pt,topsep=2pt]
-  \item \textbf{为什么必须「就地」}：$S$ 的 32 个寄存器是 Phase 2 手里最紧
+  \item \textbf{为什么必须「就地」}：$S$ 的 32 个寄存器是 Phase 2 最紧张
         的资源，$P$ 直接复用它们；若改走「$P$ 写回 smem 再 ldmatrix」，
         每个 kv\_tile 多出一次 $64\times64$ 的 half 往返与一次同步——
         Split-D 的 D-chunk 循环让这笔开销按 $C$ 倍累积；
@@ -301,7 +301,7 @@ inverse$\circ$compose 代数法都在讲同一件事）。放到 Split-D 的语�
         落在哪个寄存器编号上，而不是 QK 的约定；
   \item \textbf{数据流本身}：$S$ 的列（$B_c$ 向）在 $P$ 里变成 K 向，而
         $PV$ 的归约恰好沿这个方向——$P$ 的「生产者」（softmax）与
-        「消费者」（PV）在同一维上对话，变换只调整「哪个寄存器读哪一对
+        「消费者」（PV）作用在同一维上，变换只调整「哪个寄存器读哪一对
         列」，不搬数据。
 \end{itemize}
 
@@ -524,7 +524,7 @@ $d_2{=}1$ 的 4 格来自 C 的第二个 $n8$ atom（虚线半块）。\textbf{�
 \textbf{同一个} \texttt{tCrS} fragment——「一个 fragment 多次迭代」，softmax 必须等
 求和完成；右：每个 chunk 的 PV 结果各存一份 \texttt{o\_acc\_storage[c][32]}
 （每分量独立 rescale），Phase 4 才相加得 $O=\sum_c O_c$。$S$ 与 $O$ 的 32 值/线程
-形状完全相同，差别只在「谁在跨迭代累加、谁在分份驻留」。}
+形状完全相同，差别只在「谁在跨迭代累加、谁在分份存储」。}
 \label{fig:26-splitd-struct}
 \end{figure}
 
@@ -552,7 +552,7 @@ gmem 侧的 chunk 由 \texttt{local\_tile} 切出（坐标是 $(q\_tile, d\_chun
 $d$ 从 $0$ 滚到 $\mathrm{Sk}{-}1$）；smem 侧每轮把 \texttt{q\_base} 加上
 环状槽位偏移 \texttt{qk\_read} $\times$ \texttt{k\allowbreak{}QChunk\allowbreak{}Elements}，重新
 包成一个 \texttt{SmemLayoutQ} 的 tensor。\textbf{类型是常量、指针是
-变量}：台子换了、剧本不变。随后 \texttt{partition\_\allowbreak{}fragment\_\allowbreak{}A} 与
+变量}：每轮更换的只是槽位基址，tensor 的布局不变。随后 \texttt{partition\_\allowbreak{}fragment\_\allowbreak{}A} 与
 \texttt{s2r\_thr\_q} 的 \texttt{partition\_S} 在这个「一块 chunk」的视图
 上照常工作（两者的参数都是 \texttt{sQ\_stg}）。对照第~\ref{ch:25}~章的三级搭建，那里 smem 是常驻的几段静态视图，
 这里换成了\textbf{按 stage 轮转的池}：对 CuTe 而言两者没有区别，都是
@@ -564,7 +564,7 @@ $d$ 从 $0$ 滚到 $\mathrm{Sk}{-}1$）；smem 侧每轮把 \texttt{q\_base} 加
 
 本节按源码的相位顺序读 \texttt{ffpa\_\allowbreak{}split\_\allowbreak{}d\_\allowbreak{}cute}（cp.async 版，128 线程）。
 算法流程（V 预取 $\to$ QK chunk 流水 $\to$ softmax $\to$ PV chunk 流水 $\to$
-归一化写回）与第~\ref{ch:19}~章一致；本节只标出\textbf{类型层的看点}。
+归一化写回）与第~\ref{ch:19}~章一致；本节只标出\textbf{类型层的要点}。
 
 \subsection{traits 与 chunk 常量}
 
@@ -574,7 +574,7 @@ $d$ 从 $0$ 滚到 $\mathrm{Sk}{-}1$）；smem 侧每轮把 \texttt{q\_base} 加
   title={ffpa\_attn.cuh L50-61（MmaAtom、双 TiledMma、两个 copy atom）}]{../ffpa_attn.cuh}
 
 再看 kernel 的入口与 chunk 常量（L80--97）。这一段值得逐行读，因为它把
-「一个 chunk 有多大」的全部依赖钉死在编译期：
+「一个 chunk 有多大」的全部依赖固定在编译期：
 
 \lstinputlisting[linerange={80-97},firstnumber=auto,
   title={ffpa\_attn.cuh L80-97（128 线程的 launch bounds 与 chunk 常量：kDChunks 由 head\_dim 推出）}]{../ffpa_attn.cuh}
@@ -582,7 +582,7 @@ $d$ 从 $0$ 滚到 $\mathrm{Sk}{-}1$）；smem 侧每轮把 \texttt{q\_base} 加
 三处类型要点：
 
 \begin{itemize}[itemsep=2pt,topsep=2pt]
-  \item \texttt{\_\allowbreak{}\_\allowbreak{}launch\_\allowbreak{}bounds\_\allowbreak{}\_\allowbreak{}(128)} 不是随手写的数字，它对应
+  \item \texttt{\_\allowbreak{}\_\allowbreak{}launch\_\allowbreak{}bounds\_\allowbreak{}\_\allowbreak{}(128)} 不是任意的数字，它对应
         TiledMma 的 $\mathrm{AtomLayout}=(4,1,1)$——4 个 warp $\times$ 32 lane
         $=128$。改 Tile 的 $M$ 向分工（例如换 $(2,1,1)$）而忘了同步改
         launch bounds，kernel 里所有 \texttt{get\_\allowbreak{}thread\_\allowbreak{}slice(tid)} 的
@@ -611,7 +611,7 @@ $d$ 从 $0$ 滚到 $\mathrm{Sk}{-}1$）；smem 侧每轮把 \texttt{q\_base} 加
         \textbf{TMA+WS 版}（与第~\ref{ch:19}~章 TMA+WS 版的划分一致）；
         cp.async 版是
         \textbf{单角色 128 线程}（L73--78 的注释自己写明了）。按 256 去数
-        cp.async 版的 warp 会踩空——本节的类型推导统一以 L81 的
+        cp.async 版的 warp 会数错——本节的类型推导统一以 L81 的
         \texttt{\_\allowbreak{}\_\allowbreak{}launch\_\allowbreak{}bounds\_\allowbreak{}\_\allowbreak{}(128)} 为准；
   \item \textbf{EURepeat 是注释词汇、不是接口}。与第~\ref{ch:25}~章同族：
         CuTe 公开可断言的是 \texttt{tile\_\allowbreak{}size\_\allowbreak{}mnk} 与 fragment 布局，
@@ -621,7 +621,7 @@ $d$ 从 $0$ 滚到 $\mathrm{Sk}{-}1$）；smem 侧每轮把 \texttt{q\_base} 加
 
 \subsection{G2S \texttt{TiledCopy}：与 MMA 划分对齐}
 
-搬运的线程划分（L118--128）是本章第一个「对齐」看点：
+搬运的线程划分（L118--128）是本章第一个「对齐」要点：
 
 \lstinputlisting[linerange={118-128},firstnumber=auto,
   title={ffpa\_attn.cuh L118-128（G2S：128-bit cp.async，线程布局 16$\times$8，值布局 1$\times$8）}]{../ffpa_attn.cuh}
@@ -640,7 +640,7 @@ $=128$\,bit，正好是 \texttt{cp.\allowbreak{}async.\allowbreak{}cg.\allowbrea
 这是从「384/256 线程的多角色 kernel」演化到「128 线程单角色」的直接证据：
 线程数一旦与 TiledMma 的 warp 划分一致，G2S 的 \texttt{tid} 与 MMA 的
 \texttt{tid} 就是\emph{同一个坐标系}，\texttt{partition\_S} /
-\texttt{partition\_D} 的转换全部退化。代价是搬运带宽砍半（128 线程 vs 256），
+\texttt{partition\_D} 的转换全部退化。代价是搬运带宽降低一半（128 线程 vs 256），
 收益是零映射开销：第~\ref{ch:19}~章的性能节从吞吐角度讨论过这笔账。
 
 \subsection{V 的转置视图与 fragment 预计算}
@@ -784,12 +784,12 @@ QK 段（L217--270）是整个 kernel 最能体现「循环结构 vs 类型」�
         与第~\ref{ch:25}~章实现 1 的组栈策略同构；
   \item 循环末尾的 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()} 之后，\texttt{qk\_read} 前进
         一格——smem 槽位的复用边界。类型上这里没有任何「chunk」痕迹：
-        \texttt{gemm\_ss} 眼里的世界永远是「一份 A fragment $\times$
+        \texttt{gemm\_ss} 处理的永远是「一份 A fragment $\times$
         一份 B fragment，K 向 4 个 atom」——\textbf{chunk 循环在共享层
         函数里不可见}，这正是把 \texttt{gemm\_ss} 抽成工具函数的价值。
 \end{enumerate}
 
-\subsection{Phase 2：softmax 与 $P$ 的诞生}
+\subsection{Phase 2：softmax 与 $P$ 的生成}
 
 \lstinputlisting[linerange={273-303},firstnumber=auto,
   title={ffpa\_attn.cuh L273-303（Phase 2：rowcol 视图上的 online softmax + \texttt{convert\_\allowbreak{}type} 与 \texttt{Aregs}）}]{../ffpa_attn.cuh}
@@ -857,7 +857,7 @@ rescale 的操作对象是 \texttt{tCrO} 的 rowcol 视图：行方向乘
 
 \subsection{Phase 4：归一化与写回}
 
-收尾（L355--374）是全书最「平淡」的一段，但它的布局复用值得指出：
+收尾（L355--374）没有引入新的机制，但它的布局复用值得指出：
 
 \lstinputlisting[linerange={355-374},firstnumber=auto,
   title={ffpa\_attn.cuh L355-374（Phase 4：每个 chunk 独立归一化 + R$\to$G 写回）}]{../ffpa_attn.cuh}
@@ -950,7 +950,7 @@ rescale 的操作对象是 \texttt{tCrO} 的 rowcol 视图：行方向乘
      从两遍访存变成一遍寄存器更新的全部代价结构};
 \end{tikzpicture}
 \caption{双 TiledMma 的数据流：QK 沿 $D$ 累加成 $S$（32 寄存器跨 chunk
-存活），softmax 就地覆盖为 $P$，Aregs 重解释后喂给 PV；$O$ 的每个 chunk
+存活），softmax 就地覆盖为 $P$，Aregs 重解释后交给 PV；$O$ 的每个 chunk
 分量独立 rescale 与累加，\texttt{row\_scale}（虚线）耦合两个循环。底部
 为寄存器账本：$S/P$ 32、$O[C][32]$ 共 256（$C{=}8$）、V fragment 按
 M-warp 重复——smem 只承载 Q/K/V 的 chunk 流水。}
@@ -1018,7 +1018,7 @@ $(\mathrm{Sv}-1)\bmod \mathrm{Sv}$ 继续（L308）。改 Phase 0 的预取个�
 而忘了这里，会写坏正在被读的 chunk。
 
 \textbf{坑五：chunk 循环里的 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()} 属于槽位复用协议。}
-QK 每轮末尾（L269）与 PV 每轮末尾（L350）的同步不是装饰：它们保证「本轮
+QK 每轮末尾（L269）与 PV 每轮末尾（L350）的同步不是可有可无的：它们保证「本轮
 读过的 smem 槽位」在下一轮被覆写之前所有线程都已读完；删掉它，表现是
 高频偶发数值错误，且随 stage 数增大而加剧。
 
@@ -1031,7 +1031,7 @@ L281--282 与 L291--292）。多加一层掩码 4 会把\emph{另一个 warp 段
 \textbf{坑七：chunk 宽度、smem 池、TMA box 三者必须同步改。}
 把 \texttt{kDChunk} 从 64 改成别的值时，SW128 原子、TMA box
 （\texttt{Shape\allowbreak{}<\_\allowbreak{}64,\allowbreak{}\_\allowbreak{}64>}）、\texttt{kDChunks} 与 V 的 fragment 预计算
-全部要跟着动：「一个 64 改三处」是这一族 kernel 的固定税。
+全部要跟着动：「一个 64 改三处」是这一族 kernel 改动时的固定代价。
 
 \section{面试要点速查}
 

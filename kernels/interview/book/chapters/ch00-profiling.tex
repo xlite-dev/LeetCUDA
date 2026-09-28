@@ -7,8 +7,8 @@
 
 在动手写第一个 kernel 之前，本书想先立一条工程信条：\textbf{profile 永远都是
 最重要的}。优化 GPU kernel 的正确循环不是「改了跑一下看快没快」，而是
-「先测量、再假设、改一处、再测量」。凭直觉的优化是赌博：赢了是运气，输了
-连原因都找不到。这一章专门讲两件测量工具：\textbf{Nsight Systems}（nsys，
+「先测量、再假设、改一处、再测量」。凭直觉的优化，快了不知道为什么快，
+慢了也找不到原因。这一章专门讲两件测量工具：\textbf{Nsight Systems}（nsys，
 全局时间线）与 \textbf{Nsight Compute}（ncu，单 kernel 计数器），从原理、
 命令行用法到核心指标的含义都会逐一拆开，并给出一张「症状 $\to$ 证据 $\to$ 结论 $\to$
 对策」的瓶颈判断决策树。
@@ -22,19 +22,19 @@ L1/L2 命中率、bank conflict，每一个指标都配一个真实的「指标�
 \textbf{前置}：无（与 ch01 互为入口，roofline 词汇见 ch01）。
 \textbf{源码区间}：无（工具方法论章）。\textbf{编译宏与架构限定}：无。
 
-\section{问题与动机：凭感觉的优化是赌博}
+\section{问题与动机：不 profile 就优化的代价}
 
 先看三个真实的开发反例，说明「不 profile 就优化」会栽在哪里。
 
 \textbf{反例一：感觉是装载瓶颈，其实是依赖链}。一个 sm\_89 上的 fp8
 attention kernel（persist-D 结构）对标业界最快实现慢 28\%（909.4$\mu$s vs
-710$\mu$s）。直觉方案是「加深装载流水、砍指令、缩 tile」，全部实测无效；
-NCU 的 stall 剖析结果一锤定音：\texttt{math\_\allowbreak{}pipe\_\allowbreak{}throttle} 1.32
+710$\mu$s）。直觉方案是「加深装载流水、减指令、缩 tile」，全部实测无效；
+NCU 的 stall 剖析结果直接给出结论：\texttt{math\_\allowbreak{}pipe\_\allowbreak{}throttle} 1.32
 主导、\texttt{wait} 0.82、\texttt{long\_\allowbreak{}scoreboard} 仅
 0.04，\textbf{装载根本不是瓶颈}：瓶颈是单 CTA 内 softmax$\to$PV 的串行
 依赖链，唯一有效的改动是拆链（2 CTA/SM），实测 $-5\%$。
 
-\textbf{反例二：感觉主 kernel 慢，其实差距在别处}。e2e 落后时先盯着主 kernel
+\textbf{反例二：感觉主 kernel 慢，其实差距在别处}。e2e 落后时先对主 kernel
 跑 ncu，做完整套指标分析才发现主 kernel 已占 e2e 时间 86--92\%、前处理链
 已优于对照，一次 nsys 的时间线本可以三分钟得出同样结论，避免在错误的
 kernel 上浪费半天 ncu 分析。
@@ -42,9 +42,9 @@ kernel 上浪费半天 ncu 分析。
 \textbf{反例三：感觉融合更快，其实更慢}。把 softmax 的 bias 注入从「分离
 kernel」改成「单 pass 融合 + smem tile」，直觉上少一次读写应该更快，实测反而
 慢 4.2ms：NCU 显示融合把 LDS（shared load）拉进了 consumer 关键路径，
-\texttt{sleeping} stall 从 3.5\% 暴涨到 22.3\%。指标否决了这次「优化」。
+\texttt{sleeping} stall 从 3.5\% 升到 22.3\%。指标否决了这次「优化」。
 
-三个反例的共同教训：GPU 上的性能瓶颈极少长在直觉指向的地方。成熟的优化
+三个反例的共同教训：GPU 上的性能瓶颈很少出现在直觉指向的位置。成熟的优化
 工作流会把它固化成一条硬规则：\textbf{没有 NCU 数据，不改 kernel}；
 每条优化结论必须引用具体 metric 数值作为证据。本章就把这套「证据
 从哪里来、怎么读」讲透。
@@ -69,7 +69,7 @@ nsys 与 ncu 的采集原理完全不同：
   里的 kernel 耗时不能当 bench 时间用}。
 \end{itemize}
 
-一句话分工：nsys 是体检报告（哪里有病），ncu 是专科检查（病灶细胞级切片）。
+一句话分工：nsys 定位「谁慢」，ncu 解释「单个 kernel 为什么慢」。
 
 \subsection{顺序：先 nsys，后 ncu}
 
@@ -77,10 +77,10 @@ nsys 与 ncu 的采集原理完全不同：
 
 \begin{enumerate}
 \item \textbf{nsys 先行}：一次采集拿到全部 kernel 的时间占比排序。如果主
-  kernel 占 86\%，那么辅助 kernel 再难看也只有 14\% 的优化上限：先确认
+  kernel 占 86\%，那么辅助 kernel 再慢也只有 14\% 的优化上限：先确认
   「该优化谁」，再谈「怎么优化」。nsys 还能立刻暴露三类结构性问题：launch
   gap（CPU 跟不上，一个真实案例 wall-GPU 差 129$\mu$s vs 对照 50$\mu$s，
-  病根在 dispatch 而非 kernel）、该并行的流没重叠、意外的 fallback kernel。
+  原因在 dispatch 而非 kernel）、该并行的流没重叠、意外的 fallback kernel。
 \item \textbf{ncu 跟进}：只对 nsys 排出的 Top-1/Top-2 kernel 做
   \texttt{-{}-set full} 深挖，读 roofline、occupancy、stall、memory 各维
   指标，形成假设。
@@ -88,8 +88,8 @@ nsys 与 ncu 的采集原理完全不同：
   \texttt{-{}-diff} 对照前后指标；无效或负优化立即回退。
 \end{enumerate}
 
-反着来的代价见本章开头的反例二：先 ncu 后 nsys，等于对着一个可能不重要的
-kernel 做了半天细胞级切片。
+反着来的代价见本章开头的反例二：先 ncu 后 nsys，等于把半天的深挖时间
+花在一个可能不重要的 kernel 上。
 
 \begin{figure}[H]
 \centering
@@ -165,17 +165,17 @@ nsys stats -r cuda_gpu_trace   report.nsys-rep   # per-launch 时间线（看 ga
 \subsection{体积控制：一次 500GB 事故}
 
 nsys 的中间数据默认写到 \texttt{/\allowbreak{}tmp/\allowbreak{}nvidia/\allowbreak{}nsight\_\allowbreak{}systems}，体积 $\approx$
-单事件字节数 $\times$ 事件数，而事件数随时长线性增长。对大模型推理（多模型链、大 seqlen、多次 repeat）无脑
-全量采集，曾把 \texttt{/tmp} 写到 \textbf{500GiB+} 直到磁盘写满系统卡死
+单事件字节数 $\times$ 事件数，而事件数随时长线性增长。对大模型推理（多模型链、大 seqlen、多次 repeat）不加
+限制地全量采集，曾把 \texttt{/tmp} 写到 \textbf{500GiB+} 直到磁盘写满系统卡死
 （真实事故，2026-09）。
 三条铁律：
 
 \begin{enumerate}
 \item \textbf{输出与临时文件落项目目录}：显式设 \texttt{TMPDIR} 指向项目
   \texttt{.tmp/} 下的目录并用 \texttt{-o} 指定输出，事后清理。注意 TMPDIR
-  路径要短，过长的路径会撑爆 Unix domain socket 的 107 字节上限（Ray 的
-  plasma store 直接构造失败）。
-\item \textbf{禁止对大模型 e2e 无脑全量采}：repeat 降到 0--1，单域
+  路径要短，过长的路径会超过 Unix domain socket 的 107 字节路径上限，导致
+  Ray 的 plasma store 构造失败。
+\item \textbf{禁止对大模型 e2e 不加限制地全量采集}：repeat 降到 0--1，单域
   \texttt{-t cuda}，关采样。
 \item \textbf{优先 torch.profiler}：只想看 kernel 时间表时，
   \texttt{torch.\allowbreak{}profiler} 输出 chrome trace 落在 \texttt{.tmp/}，零外部临时
@@ -185,7 +185,7 @@ nsys 的中间数据默认写到 \texttt{/\allowbreak{}tmp/\allowbreak{}nvidia/\
 \subsection{窗口化采集：cudaProfilerApi}
 
 只想采推理中的一小段（比如 50 个 denoise step 中的 1 步）时，用
-\texttt{-{}-capture-range=\allowbreak{}cuda\allowbreak{}Profiler\allowbreak{}Api} 配合代码里的开关，把采集窗口钉在
+\texttt{-{}-capture-range=\allowbreak{}cuda\allowbreak{}Profiler\allowbreak{}Api} 配合代码里的开关，把采集窗口限定在
 目标区间：
 
 \begin{lstlisting}[style=console, title={窗口化采集（Python 侧）}]
@@ -277,7 +277,7 @@ sm\_120 上的实测为参照。
 （MEM\%）分别是计算管线与内存管线的峰值利用率，是 NCU 报告的第一行。
 两者把 kernel 放上 ch01 的 roofline：SM\% 高 MEM\% 低是 compute-bound，
 反之 memory-bound；\textbf{双低}（如 SM/MEM 都在 30\% 附近）则是
-latency-bound：管线都没喂满，问题在并行度或依赖链，这是 roofline 图上
+latency-bound：两条管线都没有饱和，问题在并行度或依赖链，这是 roofline 图上
 看不出的第三态，必须回到 stall 指标找证据。
 
 \subsection{Occupancy：理论、达到与三类限制源}
@@ -350,13 +350,13 @@ KPI，GEMM 类 kernel 用大 tile + 低 occupancy + 高 ILP 换性能是常态�
 
 \begin{itemize}
 \item \textbf{spill 的代价主要不是流量}。一个 fp4 attention kernel 在
-  D=512 时 spill 总量 234MB，但 local 流量仅 12.8GB/s，带宽上无关痛痒；真正的代价
+  D=512 时 spill 总量 234MB，但 local 流量仅 12.8GB/s，带宽不是瓶颈；真正的代价
   是\textbf{延迟暴露}：8 warps/SM 意味着每 scheduler 只有 2 个 warp 可切换，
   LDL 的几百 cycle 延迟藏不住，同时指令数也变多。
 \item \textbf{寄存器预算可以算出来}。attention 的 O 累加器每线程占
   $k_{Br}\cdot D/256$ 个 f32 寄存器（M8N1 布局，$256=32$ lanes $\times 8$
   个 warp，对应 consumer 全部 256 线程）；$k_{Br}{=}128$ 时为
-  $D/2$，D=512 要 256 个，\textbf{撞穿 255 墙}。这正是大 D 必须换
+  $D/2$，D=512 要 256 个，\textbf{超出 255 寄存器上限}。这正是大 D 必须换
   M4N2 atom（列拆给两个 warp，每线程 $D/4$）的数学来源（ch19）。
 \end{itemize}
 
@@ -388,7 +388,7 @@ warp 每个周期若不能发射，必有一个「停滞原因」。sm\_120 上�
 \end{table}
 
 读 stall 剖析结果的关键是\textbf{分好坏}：\texttt{math\_\allowbreak{}pipe\_\allowbreak{}throttle} 与
-\texttt{not\_\allowbreak{}selected} 高说明机器在干活；\texttt{sleeping} 高几乎总是结构
+\texttt{not\_\allowbreak{}selected} 高说明计算与调度资源在正常工作；\texttt{sleeping} 高几乎总是结构
 问题；\texttt{wait} 与 \texttt{long\_\allowbreak{}scoreboard} 的\textbf{相对大小}直接
 区分「依赖链受限」与「装载受限」，例见 \S\ref{sec:ch00-cases} 例三。
 
@@ -404,9 +404,9 @@ warp 每个周期若不能发射，必有一个「停滞原因」。sm\_120 上�
 \item \textbf{L2}：\texttt{lts\_\allowbreak{}\_\allowbreak{}t\_\allowbreak{}sector\_\allowbreak{}hit\_\allowbreak{}rate.\allowbreak{}pct}。大 GEMM 上低
   命中可用 CTA swizzle / StreamK 提数据局部性；推理场景 K/V 重复读高命中
   是常态。
-\item \textbf{DRAM}：\texttt{dram\_\allowbreak{}\_\allowbreak{}throughput}（峰值百分比）。贴满
+\item \textbf{DRAM}：\texttt{dram\_\allowbreak{}\_\allowbreak{}throughput}（峰值百分比）。接近饱和
   （$>$70\%）说明带宽墙已到，优化方向只剩减流量（混合精度、融合、去
-  物化）。一条量化前处理链实测贴到饱和带宽 1.04TB/s（约为理论峰值
+  物化）。一条量化前处理链实测达到饱和带宽 1.04TB/s（约为理论峰值
   1344GB/s 的 77\%）。此时「融合省 launch」已无杠杆，只有减流量才有，这个
   判断直接由 DRAM 指标给出。
 \item \textbf{load/store 与合并访问}：global load 的每请求扇区数
@@ -414,8 +414,8 @@ warp 每个周期若不能发射，必有一个「停滞原因」。sm\_120 上�
   \texttt{average\_\allowbreak{}t\_\allowbreak{}sectors\_\allowbreak{}\_\allowbreak{}per\_\allowbreak{}request\_\allowbreak{}\allowbreak{}...} 系列指标）
   衡量合并访问质量：32-bit 连续访问的理想值是 4（一个 warp 的 128B 恰好
   4 个 32B sector）；明显超标说明访存发散，流量被放大，对策是内维连续、
-  向量化（\texttt{float4} 128-bit 访存，ch03）与 AoS$\to$SoA。IO 压力的
-  完整画像由三个正交维度拼出：\textbf{吞吐}（哪层饱和）、\textbf{命中率}
+  向量化（\texttt{float4} 128-bit 访存，ch03）与 AoS$\to$SoA。IO 压力要从
+  三个正交维度一起看：\textbf{吞吐}（哪层饱和）、\textbf{命中率}
   （数据该由哪层负责）、\textbf{合并度}（流量有没有被访问模式放大）。
 \end{itemize}
 
@@ -429,7 +429,7 @@ warp 每个周期若不能发射，必有一个「停滞原因」。sm\_120 上�
 直接数冲突次数（ch12 表 12-1 的数据来源）。判读要点：\textbf{先看占比再
 动手}。曾有一个「消除 O 写回 bank conflict」的优化立项，NCU 一查
 ld conflict 仅 0.39\%，且 MUFU 等待被 MMA 掩盖，整个方向当场否决。
-冲突计数要换算成「每 warp 每 cycle 的额外重放」才有体感，绝对数大不等于
+冲突计数要换算成「每 warp 每 cycle 的额外重放」才能反映实际影响，绝对数大不等于
 值得修。
 
 \subsection{指令 mix 与 tensor pipe 利用率}
@@ -441,7 +441,7 @@ ld conflict 仅 0.39\%，且 MUFU 等待被 MMA 掩盖，整个方向当场否�
 低，说明还在用 CUDA Core 算乘加，应该换 MMA 指令（ch10--11 的主题）。
 一个 fp8 kernel 的实例：tensor pipe 从 49\% 提到 59.5\% 的那次优化，
 判据正是「\texttt{math\_\allowbreak{}pipe\_\allowbreak{}throttle} 降了、tensor pipe 升了」，两条
-指标共同确认依赖链被拆开、Tensor Core 被喂得更满。
+指标共同确认依赖链被拆开、Tensor Core 利用率提高。
 
 \section{瓶颈判断决策树}\label{sec:ch00-tree}
 
@@ -546,12 +546,12 @@ ld conflict 仅 0.39\%，且 MUFU 等待被 MMA 掩盖，整个方向当场否�
 症状 & 指标证据 & 结论 & 对策 \\
 \midrule
 e2e 慢但不知谁慢 & nsys kern\_sum 占比 & 定位目标 kernel & 只对 Top-1/2 跑 ncu \\
-kernel 慢、带宽没吃满 & MEM\%$\le$40，wait/mpt 主导 & 依赖链受限 & 拆链、2 CTA/SM、增并行 warp \\
+kernel 慢、带宽未饱和 & MEM\%$\le$40，wait/mpt 主导 & 依赖链受限 & 拆链、2 CTA/SM、增并行 warp \\
 装载等数据 & long\_scoreboard 高 & 供给不足 & TMA/cp.async、加深 stage \\
-并行度上不去 & occupancy 低 + limiter=regs & 寄存器墙 & 缩 tile、M4N2 拆列、launch\_bounds \\
-local ld/st 非零 & LDL/STL、local bytes & spill & 降每线程状态、查 255 墙 \\
+并行度上不去 & occupancy 低 + limiter=regs & 寄存器上限 & 缩 tile、M4N2 拆列、launch\_bounds \\
+local ld/st 非零 & LDL/STL、local bytes & spill & 降每线程状态、查 255 寄存器上限 \\
 空转严重 & sleeping 高 & WS 失衡 & 重排 producer/consumer \\
-带宽贴顶 & DRAM $>$70\% & 带宽墙 & 减流量：融合/低精度/去物化 \\
+带宽饱和 & DRAM $>$70\% & 带宽墙 & 减流量：融合/低精度/去物化 \\
 smem 访问慢 & bank conflicts 高 & 冲突重放 & swizzle/pad（ch12） \\
 TC 没用上 & pipe\_tensor 低 & CUDA Core 算矩阵 & 换 mma/wgmma 指令 \\
 \bottomrule
@@ -566,10 +566,10 @@ TC 没用上 & pipe\_tensor 低 & CUDA Core 算矩阵 & 换 mma/wgmma 指令 \\
 业界实现。e2e 一度落后，最初的直觉是「辅助链 kernel 太多（每 call
 约 13 个）应该融合成一个 Mega Kernel」。先用全局视角（nsys + 每 kernel
 带宽核算）确认：大 N 场景\textbf{主 kernel 占 e2e 时间 86--92\%}，而 aux
-链每个 kernel 都已贴实测饱和带宽 1.04TB/s：融合只能省 launch 不能减流量，
+链每个 kernel 都已达到实测饱和带宽 1.04TB/s：融合只能省 launch 不能减流量，
 大 N wall 差实测 $<$0.2\%，方向证伪；真正的杠杆在主 kernel 与引擎层
-overlap。\textbf{方法论}：占比数据先给「优化预算上限」（14\% 的池子里抠
-不出 30\% 的收益），带宽核算再判「这个池子还抠不抠得动」。
+overlap。\textbf{方法论}：占比数据先给「优化预算上限」（占 e2e 14\% 的部分提
+不出 30\% 的收益），带宽核算再判这部分还有没有优化空间。
 
 \subsection{例二：寄存器压力——255 墙、spill 与 setmaxnreg 的取舍}
 
@@ -585,15 +585,15 @@ warp group（128T，专职 TMA）+ 1 个 consumer（256T，全计算），用
   + STACK 约 1536B。STACK 字节就是溢出到 local 的体积。
 \item \textbf{动态}：NCU 确认 \texttt{Block Limit Registers=1}（REG:255 的
   直接后果），理论 occupancy 25\%（12 warps/48）且 smem 守卫恒空转，限制源唯一。
-\item \textbf{取舍}：consumer 想要更多寄存器（\texttt{setmaxnreg} 上限
+\item \textbf{取舍}：consumer 需要更多寄存器（\texttt{setmaxnreg} 上限
   232，实测 224--232 区间性能平坦），但 O 累加器 $D/2$（M8N1）在 D=512 时
-  要 256 个，\textbf{撞穿 255 墙}，于是 split-D 的 WS 变体被整体禁用，
+  要 256 个，\textbf{超出 255 寄存器上限}，于是 split-D 的 WS 变体被整体禁用，
   大 D 改走 M4N2 把每线程压力降到 $D/4$。这是「寄存器文件利用率 vs
-  occupancy vs 算法结构」三方权衡的标准案例：不是把寄存器降下来就赢，
+  occupancy vs 算法结构」三方权衡的标准案例：不是把寄存器降下来就一定有利，
   而是选一个让 tile、并行度与 spill 同时可接受的工作点。
 \end{itemize}
 
-（注意 \texttt{setmaxnreg} 的生死与 arch 后缀无关：\texttt{sm\_120a} 与
+（注意 \texttt{setmaxnreg} 是否被丢弃与 arch 后缀无关：\texttt{sm\_120a} 与
 \texttt{sm\_120f} 都完整支持并保留该指令。真正决定它的是 TMA 的目的地址
 空间——写成 \texttt{shared::cluster} 会被 ptxas 以 C7506 静默丢弃，写成
 \texttt{shared::cta} 则保留——以及
@@ -610,13 +610,13 @@ warp group（128T，专职 TMA）+ 1 个 consumer（256T，全计算），用
   \texttt{wait} 0.82、\texttt{long\_\allowbreak{}scoreboard} \textbf{0.04}、tensor
   pipe 49\%、255 regs、1 CTA/SM。
 \item 判读：\texttt{long\_\allowbreak{}scoreboard} 近零 $\Rightarrow$ 装载不是瓶颈，
-  一切「加深流水/砍指令/缩 tile」无效（后续 6 项实验全部证伪，白跑的原因
+  一切「加深流水/减指令/缩 tile」无效（后续 6 项实验全部证伪，原因
   就是没先读这组数）；\texttt{mpt} 高但 tensor pipe 只有 49\% $\Rightarrow$
   管线在排队却没排满 Tensor Core，即\textbf{依赖链/发射受限}。
 \item 对策与验证：kBr=64 + kBc=64 + 128T（2 CTA/SM 拆链）$\to$ 864$\mu$s
   （$-5\%$），ncu 确认 2 blocks/SM、每线程寄存器降到 250；
   \textbf{指标闭环}：mpt 1.32$\to$0.72、tensor pipe 49\%$\to$59.5\%，
-  「排队变短、TC 更饱」与 wall 时间下降互为印证。
+  「排队变短、TC 利用率更高」与 wall 时间下降互为印证。
 \end{itemize}
 
 同族的「坏 stall」案例：bias 注入的 smem tile 版本 \texttt{sleeping} 从
@@ -646,7 +646,7 @@ warp group（128T，专职 TMA）+ 1 个 consumer（256T，全计算），用
   sm\_120a 与 5090 sm\_120 的架构级结论可互证，绝对数字不可）；fallback
   也要查：小 seqlen（$<$512）时库可能自动 fallback 到 PyTorch SDPA，profile
   到的根本不是目标 kernel。
-\item \textbf{nsys 全量采集撑爆磁盘}。大模型 e2e 无限制采集曾写爆
+\item \textbf{nsys 全量采集写满磁盘}。大模型 e2e 无限制采集曾写满
   \texttt{/tmp}（500GiB+）。TMPDIR 落项目目录、单域、最小 repeat、事后必清
   （\S\ref{sec:ch00-nsys}）。
 \end{enumerate}
@@ -655,11 +655,11 @@ warp group（128T，专职 TMA）+ 1 个 consumer（256T，全计算），用
 
 本章没有写一行 kernel，却给出了全书其余 26 章共同的工作节奏：
 \textbf{nsys 定位（谁慢）$\to$ ncu 定性（为什么慢）$\to$ 单变量修改 $\to$
-复测 diff $\to$ 指标闭环}。指标字典里最值得带走的三句话：SOL 双低不是
-「没病」而是 latency-bound，答案在 stall 剖析结果里；stall 分好坏，
-\texttt{math\_\allowbreak{}pipe\_\allowbreak{}throttle} 高是 Tensor Core 喂满的勋章，\texttt{sleeping}
-高是结构问题的警报；寄存器 255 墙、spill 与 occupancy 是同一份预算的三种
-花法，读数时要一起读。工具路径：ncu/nsys 随 CUDA Toolkit 安装（通常在
+复测 diff $\to$ 指标闭环}。指标字典里最值得带走的三句话：SOL 双低不等于
+没有问题，而是 latency-bound，答案在 stall 剖析结果里；stall 分好坏，
+\texttt{math\_\allowbreak{}pipe\_\allowbreak{}throttle} 高说明 Tensor Core 已饱和，\texttt{sleeping}
+高是结构问题的信号；寄存器 255 墙、spill 与 occupancy 由同一份资源预算
+决定，读数时要一起读。工具路径：ncu/nsys 随 CUDA Toolkit 安装（通常在
 \texttt{/\allowbreak{}usr/\allowbreak{}local/\allowbreak{}cuda/\allowbreak{}bin}），不在 PATH 时用绝对路径调用。
 
 \section*{延伸阅读}

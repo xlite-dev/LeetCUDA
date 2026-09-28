@@ -116,7 +116,7 @@ $\times$2.29：「3$\times$」的大头是参照低效（坑 6）。}
 \begin{itemize}[itemsep=0pt,topsep=2pt]
   \item fp4 的 e2m1 网格噪声决定了它的容差天然比 fp8 宽一个量级
         （dense 0.15 / causal 0.70 vs fp8 的 0.05），拿错档的容差
-        会把合格品打成废品；
+        会把合格的实现误判为不合格；
   \item 只看均值不看 max 会漏掉 causal 早期行这类\textbf{结构性}
         误差（第~\ref{ch:31}~章 31.7 节的 e2m1 噪声地板）；
   \item 推理 bench 必须 \texttt{no\_grad}：grad-on 会强制走完整
@@ -429,10 +429,10 @@ bench 脚本默认 preset，2026-09-21）：fp8 与 Sage2 总体打平、互有
 
 三个形态段：
 \begin{itemize}[itemsep=0pt,topsep=2pt]
-  \item \textbf{D$\le$128 主权区}：1.26x--1.83x。量化 kernel 吃满
+  \item \textbf{D$\le$128 优势区}：1.26x--1.83x。量化 kernel 占满
         tensor pipe，aux 链被主 kernel 遮蔽；
   \item \textbf{D=256 交叉点区}：fp8 persist-D 掉到 1.14x--1.45x
-        （smem 压力 + fp4 家族在此起跑——同点 fp4 2.11x，见
+        （smem 压力 + fp4 家族在此开始占优——同点 fp4 2.11x，见
         表~\ref{tab:33-fp4-matrix}；第~\ref{ch:30}~章的 dispatch
         三分在此切换）；cross 甚至 0.76x：Nq=1024 小 Q 场景下
         \textbf{aux 链占比}反超主 kernel（整条前处理链的聚合
@@ -471,11 +471,11 @@ bench 脚本默认 preset，2026-09-21）：fp8 与 Sage2 总体打平、互有
 与 fp8 对照，差别集中在三处：D$\ge$128 后 fp4 稳定 2x 级且\textbf{随 D
 单调走强}（blockscale MMA 无 fp8 的 smem 交叉点问题）；D=256 同点
 fp4 比 fp8 快 1.64x（4.96 vs 8.13ms），对应第~\ref{ch:30}~章 dispatch
-表；cross 小 Q 场景两者同病（aux 链占比），fp4 也只有 0.99x--1.21x。
+表；cross 小 Q 场景两者受同样限制（aux 链占比），fp4 也只有 0.99x--1.21x。
 
-\subsection{knob 矩阵：数值通路中性，粒度有价目}
+\subsection{knob 矩阵：数值通路中性，粒度有代价}
 
-表~\ref{tab:33-knobs} 在 fp8 D=128 self（主权区中心）逐 knob 实测：
+表~\ref{tab:33-knobs} 在 fp8 D=128 self（优势区中心）逐 knob 实测：
 
 \begin{table}[htbp]
   \centering\small
@@ -502,15 +502,15 @@ fp4 比 fp8 快 1.64x（4.96 vs 8.13ms），对应第~\ref{ch:30}~章 dispatch
   行同表 33.1 口径。\par}
 \end{table}
 
-读数：主权区里 kernel 主体是 QK+PV tensor pipe（占 77\%，第~\ref{ch:29}~
+读数：优势区里 kernel 主体是 QK+PV tensor pipe（占 77\%，第~\ref{ch:29}~
 章 29.6 节），数值通路 knob 全部落在 $\pm2.3\%$ 内，\textbf{精度
 选择可以按需开，速度代价可忽略}（int8 QK 略慢是 s8 通路 scale 折叠
 多一层）。粒度 knob 则有真实方向：默认的 per-block 恰是最快档
-（量化 kernel 的向量化红利，第~\ref{ch:28}~章），升到 per-thread
-（Q/K）或 per-channel（V）各付 1.7--2.7\%，这就是精度换速度的真实价目表。
+（量化 kernel 的向量化收益，第~\ref{ch:28}~章），升到 per-thread
+（Q/K）或 per-channel（V）各付 1.7--2.7\%，这就是精度换速度的真实代价。
 smooth-v 略快（+1.0\%）是 V 值域压缩后 PV 溢出重缩放更少。knob 真正
 的杠杆在两端：causal 精度（hybrid）与大 D dispatch（第~\ref{ch:30}~
-章），不在主权区的数值通路。
+章），不在优势区的数值通路。
 
 \subsection{竞品对照}
 
@@ -543,7 +543,7 @@ PRO 5000（sm\_120）实测——\textbf{形态结论（谁快谁慢、随 D 怎
   \item D$>$256 $\Rightarrow$ fp8 split-D/M4N2（fp4 大 D 依赖
         split-D 家族，按第~\ref{ch:30}~章 dispatch 表选）；
   \item 小 Nq（decode/cross 小 Q）$\Rightarrow$ 先看 aux 链占比，
-        量化的收益可能被前处理吃光——此时 fp16 persist-D 或 SDPA
+        量化的收益可能被前处理抵消——此时 fp16 persist-D 或 SDPA
         反而合理；
   \item causal 一律确认 hybrid 已开（CLI 默认自动），并按 bf16
         口径复核 allclose。
@@ -554,7 +554,7 @@ PRO 5000（sm\_120）实测——\textbf{形态结论（谁快谁慢、随 D 怎
 \texttt{tensor\_layout="NHD"} 走零拷贝 fast path（第~\ref{ch:28}~章~\ref{sec:28-nhd}~节），省掉两侧 permute。占比上，按式~\ref{eq:33-e2e}，
 attention 占比决定端到端收益上限，视频扩散（长序列、双流块）是最佳
 场景。cache-dit 还允许按层选 backend：因果块用 hybrid、双向块用纯
-fp4，精度损失集中在最敏感的位置修。README 引用的 NeMo Automodel
+fp4，精度损失只在最敏感的位置修正。README 引用的 NeMo Automodel
 案例（D=512 全注意力层 10/60，训练 e2e 1.4x--1.5x）是同一公式在
 训练侧的实例。
 
@@ -575,8 +575,8 @@ fp4，精度损失集中在最敏感的位置修。README 引用的 NeMo Automod
         Python 开销，且 fast path 永不命中——推理 bench 必须
         \texttt{no\_grad}；
   \item \textbf{容差档位错配}：fp4 用 fp8 的 5e-2 去卡必然全红；
-        反过来 fp8 用 0.7 会让真 bug（坏行、读错布局）漏网——
-        tol 必须随 impl 走（\texttt{\_runner\_fwd.py} L413--419 的
+        反过来 fp8 用 0.7 会让真 bug（坏行、读错布局）漏检——
+        tol 必须按 impl 分档（\texttt{\_runner\_fwd.py} L413--419 的
         分流就是为此）；
   \item \textbf{D=512 speedup 的参照陷阱}：MATH 后端 materialize
         $N_q\times N_{kv}$ 矩阵，报告里必须注明参照换挡，否则
@@ -595,7 +595,7 @@ fp4，精度损失集中在最敏感的位置修。README 引用的 NeMo Automod
         噪声地板）；
   \item knob 空间三层：数值通路（QK/PV dtype）、量化粒度
         （per-block/channel/thread）、hybrid（前缀行 fp16 零冗余
-        拼接）；主权区数值通路 knob 中性（$\pm2.3\%$）、粒度升级
+        拼接）；优势区数值通路 knob 中性（$\pm2.3\%$）、粒度升级
         1.7--2.7\%，杠杆在 dispatch
         与 hybrid；
   \item fp4 vs fp8 的性能形态差：blockscale MMA 让 fp4 无 smem

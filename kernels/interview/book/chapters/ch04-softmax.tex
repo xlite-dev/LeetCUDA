@@ -3,11 +3,11 @@
 
 \section{本章导读}
 
-Softmax 是深度学习里出场率最高的归一化算子：语言模型输出头的概率分布、注意力机制中的
-$\mathrm{softmax}(QK^{\top}/\sqrt{d})$（第~\ref{ch:15}~章的主角）、MoE 的门控权重……都离不开它。
-它的数学定义只有一行，但在 GPU 上写对一个\textbf{又快又稳}的 softmax，要同时跨过两道坎：
+Softmax 是深度学习里使用最频繁的归一化算子：语言模型输出头的概率分布、注意力机制中的
+$\mathrm{softmax}(QK^{\top}/\sqrt{d})$（第~\ref{ch:15}~章的核心算子）、MoE 的门控权重……都离不开它。
+它的数学定义只有一行，但在 GPU 上写对一个\textbf{又快又稳}的 softmax，要同时解决两个问题：
 \textbf{数值稳定性}（$e^{x}$ 的溢出）与\textbf{归约遍数}（多一遍全局扫描就多一倍同步与访存）。
-本章沿着教学源码的三级递进，把这两道坎各击破一次：
+本章沿着教学源码的三级递进，依次解决这两个问题：
 
 \begin{itemize}
   \item \textbf{Level 1 naive}（base.cuh~L544，\texttt{softmax\_\allowbreak{}per\_\allowbreak{}token}）：
@@ -26,16 +26,16 @@ $\mathrm{softmax}(QK^{\top}/\sqrt{d})$（第~\ref{ch:15}~章的主角）、MoE �
 \textbf{源码区间}：base.cuh~L520--665（Phase 3a），无编译宏限定，全部架构适用；
 配套最小测试为 \texttt{book/\allowbreak{}tests/\allowbreak{}ch04\_\allowbreak{}softmax.\allowbreak{}cu}。
 \textbf{后继}：本章 4.3~节推导的 online 递推与二元合并公式，将在第~\ref{ch:05}~章以
-LSE 的形式被「压缩」成一个标量状态，并在第~\ref{ch:15}~章成长为 FlashAttention 的
+LSE 的形式被「压缩」成一个标量状态，并在第~\ref{ch:15}~章发展为 FlashAttention 的
 online rescale。
 
 \section{问题与动机}
 
-\textbf{动机一：$e^{x}$ 会溢出。}直觉上 softmax 的输入都是「分数」，能有多大？但在
+\textbf{动机一：$e^{x}$ 会溢出。}直觉上 softmax 的输入都是「分数」，量级应该有限，但
 attention 里，logit 是 $Q$、$K$ 行向量的内积，量级随训练状态与序列位置漂移；语言模型
 logits 在训练早期破百也不罕见。而 fp32 能表示的最大正规数约 $3.4\times 10^{38}$，
 $e^{89}$ 就已经越界变成 \texttt{inf}。一旦分子或分母出现 \texttt{inf}，输出就是
-\texttt{inf}/\texttt{inf} 型的 \texttt{NaN}，模型直接产出垃圾。所以「减 max」不是锦上添花的技巧，
+\texttt{inf}/\texttt{inf} 型的 \texttt{NaN}，模型输出错误结果。所以「减 max」不是可选的优化技巧，
 而是正确性的底线。
 
 \textbf{动机二：每多一遍扫描，就多一遍代价。}教科书的 safe softmax 要对输入做三次遍历：
@@ -45,8 +45,8 @@ $e^{89}$ 就已经越界变成 \texttt{inf}。一旦分子或分母出现 \textt
 
 \textbf{动机三：softmax 的「行内自足性」。}\allowbreak{}softmax 沿一行（一个 token、一个 query）独立计算，
 行与行之间零依赖。这意味着一行数据可以完整驻留在一个 block 的寄存器/共享内存里，
-为「一遍扫描」的 online 形态提供了舞台：这也是它后来能被 FlashAttention 塞进
-「KV 分块流水线」里的根本原因：分块后的部分结果可以用一个 $(m,\ell)$（或 LSE）状态无损概括。
+为「一遍扫描」的 online 形态提供了条件：这也是它后来能被 FlashAttention 纳入
+「KV 分块流水线」的根本原因：分块后的部分结果可以用一个 $(m,\ell)$（或 LSE）状态无损概括。
 
 \section{数学原理}
 
@@ -85,7 +85,7 @@ fp32 的最大正规数（\texttt{FLT\_MAX}）为
 源码注释 base.cuh~L556 写的「溢出阈值约 88.7」正是这个界（核校无误）。
 一旦有元素溢出：若分子为 \texttt{inf} 则 $y^{(i)} = \texttt{inf}/s$；若分母
 $s = \texttt{inf}$，则 $y^{(i)} = \texttt{inf}/\texttt{inf} = \texttt{NaN}$。本章测试
-Case~C 用 $x \in [80, 120]$ 复现了这一点：naive 版输出 \texttt{NaN}，safe/online 版纹丝不动。
+Case~C 用 $x \in [80, 120]$ 复现了这一点：naive 版输出 \texttt{NaN}，safe/online 版结果正常。
 
 利用平移不变性（式~\ref{eq:4-shift}），取 $c = m = \max\sb{j} x^{(j)}$，得到\textbf{safe softmax}：
 \begin{equation}
@@ -110,7 +110,7 @@ online softmax（Milakov \& Gimelshein，arXiv:1805.02867）的思路是：维�
   \label{eq:4-invariant}
 \end{equation}
 即 $\ell^{(k)}$ 永远是「以前 $k$ 个元素自己的 max 为基准的指数和」。
-现在走来了第 $k+1$ 个元素 $x^{(k+1)}$，逐项推导新状态。第一步，新 max 显然是
+现在考虑第 $k+1$ 个元素 $x^{(k+1)}$，逐项推导新状态。第一步，新 max 显然是
 \begin{equation}
   m^{\mathrm{new}} = \max\bigl(m,\; x^{(k+1)}\bigr) .
 \end{equation}
@@ -137,7 +137,7 @@ online softmax（Milakov \& Gimelshein，arXiv:1805.02867）的思路是：维�
 两种情形的直觉：
 \begin{itemize}
   \item 若 $x^{(k+1)} \le m$（新元素不刷新 max）：$m^{\mathrm{new}} = m$，
-        修正因子 $e^{m - m^{\mathrm{new}}} = e^{0} = 1$，旧的和原封不动，
+        修正因子 $e^{m - m^{\mathrm{new}}} = e^{0} = 1$，旧的和保持不变，
         $\ell$ 只需累加一个新项；
   \item 若 $x^{(k+1)} > m$（新元素刷新 max）：旧的 $\ell$ 是「以旧 max 为基准」的，
         基准抬高了 $m^{\mathrm{new}} - m$，所以整体乘 $e^{m - m^{\mathrm{new}}} < 1$
@@ -181,7 +181,7 @@ online softmax（Milakov \& Gimelshein，arXiv:1805.02867）的思路是：维�
 全部 $n$ 个元素流过后，输出为 $y^{(i)} = e^{x^{(i)} - m^{(n)}} / \ell^{(n)}$。
 注意：真正的 online 实现（含 FlashAttention）里，$x$ 之外还有加权对象 $V$，
 输出 $O$ 也要跟着 rescale，那正是第~\ref{ch:15}~章 online rescale 的内容，
-本章先只盯着 $(m, \ell)$ 这对状态。符号约定上，本章的 $m$、$\ell$ 即全书记号表中的
+本章先只关注 $(m, \ell)$ 这对状态。符号约定上，本章的 $m$、$\ell$ 即全书记号表中的
 running max / running sum，在 FlashAttention 实现里对应源码变量
 \texttt{block\_\allowbreak{}row\_\allowbreak{}max} 与 \texttt{block\_\allowbreak{}row\_\allowbreak{}sum}（联动更新量为
 \texttt{block\_\allowbreak{}row\_\allowbreak{}max\_\allowbreak{}new}、\texttt{block\_\allowbreak{}row\_\allowbreak{}sum\_\allowbreak{}new}）；本章 Level~3
@@ -233,7 +233,7 @@ $\ell = \ell^{(1)} + \ell^{(2)} e^{m^{(2)} - m^{(1)}}$，只有较小者需要 r
   \label{eq:4-lse}
 \end{equation}
 它把 $(m, \ell)$ 两个数打包成一个标量（正式定义见第~\ref{ch:05}~章定义~\ref{def:lse}），
-是分块合并的主角。其二是 FlashAttention 的 online rescale：在 attention 里，
+是分块合并的核心状态。其二是 FlashAttention 的 online rescale：在 attention 里，
 与 $(m,\ell)$ 联动更新的还有输出累加器
 $O^{\mathrm{new}} = e^{m - m^{\mathrm{new}}}\, O + e^{s - m^{\mathrm{new}}} V$，
 分母 $\ell$ 留到最后统一除，第~\ref{ch:15}~章展开。
@@ -361,7 +361,7 @@ max 用单位元，$d$ 用加法单位元 0，这样它们参与归约但不污�
 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads} 加广播；
 （5）写回 $y^{(i)} = e^{x^{(i)} - m} \cdot d^{-1}$，除法用近似倒数
 \texttt{\_\_fdividef} 配一次乘法完成，指数用快速数学 \texttt{\_\_expf}。
-与 safe 版对比：扫描遍数从 2 降到 1（$x$ 只读一次、一直躺在寄存器里），
+与 safe 版对比：扫描遍数从 2 降到 1（$x$ 只读一次、一直保留在寄存器里），
 block 级同步从 2 次降到 1 次；代价是归约算子从「单个加法」变成「合并运算」，
 且写回阶段的 \texttt{\_\_expf}/\texttt{\_\_fdividef} 是近似指令（精度见 4.7~节坑三）。
 
@@ -416,7 +416,7 @@ block 级同步从 2 次降到 1 次；代价是归约算子从「单个加法�
 
 图~\ref{fig:4-1} 的三条泳道对应本章三级实现。读图的关键是「全局扫描次数」这一维度：
 3-pass 版本每遍历一次 $x$ 都要付一遍 DRAM 带宽；2-pass 版本把 $x$ 装进寄存器后只需
-两次 block 归约；1-pass 版本连归约都只剩一次：$(m, d)$ 在蝶形归约里同步长大。
+两次 block 归约；1-pass 版本连归约都只剩一次：$(m, d)$ 在蝶形归约里同步更新。
 FlashAttention 把右列的 $(m,d)$ 再加一列 $O$，就是第~\ref{ch:15}~章的 online rescale。
 
 \section{性能分析}
@@ -569,7 +569,7 @@ A：数学上平移不变（式~\ref{eq:4-shift}），工程上 $e^{x}$ 在 $x >
 
 \textbf{Q2：safe 版比 naive 版多花了什么？}\\
 A：一次额外的 block 归约（一次全局同步点），以及写回阶段对 $x$ 的第二次读取
-（通常 L1 命中）。本章实测约慢 $21\%$（表~\ref{tab:4-bench}），买到的是任意有限输入下的确定性。
+（通常 L1 命中）。本章实测约慢 $21\%$（表~\ref{tab:4-bench}），换来的是任意有限输入下的确定性。
 
 \textbf{Q3：online softmax 的不变量是什么？为什么能套 XOR 蝶形归约？}\\
 A：不变量是式~\ref{eq:4-invariant}；二元合并满足结合律（引理~\ref{lem:md-assoc}），
@@ -581,8 +581,8 @@ $\ell = \ell^{(1)} + \ell^{(2)} e^{m^{(2)} - m^{(1)}}$，即「大者不动、�
 
 \textbf{Q5：FlashAttention 为什么必须要 online softmax？}\\
 A：attention 若先物化整张分数矩阵 $S$ 再 softmax，显存是 $O(N^{2})$；online rescale 让
-softmax 依附在 KV 分块循环上流式完成，$S$ 从不落地，显存 $O(N)$。这正是
-第~\ref{ch:15}~章的主题，而它的状态打包形式 LSE 就是下一章的主角。
+softmax 依附在 KV 分块循环上流式完成，$S$ 从不被完整物化，显存 $O(N)$。这正是
+第~\ref{ch:15}~章的主题，而它的状态打包形式 LSE 就是下一章的核心对象。
 
 \section{最小测试与动手实验}
 

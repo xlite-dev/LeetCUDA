@@ -5,7 +5,7 @@
 
 \section{本章导读}
 
-第~\ref{ch:26}~章结束的时候，Split-D 的 CuTe 版是一台 145 TFLOPS 的机器：
+第~\ref{ch:26}~章结束的时候，Split-D 的 CuTe 版实测 145 TFLOPS：
 64$\times$64 tile、TMA + warp specialization、单 consumer warpgroup。它把
 「大 $D$ 怎么分块」的类型代数讲清楚了，但执行协议还是教学级的。本章
 把 ffpa-attn 的 non-WS CuTe TMA kernel（\texttt{csrc/cuffpa/cute/sm\_120/split\_d.cuh}）
@@ -14,7 +14,7 @@
 双宏块）——本实现与 ffpa-attn 的 cute sm\_120 split\_d \textbf{同源}，
 在 RTX PRO 5000 上把 $B{=}1$/$H{=}32$/$N{=}8192$/$D{=}320$
 dense 场景推到 \textbf{204.1 TFLOPS}——cuDNN SDPA（69.7）的 2.93 倍、
-上一章 WS 教学版（140.2）的 1.46 倍。这是全书大 head\_dim 路线的性能终点。
+上一章 WS 教学版（140.2）的 1.46 倍。这一性能是全书大 head\_dim 路线的最高值。
 
 本章的四条主线，每一条都是对 WS 教学版某个具体弱点的回应：
 
@@ -25,8 +25,8 @@ dense 场景推到 \textbf{204.1 TFLOPS}——cuDNN SDPA（69.7）的 2.93 倍�
         softmax 行归约退化为 warp 内 4-lane 蝴蝶，零跨 warp 通信；
   \item \textbf{non-WS 执行模型}（\S\ref{sec:26c-nonws}）：256 线程全员
         MMA，\texttt{tid=0} 在消费循环里内联发射 TMA——WS 版一半线程专职
-        producer 不产 FLOPs，SM 的 MMA 吞吐直接砍半，这是 145$\to$190 的
-        最大单项；QK 与 PV 两套互不相交的 barrier 集撑起独立流水深度，
+        producer 不产 FLOPs，SM 的 MMA 吞吐降低一半，这是 145$\to$190 的
+        最大单项；QK 与 PV 两套互不相交的 barrier 集支撑起独立流水深度，
         并让「下一 kv\_tile 的 QK 预取」与「本 tile 的 softmax+PV」重叠；
   \item \textbf{STSM + TMA store 批量 epilogue}（\S\ref{sec:26c-epilogue}）：
         O 累加器经 \texttt{stmatrix} 暂存（复用已释放的 QKV smem）再按
@@ -35,7 +35,7 @@ dense 场景推到 \textbf{204.1 TFLOPS}——cuDNN SDPA（69.7）的 2.93 倍�
         \S\ref{sec:26c-perf}）：max 增长不足 $2^8$ 时跳过整个
         $O$ 重缩放循环（warp vote 保证无分支发散）；$S_K$ 与 $S_V$
         作为独立模板参数分开调，实测 D$\le$320 最优组合是 $(3,2)$——
-        加深 QK 流水 +8.4\%，加深 V 流水反而亏。
+        加深 QK 流水 +8.4\%，加深 V 流水反而降低性能。
 \end{itemize}
 
 \textbf{前置章节}：第~\ref{ch:15}--\ref{ch:16}~章（attention 数学与 online
@@ -51,7 +51,7 @@ TMA/mbarrier/STSM，任何 Blackwell 显卡可运行。\textbf{教学裁剪}：�
 bias/dropout/GQA/NHD/causal；保留 Nkv 边界 mask 与 LSE 输出；
 要求 $N_q \bmod 128 = 0$（epilogue 恒走整 tile STSM+TMA 路径）。
 
-\section{问题与动机：WS 教学版输在哪里}\label{sec:26c-motivation}
+\section{问题与动机：WS 教学版慢在哪里}\label{sec:26c-motivation}
 
 先把账摊开。同一块 RTX PRO 5000（110 SM）、同一 bench 口径
 （$B{=}1$/$H{=}32$/$D{=}320$ fp16 dense，成对同轮测量）：
@@ -78,18 +78,18 @@ WS 教学版 (2,2) & 140.2 & 2.01$\times$ & 1.00$\times$ \\
 
 \textbf{第一，WS 的代价：producer 不产 FLOPs。}WS 教学版 256 线程里
 128 个是 producer（只发 TMA），真正做 MMA 的只有单 consumer warpgroup
-的 128 线程。SM 上张量核的喂料 warp 数直接砍半。第~\ref{ch:26b}~章的
+的 128 线程。SM 上张量核的喂料 warp 数降低一半。第~\ref{ch:26b}~章的
 D=128 场景里，WS 换来的是 Q 持久化与 \texttt{setmaxnreg} 的寄存器让渡，
-划算；但 Split-D 的 O 累加器（$32 \times C$ 个 f32/线程，第~\ref{ch:19}~章
-寄存器账本）本来就把寄存器预算吃到 255 上限附近，
+收益大于成本；但 Split-D 的 O 累加器（$32 \times C$ 个 f32/线程，第~\ref{ch:19}~章
+寄存器账本）本来就把寄存器预算占用到 255 上限附近，
 \texttt{setmaxnreg} 让渡不了多少，WS 的收益侧消失、成本侧全留——
 这是大 $D$ 路线选 non-WS 的根本理由。
 
 \textbf{第二，tile 64$\times$64 的算术强度太低。}K/V 的一个
 $64\times D$ chunk 从 gmem 搬进 smem，只服务 64 行 Q。tile 升到
 $128\times128$ 后同一份 K/V 服务 128 行 Q，搬运量减半而计算量不变。
-更关键的是 smem 预算：64$\times$64 时代 chunk 宽 64，128$\times$128
-时代若 chunk 仍取 64，$Q{+}K$ 每 stage 要
+更关键的是 smem 预算：64$\times$64 tile 时 chunk 宽 64，128$\times$128
+tile 时若 chunk 仍取 64，$Q{+}K$ 每 stage 要
 $128{\times}64{\times}2 \times 2 = 32$\,KB；把 Q/K chunk 降到 32（V/O 保持
 64），每 stage 只要 16\,KB——同预算装下更宽的 tile 与更深的流水。
 chunk 宽 32 的 swizzle 相应从 SW128 退到 SW64（行 64\,B 恰好一个
@@ -100,13 +100,13 @@ swizzle 周期，\S\ref{sec:26c-tile}）。
 f16 转换 $\to$ \texttt{stmatrix}（STSM）暂存 smem $\to$ TMA store 批量
 写回，与装载的 TMA 全链对称。
 
-\textbf{第四，每 tile 的 rescale 白做。}FA-2 式无条件重缩放在
+\textbf{第四，每 tile 的 rescale 大多不必要。}FA-2 式无条件重缩放在
 $D{=}320$（每 kv\_tile 10 个 QK chunk、5 个 PV chunk）下，每个 tile
 都要对 160 个 f32 寄存器的 O 累加器乘一次 \texttt{row\_scale}。FA-4 的
 条件重缩放（第~\ref{ch:26b}~章式~(26b.4)，$\tau = 8$）让 95\%+ 的 tile
 整个跳过这个循环。
 
-还有一项只赚不赔的结构红利：\textbf{跨 kv\_tile 预取}。WS 版的
+还有一项无额外代价的结构收益：\textbf{跨 kv\_tile 预取}。WS 版的
 producer/consumer 分工里，下一 tile 的装载要等本 tile 消费腾出 stage；
 non-WS 版把 QK 与 V 拆成两套互不相交的 barrier 集，下一 tile 的 QK
 初始 chunk 可以在本 tile 的 softmax+PV 窗口里提前发出（\S\ref{sec:26c-prefetch}）。
@@ -121,7 +121,7 @@ non-WS 版把 QK 与 V 拆成两套互不相交的 barrier 集，下一 tile 的
   title={ffpa\_attn.cuh L699-721（traits：协议参数与 smem 公式）}]{../ffpa_attn.cuh}
 \end{lstinputlisting}
 
-四组参数各司其职。\textbf{tile 几何}：$k_{Br}{=}k_{Bc}{=}128$，
+四组参数的分工如下。\textbf{tile 几何}：$k_{Br}{=}k_{Bc}{=}128$，
 $k_{NumThreads} = 128/16 \times 32 = 256$。\textbf{chunk 解耦}：
 $k_{QKDChunk}{=}32$、$k_{VDChunk}{=}64$——Q/K 与 V/O 的 D 向切块宽度
 不同，$k_{DChunksQK} = D/32$ 个 QK chunk 对 $k_{DChunksV} = D/64$ 个
@@ -134,7 +134,7 @@ $k_{StagesQK}$ 与 $k_{StagesPV}$ 是两个独立模板参数，\S\ref{sec:26c-p
   \;=\; 16\,(S_K + S_V)\ \text{KB} ,
 \end{equation}
 $(2,2){=}64$\,KB、$(3,2)/(2,3){=}80$\,KB、$(3,3){=}96$\,KB（fp16）。
-Q 每 kv\_tile 重装（它不属于持久化协议），所以 Q 也吃 $S_K$ 份 stage。
+Q 每 kv\_tile 重装（它不属于持久化协议），所以 Q 也占用 $S_K$ 份 stage。
 注意 smem 与 $D$ 无关——chunk 宽度固定，$D$ 只决定 chunk 个数。
 
 chunk 宽度还决定 swizzle atom 的选择，规则与第~\ref{ch:23}~章一致
@@ -150,20 +150,20 @@ Q/K chunk 行宽 32$\times$2$=$64\,B，SW64 的一个 swizzle 周期恰好覆盖
 SW128。\texttt{SmemLayoutVt} 是 V 的转置\textbf{视图}（composition，不
 物化），PV 的 B-operand 以 $D_c \times B_c$ 列主视图交给
 \texttt{LDSM\_T}。\texttt{SmemLayoutO} 与 V 同 atom——epilogue 复用已
-释放的 QKV smem 时布局对得上（\S\ref{sec:26c-epilogue}）。
+释放的 QKV smem 时布局保持一致（\S\ref{sec:26c-epilogue}）。
 
 \subsection{M8N1 TiledMma：warp 持整行，softmax 归约零跨 warp}\label{sec:26c-mma}
 
 QK 与 PV 共用 m16n8k16 atom（sm\_120 唯一张量核路径，第~\ref{ch:26b}~章
-已论证），差别在 TiledMma 的 warp 摆法。两处 \texttt{Layout<Shape<8,1,1>>}
+已论证），差别在 TiledMma 的 warp 排布。两处 \texttt{Layout<Shape<8,1,1>>}
 把 8 个 warp \textbf{全部沿 M 堆叠、N 不切分}（M8N1）：每个 warp 独占
 $S$ tile 的 16 行\textbf{整行}。这带来一个 softmax 侧的直接收益——
 m16n8k16 的 C-fragment 约定下，一行 128 个分数散在同 warp 的 4 个 lane
 （每 lane 2$\times$8 列块中的 2 份），行 max / 行 sum 的归约只需要
 warp 内 \texttt{\_\_shfl\_xor} 两轮（1 与 2 的蝴蝶，\S\ref{sec:26c-rescale}），
 \textbf{没有任何跨 warp 的 smem 归约}。第~\ref{ch:26}~章 WS 版的
-64$\times$64 tile 下 warp 沿 N 也要切，归约需要先跨 warp——M8N1 是
-128 宽 tile 买一送一的礼物。代价是 PV 的 N 维只有 $k_{VDChunk}{=}64$：
+64$\times$64 tile 下 warp 沿 N 也要切，归约需要先跨 warp——M8N1 下行归约
+自然落在 warp 内，无需跨 warp 通信。代价是 PV 的 N 维只有 $k_{VDChunk}{=}64$：
 单 warp 的 PV MMA 每次算 $16\times64$，由
 \texttt{gemm\_rs}（第~\ref{ch:25}~章）内部按 atom 循环展开，不影响
 协议。
@@ -213,7 +213,7 @@ V 用 \texttt{U16x8\_LDSM\_T}（转置装载），O 写回用
 计算解耦的代价是 SM 上做 MMA 的 warp 只剩一半。右（本章）：256 线程全员
 consumer，\texttt{tid=0} 在消费循环内联发射 TMA（发射指令本身不占独立
 warp 的时间片，只占少量指令槽）；tile 同步升到 128$\times$128，MMA warp
-数翻倍、算术强度上一档。大 $D$ 下 O 累加器吃满寄存器预算，
+数翻倍、算术强度上一档。大 $D$ 下 O 累加器占满寄存器预算，
 \texttt{setmaxnreg} 让渡不动，WS 的收益侧消失——non-WS 成为唯一选择。}
 \label{fig:26c-arch}
 \end{figure}
@@ -241,7 +241,7 @@ init$=$1）：\texttt{tid=0} \texttt{arrive\_and\_expect\_tx} 声明本 stage
 期望的字节数，TMA 写完自动翻转。\texttt{qk\_empty}/\texttt{v\_empty} 是
 \textbf{计数屏障}（CtaBarrier，init$=$256）：每个消费线程 arrive 一次，
 凑满后 \texttt{tid=0} 才能复写。两套 barrier 集合完全不相交——这是
-\S\ref{sec:26c-prefetch} 跨 tile 预取零死锁的全部秘密。QK 与 PV 的
+\S\ref{sec:26c-prefetch} 跨 tile 预取零死锁的完整机制。QK 与 PV 的
 chunk 序号统一编址：
 \begin{equation}\label{eq:26c-phase}
   \text{chunk\_index} = \text{kv\_tile} \cdot k_{DChunks} + d,\qquad
@@ -295,13 +295,13 @@ $S = \sum_{d} Q_{[:,d]} K_{[:,d]}^\top$，正是第~\ref{ch:19}~章 19.2.2 节
 「精确、无权重」的分块分解在 CuTe 上的直接落地。
 \textbf{L1066}：全线程 arrive \texttt{qk\_empty}，stage 归还。
 \textbf{L1072--1081}：\texttt{tid=0} 领先 $S_K$ 个 chunk 预取下一个
-（\texttt{d\_next = d\_chunk + kStagesQK}）。注释里的死锁警告值得原文
-复读：预取不能移到 \texttt{gemm\_ss} 之前，因为
+（\texttt{d\_next = d\_chunk + kStagesQK}）。注释里的死锁警告值得原样
+引用：预取不能移到 \texttt{gemm\_ss} 之前，因为
 $s_{next} = stage$ 且 $phase_{next} = 1 - phase$，wait 门控在\textbf{本
 迭代}的 arrive 上，提前了 \texttt{tid=0} 就在等一个需要它自己参与
 \texttt{gemm\_ss} 才能释放的 barrier。
 
-\subsection{跨 tile 预取：barrier 集不相交的红利}\label{sec:26c-prefetch}
+\subsection{跨 tile 预取：barrier 集不相交的收益}\label{sec:26c-prefetch}
 
 QK 相位结束时，本 tile 的 K 已消费完、Q 也不再需要，但 softmax 与
 PV 还要跑一整段。此时 QK 的 stage 池整体空闲——下一 tile 的初始
@@ -355,7 +355,7 @@ D=320 的 10+5 chunk 结构示意）。上线是 \texttt{tid=0} 的发射序列�
 预取填满两条流水，主循环内每个 QK chunk 消费完领先 $S_K$ 发下一个，
 V 预取每 tile 开头补一批；本 tile QK 相位一结束（stage 池整体空闲），
 立刻发射下一 tile 的初始 QK chunk。下线是全员 MMA 的计算序列。红色
-双箭头是本章协议的核心红利：下一 tile 的 QK 装载与本 tile 的
+双箭头是本章协议的核心收益：下一 tile 的 QK 装载与本 tile 的
 softmax（纯寄存器 + shfl）和 PV GEMM 完全重叠——QK/V 两套 barrier 集
 不相交保证这段发射不会与后续相位互相等待。}
 \label{fig:26c-pipeline}
@@ -369,7 +369,7 @@ softmax 相位从 Nkv 边界 mask 开始，到 P fragment 准备好结束：
   title={ffpa\_attn.cuh L1096-1131（Phase 2：mask + online softmax + warp vote + P 零拷贝）}]{../ffpa_attn.cuh}
 \end{lstinputlisting}
 
-三段各有讲究。\textbf{mask（L1102--1117）}：尾部 kv\_tile 的越界列置
+三段各有要点。\textbf{mask（L1102--1117）}：尾部 kv\_tile 的越界列置
 $-\infty$——TMA 对 OOB 行不写 smem，残留值由 mask 覆盖；坐标来自
 identity tensor 经 TiledMMA C-partition 的行列重解释（第~\ref{ch:26}~章
 讲透的 \texttt{tScS\_rc} 技巧），mask 只剩坐标比较。
@@ -417,8 +417,8 @@ $32 \times C$ 账本的 $C{=}5$ 情形，single-pass online softmax 的结构性
 寄存器成本，rescale 需要所有 $C$ 个切片同时在位，不能提前流出。
 （V fragment 的寄存器布局在 kernel 开头用 nonswizzle 视图预计算一次
 ——布局与 swizzle 无关，LDSM\_T 实际读仍走 swizzled 的 \texttt{sVt}，
-bank 冲突由 TMA 写入侧的 swizzle 消解，flash-attention
-\texttt{kernel\_traits.h} 同款技巧。）
+bank 冲突由 TMA 写入侧的 swizzle 消解，与 flash-attention
+\texttt{kernel\_traits.h} 的做法相同。）
 
 \subsection{Phase 4：STSM 批量暂存与 TMA store bulk group}\label{sec:26c-epilogue}
 
@@ -535,7 +535,7 @@ cuDNN SDPA & 69.7 & 69.9 & 同轮参照 \\
 \end{center}
 
 两个立刻能读出的结论：\textbf{(3,2) 全面最优}（$N{=}8192$ 比 (2,2)
-高 8.4\%）；\textbf{V 流水加深几乎恒亏}（
+高 8.4\%）；\textbf{V 流水加深几乎总是降低性能}（
 (2,3) 比 (2,2) 只高 0.5\%，(3,3) 比 (3,2) 低 7.6\%）。复测带：用户
 独立一轮实测 non-WS (2,2)/(3,3) 在 $N{=}16384$ 为 184.4/189.0，与
 表中 183.6/188.4 跨 run 吻合 $\pm$0.5\%，成对结论稳定。
@@ -627,7 +627,7 @@ $D$ & (2,2) & (2,3) & (3,2) & (3,3) & 最优 \\
 \end{tikzpicture}
 \caption{K/V 流水深度解耦实验（$B{=}1$/$H{=}32$/$N{=}8192$，PRO 5000，
 成对同轮）。$D\le320$：$(S_K,S_V){=}(3,2)$ 一致最优，绿色系柱全面领先；
-$D\ge384$：最优回落到 $(2,2)/(2,3)$，$(3,3)$ 在 $D{=}384$ 崩至 136.0
+$D\ge384$：最优回落到 $(2,2)/(2,3)$，$(3,3)$ 在 $D{=}384$ 降至 136.0
 （比 (2,2) 低 27\%）。红色虚线是分界：恰在寄存器 spill 首次出现处
 （表~见下，$D{=}320$ 全组合 spill、$D{\le}256$ 零 spill）。}
 \label{fig:26c-stages}
@@ -707,11 +707,11 @@ D=512 (3,3) & 255 & 1124 B & 752 B & 163.4 & $-$4.4\% \\
 \end{tikzpicture}
 \caption{寄存器溢出随 $D$ 的增长（\texttt{nvcc -Xptxas -v}，$-O2$，
 sm\_120a，各组合显式实例化）。$D\le256$ 全组合零 spill；$D{=}320$
-（红色虚线）是分水岭——所有组合顶到 255 寄存器上限并开始溢出，
+（红色虚线）是分水岭——所有组合达到 255 寄存器上限并开始溢出，
 且 (3,2)/(3,3) 的 88\,B 与 (2,2) 的 580\,B 相差 6.6 倍，与
 TFLOPS 排序（204.1 对 188.3）完全同序；$D\ge384$ 后 spill 基线
 过千，stages 加深进一步推高溢出（(3,2) 1676\,B、(3,3) 2184\,B，
-均高于 (2,2)），流水掩蔽收益被吞掉，最优组合回落 $(2,2)$。}
+均高于 (2,2)），流水掩蔽收益被抵消，最优组合回落 $(2,2)$。}
 \label{fig:26c-spill}
 \end{figure}
 三个事实链。\textbf{第一}，$D\le256$ 零 spill：stages 加深的收益全部
@@ -719,20 +719,20 @@ TFLOPS 排序（204.1 对 188.3）完全同序；$D\ge384$ 后 spill 基线
 $S_K{=}3$ 让 tid=0 的发射领先更远、TMA 传输更深地藏进 GEMM 窗口；
 而 V 每 tile 只消费 $D/64$ 个 chunk 且消费点稀疏（只在 softmax 之后），
 $S_V{=}2$ 已够用，第 3 级 stage 的 barrier 簿记纯属开销——这就是
-$(3,2)$ 全胜的 $D\le320$ 段。\textbf{第二}，$D\ge320$ 后
-\texttt{o\_acc\_storage}（$D/64 \times 32$ 个 f32）把寄存器顶到 255
+$(3,2)$ 全面领先的 $D\le320$ 段。\textbf{第二}，$D\ge320$ 后
+\texttt{o\_acc\_storage}（$D/64 \times 32$ 个 f32）把寄存器推到 255
 上限、spill 出现，stages 与 spill 的交互主导排序：D=320 时 $(3,2)/(3,3)$
 的 spill 总量（52$+$36$=$88\,B）只有 $(2,2)$（224$+$356$=$580\,B）的
-六分之一——浅流水下发射地址簿与消费循环的活跃变量生命周期重叠更长、
+的六分之一——浅流水下发射地址变量与消费循环的活跃变量生命周期重叠更长、
 峰值压力更高，深一档反而把发射路径的变量错开，性能与 spill 字节数
 \textbf{完全同序}（204.1/188.5 对 188.3/189.3，图~\ref{fig:26c-spill}）；$(3,2)$ 与 $(3,3)$ 同 spill 但
 差 15T，V 侧第 3 级 stage 的簿记开销与 96\,KB smem 的副作用是剩余
 差距。\textbf{第三}，$D\ge384$ 时 spill 基线本身已高（544 B+），再加
-stage 挤占的寄存器超过流水掩蔽的收益，$(3,2)$ 开始亏、$(3,3)$ 崩
+stage 挤占的寄存器超过流水掩蔽的收益，$(3,2)$ 性能开始下降、$(3,3)$ 下降
 27\%；此段最优回到 $(2,2)$（或 $D{=}448$ 的 $(2,3)$）。
 
 这条分段规律的工程含义：\textbf{$S_K$ 与 $S_V$ 必须是独立模板参数}。
-对称的 $(S,S)$ 在任何 $D$ 都拿不到最优——本 kernel（与 ffpa-attn 的
+对称的 $(S,S)$ 在任何 $D$ 都取不到最优——本 kernel（与 ffpa-attn 的
 cute sm\_120 split\_d 同源）的 launcher 把 $S_K$/$S_V$ 作为独立模板
 参数暴露，正是为了按 $D$ 分段选参；默认对称 $(2,2)$ 只是保守起点。
 寄存器账本（第~\ref{ch:19}~章 19.4.6）在
@@ -741,10 +741,10 @@ cute sm\_120 split\_d 同源）的 launcher 把 $S_K$/$S_V$ 作为独立模板
 
 \subsection{与 WS 版的逐项对照收尾}
 
-把 \S\ref{sec:26c-motivation} 的四个结构性问题对回数字：全员 MMA +
+把 \S\ref{sec:26c-motivation} 的四个结构性问题对照回数字：全员 MMA +
 128 tile（协议主体）贡献了 140$\to$188 的主要段（(2,2) 对
 WS(2,2) +34\%）；跨 tile 预取与 FA-4 rescale 在其上叠加；stages
-从对称 (2,2) 调到 (3,2) 再拿 +8\%（188$\to$204）；epilogue 的
+从对称 (2,2) 调到 (3,2) 再获得 +8\%（188$\to$204）；epilogue 的
 STSM+TMA 通道在 $D{=}320$ 的占比不大（每 tile 只有一次 128$\times$320
 的写出），但在更短 $N$、更小 tile 数的场景（写出占比上升）会放大。
 精确到逐项的独立 A/B 需要 fork kernel 消融，本章按「结构差异 +
@@ -766,9 +766,9 @@ stages 实验」的口径给出，消融矩阵留给 \S\ref{sec:26c-test} 的动
   \item \textbf{K/V 坐标必须 domain\_offset 到 head 段}：$h\cdot N_{kv}$
         未必 128 对齐（$N_{kv}$ 非 $k_{Bc}$ 倍数时），直接用全局
         tile 索引会静默串到相邻 head 的行——结果错但无任何报错，
-        只有 $N_{kv} \bmod 128 \ne 0$ 的用例能抓到（err $\sim$0.1，
+        只有 $N_{kv} \bmod 128 \ne 0$ 的用例能检测到（err $\sim$0.1，
         正常用例 $\sim$1e-5）。Q 侧因 host 保证 $N_q \bmod 128 = 0$
-        免疫。
+        不受影响。
   \item \textbf{epilogue 的 drain race}：\texttt{tma\_store\_wait<0>}
         对非发射线程是空操作，$k_{NBatches}\ge2$ 时缺了批末
         \texttt{\_\_syncthreads} 的话，下一批 STSM 会覆写 in-flight
@@ -791,10 +791,10 @@ stages 实验」的口径给出，消融矩阵留给 \S\ref{sec:26c-test} 的动
 
 \begin{itemize}[itemsep=1pt]
   \item \textbf{Q：大 head\_dim 为什么选 non-WS 而不是 WS？}\\
-        A：Split-D 的 O 累加器（$32{\times}C$ f32/线程）把寄存器吃到
+        A：Split-D 的 O 累加器（$32{\times}C$ f32/线程）把寄存器占用到
         255 上限，\texttt{setmaxnreg} 让渡不动，WS 的收益侧（寄存器
-        再分配）消失、成本侧（producer 不产 FLOPs，MMA warp 砍半）
-        全留。D=128 场景两者可打成平手（第~\ref{ch:26b}~章），大 $D$
+        再分配）消失、成本侧（producer 不产 FLOPs，MMA warp 数降低一半）
+        全留。D=128 场景两者性能相当（第~\ref{ch:26b}~章），大 $D$
         只剩 non-WS。
   \item \textbf{Q：$S_K{=}3,S_V{=}2$ 为什么不对称？}\\
         A：QK 是主计算路径（每 tile $D/32$ 个 chunk），深流水加宽
@@ -825,7 +825,7 @@ stages 实验」的口径给出，消融矩阵留给 \S\ref{sec:26c-test} 的动
 CPU fp64 参考（O 与 LSE 双输出），容差 \texttt{TOL\_F16ACC}（$5\times10^{-2}$）
 与 LSE 绝对容差 0.1。八个 case 覆盖：基础形状（D=128/320）、多
 batch/head、$N_{kv} \bmod 128 \ne 0$ 的边界 mask（$N_{kv}{=}192$，
-正是「常见坑」第 2 条的抓虫用例）、stages 解耦组合 $(2,3)/(3,2)$
+正是「常见坑」第 2 条的检测用例）、stages 解耦组合 $(2,3)/(3,2)$
 （G/H 两 case）与 $S{=}3$：
 
 \begin{lstlisting}[style=console]
@@ -858,9 +858,9 @@ $ ./notes_v2_sm120a.bin --bench --bhnd 1,32,8192,320
 softmax 的 fp16 重舍入路径略不同，两者都在 f32 累加精度内。）
 bench 数据与 \texttt{-Xptxas -v} 的寄存器/spill 探针全部归档
 \texttt{book/.tmp/ch26c/}。动手实验建议：(1) 把 dispatch 里的
-$(3,2)$ 换成 $(4,2)$ 重编，观察 $S_K{=}4$ 在 D=320 是否继续涨
-（提示：smem 到 112\,KB，spill 未必友好）；(2) 删掉跨 tile 预取块
-（L1083--1094）重编复测，量化 \S\ref{sec:26c-prefetch} 红利的绝对值；
+$(3,2)$ 换成 $(4,2)$ 重编，观察 $S_K{=}4$ 在 D=320 是否继续提升
+（提示：smem 到 112\,KB，spill 可能恶化）；(2) 删掉跨 tile 预取块
+（L1083--1094）重编复测，量化 \S\ref{sec:26c-prefetch} 收益的绝对值；
 (3) 把 \texttt{FA4\_RESCALE\_THRESHOLD} 置 0 复测，看 FA-4 跳过率
 归零的代价；(4) 用 \texttt{-Xptxas -v} 亲手复现 \S\ref{sec:26c-perf}
 的寄存器表，验证 D=320 各组合的 spill 差异。

@@ -9,7 +9,7 @@
 逐元素相等的结果}。教学载体是 base.cuh 的 \texttt{merge\_\allowbreak{}attn\_\allowbreak{}states}
 （base.cuh~L437 起）：它实现 FlashInfer 论文（arXiv 2501.01005）Section~2.2
 描述的 attention 状态合并逻辑，也是 vLLM/FlashInfer 里 chunked prefill、
-FlashDecoding 等分块方案共用的「最后一公里」。
+FlashDecoding 等分块方案共用的最终合并环节。
 
 \textbf{前置章节}：第~\ref{ch:04}~章（online 递推与二元合并式）。
 \textbf{源码区间}：base.cuh~L387--519（Phase 2 末尾），无编译宏限定，全部架构适用。
@@ -27,17 +27,17 @@ FlashDecoding 等分块方案共用的「最后一公里」。
 softmax 不是线性算子，分母（指数和）被各自的 max 归一化过，直接相加等于
 把两份「各自除过各自分母」的概率混在一起。
 
-好在第~\ref{ch:04}~章的 online 递推已经告诉我们：只要每块额外吐出一个状态
+好在第~\ref{ch:04}~章的 online 递推已经给出：只要每块额外输出一个状态
 $(m, \ell)$（或其打包形式 LSE），两块就能严格合并，且结果与「把两块拼起来一次算完」
 逐元素相等。于是整个分块体系拆成两层：
 \begin{itemize}
   \item \textbf{块内}：各块独立跑标准 attention kernel，输出已归一化的
         $O^{A}, O^{B}$ 与各自的 $\mathrm{LSE}^{A}, \mathrm{LSE}^{B}$；
-  \item \textbf{块间}：一个极轻量的合并 kernel（本章主角）按指数权重把两份
+  \item \textbf{块间}：一个极轻量的合并 kernel（本章的分析对象）按指数权重把两份
         $O$ 加权混合。它每个输出元素只有 3 次 FLOP、约 12~B 流量，
         完全并行、无任何同步，是一个纯粹 bandwidth-bound 的 elementwise kernel。
 \end{itemize}
-这个设计的妙处在于\textbf{状态接口极窄}：块与块之间只传一个标量 LSE
+这个设计的关键在于\textbf{状态接口极窄}：块与块之间只传一个标量 LSE
 （外加那份本来就要传的 $O$），主 kernel 不需要为「可合并」做任何特殊化改造。
 本章测试将构造两个分块状态，验证合并结果与整体 softmax 直接计算逐元素相等。
 
@@ -141,10 +141,10 @@ $L \triangleq \max\bigl(\mathrm{LSE}^{A}, \mathrm{LSE}^{B}\bigr)$ 计算
 \end{proof}
 
 定理~\ref{thm:merge-eq} 可以拆成三个点。
-\textbf{其一}，shift 基准随便换：用 $L = \max(\mathrm{LSE})$ 还是
+\textbf{其一}，shift 基准可以任选：用 $L = \max(\mathrm{LSE})$ 还是
 $m = \max(m)$ 做基准只改变常数因子，不影响凸组合系数，所以 kernel 可以
 直接在 LSE 域上取 max，无需还原 $m$。同时 $w^{A}, w^{B} \le e^{0} = 1$，
-与 safe softmax 一脉相承的数值安全。
+数值安全性与 safe softmax 相同。
 \textbf{其二}，$\alpha + \beta = 1$ 意味着合并是\textbf{凸组合}：
 $O$ 落在 $[O^{A}, O^{B}]$ 的凸包内，不会放大任何一方的量级。
 \textbf{其三}，这套推导对「两块」成立，对任意多块也成立（逐对两两合并即可，
@@ -230,7 +230,7 @@ causal mask 等机制会产生「空段」：某分块内全部打分被 mask �
 以头注释的示例（$T{=}2, H{=}2, D{=}8$）：8 个线程的
 \texttt{token\_\allowbreak{}head\_\allowbreak{}idx} 依次为 $0,0,1,1,2,2,3,3$、\texttt{pack\_idx} 为
 $0,1,0,1,0,1,0,1$。同一个 warp 里相邻线程访问相邻 pack，两次 $O$ 的读与一次写
-都是 128-bit 完全 coalesced，这是它跑出 TB/s 级带宽的直接原因。
+都是 128-bit 完全 coalesced，这是它达到 TB/s 级带宽的直接原因。
 LSE 读取只有每 (token, head) 2 次标量加载（\texttt{p\_lse}、\texttt{s\_lse}），
 随后立即做 $+\infty \to -\infty$ 清洗（5.3~节）。
 
@@ -366,8 +366,8 @@ $o = p \cdot \alpha + s \cdot \beta$（硬件可融合为 FMA），再整包写�
 \textbf{算术强度}：每个输出元素读 $O^{A}$（4~B）、读 $O^{B}$（4~B）、写
 $O$（4~B），共 12~B；LSE 是每 (token, head) 8~B 的标量流量，摊到元素上是
 $8/D$~B。计算是每元素 3 FLOP（2 乘 1 加）。$D = 128$ 时
-$AI \approx 3 / 12.06 \approx 0.25$ FLOP/B，深居 roofline 拐点左侧，
-是教科书级的 \textbf{severely memory-bound} 算子，头注释的结论正确，
+$AI \approx 3 / 12.06 \approx 0.25$ FLOP/B，位于 roofline 拐点左侧，
+是典型的 \textbf{severely memory-bound} 算子，头注释的结论正确，
 但「20 bytes」的口径把 LSE 读按每元素计了（见 5.6~节勘误二）。
 优化抓手也因此明确：向量化宽度（128-bit 已到位）、coalescing（三维解包保证）、
 以及避免任何分支/同步（本 kernel 无共享内存、无同步点）。
@@ -390,13 +390,13 @@ merge\_attn\_states & 0.7849 & 1031.4 \\
 \end{tabular}
 \end{table}
 
-单 kernel 0.78~ms 跑满 809.5~MB，有效带宽 $1031~\text{GB/s}$，
+单 kernel 0.78~ms 完成 809.5~MB 访存，有效带宽 $1031~\text{GB/s}$，
 已达到该卡理论带宽的约 77\%，对「读两份写一份」的纯流式访存是合理水平
 （读写翻转与 LSE 的零散标量访问会损失一部分）。作为对比参照：同卡上
 ch04 的 softmax 小形状只有数百 GB/s，差距主要来自形状规模
 （本 kernel 每次迭代有 1600 万个线程、13 万个 block，launch 开销完全摊薄）。
-若要继续压榨，可尝试的方向是 256-bit 访问或 LSE 的 warp 级广播复用，
-但收益预计在个位数百分比，memory-bound 算子的带宽已近材料上限。
+若要继续提升，可尝试的方向是 256-bit 访问或 LSE 的 warp 级广播复用，
+但收益预计在个位数百分比，该算子的带宽已接近硬件上限。
 
 \section{实践经验}
 
@@ -436,7 +436,7 @@ ch04 的 softmax 小形状只有数百 GB/s，差距主要来自形状规模
 \section{常见坑}
 
 \textbf{坑一：输入 $O$ 必须是已归一化的。}本章推导（式~\ref{eq:5-split}）假设
-$O^{A}$ 已除过 $\ell^{A}$（FA kernel 落盘形态）。若误喂未归一化的分块输出
+$O^{A}$ 已除过 $\ell^{A}$（FA kernel 落盘形态）。若误用未归一化的分块输出
 （还带着自己的 $\ell$），合并结果会整体错一个 $\ell$ 因子，数值上看起来
 「量级差不多」，精度上已经全错。改造或复用该 kernel 前先确认上游契约。
 
@@ -448,9 +448,9 @@ $O^{A}$ 已除过 $\ell^{A}$（FA kernel 落盘形态）。若误喂未归一化
 \textbf{坑三：head\_size 必须是 4 的倍数。}见 5.6~节勘误三。另注意
 \texttt{uint4} 访问要求 16~B 对齐：\texttt{head\_offset} 以元素计是
 $(t \cdot H + h) \cdot D$，$D$ 为 4 的倍数时自然对齐；若在张量切片视图上
-直接取指针（如从大 tensor 掐出非对齐段），会触发 misaligned address 崩溃。
+直接取指针（如从大 tensor 切出非对齐段），会触发 misaligned address 崩溃。
 
-\textbf{坑四：两段同时为空会产出 NaN。}见 5.3~节末。真实分块场景
+\textbf{坑四：两段同时为空会输出 NaN。}见 5.3~节末。真实分块场景
 （prefix + suffix、split-KV 的各段）至少一段非空；但做泛化工具或单测时，
 应显式防护「双空段」或将其定义为约定俗成的输出（例如全零或直接透传）。
 

@@ -12,7 +12,7 @@
 
 \section{问题与动机}
 
-Transformer 的每个 block 至少包含两个归一化层（pre-norm 结构中位于 attention 与 MLP 之前）。对 LLaMA 系列模型，这两处全部使用 RMSNorm；对 GPT-2、BERT 及大量多模态模型，两处是 LayerNorm。一次 7B 模型的前向推理，归一化层的调用次数与 attention 层同阶，是名副其实的高频算子。
+Transformer 的每个 block 至少包含两个归一化层（pre-norm 结构中位于 attention 与 MLP 之前）。对 LLaMA 系列模型，这两处全部使用 RMSNorm；对 GPT-2、BERT 及大量多模态模型，两处是 LayerNorm。一次 7B 模型的前向推理，归一化层的调用次数与 attention 层同阶，是典型的高频算子。
 
 从计算结构上看，归一化算子由三段组成：
 \begin{enumerate}
@@ -76,7 +76,7 @@ RMSNorm（Zhang \& Sennrich, 2019）只保留「缩放」而不做「中心化�
 \end{equation}
 对照式~\eqref{eq:ch06-ln} 可以读出三层关系：
 \begin{enumerate}
-  \item 当输入近似零中心（$\mu \approx 0$）时，$\mathrm{RMS}(x) \approx \sqrt{\sigma^2+\epsilon}$，RMSNorm 与 LayerNorm 几乎重合；神经网络中间激活的均值通常远小于二阶矩，这是「RMSNorm 效果不掉」的直观解释。
+  \item 当输入近似零中心（$\mu \approx 0$）时，$\mathrm{RMS}(x) \approx \sqrt{\sigma^2+\epsilon}$，RMSNorm 与 LayerNorm 几乎重合；神经网络中间激活的均值通常远小于二阶矩，这直观解释了 RMSNorm 去掉中心化后精度几乎不受影响。
   \item RMSNorm 分母比 LayerNorm 分母多出 $\mu^2$ 项：LayerNorm 只除「波动幅度」，RMSNorm 除「总能量（波动 + 直流）」。
   \item 由此产生一个重要差别：LayerNorm 具备\textbf{平移不变性}，$x \to x + c$ 时 $\mu \to \mu + c$、$\sigma^2$ 不变，输出不变；RMSNorm 不具备（$\mu^2$ 项改变）。所以 LLaMA 系列把 RMSNorm 前面的 QKV 线性投影的 bias 直接去掉（bias 只会给分母注入无信息的 $\mu^2$），这是架构层面的连锁设计。
 \end{enumerate}
@@ -193,7 +193,7 @@ LayerNorm 能否也做成 1-pass？利用恒等式~\eqref{eq:ch06-var-identity}�
 \label{fig:6-3}
 \end{figure}
 
-归约本身直接复用第 \ref{ch:02} 章的 \texttt{block\_\allowbreak{}reduce\_\allowbreak{}sum}（base.cuh L179-196）：warp 内蝶形 shuffle 归约、warp leader 写 shared memory、\texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()}、第二级 warp 归约，最后 \texttt{\_\_shfl\_sync} 把结果广播到\textbf{每个}线程。这步广播省不掉：行内所有线程都要拿到同一个 $s$ 才能各自完成缩放。
+归约本身直接复用第 \ref{ch:02} 章的 \texttt{block\_\allowbreak{}reduce\_\allowbreak{}sum}（base.cuh L179-196）：warp 内蝶形 shuffle 归约、warp leader 写 shared memory、\texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()}、第二级 warp 归约，最后 \texttt{\_\_shfl\_sync} 把结果广播到\textbf{每个}线程。这一步广播无法省略：行内所有线程都要拿到同一个 $s$ 才能各自完成缩放。
 
 \lstinputlisting[linerange={179-196},firstnumber=auto,
   title={base.cuh L179-196（block\_reduce\_sum：两级归约 + 全员广播，详见第 \ref{ch:02} 章）}]{../base.cuh}
@@ -210,7 +210,7 @@ LayerNorm 能否也做成 1-pass？利用恒等式~\eqref{eq:ch06-var-identity}�
   \item \textbf{载入与越界 padding}：\texttt{value = (idx < N*K) ? x[idx] : 0.0f}。越界线程贡献 $0$，而 $0^2 = 0$ 不影响平方和。padding 值的选择取决于归约量的物理含义。对照第 \ref{ch:04} 章 softmax 的行 max 归约必须 pad $-\mathrm{FLT\_MAX}$，如果这里错 pad 成 $\mathrm{FLT\_MAX}$，平方和直接溢出。
   \item \textbf{单次归约}：\texttt{block\_\allowbreak{}reduce\_\allowbreak{}sum\allowbreak{}<k\allowbreak{}Num\allowbreak{}Threads>\allowbreak{}(variance)} 一次得到整行平方和。变量名 \texttt{variance} 在此处尚不是方差，只是「平方和」的中间量，除以 $K$ 才是均方。
   \item \textbf{tid 0 写共享标量}：\texttt{if \allowbreak{}(tid =\allowbreak{}=\allowbreak{} 0) s\_\allowbreak{}variance =\allowbreak{} rsqrtf\allowbreak{}(variance /\allowbreak{} K + epsilon)}。先除 $K$ 再加 $\epsilon$ 再开根号取倒数，与式~\eqref{eq:ch06-rms} 逐项对应；顺序若写成 $\mathrm{rsqrtf}((v + \epsilon)/K)$，$\epsilon$ 的相对作用被缩小 $K$ 倍（近乎失效），分母偏小使输出系统性偏大。
-  \item \textbf{第二次同步}：\texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()}。\texttt{block\_\allowbreak{}reduce\_\allowbreak{}sum} 内部的同步只保证「warp leader 写 \texttt{shared[]}」的可见性；\texttt{s\_variance} 是另一个共享变量，写在 reduce 之后，必须再立一次屏障，否则其他线程可能读到未初始化的 \texttt{s\_variance}。这是数据竞争，错误值非确定。
+  \item \textbf{第二次同步}：\texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()}。\texttt{block\_\allowbreak{}reduce\_\allowbreak{}sum} 内部的同步只保证「warp leader 写 \texttt{shared[]}」的可见性；\texttt{s\_variance} 是另一个共享变量，写在 reduce 之后，必须再加一次屏障，否则其他线程可能读到未初始化的 \texttt{s\_variance}。这是数据竞争，错误值非确定。
   \item \textbf{缩放写回}：\texttt{y[idx] = (value * s\_variance) * g}。所有线程拿到同一个 $s = 1/\mathrm{RMS}$，乘各自的 $x_k$ 与 gain。
 \end{enumerate}
 
@@ -232,13 +232,13 @@ LayerNorm 能否也做成 1-pass？利用恒等式~\eqref{eq:ch06-var-identity}�
 \lstinputlisting[linerange={723-758},firstnumber=auto,
   title={base.cuh L723-758（layer\_norm：2-pass LayerNorm）}]{../base.cuh}
 
-结构上相当于把 rms\_norm 的归约-广播结构做两遍，两次归约的依赖关系与第 \ref{ch:04} 章 safe softmax「先 max 后 sum」的依赖链如出一辙：
+结构上相当于把 rms\_norm 的归约-广播结构做两遍，两次归约的依赖关系与第 \ref{ch:04} 章 safe softmax「先 max 后 sum」的依赖链完全相同：
 \begin{itemize}
   \item \textbf{Pass 1}：归约 $S_1$ 得 \texttt{s\_mean = sum / K}，\texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()} 广播。这一次同步不可省：Pass 2 中每个线程都要读 \texttt{s\_mean}。
   \item \textbf{Pass 2}：用广播后的均值计算 $\sum_k (x_k - \mu)^2$，再次 block reduce，tid 0 写 \texttt{s\_\allowbreak{}variance =\allowbreak{} rsqrtf\allowbreak{}(variance /\allowbreak{} K + epsilon)}，再一次 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()} 广播。
   \item 输出 \texttt{y = ((value - s\_mean) * s\_variance) * g + b}，与式~\eqref{eq:ch06-ln} 逐项对应。
 \end{itemize}
-同步开销精确计数：layer\_norm 全程 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()} 共 4 次（两次 block reduce 内部各 1 次 + 显式 2 次），rms\_norm 只有 2 次，这就是源码注释「比 Layer Norm 少 1 次同步」的完整语境（少一次归约，连带少一次 reduce 内部同步与一次显式同步）。$K = 128$ 时每次块级同步的绝对延迟在微秒以下，但归一化算子本身极薄（一行 $128 \times 4\mathrm{B} \times 2$ 的访存在 $\sim\mathrm{TB/s}$ 带宽下不足 $1\,\mu s$），相对占比可观，本章第 6 节的实测数据会量化这一点。
+同步开销精确计数：layer\_norm 全程 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()} 共 4 次（两次 block reduce 内部各 1 次 + 显式 2 次），rms\_norm 只有 2 次，这就是源码注释「比 Layer Norm 少 1 次同步」的完整语境（少一次归约，连带少一次 reduce 内部同步与一次显式同步）。$K = 128$ 时每次块级同步的绝对延迟在微秒以下，但归一化算子本身访存量极小（一行 $128 \times 4\mathrm{B} \times 2$ 的访存在 $\sim\mathrm{TB/s}$ 带宽下不足 $1\,\mu s$），相对占比可观，本章第 6 节的实测数据会量化这一点。
 
 \subsection{layer\_norm\_vec4：寄存器复用的两遍结构}
 
@@ -332,7 +332,7 @@ vec4 化带来一个标量版没有的实现细节：Pass 2 需要再次用到 $
 
 \subsection{Roofline 定位}
 
-每元素运算量：RMSNorm 约 3 FLOP（平方、累加、缩放；rsqrt 每行摊薄一次），LayerNorm 约 5 FLOP（多出减均值）。流量固定 8B（读 4B + 写 4B），$AI \approx 0.3\text{-}0.6$ FLOP/Byte。对照第 \ref{ch:01} 章的 Roofline 模型，这类算子远在拐点左侧的带宽受限区，优化目标就是逼近访存带宽上限，一切同步与指令开销都在与访存时间「抢」关键路径。
+每元素运算量：RMSNorm 约 3 FLOP（平方、累加、缩放；rsqrt 每行摊薄一次），LayerNorm 约 5 FLOP（多出减均值）。流量固定 8B（读 4B + 写 4B），$AI \approx 0.3\text{-}0.6$ FLOP/Byte。对照第 \ref{ch:01} 章的 Roofline 模型，这类算子远在拐点左侧的带宽受限区，优化目标就是逼近访存带宽上限，一切同步与指令开销都在与访存竞争关键路径。
 
 \subsection{实测数据}
 
@@ -358,8 +358,8 @@ $N$（行） & rms\_norm & rms\_norm\_vec4 & layer\_norm & layer\_norm\_vec4 \\
 $N = 524288$ 时读写流量 $512\,\mathrm{MB}$ 远超 L2，是 HBM 口径。两个结构性结论：
 
 \begin{enumerate}
-  \item \textbf{vec4 收益只在 L2 口径显著}：$N = 131072$ 行时 rms\_norm $1041 \to 1212\,\mathrm{GB/s}$（$+16\%$），layer\_norm $970 \to 1201\,\mathrm{GB/s}$（$+24\%$）。L2 带宽远高于 HBM，标量访存的指令发射与事务数成为瓶颈，向量化直接缩短指令路径。而 HBM 口径（$N = 524288$）下四个 kernel 全部收敛到 $1000\text{-}1070\,\mathrm{GB/s}$，带宽上限由 DRAM 决定，标量版也能喂饱，vec4 的收益被吸收。
-  \item \textbf{1-pass 收益在两种口径下都稳定约 $7\%$}：同精度对比标量版 rms\_norm vs layer\_norm：$0.1289$ vs $0.1384\,\mathrm{ms}$（L2 口径，$-6.9\%$）；$0.5019$ vs $0.5369\,\mathrm{ms}$（HBM 口径，$-6.5\%$）。减少的那一次 block reduce 与两次同步在两种口径下都没有被访存完全掩盖：归一化算子太薄，结构开销永远在关键路径上。这正是 LLaMA 选择 RMSNorm 在 kernel 层面的直接收益。
+  \item \textbf{vec4 收益只在 L2 口径显著}：$N = 131072$ 行时 rms\_norm $1041 \to 1212\,\mathrm{GB/s}$（$+16\%$），layer\_norm $970 \to 1201\,\mathrm{GB/s}$（$+24\%$）。L2 带宽远高于 HBM，标量访存的指令发射与事务数成为瓶颈，向量化直接缩短指令路径。而 HBM 口径（$N = 524288$）下四个 kernel 全部收敛到 $1000\text{-}1070\,\mathrm{GB/s}$，带宽上限由 DRAM 决定，标量版也能达到该上限，vec4 的收益被吸收。
+  \item \textbf{1-pass 收益在两种口径下都稳定约 $7\%$}：同精度对比标量版 rms\_norm vs layer\_norm：$0.1289$ vs $0.1384\,\mathrm{ms}$（L2 口径，$-6.9\%$）；$0.5019$ vs $0.5369\,\mathrm{ms}$（HBM 口径，$-6.5\%$）。减少的那一次 block reduce 与两次同步在两种口径下都没有被访存完全掩盖：归一化算子的访存量太小，结构开销始终在关键路径上。这正是 LLaMA 选择 RMSNorm 在 kernel 层面的直接收益。
 \end{enumerate}
 
 \section{实践经验}
@@ -384,7 +384,7 @@ $N = 524288$ 时读写流量 $512\,\mathrm{MB}$ 远超 L2，是 HBM 口径。两
   \item \textbf{写共享标量后漏同步}：\texttt{s\_mean}/\texttt{s\_variance} 写后的 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()} 一旦遗漏，竞争窗口小、错误非确定性，表现为「偶尔个别行结果错误」，极难复现定位。
   \item \textbf{越界 padding 值与归约量不匹配}：平方和 pad $0$ 正确，pad 大数则溢出；同理行 max 归约必须 pad $-\mathrm{FLT\_MAX}$（第 \ref{ch:04} 章）。
   \item \textbf{fp16 输入直接用 fp16 累加}：$K$ 较大时平方和可能溢出 fp16 上限（65504），且舍入误差快速累积；正确做法是升 fp32 累加（本章 fp32 演示天然规避，第 \ref{ch:11} 章的 F32Acc/F16Acc 容差分级会再遇到它）。
-  \item \textbf{rsqrtf 精度预期}：MUFU.RSQ 是近似指令（约 2 ulp），推理场景无感；训练反向中 norm 层梯度含 $s^3$ 因子，对精度敏感的实现可在关键路径换 \texttt{1.0f/\allowbreak{}sqrtf\allowbreak{}()} 换取 IEEE 精度。
+  \item \textbf{\texttt{rsqrtf} 精度预期}：MUFU.RSQ 是近似指令（约 2 ulp），推理场景下影响可忽略；训练反向中 norm 层梯度含 $s^3$ 因子，对精度敏感的实现可在关键路径换 \texttt{1.0f/\allowbreak{}sqrtf\allowbreak{}()} 换取 IEEE 精度。
 \end{enumerate}
 
 \section{面试要点速查}
@@ -392,7 +392,7 @@ $N = 524288$ 时读写流量 $512\,\mathrm{MB}$ 远超 L2，是 HBM 口径。两
 \begin{enumerate}
   \item \textbf{Q：LayerNorm 与 RMSNorm 的数学关系？} A：恒等式 $\frac{1}{K}\sum x_k^2 = \sigma^2 + \mu^2$；RMSNorm 等价于 LayerNorm 去掉中心化、分母换成 $\sqrt{\sigma^2+\mu^2+\epsilon}$；$\mu \approx 0$ 时两者近似相等。
   \item \textbf{Q：为什么 RMSNorm 更快？} A：归约量从两个（依赖链）降到一个：1 次 block reduce + 2 次同步 vs 2 次 + 4 次；实测 fp32 下快约 $7\%$（本章第 6 节）。
-  \item \textbf{Q：LayerNorm 能做 1-pass 吗？} A：可以（$\sigma^2 = S_2/K - \mu^2$ 或 Welford），但「大数减小数」有 catastrophic cancellation 风险；fp32 且 $|\mu| \ll \sigma$ 时可放心用，否则 Welford。
+  \item \textbf{Q：LayerNorm 能做 1-pass 吗？} A：可以（$\sigma^2 = S_2/K - \mu^2$ 或 Welford），但「大数减小数」有 catastrophic cancellation 风险；fp32 且 $|\mu| \ll \sigma$ 时可安全使用，否则 Welford。
   \item \textbf{Q：GPU 上实现行归一化的标准结构？} A：one-row-one-block；block reduce 求统计量；tid 0 写 shared 标量；\texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()} 后全块读出广播；最后逐元素缩放。
   \item \textbf{Q：为什么写 \texttt{s\_variance} 后还需要一次 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()}？} A：reduce 内部的同步只覆盖 reduce 自己的 shared 数组；新共享变量的写读对必须另行建立块级可见性。
   \item \textbf{Q：vec4 化的前提？} A：$K \% 4 = 0$、基址与行首 16B 对齐；越界线程的 padding 值必须与归约量语义一致。

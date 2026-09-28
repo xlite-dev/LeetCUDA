@@ -12,7 +12,7 @@
 \textbf{计算怎么分给线程}。一条 \texttt{mma.\allowbreak{}sync.\allowbreak{}aligned.\allowbreak{}m16n8k16} 是硬件
 给出的最小计算单元，它规定了 32 个 lane 各自的 4（或 8）个寄存器里装哪几个
 元素；而一个真实 kernel 的 tile 远大于 $16\times8\times16$，于是「拿多个
-MMA 原子去铺满 tile」这件事必须有个说法：这就是 \textbf{TiledMMA}：
+MMA 原子去铺满 tile」需要一个统一的描述：这就是 \textbf{TiledMMA}：
 原子 $\times$ 原子的排布 $\times$ 目标 tile 尺寸。
 
 本章沿着第~\ref{ch:21}~章的 (thread, value) 语言继续：第~\ref{ch:21}~章里
@@ -58,8 +58,8 @@ tensor core，算完再把 $16\times8$ 的 C 分散写回 32 个 lane 的寄存�
   \label{eq:22-ptx-a}
 \end{equation}
 
-外加「$+8$ 行」与「$+8$ 列」两套偏移把 8 个 half 填满。B（$8\times16$）也是
-类似的故事。手写版（第~\ref{ch:11}~章）的做法是：把这些式子连同 ldmatrix
+外加「$+8$ 行」与「$+8$ 列」两套偏移把 8 个 half 填满。B（$8\times16$）的
+对应关系类似。手写版（第~\ref{ch:11}~章）的做法是：把这些式子连同 ldmatrix
 的 lane 地址表一起写在 kernel 里。这条路能走通，但三个痛点随规模一起放大：
 
 \begin{itemize}
@@ -174,14 +174,14 @@ A 为 $(8,1,1)$（8 个 half）、B 为 $(4,1,1)$、C 为 $(4,1,1)$，与
 价值（tile 放大后的 remainder 与多 warp 的重复因子）要到 3.2--3.3 节才
 显现。
 
-\subsection{TiledMMA：原子、排布、tile 三件套}
+\subsection{TiledMMA：原子、排布、tile 三个参数}
 
 再回到动机里那两层「重复」：\textbf{并行维度}（多起执行器）与\textbf{串行
 维度}（一个执行器循环执行）。CuTe 把两者装进
 \texttt{make\_\allowbreak{}tiled\_\allowbreak{}mma\allowbreak{}(atom,\allowbreak{} Atom\allowbreak{}Layout\allowbreak{}MNK,\allowbreak{} Permutation\allowbreak{}MNK)} 的三个参数：
 原子是硬件粒度，第二个参数是\textbf{warp 排布}（哪个 warp 覆盖哪个原子位置，
 负责并行重复），第三个是\textbf{目标 tile 尺寸}（含 K，决定一个 threadblock
-一次「打出去」的计算块）。内核把两者合成为
+一次执行的计算块）。内核把两者合成为
 
 \begin{equation}
   \mathrm{ThrLayoutVMNK} = \mathrm{tiled\_product}(\mathrm{ThrID},\
@@ -215,8 +215,7 @@ $\mathrm{ThrM}$、N 对应 $\mathrm{ThrN}$、K 对应 $\mathrm{ThrK}$）。
 用映射语言说：\texttt{Thr\allowbreak{}Layout\allowbreak{}VMNK} 把\textbf{线程编号}拆成
 $(\mathrm{ThrV},(\mathrm{ThrM},\mathrm{ThrN},\mathrm{ThrK}))$ 四层：先看
 warp 内部（$\mathrm{ThrV}$），再看「第几个 warp 落在哪个方向」。
-「谁并行、谁重复」这两个问题的答案，就藏在把线程编号拆成 VMNK 的
-那一刻。
+「谁并行、谁重复」这两个问题的答案，都由线程编号到 VMNK 的分解给出。
 
 一个自然的疑问是：既然 warp 排布 $+$ 原子尺寸已经能划分 tile，为什么还要
 第三个（tile）参数？@竹熙佳处给出两条理由，读 tiled mma 时值得记住。其一
@@ -229,7 +228,7 @@ warp 内部（$\mathrm{ThrV}$），再看「第几个 warp 落在哪个方向」
 \subsection{q 的推导链：从 tile 到 fragment}
 
 真正的工作在 \texttt{thrfrg\_\allowbreak{}A/\allowbreak{}B/\allowbreak{}C} 里，它是四步 layout 代数
-（第~\ref{ch:20}~章的全部工具在这里合体）。四步走的是一条固定流水线：
+（第~\ref{ch:20}~章的全部工具在这里综合使用）。四步走的是一条固定流水线：
 \textbf{先按 tile 切、再按原子切、把原子坐标换成 (线程, 值)、最后按 warp
 排布把线程剥出来}。以 A 为例（B/C 只是把 mode 换成 $(N,K)$ / $(M,N)$）：
 
@@ -257,8 +256,9 @@ warp 内部（$\mathrm{ThrV}$），再看「第几个 warp 落在哪个方向」
 坐标，再经 \texttt{LayoutA\_TV} 换成 (线程, 值)}。四步里的三个量各司其职：
 第 (1) 步的 $\mathrm{perm}$ 决定「一个 tile 多大」，第 (2) 步的
 $\mathrm{atom}$ 决定「一条指令多大」，第 (4) 步的
-$\mathrm{ThrM/ThrK}$ 决定「多少 warp 分摊」，正是 3.2 节三件套的第三次
-出场；对线程 $t$ 来说，前三步的结果人人相同，只有第 (4) 步把他自己摘出来。
+$\mathrm{ThrM/ThrK}$ 决定「多少 warp 分摊」，正是 3.2 节三个参数的第三次
+出现；对线程 $t$ 来说，前三步的结果对所有线程相同，只有第 (4) 步把该线程
+自己区分出来。
 
 把第 (4) 步的线程坐标 $(\mathrm{ThrV},\mathrm{ThrM},\mathrm{ThrK})$ 用
 \texttt{get\_\allowbreak{}slice\allowbreak{}(t)} 固定住，剩下的就是该线程的 fragment 形状：
@@ -401,7 +401,7 @@ $\times$ $\mathrm{MMA}_K=4$）。}
 C 恰好等于 tile 元素数（$128\times32 = 4096 = 64\times64$，双射），
 A 也是（$\mathrm{ThrK}=1$ 时无 K-warp 重复），B 是 4 倍。这条账在选 tile 时
 必须算清楚：B 的 4 倍重复意味着 128 个 half/线程的寄存器开销，它不占
-smem，但吃寄存器预算。守恒式也是最便宜的自检：两边对不上，说明有数据没有
+smem，但占用寄存器预算。守恒式也是最便宜的自检：两边对不上，说明有数据没有
 线程负责、或有线程在空转（本章测试 case D 就是这条账的逐点版本）。
 
 当 tensor 比 tile 大时，partition 会多出「tile 重复」mode：$64\times64$ 的
@@ -920,7 +920,7 @@ $=\mathrm{MMA}_M\times\mathrm{MMA}_N\times\mathrm{MMA}_K$，注意这是
 $64\times64\times64$：512 KFLOP/128 条，每条 $16\times8\times16$ 共
 $4096$ FLOP（约 4.1 KFLOP）；PV 同口径：$(1,2,4)=8$ 条/warp 覆盖
 $16\times16\times64$，CTA 的 $64\times16\times64$ 需 4 warp 共 32 条。
-两个 tile 都让「每条 MMA 指令」吃满原子尺寸，没有浪费，因为它们都是从
+两个 tile 都让「每条 MMA 指令」用满原子尺寸，没有浪费，因为它们都是从
 $\mathrm{AtomShape}$ 出发、只用排布与 tile 尺寸做整数分块推出来的。
 
 \textbf{口径说明}：本节所有数字都是 host 端类型推导的实测值（
@@ -952,7 +952,7 @@ QK 的 C fragment 是 $(4,1,8)$，PV 的 A fragment 是 $(8,1,4)$：形状、元
 \textbf{坑三：tile 必须是原子的整数倍，warp 排布必须与线程数自洽。}
 $\mathrm{perm\_M}$ 不是 $16$ 的倍数、或 $\mathrm{ThrM}\times 32$ 与
 \texttt{blockDim} 不一致时，partition 会产生多余/缺失的 remainder mode
-（编译期静态断言或运行期越界）。判据：\texttt{size(mma)} 是线程数的权威，
+（编译期静态断言或运行期越界）。判据：\texttt{size(mma)} 是线程数的权威来源，
 用它来配 \texttt{dim3 block\allowbreak{}(size\allowbreak{}(mma))}。
 
 \textbf{坑四：\texttt{get\_slice} 的坐标是 $(\mathrm{ThrV},(\mathrm{ThrM},

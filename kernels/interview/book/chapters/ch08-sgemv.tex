@@ -3,7 +3,7 @@
 
 \section{本章导读}
 
-GEMV（GEneral Matrix-Vector multiplication，矩阵向量乘）是 GEMM 在 $N = 1$ 时的退化形式，也是大模型推理 decode 阶段最基本的算子形态：每次前向只处理一个 token，权重矩阵乘以 activation 向量。它没有 GEMM 那种靠分块换来的复用红利：输出只剩一个向量，第~\ref{ch:09}~章金字塔的第一级（block tile 复用）在 $N=1$ 时整体塌缩。本章沿教学源码 sgemv.cuh 的三个 kernel，把「纯 memory-bound 算子怎么写」这条线走完整：
+GEMV（GEneral Matrix-Vector multiplication，矩阵向量乘）是 GEMM 在 $N = 1$ 时的退化形式，也是大模型推理 decode 阶段最基本的算子形态：每次前向只处理一个 token，权重矩阵乘以 activation 向量。它没有 GEMM 那种靠分块换来的复用收益：输出只剩一个向量，第~\ref{ch:09}~章金字塔的第一级（block tile 复用）在 $N=1$ 时不再存在。本章沿教学源码 sgemv.cuh 的三个 kernel，把「纯 memory-bound 算子怎么写」这条线走完整：
 
 \begin{itemize}
   \item \textbf{sgemv\_k32}（sgemv.cuh~L24）——基础 \textbf{warp-per-row}：一个 warp 负责矩阵的一行，
@@ -21,28 +21,28 @@ GEMV（GEneral Matrix-Vector multiplication，矩阵向量乘）是 GEMM 在 $N 
 \textbf{源码区间}：sgemv.cuh~L1--102，无编译宏限定，全部架构适用；
 配套最小测试为 \texttt{book/\allowbreak{}tests/\allowbreak{}ch08\_\allowbreak{}sgemv.\allowbreak{}cu}。
 \textbf{后继}：第~\ref{ch:09}~章把 $N$ 维度搬上舞台，复用维度回归，算术强度从 $O(1)$
-变为随 tile 尺寸增长，重点也从「抢带宽」转到「搭金字塔」。
+变为随 tile 尺寸增长，重点也从带宽利用转向分块复用。
 
 \section{问题与动机}
 
-\textbf{动机一：decode 阶段的形状就是 GEMV。}语言模型自回归推理分两个阶段：prefill 一次吃进
-整段 prompt，是「胖」GEMM（大 $M$、大 $N$）；decode 每步只生成一个 token，投影矩阵
+\textbf{动机一：decode 阶段的形状就是 GEMV。}语言模型自回归推理分两个阶段：prefill 一次处理
+整段 prompt，是大 $M$、大 $N$ 的 GEMM；decode 每步只生成一个 token，投影矩阵
 $W \in \mathbb{R}^{M \times K}$ 乘以单个 activation 向量 $x \in \mathbb{R}^{K}$，
-输出 $y \in \mathbb{R}^{M}$，$N = 1$，地道的 GEMV（工程上常把若干步 decode 的请求
+输出 $y \in \mathbb{R}^{M}$，$N = 1$，典型的 GEMV（工程上常把若干步 decode 的请求
 拼成 $N = 2, 4, \dots$ 的 skinny GEMM，但单请求视角仍是 GEMV）。权重矩阵一遍推理要被读
 成百上千次，GEMV 的效率直接决定 decode 吞吐。
 
-\textbf{动机二：复用维度消失，AI 是常数。}第~\ref{ch:09}~章会看到，GEMM 的全部魔法在于
+\textbf{动机二：复用维度消失，AI 是常数。}第~\ref{ch:09}~章会看到，GEMM 的核心机制在于
 「一个 $B$ tile 服务 $B\sb{M}$ 个输出行、一个 $A$ tile 服务 $B\sb{N}$ 个输出列」。$N=1$ 时输出只有
 $M$ 个元素，$y\sb{m}$ 需要 $A$ 的第 $m$ 行整行与 $x$ 的完整拷贝；\textbf{行与行之间没有共享}
 （$A$ 的每个元素只被用一次），唯一的复用是 $x$ 被 $M$ 行共享，这层复用交给 L2 缓存即可，
-kernel 层面无事可做。于是算术强度天生是 $O(1)$ 量级的常数（8.3~节精确推导为
+kernel 层面无事可做。于是算术强度本身就是 $O(1)$ 量级的常数（8.3~节精确推导为
 $0.25 \sim 0.5$ FLOP/B），比现代 GPU 的 roofline 拐点低两个数量级。
-\textbf{GEMV 的全部优化目标只有一个：让有效访存带宽逼近机器上限。}计算怎么排都「够快」。
+\textbf{GEMV 的全部优化目标只有一个：让有效访存带宽逼近机器上限。}计算侧无论怎么安排都不是瓶颈。
 
-\textbf{动机三：$K$ 的大小决定 warp「装不装得满」。}\allowbreak{}warp-per-row 的自然形态是 32 个 lane
-铺满一行。$K \gg 32$ 时，每个 lane 要串行累加多个元素，顺便就有了向量化（每 lane 每轮
-搬 4 个）的余地；$K$ 恰为 32 的倍数时，一轮铺满、循环次数干净；而 $K < 32$（比如
+\textbf{动机三：$K$ 的大小决定 32 个 lane 能否占满。}\allowbreak{}warp-per-row 的自然形态是 32 个 lane
+铺满一行。$K \gg 32$ 时，每个 lane 要串行累加多个元素，也就有了向量化（每 lane 每轮
+搬 4 个）的余地；$K$ 恰为 32 的倍数时，一轮覆盖整行、循环次数为整数；而 $K < 32$（比如
 head 维度、或某些量化场景下的 16）时，一个 warp 铺不满一行，直接写会浪费一半 lane，
 这时应该让一个 warp 同时负责\textbf{多行}，把 32 个 lane 切成两段各 16 个。三个 kernel
 正是对这三种 $K$ 形态的针对性设计，源码头注释（L9--12）把这套决策浓缩成了三行。
@@ -78,7 +78,7 @@ $66.9 / 0.934 \approx 71.6$~FLOP/B。GEMV 的 AI $\approx 0.25 \sim 0.5$ 落在�
 两个数量级：计算上限 $\approx 0.5 \times 934 \approx 0.47$ TFLOPS，只占峰值的
 $0.7\%$。\textbf{kernel 写得再「聪明」，FLOPs 侧也毫无收益；唯一的战场是带宽}：
 减少指令数（向量化）、消灭闲置 lane（多行复用）、保证合并访问（coalescing），
-全部服务于「把 DRAM 喂满」。
+目标都是使 DRAM 带宽达到饱和。
 
 \subsection{warp-per-row 的覆盖数学}
 
@@ -115,7 +115,7 @@ k128 把每 lane 每轮的工作量从 1 个元素提到 4 个：
 
 \subsection{K=16：双行复用与分段蝶形归约}
 
-$K = 16 < 32$ 时，单行喂不饱一个 warp。k16 的做法是把 warp 沿行方向对半劈开：
+$K = 16 < 32$ 时，单行数据占不满一个 warp。k16 的做法是把 warp 沿行方向分成两半：
 \begin{equation}
 \begin{aligned}
   &\texttt{k\allowbreak{}Num\allowbreak{}Lane\allowbreak{}Per\allowbreak{}Row} = \lceil 32 / \texttt{kRowPerWarp} \rceil = 16, \\
@@ -127,7 +127,7 @@ $K = 16 < 32$ 时，单行喂不饱一个 warp。k16 的做法是把 warp 沿行
 lane $0\,\dots\,15$ 算第 $m$ 行、lane $16\,\dots\,31$ 算第 $m+1$ 行，每 lane 恰好一个元素。
 收尾的归约换成 \texttt{warp\_\allowbreak{}reduce\_\allowbreak{}sum\allowbreak{}<16>}：蝶形掩码序列退化为 $8, 4, 2, 1$，
 且 \texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor\_\allowbreak{}sync} 的第 4 个参数（width$=16$）把数据交换限制在
-16-lane \textbf{segment} 之内，前 16 个 lane 与后 16 个 lane 各自独立收敛、互不串音。
+16-lane \textbf{segment} 之内，前 16 个 lane 与后 16 个 lane 各自独立收敛、互不干扰。
 这正是第~\ref{ch:02}~章讲 \texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor\_\allowbreak{}sync} 时「width 参数划分 segment」的
 实战用法。写回条件相应变成 \texttt{k == 0}（\textbf{不是} \texttt{lane == 0}）：
 满足条件的 lane 是 0 和 16 两个，分别写 $y\sb{m}$ 与 $y\sb{m+1}$，
@@ -233,9 +233,9 @@ $N = 1$）是典型的纯 memory-bound 算子：AI $\approx O(1)$，瓶颈在内
 \texttt{block\allowbreak{}Dim.\allowbreak{}x=\allowbreak{}32} 时就是 \texttt{tx} 本身，取模是防御性写法；
 （2）内层循环每轮做一次 \texttt{a[m*K+k] * x[k]}，\texttt{a} 的 32 个 lane 地址连续
 （合并访问，128B 事务），\texttt{x} 的 32 个 lane 地址同样连续；\texttt{x} 只有 16KB
-（$K=4096$ 口径），第一轮之后基本稳坐 L1/L2，所以「重读 $x$」的悲观口径
+（$K=4096$ 口径），第一轮之后基本驻留在 L1/L2，所以「重读 $x$」的悲观口径
 （式~\ref{eq:8-ai-pessimistic}）在实际上是乐观口径；（3）\texttt{warp\_\allowbreak{}reduce\_\allowbreak{}sum}
-收尾后只有 lane 0 写回，一个 warp 产出 4 字节，写流量占比可忽略。
+收尾后只有 lane 0 写回，一个 warp 写出 4 字节，写流量占比可忽略。
 注意 kernel \textbf{没有} $k < K$ 的守卫：$K$ 不是 32 的倍数时最后一轮会越界读
 （8.8~节坑一），这是「对齐换简洁」的明确约定。
 
@@ -252,7 +252,7 @@ $N = 1$）是典型的纯 memory-bound 算子：AI $\approx O(1)$，瓶颈在内
 编译器会生成 4 条独立的 \texttt{FFMA}，但对 memory-bound kernel 这不重要
 （计算只占峰值 1\% 不到），真正的好处是 \textbf{load 指令数与事务数}：
 每 warp 每轮 32 条 128-bit load 替代 128 条 32-bit load，指令发射压力降为 1/4，
-内存管线更容易喂满。8.6~节实测它带来约 $5\%$ 带宽提升。
+内存管线更容易饱和。8.6~节实测它带来约 $5\%$ 带宽提升。
 
 \subsection{sgemv\_k16：K=16 双行复用}
 
@@ -264,11 +264,11 @@ $N = 1$）是典型的纯 memory-bound 算子：AI $\approx O(1)$，瓶颈在内
 （$K=16$ 恰好等于 segment 宽度，无循环）；（3）\texttt{warp\_\allowbreak{}reduce\_\allowbreak{}sum\allowbreak{}<16>} 内部
 蝶形掩码从 8 开始递减，width 参数保证前 16 与后 16 两个 segment 互不干扰；
 （4）写回判据 \texttt{k == 0} 有两个命中 lane（0 与 16），分别落笔两行的结果。
-一个漂亮的副效应：row-major 下第 $m$ 行与第 $m+1$ 行在内存里首尾相接，
-warp 的 32 个 lane 恰好拼出一段 128B 连续地址，\textbf{合并访问没有因为劈半而损失}。
+一个附带的好处：row-major 下第 $m$ 行与第 $m+1$ 行在内存里首尾相接，
+warp 的 32 个 lane 恰好拼出一段 128B 连续地址，\textbf{合并访问没有因为 K=16 而损失}。
 但要注意行守卫的粒度变了：\texttt{if (m < M)} 在 lane $0\,\dots\,15$ 与
-$16\,\dots\,31$ 之间可能分叉（$M$ 为奇数时的最后一个 warp），这会踩到 shuffle
-掩码的语义红线，8.7~节勘误二详细展开，测试也据此固定 $M \% 8 = 0$。
+$16\,\dots\,31$ 之间可能分叉（$M$ 为奇数时的最后一个 warp），这违反 shuffle
+掩码的语义要求，8.7~节勘误二详细展开，测试也据此固定 $M \% 8 = 0$。
 
 \needspace{92mm}
 
@@ -326,7 +326,7 @@ $16\,\dots\,31$ 之间可能分叉（$M$ 为奇数时的最后一个 warp），�
 
 图~\ref{fig:8-1} 的三段对应三个 kernel。读图的关键维度是「warp 的 32 个 lane
 怎么分派给 $(m, k)$」：k32/k128 是一行独占一个 warp，差异只在每 lane 每轮搬几个 $k$；
-k16 则把行方向也用上了：当 $K$ 维度不足以喂饱 32 个 lane 时，把多余的 lane
+k16 则把行方向也用上了：当 $K$ 维度不足以占满 32 个 lane 时，把多余的 lane
 调去算下一行，而不是让它们空转。
 
 \section{性能分析}
@@ -359,10 +359,10 @@ k16  & $M{=}1048576,\ K{=}16$  & 0.1078 & 661.4 \\
 指令数降为 1/4、事务利用率更高；它不改变字节数，所以不可能有数量级的变化。
 （3）\textbf{k16 是 661~GB/s}。原因有二：每 lane 只有一个元素可累加，没有任何 ILP
 去藏访存延迟；每个 block 只有 128 线程、block 数高达 13 万，调度与收尾开销占比上升。
-仍能到参照值的 71\%，说明双行复用的设计是站得住的。
+仍能到参照值的 71\%，说明双行复用的设计是有效的。
 （4）\textbf{roofline 定位}：AI $\approx 0.5$（式~\ref{eq:8-ai-optimistic}）意味着计算侧上限
-仅 $\approx 0.47$ TFLOPS（峰值的 0.7\%），三版 kernel 的差距全部来自带宽侧的
-「喂得饱不饱」，与算得快不快无关。
+仅 $\approx 0.47$ TFLOPS（峰值的 0.7\%），三版 kernel 的差距全部来自带宽利用
+是否充分，与计算速度无关。
 
 \section{实践经验}
 
@@ -396,25 +396,25 @@ k16  & $M{=}1048576,\ K{=}16$  & 0.1078 & 661.4 \\
 
 \textbf{坑一：$K$ 不对齐，静默越界。}\allowbreak{}k32/k128 没有 $k < K$ 守卫：$K$ 不是 32（或 128）
 的倍数时，最后一轮 \texttt{a[m*K+k]} 与 \texttt{x[k]} 直接越界读。它不报错、不崩溃，
-结果看起来还「基本对」，越是接近边界越是隐蔽。\texttt{compute-sanitizer} 一跑一个准。
+结果看起来还「基本对」，越是接近边界越是隐蔽。\texttt{compute-sanitizer} 一测即能发现。
 调用方必须保证对齐，或在外层把尾块切给通用路径。
 
 \textbf{坑二：float4 的 16B 对齐三条件。}$K \% 128 = 0$（保证行内偏移与行起点同时
 对齐）、基址 16B 对齐（\texttt{cudaMalloc} 天然满足；但若传入的是某大 buffer 的
 \texttt{offset} 视图就要小心）、步进是 4 的倍数（式~\ref{eq:8-k128-cover} 自动满足）。
-任何一个不满足都是 misaligned access，kernel 直接异常终止，比坑一「礼貌」，
+任何一个不满足都是 misaligned access，kernel 直接异常终止；相比坑一的静默越界更容易暴露，
 但同样在生产环境不可接受。
 
-\textbf{坑三：k16 的 $M$ 必须凑 8。}不是正确性一定会坏，而是 8.7~节勘误二所述的
-掩码语义红线。顺带一提：k32/k128 只要求调用方处理 $M \% 4$（守卫内消化），
+\textbf{坑三：k16 的 $M$ 必须是 8 的倍数。}不是正确性一定会坏，而是 8.7~节勘误二所述的
+掩码语义约束。另外：k32/k128 只要求调用方处理 $M \% 4$（守卫内消化），
 两个 kernel 的边界约定粒度不同，混用时要分开记。
 
 \textbf{坑四：写回条件 \texttt{lane==0} 与 \texttt{k==0} 不可互换。}\allowbreak{}k32/k128 每 warp
 一个写者（lane 0）；k16 每个 segment 一个写者（k==0 命中 lane 0 与 16）。把 k16 的
 写回写成 \texttt{lane == 0} 会丢一半输出：第 $m+1$ 行永远不写，症状同样是「静默残留旧值」。
 
-\textbf{坑五：M 小 K 大的形状会把 GPU 饿死。}\allowbreak{}warp-per-row 的并行度上限是 $M$：
-$M = 8$ 时 grid 只有 2 个 block，110 个 SM 里 108 个在围观。正确姿势是沿 $K$ 切分
+\textbf{坑五：M 小 K 大的形状会使 GPU 大量空闲。}\allowbreak{}warp-per-row 的并行度上限是 $M$：
+$M = 8$ 时 grid 只有 2 个 block，110 个 SM 中 108 个空闲。正确做法是沿 $K$ 切分
 （split-K：多个 block 各算一段部分和，再原子累加或二次归并），教学源码未实现，
 读者可参照第~\ref{ch:02}~章的两级归约自行补全，这也是面试高频追问点。
 
@@ -441,12 +441,12 @@ A：让一个 warp 服务 \texttt{kRowPerWarp} 行，lane 按 segment 分组
 A：把 warp 切成宽度为 width 的 segment，lane 只与本 segment 内的
 $\mathrm{lane} \oplus \mathrm{mask}$ 交换；掩码序列相应从 width/2 开始递减。
 k16 用它实现「一个 warp、两套独立归约」。同时注意掩码命名的线程必须都执行该指令
-（8.7~节勘误二的 UB 红线）。
+（8.7~节勘误二的 UB 边界）。
 
 \textbf{Q5：GEMV 与 GEMM 优化的本质区别？}\\
 A：GEMM 有 $N$ 维，$A$、$B$ 的 tile 都能被多个输出复用，AI 随 tile 尺寸增长
 （第~\ref{ch:09}~章的 $B\sb{M}B\sb{N}/(2(B\sb{M}+B\sb{N}))$）；GEMV 的 $N=1$ 使
-$A$ 元素零复用、AI 是常数，只能拼带宽。一句话：GEMM 搭金字塔，GEMV 抢带宽。
+$A$ 元素零复用、AI 是常数，优化只剩带宽利用一条路。一句话：GEMM 靠分块复用抬高 AI，GEMV 只能优化带宽利用。
 
 \section{最小测试与动手实验}
 
@@ -486,10 +486,10 @@ C & sgemv-k16  & 2.566e-07 & 1.0e-03 \\
 
 判据：三版对 CPU fp64 参考的最大绝对误差均在 $10^{-6}$ 量级（F32Acc 档
 $10^{-3}$ 的千分之一），行守卫路径（case B）与分段归约路径（case C）覆盖到位。
-注意 case B 的 k16 不可照抄：把 $M{=}7$ 喂给 k16 会踩进勘误二的 UB 路径。
+注意 case B 的 k16 不可照抄：把 $M{=}7$ 用于 k16 会落入勘误二的 UB 路径。
 动手实验建议：（1）把 case A 的 $K$ 改成 4096 重跑，观察误差随 $\sqrt{K}$
 缓涨但仍远离容差；（2）用 \texttt{compute-sanitizer --tool memcheck} 跑一遍
-$K = 40$（非对齐）的调用，亲眼看坑一的越界报告；（3）运行
+$K = 40$（非对齐）的调用，直接查看坑一的越界报告；（3）运行
 \texttt{.\allowbreak{}/\allowbreak{}.\allowbreak{}build/\allowbreak{}ch08\_\allowbreak{}sgemv bench} 复现表~\ref{tab:8-bench}，
 并把 k16 的 $M$ 从 $2^{20}$ 降到 $2^{16}$，观察 L2 驻留如何使有效带宽虚高。
 
@@ -501,7 +501,7 @@ $K = 40$（非对齐）的调用，亲眼看坑一的越界报告；（3）运�
         （GEMV 从 naive 到向量化、多行复用的完整演进实验，与本章三个 kernel 对照）；
   \item @紫气东来《CUDA（二）：GPU 的内存体系及其优化指南》，
         \url{https://zhuanlan.zhihu.com/p/654027980}
-        （内存层级与带宽利用的背景，本章「抢带宽」叙事的底层依据）；
+        （内存层级与带宽利用的背景，本章带宽优化思路的底层依据）；
   \item @白牛《CUDA 入门的正确姿势：how-to-optimize-gemm》，
         \url{https://zhuanlan.zhihu.com/p/478846788}
         （GEMM 优化阶梯总览，下一章的主参考，可作为「复用维度回归」的预告阅读）。

@@ -16,7 +16,7 @@ specialization（L792--1440）、FA3 的双 consumer warpgroup（L1441--2192）�
 流水之间；但每一代都要重写一遍 Q/K/V 的 smem 布局、fragment 的 lane 映射、
 ldmatrix 的地址算术与屏障协议。这不是写代码的人偷懒，而是「布局事实」在
 C++/PTX 里没有独立的落脚点：swizzle 常量、lane 位段、寄存器编号只能以裸算术
-的形式长在计算逻辑旁边。
+的形式与计算逻辑混写在一起。
 
 本章问一个具体的问题：\textbf{把这些布局事实搬进类型之后，同一段 attention
 会长什么样？} 答案是同一文件第四个区段的四个 CuTe 实现（L2196--3488，
@@ -28,7 +28,7 @@ $\to$ partition $\to$ copy/gemm」四步走：数据怎么切、怎么分给线�
 怎么算，一一对应到 CuTe 抽象；实现 2
 \texttt{flash\_\allowbreak{}attn\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}split\_\allowbreak{}q\_\allowbreak{}cute}（TMA + producer/consumer 分工，
 384 线程）在同一个算法上把搬运与计算解耦；实现 3
-\texttt{flash\_\allowbreak{}attn\_\allowbreak{}3\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}split\_\allowbreak{}q\_\allowbreak{}cute} 继续加码到 FA3 式双 consumer
+\texttt{flash\_\allowbreak{}attn\_\allowbreak{}3\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}split\_\allowbreak{}q\_\allowbreak{}cute} 进一步采用 FA3 式双 consumer
 （奇偶拆 KV + 终态归并）。第四个实现
 \texttt{flash\_\allowbreak{}attn\_\allowbreak{}3\_\allowbreak{}cute\_\allowbreak{}tma\_\allowbreak{}copy\_\allowbreak{}smoke}（41 行）不是 attention，而是
 一条 TMA 搬运链路的自检闭环，它的存在本身就是「先把搬运与计算解耦再排查」
@@ -123,7 +123,7 @@ CuTe 实现 4（TMA copy smoke） & L3447--3488 & 42 & 36 \\
 \end{tabular}
 \end{table}
 
-读法要克制，CuTe 版并没有「更少的总代码」：结构件（107 行）加三个实现
+对这张表的解读要有所克制，CuTe 版并没有「更少的总代码」：结构件（107 行）加三个实现
 （728 行）合计 835 行，反而比手写三代（1530 行）少不了太多；真正的差别在
 \textbf{每一行代码的语义密度}与\textbf{改动的影响面}。手写版的 564 行里，
 地址算术与 lane 映射大约占四成，它们随 tile 形状与 arch 改动而整体失效；
@@ -152,7 +152,7 @@ D-chunk 的 \texttt{local\_tile} 语义，这些断言的「真值」直接来�
 
 CuTe 版 attention 的第一步是把「tile 几何 + 数据格式」编译期化。
 \texttt{Flash\allowbreak{}Attn2\allowbreak{}Cu\allowbreak{}Te\allowbreak{}Traits}（L2200--2243）与 \texttt{Flash\allowbreak{}Attn3\allowbreak{}Cu\allowbreak{}Te\allowbreak{}Traits}
-（L2250--2312）干的就是这件事，它们是两份只含 \texttt{using} 的配置表：
+（L2250--2312）做的就是这件事，它们是两份只含 \texttt{using} 的配置表：
 
 \lstinputlisting[linerange={2226-2242},firstnumber=auto,
   title={flash\_attn.cuh L2226-2242（\texttt{Flash\allowbreak{}Attn2\allowbreak{}Cu\allowbreak{}Te\allowbreak{}Traits}：swizzle 后的 smem layout 与 \texttt{TiledMma}）}]{../flash_attn.cuh}
@@ -164,7 +164,7 @@ CuTe 版 attention 的第一步是把「tile 几何 + 数据格式」编译期�
 行宽 128\,B，half 下即 $8\times64$；第~\ref{ch:23}~章会展开它与
 \texttt{CU\_\allowbreak{}TENSOR\_\allowbreak{}MAP\_\allowbreak{}SWIZZLE\_\allowbreak{}128B} 的对应）；\texttt{tile\_\allowbreak{}to\_\allowbreak{}shape}
 把原子铺满目标形状：Q 是 $B_r\times D$、K/V 是 $B_c\times D$。于是
-「smem 里 Q/K/V 长什么样」不再是散落在 kernel 里的 stride 变量，而是
+「smem 里 Q/K/V 的布局」不再是散落在 kernel 里的 stride 变量，而是
 两个类型的 \texttt{cosize}（实测：$B_r{=}128,D{=}64$ 时 Q 占 8192 个
 half，K/V 各占 4096 个，25.9 节 case C 的 smem 80\,KB 核算正是这批
 \texttt{cosize} 的直接应用）。
@@ -251,7 +251,7 @@ S 矩阵按 16 列一块推进，softmax 的行归约粒度与之匹配。
 \texttt{gemm()} 内部 atom 的组织粒度。后面理解 FFPA 的「双 TiledMma」
 要用到这条事实（第~\ref{ch:26}~章 26.3 节会回到它）。
 
-\subsection{rowcol 变换：把累加器「掰」成行×列}
+\subsection{rowcol 变换：把累加器重排成行×列}
 
 online softmax 需要按行操作 S（行 max、行内 exp、行和）。但
 \texttt{m16n8k16} 的累加器 fragment 按 $(\mathrm{MMA}=4,\ \mathrm{MMA\_M},\
@@ -299,7 +299,7 @@ $\mathrm{ncol}=2\cdot \mathrm{MMA\_N}$。实测（$D{=}64$、$B_r{=}128$）：
 在 lane 内的宽度是 $2\times2=4$：$\mathrm{lane}/4$ 决定行号
 （寄存器对给 $+8$ 行），$\mathrm{lane}\bmod4$ 决定行内 4 个列片段
 之一，两次蝶形恰好把 4 条 lane 的行片段合并。图~\ref{fig:25-rowcol-shfl}
-把这次重排的两层拆开摆平：4 个寄存器怎么分成「行身份」与「列片段」，
+把这次重排的两层分别画出：4 个寄存器怎么分成「行身份」与「列片段」，
 以及两次 \texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor\_\allowbreak{}sync} 如何把 quad 的 4 个片段并成整行。
 
 \begin{figure}[H]
@@ -376,7 +376,7 @@ $c_0..c_3$——两档灰度标出「行身份」：$c_0,c_1$ 属行 $r$、$c_2,
 $O=PV$ 里 $P$ 是左矩阵 A。QK 的累加器 $S$ 要么写回 smem 再 ldmatrix（费一次
 往返），要么原地重解释为 A fragment，这是 FA 的经典优化。CuTe 把这一步写成
 \texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}Aregs}（L2341--2372）。在展开代数之前，先把这个问题的
-几何摆清楚。
+几何讲清楚。
 
 \textbf{问题的几何}。$m16n8k16$ 的 C fragment 里，每个线程的 4 个值
 $(c_0,c_1,c_2,c_3)$ 是「同一行、相邻两列」（列偏移 $+1$）的一对，加
@@ -480,7 +480,7 @@ $(c_2,c_3)$ 行偏移 $+8$，即 bit0$=$列、bit1$=$行）；右图按 $k16$ A 
 同一批格子，值编号变 $v=d_0+2d_1+4d_2$ 连续 $0..7$——第二个 $n8$ atom 的列对
 成为 K 向的 $k\in[8,16)$（虚线半块，$d_2{=}1$）。加框示例 lane 6 的 8 格在两图
 位置完全相同、编号从「两轮 $0..3$」变「一轮 $0..7$」，即式~\eqref{eq:25-aregs}
-的「列拆半 + 重新配对」。}
+的「列对半拆分 + 重新配对」。}
 \label{fig:25-c2aregs}
 \end{figure}
 
@@ -490,7 +490,7 @@ $(c_2,c_3)$ 行偏移 $+8$，即 bit0$=$列、bit1$=$行）；右图按 $k16$ A 
 \begin{itemize}[itemsep=2pt,topsep=2pt]
   \item \textbf{几何法（Tri Dao 的 \texttt{logical\_\allowbreak{}divide}）}：把
         $(\mathrm{MMA}{=}4,\ \mathrm{MMA\_M},\ \mathrm{MMA\_N})$ 在列方向
-        「切一刀」——令 $\mathrm{MMA\_N}=(2,\ \mathrm{MMA\_N}/2)$，再用
+        做一次划分——令 $\mathrm{MMA\_N}=(2,\ \mathrm{MMA\_N}/2)$，再用
         \texttt{make\_layout} 把切出的分量按 A 的约定重新配对。@竹熙佳处
         把它概括为「在几何层面上做一次重排」：思考单位是 shape 的拆分
         与配对；
@@ -499,27 +499,27 @@ $(c_2,c_3)$ 行偏移 $+8$，即 bit0$=$列、bit1$=$行）；右图按 $k16$ A 
         offset」关系（\texttt{left\_\allowbreak{}inverse}），再把「A 坐标 $\to$ offset
         $\to$ C 坐标 $\to$ C 寄存器编号」串成一条链（\texttt{compose}），
         最后复合到原 tensor 上。教程用四行代码复刻了这条链，并指出它不
-        需要人工判断「哪一段对哪一段」——对应关系由代数自己推出来。
+        需要人工判断「哪一段对哪一段」——对应关系由代数推导得出。
 \end{itemize}
 
 两条路的\textbf{结果完全一致}，差别在风格与适用范围：几何法假设布局规整、
-编译期已知，是「拼图式」的；代数法对不规整访问更从容：w4a8 混合精度、
+编译期已知，是「拼图式」的；代数法对不规整访问更适用：w4a8 混合精度、
 2:4 稀疏 GEMM 这类场景没有规整形状可用，代数法是更自然的
 工具。选型建议：规整的静态布局用几何法，其余情况先想代数法。
 
 \textbf{本书源码用的是几何法}。\texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}Aregs}
-（L2367--2372）就是 \texttt{logical\_\allowbreak{}divide} 的化身：一行拆分
+（L2367--2372）就是 \texttt{logical\_\allowbreak{}divide} 的直接应用：一行拆分
 （\texttt{Shape<X, X, \_2>}）加一行重组（\texttt{make\_layout}），与上面
 几何法的思路逐项同构；注释（L2352--2362）还标出了它的出处：官方 FA2 的
 \texttt{flash-attention/\allowbreak{}utils.\allowbreak{}h:200}。同族的
 \texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}rowcol}（L2334--2339，25.3.3 节）也是
 \texttt{logical\_\allowbreak{}divide} 路线：本章三个实现与官方 FA2 在「静态规整」的场景
-下都选了几何法，代数法的用武之地留给更复杂的变换（第~\ref{ch:26}~章 FFPA
+下都选了几何法，代数法留给更复杂的变换场景（第~\ref{ch:26}~章 FFPA
 的双 TiledMma 交接用的是同一个几何法，见 26.3.3 节）。
 
 
 
-把上面的几何法写成代数动作，就是「列拆半 + 重新配对」：
+把上面的几何法写成代数动作，就是「列对半拆分 + 重新配对」：
 
 \begin{equation}
   (\underbrace{4}_{\text{值}}, \mathrm{MMA\_M}, \underbrace{(2, \mathrm{MMA\_N}/2)}_{\text{列拆半}})
@@ -528,7 +528,7 @@ $(c_2,c_3)$ 行偏移 $+8$，即 bit0$=$列、bit1$=$行）；右图按 $k16$ A 
   \label{eq:25-aregs}
 \end{equation}
 
-式子读回物理即前文那句话：$S$ 的列方向两个值（$+0$ 与 $+1$ 列）成为 A 的
+式子的物理含义即前文那句话：$S$ 的列方向两个值（$+0$ 与 $+1$ 列）成为 A 的
 K 向连续 2 个元素。实测结果是 $((2,2),2),1,4$：仍是 32 个元素、原寄存器，
 只是 type 从 f32 转换为 f16；\texttt{convert\_\allowbreak{}type}（L2375--2395）按当前
 布局的连续段做一次向量化批量转换。
@@ -538,7 +538,7 @@ K 向连续 2 个元素。实测结果是 $((2,2),2),1,4$：仍是 32 个元素�
   约定——它不是通用性质。换成 $k8$ 的 atom 或 Hopper 的 wgmma（操作数在
   寄存器文件之外）就得另写。源码注释 L2360--2362 特意标注了这一点，
   是本章「常见坑」第六条的规范来源。几何法与代数法都改不了这个前提：
-  \textbf{布局代数能帮你推坐标，不能帮你改约定}。
+  \textbf{布局代数能推导坐标，不能改变约定}。
 \end{remark}
 
 \subsection{两套流水的语义：cp.async 的组栈与 TMA 的事务计数}
@@ -564,7 +564,7 @@ phase。消费者用 \texttt{wait(bar, phase)} 等待。实现 2/3 里每个 sta
 屏障（\texttt{k\_full[s]} / \texttt{k\_empty[s]}）：前者是事务屏障
 （init 计数 1，producer 的 expect\_tx 即那一次 arrive），后者是普通屏障
 （init 计数 $kConsumerThreads$，每个消费者线程各 arrive 一次表示
-「我已读完」）。三条不变量撑起整个协议（图~\ref{fig:25-proto}）：
+「我已读完」）。三条不变量约束整个协议（图~\ref{fig:25-proto}）：
 
 \begin{figure}[H]
 \centering
@@ -711,7 +711,7 @@ traits 外就是五个函数：\texttt{convert\_\allowbreak{}layout\_\allowbreak
 发射当前 MMA」构成 2 级软件流水。\texttt{gemm\_rs} 是同构的，只是
 \texttt{A} 不再有 smem 源（P 在寄存器里），省掉一半 ldmatrix。这条
 「A 在寄存器」的路径正是 \texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}Aregs} 存在的理由，
-也是本章三个实现里唯一不能省的一环：\textbf{没有它，P 就得绕一圈 smem}。
+也是本章三个实现里唯一不能省的一环：\textbf{没有它，P 就得经 smem 中转}。
 
 \begin{remark}
   \texttt{gemm\_ss}/\texttt{gemm\_rs} 的 K 循环上界写成
@@ -740,7 +740,7 @@ traits 外就是五个函数：\texttt{convert\_\allowbreak{}layout\_\allowbreak
   \item \textbf{跨文件行号引用是早期迁移的遗留}。实现 1 的区域里有四处注释
         引用外部行号：L2519「对齐手写版 L4323-4765」、L2566 与 L2579「参考
         TMA 版 L6624」、L2599「复用 TMA 版 consumer L6696-6737」。这些行号
-        属于这段代码还住在 notes-v2.cu 里的年代，在本文件的冻结版本中并不
+        属于这段代码尚在 notes-v2.cu 中的时期，在本文件的冻结版本中并不
         存在（本文件共 3490 行）。按内容对应过来，它们指的是 FA2 手写版
         （L112--790）与 FA2 TMA+WS 手写版（L792--1440）——核对旧笔记、
         旧提交时以本文档给出的区间为准。
@@ -749,7 +749,7 @@ traits 外就是五个函数：\texttt{convert\_\allowbreak{}layout\_\allowbreak
 \subsection{实现 1：cp.async + 统一流水（256 线程）}
 
 实现 1（L2493--2803）是三级搭建的第一级：目标只有一个，即\textbf{用 CuTe 把
-attention 写对}，调度上不做任何花活（@reed 的简单 GEMM 怎么组装，这里就怎么
+attention 写对}，调度上不做特殊设计（@reed 的简单 GEMM 怎么组装，这里就怎么
 组装）。没有 warp specialization，256 个线程既搬数据也算 MMA，
 $B_r{=}128$、$B_c{=}64$，K 多级、V 单 buffer，用 cp.async 的组栈管理等待。
 它的结构可以概括成一句话：
@@ -793,7 +793,7 @@ $PV$ 前的等待则要区分「栈顶是否还有 K」：还有 K 时用 \textt
 \texttt{wait<}kStagesK${-}2$> $+$ 同步、主循环 3a 的两个 fence、QK 前与
 PV 前的分支、循环末尾的 \texttt{wait<0>} $+$ 同步；读这段代码时可以拿
 它当路线图。CuTe 版并没有让这段推理消失，它仍然是手写的：\textbf{抽象
-不会替你想清楚依赖关系}。
+不会自动理清依赖关系}。
 
 softmax 段与 epilogue 段则是「无地址算术」的最佳样本，即上面代码块的
 第二、三段（L2724--2741 与 L2786--2798）。$kRows$、
@@ -861,7 +861,7 @@ $(r,c)$ 反查寄存器编号，用来在 smem scratch 里定位对方的 partia
 \subsection{实现 4：41 行的 TMA 自检}
 
 第四个实现（L3447--3488）只有 41 行，是一次「TMA 搬运 + swizzle 往返」的
-最小闭环，即上面代码块的第三段（L3462--3482）。它的价值在调试学上：当 attention 结果不对时，先用 smoke 确认
+最小闭环，即上面代码块的第三段（L3462--3482）。它的价值在调试方法上：当 attention 结果不对时，先用 smoke 确认
 「TMA descriptor + SW128 swizzle 布局 + 事务屏障」这条链本身是通的，
 再往 kernel 里查；把 41 行的搬运闭环从 300 行的 kernel 里隔离出来，
 正是它作为独立 kernel 存在的理由。
@@ -871,7 +871,7 @@ $(r,c)$ 反查寄存器编号，用来在 smem scratch 里定位对方的 partia
 \begin{table}[htbp]
 \centering
 \caption{四个 CuTe 实现的结构对照（源码：flash\_attn.cuh）。
-$kStages$ 列给出默认实例化；「共享」列标出手写版中被抽象层吃掉的部分。}
+$kStages$ 列给出默认实例化；「共享」列标出手写版中被抽象层取代的部分。}
 \label{tab:25-struct}
 \begin{tabular}{p{2.6cm}p{3.3cm}p{3.3cm}p{3.3cm}}
 \toprule
@@ -990,7 +990,7 @@ TFLOPS/加速比断言：四个实现都是「能跑对」的对照样本，性�
 第~\ref{ch:16}~章区间内的 L61--71 注释给出 pad 与 XOR swizzle 的对照
 （「约 120.0 TFLOPS，显著低于 Q/K/V kPad$=$8 的 166.6 TFLOPS」），
 第~\ref{ch:17}~、\ref{ch:18}~章的性能节给出同机同批复测（RTX PRO 5000
-sm\_120a、CUDA 13.2）。读这些数字时必须带上口径：$B{=}1,H{=}32$、
+sm\_120a、CUDA 13.2）。读这些数字时必须注意口径：$B{=}1,H{=}32$、
 warmup$\ge$5、iters$\ge$20 取均值，FLOPS $=4BHN^2D$；
 CuTe 版与手写版在\emph{同一口径}下才可比。
 
@@ -1035,7 +1035,7 @@ FA2 CuTe TMA MMA WS (1 Consumer WG) (Sk=3, Sv=1, F32Acc) & 1.526e-05 & 221.4/230
 纯 CuTe 抽象、无任何搬运特化就已接近厂商库；实现 2 的 CuTe TMA MMA WS 把
 搬运与计算解耦后升到 0.95--0.96$\times$、逼近 cuDNN：TMA + warp
 specialization 这条路线的收益在 CuTe 版上完整复现。再把 K 的 stage 从 2 加深到
-3 只多换约 1.3\%（218.6 $\to$ 221.4 TFLOPS），流水深度的收益已边际递减；
+3 只带来约 1.3\% 的提升（218.6 $\to$ 221.4 TFLOPS），流水深度的收益已边际递减；
 更完整的 persistent-CTA WS 实现见第 26b 章。
 
 \section{常见坑}

@@ -5,7 +5,7 @@
 \section{本章导读}
 
 第~\ref{ch:27}--\ref{ch:33}~章（第六部分）回答了「量化 attention 怎么做」；本部分
-把同一套 e4m3 数学搬到\textbf{矩阵乘}上，拆成两章：本章写\textbf{量化前处理
+把同一套 e4m3 数学应用到\textbf{矩阵乘}上，拆成两章：本章写\textbf{量化前处理
 kernel}——把 BF16 的 $A,B$ 变成 e4m3 的 $A_8,B_8^{\top}$ 外加两组 scale；
 第~\ref{ch:35}~章写\textbf{主 GEMM kernel 与在线反量化 epilogue}，并把全链路封装成
 一个 C++ API 与 cuBLAS BF16 GEMM 对精度和性能。两章合起来构成的完整调用形态是：
@@ -50,18 +50,18 @@ kernel}——把 BF16 的 $A,B$ 变成 e4m3 的 $A_8,B_8^{\top}$ 外加两组 sc
 attention 的三量化点里，$P$（softmax 输出）必须在线量化，$Q,K,V$ 的 scale 又会
 经 softmax 混入归一化分母——所以第~\ref{ch:29}~章要在 kernel 里维护行最大值
 修正与 $s_{dequant}$ 折叠。GEMM 没有任何非线性：$C=AB^{\top}$ 是双线性的，
-量化的 scale 是\textbf{纯标量因子}，提到括号外就行。于是：
+量化的 scale 是\textbf{纯标量因子}，可以直接提到括号外。于是：
 
 \begin{itemize}[itemsep=1pt,topsep=2pt]
-  \item 主 kernel 的 MMA 循环里\textbf{一个 scale 都不用碰}，跑的就是 e4m3 编码
+  \item 主 kernel 的 MMA 循环里\textbf{不需要处理任何 scale}，跑的就是 e4m3 编码
         值的整数语义乘累加（f32 累加器）；
   \item 反量化只在 epilogue 出现一次：$C = (A_8 B_8^{\top})\odot(\delta_a\delta_b)$，
         $\odot$ 在 per-block 粒度下退化为块级（128 行/列）标量乘（第~\ref{ch:35}~章）；
-  \item 前处理全部离线于主 kernel：量化 kernel 写完 workspace，主 kernel 才进场。
+  \item 前处理全部离线于主 kernel：量化 kernel 写完 workspace，主 kernel 才开始执行。
 \end{itemize}
 
 教学上这是一条「从第~\ref{ch:27}~章的量化数学到工程 kernel」的最短路径：数学
-恒等式一章讲透，kernel 工程两章讲透，不夹带 online softmax 这类复杂度。
+恒等式一章讲透，kernel 工程两章讲透，不引入 online softmax 这类复杂度。
 
 \subsection{约束与 API 契约}
 
@@ -108,8 +108,8 @@ attention 的三量化点里，$P$（softmax 输出）必须在线量化，$Q,K,
 \end{tikzpicture}
 \caption{e4m3 位布局与 GEMM 工程三要素：相对步长固定 $2^{-3}$（尾数 3 位），
 决定量化噪声的下限；满量程 448 决定 scale 公式 $\delta=\mathrm{amax}/448$；
-\texttt{SATFINITE} 语义决定量化 kernel 可以放心写 $x\cdot\delta^{-1}$ 而不用
-先 clamp——硬件饱和替我们做了。}
+\texttt{SATFINITE} 语义决定量化 kernel 可以直接写 $x\cdot\delta^{-1}$ 而不用
+先 clamp——越界饱和由硬件完成。}
 \label{fig:34-e4m3}
 \end{figure}
 
@@ -166,7 +166,7 @@ $(m,n)$ 查 $\delta_{a,m}\delta_{b,n}$ 一次乘回。per-block 粒度时块宽�
 
 对比第~\ref{ch:29}~章 persist-D 的 $s_{dequant}=q_s k_s$：那里 Q/K 的 scale 同样
 出括号，但 V 的 scale 乘在 $P$ 上、而 $P$ 又来自 softmax，折叠点必须跟着
-在线重缩放走；GEMM 版没有这层耦合，恒等式干净得多。这也是本部分先于
+在线重缩放走；GEMM 版没有这层耦合，恒等式简单得多。这也是本部分先于
 attention 部分教学的价值：先看清「纯双线性下量化能折叠到什么程度」。
 
 \subsection{四种粒度组合}
@@ -220,14 +220,14 @@ scale 张量的形状与 epilogue 的查表方式：
 \end{tikzpicture}
 \caption{四种 scale 粒度组合（上排 A，下排 B）。蓝框=A 侧 scale 统计范围，
 绿框=B 侧。粒度越粗，scale 存储/查表越省（per$\times$per-block 每 tile 只查
-两个标量），但 outlier 的「毒性」越大——一个大值会把整块的步长撑爆，
-其余小值全部挤进低位。四种组合在 API 里是一个枚举，主 kernel 用
+两个标量），但 outlier 的影响越大——一个大值会放大整块的量化步长，
+其余小值全部落入低精度区间。四种组合在 API 里是一个枚举，主 kernel 用
 \texttt{if constexpr} 编译期剔除，运行时零分支开销。}
 \label{fig:34-granularity}
 \end{figure}
 
 为什么 GEMM 里 per-row$\times$per-col 是「精度最优」：scale 的统计块越小，块内
-分布越均匀、步长越贴身。极端的反例是全矩阵单 scale（per-tensor）：一个 outlier
+分布越均匀、步长越贴合该组数据的动态范围。极端的反例是全矩阵单 scale（per-tensor）：一个 outlier
 可以让普通元素的相对量化误差放大若干个数量级。Per-block 是 attention 领域
 （SageAttention/ffpa）的主流选择，因为它与 128 的 tile 尺寸天然对齐、kernel 内
 scale 折成单标量；对 GEMM 的权重矩阵（分布沿行/列明显不均），per-row/per-col
@@ -265,7 +265,7 @@ $\sigma_\varepsilon$ 因子，下文只保留一阶。关键区分两种数据�
         增长，抵消掉了；
   \item \textbf{同号数据}（全正矩阵、经 ReLU 的激活）：误差项同号不相消，
         累加是线性增长，最坏相对误差停在单元素上界 $2^{-4}$ 量级附近
-        （不随时长收敛）。这就是量化 GEMM 在真实模型上仍需
+        （不随累加长度收敛）。这就是量化 GEMM 在真实模型上仍需
         per-row/per-channel 粒度与离线校准（如 GPTQ/平滑旋转，
         第~\ref{ch:28}~章同源思想）的原因。
 \end{itemize}
@@ -278,12 +278,12 @@ $\sigma_\varepsilon$ 因子，下文只保留一阶。关键区分两种数据�
   \;\approx\; \sigma_{\text{err}}\sqrt{2\ln(MN)},
 \end{equation}
 $M{=}N{=}4096$ 时 $\sqrt{2\ln(MN)} \approx 5.8$。误差分布是有限支撑的和
-分布，尾部比高斯瘦，实测极值落在 $4\sigma_{\text{err}}$ 一带——健康判据是
+分布，尾部比高斯分布薄，实测极值落在 $4\sigma_{\text{err}}$ 一带——健康判据是
 \textbf{Max Err 在 $4\sigma_{\text{err}}$ 量级}，而不是要求它趋零。绝对
 口径的 Max Err 自然随 $\sqrt{K}$ 增长（$\sigma_{\text{err}} \propto
 \sqrt{K}$），换算到相对口径才是与 $K$、与分布都无关的常数。
 
-\paragraph{实测指纹.} 四组数据把上面每个环节都钉住（$\sigma_{\text{err}}
+\paragraph{实测指纹.} 四组数据逐一验证了上面每个环节（$\sigma_{\text{err}}
 = \sqrt{K\,\mathrm{E}[(ab)^2]\,2\sigma_\varepsilon^2}$，均匀输入
 $\mathrm{E}[(ab)^2] = 1/9$，randn 组 $\mathrm{E}[(ab)^2] = \sigma_x^4$，
 $\sigma_x = 0.25/3$）：
@@ -303,22 +303,22 @@ randn $(\pm 0.25)$，4096$^3$ & 0.0227 & 0.090 & 4.0$\sigma$ \\
 \end{center}
 
 三组均匀 shape 的 Max Err/$\sigma_{\text{err}}$ 停在同一个 $4.1\sigma$——
-样本量从 $4\text{M}$ 涨到 $67\text{M}$，比值不漂移，证明误差是零均值随机
-游走而非系统性偏差。randn 组把输入压成 $\sigma_x = 0.25/3$ 的截断正态
+样本量从 $4\text{M}$ 增到 $67\text{M}$，比值不漂移，证明误差是零均值随机
+游走而非系统性偏差。randn 组把输入取为 $\sigma_x = 0.25/3$ 的截断正态
 （幅值缩 $s \approx 6.9$ 倍）：$\mathrm{E}[(ab)^2]$ 缩 $s^4$，
 $\sigma_{\text{err}}$ 随之缩 $s^2 \approx 48$ 倍，$4.50/48 \approx 0.094$
-对上实测 0.090，比值仍钉在 $4\sigma$。注意两组的相对误差
+与实测 0.090 相符，比值仍落在 $4\sigma$。注意两组的相对误差
 $\sigma_{\text{err}}/\sigma_C = \sqrt{2}\,\sigma_\varepsilon$ 相同：换分布
 只缩放绝对口径，34.6~节实测的 rel-Frobenius 0.036 与分布无关。
 
 \paragraph{与 fp8 attention 的误差为什么不可直接比.} 同是 fp8 对 bf16，
 量化 attention 的绝对误差看起来小得多，差异全在算子形态与度量口径。其一，
 attention 输出 $O = \mathrm{softmax}(QK^{\top})V$ 是 $V$ 行的\textbf{凸
-组合}，元素被夹在 $[\min V, \max V]$ 之间，误差也被加权平均冲淡；GEMM 的
+组合}，元素被夹在 $[\min V, \max V]$ 之间，误差也被加权平均缩小；GEMM 的
 $C$ 是 $K$ 项\textbf{无归一化}累加，$\sigma_C = \sqrt{K\,\mathrm{E}[(ab)^2]}$
 随 $\sqrt{K}$ 膨胀。其二，attention 惯用 PSNR/相对误差口径（几个百分点），
 bench 表用绝对误差口径。同口径对比：本实现 rel-Frobenius 3.6\% 与 fp8
-attention 对 bf16 的相对误差同量级，没有谁比谁误差大一说。
+attention 对 bf16 的相对误差同量级，两者相当。
 
 \subsection{amax 零块与数值安全}
 
@@ -329,7 +329,7 @@ $\mathrm{amax}=0$（全零行/块）时 $\delta=0$、$x/\delta$ 为 $0/0$。实�
 \end{equation}
 即全零块量化为全零编码（合法 e4m3 值），反量化 $0\times 0 = 0$ 精确成立。
 这个 \texttt{amax==0 ? 0 : 448/amax} 的三元式在三个 kernel 里各出现一次，
-是量化代码的标准防雷点（漏掉它会产出 NaN 块，污染整个 GEMM）。
+是量化代码的标准易错点（漏掉会产生 NaN 块，污染整个 GEMM）。
 
 \section{前处理 Kernel 工程}\label{sec:34-kernels}
 
@@ -350,12 +350,12 @@ $\mathrm{amax}=0$（全零行/块）时 $\delta=0$、$x/\delta$ 为 $0/0$。实�
 pass 1 算行 amax，pass 2 重新读一遍行做量化写回。为什么不像第~\ref{ch:28}~章
 ffpa 的 per-block kernel 那样寄存器缓存一遍读？因为那里 $K$（head\_dim）是
 \textbf{编译期常量}（\texttt{kD}），整行的 Vec8 可以展开进寄存器数组；本实现的
-$K$ 是运行时 GEMM 维度，寄存器数组无法定长。两遍读的代价由 L1/L2 兜底——
-同一 warp 刚读过的行在 pass 2 里几乎全命中，实测该 kernel 贴内存带宽。
+$K$ 是运行时 GEMM 维度，寄存器数组无法定长。两遍读的代价由 L1/L2 承担——
+同一 warp 刚读过的行在 pass 2 里几乎全命中，实测该 kernel 达到内存带宽。
 
 写侧同样关键：量化输出是 8 个 e4m3 = 8\,B，用 \texttt{uint2} 一次写——注意
-这里\textbf{不能}凑 16\,B（e4m3 是 1\,B 元素，8 元素只有 8\,B；要 16\,B 得攒
-16 个元素跨 lane 拼，教学版不值得）。读 16\,B 写 8\,B，字节收缩 $2\times$，
+这里\textbf{不能}凑成 16\,B（e4m3 是 1\,B 元素，8 元素只有 8\,B；要 16\,B 需要凑足
+16 个元素跨 lane 拼接，教学版不值得）。读 16\,B 写 8\,B，字节收缩 $2\times$，
 写带宽不是瓶颈。
 
 \subsection{A 的 per-block 量化：block 二级归约}
@@ -372,12 +372,12 @@ pass 2（L172 起，与 per-row 版逐字节同构，略）用块级 $inv\_s$ �
 $k_{BM}{=}128$ 正好落在一个块内，B 侧 $k_{BN}{=}256$ 却横跨两块——所以
 epilogue 的 scale 查表按\textbf{全局} $m/128$、$n/128$ 逐元素取
 （\textbf{统计块与 tile 几何解耦}），而不是整 tile 一个标量；其二，\texttt{row >= M} 的行跳过
-（尾部 block 不足 128 行），amax 不受越界垃圾影响——load 侧由 TMA 零填充兜底，
+（尾部 block 不足 128 行），amax 不受越界无效数据影响——load 侧由 TMA 零填充处理，
 这里则必须在量化 kernel 自己 guard（它读的是原始 BF16 gmem）。
 
 \subsection{B 的转置量化：双朝向 smem staging}\label{sec:34-bt}
 
-三个 kernel 里最「有戏」的是 B：输出要的是 $B_8^{\top}[N,K]$ 行主序（K 内维
+三个 kernel 里实现最复杂的是 B：输出要的是 $B_8^{\top}[N,K]$ 行主序（K 内维
 连续），而输入 $B[K,N]$ 的列方向 stride 是 $N$——\textbf{直接按输出朝向读写
 gmem 都不 coalesced}。解法是 smem staging 双朝向 tile：
 
@@ -423,7 +423,7 @@ kernel 不走 TMA，越界补零必须自己做，但只要 amax 统计正确、
 零值不污染任何东西。pass 1 对每个 $n$（tid 步进 256，实际 128 个 $n$ 生效）
 扫 64 行累积 \texttt{samax[n]}，跨全部 K chunk 完成整列统计。
 
-scale 落盘段有一个值得抄走的微技巧——\textbf{\texttt{samax} 原地改存
+scale 落盘段有一个值得借鉴的微技巧——\textbf{\texttt{samax} 原地改存
 $\delta^{-1}$}：pass 1 结束时 \texttt{samax[n]} 存的是 amax，写出
 $\delta_b[n]$ 之后立刻原地覆写成 $448/\mathrm{amax}$，pass 2 查表零成本，
 省一个 \texttt{inv\_s[128]} 数组与一次 \texttt{\_\_syncthreads}。per-col
@@ -450,8 +450,8 @@ float——对应 SASS/PTX 的
 是 round-to-nearest-even，\texttt{satfinite} 把 $|x\cdot\delta^{-1}|>448$
 的输入饱和到 $\pm448$。有了这条语义，量化 kernel 不需要软件
 \texttt{min(max(x,-448),448)}——理论上乘 $\delta^{-1}$ 后不可能越界（$\delta$
-就是按 amax 定的），但浮点除法/乘法的舍入误差可能把边界值顶出 1 ulp，
-\texttt{satfinite} 恰好兜住这 1 ulp，硬件一条指令替代软件三分支。
+就是按 amax 定的），但浮点除法/乘法的舍入误差可能让边界值超出 1 ulp，
+\texttt{satfinite} 恰好处理这 1 ulp 的越界，硬件一条指令替代软件三分支。
 
 \section{精度实测}\label{sec:34-acc}
 
@@ -477,8 +477,8 @@ per-block $\times$ per-block（WS） & 0.036 & WS 数值等价 \\
 \end{center}
 
 两个观察：其一，\textbf{随机数据下四种粒度重合}——均匀分布没有 outlier，
-粗粒度不吃亏；真实权重/激活的分布差异才会拉开组合间的差距（这是教学实现选
-随机数据的坦诚之处，也是 34.4.3~节误差模型的印证：噪声由步长 $2^{-3}$ 决定，
+粗粒度没有精度损失；真实权重/激活的分布差异才会拉开组合间的差距（教学实现选
+随机数据并未回避这一局限，这也是 34.4.3~节误差模型的印证：噪声由步长 $2^{-3}$ 决定，
 不由粒度决定，粒度决定的是\textbf{最坏块}的表现）。其二，\textbf{WS 与非WS
 逐 bit 数值等价}——两者的 MMA 序列相同（第~\ref{ch:35}~章），差异纯粹在执行
 协议。$0.036$ 落在 34.4.3~节上界 $\sqrt{2}\,\sigma_\varepsilon\approx5\%$
@@ -486,13 +486,13 @@ per-block $\times$ per-block（WS） & 0.036 & WS 数值等价 \\
 
 \section{小结}
 
-本章把 GEMM 量化的「数学侧」收拢成三件事：式~\ref{eq:34-fold-rc} 的 scale
+本章把 GEMM 量化的「数学侧」归结为三件事：式~\ref{eq:34-fold-rc} 的 scale
 折叠恒等式（per-row/per-col 逐行列查表，per-block 每 128 行/列一个 scale）、
 四种粒度的工程权衡（34.4.2~节）、以及三个前处理 kernel 的访存设计
 （warp-per-row 两遍读、block 二级归约、B 的双朝向 smem 转置 staging）。
-workspace 的形态已经为第~\ref{ch:35}~章铺好：$A_8[M,K]$、$B_8^{\top}[N,K]$
+workspace 的形态已为第~\ref{ch:35}~章准备好：$A_8[M,K]$、$B_8^{\top}[N,K]$
 两个 e4m3 行主序张量 + 两个 float scale 向量，TMA descriptor 可以直接按
-$(BM,BK)$/$(BN,BK)$ tile。下一章进场写主 kernel。
+$(BM,BK)$/$(BN,BK)$ tile。下一章展开主 kernel 的实现。
 
 \section*{延伸阅读}
 \addcontentsline{toc}{section}{延伸阅读}
