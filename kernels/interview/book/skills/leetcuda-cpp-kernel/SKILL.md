@@ -50,8 +50,8 @@ skill 只负责把任务路由到正确的章节，**不重写、不复述书内
 |---|---|
 | `chapters/chNN-<slug>.tex` | 41 个章节文件：ch00–ch37 主线 38 章 + ch19b 白皮书导读 + ch26b/ch26c 增补章 + `_template.tex` 章模板（中文，XeLaTeX 源；含行号锚定的源码解析、踩坑记录、实测性能表） |
 | `chapters/wp/wp0-7.tex` | ch19b 分节正文：CuTe 官方白皮书（Cris Cecka, arXiv:2603.02298）完整中文译注 |
-| `figures/drawio/fig-<chNN>-<n>-<slug>/` | 每章配图：`*.png`（用 view 看）、`*.drawio`/`gen.py`（可改后重导出） |
-| `figures/ffpa/`、`figures/tikz/`、`figures/misc/` | matplotlib bench 图 / TikZ 图 / 封面等杂项 |
+| `figures/drawio/fig-<chNN>-<n>-<slug>/` | **历史留档**：旧版 `.drawio`/`gen.py`/`*.png` 三件套（章内图已全部迁 TikZ inline，仅作旧版对照，勿当现行图源） |
+| `figures/ffpa/`、`figures/tikz/`、`figures/misc/` | ffpa bench 图留档 / wp6 白皮书 2 张官方架构截图 / 封面 `cover.pdf` 等杂项 |
 | `colfax/` | 独立译注文档：Colfax《Categorical Foundations for CuTe Layouts》（arXiv:2601.05972）中译，源在 `colfax/sec/`，成品 `colfax/colfax-cute-zh.pdf` |
 | `cute-zhihu/` | 独立合集文档：reed（13 篇）+ 竹熙佳处（7 篇）CuTe 知乎系列忠实整理，源在 `cute-zhihu/chapters/`，成品 `cute-zhihu/cute-zhihu.pdf` |
 | `references/` | `zhihu-inventory.md`（附录 E 数据源）+ `fulltext/`（7 篇知乎全文 markdown，可直接 grep） |
@@ -62,52 +62,55 @@ skill 只负责把任务路由到正确的章节，**不重写、不复述书内
 ## 第二步：任务路由表
 
 先按任务关键词找到章，再读该章 tex（**先 `grep -n '\\\\section'` 看目录，再按行区间读**，
-不要整章全文读入）。配图路径中的 `NN` 与章号一致。
+不要整章全文读入）。**全书章内配图已 100% 迁为 TikZ inline**（2026-09-28 核实：
+ch00–ch37 每章 2-11 个 `tikzpicture`，`chapters/` 内 `\includegraphics` 全部为
+`% was:` 历史注释；全书活跃图片引用仅 3 处——封面 `figures/misc/cover.pdf` +
+ch19b/wp6 的 2 张官方架构截图），现行图源都在章节 tex 内。
 
-### Part I-II：CUDA 基础与 GEMM 阶梯
+### Part I-II：CUDA 基础与 GEMM 阶梯（配图全部 TikZ 内联在各章 tex 内）
 
-| 任务/症状 | 章 | 配图 |
-|---|---|---|
-| 优化前方法论：先 nsys 后 ncu、torch.profiler、warmup/repeat 口径 | `ch00-profiling.tex` | — |
-| 架构/执行模型/warp 调度/Roofline/Occupancy、寄存器与 255 墙 | `ch01-arch-roofline.tex` | fig-1-1/1-2 |
-| warp shuffle 蝴蝶归约、block reduce、dot product | `ch02-reduce-dot.tex` | fig-2-1 |
-| 向量化（f32x4/f16x8 pack）、coalescing、原子操作 | `ch03-vectorize-atomic.tex` | fig-3-1 |
-| softmax 三级递进（naive→safe→online） | `ch04-softmax.tex` | fig-4-1 |
-| LSE 与分块合并 merge_attn_states | `ch05-lse-merge.tex` | fig-5-1 |
-| RMSNorm/LayerNorm（单遍统计） | `ch06-norm.tex` | — |
-| RoPE、矩阵转置、bank conflict 与 padding | `ch07-rope-transpose.tex` | fig-7-1 |
-| SGEMV 三种划分（memory-bound 专题） | `ch08-sgemv.tex` | fig-8-1 |
-| SGEMM 阶梯一：block tile/Vec4/thread tile、双缓冲 | `ch09-sgemm-tiling.tex` | fig-9-1, fig-10-1 |
-| SGEMM 阶梯二：TF32 WMMA、cp.async 多级流水 | `ch10-sgemm-tf32-wmma.tex` | fig-10-1 |
-| HGEMM：mma.sync m16n8k16、ldmatrix、fragment 布局 | `ch11-hgemm-mma.tex` | fig-11-1/11-2a |
-| XOR swizzle、寄存器双缓冲、block swizzle、L2 复用 | `ch12-hgemm-swizzle.tex` | fig-12-1/12-2/12-3 |
+| 任务/症状 | 章 |
+|---|---|
+| 优化前方法论：先 nsys 后 ncu、torch.profiler、warmup/repeat 口径 | `ch00-profiling.tex` |
+| 架构/执行模型/warp 调度/Roofline/Occupancy、寄存器与 255 墙 | `ch01-arch-roofline.tex` |
+| warp shuffle 蝴蝶归约、block reduce、dot product | `ch02-reduce-dot.tex` |
+| 向量化（f32x4/f16x8 pack）、coalescing、原子操作 | `ch03-vectorize-atomic.tex` |
+| softmax 三级递进（naive→safe→online） | `ch04-softmax.tex` |
+| LSE 与分块合并 merge_attn_states | `ch05-lse-merge.tex` |
+| RMSNorm/LayerNorm（单遍统计） | `ch06-norm.tex` |
+| RoPE、矩阵转置、bank conflict 与 padding | `ch07-rope-transpose.tex` |
+| SGEMV 三种划分（memory-bound 专题） | `ch08-sgemv.tex` |
+| SGEMM 阶梯一：block tile/Vec4/thread tile、双缓冲 | `ch09-sgemm-tiling.tex` |
+| SGEMM 阶梯二：TF32 WMMA、cp.async 多级流水 | `ch10-sgemm-tf32-wmma.tex` |
+| HGEMM：mma.sync m16n8k16、ldmatrix、fragment 布局 | `ch11-hgemm-mma.tex` |
+| XOR swizzle、寄存器双缓冲、block swizzle、L2 复用 | `ch12-hgemm-swizzle.tex` |
 
-### Part III：Hopper/SM120 与 FlashAttention
+### Part III：Hopper/SM120 与 FlashAttention（配图全部 TikZ 内联）
 
-| 任务/症状 | 章 | 配图 |
-|---|---|---|
-| TMA（CUtensorMap/cp.async.bulk.tensor）、mbarrier 协议、WGMMA descriptor | `ch13-hopper-tma-wgmma.tex` | fig-13-1/13-2/13-3 |
-| SM120：TMA+mma.sync+warp specialization、setmaxnreg 池数学与 **shared::cluster/cta 取证小节（C7506/C7508 根因）** | `ch14-sm120-tma-ws.tex` | fig-14-1/14-2 |
-| Attention 数学、online softmax 流水、FA1/FA2/FA3 演进 | `ch15-attn-math.tex` | fig-15-1/15-2 |
-| FA2（一）：Split-Q + MMA 多级流水、Casual mask | `ch16-fa2-splitq-mma.tex` | fig-16-1 |
-| FA2（二）：TMA + WS 双流水、mbarrier 拓扑、坑七（setmaxnreg 约束） | `ch17-fa2-tma-ws.tex` | fig-17-1/17-2 |
-| FA3：双 consumer warpgroup、寄存器再分配 | `ch18-fa3-dual-consumer.tex` | fig-18-1 |
-| FFPA Split-D：大 head_dim（D>256）分块、两阶段 merge | `ch19-ffpa-split-d.tex` | fig-19-1/19-2 |
+| 任务/症状 | 章 |
+|---|---|
+| TMA（CUtensorMap/cp.async.bulk.tensor）、mbarrier 协议、WGMMA descriptor | `ch13-hopper-tma-wgmma.tex` |
+| SM120：TMA+mma.sync+warp specialization、setmaxnreg 池数学与 **shared::cluster/cta 取证小节（C7506/C7508 根因）** | `ch14-sm120-tma-ws.tex` |
+| Attention 数学、online softmax 流水、FA1/FA2/FA3 演进 | `ch15-attn-math.tex` |
+| FA2（一）：Split-Q + MMA 多级流水、Casual mask | `ch16-fa2-splitq-mma.tex` |
+| FA2（二）：TMA + WS 双流水、mbarrier 拓扑、坑七（setmaxnreg 约束） | `ch17-fa2-tma-ws.tex` |
+| FA3：双 consumer warpgroup、寄存器再分配 | `ch18-fa3-dual-consumer.tex` |
+| FFPA Split-D：大 head_dim（D>256）分块、两阶段 merge | `ch19-ffpa-split-d.tex` |
 
-### Part IV：CuTe（CUTLASS）
+### Part IV：CuTe（CUTLASS）（配图全部 TikZ 内联）
 
-| 任务/症状 | 章 | 配图 |
-|---|---|---|
-| CuTe 官方白皮书中文译注（第一手定义）：布局表示、张量、布局代数（拼接/合并/复合/补/切分/分块/逆） | `ch19b-cute-whitepaper-zh.tex`（分节在 `chapters/wp/`） | — |
-| Layout 基础与代数（colex/mode/compose/inverse/product/divide） | `ch20-cute-layout.tex` | fig-20-1~20-9 |
-| Tensor 与 TiledCopy（thrval 引擎、g2s 分解） | `ch21-cute-tensor-tiledcopy.tex` | fig-21-1~21-4 |
-| TiledMMA 与 fragment 布局 | `ch22-cute-tiledmma.tex` | fig-22-1/22-2 |
-| Swizzle<B,M,S> 与 TMA copy | `ch23-cute-swizzle-tma.tex` | fig-23-1/23-2 |
-| CuTe HGEMM 实战（kStage 流水、三级划分） | `ch24-cute-hgemm.tex` | fig-24-2/24-3 |
-| CuTe FlashAttention 三实现对照 | `ch25-cute-flash-attn.tex` | fig-25-1 |
-| CuTe FFPA Split-D 类型代数 | `ch26-cute-ffpa.tex` | fig-26-1 |
-| **SM120 持久化 FlashAttention**（persist-D、WS 1+1、persistent CTA、scale 融合；全书唯一超越 cuDNN SDPA 的 attention kernel，240.1/230.2 = 1.04×） | `ch26b-cute-persist-d-flash-attn.tex`（书内第 28 章） | TikZ 内联 |
-| **SM120 大 head_dim non-WS Split-D**（tile 128×128、256T 全员 MMA + tid=0 内联 TMA、K/V stages 解耦：(3,2) D320=204.1T=2.93× cuDNN；ffpa-attn split_d 同源教学集，含寄存器 spill 机理） | `ch26c-cute-split-d-sm120.tex`（书内第 29 章） | TikZ 内联 |
+| 任务/症状 | 章 |
+|---|---|
+| CuTe 官方白皮书中文译注（第一手定义）：布局表示、张量、布局代数（拼接/合并/复合/补/切分/分块/逆） | `ch19b-cute-whitepaper-zh.tex`（分节在 `chapters/wp/`，wp6 另含 2 张官方架构截图） |
+| Layout 基础与代数（colex/mode/compose/inverse/product/divide） | `ch20-cute-layout.tex` |
+| Tensor 与 TiledCopy（thrval 引擎、g2s 分解） | `ch21-cute-tensor-tiledcopy.tex` |
+| TiledMMA 与 fragment 布局 | `ch22-cute-tiledmma.tex` |
+| Swizzle<B,M,S> 与 TMA copy | `ch23-cute-swizzle-tma.tex` |
+| CuTe HGEMM 实战（kStage 流水、三级划分） | `ch24-cute-hgemm.tex` |
+| CuTe FlashAttention 三实现对照 | `ch25-cute-flash-attn.tex` |
+| CuTe FFPA Split-D 类型代数 | `ch26-cute-ffpa.tex` |
+| **SM120 持久化 FlashAttention**（persist-D、WS 1+1、persistent CTA、scale 融合；全书唯一超越 cuDNN SDPA 的 attention kernel，240.1/230.2 = 1.04×） | `ch26b-cute-persist-d-flash-attn.tex`（书内第 28 章） |
+| **SM120 大 head_dim non-WS Split-D**（tile 128×128、256T 全员 MMA + tid=0 内联 TMA、K/V stages 解耦：(3,2) D320=204.1T=2.93× cuDNN；ffpa-attn split_d 同源教学集，含寄存器 spill 机理） | `ch26c-cute-split-d-sm120.tex`（书内第 29 章） |
 
 ### CuTe 进阶深度参考（colfax / cute-zhihu，独立文档）
 
@@ -124,30 +127,30 @@ skill 只负责把任务路由到正确的章节，**不重写、不复述书内
 查阅顺序建议：概念不清先读主书章 → 定义有疑义查 `ch19b` 白皮书 → 需要数学
 严格性（定理证明/范畴论）查 colfax → 想看教学式推导与作者视角查 cute-zhihu。
 
-### Part V：FP8/FP4 HGEMM 篇（量化矩阵乘，PDF 打印章号 30-33）
+### Part V：FP8/FP4 HGEMM 篇（量化矩阵乘，PDF 打印章号 30-33；配图全部 TikZ 内联）
 
-| 任务/症状 | 章 | 配图 |
-|---|---|---|
-| e4m3 格式、per-row/per-block 量化、量化前处理 kernel（A/B 两侧量化链逐 bit） | `ch34-fp8-quant-gemm.tex` | TikZ 内联 |
-| FP8 CuTe 主 GEMM、在线反量化、cuBLAS BF16 对比、tile 档位扫描 | `ch35-fp8-gemm-cute.tex` | TikZ 内联 |
-| NVFP4 线格式（e2m1 数据 + ue4m3 SF）、512 B SF 原子 gmem 布局、两级折叠恒等式、误差模型 | `ch36-fp4-gemm-quant.tex` | TikZ 内联 |
-| block-scaled MMA（`mma.sync...m16n8k64.kind::mxf4nvf4.scale_vec::4X`）、SF smem 流水、workspace 六段布局、形状自适应 tile、cuBLAS 对比 | `ch37-fp4-gemm-cute.tex` | TikZ 内联 |
+| 任务/症状 | 章 |
+|---|---|
+| e4m3 格式、per-row/per-block 量化、量化前处理 kernel（A/B 两侧量化链逐 bit） | `ch34-fp8-quant-gemm.tex` |
+| FP8 CuTe 主 GEMM、在线反量化、cuBLAS BF16 对比、tile 档位扫描 | `ch35-fp8-gemm-cute.tex` |
+| NVFP4 线格式（e2m1 数据 + ue4m3 SF）、512 B SF 原子 gmem 布局、两级折叠恒等式、误差模型 | `ch36-fp4-gemm-quant.tex` |
+| block-scaled MMA（`mma.sync...m16n8k64.kind::mxf4nvf4.scale_vec::4X`）、SF smem 流水、workspace 六段布局、形状自适应 tile、cuBLAS 对比 | `ch37-fp4-gemm-cute.tex` |
 
 教学源码在 **LeetCUDA 本仓** `fp8_gemm.cuh` / `fp4_gemm.cuh`（在线量化 GEMM，非
 ffpa-attn 仓）；bench 入口 `./bin/notes_v2_sm120a.bin --fp8-gemm <N>` /
 `--fp4-gemm <N>` / `--fp4-gemm-sweep <N>`。
 
-### Part VI：FP8/FP4 Attention 篇（量化注意力，PDF 打印章号 34-40，文件名 ch27-33）
+### Part VI：FP8/FP4 Attention 篇（量化注意力，PDF 打印章号 34-40，文件名 ch27-33；配图全部 TikZ 内联）
 
-| 任务/症状 | 章 | 配图 |
-|---|---|---|
-| 浮点位域、量化格点、ESS 分解等数学基础 | `ch27-quant-attn-math.tex` | fig-27-1/27-2/27-3 |
-| FP8 量化前处理链（per-tensor/per-block/per-channel） | `ch28-fp8-quant-aux.tex` | fig-28-1/28-2 |
-| FP8 persist-D 主 kernel、scale 折叠、reorg-free | `ch29-fp8-persist-d.tex` | fig-29-1/29-2/29-3 |
-| FP8 split-D 与 M4N2 TiledMMA（大 D 两堵墙） | `ch30-fp8-split-d-m4n2.tex` | fig-30-1/30-2 |
-| NVFP4 格式、量化链、KV perm32 置换 | `ch31-fp4-nvfp4-quant.tex` | fig-31-1/31-2/31-3 |
-| FP4 persist-D、两级 P 量化 | `ch32-fp4-persist-d.tex` | fig-32-1/32-2 |
-| FP8/FP4 bench 矩阵、精度方法论、竞品对照 | `ch33-fp8-fp4-bench.tex` | `figures/ffpa/` |
+| 任务/症状 | 章 |
+|---|---|
+| 浮点位域、量化格点、ESS 分解等数学基础 | `ch27-quant-attn-math.tex` |
+| FP8 量化前处理链（per-tensor/per-block/per-channel） | `ch28-fp8-quant-aux.tex` |
+| FP8 persist-D 主 kernel、scale 折叠、reorg-free | `ch29-fp8-persist-d.tex` |
+| FP8 split-D 与 M4N2 TiledMMA（大 D 两堵墙） | `ch30-fp8-split-d-m4n2.tex` |
+| NVFP4 格式、量化链、KV perm32 置换 | `ch31-fp4-nvfp4-quant.tex` |
+| FP4 persist-D、两级 P 量化 | `ch32-fp4-persist-d.tex` |
+| FP8/FP4 bench 矩阵、精度方法论、竞品对照 | `ch33-fp8-fp4-bench.tex` |
 
 **配套生产级参考：[ffpa-attn](https://github.com/xlite-dev/ffpa-attn) 仓库。**
 Part VI 各章的教学 kernel 均源自 ffpa-attn（书锚定其某个 commit 的冻结基线），
@@ -217,8 +220,12 @@ Part VI（ch27–33，量化 attention）教学 kernel 源码在 `<FFPA_ATTN_DIR
 2. **源码交叉**：书按行号引用 `<LeetCUDA_DIR>/kernels/interview/*.cuh` 冻结基线
    （common/sgemv/sgemm/hgemm/flash_attn/ffpa_attn/fp8_gemm/fp4_gemm.cuh），需要完整实现时用
    `appendices/appD-source-index.tex` 定位再读源文件。
-3. **图**：`figures/drawio/fig-*/` 下 png 用 view 工具直接看；需要改图时改同目录
-   `gen.py`/`.drawio` 后用 `drawio-headless -x -f png -s 3` 重导出（输出落回同目录）。
+3. **图**：章内图全部为 TikZ inline（`tikzpicture` 就在章节 tex 内）。看图：
+   `pdftotext book.pdf -` 按图题关键词定位页码 → `pdftoppm -r 150 -png` 整页
+   渲染 → view 工具目检。改图：直接改 tex 内 `tikzpicture`，**改后必须真实渲染
+   （standalone 抽图或重建 PDF）+ view 视觉验收无文文/图文重叠**（铁律与配方见
+   write-leetcuda-book skill 图管线）。`figures/drawio/`、`figures/ffpa/` 下
+   png 为历史留档，仅作旧版对照。
 4. **验证 kernel 正确性**：优先跑 `book/tests/`（CPU fp64 对拍，无 cuBLAS 依赖）；
    性能验收用 `bash build.sh --arch sm_120a && ./bin/notes_v2_sm120a.bin --bench
    --bhnd 1,32,8192,128 [--bench-all]`；FP8/FP4 GEMM 专项用 `--fp8-gemm <N>` /
