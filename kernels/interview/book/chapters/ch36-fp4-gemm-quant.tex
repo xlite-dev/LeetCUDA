@@ -162,7 +162,7 @@ $2^{-1}\sim 448$），于是 level-2 的 SF 永远不会下溢。$s$ 的取值�
    $\Rightarrow$ 组内 $x'/\mathrm{SF}\in[-6.3,6.3]$：越界部分被
    \texttt{satfinite} 压到 $\pm6$};
 \node[draw=tkRed, thick, rounded corners=2pt, inner sep=4pt, align=left,
-      font=\scriptsize] at (7.2,-3.0)
+      font=\scriptsize] at (7.2,-3.85)
   {反例（无 level-1）：$s\equiv 1$，同一组 $\mathrm{SF}=\mathrm{ue4m3}
    (0.05)=0.0508$\\
    此时组内 $x/\mathrm{SF}\in[-5.9,5.9]$ 仍可用；但若
@@ -282,9 +282,9 @@ level-2 的 SF 在显存里不是「按 (MN, K/16) 平铺的二维数组」，�
 % 512B 原子内部结构
 \node[anchor=west, font=\footnotesize] at (0, 3.05)
   {\textbf{一个 SF 原子 = 128 行 $\times$ 64 个 K 元素 $\times$ 4 bit = 512\,B}};
-\foreach \i in {0,1,2,3} {
-  \draw[thick, fill=tkFillBlue] (\i*1.55, 2.0) rectangle (\i*1.55+1.4, 2.55);
-  \node at (\i*1.55+0.7, 2.27) {$k\in[16\i,16\i{+}16)$};
+\foreach \i/\ka/\kb in {0/0/16, 1/16/32, 2/32/48, 3/48/64} {
+  \draw[thick, fill=tkFillBlue] (\i*2.4, 2.0) rectangle (\i*2.4+2.2, 2.55);
+  \node at (\i*2.4+1.1, 2.27) {$k\in[\ka,\kb)$};
 }
 \node[anchor=north west, font=\tiny, align=left] at (0,1.92)
   {4 个 SF 连续存放（\texttt{Blk\_SF}=4）$\Rightarrow$ 行内 4 字节连成
