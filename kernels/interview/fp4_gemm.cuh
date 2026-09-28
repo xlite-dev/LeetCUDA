@@ -681,7 +681,6 @@ __global__ void __launch_bounds__(Traits::kNumThreads, 1)
   constexpr int kAStageBytes = Traits::kAStageBytes;  // 布局占位（字节）
   constexpr int kBStageBytes = Traits::kBStageBytes;
   constexpr int kSFAStageBytes = Traits::kSFAStageBytes;
-  constexpr int kSFBStageBytes = Traits::kSFBStageBytes;
 
   const int tid = threadIdx.x;
   const int m0 = blockIdx.y * kBM;  // grid: (n-tiles, m-tiles)
@@ -898,7 +897,6 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
   constexpr int kAStageBytes = Traits::kAStageBytes;
   constexpr int kBStageBytes = Traits::kBStageBytes;
   constexpr int kSFAStageBytes = Traits::kSFAStageBytes;
-  constexpr int kSFBStageBytes = Traits::kSFBStageBytes;
   static_assert(kProducerThreads * 32 + kNumThreads * 224 <= 65536,
                 "WS 寄存器预算：128 x 32 + consumer x 224 必须装进 64K");
 

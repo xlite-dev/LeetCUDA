@@ -1,5 +1,5 @@
 % ch37-fp4-gemm-cute.tex — FP4 GEMM（二）：blockscaled MMA、SF 流水与 cuBLAS 对比（RFC-O）
-% 源码：kernels/interview/fp4_gemm.cuh（Phase 10.3-10.8，L384-1277）+ notes-v2.cu bench 接线
+% 源码：kernels/interview/fp4_gemm.cuh（Phase 10.3-10.8，L395-1297）+ notes-v2.cu bench 接线
 \chapter{FP4 GEMM（二）：blockscaled MMA、SF 流水与 cuBLAS 对比}\label{ch:37}
 
 \section{本章导读}
@@ -56,7 +56,7 @@ $BM{=}128$ 让 SF 的 TMA box 恰好等于一个 512\,B 原子（33.4~节）。
 第~\ref{ch:23}~章（TMA/swizzle）、第~\ref{ch:26c}~章（non-WS 协议）、
 第~\ref{ch:26b}~章（WS 与 \texttt{setmaxnreg}）、第~\ref{ch:35}~章
 （本章的骨架与它逐节对应，可对照阅读）。
-\textbf{源码区间}：\texttt{fp4\_gemm.cuh} L395--1299（Phase 10.3--10.8），
+\textbf{源码区间}：\texttt{fp4\_gemm.cuh} L395--1297（Phase 10.3--10.8），
 \texttt{notes-v2.cu} 的 \texttt{bench\_fp4\_gemm}/
 \texttt{bench\_fp4\_gemm\_tile\_sweep} 接线。
 \textbf{验证方式}：\texttt{notes\_v2\_sm120a.bin --fp4-gemm}（精度全组合）、
@@ -363,8 +363,8 @@ CUTLASS 口径，是因为它是 \texttt{SM120\_16x8x64\_TN\_VS} 的官方搭配
 
 四路 TMA 的发射代码：
 
-\begin{lstinputlisting}[linerange={768-784},firstnumber=auto,
-  title={fp4\_gemm.cuh L768-784（issue\_tma：一个 barrier 覆盖四段字节）}]{../fp4_gemm.cuh}
+\begin{lstinputlisting}[linerange={767-783},firstnumber=auto,
+  title={fp4\_gemm.cuh L767-783（issue\_tma：一个 barrier 覆盖四段字节）}]{../fp4_gemm.cuh}
 \end{lstinputlisting}
 
 与第~\ref{ch:35}~章的 FP8 版本相比，这里只是把 2 条 \texttt{copy} 变成
@@ -395,8 +395,8 @@ CUTLASS 口径，是因为它是 \texttt{SM120\_16x8x64\_TN\_VS} 的官方搭配
 init$=$256）标记 stage 可覆写。差异集中在循环体里的四行拷贝与一次
 \texttt{gemm}：
 
-\begin{lstinputlisting}[linerange={795-811},firstnumber=auto,
-  title={fp4\_gemm.cuh L795-811（主循环：四路 s2r + zip 张量 + 一跳一 stage）}]{../fp4_gemm.cuh}
+\begin{lstinputlisting}[linerange={794-810},firstnumber=auto,
+  title={fp4\_gemm.cuh L794-810（主循环：四路 s2r + zip 张量 + 一跳一 stage）}]{../fp4_gemm.cuh}
 \end{lstinputlisting}
 
 \textbf{数据走 LDSM，SF 走 32-bit LDS。}$A/B$ 用
@@ -485,8 +485,8 @@ MMA 块相对 TMA 块更窄——这意味着\textbf{流水线对 TMA 延迟的�
 
 \section{Epilogue：只剩一项乘法}\label{sec:37-epilogue}
 
-\begin{lstinputlisting}[linerange={821-853},firstnumber=auto,
-  title={fp4\_gemm.cuh L821-853（epilogue：level-1 折回 $\to$ bf16 $\to$ STSM $\to$ TMA store）}]{../fp4_gemm.cuh}
+\begin{lstinputlisting}[linerange={820-852},firstnumber=auto,
+  title={fp4\_gemm.cuh L820-852（epilogue：level-1 折回 $\to$ bf16 $\to$ STSM $\to$ TMA store）}]{../fp4_gemm.cuh}
 \end{lstinputlisting}
 
 与第~\ref{ch:35}~章 FP8 的 epilogue（四步、含按块查 $\delta$）相比，
@@ -542,8 +542,8 @@ WS 版本有一个 non-WS 版本\textbf{根本没有}的死锁陷阱。它长这
 
 修复只有一行，放在 K 循环之前、producer/consumer 分支之前：
 
-\begin{lstinputlisting}[linerange={960-966},firstnumber=auto,
-  title={fp4\_gemm.cuh L960-966（WS 的 empty 预置：consumer 先行 arrive）}]{../fp4_gemm.cuh}
+\begin{lstinputlisting}[linerange={958-964},firstnumber=auto,
+  title={fp4\_gemm.cuh L958-964（WS 的 empty 预置：consumer 先行 arrive）}]{../fp4_gemm.cuh}
 \end{lstinputlisting}
 
 即「\textbf{consumer 在开工前先把所有 empty arrive 一遍}」，把流水线
@@ -568,8 +568,8 @@ WS 版本的 epilogue 里 sync 用的是 \texttt{NamedBarrier::arrive\_and\_wait
 
 \section{C++ API 与 bench 接线}\label{sec:37-api}
 
-\begin{lstinputlisting}[linerange={1164-1228},firstnumber=auto,
-  title={fp4\_gemm.cuh L1164-1228（fp4\_gemm\_bf16：约束自检 + 4 模式派发）}]{../fp4_gemm.cuh}
+\begin{lstinputlisting}[linerange={1162-1226},firstnumber=auto,
+  title={fp4\_gemm.cuh L1162-1226（fp4\_gemm\_bf16：约束自检 + 4 模式派发）}]{../fp4_gemm.cuh}
 \end{lstinputlisting}
 
 API 形状与第~\ref{ch:35}~章的 \texttt{fp8\_gemm\_bf16} 完全一致：

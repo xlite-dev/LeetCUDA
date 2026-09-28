@@ -1922,6 +1922,15 @@ static void test_fp8_gemm(int M, int N, int K) {
 // 消费（软件只反量化第一级）③ 误差 O(0.14) 而非 O(0.03)：E2M1 只有 3 个数值位，
 // 故这里报 relFro（相对 Frobenius 误差）而非异常值主导的 max err（见 ch36）。
 // =============================================================================
+// %-56s 按字符数补空格，含 CJK 的标签（单级/两级/A 行…）显示宽度超出字符数，
+// 表格会错列；bench_pad56 按显示宽度（CJK 双宽）算补齐空格数。
+static int bench_pad56(const char *s) {
+  int pad = 56;
+  for (const unsigned char *p = (const unsigned char *)s; *p; ++p)
+    pad -= (*p >= 0xe4 && *p <= 0xe9) ? 2 : ((*p & 0xc0) != 0x80);
+  return pad > 0 ? pad : 0;
+}
+// =============================================================================
 static void test_fp4_gemm_once(int M, int N, int K,
                                fp4_gemm::Fp4GemmScaleMode mode, bool use_ws,
                                const char *label) {
@@ -1954,7 +1963,8 @@ static void test_fp4_gemm_once(int M, int N, int K,
   fp4_gemm::fp4_gemm_bf16(d_a, d_b, d_c, M, N, K, mode, ws, 0, use_ws);
   cudaError_t err = cudaDeviceSynchronize();
   if (err != cudaSuccess) {
-    printf("| %-56s | CUDA FAIL: %s\n", label, cudaGetErrorString(err));
+    printf("| %s%*s | CUDA FAIL: %s\n", label, bench_pad56(label), "",
+           cudaGetErrorString(err));
   } else {
     cudaMemcpy(h_c, d_c, (size_t)M * N * 2, cudaMemcpyDeviceToHost);
     double num = 0, den = 0;
@@ -1963,7 +1973,8 @@ static void test_fp4_gemm_once(int M, int N, int K,
       num += d * d;
       den += ref[i] * ref[i];
     }
-    printf("| %-56s | %.4f |\n", label, sqrt(num / den));
+    printf("| %s%*s | %.4f |\n", label, bench_pad56(label), "",
+           sqrt(num / den));
   }
   free(h_a); free(h_b); free(h_c); free(ref);
   cudaFree(d_a); cudaFree(d_b); cudaFree(d_c); cudaFree(ws.buf);
@@ -3791,7 +3802,8 @@ static void bench_fp4_gemm(int M, int N, int K) {
     char tflops_str[32];                                                      \
     snprintf(tflops_str, sizeof(tflops_str), "%.1f/%.1f (%.2fx)", tflops,     \
              cublas_tflops, tflops / cublas_tflops);                          \
-    printf("| %-56s | %.3e | %-19s |\n", label, sqrt(num / den), tflops_str); \
+    printf("| %s%*s | %.3e | %-19s |\n", label, bench_pad56(label), "",       \
+           sqrt(num / den), tflops_str);                                      \
   } while (0)
 
 #define FP4_RUN_E2E(MODE, kWS, stem)                                       \
@@ -3868,8 +3880,6 @@ static void bench_fp4_gemm(int M, int N, int K) {
   snprintf(tile_tag, sizeof(tile_tag), "%s",
            fp4_gemm::fp4_gemm_use_wide_tile(M, N, K) ? "128x256/s6"
                                                      : "128x128/s4");
-  printf("（FP4 行的误差列 = relFro 相对 Frobenius 误差，E2M1 只有 3 个数值位；"
-         "kernel-only = 量化在计时窗口外）\n");
   FP4_RUN_KERNEL(Fp4GemmScaleMode::kSingleLevel, false,
                  "FP4 GEMM CuTe nonws (单级 level-2");
   FP4_RUN_KERNEL(Fp4GemmScaleMode::kLevel1A, false,

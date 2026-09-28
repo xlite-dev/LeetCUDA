@@ -404,6 +404,19 @@
     5520-5788；`verify_anchors.py` ALL GREEN；book = **584 页**、0 error、
     0 Missing character、overfull ≥1pt = 5（基线）；7 页 150dpi view_image
     逐页验收通过
+- [x] O.19 编译告警清理 + bench 中文标签对齐（2026-09-28，用户点名）
+  - fp4_gemm.cuh 两处 kernel 内死别名 `kSFBStageBytes`（L684/L901，sm_120a
+    编译 #177-D）删除——Traits 成员本身（L622 定义、L624/628 smem 求和）保留；
+    bench 数值与改前逐项一致（±0.1%），确认 codegen 不变
+  - notes-v2.cu：bench 大表 FP4 行（单级/两级/A 行/B 列）与 FP8 行错列——
+    `%-56s` 按字符数 pad、CJK 双宽字符超出；新增 `bench_pad56()`（UTF-8
+    显示宽度，CJK lead byte 0xE4-0xE9 记 2 列）替换 FP4_EMIT_ROW 与
+    test_fp4_gemm_once 共 3 处 printf；大表 field-1 显示宽度统一 58 列
+  - 按用户要求删除大表中「FP4 行的误差列 = relFro…」说明行（relFro 语义
+    已在 ch36/ch37 正文与独立模式表头讲过）
+  - 复冻结：fp4_gemm.cuh 1300→1298（ch37 ref 395-1297、5 个 listing 区间
+    平移 -1/-2）、notes-v2.cu 6585→6595（ch26c 区间 5530-5798）；
+    ALL GREEN；book 584 页 overfull 5；--bench 全表 + --fp4-gemm 复跑通过
 - [~] O.13 章号偏差（发现于 2026-09-24，与 N.17 同源）：Part V 内部章号 34-37 与 PDF 打印章号
   （30-33）系统性偏差 4，导致 prose 里的 `37.9.4~节` / `35.8.4~节` 这类**硬编号引用**指向错误章节。
   **本轮已把 ch36/ch37 全部改成打印章号**（`37.x→33.x`、`36.x→32.x`、`35.x→31.x`，共 18 处，
