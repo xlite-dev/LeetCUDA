@@ -483,21 +483,16 @@
 % ===================== RIGHT THIRD: CuTeDSL attention vs SDPA (H200 / B200) =====================
 % 数据: ffpa-attn docs/bench/README.md bf16 行, B=1, H=32, D=512, N=8192(8K)/16384(16K)
 % 柱序: 0=SDPA FWD / 1=FFPA FWD / 2=SDPA BWD / 3=FFPA BWD
-\node[anchor=center, draw=colAccent!70, sketch, rounded corners=3pt, inner xsep=9pt, inner ysep=4pt,
-      font=\fontsize{9.5}{11.5}\selectfont\bfseries, text=colAccent] at (25.35,-0.40)
-  {FFPA CuTeDSL Attention (bf16, D=512) -- \textcolor{colRed}{1.5x$\sim$15x} speedup vs SDPA};
 
 % ---------- H200 (8K / 16K) ----------
-\def\cbase{-5.95}
-\def\chp{3.65}
+\def\cbase{-5.56}
+\def\chp{4.10}
 \def\cymax{450}
-\node[anchor=west, font=\subfont, text=black!85] at (18.30,-1.28)
+\node[anchor=west, font=\subfont, text=black!85] at (18.30,-0.44)
   {FFPA CuTeDSL vs SDPA -- H200 (D=512)};
-\node[anchor=north west, font=\capfont, text=black!60, align=left, inner sep=0pt] at (18.30,-1.55)
-  {NVIDIA H200 (sm\_90a) -- B=1, H=32, D=512, bf16 -- N=8192 (8K) / 16384 (16K)};
-\clegend{-1.90}
+\clegend{-1.06}
 \node[rotate=90, anchor=center, font=\fontsize{6.5}{7.5}\selectfont, text=black!65]
-  at (18.52,{-5.95+3.65/2}) {TFLOPS};
+  at (18.52,{-5.56+4.10/2}) {TFLOPS};
 \cgrid{150}\cgrid{300}\cgrid{450}
 \caxes
 \ctick{0}\ctick{150}\ctick{300}\ctick{450}
@@ -524,22 +519,22 @@
 \cxlab{4}{self-attn}{16K}\cxlab{5}{cross-attn}{16K}\cxlab{6}{gqa}{16K}\cxlab{7}{causal}{16K}
 \csep
 \node[anchor=west, font=\fontsize{6}{7}\selectfont, text=black!55, inner sep=0pt]
-  at (18.30,-6.80) {Light bars = SDPA baseline; FFPA bar tops labelled in TFLOPS. Peak 5.2x vs SDPA.};
+  at (18.30,-6.41) {Light bars = SDPA baseline; FFPA bar tops labelled in TFLOPS. Peak 5.2x vs SDPA.};
 \draw[draw=black!40, line width=0.9pt, rounded corners=5pt,
       decorate, decoration={random steps, segment length=9pt, amplitude=0.8pt}]
-  (18.28,-1.02) rectangle (32.40,-7.10);
+  (18.28,-0.18) rectangle (32.40,-6.71);
 
 % ---------- B200 (8K / 16K) ----------
-\def\cbase{-12.23}
-\def\chp{3.65}
+\def\cbase{-12.29}
+\def\chp{4.10}
 \def\cymax{1600}
-\node[anchor=west, font=\subfont, text=black!85] at (18.30,-7.56)
+\node[anchor=west, font=\subfont, text=black!85] at (18.30,-7.17)
   {FFPA CuTeDSL vs SDPA -- B200 (D=512)};
-\node[anchor=north west, font=\capfont, text=black!60, align=left, inner sep=0pt] at (18.30,-7.83)
-  {NVIDIA B200 (sm\_100a) -- B=1, H=32, D=512, bf16 -- N=8192 (8K) / 16384 (16K)};
-\clegend{-8.18}
+\clegend{-7.79}
+\node[anchor=east, font=\fontsize{8}{10}\selectfont\bfseries, text=colAccent]
+  at (32.28,-7.79) {\textcolor{colRed}{1.5x$\sim$15x} speedup vs SDPA};
 \node[rotate=90, anchor=center, font=\fontsize{6.5}{7.5}\selectfont, text=black!65]
-  at (18.52,{-12.23+3.65/2}) {TFLOPS};
+  at (18.52,{-12.29+4.10/2}) {TFLOPS};
 \cgrid{400}\cgrid{800}\cgrid{1200}\cgrid{1600}
 \caxes
 \ctick{0}\ctick{400}\ctick{800}\ctick{1200}\ctick{1600}
@@ -566,19 +561,26 @@
 \cxlab{4}{self-attn}{16K}\cxlab{5}{cross-attn}{16K}\cxlab{6}{gqa}{16K}\cxlab{7}{causal}{16K}
 \csep
 \node[anchor=west, font=\fontsize{6}{7}\selectfont, text=black!55, inner sep=0pt]
-  at (18.30,-13.05) {Light bars = SDPA baseline; FFPA bar tops labelled in TFLOPS. Peak 14.7x vs SDPA.};
+  at (18.30,-13.11) {Light bars = SDPA baseline; FFPA bar tops labelled in TFLOPS. Peak 14.7x vs SDPA.};
 \draw[draw=black!40, line width=0.9pt, rounded corners=5pt,
       decorate, decoration={random steps, segment length=9pt, amplitude=0.8pt}]
-  (18.28,-7.30) rectangle (32.40,-13.28);
+  (18.28,-6.91) rectangle (32.40,-13.34);
+
+% 两大部分各自的手绘外框 (overlay: 不参与 bbox, 不影响整图尺寸)
+% 左: bench 表格部分
+\draw[overlay, draw=black!50, line width=1.1pt, rounded corners=5pt,
+      decorate, decoration={random steps, segment length=9pt, amplitude=0.8pt}]
+  (-0.20,0.14) rectangle (17.76,-13.52);
+% 右: FFPA CuTeDSL 性能图部分
+\draw[overlay, draw=black!50, line width=1.1pt, rounded corners=5pt,
+      decorate, decoration={random steps, segment length=9pt, amplitude=0.8pt}]
+  (18.06,0.14) rectangle (32.68,-13.52);
   \end{tikzpicture}};
 
-% 手绘风外边框: 封面与表格各一
+% 手绘风外边框: 封面一个 (bench 侧的两大部分外框画在 bench 内层 tikzpicture 里)
 \draw[draw=coverInk!55, line width=1.1pt, rounded corners=5pt,
       decorate, decoration={random steps, segment length=9pt, amplitude=0.8pt}]
   (cover.south west) rectangle (cover.north east);
-\draw[draw=black!50, line width=1.1pt, rounded corners=5pt,
-      decorate, decoration={random steps, segment length=9pt, amplitude=0.8pt}]
-  (bench.south west) rectangle (bench.north east);
 
 \end{tikzpicture}
 \end{document}
