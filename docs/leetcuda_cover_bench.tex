@@ -485,16 +485,16 @@
 % 柱序: 0=SDPA FWD / 1=FFPA FWD / 2=SDPA BWD / 3=FFPA BWD
 
 % ---------- H200 (8K / 16K) ----------
-\def\cbase{-5.56}
-\def\chp{4.10}
+\def\cbase{-5.84}
+\def\chp{4.40}
 \def\cymax{450}
-\node[anchor=center, font=\subfont, text=black!85] at (25.34,-0.44)
+\node[anchor=center, font=\subfont, text=black!85] at (25.34,-0.42)
   {FFPA CuTeDSL vs SDPA -- H200 (D=512)};
-\clegend{-1.06}
+\clegend{-1.04}
 \node[anchor=east, font=\fontsize{8}{10}\selectfont\bfseries, text=colAccent]
-  at (32.28,-1.06) {\textcolor{colRed}{1.8x$\sim$5.2x} speedup vs SDPA};
+  at (32.28,-1.04) {\textcolor{colRed}{1.8x$\sim$5.2x} speedup vs SDPA};
 \node[rotate=90, anchor=center, font=\fontsize{6.5}{7.5}\selectfont, text=black!65]
-  at (18.52,{-5.56+4.10/2}) {TFLOPS};
+  at (18.52,{-5.84+4.40/2}) {TFLOPS};
 \cgrid{150}\cgrid{300}\cgrid{450}
 \caxes
 \ctick{0}\ctick{150}\ctick{300}\ctick{450}
@@ -522,19 +522,19 @@
 \csep
 \draw[draw=black!40, line width=0.9pt, rounded corners=5pt,
       decorate, decoration={random steps, segment length=9pt, amplitude=0.8pt}]
-  (18.28,-0.18) rectangle (32.40,-6.26);
+  (18.28,-0.16) rectangle (32.40,-6.54);
 
 % ---------- B200 (8K / 16K) ----------
-\def\cbase{-12.29}
-\def\chp{4.10}
+\def\cbase{-12.52}
+\def\chp{4.40}
 \def\cymax{1600}
-\node[anchor=center, font=\subfont, text=black!85] at (25.34,-7.17)
+\node[anchor=center, font=\subfont, text=black!85] at (25.34,-7.10)
   {FFPA CuTeDSL vs SDPA -- B200 (D=512)};
-\clegend{-7.79}
+\clegend{-7.72}
 \node[anchor=east, font=\fontsize{8}{10}\selectfont\bfseries, text=colAccent]
-  at (32.28,-7.79) {\textcolor{colRed}{1.5x$\sim$15x} speedup vs SDPA};
+  at (32.28,-7.72) {\textcolor{colRed}{1.5x$\sim$15x} speedup vs SDPA};
 \node[rotate=90, anchor=center, font=\fontsize{6.5}{7.5}\selectfont, text=black!65]
-  at (18.52,{-12.29+4.10/2}) {TFLOPS};
+  at (18.52,{-12.52+4.40/2}) {TFLOPS};
 \cgrid{400}\cgrid{800}\cgrid{1200}\cgrid{1600}
 \caxes
 \ctick{0}\ctick{400}\ctick{800}\ctick{1200}\ctick{1600}
@@ -562,7 +562,7 @@
 \csep
 \draw[draw=black!40, line width=0.9pt, rounded corners=5pt,
       decorate, decoration={random steps, segment length=9pt, amplitude=0.8pt}]
-  (18.28,-6.91) rectangle (32.40,-12.99);
+  (18.28,-6.84) rectangle (32.40,-13.22);
 
 % 两大部分各自的手绘外框 (overlay: 不参与 bbox, 不影响整图尺寸)
 % 左: bench 表格部分
