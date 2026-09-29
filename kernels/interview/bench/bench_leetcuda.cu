@@ -1,5 +1,5 @@
 // =============================================================================
-// notes-v2.cu — CUDA Kernel 面试背题笔记（多 TU 布局：本文件仅 main + 模块原型）
+// bench_leetcuda.cu — CUDA Kernel 面试背题笔记（多 TU 布局：本文件仅 main + 模块原型）
 // =============================================================================
 //
 // 整理自 LeetCUDA 项目（https://github.com/xlite-dev/LeetCUDA），涵盖：
@@ -19,9 +19,9 @@
 //   Phase 7 — GEMM ★：SGEMM → HGEMM → MMA m16n8k16(TN布局) → WGMMA m64n128k16
 //   Phase 8 — FlashAttention-2split_q（FA-2, 含 online softmax + P@V 寄存器复用）
 //
-// 多 TU 布局（并行编译，构建命令见文件尾）：
+// 多 TU 布局（并行编译，构建命令见文件尾；全部 .cu 与本文件同在 bench/ 目录）：
 //   本文件            — main() 与全部模块入口原型（声明+调用）
-//   *.cuh             — kernel 与 host 封装（不变，书籍源码冻结对象）
+//   ../ *.cuh         — kernel 与 host 封装（不变，书籍源码冻结对象）
 //   {base,sgemv,sgemm,hgemm,fp8_gemm,fp4_gemm,flash_attn,ffpa_attn}.cu
 //                     — 各模块 host 侧 test/bench（模板实例化所在 TU）
 //   utils.cu          — 跨模块共享符号（bench 全局配置 + 公共辅助函数）
@@ -204,7 +204,7 @@ int main(int argc, char *argv[]) {
   }
 
   if (g_swizzle_eq_check) {
-    printf("=== notes-v2.cu swizzle v1/v2 equivalence check ===\n");
+    printf("=== bench_leetcuda.cu swizzle v1/v2 equivalence check ===\n");
     printf("| %-56s | %-9s |\n", "Kernel", "Max Err");
     printf("|----------------------------------------------------------|----------|\n");
     test_swizzle_equiv();
@@ -244,7 +244,7 @@ int main(int argc, char *argv[]) {
 #endif
 
   if (g_bench_hgemm || g_bench_fa || g_bench_all) {
-    printf("=== notes-v2.cu bench mode ===\n");
+    printf("=== bench_leetcuda.cu bench mode ===\n");
     printf("HGEMM: M=%d N=%d K=%d   FA: B=%d H=%d N=%d D=%d\n",
            g_bench_M, g_bench_N, g_bench_K,
            g_bench_B, g_bench_H, g_bench_Nfa, g_bench_D);
@@ -325,7 +325,7 @@ int main(int argc, char *argv[]) {
     defined(NOTES_V2_ENABLE_SM120_FP4)
     // Phase 10: NVFP4 GEMM CuTe 快速入口（单级/两级 x A 行/B 列 + WS + 尾部 shape）
     printf("=== FP4 GEMM CuTe correctness (Phase 10) ===\n");
-    printf("误差列 = relFro 相对 Frobenius 误差（vs CPU fp64）\n");
+    printf("Err col = relFro (relative Frobenius error vs CPU fp64)\n");
     printf("| %-56s | %-9s |\n", "Kernel", "relFro");
     printf("|----------------------------------------------------------|----------|\n");
     test_fp4_gemm(512, 512, 512);
@@ -365,7 +365,7 @@ int main(int argc, char *argv[]) {
   int M = 1024, N = 1024, K = 1024;
   if (argc > 3) { M = atoi(argv[1]); N = atoi(argv[2]); K = atoi(argv[3]); }
 
-  printf("=== notes-v2.cu verification harness ===\n");
+  printf("=== bench_leetcuda.cu verification harness ===\n");
   printf("| %-56s | %-9s |\n", "Kernel", "Max Err");
   printf("|----------------------------------------------------------|-----------|\n");
 
@@ -429,12 +429,12 @@ int main(int argc, char *argv[]) {
 //   ./build.sh --arch sm_XX --jobs 8     # 通用 arch（无 NOTES_V2_XXX 宏）
 //
 // 常用运行入口：
-//   ./bin/notes_v2_sm120a.bin                          # 全量 verification
-//   ./bin/notes_v2_sm120a.bin --bench --mnk 8192       # HGEMM/FP8/FP4/FA bench
-//   ./bin/notes_v2_sm120a.bin --bench-hgemm-all --mnk 4096,4096,4096
-//   ./bin/notes_v2_sm120a.bin --bench-fa-all --bhnd 1,48,4096,64
-//   ./bin/notes_v2_sm120a.bin --pd-cute                # persist-D 正确性
-//   ./bin/notes_v2_sm120a.bin --sdnw-cute              # split-D non-WS 正确性
-//   ./bin/notes_v2_sm120a.bin --fp8-gemm-sweep --mnk 4096,4096,4096
-//   ./bin/notes_v2_sm120a.bin --fp4-gemm-sweep --mnk 4096,4096,4096
-//   ./bin/notes_v2_sm120a.bin --swizzle-eq-check       # swizzle v1/v2 等价性
+//   ./bin/leetcuda_bench_sm120a.bin                          # 全量 verification
+//   ./bin/leetcuda_bench_sm120a.bin --bench --mnk 8192       # HGEMM/FP8/FP4/FA bench
+//   ./bin/leetcuda_bench_sm120a.bin --bench-hgemm-all --mnk 8192,8192,8192
+//   ./bin/leetcuda_bench_sm120a.bin --bench-fa-all --bhnd 1,48,4096,64
+//   ./bin/leetcuda_bench_sm120a.bin --pd-cute                # persist-D 正确性
+//   ./bin/leetcuda_bench_sm120a.bin --sdnw-cute              # split-D non-WS 正确性
+//   ./bin/leetcuda_bench_sm120a.bin --fp8-gemm-sweep --mnk 8192,8192,8192
+//   ./bin/leetcuda_bench_sm120a.bin --fp4-gemm-sweep --mnk 8192,8192,8192
+//   ./bin/leetcuda_bench_sm120a.bin --swizzle-eq-check       # swizzle v1/v2 等价性
