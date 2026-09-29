@@ -5,3 +5,7 @@ cute-zhihu.pdf
 *.out
 .tmp/
 .tmp_build*.log
+mini-*.tex
+cover-tikz.aux
+cover-tikz.log
+cover_preview.png
