@@ -1008,7 +1008,7 @@ $D{=}128$ 的 Q tile 更大（$128\times128$ 个 half $=32$\,KB），
 「CuTe 化不牺牲性能」的证据，而不是「哪个实现更快」的定论。
 
 \textbf{CuTe 实测}。表~\ref{tab:ch25-perf} 汇总
-\texttt{notes\_\allowbreak{}v2\_\allowbreak{}sm120a.\allowbreak{}bin}
+\texttt{leetcuda\_\allowbreak{}bench\_\allowbreak{}sm120a.\allowbreak{}bin}
 \texttt{--bench --bench-all} 的 FA CuTe 实测（RTX PRO 5000，sm\_120、110 SM、
 CUDA 13.2；$B{=}1$、$H{=}32$、$N{=}8192$、$D{=}128$ dense，全部 F32Acc，
 参照 cuDNN f32 的 230.2 TFLOPS）。

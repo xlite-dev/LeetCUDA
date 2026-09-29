@@ -651,3 +651,18 @@
     9 个模块 .cu；ch26c 的 notes-v2.cu 引用区间迁移为 ffpa_attn.cu L136-268；
     `verify_anchors.py` ALL GREEN；全书 tex 行号引用同步（约 25 个文件：19 个
     章节 .tex + anchors.yaml + 顶层文档 BOOK_PLAN/两个 SKILL/README）。
+- [x] **.cu 迁入 bench/ + notes-v2.cu 改名 bench_leetcuda.cu（2026-09-29，完成）**
+  - 布局：kernels/interview/ 下全部 10 个 .cu `git mv` 入 `bench/`——
+    `bench/{base,sgemv,sgemm,hgemm,fp8_gemm,fp4_gemm,flash_attn,ffpa_attn,utils}.cu`
+    + `bench/bench_leetcuda.cu`（原 notes-v2.cu）。内容零改动（include 靠
+    build.sh `-I .` 解析根目录 .cuh）；.cuh 留在 interview/ 根未动，build.sh
+    位置不变（仍在 kernels/interview/）。
+  - notes-v2.cu → bench/bench_leetcuda.cu：仅自引用注释/printf 标题/尾部示例
+    更新，440 行不变；bin 名统一 `leetcuda_bench_smXX.bin`（`notes_v2_smXX.bin`
+    改名，sm_89 亦统一为 leetcuda_bench_sm89.bin）。
+  - 旧专项 bench 4 个（bench_attn.cu 711 / bench_ffpa.cu 649 / bench_sgemm.cu
+    254 / bench_sdpa.py 123，基本不再使用）移入 `bench/deprecated/`。
+  - 验证：sm_120a 构建 127s 冷启动；16 场景输出与迁移前一致（default_verify
+    的 stderr/stdout 交错伪影已论证）；5 arch 构建通过；verify_anchors ALL
+    GREEN（anchors.yaml files 段 key 迁移 bench/ 前缀 + ch26c ref →
+    bench/ffpa_attn.cu）。

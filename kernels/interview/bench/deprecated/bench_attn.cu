@@ -2,7 +2,7 @@
 // bench_attn.cu - Focused bench: FA2 CuTe TMA MMA WS vs cuDNN SDPA
 //
 // 仅关注 flash_attn_tma_mma_ws_split_q_cute kernel 和 cudnn SDPA kernel，
-// 避免引入 notes-v2.cu 中 30+ 算子的编译负担和无关干扰。
+// 避免引入 bench_leetcuda.cu 中 30+ 算子的编译负担和无关干扰。
 //
 // Build (SM120 RTX PRO 5000, run from bench/):
 //   nvcc -std=c++20 -O3 --expt-relaxed-constexpr --use_fast_math \
@@ -46,7 +46,7 @@ static bool g_cudnn_only = false;
 static bool g_verbose = false;
 
 // ---------------------------------------------------------------------------
-// Helpers (minimal copies from notes-v2.cu to avoid pulling in everything)
+// Helpers (minimal copies from bench_leetcuda.cu to avoid pulling in everything)
 // ---------------------------------------------------------------------------
 static inline void check(cudaError_t err, const char *msg) {
   if (err != cudaSuccess) {

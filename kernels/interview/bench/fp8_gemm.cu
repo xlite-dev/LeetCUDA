@@ -75,17 +75,17 @@ static void test_fp8_gemm_once(int M, int N, int K,
 void test_fp8_gemm(int M, int N, int K) {
   using fp8_gemm::Fp8GemmScaleMode;
   test_fp8_gemm_once(M, N, K, Fp8GemmScaleMode::kPerRowPerCol, false,
-                     "FP8 GEMM CuTe nonws (per-row x per-col)");
+                     "FP8 GEMM CuTe NonWS (PerRow x PerCol)");
   test_fp8_gemm_once(M, N, K, Fp8GemmScaleMode::kPerRowPerBlock, false,
-                     "FP8 GEMM CuTe nonws (per-row x per-blk)");
+                     "FP8 GEMM CuTe NonWS (PerRow x PerBlk)");
   test_fp8_gemm_once(M, N, K, Fp8GemmScaleMode::kPerBlockPerCol, false,
-                     "FP8 GEMM CuTe nonws (per-blk x per-col)");
+                     "FP8 GEMM CuTe NonWS (PerBlk x PerCol)");
   test_fp8_gemm_once(M, N, K, Fp8GemmScaleMode::kPerBlockPerBlock, false,
-                     "FP8 GEMM CuTe nonws (per-blk x per-blk)");
+                     "FP8 GEMM CuTe NonWS (PerBlk x PerBlk)");
   test_fp8_gemm_once(M, N, K, Fp8GemmScaleMode::kPerRowPerCol, true,
-                     "FP8 GEMM CuTe ws   (per-row x per-col)");
+                     "FP8 GEMM CuTe WS (PerRow x PerCol)");
   test_fp8_gemm_once(M, N, K, Fp8GemmScaleMode::kPerBlockPerBlock, true,
-                     "FP8 GEMM CuTe ws   (per-blk x per-blk)");
+                     "FP8 GEMM CuTe WS (PerBlk x PerBlk)");
   // 尾部 shape: M 非 128 倍数，N 仅 8 对齐，K 非 64/128 倍数
   test_fp8_gemm_once(300, 264, 144, Fp8GemmScaleMode::kPerRowPerCol, false,
                      "FP8 GEMM CuTe tail M=300 N=264 K=144");
@@ -213,27 +213,27 @@ void bench_fp8_gemm(int M, int N, int K) {
   } while (0)
 
   FP8_TIMED_RUN(Fp8GemmScaleMode::kPerRowPerCol, true, true, false, false,
-                "FP8 GEMM CuTe nonws (per-row x per-col, 128x256/s2)");
+                "FP8 GEMM CuTe NonWS (PerRow x PerCol, 128x256/s2)");
   FP8_TIMED_RUN(Fp8GemmScaleMode::kPerRowPerBlock, true, false, false, false,
-                "FP8 GEMM CuTe nonws (per-row x per-blk, 128x256/s2)");
+                "FP8 GEMM CuTe NonWS (PerRow x PerBlk, 128x256/s2)");
   FP8_TIMED_RUN(Fp8GemmScaleMode::kPerBlockPerCol, false, true, false, false,
-                "FP8 GEMM CuTe nonws (per-blk x per-col, 128x256/s2)");
+                "FP8 GEMM CuTe NonWS (PerBlk x PerCol, 128x256/s2)");
   FP8_TIMED_RUN(Fp8GemmScaleMode::kPerBlockPerBlock, false, false, false, false,
-                "FP8 GEMM CuTe nonws (per-blk x per-blk, 128x256/s2)");
+                "FP8 GEMM CuTe NonWS (PerBlk x PerBlk, 128x256/s2)");
   FP8_TIMED_RUN(Fp8GemmScaleMode::kPerRowPerCol, true, true, true, false,
-                "FP8 GEMM CuTe ws   (per-row x per-col, 128x256/s2)");
+                "FP8 GEMM CuTe WS (PerRow x PerCol, 128x256/s2)");
   FP8_TIMED_RUN(Fp8GemmScaleMode::kPerRowPerCol, true, true, false, true,
-                "FP8 GEMM+Quant e2e nonws (per-row x per-col, 128x256/s2)");
+                "FP8 GEMM+Quant E2E NonWS (PerRow x PerCol, 128x256/s2)");
   FP8_TIMED_RUN(Fp8GemmScaleMode::kPerRowPerCol, true, true, true, true,
-                "FP8 GEMM+Quant e2e ws   (per-row x per-col, 128x256/s2)");
+                "FP8 GEMM+Quant E2E WS (PerRow x PerCol, 128x256/s2)");
   // 权重 B 离线量化：模拟"加载已量化的权重 checkpoint", B 量化只做一次且不计入
   // 计时；每次前向只剩 A 侧在线量化 per-token -> GEMM. 推理部署的真实形态。
   fp8_gemm::fp8_gemm_quantize_b(d_b, b8t, sb, N, K, true, 0);
   cudaDeviceSynchronize();
   FP8_TIMED_RUN_BOFF(true, true, false,
-                     "FP8 GEMM+A Quant e2e nonws (B offline, 128x256/s2)");
+                     "FP8 GEMM+A Quant E2E NonWS (B offline, 128x256/s2)");
   FP8_TIMED_RUN_BOFF(true, true, true,
-                     "FP8 GEMM+A Quant e2e ws   (B offline, 128x256/s2)");
+                     "FP8 GEMM+A Quant E2E WS (B offline, 128x256/s2)");
   // randn(-0.25, 0.25) data shape: N(0, (0.25/3)^2) clipped at +-0.25.
   // Verifies error scales with signal amplitude while relative error
   // stays distribution-independent (ch34 error model).
@@ -255,9 +255,9 @@ void bench_fp8_gemm(int M, int N, int K) {
         bench_cublas_bf16_gemm_tflops(handle, M, N, K, d_a, d_b, d_ref);
     cudaMemcpy(h_ref, d_ref, (size_t)M * N * 2, cudaMemcpyDeviceToHost);
     FP8_TIMED_RUN(Fp8GemmScaleMode::kPerRowPerCol, true, true, false, false,
-                  "FP8 GEMM CuTe nonws (rc, randn(+-0.25), 128x256/s2)");
+                  "FP8 GEMM CuTe NonWS (RC, randn(+-0.25), 128x256/s2)");
     FP8_TIMED_RUN(Fp8GemmScaleMode::kPerRowPerCol, true, true, true, false,
-                  "FP8 GEMM CuTe ws   (rc, randn(+-0.25), 128x256/s2)");
+                  "FP8 GEMM CuTe WS (RC, randn(+-0.25), 128x256/s2)");
   }
 #undef FP8_TIMED_RUN
 #undef FP8_TIMED_RUN_BOFF
@@ -279,7 +279,7 @@ void bench_fp8_gemm(int M, int N, int K) {
 // （BN/2 个 f32）与 B 侧 TMA 字节，S 决定 smem 深度。三者被同一块 smem
 // opt-in 上限反比约束：BN 加倍就得砍一级 stage（本卡 99KB，见下）。
 
-// 只跑指定配置（"128x256x128 s2 ws" / "64x64x128 s3 nonws"），供 ncu 精确抓
+// 只跑指定配置（"128x256x128 s2 WS" / "64x64x128 s3 NonWS"），供 ncu 精确抓
 // 单个实例：kernel 名不带模板实参（ncu -k 只能匹配到 fp8_gemm_tma_ws_kernel
 // 这一级），只能让程序自己只发目标配置的那几个 launch。
 static bool fp8_sweep_want(int bm, int bn, int st, bool ws) {
@@ -287,7 +287,7 @@ static bool fp8_sweep_want(int bm, int bn, int st, bool ws) {
   if (sel == nullptr) return true;
   char want[32];
   snprintf(want, sizeof(want), "%dx%dx%d s%d %s", bm, bn, 128, st,
-           ws ? "ws" : "nonws");
+           ws ? "WS" : "NonWS");
   return strcmp(sel, want) == 0;
 }
 
@@ -382,13 +382,13 @@ void bench_fp8_gemm_tile_sweep(int M, int N, int K) {
   cudaEventCreate(&start);
   cudaEventCreate(&stop);
 
-  printf("=== FP8 GEMM tile/stage sweep (M=N=K=%d, per-row x per-col, "
+  printf("=== FP8 GEMM tile/stage sweep (M=N=K=%d, PerRow x PerCol, "
          "smem opt-in limit %zuB) ===\n",
          M, smem_limit);
   // 默认档是本扫描的落点，必须让读者一眼找到，别埋在一堆 tile 里
-  printf("说明：\"<= lib default\" = 库默认档（Fp8GemmTraits<> 默认实参 "
-         "128x256x128 s2，也是本扫描实测最快档）；\"<= default geom\" = "
-         "同一几何的 WS 版。\n");
+  printf("Note: \"<= lib default\" = library default tile (Fp8GemmTraits<> "
+         "default args 128x256x128 s2, also the fastest measured here); "
+         "\"<= default geom\" = WS variant of the same geometry.\n");
   printf("| %-56s | %-9s | %-19s |\n", "FP8 GEMM tile/stage", "Max Err",
          "TFLOPS/cuBLAS");
   printf("|----------------------------------------------------------|"
@@ -404,7 +404,7 @@ void bench_fp8_gemm_tile_sweep(int M, int N, int K) {
                            : "";                                               \
     char label[80];                                                            \
     snprintf(label, sizeof(label), "FP8 GEMM %s %dx%dx128 s%d (%dKB)%s",       \
-             WS ? "ws   " : "nonws", BM, BN, ST, kSmemKB, mark);               \
+             WS ? "WS" : "NonWS", BM, BN, ST, kSmemKB, mark);                  \
     float max_err = 0, time_ms = 0;                                            \
     if (launch_timed_fp8_gemm_tile<BM, BN, ST, WS>(                            \
             a8, b8t, sa, sb, cO, h_c, h_ref, M, N, K, smem_limit, start, stop, \
@@ -440,11 +440,11 @@ void bench_fp8_gemm_tile_sweep(int M, int N, int K) {
   FP8_SWEEP_ROW(false, 128, 64, 4);
   // (4) 放不下的组合不实例化（省编译时间），只按公式列出所需 smem
   printf("| %-56s | %-9s | %-19s |\n",
-         "FP8 GEMM nonws 128x256x128 s3 (144KB)", "SKIP", "> 99KB smem");
+         "FP8 GEMM NonWS 128x256x128 s3 (144KB)", "SKIP", "> 99KB smem");
   printf("| %-56s | %-9s | %-19s |\n",
-         "FP8 GEMM nonws 256x256x128 s2 (128KB)", "SKIP", "> 99KB smem");
+         "FP8 GEMM NonWS 256x256x128 s2 (128KB)", "SKIP", "> 99KB smem");
   printf("| %-56s | %-9s | %-19s |\n",
-         "FP8 GEMM nonws 256x256x128 s3 (192KB)", "SKIP", "> 99KB smem");
+         "FP8 GEMM NonWS 256x256x128 s3 (192KB)", "SKIP", "> 99KB smem");
   // (5) WS：线程数 = 128(producer) + kBM/16*32(consumer)，setmaxnreg 预算
   //     128*32 + N_c*232 <= 64K 只在 kBM<=128 成立，故只扫 kBM=128/64。这里
   //     扫 kBM=128（384 线程，与 --bench 表里的 ws 行同构）

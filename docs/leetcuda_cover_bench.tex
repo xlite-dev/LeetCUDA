@@ -1,6 +1,7 @@
-% leetcuda_cover_bench.tex — LeetCUDA 封面 + bench 表格 横向合并图（手绘风, 两图各带手绘边框）
+% leetcuda_cover_bench.tex — LeetCUDA 封面 + bench 表格 横向合并图（手绘风, 各图带手绘边框）
 % 合并自: kernels/interview/book/figures/misc/cover-tikz.tex (封面, A4 竖版 21x29.7cm)
 %         docs/leetcuda_bench_table.tex (bench 数据表)
+%         ffpa-attn CuTeDSL 性能图 H200/B200 8K/16K D=512 (第三列柱状图)
 % 布局: 封面在左, 表格在右且垂直居中对齐封面; 自包含单文件, 不依赖被合并的两个 tex
 % 构建: xelatex leetcuda_cover_bench.tex  (standalone 单页 PDF)
 \documentclass[tikz,border=12pt]{standalone}
@@ -41,6 +42,12 @@
 \definecolor{colTeal}{HTML}{127F87}
 \definecolor{colAccent}{HTML}{3B3A8F}
 \definecolor{colGray}{HTML}{5A5A5A}
+
+% CuTeDSL 性能柱配色 (与 ffpa-attn bench 源图一致)
+\definecolor{barSdpaF}{HTML}{B0B0B0}
+\definecolor{barFfpaF}{HTML}{2171B5}
+\definecolor{barSdpaB}{HTML}{F5A623}
+\definecolor{barFfpaB}{HTML}{FD493C}
 
 % 表格字体
 \def\subfont{\fontsize{11pt}{13pt}\selectfont}
@@ -96,6 +103,65 @@
   \ifnum#1=1 \wrule[draw=black!20, line width=0.5pt]{8.60}{17.55}{#2+0.30}\fi
   \fill[#3] (8.60,{#2-0.075}) rectangle ++(0.17,0.17);%
   \node[anchor=west, font=\grpfont, inner sep=0pt, text=#3] at (8.90,#2) {#4};}
+
+% ---- 第三列 CuTeDSL 柱状图: 8 组 (8K 4 类 + 16K 4 类) x 4 柱 ----
+% 每根柱的高度由当前图的 \cbase \chp \cymax 决定, 画前先 \def 这三个量
+\def\cpx{19.50}   % 绘图区左边界
+\def\cpr{32.35}   % 绘图区右边界
+\def\cgw{1.606}   % 组间距
+\def\cbp{0.30}    % 组内柱间距
+\def\cbw{0.22}    % 柱宽
+\def\cpad{0.243}  % 组内左留白
+
+% 柱: 组号 / 柱号 / 数值(T) / 颜色
+\newcommand{\cvbar}[4]{%
+  \pgfmathsetmacro{\bx}{\cpx + #1*\cgw + \cpad + #2*\cbp}%
+  \pgfmathsetmacro{\bh}{#3/\cymax*\chp}%
+  \fill[#4] (\bx,\cbase) rectangle ++(\cbw,\bh);}
+
+% 柱顶数值: 组号 / 柱号 / 数值 / 颜色
+\newcommand{\cvlbl}[4]{%
+  \pgfmathsetmacro{\bx}{\cpx + #1*\cgw + \cpad + #2*\cbp + \cbw/2}%
+  \pgfmathsetmacro{\bh}{#3/\cymax*\chp}%
+  \node[anchor=south, font=\fontsize{6}{7}\selectfont, text=#4, inner sep=0pt]
+    at (\bx,{\cbase+\bh+0.05}) {#3};}
+
+% 横向网格线: 刻度值(T)
+\newcommand{\cgrid}[1]{%
+  \pgfmathsetmacro{\gy}{\cbase + #1/\cymax*\chp}%
+  \wrule[draw=black!18, line width=0.5pt]{\cpx}{\cpr}{\gy}}
+
+% y 轴刻度标签: 刻度值(T)
+\newcommand{\ctick}[1]{%
+  \pgfmathsetmacro{\gy}{\cbase + #1/\cymax*\chp}%
+  \node[anchor=east, font=\fontsize{6}{7}\selectfont, text=black!65, inner sep=0pt]
+    at ({\cpx-0.10},\gy) {#1};}
+
+% x 组标签: 组号 / 注意力类型 / 序列标签
+\newcommand{\cxlab}[3]{%
+  \pgfmathsetmacro{\gx}{\cpx + #1*\cgw + \cgw/2}%
+  \node[anchor=north, font=\fontsize{6.5}{7.5}\selectfont, text=black!80, inner sep=0pt]
+    at (\gx,{\cbase-0.16}) {#2};%
+  \node[anchor=north, font=\fontsize{6}{7}\selectfont, text=black!55, inner sep=0pt]
+    at (\gx,{\cbase-0.40}) {#3};}
+
+% 图例: y 坐标
+\newcommand{\clegend}[1]{%
+  \node[anchor=west, font=\fontsize{6.5}{7.5}\selectfont, text=black!78, inner sep=0pt]
+    at ({\cpx+0.55},#1) {%
+    \textcolor{barSdpaF}{\rule[0.05cm]{0.22cm}{0.13cm}}\,SDPA FWD\quad
+    \textcolor{barFfpaF}{\rule[0.05cm]{0.22cm}{0.13cm}}\,FFPA FWD\quad
+    \textcolor{barSdpaB}{\rule[0.05cm]{0.22cm}{0.13cm}}\,SDPA BWD\quad
+    \textcolor{barFfpaB}{\rule[0.05cm]{0.22cm}{0.13cm}}\,FFPA BWD};}
+
+% 坐标轴: x 轴 + y 轴
+\newcommand{\caxes}{%
+  \draw[black!45, line width=0.7pt] (\cpx,\cbase) -- (\cpr,\cbase);%
+  \draw[black!45, line width=0.7pt] (\cpx,\cbase) -- (\cpx,{\cbase+\chp});}
+
+% 两个序列区间之间的分隔虚线
+\newcommand{\csep}{%
+  \draw[black!25, line width=0.5pt, dashed] ({\cpx+4*\cgw},\cbase) -- ({\cpx+4*\cgw},{\cbase-0.52});}
 
 \begin{document}
 \begin{tikzpicture}
@@ -309,7 +375,7 @@
 \node[anchor=west, font=\subfont, text=black!85] at (0,-0.35)
   {FA2 / FA3 Attention vs cuDNN SDPA};
 \node[anchor=north west, font=\capfont, text=black!60, align=left, inner sep=0pt] at (0,-0.62)
-  {NVIDIA RTX PRO 5000 (sm\_120a) --- B=1, H=32, N=16384, D=128};
+  {NVIDIA RTX PRO 5000 (sm\_120a) -- B=1, H=32, N=16384, D=128};
 
 \wrule[line width=1.1pt]{0}{7.75}{-1.00}
 \node[anchor=west, font=\hdffont, text=black!72] at (0,-1.25) {Configuration};
@@ -352,7 +418,7 @@
 \node[anchor=west, font=\subfont, text=black!85] at (8.60,-0.35)
   {HGEMM CuTe Swizzle vs cuBLAS};
 \node[anchor=north west, font=\capfont, text=black!60, align=left, inner sep=0pt] at (8.60,-0.62)
-  {NVIDIA RTX PRO 5000 (sm\_120a) --- M=N=K=4096, F16Acc; FP8 4096/8192};
+  {NVIDIA RTX PRO 5000 (sm\_120a) -- M=N=K=4096, F16Acc; FP8 4096/8192};
 
 \wrule[line width=1.1pt]{8.60}{17.55}{-1.00}
 \node[anchor=west, font=\hdffont, text=black!72] at (8.60,-1.24) {Configuration};
@@ -386,7 +452,7 @@
 \node[anchor=west, font=\subfont, text=black!85] at (8.60,-7.45)
   {FA \textcolor{colAccent}{Split-D} vs cuDNN SDPA};
 \node[anchor=north west, font=\capfont, text=black!60, align=left, inner sep=0pt] at (8.60,-7.72)
-  {NVIDIA RTX PRO 5000 (sm\_120a) --- B=1, H=32, N=8192, D=320};
+  {NVIDIA RTX PRO 5000 (sm\_120a) -- B=1, H=32, N=8192, D=320};
 
 \wrule[line width=1.1pt]{8.60}{17.55}{-8.10}
 \node[anchor=west, font=\hdffont, text=black!72] at (8.60,-8.34) {Configuration};
@@ -413,15 +479,106 @@
 \draw[draw=black!28, line width=0.8pt, decorate,
       decoration={random steps, segment length=9pt, amplitude=0.8pt}, rounded corners=5pt]
   (8.60,-12.78) rectangle (17.55,-13.28);
+
+% ===================== RIGHT THIRD: CuTeDSL attention vs SDPA (H200 / B200) =====================
+% 数据: ffpa-attn docs/bench/README.md bf16 行, B=1, H=32, D=512, N=8192(8K)/16384(16K)
+% 柱序: 0=SDPA FWD / 1=FFPA FWD / 2=SDPA BWD / 3=FFPA BWD
+
+% ---------- H200 (8K / 16K) ----------
+\def\cbase{-5.84}
+\def\chp{4.40}
+\def\cymax{450}
+\node[anchor=center, font=\subfont, text=black!85] at (25.34,-0.42)
+  {FFPA CuTeDSL vs SDPA -- H200 (D=512)};
+\clegend{-1.04}
+\node[anchor=east, font=\fontsize{8}{10}\selectfont\bfseries, text=colAccent]
+  at (32.28,-1.04) {\textcolor{colRed}{1.8x$\sim$5.2x} speedup vs SDPA};
+\node[rotate=90, anchor=center, font=\fontsize{6.5}{7.5}\selectfont, text=black!65]
+  at (18.52,{-5.84+4.40/2}) {TFLOPS};
+\cgrid{150}\cgrid{300}\cgrid{450}
+\caxes
+\ctick{0}\ctick{150}\ctick{300}\ctick{450}
+% 8K
+\cvbar{0}{0}{135}{barSdpaF}\cvbar{0}{1}{372}{barFfpaF}\cvbar{0}{2}{46}{barSdpaB}\cvbar{0}{3}{227}{barFfpaB}
+\cvbar{1}{0}{137}{barSdpaF}\cvbar{1}{1}{247}{barFfpaF}\cvbar{1}{2}{47}{barSdpaB}\cvbar{1}{3}{193}{barFfpaB}
+\cvbar{2}{0}{135}{barSdpaF}\cvbar{2}{1}{403}{barFfpaF}\cvbar{2}{2}{46}{barSdpaB}\cvbar{2}{3}{238}{barFfpaB}
+\cvbar{3}{0}{131}{barSdpaF}\cvbar{3}{1}{347}{barFfpaF}\cvbar{3}{2}{42}{barSdpaB}\cvbar{3}{3}{217}{barFfpaB}
+% 16K
+\cvbar{4}{0}{123}{barSdpaF}\cvbar{4}{1}{416}{barFfpaF}\cvbar{4}{2}{47}{barSdpaB}\cvbar{4}{3}{235}{barFfpaB}
+\cvbar{5}{0}{127}{barSdpaF}\cvbar{5}{1}{264}{barFfpaF}\cvbar{5}{2}{48}{barSdpaB}\cvbar{5}{3}{198}{barFfpaB}
+\cvbar{6}{0}{123}{barSdpaF}\cvbar{6}{1}{426}{barFfpaF}\cvbar{6}{2}{47}{barSdpaB}\cvbar{6}{3}{240}{barFfpaB}
+\cvbar{7}{0}{119}{barSdpaF}\cvbar{7}{1}{381}{barFfpaF}\cvbar{7}{2}{44}{barSdpaB}\cvbar{7}{3}{226}{barFfpaB}
+% FFPA 柱顶数值
+\cvlbl{0}{1}{372}{barFfpaF}\cvlbl{0}{3}{227}{barFfpaB}
+\cvlbl{1}{1}{247}{barFfpaF}\cvlbl{1}{3}{193}{barFfpaB}
+\cvlbl{2}{1}{403}{barFfpaF}\cvlbl{2}{3}{238}{barFfpaB}
+\cvlbl{3}{1}{347}{barFfpaF}\cvlbl{3}{3}{217}{barFfpaB}
+\cvlbl{4}{1}{416}{barFfpaF}\cvlbl{4}{3}{235}{barFfpaB}
+\cvlbl{5}{1}{264}{barFfpaF}\cvlbl{5}{3}{198}{barFfpaB}
+\cvlbl{6}{1}{426}{barFfpaF}\cvlbl{6}{3}{240}{barFfpaB}
+\cvlbl{7}{1}{381}{barFfpaF}\cvlbl{7}{3}{226}{barFfpaB}
+\cxlab{0}{self-attn}{8K}\cxlab{1}{cross-attn}{8K}\cxlab{2}{gqa}{8K}\cxlab{3}{causal}{8K}
+\cxlab{4}{self-attn}{16K}\cxlab{5}{cross-attn}{16K}\cxlab{6}{gqa}{16K}\cxlab{7}{causal}{16K}
+\csep
+\draw[draw=black!40, line width=0.9pt, rounded corners=5pt,
+      decorate, decoration={random steps, segment length=9pt, amplitude=0.8pt}]
+  (18.28,-0.16) rectangle (32.40,-6.54);
+
+% ---------- B200 (8K / 16K) ----------
+\def\cbase{-12.52}
+\def\chp{4.40}
+\def\cymax{1600}
+\node[anchor=center, font=\subfont, text=black!85] at (25.34,-7.10)
+  {FFPA CuTeDSL vs SDPA -- B200 (D=512)};
+\clegend{-7.72}
+\node[anchor=east, font=\fontsize{8}{10}\selectfont\bfseries, text=colAccent]
+  at (32.28,-7.72) {\textcolor{colRed}{1.5x$\sim$15x} speedup vs SDPA};
+\node[rotate=90, anchor=center, font=\fontsize{6.5}{7.5}\selectfont, text=black!65]
+  at (18.52,{-12.52+4.40/2}) {TFLOPS};
+\cgrid{400}\cgrid{800}\cgrid{1200}\cgrid{1600}
+\caxes
+\ctick{0}\ctick{400}\ctick{800}\ctick{1200}\ctick{1600}
+% 8K
+\cvbar{0}{0}{184}{barSdpaF}\cvbar{0}{1}{1456}{barFfpaF}\cvbar{0}{2}{52}{barSdpaB}\cvbar{0}{3}{743}{barFfpaB}
+\cvbar{1}{0}{176}{barSdpaF}\cvbar{1}{1}{1171}{barFfpaF}\cvbar{1}{2}{52}{barSdpaB}\cvbar{1}{3}{435}{barFfpaB}
+\cvbar{2}{0}{184}{barSdpaF}\cvbar{2}{1}{1493}{barFfpaF}\cvbar{2}{2}{52}{barSdpaB}\cvbar{2}{3}{763}{barFfpaB}
+\cvbar{3}{0}{172}{barSdpaF}\cvbar{3}{1}{1336}{barFfpaF}\cvbar{3}{2}{49}{barSdpaB}\cvbar{3}{3}{623}{barFfpaB}
+% 16K
+\cvbar{4}{0}{182}{barSdpaF}\cvbar{4}{1}{1393}{barFfpaF}\cvbar{4}{2}{53}{barSdpaB}\cvbar{4}{3}{727}{barFfpaB}
+\cvbar{5}{0}{170}{barSdpaF}\cvbar{5}{1}{1260}{barFfpaF}\cvbar{5}{2}{55}{barSdpaB}\cvbar{5}{3}{516}{barFfpaB}
+\cvbar{6}{0}{182}{barSdpaF}\cvbar{6}{1}{1445}{barFfpaF}\cvbar{6}{2}{53}{barSdpaB}\cvbar{6}{3}{734}{barFfpaB}
+\cvbar{7}{0}{176}{barSdpaF}\cvbar{7}{1}{1404}{barFfpaF}\cvbar{7}{2}{51}{barSdpaB}\cvbar{7}{3}{669}{barFfpaB}
+% FFPA 柱顶数值
+\cvlbl{0}{1}{1456}{barFfpaF}\cvlbl{0}{3}{743}{barFfpaB}
+\cvlbl{1}{1}{1171}{barFfpaF}\cvlbl{1}{3}{435}{barFfpaB}
+\cvlbl{2}{1}{1493}{barFfpaF}\cvlbl{2}{3}{763}{barFfpaB}
+\cvlbl{3}{1}{1336}{barFfpaF}\cvlbl{3}{3}{623}{barFfpaB}
+\cvlbl{4}{1}{1393}{barFfpaF}\cvlbl{4}{3}{727}{barFfpaB}
+\cvlbl{5}{1}{1260}{barFfpaF}\cvlbl{5}{3}{516}{barFfpaB}
+\cvlbl{6}{1}{1445}{barFfpaF}\cvlbl{6}{3}{734}{barFfpaB}
+\cvlbl{7}{1}{1404}{barFfpaF}\cvlbl{7}{3}{669}{barFfpaB}
+\cxlab{0}{self-attn}{8K}\cxlab{1}{cross-attn}{8K}\cxlab{2}{gqa}{8K}\cxlab{3}{causal}{8K}
+\cxlab{4}{self-attn}{16K}\cxlab{5}{cross-attn}{16K}\cxlab{6}{gqa}{16K}\cxlab{7}{causal}{16K}
+\csep
+\draw[draw=black!40, line width=0.9pt, rounded corners=5pt,
+      decorate, decoration={random steps, segment length=9pt, amplitude=0.8pt}]
+  (18.28,-6.84) rectangle (32.40,-13.22);
+
+% 两大部分各自的手绘外框 (overlay: 不参与 bbox, 不影响整图尺寸)
+% 左: bench 表格部分
+\draw[overlay, draw=black!50, line width=1.1pt, rounded corners=5pt,
+      decorate, decoration={random steps, segment length=9pt, amplitude=0.8pt}]
+  (-0.20,0.14) rectangle (17.76,-13.52);
+% 右: FFPA CuTeDSL 性能图部分
+\draw[overlay, draw=black!50, line width=1.1pt, rounded corners=5pt,
+      decorate, decoration={random steps, segment length=9pt, amplitude=0.8pt}]
+  (18.06,0.14) rectangle (32.68,-13.52);
   \end{tikzpicture}};
 
-% 手绘风外边框: 封面与表格各一
+% 手绘风外边框: 封面一个 (bench 侧的两大部分外框画在 bench 内层 tikzpicture 里)
 \draw[draw=coverInk!55, line width=1.1pt, rounded corners=5pt,
       decorate, decoration={random steps, segment length=9pt, amplitude=0.8pt}]
   (cover.south west) rectangle (cover.north east);
-\draw[draw=black!50, line width=1.1pt, rounded corners=5pt,
-      decorate, decoration={random steps, segment length=9pt, amplitude=0.8pt}]
-  (bench.south west) rectangle (bench.north east);
 
 \end{tikzpicture}
 \end{document}

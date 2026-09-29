@@ -642,7 +642,7 @@ $N{=}16384$ dense & 243.2 & 236.9 & 1.03$\times$ & 大 $N$ 稳定 \\
 \end{center}
 
 表中每行都是成对同轮数据（kernel 与 cuDNN 同一轮测量，时钟态一致）：dense self
-行为 \texttt{notes\_\allowbreak{}v2\_\allowbreak{}sm120a.\allowbreak{}bin --bench}
+行为 \texttt{leetcuda\_\allowbreak{}bench\_\allowbreak{}sm120a.\allowbreak{}bin --bench}
 的同轮输出（240.1/230.2，2026-09-22），其余场景为 min-of-30 复测。跨 run 的波动带：
 dense 主场景 238.4/230.7、230.0/230.5、230.3、240.1/230.2（CLI bench 与 bench\_pd
 两种脚本），$N{=}16384$ 为 239.2/230.9，单点绝对值跨 run 波动 $\pm2\sim3\%$
@@ -844,7 +844,7 @@ nvcc -std=c++20 -O2 -gencode arch=compute_120f,code=sm_120f \
 # ALL OK
 \end{lstlisting}
 
-集成入口在 flash\_attn.cu（\texttt{test\_\allowbreak{}flash\_\allowbreak{}attn\_\allowbreak{}cute\_\allowbreak{}persist\_\allowbreak{}d\_\allowbreak{}sm120}，
+集成入口在 bench/flash\_attn.cu（\texttt{test\_\allowbreak{}flash\_\allowbreak{}attn\_\allowbreak{}cute\_\allowbreak{}persist\_\allowbreak{}d\_\allowbreak{}sm120}，
 含 $N_q{=}2048$/$H{=}8$ 的多 q-tile 大 case）。参考实现用 \textbf{cuDNN SDPA}
 （\texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_CUDNN} 构建下经 cudnn-frontend 组图：
 GQA 按 $h\mapsto h/(H/H_{kv})$ 折叠、causal 用 bottom-right 对齐，恰是本
@@ -853,7 +853,7 @@ bottom-right 对角线出界）自动回退 CPU fp64。输出行的 \texttt{ref=
 当轮参考来源，fp64 CPU 参考从「每 case 数十秒」缩到 cuDNN 的亚秒级：
 
 \begin{lstlisting}[style=console]
-$ ./notes_v2_sm120a.bin --pd-cute
+$ ./leetcuda_bench_sm120a.bin --pd-cute
 | FA persist-D WS persistent CTA scale-fused (D=64, Nq=2048, Nkv=2048, \
 Hq=8, Hkv=8, ref=cudnn) | 3.052e-05 |
 | FA persist-D WS persistent CTA scale-fused (D=128, Nq=1024, Nkv=1024, \

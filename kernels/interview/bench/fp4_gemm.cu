@@ -27,8 +27,8 @@ float bench_cublas_bf16_gemm_tflops(cublasHandle_t handle, int M, int N, int K,
 // 消费（软件只反量化第一级）③ 误差 O(0.14) 而非 O(0.03)：E2M1 只有 3 个数值位，
 // 故这里报 relFro（相对 Frobenius 误差）而非异常值主导的 max err（见 ch36）。
 // =============================================================================
-// %-56s 按字符数补空格，含 CJK 的标签（单级/两级/A 行…）显示宽度超出字符数，
-// 表格会错列；bench_pad56 按显示宽度（CJK 双宽）算补齐空格数。
+// 按显示宽度（CJK 双宽）补齐到 56 列；标签为纯 ASCII 时与 %-56s 等价，
+// 保留以兼容未来含 CJK 的标签。
 static int bench_pad56(const char *s) {
   int pad = 56;
   for (const unsigned char *p = (const unsigned char *)s; *p; ++p)
@@ -88,20 +88,20 @@ static void test_fp4_gemm_once(int M, int N, int K,
 void test_fp4_gemm(int M, int N, int K) {
   using fp4_gemm::Fp4GemmScaleMode;
   test_fp4_gemm_once(M, N, K, Fp4GemmScaleMode::kSingleLevel, false,
-                     "FP4 GEMM CuTe nonws (单级: 只有 level-2)");
+                     "FP4 GEMM CuTe NonWS (level-2 only)");
   test_fp4_gemm_once(M, N, K, Fp4GemmScaleMode::kLevel1A, false,
-                     "FP4 GEMM CuTe nonws (两级: level-2 x A 行)");
+                     "FP4 GEMM CuTe NonWS (two-level: level-2 x PerRow)");
   test_fp4_gemm_once(M, N, K, Fp4GemmScaleMode::kLevel1B, false,
-                     "FP4 GEMM CuTe nonws (两级: level-2 x B 列)");
+                     "FP4 GEMM CuTe NonWS (two-level: level-2 x PerCol)");
   test_fp4_gemm_once(M, N, K, Fp4GemmScaleMode::kTwoLevel, false,
-                     "FP4 GEMM CuTe nonws (两级: A 行 x B 列)");
+                     "FP4 GEMM CuTe NonWS (two-level: PerRow x PerCol)");
   test_fp4_gemm_once(M, N, K, Fp4GemmScaleMode::kTwoLevel, true,
-                     "FP4 GEMM CuTe ws   (两级: A 行 x B 列)");
+                     "FP4 GEMM CuTe WS (two-level: PerRow x PerCol)");
   // 尾部 shape: M 非 128 倍数，N 仅 8 对齐，K 非 128 倍数（K%64==0 是硬约束）
   test_fp4_gemm_once(300, 264, 192, Fp4GemmScaleMode::kTwoLevel, false,
                      "FP4 GEMM CuTe tail M=300 N=264 K=192");
   test_fp4_gemm_once(300, 264, 192, Fp4GemmScaleMode::kTwoLevel, true,
-                     "FP4 GEMM CuTe tail ws M=300 N=264 K=192");
+                     "FP4 GEMM CuTe tail WS M=300 N=264 K=192");
 }
 #endif
 
@@ -351,29 +351,29 @@ void bench_fp4_gemm(int M, int N, int K) {
            fp4_gemm::fp4_gemm_use_wide_tile(M, N, K) ? "128x256/s6"
                                                      : "128x128/s4");
   FP4_RUN_KERNEL(Fp4GemmScaleMode::kSingleLevel, false,
-                 "FP4 GEMM CuTe nonws (单级 level-2");
+                 "FP4 GEMM CuTe NonWS (level-2 only");
   FP4_RUN_KERNEL(Fp4GemmScaleMode::kLevel1A, false,
-                 "FP4 GEMM CuTe nonws (level-2 x A 行");
+                 "FP4 GEMM CuTe NonWS (level-2 x PerRow");
   FP4_RUN_KERNEL(Fp4GemmScaleMode::kLevel1B, false,
-                 "FP4 GEMM CuTe nonws (level-2 x B 列");
+                 "FP4 GEMM CuTe NonWS (level-2 x PerCol");
   FP4_RUN_KERNEL(Fp4GemmScaleMode::kTwoLevel, false,
-                 "FP4 GEMM CuTe nonws (两级 A 行 x B 列");
+                 "FP4 GEMM CuTe NonWS (PerRow x PerCol");
   FP4_RUN_KERNEL(Fp4GemmScaleMode::kTwoLevel, true,
-                 "FP4 GEMM CuTe ws   (两级 A 行 x B 列");
+                 "FP4 GEMM CuTe WS (PerRow x PerCol");
   FP4_RUN_E2E(Fp4GemmScaleMode::kSingleLevel, false,
-              "FP4 GEMM+Quant e2e nonws (单级 level-2");
+              "FP4 GEMM+Quant E2E NonWS (level-2 only");
   FP4_RUN_E2E(Fp4GemmScaleMode::kTwoLevel, false,
-              "FP4 GEMM+Quant e2e nonws (两级 A 行 x B 列");
+              "FP4 GEMM+Quant E2E NonWS (PerRow x PerCol");
   FP4_RUN_E2E(Fp4GemmScaleMode::kTwoLevel, true,
-              "FP4 GEMM+Quant e2e ws   (两级 A 行 x B 列");
+              "FP4 GEMM+Quant E2E WS (PerRow x PerCol");
   // 权重 B 离线量化：模拟"加载已量化的权重 checkpoint"，B 的量化 + 转置只做
   // 一次且不计入计时；每次前向只剩 A 侧在线量化 -> NVFP4 GEMM. 部署真实形态.
   fp4_gemm::fp4_gemm_quantize_b(d_b, b4t, sfb, sb, N, K, true, 0);
   cudaDeviceSynchronize();
   FP4_RUN_BOFF(Fp4GemmScaleMode::kTwoLevel, false,
-               "FP4 GEMM+A Quant e2e nonws (B offline");
+               "FP4 GEMM+A Quant E2E NonWS (B offline");
   FP4_RUN_BOFF(Fp4GemmScaleMode::kTwoLevel, true,
-               "FP4 GEMM+A Quant e2e ws   (B offline");
+               "FP4 GEMM+A Quant E2E WS (B offline");
   // randn(-0.25, 0.25) data shape: 幅度缩小 4x，验证 relFro 与信号幅度无关；
   // 两级量化里 level-1 的 per-row scale 正是在这里体现价值（见 ch36 误差模型）
   {
@@ -394,9 +394,9 @@ void bench_fp4_gemm(int M, int N, int K) {
         bench_cublas_bf16_gemm_tflops(handle, M, N, K, d_a, d_b, d_ref);
     cudaMemcpy(h_ref, d_ref, (size_t)M * N * 2, cudaMemcpyDeviceToHost);
     FP4_RUN_KERNEL(Fp4GemmScaleMode::kTwoLevel, false,
-                   "FP4 GEMM CuTe nonws (两级, randn(+-0.25)");
+                   "FP4 GEMM CuTe NonWS (RC, randn(+-0.25)");
     FP4_RUN_KERNEL(Fp4GemmScaleMode::kTwoLevel, true,
-                   "FP4 GEMM CuTe ws   (两级, randn(+-0.25)");
+                   "FP4 GEMM CuTe WS (RC, randn(+-0.25)");
   }
 #undef FP4_RUN_E2E
 #undef FP4_RUN_KERNEL
@@ -424,7 +424,7 @@ static bool fp4_sweep_want(int bn, int st, bool ws) {
   static const char *sel = getenv("FP4_SWEEP_CFG");
   if (sel == nullptr) return true;
   char want[32];
-  snprintf(want, sizeof(want), "%dx64 s%d %s", bn, st, ws ? "ws" : "nonws");
+  snprintf(want, sizeof(want), "%dx64 s%d %s", bn, st, ws ? "WS" : "NonWS");
   return strcmp(sel, want) == 0;
 }
 
@@ -521,11 +521,12 @@ void bench_fp4_gemm_tile_sweep(int M, int N, int K) {
   cudaEventCreate(&start);
   cudaEventCreate(&stop);
 
-  printf("=== FP4 GEMM tile/stage sweep (M=N=K=%d, 两级量化, smem opt-in "
-         "limit %zuB) ===\n",
+  printf("=== FP4 GEMM tile/stage sweep (M=N=K=%d, two-level quant, smem "
+         "opt-in limit %zuB) ===\n",
          M, smem_limit);
-  printf("BM 固定 128（SF 行块约束），BK 固定 64（= MMA 原子 K 宽）；"
-         "\"<= lib default\" = 库默认档 Fp4GemmTraits<> 128x128x64 s4。\n");
+  printf("BM fixed 128 (SF row-block constraint), BK fixed 64 (= MMA atom K "
+         "width); \"<= lib default\" = library default Fp4GemmTraits<> "
+         "128x128x64 s4.\n");
   printf("| %-56s | %-9s | %-19s |\n", "FP4 GEMM tile/stage", "relFro",
          "TFLOPS/cuBLAS");
   printf("|----------------------------------------------------------|"
@@ -540,7 +541,7 @@ void bench_fp4_gemm_tile_sweep(int M, int N, int K) {
     const char *mark = (BN == 128 && ST == 4) ? " <= lib default" : "";       \
     char label[80];                                                           \
     snprintf(label, sizeof(label), "FP4 GEMM %s 128x%dx64 s%d (%dKB)%s",      \
-             WS ? "ws   " : "nonws", BN, ST, kSmemKB, mark);                  \
+             WS ? "WS" : "NonWS", BN, ST, kSmemKB, mark);                     \
     float relfro = 0, time_ms = 0;                                            \
     if (launch_timed_fp4_gemm_tile<BN, ST, WS>(                               \
             a4, b4t, sfa, sfb, sa, sb, cO, h_c, h_ref, M, N, K, smem_limit,   \
@@ -575,13 +576,13 @@ void bench_fp4_gemm_tile_sweep(int M, int N, int K) {
   FP4_SWEEP_ROW(true, 256, 6);
   // (4) 两条公式排除掉的组合（列出来让读者看清边界，不实例化）
   printf("| %-56s | %-9s | %-19s |\n",
-         "FP4 GEMM nonws 128x128x64 s2", "SKIP", "O staging 32KB > 18KB");
+         "FP4 GEMM NonWS 128x128x64 s2", "SKIP", "O staging 32KB > 18KB");
   printf("| %-56s | %-9s | %-19s |\n",
-         "FP4 GEMM nonws 128x128x64 s3", "SKIP", "O staging 32KB > 27KB");
+         "FP4 GEMM NonWS 128x128x64 s3", "SKIP", "O staging 32KB > 27KB");
   printf("| %-56s | %-9s | %-19s |\n",
-         "FP4 GEMM nonws 128x128x64 s12", "SKIP", "> 99KB smem");
+         "FP4 GEMM NonWS 128x128x64 s12", "SKIP", "> 99KB smem");
   printf("| %-56s | %-9s | %-19s |\n",
-         "FP4 GEMM nonws 128x256x64 s4", "SKIP", "O staging 64KB > 54KB");
+         "FP4 GEMM NonWS 128x256x64 s4", "SKIP", "O staging 64KB > 54KB");
 #undef FP4_SWEEP_ROW
 
   cudaEventDestroy(start);

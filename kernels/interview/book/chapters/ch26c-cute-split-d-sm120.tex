@@ -840,13 +840,13 @@ $ cd book/tests && ./build_tests.sh --ch ch26c
 # ALL OK
 \end{lstlisting}
 
-集成入口（CLI flag 仍在 notes-v2.cu）：\texttt{-{}-sdnw-cute} 快速正确性
-（ffpa\_attn.cu 的 \texttt{run\_sdnw\_cute\_tests()}，L408；五用例，
+集成入口（CLI flag 仍在 bench/bench\_leetcuda.cu）：\texttt{-{}-sdnw-cute} 快速正确性
+（bench/ffpa\_attn.cu 的 \texttt{run\_sdnw\_cute\_tests()}，L408；五用例，
 含 $N_{kv}{=}192$ 边界）与 \texttt{-{}-bench -{}-bhnd 1,32,8192,320}
 的 stages 四组合实验（\texttt{Sk}/\texttt{Sv} 直接体现在输出 label）：
 
 \begin{lstlisting}[style=console]
-$ ./notes_v2_sm120a.bin --bench --bhnd 1,32,8192,320
+$ ./leetcuda_bench_sm120a.bin --bench --bhnd 1,32,8192,320
 | FA Split-D CuTe TMA MMA WS (D=320, Sk=1, Sv=1)  | 1.526e-05 |  86.7/69.7 (1.24x) |
 | FA Split-D CuTe TMA MMA WS (D=320, Sk=2, Sv=2)  | 1.526e-05 | 140.2/69.7 (2.01x) |
 | FA Split-D CuTe TMA non-WS (D=320, Sk=2, Sv=2)  | 3.052e-05 | 188.3/69.7 (2.70x) |

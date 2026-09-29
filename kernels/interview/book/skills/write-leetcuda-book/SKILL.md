@@ -26,7 +26,7 @@ user-invocable: true
 
 ## 硬规则速查（违反必返工）
 
-1. **源码冻结**：anchors.yaml 登记的全部源文件——各 `.cuh` + notes-v2.cu 与 9 个模块 .cu（base/sgemv/sgemm/hgemm/fp8_gemm/fp4_gemm/flash_attn/ffpa_attn/utils.cu，2026-09-28 多 TU 拆分后均已登记）——在 RFC-A 登记 SHA256 后**零改动**。注释错误只记 `book/CHECKLOG.md` + 正文「勘误与考据」，不回写源码。
+1. **源码冻结**：anchors.yaml 登记的全部源文件——各 `.cuh` + bench/ 下 10 个 .cu（`bench/bench_leetcuda.cu` 与 9 个模块 .cu：`bench/{base,sgemv,sgemm,hgemm,fp8_gemm,fp4_gemm,flash_attn,ffpa_attn,utils}.cu`，2026-09-29 迁入 bench/ 后均已登记）——在 RFC-A 登记 SHA256 后**零改动**。注释错误只记 `book/CHECKLOG.md` + 正文「勘误与考据」，不回写源码。
 2. **正文形态**：原理讲解 + 关键代码段（每段 ≤40 行，`linerange` 多段裁剪，`firstnumber=auto`）；完整代码给附录 D 的 **GitHub commit permalink**；每章正文（非 listings）≥3500 字。
 3. **测试**：`book/tests/chNN_*.cu` 无 cuBLAS/cuDNN 依赖，CPU fp64 参考 + 容差三档（F32Acc 1e-3 / F16Acc 5e-2 / TF32 1e-2），规模 ≤512，arch 不在位输出 SKIP；行数 ≤300（基础章）/≤500（复杂章）。
 4. **知乎素材**：五步法（枚举→全文落 `zhihu-analysis/`→提炼→成文不照抄→附录 E 汇总）；**图片直接引用+出处标注**（作者/文章/链接/日期），原图归档 `book/figures/zhihu/`；水印/作者角标/平台 logo 一律标记为非内容元素，不得进入书内图。

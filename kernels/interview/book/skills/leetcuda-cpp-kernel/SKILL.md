@@ -137,7 +137,7 @@ ch19b/wp6 的 2 张官方架构截图），现行图源都在章节 tex 内。
 | block-scaled MMA（`mma.sync...m16n8k64.kind::mxf4nvf4.scale_vec::4X`）、SF smem 流水、workspace 六段布局、形状自适应 tile、cuBLAS 对比 | `ch37-fp4-gemm-cute.tex` |
 
 教学源码在 **LeetCUDA 本仓** `fp8_gemm.cuh` / `fp4_gemm.cuh`（在线量化 GEMM，非
-ffpa-attn 仓）；bench 入口 `./bin/notes_v2_sm120a.bin --fp8-gemm <N>` /
+ffpa-attn 仓）；bench 入口 `./bin/leetcuda_bench_sm120a.bin --fp8-gemm <N>` /
 `--fp4-gemm <N>` / `--fp4-gemm-sweep <N>`。
 
 ### Part VI：FP8/FP4 Attention 篇（量化注意力，PDF 打印章号 34-40，文件名 ch27-33；配图全部 TikZ 内联）
@@ -189,8 +189,8 @@ strided 通用）、量化数学与 scale 折叠、性能 RFC 与已证伪清单
 
 按任务路由到章后，配套可参考源码直接按此表打开（行数为实测值；行号级
 冻结映射见 `appendices/appD-source-index.tex`，老文件基准 commit `6cd32de`；
-`fp8_gemm.cuh`/`fp4_gemm.cuh` 及 notes-v2 系 `.cu`（多 TU 拆分：notes-v2.cu +
-9 模块 .cu）的行号冻结以 `book/scripts/anchors.yaml` 为准）：
+`fp8_gemm.cuh`/`fp4_gemm.cuh` 及 bench/ 下 10 个 `.cu`（bench_leetcuda.cu +
+9 模块 .cu，2026-09-29 迁入）的行号冻结以 `book/scripts/anchors.yaml` 为准）：
 
 | 文件（相对 `<LeetCUDA_DIR>/kernels/interview/`） | 行数 | 内容 | 对应章 |
 |---|---|---|---|
@@ -203,11 +203,11 @@ strided 通用）、量化数学与 scale 折叠、性能 RFC 与已证伪清单
 | `fp8_gemm.cuh` | 958 | e4m3 量化前处理（per-row/per-block，L45-284）+ CuTe 主 GEMM、在线反量化（L303-955） | ch34-35 |
 | `fp4_gemm.cuh` | 1300 | NVFP4 在线量化 GEMM：A/B 两级量化 kernel 与误差模型（L58-366）+ block-scaled MMA 主 kernel、SF 流水、workspace（L395-1299）；形状自适应入口 `fp4_gemm_use_wide_tile`（MNK≥4096 用 128×256/s6，否则保守 128×128/s4） | ch36-37 |
 | `common.cuh` | 803 | TMA/mbarrier/setmaxnreg/WGMMA 宏封装与 swizzle 工具箱（逐段解析见 appA） | ch12–14、appA |
-| `notes-v2.cu` | 440 | main+CLI 总装（多 TU）：extern 声明 + 模板实例化 wrapper 调用；host test/bench 拆入 `base/sgemv/sgemm/hgemm/fp8_gemm/fp4_gemm/flash_attn/ffpa_attn.cu` + `utils.cu` 共享符号（~30 kernel 的 WHY+HOW 注释与 10 Phase 递进在 `.cuh` 内）；`--bench` harness 与 `--fp8-gemm`/`--fp4-gemm`/`--fp4-gemm-sweep` GEMM 专项 bench CLI 不变（`bin/notes_v2_*.bin` 源，`build.sh --arch sm_120a --jobs 8` 并行编译） | 全书总装、appC |
-| `bench/bench_attn.cu` | — | FA2 CuTe TMA+MMA+WS vs cuDNN SDPA 专项 bench | ch00、ch17/25 |
-| `bench/bench_ffpa.cu` | — | FFPA Split-D attention 专项 bench | ch19、ch33 |
-| `bench/bench_sgemm.cu` | — | `sgemm.cuh` 全 kernel 性能+精度 bench | ch09–12 |
-| `bench/bench_sdpa.py` | — | PyTorch SDPA 参照计时 | ch00、appB |
+| `bench/bench_leetcuda.cu` | 440 | main+CLI 总装（多 TU）：extern 声明 + 模板实例化 wrapper 调用；host test/bench 拆入 `bench/{base,sgemv,sgemm,hgemm,fp8_gemm,fp4_gemm,flash_attn,ffpa_attn}.cu` + `bench/utils.cu` 共享符号（~30 kernel 的 WHY+HOW 注释与 10 Phase 递进在 `.cuh` 内）；`--bench` 辅助工具与 `--fp8-gemm`/`--fp4-gemm`/`--fp4-gemm-sweep` GEMM 专项 bench CLI 不变（`bin/leetcuda_bench_*.bin` 源，`build.sh --arch sm_120a --jobs 8` 并行编译） | 全书总装、appC |
+| `bench/deprecated/bench_attn.cu` | — | （已弃用）FA2 CuTe TMA+MMA+WS vs cuDNN SDPA 专项 bench | ch00、ch17/25 |
+| `bench/deprecated/bench_ffpa.cu` | — | （已弃用）FFPA Split-D attention 专项 bench | ch19、ch33 |
+| `bench/deprecated/bench_sgemm.cu` | — | （已弃用）`sgemm.cuh` 全 kernel 性能+精度 bench | ch09–12 |
+| `bench/deprecated/bench_sdpa.py` | — | （已弃用）PyTorch SDPA 参照计时 | ch00、appB |
 | `book/tests/chNN_*.cu` | — | 每章最小正确性测试（CPU fp64 对拍），`build_tests.sh --arch sm_120a --all` | 各章 |
 
 Part VI（ch27–33，量化 attention）教学 kernel 源码在 `<FFPA_ATTN_DIR>/csrc/cuffpa/`
@@ -228,10 +228,10 @@ Part VI（ch27–33，量化 attention）教学 kernel 源码在 `<FFPA_ATTN_DIR
    write-leetcuda-book skill 图管线）。`figures/drawio/`、`figures/ffpa/` 下
    png 为历史留档，仅作旧版对照。
 4. **验证 kernel 正确性**：优先跑 `book/tests/`（CPU fp64 对拍，无 cuBLAS 依赖）；
-   性能验收用 `bash build.sh --arch sm_120a && ./bin/notes_v2_sm120a.bin --bench
+   性能验收用 `bash build.sh --arch sm_120a && ./bin/leetcuda_bench_sm120a.bin --bench
    --bhnd 1,32,8192,128 [--bench-all]`；FP8/FP4 GEMM 专项用 `--fp8-gemm <N>` /
    `--fp4-gemm <N>`（形状自适应行）/ `--fp4-gemm-sweep <N>`（tile 档位扫描）
-   （产物落 `bin/`，bench harness 源在
+   （产物落 `bin/`，bench 辅助工具源在
    `kernels/interview/bench/`；构建细节见 appC）。
 5. **PDF 兜底**：tex 源不适合读时（如只要结论），`pdftotext book.pdf -` 按页抽取；
    colfax 与 cute-zhihu 两份独立文档同理（`pdftotext colfax/colfax-cute-zh.pdf -`、

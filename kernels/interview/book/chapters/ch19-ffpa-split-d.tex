@@ -468,7 +468,7 @@ V 槽位是 8\,KB，合计
   \label{eq:19-smemtable}
 \end{equation}
 
-这也解释了本章测试 harness 为什么必须做 smem 可行性检查（\texttt{SKIP(ch19)} 分支）：
+这也解释了本章测试辅助工具为什么必须做 smem 可行性检查（\texttt{SKIP(ch19)} 分支）：
 $D$ 一涨，$C$ 跟着涨，而\textbf{stage 数是独立旋钮}，两者消耗的是同一份 99\,KB 预算。
 生产库在 sm120 上把 stage 上限压到 2--3，理由正是「快速 MMA 下同步开销主导 +
 smem 预算」（见 19.6~节）。
@@ -1074,7 +1074,7 @@ $R_O = 256 > 255$，O 累加器必然 spill。教学测试仍覆盖 $D{=}512$，
 
 \textbf{坑五：stage 数加深与 smem 预算互相挤压。}式~\ref{eq:19-smemtable} 表明
 $\mathrm{Sk}=\mathrm{Sv}=4$ 已到 96\,KB（上限 99\,KB）。任何「再深一级流水」的
-尝试都会先碰到 smem 上限；harness 必须做可行性检查（本章测试打印
+尝试都会先碰到 smem 上限；辅助工具必须做可行性检查（本章测试打印
 \texttt{SKIP(ch19): ... smem ... > optin ...}）。
 
 \textbf{坑六：跨代理可见性（\texttt{fence.\allowbreak{}proxy.\allowbreak{}async}）不能省略。}\allowbreak{}TMA 写 smem
@@ -1209,7 +1209,7 @@ $5\times10^{-2}$ 判定线（约三个数量级余量）。其三，$D{=}512$ �
   \item 在 rescale 处只对偶数 chunk 乘 \texttt{row\_scale}（坑三），观察最大误差
         如何随 $N$ 增长；
   \item 把 $\mathrm{Sk}=\mathrm{Sv}$ 从 2 加到 4，观察 smem 涨到 96\,KB 与
-        harness 的 \texttt{SKIP} 判定；
+        辅助工具的 \texttt{SKIP} 判定；
   \item 用测试的 \texttt{bench} 子命令跑 $(D,N) = (128,4096)$ 与 $(512,4096)$，
         对比 $R_O$ 从 64 涨到 256 时的吞吐落差（注意 $D{=}512$ 是寄存器极值档，
         落差里同时含 spill 与 $C$ 增大两个因素）。

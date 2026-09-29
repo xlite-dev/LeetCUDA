@@ -7,20 +7,20 @@
 仓库里有两个构建入口，角色不同、不要混用：
 
 \begin{itemize}
-  \item \texttt{kernels/\allowbreak{}interview/\allowbreak{}build.\allowbreak{}sh}——编译集成 bench harness
-        （多 TU：\texttt{notes-v2.cu} 总装 $+$ 模块 .cu，带 cuBLAS/cuDNN 对照
+  \item \texttt{kernels/\allowbreak{}interview/\allowbreak{}build.\allowbreak{}sh}——编译集成 bench 辅助工具
+        （多 TU：\texttt{bench/bench\_leetcuda.cu} 总装 $+$ \texttt{bench/} 模块 .cu，带 cuBLAS/cuDNN 对照
         与性能计时）。检测到
         ccache 时走两段式：\texttt{ccache nvcc -c} 产 \texttt{.o}（可缓存），
-        再裸 \texttt{nvcc} 链接产 \texttt{notes\_\allowbreak{}v2\_\allowbreak{}<arch>.\allowbreak{}bin}（不缓存）。
+        再裸 \texttt{nvcc} 链接产 \texttt{leetcuda\_\allowbreak{}bench\_\allowbreak{}<arch>.\allowbreak{}bin}（不缓存）。
         公共 flags：\texttt{-std=\allowbreak{}c++20 -O3 --expt-relaxed-constexpr
         --use\_\allowbreak{}fast\_\allowbreak{}math} + cutlass/cudnn-frontend include。
   \item \texttt{book/\allowbreak{}tests/\allowbreak{}build\_\allowbreak{}tests.\allowbreak{}sh}——编译并运行每章最小正确性测试。
-        本书的作用是\textbf{取代集成 harness 的正确性验证角色}：对拍一律
-        CPU fp64，无 cuBLAS/cuDNN 依赖，可在任何机器复现；harness 保留为
-        集成 bench，现为多 TU——\texttt{notes-v2.cu}（440 行）只剩 main 与
-        CLI 解析，host 侧 test/bench 拆到 base/sgemv/sgemm/hgemm/
+        本书的作用是\textbf{取代集成辅助工具的正确性验证角色}：对拍一律
+        CPU fp64，无 cuBLAS/cuDNN 依赖，可在任何机器复现；辅助工具保留为
+        集成 bench，现为多 TU——\texttt{bench/bench\_leetcuda.cu}（440 行）只剩 main 与
+        CLI 解析，host 侧 test/bench 拆到 \texttt{bench/} 下 base/sgemv/sgemm/hgemm/
         fp8\_gemm/fp4\_gemm/flash\_attn/ffpa\_attn 八个模块 .cu 与
-        \texttt{utils.cu} 共享工具。
+        \texttt{bench/utils.cu} 共享工具。
 \end{itemize}
 
 \noindent build.sh 的架构 $\times$ 编译宏矩阵（决定 common.cuh 哪些段参与
@@ -33,10 +33,10 @@
 \toprule
 \texttt{-{}-arch} & 编译宏 & 产物 \\
 \midrule
-sm\_86 & CUTE, CUDNN & notes\_v2\_sm86.bin \\
-sm\_89 & CUTE, CUDNN & notes\_v2\_cute\_sm89.bin \\
-sm\_90a & WGMMA, CUTE, TMA\_MMA\_WS, CUDNN & notes\_v2\_sm90a.bin \\
-sm\_120a & CUTE, TMA\_MMA\_WS, CUDNN & notes\_v2\_sm120a.bin \\
+sm\_86 & CUTE, CUDNN & leetcuda\_bench\_sm86.bin \\
+sm\_89 & CUTE, CUDNN & leetcuda\_bench\_sm89.bin \\
+sm\_90a & WGMMA, CUTE, TMA\_MMA\_WS, CUDNN & leetcuda\_bench\_sm90a.bin \\
+sm\_120a & CUTE, TMA\_MMA\_WS, CUDNN & leetcuda\_bench\_sm120a.bin \\
 \bottomrule
 \end{tabular}
 \end{table}

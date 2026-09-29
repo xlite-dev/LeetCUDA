@@ -841,7 +841,7 @@ $\approx 295$~FLOP/B：\textbf{单看一个 CTA 的装载流，访存仍是短�
 \textbf{实测口径声明（F4）}：本机为 sm\_120a（无 Hopper 执行单元），本章未做
 性能复测；源码头注释与 README 均未给出 WGMMA kernel 的量化 TFLOPS，正文不引用
 任何未经复现的数字。复现条件：H100/H200/H800 上以 13.10~节命令编译运行并扩展
-bench（对照 notes-v2 的 bench 口径），数据落 \texttt{.\allowbreak{}tmp/\allowbreak{}book-bench/\allowbreak{}ch13/\allowbreak{}}
+bench（对照 bench\_leetcuda.cu 的 bench 口径），数据落 \texttt{.\allowbreak{}tmp/\allowbreak{}book-bench/\allowbreak{}ch13/\allowbreak{}}
 供附录~B 汇总。本章 TMA+mbarrier 协议在 SM120 上配 mma.sync 的落地实现
 （TMA+MMA+WS）已在本机实测，见表~\ref{tab:ch14-perf}（14.6~节）。
 
@@ -980,7 +980,7 @@ tensor memory）路线，不含 wgmma。SM120 的替代组合是 TMA + \texttt{m
 
 \section{最小测试与动手实验}
 
-测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch13\_\allowbreak{}hgemm\_\allowbreak{}wgmma.cu}（逻辑抽取自 hgemm.cu 的
+测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch13\_\allowbreak{}hgemm\_\allowbreak{}wgmma.cu}（逻辑抽取自 bench/hgemm.cu 的
 \texttt{test\_\allowbreak{}hgemm\_\allowbreak{}wgmma}@L272，参考实现由 cuBLAS F16 换成 CPU fp64）。
 规模 $M = N = K = 256$：被 $B\sb{M} = B\sb{N} = 128$、$B\sb{K} = 64$ 整除，
 $K / B\sb{K} = 4$ 个 K-tile 恰好覆盖 kStages=3 的 stage 回绕（$0 \to 1 \to 2 \to 0$）；

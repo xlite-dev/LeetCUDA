@@ -23,13 +23,6 @@ It covers **Tensor/CUDA Cores**, [200+ CUDA kernels](leetcuda-pdf), [HGEMM][leet
 
 Please also check out our production-ready **Kernel Library**: [**ffpa-attn**](https://github.com/xlite-dev/ffpa-attn) - Fast and Memory-Efficient Exact Attention (**BF16/FP16/FP8/FP4**) for Large Headdim, **1.5x~15x**🔥🔥 speedup over standard PyTorch SDPA.
 
-<div align='center'>
-  <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-h20z_B1_H32_N8192_D512_T.png' width='200px'>
-  <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-h20z_B1_H32_N16384_D512_T.png' width='200px'>
-  <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-b200_B1_H32_N8192_D512_T.png' width='200px'>
-  <img src='https://github.com/xlite-dev/ffpa-attn/raw/main/docs/assets/perf/ffpa_speedup_cutedsl_nvidia-b200_B1_H32_N16384_D512_T.png' width='200px'>
-</div>
-
 ## 📖 Quick Start
 
 ```bash
@@ -40,20 +33,16 @@ apt remove -y libcublas-cuda-13 libcudnn9-cuda-13 libcudnn9-dev-cuda-13
 apt install -y cublas-cuda-13 cudnn9-cuda-13 && apt install -y ccache
 ```
 ```bash
-# Blackwell (e.g., RTX 5090 or PRO 5000/6000, recommended: CUDA >= 13.2)
-./build.sh --arch sm_120a && ./bin/notes_v2_sm120a.bin --bench --mnk 8192
+# Blackwell (e.g., RTX 5090, PRO 5000/6000, recommended: CUDA>=13.2)
+./build.sh --arch sm_120a && ./bin/leetcuda_bench_sm120a.bin --bench
 ```
-
-<!-- <div align='center'>
-  <img src='./docs/leetcuda_bench_table.png' alt='LeetCUDA Benchmark Table'>
-</div> -->
 
 ## 🤖 Agentic workflow
 
 LeetCUDA provides a [leetcuda-cpp-kernel](./kernels/interview/book/skills/leetcuda-cpp-kernel/) SKILL that reuse the knowledge and examples from the open-source **book** and **repository**. Users can use it with Coding Agents, e.g, [GitHub Copilot](https://docs.github.com/en/copilot), [Claude Code](https://claude.ai), [Open Code](https://opencode.ai/).
 
 ```bash
-# Install the skill for different coding agents (recommended: gh >= 2.101.0).
+# Install the skill for different coding agents (recommended: gh>=2.101.0)
 gh skill install xlite-dev/LeetCUDA leetcuda-cpp-kernel --agent opencode
 gh skill install xlite-dev/LeetCUDA leetcuda-cpp-kernel --agent claude-code
 gh skill install xlite-dev/LeetCUDA leetcuda-cpp-kernel --agent github-copilot

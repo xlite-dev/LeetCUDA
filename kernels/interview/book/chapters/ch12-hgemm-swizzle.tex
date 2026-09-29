@@ -962,7 +962,7 @@ swizzle 缩 L2 footprint」两条主线互相印证。
   bit $[4,4{+}B)$ 恰为 $(j{\gg}3)$ 低 $B$ 位、bit $[7,7{+}B)$ 恰为 $i$ 低 $B$
   位（$k_{\mathrm{cs}}\in\{16,32,64\}$ 逐一验证），apply 的异或结果与 v1 的
   \texttt{chunk\^{}xor\_\allowbreak{}mask} 逐位相同。host 全遍历 30{,}720 点 bit-exact
-  （本章 case~C，复现 base.cu \texttt{test\_\allowbreak{}swizzle\_\allowbreak{}equiv} L721）。
+  （本章 case~C，复现 bench/base.cu \texttt{test\_\allowbreak{}swizzle\_\allowbreak{}equiv} L721）。
   注释证明无误。
 \end{kaogu}
 
@@ -1051,8 +1051,8 @@ $S$ = 每行 chunk 数位（8 chunk $\Rightarrow S{=}3$，也是源/目标 bit �
 
 \section{最小测试与动手实验}
 
-测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch12\_\allowbreak{}hgemm\_\allowbreak{}swizzle.cu}（逻辑抽取自 hgemm.cu
-的 test\_hgemm\_swizzle（L115）与 base.cu 的 test\_swizzle\_equiv（L721），正确性对照改为
+测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch12\_\allowbreak{}hgemm\_\allowbreak{}swizzle.cu}（逻辑抽取自 bench/hgemm.cu
+的 test\_hgemm\_swizzle（L115）与 bench/base.cu 的 test\_swizzle\_equiv（L721），正确性对照改为
 CPU fp64 参考；文件顶部 \texttt{\#define NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}SWIZZLE\_\allowbreak{}V2 1}，使
 kernel 走 v2 路径，build\_tests.sh 不传额外宏，宏必须写在 include 之前）。
 三个 case：A（$256^3$，swizzle kernel vs fp64）；B（$M{=}384$、$N{=}512$、
@@ -1085,7 +1085,7 @@ $K{=}512$ 实测 5.8$\times10^{-2}$ 超档，故 case~B 固定 $K{=}256$。动�
 kernel 对任意分组的正确性；（2）复制 kernel 把 8 处 \texttt{swizzle\allowbreak{}<k\allowbreak{}Mma\allowbreak{}K>}
 换成 \texttt{swizzle<64>} 并把 slice 基址并入 $j$（SW128 方案，12.3.7 节），
 用 NCU 复测冲突计数是否归零、端到端是否超过 7b-1；（3）用
-notes-v2.cu bench 复跑 $2048\times16384\times4096$ 口径对照表~\ref{tab:12-tflops}。
+bench\_leetcuda.cu bench 复跑 $2048\times16384\times4096$ 口径对照表~\ref{tab:12-tflops}。
 
 \section*{延伸阅读}
 

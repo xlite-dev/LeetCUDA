@@ -1,5 +1,5 @@
 % ch37-fp4-gemm-cute.tex — FP4 GEMM（二）：blockscaled MMA、SF 流水与 cuBLAS 对比（RFC-O）
-% 源码：kernels/interview/fp4_gemm.cuh（Phase 10.3-10.8，L395-1297）+ fp4_gemm.cu bench 接线
+% 源码：kernels/interview/fp4_gemm.cuh（Phase 10.3-10.8，L395-1297）+ bench/fp4_gemm.cu bench 接线
 \chapter{FP4 GEMM（二）：blockscaled MMA、SF 流水与 cuBLAS 对比}\label{ch:37}
 
 \section{本章导读}
@@ -57,10 +57,10 @@ $BM{=}128$ 让 SF 的 TMA box 恰好等于一个 512\,B 原子（33.4~节）。
 第~\ref{ch:26b}~章（WS 与 \texttt{setmaxnreg}）、第~\ref{ch:35}~章
 （本章的骨架与它逐节对应，可对照阅读）。
 \textbf{源码区间}：\texttt{fp4\_gemm.cuh} L395--1297（Phase 10.3--10.8），
-\texttt{fp4\_gemm.cu} 的 \texttt{bench\_fp4\_gemm}/
+\texttt{bench/fp4\_gemm.cu} 的 \texttt{bench\_fp4\_gemm}/
 \texttt{bench\_fp4\_gemm\_tile\_sweep} 接线。
-\textbf{验证方式}：\texttt{notes\_v2\_sm120a.bin --fp4-gemm}（精度全组合）、
-\texttt{--bench --mnk 4096,4096,4096}（标准表）、
+\textbf{验证方式}：\texttt{leetcuda\_bench\_sm120a.bin --fp4-gemm}（精度全组合）、
+\texttt{--bench --mnk 8192,8192,8192}（标准表）、
 \texttt{--fp4-gemm-sweep}（tile/流水深度扫描）、
 \texttt{book/\allowbreak tests/\allowbreak ch37\_fp4\_gemm.cu}（17 条断言的单文件复现）。
 
@@ -623,15 +623,15 @@ $(B_4^{\top}, \mathrm{SFB}, s_B)$ 量化一次后常驻显存。入口就是
 8\,MB、SFB 占 1\,MB，即权重的显存占用是 BF16 的
 $9/32\approx28\%$。
 
-\texttt{fp4\_gemm.cu} 的 bench 接线（CLI flag 入口在 \texttt{notes-v2.cu}）：
+\texttt{bench/fp4\_gemm.cu} 的 bench 接线（CLI flag 入口在 \texttt{bench/bench\_leetcuda.cu}）：
 
 \begin{itemize}[itemsep=2pt,topsep=3pt]
   \item \texttt{--fp4-gemm}：7 条正确性 case（4 种 scale 模式 $+$ WS
         $+$ 两个尾部 shape），CPU fp64 参考，报 relFro。
   \item \texttt{--bench}：在 FP8 行之后追加 12 行 FP4。
-        其中 \texttt{FP4 GEMM CuTe nonws/ws} 是 \textbf{kernel-only}
-        口径（量化在计时窗口外），\texttt{FP4 GEMM+Quant e2e} 是
-        全链路，\texttt{FP4 GEMM+A Quant e2e (B offline)} 是部署口径。
+        其中 \texttt{FP4 GEMM CuTe NonWS/WS} 是 \textbf{kernel-only}
+        口径（量化在计时窗口外），\texttt{FP4 GEMM+Quant E2E} 是
+        全链路，\texttt{FP4 GEMM+A Quant E2E (B offline)} 是部署口径。
   \item \texttt{--fp4-gemm-sweep}：$BN\in\{128,256\}$ $\times$
         $k_{Stages}\in\{2,3,4,5,6,7,8,10,12\}$ 的完整扫描，
         不合法组合打印 SKIP 理由（33.9.4~节）。
@@ -663,23 +663,23 @@ FP4 行的误差列是 relFro 相对 Frobenius 误差。
 \midrule
 4096$^3$ & cuBLAS BF16 (F32 acc)              & ---   & 163.5 & 1.00x & 0.67x \\
          & our CuTe HGEMM (S=3, BLK\_SW=1, F32Acc) & $\approx$0 & 242.8 & 1.48x & 1.00x \\
-         & FP8 GEMM nonws (rc, $128^2{\times}128$/s2) & 4.50 & 438.5 & 2.68x & 1.81x \\
-         & FP4 nonws 单级 level-2 ($128{\times}256{\times}64$/s6) & 0.144 & 600.4 & 3.67x & 2.47x \\
-         & FP4 nonws 两级 ($128{\times}256{\times}64$/s6) & 0.145 & 603.4 & 3.69x & 2.49x \\
-         & \textbf{FP4 ws 两级 ($128{\times}256{\times}64$/s6)} & 0.145 & \textbf{614.1} & \textbf{3.76x} & \textbf{2.53x} \\
-         & FP4+Quant e2e nonws ($128{\times}256{\times}64$/s6) & 0.145 & 408.2 & 2.50x & 1.68x \\
-         & FP4+A-Quant e2e, $B$ off nonws & 0.145 & 550.5 & 3.37x & 2.27x \\
-         & FP4+A-Quant e2e, $B$ off ws    & 0.145 & 561.2 & 3.43x & 2.31x \\
+         & FP8 GEMM NonWS (RC, $128^2{\times}128$/s2) & 4.50 & 438.5 & 2.68x & 1.81x \\
+         & FP4 NonWS 单级 level-2 ($128{\times}256{\times}64$/s6) & 0.144 & 600.4 & 3.67x & 2.47x \\
+         & FP4 NonWS 两级 ($128{\times}256{\times}64$/s6) & 0.145 & 603.4 & 3.69x & 2.49x \\
+         & \textbf{FP4 WS 两级 ($128{\times}256{\times}64$/s6)} & 0.145 & \textbf{614.1} & \textbf{3.76x} & \textbf{2.53x} \\
+         & FP4+Quant E2E NonWS ($128{\times}256{\times}64$/s6) & 0.145 & 408.2 & 2.50x & 1.68x \\
+         & FP4+A-Quant E2E, $B$ off NonWS & 0.145 & 550.5 & 3.37x & 2.27x \\
+         & FP4+A-Quant E2E, $B$ off WS    & 0.145 & 561.2 & 3.43x & 2.31x \\
 \midrule
 8192$^3$ & cuBLAS BF16 (F32 acc)              & ---   & 163.3 & 1.00x & 0.68x \\
          & our CuTe HGEMM (S=3, BLK\_SW=1, F32Acc) & $\approx$0 & 241.7 & 1.48x & 1.00x \\
-         & FP8 GEMM nonws (rc, $128^2{\times}128$/s2) & 6.25 & 479.2 & 2.93x & 1.98x \\
-         & FP4 nonws 单级 level-2 ($128{\times}256{\times}64$/s6) & 0.144 & 644.8 & 3.95x & 2.67x \\
-         & FP4 nonws 两级 ($128{\times}256{\times}64$/s6) & 0.145 & 639.6 & 3.92x & 2.65x \\
-         & \textbf{FP4 ws 两级 ($128{\times}256{\times}64$/s6)} & 0.145 & \textbf{648.6} & \textbf{3.97x} & \textbf{2.68x} \\
-         & FP4+Quant e2e nonws ($128{\times}256{\times}64$/s6) & 0.145 & 467.4 & 2.86x & 1.93x \\
-         & FP4+A-Quant e2e, $B$ off nonws & 0.145 & 541.1 & 3.31x & 2.24x \\
-         & FP4+A-Quant e2e, $B$ off ws    & 0.145 & 549.7 & 3.37x & 2.27x \\
+         & FP8 GEMM NonWS (RC, $128^2{\times}128$/s2) & 6.25 & 479.2 & 2.93x & 1.98x \\
+         & FP4 NonWS 单级 level-2 ($128{\times}256{\times}64$/s6) & 0.144 & 644.8 & 3.95x & 2.67x \\
+         & FP4 NonWS 两级 ($128{\times}256{\times}64$/s6) & 0.145 & 639.6 & 3.92x & 2.65x \\
+         & \textbf{FP4 WS 两级 ($128{\times}256{\times}64$/s6)} & 0.145 & \textbf{648.6} & \textbf{3.97x} & \textbf{2.68x} \\
+         & FP4+Quant E2E NonWS ($128{\times}256{\times}64$/s6) & 0.145 & 467.4 & 2.86x & 1.93x \\
+         & FP4+A-Quant E2E, $B$ off NonWS & 0.145 & 541.1 & 3.31x & 2.24x \\
+         & FP4+A-Quant E2E, $B$ off WS    & 0.145 & 549.7 & 3.37x & 2.27x \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -707,7 +707,7 @@ $\pm1\%$。「relFro 0.144 vs 0.145」的差别就是 \texttt{kSingleLevel}
 }
 \foreach \yv/\yl in {0/0, 1.12/100, 2.24/200, 3.36/300, 4.48/400, 5.60/500, 6.72/600, 7.84/700}
   \draw[gray!40] (0,\yv) -- (14.3,\yv) node[left, font=\tiny, inner sep=1pt] at (0,\yv) {\yl};
-% group 1: 4096 -> cuBLAS, FP8, FP4(128x128 s4, 扫描口径), FP4(128x256 s6), FP4 e2e
+% group 1: 4096 -> cuBLAS, FP8, FP4(128x128 s4, 扫描口径), FP4(128x256 s6), FP4 E2E
 \fill[tkPurple!35] (0.30,0) rectangle (1.00,1.83);
 \fill[tkBlue!45]   (1.10,0) rectangle (1.80,4.91);
 \fill[tkGreen!60]  (1.90,0) rectangle (2.60,5.16);
@@ -735,7 +735,7 @@ $\pm1\%$。「relFro 0.144 vs 0.145」的差别就是 \texttt{kSingleLevel}
 \draw[->] (0,0) -- (0,8.25);
 \node[left, font=\tiny] at (-0.05,8.1) {TFLOPS};
 \foreach \i/\c/\l in {0/tkPurple!35/cuBLAS BF16, 1/tkBlue!45/FP8 GEMM,
-  2/tkGreen!60/FP4 GEMM, 3/tkGreen!85/FP4 (宽 tile), 4/tkOrange!60/FP4+Quant e2e} {
+  2/tkGreen!60/FP4 GEMM, 3/tkGreen!85/FP4 (宽 tile), 4/tkOrange!60/FP4+Quant E2E} {
   \fill[\c] (0.55+\i*2.85, 8.52) rectangle (0.90+\i*2.85, 8.82);
   \node[right, font=\tiny, inner sep=2pt] at (0.93+\i*2.85, 8.67) {\l};
 }
@@ -749,10 +749,10 @@ $6\sim40\%$}——库默认档（$128^2$/s4，柱取口径：4096$^3$ 取扫描�
 累加，且 $BK{=}64$ 让 K 方向的算术强度下降（表~\ref{tab:37-fp8-vs-fp4}
 的两条固定约束）；其二，\textbf{宽 tile（$128{\times}256$）是本章最大
 的单项收益}（$+31\%$，33.9.4~节），也是 \texttt{--bench} 标准行在
-$MNK\ge4096$ 上的自适应选择；其三，\textbf{e2e 口径下 FP4 反超
+$MNK\ge4096$ 上的自适应选择；其三，\textbf{E2E 口径下 FP4 反超
 FP8}（4096$^3$: 408 vs 187\,T；8192$^3$: 467 vs 315\,T）——量化的
 写出字节数只有 FP8 的一半，$B$ 侧重构后这个差距进一步扩大
-（33.9.3~节）；第三组（$B$ 离线）FP4 的 e2e 回到
+（33.9.3~节）；第三组（$B$ 离线）FP4 的 E2E 回到
 551$\sim$561\,T（FP8 为 411\,T），是各自 kernel 的 $91\sim93\%$。}
 \label{fig:37-perf}
 \end{figure}
@@ -787,7 +787,7 @@ $0.1448$、level-2$\times$B 列 $0.1443$、两级（非 WS/WS）$0.1454$、
   \item 尾部 shape 的\emph{耗时}也没有惩罚：$M$ 从 4096 改成 4097
         （网格在 M 方向多一整行 tile）只从 414.0 降到 408.2\,T
         （$-1.4\%$），$M$ 从 8192 改成 8193 只从 471.2 降到 467.6\,T
-        （$-0.8\%$；nonws 同口径 407.3/402.1 与 466.0/464.4）；
+        （$-0.8\%$；NonWS 同口径 407.3/402.1 与 466.0/464.4）；
         多算的只是一个 $128{\times}256$ 的输出行带，浪费的 FLOP
         不到 $0.03\%$。这一条不在 \texttt{--bench} 表里
         （\texttt{--mnk} 只接受方形形状），数字由同一条
@@ -801,7 +801,7 @@ $0.1448$、level-2$\times$B 列 $0.1443$、两级（非 WS/WS）$0.1454$、
 
 \subsection{量化开销，以及一次重构}
 
-先算开销。e2e 行减去 kernel-only 行，就是两侧量化真正花掉的时间
+先算开销。E2E 行减去 kernel-only 行，就是两侧量化真正花掉的时间
 （4096$^3$：FP8 得 424\,$\mu$s、FP4 得 109\,$\mu$s；8192$^3$：
 1221\,$\mu$s 对 633\,$\mu$s；FP4 侧按本章的自适应宽档算）：
 
@@ -811,7 +811,7 @@ $0.1448$、level-2$\times$B 列 $0.1443$、两级（非 WS/WS）$0.1454$、
 \toprule
  & \multicolumn{2}{c}{4096$^3$} & \multicolumn{2}{c}{8192$^3$} \\
 \cmidrule(lr){2-3}\cmidrule(lr){4-5}
- & 量化 & 占 e2e & 量化 & 占 e2e \\
+ & 量化 & 占 E2E & 量化 & 占 E2E \\
 \midrule
 FP8 GEMM & 424\,$\mu$s & 58\% & 1221\,$\mu$s & 35\% \\
 FP4 GEMM（重构后） & \textbf{109\,$\mu$s} & \textbf{32\%} &
@@ -871,8 +871,8 @@ FP8 每个量化值 1\,B，FP4 只有 0.5\,B。这与本卡实测带宽相符
         \texttt{bit-exact=YES} 断言，就是这条约束的验证手段。
   \item \textbf{收益}：$B$ 侧量化的反推吞吐从 194\,GB/s 提到
         \textbf{792\,GB/s}（$4.1\times$，4096$^3$；同口径的逻辑流量），
-        e2e 从 196.8\,T 提到 \textbf{334.2\,T}（$+70\%$），
-        量化占 e2e 的比例从 57\% 降到 26\%。
+        E2E 从 196.8\,T 提到 \textbf{334.2\,T}（$+70\%$），
+        量化占 E2E 的比例从 57\% 降到 26\%。
         注意 792\,GB/s 里有一部分是第一遍读到的 $B$（32\,MB）
         留在 96\,MB L2 里、第二遍直接命中——\textbf{这个数高于
         DRAM 带宽是正常的，它的意义是「同一口径下的相对改善」}，
@@ -894,7 +894,7 @@ $k_{Stages}\in\{2,3,4,5,6,7,8,10,12\}$ 全扫一遍（4096$^3$，两级量化）
 \footnotesize
 \begin{tabular}{llcccc}
 \toprule
-$BN$ & $k_{Stages}$ & smem & nonws TFLOPS & ws TFLOPS & 结论 \\
+$BN$ & $k_{Stages}$ & smem & NonWS TFLOPS & WS TFLOPS & 结论 \\
 \midrule
 128 & 2  & 18\,KB & SKIP & --- & O staging 32\,KB $>$ 18\,KB \\
 128 & 3  & 27\,KB & SKIP & --- & O staging 32\,KB $>$ 27\,KB \\
@@ -930,7 +930,7 @@ $BN$ & $k_{Stages}$ & smem & nonws TFLOPS & ws TFLOPS & 结论 \\
         MMA 翻倍}——这就是「算术强度」在 tile 几何层面的直接体现。
         代价是 O staging 翻倍（64\,KB），要求 $k_{Stages}\ge5$。
   \item \textbf{WS 的价值随 $BN$ 变大而显现。}
-        $BN{=}128$ 时 ws 比 nonws 快 $3.0\%$（474.5 vs 460.7），
+        $BN{=}128$ 时 WS 比 NonWS 快 $3.0\%$（474.5 vs 460.7），
         $BN{=}256$ 时快 $2.0\%$（614.6 vs 602.9）。差距不大但方向稳定：
         WS 让 TMA 发射与 MMA 彻底解耦后，\texttt{tid0} 不再是
         「算完还要负责发 TMA」的瓶颈。
@@ -985,9 +985,9 @@ $128\times256$/s6，其余回落 $128^2$/s4，\texttt{--bench} 的 FP4 标准
         $BK$ 被固定在 64 让 K 方向的算术强度下降是主要原因。
   \item \textbf{量化开销}：重构后 $B$ 侧量化从 194\,GB/s 提到
         792\,GB/s；量化成本 109\,$\mu$s（4096$^3$）是加性的、不随
-        tile 档变化，保守档下占 e2e 的 26\%，宽档下占 32\%。
-        e2e 也因此反超 FP8 版本：宽档 408.2 对 186.5\,T
-        （8192$^3$: 467.4 对 314.6\,T）。部署口径（$B$ 离线）把 e2e
+        tile 档变化，保守档下占 E2E 的 26\%，宽档下占 32\%。
+        E2E 也因此反超 FP8 版本：宽档 408.2 对 186.5\,T
+        （8192$^3$: 467.4 对 314.6\,T）。部署口径（$B$ 离线）把 E2E
         提到 550.5$\sim$561.2\,T，是主 kernel 的 $91\sim93\%$。
 \end{itemize}
 

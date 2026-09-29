@@ -119,7 +119,7 @@ FA2 split-Q F32Acc & $N{=}4096, D{=}64$ & 175.88 & F32 累加反而更快 \\
 FA2 compact XOR（消融） & $N{=}4096, D{=}64$ & 120.0 & 注释口径；写端 wavefront 2.26$\times$ \\
 FA2 TMA WS Sk=2 F16Acc & $D{=}128$，$N{=}4096$ / $16384$ & 172.5 / 183.8 & Sk=2 即饱和（Sk=3 $<$0.5\%） \\
 FA2 TMA WS Sk=2 F32Acc & $D{=}128$，$N{=}4096$ / $16384$ & 191.1 / 195.2 & \\
-FA2 cp.async $\to$ TMA WS & $N{=}16384, D{=}128$ & 158.7 $\to$ 190.4 & 原版 harness 对照，+20\% \\
+FA2 cp.async $\to$ TMA WS & $N{=}16384, D{=}128$ & 158.7 $\to$ 190.4 & 原版辅助工具对照，+20\% \\
 FA3 Sk=1 F16Acc & $D{=}128$，$N{=}4096$ / $16384$ & 190.4 / 185.2 & 双 consumer，smem 限 Sk=1 \\
 FA3 Sk=1 F32Acc & $D{=}128$，$N{=}4096$ / $16384$ & 194.2 / 189.7 & \\
 FA3 vs FA2（$D{=}64$） & $N{=}4096$ & 159.8 vs 141.8 & +13\%（$B_r{=}64$ 小 tile 两条流） \\
@@ -158,7 +158,7 @@ Part V（第~\ref{ch:34}--\ref{ch:35}~章）是量化矩阵乘的教学链：基
 cuBLAS BF16 GEMM（\texttt{CUBLAS\_COMPUTE\_32F} 累加），数字为
 \texttt{notes\_v2\_sm120a.bin --bench --mnk M,N,K} 标准表复测
 （PRO 5000，2026-09-24；输入均匀随机 $[-1,1]$，warmup 2 / repeat 3）。
-kernel-only 行只循环 GEMM kernel，e2e 行含量化前处理（第~\ref{ch:34}~章
+kernel-only 行只循环 GEMM kernel，E2E 行含量化前处理（第~\ref{ch:34}~章
 三个 kernel）。四种 scale 粒度组合差异 $<1.5\%$，表取 per-row$\times$
 per-col 代表，tile 取库默认档（$128\times256\times128$/s2，即 35.8.4 节的
 扫描最快档）。基线口径注意：cuBLAS 在 sm\_120 的 32F-acc 档只有 sm\_80
@@ -179,10 +179,10 @@ bf16 HGEMM 上限（$\approx$243~T）的口径为 1.81$\times$（4096$^3$）。
 \endfoot
 \bottomrule
 \endlastfoot
-第34 & fp8 量化前处理链 & $4096^3$（e2e 与 kernel-only 之差） & $\approx$424~$\mu$s/次 & 纯带宽工序；两遍读+staging 有 $\sim$2$\times$ 优化空间（35.8.2 习题） \\
-第35 & fp8 GEMM CuTe nonws & 2048$^3$/4096$^3$/8192$^3$ & 244/441/484~T（1.77/2.70/2.96$\times$） & kernel-only vs cuBLAS BF16；上限口径 1.81$\times$（4096$^3$）；WS 版 +0$\sim$0.9\% \\
-第35 & fp8 GEMM+Quant e2e & 同上 & 76/187/315~T（0.55/1.14/1.93$\times$） & 量化开销随 shape 缩小占比放大；2048$^3$ 反而更慢 \\
-第35 & fp8 GEMM+A-Quant e2e（$B$ 离线） & 同上 & 226/411/429~T（1.64/2.52/2.63$\times$） & 权重量化一次后落盘，每步只量化 A（$O(MK)$）；数值与全链路逐 bit 一致（35.8.3 节）；WS 版 +0.5$\sim$1.1\% \\
+第34 & fp8 量化前处理链 & $4096^3$（E2E 与 kernel-only 之差） & $\approx$424~$\mu$s/次 & 纯带宽工序；两遍读+staging 有 $\sim$2$\times$ 优化空间（35.8.2 习题） \\
+第35 & fp8 GEMM CuTe NonWS & 2048$^3$/4096$^3$/8192$^3$ & 244/441/484~T（1.77/2.70/2.96$\times$） & kernel-only vs cuBLAS BF16；上限口径 1.81$\times$（4096$^3$）；WS 版 +0$\sim$0.9\% \\
+第35 & fp8 GEMM+Quant E2E & 同上 & 76/187/315~T（0.55/1.14/1.93$\times$） & 量化开销随 shape 缩小占比放大；2048$^3$ 反而更慢 \\
+第35 & fp8 GEMM+A-Quant E2E（$B$ 离线） & 同上 & 226/411/429~T（1.64/2.52/2.63$\times$） & 权重量化一次后落盘，每步只量化 A（$O(MK)$）；数值与全链路逐 bit 一致（35.8.3 节）；WS 版 +0.5$\sim$1.1\% \\
 第35 & fp8 WS + setmaxnreg & 4096$^3$ & 440.9~T（2.70$\times$） & 直调 cutlass::arch API；SASS 4 实例 $\times$ 2 条 USETMAXREG 实证；sm\_120a/f 均可 \\
 第35 & fp8 tile/深度扫描（non-WS） & 4096$^3$/8192$^3$ & 225$\sim$442 / 240$\sim$485~T & tile $\{64,128,256\}^2\times$ stages $\{2,3,4\}$：$BN$ 比 $BM$ 更有效（$128\times256$ vs $256\times128$ 两档都 $\approx+8.5\%$），s2/s3 差 $\le2\%$、s4 无收益，$256\times256$ 超 99\,KB 装不下（35.8.4 节）\\
 第35 & fp8 最优 tile（ws 128$\times$256/s2） & 4096$^3$/8192$^3$ & 443.7/487.8~T（2.72/2.99$\times$） & 即库默认档（同时是大形状全场最优）；比 128$^3$/s3 快 7.7\%/5.9\%；$2048^3$ 上因波次量化反慢 17\%；NCU：pipe\_tensor 80.9\%（elapsed）、寄存器 168/线程、bank conflict 0、smem 读波前 $-5.6\%$（35.8.5 节） \\
