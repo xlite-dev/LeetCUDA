@@ -520,11 +520,9 @@
 \cxlab{0}{self-attn}{8K}\cxlab{1}{cross-attn}{8K}\cxlab{2}{gqa}{8K}\cxlab{3}{causal}{8K}
 \cxlab{4}{self-attn}{16K}\cxlab{5}{cross-attn}{16K}\cxlab{6}{gqa}{16K}\cxlab{7}{causal}{16K}
 \csep
-\node[anchor=center, font=\fontsize{6}{7}\selectfont, text=black!55, inner sep=0pt]
-  at (25.34,-6.41) {Light bars = SDPA baseline; FFPA bar tops labelled in TFLOPS. Peak 5.2x vs SDPA.};
 \draw[draw=black!40, line width=0.9pt, rounded corners=5pt,
       decorate, decoration={random steps, segment length=9pt, amplitude=0.8pt}]
-  (18.28,-0.18) rectangle (32.40,-6.71);
+  (18.28,-0.18) rectangle (32.40,-6.26);
 
 % ---------- B200 (8K / 16K) ----------
 \def\cbase{-12.29}
@@ -562,11 +560,9 @@
 \cxlab{0}{self-attn}{8K}\cxlab{1}{cross-attn}{8K}\cxlab{2}{gqa}{8K}\cxlab{3}{causal}{8K}
 \cxlab{4}{self-attn}{16K}\cxlab{5}{cross-attn}{16K}\cxlab{6}{gqa}{16K}\cxlab{7}{causal}{16K}
 \csep
-\node[anchor=center, font=\fontsize{6}{7}\selectfont, text=black!55, inner sep=0pt]
-  at (25.34,-13.11) {Light bars = SDPA baseline; FFPA bar tops labelled in TFLOPS. Peak 14.7x vs SDPA.};
 \draw[draw=black!40, line width=0.9pt, rounded corners=5pt,
       decorate, decoration={random steps, segment length=9pt, amplitude=0.8pt}]
-  (18.28,-6.91) rectangle (32.40,-13.34);
+  (18.28,-6.91) rectangle (32.40,-12.99);
 
 % 两大部分各自的手绘外框 (overlay: 不参与 bbox, 不影响整图尺寸)
 % 左: bench 表格部分
