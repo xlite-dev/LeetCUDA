@@ -22,14 +22,11 @@ Cuda shared memory按照4字节一个bank，总共32个bank（128字节）来组
 
 - bank conflict只发生在shared memory的读写操作上，global memory的读写操作不会有bank conflict产生。
 
-> 
+> 在某些情况下，bank conflict的发生是在warp中处于同一个phase的不同threads之间，这里的phase是指warp的32个线程操作shared memory时，分多个phase，每个phase的参与线程不一样。比如ldmatrix指令ldmatrix.sync.aligned.x4.m8n8.shared.b16，该指令从共享内存加载数据到线程寄存器，操作分4个phase，在phase0阶段，thread0~7操作共享内存，在phase1阶段，thread8~15操作共享内存，以此类推。
 
 bank conflict会导致warp被stall，冲突较多会对整个pipeline的耗时会有较大的影响。
 
-> Stall Short Scoreboard。
-> ，
-> ，
-> Stall MIO Throttle。
+> 当发生bank conflict时，warp需要额外的一个cycle来重新提交shared memory的访问指令到LSU单元，该指令需要在MIO中排队，这种排队会导致访问延迟增加，此时warp可能处于等待数据返回的状态，warp state标识为**Stall Short Scoreboard**。如果MIO队列满，此时warp先需要等待MIO队列处于非空的状态，此时warp state标识为**Stall MIO Throttle**。
 
 解决bank conflict的主要有下面几种：
 
@@ -82,7 +79,7 @@ __global__ void matrix_trans_shm(int* dev_A, int M, int N, int* dev_B) {
 
 ![img-1](https://picx.zhimg.com/v2-9a4f0bca7a29b64acbca162c2ef7ec77_r.jpg)
 
-> Advanced Performance Optimization in CUDA - NVIDIA GTC 2024
+> 上图中只显示了前16行信息，后续行省略。图片从这里截取：[Advanced Performance Optimization in CUDA - NVIDIA GTC 2024](https://www.nvidia.com/gtc/session-catalog/)。
 
 warp是SM的基本执行单元，一个block内相邻的32个线程划分为一个warp，一个warp内的32个线程按照SIMT的模式来执行指令。在上述代码中，每个thread从global memory读取一个元素后，转置存储到shared memory中，对应到warp层面的实际的操作是：
 
@@ -94,8 +91,7 @@ warp是SM的基本执行单元，一个block内相邻的32个线程划分为一�
 
 ![img-2](https://pic3.zhimg.com/v2-098a29c64d747e8a0bf0143295637e26_r.jpg)
 
-> 行
-> 1473
+> 说明：将转置后的数据从shared memory写入到输出内存时，是按**行**进行的load操作，理论上warp不应该存在bank conflicts，但上面的截图显示仍然有**1473**次冲突，推测这个load冲突跟我们的这里的读取逻辑无关。
 
 这个2,032,616次冲突的计算如下：
 
@@ -111,8 +107,9 @@ warp是SM的基本执行单元，一个block内相邻的32个线程划分为一�
 
 - 所有block累计的wavefronts = 2048(block)*32(warp)*32(wavefronts) = 2097152。
 
-> wavefront
-> access pattern
+> 关于wavefront的概念：
+> A *wavefront* is the maximum unit that can pass through that pipeline stage per cycle. If not all cache lines or sectors can be accessed in a single wavefront, multiple wavefronts are created and sent for processing one by one, i.e. in a serialized manner.
+> A wavefront is described as a (work) package that can be processed at once, i.e. there is a notion of processing one wavefront per cycle in L1TEX. Wavefronts therefore represent the number of cycles required to process the requests, while the number of sectors per request is a property of the *access pattern* of the memory instruction for all participating threads. For example, it is possible to have a memory instruction that requires 4 sectors per request in 1 wavefront. However, you can also have memory instruction having 4 sectors per request, but requiring 2 or more wavefronts.
 
 ## 3 使用Padding
 
@@ -315,7 +312,7 @@ Profile 结果如下：
 
 ## 5 TMA中的swizzling机制
 
-> 这里
+> TMA：Tensor Memory Accelerator，参考[这里](https://docs.nvidia.com/cuda/hopper-tuning-guide/index.html#tensor-memory-accelerator)。
 
 矩阵乘法中，为了减少内存访问指令数目，通常通过向量化的访问指令来实现，比如int2/int4，float2/float4等，即一次访问8字节或16个字节。这种情况下，数据chunk的大小就不是4字节，跟单个bank的大小就不一样，此时仍然有bank冲突的现象存在，只是发生冲突的bank号不是连续分布，而是间隔分布，比如bank为0，4，8等等。为了避免冲突，可以按chunk为单位进行swizzling，其核心的处理思想仍然是使用异或操作，下图是一个示例：
 

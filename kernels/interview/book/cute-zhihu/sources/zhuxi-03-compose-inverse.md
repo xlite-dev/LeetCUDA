@@ -21,9 +21,11 @@ fetched: 2026-09-20
 
 另一个例子是，w4a8 混合精度 gemm，由于 load 数据(int4) 与实际计算所需的计算 int8/fp8 数据类型不一致，load 数据之后的 layout 也需要变换；更多的例子还包含，2:4 稀疏 gemm，implict im2col gemm 等等，也都需要对 layout 变换有一定认知才能实现。
 
-更细节的，CuTe 的所有上层接口如 make_tiled_copy/mma，partition，retile 等等逻辑，都来自 layout 的变换，了解 layout 变换的逻辑，不仅有助于我们使用 CuTe 的时候更得心应手，实际也具备将这样一套代数系统迁移到任意类 gpu 芯片上的潜力。
+更细节的，CuTe 的所有上层接口如 make_tiled_copy/mma，partition，retile 等等逻辑，都来自 layout 的变换，了解 layout 变换的逻辑，不仅有助于我们使用 CuTe 的时候更得心应手，实际也具备将这样一套代数系统迁移到任意类 gpu 芯片上的潜力，例如 [@摇光](https://www.zhihu.com/people/694681341d649ae21f48fa1a2a8984d3) 的[这篇文章](https://zhuanlan.zhihu.com/p/688884665)尝试用 CuTe 为 AMD GPU 增加了一个 copy traits & op。
 
-而 NV 的每一代芯片在 CuTe 这套表达体系下依旧能适配的很好。那么对于国产芯片，其能适配到什么程度呢？或许只有在我们更深入理解 CuTe layout 代数的原理之后，才能回答这个问题。
+进一步的，国产芯片有可能基于这套体系来开发一个类 Cutlass 模版库吗？我认为也是有可能的，实际上我们观察 NV 每一代 GPU 的演进，从 hopper 的 wgmma 到 blackwell 的 umma，实际上也能发现，其趋势就是将 tensor core 和 cuda core 更多作为独立且异步的单元来使用，这个设计其实和目前很多国产芯片的 NPU + vector core 策略是趋同的。
+
+而 NV 的每一代芯片在 CuTe 这套表达体系下依旧能适配的很好，颇有一种一统天下包罗万象的气势。那么对于国产芯片，其能适配到什么程度呢？或许只有在我们更深入理解 CuTe layout 代数的原理之后，才能回答这个问题。
 
 那么，是时候来探索一下 CuTe 体系中最神秘的 layout 代数了。虽然我们把 layout 说的如此重要，但是相信我，正如很多宏观物理现象最终可以被表述为牛顿三公式一样，cutlass 庞大的代码规模下，其蕴含的 layout 代数，只需要高中级别的数学知识即可理解。
 
@@ -55,6 +57,8 @@ layoutC = compose(layoutA, layoutB) = layoutA(layoutB) 。
 
 1D 坐标 offset_0 可通过如下公式转换为 2D 坐标： m = offset_0 % M，n = offset_0 / M ；再将转换后的 (m, n) 传入 layoutA，计算得到 offset_1 = m * s_m + n * s_n（其中 s_m 、 s_n 为 layoutA 的 stride）。
 
+整个 compose 的计算过程可以展示为 Fig.2。
+
 Figure2. layoutC = layoutA(layoutB) 的计算过程。对该式子中的内层 layoutB 的一个输入 (4, 1) 为例，首先计算出通过 layoutB 的 offset0 = 9；然后将其按照 col-major 方式转换为 2D 坐标，再输入到 layoutA 中得到 offset1 = 6，即是 layoutC(4, 1) 所需要的输出
 
 我们打印出 layoutA/B/C，可以验证 layoutC 与我们构造的结果一致。
@@ -75,7 +79,7 @@ Layout compose 在很多地方都可以用到。例如，我们在之前的tiled
 
 对 tensor 来说，其 layout 代表的是 (m, n) -> global offset 的映射。因此，可以通过一个 compose(tensor.layout(), tv-layout) 来让每个 thread 找到自己需要的数据，其中蕴含的映射关系是 (t, v) -> (m, n) -> global/shared offset。
 
-这样的设计，既可以让我们变换 layout 时只关注坐标空间，又可以在实际使用中，通过 compose 不同的 tensor layout，让同一个 (m-id, n-id) 可以正确访问 global / shared / reg tensor 中的数值。
+这样的设计，既可以让我们变换 layout 时只关注坐标空间，又可以在实际使用中，通过 compose 不同的 tensor layout，让同一个 (m-id, n-id) 可以正确访问 global / shared / reg tensor 中的数值。正如我们可以脱离实际问题来分析函数，又可以在计算完成后把数字应用回现实世界。
 
 另一个例子就是为了避免 g2s copy 时 bank conflict 的 swizzle 的 compose。在朴素 cuda 实现中，我们引入 swizzle 逻辑时，需要关注我们读到的 global data 放到 shared data 哪个位置。但是引入了 layout compose，我们就可以做到对 swizzle 后的 tensor 仍然用正常逻辑下的 (m-id, n-id) 的坐标体系去访问到正确数据，虽然实际的物理地址已经改变了，但是我们不再 care 了。
 
@@ -87,6 +91,8 @@ Layout compose 在很多地方都可以用到。例如，我们在之前的tiled
     using SmemLayoutAtomC = decltype(composition(Swizzle<kSwizzleB, kSwizzleM, kSwizzleS>{},
                                      make_layout(make_shape(Int<8>{}, Int<64>{}), make_stride(Int<64>{}, Int<1>{}))));
 
+当然定义 swizzle 的 BMS 3 个参数怎么填，每个参数代表的是什么含义，又是需要相当篇幅来解释了，我们在此先推荐一篇介绍其基本原理，并给出了相关代码可以完成自动推导的文章：[布局代数实战：Swizzle 自动推导](https://zhuanlan.zhihu.com/p/1941306442683515068)（[@melonedo](https://www.zhihu.com/people/6841b7b125721bf7c4e5dac30f26ee8d)），后续我们找时间来详细梳理。
+
 ## Layout 的逆 inverse
 
 我们回顾一下函数的逆的定义：给定一个函数， y = f(x) ，其逆函数 g 可以做到给出 f 的输出 y 得到其输入 x，即 x = g(y) 。对于 layout 来说，inverse 操作可以完成输入和输出的调换。
@@ -95,9 +101,17 @@ Layout compose 在很多地方都可以用到。例如，我们在之前的tiled
 
 Figure3. layoutB = left_inverse(layoutA).with_shape 的计算过程。给定 layoutA 中的一个输入(2, 1)，其 col-major 1D 坐标为 6；我们首先通过 layoutA 得到 offset0 = 9，然后将输入输出调换为 9 to 6；然后引入 with_shape 将其排列成 layoutB 的 shape
 
+我们同样可以通过如下代码验证：
+
     auto layoutA = make_layout(make_shape(_4{}, _4{}), make_stride(_4{}, _1{}));
     auto layoutA_inv = left_inverse(layoutA);
     auto layoutA_inv_with_shape = layoutA_inv.with_shape(make_shape(_8{}, _2{}));
+
+    if (cute::thread0()) {
+      print_latex(layoutA); print("\n");
+      print_latex(layoutA_inv); print("\n");
+      print_latex(layoutA_inv_with_shape); print("\n");
+    }
 
 另外，我们观察到 inverse 操作总是会带一个 with_shape 这样的操作，只单纯做 inverse 其实也能得到一个 layout（即，我们例子中的 layoutA_inv），但是这个 layout 的 shape 其实并不重要，我们只需要理解成原始 layout 输入和输出的调换组成的一组集合即可。
 
@@ -110,7 +124,7 @@ Figure3. layoutB = left_inverse(layoutA).with_shape 的计算过程。给定 lay
       return composition(*this, make_layout(shape));
     }
 
-除了 with_shape，我们也可以 compose 其他 layout 来完成具备语义的各种操作。
+除了 with_shape，我们也可以 compose 其他 layout 来完成具备语义的各种操作，我们在实战章节中跟随例子进行解读。
 
 了解清楚 inverse 语义后，我们来看 CuTe 的具体函数。CuTe 对 inverse 提供了 left_inverse & right_inverse 两个函数。二者在给定的 layout 为一一映射且连续的场景下（即，每一个输入都对应一个不同的输出，且输出空间是连续的），left_inverse 等价于 right_inverse。事实上，CuTe 代码中用到 inverse 的场景绝大多数都是这样一一映射且连续的，因此大部分情况下 right_inverse 和 left_inverse 可以相互替换。
 
@@ -122,11 +136,11 @@ Figure4. broadcast access 以及 stride access 下，left_inverse & right_invers
 
 总结来说，left inverse 是对 layout 的所有潜在输出（即，陪域）做 inverse，right inverse 则是在 layout 实际的"一部分"输出做 inverse，且这个"一部分"是实际输出空间（即，值域）中连续的一段。
 
-当我们想要对一个非紧凑或非连续的 layout 进行 inverse 操作时，需要想清楚目的是什么，再选择是用 left 还是 right。另外需要强调一点，当我们给的 layout stride 不是编译期常量时，left_inverse 会报错，而 right_inverse 则会跳过这些非编译期常量的维度来构造 inverse layout。
+当我们想要对一个非紧凑或非连续的 layout 进行 inverse 操作时，需要想清楚目的是什么，再选择是用 left 还是 right。另外需要强调一点，当我们给的 layout stride 不是编译期常量时，left_inverse 会报错，而 right_inverse 则会跳过这些非编译期常量的维度来构造 inverse layout，笔者暂时没有想清楚为什么要这样设计，有了解的朋友欢迎在评论区讨论。
 
 虽然我们在本文开头说，只需要初中级别的数学知识就能读懂本篇文章，但是考虑到有些读者可能想要进一步挖掘 CuTe 之下的数学原理，我们也简单提一下：left inverse 和 right inverse 的概念其实来源于集合论，并且可以证明在两个集合满足双射的前提下，left inverse 等价于 right inverse；当集合仅满足单射时（即，一一映射，但是并不是每个输出都能找到输入），只存在 left inverse；而仅满足满射时（即，每个输出都必然能找到一个输入，但有可能多个输入对应一个输出），只存在 right inverse。
 
-而求一个集合的逆的过程，可以通过 two-line notation -> swap two-line -> 排序的方法来完成。事实上，我们观察 CuTe 实现 inverse 函数的过程中就用到了排序，原因就在此。
+而求一个集合的逆的过程，可以通过 two-line notation -> swap two-line -> 排序的方法来完成，感兴趣的同学可以参考[国外的代数笔记](https://www.ucl.ac.uk/~ucahmto/0005_2021/Ch2.S12.html)。[@reed](https://www.zhihu.com/people/2600b0313c76a175aa9e09a235382b79) 大师在其对 [layout 代数的介绍](https://zhuanlan.zhihu.com/p/662089556)中也简单提及了这个方法。事实上，我们观察 CuTe 实现 inverse 函数的过程中就用到了排序，原因就在此。
 
     template <class Shape, class Stride>
     CUTE_HOST_DEVICE constexpr
@@ -266,6 +280,8 @@ Figure4. broadcast access 以及 stride access 下，left_inverse & right_invers
 我们在本文中梳理了 CuTe layout 代数中 compose 以及 inverse 的计算过程以及用法，其基本思想是将 layout 视为一种函数，因此我们可以借助函数中的 compose & inverse 的逻辑来理解 CuTe 的代数体系。
 
 进一步的，我们结合 flash atten v2 中 A-C-layout 转换例子，也能看到利用代数方法能让我们完成一些自定义 layout 变换，真正做到随心所欲写 CuTe，而不止于调用 cutlass 现成的功能。
+
+layout 代数在 cutlass 官方文档中一直是一个让人十分困惑的存在，即使有 reed 大师的指导，笔者在构思这篇文章的过程中，依旧经历了多轮反复的修正自己认知的过程，所谓温故知新的乐趣就是如此吧，我们将这个思考的过程分享出来，希望帮助更多的同学掌握 CuTe。
 
 接下来的文章我们将继续探讨 layout 代数中的 product 和 divide 逻辑，之所以将其分在不同的章节中，是因为我们认为 product 和 divide 无法从函数的角度推导，而是更倾向于一种几何形式的构造。
 

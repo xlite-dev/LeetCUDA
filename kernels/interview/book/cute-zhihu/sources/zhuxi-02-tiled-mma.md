@@ -179,6 +179,8 @@ Figure.5 flash atten v2 中 Tiled mma 中 Tile / permutation 切分方式。为�
 
 另外，读者可能注意到，Permutation 似乎只是用来规定 threadblock mma 的 tile size，那为什么不直接叫 tile 呢？这是因为在一些高级用法上，我们想做到 tiled 中的多条 16x8x16 mma 指令算的数据的位置重新排列，例如，我们希望 warp 连续做多个 16x8x16 mma，这时候我们可以通过构造 Permutation 中的 stride 来完成，这就是为什么叫 “Permutation”。 详细的内容在我们进阶篇的教程中有单独的文章进行了介绍：
 
+[写给进阶开发的 CuTe 笔记：tiled mma 的 permutationMNK 参数](https://zhuanlan.zhihu.com/p/1973526710105419953)
+
 感兴趣的读者可以跳转阅读。在一般场景下，我们将其当作 tile size 理解即可。
 
 Tiled mma partition
