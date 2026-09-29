@@ -1158,7 +1158,7 @@ R2S $\to$ sC $\to$ S2G，映射进类型 \\
 
 \section{性能分析}
 
-本章没有为 CuTe HGEMM 单独建 bench（Phase~7c 的集成数据由 \texttt{notes-v2.cu}
+本章没有为 CuTe HGEMM 单独建 bench（Phase~7c 的集成数据由 \texttt{bench/bench\_leetcuda.cu}
 的 \texttt{--bench} 统一采集）。这里只给三条\textbf{可核验}的定量结论，
 端到端性能对照见 \texttt{.\allowbreak{}tmp/\allowbreak{}book-bench}（其它章的复测汇总）：
 
@@ -1299,7 +1299,7 @@ CuTe 版\textbf{不承诺}比手写版更快。两者的指令序列高度重合
 
 \section{最小测试与动手实验}\label{sec:24-minitest}
 
-\texttt{book/\allowbreak{}tests/\allowbreak{}ch24\_\allowbreak{}hgemm\_\allowbreak{}cute.cu} 的逻辑照抄 \texttt{hgemm.cu}
+\texttt{book/\allowbreak{}tests/\allowbreak{}ch24\_\allowbreak{}hgemm\_\allowbreak{}cute.cu} 的逻辑照抄 \texttt{bench/hgemm.cu}
 L192 的 \texttt{test\_\allowbreak{}hgemm\_\allowbreak{}cute}，但按本书测试规范改造：参考值换成
 \textbf{CPU fp64 三重循环}（不依赖 cuBLAS），判定走 \texttt{book\_check}
 容差三档。测试跑两组配置：

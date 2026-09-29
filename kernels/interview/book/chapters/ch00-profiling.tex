@@ -630,7 +630,7 @@ warp group（128T，专职 TMA）+ 1 个 consumer（256T，全计算），用
 \item \textbf{\texttt{-{}-kernel-name} 精确匹配陷阱}。模板 kernel 名带长
   后缀，前缀匹配报 \texttt{No kernels were profiled} 且生成空 report；
   一律 \texttt{regex:} 前缀。
-\item \textbf{ncu harness 与 bench 配置不一致}。profiling 用的配置必须与
+\item \textbf{ncu 辅助工具与 bench 配置不一致}。profiling 用的配置必须与
   bench 默认逐 flag 对齐；显式传 flag 会覆盖 bench 内部的默认值，实测逐
   flag 传参 vs 全默认可差 13\%，指标分析对象可能根本不是 bench 跑的那个
   kernel 形态。

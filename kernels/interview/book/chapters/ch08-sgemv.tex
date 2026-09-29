@@ -450,7 +450,7 @@ $A$ 元素零复用、AI 是常数，优化只剩带宽利用一条路。GEMM �
 
 \section{最小测试与动手实验}
 
-测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch08\_\allowbreak{}sgemv.\allowbreak{}cu}（逻辑抽取自 sgemv.cu 的
+测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch08\_\allowbreak{}sgemv.\allowbreak{}cu}（逻辑抽取自 bench/sgemv.cu 的
 test\_sgemv，L21，对照改为 CPU fp64 参考）。三个 case：
 A（$M{=}64$、$K{=}512$，$K$ 同时被 32/128 整除，k32 与 k128 同形状对比）；
 B（$M{=}7$、$K{=}128$，行守卫路径，grid 2 个 block、第二个 block 有 warp 被剪）；

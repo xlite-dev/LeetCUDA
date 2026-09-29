@@ -589,7 +589,7 @@ vec4 kernel（dot/relu/eadd）统一。relu\_vec4 有同样问题，详见 ch03�
 
 \section{最小测试与动手实验}
 
-测试文件：book/tests/ch02\_reduce.cu，逻辑抽取自 base.cu 的
+测试文件：book/tests/ch02\_reduce.cu，逻辑抽取自 bench/base.cu 的
 test\_block\_reduce（L22）与 test\_dot（L57），改用 common\_test.h 的
 CPU fp64 参考与 book\_check 容差判定：$N = 512$ 随机 fp32，分别验证
 block\_reduce\_all / dot / dot\_vec4 对 CPU 求和与点积。

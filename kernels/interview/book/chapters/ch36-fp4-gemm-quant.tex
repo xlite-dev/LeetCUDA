@@ -516,7 +516,7 @@ $+$ 双侧（GEMM 里 A、B 都量化） & 两侧独立同分布，分子加倍�
   \item \textbf{量化 round-trip 实测 $10.29\%$}（\texttt{.tmp/fp4bs/smoke.cu}
         的 O.1b，$128\times256$ 与 $300\times192$ 两组分别 10.29\%/10.20\%）
         vs 模型 10.17\%——差 1.2\%，来自 fp32 归一乘除的舍入。
-  \item \textbf{GEMM relFro 实测 $14.37\%$}（单级、$4096^3$，标准表）
+  \item \textbf{GEMM relFro 实测 $14.37\%$}（单级、$8192^3$，标准表）
         vs 模型 $14.38\%$——\textbf{小数点后两位吻合}。
   \item \textbf{实测对 level-1 几乎不敏感}：单级 14.37\%、A 侧 level-1
         14.48\%、B 侧 14.43\%、两级 14.54\%。这不是「level-1 没用」，

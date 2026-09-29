@@ -1,5 +1,5 @@
 % ch35-fp8-gemm-cute.tex — FP8 GEMM（二）：CuTe 主 Kernel、在线反量化与 cuBLAS 对比（RFC-N）
-% 源码：kernels/interview/fp8_gemm.cuh（Phase 9.3-9.8，L303-955）+ fp8_gemm.cu bench 接线
+% 源码：kernels/interview/fp8_gemm.cuh（Phase 9.3-9.8，L303-955）+ bench/fp8_gemm.cu bench 接线
 \chapter{FP8 GEMM（二）：CuTe 主 Kernel、在线反量化与 cuBLAS 对比}\label{ch:35}
 
 \section{本章导读}
@@ -21,10 +21,10 @@
 上的完整实测：FP8 kernel 相对 cuBLAS BF16 在 4096$^3$/8192$^3$ 上拿到
 $2.7\times\sim3.0\times$（对手写 bf16 HGEMM 上限的口径则是
 $1.81\times$，两个基线的差距本身就是一个「基线 sanity check」案例，
-35.8.1~节专门拆解）；量化前处理的开销（e2e 视角）与形状缩放规律
+35.8.1~节专门拆解）；量化前处理的开销（E2E 视角）与形状缩放规律
 一并给出，并指出部署时真正该走的路——\textbf{权重 $B$ 离线量化}
 （35.8.3~节）：权重只量化一次、随 checkpoint 落盘，运行时只承担激活量化的
-开销，e2e 从「量化占大头」回到主 kernel 决定。35.8.4~节把 tile 几何
+开销，E2E 从「量化占大头」回到主 kernel 决定。35.8.4~节把 tile 几何
 （$BM,BN$）与流水深度也当成可调参数实测一遍，得出结论：本章默认的宽 tile
 （$128\times256$ 配 2 级流水）就是大形状上的最快档（4096$^3$/8192$^3$ 上
 443.7/487.8~T，比 $128^3$/3 级快 $7.7\%/5.9\%$），但它带形状前提——
@@ -36,10 +36,10 @@ smem 读波前反而更少）。FP4（NVFP4）GEMM 单独成章，本章不展�
 第~\ref{ch:23}~章（TMA/swizzle）、第~\ref{ch:26c}~章（non-WS 协议）、
 第~\ref{ch:26b}~章（epilogue 与 STSM）。
 \textbf{源码区间}：\texttt{fp8\_gemm.cuh} L303--955（Phase 9.3--9.8），
-\texttt{fp8\_gemm.cu} 的 \texttt{bench\_fp8\_gemm}/\texttt{bench\_fp8\_gemm\_tile\_sweep}
+\texttt{bench/fp8\_gemm.cu} 的 \texttt{bench\_fp8\_gemm}/\texttt{bench\_fp8\_gemm\_tile\_sweep}
 接线。
-\textbf{验证方式}：\texttt{notes\_v2\_sm120a.bin --fp8-gemm}（精度全组合）、
-\texttt{--bench --mnk 4096,4096,4096}（标准表）、
+\textbf{验证方式}：\texttt{leetcuda\_bench\_sm120a.bin --fp8-gemm}（精度全组合）、
+\texttt{--bench --mnk 8192,8192,8192}（标准表）、
 \texttt{--fp8-gemm-sweep}（tile/流水深度扫描，35.8.4~节）。
 
 \section{总体架构}
@@ -373,10 +373,10 @@ stream 语义对齐，多流复用没有额外障碍。
 
 bench 侧的接线把 API 挂进标准 \texttt{--bench} 分发链：\texttt{--bench}
 与 \texttt{--mnk} 给出的形状直接进 \texttt{bench\_fp8\_gemm}，表内输出
-kernel-only 行（量化一次、循环只跑主 kernel）与 e2e 行（循环含量化），
+kernel-only 行（量化一次、循环只跑主 kernel）与 E2E 行（循环含量化），
 参照系是同 shape 的 cuBLAS BF16 GEMM
 （\texttt{CUBLAS\_COMPUTE\_32F} 累加、\texttt{CUDA\_R\_16BF} 存储）。这
-给了两个视角：kernel-only 回答「FP8 MMA + TMA 流水本身多快」，e2e 回答
+给了两个视角：kernel-only 回答「FP8 MMA + TMA 流水本身多快」，E2E 回答
 「一个真实推理调用（含量化）是否划算」。另有一条独立入口
 \texttt{--fp8-gemm-sweep}（\texttt{bench\_fp8\_gemm\_tile\_sweep}）：
 不复用标准表，而是把 \texttt{Fp8GemmTraits} 的 tile 与流水深度逐个
@@ -403,31 +403,31 @@ $128^3$/s3 的数字见 35.8.4~节扫描表）。
 \midrule
 2048$^3$ & cuBLAS BF16 (F32 acc)       & ---   & 137.5 & 1.00x & 0.75x \\
           & Ours' CuTE HGEMM (F32 acc)  & $\approx$0 & 183.4 & 1.34x & 1.00x \\
-          & FP8 GEMM nonws (rc)         & 3.00  & 243.6 & 1.77x & 1.33x \\
-          & FP8 GEMM ws (rc)            & 3.00  & 244.6 & 1.78x & 1.33x \\
-          & FP8 GEMM+Quant e2e nonws    & 3.00  &  76.3 & 0.55x & 0.42x \\
-          & FP8 GEMM+A-Quant e2e, $B$ off & 3.00 & 225.9 & 1.64x & 1.23x \\
-          & FP8 GEMM+A-Quant e2e, $B$ off (ws) & 3.00 & 228.4 & 1.66x & 1.25x \\
+          & FP8 GEMM NonWS (RC)         & 3.00  & 243.6 & 1.77x & 1.33x \\
+          & FP8 GEMM WS (RC)            & 3.00  & 244.6 & 1.78x & 1.33x \\
+          & FP8 GEMM+Quant E2E NonWS    & 3.00  &  76.3 & 0.55x & 0.42x \\
+          & FP8 GEMM+A-Quant E2E, $B$ off & 3.00 & 225.9 & 1.64x & 1.23x \\
+          & FP8 GEMM+A-Quant E2E, $B$ off (WS) & 3.00 & 228.4 & 1.66x & 1.25x \\
 \midrule
 4096$^3$ & cuBLAS BF16 (F32 acc)       & ---   & 163.5 & 1.00x & 0.67x \\
           & Ours' CuTE HGEMM (F32 acc)  & $\approx$0 & 243.1 & 1.49x & 1.00x \\
-          & FP8 GEMM nonws (rc)         & 4.50  & 440.7 & 2.70x & 1.81x \\
-          & FP8 GEMM ws (rc)            & 4.50  & 440.9 & 2.70x & 1.81x \\
-          & FP8 GEMM+Quant e2e nonws    & 4.50  & 186.8 & 1.14x & 0.77x \\
-          & FP8 GEMM+A-Quant e2e, $B$ off & 4.50 & 411.2 & 2.52x & 1.69x \\
-          & FP8 GEMM+A-Quant e2e, $B$ off (ws) & 4.50 & 413.1 & 2.53x & 1.70x \\
+          & FP8 GEMM NonWS (RC)         & 4.50  & 440.7 & 2.70x & 1.81x \\
+          & FP8 GEMM WS (RC)            & 4.50  & 440.9 & 2.70x & 1.81x \\
+          & FP8 GEMM+Quant E2E NonWS    & 4.50  & 186.8 & 1.14x & 0.77x \\
+          & FP8 GEMM+A-Quant E2E, $B$ off & 4.50 & 411.2 & 2.52x & 1.69x \\
+          & FP8 GEMM+A-Quant E2E, $B$ off (WS) & 4.50 & 413.1 & 2.53x & 1.70x \\
 \midrule
 8192$^3$ & cuBLAS BF16 (F32 acc)       & ---   & 163.3 & 1.00x & 0.68x \\
           & Ours' CuTE HGEMM (F32 acc)  & $\approx$0 & 241.8 & 1.48x & 1.00x \\
-          & FP8 GEMM nonws (rc)         & 6.25  & 483.6 & 2.96x & 2.00x \\
-          & FP8 GEMM ws (rc)            & 6.25  & 487.8 & 2.99x & 2.02x \\
-          & FP8 GEMM+Quant e2e nonws    & 6.25  & 315.1 & 1.93x & 1.30x \\
-          & FP8 GEMM+A-Quant e2e, $B$ off & 6.25 & 429.4 & 2.63x & 1.78x \\
-          & FP8 GEMM+A-Quant e2e, $B$ off (ws) & 6.25 & 432.0 & 2.65x & 1.79x \\
+          & FP8 GEMM NonWS (RC)         & 6.25  & 483.6 & 2.96x & 2.00x \\
+          & FP8 GEMM WS (RC)            & 6.25  & 487.8 & 2.99x & 2.02x \\
+          & FP8 GEMM+Quant E2E NonWS    & 6.25  & 315.1 & 1.93x & 1.30x \\
+          & FP8 GEMM+A-Quant E2E, $B$ off & 6.25 & 429.4 & 2.63x & 1.78x \\
+          & FP8 GEMM+A-Quant E2E, $B$ off (WS) & 6.25 & 432.0 & 2.65x & 1.79x \\
 \midrule
 4097$\times$4096$^2$ & Ours' CuTE HGEMM (F32 acc) & $\approx$0 & 223.8 & 1.38x & 1.00x \\
-                     & FP8 GEMM nonws (rc) & 4.50 & 440.4 & 2.72x & 1.97x \\
-                     & FP8 GEMM ws (rc)    & 4.50 & 443.2 & 2.74x & 1.99x \\
+                     & FP8 GEMM NonWS (RC) & 4.50 & 440.4 & 2.72x & 1.97x \\
+                     & FP8 GEMM WS (RC)    & 4.50 & 443.2 & 2.74x & 1.99x \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -482,8 +482,8 @@ Max Err 见 34.5~节误差指纹表。）
 \draw[->] (0,0) -- (0,7.3);
 \node[left, font=\tiny] at (-0.05,7.15) {TFLOPS};
 % legend
-\foreach \i/\c/\l in {0/tkPurple!35/cuBLAS BF16, 1/tkBlue!55/FP8 GEMM nonws,
-  2/tkBlue!85/FP8 GEMM ws, 3/tkOrange!60/FP8+Quant e2e} {
+\foreach \i/\c/\l in {0/tkPurple!35/cuBLAS BF16, 1/tkBlue!55/FP8 GEMM NonWS,
+  2/tkBlue!85/FP8 GEMM WS, 3/tkOrange!60/FP8+Quant E2E} {
   \fill[\c] (1.4+\i*3.05, 7.55) rectangle (1.75+\i*3.05, 7.85);
   \node[right, font=\tiny, inner sep=2pt] at (1.78+\i*3.05, 7.7) {\l};
 }
@@ -493,11 +493,11 @@ $128\times256$/s2）。三个规律：
 \textbf{kernel-only} 随 shape 增大从 $1.77\times$ 升到 $2.99\times$——
 宽 tile 需要足够多的 tile 填满 110 个 SM，2048$^3$ 的
 $128\times256$ grid 只有 128 个 CTA（35.8.4~节末的波次量化）；
-\textbf{e2e} 的形状敏感度更陡：2048$^3$ 反而低于 cuBLAS（$0.55\times$），因为量化
+\textbf{E2E} 的形状敏感度更陡：2048$^3$ 反而低于 cuBLAS（$0.55\times$），因为量化
 是 $O(MK{+}NK)$ 的带宽型工序，GEMM 变小时它的占比线性放大（35.8.2~节）；
 \textbf{WS} 全程略优于 non-WS（寄存器有余量、setmaxnreg 有让渡空间，
-35.6~节），但差距远小于 attention 大 $D$ 场景。图中 e2e 柱是「全链路
-量化」的保守口径；权重 $B$ 离线量化后 e2e 回到 226/411/429~T
+35.6~节），但差距远小于 attention 大 $D$ 场景。图中 E2E 柱是「全链路
+量化」的保守口径；权重 $B$ 离线量化后 E2E 回到 226/411/429~T
 （35.8.3~节）。}
 \label{fig:35-perf}
 \end{figure}
@@ -566,9 +566,9 @@ heuristic 偏保守，而是库在这张卡上收录的 32F-acc kernel 只有这
 
 \subsection{量化开销}
 
-e2e 与 kernel-only 的差就是量化前处理的开销。以 4096$^3$ 为例，直接看
+E2E 与 kernel-only 的差就是量化前处理的开销。以 4096$^3$ 为例，直接看
 时间：GEMM 段
-$2\cdot4096^3/440.7\mathrm{T}\approx 312\,\mu s$，e2e 段
+$2\cdot4096^3/440.7\mathrm{T}\approx 312\,\mu s$，E2E 段
 $\approx 736\,\mu s$，量化链占用约 $424\,\mu s$。这条链搬运的字节是
 $3\times MK$（读 bf16 写 e4m3，A 侧）$+3\times NK$（B 侧）$\approx
 8\cdot 4096^2\,\text{B}\approx 134\,\text{MB}$（B 的双朝向 staging 再加
@@ -578,7 +578,7 @@ $\approx 316\,\text{GB/s}$——\textbf{离 PRO 5000 的 DRAM 理论带宽
 以及 A 侧两遍 gmem 读的教学取舍（34.5.1~节）。生产级实现会把 A/B 量化
 合进一个 kernel、单遍统计 + 写出（ffpa 的 fused 形态，第~\ref{ch:28}~章
 28.4.3~节），
-e2e 数字还有一倍以上空间——这是留给读者的第一道习题。权重离线量化
+E2E 数字还有一倍以上空间——这是留给读者的第一道习题。权重离线量化
 （35.8.3~节）先把 B 的这份开销省掉，A 侧剩下的部分则进一步靠「并进上游
 norm/rope 尾部」来吸收。
 
@@ -612,7 +612,7 @@ $B$ off 行）；本章最小测试对四种粒度组合与尾部 shape 各跑�
 逐 bit 比对（\texttt{bit-exact=YES, diff=0}）。这条等价性是结构性的而非
 数值巧合：B 的量化只有一份实现（\texttt{fp8\_gemm\_quantize\_b} 由全链路
 与离线路径共用），A 侧量化与主 kernel 也都是同一份代码，离线只是把
-「什么时候算 B8T」换了个位置。收益全在时间维度——e2e 从 kernel-only 的
+「什么时候算 B8T」换了个位置。收益全在时间维度——E2E 从 kernel-only 的
 31\%/42\%/65\%（2048/4096/8192$^3$）回到 93\%/93\%/89\%，对应
 226/411/429~TFLOPS（1.64/2.52/2.63$\times$ vs cuBLAS BF16）：量化前处理
 的开销从 $O(MK{+}NK)$ 缩到 $O(MK)$，省掉的正是 34.3.3~节里开销最大的 B 侧
@@ -621,7 +621,7 @@ $B$ off 行）；本章最小测试对四种粒度组合与尾部 shape 各跑�
 A 侧残留开销的量级也值得看一眼：4096$^3$ 只剩 $\approx 22\,\mu s$
 （$A$ 仅 33.5~MB，warmup/repeat 内大部分被 L2 吸收），8192$^3$
 （$A$ 134~MB）升到 $\approx 287\,\mu s$——这正是带宽受限下的耗时量级，也说明
-「B 离线」之后 e2e 的瓶颈已经回到主 kernel。生产推理栈
+「B 离线」之后 E2E 的瓶颈已经回到主 kernel。生产推理栈
 （TensorRT-LLM、vLLM、ffpa-attn）里的 FP8 权重都是离线量化后按
 $B_8^{\top}$ 布局落盘的，运行时只做激活量化：本节的
 \texttt{\_b\_offline} 路径就是那个形态的最小复刻，也是本部分从教学链路
@@ -912,10 +912,10 @@ $128^3$ tile + SW128 + 三级 mbarrier 流水（96\,KB smem；库默认档把同
 查表 $\to$ bf16 转换 $\to$ STSM + TMA store），WS 变体以 setmaxnreg
 收尾。C++ API \texttt{fp8\_gemm\_bf16} 把量化与 GEMM 封成一次调用，
 在标准 bench 链上对 cuBLAS BF16 取得 kernel-only $1.8\times\sim3.0\times$、
-e2e $0.6\times\sim1.9\times$（形状依赖）的成绩——而 35.8.1~节的基线
+E2E $0.6\times\sim1.9\times$（形状依赖）的成绩——而 35.8.1~节的基线
 剖析说明这个数字的两种读法：库现状口径 $2.70\times$，手写 bf16 上限口径
-$1.81\times$。35.8.3~节再把 e2e 路径补齐：权重 $B$ 离线量化后，每次前向
-只剩激活量化（$O(MK)$），e2e 回到 $1.64\times\sim2.63\times$——量化 GEMM
+$1.81\times$。35.8.3~节再把 E2E 路径补齐：权重 $B$ 离线量化后，每次前向
+只剩激活量化（$O(MK)$），E2E 回到 $1.64\times\sim2.63\times$——量化 GEMM
 从「能跑赢 cuBLAS」走到「部署里真的划算」；激活侧残余的那点带宽开销，最后
 由「并进上游 norm/rope 尾部」的模型相关融合清零。最后 35.8.4$\sim$35.8.5
 ~节把 tile 这件事从「$128^3$ 是惯例」变成「$128^3$ 是折中」：把 $BM,BN$

@@ -749,7 +749,7 @@ f16 写回之间反复 \texttt{\_\allowbreak{}\_\allowbreak{}float22half2\_\allo
 「两条路线在同一张卡上的量级对照」即可，不宜当作「FA3 比 FA2 快 $x\%$」
 的结论；真正受控的对照需要固定 tile 与流水深度，留给附录 B 的复测表。
 
-另一条数据线来自 \texttt{notes\_\allowbreak{}v2\_\allowbreak{}sm120a.bin --bench --bench-all} 的
+另一条数据线来自 \texttt{leetcuda\_\allowbreak{}bench\_\allowbreak{}sm120a.bin --bench --bench-all} 的
 FA 基准（$B{=}1$、$H{=}32$、$N{=}8192$、$D{=}128$，dense，同机 RTX PRO 5000
 sm\_120、110 SM、CUDA 13.2），以同轮 cuDNN 为基线（表~\ref{tab:ch18-perf}）：
 F16Acc 对照 cuDNN f16（231.1），F32Acc 对照 cuDNN f32（230.2）。
@@ -876,7 +876,7 @@ producer 阻塞在 barrier；排查口诀见第~\ref{ch:14}~章（唯一变量�
 \texttt{setmaxnreg} 数字时，先查池数学）。
 
 \textbf{坑六：$D{=}128$ 只支持 Sk$=1$。}\allowbreak{}112\,KB 超出 99\,KB 的 optin 上限，
-测试 harness 必须按 smem 可行性 SKIP（本章测试对超限组合打印
+测试辅助工具必须按 smem 可行性 SKIP（本章测试对超限组合打印
 \texttt{SKIP(ch18)} 并非跳过失败）。想给 $D{=}128$ 加深流水，只能减小
 $B_c$ 或让两个 WG 共享一套更大 bank。前者改变 tile 几何，后者退回
 第~\ref{ch:17}~章的结构。
@@ -949,7 +949,7 @@ WG1 看到 WG2 的写入）。
 
 \section{最小测试与动手实验}
 
-测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch18\_\allowbreak{}fa3.cu}（逻辑抽取自 flash\_attn.cu
+测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch18\_\allowbreak{}fa3.cu}（逻辑抽取自 bench/flash\_attn.cu
 \texttt{test\_\allowbreak{}flash\_\allowbreak{}attn\_\allowbreak{}3\_\allowbreak{}tma\_\allowbreak{}ws\_\allowbreak{}impl}@L1085；参考实现由 cuDNN SDPA 换成
 CPU fp64，softmax 全程 double 累加）。覆盖 14 例：$D{=}64$（$\mathrm{Sk}
 \in \{1,2,3\}$，$N \in \{64, 128, 512\}$）与 $D{=}128$（$\mathrm{Sk}{=}1$，
@@ -964,7 +964,7 @@ hgemm.cuh（\texttt{swizzle\_fa} 依赖它的 \texttt{swizzle<64>}）。
 
 在 \texttt{book/tests/} 目录下编译运行（6 号卡；建议 arch 用 \texttt{sm\_120f}，
 本章测试不含 setmaxnreg 路径，sm\_120a 亦可跑，但 sm\_120f 与
-notes-v2 实验构建保持同一目标口径，见本节坑七与第~\ref{ch:14}~章的考据）：
+leetcuda bench 实验构建保持同一目标口径，见本节坑七与第~\ref{ch:14}~章的考据）：
 
 \begin{lstlisting}[style=console]
 ./build_tests.sh --arch sm_120f --ch ch18
@@ -986,7 +986,7 @@ prefetch 目标从 $t+2$ 改成 $t+1$（Sk$=$2 时），观察数值立刻出错
 这是两处 \texttt{local\_*} 索引错位的直接演示；（3）把 consumer 的
 \texttt{empty\_K} early release 上移到 HMMA 之前，观察挂死或读脏数据
 （第~\ref{ch:17}~章坑五的相同问题）；（4）给测试补一行 $D{=}128$、$\mathrm{Sk}{=}2$
-的实例化，确认 harness 打出
+的实例化，确认辅助工具打出
 \texttt{SKIP(ch18): smem 114688 B > optin 101376 B}（坑六）。
 
 \section*{延伸阅读}

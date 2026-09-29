@@ -317,7 +317,7 @@ pipeline 深度足够隐藏 TMA 延迟）。另有 v1 限制：\texttt{kHeadDim}
 
 本机实测 optin 上限 $101376\,\mathrm{B} = 99.0$ KB（17.10~节测试首行输出），
 注释「$\sim$100KB」为近似正确的口径；$\mathrm{Sk}{=}4, D{=}128$ 的 112 KB
-超限 $\to$ 运行时 SMEM SKIP 的兜底逻辑在 harness 中同样可观察。
+超限 $\to$ 运行时 SMEM SKIP 的兜底逻辑在辅助工具中同样可观察。
 
 \section{设计与实现}
 
@@ -731,8 +731,8 @@ $D{=}64$，\;Sk$=$2，Sv$=$1，F16Acc & 141.8 & 151.8 \\
 $B_r{=}128$ 的计算阶段足够长，两级 K 流水已把 TMA 延迟推出关键路径，更深的
 流水只多耗 smem（Sk$=$3 的 96 KB 使 2 blocks/SM 的驻留不再可行，头注释推荐
 $D{=}128$ 用 Sk$=$2 恰是两者的平衡点）。其二，\textbf{TMA+WS 相对
-ch16 cp.async 版的稳定收益约 $+20\%$}：同卡同时刻原版 harness 对照
-（\texttt{notes\_\allowbreak{}v2 --bench --bhnd 1,\allowbreak{}32,\allowbreak{}16384,\allowbreak{}128}，warmup$=$2/repeat$=$3）
+ch16 cp.async 版的稳定收益约 $+20\%$}：同卡同时刻原版辅助工具对照
+（\texttt{leetcuda\_\allowbreak{}bench --bench --bhnd 1,\allowbreak{}32,\allowbreak{}16384,\allowbreak{}128}，warmup$=$2/repeat$=$3）
 测得 FA2 MMA Stages（Sk$=$2, Pad, F16Acc）158.7T $\to$ FA2 TMA WS（Sk$=$2）
 190.4T；这 $+20\%$ 的收益来自装载专职化 $+$ stage 级同步。其三，\textbf{F32Acc
 反而快于 F16Acc}（195 vs 184）：F16Acc 路径的 softmax 需要在 f32 计算与
@@ -742,16 +742,16 @@ f16 写回 R\_S 之间反复转换（\texttt{\_\allowbreak{}\_\allowbreak{}float
 
 \textbf{README 口径勘误（F4）}：README 的 SM120a 表给出 FA2 TMA WS
 （Sk$=$2, F16Acc）292.0 TFLOPS（1.31x vs cuDNN），与本书复测（183.8T）
-及原版 harness 同卡复跑（190.4T）均不可复现，且 F16/F32 的相对高低相反
+及原版辅助工具同卡复跑（190.4T）均不可复现，且 F16/F32 的相对高低相反
 （README：F16 292 $>$ F32 202；复测：F16 184 $<$ F32 195）。README 数字
 应测自早期代码状态或不同时钟/驱动环境（其 bench 输出还经
 \texttt{should\_\allowbreak{}print\_\allowbreak{}tflops} 的 max-of-N 过滤，见 17.7~节考据框）；本书
-统一采用「本书复测 $+$ 原版 harness 同卡对照」双口径，不引用不可复现数字。
+统一采用「本书复测 $+$ 原版辅助工具同卡对照」双口径，不引用不可复现数字。
 算术强度侧的定性结论不变：式~\ref{eq:17-ai} 的 $AI = B_r = 128$ FLOP/B
 贴近 SM120 roofline 拐点，FA 是典型的「装载敏感型」算子，这也解释了为何
 装载专职化的收益（$+20\%$）远大于再加深一级流水（$\approx$ 0）。
 
-原版 harness 全量 bench（\texttt{notes\_\allowbreak{}v2\_\allowbreak{}sm120a\_\allowbreak{}bin --bench
+原版辅助工具全量 bench（\texttt{leetcuda\_\allowbreak{}bench\_\allowbreak{}sm120a\_\allowbreak{}bin --bench
 --bench-all}，B$=$1、H$=$32、$N{=}8192$、$D{=}128$，dense）的逐配置结果
 如下表，含与 cuDNN 同精度基线的加速比对照：
 
@@ -802,7 +802,7 @@ $0.6\%$）。V 的单 buffer 消费已饱和，V tile 传输能被 QK $+$ softma
 \begin{kaogu}[F4·口径差异]{README FA2 TMA WS 数字不可复现}
   见 17.6~节：README 292T（F16Acc）vs 本书复测 183.8T / 原版同卡 190.4T，
   F16/F32 相对高低亦相反。README 的 bench 打印经 \texttt{should\_\allowbreak{}print\_\allowbreak{}
-  tflops}（flash\_attn.cu L44）max-of-N 过滤，只在超过本次运行历史最大值时
+  tflops}（bench/flash\_attn.cu L44）max-of-N 过滤，只在超过本次运行历史最大值时
   打印，天然系统性偏高；叠加 warmup$=$2/repeat$=$3 的小样本均值，口径与
   本书（warmup$=$5/iters$=$20 两轮复现）不可比。正文一律标注复测口径。
 \end{kaogu}
@@ -811,7 +811,7 @@ $0.6\%$）。V 的单 buffer 消费已饱和，V tile 传输能被 QK $+$ softma
   模板注释写 \texttt{kHeadDim // head dim: v1 only 64}，但同 kernel 的
   static\_assert（L895--896）明确接受 64 与 128，swizzle\_fa（L859--870）、
   smem 占用表（L826--834 的 D$=$128 列）、P0/P1/P2 的 kTmaChunks 分支与
-  flash\_attn.cu 的 D$=$128 测试全部支持 128。该注释是 D$=$128 支持加入前的
+  bench/flash\_attn.cu 的 D$=$128 测试全部支持 128。该注释是 D$=$128 支持加入前的
   残留，与 L842「v1 限制：kHeadDim=64 or 128」自相矛盾。已按源码冻结规则
   不回写，登记 CHECKLOG（本任务不改该文件，结论以本框注为准）。
 \end{kaogu}
@@ -827,7 +827,7 @@ $0.6\%$）。V 的单 buffer 消费已饱和，V tile 传输能被 QK $+$ softma
 \begin{kaogu}[F5·依赖关系考据]{flash\_attn.cuh 未自含 swizzle 符号}
   \texttt{flash\_\allowbreak{}attn.\allowbreak{}cuh} 只 \#include \texttt{base.cuh}，但其 L212 起调用
   的 \texttt{swizzle<64>} 定义在 \texttt{hgemm.cuh} L390，单编 flash\_attn.cuh
-  会报 identifier undefined，必须按 flash\_attn.cu L4--5 的顺序先引 hgemm.cuh。
+  会报 identifier undefined，必须按 bench/flash\_attn.cu L4--5 的顺序先引 hgemm.cuh。
   属头文件依赖不闭环的历史遗留，book/tests 的 include 顺序已按此固定。
 \end{kaogu}
 
@@ -875,7 +875,7 @@ ALLOC/\allowbreak{}DEALLOC} 默认宏关闭；TMA dst 为 \texttt{shared::cluste
 
 \textbf{坑八：seqlen 对齐限制。}\allowbreak{}v1 要求 seqlen $\%$ $B_r{=}128$ $=$ 0 且
 $\%$ $B_c{=}64$ $=$ 0（无尾 tile 处理），实际部署的变长序列需先 pad 或走
-分桶。测试 harness 的 unaligned SKIP 分支即此约束的运行时表达。
+分桶。测试辅助工具的 unaligned SKIP 分支即此约束的运行时表达。
 
 \section{面试要点速查}
 
@@ -922,7 +922,7 @@ A：producer 尾部不再发预取、自然退出；consumer 算完最后一块�
 
 \section{最小测试与动手实验}
 
-测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch17\_\allowbreak{}fa2\_\allowbreak{}tma\_\allowbreak{}ws.cu}（逻辑抽取自 flash\_attn.cu
+测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch17\_\allowbreak{}fa2\_\allowbreak{}tma\_\allowbreak{}ws.cu}（逻辑抽取自 bench/flash\_attn.cu
 \texttt{test\_\allowbreak{}flash\_\allowbreak{}attn\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}impl}@L808，参考实现由 cuDNN SDPA
 换成 CPU fp64，softmax 全程 double 累加）。覆盖 $D \in \{64, 128\}$ $\times$
 seqlen $\in \{128, 512\}$ $\times$ F16Acc/F32Acc 共 8 例：seqlen $=$ 128 时
@@ -932,7 +932,7 @@ $T_c{=}2$ 触发 stage 回绕（Sk$=$2 的 0$\to$1$\to$0）；512 时 8 轮迭�
 一个工程细节：\texttt{cu\allowbreak{}Tensor\allowbreak{}Map\allowbreak{}Encode\allowbreak{}Tiled} 是 driver API 而
 \texttt{build\_\allowbreak{}tests.\allowbreak{}sh} 不带 \texttt{-lcuda}，测试经 \texttt{dlopen} 解析
 该符号（字段填法与 common.cuh \texttt{create\_\allowbreak{}tensor\_\allowbreak{}map} 逐字段一致）；
-另按 flash\_attn.cu L4--5 的 include 顺序先引 hgemm.cuh（swizzle 符号所在，17.7~节
+另按 bench/flash\_attn.cu L4--5 的 include 顺序先引 hgemm.cuh（swizzle 符号所在，17.7~节
 考据框五）。
 
 在 \texttt{book/tests/} 目录下编译运行（本机 sm\_120a，6 号卡）：

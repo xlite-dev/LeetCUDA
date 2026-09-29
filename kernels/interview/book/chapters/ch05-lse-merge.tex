@@ -495,7 +495,7 @@ elementwise 的版本；FA 是在线、寄存器、随 KV 分块流水推进的�
 
 \section{最小测试与动手实验}
 
-测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch05\_\allowbreak{}merge\_\allowbreak{}attn.cu}（逻辑抽取自 base.cu 的
+测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch05\_\allowbreak{}merge\_\allowbreak{}attn.cu}（逻辑抽取自 bench/base.cu 的
 test\_merge\_attn\_states，L235；对照改为 CPU fp64 的「整体 softmax 直接加权」）。
 每个 case 为每个 (token, head) 构造两个 KV 分块（各 32 个 score），以 float 模拟
 FA 分块输出（$O^{A}, O^{B}$ 已归一化、$\mathrm{LSE} = m + \log \ell$），

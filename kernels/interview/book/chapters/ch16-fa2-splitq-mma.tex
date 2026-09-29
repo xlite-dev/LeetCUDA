@@ -758,7 +758,7 @@ long-scoreboard / LG-throttle / MIO-throttle stall 分别放大
 源码注释，属作者实测口径；本章复测 pad 路径与其吻合）。
 
 \textbf{FA2 MMA Stages 全变体 bench}（RTX PRO 5000 72GB，sm\_120，
-110 SM，CUDA 13.2；\texttt{notes\_\allowbreak{}v2\_\allowbreak{}sm120a.\allowbreak{}bin}
+110 SM，CUDA 13.2；\texttt{leetcuda\_\allowbreak{}bench\_\allowbreak{}sm120a.\allowbreak{}bin}
 \texttt{\_\allowbreak{}bench\_\allowbreak{}bench\_\allowbreak{}all}；FA 问题规模
 \texttt{B=\allowbreak{}1,\allowbreak{}H=\allowbreak{}32,\allowbreak{}N=\allowbreak{}8192,\allowbreak{}D=\allowbreak{}128}，
 dense 无 causal，对比 cuDNN 同精度基线）：
@@ -801,7 +801,7 @@ swizzle 只微调 bank/wavefront 分布，不改变 compute-bound 本质。
 \begin{kaogu}[F5 配置口径]{头注释 L33--37「Br=64 / Block(128,1,1) / 4 warps」与默认实例化不符}
   头注释的 grid/block 描述取 $kMmaTileSeqLenQ{=}4$（$B_r{=}64$、
   4 warp、128 线程）配置，而 L44--45 的 tile 公式又写
-  $B_r = 16\cdot\{4,8\}\cdot1 = \{64,128\}$；notes-v2 与本章测试的
+  $B_r = 16\cdot\{4,8\}\cdot1 = \{64,128\}$；leetcuda bench 与本章测试的
   默认实例化是 $kMmaTileSeqLenQ{=}8$（$B_r{=}128$、8 warp、256 线程）。
   注释无错但口径未标注适用配置，读者按 128 线程推 smem/blockDim 会
   对不上。已记 \texttt{book/\allowbreak{}CHECKLOG.\allowbreak{}md}；正文一律以式~\ref{eq:16-brbc}
@@ -821,7 +821,7 @@ swizzle 只微调 bank/wavefront 分布，不改变 compute-bound 本质。
   定义在 \textbf{hgemm.cuh~L389--396}（common.cuh 里只有
   \texttt{swizzle\_\allowbreak{}v1\_\allowbreak{}impl/\allowbreak{}swizzle\_\allowbreak{}v2\_\allowbreak{}impl}）。单独 include
   flash\_attn.cuh 编译报 ``identifier swizzle is undefined''；
-  flash\_attn.cu 靠 L4--5 的 include 顺序（hgemm.cuh 在前）才通过。
+  bench/flash\_attn.cu 靠 L4--5 的 include 顺序（hgemm.cuh 在前）才通过。
   本章测试按同序 include。已记 CHECKLOG（F5 工程类）。
 \end{kaogu}
 
@@ -852,7 +852,7 @@ $(128{+}2{\times}64{+}64)\times72\times2 = 46080$~B，恰在 48~KiB
 动态 smem 默认上限之下；把 $B_r$ 提到 256 或 \texttt{kStagesK}$=$3
 立刻超限，launch 报 \texttt{invalid argument}，必须先
 \texttt{cuda\allowbreak{}Func\allowbreak{}Set\allowbreak{}Attribute} 抬高
-\texttt{cuda\allowbreak{}Func\allowbreak{}Attribute\allowbreak{}Max\allowbreak{}Dynamic\allowbreak{}Shared\allowbreak{}Memory\allowbreak{}Size}。notes-v2 与
+\texttt{cuda\allowbreak{}Func\allowbreak{}Attribute\allowbreak{}Max\allowbreak{}Dynamic\allowbreak{}Shared\allowbreak{}Memory\allowbreak{}Size}。leetcuda bench 与
 本章测试即使在 45~KiB 下也显式设置，作为防御性习惯。
 
 \textbf{坑三：早退 \texttt{return} 与 warp 集体指令冲突。}\allowbreak{}L156--157 的
@@ -929,7 +929,7 @@ cp.async 写侧 pattern：LDGSTS wavefront 2.26x、多种 stall 放大，
 \section{最小测试与动手实验}
 
 测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch16\_\allowbreak{}fa2\_\allowbreak{}mma.\allowbreak{}cu}（逻辑抽取自
-flash\_attn.cu 的 \texttt{test\_\allowbreak{}flash\_\allowbreak{}attn}，L662；参考改为 CPU fp64
+bench/flash\_attn.cu 的 \texttt{test\_\allowbreak{}flash\_\allowbreak{}attn}，L662；参考改为 CPU fp64
 直接算 softmax attention，half 输出 \texttt{\_\allowbreak{}\_\allowbreak{}half2float} 转 float
 比较）。case A（$B{=}1,H{=}2,N{=}256$：多 head、每 head 2 个 Q tile，$T_c{=}4$
 覆盖流水满载与尾部排空）、case B（$B{=}1,H{=}1,N{=}512$：grid.x$=$4

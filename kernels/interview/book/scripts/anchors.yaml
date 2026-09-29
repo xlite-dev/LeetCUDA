@@ -1,6 +1,6 @@
 # anchors.yaml — LeetCUDA 成书源码冻结登记（RFC-A.3）
 # 登记后源文件零改动（BOOK_PLAN §5.3）；校验脚本 verify_anchors.py
-frozen_at: "2026-09-24"
+frozen_at: "2026-09-29"
 repo_commit: "3b52c5cd3332c5e992c7aef63087d43f67f23b8e"
 files:
   base.cuh:
@@ -27,38 +27,39 @@ files:
   fp8_gemm.cuh:
     sha256: 60ef4408cfac016fa4b6cf3db8cec1d29b54665a294967290e07d4ce54ce7ce2
     lines: 958
-  notes-v2.cu:
-    sha256: 2a7dca6a0aff4581c7ee0a91b6468e4569805a7629db50752285aba1cdca8c69
-    lines: 440
   fp4_gemm.cuh:
     sha256: fcdeb7263a2a3fe7fc81c029afcc643485b705f09141a29f20728907f0705c9e
     lines: 1298
-  # 多 TU 拆分（2026-09-28）：host 侧 test/bench 从 notes-v2.cu 拆入模块 .cu
-  base.cu:
+  # 多 TU 拆分（2026-09-28）：host 侧 test/bench 从 notes-v2.cu 拆入模块 .cu；
+  # 2026-09-29 迁入 bench/ 目录，notes-v2.cu 改名 bench/bench_leetcuda.cu
+  bench/bench_leetcuda.cu:
+    sha256: 3ab6514e6c61da2a6344ff0569b0bbf72d8517e7490277390f5c2583e2718dbb
+    lines: 440
+  bench/base.cu:
     sha256: df8146dfe41612b2ef07afdb23a045b2ffe08b7b5bd51045252860ed7cb263f8
     lines: 730
-  sgemv.cu:
+  bench/sgemv.cu:
     sha256: 262dcd716333aa14e853da7c3ed6bbb3726aeefe2cb845d64acaa1ead41d32f9
     lines: 117
-  sgemm.cu:
+  bench/sgemm.cu:
     sha256: 9a295d4a5940a06487cd9d84742ebe27ca8e32e3ee6fd785051d20517fbc3b5e
     lines: 145
-  hgemm.cu:
+  bench/hgemm.cu:
     sha256: 19b3270b91f87b55d6ec9661621faacb9dec8af83782ae24097ebbea1c339610
     lines: 1187
-  fp8_gemm.cu:
-    sha256: 590d89ff8f6edd9e97d81879516d9ca21ab2e85e64cee34d80350fd23faf65c8
+  bench/fp8_gemm.cu:
+    sha256: ac893e4647585764067a9f95a020fe39d3fda9bcb1f9bdd03b24ea04e5a94aaa
     lines: 466
-  fp4_gemm.cu:
-    sha256: 4e188d223ce88a223cf96419c11c2bbc5f633e0021fb5efb94a7a69ab4b6dd39
-    lines: 593
-  flash_attn.cu:
+  bench/fp4_gemm.cu:
+    sha256: b7261c8425e8e768709d554d62e98c6e05fa14ddd7386982f4f11c6ffcba7f49
+    lines: 594
+  bench/flash_attn.cu:
     sha256: 724185bcbc43b0d33c4b7855f3010b4590abe435255edffe2e7e81543a9a01c9
     lines: 2695
-  ffpa_attn.cu:
+  bench/ffpa_attn.cu:
     sha256: 7492129c88d473cc6f046662e52be98b2cd3879bf440c7be39969124ce42ad19
     lines: 415
-  utils.cu:
+  bench/utils.cu:
     sha256: a03c499f94ce01f9b5cdf8a18ccdab88ab1d53e95a8cbbdf0a2d02d69dc9b35c
     lines: 83
 chapters:
@@ -283,7 +284,7 @@ chapters:
         end: 1306
         first_anchor: "// FFPA Split-D non-WS TMA 版 (ffpa-attn split_d.cuh 移植, 最小教学集)"
         last_anchor: "#endif // NOTES_V2_ENABLE_CUTE && NOTES_V2_ENABLE_TMA_MMA_WS"
-      - file: ffpa_attn.cu
+      - file: bench/ffpa_attn.cu
         start: 136
         end: 268
         first_anchor: "// non-WS TMA split-D bench: tile 128x128, tid=0 内联发 TMA, STSM+TMA store。"
