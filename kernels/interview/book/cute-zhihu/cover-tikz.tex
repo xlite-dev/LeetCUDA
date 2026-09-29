@@ -1,0 +1,119 @@
+% cover-tikz.tex — CUDA 知乎优秀文章合集 封面（手绘风, A4 满幅）
+% 风格参考 LeetCUDA 书封面的手绘语言（Humor Sans + LXGW WenKai + sketch 边框），
+% 主视觉改为"层叠文章卡片"，配色改知乎蓝体系，不沿用 CuTe 网格构图。
+% 构建: xelatex cover-tikz.tex (standalone 输出 A4 PDF)
+\documentclass[tikz,border=0pt]{standalone}
+\usetikzlibrary{arrows.meta,calc,decorations.pathmorphing,shadows}
+\usepackage{xeCJK}
+\setmainfont{Humor Sans}
+\setsansfont{Humor Sans}
+\setmonofont{Comic Neue}
+\setCJKmainfont{LXGW WenKai}
+\setCJKsansfont{LXGW WenKai}
+
+\tikzset{
+  sketch/.style={decorate, decoration={random steps, segment length=2.5mm, amplitude=0.35mm}},
+  card/.style={sketch, rounded corners=6pt, line width=1.2pt, draw=zhInk!70,
+    fill=white, fill opacity=0.92, drop shadow={shadow xshift=1.2mm, shadow yshift=-1.6mm, opacity=0.14}}}
+
+\definecolor{paperBg}{RGB}{252,251,247}
+\definecolor{zhInk}{RGB}{30,34,40}
+\definecolor{zhMuted}{RGB}{120,128,140}
+\definecolor{zhBlue}{RGB}{0,102,255}
+\definecolor{zhDeep}{RGB}{5,103,210}
+\definecolor{zhLight}{RGB}{54,153,255}
+\definecolor{warmYellow}{RGB}{232,163,61}
+\definecolor{coral}{RGB}{213,84,76}
+\definecolor{mint}{RGB}{76,182,149}
+
+\begin{document}
+\begin{tikzpicture}
+% ===== A4 背景: 暖纸白 -> 极淡知乎蓝 =====
+\shade[top color=paperBg, bottom color=paperBg!93!zhLight] (0,0) rectangle (21,29.7);
+
+% ===== 背景装饰: 散落 CUDA 指令/位宽元组 (淡灰 mono) =====
+\node[rotate=10, text=zhMuted!38, font=\ttfamily\footnotesize] at (2.4,25.6) {swizzle<3,4,3>};
+\node[rotate=-9, text=zhMuted!35, font=\ttfamily\footnotesize] at (18.4,26.2) {m16n8k8.f32};
+\node[rotate=6, text=zhMuted!32, font=\ttfamily\footnotesize] at (1.9,21.5) {cp.async.bulk};
+\node[rotate=-6, text=zhMuted!32, font=\ttfamily\footnotesize] at (19.1,21.5) {ldmatrix.x4};
+\node[rotate=-7, text=zhMuted!30, font=\ttfamily\footnotesize] at (2.4,6.6) {e4m3 $\cdot$ e5m2};
+\node[rotate=7, text=zhMuted!30, font=\ttfamily\footnotesize] at (18.6,7.2) {wgmma.mma\_async};
+
+% ===== 顶部小标签 =====
+\node[text=zhMuted, font=\ttfamily\bfseries\small] at (10.5,27.1)
+  {CUTE $\cdot$ PTX\; ISA $\cdot$ TMA $\cdot$ FP8\; ATTENTION};
+
+% ===== 标题块 =====
+\node[text=zhInk, font=\fontsize{46}{50}\selectfont\bfseries] at (10.5,24.2) {CUDA 知乎};
+\node[text=zhInk, font=\fontsize{30}{36}\selectfont\bfseries] at (10.5,22.1) {优秀文章合集};
+% 手绘双下划线
+\draw[zhBlue, line width=2.1pt, sketch] (5.1,21.25) -- (15.9,21.25);
+\draw[zhDeep!72, line width=1.1pt, sketch] (5.6,20.85) -- (15.4,20.85);
+\node[text=zhMuted, font=\fontsize{13.5}{17}\selectfont] at (10.5,19.9)
+  {Layout $\cdot$ Tensor $\cdot$ TiledCopy $\cdot$ 指令集 $\cdot$ 内存模型 $\cdot$ 精度优化};
+
+% ===== 知乎蓝标识块 (右上角落款式) =====
+\node[fill=zhBlue, text=white, rounded corners=3pt, font=\bfseries\fontsize{13}{15}\selectfont,
+  inner sep=4.5pt] at (18.15,23.6) {知乎专栏精选};
+
+% ===== 主视觉: 三张层叠文章卡片 =====
+% --- 卡片 A (CuTe, 左, 旋转 -5): 迷你彩色 layout 网格 ---
+\begin{scope}[shift={(4.55,15.65)}, rotate=-5]
+  \node[card, minimum width=6.2cm, minimum height=5.6cm] (cardA) {};
+  \node[text=zhInk, font=\bfseries\small] at (0,2.25) {CuTe 系列};
+  \node[text=zhMuted, font=\scriptsize] at (0,1.82) {Layout / Tensor / Copy / MMA};
+  % 3x6 网格: 顶行上限 1.27, 避开副标题(下缘~1.6)与底部标注(-1.85)
+  \foreach \x in {0,...,5}
+    \foreach \y in {0,...,2}
+      \fill[zhBlue!\the\numexpr 8+8*(\x+\y)\relax] (-2.1+\x*0.7,-0.75+\y*0.7) rectangle +(0.62,0.62);
+  \node[text=zhMuted, font=\ttfamily\scriptsize] at (0,-1.85) {(8,16):(1,8)};
+  \node[text=zhMuted!80, font=\scriptsize] at (0,-2.3) {reed $\cdot$ 竹熙佳处};
+\end{scope}
+% --- 卡片 B (ISA, 右, 旋转 4): mono 指令清单 ---
+\begin{scope}[shift={(16.35,15.35)}, rotate=4]
+  \node[card, minimum width=6.2cm, minimum height=5.6cm] (cardB) {};
+  \node[text=zhInk, font=\bfseries\small] at (0,2.25) {GPU 指令集架构};
+  \node[text=zhMuted, font=\scriptsize] at (0,1.82) {NVidia GPU ISA 系列};
+  \node[text=zhDeep, font=\ttfamily\scriptsize, align=left] at (0,0.35)
+    {ld.global.v4\\[1.5pt] mma.sync.aligned\\[1.5pt] cp.async.ca\\[1.5pt] atom.global.add};
+  \draw[coral, line width=1.6pt, sketch] (-2.2,-1.28) -- (-1.3,-1.28);
+  \node[text=zhMuted!80, font=\scriptsize] at (0,-1.95) {寄存器 / Cache / 浮点 / 原子};
+\end{scope}
+% --- 卡片 C (Attention+精度, 中下, 旋转 -2): 热力矩阵 + e4m3 位域条 ---
+\begin{scope}[shift={(10.5,8.85)}, rotate=-2]
+  \node[card, minimum width=7.6cm, minimum height=6.0cm] (cardC) {};
+  \node[text=zhInk, font=\bfseries\small] at (0,2.42) {Attention 与精度优化};
+  \node[text=zhMuted, font=\scriptsize] at (0,1.99) {FP8 / Swizzle / 内存模型};
+  % 左: 3x3 attention 热力格 (蓝深->浅), 顶行上限 0.35, 避开标题/副标题/位域条
+  \foreach \x in {0,...,2}
+    \foreach \y in {0,...,2}
+      \fill[zhBlue!\the\numexpr 18+7*(3-\x)+9*(\y)\relax] (-3.3+\x*0.62,-1.43+\y*0.62) rectangle +(0.54,0.54);
+  % 右: e4m3 位域条 (s | eeee | mmm)
+  \fill[zhMuted!55]   (-2.65,1.15) rectangle +(0.42,0.5);
+  \fill[zhBlue!78]    (-2.23,1.15) rectangle +(1.68,0.5);
+  \fill[warmYellow!85] (-0.55,1.15) rectangle +(1.26,0.5);
+  \node[text=zhInk, font=\ttfamily\tiny] at (-2.44,1.4) {s};
+  \node[text=white, font=\ttfamily\tiny] at (-1.39,1.4) {eeee};
+  \node[text=zhInk, font=\ttfamily\tiny] at (0.08,1.4) {mmm};
+  \node[text=zhMuted, font=\scriptsize] at (-0.55,0.88) {FP8 E4M3};
+  \draw[mint!80!black, line width=1.4pt, sketch] (-2.65,0.38) -- (-0.1,0.38);
+  \node[text=zhMuted, font=\ttfamily\scriptsize] at (0.2,-0.05) {S=256};
+  \node[text=zhMuted, font=\ttfamily\scriptsize] at (0.55,-0.72) {softmax(QK$^{\top}$/$\sqrt{d}$)V};
+  \node[text=zhMuted!80, font=\scriptsize] at (0,-2.35) {reed $\cdot$ frankshi};
+\end{scope}
+% 卡片间手绘箭头 (起点终点均在卡片包围盒外)
+\draw[-{Stealth[length=3.2mm]}, zhDeep!60, line width=1.3pt, sketch]
+  (7.95,14.5) to[bend left=14] (9.45,12.35);
+\draw[-{Stealth[length=3.2mm]}, zhDeep!60, line width=1.3pt, sketch]
+  (12.9,14.3) to[bend right=14] (11.55,12.35);
+
+% ===== 底部: 蓝色渐变色条 + 落款 =====
+\foreach \i in {0,...,5}
+  \fill[zhBlue!\the\numexpr 100-14*\i\relax] (4.95+\i*1.85,5.3) rectangle +(1.85,0.08);
+\node[text=zhInk!85, font=\fontsize{15}{18}\selectfont\bfseries] at (10.5,4.35)
+  {忠实整理 $\cdot$ 图文完整 $\cdot$ 仅用于开源学习};
+\node[text=zhMuted, font=\small] at (10.5,3.3) {整理：LeetCUDA Project};
+\node[text=zhMuted, font=\small] at (10.5,2.7) {2026 年 9 月};
+
+\end{tikzpicture}
+\end{document}

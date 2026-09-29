@@ -1,4 +1,4 @@
-% cute-zhihu.tex — CuTe 知乎优秀文章合集（reed & 竹熙佳处）
+% cute-zhihu.tex — CUDA 知乎优秀文章合集
 % 构建：cd book/cute-zhihu/ && TEXMFCNF=../../tex: xelatex -interaction=nonstopmode cute-zhihu.tex（×2）
 \documentclass[9pt,openany]{ctexbook}
 \input{../preamble.tex}
@@ -10,23 +10,31 @@
 % 压缩章标题前后距（默认 50/40pt），减少 20 篇文章式章节的章首/章末空白
 \ctexset{chapter/beforeskip=6pt, chapter/afterskip=16pt}
 
-\title{CuTe 知乎文章合集\\{\large reed \& 竹熙佳处系列文章忠实整理}}
+\title{CUDA 知乎优秀文章合集\\{\large 知乎优秀 CUDA/CuTe 文章忠实整理}}
 \author{整理：LeetCUDA Project}
 \date{2026 年 9 月}
 
 \begin{document}
 
-% ============ 封面（首页声明） ============
+% 封面：shipout 背景钩子满幅铺图（源 cover-tikz.tex，standalone A4 手绘风矢量）
+\AddToHookNext{shipout/background}{%
+  \put(0,-\dimexpr\paperheight\relax){\includegraphics[width=\paperwidth,height=\paperheight]{cover-tikz.pdf}}}
+\thispagestyle{empty}
+\null
+\clearpage
+
+% ============ 声明页 ============
 \begin{titlepage}
   \centering
   \vspace*{3cm}
-  {\Huge\bfseries CuTe 知乎文章合集}\\[1.2em]
-  {\Large reed \& 竹熙佳处 优秀 CuTe 系列文章忠实整理}\\[4em]
+  {\Huge\bfseries CUDA 知乎优秀文章合集}\\[1.2em]
+  {\Large 知乎优秀 CUDA/CuTe 系列文章忠实整理}\\[4em]
   \fbox{\parbox{0.88\textwidth}{\centering
     {\Large\bfseries 郑重声明}\\[1em]
     {\large
-    本书仅对知乎作者 \textbf{reed}（专栏「CUDA高性能编程」）与 \textbf{竹熙佳处}
-    （CuTe 教程系列）两位作者的 CuTe 系列优秀文章进行\textbf{忠实整理，不对原文内容做任何修改}。}\\[0.8em]
+    本书收录知乎多位作者（\textbf{reed}（专栏「CUDA高性能编程」）、\textbf{竹熙佳处}（CuTe 教程系列）、
+    \textbf{frankshi} 等）的 CUDA/CuTe 系列优秀文章，进行\textbf{忠实整理，不对原文内容做任何修改}；
+    各章章首均标注作者与原文出处。}\\[0.8em]
     {\large 本书\textbf{仅用于开源学习}，\textbf{不得用于任何商业用途}。}\\[0.8em]
     {\normalsize 全部文章著作权归原作者所有，转载请注明原文出处。}
   }}\\[4em]
@@ -38,10 +46,12 @@
 \chapter*{整理说明}
 \addcontentsline{toc}{chapter}{整理说明}
 
-本书系统整理了知乎作者 \textbf{reed}（专栏「CUDA高性能编程」）与 \textbf{竹熙佳处}
-两位作者的 CuTe（CUTLASS 3.x 张量抽象）系列文章，共 20 篇，按系列依赖/发表顺序编排。
+本书系统整理了知乎上多位作者的 CUDA/CuTe 系列优秀文章，共 32 篇，按系列与主题分四个部分编排：
+reed 的 CuTe 系列（13 篇）、竹熙佳处的 CuTe 教程系列（7 篇）、reed 的「NVidia GPU指令集架构」
+系列（8 篇），以及 GPU 架构·内存·Attention 精度主题单篇（4 篇，reed 3 篇与 frankshi 1 篇），
+同一部分内按系列依赖/发表顺序编排。
 整理过程中\textbf{忠实保留原文内容与图片，不做任何修改}；仅做 Markdown 到 \LaTeX{}
-的排版映射（标题层级、代码块、公式、图片位置与图注均与原文一致）。
+的排版映射（标题层级、代码块、公式、图片位置与图注均与原文一致）；各章章首标注作者与原文链接。
 
 本书仅用于开源学习，不得用于任何商业用途。
 
@@ -85,6 +95,38 @@
 \end{tabular}
 \endgroup
 
+\section*{reed「NVidia GPU指令集架构」系列（8 篇）}
+\begingroup\small
+\begin{tabular}{@{}c>{\raggedright\arraybackslash}p{0.78\textwidth}@{}}
+  \toprule
+  章节 & 原文 \\
+  \midrule
+  01 & NVidia GPU指令集架构-前言\newline\url{https://zhuanlan.zhihu.com/p/686198447} \\
+  02 & NVidia GPU指令集架构-寄存器\newline\url{https://zhuanlan.zhihu.com/p/688616037} \\
+  03 & NVidia GPU指令集架构-Load和Cache\newline\url{https://zhuanlan.zhihu.com/p/692445145} \\
+  04 & NVidia GPU指令集架构-浮点运算\newline\url{https://zhuanlan.zhihu.com/p/695667044} \\
+  05 & NVidia GPU指令集架构-整数运算\newline\url{https://zhuanlan.zhihu.com/p/700921948} \\
+  06 & NVidia GPU指令集架构-比特和逻辑操作\newline\url{https://zhuanlan.zhihu.com/p/712356884} \\
+  07 & NVidia GPU指令集架构-Warp级和Uniform操作\newline\url{https://zhuanlan.zhihu.com/p/712357647} \\
+  08 & NVidia GPU指令集架构-程序控制和原子操作\newline\url{https://zhuanlan.zhihu.com/p/712357443} \\
+  \bottomrule
+\end{tabular}
+\endgroup
+
+\section*{GPU 架构·内存·Attention 精度（4 篇）}
+\begingroup\small
+\begin{tabular}{@{}c>{\raggedright\arraybackslash}p{0.78\textwidth}@{}}
+  \toprule
+  章节 & 原文 \\
+  \midrule
+  01 & GPU 内存模型之 Proxy（reed）\newline\url{https://zhuanlan.zhihu.com/p/2080760925481592736} \\
+  02 & Blackwell 双 die 拓扑：SM 与地址的 die 映射及跨 die 访存代价（reed）\newline\url{https://zhuanlan.zhihu.com/p/2051639750541546085} \\
+  03 & FP8 Attention 中的精度优化：逆序计算与缩放因子选择（reed）\newline\url{https://zhuanlan.zhihu.com/p/2038747362596737621} \\
+  04 & CUDA shared memory避免bank conflict的swizzling机制解析（frankshi）\newline\url{https://zhuanlan.zhihu.com/p/4746910252} \\
+  \bottomrule
+\end{tabular}
+\endgroup
+
 \clearpage
 
 % ============ 目录 ============
@@ -117,5 +159,25 @@
 \input{chapters/zhuxi-05-tma-copy.tex}
 \input{chapters/zhuxi-06-permmnk.tex}
 \input{chapters/zhuxi-07-async-pipeline.tex}
+
+% ============ Part III: reed NVidia GPU指令集架构 ============
+\part{NVidia GPU 指令集架构（reed）}
+
+\input{chapters/reed-isa-01-intro.tex}
+\input{chapters/reed-isa-02-register.tex}
+\input{chapters/reed-isa-03-load-cache.tex}
+\input{chapters/reed-isa-04-float.tex}
+\input{chapters/reed-isa-05-integer.tex}
+\input{chapters/reed-isa-06-bitwise-logic.tex}
+\input{chapters/reed-isa-07-warp-uniform.tex}
+\input{chapters/reed-isa-08-control-atomics.tex}
+
+% ============ Part IV: GPU 架构·内存·Attention 精度 ============
+\part{GPU 架构·内存·Attention 精度}
+
+\input{chapters/reed-mem-01-proxy.tex}
+\input{chapters/reed-blackwell-dual-die.tex}
+\input{chapters/reed-fp8-attention.tex}
+\input{chapters/frankshi-01-swizzle.tex}
 
 \end{document}
