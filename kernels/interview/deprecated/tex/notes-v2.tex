@@ -1,0 +1,181 @@
+\documentclass[9pt]{ctexart}
+\usepackage[paperwidth=210mm,paperheight=297mm,left=1.15cm,right=1.15cm,top=1.1cm,bottom=1.25cm]{geometry}
+\usepackage{listings,xcolor,fancyhdr}
+\usepackage{graphicx}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyfoot[C]{\scriptsize \thepage}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+\definecolor{vscBackground}{RGB}{248,248,248}
+\definecolor{vscText}{RGB}{31,35,40}
+\definecolor{vscLineNumber}{RGB}{142,142,142}
+\definecolor{vscKeyword}{RGB}{0,90,158}
+\definecolor{vscComment}{RGB}{0,128,0}
+\definecolor{vscAccent}{RGB}{163,21,21}
+\definecolor{vscEmphasis}{RGB}{43,145,175}
+\definecolor{vscFrame}{RGB}{210,210,210}
+\setmonofont{DejaVu Sans Mono}
+\setCJKmonofont{Noto Sans Mono CJK SC}
+\lstset{
+  language=C,
+  basicstyle=\footnotesize\ttfamily\color{vscText},
+  numbers=left,
+  numberstyle=\scriptsize\color{vscLineNumber},
+  numbersep=6pt,
+  showstringspaces=false,
+  breaklines=true,
+  breakatwhitespace=false,
+  tabsize=2,
+  extendedchars=true,
+  upquote=true,
+  columns=fullflexible,
+  keepspaces=true,
+  backgroundcolor=\color{vscBackground},
+  frame=single,
+  framerule=0.8pt,
+  rulecolor=\color{vscFrame},
+  framesep=6pt,
+  xleftmargin=4pt,
+  xrightmargin=4pt,
+  aboveskip=0pt,
+  belowskip=0pt,
+  keywordstyle=\bfseries\color{vscKeyword},
+  commentstyle=\color{vscComment},
+  identifierstyle=\color{vscText},
+  stringstyle=\color{vscAccent},
+  morekeywords={__global__,__device__,__host__,__shared__,
+    __constant__,__forceinline__,__align__,__restrict__,
+    __syncthreads,threadIdx,blockIdx,blockDim,gridDim,
+    warpSize,__shfl_sync,__shfl_xor_sync,atomicAdd,
+    __float2half,half,half2,float2,float4,int4,uint32_t,
+    cuda::barrier,CUtensorMap,constexpr,__expf,
+    __fdividef,__fmaf_rn,__float22half2_rn,__half22float2,
+    cudaMalloc,cudaFree,cudaMemcpy,cudaMemset,
+    cudaDeviceSynchronize,cudaGetLastError,cudaGetErrorString,
+    cudaEventCreate,cudaEventDestroy,cudaEventRecord,
+    cudaEventElapsedTime,cudaEventSynchronize,
+    cudaFuncSetAttribute,cudaFuncAttributeMaxDynamicSharedMemorySize,
+    cudaMemcpyHostToDevice,cudaMemcpyDeviceToHost,cudaSuccess,
+    cublasCreate,cublasDestroy,cublasSgemm,cublasGemmEx,cublasHgemm,
+    cublasSetMathMode,cublasHandle_t,
+    CUBLAS_OP_N,CUBLAS_OP_T,CUDA_R_16F,
+    CUBLAS_COMPUTE_16F,CUBLAS_GEMM_DEFAULT,
+    CUBLAS_GEMM_DEFAULT_TENSOR_OP,CUBLAS_TENSOR_OP_MATH,
+    cuInit,cuTensorMapEncodeTiled,CUresult,CUDA_SUCCESS,
+    CU_TENSOR_MAP_DATA_TYPE_FLOAT16,
+    CU_TENSOR_MAP_INTERLEAVE_NONE,CU_TENSOR_MAP_SWIZZLE_128B,
+    CU_TENSOR_MAP_L2_PROMOTION_NONE,CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE,
+    cuda::thread_scope_block,
+    cuda::device::barrier_arrive_tx,
+    cuda::device::experimental::cp_async_bulk_tensor_2d_global_to_shared,
+    cuda::device::experimental::fence_proxy_async_shared_cta,
+    __launch_bounds__,__cvta_generic_to_shared,
+    allocate_and_create_tensor_map,create_tensor_map,
+  },
+  morekeywords=[2]{
+    warp_reduce_sum,warp_reduce_max,warp_reduce_sum_f16,warp_reduce_md_op,
+    block_reduce_sum,block_reduce_max,block_reduce_sum_f32,block_reduce_max_f32,
+    relu,relu_vec4,elementwise_add,elementwise_add_vec4,
+    softmax_f32_per_token_kernel,safe_softmax_f32_per_token_kernel,
+    online_safe_softmax_f32_per_token_kernel,
+    rms_norm,rms_norm_vec4,layer_norm,layer_norm_vec4,
+    sgemv_k32,sgemv_k128,sgemv_k16,hgemv_k32_f16_kernel,
+    hgemv_k128_f16x4_kernel,hgemv_k16_f16_kernel,
+    sgemm,sgemm_thread_tile_vec4,hgemm_t_8x8_sliced_k_f16x4_kernel,
+    hgemm_mma_m16n8k16_mma2x4_warp4x4_stages_dsmem_tn_kernel,
+    hgemm_wgmma_m64n128k16_f16acc_stages_tma_ws_tn_kernel,
+    rope_f32_kernel,
+    mat_transpose_f32_row2col2d_kernel,
+    mat_transpose_f32x4_shared_bcf_merge_write_row2col2d_kernel,
+    dot,dot_vec4,block_all_reduce_sum,block_all_reduce_sum_vec4,
+    histogram,histogram_vec4,
+    flash_attn_mma_stages_split_q_kernel,
+    fill_2D_regs,fill_3D_regs,div_ceil,make_smem_desc,
+    expf,fmaxf,sinf,cosf,powf,sqrtf,rsqrtf,
+    __shfl_sync,__shfl_xor_sync,
+    lane_id,warp_id,block_row_max_new,block_row_sum_new,
+    CP_ASYNC_CG,CP_ASYNC_COMMIT_GROUP,CP_ASYNC_WAIT_GROUP,CP_ASYNC_WAIT_ALL,
+    LDMATRIX_X4,LDMATRIX_X2,LDMATRIX_X2_T,
+    HMMA16816,
+    WGMMA_FENCE,WGMMA_COMMIT_GROUP,WGMMA_WAIT_GROUP,
+    WGMMA_M64N128K16_F16F16F16,
+    SMEM_DESC_ENCODE,
+    FLOAT4,INT4,HALF2,
+    hgemm_mma_stages_tn,hgemm_mma_stages_tn_swizzle,
+    hgemm_wgmma_stages_tn,merge_attn_states,
+    swizzle_permuted_j,swizzle_permuted_A_j,swizzle_permuted_B_j,
+    hgemm_mma_stages_tn_cute,launch_hgemm_mma_stages_tn_cute,
+    test_hgemm_cute,
+    make_tensor,make_gmem_ptr,make_smem_ptr,make_shape,make_stride,
+    make_coord,make_tile,make_layout,make_tensor_like,
+    local_tile,tile_to_shape,composition,compose,
+    TiledMMA,MMA_Atom,MMA_Traits,mma_traits,MMA_EU_RepeatT,MMA_P_T,
+    SM80_16x8x16_F16F16F16F16_TN,SM80_CP_ASYNC_CACHEGLOBAL,
+    SM75_U32x4_LDSM_N,UniversalCopy,
+    Swizzle,Copy_Atom,Copy_Traits,copy_op,copy_traits,copy_atom,
+    make_tiled_copy,make_tiled_copy_A,make_tiled_copy_B,make_tiled_copy_C,
+    make_tiled_mma,
+    get_slice,get_thread_slice,get,
+    partition_S,partition_D,partition_fragment_A,partition_fragment_B,partition_fragment_C,
+    retile_D,retile_S,
+    copy,gemm,
+    cp_async_fence,cp_async_wait,
+    group_modes,size,cosize,clear,data,
+    Int,Shape,Stride,Step,Coord,Tile,Layout,
+    Underscore,LayoutLeft,LayoutRight,
+    SmemLayoutA,SmemLayoutB,SmemLayoutC,SmemLayoutAtom,SmemLayoutAtomC,
+    G2SCopyA,G2SCopyB,S2GCopyC,S2RCopyAtomA,S2RCopyAtomB,R2SCopyAtomC,S2GCopyAtomC,
+    g2s_tiled_copy_a,g2s_tiled_copy_b,s2r_tiled_copy_a,s2r_tiled_copy_b,
+    r2s_tiled_copy_c,s2g_tiled_copy_c,
+    thr_mma,tiled_mma,tCrA,tCrB,tCrD,tCrC_r2s,tCsC_r2s,tCsC_s2g,tCgC_s2g,
+    tensor,layout,TensorMap,
+  },
+  keywordstyle=[2]\bfseries\color{vscEmphasis},
+}
+\title{CUDA Kernel 面试背题笔记}
+\author{LeetCUDA Project}
+\date{}
+\begin{document}
+
+\begin{titlepage}
+\thispagestyle{empty}
+\begin{center}
+  \vspace*{5.0cm}
+  {\fontsize{28pt}{36pt}\selectfont\bfseries CUDA Kernel 面试背题笔记}
+
+  \vspace{0.5cm}
+  \rule{0.6\textwidth}{0.5pt}
+
+  \vspace{1.5cm}
+  {\fontsize{12pt}{18pt}\selectfont
+  本书整理自 LeetCUDA 项目，系统汇编了 CUDA 面试中 \\
+  最高频的 GPU Kernel 实现，涵盖从 Warp/Block 原语、 \\
+  Elementwise、Softmax、GEMM、FlashAttention 等 \\
+  面试核心知识体系。
+
+  \vspace{0.6cm}
+  每个 Kernel 配备详细的中文面试要点注释（WHY + HOW）， \\
+  并以递进式优化路线（naive → tiling → vectorize → \\
+  tensor core → warp specialized）展示 GPU 性能调优思维。
+
+  \vspace{0.6cm}
+  \textbf{30 个 Kernel} · \textbf{9 个 Phase} · \textbf{全中文注释}
+  }
+
+  \vspace{2.5cm}
+  {\fontsize{11pt}{16pt}\selectfont
+   项目主页：\texttt{https://github.com/xlite-dev/LeetCUDA}
+  }
+
+  \vspace{0.3cm}
+  {\fontsize{10pt}{14pt}\selectfont\color{gray}
+   更新日期：\today
+  }
+\end{center}
+\vfill
+\end{titlepage}
+
+\setcounter{page}{1}
+\input{notes-v2_chunks.tex}
+\end{document}
