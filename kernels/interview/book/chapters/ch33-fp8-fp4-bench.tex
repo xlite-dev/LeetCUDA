@@ -5,7 +5,7 @@
 \section{本章导读}
 
 第~\ref{ch:29}--\ref{ch:32}~章讲完了 fp8/fp4 attention 的全部实现；
-本章讲\textbf{怎么度量与选用}它们。这是量化 attention 的「最后一公里」：
+本章讲\textbf{怎么度量与选用}它们。这是量化 attention 的「最后一步」：
 一个不公平的 bench 能把 2x 加速测成 0.5x（功耗墙、参照漂移、preset
 隐藏成本），一个错误的容差能把好 kernel 判成精度不合格（用 fp8 的
 容差去卡 fp4）。本章沿三条线索展开：
@@ -469,7 +469,7 @@ bench 脚本默认 preset，2026-09-21）：fp8 与 Sage2 总体打平、互有
 \end{table}
 
 与 fp8 对照，差别集中在三处：D$\ge$128 后 fp4 稳定 2x 级且\textbf{随 D
-单调走强}（blockscale MMA 无 fp8 的 smem 交叉点问题）；D=256 同点
+单调上升}（blockscale MMA 无 fp8 的 smem 交叉点问题）；D=256 同点
 fp4 比 fp8 快 1.64x（4.96 vs 8.13ms），对应第~\ref{ch:30}~章 dispatch
 表；cross 小 Q 场景两者受同样限制（aux 链占比），fp4 也只有 0.99x--1.21x。
 

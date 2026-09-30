@@ -62,7 +62,7 @@ ldmatrix + \texttt{mma.sync} + online softmax。两支流之间没有任何
 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads}，全靠 mbarrier 阵列传递「数据就绪」（full）与
 「stage 可覆盖」（empty）两类事件。收益是双重的：装载延迟被流水深度
 （kStagesK）完整掩盖；producer 空闲出来的 127 个线程的执行资源与寄存器
-（经 \texttt{setmaxnreg} 让渡；TMA dst 须为 \texttt{shared::cta}，见 17.8~节坑七）归 consumer 使用。
+（经 \texttt{setmaxnreg} 转移；TMA dst 须为 \texttt{shared::cta}，见 17.8~节坑七）归 consumer 使用。
 
 源码头注释（L792--803）把这套结构压缩成了三条「面试要点」：
 
@@ -189,7 +189,7 @@ warpgroup}；本章 consumer 用 warp 级的 \texttt{mma.sync} + ldmatrix，8 �
 arrive\_tx $+$ 字节落盘）、empty 相位 1 次（256 consumer arrive $+$ 1
 producer arrive）。两边的 arrive 预算都是 257/轮，与 init 值精确对齐。
 任何一边多算或少算一次，循环就会在几轮后「错位」：少算则屏障提前翻转
-（读到半新半旧数据，静默错误），多算则永不翻转（挂死）。这套守恒与第~\ref{ch:13}~章
+（读到半新半旧数据，静默错误），多算则永不翻转（挂死）。这套计数循环与第~\ref{ch:13}~章
 图~13-3 的 mbarrier 状态机完全同构，只是参与方从 $128+1$ 换成了 $256+1$。
 
 \begin{figure}[H]
@@ -344,7 +344,7 @@ consumer 计算体 & ldmatrix $+$ mma $+$ softmax & 同左（逐行相同） \\
 \end{tabular}
 \end{center}
 
-最后一行是 \texttt{setmaxnreg} 的寄存器再分配声明：producer 让渡到 40、
+最后一行是 \texttt{setmaxnreg} 的寄存器再分配声明：producer 降到 40、
 consumer 扩到 80（$D{=}64$）或 168（$D{=}128$，对齐 Triton
 \texttt{flash\_attn\_v2} 在 Blackwell 上的 \texttt{maxnreg} 策略）。
 另注意该指令对 TMA 的目的地址空间敏感：dst 写成 \texttt{shared::cluster}

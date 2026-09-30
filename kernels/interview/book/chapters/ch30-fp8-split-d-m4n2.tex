@@ -34,7 +34,7 @@ $D\ge 768$ & \texttt{split\_d\_m4n2.cuh}（本章） & M4N2 & $D/4$ \\
 
 本章先推导 split-D 的分块恒等式（为什么它是\textbf{精确}变换，一个比特
 都不差），再建立 M4N2 的寄存器压力模型（为什么 $N$ 维划分是数学上的唯一
-出路），最后走读两个 kernel 的实现差异，特别是 M4N2 带来的多笔新代价：
+出路），最后走读两个 kernel 的实现差异，特别是 M4N2 带来的多项新代价：
 P 的 SMEM roundtrip、跨 N-warp softmax 归约、$k_{Br}$ 减半与量化块
 错位等。所有机制均以
 fp8 家族为主线；fp16 家族同构（第~\ref{ch:25}~章已见其 fp16 版），fp4
@@ -341,7 +341,7 @@ $N_w$ \textbf{精确消去}：把输出列划分给更多 N-warp，同时把每-
 据此也排除了两条看似可行的捷径。其一，\textbf{QK 用 M8N1、PV 用 M4N2 的
 混合布局}：QK/PV 共享同一 Q tile，M 维必须一致；$k_{Br}=128$ 强制下
 PV M4N2 仍是 $D/2$，而 $k_{Br}=64$ 强制下 M8N1 的 8 个 M-warp 有 4 个
-在 PV 相空转（QK 算力浪费 50\%）。其二，\textbf{WS（warp
+在 PV 阶段空转（QK 算力浪费 50\%）。其二，\textbf{WS（warp
 specialization）版 split-D}：consumer 的 \texttt{setmaxnreg} 上限 232
 装不下 $D=512$ 的 256-reg $O$ 累加器，所以 split-D 家族保持非 WS
 结构（全体线程做 MMA，\texttt{tid==0} 兼发 TMA，L28--30 注释），这与
@@ -409,7 +409,7 @@ $128\times448\times2.25>65504$
 会自动收窄到 224（29.3.4~节同机制 constexpr，L426--436；f32 PV acc
 则恒为 448，不受此约束）。
 
-\subsection{M4N2 的三笔新代价}
+\subsection{M4N2 的三项新代价}
 
 \texttt{split\_d\_m4n2\_fwd\_cute\_fp8\_sm120}（989 行）的骨架与
 M8N1 相同（\texttt{split\_d.cuh} 头注释 L28--29 明言沿其 M8N1 设计），
@@ -743,7 +743,7 @@ D=512（fp16）。
 split-D/M4N2 是 $D>224$ 的\textbf{被迫选择}，不是普适更优。三条负面
 证据：WS 版 split-D 被 setmaxnreg 232 上限否决；QK/PV 混合 atom 布局
 被 M 维一致性否决；fused-rescale 在 split-D 域被单 CTA 掩盖不了的
-tensor pipe 压力否决。三条都是「在 persist-D 域成立的优化不能平移」
+tensor pipe 压力否决。三条都是「在 persist-D 域成立的优化不能照搬」
 的实例，迁移优化前先核对 occupancy 与寄存器结构是否相同。
 
 \section{常见坑}

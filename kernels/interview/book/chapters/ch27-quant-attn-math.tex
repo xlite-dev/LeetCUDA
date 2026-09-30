@@ -401,7 +401,7 @@ $p_{scale}$ 策略的发射域利用率摆在同一条量程轴上：差别就�
   \node[axl,anchor=south west] at (3.72,-0.1) {$\max(\tilde P)$ 只到这里};
   \node[nt,anchor=north west,text width=15.4cm] at (0.2,-0.78)
     {\textbf{fixed（ffpa 默认）}：$p_{scale}\equiv1/448$，平坦行（causal 三角顶部）$\max(P)\ll1$，
-     发射值只落在左端几格（实心 $=$ 已用格点，浅带 $=$ 空转的量程）。收益是单累加域：
+     发射值只落在左端几格（实心 $=$ 已用格点，浅带 $=$ 闲置的量程）。收益是单累加域：
      PV MMA 直接累加进 $o_{acc}$，epilogue 一步 $O=o_{acc}\cdot(1/448)/\ell$ 同时完成反量化与
      归一化，且\textbf{可与 lazy rescale（27.3.6）组合}。};
   % per-row 行：每行归一后铺满全量程
@@ -422,7 +422,7 @@ $p_{scale}$ 策略的发射域利用率摆在同一条量程轴上：差别就�
 \end{tikzpicture}
 \caption{fixed 与 per-row 两种 $p_{scale}$ 策略的发射域利用率（27.3.5 节）。
 上：fixed 的 $p_{scale}\equiv1/448$ 是编译期常数，平坦行的 $\max(P)\ll1$ 使发射值
-只占量程左端一小段，其余量程空转——换来的是单累加域与「可与 lazy rescale 组合」；
+只占量程左端一小段，其余量程闲置——换来的是单累加域与「可与 lazy rescale 组合」；
 下：per-row 用 $\mathrm{rowmax}(P)/448$ 使每一行铺满量程，精度最优，代价是跨 lane rowmax
 归约与 64-float 的 $o_{tile}$ 暂存，且与 lazy rescale 互斥。}
 \label{fig:27-pscale-modes}
@@ -751,8 +751,8 @@ asm("cvt.rn.satfinite.e4m3x2.f32 %0, %1, %2;" : "=h"(packed)
 逐行对照式~\ref{eq:27-lazy}：前两行计算 $m_{\mathrm{new}}$ 与 log2 域差值
 （\texttt{log2\_diff}，恒 $\le 0$）；中间是 skip 分支：\texttt{row\_scale = 1}
 （$O,\ell$ 不缩放）、\texttt{eff\_max = row\_max}（\textbf{stale} max 发射 P）、
-\texttt{row\_max} 不更新；\texttt{else} 是正常 rescale 分支。文件头注释对符号方向
-的说明（与 FA-4 的 $acc\_scale \ge -\tau$ 判定同构）值得细读，论文公式映射到
+\texttt{row\_max} 不更新；\texttt{else} 是正常 rescale 分支。细读文件头注释对
+符号方向的说明（与 FA-4 的 $acc\_scale \ge -\tau$ 判定同构）：论文公式映射到
 log2 域实现时最容易出错的就是符号方向。等价性的最后一步在 epilogue：
 $O$ 与 $\ell$ 全程共享同一 stale 域，$O/\ell$ 消去全部迟到缩放。
 

@@ -14,7 +14,7 @@
 \end{align}
 布局的补是一个在原布局的陪域（codomain）之中、但不在其像（image）之中生成元素的布局。在复合（Composition）中，布局 $\v{L}$ 常被用作对另一个布局的间接寻址，因此补 $\v{L}^*$ 就是指向 $\v{L}$ 所遗漏元素的那个布局。有了 {\tt complement}，就能经由\emph{逻辑切分}（logical divide）把布局切开（第~\ref{sec:logical_divide}~节），也能经由\emph{逻辑乘积}（logical product）把布局重复、扩展（第~\ref{sec:logical_product}~节）。
 
-本节只关注陪域 $\D$ 为 {\tt HTuple}($\Z$) 的布局：即整数，或对某个轮廓 D 而言 $\D = \Z^D$ 的坐标。弱同余条件式~\eqref{eqn:comp:congruence} 因此成立。像互不相交条件（式~\eqref{eqn:comp:disjoint}）保证补所生成的值与原布局生成的值互不相同：原布局这边取的是有限定义域 $\Z(\v{L})$，补那边取的是无穷扩展定义域 $\Z^{\v{L}^*}$，因此无论补的形状被截断还是被扩展（例如通过与右侧的布局复合），它所生成的值始终与原布局不同。最后，像有序条件（式~\eqref{eqn:comp:ordered}）确立了补布局的唯一性。
+本节只关注陪域 $\D$ 为 {\tt HTuple}($\Z$) 的布局：即整数，或对某个轮廓 D 而言 $\D = \Z^D$ 的坐标。弱同余条件式~\eqref{eqn:comp:congruence} 因此成立。像互不相交条件（式~\eqref{eqn:comp:disjoint}）保证补所生成的值与原布局生成的值互不相同：原布局取的是有限定义域 $\Z(\v{L})$，补取的是无穷扩展定义域 $\Z^{\v{L}^*}$，因此无论补的形状被截断还是被扩展（例如通过与右侧的布局复合），它所生成的值始终与原布局不同。最后，像有序条件（式~\eqref{eqn:comp:ordered}）确立了补布局的唯一性。
 
 表~\ref{tab:complements} 给出了补的若干例子。
 
@@ -80,7 +80,7 @@
 \ = \
 \begin{array}{cccc}((\textcolor{red}{4}, & \textcolor{red}{8}), & (\textcolor{blue}{3}, & \textcolor{blue}{2})) \\ ((\textcolor{red}{20}, & \textcolor{red}{2}), & (\textcolor{blue}{80}, & \textcolor{blue}{1})) \end{array}
 \end{align*}
-其中布局 $(2,1):(1,80)$ 是 $(\textcolor{red}{4},\textcolor{red}{8}):(\textcolor{red}{20},\textcolor{red}{2})$ 的补。此时网格在交错排布这些块，以产生结果的最小陪域。补布局告诉结果如何为布局 $\v{B}$ 设定步幅，而布局 $\v{B}$ 告诉结果如何为补布局排序并定形。
+其中布局 $(2,1):(1,80)$ 是 $(\textcolor{red}{4},\textcolor{red}{8}):(\textcolor{red}{20},\textcolor{red}{2})$ 的补。此时网格交错排布这些块，以产生结果的最小陪域。补布局告诉结果如何为布局 $\v{B}$ 设定步幅，而布局 $\v{B}$ 告诉结果如何为补布局排序并定形。
 
 \paragraph{相关乘积}
 

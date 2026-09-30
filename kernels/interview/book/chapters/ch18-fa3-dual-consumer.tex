@@ -54,7 +54,7 @@ FP8（算力翻倍），softmax 的占比还要涨到一半。这些非 matmul �
 被 overlap，Tensor Core 就有一段时间在空转。注意上述数字是 Hopper 口径
 （论文与@杨远航解析一致），本机 sm\_120a 的绝对吞吐不同，本章只取「量级」
 结论：\textbf{softmax 与 GEMM 是两条可并行的硬件通路}（CUDA Core/SFU 与
-Tensor Core），值得为它付出结构复杂度。
+Tensor Core），值得为它引入这部分结构复杂度。
 
 于是引出本章的结构性改动：把 KV tile 序列\textbf{按奇偶拆成两半}，交给两个
 独立推进的 consumer warpgroup，各自维护自己的 online-softmax 状态与 K 流水，

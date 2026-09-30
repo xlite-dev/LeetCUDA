@@ -238,7 +238,7 @@ $M$ 维输出。$y$ 的每个元素要 $K$ 次乘 $K$ 次加，$\mathrm{FLOPs} =
 \begin{equation}
   AI\sb{\mathrm{GEMV}} \approx \frac{2MK}{4MK} = 0.5 \ \mathrm{FLOP/Byte}.
 \end{equation}
-矩阵 $A$ 里的每个元素只用一次就被扔掉，没有任何复用，AI 被「读一次只用
+矩阵 $A$ 的每个元素只读取一次，没有任何复用，AI 被「读一次只用
 一次」固定在 0.5，比 GEMM 低三个数量级，是彻底的 memory-bound。ch08 将看到
 三种 warp 划分方式如何逼近这 0.5 对应的理论带宽。
 

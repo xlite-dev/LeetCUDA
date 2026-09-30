@@ -9,7 +9,7 @@
 
 \section{本章导读}
 
-第~\ref{ch:12}~章用一句 XOR 消除了 smem 的 bank conflict：把列块索引换成
+第~\ref{ch:12}~章用一次 XOR 消除了 smem 的 bank conflict：把列块索引换成
 「列块 XOR 行号」，即 \texttt{swizzle\allowbreak{}<64>\allowbreak{}(row,\allowbreak{} k)}。在那章的语境里它是一个
 \emph{地址技巧}；可一旦同一段 kernel 里出现了 TMA、fp8、多级 tile 与多
 stage 缓冲，同样的技巧就要同时回答三个新问题：\textbf{它到底是什么形式的
@@ -226,7 +226,7 @@ $[M+S, M+S+B)$（$S>0$ 时）。求值是「把 \texttt{YYY} 段右移到
 \text{yyy\_msk}\right) \gg S .
 \end{align}
 
-这个定义有三个立刻可用的性质，它们是后面一切讨论的地基。
+这个定义有三个立刻可用的性质，它们是后面一切讨论的基础。
 
 \textbf{(a) 对合性。} 设 $y=\text{off}\wedge\text{yyy\_msk}$。式~\eqref{eq:23-apply}
 只改 \texttt{ZZZ} 段，\texttt{YYY} 段原封不动，所以第二次求值时
@@ -325,8 +325,8 @@ R = \texttt{comp}\big(\text{Swizzle},\ \text{Offset},\ \text{Layout}\big),
 \end{equation}
 
 注意式~\eqref{eq:23-comp} 的自变量是\textbf{坐标}，而 Swizzle 作用在
-\textbf{偏移量}上，中间隔着一次 \texttt{Layout} 求值。用一句工程直觉
-概括：\textbf{坐标体系不用变，物理地址已经换了，之后的代码无需改动}。
+\textbf{偏移量}上，中间隔着一次 \texttt{Layout} 求值。概括为一条工程直觉：
+\textbf{坐标体系不用变，物理地址已经换了，之后的代码无需改动}。
 仍用 $(r,c)$ 问「第 $r$ 行第 $c$ 列在哪」，布局会换算成被置换过的
 物理 offset；读写两侧只要用同一个布局别名，改写永远自洽。hgemm.cuh 的
 smem 原子就是这一步的实例：

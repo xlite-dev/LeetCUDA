@@ -214,7 +214,7 @@ fp8 5e-2 / fp4 dense 0.15、causal 0.70）。speedup 一律对 SDPA 同形状。
 第29 & fp8 persist-D & self D$\in$[64,256] & 1.26--1.70$\times$ & D=192 正确性 bug 见 29.7.1；tensor pipe 77\% \\
 第30 & fp8 split-D / M4N2 & D=320 self / causal & 3.76$\times$ / 3.31$\times$ & D=512 2.98$\times$（参照换 MATH，见 33.6.1 归因）；causal 大 D allclose 临界失败为已知 ESS 特性（hybrid 解法） \\
 第31 & fp4 量化链（fused） & D=128 N=8192 & fused 单 launch 1.4$\to$0.3~ms & hadamard 零开销（bitwise 一致） \\
-第32 & fp4 persist-D & self D$\in$[64,256] & 1.49--2.11$\times$ & 同点 D=256 比 fp8 快 1.64$\times$（对照见 33.6.2）；mxfp8 PV 变体时间代价 +28--39\%（精度保险丝） \\
+第32 & fp4 persist-D & self D$\in$[64,256] & 1.49--2.11$\times$ & 同点 D=256 比 fp8 快 1.64$\times$（对照见 33.6.2）；mxfp8 PV 变体时间代价 +28--39\%（精度兜底） \\
 第33 & bench 矩阵与 knob & D=128 self & fp4 523~T（2.45$\times$） & fp4 vs fp8 1.39$\times$；粒度 knob 代价 1.7--2.7\%；Sage3 对照 causal rel\_err 0.59 vs hybrid 0.14（523T 为 \texttt{bench\_fp4.py} 16K 口径，非 CLI N=8192） \\
 \end{longtable}
 \endgroup

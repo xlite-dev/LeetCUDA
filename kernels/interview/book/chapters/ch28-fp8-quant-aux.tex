@@ -68,7 +68,7 @@ kernel 内的 fragment 寻址模式排布（28.3.4~节）。\textbf{前处理链
   \item \texttt{kv\_col\_sum\_kernel} + \texttt{kv\_mean\_finalize\_kernel}：
         K 的两阶段列均值（smooth-K 用，28.4.2~节）；
   \item \texttt{quantize\_fp8\_qkv\_fused\_kernel}：Q/K 量化 + V 的 per-block
-        转置量化合体的 fused 形态（28.4.3~节）；
+        转置量化合并的 fused 形态（28.4.3~节）；
   \item 开 per-channel V 时另起三个 kernel（\texttt{v\_col\_stats} 列统计、
         \texttt{v\_stats\_finalize} 汇总、per-channel 转置量化，28.4.5~节）；
   \item 开 Hadamard 时（fp4/fp8 均需显式开启，fp4 收益更大）加
