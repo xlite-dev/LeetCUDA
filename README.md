@@ -17,7 +17,7 @@ It covers **Tensor/CUDA Cores**, [200+ CUDA kernels](leetcuda-pdf), [HGEMM][leet
 
 <div align="center">
   <div align='center'>
-      <img src='./docs/leetcuda_cover_bench.png'>
+      <img src='./docs/leetcuda_cover_bench.png' width="800px">
   </div>
 </div>
 
