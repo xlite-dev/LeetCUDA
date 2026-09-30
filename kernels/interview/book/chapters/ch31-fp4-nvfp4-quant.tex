@@ -9,7 +9,7 @@
 dtype」：e2m1 只有 2 bit 指数 + 1 bit 尾数，可表示值只有
 $\{0,\pm0.5,\pm1,\pm1.5,\pm2,\pm3,\pm4,\pm6\}$，相对步长约 25\%（fp8 e4m3
 是 6.25\%）。在这样的格式上做出可用的 attention，靠的不是数据格式本身，
-而是围绕它的一整套\textbf{尺度工程}：microscaling 块尺度（scale
+而是围绕它的一整套\textbf{尺度处理}：microscaling 块尺度（scale
 factor）、强制 smoothing、rank-1 修正、列置换、以及把所有这些步骤
 fused 进尽量少的 kernel。
 \begin{figure}[H]
@@ -191,7 +191,7 @@ kernel 的 $S=\hat Q\hat K^\top+\Delta S$ 恰好等于 $q(k-\bar k)^\top$，
      $\Delta S$ 预载进 C 累加器即用};
   \node[draw, dashed, thick, align=left, text width=4.9cm, inner sep=3pt, font=\tiny]
     at (6.78,-1.66)
-    {\textbf{两条纪律}\\ 1. $K-\bar k$ \textbf{必须避免物化}——$\Delta S$ 必须走
+    {\textbf{三条纪律}\\ 1. $K-\bar k$ \textbf{必须避免物化}——$\Delta S$ 必须走
      $q_mK^{\top}-q_m\bar k$ 两支（\texttt{delta\_s.cuh} L3--8）；\\
      2. $S$ 上任何多余的行常数只\textbf{平移 lse}、不改变 $O$；\\
      3. 减除也可交换进旋转域：$\mathrm{dot}$ 用 $\bar k^{rot}$（31.3.5）。};
@@ -569,7 +569,7 @@ $\pi^{-1}$ 回到原始 token 位置判定。
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (9.24,-7.207) {$\cdot$ K 维必须 64 对齐（SF atom 64 宽）$\to$ D pad 到 64 倍数};% w=7.700
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (9.24,-7.546) {$\cdot$ pad 列 data=0 且 SF=0 $\to$ 贡献恒 0（不污染结果）};% w=7.700
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkRed} }] at (9.24,-7.885) {$\cdot$ SF 编码误差 = 尺度级错误：写序必须 match SF atom};% w=7.700
-    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries }] at (9.24,-8.408) {让 e2m1 可用的尺度工程（本章内容）：};% w=7.700
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries }] at (9.24,-8.408) {让 e2m1 可用的尺度处理（本章内容）：};% w=7.700
     \node[draw=tkPurple, fill=tkFillPurple, line width=0.5pt, minimum width=2.31cm, minimum height=0.71cm, inner sep=1pt, align=center, text width=2.25cm, font={\fontsize{4.8}{6.0}\selectfont \bfseries \color{tkPurple} }] at (10.395,-8.978) {microscaling\\1$\times$16 块 + ue4m3};
     \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=2.31cm, minimum height=0.71cm, inner sep=1pt, align=center, text width=2.25cm, font={\fontsize{4.8}{6.0}\selectfont \bfseries \color{tkGreen!70!black} }] at (13.013,-8.978) {smoothing\\q\_m / $\bar{k}$ 强制减除};
     \node[draw=tkOrange, fill=tkFillOrange, line width=0.5pt, minimum width=2.16cm, minimum height=0.71cm, inner sep=1pt, align=center, text width=2.09cm, font={\fontsize{4.8}{6.0}\selectfont \bfseries \color{tkOrange!75!black} }] at (15.554,-8.978) {hadamard\\通道摊平（fused）};
@@ -794,8 +794,8 @@ quantize kernel 的瓶颈（gmem 带宽）没有变。
 
 MXFP8 PV 变体（$V^\top$ 走 e4m3 + ue8m0/32，精度更高）付出 37.7\%
 的 self 时间代价：V 侧数据带宽翻倍（8 bit vs 4 bit）、MMA atom 从
-\texttt{m16n32k64} 换 \texttt{m16n8k128}，两者吞吐相近但带宽劣势直
-直接体现在 e2e。它存在的意义是提供精度后备（$D\le192$ 才有 smem 预算，
+\texttt{m16n32k64} 换 \texttt{m16n8k128}，两者吞吐相近但带宽劣势
+直接体现在 e2e。它存在的意义是提供精度兜底（$D\le192$ 才有 smem 预算，
 \texttt{attn\_traits.cuh} L58--63），不是性能选项。
 
 \subsection{e2e：fp4 persist-D 的 D 扫描}

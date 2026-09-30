@@ -20,7 +20,7 @@ swizzle（\texttt{Layout\_K\_SW32\_Atom}，第~\ref{ch:23}~章）、mbarrier
 多级流水（第~\ref{ch:26b}~章）、全员 MMA 的 non-WS 协议
 （第~\ref{ch:26c}~章）、warp specialization 与 \texttt{setmaxnreg}
 （第~\ref{ch:26b}~章）、epilogue 的 STSM + TMA store（第~\ref{ch:26b}~章）。
-真正的新东西只有三件：\textbf{block scale 形式的 \texttt{mma.sync}}
+新东西只有三件：\textbf{block scale 形式的 \texttt{mma.sync}}
 （33.3~节）、\textbf{SF 的 smem 原子与 TMA descriptor}
 （33.4~节）、以及 \textbf{数据与 SF 的成对装载}
 （33.5~节的 zip 张量）。
@@ -222,8 +222,8 @@ $16+8 = 24$\,B/线程，SF 侧 8\,B/线程——SF 的字节数达到数据的 $
         整数个原子拼成。
 \end{itemize}
 
-于是 tile 空间从 FP8 的「立方体」收缩成一根柱子：
-$128 \times BN \times 64$。$BN$ 也就成了唯一值得扫的旋钮——33.9.4~节的
+于是 tile 空间被固定成两个常数维度加一个自由维度：
+$128 \times BN \times 64$，$BN$ 成了唯一可扫的旋钮——33.9.4~节的
 扫描会给出结论：\textbf{$BN$ 从 128 翻到 256，吞吐从 461\,T 升到 603\,T
 （$+31\%$）}，这是本章最大的一个单项性能发现。
 
@@ -249,7 +249,7 @@ CUTLASS 给出了 smem 版本的原子，本书把它写成
 这段代码初看不易理解：四个 \texttt{shape}/\texttt{stride} 三元组、一个
 \texttt{prepend}、一个把 $kMN$ 包进 \texttt{Int<kMN/128>} 的外层。
 把它拆成「gmem 的 512\,B 原子是什么结构」与「smem 需要什么结构」两句话，
-一切就清楚了。
+结构就清楚了。
 
 \textbf{gmem 原子}（第~\ref{ch:36}~章「SF 的 gmem 布局」小节，图~\ref{fig:36-sf-layout}）
 的行内偏移是 $16\,(m\bmod 32) + 4\,(\lfloor m/32\rfloor\bmod 4) + s$。
@@ -556,7 +556,7 @@ non-WS 版本没有这个问题，因为那里是「全体线程 arrive」——
 arrive 了一次（第~\ref{ch:26c}~章的那三行初始 release），
 同一个动作由身兼二职的线程完成了。\textbf{warp specialization 把
 「谁 arrive」这件事拆开之后，初始条件就必须重新核对}——这是本章
-唯一的实质性 bug，也是本书 ws 系列最值得记住的一条教训。
+唯一的实质性 bug，也是本书 ws 系列最要紧的一条教训。
 
 \subsection{命名屏障}
 
@@ -801,7 +801,7 @@ $0.1448$、level-2$\times$B 列 $0.1443$、两级（非 WS/WS）$0.1454$、
 
 \subsection{量化开销，以及一次重构}
 
-先算开销。E2E 行减去 kernel-only 行，就是两侧量化真正花掉的时间
+先算开销。E2E 行减去 kernel-only 行，就是两侧量化实际花掉的时间
 （4096$^3$：FP8 得 424\,$\mu$s、FP4 得 109\,$\mu$s；8192$^3$：
 1221\,$\mu$s 对 633\,$\mu$s；FP4 侧按本章的自适应宽档算）：
 
@@ -916,7 +916,7 @@ $BN$ & $k_{Stages}$ & smem & NonWS TFLOPS & WS TFLOPS & 结论 \\
 \begin{itemize}[itemsep=2pt,topsep=3pt]
   \item \textbf{流水深度在这个 kernel 上几乎不影响性能。}
         $BN{=}128$ 时 $k_{Stages}$ 从 4 加到 8（36\,KB $\to$ 72\,KB，
-        把预算用掉两倍）只换来 $\pm1\%$；$BN{=}256$ 时 5/6/7 级也持平。
+        smem 预算翻倍）只换来 $\pm1\%$；$BN{=}256$ 时 5/6/7 级也持平。
         与第~\ref{ch:35}~章 FP8 版本（2 级 $>$ 3 级，$+7.7\%$）不同，
         FP4 的结论是「流水深度够用就行」。
         原因见图~\ref{fig:37-pipeline-timing}：FP4 的一个 stage
@@ -964,8 +964,8 @@ $128\times256$/s6，其余回落 $128^2$/s4，\texttt{--bench} 的 FP4 标准
         smem 只是原样拷贝。
   \item \textbf{$BM{=}128$、$BK{=}64$ 不是调参，是唯一合法解}：
         二者分别等于 SF 原子的行块与 K 覆盖范围，也就是 SF 的
-        TMA box 的尺寸。tile 空间因此从立方体收缩成
-        $128\times BN\times64$ 的柱子，$BN$ 成了唯一旋钮——
+        TMA box 的尺寸。tile 空间因此被固定成
+        $128\times BN\times64$，$BN$ 成了唯一旋钮——
         而它恰好是收益最大的那个（$+31\%$）。
   \item \textbf{epilogue 只剩一个乘法}：level-2 的 SF 由 MMA 硬件消费，
         level-1 按 $(m,n)$ 折回。反量化的复杂度从「按块查表」

@@ -99,7 +99,7 @@ cute::copy(s2r_tiled_copy_a, tAsA(_, _, k_step_next, ismem_read),
 引入}什么：第~\ref{sec:24-step1}~节（第一步）只留「切块 $\to$ 分区 $\to$
 \texttt{cute::gemm}」，把地址算术从代码里拿掉；第~\ref{sec:24-step2}~节
 （第二步）引入 smem 与 \texttt{cp.async}，让搬运与计算重叠；
-第~\ref{sec:24-step3a}、\ref{sec:24-step3b}~节（第三步）再压搬运的形态与
+第~\ref{sec:24-step3a}、\ref{sec:24-step3b}~节（第三步）再优化搬运的形态与
 寄存器占用。每一步的末尾都会点明「这一步留下了什么」，接上后一步的动机。
 
 \section{数学原理}
@@ -457,7 +457,7 @@ kernel 本体把「全部配置」都收在模板参数里，函数体里没有�
 （第~\ref{sec:24-step1}~节）只留「切块 $\to$ 分区 $\to$ \texttt{cute::gemm}」；
 第二步（第~\ref{sec:24-step2}~节）引入 smem 与 \texttt{cp.async}，把搬运与计算
 重叠起来；第三步（第~\ref{sec:24-step3a}、\ref{sec:24-step3b}~节）把搬运的
-形态、寄存器占用与 epilogue 压到高效。三步共用同一份源码，可以逐段对照读。
+形态、寄存器占用与 epilogue 做到高效。三步共用同一份源码，可以逐段对照读。
 
 \subsection{第一步：切块、分区、\texttt{cute::gemm}}\label{sec:24-step1}
 

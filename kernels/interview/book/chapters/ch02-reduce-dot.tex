@@ -112,7 +112,7 @@ CUDA 提供 warp 级寄存器交换指令 shuffle：同 warp 的线程可以\tex
 蝶形归约（butterfly reduction）用 xor 指令构造两两相对的 lane 对。设 warp
 宽度 $W = 2^{R}$（$R = 5$），第 $r$ 轮（$r = 1, \dots, R$）的掩码为
 $m\sb r = 2^{R-r}$，每个 lane 把自己的值与 lane $i \oplus m\sb r$ 的值相加。
-这个过程有一个干净的解析刻画。定义 $S(r, i)$ 为「$r$ 轮之后 lane $i$ 持有的
+这个过程可以解析地刻画。定义 $S(r, i)$ 为「$r$ 轮之后 lane $i$ 持有的
 部分和」，则
 \begin{equation}
   S(r, i) \;=\; \sum\sb{j \,\bmod\, 2^{R-r} \;=\; i \,\bmod\, 2^{R-r}} x\sb j,

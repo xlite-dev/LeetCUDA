@@ -110,7 +110,7 @@ bit-exact 等价（等价性证明注释在 L320--325，host 端
   title={common.cuh L385-407（tma\_load\_2d：cp.async.bulk.tensor.2d raw PTX 形式）}]{../common.cuh}
 
 要点：目的地址与 mbarrier 都是 32-bit smem 地址（\texttt{\_\allowbreak{}\_\allowbreak{}cvta\_\allowbreak{}generic\_\allowbreak{}to\_\allowbreak{}shared}
-转换）；数据落齐由硬件对 mbarrier 做 complete-tx 计数，配合
+转换）；数据到齐由硬件对 mbarrier 做 complete-tx 计数，配合
 \texttt{tma\_\allowbreak{}arrive\_\allowbreak{}expect\_\allowbreak{}tx}（声明期望字节数）构成第~\ref{ch:13}~、
 \ref{ch:14}~、\ref{ch:17}~、\ref{ch:18}~章流水线的 full/empty 双屏障协议。
 寄存器再分配封装则被 \texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}SETMAXNREGS} 独立门控：

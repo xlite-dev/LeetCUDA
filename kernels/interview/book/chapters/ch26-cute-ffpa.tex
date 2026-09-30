@@ -544,7 +544,7 @@ $d_2{=}1$ 的 4 格来自 C 的第二个 $n8$ atom（虚线半块）。\textbf{�
 （\texttt{composition}、\texttt{coalesce}、\texttt{tile\_\allowbreak{}to\_\allowbreak{}shape}）都会
 把它当作「同一元素重复」处理：\texttt{cosize} 不再等于池大小、
 \texttt{partition} 的中间结果也要另算。CuTe 不阻止你写指针加法，但一旦
-把「物理偏移」伪装成「布局维度」，第~\ref{ch:20}~章的代数就会被你自己
+把「物理偏移」当成「布局维度」，第~\ref{ch:20}~章的代数就会被你自己
 破坏。FFPA 的选择是：\textbf{布局只描述一块 chunk，池的偏移交给指针}。
 
 那么「切片 $+$ 流水」在代码里具体长什么样？看 QK 主循环（L237--266）：
@@ -629,7 +629,7 @@ $d$ 从 $0$ 滚到 $\mathrm{Sk}{-}1$）；smem 侧每轮把 \texttt{q\_base} 加
 \texttt{make\_\allowbreak{}tiled\_\allowbreak{}copy} 的两个 layout 分别是「线程布局 $(16,8):(8,1)$」
 （128 个线程铺满，行优先）与「值布局 $(1,8)$」（每线程一次搬 8 个 half
 $=128$\,bit，正好是 \texttt{cp.\allowbreak{}async.\allowbreak{}cg.\allowbreak{}shared.\allowbreak{}global} 的 16 字节形态）。
-但值得记的是源码注释（L73--78）里那句话：
+但源码注释（L73--78）里那句话值得记：
 
 \begin{quote}
   \textit{128 线程：与 TiledMmaQK/PV 的 Layout$\langle4,1,1\rangle$ 一致，
@@ -986,7 +986,7 @@ cuDNN SDPA 的加速比，比较对象与精度配置（f16 输入、f32 累加�
         折叠成立即数，运行时（在开启优化后）与手写版本无差别；
   \item \texttt{local\_tile}/\texttt{partition\_*} 的坐标算术全部由模板
         推导，编译产物里剩下的是少数 \texttt{mad} 与常量偏移；
-  \item 真正的运行时成本在算法侧（chunk 循环的额外 barrier、V 的重复加载），
+  \item 实际的运行时成本在算法侧（chunk 循环的额外 barrier、V 的重复加载），
         与「用不用 CuTe」无关——第~\ref{ch:19}~章对这两项开销的量化结论是
         「Stage 上限压到 2--3，同步开销主导」。
 \end{itemize}

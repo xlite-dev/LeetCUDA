@@ -77,7 +77,7 @@ WS 教学版 (2,2) & 140.2 & 2.01$\times$ & 1.00$\times$ \\
 从 140 到 204 的 45\% 差距，逐项拆开是四个结构性问题。
 
 \textbf{第一，WS 的代价：producer 不产 FLOPs。}WS 教学版 256 线程里
-128 个是 producer（只发 TMA），真正做 MMA 的只有单 consumer warpgroup
+128 个是 producer（只发 TMA），实际做 MMA 的只有单 consumer warpgroup
 的 128 线程。SM 上 MMA warp 数降低一半。第~\ref{ch:26b}~章的
 D=128 场景里，WS 换来的是 Q 持久化与 \texttt{setmaxnreg} 的寄存器再分配，
 收益大于成本；但 Split-D 的 O 累加器（$32 \times C$ 个 f32/线程，第~\ref{ch:19}~章
@@ -271,7 +271,7 @@ $N_{kv}$ 非 $k_{Bc}$ 倍数时直接用全局 tile 索引会串到相邻 head �
   title={ffpa\_attn.cuh L1008-1026（初始预取：QK 填满 $S_K$，V 填满 $S_V$）}]{../ffpa_attn.cuh}
 \end{lstinputlisting}
 
-值得看的是 \textbf{V 的初始预取位置}：V 与 QK 无数据依赖，在第一个
+细看 \textbf{V 的初始预取位置}：V 与 QK 无数据依赖，在第一个
 QK GEMM 之前就把 $S_V$ 份 V chunk 发出去，V 的 TMA 传输重叠掉整个
 首个 QK GEMM + softmax 窗口。此后每个 kv\_tile 开头再补发本 tile 的
 首批 V（L1030--1040），同样领先于 QK 消费。
@@ -716,7 +716,7 @@ TFLOPS 排序（204.1 对 188.3）完全同序；$D\ge384$ 后 spill 基线
 \end{figure}
 三个事实链。\textbf{第一}，$D\le256$ 零 spill：stages 加深的收益全部
 来自 QK 流水掩蔽——QK 是主计算路径（每 tile $D/32$ 个 chunk 要发射），
-$S_K{=}3$ 让 tid=0 的发射领先更远、TMA 传输更深地藏进 GEMM 窗口；
+$S_K{=}3$ 让 tid=0 的发射领先更远、TMA 传输更深地被 GEMM 窗口掩盖；
 而 V 每 tile 只消费 $D/64$ 个 chunk 且消费点稀疏（只在 softmax 之后），
 $S_V{=}2$ 已够用，第 3 级 stage 的 barrier 维护纯属开销——这就是
 $(3,2)$ 全面领先的 $D\le320$ 段。\textbf{第二}，$D\ge320$ 后

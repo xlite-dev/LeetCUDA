@@ -396,7 +396,7 @@ exp2 参数，两级 scale 在数据通路里都不占显式乘法。图~\ref{fi
     \node[draw=black!30, fill=black!2, line width=0.5pt, minimum width=7.95cm, minimum height=0.62cm, inner sep=1pt, align=center, text width=7.88cm, font={\fontsize{4.8}{6.0}\selectfont \color{black!65} }] at (13.336,-8.593) {named barrier（WAR）$\to$ SM90\_U32x2\_STSM\_N 进 SW128\\（叠 Q/K 释放区；blockscale C-fragment 用 U32x2 非 U32x4）};
     \node[draw=black!30, fill=black!2, line width=0.5pt, minimum width=7.95cm, minimum height=0.62cm, inner sep=1pt, align=center, text width=7.88cm, font={\fontsize{4.8}{6.0}\selectfont \color{black!65} }] at (13.336,-9.302) {$\to$ 单条 TMA store（BHND / NHD 双布局，运行时选坐标）\\tail Q tile：R$\to$G 带行守卫};
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkRed} }] at (0.37,-10.441) {五步环环相扣：(3) 的 $\pi$ 与 (2) 的 C 布局、(5) 的 A 布局三方锁定（SA3 adapter 逐字拷贝的自洽体系）。};% w=17.094
-    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (0.37,-10.811) {吞吐参考：D=192 self 474T（fp4 基线）；MXFP8 PV 变体 357T（精度保险丝，D$\leq$192）。};% w=17.094
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (0.37,-10.811) {吞吐参考：D=192 self 474T（fp4 基线）；MXFP8 PV 变体 357T（精度兜底，D$\leq$192）。};% w=17.094
     \draw[tkGreen, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (4.22,-2.926) -- (4.558,-2.926);
     \draw[tkGreen, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (4.22,-4.312) -- (4.558,-3.942);
     \draw[black!75, line width=0.5pt, -{Stealth[length=2.2pt,width=1.8pt]}] (12.613,-3.203) -- (12.613,-3.296);
@@ -444,7 +444,7 @@ exp2 参数，两级 scale 在数据通路里都不占显式乘法。图~\ref{fi
 
 MXFP8 PV 付出 28--39\% 的代价：$V^\top$ 数据 8 bit 带宽翻倍、atom 换
 \texttt{m16n8k128}，两者吞吐相近但带宽直接体现在 e2e。它的定位是
-\textbf{精度后备}（$D\le192$ 的 smem 预算内），不是性能选项
+\textbf{精度兜底}（$D\le192$ 的 smem 预算内），不是性能选项
 （第~\ref{ch:31}~章 31.6 同结论）。
 
 \subsection{fp4 对 fp8 的相对收益}

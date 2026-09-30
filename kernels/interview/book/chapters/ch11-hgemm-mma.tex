@@ -29,7 +29,7 @@ $B\sb M\times B\sb N\times B\sb K = 128\times128\times16$，block 256 线程）�
 \textbf{动机一：WMMA 的四个局限。}（1）布局黑盒：fragment 里哪个元素落在
 哪个寄存器不可知，epilogue 只能整块 \texttt{store\_\allowbreak{}matrix\_\allowbreak{}sync}；
 （2）寄存器失控：fragment 数组完全交给编译器，溢出与否取决于编译器；
-（3）无寄存器双缓冲：每迭代必须等 ldmatrix 完成才能 mma，装载延迟裸露；
+（3）无寄存器双缓冲：每迭代必须等 ldmatrix 完成才能 mma，装载延迟暴露；
 （4）流水线深度只有 2，搬运延迟稍有波动就覆盖不住。手写 PTX 后这四点全部可控：
 布局白盒（11.3.2--11.3.4）、寄存器显式声明（\texttt{RA/RB/RC} 数组）、
 装载与计算的重叠可以手工编排。
@@ -191,7 +191,7 @@ $R0 = \{b\sb 0,b\sb 1\}$ 是 $k \in \{2\mathrm{tig}, 2\mathrm{tig}{+}1\}$（上�
 $k$ 区），$R1 = \{b\sb 2,b\sb 3\}$ 再加 8（下半 $k$ 区）。8 个 lane 组
 （$\mathrm{g} = 0..7$）拼齐 8 列。与 A 对照记忆：A 按行分、B 按列分，
 $k$ 方向都是「4 个 lane 各持 2 个相邻元素」。B 侧逐格布局见
-图~\ref{fig:11-b-fragment}（图~\ref{fig:11-2a} 的 B 侧姊妹图）。
+图~\ref{fig:11-b-fragment}（图~\ref{fig:11-2a} 的 B 侧对照图）。
 
 \begin{figure}[H]
 \centering
@@ -234,7 +234,7 @@ $k$ 方向都是「4 个 lane 各持 2 个相邻元素」。B 侧逐格布局见
   \node at (6.95,{-8*\chd-1.75}) {$b\sb 3$};
   \node[anchor=west, font=\tiny] at (7.62,{-8*\chd-1.75}) {$RB[1]$：$k=8{+}2\,\mathrm{tig},\ 8{+}2\,\mathrm{tig}{+}1$};
 \end{tikzpicture}
-\caption{B fragment（$k16\times n8$）寄存器布局，式~\ref{eq:11-bpos} 的网格化（图~\ref{fig:11-2a} 的 B 侧姊妹图）：列 $n=\mathrm{g}=\mathrm{lane}\gg2$（同列同底色 8 档），行 $k$ 按 $b\sb 0\to2\,\mathrm{tig}$、$b\sb 1\to2\,\mathrm{tig}{+}1$、$b\sb 2/b\sb 3$ 再 $+8$ 分布。右：每 lane 4 个 f16 打包为 $RB[0]/RB[1]$ 两条 \texttt{.b32}。与 A 对照：A 按行分、B 按列分。}
+\caption{B fragment（$k16\times n8$）寄存器布局，式~\ref{eq:11-bpos} 的网格化（图~\ref{fig:11-2a} 的 B 侧对照图）：列 $n=\mathrm{g}=\mathrm{lane}\gg2$（同列同底色 8 档），行 $k$ 按 $b\sb 0\to2\,\mathrm{tig}$、$b\sb 1\to2\,\mathrm{tig}{+}1$、$b\sb 2/b\sb 3$ 再 $+8$ 分布。右：每 lane 4 个 f16 打包为 $RB[0]/RB[1]$ 两条 \texttt{.b32}。与 A 对照：A 按行分、B 按列分。}
 \label{fig:11-b-fragment}
 \end{figure}
 
@@ -811,7 +811,7 @@ $10^{-1}$ 量级并在个别元素上溢出 f16 范围（65504）。
 而不同步 launch 参数，轻则 launch 直接报 smem 超限错误，
 重则静默算错（blockDim 与 warp 排布假设不符）。本章测试把
 \texttt{smem\_bytes} 与 blockDim 都写死为 24576/256，
-正要与模板默认值形成显式互检。
+正是要与模板默认值形成显式互检。
 
 \section{面试要点速查}
 

@@ -243,7 +243,7 @@ $32$ 个灰格是命中（$=2c_0+16c_1$ 的全部取值）、$31$ 个斜线格�
         「列拆半」变换，P 就能原地重解释为 $PV$ 的 A 操作数
         （4.8 节完整推一遍）。
   \item \textbf{Inverse（逆）：解决「从 offset 反查坐标」。}给定一个 offset
-        反查它的坐标：copy 的地址回拉、\texttt{max\_\allowbreak{}common\_\allowbreak{}layout}
+        反查它的坐标：copy 的地址反解、\texttt{max\_\allowbreak{}common\_\allowbreak{}layout}
         （求两个布局的最大公共连续块）都以它为基础；4.8 节的代数法更是把它
         当作 layout 变换的中心工具。
   \item \textbf{Product（乘积）：解决「小布局怎么铺成大布局」。}\allowbreak{}smem 上
@@ -406,7 +406,7 @@ $\{0,1,2,3\}\subset[0,4)$，而 $A$ 在 $[0,4)$ 上恒等，故 $R=B$ 逐点成�
 inverse 回答的问题最直白：「给定一个 offset，它是哪个坐标的？」但真正常用
 的场合不止反解坐标：
 
-\textbf{场景一：copy 的坐标回拉。}（第~\ref{ch:21}~章）拷贝划分需要把
+\textbf{场景一：copy 的坐标反查。}（第~\ref{ch:21}~章）拷贝划分需要把
 「tile 上的位置」拉回「atom 内部的坐标」，用的就是 $A(R(i))=i$ 这条右逆
 性质；\texttt{max\_\allowbreak{}common\_\allowbreak{}layout}（求两个布局的最大公共连续块，判断能否
 直接互拷）也以右逆为基础。
@@ -699,7 +699,7 @@ hgemm.cuh~L1073 的 \texttt{group\_\allowbreak{}modes\allowbreak{}<1,\allowbreak
   compose & $R(c)=A(B(c))$ & \texttt{composition} / \texttt{compose}
     & \texttt{Smem\allowbreak{}Layout\allowbreak{}Atom} $=$ \texttt{Swizzle}\,$\circ$\,atom \\
   inverse & $A(R(i))=i$（准逆见正文） & \texttt{right\_\allowbreak{}inverse} / \texttt{left\_\allowbreak{}inverse}
-    & 公共连续块、坐标回拉（第~\ref{ch:21}~章） \\
+    & 公共连续块、坐标反查（第~\ref{ch:21}~章） \\
   product & $P(c_A,c_B)=A(c_A)+B(c_B)$ & \texttt{make\_\allowbreak{}layout\allowbreak{}(A,\allowbreak{}B)}、
     \texttt{blocked\_\allowbreak{}product}、\texttt{raked\_\allowbreak{}product}、\texttt{tile\_\allowbreak{}to\_\allowbreak{}shape}
     & $8\times B_K$ atom $\to(B_M,B_K,k_{\mathrm{Stage}})$ \\

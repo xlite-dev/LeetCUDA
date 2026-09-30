@@ -5,7 +5,7 @@
 
 \section{本章导读}
 
-在动手写第一个 kernel 之前，本书想先立一条工程信条：\textbf{profile 永远都是
+在动手写第一个 kernel 之前，本书先立一条工程信条：\textbf{profile 永远都是
 最重要的}。优化 GPU kernel 的正确循环不是「改了跑一下看快没快」，而是
 「先测量、再假设、改一处、再测量」。凭直觉的优化，快了不知道为什么快，
 慢了也找不到原因。这一章专门讲两件测量工具：\textbf{Nsight Systems}（nsys，
@@ -24,7 +24,7 @@ L1/L2 命中率、bank conflict，每一个指标都配一个真实的「指标�
 
 \section{问题与动机：不 profile 就优化的代价}
 
-先看三个真实的开发反例，说明「不 profile 就优化」会栽在哪里。
+先看三个真实的开发反例，说明「不 profile 就优化」会错在哪里。
 
 \textbf{反例一：感觉是装载瓶颈，其实是依赖链}。一个 sm\_89 上的 fp8
 attention kernel（persist-D 结构）对标业界最快实现慢 28\%（909.4$\mu$s vs
@@ -130,7 +130,7 @@ nsys 与 ncu 的采集原理完全不同：
   \node[font=\scriptsize, anchor=west, text=tkRed!70] at (14.25, -2.0)
     {回到判读};
 \end{tikzpicture}
-\caption{nsys $\to$ ncu $\to$ 单变量修改 $\to$ 复测 \texttt{-{}-diff} 的闭环工作流：nsys 先给全局占比与优化预算（主 kernel 占 86--92\%，辅助链上限仅 14\%，对应 \S\ref{sec:ch00-cases} 例一）；ncu 只深挖 Top-1/2 kernel；每次只改一处，复测后无效立即回退、回到指标判读。配色：红=告警起点，蓝=采集/分析链，紫=判读决策点，橙=修改/复测动作，绿=有效保留，红虚线=无效回退。}
+\caption{nsys $\to$ ncu $\to$ 单变量修改 $\to$ 复测 \texttt{-{}-diff} 的闭环工作流：nsys 先给全局占比与优化预算（主 kernel 占 86--92\%，辅助链上限仅 14\%，对应 \S\ref{sec:ch00-cases} 例一）；ncu 只深挖 Top-1/2 kernel；每次只改一处，复测后无效立即回退、回到指标判读。配色：红=问题起点，蓝=采集/分析链，紫=判读决策点，橙=修改/复测动作，绿=有效保留，红虚线=无效回退。}
 \label{fig:0-2}
 \end{figure}
 
@@ -381,7 +381,7 @@ warp 每个周期若不能发射，必有一个「停滞原因」。sm\_120 上�
 \texttt{math\_\allowbreak{}pipe\_\allowbreak{}throttle} & 数学管线排队满 & \textbf{好信号}：计算饱和。保持或进一步减 FLOPs \\
 \texttt{sleeping} & warp 休眠（mbarrier 退避） & \textbf{纯浪费}：producer/consumer 失衡或空转自旋，查 WS 结构 \\
 \texttt{barrier} & 等显式栅栏 & 同步过频：减少 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads} 点、缩 block \\
-\texttt{not\_\allowbreak{}selected} & 就绪但调度器选了别人 & \textbf{健康}：有冗余并行度可隐藏延迟 \\
+\texttt{not\_\allowbreak{}selected} & 就绪但调度器选中了其他 warp & \textbf{健康}：有冗余并行度可隐藏延迟 \\
 \texttt{selected} & 正在发射（非停滞） & 基线，越大越好 \\
 \bottomrule
 \end{tabular}

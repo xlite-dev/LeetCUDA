@@ -313,7 +313,7 @@ WS 版与 non-WS 的\textbf{数学逐 bit 相同}（MMA 序列不变），差异
   \item \textbf{128 线程 producer warpgroup}：只有线程 0 发 TMA，
         其余 127 个线程在 \texttt{warpgroup\_reg\_}\allowbreak
         \texttt{dealloc<32>()} 后空转
-        （寄存器降到 32，把预算让渡给 consumer）；
+        （寄存器降到 32，把预算让给 consumer）；
   \item \textbf{256 线程 consumer}：\texttt{warpgroup\_reg\_}\allowbreak
         \texttt{alloc<232>()} 拿回寄存器，跑与 non-WS 完全相同的
         \texttt{gemm\_ss} 循环；
@@ -335,8 +335,8 @@ WS 版与 non-WS 的\textbf{数学逐 bit 相同}（MMA 序列不变），差异
 \end{itemize}
 
 GEMM 与 attention 的一个对照：第~\ref{ch:26c}~章大 $D$ 下 non-WS 赢
-是因为 acc 寄存器占满、setmaxnreg 无寄存器可让渡；本章 $D$ 换成了 $K$ 方向的
-累加（acc 恒 64 f32/线程），寄存器有余量，setmaxnreg 有让渡空间——在
+是因为 acc 寄存器占满、setmaxnreg 无寄存器可释放；本章 $D$ 换成了 $K$ 方向的
+累加（acc 恒 64 f32/线程），寄存器有余量，setmaxnreg 有释放空间——在
 $128^3$/s3 上 WS 稳定快 $2.6\%\sim2.9\%$（412.1 vs 400.4 @4096$^3$、
 460.8 vs 449.3 @8192$^3$，35.8.4~节扫描表）。但换成默认宽 tile
 （$128\times256$/s2）这点收益就基本消失了：440.9 vs 440.7（$+0.05\%$）。
@@ -495,7 +495,7 @@ $128\times256$/s2）。三个规律：
 $128\times256$ grid 只有 128 个 CTA（35.8.4~节末的波次量化）；
 \textbf{E2E} 的形状敏感度更陡：2048$^3$ 反而低于 cuBLAS（$0.55\times$），因为量化
 是 $O(MK{+}NK)$ 的带宽型工序，GEMM 变小时它的占比线性放大（35.8.2~节）；
-\textbf{WS} 全程略优于 non-WS（寄存器有余量、setmaxnreg 有让渡空间，
+\textbf{WS} 全程略优于 non-WS（寄存器有余量、setmaxnreg 有释放空间，
 35.6~节），但差距远小于 attention 大 $D$ 场景。图中 E2E 柱是「全链路
 量化」的保守口径；权重 $B$ 离线量化后 E2E 回到 226/411/429~T
 （35.8.3~节）。}
@@ -595,7 +595,7 @@ $1/32\approx 3\%$ 的工作量——实测 440.4 vs 440.7（$<0.1\%$）：多出
 上一节把量化链的开销算成 $MK+NK$ 的带宽需求，工程上还有更直接的做法：
 $B$ 是权重、$A$ 是激活，这个不对称决定了两侧不必付出同等的开销——$\delta_b$
 只由权重的数值分布决定，一次算好即可随 checkpoint 落盘；$\delta_a$
-依赖当前 token 的取值范围，必须每次前向现算。顺着这条事实把 API 一分为
+依赖当前 token 的取值范围，必须每次前向现算。据此把 API 一分为
 二：\texttt{fp8\_gemm\_quantize\_b} 负责 $B\to B_8^{\top}+\delta_b$
 （离线一次；与全链路里的 B 量化共用同一实现，因此结果逐位一致），
 \texttt{fp8\_gemm\_bf16\_b\_offline} 每次前向只量化 A，激活侧仅需一个

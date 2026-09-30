@@ -429,7 +429,7 @@ smem_tv     = composition(smem_data, tv_layout) # 复合：(Thr,Val) -> Offset
 smem_v      = smem_tv[thr_id, None]             # 按线程切片得到子张量
 copy(smem_v, rmem_data)                         # 拷贝到寄存器张量/数组
 \end{python}
-这一模式在 SIMD 编程中极为常见：每个处理元素接收某个父数据的一个对称划分。一般而言，\CuTe 认识到任意划分都可以定义为复合（置换和/或重塑形）之后再切片。如第~\ref{sec:slicing} 节所述，这种“复合-切片”模式把划分模式（{\tt ThrValLayoutC}）与实际切出的数据切片（以 {\tt thr\_id} 做的切片）分离开来。由于划分模式往往是指令或优化参数相关的编译期元数据，而切片是运行时的程序标识索引，这一模式更适合传播静态信息，运行时开销也更低。
+这一模式在 SIMD 编程中极为常见：每个处理元素接收某个父数据的一个对称划分。一般而言，\CuTe 把任意划分都定义为复合（置换和/或重塑形）之后再切片。如第~\ref{sec:slicing} 节所述，这种“复合-切片”模式把划分模式（{\tt ThrValLayoutC}）与实际切出的数据切片（以 {\tt thr\_id} 做的切片）分离开来。由于划分模式往往是指令或优化参数相关的编译期元数据，而切片是运行时的程序标识索引，这一模式更适合传播静态信息，运行时开销也更低。
 
 \wpssh{逐模复合与分块器（By-mode Composition and Tilers）}
 \label{sec:tiler}

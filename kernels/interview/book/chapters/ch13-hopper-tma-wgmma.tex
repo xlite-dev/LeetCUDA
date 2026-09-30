@@ -5,7 +5,7 @@
 
 \section{本章导读}
 
-第~\ref{ch:11}~章的 \texttt{mma.sync} 与第~\ref{ch:12}~章的 XOR swizzle 已把 GEMM 推到
+第~\ref{ch:11}~章的 \texttt{mma.sync} 与第~\ref{ch:12}~章的 XOR swizzle 已把 GEMM 做到
 Ampere 时代的效率水平，但这条路线有三个先天约束：\textbf{搬运靠线程}，每个线程
 各自计算 gmem$\to$smem 的地址并搬运数据，整数地址指令与边界判断占掉了大量 issue 槽；
 \textbf{同步靠栅栏}，\texttt{\_\allowbreak{}\_\allowbreak{}syncthreads} 只能表达「全部到齐」，无法表达

@@ -19,7 +19,7 @@ chunk 流式推进}。这套结构叫 \textbf{Split-D}，也是生产库
 本章要回答四个问题。其一，为什么 $D > 128$ 不能照搬 FA2：我们把它量化成
 \textbf{三个瓶颈}：shared memory 容量、O 累加器寄存器数、ldmatrix/swizzle 的几何
 粒度（19.2~节）。其二，Split-D 在数学上做了什么：QK 的 chunk 求和是\textbf{精确}
-归约，PV 的 chunk 输出各占一部分\textbf{列}，两者都不需要 LSE 式的重标定；真正要
+归约，PV 的 chunk 输出各占一部分\textbf{列}，两者都不需要 LSE 式的重标定；要
 小心的是\textbf{跨 chunk 广播同一个在线 rescale 因子}（19.3~节给出不变量及其归纳
 证明）。其三，两版实现如何驱动 chunk 流水：cp.async 版用 \texttt{cp.async}
 的 group 计数，TMA+WS 版用 mbarrier 的 (stage, phase) 计数，两者对 Q、K、V 的
@@ -740,7 +740,7 @@ TMA 版必须用扁平相位、cp.async 版却可以每轮重置，原因在于�
 组 FIFO}，KV tile 之间\textbf{排空}（L268--271、L349--352 的
 \texttt{wait<0>} $+$ \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads}）之后计数器就地归零即可；而 mbarrier
 是\textbf{共享对象}，它的 phase 位由自身状态决定，跨 KV tile 复用同一批屏障时，
-两端必须用同一个全局公式导出 (stage, phase)，即式~\ref{eq:19-phase}；这也是 19.8~节坑二要防的错。付出的代价换来的是：TMA 版在 KV tile 边界\textbf{不需要排空}，
+两端必须用同一个全局公式导出 (stage, phase)，即式~\ref{eq:19-phase}；这也是 19.8~节坑二要防的错。这份代价换来的是：TMA 版在 KV tile 边界\textbf{不需要排空}，
 流水可以连续推进（相位继续翻转），在浅流水下这是明确的收益。
 
 \subsection{两实现对照}
@@ -766,7 +766,7 @@ Q 的装载 & 每 KV tile 重装（与 K 同 stage） & 每 KV tile 重发 TMA�
 \end{tabular}
 \end{center}
 
-两张实现是「同一条算法、两套流水机制」，读者的收益在于看清一件事：
+两种实现是「同一条算法、两套流水机制」，读者的收益在于看清一件事：
 \textbf{Split-D 的结构（chunk 池、双 TiledMma、$\rho$ 广播）与用哪种搬运指令无关}；
 TMA 与 WS 换掉的是「数据怎么来、什么时候到」这一层。
 

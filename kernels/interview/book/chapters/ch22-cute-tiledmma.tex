@@ -218,7 +218,7 @@ warp 内部（$\mathrm{ThrV}$），再看「第几个 warp 落在哪个方向」
 「谁并行、谁重复」这两个问题的答案，都由线程编号到 VMNK 的分解给出。
 
 一个自然的疑问是：既然 warp 排布 $+$ 原子尺寸已经能划分 tile，为什么还要
-第三个（tile）参数？@竹熙佳处给出两条理由，读 tiled mma 时值得记住。其一
+第三个（tile）参数？@竹熙佳处给出两条理由。其一
 是\textbf{拷贝粒度}：后续 S2R/R2S tiled copy 把这个参数描述的块整体当作拷贝
 单位，N 方向留大一倍（每个 warp 16 而非 8）才能用上 \texttt{ldsm.x4} 一类的
 宽指令；其二是\textbf{重排的余地}：tile 参数本质是一个 layout，高级用法可以
@@ -538,7 +538,7 @@ softmax 之后，$S$ 要变成 PV 的 A 矩阵 $P$。FFPA 不把 $P$ 写回 smem
 \texttt{TiledMmaPV>} 把 C 的寄存器排布（4 个 float 按「2 行 $\times$ 2 列」）
 重排成 A 的排布（「2 行 $\times$ 2 个 K 元素」）。这一步之所以可行，是两个
 fragment 的寄存器\emph{物理}布局恰好兼容：m16n8k16 的 C 与 A 在同一个 lane
-上都持有「2 个相邻列 $+$ 2 个相隔 8 的行」，所以只需重标索引。
+上都持有「2 个相邻列 $+$ 2 个相隔 8 的行」，所以只需重新映射索引。
 \textbf{这是依赖具体 atom 的优化，不是 TiledMMA 的通用性质}（源码注释在
 flash\_attn.cuh~L2341--2372 明确写了这一点，第~\ref{ch:25}~章会再展开）。
 PV 一侧的使用（L339--345）：
@@ -550,7 +550,7 @@ PV 一侧的使用（L339--345）：
 \texttt{tCrVStorage} 是「按 KV 布局的 V」的 B fragment，
 \texttt{tCrV} 用 \texttt{tCrV\_layout}（在循环外用 \texttt{Smem\allowbreak{}Layout\allowbreak{}Vt}
 的\emph{非 swizzle 部分}推导，L136--140）重新解释同一批寄存器，
-与第~\ref{ch:21}~章的 \texttt{retile} 是同一类「零拷贝重标记」手法。
+与第~\ref{ch:21}~章的 \texttt{retile} 是同一类「零拷贝重解释」手法。
 QK$\to$PV 这一步的两套寄存器坐标见图~\ref{fig:22-aregs-reuse}。
 
 \begin{figure}[H]
@@ -667,7 +667,7 @@ $\times$ $2$ 相邻列），两个相邻 atom 共 $8$ 个；右（A 视角）：
 逻辑元素被解释成 $4$ 个 u32，每槽 $2$ 个相邻 $k$ 的 half，可直接作为
 \texttt{gemm\_rs} 的 \texttt{tCrA}。\texttt{convert\_type<half>}
 （fp32$\to$fp16，寄存器减半）$+$ \texttt{convert\_layout\_acc\_Aregs}
-（$N$ 方向按 $2$ 切分的重标索引）就是这条「P 不写回 smem」路径的全部代价。}
+（$N$ 方向按 $2$ 切分的索引重解释）就是这条「P 不写回 smem」路径的全部代价。}
 \label{fig:22-aregs-reuse}
 \end{figure}
 
@@ -680,7 +680,7 @@ $\times$ $2$ 相邻列），两个相邻 atom 共 $8$ 个；右（A 视角）：
   \node[anchor=west, font=\footnotesize\bfseries] at (40,29)
     {TiledMMA partition —— QK $(64,64,64)$ \& PV $(64,16,16)$ on 128 threads (4 warps)};
   \node[anchor=west, font=\scriptsize] at (40,52)
-    {同组线程承载两个 tile：QK 大 tile 达吞吐上限，PV 小 tile 压住 acc\_O 寄存器};
+    {同组线程承载两个 tile：QK 大 tile 达吞吐上限，PV 小 tile 控制 acc\_O 寄存器};
   \node[anchor=west, font=\scriptsize, text=tkBlue] at (40,88)
     {\textcircled{1} 线程划分：QK tile $(64\times64)$，4 个 warp 各覆盖 16 行};
   \foreach \rr/\wr in {0/{warp 0: rows [0, 16)}, 1/{warp 1: rows [16, 32)},

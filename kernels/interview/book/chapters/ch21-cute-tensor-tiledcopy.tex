@@ -1125,7 +1125,7 @@ G$\to$S 一个 tile 一级切完，S$\to$R 需要 2 个 K 切片（实测
         式~\eqref{eq:21-g2s-tv}；
   \item \textbf{B partition 形状与守恒}：$(128,32)$ 上逐线程
         $(8,4,1)$、每线程 32 个元素、全部线程合计 4096；并把 4096 个
-        (线程, 元素) 覆盖点回投到坐标上，验证双射（\texttt{once}$=4096$）；
+        (线程, 元素) 覆盖点映射回坐标，验证双射（\texttt{once}$=4096$）；
   \item \textbf{C fragment 与 retile}：TiledMMA（hgemm 配置）的
         \texttt{partition\_\allowbreak{}fragment\_\allowbreak{}A} 形状 $(8,4,2)$；
         \texttt{retile\_D} 后形状不变、\texttt{data()} 指针相同（零拷贝）；
