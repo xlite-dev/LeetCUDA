@@ -15,7 +15,7 @@ GEMM（GEneral Matrix Multiply）是 GPU 上最重要的算子：大模型里除
         是最小但完整的 tiling 骨架，两级 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads} 的正确性语义在此详细展开；
   \item \textbf{Level 2 + Level 3 — Thread Tile 与 Vectorize}（\texttt{sgemm\_vec4}，
         sgemm.cuh~L108）：$128 \times 128 \times 32$ 分块 + 每线程 $4 \times 4$
-        寄存器 tile + \texttt{float4} 加载，三个优化叠加后的工业实现雏形。
+        寄存器 tile + \texttt{float4} 加载，三个优化叠加后的工程实现。
 \end{itemize}
 
 \textbf{前置章节}：第~\ref{ch:01}~章 roofline（本章的每一级提升都要用 AI 定量核证）、
