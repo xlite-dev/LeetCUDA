@@ -145,7 +145,7 @@ smem 在 \texttt{kQSmemReuse} 下会被 V stage 复用，点积必须提前）�
 WS 骨架与 fp8 persist-D 同构：128T producer（TMA 装载 K/V/SF/bias）+
 256T consumer（8 warp MMA），4 组反向 barrier
 （\texttt{k\_empty}/\texttt{v\_empty}/\texttt{q\_consumed}/
-\texttt{epilogue\_done}，L200--213 注释）。fp4 特有的协议纪律：所有
+\texttt{epilogue\_done}，L200--213 注释）。fp4 特有的协议约束：所有
 mbarrier \textbf{永不 re-initialize}：per-CTA 全局 kv-tile 计数器驱动
 每个 barrier 的 stage/phase 跨 work 连续翻转（对活跃 mbarrier 的
 re-init 是 UB，PTX ISA 9.7.13.15.9；L113--115、L316 注释）。

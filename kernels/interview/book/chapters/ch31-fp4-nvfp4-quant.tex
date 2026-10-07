@@ -191,7 +191,7 @@ kernel 的 $S=\hat Q\hat K^\top+\Delta S$ 恰好等于 $q(k-\bar k)^\top$，
      $\Delta S$ 预载进 C 累加器即用};
   \node[draw, dashed, thick, align=left, text width=4.9cm, inner sep=3pt, font=\tiny]
     at (6.78,-1.66)
-    {\textbf{三条纪律}\\ 1. $K-\bar k$ \textbf{必须避免物化}——$\Delta S$ 必须走
+    {\textbf{三条规则}\\ 1. $K-\bar k$ \textbf{必须避免物化}——$\Delta S$ 必须走
      $q_mK^{\top}-q_m\bar k$ 两支（\texttt{delta\_s.cuh} L3--8）；\\
      2. $S$ 上任何多余的行常数只\textbf{平移 lse}、不改变 $O$；\\
      3. 减除也可交换进旋转域：$\mathrm{dot}$ 用 $\bar k^{rot}$（31.3.5）。};

@@ -15,7 +15,7 @@ smem 容量上限、$S$ 如何沿 $D$ 切成 chunk、$O$ 如何拆成分量并�
 \end{quote}
 
 这个视角有直接的工程收益。第~\ref{ch:25}~章已经演示过一次：手写 attention 里靠注释和
-纪律维持的 lane 映射、tile 计数、转置视图，在 CuTe 版里变成了
+规则维持的 lane 映射、tile 计数、转置视图，在 CuTe 版里变成了
 \texttt{print\allowbreak{}(layout)} 可以打印、\texttt{static\_\allowbreak{}assert} 可以断言、host 端
 测试可以离线核对的\emph{类型事实}。FFPA 把这件事推得更远一步：Split-D 引入的
 chunk 循环让「归约维度被切开」这件事也必须落在类型上：

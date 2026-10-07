@@ -380,7 +380,7 @@ stage 上限 & 6（99KB/16KB） & 7（(99KB$-$5KB)/12KB） \\
 \texttt{sizeof(ElementO)}（\texttt{split\_d.cuh} L105--108、traits
 L148--149 的 \texttt{compute\_vchunks\_per\_batch}）。
 
-\subsection{M8N1 主循环：chunk 流水的相位纪律}
+\subsection{M8N1 主循环：chunk 流水的相位规则}
 
 \texttt{split\_d\_fwd\_cute\_fp8\_sm120}（956 行）是非 WS 结构：所有
 256 线程做 MMA，\texttt{tid==0} 在恰当位置内联发 TMA。全局 chunk 计数
