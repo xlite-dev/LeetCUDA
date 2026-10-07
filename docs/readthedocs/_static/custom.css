@@ -1,0 +1,56 @@
+/* LeetCUDA book 站点样式：图注、代码标题、实践经验框、页脚溯源。 */
+
+.rst-content .rtd-caption {
+  margin: -0.4em 0 1.2em 0;
+  color: #555;
+  font-size: 90%;
+  text-align: center;
+}
+
+.rst-content .rtd-subcaption {
+  margin: -0.2em 0 0.8em 0;
+  color: #666;
+  font-size: 85%;
+  text-align: center;
+}
+
+.rst-content .rtd-admon {
+  border-radius: 2px;
+}
+
+.rst-content .rtd-admon.rtd-kaogu {
+  background: #fdf6e3;
+  border-color: #d9b56b;
+}
+
+.rst-content .rtd-admon.rtd-kaogu > .admonition-title {
+  background: #d9b56b;
+}
+
+.rst-content .rtd-admon.rtd-figure-fallback {
+  background: #fdecea;
+  border-color: #c0392b;
+}
+
+.rst-content .rtd-admon.rtd-figure-fallback > .admonition-title {
+  background: #c0392b;
+}
+
+.rst-content .rtd-admon.rtd-source-missing {
+  background: #eef3f8;
+  border-color: #7691a8;
+}
+
+.rst-content .rtd-admon.rtd-source-missing > .admonition-title {
+  background: #7691a8;
+}
+
+.rst-content .rtd-footer {
+  color: #888;
+  font-size: 85%;
+}
+
+.rst-content img {
+  max-width: 100%;
+  height: auto;
+}

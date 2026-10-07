@@ -1,0 +1,5 @@
+# RTD 构建依赖（版本钉死，避免镜像漂移）
+# sphinx 9.x 与 sphinx-rtd-theme 3.x 的兼容性未验证，这里钉在 Sphinx 7.4 组合。
+sphinx==7.4.7
+myst-parser==4.0.0
+sphinx-rtd-theme==3.0.2

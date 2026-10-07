@@ -1,0 +1,883 @@
+"""markdown 后处理：token → MyST。
+
+输入是 pandoc 产出的 markdown（内嵌 token），输出是 Sphinx 可直接构建的 MyST
+文档：HTML 锚点、站内交叉引用链接、admonition、图片、带源文件行号的代码块、图注
+与表注。
+
+锚点一律用原始 HTML（``<a id="..."></a>``）而不是 MyST 目标语法：原始 HTML 会被
+Sphinx 原样写进 HTML 输出，链接目标确定，也不与文档标题的解析规则纠缠。
+"""
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from . import tokens
+from .booktree import Chapter, Part
+from .labels import Registry, chapter_number_prefix, format_number, sanitize
+from .preprocess import ADMON_KINDS, Manifest
+
+#: 图片 alt 文本（正文图注由 caption 段落承担）。
+_DEFAULT_ALT = "插图"
+
+#: 页脚样式类名。
+_FOOTER_CLASS = "rtd-footer"
+
+
+@dataclass
+class RenderContext:
+  """渲染一章所需的外部信息。
+
+  :param chap: 目标章。
+  :param parts: 全书篇结构（用于章号前缀）。
+  :param manifest: 该章转换清单。
+  :param registry: 全书 label 注册表。
+  :param work_dir: 临时目录（代码载荷所在处）。
+  :param tikz_failed: 编译失败的 image_id。
+  :param source_url: 原书 tex 的 GitHub 链接前缀。
+  """
+  chap: Chapter
+  parts: list[Part]
+  manifest: Manifest
+  registry: Registry
+  work_dir: Path
+  tikz_failed: set[str] = field(default_factory=set)
+  source_url: str = ""
+
+
+@dataclass
+class RenderResult:
+  """渲染结果。
+
+  :param markdown: 最终 MyST 文本。
+  :param broken_refs: 未解析的引用 label。
+  :param leftovers: 未转换的 LaTeX 命令计数。
+  :param notes: 渲染期发现的问题（未闭合块等）。
+  :param stats: 其他统计。
+  """
+  markdown: str
+  broken_refs: list[str] = field(default_factory=list)
+  leftovers: dict[str, int] = field(default_factory=dict)
+  notes: list[str] = field(default_factory=list)
+  stats: dict[str, int] = field(default_factory=dict)
+
+
+class _Renderer:
+  """把一章的 token 化 markdown 渲染成 MyST。"""
+
+  def __init__(self, ctx: RenderContext) -> None:
+    """初始化。
+
+    :param ctx: 渲染上下文。
+    """
+    self.ctx = ctx
+    self.pending: list[str] = []
+    self.broken: list[str] = []
+    self.notes: list[str] = []
+    self.counter = {"kaogu": 0, "theorem": 0}
+    self.subfigure_letter = 0
+
+  def render(self, md_text: str) -> RenderResult:
+    """渲染整章。
+
+    :param md_text: pandoc 产出的 markdown。
+    :returns: 渲染结果。
+    """
+    leftovers = scan_leftovers(md_text)
+    blocks = self._render_items(self._split(md_text))
+    body = "\n\n".join(block for block in blocks if block.strip())
+    if self.pending:
+      body = "\n\n".join(self.pending) + "\n\n" + body
+      self.pending = []
+    body = _clean_heading_attributes(body)
+    body = _escape_colon_fences(body)
+    body = _degrade_leftovers(body)
+    body = self._prefix_title(body)
+    body = self._append_footer(body)
+    return RenderResult(
+      markdown=body.strip() + "\n",
+      broken_refs=sorted(set(self.broken)),
+      leftovers=leftovers,
+      notes=list(self.notes),
+      stats={"broken_refs": len(set(self.broken))},
+    )
+
+  def _split(self, md: str) -> list[tuple[str, object]]:
+    """把 markdown 切成文本片段与 token 交替的序列。
+
+    :param md: markdown 文本。
+    :returns: ``[("text", str) | ("tok", Token), ...]``。
+    """
+    items: list[tuple[str, object]] = []
+    pos = 0
+    for match in tokens.TOKEN_RE.finditer(md):
+      if match.start() > pos:
+        items.append(("text", md[pos:match.start()]))
+      items.append(("tok", tokens.parse(match.group(0))))
+      pos = match.end()
+    if pos < len(md):
+      items.append(("text", md[pos:]))
+    return items
+
+  def _render_items(self, items: list[tuple[str, object]]) -> list[str]:
+    """渲染一段（可含块级 token）内容。
+
+    :param items: 切分后的序列。
+    :returns: 块列表。
+    """
+    blocks: list[str] = []
+    buffer: list[tuple[str, object]] = []
+
+    def flush() -> None:
+      if not buffer:
+        return
+      pending = buffer[:]
+      buffer.clear()
+      blocks.extend(self._render_paragraphs(pending))
+
+    index = 0
+    while index < len(items):
+      kind, payload = items[index]
+      if kind != "tok":
+        buffer.append(items[index])
+        index += 1
+        continue
+      tok = payload
+      if tok.kind == tokens.KIND_LABEL and tok.fields:
+        self.pending.append(f'<a id="{self._anchor(tok.fields[0])}"></a>')
+        index += 1
+        continue
+      if tok.kind in tokens.BLOCK_KINDS and tok.kind != tokens.KIND_CAPTION:
+        flush()
+        match = self._match(items, index, tokens.BLOCK_KINDS[tok.kind])
+        if match >= len(items):
+          self.notes.append(f"{tok.kind} 块未闭合，已按到段末处理")
+        inner = items[index + 1:match]
+        block = self._render_block(tok, inner)
+        if block.strip():
+          blocks.append(self._take_pending(block))
+        index = match + 1
+        continue
+      if tok.kind == tokens.KIND_CODE:
+        flush()
+        blocks.append(self._take_pending(self._render_code(tok)))
+        index += 1
+        continue
+      buffer.append(items[index])
+      index += 1
+    flush()
+    return blocks
+
+  def _match(self, items: list[tuple[str, object]], start: int, end_kind: str) -> int:
+    """找到配对的结束 token 下标。
+
+    :param items: 序列。
+    :param start: 起始下标（起始 token 所在处）。
+    :param end_kind: 结束 token 种类。
+    :returns: 结束 token 下标；找不到时返回序列长度。
+    """
+    depth = 0
+    for index in range(start + 1, len(items)):
+      kind, payload = items[index]
+      if kind != "tok":
+        continue
+      if payload.kind == end_kind and depth == 0:
+        return index
+      if payload.kind in tokens.BLOCK_KINDS:
+        depth += 1
+      elif payload.kind in tokens.BLOCK_KINDS.values():
+        depth -= 1
+    return len(items)
+
+  def _render_block(self, tok: tokens.Token, inner: list[tuple[str, object]]) -> str:
+    """渲染一个块级 token。
+
+    :param tok: 起始 token。
+    :param inner: 块内内容。
+    :returns: MyST 文本。
+    """
+    if tok.kind == tokens.KIND_FIGURE:
+      return self._render_figure(inner)
+    if tok.kind == tokens.KIND_TABLE:
+      return self._render_table(inner)
+    if tok.kind == tokens.KIND_SUBFIGURE:
+      return self._render_subfigure(inner, tok.fields[0] if tok.fields else "")
+    if tok.kind == tokens.KIND_ADMON:
+      return self._render_admonition(tok.fields[0] if tok.fields else "kaogu", inner)
+    if tok.kind == tokens.KIND_CODE_TITLE:
+      title = self._render_inline(inner)
+      return f"**{title}**" if title.strip() else ""
+    if tok.kind == tokens.KIND_CAPTION:
+      caption = self._render_inline(inner)
+      return f"{{.rtd-caption}}\n{caption}" if caption.strip() else ""
+    return ""
+
+  def _render_figure(self, items: list[tuple[str, object]]) -> str:
+    """渲染 figure 环境（含 subfigure 分支）。
+
+    :param items: figure 内容。
+    :returns: MyST 文本。
+    """
+    self.subfigure_letter = 0
+    sub_blocks: list[str] = []
+    rest: list[tuple[str, object]] = []
+    index = 0
+    while index < len(items):
+      kind, payload = items[index]
+      if kind == "tok" and payload.kind == tokens.KIND_SUBFIGURE:
+        match = self._match(items, index, tokens.KIND_SUBFIGURE_END)
+        width = f"{payload.fields[0]}%" if payload.fields and payload.fields[0] else ""
+        sub_blocks.append(self._render_subfigure(items[index + 1:match], width))
+        index = match + 1
+        continue
+      rest.append(items[index])
+      index += 1
+
+    caption, labels, content = self._split_caption(rest)
+    number = self._object_number(labels)
+    blocks = [block for block in sub_blocks if block.strip()]
+    blocks.extend(self._render_items(content))
+    if caption.strip():
+      prefix = f"图 {number}：" if number else "图："
+      blocks.append(f"{{.rtd-caption}}\n{prefix}{caption.strip()}")
+    anchors = self._anchors(labels)
+    if anchors:
+      blocks.insert(0, anchors)
+    return "\n\n".join(blocks)
+
+  def _render_table(self, items: list[tuple[str, object]]) -> str:
+    """渲染 table / longtable 环境（书里表注在表上方）。
+
+    :param items: table 内容。
+    :returns: MyST 文本。
+    """
+    caption, labels, content = self._split_caption(items)
+    number = self._object_number(labels)
+    blocks: list[str] = []
+    anchors = self._anchors(labels)
+    if anchors:
+      blocks.append(anchors)
+    if caption.strip():
+      prefix = f"表 {number}：" if number else "表："
+      blocks.append(f"{{.rtd-caption}}\n{prefix}{caption.strip()}")
+    blocks.extend(self._render_items(content))
+    return "\n\n".join(blocks)
+
+  def _render_subfigure(self, items: list[tuple[str, object]], width: str) -> str:
+    """渲染一个 subfigure。
+
+    :param items: subfigure 内容。
+    :param width: 声明的宽度百分比。
+    :returns: MyST 文本。
+    """
+    caption, labels, content = self._split_caption(items)
+    self.subfigure_letter += 1
+    letter = chr(ord("a") + (self.subfigure_letter - 1) % 26)
+    blocks = self._render_items_with_width(content, width)
+    if caption.strip():
+      blocks.append(f"{{.rtd-subcaption}}\n（{letter}）{caption.strip()}")
+    anchors = self._anchors(labels)
+    if anchors:
+      blocks.insert(0, anchors)
+    return "\n\n".join(blocks)
+
+  def _render_admonition(self, kind: str, items: list[tuple[str, object]]) -> str:
+    """渲染定理类环境为 admonition。
+
+    :param kind: 环境名。
+    :param items: 环境内容（首元素为标题区，其后为正文）。
+    :returns: MyST 文本。
+    """
+    end_index = len(items)
+    for index, (item_kind, payload) in enumerate(items):
+      if item_kind == "tok" and payload.kind == tokens.KIND_ADMON_TITLE_END:
+        end_index = index
+        break
+    title = self._render_inline(items[:end_index])
+    body_items = items[end_index + 1:]
+    body_blocks = self._render_items(body_items)
+    label, css, numbered = ADMON_KINDS.get(kind, ("提示", "remark", False))
+    heading = f"{label} {self._admon_number(kind, numbered)}".strip()
+    lines = [f"```{{admonition}} {heading}", f":class: rtd-admon rtd-{css}"]
+    if title.strip():
+      lines.extend(["", f"**{title.strip()}**"])
+    content = "\n\n".join(block for block in body_blocks if block.strip())
+    if content:
+      lines.extend(["", content])
+    lines.append("```")
+    return "\n".join(lines)
+
+  def _render_paragraphs(self, items: list[tuple[str, object]], width: str = "") -> list[str]:
+    """按空行切段渲染流式内容。
+
+    :param items: 文本与内联 token 交替的序列。
+    :param width: 图片宽度覆盖值。
+    :returns: 块列表。
+    """
+    blocks: list[str] = []
+    for paragraph in self._split_paragraphs(items):
+      blocks.extend(self._render_paragraph(paragraph, width))
+    return blocks
+
+  def _split_paragraphs(self, items: list[tuple[str, object]]) -> list[list[tuple[str, object]]]:
+    """按空行把序列切成段落。
+
+    :param items: 序列。
+    :returns: 段落列表（每段是 ``(kind, payload)`` 列表）。
+    """
+    paragraphs: list[list[tuple[str, object]]] = []
+    current: list[tuple[str, object]] = []
+    for kind, payload in items:
+      if kind != "text":
+        current.append((kind, payload))
+        continue
+      for part in re.split(r"(\n\s*\n)", payload):
+        if part == "":
+          continue
+        if re.fullmatch(r"\n\s*\n", part):
+          paragraphs.append(current)
+          current = []
+        else:
+          current.append(("text", part))
+    paragraphs.append(current)
+    return [paragraph for paragraph in paragraphs if paragraph]
+
+  def _render_paragraph(self, items: list[tuple[str, object]], width: str = "") -> list[str]:
+    """渲染单个段落，并把它自带的锚点放在段落前。
+
+    :param items: 段落内容。
+    :param width: 图片宽度覆盖值。
+    :returns: 块列表（段落只有 label 时返回空列表，锚点留给下一个块）。
+    """
+    anchors = [
+      f'<a id="{self._anchor(payload.fields[0])}"></a>'
+      for kind, payload in items
+      if kind == "tok" and payload.kind == tokens.KIND_LABEL and payload.fields
+    ]
+    rendered = _join_cjk_lines(self._render_inline_items(items, width)).strip()
+    if not rendered:
+      self.pending.extend(anchors)
+      return []
+    prefix = "\n\n".join(self.pending + anchors)
+    self.pending = []
+    return [f"{prefix}\n\n{rendered}" if prefix else rendered]
+
+  def _render_items_with_width(self, items: list[tuple[str, object]], width: str) -> list[str]:
+    """渲染内容并给其中的图片指定宽度。
+
+    :param items: 内容。
+    :param width: 宽度百分比。
+    :returns: 块列表。
+    """
+    return self._render_paragraphs(items, width)
+
+  def _render_inline(self, items: list[tuple[str, object]]) -> str:
+    """渲染为单行内联 markdown（caption / 标题用）。
+
+    :param items: 内容。
+    :returns: 单行 markdown。
+    """
+    return re.sub(r"\s+", " ", _join_cjk_lines(self._render_inline_items(items))).strip()
+
+  def _render_inline_items(self, items: list[tuple[str, object]], width: str = "") -> str:
+    """替换内联 token（label 由段落层收集，这里跳过）。
+
+    :param items: 内容。
+    :param width: 图片宽度覆盖值。
+    :returns: markdown 文本。
+    """
+    chunks: list[str] = []
+    index = 0
+    while index < len(items):
+      kind, payload = items[index]
+      if kind == "text":
+        chunks.append(payload)
+        index += 1
+        continue
+      tok = payload
+      if tok.kind == tokens.KIND_REF and tok.fields:
+        chunks.append(self._reference(tok.fields[0], parenthesized=False))
+      elif tok.kind == tokens.KIND_EQREF and tok.fields:
+        chunks.append(self._reference(tok.fields[0], parenthesized=True))
+      elif tok.kind == tokens.KIND_IMAGE:
+        chunks.append(self._image(tok, width))
+      elif tok.kind == tokens.KIND_CAPTION:
+        inner_end = self._match(items, index, tokens.KIND_CAPTION_END)
+        caption = self._render_inline(items[index + 1:inner_end])
+        if caption.strip():
+          chunks.append(f"*{caption.strip()}*")
+        index = inner_end
+      index += 1
+    return "".join(chunks)
+
+  def _split_caption(
+    self, items: list[tuple[str, object]]) -> tuple[str, list[str], list[tuple[str, object]]]:
+    """从内容中摘出 caption 与 label。
+
+    :param items: 内容。
+    :returns: ``(caption, labels, 其余内容)``。
+    """
+    captions: list[str] = []
+    labels: list[str] = []
+    rest: list[tuple[str, object]] = []
+    index = 0
+    while index < len(items):
+      kind, payload = items[index]
+      if kind == "tok" and payload.kind == tokens.KIND_CAPTION:
+        match = self._match(items, index, tokens.KIND_CAPTION_END)
+        inner = items[index + 1:match]
+        for inner_kind, inner_payload in inner:
+          if (inner_kind == "tok" and inner_payload.kind == tokens.KIND_LABEL
+              and inner_payload.fields):
+            labels.append(inner_payload.fields[0])
+        captions.append(self._render_inline(inner))
+        index = match + 1
+        continue
+      if kind == "tok" and payload.kind == tokens.KIND_LABEL:
+        labels.append(payload.fields[0])
+        index += 1
+        continue
+      rest.append(items[index])
+      index += 1
+    return " ".join(part for part in captions if part.strip()), labels, rest
+
+  def _object_number(self, labels: list[str]) -> str:
+    """由 label 查图/表编号。
+
+    :param labels: 内容中的 label。
+    :returns: 编号文本（查不到为空串）。
+    """
+    for label in labels:
+      entry = self.ctx.registry.get(label)
+      if entry is not None and entry.number:
+        return entry.number
+    return ""
+
+  def _admon_number(self, kind: str, numbered: bool) -> str:
+    """定理类环境的编号。
+
+    :param kind: 环境名。
+    :param numbered: 是否编号。
+    :returns: 编号文本（不编号为空串）。
+    """
+    if not numbered:
+      return ""
+    chap_id = self.ctx.chap.chap_id
+    chapter = self.ctx.registry.chapter_numbers.get(chap_id, "")
+    formats = self.ctx.registry.chapter_formats.get(chap_id, {})
+    if kind == "kaogu":
+      self.counter["kaogu"] += 1
+      template = formats.get("kaogu", "{c}.{n}")
+      return format_number(template, chapter, self.counter["kaogu"])
+    self.counter["theorem"] += 1
+    template = formats.get("theorem", "{c}.{n}")
+    return format_number(template, chapter, self.counter["theorem"])
+
+  def _reference(self, label: str, parenthesized: bool) -> str:
+    """把一个 label 引用渲染成站内链接。
+
+    :param label: 目标 label。
+    :param parenthesized: 是否带括号（``\\eqref``）。
+    :returns: markdown 链接。
+    """
+    entry = self.ctx.registry.get(label)
+    if entry is None or not entry.number:
+      self.broken.append(label)
+      return f"`{label}`"
+    text = f"({entry.number})" if parenthesized else entry.number
+    title = entry.title.replace('"', "'").replace("\n", " ").strip()
+    url = f"{entry.page}.html#{entry.anchor}"
+    if title:
+      return f'[{text}]({url} "{title}")'
+    return f"[{text}]({url})"
+
+  def _image(self, tok: tokens.Token, width: str) -> str:
+    """渲染图片（含 TikZ 编译失败的兜底）。
+
+    :param tok: 图片 token。
+    :param width: 宽度覆盖值。
+    :returns: markdown 或兜底块。
+    """
+    image_id = tok.fields[0]
+    image = self.ctx.manifest.images.get(image_id)
+    if image is None:
+      self.broken.append(image_id)
+      return f"`{image_id}`"
+    if image_id in self.ctx.tikz_failed:
+      return self._figure_fallback(image_id, image.origin)
+    token_width = tok.fields[1] if len(tok.fields) > 1 else ""
+    if not width and token_width:
+      width = f"{token_width}%"
+    effective = width or image.width
+    attrs = f"{{width={effective}}}" if effective else ""
+    return f"![{_DEFAULT_ALT}]({image.dest}){attrs}"
+
+  def _figure_fallback(self, image_id: str, origin: str) -> str:
+    """TikZ 编译失败时的兜底展示。
+
+    :param image_id: 图片标识。
+    :param origin: 片段文件（相对 ``work``）。
+    :returns: admonition 块。
+    """
+    source = self.ctx.work_dir / origin
+    code = source.read_text(encoding="utf-8") if source.is_file() else ""
+    fence = "````" if "```" in code else "```"
+    return (
+      "```{admonition} 插图未能渲染\n"
+      ":class: rtd-admon rtd-figure-fallback\n\n"
+      f"原图 `{image_id}` 的 TikZ 代码编译失败，以下为原始代码：\n\n"
+      f"{fence}tex\n{code.rstrip()}\n{fence}\n"
+      "```"
+    )
+
+  def _render_code(self, tok: tokens.Token) -> str:
+    """渲染代码块。
+
+    :param tok: 代码 token。
+    :returns: MyST 代码块。
+    """
+    code_id = tok.fields[0]
+    block = self.ctx.manifest.codes.get(code_id)
+    if block is None:
+      self.broken.append(code_id)
+      return f"`{code_id}`"
+    payload = (self.ctx.work_dir / block.path).read_text(encoding="utf-8")
+    fence = "````" if "```" in payload else "```"
+    header = f"{fence}{{code-block}} {block.lang}"
+    if block.first_line:
+      header += f"\n:lineno-start: {block.first_line}"
+    return f"{header}\n\n{payload.rstrip()}\n{fence}"
+
+  def _anchor(self, label: str) -> str:
+    """计算锚点 id。
+
+    :param label: 目标 label。
+    :returns: 锚点 id。
+    """
+    return sanitize(label)
+
+  def _anchors(self, labels: list[str]) -> str:
+    """把一组 label 渲染成锚点块。
+
+    :param labels: label 列表。
+    :returns: 锚点块（无 label 时为空串）。
+    """
+    lines = [f'<a id="{self._anchor(label)}"></a>' for label in labels if label]
+    return "\n".join(lines)
+
+  def _take_pending(self, block: str) -> str:
+    """把待输出锚点挂到下一个块之前。
+
+    :param block: 块文本。
+    :returns: 拼好的块。
+    """
+    if not self.pending:
+      return block
+    anchors = "\n".join(self.pending)
+    self.pending = []
+    return f"{anchors}\n\n{block}"
+
+  def _prefix_title(self, body: str) -> str:
+    """给章节标题补上书里的编号前缀。
+
+    :param body: 正文。
+    :returns: 处理后的正文。
+    """
+    prefix = chapter_number_prefix(self.ctx.registry, self.ctx.chap)
+    if not prefix:
+      return body
+    return re.sub(r"(?m)^# ", f"# {prefix}", body, count=1)
+
+  def _append_footer(self, body: str) -> str:
+    """追加原书 tex 溯源页脚。
+
+    :param body: 正文。
+    :returns: 处理后的正文。
+    """
+    relative = self.ctx.chap.tex.name
+    parent = self.ctx.chap.tex.parent.name
+    source = f"{parent}/{relative}"
+    if self.ctx.source_url:
+      link = f"[`{source}`]({self.ctx.source_url}/{source})"
+    else:
+      link = f"`{source}`"
+    return f"{body}\n\n---\n\n{{.{_FOOTER_CLASS}}}\n*源文件：{link}（内容以原书 tex 为准）*"
+
+
+def render_chapter(ctx: RenderContext, md_text: str) -> RenderResult:
+  """渲染一章。
+
+  :param ctx: 渲染上下文。
+  :param md_text: pandoc 产出的 markdown。
+  :returns: 渲染结果。
+  """
+  return _Renderer(ctx).render(md_text)
+
+
+#: CJK 与全角标点的字符类（用于断行/空格合并）。
+_CJK_CLASS = r"[\u3000-\u303f\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff00-\uffef]"
+_CJK_RE = re.compile(_CJK_CLASS)
+
+#: 对换行敏感的整行：管道表、grid 表、pandoc 输出的 HTML 表。这些行不能参与
+#: CJK 折行合并，否则整张表会被压成一行（曾导致全站 0 个表格）。
+_BLOCK_LINE_RE = re.compile(
+  r"(?m)^[ \t]*(?:"
+  r"\|.*"
+  r"|\+[-=+ ]+\+"
+  r"|</?[a-zA-Z][^>\n]*>.*"
+  r")[ \t]*\n")
+
+#: 标题行尾的 pandoc 块属性：``### 延伸阅读 {#延伸阅读 .unnumbered}``。
+_HEADING_ATTR_RE = re.compile(r"(?m)^([ \t]*#{1,6}[ \t]+.*?)[ \t]*\{[^{}]*\}[ \t]*$")
+
+#: 独占一行的块属性（pandoc 会给无标题的 raw block 写这种行）。
+_ONLY_ATTR_RE = re.compile(r"^[ \t]*\{[^{}]*\}[ \t]*$")
+
+
+def _clean_heading_attributes(md_text: str) -> str:
+  """剥掉 pandoc 写在标题行尾的块属性。
+
+  pandoc 给 ``\\chapter*``/``\\section*`` 输出 ``{#id .unnumbered}``；含 CJK 的 id
+  MyST 解析不了，会原样显示在 H1/H3、页面 ``<title>`` 和全站侧栏目录里。锚点由本模块
+  自己写的 ``<a id=...>`` 提供，这些属性没有用处。
+
+  :param md_text: markdown 文本。
+  :returns: 清理后的文本。
+  """
+  lines: list[str] = []
+  for line in md_text.split("\n"):
+    if line.lstrip().startswith("#"):
+      line = _HEADING_ATTR_RE.sub(r"\1", line).rstrip()
+    elif _ONLY_ATTR_RE.match(line):
+      continue
+    lines.append(line)
+  return "\n".join(lines)
+
+
+def _join_cjk_lines(text: str) -> str:
+  """合并段落内的软换行：中文之间的换行直接相连，其余按空格连接。
+
+  原书 tex 里中文段落是硬换行的，pandoc 会把换行保留成 markdown 的软换行，
+  渲染出来两个汉字之间就会多一个空格，与排版结果不符。
+
+  :param text: 段落文本。
+  :returns: 合并后的段落文本。
+  """
+  protected: list[str] = []
+
+  def protect(match: re.Match[str]) -> str:
+    protected.append(match.group(0))
+    return f"\x00{len(protected) - 1}\x00"
+
+  # 表格与 HTML 行对换行敏感，先整行保护，不参与后面的折行合并。
+  guarded = _BLOCK_LINE_RE.sub(protect, text)
+  guarded = re.sub(r"`[^`]*`|\$\$.*?\$\$|\$[^$\n]*\$", protect, guarded, flags=re.S)
+
+  def replace(match: re.Match[str]) -> str:
+    left, right = match.group(1), match.group(2)
+    if _CJK_RE.match(left) and _CJK_RE.match(right):
+      return f"{left}{right}"
+    return f"{left} {right}"
+
+  guarded = re.sub(r"([^\n])\n[ \t]*([^\n])", replace, guarded)
+  # 汉字之间不需要空格：pandoc 已把 tex 的断行折成空格，这里按中文排版规则去掉。
+  guarded = re.sub(rf"({_CJK_CLASS})[ \t]+(?={_CJK_CLASS})", r"\1", guarded)
+  return re.sub(r"\x00(\d+)\x00", lambda match: protected[int(match.group(1))], guarded)
+
+
+def _escape_colon_fences(md_text: str) -> str:
+  """转义行首的 ``:::``，避免被 MyST 当成 colon fence。
+
+  本站自己一律用反引号围栏，所以正文里出现的 ``:::`` 都是 pandoc 的 fenced div
+  残留（例如 ``\\begin{center}``）。不转义的话，它会把后面整段内容吞进指令里。
+
+  :param md_text: markdown 文本。
+  :returns: 转义后的文本。
+  """
+  return re.sub(r"(?m)^([ \t]*)(:{3,})", r"\1\\\2", md_text)
+
+
+def _masked_for_scan(md_text: str) -> str:
+  """屏蔽代码围栏、行内代码与数学区，只留下正文。
+
+  残留统计必须区分「本该转成 HTML 的 LaTeX」和「公式里的 LaTeX 命令」——后者是
+  正常的。pandoc 用 ``--wrap=none`` 输出，公式里的换行会原样保留，所以
+  ``$...$`` 也可能跨行，逐行正则不够用，这里做一次字符级扫描。
+
+  :param md_text: pandoc 产出的 markdown。
+  :returns: 屏蔽后的文本。
+  """
+  fenced: list[str] = []
+  in_fence = False
+  for line in md_text.splitlines():
+    stripped = line.lstrip()
+    if stripped.startswith("```") or stripped.startswith("~~~"):
+      in_fence = not in_fence
+      fenced.append("")
+      continue
+    fenced.append("" if in_fence else line)
+  text = tokens.TOKEN_RE.sub(" ", "\n".join(fenced))
+
+  out: list[str] = []
+  index = 0
+  length = len(text)
+  while index < length:
+    char = text[index]
+    if char == "\\":
+      if text.startswith("\\$", index):
+        out.append("\\$")
+        index += 2
+        continue
+      if text.startswith("\\[", index) or text.startswith("\\(", index):
+        closer = "\\]" if text[index + 1] == "[" else "\\)"
+        end = text.find(closer, index + 2)
+        if end != -1:
+          out.append(" ")
+          index = end + 2
+          continue
+      out.append(char)
+      index += 1
+      continue
+    if char == "$":
+      if text.startswith("$$", index):
+        end = text.find("$$", index + 2)
+        if end != -1:
+          out.append(" ")
+          index = end + 2
+          continue
+      end = _closing_dollar(text, index + 1)
+      if end != -1:
+        out.append(" ")
+        index = end + 1
+        continue
+    if char == "`":
+      end = text.find("`", index + 1)
+      if end != -1 and "\n" not in text[index:end]:
+        out.append(" ")
+        index = end + 1
+        continue
+    out.append(char)
+    index += 1
+  return "".join(out)
+
+
+#: 漏网的数学命令降级表（只作用于非数学区，避免污染公式）。
+_LEFTOVER_MAP = (
+  (re.compile(r"\\mathbf\{([^{}]*)\}"), r"**\1**"),
+  (re.compile(r"\\mathit\{([^{}]*)\}"), r"*\1*"),
+  (re.compile(r"\\mathrm\{([^{}]*)\}"), r"\1"),
+  (re.compile(r"\\text(?:rm|bf|it|tt|sf)?\{([^{}]*)\}"), r"\1"),
+  (re.compile(r"\\texttt\{([^{}]*)\}"), r"`\1`"),
+  (re.compile(r"\\times\b"), "×"),
+  (re.compile(r"\\cdot\b"), "·"),
+  (re.compile(r"\\to\b"), "→"),
+  (re.compile(r"\\approx\b"), "≈"),
+  (re.compile(r"\\ldots\b"), "…"),
+  (re.compile(r"\\qquad\b|\\quad\b"), " "),
+)
+
+
+def _degrade_leftovers(md_text: str) -> str:
+  """把数学区之外漏网的 LaTeX 命令降级成等价纯文本。
+
+  pandoc 偶有解析失败（含不平衡 ``$`` 的表格单元），残留的 ``\\mathbf{...}`` 之类
+  会原样显示在页面上。这里只处理非数学区，公式里的命令一律不碰。
+
+  :param md_text: 渲染后的 markdown。
+  :returns: 降级后的文本。
+  """
+  segments: list[str] = []
+  plain_start = 0
+  index = 0
+  length = len(md_text)
+  while index < length:
+    opener = ""
+    closer = ""
+    if md_text.startswith("$$", index):
+      opener, closer = "$$", "$$"
+    elif md_text.startswith("\\[", index):
+      opener, closer = "\\[", "\\]"
+    elif md_text.startswith("\\(", index):
+      opener, closer = "\\(", "\\)"
+    elif md_text[index] == "$" and (index == 0 or md_text[index - 1] != "\\"):
+      opener, closer = "$", "$"
+    if opener:
+      end = md_text.find(closer, index + len(opener))
+      if end != -1:
+        segments.append(_degrade_plain(md_text[plain_start:index]))
+        segments.append(md_text[index:end + len(closer)])
+        index = end + len(closer)
+        plain_start = index
+        continue
+    index += 1
+  segments.append(_degrade_plain(md_text[plain_start:]))
+  return "".join(segments)
+
+
+def _degrade_plain(text: str) -> str:
+  """对普通文本段应用降级替换（跳过代码围栏与行内代码）。
+
+  :param text: 普通文本段。
+  :returns: 替换后的文本。
+  """
+  lines = text.split("\n")
+  result: list[str] = []
+  in_fence = False
+  for line in lines:
+    if line.lstrip().startswith("```") or line.lstrip().startswith("~~~"):
+      in_fence = not in_fence
+      result.append(line)
+      continue
+    if in_fence:
+      result.append(line)
+      continue
+    result.append(_degrade_line(line))
+  return "\n".join(result)
+
+
+def _degrade_line(line: str) -> str:
+  """对一行普通文本应用降级替换（行内代码保持原样）。
+
+  :param line: 一行 markdown。
+  :returns: 替换后的行。
+  """
+  parts = re.split(r"(`[^`]*`)", line)
+  for position in range(0, len(parts), 2):
+    for pattern, replacement in _LEFTOVER_MAP:
+      parts[position] = pattern.sub(replacement, parts[position])
+  return "".join(parts)
+
+
+def _closing_dollar(text: str, start: int) -> int:
+  """找下一个未转义的 ``$``，遇到空行即放弃（避免一个杂散 ``$`` 吃掉整段正文）。
+
+  :param text: 文本。
+  :param start: 起始下标。
+  :returns: 下标，找不到返回 -1。
+  """
+  index = start
+  while index < len(text):
+    char = text[index]
+    if char == "\\":
+      index += 2
+      continue
+    if char == "$":
+      return index
+    if text.startswith("\n\n", index):
+      return -1
+    index += 1
+  return -1
+
+
+def scan_leftovers(md_text: str) -> dict[str, int]:
+  """统计 pandoc 未能转换、残留的 LaTeX 命令。
+
+  :param md_text: pandoc 产出的 markdown。
+  :returns: 命令名 → 出现次数（按次数降序）。
+  """
+  masked = _masked_for_scan(md_text)
+  counts: dict[str, int] = {}
+  for match in re.finditer(r"\\([a-zA-Z]+)", masked):
+    counts[match.group(1)] = counts.get(match.group(1), 0) + 1
+  return dict(sorted(counts.items(), key=lambda item: item[1], reverse=True))
