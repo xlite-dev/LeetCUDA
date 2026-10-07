@@ -898,7 +898,7 @@ dst 为 \texttt{shared::cta} 时 sm\_120a/sm\_120f 均保留（第~\ref{ch:14}~�
 \textbf{Q1：FA3 相对 FA2 的结构性差异是什么？}\\
 A：FA2 解决「非 matmul FLOPs、并行度、warp 划分」；FA3 解决「异步 overlap」：
 producer 用 TMA 异步搬运，两个 consumer warpgroup 让 softmax（CUDA Core/SFU）
-与 GEMM（Tensor Core）并行。本仓库的落地是 1 producer $+$ 2 consumer 的
+与 GEMM（Tensor Core）并行。本仓库的实现是 1 producer $+$ 2 consumer 的
 384 线程结构 $+$ KV 奇偶拆分 $+$ 终态归并（flash\_attn.cuh L1441--2192）。
 
 \textbf{Q2：为什么按「奇偶」拆 tile，而不是让两个 WG 各管前后半区？}\\

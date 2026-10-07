@@ -857,7 +857,7 @@ rescale 的操作对象是 \texttt{tCrO} 的 rowcol 视图：行方向乘
 
 \subsection{Phase 4：归一化与写回}
 
-收尾（L355--374）没有引入新的机制，但它的布局复用值得指出：
+收尾（L355--374）没有引入新的机制，但它的布局复用需要单独说明：
 
 \lstinputlisting[linerange={355-374},firstnumber=auto,
   title={ffpa\_attn.cuh L355-374（Phase 4：每个 chunk 独立归一化 + R$\to$G 写回）}]{../ffpa_attn.cuh}

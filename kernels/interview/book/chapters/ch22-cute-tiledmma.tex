@@ -60,7 +60,7 @@ tensor core，算完再把 $16\times8$ 的 C 分散写回 32 个 lane 的寄存�
 
 外加「$+8$ 行」与「$+8$ 列」两套偏移把 8 个 half 填满。B（$8\times16$）的
 对应关系类似。手写版（第~\ref{ch:11}~章）的做法是：把这些式子连同 ldmatrix
-的 lane 地址表一起写在 kernel 里。这条路能走通，但三个痛点随规模一起放大：
+的 lane 地址表一起写在 kernel 里。这条路能走通，但三个问题随规模一起放大：
 
 \begin{itemize}
   \item \textbf{换一条指令就要重查一次手册}。m16n8k8（fp16 半 K）、
@@ -75,7 +75,7 @@ tensor core，算完再把 $16\times8$ 的 C 分散写回 32 个 lane 的寄存�
         手推起来极易出错。
 \end{itemize}
 
-CuTe 对这三条痛点的回应可以概括为：\textbf{把 atom 的 thread-data 映射
+CuTe 对这三处问题的回应可以概括为：\textbf{把 atom 的 thread-data 映射
 本身变成一个 layout，然后让「重复」成为 layout 的乘法}。下面沿这条线索展开。
 
 把上述规则放到 FFPA 上实例化。FFPA 的 QK 步骤要算

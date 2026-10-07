@@ -277,7 +277,7 @@ SF（步长 0，这正是 NVFP4 的「16 元素共享 scale」在线格式上的
 
 本书用 \texttt{.tmp/\allowbreak fp4bs/\allowbreak probe\_sf\_atom.cu} 把这件事枚举验证了一遍：
 $128\times4 = 512$ 个 $(\text{行}, \mathrm{SF})$ 落点\textbf{全部一致}（mismatch $=0$）。
-这条结论值得单独记录，因为它澄清了 SF 数据通路上最不直观的一段：
+这条结论澄清了 SF 数据通路上最不直观的一段：
 
 \begin{itemize}[itemsep=2pt,topsep=3pt]
   \item \textbf{SF 的 TMA 不需要 swizzle}：gmem 里 512\,B 连续的一组
@@ -832,8 +832,8 @@ FP8 每个量化值 1\,B，FP4 只有 0.5\,B。这与本卡实测带宽相符
 变化），主 kernel 从保守档换到宽档快了 $33\%$ 之后，它的占比反而从
 26\% 升到 32\%——\emph{占比上升说明主 kernel 变快了}，不是量化变慢了。
 
-本书在这一章对 $B$ 侧量化做过一次\textbf{重构}，过程值得记下来，
-因为它是用带宽数据定位问题的典型例子。
+本书在这一章对 $B$ 侧量化做过一次\textbf{重构}，
+它是用带宽数据定位问题的典型例子。
 
 \begin{itemize}[itemsep=2pt,topsep=3pt]
   \item \textbf{第一版}（与第~\ref{ch:34}~章 FP8 版本同构）把逐列 amax
@@ -955,7 +955,7 @@ $128\times256$/s6，其余回落 $128^2$/s4，\texttt{--bench} 的 FP4 标准
   \item \textbf{block scale 的 \texttt{mma.sync} 把 SF 纳入了操作数}：
         \texttt{m16n8k64.kind::mxf4nvf4.scale\_vec::4X} 的数据操作数是
         24\,B/线程、SF 操作数是 8\,B/线程——SF 的字节数达到数据的
-        $1/3$。SF 不是元数据，它是\textbf{第二个输入矩阵}，必须有自己的
+        $1/3$。SF 就是\textbf{第二个输入矩阵}，不是元数据，必须有自己的
         TMA 通道、smem 缓冲与寄存器 fragment。
   \item \textbf{SF 的 smem 原子与 gmem 原子逐字节同序}（
         \texttt{probe\_sf\_atom.cu} 枚举 512 个落点验证）。

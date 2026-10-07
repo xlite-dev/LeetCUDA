@@ -201,7 +201,7 @@ src/dst 地址；让连续线程读连续地址（合并访存）；让每线程
   }
 \end{lstlisting}
 
-\textbf{痛点在哪。}这段代码很短，但它把「谁搬哪块」\emph{算在了}
+\textbf{问题在哪。}这段代码很短，但它把「谁搬哪块」\emph{算在了}
 \texttt{r}/\texttt{c}/\texttt{loop} 三个变量里，一旦引入 swizzle、
 ldmatrix 或 bank 冲突考虑，地址公式会迅速膨胀，而「哪个数据在哪个线程
 手里」会彻底看不清。@竹熙佳处建议先把映射从代码里\textbf{抽出来画成一张

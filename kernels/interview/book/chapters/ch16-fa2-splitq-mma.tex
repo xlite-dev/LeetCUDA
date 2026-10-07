@@ -473,7 +473,7 @@ Step 2 末的 wait(0) 已把 Q 组连带等完，L265 的一次
 流水编排的要点：\textbf{K 双缓冲、V 单级}。迭代 $t$ 内 3a 依次提交
 两组搬运：$V_t$（当前）与 $K_{t+1}$（预取，写 \texttt{smem\_\allowbreak{}sel\_\allowbreak{}next}
 缓冲）。$V_t$ 的在途窗口恰好覆盖 3b（QK mma）与 3c（softmax）两段
-计算：softmax 全在 CUDA Core/SFU 上跑，恰好掩盖 V 的搬运延迟；
+计算：softmax 全在 CUDA Core/SFU 上跑，掩盖了 V 的搬运延迟；
 $K_{t+1}$ 则有整整一个迭代的余量。这与第~\ref{ch:11}~章 GEMM 的
 「kStages 全操作数统一多级」不同：attention 的两段 mma 中间夹了一段
 非 mma 计算，天然提供了第二级的隐藏窗口，所以 \texttt{kStagesK}$=$2

@@ -14,7 +14,7 @@
         pre-heat、no\_grad）；精度怎么报才有信息量（布尔 allclose 之外
         的 rel\_err/max\_abs 体系）；
   \item \textbf{矩阵}：bench CLI 的全 knob 空间与实测——fp8/fp4 在
-        self/causal/gqa/cross $\times$ D$\in[64,512]$ 上的完整版图，
+        self/causal/gqa/cross $\times$ D$\in[64,512]$ 上的完整矩阵，
         knob（QK int8/fp8、PV f16/f32、量化粒度、hybrid）的边际效应；
   \item \textbf{生态}：Cache-DiT $\times$ FFPA 的端到端集成——量化
         attention 在真实扩散模型管线里怎么落地。
