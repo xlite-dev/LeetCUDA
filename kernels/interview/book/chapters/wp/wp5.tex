@@ -2,7 +2,7 @@
 \wph{布局代数（Layout Algebra）}
 \label{sec:layoutalgebra}
 
-尽管 \CuTe 布局只是所有可能函数空间中的一个子集，与 {\tt BLAS}、{\tt torch.tensor} 和 {\tt numpy.ndarray} 等库中传统的扁平形状（flat-shape）与扁平步幅（flat-stride）表示相比，它们能够表示严格更大的一组布局函数。
+尽管 \CuTe 布局只是所有可能函数空间中的一个子集，但与 {\tt BLAS}、{\tt torch.tensor} 和 {\tt numpy.ndarray} 等库中传统的扁平形状（flat-shape）与扁平步幅（flat-stride）表示相比，它能够表示严格更大的一组布局函数。
 
 除表示能力外，\CuTe 布局还可以被操作、组合，构造出新的布局。这是通过一组定义在布局上的核心代数运算实现的，这些运算还能进一步构造更高层的运算。
 
@@ -208,7 +208,7 @@ D'_r &= D_r \cdot \delta_r,
 \end{align}
 以下两个条件之一即足以满足式~\eqref{eqn:shape_distributivity}：
 \begin{compactitem}
-\item $\v{B}$ 的陪域与形状 $S$ 同余。此时 $S$ 的作用是恒等变换，显然可分配。
+\item $\v{B}$ 的陪域与形状 $S$ 同余。此时 $S$ 的作用是恒等变换，可直接验证可分配。
 \item 当 $S$ 不是恒等变换时，则必须有
 \begin{align*}
 \floor{\frac{\sum_i c_i \cdot d_i}{\bar{S}_r}} \bmod S_r &= \sum_i \floor{\frac{c_i \cdot d_i}{\bar{S}_r}} \bmod S_r \ \ \text{ 对每个 } r = 0, \ldots, R-1 \text{ 成立，且 } \\

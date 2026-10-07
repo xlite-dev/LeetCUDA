@@ -213,7 +213,7 @@ SM 寄存器池（sm\_120 为 64K/SM）里重新分配：
 
 producer 在入口执行 \texttt{warpgroup\_\allowbreak{}reg\_\allowbreak{}dealloc<32>}
 （释放 96 个/线程），consumer 执行 \texttt{warpgroup\_\allowbreak{}reg\_\allowbreak{}alloc<232>}
-（分配到硬件上限的可用额度）。没有这一步，consumer 会被编译器压到每线程 168 个寄存器，
+（分配到硬件上限的可用额度）。没有这一步，consumer 会被编译器限制到每线程 168 个寄存器，
 O 累加器溢出到 local memory，性能直接降低一半。
 
 \begin{figure}[H]

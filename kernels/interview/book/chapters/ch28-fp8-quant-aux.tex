@@ -176,7 +176,7 @@ $1\times16$ 块），不旋转时一个 outlier 坐标会放大所在块的量�
 incoherent processing（随机 $\pm1$ 对角 $\times$ Hadamard，与 RoPE 融合）实测
 与分块量化联合可将 FP8 RMSE 降低 $2.6\times$（即降至 $1/2.6$，
 arXiv:2407.08608 \S3.3）；QuaRot 与
-SpinQuant 把同一思想推到了 LLM 权重激活的端到端量化。
+SpinQuant 把同一思想推广到 LLM 权重激活的端到端量化。
 
 \textbf{宽度规则}：全宽 WHT 要求 $D$ 为 2 的幂且 $D\le 512$（更大的全宽蝶形
 寄存器开销过大）；否则用块对角 $\mathrm{blockdiag}(H_{64})$ 近似（fp4 路径的

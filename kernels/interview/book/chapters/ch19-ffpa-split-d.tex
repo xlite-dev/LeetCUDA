@@ -85,7 +85,7 @@ $D$ 常驻」的方案：
         f32，必然溢出到 local memory。
   \item \textbf{几何粒度瓶颈}：smem 里的 swizzle atom
         （\texttt{GMMA::\allowbreak{}Layout\_\allowbreak{}K\_\allowbreak{}SW128\_\allowbreak{}Atom}）行宽 128\,B，正好是 64 个 f16；
-        \texttt{ldmatrix} 每次吃 $8 \times 8$ 个 f16，其「一行 16\,B」的粒度和
+        \texttt{ldmatrix} 每次装载 $8 \times 8$ 个 f16，其「一行 16\,B」的粒度和
         128\,B 行宽是同一套约定。把 $D$ 切成 64 列，恰好是「一个 swizzle atom
         宽 $=$ 8 个 $n8$ 原子宽」，每个 chunk 都能独立套用现成的
         \texttt{SW128} 布局，不需要设计新的 swizzle。
@@ -451,7 +451,7 @@ $D$ & $C = D/64$ & $\mathrm{Sk}$ & 相位周期（KV tile 数） & 形态 \\
 注意 \texttt{k\allowbreak{}QChunk\allowbreak{}Elements =\allowbreak{} cosize\allowbreak{}(Smem\allowbreak{}Layout\allowbreak{}Q\{\})}。池的大小来自
 \textbf{layout 自身}的 cosize，而不是手写 $64\times64$。这是 CuTe 工程的一个好习惯：
 layout 一改，池大小与偏移自动跟着改（第~\ref{ch:20}~章）。注释里特意写了「不使用
-stride-0 的 stage-mode layout」，意思是：与其把一个 stage 维塞进 tensor 的 layout
+stride-0 的 stage-mode layout」，意思是：与其把一个 stage 维并入 tensor 的 layout
 （产生 stride-0 的伪维），不如直接做指针加法，索引更直观、生成的地址计算也更便宜。
 
 由此得到 smem 预算：每 stage 的 QK 槽位是「Q chunk $+$ K chunk」两块 8\,KB，

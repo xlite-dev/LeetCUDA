@@ -694,7 +694,7 @@ kernel-only，per-row $\times$ per-col，warmup 2 / repeat 3）。\textbf{加粗
 smem 为 $x$\,KB、超出本卡 99\,KB 的 opt-in 上限，故未实例化——这个门槛只由
 tile 几何决定，与形状无关。WS 变体只扫 $BM\le128$（$k_{BM}{=}256$ 时 512 个
 consumer 线程按 \texttt{setmaxnreg} 的 32/232 分配需要 122\,K 寄存器
-$>64$\,K 寄存器文件，kernel 里用 \texttt{static\_assert} 挡在编译期）。}
+$>64$\,K 寄存器文件，kernel 里用 \texttt{static\_assert} 拦截在编译期）。}
 \label{tab:35-sweep}
 \end{table}
 

@@ -15,7 +15,7 @@ conflict} 让 \texttt{ldmatrix} 的读取被串行化；\textbf{k\_step 内 ldma
         用地址位异或把 ldmatrix 的冲突访问打散；本章给出逐 bit 推导、可逆性证明，
         以及 v1（手写 XOR 分支）与 v2（\texttt{Swizzle\allowbreak{}<B,\allowbreak{}M,\allowbreak{}S>} 位级镜像）两套实现；
   \item \textbf{寄存器双缓冲}（\texttt{RA[2][*][4]}/\texttt{RB[2][*][2]} 乒乓切换）：
-        与 smem 双缓冲（kStages）分工，一个盖住 gmem 延迟，一个盖住 ldmatrix 延迟；
+        与 smem 双缓冲（kStages）分工，一个掩盖 gmem 延迟，一个掩盖 ldmatrix 延迟；
   \item \textbf{Block Swizzle}（\texttt{k\allowbreak{}Block\allowbreak{}Swizzle} + 3D grid）：重排 block
         坐标映射，让同时在飞（in-flight）的 block 集合成近似方形，L2 footprint 显著缩小。
 \end{itemize}
@@ -34,7 +34,7 @@ conflict} 让 \texttt{ldmatrix} 的读取被串行化；\textbf{k\_step 内 ldma
 
 HGEMM 是 compute-bound 算子：$2MNK$ 次乘加对着 $O(MN+MK+NK)$ 的访存，算术强度极高。
 此时优化的全部要义只有一条：\textbf{不让 Tensor Core 空等数据}。第~\ref{ch:11}~章的
-多级流水已经把 gmem$\to$smem 的一段用 cp.async 双缓冲盖住了，但数据链路还有两段、调度
+多级流水已经把 gmem$\to$smem 的一段用 cp.async 双缓冲掩盖了，但数据链路还有两段、调度
 还有一层，各有一个具体的瓶颈：
 
 \textbf{瓶颈一：ldmatrix 的 bank conflict（S$\to$R 段）。}\allowbreak{}MMA 的输入数据必须先由
@@ -228,7 +228,7 @@ $[4,6)$、bit $[7,10)$ 对 $[4,7)$，均不相交）。
 
 \subsection{Swizzle$\langle B,M,S\rangle$ 一般形式与 v1/v2 等价}
 
-CuTe 把这类位置换统一为 $\mathrm{Swizzle}\langle B,M,S\rangle$（记号沿用
+CuTe 把这类 bit 级置换统一为 $\mathrm{Swizzle}\langle B,M,S\rangle$（记号沿用
 全书记号表）：把一维 byte offset 重新解释成二维逻辑空间，再做列置换：
 $2^M$ 个连续元素为一个基本元素（fp16 的 16\,B chunk $\Rightarrow M{=}4$），
 每行 $2^S$ 个基本元素（8 chunk $\Rightarrow S{=}3$），共 $2^B$ 行参与置换。
@@ -453,7 +453,7 @@ $(B,M,S)=(1,4,3)$：256 elem / 512B（SWIZZLE\_32B）；$(2,4,3)$：512 elem /
 
 v2 的三步：$(i,j)\to$ byte offset $\to$ 式~\ref{eq:12-apply} 的 apply $\to$ 取
 bit $[M,M{+}B)$ 乘回 $k_{\mathrm{step}}{=}8$。它算不上新算法，只是把 v1 的手写
-展开重写成 cute 的统一位置换公式（便于脱离 cute 框架理解 swizzle 本质），两者
+展开重写成 cute 的统一置换公式（便于脱离 cute 框架理解 swizzle 本质），两者
 bit-exact 等价（12.3.6 节）。派发器只有 9 行，宏门控：
 
 \lstinputlisting[linerange={388-396},firstnumber=auto,
@@ -538,9 +538,9 @@ $\mathrm{sel\_next}=(k{+}S{-}1)\bmod S$。
 \lstinputlisting[linerange={613-640},firstnumber=auto,
   title={hgemm.cuh L613-640（B fragment 预取 + 用另一组寄存器发 HMMA16816）}]{../hgemm.cuh}
 
-两级双缓冲的分工明确：\textbf{smem 双缓冲}（kStages）盖住「gmem$\to$smem」
+两级双缓冲的分工明确：\textbf{smem 双缓冲}（kStages）掩盖「gmem$\to$smem」
 的跨 k 迭代延迟，\textbf{寄存器双缓冲}（\texttt{reg\_st\_idx}/\texttt{reg\_ld\_idx}
-的乒乓）盖住「smem$\to$寄存器」的 k\_step 级延迟。每个 k\_step 先 flip 再
+的乒乓）掩盖「smem$\to$寄存器」的 k\_step 级延迟。每个 k\_step 先 flip 再
 ldmatrix 到 \texttt{reg[st]}、随后 HMMA 使用 \texttt{reg[ld]}：加载 slice $t{+}1$
 与计算 slice $t$ 在指令流里交替发出，tensor core 不必等 ldmatrix（也把
 12.3.7 节残留的 4-way 冲突延迟吸收进流水）。最后一段收尾：
@@ -598,8 +598,8 @@ warp shuffle 拼出 128-bit 向量写回 C，思路与第~\ref{ch:11}~章一致�
   \node[font=\scriptsize, align=center, anchor=north] at (5.8, -1.35)
     {每个 k\_step 先 flip：\texttt{reg\_st\_idx\^{}=1}、\texttt{reg\_ld\_idx\^{}=1}——ldmatrix 预载 slice $t{+}1$ 进 reg[st]\\（末 k\_step 预载下一 tile 的 slice 0），HMMA 同时用 reg[ld] 里已就绪的 slice $t$，加载与计算交替发出};
   \node[font=\scriptsize, align=center, anchor=north] at (5.8, -2.35)
-    {两级分工：\textbf{第一级} smem 双缓冲（kStages 轮转）盖住 gmem$\to$smem 的跨 k 迭代延迟；\\
-     \textbf{第二级} 寄存器双缓冲（reg[st]/reg[ld] 乒乓）盖住 k\_step 级 ldmatrix 延迟（含 12.3.7 节残余 4-way 冲突）};
+    {两级分工：\textbf{第一级} smem 双缓冲（kStages 轮转）掩盖 gmem$\to$smem 的跨 k 迭代延迟；\\
+     \textbf{第二级} 寄存器双缓冲（reg[st]/reg[ld] 乒乓）掩盖 k\_step 级 ldmatrix 延迟（含 12.3.7 节残余 4-way 冲突）};
 \end{tikzpicture}
 \caption{两级双缓冲叠加的流水时间线（12.4.4 节）：上泳道是
 第一级——cp.async 按 stage $(k{+}S{-}1)\bmod S$ 预取下一 K-tile（$S{=}$kStages$=2$ 时
@@ -1108,5 +1108,5 @@ bench\_leetcuda.cu bench 复跑 $2048\times16384\times4096$ 口径对照表~\ref
         （grid 重排与 L2 复用的 footprint 分析，12.3.8 节同源）；
   \item @Anonymous《GEMM 细节(三)：Swizzle$\langle$B,M,S$\rangle$ 参数取值》，
         \url{https://zhuanlan.zhihu.com/p/713713957}
-        （$B/M/S$ 与行宽、chunk 宽的配伍表）。
+        （$B/M/S$ 与行宽、chunk 宽的对应表）。
 \end{itemize}

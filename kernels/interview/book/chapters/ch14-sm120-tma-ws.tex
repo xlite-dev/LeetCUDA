@@ -727,7 +727,7 @@ $8192^3$ 规模下 TMA+MMA+WS 组合把纯 MMA 基础实现（第~\ref{ch:11}~�
   修正（commit f4b759f）。
 \end{kaogu}
 
-\begin{kaogu}[F2·已闭环]{注释「require \_\_launch\_bounds\_\_(N, 1)」与实现不一致}
+\begin{kaogu}[F2·已修正]{注释「require \_\_launch\_bounds\_\_(N, 1)」与实现不一致}
   common.cuh 注释称 setmaxnreg 需要 \texttt{\_\allowbreak{}\_\allowbreak{}launch\_\allowbreak{}bounds\_\allowbreak{}\_\allowbreak{}(N,\allowbreak{} 1)}
   （每 SM 1 block，给满每线程 256 regs 的编译许可），而
   \texttt{hgemm\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}tn} 当时只写
