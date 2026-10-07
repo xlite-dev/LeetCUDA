@@ -502,14 +502,10 @@ TMA 访问越界直接 IMA（\texttt{sm\_120/persist\_d.cuh} L48--53 注
 \section{图示}
 
 三张图自底向上覆盖 fp4 的三个层面。图~\ref{fig:31-1} 是数据格式层：
-NVFP4 的 $1\times16$ microscaling 块：e2m1 位域配 ue4m3 块尺度，
-$s_{block}=\mathrm{amax}/6$ 除进数据、乘回发生在 blockscale MMA 内。
-图~\ref{fig:31-2} 是工程层：fp4 前处理链的数据流，$D\le128$ 走 fused
-单 launch 路径，$\bar k$/$q_m$ 均值先行（它们是量化 kernel 的输入
-bias），hadamard 下的 $q_m^{rot}$ 在 fused kernel 内同时产出。
-图~\ref{fig:31-3} 是布局层：kv\_perm32 的 32 列窗口双射，置换让 QK 的
-C fragment 列直接匹配 PV 的 A 操作数布局，代价是 mask/bias 必须经
-$\pi^{-1}$ 回到原始 token 位置判定。
+NVFP4 的 $1\times16$ microscaling 块如何配平 e2m1 与 ue4m3 两级尺度。
+图~\ref{fig:31-2} 是工程层：量化前处理链的数据流与 fused 融合点。
+图~\ref{fig:31-3} 是布局层：kv\_perm32 的 32 列窗口双射带来的收益与
+代价。
 
 \begin{figure}[htbp]
   \centering
