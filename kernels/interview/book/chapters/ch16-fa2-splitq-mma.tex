@@ -46,7 +46,7 @@ LeetCUDA 的 FA1 式实现（\texttt{flash\_\allowbreak{}attn\_\allowbreak{}mma\
 把 $B_r\times B_c$ 的 tile 同时按行列切给 warp：warp\_QP 分行、
 warp\_KV 分列（8-warp 版为 $2\times4$ warp 网格）。问题在列方向：行 $r$ 的 $S$ 值分布在多个 warp 上，
 每个 warp 只见到该行\textbf{部分} KV 的打分，它们各自维护的
-$(m,\ell,O)$ 都是\textbf{部分状态}，每个 KV tile 结束必须经 smem 中转、
+$(m,\ell,O)$ 都是\textbf{部分状态}。每个 KV tile 结束必须经 smem 中转、
 用第~\ref{ch:05}~章 \texttt{merge\_\allowbreak{}attn\_\allowbreak{}states} 的 LSE 合并语义跨
 warp 归并，通信与同步的开销随 tile 迭代次数 $T_c$ 线性重复。
 
@@ -539,7 +539,7 @@ $K_{t+1}$ 则有整整一个迭代的余量。这与第~\ref{ch:11}~章 GEMM 的
   \node[anchor=east, font=\scriptsize, text=tkBlue!80!black] at (-0.12,-1.10) {搬运 $V$（3a）};
   \node[anchor=east, font=\scriptsize, text=tkGreen!80!black] at (-0.12,-1.70) {搬运 $K$（3a 预取）};
 \end{tikzpicture}
-\caption{\textbf{K 双缓冲、V 单级}的流水时序（16.4.5 节 3a 步）。三个稳态迭代 $t{-}1/t/t{+}1$：每个迭代内 3a 依次提交两组搬运——$V_t$（实心圆，写当前 V buffer）与 $K_{t+1}$（空心方，写 \texttt{smem\_sel\_next}）。$V_t$ 的在途窗口（蓝条）恰好覆盖同迭代的 3b（QK mma）与 3c（softmax）——softmax 全在 CUDA Core/SFU 上跑，恰好掩盖 V 的搬运延迟；$K_{t+1}$ 则有整整一个迭代的余量。两处等待：(1) 3d 前的 \texttt{wait\_group(1)} 只等 $V_t$，把 $K_{t+1}$ 留在途；(2) 迭代末（3e 之后）的 \texttt{wait\_group(0)} 等 $K_{t+1}$ 到齐才进下一轮 3b。与第~\ref{ch:11}~章 GEMM 的「kStages 全操作数统一多级」不同——attention 两段 mma 之间夹着一段非 mma 计算，天然提供了第二级的隐藏窗口，所以 \texttt{kStagesK}$=$2 就够（「one stage is enough for V」）。}
+\caption{\textbf{K 双缓冲、V 单级}的流水时序（16.4.5 节 3a 步）。三个稳态迭代 $t{-}1/t/t{+}1$：每个迭代内 3a 依次提交两组搬运——$V_t$（实心圆，写当前 V buffer）与 $K_{t+1}$（空心方，写 \texttt{smem\_sel\_next}）。$V_t$ 的在途窗口（蓝条）恰好覆盖同迭代的 3b（QK mma）与 3c（softmax）——softmax 全在 CUDA Core/SFU 上跑，掩盖了 V 的搬运延迟；$K_{t+1}$ 则有整整一个迭代的余量。两处等待：(1) 3d 前的 \texttt{wait\_group(1)} 只等 $V_t$，把 $K_{t+1}$ 留在途；(2) 迭代末（3e 之后）的 \texttt{wait\_group(0)} 等 $K_{t+1}$ 到齐才进下一轮 3b。与第~\ref{ch:11}~章 GEMM 的「kStages 全操作数统一多级」不同——attention 两段 mma 之间夹着一段非 mma 计算，天然提供了第二级的隐藏窗口，所以 \texttt{kStagesK}$=$2 就够（「one stage is enough for V」）。}
 \label{fig:16-kv-pipeline}
 \end{figure}
 

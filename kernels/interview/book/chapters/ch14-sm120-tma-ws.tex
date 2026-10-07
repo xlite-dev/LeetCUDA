@@ -247,7 +247,7 @@ barrier arrive 形成双向互等死锁；\textcircled{3} alloc 降到 208：总
 \end{figure}
 
 \textbf{Blackwell 上的 TMA 地址空间陷阱与解法}：即便池数学正确，还有一道
-隐蔽的门槛，CUDA 13.2 的 ptxas 在 kernel 同时含有 setmaxnreg 与目的地址为
+隐蔽的门槛：CUDA 13.2 的 ptxas 在 kernel 同时含有 setmaxnreg 与目的地址为
 \texttt{shared::cluster} 的 \texttt{cp.\allowbreak{}async.\allowbreak{}bulk.\allowbreak{}tensor} 时，会把后者当作隐式
 extern-call 边界，将 setmaxnreg 连同警告 C7506（"ignored to maintain
 compatibility into 'extern' call"）一起丢弃。历史上这里曾发生过一次误诊：

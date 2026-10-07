@@ -1072,7 +1072,8 @@ L281--282 与 L291--292）。多加一层掩码 4 会把\emph{另一个 warp 段
 
 本章测试（\texttt{tests/\allowbreak{}ch26\_\allowbreak{}ffpa\_\allowbreak{}cute.\allowbreak{}cu}）与前几章的不同之处是
 \textbf{以 host 端类型断言为主}：不启动 kernel，只对 traits 与 fragment
-做静态/运行时断言，全部来自 26.3 节的代数：
+做静态/运行时断言，全部来自 26.3 节的代数。凡是「实测」二字，都指该测试
+或等价 probe 的 host 端输出：
 
 \begin{enumerate}[itemsep=2pt,topsep=2pt]
   \item \textbf{D-chunk 常量}：对 $D\in\{64,128,192,512\}$ 断言
@@ -1150,9 +1151,3 @@ ALL OK
         系统性替代读物，作为第~\ref{ch:20}--\ref{ch:22}~章的复习材料。\\
         \url{https://zhuanlan.zhihu.com/p/1983922984805742098}
 \end{itemize}
-
-
-
-本节的所有结论都可以在 host 端用 CuTe 原语复算，本章的最小测试
-（\texttt{tests/\allowbreak{}ch26\_\allowbreak{}ffpa\_\allowbreak{}cute.\allowbreak{}cu}）就是这么做的：不启动 kernel，只对类型
-做断言。凡是「实测」二字，都指该测试或等价 probe 的 host 端输出。

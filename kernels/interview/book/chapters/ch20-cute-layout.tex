@@ -670,9 +670,6 @@ $(\mathrm{CPY}_M,\mathrm{CPY}_N)$ 两层循环压成一个线性索引来遍历
   \item $\mathrm{coalesce}(L_g) = (48){:}(1)$——该 layout 恰好整体连续，
         化简成单 mode。
 \end{itemize}
-这些操作在 kernel 里的高频用途是「把 MMA 的 fragment mode 与其余的 rest mode
-分离」（第~\ref{ch:22}~章），以及把 copy 的重复结构展平成线性索引
-（第~\ref{ch:21}~章）。
 
 \begin{sloppypar}
 一个命名上容易混淆的点：很多 CuTe 教程（以及 hgemm.cuh 的部分注释）用

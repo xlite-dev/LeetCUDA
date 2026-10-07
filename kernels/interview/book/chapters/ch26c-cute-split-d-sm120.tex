@@ -163,7 +163,7 @@ m16n8k16 的 C-fragment 约定下，一行 128 个分数散在同 warp 的 4 个
 warp 内 \texttt{\_\_shfl\_xor} 两轮（1 与 2 的蝴蝶，\S\ref{sec:26c-rescale}），
 \textbf{没有任何跨 warp 的 smem 归约}。第~\ref{ch:26}~章 WS 版的
 64$\times$64 tile 下 warp 沿 N 也要切，归约需要先跨 warp——M8N1 下行归约
-自然落在 warp 内，无需跨 warp 通信。代价是 PV 的 N 维只有 $k_{VDChunk}{=}64$：
+自然落在 warp 内。代价是 PV 的 N 维只有 $k_{VDChunk}{=}64$：
 单 warp 的 PV MMA 每次算 $16\times64$，由
 \texttt{gemm\_rs}（第~\ref{ch:25}~章）内部按 atom 循环展开，不影响
 协议。
