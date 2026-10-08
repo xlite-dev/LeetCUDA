@@ -414,6 +414,29 @@ def check_emphasis_flanking(md_texts: dict[str, str]) -> tuple[bool, str]:
   return ok, detail
 
 
+#: 没被解析掉的 MyST 属性（图片 ``{width=…}``、块级 ``{.class}`` 等）。
+_STRAY_ATTR_RE = re.compile(r"\{(?:width|height|align|scale)\s*=|(?<![\w{])\.rtd-")
+
+
+def check_stray_attributes(html_dir: Path) -> tuple[bool, str]:
+  """检查页面上没有漏出来的 MyST 属性字面文本。
+
+  ``![插图](x.svg){width=95%}`` 这种写法里，不带引号的百分比值 MyST 解析不了，
+  会原样显示 ``{width=95%}``（全站 25 张图都中招）。这里在产物页面里核对。
+
+  :param html_dir: Sphinx 输出目录。
+  :returns: ``(是否通过, 说明)``。
+  """
+  problems: list[str] = []
+  for path in sorted(html_dir.glob("*.html")):
+    page = path.read_text(encoding="utf-8", errors="replace")
+    match = _STRAY_ATTR_RE.search(page)
+    if match is not None:
+      problems.append(f"{path.stem}: {match.group(0)[:30]}")
+  ok = not problems
+  return ok, f"{len(problems)} 页命中，例如 {problems[0]}" if problems else ""
+
+
 def count_source_tables(parts: list[booktree.Part]) -> int:
   """统计原书闭包内的表格环境数量（每个文件只统计一次）。
 
@@ -565,6 +588,9 @@ def verify(src_dir: Path, html_dir: Path, book_dir: Path) -> Report:
 
     ok, detail = check_images_present(html_dir)
     report.add("页面图片均存在", ok, detail)
+
+    ok, detail = check_stray_attributes(html_dir)
+    report.add("MyST 属性均已解析", ok, detail)
 
   work_dir = src_dir.parent / "tmp"
   if (work_dir / "tikz").is_dir():

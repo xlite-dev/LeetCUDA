@@ -524,8 +524,16 @@ class _Renderer:
     if not width and token_width:
       width = f"{token_width}%"
     effective = width or image.width
-    attrs = f"{{width={effective}}}" if effective else ""
-    return f"![{_DEFAULT_ALT}]({image.dest}){attrs}"
+    if effective:
+      # 带宽度的图走 ``{image}`` 指令：Markdown 的 ``![…](…){width=95%}`` 里那个不带
+      # 引号的百分比值 MyST 解析不了，会原样漏成字面 ``{width=95%}``（全站 25 张图），
+      # 加了引号又会给图片套一层自链接。指令形式干净，且仍是 docutils 图片节点，
+      # Sphinx 照常把文件搬进 ``_images``。
+      return (f"```{{image}} {image.dest}\n"
+              f":alt: {_DEFAULT_ALT}\n"
+              f":width: {effective}\n"
+              "```")
+    return f"![{_DEFAULT_ALT}]({image.dest})"
 
   def _figure_fallback(self, image_id: str, origin: str) -> str:
     """TikZ 编译失败时的兜底展示。
@@ -907,7 +915,8 @@ def _hidden_image_refs(sources: list[str], already: str) -> str:
   :param already: 已经渲染好的正文（用于跳过已引用过的图片）。
   :returns: 追加的 markdown（无需要时为空串）。
   """
-  pending = [source for source in dict.fromkeys(sources) if f"]({source}" not in already]
+  pending = [source for source in dict.fromkeys(sources)
+             if f"]({source}" not in already and f"{{image}} {source}" not in already]
   if not pending:
     return ""
   blocks = ["```{image} " + source + "\n:class: rtd-hidden-ref\n```" for source in pending]
