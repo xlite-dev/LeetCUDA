@@ -58,6 +58,29 @@
     });
   }
 
+  /** 把插图换成英文图集里的同名文件（构建时按双语词典重新编译的那套）。
+   *
+   * 图内文字是矢量轮廓，机器翻译碰不到（Google 只改写 HTML 文本节点），所以英文版
+   * 只能靠构建期重新编译一套 SVG。这里只换存在的那几张：加载失败就回退原图。 */
+  function swapFigures() {
+    var EN_DIR = '_static/figures-en/';
+    Array.prototype.forEach.call(document.querySelectorAll('.rst-content img'), function (image) {
+      var source = image.getAttribute('src') || '';
+      var match = source.match(/(?:^|\/)_images\/([^/?#]+)$/);
+      if (!match) {
+        return;
+      }
+      var original = source;
+      image.addEventListener('error', function () {
+        // 没有英文版的图（未全部命中词典）继续用中文原图。
+        if (image.getAttribute('src') !== original) {
+          image.setAttribute('src', original);
+        }
+      });
+      image.setAttribute('src', EN_DIR + match[1]);
+    });
+  }
+
   /** 按需加载官方翻译组件（用到才加载，避免每页引入第三方脚本）。 */
   function loadWidget() {
     if (document.getElementById(WIDGET_ID)) {
@@ -83,17 +106,8 @@
     document.body.appendChild(script);
   }
 
-  /** 生成切换按钮：放在页脚导航行里「上一页」旁边，没有该行时退回侧栏。 */
-  function buildButton(english) {
-    var prev = document.querySelector('.rst-footer-buttons a[rel="prev"]');
-    var sidebar = document.querySelector('.wy-side-nav-search') ||
-                  document.querySelector('.wy-nav-side');
-    if (!prev && !sidebar) {
-      return;
-    }
-
-    // 与主题的「上一页 / 下一页」同款：`btn btn-neutral` + FontAwesome 图标
-    // （主题用的是 <a class="btn btn-neutral"><span class="fa fa-…"></span> 文本</a>）。
+  /** 造一个切换按钮（与主题的「上一页 / 下一页」同款：`btn btn-neutral` + 图标）。 */
+  function createToggle(english) {
     var toggle = document.createElement('a');
     toggle.className = 'btn btn-neutral rtd-translate-toggle';
     toggle.setAttribute('role', 'button');
@@ -134,22 +148,42 @@
         }
       });
     }
+    return toggle;
+  }
 
-    if (prev) {
-      prev.insertAdjacentElement('afterend', toggle);
+  /** 把切换按钮插到每一处「上一页」后面；页面没有该按钮时退回侧栏。
+   *
+   * 主题在**正文顶部与页脚各渲染一处**「上一页 / 下一页」（配置里的
+   * prev_next_buttons_location = both），只插一处会让另一半页面看起来没有按钮。 */
+  function buildButton(english) {
+    var prevLinks = Array.prototype.slice.call(document.querySelectorAll('a[rel="prev"]'));
+    prevLinks.forEach(function (prev) {
+      if (prev.parentElement &&
+          prev.parentElement.querySelector('.rtd-translate-toggle')) {
+        return;
+      }
+      prev.insertAdjacentElement('afterend', createToggle(english));
+    });
+    if (prevLinks.length) {
+      return;
+    }
+    var sidebar = document.querySelector('.wy-side-nav-search') ||
+                  document.querySelector('.wy-nav-side');
+    if (!sidebar) {
       return;
     }
     var wrapper = document.createElement('div');
     wrapper.className = 'rtd-translate';
-    wrapper.appendChild(toggle);
+    wrapper.appendChild(createToggle(english));
     sidebar.appendChild(wrapper);
   }
 
   document.addEventListener('DOMContentLoaded', function () {
     var english = isEnglish();
     if (english) {
-      // 已切换过：本次加载就要让组件把页面翻成英文。
+      // 已切换过：本次加载就要让组件把页面翻成英文，插图也换成英文图集。
       protectVerbatim();
+      swapFigures();
       loadWidget();
     }
     buildButton(english);
