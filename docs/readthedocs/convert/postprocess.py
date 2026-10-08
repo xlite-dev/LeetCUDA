@@ -207,7 +207,7 @@ class _Renderer:
     if tok.kind == tokens.KIND_FIGURE:
       return self._render_figure(inner)
     if tok.kind == tokens.KIND_TABLE:
-      return self._render_table(inner)
+      return self._render_table(inner, tok.fields[0] if tok.fields else "")
     if tok.kind == tokens.KIND_SUBFIGURE:
       return self._render_subfigure(inner, tok.fields[0] if tok.fields else "")
     if tok.kind == tokens.KIND_ADMON:
@@ -253,10 +253,11 @@ class _Renderer:
       blocks.insert(0, anchors)
     return "\n\n".join(blocks)
 
-  def _render_table(self, items: list[tuple[str, object]]) -> str:
+  def _render_table(self, items: list[tuple[str, object]], header_rows: str = "") -> str:
     """渲染 table / longtable 环境（书里表注在表上方）。
 
     :param items: table 内容。
+    :param header_rows: 源文里的表头行数（≥2 时把这几行收进 ``<thead>``）。
     :returns: MyST 文本。
     """
     caption, labels, content = self._split_caption(items)
@@ -269,7 +270,10 @@ class _Renderer:
       prefix = f"表 {number}：" if number else "表："
       blocks.append(f"{{.rtd-caption}}\n{prefix}{caption.strip()}")
     blocks.extend(self._render_items(content))
-    return "\n\n".join(blocks)
+    text = "\n\n".join(blocks)
+    if header_rows.isdigit() and int(header_rows) >= 2:
+      text = _wrap_table_header(text, int(header_rows))
+    return text
 
   def _render_subfigure(self, items: list[tuple[str, object]], width: str) -> str:
     """渲染一个 subfigure。
@@ -915,6 +919,60 @@ def _escape_attr(text: str) -> str:
   """
   return (text.replace("&", "&amp;").replace('"', "&quot;")
           .replace("<", "&lt;").replace(">", "&gt;"))
+
+
+#: HTML 表格块（pandoc 直出，用于把多行表头收进 thead）。
+_HTML_TABLE_WRAP_RE = re.compile(r"<table\b.*?</table>", re.S)
+
+#: 表格行。
+_TABLE_ROW_RE = re.compile(r"<tr\b.*?</tr>", re.S)
+
+
+def _wrap_table_header(md_text: str, header_rows: int) -> str:
+  """把表格的前 ``header_rows`` 行收进 ``<thead>``，并把其中的单元格改成 ``<th>``。
+
+  pandoc 的 LaTeX reader 只支持单行表头：源文是「两行表头 + ``\\midrule``」时（ch33 的
+  扫描表、ch35 的 tile×流水表、ch37 的量化开销表），第二行表头会落进表体——页面上就
+  少了表头底色与加粗，读者容易把它当数据行。
+
+  :param md_text: 渲染后的 markdown。
+  :param header_rows: 源文里的表头行数。
+  :returns: 处理后的 markdown。
+  """
+
+  def fix(match: re.Match[str]) -> str:
+    block = match.group(0)
+    head_match = re.search(r"<thead>.*?</thead>", block, re.S)
+    body_match = re.search(r"<tbody>.*?</tbody>", block, re.S)
+    if body_match is None:
+      return block
+    head_rows = _TABLE_ROW_RE.findall(head_match.group(0)) if head_match else []
+    body_rows = _TABLE_ROW_RE.findall(body_match.group(0))
+    missing = header_rows - len(head_rows)
+    if missing <= 0 or not body_rows:
+      return block
+    moved = body_rows[:missing]
+    rest = body_rows[missing:]
+    if len(rest) == 0:
+      return block
+    head_text = "\n".join(_cell_to_header(row) for row in head_rows + moved)
+    body_text = "\n".join(rest)
+    new_head = f"<thead>\n{head_text}\n</thead>\n<tbody>\n{body_text}\n</tbody>"
+    if head_match:
+      start, end = head_match.start(), body_match.end()
+      return block[:start] + new_head + block[end:]
+    return block[:body_match.start()] + new_head + block[body_match.end():]
+
+  return _HTML_TABLE_WRAP_RE.sub(fix, md_text)
+
+
+def _cell_to_header(row: str) -> str:
+  """把一行数据单元格改成表头单元格。
+
+  :param row: ``<tr>...</tr>``。
+  :returns: 替换后的行。
+  """
+  return row.replace("<td", "<th").replace("</td>", "</th>")
 
 
 def _escape_colon_fences(md_text: str) -> str:

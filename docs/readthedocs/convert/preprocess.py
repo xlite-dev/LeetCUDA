@@ -792,8 +792,20 @@ def _containers(text: str, builder: _Builder) -> str:
   :param builder: 构建状态。
   :returns: 替换后的文本。
   """
+  # 浮动环境内的 tabular 位置必须在包装前采集：包装会把 \begin{table} 标记换成 token，
+  # 之后再找就找不到，裸表格包装会把同一张表再包一层。
+  occupied: list[tuple[int, int]] = []
+  for env in ("table", "figure"):
+    for start, end, _body in find_environments(text, env):
+      for tab_start, tab_end, _tabular in find_environments(text[start:end], "tabular"):
+        occupied.append((start + tab_start, start + tab_end))
+
   text = _wrap_environment(text, "figure", tokens.KIND_FIGURE, tokens.KIND_FIGURE_END, builder, "figure")
-  text = _wrap_environment(text, "table", tokens.KIND_TABLE, tokens.KIND_TABLE_END, builder, "table")
+  text = _wrap_environment(text, "table", tokens.KIND_TABLE, tokens.KIND_TABLE_END, builder, "table",
+                           _table_payload)
+  # 裸表格（不套 table 环境的 tabular，书里常写成 center + tabular）也要带上表头行数：
+  # ch37 的量化开销表就是这样，不带载荷的话多行表头收不进 <thead>。
+  text = _wrap_bare_tables(text, occupied)
   # longtable 交给 pandoc 原生转换（它的列声明参数是必须保留的表格结构）
   text = _wrap_subfigures(text, builder)
   text = _wrap_captions(text)
@@ -803,7 +815,14 @@ def _containers(text: str, builder: _Builder) -> str:
 
 
 def _wrap_environment(
-  text: str, env: str, start_kind: str, end_kind: str, builder: _Builder, stat: str) -> str:
+  text: str,
+  env: str,
+  start_kind: str,
+  end_kind: str,
+  builder: _Builder,
+  stat: str,
+  payload=None,
+) -> str:
   """把环境包成 begin/end token。
 
   :param text: 章节 tex。
@@ -812,6 +831,7 @@ def _wrap_environment(
   :param end_kind: 结束 token 种类。
   :param builder: 构建状态。
   :param stat: 统计名。
+  :param payload: 可选的载荷生成函数（接收环境体，返回 token 载荷）。
   :returns: 替换后的文本。
   """
   edits: list[tuple[int, int, str]] = []
@@ -819,13 +839,56 @@ def _wrap_environment(
     if _line_is_commented(text, start):
       continue
     builder.bump(stat)
+    fields = payload(body) if payload is not None else ""
     cleaned = body
     _position, cursor = read_optional(body, 0)
     if _position is not None:
       cleaned = body[cursor:]
+    start_token = tokens.make(start_kind, fields) if fields else tokens.make(start_kind)
     edits.append((
       start, end,
-      "\n\n" + tokens.make(start_kind) + "\n\n" + cleaned + "\n\n" + tokens.make(end_kind) + "\n\n"))
+      "\n\n" + start_token + "\n\n" + cleaned + "\n\n" + tokens.make(end_kind) + "\n\n"))
+  return _apply_edits(text, edits)
+
+
+def _table_payload(body: str) -> str:
+  """给出 table 环境的 token 载荷（表头行数）。
+
+  :param body: ``table`` 环境体（含 ``tabular``）。
+  :returns: 表头行数的字符串（不适用时空串）。
+  """
+  for _start, _end, tabular in find_environments(body, "tabular"):
+    rows = _table_header_rows(tabular)
+    return str(rows) if rows else ""
+  return ""
+
+
+def _wrap_bare_tables(text: str, occupied: list[tuple[int, int]]) -> str:
+  """把不在 ``table`` / ``figure`` 环境里的 ``tabular`` 也包成 TABLE token。
+
+  载荷是表头行数，供后处理把多行表头收进 ``<thead>``。已在浮动环境里的表格由
+  :func:`_wrap_environment` 处理，这里按 ``occupied``（包装前采集的区间）跳过，
+  避免同一张表被包两层。
+
+  :param text: 章节 tex。
+  :param occupied: 浮动环境内 ``tabular`` 的绝对区间。
+  :returns: 处理后的文本。
+  """
+  edits: list[tuple[int, int, str]] = []
+  for env in ("tabular", "tabularx"):
+    for start, end, body in find_environments(text, env):
+      if any(outer_start <= start and end <= outer_end for outer_start, outer_end in occupied):
+        continue
+      rows = _table_header_rows(body)
+      payload = str(rows) if rows else ""
+      start_token = (tokens.make(tokens.KIND_TABLE, payload) if payload
+                     else tokens.make(tokens.KIND_TABLE))
+      # 整段环境原样保留：tabular 的 \begin/\end 是 pandoc 认表的结构，不能像浮动
+      # 环境那样只留内容。
+      edits.append((
+        start, end,
+        "\n\n" + start_token + "\n\n" + text[start:end] + "\n\n"
+        + tokens.make(tokens.KIND_TABLE_END) + "\n\n"))
   return _apply_edits(text, edits)
 
 
@@ -1363,18 +1426,50 @@ def _normalize_math_primitives(text: str) -> str:
   return _PRIMITIVE_SUP_RE.sub("^", text)
 
 
-#: booktabs 的局部横线与间距命令：pandoc 不认识它们的参数，会把
-#: ``\cmidrule(lr){2-3}`` 当成普通文本塞进表格单元格（ch37 的量化开销表就多出一行
-#: ``2-3(lr)4-5``），必须提前删掉。``\toprule/\midrule/\bottomrule`` 保留，
-#: pandoc 认识它们。
+#: booktabs 的局部横线与间距命令：pandoc 不认识它们的参数，会把 ``\cmidrule(lr){2-3}``
+#: 的参数当成普通文本塞进表格单元格（ch37 的量化开销表就多出一行 ``2-3(lr)4-5``）。
+#: 这些命令本身没有对应结构，整体删掉。
 _PARTIAL_RULES = (
-  r"\\cmidrule\s*(?:\([^)]*\))?\s*\{[^{}]*\}",
   r"\\cline\s*\{[^{}]*\}",
   r"\\specialrule\s*\{[^{}]*\}\s*\{[^{}]*\}\s*\{[^{}]*\}",
   r"\\addlinespace\s*(?:\[[^\]]*\])?",
   r"\\arrayrulecolor\s*\{[^{}]*\}",
   r"\\morecmidrules",
 )
+
+#: ``\cmidrule`` 只删参数、保留命令：pandoc 把 ``\cmidrule`` 当作「表头到此为止」的
+#: 提示，删掉整条命令会让多行表头的表退化成无 ``<thead>`` 的表（ch33/ch35/ch37）。
+_CMIDRULE_ARG_RE = re.compile(r"\\cmidrule\s*(?:\([^)]*\))?\s*\{[^{}]*\}")
+
+
+def _table_header_rows(body: str) -> int:
+  """数出表格的表头行数（``\\midrule`` 之前、由 ``\\cmidrule`` 分隔的表头）。
+
+  pandoc 的 LaTeX reader 只认单行表头：源文「两行表头 + ``\\midrule``」时它会输出
+  无 ``<thead>`` 的表（或只收第一行），第二行表头落进表体，样式与语义都不对。这里把
+  真实行数传给后处理，让它把这几行收进 ``<thead>``。
+
+  只在找到「纯横线行」（``\\midrule`` / ``\\hline`` 独占）且前面有 ≥2 行时才返回该
+  行数，避免把普通的 ``\\hline`` 行分隔误判成表头边界。
+
+  :param body: ``tabular`` 环境体。
+  :returns: 表头行数（不适用时返回 0）。
+  """
+  rows = _split_top_level(body, "\\\\")
+  headers: list[str] = []
+  for row in rows:
+    stripped = _CMIDRULE_ARG_RE.sub(lambda _match: "\\cmidrule", row)
+    stripped = re.sub(r"\\(?:top|mid|bottom)rule\b|\\cmidrule\b|\\hline\b", "", stripped)
+    stripped = stripped.strip()
+    if not stripped:
+      # 纯横线行：表头到此为止（首行的 ``\toprule`` 也走这里，但那时 headers 还是空的）
+      if re.search(r"\\(?:midrule|hline)\b", row):
+        break
+      continue
+    if re.search(r"\\(?:midrule|hline)\b", row):
+      break
+    headers.append(stripped)
+  return len(headers) if len(headers) >= 2 else 0
 
 
 def _drop_noise(text: str) -> str:
@@ -1386,6 +1481,8 @@ def _drop_noise(text: str) -> str:
   text = _drop_providecommands(text)
   for pattern in _PARTIAL_RULES:
     text = re.sub(pattern, "", text)
+  # \cmidrule 保留命令本身（pandoc 靠它认多行表头），只删参数
+  text = _CMIDRULE_ARG_RE.sub(lambda _match: "\\cmidrule", text)
   text = re.sub(r"\\allowbreak\s*\{\}", "", text)
   text = re.sub(r"\\allowbreak\b", "", text)
   for name in _DROP_ZERO_ARG:

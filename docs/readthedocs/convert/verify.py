@@ -22,7 +22,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import booktree, labels, postprocess, texutil
+from . import booktree, labels, postprocess, preprocess, texutil
 
 #: ``第 N 章：`` / ``附录 A：`` 前缀。
 _CHAPTER_PREFIX_RE = re.compile(r"^第\s*(\d+)\s*章：")
@@ -343,6 +343,49 @@ def check_images_present(html_dir: Path) -> tuple[bool, str]:
               else f"{len(problems)} 张缺失，例如 {problems[0]}")
 
 
+def check_multirow_headers(
+  parts: list[booktree.Part],
+  md_texts: dict[str, str],
+) -> tuple[bool, str]:
+  """逐章核对「多行表头」是否收进了 ``<thead>``。
+
+  pandoc 的 LaTeX reader 只支持单行表头，源文「两行表头 + ``\\midrule``」的表第二行
+  会落进表体（ch33/ch35/ch37 的扫描表）。转换器按源文行数把它们收进 ``<thead>``，
+  这里按章核对数量，防止回归。
+
+  :param parts: 篇结构。
+  :param md_texts: 页面名 → markdown。
+  :returns: ``(是否通过, 说明)``。
+  """
+  problems: list[str] = []
+  checked = 0
+  for part in parts:
+    for chapter in part.chapters:
+      text = md_texts.get(chapter.chap_id)
+      if text is None:
+        continue
+      sources = [chapter.tex]
+      if "wp/" in chapter.tex.read_text(encoding="utf-8", errors="replace"):
+        sources.extend(sorted((chapter.tex.parent / "wp").glob("*.tex")))
+      expected = 0
+      for path in sources:
+        body = texutil.strip_comments(path.read_text(encoding="utf-8", errors="replace"))
+        for _start, _end, tabular in texutil.find_environments(body, "tabular"):
+          if preprocess._table_header_rows(tabular) >= 2:
+            expected += 1
+      actual = 0
+      for block in re.finditer(r"<table\b.*?</table>", text, re.S):
+        head = re.search(r"<thead>.*?</thead>", block.group(0), re.S)
+        if head and len(re.findall(r"<tr", head.group(0))) >= 2:
+          actual += 1
+      checked += expected
+      if actual < expected:
+        problems.append(f"{chapter.chap_id}: 源文 {expected} 张 → 页面 {actual} 张")
+  ok = not problems
+  detail = f"核对 {checked} 张多行表头表" if ok else f"{len(problems)} 章未收拢，例如 {problems[0]}"
+  return ok, detail
+
+
 def count_source_tables(parts: list[booktree.Part]) -> int:
   """统计原书闭包内的表格环境数量（每个文件只统计一次）。
 
@@ -485,6 +528,9 @@ def verify(src_dir: Path, html_dir: Path, book_dir: Path) -> Report:
   if html_dir.is_dir():
     ok, detail = check_table_counts_per_chapter(booktree.parse(book_dir / "book.tex"), html_dir)
     report.add("逐章表格数不缺", ok, detail)
+
+    ok, detail = check_multirow_headers(booktree.parse(book_dir / "book.tex"), texts)
+    report.add("多行表头已收进 thead", ok, detail)
 
     ok, detail = check_images_present(html_dir)
     report.add("页面图片均存在", ok, detail)

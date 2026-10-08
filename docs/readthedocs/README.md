@@ -113,6 +113,10 @@ TikZ 独立成链：每个片段套 standalone 文档编译成 PDF，再让 dvis
 - **表格交给 pandoc 出 HTML**：关掉 `grid_tables/multiline_tables/simple_tables`，
   pandoc 会为复杂表（`p{}` 列、`\multicolumn`）直接写 `<table>`，MyST 原样透传，
   比 pipe 表更能保住多行单元格；单元格里的 `$...$` 由 MathJax 在浏览器端渲染。
+- **多行表头**：pandoc 的 LaTeX reader 只支持单行表头，源文「两行表头 + `\midrule`」
+  时第二行会落进表体（还曾把 `\cmidrule(lr){2-3}` 的参数渲染成一行 `2-3(lr)4-5`）。
+  现在只删 `\cmidrule` 的参数、保留命令本身（pandoc 靠它识别表头），并在预处理时把
+  表头行数写进 TABLE token，后处理据此把这几行收进 `<thead>` 并把单元格改成 `<th>`。
 
 ### 绕开的三个坑（都实测过，别再走一遍）
 
