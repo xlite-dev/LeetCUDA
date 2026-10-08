@@ -695,14 +695,24 @@ def _join_cjk_lines(text: str) -> str:
   # 表格与 HTML 行对换行敏感，先整行保护，不参与后面的折行合并。
   guarded = _BLOCK_LINE_RE.sub(protect, text)
   guarded = re.sub(r"`[^`]*`|\$\$.*?\$\$|\$[^$\n]*\$", protect, guarded, flags=re.S)
+  # 原书里的 ``\\`` 是硬换行，pandoc 输出成「行尾反斜杠 + 换行」。直接合行的话那个
+  # 反斜杠会变成可见字面（面试速查的问答会显示成 ``…cuDNN？\ A：…``），所以先转
+  # ``<br>`` 再合行。
+  guarded = re.sub(r"(?m)\\(?=\n)", "<br>", guarded)
 
   def replace(match: re.Match[str]) -> str:
     left, right = match.group(1), match.group(2)
+    if left == ">" and right == "<":
+      return f"{left}{right}"  # ``<br>`` 与紧随的自动链接/标签之间不留空格
     if _CJK_RE.match(left) and _CJK_RE.match(right):
       return f"{left}{right}"
     return f"{left} {right}"
 
   guarded = re.sub(r"([^\n])\n[ \t]*([^\n])", replace, guarded)
+  # ``<br>`` 后面不留空白（合行时可能补了空格，或被后续自动链接的占位符挡住）。
+  guarded = re.sub(r"<br>[ \t]+", "<br>", guarded)
+  # 合行后剩下的换行都是段落边界：段尾的 ``<br>`` 没有意义，去掉。
+  guarded = re.sub(r"<br>[ \t]*(?=\n|$)", "", guarded)
   # 汉字之间不需要空格：pandoc 已把 tex 的断行折成空格，这里按中文排版规则去掉。
   guarded = re.sub(rf"({_CJK_CLASS})[ \t]+(?={_CJK_CLASS})", r"\1", guarded)
   return re.sub(r"\x00(\d+)\x00", lambda match: protected[int(match.group(1))], guarded)

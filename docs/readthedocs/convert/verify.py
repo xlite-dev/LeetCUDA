@@ -437,6 +437,39 @@ def check_stray_attributes(html_dir: Path) -> tuple[bool, str]:
   return ok, f"{len(problems)} 页命中，例如 {problems[0]}" if problems else ""
 
 
+def check_hard_breaks(texts: dict[str, str]) -> tuple[bool, str]:
+  """检查正文里没有漏出来的 LaTeX 硬换行反斜杠。
+
+  原书里的 ``\\\\``（硬换行）会被 pandoc 输出成「行尾反斜杠 + 换行」；合行后那个
+  反斜杠会变成可见字面（面试速查的问答曾显示成 ``…cuDNN？\\ A：…``）。转换器已把它
+  转成 ``<br>``，这里核对清干净了。代码块、公式与 HTML 表格里的反斜杠是合法的。
+
+  :param texts: 页面名 → markdown。
+  :returns: ``(是否通过, 说明)``。
+  """
+  problems: list[str] = []
+  total = 0
+  for name, text in texts.items():
+    lines = text.split("\n")
+    flags = postprocess.code_fence_flags(lines)
+    masked = "".join(
+      "\n" if char == "\n" else " "
+      for line, flag in zip(lines, flags) for char in (" " * len(line) if flag else line)
+    )
+    spans = texutil.math_spans(masked)
+    for start, end in spans:
+      masked = masked[:start] + " " * (end - start) + masked[end:]
+    masked = re.sub(r"<table\b.*?</table>", lambda m: " " * len(m.group(0)), masked, flags=re.S)
+    for match in re.finditer(r"\\ ", masked):
+      total += 1
+      if len(problems) < 3:
+        problems.append(f"{name}: …{masked[max(0, match.start() - 30):match.end() + 20]}…")
+  ok = not problems
+  detail = (f"核对 {total} 处" if ok
+            else f"{total} 处字面反斜杠，例如 {problems[0]}")
+  return ok, detail
+
+
 def count_source_tables(parts: list[booktree.Part]) -> int:
   """统计原书闭包内的表格环境数量（每个文件只统计一次）。
 
@@ -578,6 +611,9 @@ def verify(src_dir: Path, html_dir: Path, book_dir: Path) -> Report:
 
   ok, detail = check_table_inline_markdown(texts)
   report.add("HTML 表格内无 Markdown 残留", ok, detail)
+
+  ok, detail = check_hard_breaks(texts)
+  report.add("无字面 LaTeX 换行反斜杠", ok, detail)
 
   if html_dir.is_dir():
     ok, detail = check_table_counts_per_chapter(booktree.parse(book_dir / "book.tex"), html_dir)
