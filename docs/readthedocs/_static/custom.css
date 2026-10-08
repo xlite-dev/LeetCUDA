@@ -26,20 +26,20 @@
   text-decoration: none;
 }
 
+/* 置灰态：正文顶部与页脚两处（浅色背景）；侧栏那处背景是深色，单独调。 */
+.rtd-translate-disabled,
+.rtd-translate-disabled:hover {
+  background-color: #f3f6f6 !important;
+  border-color: #e1e4e5 !important;
+  color: #b0b0b0 !important;
+  cursor: not-allowed;
+}
+
 .rtd-translate .rtd-translate-disabled,
 .rtd-translate .rtd-translate-disabled:hover {
   background-color: #ffffff33 !important;
   border-color: #ffffff33 !important;
   color: #ffffffb3 !important;
-  cursor: not-allowed;
-}
-
-.rst-footer-buttons .rtd-translate-disabled,
-.rst-footer-buttons .rtd-translate-disabled:hover {
-  background-color: #f3f6f6 !important;
-  border-color: #e1e4e5 !important;
-  color: #b0b0b0 !important;
-  cursor: not-allowed;
 }
 
 /* 右栏：本页小节目录 */

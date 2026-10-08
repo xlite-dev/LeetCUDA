@@ -151,12 +151,29 @@
     return toggle;
   }
 
-  /** 把切换按钮插到每一处「上一页」后面；页面没有该按钮时退回侧栏。
+  /** 收集页面上所有的「上一页」按钮。
    *
-   * 主题在**正文顶部与页脚各渲染一处**「上一页 / 下一页」（配置里的
-   * prev_next_buttons_location = both），只插一处会让另一半页面看起来没有按钮。 */
+   * 主题按 ``prev_next_buttons_location = both`` 渲染两处：正文顶部的
+   * ``.rst-breadcrumbs-buttons`` 与页脚的 ``.rst-footer-buttons``。**顶部那处的锚点没有
+   * ``rel="prev"``**（只有页脚有），只按 ``rel="prev"`` 找会漏掉用户实际看到的那一处。 */
+  function prevButtons() {
+    var selectors = ['.rst-breadcrumbs-buttons a.float-left',
+                     '.rst-footer-buttons a[rel="prev"]',
+                     'a[rel="prev"]'];
+    var found = [];
+    selectors.forEach(function (selector) {
+      Array.prototype.forEach.call(document.querySelectorAll(selector), function (node) {
+        if (found.indexOf(node) === -1) {
+          found.push(node);
+        }
+      });
+    });
+    return found;
+  }
+
+  /** 把切换按钮插到每一处「上一页」后面；页面没有该按钮时退回侧栏。 */
   function buildButton(english) {
-    var prevLinks = Array.prototype.slice.call(document.querySelectorAll('a[rel="prev"]'));
+    var prevLinks = prevButtons();
     prevLinks.forEach(function (prev) {
       if (prev.parentElement &&
           prev.parentElement.querySelector('.rtd-translate-toggle')) {
