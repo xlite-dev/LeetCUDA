@@ -205,14 +205,73 @@ def strip_comments(text: str) -> str:
 
 
 def load_dictionary(path: Path) -> dict[str, str]:
-  """读取词典。
+  """读取词典（读入时做一次 TeX 特殊字符规范化）。
 
   :param path: JSON 词典路径。
   :returns: 掩码后的中文单元 → 掩码后的英文单元。
   """
   if not path.is_file():
     return {}
-  return json.loads(path.read_text(encoding="utf-8"))
+  return {key: sanitize(value) for key, value in json.loads(
+    path.read_text(encoding="utf-8")).items()}
+
+
+#: 机器译文里需要转义的 TeX 特殊字符（``^`` 除外——它在译文里总是 ``\^{}`` 形式）。
+_SANITIZE_ESCAPES = {
+  "%": "\\%", "&": "\\&", "#": "\\#", "_": "\\_", "$": "\\$",
+  "~": r"\textasciitilde{}",
+}
+
+
+def sanitize(text: str) -> str:
+  """转义机器译文里未转义的 TeX 特殊字符。
+
+  译文直接放进 TikZ 节点里编译，所以裸的 ``%``（注释掉整行）、``&``、``#``、``_``、
+  ``$``、``~`` 会直接让 xelatex 报错或静默吃掉内容（ch10/ch19 的英文图就是这样编不
+  出来的）。占位符 ``⟦n⟧`` 不在转义范围内；已经转义过的（``\\%``、``\\^{}``）保持原样。
+
+  花括号只在**嵌套不合法**时才转义：译文里的 ``\\^{}``、``\\S{}``、``\\textbf{…}`` 是
+  配对的，一律转义会把它们弄坏。
+
+  :param text: 译文。
+  :returns: 转义后的文本。
+  """
+  out: list[str] = []
+  for index, char in enumerate(text):
+    if char in _SANITIZE_ESCAPES and not _escaped(text, index):
+      out.append(_SANITIZE_ESCAPES[char])
+      continue
+    out.append(char)
+  result = "".join(out)
+  if nesting_sound(result):
+    return result
+  # 译文本身把括号搬错了位置：整体转义成字面括号，至少保证能编译。
+  escaped: list[str] = []
+  for index, char in enumerate(result):
+    if char in "{}" and not _escaped(result, index):
+      escaped.append("\\" + char)
+      continue
+    escaped.append(char)
+  return "".join(escaped)
+
+
+def _escaped(text: str, index: int) -> bool:
+  """判断某位置的字符是否被反斜杠转义。
+
+  要看**前面连续反斜杠的个数**：``\\{``（换行后紧跟真括号）里那个括号没被转义，
+  而 ``\\{`` 之外的 ``\{`` 才是字面括号。只看紧邻一个字符会判错，把 ``\\{…}`` 这种
+  合法分组当成括号不平衡。
+
+  :param text: 文本。
+  :param index: 字符下标。
+  :returns: 被转义为 True。
+  """
+  count = 0
+  position = index - 1
+  while position >= 0 and text[position] == "\\":
+    count += 1
+    position -= 1
+  return count % 2 == 1
 
 
 def save_dictionary(path: Path, data: dict[str, str]) -> None:
@@ -225,6 +284,29 @@ def save_dictionary(path: Path, data: dict[str, str]) -> None:
   ordered = {key: data[key] for key in sorted(data)}
   path.write_text(json.dumps(ordered, ensure_ascii=False, indent=2, sort_keys=False) + "\n",
                   encoding="utf-8")
+
+
+def nesting_sound(text: str) -> bool:
+  """检查花括号嵌套是否合法（深度不出现负值、结尾归零）。
+
+  译文里的括号数量可能是平衡的、但**位置**被搬错了——机器翻译会把 ``\\textbf{`` 与
+  它的 ``}`` 挪到句子不同位置（``chunk } … \\textbf{: …``），数量检查看不出来，编译
+  时才会以 TikZ 的 "Giving up on this path" 或 ``\\pgfutil@next`` 报错收场。
+
+  :param text: 还原占位符之后的译文。
+  :returns: 合法为 True。
+  """
+  depth = 0
+  for index, char in enumerate(text):
+    if char not in "{}" or _escaped(text, index):
+      continue
+    if char == "{":
+      depth += 1
+    else:
+      depth -= 1
+      if depth < 0:
+        return False
+  return depth == 0
 
 
 def translate_snippet(body: str, dictionary: dict[str, str]) -> tuple[str, int, int]:
@@ -248,8 +330,13 @@ def translate_snippet(body: str, dictionary: dict[str, str]) -> tuple[str, int, 
     if not english:
       miss += 1
       continue
+    restored = unmask(english, store)
+    if not nesting_sound(restored):
+      # 括号被翻译挪错位置：宁可保留中文，也不发出编不出来的英文图。
+      miss += 1
+      continue
     hit += 1
-    edits.append((start, end, unmask(english, store)))
+    edits.append((start, end, restored))
   out = body
   for start, end, replacement in sorted(edits, reverse=True):
     out = out[:start] + replacement + out[end:]

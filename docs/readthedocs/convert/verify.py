@@ -22,7 +22,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import booktree, labels, postprocess, preprocess, texutil
+from . import booktree, figtext, labels, postprocess, preprocess, texutil
 
 #: ``第 N 章：`` / ``附录 A：`` 前缀。
 _CHAPTER_PREFIX_RE = re.compile(r"^第\s*(\d+)\s*章：")
@@ -343,6 +343,51 @@ def check_images_present(html_dir: Path) -> tuple[bool, str]:
               else f"{len(problems)} 张缺失，例如 {problems[0]}")
 
 
+def check_english_figures(
+  snippet_dir: Path,
+  en_dir: Path,
+  dictionary_path: Path,
+) -> tuple[bool, str]:
+  """检查英文图集：词典覆盖、成品数量与字形。
+
+  英文图集是构建期按词典重编译的 SVG（``_static/figures-en/``），英文模式下由前端换图。
+  这里核对三件事：词典是否覆盖全部单元、**全部命中**的图是否都编出来了、成品里有没有
+  字形（空 SVG 在页面上就是一张空白图）。
+
+  :param snippet_dir: TikZ 片段目录（``build/tmp/tikz``）。
+  :param en_dir: 英文图集目录。
+  :param dictionary_path: 词典路径。
+  :returns: ``(是否通过, 说明)``。
+  """
+  dictionary = figtext.load_dictionary(dictionary_path)
+  if not dictionary:
+    return True, "无词典，跳过"
+  snippets = sorted(snippet_dir.glob("*.tex"))
+  if not snippets:
+    return True, "无片段，跳过"
+  covered, total, _missing = figtext.coverage(snippets, dictionary)
+  problems: list[str] = []
+  if covered != total:
+    problems.append(f"词典覆盖 {covered}/{total}")
+  expected = 0
+  for path in snippets:
+    body = figtext.strip_comments(path.read_text(encoding="utf-8"))
+    _english, hit, miss = figtext.translate_snippet(body, dictionary)
+    if hit and not miss:
+      expected += 1
+  produced = sorted(en_dir.glob("*.svg")) if en_dir.is_dir() else []
+  if len(produced) < expected:
+    problems.append(f"英文图 {len(produced)}/{expected} 张")
+  empty = [path.stem for path in produced if "<use" not in path.read_text(
+    encoding="utf-8", errors="replace") and "<text" not in path.read_text(
+    encoding="utf-8", errors="replace")]
+  if empty:
+    problems.append(f"{len(empty)} 张无字形（如 {empty[0]}）")
+  ok = not problems
+  detail = f"词典 {len(dictionary)} 条，英文图 {len(produced)}/{expected} 张" if ok else "；".join(problems)
+  return ok, detail
+
+
 def check_multirow_headers(
   parts: list[booktree.Part],
   md_texts: dict[str, str],
@@ -632,6 +677,11 @@ def verify(src_dir: Path, html_dir: Path, book_dir: Path) -> Report:
   if (work_dir / "tikz").is_dir():
     ok, detail = check_tikz_glyphs(work_dir, src_dir)
     report.add("TikZ 图保留文字", ok, detail)
+
+    ok, detail = check_english_figures(
+      work_dir / "tikz", src_dir.parent.parent / "_static" / "figures-en",
+      src_dir.parent.parent / "i18n" / "figures-en.json")
+    report.add("英文图集完整", ok, detail)
 
   parts = booktree.parse(book_dir / "book.tex")
   chapters = [chapter for part in parts for chapter in part.chapters]

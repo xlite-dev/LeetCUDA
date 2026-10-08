@@ -19,9 +19,12 @@ import os
 import re
 import subprocess
 import time
+import zlib
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from . import figtext
 
 #: 从 preamble 抽取的、与绘图相关的行。
 _PREAMBLE_KEEP = re.compile(r"^\s*\\(?:definecolor|usetikzlibrary|tikzset|setmonofont|setCJKmonofont)")
@@ -106,6 +109,45 @@ def collect(manifests: list, work_dir: Path, src_dir: Path) -> list[Snippet]:
       digest = hashlib.sha1(source.read_bytes()).hexdigest()
       snippets.append(Snippet(image.image_id, source, src_dir / image.dest, digest))
   return snippets
+
+
+def collect_translated(
+  snippets: list[Snippet],
+  work_dir: Path,
+  dest_dir: Path,
+  dictionary: dict[str, str],
+) -> tuple[list[Snippet], int, int]:
+  """按词典生成英文片段，并给出英文图集的编译任务。
+
+  只输出**全部文字都命中词典**的图：半中半英的图比原图更难读，未命中的图由前端回退
+  到中文原图（见 ``_static/translate.js`` 的换图逻辑）。产物写到站点 ``_static``
+  下的子目录——Sphinx 会整目录复制，浏览器直接可达，不必走 docutils 图片节点。
+
+  digest 取英文片段内容的哈希，所以词典一改、对应图自动重编。
+
+  :param snippets: 中文图集的任务列表。
+  :param work_dir: 临时目录（英文片段与编译缓存放它的 ``en`` 子目录，与中文分开）。
+  :param dest_dir: 英文图集输出目录。
+  :param dictionary: 掩码中文单元 → 掩码英文单元。
+  :returns: ``(英文片段列表, 命中单元数, 未命中单元数)``。
+  """
+  source_dir = work_dir / "snippets"
+  source_dir.mkdir(parents=True, exist_ok=True)
+  tasks: list[Snippet] = []
+  hit_total = miss_total = 0
+  for snippet in snippets:
+    text = snippet.source.read_text(encoding="utf-8")
+    english, hit, miss = figtext.translate_snippet(text, dictionary)
+    hit_total += hit
+    miss_total += miss
+    if hit == 0 or miss:
+      continue
+    target = source_dir / snippet.source.name
+    target.write_text(english, encoding="utf-8")
+    digest = hashlib.sha1(english.encode("utf-8")).hexdigest()
+    tasks.append(Snippet(snippet.image_id, target,
+                         dest_dir / f"{snippet.image_id}.svg", digest))
+  return tasks, hit_total, miss_total
 
 
 def load_report(work_dir: Path) -> Report:
@@ -339,14 +381,26 @@ def _compile_one(
   if code != 0 or not snippet.dest.is_file():
     return False, f"dvisvgm 失败：{_tail(log)}"
   # dvisvgm 偶尔「成功」却没写出任何字形（PDF 里有文字、SVG 里没有对应输出），
-  # 页面上的表现就是图里文字全丢。这里做一次交叉核对，把这种情况当失败处理。
+  # 页面上的表现就是图里文字全丢。这里做一次交叉核对；偶发失败允许重试一次
+  # （并行编译时曾出现读到未写完 SVG 的情况）。
   if _pdf_has_text(pdf) and not _svg_has_glyphs(snippet.dest):
-    return False, "SVG 缺少字形输出（PDF 有文字但 SVG 里没有 use/text）"
+    snippet.dest.unlink(missing_ok=True)
+    code, log = _run(
+      ["dvisvgm", "--pdf", *font_args(mode), "--no-styles", "-o", str(snippet.dest), pdf.name],
+      build_dir)
+    if code != 0 or not snippet.dest.is_file():
+      return False, f"dvisvgm 重试失败：{_tail(log)}"
+    if not _svg_has_glyphs(snippet.dest):
+      return False, "SVG 缺少字形输出（PDF 有文字但 SVG 里没有 use/text）"
   return True, ""
 
 
 def _pdf_has_text(pdf: Path) -> bool:
   """判断 PDF 里是否绘制了文字。
+
+  PDF 的文本算子一般在**被压缩的内容流**里，直接搜字节会漏判——漏判就会把「dvisvgm
+  只写出 2 KB 空壳」的失败当成成功（ch00/ch09 两张英文图曾如此，缓存还会把它锁死）。
+  这里把 ``stream…endstream`` 解压后再搜。
 
   :param pdf: 编译产物。
   :returns: 含文字绘制算子为 True。
@@ -355,7 +409,16 @@ def _pdf_has_text(pdf: Path) -> bool:
     raw = pdf.read_bytes()
   except OSError:
     return False
-  return b"Tj" in raw or b"TJ" in raw
+  if b"Tj" in raw or b"TJ" in raw:
+    return True
+  for match in re.finditer(rb"stream\r?\n(.*?)endstream", raw, re.S):
+    try:
+      data = zlib.decompress(match.group(1).rstrip(b"\r\n"))
+    except zlib.error:
+      continue
+    if b"Tj" in data or b"TJ" in data:
+      return True
+  return False
 
 
 def _svg_has_glyphs(svg: Path) -> bool:

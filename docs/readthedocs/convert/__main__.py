@@ -17,7 +17,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import booktree, labels, macros, postprocess, preprocess, tikz2svg
+from . import booktree, figtext, labels, macros, postprocess, preprocess, tikz2svg
 
 #: 站点首页标题与简介。
 BOOK_TITLE = "LeetCUDA：CUDA Kernel 优化之路"
@@ -109,6 +109,19 @@ def main(argv: list[str] | None = None) -> int:
     print(f"[2/4] TikZ：{len(snippets)} 个片段，新编 {len(tikz_report.ok)}，"
           f"缓存 {len(tikz_report.skipped)}，失败 {len(tikz_report.failed)}，"
           f"模式 {tikz_report.mode}，{tikz_report.seconds}s")
+    # 英文图集：有 i18n/figures-en.json 时编译第二套 SVG 到 _static/figures-en/，
+    # 英文模式下由前端换图（见 _static/translate.js）。
+    dictionary = figtext.load_dictionary(root / "i18n" / "figures-en.json")
+    if dictionary:
+      en_work = work_dir / "tikz-en"
+      en_tasks, hit, miss = tikz2svg.collect_translated(
+        snippets, en_work, root / "_static" / "figures-en", dictionary)
+      en_report = tikz2svg.build(
+        en_tasks, book_dir, en_work, force=args.force_tikz,
+        font_mode=args.tikz_fonts, jobs=args.jobs)
+      print(f"[2/4] 英文图集：{len(en_tasks)} 张（词典命中 {hit} 处、未命中 {miss} 处），"
+            f"新编 {len(en_report.ok)}，缓存 {len(en_report.skipped)}，"
+            f"失败 {len(en_report.failed)}，{en_report.seconds}s")
   stages["TikZ"] = round(time.monotonic() - stage, 1)
 
   stage = time.monotonic()
