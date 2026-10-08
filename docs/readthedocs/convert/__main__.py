@@ -17,7 +17,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import booktree, labels, postprocess, preprocess, tikz2svg
+from . import booktree, labels, macros, postprocess, preprocess, tikz2svg
 
 #: 站点首页标题与简介。
 BOOK_TITLE = "LeetCUDA：CUDA Kernel 优化之路"
@@ -77,6 +77,9 @@ def main(argv: list[str] | None = None) -> int:
   started = time.monotonic()
   parts = booktree.parse(book_dir / "book.tex")
   registry = labels.build(parts, book_dir)
+  # 书稿里的数学宏交给 MathJax（`\v{L}`、`\Z` 这类，不给定义会渲染错或报错）。
+  macro_count = len(macros.write(book_dir, root / "build" / "mathjax-macros.json"))
+  print(f"数学宏：{macro_count} 条 → build/mathjax-macros.json")
   chapters = [chapter for part in parts for chapter in part.chapters]
   selected = _select(chapters, args.only, args.max_chapters)
   print(f"章节：{len(chapters)} 篇，本次处理 {len(selected)} 篇；label 注册表 {len(registry.entries)} 条")

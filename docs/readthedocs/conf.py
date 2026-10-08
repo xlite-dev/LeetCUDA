@@ -5,6 +5,9 @@
 """
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 project = "LeetCUDA：CUDA Kernel 优化之路"
 author = "LeetCUDA Project"
 copyright = "LeetCUDA Project"
@@ -49,12 +52,22 @@ html_theme_options = {
 }
 
 mathjax_path = "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"
+
+# 书里定义了近 90 个数学宏（`\v` 是向量、`\Z` 是整数集、`\abs`/`\norm` 带参数…）。
+# 不给 MathJax 这些定义，`\v{L}` 会按内置重音命令渲染成 `Ľ`、`\Z` 直接报错。
+# 宏表由转换器从书稿 tex 里抽出（convert/macros.py），构建时生成该 JSON。
+_macro_file = Path(__file__).resolve().parent / "build" / "mathjax-macros.json"
+_math_macros = (
+  json.loads(_macro_file.read_text(encoding="utf-8")) if _macro_file.is_file() else {}
+)
+
 mathjax3_config = {
   "tex": {
     "tags": "ams",
     "inlineMath": [["\\(", "\\)"], ["$", "$"]],
     "displayMath": [["$$", "$$"], ["\\[", "\\]"]],
     "processEscapes": True,
+    "macros": _math_macros,
   },
   "options": {"enableMenu": False},
 }

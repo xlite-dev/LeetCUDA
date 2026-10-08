@@ -93,6 +93,10 @@ class _Renderer:
     body = _collapse_math_blank_lines(body)
     body = _normalize_display_math(body)
     body = _strip_raw_inline_html(body)
+    body, table_images = _htmlify_table_inlines(body)
+    hidden = _hidden_image_refs(table_images, body)
+    if hidden:
+      body = f"{body}\n\n{hidden}"
     body = _clean_heading_attributes(body)
     body = _escape_colon_fences(body)
     body = _degrade_leftovers(body)
@@ -836,6 +840,81 @@ def _normalize_display_math(md_text: str) -> str:
       continue
     out.append(line)
   return "\n".join(out)
+
+
+#: Markdown 行内链接（含可选 title）。
+_INLINE_LINK_RE = re.compile(r"\[([^\]\n]+)\]\(([^)\s]+)(?:\s+[\"“]([^\"”]*)[\"”])?\)")
+
+#: Markdown 行内图片（须先于链接处理，否则会被当成链接）。
+_INLINE_IMAGE_RE = re.compile(r"!\[([^\]\n]*)\]\(([^)\s]+)(?:\s+[\"“]([^\"”]*)[\"”])?\)")
+
+#: raw HTML 表格块。
+_HTML_TABLE_RE = re.compile(r"<table\b.*?</table>", re.S)
+
+
+def _htmlify_table_inlines(md_text: str) -> tuple[str, list[str]]:
+  """把 raw HTML 表格里的 Markdown 行内语法转成 HTML。
+
+  pandoc 直出的 ``<table>`` 由 MyST 原样透传，单元格里的 Markdown 不会被解析：
+  跨章引用（``[31](ch35-…#ch-35 "标题")``）、图片（``![插图](figures-gen/x.svg)``）、
+  强调都会漏成字面文本（ch37 的 FP8/FP4 对照表、ch19b 的视图对照表都中招）。
+
+  :param md_text: markdown 文本。
+  :returns: ``(处理后的文本, 表格里用到的图片源路径)``。
+  """
+  used_images: list[str] = []
+
+  def fix_table(match: re.Match[str]) -> str:
+    block = match.group(0)
+
+    def to_image(image: re.Match[str]) -> str:
+      alt, source = image.group(1), image.group(2)
+      used_images.append(source)
+      # Sphinx 只搬运 docutils 图片节点引用的文件，所以指向 _images 之余，
+      # 还要在页尾补一个隐藏的图片节点让 Sphinx 真去拷（见 _hidden_image_refs）。
+      name = source.rsplit("/", 1)[-1]
+      return (f'<img src="_images/{_escape_attr(name)}"'
+              f' alt="{_escape_attr(alt or _DEFAULT_ALT)}" style="max-width: 100%;">')
+
+    def to_anchor(link: re.Match[str]) -> str:
+      label, url, title = link.group(1), link.group(2), link.group(3) or ""
+      title_attr = f' title="{_escape_attr(title)}"' if title else ""
+      return f'<a href="{_escape_attr(url)}"{title_attr}>{label}</a>'
+
+    block = _INLINE_IMAGE_RE.sub(to_image, block)
+    block = _INLINE_LINK_RE.sub(to_anchor, block)
+    block = re.sub(r"\*\*([^*\n]+)\*\*", r"<strong>\1</strong>", block)
+    block = re.sub(r"(?<!\*)\*([^*\n]+)\*(?!\*)", r"<em>\1</em>", block)
+    return re.sub(r"`([^`\n]+)`", r"<code>\1</code>", block)
+
+  return _HTML_TABLE_RE.sub(fix_table, md_text), used_images
+
+
+def _hidden_image_refs(sources: list[str], already: str) -> str:
+  """为表格里的图片补隐藏的 docutils 图片节点。
+
+  raw HTML 里的 ``<img>`` 不会被 Sphinx 处理，它也就不会把图片拷进 ``_images``；
+  页面上就会出现 404。这里补一个隐藏的 ``{image}`` 指令，既是拷贝的来源，也不占版面。
+
+  :param sources: 表格里用到的图片源路径。
+  :param already: 已经渲染好的正文（用于跳过已引用过的图片）。
+  :returns: 追加的 markdown（无需要时为空串）。
+  """
+  pending = [source for source in dict.fromkeys(sources) if f"]({source}" not in already]
+  if not pending:
+    return ""
+  blocks = ["```{image} " + source + "\n:class: rtd-hidden-ref\n```" for source in pending]
+  return "\n\n".join(blocks)
+
+
+def _escape_attr(text: str) -> str:
+  """转义 HTML 属性值。
+
+  :param text: 原文。
+  :returns: 转义后的文本。
+  """
+  return (text.replace("&", "&amp;").replace('"', "&quot;")
+          .replace("<", "&lt;").replace(">", "&gt;"))
 
 
 def _escape_colon_fences(md_text: str) -> str:

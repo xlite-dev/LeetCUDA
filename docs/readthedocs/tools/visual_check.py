@@ -28,7 +28,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-#: 页面里不应出现的可见字面文本（排除代码块）。
+#: 页面里不应出现的可见字面文本（排除代码块、公式容器与隐藏元素）。
 ARTIFACT_PATTERNS = {
   "pandoc 原始 HTML 残迹": "{=html}",
   "pandoc 标题属性": "{#",
@@ -36,14 +36,22 @@ ARTIFACT_PATTERNS = {
   "字面 \\begin{": "\\begin{",
   "字面 \\ref{": "\\ref{",
   "字面 $$": "$$",
+  "未渲染的行内公式": "\\(",
+  "未渲染的显示公式": "\\[",
 }
 
-#: 检查可见字面文本时排除的标签（代码块里出现反斜杠是正常的）。
+#: 检查可见字面文本时排除的内容：代码块、脚本、MathJax 产物，以及 Sphinx 用来承载
+#: 公式原文的 ``.math`` 容器（那里的 ``\begin{…}`` 是 MathJax 的输入，不是可见文本）。
 VISIBLE_TEXT_JS = """
 () => {
-  const skip = new Set(['PRE', 'CODE', 'SCRIPT', 'STYLE', 'MJX-ASSISTIVE-MML']);
-  const skipTags = new Set(['MJX-CONTAINER', 'MJX-MATH', 'MJX-MERROR']);
+  const skipTags = new Set(['PRE', 'CODE', 'SCRIPT', 'STYLE', 'MJX-CONTAINER', 'MJX-MATH',
+                            'MJX-MERROR', 'MJX-ASSISTIVE-MML']);
   const parts = [];
+  const hidden = (element) => {
+    if (!element.offsetParent && element.tagName !== 'BODY') return true;
+    const style = window.getComputedStyle(element);
+    return style.display === 'none' || style.visibility === 'hidden';
+  };
   const walk = (node) => {
     for (const child of node.childNodes) {
       if (child.nodeType === Node.TEXT_NODE) {
@@ -52,7 +60,9 @@ VISIBLE_TEXT_JS = """
       }
       if (child.nodeType !== Node.ELEMENT_NODE) continue;
       const tag = child.tagName.toUpperCase();
-      if (skip.has(tag) || skipTags.has(tag)) continue;
+      if (skipTags.has(tag)) continue;
+      if (child.classList && (child.classList.contains('math') || child.classList.contains('MathJax'))) continue;
+      if (hidden(child)) continue;
       walk(child);
     }
   };
@@ -84,6 +94,8 @@ class PageReport:
   :param math_errors: MathJax 报错原文。
   :param artifacts: 命中的字面残迹 → 出现次数。
   :param console_errors: 控制台 error 文本。
+  :param failed_requests: 加载失败的资源。
+  :param mathjax_loaded: 页面是否加载到 MathJax。
   :param screenshot: 截图路径。
   :param seconds: 该页耗时。
   """
@@ -93,6 +105,8 @@ class PageReport:
   math_errors: list[str] = field(default_factory=list)
   artifacts: dict[str, int] = field(default_factory=dict)
   console_errors: list[str] = field(default_factory=list)
+  failed_requests: list[str] = field(default_factory=list)
+  mathjax_loaded: bool = True
   screenshot: str = ""
   seconds: float = 0.0
 
@@ -100,7 +114,11 @@ class PageReport:
   def ok(self) -> bool:
     """是否通过。
 
-    :returns: 无公式错误、无残迹、无控制台报错为 True。
+    判据是「页面上没有可见的未渲染数学、没有公式报错、没有字面残迹」——而不是
+    「MathJax 是否加载」：侧栏含数学时，没有自身公式的页面（``search`` 等）也不会
+    加载 MathJax，那是 Sphinx 的正常行为。
+
+    :returns: 全部通过为 True。
     """
     return not self.math_errors and not self.artifacts and not self.console_errors
 
@@ -126,6 +144,7 @@ def check_pages(
   width: int = 1400,
   only: list[str] | None = None,
   timeout_ms: int = 30000,
+  proxy: str = "",
 ) -> list[PageReport]:
   """逐页渲染、截图并抓取证据。
 
@@ -134,6 +153,7 @@ def check_pages(
   :param width: 视口宽度。
   :param only: 只检查这些页面（不含扩展名），None 表示全部。
   :param timeout_ms: 单页渲染超时。
+  :param proxy: 代理地址（MathJax 走 CDN，需要能出网；本地服务自动绕过）。
   :returns: 每页结果。
   """
   from playwright.sync_api import sync_playwright
@@ -143,23 +163,35 @@ def check_pages(
   if only:
     pages = [path for path in pages if path.stem in set(only)]
 
+  launch_args = ["--no-sandbox"]
+  if proxy:
+    launch_args.extend([f"--proxy-server={proxy}", "--proxy-bypass-list=127.0.0.1;localhost"])
+
   base, httpd = serve(html_dir)
   reports: list[PageReport] = []
   try:
     with sync_playwright() as playwright:
-      browser = playwright.chromium.launch(args=["--no-sandbox"])
+      browser = playwright.chromium.launch(args=launch_args)
       context = browser.new_context(viewport={"width": width, "height": 1000})
       for path in pages:
         page = context.new_page()
         console_errors: list[str] = []
+        failed_requests: list[str] = []
         page.on("console", lambda msg: console_errors.append(msg.text) if msg.type == "error" else None)
         page.on("pageerror", lambda exc: console_errors.append(str(exc)))
+        page.on("requestfailed",
+                lambda request: failed_requests.append(f"{request.url} {request.failure}"))
         started = time.monotonic()
         page.goto(f"{base}/{path.name}", wait_until="load", timeout=timeout_ms)
-        page.wait_for_function(
-          "() => !window.MathJax || (window.MathJax.startup && window.MathJax.startup.document"
-          " && window.MathJax.startup.document.state() >= 10)", timeout=timeout_ms)
-        page.wait_for_timeout(150)
+        # 页面本身没有公式时 Sphinx 不会加载 MathJax，这不算问题。
+        needs_math = page.evaluate("() => !!document.querySelector('.math')")
+        mathjax_loaded = page.evaluate("() => !!window.MathJax") or not needs_math
+        if page.evaluate("() => !!window.MathJax"):
+          try:
+            page.evaluate("() => MathJax.startup.promise")
+          except Exception:  # MathJax 报错时 promise 不会 resolve，这里不该中断验收
+            pass
+        page.wait_for_timeout(200)
         state = page.evaluate(MATH_STATE_JS)
         text = page.evaluate(VISIBLE_TEXT_JS)
         shot = out_dir / f"{path.stem}.png"
@@ -172,13 +204,17 @@ def check_pages(
           artifacts={name: text.count(token) for name, token in ARTIFACT_PATTERNS.items()
                      if text.count(token)},
           console_errors=[error for error in console_errors if "favicon" not in error][:5],
+          failed_requests=[item for item in failed_requests if "favicon" not in item][:5],
+          mathjax_loaded=mathjax_loaded,
           screenshot=str(shot),
           seconds=round(time.monotonic() - started, 1),
         )
         reports.append(report)
         mark = "OK  " if report.ok else "FAIL"
-        print(f"[{mark}] {report.name}: 公式 {report.math_containers}（显示 {report.math_display}）"
-              f"，公式错误 {len(report.math_errors)}，残迹 {report.artifacts}，{report.seconds}s")
+        print(f"[{mark}] {report.name}: MathJax={report.mathjax_loaded} "
+              f"公式 {report.math_containers}（显示 {report.math_display}），"
+              f"公式错误 {len(report.math_errors)}，残迹 {report.artifacts}，"
+              f"资源失败 {len(report.failed_requests)}，{report.seconds}s")
         page.close()
       browser.close()
   finally:
@@ -194,6 +230,7 @@ def contact_sheet(screenshots: list[Path], target: Path, columns: int = 3, scale
   """把多张整页截图拼成一张接触表（便于逐页肉眼核对）。
 
   :param screenshots: 截图路径。
+
   :param target: 输出图片。
   :param columns: 每行几张。
   :param scale: 缩放比例。
@@ -235,10 +272,12 @@ def main() -> int:
   parser.add_argument("--width", type=int, default=1400, help="视口宽度")
   parser.add_argument("--sheet", default="", help="把截图拼成接触表并保存到该路径")
   parser.add_argument("--sheet-columns", type=int, default=3, help="接触表列数")
+  parser.add_argument("--proxy", default="", help="代理地址，例如 http://127.0.0.1:7890")
   args = parser.parse_args()
 
   only = [item.strip() for item in args.only.split(",") if item.strip()]
-  reports = check_pages(Path(args.html).resolve(), Path(args.out).resolve(), args.width, only)
+  reports = check_pages(Path(args.html).resolve(), Path(args.out).resolve(), args.width, only,
+                        proxy=args.proxy)
   failed = [report for report in reports if not report.ok]
   print(f"\n合计 {len(reports)} 页，需处理 {len(failed)} 页：{[report.name for report in failed]}")
 

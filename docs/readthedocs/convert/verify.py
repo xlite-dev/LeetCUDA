@@ -274,6 +274,75 @@ def check_tikz_glyphs(work_dir: Path, src_dir: Path) -> tuple[bool, str]:
   return ok, detail
 
 
+#: ``\text{…$…$…}``：数学区里嵌套 ``$``，MyST 会把它切成两个数学节点。
+_NESTED_MATH_RE = re.compile(
+  r"\\(?:text|textrm|textbf|textit|texttt|textsf|textnormal)\{[^{}]*\$")
+
+
+def check_nested_math(md_texts: dict[str, str]) -> tuple[bool, str]:
+  """检查公式里没有嵌套的 ``$``。
+
+  :param md_texts: 页面名 → markdown。
+  :returns: ``(是否通过, 说明)``。
+  """
+  problems: list[str] = []
+  for name, text in md_texts.items():
+    lines = text.split("\n")
+    flags = postprocess.code_fence_flags(lines)
+    clean = "\n".join("" if flag else line for line, flag in zip(lines, flags))
+    match = _NESTED_MATH_RE.search(clean)
+    if match is not None:
+      problems.append(f"{name}: {match.group(0)[:40]}")
+  ok = not problems
+  return ok, f"{len(problems)} 页命中，例如 {problems[0]}" if problems else ""
+
+
+#: raw HTML 表格块（MyST 原样透传，里面的 Markdown 不会被解析）。
+_HTML_TABLE_BLOCK_RE = re.compile(r"<table\b.*?</table>", re.S)
+
+
+def check_table_inline_markdown(md_texts: dict[str, str]) -> tuple[bool, str]:
+  """检查 raw HTML 表格里没有残留 Markdown 行内语法。
+
+  :param md_texts: 页面名 → markdown。
+  :returns: ``(是否通过, 说明)``。
+  """
+  problems: list[str] = []
+  for name, text in md_texts.items():
+    for block in _HTML_TABLE_BLOCK_RE.finditer(text):
+      hit = re.search(r"\]\(|\*\*|(?<!\*)\*[^*\n]+\*(?!\*)", block.group(0))
+      if hit is not None:
+        problems.append(f"{name}: {hit.group(0)[:30]}")
+        break
+  ok = not problems
+  return ok, f"{len(problems)} 页命中，例如 {problems[0]}" if problems else ""
+
+
+#: 页面里的图片引用。
+_IMAGE_SRC_RE = re.compile(r'src="\.?/?((?:_images|figures-gen)/[^"]+)"')
+
+
+def check_images_present(html_dir: Path) -> tuple[bool, str]:
+  """检查页面引用的图片文件确实存在。
+
+  raw HTML 里的 ``<img>`` 不会被 Sphinx 搬运，少了隐藏引用就会 404（表格里的图曾如此）。
+
+  :param html_dir: Sphinx 输出目录。
+  :returns: ``(是否通过, 说明)``。
+  """
+  problems: list[str] = []
+  checked = 0
+  for path in sorted(html_dir.glob("*.html")):
+    text = path.read_text(encoding="utf-8", errors="replace")
+    for match in _IMAGE_SRC_RE.finditer(text):
+      checked += 1
+      if not (html_dir / match.group(1)).is_file():
+        problems.append(f"{path.stem}: {match.group(1)}")
+  ok = not problems
+  return ok, (f"共 {checked} 张图" if ok
+              else f"{len(problems)} 张缺失，例如 {problems[0]}")
+
+
 def count_source_tables(parts: list[booktree.Part]) -> int:
   """统计原书闭包内的表格环境数量（每个文件只统计一次）。
 
@@ -407,9 +476,18 @@ def verify(src_dir: Path, html_dir: Path, book_dir: Path) -> Report:
   ok, detail = check_table_cells(texts)
   report.add("表格单元格无 LaTeX 残渣", ok, detail)
 
+  ok, detail = check_nested_math(texts)
+  report.add("公式内无嵌套 $", ok, detail)
+
+  ok, detail = check_table_inline_markdown(texts)
+  report.add("HTML 表格内无 Markdown 残留", ok, detail)
+
   if html_dir.is_dir():
     ok, detail = check_table_counts_per_chapter(booktree.parse(book_dir / "book.tex"), html_dir)
     report.add("逐章表格数不缺", ok, detail)
+
+    ok, detail = check_images_present(html_dir)
+    report.add("页面图片均存在", ok, detail)
 
   work_dir = src_dir.parent / "tmp"
   if (work_dir / "tikz").is_dir():

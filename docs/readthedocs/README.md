@@ -56,9 +56,25 @@ python -m convert.verify --src build/src --html build/html
 | 显示公式定界符配对 | 每个行首 `$$` 都是公式区间的端点 |
 | 显示公式未被拆成字面 `$` | 页面里不出现「孤立 `$` + 行内公式」 |
 | 表格单元格无 LaTeX 残渣 | 格子里不漏 `\cmidrule(lr){2-3}` 这类命令 |
+| 公式内无嵌套 `$` | `\text{…$…$…}` 会让 MyST 把公式切成两段 |
+| HTML 表格内无 Markdown 残留 | raw HTML 表格里不残留 `[](…)` / `**…**` / `![…](…)` |
 | 逐章表格数不缺 | 按章比对原书表格环境数与页面 `<table>` 数（总数阈值会漏单张表） |
+| 页面图片均存在 | 页面引用的 `_images/…` 文件都在（raw HTML 图片需补隐藏引用） |
 | TikZ 图保留文字 | 有文字的片段必须真的输出字形（防陈旧/残缺 SVG 留在页面上） |
 | 书目录编号核对 | 本地有 `book.toc` 时，逐章比对书目录真值（章号 + 标题） |
+
+以上是文件层面的检查，不依赖浏览器。要确认真实渲染效果（MathJax 是否报错、页面上
+有没有漏出的字面文本、图片有没有 404），再跑一次浏览器验收：
+
+```bash
+pip install playwright && python -m playwright install chromium   # 一次性
+python -m tools.visual_check --html build/html --out build/shots/chapters \
+    --proxy http://127.0.0.1:7890          # 无代理时省略 --proxy
+```
+
+它逐页打开、等 MathJax 渲染完，然后统计：公式报错（`mjx-merror` 的 TeX 报错原文）、
+可见的字面残迹（排除代码块与公式容器）、控制台报错、404 资源，并整页截图留档。
+`--sheet build/shots/sheet.png` 可把截图拼成接触表，便于肉眼过一遍排版。
 
 ## 目录
 
@@ -118,6 +134,15 @@ TikZ 独立成链：每个片段套 standalone 文档编译成 PDF，再让 dvis
 仓库根与 `docs/` 两级 `.gitignore` 都有 `*.txt`、`*.tex`、`build*` 规则，会静默吞掉
 本目录的 `requirements.txt` 与 `build.sh`。`docs/readthedocs/.gitignore` 里用
 `!requirements.txt`、`!build.sh` 逐条解禁，改动后建议 `git check-ignore -v` 复核。
+
+## 书内数学宏
+
+书稿里定义了近 90 个数学宏（`\v` 是向量、`\Z` 是整数集、`\abs`/`\norm` 带参数…）。
+不给定义的话，MathJax 会把 `\v{L}` 按内置重音命令渲染成 `Ľ`、`\Z` 直接报错。
+
+转换时从书稿 tex 抽出宏表（`convert/macros.py`）写到 `build/mathjax-macros.json`，
+`conf.py` 再把它塞进 `mathjax3_config["tex"]["macros"]`。图里用的 TikZ 尺寸/颜色参数
+会被过滤掉，免得遮蔽数学符号。
 
 ## 已知边界
 

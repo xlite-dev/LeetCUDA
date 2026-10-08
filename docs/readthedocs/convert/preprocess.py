@@ -301,6 +301,7 @@ def normalize(
   text = _isolate_display_brackets(text)
   text = _expand_math_columns(text)
   text = _unwrap_shortstack(text)
+  text = _fix_nested_math(text)
   text = _lift_math_labels(text, builder)
   text = _tokenize_refs(text, builder)
   text = _normalize_math_primitives(text)
@@ -1213,6 +1214,54 @@ def _unwrap_shortstack(text: str) -> str:
   return "".join(out)
 
 
+#: 文本命令族（``\text{...}`` 里可以嵌行内数学）。
+_TEXT_COMMAND_RE = re.compile(r"\\(?:text|textrm|textbf|textit|texttt|textsf|textnormal)\b")
+
+#: ``\text{\color{red}$X$}``：文本里只有颜色命令 + 纯数学。
+_TEXT_COLOR_MATH_RE = re.compile(
+  r"\\(?:text|textrm|textbf|textit|texttt|textsf|textnormal)\s*\{\s*"
+  r"\\(?:color|textcolor)\s*\{([^{}]*)\}\s*"
+  r"((?:\$[^$]*\$)+)\s*\}")
+
+
+def _fix_nested_math(text: str) -> str:
+  """把数学区 ``\\text{…$…$…}`` 里的 ``$`` 换成 ``\\(…\\)``。
+
+  MyST 的行内公式解析不认嵌套 ``$``：``$\\text{a $\\times$ b}$`` 会被切成两个数学
+  节点（其中一个是残缺的 ``\\text{a``），MathJax 报 "Extra close brace or missing
+  open brace"，页面上那段公式就废了（wp0 的形状/步幅表、5 处 ``\\text{…$…$…}``）。
+  实测 ``\\(…\\)`` 在 ``\\text{}`` 里 MathJax 能正确渲染（``a × b``），而 ``\\$``
+  会把美元符号显示出来，所以选前者。
+
+  :param text: 章节 tex。
+  :returns: 处理后的文本。
+  """
+  # 先处理 ``\text{\color{red}$X$}``：它在表格单元格里（raw HTML 由 MathJax 自己扫
+  # 文本）会因为 ``$`` 与 ``\(`` 混用而断掉，``\color{red}`` 会原样显示。改写成
+  # ``\textcolor{red}{X}`` 后与 MathJax 的匹配方式无关，渲染结果相同。
+  text = _TEXT_COLOR_MATH_RE.sub(
+    lambda match: "\\textcolor{" + match.group(1) + "}{"
+    + match.group(2).replace("$", "") + "}", text)
+
+  edits: list[tuple[int, int, str]] = []
+  # 不限定在数学区间内扫描：内层 ``$`` 本身就会把区间切断（``math_spans`` 认不出），
+  # 那样 ``read_group`` 会越界失败、修不掉。这里直接按 ``\text{…}`` 分组处理。
+  for match in _TEXT_COMMAND_RE.finditer(text):
+    cursor = match.end()
+    while cursor < len(text) and text[cursor] in " \t\n":
+      cursor += 1
+    if cursor >= len(text) or text[cursor] != "{":
+      continue
+    try:
+      inner, inner_end = read_group(text, cursor)
+    except ValueError:
+      continue
+    fixed = re.sub(r"\$(.+?)\$", r"\\(\1\\)", inner, flags=re.S)
+    if fixed != inner:
+      edits.append((cursor + 1, inner_end - 1, fixed))
+  return _apply_edits(text, edits)
+
+
 def _lift_math_labels(text: str, builder: _Builder) -> str:
   """把数学环境内的 ``\\label`` 提到环境外（否则会污染公式）。
 
@@ -1445,13 +1494,15 @@ def to_markdown(norm_tex: Path, out_md: Path, pandoc: str, top_level: str = "cha
   :raises RuntimeError: pandoc 退出码非 0。
   """
   out_md.parent.mkdir(parents=True, exist_ok=True)
-  # 只保留 pipe 表：MyST 不认识 pandoc 的 grid/simple/multiline 表，留着会在页面上
-  # 变成一堆 `+---+` 文本。关掉这三种后 pandoc 会把表格降级为 pipe 表（单元格内的
-  # 换行折成空格）。
+  # 四种 Markdown 表格全关，让 pandoc 直出 HTML ``<table>``：
+  # 1. MyST 不认 grid/simple/multiline 表，留着会变成一堆 ``+---+`` 文本；
+  # 2. pipe 表会被 Markdown 吃掉反斜杠——单元格里的 ``\begin{bmatrix}a \\ b\end{bmatrix}``
+  #    渲染出来只剩一个 ``\``，公式直接废掉（wp2 的线性形式表就是这样）；
+  # 3. HTML 表原样透传，``\\`` 与 ``\multicolumn`` 都能保住，样式由 custom.css 补。
   command = [
     pandoc,
     "-f", "latex",
-    "-t", "markdown-grid_tables-multiline_tables-simple_tables",
+    "-t", "markdown-grid_tables-multiline_tables-simple_tables-pipe_tables",
     "--wrap=none",
     "--markdown-headings=atx",
     f"--top-level-division={top_level}",
