@@ -302,6 +302,7 @@ def normalize(
   text = _expand_math_columns(text)
   text = _unwrap_shortstack(text)
   text = _fix_nested_math(text)
+  text = _flatten_text_commands(text)
   text = _lift_math_labels(text, builder)
   text = _tokenize_refs(text, builder)
   text = _normalize_math_primitives(text)
@@ -1323,6 +1324,71 @@ def _fix_nested_math(text: str) -> str:
     if fixed != inner:
       edits.append((cursor + 1, inner_end - 1, fixed))
   return _apply_edits(text, edits)
+
+
+#: 同族文本命令：嵌套写法在 LaTeX 里是幂等的，pandoc 却会输出 ``**A**B****``。
+_NESTED_TEXT_COMMANDS = ("textbf", "textit", "emph", "texttt", "textrm", "textsf", "textsc")
+
+
+def _flatten_text_commands(text: str) -> str:
+  """把 ``\\textbf{A\\textbf{B}}`` 压平成 ``\\textbf{AB}``。
+
+  pandoc 遇到嵌套的同族命令会输出 ``**A**B****``——``****`` 是空强调对，CommonMark
+  解析不了，页面上就漏出字面 ``**``（ch37 的「逐位一致」一句）。LaTeX 里内层包装是
+  幂等的，去掉不改变渲染。
+
+  :param text: 章节 tex。
+  :returns: 处理后的文本。
+  """
+  while True:
+    edits: list[tuple[int, int, str]] = []
+    for name in _NESTED_TEXT_COMMANDS:
+      pattern = re.compile(r"\\" + name + r"(?![a-zA-Z])")
+      for match in pattern.finditer(text):
+        cursor = match.end()
+        while cursor < len(text) and text[cursor] in " \t\n":
+          cursor += 1
+        if cursor >= len(text) or text[cursor] != "{":
+          continue
+        try:
+          body, end = read_group(text, cursor)
+        except ValueError:
+          continue
+        if not pattern.search(body):
+          continue
+        if any(start <= match.start() and end <= stop for start, stop, _text in edits):
+          continue
+        edits.append((cursor + 1, end - 1, _strip_command(body, pattern)))
+    if not edits:
+      return text
+    text = _apply_edits(text, edits)
+
+
+def _strip_command(body: str, pattern: re.Pattern[str]) -> str:
+  """删掉内容里所有该命令的包装（保留内容）。
+
+  :param body: 命令内容。
+  :param pattern: 命令正则。
+  :returns: 处理后的内容。
+  """
+  while True:
+    edits: list[tuple[int, int, str]] = []
+    for match in pattern.finditer(body):
+      cursor = match.end()
+      while cursor < len(body) and body[cursor] in " \t\n":
+        cursor += 1
+      if cursor >= len(body) or body[cursor] != "{":
+        continue
+      try:
+        _inner, end = read_group(body, cursor)
+      except ValueError:
+        continue
+      if any(start <= match.start() and end <= stop for start, stop, _text in edits):
+        continue
+      edits.append((match.start(), end, body[cursor + 1:end - 1]))
+    if not edits:
+      return body
+    body = _apply_edits(body, edits)
 
 
 def _lift_math_labels(text: str, builder: _Builder) -> str:

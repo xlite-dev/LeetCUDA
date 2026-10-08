@@ -386,6 +386,34 @@ def check_multirow_headers(
   return ok, detail
 
 
+def check_emphasis_flanking(md_texts: dict[str, str]) -> tuple[bool, str]:
+  """检查正文里没有「配不上对的强调标记」。
+
+  CommonMark 的 flanking 规则在中英混排 + 标点相邻时拒绝配对（``**…。**见``），标记
+  会原样漏到页面上。转换器已把这类对改成 HTML 强调，这里核对是否清干净了。
+
+  :param md_texts: 页面名 → markdown。
+  :returns: ``(是否通过, 说明)``。
+  """
+  problems: list[str] = []
+  total = 0
+  for name, text in md_texts.items():
+    masked = postprocess._mask_protected(text)
+    for pattern, _tag in ((postprocess._STRONG_PAIR_RE, "strong"),
+                          (postprocess._EM_PAIR_RE, "em")):
+      for match in pattern.finditer(masked):
+        content = text[match.start(1):match.end(1)]
+        before = text[match.start() - 1] if match.start() > 0 else ""
+        after = text[match.end()] if match.end() < len(masked) else ""
+        total += 1
+        if not postprocess._can_emphasize(before, after, content):
+          problems.append(f"{name}: {content[:30]}")
+  ok = not problems
+  detail = (f"核对 {total} 对强调" if ok
+            else f"{len(problems)} 对配不上，例如 {problems[0]}")
+  return ok, detail
+
+
 def count_source_tables(parts: list[booktree.Part]) -> int:
   """统计原书闭包内的表格环境数量（每个文件只统计一次）。
 
@@ -521,6 +549,9 @@ def verify(src_dir: Path, html_dir: Path, book_dir: Path) -> Report:
 
   ok, detail = check_nested_math(texts)
   report.add("公式内无嵌套 $", ok, detail)
+
+  ok, detail = check_emphasis_flanking(texts)
+  report.add("强调标记成对（flanking）", ok, detail)
 
   ok, detail = check_table_inline_markdown(texts)
   report.add("HTML 表格内无 Markdown 残留", ok, detail)

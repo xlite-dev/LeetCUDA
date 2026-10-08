@@ -10,11 +10,13 @@ Sphinx 原样写进 HTML 输出，链接目标确定，也不与文档标题的�
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import tokens
 from .booktree import Chapter, Part
+from .texutil import math_spans
 from .labels import Registry, chapter_number_prefix, format_number, sanitize
 from .preprocess import ADMON_KINDS, Manifest
 
@@ -100,6 +102,7 @@ class _Renderer:
     body = _clean_heading_attributes(body)
     body = _escape_colon_fences(body)
     body = _degrade_leftovers(body)
+    body = _fix_emphasis_flanking(body)
     body = self._prefix_title(body)
     body = self._append_footer(body)
     return RenderResult(
@@ -973,6 +976,155 @@ def _cell_to_header(row: str) -> str:
   :returns: 替换后的行。
   """
   return row.replace("<td", "<th").replace("</td>", "</th>")
+
+
+def _protected_mask(md_text: str) -> bytearray:
+  """标出「受保护」的字符位置：代码围栏、行内代码、公式。
+
+  这些位置里的 ``*`` 是字面字符（C 指针、通配符、数学乘法），强调相关的改写不能碰。
+  返回等长位掩码而不是区间：正文很长（ch19b 单章 100 多处公式），逐字符线性找区间
+  会让渲染慢好几倍。
+
+  公式判定复用 :func:`texutil.math_spans`——「什么算公式」必须与其它模块一致：
+  自己数 ``$$`` 会把相邻行内公式（``$a$$b$``）当成显示公式定界符，配对一错位就会
+  撑出几千字的保护区间，把后面的正文整段盖住。
+
+  :param md_text: markdown 文本。
+  :returns: 与文本等长的掩码（1 = 受保护）。
+  """
+  length = len(md_text)
+  mask = bytearray(length)
+  lines = md_text.split("\n")
+  flags = code_fence_flags(lines)
+  offset = 0
+  fence_ranges: list[tuple[int, int]] = []
+  for line, is_code in zip(lines, flags):
+    if is_code:
+      mask[offset:offset + len(line)] = b"\x01" * len(line)
+      fence_ranges.append((offset, offset + len(line)))
+    offset += len(line) + 1
+
+  def overlaps_fence(start: int, end: int) -> bool:
+    return any(not (end <= fence_start or start >= fence_end)
+               for fence_start, fence_end in fence_ranges)
+
+  for start, end in math_spans(md_text):
+    if end > length or overlaps_fence(start, end):
+      continue
+    for position in range(start, end):
+      mask[position] = 1
+
+  index = 0
+  while index < length:
+    if mask[index] or md_text[index] != "`":
+      index += 1
+      continue
+    stop = md_text.find("`", index + 1)
+    if stop == -1 or "\n" in md_text[index:stop]:
+      index += 1
+      continue
+    for position in range(index, stop + 1):
+      mask[position] = 1
+    index = stop + 1
+  return mask
+
+
+#: 掩码字符：等长替换代码/公式后用来扫描强调，不在正文里出现。
+_MASK_CHAR = "\ue000"
+
+#: 成对的强调标记（内容不含 ``*``，避免误碰嵌套写法）。
+_STRONG_PAIR_RE = re.compile(r"\*\*(?=\S)([^*\n]+?)\*\*")
+_EM_PAIR_RE = re.compile(r"(?<!\*)\*(?=\S)([^*\n]+?)\*(?!\*)")
+
+
+def _mask_protected(md_text: str) -> str:
+  """把代码与公式等长替换成掩码字符。
+
+  等长是关键：偏移不变，强调对可以照常跨过行内公式（``**坑一：$N$ 传错**``），
+  而掩码里没有 ``*``，所以代码/公式里的 ``*`` 不会被误配对。
+
+  :param md_text: markdown 文本。
+  :returns: 掩码后的文本（与原文等长）。
+  """
+  mask = _protected_mask(md_text)
+  if not any(mask):
+    return md_text
+  chars = list(md_text)
+  for index, flag in enumerate(mask):
+    if flag and chars[index] != "\n":
+      chars[index] = _MASK_CHAR
+  return "".join(chars)
+
+
+def _is_space(char: str) -> bool:
+  """是否为空白（或不存在）。
+
+  :param char: 单个字符（可为空串）。
+  :returns: 空白或空串为 True。
+  """
+  return char == "" or char.isspace()
+
+
+def _is_punct(char: str) -> bool:
+  """是否为 Unicode 标点或符号（CommonMark 的 punctuation 口径）。
+
+  :param char: 单个字符（可为空串）。
+  :returns: 标点/符号为 True。
+  """
+  return char != "" and unicodedata.category(char)[0] in ("P", "S")
+
+
+def _fix_emphasis_flanking(md_text: str) -> str:
+  """把「按 CommonMark 规则配不上对」的强调改成 HTML。
+
+  中英混排 + 标点相邻时，``**`` 的 flanking 判定会拒绝配对，标记就原样漏到页面上：
+
+  - ``**坑一：…输出。**见 4.6 节…``：闭合 ``**`` 前面是 ``。``（标点）、后面是 ``见``
+    （非空白非标点），不算 right-flanking，配不上 → 页面上显示字面 ``**``；
+  - ``中**（强调）**``：开启 ``**`` 前面是汉字、后面是 ``（``，不算 left-flanking。
+
+  实测全站强强调 2854 处里有 900 处属于这两类。这里只改这些配不上的对（改成
+  ``<strong>`` / ``<em>``，与字符集无关），配得上的保持 Markdown 原样——页脚那种
+  「``*…链接…*``」的写法因此不受影响（HTML 里再嵌 Markdown 链接不会被解析）。
+
+  :param md_text: markdown 文本。
+  :returns: 处理后的文本。
+  """
+
+  masked = _mask_protected(md_text)
+  edits: list[tuple[int, int, str]] = []
+  for pattern, tag in ((_STRONG_PAIR_RE, "strong"), (_EM_PAIR_RE, "em")):
+    for match in pattern.finditer(masked):
+      if any(start <= match.start() and match.end() <= end for start, end, _text in edits):
+        continue  # 已被外层强调改写（如 **a *b* c**）
+      # 判定用原文（掩码只负责找出候选对）：CommonMark 看到的是真实字符，
+      # 公式的 ``$`` 属于标点，会影响 flanking 结论。
+      content = md_text[match.start(1):match.end(1)]
+      before = md_text[match.start() - 1] if match.start() > 0 else ""
+      after = md_text[match.end()] if match.end() < len(masked) else ""
+      if _can_emphasize(before, after, content):
+        continue
+      edits.append((match.start(), match.end(), f"<{tag}>{content}</{tag}>"))
+  for start, end, replacement in sorted(edits, reverse=True):
+    md_text = md_text[:start] + replacement + md_text[end:]
+  return md_text
+
+
+def _can_emphasize(before: str, after: str, content: str) -> bool:
+  """判断这对强调标记按 CommonMark 规则能否配对。
+
+  :param before: 开启标记前的字符。
+  :param after: 闭合标记后的字符。
+  :param content: 强调内容。
+  :returns: 能配对为 True。
+  """
+  if not content or _is_space(content[0]) or _is_space(content[-1]):
+    return False
+  left_flanking = not (  # 开启标记：不能「后面是标点、前面既非空白也非标点」
+    _is_punct(content[0]) and not (_is_space(before) or _is_punct(before)))
+  right_flanking = not (  # 闭合标记：不能「前面是标点、后面既非空白也非标点」
+    _is_punct(content[-1]) and not (_is_space(after) or _is_punct(after)))
+  return left_flanking and right_flanking
 
 
 def _escape_colon_fences(md_text: str) -> str:
