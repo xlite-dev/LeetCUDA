@@ -83,6 +83,34 @@ MATH_STATE_JS = """
 }
 """
 
+#: 版式几何：图片与表格是否居中、有没有元素撑出正文栏（见 README「版式」一节）。
+LAYOUT_JS = """
+() => {
+  const content = document.querySelector('.rst-content .section')
+    || document.querySelector('.rst-content');
+  if (!content) return null;
+  const column = content.getBoundingClientRect();
+  const offCenter = (rect) => Math.abs((rect.left - column.left) - (column.right - rect.right)) > 3;
+  const out = {tables: 0, tables_off_center: 0, figures: 0, figures_off_center: 0,
+               wide_math: 0, math_escaped: 0, page_overflow: 0};
+  for (const table of content.querySelectorAll('table')) {
+    const rect = table.getBoundingClientRect();
+    out.tables += 1;
+    if (rect.width <= column.width + 1 && offCenter(rect)) out.tables_off_center += 1;
+  }
+  for (const img of content.querySelectorAll('p > img:only-child')) {
+    out.figures += 1;
+    if (offCenter(img.getBoundingClientRect())) out.figures_off_center += 1;
+  }
+  for (const node of content.querySelectorAll('mjx-container[display="true"]')) {
+    if (node.scrollWidth > node.clientWidth + 2) out.wide_math += 1;
+    if (node.getBoundingClientRect().right > column.right + 2) out.math_escaped += 1;
+  }
+  if (document.documentElement.scrollWidth > window.innerWidth + 2) out.page_overflow = 1;
+  return out;
+}
+"""
+
 
 @dataclass
 class PageReport:
@@ -107,6 +135,7 @@ class PageReport:
   console_errors: list[str] = field(default_factory=list)
   failed_requests: list[str] = field(default_factory=list)
   mathjax_loaded: bool = True
+  layout: dict[str, int] = field(default_factory=dict)
   screenshot: str = ""
   seconds: float = 0.0
 
@@ -114,13 +143,16 @@ class PageReport:
   def ok(self) -> bool:
     """是否通过。
 
-    判据是「页面上没有可见的未渲染数学、没有公式报错、没有字面残迹」——而不是
-    「MathJax 是否加载」：侧栏含数学时，没有自身公式的页面（``search`` 等）也不会
-    加载 MathJax，那是 Sphinx 的正常行为。
+    判据是「页面上没有可见的未渲染数学、没有公式报错、没有字面残迹、版式没有跑偏」
+    ——而不是「MathJax 是否加载」：侧栏含数学时，没有自身公式的页面（``search`` 等）
+    也不会加载 MathJax，那是 Sphinx 的正常行为。
 
     :returns: 全部通过为 True。
     """
-    return not self.math_errors and not self.artifacts and not self.console_errors
+    if self.math_errors or self.artifacts or self.console_errors:
+      return False
+    return not (self.layout.get("tables_off_center") or self.layout.get("figures_off_center")
+                or self.layout.get("math_escaped") or self.layout.get("page_overflow"))
 
 
 def serve(directory: Path) -> tuple[str, socketserver.TCPServer]:
@@ -194,6 +226,7 @@ def check_pages(
         page.wait_for_timeout(200)
         state = page.evaluate(MATH_STATE_JS)
         text = page.evaluate(VISIBLE_TEXT_JS)
+        layout = page.evaluate(LAYOUT_JS) or {}
         shot = out_dir / f"{path.stem}.png"
         page.screenshot(path=str(shot), full_page=True)
         report = PageReport(
@@ -206,6 +239,7 @@ def check_pages(
           console_errors=[error for error in console_errors if "favicon" not in error][:5],
           failed_requests=[item for item in failed_requests if "favicon" not in item][:5],
           mathjax_loaded=mathjax_loaded,
+          layout=layout,
           screenshot=str(shot),
           seconds=round(time.monotonic() - started, 1),
         )
@@ -214,7 +248,10 @@ def check_pages(
         print(f"[{mark}] {report.name}: MathJax={report.mathjax_loaded} "
               f"公式 {report.math_containers}（显示 {report.math_display}），"
               f"公式错误 {len(report.math_errors)}，残迹 {report.artifacts}，"
-              f"资源失败 {len(report.failed_requests)}，{report.seconds}s")
+              f"资源失败 {len(report.failed_requests)}，"
+              f"表 {report.layout.get('tables', 0)} 张/偏离 {report.layout.get('tables_off_center', 0)}，"
+              f"图 {report.layout.get('figures', 0)} 张/偏离 {report.layout.get('figures_off_center', 0)}，"
+              f"越界公式 {report.layout.get('math_escaped', 0)}，{report.seconds}s")
         page.close()
       browser.close()
   finally:
