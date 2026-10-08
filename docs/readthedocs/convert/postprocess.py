@@ -90,6 +90,9 @@ class _Renderer:
     if self.pending:
       body = "\n\n".join(self.pending) + "\n\n" + body
       self.pending = []
+    body = _collapse_math_blank_lines(body)
+    body = _normalize_display_math(body)
+    body = _strip_raw_inline_html(body)
     body = _clean_heading_attributes(body)
     body = _escape_colon_fences(body)
     body = _degrade_leftovers(body)
@@ -686,6 +689,155 @@ def _join_cjk_lines(text: str) -> str:
   return re.sub(r"\x00(\d+)\x00", lambda match: protected[int(match.group(1))], guarded)
 
 
+#: 围栏行（````` ```{code-block} cuda ````` / 裸 ````` ``` `````）。
+_FENCE_RE = re.compile(r"^(`{3,}|~{3,})\s*(\S.*)?$")
+
+#: info string 以这些开头的围栏才算代码块；其余（``{admonition}``/``{toctree}``/``{figure}``）
+#: 是 MyST 指令，里面是正常 markdown，后处理必须照常处理。
+_CODE_FENCE_PREFIXES = ("{code-block", "{code", "{.code")
+
+
+def code_fence_flags(lines: list[str]) -> list[bool]:
+  """逐行标注哪些行属于代码块内容。
+
+  只有代码块的内容要整体跳过（里面是逐字代码）；指令围栏（``{admonition}`` 等）
+  的内容是正常 markdown——含公式、链接、图片、pandoc 原始 HTML 残迹——必须参与
+  后处理。早期把两者一起跳过，导致指令内的 ``<!-- -->{=html}`` 与公式原样漏到页面上。
+
+  :param lines: 按行拆分的 markdown。
+  :returns: 与输入等长的布尔列表，True 表示该行位于代码块内。
+  """
+  flags: list[bool] = []
+  stack: list[bool] = []
+  for line in lines:
+    match = _FENCE_RE.match(line.lstrip())
+    if match:
+      info = (match.group(2) or "").strip()
+      if stack and not info:
+        stack.pop()
+        flags.append(False)
+        continue
+      stack.append(info.startswith(_CODE_FENCE_PREFIXES))
+      flags.append(False)
+      continue
+    flags.append(bool(stack) and stack[-1])
+  return flags
+
+
+#: pandoc 用 `` `X`{=html} `` 表示原始 HTML 行内（``X`` 为 ``<!-- -->`` 时只是分隔符）。
+_RAW_INLINE_HTML_RE = re.compile(r"`([^`]*)`\{=html\}")
+
+#: 残留下来的原始格式属性。
+_RAW_ATTR_RE = re.compile(r"\{=(?:html|latex|tex)\}")
+
+
+def _strip_raw_inline_html(md_text: str) -> str:
+  """还原 pandoc 的原始 HTML 行内标记。
+
+  pandoc 会在 ``$\\ge$`` 与后面的数字之间插一段 `` `<!-- -->`{=html} `` 作分隔符；
+  MyST 把整串当行内代码原样显示，页面上就出现 ``<!-- -->{=html}`` 这种字面文本
+  （appB 的表格、ch09 的勘误框、ch26b/ch36 的性能数字里都有）。这里只脱掉
+  ``{=html}`` 包装：注释仍是注释（浏览器不显示），其它内容按原始 HTML 透传。
+
+  :param md_text: markdown 文本。
+  :returns: 处理后的文本。
+  """
+  lines = md_text.split("\n")
+  flags = code_fence_flags(lines)
+  out: list[str] = []
+  for line, is_code in zip(lines, flags):
+    if is_code:
+      out.append(line)
+      continue
+    out.append(_RAW_ATTR_RE.sub("", _RAW_INLINE_HTML_RE.sub(r"\1", line)))
+  return "\n".join(out)
+
+
+def _collapse_math_blank_lines(md_text: str) -> str:
+  """合并显示公式内部的空行。
+
+  pandoc 会把书里 ``align`` 环境内部的空行原样保留（``$$\\begin{align}`` 与
+  ``\\end{align}$$`` 之间有空行）。MyST 的 ``$$...$$`` 必须落在同一段内，空行会把
+  公式截断——页面上就会漏出 ``$$\\begin{align}`` 这类字面文本，后面的公式也一起垮掉。
+
+  :param md_text: markdown 文本。
+  :returns: 处理后的文本。
+  """
+  lines = md_text.split("\n")
+  flags = code_fence_flags(lines)
+  out: list[str] = []
+  inside = False
+  for line, is_code in zip(lines, flags):
+    if is_code:
+      out.append(line)
+      continue
+    stripped = line.strip()
+    if not inside:
+      if stripped.startswith("$$") and not (stripped.endswith("$$") and len(stripped) > 4):
+        inside = True
+      out.append(line)
+      continue
+    if not stripped:
+      continue
+    out.append(line)
+    if "$$" in stripped:
+      inside = False
+  return "\n".join(out)
+
+
+def _normalize_display_math(md_text: str) -> str:
+  """把显示公式的 ``$$`` 定界符放到独占行。
+
+  MyST 的显示公式只认「``$$`` 独占一行（或整段就是 ``$$…$$``）」这一种写法：
+  pandoc 常输出「开门符后面紧跟内容、闭门符在最后一行行尾」的形式
+  （``$$(4,\\ \\mathrm{MMA\\_M})\\n …\\bigr),$$``），MyST 会把它拆成
+  「字面 ``$`` + 行内公式 + 字面 ``$``」，页面上公式散架还多出美元符号。
+  实测（myst-parser 4.0）四种写法只有独占行的那种正确。
+
+  :param md_text: markdown 文本。
+  :returns: 处理后的文本。
+  """
+  lines = md_text.split("\n")
+  flags = code_fence_flags(lines)
+  out: list[str] = []
+  inside = False
+  for line, is_code in zip(lines, flags):
+    stripped = line.strip()
+    if is_code:
+      out.append(line)
+      continue
+    if not inside:
+      if stripped.startswith("$$"):
+        body = stripped[2:]
+        if body.endswith("$$") and len(body) > 2:
+          out.extend(["$$", body[:-2].strip(), "$$"])
+          continue
+        if body.strip():
+          indent = line[:len(line) - len(line.lstrip())]
+          out.append("$$")
+          out.append(indent + body)
+          inside = True
+          continue
+        if not body.strip():
+          inside = True
+          out.append("$$")
+          continue
+      out.append(line)
+      continue
+    if "$$" in stripped:
+      position = stripped.index("$$")
+      before, after = stripped[:position], stripped[position + 2:]
+      if before.strip():
+        out.append(before)
+      out.append("$$")
+      inside = False
+      if after.strip():
+        out.append(after)
+      continue
+    out.append(line)
+  return "\n".join(out)
+
+
 def _escape_colon_fences(md_text: str) -> str:
   """转义行首的 ``:::``，避免被 MyST 当成 colon fence。
 
@@ -708,15 +860,9 @@ def _masked_for_scan(md_text: str) -> str:
   :param md_text: pandoc 产出的 markdown。
   :returns: 屏蔽后的文本。
   """
-  fenced: list[str] = []
-  in_fence = False
-  for line in md_text.splitlines():
-    stripped = line.lstrip()
-    if stripped.startswith("```") or stripped.startswith("~~~"):
-      in_fence = not in_fence
-      fenced.append("")
-      continue
-    fenced.append("" if in_fence else line)
+  lines = md_text.splitlines()
+  flags = code_fence_flags(lines)
+  fenced = ["" if is_code else line for line, is_code in zip(lines, flags)]
   text = tokens.TOKEN_RE.sub(" ", "\n".join(fenced))
 
   out: list[str] = []
@@ -822,17 +968,10 @@ def _degrade_plain(text: str) -> str:
   :returns: 替换后的文本。
   """
   lines = text.split("\n")
+  flags = code_fence_flags(lines)
   result: list[str] = []
-  in_fence = False
-  for line in lines:
-    if line.lstrip().startswith("```") or line.lstrip().startswith("~~~"):
-      in_fence = not in_fence
-      result.append(line)
-      continue
-    if in_fence:
-      result.append(line)
-      continue
-    result.append(_degrade_line(line))
+  for line, is_code in zip(lines, flags):
+    result.append(line if is_code else _degrade_line(line))
   return "\n".join(result)
 
 

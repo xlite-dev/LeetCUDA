@@ -22,7 +22,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import booktree, labels
+from . import booktree, labels, postprocess, texutil
 
 #: ``第 N 章：`` / ``附录 A：`` 前缀。
 _CHAPTER_PREFIX_RE = re.compile(r"^第\s*(\d+)\s*章：")
@@ -170,6 +170,27 @@ def check_book_toc(
   return ok, detail, checked
 
 
+def _display_math_balanced(text: str) -> bool:
+  """判断显示公式定界符是否成对。
+
+  判据：每一处「行首 ``$$``」都必须是一个显示公式区间的开门符或闭门符。不用「数
+  ``$$`` 次数取奇偶」——图注链接的 title 里会出现相邻行内公式（``$a$$b$``），那不是
+  一对显示公式定界符；也不能只看行尾，因为 pandoc 会把 ``\\end{equation}$$`` 与后续
+  正文放在同一行。
+
+  :param text: 已剔除代码块的 markdown 文本。
+  :returns: 配对为 True。
+  """
+  spans = texutil.math_spans(text)
+  opens = {start for start, end in spans if text.startswith("$$", start) and end - start > 2}
+  closes = {end - 2 for start, end in spans if text.startswith("$$", start) and end - start > 2}
+  for match in re.finditer(r"(?m)^[ \t]*\$\$", text):
+    position = text.index("$$", match.start())
+    if position not in opens and position not in closes:
+      return False
+  return True
+
+
 def count_source_tables(parts: list[booktree.Part]) -> int:
   """统计原书闭包内的表格环境数量（每个文件只统计一次）。
 
@@ -257,6 +278,44 @@ def verify(src_dir: Path, html_dir: Path, book_dir: Path) -> Report:
         dangling.append(f"{name} → {page}.html#{anchor}")
   report.add("站内锚点无悬空", not dangling,
              f"{len(dangling)} 条，例如 {dangling[0]}" if dangling else "")
+
+  raw_html = [name for name, text in texts.items() if "{=html}" in text]
+  html_raw = 0
+  if html_dir.is_dir():
+    html_raw = sum(
+      path.read_text(encoding="utf-8", errors="replace").count("{=html}")
+      for path in html_dir.glob("*.html"))
+  report.add("无 pandoc 原始 HTML 残迹", not raw_html and html_raw == 0,
+             f"{len(raw_html)} 页残留，例如 {raw_html[0]}" if raw_html
+             else (f"页面可见 {html_raw} 处" if html_raw else ""))
+
+  broken_math: list[str] = []
+  unbalanced: list[str] = []
+  for name, text in texts.items():
+    lines = text.split("\n")
+    flags = postprocess.code_fence_flags(lines)
+    clean = "\n".join("" if flag else line for line, flag in zip(lines, flags))
+    for start, end in texutil.math_spans(clean):
+      span = clean[start:end]
+      if "](" in span or "<a id=" in span:
+        broken_math.append(f"{name}: {span[:60]}".replace("\n", " "))
+        break
+    if not _display_math_balanced(clean):
+      unbalanced.append(name)
+  report.add("数学区内无站内链接/锚点", not broken_math,
+             f"{len(broken_math)} 处，例如 {broken_math[0]}" if broken_math else "")
+  report.add("显示公式定界符配对", not unbalanced,
+             f"{len(unbalanced)} 页不配对：{unbalanced[0]}" if unbalanced else "")
+
+  # 页面侧证据：显示公式夹在正文里时，Sphinx 会渲染成「字面 $ + 行内公式」。
+  broken_display: list[str] = []
+  if html_dir.is_dir():
+    for path in sorted(html_dir.glob("*.html")):
+      page = path.read_text(encoding="utf-8", errors="replace")
+      if re.search(r"\$<span class=\"math", page) or re.search(r'class="math[^"]*">\\\(\\begin\{', page):
+        broken_display.append(path.stem)
+  report.add("显示公式未被拆成字面 $", not broken_display,
+             f"{len(broken_display)} 页，例如 {broken_display[0]}" if broken_display else "")
 
   parts = booktree.parse(book_dir / "book.tex")
   chapters = [chapter for part in parts for chapter in part.chapters]

@@ -120,6 +120,135 @@ def read_optional(text: str, pos: int) -> tuple[str | None, int]:
   return None, pos
 
 
+#: amsmath 系的数学环境（含星号形式）。
+_MATH_ENVS = (
+  "equation", "align", "gather", "multline", "eqnarray", "displaymath", "alignat", "flalign",
+)
+
+
+def _merge_spans(spans: list[tuple[int, int]]) -> list[tuple[int, int]]:
+  """合并重叠区间并按起点排序。
+
+  :param spans: 区间列表。
+  :returns: 合并后的区间列表。
+  """
+  merged: list[tuple[int, int]] = []
+  for start, end in sorted(spans):
+    if merged and start <= merged[-1][1]:
+      merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+    else:
+      merged.append((start, end))
+  return merged
+
+
+def _closing_dollar(text: str, start: int) -> int:
+  """找下一个未转义的 ``$``（遇空行即放弃，避免一个杂散 ``$`` 吃掉整段正文）。
+
+  :param text: 文本。
+  :param start: 起始下标。
+  :returns: 下标，找不到返回 -1。
+  """
+  index = start
+  while index < len(text):
+    char = text[index]
+    if char == "\\":
+      index += 2
+      continue
+    if char == "$":
+      return index
+    if text.startswith("\n\n", index):
+      return -1
+    index += 1
+  return -1
+
+
+def _find_display_close(text: str, start: int) -> int:
+  """找结束显示公式的 ``$$``，遇空行即放弃。
+
+  显示公式在这里都由独立段落承载（``$$\\begin{equation}…\\end{equation}$$``），
+  一旦出现空行还没闭合，说明定界符本来就不配对——此时必须返回找不到，否则会把
+  后面整段正文当成公式吞掉。
+
+  :param text: 文本。
+  :param start: 起始下标。
+  :returns: ``$$`` 起始下标，找不到返回 -1。
+  """
+  index = start
+  while index < len(text):
+    if text.startswith("\n\n", index):
+      return -1
+    if text.startswith("$$", index):
+      return index
+    index += 1
+  return -1
+
+
+def math_spans(text: str) -> list[tuple[int, int]]:
+  """给出文本中全部数学区的 ``[start, end)`` 区间。
+
+  覆盖 ``$...$``、``$$...$$``、``\\(...\\)``、``\\[...\\]`` 与 amsmath 数学环境。
+  转换器与验收脚本共用这一实现——「什么算数学区」两边必须一致，否则会出现
+  「转换时以为在数学区外、验收时以为在数学区内」这类互相矛盾的判断。
+
+  :param text: tex 或 markdown 文本。
+  :returns: 按起点升序、互不重叠的区间列表。
+  """
+  env_spans: list[tuple[int, int]] = []
+  for env in _MATH_ENVS:
+    pattern = re.compile(r"\\begin\{" + env + r"\*?\}.*?\\end\{" + env + r"\*?\}", re.S)
+    env_spans.extend((match.start(), match.end()) for match in pattern.finditer(text))
+  env_spans = _merge_spans(env_spans)
+
+  spans = list(env_spans)
+  index = 0
+  length = len(text)
+  while index < length:
+    cover = next((end for start, end in env_spans if start <= index < end), None)
+    if cover is not None:
+      index = cover
+      continue
+    char = text[index]
+    if char == "\\":
+      if text.startswith("\\[", index) or text.startswith("\\(", index):
+        closer = "\\]" if text[index + 1] == "[" else "\\)"
+        end = text.find(closer, index + 2)
+        if end != -1:
+          spans.append((index, end + 2))
+          index = end + 2
+          continue
+      index += 2
+      continue
+    if char == "$":
+      if text.startswith("$$", index) and _at_line_start(text, index):
+        end = _find_display_close(text, index + 2)
+        if end != -1:
+          spans.append((index, end + 2))
+          index = end + 2
+          continue
+      else:
+        end = _closing_dollar(text, index + 1)
+        if end != -1:
+          spans.append((index, end + 1))
+          index = end + 1
+          continue
+    index += 1
+  return _merge_spans(spans)
+
+
+def _at_line_start(text: str, index: int) -> bool:
+  """判断某个位置是否位于行首（允许前置空白）。
+
+  ``$$`` 只有独占行首时才当显示公式定界符：图注链接的 title 里会出现相邻行内公式
+  （``$a$$b$``），把它当显示公式定界符会一路吞掉后面的正文。
+
+  :param text: 文本。
+  :param index: 下标。
+  :returns: 行首（或仅前置空白）为 True。
+  """
+  line_start = text.rfind("\n", 0, index) + 1
+  return text[line_start:index].strip() == ""
+
+
 def is_commented_at(text: str, pos: int) -> bool:
   """判断某个位置是否落在 LaTeX 注释里。
 

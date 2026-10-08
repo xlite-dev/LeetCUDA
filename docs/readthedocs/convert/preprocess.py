@@ -31,6 +31,7 @@ from .booktree import Chapter
 from .texutil import (
   find_environments,
   flatten_inputs,
+  math_spans,
   read_bracket,
   read_group,
   read_group_after_space,
@@ -295,6 +296,9 @@ def normalize(
   text = _extract_images(text, builder)
   text = _unwrap_boxes(text, builder)
   text = _containers(text, builder)
+  text = _isolate_math_envs(text)
+  text = _isolate_display_dollars(text)
+  text = _isolate_display_brackets(text)
   text = _lift_math_labels(text, builder)
   text = _tokenize_refs(text, builder)
   text = _normalize_math_primitives(text)
@@ -918,6 +922,74 @@ def _rewrite_envs(text: str) -> str:
 _MATH_LABEL_ENVS = ("equation", "equation*", "align", "align*", "gather", "multline", "eqnarray")
 
 
+#: 独立成段的数学环境（内含 aligned/cases 等不算独立环境）。
+_ISOLATED_MATH_ENVS = ("equation", "align", "gather", "multline", "eqnarray", "alignat", "flalign",
+                       "displaymath")
+
+
+def _isolate_math_envs(text: str) -> str:
+  """把数学环境与前后正文分开（独占段落）。
+
+  书里 ``\\begin{equation}`` 常常紧贴正文（``……共 $2K$ 次；所以\\begin{equation}``），
+  pandoc 就会把 ``$$…$$`` 就地放在段落中间。MyST 的显示公式必须自成一段，夹在正文里
+  会被拆成「字面 ``$`` + 行内公式 + 字面 ``$``」——页面上公式直接垮掉，还多出孤立的
+  美元符号。这里只加空行，不改公式内容。
+
+  :param text: 章节 tex。
+  :returns: 处理后的文本。
+  """
+  edits: list[tuple[int, int, str]] = []
+  for env in _ISOLATED_MATH_ENVS:
+    for name in (env, f"{env}*"):
+      for start, end, _body in find_environments(text, name):
+        block = text[start:end].strip("\n")
+        edits.append((start, end, "\n\n" + block + "\n\n"))
+  return _apply_edits(text, edits)
+
+
+#: 正文里直接写的显示公式定界符（未被 ``$$`` 转义、也不在注释里）。
+_DISPLAY_DOLLAR_RE = re.compile(r"(?<!\\)\$\$")
+
+
+def _isolate_display_dollars(text: str) -> str:
+  """把正文里成对的 ``$$…$$`` 独立成段。
+
+  书里除了 ``\\begin{equation}``，也直接写 ``$$…$$``（ch25 的 logical_divide 推导），
+  同样是紧贴正文的。与其让 MyST 把它拆成行内公式，不如先加空行。
+
+  :param text: 章节 tex（已剥注释）。
+  :returns: 处理后的文本。
+  """
+  markers = [match.start() for match in _DISPLAY_DOLLAR_RE.finditer(text)]
+  if len(markers) < 2:
+    return text
+  edits: list[tuple[int, int, str]] = []
+  for index in range(0, len(markers) - 1, 2):
+    start, end = markers[index], markers[index + 1] + 2
+    edits.append((start, end, "\n\n" + text[start:end].strip("\n") + "\n\n"))
+  return _apply_edits(text, edits)
+
+
+#: 正文里以 ``\[ … \]`` 书写的显示公式。
+#: 必须排除 ``\\[2pt]``（换行+间距命令）里的那个 ``\[``，否则会把整段括进去。
+_DISPLAY_BRACKET_RE = re.compile(r"(?<!\\)\\\[(.*?)(?<!\\)\\\]", re.S)
+
+
+def _isolate_display_brackets(text: str) -> str:
+  """把 ``\\[…\\]`` 显示公式独立成段。
+
+  与 ``$$…$$`` 同理：紧贴正文时 pandoc 会把它输出成段中的 ``$$…$$``，MyST 会拆成
+  「字面 ``$`` + 行内公式 + 字面 ``$``」（ch25 的 logical_divide 推导就是这样垮的）。
+
+  :param text: 章节 tex（已剥注释）。
+  :returns: 处理后的文本。
+  """
+  edits: list[tuple[int, int, str]] = []
+  for match in _DISPLAY_BRACKET_RE.finditer(text):
+    edits.append((match.start(), match.end(), "\n\n" + match.group(0).strip("\n") + "\n\n"))
+  return _apply_edits(text, edits)
+
+
 def _lift_math_labels(text: str, builder: _Builder) -> str:
   """把数学环境内的 ``\\label`` 提到环境外（否则会污染公式）。
 
@@ -944,27 +1016,60 @@ def _lift_math_labels(text: str, builder: _Builder) -> str:
   return text
 
 
+def _plain_number(builder: _Builder, label: str, parenthesized: bool) -> str:
+  """把引用直接写成编号文本（数学区内用）。
+
+  :param builder: 构建状态。
+  :param label: 引用 label。
+  :param parenthesized: 是否加圆括号（``\\eqref`` 语义）。
+  :returns: 编号文本，解析不到时返回 ``??``（与 LaTeX 的表现一致）。
+  """
+  entry = builder.registry.get(label) if builder.registry is not None else None
+  if entry is None or not entry.number:
+    builder.note(f"{builder.chap.chap_id}: 数学区内的引用解析不到（{label}）")
+    return "??"
+  return f"({entry.number})" if parenthesized else entry.number
+
+
+#: ``\label`` / ``\ref`` / ``\eqref`` / ``\pageref``。
+_REF_CMD_RE = re.compile(r"\\(label|eqref|pageref|ref)\{([^}]*)\}")
+
+
 def _tokenize_refs(text: str, builder: _Builder) -> str:
   """``\\label`` / ``\\ref`` / ``\\eqref`` → token。
+
+  **数学区内的引用不走 token**：例如 ch34 的
+  ``\\xrightarrow[\\text{第\\ref{ch:35}章…}]{…}``，站内链接塞进公式会让 MathJax
+  直接解析失败（页面上留下半截公式加一串链接文本）。这类位置直接写编号。
 
   :param text: 章节 tex。
   :param builder: 构建状态。
   :returns: 替换后的文本。
   """
-  text = re.sub(
-    r"\\label\{([^}]*)\}",
-    lambda m: " " + tokens.make(tokens.KIND_LABEL, m.group(1)) + " ", text)
-  text = re.sub(
-    r"\\eqref\{([^}]*)\}",
-    lambda m: " " + tokens.make(tokens.KIND_EQREF, m.group(1)) + " ", text)
-  text = re.sub(
-    r"\\pageref\{([^}]*)\}",
-    lambda m: " " + tokens.make(tokens.KIND_REF, m.group(1)) + " ", text)
-  text = re.sub(
-    r"\\ref\{([^}]*)\}",
-    lambda m: " " + tokens.make(tokens.KIND_REF, m.group(1)) + " ", text)
-  builder.bump("ref", len(re.findall(r"@@RTD;(?:REF|EREF);", text)))
-  return text
+  spans = math_spans(text)
+
+  def inside_math(pos: int) -> bool:
+    return any(start <= pos < end for start, end in spans)
+
+  chunks: list[str] = []
+  cursor = 0
+  for match in _REF_CMD_RE.finditer(text):
+    command, label = match.group(1), match.group(2)
+    chunks.append(text[cursor:match.start()])
+    if command == "label":
+      chunks.append(" " + tokens.make(tokens.KIND_LABEL, label) + " ")
+    elif inside_math(match.start()):
+      chunks.append(_plain_number(builder, label, command == "eqref"))
+      builder.bump("math_ref")
+    elif command == "eqref":
+      chunks.append(" " + tokens.make(tokens.KIND_EQREF, label) + " ")
+    else:
+      chunks.append(" " + tokens.make(tokens.KIND_REF, label) + " ")
+    cursor = match.end()
+  chunks.append(text[cursor:])
+  result = "".join(chunks)
+  builder.bump("ref", len(re.findall(r"@@RTD;(?:REF|EREF);", result)))
+  return result
 
 
 #: plain TeX 的上下标原语（pandoc 与 MathJax 都不认，需换成 LaTeX 写法）。
