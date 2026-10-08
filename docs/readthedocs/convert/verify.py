@@ -191,6 +191,89 @@ def _display_math_balanced(text: str) -> bool:
   return True
 
 
+#: 片段里出现这些才算「图里有文字」：中文标签，或 ``\node … {非空内容}``。
+_TEXT_HINT_RE = re.compile(r"[\u4e00-\u9fff]|\\node\b[^;]*?\{[^{}]{2,}\}")
+
+
+def check_table_counts_per_chapter(
+  parts: list[booktree.Part],
+  html_dir: Path,
+) -> tuple[bool, str]:
+  """逐章比对「原书表格环境数」与「该页渲染出的 ``<table>`` 数」。
+
+  只看全站总数会漏——总差 1 张时 90% 阈值照样通过（ch37 的量化开销表就是这么漏掉的）。
+
+  :param parts: 篇结构。
+  :param html_dir: Sphinx 输出目录。
+  :returns: ``(是否通过, 说明)``。
+  """
+  problems: list[str] = []
+  checked = 0
+  for part in parts:
+    for chapter in part.chapters:
+      page = html_dir / f"{chapter.chap_id}.html"
+      if not page.is_file():
+        continue
+      sources = [chapter.tex]
+      if "wp/" in chapter.tex.read_text(encoding="utf-8", errors="replace"):
+        sources.extend(sorted((chapter.tex.parent / "wp").glob("*.tex")))
+      expected = sum(len(_TABLE_ENV_RE.findall(path.read_text(encoding="utf-8", errors="replace")))
+                     for path in sources)
+      actual = page.read_text(encoding="utf-8", errors="replace").count("<table")
+      checked += 1
+      if actual < expected:
+        problems.append(f"{chapter.chap_id}: 原书 {expected} 张 → 页面 {actual} 张")
+  ok = not problems
+  detail = f"逐章核对 {checked} 页" if ok else f"{len(problems)} 章缺表，例如 {problems[0]}"
+  return ok, detail
+
+
+def check_table_cells(md_texts: dict[str, str]) -> tuple[bool, str]:
+  """检查表格单元格里没有漏出来的 LaTeX 命令。
+
+  :param md_texts: 页面名 → markdown。
+  :returns: ``(是否通过, 说明)``。
+  """
+  problems: list[str] = []
+  for name, text in md_texts.items():
+    for match in re.finditer(r"<t[dh][^>]*>([^<]*)", text):
+      cell = match.group(1)
+      if re.search(r"\\[a-zA-Z]+\{", cell) or "(lr)" in cell:
+        problems.append(f"{name}: {cell.strip()[:40]}")
+        break
+  ok = not problems
+  return ok, f"{len(problems)} 页命中，例如 {problems[0]}" if problems else ""
+
+
+def check_tikz_glyphs(work_dir: Path, src_dir: Path) -> tuple[bool, str]:
+  """检查「图里有文字」的片段确实输出了字形。
+
+  ``--no-fonts`` 模式下文字会变成 ``<use>``（或 ``<text>``）；两者都没有，说明
+  SVG 里没有文字，页面上的表现就是图注文字全丢（ch00 的 occupancy 图曾如此）。
+
+  :param work_dir: 临时目录（``build/tmp``）。
+  :param src_dir: 站点源树（``build/src``）。
+  :returns: ``(是否通过, 说明)``。
+  """
+  problems: list[str] = []
+  checked = 0
+  for snippet in sorted((work_dir / "tikz").glob("*.tex")):
+    body = re.sub(r"(?<!\\)%[^\n]*", "", snippet.read_text(encoding="utf-8", errors="replace"))
+    if not _TEXT_HINT_RE.search(body):
+      continue
+    checked += 1
+    svg = src_dir / "figures-gen" / f"{snippet.stem}.svg"
+    if not svg.is_file():
+      problems.append(f"{snippet.stem}: SVG 缺失")
+      continue
+    text = svg.read_text(encoding="utf-8", errors="replace")
+    if "<use" not in text and "<text" not in text:
+      problems.append(f"{snippet.stem}: 无字形输出（{svg.stat().st_size} 字节）")
+  ok = not problems
+  detail = f"核对 {checked} 张有文字的图" if ok else f"{len(problems)} 张丢文字，例如 {problems[0]}"
+  return ok, detail
+
+
 def count_source_tables(parts: list[booktree.Part]) -> int:
   """统计原书闭包内的表格环境数量（每个文件只统计一次）。
 
@@ -308,14 +391,30 @@ def verify(src_dir: Path, html_dir: Path, book_dir: Path) -> Report:
              f"{len(unbalanced)} 页不配对：{unbalanced[0]}" if unbalanced else "")
 
   # 页面侧证据：显示公式夹在正文里时，Sphinx 会渲染成「字面 $ + 行内公式」。
+  # 注意只有 equation/align 这类「显示环境」出现在行内公式里才算断裂——
+  # `\(\begin{bmatrix}…\)` 是正常的行内矩阵。
+  display_env_only = r"equation|align|gather|multline|eqnarray|displaymath"
   broken_display: list[str] = []
   if html_dir.is_dir():
     for path in sorted(html_dir.glob("*.html")):
       page = path.read_text(encoding="utf-8", errors="replace")
-      if re.search(r"\$<span class=\"math", page) or re.search(r'class="math[^"]*">\\\(\\begin\{', page):
+      if re.search(r"\$<span class=\"math", page) or re.search(
+          r'class="math[^"]*">\\\(\\begin\{(?:' + display_env_only + r')', page):
         broken_display.append(path.stem)
   report.add("显示公式未被拆成字面 $", not broken_display,
              f"{len(broken_display)} 页，例如 {broken_display[0]}" if broken_display else "")
+
+  ok, detail = check_table_cells(texts)
+  report.add("表格单元格无 LaTeX 残渣", ok, detail)
+
+  if html_dir.is_dir():
+    ok, detail = check_table_counts_per_chapter(booktree.parse(book_dir / "book.tex"), html_dir)
+    report.add("逐章表格数不缺", ok, detail)
+
+  work_dir = src_dir.parent / "tmp"
+  if (work_dir / "tikz").is_dir():
+    ok, detail = check_tikz_glyphs(work_dir, src_dir)
+    report.add("TikZ 图保留文字", ok, detail)
 
   parts = booktree.parse(book_dir / "book.tex")
   chapters = [chapter for part in parts for chapter in part.chapters]

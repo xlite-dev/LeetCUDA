@@ -179,10 +179,9 @@ def build(
           report.ok.append(image_id)
         else:
           report.failed[image_id] = message
-          (build_dir / f"{_safe_name(image_id)}.svg").unlink(missing_ok=True)
 
   report.seconds = round(time.monotonic() - started, 1)
-  _save_cache(work_dir, snippets, font_mode)
+  _save_cache(work_dir, snippets, font_mode, report.failed)
   (work_dir / "tikz-report.json").write_text(report.to_json(), encoding="utf-8")
   return report
 
@@ -214,15 +213,27 @@ def _read_cache(work_dir: Path) -> dict[str, str]:
     return {}
 
 
-def _save_cache(work_dir: Path, snippets: list[Snippet], font_mode: str) -> None:
+def _save_cache(
+  work_dir: Path,
+  snippets: list[Snippet],
+  font_mode: str,
+  failed: dict[str, str],
+) -> None:
   """写回片段哈希缓存。
+
+  **只记编译成功的片段**：失败片段若被记成「已完成」，下次运行会跳过它，磁盘上那份
+  陈旧或残缺的 SVG 就永远留在页面上（ch00 的 occupancy 图丢文字就是这么来的）。
 
   :param work_dir: 临时目录。
   :param snippets: 全部片段。
   :param font_mode: 字号处理方式（随哈希一起记录，切换模式会触发重编）。
+  :param failed: 失败的 image_id → 原因。
   """
   cache = _read_cache(work_dir)
   for snippet in snippets:
+    if snippet.image_id in failed or not snippet.dest.is_file():
+      cache.pop(snippet.image_id, None)
+      continue
     cache[snippet.image_id] = f"{snippet.digest}@{font_mode}@{_CACHE_VERSION}"
   (work_dir / "tikz-cache.json").write_text(
     json.dumps(cache, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -280,6 +291,9 @@ def _compile_worker(args: tuple[Snippet, str, Path, str]) -> tuple[str, bool, st
   """
   snippet, head, build_dir, mode = args
   ok, message = _compile_one(snippet, head, build_dir, mode)
+  if not ok:
+    # 失败必须清掉旧产物：否则页面继续用上一轮的图，看起来「编译全绿」却内容不对。
+    snippet.dest.unlink(missing_ok=True)
   return snippet.image_id, ok, message
 
 
@@ -324,7 +338,40 @@ def _compile_one(
     build_dir)
   if code != 0 or not snippet.dest.is_file():
     return False, f"dvisvgm 失败：{_tail(log)}"
+  # dvisvgm 偶尔「成功」却没写出任何字形（PDF 里有文字、SVG 里没有对应输出），
+  # 页面上的表现就是图里文字全丢。这里做一次交叉核对，把这种情况当失败处理。
+  if _pdf_has_text(pdf) and not _svg_has_glyphs(snippet.dest):
+    return False, "SVG 缺少字形输出（PDF 有文字但 SVG 里没有 use/text）"
   return True, ""
+
+
+def _pdf_has_text(pdf: Path) -> bool:
+  """判断 PDF 里是否绘制了文字。
+
+  :param pdf: 编译产物。
+  :returns: 含文字绘制算子为 True。
+  """
+  try:
+    raw = pdf.read_bytes()
+  except OSError:
+    return False
+  return b"Tj" in raw or b"TJ" in raw
+
+
+def _svg_has_glyphs(svg: Path) -> bool:
+  """判断 SVG 里是否输出了字形。
+
+  ``--no-fonts`` 模式下文字会变成 ``<use>`` 引用 + ``<defs>`` 里的路径，
+  因此「有 ``<use>`` 或 ``<text>``」即视为有字形。
+
+  :param svg: SVG 产物。
+  :returns: 有字形输出为 True。
+  """
+  try:
+    text = svg.read_text(encoding="utf-8", errors="replace")
+  except OSError:
+    return False
+  return "<use" in text or "<text" in text
 
 
 def _run(command: list[str], cwd: Path) -> tuple[int, str]:

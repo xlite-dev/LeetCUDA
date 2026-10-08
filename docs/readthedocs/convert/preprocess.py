@@ -299,6 +299,8 @@ def normalize(
   text = _isolate_math_envs(text)
   text = _isolate_display_dollars(text)
   text = _isolate_display_brackets(text)
+  text = _expand_math_columns(text)
+  text = _unwrap_shortstack(text)
   text = _lift_math_labels(text, builder)
   text = _tokenize_refs(text, builder)
   text = _normalize_math_primitives(text)
@@ -990,6 +992,227 @@ def _isolate_display_brackets(text: str) -> str:
   return _apply_edits(text, edits)
 
 
+#: array 宏包的「整列数学模式」声明，例如 ``>{$}c<{$}``、``>{\small}l``。
+_COLUMN_DECORATION_RE = re.compile(r">\{(?P<pre>[^{}]*)\}|<\{(?P<post>[^{}]*)\}")
+
+
+def _split_top_level(text: str, separator: str) -> list[str]:
+  """按顶层分隔符切分（忽略花括号与嵌套环境内部的分隔符）。
+
+  表格行里的 ``&`` / ``\\\\`` 可能属于嵌套的 ``bmatrix`` 等环境
+  （``\\begin{bmatrix}1 & 8\\end{bmatrix}``），不能当单元格/行分隔符。
+
+  :param text: 表格体。
+  :param separator: ``"&"`` 或 ``"\\\\"``。
+  :returns: 切分结果。
+  """
+  parts: list[str] = []
+  current: list[str] = []
+  depth = 0
+  envs: list[str] = []
+  index = 0
+  length = len(text)
+  while index < length:
+    if text.startswith("\\begin{", index):
+      end = text.find("}", index)
+      envs.append(text[index:end + 1])
+      current.append(text[index:end + 1])
+      index = end + 1
+      continue
+    if text.startswith("\\end{", index):
+      end = text.find("}", index)
+      if envs:
+        envs.pop()
+      current.append(text[index:end + 1])
+      index = end + 1
+      continue
+    if text.startswith(separator, index) and depth == 0 and not envs:
+      parts.append("".join(current))
+      current = []
+      index += len(separator)
+      continue
+    char = text[index]
+    if char == "\\" and not text.startswith(separator, index):
+      current.append(text[index:index + 2])
+      index += 2
+      continue
+    if char == "{":
+      depth += 1
+    elif char == "}":
+      depth -= 1
+    current.append(char)
+    index += 1
+  parts.append("".join(current))
+  return parts
+
+
+def _expand_math_columns(text: str) -> str:
+  """把 ``>{$}c<{$}`` 展开成普通列声明 + 逐格 ``$…$``。
+
+  ``>{$}c<{$}`` 的含义是「该列每个单元格都在数学模式里」。pandoc 解析不了这种声明：
+  与 ``\\shortstack`` 同时出现时整张表会被丢掉（wp2 的线性形式表就这样消失了），
+  即使侥幸出表，``\\v{L}`` 也会被当成重音命令渲染成 ``Ľ``。展开后语义等价、
+  pandoc 能正常出表。
+
+  :param text: 章节 tex。
+  :returns: 处理后的文本。
+  """
+  edits: list[tuple[int, int, str]] = []
+  for env in ("tabular", "tabularx", "longtable"):
+    for start, end, _body in find_environments(text, env):
+      block = text[start:end]
+      expanded = _expand_one_table(block, env)
+      if expanded != block:
+        edits.append((start, end, expanded))
+  return _apply_edits(text, edits)
+
+
+def _expand_one_table(block: str, env: str) -> str:
+  """展开单张表里的数学模式列声明。
+
+  :param block: ``\\begin{env}...\\end{env}`` 原文。
+  :param env: 环境名。
+  :returns: 展开后的表（无数学模式列时原样返回）。
+  """
+  head = f"\\begin{{{env}}}"
+  cursor = len(head)
+  while cursor < len(block) and block[cursor] == "[":
+    close = block.find("]", cursor)
+    if close == -1:
+      return block
+    cursor = close + 1
+  if cursor >= len(block) or block[cursor] != "{":
+    return block
+  try:
+    spec, after_spec = read_group(block, cursor)
+  except ValueError:
+    return block
+
+  columns: list[tuple[str, bool]] = []
+  math_columns: list[int] = []
+  index = 0
+  pending_math = False
+  while index < len(spec):
+    match = _COLUMN_DECORATION_RE.match(spec, index)
+    if match is not None:
+      if match.group("pre") is not None and "$" in match.group("pre"):
+        pending_math = True
+      index = match.end()
+      continue
+    char = spec[index]
+    if char in "lcrXpmb":
+      columns.append((char, pending_math))
+      if pending_math:
+        math_columns.append(len(columns) - 1)
+      pending_math = False
+    elif char == "|":
+      pending_math = False
+    index += 1
+  if not math_columns:
+    return block
+
+  new_spec = "".join(("|" if char == "|" else char) for char in spec if char in "|lcrXpmb")
+  new_spec = _rebuild_spec(spec, columns)
+  body = block[after_spec:block.rfind(f"\\end{{{env}}}")]
+  rows = _split_top_level(body, "\\\\")
+  rebuilt_rows = []
+  for row in rows:
+    cells = _split_top_level(row, "&")
+    for position in math_columns:
+      if position >= len(cells):
+        continue
+      cell = cells[position]
+      if "\\multicolumn" in cell or "$" in cell:
+        continue
+      stripped = cell.strip()
+      if not stripped or stripped.startswith("\\hline") or stripped.startswith("\\midrule"):
+        continue
+      leading = cell[:len(cell) - len(cell.lstrip())]
+      trailing = cell[len(cell.rstrip()):]
+      cells[position] = f"{leading}${stripped}${trailing}"
+    rebuilt_rows.append("&".join(cells))
+  return head + new_spec + "\\\\".join(rebuilt_rows) + f"\\end{{{env}}}"
+
+
+def _rebuild_spec(original: str, columns: list[tuple[str, bool]]) -> str:
+  """按原顺序重建列声明（去掉 ``>{...}`` / ``<{...}`` 装饰，保留竖线位置）。
+
+  :param original: 原列声明。
+  :param columns: ``(列字母, 是否数学模式)`` 列表。
+  :returns: 新列声明。
+  """
+  letters = [letter for letter, _math in columns]
+  result: list[str] = []
+  used = 0
+  index = 0
+  while index < len(original):
+    match = _COLUMN_DECORATION_RE.match(original, index)
+    if match is not None:
+      index = match.end()
+      continue
+    char = original[index]
+    if char in "|@!":
+      result.append(char)
+    elif char in "lcrXpmb":
+      if used < len(letters):
+        result.append(letters[used])
+        used += 1
+    index += 1
+  while used < len(letters):
+    result.append(letters[used])
+    used += 1
+  return "{" + "".join(result) + "}"
+
+
+#: 格内换行命令（``\shortstack{A\\ B}`` 表示单元格里分两行）。
+_SHORTSTACK_RE = re.compile(r"\\shortstack\b")
+
+
+def _unwrap_shortstack(text: str) -> str:
+  """把 ``\\shortstack{…\\\\…}`` 压成单行文本。
+
+  它是「单元格内分两行」的写法，全书 77 处全在表格里。pandoc 会把内容里的 ``\\\\``
+  当成表格换行，把一行拆成两行（wp2 的线性形式表就多出两行空壳）。压成一行后既不出
+  错，信息也不丢。
+
+  :param text: 章节 tex。
+  :returns: 处理后的文本。
+  """
+  out: list[str] = []
+  index = 0
+  while True:
+    match = _SHORTSTACK_RE.search(text, index)
+    if match is None:
+      out.append(text[index:])
+      break
+    out.append(text[index:match.start()])
+    cursor = match.end()
+    while cursor < len(text) and text[cursor] in " \t\n":
+      cursor += 1
+    if cursor < len(text) and text[cursor] == "[":
+      close = text.find("]", cursor)
+      if close == -1:
+        out.append(match.group(0))
+        index = match.end()
+        continue
+      cursor = close + 1
+      while cursor < len(text) and text[cursor] in " \t\n":
+        cursor += 1
+    if cursor >= len(text) or text[cursor] != "{":
+      out.append(match.group(0))
+      index = match.end()
+      continue
+    try:
+      inner, end = read_group(text, cursor)
+    except ValueError:
+      out.append(match.group(0))
+      index = match.end()
+      continue
+    out.append(" ".join(part.strip() for part in inner.split("\\\\") if part.strip()))
+    index = end
+  return "".join(out)
+
+
 def _lift_math_labels(text: str, builder: _Builder) -> str:
   """把数学环境内的 ``\\label`` 提到环境外（否则会污染公式）。
 
@@ -1091,6 +1314,20 @@ def _normalize_math_primitives(text: str) -> str:
   return _PRIMITIVE_SUP_RE.sub("^", text)
 
 
+#: booktabs 的局部横线与间距命令：pandoc 不认识它们的参数，会把
+#: ``\cmidrule(lr){2-3}`` 当成普通文本塞进表格单元格（ch37 的量化开销表就多出一行
+#: ``2-3(lr)4-5``），必须提前删掉。``\toprule/\midrule/\bottomrule`` 保留，
+#: pandoc 认识它们。
+_PARTIAL_RULES = (
+  r"\\cmidrule\s*(?:\([^)]*\))?\s*\{[^{}]*\}",
+  r"\\cline\s*\{[^{}]*\}",
+  r"\\specialrule\s*\{[^{}]*\}\s*\{[^{}]*\}\s*\{[^{}]*\}",
+  r"\\addlinespace\s*(?:\[[^\]]*\])?",
+  r"\\arrayrulecolor\s*\{[^{}]*\}",
+  r"\\morecmidrules",
+)
+
+
 def _drop_noise(text: str) -> str:
   """清掉网页上无意义的排版命令。
 
@@ -1098,6 +1335,8 @@ def _drop_noise(text: str) -> str:
   :returns: 清理后的文本。
   """
   text = _drop_providecommands(text)
+  for pattern in _PARTIAL_RULES:
+    text = re.sub(pattern, "", text)
   text = re.sub(r"\\allowbreak\s*\{\}", "", text)
   text = re.sub(r"\\allowbreak\b", "", text)
   for name in _DROP_ZERO_ARG:

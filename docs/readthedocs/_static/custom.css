@@ -45,6 +45,41 @@
   background: #7691a8;
 }
 
+/* 表格：pandoc 直出的 <table> 不带主题类名，默认没有边框与内边距，看起来像一堆
+   对齐的文字。这里给它补上与主题 docutils 表一致的样式。 */
+.rst-content .section > table,
+.rst-content section > table {
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 24px;
+}
+
+.rst-content table th,
+.rst-content table td {
+  border: 1px solid #e1e4e5;
+  padding: 6px 10px;
+  line-height: 1.5;
+  vertical-align: top;
+}
+
+.rst-content table thead th {
+  background: #eaeef2;
+  font-weight: 700;
+}
+
+.rst-content table tbody tr:nth-child(2n) {
+  background: #f7f9fa;
+}
+
+.rst-content table caption {
+  caption-side: top;
+  font-weight: 700;
+  margin-bottom: 6px;
+  text-align: left;
+}
+
 .rst-content .rtd-footer {
   color: #888;
   font-size: 85%;
