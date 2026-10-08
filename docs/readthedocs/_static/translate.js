@@ -83,41 +83,66 @@
     document.body.appendChild(script);
   }
 
-  /** 生成切换按钮并放进侧栏搜索框下方。 */
+  /** 生成切换按钮：放在页脚导航行里「上一页」旁边，没有该行时退回侧栏。 */
   function buildButton(english) {
-    var host = document.querySelector('.wy-side-nav-search') ||
-               document.querySelector('.wy-nav-side');
-    if (!host || document.getElementById('rtd-translate-toggle')) {
+    var prev = document.querySelector('.rst-footer-buttons a[rel="prev"]');
+    var sidebar = document.querySelector('.wy-side-nav-search') ||
+                  document.querySelector('.wy-nav-side');
+    if (!prev && !sidebar) {
       return;
     }
 
-    var wrapper = document.createElement('div');
-    wrapper.className = 'rtd-translate';
-    var button = document.createElement('button');
-    button.id = 'rtd-translate-toggle';
-    button.type = 'button';
-    button.textContent = english ? '中文' : 'English';
-    button.title = english ? '切回中文' : '用 Google 翻译阅读英文版';
+    // 与主题的「上一页 / 下一页」同款：`btn btn-neutral` + FontAwesome 图标
+    // （主题用的是 <a class="btn btn-neutral"><span class="fa fa-…"></span> 文本</a>）。
+    var toggle = document.createElement('a');
+    toggle.className = 'btn btn-neutral rtd-translate-toggle';
+    toggle.setAttribute('role', 'button');
+    toggle.setAttribute('tabindex', '0');
+
+    var icon = document.createElement('i');
+    icon.className = 'fa fa-language';
+    icon.setAttribute('aria-hidden', 'true');
+    toggle.appendChild(icon);
+    toggle.appendChild(document.createTextNode(english ? ' 中文' : ' English'));
+
+    function activate() {
+      if (english) {
+        writeCookie('/' + SOURCE + '/' + SOURCE);
+      } else {
+        protectVerbatim();
+        writeCookie('/' + SOURCE + '/' + TARGET);
+      }
+      location.reload();
+    }
 
     if (!isReachable()) {
-      button.disabled = true;
-      button.title = '本地预览无法使用 Google 翻译（需要站点可被公网访问）；' +
+      toggle.classList.add('rtd-translate-disabled');
+      toggle.setAttribute('aria-disabled', 'true');
+      toggle.removeAttribute('tabindex');
+      toggle.title = '本地预览无法使用 Google 翻译（需要站点可被公网访问）；' +
                      '本地可先用浏览器自带的翻译功能';
-      wrapper.classList.add('rtd-translate-disabled');
     } else {
-      button.addEventListener('click', function () {
-        if (english) {
-          writeCookie('/' + SOURCE + '/' + SOURCE);
-        } else {
-          protectVerbatim();
-          writeCookie('/' + SOURCE + '/' + TARGET);
+      toggle.title = english ? '切回中文' : '用 Google 翻译阅读英文版';
+      toggle.addEventListener('click', function (event) {
+        event.preventDefault();
+        activate();
+      });
+      toggle.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          activate();
         }
-        location.reload();
       });
     }
 
-    wrapper.appendChild(button);
-    host.appendChild(wrapper);
+    if (prev) {
+      prev.insertAdjacentElement('afterend', toggle);
+      return;
+    }
+    var wrapper = document.createElement('div');
+    wrapper.className = 'rtd-translate';
+    wrapper.appendChild(toggle);
+    sidebar.appendChild(wrapper);
   }
 
   document.addEventListener('DOMContentLoaded', function () {

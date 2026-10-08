@@ -5,29 +5,40 @@
    两者紧贴、多余空白均分到两侧。注意不能只给正文栏加 auto 外边距——那样空白会跑到
    侧栏与正文之间。 */
 
-/* 中英切换按钮：放在侧栏搜索框下方 */
+/* 中英切换按钮：沿用主题「上一页 / 下一页」的按钮样式
+   （translate.js 里给的是 `btn btn-neutral` + FontAwesome 图标）。
+   默认放在页脚导航行「上一页」旁边；页面没有该行时退回侧栏搜索框下方。 */
+.rtd-translate-toggle {
+  text-decoration: none;
+}
+
+.rst-footer-buttons .rtd-translate-toggle {
+  margin-left: 8px;
+}
+
 .rtd-translate {
   padding: 0 12px 10px 12px;
   text-align: right;
 }
 
-.rtd-translate button {
-  padding: 3px 12px;
-  border: 1px solid #ffffff66;
-  border-radius: 3px;
-  background: transparent;
-  color: #fcfcfc;
-  font-size: 85%;
-  cursor: pointer;
+.rtd-translate .btn {
+  margin-top: 4px;
+  text-decoration: none;
 }
 
-.rtd-translate button:hover:not(:disabled) {
-  background: #ffffff22;
+.rtd-translate .rtd-translate-disabled,
+.rtd-translate .rtd-translate-disabled:hover {
+  background-color: #ffffff33 !important;
+  border-color: #ffffff33 !important;
+  color: #ffffffb3 !important;
+  cursor: not-allowed;
 }
 
-.rtd-translate.rtd-translate-disabled button {
-  color: #ffffff66;
-  border-color: #ffffff33;
+.rst-footer-buttons .rtd-translate-disabled,
+.rst-footer-buttons .rtd-translate-disabled:hover {
+  background-color: #f3f6f6 !important;
+  border-color: #e1e4e5 !important;
+  color: #b0b0b0 !important;
   cursor: not-allowed;
 }
 
