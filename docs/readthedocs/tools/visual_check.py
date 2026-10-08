@@ -95,7 +95,16 @@ LAYOUT_JS = """
   const column = content.getBoundingClientRect();
   const offCenter = (rect) => Math.abs((rect.left - column.left) - (column.right - rect.right)) > 3;
   const out = {tables: 0, tables_off_center: 0, figures: 0, figures_off_center: 0,
-               wide_math: 0, math_escaped: 0, page_overflow: 0};
+               wide_math: 0, math_escaped: 0, page_overflow: 0, column_off_center: 0};
+  const content_column = document.querySelector('.wy-nav-content');
+  const wrap = document.querySelector('.wy-nav-content-wrap');
+  if (content_column && wrap) {
+    const column = content_column.getBoundingClientRect();
+    const outer = wrap.getBoundingClientRect();
+    const left_gap = column.left - outer.left;
+    const right_gap = outer.right - column.right;
+    if (Math.abs(left_gap - right_gap) > 6) out.column_off_center = 1;
+  }
   for (const table of content.querySelectorAll('table')) {
     const rect = table.getBoundingClientRect();
     out.tables += 1;
@@ -155,7 +164,8 @@ class PageReport:
     if self.math_errors or self.artifacts or self.console_errors:
       return False
     return not (self.layout.get("tables_off_center") or self.layout.get("figures_off_center")
-                or self.layout.get("math_escaped") or self.layout.get("page_overflow"))
+                or self.layout.get("math_escaped") or self.layout.get("page_overflow")
+                or self.layout.get("column_off_center"))
 
 
 def serve(directory: Path) -> tuple[str, socketserver.TCPServer]:

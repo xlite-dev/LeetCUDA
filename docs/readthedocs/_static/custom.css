@@ -1,4 +1,18 @@
-/* LeetCUDA book 站点样式：图注、代码标题、实践经验框、页脚溯源。 */
+/* LeetCUDA book 站点样式：版心、图注、代码标题、实践经验框、页脚溯源。 */
+
+/* 版心居中：rtd 主题给 .wy-nav-content 设了 max-width: 800px，但后面一条规则把
+   margin 归零，于是正文栏钉在侧栏右侧——宽屏上右边会空出一大片（2560px 屏空 1460px）。
+   这里恢复自动外边距让它居中，并在超宽屏适度放宽栏宽（书里代码与表格偏宽）。 */
+.wy-nav-content {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+@media screen and (min-width: 1600px) {
+  .wy-nav-content {
+    max-width: 960px;
+  }
+}
 
 .rst-content .rtd-caption {
   margin: -0.4em 0 1.2em 0;
