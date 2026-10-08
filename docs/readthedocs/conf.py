@@ -44,12 +44,16 @@ html_css_files = ["custom.css"]
 html_last_updated_fmt = ""
 html_title = project
 html_theme_options = {
-  "navigation_depth": 4,
+  # 左栏只到「篇 → 章」两层：小节级目录放在右栏（见 _templates/layout.html），
+  # 两处重复会让左栏过长。
+  "navigation_depth": 2,
   "collapse_navigation": False,
   "sticky_navigation": True,
   "titles_only": False,
   "prev_next_buttons_location": "both",
 }
+
+templates_path = ["_templates"]
 
 mathjax_path = "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"
 

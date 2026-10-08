@@ -89,21 +89,29 @@ MATH_STATE_JS = """
 #: 版式几何：图片与表格是否居中、有没有元素撑出正文栏（见 README「版式」一节）。
 LAYOUT_JS = """
 () => {
-  const content = document.querySelector('.rst-content .section')
+  // 正文列：三栏布局下要量“文字列”本身（.rtd-page-main），不是含右栏目录的整块容器。
+  const content = document.querySelector('.rtd-page-main')
+    || document.querySelector('.rst-content .section')
     || document.querySelector('.rst-content');
   if (!content) return null;
   const column = content.getBoundingClientRect();
   const offCenter = (rect) => Math.abs((rect.left - column.left) - (column.right - rect.right)) > 3;
   const out = {tables: 0, tables_off_center: 0, figures: 0, figures_off_center: 0,
-               wide_math: 0, math_escaped: 0, page_overflow: 0, column_off_center: 0};
+               wide_math: 0, math_escaped: 0, page_overflow: 0, column_off_center: 0,
+               sidebar_gap: 0};
+  // 版式：侧栏与正文当作一个整体居中，且两者紧贴（见 README「版式」）。
+  const sidebar = document.querySelector('.wy-nav-side');
   const content_column = document.querySelector('.wy-nav-content');
-  const wrap = document.querySelector('.wy-nav-content-wrap');
-  if (content_column && wrap) {
+  if (sidebar && content_column) {
+    const side = sidebar.getBoundingClientRect();
     const column = content_column.getBoundingClientRect();
-    const outer = wrap.getBoundingClientRect();
-    const left_gap = column.left - outer.left;
-    const right_gap = outer.right - column.right;
-    if (Math.abs(left_gap - right_gap) > 6) out.column_off_center = 1;
+    if (getComputedStyle(sidebar).display !== 'none' && side.width > 0) {
+      out.sidebar_gap = Math.round(column.left - side.right);
+      if (Math.abs(side.left - (window.innerWidth - column.right)) > 8
+          || Math.abs(out.sidebar_gap) > 8) {
+        out.column_off_center = 1;
+      }
+    }
   }
   for (const table of content.querySelectorAll('table')) {
     const rect = table.getBoundingClientRect();

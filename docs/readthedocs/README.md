@@ -88,7 +88,8 @@ docs/readthedocs/
 ├── conf.py              Sphinx 配置（MyST + MathJax v3 + sphinx-rtd-theme）
 ├── requirements.txt     站点构建依赖（版本钉死）
 ├── build.sh             本地一键：转换 → sphinx-build
-├── _static/custom.css   提示块与图注样式
+├── _static/custom.css   版式（三栏居中）、表格、提示块与图注样式
+├── _templates/page.html 版式：正文右侧插入本页目录（`{{ toc }}`）
 └── convert/             转换包
     ├── booktree.py      解析 book.tex → 篇/章顺序（导航骨架）
     ├── texutil.py       LaTeX 扫描助手（分组、注释、环境配对）
@@ -125,10 +126,15 @@ TikZ 独立成链：每个片段套 standalone 文档编译成 PDF，再让 dvis
 
 ### 版式
 
-- **版心居中**：rtd 主题给 `.wy-nav-content` 设了 `max-width: 800px`，但后面一条规则
-  把 `margin` 归零，正文栏就钉在侧栏右侧——宽屏上右边空一大片（2560px 屏空 1460px）。
-  `custom.css` 恢复自动外边距把它居中，并在 ≥1600px 时把栏宽放宽到 960px（书里代码
-  与表格偏宽）。
+- **三栏：左「篇 → 章」+ 正文 + 右「本页目录」**：左栏只到章节级（`conf.py` 的
+  `navigation_depth = 2`），小节级目录放右栏，两处不重复。
+  `_templates/page.html` 覆盖 `body` 块，在正文右侧插入 `{{ toc }}`（注意要覆盖
+  `page.html` 而不是 `layout.html`——Sphinx 基础主题的 `page.html` 也定义了该块，
+  写在 `layout.html` 里会被顶掉）。
+- **整体居中**：rtd 主题把 `.wy-nav-content` 的 `margin` 归零，三栏整体贴左（2560px
+  屏右侧空 1460px）。`custom.css` 把「侧栏 + 正文」作为一组：侧栏 `left` 与正文容器
+  `margin-left` 用同一个 `calc()` 偏移，两者紧贴、空白均分到两侧。三栏需要
+  300 + 800 + 28 + 220 = 1348px，窄于此宽度隐藏右栏；≥1600px 正文放宽到 960px。
 - **图片与表格居中**：书里插图多包在 `\begin{center}` 里（那层排版环境在转换时剥掉
   了），表格是 pandoc 直出的 HTML，两者默认都靠左。CSS 里给 `p > img:only-child`
   与表格设了居中——只处理独立成段和表格单元格里的图，正文中夹在句子里的图不动；

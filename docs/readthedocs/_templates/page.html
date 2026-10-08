@@ -1,0 +1,19 @@
+{# 版式：左侧保留「篇 → 章」的粗粒度导航（conf.py 的 navigation_depth = 2），
+   右侧放本页的小节级目录，三栏整体居中。
+
+   覆盖 `body` 块的模板必须是 page.html 而不是 layout.html：Sphinx 基础主题的
+   page.html 也定义了这个块（`{% block body %}{{ body }}{% endblock %}`），
+   子模板的名字优先，写在 layout.html 里会被它顶掉。 #}
+{% extends "!page.html" %}
+
+{% block body %}
+<div class="rtd-page-body">
+  <div class="rtd-page-main">
+    {{ body }}
+  </div>
+  <aside class="rtd-localtoc" aria-label="本页目录">
+    <p class="rtd-localtoc-title">本页目录</p>
+    {{ toc }}
+  </aside>
+</div>
+{% endblock %}

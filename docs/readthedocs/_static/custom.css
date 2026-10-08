@@ -1,16 +1,110 @@
 /* LeetCUDA book 站点样式：版心、图注、代码标题、实践经验框、页脚溯源。 */
 
-/* 版心居中：rtd 主题给 .wy-nav-content 设了 max-width: 800px，但后面一条规则把
-   margin 归零，于是正文栏钉在侧栏右侧——宽屏上右边会空出一大片（2560px 屏空 1460px）。
-   这里恢复自动外边距让它居中，并在超宽屏适度放宽栏宽（书里代码与表格偏宽）。 */
-.wy-nav-content {
-  margin-left: auto;
-  margin-right: auto;
+/* 三栏版式：左「篇 → 章」导航 + 正文 + 右「本页目录」（小节级）。
+   整体（侧栏 + 正文 + 目录）作为一组居中：侧栏左移一段，正文容器跟着右移同样距离，
+   两者紧贴、多余空白均分到两侧。注意不能只给正文栏加 auto 外边距——那样空白会跑到
+   侧栏与正文之间。 */
+
+/* 右栏：本页小节目录 */
+.rtd-page-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 28px;
+}
+
+.rtd-page-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.rtd-localtoc {
+  flex: 0 0 220px;
+  position: sticky;
+  top: 18px;
+  max-height: calc(100vh - 60px);
+  overflow-y: auto;
+  padding-left: 14px;
+  border-left: 1px solid #e1e4e5;
+  font-size: 88%;
+  line-height: 1.5;
+}
+
+.rtd-localtoc-title {
+  margin: 0 0 6px 0;
+  font-weight: 700;
+  color: #404040;
+}
+
+.rtd-localtoc ul {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+}
+
+.rtd-localtoc li {
+  margin: 3px 0;
+}
+
+.rtd-localtoc ul ul {
+  padding-left: 12px;
+}
+
+.rtd-localtoc a {
+  color: #555;
+  text-decoration: none;
+}
+
+.rtd-localtoc a:hover {
+  color: #2980b9;
+  text-decoration: underline;
+}
+
+/* 放不下三栏时隐藏右栏，正文恢复单栏宽度：三栏需要 300 + 800 + 28 + 220 = 1348px，
+   窄于此宽度硬塞会把正文压到 630px 以下。 */
+@media screen and (max-width: 1349px) {
+  .rtd-localtoc {
+    display: none;
+  }
+}
+
+@media screen and (min-width: 1100px) {
+  /* 无右栏时的布局：300（侧栏）+ 800（正文） */
+  .wy-nav-side {
+    left: max(0px, calc((100% - 1100px) / 2));
+  }
+
+  .wy-nav-content-wrap {
+    margin-left: calc(300px + max(0px, calc((100% - 1100px) / 2)));
+  }
+}
+
+@media screen and (min-width: 1350px) {
+  /* 有右栏：300 + 1048（正文 800 + 间距 28 + 目录 220） */
+  .wy-nav-content {
+    max-width: 1048px;
+  }
+
+  .wy-nav-side {
+    left: max(0px, calc((100% - 1348px) / 2));
+  }
+
+  .wy-nav-content-wrap {
+    margin-left: calc(300px + max(0px, calc((100% - 1348px) / 2)));
+  }
 }
 
 @media screen and (min-width: 1600px) {
+  /* 超宽屏正文放宽到 960：300 + 1208（960 + 28 + 220） */
   .wy-nav-content {
-    max-width: 960px;
+    max-width: 1208px;
+  }
+
+  .wy-nav-side {
+    left: max(0px, calc((100% - 1508px) / 2));
+  }
+
+  .wy-nav-content-wrap {
+    margin-left: calc(300px + max(0px, calc((100% - 1508px) / 2)));
   }
 }
 
