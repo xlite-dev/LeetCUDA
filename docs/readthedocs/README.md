@@ -155,8 +155,9 @@ TikZ 独立成链：每个片段套 standalone 文档编译成 PDF，再让 dvis
 - **书稿自身的悬空引用**：`ch19b`（CuTe 白皮书导读）有 12 条 `\ref` 指向未收录的
   公式/章节/表格 label，书稿本身也解析不到，页面降级成 code 形式并记入报告。
 - **图形内部文字**：`paths` 模式下是矢量轮廓，不能选中；正文文字不受影响。
-- **表格样式**：`<table>` 是 pandoc 直出的 HTML，样式较素（无斑马纹/边框定制），
-  单元格内的 Markdown 语法不生效（HTML 原文透传）。
+- **表格样式**：`<table>` 是 pandoc 直出的 HTML，样式由 `_static/custom.css` 补齐
+  （边框、表头底色、斑马纹、窄表居中、宽表在表内横向滚动）；单元格内的 Markdown
+  语法不生效（HTML 原文透传），转换器会把表格里的链接/图片/强调转成 HTML。
 - 转换产物不入库，RTD 每次构建现转（apt 装 texlive + 227 张 TikZ 编译 ≈ 3–5 分钟）。
 
 ## 在 Read the Docs 上新建项目

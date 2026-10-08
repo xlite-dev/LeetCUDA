@@ -46,14 +46,15 @@
 }
 
 /* 表格：pandoc 直出的 <table> 不带主题类名，默认没有边框与内边距，看起来像一堆
-   对齐的文字。这里给它补上与主题 docutils 表一致的样式。 */
-.rst-content .section > table,
-.rst-content section > table {
+   对齐的文字。这里补上与主题 docutils 表一致的样式，并把表格居中：窄表按内容宽度
+   居中，宽表占满正文栏后在表内横向滚动（不撑破版心）。 */
+.rst-content table {
   display: block;
   overflow-x: auto;
+  width: fit-content;
   max-width: 100%;
   border-collapse: collapse;
-  margin: 0 0 24px;
+  margin: 0 auto 24px;
 }
 
 .rst-content table th,
@@ -98,4 +99,27 @@
 .rst-content img {
   max-width: 100%;
   height: auto;
+}
+
+/* 过宽的显示公式（MathJax）在自身容器里横向滚动，避免撑出页面横向滚动条。
+   MathJax 会给这类公式写内联 `min-width`（CSS 里 min-width 压过 max-width），
+   所以必须用 !important 覆盖，否则页面上会出现整页横向滚动条。 */
+.rst-content mjx-container[display="true"] {
+  min-width: 0 !important;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* 图片居中：书里插图多包在 \begin{center} 里，那层排版环境在转换时剥掉了，网页上
+   默认靠左。只处理「独立成段」与「表格单元格里」的图，正文中夹在句子里的图不受
+   影响。 */
+.rst-content p > img:only-child {
+  display: block;
+  margin: 1.2em auto;
+}
+
+.rst-content td > img {
+  display: block;
+  margin: 0.3em auto;
 }
