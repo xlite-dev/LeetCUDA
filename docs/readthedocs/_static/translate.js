@@ -120,6 +120,12 @@
     toggle.appendChild(document.createTextNode(english ? ' 中文' : ' English'));
 
     function activate() {
+      if (!isReachable()) {
+        // 外观与主题按钮完全一致（不做置灰，否则与旁边的「上一页」风格不一），
+        // 本地预览点了给一条提示，说明为什么这里用不了。
+        showHint(toggle);
+        return;
+      }
       if (english) {
         writeCookie('/' + SOURCE + '/' + SOURCE);
       } else {
@@ -129,26 +135,36 @@
       location.reload();
     }
 
-    if (!isReachable()) {
-      toggle.classList.add('rtd-translate-disabled');
-      toggle.setAttribute('aria-disabled', 'true');
-      toggle.removeAttribute('tabindex');
-      toggle.title = '本地预览无法使用 Google 翻译（需要站点可被公网访问）；' +
-                     '本地可先用浏览器自带的翻译功能';
-    } else {
-      toggle.title = english ? '切回中文' : '用 Google 翻译阅读英文版';
-      toggle.addEventListener('click', function (event) {
+    toggle.title = isReachable()
+      ? (english ? '切回中文' : '用 Google 翻译阅读英文版')
+      : '本地预览无法使用 Google 翻译（需要站点可被公网访问）；' +
+        '本地可先用浏览器自带的翻译功能';
+    toggle.addEventListener('click', function (event) {
+      event.preventDefault();
+      activate();
+    });
+    toggle.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
         activate();
-      });
-      toggle.addEventListener('keydown', function (event) {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          activate();
-        }
-      });
-    }
+      }
+    });
     return toggle;
+  }
+
+  /** 在按钮旁显示一条临时提示（本地预览下用不了 Google 翻译时）。 */
+  function showHint(anchor) {
+    if (anchor.nextElementSibling &&
+        anchor.nextElementSibling.classList.contains('rtd-translate-hint')) {
+      return;
+    }
+    var hint = document.createElement('span');
+    hint.className = 'rtd-translate-hint';
+    hint.textContent = 'Google 翻译需要站点可被公网访问，部署到 RTD 后即可用';
+    anchor.insertAdjacentElement('afterend', hint);
+    window.setTimeout(function () {
+      hint.remove();
+    }, 8000);
   }
 
   /** 收集页面上所有的「上一页」按钮。

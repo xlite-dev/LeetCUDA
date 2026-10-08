@@ -5,15 +5,22 @@
    两者紧贴、多余空白均分到两侧。注意不能只给正文栏加 auto 外边距——那样空白会跑到
    侧栏与正文之间。 */
 
-/* 中英切换按钮：沿用主题「上一页 / 下一页」的按钮样式
-   （translate.js 里给的是 `btn btn-neutral` + FontAwesome 图标）。
-   默认放在页脚导航行「上一页」旁边；页面没有该行时退回侧栏搜索框下方。 */
+/* 中英切换按钮：沿用主题「上一页 / 下一页」的按钮样式与尺寸
+   （translate.js 里给的是 `btn btn-neutral` + FontAwesome 图标），插在「上一页」旁边。
+
+   主题按钮的文字是中文，16px 字号下中文行盒比英文高约 5px（内容盒 19 vs 14px），
+   于是英文标签的按钮只有 35px、而「上一页」是 40px。补一个显式行高（6+24+8+2 = 40）
+   让两者等高。 */
 .rtd-translate-toggle {
+  margin-left: 8px;
+  line-height: 24px;
   text-decoration: none;
 }
 
-.rtd-translate-toggle {
+.rtd-translate-hint {
   margin-left: 8px;
+  color: #b0b0b0;
+  font-size: 85%;
 }
 
 .rtd-translate {
@@ -24,22 +31,6 @@
 .rtd-translate .btn {
   margin-top: 4px;
   text-decoration: none;
-}
-
-/* 置灰态：正文顶部与页脚两处（浅色背景）；侧栏那处背景是深色，单独调。 */
-.rtd-translate-disabled,
-.rtd-translate-disabled:hover {
-  background-color: #f3f6f6 !important;
-  border-color: #e1e4e5 !important;
-  color: #b0b0b0 !important;
-  cursor: not-allowed;
-}
-
-.rtd-translate .rtd-translate-disabled,
-.rtd-translate .rtd-translate-disabled:hover {
-  background-color: #ffffff33 !important;
-  border-color: #ffffff33 !important;
-  color: #ffffffb3 !important;
 }
 
 /* 右栏：本页小节目录 */
