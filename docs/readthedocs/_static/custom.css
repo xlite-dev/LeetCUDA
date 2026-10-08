@@ -5,15 +5,21 @@
    两者紧贴、多余空白均分到两侧。注意不能只给正文栏加 auto 外边距——那样空白会跑到
    侧栏与正文之间。 */
 
-/* 中英切换按钮：沿用主题「上一页 / 下一页」的按钮样式与尺寸
-   （translate.js 里给的是 `btn btn-neutral` + FontAwesome 图标），插在「上一页」旁边。
+/* 导航行按钮统一行高：主题按钮用 `line-height: normal`，同一行文字从中文换成拉丁
+   字母（英文模式下 Google 会把「上一页 / 下一页」也翻成英文）时行盒会矮 5px——
+   中文 19px、拉丁 14px，页面上就是「Previous Page 高、English 矮」这种不一致。
+   给行内所有按钮（含中英切换按钮）钉一个 24px 行高：6 + 24 + 8 + 2 = 40px，
+   中文、英文都一样高。 */
+.rst-breadcrumbs-buttons > .btn,
+.rst-footer-buttons > .btn,
+.rtd-translate-toggle {
+  line-height: 24px;
+}
 
-   主题按钮的文字是中文，16px 字号下中文行盒比英文高约 5px（内容盒 19 vs 14px），
-   于是英文标签的按钮只有 35px、而「上一页」是 40px。补一个显式行高（6+24+8+2 = 40）
-   让两者等高。 */
+/* 中英切换按钮：沿用主题「上一页 / 下一页」的按钮样式与尺寸
+   （translate.js 里给的是 `btn btn-neutral` + FontAwesome 图标），插在「上一页」旁边。 */
 .rtd-translate-toggle {
   margin-left: 8px;
-  line-height: 24px;
   text-decoration: none;
 }
 
