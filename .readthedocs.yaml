@@ -10,7 +10,9 @@ build:
   # mutool（mupdf-tools，noble 的 ghostscript≥10.01 不再走 GS 路径），
   # pdftocairo/pdftoppm 走 poppler-utils。fonts-dejavu-core 提供书里用的等宽字体。
   apt_packages:
-    - pandoc
+    # 注意：这里**不要**装 pandoc。转换管线用 pip 的 `pypandoc_binary`（自带 pandoc
+    # 3.9，见 requirements.txt），而 Ubuntu 24.04 的 apt pandoc 是 3.1.3——`find_pandoc`
+    # 会先命中 PATH 上的系统 pandoc，版本一变输出就漂移，post_build 的内容核对会失败。
     - texlive-xetex
     - texlive-latex-recommended
     - texlive-latex-extra
