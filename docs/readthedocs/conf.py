@@ -55,6 +55,9 @@ html_theme_options = {
 
 templates_path = ["_templates"]
 
+# 中英切换按钮（Google 网站翻译，按需加载；只在公网可访问时可用）。
+html_js_files = ["translate.js"]
+
 mathjax_path = "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"
 
 # 书里定义了近 90 个数学宏（`\v` 是向量、`\Z` 是整数集、`\abs`/`\norm` 带参数…）。

@@ -254,6 +254,22 @@ TikZ 独立成链：每个片段套 standalone 文档编译成 PDF，再让 dvis
 本目录的 `requirements.txt` 与 `build.sh`。`docs/readthedocs/.gitignore` 里用
 `!requirements.txt`、`!build.sh` 逐条解禁，改动后建议 `git check-ignore -v` 复核。
 
+## 英文版切换（Google 翻译）
+
+侧栏搜索框下方有一个 `English / 中文` 按钮，点击后整站切到机器翻译的英文版。
+
+- 实现：`_static/translate.js` 写 `googtrans=/zh-CN/en` cookie 并 reload；官方组件
+  （`translate.google.com/translate_a/element.js`）**只在检测到该 cookie 时才加载**
+  ——没切过英文的读者不会引入第三方脚本。
+- 切换前给 `pre` / `code` / `.highlight` / 公式容器加 `notranslate`，避免机器翻译
+  改坏代码与公式（Sphinx 已给数学区加了这个类）。
+- **前提是站点能被公网访问**：Google 翻译是让 Google 的服务器去抓页面，`localhost`
+  与内网地址它抓不到。本地预览时按钮置灰并给出提示（本地想看英文可以用浏览器自带的
+  翻译），部署到 RTD 后即正常可用。
+- 不想要这个按钮：删掉 `conf.py` 里的 `html_js_files` 一行即可，其余不受影响。
+- 局限：Google 的网站翻译组件多年未更新，对技术书只能算「读得懂」；按钮是附加功能，
+  翻译坏了不影响中文站。
+
 ## 书内数学宏
 
 书稿里定义了近 90 个数学宏（`\v` 是向量、`\Z` 是整数集、`\abs`/`\norm` 带参数…）。

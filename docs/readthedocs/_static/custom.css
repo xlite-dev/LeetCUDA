@@ -5,6 +5,32 @@
    两者紧贴、多余空白均分到两侧。注意不能只给正文栏加 auto 外边距——那样空白会跑到
    侧栏与正文之间。 */
 
+/* 中英切换按钮：放在侧栏搜索框下方 */
+.rtd-translate {
+  padding: 0 12px 10px 12px;
+  text-align: right;
+}
+
+.rtd-translate button {
+  padding: 3px 12px;
+  border: 1px solid #ffffff66;
+  border-radius: 3px;
+  background: transparent;
+  color: #fcfcfc;
+  font-size: 85%;
+  cursor: pointer;
+}
+
+.rtd-translate button:hover:not(:disabled) {
+  background: #ffffff22;
+}
+
+.rtd-translate.rtd-translate-disabled button {
+  color: #ffffff66;
+  border-color: #ffffff33;
+  cursor: not-allowed;
+}
+
 /* 右栏：本页小节目录 */
 .rtd-page-body {
   display: flex;
