@@ -193,7 +193,7 @@ Level & 手段 & 计算密度递进 \\
   AI $\approx \mathrm{TM}{\times}\mathrm{TN}{\times}B\sb{K}/(2\times\mathrm{sizeof}) \approx 8\times8\times8/8 = 64$，compute-bound \\
 3 & Vectorize（向量化访存）：\texttt{float4}/\texttt{half2}，减少 load/store 指令数 & —— \\
 4 & Tensor Core（MMA \texttt{m16n8k16}）：硬件矩阵乘单元，warp 级指令 &
-  提供硬件加速的 256 FMA/cycle/warp，大幅提升吞吐 \\
+  提供硬件加速的 256 FMA/cycle/warp，提升吞吐 \\
 5 & Warp Specialization + TMA（WGMMA \texttt{m64n128k16}）：Hopper 异步执行 & —— \\
 \bottomrule
 \end{tabular}

@@ -201,7 +201,7 @@ src/dst 地址；让连续线程读连续地址（合并访存）；让每线程
   }
 \end{lstlisting}
 
-\textbf{痛点在哪。}这段代码很短，但它把「谁搬哪块」\emph{算在了}
+\textbf{问题在哪。}这段代码很短，但它把「谁搬哪块」\emph{算在了}
 \texttt{r}/\texttt{c}/\texttt{loop} 三个变量里，一旦引入 swizzle、
 ldmatrix 或 bank 冲突考虑，地址公式会迅速膨胀，而「哪个数据在哪个线程
 手里」会彻底看不清。@竹熙佳处建议先把映射从代码里\textbf{抽出来画成一张
@@ -693,8 +693,8 @@ accumulator 服务的，并不直接按 R2S copy atom 的 source-value 顺序表
 memory）基于 \texttt{r2s\_tiled\_copy\_c} 的 reference layout 创建一个共享
 \texttt{tCrD.data()} 的 zero-copy layout view，把逻辑坐标从
 \texttt{(MMA, MMA\_M, MMA\_N)} 重新表示为 \texttt{(CPY, CPY\_M, CPY\_N)}
-（\texttt{tCrC\_r2s = r2s\_thr\_copy\_c.retile\_S(tCrD)}）。这一步不读取或
-写入寄存器/共享内存、不做 dtype conversion、不交换 lane 间数据；真正的
+（\texttt{tCrC\_r2s = r2s\_thr\_copy\_c.retile\_S(tCrD)}）。这一步与前述
+\texttt{retile} 一样只做零拷贝视图重标记；真正的
 R2S 数据搬运发生在后面的
 \texttt{cute::copy(r2s\_tiled\_copy\_c, ...,\allowbreak{} tCsC\_r2s(...))}。
 可与主循环的 \texttt{s2r\_thr\_copy\_a.retile\_D(tCrA)} 对照：二者都是为了让

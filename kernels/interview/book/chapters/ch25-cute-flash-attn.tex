@@ -39,7 +39,7 @@ attention 上的完整样本。
 的浪费在哪、为什么实现 2 要把搬运拆出去、为什么实现 3 要拆 KV。四个实现共享
 同一组编译期布局类型（\texttt{Flash\allowbreak{}Attn2\allowbreak{}Cu\allowbreak{}Te\allowbreak{}Traits} /
 \texttt{Flash\allowbreak{}Attn3\allowbreak{}Cu\allowbreak{}Te\allowbreak{}Traits}）与五个 kernel 级工具函数，
-这正是第~\ref{ch:22}~章「TiledMMA 与 fragment」在真实 kernel 里的落点：
+这是第~\ref{ch:22}~章「TiledMMA 与 fragment」在真实 kernel 里的落点：
 
 \begin{itemize}[itemsep=1pt,topsep=2pt]
   \item \texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}rowcol} 与 \texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}Aregs}
@@ -169,7 +169,7 @@ CuTe 版 attention 的第一步是把「tile 几何 + 数据格式」编译期�
 half，K/V 各占 4096 个，25.9 节 case C 的 smem 80\,KB 核算正是这批
 \texttt{cosize} 的直接应用）。
 
-V 的转置视图是第一个值得写透的细节：
+V 的转置视图是第一个要细讲的细节：
 
 \begin{equation}
   \mathrm{SmemLayoutVt} \;=\; \mathrm{composition}\bigl(\mathrm{SmemLayoutKV},\;
@@ -186,7 +186,7 @@ col-major 视图：逻辑坐标 $(d, j)$ 被解释为 V 的第 $j$ 行第 $d$ �
 是笔误，\texttt{GenRowMajor} 明示 B 实为 row-major，col-major 的是
 复合后的结果视图）。它的实测类型是
 \texttt{Sw\allowbreak{}<3,\allowbreak{}4,\allowbreak{}3> o \allowbreak{}(64,\allowbreak{}64):\allowbreak{}(1,\allowbreak{}64)}，即 $V^\top(d,j) \mapsto d + 64j$
-的 col-major 视图，\textbf{一个字节都不搬}，这正是 $P@V$ 需要的 B 操作数
+的 col-major 视图，\textbf{一个字节都不搬}，即 $P@V$ 需要的 B 操作数
 形态（\texttt{mma.row.col} 要求 B 为 col-major），也是 25.7 节「常见坑」里
 「不要用带 swizzle 的 Vt 视图推导寄存器布局」的由来。
 
@@ -773,7 +773,7 @@ K 与 V 的 smem destination 也由 \texttt{partition\_D} 一次算好
 
 \texttt{make\_\allowbreak{}tiled\_\allowbreak{}copy} 的两个 layout 值得单独读：线程布局
 $(32,8){:}(8,1)$ 铺满 256 个线程，值布局 $(1,8)$ 表示「每线程一次搬
-8 个 half $=128$\,b」，这正是第~\ref{ch:21}~章「TV-layout 决定
+8 个 half $=128$\,b」，这是第~\ref{ch:21}~章「TV-layout 决定
 \texttt{copy} 的粒度」的实例。G2S 的源是 gmem 上的 $[rows, D]$、
 目的地是带 swizzle 的 smem tile，\texttt{copy()} 会按 copy 原子自动
 选择 \texttt{cp.\allowbreak{}async.\allowbreak{}cg.\allowbreak{}shared.\allowbreak{}global} 的 128-bit 形式。
@@ -893,7 +893,7 @@ KV 划分 & 单流全遍历 & 单流全遍历 & 奇偶拆给两个 consumer \\
 共享全部 layout 类型（Q/K/V 的 smem、S/O 的 fragment、P 的重解释）与
 \texttt{gemm\_ss}/\texttt{gemm\_rs}，差异集中在三处：\textbf{谁来搬}
 （全员 vs producer vs producer 分 bank）、\textbf{谁等谁}（组栈 vs 事务
-计数 vs 双 bank 屏障）、\textbf{怎么收尾}（归一化 vs 归并）。这正是
+计数 vs 双 bank 屏障）、\textbf{怎么收尾}（归一化 vs 归并）。这就是
 第~\ref{ch:24}~章「CuTe 只抽象计算与数据，不抽象调度」的注意点：调度
 （pipeline 结构、屏障协议）仍需作者设计，CuTe 消掉的是与调度\textbf{正交}的那
 一层地址算术。

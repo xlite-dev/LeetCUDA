@@ -176,7 +176,7 @@ $1\times16$ 块），不旋转时一个 outlier 坐标会放大所在块的量�
 incoherent processing（随机 $\pm1$ 对角 $\times$ Hadamard，与 RoPE 融合）实测
 与分块量化联合可将 FP8 RMSE 降低 $2.6\times$（即降至 $1/2.6$，
 arXiv:2407.08608 \S3.3）；QuaRot 与
-SpinQuant 把同一思想推到了 LLM 权重激活的端到端量化。
+SpinQuant 把同一思想推广到 LLM 权重激活的端到端量化。
 
 \textbf{宽度规则}：全宽 WHT 要求 $D$ 为 2 的幂且 $D\le 512$（更大的全宽蝶形
 寄存器开销过大）；否则用块对角 $\mathrm{blockdiag}(H_{64})$ 近似（fp4 路径的
@@ -538,13 +538,9 @@ $\{r,\,r{+}8\}$（2 行），行对经 \texttt{shfl\_xor}(amax, 8) 合并。两�
 跨多行共享。行内再一分为二，每行两个线程各管半行，网格因此翻倍，冷输入的
 DRAM 延迟靠更多 in-flight warp 隐藏；行内两半与行对分别用 \texttt{shfl\_xor}
 1 与 16 合并成组 amax，组 amax 与每个量化字节都和 1-thread/row 形态逐 bit
-一致。
+一致——粒度变更不能隐式改变数值。
 
-两个实现细节。\textbf{每行两个线程}（而非一个线程整行）：行向量两半分给
-两个线程，网格规模翻倍，用更多inflight warp 隐藏冷输入的 DRAM 延迟；两条
-\texttt{shfl\_xor}（1 与 16）把两半与行对合并成组 amax，注释强调结果与
-1-thread/row 形态\textbf{逐 bit 一致}：粒度变更不能隐式改变数值。
-\textbf{scale 的写入下标}：$g = (\text{seg\_row}/16)\cdot 8 + \text{seg\_row}\bmod 8$
+还有一个实现细节：\textbf{scale 的写入下标}。$g = (\text{seg\_row}/16)\cdot 8 + \text{seg\_row}\bmod 8$
 把 $\{r, r+8\}$ 行对映射到 64 槽位表；段内行号还要按奇偶 launch block 折算
 （每个 launch block 只覆盖 64 行，两个 block 合成一个 128 行 scale 段）。
 K 侧的 per-thread 变体（\texttt{quantize\_fp8\_perthread\_k\_kernel}，L778 起）

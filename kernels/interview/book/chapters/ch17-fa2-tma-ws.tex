@@ -828,7 +828,7 @@ $0.6\%$）。V 的单 buffer 消费已饱和，V tile 传输能被 QK $+$ softma
   \texttt{flash\_\allowbreak{}attn.\allowbreak{}cuh} 只 \#include \texttt{base.cuh}，但其 L212 起调用
   的 \texttt{swizzle<64>} 定义在 \texttt{hgemm.cuh} L390，单编 flash\_attn.cuh
   会报 identifier undefined，必须按 bench/flash\_attn.cu L4--5 的顺序先引 hgemm.cuh。
-  属头文件依赖不闭环的历史遗留，book/tests 的 include 顺序已按此固定。
+  属头文件依赖不自含的历史遗留，book/tests 的 include 顺序已按此固定。
 \end{kaogu}
 
 全量核查记录待汇总进 \texttt{book/\allowbreak{}CHECKLOG.\allowbreak{}md}（本次任务不改该文件，结论以上述

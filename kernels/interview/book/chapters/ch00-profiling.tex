@@ -250,10 +250,10 @@ stall reasons、指令 mix、occupancy 这类\textbf{架构级}结论可以迁�
 性能数字（SM 数、频率、L2 容量）不可迁移；ncu 验证完架构结论后，回目标
 硬件跑 timing bench 收数。
 
-\subsection{replay 的干扰与 A/B 纪律}
+\subsection{replay 的干扰与 A/B 规则}
 
 ncu 锁频 + 多遍回放 + 串行执行，因此\textbf{报告内耗时只用于相对比较}。
-做优化 A/B 时回到真实 bench，并遵守两条纪律：
+做优化 A/B 时回到真实 bench，并遵守两条规则：
 
 \begin{itemize}
 \item \textbf{校验公共参照}：许多 bench 会同时输出被测实现与公共参照

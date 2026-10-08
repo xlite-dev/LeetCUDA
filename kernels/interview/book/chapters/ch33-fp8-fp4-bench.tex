@@ -14,7 +14,7 @@
         pre-heat、no\_grad）；精度怎么报才有信息量（布尔 allclose 之外
         的 rel\_err/max\_abs 体系）；
   \item \textbf{矩阵}：bench CLI 的全 knob 空间与实测——fp8/fp4 在
-        self/causal/gqa/cross $\times$ D$\in[64,512]$ 上的完整版图，
+        self/causal/gqa/cross $\times$ D$\in[64,512]$ 上的完整矩阵，
         knob（QK int8/fp8、PV f16/f32、量化粒度、hybrid）的边际效应；
   \item \textbf{生态}：Cache-DiT $\times$ FFPA 的端到端集成——量化
         attention 在真实扩散模型管线里怎么落地。
@@ -232,7 +232,7 @@ bench 输出三层指标，各有分工：
         约 50 倍余量；causal 尖峰行天然 0.5--0.75 级，0.70 按
         无 hybrid 抑制的地板量级取上界）。
 \end{itemize}
-读数纪律：\textbf{速度看 min、能量看 rel\_err、结构看 max\_abs、
+读数规则：\textbf{速度看 min、能量看 rel\_err、结构看 max\_abs、
 门禁看 allclose}，四者缺一不可。第~\ref{ch:29}~章 29.7.1 的正确性
 bug 就是「速度正常 + 均值正常 + max\_abs 结构性坏行」的组合。
 
@@ -253,9 +253,9 @@ bug 就是「速度正常 + 均值正常 + max\_abs 结构性坏行」的组合�
 sm89 cp.async 路径的 per-block 量化；NHD 零拷贝（diffusers E2E 布局）
 由独立的 \texttt{--with-permute} 启用，与 preset 正交。
 
-\subsection{测量纪律的代码化}
+\subsection{测量规则的代码化}
 
-公平测量的每条纪律都落在代码里（\texttt{bench\_fp8.py}）：
+公平测量的每条规则都落在代码里（\texttt{bench\_fp8.py}）：
 \begin{itemize}[itemsep=0pt,topsep=2pt]
   \item \texttt{bench\_ms} L125--140：\texttt{no\_grad} 上下文 +
         warmup 3 + iters 5 取 min；
@@ -587,7 +587,7 @@ fp4，精度损失只在最敏感的位置修正。README 引用的 NeMo Automod
 
 \begin{enumerate}[itemsep=0pt,topsep=2pt]
   \item min-of-N + no\_grad + pre-heat + 固定顺序——推理 bench 四
-        纪律，各自防什么坑；
+        条规则，各自防什么坑；
   \item speedup 口径三要素：参照后端（FA2/MATH 随 D 换挡）、
         min-of-N、E2E 摊销公式（占比 $\alpha$ 决定上界）；
   \item 精度四指标：rel\_err（能量）/max\_abs（结构）/allclose

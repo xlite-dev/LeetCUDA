@@ -1,0 +1,51 @@
+# Read the Docs 配置：构建时从书稿 tex 现转出站点源树，再交给 Sphinx。
+# 站点源树（docs/readthedocs/build/）不入库，tex 是唯一事实源。
+version: 2
+
+build:
+  os: ubuntu-24.04
+  tools:
+    python: "3.12"
+  # dvisvgm 不被 texlive-xetex 自动拉入，必须显式安装；dvisvgm 读 PDF 需要
+  # mutool（mupdf-tools，noble 的 ghostscript≥10.01 不再走 GS 路径），
+  # pdftocairo/pdftoppm 走 poppler-utils。fonts-dejavu-core 提供书里用的等宽字体。
+  apt_packages:
+    - pandoc
+    - texlive-xetex
+    - texlive-latex-recommended
+    - texlive-latex-extra
+    - texlive-fonts-recommended
+    - texlive-pictures
+    - texlive-lang-chinese
+    - fonts-noto-cjk
+    - fonts-dejavu-core
+    - dvisvgm
+    - mupdf-tools
+    - poppler-utils
+  jobs:
+    pre_build:
+      # 书稿 tex → MyST + TikZ → SVG，全部落在 docs/readthedocs/build/。
+      # 每进程一份 xelatex，RTD 是 7GB 内存 + 2 并发构建，取 4 较稳。
+      - cd docs/readthedocs && python -m convert --jobs 4
+    build:
+      # 覆盖默认 html 构建：显式指定 srcdir/confdir，避免 srcdir 被当成 conf.py 所在目录。
+      html:
+        - mkdir -p $READTHEDOCS_OUTPUT/html
+        - >-
+          sphinx-build -T -b html
+          -d docs/readthedocs/build/doctrees
+          -c docs/readthedocs
+          docs/readthedocs/build/src
+          $READTHEDOCS_OUTPUT/html
+    post_build:
+      # 内容核对（章号、表格、属性泄漏、锚点）；不过就让构建失败，避免静默交付错页。
+      - >-
+        cd docs/readthedocs && python -m convert.verify
+        --src build/src --html $READTHEDOCS_OUTPUT/html
+
+python:
+  install:
+    - requirements: docs/readthedocs/requirements.txt
+
+sphinx:
+  configuration: docs/readthedocs/conf.py

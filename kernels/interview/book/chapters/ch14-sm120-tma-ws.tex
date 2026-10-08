@@ -247,7 +247,7 @@ barrier arrive 形成双向互等死锁；\textcircled{3} alloc 降到 208：总
 \end{figure}
 
 \textbf{Blackwell 上的 TMA 地址空间陷阱与解法}：即便池数学正确，还有一道
-隐蔽的门槛，CUDA 13.2 的 ptxas 在 kernel 同时含有 setmaxnreg 与目的地址为
+隐蔽的门槛：CUDA 13.2 的 ptxas 在 kernel 同时含有 setmaxnreg 与目的地址为
 \texttt{shared::cluster} 的 \texttt{cp.\allowbreak{}async.\allowbreak{}bulk.\allowbreak{}tensor} 时，会把后者当作隐式
 extern-call 边界，将 setmaxnreg 连同警告 C7506（"ignored to maintain
 compatibility into 'extern' call"）一起丢弃。历史上这里曾发生过一次误诊：
@@ -727,7 +727,7 @@ $8192^3$ 规模下 TMA+MMA+WS 组合把纯 MMA 基础实现（第~\ref{ch:11}~�
   修正（commit f4b759f）。
 \end{kaogu}
 
-\begin{kaogu}[F2·已闭环]{注释「require \_\_launch\_bounds\_\_(N, 1)」与实现不一致}
+\begin{kaogu}[F2·已修正]{注释「require \_\_launch\_bounds\_\_(N, 1)」与实现不一致}
   common.cuh 注释称 setmaxnreg 需要 \texttt{\_\allowbreak{}\_\allowbreak{}launch\_\allowbreak{}bounds\_\allowbreak{}\_\allowbreak{}(N,\allowbreak{} 1)}
   （每 SM 1 block，给满每线程 256 regs 的编译许可），而
   \texttt{hgemm\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}tn} 当时只写
@@ -811,7 +811,7 @@ cp.async.bulk.tensor.2d.shared::cta.global.mbarrier::complete_tx::bytes ...
 SASS \texttt{USETMAXREG}=112=PTX 计数；FA bench Max Err 与基线一致；
 \texttt{-{}-tma-mma-ws 4096} 全 0；sm\_90a/sm\_120a 默认构建无回归。
 
-\paragraph{方法论三条} （1）\textbf{SASS 助记符是 \texttt{USETMAXREG}，没有
+\paragraph{排查方法三条} （1）\textbf{SASS 助记符是 \texttt{USETMAXREG}，没有
 \texttt{n}}。\texttt{grep setmaxnreg} 在 SASS 上全程假阴性，本次调查一度据此
 得出「连最小 PTX 都被丢弃」的错误结论；跨层数指令先核对两层的助记符拼写
 （PTX \texttt{setmaxnreg} $\ne$ SASS \texttt{USETMAXREG}）。（2）ptxas 聚合

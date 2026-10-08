@@ -163,7 +163,7 @@ m16n8k16 的 C-fragment 约定下，一行 128 个分数散在同 warp 的 4 个
 warp 内 \texttt{\_\_shfl\_xor} 两轮（1 与 2 的蝴蝶，\S\ref{sec:26c-rescale}），
 \textbf{没有任何跨 warp 的 smem 归约}。第~\ref{ch:26}~章 WS 版的
 64$\times$64 tile 下 warp 沿 N 也要切，归约需要先跨 warp——M8N1 下行归约
-自然落在 warp 内，无需跨 warp 通信。代价是 PV 的 N 维只有 $k_{VDChunk}{=}64$：
+自然落在 warp 内。代价是 PV 的 N 维只有 $k_{VDChunk}{=}64$：
 单 warp 的 PV MMA 每次算 $16\times64$，由
 \texttt{gemm\_rs}（第~\ref{ch:25}~章）内部按 atom 循环展开，不影响
 协议。
@@ -720,7 +720,7 @@ $S_K{=}3$ 让 tid=0 的发射领先更远、TMA 传输更深地被 GEMM 窗口�
 而 V 每 tile 只消费 $D/64$ 个 chunk 且消费点稀疏（只在 softmax 之后），
 $S_V{=}2$ 已够用，第 3 级 stage 的 barrier 维护纯属开销——这就是
 $(3,2)$ 全面领先的 $D\le320$ 段。\textbf{第二}，$D\ge320$ 后
-\texttt{o\_acc\_storage}（$D/64 \times 32$ 个 f32）把寄存器推到 255
+\texttt{o\_acc\_storage}（$D/64 \times 32$ 个 f32）把寄存器顶到 255
 上限、spill 出现，stages 与 spill 的交互主导排序：D=320 时 $(3,2)/(3,3)$
 的 spill 总量（52$+$36$=$88\,B）只有 $(2,2)$（224$+$356$=$580\,B）的
 六分之一——浅流水下发射地址变量与消费循环的活跃变量生命周期重叠更长、

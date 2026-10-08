@@ -12,7 +12,7 @@
 前十九章的 kernel 都是「手写地址算术」的产物：自己在 gmem 上算 $(m,k)$ 的偏移，
 自己在 smem 上做 XOR swizzle，自己拼 ldmatrix 的 lane 地址，自己在 epilogue 里
 用 \texttt{\_\_shfl\_sync} 把 fragment 拼回连续向量。这套做法在第~\ref{ch:11}、
-\ref{ch:12}~章把 HGEMM 推到了 122 TFLOPS 量级，但它的知识结构是「散」的：
+\ref{ch:12}~章把 HGEMM 做到了 122 TFLOPS 量级，但它的知识结构是「散」的：
 同一组形状与步长的事实，以五种不同的写法散落在 kernel 的五个角落。Part~IV
 换一种做法：把 \textbf{(Shape, Stride) 提升为一等的数学对象}，用代数运算
 （复合、逆、乘积、切分）代替手写公式，把「我想要的布局」与「怎么算地址」
@@ -670,9 +670,6 @@ $(\mathrm{CPY}_M,\mathrm{CPY}_N)$ 两层循环压成一个线性索引来遍历
   \item $\mathrm{coalesce}(L_g) = (48){:}(1)$——该 layout 恰好整体连续，
         化简成单 mode。
 \end{itemize}
-这些操作在 kernel 里的高频用途是「把 MMA 的 fragment mode 与其余的 rest mode
-分离」（第~\ref{ch:22}~章），以及把 copy 的重复结构展平成线性索引
-（第~\ref{ch:21}~章）。
 
 \begin{sloppypar}
 一个命名上容易混淆的点：很多 CuTe 教程（以及 hgemm.cuh 的部分注释）用

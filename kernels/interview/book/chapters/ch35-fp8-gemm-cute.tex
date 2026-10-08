@@ -25,12 +25,12 @@ $1.81\times$，两个基线的差距本身就是一个「基线 sanity check」�
 一并给出，并指出部署时真正该走的路——\textbf{权重 $B$ 离线量化}
 （35.8.3~节）：权重只量化一次、随 checkpoint 落盘，运行时只承担激活量化的
 开销，E2E 从「量化占大头」回到主 kernel 决定。35.8.4~节把 tile 几何
-（$BM,BN$）与流水深度也当成可调参数实测一遍，得出结论：本章默认的宽 tile
-（$128\times256$ 配 2 级流水）就是大形状上的最快档（4096$^3$/8192$^3$ 上
-443.7/487.8~T，比 $128^3$/3 级快 $7.7\%/5.9\%$），但它带形状前提——
-$2048^3$ 上反而慢 $17\%$；35.8.5~节用 NCU 读出它为什么快
-（\texttt{pipe\_tensor} 80.9\%、寄存器 168/线程、bank conflict 0、
-smem 读波前反而更少）。FP4（NVFP4）GEMM 单独成章，本章不展开。
+（$BM,BN$）与流水深度也当成可调参数实测一遍：本章默认的宽 tile
+（$128\times256$ 配 2 级流水）就是大形状上的最快档，4096$^3$/8192$^3$ 上
+443.7/487.8~T，比 $128^3$/3 级快 $7.7\%/5.9\%$，但带形状前提——
+$2048^3$ 上反而慢 $17\%$。35.8.5~节用 NCU 读出它为什么快：
+\texttt{pipe\_tensor} 80.9\%、寄存器 168/线程、bank conflict 0、
+smem 读波前反而更少。FP4（NVFP4）GEMM 单独成章，本章不展开。
 
 \textbf{前置章节}：第~\ref{ch:34}~章（量化数学与 workspace 形态，必须）、
 第~\ref{ch:23}~章（TMA/swizzle）、第~\ref{ch:26c}~章（non-WS 协议）、
@@ -694,7 +694,7 @@ kernel-only，per-row $\times$ per-col，warmup 2 / repeat 3）。\textbf{加粗
 smem 为 $x$\,KB、超出本卡 99\,KB 的 opt-in 上限，故未实例化——这个门槛只由
 tile 几何决定，与形状无关。WS 变体只扫 $BM\le128$（$k_{BM}{=}256$ 时 512 个
 consumer 线程按 \texttt{setmaxnreg} 的 32/232 分配需要 122\,K 寄存器
-$>64$\,K 寄存器文件，kernel 里用 \texttt{static\_assert} 挡在编译期）。}
+$>64$\,K 寄存器文件，kernel 里用 \texttt{static\_assert} 拦截在编译期）。}
 \label{tab:35-sweep}
 \end{table}
 

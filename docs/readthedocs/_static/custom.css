@@ -1,0 +1,267 @@
+/* LeetCUDA book 站点样式：版心、图注、代码标题、实践经验框、页脚溯源。 */
+
+/* 三栏版式：左「篇 → 章」导航 + 正文 + 右「本页目录」（小节级）。
+   整体（侧栏 + 正文 + 目录）作为一组居中：侧栏左移一段，正文容器跟着右移同样距离，
+   两者紧贴、多余空白均分到两侧。注意不能只给正文栏加 auto 外边距——那样空白会跑到
+   侧栏与正文之间。 */
+
+/* 导航行按钮统一行高：主题按钮用 `line-height: normal`，同一行文字从中文换成拉丁
+   字母（英文模式下 Google 会把「上一页 / 下一页」也翻成英文）时行盒会矮 5px——
+   中文 19px、拉丁 14px，页面上就是「Previous Page 高、English 矮」这种不一致。
+   给行内所有按钮（含中英切换按钮）钉一个 24px 行高：6 + 24 + 8 + 2 = 40px，
+   中文、英文都一样高。 */
+.rst-breadcrumbs-buttons > .btn,
+.rst-footer-buttons > .btn,
+.rtd-translate-toggle {
+  line-height: 24px;
+}
+
+/* 中英切换按钮：沿用主题「上一页 / 下一页」的按钮样式与尺寸
+   （translate.js 里给的是 `btn btn-neutral` + FontAwesome 图标），插在「上一页」旁边。 */
+.rtd-translate-toggle {
+  margin-left: 8px;
+  text-decoration: none;
+}
+
+.rtd-translate-hint {
+  margin-left: 8px;
+  color: #b0b0b0;
+  font-size: 85%;
+}
+
+.rtd-translate {
+  padding: 0 12px 10px 12px;
+  text-align: right;
+}
+
+.rtd-translate .btn {
+  margin-top: 4px;
+  text-decoration: none;
+}
+
+/* 右栏：本页小节目录 */
+.rtd-page-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 28px;
+}
+
+.rtd-page-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.rtd-localtoc {
+  flex: 0 0 220px;
+  position: sticky;
+  top: 18px;
+  max-height: calc(100vh - 60px);
+  overflow-y: auto;
+  padding-left: 14px;
+  border-left: 1px solid #e1e4e5;
+  font-size: 88%;
+  line-height: 1.5;
+}
+
+.rtd-localtoc-title {
+  margin: 0 0 6px 0;
+  font-weight: 700;
+  color: #404040;
+}
+
+.rtd-localtoc ul {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+}
+
+.rtd-localtoc li {
+  margin: 3px 0;
+}
+
+.rtd-localtoc ul ul {
+  padding-left: 12px;
+}
+
+.rtd-localtoc a {
+  color: #555;
+  text-decoration: none;
+}
+
+.rtd-localtoc a:hover {
+  color: #2980b9;
+  text-decoration: underline;
+}
+
+/* 放不下三栏时隐藏右栏，正文恢复单栏宽度：三栏需要 300 + 800 + 28 + 220 = 1348px，
+   窄于此宽度硬塞会把正文压到 630px 以下。 */
+@media screen and (max-width: 1349px) {
+  .rtd-localtoc {
+    display: none;
+  }
+}
+
+@media screen and (min-width: 1100px) {
+  /* 无右栏时的布局：300（侧栏）+ 800（正文） */
+  .wy-nav-side {
+    left: max(0px, calc((100% - 1100px) / 2));
+  }
+
+  .wy-nav-content-wrap {
+    margin-left: calc(300px + max(0px, calc((100% - 1100px) / 2)));
+  }
+}
+
+@media screen and (min-width: 1350px) {
+  /* 有右栏：300 + 1048（正文 800 + 间距 28 + 目录 220） */
+  .wy-nav-content {
+    max-width: 1048px;
+  }
+
+  .wy-nav-side {
+    left: max(0px, calc((100% - 1348px) / 2));
+  }
+
+  .wy-nav-content-wrap {
+    margin-left: calc(300px + max(0px, calc((100% - 1348px) / 2)));
+  }
+}
+
+@media screen and (min-width: 1600px) {
+  /* 超宽屏正文放宽到 960：300 + 1208（960 + 28 + 220） */
+  .wy-nav-content {
+    max-width: 1208px;
+  }
+
+  .wy-nav-side {
+    left: max(0px, calc((100% - 1508px) / 2));
+  }
+
+  .wy-nav-content-wrap {
+    margin-left: calc(300px + max(0px, calc((100% - 1508px) / 2)));
+  }
+}
+
+.rst-content .rtd-caption {
+  margin: -0.4em 0 1.2em 0;
+  color: #555;
+  font-size: 90%;
+  text-align: center;
+}
+
+.rst-content .rtd-subcaption {
+  margin: -0.2em 0 0.8em 0;
+  color: #666;
+  font-size: 85%;
+  text-align: center;
+}
+
+.rst-content .rtd-admon {
+  border-radius: 2px;
+}
+
+.rst-content .rtd-admon.rtd-kaogu {
+  background: #fdf6e3;
+  border-color: #d9b56b;
+}
+
+.rst-content .rtd-admon.rtd-kaogu > .admonition-title {
+  background: #d9b56b;
+}
+
+.rst-content .rtd-admon.rtd-figure-fallback {
+  background: #fdecea;
+  border-color: #c0392b;
+}
+
+.rst-content .rtd-admon.rtd-figure-fallback > .admonition-title {
+  background: #c0392b;
+}
+
+.rst-content .rtd-admon.rtd-source-missing {
+  background: #eef3f8;
+  border-color: #7691a8;
+}
+
+.rst-content .rtd-admon.rtd-source-missing > .admonition-title {
+  background: #7691a8;
+}
+
+/* 表格：pandoc 直出的 <table> 不带主题类名，默认没有边框与内边距，看起来像一堆
+   对齐的文字。这里补上与主题 docutils 表一致的样式，并把表格居中：窄表按内容宽度
+   居中，宽表占满正文栏后在表内横向滚动（不撑破版心）。 */
+.rst-content table {
+  display: block;
+  overflow-x: auto;
+  width: fit-content;
+  max-width: 100%;
+  border-collapse: collapse;
+  margin: 0 auto 24px;
+}
+
+.rst-content table th,
+.rst-content table td {
+  border: 1px solid #e1e4e5;
+  padding: 6px 10px;
+  line-height: 1.5;
+  vertical-align: top;
+}
+
+.rst-content table thead th {
+  background: #eaeef2;
+  font-weight: 700;
+}
+
+.rst-content table tbody tr:nth-child(2n) {
+  background: #f7f9fa;
+}
+
+.rst-content table caption {
+  caption-side: top;
+  font-weight: 700;
+  margin-bottom: 6px;
+  text-align: left;
+}
+
+.rst-content table img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* 表格里的图片由 raw HTML 引用，这里只为让 Sphinx 搬运文件而存在，不显示。 */
+.rst-content .rtd-hidden-ref {
+  display: none;
+}
+
+.rst-content .rtd-footer {
+  color: #888;
+  font-size: 85%;
+}
+
+.rst-content img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* 过宽的显示公式（MathJax）在自身容器里横向滚动，避免撑出页面横向滚动条。
+   MathJax 会给这类公式写内联 `min-width`（CSS 里 min-width 压过 max-width），
+   所以必须用 !important 覆盖，否则页面上会出现整页横向滚动条。 */
+.rst-content mjx-container[display="true"] {
+  min-width: 0 !important;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* 图片居中：书里插图多包在 \begin{center} 里，那层排版环境在转换时剥掉了，网页上
+   默认靠左。只处理「独立成段」与「表格单元格里」的图，正文中夹在句子里的图不受
+   影响。 */
+.rst-content p > img:only-child {
+  display: block;
+  margin: 1.2em auto;
+}
+
+.rst-content td > img {
+  display: block;
+  margin: 0.3em auto;
+}

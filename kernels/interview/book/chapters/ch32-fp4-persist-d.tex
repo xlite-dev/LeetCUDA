@@ -145,7 +145,7 @@ smem 在 \texttt{kQSmemReuse} 下会被 V stage 复用，点积必须提前）�
 WS 骨架与 fp8 persist-D 同构：128T producer（TMA 装载 K/V/SF/bias）+
 256T consumer（8 warp MMA），4 组反向 barrier
 （\texttt{k\_empty}/\texttt{v\_empty}/\texttt{q\_consumed}/
-\texttt{epilogue\_done}，L200--213 注释）。fp4 特有的协议纪律：所有
+\texttt{epilogue\_done}，L200--213 注释）。fp4 特有的协议约束：所有
 mbarrier \textbf{永不 re-initialize}：per-CTA 全局 kv-tile 计数器驱动
 每个 barrier 的 stage/phase 跨 work 连续翻转（对活跃 mbarrier 的
 re-init 是 UB，PTX ISA 9.7.13.15.9；L113--115、L316 注释）。
@@ -284,13 +284,9 @@ PV 的 C fragment 每 lane 持数不同（头注释 L44--46）。
 \section{图示}
 
 两张图分别对应本章的数学与实现。图~\ref{fig:32-1} 是两级 P 量化的域
-拉伸：online softmax 使第一级退化为全局常数 $1/2688$ 并折进 exp2
-shift；第二级按 per-16 组 absmax 铺满 ue4m3 域，组归一化同样折进
-exp2 参数，两级 scale 在数据通路里都不占显式乘法。图~\ref{fig:32-2}
-是主循环数据流：128T producer 与 256T consumer 围绕每个 kv tile 的
-五步（$\Delta S$ 预载 $\to$ QK $\to$ masking $\to$ 融合 softmax/P
-量化 $\to$ PV），barrier 永不 re-init，grid 由 runtime 定 persistent
-或 block-per-work。
+拉伸——两级 scale 折进 exp2 后，在数据通路里不占显式乘法。图~\ref{fig:32-2}
+是主循环数据流：producer 与 consumer 围绕每个 kv tile 的五步协作，
+展开与 barrier 约定见图注。
 
 \begin{figure}[htbp]
   \centering

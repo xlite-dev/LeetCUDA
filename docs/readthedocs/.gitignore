@@ -1,0 +1,11 @@
+# 仓库根与 docs/ 两级 .gitignore 都有 *.txt / *.tex / build* 规则，
+# 会静默吞掉本目录下的 requirements.txt 与 build.sh，这里逐条解禁。
+!requirements.txt
+!build.sh
+!*.tex
+
+# 生成产物目录（转换产物、doctrees、编译中间件；/build/ 亦被父级 build* 覆盖）
+/build/
+
+# 英文图集（构建时按 i18n/figures-en.json 重新编译，不入库）
+_static/figures-en/
