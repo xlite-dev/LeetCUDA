@@ -48,9 +48,13 @@
     }
   }
 
-  /** 给代码块与公式打 notranslate：机器翻译不该动这些内容。 */
+  /** 给代码块与公式打 notranslate：机器翻译不该动这些内容。
+   *
+   * 右栏的「本页目录」不在保护范围内——它是页面正文，英文读者需要它也被译成英文
+   * （Google 只改写文本节点，``href`` 里的锚点原样保留，跳转照常可用）。
+   */
   function protectVerbatim() {
-    var selectors = ['pre', 'code', '.highlight', '.math', 'mjx-container', '.rtd-localtoc a'];
+    var selectors = ['pre', 'code', '.highlight', '.math', 'mjx-container'];
     selectors.forEach(function (selector) {
       Array.prototype.forEach.call(document.querySelectorAll(selector), function (node) {
         node.classList.add('notranslate');
