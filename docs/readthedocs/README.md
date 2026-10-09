@@ -304,6 +304,14 @@ TikZ 独立成链：每个片段套 standalone 文档编译成 PDF，再让 dvis
   把 `_images/<名字>.svg` 换成 `_static/figures-en/<名字>.svg`，加载失败则回退中文原图。
 - **已知边界**：图里写在数学内部的少量中文（`$\text{低秩 GEMM}$` 这类，全书 6 个字）仍是
   中文——它在数学区间里，翻译会破坏公式。
+- **封面**：封面不在上面这套流程里——它是书稿的独立文档 `figures/misc/cover-tikz.tex`，
+  编译成 PDF 后由 `convert._cover_image()` 光栅化成 PNG，字同样是矢量轮廓；而且封面用的
+  Humor Sans / Comic Neue 只装在作者本机、RTD 镜像里没有（中文用的 LXGW WenKai 25 MB 也
+  不适合入库）。所以英文封面是**离线生成一次、产物入库**：`python -m tools.build_cover_en`
+  （默认 240 dpi）写到 `_static/figures-en/cover.png`，`.gitignore` 只放行这一个文件。
+  换图用的是同一套逻辑（`_images/cover.png` → `_static/figures-en/cover.png`，加载失败
+  回退中文封面），不用改 JS。**封面文案改了要重跑该工具**：替换按原文片段定位，命中数不为
+  1、或产物里还残留汉字就直接报错停下，不会出一张半中半英的封面。
 
 ## 书内数学宏
 
