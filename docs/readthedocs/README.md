@@ -268,6 +268,25 @@ TikZ 独立成链：每个片段套 standalone 文档编译成 PDF，再让 dvis
   ——没切过英文的读者不会引入第三方脚本。
 - 切换前给 `pre` / `code` / `.highlight` / 公式容器加 `notranslate`，避免机器翻译
   改坏代码与公式（Sphinx 已给数学区加了这个类）。
+- **加载时机**：英文模式下 `translate.js`（本来就在 `<head>` 里）在解析阶段就发起
+  `element.js` 请求，不等 `DOMContentLoaded`——`<head>` 里的 MathJax 是 `defer` 的，
+  `DOMContentLoaded` 要等它下载并执行完，线上实测（改动前实现）把这一步拖到 3.3–12.8 s。
+  提前注入后请求落在 95–136 ms（本地验收；此时 `body` 还没建好，容器与脚本挂到
+  `document.head`）。按钮与状态提示同理，放在 `readystatechange` 到 `interactive` 时建，
+  不必等 MathJax。
+- **等待与兜底**：正文替换中位 14.6 s、范围 9.0–22.0 s，另有 45 s 与 90 s 都没翻完的样本
+  （`element.js` 卡住、`el_main` 请求没发出）——这 19 次采样来自**改动前的线上实现**。Google
+  插的横幅 iframe 比正文替换早十几秒，**不能当「翻完」判据**；判据是正文自己变了：首个标题
+  已翻成英文，且跨页取样（等距取 30 个标题/段落）的汉字数掉到起始值的 70% 以下——只看标题
+  不够，正文是分批落地的，标题可能先到。自发起请求起 30 s 还没等到，按钮旁给出
+  「Google Translate is slow, read in Chinese」，之后转入 2 s 一次的慢速轮询，翻完即收掉。
+- **Google 只翻一部分正文**：ch01 上 417 个汉字（约 47% 的取样节点，占正文一成左右）在
+  线上与本地**数字完全一致**地永久留中文，滚动不会补上——所以判据不能写成「一个汉字都不
+  剩」（代码块本来就留着中文），也不能写成「取样节点干净占比 ≥ 0.7」（实测收敛值只有 0.48）。
+- **验收状态**：提前注入、进度提示、30 s 兜底、`element.js` 命中缓存（同 context 连开两页，
+  回调落在 `body` 建好之后）四条路径都在本地验过：`element.js` 请求 86 ms（旧实现 4942 ms）、
+  状态提示 334 ms 就出现（早于 `DOMContentLoaded` 1.4 s）、`notranslate` 节点 244 个。
+  本地与线上同一诊断的残留汉字数一致，所以本地可以当代理；**改动后的线上数字待部署后复测。**
 - 顶部那条 Google 翻译横幅（「已翻译为以下语言 / 显示原文 / 选项」）被
   `_static/custom.css` 隐藏。**Google 换过实现**：老组件是
   `iframe.goog-te-banner-frame`，现在（2026-10-09 线上实测）改成 `div.skiptranslate`

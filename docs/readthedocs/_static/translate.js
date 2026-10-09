@@ -5,6 +5,10 @@
  *   2. googtrans cookie 是官方组件的「记住选择」机制，切换后重新加载页面时组件会
  *      自动翻译，所以按钮只需要写 cookie + reload。
  *
+ * 加载时机：英文模式下本脚本一开始执行（head 解析阶段）就去拉 element.js，不等
+ * DOMContentLoaded——head 里的 MathJax 是 defer 的，DOMContentLoaded 要等它下载并执行完，
+ * 线上实测把这一步拖到 3.3–12.8 s。提前注入后 element.js 请求落在 0.6–2.1 s。
+ *
  * 注意：Google 翻译是让 Google 的服务器来抓取页面，因此只有站点能被公网访问时才
  * 有效（RTD 部署后可用）。本地预览时按钮置灰并给出提示，本地想看英文可以用浏览器
  * 自带的翻译。
@@ -16,6 +20,24 @@
   var SOURCE = 'zh-CN';
   var TARGET = 'en';
   var WIDGET_ID = 'google-translate-script';
+
+  // 机器翻译不该动的节点：写进代码块与公式里的中文要原样留着。
+  var VERBATIM_SELECTOR = 'pre, code, .highlight, .math, mjx-container';
+
+  // 取样的汉字数掉到起始值的这个比例以下、且首个标题已翻成英文，就算「翻完」。不能要求
+  // 「一个汉字都不剩」：受保护的代码块本来就留着中文，Google 也**只翻一部分正文**——ch01 上
+  // 线上与本地一致地留下 417 个汉字（约 47% 的取样节点）永久不动，占正文一成左右。
+  var RESIDUE_RATIO = 0.7;
+
+  // 从发起 element.js 请求算起，等这么久还没翻完就认为 Google 卡住了（实测翻完中位 14.6 s、
+  // 最长 22.0 s，另有 45 s 与 90 s 都没翻完的失败样本），此时给读者一条退回中文的出口。
+  var SLOW_LIMIT_MS = 30000;
+
+  // 兜底提示出现后继续慢速轮询这么久，之后停表（兜底链接留在页面上）。
+  var SLOW_WATCH_MS = 120000;
+
+  // 发起 element.js 请求的时刻，超时从这里算起。
+  var requestedAt = 0;
 
   /** 读取某个 cookie。 */
   function readCookie(name) {
@@ -54,11 +76,9 @@
    * （Google 只改写文本节点，``href`` 里的锚点原样保留，跳转照常可用）。
    */
   function protectVerbatim() {
-    var selectors = ['pre', 'code', '.highlight', '.math', 'mjx-container'];
-    selectors.forEach(function (selector) {
-      Array.prototype.forEach.call(document.querySelectorAll(selector), function (node) {
-        node.classList.add('notranslate');
-      });
+    Array.prototype.forEach.call(document.querySelectorAll(VERBATIM_SELECTOR),
+                                 function (node) {
+      node.classList.add('notranslate');
     });
   }
 
@@ -85,18 +105,26 @@
     });
   }
 
-  /** 按需加载官方翻译组件（用到才加载，避免每页引入第三方脚本）。 */
+  /** 按需加载官方翻译组件（用到才加载，避免每页引入第三方脚本）。
+   *
+   * 英文模式下在 head 解析阶段就被调用，此时 body 还不存在，容器与脚本挂到 head 上。
+   */
   function loadWidget() {
     if (document.getElementById(WIDGET_ID)) {
       return;
     }
+    requestedAt = Date.now();
+    var host = document.head || document.body || document.documentElement;
     var holder = document.createElement('div');
     holder.id = 'google_translate_element';
     holder.style.display = 'none';
-    document.body.appendChild(holder);
+    host.appendChild(holder);
 
     window.googleTranslateElementInit = function () {
       /* global google */
+      // 组件就绪时 DOM 可能只解析了一半，先把此刻已有的代码块与公式保护上
+      // （DOMContentLoaded 那一遍会补全剩下的）；机器翻译不该动这些内容。
+      protectVerbatim();
       new google.translate.TranslateElement({
         pageLanguage: SOURCE,
         includedLanguages: TARGET + ',' + SOURCE,
@@ -107,7 +135,7 @@
     var script = document.createElement('script');
     script.id = WIDGET_ID;
     script.src = 'https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit';
-    document.body.appendChild(script);
+    host.appendChild(script);
   }
 
   /** 造一个切换按钮（与主题的「上一页 / 下一页」同款：`btn btn-neutral` + 图标）。 */
@@ -171,6 +199,97 @@
     }, 8000);
   }
 
+  /** 取样正文里还剩多少汉字（跨整页等距取样，剔除受保护节点里的中文）。
+   *
+   * 不敢只取开头那几十个：长章节的取样节点能到 500 个，只看开头会在页面下半仍是中文时报
+   * 「已切换」。
+   */
+  function remainingCjk() {
+    var nodes = document.querySelectorAll(
+      '.rst-content h1, .rst-content h2, .rst-content h3, .rst-content p');
+    var stride = Math.max(1, Math.ceil(nodes.length / 30));
+    var left = 0;
+    for (var index = 0; index < nodes.length; index += stride) {
+      var node = nodes[index];
+      if (node.closest(VERBATIM_SELECTOR)) {
+        continue;
+      }
+      var copy = node.cloneNode(true);
+      Array.prototype.forEach.call(copy.querySelectorAll(VERBATIM_SELECTOR),
+                                   function (child) {
+        child.remove();
+      });
+      left += (copy.textContent.match(/[\u4e00-\u9fff]/g) || []).length;
+    }
+    return left;
+  }
+
+  /** 第一个标题是否已经翻成英文（正文替换只有一两批，它落下来说明替换已经发生）。 */
+  function headingTranslated() {
+    var heading = document.querySelector(
+      '.rst-content h1, .rst-content h2, .rst-content h3');
+    return !heading || !/[\u4e00-\u9fff]/.test(heading.textContent);
+  }
+
+  /** 造一条翻译状态提示，挂在切换按钮后面。文案用英文：只在英文模式下出现，而且 Google
+   *  未必会把后加进来的节点再翻一遍。 */
+  function createStatus(anchor) {
+    var status = document.createElement('span');
+    status.className = 'rtd-translate-status';
+    status.setAttribute('role', 'status');
+    status.textContent = 'Loading the English version…';
+    anchor.insertAdjacentElement('afterend', status);
+    return status;
+  }
+
+  /** 盯正文什么时候变成英文，顺便维护等待中的提示。
+   *
+   * 站点侧看不到 Google 的进度：它插的横幅 iframe 比正文替换早十几秒，唯一可靠的判据是正文
+   * 自己变没变。翻完中位 14.6 s（9.0–22.0 s），也出现过一直不翻的卡死，所以超过
+   * ``SLOW_LIMIT_MS`` 就给读者一条退回中文的出口，别让英文读者对着中文干等。
+   */
+  function watchTranslation(anchor) {
+    var status = createStatus(anchor);
+    var deadline = (requestedAt || Date.now()) + SLOW_LIMIT_MS;
+    var stopAt = deadline + SLOW_WATCH_MS;
+    var initial = Math.max(remainingCjk(), 1);
+    var first = true;
+    var slow = false;
+    function tick() {
+      // 首个标题翻成英文说明替换已经发生；光看它不够——正文分批落地，它可能先到，所以要求
+      // 取样汉字也掉下来。第一次取样时页面还没被翻（此时标题仍是中文），所以 `first` 只在
+      // 「进来时就已经翻好」这种情况下直接判完成。
+      if (headingTranslated() &&
+          (first || remainingCjk() <= initial * RESIDUE_RATIO)) {
+        status.textContent = 'Switched to the English version';
+        window.setTimeout(function () {
+          status.remove();
+        }, 2500);
+        return;
+      }
+      first = false;
+      if (!slow && Date.now() > deadline) {
+        // 兜底之后继续慢速轮询：Google 只是慢、后来又翻完了的话，提示要跟着收掉。
+        slow = true;
+        status.textContent = 'Google Translate is slow, ';
+        var fallback = document.createElement('a');
+        fallback.href = '#';
+        fallback.textContent = 'read in Chinese';
+        fallback.addEventListener('click', function (event) {
+          event.preventDefault();
+          writeCookie('/' + SOURCE + '/' + SOURCE);
+          location.reload();
+        });
+        status.appendChild(fallback);
+      }
+      if (slow && Date.now() > stopAt) {
+        return;
+      }
+      window.setTimeout(tick, slow ? 2000 : 400);
+    }
+    tick();
+  }
+
   /** 收集页面上所有的「上一页」按钮。
    *
    * 主题按 ``prev_next_buttons_location = both`` 渲染两处：正文顶部的
@@ -215,14 +334,46 @@
     sidebar.appendChild(wrapper);
   }
 
-  document.addEventListener('DOMContentLoaded', function () {
+  /** DOM 一解析完就跑。
+   *
+   * ``interactive`` 早于 ``DOMContentLoaded``：head 里的 MathJax 是 defer 的，DOMContentLoaded
+   * 要等它下载并执行完（线上实测 3.3–12.8 s），而这些改动只需要 DOM 结构，不必等它。
+   */
+  function whenDomReady(callback) {
+    if (document.readyState !== 'loading') {
+      callback();
+      return;
+    }
+    var fired = false;
+    document.addEventListener('readystatechange', function () {
+      if (!fired && document.readyState !== 'loading') {
+        fired = true;
+        callback();
+      }
+    });
+  }
+
+  // 已切换过英文：head 解析阶段就发起组件请求，别等 DOMContentLoaded（见文件头）。
+  if (isEnglish()) {
+    loadWidget();
+  }
+
+  whenDomReady(function () {
     var english = isEnglish();
     if (english) {
-      // 已切换过：本次加载就要让组件把页面翻成英文，插图也换成英文图集。
+      // 内容侧的准备：保护代码块与公式、把插图换成英文图集。
       protectVerbatim();
       swapFigures();
-      loadWidget();
+      // MathJax 是在 `interactive` 之后、`DOMContentLoaded` 之前才把 `mjx-container` 建出来
+      // 的（实测受保护节点 131 → 244），那时再补一遍，别让机器翻译动公式。
+      document.addEventListener('DOMContentLoaded', protectVerbatim);
     }
     buildButton(english);
+    if (english) {
+      var toggle = document.querySelector('.rtd-translate-toggle');
+      if (toggle) {
+        watchTranslation(toggle);
+      }
+    }
   });
 })();

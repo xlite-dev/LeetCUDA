@@ -23,10 +23,17 @@
   text-decoration: none;
 }
 
-.rtd-translate-hint {
+/* translate.js 造的两条临时提示：本地预览用不了 Google 翻译的说明（showHint），以及英文
+   模式下翻完之前的进度提示与超时后的「read in Chinese」出口（createStatus）。 */
+.rtd-translate-hint,
+.rtd-translate-status {
   margin-left: 8px;
   color: #b0b0b0;
   font-size: 85%;
+}
+
+.rtd-translate-status a {
+  margin-left: 4px;
 }
 
 .rtd-translate {
