@@ -32,6 +32,11 @@ python -m convert --png                                       # 额外导出 PNG
 python -m convert --skip-tikz --no-assemble                   # 只跑 tex→md，调试用
 ```
 
+只改 `_static/` 里的文件（`custom.css` / `translate.js`）时留意：没有页面过期的话
+增量构建会报 `no targets are out of date`，静态文件**不重新复制**，本地预览看到的
+还是旧样式；`touch build/src/index.md`（或删 `build/html/_static`）再跑一次即可。
+RTD 每次全新构建，不受影响。
+
 报告落在 `build/report.md`（同时有 `report.json`）：TikZ 失败清单、未解析引用、
 悬空锚点、残留 LaTeX、各阶段耗时、pandoc 警告。
 
@@ -263,6 +268,11 @@ TikZ 独立成链：每个片段套 standalone 文档编译成 PDF，再让 dvis
   ——没切过英文的读者不会引入第三方脚本。
 - 切换前给 `pre` / `code` / `.highlight` / 公式容器加 `notranslate`，避免机器翻译
   改坏代码与公式（Sphinx 已给数学区加了这个类）。
+- 顶部那条 Google 翻译横幅（`iframe.goog-te-banner-frame`，带「显示原文」控件）被
+  `_static/custom.css` 隐藏。注意 Google 同时给 `body` 写 40px 的 `top` 让位，两条
+  规则必须成对（横幅 `display: none` + `body { top: 0 }`）：只藏 iframe 的话页面顶
+  上会留一条空白，而侧栏是 `position: fixed`、不跟着下移，正文与侧栏就此错位。
+  切回中文用旁边的按钮。
 - **前提是站点能被公网访问**：Google 翻译是让 Google 的服务器去抓页面，`localhost`
   与内网地址它抓不到。本地预览时按钮置灰并给出提示（本地想看英文可以用浏览器自带的
   翻译），部署到 RTD 后即正常可用。
