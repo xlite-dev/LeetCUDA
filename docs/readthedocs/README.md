@@ -268,11 +268,13 @@ TikZ 独立成链：每个片段套 standalone 文档编译成 PDF，再让 dvis
   ——没切过英文的读者不会引入第三方脚本。
 - 切换前给 `pre` / `code` / `.highlight` / 公式容器加 `notranslate`，避免机器翻译
   改坏代码与公式（Sphinx 已给数学区加了这个类）。
-- 顶部那条 Google 翻译横幅（`iframe.goog-te-banner-frame`，带「显示原文」控件）被
-  `_static/custom.css` 隐藏。注意 Google 同时给 `body` 写 40px 的 `top` 让位，两条
-  规则必须成对（横幅 `display: none` + `body { top: 0 }`）：只藏 iframe 的话页面顶
-  上会留一条空白，而侧栏是 `position: fixed`、不跟着下移，正文与侧栏就此错位。
-  切回中文用旁边的按钮。
+- 顶部那条 Google 翻译横幅（「已翻译为以下语言 / 显示原文 / 选项」）被
+  `_static/custom.css` 隐藏。**Google 换过实现**：老组件是
+  `iframe.goog-te-banner-frame`，现在（2026-10-09 线上实测）改成 `div.skiptranslate`
+  包装里的 `iframe.skiptranslate`（其余类名是混淆的 `VIpgJd-…`，不能认）——只写老
+  类名藏不掉，规则里两条都留着。另外 Google 会给 `body` 写内联 40px 的 `top` 让位，
+  必须一并清掉（横幅是 `position: fixed` + 超大 z-index）：只藏横幅会在顶上留一条
+  空白，只清偏移不藏横幅则直接盖在正文上。切回中文用旁边的按钮。
 - **前提是站点能被公网访问**：Google 翻译是让 Google 的服务器去抓页面，`localhost`
   与内网地址它抓不到。本地预览时按钮置灰并给出提示（本地想看英文可以用浏览器自带的
   翻译），部署到 RTD 后即正常可用。

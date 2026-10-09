@@ -39,11 +39,17 @@
   text-decoration: none;
 }
 
-/* 英文模式下 Google 翻译会在页面顶部插一条横幅（``iframe.goog-te-banner-frame``，带
-   「Google 翻译 / 显示原文」那套控件），并给 body 加 40px 的 ``top`` 让位。
-   横幅整条隐藏（切回中文有旁边的按钮）；那 40px 必须一并清掉——只藏 iframe 的话，
-   页面上会留一条空白，正文整体下移而侧栏是 ``fixed`` 不跟着走，两栏还会错位。 */
-.goog-te-banner-frame {
+/* 英文模式下 Google 翻译会在页面顶部插一条横幅（「已翻译为以下语言 / 显示原文 / 选项」），
+   并给 body 写内联的 40px ``top`` 让位。横幅整条隐藏（切回中文有旁边的按钮）；那 40px
+   必须一并清掉——横幅是 ``position: fixed`` 且 z-index 极大：只藏横幅会在顶上留一条空白，
+   只清偏移不藏横幅则直接盖在正文上（实测两者都会发生）。
+
+   选择器得认两套：Google 换过实现，线上实测（2026-10-09）现在的横幅已经不带
+   ``goog-te-banner-frame`` 了，而是 ``div.skiptranslate`` 包装里的 ``iframe.skiptranslate``
+   （其余类名是混淆的 ``VIpgJd-…``，不能认）——只写老类名藏不掉，两条都留。顺带被这条
+   命中的还有它那两个「选项」菜单 iframe，同属一套 chrome。 */
+.goog-te-banner-frame,
+iframe.skiptranslate {
   display: none !important;
 }
 
