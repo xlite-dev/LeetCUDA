@@ -35,6 +35,10 @@ BOOK_COVER = ROOT / "../../kernels/interview/book/figures/misc/cover-tikz.tex"
 DEST = ROOT / "_static" / "figures-en" / "cover.png"
 FONTS = ("Humor Sans", "Comic Neue")
 
+#: 固定随机种子。封面的手绘抖动来自 TikZ ``sketch`` 装饰（random steps），种子默认跟着
+#: 编译时间走，两次编译的像素就不一样；产物是要入库的资产，固定住它重跑才可复现。
+SEED = 20261009
+
 #: 中文 → 英文，逐处替换；英文措辞与站点英文模式下的标题/副标题一致。
 REPLACEMENTS: tuple[tuple[str, str], ...] = (
   ("{\\CJKfamily{zhsans}\\sffamily CUDA Kernel 优化之路};",
@@ -93,7 +97,9 @@ def translate(text: str) -> str:
   leftover = re.findall(r"[\u4e00-\u9fff]+", uncommented(text))
   if leftover:
     raise SystemExit(f"英文版里还有中文，先补进 REPLACEMENTS：{leftover[:5]}")
-  return text
+  if text.count("\\begin{document}") != 1:
+    raise SystemExit("封面 tex 里 \\begin{document} 不唯一，需要人工确认")
+  return text.replace("\\begin{document}", f"\\begin{{document}}\n\\pgfmathsetseed{{{SEED}}}", 1)
 
 
 def check_fonts() -> None:
@@ -138,7 +144,9 @@ def build(work_dir: Path, dpi: int, keep: bool) -> Path:
   DEST.parent.mkdir(parents=True, exist_ok=True)
   shutil.copyfile(png, DEST)
   if not keep:
-    shutil.rmtree(work_dir, ignore_errors=True)
+    # 只删自己写的那几个文件：work 目录可能被别的临时脚本共用。
+    for leftover in work_dir.glob("cover-en.*"):
+      leftover.unlink(missing_ok=True)
   return DEST
 
 
