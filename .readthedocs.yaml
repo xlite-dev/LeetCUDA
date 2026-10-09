@@ -27,10 +27,10 @@ build:
   jobs:
     pre_build:
       # 书稿 tex → MyST + TikZ → SVG，全部落在 docs/readthedocs/build/。
-      # 每进程一份 xelatex，RTD 是 7GB 内存 + 2 并发构建，取 4 较稳。
+      # 每进程一份 xelatex，RTD 是 7GB 内存 + 2 并发构建，取 4 较稳
       - cd docs/readthedocs && python -m convert --jobs 4
     build:
-      # 覆盖默认 html 构建：显式指定 srcdir/confdir，避免 srcdir 被当成 conf.py 所在目录。
+      # 覆盖默认 html 构建：显式指定 srcdir/confdir，避免 srcdir 被当成 conf.py 所在目录
       html:
         - mkdir -p $READTHEDOCS_OUTPUT/html
         - >-
@@ -40,7 +40,7 @@ build:
           docs/readthedocs/build/src
           $READTHEDOCS_OUTPUT/html
     post_build:
-      # 内容核对（章号、表格、属性泄漏、锚点）；不过就让构建失败，避免静默交付错页。
+      # 内容核对（章号、表格、属性泄漏、锚点）；不过就让构建失败，避免静默交付错页
       - >-
         cd docs/readthedocs && python -m convert.verify
         --src build/src --html $READTHEDOCS_OUTPUT/html
