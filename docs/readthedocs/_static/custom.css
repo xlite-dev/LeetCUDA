@@ -39,6 +39,18 @@
   text-decoration: none;
 }
 
+/* 英文模式下 Google 翻译会在页面顶部插一条横幅（``iframe.goog-te-banner-frame``，带
+   「Google 翻译 / 显示原文」那套控件），并给 body 加 40px 的 ``top`` 让位。
+   横幅整条隐藏（切回中文有旁边的按钮）；那 40px 必须一并清掉——只藏 iframe 的话，
+   页面上会留一条空白，正文整体下移而侧栏是 ``fixed`` 不跟着走，两栏还会错位。 */
+.goog-te-banner-frame {
+  display: none !important;
+}
+
+body {
+  top: 0 !important;
+}
+
 /* 右栏：本页小节目录 */
 .rtd-page-body {
   display: flex;
