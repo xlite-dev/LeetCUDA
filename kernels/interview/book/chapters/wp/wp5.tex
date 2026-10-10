@@ -398,7 +398,7 @@ D'_r &= D_r \cdot \delta_r,
 \label{fig:TVLayout}
 \end{figure}
 
-考察一个细化了形状 $(8,8)$ 的数据布局。我们的目标是使用图~\ref{fig:TVLayout} 所示的线程-值模式对该数据进行划分，该模式是某个特定 Ampere Tensor Core 的逻辑划分模式。这条指令的线程-值划分模式可以用布局
+考察一个由形状 $(8,8)$ 细化而来的数据布局。我们的目标是使用图~\ref{fig:TVLayout} 所示的线程-值模式对该数据进行划分，该模式是某个特定 Ampere Tensor Core 的逻辑划分模式。这条指令的线程-值划分模式可以用布局
 \begin{align*}
 \texttt{ThrValLayoutC:} \quad ((4,8),2):((16,1),8),
 \end{align*}

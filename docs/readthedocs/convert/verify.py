@@ -17,12 +17,13 @@ pandoc 属性这类内容错误。本模块在 Sphinx 构建之后跑一遍，�
 from __future__ import annotations
 
 import argparse
+import html
 import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import booktree, figtext, labels, postprocess, preprocess, texutil
+from . import booktree, figtext, labels, postprocess, preprocess, readme, texutil
 
 #: ``第 N 章：`` / ``附录 A：`` 前缀。
 _CHAPTER_PREFIX_RE = re.compile(r"^第\s*(\d+)\s*章：")
@@ -34,6 +35,12 @@ _TABLE_ENV_RE = re.compile(r"\\begin\{(?:tabular|tabularx|longtable)\}")
 #: 站内链接。
 _LINK_RE = re.compile(r"\]\(([A-Za-z0-9_.-]+)\.html#([^)\s]+)")
 _ANCHOR_RE = re.compile(r'<a id="([^"]+)"')
+
+#: 侧栏「下载 PDF」按钮（``_templates/layout.html`` 渲染的静态锚点，按类名认）。
+#: 先取整条 ``<a …>`` 开标签再取 ``href``，免得受属性顺序影响。
+_PDF_BUTTON_CLASS = "rtd-pdf-download"
+_ANCHOR_OPEN_RE = re.compile(r"<a\b[^>]*>", re.IGNORECASE)
+_HREF_RE = re.compile(r'\bhref="([^"]*)"', re.IGNORECASE)
 
 
 @dataclass
@@ -341,6 +348,47 @@ def check_images_present(html_dir: Path) -> tuple[bool, str]:
   ok = not problems
   return ok, (f"共 {checked} 张图" if ok
               else f"{len(problems)} 张缺失，例如 {problems[0]}")
+
+
+def check_pdf_button(html_dir: Path, expected_url: str) -> tuple[bool, str]:
+  """检查每页都渲染了「下载 PDF」按钮，且链接与仓库 README 的解析结果一致。
+
+  按钮是模板渲染出的静态锚点：正文页在 ``_templates/breadcrumbs.html`` / ``footer.html``
+  里紧挨「下一页」，没有上一页/下一页按钮行的页面（``genindex`` / ``search``）由
+  ``_templates/layout.html`` 在侧栏兜底。链接来自 ``README.md`` 的 ``[leetcuda-pdf]``。
+  这里逐页比对：按钮是站点上唯一的 PDF 入口，链接写死成旧版本或者整个按钮在构建中消失，
+  读者都拿不到书，而页面本身看不出异常。
+
+  :param html_dir: Sphinx 输出目录。
+  :param expected_url: ``README.md`` 里 ``[leetcuda-pdf]`` 的地址。
+  :returns: ``(是否通过, 说明)``。
+  """
+  pages = sorted(html_dir.rglob("*.html"))
+  missing: list[str] = []
+  mismatch: list[str] = []
+  for path in pages:
+    page = path.read_text(encoding="utf-8", errors="replace")
+    name = path.relative_to(html_dir).as_posix()
+    found: list[str] = []
+    for tag in _ANCHOR_OPEN_RE.findall(page):
+      if _PDF_BUTTON_CLASS not in tag:
+        continue
+      href = _HREF_RE.search(tag)
+      # 上游若开了模板 autoescape，``&`` 会写成 ``&amp;``；比对前统一反转义（当前设置下
+      # 是无操作——Sphinx 7.4 的模板环境没开 autoescape，但别依赖这点）。
+      found.append(html.unescape(href.group(1)) if href else "")
+    if not found:
+      missing.append(name)
+    elif any(url != expected_url for url in found):
+      mismatch.append(f"{name} → {found[0]}")
+  problems: list[str] = []
+  if not pages:
+    problems.append(f"{html_dir} 下没有页面")
+  if missing:
+    problems.append(f"{len(missing)} 页没有按钮，例如 {missing[0]}")
+  if mismatch:
+    problems.append(f"{len(mismatch)} 页链接不符（期望 {expected_url}），例如 {mismatch[0]}")
+  return not problems, ("；".join(problems) if problems else f"{len(pages)} 页均指向同一链接")
 
 
 def check_english_figures(
@@ -672,6 +720,10 @@ def verify(src_dir: Path, html_dir: Path, book_dir: Path) -> Report:
 
     ok, detail = check_stray_attributes(html_dir)
     report.add("MyST 属性均已解析", ok, detail)
+
+    # 「下载 PDF」按钮的链接真值取自仓库根 README（解析失败会直接抛错中断核对）。
+    ok, detail = check_pdf_button(html_dir, readme.pdf_link())
+    report.add("下载 PDF 按钮已渲染", ok, detail)
 
   work_dir = src_dir.parent / "tmp"
   if (work_dir / "tikz").is_dir():

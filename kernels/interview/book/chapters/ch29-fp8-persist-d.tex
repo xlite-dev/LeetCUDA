@@ -753,7 +753,7 @@ $^{*}$D=192 存在正确性 bug（29.7.1~节），速度数据仅供参考。D=6
 上升。kernel 级与 SageAttention 对比稳定 $+1.1\sim2.3\%$（仓库 nsys
 per-kernel 记录）。
 
-\subsection{微优化上限：一份「证伪清单」的价值}
+\subsection{微优化上限：证伪清单}
 
 persist-D 的结构优化路线已被系统实测证伪（完整清单见仓库 RFC
 \S5.8）：WS 双 consumer（FA3 式 2$\times$128T）负优化；persistent work
@@ -959,6 +959,5 @@ L31--37 注释，回答「为什么 fp8 关掉 lazy rescale 而 fp16 开着」�
         （本章 29.3.3~节的反例来源）。
   \item ffpa-attn \texttt{reg2reg\_8b.cuh} 头注释：C$\to$A fragment
         布局的 PTX 级推导与 pycute 数值验证记录。
-  \item ffpa-attn 仓库 RFC \S5.8：persist-D 结构优化的完整证伪清单
-        （负结果的科学价值）。
+  \item ffpa-attn 仓库 RFC \S5.8：persist-D 结构优化的完整证伪清单。
 \end{itemize}

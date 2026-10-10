@@ -310,7 +310,21 @@
     return found;
   }
 
-  /** 把切换按钮插到每一处「上一页」后面；页面没有该按钮时退回侧栏。 */
+  /** 把切换按钮放进页面的按钮行；连按钮行都没有的页面才退回侧栏。
+   *
+   * 三种落位：
+   * - **有「上一页」的页面**：插在每一处「上一页」后面。主题把上一页/下一页渲染在顶部与
+   *   页脚两处（`conf.py` 的 `prev_next_buttons_location = both`），所以这里也是两处。
+   * - **没有「上一页」的页面**（首页）：插进那两处按钮行的右侧按钮组、落在「下载 PDF」
+   *   右边，左侧导航栏里不再放。
+   * - **连按钮行都没有的页面**（`genindex` / `search`）：退回侧栏——模板给出的
+   *   `.rtd-sidebar-actions`（「下载 PDF」也在那一行），没有该容器时才自建
+   *   `.rtd-translate` 包装（旧版页面产物）。
+   *
+   * ⚠️ 按钮行是浮动布局：`float: right` 的元素**先出现的贴右缘**，后出现的挤到它左边。
+   * 所以「显示在下载按钮右边」在 DOM 上得插在它**前面**，并带上 `rtd-translate-toggle-right`
+   * （给它在 `_static/custom.css` 里加了 `float: right`）。
+   */
   function buildButton(english) {
     var prevLinks = prevButtons();
     prevLinks.forEach(function (prev) {
@@ -321,6 +335,28 @@
       prev.insertAdjacentElement('afterend', createToggle(english));
     });
     if (prevLinks.length) {
+      return;
+    }
+    var placed = false;
+    var rows = document.querySelectorAll('.rst-breadcrumbs-buttons, .rst-footer-buttons');
+    Array.prototype.forEach.call(rows, function (row) {
+      var pdf = row.querySelector('.rtd-pdf-download');
+      if (!pdf || row.querySelector('.rtd-translate-toggle')) {
+        return;
+      }
+      var toggle = createToggle(english);
+      toggle.classList.add('rtd-translate-toggle-right');
+      pdf.insertAdjacentElement('beforebegin', toggle);
+      placed = true;
+    });
+    if (placed) {
+      return;
+    }
+    var actions = document.querySelector('.rtd-sidebar-actions');
+    if (actions) {
+      if (!actions.querySelector('.rtd-translate-toggle')) {
+        actions.appendChild(createToggle(english));
+      }
       return;
     }
     var sidebar = document.querySelector('.wy-side-nav-search') ||

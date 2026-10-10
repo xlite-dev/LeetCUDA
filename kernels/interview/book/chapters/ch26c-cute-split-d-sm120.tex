@@ -5,7 +5,7 @@
 
 \section{本章导读}
 
-第~\ref{ch:26}~章结束的时候，Split-D 的 CuTe 版实测 145 TFLOPS：
+第~\ref{ch:26}~章结束的时候，Split-D 的 CuTe 版实测 140.2 TFLOPS：
 64$\times$64 tile、TMA + warp specialization、单 consumer warpgroup。它把
 「大 $D$ 怎么分块」的类型代数讲清楚了，但执行协议还是教学级的。本章
 把 ffpa-attn 的 non-WS CuTe TMA kernel（\texttt{csrc/cuffpa/cute/sm\_120/split\_d.cuh}）
@@ -25,7 +25,7 @@ dense 场景做到 \textbf{204.1 TFLOPS}——cuDNN SDPA（69.7）的 2.93 倍�
         softmax 行归约退化为 warp 内 4-lane 蝴蝶，零跨 warp 通信；
   \item \textbf{non-WS 执行模型}（\S\ref{sec:26c-nonws}）：256 线程全员
         MMA，\texttt{tid=0} 在消费循环里内联发射 TMA——WS 版一半线程专职
-        producer 不产 FLOPs，SM 的 MMA 吞吐降低一半，这是 145$\to$190 的
+        producer 不产 FLOPs，SM 的 MMA 吞吐降低一半，这是 140.2$\to$188.3 的
         最大单项；QK 与 PV 两套互不相交的 barrier 集支撑起独立流水深度，
         并让「下一 kv\_tile 的 QK 预取」与「本 tile 的 softmax+PV」重叠；
   \item \textbf{STSM + TMA store 批量 epilogue}（\S\ref{sec:26c-epilogue}）：

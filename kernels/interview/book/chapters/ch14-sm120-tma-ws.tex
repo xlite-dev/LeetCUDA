@@ -297,7 +297,7 @@ CU\_TENSOR\_MAP\_SWIZZLE\_128B 按 128B 原子重排，重排公式与 consumer 
 
 tile 层级的乘法结构与第~\ref{ch:11}~章完全相同：$B\sb{M} = 16 \times 2 \times 4$、
 $B\sb{N} = 8 \times 2 \times 8$、$B\sb{K} = 16 \times 4$，四条 static\_assert 把
-「atom $=$ m16n8k16、consumer 恰好 4 warp、tile 恰好 128$\times$128$\times$64」
+「atom $=$ m16n8k16、consumer 4 warp、tile 恰好 128$\times$128$\times$64」
 固定为硬约束，因为 TMA descriptor 的 box 与 128B swizzle 都按这套数字硬编码。与
 ch11 的分歧点只有一处：256 线程不再是「8 个同质计算 warp」，而是
 \texttt{k\allowbreak{}Consumer\allowbreak{}Threads =\allowbreak{} 128} 的 consumer warpgroup + 128 线程的 producer
@@ -739,8 +739,7 @@ $8192^3$ 规模下 TMA+MMA+WS 组合把纯 MMA 基础实现（第~\ref{ch:11}~�
   kernel 声明一致。
 \end{kaogu}
 
-全量核查记录待汇总进 \texttt{book/\allowbreak{}CHECKLOG.\allowbreak{}md}（本次任务不改该文件，结论以上述
-框注为准）。
+全量核查记录汇总于 \texttt{book/\allowbreak{}CHECKLOG.\allowbreak{}md}，结论以上述框注为准。
 
 \section{常见坑}
 

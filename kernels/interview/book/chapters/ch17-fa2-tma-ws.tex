@@ -364,7 +364,7 @@ $B_c = 8 \times 1 \times 8 = 64$；consumer 8 warp 排成 $8 \times 1$
 （warp\_QP $=$ warp\_id，各管 16 行 Q；warp\_KV $=$ 0 共享 KV）。
 \textbf{consumer 侧的 warp 布局与 ch16 完全一致}，这就是「角色分化但计算
 几何不变」：把 ch16 kernel 的装载段整体替换成 barrier wait，计算段原样保留。
-值得一看的新增参数是 \texttt{kStagesV}（V 流水深度，1 $=$ 单 buffer）与
+新增参数主要看两个：\texttt{kStagesV}（V 流水深度，1 $=$ 单 buffer）与
 \texttt{kNumThreads} $= 384$（static\_assert 固定 128 $+$ 256 的编队）。
 
 \subsection{smem 布局：1024B 对齐与 chunk-major}
@@ -831,8 +831,7 @@ $0.6\%$）。V 的单 buffer 消费已饱和，V tile 传输能被 QK $+$ softma
   属头文件依赖不自含的历史遗留，book/tests 的 include 顺序已按此固定。
 \end{kaogu}
 
-全量核查记录待汇总进 \texttt{book/\allowbreak{}CHECKLOG.\allowbreak{}md}（本次任务不改该文件，结论以上述
-框注为准）。
+全量核查记录汇总于 \texttt{book/\allowbreak{}CHECKLOG.\allowbreak{}md}，结论以上述框注为准。
 
 \section{常见坑}
 

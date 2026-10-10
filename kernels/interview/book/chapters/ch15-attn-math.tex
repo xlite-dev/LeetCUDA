@@ -94,7 +94,7 @@ $O \triangleq PV \in \mathbb{R}^{N \times d}$ 是\textbf{输出}。按第 $i$ �
 \end{equation}
 即「打分 $\to$ 归一化成权重 $\to$ 对 value 加权求和」。行与行之间零依赖，这条
 \textbf{行内自足性}与 softmax 完全一致（第~\ref{ch:04}~章动机三），是后面能把一行
-query 的全部状态（$m_i, \ell_i, O_i$）塞进一个 block 的寄存器/共享内存的根本原因。
+query 的全部状态（$m_i, \ell_i, O_i$）放进一个 block 的寄存器/共享内存的根本原因。
 
 \subsection{为什么除以 $\sqrt{d}$：点积方差推导}
 
@@ -670,7 +670,7 @@ K/V tile，
 逐行对应式~\ref{eq:15-upd-m}（\texttt{m\_new}）、\ref{eq:15-upd-p}（\texttt{P\_cur}）、
 \ref{eq:15-upd-l}（\texttt{l\_new}）、\ref{eq:15-upd-o}（\texttt{O\_new}）与
 \ref{eq:15-final}（\texttt{O\_final}），$O$ 保持未归一化、最后统一除 $\ell$，这构成
-FA2 对 FA1 的关键改动。要点 5（L25--30）是值得单独记忆的工程细节：softmax 后的
+FA2 对 FA1 的关键改动。要点 5（L25--30）是一个工程细节：softmax 后的
 $P$ 直接写回 $S$ 的 fragment 寄存器 \texttt{R\_S} 供 $P@V$ 消费，省掉一次 fragment
 重组。但这只是 m16n8k16 布局约定下的复用技巧，不是 MMA fragment 的通用性质
 （注释原文也强调了这一点；机制在第~\ref{ch:16}~章展开）。
@@ -1120,8 +1120,8 @@ print(abs(attn_online(Q, K, V) - attn_ref(Q, K, V)).max())  # ~1e-13
 \section*{延伸阅读}
 
 \begin{itemize}
-  \item @DefTruth《图解大模型训练之：推理加速一一从 Online-Softmax 到
-        FlashAttention V1, V2, V3》，
+  \item @DefTruth《图解大模型训练之：推理加速——从 Online-Softmax 到
+        FlashAttention V1/V2/V3》，
         \url{https://zhuanlan.zhihu.com/p/668888063}
         （本章主参考与风格基线：online softmax $\to$ FA 分块 $\to$ V1/V2/V3 演进的
         完整图解推导链）；

@@ -32,7 +32,7 @@ conflict} 让 \texttt{ldmatrix} 的读取被串行化；\textbf{k\_step 内 ldma
 
 \section{问题与动机}
 
-HGEMM 是 compute-bound 算子：$2MNK$ 次乘加对着 $O(MN+MK+NK)$ 的访存，算术强度极高。
+HGEMM 是 compute-bound 算子：$2MNK$ 次乘加对应 $O(MN+MK+NK)$ 的访存，算术强度极高。
 此时优化的全部要义只有一条：\textbf{不让 Tensor Core 空等数据}。第~\ref{ch:11}~章的
 多级流水已经把 gmem$\to$smem 的一段用 cp.async 双缓冲掩盖了，但数据链路还有两段、调度
 还有一层，各有一个具体的瓶颈：
@@ -946,8 +946,8 @@ swizzle 缩 L2 footprint」两条主线互相印证。
   注释的 1-way 结论只在\textbf{swizzle 作用域 = 整行}（32\,B 行宽，BK=16 / FA 的
   $[\ast][16]$ 布局，即 common.cuh L185--235 表格对应的布局）时成立。本章核心
   kernel \texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn\_\allowbreak{}swizzle} 的统一 tile 行宽 128\,B（BK=64），
-  swizzle 以 per-slice 方式作用于 16 列窗口：行 stride 128\,B 是 bank 计数环
-  （512\,B）的整数倍，行号位无法进入 bank 位，单个 XOR bit 最多把 phase 内
+  swizzle 以 per-slice 方式作用于 16 列窗口：行 stride 128\,B 恰为 bank 计数环
+  （128\,B）的一圈，行号位无法进入 bank 位，单个 XOR bit 最多把 phase 内
   8 lane 分到 2 个四联组，\textbf{下界 4-way}。NCU 实测 297{,}628 次
   冲突/launch（无 swizzle 对照 691{,}067，BK=16 基线 98{,}304，
   表~\ref{tab:12-bank}）。注释 L125--126 的「局限：要求 kColStride $\le$16

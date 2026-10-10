@@ -695,7 +695,7 @@ D=512 fp16 两格临界失败（见 30.2.3~节的已知边界说明），dense �
 本机 headdim 编译集止于 512，M4N2 只能引用 5090 数据（fp16 家族同构、
 同一 dispatch 交叉点）：$D\le640$ 时 M8N1 快 $2\sim16\%$；
 $D\ge768$ 时 M4N2 快 $+7\%@768$、$+11\%@896$、$+55\%@1024$。劣化一侧
-的数字更有教学价值：$D=1024$ 时 M8N1 的 $O_{\text{acc}}=512$ regs
+的数字更说明问题：$D=1024$ 时 M8N1 的 $O_{\text{acc}}=512$ regs
 溢出 local memory，吞吐 $\sim$100T；M4N2 同 $D$ 边缘 spill 仍有
 154T。\texttt{FFPA\_FP8\_FORCE\_KERNEL=split\_d|m4n2}（$224<D\le1024$，
 \texttt{dispatch/cute\_fp8.cuh} L24--33，仅在 \texttt{--debug-ext fp8}

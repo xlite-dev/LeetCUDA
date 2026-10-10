@@ -15,7 +15,7 @@ elementwise\_add\_vec4（残差连接的原型）、histogram（原子操作）�
 关键机制 atomicAdd：它把访问模式从「读-算-写」扩展到「读-改-写」，ch02
 末尾的跨 block 归约已经用到它，这里系统讨论它的代价。LLM 推理引擎里，激活、残差、
 直方图统计（如 MoE 路由计数）无处不在，这几个「小算子」在端到端延迟里的
-占比常被低估。
+占比不小。
 
 \textbf{前置}：第 \ref{ch:01} 章（roofline/带宽）、第 \ref{ch:02} 章
 （归约骨架，本章 vec4 版点积会回指）。\textbf{源码区间}：base.cuh

@@ -6,7 +6,16 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
+
+# 侧栏「下载 PDF」按钮的链接：唯一事实源是仓库根 README.md 的 `[leetcuda-pdf]` 链接定义
+# （链接随版本发布变化）。构建期现读现用，解析失败即构建失败，不静默降级成「没有按钮」。
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from convert.readme import pdf_link  # noqa: E402
+
+leetcuda_pdf_url = pdf_link()
 
 project = "LeetCUDA：CUDA Kernel 优化之路"
 author = "LeetCUDA Project"
@@ -44,7 +53,7 @@ html_css_files = ["custom.css"]
 html_last_updated_fmt = ""
 html_title = project
 html_theme_options = {
-  # 左栏只到「篇 → 章」两层：小节级目录放在右栏（见 _templates/layout.html），
+  # 左栏只到「篇 → 章」两层：小节级目录放在右栏（见 _templates/page.html 的 `body` 块），
   # 两处重复会让左栏过长。
   "navigation_depth": 2,
   "collapse_navigation": False,
@@ -57,6 +66,9 @@ templates_path = ["_templates"]
 
 # 中英切换按钮（Google 网站翻译，按需加载；只在公网可访问时可用）。
 html_js_files = ["translate.js"]
+
+# 侧栏「下载 PDF」按钮的地址，模板（_templates/layout.html）据此渲染静态链接。
+html_context = {"leetcuda_pdf_url": leetcuda_pdf_url}
 
 mathjax_path = "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"
 

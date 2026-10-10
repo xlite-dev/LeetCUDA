@@ -41,4 +41,6 @@ echo "==> 内容核对"
 python -m convert.verify --src "$SRC_DIR" --html "$HTML_DIR"
 
 echo
-echo "预览：file://$(pwd)/$HTML_DIR/index.html"
+echo "预览（本机浏览器）：file://$(pwd)/$HTML_DIR/index.html"
+echo "预览（VS Code 内置浏览器）：python -m http.server -d $HTML_DIR 8000，"
+echo "                           再在端口面板转发 8000，然后 Simple Browser 打开 localhost:8000"

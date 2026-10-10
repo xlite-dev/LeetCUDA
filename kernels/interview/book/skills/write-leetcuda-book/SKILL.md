@@ -35,6 +35,7 @@ user-invocable: true
 6. **行文风格（作者基线）**：参考 @DefTruth《图解:从Online-Softmax到FlashAttention V1/V2/V3》与《WINT8/4》系列——**原理一定要讲细**：公式逐项展开、指令逐 bit/逐字段解释、先直觉后形式化再代码；中文叙述、术语保留英文。其余可自由发挥。
 7. **注释核查五类**：F1 架构事实（Prog Guide+cutlass skill arch guides）/ F2 PTX（本地 ptx-docs）/ F3 数学（独立推导）/ F4 性能断言（标来源）/ F5 历史陈述（对原论文）。
 8. **构建**：CWD=`book/`，`TEXMFCNF=../tex/: xelatex -interaction=nonstopmode book.tex` ×2（或 `./build.sh`）；本机已有 xelatex+ctexbook+Noto CJK（已验证）。TOC 全量装载报 `main_memory capacity exceeded`（PDF 目录丢失）时须 `fmtutil-sys --byfmt xelatex` 重建 fmt——`texmf.cnf` 的 main_memory 仅 fmt 生成期生效，改配置不重建无效（2026-09-22 L.9 根因）。
+9. **ReadTheDocs 同步检查（改了 book 内容后强制，2026-10-10 定）**：任何书稿改动（`chapters/*.tex`、TikZ 图、封面）完成后，**必须**按 `docs/readthedocs/README.md` 的「内容更新与自动同步（改书稿前必读）」一节核对站点能否自动更新：① 正文/公式/表格改动 → push 即自动更新（中英文均然）；② **改 TikZ 图内中文文字或新增含中文图 → 必须先跑 `python -m tools.translate_figures --proxy …` 补 `docs/readthedocs/i18n/figures-en.json` 词典并 commit**，否则 RTD `post_build` 的词典覆盖核对不过、构建红灯（改的是图布局、节点中文文字未动则不受影响）；③ **改封面文案 → 必须重编译 `figures/misc/cover.pdf` 并 commit，英文封面另跑 `tools/build_cover_en` commit `cover.png`**，否则站点封面停留旧版。跳过此检查 = RTD 构建挂或中英文档静默脱节。
 
 ## 工具链速查
 

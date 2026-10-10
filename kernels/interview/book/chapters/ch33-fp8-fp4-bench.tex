@@ -165,7 +165,7 @@ $\alpha$，则端到端 speedup 上界为：
 $\alpha=0.3$、$S_{\mathrm{attn}}=2.5$x 时 $S_{\mathrm{e2e}}\approx1.22$x：
 attention 只省下 $0.3T\times0.6=0.18T$，总时从 $T$ 降到
 $0.82T$。这解释了为什么扩散模型（attention 占比高、D 偏小）是量化 attention
-的第一落地场景，也是 Cache-DiT 集成（33.7 节）的价值前提。
+的第一应用场景，也是 Cache-DiT 集成（33.7 节）的价值前提。
 
 \begin{figure}[H]
 \centering
@@ -205,7 +205,7 @@ $0.82T$。这解释了为什么扩散模型（attention 占比高、D 偏小）�
   \node[anchor=north west, align=left, text width=9.7cm, font=\tiny] at (-0.75,-0.60)
     {曲线族 $S_{\mathrm{attn}}\in\{1.5,2,2.5,3\}$：attention 只省下
      $\alpha(1-1/S_{\mathrm{attn}})$ 的比例，$\alpha\to1$ 时 $S_{\mathrm{e2e}}\to S_{\mathrm{attn}}$
-     （上界）。扩散模型（attention 占比高、D 偏小）是量化 attention 的第一落地场景；
+     （上界）。扩散模型（attention 占比高、D 偏小）是量化 attention 的第一应用场景；
      NeMo Automodel 案例（$D{=}512$、全注意力层 10/60、训练 e2e $1.4\times$--$1.5\times$）
      是同一公式在训练侧的实例。};
 \end{tikzpicture}
