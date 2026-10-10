@@ -65,7 +65,10 @@ html_theme_options = {
 templates_path = ["_templates"]
 
 # 中英切换按钮（Google 网站翻译，按需加载；只在公网可访问时可用）。
-html_js_files = ["translate.js"]
+# math-en.js 必须排在 translate.js 之前：它同步定义公式英译词典
+# （window.LEETCUDA_MATH_EN），translate.js 在 DOM 解析完时同步替换公式 tex 源，
+# 要赶在 defer 的 MathJax 渲染之前（见 _static/translate.js 的 swapMathText）。
+html_js_files = ["math-en.js", "translate.js"]
 
 # 侧栏「下载 PDF」按钮的地址，模板（_templates/layout.html）据此渲染静态链接。
 html_context = {"leetcuda_pdf_url": leetcuda_pdf_url}
