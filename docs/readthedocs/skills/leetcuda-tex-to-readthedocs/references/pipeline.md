@@ -10,8 +10,10 @@ docs/readthedocs/
 ├── .readthedocs.yaml       RTD 构建：pre_build / build / post_build
 ├── _static/custom.css      版式（三栏居中）、表格、提示块、图注样式
 ├── _static/translate.js    中英切换 + 英文换图 + 侧栏按钮归位
-├── _templates/page.html    版式：正文右侧插入本页目录（{{ toc }}）
-├── _templates/layout.html  侧栏：搜索框下方「下载 PDF」按钮（链接取自根 README）
+├── _templates/page.html         版式：正文右侧插入本页目录（{{ toc }}）
+├── _templates/breadcrumbs.html  整文件复制主题模板 + 顶部按钮行的「下载 PDF」（挨着「下一页」）
+├── _templates/footer.html       同上，页脚按钮行（两处都要跟主题版本对齐）
+├── _templates/layout.html       侧栏兜底行：「下载 PDF」+「English」（仅无按钮行的页面）
 ├── i18n/figures-en.json    英文图集词典（1793 条，人工工具生成）
 ├── tools/                  build_cover_en.py / translate_figures.py / visual_check.py
 └── convert/                转换包

@@ -12,7 +12,6 @@
 
 - **skill 名**：`leetcuda-tex-to-readthedocs`（动手前先加载它）
 - **skill 位置**：`skills/leetcuda-tex-to-readthedocs/`（`SKILL.md` + `references/`），随本仓库一起走
-- **IDE 里的入口**：软链在 `/workspace/dev/vipshop/.github/skills/leetcuda-tex-to-readthedocs`
 
 **维护约定**：改本目录下任何东西（`convert/`、`_templates/`、`_static/`、`conf.py`、`tools/`、核对项）之前先加载 skill；新得到的技术结论、踩坑、实测数字写进 skill 的对应 reference，**不回写本文件**——本文件保持为纯入口。
 

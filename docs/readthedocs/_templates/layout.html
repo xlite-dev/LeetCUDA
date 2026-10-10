@@ -1,21 +1,26 @@
-{# 侧栏搜索框下方那一行：左边「下载 PDF」、右边「English」（中英切换按钮由
-   `_static/translate.js` 造，它把这枚按钮追加进下面的 `.rtd-sidebar-actions`，
-   两者因此同行，见 `_static/custom.css`）。
+{# 侧栏搜索框下方那一行：**兜底位置**，只在页面没有「上一页 / 下一页」按钮行时才出现
+   （本站只有 `genindex.html` / `search.html` 是这样）。正文页的「下载 PDF」按钮在
+   `_templates/breadcrumbs.html` 与 `_templates/footer.html` 里，紧挨「下一页」（左）。
 
-   下载链接是构建期从仓库根 README.md 的 `[leetcuda-pdf]` 解析出来的
-   （`conf.py` 的 `html_context`；解析失败时构建已经红了）。
+   这一行同时是中英切换按钮的落点：`translate.js` 造出按钮后，页面上没有「上一页」可依附
+   时会把它追加进 `.rtd-sidebar-actions`（见 `_static/custom.css`）。
 
-   这一块必须写在 layout.html 而不是 page.html：`sidebartitle` 是主题
-   `layout.html` 里的块，而 `genindex.html` / `search.html` 直接 extends layout.html
-   而不经 page.html——写在 page.html 里，这两个页面的侧栏会漏掉按钮。 #}
+   下载链接来自 `conf.py` 的 `html_context["leetcuda_pdf_url"]`（构建期解析仓库根 README
+   的 `[leetcuda-pdf]`；解析失败时构建已经红了）。
+
+   这一块必须写在 layout.html 而不是 page.html：`sidebartitle` 是主题 `layout.html` 里的块，
+   而 `genindex.html` / `search.html` 直接 extends layout.html 而不经 page.html——写在
+   page.html 里，这两个页面的侧栏会漏掉按钮。 #}
 {% extends "!layout.html" %}
 
 {% block sidebartitle %}
 {{ super() }}
+{% if not (prev or next) %}
 <div class="rtd-sidebar-actions">
   <a class="btn btn-neutral rtd-pdf-download" href="{{ leetcuda_pdf_url }}"
      target="_blank" rel="noopener" title="下载 LeetCUDA 书稿 PDF">
     <i class="fa fa-download" aria-hidden="true"></i> 下载 PDF
   </a>
 </div>
+{% endif %}
 {% endblock %}

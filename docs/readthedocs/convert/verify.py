@@ -351,11 +351,13 @@ def check_images_present(html_dir: Path) -> tuple[bool, str]:
 
 
 def check_pdf_button(html_dir: Path, expected_url: str) -> tuple[bool, str]:
-  """检查每页侧栏都渲染了「下载 PDF」按钮，且链接与仓库 README 的解析结果一致。
+  """检查每页都渲染了「下载 PDF」按钮，且链接与仓库 README 的解析结果一致。
 
-  按钮是模板（``_templates/layout.html``）里渲染出的静态锚点，链接来自 ``README.md``
-  的 ``[leetcuda-pdf]``。这里逐页比对：按钮是站点上唯一的 PDF 入口，链接写死成旧版本
-  或者整个按钮在构建中消失，读者都拿不到书，而页面本身看不出异常。
+  按钮是模板渲染出的静态锚点：正文页在 ``_templates/breadcrumbs.html`` / ``footer.html``
+  里紧挨「下一页」，没有上一页/下一页按钮行的页面（``genindex`` / ``search``）由
+  ``_templates/layout.html`` 在侧栏兜底。链接来自 ``README.md`` 的 ``[leetcuda-pdf]``。
+  这里逐页比对：按钮是站点上唯一的 PDF 入口，链接写死成旧版本或者整个按钮在构建中消失，
+  读者都拿不到书，而页面本身看不出异常。
 
   :param html_dir: Sphinx 输出目录。
   :param expected_url: ``README.md`` 里 ``[leetcuda-pdf]`` 的地址。
@@ -719,7 +721,7 @@ def verify(src_dir: Path, html_dir: Path, book_dir: Path) -> Report:
     ok, detail = check_stray_attributes(html_dir)
     report.add("MyST 属性均已解析", ok, detail)
 
-    # 侧栏「下载 PDF」按钮的链接真值取自仓库根 README（解析失败会直接抛错中断核对）。
+    # 「下载 PDF」按钮的链接真值取自仓库根 README（解析失败会直接抛错中断核对）。
     ok, detail = check_pdf_button(html_dir, readme.pdf_link())
     report.add("下载 PDF 按钮已渲染", ok, detail)
 

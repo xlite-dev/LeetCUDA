@@ -17,6 +17,16 @@
   line-height: 24px;
 }
 
+/* 「下载 PDF」按钮（`_templates/breadcrumbs.html` / `footer.html` 里的静态锚点）与
+   「下一页」同一行：两者同为 `float-right`，浮动按 DOM 顺序从右往左排，所以它落在
+   「下一页」右边、紧贴它。不给外边距——这一行的按钮要求挨在一起（挨着「下一页」、
+   首页还挨着中英切换按钮），中间留缝反而突兀。 */
+.rst-breadcrumbs-buttons > .rtd-pdf-download,
+.rst-footer-buttons > .rtd-pdf-download {
+  text-decoration: none;
+  white-space: nowrap;
+}
+
 /* 中英切换按钮：沿用主题「上一页 / 下一页」的按钮样式与尺寸
    （translate.js 里给的是 `btn btn-neutral` + FontAwesome 图标），插在「上一页」旁边。 */
 .rtd-translate-toggle {
@@ -24,10 +34,23 @@
   text-decoration: none;
 }
 
-/* 侧栏搜索框下方那一行：左「下载 PDF」（_templates/layout.html 里的静态链接）、
-   右「English」（translate.js 追加进同一容器）。flex 排成「左下载、右切换」；窄侧栏
-   （移动端抽屉只有 220px 上下可用宽）放不下就折行——切换按钮的 `margin-left: auto`
-   让它在第二行仍然右对齐，而不是被 `.wy-nav-side` 的 `overflow-x: hidden` 裁掉。 */
+/* 没有「上一页」的页面（首页）里，切换按钮落在「下载 PDF」右边：按钮行是浮动布局，
+   先出现的贴右缘，所以它既得 `float: right`，DOM 上又要排在下载按钮前面（见
+   translate.js 的 buildButton）。有「上一页」的页面不套这条——那里的切换按钮跟在
+   「上一页」后面、按普通行内流排。 */
+.rst-breadcrumbs-buttons > .rtd-translate-toggle-right,
+.rst-footer-buttons > .rtd-translate-toggle-right {
+  float: right;
+  /* 抵消上面 `.rtd-translate-toggle` 的 `margin-left: 8px`：首页三个按钮要挨在一起。 */
+  margin-left: 0;
+  white-space: nowrap;
+}
+
+/* 侧栏搜索框下方那一行（`_templates/layout.html`）：只在页面没有「上一页 / 下一页」按钮行
+   时出现（本站是 genindex / search），此时「下载 PDF」与「English」都落在这里。flex 排成
+   「左下载、右切换」；窄侧栏（移动端抽屉只有 220px 上下可用宽）放不下就折行——切换按钮的
+   `margin-left: auto` 让它在第二行仍然右对齐，而不是被 `.wy-nav-side` 的
+   `overflow-x: hidden` 裁掉。 */
 .rtd-sidebar-actions {
   display: flex;
   flex-wrap: wrap;
