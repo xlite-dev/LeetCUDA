@@ -268,7 +268,7 @@ $\sigma_\varepsilon$ 因子，下文只保留一阶。关键区分两种数据�
         per-row/per-channel 粒度与离线校准（如 GPTQ/平滑旋转，
         第~\ref{ch:28}~章同源思想）的原因。
 \end{itemize}
-\paragraph{Max Err 是极值统计, 不是误差上界.} 单个 $C_{m,n}$ 接近零（正负
+\paragraph{Max Err 是极值统计，不是误差上界} 单个 $C_{m,n}$ 接近零（正负
 相消）时相对误差可以任意大，所以 bench 表里的 \texttt{Max Err} 只能取绝对
 误差（vs cuBLAS BF16 参照）。但它也不是最坏元素误差：$MN$ 个近似独立的
 误差样本取最大值，极值统计给出
@@ -282,7 +282,7 @@ $M{=}N{=}4096$ 时 $\sqrt{2\ln(MN)} \approx 5.8$。误差分布是有限支撑�
 口径的 Max Err 自然随 $\sqrt{K}$ 增长（$\sigma_{\text{err}} \propto
 \sqrt{K}$），换算到相对口径才是与 $K$、与分布都无关的常数。
 
-\paragraph{实测指纹.} 四组数据逐一验证了上面每个环节（$\sigma_{\text{err}}
+\paragraph{实测指纹} 四组数据逐一验证了上面每个环节（$\sigma_{\text{err}}
 = \sqrt{K\,\mathrm{E}[(ab)^2]\,2\sigma_\varepsilon^2}$，均匀输入
 $\mathrm{E}[(ab)^2] = 1/9$，randn 组 $\mathrm{E}[(ab)^2] = \sigma_x^4$，
 $\sigma_x = 0.25/3$）：
@@ -310,7 +310,7 @@ $\sigma_{\text{err}}$ 随之缩 $s^2 \approx 48$ 倍，$4.50/48 \approx 0.094$
 $\sigma_{\text{err}}/\sigma_C = \sqrt{2}\,\sigma_\varepsilon$ 相同：换分布
 只缩放绝对口径，34.6~节实测的 rel-Frobenius 0.036 与分布无关。
 
-\paragraph{与 fp8 attention 的误差为什么不可直接比.} 同是 fp8 对 bf16，
+\paragraph{与 fp8 attention 的误差为什么不可直接比} 同是 fp8 对 bf16，
 量化 attention 的绝对误差看起来小得多，差异全在算子形态与度量口径。其一，
 attention 输出 $O = \mathrm{softmax}(QK^{\top})V$ 是 $V$ 行的\textbf{凸
 组合}，元素被夹在 $[\min V, \max V]$ 之间，误差也被加权平均缩小；GEMM 的

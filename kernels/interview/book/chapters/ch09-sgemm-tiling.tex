@@ -28,7 +28,7 @@ bank conflict 与 swizzle 问题。
 
 \section{问题与动机}
 
-\textbf{动机一：naive GEMM 的算术强度是只有 0.25 的常数。}按定义直译，
+\textbf{动机一：naive GEMM 的算术强度只有 0.25。}按定义直译，
 $C\sb{m,n} = \sum\sb{k} A\sb{m,k} B\sb{k,n}$：每个输出元素要读 $A$ 的一行片段
 （$K$ 个 float）和 $B$ 的一列片段（$K$ 个 float），做 $K$ 次乘加。
 算术强度 $\mathrm{AI} = 2K \text{ FLOP} / (8K \text{ B}) = 0.25$~FLOP/B，为
@@ -88,7 +88,7 @@ $\mathrm{addr}(A\sb{m,k}) = mK + k$、$\mathrm{addr}(B\sb{k,n}) = kN + n$
 $B\sb{K}$ 在分子分母间相消，\textbf{加深 $B\sb{K}$ 不提升 AI}，只增加 smem 驻留量与
 单次同步覆盖的计算量；AI 由 $B\sb{M} \times B\sb{N}$（「输出面」）唯一决定。
 代入本章两个实现：$32 \times 32 \to \mathrm{AI} = 8$~FLOP/B；
-$128 \times 128 \to \mathrm{AI} = 32$~FLOP/B，恰好是四级递进（naive $0.25 \to 8 \to 32$）。
+$128 \times 128 \to \mathrm{AI} = 32$~FLOP/B，恰好是三级递进（naive $0.25 \to 8 \to 32$）。
 方形 tile 时式~\ref{eq:9-ai-tile} 简化为 $B/4$：每边翻倍，AI 翻倍。
 
 \subsection{Thread Tile：换一层计数——smem 到寄存器}

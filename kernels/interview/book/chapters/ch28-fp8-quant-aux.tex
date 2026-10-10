@@ -585,8 +585,8 @@ __global__ void quantize_fp8_vt_kernel(
 
 三个结构决策。\textbf{kPad=16}：staging tile 的行内边距让转置读出的 32-bit
 组错开 bank，这是纯 smem 侧的 bank 错开；gmem $V^{\top}$ 的 TMA 16B 加载对齐
-由行宽 $N_{kv,pad}$（launcher 传入）保证，与 \texttt{kPad} 无因果关系，两个
-16 只是恰好同值。\textbf{kDChunk=256 动态 smem}：大 headdim 的整 tile 会超出 48KB 静态
+由行宽 $N_{kv,pad}$（launcher 传入）保证，与 \texttt{kPad} 无因果关系（另见
+28.3.5~节的对比说明）。\textbf{kDChunk=256 动态 smem}：大 headdim 的整 tile 会超出 48KB 静态
 上限，D 维分块后 staging 尺寸恒为 $kBlockRows\times(kDChunk+kPad)$，动态 smem
 按需分配。\textbf{kVTPerm 置换写}：写出列号经 \texttt{VTPermInv32}（式
 \ref{eq:28-vtperm}）置换，与主 kernel 的 reorg-free 打包强制匹配：launcher
@@ -685,11 +685,8 @@ $H_{2n}=\left[\begin{smallmatrix} H_n & H_n\\ H_n & -H_n\end{smallmatrix}\right]
 radix-2 蝶形：$(a,b)\to(a{+}b,\ a{-}b)$，每个 bit 一轮、无 bit-reversal，
 $1/\sqrt{n}$ 的缩放折进 store。
 
-旋转的效果是把每行白化——每个输出坐标都是全部输入的带符号和，
-能量在坐标间均匀铺开（Hadamard 的「Jackson」性质）。量化器按元素块共享一个
-scale（fp4 每 16 个元素、fp8 每 block/group）；不旋转时，单个 outlier 坐标
-会主导块 scale 的取值、其余数值的分辨率随之下降，而旋转后的行幅度近乎均匀，
-块 scale 收敛，量化噪声整体下降。
+旋转的效果是把每行白化：能量摊到全部坐标、块 scale 收敛、量化噪声整体
+下降，机理与量化收益的推导见 28.3.3~节。
 
 \begin{lstlisting}[
   caption={radix-2 蝶形 kernel 主体（\texttt{hadamard.cuh} L40--92，节选）},

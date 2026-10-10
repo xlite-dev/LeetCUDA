@@ -522,7 +522,7 @@ Phase 1 的内层是这个 kernel 的核心循环，包含两个易错点：chun
 \texttt{cp\_\allowbreak{}async\_\allowbreak{}wait\allowbreak{}<N>} 的语义是「等到未完成的组数 $\le N$」。
 \texttt{kStagesQK} $=2$ 时 \texttt{wait<0>} 意味着\textbf{把刚发出的预取也一并等到}
 ，这一档没有循环内重叠，重叠主要来自 Phase 0 的 V 预取与整段 QK/softmax 的
-并行；$\mathrm{Sk} \ge 3$ 时 \texttt{wait<Sk-2>} 才允许 $\mathrm{Sk}-2$ 组仍inflight，
+并行；$\mathrm{Sk} \ge 3$ 时 \texttt{wait<Sk-2>} 才允许 $\mathrm{Sk}-2$ 组仍 in-flight，
 循环内重叠才真正建立。这个细节在 19.6~节解释性能差异时会用到。
 
 \begin{figure}[H]

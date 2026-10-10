@@ -691,7 +691,7 @@ $\varepsilon \times$ 幅度。ffpa 的仿真分解给出排序（内部仿真口
 \subsection{P 量化的三步协议}
 
 \texttt{fp8\_pscale.cuh} 的头注释把 27.3.4 的量化点 2/3 浓缩成三行公式与一条
-消去证明，是全书引用密度最高的一段注释。它先回答「P 为什么需要 runtimescale」：Q/K/V 都已离线量化（\texttt{q\_scale}/\texttt{k\_scale}/\texttt{v\_scale}），
+消去证明，是全书引用密度最高的一段注释。它先回答「P 为什么需要 runtime scale」：Q/K/V 都已离线量化（\texttt{q\_scale}/\texttt{k\_scale}/\texttt{v\_scale}），
 而 $P = \mathrm{softmax}(S)$ 是每个 forward、每个 tile 都不一样的瞬态 fp32
 概率矩阵，只能在 kernel 内就地量化：$\mathrm{P8} = \mathrm{round}(P \cdot
 v_s / p_{\mathrm{scale}})$ 折叠发射，$\mathrm{MMA} = \mathrm{P8} @ \mathrm{V8}$

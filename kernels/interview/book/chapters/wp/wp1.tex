@@ -2,7 +2,7 @@
 
 \wph{布局表示（Layout Representation）}
 
-\CuTe 布局（layout）是一类功能多样的对象，能够表示范围广泛的数据排列与线程排列，在抽象物理地址、将迭代顺序与存储顺序相分离等方面极具实用价值。在本节中，我们定义形状（shape）、布局与张量（tensor）的 \CuTe 表示，并说明它们与坐标（coordinate）如何相互作用。\CuTe 布局使得泛型算法只需单一实现，便可应用于任何可折叠为该算法规范形式（canonical form）的复杂数据布局。此类算法及其应用广度的示例见第~\ref{sec:algorithms}~节。
+\CuTe 布局（layout）是一类功能多样的对象，能够表示范围广泛的数据排列与线程排列，在抽象物理地址、将迭代顺序与存储顺序相分离等方面很有实用价值。在本节中，我们定义形状（shape）、布局与张量（tensor）的 \CuTe 表示，并说明它们与坐标（coordinate）如何相互作用。\CuTe 布局使得泛型算法只需单一实现，便可应用于任何可折叠为该算法规范形式（canonical form）的复杂数据布局。此类算法及其应用广度的示例见第~\ref{sec:algorithms}~节。
 
 \wpsh{元组与层次元组（Tuple 与 HTuple）}
 
@@ -88,7 +88,7 @@ P,S \in \texttt{Tuple} \text{ 且 } \text{rank}(P) = \text{rank}(S) \text{ 且 }
 \begin{align*}
 \Z_N = \{ 0, 1, 2, \ldots, N-1 \}.
 \end{align*}
-\CuTe 注意到：只要存在一个双射（bijection）
+\CuTe 的关键观察是：只要存在一个双射（bijection）
 \begin{align*}
 S : \Z_{MN} \longleftrightarrow \Z_M \times \Z_N
 \end{align*}

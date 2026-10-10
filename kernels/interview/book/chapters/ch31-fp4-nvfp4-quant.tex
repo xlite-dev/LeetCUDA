@@ -81,7 +81,7 @@ $\mathrm{amax}$ 与其余元素的分辨率差距被放大到无法忽略。更�
 \textbf{分布中心}：attention 的 Q/K 行向量常带系统性均值偏移（randn 输
 入下均值不为零，真实模型里更明显），若直接量化
 $Q\to\hat Q$，均值占据 $\mathrm{amax}$ 预算，把有效信息压进 1--2 个
-量化台阶。fp8 的 smooth-K 是可选旋钮（第~\ref{ch:28}~章），fp4 的
+码点。fp8 的 smooth-K 是可选旋钮（第~\ref{ch:28}~章），fp4 的
 smooth-Q/K 是\textbf{强制开启，不是选项}（skill §6.2）：e2m1 的 ±6
 动态范围使均值平滑成为精度必需。
 
@@ -753,8 +753,7 @@ NVFP4 的 $1\times16$ microscaling 块如何配平 e2m1 与 ue4m3 两级尺度�
   \end{tikzpicture}
   \caption{kv\_perm32 的 32 列窗口双射与 perm-aware masking。置换让
   QK 的 C fragment 列直接匹配 PV 的 A 操作数布局；mask/bias 必须经
-  \label{fig:31-3}
-  $\pi^{-1}$ 回到原始 token 位置判定。}
+  $\pi^{-1}$ 回到原始 token 位置判定。\label{fig:31-3}}
 \end{figure}
 
 \FloatBarrier

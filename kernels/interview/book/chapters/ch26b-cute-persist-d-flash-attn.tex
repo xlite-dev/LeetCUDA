@@ -783,7 +783,7 @@ cluster 形式 TMA 与缺 \texttt{\_\_launch\_\allowbreak{}bounds\_\allowbreak{}
         barrier 都必须换成仅 consumer 参与的
         \texttt{NamedBarrier}（256 线程），否则 epilogue 死锁。
   \item \textbf{gridDim 携带大数超过 65535 上限}：早期版本把
-        $B\cdot H\cdot N$ 塞进 \texttt{gridDim.z}，$N_q{=}4096$、$H{=}16$ 时
+        $B\cdot H\cdot N$ 放进 \texttt{gridDim.z}，$N_q{=}4096$、$H{=}16$ 时
         恰好 $65536 > 65535$ 报 \texttt{cudaErrorInvalidValue}——行数改走
         kernel 参数。
   \item \textbf{依赖类型少 \texttt{typename}}：kernel 模板参数

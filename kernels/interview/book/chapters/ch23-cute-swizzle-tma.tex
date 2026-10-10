@@ -43,15 +43,15 @@ hgemm.cuh L1859--2100（宏块 \texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENAB
 
 \section{问题与动机}
 
-先看第~\ref{ch:12}~章那行 swizzle 在真实工程里的三种「漂移」形态。
+先看第~\ref{ch:12}~章那行 swizzle 在真实工程里的三种「走样」形态。
 
-\textbf{漂移一：语义只存在于调用点。} 手写版的 swizzle 是一个自由函数，
+\textbf{走样一：语义只存在于调用点。} 手写版的 swizzle 是一个自由函数，
 调用点写 \texttt{swizzle\allowbreak{}<64>\allowbreak{}(row,\allowbreak{} k)}，函数体里写死「取 bit7--9（3 位），
 右移 3 位后 XOR 到 bit4--6」。要换 fp8（元素 1 字节、行宽翻倍）或换行宽（64 B/128 B/256 B），
 就得改函数体内的位域，而改对与否只能靠再跑一遍正确性测试。ch12 的 kernel
 之所以只写了一个 \texttt{swizzle<>}，是因为它只有一个 smem 布局。
 
-\textbf{漂移二：与其它维度的耦合。} 上一章的 smem 需要三层结构：
+\textbf{走样二：与其它维度的耦合。} 上一章的 smem 需要三层结构：
 $B_M\times B_K$ 的 tile、$k_{\text{stage}}$ 个 stage、以及 scale 因子等
 旁路数据。手写版的地址表达式把这些维度乘在一起
 （\texttt{base + stage * BM * BK + row * BK + swizzle\allowbreak{}(row,\allowbreak{} k)}），
@@ -59,7 +59,7 @@ $B_M\times B_K$ 的 tile、$k_{\text{stage}}$ 个 stage、以及 scale 因子等
 末尾那个 \texttt{k\_step} 要不要放进 \texttt{swizzle\allowbreak{}<k\allowbreak{}Mma\allowbreak{}K>} 参数的问题，
 本质就是「复合顺序」问题。
 
-\textbf{漂移三：与硬件 swizzle 的一致性。} TMA 的
+\textbf{走样三：与硬件 swizzle 的一致性。} TMA 的
 \texttt{cp.\allowbreak{}async.\allowbreak{}bulk.\allowbreak{}tensor} 由硬件按 descriptor 里声明的模式
 （\texttt{CU\_\allowbreak{}TENSOR\_\allowbreak{}MAP\_\allowbreak{}SWIZZLE\_\allowbreak{}32B/\allowbreak{}64B/\allowbreak{}128B}）自己把 gmem 的数据
 摆进 smem。此时 smem 里的物理排布由\emph{硬件}决定，软件只能去对齐它：
@@ -70,7 +70,7 @@ swizzle 编码进基址（WGMMA descriptor 的 \texttt{base\_offset} 字段，
 一条硬性约定：TMA 路径的 smem 基址必须 1024 B 对齐，否则 phase 不为零，
 消费者算出来的地址全错。
 
-本章要证明的是：CuTe 把这三个漂移各自收进了一个可检验的对象：
+本章要证明的是：CuTe 把这三个走样各自收进了一个可检验的对象：
 \texttt{Swizzle\allowbreak{}<B,\allowbreak{}M,\allowbreak{}S>}（位语义）、\texttt{composition}（复合语义）、
 \texttt{tile\_\allowbreak{}to\_\allowbreak{}shape}（多级扩展），而 TMA 侧则用
 \texttt{make\_\allowbreak{}tma\_\allowbreak{}copy} 把「gmem 张量 $+$ smem 布局」一次性编码成硬件
@@ -535,7 +535,7 @@ $256\times32\times2=16384$ 个 half。这两个别名随后被
         一致，host 端有等价性测试）；legacy 的 \texttt{kColStride}=8 无
         对应的 CuTe 标准模式，代码显式回退到手写 XOR 路径。\textbf{行宽一
         改，$B$ 与 $M$ 要一起改}，这就是 3.3 节实践须知「参数与单位绑定」
-        的落地形态。
+        的具体体现。
 \end{itemize}
 
 \begin{figure}[H]

@@ -842,7 +842,7 @@ $\approx 295$~FLOP/B：\textbf{单看一个 CTA 的装载流，访存仍是短�
 性能复测；源码头注释与 README 均未给出 WGMMA kernel 的量化 TFLOPS，正文不引用
 任何未经复现的数字。复现条件：H100/H200/H800 上以 13.10~节命令编译运行并扩展
 bench（对照 bench\_leetcuda.cu 的 bench 口径），数据落 \texttt{.\allowbreak{}tmp/\allowbreak{}book-bench/\allowbreak{}ch13/\allowbreak{}}
-供附录~B 汇总。本章 TMA+mbarrier 协议在 SM120 上配 mma.sync 的落地实现
+供附录~B 汇总。本章 TMA+mbarrier 协议在 SM120 上配 mma.sync 的实现
 （TMA+MMA+WS）已在本机实测，见表~\ref{tab:ch14-perf}（14.6~节）。
 
 \section{实践经验与考据说明}
@@ -887,8 +887,7 @@ bench（对照 bench\_leetcuda.cu 的 bench 口径），数据落 \texttt{.\allo
   形式），13.8~节坑一与 13.10~节命令给出替代方案。
 \end{kaogu}
 
-全量核查记录待汇总进 \texttt{book/\allowbreak{}CHECKLOG.\allowbreak{}md}（本次任务不改该文件，结论以上述
-框注为准）。
+全量核查记录汇总于 \texttt{book/\allowbreak{}CHECKLOG.\allowbreak{}md}，结论以上述框注为准。
 
 \section{常见坑}
 

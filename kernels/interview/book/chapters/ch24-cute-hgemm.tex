@@ -96,11 +96,7 @@ cute::copy(s2r_tiled_copy_a, tAsA(_, _, k_step_next, ismem_read),
 图~\ref{fig:24-1} 对照表要回答的。
 
 正文按三步渐进展开，三步共用同一份源码事实，区别只在每一步\textbf{放弃或
-引入}什么：第~\ref{sec:24-step1}~节（第一步）只留「切块 $\to$ 分区 $\to$
-\texttt{cute::gemm}」，把地址算术从代码里拿掉；第~\ref{sec:24-step2}~节
-（第二步）引入 smem 与 \texttt{cp.async}，让搬运与计算重叠；
-第~\ref{sec:24-step3a}、\ref{sec:24-step3b}~节（第三步）再优化搬运的形态与
-寄存器占用。每一步的末尾都会点明「这一步留下了什么」，接上后一步的动机。
+引入}什么，每一步的末尾都会点明「这一步留下了什么」，接上后一步的动机。
 
 \section{数学原理}
 
@@ -153,7 +149,7 @@ $\bigl(\lceil N/B_N\rceil,\lceil M/B_M\rceil\bigr)$。Phase~7c 的默认配置�
 这三个数字构成一座三层金字塔：CTA tile $B_M\times B_N$（一次搬进来、一次算完）
 $\supset$ 逻辑 MMA tile $32\times32\times16$（\texttt{TiledMMA} 一次展开多少条
 指令，见下节）$\supset$ atom $16\times8\times16$（一条 \texttt{mma.sync}）。
-CuTe 的层层 partition，本质就是在这座金字塔上做「从塔尖切到塔基」的坐标换算。
+CuTe 的层层 partition，本质就是在这座金字塔上做「从塔基切到塔尖」的坐标换算。
 三层之间的尺寸关系见图~\ref{fig:24-tile-pyramid}。
 
 \begin{figure}[H]
@@ -234,7 +230,7 @@ CuTe 的层层 partition，本质就是在这座金字塔上做「从塔尖切�
 $32\times32\times16$ 被 AtomLayout$(2,2,1)$ 切成 $2\times2$ 个 warp（每个
 warp 覆盖 $16\times16$，由 EURepeat$\times$atom 堆出）；内层 atom
 $16\times8\times16$ 就是一条 \texttt{mma.sync}。CuTe 的层层 partition 都
-是这座金字塔上的「塔尖到塔基」坐标换算。}
+是这座金字塔上的「塔基到塔尖」坐标换算。}
 \label{fig:24-tile-pyramid}
 \end{figure}
 
@@ -277,7 +273,7 @@ C 累加器 & 2 个 \texttt{u32}（4 个 half） & 4 个 float \\
 \end{center}
 
 两种 atom 的 A/B fragment 布局完全相同（这也是选它们做对照的前提），差别只在
-C 累加器：F16 累加把 4 个 half 塞进 2 个寄存器，F32 累加用 4 个寄存器。launch
+C 累加器：F16 累加把 4 个 half 打包进 2 个寄存器，F32 累加用 4 个寄存器。launch
 wrapper 用 \texttt{std::\allowbreak{}conditional\_\allowbreak{}t} 一次选出原子，再由 EURepeat 推出逻辑
 tile：
 
@@ -810,7 +806,7 @@ F32 & 128 & $128\cdot128/128=128$ 个 float & 128 \\
 \end{center}
 
 两行都是 128 个寄存器；这说明「F32 累加就把 $B_N$ 减半」不是经验之谈，而是把
-寄存器预算配平：F16 累加把 4 个 half 塞进 2 个寄存器，F32 累加每个元素独占一个
+寄存器预算配平：F16 累加把 4 个 half 打包进 2 个寄存器，F32 累加每个元素独占一个
 寄存器，$B_N$ 必须减半才能维持同样的占用。\texttt{-Xptxas -v} 的实测与之吻合：
 $B_N{=}256$/F16 用 254 个寄存器、$B_N{=}128$/F32 用 226 个，两者 stack frame
 均为 0 字节（0 spill）；距上限 255 只差 1 个，所以 \texttt{kBN} 由
@@ -1196,7 +1192,7 @@ R2S $\to$ sC $\to$ S2G，映射进类型 \\
         CuTe $\sim$80 行」。按同口径实测（去注释、去空行）：手写 Phase~7b 为
         147 行、Phase~7b-3 为 231 行，CuTe kernel 本体为 118 行（另有 launch
         wrapper 86 行）。注释给的是量级估计，方向正确（CuTe 版确实更短），但
-        「$\sim$80 行」低估了约四成；本章一律以实测数字为准
+        「$\sim$80 行」低估了约三成；本章一律以实测数字为准
         （图~\ref{fig:24-1}）。
 \end{itemize}
 

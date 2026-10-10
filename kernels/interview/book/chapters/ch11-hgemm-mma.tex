@@ -20,7 +20,7 @@ $B\sb M\times B\sb N\times B\sb K = 128\times128\times16$，block 256 线程）�
 本章是全书\textbf{指令级细节最重}的一章：11.3~节把 \texttt{mma} 指令的每个
 限定符逐字段对照 PTX ISA 讲解，把 A/B/C 三个 fragment 在 32 个 lane 上的
 寄存器分布逐格画出来；\texttt{ldmatrix} 的寻址协议（哪个线程提供哪个地址）
-也同样逐线程推导。这些细节并非炫技：第~\ref{ch:12}~章的 swizzle、
+也同样逐线程推导。第~\ref{ch:12}~章的 swizzle、
 第~\ref{ch:16}~章的 FlashAttention 全部建立在这套 fragment 几何之上。
 \textbf{前置}：第~\ref{ch:09}~章 tiling 金字塔、第~\ref{ch:10}~章 cp.async 协议。
 
