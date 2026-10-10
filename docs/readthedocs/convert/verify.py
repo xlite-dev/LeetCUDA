@@ -564,6 +564,35 @@ def check_hard_breaks(texts: dict[str, str]) -> tuple[bool, str]:
   return ok, detail
 
 
+def check_math_foreign_markup(texts: dict[str, str]) -> tuple[bool, str]:
+  """检查公式片段里没有被折行转换污染的 HTML 标记。
+
+  转换器把正文硬换行（行尾反斜杠）转成 ``<br>`` 时若漏保护公式，bmatrix/align 的
+  ``\\\\`` 会被吃成 ``\\<br>``，MathJax 按 ``\\<`` 未定义报错、整条公式垮掉（线上
+  导读章与 ch25 曾大面积中招）。这里在源树核对公式片段里没有 ``<br`` 字面。
+
+  :param texts: 页面名 → markdown。
+  :returns: ``(是否通过, 说明)``。
+  """
+  problems: list[str] = []
+  spans = 0
+  for name, text in texts.items():
+    lines = text.split("\n")
+    flags = postprocess.code_fence_flags(lines)
+    clean = "\n".join("" if flag else line for line, flag in zip(lines, flags))
+    for start, end in texutil.math_spans(clean):
+      spans += 1
+      span = clean[start:end]
+      position = span.find("<br")
+      if position != -1 and len(problems) < 3:
+        excerpt = span[max(0, position - 30):position + 20].replace("\n", " ")
+        problems.append(f"{name}: …{excerpt}…")
+  ok = not problems
+  detail = (f"核对 {spans} 个公式片段" if ok
+            else f"{len(problems)}+ 处公式内 <br>，例如 {problems[0]}")
+  return ok, detail
+
+
 def count_source_tables(parts: list[booktree.Part]) -> int:
   """统计原书闭包内的表格环境数量（每个文件只统计一次）。
 
@@ -754,6 +783,9 @@ def verify(src_dir: Path, html_dir: Path, book_dir: Path) -> Report:
 
   ok, detail = check_hard_breaks(texts)
   report.add("无字面 LaTeX 换行反斜杠", ok, detail)
+
+  ok, detail = check_math_foreign_markup(texts)
+  report.add("公式内无 <br> 污染", ok, detail)
 
   if html_dir.is_dir():
     ok, detail = check_table_counts_per_chapter(booktree.parse(book_dir / "book.tex"), html_dir)
