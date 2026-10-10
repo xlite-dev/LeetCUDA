@@ -9,13 +9,16 @@ docs/readthedocs/
 ├── build.sh                本地一键：转换 → sphinx-build → 内容核对
 ├── .readthedocs.yaml       RTD 构建：pre_build / build / post_build
 ├── _static/custom.css      版式（三栏居中）、表格、提示块、图注样式
-├── _static/translate.js    中英切换 + 英文换图 + 侧栏按钮归位
+├── _static/translate.js    中英切换 + 英文换图 + 代码块注释词典替换 + 侧栏按钮归位
+├── _static/code-en.json    代码块注释英译词典（人工产线生成，见 references/english.md）
+├── _static/math-en.js      公式内文字英译词典（--what math 产线生成，conf.py 同步加载）
+├── _static/math-en.js      公式内文字英译词典（--what math 产线生成，conf.py 同步加载）
 ├── _templates/page.html         版式：正文右侧插入本页目录（{{ toc }}）
 ├── _templates/breadcrumbs.html  整文件复制主题模板 + 顶部按钮行的「下载 PDF」（挨着「下一页」）
 ├── _templates/footer.html       同上，页脚按钮行（两处都要跟主题版本对齐）
 ├── _templates/layout.html       侧栏兜底行：「下载 PDF」+「English」（仅无按钮行的页面）
 ├── i18n/figures-en.json    英文图集词典（1793 条，人工工具生成）
-├── tools/                  build_cover_en.py / translate_figures.py / visual_check.py
+├── tools/                  build_cover_en.py / translate_figures.py / visual_check.py / code_dict.py
 └── convert/                转换包
     ├── __main__.py         编排 + 站点装配 + 报告
     ├── booktree.py         解析 book.tex → 篇/章顺序（导航骨架）

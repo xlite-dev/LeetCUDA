@@ -24,6 +24,10 @@
   // 机器翻译不该动的节点：写进代码块与公式里的中文要原样留着。
   var VERBATIM_SELECTOR = 'pre, code, .highlight, .math, mjx-container';
 
+  // 代码块注释词典（覆盖全站全部含中文的代码块文本节点，与英文图集同一条人工翻译
+  // 产线）。代码块被 notranslate 保护、机器翻译碰不到，所以英文版靠这里按词典替换。
+  var CODE_DICT_URL = '_static/code-en.json';
+
   // 取样的汉字数掉到起始值的这个比例以下、且首个标题已翻成英文，就算「翻完」。不能要求
   // 「一个汉字都不剩」：受保护的代码块本来就留着中文，Google 也**只翻一部分正文**——ch01 上
   // 线上与本地一致地留下 417 个汉字（约 47% 的取样节点）永久不动，占正文一成左右。
@@ -103,6 +107,74 @@
       });
       image.setAttribute('src', EN_DIR + match[1]);
     });
+  }
+
+  /** 对容器内文本节点按词典整段替换（trim 后命中，保留前后空白）。
+   *
+   * 先收集再替换；replacement 用函数形式——译文里的 ``$&``、``$'`` 之类在字符串
+   * 形式的 replacement 里会被当成替换模式解释，函数形式则按字面返回。
+   */
+  function applyDict(selector, dict) {
+    var cjk = /[\u4e00-\u9fff]/;
+    Array.prototype.forEach.call(document.querySelectorAll(selector), function (root) {
+      // 先收集再替换，避免边遍历边改。
+      var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
+      var nodes = [];
+      while (walker.nextNode()) {
+        nodes.push(walker.currentNode);
+      }
+      nodes.forEach(function (node) {
+        var text = node.nodeValue;
+        if (!cjk.test(text)) {
+          return;
+        }
+        var trimmed = text.trim();
+        if (Object.prototype.hasOwnProperty.call(dict, trimmed)) {
+          node.nodeValue = text.replace(trimmed, function () {
+            return dict[trimmed];
+          });
+        }
+      });
+    });
+  }
+
+  /** 按词典把代码块里的中文注释换成英文（英文图集的同构机制）。
+   *
+   * 代码块在 ``notranslate`` 保护下机器翻译碰不到；图内文字走「构建期重编译一套
+   * SVG」，代码块则由这里在英文模式下拉取 ``_static/code-en.json``、对 ``pre`` 里的
+   * 文本节点按 key 替换。key 是文本节点 trim 后的原文，命中才换并保留前后空白（缩进
+   * 不动）；未命中的注释保持中文——读者看到的是完整注释，而不是半中半英。本地预览
+   * 同样生效，不依赖 Google 可达。代码块不受 MathJax 影响，走 fetch 即可。 */
+  function swapCodeComments() {
+    if (!window.fetch) {
+      return;
+    }
+    fetch(CODE_DICT_URL).then(function (response) {
+      if (!response.ok) {
+        return null;
+      }
+      return response.json();
+    }).then(function (dict) {
+      if (!dict) {
+        return;
+      }
+      applyDict('pre', dict);
+    }).catch(function () {
+      // 词典拉不下来就保持中文：英文体验可以降级，代码块不能坏。
+    });
+  }
+
+  /** 按词典把公式 tex 源里的中文换成英文（``\text{}`` 注释之类）。
+   *
+   * 词典来自 ``math-en.js``（``conf.py`` 里排在本脚本之前同步加载），所以这里是
+   * 同步替换：MathJax 是 defer 的，在 ``interactive`` 之后就开始渲染、把 tex 源文本
+   * 节点换成 ``mjx-container``，fetch 异步词典可能输给它——公式替换必须抢在渲染前。
+   * key 是整段公式 tex 源（trim 后），由 ``tools/code_dict.py`` 的骨架校验保证译文
+   * 只动了中文、LaTeX 结构逐字未变。 */
+  function swapMathText() {
+    if (window.LEETCUDA_MATH_EN) {
+      applyDict('.math', window.LEETCUDA_MATH_EN);
+    }
   }
 
   /** 按需加载官方翻译组件（用到才加载，避免每页引入第三方脚本）。
@@ -397,9 +469,12 @@
   whenDomReady(function () {
     var english = isEnglish();
     if (english) {
-      // 内容侧的准备：保护代码块与公式、把插图换成英文图集。
+      // 内容侧的准备：保护代码块与公式、把插图换成英文图集、代码块注释与公式 tex
+      // 源换成英文词典（公式必须同步抢在 MathJax 渲染前，见 swapMathText）。
       protectVerbatim();
       swapFigures();
+      swapCodeComments();
+      swapMathText();
       // MathJax 是在 `interactive` 之后、`DOMContentLoaded` 之前才把 `mjx-container` 建出来
       // 的（实测受保护节点 131 → 244），那时再补一遍，别让机器翻译动公式。
       document.addEventListener('DOMContentLoaded', protectVerbatim);

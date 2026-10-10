@@ -23,6 +23,25 @@
 - **产物与换图**：`python -m convert` 会额外编译 196 张英文 SVG 到 `_static/figures-en/`（Sphinx 整目录复制，浏览器直接可达，不入库）；英文模式下 `_static/translate.js` 把 `_images/<名字>.svg` 换成 `_static/figures-en/<名字>.svg`，加载失败则回退中文原图。
 - **已知边界**：图里写在数学内部的少量中文（`$\text{低秩 GEMM}$` 这类，全书 6 个字）仍是中文——它在数学区间里，翻译会破坏公式。
 
+## 代码块注释英译（`_static/code-en.json` + `translate.js`）
+
+代码块在 `notranslate` 保护下机器翻译碰不到，与图内文字一样只能走构建期词典：**正文机器翻译 + 代码块按词典替换**是并行的两条线。
+
+- **词典**：`_static/code-en.json`（入库，Sphinx 整目录拷贝）。key = 代码块文本节点 **trim 后的原文**（含代码与中文，如 `nsys stats -r cuda_gpu_kern_sum report.nsys-rep   # per-kernel 时间占比（最常用）`），value = 英文整段——代码/命令/标识符/数字逐字保留，只翻中文，中文标点转英文。全站 771 条唯一节点（40 页）。
+- **产线**：`python -m tools.code_dict extract --groups 8 --out <dir>` 从 `build/html` 抽出全部含中文的 `pre` 文本节点（唯一化、按文件装箱均衡分组）→ 各组逐条人工/模型翻译（保持注释前缀与缩进）→ `python -m tools.code_dict merge --parts <dir>/parts` 合并并校验（key 全覆盖、value 无汉字/中文标点、多行节点中纯代码行逐字保留、含中文的 key 不得原样照抄）。**任何一项不过 merge 直接报错退出**，不写半吊子词典。
+- **替换**：`translate.js` 的 `swapCodeComments()`——英文模式下 fetch 词典，`TreeWalker` 遍历 `pre` 文本节点，trim 后命中才替换（`nodeValue.replace(trimmed, hit)` 保留前后空白，缩进不动）；未命中的注释保持中文（读者看到完整中文而不是半中半英）；词典拉取失败静默降级。**不依赖 Google 可达，本地预览同样生效**，所以浏览器验收可以直接在 localhost 做（英文模式下 `pre` 内汉字数应为 0）。
+- **书稿/源码更新后**：代码块内容变了，重跑一遍产线更新词典——extract 会列出全部当前节点，merge 会对不出词条的节点报 missing。
+- **范围**：只处理块级 `pre`；行内 `` `code` `` 的中文不在其中（量小，且属于正文翻译范畴）。
+
+## 公式内文字英译（`_static/math-en.js` + `translate.js`）
+
+公式被 `notranslate` 保护、机器翻译碰不到，公式里的中文（几乎都在 `\text{}` 内）同样走词典：**产线与代码块共用 `tools/code_dict.py`，用 `--what math` 切换**。
+
+- **词典**：`_static/math-en.js`，格式 `window.LEETCUDA_MATH_EN = {...}`（JS 赋值而非 JSON）。key = 公式容器（Sphinx 的 `.math`）内 **tex 源原文**（trim 后），value = 英文版 tex。全站 123 条唯一节点（33 页）。
+- **时序是关键**：MathJax 是 defer 的，`interactive` 之后就可能开始渲染、把 tex 源文本节点换成 `mjx-container`——fetch 异步词典可能输给它。所以 `conf.py` 把 `math-en.js` 排在 `translate.js` **之前**同步加载，`swapMathText()` 在 DOM 一解析完就**同步**替换 `.math` 里的 tex 源，抢在渲染之前；MathJax 渲染出来的自然就是英文。代码块不受 MathJax 影响，继续走 fetch（`code-en.json`）。
+- **校验比代码块强**：骨架校验——取原文的非中文片段序列，要求在译文中按原顺序逐字出现（`re.fullmatch` 拼接 `.*?`），中文位置允许任意英文，外加花括号计数；LaTeX 命令/花括号/空白/换行逐字不动，只翻中文。（注：早期实现「两侧中文段替换成占位符再比对」是错的——译文里是英文，永不可能相等，已修复。）
+- **验收**：无论 MathJax 是否渲染成功（本地 CDN 不通时 tex 源原样显示），英文模式下 `.math`/`mjx-container` 内文本节点汉字数应为 0——headless 全站扫即可，不依赖渲染。
+
 ## 英文封面（离线生成，产物入库）
 
 封面不在上面这套流程里——它是书稿的独立文档 `figures/misc/cover-tikz.tex`，编译成 PDF 后由 `convert._cover_image()` 光栅化成 PNG，字同样是矢量轮廓；而且封面用的 Humor Sans / Comic Neue 只装在作者本机、RTD 镜像里没有（中文用的 LXGW WenKai 25 MB 也不适合入库）。
