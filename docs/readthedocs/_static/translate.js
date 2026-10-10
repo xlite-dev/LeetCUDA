@@ -214,15 +214,25 @@
   function createToggle(english) {
     var toggle = document.createElement('a');
     toggle.className = 'btn btn-neutral rtd-translate-toggle';
+    // a 取 baseline：Google 给文字包的 <font> 带 vertical-align:inherit，
+    // 继承到 a 的对齐值——a 若是主题默认的 middle，文字会比图标低 ~1px
+    // （线上实测的"图标与文字不居中"）。a 用 baseline 后文字与图标都按
+    // baseline 对齐，两种模式完全一致。
+    toggle.style.verticalAlign = 'baseline';
     toggle.setAttribute('role', 'button');
     toggle.setAttribute('tabindex', '0');
 
     var icon = document.createElement('i');
     icon.className = 'fa fa-language';
     icon.setAttribute('aria-hidden', 'true');
-    // 间距内联在图标上：不依赖任何 CSS 选择器命中（Google 翻译会把 inline 内容
-    // 整体包进 <font>，选择器方案在线上被它打穿过两轮）。
+    // 间距与垂直对齐内联在图标上：不依赖任何 CSS 选择器命中（Google 翻译会把
+    // inline 内容整体包进 <font>，选择器方案在线上被它打穿过两轮）。
+    // vertical-align:inherit 是关键：Google 给文字包的 <font> 带
+    // style="vertical-align: inherit"，文字于是继承 <a> 的 middle，而图标默认
+    // baseline——英文模式下两者相差 1px（图标与文字不居中）。图标也取 inherit，
+    // 两者取自同一父级，怎么包裹都一致。
     icon.style.marginRight = '4px';
+    icon.style.verticalAlign = 'inherit';
     toggle.appendChild(icon);
     toggle.appendChild(document.createTextNode(english ? '中文' : 'English'));
 
