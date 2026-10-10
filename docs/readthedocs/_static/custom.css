@@ -49,12 +49,26 @@
    模板（breadcrumbs/footer/layout）与 translate.js 另外把同样的 4px **内联在图标
    元素上**（`style="margin-right:4px"` / `fa-tail` 用 `margin-left:4px`）：内联不
    依赖选择器命中，Google 怎么包裹、CSS 缓存到哪个版本都生效——这是 2026-10 线上
-   两轮失配后的兜底；本段规则是统一机制与兜底（改模板漏内联时仍有间距）。 */
+   两轮失配后的兜底；本段规则是统一机制与兜底（改模板漏内联时仍有间距）。
+
+   垂直对齐同理：`<a class="btn">` 是主题默认的 middle，图标默认 baseline——英文
+   模式下 Google 给文字包的 `<font>` 带 `style="vertical-align: inherit"`，文字
+   继承到 middle 后比图标低 ~1px（「图标与文字不居中」的真正原因，2026-10 线上
+   实测 dy≈1px）。把 `a` 设为 baseline、图标取 `inherit`（继承同一个值）后，包裹
+   与未包裹两种状态都严格对齐（实测 dy=0）。 */
+.rst-breadcrumbs-buttons .btn,
+.rst-footer-buttons .btn,
+.rtd-sidebar-actions .btn,
+.rtd-translate-toggle {
+  vertical-align: baseline;
+}
+
 .rst-breadcrumbs-buttons .btn .fa,
 .rst-footer-buttons .btn .fa,
 .rtd-sidebar-actions .btn .fa,
 .rtd-translate-toggle .fa {
   margin-right: 4px;
+  vertical-align: inherit;
 }
 
 /* 「下一页」的图标在文字后面（模板里带 `fa-tail` 标记）：间距给到左边。
