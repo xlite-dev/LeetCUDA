@@ -310,7 +310,12 @@
     return found;
   }
 
-  /** 把切换按钮插到每一处「上一页」后面；页面没有该按钮时退回侧栏。 */
+  /** 把切换按钮插到每一处「上一页」后面；页面没有该按钮时退回侧栏。
+   *
+   * 侧栏优先用模板给出的 `.rtd-sidebar-actions`——「下载 PDF」按钮就在那一行
+   * （见 `_templates/layout.html`），追加进去两个按钮便同行；没有这个容器时才自建
+   * `.rtd-translate` 包装（旧版页面产物）。
+   */
   function buildButton(english) {
     var prevLinks = prevButtons();
     prevLinks.forEach(function (prev) {
@@ -321,6 +326,13 @@
       prev.insertAdjacentElement('afterend', createToggle(english));
     });
     if (prevLinks.length) {
+      return;
+    }
+    var actions = document.querySelector('.rtd-sidebar-actions');
+    if (actions) {
+      if (!actions.querySelector('.rtd-translate-toggle')) {
+        actions.appendChild(createToggle(english));
+      }
       return;
     }
     var sidebar = document.querySelector('.wy-side-nav-search') ||

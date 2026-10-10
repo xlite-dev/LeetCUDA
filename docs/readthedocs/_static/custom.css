@@ -12,7 +12,8 @@
    中文、英文都一样高。 */
 .rst-breadcrumbs-buttons > .btn,
 .rst-footer-buttons > .btn,
-.rtd-translate-toggle {
+.rtd-translate-toggle,
+.rtd-sidebar-actions > .btn {
   line-height: 24px;
 }
 
@@ -23,8 +24,32 @@
   text-decoration: none;
 }
 
+/* 侧栏搜索框下方那一行：左「下载 PDF」（_templates/layout.html 里的静态链接）、
+   右「English」（translate.js 追加进同一容器）。flex 排成「左下载、右切换」；窄侧栏
+   （移动端抽屉只有 220px 上下可用宽）放不下就折行——切换按钮的 `margin-left: auto`
+   让它在第二行仍然右对齐，而不是被 `.wy-nav-side` 的 `overflow-x: hidden` 裁掉。 */
+.rtd-sidebar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px 10px 12px;
+}
+
+/* 这一行里不沿用上面那条 `margin-left: 8px`：auto 外距把它顶到右边，也避免与 `gap` 叠成 16px。 */
+.rtd-sidebar-actions > .rtd-translate-toggle {
+  margin-left: auto;
+}
+
+.rtd-sidebar-actions .btn {
+  text-decoration: none;
+  white-space: nowrap;
+}
+
 /* translate.js 造的两条临时提示：本地预览用不了 Google 翻译的说明（showHint），以及英文
-   模式下翻完之前的进度提示与超时后的「read in Chinese」出口（createStatus）。 */
+   模式下翻完之前的进度提示与超时后的「read in Chinese」出口（createStatus）。落进侧栏
+   那一行时独占一行——整句文案（约 190px）跟按钮挤同一行会把按钮压变形。 */
 .rtd-translate-hint,
 .rtd-translate-status {
   margin-left: 8px;
@@ -32,10 +57,18 @@
   font-size: 85%;
 }
 
+.rtd-sidebar-actions > .rtd-translate-hint,
+.rtd-sidebar-actions > .rtd-translate-status {
+  flex-basis: 100%;
+  margin-left: 0;
+}
+
 .rtd-translate-status a {
   margin-left: 4px;
 }
 
+/* 侧栏兜底容器：模板里没有 `.rtd-sidebar-actions` 那一行（旧版页面产物）时，
+   translate.js 的侧栏回退分支才自建它。新构建的页面走不到这里。 */
 .rtd-translate {
   padding: 0 12px 10px 12px;
   text-align: right;

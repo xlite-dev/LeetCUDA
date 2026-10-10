@@ -1,0 +1,21 @@
+{# 侧栏搜索框下方那一行：左边「下载 PDF」、右边「English」（中英切换按钮由
+   `_static/translate.js` 造，它把这枚按钮追加进下面的 `.rtd-sidebar-actions`，
+   两者因此同行，见 `_static/custom.css`）。
+
+   下载链接是构建期从仓库根 README.md 的 `[leetcuda-pdf]` 解析出来的
+   （`conf.py` 的 `html_context`；解析失败时构建已经红了）。
+
+   这一块必须写在 layout.html 而不是 page.html：`sidebartitle` 是主题
+   `layout.html` 里的块，而 `genindex.html` / `search.html` 直接 extends layout.html
+   而不经 page.html——写在 page.html 里，这两个页面的侧栏会漏掉按钮。 #}
+{% extends "!layout.html" %}
+
+{% block sidebartitle %}
+{{ super() }}
+<div class="rtd-sidebar-actions">
+  <a class="btn btn-neutral rtd-pdf-download" href="{{ leetcuda_pdf_url }}"
+     target="_blank" rel="noopener" title="下载 LeetCUDA 书稿 PDF">
+    <i class="fa fa-download" aria-hidden="true"></i> 下载 PDF
+  </a>
+</div>
+{% endblock %}
