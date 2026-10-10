@@ -44,7 +44,12 @@
 
    选择器一律用后代关系、不写 `>`：Google 会把整段 inline 内容（图标 span 也在内）
    包进 `<font style="vertical-align: inherit">`，直接子选择器会整体失配、margin
-   全塌（首版用 `>` 踩过，模拟包裹后 8/8 按钮 margin 归零）。 */
+   全塌（首版用 `>` 踩过，模拟包裹后 8/8 按钮 margin 归零）。
+
+   模板（breadcrumbs/footer/layout）与 translate.js 另外把同样的 4px **内联在图标
+   元素上**（`style="margin-right:4px"` / `fa-tail` 用 `margin-left:4px`）：内联不
+   依赖选择器命中，Google 怎么包裹、CSS 缓存到哪个版本都生效——这是 2026-10 线上
+   两轮失配后的兜底；本段规则是统一机制与兜底（改模板漏内联时仍有间距）。 */
 .rst-breadcrumbs-buttons .btn .fa,
 .rst-footer-buttons .btn .fa,
 .rtd-sidebar-actions .btn .fa,
