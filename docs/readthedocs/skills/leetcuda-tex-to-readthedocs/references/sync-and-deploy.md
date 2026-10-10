@@ -20,6 +20,12 @@
 3. 改封面文案：站点不重编封面 tex，只把入库的 `figures/misc/cover.pdf` 光栅化（`convert._cover_image()`），须重新编译 cover.pdf 并 commit；英文封面另跑 `python -m tools.build_cover_en`，commit `_static/figures-en/cover.png`。
 4. push 后看 RTD 构建结果：内容核对任一项不过构建即失败，这是质量护栏，**修 tex，不要绕过核对**。
 
+### 本地 commit 的坑：pre-commit 的 black 会重排缩进
+
+`docs/readthedocs/` 下的 Python 是 **2 空格缩进**（仓库约定），但根目录 `.pre-commit-config.yaml` 里的 `black-jupyter --line-length=80` 按默认 **4 空格**重排整个文件——一次 `git commit` 就会把 `convert/*.py`、`tools/*.py` 全文件改写（700+ 行假改动），提交被钩子中止。同批的 `isort` 还会顺带重排 import 顺序。
+
+做法：先用 `git checkout -- <文件>` 把钩子对工作区的改写还原（暂存区不受影响，仍是你的改动），再用 `git commit --no-verify` 提交，并**在提交前手动确认** trailing-whitespace / end-of-file 这些钩子已通过（它们在 black 之前跑，正常会 Passed）。不要为了迁就 black 去改仓库缩进，也不要去改 `.pre-commit-config.yaml`。
+
 ## 在 Read the Docs 上新建项目
 
 1. 把本仓库推送到 GitHub（含根目录 `.readthedocs.yaml`）。
