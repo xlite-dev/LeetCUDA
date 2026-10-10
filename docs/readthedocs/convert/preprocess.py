@@ -1630,20 +1630,32 @@ def _tidy(text: str) -> str:
 def find_pandoc(explicit: str | None = None) -> str:
   """定位 pandoc 可执行文件。
 
+  优先用 ``pypandoc_binary`` 自带的 pandoc（requirements.txt 钉死的版本），PATH 只
+  兜底。RTD 构建镜像自带系统 pandoc，若按 PATH 优先就会用上它：同一个 ``\\begin{align}``
+  在旧版 pandoc 里输出成 ``\\begin{aligned}``、在 3.9 里保留 ``align``，公式 tex 源
+  一变，线上与本地产物就对不上（词典替换失效、内容核对也会错位）。
+
   :param explicit: 显式指定的路径。
   :returns: pandoc 路径。
   :raises RuntimeError: 找不到 pandoc。
   """
   if explicit:
     return explicit
+  try:
+    import pypandoc
+  except ImportError:
+    pypandoc = None
+  if pypandoc is not None:
+    try:
+      bundled = pypandoc.get_pandoc_path()
+    except (OSError, RuntimeError):
+      bundled = None
+    if bundled and Path(bundled).exists():
+      return bundled
   found = shutil.which("pandoc")
   if found:
     return found
-  try:
-    import pypandoc
-  except ImportError as exc:
-    raise RuntimeError("未找到 pandoc：请安装 pandoc 或 pip install pypandoc-binary") from exc
-  return pypandoc.get_pandoc_path()
+  raise RuntimeError("未找到 pandoc：请安装 pandoc 或 pip install pypandoc-binary")
 
 
 def to_markdown(norm_tex: Path, out_md: Path, pandoc: str, top_level: str = "chapter") -> str:
