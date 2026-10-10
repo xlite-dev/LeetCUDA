@@ -593,6 +593,35 @@ def check_math_foreign_markup(texts: dict[str, str]) -> tuple[bool, str]:
   return ok, detail
 
 
+def check_math_text_commands(md_texts: dict[str, str]) -> tuple[bool, str]:
+  """检查数学区里的 text 命令不含 MathJax 渲染不了的写法。
+
+  公式里的 ``\\text{}``/``\\texttt{}`` 等内容由 MathJax 的 text mode 渲染，它只认
+  纯文本与嵌套行内数学：``\\_``、``\\%``、``\\ ``、``\\,``、``\\quad``、嵌套
+  ``\\texttt``、``{\\bf …}`` 都会**原样显示**在页面上（不是报错，``mjx-merror``
+  抓不到）。转换器（``postprocess._normalize_mathjax_text``）负责把它们搬到数学层；
+  这里核对产物是该规范化的**不动点**——书稿更新引入新写法时，这里报出第一处差异。
+
+  :param md_texts: 页面名 → markdown。
+  :returns: ``(是否通过, 说明)``。
+  """
+  problems: list[str] = []
+  for name, text in md_texts.items():
+    fixed = postprocess._normalize_mathjax_text(text)
+    if fixed == text:
+      continue
+    limit = min(len(text), len(fixed))
+    index = next((position for position in range(limit) if text[position] != fixed[position]), limit)
+    excerpt = text[max(0, index - 40):index + 40].replace("\n", " ")
+    problems.append(f"{name}: …{excerpt}…")
+    if len(problems) >= 3:
+      break
+  ok = not problems
+  detail = (f"核对 {len(md_texts)} 页的 text 命令" if ok
+            else f"{len(problems)}+ 页有未规范化写法，例如 {problems[0]}")
+  return ok, detail
+
+
 def count_source_tables(parts: list[booktree.Part]) -> int:
   """统计原书闭包内的表格环境数量（每个文件只统计一次）。
 
@@ -786,6 +815,9 @@ def verify(src_dir: Path, html_dir: Path, book_dir: Path) -> Report:
 
   ok, detail = check_math_foreign_markup(texts)
   report.add("公式内无 <br> 污染", ok, detail)
+
+  ok, detail = check_math_text_commands(texts)
+  report.add("公式 text 命令已规范化", ok, detail)
 
   if html_dir.is_dir():
     ok, detail = check_table_counts_per_chapter(booktree.parse(book_dir / "book.tex"), html_dir)
