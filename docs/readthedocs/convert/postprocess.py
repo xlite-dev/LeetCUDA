@@ -87,12 +87,14 @@ class _Renderer:
     :returns: 渲染结果。
     """
     leftovers = scan_leftovers(md_text)
+    # 公式内的空行必须先合并：段落切分按空行切段，会把含空行的 ``$$`` 块切碎，
+    # 碎片失去定界符后不再被公式保护，``\\`` 会被误转成 ``\<br>``。
+    md_text = _collapse_math_blank_lines(md_text)
     blocks = self._render_items(self._split(md_text))
     body = "\n\n".join(block for block in blocks if block.strip())
     if self.pending:
       body = "\n\n".join(self.pending) + "\n\n" + body
       self.pending = []
-    body = _collapse_math_blank_lines(body)
     body = _normalize_display_math(body)
     body = _strip_raw_inline_html(body)
     body, table_images = _htmlify_table_inlines(body)
@@ -677,6 +679,22 @@ def _clean_heading_attributes(md_text: str) -> str:
   return "\n".join(lines)
 
 
+def _fold_inline_math(span: str) -> str:
+  """把行内公式内部的换行折叠成单空格。
+
+  表格自动数学列（``>{$}c<{$}``）里的多行 bmatrix、tex 源码在公式内行尾续行，都会被
+  pandoc 原样保留成跨行行内公式。折叠成单行后才交给 MyST；TeX 里换行等价于空格，
+  ``\\``（bmatrix/align 的行分隔）原样保留。显示公式（``$$`` / ``\\[`` / 数学环境）
+  保留内部换行，定界符由 :func:`_normalize_display_math` 按行整理。
+
+  :param span: 公式片段（含定界符）。
+  :returns: 规约后的片段。
+  """
+  if span.startswith("$$") or span.startswith("\\[") or span.startswith("\\begin"):
+    return span
+  return re.sub(r"[ \t]*\n[ \t]*", " ", span)
+
+
 def _join_cjk_lines(text: str) -> str:
   """合并段落内的软换行：中文之间的换行直接相连，其余按空格连接。
 
@@ -692,9 +710,25 @@ def _join_cjk_lines(text: str) -> str:
     protected.append(match.group(0))
     return f"\x00{len(protected) - 1}\x00"
 
+  def protect_span(value: str) -> str:
+    protected.append(value)
+    return f"\x00{len(protected) - 1}\x00"
+
+  # 行内代码先保护：占位符不含 ``$``，后面的公式扫描不会把代码里的 ``$`` 当定界符。
+  guarded = re.sub(r"`[^`]*`", protect, text)
+  # 公式整段保护（覆盖跨行行内公式、``$$`` 块与 amsmath 环境）：下文「行尾反斜杠 →
+  # <br>」与折行合并都不得进入公式，否则 bmatrix/align 的 ``\\`` 会被吃成 ``\<br>``，
+  # MathJax 按 ``\<`` 未定义报错、整条公式垮掉。
+  pieces: list[str] = []
+  last = 0
+  for start, end in math_spans(guarded):
+    pieces.append(guarded[last:start])
+    pieces.append(protect_span(_fold_inline_math(guarded[start:end])))
+    last = end
+  pieces.append(guarded[last:])
+  guarded = "".join(pieces)
   # 表格与 HTML 行对换行敏感，先整行保护，不参与后面的折行合并。
-  guarded = _BLOCK_LINE_RE.sub(protect, text)
-  guarded = re.sub(r"`[^`]*`|\$\$.*?\$\$|\$[^$\n]*\$", protect, guarded, flags=re.S)
+  guarded = _BLOCK_LINE_RE.sub(protect, guarded)
   # 原书里的 ``\\`` 是硬换行，pandoc 输出成「行尾反斜杠 + 换行」。直接合行的话那个
   # 反斜杠会变成可见字面（面试速查的问答会显示成 ``…cuDNN？\ A：…``），所以先转
   # ``<br>`` 再合行。
@@ -715,7 +749,13 @@ def _join_cjk_lines(text: str) -> str:
   guarded = re.sub(r"<br>[ \t]*(?=\n|$)", "", guarded)
   # 汉字之间不需要空格：pandoc 已把 tex 的断行折成空格，这里按中文排版规则去掉。
   guarded = re.sub(rf"({_CJK_CLASS})[ \t]+(?={_CJK_CLASS})", r"\1", guarded)
-  return re.sub(r"\x00(\d+)\x00", lambda match: protected[int(match.group(1))], guarded)
+  # 占位符会嵌套（表格整行保护包住了公式占位符），单遍替换不会重扫替换文本，
+  # 循环恢复到不动点。
+  while True:
+    replaced = re.sub(r"\x00(\d+)\x00", lambda match: protected[int(match.group(1))], guarded)
+    if replaced == guarded:
+      return guarded
+    guarded = replaced
 
 
 #: 围栏行（````` ```{code-block} cuda ````` / 裸 ````` ``` `````）。

@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 
 from convert.cjk_nodes import CJK, CJK_BAD, CJK_RUN, MathTextCollector, PreTextCollector
