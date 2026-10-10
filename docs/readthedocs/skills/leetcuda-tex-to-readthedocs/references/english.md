@@ -43,6 +43,13 @@
 - **验收**：无论 MathJax 是否渲染成功（本地 CDN 不通时 tex 源原样显示），英文模式下 `.math`/`mjx-container` 内文本节点汉字数应为 0——headless 全站扫即可，不依赖渲染。
 - **词典与产物的一致性（两段构建链必须一致）**：词典 key 绑定页面 tex 源的**形态**，所以本地与 RTD 必须用**同一个 pandoc 版本**——`convert.find_pandoc` 优先用 `pypandoc_binary` 自带的 pandoc（requirements 钉死），PATH 只兜底：RTD 构建镜像自带系统 pandoc，若按 PATH 优先，旧版会把顶层 `\begin{align}` 输出成 `\begin{aligned}`，与本地（3.9，保留 `align`）漂移，**公式词典全部错配、英文站公式静默残留中文**（2026-10 线上实际踩过，代码块不受影响）。`convert.verify` 的「英译词典匹配产物」项守着这条：页面中文节点必须命中词典、词典 key 必须存在于页面（双向核对，含部分章节构建时的降级），错配直接让构建红灯。
 
+## 英文模式下的 UI 细节（Google 翻译的副作用）
+
+Google 网站翻译会重写页面里的文本节点：把文本包进 `<font style="vertical-align: inherit">`，并**吞掉首尾空白**。凡是「靠空格文本节点撑出来」的间距，英文模式下都会塌掉：
+
+- **导航按钮的图标与文字间距**：模板（`_templates/breadcrumbs.html` / `footer.html` / `layout.html`）与 `translate.js` 的按钮里，图标前后**不留空格文本节点**，间距由 `custom.css` 的 margin 给（4px ≈ 原空格宽度）。「下一页」的图标在文字后面，用 `fa-tail` 标记类区分方向——不能靠 `:last-child` 判断（文本节点不是元素子节点，图标在文字前后都是「唯一元素子」，`:last-child` 会把所有图标一并命中，首版踩过）。
+- **验收方式**：headless 里 `translate.google.com` 不可达，Google 翻译不会激活；用「`<font>` 包裹 + 吞首尾空格」的模拟改写复现与验收（改前 gap 4→0 复现线上错位，改后恒 4；中文模式按钮宽度与改动前一致）。
+
 ## 英文封面（离线生成，产物入库）
 
 封面不在上面这套流程里——它是书稿的独立文档 `figures/misc/cover-tikz.tex`，编译成 PDF 后由 `convert._cover_image()` 光栅化成 PNG，字同样是矢量轮廓；而且封面用的 Humor Sans / Comic Neue 只装在作者本机、RTD 镜像里没有（中文用的 LXGW WenKai 25 MB 也不适合入库）。
