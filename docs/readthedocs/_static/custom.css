@@ -35,6 +35,28 @@
   text-decoration: none;
 }
 
+/* 按钮内图标与文字的间距一律由 CSS 给：模板（breadcrumbs/footer/layout）与
+   translate.js 的按钮里，图标前后都不留空格文本节点。英文模式下 Google 翻译重写
+   按钮文本（「上一页」→「Previous Page」）时会把图标旁的空格一并吞掉，间距塌到 0、
+   图标贴住文字（2026-10 线上实测；headless 里 Google 不可达，用「<font> 包裹 +
+   吞首尾空格」的模拟改写复现与验收）。4px 与原先空格的视觉宽度一致
+   （Lato 16px 空格 ≈ 4.4px），中英两种模式下按钮宽度基本不变。 */
+.rst-breadcrumbs-buttons > .btn > .fa,
+.rst-footer-buttons > .btn > .fa,
+.rtd-sidebar-actions > .btn > .fa,
+.rtd-translate-toggle > .fa {
+  margin-right: 4px;
+}
+
+/* 「下一页」的图标在文字后面（模板里带 `fa-tail` 标记）：间距给到左边。
+   不能用 `:last-child` 判断方向——文本节点不是元素子节点，图标在前后都只剩
+   它自己一个元素子，`:last-child` 会把所有图标一并命中（首版踩过）。 */
+.rst-breadcrumbs-buttons > .btn > .fa-tail,
+.rst-footer-buttons > .btn > .fa-tail {
+  margin-right: 0;
+  margin-left: 4px;
+}
+
 /* 没有「上一页」的页面（首页）里，切换按钮落在「下载 PDF」右边：按钮行是浮动布局，
    先出现的贴右缘，所以它既得 `float: right`，DOM 上又要排在下载按钮前面（见
    translate.js 的 buildButton）。有「上一页」的页面不套这条——那里的切换按钮跟在

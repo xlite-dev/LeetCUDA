@@ -221,7 +221,7 @@
     icon.className = 'fa fa-language';
     icon.setAttribute('aria-hidden', 'true');
     toggle.appendChild(icon);
-    toggle.appendChild(document.createTextNode(english ? ' 中文' : ' English'));
+    toggle.appendChild(document.createTextNode(english ? '中文' : 'English'));
 
     function activate() {
       if (!isReachable()) {
