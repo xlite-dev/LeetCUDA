@@ -31,7 +31,7 @@
 
 - **静态锚点，不依赖 JS**：正文页那两处写在 `_templates/breadcrumbs.html` / `_templates/footer.html`（整文件复制主题模板，见上面的覆盖规则表）；兜底那处写在 `layout.html`，用 `{% if not (prev or next) %}` 判条件。
 - **链接的唯一事实源是仓库根 `README.md` 的 `[leetcuda-pdf]` 链接定义**（不是书稿 tex）。构建期解析（`convert/readme.py`，`conf.py` 与 `convert/verify.py` 共用同一 helper），发新版只改 README 那一行，站点跟着变；解析不到、或地址不是 http(s)，`conf.py` 直接抛错让构建红灯，不静默少一个按钮。
-- **按钮之间不留缝**（用户 2026-10-10 要求）：`custom.css` **不给**这些按钮外边距（`.rtd-pdf-download` 无 `margin-right`；首页那处 `.rtd-translate-toggle-right` 把继承自 `.rtd-translate-toggle` 的 `margin-left: 8px` 抵成 0），三/两个按钮挨在一起，靠各自的 1px 边框分界。行高沿用同一条 24px 规则（`.rst-breadcrumbs-buttons > .btn` / `.rst-footer-buttons > .btn`）。**注意有「上一页」的页面里 `.rtd-translate-toggle` 仍带 8px 左边距**（跟在「上一页」后面那处），用户明确说那页不用改。
+- **按钮之间一律不留缝**（用户 2026-10-10 两次要求，先首页三个、后「上一页 + English」）：`custom.css` 里这一行的按钮**都不给外边距**——`.rtd-pdf-download` 无 `margin-right`，`.rtd-translate-toggle` 无 `margin-left`（历史上有过 8px，已删）。挨在一起靠各自的 1px 边框分界；间距只由侧栏那一行的 flex `gap` 提供。行高沿用同一条 24px 规则（`.rst-breadcrumbs-buttons > .btn` / `.rst-footer-buttons > .btn`）。
 - **想换到「下一页」左边**：把 `breadcrumbs.html` / `footer.html` 里的那段锚点挪到 `{%- if next %}` **之前**即可（同为 `float-right` 时 DOM 在前的先占右缘）。
 - 构建后由 `convert/verify.py` 的「下载 PDF 按钮已渲染」逐页核对：按钮在，且链接与 README 解析值一致（`html.unescape` 后比对）——三处落位都算数。
 
@@ -45,6 +45,6 @@
 | 首页（没有「上一页」，但有「下一页」行） | 插进那两处按钮行的右侧按钮组、落在「下载 PDF」**右边**；左侧导航栏里不再有 |
 | `genindex` / `search`（连按钮行都没有） | 退回侧栏：模板给的 `.rtd-sidebar-actions`（「下载 PDF」也在那一行），没有该容器（旧产物）才自建 `.rtd-translate` 包装 |
 
-⚠️ 按钮行是浮动布局：`float: right` 的元素**先出现的贴右缘**，后出现的挤到它左边。所以首页那处「显示在下载按钮右边」在 DOM 上得插在下载锚点**前面**，并带 `rtd-translate-toggle-right`（`custom.css` 里给它 `float: right` 并把 `margin-left` 抵成 0，紧贴下载按钮、中间不留缝）。
+⚠️ 按钮行是浮动布局：`float: right` 的元素**先出现的贴右缘**，后出现的挤到它左边。所以首页那处「显示在下载按钮右边」在 DOM 上得插在下载锚点**前面**，并带 `rtd-translate-toggle-right`（`custom.css` 里给它 `float: right`）。这一行的按钮一律紧贴、不留缝（见上面「下载 PDF」一节的间距说明）。
 
 翻译机制、等待判据与状态提示见 `english.md`。

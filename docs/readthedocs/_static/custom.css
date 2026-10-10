@@ -28,9 +28,10 @@
 }
 
 /* 中英切换按钮：沿用主题「上一页 / 下一页」的按钮样式与尺寸
-   （translate.js 里给的是 `btn btn-neutral` + FontAwesome 图标），插在「上一页」旁边。 */
+   （translate.js 里给的是 `btn btn-neutral` + FontAwesome 图标），插在「上一页」旁边。
+   不给外边距——这一行的按钮一律挨在一起（靠各自的 1px 边框分界）；间距只由侧栏那一行的
+   flex `gap` 提供，不靠这条。 */
 .rtd-translate-toggle {
-  margin-left: 8px;
   text-decoration: none;
 }
 
@@ -41,8 +42,6 @@
 .rst-breadcrumbs-buttons > .rtd-translate-toggle-right,
 .rst-footer-buttons > .rtd-translate-toggle-right {
   float: right;
-  /* 抵消上面 `.rtd-translate-toggle` 的 `margin-left: 8px`：首页三个按钮要挨在一起。 */
-  margin-left: 0;
   white-space: nowrap;
 }
 
