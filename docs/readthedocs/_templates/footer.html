@@ -9,13 +9,13 @@
     {#- Translators: This is an ARIA section label for the footer section of the page. -#}
     <div class="rst-footer-buttons" role="navigation" aria-label="{{ _('Footer') }}">
       {%- if prev %}
-        <a href="{{ prev.link|e }}" class="btn btn-neutral float-left" title="{{ prev.title|striptags|e }}" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span>{{ _('Previous') }}</a>
+        <a href="{{ prev.link|e }}" class="btn btn-neutral float-left" title="{{ prev.title|striptags|e }}" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true" style="margin-right:4px"></span>{{ _('Previous') }}</a>
       {%- endif %}
       {%- if leetcuda_pdf_url %}
-        <a href="{{ leetcuda_pdf_url }}" class="btn btn-neutral float-right rtd-pdf-download" target="_blank" rel="noopener" title="下载 LeetCUDA 书稿 PDF"><i class="fa fa-download" aria-hidden="true"></i>下载 PDF</a>
+        <a href="{{ leetcuda_pdf_url }}" class="btn btn-neutral float-right rtd-pdf-download" target="_blank" rel="noopener" title="下载 LeetCUDA 书稿 PDF"><i class="fa fa-download" aria-hidden="true" style="margin-right:4px"></i>下载 PDF</a>
       {%- endif %}
       {%- if next %}
-        <a href="{{ next.link|e }}" class="btn btn-neutral float-right" title="{{ next.title|striptags|e }}" accesskey="n" rel="next">{{ _('Next') }}<span class="fa fa-arrow-circle-right fa-tail" aria-hidden="true"></span></a>
+        <a href="{{ next.link|e }}" class="btn btn-neutral float-right" title="{{ next.title|striptags|e }}" accesskey="n" rel="next">{{ _('Next') }}<span class="fa fa-arrow-circle-right fa-tail" aria-hidden="true" style="margin-left:4px"></span></a>
       {%- endif %}
     </div>
   {%- endif %}

@@ -49,6 +49,7 @@ Google 网站翻译会重写页面里的文本节点：把文本包进 `<font st
 
 - **导航按钮的图标与文字间距**：模板（`_templates/breadcrumbs.html` / `footer.html` / `layout.html`）与 `translate.js` 的按钮里，图标前后**不留空格文本节点**，间距由 `custom.css` 的 margin 给（4px ≈ 原空格宽度）。「下一页」的图标在文字后面，用 `fa-tail` 标记类区分方向——不能靠 `:last-child` 判断（文本节点不是元素子节点，图标在文字前后都是「唯一元素子」，`:last-child` 会把所有图标一并命中，首版踩过）。
 - **选择器不能依赖直接子关系**：Google 会把整段 inline 内容（**图标 span 也在内**）包进 `<font style="vertical-align: inherit">`——`.btn > .fa` 这类直接子选择器在英文模式下会整体失配、margin 全塌（模拟包裹后 8/8 按钮 margin 归零），一律用后代选择器（`.btn .fa`）。
+- **间距最终内联在图标上**（兜底）：模板与 `translate.js` 同时给图标写 `style="margin-right:4px"`（`fa-tail` 用 `margin-left:4px`）。内联不依赖选择器命中、不受 CSS 缓存版本影响——线上两轮"CSS 方案被打穿"后的最终手段；`custom.css` 那段规则保留为统一机制。验收含最坏情形：**移除 custom.css 后再整段 `<font>` 包裹，margin 仍 4px**。
 - **验收方式**：headless 里 `translate.google.com` 不可达，Google 翻译不会激活；用模拟改写复现与验收，覆盖两种形态——「文本被 `<font>` 包裹 + 吞首尾空格」（首版复现了 gap 4→0）与「`<a>` 全部子节点整体被 `<font>` 包裹」（暴露直接子选择器失配）。改后两种形态 gap 恒 4px，中文模式按钮宽度与改动前一致。
 
 ## 英文封面（离线生成，产物入库）

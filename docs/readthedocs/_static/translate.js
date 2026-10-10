@@ -220,6 +220,9 @@
     var icon = document.createElement('i');
     icon.className = 'fa fa-language';
     icon.setAttribute('aria-hidden', 'true');
+    // 间距内联在图标上：不依赖任何 CSS 选择器命中（Google 翻译会把 inline 内容
+    // 整体包进 <font>，选择器方案在线上被它打穿过两轮）。
+    icon.style.marginRight = '4px';
     toggle.appendChild(icon);
     toggle.appendChild(document.createTextNode(english ? '中文' : 'English'));
 
