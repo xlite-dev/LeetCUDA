@@ -1,28 +1,31 @@
-"""代码块注释英译词典的抽取与合并（人工产线，不参与站点构建）。
+"""代码块 / 公式英译词典的抽取与合并（人工产线，不参与站点构建）。
 
-代码块被 ``notranslate`` 保护、机器翻译碰不到，英文版靠词典 + ``translate.js``
-按文本节点替换（见 ``_static/translate.js`` 的 ``swapCodeComments``）。本脚本承担
-产线的两端，中间的翻译由人工/模型逐条完成：
+代码块与公式被 ``notranslate`` 保护、机器翻译碰不到，英文版靠词典 +
+``translate.js`` 按文本节点替换（``swapCodeComments`` / ``swapMathText``）。本脚本
+承担产线的两端，中间的翻译由人工/模型逐条完成：
 
-1. ``extract``：从 ``build/html`` 抽出全部 ``<pre>`` 内含中文的文本节点（唯一化、
-   按文件聚合并均衡切成若干组），产出 ``groups/groupN.json`` 供翻译；
+1. ``extract``：从 ``build/html`` 抽出 ``--what code``（``<pre>``）或 ``--what math``
+   （``.math`` 容器）内含中文的文本节点（唯一化、按文件聚合并均衡切成若干组），
+   产出 ``groups/groupN.json`` 供翻译；
 2. ``merge``：合并各组译文（``parts/groupN.json``）并全量校验（key 覆盖、value 无
-   汉字、非中文行逐字保留），写入 ``_static/code-en.json``。
+   汉字、代码块的非中文行 / 公式的 LaTeX 骨架逐字保留），写入 ``_static/code-en.json``
+   或 ``_static/math-en.js``。
 
-key 是文本节点 trim 后的原文；JS 端替换时保留节点前后空白（缩进不动）。
+节点抽取与 ``convert.verify`` 共用 ``convert.cjk_nodes``；key 是文本节点 trim 后的
+原文，JS 端替换时保留节点前后空白（缩进不动）。
 
 用法::
 
-    python -m tools.code_dict extract --groups 8 --out .tmp/code-i18n
-    python -m tools.code_dict merge --parts .tmp/code-i18n/parts
+    python -m tools.code_dict extract --what math --groups 8 --out .tmp/math-i18n
+    python -m tools.code_dict merge --what math --parts .tmp/math-i18n/parts
 """
 from __future__ import annotations
 
 import argparse
 import json
-import re
-from html.parser import HTMLParser
 from pathlib import Path
+
+from convert.cjk_nodes import CJK, CJK_BAD, CJK_RUN, MathTextCollector, PreTextCollector
 
 #: 站点构建产物（抽取源）。
 HTML_DIR = Path(__file__).resolve().parent.parent / "build" / "html"
@@ -35,73 +38,6 @@ MATH_PATH = Path(__file__).resolve().parent.parent / "_static" / "math-en.js"
 
 #: 词典种类 → 页面容器选择器（产物路径见 DICT_PATH / MATH_PATH）。
 TARGETS = {"code": {"selector": "pre"}, "math": {"selector": ".math"}}
-
-#: 汉字（用于判定「含中文的节点」）。
-CJK = re.compile(r"[\u4e00-\u9fff]")
-
-#: 汉字 + 中文标点 + 全角形式（译文里禁止残留）。
-CJK_BAD = re.compile(r"[\u3000-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff00-\uffef]")
-
-#: 连续的中文段（骨架校验时替换成占位符）。
-CJK_RUN = re.compile(r"[\u3000-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff00-\uffef]+")
-
-#: 词典种类 → （页面容器选择器说明，产物路径，产物格式）。
-TARGETS = {
-  "code": {"selector": "pre", "path": "_static/code-en.json"},
-  "math": {"selector": ".math", "path": "_static/math-en.js"},
-}
-
-
-class PreTextCollector(HTMLParser):
-  """收集 ``<pre>`` 内的文本节点（html.parser 默认解码实体，即 textContent）。"""
-
-  def __init__(self) -> None:
-    super().__init__(convert_charrefs=True)
-    self.depth = 0
-    self.nodes: list[str] = []
-
-  def handle_starttag(self, tag: str, attrs) -> None:
-    if tag == "pre":
-      self.depth += 1
-
-  def handle_endtag(self, tag: str) -> None:
-    if tag == "pre" and self.depth:
-      self.depth -= 1
-
-  def handle_data(self, data: str) -> None:
-    if self.depth and CJK.search(data):
-      self.nodes.append(data)
-
-
-class MathTextCollector(HTMLParser):
-  """收集 class 含 ``math`` 的元素（Sphinx 公式容器）内的文本节点。
-
-  Sphinx mathjax3 输出 ``<div/span class="math notranslate nohighlight">tex 源</...>``，
-  MathJax 渲染后才换成 ``mjx-container``——静态 html 里文本节点就是 tex 源，
-  与 ``translate.js`` 在渲染前替换的时机一致。
-  """
-
-  def __init__(self) -> None:
-    super().__init__(convert_charrefs=True)
-    self.depth = 0
-    self.nodes: list[str] = []
-
-  def handle_starttag(self, tag: str, attrs) -> None:
-    if self.depth:
-      self.depth += 1
-      return
-    for name, value in attrs:
-      if name == "class" and value and "math" in value.split():
-        self.depth = 1
-        break
-
-  def handle_endtag(self, tag: str) -> None:
-    if self.depth:
-      self.depth -= 1
-
-  def handle_data(self, data: str) -> None:
-    if self.depth and CJK.search(data):
-      self.nodes.append(data)
 
 
 def collect_nodes(what: str) -> dict[str, list[str]]:

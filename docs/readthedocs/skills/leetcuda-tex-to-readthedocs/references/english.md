@@ -41,6 +41,7 @@
 - **时序是关键**：MathJax 是 defer 的，`interactive` 之后就可能开始渲染、把 tex 源文本节点换成 `mjx-container`——fetch 异步词典可能输给它。所以 `conf.py` 把 `math-en.js` 排在 `translate.js` **之前**同步加载，`swapMathText()` 在 DOM 一解析完就**同步**替换 `.math` 里的 tex 源，抢在渲染之前；MathJax 渲染出来的自然就是英文。代码块不受 MathJax 影响，继续走 fetch（`code-en.json`）。
 - **校验比代码块强**：骨架校验——取原文的非中文片段序列，要求在译文中按原顺序逐字出现（`re.fullmatch` 拼接 `.*?`），中文位置允许任意英文，外加花括号计数；LaTeX 命令/花括号/空白/换行逐字不动，只翻中文。（注：早期实现「两侧中文段替换成占位符再比对」是错的——译文里是英文，永不可能相等，已修复。）
 - **验收**：无论 MathJax 是否渲染成功（本地 CDN 不通时 tex 源原样显示），英文模式下 `.math`/`mjx-container` 内文本节点汉字数应为 0——headless 全站扫即可，不依赖渲染。
+- **词典与产物的一致性（两段构建链必须一致）**：词典 key 绑定页面 tex 源的**形态**，所以本地与 RTD 必须用**同一个 pandoc 版本**——`convert.find_pandoc` 优先用 `pypandoc_binary` 自带的 pandoc（requirements 钉死），PATH 只兜底：RTD 构建镜像自带系统 pandoc，若按 PATH 优先，旧版会把顶层 `\begin{align}` 输出成 `\begin{aligned}`，与本地（3.9，保留 `align`）漂移，**公式词典全部错配、英文站公式静默残留中文**（2026-10 线上实际踩过，代码块不受影响）。`convert.verify` 的「英译词典匹配产物」项守着这条：页面中文节点必须命中词典、词典 key 必须存在于页面（双向核对，含部分章节构建时的降级），错配直接让构建红灯。
 
 ## 英文封面（离线生成，产物入库）
 
