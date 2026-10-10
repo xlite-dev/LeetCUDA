@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import html
+import json
 import re
 import sys
 from dataclasses import dataclass, field
@@ -580,6 +581,52 @@ def count_source_tables(parts: list[booktree.Part]) -> int:
   return total
 
 
+def check_translation_dicts(html_dir: Path, root: Path,
+                            full_build: bool = True) -> tuple[bool, str]:
+  """核对代码块/公式英译词典与页面产物逐字节一致。
+
+  页面（``pre`` / ``.math`` 内）含中文的文本节点必须都能在词典里命中；词典的每个
+  key 也应能在页面里找到（部分章节构建时该方向无从判断，跳过）。错配会让英文版
+  静默残留中文——典型来源是转换链换了 pandoc 版本，公式 tex 源的形态（如
+  ``align`` / ``aligned``）发生漂移，词典 key 与页面 DOM 对不上。
+
+  :param html_dir: Sphinx 输出目录。
+  :param root: ``docs/readthedocs`` 根（词典所在）。
+  :param full_build: 是否全量构建。
+  :returns: (是否通过, 描述)。
+  """
+  from .cjk_nodes import MathTextCollector, PreTextCollector
+
+  code_entries = json.loads((root / "_static" / "code-en.json").read_text(encoding="utf-8"))
+  math_js = (root / "_static" / "math-en.js").read_text(encoding="utf-8")
+  math_entries = json.loads(math_js[math_js.index("{"): math_js.rindex(";")])
+
+  def page_nodes(collector_cls) -> set[str]:
+    found: set[str] = set()
+    for path in sorted(html_dir.glob("*.html")):
+      collector = collector_cls()
+      collector.feed(path.read_text(encoding="utf-8"))
+      found.update(node.strip() for node in collector.nodes if node.strip())
+    return found
+
+  details: list[str] = []
+  ok_all = True
+  for label, collector_cls, entries in (
+      ("代码块", PreTextCollector, code_entries),
+      ("公式", MathTextCollector, math_entries)):
+    nodes = page_nodes(collector_cls)
+    miss = nodes - set(entries)
+    orphan = (set(entries) - nodes) if full_build else set()
+    ok_all = ok_all and not miss and not orphan
+    detail = f"词典 {len(entries)} 条，页面中文节点 {len(nodes)}，命中 {len(nodes) - len(miss)}"
+    if miss:
+      detail += f"，未命中 {len(miss)}（如 {sorted(miss)[0][:40]!r}）"
+    if orphan:
+      detail += f"，死条目 {len(orphan)}（如 {sorted(orphan)[0][:40]!r}）"
+    details.append(f"{label}：{detail}")
+  return ok_all, "；".join(details)
+
+
 def verify(src_dir: Path, html_dir: Path, book_dir: Path) -> Report:
   """执行全部核对。
 
@@ -737,11 +784,16 @@ def verify(src_dir: Path, html_dir: Path, book_dir: Path) -> Report:
 
   parts = booktree.parse(book_dir / "book.tex")
   chapters = [chapter for part in parts for chapter in part.chapters]
-  if any(chapter.chap_id not in texts for chapter in chapters):
+  full_build = all(chapter.chap_id in texts for chapter in chapters)
+  if not full_build:
     report.add("书目录编号核对", True, "跳过（只转换了部分章节）")
   else:
     ok, detail, _ = check_book_toc(book_dir, registry, chapters)
     report.add("书目录编号核对", ok, detail)
+
+  ok, detail = check_translation_dicts(html_dir, Path(__file__).resolve().parent.parent,
+                                       full_build=full_build)
+  report.add("英译词典匹配产物", ok, detail)
 
   return report
 
