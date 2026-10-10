@@ -40,19 +40,23 @@
    按钮文本（「上一页」→「Previous Page」）时会把图标旁的空格一并吞掉，间距塌到 0、
    图标贴住文字（2026-10 线上实测；headless 里 Google 不可达，用「<font> 包裹 +
    吞首尾空格」的模拟改写复现与验收）。4px 与原先空格的视觉宽度一致
-   （Lato 16px 空格 ≈ 4.4px），中英两种模式下按钮宽度基本不变。 */
-.rst-breadcrumbs-buttons > .btn > .fa,
-.rst-footer-buttons > .btn > .fa,
-.rtd-sidebar-actions > .btn > .fa,
-.rtd-translate-toggle > .fa {
+   （Lato 16px 空格 ≈ 4.4px），中英两种模式下按钮宽度基本不变。
+
+   选择器一律用后代关系、不写 `>`：Google 会把整段 inline 内容（图标 span 也在内）
+   包进 `<font style="vertical-align: inherit">`，直接子选择器会整体失配、margin
+   全塌（首版用 `>` 踩过，模拟包裹后 8/8 按钮 margin 归零）。 */
+.rst-breadcrumbs-buttons .btn .fa,
+.rst-footer-buttons .btn .fa,
+.rtd-sidebar-actions .btn .fa,
+.rtd-translate-toggle .fa {
   margin-right: 4px;
 }
 
 /* 「下一页」的图标在文字后面（模板里带 `fa-tail` 标记）：间距给到左边。
-   不能用 `:last-child` 判断方向——文本节点不是元素子节点，图标在前后都只剩
+   同样不能用 `:last-child` 判断方向——文本节点不是元素子节点，图标在前后都只剩
    它自己一个元素子，`:last-child` 会把所有图标一并命中（首版踩过）。 */
-.rst-breadcrumbs-buttons > .btn > .fa-tail,
-.rst-footer-buttons > .btn > .fa-tail {
+.rst-breadcrumbs-buttons .btn .fa-tail,
+.rst-footer-buttons .btn .fa-tail {
   margin-right: 0;
   margin-left: 4px;
 }
