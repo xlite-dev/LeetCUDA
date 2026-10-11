@@ -94,6 +94,33 @@ mathjax3_config = {
   "options": {"enableMenu": False},
 }
 
+def _ensure_mathjax_on_all_pages(app, pagename, templatename, context, doctree):
+  """给「自身没有数学」的页面也补上 MathJax。
+
+  Sphinx 只给文档自身含数学的页面插 MathJax script，而侧栏目录里的章节标题可能含
+  公式（第 37 章的 ``$D$``）——这些标题出现在**每一页**的导航里，没有 script 的
+  页面（``appD-source-index``、``genindex``）上它们会字面显示。config 与 script 与
+  Sphinx 自己注入的形式一致（``mathjax3_config`` + ``mathjax_path``），由
+  ``_templates/layout.html`` 的 ``scripts`` 块追加在 ``math-en.js`` / ``translate.js``
+  之后，顺序仍满足「词典与 tex 源替换先于 MathJax 渲染」。
+  """
+  scripts = context.get("script_files") or []
+  for item in scripts:
+    filename = getattr(item, "filename", None)
+    if filename is None and isinstance(item, dict):
+      filename = item.get("filename", "")
+    if "mathjax" in str(filename or item).lower():
+      return
+  context["leetcuda_mathjax_fallback"] = {
+    "config": json.dumps(mathjax3_config, ensure_ascii=False),
+    "path": mathjax_path,
+  }
+
+
+def setup(app):
+  app.connect("html-page-context", _ensure_mathjax_on_all_pages)
+
+
 # 两类已知误报：
 # 1. myst.xref_missing——站内链接是 ``page.html#anchor`` 形式，锚点由原始 HTML 写出，
 #    MyST 看不见，会把它们当未解析的交叉引用；断链由转换报告与 verify 的锚点对账把关。

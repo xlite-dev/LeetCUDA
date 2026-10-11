@@ -16,7 +16,7 @@ from pathlib import Path
 
 from . import tokens
 from .booktree import Chapter, Part
-from .texutil import math_spans
+from .texutil import math_spans, read_group
 from .labels import Registry, chapter_number_prefix, format_number, sanitize
 from .preprocess import ADMON_KINDS, Manifest
 
@@ -105,6 +105,7 @@ class _Renderer:
     body = _escape_colon_fences(body)
     body = _degrade_leftovers(body)
     body = _fix_emphasis_flanking(body)
+    body = _normalize_mathjax_text(body)
     body = self._prefix_title(body)
     body = self._append_footer(body)
     return RenderResult(
@@ -907,6 +908,266 @@ def _normalize_display_math(md_text: str) -> str:
   return "\n".join(out)
 
 
+def _rewrite_math_spans(md_text: str, rewrite) -> str:
+  """对每个数学区应用 ``rewrite``，代码围栏里的内容不动。
+
+  :param md_text: markdown 文本。
+  :param rewrite: ``str -> str``，输入一个数学区（含定界符）。
+  :returns: 处理后的文本。
+  """
+  length = len(md_text)
+  lines = md_text.split("\n")
+  flags = code_fence_flags(lines)
+  fence_ranges: list[tuple[int, int]] = []
+  offset = 0
+  for line, is_code in zip(lines, flags):
+    if is_code:
+      fence_ranges.append((offset, offset + len(line)))
+    offset += len(line) + 1
+  edits: list[tuple[int, int, str]] = []
+  for start, end in math_spans(md_text):
+    if end > length or any(not (end <= fence_start or start >= fence_end)
+                           for fence_start, fence_end in fence_ranges):
+      continue
+    span = md_text[start:end]
+    fixed = rewrite(span)
+    if fixed != span:
+      edits.append((start, end, fixed))
+  for start, end, replacement in reversed(edits):
+    md_text = md_text[:start] + replacement + md_text[end:]
+  return md_text
+
+
+#: 进入 text mode 的命令：MathJax 的 text 命令族，内容按文本渲染。
+#: text mode 只认纯文本与嵌套行内数学 ``\(…\)``/``$…$``，其余控制序列会字面显示
+#: （见下面两个集合），不搬到数学层就会在页面上露出 ``\_``、``\bf`` 这类残迹。
+_TEXT_MODE_COMMANDS = (
+  "text", "textrm", "textbf", "textit", "texttt", "textsf", "textsc",
+  "textsl", "textup", "textnormal", "emph", "mbox", "hbox",
+)
+
+#: text 命令里 LaTeX 转义 → MathJax text mode 里的裸字符。``\texttt{thread\_idx}``
+#: 在页面上显示 ``thread\_idx``（text mode 不认这个控制序列），而去掉反斜杠的
+#: ``\texttt{thread_idx}`` 才渲染成它要的下划线。``\$`` 不在此列：它在 text mode
+#: 里是对的，去掉反斜杠反而会被当成公式定界符。
+_TEXT_ESCAPE_TO_PLAIN = {"_": "_", "%": "%", "&": "&", "#": "#", " ": " "}
+
+#: text 命令里必须搬到数学层的命令：数学层有同名命令且语义一致（间距与标点）。
+_TEXT_MODE_MATH_ONLY = frozenset({
+  "quad", "qquad", "ldots", "dots", "dotsc", "thinspace",
+})
+
+#: 单字符名的间距命令（``\,`` ``\;`` ``\:`` ``\!``）：text mode 不认它们，
+#: 留在里面会字面显示 ``\,``（ch19/ch37 各有一处 ``\text{接近 99\,KB 上限}``）。
+_TEXT_MODE_SYMBOL_COMMANDS = frozenset({",", ";", ":", "!"})
+
+#: LaTeX 老式字体切换 ``{\bf …}`` → （文本层等价命令, 数学层等价命令）。
+#: 含中文或其它非数学内容时用文本层命令（``\textbf`` 才会真的加粗中文），
+#: 否则用数学层命令（``\mathbf`` 保持数学符号的字体语义）。
+_OLD_FONT_COMMANDS = {
+  "bf": ("textbf", "mathbf"),
+  "it": ("textit", "mathit"),
+  "tt": ("texttt", "mathtt"),
+  "rm": ("textrm", "mathrm"),
+  "sf": ("textsf", "mathsf"),
+  "sc": ("textsc", "textsc"),
+  "sl": ("textsl", "textsl"),
+}
+
+#: ``{\bf …}`` 这类组的开头。
+_OLD_FONT_GROUP_RE = re.compile(r"\{\s*\\(bf|it|tt|rm|sf|sc|sl)(?![a-zA-Z])")
+
+#: 命令名（``\text``、``\quad`` 等）。
+_MATH_COMMAND_RE = re.compile(r"\\([a-zA-Z]+)")
+
+
+def _math_text_sequence(name: str, body: str) -> str:
+  """把 text 命令的内容转成「数学层可直接使用」的等价序列。
+
+  数学层是 MathJax 支持面最大的上下文：text 命令里不认的转义、间距命令、
+  嵌套 text 命令都搬到这里，文本段仍包在 ``\\name{}`` 里。
+
+  :param name: 原 text 命令名（``text``/``texttt``…）。
+  :param body: 命令的内容（不含花括号）。
+  :returns: 替换 ``\\name{body}`` 的等价序列。
+  """
+  pieces = _math_text_pieces(name, body)
+  if not pieces:
+    return f"\\{name}{{}}"
+  out: list[str] = []
+  for kind, chunk in pieces:
+    out.append(chunk if kind == "math" else f"\\{name}{{{chunk}}}")
+  return "".join(out)
+
+
+def _math_text_pieces(name: str, body: str) -> list[tuple[str, str]]:
+  """把 text 命令的内容切成交替的「文本段 / 数学段」。
+
+  :param name: 原 text 命令名。
+  :param body: 命令的内容（不含花括号）。
+  :returns: ``("text", 内容) | ("math", 片段)`` 的序列。
+  """
+  pieces: list[tuple[str, str]] = []
+  buf: list[str] = []
+
+  def flush() -> None:
+    if buf:
+      pieces.append(("text", "".join(buf)))
+      buf.clear()
+
+  index = 0
+  while index < len(body):
+    char = body[index]
+    if char == "\\":
+      if index + 1 < len(body) and body[index + 1] in "()":
+        # 嵌套行内数学 \(…\)：仍是数学模式，里面的 text 命令照旧要处理。
+        closer = "\\)" if body[index + 1] == "(" else "\\]"
+        end = body.find(closer, index + 2)
+        if end != -1:
+          buf.append(body[index:index + 2] + _rewrite_math_text(body[index + 2:end])
+                     + body[end:end + 2])
+          index = end + 2
+          continue
+      match = _MATH_COMMAND_RE.match(body, index)
+      if match is None:
+        escape = body[index + 1] if index + 1 < len(body) else ""
+        if escape in _TEXT_ESCAPE_TO_PLAIN:
+          buf.append(_TEXT_ESCAPE_TO_PLAIN[escape])
+        elif escape in _TEXT_MODE_SYMBOL_COMMANDS:
+          flush()
+          pieces.append(("math", "\\" + escape))
+        elif escape != "/":
+          buf.append(body[index:index + 2])
+        index += 2
+        continue
+      command = match.group(1)
+      if command in _TEXT_MODE_MATH_ONLY:
+        flush()
+        pieces.append(("math", "\\" + command))
+        index = match.end()
+        continue
+      if command in _TEXT_MODE_COMMANDS:
+        cursor = match.end()
+        while cursor < len(body) and body[cursor] in " \t\n":
+          cursor += 1
+        if cursor < len(body) and body[cursor] == "{":
+          try:
+            inner, end = read_group(body, cursor)
+          except ValueError:
+            buf.append(body[index:match.end()])
+            index = match.end()
+            continue
+          flush()
+          pieces.append(("math", _math_text_sequence(command, inner)))
+          index = end
+          continue
+      buf.append(body[index:match.end()])
+      index = match.end()
+      continue
+    if char == "{":
+      old_font = _OLD_FONT_GROUP_RE.match(body, index)
+      if old_font is not None:
+        try:
+          inner, end = read_group(body, index)
+        except ValueError:
+          buf.append(char)
+          index += 1
+          continue
+        content = inner[old_font.end() - index - 1:].lstrip()
+        flush()
+        pieces.append(("math", _old_font_sequence(old_font.group(1), content)))
+        index = end
+        continue
+      try:
+        inner, end = read_group(body, index)
+      except ValueError:
+        buf.append(char)
+        index += 1
+        continue
+      flush()
+      pieces.append(("math", "{" + _rewrite_math_text(inner) + "}"))
+      index = end
+      continue
+    if char == "~":
+      flush()
+      pieces.append(("math", "~"))
+      index += 1
+      continue
+    buf.append(char)
+    index += 1
+  flush()
+  return pieces
+
+
+def _old_font_sequence(command: str, content: str) -> str:
+  """把 ``{\\bf …}`` 这类老式字体组转成 MathJax 能渲染的等价写法。
+
+  :param command: 老式命令名（``bf``/``tt``…）。
+  :param content: 组内容（已去掉命令本身）。
+  :returns: 等价序列。
+  """
+  text_form, math_form = _OLD_FONT_COMMANDS[command]
+  if _CJK_RE.search(content):
+    return _math_text_sequence(text_form, content)
+  return f"\\{math_form}{{{content}}}"
+
+
+def _rewrite_math_text(text: str) -> str:
+  """把数学上下文里的 text 命令改写成 MathJax 可渲染的形式。
+
+  数学层顶层的老式字体组（``{\\tt HTuple}``）保持不动：MathJax 的数学模式认得它们，
+  只有 text mode 里才会字面显示，那部分由 :func:`_math_text_pieces` 处理。
+
+  :param text: 数学区内容（可含嵌套行内数学）。
+  :returns: 改写后的内容。
+  """
+  edits: list[tuple[int, int, str]] = []
+  index = 0
+  while index < len(text):
+    char = text[index]
+    if char == "\\":
+      match = _MATH_COMMAND_RE.match(text, index)
+      if match is not None and match.group(1) in _TEXT_MODE_COMMANDS:
+        command = match.group(1)
+        cursor = match.end()
+        while cursor < len(text) and text[cursor] in " \t\n":
+          cursor += 1
+        if cursor < len(text) and text[cursor] == "{":
+          try:
+            body, end = read_group(text, cursor)
+          except ValueError:
+            index = match.end()
+            continue
+          replacement = _math_text_sequence(command, body)
+          if replacement != text[index:end]:
+            edits.append((index, end, replacement))
+          index = end
+          continue
+      index = match.end() if match is not None else index + 2
+      continue
+    index += 1
+  for start, end, replacement in reversed(edits):
+    text = text[:start] + replacement + text[end:]
+  return text
+
+
+def _normalize_mathjax_text(md_text: str) -> str:
+  """把数学区内 MathJax 渲染不了的 text 命令写法搬到数学层。
+
+  MathJax 的 text mode（``\\text{}``/``\\texttt{}`` 等内容）不是完整的 LaTeX：
+  ``\\_``、``\\%``、``\\&``、``\\#``、``\\ ``、``\\,``、``\\quad``、嵌套 ``\\textbf``、
+  ``{\\bf …}`` 都会原样显示（页面上就露出这些反斜杠命令），而不是报错——所以
+  ``mjx-merror`` 抓不到，只能在这里逐段规范化。规则：
+  文本内容的转义去掉反斜杠（text mode 里裸字符就是它的本义），间距命令与
+  嵌套 text 命令切到数学层（数学层有同名命令），老式字体组换成 ``\\textbf``/``\\mathbf``
+  这类 MathJax 命令。
+
+  :param md_text: markdown 文本。
+  :returns: 处理后的文本。
+  """
+  return _rewrite_math_spans(md_text, _rewrite_math_text)
+
+
 #: Markdown 行内链接（含可选 title）。
 _INLINE_LINK_RE = re.compile(r"\[([^\]\n]+)\]\(([^)\s]+)(?:\s+[\"“]([^\"”]*)[\"”])?\)")
 
@@ -1278,33 +1539,29 @@ def _degrade_leftovers(md_text: str) -> str:
   pandoc 偶有解析失败（含不平衡 ``$`` 的表格单元），残留的 ``\\mathbf{...}`` 之类
   会原样显示在页面上。这里只处理非数学区，公式里的命令一律不碰。
 
+  保护区与全站口径一致（:func:`_protected_mask`：代码围栏 + 行内代码 + 数学区）。
+  旧实现自己用 ``find`` 配对 ``$``/``$$``，不感知代码围栏、行内代码与链接标题：
+  正文里一个杂散 ``$`` 就能让后面的数学区整体错位，display 块体落入普通区被降级
+  （ch21/ch22 的公式外壳 ``\\mathrm{}``/``\\qquad``/``\\text{}`` 被剥掉）。
+
   :param md_text: 渲染后的 markdown。
   :returns: 降级后的文本。
   """
+  mask = _protected_mask(md_text)
   segments: list[str] = []
   plain_start = 0
   index = 0
   length = len(md_text)
   while index < length:
-    opener = ""
-    closer = ""
-    if md_text.startswith("$$", index):
-      opener, closer = "$$", "$$"
-    elif md_text.startswith("\\[", index):
-      opener, closer = "\\[", "\\]"
-    elif md_text.startswith("\\(", index):
-      opener, closer = "\\(", "\\)"
-    elif md_text[index] == "$" and (index == 0 or md_text[index - 1] != "\\"):
-      opener, closer = "$", "$"
-    if opener:
-      end = md_text.find(closer, index + len(opener))
-      if end != -1:
-        segments.append(_degrade_plain(md_text[plain_start:index]))
-        segments.append(md_text[index:end + len(closer)])
-        index = end + len(closer)
-        plain_start = index
-        continue
-    index += 1
+    if not mask[index]:
+      index += 1
+      continue
+    segments.append(_degrade_plain(md_text[plain_start:index]))
+    run_start = index
+    while index < length and mask[index]:
+      index += 1
+    segments.append(md_text[run_start:index])
+    plain_start = index
   segments.append(_degrade_plain(md_text[plain_start:]))
   return "".join(segments)
 

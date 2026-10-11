@@ -593,6 +593,69 @@ def check_math_foreign_markup(texts: dict[str, str]) -> tuple[bool, str]:
   return ok, detail
 
 
+def check_math_text_commands(md_texts: dict[str, str]) -> tuple[bool, str]:
+  """检查数学区里的 text 命令不含 MathJax 渲染不了的写法。
+
+  公式里的 ``\\text{}``/``\\texttt{}`` 等内容由 MathJax 的 text mode 渲染，它只认
+  纯文本与嵌套行内数学：``\\_``、``\\%``、``\\ ``、``\\,``、``\\quad``、嵌套
+  ``\\texttt``、``{\\bf …}`` 都会**原样显示**在页面上（不是报错，``mjx-merror``
+  抓不到）。转换器（``postprocess._normalize_mathjax_text``）负责把它们搬到数学层；
+  这里核对产物是该规范化的**不动点**——书稿更新引入新写法时，这里报出第一处差异。
+
+  :param md_texts: 页面名 → markdown。
+  :returns: ``(是否通过, 说明)``。
+  """
+  problems: list[str] = []
+  for name, text in md_texts.items():
+    fixed = postprocess._normalize_mathjax_text(text)
+    if fixed == text:
+      continue
+    limit = min(len(text), len(fixed))
+    index = next((position for position in range(limit) if text[position] != fixed[position]), limit)
+    excerpt = text[max(0, index - 40):index + 40].replace("\n", " ")
+    problems.append(f"{name}: …{excerpt}…")
+    if len(problems) >= 3:
+      break
+  ok = not problems
+  detail = (f"核对 {len(md_texts)} 页的 text 命令" if ok
+            else f"{len(problems)}+ 页有未规范化写法，例如 {problems[0]}")
+  return ok, detail
+
+
+#: 伪数学 span：pandoc 把表格单元格里的数学渲染成 ``<span class="math inline">``，
+#: 内容已是纯文本或 HTML（``<em>N</em>``、``{0, 2}``），没有 ``$``/``\\(`` 定界符。
+_PSEUDO_MATH_RE = re.compile(r'<span class="math inline">(.*?)</span>', re.S)
+
+
+def check_pseudo_math_spans(md_texts: dict[str, str]) -> tuple[bool, str]:
+  """检查没有定界符的 ``math inline`` span 里不含 LaTeX 命令。
+
+  这类 span 没有 ``$...$`` 定界符，MathJax 不处理它们、只当普通文本显示——一旦内容
+  里混进 ``\\_``、``\\bf`` 这类 LaTeX 命令，就会原样漏到页面上，而 ``mjx-merror``
+  与公式残迹扫描都抓不到（公式区判定里它们不算数学区）。
+
+  :param md_texts: 页面名 → markdown。
+  :returns: ``(是否通过, 说明)``。
+  """
+  problems: list[str] = []
+  spans = 0
+  for name, text in md_texts.items():
+    lines = text.split("\n")
+    flags = postprocess.code_fence_flags(lines)
+    clean = "\n".join("" if flag else line for line, flag in zip(lines, flags))
+    for match in _PSEUDO_MATH_RE.finditer(clean):
+      body = match.group(1)
+      if "$" in body or "\\(" in body:
+        continue  # 自带定界符的是正常公式，MathJax 会渲染
+      spans += 1
+      if re.search(r"\\[a-zA-Z]+|\\[%&#_]", body) and len(problems) < 3:
+        problems.append(f"{name}: …{body[:60]}…")
+  ok = not problems
+  detail = (f"核对 {spans} 个无定界符 span" if ok
+            else f"{len(problems)}+ 处 span 内有 LaTeX 命令，例如 {problems[0]}")
+  return ok, detail
+
+
 def count_source_tables(parts: list[booktree.Part]) -> int:
   """统计原书闭包内的表格环境数量（每个文件只统计一次）。
 
@@ -786,6 +849,12 @@ def verify(src_dir: Path, html_dir: Path, book_dir: Path) -> Report:
 
   ok, detail = check_math_foreign_markup(texts)
   report.add("公式内无 <br> 污染", ok, detail)
+
+  ok, detail = check_math_text_commands(texts)
+  report.add("公式 text 命令已规范化", ok, detail)
+
+  ok, detail = check_pseudo_math_spans(texts)
+  report.add("伪数学 span 无 LaTeX 残留", ok, detail)
 
   if html_dir.is_dir():
     ok, detail = check_table_counts_per_chapter(booktree.parse(book_dir / "book.tex"), html_dir)

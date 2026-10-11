@@ -86,6 +86,26 @@ MATH_STATE_JS = """
 }
 """
 
+#: 公式渲染结果里的 TeX 残迹：MathJax 的 assistive MathML 文本就是页面上看到的公式
+#: 内容（可见 CHTML 与它一致）。正常渲染不该出现反斜杠——``\text{}`` 这类 text mode
+#: 里 MathJax 不认的写法（``\_``、``\%``、``\ ``、``\,``、``\bf``、嵌套 ``\texttt``）
+#: 会原样显示且**不报** ``mjx-merror``，只能靠这里兜底（书稿更新引入新写法时最先在
+#: 这里暴露）。判据取「任何反斜杠」而不是命令名正则：单字符命令（``\,`` ``\;`` ``\ ``）
+#: 与字母名命令都要覆盖，而数学渲染文本里本来就不该有反斜杠字形。
+MATH_ARTIFACT_JS = """
+() => {
+  const hits = [];
+  for (const container of document.querySelectorAll('mjx-container')) {
+    const node = container.querySelector('mjx-assistive-mml')
+      || container.querySelector('mjx-math');
+    if (!node) continue;
+    const text = node.textContent;
+    if (text.includes('\\\\')) hits.push(text.slice(0, 110));
+  }
+  return hits;
+}
+"""
+
 #: 版式几何：图片与表格是否居中、有没有元素撑出正文栏（见 README「版式」一节）。
 LAYOUT_JS = """
 () => {
@@ -140,6 +160,7 @@ class PageReport:
   :param math_containers: 渲染出的公式个数。
   :param math_display: 其中显示公式个数。
   :param math_errors: MathJax 报错原文。
+  :param math_artifacts: 公式渲染文本里的 TeX 残迹（``\_``/``\bf`` 这类字面命令）。
   :param artifacts: 命中的字面残迹 → 出现次数。
   :param console_errors: 控制台 error 文本。
   :param failed_requests: 加载失败的资源。
@@ -151,6 +172,7 @@ class PageReport:
   math_containers: int = 0
   math_display: int = 0
   math_errors: list[str] = field(default_factory=list)
+  math_artifacts: list[str] = field(default_factory=list)
   artifacts: dict[str, int] = field(default_factory=dict)
   console_errors: list[str] = field(default_factory=list)
   failed_requests: list[str] = field(default_factory=list)
@@ -169,7 +191,7 @@ class PageReport:
 
     :returns: 全部通过为 True。
     """
-    if self.math_errors or self.artifacts or self.console_errors:
+    if self.math_errors or self.math_artifacts or self.artifacts or self.console_errors:
       return False
     return not (self.layout.get("tables_off_center") or self.layout.get("figures_off_center")
                 or self.layout.get("math_escaped") or self.layout.get("page_overflow")
@@ -246,6 +268,7 @@ def check_pages(
             pass
         page.wait_for_timeout(200)
         state = page.evaluate(MATH_STATE_JS)
+        math_artifacts = page.evaluate(MATH_ARTIFACT_JS) or []
         text = page.evaluate(VISIBLE_TEXT_JS)
         layout = page.evaluate(LAYOUT_JS) or {}
         shot = out_dir / f"{path.stem}.png"
@@ -255,6 +278,7 @@ def check_pages(
           math_containers=state["containers"],
           math_display=state["display"],
           math_errors=[error for error in state["errors"] if error],
+          math_artifacts=math_artifacts,
           artifacts={name: text.count(token) for name, token in ARTIFACT_PATTERNS.items()
                      if text.count(token)},
           console_errors=[error for error in console_errors if "favicon" not in error][:5],
@@ -268,7 +292,8 @@ def check_pages(
         mark = "OK  " if report.ok else "FAIL"
         print(f"[{mark}] {report.name}: MathJax={report.mathjax_loaded} "
               f"公式 {report.math_containers}（显示 {report.math_display}），"
-              f"公式错误 {len(report.math_errors)}，残迹 {report.artifacts}，"
+              f"公式错误 {len(report.math_errors)}，公式残迹 {report.math_artifacts[:2]}，"
+              f"残迹 {report.artifacts}，"
               f"资源失败 {len(report.failed_requests)}，"
               f"表 {report.layout.get('tables', 0)} 张/偏离 {report.layout.get('tables_off_center', 0)}，"
               f"图 {report.layout.get('figures', 0)} 张/偏离 {report.layout.get('figures_off_center', 0)}，"
