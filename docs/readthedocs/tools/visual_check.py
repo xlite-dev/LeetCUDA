@@ -87,9 +87,11 @@ MATH_STATE_JS = """
 """
 
 #: 公式渲染结果里的 TeX 残迹：MathJax 的 assistive MathML 文本就是页面上看到的公式
-#: 内容（可见 CHTML 与它一致）。正常渲染不该出现反斜杠命令；``\text{}`` 这类 text mode
-#: 里 MathJax 不认的写法（``\_``、``\bf``、嵌套 ``\texttt``）会原样显示且**不报**
-#: ``mjx-merror``，只能靠这里兜底（书稿更新引入新写法时最先在这里暴露）。
+#: 内容（可见 CHTML 与它一致）。正常渲染不该出现反斜杠——``\text{}`` 这类 text mode
+#: 里 MathJax 不认的写法（``\_``、``\%``、``\ ``、``\,``、``\bf``、嵌套 ``\texttt``）
+#: 会原样显示且**不报** ``mjx-merror``，只能靠这里兜底（书稿更新引入新写法时最先在
+#: 这里暴露）。判据取「任何反斜杠」而不是命令名正则：单字符命令（``\,`` ``\;`` ``\ ``）
+#: 与字母名命令都要覆盖，而数学渲染文本里本来就不该有反斜杠字形。
 MATH_ARTIFACT_JS = """
 () => {
   const hits = [];
@@ -98,8 +100,7 @@ MATH_ARTIFACT_JS = """
       || container.querySelector('mjx-math');
     if (!node) continue;
     const text = node.textContent;
-    const matches = text.match(/\\\\[A-Za-z]+|\\\\[%&#_]/g);
-    if (matches) hits.push([...new Set(matches)].join(' ') + ' <- ' + text.slice(0, 90));
+    if (text.includes('\\\\')) hits.push(text.slice(0, 110));
   }
   return hits;
 }
