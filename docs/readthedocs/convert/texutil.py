@@ -22,6 +22,41 @@ _WRAPPER_RE = re.compile(
   r"\\(?:text(?:bf|it|rm|sf|tt|sc|sl|up|md|normal)|emph|mbox|hbox|math(?:rm|bf|it|cal|sf|tt)|"
   r"operatorname|ensuremath|displaystyle|left|right|bigl|bigr|Bigl|Bigr|sb|sp|quad|qquad)\b")
 
+#: 数学符号命令 → 纯文本字形（:func:`plain_text` 的产物是给人看的）。
+_PLAIN_SYMBOLS = (
+  (re.compile(r"\\(?:to|rightarrow)\b"), "→"),
+  (re.compile(r"\\times\b"), "×"),
+  (re.compile(r"\\cdot\b"), "·"),
+  (re.compile(r"\\approx\b"), "≈"),
+  (re.compile(r"\\le\b|\\leq\b"), "≤"),
+  (re.compile(r"\\ge\b|\\geq\b"), "≥"),
+  (re.compile(r"\\pm\b"), "±"),
+  (re.compile(r"\\ldots\b|\\dots\b|\\cdots\b"), "…"),
+)
+
+#: 带分组参数的命令：先化简成内容（``\frac{a}{b}`` → ``a/b``、``\sqrt{x}`` → ``√x``）。
+_PLAIN_FRACTION_RE = re.compile(r"\\(?:frac|dfrac|tfrac)\s*\{([^{}]*)\}\s*\{([^{}]*)\}")
+_PLAIN_SQRT_RE = re.compile(r"\\sqrt\s*\{([^{}]*)\}")
+
+#: 单字符间距命令 → 空格（``99\,KB`` → ``99 KB``）。
+_PLAIN_PUNCT_RE = re.compile(r"\\[,;:!]")
+
+#: 函数名命令：只去掉反斜杠、保留名字（``\min`` → ``min``）。
+_PLAIN_FUNCTION_RE = re.compile(
+  r"\\(?=(?:min|max|log|ln|exp|sin|cos|tan|argmax|argmin|softmax|sum|prod|lim|det|dim)\b)")
+
+#: 希腊字母与常用记号：删名字不如换成字形（``\sigma`` → ``σ``）。
+_PLAIN_GREEK = {
+  "alpha": "α", "beta": "β", "gamma": "γ", "delta": "δ", "epsilon": "ε",
+  "varepsilon": "ε", "zeta": "ζ", "eta": "η", "theta": "θ", "iota": "ι",
+  "kappa": "κ", "lambda": "λ", "mu": "μ", "nu": "ν", "xi": "ξ", "pi": "π",
+  "rho": "ρ", "sigma": "σ", "tau": "τ", "upsilon": "υ", "phi": "φ",
+  "varphi": "φ", "chi": "χ", "psi": "ψ", "omega": "ω", "Gamma": "Γ",
+  "Delta": "Δ", "Theta": "Θ", "Lambda": "Λ", "Xi": "Ξ", "Pi": "Π",
+  "Sigma": "Σ", "Phi": "Φ", "Psi": "Ψ", "Omega": "Ω", "ell": "ℓ",
+  "hbar": "ℏ", "infty": "∞", "partial": "∂", "nabla": "∇",
+}
+
 
 def strip_comments(text: str) -> str:
   """删除 LaTeX 注释（未转义的 ``%`` 至行尾）。
@@ -352,17 +387,32 @@ def flatten_inputs(path: Path, root: Path, depth: int = 0) -> str:
 
 
 def plain_text(tex: str) -> str:
-  """把 tex 片段降级为纯文本（用于图片 alt、链接 title、文件名）。
+  """把 tex 片段降级为纯文本（用于图片 alt、链接 title、章图标题）。
+
+  包装命令只剥名字（替换成空串，不补空格——补空格会把 ``k_{\\mathrm{stage}}`` 变成
+  ``k_ stage``），符号命令映射成 Unicode 字形（``\\to`` 直接删掉会让 ``$G\\to S$``
+  变成 ``GS``），``\\{``/``\\}``/``\\$`` 先换成占位符，避免还原成字面后被结构花括号
+  与美元定界符的清理规则吃掉。
 
   :param tex: tex 片段。
   :returns: 单行纯文本。
   """
   text = strip_comments(tex)
   text = re.sub(r"\\begin\{[^}]*\}|\\end\{[^}]*\}", " ", text)
-  text = _WRAPPER_RE.sub(" ", text)
-  text = _CMD_RE.sub("", text)
-  text = text.replace("{", "").replace("}", "")
+  text = text.replace("\\{", "\u0001").replace("\\}", "\u0002").replace("\\$", "\u0003")
+  text = _PLAIN_FRACTION_RE.sub(r"\1/\2", text)
+  text = _PLAIN_SQRT_RE.sub(r"√\1", text)
+  text = _WRAPPER_RE.sub("", text)
+  for pattern, replacement in _PLAIN_SYMBOLS:
+    text = pattern.sub(replacement, text)
+  text = _PLAIN_PUNCT_RE.sub(" ", text)
+  text = re.sub(r"\\/", "", text)
+  text = re.sub(r"\\bmod\b", " mod ", text)
+  text = _PLAIN_FUNCTION_RE.sub("", text)
+  text = _CMD_RE.sub(lambda match: _PLAIN_GREEK.get(match.group(0)[1:].rstrip("*"), ""), text)
+  text = text.replace("{", "").replace("}", "").replace("$", "")
   text = text.replace("~", " ").replace("\\", "")
+  text = text.replace("\u0001", "{").replace("\u0002", "}").replace("\u0003", "$")
   text = re.sub(r"\s+", " ", text)
   return text.strip()
 

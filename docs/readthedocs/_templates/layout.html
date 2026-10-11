@@ -24,3 +24,15 @@
 </div>
 {% endif %}
 {% endblock %}
+
+{# 自身没有数学的页面（appD-source-index / genindex）也要加载 MathJax：侧栏目录里的
+   章节标题含公式（第 37 章的 $D$），没有 script 的页面上会字面显示。追加在
+   script_files 之后，保证 math-en.js 与 translate.js 仍先于 MathJax 执行
+   （conf.py 的 `_ensure_mathjax_on_all_pages` 只在缺少 script 时设这个变量）。 #}
+{% block scripts %}
+{{ super() }}
+{%- if leetcuda_mathjax_fallback %}
+<script>window.MathJax = {{ leetcuda_mathjax_fallback.config }};</script>
+<script defer src="{{ leetcuda_mathjax_fallback.path }}"></script>
+{%- endif %}
+{% endblock %}

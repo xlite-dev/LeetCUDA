@@ -1539,33 +1539,29 @@ def _degrade_leftovers(md_text: str) -> str:
   pandoc 偶有解析失败（含不平衡 ``$`` 的表格单元），残留的 ``\\mathbf{...}`` 之类
   会原样显示在页面上。这里只处理非数学区，公式里的命令一律不碰。
 
+  保护区与全站口径一致（:func:`_protected_mask`：代码围栏 + 行内代码 + 数学区）。
+  旧实现自己用 ``find`` 配对 ``$``/``$$``，不感知代码围栏、行内代码与链接标题：
+  正文里一个杂散 ``$`` 就能让后面的数学区整体错位，display 块体落入普通区被降级
+  （ch21/ch22 的公式外壳 ``\\mathrm{}``/``\\qquad``/``\\text{}`` 被剥掉）。
+
   :param md_text: 渲染后的 markdown。
   :returns: 降级后的文本。
   """
+  mask = _protected_mask(md_text)
   segments: list[str] = []
   plain_start = 0
   index = 0
   length = len(md_text)
   while index < length:
-    opener = ""
-    closer = ""
-    if md_text.startswith("$$", index):
-      opener, closer = "$$", "$$"
-    elif md_text.startswith("\\[", index):
-      opener, closer = "\\[", "\\]"
-    elif md_text.startswith("\\(", index):
-      opener, closer = "\\(", "\\)"
-    elif md_text[index] == "$" and (index == 0 or md_text[index - 1] != "\\"):
-      opener, closer = "$", "$"
-    if opener:
-      end = md_text.find(closer, index + len(opener))
-      if end != -1:
-        segments.append(_degrade_plain(md_text[plain_start:index]))
-        segments.append(md_text[index:end + len(closer)])
-        index = end + len(closer)
-        plain_start = index
-        continue
-    index += 1
+    if not mask[index]:
+      index += 1
+      continue
+    segments.append(_degrade_plain(md_text[plain_start:index]))
+    run_start = index
+    while index < length and mask[index]:
+      index += 1
+    segments.append(md_text[run_start:index])
+    plain_start = index
   segments.append(_degrade_plain(md_text[plain_start:]))
   return "".join(segments)
 
