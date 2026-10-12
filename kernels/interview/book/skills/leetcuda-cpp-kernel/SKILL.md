@@ -59,6 +59,30 @@ skill 只负责把任务路由到正确的章节，**不重写、不复述书内
 | `tests/` | 每章最小正确性测试（CPU fp64 对拍，`build_tests.sh --arch sm_120a --all`） |
 | `book.pdf` | 编译成品（584 页，可直接 pdftotext 按页抽取） |
 
+## ⚠️ 第 1.5 步：强制约束——加载即读章节（优先级高于"按需读取纪律"）
+
+以下两类内容在 **skill 加载后、开始任务分析/动手前必须先读**，不得等路由命中才读：
+
+1. **ch00 profiling 章——所有任务无条件必读**：无论任务是写 kernel、优化、
+   调试、review 还是性能分析，定位到 `<LeetCUDA_DIR>` 后必须先读
+   `chapters/ch00-profiling.tex`（先 nsys 后 ncu 的方法论、bench 口径、
+   warmup/repeat 规范）。这是全书优化工作的前置方法论；跳过 ch00 直接
+   上手优化属于违规操作。
+2. **Part IV CuTe 全部章节——涉及 CuTe 开发的任务必读**：任务涉及 CuTe
+   开发的任一形态（写/改/优化/调试 CuTe C++ kernel，CuTe DSL，或出现
+   CuTe/CUTLASS/CuTe Layout/Tensor/TiledCopy/TiledMMA/Swizzle 等关键词）
+   时，必须先读 Part IV **全部**章节，再开始任务：
+   `ch19b-cute-whitepaper-zh.tex`（含 `chapters/wp/wp0-7.tex` 分节）、
+   `ch20-cute-layout.tex`、`ch21-cute-tensor-tiledcopy.tex`、
+   `ch22-cute-tiledmma.tex`、`ch23-cute-swizzle-tma.tex`、
+   `ch24-cute-hgemm.tex`、`ch25-cute-flash-attn.tex`、`ch26-cute-ffpa.tex`、
+   `ch26b-cute-persist-d-flash-attn.tex`、`ch26c-cute-split-d-sm120.tex`。
+   原因：CuTe 各章类型代数强耦合（Layout → Tensor → TiledCopy/TiledMMA →
+   Swizzle/TMA → 实战章），只读单章会漏掉跨章依赖，导致布局/引擎误用。
+
+本节与"第三步：按需读取纪律"第 1 条（一次只读 1-2 章）冲突时，**以本节
+为准**；必读章之外的内容仍按需读取。
+
 ## 第二步：任务路由表
 
 先按任务关键词找到章，再读该章 tex（**先 `grep -n '\\\\section'` 看目录，再按行区间读**，
@@ -218,6 +242,8 @@ Part VI（ch27–33，量化 attention）教学 kernel 源码在 `<FFPA_ATTN_DIR
 
 1. **先路由后读取**：一次只读任务相关的 1-2 章；章内先看 `\section/\subsection`
    目录再定位行区间（每章 500-900 行，全文读入浪费上下文）。
+   **例外**："第 1.5 步：强制约束"列出的必读章节（ch00 及 CuTe 任务的
+   Part IV 全部章节）必须加载即读，不受本条 1-2 章限制。
 2. **源码交叉**：书按行号引用 `<LeetCUDA_DIR>/kernels/interview/*.cuh` 冻结基线
    （common/sgemv/sgemm/hgemm/flash_attn/ffpa_attn/fp8_gemm/fp4_gemm.cuh），需要完整实现时用
    `appendices/appD-source-index.tex` 定位再读源文件。
