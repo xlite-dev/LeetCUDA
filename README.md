@@ -22,7 +22,7 @@ It covers **Tensor/CUDA Cores**, [200+ CUDA kernels](leetcuda-pdf), [HGEMM][leet
   </div>
 </div>
 
-Please also check out our production-ready **Kernel Library**: [**ffpa-attn**](https://github.com/xlite-dev/ffpa-attn) - Fast and Memory-Efficient Exact Attention (**BF16/FP16/FP8/FP4**) for Large Headdim, **1.5x~15x**🔥🔥 speedup over standard PyTorch SDPA.
+Please also check out our production-ready **Kernel Library**: [**ffpa-attn**](https://github.com/vipshop/ffpa-attn) - Fast and Memory-Efficient Exact Attention (**BF16/FP16/FP8/FP4**) for Large Headdim, **1.5x~15x**🔥🔥 speedup over standard PyTorch SDPA.
 
 ## 📖 Quick Start
 
