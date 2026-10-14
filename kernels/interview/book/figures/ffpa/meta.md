@@ -1,6 +1,6 @@
 # figures/ffpa/ 来源登记（RFC-K0.2，2026-09-16）
 
-来源仓库：ffpa-attn（https://github.com/xlite-dev/ffpa-attn），锚定 commit `861d75e`。
+来源仓库：ffpa-attn（https://github.com/vipshop/ffpa-attn），锚定 commit `861d75e`。
 测试硬件：NVIDIA GeForce RTX 5090（sm_120）；原图生成脚本与口径见 ffpa-attn README
 「Performance」节与 `bench/bench_fp8.py` / `bench/bench_fp4.py`。
 

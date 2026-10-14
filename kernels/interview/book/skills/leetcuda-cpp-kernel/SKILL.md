@@ -176,7 +176,7 @@ ffpa-attn 仓）；bench 入口 `./bin/leetcuda_bench_sm120a.bin --fp8-gemm <N>`
 | FP4 persist-D、两级 P 量化 | `ch32-fp4-persist-d.tex` |
 | FP8/FP4 bench 矩阵、精度方法论、竞品对照 | `ch33-fp8-fp4-bench.tex` |
 
-**配套生产级参考：[ffpa-attn](https://github.com/xlite-dev/ffpa-attn) 仓库。**
+**配套生产级参考：[ffpa-attn](https://github.com/vipshop/ffpa-attn) 仓库。**
 Part VI 各章的教学 kernel 均源自 ffpa-attn（书锚定其某个 commit 的冻结基线），
 而 ffpa-attn 本身是 **sm_120（Blackwell）下 CuTe fp16/fp8/fp4 attention 算子的
 峰值性能实现**，可作为高质量 attention 算子参考库直接使用：
@@ -193,7 +193,7 @@ strided 通用）、量化数学与 scale 折叠、性能 RFC 与已证伪清单
 
 - 仓库定位（记为 `<FFPA_ATTN_DIR>`）：环境变量 `FFPA_ATTN_DIR` → 当前目录及
   父/兄弟目录查找 `ffpa-attn/` → `~/ffpa-attn` → 均无则
-  `git clone --depth 1 https://github.com/xlite-dev/ffpa-attn.git`
+  `git clone --depth 1 https://github.com/vipshop/ffpa-attn.git`
 - **优先联合 `<FFPA_ATTN_DIR>/.github/skills/ffpa-cuda-understand` skill**：
   该 skill 是 ffpa-attn CUDA 后端的全景知识库（架构分发链路、kernel 家族、
   量化数学原理、RFC 进度与验证方法论），与本书的 Part V/VI 章节互补——书讲
