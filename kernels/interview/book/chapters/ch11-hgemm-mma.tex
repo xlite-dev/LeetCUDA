@@ -701,10 +701,10 @@ $B\sb K{=}16$ 的指令发射密度翻倍、三级流水的同步更松。
 生产环境常用 \texttt{HMMA16816\allowbreak{}F32} 的 fp32 累加变体换精度。
 （数值为共享开发机单次短测，仅供章节间相对对照。）
 
-更大形状的 A/B 复测（RTX PRO 5000 96~SM，CUDA 13.2；
+更大形状的 A/B 复测（RTX PRO 5000 110~SM，CUDA 13.2；
 \texttt{notes\_\allowbreak{}v2\_\allowbreak{}sm120a.\allowbreak{}bin}
 \texttt{--bench} \texttt{--bench\_\allowbreak{}all}，
-$M{=}N{=}K{=}8192$ fp16，cuBLAS f16 参照 246.9~TFLOPS）见
+$M{=}N{=}K{=}8192$ fp16，cuBLAS f16 参照 246.9~TFLOPS；同批 \texttt{--bench-all} 内 cuBLAS 逐行成对计时，本章与第~\ref{ch:12}、\ref{ch:14}~章分别取到 246.9/246.5/246.6~T，各行分母相差 $\le1\%$，不做归一）见
 表~\ref{tab:ch11-perf}：
 
 \begin{table}[H]

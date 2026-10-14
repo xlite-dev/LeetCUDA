@@ -22,7 +22,7 @@ dense 场景做到 \textbf{204.1 TFLOPS}——cuDNN SDPA（69.7）的 2.93 倍�
   \item \textbf{tile 128$\times$128 与 M8N1 TiledMma}（\S\ref{sec:26c-tile}）：
         同一份 K/V smem 数据服务的 Q 行翻倍，算术强度上一档；
         8 个 warp 全部沿 M 堆叠、N 不切分，每 warp 持整行，
-        softmax 行归约退化为 warp 内 4-lane 蝴蝶，零跨 warp 通信；
+        softmax 行归约退化为 warp 内 4-lane 蝶形，零跨 warp 通信；
   \item \textbf{non-WS 执行模型}（\S\ref{sec:26c-nonws}）：256 线程全员
         MMA，\texttt{tid=0} 在消费循环里内联发射 TMA——WS 版一半线程专职
         producer 不产 FLOPs，SM 的 MMA 吞吐降低一半，这是 140.2$\to$188.3 的
@@ -43,7 +43,7 @@ softmax）、第~\ref{ch:17}~章（TMA 与 mbarrier 协议）、第~\ref{ch:19}~
 （Split-D 的 chunk 分解数学与寄存器占用——本章不再重推）、第~\ref{ch:21}--\ref{ch:23}~章
 （TiledCopy/TiledMMA/swizzle）、第~\ref{ch:25}--\ref{ch:26}~章（CuTe FA
 工具函数与 WS 版类型代数）、第~\ref{ch:26b}~章（FA-4 条件重缩放的数学，
-式~(26b.4)）。\textbf{源码区间}：ffpa\_attn.cuh L642--1307。\textbf{编译宏}：
+式~(26b.5)）。\textbf{源码区间}：ffpa\_attn.cuh L642--1307。\textbf{编译宏}：
 \texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}CUTE} +
 \texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}TMA\_\allowbreak{}MMA\_\allowbreak{}WS}，
 目标 \texttt{sm\_120a}。kernel 只依赖 sm\_80 级 mma.sync 与 sm\_90 级
@@ -103,7 +103,7 @@ f16 转换 $\to$ \texttt{stmatrix}（STSM）暂存 smem $\to$ TMA store 批量
 \textbf{第四，每 tile 的 rescale 大多不必要。}FA-2 式无条件重缩放在
 $D{=}320$（每 kv\_tile 10 个 QK chunk、5 个 PV chunk）下，每个 tile
 都要对 160 个 f32 寄存器的 O 累加器乘一次 \texttt{row\_scale}。FA-4 的
-条件重缩放（第~\ref{ch:26b}~章式~(26b.4)，$\tau = 8$）让 95\%+ 的 tile
+条件重缩放（第~\ref{ch:26b}~章式~(26b.5)，$\tau = 8$）让 95\%+ 的 tile
 整个跳过这个循环。
 
 还有一项无额外代价的结构收益：\textbf{跨 kv\_tile 预取}。WS 版的
@@ -160,7 +160,7 @@ QK 与 PV 共用 m16n8k16 atom（sm\_120 唯一张量核路径，第~\ref{ch:26b
 $S$ tile 的 16 行\textbf{整行}。这带来一个 softmax 侧的直接收益——
 m16n8k16 的 C-fragment 约定下，一行 128 个分数散在同 warp 的 4 个 lane
 （每 lane 2$\times$8 列块中的 2 份），行 max / 行 sum 的归约只需要
-warp 内 \texttt{\_\_shfl\_xor} 两轮（1 与 2 的蝴蝶，\S\ref{sec:26c-rescale}），
+warp 内 \texttt{\_\_shfl\_xor} 两轮（1 与 2 的蝶形，\S\ref{sec:26c-rescale}），
 \textbf{没有任何跨 warp 的 smem 归约}。第~\ref{ch:26}~章 WS 版的
 64$\times$64 tile 下 warp 沿 N 也要切，归约需要先跨 warp——M8N1 下行归约
 自然落在 warp 内。代价是 PV 的 N 维只有 $k_{VDChunk}{=}64$：
@@ -248,7 +248,7 @@ chunk 序号统一编址：
   \text{stage} = \text{chunk\_index} \bmod S,\qquad
   \text{phase} = \big\lfloor \text{chunk\_index}/S \big\rfloor \,\&\,1,
 \end{equation}
-与第~\ref{ch:19}~章 19.2.5 节的相位计数同构，区别只有：QK 流水与
+与第~\ref{ch:19}~章 19.3.6 节的相位计数同构，区别只有：QK 流水与
 V 流水各自维护一套 \texttt{chunk\_index}（除数分别是
 $k_{DChunksQK}$/$k_{DChunksV}$），互不干扰。
 
@@ -291,7 +291,7 @@ icache 与寄存器压力）内的 QK 相位：
 的数据就绪。\textbf{L1054--1064}：\texttt{partition\_fragment\_A/B} 在
 寄存器里切出本线程的 Q/K fragment，\texttt{gemm\_ss}（第~\ref{ch:25}~章
 工具）完成 LDSM + mma.sync 的 k-loop——10 个 chunk 循环下来
-$S = \sum_{d} Q_{[:,d]} K_{[:,d]}^\top$，正是第~\ref{ch:19}~章 19.2.2 节
+$S = \sum_{d} Q_{[:,d]} K_{[:,d]}^\top$，正是第~\ref{ch:19}~章 19.3.2 节
 「精确、无权重」的分块分解在 CuTe 上的直接落地。
 \textbf{L1066}：全线程 arrive \texttt{qk\_empty}，stage 归还。
 \textbf{L1072--1081}：\texttt{tid=0} 领先 $S_K$ 个 chunk 预取下一个
@@ -379,17 +379,17 @@ scale 没有折叠进 Q fragment（Q 每 tile 重装，折叠收益减半，不�
 max/exp 循环里乘），数学上仍是式~(26b.1)--(26b.3) 加 FA-4 条件重缩放：
 
 \begin{lstinputlisting}[linerange={758-793},firstnumber=auto,
-  title={ffpa\_attn.cuh L758-793（\texttt{online\_safe\_softmax\_scaled}：蝴蝶归约 + 条件重缩放判定）}]{../ffpa_attn.cuh}
+  title={ffpa\_attn.cuh L758-793（\texttt{online\_safe\_softmax\_scaled}：蝶形归约 + 条件重缩放判定）}]{../ffpa_attn.cuh}
 \end{lstinputlisting}
 
 每行先在本地列里扫 tile max（乘 scale，log2 域），\texttt{shfl\_xor(1)}
 与 \texttt{shfl\_xor(2)} 两轮把 4 个 lane 的局部 max 归并成行 max——
-M8N1 布局（\S\ref{sec:26c-mma}）保证这 4 个 lane 就在同 warp，蝴蝶
+M8N1 布局（\S\ref{sec:26c-mma}）保证这 4 个 lane 就在同 warp，蝶形
 两轮全覆盖，\textbf{没有跨 warp 归约}。判定段是 FA-4 的原样移植：
 $\log_2\_\text{diff} \ge -\tau$（$\tau{=}8$）时 \texttt{row\_scale=1}、
 \texttt{row\_max} 保持 stale 值，\textbf{跳过对 $O$/$\ell$ 的历史修正}；
 膨胀的常数因子在 epilogue 的 $1/\ell$ 里分子分母同乘抵消（第~\ref{ch:26b}~章
-式~(26b.4) 的推导）。调用方的 \texttt{\_\_any\_sync}（L1121--1129）
+式~(26b.5) 的推导）。调用方的 \texttt{\_\_any\_sync}（L1121--1129）
 把 per-row 判定聚合成 warp 粒度的统一分支：全 warp 的 row\_scale 都是
 1 才跳过，warp 内零分歧。\textbf{P 零拷贝（L1127--1131）}：
 softmax 后的 f32 scores 经 \texttt{convert\_type} 压 fp16，再经
@@ -629,7 +629,7 @@ $D$ & (2,2) & (2,3) & (3,2) & (3,3) & 最优 \\
 成对同轮）。$D\le320$：$(S_K,S_V){=}(3,2)$ 一致最优，绿色系柱全面领先；
 $D\ge384$：最优回落到 $(2,2)/(2,3)$，$(3,3)$ 在 $D{=}384$ 降至 136.0
 （比 (2,2) 低 27\%）。红色虚线是分界：恰在寄存器 spill 首次出现处
-（表~见下，$D{=}320$ 全组合 spill、$D{\le}256$ 零 spill）。}
+（见下表，$D{=}320$ 全组合 spill、$D{\le}256$ 零 spill）。}
 \label{fig:26c-stages}
 \end{figure}
 
@@ -833,10 +833,15 @@ $ cd book/tests && ./build_tests.sh --ch ch26c
 # PASS ffpa split-D non-WS A D=128 B=1 H=2 Nq=256 Nkv=256 s=2,2: 7.032e-05
 # PASS ffpa split-D non-WS B D=320 B=1 H=2 Nq=256 Nkv=256 s=2,2: 7.755e-05
 # PASS ffpa split-D non-WS B LSE D=320 Nq=256 Nkv=256: 7.068e-07
+# PASS ffpa split-D non-WS C D=192 B=2 H=2 Nq=128 Nkv=256 s=2,2: 8.105e-05
 # PASS ffpa split-D non-WS D D=320 B=1 H=2 Nq=128 Nkv=192 s=2,2: 8.254e-05
+# PASS ffpa split-D non-WS D LSE D=320 Nq=128 Nkv=192: 5.626e-07
 # PASS ffpa split-D non-WS E D=320 B=1 H=2 Nq=256 Nkv=256 s=3,3: 7.578e-05
+# PASS ffpa split-D non-WS F D=128 B=1 H=4 Nq=512 Nkv=512 s=2,2: 4.563e-05
 # PASS ffpa split-D non-WS G D=320 B=1 H=2 Nq=256 Nkv=256 s=2,3: 6.267e-05
+# PASS ffpa split-D non-WS G LSE D=320 Nq=256 Nkv=256: 7.994e-07
 # PASS ffpa split-D non-WS H D=320 B=1 H=2 Nq=128 Nkv=192 s=3,2: 8.602e-05
+# PASS ffpa split-D non-WS H LSE D=320 Nq=128 Nkv=192: 5.729e-07
 # ALL OK
 \end{lstlisting}
 

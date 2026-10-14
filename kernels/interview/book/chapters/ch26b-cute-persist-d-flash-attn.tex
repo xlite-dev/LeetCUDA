@@ -14,7 +14,7 @@ attention 长什么样」，但性能口径上还缺一个对照：这些教学�
 （flash\_attn.cuh L3635，\texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}CUTE}
 宏块 Phase~8）：在 RTX PRO 5000（sm\_120，110 SM）上
 $H{=}32$/$N{=}8192$/$D{=}128$ dense 场景实测 \textbf{240.1 TFLOPS，为 cuDNN SDPA
-（230.2 TFLOPS）的 1.04 倍}。这是全书第一个（也是唯一一个）在绝对性能上越过厂商库的
+（230.2 TFLOPS）的 1.04 倍}。这是全书第一个在绝对性能上越过厂商库的
 attention kernel。
 
 本章的四条主线，都指向「超越 cuDNN」：
@@ -450,7 +450,7 @@ softmax 本体是 \texttt{online\_\allowbreak{}safe\_\allowbreak{}softmax\_\allo
 （L3587--3628）：与第~\ref{ch:16}~章手写版同构，差别只有两处：行/列视图来自
 \texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}rowcol}
 （m16n8k16 C-fragment 的行列重解释，第~\ref{ch:22}~章），以及 scores 不再乘
-scale（已经折叠）。行内 4-lane 蝴蝶归约（\texttt{\_\_shfl\_xor} 1 与 2）把
+scale（已经折叠）。行内 4-lane 蝶形归约（\texttt{\_\_shfl\_xor} 1 与 2）把
 散在 4 个 lane 的同 row 分数归到一起：这是 m16n8k16 fragment 约定的直接
 推论（每行 8 个分数由 4 个 lane 各持 2 个）：
 
@@ -458,16 +458,16 @@ scale（已经折叠）。行内 4-lane 蝴蝶归约（\texttt{\_\_shfl\_xor} 1 
   title={flash\_attn.cuh L3587-3628（\texttt{online\_safe\_softmax\_fa4}：log2 域 + 条件重缩放全函数）}]{../flash_attn.cuh}
 \end{lstinputlisting}
 
-逐段拆开。\textbf{tile max 与蝴蝶归约}（前 6 行）：每行先在本地
+逐段拆开。\textbf{tile max 与蝶形归约}（前 6 行）：每行先在本地
 \texttt{kSCols} 个分数里线性扫出 \texttt{tile\_max}，再 \texttt{shfl\_xor(1)} 与
-\texttt{shfl\_xor(2)} 两步把 4 个 lane 的局部 max 归并成行 max：蝴蝶而非
+\texttt{shfl\_xor(2)} 两步把 4 个 lane 的局部 max 归并成行 max：蝶形而非
 树，因为 4 lane 恰好两轮异或全覆盖。\textbf{条件重缩放判定}（中段）：
 \texttt{log2\_diff = row\_max - next\_max}，$\ge -\tau$（式~\eqref{eq:26b-fa4}）
 则 \texttt{row\_scale = 1} 且 \texttt{row\_max} 保持 stale 值：本 tile 完全
 跳过对 $O$/$\ell$ 的历史修正；否则 \texttt{row\_scale = exp2f(log2\_diff)}
 供调用方批量重缩放。注意判定是 per-row 的，调用方用
 \texttt{\_\_any\_sync} 聚合整个 warp 的「是否有任一行需要重缩放」再统一
-分支：warp 内分歧被压到整条 warp 粒度（L3963--3967）。\textbf{exp 与求和}
+分支：warp 内分歧统一到整条 warp 粒度（L3963--3967）。\textbf{exp 与求和}
 （尾段）：\texttt{exp2f} 单条 \texttt{MUFU.EX2}，P 直接写回 scores 原地
 （复用寄存器），\texttt{tile\_sum} 供 \texttt{row\_sum} 增量。
 
@@ -644,7 +644,7 @@ $N{=}16384$ dense & 243.2 & 236.9 & 1.03$\times$ & 大 $N$ 稳定 \\
 表中每行都是成对同轮数据（kernel 与 cuDNN 同一轮测量，时钟态一致）：dense self
 行为 \texttt{leetcuda\_\allowbreak{}bench\_\allowbreak{}sm120a.\allowbreak{}bin --bench}
 的同轮输出（240.1/230.2，2026-09-22），其余场景为 min-of-30 复测。跨 run 的波动带：
-dense 主场景 238.4/230.7、230.0/230.5、230.3、240.1/230.2（CLI bench 与 bench\_pd
+dense 主场景 238.4/230.7、230.0/230.5、238.2/230.3、240.1/230.2（CLI bench 与 bench\_pd
 两种脚本），$N{=}16384$ 为 239.2/230.9，单点绝对值跨 run 波动 $\pm2\sim3\%$
 （GPU 时钟态与热态主导），但\textbf{成对比值}始终落在 $1.00\sim1.04\times$：
 kernel 侧的领先是结构性的，不依赖单次测量的偶然波动。这也是本书性能复测的

@@ -24,7 +24,7 @@ D \ &\colon \ \Z_S \to \D
 \begin{align*}
 \begin{array}{ccc} (4, & (3, & 2)) \\ (2, & (8, & 1)) \end{array} = \begin{array}{c} S \\ D \end{array} \quad\quad \text{或} \quad\quad (4, (3, 2)) : (2, (8, 1)) = S : D  \quad\quad \text{或} \quad\quad (2, (8, 1)) \circ (4, (3, 2)) = D \circ S
 \end{align*}
-其中最后一种写法强调：形状与步幅本身也可以被解释为函数，它们复合起来定义布局函数。
+其中最后一种写法强调：形状与步幅本身也可以解释为函数，它们复合起来定义布局函数。
 
 由于布局的定义域由其形状决定，布局的性质与形状的性质一一对应。对于布局 $\v{L} = S : D$ 与 $\v{U} = X : Y$，我们定义：
 \begin{compactitem}
@@ -33,7 +33,7 @@ D \ &\colon \ \Z_S \to \D
 \item $\abs{\v{L}} = \abs{S}$：布局的大小是其形状的大小。
 \item $\v{L}_i = S_i : D_i$：第 $i$ 个子布局（sublayout）由其形状与步幅的第 $i$ 个元素构成。
 \item $\Z(\v{L}) = \Z(S)$：布局的坐标集合是其形状的坐标集合。
-\item $\v{L} \sim \v{U} \Leftrightarrow S \sim X$：两个布局的同构（congruent）关系是其形状的同构关系。
+\item $\v{L} \sim \v{U} \Leftrightarrow S \sim X$：两个布局的同余（congruent）关系是其形状的同余关系。
 \item $\v{L} \preceq \v{U} \Leftrightarrow S \preceq X$：两个布局的相容性是其形状的相容性。
 \end{compactitem}
 
@@ -43,7 +43,7 @@ D \ &\colon \ \Z_S \to \D
 \end{align*}
 其中我们依次展示了整数坐标、等价的二维坐标、等价的自然坐标以及计算得到的偏移。
 
-布局的界内定义域是所有坐标 $c \in \Z(\v{L})$ 的集合。布局也可以在越界坐标上求值，这类似于可以在越界索引上求值但行为未定义的数组。因此，布局的定义域是有限集合 $\Z(\v{L})$，而\emph{扩展定义域}（extended domain）是与 $S$ 弱同构的所有 $\texttt{HTuple}(\Z)$ 构成的无穷集合 $\Z^\v{L}$。
+布局的界内定义域是所有坐标 $c \in \Z(\v{L})$ 的集合。布局也可以在越界坐标上求值，这类似于可以在越界索引上求值但行为未定义的数组。因此，布局的定义域是有限集合 $\Z(\v{L})$，而\emph{扩展定义域}（extended domain）是与 $S$ 弱同余的所有 $\texttt{HTuple}(\Z)$ 构成的无穷集合 $\Z^\v{L}$。
 
 我们还区分布局的陪域与像集。布局的陪域是 $\D$，它通常是无穷的（例如 $\Z$ 或 $\Z^D$）。布局的像集是有限的，是布局对其定义域内所有坐标所产生的取值范围。
 \begin{align*}
@@ -192,7 +192,7 @@ D \ &\colon \ \Z_S \to \D
 \label{fig:layouts}
 \end{figure}
 
-图~\ref{fig:layouts} 汇总了稠密线性代数库（如 CUTLASS）中常见的数据布局。每个布局都被表示为从逻辑坐标 $(m,n) \in \Z_{(4,8)}$ 到偏移 $k \in \Z$ 的映射。例如，这些偏移可用于索引数据数组中的元素。常见的行主序（row-major）、列主序（column-major）与填充（padded）布局都可以平凡地用 \CuTe 布局表示，而交错（interleaved）与混合（mixed）布局则表明：通过使用嵌套的形状与步幅，布局的表示集合被严格地扩大。特别地，由数据块构成的网格（grids-of-tiles-of-data）可以直接用 \CuTe 布局表示。
+图~\ref{fig:layouts} 汇总了稠密线性代数库（如 CUTLASS）中常见的数据布局。每个布局都被表示为从逻辑坐标 $(m,n) \in \Z_{(4,8)}$ 到偏移 $k \in \Z$ 的映射。例如，这些偏移可用于索引数据数组中的元素。常见的行主序（row-major）、列主序（column-major）与填充（padded）布局都可以直接用 \CuTe 布局表示，而交错（interleaved）与混合（mixed）布局则表明：通过使用嵌套的形状与步幅，布局的表示集合被严格地扩大。特别地，由数据块构成的网格（grids-of-tiles-of-data）可以直接用 \CuTe 布局表示。
 
 \begin{figure}[ht]
 \centering
@@ -259,7 +259,7 @@ D \ &\colon \ \Z_S \to \D
     \subcaption{\tabular[t]{@{}l@{}}二进制 Swizzle \\ $(4,(4,3)):(f_1,(f_5,f_{16}))$ \\ $f_i \in F_2 = (\Z,XOR,\cdot)$\endtabular}
     \label{fig:layouts:swizzle}
 \end{subfigure}
-\caption{以二维坐标绘制的布局示例。这些布局使用来自整数半模（integer-semimodule）的步幅来定义函数，这些函数在跟踪坐标以及按非仿射（non-affine）模式对偏移做“混淆（swizzle）”处理时非常有用。}
+\caption{以二维坐标绘制的布局示例。这些布局使用来自整数半模（integer-semimodule）的步幅来定义函数，这些函数在跟踪坐标以及按非仿射（non-affine）模式对偏移做“混淆（swizzle）”处理时很有用。}
 \label{fig:layouts2}
 \end{figure}
 

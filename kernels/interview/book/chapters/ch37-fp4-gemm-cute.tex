@@ -663,7 +663,7 @@ FP4 行的误差列是 relFro 相对 Frobenius 误差。
 \midrule
 4096$^3$ & cuBLAS BF16 (F32 acc)              & ---   & 163.5 & 1.00x & 0.67x \\
          & our CuTe HGEMM (S=3, BLK\_SW=1, F32Acc) & $\approx$0 & 242.8 & 1.48x & 1.00x \\
-         & FP8 GEMM NonWS (RC, $128^2{\times}128$/s2) & 4.50 & 438.5 & 2.68x & 1.81x \\
+         & FP8 GEMM NonWS (RC, $128{\times}256{\times}128$/s2) & 4.50 & 441.1 & 2.70x & 1.82x \\
          & FP4 NonWS 单级 level-2 ($128{\times}256{\times}64$/s6) & 0.144 & 600.4 & 3.67x & 2.47x \\
          & FP4 NonWS 两级 ($128{\times}256{\times}64$/s6) & 0.145 & 603.4 & 3.69x & 2.49x \\
          & \textbf{FP4 WS 两级 ($128{\times}256{\times}64$/s6)} & 0.145 & \textbf{614.1} & \textbf{3.76x} & \textbf{2.53x} \\
@@ -673,7 +673,7 @@ FP4 行的误差列是 relFro 相对 Frobenius 误差。
 \midrule
 8192$^3$ & cuBLAS BF16 (F32 acc)              & ---   & 163.3 & 1.00x & 0.68x \\
          & our CuTe HGEMM (S=3, BLK\_SW=1, F32Acc) & $\approx$0 & 241.7 & 1.48x & 1.00x \\
-         & FP8 GEMM NonWS (RC, $128^2{\times}128$/s2) & 6.25 & 479.2 & 2.93x & 1.98x \\
+         & FP8 GEMM NonWS (RC, $128{\times}256{\times}128$/s2) & 6.25 & 483.4 & 2.96x & 2.00x \\
          & FP4 NonWS 单级 level-2 ($128{\times}256{\times}64$/s6) & 0.144 & 644.8 & 3.95x & 2.67x \\
          & FP4 NonWS 两级 ($128{\times}256{\times}64$/s6) & 0.145 & 639.6 & 3.92x & 2.65x \\
          & \textbf{FP4 WS 两级 ($128{\times}256{\times}64$/s6)} & 0.145 & \textbf{648.6} & \textbf{3.97x} & \textbf{2.68x} \\
@@ -829,7 +829,7 @@ FP8 每个量化值 1\,B，FP4 只有 0.5\,B。这与本卡实测带宽相符
 （纯读 907\,GB/s、拷贝 1047\,GB/s，DRAM 标称 1344\,GB/s）：
 8192$^3$ 时 $A$/$B$ 两侧各跑在 $\approx1.0$\,TB/s，已经在拷贝带宽上。
 还有一个容易误读的数：量化是\textbf{加性}成本（109\,$\mu$s 不随 tile 档
-变化），主 kernel 从保守档换到宽档快了 $33\%$ 之后，它的占比反而从
+变化），主 kernel 从保守档换到宽档快了 $31\%$ 之后，它的占比反而从
 26\% 升到 32\%——\emph{占比上升说明主 kernel 变快了}，不是量化变慢了。
 
 本书在这一章对 $B$ 侧量化做过一次\textbf{重构}，
@@ -979,7 +979,7 @@ $128\times256$/s6，其余回落 $128^2$/s4，\texttt{--bench} 的 FP4 标准
   \item \textbf{性能结论}：宽档 $128\times256$/s6 的 WS 变体在 4096$^3$
         跑 614.1\,T（8192$^3$: 648.6\,T），是 cuBLAS BF16 的
         $3.76\times$、本书手写 bf16 HGEMM 的 $2.53\times$、FP8 版本的
-        $1.40\times$。\texttt{--bench} 标准行自 2026-09-28 起按
+        $1.39\times$。\texttt{--bench} 标准行自 2026-09-28 起按
         $MNK\ge4096$ 自适应取宽档、其余回落 $128^2$/s4。比特数减半
         只换来 $1.4\times$——\textbf{存储收益与算力收益不是一回事}，
         $BK$ 被固定在 64 让 K 方向的算术强度下降是主要原因。

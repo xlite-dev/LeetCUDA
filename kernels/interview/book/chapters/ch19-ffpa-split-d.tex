@@ -252,7 +252,7 @@ $\ell_t = \sum_{j<tB_c} e^{S_{ij}-m_t}$，最终 $O = O_{T_c}/\ell_{T_c}$。
 的数值约定一致：避免中间量的尺度漂移，也避免 $C$ 次额外的除法。其二，若某个 chunk
 的 $O^{(c)}$ 忘了 rescale，它对应的就不是全局 max 基准，误差会随 KV tile 数
 $T_c$ 累积（每次漏乘一个 $\rho \le 1$，$O^{(c)}$ 偏大），这是本章最容易犯的
-\textbf{静默错误}（19.8~节坑四）。其三，$\ell$ 与 $m$ 是\textbf{每行一份}、与 chunk
+\textbf{静默错误}（19.8~节坑三）。其三，$\ell$ 与 $m$ 是\textbf{每行一份}、与 chunk
 无关：$C$ 个累加器共享两个标量数组，这也是 Split-D 的「零额外状态」。
 
 \subsection{与 Split-KV 的合并方式对照}
@@ -470,7 +470,7 @@ V 槽位是 8\,KB，合计
 
 这也解释了本章测试辅助工具为什么必须做 smem 可行性检查（\texttt{SKIP(ch19)} 分支）：
 $D$ 一涨，$C$ 跟着涨，而\textbf{stage 数是独立旋钮}，两者消耗的是同一份 99\,KB 预算。
-生产库在 sm120 上把 stage 上限压到 2--3，理由正是「快速 MMA 下同步开销主导 +
+生产库在 sm120 上把 stage 上限限制在 2--3，理由正是「快速 MMA 下同步开销主导 +
 smem 预算」（见 19.6~节）。
 
 \subsection{cp.async 版：128 线程全员搬 + 双流水}
@@ -503,7 +503,7 @@ $\times$ 4 次 = 4096 个元素，恰好铺满一个 $[64,64]$ 的 chunk。
         累加到同一块 $S[64,64]$ 上。
   \item \textbf{Phase 2：在线 softmax}（L273--298）。注意此时\textbf{chunk 循环早已
         结束}：$S$ 是完整的 $[64,64]$，softmax 一次算完，得到 $\rho_t$、$\ell_t$、
-        以及原地覆盖成 $P$ 的分数碎片。顺序不能反（19.8~节坑三）。
+        以及原地覆盖成 $P$ 的分数碎片。顺序不能反（19.8~节坑一）。
   \item \textbf{Phase 3：PV 的 chunk 流水}（L310--348）。每个 v\_chunk：先对
         \textbf{该 chunk 的}累加器乘 $\rho_t$，再做 \texttt{gemm\_rs}（P 在寄存器、
         V 从 smem 走 \texttt{ldmatrix.\allowbreak{}trans}）。
@@ -550,7 +550,7 @@ Phase 1 的内层是这个 kernel 的核心循环，包含两个易错点：chun
         minimum width=1.52cm, minimum height=\hh cm, inner sep=0pt] at ({6.4*0.95},-1.10) {整段};
   \node[anchor=east, font=\scriptsize] at (-0.15,-1.10) {softmax};
   \node[anchor=north west, align=left, text width=9.9cm, fill=white] at ({1.33},-1.50)
-    {chunk 循环\textbf{结束之后}才算：$S[64,64]$ 已完整 $\to$ $\rho_t$、$\ell_t$、原地覆盖成 $P$（顺序见 19.8 节坑三）};
+    {chunk 循环\textbf{结束之后}才算：$S[64,64]$ 已完整 $\to$ $\rho_t$、$\ell_t$、原地覆盖成 $P$（顺序见 19.8 节坑一）};
   % PV 行：三个 chunk 先后乘 rho_t 再 gemm_rs
   \foreach \k [evaluate=\k as \cx using {(7.9+1.4*\k)*0.95}] in {0,1,2}{
     \node[thin, draw=tkOrange, fill=tkFillOrange, minimum width=1.26cm, minimum height=\hh cm, inner sep=0pt]
@@ -994,8 +994,7 @@ $\mathrm{Sk}{=}5$ 会直接超预算。数据请落
   README 的 Split-D 表格是 \textbf{RTX 5090} 口径，形状也不同
   （$D{=}320$、$N{=}16384$、182.6/83.1 $=2.20\times$）。两口径的比值自洽
   （$110.7/57.2 = 1.935$；$182.6/83.1 = 2.197$），差别来自 GPU 与形状。本节
-  按 CHECKLOG 的 F4 待核项处理：\textbf{正文一律双标注，不复测不给绝对结论}。
-  按源码冻结规则不回写头注释；建议 CHECKLOG 状态更新为「已入正文（双标注）」。
+  \textbf{正文一律双标注，不复测不给绝对结论}。
 \end{kaogu}
 
 \begin{kaogu}[F1/F3·表述澄清]{L12-13「PV 保持小 tile 控制 acc\_O 寄存器」}

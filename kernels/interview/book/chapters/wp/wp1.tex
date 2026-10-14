@@ -78,7 +78,7 @@ P,S \in \texttt{Tuple} \text{ 且 } \text{rank}(P) = \text{rank}(S) \text{ 且 }
 \wpsh{形状（Shape）}
 \label{sec:shape}
 
-多维数组通常由其\emph{形状}（shape）来刻画：一列描述各个模（mode）规模的正整数。$M{\times}N$ 矩阵的二维形状表示为 $(M,N)$，并自然地由坐标 $(m,n)$ 索引，其中 $0 \leq m < M$ 且 $0 \leq n < N$。对此的一个自然推广，是将形状表示为由正整数构成的层次元组。
+多维数组通常由其\emph{形状}（shape）来刻画：一列描述各个模（mode）规模的正整数。$M{\times}N$ 矩阵的二维形状表示为 $(M,N)$，并由坐标 $(m,n)$ 索引，其中 $0 \leq m < M$ 且 $0 \leq n < N$。对此的一个自然推广，是将形状表示为由正整数构成的层次元组。
 
 \begin{definition}
 \emph{形状}是一个 $\texttt{HTuple}(\Z^+)$，其中 $\Z^+ = \{1,2,3,\ldots\}$ 为正整数集合。形状 $S$ 的阶（rank）是该 \texttt{HTuple} 的阶。形状 $S$ 的大小（size）是其全部元素的乘积，记作 $\abs{S} = \prod_k \abs{S_k}$。
@@ -92,15 +92,15 @@ P,S \in \texttt{Tuple} \text{ 且 } \text{rank}(P) = \text{rank}(S) \text{ 且 }
 \begin{align*}
 S : \Z_{MN} \longleftrightarrow \Z_M \times \Z_N
 \end{align*}
-在一维整型坐标（integral coordinate）$i \in \Z_{MN}$ 与二维自然坐标（natural coordinate）$(m,n) \in \Z_M \times \Z_N$ 之间建立映射，二维形状 $(M,N)$ 也可以被解释为描述 $MN$ 个一维元素，并由整型坐标 $i$（$0 \leq i < MN$）索引。
+在一维整型坐标（integral coordinate）$i \in \Z_{MN}$ 与二维自然坐标（natural coordinate）$(m,n) \in \Z_M \times \Z_N$ 之间建立映射，二维形状 $(M,N)$ 也可以解释为描述 $MN$ 个一维元素，并由整型坐标 $i$（$0 \leq i < MN$）索引。
 
-类似地，二维形状 $(M,NP)$ 可以被解释为层次形状 $(M,(N,P))$，由自然坐标 $(m,(n,p))$ 索引，其中 $0 \leq m < M$、$0 \leq n < N$、$0 \leq p < P$。相应的双射为
+类似地，二维形状 $(M,NP)$ 可以解释为层次形状 $(M,(N,P))$，由自然坐标 $(m,(n,p))$ 索引，其中 $0 \leq m < M$、$0 \leq n < N$、$0 \leq p < P$。相应的双射为
 \begin{align*}
 S : \Z_M \times \Z_{NP} \longleftrightarrow \Z_M \times (\Z_N \times \Z_P)
 \end{align*}
 在二维坐标 $(m,q) \in \Z_M \times \Z_{NP}$ 与自然坐标 $(m,(n,p)) \in \Z_M \times (\Z_N \times \Z_P)$ 之间建立映射。
 
-层次形状与坐标的一个直接推论是：张量算法可以按照对它们而言最自然的形状来编写（第~\ref{sec:algorithms}~节）：{\tt COPY} 中的向量用一维形状，{\tt GEMM} 中的矩阵用二维形状，{\tt batched-GEMM} 中的张量用三维形状，等等，同时仍能接受被折叠（fold）成与算法规约弱同余的层次化形状张量（第~\ref{sec:compatibility}~节）。数据张量的形状通常表示为一列扁平的整数，它可以被任意折叠成泛型张量算法所接受的形状。另外，由于张量的每个模都关联着一个用于索引数据的步幅（stride）（第~\ref{sec:stride}~节），这种模的折叠使得我们能够表示远比 {\tt COPY} 中的简单连续数组或 {\tt BLAS GEMM} 中的行主序、列主序矩阵复杂得多的数据布局（第~\ref{sec:layout}~节）。
+层次形状与坐标的一个直接推论是：张量算法可以按照对它们而言最自然的形状来编写（第~\ref{sec:algorithms}~节）：{\tt COPY} 中的向量用一维形状，{\tt GEMM} 中的矩阵用二维形状，{\tt batched-GEMM} 中的张量用三维形状，等等，同时仍能接受被折叠（fold）成与算法的规范形式弱同余的层次化形状张量（第~\ref{sec:compatibility}~节）。数据张量的形状通常表示为一列扁平的整数，它可以任意折叠成泛型张量算法所接受的形状。另外，由于张量的每个模都关联着一个用于索引数据的步幅（stride）（第~\ref{sec:stride}~节），这种模的折叠使得我们能够表示远比 {\tt COPY} 中的简单连续数组或 {\tt BLAS GEMM} 中的行主序、列主序矩阵复杂得多的数据布局（第~\ref{sec:layout}~节）。
 
 下一小节定义这种相容性（compatibility）的概念，以及形状内各坐标集合之间的这些关系。
 
@@ -297,7 +297,7 @@ i &\mapsto \Bigl(i \bmod \abs{S_0}, \floor{\frac{i}{\abs{S_0}}} \bmod \abs{S_1},
 \wpsh{步幅（Stride）}
 \label{sec:stride}
 
-上一节描述了形状、形状的层次结构以及这些形状的坐标。为了构造数据、线程或其它对象的\textbf{布局}，我们定义一个从形状内坐标到偏移（offset）的映射。
+上一节描述了形状及其层次结构，以及这些形状的坐标。为了构造数据、线程或其它对象的\textbf{布局}，我们定义一个从形状内坐标到偏移（offset）的映射。
 
 \begin{definition}
 形状 $S$ 的\emph{步幅}（stride）$D$ 是一个与该形状同余的 $\texttt{HTuple}(\mathcal{D})$，即 $S \sim D$。该步幅定义了一个从自然坐标 $\tilde{c} \in \Z_S$ 到陪域（codomain）$\D$ 的映射，由下式给出：

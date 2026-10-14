@@ -45,7 +45,7 @@ Swizzle 与 TMA）。本章是 Part~IV 的第一章「应用篇」，只用到�
 配套最小测试 \texttt{book/\allowbreak{}tests/\allowbreak{}ch24\_\allowbreak{}hgemm\_\allowbreak{}cute.cu}：两组配置
 （\texttt{k\allowbreak{}Acc\allowbreak{}F32=\allowbreak{}false}、$B_N=256$ 与 \texttt{k\allowbreak{}Acc\allowbreak{}F32=\allowbreak{}true}、$B_N=128$）对 CPU
 fp64 参考做正确性判定；本章的实测数字全部来自该测试与 \texttt{ptxas -v}，
-端到端性能对照见 \texttt{.\allowbreak{}tmp/\allowbreak{}book-bench}（其它章）。
+端到端性能对照见第~\ref{sec:ch24-perf}~节。
 
 \section{问题与动机}
 
@@ -1155,8 +1155,7 @@ R2S $\to$ sC $\to$ S2G，映射进类型 \\
 \section{性能分析}
 
 本章没有为 CuTe HGEMM 单独建 bench（Phase~7c 的集成数据由 \texttt{bench/bench\_leetcuda.cu}
-的 \texttt{--bench} 统一采集）。这里只给三条\textbf{可核验}的定量结论，
-端到端性能对照见 \texttt{.\allowbreak{}tmp/\allowbreak{}book-bench}（其它章的复测汇总）：
+的 \texttt{--bench} 统一采集）。这里只给三条\textbf{可核验}的定量结论：
 
 \begin{enumerate}
   \item \textbf{正确性}：最小测试在 $128\times256\times64$（F16 累加）与
@@ -1328,7 +1327,7 @@ ALL OK
 $|C|\cdot2^{-11}$，只有把 $|C|$ 压在 $2$ 附近，$10^{-3}$ 这条容差才是在
 检验「累加精度」而不是「输出量化」。带上 \texttt{bench} 参数还能跑一版
 吞吐计时（$K{=}64$ 的规模只有微秒级，被 launch 开销主导，不构成性能结论；
-端到端吞吐对照见 \texttt{.\allowbreak{}tmp/\allowbreak{}book-bench}）。
+端到端吞吐对照见第~\ref{sec:ch24-perf}~节）。
 
 代码量的统计口径（图~\ref{fig:24-1} 的数字）只统计「非空、非纯注释」行，
 用一条 \texttt{awk} 命令即可复现。动手实验建议三条：

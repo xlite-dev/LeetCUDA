@@ -81,7 +81,7 @@ cd kernels/interview/book/tests
 ./build_tests.sh --ch ch13 --no-run     # 只编译不运行（远端无 H800 时）
 \end{lstlisting}
 
-行为细节（对应脚本 L13/L47--52/L57/L64）：\texttt{-{}-arch} 默认
+行为细节（对应脚本 L13/L47--51/L58/L65）：\texttt{-{}-arch} 默认
 \texttt{sm\_120a}（验收机 RTX PRO 5000），\texttt{NVCC} 可用环境变量覆盖；
 ch13（WGMMA）在非 \texttt{sm\_90a} 目标下自动跳过并打印提示；每个测试用
 \texttt{-std=c++20 -O2} + cutlass include 单文件编译；全部成功时末行
@@ -165,7 +165,7 @@ ptxas error : Entry function '_Z1kPf' uses too much shared data (0x28000 bytes, 
 常见坑一节：smem 基址未对齐 1024B、swizzle 档位选错、期望字节数没传给
 mbarrier。
 
-\section{全书 139 个测试：运行与期望输出}
+\section{全书 218 个测试：运行与期望输出}
 
 一条命令跑全书最小测试（验收机口径）：
 
@@ -174,9 +174,9 @@ cd kernels/interview/book/tests
 ./build_tests.sh --arch sm_120a --all
 \end{lstlisting}
 
-\noindent 实测输出摘录（RTX PRO 5000，2026-09-14；全书 24 个测试可执行
-——ch01--ch26 中 ch13 在 sm\_120a 下自动跳过、ch15 原理章无测试——
-共 139 条 \texttt{PASS}、0 条 \texttt{FAIL}，末行 \texttt{ALL~OK}、退出码 0）：
+\noindent 实测输出摘录（RTX PRO 5000，2026-09-24；全书 30 个测试可执行
+——ch13 在 sm\_120a 下自动跳过、ch15 原理章无测试；含 ch26b/ch26c 与 ch34--37——
+共 218 条 \texttt{PASS}、0 条 \texttt{FAIL}，末行 \texttt{ALL~OK}、退出码 0）：
 
 \begin{lstlisting}[style=console]
 (ch13 skipped: requires -arch sm_90a; see ch13 §13.10 for explicit build)

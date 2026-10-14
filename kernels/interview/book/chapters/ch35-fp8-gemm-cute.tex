@@ -115,7 +115,7 @@ $128\times256$ 的 64\,KB。K 循环结束后
 这条几何约束写成通用形式
 \texttt{cosize(SmemLayoutO)*2B <= kStages*(BM+BN)*128}：K 循环一结束所有
 stage 都空闲，O 只要装得进整个 A+B 区即可，静态断言在编译期保证这条约束
-（默认档 64\,KB vs 96\,KB 通过，而 $256\times256$ 的 128\,KB O 不满足）。
+（默认档 64\,KB vs 96\,KB 通过；$256\times256$/s2 的 O 是 128\,KB、与 A+B 区取等，该静态断言仍成立——真正挡住它的是整块 smem 128\,KB 超过 99\,KB 的 opt-in 上限）。
 
 \textbf{第四，M8N1 的 TiledMma。}8 个 warp 全部沿 M 堆叠（$8\times$MMA\_M
 $=128=k_{BM}$），每 warp 负责输出 tile 的 16 行 $\times$ $BN$ 列，acc 是
@@ -437,8 +437,8 @@ $128\times256\times128$/s2，CLI 行标已带该后缀；Ours' CuTE HGEMM = 第~
 bf16 HGEMM（S=3、BLK\_SW 取该形状较优者、F32 acc）同平台复测，其
 Max Err $\approx 0$：
 手写与 cuBLAS 同为 $k$ 顺序 f32 累加，bf16 输出 bit 级一致。四种粒度组合的
-TFLOPS 在同 shape 下差异 $<4\%$（2048$^3$ 实测 rc 241.4 / rb 234.3 /
-bc 242.8 / bb 236.6，per-block 侧多一次逐元素 scale 查表），表格取 rc 代表，
+TFLOPS 在同 shape 下差异 $<4\%$（2048$^3$ 实测 rc 243.6 / rb 247.5 /
+bc 240.9 / bb 248.6，极差 3.2\%），表格取 rc 代表，
 完整 4 组合数据见 \texttt{--bench --verbose}。randn $(\pm 0.25)$ 输入的
 Max Err 见 34.4.3~节误差指纹表。）
 
@@ -570,7 +570,7 @@ E2E 与 kernel-only 的差就是量化前处理的开销。以 4096$^3$ 为例�
 时间：GEMM 段
 $2\cdot4096^3/440.7\mathrm{T}\approx 312\,\mu s$，E2E 段
 $\approx 736\,\mu s$，量化链占用约 $424\,\mu s$。这条链搬运的字节是
-$3\times MK$（读 bf16 写 e4m3，A 侧）$+3\times NK$（B 侧）$\approx
+$3\times MK$（读 bf16 写 e4m3，A 侧）$+2\times MK$（A 侧第二遍 gmem 读）$+3\times NK$（B 侧）$\approx
 8\cdot 4096^2\,\text{B}\approx 134\,\text{MB}$（B 的双朝向 staging 再加
 一遍 smem 但不增 gmem），$424\,\mu s$ 对应有效带宽
 $\approx 316\,\text{GB/s}$——\textbf{离 PRO 5000 的 DRAM 理论带宽
@@ -585,8 +585,8 @@ norm/rope 尾部」来吸收。
 第二道习题：$M{=}4097$ 的尾 tile 只含 1 行有效数据，MMA 浪费
 $127/128$，但 4097 行只多出 1 个 m-tile（33 vs 32），额定多出
 $1/32\approx 3\%$ 的工作量——实测 440.4 vs 440.7（$<0.1\%$）：多出的那
-一个 m-tile 让总 CTA 数从 256 变 264，最后一波在 110 个 SM 上的填充率
-从 78\% 升到 80\%，两项开销恰好抵消。
+一个 m-tile 让总 CTA 数从 512 变 528，最后一波在 110 个 SM 上的填充率
+从 65\% 升到 80\%，两项开销恰好抵消。
 思考：什么时候尾 tile 会成为主要损失？（答：$M$ 略大于 128 的倍数时，
 尾 tile 占比最高，如 $M{=}129$ 时一半的 m-tile 是 1/128 利用率。）
 

@@ -40,7 +40,7 @@ $e^{89}$ 就已经越界变成 \texttt{inf}。一旦分子或分母出现 \textt
 
 \textbf{动机二：每多一遍扫描，就多一遍代价。}教科书的 safe softmax 要对输入做三次遍历：
 求 max、求指数和、再除一遍写回。每次「遍历」在 GPU 上至少意味着一遍全局内存读取，或者
-一次 block 级同步归约。本章将看到：三版实现的差距，本质上就是\textbf{全局扫描次数}的差距
+一次 block 级同步归约。本章将看到：三版实现的差距就在\textbf{全局扫描次数}上
 （3-pass $\to$ 2-pass $\to$ 1-pass），图~\ref{fig:4-1} 给出三者的数据流对比。
 
 \textbf{动机三：softmax 的「行内自足性」。}\allowbreak{}softmax 沿一行（一个 token、一个 query）独立计算，
@@ -243,7 +243,7 @@ $O^{\mathrm{new}} = e^{m - m^{\mathrm{new}}}\, O + e^{s - m^{\mathrm{new}}} V$�
 三版实现的公共骨架都是第~\ref{ch:02}~章的 per-token 模式：一个 block 处理一行
 （一个 token），grid 维度携带 token 维度。注意一个容易踩坑的约定：
 kernel 形参 $N$ 的语义是\textbf{总元素数}（原始工程入口传 $N = S \times H$，
-$S$ 为 token 数、$H$ 为每 token 长度；见 4.6~节勘误一）。
+$S$ 为 token 数、$H$ 为每 token 长度；见 4.7~节勘误一）。
 
 \subsection{Level 1：naive——按定义直译}
 
@@ -363,7 +363,7 @@ max 用单位元，$d$ 用加法单位元 0，这样它们参与归约但不污�
 \texttt{\_\_fdividef} 配一次乘法完成，指数用快速数学 \texttt{\_\_expf}。
 与 safe 版对比：扫描遍数从 2 降到 1（$x$ 只读一次、一直保留在寄存器里），
 block 级同步从 2 次降到 1 次；代价是归约算子从「单个加法」变成「合并运算」，
-且写回阶段的 \texttt{\_\_expf}/\texttt{\_\_fdividef} 是近似指令（精度见 4.7~节坑三）。
+且写回阶段的 \texttt{\_\_expf}/\texttt{\_\_fdividef} 是近似指令（精度见 4.8~节坑三）。
 
 \needspace{93mm}
 
@@ -484,13 +484,13 @@ launch 与同步的固定开销占比大；附录~B 的汇总口径会注明这�
   注释同时给出「单元素增量更新」与「二元合并」两组公式，数学上等价
   （后者视为前者的推广，见式~\ref{eq:4-online} 与式~\ref{eq:4-merge} 的关系），
   但注意实现细节：\texttt{warp\_\allowbreak{}reduce\_\allowbreak{}md} 中的指数用的是快速数学
-  \texttt{\_\_expf}，与 safe 版的 \texttt{expf} 精度语义不同（见 4.7~节坑三），
+  \texttt{\_\_expf}，与 safe 版的 \texttt{expf} 精度语义不同（见 4.8~节坑三），
   两版输出逐位对比会有 $10^{-8}$ 量级差异，属预期现象（本章测试的一致性判定按此放宽）。
 \end{kaogu}
 
 \section{常见坑}
 
-\textbf{坑一：$N$ 传错语义，静默丢输出。}见 4.6~节勘误一：grid$(S)$ 且 $S>1$ 时
+\textbf{坑一：$N$ 传错语义，静默丢输出。}见 4.7~节勘误一：grid$(S)$ 且 $S>1$ 时
 必须传 $N = S \times H$，否则 block $1, \dots, S-1$ 整体被 \texttt{idx < N} 剪掉，
 输出缓冲残留旧值：不报错、不崩溃，纯静默。建议自测时先以 $S=2$ 跑一遍
 「输出缓冲先 memset 填充特定值」的检查。
@@ -530,7 +530,7 @@ launch 与同步的固定开销占比大；附录~B 的汇总口径会注明这�
   \draw[-{Latex}, dashed, draw=tkRed] (6.68,0.5) -- (7.75,0.5) -- (7.75,-1.35) -- (10.9,-1.35) -- (10.9,-0.88);
   \node[above, font=\tiny, text=tkRed] at (9.3,-1.33) {$\times$ 静默不写回};
 \end{tikzpicture}
-\caption{坑一「$N$ 传错语义」的静默丢输出：grid$(S{=}2)$、block$(H{=}256)$ 时正确应传 $N=S\times H=512$；若按「每 token 长度」错传 $N=256$，\texttt{idx < N} 守卫线落在 block 0/block 1 边界上，block 1 的全部线程（idx $256$–$511$，斜线格）被剪掉，token 1 的输出缓冲残留旧值——不报错、不崩溃（见 4.6~节勘误一）。}
+\caption{坑一「$N$ 传错语义」的静默丢输出：grid$(S{=}2)$、block$(H{=}256)$ 时正确应传 $N=S\times H=512$；若按「每 token 长度」错传 $N=256$，\texttt{idx < N} 守卫线落在 block 0/block 1 边界上，block 1 的全部线程（idx $256$–$511$，斜线格）被剪掉，token 1 的输出缓冲残留旧值——不报错、不崩溃（见 4.7~节勘误一）。}
 \label{fig:4-4}
 \end{figure}
 
@@ -627,7 +627,7 @@ C & softmax online          & 8.146e-09 & 1.0e-03 \\
 \end{table}
 
 判据：三版对 CPU fp64 参考的误差都在 $10^{-8}$ 量级（远小于 F32Acc 档 $10^{-3}$）；
-case~C 中 naive 输出 \texttt{NaN} 而 safe/online 与参考吻合，直观展示了 4.2~节的溢出界。
+case~C 中 naive 输出 \texttt{NaN} 而 safe/online 与参考吻合，直观展示了 4.3~节的溢出界。
 动手实验建议：（1）把 Case~A 的 scale 从 5 逐步调到 30，观察 naive 从正确到溢出的
 临界点；（2）把 launch 改成 $S=2$ 但只传 $N=256$，复现勘误一的静默丢输出；
 （3）bench 用 \texttt{.\allowbreak{}/\allowbreak{}build/\allowbreak{}ch04\_\allowbreak{}softmax bench} 自行复现表~\ref{tab:4-bench} 的数据。

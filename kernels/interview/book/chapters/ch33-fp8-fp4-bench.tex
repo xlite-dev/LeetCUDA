@@ -118,7 +118,7 @@ $\times$2.29：「3$\times$」的大头是参照低效（坑 6）。}
         （dense 0.15 / causal 0.70 vs fp8 的 0.05），拿错档的容差
         会把合格的实现误判为不合格；
   \item 只看均值不看 max 会漏掉 causal 早期行这类\textbf{结构性}
-        误差（第~\ref{ch:31}~章 31.7 节的 e2m1 噪声地板）；
+        误差（第~\ref{ch:27}~章 27.3.7 节的 e2m1 网格噪声）；
   \item 推理 bench 必须 \texttt{no\_grad}：grad-on 会强制走完整
         autograd 链（每调用多 $\sim$30$\mu$s Python 开销，
         \texttt{bench\_ms} 注释口径），测出的
@@ -126,7 +126,7 @@ $\times$2.29：「3$\times$」的大头是参照低效（坑 6）。}
 \end{itemize}
 
 \noindent{\footnotesize 注：本节与坑 3 的功耗墙频率（2932$\to$2445MHz）
-及顺序差（466--491$\mu$s）为写作期实测（2026-08，单卡 PRO 5000），
+及顺序差（466--491$\mu$s）为本机补充实测（2026-08，单卡 PRO 5000），
 原始 stdout 未随书归档。\par}
 
 \section{数学原理}
@@ -227,9 +227,9 @@ bench 输出三层指标，各有分工：
   \item \texttt{allclose(atol=tol, rtol=tol)}：CI 门禁布尔量，tol 按
         精度分档（\texttt{\_runner\_fwd.py} L413--419）：
         fp16/bf16-fp8 路径 5e-2，纯 fp16 2e-2；fp4 dense 0.15、
-        causal 0.70——依据是 e2m1 网格噪声地板（第~\ref{ch:31}~章
-        31.7 节：dense 实测 max\_abs $\approx$0.003 级，0.15 留出
-        约 50 倍余量；causal 尖峰行天然 0.5--0.75 级，0.70 按
+        causal 0.70——依据是 e2m1 网格噪声（第~\ref{ch:27}~章
+        27.3.7 节仿真：dense 绝对误差 $\approx$0.003 级，0.15 留出
+        约 50 倍余量；causal 尖峰行天然 0.5--0.75 级（第~\ref{ch:31}~章 31.7~节实测），0.70 按
         无 hybrid 抑制的地板量级取上界）。
 \end{itemize}
 读数规则：\textbf{速度看 min、能量看 rel\_err、结构看 max\_abs、
@@ -367,7 +367,7 @@ bench 脚本默认 preset，2026-09-21）：fp8 与 Sage2 总体打平、互有
 \begin{table}[!htbp]
   \centering\small
   \caption{本机 PRO 5000 fp4 复测（D=128，\texttt{bench\_fp4.py}，
-  2026-09-21，TFLOPS；Sage3 在 gqa 行缺席（不支持），其 causal 类行
+  2026-09-21，TFLOPS；Sage3 不支持 gqa，该行无数据，其 causal 类行
   rel\_err 达 0.57--0.59（早期行 e2m1 噪声无 hybrid 抑制），FFPA-FP4
   为 0.14--0.15）}\label{tab:33-pro5000-fp4}
   \begin{tabular}{lccccccc}
@@ -423,7 +423,7 @@ bench 脚本默认 preset，2026-09-21）：fp8 与 Sage2 总体打平、互有
   {\footnotesize $\dagger$ D=512 参照为 SDPA-MATH（FA2 只覆盖
   $D\le256$）；$\ast$ fp16 因已知 ESS causal 特性临界失败，bf16
   2.56x 通过（第~\ref{ch:30}~章 30.7.1 节定性）。self/causal 行与
-  第~\ref{ch:29}--\ref{ch:30}~章同一轮 bench（ch29 表~29.2）；gqa/cross 行为写作期实测
+  第~\ref{ch:29}--\ref{ch:30}~章同一轮 bench（第~\ref{ch:29}~章 29.6 节实测表）；gqa/cross 行为本机补充实测
   （2026-08，单卡 PRO 5000），原始 stdout 未随书归档。\par}
 \end{table}
 
@@ -464,7 +464,7 @@ bench 脚本默认 preset，2026-09-21）：fp8 与 Sage2 总体打平、互有
 
   \par\vspace{4pt}
   {\footnotesize self/causal 行取自第~\ref{ch:31}~章同轮 fp16 记录；
-  gqa/cross 行为写作期实测（2026-08，单卡 PRO 5000），原始 stdout
+  gqa/cross 行为本机补充实测（2026-08，单卡 PRO 5000），原始 stdout
   未随书归档。\par}
 \end{table}
 
@@ -497,9 +497,9 @@ fp4 比 fp8 快 1.64x（4.96 vs 8.13ms），对应第~\ref{ch:30}~章 dispatch
   \end{tabular}
 
   \par\vspace{4pt}
-  {\footnotesize 本表部分数值（int8/pv-f16 行）为写作期实测（2026-08，
+  {\footnotesize 本表部分数值（int8/pv-f16 行）为本机补充实测（2026-08，
   单卡 PRO 5000），原始 stdout 未随书归档；基线与 per-thread/smooth-v
-  行同表 33.1 口径。\par}
+  行同表 33.4 口径。\par}
 \end{table}
 
 读数：优势区里 kernel 主体是 QK+PV tensor pipe（占 77\%，第~\ref{ch:29}~
@@ -507,7 +507,7 @@ fp4 比 fp8 快 1.64x（4.96 vs 8.13ms），对应第~\ref{ch:30}~章 dispatch
 选择可以按需开，速度代价可忽略}（int8 QK 略慢是 s8 通路 scale 折叠
 多一层）。粒度 knob 则有真实方向：默认的 per-block 恰是最快档
 （量化 kernel 的向量化收益，第~\ref{ch:28}~章），升到 per-thread
-（Q/K）或 per-channel（V）各付 1.7--2.7\%，这就是精度换速度的真实代价。
+（Q/K）或 per-channel（V），粒度升级的净代价即这 1.7--2.7\%。
 smooth-v 略快（+1.0\%）是 V 值域压缩后 PV 溢出重缩放更少。knob 真正
 的杠杆在两端：causal 精度（hybrid）与大 D dispatch（第~\ref{ch:30}~
 章），不在优势区的数值通路。
@@ -519,7 +519,7 @@ self 场景 FFPA-FP4 523T（2.45x）$>$ Sage3 410T（1.92x）$>$
 FFPA-FP8 377T（1.77x）$>$ SDPA 213T；causal 场景 Sage3 的
 rel\_err 0.59/max 1.0（早期行 e2m1 噪声无 hybrid 抑制，
 \texttt{bench\_fp4.py} 头注释 L8--10 记录其量级 $\sim$1.2），FFPA
-的 fp4-hybrid 把 max 压到 0.28；GQA 场景 Sage3 直接缺席。fp8 侧
+的 fp4-hybrid 把 max 压到 0.28；GQA 场景 Sage3 未支持（无数据）。fp8 侧
 \texttt{bench\_fp8.py} 与 Sage2 总体打平互有胜负（多数 $\pm$1.5\% 内，
 最差 non-aligned-dense 8K FFPA 快 2.6\%），
 这正是 preset 公平化的结果：2026-08 之前 cachedit preset 默认开
@@ -529,7 +529,7 @@ PRO 5000（sm\_120）实测——\textbf{形态结论（谁快谁慢、随 D 怎
 走）跨设备可迁移，绝对数字不可}，引用这类比值时必须带上设备名。
 
 \noindent{\footnotesize 注：本节 Sage3 对照的 rel\_err/max\_abs（0.59/1.0
-与 0.28/0.14）为写作期实测（2026-08，单卡 PRO 5000），原始 stdout
+与 0.28/0.14）为本机补充实测（2026-08，单卡 PRO 5000），原始 stdout
 未随书归档。\par}
 
 \section{实践经验}
@@ -602,7 +602,7 @@ fp4，精度损失只在最敏感的位置修正。README 引用的 NeMo Automod
         交叉点、全 D 段 2x 级；fp8 在 D=256 有交叉点、大 D 靠
         split-D；
   \item 竞品对照的公平性：preset 对齐（hybrid/smooth-v 是功能
-        不是负担）、Sage3 的 GQA 缺席与 causal 噪声地板；
+        不是负担）、Sage3 对 GQA 未支持与 causal 噪声地板；
   \item 小 Q 场景（decode/cross）的 aux 链占比问题：量化收益的
         边界在哪里。
 \end{enumerate}
@@ -610,7 +610,7 @@ fp4，精度损失只在最敏感的位置修正。README 引用的 NeMo Automod
 \section{最小测试与动手实验}
 
 \begin{lstlisting}[style=console]
-# 实验 1：fp8 全 D 矩阵（表 33.1 口径）
+# 实验 1：fp8 全 D 矩阵（表 33.4 口径）
 export CUDA_VISIBLE_DEVICES=7 FFPA_CUDA_ALLOW_SMALL_D=1
 for D in 64 128 256 512; do
   python -m ffpa_attn.bench --fwd-backend cuda --cuda-impl fp8 \
@@ -618,14 +618,14 @@ for D in 64 128 256 512; do
 done
 # 预期：D=128 self 1.70x；D=512 参照为 MATH（注意归因）
 
-# 实验 2：fp4 全 D 矩阵（表 33.2 口径）
+# 实验 2：fp4 全 D 矩阵（表 33.5 口径）
 for D in 64 128 192 256; do
   python -m ffpa_attn.bench --fwd-backend cuda --cuda-impl fp4 \
     --tasks self-attn,causal,gqa,cross-attn --D $D --no-bwd --show-allclose
 done
 # 预期：16 格全绿；D=256 self 2.11x（对照 fp8 同点 1.30x）
 
-# 实验 3：knob 矩阵（表 33.3 口径，fp8 D=128 self）
+# 实验 3：knob 矩阵（表 33.6 口径，fp8 D=128 self）
 python -m ffpa_attn.bench --fwd-backend cuda --cuda-impl fp8 \
   --fp8-qk-mm-type int8 --tasks self-attn --D 128 --no-bwd
 python -m ffpa_attn.bench --fwd-backend cuda --cuda-impl fp8 \
@@ -633,7 +633,7 @@ python -m ffpa_attn.bench --fwd-backend cuda --cuda-impl fp8 \
   --tasks self-attn --D 128 --no-bwd
 # 预期：数值通路 knob 基线 ±2.3% 内；粒度升 per-thread -2.7%
 
-# 实验 4：竞品对照 + plot 落盘（图 33.3/33.4 口径）
+# 实验 4：竞品对照 + plot 落盘（表 33.2/33.3 口径）
 python bench/bench_fp8.py --dtype fp16   # 输出 bench/.tmp/*.png
 python bench/bench_fp4.py --dtype fp16
 # 预期：FFPA vs Sage 总体打平（最差差 2.6%）；fp4 causal 行
@@ -651,6 +651,6 @@ python bench/bench_fp4.py --dtype fp16
   \item \texttt{cli/\_runner\_fwd.py} L413--419（tol 分档依据）；
   \item ffpa-attn README「Performance / End-to-End Inference」节
         （Cache-DiT 集成入口）；
-  \item 瓶颈归因方法论见第~\ref{ch:28}--\ref{ch:30}~章（aux 链
+  \item 瓶颈归因方法见第~\ref{ch:28}--\ref{ch:30}~章（aux 链
         1.04TB/s、tensor pipe 77\%、dispatch 三分）。
 \end{itemize}

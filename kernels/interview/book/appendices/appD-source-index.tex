@@ -1,5 +1,5 @@
 % appD-source-index.tex — 附录 D 源码索引 v1（RFC-A.5）
-% permalink 基准 commit：6cd32de（tag v4.0.0，2026-09-17；anchors.yaml repo_commit）
+% permalink 基准 commit：6cd32de（tag v4.0.0，2026-09-17）；anchors.yaml 现为 repo_commit 3b52c5c、frozen_at 2026-09-29
 \chapter{源码索引}\label{app:D}
 
 正文关键代码段的完整实现入口。行区间与 \texttt{scripts/\allowbreak{}anchors.\allowbreak{}yaml} 冻结登记一致；
@@ -28,7 +28,7 @@ A & common.cuh 工具箱 & \href{https://github.com/xlite-dev/LeetCUDA/blob/6cd3
 第11 & hgemm mma.sync & \href{https://github.com/xlite-dev/LeetCUDA/blob/6cd32deca683d6c4aae2011988c9f4a35bc5f528/kernels/interview/hgemm.cuh#L3-L397}{hgemm.cuh L3--L397} \\
 第12 & hgemm swizzle & \href{https://github.com/xlite-dev/LeetCUDA/blob/6cd32deca683d6c4aae2011988c9f4a35bc5f528/kernels/interview/hgemm.cuh#L399-L716}{hgemm.cuh L399--L716}, \href{https://github.com/xlite-dev/LeetCUDA/blob/6cd32deca683d6c4aae2011988c9f4a35bc5f528/kernels/interview/common.cuh#L110-L348}{common.cuh L110--L348} \\
 第13 & WGMMA/TMA/mbarrier & \href{https://github.com/xlite-dev/LeetCUDA/blob/6cd32deca683d6c4aae2011988c9f4a35bc5f528/kernels/interview/hgemm.cuh#L1428-L1857}{hgemm.cuh L1428--L1857}, \href{https://github.com/xlite-dev/LeetCUDA/blob/6cd32deca683d6c4aae2011988c9f4a35bc5f528/kernels/interview/common.cuh#L350-L803}{common.cuh L350--L803} \\
-第14 & SM120 TMA+WS & \href{https://github.com/xlite-dev/LeetCUDA/blob/6cd32deca683d6c4aae2011988c9f4a35bc5f528/kernels/interview/hgemm.cuh#L1859-L2100}{hgemm.cuh L1859--L2100}, \href{https://github.com/xlite-dev/LeetCUDA/blob/6cd32deca683d6c4aae2011988c9f4a35bc5f528/kernels/interview/common.cuh#L462-L475}{common.cuh L462--L475} \\
+第14 & SM120 TMA+WS & \href{https://github.com/xlite-dev/LeetCUDA/blob/6cd32deca683d6c4aae2011988c9f4a35bc5f528/kernels/interview/hgemm.cuh#L1859-L2100}{hgemm.cuh L1859--L2100}, \href{https://github.com/xlite-dev/LeetCUDA/blob/6cd32deca683d6c4aae2011988c9f4a35bc5f528/kernels/interview/common.cuh#L467-L517}{common.cuh L467--L517} \\
 第15 & FA 原理（头注释） & \href{https://github.com/xlite-dev/LeetCUDA/blob/6cd32deca683d6c4aae2011988c9f4a35bc5f528/kernels/interview/flash_attn.cuh#L5-L110}{flash\_attn.cuh L5--L110} \\
 第16 & FA2 split-Q+MMA & \href{https://github.com/xlite-dev/LeetCUDA/blob/6cd32deca683d6c4aae2011988c9f4a35bc5f528/kernels/interview/flash_attn.cuh#L5-L790}{flash\_attn.cuh L5--L790} \\
 第17 & FA2 TMA+WS & \href{https://github.com/xlite-dev/LeetCUDA/blob/6cd32deca683d6c4aae2011988c9f4a35bc5f528/kernels/interview/flash_attn.cuh#L792-L1440}{flash\_attn.cuh L792--L1440} \\
@@ -45,12 +45,12 @@ A & common.cuh 工具箱 & \href{https://github.com/xlite-dev/LeetCUDA/blob/6cd3
 H & main $+$ CLI 总装 & bench/bench\_leetcuda.cu L1--L440 \\
 H & 基础算子 test 家族 & bench/base.cu L1--L730 \\
 H & 各级 GEMM test/bench & bench/sgemv.cu L1--L117, bench/sgemm.cu L1--L145, bench/hgemm.cu L1--L1187 \\
-H & FP8/FP4 GEMM test/bench/sweep & bench/fp8\_gemm.cu L1--L466, bench/fp4\_gemm.cu L1--L593 \\
+H & FP8/FP4 GEMM test/bench/sweep & bench/fp8\_gemm.cu L1--L466, bench/fp4\_gemm.cu L1--L594 \\
 H & FA1/2/3 $+$ persist-D test/bench & bench/flash\_attn.cu L1--L2695 \\
 H & split-D test/bench & bench/ffpa\_attn.cu L1--L415 \\
 H & 跨模块共享 check/bench 参照工具 & bench/utils.cu L1--L83 \\
-\multicolumn{3}{l}{\footnotesize 增补章（ch26b/ch26c/ch34/ch35）源码为本仓新增/追加区间（ffpa\_attn.cuh L643--L1306、} \\
-\multicolumn{3}{l}{\footnotesize fp8\_gemm.cuh L1--L958、集成辅助工具模块 .cu），随增补 commit 在 anchors.yaml 冻结} \\
+\multicolumn{3}{l}{\footnotesize 增补章（ch26b/ch26c/ch34--ch37）源码为本仓新增/追加区间（ffpa\_attn.cuh L643--L1306、} \\
+\multicolumn{3}{l}{\footnotesize fp8\_gemm.cuh L1--L958、fp4\_gemm.cuh L55--L1297、集成辅助工具模块 .cu），随增补 commit 在 anchors.yaml 冻结} \\
 \multicolumn{3}{l}{\footnotesize 以下 Part VI（第27--33 章）源码在 \texttt{ffpa-attn} 仓（commit \texttt{861d75e}），路径前缀以 \texttt{csrc/cuffpa/} 为主（bench 与 CLI 见第33章）} \\
 第27 & 量化注意力数学 & \href{https://github.com/xlite-dev/ffpa-attn/blob/861d75ee87824a14a9ebfe295d54c7dac3e3cabc/csrc/cuffpa/cute/fp8/fp8_pscale.cuh#L17-L37}{cute/fp8/fp8\_pscale.cuh L17--L37}, \href{https://github.com/xlite-dev/ffpa-attn/blob/861d75ee87824a14a9ebfe295d54c7dac3e3cabc/csrc/cuffpa/cute/fp8/fp8_pscale.cuh#L111-L138}{L111--L138} \\
 第28 & fp8 量化前处理链 & \href{https://github.com/xlite-dev/ffpa-attn/blob/861d75ee87824a14a9ebfe295d54c7dac3e3cabc/csrc/cuffpa/cute/fp8/smooth_k.cuh#L12-L84}{cute/fp8/smooth\_k.cuh L12--L84}, \href{https://github.com/xlite-dev/ffpa-attn/blob/861d75ee87824a14a9ebfe295d54c7dac3e3cabc/csrc/cuffpa/cute/fp8/quantize_fp8.cuh#L29-L201}{cute/fp8/quantize\_fp8.cuh L29--L201}, \href{https://github.com/xlite-dev/ffpa-attn/blob/861d75ee87824a14a9ebfe295d54c7dac3e3cabc/csrc/cuffpa/cute/hadamard.cuh#L1-L92}{cute/hadamard.cuh L1--L92} \\
@@ -62,8 +62,8 @@ H & 跨模块共享 check/bench 参照工具 & bench/utils.cu L1--L83 \\
 \bottomrule
 \end{longtable}
 
-基准 commit：LeetCUDA \texttt{6cd32de}（v4.0.0，2026-09-17 冻结）；
-Part VI 各章 ffpa-attn \texttt{861d75e}（2026-09-16 锚定）；Part V 两章
-（第~\ref{ch:34}、\ref{ch:35}）与增补章（ch26b/ch26c）为本仓新增区间，
+基准 commit：LeetCUDA \texttt{6cd32de}（v4.0.0，2026-09-17 冻结）；\texttt{anchors.yaml} 现为 repo\_commit \texttt{3b52c5c}、frozen\_at 2026-09-29；
+Part VI 各章 ffpa-attn \texttt{861d75e}（2026-09-16 锚定）；Part V 四章
+（第~\ref{ch:34}--\ref{ch:37}）与增补章（ch26b/ch26c）为本仓新增区间，
 随增补 commit 在 \texttt{anchors.yaml} 冻结。行号漂移由
 \texttt{verify\_\allowbreak{}anchors.\allowbreak{}py} 兜底：SHA256 + 首末行锚点双重校验。

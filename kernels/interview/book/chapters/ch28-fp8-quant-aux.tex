@@ -292,7 +292,7 @@ scale 的覆盖域，右侧放大一个 quad 看「为什么零 shuffle」。
      per-thread：精度贴近 per-token、消费成本贴近 per-block（SA2 的 fragment 对齐观察）};
 \end{tikzpicture}
 \caption{per-thread Q 量化的 64 槽位表与 quad 消费视角
-（\texttt{quantize\_\allowbreak{}fp8\_\allowbreak{}perthread\_\allowbreak{}q\_kernel}，28.3.2 节）。左：128 行量化块
+（\texttt{quantize\_\allowbreak{}fp8\_\allowbreak{}perthread\_\allowbreak{}q\_kernel}，28.3.4 节）。左：128 行量化块
 铺 $8\times8=64$ 个 scale——行维按 16 行一组粗分 8 组（粗边界），组内按行对
 $\{r,r+8\}$ 分 8 档灰度（行 $r$ 与 $r{+}8$ 同色），每个色块就是一个 scale 的
 覆盖域；写入下标 $g=(\text{seg\_row}/16)\cdot 8+\text{seg\_row}\bmod 8$。右上：放大一个
@@ -1062,7 +1062,7 @@ knob 化设计正是建立在这个落差上：精度敏感场景上调粒度，
         的数据排布决策，都值得在前处理期一次做完。
   \item \textbf{确定性优先于最后一档速度}：列均值用两阶段而非 atomics，牺牲的
         微小速度换来的是数值可复现——精度回归排查（第~\ref{ch:27}~章 27.3.8
-        节的 A/B 方法论）依赖这一点。
+        节的 A/B 对比方法）依赖这一点。
   \item \textbf{headdim 泛化在行组映射上}：$D=320/384/448$ 这类非整除组合的坑
         全在 \texttt{kRowsPerIter} 的映射细节（28.4.2~节）；新 headdim 接入要先
         验证这一映射。
