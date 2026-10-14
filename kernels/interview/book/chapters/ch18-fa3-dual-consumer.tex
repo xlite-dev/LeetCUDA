@@ -634,7 +634,7 @@ GEMM 以填满 Tensor Core。本 kernel 的 consumer 用\textbf{同步}的
         minimum width=1.7cm, minimum height=0.30cm, inner sep=0pt] at (2.8,-6.75) {};
   \node[font=\tiny, text=tkRed] at (2.8,-7.12) {TC 空转};
 \end{tikzpicture}
-\caption{双 consumer 的相位交错时序（18.4.6 节统计性交错的图形化）。上：WG1/WG2 各按「QK MMA $\to$ softmax $\to$ PV MMA $\to$ rescale」四段推进自己的 KV tile 子序列，两 WG 相位差 $1/4$ 周期——WG1 处于 MMA 段时 WG2 大概率处于 softmax/rescale 段；producer 的 TMA 全程并行，完成即 arrive-tx 翻转 \texttt{full[s]}。中：Tensor Core 与 CUDA Core/SFU 两条资源条被两路计算交替填满（同步 \texttt{mma.sync} 做不到 WG 内重叠，靠两路独立流在硬件调度器上统计性交错）。下：单 consumer（第~\ref{ch:17}~章形态）的对照——softmax 段 Tensor Core 只能空转，这正是第二个 consumer 要填补的空档。}
+\caption{双 consumer 的相位交错时序（18.4.5 节统计性交错的图形化）。上：WG1/WG2 各按「QK MMA $\to$ softmax $\to$ PV MMA $\to$ rescale」四段推进自己的 KV tile 子序列，两 WG 相位差 $1/4$ 周期——WG1 处于 MMA 段时 WG2 大概率处于 softmax/rescale 段；producer 的 TMA 全程并行，完成即 arrive-tx 翻转 \texttt{full[s]}。中：Tensor Core 与 CUDA Core/SFU 两条资源条被两路计算交替填满（同步 \texttt{mma.sync} 做不到 WG 内重叠，靠两路独立流在硬件调度器上统计性交错）。下：单 consumer（第~\ref{ch:17}~章形态）的对照——softmax 段 Tensor Core 只能空转，这正是第二个 consumer 要填补的空档。}
 \label{fig:18-dual-phase}
 \end{figure}
 
@@ -787,8 +787,7 @@ run 间波动内），而 \textbf{F32Acc 精度更优}：最大误差 1.526e-05 
   同一文件的另一处注释 L1643--1646 明确写着「K 优先于 V……先发 K
   让 consumer 尽早开始 QK, V 的 TMA 在 K 之后发出」，与代码一致。两处注释
   自相矛盾，L1606 是早期版本（V 先行）的残留。结论：以代码与 L1642--1646
-  为准，L1606 应读作「K first, then V」。已按源码冻结规则不回写，登记
-  CHECKLOG（本任务不改该文件，结论以本框注为准）。
+  为准，L1606 应读作「K first, then V」（结论以本框注为准）。
 \end{kaogu}
 
 \begin{kaogu}[F3·论证链补强]{merge scratch 的 alias 安全前提}
@@ -997,7 +996,7 @@ prefetch 目标从 $t+2$ 改成 $t+1$（Sk$=$2 时），观察数值立刻出错
         with Asynchrony and Low-precision》\\
         \url{https://arxiv.org/abs/2407.08608}\\
         （pingpong scheduling、warp specialization 与 FP8 的原始出处；本章
-        18.4.6~节与其对照，第~\ref{ch:15}~章 15.3.7~节有全代际梳理）；
+        18.4.5~节与其对照，第~\ref{ch:15}~章 15.3.7~节有全代际梳理）；
   \item @DefTruth《图解:从Online-Softmax到FlashAttention V1/V2/V3》\\
         \url{https://zhuanlan.zhihu.com/p/668888063}\\
         （split-KV 与 online rescale 的图示化推导，式~\ref{eq:18-merge} 的
@@ -1005,7 +1004,7 @@ prefetch 目标从 $t+2$ 改成 $t+1$（Sk$=$2 时），观察数值立刻出错
   \item @杨远航《Flash Attention 3 深度解析》\\
         \url{https://zhuanlan.zhihu.com/p/17533058076}\\
         （Hopper 上 producer/consumer 的微观时序、pingpong 与
-        intra-warpgroup overlapping 三层次对照；18.4.6~节「同步
+        intra-warpgroup overlapping 三层次对照；18.4.5~节「同步
         \texttt{mma.sync} 做不到 WG 内重叠」的结论正是相对该文方案而言）；
   \item NVIDIA PTX ISA §9.7.19.5（\texttt{setmaxnreg}）——池语义与
         \texttt{.inc} 阻塞行为的核验基准（本地镜像：cuda-cpp-kernel skill 的

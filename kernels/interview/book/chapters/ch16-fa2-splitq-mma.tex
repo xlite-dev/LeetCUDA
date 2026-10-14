@@ -424,7 +424,7 @@ padding 分析、第~\ref{ch:12}~章的 swizzle 是同一主题的三种解法�
      8 个访问被迫串行化；\\
      这就是「不 pad」的默认代价，pad$=$8 是三种解法中最省事的一种};
 \end{tikzpicture}
-\caption{pad$=$8 与不 pad 的 ldmatrix bank 相位对照（16.4.2 节 smem 三段布局中 pad 分析的图形化）。上：\texttt{kSmemStride}$=D{+}\mathrm{pad}=72$ half 时一行 144~B $=36$ bank 字，第 $r$ 行相对第 0 行整体错开 $36r \bmod 32 = 4r$ 个 bank；任一列 $c$（ldmatrix 同一相位读的 8 行）的起始 bank 为 $\{4r{+}4c\}$，取遍 32 个 bank 各一次——8 段 16~B 恰好铺满全部 bank，conflict-free。下：不 pad 时行距 128~B $=32$ bank 字，整周期回绕后 8 行起始 bank 全为 $4c$，同一相位的 8 段 16~B 压在同一组 4 个 bank 上串行化。格内数字为「该 16~B 段的起始 bank 号」，灰度按 bank 号每 4 个一档。}
+\caption{pad$=$8 与不 pad 的 ldmatrix bank 相位对照（16.4.1 节 smem 三段布局中 pad 分析的图形化）。上：\texttt{kSmemStride}$=D{+}\mathrm{pad}=72$ half 时一行 144~B $=36$ bank 字，第 $r$ 行相对第 0 行整体错开 $36r \bmod 32 = 4r$ 个 bank；任一列 $c$（ldmatrix 同一相位读的 8 行）的起始 bank 为 $\{4r{+}4c\}$，取遍 32 个 bank 各一次——8 段 16~B 恰好铺满全部 bank，conflict-free。下：不 pad 时行距 128~B $=32$ bank 字，整周期回绕后 8 行起始 bank 全为 $4c$，同一相位的 8 段 16~B 压在同一组 4 个 bank 上串行化。格内数字为「该 16~B 段的起始 bank 号」，灰度按 bank 号每 4 个一档。}
 \label{fig:16-bank-phase}
 \end{figure}
 
@@ -539,7 +539,7 @@ $K_{t+1}$ 则有整整一个迭代的余量。这与第~\ref{ch:11}~章 GEMM 的
   \node[anchor=east, font=\scriptsize, text=tkBlue!80!black] at (-0.12,-1.10) {搬运 $V$（3a）};
   \node[anchor=east, font=\scriptsize, text=tkGreen!80!black] at (-0.12,-1.70) {搬运 $K$（3a 预取）};
 \end{tikzpicture}
-\caption{\textbf{K 双缓冲、V 单级}的流水时序（16.4.5 节 3a 步）。三个稳态迭代 $t{-}1/t/t{+}1$：每个迭代内 3a 依次提交两组搬运——$V_t$（实心圆，写当前 V buffer）与 $K_{t+1}$（空心方，写 \texttt{smem\_sel\_next}）。$V_t$ 的在途窗口（蓝条）恰好覆盖同迭代的 3b（QK mma）与 3c（softmax）——softmax 全在 CUDA Core/SFU 上跑，掩盖了 V 的搬运延迟；$K_{t+1}$ 则有整整一个迭代的余量。两处等待：(1) 3d 前的 \texttt{wait\_group(1)} 只等 $V_t$，把 $K_{t+1}$ 留在途；(2) 迭代末（3e 之后）的 \texttt{wait\_group(0)} 等 $K_{t+1}$ 到齐才进下一轮 3b。与第~\ref{ch:11}~章 GEMM 的「kStages 全操作数统一多级」不同——attention 两段 mma 之间夹着一段非 mma 计算，天然提供了第二级的隐藏窗口，所以 \texttt{kStagesK}$=$2 就够（「one stage is enough for V」）。}
+\caption{\textbf{K 双缓冲、V 单级}的流水时序（16.4.4 节 3a 步）。三个稳态迭代 $t{-}1/t/t{+}1$：每个迭代内 3a 依次提交两组搬运——$V_t$（实心圆，写当前 V buffer）与 $K_{t+1}$（空心方，写 \texttt{smem\_sel\_next}）。$V_t$ 的在途窗口（蓝条）恰好覆盖同迭代的 3b（QK mma）与 3c（softmax）——softmax 全在 CUDA Core/SFU 上跑，掩盖了 V 的搬运延迟；$K_{t+1}$ 则有整整一个迭代的余量。两处等待：(1) 3d 前的 \texttt{wait\_group(1)} 只等 $V_t$，把 $K_{t+1}$ 留在途；(2) 迭代末（3e 之后）的 \texttt{wait\_group(0)} 等 $K_{t+1}$ 到齐才进下一轮 3b。与第~\ref{ch:11}~章 GEMM 的「kStages 全操作数统一多级」不同——attention 两段 mma 之间夹着一段非 mma 计算，天然提供了第二级的隐藏窗口，所以 \texttt{kStagesK}$=$2 就够（「one stage is enough for V」）。}
 \label{fig:16-kv-pipeline}
 \end{figure}
 
@@ -787,7 +787,7 @@ FA2 MMA Stages (Sk=2, SwizzleQ, F32Acc) & 1.526e-05 & 163.8/230.2 (0.71x) \\
 140.9$\to$163.5（$+16\%$），多一级 K 流水把 cp.async 的加载与
 mma 计算更好地重叠，掩盖了 $B_c$ 列 K tile 的装载延迟；（2）
 \textbf{F32Acc 在精度提升约 16 倍}（1.526e-05 vs 2.441e-04，f32
-vs f16 累加）\textbf{的同时速度反而更快}（同 Sk 下 $+10\%\sim11\%$），
+vs f16 累加）\textbf{的同时速度反而更快}（同 Sk 下 $+4.6\%\sim10.4\%$），
 与上文复测结论一致：省掉 3c/3e 的 half$\leftrightarrow$float
 整簇转换指令的收益大于 f32 累加器的寄存器开销；（3）\textbf{SwizzleQ}
 相对 Pad 的边际改善很小（163.8 vs 163.5，$+0.2\%$），大 $N$ 下

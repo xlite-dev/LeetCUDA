@@ -447,7 +447,7 @@ $[0,64)$，这就是 $\mathrm{ThrM}=4$、$\mathrm{atom}_M=16$ 的直接推论。
         Q/KV 的 smem 视图；$64\times64$ 的 tile 实测
         \texttt{cosize} $=4096$（与 $64\times64$ 个 half 一致，无空洞）；
   \item \texttt{Smem\allowbreak{}Layout\allowbreak{}Vt}：把 KV 的布局\emph{转置}成「$d$ 为行、$kv$ 为列」，
-        供 PV 的 B（$V^T$）使用，这是 ch19 讲过的「$V$ 以转置形态交给
+        供 PV 的 B（$V^T$）使用，这是第~\ref{ch:19}~章讲过的「$V$ 以转置形态交给
         MMA」的布局表达；
   \item \texttt{Mma\allowbreak{}Atom =\allowbreak{} MMA\_\allowbreak{}Atom\allowbreak{}<SM80\_\allowbreak{}16x8x16\_\allowbreak{}F32\allowbreak{}F16\allowbreak{}F16\allowbreak{}F32\_\allowbreak{}TN>}：
         F32 累加（attention 的数值要求），与 3.1 节的 fragment 一致；
@@ -1090,8 +1090,7 @@ ALL OK
 \begin{itemize}
   \item @竹熙佳处《写给大家看的 CuTe 教程：Tiled MMA》，
         \url{https://zhuanlan.zhihu.com/p/1937145378446226159}
-        （本计划的 ch22 主参考；素材清单标注「待核」，本章全部结论以
-        CUTLASS v4.6.1 头文件实测为准）；
+        （本章全部结论以 CUTLASS v4.6.1 头文件实测为准）；
   \item @reed《cute 之 MMA 抽象》，
         \url{https://zhuanlan.zhihu.com/p/663092747}
         （MMA\_Atom/MMA\_Traits 的设计动机与历史，读 3.1--3.2 节时对照）；

@@ -272,8 +272,8 @@ tile 的时间短于计算一个 tile 的时间，TMA 延迟就不会进入关�
 \end{equation}
 一个简洁的结论：\textbf{FA tile 级算术强度恰好等于 $B_r$}，与 $D$ 无关
 （$D$ 同时放大分子分母）。128 FLOP/B 在 SM120 上处于 roofline 拐点附近
-（fp16 Tensor $\sim$ 400 TFLOPS 量级对 GDDR7 $\sim$ 1.7 TB/s 量级，拐点
-$\approx$ 230 FLOP/B），所以\textbf{装载效率直接决定 FA 性能}。这正是
+（fp16 Tensor $\sim$ 400 TFLOPS 量级对 GDDR7 $\approx$ 1.34 TB/s（1344 GB/s）量级，拐点
+$\approx$ 300 FLOP/B），所以\textbf{装载效率直接决定 FA 性能}。这正是
 本章把装载交给专职的 TMA 执行流、并用 Sk 流水把它移出关键路径的动机；相邻 block
 共享 K/V tile 的 L2 复用（grid.y 方向同 (b,h) 的 $N/B_r$ 个 block 读同一份
 K/V）进一步抬升有效 AI。
@@ -812,8 +812,7 @@ $0.6\%$）。V 的单 buffer 消费已饱和，V tile 传输能被 QK $+$ softma
   static\_assert（L895--896）明确接受 64 与 128，swizzle\_fa（L859--870）、
   smem 占用表（L826--834 的 D$=$128 列）、P0/P1/P2 的 kTmaChunks 分支与
   bench/flash\_attn.cu 的 D$=$128 测试全部支持 128。该注释是 D$=$128 支持加入前的
-  残留，与 L842「v1 限制：kHeadDim=64 or 128」自相矛盾。已按源码冻结规则
-  不回写，登记 CHECKLOG（本任务不改该文件，结论以本框注为准）。
+  残留，与 L842「v1 限制：kHeadDim=64 or 128」自相矛盾（结论以本框注为准）。
 \end{kaogu}
 
 \begin{kaogu}[F1 核校通过]{「SM120 optin $\sim$100KB」与 smem 占用表}

@@ -42,7 +42,7 @@
 \text{一致的整型求值：} && \forall \bar{c} \in \Z_{\abs{\v{A}}}, \ \ \v{R}(\bar{c}) &= \v{A}(\bar{c}).
 \end{align}
 
-\texttt{coalesce} 运算通过把布局 $\v{A}$ 视作整数上的函数来“简化”它，并可能将其形状塌缩为更浅的表示。尽管这一过程可能丢失阶与层次信息、改变坐标集合、并合并 $\v{A}$ 的多个模，它保证布局作为整型坐标上的映射保持函数等价。
+\texttt{coalesce} 运算通过把布局 $\v{A}$ 视作整数上的函数来“简化”它，并可能将其形状塌缩为更浅的表示。尽管这一过程可能丢失阶与层次信息、改变坐标集合、以及合并 $\v{A}$ 的多个模，但它保证布局作为整型坐标上的映射保持函数等价。
 
 实践中说合并布局，通常指达到最小阶的那个。
 
@@ -67,7 +67,7 @@
 \text{函数复合性：} && \forall c \in \Z(\v{B}), \ \ \v{R}(c) &= \v{A}(\v{B}(c)).
 \end{align}
 
-在这个定义中，$\v{B}$ 通过定义 $\v{R}$ 的定义域来决定结果布局的形状与坐标集合，而 $\v{A}$ 决定 $\v{R}$ 的陪域。相容性条件保证 $\v{B}$ 的{\em 所有}坐标也都可用作 $\v{R}$ 的坐标。要使群复合与函数复合均可接纳，$\v{B}$ 的陪域必须与 $\v{A}$ 的定义域相容，这通常意味着 $\v{B}$ 的陪域是一组与 $\Z(\v{A})$ 中某个坐标集合同余的坐标。
+在这个定义中，$\v{B}$ 通过定义 $\v{R}$ 的定义域来决定结果布局的形状与坐标集合，而 $\v{A}$ 决定 $\v{R}$ 的陪域。相容性条件保证 $\v{B}$ 的{\em 所有}坐标也都可用作 $\v{R}$ 的坐标。要使群复合与函数复合均可容许，$\v{B}$ 的陪域必须与 $\v{A}$ 的定义域相容，这通常意味着 $\v{B}$ 的陪域是一组与 $\Z(\v{A})$ 中某个坐标集合同余的坐标。
 
 \wpssh{复合的性质（Composition Properties）}
 
@@ -113,7 +113,7 @@
 \wpssh{求值与限制（Evaluation and Restrictions）}
 \label{sec:composition_impl}
 
-群复合的求值可以由式~\eqref{eqn:idx2crd} 与式~\eqref{eqn:innerprod} 中的布局求值运算构造性地推导出来。在本节中，我们确定布局 $\v{A}$ 与 $\v{B}$ 上的一组可接纳性条件，它们是成功计算群复合所必需的。
+群复合的求值可以由式~\eqref{eqn:idx2crd} 与式~\eqref{eqn:innerprod} 中的布局求值运算构造性地推导出来。在本节中，我们确定布局 $\v{A}$ 与 $\v{B}$ 上的一组可容许性条件，它们是成功计算群复合所必需的。
 
 首先，我们要求 $\v{A}$ 与 $\v{B}$ 之间的函数相容性：$\v{B}$ 的陪域必须与 $\v{A}$ 的形状弱同余。最常见的情况是 $\v{B}$ 的陪域为整数，而由于所有布局 $\v{A}$ 都接受整型坐标，因此二者函数相容。更一般地，当 $\v{B}$ 产生坐标时，这些坐标必须与 $\Z(\v{A})$ 中的某个坐标同余。
 
@@ -402,9 +402,9 @@ D'_r &= D_r \cdot \delta_r,
 \begin{align*}
 \texttt{ThrValLayoutC:} \quad ((4,8),2):((16,1),8),
 \end{align*}
-表示，它充当从 $(\texttt{thread\_idx}, \texttt{value\_idx})$ 到 $8 {\times} 8$ 矩阵内一维坐标的映射。如图所示，出于人类可读性的考虑，图~\ref{fig:TVLayout} 实际上画出的是其逆：它展示的是从 $8 {\times} 8$ 矩阵内的二维坐标到 $(\texttt{thread\_idx}, \texttt{value\_idx})$ 二元组的映射。这个 {\tt ThrValLayoutC} 被视为 Ampere Tensor Core 指令的静态元数据，它是指令与硬件功能的内在属性；在 \CuTe 出现之前，它只能以指令集架构（ISA）中类似图~\ref{fig:TVLayout} 的图像来描述。
+表示，它充当从 $(\texttt{thread\_idx}, \texttt{value\_idx})$ 到 $8 {\times} 8$ 矩阵内一维坐标的映射。如图所示，出于人类可读性的考虑，图~\ref{fig:TVLayout} 实际上画出的是其逆：它展示的是从 $8 {\times} 8$ 矩阵内的二维坐标到 $(\texttt{thread\_idx}, \texttt{value\_idx})$ 二元组的映射。这个 {\tt ThrValLayoutC} 被视为 Ampere Tensor Core 指令的静态元数据，它是指令与硬件功能的内在属性；在 \CuTe 出现之前，它只能以指令集体系结构（ISA）中类似图~\ref{fig:TVLayout} 的图像来描述。
 
-任意 $8 {\times} 8$ 数据布局都可以通过与线程-值布局 {\tt ThrValLayoutC} 复合而被置换。每次复合都会产生一个与形状 $(32,2)$ 相容的布局，并定义 $(\texttt{thread\_idx}, \texttt{value\_idx})$ 与数据偏移之间的映射。例如，表~\ref{tab:TVLayoutExamples} 展示了若干数据布局经上述 {\tt ThrValLayoutC} 复合变换的例子。
+任意 $8 {\times} 8$ 数据布局都可以通过与线程-值布局 {\tt ThrValLayoutC} 复合来置换。每次复合都会产生一个与形状 $(32,2)$ 相容的布局，并定义 $(\texttt{thread\_idx}, \texttt{value\_idx})$ 与数据偏移之间的映射。例如，表~\ref{tab:TVLayoutExamples} 展示了若干数据布局经上述 {\tt ThrValLayoutC} 复合变换的例子。
 
 \begin{table}[ht]
 \centering
@@ -429,7 +429,7 @@ smem_tv     = composition(smem_data, tv_layout) # 复合：(Thr,Val) -> Offset
 smem_v      = smem_tv[thr_id, None]             # 按线程切片得到子张量
 copy(smem_v, rmem_data)                         # 拷贝到寄存器张量/数组
 \end{python}
-这一模式在 SIMD 编程中极为常见：每个处理元素接收某个父数据的一个对称划分。一般而言，\CuTe 把任意划分都定义为复合（置换和/或重塑形）之后再切片。如第~\ref{sec:slicing} 节所述，这种“复合-切片”模式把划分模式（{\tt ThrValLayoutC}）与实际切出的数据切片（以 {\tt thr\_id} 做的切片）分离开来。由于划分模式往往是指令或优化参数相关的编译期元数据，而切片是运行时的程序标识索引，这一模式更适合传播静态信息，运行时开销也更低。
+这一模式在 SIMD 编程中很常见：每个处理元素接收某个父数据的一个对称划分。一般而言，\CuTe 把任意划分都定义为复合（置换和/或重塑形）之后再切片。如第~\ref{sec:slicing} 节所述，这种“复合-切片”模式把划分模式（{\tt ThrValLayoutC}）与实际切出的数据切片（以 {\tt thr\_id} 做的切片）分离开来。由于划分模式往往是指令或优化参数相关的编译期元数据，而切片是运行时的程序索引，这一模式更适合传播静态信息，运行时开销也更低。
 
 \wpssh{逐模复合与分块器（By-mode Composition and Tilers）}
 \label{sec:tiler}

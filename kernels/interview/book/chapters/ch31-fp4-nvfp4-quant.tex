@@ -5,7 +5,7 @@
 \section{本章导读}
 
 第~\ref{ch:27}--\ref{ch:29}~章建立了量化注意力的数学与 fp8 实现链。
-本章把数据格式推到极限：4 bit。NVFP4 不是「把 fp8 的量化代码换个
+本章把数据格式降到 4 bit。NVFP4 不是「把 fp8 的量化代码换个
 dtype」：e2m1 只有 2 bit 指数 + 1 bit 尾数，可表示值只有
 $\{0,\pm0.5,\pm1,\pm1.5,\pm2,\pm3,\pm4,\pm6\}$，相对步长约 25\%（fp8 e4m3
 是 6.25\%）。在这样的格式上做出可用的 attention，靠的不是数据格式本身，
@@ -655,7 +655,7 @@ NVFP4 的 $1\times16$ microscaling 块如何配平 e2m1 与 ue4m3 两级尺度�
     \node[draw=tkOrange, fill=tkFillOrange, line width=0.5pt, minimum width=2.93cm, minimum height=0.86cm, inner sep=1pt, align=center, text width=2.86cm, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkOrange!75!black} }] at (5.313,-1.571) {PV MMA\\A 操作数布局};
     \node[draw=tkRed, fill=tkFillRed, line width=0.5pt, minimum width=4.00cm, minimum height=0.86cm, inner sep=1pt, align=center, text width=3.94cm, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkRed} }] at (9.178,-1.571) {列错位 $\to$ 不搬 P\\改搬 K（SA3 \S{}3.3）};
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (11.858,-1.324) {fp8 的对照解法：16 SHFL + 32 PRMT 搬 P};% w=5.544
-    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (11.858,-1.663) {（reorg-free：第 \ref{ch:27} 章）；fp4 换成搬 K 列};% w=5.544
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (11.858,-1.663) {（reorg-free：第 \ref{ch:29} 章）；fp4 换成搬 K 列};% w=5.544
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (0.37,-2.31) {置换 fused 进 K/V$^{\top}$ 量化 kernel 写侧：存储列 j $\leftarrow$ 原 token $\pi$(j)};% w=10.780
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{6.1}{7.7}\selectfont \bfseries }] at (0.37,-2.834) {(2) 32 列窗口内的双射 $\pi$（跨窗口恒等；闭式 $\pi$(j) = (j\&\textasciitilde{}31) + (loc/8)$\cdot$2 + ((loc\%8)/2)$\cdot$8 + loc\%8）};% w=17.094
     \node[anchor=east, inner sep=0pt, align=right, font={\fontsize{5.2}{6.6}\selectfont \bfseries }] at (2.372,-3.357) {存储列 j：};% w=2.002
@@ -813,7 +813,7 @@ MXFP8 PV 变体（$V^\top$ 走 e4m3 + ue8m0/32，精度更高）付出 37.7\%
 \end{table}
 
 三个观察：(1) fp4 的 e2e 加速比区间（1.2--2.1x）整体高于同机 fp8
-persist-D（第~\ref{ch:29}~章表 29.2 的 1.26--1.70x），来源不在 MMA
+persist-D（第~\ref{ch:29}~章 29.6 节实测表的 1.26--1.70x），来源不在 MMA
 吞吐（blockscale mxf4nvf4 的吞吐只与 fp8 dense 相当），而在
 \textbf{带宽}：K/V/SF 的字节数减半以上，memory-bound 的 attention
 直接受益（skill §6.6：attn kernel 本身快 $\sim$23\%）。(2) D=192 的

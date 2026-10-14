@@ -9,9 +9,9 @@
 
 \section{本章导读}
 
-前十九章的 kernel 都是「手写地址算术」的产物：自己在 gmem 上算 $(m,k)$ 的偏移，
-自己在 smem 上做 XOR swizzle，自己拼 ldmatrix 的 lane 地址，自己在 epilogue 里
-用 \texttt{\_\_shfl\_sync} 把 fragment 拼回连续向量。这套做法在第~\ref{ch:11}、
+前十九章的 kernel 都是「手写地址算术」的产物：gmem 上算 $(m,k)$ 的偏移、
+smem 上做 XOR swizzle、拼 ldmatrix 的 lane 地址、epilogue 里用 \texttt{\_\_shfl\_sync}
+把 fragment 拼回连续向量。这套做法在第~\ref{ch:11}、
 \ref{ch:12}~章把 HGEMM 做到了 122 TFLOPS 量级，但它的知识结构是「散」的：
 同一组形状与步长的事实，以五种不同的写法散落在 kernel 的五个角落。Part~IV
 换一种做法：把 \textbf{(Shape, Stride) 提升为一等的数学对象}，用代数运算
@@ -112,7 +112,7 @@ CuTe 先把 $x$ 按 colex 序分解回坐标
 \end{equation}
 再代入式~\eqref{eq:20-linear}。这个分解只用到 shape、与 stride 无关，
 @竹熙佳处在教程里特别提示过这是初学时最容易卡住的一点。于是「$f$ 在坐标
-上」与「$f$ 在线性索引上」是同一个函数（用映射语言说：线性索引与坐标只是
+上」与「$f$ 在线性索引上」是同一个函数（等价地说：线性索引与坐标只是
 同一个函数的两种输入写法）。注意 $f(x)$ 一般\emph{不}单调：colex 进位时
 $x\to x+1$ 同时改变两个坐标（低位复位、高位 $+1$），offset 增量
 $d_{i+1}-d_i(s_i-1)$ 可为负：$(2,3){:}(3,1)$ 的 offset 序列是
@@ -128,7 +128,7 @@ $0,3,1,4,2,5$，row-major 的 $(4,8){:}(8,1)$ 也有 $f(3)=24>f(4)=8$；只有
   \mathrm{cosize}(f) = 1 + \sum_i d_i (s_i - 1) .
   \label{eq:20-size-cosize}
 \end{equation}
-用映射语言说：size 是定义域的元素个数；cosize 是值域的上界，$1+\sum
+其中 size 是定义域的元素个数，cosize 是值域的上界，$1+\sum
 d_i(s_i-1)$ 恰为「最大偏移加一」。当 $\mathrm{cosize}=\mathrm{size}$ 时称
 布局是 \textbf{compact}（无空洞、双射）；否则有「孔洞」（padding/skip）。
 这个区分在 kernel 里很重要：CuTe 里 padding 后的一行 smem 就是一个带孔洞的
@@ -359,7 +359,7 @@ register 上，这是一份划分同时服务三种内存的关键。
 
 \textbf{场景二：swizzle 消 bank conflict。}\allowbreak{}swizzle 是
 offset$\to$offset$'$ 的映射。对一块 smem 布局做 swizzle 后，访问链变成
-$(m,n)\to\mathrm{offset}\to\mathrm{offset}'$：用映射语言说，这是在原函数
+$(m,n)\to\mathrm{offset}\to\mathrm{offset}'$：这相当于在原函数
 外面\textbf{再叠一层 swizzle 函数}，所以源码里 swizzle 总是出现在
 \texttt{composition} 的第一个参数位置（A 的位置，见 4.1 节的
 \texttt{SmemLayoutA} 定义）。这样后续代码仍按正常 $(m,n)$ 坐标写字，物理
@@ -519,7 +519,7 @@ $T$ 自己（tile 内布局），第二个是补空间（tile 索引）；整个
 rest 分量)」两个 mode；\texttt{tiled\_\allowbreak{}divide}/\texttt{flat\_divide}
 则是把 rest 分量展平的变体。
 
-来看本章最核心的实测（测试 case F）。取 $L=(8,8){:}(1,8)$（col-major 的
+本节给出一条逐点实测（测试 case F）：取 $L=(8,8){:}(1,8)$（col-major 的
 $8\times8$ 逻辑矩阵）、$T=(4,4){:}(1,8)$（与 $L$ 同 stride 族的 $4\times4$
 tile）：
 \begin{equation}
@@ -684,7 +684,7 @@ hgemm.cuh~L1073 的 \texttt{group\_\allowbreak{}modes\allowbreak{}<1,\allowbreak
 语义一致。
 \end{sloppypar}
 
-\subsection{运算一览与 hgemm 的落地位置}
+\subsection{运算一览与 hgemm 的对应位置}
 
 \begin{table}[htbp]
 \centering
@@ -750,7 +750,7 @@ MMA mode，于是 C 的「相邻两列」在 A 的坐标系里成了「K 向相�
   \mathrm{Layout}_C^{A} &\leftarrow \mathrm{Layout}_C \circ a
     && (x_a,y_a) \to \cdots \to \mathrm{offset}_C \label{eq:20-fa2-reed3}
 \end{align}
-用映射语言说：第一步把输入输出对调，第二步把 A 的坐标经 offset 换到 C 的
+三步的读法：第一步把输入输出对调，第二步把 A 的坐标经 offset 换到 C 的
 坐标系，第三步沿 C 的映射读回 offset。这也是 4.3 节「inverse 要配
 \texttt{with\_shape} 才有语义」的完整实例：单独一次
 \texttt{left\_\allowbreak{}inverse} 的结果没有形状语义，复合上目标布局它才成为可用的
@@ -1392,7 +1392,7 @@ $30{,}720$ 点 v1/v2 等价性结论互相印证：\textbf{声明式的 Swizzle 
 「$\sim$200 行」、CuTe 版「$\sim$80 行」。实测去注释非空行：手写 swizzle
 kernel（L434--716）235 行；CuTe kernel 本体（L821--1196）118 行，另有 launch
 wrapper（L1216--1427）86 行。所以「$\sim$80 行」低估了 CuTe kernel 本体的物理
-规模；真正成立的结论是\textbf{CuTe 版 kernel 里没有一行地址算术}：手写版用
+规模；实测支持的结论是\textbf{CuTe 版 kernel 里没有一行地址算术}：手写版用
 \texttt{LDMATRIX\_X4}/\texttt{LDMATRIX\_X2}/\texttt{HMMA16816} 宏直接编排 PTX
 与 lane 地址，CuTe 版的内联汇编为 0，地址全部由 layout 类型在编译期推出来。
 绝对性能的端到端对照（TFLOPS）在第~\ref{ch:24}~章给出，本章不展开。
@@ -1420,8 +1420,7 @@ Layout\allowbreak{}Right\{\})} 或显式给 stride。
 
 \textbf{坑三：divide 的 tile 必须与目标 layout 同 stride 族。}
 $L=(8,8){:}(1,8)$ 上用 compact tile $(4,4){:}(1,4)$，得到的不是 $4\times4$
-方块而是 16 个连续 offset 的条带（4.5 节反例）。判别方法：检查
-$T$ 的 stride 是否等于 $L$ 在对应方向上的 stride（本例应为 $(1,8)$）。
+方块而是 16 个连续 offset 的条带。判别法与反例见 4.5 节实践须知。
 
 \textbf{坑四：\texttt{right\_\allowbreak{}inverse} 对非满值域 layout 会静默退化。}
 值域含空洞（如 stride 2）时返回平凡右逆 $(1){:}(0)$，不报错。判断标准：
@@ -1518,15 +1517,13 @@ A 线性化（coord 与整数两种形式，128 断言）；B compose（14）；
 折叠证明）；H Swizzle 复合（258，位公式逐点核对与 codomain 双射）。合计
 \textbf{890 个断言}。
 
-运行命令（在 \texttt{book/tests/} 下；注意 \texttt{build\_\allowbreak{}tests.\allowbreak{}sh} 当前
-算出的 CUTLASS include 路径为
-\texttt{kernels/}\allowbreak\texttt{third-party/\allowbreak{}}\allowbreak\texttt{cutlass/\allowbreak{}include}，
-该目录不存在，故用 nvcc 的 \texttt{NVCC\_\allowbreak{}PREPEND\_\allowbreak{}FLAGS} 补上真实路径）：
+运行命令（在 \texttt{book/tests/} 下；\texttt{build\_\allowbreak{}tests.\allowbreak{}sh} 的
+\texttt{INCLUDES} 已含仓库根的 \texttt{third-party/\allowbreak{}cutlass/\allowbreak{}include}，
+直接运行即可）：
 
 \begin{lstlisting}[style=console]
 cd kernels/interview/book/tests
-NVCC_PREPEND_FLAGS="-I<repo>/third-party/cutlass/include" \
-  CUDA_VISIBLE_DEVICES=6 ./build_tests.sh --arch sm_120a --ch ch20
+CUDA_VISIBLE_DEVICES=6 ./build_tests.sh --arch sm_120a --ch ch20
 \end{lstlisting}
 
 本机运行输出（RTX PRO 5000，CUDA 13.2，CUTLASS v4.6.1，2026-09-11）：

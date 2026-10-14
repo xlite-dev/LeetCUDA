@@ -796,7 +796,7 @@ QK 段（L217--270）是整个 kernel 最能体现「循环结构 vs 类型」�
 
 这段的每一行都值得对照第~\ref{ch:25}~章实现 1 的 softmax 段读：两者
 几乎逐字相同，因为 FFPA 复用同一套「rowcol 视图 + 4-lane \texttt{shfl\_xor}
-归约」的配方。其中三处是 FFPA 特有的：
+归约」的做法。其中三处是 FFPA 特有的：
 
 \begin{itemize}[itemsep=2pt,topsep=2pt]
   \item \texttt{scores} 是 \(S\) 的 rowcol 视图，\texttt{scores\allowbreak{}(row,\allowbreak{}col) =\allowbreak{} p}
@@ -947,7 +947,7 @@ rescale 的操作对象是 \texttt{tCrO} 的 rowcol 视图：行方向乘
   \node[tx] at (10.40,-4.92) {ns 视图按需取，不常驻全量};
   \node[tx, text width=15.0cm] at (0,-5.35)
     {S、P、O 全程在寄存器：smem 只承载 Q/K/V 的 chunk 流水——这就是「split-D」把 softmax
-     从两遍访存变成一遍寄存器更新的代价结构};
+     从两遍访存变成一遍寄存器更新的代价所在};
 \end{tikzpicture}
 \caption{双 TiledMma 的数据流：QK 沿 $D$ 累加成 $S$（32 寄存器跨 chunk
 存活），softmax 就地覆盖为 $P$，Aregs 重解释后交给 PV；$O$ 的每个 chunk

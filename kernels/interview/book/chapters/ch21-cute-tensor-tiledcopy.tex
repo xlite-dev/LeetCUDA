@@ -153,7 +153,7 @@ $(m,n)$ 坐标能落到 gmem/smem/reg 三种内存」的原因：换 engine，la
     (194,386) -- (194,400) -- (944,400) -- (944,388);
   \draw[-{Stealth[length=2mm]}, tkBlue, dashed, thick] (730,358) -- (748,358);
 \end{tikzpicture}
-\caption{Tensor 的两段结构：layout 把坐标映成偏移，engine 把偏移映成数据。同一个 layout 换不同 engine（gmem/smem/rmem/identity）就得到服务不同内存的 Tensor——这是第~\ref{ch:20}~章「布局与内存解耦」的落地方式。}
+\caption{Tensor 的两段结构：layout 把坐标映成偏移，engine 把偏移映成数据。同一个 layout 换不同 engine（gmem/smem/rmem/identity）就得到服务不同内存的 Tensor——这是第~\ref{ch:20}~章「布局与内存解耦」在 Tensor 上的体现。}
 \label{fig:21-1}
 \end{figure}
 
@@ -534,7 +534,7 @@ $\mathrm{upcast}_2\bigl(\mathrm{Swizzle}_{3,3,3}\circ L\bigr) =
 
 \subsection{kernel 骨架：Tensor 与 local\_tile}
 
-先看 hgemm CuTe 版 kernel 的开头，即式~\eqref{eq:21-tensor} 的落地：
+先看 hgemm CuTe 版 kernel 的开头，即式~\eqref{eq:21-tensor} 的实例：
 
 \lstinputlisting[linerange={821-839},firstnumber=auto,breakatwhitespace=true,
   title={hgemm.cuh L821-839（kernel 入口：模板参数、smem 与 CTA 级边界）}]{../hgemm.cuh}
@@ -573,7 +573,7 @@ fragment 布局本来就规定了每个线程持有哪些元素，S$\to$R 只是
 smem 搬到寄存器」而已（第~\ref{ch:22}~章会看到 \texttt{get\_\allowbreak{}layout\allowbreak{}A\_\allowbreak{}TV} 的
 构造过程）。对 hgemm 配置实测（CUTLASS v4.6.1）：
 $\mathrm{tile\_size} = (32,32,16)$，于是 A/B 拷贝的 Tiler $=(32,16)$、
-C 拷贝的 Tiler $=(32,32)$；后者恰好等于 SmemLayoutC 的
+C 拷贝的 Tiler $=(32,32)$；后者等于 SmemLayoutC 的
 $(k_{\mathrm{MmaPM}}, k_{\mathrm{MmaPN}}) = (32,32)$，这正是 kernel 注释
 （hgemm.cuh~L1355--1356）声称的「恰好匹配」，逐项核对成立。
 

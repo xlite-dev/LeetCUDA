@@ -705,7 +705,7 @@ $D\ge768$ 时 M4N2 快 $+7\%@768$、$+11\%@896$、$+55\%@1024$。劣化一侧
 \subsection{roofline 视角}
 
 fp8 split-D 在 $D=512$ 的 203T 大约是 fp8 persist-D 峰值（365T，
-表~29.2）的 56\%。差距的构成：$O$ 累加器随 $D$ 翻倍的寄存器开销
+第~\ref{ch:29}~章 29.6 节实测表）的 56\%。差距的构成：$O$ 累加器随 $D$ 翻倍的寄存器开销
 （occupancy 1 CTA）、chunk 循环多出的 barrier 握手、以及 epilogue
 批量 staging 的 smem 往返。这并不构成 split-D 的失败：绝对吞吐仍高于
 fp16 家族同 $D$ 量级，带宽侧（1B/元素）更是 3.76x speedup 的直接

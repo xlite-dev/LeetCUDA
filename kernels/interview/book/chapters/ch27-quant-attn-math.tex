@@ -305,7 +305,7 @@ shuffle} 使用（每 lane 持有的 8 个 A 元素共享一个 scale，scale �
   \node[leg] at (0.8,-4.6)
     {读法（灰度 = 同一个 scale 的覆盖域）：per-thread 的行 $r$ 与 $r{+}8$ 同色——
      行对 $\{r,r{+}8\}$ 共享一个 scale，恰与 $m16n8$ C-fragment 的行对对齐
-     （第~\ref{ch:28}~章 28.3.2 节展开的 64 槽位表）；per-row 为 16 档线性渐变示意
+     （第~\ref{ch:28}~章 28.3.4 节展开的 64 槽位表）；per-row 为 16 档线性渐变示意
      128 行；per-16 每行一个 $1\times16$ microblock（细纹示意块内 16 元素共享一个 SF）。};
 \end{tikzpicture}
 \caption{量化粒度谱系五列网格（表~\ref{tab:27-granularity} 的视觉化，缩略网格为

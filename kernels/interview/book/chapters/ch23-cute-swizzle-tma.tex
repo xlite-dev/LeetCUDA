@@ -39,7 +39,7 @@ hgemm.cuh L1859--2100（宏块 \texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENAB
 断言程序：它把本章的全部公式（位级 XOR、chunk 置换、复合语义、
 \texttt{tile\_\allowbreak{}to\_\allowbreak{}shape} 的重复规律、SW128 atom 的物理排布）逐条与 CuTe 的
 布局求值结果做数值对照。这些断言与 sm\_120a 上实测的 TMA 硬件行为一致
-（该实测脚本不进入书稿测试集，只在测试 case E 的硬件对照里引用）。
+（对照数据见测试 case E 的硬件对照）。
 
 \section{问题与动机}
 
@@ -246,13 +246,13 @@ warp 内不一致的延迟。硬件能把 swizzle 做进 TMA 与 \texttt{ldmatri
 
 \begin{table}[htbp]
 \centering
-\caption{三个标准档位与 TMA 硬件模式、ch12 手写版的对应关系
+\caption{三个标准档位与 TMA 硬件模式、第~\ref{ch:12}~章手写版的对应关系
 （周期 $=2^{M+S+B}$ 字节，$2^M$ 字节 $=16$\,B $=8$ 个 fp16；末行
 \texttt{<3,3,3>} 为元素口径，周期 $512$ 个元素折算 $1024$\,B）。}
 \label{tab:23-modes}
 \begin{tabular}{cccccc}
 \toprule
-$B$ & $M$ & $S$ & 周期（字节） & TMA descriptor 模式 & ch12 手写版 \\
+$B$ & $M$ & $S$ & 周期（字节） & TMA descriptor 模式 & 第~\ref{ch:12}~章手写版 \\
 \midrule
 1 & 4 & 3 & 256  & \texttt{SWIZZLE\_32B}  & \texttt{swizzle<16>} \\
 2 & 4 & 3 & 512  & \texttt{SWIZZLE\_64B}  & \texttt{swizzle<32>} \\
@@ -325,7 +325,7 @@ R = \texttt{comp}\big(\text{Swizzle},\ \text{Offset},\ \text{Layout}\big),
 \end{equation}
 
 注意式~\eqref{eq:23-comp} 的自变量是\textbf{坐标}，而 Swizzle 作用在
-\textbf{偏移量}上，中间隔着一次 \texttt{Layout} 求值。概括为一条工程直觉：
+\textbf{偏移量}上，中间隔着一次 \texttt{Layout} 求值：
 \textbf{坐标体系不用变，物理地址已经换了，之后的代码无需改动}。
 仍用 $(r,c)$ 问「第 $r$ 行第 $c$ 列在哪」，布局会换算成被置换过的
 物理 offset；读写两侧只要用同一个布局别名，改写永远自洽。hgemm.cuh 的
@@ -374,8 +374,8 @@ phase 不一致，读出来就是错的。本章测试里有一条\textbf{刻意
 裸求值把字节口径的 \texttt{Swizzle\allowbreak{}<3,\allowbreak{}4,\allowbreak{}3>} 直接作用在元素偏移上（缺了
 fp16 元素到字节的 $\times2$ recast），\texttt{YYY} 取到的是元素偏移的
 bit$[7,10)$ 而非字节偏移的 bit$[7,10)$，仅当行号满足
-$r\bmod 16\in\{0,2,4,6\}$（与列无关，恰为 $1/4$ 的行，两种口径取到的
-XOR 位段在这些行上恰好一致）时两者巧合相等，$1024/4096$ 正是这个规则的
+$r\bmod 16\in\{0,2,4,6\}$（与列无关，占 $1/4$ 的行）时，两种口径取到的
+XOR 位段相同、结果相等，$1024/4096$ 正是这条规则的
 命中率（数值模拟 64 行 $\times$ 64 列逐点核对）。补上 recast、按正确字节口径
 求值，分块布局同样 $4096$ 点全部命中。基址对齐为什么是硬约束见
 图~\ref{fig:23-phase-align}。
@@ -970,8 +970,8 @@ chunk 下标；蓝底行 $r=1/2/4$ 给出 chunk $c_0$ 落点翻转 $1/2/4$ 地�
 \section{性能分析}
 
 本章没有为 CuTe swizzle 单独建 bench（Phase~7c 的数据由 \texttt{bench/bench\_leetcuda.cu}
-的 \texttt{--bench} 统一采集；端到端性能对照见 \texttt{.\allowbreak{}tmp/\allowbreak{}book-bench}，
-其它章的复测汇总）。这里只给三条可核验的定量结论：
+的 \texttt{--bench} 统一采集；端到端性能对照见第~\ref{ch:14}、\ref{ch:24}~章）。
+这里只给三条可核验的定量结论：
 
 \textbf{(1) bank conflict 的消除是「块级」的。} 一个 16 B chunk 占 4 个
 bank（128 B $=$ 32 个 4 B bank）。式~\eqref{eq:23-chunk} 保证同一列块
@@ -1006,7 +1006,7 @@ N_{\text{tx}} = (B_M\!\cdot\!B_K + B_N\!\cdot\!B_K)\times
 \item \textbf{拿复合布局当偏移公式。} 带 swizzle 的
 \texttt{Composed\allowbreak{}Layout} 求值是「位置无关」的，TMA 硬件是「位置相关」的：
 同一个逻辑坐标在两个语义下可以指向不同物理地址。要么全用布局
-（\texttt{make\_tensor}/\texttt{Tensor}），要么全用公式（ch12 的
+（\texttt{make\_tensor}/\texttt{Tensor}），要么全用公式（第~\ref{ch:12}~章的
 \texttt{swizzle<>}），\textbf{混用必错}。
 \item \textbf{基址对齐不够。} TMA smem 基址必须 1024 B 对齐
 （\texttt{\_\allowbreak{}\_\allowbreak{}align\_\allowbreak{}\_\allowbreak{}(1024)}）；128 B 对齐在 WGMMA 路径够用，

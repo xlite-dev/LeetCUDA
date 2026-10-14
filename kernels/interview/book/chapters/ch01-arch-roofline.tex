@@ -185,7 +185,7 @@ base.cuh L16--21 给出了 H100 参考下的带宽数量级：HBM3 约 3.35 TB/s
 \end{figure}
 
 这张图给出 GPU 编程的一条基本规律：\textbf{数据每上移一层，带宽就高一级；
-kernel 优化的本质就是让数据尽量驻留在高层级}。ch02 让归约的中间量全部驻留寄存器
+kernel 优化就是让数据尽量驻留在高层级}。ch02 让归约的中间量全部驻留寄存器
 （warp shuffle），ch09--12 用 tiling 把矩阵块搬进 smem 复用，ch13--14 用
 TMA+Warp Specialization 把「搬运」与「计算」解耦成流水线，走的都是同一条路。
 
@@ -459,8 +459,8 @@ TMA）属于 Part II 后半与 Part III/IV。读到这里建议翻回本表：�
 \section{图示}
 
 图 ch01-1（内存层级金字塔）与图 ch01-2（Roofline 示意）已分别在
-\S\ref{sec:ch01-sm} 与 \S\ref{sec:ch01-math} 给出 ASCII 占位版，二者将随
-RFC-H 升级为正式图（FIG-1-1、FIG-1-2）。这里补充一张「一次 HBM 读的全程」，
+\S\ref{sec:ch01-sm} 与 \S\ref{sec:ch01-math} 给出正式版。
+这里补充一张「一次 HBM 读的全程」，
 把本章的概念串成时间线：
 
 \begin{figure}[htbp]

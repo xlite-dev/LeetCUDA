@@ -50,7 +50,7 @@ stride，代价是浪费 smem、且破坏 16\,B 对齐粒度；XOR swizzle 用�
 多个 $k_{\mathrm{step}}$ slice；若只有一套 fragment 寄存器，每个 slice 都要
 「ldmatrix 等 smem $\to$ MMA 等寄存器」顺序执行，lsu 与 tensor core 交替空转。
 寄存器双缓冲让「加载 slice $t{+}1$」与「用 slice $t$ 计算」同周期进行：它是
-smem 双缓冲（盖 gmem 延迟）之下的第二级流水，两者分工明确。
+smem 双缓冲（掩盖 gmem 延迟）之下的第二级流水，两者分工明确。
 
 \textbf{瓶颈三：grid 光栅化把 L2 复用摊薄（调度层）。}\allowbreak{}CUDA block 的分发顺序是
 $x$ 最快、$y$ 次之。C tile 网格 $T_m\times T_n$ 若按默认光栅铺开，同时在飞（in-flight）的
@@ -190,7 +190,7 @@ XOR swizzle 的想法：\textbf{在写入 smem 时就把 chunk 的物理位置�
   \texttt{swizzle\allowbreak{}<16>\allowbreak{}(i,\allowbreak{}j)} = \Bigl(\bigl((j{\gg}3)\oplus(i{\gg}2)\bigr)\And 1\Bigr)\ll 3 .
   \label{eq:12-xor-v1}
 \end{equation}
-逐 bit 看（FIG-12-3）：字节地址 $a=32i+16c+w$（$w\in[0,16)$ 为 chunk 内偏移），
+逐 bit 看（图~\ref{fig:12-3}）：字节地址 $a=32i+16c+w$（$w\in[0,16)$ 为 chunk 内偏移），
 则 \texttt{bit4(a)}$=c$（chunk 选择位）、\texttt{bit5+}$=i$（行）；而
 $\lfloor i/4\rfloor \bmod 2$ 恰是 \texttt{bit7(a)}（$32i$ 把行号左移到 bit5 起，
 bit7 即 $i$ 的 bit2）。所以式~\ref{eq:12-xor-v1} 的净效果是
@@ -202,7 +202,7 @@ bit7 即 $i$ 的 bit2）。所以式~\ref{eq:12-xor-v1} 的净效果是
 chunk 1 搬去 $q=0{,}8{,}16{,}24$，phase 0 的 8 行四联组变为
 $\{0,8,16,24,4,12,20,28\}$，\textbf{8 个互不相同，恰好铺满 32 个 bank：1-way，
 零冲突}。源码注释「原来 n-way 的 bank conflict 降低到 1-way」说的正是这个 32\,B
-行宽布局（common.cuh~L185--235 的 bank 分布表即此布局，也是 FIG-12-1 的蓝本）。
+行宽布局（common.cuh~L185--235 的 bank 分布表即此布局，也是图~\ref{fig:12-1} 的蓝本）。
 
 \subsection{可逆性：swizzle 是对合，写读同函数即互逆}
 
@@ -937,7 +937,7 @@ cuBLAS。F32Acc 各行对比 cuBLAS 的 f32 累加（164.2 TFLOPS）则\textbf{�
 超越}，最高 \textbf{1.48x}：同样的双缓冲与 swizzle 骨架，换成 f32 累加后
 相对 cuBLAS f32 的优势远大于 f16 档位。两个旋钮的收益方向一致：$S$ 从 2
 加到 3、BLK\_SW 从 0 开到 1 都带来正收益（如 F16Acc 下 243.0$\to$250.2$\to$
-257.2$\to$265.9 TFLOPS 单调上行），与本章「多级流水盖 gmem 延迟、block
+257.2$\to$265.9 TFLOPS 单调上行），与本章「多级流水掩盖 gmem 延迟、block
 swizzle 缩 L2 footprint」两条主线互相印证。
 
 \section{实践经验}
@@ -1006,7 +1006,7 @@ $k_{\mathrm{ValTileK}}{=}4$、$S{=}2$ 恰好 64\,KB，不调
 新代码不要再往里加功能。
 
 \textbf{坑六：不要把「swizzle 后零冲突」当作通用结论。}冲突度由\textbf{行宽}决定
-（FIG-12-3）：32\,B 行宽 + 16 档位 = 1-way；128\,B 行宽 + 16 档位 per-slice =
+（图~\ref{fig:12-3}）：32\,B 行宽 + 16 档位 = 1-way；128\,B 行宽 + 16 档位 per-slice =
 4-way；128\,B 行宽 + 64 档位（SW128）= 1-way。面试或调优时先看布局再谈结论。
 
 \section{面试要点速查}
@@ -1026,9 +1026,9 @@ A：零 smem 浪费、保持 16\,B 对齐粒度、地址计算是几条位运算
 寻址强度削减）；padding 改变行 stride、破坏对齐假设，且不同访问方向要不同
 pad 量。
 
-\textbf{Q4：寄存器双缓冲和 smem 多级流水各盖什么延迟？}\\
-A：smem 双缓冲（kStages 个 stage + cp.async）盖 gmem$\to$smem 的跨 k 迭代
-延迟；寄存器双缓冲（RA/RB 两套乒乓）盖 smem$\to$寄存器的 k\_step 级
+\textbf{Q4：寄存器双缓冲和 smem 多级流水各掩盖什么延迟？}\\
+A：smem 双缓冲（kStages 个 stage + cp.async）掩盖 gmem$\to$smem 的跨 k 迭代
+延迟；寄存器双缓冲（RA/RB 两套乒乓）掩盖 smem$\to$寄存器的 k\_step 级
 ldmatrix 延迟，让「加载下一 slice」与「MMA 上一 slice」同周期发射。
 
 \textbf{Q5：block swizzle 为什么能提升 L2 命中？}\\

@@ -140,7 +140,7 @@ nsys 与 ncu 的采集原理完全不同：
 
 原则：\textbf{只采需要的域、只采最短的窗口}。对「看 kernel 占比」这个目标，
 一条 trace 域 \texttt{-t cuda} 就够，CPU 采样与上下文切换全部关掉，warmup
-与 repeat 压到最小：
+与 repeat 降到最小：
 
 \begin{lstlisting}[style=console, title={nsys 最小采集（kernel 时间占比场景）}]
 nsys profile -t cuda --sample=none --cpuctxsw=none \
@@ -287,7 +287,7 @@ smem、block/warp 上限三类限制源钳制）与\textbf{达到 occupancy}
 （\texttt{sm\_\allowbreak{}\_\allowbreak{}warps\_\allowbreak{}active}，实际运行均值，受 tail effect 与负载不均
 拖累）。NCU 的 Occupancy section 会明确指出 \texttt{launch\_\allowbreak{}\_\allowbreak{}occupancy\_\allowbreak{}limit\_\allowbreak{}registers} /
 \texttt{\_\allowbreak{}\_\allowbreak{}shared\_\allowbreak{}mem} / \texttt{\_\_blocks} 哪个是当前限制源。一个
-fp8 attention kernel 的实例：REG:255 直接把 \texttt{Block Limit Registers} 压到 1：
+fp8 attention kernel 的实例：REG:255 直接把 \texttt{Block Limit Registers} 限制到 1：
 1 CTA/SM、12 warps（4 producer + 8 consumer，共 384 线程），理论 occupancy
 25\%（12/48），此时想提并行度只有降寄存器或换结构
 （见 \S\ref{sec:ch00-cases} 例二）。注意 ch01 的告诫：occupancy 是手段不是
@@ -653,7 +653,7 @@ warp group（128T，专职 TMA）+ 1 个 consumer（256T，全计算），用
 
 \section{小结}
 
-本章没有写一行 kernel，却给出了全书其余 26 章共同的工作节奏：
+本章没有写一行 kernel，却给出了全书其余 26 章共同的工作流程：
 \textbf{nsys 定位（谁慢）$\to$ ncu 定性（为什么慢）$\to$ 单变量修改 $\to$
 复测 diff $\to$ 指标闭环}。指标字典里最值得带走的三句话：SOL 双低不等于
 没有问题，而是 latency-bound，答案在 stall 剖析结果里；stall 分好坏，

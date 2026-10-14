@@ -530,7 +530,7 @@ L375 的条件等待被编译期剪掉。写回阶段每个 warp 把 8 个累加
 $(B\sb M B\sb K + B\sb K B\sb N)\times4$~B $= (128{\times}8{+}8{\times}128)\times4 = 8$~KB，
 完成 $2 B\sb M B\sb N B\sb K = 262{,}144$ FLOP，$AI \approx 32$ FLOP/B，远高于
 本机 roofline 拐点（PRO 5000 Blackwell：FP32 CUDA Core $\sim$60 TFLOPS 级、
-HBM 带宽 $\sim$1.6 TB/s 级，拐点 $\sim$40 FLOP/B 的量级，为标称口径；按
+GDDR7 带宽 $\approx$1.34 TB/s（1344 GB/s）级，拐点 $\sim$45 FLOP/B 的量级，为标称口径；按
 8.3 与 9.3.6 节实测 66.9 TFLOPS / 934 GB/s 折算则为 71.6 FLOP/B），判定
 \textbf{compute-bound}，优化重心在充分利用 Tensor Core 而非节省带宽。
 按全局口径（每个 C tile 读整条 A 行块与 B 列块），
@@ -554,7 +554,7 @@ k-tile（MMA 指令发射密度低）与每迭代一次的迭代末同步。第~
   模板参数才是自洽的：$2\times128\times12\times4 + 2\times8\times132\times4
   = 20736$~B（bench/sgemm.cu 的 \texttt{tf32\_\allowbreak{}smem\_\allowbreak{}bytes} 同为 20736）。
   L193/L238 是早期无 padding 版本（$2\times128\times8\times4\times2=16$KB）
-  的陈旧数字，按登记流程记入 \texttt{book/\allowbreak{}CHECKLOG.\allowbreak{}md}，正文以 20736 为准。
+  的陈旧数字，已记入 \texttt{book/\allowbreak{}CHECKLOG.\allowbreak{}md}，正文以 20736 为准。
 \end{kaogu}
 
 \begin{kaogu}[F3]{sgemm.cuh L242-243：stage offset 注释「1024 floats」错误}

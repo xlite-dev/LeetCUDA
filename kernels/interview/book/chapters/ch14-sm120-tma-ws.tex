@@ -640,9 +640,9 @@ epilogue 与 ch11/ch12 相同：mma m16n8k16 的 C fragment 中，同一 8$\time
 \section{性能分析}
 
 tile 级 roofline 与 ch13 相同：每 K-tile 装 32KB、算 $2.1\,\mathrm{M}$ FLOP，
-$AI = 64$~FLOP/B。按 PRO 5000（110 SMs，sm\_120a）与 GDDR7 $\approx$ 1.8TB/s
-估算，纯 HBM 供给的计算上限 $\approx 64 \times 1.8\,\mathrm{TB/s} \approx
-115$ TFLOPS。实测 164.64 TFLOPS 已经\textbf{越过}这条线，说明 96MB 级 L2
+$AI = 64$~FLOP/B。按 PRO 5000（110 SMs，sm\_120a）与 GDDR7 $\approx$ 1.34\,TB/s（1344\,GB/s）
+估算，纯 HBM 供给的计算上限 $\approx 64 \times 1.344\,\mathrm{TB/s} \approx
+86$ TFLOPS。实测 164.64 TFLOPS 已经\textbf{越过}这条线，说明 96MB 级 L2
 吸收了相当比例的 tile 流量（同行 CTA 复用 B tile、同列复用 A tile），有效
 带宽远高于 HBM 名义值；这也解释了 \texttt{k\allowbreak{}Block\allowbreak{}Swizzle} 3D 网格（L2 局部性）
 的价值。
@@ -715,7 +715,7 @@ $8192^3$ 规模下 TMA+MMA+WS 组合把纯 MMA 基础实现（第~\ref{ch:11}~�
 \end{kaogu}
 
 \begin{kaogu}[F1·2026-09-17 修正]{setmaxnreg 丢失的归因：地址空间，非目标后缀}
-  旧版注释（common.cuh L462--475，本书初版引用）断言「sm\_120a 上 ptxas 把
+  旧版注释（common.cuh L467--517）断言「sm\_120a 上 ptxas 把
   \texttt{cp.\allowbreak{}async.\allowbreak{}bulk.\allowbreak{}tensor} 的使用当作隐式 extern-call 边界丢弃
   setmaxnreg，改用 \texttt{-arch sm\_120f} 则保留」。该结论后被 PTX 级
   取证推翻：真正的触发条件是 TMA 的目的状态空间 \texttt{shared::cluster}
@@ -746,7 +746,7 @@ $8192^3$ 规模下 TMA+MMA+WS 组合把纯 MMA 基础实现（第~\ref{ch:11}~�
 \textbf{坑一：setmaxnreg 满池死锁，静默挂死无报错。}式~\ref{eq:14-pool} 的池数学
 必须规划期就算：$\sum 32 r\sb{w} < 65536$ 且留 $\ge$ 2048 slack。
 \texttt{setmaxnreg.\allowbreak{}inc} 是阻塞语义，凑不齐就永远停在那，kernel 表现为
-「无 error、无 illegal access、永不返回」。调试口诀：唯一变量是 setmaxnreg
+「无 error、无 illegal access、永不返回」。诊断口诀：唯一变量是 setmaxnreg
 数字的挂起，先查池数学。
 
 \textbf{坑二：setmaxnreg 被 ptxas 静默丢弃（C7506/C7508），触发原因是 TMA 的目的地址

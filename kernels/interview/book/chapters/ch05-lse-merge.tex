@@ -176,7 +176,7 @@ causal mask 等机制会产生「空段」：某分块内全部打分被 mask �
         head 维在最外（FlashAttention-2 惯例里 LSE 逐 head 连续存放便于后续
         逐 head 处理）。于是同一个逻辑对 $(t, h)$ 在两边的寻址分别是
         $t \cdot H \cdot D + h \cdot D$ 与 $h \cdot T + t$，一个是「行优先的块」
-        一个是「转置的下标」，写测试时极易弄反（见 5.7~节坑二）。
+        一个是「转置的下标」，写测试时极易弄反（见 5.8~节坑二）。
 \end{itemize}
 
 \begin{figure}[htbp]
@@ -293,7 +293,7 @@ LSE 读取只有每 (token, head) 2 次标量加载（\texttt{p\_lse}、\texttt{
         见下一段。
 \end{itemize}
 源码头注释写「Step 1--4」而概括为「5 步推导」，本书按
-「清洗 + Step 1--4」共 5 步展开（见 5.6~节勘误一）；
+「清洗 + Step 1--4」共 5 步展开（见 5.7~节勘误一）；
 另外 Step 0--3 由覆盖每个 (token, head) 对的全部线程各自冗余执行
 （输入相同、结果一致；LSE 同址加载经合并后实际流量仍为每对 8B），
 计算被该 head 的 $D$ 个输出元素摊薄，这就是为什么合并层的计算开销
@@ -308,7 +308,7 @@ $o = p \cdot \alpha + s \cdot \beta$（硬件可融合为 FMA），再整包写�
 每个输出元素 3 次 FLOP、2 次读 1 次写；128-bit 粒度让每线程的 4 个元素
 共享同一份 $\alpha, \beta$ 与同一份 LSE 读取。收尾的
 \texttt{if \allowbreak{}(pack\_\allowbreak{}offset \allowbreak{}< head\_\allowbreak{}size)} 在「$D$ 是 4 的倍数」的约定下恒为真
-（见 5.6~节勘误三），属于防御性写法。
+（见 5.7~节勘误三），属于防御性写法。
 
 \needspace{122mm}
 
@@ -368,7 +368,7 @@ $O$（4~B），共 12~B；LSE 是每 (token, head) 8~B 的标量流量，摊到�
 $8/D$~B。计算是每元素 3 FLOP（2 乘 1 加）。$D = 128$ 时
 $AI \approx 3 / 12.06 \approx 0.25$ FLOP/B，位于 roofline 拐点左侧，
 是典型的 \textbf{severely memory-bound} 算子，头注释的结论正确，
-但「20 bytes」的口径把 LSE 读按每元素计了（见 5.6~节勘误二）。
+但「20 bytes」的口径把 LSE 读按每元素计了（见 5.7~节勘误二）。
 优化方向也因此明确：向量化宽度（128-bit 已到位）、coalescing（三维解包保证）、
 以及避免任何分支/同步（本 kernel 无共享内存、无同步点）。
 
@@ -404,7 +404,7 @@ ch04 的 softmax 小形状只有数百 GB/s，差距主要来自形状规模
   头注释称「数学公式（5 步推导）」，随后仅列出 Step 1（max 归一）、Step 2（指数还原）、
   Step 3（归一化混合比例）、Step 4（加权合并）四步。按实现数，第 5 步应是
   L484-485 的 $+\infty \to -\infty$ 清洗（或把「$w\sb{1} + w\sb{2}$ 归一化」与
-  「逐元素加权」拆开计数）。本章 5.3~节按「清洗 + Step 1--4」共 5 步展开，
+  「逐元素加权」拆开计数）。本章 5.4~节按「清洗 + Step 1--4」共 5 步展开，
   与代码行一一对应；建议后续修订注释时明确第 5 步所指。
 \end{kaogu}
 
@@ -445,7 +445,7 @@ $O^{A}$ 已除过 $\ell^{A}$（FA kernel 落盘形态）。若误用未归一化
 索引公式写反不会报任何错，但合并的是「错配的 (token, head)」，输出表现为
 与参考完全对不上。本章测试的 build\_case 里两个布局分别独立排布，可作为对照。
 
-\textbf{坑三：head\_size 必须是 4 的倍数。}见 5.6~节勘误三。另注意
+\textbf{坑三：head\_size 必须是 4 的倍数。}见 5.7~节勘误三。另注意
 \texttt{uint4} 访问要求 16~B 对齐：\texttt{head\_offset} 以元素计是
 $(t \cdot H + h) \cdot D$，$D$ 为 4 的倍数时自然对齐；若在张量切片视图上
 直接取指针（如从大 tensor 切出非对齐段），会触发 misaligned address 崩溃。

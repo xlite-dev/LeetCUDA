@@ -30,7 +30,7 @@ $\to$ partition $\to$ copy/gemm」四步走：数据怎么切、怎么分给线�
 384 线程）在同一个算法上把搬运与计算解耦；实现 3
 \texttt{flash\_\allowbreak{}attn\_\allowbreak{}3\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}split\_\allowbreak{}q\_\allowbreak{}cute} 进一步采用 FA3 式双 consumer
 （奇偶拆 KV + 终态归并）。第四个实现
-\texttt{flash\_\allowbreak{}attn\_\allowbreak{}3\_\allowbreak{}cute\_\allowbreak{}tma\_\allowbreak{}copy\_\allowbreak{}smoke}（41 行）不是 attention，而是
+\texttt{flash\_\allowbreak{}attn\_\allowbreak{}3\_\allowbreak{}cute\_\allowbreak{}tma\_\allowbreak{}copy\_\allowbreak{}smoke}（42 行）不是 attention，而是
 一条 TMA 搬运链路的自检闭环，它的存在本身就是「先把搬运与计算解耦再排查」
 的方法论。这是 Part~IV 的倒数第二章，也是「抽象换代码量」这条主线在
 attention 上的完整样本。
@@ -123,8 +123,8 @@ CuTe 实现 4（TMA copy smoke） & L3447--3488 & 42 & 36 \\
 \end{tabular}
 \end{table}
 
-对这张表的解读要有所克制，CuTe 版并没有「更少的总代码」：结构件（107 行）加三个实现
-（728 行）合计 835 行，反而比手写三代（1530 行）少不了太多；真正的差别在
+对这张表的解读要有所克制，CuTe 版并没有「少一个数量级」的总代码：结构件（107 行）加三个实现
+（728 行）合计 835 行，只比手写三代（1530 行）少了约 45\%、不到一半；真正的差别在
 \textbf{每一行代码的语义密度}与\textbf{改动的影响面}。手写版的 564 行里，
 地址算术与 lane 映射大约占四成，它们随 tile 形状与 arch 改动而整体失效；
 CuTe 版的 206 行里几乎没有地址算术，改 $B_r$ 只需要换 traits 里的
@@ -550,7 +550,7 @@ K 向连续 2 个元素。实测结果是 $((2,2),2),1,4$：仍是 32 个元素�
 即等到「已完成组数 $\ge$ 总组数 $-N$」。对深度 $k$ 的 software pipeline，
 提交顺序是「V[tile]（栈底）→ K[tile+k-1]（栈顶）」，于是
 \texttt{wait\_group 1} 的含义是「除栈顶的 K 之外全部完成」=「V[tile] 已就绪、
-K[next] 还inflight」。实现 1 就是靠这条栈语义把 V 与 K 的等待分开的
+K[next] 还 inflight」。实现 1 就是靠这条栈语义把 V 与 K 的等待分开的
 （L2743--2754）：$kStagesK>1$ 且非尾部时用 \texttt{cp\_\allowbreak{}async\_\allowbreak{}wait\allowbreak{}<1>}，
 尾部退回 \texttt{wait<0>}。注意组编号是 \textbf{按线程独立计数}的
 （PTX ISA §9.7.9.25.3.3：wait 只保证\emph{本线程}提交的组完成），所以实现 1
@@ -591,13 +591,13 @@ phase。消费者用 \texttt{wait(bar, phase)} 等待。实现 2/3 里每个 sta
   \node[ln, text=tkPurple!85!black] at (0,-2.6) {phase 每回绕一轮翻转：};
   \node[ph, anchor=west] (pf) at (0,-3.1) {$\mathrm{phase} = \bigl(\lfloor t/S \rfloor\bigr) \bmod 2$};
 \end{tikzpicture}
-\caption{TMA 事务计数协议的三条不变量（26.3.5 节）：生产者 wait 到空 stage 才
+\caption{TMA 事务计数协议的三条不变量（25.3.5 节）：生产者 wait 到空 stage 才
 覆盖写入、消费者 wait 到满 stage 才读、phase 每绕 $S$ 个 stage 翻转一次。}
 \label{fig:25-proto}
 \end{figure}
 
 与第~\ref{ch:17}~章手写版的 257 协议相比，CuTe 版的 arrive 语义没有变化，
-变化的是\textbf{谁来数}:手写版用 \texttt{mbarrier\_\allowbreak{}arrive} 手写计数，
+变化的是\textbf{谁来数}：手写版用 \texttt{mbarrier\_\allowbreak{}arrive} 手写计数，
 CuTe 版把「一个 stage」打包成 \texttt{Cluster\allowbreak{}Transaction\allowbreak{}Barrier} +
 \texttt{Cluster\allowbreak{}Barrier} 两个对象，stage 索引与 phase 都由循环变量现算
 （图~\ref{fig:25-proto}）。
@@ -858,12 +858,12 @@ producer 可以立刻开始搬运下一个 K stage，而 softmax 与 PV 继续�
 $(r,c)$ 反查寄存器编号，用来在 smem scratch 里定位对方的 partial：
 布局从「注释里的 lane 表」变成了可计算的函数。
 
-\subsection{实现 4：41 行的 TMA 自检}
+\subsection{实现 4：42 行的 TMA 自检}
 
-第四个实现（L3447--3488）只有 41 行，是一次「TMA 搬运 + swizzle 往返」的
+第四个实现（L3447--3488）只有 42 行，是一次「TMA 搬运 + swizzle 往返」的
 最小闭环，即上面代码块的第三段（L3462--3482）。它的价值在调试方法上：当 attention 结果不对时，先用 smoke 确认
 「TMA descriptor + SW128 swizzle 布局 + 事务屏障」这条链本身是通的，
-再往 kernel 里查；把 41 行的搬运闭环从 300 行的 kernel 里隔离出来，
+再往 kernel 里查；把 42 行的搬运闭环从 300 行的 kernel 里隔离出来，
 正是它作为独立 kernel 存在的理由。
 
 \subsection{结构对照}
@@ -961,7 +961,7 @@ KV 划分 & 单流全遍历 & 单流全遍历 & 奇偶拆给两个 consumer \\
   \node[draw=tkOrange!85!black, fill=tkFillOrange, align=center, inner sep=2pt,
     font=\fontsize{4.2}{4.8}\selectfont, text width=13.9cm]
     at (7.25,-5.80)
-    {\textbf{实现 4 smoke（41 行，L3454-3495）：TMA descriptor $+$ SW128 布局 $+$ mbarrier 事务屏障的最小闭环}\\
+    {\textbf{实现 4 smoke（42 行，L3447-3488）：TMA descriptor $+$ SW128 布局 $+$ mbarrier 事务屏障的最小闭环}\\
      不计算 attention——只验证「搬运 $+$ 布局 $+$ 屏障」三件套本身；三个实现的公共底座照此自检};
   \draw[->, dashed, tkOrange, semithick] (2.30,-5.04) -- (2.30,-5.42);
   \draw[->, dashed, tkOrange, semithick] (7.25,-5.04) -- (7.25,-5.42);
@@ -975,7 +975,7 @@ KV 划分 & 单流全遍历 & 单流全遍历 & 奇偶拆给两个 consumer \\
     {实线 $=$ 复用同一份布局类型；虚线 $=$ 公共底座自检};
 \end{tikzpicture}
 \caption{CuTe 块的四层结构：共享 traits 与五个工具函数（上），三个 attention
-实现（中），以及 41 行的 TMA 搬运自检（底）。实线箭头表示「同一份布局类型被
+实现（中），以及 42 行的 TMA 搬运自检（底）。实线箭头表示「同一份布局类型被
 三种调度结构复用」，虚线表示三个实现共用实现~4 的底座自检。}
 \label{fig:25-1}
 \end{figure}
@@ -1135,7 +1135,7 @@ $\lfloor t/S\rfloor$ 个相位，故 phase $=$ 该商 $\bmod\ 2$
 （图~\ref{fig:25-proto}）。写错 phase 的症状是「等一个已经过去的
 相位」：永久挂起或提前通过。
 
-\textbf{Q8：smoke kernel 为什么值得单独存在？（41 行）}\\
+\textbf{Q8：smoke kernel 为什么值得单独存在？（42 行）}\\
 A：它是「TMA + SW128 布局 + 事务屏障」三件套的最小闭环，把
 \emph{搬运链路}与\emph{计算链路}解耦。调 attention 时先用它排除
 搬运侧问题（descriptor 参数、box 与 layout 匹配、arrive\_tx 的字节数），
@@ -1165,7 +1165,7 @@ $\mathrm{softmax}(QK^\top/\sqrt{D})V$ 对照（half 输入/输出），容差
 
 host 端的 traits 结构断言（\texttt{tile\_\allowbreak{}size\_\allowbreak{}mnk}、fragment
 形状、D-chunk 语义）与 TMA 往返 smoke 不在本测试内：前者由第~\ref{ch:22}~章
-与第~\ref{ch:26}~章的最小测试承载，后者即本章实现 4 的 41 行 smoke kernel，
+与第~\ref{ch:26}~章的最小测试承载，后者即本章实现 4 的 42 行 smoke kernel，
 可单独编译驱动。
 
 编译与运行（本机 sm\_120a，6 号卡；结果见下）：

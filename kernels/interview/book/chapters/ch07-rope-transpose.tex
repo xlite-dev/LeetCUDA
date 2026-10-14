@@ -179,7 +179,7 @@ $R^{d}_{\Theta}$ 是 $d/2$ 个 $2\times 2$ 旋转块排布在主对角线上的\
 
 \subsection{转置的「数学」}
 
-转置本身没有数学难度：$y_{ji} = x_{ij}$。值得形式化的是访存代价。行主存储下 $x_{ij}$ 位于地址 $i \cdot \mathrm{col} + j$。第 \ref{ch:03} 章的 coalescing 原则要求同 warp 的 32 线程访问连续地址；转置的读与写不可能同时满足：行主读合并意味着列主写跨步，反之亦然。这就是下一节用 shared memory 中转的动机。
+转置本身没有数学难度：$y_{ji} = x_{ij}$。需要形式化的是访存代价。行主存储下 $x_{ij}$ 位于地址 $i \cdot \mathrm{col} + j$。第 \ref{ch:03} 章的 coalescing 原则要求同 warp 的 32 线程访问连续地址；转置的读与写不可能同时满足：行主读合并意味着列主写跨步，反之亦然。这就是下一节用 shared memory 中转的动机。
 
 \section{设计与实现}
 
@@ -368,7 +368,7 @@ shared memory 被切成 32 个 bank（对应一个 warp 的 32 线程），每�
 \label{fig:7-1}
 \end{figure}
 
-两个思考题留给自己：（1）为什么经典「一线程一元素」的 $32 \times 32$ tile 加 PAD=1 能做到零冲突，而本 kernel 的 4 行版本不能？（提示：经典版 warp 内 32 线程读同一列，地址步长 $33 \times 4\mathrm{B} \equiv 4\mathrm{B}$，32 线程 bank 号两两不同；本版每线程 4 行、warp 只跨 2 列，自由度更小。）（2）残留的 2-way 怎么彻底消除？把行距从 4 改成别的值、或直接重排 tile 内的物理布局，第 \ref{ch:12} 章的 XOR swizzle 会给出系统性答案：用地址位异或代替加法 padding，在不浪费 smem 容量的前提下打散 bank 映射。
+这里留两个思考题：（1）为什么经典「一线程一元素」的 $32 \times 32$ tile 加 PAD=1 能做到零冲突，而本 kernel 的 4 行版本不能？（提示：经典版 warp 内 32 线程读同一列，地址步长 $33 \times 4\mathrm{B} \equiv 4\mathrm{B}$，32 线程 bank 号两两不同；本版每线程 4 行、warp 只跨 2 列，自由度更小。）（2）残留的 2-way 怎么彻底消除？把行距从 4 改成别的值、或直接重排 tile 内的物理布局，第 \ref{ch:12} 章的 XOR swizzle 会给出系统性答案：用地址位异或代替加法 padding，在不浪费 smem 容量的前提下打散 bank 映射。
 
 \subsection{模拟验证}
 
