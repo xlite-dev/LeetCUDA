@@ -7,12 +7,12 @@
 
 第~\ref{ch:15}~章完成了 FlashAttention 的数学推导：分块
 （tiling）+ online softmax 让 $O(N^2 d)$ 的计算不再伴随 $O(N^2)$ 的
-HBM 中间矩阵读写。本章进入\textbf{工程实现}：教学源码里的
+HBM 中间矩阵读写。本章进入工程实现：教学源码里的
 \texttt{flash\_\allowbreak{}attn\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}split\_\allowbreak{}q}（flash\_attn.cuh~L112），
 一个用 \texttt{mma.\allowbreak{}sync.\allowbreak{}m16n8k16} 手写的 FlashAttention-2 前向 kernel，
-它把 FA2 论文（arXiv:2307.08691）的两项核心改造落到了寄存器级：
-\textbf{split-Q 的 warp 行划分}（更好的 work partitioning）与
-\textbf{Q 常驻 smem / KV 流过 smem 的多级流水}（better parallelism）。
+它把 FA2 论文（arXiv:2307.08691）的两项核心改造落到了寄存器级：split-Q 的
+warp 行划分（更好的 work partitioning）与 Q 常驻 smem / KV 流过 smem 的多级
+流水（better parallelism）。
 
 本章源码区间为 flash\_attn.cuh~L5--790（Phase 8 手写 MMA 路径；
 L791 起的 TMA/Warp Specialization 版留给第~\ref{ch:17}~章）。
@@ -46,7 +46,7 @@ LeetCUDA 的 FA1 式实现（\texttt{flash\_\allowbreak{}attn\_\allowbreak{}mma\
 把 $B_r\times B_c$ 的 tile 同时按行列切给 warp：warp\_QP 分行、
 warp\_KV 分列（8-warp 版为 $2\times4$ warp 网格）。问题在列方向：行 $r$ 的 $S$ 值分布在多个 warp 上，
 每个 warp 只见到该行\textbf{部分} KV 的打分，它们各自维护的
-$(m,\ell,O)$ 都是\textbf{部分状态}。每个 KV tile 结束必须经 smem 中转、
+$(m,\ell,O)$ 都是部分状态。每个 KV tile 结束必须经 smem 中转、
 用第~\ref{ch:05}~章 \texttt{merge\_\allowbreak{}attn\_\allowbreak{}states} 的 LSE 合并语义跨
 warp 归并，通信与同步的开销随 tile 迭代次数 $T_c$ 线性重复。
 
@@ -55,12 +55,12 @@ FA2 的观察（论文 §3.2）：既然 online softmax 的状态是\textbf{按�
 （每行一个 $m$、一个 $\ell$），那就按行切 warp，每个 warp 独占
 16 行 Q（一个 \texttt{m16} atom 的行数），KV tile 全 warp 共享
 （warp\_KV$\equiv$0）。行状态从头到尾留在本 warp 的寄存器里，
-跨 tile 迭代零归并、零 smem 中转。按「独立 online softmax 状态数」
-计并行度：split-KV 下列向分裂的状态终究要归并，行方向的有效并行
-单元是 warp\_QP 组；split-Q 下 8 个 warp 各持 16 行的\textbf{终态}，
-并行度从 $B\cdot H\cdot\lceil N/B_r\rceil$（block 级）直接乘上 warp 数
-到 $B\cdot H\cdot\lceil N/B_r\rceil\cdot 8$，且每个单元免通信。
-附带收益：Q tile 整个外循环只从 gmem 搬一次，K/V 分块流过 smem。
+跨 tile 迭代零归并、零 smem 中转。按独立 online softmax 状态数计并行度：
+split-KV 下列向分裂的状态终究要归并，行方向的有效并行单元是 warp\_QP 组；
+split-Q 下 8 个 warp 各持 16 行的\textbf{终态}，并行度从
+$B\cdot H\cdot\lceil N/B_r\rceil$（block 级）直接乘上 warp 数到
+$B\cdot H\cdot\lceil N/B_r\rceil\cdot 8$，且每个单元免通信。附带收益是
+Q tile 整个外循环只从 gmem 搬一次，K/V 分块流过 smem。
 
 \section{数学原理}
 
@@ -117,9 +117,9 @@ $m^{\text{new}}$ 直接顶替 $-\infty$ 的旧值（L661--664 的三元判断）
 
 \subsection{$S$ 的 C fragment 如何变成 $P@V$ 的 A fragment}
 
-本章实现的关键一步：softmax 算完的 $P$ \textbf{不离开
-\texttt{R\_S} 寄存器}，直接作为下一段 $P@V$ 的 mma A 操作数。可行
-性完全由 fragment 几何决定，用第~\ref{ch:11}~章的坐标公式验证。
+本章实现的关键一步：softmax 算完的 $P$ 不离开 \texttt{R\_S} 寄存器，直接
+作为下一段 $P@V$ 的 mma A 操作数。可行性完全由 fragment 几何决定，用
+第~\ref{ch:11}~章的坐标公式验证。
 
 $S_w$ 的一个 \texttt{m16n8} tile（记列基 $c_0=8j$）落在
 \texttt{R\_\allowbreak{}S[i][j][*]}，每 lane 4 个元素，按式~\ref{eq:11-cpos}：
@@ -134,15 +134,15 @@ $+8$。两者逐 lane 对照：
   \;\longrightarrow\;
   \{a_0,a_1,a_2,a_3\}\ \oplus\ \{a_4,a_5,a_6,a_7\},
 \end{equation}
-即\textbf{列相邻的两个 \texttt{m16n8} C tile 拼成一个 \texttt{m16k16}
-A fragment}：左 tile 给 A 的 $k$ 左半区（$a_0$--$a_3$），右 tile 给
+即列相邻的两个 \texttt{m16n8} C tile 拼成一个 \texttt{m16k16} A fragment：
+左 tile 给 A 的 $k$ 左半区（$a_0$--$a_3$），右 tile 给
 右半区（$a_4$--$a_7$），行半区的对应关系原样保留。这就是 3d 步里
 \texttt{w = tile\_V\_Bc * 2}（L622）的来源：$B_c=64$ 按 16 列一段共
 4 次 \texttt{tile\_V\_Bc}，第 $t$ 段消费 \texttt{R\_S[i][2t]} 与
 \texttt{R\_\allowbreak{}S[i][2t+1]}，恰覆盖列 $16t..16t{+}15$。源码注释
-（L602--621）画了 4-warp 版的整表，并特别提醒：这是 \textbf{本路径
-的布局约定}，不是「任意 MMA 的 C 与 A fragment 天然同构」的通用
-结论（见 16.7 节勘误与 16.8 节坑五）。
+（L602--621）画了 4-warp 版的整表，并特别提醒：这是本路径的布局约定，
+不是任意 MMA 的 C 与 A fragment 天然同构的通用结论（见 16.7 节勘误与
+16.8 节坑五）。
 
 \begin{figure}[H]
 \centering
@@ -327,15 +327,15 @@ $\mathrm{tig}=0..3$ 各持 2 个），行 $r{+}8$ 同一组 lane 的第二个寄
         \mathrm{seqlen}/B_c$）；
   \item \textbf{3a）}\texttt{cp.async} 加载当前 V $+$ 预加载下一个 K（多
         stage pipeline）；
-  \item \textbf{3b）}$QK^{\top}$——沿 head dim 内循环 $\to$ \texttt{ldmatrix}
+  \item \textbf{3b）}$QK^{\top}$：沿 head dim 内循环 $\to$ \texttt{ldmatrix}
         Q/K $\to$ \texttt{HMMA16816}；
-  \item \textbf{3c）}Online Safe Softmax——warp reduce max/row $\to$
-        $\exp(S \cdot \mathrm{scale} - \mathrm{max})$；关键：将 P 写回
+  \item \textbf{3c）}Online Safe Softmax：warp reduce max/row $\to$
+        $\exp(S \cdot \mathrm{scale} - \mathrm{max})$；关键一步是把 P 写回
         \texttt{R\_S} 寄存器（替换 S），\texttt{R\_S} 现在存储 P matrix；
-  \item \textbf{3d）}$P@V$——沿 V 的 $B_c$ 维内循环 $\to$ \texttt{ldmatrix}
+  \item \textbf{3d）}$P@V$：沿 V 的 $B_c$ 维内循环 $\to$ \texttt{ldmatrix}
         V (transposed) $\to$ 直接用 \texttt{R\_S} 做 A 矩阵；当前实现依赖
         同一组寄存器布局约定，避免为 $P@V$ 额外重组 P fragment；
-  \item \textbf{3e）}Online rescaling——$O_{\text{new}} =
+  \item \textbf{3e）}Online rescaling：$O_{\text{new}} =
         \exp(m_{\text{old}} - m_{\text{new}})\,O_{\text{old}} + P@V$；
   \item \textbf{8）}最终 rescale：$O_{\text{final}} =
         (1/\ell_{\text{final}})\,O_{\text{final}}$；
@@ -443,7 +443,7 @@ $\times$ 4 段 16~B）；K/V 按 $B_c{=}64$ 行、每线程管 4 行的起点
 \texttt{.b32}、\texttt{R\_K[8][2]} 16 个、\texttt{R\_V[8][2]} 16 个、
 \texttt{R\_\allowbreak{}S[1][8][2]} 16 个、\texttt{R\_\allowbreak{}O/\allowbreak{}R\_\allowbreak{}D[1][8][2]} 各 16 个，
 加 $(m,\ell)$ 4 个 fp32 与地址变量，约百个寄存器。手写路径的
-「寄存器白盒」收益（第~\ref{ch:11}~章动机一）在 attention 里同样成立。
+寄存器白盒收益（第~\ref{ch:11}~章动机一）在 attention 里同样成立。
 \texttt{R\_S} 先后存储两种数据（先 $S$ 后 $P$）、\texttt{R\_D} 跨 tile 持有
 未归一化的 $O$，是本 kernel 寄存器编排的两条主线。
 
@@ -470,14 +470,14 @@ Step 2 末的 wait(0) 已把 Q 组连带等完，L265 的一次
 \lstinputlisting[linerange={309-340},firstnumber=auto,
   title={flash\_attn.cuh L309-340（3a 续：$kStagesK{>}1$ 时预取下一 K tile）}]{../flash_attn.cuh}
 
-流水编排的要点：\textbf{K 双缓冲、V 单级}。迭代 $t$ 内 3a 依次提交
-两组搬运：$V_t$（当前）与 $K_{t+1}$（预取，写 \texttt{smem\_\allowbreak{}sel\_\allowbreak{}next}
-缓冲）。$V_t$ 的在途窗口恰好覆盖 3b（QK mma）与 3c（softmax）两段
-计算：softmax 全在 CUDA Core/SFU 上跑，掩盖了 V 的搬运延迟；
-$K_{t+1}$ 则有整整一个迭代的余量。这与第~\ref{ch:11}~章 GEMM 的
-「kStages 全操作数统一多级」不同：attention 的两段 mma 中间夹了一段
-非 mma 计算，天然提供了第二级的隐藏窗口，所以 \texttt{kStagesK}$=$2
-就够（源码注释 L281「one stage is enough for V」）。
+流水编排的要点是 K 双缓冲、V 单级：迭代 $t$ 内 3a 依次提交两组搬运，
+$V_t$（当前）与 $K_{t+1}$（预取，写 \texttt{smem\_\allowbreak{}sel\_\allowbreak{}next} 缓冲）。$V_t$ 的
+在途窗口恰好覆盖 3b（QK mma）与 3c（softmax）两段计算：softmax 全在
+CUDA Core/SFU 上跑，掩盖了 V 的搬运延迟；$K_{t+1}$ 则有整整一个迭代的
+余量。这与第~\ref{ch:11}~章 GEMM 的 kStages 全操作数统一多级不同：
+attention 的两段 mma 中间夹了一段非 mma 计算，天然提供了第二级的隐藏
+窗口，所以 \texttt{kStagesK}$=$2 就够（源码注释 L281「one stage is enough
+for V」）。
 \texttt{\#pragma unroll 1}（L272）刻意不展开外循环：$T_c$ 是运行期
 值，展开只会膨胀代码。$kStagesK{=}1$ 的退化分支（L341--374）每轮
 现搬当前 K 并在 3b 前 wait(0)，无流水，用于消融对照。
@@ -585,8 +585,8 @@ Pass 1 求本 tile 的行 max：每 lane 先在 8 个 $j$ tile 上局部归约
 （每 tile 贡献 max 的一对元素，f16 路径经 \texttt{\_\allowbreak{}\_\allowbreak{}half22float2}
 升精度再乘 $s$，L487--492），再 \texttt{warp\_\allowbreak{}reduce\_\allowbreak{}max\allowbreak{}<4>}。Pass 2
 完成 $m^{\text{new}}=\max(m^{\text{old}}, m_{\text{tile}})$（L512--515）、
-逐元素 $P=\exp(\mathrm{FMA}(S, s, -m^{\text{new}}))$ \textbf{原地写回
-\texttt{R\_S}}（f16 路径 \texttt{\_\allowbreak{}\_\allowbreak{}float22half2\_\allowbreak{}rn}，L545--546；
+逐元素 $P=\exp(\mathrm{FMA}(S, s, -m^{\text{new}}))$ 原地写回 \texttt{R\_S}
+（f16 路径 \texttt{\_\allowbreak{}\_\allowbreak{}float22half2\_\allowbreak{}rn}，L545--546；
 f32 路径写 half 视图，L528--531，两条路径的 $P$ 都落 half 精度，
 这是精度分析的关键输入）、行内求和得 $\ell$ 增量并 4-lane 归约。
 exp 用 \texttt{\_\_expf}（SFU 快速近似），max/sum 全程 fp32。
@@ -713,7 +713,7 @@ $\mathrm{g}{+}8$（L782--785），行号由 \texttt{Q\_tile\_id}、
 
 \section{性能分析}
 
-\textbf{算术强度。}稳态下每个外循环迭代：计算量
+先算算术强度。稳态下每个外循环迭代：计算量
 $4 B_r B_c D$ FLOP（$QK^\top$ 与 $PV$ 各 $2B_rB_cD$）；搬运量
 $(K_t + V_t) = 2 B_c D \cdot 2$~B（Q 已摊销到 $T_c$ 次迭代）。
 $AI = \frac{4 B_r B_c D}{4 B_c D} = B_r = 128$~FLOP/B（half 口径），
@@ -740,11 +740,11 @@ F32Acc（kMmaAccF32$=$1） & 0.7814 & 175.88 & — \\
 
 两点观察：（1）F16Acc 复测与源码注释的 166.6 TFLOPS 基本吻合，
 说明该注释口径可复现（注释未注明 acc 变体，对照时应以 F16Acc 为准）；
-（2）\textbf{F32Acc 反而更快}（$+5.6\%$）：f32 累加寄存器翻倍（每 tile
+（2）F32Acc 反而更快（$+5.6\%$）：f32 累加寄存器翻倍（每 tile
 4 个 \texttt{.b32}）没有拖慢执行，反而省掉了 3c/3e 里 half$\leftrightarrow$float
 的整簇转换指令（f16 路径每元素两次打包/拆包），ALU 压力更小。
-这与第~\ref{ch:11}~章 GEMM 的直觉（f16 acc 更快）相反，是 attention
-「mma 占比低于 GEMM、softmax 转换指令占比更高」的直接体现。
+这与第~\ref{ch:11}~章 GEMM 的直觉（f16 acc 更快）相反，直接体现了
+attention 的 mma 占比低于 GEMM、softmax 转换指令占比更高。
 
 \textbf{pad 与 XOR swizzle 的取舍}（源码注释 L61--71，SM120 同形状
 profile 消融）：compact XOR swizzle（kPad$=$0，物理布局
@@ -753,9 +753,9 @@ ldmatrix pattern 的 bank conflict，却把 cp.async（LDGSTS）的
 destination pattern 打散：wavefront 从 30.15M 涨到 68.16M（2.26x），
 long-scoreboard / LG-throttle / MIO-throttle stall 分别放大
 3.25x/2.74x/1.60x，整体只有 120.0 TFLOPS，显著低于 pad$=$8 的
-166.6。\textbf{评价 shared layout 必须同时看 ldmatrix 读与 cp.async
-写两个方向}，只优化 bank-conflict counter 会牺牲另一方向（该结论出自
-源码注释，属作者实测口径；本章复测 pad 路径与其吻合）。
+166.6。评价 shared layout 要同时看 ldmatrix 读与 cp.async 写两个方向，
+只优化 bank-conflict counter 会牺牲另一方向（该结论出自源码注释，属
+作者实测口径；本章复测 pad 路径与其吻合）。
 
 \textbf{FA2 MMA Stages 全变体 bench}（RTX PRO 5000 72GB，sm\_120，
 110 SM，CUDA 13.2；\texttt{leetcuda\_\allowbreak{}bench\_\allowbreak{}sm120a.\allowbreak{}bin}
@@ -782,16 +782,15 @@ FA2 MMA Stages (Sk=2, SwizzleQ, F32Acc) & 1.526e-05 & 163.8/230.2 (0.71x) \\
 \end{tabular}
 \end{table}
 
-三点观察：（1）\textbf{$kStagesK{=}2$ 双 stage 相比 $kStagesK{=}1$
-提升明显}：f16 路径 127.6$\to$156.3（$+22\%$），f32 路径
-140.9$\to$163.5（$+16\%$），多一级 K 流水把 cp.async 的加载与
-mma 计算更好地重叠，掩盖了 $B_c$ 列 K tile 的装载延迟；（2）
-\textbf{F32Acc 在精度提升约 16 倍}（1.526e-05 vs 2.441e-04，f32
-vs f16 累加）\textbf{的同时速度反而更快}（同 Sk 下 $+4.6\%\sim10.4\%$），
-与上文复测结论一致：省掉 3c/3e 的 half$\leftrightarrow$float
-整簇转换指令的收益大于 f32 累加器的寄存器开销；（3）\textbf{SwizzleQ}
-相对 Pad 的边际改善很小（163.8 vs 163.5，$+0.2\%$），大 $N$ 下
-swizzle 只微调 bank/wavefront 分布，不改变 compute-bound 本质。
+三点观察：（1）$kStagesK{=}2$ 双 stage 相比 $kStagesK{=}1$ 提升明显：
+f16 路径 127.6$\to$156.3（$+22\%$），f32 路径 140.9$\to$163.5（$+16\%$），
+多一级 K 流水把 cp.async 的加载与 mma 计算更好地重叠，掩盖了 $B_c$ 列
+K tile 的装载延迟；（2）F32Acc 在精度提升约 16 倍（1.526e-05 vs
+2.441e-04，f32 vs f16 累加）的同时速度反而更快（同 Sk 下
+$+4.6\%\sim10.4\%$），与上文复测结论一致：省掉 3c/3e 的
+half$\leftrightarrow$float 整簇转换指令的收益大于 f32 累加器的寄存器
+开销；（3）SwizzleQ 相对 Pad 的边际改善很小（163.8 vs 163.5，$+0.2\%$），
+大 $N$ 下 swizzle 只微调 bank/wavefront 分布，不改变 compute-bound 本质。
 整体上该教学 kernel 为可读性牺牲了不少优化（约为 cuDNN 的
 0.55--0.71x），但 stages 流水、累加精度两个旋钮的收益方向与
 生产级 FA 实现一致。
@@ -871,7 +870,7 @@ $\sim 1.4\times10^{-4}$（$N{=}256$）。但若输入幅值大、$N$ 上千，
 
 \textbf{坑五：把「C fragment 拼 A fragment」当通用结论。}$P$ 直接
 留在 \texttt{R\_S} 直接作下一段 mma 的输入，依赖 16.3.3 节推导的
-\textbf{特定布局约定}：列相邻两个 \texttt{m16n8} C tile 的寄存器对，
+特定布局约定：列相邻两个 \texttt{m16n8} C tile 的寄存器对，
 恰好按 mma 期望的四象限序拼成 \texttt{m16k16} A。换了 atom 形状
 （如 \texttt{m16n8k8}）、换了 tile 排布方向，或对 fragment 做了重排，
 这条捷径就静默出错。源码 L52--58 与 L618--620 两处注释都在防这个

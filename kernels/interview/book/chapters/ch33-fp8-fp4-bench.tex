@@ -5,7 +5,7 @@
 \section{本章导读}
 
 第~\ref{ch:29}--\ref{ch:32}~章讲完了 fp8/fp4 attention 的全部实现；
-本章讲\textbf{怎么度量与选用}它们。这是量化 attention 的「最后一步」：
+本章讲\textbf{怎么度量与选用}它们。这是量化 attention 的最后一步：
 一个不公平的 bench 能把 2x 加速测成 0.5x（功耗墙、参照漂移、preset
 隐藏成本），一个错误的容差能把好 kernel 判成精度不合格（用 fp8 的
 容差去卡 fp4）。本章沿三条线索展开：
@@ -26,12 +26,12 @@
 
 \section{问题与动机}
 
-\textbf{度量陷阱一：参照系}。speedup 是比值，分子分母任何一个漂移，
+度量陷阱一：参照系。speedup 是比值，分子分母任何一个漂移，
 结论就作废。三个具体来源：
 \begin{itemize}[itemsep=0pt,topsep=2pt]
   \item \textbf{SDPA 后端随 D 换挡}：FA2 只覆盖 $D\le256$，更大 D
         静默落到 MATH（materialize 整个 $N_q\times N_{kv}$ 矩阵），
-        参照时间膨胀数倍——D=512 的「3x 加速」里有一大半是 MATH
+        参照时间膨胀数倍：D=512 的 3x 加速里有一大半是 MATH
         慢，不是量化快（\texttt{bench\_fp8.py} L153--160 的
         \texttt{resolve\_sdpa\_backend} 把这个换挡显式化）；
   \item \textbf{GPU 状态污染}：5090 类高功耗卡上，前一个高功耗负载
@@ -39,7 +39,7 @@
         2932$\to$2445MHz，-17\%）；A/B 两轮的 SDPA 参照必须吻合
         （$\pm1\%$），否则整轮作废；
   \item \textbf{preset 隐藏成本}：对比双方的功能集不对齐时，「慢」
-        可能只是「多做了事」——hybrid（fp16 前缀行）与 smooth-V
+        可能只是「多做了事」：hybrid（fp16 前缀行）与 smooth-V
         都是 FFPA 独有的精度功能，开着测速度对 Sage 不公平，对
         用户也是误导。
 \end{itemize}
@@ -112,7 +112,7 @@ $\times$2.29：「3$\times$」的大头是参照低效（坑 6）。}
 \label{fig:33-sdpa-gear}
 \end{figure}
 
-\textbf{度量陷阱二：精度口径}。allclose 是布尔值，信息量极低：
+度量陷阱二：精度口径。allclose 是布尔值，信息量极低：
 \begin{itemize}[itemsep=0pt,topsep=2pt]
   \item fp4 的 e2m1 网格噪声决定了它的容差天然比 fp8 宽一个量级
         （dense 0.15 / causal 0.70 vs fp8 的 0.05），拿错档的容差
@@ -138,8 +138,8 @@ kernel 级 speedup 定义为同形状下参照与被测的耗时比：
   S=\frac{T_{\mathrm{SDPA}}}{T_{\mathrm{FFPA}}},\qquad
   T=\min_{i\in[1,N]}\;t_i\;\;(\text{min-of-}N,\ N\ge5)
 \end{equation}
-min-of-N 而非均值：推理延迟的合同口径是「最好情况可稳定达到的
-水平」，毛刺（时钟迁移、后台进程）只应抬高均值，不应进入分子。
+min-of-N 而非均值：推理延迟的合同口径是最好情况下可稳定达到的
+水平，毛刺（时钟迁移、后台进程）只应抬高均值，不应进入分子。
 有效算力用 attention 前向 FLOPS 归一：
 \begin{equation}
   \mathrm{FLOPs}=4\,N_qN_{kv}DH_q\cdot\delta_{\mathrm{causal}},\qquad
@@ -151,7 +151,7 @@ min-of-N 而非均值：推理延迟的合同口径是「最好情况可稳定�
 计数一致，非方阵 causal 的精确计数为
 $1-(N_q-1)/(2N_{kv})$，本章 bench 的 causal 均为方阵。）
 注意这是\textbf{数学} FLOPS：量化 kernel 实际吞吐的是低位宽 MMA，
-$S>1$ 的来源是「同样的数学量用快得多的数据通路完成」。
+$S>1$ 的来源是同样的数学量改由快得多的数据通路完成。
 
 \subsection{端到端摊销}
 
@@ -221,20 +221,20 @@ bench 输出三层指标，各有分工：
 \begin{itemize}[itemsep=0pt,topsep=2pt]
   \item \texttt{rel\_err} $=\lVert O-\tilde O\rVert_2/\lVert
         \tilde O\rVert_2$（\texttt{bench\_fp8.py} L270--274）：能量级
-        偏差，衡量「整体偏了多少」；
+        偏差，衡量整体偏了多少；
   \item \texttt{max\_abs}（\texttt{max|diff|}）：最坏单点
         偏差，捕捉结构性误差（causal 早期行、坏行 bug）；
   \item \texttt{allclose(atol=tol, rtol=tol)}：CI 门禁布尔量，tol 按
         精度分档（\texttt{\_runner\_fwd.py} L413--419）：
         fp16/bf16-fp8 路径 5e-2，纯 fp16 2e-2；fp4 dense 0.15、
-        causal 0.70——依据是 e2m1 网格噪声（第~\ref{ch:27}~章
+        causal 0.70，依据是 e2m1 网格噪声（第~\ref{ch:27}~章
         27.3.7 节仿真：dense 绝对误差 $\approx$0.003 级，0.15 留出
         约 50 倍余量；causal 尖峰行天然 0.5--0.75 级（第~\ref{ch:31}~章 31.7~节实测），0.70 按
         无 hybrid 抑制的地板量级取上界）。
 \end{itemize}
 读数规则：\textbf{速度看 min、能量看 rel\_err、结构看 max\_abs、
 门禁看 allclose}，四者缺一不可。第~\ref{ch:29}~章 29.7.1 的正确性
-bug 就是「速度正常 + 均值正常 + max\_abs 结构性坏行」的组合。
+bug 就是速度正常 + 均值正常 + max\_abs 结构性坏行的组合。
 
 \section{设计与实现}
 
@@ -248,7 +248,7 @@ bug 就是「速度正常 + 均值正常 + max\_abs 结构性坏行」的组合�
 （默认 \texttt{--N 8192,16384}）+ 非 32 倍数对齐场景 + SageAttention
 竞品同场，preset
 体系（\texttt{bench\_fp8.py} L57：\texttt{default}/\texttt{cache-dit}/
-\texttt{perblock}）把「部署形态」编码进配置：\texttt{cache-dit} 预设
+\texttt{perblock}）把部署形态编码进配置：\texttt{cache-dit} 预设
 \texttt{hybrid\_n\_early}=256，\texttt{perblock} 预设
 sm89 cp.async 路径的 per-block 量化；NHD 零拷贝（diffusers E2E 布局）
 由独立的 \texttt{--with-permute} 启用，与 preset 正交。
@@ -260,8 +260,8 @@ sm89 cp.async 路径的 per-block 量化；NHD 零拷贝（diffusers E2E 布局�
   \item \texttt{bench\_ms} L125--140：\texttt{no\_grad} 上下文 +
         warmup 3 + iters 5 取 min；
   \item L344--347：SDPA pre-heat 5 次（不计入）拉稳时钟，随后按
-        FFPA $\to$ Sage $\to$ SDPA 顺序测量——功耗墙下「谁排后面谁
-        吃亏」，固定顺序 + pre-heat 把它变成可复现的偏置；
+        FFPA $\to$ Sage $\to$ SDPA 顺序测量。功耗墙下谁排后面谁
+        吃亏，固定顺序 + pre-heat 把它变成可复现的偏置；
   \item L79--122 \texttt{fp8\_backend} 加 \texttt{@lru\_cache}：
         每次构造触发两次 \texttt{get\_device\_capability}（实测
         重建一次 $\sim$7$\mu$s），每 iter 重建会把 Python 开销算进
@@ -288,7 +288,7 @@ smooth-V、V 换 per-channel），
         \{per-block, per-channel, per-thread\}、
         \texttt{--fp8-v-quant-method} $\in$ \{per-block,
         per-channel\}（per-channel 即 Sage 式 per-D scale）；
-  \item hybrid：\texttt{--fp8-hybrid}/\texttt{--fp4-hybrid}——fp16
+  \item hybrid：\texttt{--fp8-hybrid}/\texttt{--fp4-hybrid} 让 fp16
         persist-D 算前 \texttt{n\_early} 行、量化 kernel 算余下
         （零冗余拼接，\texttt{q\_start\_row} 偏移实现）；causal 下
         \textbf{默认自动开启}以保护早期行精度，Nq$\ge$
@@ -306,8 +306,8 @@ preset。knob 的边际效应见 33.6.3。
 \section{实测数据总览}
 
 三张表分两个平台。表~\ref{tab:33-5090} 是 RTX 5090（B1 H64
-N16384 D128）的对照——fp8 1.9$\sim$3.0x、fp4 2.0$\sim$4.0x，
-用于建立「大卡上能到多少」的量级预期。表~\ref{tab:33-pro5000-fp8}
+N16384 D128）的对照：fp8 1.9$\sim$3.0x、fp4 2.0$\sim$4.0x，
+用于建立大卡上能到多少的量级预期。表~\ref{tab:33-pro5000-fp8}
 与表~\ref{tab:33-pro5000-fp4} 是本机 PRO 5000 的复测（H32/Hkv8，
 bench 脚本默认 preset，2026-09-21）：fp8 与 Sage2 总体打平、互有
 胜负（差距 $\pm$4\% 内），fp4 全场景领先。读表时记住本章动机节的
@@ -432,12 +432,12 @@ bench 脚本默认 preset，2026-09-21）：fp8 与 Sage2 总体打平、互有
   \item \textbf{D$\le$128 优势区}：1.26x--1.83x。量化 kernel 占满
         tensor pipe，aux 链被主 kernel 遮蔽；
   \item \textbf{D=256 交叉点区}：fp8 persist-D 掉到 1.14x--1.45x
-        （smem 压力 + fp4 家族在此开始占优——同点 fp4 2.11x，见
+        （smem 压力 + fp4 家族在此开始占优：同点 fp4 2.11x，见
         表~\ref{tab:33-fp4-matrix}；第~\ref{ch:30}~章的 dispatch
         三分在此切换）；cross 甚至 0.76x：Nq=1024 小 Q 场景下
         \textbf{aux 链占比}反超主 kernel（整条前处理链的聚合
         吞吐上限 $\approx$1.04TB/s，第~\ref{ch:28}~章 28.6 节）；
-  \item \textbf{D=512 大 D 区}：参照换 SDPA-MATH，2.98x--3.16x——
+  \item \textbf{D=512 大 D 区}：参照换 SDPA-MATH，2.98x--3.16x。
         数字大但要正确归因：一半来自 FFPA split-D 真加速
         （第~\ref{ch:30}~章），一半来自 MATH 参照自身的低效。
 \end{itemize}
@@ -523,7 +523,7 @@ rel\_err 0.59/max 1.0（早期行 e2m1 噪声无 hybrid 抑制，
 \texttt{bench\_fp8.py} 与 Sage2 总体打平互有胜负（多数 $\pm$1.5\% 内，
 最差 non-aligned-dense 8K FFPA 快 2.6\%），
 这正是 preset 公平化的结果：2026-08 之前 cachedit preset 默认开
-hybrid+smooth-v，dense 场景「慢 3--8.7\%」全是功能成本，对齐后
+hybrid+smooth-v，dense 场景慢 3--8.7\% 全是功能成本，对齐后
 反超。除表~\ref{tab:33-5090} 的 5090 引用外，本章数字均出自本机
 PRO 5000（sm\_120）实测——\textbf{形态结论（谁快谁慢、随 D 怎么
 走）跨设备可迁移，绝对数字不可}，引用这类比值时必须带上设备名。
@@ -543,14 +543,14 @@ PRO 5000（sm\_120）实测——\textbf{形态结论（谁快谁慢、随 D 怎
   \item D$>$256 $\Rightarrow$ fp8 split-D/M4N2（fp4 大 D 依赖
         split-D 家族，按第~\ref{ch:30}~章 dispatch 表选）；
   \item 小 Nq（decode/cross 小 Q）$\Rightarrow$ 先看 aux 链占比，
-        量化的收益可能被前处理抵消——此时 fp16 persist-D 或 SDPA
+        量化的收益可能被前处理抵消，此时 fp16 persist-D 或 SDPA
         反而合理；
   \item causal 一律确认 hybrid 已开（CLI 默认自动），并按 bf16
         口径复核 allclose。
 \end{enumerate}
 
-\textbf{Cache-DiT $\times$ FFPA}。量化 attention 进入扩散模型管线
-要处理三件事。布局上，diffusers 上游产 NHD [B,N,H,D]，FFPA 的
+量化 attention 进入扩散模型管线，在 Cache-DiT 侧要处理三件事。
+布局上，diffusers 上游产 NHD [B,N,H,D]，FFPA 的
 \texttt{tensor\_layout="NHD"} 走零拷贝 fast path（第~\ref{ch:28}~章~\ref{sec:28-nhd}~节），省掉两侧 permute。占比上，按式~\ref{eq:33-e2e}，
 attention 占比决定端到端收益上限，视频扩散（长序列、双流块）是最佳
 场景。cache-dit 还允许按层选 backend：因果块用 hybrid、双向块用纯
@@ -563,30 +563,30 @@ fp4，精度损失只在最敏感的位置修正。README 引用的 NeMo Automod
 \begin{enumerate}[itemsep=0pt,topsep=2pt]
   \item \textbf{A/B 不校验 SDPA 参照}：两轮 bench 的 SDPA 时间差
         $>1\%$ 即作废重测（GPU 级污染会同时抬高 FFPA 与 SDPA，
-        制造「全面 2x」假象）；
+        制造全面 2x 的假象）；
   \item \textbf{小 D 静默回退}：D$\le$256 不设
         \texttt{FFPA\_CUDA\_ALLOW\_SMALL\_D=1} 时 FFPA 静默走
-        SDPA fallback——看到 TFLOPS 只有 200T 级、profiler 里是
+        SDPA fallback：看到 TFLOPS 只有 200T 级、profiler 里是
         \texttt{flash\_fwd\_kernel} 就是静默回退的表现；
   \item \textbf{功耗墙顺序偏置}：高功耗卡上单顺序 bench 谁排后面
         谁吃亏（实测差 466--491$\mu$s）；必须 pre-heat + 固定顺序，
         关键结论用匹配窗口交替复核；
   \item \textbf{grad-on 测推理}：autograd 链每调用多 $\sim$30$\mu$s
-        Python 开销，且 fast path 永不命中——推理 bench 必须
+        Python 开销，且 fast path 永不命中，推理 bench 必须
         \texttt{no\_grad}；
   \item \textbf{容差档位错配}：fp4 用 fp8 的 5e-2 去卡必然全红；
-        反过来 fp8 用 0.7 会让真 bug（坏行、读错布局）漏检——
+        反过来 fp8 用 0.7 会让真 bug（坏行、读错布局）漏检，
         tol 必须按 impl 分档（\texttt{\_runner\_fwd.py} L413--419 的
         分流就是为此）；
   \item \textbf{D=512 speedup 的参照陷阱}：MATH 后端 materialize
         $N_q\times N_{kv}$ 矩阵，报告里必须注明参照换挡，否则
-        「3x」里近半是参照自身的低效。
+        3x 里近半是参照自身的低效。
 \end{enumerate}
 
 \section{面试要点速查}
 
 \begin{enumerate}[itemsep=0pt,topsep=2pt]
-  \item min-of-N + no\_grad + pre-heat + 固定顺序——推理 bench 四
+  \item min-of-N + no\_grad + pre-heat + 固定顺序：推理 bench 四
         条规则，各自防什么坑；
   \item speedup 口径三要素：参照后端（FA2/MATH 随 D 换挡）、
         min-of-N、E2E 摊销公式（占比 $\alpha$ 决定上界）；

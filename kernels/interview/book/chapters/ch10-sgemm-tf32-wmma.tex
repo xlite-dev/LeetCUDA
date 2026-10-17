@@ -21,7 +21,7 @@ SGEMM；第二处用 \textbf{cp.async} 异步拷贝 +
 \textbf{前置章节}：第~\ref{ch:09}~章的 tiling 金字塔（Block Tile / Thread Tile /
 向量化加载），本章的 block/warp 划分直接建立在它之上；第~\ref{ch:03}~章的
 coalescing 与 float4 向量化（本章加载路径全部是 16~B 的 \texttt{cp.async}）。
-\textbf{后继}：第~\ref{ch:11}~章将抛弃 WMMA 的「布局黑盒」，直接手写
+\textbf{后继}：第~\ref{ch:11}~章将抛弃 WMMA 的布局黑盒，直接手写
 \texttt{mma.sync} PTX 指令并引入 \texttt{ldmatrix} 与更深的多级流水；
 第~\ref{ch:12}~章在其上加 XOR swizzle。
 
@@ -32,7 +32,7 @@ coalescing 与 float4 向量化（本章加载路径全部是 16~B 的 \texttt{c
 256 FLOP 的量级。而 Tensor Core 是专为矩阵乘设计的矩阵乘累加单元：以
 Ampere 为例，一条 warp 级的 TF32 MMA 指令（$m16n8k8$）一次完成
 $16\times 8\times 8 = 1024$ 个乘加，是同宽度 FFMA 的 32 倍密度。想继续提升
-GEMM 吞吐，就必须把循环核从「每线程一个 FMA」换成「每 warp 一条矩阵指令」。
+GEMM 吞吐，就必须把循环核从每线程一个 FMA 换成每 warp 一条矩阵指令。
 
 \textbf{动机二：舍弃 13 个尾数位换 8 倍吞吐。}\allowbreak{}Tensor Core 不直接接受
 fp32 输入。Ampere 为 fp32 输入准备的是 \textbf{TF32}（TensorFloat-32）：去掉
@@ -42,10 +42,10 @@ fp32 尾数的低 13 位、保留 8 位指数，得到 1+8+10 共 19 位、精�
 10.3~节会给出定量分析。
 
 \textbf{动机三：同步搬运制造的流水线空泡。}第~\ref{ch:09}~章的加载路径是
-「\texttt{ld.global} 到寄存器，再 \texttt{st.shared}」，每搬一个 tile 都要
+\texttt{ld.global} 到寄存器、再 \texttt{st.shared}，每搬一个 tile 都要
 全 block 同步等待：加载阶段 Tensor Core 空闲，计算阶段加载单元空闲。Ampere 起
 提供的 \texttt{cp.async} 让 global$\to$shared 的搬运绕过寄存器、由异步单元
-完成，程序员可以「先发出下一块的拷贝，再计算当前块」，用双缓冲把
+完成，程序员可以先发出下一块的拷贝、再计算当前块，用双缓冲把
 搬运延迟掩盖在计算时间内。本章 kernel 的 \texttt{kStages}=2 正是两级缓冲。
 
 \section{数学原理}
@@ -181,7 +181,7 @@ TF32 的相对误差越差，但 $\sqrt{K}$ 的增速远慢于 $K$。
 以 $[-1,1]$ 均匀随机输入、$K = 512$ 为例：$\sum|a\sb jb\sb j| \approx K/4 = 128$，
 式~\ref{eq:10-bound} 的界 $\approx 2 \times 4.88\times10^{-4} \times 128 \approx 0.125$，
 而输出自身量级 $\approx \sqrt{K/9} \approx 7.5$，相对误差界约 $1.7\%$，
-与「$\sim$3 位十进制有效数字」的直觉一致。深度学习权重与激活的数值噪声
+与 $\sim$3 位十进制有效数字的直觉一致。深度学习权重与激活的数值噪声
 通常远大于此，TF32 在生产环境被广泛接受，靠的就是这一点。
 
 \subsection{双缓冲的时序数学}
@@ -189,9 +189,8 @@ TF32 的相对误差越差，但 $\sqrt{K}$ 的增速远慢于 $K$。
 设搬运一个 k-tile（global$\to$shared）需要时间 $T\sb {\mathrm{ld}}$，计算一个
 k-tile 需要 $T\sb {\mathrm{cp}}$。无流水（单缓冲）时每步总代价是两者\textbf{串行相加}
 $T\sb {\mathrm{ld}} + T\sb {\mathrm{cp}}$。双缓冲提供两份 smem 缓冲 $S\sb 0, S\sb 1$，
-稳态下第 $k$ 步在「用 $S\sb {k\bmod 2}$ 计算 tile $k$」的同时
-「向 $S\sb {(k+1)\bmod 2}$ 发出 tile $k+1$ 的搬运」，两件事并行，
-稳态周期收敛到
+稳态下第 $k$ 步一边用 $S\sb {k\bmod 2}$ 计算 tile $k$，一边向
+$S\sb {(k+1)\bmod 2}$ 发出 tile $k+1$ 的搬运，稳态周期收敛到
 \begin{equation}
   T\sb {\mathrm{step}} \;=\; \max\!\bigl(T\sb {\mathrm{ld}},\, T\sb {\mathrm{cp}}\bigr),
   \label{eq:10-pipe}
@@ -290,7 +289,7 @@ kernel 的 tile 配置由模板参数逐层相乘得到（sgemm.cuh~L225--236）
 Tensor Core 不会自动完成 fp32$\to$TF32 的舍入。送进
 \texttt{load\_\allowbreak{}matrix\_\allowbreak{}sync} 的数据必须已经是 TF32 精度：
 WMMA 的 \texttt{precision::\allowbreak{}tf32} fragment 不保证隐式转换的位置，
-其行为取决于编译器生成的指令，与 cuBLAS 等「先舍入输入」的
+其行为取决于编译器生成的指令，与 cuBLAS 等先舍入输入的
 参考实现不可比。这个 kernel 用
 \texttt{\_\allowbreak{}\_\allowbreak{}float\_\allowbreak{}to\_\allowbreak{}tf32} 把输入矩阵原地转换：每线程处理连续
 4 个 float（16~B 一条指令搬运），转换在寄存器里完成后写回原地址。
@@ -323,7 +322,7 @@ $16\times8 = 128$ 个 A 元素（每 lane 4 个 32 位寄存器）、B 同为 12
 $2$ 个 A fragment $+\ 4$ 个 B fragment $+\ 8$ 个累加器
 $\approx 2{\times}4 + 4{\times}4 + 8{\times}8 = 88$ 个 32 位寄存器
 （每 lane），再加上地址与循环变量，128 上限的寄存器预算已经相当紧张。
-后续第~\ref{ch:12}~章引入寄存器双缓冲前，先得理解「fragment 即寄存器」
+后续第~\ref{ch:12}~章引入寄存器双缓冲前，先得理解 fragment 即寄存器
 这句话。
 
 \subsection{shared memory 布局与 padding}
@@ -424,7 +423,7 @@ $\mathrm{kPadB}=4$），两段共 $2\times128\times12 + 2\times8\times132 = 5184
   title={sgemm.cuh L246-263（warp 划分与加载坐标映射）}]{../sgemm.cuh}
 
 256 个线程每线程为两级缓冲各搬 2 个 16~B（A、B 各一），坐标映射按
-「每线程 4 元素」规划：A 的 $128\times8$ 需要 $128\times2$ 个 4 元组
+每线程 4 元素规划：A 的 $128\times8$ 需要 $128\times2$ 个 4 元组
 （\texttt{tid/2} 定行、\texttt{tid\%2} 定列半），B 的 $8\times128$ 需要
 $8\times32$ 个 4 元组（\texttt{tid/32} 定行、\texttt{tid\%32} 定列组），
 两个方向都恰好被 256 线程整除，无需循环。
@@ -448,7 +447,7 @@ per-thread 的组；\texttt{cp.\allowbreak{}async.\allowbreak{}wait\_\allowbreak
 主循环的迭代索引故意从 $k = \mathrm{kStages}-1 = 1$ 开始：迭代 $k$ 发出
 tile $k$ 的搬运（写入 stage $k \bmod 2$），然后计算 tile $k-1$
 （读 stage $(k+1)\bmod 2 = (k-1)\bmod 2$，见 L308 的 \texttt{smem\_sel}）。
-也就是说\textbf{搬运永远比计算领先一个 tile}，两个 stage 交替读/写，
+所以搬运永远比计算领先一个 tile，两个 stage 交替读/写，
 图~\ref{fig:10-1} 画的就是这个时序。
 
 \lstinputlisting[linerange={332-348},firstnumber=auto,
@@ -467,8 +466,8 @@ $i\in\{0,1\}$ 平移 $16$。B 碎片同理按 \texttt{warp\_n} 平移列起点�
 fragment 对），整个 kernel 的计算都发生在这里：每个 block 每 k-step 完成
 $2\times128\times128\times8$ FLOP。迭代末尾 \texttt{wait\_\allowbreak{}group\allowbreak{}(K\_\allowbreak{}STAGE-2)}
 对本章即 \texttt{wait\_\allowbreak{}group\allowbreak{}(0)}，在迭代粒度收口：发出的 tile-$k$
-搬运必须在本迭代结束前完成，下一个迭代才能安全地写「另一个 stage」并读
-「本 stage」。更深的流水（第~\ref{ch:11}~章）把这一收口放宽为
+搬运必须在本迭代结束前完成，下一个迭代才能安全地写另一个 stage 并读
+本 stage。更深的流水（第~\ref{ch:11}~章）把这一收口放宽为
 \texttt{wait\_\allowbreak{}group\allowbreak{}(k\allowbreak{}Stages-2)}，允许一组搬运跨迭代 in-flight。
 
 \lstinputlisting[linerange={373-379,419-432},firstnumber=auto,
@@ -519,14 +518,14 @@ L375 的条件等待被编译期剪掉。写回阶段每个 warp 把 8 个累加
 \label{fig:10-1}
 \end{figure}
 
-读图~\ref{fig:10-1} 的两个要点：其一，两条流水的错位正好是一个 tile，
-这是「预加载 $S-1$ 个 + 主循环先发加载再计算」共同保证的；
-其二，迭代末的 \texttt{wait\_\allowbreak{}group + \_\allowbreak{}\_\allowbreak{}syncthreads} 是写读换向的安全点；
+图~\ref{fig:10-1} 里两条流水的错位正好是一个 tile，这由预加载 $S-1$ 个 tile
+加主循环先发加载再计算共同保证。迭代末的
+\texttt{wait\_\allowbreak{}group + \_\allowbreak{}\_\allowbreak{}syncthreads} 则是写读换向的安全点；
 没有它，下一迭代的 cp.async 可能覆盖本 warp 尚未读完的 stage。
 
 \section{性能分析}
 
-\textbf{算术强度}。按 block 内 smem 复用口径：每 k-step 从 global 搬入
+按 block 内 smem 复用口径算算术强度：每 k-step 从 global 搬入
 $(B\sb M B\sb K + B\sb K B\sb N)\times4$~B $= (128{\times}8{+}8{\times}128)\times4 = 8$~KB，
 完成 $2 B\sb M B\sb N B\sb K = 262{,}144$ FLOP，$AI \approx 32$ FLOP/B，远高于
 本机 roofline 拐点（PRO 5000 Blackwell：FP32 CUDA Core $\sim$60 TFLOPS 级、
@@ -589,11 +588,11 @@ k-tile（MMA 指令发射密度低）与每迭代一次的迭代末同步。第~
 \section{常见坑}
 
 \textbf{坑一：忘做 fp32$\to$TF32 输入转换就拿 cuBLAS TF32 对数。}
-WMMA 的 tf32 fragment 只保证「按 TF32 精度消费数据」；输入没先过
+WMMA 的 tf32 fragment 只保证按 TF32 精度消费数据；输入没先过
 \texttt{\_\allowbreak{}\_\allowbreak{}float\_\allowbreak{}to\_\allowbreak{}tf32}，与 \texttt{CUBLAS\_\allowbreak{}TF32\_\allowbreak{}TENSOR\_\allowbreak{}OP\_\allowbreak{}MATH}
-参考的误差里就混入了「谁在何处舍入」的不可控差异。正确做法是
+参考的误差里就混入了谁在何处舍入的不可控差异。正确做法是
 bench/sgemm.cu 的三步：保存 fp32 参考 $\to$ 原地 TF32 转换 $\to$ 与 TF32 参考对数。
-本章测试直接用「转换后数据」的 CPU fp64 做参考，把舍入差异彻底移出判定。
+本章测试直接用转换后数据的 CPU fp64 做参考，把舍入差异彻底移出判定。
 
 \textbf{坑二：\texttt{load\_\allowbreak{}matrix\_\allowbreak{}sync} 的 ldm 传了逻辑宽度而非物理行距。}
 A 碎片的 ldm 必须是 $B\sb K+\mathrm{kPadA}=12$（不是 8）、B 是 $132$（不是 128）。
@@ -606,7 +605,7 @@ float4（16~B）才用 \texttt{.cg}；若加载映射是 4 元素一组的其它
 必须改用 \texttt{.ca} 或重排映射。
 
 \textbf{坑四：wait 之后必须 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads}。}
-\texttt{cp.async} 的组是 \textbf{per-thread} 的：wait 只保证「本线程」发出的
+\texttt{cp.async} 的组是 \textbf{per-thread} 的：wait 只保证本线程发出的
 搬运完成。计算要读的 smem 可能由\textbf{别的线程}搬入，所以
 wait 后必须再全 block 同步一次（L302--303、L369--370 两处都是这个匹配）。
 漏掉 sync 是 warp 间数据竞争，症状是偶发错数，属于最难查的一类。
@@ -689,10 +688,10 @@ C & sgemm\_tf32 $256\times256\times64$  & 5.327e-06 & 1.0e-02 \\
 \end{tabular}
 \end{table}
 
-case~A 的括号里 rne 与 rna 都 4096/4096 命中：随机数据落在「恰好 tie」
+case~A 的括号里 rne 与 rna 都 4096/4096 命中：随机数据落在恰好 tie
 （低 13 位恰为 $0x1000$）的概率近乎为零，两种最近舍入在无 tie 样本上
-逐位等价：本测试证明「GPU 转换是 round-to-nearest 族」，
-但不足以区分 even/away（构造 tie 样本留给动手实验）。
+逐位等价。本测试只证明了 GPU 转换属 round-to-nearest 族，
+不足以区分 even/away（构造 tie 样本留给动手实验）。
 case~B/C 的误差 $10^{-5}$ 量级远小于容差，符合预期：输入舍入已被参考吸收，
 剩余差异只来自 fp32 累加顺序。动手实验建议：
 （1）用 \texttt{.\allowbreak{}/\allowbreak{}.\allowbreak{}build/\allowbreak{}ch10\_\allowbreak{}sgemm\_\allowbreak{}tf32 bench} 复现 28.19 TFLOPS；

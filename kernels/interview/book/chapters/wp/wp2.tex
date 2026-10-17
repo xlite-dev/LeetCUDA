@@ -192,7 +192,7 @@ D \ &\colon \ \Z_S \to \D
 \label{fig:layouts}
 \end{figure}
 
-图~\ref{fig:layouts} 汇总了稠密线性代数库（如 CUTLASS）中常见的数据布局。每个布局都被表示为从逻辑坐标 $(m,n) \in \Z_{(4,8)}$ 到偏移 $k \in \Z$ 的映射。例如，这些偏移可用于索引数据数组中的元素。常见的行主序（row-major）、列主序（column-major）与填充（padded）布局都可以直接用 \CuTe 布局表示，而交错（interleaved）与混合（mixed）布局则表明：通过使用嵌套的形状与步幅，布局的表示集合被严格地扩大。特别地，由数据块构成的网格（grids-of-tiles-of-data）可以直接用 \CuTe 布局表示。
+图~\ref{fig:layouts} 汇总了稠密线性代数库（如 CUTLASS）中常见的数据布局。每个布局都被表示为从逻辑坐标 $(m,n) \in \Z_{(4,8)}$ 到偏移 $k \in \Z$ 的映射。例如，这些偏移可用于索引数据数组中的元素。常见的行主序（row-major）、列主序（column-major）与填充（padded）布局都可以直接用 \CuTe 布局表示，而交错（interleaved）与混合（mixed）布局则表明：使用嵌套的形状与步幅可以严格扩大布局的表示集合。特别地，由数据块构成的网格（grids-of-tiles-of-data）可以直接用 \CuTe 布局表示。
 
 \begin{figure}[ht]
 \centering
@@ -279,7 +279,7 @@ f &\equiv (2,2,2,\ldots):(f(1),f(2),f(3),\ldots) \ \circ \ (3,1):(1,4) \ \circ \
 \begin{align}
 \v{L}(c) = (D \circ S)(c) = d \cdot S(c) = d \cdot \tilde{c}.
 \end{align}
-形状函数是到自然坐标 $\tilde{c} \in \Z^S$ 的一个便利的半仿射双射，而步幅函数是自然坐标的线性函数。事实上，对于两个自然坐标 $\tilde{c}_0, \tilde{c}_1 \in \Z^S$，布局函数是线性（linear）的，
+形状函数是到自然坐标 $\tilde{c} \in \Z^S$ 的一个便利的半仿射双射，而步幅函数是自然坐标的线性函数。对于两个自然坐标 $\tilde{c}_0, \tilde{c}_1 \in \Z^S$，布局函数是线性（linear）的，
 \begin{align*}
 \v{L}(\alpha \tilde{c}_0 + \beta \tilde{c}_1) = d \cdot (\alpha \tilde{c}_0 + \beta \tilde{c}_1) = \alpha (d \cdot \tilde{c}_0) + \beta (d \cdot \tilde{c}_1) = \alpha \v{L}(\tilde{c}_0) + \beta \v{L}(\tilde{c}_1),
 \end{align*}
@@ -326,4 +326,4 @@ f(\v{v}) = \v{A} \v{v} + \v{b}
 \end{align}
 其中 $\v{A}$ 是一个 $m {\times} n$ 的二进制元素矩阵，$\v{v}$ 是长度为 $n$ 的二进制向量，$\v{b}$ 是长度为 $m$ 的二进制向量，且所有算术都以 2 为模（在只有两个元素的有限域 $\mathbb{F}_2$ 中）执行。
 
-本文的后续章节将定义 \CuTe 布局上的代数运算，这些运算是从线性代数推广而来的。\CuTe 布局上的群复合可以解释为矩阵乘法的推广。\CuTe 布局的右逆与左逆则对应线性代数中的 Moore-Penrose 伪逆。事实上，在 BPC 与 BMMC 分析中也可以找到类似的线性代数表达式（Edelman 等，1994；Cormen，1993；Bouverot-Dupuis 与 Sheeran，2023；Zhou 等，2025），它们都在算法分析中使用分解、逆与矩阵乘积。从这个角度看，\CuTe 布局代数是线性代数的 BPC 与 BMMC 运算向 $\mathbb{F}_2$ 域之外的推广。特别地，\CuTe 布局代数的主要动机来自张量异构数据布局中常见的一般整数步幅。在本工作中，我们旨在证明：这些运算更一般的函数式定义对 \CuTe 布局而言通常是可计算的，并且对广泛的分析与应用都是有用的。
+本文的后续章节将定义 \CuTe 布局上的代数运算，这些运算是从线性代数推广而来的。\CuTe 布局上的群复合可以解释为矩阵乘法的推广。\CuTe 布局的右逆与左逆则对应线性代数中的 Moore-Penrose 伪逆。在 BPC 与 BMMC 分析中也可以找到类似的线性代数表达式（Edelman 等，1994；Cormen，1993；Bouverot-Dupuis 与 Sheeran，2023；Zhou 等，2025），它们都在算法分析中使用分解、逆与矩阵乘积。从这个角度看，\CuTe 布局代数是线性代数的 BPC 与 BMMC 运算向 $\mathbb{F}_2$ 域之外的推广。特别地，\CuTe 布局代数的主要动机来自张量异构数据布局中常见的一般整数步幅。在本工作中，我们旨在证明：这些运算更一般的函数式定义对 \CuTe 布局而言通常是可计算的，并且对广泛的分析与应用都是有用的。

@@ -4,26 +4,26 @@
 
 \section{本章导读}
 
-第~\ref{ch:27}~章回答了「量化 attention 的数学是什么」；本章回答第一个工程问题：
-\textbf{$Q,K,V$ 的离线量化链本身怎么写}。在第~\ref{ch:29}~章的 persist-D kernel 执行
-之前，fp16/bf16 的输入张量要先经历一系列「前处理 aux kernel」：smooth-K 列均值统计、
+第~\ref{ch:27}~章给出了量化 attention 的数学；本章回答第一个工程问题：
+$Q,K,V$ 的离线量化链本身怎么写。在第~\ref{ch:29}~章的 persist-D kernel 执行
+之前，fp16/bf16 的输入张量要先经历一系列前处理 aux kernel：smooth-K 列均值统计、
 可选的 Hadamard 预旋转、Q/K 的 e4m3/int8 量化、V 的转置量化（$V^{\top}$）与
 per-channel scale 统计。这些 kernel 单个都不复杂，但它们决定了两件事：
 \begin{enumerate}[itemsep=0pt,topsep=2pt]
   \item \textbf{精度上限}：量化前的 outlier 处理（smoothing / Hadamard 旋转）与
         量化粒度（per-block / per-thread / per-channel）直接决定进入 kernel 的量化
-        数据质量——28.3~节的三个「不变变换」是全部精度的来源；
+        数据质量。28.3~节的三个「不变变换」是全部精度的来源；
   \item \textbf{性能下界}：aux 链是一次额外的全量 DRAM 往返（读 fp16 写 fp8，
         字节量与主 kernel 同为 $O(BHND)$，但时间是 $O(N)$、主 kernel 是
         $O(N^2)$，占比随 $N$ 以 $1/N$ 衰减），在短序列 / 小批量场景会成为
-        可观的开销——28.6~节的带宽需求分析说明它为什么必须达到带宽峰值。
+        可观的开销；28.6~节的带宽需求分析说明它为什么必须达到带宽峰值。
 \end{enumerate}
 
 本章代码全部来自 ffpa-attn 仓库（commit \texttt{861d75e}）的
 \texttt{cute/fp8/} 目录与 \texttt{cute/hadamard.cuh}，约 1600 行，被 persist-D、
 split-D、M4N2 三个 fp8 主 kernel 家族\textbf{共享}（28.4.1~节的编排函数是唯一的
 公共入口）。这批 aux kernel 的设计思路与 Part III--IV 的主 kernel 恰好
-互补：主 kernel 优化「计算密度」，aux kernel 优化「每字节的搬运效率」，
+互补：主 kernel 优化计算密度，aux kernel 优化每字节的搬运效率，
 两者的性能模型是纯带宽模型（28.6~节）。
 
 \textbf{前置章节}：第~\ref{ch:27}~章（量化数学，必须）、第~\ref{ch:11}~章
@@ -74,14 +74,14 @@ kernel 内的 fragment 寻址模式排布（28.3.4~节）。\textbf{前处理链
   \item 开 Hadamard 时（fp4/fp8 均需显式开启，fp4 收益更大）加
         \texttt{wht\_qk\_kernel} 的 Q、K 两次调用（28.4.6~节）。
 \end{enumerate}
-每个 kernel 都是「读一遍、写一遍」的流式形态，同泳道内的「统计 $\to$ 量化」
-数据依赖串行（不能用 stream 重叠消除）；跨泳道（Q/K/V 三路互相独立）理论上可
+每个 kernel 都是读一遍、写一遍的流式形态，同泳道内的统计 $\to$ 量化
+依赖必须串行（不能用 stream 重叠消除）；跨泳道（Q/K/V 三路互相独立）理论上可
 多流重叠，当前实现使用单流，因此整链时间 $\approx$ 总搬运字节 / 有效带宽。
 
 \subsection{三条「不变变换」的设计哲学}
 
 aux 链里所有\textbf{改数值}的操作（smooth-K、smooth-V、Hadamard）共享同一个设计
-约束：\textbf{变换必须保持 attention 输出精确不变（或在可控的标量修正下不变）}。
+约束是变换必须保持 attention 输出精确不变，或在可控的标量修正下不变。
 这条约束由代数定理保证，28.3.1--28.3.3~节将逐条证明：
 \begin{itemize}[itemsep=1pt,topsep=2pt]
   \item smooth-K 利用 softmax 的\textbf{行平移不变性}（logits 减一个行常数，
@@ -156,7 +156,7 @@ $kBc\cdot 448\cdot 2.25 \le 65504$；per-block 路径固定 amax/448，无此参
 
 \subsection{Hadamard 旋转：正交不变量与 outlier 扩散}\label{sec:28-wht}
 
-第三条不变变换不依赖 softmax 的任何性质，而依赖\textbf{正交性}。归一化
+第三条不变变换不依赖 softmax 的任何性质，而依赖正交性。归一化
 Walsh-Hadamard 矩阵 $\hat H_n = H_n/\sqrt{n}$ 满足 $\hat H_n \hat H_n^{\top} = I$
 （$H_n$ 按 $H_1=[1]$、$H_{2n} = \left[\begin{smallmatrix} H_n & H_n \\ H_n &
 -H_n\end{smallmatrix}\right]$ 递归，元素全为 $\pm1$）。对 $Q,K$ 右乘同一个
@@ -168,7 +168,7 @@ $\hat H$：
 \end{equation}
 
 \textbf{旋转的作用}：$\hat H$ 的每一列都是 $\pm1/\sqrt{n}$ 向量，乘完后
-\textbf{每个输出坐标都是全部输入坐标的带符号和}。由中心极限定理，只要输入没有
+每个输出坐标都是全部输入坐标的带符号和。由中心极限定理，只要输入没有
 极端的单坐标集中，输出幅度趋近均匀，这就是 Hadamard 的 whitening / Jackson
 性质。对量化的意义：量化 scale 是按块共享的（fp8 的 per-block/per-thread、fp4 的
 $1\times16$ 块），不旋转时一个 outlier 坐标会放大所在块的量化步长、降低其余数值的
@@ -193,15 +193,15 @@ $\sum_{d<kHeadDim} (Q\hat H)_{:,d}(K\hat H)_{:,d} = \sum_{d<d_{og}} Q_d K_d$
 
 \subsection{量化粒度谱系：与 C-fragment 对齐}\label{sec:28-granularity}
 
-第~\ref{ch:27}~章的表~\ref{tab:27-granularity} 列了粒度谱系；本节回答工程问题：
-\textbf{ffpa-attn 为什么在 Q 上选 per-thread（64 scale / 128 行）这个非常规的粒度}。
+第~\ref{ch:27}~章的表~\ref{tab:27-granularity} 列了粒度谱系；本节回答一个工程
+问题：ffpa-attn 为什么在 Q 上选 per-thread（64 scale / 128 行）这个非常规粒度。
 答案在 MMA 的 C-fragment 布局里（第~\ref{ch:11}~章图~\ref{fig:11-2a}）：
 $m16n8k16$ 的 fp32 累加 fragment 中，\textbf{每个线程持有 2 行 $\times$ 1 个
 列对（2 个相邻列元素）}，quad 内 4 个 lane 分摊 $n{=}8$ 列且持有\textbf{相同的
 2 行}。反量化时若 scale 按行组织，
-同一线程的两行就要两个 scale；若 scale 按「C-fragment 行对」组织（每 scale 覆盖
+同一线程的两行就要两个 scale；若 scale 按 C-fragment 行对组织（每 scale 覆盖
 $\{r,\ r+8\}$ 两行，quad 共享），则每个线程的所有累加值共享\textbf{一个} scale，
-反量化变成「fragment 提升时直接乘一个寄存器标量」，\textbf{零 shuffle}。
+反量化变成 fragment 提升时直接乘一个寄存器标量，零 shuffle。
 
 具体排布（\texttt{quantize\_fp8\_perthread\_q\_kernel}）：每个 128 行的量化块
 铺 $8\times 8 = 64$ 个 scale：行维按 16 行一组分 8 组，组内按
@@ -216,10 +216,10 @@ per-thread 粒度是每 $kBc$ 块 4 个 scale（K 的 fragment 消费模式不�
   \;\prec\;
   \underbrace{\text{per-block}}_{\text{1 scale/128 行}}
 \end{equation}
-粒度越细精度越高、但 scale 寄存器与消去开销越大；per-thread 是「精度贴近
-per-token、消费成本贴近 per-block」的工程折中点。图~\ref{fig:28-perthread-slots}
+粒度越细精度越高，但 scale 寄存器与消去开销越大；per-thread 是精度贴近
+per-token、消费成本贴近 per-block 的工程折中点。图~\ref{fig:28-perthread-slots}
 把 64 槽位的排布与 quad 的消费视角合在一张图里：左列是 128 行块上 64 个
-scale 的覆盖域，右侧放大一个 quad 看「为什么零 shuffle」。
+scale 的覆盖域，右侧放大一个 quad，看零 shuffle 是怎么来的。
 
 \begin{figure}[H]
 \centering
@@ -322,8 +322,8 @@ B 操作数必须携带\textbf{同一个} $\pi$，保证槽位 $s$ 两侧对应�
   \label{eq:28-vtperm}
 \end{equation}
 置换被刻意限制在\textbf{每个 32 列组内}，warp 的转置写不跨 32B sector，访存
-合并不受影响。这是「前处理链的输出布局由主 kernel 消费方式决定」的最典型例证：
-一个第~\ref{ch:30}~章的寄存器打包决策，提前在本章的量化 kernel 中完成。
+合并不受影响。前处理链的输出布局由主 kernel 的消费方式决定，这条主线在这里
+体现得最直接：一个第~\ref{ch:30}~章的寄存器打包决策，提前在本章的量化 kernel 中完成。
 图~\ref{fig:28-vtperm} 把 $\pi^{-1}$ 的位段重组画成双条带：上条是真实列序，
 下条是存储槽位，连线束的交叉形态就是置换本身。
 
@@ -410,7 +410,7 @@ sector）内：warp 的转置写不跨 sector，coalescing 不受影响；P 侧
 
 \subsection{NHD 零拷贝寻址}\label{sec:28-nhd}
 
-最后一个环节是\textbf{输入布局}。diffusers 等 HF 管线的 KV cache 形状是
+最后一个环节是输入布局。diffusers 等 HF 管线的 KV cache 形状是
 $[B, N, H, D]$（NHD），而 kernel 语义视角是 $[B, H, N, D]$（BHND）。朴素做法是
 \texttt{.permute(0,2,1,3).contiguous()} 物化一份，等于一次全量拷贝。ffpa-attn 的
 选择是\textbf{零拷贝}：量化 kernel 接受一个五字段的布局描述符
@@ -450,9 +450,10 @@ struct Fp8QuantizedInputs {
 
 \subsection{两阶段确定性列均值}\label{sec:28-kvmean}
 
-smooth-K 需要的 $\bar k$ 是一个 $(bh, d)$ 规模的小统计，但实现上有两个坑：其一，
-\texttt{at::mean} 的库调用 + fp32 cast 要 $\sim$85us（B1 H32 N8192 D128）；其二，
-若朴素地用 atomics 自写统计归约，结果是非确定性的。\texttt{smooth\_k.cuh} 用两阶段确定性方案替代：
+smooth-K 需要的 $\bar k$ 是一个 $(bh, d)$ 规模的小统计，但实现上有两个坑：
+\texttt{at::mean} 的库调用 + fp32 cast 要 $\sim$85us（B1 H32 N8192 D128）；
+朴素地用 atomics 自写统计归约，结果又是非确定性的。\texttt{smooth\_k.cuh}
+改用两阶段确定性方案：
 
 \begin{lstlisting}[
   caption={smooth-K 列均值：两阶段确定性归约（\texttt{smooth\_k.cuh} L56--84）},
@@ -518,29 +519,31 @@ __global__ void quantize_fp8_kernel(
     float inv_n = 0.0f) {
 \end{lstlisting}
 
-设计要点有三。\textbf{其一，单遍寄存器驻留}：8 元素（16B）向量读进寄存器后，
-amax pass 与量化 pass 都在寄存器完成，全局内存只读一次，纯带宽 kernel 必须如此。\textbf{其二，smooth-K 融合}：均值向量先经 smem 广播
-（\texttt{km\_sh}），量化前在 fp32 域减去，统计 kernel 与量化 kernel 之间
-\textbf{不落盘中间结果} $K - \mathbf{1}\bar k^{\top}$，一次 DRAM 往返同时完成
-smooth 与 quantize。\textbf{其三，e4m3 与 int8 的统一}：\texttt{kQKInt8} 模板参
-切换输出类型与 scale 分母（448 vs 127），其余代码路径零分叉：int8 对称量化
-（round-nearest-even、clamp $[-127,127]$、留 $-128$ 不用）是 SageAttention 的
-QK 精修方案（\texttt{quant\_sym\_int8}，L29--34）。
+设计上有三处要点。\textbf{单遍寄存器驻留}：8 元素（16B）向量读进寄存器后，
+amax pass 与量化 pass 都在寄存器完成，全局内存只读一次，纯带宽 kernel 必须如此。
+\textbf{smooth-K 融合}：均值向量先经 smem 广播（\texttt{km\_sh}），量化前在 fp32
+域减去，统计 kernel 与量化 kernel 之间\textbf{不落盘中间结果}
+$K - \mathbf{1}\bar k^{\top}$，一次 DRAM 往返同时完成 smooth 与 quantize。
+\textbf{e4m3 与 int8 的统一}：\texttt{kQKInt8} 模板参切换输出类型与 scale 分母
+（448 vs 127），其余代码路径零分叉：int8 对称量化（round-nearest-even、
+clamp $[-127,127]$、留 $-128$ 不用）是 SageAttention 的 QK 精修方案
+（\texttt{quant\_sym\_int8}，L29--34）。
 
 \subsection{per-thread 量化：面向 fragment 的 scale 布局}\label{sec:28-quant-perthread}
 
-28.3.4~节推导了粒度；实现上的关键在\textbf{归约树的构造}。\texttt{quantize\_fp8.cuh}
+28.3.4~节推导了粒度；实现上的关键在归约树的构造。\texttt{quantize\_fp8.cuh}
 L695--741 的头注释先给布局：per-thread Q 量化按 fragment 对齐而非
-per-token——每个 128 行块铺 64 个 scale，每组覆盖一个 C-fragment 行对
+per-token：每个 128 行块铺 64 个 scale，每组覆盖一个 C-fragment 行对
 $\{r,\,r{+}8\}$（2 行），行对经 \texttt{shfl\_xor}(amax, 8) 合并。两个极端作
 对照：per-token 要 128 个 scale（每行一个），per-block 只要 1 个；这个中间档
 换来 zero-shuffle 反量化（每线程 C-frag 的两行共享一个 scale），代价是 amax
 跨多行共享。行内再一分为二，每行两个线程各管半行，网格因此翻倍，冷输入的
 DRAM 延迟靠更多 in-flight warp 隐藏；行内两半与行对分别用 \texttt{shfl\_xor}
 1 与 16 合并成组 amax，组 amax 与每个量化字节都和 1-thread/row 形态逐 bit
-一致——粒度变更不能隐式改变数值。
+一致，粒度变更不能隐式改变数值。
 
-还有一个实现细节：\textbf{scale 的写入下标}。$g = (\text{seg\_row}/16)\cdot 8 + \text{seg\_row}\bmod 8$
+还有一个实现细节是 scale 的写入下标：
+$g = (\text{seg\_row}/16)\cdot 8 + \text{seg\_row}\bmod 8$
 把 $\{r, r+8\}$ 行对映射到 64 槽位表；段内行号还要按奇偶 launch block 折算
 （每个 launch block 只覆盖 64 行，两个 block 合成一个 128 行 scale 段）。
 K 侧的 per-thread 变体（\texttt{quantize\_fp8\_perthread\_k\_kernel}，L778 起）
@@ -593,7 +596,7 @@ __global__ void quantize_fp8_vt_kernel(
 层面检查这对开关必须同开同关（注释：launcher-enforced pairing），错配即静默数值
 错误。per-channel 变体（\texttt{quantize\_fp8\_vt\_perchannel\_kernel}，L555 起）
 在同一框架下改用 28.3.2~节的 $(bh, D)$ scale 与均值剥离。图~\ref{fig:28-vt-staging}
-把这条「行主序读 $\to$ smem 转置 $\to$ 列主序写」的三段式数据通路画出来，
+把这条行主序读 $\to$ smem 转置 $\to$ 列主序写的数据通路画出来，
 并标出两个同名却不同源的 16。
 
 \begin{figure}[H]
@@ -1030,16 +1033,16 @@ $\sim$1.34TB/s）实测 aux 链聚合有效带宽约 1.04TB/s，这是\textbf{�
 
 \begin{itemize}[itemsep=1pt,topsep=2pt]
   \item \textbf{列均值}：库调用 $\sim$85us $\to$ 两阶段自研 $\sim$50us
-        （B1 H32 N8192 D128，\texttt{smooth\_k.cuh} 注释实测）——省掉 fp32 cast
-        的额外往返并同时产出 fp32 副本；
+        （B1 H32 N8192 D128，\texttt{smooth\_k.cuh} 注释实测），省掉 fp32 cast
+        的额外往返，同时产出 fp32 副本；
   \item \textbf{per-thread QK}：$\sim$49us（$N=4608$ 量级，D128；数字出自 bench
-        留档而非源码注释）——每行两线程
+        留档而非源码注释）。每行两线程
         的网格翻倍是关键（28.4.4~节），冷输入场景 in-flight warp 数直接决定吞吐；
   \item \textbf{fused QKV}：默认路径（\texttt{quantize\_fp8\_qkv\_fused\_kernel}）
         把 Q 量化、K 量化（含 smooth）、V 转置量化合进一个 kernel，三次读
         输入的启动开销与尾部浪费一并省掉；
   \item \textbf{WHT}：一次额外读 + 写（fp16 in-place 语义上），只开 $O(N D\log D)$
-        计算，带宽主导，$\sim$数十 us 量级——fp4 块更小（$1\times16$）、outlier
+        计算，带宽主导，$\sim$数十 us 量级；fp4 块更小（$1\times16$）、outlier
         影响更大，旋转收益最高（bench 默认关，\texttt{--fp4-hadamard} 显式开）。
 \end{itemize}
 
@@ -1055,19 +1058,19 @@ knob 化设计正是建立在这个落差上：精度敏感场景上调粒度，
 
 \begin{itemize}[itemsep=1pt,topsep=2pt]
   \item \textbf{统计先行、量化融合}：先跑统计 kernel（均值 / 列 amax），再在量化
-        kernel 里把变换（减均值）与量化合成一遍读写——\textbf{不要物化
-        $K'$ 或 $V'$ 中间张量}，那等于多付一整轮 DRAM 往返。
-  \item \textbf{scale 布局跟着消费方走}：per-thread 的 64 槽位表不是随意设定的——它
-        精确等于 C-fragment 行对在 128 行块内的索引。任何「为 kernel 消费方便」
-        的数据排布决策，都值得在前处理期一次做完。
+        kernel 里把变换（减均值）与量化合成一遍读写，不要物化
+        $K'$ 或 $V'$ 中间张量，那等于多付一整轮 DRAM 往返。
+  \item \textbf{scale 布局跟着消费方走}：per-thread 的 64 槽位表不是随意设定的，它
+        精确等于 C-fragment 行对在 128 行块内的索引。任何为 kernel 消费方便
+        而做的数据排布决策，都值得在前处理期一次做完。
   \item \textbf{确定性优先于最后一档速度}：列均值用两阶段而非 atomics，牺牲的
-        微小速度换来的是数值可复现——精度回归排查（第~\ref{ch:27}~章 27.3.8
+        微小速度换来的是数值可复现；精度回归排查（第~\ref{ch:27}~章 27.3.8
         节的 A/B 对比方法）依赖这一点。
   \item \textbf{headdim 泛化在行组映射上}：$D=320/384/448$ 这类非整除组合的坑
         全在 \texttt{kRowsPerIter} 的映射细节（28.4.2~节）；新 headdim 接入要先
         验证这一映射。
   \item \textbf{冷输入的延迟隐藏}：量化 kernel 的输入往往刚被上游 kernel 写出
-        （cache 冷），「每行两线程」这类提高并发度的朴素手段收益显著，胜过任何
+        （cache 冷），每行两线程这类提高并发度的朴素手段收益显著，胜过任何
         复杂的访存模式。
 \end{itemize}
 
@@ -1077,20 +1080,20 @@ knob 化设计正是建立在这个落差上：精度敏感场景上调粒度，
   \item \textbf{V 的独立布局描述符}：Q/K 与 V 可能来自不同布局（如 Q 是
         BHND、V 是 NHD view）。\texttt{prepare\_fp8\_inputs} 对三者各持一个
         \texttt{Fp8InputLayout}（\texttt{Lq/Lkv/Lv}）；早期版本 K/V 共用描述符，
-        NHD 输入时 V 静默读错——数值错但形状合法，只有 allclose 能发现。
+        NHD 输入时 V 静默读错：数值错但形状合法，只有 allclose 能发现。
   \item \textbf{Hadamard 要求 BHND 物化输入}：
         \texttt{apply\_wht\_qk\_sm120} 假设 contiguous 输入（行 stride 即
         $d_{og}$）；对 NHD view 直接调用会按错误 stride 寻址。launcher 前置了
-        物化——但自己复用时必须记得。
+        物化，但自己复用时必须记得。
   \item \textbf{pad 列的 0/0}：列统计对 pad 列求均值会得 0/0 = NaN；
         \texttt{v\_stats\_finalize\_kernel} 对 pad 列强制 $v\_scale = 1$。所有
-        「统计 + pad」的组合都要过一遍这个检查。
+        统计与 pad 组合的路径都要过一遍这个检查。
   \item \textbf{kVTPerm 的匹配约束}：置换写只改 $V^{\top}$ 的列序，主 kernel 侧
         的 \texttt{PackC8bitToA8bitPermVT} 必须同开。launcher 做了强制检查，但
-        绕过 launcher 直接调 kernel 就没有保护——错配是静默错值。
+        绕过 launcher 直接调 kernel 就没有保护，错配是静默错值。
   \item \textbf{e4m3 的 448 与 f16 累加域}：$v_{scale\_max}$ 在 f16 PV 累加路径
-        要压缩（28.3.2~节）；忘了压缩时 f16 域的多块累加会在长序列溢出——
-        表现为「短序列正确、长序列偶发 inf」。
+        要压缩（28.3.2~节）；忘了压缩时 f16 域的多块累加会在长序列溢出，
+        表现为短序列正确、长序列偶发 inf。
 \end{enumerate}
 
 \section{面试要点速查}
@@ -1149,8 +1152,8 @@ $ python -m ffpa_attn.bench --fwd-backend cuda --cuda-impl fp8 \
 
 \textbf{实验 1（粒度谱系）}：固定 D128 self-attn，扫
 \texttt{--fp8-q-quant-method} 三档（per-block / per-channel / per-thread），
-记录每档速度与 \texttt{--show-allclose} 的最大误差档位；验证「粒度升一档、
-精度相应提升、速度几乎不变」。
+记录每档速度与 \texttt{--show-allclose} 的最大误差档位；验证粒度升一档、
+精度相应提升、速度几乎不变。
 \textbf{实验 2（smooth 开关）}：对比 A/B/C 三组的 allclose 分布（不止看布尔值，
 把 bench 的误差打印调出来），观察 smooth-K 对 QK 误差、smooth-V 对 PV 误差的
 分别贡献。
@@ -1164,10 +1167,10 @@ $N$ 从 1024 扫到 8192（\texttt{--seqlens}），观察 aux 链占比随 $N$ �
 \section*{延伸阅读}
 \begin{itemize}[itemsep=0pt,topsep=2pt]
   \item SageAttention（arXiv:2410.02367）\S3：smooth-K/V 的原始动机与精度消融。
-  \item FlashAttention-3（arXiv:2407.08608）\S3.3：incoherent processing——
+  \item FlashAttention-3（arXiv:2407.08608）\S3.3：incoherent processing，
         Hadamard 旋转与分块量化联合降 FP8 RMSE $2.6\times$ 的出处。
   \item QuaRot（arXiv:2404.00456）：旋转扩散 outlier 到全坐标的端到端量化框架
-        （比本章的「单层 attention 旋转」更一般化）。
+        （比本章的单层 attention 旋转更一般化）。
   \item SageAttention2（arXiv:2411.10958）：per-thread 粒度与 fp8 PV 的工程组合。
   \item ffpa-attn \texttt{cute/fp8/quantize\_fp8.cuh} 头注释：int8 对称量化
         recipe 的代码级规范（SageAttention \texttt{qattn} 的实现对照）。

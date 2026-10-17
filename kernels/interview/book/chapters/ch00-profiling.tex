@@ -5,30 +5,29 @@
 
 \section{本章导读}
 
-在动手写第一个 kernel 之前，本书先约定一条工程规则：\textbf{profile 永远都是
-最重要的}。优化 GPU kernel 的正确循环不是「改了跑一下看快没快」，而是
-「先测量、再假设、改一处、再测量」。凭直觉的优化，快了不知道为什么快，
-慢了也找不到原因。这一章专门讲两件测量工具：\textbf{Nsight Systems}（nsys，
-全局时间线）与 \textbf{Nsight Compute}（ncu，单 kernel 计数器），从原理、
-命令行用法到核心指标的含义都会逐一拆开，并给出一张「症状 $\to$ 证据 $\to$ 结论 $\to$
-对策」的瓶颈判断决策树。
+在动手写第一个 kernel 之前，本书先约定一条工程规则：\textbf{profile 永远都是最重要的}。
+优化 GPU kernel 的正确循环不是改完跑一下看快没快，而是先测量、再假设、改一处、
+再测量。凭直觉的优化，快了不知道为什么快，慢了也找不到原因。这一章讲两件测量
+工具：\textbf{Nsight Systems}（nsys，全局时间线）与 \textbf{Nsight Compute}（ncu，
+单 kernel 计数器），从原理、命令行用法到核心指标的含义逐一拆开，并给出一张
+症状 $\to$ 证据 $\to$ 结论 $\to$ 对策的瓶颈判断决策树。
 
-本章不含 kernel（与 ch01 及 Part IV 的原理章 ch20--22 一样，是纯理论/工具章）。没有新代码可讲，但有大量
-\textbf{实战教训}，全部来自真实的 CUDA kernel 开发记录，涉及寄存器压力、spill、warp stall、Tensor Core 饱和度、
-L1/L2 命中率、bank conflict，每一个指标都配一个真实的「指标驱动优化」或
-「指标否决优化」案例。后续所有章节的「性能分析」节都默认读者已掌握本章的
-工具与词汇表。
+本章不含 kernel（与 ch01 及 Part IV 的原理章 ch20--22 一样，是纯理论/工具章）。
+没有新代码可讲，但有大量实战教训，全部来自真实的 CUDA kernel 开发记录，涉及
+寄存器压力、spill、warp stall、Tensor Core 饱和度、L1/L2 命中率、bank conflict，
+每一个指标都配一个真实的指标驱动优化或指标否决优化案例。后续各章的性能分析节
+都默认读者已掌握本章的工具与词汇表。
 
 \textbf{前置}：无（与 ch01 互为入口，roofline 词汇见 ch01）。
 \textbf{源码区间}：无（工具方法论章）。\textbf{编译宏与架构限定}：无。
 
 \section{问题与动机：不 profile 就优化的代价}
 
-先看三个真实的开发反例，说明「不 profile 就优化」会错在哪里。
+先看三个真实的开发反例，说明不 profile 就优化会错在哪里。
 
 \textbf{反例一：感觉是装载瓶颈，其实是依赖链}。一个 sm\_89 上的 fp8
 attention kernel（persist-D 结构）对标业界最快实现慢 28\%（909.4$\mu$s vs
-710$\mu$s）。直觉方案是「加深装载流水、减指令、缩 tile」，全部实测无效；
+710$\mu$s）。直觉方案是加深装载流水、减指令、缩 tile，全部实测无效；
 NCU 的 stall 剖析结果直接给出结论：\texttt{math\_\allowbreak{}pipe\_\allowbreak{}throttle} 1.32
 主导、\texttt{wait} 0.82、\texttt{long\_\allowbreak{}scoreboard} 仅
 0.04，\textbf{装载根本不是瓶颈}：瓶颈是单 CTA 内 softmax$\to$PV 的串行
@@ -39,15 +38,14 @@ NCU 的 stall 剖析结果直接给出结论：\texttt{math\_\allowbreak{}pipe\_
 已优于对照，一次 nsys 的时间线本可以三分钟得出同样结论，避免在错误的
 kernel 上浪费半天 ncu 分析。
 
-\textbf{反例三：感觉融合更快，其实更慢}。把 softmax 的 bias 注入从「分离
-kernel」改成「单 pass 融合 + smem tile」，直觉上少一次读写应该更快，实测反而
-慢 4.2ms：NCU 显示融合把 LDS（shared load）拉进了 consumer 关键路径，
-\texttt{sleeping} stall 从 3.5\% 升到 22.3\%。指标否决了这次「优化」。
+\textbf{反例三：感觉融合更快，其实更慢}。把 softmax 的 bias 注入从分离 kernel
+改成单 pass 融合 + smem tile，直觉上少一次读写应该更快，实测反而慢 4.2ms：
+NCU 显示融合把 LDS（shared load）拉进了 consumer 关键路径，\texttt{sleeping}
+stall 从 3.5\% 升到 22.3\%。指标否决了这次优化。
 
 三个反例的共同教训：GPU 上的性能瓶颈很少出现在直觉指向的位置。成熟的优化
-工作流会把它固化成一条硬规则：\textbf{没有 NCU 数据，不改 kernel}；
-每条优化结论必须引用具体 metric 数值作为证据。本章就把这套「证据
-从哪里来、怎么读」讲透。
+工作流会把它固化成一条硬规则：\textbf{没有 NCU 数据，不改 kernel}；每条优化结论必须
+引用具体 metric 数值作为证据。本章就把证据从哪里来、怎么读讲清楚。
 
 \section{工具链总览与顺序方法论}\label{sec:ch00-tools}
 
@@ -58,18 +56,18 @@ nsys 与 ncu 的采集原理完全不同：
 \begin{itemize}
 \item \textbf{nsys（Nsight Systems）}：\textbf{trace} 型。在驱动层记录 API
   调用、kernel launch、内存拷贝、流与事件的时间戳，拼出一张全局时间线。
-  它回答「\textbf{时间花在哪}」：哪个 kernel 占比最大、kernel 之间有没有
-  空隙（gap）、CPU launch 是否跟不上、多流是否真的在重叠。代价低：不需要
-  GPU 性能计数器权限，任何环境都能跑，被测程序几乎不失真。
+  它回答时间花在哪：哪个 kernel 占比最大、kernel 之间有没有空隙（gap）、
+  CPU launch 是否跟不上、多流是否真的在重叠。代价低：不需要 GPU 性能
+  计数器权限，任何环境都能跑，被测程序几乎不失真。
 \item \textbf{ncu（Nsight Compute）}：\textbf{counter replay} 型。要读一个
   kernel 的成百上千个硬件计数器（SM 吞吐、cache 命中、warp stall 等），
   而一遍执行采不完这么多计数器，于是 ncu 把 kernel \textbf{回放多遍}，
-  每遍采一组；为了数据可比还会锁定时钟。它回答「\textbf{这个 kernel 内部
-  慢在哪}」。代价高：单 kernel 深挖、时间被串行化与放大，\textbf{ncu 报告
-  里的 kernel 耗时不能当 bench 时间用}。
+  每遍采一组；为了数据可比还会锁定时钟。它回答这个 kernel 内部慢在哪。
+  代价高：单 kernel 深挖、时间被串行化与放大，ncu 报告里的 kernel 耗时
+  \textbf{不能当 bench 时间用}。
 \end{itemize}
 
-分工：nsys 定位「谁慢」，ncu 解释「单个 kernel 为什么慢」。
+分工：nsys 定位谁慢，ncu 解释单个 kernel 为什么慢。
 
 \subsection{顺序：先 nsys，后 ncu}
 
@@ -78,7 +76,7 @@ nsys 与 ncu 的采集原理完全不同：
 \begin{enumerate}
 \item \textbf{nsys 先行}：一次采集拿到全部 kernel 的时间占比排序。如果主
   kernel 占 86\%，那么辅助 kernel 再慢也只有 14\% 的优化上限：先确认
-  「该优化谁」，再谈「怎么优化」。nsys 还能立刻暴露三类结构性问题：launch
+  该优化谁，再谈怎么优化。nsys 还能立刻暴露三类结构性问题：launch
   gap（CPU 跟不上，一个真实案例 wall-GPU 差 129$\mu$s vs 对照 50$\mu$s，
   原因在 dispatch 而非 kernel）、该并行的流没重叠、意外的 fallback kernel。
 \item \textbf{ncu 跟进}：只对 nsys 排出的 Top-1/Top-2 kernel 做
@@ -138,7 +136,7 @@ nsys 与 ncu 的采集原理完全不同：
 
 \subsection{最小采集}
 
-原则：\textbf{只采需要的域、只采最短的窗口}。对「看 kernel 占比」这个目标，
+原则是只采需要的域、只采最短的窗口。对看 kernel 占比这个目标，
 一条 trace 域 \texttt{-t cuda} 就够，CPU 采样与上下文切换全部关掉，warmup
 与 repeat 降到最小：
 
@@ -156,8 +154,8 @@ nsys stats -r cuda_gpu_kern_sum report.nsys-rep   # per-kernel 时间占比（�
 nsys stats -r cuda_gpu_trace   report.nsys-rep   # per-launch 时间线（看 gap/流重叠）
 \end{lstlisting}
 
-\texttt{cuda\_\allowbreak{}gpu\_\allowbreak{}kern\_\allowbreak{}sum} 按 kernel 聚合总时长与占比，直接给出「该优化
-谁」的答案；\texttt{cuda\_\allowbreak{}gpu\_\allowbreak{}trace} 逐 launch 列时间戳，用来看相邻 kernel
+\texttt{cuda\_\allowbreak{}gpu\_\allowbreak{}kern\_\allowbreak{}sum} 按 kernel 聚合总时长与占比，直接回答该优化谁
+的问题；\texttt{cuda\_\allowbreak{}gpu\_\allowbreak{}trace} 逐 launch 列时间戳，用来看相邻 kernel
 间的空隙与多流 overlap。首次对旧 report 运行时报
 \texttt{Existing SQLite export found} 时，加 \texttt{-{}-force-export=\allowbreak{}true}
 强制重新导出。
@@ -216,7 +214,7 @@ metric，见下）。
 
 C++ 模板 kernel 的完整名带一长串后缀（如
 \texttt{persist\_\allowbreak{}d\_\allowbreak{}ws\_\allowbreak{}fwd\_\allowbreak{}cute\_\allowbreak{}fp8\_\allowbreak{}sm120}，实际实例化名比这更长）。
-\texttt{-{}-kernel-name} 默认\textbf{精确匹配}，拿「名字的前缀」去匹配会报
+\texttt{-{}-kernel-name} 默认\textbf{精确匹配}，拿名字前缀去匹配会报
 \texttt{No kernels were profiled} 且生成空 report。必须加 \texttt{regex:}
 前缀走部分匹配：
 
@@ -230,8 +228,8 @@ ncu --kernel-name persist_d_ws_fwd_cute_fp8_sm120 ...  # 错：精确匹配，0 
 
 ncu 的 \texttt{-{}-csv} 默认输出是 \textbf{rule-based} 的 section 汇总（按
 诊断规则组织），不是逐个原始计数器。要拿具体 stall reason 的数值，必须走
-\texttt{-{}-page raw}。raw 输出里每个 metric 是「名字行 + 单位行 + 数值行」
-的多行结构，用 \texttt{grep -A3} 抓：
+\texttt{-{}-page raw}。raw 输出里每个 metric 占三行：名字、单位、数值，
+用 \texttt{grep -A3} 抓：
 
 \begin{lstlisting}[style=console, title={从 raw page 提取 stall 指标}]
 ncu --import rep.ncu-rep --page raw 2>&1 | \
@@ -252,23 +250,23 @@ stall reasons、指令 mix、occupancy 这类\textbf{架构级}结论可以迁�
 
 \subsection{replay 的干扰与 A/B 规则}
 
-ncu 锁频 + 多遍回放 + 串行执行，因此\textbf{报告内耗时只用于相对比较}。
-做优化 A/B 时回到真实 bench，并遵守两条规则：
+ncu 锁频 + 多遍回放 + 串行执行，因此报告内耗时只用于相对比较。做优化 A/B
+时回到真实 bench，并遵守两条规则：
 
 \begin{itemize}
 \item \textbf{校验公共参照}：许多 bench 会同时输出被测实现与公共参照
   （如 PyTorch SDPA）两组时间；对比前先核对两轮参照是否吻合（$\pm$1\%）。
   被 GPU 级干扰（并发进程/时钟态）污染的一轮，两者会\textbf{同比例膨胀}
-  （实测约 $2\times$），直接对比会得出「$-50\%$ 全面加速」这种物理上不可能
+  （实测约 $2\times$），直接对比会得出 $-50\%$ 全面加速这种物理上不可能
   的假结论。
 \item \textbf{min-of-N 口径}：单轮抖动大的实现（如 tma 变体）取 N 次最小值
   对比；归因 race 类问题必须 stash $\to$ 重建 $\to$ 同 probe 的 HEAD 对照，
-  单次「好结果」不可信。
+  单次好结果不可信。
 \end{itemize}
 
 \section{核心指标字典}\label{sec:ch00-metrics}
 
-以下每个指标按「含义 / 怎么读 / 异常意味着什么 / 对策」展开。数值口径以
+以下每个指标按含义、怎么读、异常意味着什么、对策逐项展开。数值口径以
 sm\_120 上的实测为参照。
 
 \subsection{SpeedOfLight：SM\% 与 MEM\%（roofline 定位）}
@@ -349,20 +347,20 @@ KPI，GEMM 类 kernel 用大 tile + 低 occupancy + 高 ILP 换性能是常态�
 \texttt{cuobjdump -{}-dump-resource-usage} 的 STACK 字节。两个实战要点：
 
 \begin{itemize}
-\item \textbf{spill 的代价主要不是流量}。一个 fp4 attention kernel 在
-  D=512 时 spill 总量 234MB，但 local 流量仅 12.8GB/s，带宽不是瓶颈；真正的代价
-  是\textbf{延迟暴露}：8 warps/SM 意味着每 scheduler 只有 2 个 warp 可切换，
+\item spill 的代价主要不是流量。一个 fp4 attention kernel 在 D=512 时
+  spill 总量 234MB，但 local 流量仅 12.8GB/s，带宽不是瓶颈；真正的代价是
+  \textbf{延迟暴露}：8 warps/SM 意味着每 scheduler 只有 2 个 warp 可切换，
   LDL 的几百 cycle 延迟藏不住，同时指令数也变多。
-\item \textbf{寄存器预算可以算出来}。attention 的 O 累加器每线程占
+\item 寄存器预算可以算出来。attention 的 O 累加器每线程占
   $k_{Br}\cdot D/256$ 个 f32 寄存器（M8N1 布局，$256=32$ lanes $\times 8$
   个 warp，对应 consumer 全部 256 线程）；$k_{Br}{=}128$ 时为
-  $D/2$，D=512 要 256 个，\textbf{超出 255 寄存器上限}。这正是大 D 必须换
-  M4N2 atom（列拆给两个 warp，每线程 $D/4$）的数学来源（ch19）。
+  $D/2$，D=512 要 256 个，超出 255 寄存器上限。大 D 必须换
+  M4N2 atom（列拆给两个 warp，每线程 $D/4$）的数学来源就在这里（ch19）。
 \end{itemize}
 
 \subsection{Warp State：stall reasons，好 stall 与坏 stall}
 
-warp 每个周期若不能发射，必有一个「停滞原因」。sm\_120 上的口径是
+warp 每个周期若不能发射，必有一个停滞原因。sm\_120 上的口径是
 \texttt{smsp\_\allowbreak{}average\_\allowbreak{}warps\_\allowbreak{}issue\_\allowbreak{}stalled\_\allowbreak{}*\_\allowbreak{}per\_\allowbreak{}issue\_\allowbreak{}active.\allowbreak{}ratio}
 ，即每个发射周期停在该原因上的平均 warp 数。表~\ref{tab:00-stall}
 是实战中最常读的八项：
@@ -390,7 +388,7 @@ warp 每个周期若不能发射，必有一个「停滞原因」。sm\_120 上�
 读 stall 剖析结果的关键是\textbf{分好坏}：\texttt{math\_\allowbreak{}pipe\_\allowbreak{}throttle} 与
 \texttt{not\_\allowbreak{}selected} 高说明计算与调度资源在正常工作；\texttt{sleeping} 高几乎总是结构
 问题；\texttt{wait} 与 \texttt{long\_\allowbreak{}scoreboard} 的\textbf{相对大小}直接
-区分「依赖链受限」与「装载受限」，例见 \S\ref{sec:ch00-cases} 例三。
+区分依赖链受限与装载受限，例见 \S\ref{sec:ch00-cases} 例三。
 
 \subsection{Memory Workload：L1/L2/DRAM 分层归因}
 
@@ -400,14 +398,14 @@ warp 每个周期若不能发射，必有一个「停滞原因」。sm\_120 上�
 \item \textbf{L1/TEX}：\texttt{l1tex\_\allowbreak{}\_\allowbreak{}t\_\allowbreak{}sector\_\allowbreak{}hit\_\allowbreak{}rate.pct}。低于
   20\% 且数据本该复用时，考虑 tiling 进 smem 或改访问模式。注意 smem 与 L1
   \textbf{共池}（GB202 实测每多占 16KB smem，kernel 约慢 4--5$\mu$s），
-  「多分 smem」不是免费的。
+  多分 smem 不是免费的。
 \item \textbf{L2}：\texttt{lts\_\allowbreak{}\_\allowbreak{}t\_\allowbreak{}sector\_\allowbreak{}hit\_\allowbreak{}rate.\allowbreak{}pct}。大 GEMM 上低
   命中可用 CTA swizzle / StreamK 提数据局部性；推理场景 K/V 重复读高命中
   是常态。
 \item \textbf{DRAM}：\texttt{dram\_\allowbreak{}\_\allowbreak{}throughput}（峰值百分比）。接近饱和
   （$>$70\%）说明带宽墙已到，优化方向只剩减流量（混合精度、融合、去
   物化）。一条量化前处理链实测达到饱和带宽 1.04TB/s（约为理论峰值
-  1344GB/s 的 77\%）。此时「融合省 launch」已无杠杆，只有减流量才有，这个
+  1344GB/s 的 77\%）。此时融合省 launch 已无杠杆，只有减流量才有收益，这个
   判断直接由 DRAM 指标给出。
 \item \textbf{load/store 与合并访问}：global load 的每请求扇区数
   （\texttt{l1tex} 前缀的
@@ -420,27 +418,26 @@ warp 每个周期若不能发射，必有一个「停滞原因」。sm\_120 上�
 \end{itemize}
 
 分层归因顺序：DRAM 饱和先看是不是 L2 miss 推的（L2 hit 低 + DRAM 高 =
-工作集溢出），L2 高命中但 L1 低命中 = smem/L1 复用不足。IO 压力的「层」
+工作集溢出），L2 高命中但 L1 低命中 = smem/L1 复用不足。IO 压力的层
 定位错了，对策就全错。
 
 \subsection{bank conflict 与 smem 指标}
 
 \texttt{l1tex\_\allowbreak{}\_\allowbreak{}data\_\allowbreak{}bank\_\allowbreak{}conflicts\_\allowbreak{}pipe\_\allowbreak{}lsu\_\allowbreak{}mem\_\allowbreak{}\_\allowbreak{}shared\_\allowbreak{}op\_\allowbreak{}ld/\allowbreak{}st.sum}
-直接数冲突次数（ch12 表 12-1 的数据来源）。判读要点：\textbf{先看占比再
-动手}。曾有一个「消除 O 写回 bank conflict」的优化立项，NCU 一查
-ld conflict 仅 0.39\%，且 MUFU 等待被 MMA 掩盖，整个方向当场否决。
-冲突计数要换算成「每 warp 每 cycle 的额外重放」才能反映实际影响，绝对数大不等于
-值得修。
+直接数冲突次数（ch12 表 12-1 的数据来源）。判读要点是先看占比再动手：
+曾有一个消除 O 写回 bank conflict 的优化立项，NCU 一查 ld conflict 仅 0.39\%，
+且 MUFU 等待被 MMA 掩盖，整个方向当场否决。冲突计数要换算成每 warp 每 cycle
+的额外重放次数才能反映实际影响，绝对数大不等于值得修。
 
 \subsection{指令 mix 与 tensor pipe 利用率}
 
 各执行管线的活跃占比（\texttt{pipe\_fma} / \texttt{pipe\_alu} /
-\texttt{pipe\_lsu} / \texttt{pipe\_tensor}）回答「指令都花在哪了」。
+\texttt{pipe\_lsu} / \texttt{pipe\_tensor}）回答指令都花在哪。
 对本书 Part II--IV 的主线而言，\textbf{tensor pipe 利用率就是 Tensor Core
 饱和度}：fp16 GEMM 类 kernel 若 \texttt{pipe\_fma} 高而 \texttt{pipe\_tensor}
 低，说明还在用 CUDA Core 算乘加，应该换 MMA 指令（ch10--11 的主题）。
 一个 fp8 kernel 的实例：tensor pipe 从 49\% 提到 59.5\% 的那次优化，
-判据正是「\texttt{math\_\allowbreak{}pipe\_\allowbreak{}throttle} 降了、tensor pipe 升了」，两条
+判据是 \texttt{math\_\allowbreak{}pipe\_\allowbreak{}throttle} 降了、tensor pipe 升了，两条
 指标共同确认依赖链被拆开、Tensor Core 利用率提高。
 
 \section{瓶颈判断决策树}\label{sec:ch00-tree}
@@ -528,7 +525,7 @@ ld conflict 仅 0.39\%，且 MUFU 等待被 MMA 掩盖，整个方向当场否�
   producer/consumer 与栅栏。
 \item \textbf{查 occupancy 是否是限制源}：若 achieved 低且 limiter 是
   registers/smem，先解决资源（缩 tile、降 stage、\texttt{\_\allowbreak{}\_\allowbreak{}launch\_\allowbreak{}bounds\_\allowbreak{}}），
-  因为第 2 步的「增并行 warp」以有 warp 可增为前提。
+  因为第 2 步的增并行 warp 以有 warp 可增为前提。
 \item \textbf{memory-bound 分层}：DRAM $>$70\% $\to$ 带宽墙，减流量；
   L2 hit $<$50\% 且 DRAM $>$40\% $\to$ 工作集/L2 局部性问题；L1 hit $<$20\%
   而 L2 高 $\to$ smem tiling/复用不足。顺带查 coalescing 与 bank conflict。
@@ -562,14 +559,13 @@ TC 没用上 & pipe\_tensor 低 & CUDA Core 算矩阵 & 换 mma/wgmma 指令 \\
 
 \subsection{例一：nsys 先行——占比决定优化预算}
 
-场景：一个 fp8/fp4 量化 attention 库的 e2e（含量化前处理链）对标
-业界实现。e2e 一度落后，最初的直觉是「辅助链 kernel 太多（每 call
-约 13 个）应该融合成一个 Mega Kernel」。先用全局视角（nsys + 每 kernel
-带宽核算）确认：大 N 场景\textbf{主 kernel 占 e2e 时间 86--92\%}，而 aux
-链每个 kernel 都已达到实测饱和带宽 1.04TB/s：融合只能省 launch 不能减流量，
-大 N wall 差实测 $<$0.2\%，方向证伪；真正的杠杆在主 kernel 与引擎层
-overlap。\textbf{方法论}：占比数据先给「优化预算上限」（占 e2e 14\% 的部分提
-不出 30\% 的收益），带宽核算再判这部分还有没有优化空间。
+场景：一个 fp8/fp4 量化 attention 库的 e2e（含量化前处理链）对标业界实现。
+e2e 一度落后，最初的直觉是辅助链 kernel 太多（每 call 约 13 个），应该融合成
+一个 Mega Kernel。先用全局视角（nsys + 每 kernel 带宽核算）确认：大 N 场景
+主 kernel 占 e2e 时间 86--92\%，而 aux 链每个 kernel 都已达到实测饱和带宽
+1.04TB/s：融合只能省 launch 不能减流量，大 N wall 差实测 $<$0.2\%，方向证伪；
+真正的杠杆在主 kernel 与引擎层 overlap。方法论上，占比数据先给出优化预算上限
+（占 e2e 14\% 的部分提不出 30\% 的收益），带宽核算再判这部分还有没有优化空间。
 
 \subsection{例二：寄存器压力——255 墙、spill 与 setmaxnreg 的取舍}
 
@@ -587,16 +583,16 @@ warp group（128T，专职 TMA）+ 1 个 consumer（256T，全计算），用
   直接后果），理论 occupancy 25\%（12 warps/48）且 smem 守卫恒空转，限制源唯一。
 \item \textbf{取舍}：consumer 需要更多寄存器（\texttt{setmaxnreg} 上限
   232，实测 224--232 区间性能平坦），但 O 累加器 $D/2$（M8N1）在 D=512 时
-  要 256 个，\textbf{超出 255 寄存器上限}，于是 split-D 的 WS 变体被整体禁用，
-  大 D 改走 M4N2 把每线程压力降到 $D/4$。这是「寄存器文件利用率 vs
-  occupancy vs 算法结构」三方权衡的标准案例：不是把寄存器降下来就一定有利，
-  而是选一个让 tile、并行度与 spill 同时可接受的工作点。
+  要 256 个，超出 255 寄存器上限，于是 split-D 的 WS 变体被整体禁用，大 D 改走
+  M4N2 把每线程压力降到 $D/4$。这是寄存器文件利用率、occupancy 与算法结构
+  三方权衡的标准案例：把寄存器降下来不一定有利，要看选出的工作点能否让 tile、
+  并行度与 spill 同时可接受。
 \end{itemize}
 
 （注意 \texttt{setmaxnreg} 是否被丢弃与 arch 后缀无关：\texttt{sm\_120a} 与
 \texttt{sm\_120f} 都完整支持并保留该指令。真正决定它的是 TMA 的目的地址
-空间——写成 \texttt{shared::cluster} 会被 ptxas 以 C7506 静默丢弃，写成
-\texttt{shared::cta} 则保留——以及
+空间：写成 \texttt{shared::cluster} 会被 ptxas 以 C7506 静默丢弃，写成
+\texttt{shared::cta} 则保留。此外还有
 \texttt{\_\allowbreak{}\_\allowbreak{}launch\_\allowbreak{}bounds\_\allowbreak{}} 的第二参数
 （缺则 C7508 丢弃）。见第~\ref{ch:14}~章坑二。）
 
@@ -610,16 +606,16 @@ warp group（128T，专职 TMA）+ 1 个 consumer（256T，全计算），用
   \texttt{wait} 0.82、\texttt{long\_\allowbreak{}scoreboard} \textbf{0.04}、tensor
   pipe 49\%、255 regs、1 CTA/SM。
 \item 判读：\texttt{long\_\allowbreak{}scoreboard} 近零 $\Rightarrow$ 装载不是瓶颈，
-  一切「加深流水/减指令/缩 tile」无效（后续 6 项实验全部证伪，原因
-  就是没先读这组数）；\texttt{mpt} 高但 tensor pipe 只有 49\% $\Rightarrow$
-  管线在排队却没排满 Tensor Core，即\textbf{依赖链/发射受限}。
+  一切加深流水、减指令、缩 tile 的尝试全部无效（后续 6 项实验全部证伪，
+  原因就是没先读这组数）；\texttt{mpt} 高但 tensor pipe 只有 49\% $\Rightarrow$
+  管线在排队却没排满 Tensor Core，说明依赖链/发射受限。
 \item 对策与验证：kBr=64 + kBc=64 + 128T（2 CTA/SM 拆链）$\to$ 864$\mu$s
   （$-5\%$），ncu 确认 2 blocks/SM、每线程寄存器降到 250；
   \textbf{指标闭环}：mpt 1.32$\to$0.72、tensor pipe 49\%$\to$59.5\%，
-  「排队变短、TC 利用率更高」与 wall 时间下降互为印证。
+  排队变短、TC 利用率更高，与 wall 时间下降互为印证。
 \end{itemize}
 
-同族的「坏 stall」案例：bias 注入的 smem tile 版本 \texttt{sleeping} 从
+同族的坏 stall 案例：bias 注入的 smem tile 版本 \texttt{sleeping} 从
 3.5\% 涨到 22.3\%（SASS 采样里 \texttt{SYNCS.\allowbreak{}PHASECHK} mbarrier 自旋占
 18\%）：LDS 进了 consumer 关键路径、两级 QK 流水供不上，全 warp 自旋等 K，
 该版本被指标否决。
@@ -627,26 +623,26 @@ warp group（128T，专职 TMA）+ 1 个 consumer（256T，全计算），用
 \section{常见坑}
 
 \begin{enumerate}
-\item \textbf{\texttt{-{}-kernel-name} 精确匹配陷阱}。模板 kernel 名带长
+\item \textbf{\texttt{-{}-kernel-name} 精确匹配陷阱}：模板 kernel 名带长
   后缀，前缀匹配报 \texttt{No kernels were profiled} 且生成空 report；
   一律 \texttt{regex:} 前缀。
-\item \textbf{ncu 辅助工具与 bench 配置不一致}。profiling 用的配置必须与
+\item \textbf{ncu 辅助工具与 bench 配置不一致}：profiling 用的配置必须与
   bench 默认逐 flag 对齐；显式传 flag 会覆盖 bench 内部的默认值，实测逐
   flag 传参 vs 全默认可差 13\%，指标分析对象可能根本不是 bench 跑的那个
   kernel 形态。
-\item \textbf{A/B 不校验公共参照}。GPU 级干扰让两轮\textbf{同比例膨胀}
+\item \textbf{A/B 不校验公共参照}：GPU 级干扰让两轮\textbf{同比例膨胀}
   （约 $2\times$），对比出假加速。先核对 bench 输出里的 SDPA 参照时间
   （$\pm$1\% 内）再谈结论；抖动大的实现用 min-of-N。
-\item \textbf{把 section 输出当 raw metric}。\texttt{-{}-csv} 默认输出是
+\item \textbf{把 section 输出当 raw metric}：\texttt{-{}-csv} 默认输出是
   rule-based 汇总；要具体计数器数值必须 \texttt{-{}-page raw}（配合
   \texttt{grep -A3} 抓多行结构）。
-\item \textbf{拿 ncu 的耗时报性能}。replay 多遍 + 锁频 + 串行化，报告内
+\item \textbf{拿 ncu 的耗时报性能}：replay 多遍 + 锁频 + 串行化，报告内
   时间只做相对比较；性能数字一律回真实 bench 采。
-\item \textbf{不标性能口径}。写结论必须标注 GPU 型号/架构/日期（PRO 5000
+\item \textbf{不标性能口径}：写结论必须标注 GPU 型号/架构/日期（PRO 5000
   sm\_120a 与 5090 sm\_120 的架构级结论可互证，绝对数字不可）；fallback
   也要查：小 seqlen（$<$512）时库可能自动 fallback 到 PyTorch SDPA，profile
   到的根本不是目标 kernel。
-\item \textbf{nsys 全量采集写满磁盘}。大模型 e2e 无限制采集曾写满
+\item \textbf{nsys 全量采集写满磁盘}：大模型 e2e 无限制采集曾写满
   \texttt{/tmp}（500GiB+）。TMPDIR 落项目目录、单域、最小 repeat、事后必清
   （\S\ref{sec:ch00-nsys}）。
 \end{enumerate}

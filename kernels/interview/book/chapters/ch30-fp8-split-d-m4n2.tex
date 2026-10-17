@@ -10,10 +10,10 @@ smem、让单个 warp 独占 $O$ 的全部 $D$ 列。这在 $D\le 224$ 时是最
 但 $D$ 继续增大，会同时遇到\textbf{两个瓶颈}：
 
 \begin{enumerate}[itemsep=0pt,topsep=2pt]
-  \item \textbf{smem 瓶颈}：$K$ tile 字节数 $O(D)$，99KB 预算装不下——
+  \item \textbf{smem 瓶颈}：$K$ tile 字节数 $O(D)$，99KB 预算装不下，
         由 \textbf{split-D}（D 维分块）解决；
   \item \textbf{寄存器瓶颈}：$O$ 累加器 $O(D)$ 个 f32 寄存器/线程，逼近
-        255 上限——由 \textbf{M4N2 TiledMMA}（atom 布局重排）解决。
+        255 上限，由 \textbf{M4N2 TiledMMA}（atom 布局重排）解决。
 \end{enumerate}
 
 两个瓶颈正交：只做 split-D，寄存器照旧 $O(D)$；只做 M4N2，smem 照旧装不下。
@@ -45,8 +45,8 @@ fp8 家族为主线；fp16 家族同构（第~\ref{ch:25}~章已见其 fp16 版�
 \subsection{两个瓶颈的数量级}
 
 smem 瓶颈容易估算：fp8 下 1B/元素，$B_c=128$ 的 $K$ tile 在 $D=512$ 时是
-64KB，加上 V stage 与 Q 就超 99KB 预算。persist-D 靠「K 槽位 0（Q 区）
-复用给最后一个 K stage」勉强装下的前提是 $D\le 224$；$D$ 再大，唯一的办法是把 $D$ 切块流水。
+64KB，加上 V stage 与 Q 就超 99KB 预算。persist-D 把 Q 区的槽位 0 复用给
+最后一个 K stage，才能在 $D\le 224$ 时装下；$D$ 再大，唯一的办法是把 $D$ 切块流水。
 
 寄存器瓶颈隐蔽一些。m16n8k32 atom 的 C-fragment 每 thread 持 4 个 f32；
 M8N1 布局（8 个 M-warp、N 维单 warp 满编）下单 warp 独占输出的完整 $D$
@@ -62,10 +62,10 @@ $O_{\text{acc}}=512$ regs 溢出到 local memory，吞吐掉到 $\sim$100T；
 
 \subsection{split-D 与 M4N2 各解决一个瓶颈}
 
-\textbf{split-D} 回答「smem 怎么装下」：把 $D$ 切成 $D/k_{VDChunk}$ 个
+\textbf{split-D} 回答 smem 怎么装下：把 $D$ 切成 $D/k_{VDChunk}$ 个
 chunk，K/V 的 TMA 与 MMA 都按 chunk 流水，smem 只需常驻
 $(k_{Br}+k_{Bc})\times k_{QKDChunk}+k_{Bc}\times k_{VDChunk}$ 每 stage，
-与总 $D$ 无关。\textbf{M4N2} 回答「寄存器怎么装下」：把 atom 布局从
+与总 $D$ 无关。\textbf{M4N2} 回答寄存器怎么装下：把 atom 布局从
 $(8,1,1)$ 换成 $(4,2,1)$（4 个 M-warp \textbf{乘} 2 个 N-warp），让每
 thread 的 $O$ 列持有量减半（\ref{sec:30-regmodel}~节的推导）。
 
@@ -107,8 +107,8 @@ O_{:,\mathcal{D}_c}=P\,V^{\top}_{\mathcal{D}_c,:},
 各 chunk 的 $O$ 段\textbf{独立累加}，互不干扰。
 
 关键观察：softmax 的行统计（$m_r$、$\ell_r$）是\textbf{KV 行维的量}，
-与 $D$ 的切分完全无关：split-D \textbf{不产生}「每 chunk 各自的
-row max/row sum」，所有 chunk 共享同一组 $(m,\ell)$，rescale 因子天然
+与 $D$ 的切分完全无关：split-D \textbf{不产生}每 chunk 各自的
+row max/row sum，所有 chunk 共享同一组 $(m,\ell)$，rescale 因子天然
 一致。这就是 \texttt{split\_d.cuh} 的结构（L440--443 注释）：QK chunk
 循环在 softmax \textbf{之前}全部完成（L446--483），softmax 之后 V
 chunk 循环各自把 $P V^{\top}_{\mathcal{D}_c}$ 加进
@@ -201,7 +201,7 @@ fragment（式~\ref{eq:30-qk-split}，f32/s32 累加，不引入新舍入点）�
 \label{fig:30-split-identity}
 \end{figure}
 
-需要真正「合并行统计」的不是 split-D，而是 M4N2 的 N-warp 划分
+真正需要合并行统计的是 M4N2 的 N-warp 划分
 （\ref{sec:30-m4n2softmax}~节）。
 
 \subsection{M4N2 的 N-warp 划分与 softmax 合并协议}\label{sec:30-m4n2softmax}
@@ -261,7 +261,7 @@ O_{\text{acc}}
 估计一致。\textbf{每 thread 压力只取决于该 warp 分到的列数
 $D/N_w$}。
 
-但真正的判据是\textbf{per-SM 寄存器池}。每 SM 65536 个寄存器，CTA 内
+但真正的判据是 per-SM 寄存器池。每 SM 65536 个寄存器，CTA 内
 $32M_wN_w$ 个 thread，每 thread 上限 $65536/(32M_wN_w)$。$O$ 累加器对
 这个上限的占比是
 \begin{equation}\label{eq:30-smpool}
@@ -270,7 +270,7 @@ $32M_wN_w$ 个 thread，每 thread 上限 $65536/(32M_wN_w)$。$O$ 累加器对
 $N_w$ \textbf{精确消去}：把输出列划分给更多 N-warp，同时把每-thread 上限
 等比例压低，per-SM 总占用保持不变（M4N4 与 M4N2 同为 $D/1024$ 占比）。
 只有减 $M_w$ 有效；$M_w=2$（M2N4）时占比 $D/2048$，是 $D>1024$ 的正确选择。
-根源是「$N=1$ 列方向没有并行收益」的数学结构，与实现细节无关。
+根源在数学结构：$N=1$ 时列方向没有并行收益，与实现细节无关。
 
 \begin{figure}[H]
 \centering
@@ -338,14 +338,14 @@ $N_w$ \textbf{精确消去}：把输出列划分给更多 N-warp，同时把每-
 \label{fig:30-reg-pressure}
 \end{figure}
 
-据此也排除了两条看似可行的捷径。其一，\textbf{QK 用 M8N1、PV 用 M4N2 的
-混合布局}：QK/PV 共享同一 Q tile，M 维必须一致；$k_{Br}=128$ 强制下
-PV M4N2 仍是 $D/2$，而 $k_{Br}=64$ 强制下 M8N1 的 8 个 M-warp 有 4 个
-在 PV 阶段空转（QK 算力浪费 50\%）。其二，\textbf{WS（warp
-specialization）版 split-D}：consumer 的 \texttt{setmaxnreg} 上限 232
-装不下 $D=512$ 的 256-reg $O$ 累加器，所以 split-D 家族保持非 WS
-结构（全体线程做 MMA，\texttt{tid==0} 兼发 TMA，L28--30 注释），这与
-persist-D 的 WS 选择形成对照（29.4.2~节）。
+据此也排除了两条看似可行的捷径。QK 用 M8N1、PV 用 M4N2 的混合布局不成立：
+QK/PV 共享同一 Q tile，M 维必须一致；$k_{Br}=128$ 强制下 PV M4N2 仍是
+$D/2$，而 $k_{Br}=64$ 强制下 M8N1 的 8 个 M-warp 有 4 个在 PV 阶段空转
+（QK 算力浪费 50\%）。WS（warp specialization）版 split-D 也不行：
+consumer 的 \texttt{setmaxnreg} 上限 232 装不下 $D=512$ 的 256-reg $O$
+累加器，所以 split-D 家族保持非 WS 结构（全体线程做 MMA，
+\texttt{tid==0} 兼发 TMA，L28--30 注释），这与 persist-D 的 WS 选择
+形成对照（29.4.2~节）。
 
 \section{设计与实现}
 
@@ -395,8 +395,8 @@ QK 与 V 两条流水独立计数（$k_{QKDChunk}=32$、$k_{VDChunk}=64$，QK �
 \texttt{empty[stage]} $\to$ \texttt{tid==0} 若
 \texttt{chunk+kStages} 未越界则等 empty 后发下一 chunk 的 TMA
 （Phase 1 L446--483、Phase 3 L678--756）。这与第~\ref{ch:25}~章
-Flash Attention 的流水同构：多出来的只是「一个 KV tile 内部再分
-chunk」这一层嵌套。
+Flash Attention 的流水同构：多出来的只有一层嵌套，即一个 KV tile 内部
+再分 chunk。
 
 量化侧全部沿用第~\ref{ch:28}--\ref{ch:29}~章的机制，无新增数学：
 per-thread Q/K scale 查表（L229--245）、smooth-K lse 修正只在
@@ -434,7 +434,7 @@ QK C-fragment 写侧与 PV A-fragment 读侧两个坐标系（traits L279--284�
 group 按 128 行块编号（$g=(q_{\text{row}}/16)\cdot8+q_{\text{row}}\%8$），
 但 M4N2 的 $k_{Br}=64$：奇数注意 tile 的行号要先加
 \texttt{quant\_offset} 再查表，\texttt{quant\_rb} 单独换算块号。M8N1
-的 $k_{Br}=128$ 恰好与量化块同宽，天然不存在此问题：这类「两套块宽不一致」
+的 $k_{Br}=128$ 恰好与量化块同宽，天然不存在此问题：这类两套块宽不一致
 的坑在 fp8 体系里反复出现（第~\ref{ch:28}~章 per-thread 64-group 同理）。
 
 \begin{figure}[H]
@@ -518,7 +518,7 @@ stage 数的教训方向相反（PC-8）：m4n2 每级仅 12KB，99KB 容得下 
 self+causal 合并口径），s4$\sim$s7 非单调更慢：launcher 的 stage 下限
 从 2 抬到 3（\texttt{cute\_fp8\_split\_d\_m4n2.cuh} L127--133）。s2 的问题
 是 K/V TMA 流水饥饿（NCU 里 \texttt{@BRA}+\texttt{@NANOSLEEP} barrier
-自旋主导）。这与 persist-D 的「加深 stages 证伪」结论相反，根源在于
+自旋主导）。这与 persist-D 加深 stages 的证伪结论相反，根源在于
 m4n2 的 occupancy 已被 255 寄存器上限限制在 1 CTA，加深 stage 没有 occupancy
 代价，只剩 TMA 遮蔽收益。
 
@@ -721,13 +721,13 @@ D=512（fp16）。
 定性过程记录如下，脚本在 \texttt{.tmp/book-bench/ch30/}：
 
 \begin{enumerate}[itemsep=0pt,topsep=2pt]
-  \item \textbf{先看模式不看标量}。对 $D\in\{256,320,512\}$ 各跑
-        causal，逐 512-行块统计超阈行占比：三者模式\textbf{完全一致}
-        ——前 $\sim$30\% 块 100\% 超阈、后段 0\%，max $\sim$2、
+  \item 先看模式不看标量。对 $D\in\{256,320,512\}$ 各跑
+        causal，逐 512-行块统计超阈行占比：三者模式\textbf{完全一致}，
+        前 $\sim$30\% 块 100\% 超阈、后段 0\%，max $\sim$2、
         mean $\sim$0.007；
-  \item \textbf{dense 对照}。self-attn 六格全绿 $\Rightarrow$ 排除
+  \item dense 对照：self-attn 六格全绿 $\Rightarrow$ 排除
         kernel 结构性错误（chunk 流水、mask、epilogue 都对）；
-  \item \textbf{对照头注释}。L40--43 声明的「causal 早期行
+  \item 对照头注释。L40--43 声明的「causal 早期行
         attend 少、误差不被平均」与实测模式吻合：早期行
         $P$ 分布尖，e4m3 的 $2^{-3}$ 相对舍入直接进 $O$；行号
         过半后 $P$ 足够平，误差被平均掉；
@@ -736,14 +736,14 @@ D=512（fp16）。
 \end{enumerate}
 
 这套流程（模式 $\to$ dense 对照 $\to$ 对照声明 $\to$ 定性）与
-29.7.1~节 D=192 的五步法同构：先证明「不是 bug」再决定要不要修。
+29.7.1~节 D=192 的五步法同构：先证明不是 bug 再决定要不要修。
 
 \subsection{什么时候不该学本章}
 
 split-D/M4N2 是 $D>224$ 的\textbf{被迫选择}，不是普适更优。三条负面
 证据：WS 版 split-D 被 setmaxnreg 232 上限否决；QK/PV 混合 atom 布局
 被 M 维一致性否决；fused-rescale 在 split-D 域被单 CTA 掩盖不了的
-tensor pipe 压力否决。三条都是「在 persist-D 域成立的优化不能照搬」
+tensor pipe 压力否决。三条都是在 persist-D 域成立的优化不能照搬
 的实例，迁移优化前先核对 occupancy 与寄存器结构是否相同。
 
 \section{常见坑}
@@ -778,11 +778,11 @@ tensor pipe 压力否决。三条都是「在 persist-D 域成立的优化不能
   \item \textbf{split-D 为什么精确}？QK 侧 $D$ 是归约维，chunk 累加
         进同一 fragment（式~\ref{eq:30-qk-split}）；PV 侧是输出列维，
         各 chunk 独立（式~\ref{eq:30-pv-split}）；softmax 行统计与
-        $D$ 切分无关——不产生 per-chunk 的 $(m,\ell)$。
+        $D$ 切分无关，不产生 per-chunk 的 $(m,\ell)$。
   \item \textbf{M4N2 减的是哪一维}？$N$ 维（输出列划分给 2 个 warp），
         per-thread $O$ 从 $D/2$ 到 $D/4$；但 per-SM 池占比
         $D\cdot M_w/4096$ 里 $N_w$ 消去（式~\ref{eq:30-smpool}），
-        只有减 $M_w$ 才降总量——所以 $D>1024$ 应选 M2N4。
+        只有减 $M_w$ 才降总量，所以 $D>1024$ 应选 M2N4。
   \item \textbf{跨 N-warp softmax 协议}？max 段交换 + 单 barrier；
         sum 写入的发布复用 P roundtrip 的 barrier，由 \texttt{finalize} 折叠；
         两 N-warp 必须持有相同 $(m,\ell)$ 否则 rescale 因子分裂。

@@ -11,7 +11,7 @@
 128 线程 producer + 256 线程 consumer 的 warp-specialized 骨架上
 （第~\ref{ch:29}~章），数据路径移植自 SageAttention3 的 NVFP4 kernel。
 
-本章的核心内容是\textbf{两级 P 量化}：SA3 用来回答「$P$ 无法离线校准」
+本章的核心内容是\textbf{两级 P 量化}：SA3 用来回答 $P$ 无法离线校准
 这一挑战的方案，fp4 attention 的精度靠它成立。它与 online softmax
 \textbf{融合}在一起（\texttt{fp4\_pscale.cuh} 的
 \texttt{SoftmaxFused}），不走单独一遍：softmax 输出的
@@ -20,12 +20,12 @@ shift，除法和归一化在到达寄存器之前就已经消失。
 
 \section{问题与动机}
 
-\textbf{P 的三个困难}。Q/K/V 的量化无论多粗，都可以离线统计
-（smooth、per-block scale）压动态范围；$P$ 不行：
+Q/K/V 的量化无论多粗，都可以离线统计（smooth、per-block scale）压动态
+范围；$P$ 不行，困难有三条：
 \begin{enumerate}[itemsep=0pt,topsep=2pt]
   \item \textbf{online}：$P$ 是 softmax 现场产物，kernel 内逐 tile 生成，
         没有第二遍数据；
-  \item \textbf{值域窄}：$P\in[0,1]$，且行内分布剧变——causal 早期行
+  \item \textbf{值域窄}：$P\in[0,1]$，行内分布又剧变，causal 早期行
         近 one-hot（一个 1、其余 $\approx0$），dense 行近均匀且数值极小；
   \item \textbf{SF 格式自身的损耗}（SA3 的 C2 挑战）：若按块直接量化，
         $s_P=\mathrm{amax}(P_{\text{块}})/6\in[0,0.167]$，ue4m3 在这个窄域的
@@ -36,7 +36,7 @@ shift，除法和归一化在到达寄存器之前就已经消失。
 常数），块内再用 e2m1 域归一（第二级，per-16 组 ue4m3），让块的
 $\mathrm{amax}$ 恰好铺满 ue4m3 的域。
 
-\textbf{硬件侧的结构约束}。blockscale MMA
+硬件侧的约束来自 blockscale MMA
 （\texttt{m16n32k64 kind::mxf4nvf4}，\texttt{attn\_traits.cuh} L77）要
 求 K 维 64 对齐、SF 以 \texttt{scale\_vec::4X} 旁路输入；P 作为 A 操作
 数必须以 data+SF 的 zip 形式出现（\texttt{fp4\_pscale.cuh} L314--346 的
@@ -150,7 +150,7 @@ mbarrier \textbf{永不 re-initialize}：per-CTA 全局 kv-tile 计数器驱动
 每个 barrier 的 stage/phase 跨 work 连续翻转（对活跃 mbarrier 的
 re-init 是 UB，PTX ISA 9.7.13.15.9；L113--115、L316 注释）。
 
-grid 调度约定是「\textbf{单 kernel、单代码路径、runtime grid 定风格}」
+grid 调度约定是\textbf{单 kernel、单代码路径、runtime grid 定风格}
 （L92--120 注释）：kernel 体是
 \texttt{for (work\_id = blockIdx.x; work\_id < total\_work; work\_id +=
 gridDim.x)} 的 strided work loop。dense 用
@@ -231,8 +231,8 @@ Q/SFQ 是 per-work 常量：s2r 一次进 \texttt{tSrQ}/\texttt{tSrSFQ} 寄存
 \texttt{kPersistQs2r} 等价物，这里恒开）。这段注释同时记录了一个有教学
 价值的 bug：\textbf{没有}寄存器驻留时，A/SFA 的 asm 操作数未初始化，
 cicc 直接把它们折叠成 0，QK 退化成 $\Delta S$（rank-1 均值 attention），
-probe 容差曾把它掩盖。教训：量化 kernel 的「输出恒为常数」类退化
-要靠数据探针（输出对 K 的敏感性）而非容差判断。
+probe 容差曾把它掩盖。教训：量化 kernel 输出恒为常数这类退化要靠数据
+探针（输出对 K 的敏感性）而非容差判断。
 
 \subsection{主循环五步}
 
@@ -257,9 +257,9 @@ consumer 的 kv 循环（L803--971）每 tile 依次：
   \item \texttt{online\_softmax\_with\_quant}：32.3 节的融合体，输出
         已在 $P_2$ 域的分数 + \texttt{AbsMaxP} 组尺度；
   \item \texttt{gemm\_rs\_fp4}：$O\mathrel{+}= (\hat P_2\,s_{P2})
-        (\hat V\,s_V)$。A（P）不过 smem——\texttt{quantize\_and\_pack\_p}
+        (\hat V\,s_V)$。A（P）不过 smem：\texttt{quantize\_and\_pack\_p}
         刚在寄存器里打包好；V 的 copy、量化、mma 按此顺序发出让 S2R
-        与 mma 链重叠，链尾 \texttt{v\_empty} arrive 兼作「无更多预取」
+        与 mma 链重叠，链尾 \texttt{v\_empty} arrive 兼作无更多预取的
         分支（\texttt{fp4\_gemm.cuh} L171--180 注释）。
 \end{enumerate}
 V 的 \texttt{v\_full} 等待放在 softmax \textbf{之后}（L937--940）：
@@ -284,7 +284,7 @@ PV 的 C fragment 每 lane 持数不同（头注释 L44--46）。
 \section{图示}
 
 两张图分别对应本章的数学与实现。图~\ref{fig:32-1} 是两级 P 量化的域
-拉伸——两级 scale 折进 exp2 后，在数据通路里不占显式乘法。图~\ref{fig:32-2}
+拉伸：两级 scale 折进 exp2 后，在数据通路里不占显式乘法。图~\ref{fig:32-2}
 是主循环数据流：producer 与 consumer 围绕每个 kv tile 的五步协作，
 展开与 barrier 约定见图注。
 
@@ -468,14 +468,14 @@ sector hit 已 96.75\% 饱和，fp8 的前提不成立，实测 +1.8\% 回退，
 
 \section{实践经验}
 
-\textbf{fragment adapter 是经验锁定的整体}。kv\_perm32、$\Delta S$
+SA3 的 fragment adapter 是一块经验锁定的整体。kv\_perm32、$\Delta S$
 槽位算术、\texttt{LayoutP}/\texttt{LayoutSFP} 打包、$V^\top$ 转置存储：
-SA3 的这套 adapter 相互补偿、自洽成体系（头注释 L25--37：empirical
+这些项相互补偿、自洽成体系（头注释 L25--37：empirical
 lock 在 \texttt{.tmp} 的对齐探针里逐项验证过，dense e2e 与 dequant 仿真
 一致）。逐字拷贝 + 只修 masking 是正确的移植方式；单独「改进」其中
 一项会破坏补偿关系。
 
-\textbf{精度评估的口径}。e2m1 的相对量化误差（主区间 $\sim$20\%、
+e2m1 的相对量化误差（主区间 $\sim$20\%、
 0.75 中点最坏 $\sim$33\%）使 P/V 两级误差叠
 加后 causal 尖峰行 max\_abs 天然 0.5--0.75（probe 仿真与 kernel 同
 级，格式固有）；SA3 论文自身用 cosine 评估。工程验收看 mean\_abs

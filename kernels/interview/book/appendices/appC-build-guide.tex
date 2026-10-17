@@ -17,7 +17,7 @@
   \item \texttt{book/\allowbreak{}tests/\allowbreak{}build\_\allowbreak{}tests.\allowbreak{}sh}——编译并运行每章最小正确性测试。
         本书的作用是\textbf{取代集成辅助工具的正确性验证角色}：对拍一律
         CPU fp64，无 cuBLAS/cuDNN 依赖，可在任何机器复现；辅助工具保留为
-        集成 bench，现为多 TU——\texttt{bench/bench\_leetcuda.cu}（440 行）只剩 main 与
+        集成 bench，现为多 TU：\texttt{bench/bench\_leetcuda.cu}（440 行）只剩 main 与
         CLI 解析，host 侧 test/bench 拆到 \texttt{bench/} 下 base/sgemv/sgemm/hgemm/
         fp8\_gemm/fp4\_gemm/flash\_attn/ffpa\_attn 八个模块 .cu 与
         \texttt{bench/utils.cu} 共享工具。
@@ -175,7 +175,7 @@ cd kernels/interview/book/tests
 \end{lstlisting}
 
 \noindent 实测输出摘录（RTX PRO 5000，2026-09-24；全书 30 个测试可执行
-——ch13 在 sm\_120a 下自动跳过、ch15 原理章无测试；含 ch26b/ch26c 与 ch34--37——
+——ch13 在 sm\_120a 下自动跳过、ch15 原理章无测试；含 ch26b/ch26c 与 ch34--37，
 共 218 条 \texttt{PASS}、0 条 \texttt{FAIL}，末行 \texttt{ALL~OK}、退出码 0）：
 
 \begin{lstlisting}[style=console]

@@ -16,15 +16,15 @@
 chunk 流式推进}。这套结构叫 \textbf{Split-D}，也是生产库
 \texttt{ffpa-attn} 在大 head dim 场景下的主力形态（另见第~\ref{ch:26}~章）。
 
-本章要回答四个问题。其一，为什么 $D > 128$ 不能照搬 FA2：我们把它量化成
-\textbf{三个瓶颈}：shared memory 容量、O 累加器寄存器数、ldmatrix/swizzle 的几何
-粒度（19.2~节）。其二，Split-D 在数学上做了什么：QK 的 chunk 求和是\textbf{精确}
-归约，PV 的 chunk 输出各占一部分\textbf{列}，两者都不需要 LSE 式的重标定；要
-小心的是\textbf{跨 chunk 广播同一个在线 rescale 因子}（19.3~节给出不变量及其归纳
-证明）。其三，两版实现如何驱动 chunk 流水：cp.async 版用 \texttt{cp.async}
-的 group 计数，TMA+WS 版用 mbarrier 的 (stage, phase) 计数，两者对 Q、K、V 的
-chunk 池是同一套布局（19.4~节）。其四，Split-D 的代价是什么：O 累加器每线程
-$D/2$ 个 f32，$D = 512$ 时是 256 个，已经越过 255 的硬上限（19.4.6~节）。
+本章先说明 $D > 128$ 为什么不能照搬 FA2：障碍是三条互相独立的硬约束，即
+shared memory 容量、O 累加器寄存器数、ldmatrix/swizzle 的几何粒度（19.2~节）。
+随后给出 Split-D 在数学上的做法：QK 的 chunk 求和是\textbf{精确}归约，PV 的
+chunk 输出各占一部分\textbf{列}，两者都不需要 LSE 式的重标定；要小心的是
+\textbf{跨 chunk 广播同一个在线 rescale 因子}（19.3~节给出不变量及其归纳证明）。
+接着对照两版实现如何驱动 chunk 流水：cp.async 版用 \texttt{cp.async} 的 group
+计数，TMA+WS 版用 mbarrier 的 (stage, phase) 计数，两者对 Q、K、V 的 chunk 池
+是同一套布局（19.4~节）。最后算代价：O 累加器每线程 $D/2$ 个 f32，$D = 512$
+时是 256 个，已经越过 255 的硬上限（19.4.6~节）。
 
 \textbf{源码区间}：\texttt{ffpa\_\allowbreak{}attn.\allowbreak{}cuh}~L1--641。L1--28 是头注释（动机、优化点、
 性能口径），L31--79 是 \texttt{FFPAAttn}\allowbreak\texttt{SplitDCuTe}\allowbreak\texttt{Traits}（双 TiledMma 与 smem
@@ -48,7 +48,7 @@ $m/\ell/O$ 递推）、第~\ref{ch:16}~章（\texttt{mma.sync} fragment 与
 
 \section{问题与动机}
 
-先把「不行」证出来。假设我们不切 $D$：Q、K、V 的 tile 都是
+先证明整块常驻为什么不行。假设不切 $D$：Q、K、V 的 tile 都是
 $[B_r, D] = [64, D]$ 的半精度矩阵，一块占 $64 \cdot D \cdot 2$ 字节。表~\ref{tab:19-walls}
 把它与 SM120 的 shared memory 上限（本机
 \texttt{cuda\allowbreak{}Dev\allowbreak{}Attr\allowbreak{}Max\allowbreak{}Shared\allowbreak{}Memory\allowbreak{}Per\allowbreak{}Block\allowbreak{}Optin} $= 101376$\,B $= 99.0$\,KB，
@@ -70,11 +70,12 @@ $D$ & 单个 $[64,D]$ tile & $Q{+}K{+}V$ 各 1 份 & O 累加器（f32/线程）
 
 O 累加器一列的口径见 19.4.6~节：$O$ 的碎片是 $[B_r, D]$ 的 f32 累加器，按 128 个
 consumer 线程均分，每线程 $B_r D / 128 = D/2$ 个寄存器。$D = 512$ 时单是累加器
-就要 256 个 f32 寄存器，而每线程寄存器上限是 255（NVCC 分配限制；setmaxnreg 再分配亦不破此限，见 19.4.5 节）。\textbf{$S/P$ 碎片与
-Q/K/V 操作数尚未计入，寄存器用量已经超出上限}。
+就要 256 个 f32 寄存器，而每线程寄存器上限是 255（NVCC 分配限制；setmaxnreg
+再分配亦不破此限，见 19.4.5 节）。$S/P$ 碎片与 Q/K/V 操作数尚未计入，
+寄存器用量已经超出上限。
 
-于是「大 head dim」的障碍是三条互相独立的硬约束，任何一条都足以否决「整块
-$D$ 常驻」的方案：
+于是大 head dim 的障碍是三条互相独立的硬约束，任何一条都足以否决整块常驻
+方案：
 
 \begin{enumerate}[itemsep=2pt,topsep=2pt]
   \item \textbf{smem 容量瓶颈}：$[B_r, D]$ 与 $[B_c, D]$ 的整块 tile 随 $D$ 线性膨胀
@@ -85,18 +86,18 @@ $D$ 常驻」的方案：
         f32，必然溢出到 local memory。
   \item \textbf{几何粒度瓶颈}：smem 里的 swizzle atom
         （\texttt{GMMA::\allowbreak{}Layout\_\allowbreak{}K\_\allowbreak{}SW128\_\allowbreak{}Atom}）行宽 128\,B，正好是 64 个 f16；
-        \texttt{ldmatrix} 每次装载 $8 \times 8$ 个 f16，其「一行 16\,B」的粒度和
-        128\,B 行宽是同一套约定。把 $D$ 切成 64 列，恰好是「一个 swizzle atom
-        宽 $=$ 8 个 $n8$ 原子宽」，每个 chunk 都能独立套用现成的
+        \texttt{ldmatrix} 每次装载 $8 \times 8$ 个 f16，其一行 16\,B 的粒度和
+        128\,B 行宽是同一套约定。把 $D$ 切成 64 列，恰好是一个 swizzle atom
+        宽 $=$ 8 个 $n8$ 原子宽，每个 chunk 都能独立套用现成的
         \texttt{SW128} 布局，不需要设计新的 swizzle。
 \end{enumerate}
 
-「不切 $D$，改小 tile 行数」是 FA2 在 $D=128$ 时代常用的退路：
-把 $B_r$ 或 $B_c$ 调小，让 $[B, D]$ 放得进 smem。但第~\ref{ch:17}~章已经推出
-attention 的算术强度满足 $AI \lesssim B_r$：$B_r$ 缩到 16，算术强度就掉到 16
-FLOP/B 量级，离 fp16 Tensor Core 与 HBM 的平衡点（数百 FLOP/B）差一个数量级，
-kernel 立刻变成 memory-bound。换句话说，\textbf{缩小 tile 换来的 smem 节省，
-代价是算术强度同步下降；$D$ 越大，tile 需要缩得越小，这个代价也越大}。
+不切 $D$、改小 tile 行数是 FA2 在 $D=128$ 时代常用的退路：把 $B_r$ 或 $B_c$
+调小，让 $[B, D]$ 放得进 smem。但第~\ref{ch:17}~章已经推出 attention 的算术强度
+满足 $AI \lesssim B_r$：$B_r$ 缩到 16，算术强度就掉到 16 FLOP/B 量级，离
+fp16 Tensor Core 与 HBM 的平衡点（数百 FLOP/B）差一个数量级，kernel 立刻变成
+memory-bound。缩小 tile 换来的 smem 节省，代价是算术强度同步下降；$D$ 越大，
+tile 需要缩得越小，这个代价也越大。
 
 \begin{equation}
   \mathrm{smem}_{[B,D]\text{ 整块}} = 3 \cdot B \cdot D \cdot 2\ \text{B} ,
@@ -109,28 +110,29 @@ kernel 立刻变成 memory-bound。换句话说，\textbf{缩小 tile 换来的 
 Split-D 的 chunk 池：每个 chunk 是 $[64,64]$ 的 f16，占 8\,KB；$\mathrm{Sk}$ 级
 QK 流水需要 $2\mathrm{Sk}$ 个 chunk（每个 stage 一份 Q、一份 K），$\mathrm{Sv}$
 级 PV 流水需要 $\mathrm{Sv}$ 份 V。$\mathrm{Sk}=\mathrm{Sv}=2$ 时右端是
-48\,KB，同一张卡上 $D=512$ 的左端是 192\,KB。\textbf{「整块」是 $O(D)$，
-「chunk 池」是 $O(\mathrm{Sk} + \mathrm{Sv})$：这就是 Split-D 用切分换来的收益}。
+48\,KB，同一张卡上 $D=512$ 的左端是 192\,KB。整块方案的 smem 是 $O(D)$，
+chunk 池是 $O(\mathrm{Sk} + \mathrm{Sv})$，这就是 Split-D 用切分换来的收益。
 
-\textbf{Split-D 是什么。}把 $D$ 方向按 64 宽切成 $C = D/64$ 个 chunk，
-让\textbf{两次 GEMM 都沿 chunk 方向流水}。
+Split-D 的做法是把 $D$ 方向按 64 宽切成 $C = D/64$ 个 chunk，让两次 GEMM 都沿
+chunk 方向流水。
 
 \begin{itemize}[itemsep=2pt,topsep=2pt]
   \item QK${}^\top$ 的收缩维就是 $D$。切成 chunk 后，$S = \sum_c Q^{(c)} K^{(c)\top}$
-        是一组 $[64,64]$ 小 GEMM 的\textbf{精确累加}——没有 softmax、没有权重，
+        是一组 $[64,64]$ 小 GEMM 的\textbf{精确累加}：没有 softmax、没有权重，
         纯粹是点积内部加数的分组（式~\ref{eq:19-dotsplit}）。
   \item $PV$ 的输出维就是 $D$。切成 chunk 后，$O = [\,P V^{(0)}, P V^{(1)}, \dots\,]$
-        是输出列方向的\textbf{直和}——每个 chunk 持有一段独立的 O 累加器
+        是输出列方向的\textbf{直和}：每个 chunk 持有一段独立的 O 累加器
         （式~\ref{eq:19-chunk}）。
 \end{itemize}
 
-\textbf{与 Split-KV 的区别（先给结论，19.3.5~节展开）}：Split-KV 切的是\textbf{键
-的下标集合}，每一片算出一份「部分 softmax 状态」$(m_p, \ell_p, O_p)$，合并时必须
-用 LSE 重新加权（各片的最大值不同，要算 $e^{m_p - m}$）；Split-D 切的是\textbf{特征
-维}，$S$ 的 chunk 求和与 softmax 无关，$O$ 的 chunk 之间共享\textbf{同一个}
-$(\ell, m)$，合并只是「先沿列拼起来、再统一除一次 $\ell$」。所以 Split-D
-\textbf{没有第二个 max}，也就没有那一次跨片 exp 往返。两者是正交的：生产库的解码
-路径可以同时做 split-KV（切序列）与 split-D（切特征）。
+\textbf{与 Split-KV 的区别}（19.3.5~节展开）：Split-KV 切的是键的下标集合，
+每一片算出一份部分
+softmax 状态 $(m_p, \ell_p, O_p)$，合并时必须用 LSE 重新加权（各片的最大值
+不同，要算 $e^{m_p - m}$）；Split-D 切的是特征维，$S$ 的 chunk 求和与 softmax
+无关，$O$ 的 chunk 之间共享\textbf{同一个} $(\ell, m)$，合并只是先沿列拼起来、
+再统一除一次 $\ell$。所以 Split-D \textbf{没有第二个 max}，也就没有那一次跨片
+exp 往返。两者是正交的：生产库的解码路径可以同时做 split-KV（切序列）与
+split-D（切特征）。
 
 \textbf{生产库中的对应形态}：\texttt{ffpa-attn} 按 $D$ 分三个家族：$D \le 128$ 走
 persist-D（Q 常驻寄存器的 WS 结构），中段走 split-D（非 WS，即本章这版形态），
@@ -214,7 +216,7 @@ $\ell_t = \sum_{j<tB_c} e^{S_{ij}-m_t}$，最终 $O = O_{T_c}/\ell_{T_c}$。
   \label{eq:19-chunk}
 \end{equation}
 
-注意式~\ref{eq:19-chunk} 里\textbf{同一个 $\rho_t$ 出现在所有 $C$ 个递推式里}。
+注意式~\ref{eq:19-chunk} 里同一个 $\rho_t$ 出现在所有 $C$ 个递推式里。
 源码把 rescale 写在 V-chunk 循环内部、用的却是循环外算好的
 \texttt{row\_\allowbreak{}scale[row]}（L327--335）：rescaling 必须广播，不能由各 chunk
 独立处理。下面这个不变量说明为什么。
@@ -242,18 +244,19 @@ $\ell_t = \sum_{j<tB_c} e^{S_{ij}-m_t}$，最终 $O = O_{T_c}/\ell_{T_c}$。
   即得式~\ref{eq:19-invariant}。证毕。
 \end{proof}
 
-\textbf{三个推论。}其一，终值仍是「先合并、后归一化」：
+由此可得三个推论。先看终值，它仍是先合并、后归一化：
 \begin{equation}
   O_{i,\,64c+d} = \frac{\bigl(\sum_{c'} O^{(c')}_{T_c}\bigr)_{i,\,64c+d}}{\ell_{T_c}}
   = \frac{O^{(c)}_{T_c}\big|_{i,d}}{\ell_{T_c}} ,
   \label{eq:19-final}
 \end{equation}
 即累加器全程未归一化、epilogue 只除一次 $\ell$（L364）。这与第~\ref{ch:15}/\ref{ch:18}~章
-的数值约定一致：避免中间量的尺度漂移，也避免 $C$ 次额外的除法。其二，若某个 chunk
-的 $O^{(c)}$ 忘了 rescale，它对应的就不是全局 max 基准，误差会随 KV tile 数
-$T_c$ 累积（每次漏乘一个 $\rho \le 1$，$O^{(c)}$ 偏大），这是本章最容易犯的
-\textbf{静默错误}（19.8~节坑三）。其三，$\ell$ 与 $m$ 是\textbf{每行一份}、与 chunk
-无关：$C$ 个累加器共享两个标量数组，这也是 Split-D 的「零额外状态」。
+的数值约定一致：避免中间量的尺度漂移，也避免 $C$ 次额外的除法。再看漏乘的情形：
+若某个 chunk 的 $O^{(c)}$ 忘了 rescale，它对应的就不是全局 max 基准，误差会随
+KV tile 数 $T_c$ 累积（每次漏乘一个 $\rho \le 1$，$O^{(c)}$ 偏大），这是本章最
+容易犯的\textbf{静默错误}（19.8~节坑三）。最后是状态量：$\ell$ 与 $m$ 都是
+\textbf{每行一份}、与 chunk 无关，$C$ 个累加器共享两个标量数组，这也是 Split-D
+的零额外状态。
 
 \subsection{与 Split-KV 的合并方式对照}
 
@@ -276,9 +279,9 @@ $\ell = \alpha \ell_0 + \beta \ell_1$、$O = \alpha O_0 + \beta O_1$。把两者
 \end{tabular}
 \end{center}
 
-\textbf{split-KV 的「合并」是数值问题（要把两份不同基准的 partial 归一
-到同一基准），split-D 的「合并」是索引问题（不同 chunk 落在不同的输出列上，
-互不重叠）}。这也是大 head dim 能保持 FA2 级数值性质的原因。
+split-KV 的「合并」是数值问题（要把两份不同基准的 partial 归一到同一基准），
+split-D 的「合并」是索引问题（不同 chunk 落在不同的输出列上，互不重叠）。
+这也是大 head dim 能保持 FA2 级数值性质的原因。
 
 \subsection{chunk 数、stage 数与相位}
 
@@ -374,7 +377,7 @@ $\ell = \alpha \ell_0 + \beta \ell_1$、$O = \alpha O_0 + \beta O_1$。把两者
 \end{figure}
 
 生产者与消费者用\textbf{同一个公式}推导 (stage, phase)，因此不需要任何额外通信
-就能保持一致（19.4.4~节细讲）。相位在「stage 回绕」时翻转：stage 随 chunk 计数
+就能保持一致（19.4.4~节细讲）。相位在 stage 回绕时翻转：stage 随 chunk 计数
 idx 的周期是 $\mathrm{Sk}$、phase 的周期是 $2\,\mathrm{Sk}$，(stage, phase) 联合
 周期 $2\,\mathrm{Sk}$；idx 每个 KV tile 前进 $C$，故 stage 与 phase 的
 联合周期是 $\mathrm{lcm}(C, 2\,\mathrm{Sk}) / C$ 个 KV tile：
@@ -401,7 +404,7 @@ $D$ & $C = D/64$ & $\mathrm{Sk}$ & 相位周期（KV tile 数） & 形态 \\
 \subsection{traits：双 TiledMma 与 SW128 chunk 布局}
 
 先看 \texttt{FFPAAttn}\allowbreak\texttt{SplitDCuTe}\allowbreak\texttt{Traits}（L31--79）。它只做四件事：定 chunk 的 smem
-布局、定两个 TiledMma、定 S2R 的 copy atom、把「$D$ 必须被 64 整除」写成
+布局、定两个 TiledMma、定 S2R 的 copy atom、把 $D$ 必须被 64 整除写成
 \texttt{static\_\allowbreak{}assert}。
 
 \lstinputlisting[linerange={36-61},firstnumber=auto,breakatwhitespace=true,
@@ -412,37 +415,37 @@ $D$ & $C = D/64$ & $\mathrm{Sk}$ & 相位周期（KV tile 数） & 形态 \\
 \begin{itemize}[itemsep=2pt,topsep=2pt]
   \item \texttt{Smem\allowbreak{}Layout\allowbreak{}Atom =\allowbreak{} GMMA::\allowbreak{}Layout\_\allowbreak{}K\_\allowbreak{}SW128\_\allowbreak{}Atom\allowbreak{}<Element>}：128\,B
         行宽的 swizzle 原子，一行正好 64 个 f16。\texttt{tile\_\allowbreak{}to\_\allowbreak{}shape} 把它铺成
-        $[64,64]$——\textbf{chunk 的宽度（64）并非任意选定，它就是这个 atom 的宽度}。
+        $[64,64]$。chunk 的宽度 64 并非任意选定，它就是这个 atom 的宽度。
         第~\ref{ch:12}/\ref{ch:23}~章讲过 SW128 的 XOR 置换；这里直接复用 cutlass
         的 atom，不需要重推。
   \item \texttt{Smem\allowbreak{}Layout\allowbreak{}Vt}：用 \texttt{composition} 造 V 的\textbf{转置视图}
         （行主序坐标重解释），配合 \texttt{SM75\_}\allowbreak\texttt{U16x8\_}\allowbreak\texttt{LDSM\_T}（\texttt{ldmatrix.}\allowbreak\texttt{trans}）
-        在搬运时完成转置，\textbf{不必在 smem 里另存一份 $V^\top$}。省下的是
-        每 stage 8\,KB。
+        在搬运时完成转置，不必在 smem 里另存一份 $V^\top$，省下的是每 stage
+        8\,KB。
   \item \texttt{Mma\allowbreak{}Atom =\allowbreak{} MMA\_\allowbreak{}Atom\allowbreak{}<SM80\_\allowbreak{}16x8x16\_\allowbreak{}F32\allowbreak{}F16\allowbreak{}F16\allowbreak{}F32\_\allowbreak{}TN>}：$m16n8k16$、
-        f16 输入、\textbf{f32 累加}。$S$ 与 $O$ 的累加器都是 f32，这与第~\ref{ch:15}~章
-        「softmax 精度靠 f32 累加」的结论一致。
+        f16 输入、f32 累加。$S$ 与 $O$ 的累加器都是 f32，这与第~\ref{ch:15}~章
+        softmax 精度靠 f32 累加这一结论一致。
   \item \texttt{TiledMmaQK}：\texttt{Tile\allowbreak{}<64,\allowbreak{}64,\allowbreak{}16>} + \texttt{Layout\allowbreak{}<Shape\allowbreak{}<\_\allowbreak{}4,\allowbreak{}\_\allowbreak{}1,\allowbreak{}\_\allowbreak{}1>>}，
         4 个 warp 排在 M 上（$\text{M} = 4 \times 16$），N 方向 $64 = 8 \times n8$，
-        K 方向一个 $k16$——即源码注释里的 \texttt{EURepeat\allowbreak{}<1,\allowbreak{}8,\allowbreak{}1>}：每个 warp 每个
+        K 方向一个 $k16$，即源码注释里的 \texttt{EURepeat\allowbreak{}<1,\allowbreak{}8,\allowbreak{}1>}：每个 warp 每个
         k-step 发 8 条 \texttt{mma.sync}，\textbf{一次 TiledMMA 覆盖整块
-        $S[64,64]$}，于是「N-tile 循环」可以整个省掉。
+        $S[64,64]$}，于是 N-tile 循环可以整个省掉。
   \item \texttt{TiledMmaPV}：\texttt{Tile\allowbreak{}<64,\allowbreak{}16,\allowbreak{}16>}，N 方向只覆盖 $2 \times n8$
         （\texttt{EURepeat\allowbreak{}<1,\allowbreak{}2,\allowbreak{}1>}）。$64$ 列的输出被摊成 4 个 tile repeat，由外层
         V-chunk 循环显式驱动。
 \end{itemize}
 
-这里要补一句\textbf{容易误读的话}：头注释 L13 写「PV 保持小 tile 控制 acc\_O
-寄存器」。严格说，$O$ 累加器的\textbf{总量}由输出 tile 形状 $[64,64]\times C$ 决定
-（式~\ref{eq:19-oacc}），与 tile 怎么切无关；\texttt{Tile\allowbreak{}<64,\allowbreak{}16,\allowbreak{}16>} 影响的是
-「一次 TiledMMA 调用覆盖多大输出块」以及寄存器生存期的切分粒度，让 chunk 边界
-成为寄存器域的边界（每 chunk 一个独立的 \texttt{o\_\allowbreak{}acc\_\allowbreak{}storage[v]} 数组）。
+头注释 L13 写「PV 保持小 tile 控制 acc\_O 寄存器」，这句话容易误读。严格说，
+$O$ 累加器的\textbf{总量}由输出 tile 形状 $[64,64]\times C$ 决定
+（式~\ref{eq:19-oacc}），与 tile 怎么切无关；\texttt{Tile\allowbreak{}<64,\allowbreak{}16,\allowbreak{}16>} 影响的是单次
+TiledMMA 调用覆盖的输出块大小以及寄存器生存期的切分粒度，让 chunk 边界成为
+寄存器域的边界（每 chunk 一个独立的 \texttt{o\_\allowbreak{}acc\_\allowbreak{}storage[v]} 数组）。
 表述上的这点含混记在 19.7~节的勘误框，结论不受影响。
 
 \subsection{smem 池：三段基址与 chunk 偏移}
 
 两个 kernel 的 smem 用法完全一致（L100--103 与 L404--407）：一段
-\texttt{extern \_\_shared\_\_} 动态数组，按「Q 池 $\to$ K 池 $\to$ V 池」切成三段，
+\texttt{extern \_\_shared\_\_} 动态数组，按 Q 池、K 池、V 池的顺序切成三段，
 每段按 stage 数乘以 chunk 元素数得到基址偏移：
 
 \lstinputlisting[linerange={93-103},firstnumber=auto,breakatwhitespace=true,
@@ -454,7 +457,7 @@ layout 一改，池大小与偏移自动跟着改（第~\ref{ch:20}~章）。注
 stride-0 的 stage-mode layout」，意思是：与其把一个 stage 维并入 tensor 的 layout
 （产生 stride-0 的伪维），不如直接做指针加法，索引更直观、生成的地址计算也更便宜。
 
-由此得到 smem 预算：每 stage 的 QK 槽位是「Q chunk $+$ K chunk」两块 8\,KB，
+由此得到 smem 预算：每 stage 的 QK 槽位是 Q chunk 与 K chunk 两块 8\,KB，
 V 槽位是 8\,KB，合计
 
 \begin{equation}
@@ -470,8 +473,8 @@ V 槽位是 8\,KB，合计
 
 这也解释了本章测试辅助工具为什么必须做 smem 可行性检查（\texttt{SKIP(ch19)} 分支）：
 $D$ 一涨，$C$ 跟着涨，而\textbf{stage 数是独立旋钮}，两者消耗的是同一份 99\,KB 预算。
-生产库在 sm120 上把 stage 上限限制在 2--3，理由正是「快速 MMA 下同步开销主导 +
-smem 预算」（见 19.6~节）。
+生产库在 sm120 上把 stage 上限限制在 2--3，理由正是快速 MMA 下同步开销主导、
+smem 预算吃紧（见 19.6~节）。
 
 \subsection{cp.async 版：128 线程全员搬 + 双流水}
 
@@ -495,7 +498,7 @@ $\times$ 4 次 = 4096 个元素，恰好铺满一个 $[64,64]$ 的 chunk。
 
 \begin{enumerate}[itemsep=2pt,topsep=2pt]
   \item \textbf{Phase 0：V 预取}（L204--215）。先把前 $\mathrm{Sv}-1$ 个 V chunk
-        发出去——V 要到 Phase 3 才用，所以这几组 \texttt{cp.async} 可以整段
+        发出去；V 要到 Phase 3 才用，所以这几组 \texttt{cp.async} 可以整段
         overlap 在 QK 与 softmax 上。这是「提前发射」而非「提前等待」。
   \item \textbf{Phase 1：QK${}^\top$ 的 chunk 流水}（L217--271）。每个 chunk
         一对 (Q, K)，一次 \texttt{cp.\allowbreak{}async\_\allowbreak{}fence\allowbreak{}()} 提交为一组；
@@ -519,7 +522,7 @@ Phase 1 的内层是这个 kernel 的核心循环，包含两个易错点：chun
 \lstinputlisting[linerange={237-267},firstnumber=auto,breakatwhitespace=true,
   title={ffpa\_attn.cuh L237-267（QK chunk 主循环：预取 $d+\mathrm{Sk}-1$、等待、gemm\_ss 累加）}]{../ffpa_attn.cuh}
 
-\texttt{cp\_\allowbreak{}async\_\allowbreak{}wait\allowbreak{}<N>} 的语义是「等到未完成的组数 $\le N$」。
+\texttt{cp\_\allowbreak{}async\_\allowbreak{}wait\allowbreak{}<N>} 的语义是等到未完成的组数 $\le N$。
 \texttt{kStagesQK} $=2$ 时 \texttt{wait<0>} 意味着\textbf{把刚发出的预取也一并等到}
 ，这一档没有循环内重叠，重叠主要来自 Phase 0 的 V 预取与整段 QK/softmax 的
 并行；$\mathrm{Sk} \ge 3$ 时 \texttt{wait<Sk-2>} 才允许 $\mathrm{Sk}-2$ 组仍 in-flight，
@@ -583,18 +586,18 @@ Phase 2 与 Phase 3 的片段（软化的迭代顺序 + 广播式的 rescale）�
   title={ffpa\_attn.cuh L276-298（Phase 2：行 max 的 4-lane shuffle 归约、$\rho_t$、$e^{S-m}$ 原地覆盖）}]{../ffpa_attn.cuh}
 
 这里的 \texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor\_\allowbreak{}sync\allowbreak{}(mask,\allowbreak{} v,\allowbreak{} 1)} 与 \texttt{(..., 2)} 不是随意选的：
-$m16n8k16$ 的累加器把一行的 8 个列分给 4 个 lane（每 lane 2 个连续列），所以「一行
-的 64 列」在寄存器里由「同组 4 个 lane $\times$ 每 lane 16 个值」构成，
-\texttt{xor 1}/\texttt{xor 2} 恰好覆盖这 4 个 lane。$kORows = 2$ 则是每线程持有的
-两个行分组（$r$ 与 $r+8$）。这套 \texttt{convert\_\allowbreak{}layout\_\allowbreak{}}\allowbreak\texttt{acc\_rowcol} 的
-「(MMA, MMA\_M, MMA\_N) 拆成 (行, 列)」技巧在第~\ref{ch:22}~章会逐字段展开。
+$m16n8k16$ 的累加器把一行的 8 个列分给 4 个 lane（每 lane 2 个连续列），所以一行的
+64 列在寄存器里由同组 4 个 lane $\times$ 每 lane 16 个值构成，\texttt{xor 1}/\texttt{xor 2}
+恰好覆盖这 4 个 lane。$kORows = 2$ 则是每线程持有的两个行分组（$r$ 与 $r+8$）。
+这套 \texttt{convert\_\allowbreak{}layout\_\allowbreak{}}\allowbreak\texttt{acc\_rowcol} 的 (MMA, MMA\_M, MMA\_N)
+拆成 (行, 列) 的技巧，在第~\ref{ch:22}~章会逐字段展开。
 
 \begin{quote}\small
 \textbf{P 的寄存器重解释（L300--305）}：\texttt{convert\_\allowbreak{}layout\_\allowbreak{}}\allowbreak\texttt{acc\_Aregs} 把
 $S$ 的累加器 layout 从 $(MMA{=}4,$\allowbreak$ MMA\_M,$\allowbreak$ MMA\_N)$ 重解释为 PV 的 A 操作数 layout
-$((4,2),$\allowbreak$ MMA\_M,$\allowbreak$ MMA\_N/2)$——\textbf{零拷贝、不动数据、只改逻辑坐标}，于是 softmax
-后的 $P$ 不需要写回 smem 再 \texttt{ldmatrix}。这是 FA 系列「寄存器复用」的核心
-技巧（第~\ref{ch:16}/\ref{ch:25}~章）。
+$((4,2),$\allowbreak$ MMA\_M,$\allowbreak$ MMA\_N/2)$，即\textbf{零拷贝、不动数据、只改逻辑坐标}，于是 softmax
+后的 $P$ 不需要写回 smem 再 \texttt{ldmatrix}。这是 FA 系列的寄存器复用技巧
+（第~\ref{ch:16}/\ref{ch:25}~章）。
 \end{quote}
 
 \begin{figure}[H]
@@ -667,8 +670,8 @@ Phase 3 的 rescale 是本章数学结论落地的位置：\textbf{同一个 \te
 
 \subsection{TMA+WS 版：单线程 TMA 与 (stage, phase) 计数}
 
-\texttt{ffpa\_\allowbreak{}attn\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}split\_\allowbreak{}d\_\allowbreak{}cute}（L377--641）把「搬」与「算」拆成
-两个 warpgroup：\textbf{128 producer $+$ 128 consumer $= 256$ 线程}，
+\texttt{ffpa\_\allowbreak{}attn\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}split\_\allowbreak{}d\_\allowbreak{}cute}（L377--641）把「搬」与「算」拆成两个
+warpgroup：\textbf{128 producer $+$ 128 consumer $= 256$ 线程}，
 \texttt{\_\allowbreak{}\_\allowbreak{}launch\_\allowbreak{}bounds\_\allowbreak{}\_\allowbreak{}(256,\allowbreak{}1)}（L380）。
 
 \lstinputlisting[linerange={380-392},firstnumber=auto,breakatwhitespace=true,
@@ -683,27 +686,27 @@ Phase 3 的 rescale 是本章数学结论落地的位置：\textbf{同一个 \te
 三个数字要记牢：
 
 \begin{itemize}[itemsep=2pt,topsep=2pt]
-  \item \texttt{Tma\allowbreak{}Barrier::\allowbreak{}init\allowbreak{}(\&qk\_\allowbreak{}full[s],\allowbreak{} 1)}——full 屏障的\textbf{到达数}
+  \item \texttt{Tma\allowbreak{}Barrier::\allowbreak{}init\allowbreak{}(\&qk\_\allowbreak{}full[s],\allowbreak{} 1)}：full 屏障的\textbf{到达数}
         是 1（生产者的一次 \texttt{arrive\_\allowbreak{}and\_\allowbreak{}expect\_\allowbreak{}tx}），但真正让它完成的
         是 TMA 的\textbf{字节事务计数}：\texttt{arrive\_\allowbreak{}and\_\allowbreak{}expect\_\allowbreak{}tx} 声明本次
         期望的字节数，TMA 每搬完一段就减掉，归零即放行。QK 槽位声明的是
         \texttt{sizeof\allowbreak{}(Element) * \allowbreak{}(size\allowbreak{}(s\allowbreak{}Q) + size\allowbreak{}(s\allowbreak{}K))} $= 2 \times 8192$\,B
         $= 16$\,KB（L459--460），V 槽位是 8\,KB（L477）。
-  \item \texttt{Cta\allowbreak{}Barrier::\allowbreak{}init\allowbreak{}(\&qk\_\allowbreak{}empty[s],\allowbreak{} k\allowbreak{}Consumer\allowbreak{}Threads)}——empty 的
-        到达数是 \textbf{128}：每个 consumer 线程消费完该槽位各 arrive 一次。
+  \item \texttt{Cta\allowbreak{}Barrier::\allowbreak{}init\allowbreak{}(\&qk\_\allowbreak{}empty[s],\allowbreak{} k\allowbreak{}Consumer\allowbreak{}Threads)}：empty 的
+        到达数是 \textbf{128}，即每个 consumer 线程消费完该槽位各 arrive 一次。
         这与第~\ref{ch:17}~章不同：那边 empty 也是 257 $=$ 256 consumer $+$
         1 producer（producer 在 empty 上补 1 票）；本章 producer 不在 empty
         上 arrive（它的 1 票记在 full 侧的 \texttt{arrive\_and\_expect\_tx}），
         故 empty 是 128 张纯 consumer 票。
   \item \texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}REG\_\allowbreak{}DEALLOC\allowbreak{}(32)} / \texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}REG\_\allowbreak{}ALLOC\allowbreak{}(232)}
-        （L432、L484）——producer 只做地址计算与 TMA 提交，32 个寄存器够用；
+        （L432、L484）：producer 只做地址计算与 TMA 提交，32 个寄存器够用；
         consumer 要持有 $S$、$P$、$C$ 个 O 累加器与操作数碎片，按上限申请 232，
         取值对齐 ffpa-attn 生产库 persist\_d 的原版配比（32/232）。约束链
         （FA3 论文与 PTX ISA~9.7.19.5）：立即数须为 $[24,256]$ 内 8 的倍数，
-        且 NVCC 对每线程实际分配另设 $\le 255$ 上限——合法上限值为 248，
+        且 NVCC 对每线程实际分配另设 $\le 255$ 上限，合法上限值为 248，
         本书初版的 255 不是 8 的倍数，开宏会被 ptxas 拒绝。池算术：
         $128 \times 32 + 128 \times 232 = 33792 \le 65536$，余量
-        31744 个寄存器，远高于「留 $\ge 2048$」的安全线。注意该指令对 TMA 目的地址空间敏感：dst 为
+        31744 个寄存器，远高于留 $\ge 2048$ 的安全线。注意该指令对 TMA 目的地址空间敏感：dst 为
         \texttt{shared::cluster} 的 \texttt{cp.\allowbreak{}async.\allowbreak{}bulk.\allowbreak{}tensor} 会让 ptxas 以
         C7506 丢弃 \texttt{setmaxnreg}（第~\ref{ch:14}/\ref{ch:18}~章考据）；
         dst 为 \texttt{shared::cta} 则 sm\_120a/sm\_120f 均保留（本章
@@ -711,7 +714,7 @@ Phase 3 的 rescale 是本章数学结论落地的位置：\textbf{同一个 \te
         分配的是 \texttt{\_\allowbreak{}\_\allowbreak{}launch\_\allowbreak{}bounds\_\allowbreak{}(256,\allowbreak{}1)} 与 ptxas。
 \end{itemize}
 
-生产者的主体是「单线程 TMA」：整个 warpgroup 里只有 \texttt{wg\_tid == 0}
+生产者的主体是单线程 TMA：整个 warpgroup 里只有 \texttt{wg\_tid == 0}
 执行 TMA 提交，其余 127 个线程只负责交出寄存器额度。它的两层循环按\textbf{先整轮 QK、
 再整轮 V}的顺序投递，并用扁平计数器算相位：
 
@@ -766,9 +769,9 @@ Q 的装载 & 每 KV tile 重装（与 K 同 stage） & 每 KV tile 重发 TMA�
 \end{tabular}
 \end{center}
 
-两种实现是「同一条算法、两套流水机制」，读者的收益在于看清一件事：
-\textbf{Split-D 的结构（chunk 池、双 TiledMma、$\rho$ 广播）与用哪种搬运指令无关}；
-TMA 与 WS 换掉的是「数据怎么来、什么时候到」这一层。
+两种实现是同一条算法、两套流水机制：\textbf{Split-D 的结构（chunk 池、
+双 TiledMma、$\rho$ 广播）与用哪种搬运指令无关}，TMA 与 WS 换掉的只是
+数据怎么来、什么时候到这一层。
 
 \subsection{O 累加器的寄存器占用}
 
@@ -787,7 +790,7 @@ TMA 与 WS 换掉的是「数据怎么来、什么时候到」这一层。
   \label{eq:19-oacc}
 \end{equation}
 
-$D {=} 512$ 这一行的结论很重要：\textbf{单是 O 累加器就越界了}。再加 $S$ 碎片
+$D {=} 512$ 时单是 O 累加器就越界了。再加 $S$ 碎片
 （32 个 f32）、$P$ 的 f16 片段、V/Q/K 的操作数片段与地址寄存器，$D=512$ 必然
 溢出到 local memory。正确性不受影响（测试里 $D{=}512$ 例照常通过），但吞吐会下降。
 这就是生产库在 $D \ge 768$ 换 M4N2（\texttt{atom\_layout} $(4,2,1)$：4 个 M-warp
@@ -920,7 +923,7 @@ $\times$ 2 个 N-warp，$R_O$ 降到 $D/4$）的原因，也是本章这版 kern
 
 \section{性能分析}
 
-\textbf{口径先对齐。}本章涉及两组性能数字，必须\textbf{双标注}，因为它们来自
+先把口径对齐。本章涉及两组性能数字，必须\textbf{双标注}，因为它们来自
 不同的 GPU 与不同的形状：
 
 \begin{itemize}[itemsep=2pt,topsep=2pt]
@@ -943,10 +946,10 @@ $D{=}320/N{=}16384$）与流水深度都不同，\textbf{不可互换、不可�
 数字必须带 GPU 名与形状。二者一致的定性结论只有一条：在 $D \gg 128$ 上，
 Split-D 相对 cuDNN SDPA 的收益在 $1.5\times$--$2.2\times$ 量级，把流水从
 $\mathrm{Sk}{=}\mathrm{Sv}{=}1$ 加到 $2$ 是主要增益来源（5090 口径下
-$1.53\times \to 2.20\times$）。这条结论与 19.6~节的「stage 数与 smem 预算互相
-挤压」的定性分析方向一致。
+$1.53\times \to 2.20\times$）。这条结论与 19.6~节关于 stage 数与 smem 预算互相
+挤压的定性分析方向一致。
 
-\textbf{结构层面的算术强度。}按每轮 KV tile 统计（每轮装载 Q、K、V 各 $C$ 个 chunk）：
+再看结构层面的算术强度。按每轮 KV tile 统计（每轮装载 Q、K、V 各 $C$ 个 chunk）：
 
 \begin{equation}
   \mathrm{bytes} = 3 \cdot C \cdot 64 \cdot 64 \cdot 2 = 384\,D\ \text{B} ,
@@ -957,13 +960,13 @@ $1.53\times \to 2.20\times$）。这条结论与 19.6~节的「stage 数与 smem
   \label{eq:19-ai}
 \end{equation}
 
-有两点。其一，$AI$ 与 $D$ \textbf{无关}。GEMM 的计算量与访存量都随
-$D$ 线性增长，比值被约掉了；所以「大 head dim 更耗带宽」并不是 Split-D 的性质。
-其二，这 42.7 FLOP/B 里\textbf{约三分之一是冗余的}：Q 对每个 KV tile 都重装了一遍
-（$N/B_c$ 次），而它在整个 q\_tile 生命周期里\textbf{一次都不用变}。生产库的
-persist-D 家族正是针对这部分冗余（Q 的 A 操作数常驻寄存器、全程走
-\texttt{gemm\_rs}）的优化，本章这版教学实现保留了「每轮重装」的简单写法。把 Q 常驻后
-流量降到 $2/3$，$AI$ 升到约 64 FLOP/B，这是本 kernel 最明确的一处结构优化空间。
+$AI$ 与 $D$ \textbf{无关}：GEMM 的计算量与访存量都随 $D$ 线性增长，比值被
+约掉了；所以大 head dim 更耗带宽并不是 Split-D 的性质。这 42.7 FLOP/B 里
+\textbf{约三分之一是冗余的}：Q 对每个 KV tile 都重装了一遍（$N/B_c$ 次），
+而它在整个 q\_tile 生命周期里一次都不用变。生产库的 persist-D 家族正是针对
+这部分冗余（Q 的 A 操作数常驻寄存器、全程走 \texttt{gemm\_rs}）的优化，本章
+这版教学实现保留了每轮重装的简单写法。把 Q 常驻后流量降到 $2/3$，$AI$ 升到
+约 64 FLOP/B，这是本 kernel 最明确的一处结构优化空间。
 
 \textbf{结构开销清单}（不依赖复测的定性判断，供后续复测逐条核对）：
 
@@ -971,11 +974,11 @@ persist-D 家族正是针对这部分冗余（Q 的 A 操作数常驻寄存器�
   \item Q 每 KV tile 重装（式~\ref{eq:19-ai} 讨论）；
   \item consumer 内部 QK $\to$ softmax $\to$ PV 串行，$\mathrm{mma.sync}$ 是同步
         指令，三者无法重叠（第~\ref{ch:18}~章的 pingpong 讨论）；这也是 Split-D
-        在 $D$ 不大时不必做 WS 的原因——收益会被结构开销抵消；
+        在 $D$ 不大时不必做 WS 的原因，收益会被结构开销抵消；
   \item $D \ge 512$ 时 O 累加器溢出（式~\ref{eq:19-oacc}）；
   \item PV 的 chunk 循环把同一块 $P$（$[64,64]$ 的 f16）反复送入 $C$ 次
         \texttt{gemm\_rs}，每次都要重新 \texttt{ldmatrix} 一列 V 并重走 4 个
-        tile repeat——这是分列累加的固有代价，$C$ 越大越明显。
+        tile repeat：这是分列累加的固有代价，$C$ 越大越明显。
 \end{enumerate}
 
 \textbf{复测建议（供附录 B 汇总）}：\texttt{book/\allowbreak{}tests/\allowbreak{}ch19\_\allowbreak{}ffpa\_\allowbreak{}split\_\allowbreak{}d.cu} 自带
@@ -994,14 +997,14 @@ $\mathrm{Sk}{=}5$ 会直接超预算。数据请落
   README 的 Split-D 表格是 \textbf{RTX 5090} 口径，形状也不同
   （$D{=}320$、$N{=}16384$、182.6/83.1 $=2.20\times$）。两口径的比值自洽
   （$110.7/57.2 = 1.935$；$182.6/83.1 = 2.197$），差别来自 GPU 与形状。本节
-  \textbf{正文一律双标注，不复测不给绝对结论}。
+  正文一律双标注，不复测不给绝对结论。
 \end{kaogu}
 
 \begin{kaogu}[F1/F3·表述澄清]{L12-13「PV 保持小 tile 控制 acc\_O 寄存器」}
   注释把「控制 acc\_O 寄存器」归因于 PV 的 tile 形状
   \texttt{Tile\allowbreak{}<64,\allowbreak{}16,\allowbreak{}16>}。按式~\ref{eq:19-oacc} 复算：$O$ 累加器总量由输出
-  tile 的完整形状 $[64,64] \times C$ 决定，$= D/2$ 个 f32/线程，\textbf{与 tile
-  形状无关}。tile 形状决定的是「一次 TiledMMA 调用覆盖多大输出块」、
+  tile 的完整形状 $[64,64] \times C$ 决定，$= D/2$ 个 f32/线程，与 tile 形状
+  无关。tile 形状决定的是单次 TiledMMA 调用覆盖的输出块大小、
   \texttt{EURepeat}（$<1,2,1>$ vs $<1,8,1>$）以及寄存器生存期的切分粒度：
   小 tile 让 chunk 边界成为寄存器域边界（每 chunk 独立的
   \texttt{o\_\allowbreak{}acc\_\allowbreak{}storage[v]}）。结论不受影响，但表述应读作「小 tile 对齐 chunk
@@ -1031,38 +1034,37 @@ $\mathrm{Sk}{=}5$ 会直接超预算。数据请落
   $2 \times 64 \times 64 \times 2 = 16384$\,B（Q 与 K 各一个 chunk），
   V 槽位 $8192$\,B，与 \texttt{size\allowbreak{}(s\allowbreak{}Q)+size\allowbreak{}(s\allowbreak{}K)} / \texttt{size(sV)} 的写法一致；
   （4）相位公式在生产者（L443--445）与消费者（L539--541、L591--593）三处
-  \textbf{逐字符一致}。协议描述与代码一致，无发现错误。
+  逐字符一致。协议描述与代码一致，无发现错误。
 \end{kaogu}
 
 \begin{kaogu}[F1·边界提醒]{$D$ 的合法取值与「$D\%64 \ne 0$」}
   两个 kernel 都以 \texttt{static\_\allowbreak{}assert\allowbreak{}(k\allowbreak{}Head\allowbreak{}Dim \% 64 =\allowbreak{}=\allowbreak{} 0)} 把关（L36、L90、
   L394），并且 traits 的第二个断言把 tile 固定在 $64\times64$
-  （L37）。这意味着「大 head dim」在本章语境下是\textbf{离散集合}
+  （L37）。这意味着大 head dim 在本章语境下是\textbf{离散集合}
   $\{64, 128, 192, \ldots\}$，不是连续区间；$D{=}96$ 或 $D{=}320$ 的 32 宽
   chunk 走的是另一套 layout（SW64，生产库里的 $(32,32)/(32,64)$ chunk 配置），
   不在这份教学代码的覆盖范围内。测试的 SKIP 分支只处理 $N\%64$ 与 smem 超限，
-  不处理 $D\%64$——因为后者是编译期错误。
+  不处理 $D\%64$，因为后者是编译期错误。
 \end{kaogu}
 
 \section{常见坑}
 
-\textbf{坑一：把「chunk 求和」与「softmax」的先后顺序写反。}$S$ 必须是
+\textbf{坑一：把 chunk 求和与 softmax 的先后顺序写反。}$S$ 必须是
 \textbf{全部} chunk 累加完之后才做 softmax（Phase 1 完整 $\to$ Phase 2）。若把
-softmax 放进 chunk 循环里（对「部分点积」做 softmax），得到的是另一个函数的
-输出，且不报错。数值全错但形状正确。这是本章后果最严重的坑，因为改动很小、错误很
-隐蔽。
+softmax 放进 chunk 循环里（对部分点积做 softmax），得到的是另一个函数的
+输出，且不报错。数值全错但形状正确，改动很小、错误很隐蔽。
 
 \textbf{坑二：TMA 版的 (stage, phase) 两端公式必须逐字符一致。}\allowbreak{}mbarrier 的
 phase 位由屏障自身状态决定，跨 KV tile 复用同一批屏障时，两端必须用式
-~\ref{eq:19-phase} 的\textbf{同一个扁平计数器}。若把消费者侧改成「每个 KV tile
-从 0 重新计数」（照抄 cp.async 版的写法），相位会与屏障状态错位：轻则读到半新
+~\ref{eq:19-phase} 的同一个扁平计数器。若把消费者侧改成每个 KV tile 从 0
+重新计数（照抄 cp.async 版的写法），相位会与屏障状态错位：轻则读到半新
 半旧的数据（静默数值错误），重则 \texttt{mbarrier.\allowbreak{}wait} 永远等不到而挂死。
 cp.async 版之所以能每轮重置，是因为 \texttt{wait\_group} 是\textbf{每线程私有}
 的 FIFO 计数，不是共享对象。
 
 \textbf{坑三：$\rho_t$ 只 rescale 了一部分 chunk。}式~\ref{eq:19-chunk} 要求
 \textbf{所有 $C$ 个累加器}都乘同一个 $\rho_t$。漏掉某些 chunk（或每个 chunk 各算
-自己的 $\rho$）都会得到「看起来合理」的结果：漏乘的 chunk 相当于用了偏小的
+自己的 $\rho$）都会得到看起来合理的结果：漏乘的 chunk 相当于用了偏小的
 max 基准，$O^{(c)}$ 系统性偏大，误差随 $T_c$ 累积。测试里 $N{=}256$ 只有
 $T_c{=}4$ 时就已能暴露（最大误差量级从 $10^{-5}$ 跳到 $10^{-2}$ 以上）。
 
@@ -1072,7 +1074,7 @@ $R_O = 256 > 255$，O 累加器必然 spill。教学测试仍覆盖 $D{=}512$，
 想在大 $D$ 上取得性能，得换 M4N2 式的 N-warp 分摊（生产库路线）。
 
 \textbf{坑五：stage 数加深与 smem 预算互相挤压。}式~\ref{eq:19-smemtable} 表明
-$\mathrm{Sk}=\mathrm{Sv}=4$ 已到 96\,KB（上限 99\,KB）。任何「再深一级流水」的
+$\mathrm{Sk}=\mathrm{Sv}=4$ 已到 96\,KB（上限 99\,KB）。任何再深一级流水的
 尝试都会先碰到 smem 上限；辅助工具必须做可行性检查（本章测试打印
 \texttt{SKIP(ch19): ... smem ... > optin ...}）。
 
@@ -1080,10 +1082,10 @@ $\mathrm{Sk}=\mathrm{Sv}=4$ 已到 96\,KB（上限 99\,KB）。任何「再深�
 走 async proxy，\texttt{ldmatrix} 读 smem 走 generic proxy，同一位置跨代理访问
 需要 \texttt{fence.\allowbreak{}proxy.\allowbreak{}async}（PTX ISA §9.7.15.4）。源码在生产者提交后
 （L463、L479--480）与消费者 wait 之后（L543、L595）都调用了
-\texttt{tma\_\allowbreak{}fence\_\allowbreak{}proxy\_\allowbreak{}async\_\allowbreak{}shared\_\allowbreak{}cta\allowbreak{}()}；读者改写时若「优化掉」其中
-一侧，会得到偶发的读旧值故障；这类故障是\textbf{概率性}的，只在特定时序下出现。
+\texttt{tma\_\allowbreak{}fence\_\allowbreak{}proxy\_\allowbreak{}async\_\allowbreak{}shared\_\allowbreak{}cta\allowbreak{}()}；读者改写时若优化掉其中一侧，
+会得到偶发的读旧值故障；这类故障是\textbf{概率性}的，只在特定时序下出现。
 
-\textbf{坑七：Q 的重装有实际开销，不要把「Q 与 K 同槽位」当成零成本。}两个版本都
+\textbf{坑七：Q 的重装有实际开销，不要把 Q 与 K 同槽位当成零成本。}两个版本都
 把 Q chunk 与 K chunk 放进同一个 QK stage（一个 stage $=$ 两份 8\,KB）。这在
 实现上很省事，但意味着 Q 每次都要跟着 K 一起重新装载；一旦你要加深 K 流水，
 Q 的冗余流量也同步放大。生产库的 persist-D 正是把 Q 移出这个 stage（常驻寄存器），
@@ -1101,7 +1103,7 @@ f32/线程（$D{=}512$ 时 256，越过 255 上限）；几何：SW128 swizzle a
 A：切的对象不同。Split-KV 切键下标集合，每片得到一份\textbf{部分 softmax 状态}，
 合并要用 LSE 重标定（各片 max 不同，需要第二个 max 与 $e^{m_p-m}$）；Split-D
 切特征维，$S$ 的 chunk 求和与 softmax 无关（纯粹点积内部加数分组），$O$ 的
-chunk 分列互不重叠，合并只是「沿列拼起来 + 最后除一次 $\ell$」。Split-D
+chunk 分列互不重叠，合并只是沿列拼起来、最后除一次 $\ell$。Split-D
 \textbf{没有第二个 max}，合并里零额外 exp。两者正交，可叠加。
 
 \textbf{Q3：为什么 QK 的 chunk 求和不需要任何重标定？}\\
@@ -1110,21 +1112,22 @@ A：因为它是同一个点积的加数分组（式~\ref{eq:19-dotsplit}），$
 $m$ 与缩放 $\gamma$ 都在求和\textbf{之后}才介入。浮点上只差求和顺序。
 
 \textbf{Q4：PV 的每个 chunk 有独立累加器，为什么 rescale 因子必须共享？}\\
-A：见定理~\ref{eq:19-invariant}：$O^{(c)}$ 的含义是「以当前 max 为基准、
-$e^{S-m}$ 为权重的 V 第 $c$ 段加权和」。跨 KV tile 更新 max 时，所有 chunk 的
+A：见定理~\ref{eq:19-invariant}：$O^{(c)}$ 的含义是以当前 max 为基准、
+$e^{S-m}$ 为权重的 V 第 $c$ 段加权和。跨 KV tile 更新 max 时，所有 chunk 的
 基准都要一起改，因此必须乘同一个 $\rho_t$。若各 chunk 各用各的基准，尾部输出
-就等同于「每个 chunk 的 softmax 归一化常数不同」，而最终只能除一个 $\ell$，误差无法通过归一化消除。
+就等同于每个 chunk 的 softmax 归一化常数不同，而最终只能除一个 $\ell$，误差
+无法通过归一化消除。
 
 \textbf{Q5：chunk 为什么是 64 宽？}\\
 A：因为 SW128 swizzle atom 的行宽是 128\,B $=$ 64 个 f16，且 \texttt{ldmatrix}
-的粒度就是「8 行 $\times$ 16\,B」。64 列 $=$ 一个 atom 宽 $=$ 8 个 $n8$ 原子，
+的粒度就是 8 行 $\times$ 16\,B。64 列 $=$ 一个 atom 宽 $=$ 8 个 $n8$ 原子，
 每个 chunk 都能直接套用 \texttt{GMMA::\allowbreak{}Layout\_\allowbreak{}K\_\allowbreak{}SW128\_\allowbreak{}Atom} 铺出来的 layout，
-不必设计新的 swizzle。$32$ 宽要走 SW64、$128$ 宽要两个 atom 拼，都不是「重推
-一次 swizzle」那么简单，所以这版代码用 \texttt{static\_\allowbreak{}assert} 强制固定宽度。
+不必设计新的 swizzle。$32$ 宽要走 SW64、$128$ 宽要两个 atom 拼，都不是重推一次
+swizzle 那么简单，所以这版代码用 \texttt{static\_\allowbreak{}assert} 强制固定宽度。
 
 \textbf{Q6：两版实现的差别在哪一层？}\\
 A：算法层没有差别（头注释 L70--73 明确「消费者逻辑完全一致」），差别全在
-「数据怎么来、什么时候到」：cp.async 版 128 线程全员搬、用每线程私有的组 FIFO
+数据怎么来、什么时候到：cp.async 版 128 线程全员搬、用每线程私有的组 FIFO
 计数、每 KV tile 排空；TMA+WS 版 256 线程分工、单线程发起 TMA、用共享 mbarrier 的
 (stage, phase) 计数、跨 KV tile 连续不排空。同步原语的性质（私有 FIFO vs 共享
 对象）直接决定了流水能否跨 tile 连续。
@@ -1150,7 +1153,7 @@ A：mbarrier 是共享对象，phase 是它自身的状态位。跨 KV tile 复�
 
 测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch19\_\allowbreak{}ffpa\_\allowbreak{}split\_\allowbreak{}d.cu}（逻辑抽取自
 \texttt{bench\_\allowbreak{}ffpa.\allowbreak{}cu}；参考实现由 cuDNN SDPA 换成 \textbf{CPU fp64}，softmax
-全程 double 累加）。覆盖矩阵按「chunk 数 $\times$ 相位形态」设计，同一份 CPU 参考
+全程 double 累加）。覆盖矩阵按 chunk 数与相位形态两个维度设计，同一份 CPU 参考
 分别送入两个 kernel：
 
 \begin{center}
@@ -1188,14 +1191,14 @@ PASS ffpa split-d tma ws D=512 N=128 Sk=2 Sv=2: max_abs_err=8.943e-05 (tol=5.0e-
 ALL OK
 \end{lstlisting}
 
-八条 PASS 覆盖两个 kernel 的四种 chunk 数。三点读数。其一，\textbf{两个 kernel 的
-最大误差逐位一致}（$6.614/6.489/6.934/$\allowbreak$8.943\times10^{-5}$）：这不是巧合，两者的
-消费者逻辑逐行相同（头注释 L70--73 声明），因此浮点运算序列一致，误差也就一致；
-它同时说明 TMA 版的 chunk 流水与屏障相位\textbf{没有引入任何数值偏差}。
-其二，误差随 chunk 数缓慢增大（$C{=}1$ 的 $6.61\times10^{-5}$ 到 $C{=}8$ 的
-$8.94\times10^{-5}$）：这正是式~\ref{eq:19-dotsplit} 讨论过的「求和顺序变化」的
-量级。$C$ 越大，点积的累加链越多，舍入路径差异越大，但都远低于 F16Acc 的
-$5\times10^{-2}$ 判定线（约三个数量级余量）。其三，$D{=}512$ 例（
+八条 PASS 覆盖两个 kernel 的四种 chunk 数。两个 kernel 的最大误差逐位一致
+（$6.614/6.489/6.934/$\allowbreak$8.943\times10^{-5}$）：这不是巧合，两者的消费者逻辑
+逐行相同（头注释 L70--73 声明），因此浮点运算序列一致，误差也就一致；它同时
+说明 TMA 版的 chunk 流水与屏障相位没有引入任何数值偏差。误差随 chunk 数
+缓慢增大（$C{=}1$ 的 $6.61\times10^{-5}$ 到 $C{=}8$ 的 $8.94\times10^{-5}$），
+这正是式~\ref{eq:19-dotsplit} 讨论过的求和顺序变化的量级。$C$ 越大，点积的累加
+链越多，舍入路径差异越大，但都远低于 F16Acc 的 $5\times10^{-2}$ 判定线（约三个
+数量级余量）。$D{=}512$ 例（
 \texttt{total 256} f32/线程）照样 PASS，验证的是\textbf{逻辑极值}而非性能：
 式~\ref{eq:19-oacc} 说它必然 spill，但 spill 不影响正确性。
 
@@ -1204,7 +1207,7 @@ $5\times10^{-2}$ 判定线（约三个数量级余量）。其三，$D{=}512$ �
 \begin{enumerate}[itemsep=2pt,topsep=2pt]
   \item 把 $D{=}192$ 例的 $\mathrm{Sk}$ 从 2 改成 3：此时 $C = \mathrm{Sk}$，
         每 KV tile 恰好推满一轮 stage，phase $= t \bmod 2$，相位周期是 2 个
-        KV tile——用来验证式~\ref{eq:19-phase} 的周期公式；
+        KV tile，用来验证式~\ref{eq:19-phase} 的周期公式；
   \item 在 rescale 处只对偶数 chunk 乘 \texttt{row\_scale}（坑三），观察最大误差
         如何随 $N$ 增长；
   \item 把 $\mathrm{Sk}=\mathrm{Sv}$ 从 2 加到 4，观察 smem 涨到 96\,KB 与
