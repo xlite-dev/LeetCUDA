@@ -679,7 +679,7 @@ $\v{A}((1,\_),((\_,0),\_))$ & $\{4\} \circ (2,(2,2)):(1,(2,100))$ &
 # 为每个 thr_id 提取 TILE_SIZE 大小的数据
 thr_data = my_data[thr_id*TILE_SIZE:(thr_id+1)*TILE_SIZE]
 \end{python}
-来获取每个线程局部的一块数据“块”（tile）。这种模式把 {\tt TILE\_SIZE}（通常正是要做优化的那个静态常量）与 {\tt thr\_id}（本质上是每个线程局部的动态索引）混为一谈。与之相反，\CuTe 更倾向于两阶段的“重排—切片”方法，例如
+来获取每个线程局部的一块数据“块”（tile）。这种模式把 {\tt TILE\_SIZE}（通常正是要做优化的那个静态常量）与 {\tt thr\_id}（本质上是每个线程局部的动态索引）混为一谈。与之相反，\CuTe 采用两阶段的“重排—切片”方法，例如
 \begin{python}
 # 将 my_data 张量重排并重塑为形状 (TILE_SIZE,NumTiles)
 # 这是对更一般的 composition(my_data, Transform_Layout) 的封装

@@ -33,7 +33,7 @@ conflict} 让 \texttt{ldmatrix} 的读取被串行化；\textbf{k\_step 内 ldma
 \section{问题与动机}
 
 HGEMM 是 compute-bound 算子：$2MNK$ 次乘加对应 $O(MN+MK+NK)$ 的访存，算术强度极高。
-此时优化的全部要义只有一条：\textbf{不让 Tensor Core 空等数据}。第~\ref{ch:11}~章的
+此时优化只有一条要义：不让 Tensor Core 空等数据。第~\ref{ch:11}~章的
 多级流水已经把 gmem$\to$smem 的一段用 cp.async 双缓冲掩盖了，但数据链路还有两段、调度
 还有一层，各有一个具体的瓶颈：
 
@@ -43,13 +43,13 @@ HGEMM 是 compute-bound 算子：$2MNK$ 次乘加对应 $O(MN+MK+NK)$ 的访存�
 落在同一组 bank 上，硬件只能串行重放（n-way conflict = 同一请求拆成 n 次传递）。
 而不做任何处理时，\texttt{[BM][BK]} row-major 的 smem tile 恰好是 ldmatrix
 按行取数的\textbf{最坏布局}（12.3 节逐步推导）。传统解法是给行加 padding 打散
-stride，代价是浪费 smem、且破坏 16\,B 对齐粒度；XOR swizzle 用「地址位异或」
-零成本解决，这正是本章的核心技术。
+stride，代价是浪费 smem、且破坏 16\,B 对齐粒度；XOR swizzle 用地址位异或
+零成本解决，这也是本章的核心技术。
 
 \textbf{瓶颈二：k\_step 内 ldmatrix 与 MMA 的串行（R$\to$计算段）。}一个 BK tile 内含
 多个 $k_{\mathrm{step}}$ slice；若只有一套 fragment 寄存器，每个 slice 都要
-「ldmatrix 等 smem $\to$ MMA 等寄存器」顺序执行，lsu 与 tensor core 交替空转。
-寄存器双缓冲让「加载 slice $t{+}1$」与「用 slice $t$ 计算」同周期进行：它是
+先 ldmatrix 等 smem、再 MMA 等寄存器，顺序执行，lsu 与 tensor core 交替空转。
+寄存器双缓冲让加载 slice $t{+}1$ 与用 slice $t$ 计算同周期进行：它是
 smem 双缓冲（掩盖 gmem 延迟）之下的第二级流水，两者分工明确。
 
 \textbf{瓶颈三：grid 光栅化把 L2 复用摊薄（调度层）。}\allowbreak{}CUDA block 的分发顺序是
@@ -174,15 +174,15 @@ Phase 7b-3 把 4 个 $k_{\mathrm{step}}$ slice 统一进 $[128][64]$ 的宽 tile
 注意\textbf{行号 $i$ 的贡献消失了}：bank 计数环 128\,B（32 bank $\times$ 4\,B）、
 四联组编号环同为 128\,B（$\lfloor a/16\rfloor \bmod 8$，周期 8 个 chunk）；
 行 stride 128\,B 恰为两者各一圈，任何一行的同一 (slice, chunk) 都映射到同一个
-起始 bank $q$。phase 0 的 8 个 lane（行 0--7、$c$ 固定）全部落在 $q=8s+4c$ 上：
-\textbf{8-way 冲突}。NCU 实测同形状下 691{,}067 次（把 kernel 中 8 处 swizzle
+起始 bank $q$。phase 0 的 8 个 lane（行 0--7、$c$ 固定）全部落在 $q=8s+4c$ 上，
+即 8-way 冲突。NCU 实测同形状下 691{,}067 次（把 kernel 中 8 处 swizzle
 调用置 0 的对照版，见 12.6 节表~\ref{tab:12-bank}）。统一宽 tile 省了同步与
 寻址开销，却把 ldmatrix 的冲突度放大了 4 倍，必须引入 swizzle 才行。
 
 \subsection{XOR swizzle：v1 的位运算与逐 bit 解释}
 
-XOR swizzle 的想法：\textbf{在写入 smem 时就把 chunk 的物理位置按行号置换，
-让「按列读」的 lanes 天然散开}。对 16 列（两个 chunk）的 tile，v1 的置换是
+XOR swizzle 的想法是：写入 smem 时就把 chunk 的物理位置按行号置换，
+让按列读的 lanes 天然散开。对 16 列（两个 chunk）的 tile，v1 的置换是
 （common.cuh~L116、L176）：
 \begin{equation}
   c' \;=\; c \oplus \left(\left\lfloor \tfrac{i}{4} \right\rfloor \bmod 2\right),
@@ -200,8 +200,8 @@ bit7 即 $i$ 的 bit2）。所以式~\ref{eq:12-xor-v1} 的净效果是
 \end{equation}
 代入式~\ref{eq:12-q16}（BK=16）：行 4--7 的 chunk 0 被搬去 $q=4{,}12{,}20{,}28$，
 chunk 1 搬去 $q=0{,}8{,}16{,}24$，phase 0 的 8 行四联组变为
-$\{0,8,16,24,4,12,20,28\}$，\textbf{8 个互不相同，恰好铺满 32 个 bank：1-way，
-零冲突}。源码注释「原来 n-way 的 bank conflict 降低到 1-way」说的正是这个 32\,B
+$\{0,8,16,24,4,12,20,28\}$：8 个互不相同，恰好铺满 32 个 bank，即 1-way、
+零冲突。源码注释「原来 n-way 的 bank conflict 降低到 1-way」说的正是这个 32\,B
 行宽布局（common.cuh~L185--235 的 bank 分布表即此布局，也是图~\ref{fig:12-1} 的蓝本）。
 
 \subsection{可逆性：swizzle 是对合，写读同函数即互逆}
@@ -219,10 +219,10 @@ $\{0,8,16,24,4,12,20,28\}$，\textbf{8 个互不相同，恰好铺满 32 个 ban
   $h$，于是 $m(a')=h\gg S=m(a)$，第二次异或同一个值与第一次抵消：
   $\sigma(a')=a\oplus(h\gg S)\oplus(h\gg S)=a$。
 \end{proof}
-推论（工程上最重要的一条）：\textbf{编码与解码用同一个函数}。cp.async 写入 smem
+推论（工程上最重要的一条）：编码与解码用同一个函数。cp.async 写入 smem
 时用 $\texttt{swizzle}(i,j)$ 计算物理列，ldmatrix 读出时用同一个
 $\texttt{swizzle}(i,j)$ 再算一遍物理列：两次互逆，逻辑坐标无损还原，不需要
-维护任何「逆置换表」。对 12.3.4 节的 v1：源位 bit7、目标位 bit4，$S{=}3\ge B{=}1$，
+维护任何逆置换表。对 12.3.4 节的 v1：源位 bit7、目标位 bit4，$S{=}3\ge B{=}1$，
 不相交，对合成立；对 v2 的 $(B,M,S){=}(2,4,3)/(3,4,3)$ 同理（bit $[7,9)$ 对
 $[4,6)$、bit $[7,10)$ 对 $[4,7)$，均不相交）。
 
@@ -259,7 +259,7 @@ v1（当前无 kernel 使用）。
 
 \subsection{关键勘误：BK=64 下 per-slice swizzle 只到 4-way，不是 1-way}
 
-以上「1-way 全消」的结论有个隐含前提：\textbf{swizzle 的作用域行宽 $=k_{\mathrm{cs}}$}
+以上 1-way 全消的结论有个隐含前提：\textbf{swizzle 的作用域行宽 $=k_{\mathrm{cs}}$}
 （32\,B 行、chunk 位 bit4 直接被行号 bit 翻转）。而 Phase 7b-3 kernel 的统一 tile
 是 $[128][64]$、行宽 128\,B，调用的是 $\texttt{swizzle}<k_{\mathrm{MmaK}}{=}16>$，
 把 XOR 限制在每个 16 列的 slice \textbf{内部}（$\texttt{swizzle}(i,j)$ 只在
@@ -371,7 +371,7 @@ $F=(1{\cdot}128+110{\cdot}128)K\cdot2\,\mathrm{B}=14208K\cdot2\,\mathrm{B}$。
 $F'=(7{\cdot}128+16{\cdot}128)K\cdot2\,\mathrm{B}=2944K\cdot2\,\mathrm{B}$，
 \textbf{缩小 4.8 倍}：条带被折成了近似方块（$\sqrt{R}\times\sqrt{R}$ 量级）。
 实测（同形状）：L2 sector 命中率 64.45\%$\to$96.15\%，端到端 117.9$\to$122.9
-TFLOPS（+4.2\%）。形状越「宽」（$T_n\gg T_m$）收益越大；$T_n\le\lceil R/T_m\rceil$
+TFLOPS（+4.2\%）。形状越宽（$T_n\gg T_m$）收益越大；$T_n\le\lceil R/T_m\rceil$
 时条带本就近似方形，收益趋零（$4096^3$ 实测仅 +0.3\%）。
 
 \section{设计与实现}
@@ -512,7 +512,7 @@ tile M $= 32$）、\texttt{kMmaTileN}$=4$（warps along N，warp tile N $= 32$�
 $B_K=16\,k_{\mathrm{ValTileK}}$）与 \texttt{k\allowbreak{}Block\allowbreak{}Swizzle}。smem 侧是经典的
 kStages 级双缓冲：$S$ 个 stage 轮转，cp.async 预取 $k{+}S{-}1$、MMA 消费 $k$。
 \texttt{kValTileK}{=}4 时每 stage $128{\times}64$ half，$S{=}2$ 共 64\,KB，
-上文「\texttt{kStages}{=}2 推荐 64\,KB smem」的说法由此而来（$S{=}3$ 需 96\,KB，sm\_120 可容
+上文 \texttt{kStages}{=}2 推荐 64\,KB smem 的说法由此而来（$S{=}3$ 需 96\,KB，sm\_120 可容
 但常驻 block 数下降）。
 
 \subsection{G$\to$S：swizzle 进地址的 cp.async}
@@ -538,9 +538,9 @@ $\mathrm{sel\_next}=(k{+}S{-}1)\bmod S$。
 \lstinputlisting[linerange={613-640},firstnumber=auto,
   title={hgemm.cuh L613-640（B fragment 预取 + 用另一组寄存器发 HMMA16816）}]{../hgemm.cuh}
 
-两级双缓冲的分工明确：\textbf{smem 双缓冲}（kStages）掩盖「gmem$\to$smem」
+两级双缓冲的分工明确：\textbf{smem 双缓冲}（kStages）掩盖 gmem$\to$smem
 的跨 k 迭代延迟，\textbf{寄存器双缓冲}（\texttt{reg\_st\_idx}/\texttt{reg\_ld\_idx}
-的乒乓）掩盖「smem$\to$寄存器」的 k\_step 级延迟。每个 k\_step 先 flip 再
+的乒乓）掩盖 smem$\to$寄存器的 k\_step 级延迟。每个 k\_step 先 flip 再
 ldmatrix 到 \texttt{reg[st]}、随后 HMMA 使用 \texttt{reg[ld]}：加载 slice $t{+}1$
 与计算 slice $t$ 在指令流里交替发出，tensor core 不必等 ldmatrix（也把
 12.3.7 节残留的 4-way 冲突延迟吸收进流水）。最后一段收尾：
@@ -875,7 +875,7 @@ BK=64，swizzle（7b-3）    & 297{,}628 & 20.7 & 4-way；本章 kernel \\
 294{,}912（$=98{,}304\times7$ 与 $98{,}304\times3$）对实测 691{,}067 / 297{,}628，
 误差 $<$1\%；\textbf{比值} $691067/297628=2.32$ 对模型比值 $2.33$，12.3.7 节的 8-way$\to$4-way
 结论由此得到证实。同时注意：swizzle 版 kernel 耗时 30.2$\to$20.7\,$\mu$s（1.46$\times$），
-冲突并没有被「全消」，但寄存器双缓冲把残余 4-way 的重放延迟掩盖在 MMA 流水里。
+冲突并没有被全消，但寄存器双缓冲把残余 4-way 的重放延迟掩盖在 MMA 流水里。
 
 \textbf{端到端吞吐}（cudaEvent，warmup 3 + 10 次均值）：
 
@@ -896,7 +896,7 @@ BK=64，swizzle（7b-3）    & 297{,}628 & 20.7 & 4-way；本章 kernel \\
 
 三个观察：（1）宽 N 形状下 block swizzle +4.2\%（L2 命中 64.45\%$\to$96.15\%），
 方形形状（$4096^3$）收益仅 +0.3\%，与 12.3.8 节 footprint 推导一致，收益取决于
-常驻条带是否「过宽」。（2）swizzle 版（BS=0）在两种形状下都比 BK=16 基线慢
+常驻条带是否过宽。（2）swizzle 版（BS=0）在两种形状下都比 BK=16 基线慢
 4--5\%（开 block swizzle 后宽 N 形状收窄到 0.3\%）：
 统一宽 tile 换来了更少的同步与 cp.async 组数，代价是 ldmatrix 冲突从 2-way 涨到
 4-way（表~\ref{tab:12-bank}），两者相抵后略有损失。若按 12.3.7 节改用
@@ -948,7 +948,7 @@ swizzle 缩 L2 footprint」两条主线互相印证。
   kernel \texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn\_\allowbreak{}swizzle} 的统一 tile 行宽 128\,B（BK=64），
   swizzle 以 per-slice 方式作用于 16 列窗口：行 stride 128\,B 恰为 bank 计数环
   （128\,B）的一圈，行号位无法进入 bank 位，单个 XOR bit 最多把 phase 内
-  8 lane 分到 2 个四联组，\textbf{下界 4-way}。NCU 实测 297{,}628 次
+  8 lane 分到 2 个四联组，下界即 4-way。NCU 实测 297{,}628 次
   冲突/launch（无 swizzle 对照 691{,}067，BK=16 基线 98{,}304，
   表~\ref{tab:12-bank}）。注释 L125--126 的「局限：要求 kColStride $\le$16
   （即 BK $\le$16）」其实已经预设了行宽前提，但 kernel 在 BK=64 下仍调用
@@ -977,14 +977,14 @@ swizzle 缩 L2 footprint」两条主线互相印证。
   「swizzle: 公开派发器……」这条注释紧接在 \texttt{swizzle\_\allowbreak{}v2\_\allowbreak{}impl} 之后，
   但 common.cuh 内\textbf{并没有}它描述的 \texttt{swizzle\allowbreak{}<k\allowbreak{}Col\allowbreak{}Stride>} 函数，
   派发器实际定义在 hgemm.cuh~L388--396（各 kernel 的 include 链上游）。
-  阅读时按「注释在 common.cuh、实体在 hgemm.cuh」理解即可，行为无影响。
+  阅读时按注释在 common.cuh、实体在 hgemm.cuh 来理解即可，行为无影响。
 \end{kaogu}
 
 \section{常见坑}
 
 \textbf{坑一：swizzle 写入与读取必须是同一个函数。}可逆性来自对合
 （引理~\ref{lem:12-invol}）：写读各调一次 \texttt{swizzle} 恰好还原。漏掉任意
-一侧不会越界、不会报错：数据在 chunk 粒度上错位，输出「看起来差不多但不对」，
+一侧不会越界、不会报错：数据在 chunk 粒度上错位，输出看起来差不多但不对，
 是典型的静默错误。本章测试的 2D/3D grid 一致性检查（逐位相等）可兜住这类错位。
 
 \textbf{坑二：形状对齐约束。}\allowbreak{}kernel 无 K 边界守卫：$K\bmod 64\neq0$ 时
@@ -1005,7 +1005,7 @@ $k_{\mathrm{ValTileK}}{=}4$、$S{=}2$ 恰好 64\,KB，不调
 （kStep=4）无 TMA 对应模式，v2 显式回退 v1；该路径当前无 kernel 使用，
 新代码不要再往里加功能。
 
-\textbf{坑六：不要把「swizzle 后零冲突」当作通用结论。}冲突度由\textbf{行宽}决定
+\textbf{坑六：不要把 swizzle 后零冲突当作通用结论。}冲突度由\textbf{行宽}决定
 （图~\ref{fig:12-3}）：32\,B 行宽 + 16 档位 = 1-way；128\,B 行宽 + 16 档位 per-slice =
 4-way；128\,B 行宽 + 64 档位（SW128）= 1-way。面试或调优时先看布局再谈结论。
 
@@ -1029,7 +1029,7 @@ pad 量。
 \textbf{Q4：寄存器双缓冲和 smem 多级流水各掩盖什么延迟？}\\
 A：smem 双缓冲（kStages 个 stage + cp.async）掩盖 gmem$\to$smem 的跨 k 迭代
 延迟；寄存器双缓冲（RA/RB 两套乒乓）掩盖 smem$\to$寄存器的 k\_step 级
-ldmatrix 延迟，让「加载下一 slice」与「MMA 上一 slice」同周期发射。
+ldmatrix 延迟，让加载下一 slice 与 MMA 上一 slice 同周期发射。
 
 \textbf{Q5：block swizzle 为什么能提升 L2 命中？}\\
 A：默认光栅常驻集合是 $T_n\times\lceil R/T_n\rceil$ 宽条带，footprint

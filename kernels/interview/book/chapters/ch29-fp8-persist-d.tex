@@ -13,7 +13,7 @@ persist-D，全文件 1036 行）。它是 ffpa-attn 全仓库工程密度最高
 第~\ref{ch:31}--\ref{ch:32}~章的 fp4 家族都建立在它引入的机制之上。
 
 本章的主线只有一条：\textbf{让所有量化 scale 因子要么精确消去、要么折进
-本来就要做的操作}。理想目标是「除 round() 外无任何额外数学误差源」：所有
+本来就要做的操作}。理想目标是除 round() 外没有额外数学误差源，所有
 反量化都是精确代数操作，不是近似。围绕这条主线展开五组机制：
 \begin{enumerate}[itemsep=0pt,topsep=2pt]
   \item \textbf{QK scale 折进 exp2 系数}：$\delta_Q\delta_K$ 与 softmax scale
@@ -56,7 +56,7 @@ scale（布局随粒度）、smooth-K 的 fp32 均值（lse 修正用）。主 k
 \subsection{为什么 scale 消去是核心矛盾}
 
 低精度 MMA 只会算 $\hat P\hat V$ 这样的整数/半字节域乘累加，而 attention 的
-数学在实数域。朴素的「每个操作数先乘回 scale」方案意味着每 tile 数千次
+数学在实数域。朴素的每个操作数先乘回 scale 方案意味着每 tile 数千次
 额外 FMUL 与中间张量往返，fp8 MMA 吞吐翻倍的收益会被反量化开销抵消大半。
 第~\ref{ch:27}~章 27.3.4~节给过 scale 流向总览；本章把它们逐一落到代码：
 每个 scale 在哪个寄存器、哪条指令上被消去，以及哪些组合会互相冲突
@@ -93,7 +93,7 @@ int8 均匀步长使 $S$ 的绝对误差有均匀上界，在近 max（大 $|S|$
 
 \subsection{P 量化三步协议与 $v_s$ 精确消去}\label{sec:29-pscale}
 
-$P$ 只能在线量化（27.2.2~节「P 无法离线」）。\texttt{fp8\_pscale.cuh} 的
+$P$ 只能在线量化（27.2.2~节 P 无法离线）。\texttt{fp8\_pscale.cuh} 的
 三步协议把 $v_s$（V 的量化 scale）从 PV 乘积中\textbf{精确}消去：
 \begin{equation}
   \hat P=\mathrm{round}\!\Big(\frac{P\cdot v_s}{p_{scale}}\Big),\qquad
@@ -133,11 +133,11 @@ $\mathrm{amax}(V)$（29.3.2），lazy 的安全条件是膨胀后不越 e4m3 上
   T=4\Rightarrow \mathrm{amax}(V)\le28 .
 \end{equation}
 但 ffpa 的 traits 把 fp8 的 \texttt{kLazyRescale} 直接置 \texttt{false}
-（\texttt{attn\_traits.cuh} L31--37）：注释原话，跳过 rescale 会让发射 P
+（\texttt{attn\_traits.cuh} L31--37）。注释给的理由是：跳过 rescale 会让发射 P
 以最高 $2^T$ 膨胀，而 per-channel V 路径（balanced narrowing）的发射
-$P\cdot448$ 已铺满量程、零 headroom，膨胀必然触发 satfinite 钳位、破坏 PV 结果。而 f16
-inst\_buf 路径把 rescale 融进吸收 FFMA 后「立即 rescale 几乎零开销」，
-lazy 的动机（省 rescale pass）本身就消失了。\textbf{满量程发射与延迟 rescale
+$P\cdot448$ 已铺满量程、零 headroom，膨胀必然触发 satfinite 钳位、破坏 PV
+结果。f16 inst\_buf 路径则把 rescale 融进吸收 FFMA 后「立即 rescale 几乎零
+开销」，lazy 的动机（省 rescale pass）本身就消失了。\textbf{满量程发射与延迟 rescale
 不可兼得}，这是发射域规则的第一条。
 
 \subsection{f16 PV 累加器的域约束}\label{sec:29-f16acc}
@@ -245,9 +245,8 @@ softmax 产出的 $P$ fragment（QK MMA 的 C 布局）与 PV MMA 的 A 操作�
 lane 无关 PRMT、零 SHFL），让 A 操作数携带一个置换的 k 索引 $\pi$；V 侧
 在量化期按 $\pi^{-1}$ 预置换列序（\texttt{VTPermInv32}，式~\ref{eq:28-vtperm}），
 两侧槽位对应同一真实 kv 位置即可。row-sum MMA（B 为全 1）在双射下也
-精确。「前处理链的输出布局由主 kernel 消费方式决定」这条原则落到实处就是：
-\textbf{一条数学等价，把 kernel 内的 16 次跨 lane shuffle 换成了量化期
-顺带完成的列置换}。
+精确。这条原则在实现上就是一条数学等价：kernel 内的 16 次跨 lane shuffle 换成了
+量化期顺带完成的列置换。
 
 \section{设计与实现}
 
@@ -276,13 +275,13 @@ struct FFPAAttnCuTePersistDFP8Traits {
       kBr * kHeadDim + kStagesK * kBc * kHeadDim + kStagesV * kBc * kHeadDim;
 \end{lstlisting}
 
-有四处类型决策要交代。\textbf{其一，$V^{\top}$ 的 B 操作数用与 Q/K 相同的
+traits 里有四处类型决策。\textbf{$V^{\top}$ 的 B 操作数用与 Q/K 相同的
 非转置 LDSM\_N atom}：V 已在 gmem 里转置好，kernel 里没有转置视角。
-\textbf{其二，TiledMma 的 K-tile 是 32}（atom 的 k16$\times$2），fp16 家族
-是 16。\textbf{其三，swizzle atom 按行字节选}（L45--50）：Q/K 行 $D$ 字节、
+\textbf{TiledMma 的 K-tile 是 32}（atom 的 k16$\times$2），fp16 家族
+是 16。\textbf{swizzle atom 按行字节选}（L45--50）：Q/K 行 $D$ 字节、
 $V^{\top}$ 行 $kBc$ 字节，各自落 SW128/SW64/SW32：同一张 smem 图、两类
 行宽分别选择各自的 swizzle atom。
-\textbf{其四，kBc 随 D 切换}：launcher 对 $D\le128$ 实例化 $kBc{=}128$、
+\textbf{kBc 随 D 切换}：launcher 对 $D\le128$ 实例化 $kBc{=}128$、
 $D>128$ 用 64（smem 预算）。
 
 \subsection{WS 骨架与 smem 复用}
@@ -318,7 +317,7 @@ $D>128$ 用 64（smem 预算）。
 两层设计叠加。\textbf{Q 的 s2r 常驻}（\texttt{kPersistQs2r} 默认 true）：
 Q 在 kv 循环前一次性读进寄存器，之后 QK 步骤全是 gemm\_rs（K-only smem 读）：
 D=128 实测 $-8\mu s$、零 spill；Q 的 smem 区（slot 0）随即空闲。
-\textbf{槽位轮转}让复用区承接「最后一个 K stage」而非第一个：它的首次 TMA
+\textbf{槽位轮转}让复用区承接最后一个 K stage 而非第一个：它的首次 TMA
 发射与首次消费都发生在稳态（隔着一整 tile 计算），\texttt{q\_consumed} 的
 等待被完全隐藏。省下的 16KB smem 换来的是 L1 容量而非 occupancy：smem/L1
 共池，实测每 16KB $\approx$ 4--5$\mu s$，而 CTA 驻留本就被寄存器限制在
@@ -400,7 +399,7 @@ $+\mathrm{scale}\cdot q_s\cdot q_{km}$（28.4.2~节的点积在循环外预先�
 
 \subsection{reorg-free 打包的布局推导}
 
-\texttt{reg2reg\_8b.cuh} L14--34 的头注释先回答「C$\to$A 重排为什么必要」：
+\texttt{reg2reg\_8b.cuh} L14--34 的头注释先回答 C$\to$A 重排为什么必要：
 QK 的 C-fragment 与 PV 的 A-fragment 把同一个 16$\times$32 tile 分给 warp 的
 方式不同（PTX ISA「Matrix Fragments for mma.m16n8k32」，记 $g=$ lane$\gg$2、
 $t=$ lane$\&$3）。C fragment 有 4 个寄存器 $c_0..c_3$，每寄存器 1 个值、每行
@@ -536,7 +535,7 @@ NEVER run against an unpermuted V\^{}T}；匹配由 launcher 的单一
 \section{图示}
 
 三张图对应本章的三条主线。图~\ref{fig:29-scale-folding} 是数学层的总览：
-scale 从「显式乘法」变成「折叠」：$\delta_Q\delta_K$ 折进 exp2 系数、
+scale 从显式乘法变成折叠：$\delta_Q\delta_K$ 折进 exp2 系数、
 $v_s$ 在 P 的发射域消去、$p_{scale}$ 收在 epilogue，除 round() 外不引入
 任何额外误差源。图~\ref{fig:29-persist-d-ws} 是这套数学的宿主结构：
 128 producer + 256 consumer 的 warp specialization、\texttt{setmaxnreg}
@@ -759,11 +758,11 @@ persist-D 的结构优化路线已被系统实测证伪（完整清单见仓库 
 \S5.8）：WS 双 consumer（FA3 式 2$\times$128T）负优化；persistent work
 loop 零收益（tensor-bound 77\%）；stages 加深负（K2V2 预取已领先）；
 v2/v3/v5（128P+128C、无 WS、V 驻留寄存器）分别 $+31.6\%$/$+1.4\%$/$+48\%$
-（「追平基线」的是 v3 加 v\_full wait hoist，即 v4，$-0.1\%$）；
+（追平基线的是 v3 加 v\_full wait hoist，即 v4，$-0.1\%$）；
 cluster 化无 DSMEM 需求、持平或更慢；CUDA-core row-sum 替代 tensor
 rowsum MMA $-4\%$。\textbf{已落地的优化}（D=128）：rescale+absorb FFMA
 融合、max-pass 延迟 scale、per-row rescale gating、Q quant 2 线程/行。
-这份「负结果清单」与正结果同样有用：它把后续优化方向的搜索空间
+这份负结果清单与正结果同样有用：它把后续优化方向的搜索空间
 压缩到了 engine 层（aux 链 overlap）。
 
 \subsection{带宽与算术的边界}
@@ -782,13 +781,13 @@ fp16 家族同构；但 fp8 的 MMA 吞吐翻倍使 softmax/P 打包的相对占
 allclose 失败（fp16/bf16 双双 $\times$），而 D=64/128 全绿。定位过程
 记在这里，可作为同类问题的排查参考：
 \begin{enumerate}[itemsep=1pt,topsep=2pt]
-  \item \textbf{误差量级分类}：max\_abs=2.66 vs mean\_abs=0.011——均值是
+  \item \textbf{误差量级分类}：max\_abs=2.66 vs mean\_abs=0.011。均值是
         正常 fp8 精度，最大值远超正常量化误差 $\Rightarrow$ \textbf{正确性 bug}
         （个别行错），不是精度不足；
   \item \textbf{行模式定位}：per-row max 直方图显示坏行集中在
         $row\bmod128\in[64,127]$（每个 128 行 Q tile 的后半）；
-  \item \textbf{N 缩放}：N=512 时几乎全错、N=8192 时只剩 11\% 行错
-        ——错误随 N 稀释，说明错的是\textbf{特定 (row, kv-tile) 组合}而非
+  \item \textbf{N 缩放}：N=512 时几乎全错、N=8192 时只剩 11\% 行错，
+        错误随 N 稀释，说明错的是\textbf{特定 (row, kv-tile) 组合}而非
         系统性索引错位；
   \item \textbf{配置矩阵消去}：默认/纯 fp8 f32acc/int8+f16acc/no-smK/
         per-thread/per-channel 全部 $\times$ $\Rightarrow$ 与量化 knob 无关，
@@ -848,8 +847,8 @@ allclose 失败（fp16/bf16 双双 $\times$），而 D=64/128 全绿。定位过
 \label{fig:29-d192-rows}
 \end{figure}
 
-教训：\textbf{「速度好+均值好」不等于正确}。bench 的 allclose 是唯一
-硬门槛；误差的 max/mean 分裂是「个别行错」的强信号；行号模 tile 尺寸的
+教训：速度好、均值好都不等于正确。bench 的 allclose 是唯一
+硬门槛；误差的 max/mean 分裂是个别行错的强信号；行号模 tile 尺寸的
 直方图能直接把 bug 锚到 tile 结构的哪一半。
 
 \subsection{考据：sm\_89 的 cp.async 变体}
@@ -858,8 +857,8 @@ allclose 失败（fp16/bf16 双双 $\times$），而 D=64/128 全绿。定位过
 无 TMA/mbarrier，用 sm80 装载协议（cp.async + \texttt{wait<2S-1>}）复用
 sm120 的计算层（int8 QK / fixed p\_scale / f8f8f16 PV），256T non-WS。
 其 NCU 结论（依赖链/发射受限，\texttt{math\_pipe\_throttle} 1.32 $\gg$
-\texttt{wait} 0.82）与深流水零收益的证伪记录，正好构成「同一算法在不同
-装载协议下瓶颈漂移」的对照。本节不展开，读者按需查阅仓库优化 RFC
+\texttt{wait} 0.82）与深流水零收益的证伪记录，正好构成同一算法在不同
+装载协议下瓶颈漂移的对照。本节不展开，读者按需查阅仓库优化 RFC
 （PC-16、附录 \#22）。
 
 \section{常见坑}
@@ -867,7 +866,7 @@ sm120 的计算层（int8 QK / fixed p\_scale / f8f8f16 PV），256T non-WS。
 \begin{enumerate}[itemsep=1pt,topsep=2pt]
   \item \textbf{P 是 online 量化，无法离线校准}：Q/K/V 都能离线 smoothing
         /per-channel 校准，P 每 tile 现算现量化，值域与分布逐行剧变
-        （causal 早行近 one-hot、dense 行近均匀）——只能选固定/保守发射域。
+        （causal 早行近 one-hot、dense 行近均匀），只能选固定/保守发射域。
         这是量化 attention 精度损失的主要根源之一（实测 P 0.11 与 QK 0.13
         同量级、V 0.19 最大）。
   \item \textbf{满量程发射与 lazy rescale 互斥}：per-channel V 的发射
@@ -879,11 +878,11 @@ sm120 的计算层（int8 QK / fixed p\_scale / f8f8f16 PV），256T non-WS。
         对未置换的 $V^{\top}$ 运行 = 静默错值。匹配由 launcher 单一常量
         强制；绕过 launcher 直接调 kernel 没有保护。
   \item \textbf{f16 PV 累加域}：$kBc\cdot448\cdot2.25\le65504$ 的编译期
-        检查不过时 P 域自动收到 224——不理解这条约束会以为 P 域「有时
-        448 有时 224」是随机行为。
+        检查不过时 P 域自动收到 224。不理解这条约束，会以为 P 域有时
+        448 有时 224 是随机行为。
   \item \textbf{early rows 的 ESS 幅度放大}（27.3.7~节）：causal 前几行
         ESS$\approx$1、幅度 $3.1\sigma$，fp8 每级 $\sim$5\% 相对误差换算
-        成 15$\times$ 于 dense 的绝对误差；「早行 fp16 QK」不解决问题
+        成 15$\times$ 于 dense 的绝对误差；早行 fp16 QK 不解决问题
         （V 量化是最大单项），hybrid 全链 fp16 才有效。
   \item \textbf{D=192（$kBc{=}64$ 变体）当前有正确性 bug}：29.7.1~节的
         定位记录；在修复前避免在生产使用该 headdim 的 fp8 persist-D。
@@ -907,7 +906,7 @@ sm120 的计算层（int8 QK / fixed p\_scale / f8f8f16 PV），256T non-WS。
         4 PRMT 零 SHFL；代价 $V^{\top}$ 列置换预写 + 编译期匹配规则，
         式~\ref{eq:29-perm-inv}。）
   \item Q 的 s2r 常驻为什么省钱？省的是 occupancy 吗？
-        （不是——省 smem（16KB Q 区复用）$\to$ 买 L1 共池容量，
+        （不是。省 smem（16KB Q 区复用）$\to$ 买 L1 共池容量，
         $\sim$4--5$\mu s$/16KB；CTA 驻留本就寄存器受限。）
   \item fp8 persist-D 的 D 范围与家族分工？（$\le$224 %32；更大走
         split-D M8N1 / M4N2，第~\ref{ch:30}~章。）
@@ -939,15 +938,15 @@ $ python -m ffpa_attn.bench --fwd-backend cuda --cuda-impl fp8 \
 \end{lstlisting}
 
 \textbf{实验 1（scale 流向追踪）}：把 \texttt{persist\_d.cuh} 的
-Phase 1--5 各自在纸上标出「哪个 scale 在哪条指令上被乘/消去」，对照
+Phase 1--5 各自在纸上标出哪个 scale 在哪条指令上被乘或被消去，对照
 图~\ref{fig:29-scale-folding}，练到能默写三步协议。
 \textbf{实验 2（发射域 A/B）}：\texttt{FFPA\_FP8\_PQUANT\_PER\_ROW=1}
 重跑 [A]，观察精度提升与速度代价（per-row 归约 + $o\_tile$ 暂存）。
 \textbf{实验 3（bug 定位复演）}：按 29.7.1~节步骤用 PyTorch 复现 D=192
 的行模式直方图（脚本思路：per-row max diff $>$ 0.1 统计
-$row\bmod128$），把「速度好+均值好 $\neq$ 正确」固化成检查习惯。
+$row\bmod128$），把速度好、均值好不等于正确这条固化成检查习惯。
 \textbf{实验 4（lazy rescale 证伪）}：读 \texttt{attn\_traits.cuh}
-L31--37 注释，回答「为什么 fp8 关掉 lazy rescale 而 fp16 开着」。
+L31--37 注释，回答为什么 fp8 关掉 lazy rescale 而 fp16 开着。
 
 \section*{延伸阅读}
 \begin{itemize}[itemsep=0pt,topsep=2pt]

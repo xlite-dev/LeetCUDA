@@ -9,11 +9,11 @@
 
 第~\ref{ch:17}~章的 \texttt{flash\_\allowbreak{}attn\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}stages\_\allowbreak{}split\_\allowbreak{}q} 用一个
 producer warpgroup（128 线程，只有 thread 0 真正干活）$+$ 一个 consumer
-warpgroup（256 线程 $=$ 8 个 \texttt{mma.sync} warp）把 FA2 的「装载」与
-「计算」彻底分离。本章讲它的下一代 \texttt{flash\_\allowbreak{}attn\_\allowbreak{}3\_\allowbreak{}tma\_\allowbreak{}ws\_\allowbreak{}stages\_\allowbreak{}split\_\allowbreak{}q}
+warpgroup（256 线程 $=$ 8 个 \texttt{mma.sync} warp）把 FA2 的装载与计算彻底
+分离。本章讲它的下一代 \texttt{flash\_\allowbreak{}attn\_\allowbreak{}3\_\allowbreak{}tma\_\allowbreak{}ws\_\allowbreak{}stages\_\allowbreak{}split\_\allowbreak{}q}
 （flash\_attn.cuh~L1516）：把 consumer 从 \textbf{1 个 warpgroup 扩成 2 个}
 （各 128 线程 $=$ 4 个 warp），让两条\textbf{互相独立}的计算流在同一 SM 上并发
-推进，最后把两流的「未归一化」中间状态做一次\textbf{稳定归并}。这就是
+推进，最后把两流的未归一化中间状态做一次\textbf{稳定归并}。这就是
 FlashAttention-3 论文（arXiv:2407.08608）warp specialization 思路在本仓库
 SM120 平台上的具体实现。
 
@@ -39,10 +39,10 @@ mbarrier 协议、full/empty 计数、early release 时机）、第~\ref{ch:14}~
 第~\ref{ch:17}~章的复测给出一组数据：TMA $+$ WS 相对 cp.async 版的
 收益稳定在 $+20\%$ 量级，但再加深 K 流水（$\mathrm{Sk}: 2 \to 3$）几乎不再涨
 （$<0.5\%$）。这说明\textbf{装载已经不在关键路径上了}，瓶颈退回到计算侧的两件
-事：其一，consumer 内部的 \texttt{mma.sync} 与 softmax 是串行的，QK$^\top$
-算完才能算 softmax，softmax 算完才能发 PV，任何一个 warp 都处于这条依赖链内；
-其二，\texttt{mma.sync} 是\textbf{同步指令}，指令在 Tensor Core 上执行期间该
-warp 只能空等（第~\ref{ch:13}~章的 WGMMA 则可以把 GEMM「发出去就返回」，
+事。一是 consumer 内部的 \texttt{mma.sync} 与 softmax 串行，QK$^\top$ 算完
+才能算 softmax，softmax 算完才能发 PV，任何一个 warp 都处在这条依赖链内；
+二是 \texttt{mma.sync} 是\textbf{同步指令}，指令在 Tensor Core 上执行期间该
+warp 只能空等（第~\ref{ch:13}~章的 WGMMA 则可以把 GEMM 发出去就返回，
 指令与后续 CUDA Core 指令并行）。
 
 FA3 论文给出的定量背景是：在 Hopper 上，一次 $128 \times 128$ tile 的
@@ -50,11 +50,11 @@ attention 里两个 GEMM 合计 $8.4$ MFLOP（FP16 Tensor Core
 $\approx 4096$ FLOP/cycle $\Rightarrow \approx 2048$ cycles），而 softmax 的
 $128 \times 128$ 个 $\exp$（MUFU.EX2 吞吐 $\approx 16$ OPS/cycle）要
 $\approx 1024$ cycles，\textbf{softmax 占约三分之一的时间}；若 GEMM 降到
-FP8（算力翻倍），softmax 的占比还要涨到一半。这些非 matmul 的「慢指令」若不
-被 overlap，Tensor Core 就有一段时间在空转。注意上述数字是 Hopper 口径
-（论文与@杨远航解析一致），本机 sm\_120a 的绝对吞吐不同，本章只取「量级」
-结论：\textbf{softmax 与 GEMM 是两条可并行的硬件通路}（CUDA Core/SFU 与
-Tensor Core），值得为它引入这部分结构复杂度。
+FP8（算力翻倍），softmax 的占比还要涨到一半。这些非 matmul 的慢指令若不被
+overlap，Tensor Core 就有一段时间在空转。上述数字是 Hopper 口径
+（论文与@杨远航解析一致），本机 sm\_120a 的绝对吞吐不同，本章只取量级结论：
+\textbf{softmax 与 GEMM 是两条可并行的硬件通路}（CUDA Core/SFU 与 Tensor
+Core），值得为它引入这部分结构复杂度。
 
 于是引出本章的结构性改动：把 KV tile 序列\textbf{按奇偶拆成两半}，交给两个
 独立推进的 consumer warpgroup，各自维护自己的 online-softmax 状态与 K 流水，
@@ -62,7 +62,7 @@ Tensor Core），值得为它引入这部分结构复杂度。
 在时间上\textbf{自然错开}：当 WG1 处在 QK$^\top$ 的 MMA 段时，WG2 往往正处在
 softmax 段，硬件 warp 调度器把两者的发射槽交错填满，Tensor Core 与
 CUDA Core/SFU 的利用率同时抬高。这条路径不需要 WGMMA，代价是需要一套
-\textbf{分治-合并}的数值方案与更复杂的屏障/寄存器预算，以下逐节展开。
+\textbf{分治-合并}的数值方案与更复杂的屏障/寄存器预算。
 
 \section{数学原理}
 
@@ -104,9 +104,9 @@ $\mathcal{T}_0 \cup \mathcal{T}_1 = \{0, \dots, T_c-1\}$ 且两半互不相交�
 把式~\ref{eq:18-partial} 的指数统一改写成以全局 $m$ 为基准，
 $e^{S_{ik}-m_0} = e^{S_{ik}-m}\cdot e^{m-m_0}$，两个求和因此可以逐项相加；
 由于 $m \ge m_0$ 且 $m \ge m_1$，式~\ref{eq:18-weights} 的两个指数
-\textbf{非正}，绝不会上溢。这正是「以全局 max 为 pivot」的数值意义，与
+\textbf{非正}，绝不会上溢。取全局 max 作 pivot 的数值意义就在这里，与
 第~\ref{ch:15}~章 online rescale 的 $e^{m^{\mathrm{old}}-m^{\mathrm{new}}}$
-是同一个思想，只是从「跨迭代」搬到了「跨 warpgroup」。
+是同一个思想，只是从跨迭代搬到了跨 warpgroup。
 
 一个容易忽略的细节：$\ell$ 的合并与 $O$ 的合并必须用\textbf{同一组}
 $\alpha, \beta$，而它们又必须由合并后的 $m$ 定义；源码里是先取 max、再算
@@ -123,18 +123,18 @@ $\ell = 1 \cdot \ell_0 + 0 \cdot 0 = \ell_0$，$O = O_0$，
 \textbf{自然退化为单 WG 结果}，不需要任何特判分支（头注释 L1495--1496 即此
 结论）。
 
-这里存在一个数值陷阱，也是「未归一化累加」这一约定的第二个理由（第一个是
+这里有一个数值陷阱，也是未归一化累加这一约定的第二个理由（第一个是
 第~\ref{ch:15}~章 FA2 省掉每块对角修正）：如果 $O$ 以\textbf{已归一化}形态
 参与合并，就必须算 $O_1/\ell_1$，$0/0$ 直接产 NaN 并污染整个输出。而
 式~\ref{eq:18-merge} 只做乘加（$0 \times 0 = 0$，$e^{-\infty} = 0$ 由硬件
-\texttt{ex2.approx} 精确给出），NaN 无从产生。「$O$ 全程未归一化、只在
-epilogue 除一次 $\ell$」的收益在本章显现。
+\texttt{ex2.approx} 精确给出），NaN 无从产生。$O$ 全程未归一化、只在
+epilogue 除一次 $\ell$ 的收益在本章显现。
 
 \textbf{奇数 $T_c$} 也不需要特判：$T_c = 3$ 时 $\mathcal{T}_0 = \{0,2\}$、
 $\mathcal{T}_1 = \{1\}$，两流 partial 规模不等，但式~\ref{eq:18-merge} 对任意
 两半都成立（只要求并集完整、交集为空）。源码里这表现为 consumer 循环的终止
-条件 \texttt{tile < Tc}（L1742）：warpgroup 之间\textbf{不交换}「我做了几个
-tile」这类元信息，归并公式对不对称划分天然鲁棒。
+条件 \texttt{tile < Tc}（L1742）：warpgroup 之间\textbf{不交换}各自做了几个
+tile 这类元信息，归并公式对不对称划分天然鲁棒。
 
 \subsection{每 WG 独立 stage：屏障计数从 257 缩到 129}
 
@@ -159,15 +159,14 @@ $S_v$ 个 V buffer 由 8 个 consumer warp 共用，屏障 \texttt{full\_K[s]} �
 \end{center}
 
 数字 129 与第~\ref{ch:14}~章 hgemm 版\textbf{完全相同}，含义却不同：那边是
-「128 consumer 线程 $+$ 1 producer 线程」，这边是「\textbf{一个} consumer WG 的
-128 线程 $+$ 1 producer 线程」。协议只认线程数、不认角色，两个 kernel 的数字
-恰好相同。把「共享 $\mathrm{Sk}$ 个 slot」改成「每 WG 各 $\mathrm{Sk}$ 个」的收益
-写在头注释 L1461--1462：$\mathrm{Sk} = 2$ 时，共享方案里每个 WG 的实际深度
-只有 1（两个 WG 竞争同一对 slot 与同一对屏障），而现在每个 WG 都获得
-真正的深度 2，两个 WG 不会使用同一个 slot 或同一张屏障
-（L1458--1459），producer 因此可以连续不断地按
-$\mathrm{cid} = \mathrm{tile}\,\&\,1$ 投递数据，不存在「等另一个 WG 释放
-slot」的耦合。
+128 consumer 线程加 1 producer 线程，这边是\textbf{一个} consumer WG 的
+128 线程加 1 producer 线程。协议只认线程数、不认角色，两个 kernel 的数字
+恰好相同。把共享 $\mathrm{Sk}$ 个 slot 改成每 WG 各 $\mathrm{Sk}$ 个的收益写在
+头注释 L1461--1462：$\mathrm{Sk} = 2$ 时，共享方案里每个 WG 的实际深度只有 1
+（两个 WG 竞争同一对 slot 与同一对屏障），而现在每个 WG 都获得真正的深度 2，
+两个 WG 不会使用同一个 slot 或同一张屏障（L1458--1459），producer 因此可以
+连续不断地按 $\mathrm{cid} = \mathrm{tile}\,\&\,1$ 投递数据，不存在等另一个
+WG 释放 slot 的耦合。
 
 \begin{figure}[H]
 \centering
@@ -239,8 +238,8 @@ $\sum_{w} 32\,r_w < 65536$ 并留 $\ge 2048$ 的 slack；同时
 （PTX ISA §9.7.19.5，本地镜像 ptx-docs）。本章的配置是三个 warpgroup：
 producer 128 线程 \texttt{dealloc(40)}、两个 consumer 各 128 线程
 \texttt{alloc(168)}（$D{=}128$）或 \texttt{alloc(80)}（$D{=}64$），见
-L1614 与 L1702--1706。把「每 warpgroup 128 线程」这个公因子提出来，不等式
-可以写成更好记的\textbf{每线程等效配额}形式：
+L1614 与 L1702--1706。把每 warpgroup 128 线程这个公因子提出来，不等式可以
+写成更好记的\textbf{每线程等效配额}形式：
 \begin{equation}
   r_p + 2\,r_c \;\le\; \frac{65536}{128} \;=\; 512 ,
   \qquad\text{即}\qquad
@@ -255,8 +254,8 @@ $136 \times 128 = 17408$ 与 $312 \times 128 = 39936$ 个寄存器），远离�
 另有保留份额，有效池小于 65536，\texttt{alloc} 永远凑不齐，于是 consumer
 卡在 \texttt{setmaxnreg}、producer 卡在等 consumer 的 barrier arrive，
 \textbf{双向互等导致挂死}（无 illegal instruction、无 error code、无超时）。
-事故修复版（64/208/208 或 32/232/232）分别给出 $480$ 与 $496$，即「留 $\ge 16$
-的每线程等效余量」，恰好是工程规则「留 $\ge 2048$ slack」除以 128 的结果。
+事故修复版（64/208/208 或 32/232/232）分别给出 $480$ 与 $496$，即每线程等效
+余量留 $\ge 16$，恰好是工程规则留 $\ge 2048$ slack 除以 128 的结果。
 
 \begin{figure}[H]
 \centering
@@ -318,8 +317,7 @@ Q/K/V 操作数碎片与 $m/\ell$ 统计量（L1725--1731）。$D{=}128$ 的 F16
 下，单是 $R\_D$ 就占 $16 \times 2 = 32$ 个 \texttt{uint32}，$R\_O$ 又是 32 个；
 不给它 168 的上限，ptxas 只能把溢出量写入 local memory，每轮 KV 迭代多出
 成百上千字节的 local 往返。producer 侧正相反：它只做地址计算与 TMA 提交，
-40 个就够。\textbf{同一份 64K 寄存器文件，按角色重新分配}。这就是 warp
-specialization 收益的另一半来源。
+40 个就够；同一份 64K 寄存器文件按角色重新分配，两边都不会溢出。
 
 必须补一句现实约束（第~\ref{ch:14}~章已考据）：若
 \texttt{cp.\allowbreak{}async.\allowbreak{}bulk.\allowbreak{}tensor} 的目的地址写成 \texttt{shared::cluster}，
@@ -357,11 +355,11 @@ ptxas 就会以 C7506 丢弃 \texttt{setmaxnreg}（CUDA 13.2，与 arch 后缀�
 角色判定只有两行（L1577--1581）：\texttt{threadIdx.x < 128} 为 producer；
 其余按 \texttt{\allowbreak{}(thread\allowbreak{}Idx.\allowbreak{}x - 128) /\allowbreak{} 128} 得 \texttt{consumer\_id}
 $\in \{0, 1\}$，组内序号 \texttt{wg\_tid} $\in [0, 128)$ 再切 warp/lane。
-注意 \texttt{consumer\_id} 在本 kernel 里\textbf{三处复用}：既标识「我处理
-哪一半 tile」（\texttt{tile =\allowbreak{} consumer\_\allowbreak{}id; tile +=\allowbreak{} 2}），也标识「我用哪一套
-smem bank / 屏障」（\texttt{[cid]} 下标），还标识「我用哪些 stage 槽」。这种
-「数据划分 $=$ 存储划分 $=$ 同步划分」的对应关系，是奇偶拆分最大的工程优势
-（三者的完整角色与数据流见图~\ref{fig:18-1}）。
+注意 \texttt{consumer\_id} 在本 kernel 里\textbf{三处复用}：既标识我处理哪一半
+tile（\texttt{tile =\allowbreak{} consumer\_\allowbreak{}id; tile +=\allowbreak{} 2}），也标识我用哪一套 smem
+bank / 屏障（\texttt{[cid]} 下标），还标识我用哪些 stage 槽。数据划分、存储
+划分、同步划分三者的对应关系，是奇偶拆分最大的工程优势（三者的完整角色与
+数据流见图~\ref{fig:18-1}）。
 
 \lstinputlisting[linerange={1550-1565},firstnumber=auto,breakatwhitespace=true,
   title={flash\_attn.cuh L1550-1565（smem 三分：Q 一份 $+$ 每 WG 独立 K/V bank）}]{../flash_attn.cuh}
@@ -377,12 +375,12 @@ smem 于是是三段之和（half 元素 2 B）：
 40.0/56.0/72.0/88.0 KB；$D{=}128$ 时 Sk $=1$ 为 80.0 KB，Sk $=2$ 则是
 \textbf{112 KB $>$ 99 KB} 的 optin 上限（本机实测 101376 B $=$ 99.0 KB，
 18.7~节的考据框核对注释口径），因此 $D{=}128$ \textbf{只支持 Sk $= 1$}
-（头注释 L1500--1501）。这解释了为什么「更深流水」在本章并非没有代价：
+（头注释 L1500--1501）。这解释了为什么更深流水在本章并非没有代价：
 bank 一分为二后，smem 的 $O(\mathrm{Sk})$ 项直接翻倍。
 
 \subsection{producer：单线程 TMA 与 cid 路由}
 
-producer 仍是「128 线程里只有 \texttt{wg\_tid == 0} 执行装载」的原有结构：
+producer 仍是 128 线程里只有 \texttt{wg\_tid == 0} 执行装载的原有结构：
 \texttt{dealloc(40)} 之后先装 Q（P0，两 WG 共用，一次 \texttt{arrive\_tx}
 声明 $B_r D \times 2$ 字节），再进入\textbf{全局顺序}的 tile 循环（P2）。
 与第~\ref{ch:17}~章的关键差异只有一处：每轮的
@@ -394,8 +392,8 @@ $\mathrm{cid} = \mathrm{tile}\,\&\,1$ 决定数据落到哪个 bank、走哪张�
 \lstinputlisting[linerange={1679-1686},firstnumber=auto,breakatwhitespace=true,
   title={flash\_attn.cuh L1679-1686（P2 后半：V 装载，release 依赖 PV）}]{../flash_attn.cuh}
 
-「先 K 后 V」是刻意的发射顺序：K 的 empty 信号在 consumer 的 QK 阶段末尾
-（最后一组 \texttt{ldmatrix} 之后）就发出，V 的 empty 信号要等 PV 的
+先发 K 再发 V 的顺序来自两个释放点的位置：K 的 empty 信号在 consumer 的 QK
+阶段末尾（最后一组 \texttt{ldmatrix} 之后）就发出，V 的 empty 信号要等 PV 的
 \texttt{ldmatrix} 完毕，故 K 的等待窗口比 V 短，应先发射 K。Sk $\ge 2$ 时 K 走
 真正的乒乓预取：第 $t$ 轮把 tile $t+2$ 装进
 $\mathrm{stg}_{\mathrm{next}} = (\mathrm{local\_tile}+1) \bmod \mathrm{Sk}$；
@@ -423,7 +421,7 @@ rescale），只有两处 \textbf{early release} 的位置值得复述，它们�
 \lstinputlisting[linerange={1887-1914},firstnumber=auto,breakatwhitespace=true,
   title={flash\_attn.cuh L1887-1914（V 的 early release：PV 的 ldmatrix 完毕即放行 V buffer）}]{../flash_attn.cuh}
 
-两处共同点：\textbf{smem 一进寄存器就放行}。K 的最后一组 \texttt{LDMATRIX\_X2}
+两处的共同点是 smem 一进寄存器就放行。K 的最后一组 \texttt{LDMATRIX\_X2}
 之后 K 数据已全部在 $R\_K$，后续 HMMA 与 softmax 不再读 K smem；V 同理
 （$R\_V$）。放行越早，producer 的下一笔 TMA 越早发出。在
 $\mathrm{Sk}{=}1$ 的 $D{=}128$ 配置下，这几乎是唯一的重叠窗口。
@@ -530,7 +528,7 @@ L2057），\texttt{consumer\_id}$=1$ 写完后直接退出，省掉单侧的重�
 
 两章都在 SM120（无 WGMMA）上做 warp specialization，骨架一致（单线程 TMA
 producer $+$ mbarrier 双屏障 $+$ \texttt{setmaxnreg} 池），差异集中在
-「consumer 有几个、彼此什么关系」：
+consumer 有几个、彼此什么关系：
 
 \begin{center}
 \begin{tabular}{lll}
@@ -547,16 +545,16 @@ consumer 间通信 & 无（写同一份输出） & 终态 merge（smem scratch�
 \end{tabular}
 \end{center}
 
-总结：ch14 的 WS 是「把搬运从计算中分离」，本章的 WS 是「在搬运分离
-之后，再用第二个 consumer 把\textbf{计算与计算}重叠」。前者解决 memory
-latency，后者针对 softmax 与 GEMM 的 overlap。FA3 论文（§3.2/§3.3）把后者
-的完整形态称为 \emph{pingpong scheduling}：借助 WGMMA 的异步性，同一 WG 内部
-GEMM 与 softmax 也能重叠（intra-warpgroup overlapping），两个 WG 再交替执行
-GEMM 以填满 Tensor Core。本 kernel 的 consumer 用\textbf{同步}的
-\texttt{mma.sync}，做不到 WG 内重叠；它靠的是两个独立流在硬件调度器上
-\textbf{统计性交错}（WG1 处于 MMA 段时 WG2 大概率处于 softmax 段），加上 TMA
-窗口被完整隐藏。这是「无 WGMMA」约束下的近似；第~\ref{ch:25}~章的 CuTe 版
-会在 sm\_90a 上用 \texttt{wgmma} 把这层差距补上。
+ch14 的 WS 把搬运从计算中分离，本章的 WS 在搬运分离之后，再用第二个
+consumer 把\textbf{计算与计算}重叠。前者解决 memory latency，后者针对
+softmax 与 GEMM 的 overlap。FA3 论文（§3.2/§3.3）把后者的完整形态称为
+\emph{pingpong scheduling}：借助 WGMMA 的异步性，同一 WG 内部 GEMM 与
+softmax 也能重叠（intra-warpgroup overlapping），两个 WG 再交替执行 GEMM
+以填满 Tensor Core。本 kernel 的 consumer 用\textbf{同步}的 \texttt{mma.sync}，
+做不到 WG 内重叠；它靠的是两个独立流在硬件调度器上\textbf{统计性交错}
+（WG1 处于 MMA 段时 WG2 大概率处于 softmax 段），加上 TMA 窗口被完整隐藏。
+这是无 WGMMA 约束下的近似；第~\ref{ch:25}~章的 CuTe 版会在 sm\_90a 上用
+\texttt{wgmma} 把这层差距补上。
 
 \begin{figure}[htbp]
 \centering
@@ -729,25 +727,25 @@ Sk$=$2, F32Acc & 153.7 & — & — \\
 \end{tabular}
 \end{center}
 
-三点读数。其一，\textbf{双 consumer 结构在两种 head dim 上都拿到了与
-第~\ref{ch:17}~章同档或更好的吞吐}：$D{=}128$ 单 K 级流水（Sk$=1$）即达
-190.4 T（F16Acc）/ 194.2 T（F32Acc），而同卡同刻 FA2 TMA WS（$B_r{=}128$，
-Sk$=2$）为 172.5 / 191.1 T。FA3 式的 $B_r{=}64$ 小 tile 尽管算术强度只有
-$AI = B_r = 64$ FLOP/B（第~\ref{ch:17}~章「$AI = B_r$」结论的一半，因为
-Q tile 行数减半），却靠「两条独立流交错」用多余的线程预算换回了吞吐；$D{=}64$
-上差距更明显（159.8 vs 141.8 T，$+13\%$）。其二，\textbf{Sk 加深在本章不再有收益}
-（$D{=}64$：Sk$=1$ 159.8 $>$ Sk$=2$ 155.1 $>$ Sk$=3$ 154.3）：per-WG bank
-把 smem 的 $O(\mathrm{Sk})$ 项翻倍（式~\ref{eq:18-smem}），而装载早已不在
-关键路径上，这与第~\ref{ch:17}~章「Sk$=$2 即饱和」的结论同源，只是本章
-的饱和点更低。其三，\textbf{F32Acc 依旧不慢于 F16Acc}（170.0 vs 159.8；
-194.2 vs 190.4），与第~\ref{ch:17}~章观察一致：F16Acc 路径要在 f32 计算与
-f16 写回之间反复 \texttt{\_\allowbreak{}\_\allowbreak{}float22half2\_\allowbreak{}rn}，而 attention 的 softmax
-指令占比高，这笔转换开销对速度的影响比累加精度更大。
+双 consumer 结构在两种 head dim 上都拿到了与第~\ref{ch:17}~章同档或更好的
+吞吐：$D{=}128$ 单 K 级流水（Sk$=1$）即达 190.4 T（F16Acc）/ 194.2 T
+（F32Acc），而同卡同刻 FA2 TMA WS（$B_r{=}128$，Sk$=2$）为 172.5 / 191.1 T。
+FA3 式的 $B_r{=}64$ 小 tile 算术强度只有 $AI = B_r = 64$ FLOP/B
+（第~\ref{ch:17}~章 $AI = B_r$ 结论的一半，因为 Q tile 行数减半），却靠两条
+独立流交错，用多余的线程预算换回了吞吐；$D{=}64$ 上差距更明显
+（159.8 vs 141.8 T，$+13\%$）。Sk 加深在本章不再有收益（$D{=}64$：Sk$=1$
+159.8 $>$ Sk$=2$ 155.1 $>$ Sk$=3$ 154.3）：per-WG bank 把 smem 的
+$O(\mathrm{Sk})$ 项翻倍（式~\ref{eq:18-smem}），而装载早已不在关键路径上，
+这与第~\ref{ch:17}~章 Sk$=$2 即饱和的结论同源，只是本章的饱和点更低。F32Acc
+依旧不慢于 F16Acc（170.0 vs 159.8；194.2 vs 190.4），与第~\ref{ch:17}~章观察
+一致：F16Acc 路径要在 f32 计算与 f16 写回之间反复
+\texttt{\_\allowbreak{}\_\allowbreak{}float22half2\_\allowbreak{}rn}，而 attention 的 softmax 指令占比高，这笔
+转换开销对速度的影响比累加精度更大。
 
-这组数字\textbf{不是受控 A/B}：两个 kernel 的 $B_r$ 不同
-（128 vs 64）、Sk 不同，网格形状（$N/B_r$ 与 $B_c$ 的块数）也不同，读作
-「两条路线在同一张卡上的量级对照」即可，不宜当作「FA3 比 FA2 快 $x\%$」
-的结论；真正受控的对照需要固定 tile 与流水深度，留给附录 B 的复测表。
+这组数字\textbf{不是受控 A/B}：两个 kernel 的 $B_r$ 不同（128 vs 64）、Sk 不同，
+网格形状（$N/B_r$ 与 $B_c$ 的块数）也不同，只能读作两条路线在同一张卡上的
+量级对照，不能当作 FA3 比 FA2 快 $x\%$ 的结论；真正受控的对照需要固定 tile
+与流水深度，留给附录 B 的复测表。
 
 另一条数据线来自 \texttt{leetcuda\_\allowbreak{}bench\_\allowbreak{}sm120a.bin --bench --bench-all} 的
 FA 基准（$B{=}1$、$H{=}32$、$N{=}8192$、$D{=}128$，dense，同机 RTX PRO 5000
@@ -770,13 +768,13 @@ FA3 TMA MMA WS (2 Consumer WG) (Sk=1, Sv=1, F32Acc) & 1.526e-05 & 205.7/230.2 (0
 \end{tabular}
 \end{table}
 
-两点读数。其一，\textbf{双 consumer（2 Consumer WG）把同规模吞吐从单 consumer
-的 188--204~TFLOPS（第~\ref{ch:17}~章）进一步抬到 206~TFLOPS 量级}（206.2 /
-205.7），「两条独立流交错填满发射槽」的结构收益在更大规模下依然成立。其二，
-\textbf{F16Acc 与 F32Acc 速度基本持平}（206.2 vs 205.7，差别 $<0.5\%$，落在
-run 间波动内），而 \textbf{F32Acc 精度更优}：最大误差 1.526e-05 比 F16Acc 的
-1.068e-04 小约一个量级，本规模下 F32Acc 是更合适的默认选择。两档对 cuDNN 均为
-0.89x，说明剩余差距在 kernel 结构而非累加精度。
+双 consumer（2 Consumer WG）把同规模吞吐从单 consumer 的 188--204~TFLOPS
+（第~\ref{ch:17}~章）进一步抬到 206~TFLOPS 量级（206.2 / 205.7），两条独立流
+交错填满发射槽的结构收益在更大规模下依然成立。F16Acc 与 F32Acc 速度基本持平
+（206.2 vs 205.7，差别 $<0.5\%$，落在 run 间波动内），而 \textbf{F32Acc 精度
+更优}：最大误差 1.526e-05 比 F16Acc 的 1.068e-04 小约一个量级，本规模下
+F32Acc 是更合适的默认选择。两档对 cuDNN 均为 0.89x，说明剩余差距在 kernel
+结构而非累加精度。
 
 \section{实践经验与考据说明}
 
@@ -803,8 +801,8 @@ run 间波动内），而 \textbf{F32Acc 精度更优}：最大误差 1.526e-05 
   $= 16$\,KB，m/l 区 $128 \times 1$ 个 \texttt{float4} $= 2$\,KB，合计
   18\,KB 比 Q 区（16\,KB）多出 2\,KB，会切进 \texttt{K[cid=0][0]} 的头部
   （$D{=}64$：10\,KB vs 8\,KB，同样多 2\,KB）。结论\textbf{仍然安全}（此
-  时 K/V 已无读者、无写者），但「整个 dynamic smem 生命周期结束」这句话要
-  配合上述 TMA 落盘论证才严谨。
+  时 K/V 已无读者、无写者），但整个 dynamic smem 生命周期结束这句话要配合
+  上述 TMA 落盘论证才严谨。
 \end{kaogu}
 
 \begin{kaogu}[F2 核校通过]{setmaxnreg 语义与池数学}
@@ -842,21 +840,21 @@ run 间波动内），而 \textbf{F32Acc 精度更优}：最大误差 1.526e-05 
 \textbf{坑一：merge scratch 的安全前提是「无 in-flight TMA」，不是「producer 已发完
 TMA」。}\allowbreak{}producer 退出 mainloop 只说明事务\textbf{已声明}；保证搬运\textbf{已
 落盘}的是 consumer 侧 \texttt{full\_K}/\texttt{full\_V} 的等待（tx-count 归零）。
-改动 scratch 布局或提前 merge 点时，必须重新确认这条链成立，否则会出现
-「读 scratch 读到正在被 TMA 覆盖的数据」这类\textbf{间歇性}错误，且只在
-大 $T_c$（流水深）时暴露。
+改动 scratch 布局或提前 merge 点时，必须重新确认这条链成立，否则会读到
+正被 TMA 覆盖的 scratch 数据，出\textbf{间歇性}错误，且只在大 $T_c$（流水深）
+时暴露。
 
 \textbf{坑二：$T_c = 1$ 的退化路径（$0/0$ NaN）。}$N = B_c$ 时 WG2 的
-$m_1 = -\infty$、$\ell_1 = 0$，若按「先归一化再合并」的写法会算出
+$m_1 = -\infty$、$\ell_1 = 0$，若按先归一化再合并的顺序写会算出
 $0/0$。本章 kernel 用未归一化 $O_{\mathrm{acc}}$ 只做乘加，天然安全
-（18.3.2 节）；换成「归一化后相加」的实现必须显式特判。测试里的
+（18.3.2 节）；换成归一化后相加的实现必须显式特判。测试里的
 \texttt{N=64}（$T_c{=}1$）例专门覆盖这条路径。
 
 \textbf{坑三：\texttt{local\_tile}/\texttt{local\_iter} 必须严格对齐。}
 producer 在 L1663 重算本 WG 视角的序号 $(t-\mathrm{cid})/2$ 以确定
 \texttt{stg\_next}，consumer 在 L1743 用 \texttt{local\_iter} 确定
-\texttt{k\_stg}。两处是同一序列的两份实现，改动任一处（例如为支持「前半/后半
-区」拆分而改划分）都会让 producer 把数据写进 consumer 当前正在读的槽。
+\texttt{k\_stg}。两处是同一序列的两份实现，改动任一处（例如把划分改成
+前半区/后半区）都会让 producer 把数据写进 consumer 当前正在读的槽。
 后果是\textbf{静默数值错误}，而非挂死。
 
 \textbf{坑四：两套屏障数字不能混用。}\texttt{full\_Q} 是
@@ -895,7 +893,7 @@ dst 为 \texttt{shared::cta} 时 sm\_120a/sm\_120f 均保留（第~\ref{ch:14}~�
 \section{面试要点速查}
 
 \textbf{Q1：FA3 相对 FA2 的结构性差异是什么？}\\
-A：FA2 解决「非 matmul FLOPs、并行度、warp 划分」；FA3 解决「异步 overlap」：
+A：FA2 解决非 matmul FLOPs、并行度与 warp 划分；FA3 解决异步 overlap：
 producer 用 TMA 异步搬运，两个 consumer warpgroup 让 softmax（CUDA Core/SFU）
 与 GEMM（Tensor Core）并行。本仓库的实现是 1 producer $+$ 2 consumer 的
 384 线程结构 $+$ KV 奇偶拆分 $+$ 终态归并（flash\_attn.cuh L1441--2192）。
@@ -915,7 +913,7 @@ $\approx \mathrm{Sk}/2$）；独立 bank 后每个 WG 真正拥有 $\mathrm{Sk}$
 
 \textbf{Q4：merge 为什么要用 $\max$ 作 pivot？}\\
 A：式~\ref{eq:18-merge} 用全局 $m = \max(m_0, m_1)$，使
-$\alpha, \beta \le 1$，两项都是「向小指数缩放」，不会上溢；若以 $m_0$ 或
+$\alpha, \beta \le 1$，两项都是向小指数缩放，不会上溢；若以 $m_0$ 或
 $m_1$ 中较小者作基准，另一个指数就会 $> 1$，极端情况下 $e^{\Delta}$ 溢出。
 第~\ref{ch:15}~章 online rescale 的 $e^{m^{\mathrm{old}}-m^{\mathrm{new}}}$
 是同一条数值原则。
@@ -940,8 +938,8 @@ softmax 可重叠（intra-warpgroup overlapping），两个 WG 再交替发 GEMM
 版在 sm\_90a 上用 \texttt{wgmma} 才是论文形态。
 
 \textbf{Q8：为什么收尾要一次全 CTA 的 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads}？}\\
-A：merge 需要 WG2 的 partial 写完后再读（第二次 barrier），并把「K/V smem
-的生命周期结束」变成全 CTA 的共识（第一次 barrier，可在其上复用 scratch）；
+A：merge 需要 WG2 的 partial 写完后再读（第二次 barrier），并把 K/V smem 的
+生命周期结束变成全 CTA 的共识（第一次 barrier，可在其上复用 scratch）；
 归并完成后
 \texttt{consumer\_id}$=0$ 独占写 gmem，无需第三次同步（第二次 barrier 只保证
 WG1 看到 WG2 的写入）。
@@ -980,7 +978,7 @@ F32Acc $\sim$4.5e-05--1.4e-04。
 
 bench 子命令输出 18.6~节的复测表（\texttt{.\allowbreak{}/\allowbreak{}.\allowbreak{}build/\allowbreak{}ch18\_\allowbreak{}fa3 bench}）。
 动手实验建议：（1）把 \texttt{N=64} 例改成 $N{=}192$（$T_c{=}3$，两 WG 分别
-2/1 个 tile），验证 18.3.2 节「不对称划分无需特判」；（2）把 producer 的
+2/1 个 tile），验证 18.3.2 节不对称划分无需特判的结论；（2）把 producer 的
 prefetch 目标从 $t+2$ 改成 $t+1$（Sk$=$2 时），观察数值立刻出错（坑三），
 这是两处 \texttt{local\_*} 索引错位的直接演示；（3）把 consumer 的
 \texttt{empty\_K} early release 上移到 HMMA 之前，观察挂死或读脏数据
@@ -1004,9 +1002,9 @@ prefetch 目标从 $t+2$ 改成 $t+1$（Sk$=$2 时），观察数值立刻出错
   \item @杨远航《Flash Attention 3 深度解析》\\
         \url{https://zhuanlan.zhihu.com/p/17533058076}\\
         （Hopper 上 producer/consumer 的微观时序、pingpong 与
-        intra-warpgroup overlapping 三层次对照；18.4.5~节「同步
-        \texttt{mma.sync} 做不到 WG 内重叠」的结论正是相对该文方案而言）；
-  \item NVIDIA PTX ISA §9.7.19.5（\texttt{setmaxnreg}）——池语义与
+        intra-warpgroup overlapping 三层次对照；18.4.5~节关于同步
+        \texttt{mma.sync} 做不到 WG 内重叠的结论，就是相对该文方案而言的）；
+  \item NVIDIA PTX ISA §9.7.19.5（\texttt{setmaxnreg}）：池语义与
         \texttt{.inc} 阻塞行为的核验基准（本地镜像：cuda-cpp-kernel skill 的
         ptx-docs）；式~\ref{eq:18-pool} 与 18.8~节坑五的规范来源。
 \end{itemize}

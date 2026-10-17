@@ -10,11 +10,11 @@
 \section{本章导读}
 
 第~\ref{ch:12}~章用一次 XOR 消除了 smem 的 bank conflict：把列块索引换成
-「列块 XOR 行号」，即 \texttt{swizzle\allowbreak{}<64>\allowbreak{}(row,\allowbreak{} k)}。在那章的语境里它是一个
+列块 XOR 行号，即 \texttt{swizzle\allowbreak{}<64>\allowbreak{}(row,\allowbreak{} k)}。在那章的语境里它是一个
 \emph{地址技巧}；可一旦同一段 kernel 里出现了 TMA、fp8、多级 tile 与多
-stage 缓冲，同样的技巧就要同时回答三个新问题：\textbf{它到底是什么形式的
-数学对象}、\textbf{怎么和「形状 $+$ 步长」复合}、\textbf{怎么与硬件自己做的
-swizzle 对齐}。本章把这三件事摊开。
+stage 缓冲，同样的技巧就要同时回答三个新问题：它到底是什么形式的
+数学对象、怎么和形状 $+$ 步长复合、怎么与硬件自己做的 swizzle 对齐。
+本章把这三件事摊开。
 
 \textbf{前置章节}：第~\ref{ch:12}~章（XOR swizzle 的银行冲突推导与手写
 \texttt{swizzle<>} 家族）、第~\ref{ch:20}~章（Layout 代数与
@@ -43,11 +43,11 @@ hgemm.cuh L1859--2100（宏块 \texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENAB
 
 \section{问题与动机}
 
-先看第~\ref{ch:12}~章那行 swizzle 在真实工程里的三种「走样」形态。
+先看第~\ref{ch:12}~章那行 swizzle 在真实工程里的三种走样形态。
 
 \textbf{走样一：语义只存在于调用点。} 手写版的 swizzle 是一个自由函数，
-调用点写 \texttt{swizzle\allowbreak{}<64>\allowbreak{}(row,\allowbreak{} k)}，函数体里写死「取 bit7--9（3 位），
-右移 3 位后 XOR 到 bit4--6」。要换 fp8（元素 1 字节、行宽翻倍）或换行宽（64 B/128 B/256 B），
+调用点写 \texttt{swizzle\allowbreak{}<64>\allowbreak{}(row,\allowbreak{} k)}，函数体里写死取 bit7--9（3 位）、
+右移 3 位后 XOR 到 bit4--6。要换 fp8（元素 1 字节、行宽翻倍）或换行宽（64 B/128 B/256 B），
 就得改函数体内的位域，而改对与否只能靠再跑一遍正确性测试。ch12 的 kernel
 之所以只写了一个 \texttt{swizzle<>}，是因为它只有一个 smem 布局。
 
@@ -55,9 +55,9 @@ hgemm.cuh L1859--2100（宏块 \texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENAB
 $B_M\times B_K$ 的 tile、$k_{\text{stage}}$ 个 stage、以及 scale 因子等
 旁路数据。手写版的地址表达式把这些维度乘在一起
 （\texttt{base + stage * BM * BK + row * BK + swizzle\allowbreak{}(row,\allowbreak{} k)}），
-每加一层就要重新推导一次「谁在 swizzle 内部、谁在外部」。第~\ref{ch:12}~章
+每加一层就要重新推导一次谁在 swizzle 内部、谁在外部。第~\ref{ch:12}~章
 末尾那个 \texttt{k\_step} 要不要放进 \texttt{swizzle\allowbreak{}<k\allowbreak{}Mma\allowbreak{}K>} 参数的问题，
-本质就是「复合顺序」问题。
+本质就是复合顺序问题。
 
 \textbf{走样三：与硬件 swizzle 的一致性。} TMA 的
 \texttt{cp.\allowbreak{}async.\allowbreak{}bulk.\allowbreak{}tensor} 由硬件按 descriptor 里声明的模式
@@ -65,7 +65,7 @@ $B_M\times B_K$ 的 tile、$k_{\text{stage}}$ 个 stage、以及 scale 因子等
 摆进 smem。此时 smem 里的物理排布由\emph{硬件}决定，软件只能去对齐它：
 要么用同一套位公式算地址（本章的 \texttt{swizzle<64>} 路径），要么把
 swizzle 编码进基址（WGMMA descriptor 的 \texttt{base\_offset} 字段，
-见第~\ref{ch:13}~章）。一旦两边的模式不一致，结果不是「略微掉精度」，
+见第~\ref{ch:13}~章）。一旦两边的模式不一致，结果不是略微掉精度，
 而是整块 tile 错位。这类错误在 hgemm.cuh~L1899--1917 的注释里被写成
 一条硬性约定：TMA 路径的 smem 基址必须 1024 B 对齐，否则 phase 不为零，
 消费者算出来的地址全错。
@@ -73,7 +73,7 @@ swizzle 编码进基址（WGMMA descriptor 的 \texttt{base\_offset} 字段，
 本章要证明的是：CuTe 把这三个走样各自收进了一个可检验的对象：
 \texttt{Swizzle\allowbreak{}<B,\allowbreak{}M,\allowbreak{}S>}（位语义）、\texttt{composition}（复合语义）、
 \texttt{tile\_\allowbreak{}to\_\allowbreak{}shape}（多级扩展），而 TMA 侧则用
-\texttt{make\_\allowbreak{}tma\_\allowbreak{}copy} 把「gmem 张量 $+$ smem 布局」一次性编码成硬件
+\texttt{make\_\allowbreak{}tma\_\allowbreak{}copy} 把 gmem 张量与 smem 布局一次性编码成硬件
 descriptor。理解这三样东西的边界（尤其是它们\emph{不能}保证什么），
 比记住 API 名字重要得多。
 
@@ -85,7 +85,7 @@ descriptor。理解这三样东西的边界（尤其是它们\emph{不能}保证
 warp 的 32 个线程如果同时访问落在同一 bank 的多个地址，硬件只能把它们串行
 化，这就是 bank conflict。GEMM 的 smem tile 是 $8$ 行 $\times 64$ 列的 fp16
 （一行 $64\times2=128$\,B），\texttt{ldmatrix} 让每个线程负责一根 $16$\,B 的
-行段（8 个 half，横跨 4 个 bank）。按最自然的「行优先、行步长 $128$\,B」
+行段（8 个 half，横跨 4 个 bank）。按最自然的行优先、行步长 $128$\,B
 摆放，第 $r$ 行第 $j$ 个 $16$\,B 块的起始字节是 $128r+16j$，它落在 bank
 
 \begin{equation}
@@ -95,11 +95,11 @@ warp 的 32 个线程如果同时访问落在同一 bank 的多个地址，硬�
 \end{equation}
 
 \textbf{行号 $r$ 被 $32r$ 项消掉了}：同一个列块 $j$ 在 8 行里全部落在相同的
-4 个 bank 上，8 个线程排队等待：\textbf{8-way conflict}。
+4 个 bank 上，8 个线程排队等待，构成 8-way conflict。
 
 \textbf{朴素解法：padding}。每行尾部补 8 个 half（行宽从 $64$ 变 $72$ 个
 元素，即 $144$\,B），行步长不再是 128 的倍数，$r$ 重新参与取模，冲突消失。
-代价有四条：$12.5\%$ 的容量被浪费；行宽不再是「$2^{M+S}$ 字节」的标准形态；
+代价有四条：$12.5\%$ 的容量被浪费；行宽不再是 $2^{M+S}$ 字节的标准形态；
 后面会看到，TMA 硬件只认标准形态，padding 方案无法用于 TMA；每次换元素类型或
 $B_K$ 都要重新推一遍补偿量。
 
@@ -213,8 +213,8 @@ $M$ 位（块内偏移）原样保留。\texttt{cute/\allowbreak{}swizzle.\allow
 \end{equation}
 
 其中 \texttt{ZZZ} 落在 bit $[M, M+B)$，\texttt{YYY} 落在 bit
-$[M+S, M+S+B)$（$S>0$ 时）。求值是「把 \texttt{YYY} 段右移到
-\texttt{ZZZ} 段再做 XOR」：
+$[M+S, M+S+B)$（$S>0$ 时）。求值是把 \texttt{YYY} 段右移到
+\texttt{ZZZ} 段再做 XOR：
 
 \begin{align}
 \label{eq:23-masks}
@@ -234,15 +234,15 @@ $y$ 不变、$y\gg S$ 不变，XOR 两次即还原：$\text{apply}(\text{apply}(
 Swizzle 是置换群里的对合元，这是它能当布局用的前提。
 
 \textbf{(b) 实现代价。} 式~\eqref{eq:23-apply} 的算术量是
-「1 次 AND、1 次移位、1 次 XOR」，映射到 SASS 就是一条 \texttt{LOP3}
-或两条整数指令。相对之下，任何「查表 $+$ 分支」的地址重排方案都会引入
+1 次 AND、1 次移位、1 次 XOR，映射到 SASS 就是一条 \texttt{LOP3}
+或两条整数指令。相对之下，任何查表 $+$ 分支的地址重排方案都会引入
 warp 内不一致的延迟。硬件能把 swizzle 做进 TMA 与 \texttt{ldmatrix}
 的地址通道，正是因为它只有位运算。
 
 \textbf{(c) 约束 $|S|\ge B$。} CuTe 在构造时会静态断言
 \texttt{abs(SShift) >= BBits}（common.cuh~L291 的镜像实现抄了同一条）。
 若 $|S|<B$，\texttt{YYY} 与 \texttt{ZZZ} 在位上重叠，XOR 会把源字段
-自己改掉，对合性立刻失效，「读写用同一公式」这一工程前提也就没了。
+自己改掉，对合性立刻失效，读写用同一公式这一工程前提也就没了。
 
 \begin{table}[htbp]
 \centering
@@ -266,8 +266,8 @@ $B$ & $M$ & $S$ & 周期（字节） & TMA descriptor 模式 & 第~\ref{ch:12}~�
 
 表~\ref{tab:23-modes} 最后一个档位 \texttt{Swizzle\allowbreak{}<3,\allowbreak{}3,\allowbreak{}3>} 值得单独说：
 它在 CuTe 文档里最常出现（因为文档的例子用 fp32），但它与
-\texttt{SWIZZLE\_\allowbreak{}128\allowbreak{}B} \textbf{不是同一件事}，区别在「偏移量的单位」。
-若偏移量是\emph{元素索引}且元素为 fp16，那么 $M=3$ 意味着「低 3 位不变」
+\texttt{SWIZZLE\_\allowbreak{}128\allowbreak{}B} \textbf{不是同一件事}，区别在偏移量的单位。
+若偏移量是\emph{元素索引}且元素为 fp16，那么 $M=3$ 意味着低 3 位不变
 $=$ 每 8 个元素（$=$ 16 B）一组的块内偏移不变；$M=4$ 则意味着低 4 位不变
 $=$ 每 $2^4=16$ 个\emph{元素}（$=$ 32 B，fp16 下过于粗）不变。硬件模式的
 定义永远落在\textbf{字节}上：三档的 XOR 粒度统一是 16\,B（$M=4$ 决定），
@@ -278,8 +278,8 @@ $=$ 每 $2^4=16$ 个\emph{元素}（$=$ 32 B，fp16 下过于粗）不变。硬�
 \item 偏移量按\textbf{字节}计：SW128 $=$ \texttt{Swizzle\allowbreak{}<3,\allowbreak{}4,\allowbreak{}3>}。
 \end{itemize}
 
-两者的位公式是同一个式子在不同单位下的写法。把它写成
-「行宽 $2^{M+S}$ 字节、块宽 $2^M$ 字节」的一般形式（$R$ 为行索引）：
+两者的位公式是同一个式子在不同单位下的写法。把它写成行宽 $2^{M+S}$ 字节、
+块宽 $2^M$ 字节的一般形式（$R$ 为行索引）：
 
 \begin{equation}
 \label{eq:23-chunk}
@@ -289,8 +289,8 @@ $=$ 每 $2^4=16$ 个\emph{元素}（$=$ 32 B，fp16 下过于粗）不变。硬�
 \end{equation}
 
 式~\eqref{eq:23-chunk} 是本章最有用的一条：\textbf{凡是行宽恰好等于
-$2^{M+S}$ 字节的布局，swizzle 的物理效果就是「16 B 块的列号 XOR 行号」}。
-它把位运算的抽象还原成第~\ref{ch:12}~章那张「对角线置换」的图。
+$2^{M+S}$ 字节的布局，swizzle 的物理效果就是 16 B 块的列号 XOR 行号}。
+它把位运算的抽象还原成第~\ref{ch:12}~章那张对角线置换的图。
 验证方式也很直接：把 \texttt{GMMA::\allowbreak{}Layout\_\allowbreak{}K\_\allowbreak{}SW128\_\allowbreak{}Atom\allowbreak{}<half>} 铺到一个
 $64\times64$ 的 fp16 tile 上，逐点比较 \texttt{layout(r,c)} 与
 $64r+8\cdot((c/8)\oplus(r\bmod 8))+(c\bmod 8)$，二者必须逐点相等
@@ -302,12 +302,12 @@ $64r+8\cdot((c/8)\oplus(r\bmod 8))+(c\bmod 8)$，二者必须逐点相等
         CuTe 文档与许多教程演示 \texttt{Swizzle\allowbreak{}<3,\allowbreak{}3,\allowbreak{}3>} 用的位公式是
         $\text{offset}'=\text{offset}\oplus((\text{offset}\wedge
         (\texttt{0b111}\ll6))\gg3)$，掩码落在 bit $[6,9)$，这是把偏移量
-        按\emph{字节}读的口径，物理上是「$8$\,B 块、$64$\,B 行」的置换。
+        按\emph{字节}读的口径，物理上是 $8$\,B 块、$64$\,B 行的置换。
         换到 fp16 的 SW128：块宽必须是 $16$\,B $=8$ 个元素，于是偏移量
         按\emph{元素}计时 \texttt{Swizzle\allowbreak{}<3,\allowbreak{}3,\allowbreak{}3>}（hgemm.cuh 用的就是它）、
         按\emph{字节}计时 \texttt{Swizzle\allowbreak{}<3,\allowbreak{}4,\allowbreak{}3>}（CUTLASS 的 GMMA 原子
         用的是后者）。
-  \item \textbf{行宽必须与参数自洽}。式~\eqref{eq:23-chunk} 的前提是行宽
+  \item 行宽必须与参数自洽。式~\eqref{eq:23-chunk} 的前提是行宽
         $=2^{M+S}$ 字节：fp16 的 $64$ 列恰是 $128$\,B，对应 SW128 的
         \texttt{<3,4,3>}（字节口径）；若 tile 的行宽只有 $64$\,B（fp16 的
         $32$ 列），直接套用 SW128 参数只能得到强度减半的置换，
@@ -316,7 +316,7 @@ $64r+8\cdot((c/8)\oplus(r\bmod 8))+(c\bmod 8)$，二者必须逐点相等
 
 \subsection{composition：Swizzle 与基础布局的合成}
 
-CuTe 用 \texttt{composition} 把「Swizzle」与「基础布局」合成一个整体：
+CuTe 用 \texttt{composition} 把 Swizzle 与基础布局合成一个整体：
 
 \begin{equation}
 \label{eq:23-comp}
@@ -326,8 +326,8 @@ R = \texttt{comp}\big(\text{Swizzle},\ \text{Offset},\ \text{Layout}\big),
 
 注意式~\eqref{eq:23-comp} 的自变量是\textbf{坐标}，而 Swizzle 作用在
 \textbf{偏移量}上，中间隔着一次 \texttt{Layout} 求值：
-\textbf{坐标体系不用变，物理地址已经换了，之后的代码无需改动}。
-仍用 $(r,c)$ 问「第 $r$ 行第 $c$ 列在哪」，布局会换算成被置换过的
+坐标体系不用变，物理地址已经换了，之后的代码无需改动。
+仍用 $(r,c)$ 问第 $r$ 行第 $c$ 列在哪，布局会换算成被置换过的
 物理 offset；读写两侧只要用同一个布局别名，改写永远自洽。hgemm.cuh 的
 smem 原子就是这一步的实例：
 
@@ -343,7 +343,7 @@ smem 原子就是这一步的实例：
 
 \subsection{位置无关与位置相关：最容易出错的一处}
 
-Swizzle 是「地址的函数」，所以必须先回答：这个地址从哪来？CuTe 给了两条
+Swizzle 是地址的函数，所以必须先回答：这个地址从哪来？CuTe 给了两条
 路径。\texttt{cute/\allowbreak{}pointer\_\allowbreak{}swizzle.\allowbreak{}hpp} 的 L44--46 注释把区别写得很清楚：
 
 \begin{lstlisting}[style=console]
@@ -370,7 +370,7 @@ phase 不一致，读出来就是错的。本章测试里有一条\textbf{刻意
 与 sw\_120a 上实测 TMA \texttt{SWIZZLE\_\allowbreak{}128\allowbreak{}B} 的 4096 个元素逐点相等
 （$0$ 失配）；而用 \texttt{tile\_\allowbreak{}to\_\allowbreak{}shape} 得到的\emph{分块布局求值}
 去对同一块 smem 时，4096 点里只有 1024 点（$25\%$）能对上。这 $25\%$
-\textbf{不是}「位置无关 vs 位置相关」的语义分界，而是\textbf{单位错配}：
+\textbf{不是}位置无关与位置相关的语义分界，而是\textbf{单位错配}：
 裸求值把字节口径的 \texttt{Swizzle\allowbreak{}<3,\allowbreak{}4,\allowbreak{}3>} 直接作用在元素偏移上（缺了
 fp16 元素到字节的 $\times2$ recast），\texttt{YYY} 取到的是元素偏移的
 bit$[7,10)$ 而非字节偏移的 bit$[7,10)$，仅当行号满足
@@ -480,7 +480,7 @@ XOR 值随之改变，写/读两条路径错位。}
 \textbf{(1) 整除约束。} \texttt{tile\_\allowbreak{}to\_\allowbreak{}shape} 要求目标形状能被原子
 形状整除，否则运行时断言
 （\texttt{block shape does not divide the target shape}）。这条约束是
-「原子必须重排成扫描器可预测的阶梯」的直接后果。于是
+原子必须重排成扫描器可预测的阶梯的直接后果。于是
 $B_K=32$ 的 tile \emph{不可能}直接套 $8\times64$ 的 SW128 原子；
 反过来，$8\times32$ 的原子能铺 $B_K=32$，却也不是 SW128 的标准形态。
 
@@ -534,7 +534,7 @@ $256\times32\times2=16384$ 个 half。这两个别名随后被
         即 TMA 的 32/64/128\,B 三档（该实现对 $16/32/64$ 与手写版 bit-exact
         一致，host 端有等价性测试）；legacy 的 \texttt{kColStride}=8 无
         对应的 CuTe 标准模式，代码显式回退到手写 XOR 路径。\textbf{行宽一
-        改，$B$ 与 $M$ 要一起改}，这就是 3.3 节实践须知「参数与单位绑定」
+        改，$B$ 与 $M$ 要一起改}，这就是 3.3 节实践须知里参数与单位绑定
         的具体体现。
 \end{itemize}
 
@@ -627,7 +627,7 @@ SW128 的 $8\times8$ chunk 表作对照）。}
 即 $8\times64$、每行 128\,B、cosize 512。把它铺到 $B_K=32$ 的 tile 上会
 遇到 3.6 节的整除约束（64 不整除 32）；而如果为了迁就它把 $B_K$ 改成 64，
 K 方向的循环步长、后续 \texttt{k\_step} 的切分与寄存器预算都会跟着变。
-Phase~7c 选择的是「自己写原子」：$8\times32$ 的 base layout 加
+Phase~7c 选择的是自己写原子：$8\times32$ 的 base layout 加
 \texttt{Swizzle\allowbreak{}<3,\allowbreak{}3,\allowbreak{}3>}，牺牲 swizzle 的强度（见 4.1 节实践须知）换取与
 $B_K=32$、$k_{\text{stage}}=2$ 的既有流水线完全兼容。这是一次典型的
 工程折中：布局要服从流水线的形状，而不是反过来。
@@ -642,7 +642,7 @@ smem 落点；搬完还要 \texttt{cp.\allowbreak{}async.\allowbreak{}wait} $+$ 
 
 TMA（\texttt{cp.\allowbreak{}async.\allowbreak{}bulk.\allowbreak{}tensor}）把这套流水线换成\textbf{一条指令搬一个
 tile}：第一个参数不是地址，而是一个 128\,B 的描述符 \texttt{CUtensorMap}，
-它把「gmem 张量怎么摆、搬多少、smem 里怎么 swizzle」全部编码进去，之后每次
+它把 gmem 张量怎么摆、搬多少、smem 里怎么 swizzle 全部编码进去，之后每次
 搬运只需要给坐标，\textbf{生产者退化成 1 个线程}（发指令 $+$ 通知
 barrier），地址算术与越界填充全交给硬件（4.4 节展开）。仓库里有两条构造
 路径。
@@ -661,28 +661,28 @@ __global__ void __launch_bounds__(kNumThreads)
 
 紧跟其后的 \texttt{static\_\allowbreak{}assert\allowbreak{}(BM =\allowbreak{}=\allowbreak{} 128 \&\& BN =\allowbreak{}=\allowbreak{} 128 \&\& BK =\allowbreak{}=\allowbreak{} 64,\allowbreak{}
 "...")} 本身就给出一条约束：
-\textbf{描述符里的 swizzle 模式、CTA tile 形状与 smem 布局三者必须自洽}。
+描述符里的 swizzle 模式、CTA tile 形状与 smem 布局三者必须自洽。
 该 kernel 的 K 方向 tile 是 64 个 half $=128$\,B，正好等于
 \texttt{SWIZZLE\_\allowbreak{}128\allowbreak{}B} 的一行；swizzle 档位在 descriptor 里的编码位置
 见下方实践须知（control word 的 bit$[13,15)$）。
 
 \paragraph{实践须知}（descriptor 里两个不显式的字段）
 \begin{itemize}
-  \item \textbf{control word 的 swizzle 档位}。128\,B 描述符的前 8 字节是
+  \item control word 的 swizzle 档位。128\,B 描述符的前 8 字节是
         globalAddress，紧随其后的 4 字节 control word 压缩了全部模式配置：
         bit$\,[13,15)$ 是 swizzle 档位（$0/1/2/3$ $=$ none/32/64/128\,B），
         bit$\,[15]$ 是越界填充值（zero/NaN）。想调试 descriptor，先把这两处
         dump 出来最快。
-  \item \textbf{第 21 bit 的 OOB 开关}。@reed《cute 之 TMA Descriptor 编码
+  \item 第 21 bit 的 OOB 开关。@reed《cute 之 TMA Descriptor 编码
         与隐藏的第 21bit》报告：driver 580 起，control word 的
-        bit$\,[21]$ 会在「模板 tensor 总大小 $\ge 128$\,KB」时被置 1，
+        bit$\,[21]$ 会在模板 tensor 总大小 $\ge 128$\,KB 时被置 1，
         硬件随即\emph{跳过}越界检查、直接按坐标算地址；而
         \texttt{tensormap.\allowbreak{}replace} 动态改 shape 时\emph{不会}联动更新这
-        一位。于是「创建大模板、运行时缩 shape」这条常规流程可能产出
-        「dim 很小但 bit21 $=1$」的描述符，OOB tile 落到未映射页时报
+        一位。于是创建大模板、运行时缩 shape 这条常规流程可能产出
+        dim 很小但 bit21 $=1$ 的描述符，OOB tile 落到未映射页时报
         illegal memory access。规避法：创建后手动清 bit21，或在每次
-        replace 后按新 shape 重设。这不是 swizzle 机制的问题，而是「描述符
-        是黑盒」的典型代价。用到动态 shape 时值得重新检查一遍 control
+        replace 后按新 shape 重设。这不是 swizzle 机制的问题，而是描述符
+        是黑盒的典型代价。用到动态 shape 时值得重新检查一遍 control
         word。
 \end{itemize}
 
@@ -699,7 +699,7 @@ __global__ void __launch_bounds__(kNumThreads)
 \texttt{auto g\allowbreak{}A =\allowbreak{} tma.\allowbreak{}get\_\allowbreak{}tma\_\allowbreak{}tensor\allowbreak{}(shape)} 与
 \texttt{auto t\allowbreak{}Ag\allowbreak{}A =\allowbreak{} tma.\allowbreak{}get\_\allowbreak{}slice\allowbreak{}(\_\allowbreak{}0\{\}).\allowbreak{}partition\_\allowbreak{}S\allowbreak{}(g\allowbreak{}A)}，地址算术
 一次都不用手写。代价是\textbf{布局必须能被 TMA 的表达能力表示}：
-descriptor 支持的是「多维 box $+$ stride $+$ 一种 swizzle 模式」，
+descriptor 支持的是多维 box $+$ stride $+$ 一种 swizzle 模式，
 CuTe 会用 \texttt{get\_\allowbreak{}tma\_\allowbreak{}swizzle\_\allowbreak{}base} 检查 smem 布局的 swizzle
 是否落在受支持的模式里。第~3.3~节实践须知里那两套口径（元素空间的
 \texttt{<3,3,3>} 与字节空间的 \texttt{<3,4,3>}）在这里变成一条
@@ -724,7 +724,7 @@ TMA 版 kernel 里，数据的写入由\textbf{硬件}完成，读取由\textbf{
 注释里的对比是全章技术含量最高的一段：\texttt{swizzle<64>} 的作用域是
 完整 $B_K=64$ 列（$128$\,B 行宽；其重复周期为 $1024$\,B $=8$ 行），
 所以 $k_{\text{step}}\cdot k_{\text{MmaK}}$
-必须作为「列坐标」的一部分进入 swizzle 内部；而
+必须作为列坐标的一部分进入 swizzle 内部；而
 \texttt{swizzle\allowbreak{}<k\allowbreak{}Mma\allowbreak{}K>}（$k_{\text{MmaK}}=16$，即 \texttt{SWIZZLE\_32B}）
 的跨度只有 16 列，每个 slice 内部自洽，偏移可以加在 swizzle 外部。
 这条规则由式~\eqref{eq:23-chunk} 直接推出：XOR 是否跨越
@@ -738,9 +738,9 @@ TMA 路径最后一条工程约束写在 kernel 的开头（hgemm.cuh~L1903--192
 \texttt{\_\_shared\_\_} 声明上必须写 \texttt{\_\allowbreak{}\_\allowbreak{}align\_\allowbreak{}\_\allowbreak{}(1024)}，
 类型是 \texttt{uint8\_t}，名字是 \texttt{smem\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws}。
 
-这段注释解释了一个常被误以为没有规律的事实：\textbf{同样是 TMA
+这段注释解释了一个常被误以为没有规律的事实：同样是 TMA
 $+$ swizzle，WGMMA 的 smem 基址只要 128 B 对齐，而 ldmatrix 路径必须
-1024 B 对齐}。原因不在 TMA，而在消费者：WGMMA 走的是 64-bit smem
+1024 B 对齐。原因不在 TMA，而在消费者：WGMMA 走的是 64-bit smem
 descriptor，里面 bit[49,52) 的 \texttt{base\_offset} 字段记录了基址相对
 1024 B 边界的偏移（$(\text{addr}\gg7)\wedge7$），硬件读 smem 时会自动
 补偿 phase；\texttt{ldmatrix} 只有软件公式，没有补偿通道，只能要求
@@ -748,13 +748,13 @@ phase 恰好为零。
 
 \paragraph{实践须知}（两个容易被模式名误解的量）
 \begin{itemize}
-  \item \textbf{「128\,B」是跨度，不是周期}。\texttt{SWIZZLE\_\allowbreak{}128\allowbreak{}B} 里的
-        $128$\,B 是「一次置换覆盖的行宽」；swizzle 的\emph{重复周期}要大
+  \item 128\,B 是跨度，不是周期。\texttt{SWIZZLE\_\allowbreak{}128\allowbreak{}B} 里的
+        $128$\,B 是一次置换覆盖的行宽；swizzle 的\emph{重复周期}要大
         得多：字节口径 $2^{M+S+B}$ 字节（改 bit$[4,7)$、读 bit$[7,10)$），
         fp16 的 SW128 是 $512$ 个元素 $=1024$\,B（$8$ 行），与行宽
-        $128$\,B 相差 $8$ 倍。讨论「多少行一循环」「多大对齐才够」
+        $128$\,B 相差 $8$ 倍。讨论多少行一循环、多大对齐才够
         时用的是后者。
-  \item \textbf{1024 对齐的来源是「相位为零」}。把
+  \item 1024 对齐的来源是相位为零。把
         \texttt{Swizzle\allowbreak{}<3,\allowbreak{}4,\allowbreak{}3>} 作用在字节偏移 $[0,1024)$ 上，软件公式
         算出的排布只有在基址为 $1024$ 的倍数时才与硬件写出的排布逐点一致，
         这正是 \texttt{\_\allowbreak{}\_\allowbreak{}align\_\allowbreak{}\_\allowbreak{}(1024)} 的来历（本章测试 case E：
@@ -770,7 +770,7 @@ phase 恰好为零。
 图~\ref{fig:23-1} 把式~\eqref{eq:23-chunk} 画成一张排布图：SW128 原子
 （$8\times64$ 的 fp16 $=$ 8 行 $\times$ 128\,B）中，行长 128\,B $=$
 8 个 16\,B chunk，第 $r$ 行的第 $j$ 个逻辑 chunk 落到物理位置
-$j\oplus r$。第~\ref{ch:12}~章的「对角线置换」在这里有了精确的
+$j\oplus r$。第~\ref{ch:12}~章的对角线置换在这里有了精确的
 位级解释，也是 \texttt{swizzle<64>} 与 \texttt{Swizzle\allowbreak{}<3,\allowbreak{}4,\allowbreak{}3>} 指同一件
 事的证据。
 
@@ -973,25 +973,25 @@ chunk 下标；蓝底行 $r=1/2/4$ 给出 chunk $c_0$ 落点翻转 $1/2/4$ 地�
 的 \texttt{--bench} 统一采集；端到端性能对照见第~\ref{ch:14}、\ref{ch:24}~章）。
 这里只给三条可核验的定量结论：
 
-\textbf{(1) bank conflict 的消除是「块级」的。} 一个 16 B chunk 占 4 个
+\textbf{(1) bank conflict 的消除是块级的。} 一个 16 B chunk 占 4 个
 bank（128 B $=$ 32 个 4 B bank）。式~\eqref{eq:23-chunk} 保证同一列块
 （固定 $j$）在 8 行里落到 8 个互不相同的物理 chunk，即 8 个 4-bank
-组，这正是 \texttt{ldmatrix}（每线程取 16 B）所需要的性质。第
-\ref{sec:23-minitest}~节的 case C 把它写成「固定 chunk、行扫描得 8 个
-不同值」，case F 则验证 $8\times32$ 原子的退化形态
+组，这正好是 \texttt{ldmatrix}（每线程取 16 B）所需要的性质。第
+\ref{sec:23-minitest}~节的 case C 把它写成固定 chunk、行扫描得 8 个
+不同值，case F 则验证 $8\times32$ 原子的退化形态
 （\texttt{chunk'} $=$ \texttt{chunk} $\oplus$ $(\text{row}\gg1)$，
 XOR 值只有 $\{0,8,16,24\}$ 四种，2 行一循环）。
 
 \textbf{(2) swizzle 的代价是零条额外指令。} 由于它被折叠进地址表达式，
 SASS 里表现为原有的地址计算多一条 \texttt{LOP3}；没有任何一条独立的
-「重排内存」指令。这也是 TMA 能把 swizzle 做进硬件的前提。
+重排内存指令。这也是 TMA 能把 swizzle 做进硬件的前提。
 
-\textbf{(3) TMA 的收益不在「拷贝更快」，而在「同步与数据管理更简单」。} 生产者
+\textbf{(3) TMA 的收益不在拷贝更快，而在同步与数据管理更简单。} 生产者
 只有 1 个线程发指令（式~\eqref{eq:23-tx} 的字节数由硬件事务计数保证），
 256 个线程不再参与 G$\to$S 的地址计算，也不再需要
 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads}，hgemm.cuh~L1990--2012 的注释把这一点总结为
-「barrier $+$ proxy fence 取代了 CTA 级同步」。对本章而言，「快」是
-次要的；「谁算地址、谁保证一致」这两个问题的答案变得唯一，
+「barrier $+$ proxy fence 取代了 CTA 级同步」。对本章而言，快是
+次要的；谁算地址、谁保证一致这两个问题的答案变得唯一，
 才是 TMA 对 kernel 工程的主要贡献。
 
 \begin{equation}
@@ -1004,14 +1004,14 @@ N_{\text{tx}} = (B_M\!\cdot\!B_K + B_N\!\cdot\!B_K)\times
 
 \begin{enumerate}[leftmargin=2.2em]
 \item \textbf{拿复合布局当偏移公式。} 带 swizzle 的
-\texttt{Composed\allowbreak{}Layout} 求值是「位置无关」的，TMA 硬件是「位置相关」的：
+\texttt{Composed\allowbreak{}Layout} 求值是位置无关的，TMA 硬件是位置相关的：
 同一个逻辑坐标在两个语义下可以指向不同物理地址。要么全用布局
 （\texttt{make\_tensor}/\texttt{Tensor}），要么全用公式（第~\ref{ch:12}~章的
-\texttt{swizzle<>}），\textbf{混用必错}。
+\texttt{swizzle<>}），混用必错。
 \item \textbf{基址对齐不够。} TMA smem 基址必须 1024 B 对齐
 （\texttt{\_\allowbreak{}\_\allowbreak{}align\_\allowbreak{}\_\allowbreak{}(1024)}）；128 B 对齐在 WGMMA 路径够用，
 在 \texttt{ldmatrix} 路径必然错。
-\item \textbf{把「$M$」当成元素粒度。} $2^M$ 是\emph{基本块}的字节数
+\item \textbf{把 $M$ 当成元素粒度。} $2^M$ 是\emph{基本块}的字节数
 （16\,B $=2^4$），不是元素个数；fp32 里它等于 4 个元素，fp16 里等于
 8 个元素。TMA descriptor 只接受 $M=4$ 的模式。
 \item \textbf{\texttt{tile\_\allowbreak{}to\_\allowbreak{}shape} 不整除。} $8\times64$ 原子铺
@@ -1025,8 +1025,8 @@ chunk 会跨 slice 交叉。
 4 B 为粒度的模式（例如标量表查）它不保证。强度由 $B$ 与行宽共同决定：
 本仓库 $8\times32$ 原子的实际强度只有 2 bit（4 个 XOR 图样、2 行一
 循环，4.1 节实践须知）。
-\item \textbf{忘记 swizzle 是地址函数。} 想让「按 (\texttt{row,col}) 求值
-的布局」与「按 flat 偏移求值的公式」一致，前提是行宽恰好等于
+\item \textbf{忘记 swizzle 是地址函数。} 想让按 (\texttt{row,col}) 求值
+的布局与按 flat 偏移求值的公式一致，前提是行宽恰好等于
 $2^{M+S}$ 字节。行宽不匹配时（例如 $B_K$ 取 48），两者不等。
 \end{enumerate}
 
@@ -1036,7 +1036,7 @@ $2^{M+S}$ 字节。行宽不匹配时（例如 $B_K$ 取 48），两者不等。
 $M$：被保留的连续低位位数（基本块宽 $2^M$ 字节）；$B$：XOR 掩码位数，
 同时决定 TMA 模式名（32/64/128\,B $\leftrightarrow$ 1/2/3）；
 $S$：\texttt{YYY} 相对 \texttt{ZZZ} 的位移；仅当行宽恰好为 $2^{M+S}$
-字节时（三档中只有 SW128 满足，见 Q2）才等价于「一行 $2^{M+S}$ 字节」，
+字节时（三档中只有 SW128 满足，见 Q2）才等价于一行 $2^{M+S}$ 字节，
 工程上恒取 3。约束 $|S|\ge B$。
 
 \textbf{Q2：为什么 $S$ 恒为 3？} 三档的 XOR 源字段固定取自 bit~7
@@ -1045,16 +1045,16 @@ $S$：\texttt{YYY} 相对 \texttt{ZZZ} 的位移；仅当行宽恰好为 $2^{M+S
 （1/2/3）与 box 内维（行宽 32/64/128\,B）。fp16 元素口径下 $M=3$
 （hgemm 自用的 \texttt{Swizzle\allowbreak{}<3,\allowbreak{}3,\allowbreak{}3>} 即此口径）。
 
-\textbf{Q3：为什么不直接写成「列块 XOR 行号」，还要用位运算？}
+\textbf{Q3：为什么不直接写成列块 XOR 行号，还要用位运算？}
 因为硬件（TMA、\texttt{ldmatrix} 的地址通道、WGMMA 的 descriptor）都
-只认字节地址上的位域交换；「列块 XOR 行号」在行宽 $=2^{M+S}$ 时与位运算
+只认字节地址上的位域交换；列块 XOR 行号在行宽 $=2^{M+S}$ 时与位运算
 等价（式~\eqref{eq:23-chunk}），行宽不匹配时就不等价了。
 
 \textbf{Q4：\texttt{composition} 的求值顺序？} 先算基础布局得偏移，
 Swizzle 再作用其上：$R(c)=\text{Swizzle}(\text{Layout}(c))$。
 Swizzle 不参与坐标分解。
 
-\textbf{Q5：TMA swizzle 与手写 swizzle 的冲突点在哪？} 在「相位」。
+\textbf{Q5：TMA swizzle 与手写 swizzle 的冲突点在哪？} 在相位。
 硬件按绝对地址算 phase，软件按相对偏移算；只有基址 1024 B 对齐时二者
 相同。WGMMA 有 \texttt{base\_offset} 字段可以补偿，
 \texttt{ldmatrix} 没有。
@@ -1080,8 +1080,8 @@ $8$ 个 chunk 各被覆盖 $128$ 次；
 \item \textbf{case B}：对合性 $\text{apply}(\text{apply}(x))=x$ 与
 $[0,512)$ 上的双射，再用自定义 base layout
 $\texttt{\allowbreak{}(8,\allowbreak{}8):\allowbreak{}(64,\allowbreak{}8)}$（64\,B 行、8\,B 块）验证
-$R(r,c)=64r+8\cdot(c\oplus r)$，并检查「固定块列扫 $8$ 行得到 $8$ 个
-不同物理块、$8$ 个不同 bank」；
+$R(r,c)=64r+8\cdot(c\oplus r)$，并检查固定块列扫 $8$ 行得到 $8$ 个
+不同物理块、$8$ 个不同 bank；
 \item \textbf{case C}：把字节空间的 \texttt{Swizzle\allowbreak{}<3,\allowbreak{}4,\allowbreak{}3>}（即
 \texttt{make\_tensor} 后指针路径的位置相关语义）作用在
 \texttt{GMMA::\allowbreak{}Layout\_\allowbreak{}K\_\allowbreak{}SW128\_\allowbreak{}Atom\allowbreak{}<half>} 的 $8\times64$ 域上，

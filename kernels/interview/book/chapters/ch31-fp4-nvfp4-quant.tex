@@ -5,8 +5,8 @@
 \section{本章导读}
 
 第~\ref{ch:27}--\ref{ch:29}~章建立了量化注意力的数学与 fp8 实现链。
-本章把数据格式降到 4 bit。NVFP4 不是「把 fp8 的量化代码换个
-dtype」：e2m1 只有 2 bit 指数 + 1 bit 尾数，可表示值只有
+本章把数据格式降到 4 bit。NVFP4 不是把 fp8 的量化代码换个 dtype：
+e2m1 只有 2 bit 指数 + 1 bit 尾数，可表示值只有
 $\{0,\pm0.5,\pm1,\pm1.5,\pm2,\pm3,\pm4,\pm6\}$，相对步长约 25\%（fp8 e4m3
 是 6.25\%）。在这样的格式上做出可用的 attention，靠的不是数据格式本身，
 而是围绕它的一整套\textbf{尺度处理}：microscaling 块尺度（scale
@@ -75,7 +75,7 @@ ffpa-attn 的 fp4 路径移植自 SageAttention3 的 Blackwell kernel
 
 \section{问题与动机}
 
-\textbf{e2m1 的动态范围限制}。fp8 路径里 per-block/per-thread scale 已经把
+e2m1 的动态范围限制分两层。fp8 路径里 per-block/per-thread scale 已经把
 相对步长压到 6.25\%；e2m1 再去掉 2 bit 尾数与 3 bit 指数后，单块内
 $\mathrm{amax}$ 与其余元素的分辨率差距被放大到无法忽略。更关键的是
 \textbf{分布中心}：attention 的 Q/K 行向量常带系统性均值偏移（randn 输
@@ -85,7 +85,7 @@ $Q\to\hat Q$，均值占据 $\mathrm{amax}$ 预算，把有效信息压进 1--2 
 smooth-Q/K 是\textbf{强制开启，不是选项}（skill §6.2）：e2m1 的 ±6
 动态范围使均值平滑成为精度必需。
 
-\textbf{三条出路叠加}。ffpa 的答案是把三种尺度手段全部用上：
+ffpa 的答案是把三种尺度手段全部用上：
 \begin{enumerate}[itemsep=0pt,topsep=2pt]
   \item \textbf{microscaling}：每 16 个元素共享一个 ue4m3 scale
         factor，块内 $\mathrm{amax}$ 归一到 e2m1 满量程 6；
@@ -98,9 +98,9 @@ smooth-Q/K 是\textbf{强制开启，不是选项}（skill §6.2）：e2m1 的 �
         kernel）。
 \end{enumerate}
 
-\textbf{P 的困难留给下一章}。Q/K/V 都能离线校准，唯独 $P$ 是 kernel 内
-softmax 现场产物，其 scale 只能在固定值域内设计：SA3 的两级 P 量化是
-fp4 路径精度成立的关键，数学与实现见第~\ref{ch:32}~章。
+Q/K/V 都能离线校准，唯独 $P$ 是 kernel 内 softmax 现场产物，其 scale
+只能在固定值域内设计：SA3 的两级 P 量化是 fp4 路径精度成立的关键，数学
+与实现见第~\ref{ch:32}~章。
 
 \section{数学原理}
 
@@ -127,7 +127,7 @@ SF 旁路，累加时按块乘回尺度。MXFP4（e2m1 + ue8m0/32 块）在 SA3
 Table 1 中精度低于 NVFP4（ue8m0 只有 8 bit 指数无尾数，SF 本身步长
 100\%），ffpa 未采用。
 
-\textbf{SF 的双重身份}。$s_{block}$ 既是量化除数又是 dequant 乘数，
+$s_{block}$ 有双重身份：既是量化除数又是 dequant 乘数，
 而 ue4m3 只有 3 bit 尾数，SF 自身的舍入误差（6.25\%）会整体作用于
 16 个元素：若块 $\mathrm{amax}$ 落在 ue4m3 的窄域之外，或行内动态范围
 极端（causal 早行 $P$ 近 one-hot），SF 编码误差就会放大。两级 P 量化
@@ -146,8 +146,7 @@ $\hat Q=\phi(Q-q_m)$、$\hat K=\phi(K^\top-\bar k)$，score 的精确重构
   S=q\,k^\top=(q-q_m)\,(k-\bar k)^\top+q_m k^\top+q\bar k^\top
   -q_m\bar k^\top
 \end{equation}
-直接展开有四项。SA3 的改写是把它压成「残差 MMA + 一个 rank-1 修正
-项」：
+直接展开有四项。SA3 的改写是把它压成残差 MMA 加一个 rank-1 修正项：
 \begin{equation}
   S=\hat Q\hat K^\top+\Delta S,\qquad
   \Delta S[b,h,m,n]=q_m[b,h,m,:]\cdot\bigl(K[b,h_{kv},n,:]-\bar k\bigr)
@@ -196,7 +195,7 @@ kernel 的 $S=\hat Q\hat K^\top+\Delta S$ 恰好等于 $q(k-\bar k)^\top$，
      2. $S$ 上任何多余的行常数只\textbf{平移 lse}、不改变 $O$；\\
      3. 减除也可交换进旋转域：$\mathrm{dot}$ 用 $\bar k^{rot}$（31.3.5）。};
 \end{tikzpicture}
-\caption{$\Delta S$ 的 rank-1 恒等式。四项展开折叠为「残差 MMA $+$ 修正项」：
+\caption{$\Delta S$ 的 rank-1 恒等式。四项展开折叠为残差 MMA 加一个修正项：
 $\Delta S$ 由低秩 GEMM $q_mK^{\top}$ 与每行常数 $q_m\bar k$ 两支等价构成，
 $K-\bar k$ 永不物化；行常数只平移 lse。}
 \label{fig:31-deltas}
@@ -221,7 +220,7 @@ $V^\top$、MXFP8 $V^\top$ 与 fused 单 launch 变体，均支持）。
 
 \subsection{pad 零贡献与 hadamard 的线性性}
 
-\textbf{head\_dim pad}。任意 $D\%8=0$ 经 64 对齐 pad 支持
+head\_dim pad 到 64 对齐后，任意 $D\%8=0$ 都可以支持
 （$D_{pad}=(D+63)\&\sim63$）：量化 kernel 读原始宽度 $d_{og}$、pad 列
 零填，Q/K/V 不物化 pad（仅输出 O pad 后切回）。pad 列的语义是
 \textbf{data=0 且 SF=0}：ue4m3 的 bits-0 是合法编码，零数据乘任何
@@ -230,7 +229,7 @@ scale 仍是零，MMA 贡献恒为 0，QK 的 $D$ 归约与 PV 的 pad 行都不
 注释）。workspace 另 pad 到 128 token 倍数（L10--12），tail 行同样零
 填，TMA 加载永远合法。
 
-\textbf{hadamard 融合的可行性}。WHT 线性
+hadamard 能融合进量化链，前提是 WHT 线性
 （$\mathrm{mean}(Hq)=H\,\mathrm{mean}(q)$，$HH^\top=I$）$\Rightarrow$ 均值与旋转
 可交换：$q_m$、$\Delta S$、$q_{km}$ 全部可以在\textbf{未旋转域}计算；
 旋转域里需要替换的只有两处：Q 段量化 bias 的减除改用旋转副本
@@ -286,8 +285,8 @@ L414 的 \texttt{sf\_col\_offset} 与 L482--485 的
 定生产端的写序}，两头任一侧改动都要同步。
 
 smooth-V 也 fused 在这里：$v_m$ 按 $d$ 减除发生在 smem 读出转 fp32
-之后、group absmax 之前（L443--456），一遍数据完成
-「转置 + 减均值 + 量化 + SF 打包」。
+之后、group absmax 之前（L443--456），一遍数据完成转置、减均值、
+量化与 SF 打包。
 
 \begin{figure}[H]
 \centering
@@ -475,8 +474,8 @@ $\pi(j)=(j\&\sim31)+(\mathrm{loc}/8)\cdot2+((\mathrm{loc}\%8)/2)\cdot8+
 $t\to t$ 直接对齐（\texttt{fp4\_pscale.cuh} L523--524）；置换补偿只
 发生在 K 与 P 两侧。
 
-\textbf{必须 perm-aware 的两处}。置换只改存储位置不改逻辑语义，但任何
-「按列位置取语义」的操作都要过一遍 $\pi^{-1}$：
+置换只改存储位置，不改逻辑语义。但有两类操作按列位置取语义，必须
+过一遍 $\pi^{-1}$：
 \begin{itemize}[itemsep=0pt,topsep=2pt]
   \item \textbf{masking}：causal/kv-tail 谓词必须用
         $pos=kv\_tile\cdot B_c+kv\_perm32(col)$ 判定。上游 SA3 对原始
@@ -825,21 +824,21 @@ $\sim$1ms 量级的前处理链意味着\textbf{小 $N_q$（cross/decode）结�
 
 \section{实践经验}
 
-\textbf{移植策略：fragment adapter 逐字拷贝}。kv\_perm32 体系、SF
-atom 布局、C/A fragment 映射这些内容是 SA3 在真实 hardware 上调试出
-来的位级布局知识，重写极易引入静默错位。ffpa 的选择是逐字拷贝
+移植策略是逐字拷贝 fragment adapter。kv\_perm32 体系、SF atom 布局、
+C/A fragment 映射这些内容是 SA3 在真实 hardware 上调试出来的位级布局
+知识，重写极易引入静默错位。ffpa 的选择是逐字拷贝
 adapter 层、自研外围（骨架/pipeline/dispatch），只修正确性 bug
 （perm-aware masking）。这与第~\ref{ch:28}--\ref{ch:29}~章自研 fp8
 链的策略不同：fp8 没有 SA3 级别的现成参照。
 
-\textbf{评估口径}。fp4 的 max\_abs 在 causal 尖峰行天然 0.5--0.75
+fp4 的 max\_abs 在 causal 尖峰行天然 0.5--0.75
 （e2m1 的 25\% 步长 × 尖峰行 P 近 one-hot 的误差结构，probe sim 与
 kernel 同级证明是格式固有），SA3 论文自身用 cosine 评估。工程验收
 应该看 mean\_abs（0.014--0.03 是质量指标）与 allclose 容差
 （dense 0.15 / causal 0.70），不要用 fp8 的 0.05 级容差去卡 fp4。
 
-\textbf{固定链的适用边界}。本节 bench 都是 $N_q{=}8192$；把 fp4 路径
-用在 decode/短序列上，前处理链的固定成本会抵消全部收益。规划上应把
+本节 bench 都是 $N_q{=}8192$；把 fp4 路径用在 decode/短序列上，前处理
+链的固定成本会抵消全部收益。规划上应把
 fp4 前处理与 prefill 阶段绑定，decode 回 fp8/fp16 路径。
 
 \section{常见坑}
@@ -847,14 +846,14 @@ fp4 前处理与 prefill 阶段绑定，decode 回 fp8/fp16 路径。
 \begin{enumerate}[itemsep=2pt,topsep=2pt]
   \item \textbf{subbyte 指针}：\texttt{reinterpret\_cast<Element*>} 对
         4 bit 类型按 1B 缩放偏移，地址差 2 倍，TMA IMA 在
-        stage$\ge$1 才出现——必须 \texttt{make\_smem\_ptr}（31.4.6 节）。
+        stage$\ge$1 才出现，必须 \texttt{make\_smem\_ptr}（31.4.6 节）。
   \item \textbf{0/0 NaN}：全零块 $s=0$，除法前必须特判倒数取 0
         （L293/L460）；全 masked 组、pad 列都会触发。
   \item \textbf{masking 不 perm-aware}：置换存储后 causal 谓词忘了过
         $\pi^{-1}$，max\_abs 直接 3.3 级别（上游 SA3 的真实 bug）。
   \item \textbf{SF 写序不 match atom}：SF offset 公式与
         \texttt{BlockScaledConfig} 不一致时数据看起来「差不多对」但
-        精度大幅劣化——SF 错位是尺度级错误，不是噪声级。
+        精度大幅劣化。SF 错位是尺度级错误，不是噪声级。
   \item \textbf{e2m1 的饱和语义}：\texttt{cvt.rn.satfinite.e2m1x2.f32}
         的 \texttt{.satfinite} 是 PTX 对 4 bit 目的端的强制修饰符（不
         存在非 satfinite 的裸变体），越界值饱和到 $\pm$6、NaN 转 $+6$，

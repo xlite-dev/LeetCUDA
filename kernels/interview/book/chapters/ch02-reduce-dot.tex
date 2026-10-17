@@ -4,7 +4,7 @@
 
 \section{本章导读}
 
-归约（reduce）是 GPU 上一切「多对一」计算的总称：求和、求 max、点积、softmax
+归约（reduce）是 GPU 上一切多对一计算的总称：求和、求 max、点积、softmax
 的分母、LayerNorm 的均值方差、attention 里的 $\mathrm{LSE}$ 等，全部是归约的
 变体。归约写得好不好，直接决定上层算子的下限。本章拆解
 base.cuh Phase 1（L87--305）的四类实现：warp 内蝶形归约（warp\_reduce\_sum /
@@ -12,13 +12,13 @@ warp\_reduce\_max）、block 两级归约（block\_reduce\_sum / block\_reduce\_
 跨 block 全局归约（block\_reduce\_all）以及它的直接应用点积（dot /
 dot\_vec4）。
 
-本章按「层层放大」的顺序来讲：先用 1 条 shuffle 指令在 warp 内归约 32 个数
+本章按层层放大的顺序讲：先用 1 条 shuffle 指令在 warp 内归约 32 个数
 （\S\ref{sec:ch02-warp}），再用 shared memory 把 8 个 warp 合并成一个 block
 （\S\ref{sec:ch02-block}），最后用 atomicAdd 把上万个 block 汇成一个全局
 结果（\S\ref{sec:ch02-global}）。每一层引入新的硬件机制，也带出新的坑。
 
 \textbf{前置}：第 \ref{ch:01} 章（warp/SIMT/延迟隐藏）。\textbf{源码区间}：
-base.cuh L87--305。\textbf{无编译宏限定}。
+base.cuh L87--305。无编译宏限定。
 
 \section{问题与动机}
 
@@ -30,7 +30,7 @@ base.cuh L87--305。\textbf{无编译宏限定}。
 归约优化的核心，就是把这条深链条\textbf{改造成浅树}：$N$ 个数两两
 相加（$N/2$ 个并行加法），再对结果两两相加（$N/4$ 个），如此递推，树高
 $\lceil \log\sb 2 N \rceil$，1024 个数只要 10 层。树形化也有代价：
-「谁跟谁相加」变成了结构化的信息，硬件与代码都要按约定交换数据。本章的任务
+谁跟谁相加变成了结构化的信息，硬件与代码都要按约定交换数据。本章的任务
 就是讲清这套约定在 GPU 三级存储（寄存器/shuffle、smem、global/atomic）上的
 三种实现。
 
@@ -106,19 +106,19 @@ CUDA 提供 warp 级寄存器交换指令 shuffle：同 warp 的线程可以\tex
   \texttt{var} 值，其中 $\oplus$ 是按位异或；\texttt{width} 把交换限制在
   大小为 width 的 segment 内（lane 地址先对 width 取模再异或）。
 \item \texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}sync\allowbreak{}(mask,\allowbreak{} var,\allowbreak{} src\allowbreak{}Lane,\allowbreak{} width)}：所有线程读同一
-  srcLane 的值，用于\textbf{广播}。
+  srcLane 的值，用于广播。
 \end{itemize}
 
 蝶形归约（butterfly reduction）用 xor 指令构造两两相对的 lane 对。设 warp
 宽度 $W = 2^{R}$（$R = 5$），第 $r$ 轮（$r = 1, \dots, R$）的掩码为
 $m\sb r = 2^{R-r}$，每个 lane 把自己的值与 lane $i \oplus m\sb r$ 的值相加。
-这个过程可以解析地刻画。定义 $S(r, i)$ 为「$r$ 轮之后 lane $i$ 持有的
-部分和」，则
+这个过程可以解析地刻画。定义 $S(r, i)$ 为 $r$ 轮之后 lane $i$ 持有的
+部分和，则
 \begin{equation}
   S(r, i) \;=\; \sum\sb{j \,\bmod\, 2^{R-r} \;=\; i \,\bmod\, 2^{R-r}} x\sb j,
   \label{eq:ch02-invariant}
 \end{equation}
-即 $r$ 轮之后，lane $i$ 持有\textbf{所有与它低 $R-r$ 位相同的原始元素之和}。
+即 $r$ 轮之后，lane $i$ 持有所有与它低 $R-r$ 位相同的原始元素之和。
 用归纳法证明：$r = 0$ 时模 $2^{R} = W$ 的剩余类只含 $i$ 自己，
 $S(0, i) = x\sb i$，成立。归纳步：第 $r$ 轮掩码 $m\sb r = 2^{R-r}$，lane $i$
 执行 $S(r, i) = S(r-1, i) + S(r-1, i \oplus m\sb r)$。按归纳假设，第一项是
@@ -126,7 +126,7 @@ $S(0, i) = x\sb i$，成立。归纳步：第 $r$ 轮掩码 $m\sb r = 2^{R-r}$�
 这两个剩余类恰好是把模 $2^{R-r+1}$ 的类 $i$ 按第 $R-r$ 位切成两半，拼起来
 正是模 $2^{R-r}$ 的剩余类 $i$。$\square$
 
-$R$ 轮之后 $2^{R-R} = 1$，「模 1 相同」对所有 $j$ 成立，于是
+$R$ 轮之后 $2^{R-R} = 1$，模 1 相同对所有 $j$ 成立，于是
 $S(R, i) = \sum\sb j x\sb j$，即\textbf{每个 lane 都持有完整的归约结果}
 （all-reduce 语义）。这个证明顺带给出 xor 成对交换的三条性质，源码注释
 （L144--147）把它们总结为：成对对称（$(i \oplus m) \oplus m = i$）、每轮
@@ -172,9 +172,9 @@ $S(R, i) = \sum\sb j x\sb j$，即\textbf{每个 lane 都持有完整的归约�
 \label{fig:2-1}
 \end{figure}
 
-\textbf{为什么不用 \_\_shfl\_down\_sync？}down 模式下 lane $i$ 每轮读
+为什么不用 \_\_shfl\_down\_sync？down 模式下 lane $i$ 每轮读
 lane $i + m\sb r$，越界 lane 读自己（复制）。$R$ 轮后只有 lane 0 凑齐全和，
-其余 lane 持有的是被「越界复制」污染的错误部分和；且每轮真正「有效」的 lane
+其余 lane 持有的是被越界复制污染的错误部分和；且每轮真正有效的 lane
 数逐轮减半（第一轮只有一半 lane 的加法是有意义的），硬件却仍为全 warp 执行这些指令。
 xor 模式所有 lane 每轮都做有效加法、结束时全员拿到结果，正如 base.cuh
 L95 注释所说「xor 模式所有线程做相同工作量，更均衡」。后文 block 归约的
@@ -256,22 +256,22 @@ shfl 广播（见 \S\ref{sec:ch02-block}）。
   5 + \log\sb 2 W \ \text{轮},
 \end{equation}
 $T = 256$（$W = 8$）时共 8 轮，外加一次 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()}。
-smem 流量只有 $W$ 次写 + $W$ 次读（各 4B）。对比「所有中间量走 smem」的
+smem 流量只有 $W$ 次写 + $W$ 次读（各 4B）。对比所有中间量走 smem 的
 朴素树形归约（$\log\sb 2 T = 8$ 轮 smem 往返），两级结构把 smem 流量降了一个
-量级。这就是 ch01 图 ch01-1 那条规律的局部应用：\textbf{能在寄存器层完成的
-（warp 内 5 轮），绝不下放到 smem 层}。
+量级。这就是 ch01 图 ch01-1 那条规律的局部应用：能在寄存器层完成的
+（warp 内 5 轮），绝不下放到 smem 层。
 
 \subsection{跨 block 求和与浮点非结合性}
 
-$N \gg T$ 时需要多个 block 分摊元素，每个 block 产出部分和后，还差「把
-$G$ 个 block 的和汇成一个」的最后一步。base.cuh 用
+$N \gg T$ 时需要多个 block 分摊元素，每个 block 产出部分和后，还差把
+$G$ 个 block 的和汇成一个的最后一步。base.cuh 用
 \texttt{atomic\allowbreak{}Add\allowbreak{}(y,\allowbreak{} val)}：$G$ 次全局原子累加直接打进同一个地址 $y$。
-原子性保证结果\textbf{正确}，但有两个代价：其一，$G$ 次原子操作在 L2 的
+原子性保证结果\textbf{正确}，但有两个代价：$G$ 次原子操作在 L2 的
 原子单元上是\textbf{串行化}的（对同一地址的 read-modify-write 无法并行），
-\S\ref{sec:ch02-perf} 的 bench 显示这就是该 kernel 的真瓶颈；其二，浮点
+\S\ref{sec:ch02-perf} 的 bench 显示这就是该 kernel 的真瓶颈；此外浮点
 加法不满足结合律，$G$ 个部分和的累加顺序取决于 block 完成顺序，
-\textbf{run-to-run 不确定}。这就是 ch02 测试用 CPU fp64 参考 + 容差
-（TOL\_F32ACC）而不是 bitwise 比对的原因，也是所有「atomic 求和型」kernel
+run-to-run 不确定。这就是 ch02 测试用 CPU fp64 参考 + 容差
+（TOL\_F32ACC）而不是 bitwise 比对的原因，也是所有 atomic 求和型 kernel
 （含 Part II 的 split-K GEMM）精度对齐时要记住的背景。
 
 \section{设计与实现}
@@ -298,8 +298,8 @@ $G$ 个 block 的和汇成一个」的最后一步。base.cuh 用
 实现只有一行循环体，但模板参数的语义值得展开。\texttt{kWarpWidth} 既是循环起点
 （\texttt{mask = kWarpWidth >> 1}）也是 shuffle 的 \texttt{width} 实参：
 当它小于 32 时（如后续 FA 章节的 $W = 4$），异或被限制在 segment 内，
-相邻 segment 互不串扰，一个模板参数同时实现了「归约宽度」与「通信域」，
-这是本书第一处「用编译期参数把语义固化进指令」的示范。\texttt{mask} 从
+相邻 segment 互不串扰，一个模板参数同时实现了归约宽度与通信域，
+这是本书第一处用编译期参数把语义固化进指令的示范。\texttt{mask} 从
 $W/2$ 递减到 1，正是 \S\ref{sec:ch02-math} 推导中 $m\sb r = 2^{R-r}$ 的代码
 形态；\texttt{\#pragma unroll} 让 5 轮循环在编译期完全展开成 5 条独立
 shuffle。warp reduce max（L158--166）与 sum 完全同构，只是把 \texttt{+}
@@ -339,13 +339,13 @@ segment 的 lane 参与 shuffle），即前文模板参数所述的通信域行�
 对照 \S\ref{sec:ch02-math} 的步数统计读这段代码：第 1 步
 \texttt{warp\_\allowbreak{}reduce\_\allowbreak{}sum\allowbreak{}<k\allowbreak{}Warp\allowbreak{}Size>} 是 warp 内 5 轮；第 2 步 lane 0 把
 warp 部分和写进 smem；\texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()} 划出读写边界：没有它，
-先写完的 warp 可能被后写的覆盖；第 3 步是本实现的关键：\textbf{不是让
+先写完的 warp 可能被后写的覆盖；第 3 步是本实现的关键：不是让
 warp 0 独自做二次归约，而是每个 warp 的前 $W$ 个 lane 都读入全部 $W$ 个
-部分和、各自再归约一遍}。多余的 $W-1$ 份计算是冗余的（只是寄存器加法），
+部分和、各自再归约一遍。多余的 $W-1$ 份计算是冗余的（只是寄存器加法），
 换来的是不需要第二次 smem 往返与第二次同步。第 4 步
 \texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}sync\allowbreak{}(0xffffffff,\allowbreak{} value,\allowbreak{} 0,\allowbreak{} 32)} 把 lane 0 的结果广播给
 \textbf{所有} 256 个线程。源码注释「关键！否则每个 warp 只有 lane 小于
-kNumWarps 知道结果」说的就是这一步：归约函数的约定是「block 内全员可见」，
+kNumWarps 知道结果」说的就是这一步：归约函数的约定是 block 内全员可见，
 后续 softmax 除以 $\ell$、norm 除以 $\sigma$ 都依赖它。block reduce max
 （L198--214）同构，初值从 0 换成 \texttt{-FLT\_MAX}。
 
@@ -360,15 +360,15 @@ kNumWarps 知道结果」说的就是这一步：归约函数的约定是「bloc
 两个 kernel 共享同一骨架：守卫式加载（\texttt{idx < N} 时取数、否则取
 加法单位元 0，这保证不满的最后一个 block 不污染求和；max 版对应
 \texttt{-FLT\_MAX}）$\to$ warp 归约 $\to$ smem 汇合 $\to$ \textbf{warp 0}
-二次归约 $\to$ \textbf{单个线程}写全局。与 block\_reduce\_sum 的两处差异
-值得逐条分析：其一，二次归约只留给 warp 0（\texttt{if (warp == 0)}），
-因为这里的结果只需被写出、不必广播全员；其二，写出者是
+二次归约 $\to$ \textbf{单个线程}写全局。与 block\_reduce\_sum 有两处差异：
+二次归约只留给 warp 0（\texttt{if (warp == 0)}），因为这里的结果只需被写出、
+不必广播全员；写出者是
 \texttt{tid == 0}，源码注释特意强调「tid == 0, not lane 0. 只有 block
 内的一个线程负责写回全局结果，避免重复累加」：lane 0 是每个 warp 的第 0
 线程（一个 block 里有 $W$ 个），tid 0 才是全 block 唯一。多 block 之间
 则靠 \texttt{atomicAdd} 汇合，如 \S\ref{sec:ch02-math} 所述。
 
-dot 把「逐元素乘」并入加载阶段（\texttt{prod = a[idx] * b[idx]}），归约
+dot 把逐元素乘并入加载阶段（\texttt{prod = a[idx] * b[idx]}），归约
 骨架保持不变。这也是本源码库反复出现的设计范式：\textbf{算子 = 元素级
 预变换 + 归约 + 后处理}，ch04 的 softmax（预变换 exp、后处理除法）与
 ch06 的 norm（预变换平方）都是这个模板的具体实例。dot\_vec4（L278--305）则
@@ -464,13 +464,13 @@ dot\_vec4 & 0.04155 & 807.53 GB/s \\
 24\,\mu$s（HBM 口径）甚至更少（L2 口径），而实测 42 $\mu$s 由另一个因素决定：
 $G = N/256 = 16384$ 个 block 各做一次 \texttt{atomic\allowbreak{}Add\allowbreak{}(y)}，对同一地址的
 全局原子串行化按 $42\,\mu s / 16384 \approx 2.6\,\mathrm{ns/op}$ 计，16384 次合计约
-$42\,\mu s$，恰好等于实测总时长。\textbf{结论：该实现的上限由全局原子的串行吞吐决定}；
-dot\_vec4 把访存指令数降为 $1/4$（字节数不变），总时长却完全不变，正是因为访存早已不是
-短板。改进方向：把「每 block 一次全局原子」改成「两级 kernel：先
-每 block 写出自己的和（$G$ 个地址，无冲突），再起一个小 kernel 归约
-$G$ 个数」，或 block 内先 smem 累积再少次原子，atomic 次数从 $G$ 降到
-$\lceil G/K \rceil$，时间随之线性下降。这也是面试里「跨 block 归约怎么
-优化」的标准答案骨架。
+$42\,\mu s$，恰好等于实测总时长。结论：该实现的上限由全局原子的串行吞吐决定。
+dot\_vec4 把访存指令数降为 $1/4$（字节数不变），总时长却完全不变，正是因为访存
+早已不是短板。改进方向：把每 block 一次全局原子改成两级 kernel，先让
+每 block 写出自己的和（$G$ 个地址，无冲突），再起一个小 kernel 归约 $G$ 个数；
+或 block 内先 smem 累积再少次原子，atomic 次数从 $G$ 降到
+$\lceil G/K \rceil$，时间随之线性下降。这也是面试里跨 block 归约怎么
+优化的标准答案骨架。
 
 \begin{figure}[H]
 \centering
@@ -539,24 +539,24 @@ vec4 kernel（dot/relu/eadd）统一。relu\_vec4 有同样问题，详见 ch03�
 \section{常见坑}
 
 \begin{enumerate}
-\item \textbf{漏掉 \_\_syncthreads()}。smem 写与读之间没有同步，先完成的
+\item \textbf{漏掉 \_\_syncthreads()}：smem 写与读之间没有同步，先完成的
   warp 会读/覆盖到脏数据；且同步必须放在\textbf{所有线程都能到达}的位置
   （发散分支内的 syncthreads 会死锁）。
-\item \textbf{归约后不广播}。block\_reduce\_sum 若删掉最后的
+\item \textbf{归约后不广播}：block\_reduce\_sum 若删掉最后的
   \texttt{\_\_shfl\_sync}，只有每个 warp 的前 $W$ 个 lane 持有正确结果，
-  后续「全员除以 sum」的代码会读到错误结果，而且这种错在小例子里可能
+  后续全员除以 sum 的代码会读到错误结果，而且这种错在小例子里可能
   不触发（warp0 的 lane 恰好是对的）。
-\item \textbf{把 lane0 当 tid0 用}。跨 block 写出时用 lane0，一个 block
+\item \textbf{把 lane0 当 tid0 用}：跨 block 写出时用 lane0，一个 block
   会写出 $W$ 次，结果系统性偏大 $W$ 倍（sum），源码注释专门用「tid == 0,
   not lane 0」提醒。
-\item \textbf{二次归约的 width 传错}。第二次 warp\_reduce 的模板参数是
+\item \textbf{二次归约的 width 传错}：第二次 warp\_reduce 的模板参数是
   \texttt{kNumWarps} 不是 \texttt{kWarpSize}；传错不会算错结果：smem 读取
   带 \texttt{lane < kNumWarps} 守卫，越界 lane 持单位元，但会多做
   $\log_2 32 - \log_2 W$ 轮无效 shuffle，归约域也超出了有效数据范围。
-\item \textbf{期望 atomic 求和的结果逐位可复现}。浮点加法非结合 + block
+\item \textbf{期望 atomic 求和的结果逐位可复现}：浮点加法非结合 + block
   调度不定序 $\Rightarrow$ run-to-run 抖动；对齐测试要么用容差，要么改
   用确定序的两级归约。
-\item \textbf{warp 内归约后忘记处理 partial warp}。若活跃线程数不足 32
+\item \textbf{warp 内归约后忘记处理 partial warp}：若活跃线程数不足 32
   （如最后一个不满的 warp），参与归约的 lane 携带中性值即可（sum 用 0、
   max 用 \texttt{-FLT\_MAX}），本实现的守卫式加载已处理；自行修改实现时别丢掉这一步。
 \end{enumerate}
@@ -606,7 +606,7 @@ $10^{-7}$ 量级，远低于 $10^{-3}$ 容差，与 \S\ref{sec:ch02-math} 的浮
 未放大误差。）
 
 \textbf{动手实验}：(1) 把 block\_reduce\_all 的写回从 tid0 改成 lane0，
-观察结果放大约 8 倍（$W$ 倍），体会「tid vs lane」；(2) 把 grid 减为 1 个
+观察结果放大约 8 倍（$W$ 倍），体会 tid 与 lane 的区别；(2) 把 grid 减为 1 个
 block 再跑 bench，观察时长从 42 $\mu$s 掉到远小于原值，验证瓶颈在
 $G$ 次全局原子而非归约本身；(3) 把 $N$ 改成 510 再编译运行 dot\_vec4，
 用 compute-sanitizer 的 memcheck 观察越界读（对应

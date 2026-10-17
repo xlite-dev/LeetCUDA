@@ -4,7 +4,7 @@
 \section{本章导读}
 
 第~\ref{ch:10}~章用 WMMA 用上了 Tensor Core，但 WMMA 是一层
-「厚抽象」：fragment 布局是黑盒、寄存器数量不可控、没有寄存器双缓冲、
+厚抽象：fragment 布局是黑盒、寄存器数量不可控、没有寄存器双缓冲、
 流水线只能两级。本章把这层抽象整个去掉，直接用 PTX 内联汇编写
 HGEMM：\texttt{mma.\allowbreak{}sync.\allowbreak{}aligned.\allowbreak{}m16n8k16} 矩阵指令 + \texttt{ldmatrix}
 碎片装载 + \texttt{cp.async} 三级流水（kStages$=$3）。本章的教学源码是
@@ -39,13 +39,13 @@ T/N 来自 Fortran 的列主序约定：N（Normal）$=$ 列主序原生、
 T（Transposed）$=$ 行主序。于是 \textbf{TN} $=$ A 行主序 $+$ B 列主序，
 即 $C\sb {M\times N} = A\sb {M\times K}\times B\sb {K\times N}$，其中 B 以
 $B^{\top}\sb {N\times K}$ 行主序存放（源码头注释 hgemm.cuh~L10--22 对此有一段
-很好的辨析）。这个「转置存储」的好处：A 与 $B^{\top}$ \textbf{都是行主序、
+很好的辨析）。这个转置存储的好处：A 与 $B^{\top}$ \textbf{都是行主序、
 内维都是 K}，cp.async 搬运完全对称；而 mma 指令要求的
-\texttt{.row.col}（A 行、B 列）恰好被「逐行装载 $B^{\top}$ $=$ 逐列装载 B」
+\texttt{.row.col}（A 行、B 列）也不是问题：逐行装载 $B^{\top}$ 就是逐列装载 B，
 天然满足，\texttt{ldmatrix} 一个 \texttt{.trans} 都不用加（11.4.4）。
 
 \textbf{动机三：更深的流水线。}$B\sb K$ 从 8 提到 16 后单个 tile 变大变慢，
-两级缓冲的「每迭代收口」不再够用；kStages$=$3 让一组搬运可以跨迭代
+两级缓冲的每迭代收口不再够用；kStages$=$3 让一组搬运可以跨迭代
 in-flight，搬运延迟的容忍窗口翻倍。代价是 smem 线性涨到 24~KB
 （$3\times(128{\times}16{+}128{\times}16)\times2$~B）。
 
@@ -84,11 +84,11 @@ mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16
 三条精度语义（PTX 原文，写 epilogue 时必须了解）：
 （1）\textbf{元素乘至少单精度}执行；
 （2）当 C 与 D 都是 \texttt{.f16} 时，\textbf{累加至少半精度}，
-也就是说本章 \texttt{f16.f16.f16.f16} 变体的累加链每条 \texttt{mma} 指令
+即本章 \texttt{f16.f16.f16.f16} 变体的累加链在每条 \texttt{mma} 指令
 边界处都舍回 fp16；K 很长时误差沿 $\sqrt{K}$ 增长（11.9~节实测约
 $1.5\times10^{-2}$，K$=$128）。要高精度就换 \texttt{HMMA16816\allowbreak{}F32}
 （4 个累加寄存器的 fp32 版本）。
-（3）PTX 明确声明：\textbf{累加顺序、舍入与次正规处理均未指定}。
+（3）PTX 明确声明：累加顺序、舍入与次正规处理均未指定。
 不同架构/驱动上逐位结果可不同，正确性判定必须用容差。
 
 寄存器带宽（每 warp、每条指令）：A 输入 4 个 \texttt{.b32}
@@ -190,7 +190,7 @@ B 是 $k16 \times n8$，列主序参与。坐标公式：
 $R0 = \{b\sb 0,b\sb 1\}$ 是 $k \in \{2\mathrm{tig}, 2\mathrm{tig}{+}1\}$（上半
 $k$ 区），$R1 = \{b\sb 2,b\sb 3\}$ 再加 8（下半 $k$ 区）。8 个 lane 组
 （$\mathrm{g} = 0..7$）拼齐 8 列。与 A 对照记忆：A 按行分、B 按列分，
-$k$ 方向都是「4 个 lane 各持 2 个相邻元素」。B 侧逐格布局见
+$k$ 方向都是 4 个 lane 各持 2 个相邻元素。B 侧逐格布局见
 图~\ref{fig:11-b-fragment}（图~\ref{fig:11-2a} 的 B 侧对照图）。
 
 \begin{figure}[H]
@@ -548,7 +548,7 @@ CuTe 的 TiledMMA 与 Value Tile 概念（L180--183），
 加载坐标与第~\ref{ch:10}~章相同但搬 half：\texttt{tid/2} 定行（0--127）、
 \texttt{tid\%2} 选 16~B 半行（$k$ 的 0--7 或 8--15，恰 8 个 half $=$ 16~B）。
 注意两个 gmem 索引\textbf{形式对称}：A 用 \texttt{m*K + k}、B 用
-\texttt{n*K + k}，后者就是「B 以 $B^{\top}$ 行主序存储」的落点，
+\texttt{n*K + k}，后者就是 B 以 $B^{\top}$ 行主序存储的落点，
 也是 TN 布局在代码里的全部体现（L194 与 L197 的两行注释）。
 
 \subsection{统一循环：预取、条件加载与自适应等待}
@@ -556,8 +556,8 @@ CuTe 的 TiledMMA 与 Value Tile 概念（L180--183），
 \lstinputlisting[linerange={212-241},firstnumber=auto,
   title={hgemm.cuh L212-241（统一主循环：条件预取 tile $k{+}\mathrm{kStages}{-}1$）}]{../hgemm.cuh}
 
-与第~\ref{ch:10}~章「主循环从 $k{=}\mathrm{K\_STAGE}{-}1$ 开始 + 尾部单独
-排空」的写法不同，这里用\textbf{统一循环}：$k$ 从 0 开始、迭代 $k$ 负责计算
+与第~\ref{ch:10}~章主循环从 $k{=}\mathrm{K\_STAGE}{-}1$ 开始、尾部单独
+排空的写法不同，这里用\textbf{统一循环}：$k$ 从 0 开始、迭代 $k$ 负责计算
 tile $k$、同时预取 tile $k+\mathrm{kStages}-1$（前 $\mathrm{kStages}{-}1$
 个 tile 已由预载填满）。预取带边界条件（L220 的 \texttt{if}），
 尾部迭代不再发搬运；等待也自适应（L297--304）：满载期
@@ -587,8 +587,8 @@ B 侧地址：行 \texttt{lane\%8}（$B^{\top}$ 的 $n$ 0--7）、列
 lane 16--31 传的重复地址被硬件忽略（PTX 允许；sm\_75 以下才强制全 warp
 合法地址）。装载语义值得再念一遍：\texttt{ldmatrix}（无 \texttt{.trans}）
 \textbf{按行}装载 $8\times8$ 的 $B^{\top}$ 子块，即按 $n$ 行取 $k$ 方向
-8 个 half；而 mma 的 \texttt{.col} B fragment 恰好要「每 lane 一列 $n$、
-$k$ 方向 2 对」（式~\ref{eq:11-bpos}）。两者统一的方式：$B^{\top}$ 的行
+8 个 half；而 mma 的 \texttt{.col} B fragment 恰好要每 lane 一列 $n$、
+$k$ 方向 2 对（式~\ref{eq:11-bpos}）。两者统一的方式：$B^{\top}$ 的行
 就是 B 的列。源码 L267--268 注释「为什么不用 .trans」说的正是这件事。
 
 \subsection{计算核：每 warp 每迭代 16 条 mma}
@@ -603,7 +603,7 @@ $8\times16 = 128$ 条指令 $\times 4096$ FLOP $= 524{,}288$ FLOP。
 累加器寄存器每 lane $4\times4\times2 = 32$ 个 \texttt{.b32}，
 加上 \texttt{RA} 16 个、\texttt{RB} 8 个与地址变量，
 \texttt{\_\allowbreak{}\_\allowbreak{}launch\_\allowbreak{}bounds\_\allowbreak{}\_\allowbreak{}(256)}（L129）下编译器仍有余量不溢出，
-这便是手写路径「寄存器白盒」的直接收益。
+这便是手写路径寄存器白盒的直接收益。
 
 \subsection{Epilogue：shuffle 收拢 C fragment}
 
@@ -613,8 +613,8 @@ $8\times16 = 128$ 条指令 $\times 4096$ FLOP $= 524{,}288$ FLOP。
 按式~\ref{eq:11-cpos}，C 的一行 8 个 half 分散在 4 个 lane
 （$\mathrm{tig}=0..3$ 各持一对）。要合并成一条 16~B（8 个 half）的
 向量化写回，每个 lane 先把邻居的半行 shuffle 过来：
-\texttt{RC0[j]} 凑「$\mathrm{g}$ 行」（行 0--7 之一）的 4 条 \texttt{.b32}，
-\texttt{RC1[j]} 凑「$\mathrm{g}{+}8$ 行」的。随后只有
+\texttt{RC0[j]} 凑 $\mathrm{g}$ 行（行 0--7 之一）的 4 条 \texttt{.b32}，
+\texttt{RC1[j]} 凑 $\mathrm{g}{+}8$ 行的。随后只有
 \texttt{lane\%4==0} 的 lane 执行写回：
 
 \lstinputlisting[linerange={365-382},firstnumber=auto,
@@ -625,7 +625,7 @@ $\mathrm{g}$ 行与 $\mathrm{g}{+}8$ 行各写一条
 \texttt{float4}（即 16~B）store，各覆盖 8 个 half；列起点由
 \texttt{warp\_n} 与 $j$ 平移。每个 warp 负责 $64\times32$ 子块，
 与 11.4.1 的排布完全一致。写回没有经过 smem 中转：
-寄存器布局白盒后 epilogue 可以走「shuffle $\to$ 直接宽写」的捷径，
+寄存器布局白盒后 epilogue 可以走 shuffle $\to$ 直接宽写的捷径，
 WMMA 做不到这一点（对照第~\ref{ch:10}~章坑五）。收拢与写回的数据流见图~\ref{fig:11-epilogue-shuffle}。
 
 \begin{figure}[H]
@@ -778,15 +778,15 @@ HGEMM MMA (S=3, BLK\_SW=1) & 0.000e+00 & 127.3/246.9 (0.52x) \\
 \textbf{坑二：\texttt{.aligned} 与 early return 不相容。}\allowbreak{}mma/ldmatrix 要求
 全 warp 无分歧。本 kernel L174--175 的
 \texttt{if (... >= M ...) return;} 依赖
-「M/N 按 128 对齐时条件恒假」这一前提才安全；若形状未对齐，
+M/N 按 128 对齐时条件恒假这一前提才安全；若形状未对齐，
 同一 warp 的 32 个 lane（跨 16 个 $m$ 行）可能部分返回部分继续，
 后续 mma 即未定义行为。对齐假设写在头注释里（L225 上方），
 改造 kernel 支持非对齐形状时必须先处理这里。
 
 \textbf{坑三：x2/x1 的高位 lane 地址。}\allowbreak{}PTX 允许 x2 时 lane 16--31 传
-「复制低位」的地址；但传\textbf{无效值}（未映射地址）在部分架构上仍会出错。
+复制低位的地址；但传\textbf{无效值}（未映射地址）在部分架构上仍会出错。
 本 kernel 的 \texttt{lane\%8} / \texttt{(lane/8)\%2} 天然循环复用合法行号，
-属安全写法；自己写 kernel 时建议保持这种「地址周期化」的习惯。
+属安全写法；自己写 kernel 时建议保持这种地址周期化的习惯。
 
 \textbf{坑四：\texttt{wait\_group} 之后漏 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads}。}
 与第~\ref{ch:10}~章坑四同理但更容易漏：统一循环里 wait 在迭代末，
@@ -800,7 +800,7 @@ per-thread 组计数对不上会提前放行（好在上一次的 sync 兜底；
 语义仍安全）。改造时保持 commit/wait 匹配的对称性。
 
 \textbf{坑五：f16 累加的精度陡降。}\texttt{f16.f16.f16.f16} 的累加
-「至少半精度」：每条 mma 边界舍回 f16。K$=$128 实测
+至少半精度：每条 mma 边界舍回 f16。K$=$128 实测
 $1.5\times10^{-2}$；K 到千级、或输入幅值大于 1 时，误差进入
 $10^{-1}$ 量级并在个别元素上溢出 f16 范围（65504）。
 长 K / 大动态范围请换 \texttt{HMMA16816\allowbreak{}F32}（C 用 4 个 f32 寄存器）。
@@ -844,7 +844,7 @@ mma \texttt{row.col} 与 TN 天然对齐，一条 \texttt{.trans} 都不用。
 \textbf{Q5：kStages 越大越好吗？}\\
 A：不是。深流水容忍更长的搬运延迟（稳态 \texttt{wait\_\allowbreak{}group\allowbreak{}(k\allowbreak{}Stages-2)}），
 但 smem 随 $S$ 线性增长（本章 24~KB$@$3 级）、占用 limit occupancy 与
-后续 swizzle/padding 的空间预算；且 $S$ 超过「搬运延迟/迭代时间」后
+后续 swizzle/padding 的空间预算；且 $S$ 超过搬运延迟与迭代时间之比后
 收益归零。$S\in\{2,3,4\}$ 是常见区间，靠 profile 定。
 
 \section{最小测试与动手实验}
