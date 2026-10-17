@@ -364,8 +364,8 @@ TMA descriptor 在 host 侧由 driver API \texttt{cu\allowbreak{}Tensor\allowbre
   \textbf{跳过 OOB 检查}（大张量的越界地址通常仍落在可访问页内，跳过检查换性能）。
   隐患在于 \texttt{tensormap.\allowbreak{}replace}（device 端动态改写 globalDim/globalAddress，
   变长序列推理的标准手法）\textbf{不会联动更新该 bit}：先用大 shape 建模板（bit 为
-  1）、再 replace 成小 shape，得到的 descriptor 就是 globalDim 说很小、bit21 说无需 OOB
-  保护的形态，越界地址一旦跨过实际页映射边界即 \texttt{illegal memory access}
+  1）、再 replace 成小 shape，得到的 descriptor 自相矛盾：globalDim 说很小、bit21 说无需
+  OOB 保护；越界地址一旦跨过实际页映射边界即 \texttt{illegal memory access}
   （评论区指出 driver $\ge$ 13010 已修复，CUTLASS/Triton 均按此规避）。
   本章 kernel 网格不越界、无 replace，不受影响；但变长场景优先重建 descriptor
   而非 replace 这一条应记入风险清单。以本地 ptx-docs 为准的结论：\textbf{该 bit 属实现
@@ -433,8 +433,8 @@ consumer 侧的 C0 预热是新手最容易漏的一步：
 不做 C0 的后果是：producer 第一轮 P1 在 \texttt{empty[0]} 上只有自己 1 次 arrive，
 $P = 129 - 1 = 128 \ne 0$，相位永不翻转，整个 kernel 挂死。C0 用 128 个线程把
 $S = 3$ 个 empty 各预存 128 次到达，producer 的 1 次 arrive 恰好补满 129，首轮立即
-放行。同一套 arrive count 同时编码了全部 consumer 已读完与 producer 已就位
-两个事件，consumer 读完某 stage 的 128 次 arrive 存进下一相位的计数里，
+放行。同一套 arrive count 同时编码了两个事件：全部 consumer 已读完、producer 已就位。
+consumer 读完某 stage 的 128 次 arrive 存进下一相位的计数里，
 与 producer 下一轮的 1 次合成完整的翻转条件。
 
 \subsection{WGMMA smem descriptor：64-bit 逐字段编码}

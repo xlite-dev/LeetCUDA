@@ -51,7 +51,7 @@ $\approx 4096$ FLOP/cycle $\Rightarrow \approx 2048$ cycles），而 softmax 的
 $128 \times 128$ 个 $\exp$（MUFU.EX2 吞吐 $\approx 16$ OPS/cycle）要
 $\approx 1024$ cycles，\textbf{softmax 占约三分之一的时间}；若 GEMM 降到
 FP8（算力翻倍），softmax 的占比还要涨到一半。这些非 matmul 的慢指令若不被
-overlap，Tensor Core 就有一段时间在空转。上述数字是 Hopper 口径
+overlap，Tensor Core 就有一段时间在空转。注意上述数字是 Hopper 口径
 （论文与@杨远航解析一致），本机 sm\_120a 的绝对吞吐不同，本章只取量级结论：
 \textbf{softmax 与 GEMM 是两条可并行的硬件通路}（CUDA Core/SFU 与 Tensor
 Core），值得为它引入这部分结构复杂度。

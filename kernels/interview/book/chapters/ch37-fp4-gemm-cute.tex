@@ -334,7 +334,7 @@ $128\times4 = 512$ 个 $(\text{行}, \mathrm{SF})$ 落点\textbf{全部一致}�
   {每格 1 字节 = 1 个 SF；一条 lane 一次 \texttt{ld.shared.u32} 取 4 个
    连续字节（4 个 K 组）$\Rightarrow$ SF 读取无 bank 冲突};
 \end{tikzpicture}
-\caption{SF 从显存到共享内存的完整通路：没有任何变换。
+\caption{SF 从显存到共享内存的完整通路：\textbf{没有任何变换}。
 512\,B 原子里的行内交错（同一 $s$ 的 128 行被切成 4 个 32 行块）
 本身就是「为 MMA 取数设计」的顺序，smem 只是它的一次原样拷贝。
 这是 CUTLASS 把 \texttt{Blk\_MN} 定为 128 的原因，也是本章 kernel 里

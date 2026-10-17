@@ -5,7 +5,7 @@
 
 \section{本章导读}
 
-在动手写第一个 kernel 之前，本书先约定一条工程规则：profile 永远都是最重要的。
+在动手写第一个 kernel 之前，本书先约定一条工程规则：\textbf{profile 永远都是最重要的}。
 优化 GPU kernel 的正确循环不是改完跑一下看快没快，而是先测量、再假设、改一处、
 再测量。凭直觉的优化，快了不知道为什么快，慢了也找不到原因。这一章讲两件测量
 工具：\textbf{Nsight Systems}（nsys，全局时间线）与 \textbf{Nsight Compute}（ncu，
@@ -44,7 +44,7 @@ NCU 显示融合把 LDS（shared load）拉进了 consumer 关键路径，\textt
 stall 从 3.5\% 升到 22.3\%。指标否决了这次优化。
 
 三个反例的共同教训：GPU 上的性能瓶颈很少出现在直觉指向的位置。成熟的优化
-工作流会把它固化成一条硬规则：没有 NCU 数据，不改 kernel；每条优化结论必须
+工作流会把它固化成一条硬规则：\textbf{没有 NCU 数据，不改 kernel}；每条优化结论必须
 引用具体 metric 数值作为证据。本章就把证据从哪里来、怎么读讲清楚。
 
 \section{工具链总览与顺序方法论}\label{sec:ch00-tools}
@@ -64,7 +64,7 @@ nsys 与 ncu 的采集原理完全不同：
   而一遍执行采不完这么多计数器，于是 ncu 把 kernel \textbf{回放多遍}，
   每遍采一组；为了数据可比还会锁定时钟。它回答这个 kernel 内部慢在哪。
   代价高：单 kernel 深挖、时间被串行化与放大，ncu 报告里的 kernel 耗时
-  不能当 bench 时间用。
+  \textbf{不能当 bench 时间用}。
 \end{itemize}
 
 分工：nsys 定位谁慢，ncu 解释单个 kernel 为什么慢。

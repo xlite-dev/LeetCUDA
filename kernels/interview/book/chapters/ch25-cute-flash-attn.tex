@@ -140,7 +140,7 @@ D-chunk 的 \texttt{local\_tile} 语义，这些断言的真值直接来自
 
 三级搭建的分工也由此而来：实现 1 先回答能不能用 CuTe 把 attention 写对，实现 2
 回答搬运为什么要从计算线程手里拿走，实现 3 回答 KV 方向的并行度怎么加。
-25.4 节的三个小节按这个顺序展开，每一节只讲该级新引入的东西，共享层的类型推导
+25.4 节的三个小节按这个顺序展开，每一节只重点讲该级新引入的东西，共享层的类型推导
 统一放在 25.3 节。
 
 \section{数学原理}
@@ -371,13 +371,10 @@ $c_0..c_3$——两档灰度标出「行身份」：$c_0,c_1$ 属行 $r$、$c_2,
 
 $O=PV$ 里 $P$ 是左矩阵 A。QK 的累加器 $S$ 要么写回 smem 再 ldmatrix（费一次
 往返），要么原地重解释为 A fragment，这是 FA 的经典优化。CuTe 把这一步写成
-\texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}Aregs}（L2341--2372）。在展开代数之前，先把这个问题的
-几何讲清楚。
-
-先看这个问题的几何。$m16n8k16$ 的 C fragment 里，每个线程的 4 个值
+\texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}Aregs}（L2341--2372）。先看这个问题的几何：$m16n8k16$ 的 C fragment 里，每个线程的 4 个值
 $(c_0,c_1,c_2,c_3)$ 是同一行、相邻两列（列偏移 $+1$）的一对，加行偏移 $+8$ 的
 另一对；当这块 C 要变成下一条 mma 的左操作数 A 时，A 的 K 向（$PV$ 的归约维）
-就是 C 的列向。于是 C 的相邻 2 列必须原样成为 A 的 K 向相邻 2 值：数据一个比特
+恰好是 C 的列向。于是 \textbf{C 的相邻 2 列必须原样成为 A 的 K 向相邻 2 值}：数据一个比特
 都不用改，缺的只是换一套坐标去读同一批寄存器。直接拿 C 的 layout 去调
 \texttt{gemm}，会被 CuTe 以 layout 不符合 A 的约定拒绝；@竹熙佳处 的教程拿这个
 场景当 layout 变换的入门例子。图~\ref{fig:25-c2aregs} 把两套坐标摆成并排网格：
@@ -496,7 +493,7 @@ $(c_2,c_3)$ 行偏移 $+8$，即 bit0$=$列、bit1$=$行）；右图按 $k16$ A 
         需要人工判断哪一段对哪一段，对应关系由代数推导得出。
 \end{itemize}
 
-两条路的结果完全一致，差别在风格与适用范围：几何法要求布局规整且编译期
+两条路的结果完全一致，差别在风格与适用范围：几何法把布局当作可拆可拼的形状，要求规整且编译期
 已知；代数法对不规整访问更适用，w4a8 混合精度、2:4 稀疏 GEMM 这类场景没有
 规整形状可用，代数法是更自然的工具。选型建议：规整的静态布局用几何法，
 其余情况先想代数法。
@@ -537,7 +534,7 @@ K 向连续 2 个元素。实测结果是 $((2,2),2),1,4$：仍是 32 个元素�
 
 \subsection{两套流水的语义：cp.async 的组栈与 TMA 的事务计数}
 
-四个实现里有两种异步机制，它们的等待语义需要对齐。
+四个实现里有两种异步机制，它们的等待语义需要在数学上对齐。
 
 \textbf{cp.async 的组栈}：\texttt{cp.\allowbreak{}async.\allowbreak{}commit\_\allowbreak{}group} 把当前在途的搬运
 压栈，\texttt{cp.\allowbreak{}async.\allowbreak{}wait\_\allowbreak{}group N} 等的是栈顶往下恰好 $N$ 组未完成，
@@ -787,7 +784,7 @@ PV 前的分支、循环末尾的 \texttt{wait<0>} $+$ 同步；读这段代码�
 它当路线图。CuTe 版并没有让这段推理消失，它仍然是手写的：抽象不会自动
 理清依赖关系。
 
-softmax 段与 epilogue 段没有地址算术，即上面代码块的第二、三段
+softmax 段与 epilogue 段没有地址算术，样本就是上面代码块的二、三段
 （L2724--2741 与 L2786--2798）。$kRows$、
 \texttt{size\allowbreak{}<1>\allowbreak{}(scores)} 都是布局推导出的常量；epilogue 用
 \texttt{partition\_\allowbreak{}C\allowbreak{}(g\allowbreak{}O)} 得到寄存器与 gmem 的对应，\texttt{copy()} 直接
@@ -827,7 +824,7 @@ consumer 的稳态循环与实现 1 的 softmax/PV 段几乎逐字相同，区�
 K 的早释放与 V 的屏障等待，见上面代码块的第四段
 （L2975--2995）。QK 一结束就 \texttt{arrive\allowbreak{}(k\_\allowbreak{}empty)} 是本实现相对实现 1 的结构性优势：
 producer 可以立刻开始搬运下一个 K stage，而 softmax 与 PV 继续在
-消费者侧跑；第~\ref{ch:17}~章 mbarrier 协议在 CuTe 下的表述同样是：释放
+消费者侧跑；第~\ref{ch:17}~章 mbarrier 协议的结论在这里同样成立：释放
 时机决定流水深度，与实现语言无关。
 
 \subsection{实现 3：FA3 式双 consumer（384 线程）}

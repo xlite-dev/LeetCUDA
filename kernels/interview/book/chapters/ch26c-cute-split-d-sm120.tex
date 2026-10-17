@@ -106,7 +106,7 @@ $D{=}320$（每 kv\_tile 10 个 QK chunk、5 个 PV chunk）下，每个 tile
 条件重缩放（第~\ref{ch:26b}~章式~(26b.5)，$\tau = 8$）让 95\%+ 的 tile
 整个跳过这个循环。
 
-还有一项不付代价的结构收益是跨 kv\_tile 预取。WS 版的
+还有一项无额外代价的结构收益：跨 kv\_tile 预取。WS 版的
 producer/consumer 分工里，下一 tile 的装载要等本 tile 消费腾出 stage；
 non-WS 版把 QK 与 V 拆成两套互不相交的 barrier 集，下一 tile 的 QK
 初始 chunk 可以在本 tile 的 softmax+PV 窗口里提前发出（\S\ref{sec:26c-prefetch}）。

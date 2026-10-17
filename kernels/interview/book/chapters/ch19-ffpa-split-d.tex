@@ -670,7 +670,7 @@ Phase 3 的 rescale 是本章数学结论落地的位置：\textbf{同一个 \te
 
 \subsection{TMA+WS 版：单线程 TMA 与 (stage, phase) 计数}
 
-\texttt{ffpa\_\allowbreak{}attn\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}split\_\allowbreak{}d\_\allowbreak{}cute}（L377--641）把搬与算拆成两个
+\texttt{ffpa\_\allowbreak{}attn\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}split\_\allowbreak{}d\_\allowbreak{}cute}（L377--641）把「搬」与「算」拆成两个
 warpgroup：\textbf{128 producer $+$ 128 consumer $= 256$ 线程}，
 \texttt{\_\allowbreak{}\_\allowbreak{}launch\_\allowbreak{}bounds\_\allowbreak{}\_\allowbreak{}(256,\allowbreak{}1)}（L380）。
 

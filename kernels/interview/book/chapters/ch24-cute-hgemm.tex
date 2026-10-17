@@ -554,8 +554,8 @@ $k$ 需要不同的 S$\to$R 拷贝（这正是第~\ref{sec:24-step2}~节寄存�
 把一个 K-tile 的计算拆成 G$\to$S（LDGSTS）、S$\to$R（LDSM）、MMA 三级，让不同
 tile 的不同级重叠执行；Ampere 的 \texttt{cp.async} 允许发射后不等待，配合
 \texttt{commit}/\texttt{wait} 显式同步，就得到 multi-stage 流水线。该文还有一句
-判断与本章直接相关：CuTe 提供的是搬运与计算的抽象，怎么把它们排成流水线属于
-GEMM 自身的优化策略，由 kernel 作者设计。
+判断与本章直接相关：CuTe 提供的是搬运与计算的抽象，流水线的组织不属于它的能力
+范围，而属于 GEMM 自身的优化策略，由 kernel 作者设计。
 
 落到本章 kernel 上，流水线由三样东西组成：把 stage 填满的预取、主循环里
 算当前 $+$ 发下一个的交错，以及一组由作者维护的计数器。
@@ -630,7 +630,7 @@ K-tile 序号，\texttt{ismem\_write} 是下一个要写入的 stage 槽位，
   \label{eq:24-inflight}
 \end{equation}
 
-即最多一个 tile inflight，与 $k_{\mathrm{stage}}=2$ 时 \texttt{wait} 的语义一致
+即最多一个 tile inflight，这正是 $k_{\mathrm{stage}}=2$ 时 \texttt{wait} 的语义
 （\texttt{cp\_\allowbreak{}async\_\allowbreak{}wait\allowbreak{}<N>} 等的是未完成组数不超过 $N$）。把
 $k_{\mathrm{stage}}$ 加到 3、4 时循环体几乎不用改：放行更多 inflight tile 靠的是
 \texttt{wait} 的模板参数与计数器的取模，而不是 CuTe 接管了流水线。
