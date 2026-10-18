@@ -72,7 +72,8 @@ $[B_r, D]$、$[B_c, D]$，TiledMma 的 $K$ 向一次覆盖 16 列，循环在 $N
 
 四个问题的共同点：它们\emph{都不是数值问题}（数值精度与归约顺序都已确
 定），而是\textbf{类型与布局问题}：tile 怎么切、fragment 怎么换解释、寄存器
-怎么编号、循环与 stage 怎么对应。
+怎么编号、循环与 stage 怎么对应。把这四个问题逐个翻译成 CuTe 的类型与布局，
+就是用 CuTe 抽象表达 Split-D 的全部内容。
 
 本章引用的源码位置汇总在表~\ref{tab:26-code}。
 
@@ -440,7 +441,7 @@ $d_2{=}1$ 的 4 格来自 C 的第二个 $n8$ atom（虚线半块）。\textbf{�
 \end{itemize}
 
 第二点的意义：$S$ 的 fragment 从头到尾是 32 个寄存器，chunk 循环每轮往
-它们里面\emph{加}一棵 QK 子树。它
+它们里面\emph{加}一棵 QK 子树，形状不变、只叠循环。它
 也解释了为什么 $O$ 的处理必须不同：$O$ 的 chunk 是\emph{相加}（$O=\sum O_c$），
 但 $S$ 的 chunk 是\emph{先求和再 softmax}，两者不能混。第~\ref{ch:19}~章
 从数值角度论证过这一点（$\mathrm{softmax}$ 必须在完整 $S$ 上做），这里从

@@ -574,7 +574,7 @@ L1374--1399），Step 5 的写回是 ch16 的原版方案，warp 内 shuffle 收
 写回不走 TMA（epilogue 每 block 只发生一次、非关键路径，直接 \texttt{float4}
 写 gmem 已足够）。至此 384 线程全部退出：producer 循环比 consumer 早结束
 若干轮（尾部不再发预取），两支流各自运行到结束即可，无需终点汇合。ws
-结构里\textbf{没有 kernel 级的收尾同步}。
+结构里\textbf{没有 kernel 级的收尾同步}。这本身就是 mbarrier 协议自洽的一个佐证。
 
 \needspace{120mm}
 

@@ -416,7 +416,8 @@ swizzle 计算；ch14 折中——TMA 硬件写 $+$ 软件公式 \texttt{swizzle
 尾部 \texttt{fence.\allowbreak{}proxy.\allowbreak{}async.\allowbreak{}shared::\allowbreak{}cta} 建立 generic proxy（软件写屏障对象）
 到 async proxy（TMA/mbarrier 硬件）的可见性，否则初始化数据不被异步引擎看见，
 后面的 arrive/tx 全是空转。\texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()} 是全 kernel
-\textbf{唯一一次}线程块级栅栏，此后 producer 与 consumer 的全部同步都走 mbarrier。
+\textbf{唯一一次}线程块级栅栏，此后 producer 与 consumer 的全部同步都走 mbarrier，
+这也是 warp specialization 的定义性特征。
 
 \subsection{producer：三步循环}
 

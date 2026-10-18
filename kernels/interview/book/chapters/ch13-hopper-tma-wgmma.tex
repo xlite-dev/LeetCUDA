@@ -609,6 +609,8 @@ warpgroup 内必须对齐执行（.aligned 限定符），且连续同 shape 的
         翻转，\texttt{wait} 返回。
 \end{itemize}
 
+语义即 consumer 先报告自己准备好读当前 stage，再等待数据已到。
+
 \lstinputlisting[linerange={1724-1763},firstnumber=auto,breakatwhitespace=true,
   title={hgemm.cuh L1724-1763（C2：fence 后发射 2$\times$4 条 m64n128k16）}]{../hgemm.cuh}
 
