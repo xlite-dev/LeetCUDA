@@ -416,7 +416,8 @@ bin 数）。注意本配置 $T{=}B{=}256$ 时 $G \times B = N$，次数并不�
 为粒度：coalesced 场景下搬运的 sector 数由总数据量决定（每元素都要搬一次），
 向量化并不减少 sector 事务数；它减少的是\textbf{每线程 load/store 指令数}
 （4 条 32-bit $\to$ 1 条 128-bit）。「事务数减为 1/4」只在 Fermi/Kepler
-的 128B 事务口径下才成立，建议改为「访存指令数减为 1/4」。
+的 128B 事务口径下才成立（此时事务数指 128B 事务；按 Volta 起的 32B sector
+口径它并不下降），建议改为「访存指令数减为 1/4」。
 \end{kaogu}
 
 \begin{kaogu}[F1]{L324--329 relu\_vec4 边界守卫不足（越界读隐患）}

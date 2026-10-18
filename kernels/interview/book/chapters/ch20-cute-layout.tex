@@ -1390,7 +1390,7 @@ $30{,}720$ 点 v1/v2 等价性结论互相印证：声明式的 Swizzle $\circ$ 
 \textbf{证据三（代码量口径）}：hgemm.cuh~L803--805 的注释声称手写版
 $\sim$200 行、CuTe 版 $\sim$80 行。实测去注释非空行：手写 swizzle
 kernel（L434--716）235 行；CuTe kernel 本体（L821--1196）118 行，另有 launch
-wrapper（L1216--1427）86 行。所以 $\sim$80 行这个数字低估了 CuTe kernel 本体的物理
+wrapper（L1216--1427）86 行。所以注释里的 $\sim$80 行低估了 CuTe kernel 本体的物理
 规模；实测支持的结论是\textbf{CuTe 版 kernel 里没有一行地址算术}：手写版用
 \texttt{LDMATRIX\_X4}/\texttt{LDMATRIX\_X2}/\texttt{HMMA16816} 宏直接编排 PTX
 与 lane 地址，CuTe 版的内联汇编为 0，地址全部由 layout 类型在编译期推出来。

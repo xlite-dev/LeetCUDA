@@ -120,7 +120,7 @@ $2^{-6}\sim 448$），于是 level-2 的 SF 永远不会下溢。$s$ 的取值�
 码。写清楚这条恒等式的三层含义：
 
 \begin{enumerate}[itemsep=2pt,topsep=3pt]
-  \item level-2 由 MMA 硬件消费。第~\ref{ch:36}~章开头说的零开销
+  \item level-2 由 MMA 硬件消费。本章开头说的零开销
         就指这个：PTX 的 \texttt{block\_scale} 语义让 SF 参与乘加，但
         \textbf{不进任何寄存器算术}，数据与 SF 都只是被 MMA 读走。软件
         完全不需要写一行乘 SF 的代码。

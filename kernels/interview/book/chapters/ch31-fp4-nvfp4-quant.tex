@@ -76,7 +76,7 @@ ffpa-attn 的 fp4 路径移植自 SageAttention3 的 Blackwell kernel
 \section{问题与动机}
 
 e2m1 的动态范围限制分两层。fp8 路径里 per-block/per-thread scale 已经把
-相对步长压到 6.25\%；e2m1 再去掉 2 bit 尾数与 3 bit 指数后，单块内
+相对步长压到 6.25\%；e2m1 再把尾数从 3 位压到 1 位、指数从 4 位压到 2 位后，单块内
 $\mathrm{amax}$ 与其余元素的分辨率差距被放大到无法忽略。更关键的是
 \textbf{分布中心}：attention 的 Q/K 行向量常带系统性均值偏移（randn 输
 入下均值不为零，真实模型里更明显），若直接量化

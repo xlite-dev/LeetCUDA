@@ -1023,7 +1023,7 @@ chunk 会跨 slice 交叉。
 \item \textbf{预期 swizzle 能消除所有 bank conflict。} 它保证的是
 \textbf{同一个 16 B 块列在 8 行内落到 8 个不同块}；跨 32 行、或以
 4 B 为粒度的模式（例如标量表查）它不保证。强度由 $B$ 与行宽共同决定：
-本仓库 $8\times32$ 原子的实际强度只有 2 bit（4 个 XOR 图样、2 行一
+hgemm 路径的 $8\times32$ 原子实际强度只有 2 bit（4 个 XOR 图样、2 行一
 循环，4.1 节实践须知）。
 \item \textbf{忘记 swizzle 是地址函数。} 想让按 (\texttt{row,col}) 求值
 的布局与按 flat 偏移求值的公式一致，前提是行宽恰好等于

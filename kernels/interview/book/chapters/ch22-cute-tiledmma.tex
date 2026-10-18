@@ -452,8 +452,10 @@ $[0,64)$，这就是 $\mathrm{ThrM}=4$、$\mathrm{atom}_M=16$ 的直接推论。
   \item \texttt{Mma\allowbreak{}Atom =\allowbreak{} MMA\_\allowbreak{}Atom\allowbreak{}<SM80\_\allowbreak{}16x8x16\_\allowbreak{}F32\allowbreak{}F16\allowbreak{}F16\allowbreak{}F32\_\allowbreak{}TN>}：
         F32 累加（attention 的数值要求），与 3.1 节的 fragment 一致；
   \item \texttt{TiledMmaQK}：$\mathrm{AtomLayoutMNK} = (4,1,1)$（4 个 warp
-        沿 M 切）、$\mathrm{PermutationMNK} = (64,64,16)$。实测
-        $\mathrm{tile\_size} = (64,64,16)$、线程数 $128$；
+        沿 M 切），第三个实参传入 \texttt{Tile<Int<64>,Int<64>,\_16>}，充当
+        \texttt{make\_tiled\_mma} 的 MNK 置换参数。实测
+        $\mathrm{tile\_size} = (64,64,16)$、线程数 $128$；沿 N 铺的 $8$ 列
+        原子数是 $\mathrm{MMA}_N = 8$，与置换参数的 $(64,64,16)$ 不是同一层级；
   \item \texttt{TiledMmaPV}：同样的 warp 排布，tile 换成 $(64,16,16)$：
         N 方向只留 16，因为 acc\_O 要常驻寄存器；
   \item 两个 \texttt{Copy\_Atom}：\texttt{LDSM\_N}（正常读）与

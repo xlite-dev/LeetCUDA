@@ -601,7 +601,7 @@ GFLOP（运算\textbf{量}），FLOPS（每秒）是速率单位；该段实为 
 \item \textbf{Q：寄存器溢出（spill）是什么？}\\
   A：每线程寄存器需求超过分配上限时，编译器把局部变量挪到 local memory
   （实际在 HBM/L1），访存量大幅增加、延迟暴露。用
-  \texttt{-{}-ptxas-options=\allowbreak{}-v} 观察 spill 次数，出现即优先 reconsider
+  \texttt{-{}-ptxas-options=\allowbreak{}-v} 观察 spill 次数，出现即优先重估
   thread tile 大小。
 \item \textbf{Q：L1 与 shared memory 的关系？}\\
   A：同一块片上 SRAM 的两种角色，可配置划分。L1 对所有访存透明缓存；
