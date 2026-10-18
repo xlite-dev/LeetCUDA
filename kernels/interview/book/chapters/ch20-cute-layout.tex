@@ -14,11 +14,10 @@ smem 上做 XOR swizzle、拼 ldmatrix 的 lane 地址、epilogue 里用 \texttt
 把 fragment 拼回连续向量。这套做法在第~\ref{ch:11}、
 \ref{ch:12}~章把 HGEMM 做到了 122 TFLOPS 量级，但它的知识结构是散的：
 同一组形状与步长的事实，以五种不同的写法散落在 kernel 的五个角落。Part~IV
-换一种做法：把 \textbf{(Shape, Stride) 提升为一等的数学对象}，用代数运算
-（复合、逆、乘积、切分）代替手写公式，把想要的布局与怎么算地址两件事
-分开。
+换一种做法：把 (Shape, Stride) 提升为一等的数学对象，用代数运算（复合、逆、
+乘积、切分）代替手写公式，把想要的布局与怎么算地址两件事分开。
 
-本章是 Part~IV 的原理篇开篇，也是全书唯一一章\textbf{不写任何 GPU kernel}：
+本章是 Part~IV 的原理篇开篇，也是全书唯一一章不写任何 GPU kernel：
 我们只研究 layout 本身。四章路线：本章（layout 代数）$\to$ 第~\ref{ch:21}~章
 （Tensor 与 TiledCopy：把 layout 用在数据上）$\to$ 第~\ref{ch:22}~章（TiledMMA：
 把 layout 用在计算上）$\to$ 第~\ref{ch:23}~章（Swizzle 与 TMA：把 layout 用在
@@ -75,9 +74,9 @@ hgemm 的手写版（235 行去注释代码）变成 CuTe 版 kernel 本体 118 
 第~\ref{ch:11}、\ref{ch:12}~章手写 HGEMM 时，这个映射以五种面貌
 出现（gmem 寻址、cp.async 地址、ldmatrix lane 映射、XOR swizzle、
 epilogue 拼接），每种写一遍、彼此还要对齐。@竹熙佳处在《写给大家看的
-CuTe 教程：Layout Compose \& Inverse》里给出的视角是：把这些映射
-\textbf{统一看成一个函数}，输入是逻辑坐标，输出是一个整数偏移，函数体
-只有整数乘法与加法。把这件事命名并形式化，就得到了 CuTe 的 layout。
+CuTe 教程：Layout Compose \& Inverse》里给出的视角是：把这些映射统一看成
+一个函数，输入是逻辑坐标，输出是一个整数偏移，函数体只有整数乘法与加法。
+把这件事命名并形式化，就得到了 CuTe 的 layout。
 
 \textbf{定义（layout）}。layout 由 shape 与 stride 两个参数组成：
 
@@ -98,21 +97,20 @@ CuTe 教程：Layout Compose \& Inverse》里给出的视角是：把这些映�
         $f=c_0+4c_1$，即 C 语义下的列优先。
 \end{itemize}
 
-用映射语言说，式~\eqref{eq:20-linear} 就是把 $k$ 维坐标按各方向的步长折算
-成一个整数：每个 mode 贡献 $d_i c_i$，最后求和，没有别的运算。CuTe 的
-\texttt{Layout} 就装着一对 $(S,D)$；调用 \texttt{layout\allowbreak{}(coord)} 得到
+式~\eqref{eq:20-linear} 只有每个 mode 的 $d_i c_i$ 与最后求和，没有别的运算。
+CuTe 的 \texttt{Layout} 就装着一对 $(S,D)$；调用 \texttt{layout\allowbreak{}(coord)} 得到
 式~\eqref{eq:20-linear} 的值。
 
-还有一个容易反直觉的事实：\textbf{把整数 $x$ 交给 layout} 时，
+还有一个容易反直觉的事实：把整数 $x$ 交给 layout 时，
 CuTe 先把 $x$ 按 colex 序分解回坐标
 \begin{equation}
   c_i \;=\; \Bigl\lfloor x \big/ \textstyle\prod_{j<i} s_j \Bigr\rfloor
   \bmod s_i ,
   \label{eq:20-colex-decomp}
 \end{equation}
-再代入式~\eqref{eq:20-linear}。这个分解只用到 shape、与 stride 无关，
-@竹熙佳处在教程里特别提示过这是初学时最容易卡住的一点。于是 $f$ 作用在
-坐标上与作用在线性索引上是同一个函数，线性索引与坐标只是两种输入写法。
+再代入式~\eqref{eq:20-linear}。这个分解只用到 shape、与 stride 无关。于是
+$f$ 作用在坐标上与作用在线性索引上是同一个函数，线性索引与坐标只是两种
+输入写法。
 注意 $f(x)$ 一般\emph{不}单调：colex 进位时
 $x\to x+1$ 同时改变两个坐标（低位复位、高位 $+1$），offset 增量
 $d_{i+1}-d_i(s_i-1)$ 可为负：$(2,3){:}(3,1)$ 的 offset 序列是
@@ -230,16 +228,16 @@ $32$ 个灰格是命中（$=2c_0+16c_1$ 的全部取值）、$31$ 个斜线格�
 
 \begin{enumerate}
   \item \textbf{Compose（复合）：解决两层映射怎么串联。}三个真实场景：
-        (a) \textbf{TV-layout 寻址}：拷贝划分先给出 (thread, value) 到
+        (a) TV-layout 寻址：拷贝划分先给出 (thread, value) 到
         逻辑坐标 $(m,n)$ 的映射，而真正访问内存还要再叠一层 tensor 自身的
         $(m,n)\to$ offset 映射，两次映射复合才是线程 $t$ 的第 $v$ 个值
         在哪个地址（第~\ref{ch:21}~章展开）；
-        (b) \textbf{swizzle 消 bank conflict}：swizzle 本身是
+        (b) swizzle 消 bank conflict：swizzle 本身是
         offset$\to$offset$'$ 的映射，把它复合到 smem 布局的外层，之后代码
         仍可用正常 $(m,n)$ 坐标访问，物理地址已被改写而调用代码无需感知
         （4.1 节的 \texttt{SmemLayoutA} 就是 \texttt{Swizzle}$\circ$atom
         的一次复合）；
-        (c) \textbf{FA2 的 P 矩阵转换}：给 QK 的 accumulator 布局复合一次
+        (c) FA2 的 P 矩阵转换：给 QK 的 accumulator 布局复合一次
         列拆半变换，P 就能原地重解释为 $PV$ 的 A 操作数
         （4.8 节完整推一遍）。
   \item \textbf{Inverse（逆）：解决从 offset 反查坐标。}给定一个 offset
@@ -322,7 +320,7 @@ launch wrapper 的类型推导完成。
 这些类型就是布局本身：它们由 \texttt{Int<N>}（编译期整数常量，类型级）、
 \texttt{Shape}、\texttt{Stride}、\texttt{Layout}、\texttt{Swizzle} 等拼装出来。
 由于 shape/stride 是类型的一部分，\texttt{cosize}、复合、切分的结果都可以在
-\textbf{编译期}折叠为常数，这是后文零成本抽象论证的根基。
+编译期折叠为常数，这是后文零成本抽象论证的根基。
 
 \paragraph{实践须知}
 \begin{itemize}
@@ -346,8 +344,6 @@ launch wrapper 的类型推导完成。
 
 \subsection{Compose：$R(c)=A(B(c))$}
 
-先看 compose 解决的三个真实问题，再看定义。
-
 \textbf{场景一：TV-layout 寻址（第~\ref{ch:21}~章的核心内容）。}
 \texttt{make\_\allowbreak{}tiled\_\allowbreak{}copy} 类划分先算出 $(t,v)\to(m,n)$：线程 $t$ 的
 第 $v$ 个值对应 tile 的第 $(m,n)$ 格。但 $(m,n)$ 还只是\emph{逻辑}坐标；
@@ -360,7 +356,7 @@ register 上，这是一份划分同时服务三种内存的关键。
 \textbf{场景二：swizzle 消 bank conflict。}\allowbreak{}swizzle 是
 offset$\to$offset$'$ 的映射。对一块 smem 布局做 swizzle 后，访问链变成
 $(m,n)\to\mathrm{offset}\to\mathrm{offset}'$：这相当于在原函数
-外面\textbf{再叠一层 swizzle 函数}，所以源码里 swizzle 总是出现在
+外面再叠一层 swizzle 函数，所以源码里 swizzle 总是出现在
 \texttt{composition} 的第一个参数位置（A 的位置，见 4.1 节的
 \texttt{SmemLayoutA} 定义）。这样后续代码仍按正常 $(m,n)$ 坐标写字，物理
 地址已经被换掉，而这件事对上层透明。第~\ref{ch:12}~章手写版要
@@ -389,8 +385,7 @@ $A(B(c))=9c\ (c<4)$，于是
   R = (4){:}(9) .
 \end{equation}
 结论：复合结果的 stride 等于 $A$ 在 $B$ 的像上的斜率。本例中
-$B$ 的像落在 $A$ 的 mode-0 上，斜率就是 9。这也是 CuTe 用 layout 代数做
-坐标变换的最小例子。
+$B$ 的像落在 $A$ 的 mode-0 上，斜率就是 9。
 
 例子 2（恒等段）：$A=(4,8){:}(1,4)$、$B=(2,2){:}(2,1)$。$B$ 的像是
 $\{0,1,2,3\}\subset[0,4)$，而 $A$ 在 $[0,4)$ 上恒等，故 $R=B$ 逐点成立。
@@ -457,16 +452,15 @@ offset$\to$坐标，再把目标 A 布局复合上来；输入输出对调是这
         （测试 32 点核对）。
 \end{itemize}
 
-右逆负责值域中连续的那一段，左逆负责整个陪域（含多对一的情形）；
-需要哪个方向的坐标变换，就选哪一个逆。
+右逆负责值域中连续的那一段，左逆负责整个陪域（含多对一的情形）。
 
 \subsection{Product：乘积}
 
 product 解决的是小布局怎么铺成大布局：smem 上一块 $8\times B_K$ 的
 swizzle atom 只是基本单元，kernel 真正要声明的是整块
 $(B_M,B_K,k_{\mathrm{Stage}})$ 的 A tile 布局（4.1 节的 \texttt{SmemLayoutA}
-就是这么拼出来的）。product 族的语义很直观，\textbf{把两块布局在 mode
-上相乘（拼接），坐标各自输入、offset 相加}：
+就是这么拼出来的）。product 族的语义很直观，把两块布局在 mode 上相乘
+（拼接），坐标各自输入、offset 相加：
 
 \textbf{定义 20.4（concatenation）}。$P=\mathrm{make\_layout}(A,B)$
 （即 \texttt{product}）把两个 layout 相乘：
@@ -539,7 +533,7 @@ $r_0$ 是行方向的 tile 编号（步进 4 行）、$r_1$ 是列方向的 tile
 tile 的严格数学表达。测试做了三重核对（76 个断言）：(a) 结构，
 $\mathrm{rank}=2$、$\mathrm{size}_0=16$、$\mathrm{size}_1=4$、
 $\mathrm{compatible}(T,\mathrm{layout}_0)$ 为真；(b) 坐标公式，64 组
-$(t,r)$ 全部满足式~\eqref{eq:20-zd-coord}；(c) \textbf{双射覆盖}，64 个输出
+$(t,r)$ 全部满足式~\eqref{eq:20-zd-coord}；(c) 双射覆盖，64 个输出
 恰好把 $[0,64)$ 各命中一次，这条约束最强：它同时排除了重叠与遗漏。两种
 tiler 下 tile 几何的正反例对照见图~\ref{fig:20-zd-tile-shape}。
 
@@ -761,12 +755,11 @@ $\mathrm{MMA}_N$ 拆成 $(2,\mathrm{MMA}_N/2)$，再把后 2 个与 MMA mode
 ffpa\_attn.cuh 的 P 转换（L300--305、L584--588）直接复用这个函数，注释
 写明「与 TMA WS kernel 一致」。两个文件的 P 路径都走 tri-dao 的
 几何法。选它的理由很实际：这是一次纯 mode 重排，6 行代码就能写完、效果
-可直接验证；路线二的代数法把 C$\to$A 表达成逆 $+$ 两次复合，
-更\textbf{通用}（换任意两个 fragment 布局都能推，例如量化 gemm 里
+可直接验证。路线二的代数法把 C$\to$A 表达成逆 $+$ 两次复合，
+更通用（换任意两个 fragment 布局都能推，例如量化 gemm 里
 dtype 变化引起的布局变换），但中间布局要 \texttt{with\_shape} 才可读、
 且依赖静态 stride；在本例中它的收益与几何法相同。两法等价：第~\ref{ch:25}~章
-会看到该变换在 CuTe 版 FA 里的完整位置（softmax 之后、$PV$ 之前），
-对照本节把两条路线各推一遍即可复现。
+会看到该变换在 CuTe 版 FA 里的完整位置（softmax 之后、$PV$ 之前）。
 
 两条路线的对照示意见图~\ref{fig:20-3}。
 
@@ -1365,7 +1358,7 @@ $f(1,3)=11$——同一 shape，stride 决定读序。}
 
 \section{性能分析}
 
-本章没有 kernel，性能一节只回答一个问题：\textbf{这套代数要付多少代价？}
+本章没有 kernel，性能一节只回答一个问题：这套代数要付多少代价？
 答案是三句话：编译期全折叠、运行期只剩加法与位运算、代价转移到编译时间。
 
 \textbf{证据一（编译期折叠）}：static layout（所有 shape/stride 都是

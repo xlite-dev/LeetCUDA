@@ -25,14 +25,14 @@ ldmatrix 的地址算术与屏障协议。这不是作者偷懒：布局事实�
 \texttt{flash\_\allowbreak{}attn\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}split\_\allowbreak{}q\_\allowbreak{}cute}（cp.async + 统一流水，256 线程）最朴素，
 组装方式照 @reed《cute 之 简单 GEMM 实现》的 Tensor $\to$ \texttt{local\_tile}
 $\to$ partition $\to$ copy/gemm 四步走：数据怎么切、怎么分给线程、怎么搬、
-怎么算，一一对应到 CuTe 抽象；实现 2
+怎么算，一一对应到 CuTe 抽象。实现 2
 \texttt{flash\_\allowbreak{}attn\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}split\_\allowbreak{}q\_\allowbreak{}cute}（TMA + producer/consumer 分工，
 384 线程）在同一个算法上把搬运与计算解耦；实现 3
 \texttt{flash\_\allowbreak{}attn\_\allowbreak{}3\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}split\_\allowbreak{}q\_\allowbreak{}cute} 进一步采用 FA3 式双 consumer
 （奇偶拆 KV + 终态归并）。第四个实现
 \texttt{flash\_\allowbreak{}attn\_\allowbreak{}3\_\allowbreak{}cute\_\allowbreak{}tma\_\allowbreak{}copy\_\allowbreak{}smoke}（42 行）不是 attention，而是
 一条 TMA 搬运链路的自检闭环，用来先把搬运与计算解耦，再单独排查。这是
-Part~IV 的倒数第二章，也是抽象换代码量这条主线在 attention 上的完整样本。
+Part~IV 的倒数第二章。
 
 本章的组织以动机为线：三级搭建逐级回答上一级留下的问题：实现 1
 的浪费在哪、为什么实现 2 要把搬运拆出去、为什么实现 3 要拆 KV。四个实现共享
@@ -84,14 +84,14 @@ cp.async 的 CuTe 抽象；sm80+ 可编）；后三个实现另需
 
 第~\ref{ch:20}~章已经论证过这五类事实的联动代价：改一个 tile 尺寸，至少三处
 要跟着改，且错误是静默的。CuTe 版的答案是把它们全部收进
-\textbf{编译期类型}：smem 布局是 \texttt{tile\_\allowbreak{}to\_\allowbreak{}shape} 的返回类型、fragment
+编译期类型：smem 布局是 \texttt{tile\_\allowbreak{}to\_\allowbreak{}shape} 的返回类型、fragment
 布局是 \texttt{partition\_\allowbreak{}fragment\_\allowbreak{}A/B/C} 的返回类型、搬运是
 \texttt{TiledCopy} 的 TV 划分、连 V 的转置视图都是
 \texttt{composition} 表达式的类型。kernel 正文里只剩三类语句：
 数据流（\texttt{copy}/\texttt{gemm}）、同步（barrier / \texttt{cp.\allowbreak{}async.\allowbreak{}wait}）
-与 online softmax 的标量运算。抽象掉了什么，可以逐项核对：\textbf{坐标计算}
-收进 \texttt{local\_tile}/\texttt{partition} 的类型、\textbf{fragment 手工索引}
-收进 \texttt{partition\_\allowbreak{}fragment} 的返回布局、\textbf{拷贝指令的选择}
+与 online softmax 的标量运算。抽象掉了什么，可以逐项核对：坐标计算
+收进 \texttt{local\_tile}/\texttt{partition} 的类型、fragment 手工索引
+收进 \texttt{partition\_\allowbreak{}fragment} 的返回布局、拷贝指令的选择
 收进 \texttt{TiledCopy} 的原子类型（G2S 选 cp.async 还是 TMA、S2R 选哪个
 ldmatrix 形态）；三件事都不再出现在 kernel 正文里。
 
@@ -190,8 +190,8 @@ col-major 视图：逻辑坐标 $(d, j)$ 被解释为 V 的第 $j$ 行第 $d$ �
 \begin{remark}
   式~\eqref{eq:25-vt} 的 \texttt{composition} 与第~\ref{ch:12}~章手写版的
   V 用 \texttt{ldmatrix.\allowbreak{}trans} 转置加载解决的是同一个问题。手写版把
-  「转置」落在\textbf{指令}上（\texttt{.trans}），CuTe 版把「转置」落在
-  \textbf{布局}上（\texttt{composition}），然后在 S2R copy 的 atom 里选择
+  「转置」落在指令上（\texttt{.trans}），CuTe 版把「转置」落在
+  布局上（\texttt{composition}），然后在 S2R copy 的 atom 里选择
   \texttt{SM75\_\allowbreak{}U16x8\_\allowbreak{}LDSM\_\allowbreak{}T}，两条路最终都编到
   \texttt{ldmatrix.\allowbreak{}sync.\allowbreak{}aligned.\allowbreak{}x2.trans}，但前者的地址算术消失了。
 \end{remark}
@@ -287,7 +287,7 @@ $\mathrm{ncol}=2\cdot \mathrm{MMA\_N}$。实测（$D{=}64$、$B_r{=}128$）：
   \label{eq:25-rowcol-num}
 \end{equation}
 
-变换后的 tensor 与原 tensor \textbf{共享数据指针}（同一组寄存器），
+变换后的 tensor 与原 tensor 共享数据指针（同一组寄存器），
 只是索引语义变了：\texttt{scores(r, c)} 的 $r$ 是行、$c$ 是列，
 于是行归约可以写成 \texttt{for c: max}，再对 4-lane 子组做两次
 \texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor\_\allowbreak{}sync}（步长 1、2）。为什么是 4-lane？因为
@@ -476,7 +476,7 @@ $(c_2,c_3)$ 行偏移 $+8$，即 bit0$=$列、bit1$=$行）；右图按 $k16$ A 
 \label{fig:25-c2aregs}
 \end{figure}
 
-同一批数据换一套坐标，中文社区有两位作者各写过一版，正好可以对照：
+同一批数据换一套坐标，中文社区有两位作者各写过一版：
 
 \begin{itemize}[itemsep=2pt,topsep=2pt]
   \item \textbf{几何法（Tri Dao 的 \texttt{logical\_\allowbreak{}divide}）}：把
@@ -536,18 +536,18 @@ K 向连续 2 个元素。实测结果是 $((2,2),2),1,4$：仍是 32 个元素�
 
 四个实现里有两种异步机制，它们的等待语义需要在数学上对齐。
 
-\textbf{cp.async 的组栈}：\texttt{cp.\allowbreak{}async.\allowbreak{}commit\_\allowbreak{}group} 把当前在途的搬运
+cp.async 的组栈：\texttt{cp.\allowbreak{}async.\allowbreak{}commit\_\allowbreak{}group} 把当前在途的搬运
 压栈，\texttt{cp.\allowbreak{}async.\allowbreak{}wait\_\allowbreak{}group N} 等的是栈顶往下恰好 $N$ 组未完成，
 即已完成组数 $\ge$ 总组数 $-N$。对深度 $k$ 的 software pipeline，提交顺序是
 V[tile]（栈底）→ K[tile+k-1]（栈顶），于是 \texttt{wait\_group 1} 的含义是
 除栈顶的 K 之外全部完成，也就是 V[tile] 已就绪、K[next] 还 inflight。实现 1
 靠这条栈语义把 V 与 K 的等待分开（L2743--2754）：$kStagesK>1$ 且非尾部时用 \texttt{cp\_\allowbreak{}async\_\allowbreak{}wait\allowbreak{}<1>}，
-尾部退回 \texttt{wait<0>}。注意组编号是 \textbf{按线程独立计数}的
+尾部退回 \texttt{wait<0>}。注意组编号是按线程独立计数的
 （PTX ISA §9.7.9.25.3.3：wait 只保证\emph{本线程}提交的组完成），所以实现 1
 里每一处 \texttt{wait} 后面都跟着一次 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()}；
 跨线程可见性靠那次同步兜底，不是冗余。
 
-\textbf{TMA 的事务计数（mbarrier）}：TMA 的完成单位是字节数。
+TMA 的事务计数（mbarrier）：TMA 的完成单位是字节数。
 producer 用 \texttt{arrive\_\allowbreak{}and\_\allowbreak{}expect\_\allowbreak{}tx(bar, bytes)} 声明这次搬运
 将带来 bytes 字节，硬件的 TMA 引擎在字节落盘后把计数减到零、屏障翻转
 phase。消费者用 \texttt{wait(bar, phase)} 等待。实现 2/3 里每个 stage 一对
@@ -587,18 +587,18 @@ phase。消费者用 \texttt{wait(bar, phase)} 等待。实现 2/3 里每个 sta
 \end{figure}
 
 与第~\ref{ch:17}~章手写版的 257 协议相比，CuTe 版的 arrive 语义没有变化，
-变化的是\textbf{谁来数}：手写版用 \texttt{mbarrier\_\allowbreak{}arrive} 手写计数，
+变化的是谁来数：手写版用 \texttt{mbarrier\_\allowbreak{}arrive} 手写计数，
 CuTe 版把一个 stage 打包成 \texttt{Cluster\allowbreak{}Transaction\allowbreak{}Barrier} +
 \texttt{Cluster\allowbreak{}Barrier} 两个对象，stage 索引与 phase 都由循环变量现算
 （图~\ref{fig:25-proto}）。
 
 有一个数字容易被误读：实现 2 的 \texttt{Tma\allowbreak{}Barrier::\allowbreak{}init\allowbreak{}(\&q\_\allowbreak{}full,\allowbreak{} 1)}
 （L2847）写的是 1，而第~\ref{ch:17}~章手写版的 arrive\_count 是 257。
-两者并不矛盾：相位翻转要求 arrive 计数归零\textbf{且} tx 计数归零，
+两者并不矛盾：相位翻转要求 arrive 计数归零且 tx 计数归零，
 CuTe 的 \texttt{arrive\_\allowbreak{}and\_\allowbreak{}expect\_\allowbreak{}tx} 由 producer \emph{单线程}调用，
 它同时完成那 1 次 arrive 并把期望字节数写进 tx 计数，consumer 只 wait
 不 arrive；手写版的 257 则是把 producer 的 arrive\_tx 与 256 个 consumer
-的 arrive 合并计数。两种写法等价，但计数的\textbf{含义}不同：改 init
+的 arrive 合并计数。两种写法等价，但计数的含义不同：改 init
 值之前，先回到谁 arrive、谁 wait 的角色表。
 
 图~\ref{fig:25-wait-semantics} 把这两套等待语义并排摆成两条独立的时间线：
@@ -772,7 +772,7 @@ $(32,8){:}(8,1)$ 铺满 256 个线程，值布局 $(1,8)$ 表示每线程一次�
 \lstinputlisting[linerange={2694-2706,2724-2741,2786-2798},firstnumber=auto,
   title={flash\_attn.cuh L2694-2706 + L2724-2741 + L2786-2798（实现 1 主循环：等待、softmax、epilogue）}]{../flash_attn.cuh}
 
-$kStagesK>1$ 时 QK 前\textbf{不等待}，因为 K[tile] 在上一轮循环末尾的
+$kStagesK>1$ 时 QK 前不等待，因为 K[tile] 在上一轮循环末尾的
 \texttt{wait<0>} 里已经等过（图~\ref{fig:25-proto} 生产者流程的 cp.async 版本）；
 $PV$ 前的等待则要区分栈顶是否还有 K：还有 K 时用 \texttt{wait<1>}，
 尾部没有 K 时\textbf{必须}退回 \texttt{wait<0>}（否则等的是不存在的
@@ -808,8 +808,7 @@ $B_r{=}128$ 配置）专职计算。
 基址 $+$ stage $\times$ 单级元素数的指针算术（\texttt{k\_base} /
 \texttt{v\_base}，每个 stage 一个独立的 \texttt{Smem\allowbreak{}Layout\allowbreak{}KV} tensor）。
 两种写法都合法，选择差异来自 TMA 的 box 尺寸固定为 $64\times D$：
-按 stage 切段比给 box 加维度更直接。这也是 CuTe 不阻止你算指针的实例：
-抽象层之下仍是地址。
+按 stage 切段比给 box 加维度更直接。
 
 
 
@@ -853,7 +852,7 @@ $(r,c)$ 反查寄存器编号，用来在 smem scratch 里定位对方的 partia
 闭环，即上面代码块的第三段（L3462--3482）。它的价值在调试方法上：当 attention
 结果不对时，先用 smoke 确认 TMA descriptor + SW128 swizzle 布局 + 事务屏障
 这条链本身是通的，再往 kernel 里查；把 42 行的搬运闭环从 300 行的 kernel 里
-隔离出来，这就是它作为独立 kernel 存在的理由。
+隔离出来。
 
 \subsection{结构对照}
 
@@ -880,9 +879,9 @@ KV 划分 & 单流全遍历 & 单流全遍历 & 奇偶拆给两个 consumer \\
 
 表~\ref{tab:25-struct} 要把同构部分与异构部分分开看：四个实现
 共享全部 layout 类型（Q/K/V 的 smem、S/O 的 fragment、P 的重解释）与
-\texttt{gemm\_ss}/\texttt{gemm\_rs}，差异集中在三处：\textbf{谁来搬}
-（全员 vs producer vs producer 分 bank）、\textbf{谁等谁}（组栈 vs 事务
-计数 vs 双 bank 屏障）、\textbf{怎么收尾}（归一化 vs 归并）。这就是
+\texttt{gemm\_ss}/\texttt{gemm\_rs}，差异集中在三处：谁来搬
+（全员 vs producer vs producer 分 bank）、谁等谁（组栈 vs 事务
+计数 vs 双 bank 屏障）、怎么收尾（归一化 vs 归并）。这就是
 第~\ref{ch:24}~章 CuTe 只抽象计算与数据、不抽象调度的注意点：调度
 （pipeline 结构、屏障协议）仍需作者设计，CuTe 消掉的是与调度\textbf{正交}的那
 一层地址算术。
@@ -970,8 +969,6 @@ KV 划分 & 单流全遍历 & 单流全遍历 & 奇偶拆给两个 consumer \\
 \end{figure}
 
 \section{性能分析}
-
-本节先交代源码注释里的既有数字与口径，再给本书的复测，最后汇总 CuTe 实测表。
 
 先看源码注释。本章区间（L2196--3488）内\textbf{没有}任何 TFLOPS/加速比
 断言：四个实现都是能跑对的对照样本，性能数字在相邻章节：

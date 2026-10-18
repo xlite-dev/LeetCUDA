@@ -49,8 +49,8 @@ softmax）、第~\ref{ch:17}~章（TMA 与 mbarrier 协议）、第~\ref{ch:21}-
 
 手写 kernel 赢 cuDNN 在 Hopper（sm\_90）时代几乎不可信：cuDNN 在 H100 上用
 WGMMA + warp specialization + TMEM 调到了接近理论峰值，普通开发者用 CuTe 从零追赶
-成本极高。但 sm\_120（Blackwell 消费线/专业线）不一样：这块芯片\textbf{没有}
-WGMMA（sm\_90 专属）、\textbf{没有} tcgen05/TMEM（sm\_100 专属），cuDNN 与我们一样，
+成本极高。但 sm\_120（Blackwell 消费线/专业线）不一样：这块芯片没有
+WGMMA（sm\_90 专属）、没有 tcgen05/TMEM（sm\_100 专属），cuDNN 与我们一样，
 只剩同一条张量核路径：
 
 \begin{equation*}
@@ -58,9 +58,8 @@ WGMMA（sm\_90 专属）、\textbf{没有} tcgen05/TMEM（sm\_100 专属），cu
 \end{equation*}
 
 于是在 sm\_120 上，厂商库与手写的差距不再是指令代差，而全部落在协议设计
-上：tile 几何、流水深度、寄存器分配、softmax 的指令数、wave 尾损。这五项恰恰是本书
-前 25 章逐项打磨过的内容。实测基线（PRO 5000，$B{=}1$/$H{=}32$/$N{=}8192$/$D{=}128$
-fp16，dense）：
+上：tile 几何、流水深度、寄存器分配、softmax 的指令数、wave 尾损。实测基线
+（PRO 5000，$B{=}1$/$H{=}32$/$N{=}8192$/$D{=}128$ fp16，dense）：
 
 \begin{center}
 \begin{tabular}{lcc}
@@ -81,7 +80,7 @@ cuDNN SDPA（\texttt{CUDNN\_ATTENTION} 后端） & 230.2 & 1.00$\times$ \\
 
 还有一个工程动机：厂商库的 SDPA 对\textbf{非标准形状}（GQA 折叠、滑窗 causal、
 head\_dim=96 这类非 2 的幂）经常落入慢速 fallback；专用 kernel 按自己的 tile 几何
-原生支持这些形状，这是性能之外的另一个好处。
+原生支持这些形状。
 
 \section{数学原理}\label{sec:26b-math}
 
@@ -112,7 +111,7 @@ $\log_2 e$ 预乘进 scale：
   \Delta \ge -\tau, \qquad \tau = 8 = \log_2 256
 \end{equation}
 时，$2^{\Delta}$ 只会让 P 累计最多膨胀 $256\times$：fp16 的 P 最大 65504，
-f32 累加器余量更大，因此可以\textbf{跳过}这次重缩放：$m$ 保持旧值
+f32 累加器余量更大，因此可以跳过这次重缩放：$m$ 保持旧值
 （stale max）、$O$/$\ell$ 原样累加。膨胀的部分在 epilogue 的 $1/\ell$ 里全部
 抵消（分子分母同乘一个常数）。dense 数据下命中率高（实测 95\%+ 的 tile 满足
 \eqref{eq:26b-fa4}），只有新 tile 的 max 明显更大时才付出重缩放代价。第~\ref{ch:16}~章
@@ -265,7 +264,7 @@ empty = 消费完成），两者构成 \S\ref{sec:26b-tma} 的握手协议。}
 
 smem 按 \texttt{[Q persist | K stages | V stages]} 一维排布，总量编译期由
 \texttt{kSmemElems} 决定，D=128 时 $128{\times}128{\times}2 + 2{\times}(64{\times}128{\times}2)
-\times 2 = 96$\,KB（opt-in 上限 99\,KB）。每段用哪个 swizzle atom 由\textbf{行字节数}
+\times 2 = 96$\,KB（opt-in 上限 99\,KB）。每段用哪个 swizzle atom 由行字节数
 决定，用的正是第~\ref{ch:23}~章的结论：
 
 \begin{lstinputlisting}[linerange={3527-3565},firstnumber=auto,
@@ -339,7 +338,7 @@ kernel 侧装载时用转置视图（\S\ref{sec:26b-smem}）。
 
 细看 producer 的发射时序：Q 先发（一次性全 $D$），然后
 K/V 各预取 $S{-}1$ 个 tile 填满流水，主循环里每个 tile 领先 $S{-}1$ 发射下一个。
-注意 \textbf{V-first-then-K} 的顺序：V 的消费点（PV GEMM）晚于 K 的消费点
+注意 V-first-then-K 的顺序：V 的消费点（PV GEMM）晚于 K 的消费点
 （QK GEMM）整整一段 softmax，先发 V 让 K 的 TMA 传输填进 QK 计算的空隙：
 
 \begin{figure}[H]
@@ -390,7 +389,7 @@ producer 侧的 TMA 完全重叠。}
 
 mbarrier 相位是这套协议最容易写错的地方。本书第~\ref{ch:17}~章用的是
 每 tile 重置的相对相位；persistent CTA 下 q-tile 循环不能每轮重置
-（producer 可能领先 consumer 整整一个 q-tile），所以相位改由\textbf{全局}
+（producer 可能领先 consumer 整整一个 q-tile），所以相位改由全局
 kv 计数 $g$ 决定：
 
 \begin{equation}\label{eq:26b-phase}
@@ -399,7 +398,7 @@ kv 计数 $g$ 决定：
 
 $g$ 在 producer 与 consumer 两侧各自按消费序列连续累计（跨 q-tile 不清零），
 wait 与 arrive 的奇偶序自然匹配。配套有一条铁律：\texttt{k\_\allowbreak{}empty}/\texttt{v\_\allowbreak{}empty}
-的\textbf{初始} arrive 只在第一个 q-tile 开头做一次，之后每个 stage 的
+的初始 arrive 只在第一个 q-tile 开头做一次，之后每个 stage 的
 空信号完全由上一轮消费 arrive 维持。若每轮 q-tile 都补一次初始 arrive，
 mbarrier 的相位会被多推一格，producer 的 wait 永远等不到正确的奇偶
 （compute-sanitizer 的 synccheck 会报 \emph{Barrier error: Missing wait}）。
@@ -429,7 +428,7 @@ wait 永远不满足（挂死而非出错）。consumer 侧对应的是初始 ar
 \texttt{if (iter == 0)} 把全部 $S_K{+}S_V$ 个 stage 的 empty 各 arrive 一次
 （256 线程 \texttt{CtaBarrier} 的满额 arrive），此后每个 stage 的空位由
 每次消费后的 \texttt{arrive(k\_empty[k\_stg])} 自持，与 producer 按 $g$
-推进的 wait 序列恰好逐格对齐，一轮不多一轮不少。
+推进的 wait 序列恰好逐格对齐。
 \subsection{Q 寄存器持久化与 \texttt{gemm\_rs}：TiledMMA/TiledCopy 组合}\label{sec:26b-persistq}
 
 FA2 的 split-Q 布局里 Q 每个 tile 都要从 smem 重装；persist-D 的观察是：
@@ -445,7 +444,7 @@ $S = QK^\top$ 的每次计算都是 A 在寄存器、B 在 smem 的形态：第~
 TiledMMA 切出每线程的 A-fragment；\texttt{retile\_D} 把 copy 的目的视图对齐到
 同一片寄存器（第~\ref{ch:21}~章的 TV-layout 分区）。折叠循环
 \texttt{tCrQ(i) = (Element)(float(tCrQ(i)) * (scale * FA4\_LOG2E))} 逐元素乘
-$s$ 后写回 fp16。此后 QK 的 HMMA 输出\textbf{直接}就是 log2 域分数
+$s$ 后写回 fp16。此后 QK 的 HMMA 输出直接就是 log2 域分数
 （式~\eqref{eq:26b-fold}），\S\ref{sec:26b-scale-math} 的全部收益在此兑现。
 
 softmax 本体是 \texttt{online\_\allowbreak{}safe\_\allowbreak{}softmax\_\allowbreak{}fa4}
@@ -460,7 +459,7 @@ scale（已经折叠）。行内 4-lane 蝶形归约（\texttt{\_\_shfl\_xor} 1 
   title={flash\_attn.cuh L3587-3628（\texttt{online\_safe\_softmax\_fa4}：log2 域 + 条件重缩放全函数）}]{../flash_attn.cuh}
 \end{lstinputlisting}
 
-逐段拆开。tile max 与蝶形归约在前 6 行：每行先在本地
+tile max 与蝶形归约在前 6 行：每行先在本地
 \texttt{kSCols} 个分数里线性扫出 \texttt{tile\_max}，再 \texttt{shfl\_xor(1)} 与
 \texttt{shfl\_xor(2)} 两步把 4 个 lane 的局部 max 归并成行 max：用蝶形而
 非树，因为 4 lane 恰好两轮异或全覆盖。条件重缩放判定在中段：
@@ -695,7 +694,7 @@ TMA dst 状态空间 & \texttt{shared::cluster} & C7506：ptxas 视作隐式 ext
 \end{tabular}
 \end{center}
 
-下面分别看这两个静默丢弃触发的机理。\textbf{C7506（cluster 形式 TMA）}：
+\textbf{C7506（cluster 形式 TMA）}：
 \texttt{cp.\allowbreak{}async.\allowbreak{}bulk.\allowbreak{}tensor} 的目的地址写成
 \texttt{shared::cluster} 时，ptxas 把这条指令当作潜在的跨 CTA 副作用边界
 （cluster 语义下 smem 地址可能被映射到别的 CTA），进而按 extern 调用边界
@@ -712,7 +711,7 @@ TMA dst 状态空间 & \texttt{shared::cluster} & C7506：ptxas 视作隐式 ext
 ptxas 以 C7508 把指令全部丢弃：本章 kernel 因此声明
 \texttt{\_\_launch\_\allowbreak{}bounds\_\allowbreak{}(384,~1)}。
 
-\textbf{排查方法论}（每一条都有实测踩坑记录支撑）：
+排查方法论（每一条都有实测踩坑记录支撑）：
 \begin{enumerate}[itemsep=1pt,topsep=2pt]
   \item SASS 助记符是 \texttt{USETMAXREG}（没有 n）：
         \texttt{cuobjdump -{}-dump-sass | grep setmaxnreg} 全程假阴性，本书
@@ -723,10 +722,10 @@ ptxas 以 C7508 把指令全部丢弃：本章 kernel 因此声明
         dump 为空，又一个假 0）。
   \item 「编译通过零警告」$\neq$「指令保留」：C7506 是 info 级默认不打印，
         验证必须加 \texttt{-Xptxas -v} 或直接数 SASS。
-  \item nvcc 13.2 对每个 target 跑\textbf{两个 device pass}（generic 视角 +
+  \item nvcc 13.2 对每个 target 跑两个 device pass（generic 视角 +
         arch-specific 视角）：用 \texttt{\#pragma message} 探测
         \texttt{\_\_CUDA\_ARCH\_FEAT\_\allowbreak{}SM120\_\allowbreak{}ALL} 这类宏会打印出
-        两遍\textbf{互相矛盾}的矩阵，第一遍全未定义是 generic pass 的，判断
+        两遍互相矛盾的矩阵，第一遍全未定义是 generic pass 的，判断
         guard 行为必须看第二遍（arch pass）。
 \end{enumerate}
 

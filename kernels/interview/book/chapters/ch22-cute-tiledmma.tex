@@ -38,7 +38,7 @@ L339--345（cp.async 版本的 fragment 流转，与 TMA+WS 版逐行一致）�
 \section{问题与动机}
 
 先从一条 mma 指令说起。\texttt{mma.\allowbreak{}sync.\allowbreak{}aligned.\allowbreak{}m16n8k16} 不是一个线程的
-算术指令，而是\textbf{一个 warp 的集体动作}：32 个 lane 各自从自己的寄存器里
+算术指令，而是一个 warp 的集体动作：32 个 lane 各自从自己的寄存器里
 拿出 A、B 的一小片，硬件把它们拼成 $16\times16$ 与 $8\times16$ 的矩阵送进
 tensor core，算完再把 $16\times8$ 的 C 分散写回 32 个 lane 的寄存器。所以
 写 mma 的第一件事是回答我这条 lane 的寄存器里该装哪几个元素。
@@ -76,7 +76,7 @@ tensor core，算完再把 $16\times8$ 的 C 分散写回 32 个 lane 的寄存�
 \end{itemize}
 
 CuTe 对这三处问题的回应可以概括为：把 atom 的 thread-data 映射本身变成
-一个 layout，然后让重复成为 layout 的乘法。下面沿这条线索展开。
+一个 layout，然后让重复成为 layout 的乘法。
 
 把上述规则放到 FFPA 上实例化。FFPA 的 QK 步骤要算
 $S_{64\times64} = Q_{64\times64} K^T_{64\times64}$（每个 d-chunk），PV 步骤
@@ -164,23 +164,23 @@ lane 31 是 $\{(7,6),(7,7),(15,6),(15,7),(7,14),\dots\}$。CuTe 没有
 验证守恒（A：$32\times8=256=16\times16$；B：$32\times4=128=8\times16$；
 C：$32\times4=128=16\times8$）。
 
-\textbf{单 warp 演练：\texttt{partition\_\allowbreak{}fragment\_\allowbreak{}A/\allowbreak{}B/\allowbreak{}C} 给出什么？}
+单 warp 演练：\texttt{partition\_\allowbreak{}fragment\_\allowbreak{}A/\allowbreak{}B/\allowbreak{}C} 给出什么？
 把原子包成最小的 TiledMMA（warp 排布 $(1,1,1)$，tile 参数就是原子形状），
 对一个 $16\times16$ 的 A、$8\times16$ 的 B、$16\times8$ 的 C 调用三个
 partition：tile 不放大、线程不增，每线程拿到的就是原子自身的一份 fragment：
 A 为 $(8,1,1)$（8 个 half）、B 为 $(4,1,1)$、C 为 $(4,1,1)$，与
-第~\ref{ch:11}~章手写版的寄存器清单逐一对应。这不是巧合：partition
+第~\ref{ch:11}~章手写版的寄存器清单逐一对应。partition
 在单 warp $+$ 单原子的退化情形下输出的就是 PTX fragment 本身；它真正的
 价值（tile 放大后的 remainder 与多 warp 的重复因子）要到 3.2--3.3 节才
 显现。
 
 \subsection{TiledMMA：原子、排布、tile 三个参数}
 
-再回到动机里那两层重复：\textbf{并行维度}（多起执行器）与\textbf{串行
-维度}（一个执行器循环执行）。CuTe 把两者装进
+再回到动机里那两层重复：并行维度（多起执行器）与串行维度（一个执行器
+循环执行）。CuTe 把两者装进
 \texttt{make\_\allowbreak{}tiled\_\allowbreak{}mma\allowbreak{}(atom,\allowbreak{} Atom\allowbreak{}Layout\allowbreak{}MNK,\allowbreak{} Permutation\allowbreak{}MNK)} 的三个参数：
-原子是硬件粒度，第二个参数是\textbf{warp 排布}（哪个 warp 覆盖哪个原子位置，
-负责并行重复），第三个是\textbf{目标 tile 尺寸}（含 K，决定一个 threadblock
+原子是硬件粒度，第二个参数是 warp 排布（哪个 warp 覆盖哪个原子位置，
+负责并行重复），第三个是目标 tile 尺寸（含 K，决定一个 threadblock
 一次执行的计算块）。内核把两者合成为
 
 \begin{equation}
@@ -212,16 +212,16 @@ $\mathrm{thr\_layout\_vmnk} = (32,4,1,1){:}(1,32,0,0)$，$\mathrm{ThrV}=32$
 原子长度乘该方向的 warp 组数（M 对应
 $\mathrm{ThrM}$、N 对应 $\mathrm{ThrN}$、K 对应 $\mathrm{ThrK}$）。
 
-用映射语言说：\texttt{Thr\allowbreak{}Layout\allowbreak{}VMNK} 把\textbf{线程编号}拆成
+用映射语言说：\texttt{Thr\allowbreak{}Layout\allowbreak{}VMNK} 把线程编号拆成
 $(\mathrm{ThrV},(\mathrm{ThrM},\mathrm{ThrN},\mathrm{ThrK}))$ 四层：先看
 warp 内部（$\mathrm{ThrV}$），再看第几个 warp 落在哪个方向。
 谁并行、谁重复这两个问题的答案，都由线程编号到 VMNK 的分解给出。
 
 一个自然的疑问是：既然 warp 排布 $+$ 原子尺寸已经能划分 tile，为什么还要
-第三个（tile）参数？@竹熙佳处给出两条理由。一是\textbf{拷贝粒度}：后续
+第三个（tile）参数？@竹熙佳处给出两条理由。一是拷贝粒度：后续
 S2R/R2S tiled copy 把这个参数描述的块整体当作拷贝单位，N 方向留大一倍
 （每个 warp 16 而非 8）才能用上 \texttt{ldsm.x4} 一类的宽指令；二是
-\textbf{重排的余地}：tile 参数本质是一个 layout，高级用法可以借助它的
+重排的余地：tile 参数本质是一个 layout，高级用法可以借助它的
 stride 把多条指令算出的数据在寄存器里重新排列，
 \texttt{Permutation\allowbreak{}MNK} 这个名字就来自这里。常规场景把它当 tile 尺寸读即可。
 
@@ -229,8 +229,8 @@ stride 把多条指令算出的数据在寄存器里重新排列，
 
 真正的工作在 \texttt{thrfrg\_\allowbreak{}A/\allowbreak{}B/\allowbreak{}C} 里，它是四步 layout 代数
 （第~\ref{ch:20}~章的全部工具在这里综合使用）。四步走的是一条固定流水线：
-\textbf{先按 tile 切、再按原子切、把原子坐标换成 (线程, 值)、最后按 warp
-排布把线程剥出来}。以 A 为例（B/C 只是把 mode 换成 $(N,K)$ / $(M,N)$）：
+先按 tile 切、再按原子切、把原子坐标换成 (线程, 值)、最后按 warp
+排布把线程剥出来。以 A 为例（B/C 只是把 mode 换成 $(N,K)$ / $(M,N)$）：
 
 \begin{align}
   &\text{(1) 按 tile 分块} &
@@ -434,7 +434,7 @@ $[0,64)$，这就是 $\mathrm{ThrM}=4$、$\mathrm{atom}_M=16$ 的直接推论。
 
 \subsection{FFPA traits：两个 TiledMMA 的完整推导}
 
-先看源码区间本体，它短小但信息密度极高，每一行都对应 3.3 节的一个量：
+先看源码区间本体，它短小但每一行都对应 3.3 节的一个量：
 
 \lstinputlisting[linerange={31-62},firstnumber=auto,breakatwhitespace=true,
   title={ffpa\_attn.cuh L31-62（FFPAAttnSplitDCuTeTraits：QK 与 PV 双 TiledMMA）}]{../ffpa_attn.cuh}
@@ -452,10 +452,11 @@ $[0,64)$，这就是 $\mathrm{ThrM}=4$、$\mathrm{atom}_M=16$ 的直接推论。
   \item \texttt{Mma\allowbreak{}Atom =\allowbreak{} MMA\_\allowbreak{}Atom\allowbreak{}<SM80\_\allowbreak{}16x8x16\_\allowbreak{}F32\allowbreak{}F16\allowbreak{}F16\allowbreak{}F32\_\allowbreak{}TN>}：
         F32 累加（attention 的数值要求），与 3.1 节的 fragment 一致；
   \item \texttt{TiledMmaQK}：$\mathrm{AtomLayoutMNK} = (4,1,1)$（4 个 warp
-        沿 M 切），第三个实参传入 \texttt{Tile<Int<64>,Int<64>,\_16>}，充当
-        \texttt{make\_tiled\_mma} 的 MNK 置换参数。实测
-        $\mathrm{tile\_size} = (64,64,16)$、线程数 $128$；沿 N 铺的 $8$ 列
-        原子数是 $\mathrm{MMA}_N = 8$，与置换参数的 $(64,64,16)$ 不是同一层级；
+        沿 M 切），第三个实参
+        \texttt{Tile<Int<64>,Int<64>,\_16>} 充当 \texttt{make\_tiled\_mma} 的
+        MNK 置换参数。实测 $\mathrm{tile\_size} = (64,64,16)$、线程数 $128$；
+        沿 N 铺的 $8$ 列原子数是 $\mathrm{MMA}_N = 8$，与置换参数的
+        $(64,64,16)$ 不是同一层级；
   \item \texttt{TiledMmaPV}：同样的 warp 排布，tile 换成 $(64,16,16)$：
         N 方向只留 16，因为 acc\_O 要常驻寄存器；
   \item 两个 \texttt{Copy\_Atom}：\texttt{LDSM\_N}（正常读）与
@@ -463,14 +464,14 @@ $[0,64)$，这就是 $\mathrm{ThrM}=4$、$\mathrm{atom}_M=16$ 的直接推论。
         \texttt{make\_\allowbreak{}tiled\_\allowbreak{}copy\_\allowbreak{}B} 的原子参数。
 \end{itemize}
 
-\textbf{为什么 QK 用 $64\times64$ 的 tile？}因为 $S$ 的 N 方向（KV 方向）正好
+为什么 QK 用 $64\times64$ 的 tile？因为 $S$ 的 N 方向（KV 方向）正好
 是 64，一次 TiledMMA 覆盖整个 $S$，省掉 N-tile 循环。实测
 $\mathrm{MMA}_N = 8$（$8$ 个 $8$ 列的原子），全部落在同一个 warp 内、
 同一批寄存器里；这对应注释里的「EURepeat$=<1,8,1>$」。
 
-\textbf{为什么 PV 用 $64\times16$？}因为 acc\_O 是 $64\times D$-chunk $\times$
+为什么 PV 用 $64\times16$？因为 acc\_O 是 $64\times D$-chunk $\times$
 $D$ 方向 chunk 数的大数组。每线程每个 chunk 32 个 float，
-$D=512$ 时 $8$ 个 chunk 共 \textbf{256 个寄存器}，这已经逼近寄存器文件的上限
+$D=512$ 时 $8$ 个 chunk 共 256 个寄存器，这已经逼近寄存器文件的上限
 （第~\ref{ch:19}~章的寄存器压力讨论）。若把 PV 的 N 也取 64，单次 gemm
 调用的 C 视图会从 8 涨到 32、B fragment 随之线性增长，S$\to$R 拷贝粒度
 变粗，常驻 acc\_O 并不变。实测 PV 在 $(64,16)$ 的 C 上
@@ -523,7 +524,7 @@ d-chunk 的 Q，返回 $(8,1,4)$ 的寄存器 fragment，即式~\eqref{eq:22-fra
 （\texttt{partition\_\allowbreak{}fragment\_\allowbreak{}C\allowbreak{}(tiled\_\allowbreak{}mma\_\allowbreak{}qk,\allowbreak{}}\allowbreak
 \texttt{Shape\allowbreak{}<\_\allowbreak{},\allowbreak{}64,\allowbreak{}\_\allowbreak{}64>\{\})}
 $=(4,1,8)=32$），所有 d-chunk 的 QK 结果累加到同一份 $S$ 寄存器上。
-\textbf{这正是 Split-D 的数学：$S=\sum_{d} Q_d K_d^T$ 用累加器直接表达}。
+Split-D 的数学 $S=\sum_{d} Q_d K_d^T$ 用累加器直接表达。
 \end{sloppypar}
 
 \subsection{QK$\to$PV：fragment 的原地复用}
@@ -925,7 +926,7 @@ $16\times16\times64$，CTA 的 $64\times16\times64$ 需 4 warp 共 32 条。
 两个 tile 都让每条 MMA 指令用满原子尺寸，没有浪费，因为它们都是从
 $\mathrm{AtomShape}$ 出发、只用排布与 tile 尺寸做整数分块推出来的。
 
-\textbf{口径说明}：本节所有数字都是 host 端类型推导的实测值（
+口径说明：本节所有数字都是 host 端类型推导的实测值（
 \texttt{partition\_\allowbreak{}fragment\_\allowbreak{}*} 的形状），不含计时数据；FFPA 的
 TFLOPS 对照见第~\ref{ch:19}~章的表与第~\ref{ch:26}~章的 kernel 分析。
 还有一条引用规则：ffpa\_attn.cuh L16--18 的头注释给出「SM120a

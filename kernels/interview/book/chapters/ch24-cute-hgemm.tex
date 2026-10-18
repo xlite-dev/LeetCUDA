@@ -16,7 +16,7 @@
 形状与步长的事实被反复重写：\texttt{ldmatrix} 的 lane 映射、swizzle 的
 XOR 掩码、epilogue 的 \texttt{\_\_shfl\_sync} 编排，每一处都要人工保证与其余
 四处的地址算术一致。本章把同一个 kernel 交给 CuTe 重写一遍，用的是 Phase~7c 的
-\texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn\_\allowbreak{}cute}，并在最后用一张\textbf{对照表}
+\texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn\_\allowbreak{}cute}，并在最后用一张对照表
 （图~\ref{fig:24-1}）把两条路逐项摆开。
 
 \textbf{前置章节}：第~\ref{ch:11}~章（\texttt{mma.\allowbreak{}sync.\allowbreak{}m16n8k16} 与
@@ -54,12 +54,12 @@ fp64 参考做正确性判定；本章的实测数字全部来自该测试与 \t
 
 \begin{itemize}
   \item Phase~7b \texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn}（hgemm.cuh~L129--397）：
-        \textbf{147 行}；
+        147 行；
   \item Phase~7b-3 \texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn\_\allowbreak{}swizzle}
-        （hgemm.cuh~L434--716）：\textbf{231 行}；
+        （hgemm.cuh~L434--716）：231 行；
   \item Phase~7c \texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn\_\allowbreak{}cute}
-        （hgemm.cuh~L821--1196）：\textbf{118 行}，再加 launch wrapper
-        （L1216--1427）\textbf{86 行}。
+        （hgemm.cuh~L821--1196）：118 行，再加 launch wrapper
+        （L1216--1427）86 行。
 \end{itemize}
 
 手写版与 CuTe 版的行数比并不悬殊（231 对 204），但代码的性质变了。
@@ -74,7 +74,7 @@ uint32_t lane_smem_a_ptr = smem_a_base_ptr +
 LDMATRIX_X4(RA[i][0], RA[i][1], RA[i][2], RA[i][3], lane_smem_a_ptr);
 \end{lstlisting}
 
-CuTe 版里出现的是\textbf{声明}与\textbf{分区}：
+CuTe 版里出现的是声明与分区：
 
 \begin{lstlisting}
 auto sA = make_tensor(make_smem_ptr(Ashm), SmemLayoutA{});
@@ -94,8 +94,7 @@ cute::copy(s2r_tiled_copy_a, tAsA(_, _, k_step_next, ismem_read),
 类型实例化在配置什么？哪些东西 CuTe 替你做了，哪些仍要你自己做？第三个问题
 决定这套工具的能力边界，也是图~\ref{fig:24-1} 要回答的。
 
-正文按三步渐进展开，三步共用同一份源码事实，区别只在每一步放弃或引入什么；
-每一步末尾都会点明这一步留下了什么，接上后一步的动机。
+正文按三步渐进展开，三步共用同一份源码事实，区别只在每一步放弃或引入什么。
 
 \section{数学原理}
 
@@ -269,7 +268,7 @@ C 累加器 & 2 个 \texttt{u32}（4 个 half） & 4 个 float \\
 \end{tabular}
 \end{center}
 
-两种 atom 的 A/B fragment 布局完全相同（这也是选它们做对照的前提），差别只在
+两种 atom 的 A/B fragment 布局完全相同，差别只在
 C 累加器：F16 累加把 4 个 half 打包进 2 个寄存器，F32 累加用 4 个寄存器。launch
 wrapper 用 \texttt{std::\allowbreak{}conditional\_\allowbreak{}t} 一次选出原子，再由 EURepeat 推出逻辑
 tile：
@@ -443,13 +442,13 @@ kernel 本体把全部配置都收在模板参数里，函数体里没有一个 
 
 注意函数体开头的两个 \texttt{static\_\allowbreak{}assert}（L824--825）：\texttt{Block\allowbreak{}Swizzle}
 只能是 0/1、\texttt{kStage} 至少 2。这组断言把错误配置变成编译期错误，而不是
-拖到运行时才得到错误结果，属于类型即配置的直接收益。
+拖到运行时才得到错误结果。
 
 下面按三步展开，每一步开头先交代上一步留下了什么问题：第一步
 （第~\ref{sec:24-step1}~节）只留切块 $\to$ 分区 $\to$ \texttt{cute::gemm}；
 第二步（第~\ref{sec:24-step2}~节）引入 smem 与 \texttt{cp.async}，把搬运与计算
 重叠起来；第三步（第~\ref{sec:24-step3a}、\ref{sec:24-step3b}~节）把搬运的
-形态、寄存器占用与 epilogue 做到高效。三步共用同一份源码，可以逐段对照读。
+形态、寄存器占用与 epilogue 做到高效。三步共用同一份源码。
 
 \subsection{第一步：切块、分区、\texttt{cute::gemm}}\label{sec:24-step1}
 
@@ -531,7 +530,7 @@ $(MMA, MMA\_M, MMA\_N)$：第一维是单个 atom 内的值，后两维是 CTA t
 
 这段代码里没有一行地址算术：没有 \texttt{stage*BM*BK}、没有 XOR 掩码、没有
 lane 映射。\texttt{cute::gemm} 按 \texttt{tiled\_mma} 的类型把
-$(MMA\_M, MMA\_N)$ 两层循环\textbf{全部展开}成 \texttt{mma.sync} 指令序列，
+$(MMA\_M, MMA\_N)$ 两层循环全部展开成 \texttt{mma.sync} 指令序列，
 等价于手写版里 \texttt{for\allowbreak{}(i)\ for\allowbreak{}(j)\ HMMA16816\allowbreak{}(.\allowbreak{}.\allowbreak{}.\allowbreak{})} 的两层，只是写进了类型，
 源码里看不到。K 方向仍要作者显式推进：\texttt{cute::gemm} 不碰 K，因为每个
 $k$ 需要不同的 S$\to$R 拷贝（这正是第~\ref{sec:24-step2}~节寄存器双缓冲的落点）。
@@ -654,8 +653,8 @@ $k_{\mathrm{stage}}$ 加到 3、4 时循环体几乎不用改：放行更多 inf
         \texttt{for\allowbreak{}(i)\ for\allowbreak{}(j)\ HMMA16816\allowbreak{}(.\allowbreak{}.\allowbreak{}.\allowbreak{})} 的两层。
   \item \textbf{同步点也是显式写的}：\texttt{cp\_\allowbreak{}async\_\allowbreak{}fence\allowbreak{}()} 提交
         commit-group，\texttt{cp\_\allowbreak{}async\_\allowbreak{}wait\allowbreak{}<N>\allowbreak{}()} $+$ \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()}
-        等待并保证 CTA 内一致。CuTe 提供的是 \texttt{copy} 的\textbf{指令}，
-        不是\textbf{流水线}：流水线的计数与同步仍属于 kernel 作者。
+        等待并保证 CTA 内一致。CuTe 提供的是 \texttt{copy} 的指令，
+        不是流水线：流水线的计数与同步仍属于 kernel 作者。
   \item \textbf{stage 翻转放在末尾}：\texttt{ismem\_read} 在最后一个 k\_step 处
         等待并前移（式~\eqref{eq:24-inflight}），这样下一轮 k\_tile 的两个
         \texttt{ldmatrix} 才读得到新 stage。
@@ -665,7 +664,7 @@ $k_{\mathrm{stage}}$ 加到 3、4 时循环体几乎不用改：放行更多 inf
 
 Phase~7c 的头注释在列举 CuTe 五要素时，把第 5 条写成「Pipeline: cp.async $+$
 multistage, 由 cute::copy 自动管理」（hgemm.cuh L729--733）。读代码会发现这句
-表述\textbf{不准确}，面试时如果原样复述，很容易被追问：
+表述不准确，面试时如果原样复述，很容易被追问：
 
 \begin{itemize}
   \item \texttt{cute::copy} 只负责回答哪些线程搬哪些元素，并把它翻译成一条
@@ -806,10 +805,10 @@ $B_N{=}256$/F16 用 254 个寄存器、$B_N{=}128$/F32 用 226 个，两者 stac
 \paragraph{epilogue：先落 smem，再宽写 gmem}
 
 epilogue 的路径是寄存器 $\to$ smem scratchpad $\to$ gmem，中间需要一次
-\texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()}：S$\to$G 读的是\textbf{别的线程}刚写进 smem 的
+\texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()}：S$\to$G 读的是别的线程刚写进 smem 的
 数据，必须有一次 CTA 级汇合。选这条路线的理由与 @reed 在《cute 之 高效 GEMM
 实现》「尾阶段高效」一节一致：累加器 fragment 的寄存器分布在 gmem 上是
-\textbf{不连续}的，直接写会产生大量零散事务、也谈不上向量化；经 smem 做一次
+不连续的，直接写会产生大量零散事务、也谈不上向量化；经 smem 做一次
 CTA 范围的重组之后，S$\to$G 就能用 128 位宽写。
 
 C scratchpad 复用当前 A stage 的空间，容量对齐关系是
@@ -1145,7 +1144,7 @@ R2S $\to$ sC $\to$ S2G，映射进类型 \\
 \section{性能分析}
 
 本章没有为 CuTe HGEMM 单独建 bench（Phase~7c 的集成数据由 \texttt{bench/bench\_leetcuda.cu}
-的 \texttt{--bench} 统一采集）。这里只给三条\textbf{可核验}的定量结论：
+的 \texttt{--bench} 统一采集）。这里只给三条可核验的定量结论：
 
 \begin{enumerate}
   \item \textbf{正确性}：最小测试在 $128\times256\times64$（F16 累加）与
@@ -1155,8 +1154,8 @@ R2S $\to$ sC $\to$ S2G，映射进类型 \\
   \item \textbf{寄存器压力}：\texttt{ptxas -v} 实测两种配置的寄存器数与 stack
         使用（实测值见本节的实践须知），核对源码注释里「均 0 spill」的说法。
   \item \textbf{smem 占用}：式~\eqref{eq:24-smem} 的 48\,KiB 由
-        \texttt{cosize\allowbreak{}(Smem\allowbreak{}Layout\allowbreak{}A) + cosize\allowbreak{}(Smem\allowbreak{}Layout\allowbreak{}B)} 在\textbf{编译期}
-        算出。同一个常量既决定 \texttt{cuda\allowbreak{}Func\allowbreak{}Set\allowbreak{}Attribute} 的实参，也决定
+        \texttt{cosize\allowbreak{}(Smem\allowbreak{}Layout\allowbreak{}A) + cosize\allowbreak{}(Smem\allowbreak{}Layout\allowbreak{}B)} 在
+        编译期算出。同一个常量既决定 \texttt{cuda\allowbreak{}Func\allowbreak{}Set\allowbreak{}Attribute} 的实参，也决定
         occupancy 上限。$B_N$ 降到 128（F32 累加）时它同步降到 32\,KiB，
         精度换占用的取舍是类型参数的直接后果。
 \end{enumerate}
@@ -1222,7 +1221,7 @@ HGEMM CuTe Swizzle (S=3, BLK\_SW=1, F32Acc) & 0.000e+00 & 242.4/164.2 (1.48x) \\
 CuTe 版\textbf{不承诺}比手写版更快。两者的指令序列高度重合
 （SASS 层面都是 \texttt{LDGSTS} $+$ \texttt{LDSM} $+$ \texttt{HMMA}），差别在
 编译期把地址算术折叠掉、以及让 kernel 作者少写上百行易错的表达式。真正的加速
-来自第~\ref{ch:12}~章那样的\textbf{算法级}决策（swizzle 档位、block swizzle、
+来自第~\ref{ch:12}~章那样的算法级决策（swizzle 档位、block swizzle、
 寄存器双缓冲）；CuTe 的价值是让这些决策更容易表达、检查与复用。
 
 \section{常见坑}

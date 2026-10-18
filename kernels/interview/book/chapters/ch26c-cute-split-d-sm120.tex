@@ -121,13 +121,13 @@ non-WS 版把 QK 与 V 拆成两套互不相交的 barrier 集，下一 tile 的
   title={ffpa\_attn.cuh L699-721（traits：协议参数与 smem 公式）}]{../ffpa_attn.cuh}
 \end{lstinputlisting}
 
-四组参数的分工如下。\textbf{tile 几何}：$k_{Br}{=}k_{Bc}{=}128$，
-$k_{NumThreads} = 128/16 \times 32 = 256$。\textbf{chunk 解耦}：
+四组参数的分工如下。tile 几何：$k_{Br}{=}k_{Bc}{=}128$，
+$k_{NumThreads} = 128/16 \times 32 = 256$。chunk 解耦：
 $k_{QKDChunk}{=}32$、$k_{VDChunk}{=}64$，即 Q/K 与 V/O 的 D 向切块宽度
 不同，$k_{DChunksQK} = D/32$ 个 QK chunk 对 $k_{DChunksV} = D/64$ 个
-PV chunk（D=320 时 10 对 5）。\textbf{流水深度解耦}：
+PV chunk（D=320 时 10 对 5）。流水深度解耦：
 $k_{StagesQK}$ 与 $k_{StagesPV}$ 是两个独立模板参数，\S\ref{sec:26c-perf}
-的实验会证明最优值是 $(3,2)$ 而不是对称的 $(3,3)$。\textbf{smem 公式}：
+的实验会证明最优值是 $(3,2)$ 而不是对称的 $(3,3)$。smem 公式：
 \begin{equation}\label{eq:26c-smem}
   \text{smem} = \underbrace{S_K \cdot (128{\times}32 + 128{\times}32)}_{\text{Q+K，每 stage }16\text{KB}}
   \;+\; \underbrace{S_V \cdot 128{\times}64}_{\text{V，每 stage }16\text{KB}}
@@ -147,7 +147,7 @@ $D$ 选：
 
 Q/K chunk 行宽 32$\times$2$=$64\,B，SW64 的一个 swizzle 周期恰好覆盖，
 用 SW128 反而浪费（padding 到 128\,B 行）；V/O chunk 行宽 128\,B 落回
-SW128。\texttt{SmemLayoutVt} 是 V 的转置\textbf{视图}（composition，不
+SW128。\texttt{SmemLayoutVt} 是 V 的转置视图（composition，不
 物化），PV 的 B-operand 以 $D_c \times B_c$ 列主视图交给
 \texttt{LDSM\_T}。\texttt{SmemLayoutO} 与 V 同 atom，epilogue 复用已
 释放的 QKV smem 时布局保持一致（\S\ref{sec:26c-epilogue}）。
@@ -271,7 +271,7 @@ $N_{kv}$ 非 $k_{Bc}$ 倍数时直接用全局 tile 索引会串到相邻 head �
   title={ffpa\_attn.cuh L1008-1026（初始预取：QK 填满 $S_K$，V 填满 $S_V$）}]{../ffpa_attn.cuh}
 \end{lstinputlisting}
 
-细看 \textbf{V 的初始预取位置}：V 与 QK 无数据依赖，在第一个
+细看 V 的初始预取位置：V 与 QK 无数据依赖，在第一个
 QK GEMM 之前就把 $S_V$ 份 V chunk 发出去，V 的 TMA 传输重叠掉整个
 首个 QK GEMM + softmax 窗口。此后每个 kv\_tile 开头再补发本 tile 的
 首批 V（L1030--1040），同样领先于 QK 消费。
@@ -285,7 +285,7 @@ icache 与寄存器压力）内的 QK 相位：
   title={ffpa\_attn.cuh L1043-1082（Phase 1：chunk 流水上的 $S=\sum_d Q_d K_d^\top$）}]{../ffpa_attn.cuh}
 \end{lstinputlisting}
 
-逐行拆解。\textbf{L1043--1044}：S 的 f32 累加器 fragment 每 tile 清零
+\textbf{L1043--1044}：S 的 f32 累加器 fragment 每 tile 清零
 （split-D 的 $S$ 是 tile 内变量，不跨 tile）。\textbf{L1047--1052}：
 按式~\eqref{eq:26c-phase} 分解出 (stage, phase)，等 \texttt{qk\_full}
 的数据就绪。\textbf{L1054--1064}：\texttt{partition\_fragment\_A/B} 在
@@ -297,8 +297,8 @@ $S = \sum_{d} Q_{[:,d]} K_{[:,d]}^\top$，正是第~\ref{ch:19}~章 19.3.2 节
 \textbf{L1072--1081}：\texttt{tid=0} 领先 $S_K$ 个 chunk 预取下一个
 （\texttt{d\_next = d\_chunk + kStagesQK}）。注释里的死锁警告值得原样
 引用：预取不能移到 \texttt{gemm\_ss} 之前，因为
-$s_{next} = stage$ 且 $phase_{next} = 1 - phase$，wait 门控在\textbf{本
-迭代}的 arrive 上，提前了 \texttt{tid=0} 就在等一个需要它自己参与
+$s_{next} = stage$ 且 $phase_{next} = 1 - phase$，wait 门控在本
+迭代的 arrive 上，提前了 \texttt{tid=0} 就在等一个需要它自己参与
 \texttt{gemm\_ss} 才能释放的 barrier。
 
 \subsection{跨 tile 预取：barrier 集不相交的收益}\label{sec:26c-prefetch}
@@ -369,7 +369,7 @@ softmax 相位从 Nkv 边界 mask 开始，到 P fragment 准备好结束：
   title={ffpa\_attn.cuh L1096-1131（Phase 2：mask + online softmax + warp vote + P 零拷贝）}]{../ffpa_attn.cuh}
 \end{lstinputlisting}
 
-三段各有要点。\textbf{mask（L1102--1117）}：尾部 kv\_tile 的越界列置
+\textbf{mask（L1102--1117）}：尾部 kv\_tile 的越界列置
 $-\infty$：TMA 对 OOB 行不写 smem，残留值由 mask 覆盖；坐标来自
 identity tensor 经 TiledMMA C-partition 的行列重解释（第~\ref{ch:26}~章
 讲透的 \texttt{tScS\_rc} 技巧），mask 只剩坐标比较。
@@ -408,7 +408,7 @@ PV 相位逐 v\_chunk 消费（D=320 时 5 个），每个 chunk：等
 转置视图 fragment、\texttt{gemm\_rs} 完成 PV GEMM、arrive
 \texttt{v\_empty}、\texttt{tid=0} 领先 $S_V$ 预取下一个 V chunk。
 \textbf{重缩放的位置（L1151--1161）}：\texttt{need\_rescale} 为真时，
-\textbf{先}对本 v\_chunk 的 $O$ 分量乘 \texttt{row\_scale}，\textbf{再}
+先对本 v\_chunk 的 $O$ 分量乘 \texttt{row\_scale}，再
 累加新 P 的贡献；顺序不可换，否则新贡献也会被缩掉。注意
 \texttt{kv\_tile > 0} 的 guard：首个 tile 无历史可缩。$O$ 累加器是
 跨全部 kv\_tile 常驻的 \texttt{o\_acc\_storage[kDChunksV][32]}，
@@ -446,7 +446,7 @@ QKV smem 上。\texttt{SM90\_U32x4\_STSM\_N}（\texttt{stmatrix}）是
 
 只有 \texttt{tid=0} 发 \texttt{copy(tma\_o, ...)}，
 \texttt{tma\_store\_arrive} 把批内所有 store 提交进 bulk group。
-随后的 \texttt{tma\_store\_wait<0>} 是 \textbf{drain race 的解}：
+随后的 \texttt{tma\_store\_wait<0>} 是 drain race 的解：
 非发射线程的 wait 是空操作，若无 CTA 级同步，下一批的 STSM 会覆写
 in-flight TMA 仍在读的 smem，$k_{NBatches} \ge 2$ 时确定性写坏。
 批末的 \texttt{\_\_syncthreads()} 让全线程等 drain（批条件 CTA 一致，
@@ -504,7 +504,7 @@ chunk 的 $128\times64$ 分量暂存进复用的 QKV smem；\texttt{tid=0} 对�
 与第~\ref{ch:26b}~章同一套 descriptor 方案：把 BHND 压成 2D
 \texttt{(rows, D)}，$B/H/N$ 折叠进行坐标，head 段偏移留给 kernel 内
 \texttt{domain\_offset}（\S\ref{sec:26c-nonws}）。差异有两处。一是
-Q 与 KV 的行数\textbf{解耦}（\texttt{rows\_q} vs \texttt{rows\_kv}，
+Q 与 KV 的行数解耦（\texttt{rows\_q} vs \texttt{rows\_kv}，
 支持 $N_q \ne N_{kv}$ 的 cross-attention 教学用例），K/V 的
 \texttt{domain\_offset} 偏移量用 $h \cdot N_{kv}$；二是 O 用
 \texttt{SM90\_TMA\_STORE}（store 方向的 descriptor），box 与 V 对称
@@ -733,9 +733,9 @@ $(3,3)$ 同 spill 但差 15T，V 侧第 3 级 stage 的 barrier 维护开销与
 $(2,3)$）。
 
 这条分段规律的工程含义很直接：$S_K$ 与 $S_V$ 必须是独立模板参数。
-对称的 $(S,S)$ 在任何 $D$ 都取不到最优。本 kernel（与 ffpa-attn 的
-cute sm\_120 split\_d 同源）的 launcher 把 $S_K$/$S_V$ 作为独立模板
-参数暴露，正是为了按 $D$ 分段选参；默认对称 $(2,2)$ 只是保守起点。
+对称的 $(S,S)$ 在任何 $D$ 都取不到最优。本 kernel 的 launcher 把
+$S_K$/$S_V$ 作为独立模板参数暴露，正是为了按 $D$ 分段选参；默认对称
+$(2,2)$ 只是保守起点。
 寄存器占用（第~\ref{ch:19}~章 19.4.6）在
 这里从「预算说明」变成「调优依据」：spill 出现的 $D$ 就是 stages
 策略的切换点。
