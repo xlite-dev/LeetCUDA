@@ -9,7 +9,7 @@
 e2m1 只有 2 bit 指数 + 1 bit 尾数，可表示值只有
 $\{0,\pm0.5,\pm1,\pm1.5,\pm2,\pm3,\pm4,\pm6\}$，相对步长约 25\%（fp8 e4m3
 是 6.25\%）。在这样的格式上做出可用的 attention，靠的不是数据格式本身，
-而是围绕它的一整套\textbf{尺度处理}：microscaling 块尺度（scale
+而是围绕它的一整套尺度处理：microscaling 块尺度（scale
 factor）、强制 smoothing、rank-1 修正、列置换、以及把所有这些步骤
 fused 进尽量少的 kernel。
 \begin{figure}[H]
@@ -67,7 +67,7 @@ fp4 的容差天然比 fp8 宽一个量级的格式层根源。}
 \end{figure}
 ffpa-attn 的 fp4 路径移植自 SageAttention3 的 Blackwell kernel
 （\texttt{quantize\_fp4.cuh} 头注释 L1--14），跑在自研的 persist-D 骨架
-上。本章讲\textbf{量化链}：主 kernel 之前的前处理；第~\ref{ch:32}~章
+上。本章讲量化链：主 kernel 之前的前处理；第~\ref{ch:32}~章
 讲主 kernel 与两级 P 量化。源码锚点：
 \texttt{cute/fp4/quantize\_fp4.cuh}（1642 行）、
 \texttt{delta\_s.cuh}（451 行）、\texttt{fp4\_gemm.cuh}（276 行）、
@@ -78,7 +78,7 @@ ffpa-attn 的 fp4 路径移植自 SageAttention3 的 Blackwell kernel
 e2m1 的动态范围限制分两层。fp8 路径里 per-block/per-thread scale 已经把
 相对步长压到 6.25\%；e2m1 再把尾数从 3 位压到 1 位、指数从 4 位压到 2 位后，单块内
 $\mathrm{amax}$ 与其余元素的分辨率差距被放大到无法忽略。更关键的是
-\textbf{分布中心}：attention 的 Q/K 行向量常带系统性均值偏移（randn 输
+分布中心：attention 的 Q/K 行向量常带系统性均值偏移（randn 输
 入下均值不为零，真实模型里更明显），若直接量化
 $Q\to\hat Q$，均值占据 $\mathrm{amax}$ 预算，把有效信息压进 1--2 个
 码点。fp8 的 smooth-K 是可选旋钮（第~\ref{ch:28}~章），fp4 的
@@ -203,7 +203,7 @@ $K-\bar k$ 永不物化；行常数只平移 lse。}
 
 \subsection{smooth-V 的恒等式}
 
-V 的列均值减除是\textbf{数学精确}的，不是近似：
+V 的列均值减除是数学精确的，不是近似：
 $v_m[d]=\frac{1}{N_{kv}}\sum_n V[b,h,n,d]$（per-(b,hkv,d) 常数），
 量化残差 $\hat V=\phi(V-v_m)$，epilogue 加回。因为 softmax 权重和为
 1、$v_m$ 对所有列相同：
@@ -281,8 +281,8 @@ SF 字节的写序不是朴素行主序，而是 \textbf{SfAtom 分块序}：MMA
 \texttt{BlockScaledConfig} 逐字节一致（头注释 L13--14、
 L414 的 \texttt{sf\_col\_offset} 与 L482--485 的
 \texttt{offset\_local} 公式）。
-这同 fp8 的 VTPerm 是同一类问题：\textbf{消费端的寄存器/smem 布局决
-定生产端的写序}，两头任一侧改动都要同步。
+这同 fp8 的 VTPerm 是同一类问题：消费端的寄存器/smem 布局决
+定生产端的写序，两头任一侧改动都要同步。
 
 smooth-V 也 fused 在这里：$v_m$ 按 $d$ 减除发生在 smem 读出转 fp32
 之后、group absmax 之前（L443--456），一遍数据完成转置、减均值、
@@ -430,18 +430,18 @@ $\Delta S$ 的形状是 $[B,H,M_b,N_{kv}]$ 的 GEMM（$M_b$ 是 128 对齐
 dispatch（launcher
 \texttt{launch\_fp4\_delta\_s\_sm120}）：
 
-\textbf{wmma 版}（\texttt{delta\_s\_wmma\_kernel}，L37--161）：CTA
+wmma 版（\texttt{delta\_s\_wmma\_kernel}，L37--161）：CTA
 算一个 $(128,128)$ 输出 tile，8 warp 各持 16 行、8 个 wmma n-tile。
 K 归约（$kHeadDim$）按 64 元素 chunk 分批 staging：全量 A/B 需要
 $128\times(D{+}8)\times2\times2$ B，$D\ge192$ 时超出 99KB 预算；A/B 落在
 $2\times128\times72\times2=36$KB 窗口，epilogue 时同一片 smem 复用为
 $128\times136$ float 的 f32 累加器 staging（68KB，L40--46 注释）。
 行/列越界零填（无 OOB gmem 读），epilogue 逐元素减一次 $q_{km}$、
-tail 列混写零（L138--160）。MMA 用\textbf{普通 fp16 wmma 而非
-blockscale}：该 kernel 是 memory-bound（SM 占用 $\sim$10\%），低精度
+tail 列混写零（L138--160）。MMA 用普通 fp16 wmma 而非
+blockscale：该 kernel 是 memory-bound（SM 占用 $\sim$10\%），低精度
 MMA 无收益（L10--13 注释）。
 
-\textbf{CuTe/TMA 版}（\texttt{delta\_s\_cute\_kernel}，L163 起）：同
+CuTe/TMA 版（\texttt{delta\_s\_cute\_kernel}，L163 起）：同
 数学同 tiling，但 TMA 装载进 3-stage 流水、HMMA \texttt{m16n8k16}
 atom，epilogue 保留 float4 union-staged 写。另有两个 TMA 细节：
 超出 $d_{og}$ 的 K chunk 是全 OOB 的 TMA box，\textbf{TMA 单元内部零
@@ -459,14 +459,14 @@ epilogue cast 的 $\sim$1ms torch 链（$N{=}16384$）；实测大 $N$
 fp4 的 PV 有一个 fp8 没有的结构性错位：blockscale MMA 的
 \textbf{C 累加器}布局（QK 产出 S 的列）与 P 作为 A 操作数的布局不同
 （SA3 §3.3 "Permutation for K"）。fp8 用 16 SHFL + 32 PRMT 搬 P
-（第~\ref{ch:29}~章 reorg）；SA3 的解法反过来，\textbf{不搬 P，搬
-K}：把 K 的列（token 维）按 32 列窗口内的双射置换后存储，C fragment
+（第~\ref{ch:29}~章 reorg）；SA3 的解法反过来，不搬 P，搬
+K：把 K 的列（token 维）按 32 列窗口内的双射置换后存储，C fragment
 的列布局就天然匹配 A 操作数。置换表
 \begin{lstlisting}[style=console]
 [0,1,8,9,16,17,24,25,2,3,10,11,18,19,26,27,
  4,5,12,13,20,21,28,29,6,7,14,15,22,23,30,31]
 \end{lstlisting}
-fused 进 \textbf{K} 量化 kernel 的写侧（\texttt{quantize\_fp4.cuh}
+fused 进 K 量化 kernel 的写侧（\texttt{quantize\_fp4.cuh}
 L135--141 的 \texttt{load\_token\_id}），闭式
 $\pi(j)=(j\&\sim31)+(\mathrm{loc}/8)\cdot2+((\mathrm{loc}\%8)/2)\cdot8+
 (\mathrm{loc}\%8)\%2$（\texttt{fp4\_gemm.cuh} L23--26）。注意
@@ -489,14 +489,13 @@ $\pi$ 是每 32 列窗口内的双射，tile 粒度的 causal 边界公式保持
 
 \subsection{subbyte 寻址的陷阱}
 
-e2m1 是 4 bit 类型。CuTe 里 e2m1 的 smem tensor \textbf{必须}用
+e2m1 是 4 bit 类型。CuTe 里 e2m1 的 smem tensor 必须用
 \texttt{make\_smem\_ptr<Element>(void*)} 构造：该重载包一个
 \texttt{subbyte\_iterator}，tensor 切片按 bit 推进；若误写成
 \texttt{reinterpret\_cast<Element*>}（对 1 字节指针语义取址），偏移按
 \texttt{sizeof==1B} 缩放，\textbf{实际地址差 2 倍}，stage$\ge$1 的
 TMA 访问越界直接 IMA（\texttt{sm\_120/persist\_d.cuh} L48--53 注
 释）。
-这是 fp4 移植时最容易踩的一类静默地址错。
 
 \section{图示}
 
@@ -814,7 +813,7 @@ MXFP8 PV 变体（$V^\top$ 走 e4m3 + ue8m0/32，精度更高）付出 37.7\%
 三个观察：(1) fp4 的 e2e 加速比区间（1.2--2.1x）整体高于同机 fp8
 persist-D（第~\ref{ch:29}~章 29.6 节实测表的 1.26--1.70x），来源不在 MMA
 吞吐（blockscale mxf4nvf4 的吞吐只与 fp8 dense 相当），而在
-\textbf{带宽}：K/V/SF 的字节数减半以上，memory-bound 的 attention
+带宽：K/V/SF 的字节数减半以上，memory-bound 的 attention
 直接受益（skill §6.6：attn kernel 本身快 $\sim$23\%）。(2) D=192 的
 474T 是全家族峰值，D=256 回落（kStages 从 3 降 2，L51--56）。(3)
 $\sim$1ms 量级的前处理链意味着\textbf{小 $N_q$（cross/decode）结构

@@ -5,9 +5,9 @@
 \section{本章导读}
 
 第~\ref{ch:27}--\ref{ch:33}~章（第六部分）回答了量化 attention 怎么做；本部分
-把同一套 e4m3 数学应用到\textbf{矩阵乘}上，拆成两章：本章写\textbf{量化前处理
-kernel}——把 BF16 的 $A,B$ 变成 e4m3 的 $A_8,B_8^{\top}$ 外加两组 scale；
-第~\ref{ch:35}~章写\textbf{主 GEMM kernel 与在线反量化 epilogue}，并把全链路封装成
+把同一套 e4m3 数学应用到矩阵乘上，拆成两章：本章写量化前处理
+kernel——把 BF16 的 $A,B$ 变成 e4m3 的 $A_8,B_8^{\top}$ 外加两组 scale；
+第~\ref{ch:35}~章写主 GEMM kernel 与在线反量化 epilogue，并把全链路封装成
 一个 C++ API 与 cuBLAS BF16 GEMM 对精度和性能。两章合起来构成的完整调用形态是：
 
 \begin{equation}
@@ -21,12 +21,12 @@ kernel}——把 BF16 的 $A,B$ 变成 e4m3 的 $A_8,B_8^{\top}$ 外加两组 sc
 与 attention 量化相比，GEMM 量化有一处本质的简化：scale 折叠可以完全
 离开主循环。attention 的量化输出要参与 softmax，scale 必须在 kernel 内部按行
 修正（第~\ref{ch:29}~章的 $s_{dequant}=q_s k_s$ 折叠也要挂在每个 epilogue 上）；
-而 GEMM 是双线性运算，两组 scale 可以\textbf{推迟到 epilogue 一次乘回}，主循环
+而 GEMM 是双线性运算，两组 scale 可以推迟到 epilogue 一次乘回，主循环
 里跑的是纯整数域（e4m3 编码值）的 MMA。这个差异是 34.4~节的核心恒等式，也是
 第~\ref{ch:35}~章 epilogue 设计的全部依据。
 
 前处理链本身是三个读一遍、写一遍的流式 kernel（带宽型，不是算力型），工程
-重点全在\textbf{粒度}与\textbf{布局}两件事上：
+重点全在粒度与布局两件事上：
 \begin{enumerate}[itemsep=0pt,topsep=2pt]
   \item \textbf{粒度}：A 支持 per-row（每行一个 scale，精度最优）与 per-block
         （每 128 行一个，ffpa Q/K 同构）；B 支持per-col 与 per-block。四种组合
@@ -50,7 +50,7 @@ kernel}——把 BF16 的 $A,B$ 变成 e4m3 的 $A_8,B_8^{\top}$ 外加两组 sc
 attention 的三量化点里，$P$（softmax 输出）必须在线量化，$Q,K,V$ 的 scale 又会
 经 softmax 混入归一化分母。所以第~\ref{ch:29}~章要在 kernel 里维护行最大值
 修正与 $s_{dequant}$ 折叠。GEMM 没有任何非线性：$C=AB^{\top}$ 是双线性的，
-量化的 scale 是\textbf{纯标量因子}，可以直接提到括号外。于是：
+量化的 scale 是纯标量因子，可以直接提到括号外。于是：
 
 \begin{itemize}[itemsep=1pt,topsep=2pt]
   \item 主 kernel 的 MMA 循环里\textbf{不需要处理任何 scale}，跑的就是 e4m3 编码
@@ -65,7 +65,7 @@ attention 的三量化点里，$P$（softmax 输出）必须在线量化，$Q,K,
 
 \subsection{约束与 API 约定}
 
-整套实现的形状约束由\textbf{TMA 对齐}与\textbf{量化向量化}共同决定，集中在 API
+整套实现的形状约束由 TMA 对齐与量化向量化共同决定，集中在 API
 层检查（第~\ref{ch:35}~章 \texttt{fp8\_gemm\_bf16}）：
 
 \begin{itemize}[itemsep=1pt,topsep=2pt]
@@ -159,7 +159,7 @@ $B \approx \delta_b \hat{B}$（$\delta_a,\delta_b$ 为逐行/逐列/逐块的 sc
 \end{equation}
 即\textbf{scale 完全出括号}：整数域（e4m3 编码值）MMA 之后，epilogue 按
 $(m,n)$ 查 $\delta_{a,m}\delta_{b,n}$ 一次乘回。per-block 粒度时块宽固定 128
-（与 tile 尺寸无关），tile 内 $\delta_a,\delta_b$ 是\textbf{分段常数}：$k_{BM}{=}128$
+（与 tile 尺寸无关），tile 内 $\delta_a,\delta_b$ 是分段常数：$k_{BM}{=}128$
 的 A 侧一个 tile 恰一块，$k_{BN}{=}256$ 的 B 侧一个 tile 横跨两块，故查表索引
 取全局的 $m/128$、$n/128$，式~\ref{eq:34-fold-rc} 退化为块级标量乘。
 
@@ -314,7 +314,7 @@ $\sigma_{\text{err}}/\sigma_C = \sqrt{2}\,\sigma_\varepsilon$ 相同：换分布
 量化 attention 的绝对误差看起来小得多，差异全在算子形态与度量口径。其一，
 attention 输出 $O = \mathrm{softmax}(QK^{\top})V$ 是 $V$ 行的\textbf{凸
 组合}，元素被夹在 $[\min V, \max V]$ 之间，误差也被加权平均缩小；GEMM 的
-$C$ 是 $K$ 项\textbf{无归一化}累加，$\sigma_C = \sqrt{K\,\mathrm{E}[(ab)^2]}$
+$C$ 是 $K$ 项无归一化累加，$\sigma_C = \sqrt{K\,\mathrm{E}[(ab)^2]}$
 随 $\sqrt{K}$ 膨胀。其二，attention 惯用 PSNR/相对误差口径（几个百分点），
 bench 表用绝对误差口径。同口径对比：本实现 rel-Frobenius 3.6\% 与 fp8
 attention 对 bf16 的相对误差同量级，两者相当。
@@ -348,7 +348,7 @@ $\mathrm{amax}=0$（全零行/块）时 $\delta=0$、$x/\delta$ 为 $0/0$。实�
 结构是第~\ref{ch:02}~章 warp 归约的直接应用，值得对照的是\textbf{两遍 gmem 读}：
 pass 1 算行 amax，pass 2 重新读一遍行做量化写回。为什么不像第~\ref{ch:28}~章
 ffpa 的 per-block kernel 那样寄存器缓存一遍读？因为那里 $K$（head\_dim）是
-\textbf{编译期常量}（\texttt{kD}），整行的 Vec8 可以展开进寄存器数组；本实现的
+编译期常量（\texttt{kD}），整行的 Vec8 可以展开进寄存器数组；本实现的
 $K$ 是运行时 GEMM 维度，寄存器数组无法定长。两遍读的代价由 L1/L2 承担：
 同一 warp 刚读过的行在 pass 2 里几乎全命中，实测该 kernel 达到内存带宽。
 
@@ -369,7 +369,7 @@ per-block 版把统计块从一行放大到 128 行，归约升到 block 级，�
 pass 2（L172 起，与 per-row 版逐字节同构，略）用块级 $inv\_s$ 重扫 128 行。
 两个工程点：其一，块内行数=128 恰是 \texttt{kScaleBlock}：A 侧主 kernel 的
 $k_{BM}{=}128$ 正好落在一个块内，B 侧 $k_{BN}{=}256$ 却横跨两块。所以
-epilogue 的 scale 查表按\textbf{全局} $m/128$、$n/128$ 逐元素取
+epilogue 的 scale 查表按全局 $m/128$、$n/128$ 逐元素取
 （\textbf{统计块与 tile 几何解耦}），而不是整 tile 一个标量；其二，\texttt{row >= M} 的行跳过
 （尾部 block 不足 128 行），amax 不受越界无效数据影响：load 侧由 TMA 零填充处理，
 这里则必须在量化 kernel 自己 guard（它读的是原始 BF16 gmem）。
@@ -422,7 +422,7 @@ kernel 不走 TMA，越界补零必须自己做，但只要 amax 统计正确、
 零值不污染任何东西。pass 1 对每个 $n$（tid 步进 256，实际 128 个 $n$ 生效）
 扫 64 行累积 \texttt{samax[n]}，跨全部 K chunk 完成整列统计。
 
-scale 落盘段有一个微技巧，即 \textbf{\texttt{samax} 原地改存 $\delta^{-1}$}：
+scale 落盘段有一个微技巧，即 \texttt{samax} 原地改存 $\delta^{-1}$：
 pass 1 结束时 \texttt{samax[n]} 存的是 amax，写出
 $\delta_b[n]$ 之后立刻原地覆写成 $448/\mathrm{amax}$，pass 2 查表零成本，
 省一个 \texttt{inv\_s[128]} 数组与一次 \texttt{\_\_syncthreads}。per-col
@@ -490,7 +490,7 @@ MMA 序列相同（第~\ref{ch:35}~章），差异纯粹在执行协议。$0.036
 （warp-per-row 两遍读、block 二级归约、B 的双朝向 smem 转置 staging）。
 workspace 的形态已为第~\ref{ch:35}~章准备好：$A_8[M,K]$、$B_8^{\top}[N,K]$
 两个 e4m3 行主序张量 + 两个 float scale 向量，TMA descriptor 可以直接按
-$(BM,BK)$/$(BN,BK)$ tile。下一章展开主 kernel 的实现。
+$(BM,BK)$/$(BN,BK)$ tile。
 
 \section*{延伸阅读}
 \addcontentsline{toc}{section}{延伸阅读}

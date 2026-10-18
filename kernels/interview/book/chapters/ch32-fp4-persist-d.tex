@@ -5,7 +5,7 @@
 \section{本章导读}
 
 第~\ref{ch:31}~章把 Q/K/V 送进了 e2m1 + ue4m3 的 workspace；本章讲
-消费它们的\textbf{主 kernel}：
+消费它们的主 kernel：
 \texttt{persist\_d\_ws\_fwd\_}\allowbreak\texttt{cute\_fp4\_sm120}
 （\texttt{sm\_120/persist\_d.cuh}，1113 行），跑在与 fp8 persist-D 相同的
 128 线程 producer + 256 线程 consumer 的 warp-specialized 骨架上
@@ -13,7 +13,7 @@
 
 本章的核心内容是\textbf{两级 P 量化}：SA3 用来回答 $P$ 无法离线校准
 这一挑战的方案，fp4 attention 的精度靠它成立。它与 online softmax
-\textbf{融合}在一起（\texttt{fp4\_pscale.cuh} 的
+融合在一起（\texttt{fp4\_pscale.cuh} 的
 \texttt{SoftmaxFused}），不走单独一遍：softmax 输出的
 每个数直接落进第二级量化的域，$s_{P1}$ 的常数折进 \texttt{exp2} 的
 shift，除法和归一化在到达寄存器之前就已经消失。
@@ -29,7 +29,7 @@ Q/K/V 的量化无论多粗，都可以离线统计（smooth、per-block scale�
         近 one-hot（一个 1、其余 $\approx0$），dense 行近均匀且数值极小；
   \item \textbf{SF 格式自身的损耗}（SA3 的 C2 挑战）：若按块直接量化，
         $s_P=\mathrm{amax}(P_{\text{块}})/6\in[0,0.167]$，ue4m3 在这个窄域的
-        有效位数被浪费——\textbf{尺度因子自己}先损失精度，再乘回 16
+        有效位数被浪费——尺度因子自己先损失精度，再乘回 16
         个元素。
 \end{enumerate}
 两级量化的思路：先把整行线性拉伸到 NVFP4 的满量程（第一级，全局
@@ -88,19 +88,19 @@ shift 写作 $+\log_2(1/(448\cdot6))$，是同一类符号笔误，以代码与�
 \begin{equation}
   q=\exp_2\!\bigl((s-a)\cdot L+\log_2 6\bigr)\in(0,\,6]
 \end{equation}
-组 absmax 归一化在 \texttt{exp2} 参数里完成，\textbf{rcp 与逐元素
-FMUL 在 softmax 与 pack 之间整段消失}；row\_sum 用 FMA 吸收 $s_{P2}$
+组 absmax 归一化在 \texttt{exp2} 参数里完成，rcp 与逐元素
+FMUL 在 softmax 与 pack 之间整段消失；row\_sum 用 FMA 吸收 $s_{P2}$
 因子（\texttt{row\_sum = fmaf(q, sfp2, row\_sum)}，L195）。硬件只要
 一条 MUFU.EX2：\texttt{ex2.approx.ftz.f32} 的 \texttt{.ftz} 让 ptxas
 不必包 range glue（L21--22 注释，非 ftz 形式每次调用要多出 FSETP/
 FSEL/FMUL 链，实测 -5.9\%）。
 
-\textbf{同一条 shuffle 链做两个归约}：C fragment 每 lane 持 8 元素，
+同一条 shuffle 链做两个归约：C fragment 每 lane 持 8 元素，
 $\texttt{shfl\_xor}(1)$ 合成 16 元素组 absmax，$\texttt{shfl\_xor}(2)$
 完成 quad 内行 max（L160--167），组尺度和行 max 的冗余
 归约减半。
 
-\textbf{全 masked 组的退化}：$a=-\infty$ 时特判 $a\to0$（L187 的
+全 masked 组的退化：$a=-\infty$ 时特判 $a\to0$（L187 的
 \texttt{a\_arg} clamp），$q$ 与 row\_sum 贡献双双归 0 而不是 NaN；
 \texttt{InfCheck} 模板参数处理整行有效列全部落在当前 tile 之外的
 causal 左上角（L169--175、L219--221 的 \texttt{scores\_max\_cur} 守卫）。
@@ -229,7 +229,7 @@ Q/SFQ 是 per-work 常量：s2r 一次进 \texttt{tSrQ}/\texttt{tSrSFQ} 寄存
 器，跨整个 kv 循环驻留，\texttt{gemm\_ss\_fp4} 把它们当 A 侧寄存器操
 作数消费、不再每 tile 读 Q smem（L747--753 注释，fp8 的
 \texttt{kPersistQs2r} 等价物，这里恒开）。这段注释同时记录了一个有教学
-价值的 bug：\textbf{没有}寄存器驻留时，A/SFA 的 asm 操作数未初始化，
+价值的 bug：没有寄存器驻留时，A/SFA 的 asm 操作数未初始化，
 cicc 直接把它们折叠成 0，QK 退化成 $\Delta S$（rank-1 均值 attention），
 probe 容差曾把它掩盖。教训：量化 kernel 输出恒为常数这类退化要靠数据
 探针（输出对 K 的敏感性）而非容差判断。
@@ -247,7 +247,7 @@ consumer 的 kv 循环（L803--971）每 tile 依次：
         L131--132）；B 的下一个 k\_block 拷贝与当前 mma 交叠发出，链尾
         的 \texttt{k\_empty} arrive 让 producer 恰在 mma 消费完时看到
         stage 释放（L140）；
-  \item masking：kv-tail + causal 谓词\textbf{必须}用
+  \item masking：kv-tail + causal 谓词必须用
         $pos=kv\_tile\cdot B_c+kv\_perm32(j)$（L903--916，谓词在
         L911）；bias 注入
         在 dequant 域（除 \texttt{scale\_orig}），列同样过 $\pi$，tile
@@ -262,7 +262,7 @@ consumer 的 kv 循环（L803--971）每 tile 依次：
         与 mma 链重叠，链尾 \texttt{v\_empty} arrive 兼作无更多预取的
         分支（\texttt{fp4\_gemm.cuh} L171--180 注释）。
 \end{enumerate}
-V 的 \texttt{v\_full} 等待放在 softmax \textbf{之后}（L937--940）：
+V 的 \texttt{v\_full} 等待放在 softmax 之后（L937--940）：
 QK 数学与 V 的 TMA 传输重叠。slot 轮转按 work 内 tile 索引、barrier
 按全局序列（\texttt{v\_slot}/\texttt{v\_mem} 解耦，L811--814），
 \texttt{kQSmemReuse} 下 V 的 slot 0 别名到 Q 区，轮转避开别名区
@@ -447,7 +447,7 @@ MXFP8 PV 付出 28--39\% 的代价：$V^\top$ 数据 8 bit 带宽翻倍、atom �
 
 历史对照（RFC/skill 记录口径，非本机当日）：attn kernel 本身 fp4 比
 fp8 快 $\sim$23\%：blockscale mxf4nvf4 吞吐与 fp8 dense 相当，收益
-全部来自\textbf{带宽}（K/V/SF 字节减半以上）；D=192 的 e2e 比值
+全部来自带宽（K/V/SF 字节减半以上）；D=192 的 e2e 比值
 self 1.47x / causal 1.29x / gqa 1.50x。本机同日对照可复算：fp4
 D=192 self 3.48ms（表 31.2）对 fp8 persist-D 同 shape 的第~\ref{ch:29}~章 29.6 节实测表数据。
 
@@ -461,7 +461,7 @@ D=192 self 3.48ms（表 31.2）对 fp8 persist-D 同 shape 的第~\ref{ch:29}~�
 已证伪（默认关闭/代码保留，勿重复）：Q smem 复用（fp4 的 L1TEX
 sector hit 已 96.75\% 饱和，fp8 的前提不成立，实测 +1.8\% 回退，
 \texttt{attn\_traits.cuh} L19--28 注释，与 fp8 章的同名机制结论相
-反，很好的对照案例）；rescale merge in-place（把 FMUL 拉进 MMA 依赖
+反）；rescale merge in-place（把 FMUL 拉进 MMA 依赖
 链，+1.7\%）；V/SFV 首块 s2r 提前藏进 softmax（PC-4：+1.3--1.7\% 净
 负，LDSM 目的寄存器跨 softmax 链拉长 live-range；NCU 证实 B 供给非
 瓶颈，wait 主体在 A 操作数串行链，也是 persist-D 微优化到顶的标志）。
