@@ -4,7 +4,7 @@
 \section{本章导读}
 
 第~\ref{ch:04}~章末尾我们预告了 LSE：它把 online softmax 的双状态 $(m, \ell)$
-压缩成一个标量。本章讲清楚两件事：\textbf{为什么这个压缩是无损的}，以及
+压缩成一个标量。本章讲清楚两件事：为什么这个压缩是无损的，以及
 拿到两份分块的部分结果后，如何只靠 LSE 就把它们合并成与一次性算完
 逐元素相等的结果。教学载体是 base.cuh 的 \texttt{merge\_\allowbreak{}attn\_\allowbreak{}states}
 （base.cuh~L437 起）：它实现 FlashInfer 论文（arXiv 2501.01005）Section~2.2
@@ -36,9 +36,8 @@ $(m, \ell)$（或其打包形式 LSE），两块就能严格合并，且结果�
         $O$ 加权混合。它每个输出元素只有 3 次 FLOP、约 12~B 流量，
         完全并行、无任何同步，是一个纯粹 bandwidth-bound 的 elementwise kernel。
 \end{itemize}
-这个设计的关键在于\textbf{状态接口极窄}：块与块之间只传一个标量 LSE
+这个设计的关键在于状态接口极窄：块与块之间只传一个标量 LSE
 （外加那份本来就要传的 $O$），主 kernel 不需要为可合并做任何特殊化改造。
-本章测试将构造两个分块状态，验证合并结果与整体 softmax 直接计算逐元素相等。
 
 \section{数学原理}
 
@@ -54,7 +53,7 @@ attention 后持有四个量：
   \mathrm{LSE}^{A} = m^{A} + \log \ell^{A},
   \label{eq:5-chunk-state}
 \end{equation}
-分块 $B$ 同理（上标 $A$ 换 $B$）。$O^{A}$ 是\textbf{已归一化}的分块输出
+分块 $B$ 同理（上标 $A$ 换 $B$）。$O^{A}$ 是已归一化的分块输出
 （除过自己的 $\ell^{A}$），这正是 FlashAttention kernel 落盘的形态；
 $\mathrm{LSE}^{A}$ 是对数求和指数（log-sum-exp），它是 $m$ 与 $\ell$ 的可逆打包：
 
@@ -66,7 +65,7 @@ $\mathrm{LSE}^{A}$ 是对数求和指数（log-sum-exp），它是 $m$ 与 $\ell
     \mathrm{LSE}(S) = m + \log \ell .
     \label{eq:5-lse-def}
   \end{equation}
-  而对\textbf{任意}基准 $\tilde m$，$e^{\mathrm{LSE} - \tilde m}
+  而对任意基准 $\tilde m$，$e^{\mathrm{LSE} - \tilde m}
   = \sum\sb{j \in S} e^{s^{(j)} - \tilde m}$ 都成立（取 $\tilde m = m$ 时
   即 $\ell$），LSE 单个标量即可还原任意基准下的指数和，无损携带
   $(m, \ell)$ 状态的全部信息。
@@ -98,7 +97,7 @@ $A$、$B$ 拆开并凑因子：
   \label{eq:5-convex}
 \end{equation}
 
-现在做\textbf{关键替换}：问题要求我们手上只有 $\mathrm{LSE}^{A}, \mathrm{LSE}^{B}$
+现在做关键替换：问题要求我们手上只有 $\mathrm{LSE}^{A}, \mathrm{LSE}^{B}$
 （没有分开的 $m^{A}, \ell^{A}$）。利用定义~\ref{def:lse} 的还原性，对合并基准
 $L \triangleq \max\bigl(\mathrm{LSE}^{A}, \mathrm{LSE}^{B}\bigr)$ 计算
 \begin{equation}
@@ -143,7 +142,7 @@ $L \triangleq \max\bigl(\mathrm{LSE}^{A}, \mathrm{LSE}^{B}\bigr)$ 计算
 $L = \max(\mathrm{LSE})$ 还是 $m = \max(m)$ 做基准只改变常数因子，不影响凸组合
 系数，所以 kernel 可以直接在 LSE 域上取 max，无需还原 $m$。同时
 $w^{A}, w^{B} \le e^{0} = 1$，数值安全性与 safe softmax 相同。
-其次，$\alpha + \beta = 1$ 意味着合并是\textbf{凸组合}：
+其次，$\alpha + \beta = 1$ 意味着合并是凸组合：
 $O$ 落在 $[O^{A}, O^{B}]$ 的凸包内，不会放大任何一方的量级。
 这套推导对两块成立，对任意多块也成立（逐对两两合并即可，对应第~\ref{ch:15}~章
 FA 主循环里的 online rescale 与第~\ref{ch:19}~章跨 D-chunk 的两阶段合并）。
@@ -360,7 +359,7 @@ $o = p \cdot \alpha + s \cdot \beta$（硬件可融合为 FMA），再整包写�
 
 \section{性能分析}
 
-\textbf{算术强度}：每个输出元素读 $O^{A}$（4~B）、读 $O^{B}$（4~B）、写
+算术强度：每个输出元素读 $O^{A}$（4~B）、读 $O^{B}$（4~B）、写
 $O$（4~B），共 12~B；LSE 是每 (token, head) 8~B 的标量流量，摊到元素上是
 $8/D$~B。计算是每元素 3 FLOP（2 乘 1 加）。$D = 128$ 时
 $AI \approx 3 / 12.06 \approx 0.25$ FLOP/B，位于 roofline 拐点左侧，
@@ -393,7 +392,7 @@ merge\_attn\_states & 0.7849 & 1031.4 \\
 ch04 的 softmax 小形状只有数百 GB/s，差距主要来自形状规模
 （本 kernel 每次迭代有 1600 万个线程、13 万个 block，launch 开销完全摊薄）。
 若要继续提升，可尝试的方向是 256-bit 访问或 LSE 的 warp 级广播复用，
-但收益预计在个位数百分比，该算子的带宽已接近硬件上限。
+但收益预计在个位数百分比。
 
 \section{实践经验}
 
@@ -406,7 +405,7 @@ ch04 的 softmax 小形状只有数百 GB/s，差距主要来自形状规模
 \end{kaogu}
 
 \begin{kaogu}[F4]{base.cuh L412：「AI $\approx$ 3 FLOP / 20 bytes $\approx$ 0.15」口径需注明}
-  20~B 的口径把两次 LSE 读（8~B）按\textbf{每个输出元素}计入，仅在
+  20~B 的口径把两次 LSE 读（8~B）按每个输出元素计入，仅在
   $D = 1$ 量级成立；LSE 是每 (token, head) 一份的标量，摊销后每元素流量为
   $12 + 8/D$~B（$D = 128$ 时约 12.06~B，$AI \approx 0.25$）。「severely
   memory-bound」的定性结论不受影响，数值口径建议标注为「LSE 不摊销的上界」。
@@ -451,9 +450,9 @@ $(t \cdot H + h) \cdot D$，$D$ 为 4 的倍数时自然对齐；若在张量切
 （prefix + suffix、split-KV 的各段）至少一段非空；但做泛化工具或单测时，
 应显式防护双空段或将其定义为约定俗成的输出（例如全零或直接透传）。
 
-\textbf{坑五：区分事后合并与在线合并。}本 kernel 是分块计算\textbf{完成之后}
+\textbf{坑五：区分事后合并与在线合并。}本 kernel 是分块计算完成之后
 的合并，需要落盘两份 $O$；FlashAttention 主循环内部（第~\ref{ch:15}~章）与
-FFPA 跨 D-chunk（第~\ref{ch:19}~章）用的是同一套数学、但在寄存器里\textbf{在线}
+FFPA 跨 D-chunk（第~\ref{ch:19}~章）用的是同一套数学、但在寄存器里在线
 rescale，从不物化两份 $O$。两者数学同源（定理~\ref{thm:merge-eq}），工程取舍不同：
 前者换来主 kernel 的零侵入，后者省一整轮显存往返。
 

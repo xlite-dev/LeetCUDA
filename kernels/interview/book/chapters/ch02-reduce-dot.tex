@@ -23,11 +23,11 @@ base.cuh L87--305。无编译宏限定。
 \section{问题与动机}
 
 在串行世界里，归约是平凡的：一个 for 循环，$N$ 个元素 $N-1$ 次加法。但这个
-循环是\textbf{严格串行的依赖链}：第 $k$ 次加法必须等第 $k-1$ 次的结果。
+循环是严格串行的依赖链：第 $k$ 次加法必须等第 $k-1$ 次的结果。
 放进 GPU 的语境，问题就来了：无论你启动多少线程，一条长依赖链上的
 指令永远无法并行，延迟（数周期的 ALU + 数百周期的访存）完全无法隐藏。
 
-归约优化的核心，就是把这条深链条\textbf{改造成浅树}：$N$ 个数两两
+归约优化的核心，就是把这条深链条改造成浅树：$N$ 个数两两
 相加（$N/2$ 个并行加法），再对结果两两相加（$N/4$ 个），如此递推，树高
 $\lceil \log\sb 2 N \rceil$，1024 个数只要 10 层。树形化也有代价：
 谁跟谁相加变成了结构化的信息，硬件与代码都要按约定交换数据。本章的任务
@@ -97,8 +97,8 @@ $\lceil \log\sb 2 N \rceil$，1024 个数只要 10 层。树形化也有代价�
 
 \subsection{warp shuffle 与蝶形归约}
 
-CUDA 提供 warp 级寄存器交换指令 shuffle：同 warp 的线程可以\textbf{直接读
-对方寄存器}，不经过任何存储器。本章用到的两条：
+CUDA 提供 warp 级寄存器交换指令 shuffle：同 warp 的线程可以直接读
+对方寄存器，不经过任何存储器。本章用到的两条：
 
 \begin{itemize}
 \item \texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor\_\allowbreak{}sync\allowbreak{}(mask,\allowbreak{} var,\allowbreak{} lane\allowbreak{}Mask,\allowbreak{} width)}：返回
@@ -266,7 +266,7 @@ smem 流量只有 $W$ 次写 + $W$ 次读（各 4B）。对比所有中间量走
 $N \gg T$ 时需要多个 block 分摊元素，每个 block 产出部分和后，还差把
 $G$ 个 block 的和汇成一个的最后一步。base.cuh 用
 \texttt{atomic\allowbreak{}Add\allowbreak{}(y,\allowbreak{} val)}：$G$ 次全局原子累加直接打进同一个地址 $y$。
-原子性保证结果\textbf{正确}，但有两个代价：$G$ 次原子操作在 L2 的
+原子性保证结果正确，但有两个代价：$G$ 次原子操作在 L2 的
 原子单元上是\textbf{串行化}的（对同一地址的 read-modify-write 无法并行），
 \S\ref{sec:ch02-perf} 的 bench 显示这就是该 kernel 的真瓶颈；此外浮点
 加法不满足结合律，$G$ 个部分和的累加顺序取决于 block 完成顺序，
@@ -278,7 +278,7 @@ run-to-run 不确定。这就是 ch02 测试用 CPU fp64 参考 + 容差
 
 \subsection{第一层：warp 内蝶形归约}\label{sec:ch02-warp}
 
-先看入口。Phase 1 的开场注释（L87--95）把要点总结为三条：
+Phase 1 的开场注释（L87--95）把要点总结为三条：
 
 \begin{itemize}
 \item \texttt{warp\_reduce}：用 \texttt{\_\_shfl\_xor\_sync} 做蝶形归约，
@@ -344,7 +344,7 @@ warp 0 独自做二次归约，而是每个 warp 的前 $W$ 个 lane 都读入�
 部分和、各自再归约一遍。多余的 $W-1$ 份计算是冗余的（只是寄存器加法），
 换来的是不需要第二次 smem 往返与第二次同步。第 4 步
 \texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}sync\allowbreak{}(0xffffffff,\allowbreak{} value,\allowbreak{} 0,\allowbreak{} 32)} 把 lane 0 的结果广播给
-\textbf{所有} 256 个线程。源码注释「关键！否则每个 warp 只有 lane 小于
+所有 256 个线程。源码注释「关键！否则每个 warp 只有 lane 小于
 kNumWarps 知道结果」说的就是这一步：归约函数的约定是 block 内全员可见，
 后续 softmax 除以 $\ell$、norm 除以 $\sigma$ 都依赖它。block reduce max
 （L198--214）同构，初值从 0 换成 \texttt{-FLT\_MAX}。
@@ -359,8 +359,8 @@ kNumWarps 知道结果」说的就是这一步：归约函数的约定是 block 
 
 两个 kernel 共享同一骨架：守卫式加载（\texttt{idx < N} 时取数、否则取
 加法单位元 0，这保证不满的最后一个 block 不污染求和；max 版对应
-\texttt{-FLT\_MAX}）$\to$ warp 归约 $\to$ smem 汇合 $\to$ \textbf{warp 0}
-二次归约 $\to$ \textbf{单个线程}写全局。与 block\_reduce\_sum 有两处差异：
+\texttt{-FLT\_MAX}）$\to$ warp 归约 $\to$ smem 汇合 $\to$ warp 0
+二次归约 $\to$ 单个线程写全局。与 block\_reduce\_sum 有两处差异：
 二次归约只留给 warp 0（\texttt{if (warp == 0)}），因为这里的结果只需被写出、
 不必广播全员；写出者是
 \texttt{tid == 0}，源码注释特意强调「tid == 0, not lane 0. 只有 block
@@ -369,8 +369,8 @@ kNumWarps 知道结果」说的就是这一步：归约函数的约定是 block 
 则靠 \texttt{atomicAdd} 汇合，如 \S\ref{sec:ch02-math} 所述。
 
 dot 把逐元素乘并入加载阶段（\texttt{prod = a[idx] * b[idx]}），归约
-骨架保持不变。这也是本源码库反复出现的设计范式：\textbf{算子 = 元素级
-预变换 + 归约 + 后处理}，ch04 的 softmax（预变换 exp、后处理除法）与
+骨架保持不变。这也是本源码库反复出现的设计范式：算子 = 元素级
+预变换 + 归约 + 后处理，ch04 的 softmax（预变换 exp、后处理除法）与
 ch06 的 norm（预变换平方）都是这个模板的具体实例。dot\_vec4（L278--305）则
 把加载换成 \texttt{FLOAT4} 一次取 4 元素、每线程先局部乘加 4 项再进归约
 （ch03 详述向量化原理），线程数降为 $T/4$：
@@ -440,7 +440,7 @@ ch06 的 norm（预变换平方）都是这个模板的具体实例。dot\_vec4�
 
 \section{性能分析}\label{sec:ch02-perf}
 
-\textbf{Roofline 定性}：归约每元素只有 1--2 FLOPs、读 4B（dot 读 $a,b$
+Roofline 定性：归约每元素只有 1--2 FLOPs、读 4B（dot 读 $a,b$
 共 8B），$AI \le 0.25$，明显落在 memory-bound 区；理想成绩 = 理论带宽。
 block\_reduce\_all 与 dot 额外带一个串行尾巴：$G$ 次对同一地址的
 atomicAdd。实测（RTX PRO 5000，sm\_120a，2026-09-11，bench 口径：warmup 3
@@ -469,8 +469,7 @@ dot\_vec4 把访存指令数降为 $1/4$（字节数不变），总时长却完�
 早已不是短板。改进方向：把每 block 一次全局原子改成两级 kernel，先让
 每 block 写出自己的和（$G$ 个地址，无冲突），再起一个小 kernel 归约 $G$ 个数；
 或 block 内先 smem 累积再少次原子，atomic 次数从 $G$ 降到
-$\lceil G/K \rceil$，时间随之线性下降。这也是面试里跨 block 归约怎么
-优化的标准答案骨架。
+$\lceil G/K \rceil$，时间随之线性下降。
 
 \begin{figure}[H]
 \centering
@@ -605,7 +604,7 @@ $10^{-7}$ 量级，远低于 $10^{-3}$ 容差，与 \S\ref{sec:ch02-math} 的浮
 抖动分析一致：512 项求和的 fp32 误差在 $10^{-7}$，跨 block 原子顺序抖动
 未放大误差。）
 
-\textbf{动手实验}：(1) 把 block\_reduce\_all 的写回从 tid0 改成 lane0，
+动手实验：(1) 把 block\_reduce\_all 的写回从 tid0 改成 lane0，
 观察结果放大约 8 倍（$W$ 倍），体会 tid 与 lane 的区别；(2) 把 grid 减为 1 个
 block 再跑 bench，观察时长从 42 $\mu$s 掉到远小于原值，验证瓶颈在
 $G$ 次全局原子而非归约本身；(3) 把 $N$ 改成 510 再编译运行 dot\_vec4，

@@ -5,8 +5,8 @@
 
 Softmax 是深度学习里使用最频繁的归一化算子：语言模型输出头的概率分布、注意力机制中的
 $\mathrm{softmax}(QK^{\top}/\sqrt{d})$（第~\ref{ch:15}~章的核心算子）、MoE 的门控权重，都离不开它。
-它的数学定义只有一行，但在 GPU 上写对一个\textbf{又快又稳}的 softmax，要同时解决两个问题：
-\textbf{数值稳定性}（$e^{x}$ 的溢出）与\textbf{归约遍数}（多一遍全局扫描就多一倍同步与访存）。
+它的数学定义只有一行，但在 GPU 上写对一个又快又稳的 softmax，要同时解决两个问题：
+数值稳定性（$e^{x}$ 的溢出）与归约遍数（多一遍全局扫描就多一倍同步与访存）。
 本章沿着教学源码的三级递进，依次解决这两个问题：
 
 \begin{itemize}
@@ -40,7 +40,7 @@ $e^{89}$ 就已经越界变成 \texttt{inf}。一旦分子或分母出现 \textt
 
 \textbf{动机二：每多一遍扫描，就多一遍代价。}教科书的 safe softmax 要对输入做三次遍历：
 求 max、求指数和、再除一遍写回。每次遍历在 GPU 上至少意味着一遍全局内存读取，或者
-一次 block 级同步归约。本章将看到：三版实现的差距就在\textbf{全局扫描次数}上
+一次 block 级同步归约。三版实现的差距就在全局扫描次数上
 （3-pass $\to$ 2-pass $\to$ 1-pass），图~\ref{fig:4-1} 给出三者的数据流对比。
 
 \textbf{动机三：行内自足性。}\allowbreak{}softmax 沿一行（一个 token、一个 query）独立计算，
@@ -87,7 +87,7 @@ fp32 的最大正规数（\texttt{FLT\_MAX}）为
 $s = \texttt{inf}$，则 $y^{(i)} = \texttt{inf}/\texttt{inf} = \texttt{NaN}$。本章测试
 Case~C 用 $x \in [80, 120]$ 复现了这一点：naive 版输出 \texttt{NaN}，safe/online 版结果正常。
 
-利用平移不变性（式~\ref{eq:4-shift}），取 $c = m = \max\sb{j} x^{(j)}$，得到\textbf{safe softmax}：
+利用平移不变性（式~\ref{eq:4-shift}），取 $c = m = \max\sb{j} x^{(j)}$，得到 safe softmax：
 \begin{equation}
   m = \max\sb{j} x^{(j)},
   \qquad
@@ -100,9 +100,9 @@ Case~C 用 $x \in [80, 120]$ 复现了这一点：naive 版输出 \texttt{NaN}�
 
 \subsection{online 递推：$(m, \ell)$ 双状态单遍更新}
 
-safe 版的问题是要\textbf{先}知道全行的 max 才能\textbf{再}算指数和，这强制了两遍扫描。
+safe 版的问题是要先知道全行的 max 才能再算指数和，这强制了两遍扫描。
 online softmax（Milakov \& Gimelshein，arXiv:1805.02867）的思路是：维护一对
-\textbf{运行状态}，让它随时都等价于已见元素构成的 safe softmax 中间量：
+运行状态，让它随时都等价于已见元素构成的 safe softmax 中间量：
 \begin{equation}
   m^{(k)} = \max\sb{j \le k} x^{(j)},
   \qquad
@@ -223,7 +223,7 @@ $\ell = \ell^{(1)} + \ell^{(2)} e^{m^{(2)} - m^{(1)}}$，只有较小者需要 r
   故任意归约树（结合顺序）给出同一结果。
 \end{proof}
 
-引理~\ref{lem:md-assoc} 是本章实现能直接套用第~\ref{ch:02}~章 XOR 蝶形归约的\textbf{合法性证明}：
+引理~\ref{lem:md-assoc} 是本章实现能直接套用第~\ref{ch:02}~章 XOR 蝶形归约的合法性证明：
 32 个 lane 携带各自的 $(m, d)$，按 XOR 蝶形任意两两合并，5 步后所有 lane 拿到的都是全行的
 正确状态，与归约顺序无关。
 
@@ -350,7 +350,7 @@ $2^{8}$ 个指数加起来（warp 内蝶形 + shared memory 二级 + 广播，�
   title={base.cuh L631-664（Level 3：online safe softmax 主 kernel）}]{../base.cuh}
 
 主 kernel 的流程：
-（1）初始化：每个线程把\textbf{自己的那一个元素}打包成状态
+（1）初始化：每个线程把自己的那一个元素打包成状态
 $\bigl(x^{(i)}, 1\bigr)$（边界线程填 $\bigl(\texttt{-FLT\_MAX}, 0\bigr)$：
 max 用单位元，$d$ 用加法单位元 0，这样它们参与归约但不污染结果）；
 （2）第一级：warp 内 5 步 \texttt{warp\_\allowbreak{}reduce\_\allowbreak{}md} 蝶形；
@@ -421,7 +421,7 @@ FlashAttention 把右列的 $(m,d)$ 再加一列 $O$，就是第~\ref{ch:15}~章
 
 \section{性能分析}
 
-\textbf{算术强度}：per-token softmax 每个元素的有效访存是读 4~B + 写 4~B = 8~B；
+算术强度：per-token softmax 每个元素的有效访存是读 4~B + 写 4~B = 8~B；
 计算上除一次超越函数 $e^{x}$（SFU 指令，不占 FMA 流水）外只有 $O(1)$ 次乘加。
 按每元素 2 FLOP 的乐观口径，$AI \approx 2/8 = 0.25$ FLOP/B，远低于现代 GPU
 数十至上百 FLOP/B 的 roofline 拐点，softmax 是典型的 \textbf{memory-bound} 算子，
@@ -461,7 +461,7 @@ launch 与同步的固定开销占比大；附录~B 的汇总口径会注明这�
   L538 的「grid(S*h/h, h), block(h)」中 $S h / h$ 化简后就是 $S$，写法混乱；
   实际启动为 grid$(S,1,1)$、block$(H,1,1)$，与 L541-542 一致。
   更实质的问题是：三版 kernel 内的边界守卫都是全局索引 \texttt{idx < N}，
-  但注释没有说明 $N$ 的语义是\textbf{总元素数} $S \times H$（原始工程
+  但注释没有说明 $N$ 的语义是总元素数 $S \times H$（原始工程
   \texttt{softmax.cu} 入口有 \texttt{const int N = S * H;}，base.cuh 精简版丢掉了这行）。
   本章测试曾因把 $N$ 理解成每 token 长度并以 $S=2$ 调用而复现故障：
   block 1 的全部线程被守卫剪掉，token 1 的输出\textbf{不写回}（旧值残留）。

@@ -210,12 +210,12 @@ $\mu$ 与 $M_2 \equiv \sum_k (x_k-\bar{x})^2$，分块结果可用合并公式�
 \label{fig:6-3}
 \end{figure}
 
-归约本身直接复用第 \ref{ch:02} 章的 \texttt{block\_\allowbreak{}reduce\_\allowbreak{}sum}（base.cuh L179-196）：warp 内蝶形 shuffle 归约、warp leader 写 shared memory、\texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()}、第二级 warp 归约，最后 \texttt{\_\_shfl\_sync} 把结果广播到\textbf{每个}线程。这一步广播无法省略：行内所有线程都要拿到同一个 $s$ 才能各自完成缩放。
+归约本身直接复用第 \ref{ch:02} 章的 \texttt{block\_\allowbreak{}reduce\_\allowbreak{}sum}（base.cuh L179-196）：warp 内蝶形 shuffle 归约、warp leader 写 shared memory、\texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()}、第二级 warp 归约，最后 \texttt{\_\_shfl\_sync} 把结果广播到每个线程。这一步广播无法省略：行内所有线程都要拿到同一个 $s$ 才能各自完成缩放。
 
 \lstinputlisting[linerange={179-196},firstnumber=auto,
   title={base.cuh L179-196（block\_reduce\_sum：两级归约 + 全员广播，详见第 \ref{ch:02} 章）}]{../base.cuh}
 
-再看模板参数的编译期特化：标量版传 \texttt{k\allowbreak{}Num\allowbreak{}Threads=\allowbreak{}128}（4 个 warp，两级归约）；vec4 版传 \texttt{k\allowbreak{}Num\allowbreak{}Threads=\allowbreak{}32}（单 warp，此时 \texttt{kNumWarps=1}，第二级归约的 shuffle 循环在编译期折叠为空，shared memory 中转退化成一次额外同步）。同一个模板，参数不同即得到两级或一级结构。
+模板参数的编译期特化：标量版传 \texttt{k\allowbreak{}Num\allowbreak{}Threads=\allowbreak{}128}（4 个 warp，两级归约）；vec4 版传 \texttt{k\allowbreak{}Num\allowbreak{}Threads=\allowbreak{}32}（单 warp，此时 \texttt{kNumWarps=1}，第二级归约的 shuffle 循环在编译期折叠为空，shared memory 中转退化成一次额外同步）。同一个模板，参数不同即得到两级或一级结构。
 
 \subsection{rms\_norm：单归约 + 单广播}
 
