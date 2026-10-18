@@ -78,10 +78,12 @@ WS 教学版 (2,2) & 140.2 & 2.01$\times$ & 1.00$\times$ \\
 
 \textbf{第一，WS 的代价：producer 不产 FLOPs。}WS 教学版 256 线程里
 128 个是 producer（只发 TMA），实际做 MMA 的只有单 consumer warpgroup
-的 128 线程。SM 上 MMA warp 数降低一半。第~\ref{ch:26b}~章的
-D=128 场景里，WS 换来的是 Q 持久化与 \texttt{setmaxnreg} 的寄存器再分配，
-收益大于成本；但 Split-D 的 O 累加器（$32 \times C$ 个 f32/线程，第~\ref{ch:19}~章
-寄存器占用）本来就把寄存器预算占用到 255 上限附近，
+的 128 线程。SM 上 MMA warp 数降低一半。
+
+第~\ref{ch:26b}~章的 D=128 场景里，WS 换来的是 Q 持久化与
+\texttt{setmaxnreg} 的寄存器再分配，收益大于成本。但 Split-D 的 O 累加器
+（$32 \times C$ 个 f32/线程，第~\ref{ch:19}~章寄存器占用）本来就把寄存器
+预算占用到 255 上限附近，
 \texttt{setmaxnreg} 腾不出多少寄存器，WS 的收益侧消失、成本侧全留，
 这是大 $D$ 路线选 non-WS 的根本理由。
 
@@ -115,7 +117,7 @@ non-WS 版把 QK 与 V 拆成两套互不相交的 barrier 集，下一 tile 的
 
 \subsection{tile 几何与 smem 预算：chunk 解耦}\label{sec:26c-tile}
 
-协议全部参数集中在 traits 里，先看参数：
+协议全部参数集中在 traits 里，取值如下：
 
 \begin{lstinputlisting}[linerange={699-721},firstnumber=auto,
   title={ffpa\_attn.cuh L699-721（traits：协议参数与 smem 公式）}]{../ffpa_attn.cuh}
@@ -161,8 +163,10 @@ $S$ tile 的 16 行，整行不切。这带来一个 softmax 侧的收益：
 m16n8k16 的 C-fragment 约定下，一行 128 个分数散在同 warp 的 4 个 lane
 （每 lane 2$\times$8 列块中的 2 份），行 max / 行 sum 的归约只需要
 warp 内 \texttt{\_\_shfl\_xor} 两轮（1 与 2 的蝶形，\S\ref{sec:26c-rescale}），
-没有任何跨 warp 的 smem 归约。第~\ref{ch:26}~章 WS 版的
-64$\times$64 tile 下 warp 沿 N 也要切，归约需要先跨 warp——M8N1 下行归约
+没有任何跨 warp 的 smem 归约。
+
+第~\ref{ch:26}~章 WS 版的 64$\times$64 tile 下 warp 沿 N 也要切，归约
+需要先跨 warp——M8N1 下行归约
 自然落在 warp 内。代价是 PV 的 N 维只有 $k_{VDChunk}{=}64$：
 单 warp 的 PV MMA 每次算 $16\times64$，由
 \texttt{gemm\_rs}（第~\ref{ch:25}~章）内部按 atom 循环展开，不影响
@@ -293,6 +297,7 @@ icache 与寄存器压力）内的 QK 相位：
 工具）完成 LDSM + mma.sync 的 k-loop。10 个 chunk 循环下来
 $S = \sum_{d} Q_{[:,d]} K_{[:,d]}^\top$，正是第~\ref{ch:19}~章 19.3.2 节
 「精确、无权重」的分块分解在 CuTe 上的直接落地。
+
 \textbf{L1066}：全线程 arrive \texttt{qk\_empty}，stage 归还。
 \textbf{L1072--1081}：\texttt{tid=0} 领先 $S_K$ 个 chunk 预取下一个
 （\texttt{d\_next = d\_chunk + kStagesQK}）。注释里的死锁警告值得原样
@@ -385,7 +390,9 @@ max/exp 循环里乘），数学上仍是式~(26b.1)--(26b.3) 加 FA-4 条件重
 每行先在本地列里扫 tile max（乘 scale，log2 域），\texttt{shfl\_xor(1)}
 与 \texttt{shfl\_xor(2)} 两轮把 4 个 lane 的局部 max 归并成行 max。
 M8N1 布局（\S\ref{sec:26c-mma}）保证这 4 个 lane 就在同 warp，蝶形
-两轮全覆盖，没有跨 warp 归约。判定段是 FA-4 的原样移植：
+两轮全覆盖，没有跨 warp 归约。
+
+判定段是 FA-4 的原样移植：
 $\log_2\_\text{diff} \ge -\tau$（$\tau{=}8$）时 \texttt{row\_scale=1}、
 \texttt{row\_max} 保持 stale 值，\textbf{跳过对 $O$/$\ell$ 的历史修正}；
 膨胀的常数因子在 epilogue 的 $1/\ell$ 里分子分母同乘抵消（第~\ref{ch:26b}~章
@@ -407,6 +414,7 @@ PV 相位逐 v\_chunk 消费（D=320 时 5 个），每个 chunk：等
 \texttt{v\_full}（式~\eqref{eq:26c-phase} 的 V 侧编址）、构造 V 的
 转置视图 fragment、\texttt{gemm\_rs} 完成 PV GEMM、arrive
 \texttt{v\_empty}、\texttt{tid=0} 领先 $S_V$ 预取下一个 V chunk。
+
 \textbf{重缩放的位置（L1151--1161）}：\texttt{need\_rescale} 为真时，
 先对本 v\_chunk 的 $O$ 分量乘 \texttt{row\_scale}，再
 累加新 P 的贡献；顺序不可换，否则新贡献也会被缩掉。注意
@@ -725,7 +733,7 @@ $S_V{=}2$ 已够用，第 3 级 stage 的 barrier 维护纯属开销，$(3,2)$
 的 spill 总量（52$+$36$=$88\,B）只有 $(2,2)$（224$+$356$=$580\,B）的
 六分之一。浅流水下发射地址变量与消费循环的活跃变量生命周期重叠更长、
 峰值压力更高，深一档反而把发射路径的变量错开，性能与 spill 字节数
-完全同序（204.1/188.5 对 188.3/189.3，图~\ref{fig:26c-spill}）；$(3,2)$ 与
+完全同序（204.1/188.5 对 188.3/189.3，图~\ref{fig:26c-spill}）。$(3,2)$ 与
 $(3,3)$ 同 spill 但差 15T，V 侧第 3 级 stage 的 barrier 维护开销与
 96\,KB smem 的副作用是剩余差距。\textbf{第三}，$D\ge384$ 时 spill 基线
 本身已高（544 B+），再加 stage 挤占的寄存器超过流水掩蔽的收益，$(3,2)$
@@ -744,8 +752,8 @@ $(2,2)$ 只是保守起点。
 
 把 \S\ref{sec:26c-motivation} 的四个结构性问题对照回数字：全员 MMA +
 128 tile（协议主体）贡献了 140$\to$188 的主要段（(2,2) 对
-WS(2,2) +34\%）；跨 tile 预取与 FA-4 rescale 在其上叠加；stages
-从对称 (2,2) 调到 (3,2) 再获得 +8\%（188$\to$204）；epilogue 的
+WS(2,2) +34\%）。跨 tile 预取与 FA-4 rescale 在其上叠加。stages
+从对称 (2,2) 调到 (3,2) 再获得 +8\%（188$\to$204）。epilogue 的
 STSM+TMA 通道在 $D{=}320$ 的占比不大（每 tile 只有一次 128$\times$320
 的写出），但在更短 $N$、更小 tile 数的场景（写出占比上升）会放大。
 精确到逐项的独立 A/B 需要 fork kernel 消融，本章按结构差异加
@@ -863,12 +871,14 @@ $ ./leetcuda_bench_sm120a.bin --bench --bhnd 1,32,8192,320
 （non-WS 的 max\_err 是 3.052e-05 而非 WS 的 1.526e-05：exp2 域
 softmax 的 fp16 重舍入路径略不同，两者都在 f32 累加精度内。）
 bench 数据与 \texttt{-Xptxas -v} 的寄存器/spill 探针全部归档
-\texttt{book/.tmp/ch26c/}。动手实验建议：(1) 把 dispatch 里的
+\texttt{book/.tmp/ch26c/}。
+
+动手实验建议：(1) 把 dispatch 里的
 $(3,2)$ 换成 $(4,2)$ 重编，观察 $S_K{=}4$ 在 D=320 是否继续提升
-（提示：smem 到 112\,KB，spill 可能恶化）；(2) 删掉跨 tile 预取块
-（L1083--1094）重编复测，量化 \S\ref{sec:26c-prefetch} 收益的绝对值；
+（提示：smem 到 112\,KB，spill 可能恶化）。(2) 删掉跨 tile 预取块
+（L1083--1094）重编复测，量化 \S\ref{sec:26c-prefetch} 收益的绝对值。
 (3) 把 \texttt{FA4\_RESCALE\_THRESHOLD} 置 0 复测，看 FA-4 跳过率
-归零的代价；(4) 用 \texttt{-Xptxas -v} 亲手复现 \S\ref{sec:26c-perf}
+归零的代价。(4) 用 \texttt{-Xptxas -v} 亲手复现 \S\ref{sec:26c-perf}
 的寄存器表，验证 D=320 各组合的 spill 差异。
 
 \section*{延伸阅读}
@@ -876,12 +886,12 @@ $(3,2)$ 换成 $(4,2)$ 重编，观察 $S_K{=}4$ 在 D=320 是否继续提升
 \begin{itemize}[itemsep=1pt]
   \item ffpa-attn \texttt{csrc/cuffpa/cute/sm\_120/split\_d.cuh}（本章
         移植源：生产版含 bias/dropout/GQA/NHD 的完整特性矩阵与
-        fp8/fp4 量化家族，本章是最小教学集）；
+        fp8/fp4 量化家族，本章是最小教学集）。
   \item FlashAttention-3 论文 \S3.1.4（conditional rescaling，与
-        第~\ref{ch:26b}~章同源）；
+        第~\ref{ch:26b}~章同源）。
   \item flash-attention \texttt{kernel\_traits.h} 的
         \texttt{SmemLayoutVtransposedNoSwizzle}（V fragment 布局
-        预计算的出处，常见坑第 5 条）；
+        预计算的出处，常见坑第 5 条）。
   \item 第~\ref{ch:19}~章 19.4.6 节（O 累加器的 $32\times C$
         寄存器占用——本章 stages 调优的理论基础）。
 \end{itemize}

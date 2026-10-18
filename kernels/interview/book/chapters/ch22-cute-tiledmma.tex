@@ -11,7 +11,7 @@
 第~\ref{ch:21}~章把数据怎么搬形式化成了 TiledCopy；本章处理另一半：
 计算怎么分给线程。一条 \texttt{mma.\allowbreak{}sync.\allowbreak{}aligned.\allowbreak{}m16n8k16} 是硬件
 给出的最小计算单元，它规定了 32 个 lane 各自的 4（或 8）个寄存器里装哪几个
-元素；而一个真实 kernel 的 tile 远大于 $16\times8\times16$，于是拿多个
+元素。而一个真实 kernel 的 tile 远大于 $16\times8\times16$，于是拿多个
 MMA 原子去铺满 tile 需要一个统一的描述：这就是 \textbf{TiledMMA}：
 原子 $\times$ 原子的排布 $\times$ 目标 tile 尺寸。
 
@@ -19,9 +19,9 @@ MMA 原子去铺满 tile 需要一个统一的描述：这就是 \textbf{TiledMM
 TV 划分服务于\emph{搬运}，本章里 TV 划分服务于\emph{计算}，并且多出一个
 维度：\textbf{fragment}（每个线程私有的寄存器数组）。核心问题是四个：
 MMA 原子的 fragment 布局是什么（3.1 节）；TiledMMA 如何由原子 $+$ warp
-排布 $+$ tile 尺寸构造出来（3.2 节）；partition 如何把 Tensor 切成
+排布 $+$ tile 尺寸构造出来（3.2 节）。partition 如何把 Tensor 切成
 $(\mathrm{MMA}, \mathrm{MMA}_M, \mathrm{MMA}_K)$ 形状的片段
-（3.3--3.5 节）；以及同一份寄存器为什么能在 QK 与 PV 两个不同的
+（3.3--3.5 节）；同一份寄存器为什么能在 QK 与 PV 两个不同的
 TiledMMA 之间原地复用（4.3 节）。
 
 \textbf{前置章节}：第~\ref{ch:20}~章（divide/zipped\_divide）、
@@ -47,7 +47,7 @@ tensor core，算完再把 $16\times8$ 的 C 分散写回 32 个 lane 的寄存�
 （@竹熙佳处《写给大家看的 CuTe 教程：tiled mma》把这张 thread-data 映射图
 作为理解的起点）。
 
-这些坐标不是自由选择的，而是 PTX 规定的 fragment 布局。回忆第~\ref{ch:11}~章
+这些坐标是 PTX 规定的 fragment 布局，不是自由选择的。回忆第~\ref{ch:11}~章
 手写 HGEMM 的寄存器清单：一条 m16n8k16 要 4 个 A 寄存器（8 个 half）、
 2 个 B 寄存器（4 个 half）、4 个 C 寄存器（float）。以 A（$16\times16$，
 列主序的 $(m,k)$）为例，lane 与元素的对应是
@@ -86,11 +86,11 @@ $S_{64\times64} = Q_{64\times64} K^T_{64\times64}$（每个 d-chunk），PV 步�
 \begin{itemize}
   \item \textbf{warp 怎么分}：QK 用 4 个 warp 沿 M 方向切（每个 warp 16 行），
         还是 $2\times2$ 网格？不同选择决定 A/B fragment 的重复因子
-        （第~\ref{ch:21}~章式~(21-dup)）；
+        （第~\ref{ch:21}~章式~(21-dup)）。
   \item \textbf{每个 warp 内部怎么重复}：一个 warp 覆盖 16 行 $\times$ 64 列时，
-        N 方向要 8 个原子；这 8 个原子的寄存器块怎么编号；
+        N 方向要 8 个原子；这 8 个原子的寄存器块怎么编号。
   \item \textbf{K 方向怎么切}：tile 的 K 长度是 64，而原子是 16，于是 fragment
-        多出一个 $\mathrm{MMA}_K$ mode；
+        多出一个 $\mathrm{MMA}_K$ mode。
   \item \textbf{两个不同形状的 tile 怎么并存}：QK 要大 tile（省循环、提高
         计算密度），PV 要小 N tile（控制 acc\_O 寄存器），它们必须共享
         同一套线程/值编号。
@@ -108,7 +108,7 @@ mma 指令，都能方便地推导出每个线程该从 data tile 里取哪一�
 
 \subsection{MMA 原子：一条指令的 thread-data 映射}
 
-先回到最小尺度：一条指令、一个 warp。C 的 thread 0 拿 $(0,0)$、$(0,1)$、
+最小尺度是一条指令、一个 warp。C 的 thread 0 拿 $(0,0)$、$(0,1)$、
 $(8,0)$、$(8,1)$，thread 4 拿 $(1,0)$、$(1,1)$、$(9,0)$、$(9,1)$。这张
 thread-data 对照表就是原子的全部内容。CuTe 用一个 traits 类把它写成类型
 （\texttt{MMA\_\allowbreak{}Traits\allowbreak{}<Op>}），FFPA 用到的
@@ -154,7 +154,9 @@ $32$ 恰好是\emph{两列}（列号加 2），高位那维 stride 是 $1$（行
 其中 $(d_0,d_1,d_2)$ 是值编号 $v$ 在原子值 mode 上的 colex 分解
 （A：$v=d_0+2d_1+4d_2$，8 个 half；B/C：$v=d_0+2d_1$，4 个元素）。
 式~\eqref{eq:22-atom-a}--\eqref{eq:22-atom-c} 与 PTX 文档给的 m16n8k16
-fragment 图完全一致。例如 lane 0 的 A 是
+fragment 图完全一致。
+
+例如 lane 0 的 A 是
 \begin{equation*}
   \{(0,0),(0,1),(8,0),(8,1),(0,8),(0,9),(8,8),(8,9)\},
 \end{equation*}
@@ -176,8 +178,8 @@ A 为 $(8,1,1)$（8 个 half）、B 为 $(4,1,1)$、C 为 $(4,1,1)$，与
 
 \subsection{TiledMMA：原子、排布、tile 三个参数}
 
-再回到动机里那两层重复：并行维度（多起执行器）与串行维度（一个执行器
-循环执行）。CuTe 把两者装进
+动机里那两层重复是并行维度（多起执行器）与串行维度（一个执行器循环执行）。
+CuTe 把两者装进
 \texttt{make\_\allowbreak{}tiled\_\allowbreak{}mma\allowbreak{}(atom,\allowbreak{} Atom\allowbreak{}Layout\allowbreak{}MNK,\allowbreak{} Permutation\allowbreak{}MNK)} 的三个参数：
 原子是硬件粒度，第二个参数是 warp 排布（哪个 warp 覆盖哪个原子位置，
 负责并行重复），第三个是目标 tile 尺寸（含 K，决定一个 threadblock
@@ -213,15 +215,16 @@ $\mathrm{thr\_layout\_vmnk} = (32,4,1,1){:}(1,32,0,0)$，$\mathrm{ThrV}=32$
 $\mathrm{ThrM}$、N 对应 $\mathrm{ThrN}$、K 对应 $\mathrm{ThrK}$）。
 
 用映射语言说：\texttt{Thr\allowbreak{}Layout\allowbreak{}VMNK} 把线程编号拆成
-$(\mathrm{ThrV},(\mathrm{ThrM},\mathrm{ThrN},\mathrm{ThrK}))$ 四层：先看
-warp 内部（$\mathrm{ThrV}$），再看第几个 warp 落在哪个方向。
+$(\mathrm{ThrV},(\mathrm{ThrM},\mathrm{ThrN},\mathrm{ThrK}))$ 四层：先分
+warp 内部（$\mathrm{ThrV}$），再分第几个 warp 落在哪个方向。
 谁并行、谁重复这两个问题的答案，都由线程编号到 VMNK 的分解给出。
 
 一个自然的疑问是：既然 warp 排布 $+$ 原子尺寸已经能划分 tile，为什么还要
-第三个（tile）参数？@竹熙佳处给出两条理由。一是拷贝粒度：后续
-S2R/R2S tiled copy 把这个参数描述的块整体当作拷贝单位，N 方向留大一倍
-（每个 warp 16 而非 8）才能用上 \texttt{ldsm.x4} 一类的宽指令；二是
-重排的余地：tile 参数本质是一个 layout，高级用法可以借助它的
+第三个（tile）参数？@竹熙佳处给出两条理由。
+
+一是拷贝粒度：后续 S2R/R2S tiled copy 把这个参数描述的块整体当作拷贝单位，
+N 方向留大一倍（每个 warp 16 而非 8）才能用上 \texttt{ldsm.x4} 一类的
+宽指令。二是重排的余地：tile 参数本质是一个 layout，高级用法可以借助它的
 stride 把多条指令算出的数据在寄存器里重新排列，
 \texttt{Permutation\allowbreak{}MNK} 这个名字就来自这里。常规场景把它当 tile 尺寸读即可。
 
@@ -257,7 +260,7 @@ stride 把多条指令算出的数据在寄存器里重新排列，
 第 (1) 步的 $\mathrm{perm}$ 决定一个 tile 多大，第 (2) 步的
 $\mathrm{atom}$ 决定一条指令多大，第 (4) 步的
 $\mathrm{ThrM/ThrK}$ 决定多少 warp 分摊，正是 3.2 节三个参数的第三次
-出现；对线程 $t$ 来说，前三步的结果对所有线程相同，只有第 (4) 步把该线程
+出现。对线程 $t$ 来说，前三步的结果对所有线程相同，只有第 (4) 步把该线程
 自己区分出来。
 
 把第 (4) 步的线程坐标 $(\mathrm{ThrV},\mathrm{ThrM},\mathrm{ThrK})$ 用
@@ -434,7 +437,7 @@ $[0,64)$，这就是 $\mathrm{ThrM}=4$、$\mathrm{atom}_M=16$ 的直接推论。
 
 \subsection{FFPA traits：两个 TiledMMA 的完整推导}
 
-先看源码区间本体，它短小但每一行都对应 3.3 节的一个量：
+源码区间本体很短小，每一行都对应 3.3 节的一个量：
 
 \lstinputlisting[linerange={31-62},firstnumber=auto,breakatwhitespace=true,
   title={ffpa\_attn.cuh L31-62（FFPAAttnSplitDCuTeTraits：QK 与 PV 双 TiledMMA）}]{../ffpa_attn.cuh}
@@ -472,9 +475,11 @@ $\mathrm{MMA}_N = 8$（$8$ 个 $8$ 列的原子），全部落在同一个 warp 
 为什么 PV 用 $64\times16$？因为 acc\_O 是 $64\times D$-chunk $\times$
 $D$ 方向 chunk 数的大数组。每线程每个 chunk 32 个 float，
 $D=512$ 时 $8$ 个 chunk 共 256 个寄存器，这已经逼近寄存器文件的上限
-（第~\ref{ch:19}~章的寄存器压力讨论）。若把 PV 的 N 也取 64，单次 gemm
-调用的 C 视图会从 8 涨到 32、B fragment 随之线性增长，S$\to$R 拷贝粒度
-变粗，常驻 acc\_O 并不变。实测 PV 在 $(64,16)$ 的 C 上
+（第~\ref{ch:19}~章的寄存器压力讨论）。
+
+反过来，若把 PV 的 N 也取 64，单次 gemm 调用的 C 视图会从 8 涨到 32、
+B fragment 随之线性增长，S$\to$R 拷贝粒度变粗，常驻 acc\_O 并不变。
+实测 PV 在 $(64,16)$ 的 C 上
 每线程 $(4,1,2) = 8$ 个 float，与注释「EURepeat$=<1,2,1>$」一致。
 tile 的 N 尺寸是 per-call C 视图与拷贝粒度的旋钮。
 
@@ -1094,15 +1099,15 @@ ALL OK
 \begin{itemize}
   \item @竹熙佳处《写给大家看的 CuTe 教程：Tiled MMA》，
         \url{https://zhuanlan.zhihu.com/p/1937145378446226159}
-        （本章全部结论以 CUTLASS v4.6.1 头文件实测为准）；
+        （本章全部结论以 CUTLASS v4.6.1 头文件实测为准）。
   \item @reed《cute 之 MMA 抽象》，
         \url{https://zhuanlan.zhihu.com/p/663092747}
-        （MMA\_Atom/MMA\_Traits 的设计动机与历史，读 3.1--3.2 节时对照）；
+        （MMA\_Atom/MMA\_Traits 的设计动机与历史，读 3.1--3.2 节时对照）。
   \item @可怕的杰瑞《Cute TiledMMA 简单理解》，
         \url{https://zhuanlan.zhihu.com/p/1991908850132088026}
         （用可编译的最小例子演示 make\_tiled\_mma 的三个参数，
         与本章 case~B 的实验同构；续篇
-        \url{https://zhuanlan.zhihu.com/p/1992328297888126320}）；
+        \url{https://zhuanlan.zhihu.com/p/1992328297888126320}）。
   \item @水木皇工仔《基于 CuTe 理解 swizzle, LDSM, MMA》，
         \url{https://zhuanlan.zhihu.com/p/934430036}
         （把 LDSM 的 lane 映射与 MMA fragment 放在一起推，与第~\ref{ch:21}~章

@@ -113,7 +113,9 @@ $\log_2 e$ 预乘进 scale：
 时，$2^{\Delta}$ 只会让 P 累计最多膨胀 $256\times$：fp16 的 P 最大 65504，
 f32 累加器余量更大，因此可以跳过这次重缩放：$m$ 保持旧值
 （stale max）、$O$/$\ell$ 原样累加。膨胀的部分在 epilogue 的 $1/\ell$ 里全部
-抵消（分子分母同乘一个常数）。dense 数据下命中率高（实测 95\%+ 的 tile 满足
+抵消（分子分母同乘一个常数）。
+
+dense 数据下命中率高（实测 95\%+ 的 tile 满足
 \eqref{eq:26b-fa4}），只有新 tile 的 max 明显更大时才付出重缩放代价。第~\ref{ch:16}~章
 的手写版已经给过这个结论，本章把它原样搬进 CuTe 版
 （\texttt{online\_\allowbreak{}safe\_\allowbreak{}softmax\_\allowbreak{}fa4}，
@@ -402,6 +404,7 @@ wait 与 arrive 的奇偶序自然匹配。配套有一条铁律：\texttt{k\_\a
 空信号完全由上一轮消费 arrive 维持。若每轮 q-tile 都补一次初始 arrive，
 mbarrier 的相位会被多推一格，producer 的 wait 永远等不到正确的奇偶
 （compute-sanitizer 的 synccheck 会报 \emph{Barrier error: Missing wait}）。
+
 协议在源码里的实现分布在两侧。producer 侧（单线程发射）的主循环完整实现了
 V 先 K 后、领先 $S{-}1$、按全局计数 $g$ 选 stage 与相位这套规则：
 
@@ -504,7 +507,8 @@ $N{=}8192$、$k_B{=}128$ 时 tile 数 $= 32\times 64 = 2048 = 18\times 110 + 68$
 persistent CTA 的做法：grid 收缩到 $\min(\text{tiles},\ \text{SM 数})$，
 每个 CTA 用 \texttt{for (cta = blockIdx.x; cta < total; cta += gridDim.x)}
 线性认领多个 q-tile。尾损变成每个 CTA 多承担一小段，均匀分摊。
-协议上有两个配套改动。一个是 \S\ref{sec:26b-tma} 的全局 kv 计数相位
+
+与此对应，协议上有两个配套改动。一个是 \S\ref{sec:26b-tma} 的全局 kv 计数相位
 （式~\eqref{eq:26b-phase}），另一个是 \texttt{epi\_\allowbreak{}done} 屏障：
 Q smem 在 epilogue 里被复用为 O 的 STSM 暂存，producer 要装下一个 q-tile
 的 Q 必须等 consumer 把 O 写完，\texttt{epi\_\allowbreak{}done}（256 线程
@@ -653,15 +657,15 @@ kernel 侧的领先是结构性的，不依赖单次测量的偶然波动。这�
 （第~\ref{ch:33}~章的 bench 方法论同源）。
 
 优化贡献的逐项拆解（同一 kernel 上各开关单独 A/B）：fast\_math
-（\texttt{exp2f}）+2\%\textasciitilde4\%；scale 融合 +3\%\textasciitilde4\%（\S\ref{sec:26b-scale-math}，
-指令数视角：每 tile 每线程省 64 条 FMUL，与 HMMA 数同量级）；
+（\texttt{exp2f}）+2\%\textasciitilde4\%。scale 融合 +3\%\textasciitilde4\%（\S\ref{sec:26b-scale-math}，
+指令数视角：每 tile 每线程省 64 条 FMUL，与 HMMA 数同量级）。
 persistent CTA dense 中等序列 +2\%\textasciitilde6\%、causal $-9\%\sim-21\%$（分支
-关闭）；FA-4 条件重缩放 dense 命中率 95\%+，与第~\ref{ch:16}~章结论一致。
+关闭）。FA-4 条件重缩放 dense 命中率 95\%+，与第~\ref{ch:16}~章结论一致。
 各项近似可加，合计与 1.04$\times$ 的总领先吻合。
 
 和第~\ref{ch:25}~章的三个实现纵向一比，协议设计的价值更清楚：
 实现 1（cp.async 统一流水）受限于装载与计算串行；实现 2（TMA+WS 单 consumer）
-解耦了搬运但 Q 每 tile 重装、softmax 带逐元素乘法、wave 尾损未作处理；
+解耦了搬运但 Q 每 tile 重装、softmax 带逐元素乘法、wave 尾损未作处理。
 本章在实现 2 的骨架上叠加全部四项优化，同一块 GPU 上从勉强追平 SDPA
 推进到稳定 +4\%。
 
@@ -697,13 +701,14 @@ TMA dst 状态空间 & \texttt{shared::cluster} & C7506：ptxas 视作隐式 ext
 \textbf{C7506（cluster 形式 TMA）}：
 \texttt{cp.\allowbreak{}async.\allowbreak{}bulk.\allowbreak{}tensor} 的目的地址写成
 \texttt{shared::cluster} 时，ptxas 把这条指令当作潜在的跨 CTA 副作用边界
-（cluster 语义下 smem 地址可能被映射到别的 CTA），进而按 extern 调用边界
+（cluster 语义下 smem 地址可能被映射到别的 CTA）。进而按 extern 调用边界
 的保守规则放弃整 kernel 的寄存器再分配，只留一条 info 级 C7506，默认不打印。
 第~\ref{ch:14}~章坑二的 PTX 修改（\texttt{cluster} 全局替换 \texttt{cta} 后指令恢复保留）
 已给出完整取证；CUTLASS 的 \texttt{cute/arch/copy\_sm90\_tma.hpp} 在
 \texttt{CUTE\_\allowbreak{}ARCH\_\allowbreak{}TMA\_\allowbreak{}SM120\_\allowbreak{}ENABLED} 门控下专门切到
 \texttt{shared::cta}，上游早已知道这个差别。本 kernel 无 cluster launch、无
 分布式 smem，dst 恒为 CTA 本地，两种写法语义等价，只是形式不同、保留与否不同。
+
 \textbf{C7508（缺 launch\_bounds 第二参数）}：setmaxnreg 改变的是 per-warp
 寄存器上限，ptxas 必须在 kernel 入口就知道满编时的寄存器预算才能安排池数学；
 \texttt{\_\_launch\_\allowbreak{}bounds\_\allowbreak{}(N)} 只约束单 block 线程数，第二参数
@@ -758,7 +763,7 @@ launch\_bounds 误诊成 arch。教训同一条：单变量结论必须把另外
 本章源码为 2026-09-22 新增（Phase 8）。当日有一条正文级勘误：初版导读与
 源码注释断言「编译目标必须 \texttt{sm\_120f}」，同日被三轮 probe 复核推翻
 （\texttt{sm\_120a}/\texttt{sm\_120f} 都完整保留指令，实际的两个静默丢弃触发是
-cluster 形式 TMA 与缺 \texttt{\_\_launch\_\allowbreak{}bounds\_\allowbreak{}(N,1)}），
+cluster 形式 TMA 与缺 \texttt{\_\_launch\_\allowbreak{}bounds\_\allowbreak{}(N,1)}）。
 已按 \S\ref{sec:26b-setmaxnreg} 的决策树全面修正，完整误诊链见该节考据框。
 生产对照版（ffpa-attn 的 \texttt{persist\_\allowbreak{}d\_\allowbreak{}ws\_\allowbreak{}fwd\_\allowbreak{}cute\_\allowbreak{}sm120}）
 与本章 kernel 同源，其 RFC（PC-18/PC-19）记录了 scale 融合与 persistent CTA
@@ -869,13 +874,15 @@ Hq=2, Hkv=2, causal, ref=cpu) | 3.363e-04 |
 性能复测有两条口径。\texttt{-{}-bench -{}-bhnd 1,32,8192,128}：本 kernel 作为
 FA 家族最快实现排在 bench 末位默认运行，与 cuDNN SDPA（f32 compute）同轮
 成对对照：\texttt{| FA2 CuTe TMA MMA Persistent-CTA WS (D=128) | 1.526e-05
-| 238.4/230.7 (1.03x) |}（\S\ref{sec:26b-perf} 复测带数据）；
+| 238.4/230.7 (1.03x) |}（\S\ref{sec:26b-perf} 复测带数据）。
 独立脚本 \texttt{bench\_pd.cu}（\texttt{book/.tmp/ch26b/}，dense/causal/GQA/$N$
-扫描）与初版表格数据，全部归档 \texttt{.tmp/book-bench/ch26b/}。动手实验建议：
+扫描）与初版表格数据，全部归档 \texttt{.tmp/book-bench/ch26b/}。
+
+动手实验建议：
 (1) 把 \texttt{FA4\_\allowbreak{}RESCALE\_\allowbreak{}THRESHOLD} 调成 0
-观察 FA-4 跳过率归零后的性能退化；(2) 强制 dense 也用全量 grid，
-验证 \S\ref{sec:26b-persistent} 的 wave 尾损数字；(3) 去掉 Q s2r 后的
-折叠循环，把 scale 乘法放回 softmax，复测 scale 融合的贡献；(4) 用
+观察 FA-4 跳过率归零后的性能退化。(2) 强制 dense 也用全量 grid，
+验证 \S\ref{sec:26b-persistent} 的 wave 尾损数字。(3) 去掉 Q s2r 后的
+折叠循环，把 scale 乘法放回 softmax，复测 scale 融合的贡献。(4) 用
 \texttt{cuobjdump -{}-dump-sass | grep -{}-count USETMAXREG} 验证
 \S\ref{sec:26b-setmaxnreg} 的两个静默丢弃触发：临时去掉
 \texttt{\_\_launch\_\allowbreak{}bounds\_\allowbreak{}(384,~1)} 的第二参数重编，
@@ -885,11 +892,11 @@ FA 家族最快实现排在 bench 末位默认运行，与 cuDNN SDPA（f32 comp
 
 \begin{itemize}[itemsep=1pt]
   \item FlashAttention-3 论文 \S3.1.4（conditional rescaling 的原始定义与
-        $\tau$ 的选取依据）；
+        $\tau$ 的选取依据）。
   \item CUTLASS 77\_blackwell\_fmha（FA-4 式 softmax 在 Blackwell 上的
-        warp-uniform rescale 与 TMEM 形态，可对照本章 per-row 形态）；
+        warp-uniform rescale 与 TMEM 形态，可对照本章 per-row 形态）。
   \item @DefTruth《图解：从 Online-Softmax 到 FlashAttention V1/V2/V3》
-        （online softmax 推导基线，本书第~\ref{ch:15}--\ref{ch:16}~章同源）；
+        （online softmax 推导基线，本书第~\ref{ch:15}--\ref{ch:16}~章同源）。
   \item ffpa-attn RFC PC-18/PC-19（scale 融合与 persistent CTA 的生产版
         A/B 数据与量化家族适用性盘点）。
 \end{itemize}
