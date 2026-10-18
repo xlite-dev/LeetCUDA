@@ -67,7 +67,7 @@ $\mathrm{LSE}^{A}$ 是对数求和指数（log-sum-exp），它是 $m$ 与 $\ell
   \end{equation}
   而对任意基准 $\tilde m$，$e^{\mathrm{LSE} - \tilde m}
   = \sum\sb{j \in S} e^{s^{(j)} - \tilde m}$ 都成立（取 $\tilde m = m$ 时
-  即 $\ell$），LSE 单个标量即可还原任意基准下的指数和，无损携带
+  即 $\ell$）。LSE 单个标量即可还原任意基准下的指数和，无损携带
   $(m, \ell)$ 状态的全部信息。
 \end{definition}
 
@@ -106,7 +106,7 @@ $L \triangleq \max\bigl(\mathrm{LSE}^{A}, \mathrm{LSE}^{B}\bigr)$ 计算
          \;=\; e^{\,m - L} \cdot \underbrace{e^{\,m^{A} - m}\,\ell^{A}}\sb{\textstyle W^{A}} .
   \label{eq:5-key}
 \end{equation}
-也就是说：\textbf{用 LSE 算出的权重 $w^{A}$ 与真值权重 $W^{A}$ 只差一个对两块
+\textbf{用 LSE 算出的权重 $w^{A}$ 与真值权重 $W^{A}$ 只差一个对两块
 完全相同的常数因子 $e^{\,m - L}$}。在式~\ref{eq:5-convex} 的分子分母里，
 这个常数同时出现、同时约掉。定义归一化权重
 \begin{equation}
@@ -144,7 +144,8 @@ $L = \max(\mathrm{LSE})$ 还是 $m = \max(m)$ 做基准只改变常数因子，�
 $w^{A}, w^{B} \le e^{0} = 1$，数值安全性与 safe softmax 相同。
 其次，$\alpha + \beta = 1$ 意味着合并是凸组合：
 $O$ 落在 $[O^{A}, O^{B}]$ 的凸包内，不会放大任何一方的量级。
-这套推导对两块成立，对任意多块也成立（逐对两两合并即可，对应第~\ref{ch:15}~章
+
+上述推导对两块成立，对任意多块也成立（逐对两两合并即可，对应第~\ref{ch:15}~章
 FA 主循环里的 online rescale 与第~\ref{ch:19}~章跨 D-chunk 的两阶段合并）。
 
 \subsection{空段与 $\pm\infty$ 语义}
@@ -163,11 +164,11 @@ causal mask 等机制会产生空段：某分块内全部打分被 mask 成 $-\i
 \lstinputlisting[linerange={437-457},firstnumber=auto,
   title={base.cuh L437-457（merge\_attn\_states 签名与线程规划）}]{../base.cuh}
 
-先看接口与布局约定，这里有本章最容易犯错的一处\textbf{转置陷阱}：
+接口与布局约定里有一处最容易犯错的\textbf{转置陷阱}：
 \begin{itemize}
   \item $O$ 相关的三个数组（\texttt{output}/\texttt{prefix\_\allowbreak{}output}/
         \texttt{suffix\_\allowbreak{}output}）布局是 $[\text{num\_tokens}, \text{num\_heads},
-        \text{head\_size}]$，token 维在最外，与 attention 输出惯例一致；
+        \text{head\_size}]$，token 维在最外，与 attention 输出惯例一致。
   \item 而 LSE 的两个数组布局是 $[\text{num\_heads}, \text{num\_tokens}]$，
         head 维在最外（FlashAttention-2 惯例里 LSE 逐 head 连续存放便于后续
         逐 head 处理）。于是同一个逻辑对 $(t, h)$ 在两边的寻址分别是
@@ -276,20 +277,20 @@ LSE 读取只有每 (token, head) 2 次标量加载（\texttt{p\_lse}、\texttt{
 对照定理~\ref{thm:merge-eq} 的推导链，加上最前面的清洗，实现共五步：
 \begin{itemize}
   \item \textbf{Step 0（清洗）}：\texttt{isinf ? -INFINITY : lse}，
-        把空段的 $+\infty$ 约定归一到 $-\infty$；
+        把空段的 $+\infty$ 约定归一到 $-\infty$。
   \item \textbf{Step 1（max 归一）}：$L = \max(\mathrm{LSE}^{A}, \mathrm{LSE}^{B})$，
-        两数各减 $L$，与 safe softmax 的减 max 完全同构，保证后续指数参数非正；
+        两数各减 $L$，与 safe softmax 的减 max 完全同构，保证后续指数参数非正。
   \item \textbf{Step 2（指数还原）}：$w^{A} = e^{\mathrm{LSE}^{A} - L}$、
         $w^{B} = e^{\mathrm{LSE}^{B} - L}$（源码 \texttt{p\_se}/\texttt{s\_se}），
-        即式~\ref{eq:5-key}；
+        即式~\ref{eq:5-key}。
   \item \textbf{Step 3（归一化）}：$\alpha = w^{A}/(w^{A}+w^{B})$、
         $\beta = w^{B}/(w^{A}+w^{B})$（源码 \texttt{p\_scale}/\texttt{s\_scale}），
-        即式~\ref{eq:5-alpha-beta}，常数因子 $e^{m-L}$ 在此处被约掉；
+        即式~\ref{eq:5-alpha-beta}，常数因子 $e^{m-L}$ 在此处被约掉。
   \item \textbf{Step 4（凸组合）}：$O = \alpha O^{A} + \beta O^{B}$，
         见下一段。
 \end{itemize}
 源码头注释写「Step 1--4」而概括为「5 步推导」，本书按
-「清洗 + Step 1--4」共 5 步展开（见 5.7~节勘误一）；
+「清洗 + Step 1--4」共 5 步展开（见 5.7~节勘误一）。
 另外 Step 0--3 由覆盖每个 (token, head) 对的全部线程各自冗余执行
 （输入相同、结果一致；LSE 同址加载经合并后实际流量仍为每对 8B），
 计算被该 head 的 $D$ 个输出元素摊薄，这就是为什么合并层的计算开销

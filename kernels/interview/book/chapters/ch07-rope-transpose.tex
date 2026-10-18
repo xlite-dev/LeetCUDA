@@ -53,7 +53,7 @@ RoPE 的基本操作是把一对分量 $(x_1, x_2)$ 视作平面上的一个点�
    = z_q^{*}\, R\big((n-m)\theta\big)\, z_k .
   \label{eq:ch07-relative}
 \end{align}
-第一步用了共轭 $ (e^{im\theta})^{*} = e^{-im\theta}$ 与乘法结合律；结果只含位置差 $n - m$，与绝对位置 $m, n$ 无关，这就是内积只依赖相对位置。矩阵形式同样简洁：旋转矩阵是正交阵且 $R(a)^{\top} = R(-a)$，故
+第一步用了共轭 $ (e^{im\theta})^{*} = e^{-im\theta}$ 与乘法结合律。结果只含位置差 $n - m$，与绝对位置 $m, n$ 无关，这就是内积只依赖相对位置。矩阵形式同样简洁：旋转矩阵是正交阵且 $R(a)^{\top} = R(-a)$，故
 \begin{equation}
   R(m\theta)^{\top} R(n\theta) = R(-m\theta)\,R(n\theta) = R\big((n-m)\theta\big).
 \end{equation}
@@ -70,7 +70,7 @@ $d$ 维向量（$d$ 为偶数）不整体做一个 $d$ 维旋转，而是切成 
   \theta_i = 10000^{-2i/d},
   \label{eq:ch07-blockdiag}
 \end{equation}
-$R^{d}_{\Theta}$ 是 $d/2$ 个 $2\times 2$ 旋转块排布在主对角线上的分块对角矩阵；位置 $m$ 的变换是 $R^{d}_{\Theta}(m)$，即每个块的角度乘 $m$。频率序列 $\theta_i = 10000^{-2i/d}$ 是等比数列：$i = 0$ 时 $\theta_0 = 1$（波长 $2\pi$，最高频，分辨局部），$i = d/2 - 1$ 时 $\theta_i \approx 10^{-4}$（波长 $\approx 2\pi \times 10^4$，最低频，分辨远距）。基 10000 与第 \ref{ch:15} 章 attention 的 $\mathrm{softmax}$ 温度一样是经验超参，控制波长谱的覆盖范围。
+$R^{d}_{\Theta}$ 是 $d/2$ 个 $2\times 2$ 旋转块排布在主对角线上的分块对角矩阵。位置 $m$ 的变换是 $R^{d}_{\Theta}(m)$，即每个块的角度乘 $m$。频率序列 $\theta_i = 10000^{-2i/d}$ 是等比数列：$i = 0$ 时 $\theta_0 = 1$（波长 $2\pi$，最高频，分辨局部），$i = d/2 - 1$ 时 $\theta_i \approx 10^{-4}$（波长 $\approx 2\pi \times 10^4$，最低频，分辨远距）。基 10000 与第 \ref{ch:15} 章 attention 的 $\mathrm{softmax}$ 温度一样是经验超参，控制波长谱的覆盖范围。
 
 \begin{figure}[H]
 \centering
@@ -213,7 +213,7 @@ $x_2' = x_1\sin\theta + x_2\cos\theta$ 与式~\eqref{eq:ch07-2d-rot} 逐项对�
 超越函数在每个线程重算，而 $\theta_i$ 只依赖对号 $i$（整张 batch 复用）、
 $m\theta_i$ 只依赖 $(m, i)$（每层每次 forward 都相同）。生产实现普遍改为预计算
 cos/sin 缓存表（\texttt{seq\_len} $\times d/2$ 个元素，启动时一次生成）或把 RoPE 融合进
-attention/elementwise 链。本章 kernel 保留每线程重算的教学形态，把减少重复计算的
+attention/elementwise 链。这个 kernel 保留每线程重算的教学形态，把减少重复计算的
 优化作为练习留给读者实验。
 
 \subsection{mat\_transpose：矛盾的直接呈现}
@@ -221,7 +221,9 @@ attention/elementwise 链。本章 kernel 保留每线程重算的教学形态�
 \lstinputlisting[linerange={839-865},firstnumber=auto,
   title={base.cuh L839-865（mat\_transpose：naive 转置及其访存注释）}]{../base.cuh}
 
-每线程搬运一个元素：\texttt{y[c * row + r] = x[r * col + c]}。读侧：warp 内 32 线程的 $r$ 固定、$c$ 连续，读 128B 连续段，合并。写侧：$c$ 每加 1，地址跳一整行（\texttt{row} 个 float），32 线程写到 32 个互不相邻的 4B，每个 4B 落在各自的内存事务里，产生 32 次写事务（$32 \times 32\mathrm{B} = 1024\mathrm{B}$），只运了 128B 有效数据。源码注释「非合并写入 $\to$ 32 次内存事务」说的正是这个。读侧利用率 100\%，写侧仅 $1/8$（32B sector 口径；按 128B cache line 口径则 $1/32$），总带宽主要受写侧限制（本章第 6 节实测 512 规模只有 $\sim 350\,\mathrm{GB/s}$，是 padded 版的 69\%）。
+每线程搬运一个元素：\texttt{y[c * row + r] = x[r * col + c]}。读侧：warp 内 32 线程的 $r$ 固定、$c$ 连续，读 128B 连续段，合并。写侧：$c$ 每加 1，地址跳一整行（\texttt{row} 个 float），32 线程写到 32 个互不相邻的 4B，每个 4B 落在各自的内存事务里，产生 32 次写事务（$32 \times 32\mathrm{B} = 1024\mathrm{B}$），只运了 128B 有效数据。源码注释「非合并写入 $\to$ 32 次内存事务」说的正是这个。
+
+读侧利用率 100\%，写侧仅 $1/8$（32B sector 口径；按 128B cache line 口径则 $1/32$），总带宽主要受写侧限制（本章第 6 节实测 512 规模只有 $\sim 350\,\mathrm{GB/s}$，是 padded 版的 69\%）。
 
 \begin{figure}[htbp]
 \centering
@@ -268,6 +270,7 @@ attention/elementwise 链。本章 kernel 保留每线程重算的教学形态�
   \item \textbf{Step 1（gmem $\to$ smem，合并读）}：\texttt{tile[ty*4+i][tx] =\allowbreak{} x[\allowbreak{}(x\_\allowbreak{}r*4+i)*col + x\_\allowbreak{}c]}。每线程负责 4 行 $\times$ 1 列（\texttt{\#pragma unroll} 展开 4 次读），warp 内 $x\_c$ 连续，读合并。写入 smem 是按行连续写。
   \item \textbf{Step 2（smem 转置读 $\to$ gmem，合并写）}：\texttt{reg\_trans} 的 4 个分量取 \texttt{tile[tx*4+j][ty]}（$j = 0..3$）：行号与列号互换，正是转置读 smem。随后 \texttt{FLOAT4\allowbreak{}(y[y\_\allowbreak{}r * row + y\_\allowbreak{}c]) =\allowbreak{} reg\_\allowbreak{}trans} 把 4 个连续输出元素一条 16B 指令写回；同 warp 内 16 线程覆盖 64 个连续输出 float，合并写。
 \end{enumerate}
+
 两个坐标换算：$y$ 的行号 $= x$ 的列号，故 \texttt{y\_r = blockIdx.x * TILE + ty}；$y$ 的列号 $= x$ 的行号 $\times 1$，但每线程覆盖 4 个连续行，故 \texttt{y\_c = (blockIdx.y * TILE + tx) * 4}。\texttt{FLOAT4} 写回要求 \texttt{y\_c} 起 4 个元素 16B 对齐，即 $x$ 的行号是 4 的倍数，这由 \texttt{y\_c} 的构造天然保证。
 
 smem tile 的形状是 \texttt{[TILE*4][TILE+PAD]} $= [64][17]$：第二维多出的 \texttt{PAD = 1} 不是防越界，而是\textbf{消除 bank conflict} 的关键，下一节就讲它。

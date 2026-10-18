@@ -23,7 +23,7 @@
 
 \section{问题与动机：不 profile 就优化的代价}
 
-先看三个真实的开发反例，说明不 profile 就优化会错在哪里。
+三个真实的开发反例说明不 profile 就优化会错在哪里。
 
 \textbf{反例一：感觉是装载瓶颈，其实是依赖链}。一个 sm\_89 上的 fp8
 attention kernel（persist-D 结构）对标业界最快实现慢 28\%（909.4$\mu$s vs
@@ -84,8 +84,8 @@ nsys 与 ncu 的采集原理完全不同：
   \texttt{-{}-diff} 对照前后指标；无效或负优化立即回退。
 \end{enumerate}
 
-反着来的代价见本章开头的反例二：先 ncu 后 nsys，等于把半天的深挖时间
-花在一个可能不重要的 kernel 上。
+反着来的代价见反例二：先 ncu 后 nsys，等于把半天的深挖时间花在一个可能
+不重要的 kernel 上。
 
 \begin{figure}[H]
 \centering
@@ -408,7 +408,7 @@ warp 每个周期若不能发射，必有一个停滞原因。sm\_120 上的口�
   （\texttt{l1tex} 前缀的
   \texttt{average\_\allowbreak{}t\_\allowbreak{}sectors\_\allowbreak{}\_\allowbreak{}per\_\allowbreak{}request\_\allowbreak{}\allowbreak{}...} 系列指标）
   衡量合并访问质量：32-bit 连续访问的理想值是 4（一个 warp 的 128B 恰好
-  4 个 32B sector）；明显超标说明访存发散，流量被放大，对策是内维连续、
+  4 个 32B sector）。明显超标说明访存发散，流量被放大，对策是内维连续、
   向量化（\texttt{float4} 128-bit 访存，ch03）与 AoS$\to$SoA。IO 压力要从
   三个正交维度一起看：吞吐（哪层饱和）、命中率（数据该由哪层负责）、
   合并度（流量有没有被访问模式放大）。
@@ -511,13 +511,13 @@ fp16 GEMM 类 kernel 若 \texttt{pipe\_fma} 高而 \texttt{pipe\_tensor}
 
 \begin{enumerate}
 \item \textbf{先看 SOL}：MEM\% $\gg$ SM\%（差 $>$20）$\to$ memory-bound，
-  进第 4 步；SM\% $\gg$ MEM\% $\to$ compute-bound，进第 5 步；双低
+  进第 4 步；SM\% $\gg$ MEM\% $\to$ compute-bound，进第 5 步。双低
   （都 $<$40）$\to$ latency/依赖链问题，进第 2 步；双高（都 $>$60）$\to$
   已接近平衡上限，停止优化。
 \item \textbf{latency-bound 分流}（看 stall 前二名）：\texttt{wait} 或
   \texttt{math\_\allowbreak{}pipe\_\allowbreak{}throttle} 主导 $\to$ 依赖链/发射受限，对策是拆链
-  （拆 CTA、拆 warp 分工）或增并行 warp；\texttt{long\_\allowbreak{}scoreboard} 主导
-  $\to$ 数据供给不足，对策是异步装载（\texttt{cp.async}/TMA）与加深流水；
+  （拆 CTA、拆 warp 分工）或增并行 warp。\texttt{long\_\allowbreak{}scoreboard} 主导
+  $\to$ 数据供给不足，对策是异步装载（\texttt{cp.async}/TMA）与加深流水。
   \texttt{sleeping}/\texttt{barrier} 主导 $\to$ 同步结构问题，对策是重排
   producer/consumer 与栅栏。
 \item \textbf{查 occupancy 是否是限制源}：若 achieved 低且 limiter 是

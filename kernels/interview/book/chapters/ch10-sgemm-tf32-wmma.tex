@@ -172,7 +172,7 @@ $\hat b\sb j = fl(b\sb j)$，逐项展开：
   \label{eq:10-bound}
 \end{equation}
 两个直接推论：
-（1）误差按 $\sum |a\sb j b\sb j|$ 增长：对固定的元素幅值，它随 $K$ 线性增长；
+（1）误差按 $\sum |a\sb j b\sb j|$ 增长：对固定的元素幅值，它随 $K$ 线性增长。
 （2）相对误差约为 $2u \cdot \frac{\sum|a\sb j b\sb j|}{|\sum a\sb j b\sb j|}$，
 随机独立元素下分母量级 $\sqrt{K}\,\sigma$（$\sigma$ 为单项标准差）而分子量级
 $K\mu$（$\mu$ 为 $|a\sb jb\sb j|$ 均值），比值 $\propto \sqrt{K}$：内积越长，
@@ -194,11 +194,12 @@ $S\sb {(k+1)\bmod 2}$ 发出 tile $k+1$ 的搬运，稳态周期收敛到
   T\sb {\mathrm{step}} \;=\; \max\!\bigl(T\sb {\mathrm{ld}},\, T\sb {\mathrm{cp}}\bigr),
   \label{eq:10-pipe}
 \end{equation}
-即完全掩盖较短的一侧。图~\ref{fig:10-1} 画出了这个时序。推广到 $S$ 级
-（$S$\,=\,kStages）流水，允许 in-flight 的搬运组数为 $S-2$（本章 $S{=}2$
-时为 0 组、靠迭代末 \texttt{wait\_group} 收口；第~\ref{ch:11}~章 $S{=}3$ 时
-为 1 组）。更深的流水能容忍更长的搬运抖动，但 smem 消耗按 $S$ 线性增长，
-第~\ref{ch:11}~章讨论 kStages 权衡时会回到这个事实。
+即完全掩盖较短的一侧。图~\ref{fig:10-1} 画出了这个时序。
+
+推广到 $S$ 级（$S$\,=\,kStages）流水，允许 in-flight 的搬运组数为 $S-2$
+（本章 $S{=}2$ 时为 0 组、靠迭代末 \texttt{wait\_group} 收口；第~\ref{ch:11}~章
+$S{=}3$ 时为 1 组）。更深的流水能容忍更长的搬运抖动，但 smem 消耗按 $S$
+线性增长，第~\ref{ch:11}~章讨论 kStages 权衡时会回到这个事实。
 
 \section{设计与实现}
 
@@ -432,11 +433,11 @@ $8\times32$ 个 4 元组（\texttt{tid/32} 定行、\texttt{tid\%32} 定列组�
 \lstinputlisting[linerange={281-303},firstnumber=auto,
   title={sgemm.cuh L281-303（预加载 $\mathrm{kStages}-1$ 个 tile 并等待）}]{../sgemm.cuh}
 
-三条 PTX 指令构成异步拷贝的完整协议（宏定义见 common.cuh~L41--51）：
+三条 PTX 指令构成异步拷贝的完整协议（宏定义见 common.cuh~L41--51）。
 \texttt{cp.\allowbreak{}async.\allowbreak{}cg.\allowbreak{}shared.\allowbreak{}global} 发起 16~B 的 global$\to$shared 搬运
-（\texttt{.cg} 表示只走 L2、不分配 L1，16~B 是 \texttt{.cg} 唯一合法宽度）；
+（\texttt{.cg} 表示只走 L2、不分配 L1，16~B 是 \texttt{.cg} 唯一合法宽度）。
 \texttt{cp.\allowbreak{}async.\allowbreak{}commit\_\allowbreak{}group} 把此前发出的未提交拷贝打包成一个
-per-thread 的组；\texttt{cp.\allowbreak{}async.\allowbreak{}wait\_\allowbreak{}group N} 阻塞直到最多剩 $N$ 个组
+per-thread 的组。\texttt{cp.\allowbreak{}async.\allowbreak{}wait\_\allowbreak{}group N} 阻塞直到最多剩 $N$ 个组
 未完成。预加载阶段发出 tile~0 的两组拷贝后 \texttt{wait\_\allowbreak{}group\allowbreak{}(0)}，
 因为第一次计算前必须保证数据就位。
 
@@ -524,18 +525,18 @@ L375 的条件等待被编译期剪掉。写回阶段每个 warp 把 8 个累加
 
 \section{性能分析}
 
-按 block 内 smem 复用口径算算术强度：每 k-step 从 global 搬入
+按 block 内 smem 复用口径算算术强度。每 k-step 从 global 搬入
 $(B\sb M B\sb K + B\sb K B\sb N)\times4$~B $= (128{\times}8{+}8{\times}128)\times4 = 8$~KB，
-完成 $2 B\sb M B\sb N B\sb K = 262{,}144$ FLOP，$AI \approx 32$ FLOP/B，远高于
+完成 $2 B\sb M B\sb N B\sb K = 262{,}144$ FLOP。$AI \approx 32$ FLOP/B，远高于
 本机 roofline 拐点（PRO 5000 Blackwell：FP32 CUDA Core $\sim$60 TFLOPS 级、
 GDDR7 带宽 $\approx$1.34 TB/s（1344 GB/s）级，拐点 $\sim$45 FLOP/B 的量级，为标称口径；按
-8.3 与 9.3.6 节实测 66.9 TFLOPS / 934 GB/s 折算则为 71.6 FLOP/B），判定
+8.3 与 9.3.6 节实测 66.9 TFLOPS / 934 GB/s 折算则为 71.6 FLOP/B）。判定
 \textbf{compute-bound}，优化重心在充分利用 Tensor Core 而非节省带宽。
 按全局口径（每个 C tile 读整条 A 行块与 B 列块），
 $AI = \frac{2MNK}{4(MK+KN)} = \frac{MN}{2(M+N)}$，$M{=}N{=}1024$ 时约 256 FLOP/B，
 更加 compute-bound。
 
-本章复测（RTX PRO 5000 72GB，sm\_120，2026-09-11；$M{=}N{=}K{=}1024$，
+复测口径（RTX PRO 5000 72GB，sm\_120，2026-09-11；$M{=}N{=}K{=}1024$，
 warmup 3 + 10 次均值）：
 \texttt{sgemm\_tf32} 单卡 28.19 TFLOPS。两点口径说明：
 （1）该数值为共享开发机上的单次短测，仅作章节间相对对照，不与 README

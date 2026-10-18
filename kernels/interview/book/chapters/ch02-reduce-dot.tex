@@ -30,9 +30,8 @@ base.cuh L87--305。无编译宏限定。
 归约优化的核心，就是把这条深链条改造成浅树：$N$ 个数两两
 相加（$N/2$ 个并行加法），再对结果两两相加（$N/4$ 个），如此递推，树高
 $\lceil \log\sb 2 N \rceil$，1024 个数只要 10 层。树形化也有代价：
-谁跟谁相加变成了结构化的信息，硬件与代码都要按约定交换数据。本章的任务
-就是讲清这套约定在 GPU 三级存储（寄存器/shuffle、smem、global/atomic）上的
-三种实现。
+谁跟谁相加变成了结构化的信息，硬件与代码都要按约定交换数据。这套约定
+在 GPU 三级存储（寄存器/shuffle、smem、global/atomic）上有三种实现。
 
 \begin{figure}[H]
 \centering
@@ -119,6 +118,7 @@ $m\sb r = 2^{R-r}$，每个 lane 把自己的值与 lane $i \oplus m\sb r$ 的�
   \label{eq:ch02-invariant}
 \end{equation}
 即 $r$ 轮之后，lane $i$ 持有所有与它低 $R-r$ 位相同的原始元素之和。
+
 用归纳法证明：$r = 0$ 时模 $2^{R} = W$ 的剩余类只含 $i$ 自己，
 $S(0, i) = x\sb i$，成立。归纳步：第 $r$ 轮掩码 $m\sb r = 2^{R-r}$，lane $i$
 执行 $S(r, i) = S(r-1, i) + S(r-1, i \oplus m\sb r)$。按归纳假设，第一项是
@@ -268,7 +268,7 @@ $G$ 个 block 的和汇成一个的最后一步。base.cuh 用
 \texttt{atomic\allowbreak{}Add\allowbreak{}(y,\allowbreak{} val)}：$G$ 次全局原子累加直接打进同一个地址 $y$。
 原子性保证结果正确，但有两个代价：$G$ 次原子操作在 L2 的
 原子单元上是\textbf{串行化}的（对同一地址的 read-modify-write 无法并行），
-\S\ref{sec:ch02-perf} 的 bench 显示这就是该 kernel 的真瓶颈；此外浮点
+\S\ref{sec:ch02-perf} 的 bench 显示这就是该 kernel 的真瓶颈。此外浮点
 加法不满足结合律，$G$ 个部分和的累加顺序取决于 block 完成顺序，
 run-to-run 不确定。这就是 ch02 测试用 CPU fp64 参考 + 容差
 （TOL\_F32ACC）而不是 bitwise 比对的原因，也是所有 atomic 求和型 kernel
@@ -324,10 +324,10 @@ lane $i$ 与 lane $i \oplus \mathrm{mask}$ 交换并累加，掩码 $4 \to 2 \to
 \end{tabular}
 \end{center}
 
-注释末尾还总结了蝶形成对交换的关键性质：XOR 成对对称（$(i \oplus m) \oplus m
-= i$），每轮每个 lane 恰与 1 个其他 lane 通信，一对一无冲突；每轮信息传递
+注释末尾还总结了蝶形成对交换的关键性质。XOR 成对对称（$(i \oplus m) \oplus m
+= i$），每轮每个 lane 恰与 1 个其他 lane 通信，一对一无冲突。每轮信息传递
 距离减半（$W{=}32$ 时 $16 \to 8 \to 4 \to 2 \to 1$）、信息量翻倍；全程
-$O(\log_2 N)$ 步、纯寄存器操作、无需 shared memory；\texttt{\_\_shfl\_xor\_sync}
+$O(\log_2 N)$ 步、纯寄存器操作、无需 shared memory。\texttt{\_\_shfl\_xor\_sync}
 的第四个参数 \texttt{kWarpWidth} 限制 segment width（如 $W{=}4$ 时只有同
 segment 的 lane 参与 shuffle），即前文模板参数所述的通信域行为。
 
@@ -336,10 +336,10 @@ segment 的 lane 参与 shuffle），即前文模板参数所述的通信域行�
 \lstinputlisting[linerange={172-197},firstnumber=auto,
   title={base.cuh L172-197（block reduce sum：注释与实现）}]{../base.cuh}
 
-对照 \S\ref{sec:ch02-math} 的步数统计读这段代码：第 1 步
+对照 \S\ref{sec:ch02-math} 的步数统计读这段代码。第 1 步
 \texttt{warp\_\allowbreak{}reduce\_\allowbreak{}sum\allowbreak{}<k\allowbreak{}Warp\allowbreak{}Size>} 是 warp 内 5 轮；第 2 步 lane 0 把
-warp 部分和写进 smem；\texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()} 划出读写边界：没有它，
-先写完的 warp 可能被后写的覆盖；第 3 步是本实现的关键：不是让
+warp 部分和写进 smem，\texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()} 划出读写边界：没有它，
+先写完的 warp 可能被后写的覆盖。第 3 步是本实现的关键：不是让
 warp 0 独自做二次归约，而是每个 warp 的前 $W$ 个 lane 都读入全部 $W$ 个
 部分和、各自再归约一遍。多余的 $W-1$ 份计算是冗余的（只是寄存器加法），
 换来的是不需要第二次 smem 往返与第二次同步。第 4 步
@@ -362,7 +362,7 @@ kNumWarps 知道结果」说的就是这一步：归约函数的约定是 block 
 \texttt{-FLT\_MAX}）$\to$ warp 归约 $\to$ smem 汇合 $\to$ warp 0
 二次归约 $\to$ 单个线程写全局。与 block\_reduce\_sum 有两处差异：
 二次归约只留给 warp 0（\texttt{if (warp == 0)}），因为这里的结果只需被写出、
-不必广播全员；写出者是
+不必广播全员。写出者是
 \texttt{tid == 0}，源码注释特意强调「tid == 0, not lane 0. 只有 block
 内的一个线程负责写回全局结果，避免重复累加」：lane 0 是每个 warp 的第 0
 线程（一个 block 里有 $W$ 个），tid 0 才是全 block 唯一。多 block 之间
@@ -461,7 +461,7 @@ dot\_vec4 & 0.04155 & 807.53 GB/s \\
 
 三行时间几乎完全相同（约 42 $\mu$s），说明瓶颈已经转移：
 32 MB 的 dot 数据流只要 $32\,\mathrm{MB} / 1344\,\mathrm{GB/s} \approx
-24\,\mu$s（HBM 口径）甚至更少（L2 口径），而实测 42 $\mu$s 由另一个因素决定：
+24\,\mu$s（HBM 口径）甚至更少（L2 口径）。实测 42 $\mu$s 由另一个因素决定：
 $G = N/256 = 16384$ 个 block 各做一次 \texttt{atomic\allowbreak{}Add\allowbreak{}(y)}，对同一地址的
 全局原子串行化按 $42\,\mu s / 16384 \approx 2.6\,\mathrm{ns/op}$ 计，16384 次合计约
 $42\,\mu s$，恰好等于实测总时长。结论：该实现的上限由全局原子的串行吞吐决定。

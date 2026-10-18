@@ -25,8 +25,8 @@ Transformer 的每个 block 至少包含两个归一化层（pre-norm 结构中�
 \end{enumerate}
 
 这个结构与 softmax 的行内 max/sum 归约加广播同构，因此第 \ref{ch:04} 章的分析手段
-可以原样迁移。RMSNorm 与 LayerNorm 之间的差异落在归约几次、同步几次上，本章就用这
-一对算子讲 1-pass 与 2-pass 两种归约结构。
+可以原样迁移。RMSNorm 与 LayerNorm 之间的差异落在归约几次、同步几次上，这一对算子
+正好用来讲 1-pass 与 2-pass 两种归约结构。
 
 性能特征先给结论：归一化是典型的 memory-bound 算子。每个元素读 4B、写 4B，浮点运算
 只有 2-3 次，算术强度 $AI \approx 0.3$ FLOP/Byte，远低于现代 GPU Roofline 拐点
@@ -138,10 +138,12 @@ $\sigma^2 = S_2/K - \mu^2$，可以在一次归约中同时求 $S_1$ 与 $S_2$�
 两个 float，或在同一线程内做两次独立归约），从而把 LayerNorm 压成 1-pass。代价是数值
 风险：$S_2/K - \mu^2$ 是大数减小数，当 $|\mu| \gg \sigma$（分布整体远离零点，且数据
 动态范围大）时，两个相近的浮点数相减发生 catastrophic cancellation，fp32 精度下方差
-可能出现明显误差甚至为负。数值稳定且仍只过一遍数据的方案是 Welford 递推（增量维护
+可能出现明显误差甚至为负。
+
+数值稳定且仍只过一遍数据的方案是 Welford 递推（增量维护
 $\mu$ 与 $M_2 \equiv \sum_k (x_k-\bar{x})^2$，分块结果可用合并公式汇总），但它的归约
 合并逻辑复杂得多。工程权衡：fp32 输入下 2-pass 简单可靠；fp16/bf16 输入的生产 kernel
-通常升 fp32 累加后沿用 2-pass，或采用 Welford。本章源码选择最直白的结构：RMSNorm
+通常升 fp32 累加后沿用 2-pass，或采用 Welford。这份源码选择最直白的结构：RMSNorm
 1-pass、LayerNorm 2-pass。
 
 \subsection{rsqrtf：倒数平方根的硬件路径}
@@ -255,6 +257,7 @@ $\mu$ 与 $M_2 \equiv \sum_k (x_k-\bar{x})^2$，分块结果可用合并公式�
   \item \textbf{Pass 2}：用广播后的均值计算 $\sum_k (x_k - \mu)^2$，再次 block reduce，tid 0 写 \texttt{s\_\allowbreak{}variance =\allowbreak{} rsqrtf\allowbreak{}(variance /\allowbreak{} K + epsilon)}，再一次 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()} 广播。
   \item 输出 \texttt{y = ((value - s\_mean) * s\_variance) * g + b}，与式~\eqref{eq:ch06-ln} 逐项对应。
 \end{itemize}
+
 同步开销精确计数：layer\_norm 全程 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()} 共 4 次（两次 block reduce 内部各 1 次 + 显式 2 次），rms\_norm 只有 2 次，这就是源码注释「比 Layer Norm 少 1 次同步」的完整语境（少一次归约，连带少一次 reduce 内部同步与一次显式同步）。$K = 128$ 时每次块级同步的绝对延迟在微秒以下，但归一化算子本身访存量极小（一行 $128 \times 4\mathrm{B} \times 2$ 的访存在 $\sim\mathrm{TB/s}$ 带宽下不足 $1\,\mu s$），相对占比可观，本章第 6 节的实测数据会量化这一点。
 
 \subsection{layer\_norm\_vec4：寄存器复用的两遍结构}
@@ -373,11 +376,10 @@ $N$（行） & rms\_norm & rms\_norm\_vec4 & layer\_norm & layer\_norm\_vec4 \\
 \end{tabular}
 \end{center}
 
-三个规模对应两种访存口径（工作集按读集 $x+y$ 合计计，与第 \ref{ch:07}~章
-同口径）：$N = 8192$ 时合计约 $8\,\mathrm{MB}$ 完全落在 96MB L2 之内，
-是 L2 口径；$N = 131072$ 时输入合计约 $128\,\mathrm{MB}$ 已超出 L2：输入
-数组（$64\,\mathrm{MB}$）可基本驻留、写集引起部分逐出，实测带宽
-（1041--1212 GB/s）介于 HBM 饱和值与 L2 之间；
+三个规模对应两种访存口径（工作集按读集 $x+y$ 合计计，与第 \ref{ch:07}~章同口径）。
+$N = 8192$ 时合计约 $8\,\mathrm{MB}$ 完全落在 96MB L2 之内，是 L2 口径。
+$N = 131072$ 时输入合计约 $128\,\mathrm{MB}$ 已超出 L2：输入数组（$64\,\mathrm{MB}$）
+可基本驻留、写集引起部分逐出，实测带宽（1041--1212 GB/s）介于 HBM 饱和值与 L2 之间。
 $N = 524288$ 时读写流量 $512\,\mathrm{MB}$ 远超 L2，是 HBM 口径。两个结构性结论：
 
 \begin{enumerate}

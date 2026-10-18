@@ -5,17 +5,17 @@
 
 第~\ref{ch:11}~章把 HGEMM 推进到了 \texttt{mma.sync} m16n8k16 + \texttt{ldmatrix} +
 cp.async 多级流水的形态，但那条流水线上还存在三个瓶颈：shared memory bank
-conflict 让 \texttt{ldmatrix} 的读取被串行化；k\_step 内 ldmatrix 与 MMA
-的依赖让数据搬运与数值计算无法重叠；grid 的光栅化顺序让同时在飞（in-flight）的 block
-在 L2 里摊成一条宽条带、复用率低下。本章沿教学源码 Phase~7b-3 的
+conflict 让 \texttt{ldmatrix} 的读取被串行化。k\_step 内 ldmatrix 与 MMA
+的依赖让数据搬运与数值计算无法重叠。grid 的光栅化顺序让同时在飞（in-flight）的
+block 在 L2 里摊成一条宽条带、复用率低下。本章沿教学源码 Phase~7b-3 的
 \texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn\_\allowbreak{}swizzle}（hgemm.cuh~L434）逐一解决这三个瓶颈：
 
 \begin{itemize}
   \item \textbf{smem XOR swizzle}（common.cuh~L110--348）：不花一个字节的 padding，
-        用地址位异或把 ldmatrix 的冲突访问打散；本章给出逐 bit 推导、可逆性证明，
-        以及 v1（手写 XOR 分支）与 v2（\texttt{Swizzle\allowbreak{}<B,\allowbreak{}M,\allowbreak{}S>} 位级镜像）两套实现；
+        用地址位异或把 ldmatrix 的冲突访问打散。本章给出逐 bit 推导、可逆性证明，
+        以及 v1（手写 XOR 分支）与 v2（\texttt{Swizzle\allowbreak{}<B,\allowbreak{}M,\allowbreak{}S>} 位级镜像）两套实现。
   \item \textbf{寄存器双缓冲}（\texttt{RA[2][*][4]}/\texttt{RB[2][*][2]} 乒乓切换）：
-        与 smem 双缓冲（kStages）分工，一个掩盖 gmem 延迟，一个掩盖 ldmatrix 延迟；
+        与 smem 双缓冲（kStages）分工，一个掩盖 gmem 延迟，一个掩盖 ldmatrix 延迟。
   \item \textbf{Block Swizzle}（\texttt{k\allowbreak{}Block\allowbreak{}Swizzle} + 3D grid）：重排 block
         坐标映射，让同时在飞（in-flight）的 block 集合成近似方形，L2 footprint 显著缩小。
 \end{itemize}
@@ -150,10 +150,12 @@ $a=32i+16c$，四联组
 \end{equation}
 逐行展开（$c=0$）：$i=0,1,2,3 \to q=0,8,16,24$；$i=4,5,6,7 \to q=(32,40,48,56)\bmod32
 =0,8,16,24$。\textbf{行 4--7 与行 0--3 两两同组}，每个 phase 2-way 冲突
-（$c=1$ 同理，$q=4,12,20,28$ 重复一遍）。这个数字可以做定量校验：
-一次 \texttt{ldmatrix.x4} 有 4 个 phase、每 phase 多 1 次重放，即每条 x4 多 4 个
-冲突周期；\texttt{x2} 多 2 个。每个 warp 每个 k 迭代搬 4 个 A fragment（x4）与
-4 个 B fragment（x2），共多 $4\times4+4\times2=24$ 次重放。NCU 实测（RTX PRO 5000，
+（$c=1$ 同理，$q=4,12,20,28$ 重复一遍）。
+
+这个数字可以做定量校验：一次 \texttt{ldmatrix.x4} 有 4 个 phase、每 phase 多 1 次
+重放，即每条 x4 多 4 个冲突周期；\texttt{x2} 多 2 个。每个 warp 每个 k 迭代搬
+4 个 A fragment（x4）与 4 个 B fragment（x2），共多 $4\times4+4\times2=24$ 次重放。
+NCU 实测（RTX PRO 5000，
 $M{=}N{=}K{=}512$，16 block $\times$ 8 warp $\times$ 32 个 k 迭代）：
 \begin{equation}
   128 \times 32 \times 24 \;=\; 98{,}304
@@ -244,17 +246,19 @@ $2^M$ 字节为一个基本元素（fp16 的 16\,B chunk $\Rightarrow M{=}4$）�
   (2,4,3)=\text{SWIZZLE\_64B},\quad
   (3,4,3)=\text{SWIZZLE\_128B},
 \end{equation}
-分别对应 32/64/128\,B 行宽（kColStride $=16/32/64$ half）。v1 的三个手写分支与
-v2 的统一公式\textbf{逐档等价}，独立核验如下（$a=2(k_{\mathrm{cs}}\,i+j)$，
-$j<k_{\mathrm{cs}}$）：$k_{\mathrm{cs}}{=}16$ 时 $a=32i+2j$，bit4 恰为
-$(j{\gg}3)\And1$（$2j<32$ 不上探），bit7 恰为 $(i{\gg}2)\And1$，apply 即
-式~\ref{eq:12-xor-v1}；$k_{\mathrm{cs}}{=}32$ 时 $a=64i+2j$，bit $[4,6)$ 为
-$(j{\gg}3)\And3$、bit $[7,9)$ 为 $i$ 的 bit $[1,3)$，与 v1 的
-\texttt{chunk\^{}xor\_\allowbreak{}mask} 逐位相同；$k_{\mathrm{cs}}{=}64$ 同理（bit $[4,7)$
-对 bit $[7,10)$）。源码注释 common.cuh~L320--325 的等价性证明与上述独立推导一致，
-且 host 端全遍历测试（$i<256$、$j<k_{\mathrm{cs}}$、四档共 30{,}720 点）
-bit-exact 通过（本章 case~C）。$k_{\mathrm{cs}}{=}8$ 无对应 TMA 模式，v2 回退
-v1（当前无 kernel 使用）。
+分别对应 32/64/128\,B 行宽（kColStride $=16/32/64$ half）。
+
+v1 的三个手写分支与 v2 的统一公式\textbf{逐档等价}，独立核验如下
+（$a=2(k_{\mathrm{cs}}\,i+j)$，$j<k_{\mathrm{cs}}$）。
+$k_{\mathrm{cs}}{=}16$ 时 $a=32i+2j$，bit4 恰为 $(j{\gg}3)\And1$（$2j<32$ 不上探），
+bit7 恰为 $(i{\gg}2)\And1$，apply 即式~\ref{eq:12-xor-v1}。
+$k_{\mathrm{cs}}{=}32$ 时 $a=64i+2j$，bit $[4,6)$ 为 $(j{\gg}3)\And3$、bit $[7,9)$
+为 $i$ 的 bit $[1,3)$，与 v1 的 \texttt{chunk\^{}xor\_\allowbreak{}mask} 逐位相同。
+$k_{\mathrm{cs}}{=}64$ 同理（bit $[4,7)$ 对 bit $[7,10)$）。
+
+源码注释 common.cuh~L320--325 的等价性证明与上述独立推导一致，且 host 端全遍历测试
+（$i<256$、$j<k_{\mathrm{cs}}$、四档共 30{,}720 点）bit-exact 通过（本章 case~C）。
+$k_{\mathrm{cs}}{=}8$ 无对应 TMA 模式，v2 回退 v1（当前无 kernel 使用）。
 
 \subsection{关键勘误：BK=64 下 per-slice swizzle 只到 4-way，不是 1-way}
 
@@ -276,11 +280,11 @@ BK=16 基线 98{,}304 次；两版比值 $691067/297628=2.32$，与模型预测�
 8-way$\to$4-way 比值（$688128/294912=2.33$，即 BK=16 基线 98{,}304 的 7 倍与
 3 倍；实测与模型误差 $<$1\%）一致。要在 128\,B 行宽下真正 1-way，
 应使用 \texttt{swizzle<64>}（SWIZZLE\_128B，$B{=}3$）：$c'=c\oplus(i\And7)$，
-行 0--7 的 8 个 chunk 恰好铺满 $q=0,4,\dots,28$；common.cuh 的
+行 0--7 的 8 个 chunk 恰好铺满 $q=0,4,\dots,28$。common.cuh 的
 \texttt{permuted\allowbreak{}<64>} 已实现该档位，CuTe 版 HGEMM（第~\ref{ch:24}~章）使用的
-\texttt{Swizzle\allowbreak{}<3,\allowbreak{}3,\allowbreak{}3>} 正是同一思路；本 kernel 选择 per-slice 的 16 档位，
-冲突从 8-way 降到 4-way 后，剩余延迟由寄存器双缓冲的流水覆盖（表~\ref{tab:12-bank}
-耗时列）。
+\texttt{Swizzle\allowbreak{}<3,\allowbreak{}3,\allowbreak{}3>} 正是同一思路。本 kernel 选择 per-slice 的
+16 档位，冲突从 8-way 降到 4-way 后，剩余延迟由寄存器双缓冲的流水覆盖
+（表~\ref{tab:12-bank} 耗时列）。
 
 \begin{figure}[H]
 \centering
@@ -355,17 +359,19 @@ $bx=\mathrm{blockIdx.x}$，与默认完全一致，开关零成本。注意 kern
 $\sqrt{R}$，$R$ 为常驻 block 数）。
 
 为什么重排能提升 L2 命中？设同时在飞（in-flight）的 block 数为 $R$（PRO 5000：110 SM、
-smem/SM 100\,KB 对 64\,KB 动态 smem 只容 1 块常驻，$R \approx 110$）。每个 C tile block 要读 $B_M\times K$ 的 A 条带
-与 $B_N\times K$ 的 B 条带；常驻集合覆盖 $H$ 个 M-tile 行、$W$ 个 N-tile 列时，
-L2 必须同时容纳的 unique 数据量（footprint）为
+smem/SM 100\,KB 对 64\,KB 动态 smem 只容 1 块常驻，$R \approx 110$）。每个 C tile
+block 要读 $B_M\times K$ 的 A 条带与 $B_N\times K$ 的 B 条带。常驻集合覆盖 $H$ 个
+M-tile 行、$W$ 个 N-tile 列时，L2 必须同时容纳的 unique 数据量（footprint）为
 \begin{equation}
   F \;=\; \bigl(H\!\cdot\!B_M \;+\; W\!\cdot\!B_N\bigr)\cdot K\cdot 2\,\mathrm{B},
   \label{eq:12-footprint}
 \end{equation}
+
 而常驻集合的计算量固定为 $R\cdot B_M B_N K$，footprint 越小、命中越高。默认光栅
 （x 最快）：$W=\min(T_n,R)$、$H=\lceil R/W\rceil$。取 $T_m{=}16$、$T_n{=}128$
 （$M{=}2048$、$N{=}16384$）：$W{=}110$、$H{=}1$，
 $F=(1{\cdot}128+110{\cdot}128)K\cdot2\,\mathrm{B}=14208K\cdot2\,\mathrm{B}$。
+
 开启 swizzle 后 $W'=\lceil T_n/S\rceil=16$、$H'=\lceil R/16\rceil=7$，
 $F'=(7{\cdot}128+16{\cdot}128)K\cdot2\,\mathrm{B}=2944K\cdot2\,\mathrm{B}$，
 \textbf{缩小 4.8 倍}：条带被折成了近似方块（$\sqrt{R}\times\sqrt{R}$ 量级）。
@@ -469,13 +475,13 @@ Register Double Buffering，通用 \texttt{kValTileK}，默认 BK$=64$）在 Pha
 
 \begin{itemize}
   \item \texttt{kValTileK}：每个 BK tile 包含 \texttt{kValTileK} 个 \texttt{kMmaK}
-        slice（BK $=$ \texttt{kMmaK} $\times$ \texttt{kValTileK}）；
-  \item 统一 BK tile 指所有 k\_step slice 连续存放在同一个 BK 宽的 smem tile 中；
+        slice（BK $=$ \texttt{kMmaK} $\times$ \texttt{kValTileK}）。
+  \item 统一 BK tile 指所有 k\_step slice 连续存放在同一个 BK 宽的 smem tile 中。
   \item \texttt{RA[2][kValTileM][4]} / \texttt{RB[2][kValTileN][2]}：双份寄存器
-        乒乓切换（与 \texttt{kValTileK} 无关）；
+        乒乓切换（与 \texttt{kValTileK} 无关）。
   \item \texttt{ldmatrix} 与 MMA 计算重叠：加载 k\_step$+1$ 的同时用另一组
-        寄存器做 k\_step 计算；
-  \item 支持任意 \texttt{kValTileK} $\ge 2$；默认 \texttt{kValTileK}$=4$
+        寄存器做 k\_step 计算。
+  \item 支持任意 \texttt{kValTileK} $\ge 2$。默认 \texttt{kValTileK}$=4$
         （BK$=64$），\texttt{kStages}$=2$ 推荐 64\,KB smem。
 \end{itemize}
 
@@ -486,13 +492,13 @@ smem 布局：\texttt{s\_a} 按 \texttt{[stage0][stage1]...[stage(kStages-1)]} �
 
 \begin{enumerate}
   \item G$\to$S：\texttt{cp.async} 预取 \texttt{stage(k+kStages-1)} 的全部
-        k\_step（条件）；
+        k\_step（条件）。
   \item MMA k\_step$=0$（用 \texttt{reg[load]}，已在上轮 post-wait 中
-        \texttt{ldmatrix}）；
+        \texttt{ldmatrix}）。
   \item 对 k\_step$=1..\,$\texttt{kValTileK}$-1$ 循环：\texttt{ldmatrix}（列偏移
         k\_step$\times$\texttt{kMmaK}）$\to$ \texttt{reg[store]}，flip，MMA $\to$
-        \texttt{reg[load]}；
-  \item adaptive wait + \texttt{\_\_syncthreads}；
+        \texttt{reg[load]}。
+  \item adaptive wait + \texttt{\_\_syncthreads}。
   \item S$\to$R：\texttt{ldmatrix} 预加载 \texttt{stage(k+1)} 的 k\_step$=0$
         $\to$ \texttt{reg[store]}（条件）。
 \end{enumerate}
@@ -1082,11 +1088,13 @@ ALL OK
 
 判据说明：fp16 累加（\texttt{f16.f16.f16.f16}）对 fp64 参考的误差随 $K$ 增长，
 $K{=}256$ 时约 $2.5{\sim}2.9\times10^{-2}$，落在 F16Acc 档 $5\times10^{-2}$ 内；
-$K{=}512$ 实测 5.8$\times10^{-2}$ 超档，故 case~B 固定 $K{=}256$。动手实验：
+$K{=}512$ 实测 5.8$\times10^{-2}$ 超档，故 case~B 固定 $K{=}256$。
+
+动手实验：
 （1）把 case~B 的 3D grid 换成 $\lceil T_n/4\rceil\times T_m\times 4$ 验证
-kernel 对任意分组的正确性；（2）复制 kernel 把 8 处 \texttt{swizzle\allowbreak{}<k\allowbreak{}Mma\allowbreak{}K>}
+kernel 对任意分组的正确性。（2）复制 kernel 把 8 处 \texttt{swizzle\allowbreak{}<k\allowbreak{}Mma\allowbreak{}K>}
 换成 \texttt{swizzle<64>} 并把 slice 基址并入 $j$（SW128 方案，12.3.7 节），
-用 NCU 复测冲突计数是否归零、端到端是否超过 7b-1；（3）用
+用 NCU 复测冲突计数是否归零、端到端是否超过 7b-1。（3）用
 bench\_leetcuda.cu bench 复跑 $2048\times16384\times4096$ 口径对照表~\ref{tab:12-tflops}。
 
 \section*{延伸阅读}

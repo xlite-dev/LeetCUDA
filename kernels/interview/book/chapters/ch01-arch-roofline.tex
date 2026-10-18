@@ -22,9 +22,9 @@ memory-bound 与 compute-bound、occupancy 与延迟隐藏。
 
 先建立一个直觉：CPU 和 GPU 是两种设计哲学的产物。CPU 的目标是尽快完成
 一个任务（低延迟），于是它把晶体管花在大容量 cache、复杂的分支预测与乱序执行
-引擎上；GPU 的目标是同时完成海量任务（高吞吐），于是它把晶体管花在
+引擎上。GPU 的目标是同时完成海量任务（高吞吐），于是它把晶体管花在
 成千上万个算术逻辑单元（ALU）上，寄存器文件巨大而 cache 相对很小，分支预测
-几乎不存在：GPU 根本不打算「预测」分支，它靠成千上万个线程之间的快速
+几乎不存在。GPU 根本不打算「预测」分支，它靠成千上万个线程之间的快速
 切换把内存延迟藏起来。
 
 直接后果是：同一个算法在 GPU 上快慢与否，几乎完全由它的访存-计算比例决定。
@@ -255,7 +255,7 @@ FLOPs；访存是读入 $x$、写出 $y$ 各一次，$4 \times 2N$ 字节：
 \subsection{Roofline 模型与 ridge point}
 
 把峰值算力 $P\sb{peak}$（FLOP/s）与峰值带宽 $BW$（Byte/s）放在一起，
-Roofline 模型给出任意算子的可达性能上界：
+Roofline 模型给出任意算子的可达性能上界。
 \begin{equation}
   P \;=\; \min\bigl(P\sb{peak},\; AI \times BW\bigr).
   \label{eq:ch01-roofline}
@@ -315,7 +315,9 @@ $P\sb{peak}$ 相差约 15 倍，于是 ridge point 也相差 15 倍：在 H100 �
 AI=100 的算子用 FP32 跑是 compute-bound（$100 > 20$），切到 FP16 TC 反而是
 memory-bound（$100 < 295$）。这解释了一个反直觉的现象：把 kernel 迁移到
 Tensor Core 上未必变快。如果它本是 memory-bound，算力提高 15 倍也无法
-提升性能。同理，把 ridge point 算错（比如把 sparse 峰值当 dense 用，见
+提升性能。
+
+同理，把 ridge point 算错（比如把 sparse 峰值当 dense 用，见
 \S\ref{sec:ch01-pitfall}）会把 bound 类别判反，整个优化方向就全错了。
 
 \begin{figure}[H]
@@ -368,7 +370,7 @@ GPU 隐藏内存延迟靠的不是 cache（容量太小），而是\textbf{warp 
 warp A 因等 HBM 数据而停顿时，scheduler 立刻切到 warp B 发射指令；等到
 A 的数据到了再切回来。设单次 HBM 访问约 $500 \sim 800$ 个时钟周期，若要
 发射口持续有指令可发，SM 上必须常驻足够多的活跃 warp。活跃 warp 数与硬件上限之比
-就是 occupancy（base.cuh L27--30）：
+就是 occupancy（base.cuh L27--30）。
 \begin{equation}
   \mathrm{occupancy} = \frac{\text{active warps / SM}}
                             {\text{max warps / SM}},
@@ -400,8 +402,8 @@ setmaxnreg 干脆在 producer/consumer 之间动态重新分配寄存器池，
 vectorize 也在 ch03，tiling 的初级形态（warp/block reduce 中的两级结构）
 在 ch02 就能见到。第 4--6 条（thread tile、bank conflict、pipeline）在
 Part II GEMM 篇逐一兑现；第 7--9 条（Tensor Core、Warp Specialization、
-TMA）属于 Part II 后半与 Part III/IV。读到这里建议翻回本表：本书的章节
-顺序，就是这张清单逐条展开的顺序。
+TMA）属于 Part II 后半与 Part III/IV。本书的章节顺序，就是这张清单逐条
+展开的顺序。
 
 \begin{figure}[H]
 \centering

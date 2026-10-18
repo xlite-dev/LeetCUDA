@@ -86,7 +86,7 @@ $\mathrm{addr}(A\sb{m,k}) = mK + k$、$\mathrm{addr}(B\sb{k,n}) = kN + n$
   \label{eq:9-ai-tile}
 \end{equation}
 $B\sb{K}$ 在分子分母间相消，加深 $B\sb{K}$ 不提升 AI，只增加 smem 驻留量与
-单次同步覆盖的计算量；AI 由 $B\sb{M} \times B\sb{N}$ 这个输出面唯一决定。
+单次同步覆盖的计算量。AI 由 $B\sb{M} \times B\sb{N}$ 这个输出面唯一决定。
 代入本章两个实现：$32 \times 32 \to \mathrm{AI} = 8$~FLOP/B；
 $128 \times 128 \to \mathrm{AI} = 32$~FLOP/B，恰好是三级递进（naive $0.25 \to 8 \to 32$）。
 方形 tile 时式~\ref{eq:9-ai-tile} 简化为 $B/4$：每边翻倍，AI 翻倍。
@@ -124,15 +124,16 @@ naive（AI $0.25$）计算上限 $\approx 0.23$ TFLOPS；
 \texttt{sgemm\_vec4}（AI $32$）上限 $\approx 29.9$ TFLOPS，逼近拐点，
 进入带宽与算力都吃紧的过渡区，这也是要引入阶梯二（双缓冲 + Tensor Core）的原因。
 
-形式化之外，tiling 循环的正确性依赖两道栅栏，缺一不可：
+形式化之外，tiling 循环的正确性依赖两道栅栏，缺一不可。
 \begin{itemize}
   \item \textbf{第一道 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads}}（消费前）：保证本 k-slice 的
         \texttt{s\_a}、\texttt{s\_b} 已被全部线程写完，才能开始读，
-        否则会读到其他线程尚未写完的数据；
+        否则会读到其他线程尚未写完的数据。
   \item \textbf{第二道 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads}}（覆写前）：保证所有线程已读完
         本 slice，才允许下一轮加载覆写同一块 smem，否则慢的线程读到的数据
         被快的线程提前覆写。
 \end{itemize}
+
 两道栅栏之间是计算窗口，之外是搬运窗口。本章两版 kernel 都是串行的
 「搬一算一」，空转时序见图~\ref{fig:09-single-barrier}；第~\ref{ch:10}~章的
 双缓冲会让两个窗口重叠起来。
@@ -271,8 +272,8 @@ $\mathrm{tid}\%32$ 连续（读 \texttt{s\_b[k][n]}，stride 1）。写回同样
 \subsection{Level 1+：\texttt{sgemm\_vec4} 的设计注释}
 
 \texttt{sgemm\_vec4}（Block Tile $128\times128$ + K Tile 32 + Thread Tile
-$4\times4$）在 Level 1 基础上叠了两层优化：先用 \texttt{float4} 做向量化加载，
-$A$/$B$ 各用 1 条 128-bit load 取代 4 条 32-bit load；再把每线程的输出扩到
+$4\times4$）在 Level 1 基础上叠了两层优化。先用 \texttt{float4} 做向量化加载，
+$A$/$B$ 各用 1 条 128-bit load 取代 4 条 32-bit load。再把每线程的输出扩到
 Thread Tile $4\times4$，即 16 个 $C$ 元素，计算/访存比从 $B\sb{K}/2\approx16$ 提升
 到 $\mathrm{TM}\cdot\mathrm{TN}\cdot B\sb{K}/2\approx256$，同时减少线程总数带来的同步开销。
 问题设定 $C = A \times B$，即 $C[M,N] = A[M,K] \times B[K,N]$（$A$/$B$ 均
@@ -284,7 +285,7 @@ row-major）；$B\sb{M}=B\sb{N}=128$、$B\sb{K}=32$，block $(32,32)$ 共 1024 �
 bank conflict（4-way，生产代码可用 \texttt{s\_b[BK][BN+1]} PAD 打散，这里保持
 最简布局便于讲解）。
 
-先独立验证注释里的两套映射（都能对上）：加载映射，$A$ 块 $128 \times 32$：
+先独立验证注释里的两套映射（都能对上）。加载映射，$A$ 块 $128 \times 32$：
 每线程 4 个元素，$8$ 线程铺满一行 32 列（$\mathrm{tid}/8$ 定行、$(\mathrm{tid}\%8) \cdot 4$ 定列组），
 $1024$ 线程恰好 $128 \times 32$；$B$ 块 $32 \times 128$：$32$ 线程铺满一行
 （$\mathrm{tid}/32$ 定行、$(\mathrm{tid}\%32) \cdot 4$ 定列组），$1024$ 线程恰好
@@ -353,7 +354,7 @@ $= 16384 = 128 \times 128$，不重不漏（vec4 落点见图~\ref{fig:09-vec4-m
 \label{fig:09-vec4-map}
 \end{figure}
 
-注释 L99--102 的 bank conflict 提示也经推导属实：计算阶段读 \texttt{s\_b[k][n]}
+注释 L99--102 的 bank conflict 提示也经推导属实。计算阶段读 \texttt{s\_b[k][n]}
 时，warp 内列地址步进 4 个 float（16B），32 个 lane 只命中 8 个 bank，
 4-way conflict；生产代码用 \texttt{s\_\allowbreak{}b[BK][BN+1]} 加一列 PAD 打散，
 本章保持最简布局，把系统解法（swizzle）留给第~\ref{ch:12}~章
@@ -485,7 +486,7 @@ block tile 决定 smem 里驻留多少输入，grid 决定 C 被切成几份。
 
 \section{性能分析}
 
-本章复测（RTX PRO 5000 72GB Blackwell，sm\_120，110 SMs，threads/SM $=1536$，
+复测口径（RTX PRO 5000 72GB Blackwell，sm\_120，110 SMs，threads/SM $=1536$，
 smem/SM $=100$KB；时钟按运行时查询 2.38~GHz，fp32 峰值按 128 FMA/SM/cycle 折算
 $\approx 66.9$ TFLOPS；warmup 3 + 10 次均值）：
 
@@ -655,12 +656,14 @@ B & sgemm-vec4 (128x128x32) & 1.362e-05 & 1.0e-03 \\
 \end{table}
 
 判据：两 kernel 对 CPU fp64 参考的误差在 $10^{-5}$ 量级（$K \le 256$ 的
-串行 fp32 累加噪声），远小于 F32Acc 档容差；两 kernel 输出一致（同形状同累加顺序
+串行 fp32 累加噪声），远小于 F32Acc 档容差。两 kernel 输出一致（同形状同累加顺序
 时误差完全相同，亦可作交叉印证）。注意测试形状必须满足倍数约束
-（坑二），否则越界写会直接破坏堆。动手实验建议：
+（坑二），否则越界写会直接破坏堆。
+
+动手实验建议：
 （1）注释掉 \texttt{sgemm} 的第二道 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads}（在自己的副本上），
-用 $K = 512$ 反复跑 case A 100 次，统计错误率，观察坑一错误的间歇出现；
-（2）把 $M$ 改成 33（不满足倍数约束）跑 \texttt{compute-sanitizer}，观察越界报告；
+用 $K = 512$ 反复跑 case A 100 次，统计错误率，观察坑一错误的间歇出现。
+（2）把 $M$ 改成 33（不满足倍数约束）跑 \texttt{compute-sanitizer}，观察越界报告。
 （3）运行 \texttt{.\allowbreak{}/\allowbreak{}.\allowbreak{}build/\allowbreak{}ch09\_\allowbreak{}sgemm bench} 复现表~\ref{tab:9-bench}，
 并解释 $512^3$ 时 vec4 相对 naive 只有 $1.13\times$ 的原因（9.6 节观察四）。
 

@@ -27,9 +27,9 @@ $B\sb M\times B\sb N\times B\sb K = 128\times128\times16$，block 256 线程）�
 \section{问题与动机}
 
 \textbf{动机一：WMMA 的四个局限。}（1）布局黑盒：fragment 里哪个元素落在
-哪个寄存器不可知，epilogue 只能整块 \texttt{store\_\allowbreak{}matrix\_\allowbreak{}sync}；
-（2）寄存器失控：fragment 数组完全交给编译器，溢出与否取决于编译器；
-（3）无寄存器双缓冲：每迭代必须等 ldmatrix 完成才能 mma，装载延迟暴露；
+哪个寄存器不可知，epilogue 只能整块 \texttt{store\_\allowbreak{}matrix\_\allowbreak{}sync}。
+（2）寄存器失控：fragment 数组完全交给编译器，溢出与否取决于编译器。
+（3）无寄存器双缓冲：每迭代必须等 ldmatrix 完成才能 mma，装载延迟暴露。
 （4）流水线深度只有 2，搬运延迟稍有波动就覆盖不住。手写 PTX 后这四点全部可控：
 布局白盒（11.3.2--11.3.4）、寄存器显式声明（\texttt{RA/RB/RC} 数组）、
 装载与计算的重叠可以手工编排。
@@ -322,7 +322,7 @@ ldmatrix.sync.aligned.m8n8.x2.shared.b16 {r0, r1},         [addr];
 
 寻址协议是 \texttt{ldmatrix} 的核心：\textbf{每个矩阵 8 行，需要 8 个地址
 （每地址是一行的 16~B 起点）}；x4 共 32 个地址由 32 个 lane 一人一个提供，
-lane $t$ 的地址属于第 $t/8$ 个矩阵的第 $t\bmod 8$ 行；x2 只需 16 个地址
+lane $t$ 的地址属于第 $t/8$ 个矩阵的第 $t\bmod 8$ 行。x2 只需 16 个地址
 （lane 16--31 的地址被忽略，PTX 允许把低位 lane 的地址复制过来凑数）。
 装载结果天然匹配 mma fragment：矩阵 $i$ 的行 $r$ 落在
 lane $4r + \mathrm{tig}$ 的寄存器 $r\sb i$ 的 $\mathrm{tig}$ 列对，
@@ -571,10 +571,10 @@ tile $k$、同时预取 tile $k+\mathrm{kStages}-1$（前 $\mathrm{kStages}{-}1$
 
 地址生成只有两行（L257--258）：行 \texttt{lane\%16}、列 \texttt{(lane/16)*8}。
 把它对到 11.3.5 的协议上：lane 0--7 给出矩阵 0（$m$ 0--7 $\times$ $k$ 0--7）
-的 8 行地址，落在 \texttt{RA[i][0]}（左上）；lane 8--15 给矩阵 1
-（$m$ 8--15 $\times$ $k$ 0--7）$\to$ \texttt{RA[i][1]}（左下）；
+的 8 行地址，落在 \texttt{RA[i][0]}（左上）。lane 8--15 给矩阵 1
+（$m$ 8--15 $\times$ $k$ 0--7）$\to$ \texttt{RA[i][1]}（左下）。
 lane 16--23 给矩阵 2（$m$ 0--7 $\times$ $k$ 8--15）$\to$ \texttt{RA[i][2]}
-（右上）；lane 24--31 给矩阵 3（右下）$\to$ \texttt{RA[i][3]}。
+（右上）。lane 24--31 给矩阵 3（右下）$\to$ \texttt{RA[i][3]}。
 四个目的寄存器的到达顺序恰好就是式~\ref{eq:11-apos} 要求的
 [左上, 左下, 右上, 右下]，一行汇编都不用重排。
 
@@ -584,7 +584,9 @@ lane 16--23 给矩阵 2（$m$ 0--7 $\times$ $k$ 8--15）$\to$ \texttt{RA[i][2]}
 B 侧地址：行 \texttt{lane\%8}（$B^{\top}$ 的 $n$ 0--7）、列
 \texttt{\allowbreak{}(\allowbreak{}(lane/\allowbreak{}8)\%2)*8}（$k$ 半区）。x2 只消费 lane 0--15 的 16 个地址，
 lane 16--31 传的重复地址被硬件忽略（PTX 允许；sm\_75 以下才强制全 warp
-合法地址）。装载语义值得再念一遍：\texttt{ldmatrix}（无 \texttt{.trans}）
+合法地址）。
+
+装载语义值得再念一遍：\texttt{ldmatrix}（无 \texttt{.trans}）
 \textbf{按行}装载 $8\times8$ 的 $B^{\top}$ 子块，即按 $n$ 行取 $k$ 方向
 8 个 half；而 mma 的 \texttt{.col} B fragment 恰好要每 lane 一列 $n$、
 $k$ 方向 2 对（式~\ref{eq:11-bpos}）。两者统一的方式：$B^{\top}$ 的行
@@ -688,7 +690,7 @@ WMMA 做不到这一点（对照第~\ref{ch:10}~章坑五）。收拢与写回�
 每 block（8 warp）每 k-迭代 $2\times128\times128\times16 = 524{,}288$ FLOP、
 搬入 $(128{+}128)\times16\times2$~B $= 8$~KB，smem 口径
 $AI = 64$ FLOP/B，判定为 compute-bound。
-本章复测（RTX PRO 5000 72GB，sm\_120，2026-09-11；$M{=}N{=}K{=}1024$，
+复测口径（RTX PRO 5000 72GB，sm\_120，2026-09-11；$M{=}N{=}K{=}1024$，
 warmup 3 + 10 次均值；\texttt{.\allowbreak{}tmp/\allowbreak{}book-bench/\allowbreak{}ch11/\allowbreak{}}）：
 \texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn} 76.55 TFLOPS（f16 累加）。
 同机同形状下第~\ref{ch:10}~章 TF32 WMMA 版为 28.19 TFLOPS，

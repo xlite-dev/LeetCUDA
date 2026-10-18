@@ -26,7 +26,7 @@ GEMV（GEneral Matrix-Vector multiplication，矩阵向量乘）是 GEMM 在 $N 
 \section{问题与动机}
 
 \textbf{动机一：decode 阶段的形状就是 GEMV。}语言模型自回归推理分两个阶段：prefill 一次处理
-整段 prompt，是大 $M$、大 $N$ 的 GEMM；decode 每步只生成一个 token，投影矩阵
+整段 prompt，是大 $M$、大 $N$ 的 GEMM。decode 每步只生成一个 token，投影矩阵
 $W \in \mathbb{R}^{M \times K}$ 乘以单个 activation 向量 $x \in \mathbb{R}^{K}$，
 输出 $y \in \mathbb{R}^{M}$，$N = 1$，典型的 GEMV（工程上常把若干步 decode 的请求
 拼成 $N = 2, 4, \dots$ 的 skinny GEMM，但单请求视角仍是 GEMV）。权重矩阵一遍推理要被读
@@ -125,6 +125,7 @@ $K = 16 < 32$ 时，单行数据占不满一个 warp。k16 的做法是把 warp 
 \label{eq:8-k16-map}
 \end{equation}
 lane $0\,\dots\,15$ 算第 $m$ 行、lane $16\,\dots\,31$ 算第 $m+1$ 行，每 lane 恰好一个元素。
+
 收尾的归约换成 \texttt{warp\_\allowbreak{}reduce\_\allowbreak{}sum\allowbreak{}<16>}：蝶形掩码序列退化为 $8, 4, 2, 1$，
 且 \texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor\_\allowbreak{}sync} 的第 4 个参数（width$=16$）把数据交换限制在
 16-lane \textbf{segment} 之内，前 16 个 lane 与后 16 个 lane 各自独立收敛、互不干扰。
@@ -230,12 +231,13 @@ $N = 1$）是典型的纯 memory-bound 算子：AI $\approx O(1)$，瓶颈在内
   title={sgemv.cuh L16-45（Level 1：warp-per-row 基础版）}]{../sgemv.cuh}
 
 对照式~\ref{eq:8-k32-cover} 逐行读：（1）\texttt{lane = tx \% kWarpSize} 在
-\texttt{block\allowbreak{}Dim.\allowbreak{}x=\allowbreak{}32} 时就是 \texttt{tx} 本身，取模是防御性写法；
+\texttt{block\allowbreak{}Dim.\allowbreak{}x=\allowbreak{}32} 时就是 \texttt{tx} 本身，取模是防御性写法。
 （2）内层循环每轮做一次 \texttt{a[m*K+k] * x[k]}，\texttt{a} 的 32 个 lane 地址连续
-（合并访问，128B 事务），\texttt{x} 的 32 个 lane 地址同样连续；\texttt{x} 只有 16KB
+（合并访问，128B 事务），\texttt{x} 的 32 个 lane 地址同样连续。\texttt{x} 只有 16KB
 （$K=4096$ 口径），第一轮之后基本驻留在 L1/L2，所以重读 $x$ 的悲观口径
-（式~\ref{eq:8-ai-pessimistic}）在实际上是乐观口径；（3）\texttt{warp\_\allowbreak{}reduce\_\allowbreak{}sum}
+（式~\ref{eq:8-ai-pessimistic}）在实际上是乐观口径。（3）\texttt{warp\_\allowbreak{}reduce\_\allowbreak{}sum}
 收尾后只有 lane 0 写回，一个 warp 写出 4 字节，写流量占比可忽略。
+
 注意 kernel \textbf{没有} $k < K$ 的守卫：$K$ 不是 32 的倍数时最后一轮会越界读
 （8.8~节坑一），这是对齐换简洁的明确约定。
 
@@ -246,9 +248,9 @@ $N = 1$）是典型的纯 memory-bound 算子：AI $\approx O(1)$，瓶颈在内
 
 三处值得停下来看。（1）\texttt{FLOAT4(v)} 宏（common.cuh~L26）把任意左值
 \texttt{reinterpret\_\allowbreak{}cast} 成 \texttt{float4*} 再解引用，load 与 store 都能用，
-是全书向量化的标配工具；（2）\texttt{NUM\_ITERS} 的双层取整
+是全书向量化的标配工具。（2）\texttt{NUM\_ITERS} 的双层取整
 （式~\ref{eq:8-k128-cover}）写成了 \texttt{ceil\allowbreak{}(ceil\allowbreak{}(K/\allowbreak{}32)/\allowbreak{}4)} 的展开式，
-语义等价于 \texttt{ceil(K/128)}；（3）累加把 4 次 FMA 折成一行括号表达式，
+语义等价于 \texttt{ceil(K/128)}。（3）累加把 4 次 FMA 折成一行括号表达式，
 编译器会生成 4 条独立的 \texttt{FFMA}，但对 memory-bound kernel 这不重要
 （计算只占峰值 1\% 不到），真正的好处是 load 指令数与事务数：
 每 warp 每轮 32 条 128-bit load 替代 128 条 32-bit load，指令发射压力降为 1/4，
@@ -260,10 +262,11 @@ $N = 1$）是典型的纯 memory-bound 算子：AI $\approx O(1)$，瓶颈在内
   title={sgemv.cuh L77-100（Level 3：kRowPerWarp=2 分段归约）}]{../sgemv.cuh}
 
 对照式~\ref{eq:8-k16-map}：（1）模板参数 \texttt{kRowPerWarp} 把一个 warp 几行
-做成编译期常量，\texttt{k\allowbreak{}Num\allowbreak{}Lane\allowbreak{}Per\allowbreak{}Row} 随之推导为 16；（2）每个 lane 只做一次乘加
-（$K=16$ 恰好等于 segment 宽度，无循环）；（3）\texttt{warp\_\allowbreak{}reduce\_\allowbreak{}sum\allowbreak{}<16>} 内部
-蝶形掩码从 8 开始递减，width 参数保证前 16 与后 16 两个 segment 互不干扰；
+做成编译期常量，\texttt{k\allowbreak{}Num\allowbreak{}Lane\allowbreak{}Per\allowbreak{}Row} 随之推导为 16。（2）每个 lane 只做一次乘加
+（$K=16$ 恰好等于 segment 宽度，无循环）。（3）\texttt{warp\_\allowbreak{}reduce\_\allowbreak{}sum\allowbreak{}<16>} 内部
+蝶形掩码从 8 开始递减，width 参数保证前 16 与后 16 两个 segment 互不干扰。
 （4）写回判据 \texttt{k == 0} 有两个命中 lane（0 与 16），分别写回两行的结果。
+
 一个附带的好处：row-major 下第 $m$ 行与第 $m+1$ 行在内存里首尾相接，
 warp 的 32 个 lane 恰好拼出一段 128B 连续地址，合并访问没有因为 K=16 而损失。
 但要注意行守卫的粒度变了：\texttt{if (m < M)} 在 lane $0\,\dots\,15$ 与
@@ -331,7 +334,7 @@ k16 则把行方向也用上了：当 $K$ 维度不足以占满 32 个 lane 时�
 
 \section{性能分析}
 
-本章复测（RTX PRO 5000 72GB Blackwell，sm\_120，110 SMs；时钟按运行时查询
+复测口径（RTX PRO 5000 72GB Blackwell，sm\_120，110 SMs；时钟按运行时查询
 2.38~GHz，fp32 峰值按每 SM 128 条 FMA 流水（256 FLOP/cycle）折算，
 约 $66.9$ TFLOPS；warmup 5 + 50 次均值
 （k16 为 100 次））：
@@ -487,9 +490,10 @@ C & sgemv-k16  & 2.566e-07 & 1.0e-03 \\
 判据：三版对 CPU fp64 参考的最大绝对误差均在 $10^{-6}$ 量级（F32Acc 档
 $10^{-3}$ 的千分之一），行守卫路径（case B）与分段归约路径（case C）覆盖到位。
 注意 case B 的 k16 不可照抄：把 $M{=}7$ 用于 k16 会落入勘误二的 UB 路径。
+
 动手实验建议：（1）把 case A 的 $K$ 改成 4096 重跑，观察误差随 $\sqrt{K}$
-缓涨但仍远离容差；（2）用 \texttt{compute-sanitizer --tool memcheck} 跑一遍
-$K = 40$（非对齐）的调用，直接查看坑一的越界报告；（3）运行
+缓涨但仍远离容差。（2）用 \texttt{compute-sanitizer --tool memcheck} 跑一遍
+$K = 40$（非对齐）的调用，直接查看坑一的越界报告。（3）运行
 \texttt{.\allowbreak{}/\allowbreak{}.\allowbreak{}build/\allowbreak{}ch08\_\allowbreak{}sgemv bench} 复现表~\ref{tab:8-bench}，
 并把 k16 的 $M$ 从 $2^{20}$ 降到 $2^{16}$，观察 L2 驻留如何使有效带宽虚高。
 

@@ -175,6 +175,7 @@ histogram 要维护 $y[a\sb i] \mathrel{+}= 1$：读 $y[a\sb i]$、加 1、写�
 即 read-modify-write（RMW）。若两个线程同时 RMW 同一 bin 且无同步，两次加法
 会丢失一次（lost update）。atomicAdd 把 RMW 变成硬件级的不可分割操作：
 在 L2 的原子处理单元上排队执行，同地址操作串行化，不同地址并行。
+
 串行化的代价可以直接建模：设一次全局原子延迟约 $\tau$（ch02 实测约
 2.6 ns），若全部 $N$ 次插入都落在同一个 bin，吞吐上限为 $1/\tau$；
 若 $B$ 个 bin 均匀承压，理论上限约 $B/\tau$ op/s。真实情形介于两者之间，
@@ -397,7 +398,7 @@ $\pm 2\%$ 噪声内）。因为此时瓶颈在 L2/互联的搬运能力而非指
 histogram 比 elementwise 慢两个数量级（26.7 vs 2654 GB/s，
 0.63 ms vs 0.019 ms）。4M 次原子均摊每次约 $0.63\,\mathrm{ms}/4.2\mathrm{M}
 \approx 0.15\,\mathrm{ns}$，单看均摊延迟并不差（256 个 bin 提供了并行度，
-反而低于 ch02 同址全局求和的 2.6 ns/op），慢在总量：按 256 bin 理想并行
+反而低于 ch02 同址全局求和的 2.6 ns/op）。慢在总量：按 256 bin 理想并行
 + 同址 2.6 ns 串行的模型，理想耗时约 $4.2\mathrm{M}/256 \times 2.6\,\mathrm{ns}
 \approx 42\,\mu$s，实测 0.63 ms 慢了约 15 倍，缺口来自 4M 个原子请求在
 L1 侧 atomic 路径的排队与串行化。优化方向即 \S\ref{sec:ch03-math} 的 smem
@@ -501,9 +502,9 @@ bench（warmup 3 + 10 次均值）。
 
 动手实验：(1) 把 bench 的 $N$ 从 $2^{22}$ 放大到 $2^{26}$
 （256 MB $>$ L2），观察 relu 带宽从 1862 GB/s 回落到 HBM 口径，亲手
-验证 ch01 的层级带宽提醒；(2) 给 histogram 加 smem 私有直方图
+验证 ch01 的层级带宽提醒。(2) 给 histogram 加 smem 私有直方图
 （\texttt{\_\_shared\_\_ int cnt[B]} + block 内原子 + 合并），对比
-0.63 ms 基线；(3) 把 relu\_vec4 的 $N$ 改成 510，用 compute-sanitizer
+0.63 ms 基线。(3) 把 relu\_vec4 的 $N$ 改成 510，用 compute-sanitizer
 memcheck 复现越界读（对应 \S\ref{sec:ch03-kaogu} 第二条）。
 
 \section*{延伸阅读}
