@@ -72,8 +72,7 @@ $[B_r, D]$、$[B_c, D]$，TiledMma 的 $K$ 向一次覆盖 16 列，循环在 $N
 
 四个问题的共同点：它们\emph{都不是数值问题}（数值精度与归约顺序都已确
 定），而是\textbf{类型与布局问题}：tile 怎么切、fragment 怎么换解释、寄存器
-怎么编号、循环与 stage 怎么对应。把这四个问题逐个翻译成 CuTe 的类型与布局，
-就是用 CuTe 抽象表达 Split-D 的全部内容。
+怎么编号、循环与 stage 怎么对应。
 
 本章引用的源码位置汇总在表~\ref{tab:26-code}。
 
@@ -441,7 +440,7 @@ $d_2{=}1$ 的 4 格来自 C 的第二个 $n8$ atom（虚线半块）。\textbf{�
 \end{itemize}
 
 第二点的意义：$S$ 的 fragment 从头到尾是 32 个寄存器，chunk 循环每轮往
-它们里面\emph{加}一棵 QK 子树。Split-D 只改循环不改形状，含义就在这里；它
+它们里面\emph{加}一棵 QK 子树。它
 也解释了为什么 $O$ 的处理必须不同：$O$ 的 chunk 是\emph{相加}（$O=\sum O_c$），
 但 $S$ 的 chunk 是\emph{先求和再 softmax}，两者不能混。第~\ref{ch:19}~章
 从数值角度论证过这一点（$\mathrm{softmax}$ 必须在完整 $S$ 上做），这里从
@@ -601,13 +600,13 @@ chunk 有多大的全部依赖固定在编译期：
 \begin{itemize}[itemsep=2pt,topsep=2pt]
   \item 头注释的 kernel 清单不全。\texttt{ffpa\_\allowbreak{}attn.\allowbreak{}cuh} L5--6 写
         「仅定义……\texttt{ffpa\_\allowbreak{}attn\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}split\_\allowbreak{}d\_\allowbreak{}cute} kernel」，
-        但文件里实际有\textbf{两个} kernel：本节精读的
+        但文件里实际有两个 kernel：本节精读的
         \texttt{ffpa\_\allowbreak{}split\_\allowbreak{}d\_\allowbreak{}cute}（cp.async 版，L82）与
         \texttt{ffpa\_\allowbreak{}attn\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}split\_\allowbreak{}d\_\allowbreak{}cute}（TMA+WS 版，
         L378 起）。读文件时以实际代码为准；
   \item 256 线程只对 TMA+WS 版成立。L14 与 L28 的
         「128 producer $+$ 128 consumer $=$ 256 total threads」说的是
-        \textbf{TMA+WS 版}（与第~\ref{ch:19}~章 TMA+WS 版的划分一致）；
+        TMA+WS 版（与第~\ref{ch:19}~章 TMA+WS 版的划分一致）；
         cp.async 版是
         \textbf{单角色 128 线程}（L73--78 的注释自己写明了）。按 256 去数
         cp.async 版的 warp 会数错。本节的类型推导统一以 L81 的
@@ -799,7 +798,7 @@ QK 段（L217--270）是整个 kernel 最能体现循环结构与类型之分的
 
 \begin{itemize}[itemsep=2pt,topsep=2pt]
   \item \texttt{scores} 是 \(S\) 的 rowcol 视图，\texttt{scores\allowbreak{}(row,\allowbreak{}col) =\allowbreak{} p}
-        是\textbf{就地覆盖}，$P$ 直接复用 $S$ 的 32 个寄存器（先
+        是就地覆盖，$P$ 直接复用 $S$ 的 32 个寄存器（先
         \texttt{exp2} 再转换类型，中间不另开数组）。这是寄存器占用里
         $P$ 不额外占位的实现依据；
   \item \texttt{row\_\allowbreak{}scale[row] =\allowbreak{} exp2f\allowbreak{}(row\_\allowbreak{}max[row] - next\_\allowbreak{}max)} 是
@@ -868,8 +867,7 @@ rescale 的操作对象是 \texttt{tCrO} 的 rowcol 视图：行方向乘
   \item \texttt{partition\_\allowbreak{}C\allowbreak{}(g\allowbreak{}O)} 复用了 PV 的 TiledMma，$O$ 的写回布局
         与 $O$ 的累加布局是同一个类型，无需任何转换；
   \item \texttt{convert\_\allowbreak{}type\allowbreak{}<Element>} 按 rowcol 视图做完归一化后的布局
-        做向量化 f16 转换，与 Phase 2 的转换是同一个工具函数、不同布局，
-        再次印证共享层的设计。
+        做向量化 f16 转换，与 Phase 2 的转换是同一个工具函数、不同布局。
 \end{itemize}
 
 \needspace{114mm}
@@ -970,7 +968,7 @@ M-warp 重复——smem 只承载 Q/K/V 的 chunk 流水。}
   cuDNN SDPA: 57.2 TFLOPS | FFPA TMA WS: 110.7 TFLOPS (1.94x)}
 \end{quote}
 
-读数时注意三点口径：（1）这是 \textbf{TMA + WS 版}（256 线程、双角色）的数字，
+读数时注意三点口径：（1）这是 TMA + WS 版（256 线程、双角色）的数字，
 不是本章精读的 cp.async 版；（2）设备标称 SM120a RTX PRO 5000，而本仓库
 README 的同类标称常写 RTX 5090，同一 sm120 家族的两种卡，绝对值不可直接
 互比（第~\ref{ch:19}~章的核对与 CHECKLOG 记录同此）；（3）1.94x 是相对
@@ -991,8 +989,7 @@ cuDNN SDPA 的加速比，比较对象与精度配置（f16 输入、f32 累加�
 \end{itemize}
 
 CuTe 在 Split-D 上的收益与代价都不在运行时，而在类型可断言：本章测试
-（26.9 节）能在不启动 kernel 的情况下核对双 TiledMma 的每条推导，这在手写版
-里是做不到的。
+（26.9 节）能在不启动 kernel 的情况下核对双 TiledMma 的每条推导。
 
 \section{常见坑}
 
@@ -1070,7 +1067,7 @@ L281--282 与 L291--292）。多加一层掩码 4 会把\emph{另一个 warp 段
 \section{最小测试与动手实验}
 
 本章测试（\texttt{tests/\allowbreak{}ch26\_\allowbreak{}ffpa\_\allowbreak{}cute.\allowbreak{}cu}）与前几章的不同之处是
-\textbf{以 host 端类型断言为主}：不启动 kernel，只对 traits 与 fragment
+以 host 端类型断言为主：不启动 kernel，只对 traits 与 fragment
 做静态/运行时断言，全部来自 26.3 节的代数。下文的实测都指该测试或等价 probe
 的 host 端输出：
 

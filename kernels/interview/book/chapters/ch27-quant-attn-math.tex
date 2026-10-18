@@ -7,7 +7,7 @@
 
 前四个部分走完了一条精度不变的优化链：编程模型与访存（Part I）$\to$ Tensor Core
 GEMM（Part II）$\to$ FlashAttention（Part III）$\to$ CuTe 现代化工程（Part IV）。每一步
-都在\textbf{同等数值精度}下降低运行时间。Part VI 换一个优化维度：\textbf{把精度本身当作换取
+都在同等数值精度下降低运行时间。Part VI 换一个优化维度：\textbf{把精度本身当作换取
 吞吐的资源}，用 8-bit 甚至 4-bit 数值格式执行 attention 的两个 GEMM（$QK^{\top}$ 与
 $PV$），得到 Tensor Core 吞吐的成倍提升。代码链路是 ffpa-attn 仓库的 CuTe fp8/fp4 kernel
 家族（commit \texttt{861d75e}，只讲 sm\_120 路径）：它用 CuTe 高效复现了 SageAttention
@@ -65,10 +65,10 @@ GEMM 主导的算子，把 GEMM 降到低精度是 fp16 域内任何 tiling / �
   \;\longrightarrow\;
   \underbrace{O = PV}_{\text{量化点 3：}V}
 \end{equation}
-$Q,K,V$ 是\textbf{前向开始前就存在的静态张量}，可以离线（进 kernel 前）量化好、
+$Q,K,V$ 是前向开始前就存在的静态张量，可以离线（进 kernel 前）量化好、
 连同 scale 一起送进 kernel，称为\textbf{离线校准}路径。而 $P$ 是 softmax 的输出，
-每个 forward、每个 tile 都不同，永远无法离线，必须\textbf{在 kernel 内、在寄存器
-fragment 上}完成量化。这一「在线量化」需求带来一系列独有问题：量化 scale 从哪来
+每个 forward、每个 tile 都不同，永远无法离线，必须在 kernel 内、在寄存器
+fragment 上完成量化。这一「在线量化」需求带来一系列独有问题：量化 scale 从哪来
 （27.3.4）、scale 如何在 MMA 间传递与消去（第~\ref{ch:29}~章）、发射域与 lazy
 rescale 的膨胀如何不超出格式量程上限（27.3.6）。
 
@@ -87,8 +87,7 @@ rescale 的膨胀如何不超出格式量程上限（27.3.6）。
         显式设计（27.3.4--27.3.6），否则不是精度差，而是直接溢出。
 \end{itemize}
 理想目标是\textbf{即插即用的无损量化}（plug-and-play PTQ）：不改模型权重、不需要
-校准数据集，attention 输出与 fp16 基线在端到端指标上不可区分。SageAttention 系列
-与 ffpa-attn 的全部设计都围绕这一目标。
+校准数据集，attention 输出与 fp16 基线在端到端指标上不可区分。
 
 \section{数学原理}
 
@@ -118,7 +117,7 @@ $\tilde{x}$ 与 $x$ 的差就是量化误差；round 取最近邻（RN）。三�
 \subsection{数值格式：从均匀到指数}
 
 \paragraph{int8：均匀网格。}
-int8 是 $[-127,127]$ 的\textbf{等距}整数网格。误差只依赖步长 $\delta$：均匀量化
+int8 是 $[-127,127]$ 的等距整数网格。误差只依赖步长 $\delta$：均匀量化
 噪声在块内近似均匀分布 $[-\delta/2, \delta/2]$，RMS 误差为
 $\delta/\sqrt{12}$，与 $x$ 的幅度无关。这带来一个与指数格式相反的特性：
 绝对误差有均匀上界（小值区域如 $|S|$ 接近零的分数区，误差绝对值小）。
@@ -154,15 +153,15 @@ $2^{e-m}/2 = 2^{e-m-1}$。除以区间下界 $2^{e}$（区间内最小可能幅�
 \end{proof}
 
 代入 $m$：e4m3（$m{=}3$）相对误差 $\le 2^{-4} = 6.25\%$，e2m1（$m{=}1$）
-$\le 2^{-2} = 25\%$。结论与 $e$ \textbf{无关}：无论值大值小，误差都是自身幅度的
+$\le 2^{-2} = 25\%$。结论与 $e$ 无关：无论值大值小，误差都是自身幅度的
 固定百分比，这就是指数格式的相对误差恒定。int8 则相反，绝对误差恒定；两者形成对偶，
 适用面也随之分化：值域分布横跨多个倍频程的量（$Q/K/V$ 的元素）适合
 指数格式；已知幅度紧凑的整数域乘积（$\hat{Q}\hat{K}^{\top}$ 的 s32 累加）两者皆可。
 
 \paragraph{ue4m3 / ue8m0：无符号指数格式（scale 的格式）。}
-NVFP4 的 per-16 block scale 用\textbf{无符号} e4m3（ue4m3，$2^{-6} \sim 448$），
+NVFP4 的 per-16 block scale 用无符号 e4m3（ue4m3，$2^{-6} \sim 448$），
 MXFP8 的 per-32 scale 用纯指数 ue8m0（$2^{\pm127}$）。scale 本身的量化同样服从
-定理~\ref{thm:27-relstep}，但 scale 是\textbf{乘性}作用于数据的：
+定理~\ref{thm:27-relstep}，但 scale 是乘性作用于数据的：
 $\tilde{x} = \hat{x} \cdot \widetilde{\mathrm{SF}}$，两级相对误差相加。第~\ref{ch:31}~章
 「两级 P 量化」核算的就是这部分误差。
 
@@ -335,7 +334,7 @@ $S = \hat{S} \cdot \delta_Q\delta_K$。softmax 需要的是 $\exp(\text{scale} \
   \Big),
   \label{eq:27-qk-fold}
 \end{equation}
-即两个块 scale 的乘积与 softmax 常数、$\log_2 e$ 融合成\textbf{一个} fp32 系数，
+即两个块 scale 的乘积与 softmax 常数、$\log_2 e$ 融合成一个 fp32 系数，
 在 tile max 归约后一次乘入（配合 27.4~节的 \texttt{kMaxScaleAfter}：归约直接用
 原始 $\hat{S}$，scale 乘在归约结果上，每行省 $B_c$ 次 FMUL）。int8 变体（Q/K 走
 \texttt{s8xs8→s32} MMA）只改 $\hat{S}$ 的类型，式~\ref{eq:27-qk-fold} 不变。
@@ -349,7 +348,7 @@ V 已离线量化为 $\hat{V} = V / v_s$（驻留 gmem）。若 P 的量化把 $
   = \frac{PV}{p_{scale}},
   \label{eq:27-vs-cancel}
 \end{equation}
-$v_s$ \textbf{精确}消去（不是近似）：gmem 中预量化的 $\hat{V}$ 原样复用，
+$v_s$ 精确消去（不是近似）：gmem 中预量化的 $\hat{V}$ 原样复用，
 $v_s$ 只出现在 P 侧的发射系数里。
 
 \paragraph{量化点 2（P）：$p_{scale}$ 收尾。}
@@ -545,7 +544,7 @@ FA-4（arXiv:2603.05451）观察到 max 的增长通常很小，重缩放可以�
 \end{equation}
 端到端无损：$O$ 与 $\ell$ 用同一个 stale max，epilogue 的 $O/\ell$ 把所有迟到的
 缩放一并消去（等价性见 27.4~节代码注释）。fp16 域中 lazy rescale 是纯粹的
-省指令优化；\textbf{量化域}中它多了一层含义：发射值被 $2^{\tau}$ 膨胀，必须核算
+省指令优化；量化域中它多了一层含义：发射值被 $2^{\tau}$ 膨胀，必须核算
 格式上限。fixed 模式发射 $\tilde{P} = P \cdot v_s \cdot 448$，而 per-block V
 量化有 $v_s = \mathrm{amax}(V)/448$，故发射峰值
 $\tilde{P}_{\max} = v_s \cdot 448 = \mathrm{amax}(V)$，溢出条件与安全域为
@@ -627,7 +626,7 @@ $\mathrm{amax}(V)\le 28$；FA-4 BF16 kernel 的典型 $\tau=8$（$\times256$）�
 \subsection{ESS 误差模型：causal 早行的绝对误差放大}
 
 量化把每一级计算（QK / P / V / PV）的相对误差约束在 $\varepsilon \approx 2^{-(m+1)}$
-（定理~\ref{thm:27-relstep}）。误差的\textbf{绝对值}还取决于输出的\textbf{幅度}，
+（定理~\ref{thm:27-relstep}）。误差的绝对值还取决于输出的幅度，
 而 attention 输出的幅度在行间差异很大。设 $V$ 的行 i.i.d. $\sim
 \mathcal{N}(0, \sigma_V^2)$，考察输出行 $O_i = \sum_j P_{ij} V_j$ 的第 $d$ 维：
 \begin{equation}
@@ -690,7 +689,7 @@ $\varepsilon \times$ 幅度贡献。ffpa 的仿真分解给出排序（内部仿
 \subsection{P 量化的三步协议}
 
 \texttt{fp8\_pscale.cuh} 的头注释把 27.3.4 的量化点 2/3 浓缩成三行公式与一条
-消去证明，是全书引用密度最高的一段注释。注释先回答「P 为什么需要 runtime
+消去证明。注释先回答「P 为什么需要 runtime
 scale」，答案是 Q/K/V 都已离线量化（\texttt{q\_scale}/\texttt{k\_scale}/
 \texttt{v\_scale}），而 $P = \mathrm{softmax}(S)$ 是每个 forward、每个 tile
 都不一样的瞬态 fp32
@@ -703,7 +702,7 @@ $2^{T}\,\mathrm{amax}(V) \le 448$ 对 $\mathrm{amax}(V) \le 28$ 成立，残余�
 交给 \texttt{satfinite} 钳位。
 
 三行注释与式~\ref{eq:27-vs-cancel} 逐条对应：式 (1) 把 $v_s$ 折进 P 的发射系数；
-式 (2) 的关键是 $\hat V = V/v_s$ \textbf{已在 gmem}（离线量化点 3 的产物）；式
+式 (2) 的关键是 $\hat V = V/v_s$ 已在 gmem（离线量化点 3 的产物）；式
 (3) 只剩 $p_{scale}$。溢出段即式~\ref{eq:27-overflow} 的源码版。
 
 \subsection{两种 $p_{scale}$ 模式的发射路径}
@@ -729,7 +728,7 @@ $2^{T}\,\mathrm{amax}(V) \le 448$ 对 $\mathrm{amax}(V) \le 28$ 成立，残余�
 fixed 模式还有一条快路径：softmax 直接发射 $\tilde{P} = P \cdot v_s \cdot 448$
 （把 $\log_2(v_s \cdot 448)$ 折进 exp2 的 shift，见
 \texttt{online\_softmax\_fp8\_fixed}），量化只剩 downcast 与 reorg 两步，且 downcast
-用 \texttt{cvt.rn.satfinite.e4m3x2.f32} \textbf{成对}转换（一条指令转两个值，
+用 \texttt{cvt.rn.satfinite.e4m3x2.f32} 成对转换（一条指令转两个值，
 CVT 数减半）：
 \begin{lstlisting}[style=pseudo]
 // online_softmax_fp8_fixed 的发射域（与 quantize_p_frag<false> 等价）：
@@ -751,7 +750,7 @@ asm("cvt.rn.satfinite.e4m3x2.f32 %0, %1, %2;" : "=h"(packed)
 
 逐行对照式~\ref{eq:27-lazy}：前两行计算 $m_{\mathrm{new}}$ 与 log2 域差值
 （\texttt{log2\_diff}，恒 $\le 0$）；中间是 skip 分支：\texttt{row\_scale = 1}
-（$O,\ell$ 不缩放）、\texttt{eff\_max = row\_max}（\textbf{stale} max 发射 P）、
+（$O,\ell$ 不缩放）、\texttt{eff\_max = row\_max}（stale max 发射 P）、
 \texttt{row\_max} 不更新；\texttt{else} 是正常 rescale 分支。文件头注释专门
 说明了符号方向（与 FA-4 的 $acc\_scale \ge -\tau$ 判定同构）：论文公式映射到
 log2 域时最容易出错的就是这一点。等价性的最后一步在 epilogue：
@@ -1026,9 +1025,9 @@ causal 早行的 $P$ 分布/误差对比，以及 $V>QK>P$ 的 per-stage 误差�
 \section{性能分析}
 
 量化的收益上限由 27.2.1 的精度阶梯给出；实际达成率取决于两个非理想因素：
-\textbf{量化前处理链的开销}（第~\ref{ch:28}~章：kv\_mean / quantize / 转置链的
-带宽需求，理想情况可用满 HBM 带宽、E2E 占比个位数百分比）与\textbf{softmax/CVT 等
-非 MMA 指令的占比}（第~\ref{ch:29}~章：persist-D 的流水线设计让 tensor pipe 占比
+量化前处理链的开销（第~\ref{ch:28}~章：kv\_mean / quantize / 转置链的
+带宽需求，理想情况可用满 HBM 带宽、E2E 占比个位数百分比）与 softmax/CVT 等
+非 MMA 指令的占比（第~\ref{ch:29}~章：persist-D 的流水线设计让 tensor pipe 占比
 达 $\sim$77\%）。本机（RTX PRO 5000 72GB Blackwell，sm\_120）以
 \texttt{ffpa\_attn.bench} 实测 fp8 路径基线：
 \begin{lstlisting}[style=console]
