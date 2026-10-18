@@ -128,7 +128,7 @@ chunk 方向流水。
 与 Split-KV 的区别（19.3.5~节展开）：Split-KV 切的是键的下标集合，
 每一片算出一份部分
 softmax 状态 $(m_p, \ell_p, O_p)$，合并时必须用 LSE 重新加权（各片的最大值
-不同，要算 $e^{m_p - m}$）；Split-D 切的是特征维，$S$ 的 chunk 求和与 softmax
+不同，要算 $e^{m_p - m}$）。Split-D 切的是特征维：$S$ 的 chunk 求和与 softmax
 无关，$O$ 的 chunk 之间共享同一个 $(\ell, m)$，合并只是先沿列拼起来、
 再统一除一次 $\ell$。所以 Split-D 没有第二个 max，也就没有那一次跨片
 exp 往返。两者是正交的：生产库的解码路径可以同时做 split-KV（切序列）与
@@ -199,7 +199,7 @@ $\ell_t = \sum_{j<tB_c} e^{S_{ij}-m_t}$，最终 $O = O_{T_c}/\ell_{T_c}$。
 
 \subsection{把 $O$ 拆成 $C$ 个 chunk 分量}
 
-现在是本章的核心：$PV$ 的输出维是 $D$，而 softmax 的权重 $p_j = e^{S_{ij}-m}$
+关键在输出维：$PV$ 的输出维是 $D$，而 softmax 的权重 $p_j = e^{S_{ij}-m}$
 是行内的量，与输出列无关。把 $V$ 按列切成 $C$ 段，乘积天然分列：
 
 \begin{equation}
@@ -219,7 +219,7 @@ $\ell_t = \sum_{j<tB_c} e^{S_{ij}-m_t}$，最终 $O = O_{T_c}/\ell_{T_c}$。
 注意式~\ref{eq:19-chunk} 里同一个 $\rho_t$ 出现在所有 $C$ 个递推式里。
 源码把 rescale 写在 V-chunk 循环内部、用的却是循环外算好的
 \texttt{row\_\allowbreak{}scale[row]}（L327--335）：rescaling 必须广播，不能由各 chunk
-独立处理。下面这个不变量说明为什么。
+独立处理。原因是一个不变量：
 
 \begin{theorem}[chunk 累加器的不变量]
   若 $m_0 = -\infty,\ \ell_0 = 0,\ O^{(c)}_0 = 0$，且按式~\ref{eq:19-chunk} 更新，
@@ -232,7 +232,7 @@ $\ell_t = \sum_{j<tB_c} e^{S_{ij}-m_t}$，最终 $O = O_{T_c}/\ell_{T_c}$。
 \end{theorem}
 
 \begin{proof}
-  对 $t$ 归纳。$t=0$ 时两边都是 0。设 $t-1$ 成立。先看 rescale 项：由
+  对 $t$ 归纳。$t=0$ 时两边都是 0。设 $t-1$ 成立。rescale 项由
   $e^{S_{ij}-m_{t-1}} \cdot e^{m_{t-1}-m_t} = e^{S_{ij}-m_t}$ 得
   \begin{equation*}
     \rho_t\, O^{(c)}_{t-1}
@@ -251,7 +251,9 @@ $\ell_t = \sum_{j<tB_c} e^{S_{ij}-m_t}$，最终 $O = O_{T_c}/\ell_{T_c}$。
   \label{eq:19-final}
 \end{equation}
 即累加器全程未归一化、epilogue 只除一次 $\ell$（L364）。这与第~\ref{ch:15}/\ref{ch:18}~章
-的数值约定一致：避免中间量的尺度漂移，也避免 $C$ 次额外的除法。再看漏乘的情形：
+的数值约定一致：避免中间量的尺度漂移，也避免 $C$ 次额外的除法。
+
+漏乘的情形：
 若某个 chunk 的 $O^{(c)}$ 忘了 rescale，它对应的就不是全局 max 基准，误差会随
 KV tile 数 $T_c$ 累积（每次漏乘一个 $\rho \le 1$，$O^{(c)}$ 偏大），这是本章最
 容易犯的\textbf{静默错误}（19.8~节坑三）。最后是状态量：$\ell$ 与 $m$ 都是
@@ -436,7 +438,7 @@ $D$ & $C = D/64$ & $\mathrm{Sk}$ & 相位周期（KV tile 数） & 形态 \\
 
 头注释 L13 写「PV 保持小 tile 控制 acc\_O 寄存器」，这句话容易误读。严格说，
 $O$ 累加器的总量由输出 tile 形状 $[64,64]\times C$ 决定
-（式~\ref{eq:19-oacc}），与 tile 怎么切无关；\texttt{Tile\allowbreak{}<64,\allowbreak{}16,\allowbreak{}16>} 影响的是单次
+（式~\ref{eq:19-oacc}），与 tile 怎么切无关。\texttt{Tile\allowbreak{}<64,\allowbreak{}16,\allowbreak{}16>} 影响的是单次
 TiledMMA 调用覆盖的输出块大小以及寄存器生存期的切分粒度，让 chunk 边界成为
 寄存器域的边界（每 chunk 一个独立的 \texttt{o\_\allowbreak{}acc\_\allowbreak{}storage[v]} 数组）。
 表述上的这点含混记在 19.7~节的勘误框，结论不受影响。
@@ -740,9 +742,9 @@ PV 段的消费者循环与 cp.async 版同构，只是等待/释放换成屏障
 TMA 版必须用扁平相位、cp.async 版却可以每轮重置，原因在于两版的
 同步原语性质不同。\texttt{cp.async} 的 \texttt{wait<N>} 是每线程私有的
 组 FIFO，KV tile 之间排空（L268--271、L349--352 的
-\texttt{wait<0>} $+$ \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads}）之后计数器就地归零即可；而 mbarrier
+\texttt{wait<0>} $+$ \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads}）之后计数器就地归零即可。而 mbarrier
 是共享对象，它的 phase 位由自身状态决定，跨 KV tile 复用同一批屏障时，
-两端必须用同一个全局公式导出 (stage, phase)，即式~\ref{eq:19-phase}；这也是 19.8~节坑二要防的错。这份代价换来的是：TMA 版在 KV tile 边界\textbf{不需要排空}，
+两端必须用同一个全局公式导出 (stage, phase)，即式~\ref{eq:19-phase}。这也是 19.8~节坑二要防的错。这份代价换来的是：TMA 版在 KV tile 边界\textbf{不需要排空}，
 流水可以连续推进（相位继续翻转），在浅流水下这是明确的收益。
 
 \subsection{两实现对照}
@@ -1193,7 +1195,9 @@ ALL OK
 八条 PASS 覆盖两个 kernel 的四种 chunk 数。两个 kernel 的最大误差逐位一致
 （$6.614/6.489/6.934/$\allowbreak$8.943\times10^{-5}$）：这不是巧合，两者的消费者逻辑
 逐行相同（头注释 L70--73 声明），因此浮点运算序列一致，误差也就一致；它同时
-说明 TMA 版的 chunk 流水与屏障相位没有引入任何数值偏差。误差随 chunk 数
+说明 TMA 版的 chunk 流水与屏障相位没有引入任何数值偏差。
+
+误差随 chunk 数
 缓慢增大（$C{=}1$ 的 $6.61\times10^{-5}$ 到 $C{=}8$ 的 $8.94\times10^{-5}$），
 这正是式~\ref{eq:19-dotsplit} 讨论过的求和顺序变化的量级。$C$ 越大，点积的累加
 链越多，舍入路径差异越大，但都远低于 F16Acc 的 $5\times10^{-2}$ 判定线（约三个

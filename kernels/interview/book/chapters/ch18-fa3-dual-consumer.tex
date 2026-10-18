@@ -40,7 +40,7 @@ mbarrier 协议、full/empty 计数、early release 时机）、第~\ref{ch:14}~
 收益稳定在 $+20\%$ 量级，但再加深 K 流水（$\mathrm{Sk}: 2 \to 3$）几乎不再涨
 （$<0.5\%$）。这说明\textbf{装载已经不在关键路径上了}，瓶颈退回到计算侧的两件
 事。一是 consumer 内部的 \texttt{mma.sync} 与 softmax 串行，QK$^\top$ 算完
-才能算 softmax，softmax 算完才能发 PV，任何一个 warp 都处在这条依赖链内；
+才能算 softmax，softmax 算完才能发 PV，任何一个 warp 都处在这条依赖链内。
 二是 \texttt{mma.sync} 是同步指令，指令在 Tensor Core 上执行期间该
 warp 只能空等（第~\ref{ch:13}~章的 WGMMA 则可以把 GEMM 发出去就返回，
 指令与后续 CUDA Core 指令并行）。
@@ -139,7 +139,7 @@ tile 这类元信息，归并公式对不对称划分天然鲁棒。
 
 第~\ref{ch:17}~章的 K/V 是跨 WG 共享的：$\mathrm{Sk}$ 个 K slot 与
 $S_v$ 个 V buffer 由 8 个 consumer warp 共用，屏障 \texttt{full\_K[s]} 的期望
-到达数是 $256 + 1 = 257$。本章把 bank 按 \texttt{consumer\_id} 切开
+到达数是 $256 + 1 = 257$。这个 kernel 把 bank 按 \texttt{consumer\_id} 切开
 （L1552--1553 的布局注释），于是每个 WG 拥有自己的一套 $\mathrm{Sk}$
 个 K slot 与 1 个 V buffer，屏障也随之按 \texttt{[cid][stage]} 二维声明
 （L1568--1574）：
@@ -234,7 +234,7 @@ WG 释放 slot 的耦合。
 CTA 池按 warp 配额回收/发放，任意配置须满足
 $\sum_{w} 32\,r_w < 65536$ 并留 $\ge 2048$ 的 slack；同时
 \texttt{setmaxnreg.\allowbreak{}inc} 是\textbf{阻塞语义}，池中寄存器不足时永久阻塞
-（PTX ISA §9.7.19.5，本地镜像 ptx-docs）。本章的配置是三个 warpgroup：
+（PTX ISA §9.7.19.5，本地镜像 ptx-docs）。这个 kernel 的配置是三个 warpgroup：
 producer 128 线程 \texttt{dealloc(40)}、两个 consumer 各 128 线程
 \texttt{alloc(168)}（$D{=}128$）或 \texttt{alloc(80)}（$D{=}64$），见
 L1614 与 L1702--1706。把每 warpgroup 128 线程这个公因子提出来，不等式可以
@@ -370,7 +370,7 @@ smem 于是是三段之和（half 元素 2 B）：
   \label{eq:18-smem}
 \end{equation}
 逐档复算（$B_r = B_c = 64$）：$D{=}64$ 时 Sk $=$ 1/2/3/4 分别为
-40.0/56.0/72.0/88.0 KB；$D{=}128$ 时 Sk $=1$ 为 80.0 KB，Sk $=2$ 则是
+40.0/56.0/72.0/88.0 KB。$D{=}128$ 时 Sk $=1$ 为 80.0 KB，Sk $=2$ 则是
 \textbf{112 KB $>$ 99 KB} 的 optin 上限（本机实测 101376 B $=$ 99.0 KB，
 18.7~节的考据框核对注释口径），因此 $D{=}128$ \textbf{只支持 Sk $= 1$}
 （头注释 L1500--1501）。这解释了为什么更深流水在本章并非没有代价：
@@ -548,7 +548,9 @@ consumer 把计算与计算重叠。前者解决 memory latency，后者针对
 softmax 与 GEMM 的 overlap。FA3 论文（§3.2/§3.3）把后者的完整形态称为
 \emph{pingpong scheduling}：借助 WGMMA 的异步性，同一 WG 内部 GEMM 与
 softmax 也能重叠（intra-warpgroup overlapping），两个 WG 再交替执行 GEMM
-以填满 Tensor Core。本 kernel 的 consumer 用同步的 \texttt{mma.sync}，
+以填满 Tensor Core。
+
+本 kernel 的 consumer 用同步的 \texttt{mma.sync}，
 做不到 WG 内重叠；它靠的是两个独立流在硬件调度器上\textbf{统计性交错}
 （WG1 处于 MMA 段时 WG2 大概率处于 softmax 段），加上 TMA 窗口被完整隐藏。
 这是无 WGMMA 约束下的近似；第~\ref{ch:25}~章的 CuTe 版会在 sm\_90a 上用
@@ -742,7 +744,7 @@ $O(\mathrm{Sk})$ 项翻倍（式~\ref{eq:18-smem}），而装载早已不在关�
 
 这组数字\textbf{不是受控 A/B}：两个 kernel 的 $B_r$ 不同（128 vs 64）、Sk 不同，
 网格形状（$N/B_r$ 与 $B_c$ 的块数）也不同，只能读作两条路线在同一张卡上的
-量级对照，不能当作 FA3 比 FA2 快 $x\%$ 的结论；真正受控的对照需要固定 tile
+量级对照，不能当作 FA3 比 FA2 快 $x\%$ 的结论。真正受控的对照需要固定 tile
 与流水深度，留给附录 B 的复测表。
 
 另一条数据线来自 \texttt{leetcuda\_\allowbreak{}bench\_\allowbreak{}sm120a.bin --bench --bench-all} 的
@@ -978,7 +980,7 @@ bench 子命令输出 18.6~节的复测表（\texttt{.\allowbreak{}/\allowbreak{
 动手实验建议：（1）把 \texttt{N=64} 例改成 $N{=}192$（$T_c{=}3$，两 WG 分别
 2/1 个 tile），验证 18.3.2 节不对称划分无需特判的结论；（2）把 producer 的
 prefetch 目标从 $t+2$ 改成 $t+1$（Sk$=$2 时），观察数值立刻出错（坑三），
-这是两处 \texttt{local\_*} 索引错位的直接演示；（3）把 consumer 的
+这是两处 \texttt{local\_*} 索引错位的直接演示。（3）把 consumer 的
 \texttt{empty\_K} early release 上移到 HMMA 之前，观察挂死或读脏数据
 （第~\ref{ch:17}~章坑五的相同问题）；（4）给测试补一行 $D{=}128$、$\mathrm{Sk}{=}2$
 的实例化，确认辅助工具打出

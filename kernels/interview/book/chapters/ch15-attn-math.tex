@@ -6,7 +6,7 @@
 \section{本章导读}
 
 前两部分已经备齐了 FlashAttention 需要的基础组件：第~\ref{ch:04}~章的 online softmax 给出
-$(m,\ell)$ 双状态的联动递推（式~\ref{eq:4-online}），第~\ref{ch:05}~章的 LSE 合并证明
+$(m,\ell)$ 双状态的联动递推（式~\ref{eq:4-online}）。第~\ref{ch:05}~章的 LSE 合并证明
 分块状态可以严格拼回整体（定理~\ref{thm:merge-eq}），第~\ref{ch:09}--\ref{ch:11}~章的
 GEMM 阶梯给出把分块矩阵乘法交给 Tensor Core 的工程手段。本章把这些组件组装成完整的
 FlashAttention 数学内核，作为 Part III 的理论总纲：后续第~\ref{ch:16}~章（FA2
@@ -55,10 +55,12 @@ $4 \times 1\,\mathrm{GiB} \approx 4.3\,\mathrm{GB}$ 的流量，而有效数据
 第三：$S$ 和 $P$ 都是一次性中间量，$S$ 算出来只为了做 softmax，$P$ 算出来只为了
 乘 $V$，之后不再被使用。既然如此，就没有必要让它离开芯片。直觉上的做法是分块：
 把 $Q,K,V$ 切成小块，在 SRAM/寄存器里走完乘、归一化、乘的全部中间步骤，只把最终
-$O$ 写回 HBM。但 softmax 的分母把整行耦合在一起：
+$O$ 写回 HBM。
+
+但 softmax 的分母把整行耦合在一起：
 某一行 query 的归一化需要它对所有 key 的分数，逐块处理时后面的块尚未参与计算，分母
 无法立即得到。第~\ref{ch:04}~章 online softmax（$(m,\ell)$ 联动更新）与第~\ref{ch:05}~章
-分块合并（LSE 等价拼回）解决的就是这个问题。本章把那两章的数学直接搬进
+分块合并（LSE 等价拼回）解决的就是这个问题。把那两章的数学直接搬进
 attention 的分块循环，再补上带着 $V$ 一起 rescale 这一步，就得到 FlashAttention。
 
 \section{数学原理}
@@ -80,7 +82,7 @@ scaled dot-product attention 定义为
 逐项拆开：$S \triangleq QK^{\top}/\sqrt{d} \in \mathbb{R}^{N \times N}$ 是
 \textbf{打分矩阵}（score，记号 $S$），$S_{ik} = q_i \cdot k_k / \sqrt{d}$ 表示
 query $i$ 与 key $k$ 的相似度；$P \triangleq \mathrm{softmax}(S) \in \mathbb{R}^{N
-\times N}$（按行）是\textbf{概率矩阵}，$P_{ik} \ge 0$、$\sum_{k} P_{ik} = 1$；
+\times N}$（按行）是\textbf{概率矩阵}，$P_{ik} \ge 0$、$\sum_{k} P_{ik} = 1$。
 $O \triangleq PV \in \mathbb{R}^{N \times d}$ 是输出矩阵。按第 $i$ 行写开，
 式~\ref{eq:15-attn-def} 等价于对每个 query 独立地做
 \begin{equation}
@@ -112,7 +114,7 @@ $s = q \cdot k = \sum_{i=1}^{d} q_i k_i$。均值为零：
   \label{eq:15-dot-var}
 \end{equation}
 即 $\mathrm{std}(s) = \sqrt{d}$。$d = 128$ 时 logit 的标准差约 $11.3$，softmax 会
-严重饱和：看两元素的最简情形，$p = \sigma(s_1 - s_2)$
+严重饱和。看两元素的最简情形，$p = \sigma(s_1 - s_2)$
 （$\sigma$ 为 sigmoid），对 logit 差 $\Delta$ 的梯度是
 \begin{equation}
   \frac{\partial p}{\partial \Delta} = \sigma(\Delta)\bigl(1 - \sigma(\Delta)\bigr)
@@ -218,7 +220,7 @@ FlashAttention kernel 在同形状 SM120 上的实测 $166.6\,\mathrm{TFLOPS}$
 上例中 $S$、$P$ 各 $\approx 1\,\mathrm{GiB}$。$N$ 翻倍它翻四倍，这就是长上下文的显存墙。
 
 带宽需求：朴素三 kernel 的 HBM 流量为
-读 $Q,K,V$（$3Nd$）$+$ 写 $S$、读 $S$、写 $P$、读 $P$（$4N^{2}$）$+$ 写 $O$（$Nd$），
+读 $Q,K,V$（$3Nd$）$+$ 写 $S$、读 $S$、写 $P$、读 $P$（$4N^{2}$）$+$ 写 $O$（$Nd$）。
 即 FA1 论文所述的 $\Theta(Nd + N^{2})$：
 \begin{equation}
   \mathrm{IO}_{\text{naive}} = \Theta\bigl(Nd + N^{2}\bigr)
@@ -226,9 +228,10 @@ FlashAttention kernel 在同形状 SM120 上的实测 $166.6\,\mathrm{TFLOPS}$
   \label{eq:15-naive-io}
 \end{equation}
 上例的中间矩阵往返 $4.3\,\mathrm{GB}$：即使按 $2\,\mathrm{TB/s}$ 的乐观带宽假设
-（多数 GPU 的 HBM/显存带宽在数百 GB/s 到 $2$--$3\,\mathrm{TB/s}$ 量级），仅搬运就要
-$\approx 2.2\,\mathrm{ms}$，已是 $0.83\,\mathrm{ms}$ 计算下界的 $2.6$ 倍以上；而
-有效数据（$Q,K,V$ 读入 + $O$ 写出，$\approx 67\,\mathrm{MB}$）只占流量的 $1/64$。
+（多数 GPU 的 HBM/显存带宽在数百 GB/s 到 $2$--$3\,\mathrm{TB/s}$ 量级）。仅搬运就要
+$\approx 2.2\,\mathrm{ms}$，已是 $0.83\,\mathrm{ms}$ 计算下界的 $2.6$ 倍以上。
+而有效数据（$Q,K,V$ 读入 + $O$ 写出，$\approx 67\,\mathrm{MB}$）只占流量的 $1/64$。
+
 中间矩阵往返把算术强度压到极低。按主导项计，
 \begin{equation}
   AI_{\text{naive}} \;\approx\; \frac{4N^{2}d\ \text{FLOP}}{4N^{2} \cdot 2\,\mathrm{B}}
@@ -301,7 +304,7 @@ Q,K,V 输入与 O 输出（$\Theta(Nd)$，式~\ref{eq:15-naive-io} 的另一端�
 \subsection{分块计算与 online rescale：逐块推导}
 
 FlashAttention 的做法：$Q$ 按 $B_r$ 行切成 $\lceil N/B_r \rceil$ 个 Q 块
-（一个 thread block 拿一块，常驻 SRAM）；$K,V$ 按 $B_c$ 行切成 $T_c = \lceil N/B_c
+（一个 thread block 拿一块，常驻 SRAM）。$K,V$ 按 $B_c$ 行切成 $T_c = \lceil N/B_c
 \rceil$ 个 KV 块，沿序列方向流式扫过：
 \begin{equation}
   K = \begin{bmatrix} K^{[1]} \\ \vdots \\ K^{[T_c]} \end{bmatrix},\quad
@@ -369,7 +372,7 @@ v_k$，同样拆成旧块与新块并凑因子：
      + \bigl(P^{[j]} V^{[j]}\bigr)_i ,
   \label{eq:15-upd-o-long}
 \end{align}
-写成矩阵形式，就得到本章的核心公式（flash\_attn.cuh~L23 的
+写成矩阵形式，就得到核心公式（flash\_attn.cuh~L23 的
 \texttt{O\_\allowbreak{}new =\allowbreak{} diag\allowbreak{}(exp\allowbreak{}(m\_\allowbreak{}old - m\_\allowbreak{}new)) * O\_\allowbreak{}old + P\_\allowbreak{}cur @ V}）：
 \begin{equation}
   \boxed{\;
@@ -388,7 +391,7 @@ $T_c$ 块扫完后，做唯一一次最终归一化：
 \end{equation}
 
 式~\ref{eq:15-upd-l} 就是第~\ref{ch:04}~章 online 递推式~\ref{eq:4-online} 的
-批量化版本（一次处理 $B_c$ 个元素而非 1 个）；带 $O$ 的合并运算是第~\ref{ch:04}~章
+批量化版本（一次处理 $B_c$ 个元素而非 1 个）。带 $O$ 的合并运算是第~\ref{ch:04}~章
 二元合并式~\ref{eq:4-merge} 的直接扩展：
 \begin{equation}
   (m^{A}, \ell^{A}, O^{A}) \oplus (m^{B}, \ell^{B}, O^{B}) =
@@ -400,14 +403,15 @@ $T_c$ 块扫完后，做唯一一次最终归一化：
 $\ell$ 与 $O$ 用同一个 rescale 因子修正。与第~\ref{ch:05}~章的关系是同一
 套数学的 kernel 视角：定理~\ref{thm:merge-eq} 的凸组合
 $O = \alpha O^{A} + \beta O^{B}$（式~\ref{eq:5-convex}）里，$O^{A}, O^{B}$ 是
-\textbf{已归一化}的分块输出；把 $\alpha = W^{A}/(W^{A}{+}W^{B})$ 的分子分母同乘
+\textbf{已归一化}的分块输出。把 $\alpha = W^{A}/(W^{A}{+}W^{B})$ 的分子分母同乘
 $W^{A}{+}W^{B}$ 展开即可改写成\textbf{未归一化}形式
 $O = \bigl(W^{A} O^{A}_{\text{norm}}\ell^{A} + W^{B} O^{B}_{\text{norm}}\ell^{B}
-\bigr)/\ell$，正是式~\ref{eq:15-upd-o} 逐块折叠的形态。ch05 是「事后合并」
-（两块各自落盘 $O$ 与 LSE，再用一个 elementwise kernel 拼回，服务于 split-KV /
-FlashDecoding），本章是「在线合并」（寄存器里一份 $O$ 随 KV 循环滚动更新，从不物化
-两份 $O$）；式~\ref{eq:15-merge-o} 的结合律由引理~\ref{lem:md-assoc} 同样的
-全集唯一决定论证立刻推广到带 $O$ 的三元组。另注意一个精度口径：本仓库
+\bigr)/\ell$，正是式~\ref{eq:15-upd-o} 逐块折叠的形态。
+
+ch05 是「事后合并」（两块各自落盘 $O$ 与 LSE，再用一个 elementwise kernel 拼回，
+服务于 split-KV / FlashDecoding），本章是「在线合并」（寄存器里一份 $O$ 随 KV 循环
+滚动更新，从不物化两份 $O$）。式~\ref{eq:15-merge-o} 的结合律由引理~\ref{lem:md-assoc}
+同样的全集唯一决定论证立刻推广到带 $O$ 的三元组。另注意一个精度口径：本仓库
 \texttt{merge\_\allowbreak{}attn\_\allowbreak{}states} 的接口要求输入 $O$ 已除过 $\ell$（ch05 坑一），而 FA
 主循环的累加器 $O$ 必须\textbf{未}归一化，两套口径的公式不可混用（见 15.8~节坑一）。
 
@@ -497,7 +501,7 @@ $\Theta(N^{2})$ 降到 $\Theta(Nd)$。名字里的 \emph{Flash}（不写中间�
 
 IO：每个 Q 块要把 $K, V$ 从头到尾读一遍。设 SRAM 容量为 $M$（元素数），
 受 $B_r \cdot d + (\text{KV stage 数}) \cdot 2 B_c d \le M$ 约束，量级上
-$B_r \sim M/d$，于是 $K/V$ 的总读取量为
+$B_r \sim M/d$。于是 $K/V$ 的总读取量为
 \begin{equation}
   \underbrace{\frac{N}{B_r} \cdot 2Nd}\sb{\text{元素}}
   \;\sim\; \frac{2N^{2}d^{2}}{M}
@@ -507,8 +511,9 @@ $B_r \sim M/d$，于是 $K/V$ 的总读取量为
 \end{equation}
 即 FA1 论文的结论：当 $d^{2} < M$（fp16 下 $d = 64/128$ 时 $d^{2}$ 只有
 $8$--$32\,\mathrm{KB}$，远小于十万元素量级的 SRAM）时，$\mathrm{IO}_{\mathrm{FA}} <
-\mathrm{IO}_{\text{naive}}$，且差距随 $M/d^{2}$ 线性放大。按主导项计的算术强度则从
-式~\ref{eq:15-ai-naive} 的 $d/2$ 提升到
+\mathrm{IO}_{\text{naive}}$，且差距随 $M/d^{2}$ 线性放大。
+
+按主导项计的算术强度则从式~\ref{eq:15-ai-naive} 的 $d/2$ 提升到
 \begin{equation}
   AI_{\mathrm{FA}} \;\approx\; \frac{4N^{2}d\ \text{FLOP}}
   {\dfrac{N}{B_r} \cdot 2Nd \cdot 2\,\mathrm{B}}
@@ -606,9 +611,9 @@ L2196--3488 是三者的 CuTe 复刻对照（第~\ref{ch:25}~章）。
 
 flash\_attn.cuh 全文 $3490$ 行，按编译宏分成三段五族 kernel（行号见
 BOOK\_PLAN \S 1.3 核验表）：FA2 MMA 版
-（\texttt{flash\_\allowbreak{}attn\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}split\_\allowbreak{}q}，L112 起）；\texttt{TMA\_MMA\_WS} 宏块
+（\texttt{flash\_\allowbreak{}attn\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}split\_\allowbreak{}q}，L112 起）。\texttt{TMA\_MMA\_WS} 宏块
 （L791--2194）内含 FA2 TMA+WS 版（L889）与 FA3 版
-（\texttt{flash\_\allowbreak{}attn\_\allowbreak{}3\_\allowbreak{}tma\_\allowbreak{}ws\_\allowbreak{}stages\_\allowbreak{}split\_\allowbreak{}q}，L1516）；\texttt{CUTE} 宏块
+（\texttt{flash\_\allowbreak{}attn\_\allowbreak{}3\_\allowbreak{}tma\_\allowbreak{}ws\_\allowbreak{}stages\_\allowbreak{}split\_\allowbreak{}q}，L1516）。\texttt{CUTE} 宏块
 （L2196--3488）内含 FA2/FA3 的 CuTe traits 与三个复刻 kernel。本章只引用头部设计
 注释（L5--110），五条要点逐一对应 15.3~节的推导。
 
@@ -652,9 +657,9 @@ K/V tile，
 \textbf{要点 5，为什么 \texttt{R\_S} 可以直接用作 $P@V$ 的 A 矩阵}：
 \begin{itemize}
   \item \texttt{R\_S} 经过 softmax 后，存储的是 $P = \exp(S - m)$，数据仍然
-        是 half 精度；
+        是 half 精度。
   \item 当前实现依赖 m16n8k16 这一路径下约定好的 fragment 布局，使 softmax
-        后的 P 可以继续留在 \texttt{R\_S} 中，供后面的 $P@V$ 直接消费；
+        后的 P 可以继续留在 \texttt{R\_S} 中，供后面的 $P@V$ 直接消费。
   \item 这是此实现的寄存器布局复用技巧，不要推广成「所有 MMA A/C fragment
         都天然同构」的通用结论。
 \end{itemize}
@@ -701,7 +706,7 @@ $8$ 倍堆叠，tile 尺寸被 Tensor Core 指令形状整除，这是分块参�
   title={flash\_attn.cuh L93-110（kernel 模板参数：tile 的原子化分解）}]{../flash_attn.cuh}
 
 模板参数把 15.3.4~节的 $B_r, B_c$ 分解到指令原子：\texttt{k\allowbreak{}Mma\allowbreak{}Tile\allowbreak{}Seq\allowbreak{}Len\allowbreak{}Q} 对应
-$B_r$ 的堆叠数、\texttt{k\allowbreak{}Mma\allowbreak{}Tile\allowbreak{}Seq\allowbreak{}Len\allowbreak{}K}/\texttt{k\allowbreak{}Val\allowbreak{}Tile\allowbreak{}Seq\allowbreak{}Len\allowbreak{}K} 对应 $B_c$，
+$B_r$ 的堆叠数、\texttt{k\allowbreak{}Mma\allowbreak{}Tile\allowbreak{}Seq\allowbreak{}Len\allowbreak{}K}/\texttt{k\allowbreak{}Val\allowbreak{}Tile\allowbreak{}Seq\allowbreak{}Len\allowbreak{}K} 对应 $B_c$。
 \texttt{kStagesK} 是 $K$ tile 的流水级数（cp.async 多级缓冲，第~\ref{ch:10}~章），
 \texttt{kPadQ/K/V} 控制 shared memory 的 padding 与 XOR swizzle 策略
 （第~\ref{ch:12}~章）。符号对应关系：$B_r \leftrightarrow$
@@ -714,33 +719,35 @@ $B_r$ 的堆叠数、\texttt{k\allowbreak{}Mma\allowbreak{}Tile\allowbreak{}Seq\
 它们计作步骤 3--7，故后续步骤直接从 8 接续）：
 \begin{itemize}
   \item \textbf{1）}预加载 $Q[B_r, d]$ 到 smem（只加载一次，split-Q 的核心
-        优势）；
+        优势）。
   \item \textbf{2）}外循环：沿 K 的 seqlen 分块迭代（$T_c =
-        \mathrm{seqlen}/B_c$）；
+        \mathrm{seqlen}/B_c$）。
   \item \textbf{3a）}\texttt{cp.async} 加载当前 V $+$ 预加载下一个 K（多
-        stage pipeline）；
+        stage pipeline）。
   \item \textbf{3b）}$QK^{\top}$：沿 head dim 内循环 $\to$ \texttt{ldmatrix}
-        Q/K $\to$ \texttt{HMMA16816}；
+        Q/K $\to$ \texttt{HMMA16816}。
   \item \textbf{3c）}Online Safe Softmax：warp reduce max/row $\to$
         $\exp(S \cdot \mathrm{scale} - \mathrm{max})$；关键：将 P 写回
-        \texttt{R\_S} 寄存器（替换 S），\texttt{R\_S} 现在存储 P matrix；
+        \texttt{R\_S} 寄存器（替换 S），\texttt{R\_S} 现在存储 P matrix。
   \item \textbf{3d）}$P@V$：沿 V 的 $B_c$ 维内循环 $\to$ \texttt{ldmatrix}
         V (transposed) $\to$ 直接用 \texttt{R\_S} 做 A 矩阵；当前实现依赖
-        同一组寄存器布局约定，避免为 $P@V$ 额外重组 P fragment；
+        同一组寄存器布局约定，避免为 $P@V$ 额外重组 P fragment。
   \item \textbf{3e）}Online rescaling：$O_{\text{new}} =
-        \exp(m_{\text{old}} - m_{\text{new}})\,O_{\text{old}} + P@V$；
+        \exp(m_{\text{old}} - m_{\text{new}})\,O_{\text{old}} + P@V$。
   \item \textbf{8）}最终 rescale：$O_{\text{final}} =
-        (1/\ell_{\text{final}})\,O_{\text{final}}$；
+        (1/\ell_{\text{final}})\,O_{\text{final}}$。
   \item \textbf{9）}Epilogue：warp shuffle $+$ 128-bit collective store。
 \end{itemize}
 
 九步里每一步的归属：步骤 1（$Q$ 只加载一次）是 split-Q 的结构性优势；步骤 2 的外循环
-即 $j = 1..T_c$ 的 KV 分块遍历；步骤 3a 是 cp.async 多级预取（加载当前 $V$ 与下一个
-$K$ 重叠）；步骤 3b 对应 $S^{[j]} = QK^{[j]\top}$（式~\ref{eq:15-blocks}）；步骤 3c
+即 $j = 1..T_c$ 的 KV 分块遍历。步骤 3a 是 cp.async 多级预取（加载当前 $V$ 与下一个
+$K$ 重叠）；步骤 3b 对应 $S^{[j]} = QK^{[j]\top}$（式~\ref{eq:15-blocks}）。步骤 3c
 对应式~\ref{eq:15-upd-m}--\ref{eq:15-upd-p}，其中 $P$ 写回 \texttt{R\_S} 即头注释
-要点 5；步骤 3d 对应 $P^{[j]}V^{[j]}$；步骤 3e 对应 online rescale
+要点 5；步骤 3d 对应 $P^{[j]}V^{[j]}$。步骤 3e 对应 online rescale
 式~\ref{eq:15-upd-o}；步骤 8 对应最终归一化式~\ref{eq:15-final}；步骤 9 是写出
-epilogue。整个循环期间，每个 query 行的状态 $(m_i, \ell_i, O_i)$ 常驻寄存器，
+epilogue。
+
+整个循环期间，每个 query 行的状态 $(m_i, \ell_i, O_i)$ 常驻寄存器，
 $S^{[j]}, P^{[j]}$ 只存在于 \texttt{R\_S} 的 fragment 里，$N \times N$ 的矩阵从头
 到尾没有存在过。
 
@@ -1070,7 +1077,7 @@ fp16。
 \begin{itemize}
   \item online rescale 的 $(m, \ell)$ 内核即第~\ref{ch:04}~章的三级 softmax 递进
         测试（\texttt{tests/\allowbreak{}ch04\_\allowbreak{}softmax.\allowbreak{}cu}：case~A/B/C 覆盖递推正确性、边界
-        线程、大 logit 溢出）；
+        线程、大 logit 溢出）。
   \item 分块状态的等价合并即第~\ref{ch:05}~章的 \texttt{tests/\allowbreak{}ch05\_\allowbreak{}merge\_\allowbreak{}attn.\allowbreak{}cu}
         （「合并 == 整体 softmax 直接计算」，正是定理~\ref{thm:15-invariant} 的
         数值版：任意切分 + 合并还原整体）。
