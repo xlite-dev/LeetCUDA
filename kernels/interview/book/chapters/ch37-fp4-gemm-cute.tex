@@ -140,8 +140,9 @@ mma.sync.aligned.m16n8k64.row.col.kind::mxf4nvf4.block_scale.scale_vec::4X
 \texttt{\{bidB,tidB\}} 是选择器：\texttt{tidA} 选 quad 里的哪一对线程提供
 $A$ 的 SF（$0$ 取 \texttt{laneid\%4}$\in\{0,1\}$，$1$ 取 $\{2,3\}$），
 \texttt{tidB} 选 quad 里的哪一个线程提供 $B$ 的 SF。这就是一个 32 位的
-寄存器装 4 个 SF、而硬件只从特定 lane 取值的全部含义。对 kernel 作者的
-实际含义是：SF 在寄存器里的 fragment 布局与数据完全不同，不能把
+寄存器装 4 个 SF、而硬件只从特定 lane 取值的全部含义。
+
+对 kernel 作者的实际含义是：SF 在寄存器里的 fragment 布局与数据完全不同，不能把
 SF 当成每线程正好 4 个这么简单，它在每条 lane 上装的东西由
 \texttt{tidA}/\texttt{tidB} 决定。第~\ref{ch:36}~章对此的总结是：
 SF 的 gmem 布局、smem 布局、寄存器 fragment 布局是三套不同的映射。
@@ -403,7 +404,7 @@ init$=$256）标记 stage 可覆写。差异集中在循环体里的四行拷贝
 \texttt{SM75\_U32x4\_LDSM\_N}（\texttt{ldmatrix.x4}，一个 warp 一次搬
 512\,B、每条 lane 16\,B $=$ 32 个 4-bit；而
 \texttt{Layout\_K\_SW32\_Atom<uint4\_t>} 一个原子是
-$8\times64$ 个 4-bit $=$ 256\,B，故一次 LDSM 覆盖两个原子）；
+$8\times64$ 个 4-bit $=$ 256\,B，故一次 LDSM 覆盖两个原子）。
 SF 用 \texttt{UniversalCopy<ElementSF>}，因为它每线程只要 4 个字节，
 \texttt{ldmatrix} 的 8$\times$8 矩阵语义在这里反而是负担，
 直接四次 32-bit \texttt{ld.shared} 更省（CuTe 会把它自动向量化）。
@@ -640,6 +641,7 @@ $9/32\approx28\%$。
 kernel-only 行直接调 \texttt{fp4\_gemm\_tma\_fwd}（跳过量化），
 但这个入口\textbf{不会自己填 workspace}，里面的
 $A_4/B_4^{\top}$/SFA/SFB 全是量化 kernel 的产物。
+
 本轮实测遇到过：kernel-only 行第一次跑出
 \texttt{relFro}$=49$（相对误差 4900\%）这种物理上不可能的读数，
 原因就是它读了一整块未初始化的显存。修复是在
@@ -940,7 +942,7 @@ $BN$ & $k_{Stages}$ & smem & NonWS TFLOPS & WS TFLOPS & 结论 \\
 \textbf{为什么库默认档不直接取 $128\times256$/s6？}因为它是\textbf{形状
 依赖}的：$BN{=}256$ 时 grid 的 N 方向 tile 数减半，小形状上 CTA 数不足会
 导致性能明显下降（第~\ref{ch:35}~章 FP8 的 $2048^3$ 就出现过这种反转）。
-库默认取 $128\times128$/s4 是保守选择，它在所有形状上都不差；
+库默认取 $128\times128$/s4 是保守选择，它在所有形状上都不差。
 本书的折中是把判定写死成一条形状规则（\texttt{fp4\_gemm.cuh} 的
 \texttt{fp4\_gemm\_\allowbreak use\_wide\_tile}）：$MNK\ge4096$ 走
 $128\times256$/s6，其余回落 $128^2$/s4，\texttt{--bench} 的 FP4 标准

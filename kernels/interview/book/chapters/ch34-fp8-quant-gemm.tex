@@ -54,9 +54,9 @@ attention 的三量化点里，$P$（softmax 输出）必须在线量化，$Q,K,
 
 \begin{itemize}[itemsep=1pt,topsep=2pt]
   \item 主 kernel 的 MMA 循环里\textbf{不需要处理任何 scale}，跑的就是 e4m3 编码
-        值的整数语义乘累加（f32 累加器）；
+        值的整数语义乘累加（f32 累加器）。
   \item 反量化只在 epilogue 出现一次：$C = (A_8 B_8^{\top})\odot(\delta_a\delta_b)$，
-        $\odot$ 在 per-block 粒度下退化为块级（128 行/列）标量乘（第~\ref{ch:35}~章）；
+        $\odot$ 在 per-block 粒度下退化为块级（128 行/列）标量乘（第~\ref{ch:35}~章）。
   \item 前处理全部离线于主 kernel：量化 kernel 写完 workspace，主 kernel 才开始执行。
 \end{itemize}
 
@@ -71,11 +71,12 @@ attention 的三量化点里，$P$（softmax 输出）必须在线量化，$Q,K,
 \begin{itemize}[itemsep=1pt,topsep=2pt]
   \item $K \bmod 16 = 0$：$A_8/B_8^{\top}$ 的行是 e4m3 字节流，TMA 装载要求
         16\,B 对齐；同时也是量化 kernel Vec8（8$\times$bf16$=$16\,B）读取的
-        超集；
+        超集。
   \item $N \bmod 8 = 0$：输出 $C$ 的行是 bf16 字节流，TMA store 的 16\,B 对齐
-        要求 $N\times 2$\,B 被 16 整除；
+        要求 $N\times 2$\,B 被 16 整除。
+
   \item $M$ 任意：装载方向的越界行由 TMA 自动零填充（对累加无贡献），写出
-        方向越界行由 TMA 自动裁剪，epilogue 的 scale 查表按 $m<M$ guard；
+        方向越界行由 TMA 自动裁剪，epilogue 的 scale 查表按 $m<M$ guard。
   \item $K$ 非 128 倍数的尾 tile 同样零填充，主循环没有尾部分支。
         这比第~\ref{ch:28}~章 ffpa 的 VT 量化省掉了 pad 列清零，因为那里用的是
         cp.async 装载、这里全程 TMA（OOB 语义内建）。
@@ -150,7 +151,7 @@ $B \approx \delta_b \hat{B}$（$\delta_a,\delta_b$ 为逐行/逐列/逐块的 sc
 \end{equation}
 
 精确展开单元素。当 $\delta_a$ 沿行（$m$ 方向）常数、$\delta_b$ 沿列（$n$ 方向）
-常数时（per-row $\times$ per-col 正是如此），
+常数时（per-row $\times$ per-col 正是如此）。
 \begin{equation}
   C_{m,n} = \sum_{k} \delta_{a,m}\,\hat{A}_{m,k}\,\hat{B}_{n,k}\,\delta_{b,n}
           = \delta_{a,m}\,\delta_{b,n} \sum_k \hat{A}_{m,k}\hat{B}_{n,k}
@@ -243,7 +244,7 @@ $\hat{x} = x(1+\varepsilon)$：相对舍入误差 $\varepsilon$ 在
 $[-2^{-4}, 2^{-4}]$ 上近似均匀分布（相对步长 $u = 2^{-3}$，见上文），故
 $\mathrm{E}[\varepsilon] \approx 0$，方差 $\sigma_\varepsilon^2 = u^2/12
 \approx 1.30\times 10^{-3}$，即 $\sigma_\varepsilon \approx 3.6\%$。
-对 $C_{m,n}=\sum_k a_k b_k$，两个量化点的误差一阶展开：
+对 $C_{m,n}=\sum_k a_k b_k$，两个量化点的误差一阶展开。
 \begin{equation}\label{eq:34-err-expand}
   \tilde{C}_{m,n} - C_{m,n}
   = \sum_{k} a_k b_k\bigl(\varepsilon_{a,k} + \varepsilon_{b,k}\bigr)
@@ -251,7 +252,10 @@ $\mathrm{E}[\varepsilon] \approx 0$，方差 $\sigma_\varepsilon^2 = u^2/12
   \;\approx\; \sum_{k} a_k b_k\bigl(\varepsilon_{a,k} + \varepsilon_{b,k}\bigr),
 \end{equation}
 第二项是 $O(\sigma_\varepsilon^2)$ 的高阶小量，比一阶项低一个
-$\sigma_\varepsilon$ 因子，下文只保留一阶。关键区分两种数据形态：
+$\sigma_\varepsilon$ 因子，下文只保留一阶。
+
+关键区分两种数据形态：
+
 \begin{itemize}[itemsep=1pt,topsep=2pt]
   \item \textbf{随机符号数据}（测试用的均匀随机矩阵）：误差项相互独立且
         随机变号，累加是随机游走。误差能量
@@ -268,6 +272,7 @@ $\sigma_\varepsilon$ 因子，下文只保留一阶。关键区分两种数据�
         per-row/per-channel 粒度与离线校准（如 GPTQ/平滑旋转，
         第~\ref{ch:28}~章同源思想）的原因。
 \end{itemize}
+
 \paragraph{Max Err 是极值统计，不是误差上界} 单个 $C_{m,n}$ 接近零（正负
 相消）时相对误差可以任意大，所以 bench 表里的 \texttt{Max Err} 只能取绝对
 误差（vs cuBLAS BF16 参照）。但它也不是最坏元素误差：$MN$ 个近似独立的
@@ -277,8 +282,9 @@ $\sigma_\varepsilon$ 因子，下文只保留一阶。关键区分两种数据�
   \;\approx\; \sigma_{\text{err}}\sqrt{2\ln(MN)},
 \end{equation}
 $M{=}N{=}4096$ 时 $\sqrt{2\ln(MN)} \approx 5.8$。误差分布是有限支撑的和
-分布，尾部比高斯分布薄，实测极值落在 $4\sigma_{\text{err}}$ 一带。健康判据是
-\textbf{Max Err 在 $4\sigma_{\text{err}}$ 量级}，而不是要求它趋零。绝对
+分布，尾部比高斯分布薄，实测极值落在 $4\sigma_{\text{err}}$ 一带。
+
+健康判据是\textbf{Max Err 在 $4\sigma_{\text{err}}$ 量级}，而不是要求它趋零。绝对
 口径的 Max Err 自然随 $\sqrt{K}$ 增长（$\sigma_{\text{err}} \propto
 \sqrt{K}$），换算到相对口径才是与 $K$、与分布都无关的常数。
 

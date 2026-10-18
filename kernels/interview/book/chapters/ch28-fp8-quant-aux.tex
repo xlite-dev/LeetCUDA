@@ -66,7 +66,7 @@ kernel 的消费方式决定，这也是要与第~\ref{ch:29}~章对照阅读的
   \item \texttt{kv\_col\_sum\_kernel} + \texttt{kv\_mean\_finalize\_kernel}：
         K 的两阶段列均值（smooth-K 用，28.4.2~节）；
   \item \texttt{quantize\_fp8\_qkv\_fused\_kernel}：Q/K 量化 + V 的 per-block
-        转置量化合并的 fused 形态（28.4.3~节）；
+        转置量化合并的 fused 形态（28.4.3~节）。
   \item 开 per-channel V 时另起三个 kernel（\texttt{v\_col\_stats} 列统计、
         \texttt{v\_stats\_finalize} 汇总、per-channel 转置量化，28.4.5~节）；
   \item 开 Hadamard 时（fp4/fp8 均需显式开启，fp4 收益更大）加
@@ -83,11 +83,12 @@ aux 链里所有改数值的操作（smooth-K、smooth-V、Hadamard）共享同�
 这条约束由代数定理保证，28.3.1--28.3.3~节将逐条证明：
 \begin{itemize}[itemsep=1pt,topsep=2pt]
   \item smooth-K 利用 softmax 的\textbf{行平移不变性}（logits 减一个行常数，
-        概率不变，lse 需回加）；
-  \item smooth-V 利用 softmax 的\textbf{行和恒为 1}（输出减均值行，精确可逆）；
+        概率不变，lse 需回加）。
+  \item smooth-V 利用 softmax 的\textbf{行和恒为 1}（输出减均值行，精确可逆）。
   \item Hadamard 利用\textbf{正交矩阵的转置消去}（$(Q\hat H)(K\hat H)^{\top} =
         QK^{\top}$，连修正都不需要）。
 \end{itemize}
+
 三者目的相同：\textbf{在量化之前分散 outlier 的能量}，让 block scale 收敛、
 量化步长的利用率最大化。它们在算法上是 SageAttention 系（smooth）与 QuaRot /
 SpinQuant / FA-3 incoherent processing（旋转）两条线的交汇。
@@ -137,17 +138,19 @@ softmax 输出的行和恒为 1：$P\mathbf{1} = \mathbf{1}$。于是
 
 残差对称化：若不减均值、量化 scale 直接取 $\mathrm{colmax}(|V|)$，会
 偏向原始分布的上侧。SageAttention 的 per-channel recipe（\texttt{smooth\_v.cuh}）在统计
-阶段同时维护 $\mathrm{sum},\ \mathrm{max},\ \mathrm{min}$ 三列统计，finalize 时
+阶段同时维护 $\mathrm{sum},\ \mathrm{max},\ \mathrm{min}$ 三列统计。finalize 时
 \begin{equation}
   \text{mean} = \mathrm{sum}/N,\qquad
   \mathrm{amax} = \max\!\big(|\mathrm{max}-\mathrm{mean}|,\ |\mathrm{min}-\mathrm{mean}|\big),
   \label{eq:28-smv-amax}
 \end{equation}
 中心化后的残差近似对称分布，取双侧残差最大值能让 e4m3 的对称编码域
-$[-448,448]$ 恰好被两侧同时铺满。发射域系数
-$v_s = \mathrm{amax}/v_{scale\_max}$ 中的 $v_{scale\_max}$ 默认 448（e4m3 满量程）；
-当 V 采用 per-channel 粒度且 PV 累加在 f16 域（27.3.5~节的 SA2++ 路径）时，
-launcher 把 $v_{scale\_max}$ 整个收紧为 2.25：量化后的 $V_8$ 幅度被压进
+$[-448,448]$ 恰好被两侧同时铺满。
+
+发射域系数 $v_s = \mathrm{amax}/v_{scale\_max}$ 中的 $v_{scale\_max}$ 默认
+448（e4m3 满量程）。当 V 采用 per-channel 粒度且 PV 累加在 f16 域
+（27.3.5~节的 SA2++ 路径）时，
+launcher 把 $v_{scale\_max}$ 整个收紧为 2.25。量化后的 $V_8$ 幅度被压进
 $[-2.25, 2.25]$、$v_s = \mathrm{amax}/2.25$，为 f16 累加域（$\pm 65504$）在
 $kBc$ 块求和下留足裕量，防止长块累加溢出（kernel 侧有编译期检查
 $kBc\cdot 448\cdot 2.25 \le 65504$；per-block 路径固定 amax/448，无此参数）。
@@ -311,8 +314,9 @@ $(bh, d)$、列是 kv 位置，尾列 pad 到 $N_{kv,pad}$ 以满足 TMA 16B 对
 变换：\textbf{列置换}（M4N2 家族默认关）。动机简述
 （完整推导在第~\ref{ch:30}~章）：attention kernel 需要把 softmax 的 P 字节
 \textbf{不经任何跨 lane shuffle} 直接打包进 PV MMA 的 A 操作数，代价是 A 操作数
-的 kv 下标带一个置换 $\pi$（槽位 $s$ 存真实列 $\pi(s)$）；于是 $V^{\top}$ 的
+的 kv 下标带一个置换 $\pi$（槽位 $s$ 存真实列 $\pi(s)$）。于是 $V^{\top}$ 的
 B 操作数必须携带同一个 $\pi$，保证槽位 $s$ 两侧对应同一 kv 位置。
+
 置换的逆映射在量化期写进 $V^{\top}$ 的列排布：
 \begin{equation}
   \pi^{-1}(j) = 4\cdot\big((j\!\gg\!1)\,\&\,3\big) + 2\cdot\big((j\!\gg\!3)\,\&\,1\big)
@@ -806,7 +810,7 @@ store。}
 泳道（Q/K/V）从 fp16 输入出发，先取统计量（块 amax、两阶段列均值），再经
 各自的变换（smooth-K/$V$、WHT 旋转），汇入量化 kernel 后输出 fp8 数据与
 scale workspace（\texttt{q\_scale}/\texttt{k\_scale}/\texttt{v\_scale}，
-布局随粒度 per-block / per-thread / per-channel 而定）；把它与
+布局随粒度 per-block / per-thread / per-channel 而定）。把它与
 第~\ref{ch:29}~章的 persist-D 数据通路图叠起来，就是 fp8 attention 从输入到
 输出的完整数据流。图~\ref{fig:28-invariants} 把~\ref{sec:28-smk}--\ref{sec:28-wht}~节
 的三条不变变换定理画成一页速查：smooth-K 改 logits 不改概率、smooth-V 改
@@ -1031,13 +1035,13 @@ $\sim$1.34TB/s）实测 aux 链聚合有效带宽约 1.04TB/s，这是\textbf{�
 \begin{itemize}[itemsep=1pt,topsep=2pt]
   \item \textbf{列均值}：库调用 $\sim$85us $\to$ 两阶段自研 $\sim$50us
         （B1 H32 N8192 D128，\texttt{smooth\_k.cuh} 注释实测），省掉 fp32 cast
-        的额外往返，同时产出 fp32 副本；
+        的额外往返，同时产出 fp32 副本。
   \item \textbf{per-thread QK}：$\sim$49us（$N=4608$ 量级，D128；数字出自 bench
         留档而非源码注释）。每行两线程
-        的网格翻倍是关键（28.4.4~节），冷输入场景 in-flight warp 数直接决定吞吐；
+        的网格翻倍是关键（28.4.4~节），冷输入场景 in-flight warp 数直接决定吞吐。
   \item \textbf{fused QKV}：默认路径（\texttt{quantize\_fp8\_qkv\_fused\_kernel}）
         把 Q 量化、K 量化（含 smooth）、V 转置量化合进一个 kernel，三次读
-        输入的启动开销与尾部浪费一并省掉；
+        输入的启动开销与尾部浪费一并省掉。
   \item \textbf{WHT}：一次额外读 + 写（fp16 in-place 语义上），只开 $O(N D\log D)$
         计算，带宽主导，$\sim$数十 us 量级；fp4 块更小（$1\times16$）、outlier
         影响更大，旋转收益最高（bench 默认关，\texttt{--fp4-hadamard} 显式开）。

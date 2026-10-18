@@ -28,16 +28,17 @@
 
 度量陷阱一：参照系。speedup 是比值，分子分母任何一个漂移，
 结论就作废。三个具体来源：
+
 \begin{itemize}[itemsep=0pt,topsep=2pt]
   \item \textbf{SDPA 后端随 D 换挡}：FA2 只覆盖 $D\le256$，更大 D
         静默落到 MATH（materialize 整个 $N_q\times N_{kv}$ 矩阵），
         参照时间膨胀数倍：D=512 的 3x 加速里有一大半是 MATH
         慢，不是量化快（\texttt{bench\_fp8.py} L153--160 的
-        \texttt{resolve\_sdpa\_backend} 把这个换挡显式化）；
+        \texttt{resolve\_sdpa\_backend} 把这个换挡显式化）。
   \item \textbf{GPU 状态污染}：5090 类高功耗卡上，前一个高功耗负载
         会把后一个测试压进降频区（实测 FFPA kernel 撞功耗墙
         2932$\to$2445MHz，-17\%）；A/B 两轮的 SDPA 参照必须吻合
-        （$\pm1\%$），否则整轮作废；
+        （$\pm1\%$），否则整轮作废。
   \item \textbf{preset 隐藏成本}：对比双方的功能集不对齐时，「慢」
         可能只是「多做了事」：hybrid（fp16 前缀行）与 smooth-V
         都是 FFPA 独有的精度功能，开着测速度对 Sage 不公平，对
@@ -113,12 +114,13 @@ $\times$2.29：「3$\times$」的大头是参照低效（坑 6）。}
 \end{figure}
 
 度量陷阱二：精度口径。allclose 是布尔值，信息量极低：
+
 \begin{itemize}[itemsep=0pt,topsep=2pt]
   \item fp4 的 e2m1 网格噪声决定了它的容差天然比 fp8 宽一个量级
         （dense 0.15 / causal 0.70 vs fp8 的 0.05），拿错档的容差
-        会把合格的实现误判为不合格；
+        会把合格的实现误判为不合格。
   \item 只看均值不看 max 会漏掉 causal 早期行这类结构性
-        误差（第~\ref{ch:27}~章 27.3.7 节的 e2m1 网格噪声）；
+        误差（第~\ref{ch:27}~章 27.3.7 节的 e2m1 网格噪声）。
   \item 推理 bench 必须 \texttt{no\_grad}：grad-on 会强制走完整
         autograd 链（每调用多 $\sim$30$\mu$s Python 开销，
         \texttt{bench\_ms} 注释口径），测出的
@@ -133,20 +135,21 @@ $\times$2.29：「3$\times$」的大头是参照低效（坑 6）。}
 
 \subsection{speedup 与有效 TFLOPS}
 
-kernel 级 speedup 定义为同形状下参照与被测的耗时比：
+kernel 级 speedup 定义为同形状下参照与被测的耗时比。
 \begin{equation}
   S=\frac{T_{\mathrm{SDPA}}}{T_{\mathrm{FFPA}}},\qquad
   T=\min_{i\in[1,N]}\;t_i\;\;(\text{min-of-}N,\ N\ge5)
 \end{equation}
 min-of-N 而非均值：推理延迟的合同口径是最好情况下可稳定达到的
 水平，毛刺（时钟迁移、后台进程）只应抬高均值，不应进入分子。
-有效算力用 attention 前向 FLOPS 归一：
+
+有效算力用 attention 前向 FLOPS 归一。
 \begin{equation}
   \mathrm{FLOPs}=4\,N_qN_{kv}DH_q\cdot\delta_{\mathrm{causal}},\qquad
   \delta_{\mathrm{causal}}=
   \begin{cases}1 & \text{dense}\\[2pt] \tfrac{1}{2}+\tfrac{1}{2N_{kv}} & \text{causal}\end{cases}
 \end{equation}
-（QK$^\top$ 与 PV 各占 $2N_qN_{kv}DH_q$；causal 按三角mask 减半：
+（QK$^\top$ 与 PV 各占 $2N_qN_{kv}DH_q$；causal 按三角mask 减半。
 此因子在方阵 $N_q=N_{kv}$ 下与 \texttt{\_flops.py} 的精确 tail 对齐
 计数一致，非方阵 causal 的精确计数为
 $1-(N_q-1)/(2N_{kv})$，本章 bench 的 causal 均为方阵。）
@@ -221,17 +224,19 @@ bench 输出三层指标，各有分工：
 \begin{itemize}[itemsep=0pt,topsep=2pt]
   \item \texttt{rel\_err} $=\lVert O-\tilde O\rVert_2/\lVert
         \tilde O\rVert_2$（\texttt{bench\_fp8.py} L270--274）：能量级
-        偏差，衡量整体偏了多少；
+        偏差，衡量整体偏了多少。
   \item \texttt{max\_abs}（\texttt{max|diff|}）：最坏单点
-        偏差，捕捉结构性误差（causal 早期行、坏行 bug）；
+        偏差，捕捉结构性误差（causal 早期行、坏行 bug）。
+
   \item \texttt{allclose(atol=tol, rtol=tol)}：CI 门禁布尔量，tol 按
         精度分档（\texttt{\_runner\_fwd.py} L413--419）：
-        fp16/bf16-fp8 路径 5e-2，纯 fp16 2e-2；fp4 dense 0.15、
+        fp16/bf16-fp8 路径 5e-2，纯 fp16 2e-2。fp4 dense 0.15、
         causal 0.70，依据是 e2m1 网格噪声（第~\ref{ch:27}~章
         27.3.7 节仿真：dense 绝对误差 $\approx$0.003 级，0.15 留出
-        约 50 倍余量；causal 尖峰行天然 0.5--0.75 级（第~\ref{ch:31}~章 31.7~节实测），0.70 按
-        无 hybrid 抑制的地板量级取上界）。
+        约 50 倍余量。causal 尖峰行天然 0.5--0.75 级（第~\ref{ch:31}~章
+        31.7~节实测），0.70 按无 hybrid 抑制的地板量级取上界）。
 \end{itemize}
+
 读数规则：\textbf{速度看 min、能量看 rel\_err、结构看 max\_abs、
 门禁看 allclose}，四者缺一不可。第~\ref{ch:29}~章 29.7.1 的正确性
 bug 就是速度正常 + 均值正常 + max\_abs 结构性坏行的组合。
@@ -250,7 +255,7 @@ bug 就是速度正常 + 均值正常 + max\_abs 结构性坏行的组合。
 体系（\texttt{bench\_fp8.py} L57：\texttt{default}/\texttt{cache-dit}/
 \texttt{perblock}）把部署形态编码进配置：\texttt{cache-dit} 预设
 \texttt{hybrid\_n\_early}=256，\texttt{perblock} 预设
-sm89 cp.async 路径的 per-block 量化；NHD 零拷贝（diffusers E2E 布局）
+sm89 cp.async 路径的 per-block 量化。NHD 零拷贝（diffusers E2E 布局）
 由独立的 \texttt{--with-permute} 启用，与 preset 正交。
 
 \subsection{测量规则的代码化}
@@ -258,14 +263,15 @@ sm89 cp.async 路径的 per-block 量化；NHD 零拷贝（diffusers E2E 布局�
 公平测量的每条规则都落在代码里（\texttt{bench\_fp8.py}）：
 \begin{itemize}[itemsep=0pt,topsep=2pt]
   \item \texttt{bench\_ms} L125--140：\texttt{no\_grad} 上下文 +
-        warmup 3 + iters 5 取 min；
+        warmup 3 + iters 5 取 min。
   \item L344--347：SDPA pre-heat 5 次（不计入）拉稳时钟，随后按
         FFPA $\to$ Sage $\to$ SDPA 顺序测量。功耗墙下谁排后面谁
-        吃亏，固定顺序 + pre-heat 把它变成可复现的偏置；
+        吃亏，固定顺序 + pre-heat 把它变成可复现的偏置。
+
   \item L79--122 \texttt{fp8\_backend} 加 \texttt{@lru\_cache}：
         每次构造触发两次 \texttt{get\_device\_capability}（实测
         重建一次 $\sim$7$\mu$s），每 iter 重建会把 Python 开销算进
-        kernel 时间；
+        kernel 时间。
   \item 精度参照统一为 \texttt{ref\_bf16}（bf16 SDPA-FA2）：融合
         kernel 内部本就 fp32 累加，bf16 指数域比 fp16 宽，fp32 SDPA
         在大 N 会因 MATH materialize 全矩阵而 OOM（L256--259 注释）。
@@ -279,21 +285,25 @@ sm89 cp.async 路径的 per-block 量化；NHD 零拷贝（diffusers E2E 布局�
 同配置），\texttt{fp8\_smv}/\texttt{fp8\_smkv} 才真正改变配置（开
 smooth-V、V 换 per-channel），
 \texttt{\_qk\_i8} 后缀强制 int8 QK MMA；\texttt{fp4} =
-\texttt{cute\_tma\_fp4}。细粒度 knob（L387--490）分三组：
+\texttt{cute\_tma\_fp4}。
+
+细粒度 knob（L387--490）分三组：
+
 \begin{itemize}[itemsep=0pt,topsep=2pt]
   \item fp8 数值通路：\texttt{--fp8-qk-mm-type} $\in$
         \{fp8, int8\}（e4m3 vs s8xs8$\to$s32）、
-        \texttt{--fp8-pv-acc-type} $\in$ \{f32, f16\}（PV 累加精度）；
+        \texttt{--fp8-pv-acc-type} $\in$ \{f32, f16\}（PV 累加精度）。
   \item 量化粒度：\texttt{--fp8-\{q,k\}-quant-method} $\in$
         \{per-block, per-channel, per-thread\}、
         \texttt{--fp8-v-quant-method} $\in$ \{per-block,
-        per-channel\}（per-channel 即 Sage 式 per-D scale）；
+        per-channel\}（per-channel 即 Sage 式 per-D scale）。
   \item hybrid：\texttt{--fp8-hybrid}/\texttt{--fp4-hybrid} 让 fp16
         persist-D 算前 \texttt{n\_early} 行、量化 kernel 算余下
         （零冗余拼接，\texttt{q\_start\_row} 偏移实现）；causal 下
         默认自动开启以保护早期行精度，Nq$\ge$
         \texttt{n\_early}（默认 256）。
 \end{itemize}
+
 fp4 侧另有 \texttt{--fp4-pv-mm-type} $\in$ \{fp4, fp8\}（第~\ref{ch:32}~
 章的 mxfp8 变体）、\texttt{--fp4-hadamard}、\texttt{--fp4-smooth-v}。
 CLI 默认值即推荐值：纯 fp8 QK + f32 累加 + Q/K/V 全 per-block
@@ -430,13 +440,14 @@ bench 脚本默认 preset，2026-09-21）：fp8 与 Sage2 总体打平、互有
 三个形态段：
 \begin{itemize}[itemsep=0pt,topsep=2pt]
   \item \textbf{D$\le$128 优势区}：1.26x--1.83x。量化 kernel 占满
-        tensor pipe，aux 链被主 kernel 遮蔽；
+        tensor pipe，aux 链被主 kernel 遮蔽。
   \item \textbf{D=256 交叉点区}：fp8 persist-D 掉到 1.14x--1.45x
         （smem 压力 + fp4 家族在此开始占优：同点 fp4 2.11x，见
         表~\ref{tab:33-fp4-matrix}；第~\ref{ch:30}~章的 dispatch
         三分在此切换）；cross 甚至 0.76x：Nq=1024 小 Q 场景下
         \textbf{aux 链占比}反超主 kernel（整条前处理链的聚合
-        吞吐上限 $\approx$1.04TB/s，第~\ref{ch:28}~章 28.6 节）；
+        吞吐上限 $\approx$1.04TB/s，第~\ref{ch:28}~章 28.6 节）。
+
   \item \textbf{D=512 大 D 区}：参照换 SDPA-MATH，2.98x--3.16x。
         数字大但要正确归因：一半来自 FFPA split-D 真加速
         （第~\ref{ch:30}~章），一半来自 MATH 参照自身的低效。
@@ -537,23 +548,26 @@ PRO 5000（sm\_120）实测——\textbf{形态结论（谁快谁慢、随 D 怎
 选用决策树（dense 优先快、causal 先保精度）：
 \begin{enumerate}[itemsep=0pt,topsep=2pt]
   \item D$\le$192 且精度预算允许 $\Rightarrow$ fp4（2x 级 + tol
-        0.15 内）；精度敏感行（早期行/高对比度）开 fp4-hybrid；
+        0.15 内）；精度敏感行（早期行/高对比度）开 fp4-hybrid。
   \item D=256 区间 $\Rightarrow$ fp4（fp8 persist-D 在此有 smem
-        交叉点，1.3x vs fp4 的 2.1x）；
+        交叉点，1.3x vs fp4 的 2.1x）。
   \item D$>$256 $\Rightarrow$ fp8 split-D/M4N2（fp4 大 D 依赖
-        split-D 家族，按第~\ref{ch:30}~章 dispatch 表选）；
-  \item 小 Nq（decode/cross 小 Q）$\Rightarrow$ 先看 aux 链占比，
+        split-D 家族，按第~\ref{ch:30}~章 dispatch 表选）。
+
+  \item 小 Nq（decode/cross 小 Q）$\Rightarrow$ 先量 aux 链占比，
         量化的收益可能被前处理抵消，此时 fp16 persist-D 或 SDPA
-        反而合理；
+        反而合理。
   \item causal 一律确认 hybrid 已开（CLI 默认自动），并按 bf16
         口径复核 allclose。
 \end{enumerate}
 
 量化 attention 进入扩散模型管线，在 Cache-DiT 侧要处理三件事。
 布局上，diffusers 上游产 NHD [B,N,H,D]，FFPA 的
-\texttt{tensor\_layout="NHD"} 走零拷贝 fast path（第~\ref{ch:28}~章~\ref{sec:28-nhd}~节），省掉两侧 permute。占比上，按式~\ref{eq:33-e2e}，
-attention 占比决定端到端收益上限，视频扩散（长序列、双流块）是最佳
-场景。cache-dit 还允许按层选 backend：因果块用 hybrid、双向块用纯
+\texttt{tensor\_layout="NHD"} 走零拷贝 fast path（第~\ref{ch:28}~章~\ref{sec:28-nhd}~节），
+省掉两侧 permute。占比上，按式~\ref{eq:33-e2e}，attention 占比决定端到端
+收益上限，视频扩散（长序列、双流块）是最佳场景。
+
+cache-dit 还允许按层选 backend：因果块用 hybrid、双向块用纯
 fp4，精度损失只在最敏感的位置修正。README 引用的 NeMo Automodel
 案例（D=512 全注意力层 10/60，训练 e2e 1.4x--1.5x）是同一公式在
 训练侧的实例。

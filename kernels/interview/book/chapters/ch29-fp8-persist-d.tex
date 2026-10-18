@@ -76,7 +76,7 @@ split-D（M8N1，$224<D<768$）与 M4N2（$D\ge768$）：见第~\ref{ch:30}~章�
 
 $\hat S=\hat Q\hat K^{\top}$ 是量化域（e4m3 或 int8）的整数累加，真实
 $S=\hat S\cdot\delta_Q\delta_K$。softmax 需要的是
-$\exp(\mathrm{scale}\cdot S)$；把 $\delta_Q\delta_K$ 与 softmax scale、
+$\exp(\mathrm{scale}\cdot S)$。把 $\delta_Q\delta_K$ 与 softmax scale、
 $\log_2 e$ 融成单个 fp32 系数：
 \begin{equation}
   \exp\big(\mathrm{scale}\cdot\delta_Q\delta_K\cdot\hat S\big)
@@ -85,8 +85,9 @@ $\log_2 e$ 融成单个 fp32 系数：
   \label{eq:29-sdequant}
 \end{equation}
 该系数在 tile max 归约之后一次乘入（配合
-\texttt{kMaxScaleAfter}：29.4.3~节），每元素省一次 FMUL。int8 变体走
-\texttt{s8xs8$\to$s32} MMA，s32 累加器原位 cast 到 f32 寄存器后同样处理。
+\texttt{kMaxScaleAfter}：29.4.3~节），每元素省一次 FMUL。
+
+int8 变体走 \texttt{s8xs8$\to$s32} MMA，s32 累加器原位 cast 到 f32 寄存器后同样处理。
 int8 均匀步长使 $S$ 的绝对误差有均匀上界，在近 max（大 $|S|$）的 softmax
 主导区相对误差更小，且 s32 累加精确（无 f8f8f32 累加舍入），这是 int8 QK 在
 大 $N$ 下更优的根源。
@@ -94,7 +95,7 @@ int8 均匀步长使 $S$ 的绝对误差有均匀上界，在近 max（大 $|S|$
 \subsection{P 量化三步协议与 $v_s$ 精确消去}\label{sec:29-pscale}
 
 $P$ 只能在线量化（27.2.2~节 P 无法离线）。\texttt{fp8\_pscale.cuh} 的
-三步协议把 $v_s$（V 的量化 scale）从 PV 乘积中精确消去：
+三步协议把 $v_s$（V 的量化 scale）从 PV 乘积中精确消去。
 \begin{equation}
   \hat P=\mathrm{round}\!\Big(\frac{P\cdot v_s}{p_{scale}}\Big),\qquad
   \mathrm{MMA}=\hat P\,\hat V=\frac{P\,v_s}{p_{scale}}\cdot\frac{V}{v_s}
@@ -103,7 +104,9 @@ $P$ 只能在线量化（27.2.2~节 P 无法离线）。\texttt{fp8\_pscale.cuh}
   \label{eq:29-threestep}
 \end{equation}
 $v_s$ 消去的直接推论：\textbf{gmem 中预量化的 $\hat V$ 原样复用}，主 kernel
-从不需要 $V$ 的 fp16 原件；$v_s$ 被折进 P 侧的发射域
+从不需要 $V$ 的 fp16 原件。
+
+$v_s$ 被折进 P 侧的发射域
 $\tilde P = P\cdot v_s\cdot448$。fixed 模式下 $p_{scale}\equiv1/448$（编译期
 常数），epilogue 用 $(1/448)/\mathrm{rowsum}$ 一步完成反量化与
 归一化。
@@ -132,6 +135,7 @@ $\mathrm{amax}(V)$（29.3.2），lazy 的安全条件是膨胀后不越 e4m3 上
   \;\Longrightarrow\;
   T=4\Rightarrow \mathrm{amax}(V)\le28 .
 \end{equation}
+
 但 ffpa 的 traits 把 fp8 的 \texttt{kLazyRescale} 直接置 \texttt{false}
 （\texttt{attn\_traits.cuh} L31--37）。注释给的理由是：跳过 rescale 会让发射 P
 以最高 $2^T$ 膨胀，而 per-channel V 路径（balanced narrowing）的发射
@@ -153,12 +157,13 @@ ffpa 的累加结构不同：PV 经 \texttt{gemm\_rs} 跨整个 $kBc$ 块累进�
   kBc\cdot P_r\cdot V_r \le 65504 .
   \label{eq:29-f16tile}
 \end{equation}
+
 ffpa 的分配\textbf{只收紧 V 侧}：per-channel V + f16 acc 时发射
-$\hat V\in[-2.25,2.25]$（即 28.3.2~节的 $v_{scale\_max}=2.25$）；P 侧在
+$\hat V\in[-2.25,2.25]$（即 28.3.2~节的 $v_{scale\_max}=2.25$）。P 侧在
 $kBc\le64$ 时保持 448 满量程（$64\times448\times2.25=64512\le65504$$\checkmark$），
 $kBc=128$ 时预算超限，kernel 侧的编译期自动收窄
 （\texttt{persist\_d.cuh} L723--732）把 P 域收到 224
-（$128\times224\times2.25=64512$$\checkmark$）；f32 acc 时无 f16 溢出界，V 侧取满
+（$128\times224\times2.25=64512$$\checkmark$）。f32 acc 时无 f16 溢出界，V 侧取满
 448、P 侧恒 448 无约束。
 
 \begin{figure}[H]
@@ -235,16 +240,20 @@ f32 acc 路径无此约束。}
 
 softmax 产出的 $P$ fragment（QK MMA 的 C 布局）与 PV MMA 的 A 操作数布局
 不一致（29.4.4~节有完整布局推导）。传统解法是 16 SHFL + 32 PRMT 的
-跨 lane 重排。数学出路是归约轴双射不变性：
+跨 lane 重排。
+
+数学出路是归约轴双射不变性。
 \begin{equation}
   \sum_k P[m,k]V[k,n]=\sum_k P[m,\pi(k)]\,V[\pi(k),n]
   \qquad(\pi\ \text{任意双射}) .
   \label{eq:29-perm-inv}
 \end{equation}
 既然 $\pi$ 任意，就让 P 留在本 lane、按本 lane 已持有的字节就地打包（4 条
-lane 无关 PRMT、零 SHFL），让 A 操作数携带一个置换的 k 索引 $\pi$；V 侧
+lane 无关 PRMT、零 SHFL），让 A 操作数携带一个置换的 k 索引 $\pi$。V 侧
 在量化期按 $\pi^{-1}$ 预置换列序（\texttt{VTPermInv32}，式~\ref{eq:28-vtperm}），
-两侧槽位对应同一真实 kv 位置即可。row-sum MMA（B 为全 1）在双射下也
+两侧槽位对应同一真实 kv 位置即可。
+
+row-sum MMA（B 为全 1）在双射下也
 精确。这条原则在实现上就是一条数学等价：kernel 内的 16 次跨 lane shuffle
 换成了量化期的列置换。
 
@@ -281,6 +290,7 @@ TiledMma 的 K-tile 是 32（atom 的 k16$\times$2），fp16 家族
 是 16。swizzle atom 按行字节选（L45--50）：Q/K 行 $D$ 字节、
 $V^{\top}$ 行 $kBc$ 字节，各自落 SW128/SW64/SW32：同一张 smem 图、两类
 行宽分别选择各自的 swizzle atom。
+
 kBc 随 D 切换：launcher 对 $D\le128$ 实例化 $kBc{=}128$、
 $D>128$ 用 64（smem 预算）。
 
@@ -380,8 +390,8 @@ fixed 模式下 softmax 已经发射满量程值，pack 只做 f32$\to$e4m3x2 �
 \textbf{Phase 4 -- row-sum 与 PV GEMM}（L833--903）：先在 tensor core 上
 跑 \texttt{pscale\_rowsum\_mma}（B 操作数全 1 的 MMA 求行和，NCU 显示它
 藏进 PV 的 tensor pipe 气泡，CUDA-core FADD/shfl 版本实测更慢）。PV 主体
-分三路：f32 acc 直接 \texttt{gemm\_rs(o\_acc, tCrP, tCrV, ...)}；
-\textbf{f16 acc} 路线是本章指令级融合的关键：PV 先累进 f16
+分三路：f32 acc 直接 \texttt{gemm\_rs(o\_acc, tCrP, tCrV, ...)}。
+\textbf{f16 acc} 路线是本章指令级融合的关键。PV 先累进 f16
 \texttt{inst\_buf}（把 $o\_acc$ 移出 tensor-core 反馈链），随后吸收回
 f32 $o\_acc$ 时用 FFMA 把 online-softmax 的 rescale 一起折进去：
 \begin{equation}
@@ -410,7 +420,7 @@ $a_2$、$a_3$ 分别取行 $g$、$g{+}8$ 的 $k=16{+}4t..16{+}4t{+}3$。这样�
 需要的 k 列 $\{4t..4t{+}3\}$，换算成 C tile 的列对 $\{2t',2t'{+}1\}$ 后落在
 别的 lane（比如 $t{=}1$ 需要的是 $t{=}2$、$t{=}3$ 持有的字节），纯 lane 内
 置换无法得到自然 A 布局（\texttt{.tmp/fp8\_persist\_d/verify\_layouts.py} 数值
-证明），因此需要下面跨 lane 的 \texttt{ReorgC8bitToA8bit}。
+证明），因此需要跨 lane 的 \texttt{ReorgC8bitToA8bit}。
 
 \begin{figure}[H]
 \centering
@@ -756,7 +766,7 @@ per-kernel 记录）。
 
 persist-D 的结构优化路线已被系统实测证伪（完整清单见仓库 RFC
 \S5.8）：WS 双 consumer（FA3 式 2$\times$128T）负优化；persistent work
-loop 零收益（tensor-bound 77\%）；stages 加深负（K2V2 预取已领先）；
+loop 零收益（tensor-bound 77\%）；stages 加深负（K2V2 预取已领先）。
 v2/v3/v5（128P+128C、无 WS、V 驻留寄存器）分别 $+31.6\%$/$+1.4\%$/$+48\%$
 （追平基线的是 v3 加 v\_full wait hoist，即 v4，$-0.1\%$）；
 cluster 化无 DSMEM 需求、持平或更慢；CUDA-core row-sum 替代 tensor

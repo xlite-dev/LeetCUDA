@@ -21,17 +21,18 @@ shift，除法和归一化在到达寄存器之前就已经消失。
 \section{问题与动机}
 
 Q/K/V 的量化无论多粗，都可以离线统计（smooth、per-block scale）压动态
-范围；$P$ 不行，困难有三条：
+范围。$P$ 不行，困难有三条：
 \begin{enumerate}[itemsep=0pt,topsep=2pt]
   \item \textbf{online}：$P$ 是 softmax 现场产物，kernel 内逐 tile 生成，
-        没有第二遍数据；
+        没有第二遍数据。
   \item \textbf{值域窄}：$P\in[0,1]$，行内分布又剧变，causal 早期行
-        近 one-hot（一个 1、其余 $\approx0$），dense 行近均匀且数值极小；
+        近 one-hot（一个 1、其余 $\approx0$），dense 行近均匀且数值极小。
   \item \textbf{SF 格式自身的损耗}（SA3 的 C2 挑战）：若按块直接量化，
         $s_P=\mathrm{amax}(P_{\text{块}})/6\in[0,0.167]$，ue4m3 在这个窄域的
         有效位数被浪费——尺度因子自己先损失精度，再乘回 16
         个元素。
 \end{enumerate}
+
 两级量化的思路：先把整行线性拉伸到 NVFP4 的满量程（第一级，全局
 常数），块内再用 e2m1 域归一（第二级，per-16 组 ue4m3），让块的
 $\mathrm{amax}$ 恰好铺满 ue4m3 的域。
@@ -54,7 +55,7 @@ pack 注释）。这套约束决定了 P 量化必须发生在寄存器里、紧
   \label{eq:32-two-level}
 \end{equation}
 $2688=448\times6$：448 是 ue4m3 满量程（SF 域上限）、6 是 e2m1 满量程
-（数据域上限），乘积 2688 是 SF$\times$数据的乘积极限域，第一级把
+（数据域上限）。乘积 2688 是 SF$\times$数据的乘积极限域，第一级把
 行拉伸到这个域。dequant 端
 $O=\mathrm{FP4MM}(\hat P_2,s_{P2},\hat V,s_V)\times s_{P1}$，常数
 $s_{P1}$ 在 $O$ 与 row\_sum 中\textbf{同现同消}，finalize 相除后精确
@@ -65,7 +66,7 @@ $s_{P1}$ 在 $O$ 与 row\_sum 中\textbf{同现同消}，finalize 相除后精�
 ffpa 实现利用了 online softmax 的一条性质（\texttt{fp4\_pscale.cuh}
 头注释 L2--5）：它对当前 tile 已经减去运行行 max，所以
 $\mathrm{rowmax}(\tilde P)\equiv1$，逐行的 $s_{P1}$ \textbf{退化为全
-局常数} $1/(448\times6)$，可以直接折进 \texttt{exp2} 的 shift：
+局常数} $1/(448\times6)$，可以直接折进 \texttt{exp2} 的 shift。
 \begin{equation}
   P_2=\exp_2\!\bigl(S\cdot L-m\cdot L+\log_2(448\cdot6)\bigr)
   \in[0,\,2688],\qquad
@@ -121,7 +122,7 @@ lse 的复合公式（每项都有出处）：
   \label{eq:32-lse}
 \end{equation}
 第一项是 log2 域行 max 与 row\_sum，第三项是两级量化的 $1/2688$ 因子
-（行和处于 $P\cdot2688$ 域，要除回来），最后一项是 smooth-K 的修正
+（行和处于 $P\cdot2688$ 域，要除回来）。最后一项是 smooth-K 的修正
 $\mathrm{dot}(q_{row},\bar k)$（第~\ref{ch:31}~章
 式~\eqref{eq:31-deltas} 的对应项；\texttt{lse\_qkm\_dot} 在 Q 寄存器拷贝后、kv
 循环之前算好，L583--591 与 \texttt{persist\_d.cuh} L757--758：Q 的
@@ -240,28 +241,29 @@ consumer 的 kv 循环（L803--971）每 tile 依次：
 \begin{enumerate}[itemsep=0pt,topsep=2pt]
   \item \texttt{add\_delta\_s}：把 $\Delta S$ 的 rank-1 项预载进 C 累
         加器（只写 \texttt{tSrS} 寄存器，与 B 侧操作数装载无重叠，
-        L819--822）；
+        L819--822）。
   \item \texttt{gemm\_ss\_fp4}：$S\mathrel{+}= (\hat Q\,s_Q)(\hat K\,s_K)$。
         A 侧驻留寄存器、B 侧（K/SFK）从当前 stage 流入，操作数是
         data+SF 的 \texttt{make\_zip\_tensor} 对（\texttt{fp4\_gemm.cuh}
         L131--132）；B 的下一个 k\_block 拷贝与当前 mma 交叠发出，链尾
         的 \texttt{k\_empty} arrive 让 producer 恰在 mma 消费完时看到
-        stage 释放（L140）；
+        stage 释放（L140）。
   \item masking：kv-tail + causal 谓词必须用
         $pos=kv\_tile\cdot B_c+kv\_perm32(j)$（L903--916，谓词在
         L911）；bias 注入
         在 dequant 域（除 \texttt{scale\_orig}），列同样过 $\pi$，tile
         化路径（PC-0-1）持有原始 token 序、注入时索引置换
         （L838--896）；$-\infty$ 赋值同时覆盖 masked 槽位上无效的
-        $\Delta S$ 值；
+        $\Delta S$ 值。
   \item \texttt{online\_softmax\_with\_quant}：32.3 节的融合体，输出
-        已在 $P_2$ 域的分数 + \texttt{AbsMaxP} 组尺度；
+        已在 $P_2$ 域的分数 + \texttt{AbsMaxP} 组尺度。
   \item \texttt{gemm\_rs\_fp4}：$O\mathrel{+}= (\hat P_2\,s_{P2})
         (\hat V\,s_V)$。A（P）不过 smem：\texttt{quantize\_and\_pack\_p}
         刚在寄存器里打包好；V 的 copy、量化、mma 按此顺序发出让 S2R
         与 mma 链重叠，链尾 \texttt{v\_empty} arrive 兼作无更多预取的
         分支（\texttt{fp4\_gemm.cuh} L171--180 注释）。
 \end{enumerate}
+
 V 的 \texttt{v\_full} 等待放在 softmax 之后（L937--940）：
 QK 数学与 V 的 TMA 传输重叠。slot 轮转按 work 内 tile 索引、barrier
 按全局序列（\texttt{v\_slot}/\texttt{v\_mem} 解耦，L811--814），
@@ -462,8 +464,8 @@ self 3.48ms（表 31.2）对 fp8 persist-D 同 shape 的第~\ref{ch:29}~章 29.6
 已证伪（默认关闭/代码保留，勿重复）：Q smem 复用（fp4 的 L1TEX
 sector hit 已 96.75\% 饱和，fp8 的前提不成立，实测 +1.8\% 回退，
 \texttt{attn\_traits.cuh} L19--28 注释，与 fp8 章的同名机制结论相
-反）；rescale merge in-place（把 FMUL 拉进 MMA 依赖
-链，+1.7\%）；V/SFV 首块 s2r 提前藏进 softmax（PC-4：+1.3--1.7\% 净
+反）。rescale merge in-place（把 FMUL 拉进 MMA 依赖
+链，+1.7\%）。V/SFV 首块 s2r 提前藏进 softmax（PC-4：+1.3--1.7\% 净
 负，LDSM 目的寄存器跨 softmax 链拉长 live-range；NCU 证实 B 供给非
 瓶颈，wait 主体在 A 操作数串行链，也是 persist-D 微优化到顶的标志）。
 
@@ -556,11 +558,11 @@ python -m ffpa_attn.bench --fwd-backend cuda --cuda-impl fp4 \
 
 \begin{itemize}[itemsep=0pt,topsep=2pt]
   \item \texttt{cute/fp4/sm\_120/persist\_d.cuh} 头注释（L1--55）：
-        数学链、列对齐锁定、两级 P、subbyte；
+        数学链、列对齐锁定、两级 P、subbyte。
   \item \texttt{cute/fp4/fp4\_pscale.cuh} L117--195：融合 softmax 的
-        域折叠与 shuffle 链；
+        域折叠与 shuffle 链。
   \item \texttt{cute/fp4/fp4\_gemm.cuh} L91--218：\texttt{gemm\_ss\_fp4}
-        与 \texttt{gemm\_rs\_fp4} 的流水与 barrier 协议；
+        与 \texttt{gemm\_rs\_fp4} 的流水与 barrier 协议。
   \item SageAttention3 论文 §3.2（两级量化）与 Algorithm 1（完整数值
         链）；sm\_120 split-D 与 M4N2 家族见第~\ref{ch:30}~章的 fp8
         同构实现。

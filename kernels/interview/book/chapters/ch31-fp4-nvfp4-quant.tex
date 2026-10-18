@@ -88,11 +88,11 @@ smooth-Q/K 是\textbf{强制开启，不是选项}（skill §6.2）：e2m1 的 �
 ffpa 的答案是把三种尺度手段全部用上：
 \begin{enumerate}[itemsep=0pt,topsep=2pt]
   \item \textbf{microscaling}：每 16 个元素共享一个 ue4m3 scale
-        factor，块内 $\mathrm{amax}$ 归一到 e2m1 满量程 6；
+        factor，块内 $\mathrm{amax}$ 归一到 e2m1 满量程 6。
   \item \textbf{smoothing}：Q 减 128 行块均值 $q_m$、K 减序列均值
         $\bar k$（强制），V 减列均值 $v_m$（可选），均值的影响走精确
         的 fp32 旁路（$\Delta S$ 修正项与 lse/epilogue 加回），不占
-        量化预算；
+        量化预算。
   \item \textbf{hadamard 旋转}（可选）：行内 WHT 把通道间 outlier 方差
         摊平（第~\ref{ch:28}~章 §11.9 同机制，fp4 把它 fused 进量化
         kernel）。
@@ -122,7 +122,7 @@ dequant 隐含在乘法里：
 \end{equation}
 即 SM120 的 \texttt{m16n32k64 kind::mxf4nvf4 ue4m3 scale\_vec::4X}
 指令（\texttt{attn\_traits.cuh} L30--37 注释、L77 的
-\texttt{MMAAtom}）：MMA 读入的是 4 bit 数据 +
+\texttt{MMAAtom}）。MMA 读入的是 4 bit 数据 +
 SF 旁路，累加时按块乘回尺度。MXFP4（e2m1 + ue8m0/32 块）在 SA3
 Table 1 中精度低于 NVFP4（ue8m0 只有 8 bit 指数无尾数，SF 本身步长
 100\%），ffpa 未采用。
@@ -153,6 +153,7 @@ $\hat Q=\phi(Q-q_m)$、$\hat K=\phi(K^\top-\bar k)$，score 的精确重构
   \label{eq:31-deltas}
 \end{equation}
 （GQA 下 K/V 按 kv 头 $h_{kv}$ 索引，MHA 时退化为 $h_{kv}=h$。）
+
 而式~\ref{eq:31-deltas} 右边的 $K-\bar k$ 必须避免物化，它等于
 \begin{equation}
   \Delta S=\underbrace{q_m K^\top}_{\text{低秩 GEMM}}
@@ -160,7 +161,7 @@ $\hat Q=\phi(Q-q_m)$、$\hat K=\phi(K^\top-\bar k)$，score 的精确重构
   \label{eq:31-deltas-id}
 \end{equation}
 \texttt{delta\_s.cuh} 头注释（L3--8）明确给出这个恒等式：
-kernel 的 $S=\hat Q\hat K^\top+\Delta S$ 恰好等于 $q(k-\bar k)^\top$，
+kernel 的 $S=\hat Q\hat K^\top+\Delta S$ 恰好等于 $q(k-\bar k)^\top$。
 于是 lse 修正只需要 $scale\cdot\mathrm{dot}(q_{row},\bar k)$（任何多余
 的行常数会平移 lse 但不改变 $O$）。$\Delta S$ 在量化链里一次算好
 （fp32 物化，pad 列零填），主 kernel 每个 kv tile 加载即用。
@@ -231,7 +232,7 @@ scale 仍是零，MMA 贡献恒为 0，QK 的 $D$ 归约与 PV 的 pad 行都不
 
 hadamard 能融合进量化链，前提是 WHT 线性
 （$\mathrm{mean}(Hq)=H\,\mathrm{mean}(q)$，$HH^\top=I$）$\Rightarrow$ 均值与旋转
-可交换：$q_m$、$\Delta S$、$q_{km}$ 全部可以在\textbf{未旋转域}计算；
+可交换：$q_m$、$\Delta S$、$q_{km}$ 全部可以在\textbf{未旋转域}计算。
 旋转域里需要替换的只有两处：Q 段量化 bias 的减除改用旋转副本
 $q_m^{rot}$，lse 的 $\mathrm{dot}(q_{row},\bar k)$ 项用 $\bar
 k^{rot}$（L101--108 注释）。于是 WHT 旋转可以 fused 进量化 kernel
@@ -362,7 +363,7 @@ $\bar k^{rot}$ 因输入 $\bar k$ 早已就绪，保留外部小 kernel
 
 fused WHT 的蝶形拆分记在这里（L195--235）：token 的 4 个线程连续分布，
 每线程 $k_E=kHeadDim/4$ 个元素，距离 $<k_E$ 的蝶形对全在
-thread-local 数组里原地做（\texttt{dist} 从 $k_E/2$ 递减到 1），
+thread-local 数组里原地做（\texttt{dist} 从 $k_E/2$ 递减到 1）。
 只剩距离 $k_E$ 与 $2k_E$ 的两级跨线程交换用
 \texttt{shfl\_xor(1)}/\texttt{shfl\_xor(2)} 完成，整行 WHT 零
 smem、零额外寄存器数组。最后乘 $rsqrt(kHeadDim)$ 归一。
@@ -484,6 +485,7 @@ $t\to t$ 直接对齐（\texttt{fp4\_pscale.cuh} L523--524）；置换补偿只
   \item \textbf{attn\_bias 注入}：bias 列同样要过 $kv\_perm32(j)$
         （\texttt{fp4\_gemm.cuh} L55--60），gmem 与 smem 两个变体同样处理。
 \end{itemize}
+
 tile 级跳过（\texttt{mask\_start\_tile}/$T_{c,eff}$）不受影响：
 $\pi$ 是每 32 列窗口内的双射，tile 粒度的 causal 边界公式保持原样。
 
@@ -919,13 +921,13 @@ python -m ffpa_attn.bench --fwd-backend cuda --cuda-impl fp4 \
 
 \begin{itemize}[itemsep=0pt,topsep=2pt]
   \item \texttt{cute/fp4/quantize\_fp4.cuh} 头注释（L1--14）：SA3
-        移植边界与 padding 约定；
+        移植边界与 padding 约定。
   \item \texttt{cute/fp4/delta\_s.cuh} 头注释（L1--18）：rank-1 恒等式
-        与 memory-bound 判断；
+        与 memory-bound 判断。
   \item \texttt{cute/fp4/fp4\_gemm.cuh}（L24--30）：kv\_perm32 闭式与
-        perm-aware bias 注入；
+        perm-aware bias 注入。
   \item \texttt{cute/fp4/attn\_traits.cuh}（L51--63）：kStages 的 smem
-        预算推导与 mxfp8 stage 史；
+        预算推导与 mxfp8 stage 史。
   \item SageAttention3 论文 §3.1--3.3（NVFP4 格式、两级 P 量化、K
         置换）；两级 P 量化的数学与实现见本书第~\ref{ch:32}~章。
 \end{itemize}

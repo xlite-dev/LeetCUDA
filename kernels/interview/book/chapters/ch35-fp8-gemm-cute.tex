@@ -111,8 +111,10 @@ $128\times256$ 的 64\,KB。K 循环结束后
 整个 smem 池都空闲了，直接把 \texttt{shm} 头部 rebind 成
 \texttt{SmemLayoutO}。这里有一个 fp8 特有的限制：单个 stage 装不下同几何的
 O，$B$ 区 32\,KB 放不下 64\,KB 的 O，fp16 kernel 复用一个 A stage 的老经验
-在 fp8 下失效。参数化之后，这条几何约束写成通用形式
-\texttt{cosize(SmemLayoutO)*2B <= kStages*(BM+BN)*128}：K 循环一结束所有
+在 fp8 下失效。
+
+参数化之后，这条几何约束写成通用形式
+\texttt{cosize(SmemLayoutO)*2B <= kStages*(BM+BN)*128}。K 循环一结束所有
 stage 都空闲，O 只要装得进整个 A+B 区即可，静态断言在编译期保证这条约束
 （默认档 64\,KB vs 96\,KB 通过；$256\times256$/s2 的 O 是 128\,KB、与 A+B 区
 取等，该静态断言仍成立，真正挡住它的是整块 smem 128\,KB 超过 99\,KB 的
@@ -126,15 +128,18 @@ F32E4M3E4M3F32\_TN}：mma.sync 形态的 fp8 指令（sm\_89 引入，sm\_120 �
 支持），$K$ 步长 32：$BK{=}128$ 的 K-tile 恰好切成 4 个 k-slice，与
 \texttt{gemm\_ss} 的软件流水（源自 flash-attention 的同名工具，
 \texttt{fp8\_gemm.cuh} L303--350 的最小集，另有 \texttt{convert\_layout\_
-acc\_rowcol} 与 \texttt{convert\_type} 两个 epilogue 工具）对齐。为什么不用
-Hopper 的 WGMMA fp8 形态？教学主线选择
+acc\_rowcol} 与 \texttt{convert\_type} 两个 epilogue 工具）对齐。
+
+为什么不用 Hopper 的 WGMMA fp8 形态？教学主线选择
 与第~\ref{ch:26c}~章一致的 mma.sync 路线：寄存器 fragment 布局可控、
 per-thread 的行列坐标视图（epilogue 要用）直接可得，而 WGMMA 的 accumulator
 在寄存器里的抽象层级更高、教学展开反而不利。ffpa 的 sm\_120 kernel 实测
 两条路线的峰值差距不大（附录~\ref{app:B}）。
 
 四个参数，两条独立的约束。\texttt{Fp8GemmTraits} 把 $BM,BN,BK,
-k_{Stages}$ 全都开放成模板参数。其中 $BK$ 由 SW128 atom 固定（第一项），
+k_{Stages}$ 全都开放成模板参数。
+
+其中 $BK$ 由 SW128 atom 固定（第一项），
 $BM$ 必须是 16 的倍数（M8N1 要把 warp 铺满 M），$BN$ 必须是 64 的倍数
 （bf16 的 SW128 atom 行宽 64 元素），$k_{Stages}\ge 2$（O staging 要复用
 stage 区）。反过来，$BM$ 与 $BN$ 在性能上的作用完全不对称：$BM$ 只决定
@@ -143,7 +148,7 @@ warp 数（$BM/16$，即 CTA 大小），每线程 acc 量 $=BN/2$ 只由 $BN$ �
 
 下文 35.4--35.6~节的结构讲解与示意图仍以 $128^3$/s3 为主线，理由
 是这个配置同时是 smem 边界点和协议最对称点（8 warp $\times$ 16 行
-$=128$ 恰好覆盖 $BM$），三级流水也把预取时机表现得最清楚；换成默认档只是
+$=128$ 恰好覆盖 $BM$），三级流水也把预取时机表现得最清楚。换成默认档只是
 $\mathrm{acc}$ 从 64 变 128 个 f32、流水从 3 级变 2 级，结构与协议一字不改
 （\texttt{Fp8GemmTraits<128,128,128,3>} 一行即可切回）。\emph{所有实测数字
 （35.8~节）一律取默认档}。
@@ -314,14 +319,15 @@ WS 版与 non-WS 的\textbf{数学逐 bit 相同}（MMA 序列不变），差异
   \item \textbf{128 线程 producer warpgroup}：只有线程 0 发 TMA，
         其余 127 个线程在 \texttt{warpgroup\_reg\_}\allowbreak
         \texttt{dealloc<32>()} 后空转
-        （寄存器降到 32，把预算让给 consumer）；
+        （寄存器降到 32，把预算让给 consumer）。
   \item \textbf{256 线程 consumer}：\texttt{warpgroup\_reg\_}\allowbreak
         \texttt{alloc<232>()} 拿回寄存器，跑与 non-WS 完全相同的
         \texttt{gemm\_ss} 循环；
-        \texttt{empty} 的 init count 是 256（只数 consumer）；
+        \texttt{empty} 的 init count 是 256（只数 consumer）。
+
   \item \textbf{epilogue 换 NamedBarrier}：producer 已经跑完退出，CTA 级
         \texttt{\_\_syncthreads()} 会数 384 个线程、永远无法满足，换成
-        \texttt{NamedBarrier::arrive\_and\_wait(256)} 只同步 consumer；
+        \texttt{NamedBarrier::arrive\_and\_wait(256)} 只同步 consumer。
   \item \textbf{setmaxnreg 直接调 cutlass API}：不走 LeetCUDA 的
         \texttt{NOTES\_V2\_REG\_*} 宏封装，直接调用
         \texttt{cutlass::arch::}\allowbreak\texttt{warpgroup\_reg\_}\allowbreak
@@ -336,13 +342,14 @@ WS 版与 non-WS 的\textbf{数学逐 bit 相同}（MMA 序列不变），差异
 \end{itemize}
 
 GEMM 与 attention 的一个对照：第~\ref{ch:26c}~章大 $D$ 下 non-WS 赢
-是因为 acc 寄存器占满、setmaxnreg 无寄存器可释放；本章 $D$ 换成了 $K$ 方向的
+是因为 acc 寄存器占满、setmaxnreg 无寄存器可释放；GEMM 把 $D$ 换成了 $K$ 方向的
 累加（acc 恒 64 f32/线程），寄存器有余量，setmaxnreg 有释放空间：在
 $128^3$/s3 上 WS 稳定快 $2.6\%\sim2.9\%$（412.1 vs 400.4 @4096$^3$、
 460.8 vs 449.3 @8192$^3$，35.8.4~节扫描表）。但换成默认宽 tile
 （$128\times256$/s2）这点收益就基本消失了：440.9 vs 440.7（$+0.05\%$）。
 35.8.5~节的 NCU 读数解释了为什么：$BN$ 翻倍后 tensor pipe 占用率已从
 $74\%$ 提到 $81\%$，WS 换来的重叠不再构成瓶颈。
+
 收益不像 attention 场景那样单边。判断仍然成立：WS 的收益来自发射与消费的
 重叠度，加上寄存器再分配的空间；GEMM 的发射路径本来就短（每 tile 只有
 4 个 K-tile 的 TMA），重叠收益有限。
@@ -368,7 +375,7 @@ L868 起的 \texttt{FP8\_GEMM\_LAUNCH} 宏按 $(per\_row\_a, per\_col\_b, ws)$
 返回。kernel 与量化 kernel 自己不重复检查（34.2.2~节的约束表）；
 \textbf{其二}，TMA descriptor 在 \texttt{fp8\_gemm\_tma\_fwd} 的 host 栈上
 构建（\texttt{make\_tma\_copy} 内部完成对齐校验），经
-\texttt{\_\_grid\_constant\_\_} 传参，不占 gmem；\textbf{其三}，全链路
+\texttt{\_\_grid\_constant\_\_} 传参，不占 gmem。\textbf{其三}，全链路
 （量化 + 主 kernel）共用调用方给的 stream，无内部同步，与 cuBLAS 的
 stream 语义对齐，多流复用没有额外障碍。
 
@@ -378,12 +385,16 @@ kernel-only 行（量化一次、循环只跑主 kernel）与 E2E 行（循环�
 参照系是同 shape 的 cuBLAS BF16 GEMM
 （\texttt{CUBLAS\_COMPUTE\_32F} 累加、\texttt{CUDA\_R\_16BF} 存储）。这
 给了两个视角：kernel-only 回答 FP8 MMA + TMA 流水本身多快，E2E 回答
-一个真实推理调用（含量化）是否划算。另有一条独立入口
-\texttt{--fp8-gemm-sweep}（\texttt{bench\_fp8\_gemm\_tile\_sweep}）：
+一个真实推理调用（含量化）是否划算。
+
+另有独立入口 \texttt{--fp8-gemm-sweep}
+（\texttt{bench\_\allowbreak{}fp8\_\allowbreak{}gemm\_\allowbreak{}tile\_\allowbreak{}sweep}）：
 不复用标准表，而是把 \texttt{Fp8GemmTraits} 的 tile 与流水深度逐个
 实例化、逐个计时，每行附 Max Err 与 smem 占用（35.8.4~节的唯一数据源）。
-它还接受一个环境变量 \texttt{FP8\_SWEEP\_CFG="128x256x128 s2 ws"}：设了
-就只发这一个配置，使 \texttt{ncu --launch-skip 1 --launch-count 1} 能
+它还接受一个环境变量
+\texttt{FP8\_\allowbreak{}SWEEP\_\allowbreak{}CFG="128x256x128 s2 ws"}：设了
+就只发这一个配置，使
+\texttt{ncu --launch-\allowbreak{}skip 1 --launch-\allowbreak{}count 1} 能
 精确命中目标实例化（kernel 名不含模板实参，\texttt{-k} 正则区分不开）。
 默认档（$128\times256\times128$/s2）在标准表与扫描表的行标上都显式标了
 出来（\texttt{<= lib default}），读者不必从一堆 tile 里自行对照查找。
@@ -529,7 +540,9 @@ F32 累加语义没有被打折执行。第二，慢的瓶颈是\textbf{精度�
 类型：fp16 只要切到 \texttt{COMPUTE\_32F} 就从 235.6 降到 163.9，与 bf16
 相同。fp16 可用 \texttt{COMPUTE\_16F} 进入 256$\times$128 大 tile 的快
 kernel，而 bf16 没有 f16 累加这个档位（bf16 输入只能 F32 累加），只能
-走慢路径。第三，也是根因：本机 cuBLAS（CUDA 13.2）在 sm\_120 消费/
+走慢路径。
+
+第三，也是根因：本机 cuBLAS（CUDA 13.2）在 sm\_120 消费/
 专业卡上，\texttt{COMPUTE\_32F} 档的 kernel 池里\textbf{只有 Ampere 时代
 （sm\_80）的 CUTLASS 2.x 旧 kernel}（上表名字里的 \texttt{cutlass\_80}
 就是明证），没有 Blackwell 的 nvjet/原生 kernel，heuristic 只能在
@@ -545,10 +558,10 @@ heuristic 偏保守：库在这张卡上收录的 32F-acc kernel 只有这些。
 硬件本身没有瓶颈。本书第~\ref{ch:24}~章的 CuTe HGEMM 用 F32 累加在
 同一张卡、同一 shape 实测 243~T（fp16 输入；Blackwell tensor core
 规格表里 fp16 与 bf16 的 dense 吞吐是同一行数字，F32 累加也不降速）。
-也就是说 240~T 的预期是对的，只是 cuBLAS 在 sm\_120 上没给 32F-acc
+240~T 的预期是对的，只是 cuBLAS 在 sm\_120 上没给 32F-acc
 档准备相应的 kernel。
 
-于是本章的加速比有两种读法，都成立、都该看：
+于是这个加速比有两种读法，都成立、都该看：
 
 \begin{itemize}[itemsep=1pt,topsep=2pt]
   \item \textbf{vs cuBLAS BF16（163.5~T）}：$2.70\times$（4096$^3$）。
@@ -562,8 +575,8 @@ heuristic 偏保守：库在这张卡上收录的 32F-acc kernel 只有这些。
 \end{itemize}
 
 两个口径相差 0.9 个点。跑赢一个慢基线不等于达到硬件上限，这个教训是通用
-的：做性能报告时，基线本身要先过一遍 sanity check，本节的 \texttt{nsys}
-取证（kernel 名 + 单次耗时）就是最小成本的做法。
+的：做性能报告时，基线本身要先过一遍 sanity check，\texttt{nsys} 取证
+（kernel 名 + 单次耗时）就是最小成本的做法。
 
 \subsection{量化开销}
 
@@ -574,14 +587,14 @@ $\approx 736\,\mu s$，量化链占用约 $424\,\mu s$。这条链搬运的字�
 $3\times MK$（读 bf16 写 e4m3，A 侧）$+2\times MK$（A 侧第二遍 gmem 读）$+3\times NK$（B 侧）$\approx
 8\cdot 4096^2\,\text{B}\approx 134\,\text{MB}$（B 的双朝向 staging 再加
 一遍 smem 但不增 gmem），$424\,\mu s$ 对应有效带宽
-$\approx 316\,\text{GB/s}$：\textbf{离 PRO 5000 的 DRAM 理论带宽
+$\approx 316\,\text{GB/s}$。\textbf{离 PRO 5000 的 DRAM 理论带宽
 1344~GB/s 还差四倍多}，差距来自 B 量化 kernel 的两遍读 + smem 往返，
-以及 A 侧两遍 gmem 读的教学取舍（34.5.1~节）。生产级实现会把 A/B 量化
-合进一个 kernel、单遍统计 + 写出（ffpa 的 fused 形态，第~\ref{ch:28}~章
-28.4.3~节），
-E2E 数字还有一倍以上空间，这是留给读者的第一道习题。权重离线量化
-（35.8.3~节）先把 B 的这份开销省掉，A 侧剩下的部分则进一步靠并进上游
-norm/rope 尾部来吸收。
+以及 A 侧两遍 gmem 读的教学取舍（34.5.1~节）。
+
+生产级实现会把 A/B 量化合进一个 kernel、单遍统计 + 写出（ffpa 的 fused
+形态，第~\ref{ch:28}~章 28.4.3~节），E2E 数字还有一倍以上空间，这是留给
+读者的第一道习题。权重离线量化（35.8.3~节）先把 B 的这份开销省掉，A 侧
+剩下的部分则进一步靠并进上游 norm/rope 尾部来吸收。
 
 第二道习题：$M{=}4097$ 的尾 tile 只含 1 行有效数据，MMA 浪费
 $127/128$，但 4097 行只多出 1 个 m-tile（33 vs 32），额定多出
@@ -594,7 +607,7 @@ $1/32\approx 3\%$ 的工作量。实测 440.4 vs 440.7（$<0.1\%$）：多出的
 \subsection{权重 B 离线量化：部署形态}\label{sec:35-b-offline}
 
 上一节把量化链的开销算成 $MK+NK$ 的带宽需求，工程上还有更直接的做法：
-$B$ 是权重、$A$ 是激活，这个不对称决定了两侧不必付出同等的开销：$\delta_b$
+$B$ 是权重、$A$ 是激活，这个不对称决定了两侧不必付出同等的开销。$\delta_b$
 只由权重的数值分布决定，一次算好即可随 checkpoint 落盘；$\delta_a$
 依赖当前 token 的取值范围，必须每次前向现算。据此把 API 一分为
 二：\texttt{fp8\_gemm\_quantize\_b} 负责 $B\to B_8^{\top}+\delta_b$
@@ -609,7 +622,7 @@ $O(MK)$ 的暂存（\texttt{Fp8GemmActivation}）：$B_8^{\top}$（$NK$
 
 两条路数值等价：$\delta_b$ 与第几次调用无关，离线算出的
 $\delta_b$ 就是全链路里现算的那个，Max Err 与全链路行完全一致（表中
-$B$ off 行）；本章最小测试对四种粒度组合与尾部 shape 各跑一遍两条路并
+$B$ off 行）；最小测试对四种粒度组合与尾部 shape 各跑一遍两条路并
 逐 bit 比对（\texttt{bit-exact=YES, diff=0}）。这条等价性是结构性的而非
 数值巧合：B 的量化只有一份实现（\texttt{fp8\_gemm\_quantize\_b} 由全链路
 与离线路径共用），A 侧量化与主 kernel 也都是同一份代码，离线只是把
@@ -624,9 +637,8 @@ A 侧残留开销的量级：4096$^3$ 只剩 $\approx 22\,\mu s$
 （$A$ 134~MB）升到 $\approx 287\,\mu s$，正是带宽受限下的耗时量级，也说明
 B 离线之后 E2E 的瓶颈已经回到主 kernel。生产推理栈
 （TensorRT-LLM、vLLM、ffpa-attn）里的 FP8 权重都是离线量化后按
-$B_8^{\top}$ 布局落盘的，运行时只做激活量化：本节的
-\texttt{\_b\_offline} 路径就是那个形态的最小复刻，也是本部分从教学链路
-走向可部署算子的一步。
+$B_8^{\top}$ 布局落盘的，运行时只做激活量化：\texttt{\_b\_offline} 路径
+就是那个形态的最小复刻，也是本部分从教学链路走向可部署算子的一步。
 
 还能进一步压缩的是 A 侧那 $\approx 287\,\mu s$ 本身。它的根因是
 先物化 BF16 激活、再单独起一个量化 kernel 这个两段式：$A$ 写进显存
@@ -651,12 +663,13 @@ $128^3$/s3 是最自然的一档：tile 与 smem 上限对齐、三级流水是�
 容纳的最大整数级数、SW128 恰好铺满一行。但 tile 几何与流水深度共用同一块
 99\,KB 的 smem：$BN$ 每加一倍，每 stage 就多 16\,KB，能塞的级数随之下降。
 哪一头收益更大只能实测，而扫描的结论正是 35.3~节里那个默认档
-（$128\times256$/s2）：本节给出它的证据，也给出它并非普适的那个反例。
+（$128\times256$/s2）。扫描表既给出它的证据，也给出它并非普适的那个反例。
+
 扫描入口 \texttt{--fp8-gemm-sweep}（形状由
 \texttt{--mnk} 给）把 \texttt{Fp8GemmTraits} 的 $BM,BN$ 扫
 $\{64,128,256\}^2$、$k_{Stages}$ 扫 $\{2,3,4\}$，在 4096$^3$ 与 8192$^3$
 两档形状上各扫一遍（大形状的意义在 K 长度：$K/128$ 从 32 个 K-tile 翻到
-64 个，流水的启动/排空占比减半），每个配置先与 cuBLAS BF16 对一次 Max Err
+64 个，流水的启动/排空占比减半）。每个配置先与 cuBLAS BF16 对一次 Max Err
 （4096$^3$ 全组合 $4.50$、8192$^3$ 全组合 $6.25$，与主表 rc 行同值；tile
 参数改错会立刻在这一列暴露出来），再走同一套 warmup/repeat 计时。为不让编译
 时间失控，超限的组合不实例化，只按公式列出所需 smem。
@@ -766,9 +779,10 @@ $s{=}3$；$s{=}4$ 的劣势在 8192$^3$ 上同样成立。本图用 4096$^3$ 作
 四条结论：
 
 $BN$ 比 $BM$ 收益大：$128\times256$ 比 $256\times128$ 在两档
-形状上都快约 $8.5\%$（441.9 vs 407.8；484.7 vs 445.5）；$64$ 行档两者打平
+形状上都快约 $8.5\%$（441.9 vs 407.8；484.7 vs 445.5）。$64$ 行档两者打平
 （350.8 vs 345.4；383.7 vs 382.3）。这个比例在两档形状上几乎不变，说明它
 由 tile 几何本身决定，与 K 长度无关，正是下一段的解析模型所预测的。
+
 机理在 35.8.5~节的读数里：M8N1 下每个 warp 都要读整个 $B$ tile，于是每输出
 每 K-tile 的 smem$\to$寄存器读量是
 $8 + 128/BN$ 个元素（$8=$ warp 数即 $B$ 的复制倍数，$128/BN$ 是 $A$ 侧
@@ -784,7 +798,9 @@ $64\times128$（s2 在两档都快 $8\%$，那是它 $s{=}3$ 独占 72\,KB 后 C
 并发的损失）；把 6 个两两可比的几何取平均，$s3/s2$ 从 4096$^3$ 的 $0.981$
 升到 8192$^3$ 的 $0.994$。\emph{方向一致但幅度只有 1 个百分点}：三级
 以上的收益要靠更长的 K 才体现得出来（$K/128$ 从 32 个 K-tile 翻到 64 个，
-启动/排空占比减半）。$s{=}4$ 则在两档上一致最低（只有 ws 窄 tile 上与前两级
+启动/排空占比减半）。
+
+$s{=}4$ 则在两档上一致最低（只有 ws 窄 tile 上与前两级
 持平），原因还是每 SM 只有 100\,KB smem：$128^3$/s3 就已经占用 96\,KB、
 只能放 1 个 CTA，第 4 级只换来更长的尾部 drain。（这与第~\ref{ch:32}~章
 FP4 persist-D 的 stages 实验同结论：流水深度不是 attention/GEMM 的瓶颈。）
@@ -806,12 +822,14 @@ $256\times256$ 在本卡装不下。两级就要 128\,KB $>$ 99\,KB
 $17\%$。原因是\textbf{波次量化}：$128\times256$ 的 grid 是
 $16\times8=128$ 个 CTA，本卡 110 个 SM 要跑 2 波，填充率
 $128/(2\times110)=58\%$；$128\times128$ 给出 $16\times16=256$ 个 CTA
-（3 波，$78\%$）反而更均匀。$BN$ 决定每字节 smem 的 MMA 次数
-（单 CTA 效率），波次量化决定 CTA 数的均匀性（全卡利用率），两者在
-96\,KB 这块预算里相互制约，生产库按问题尺寸查表选 tile 就是这个原因。
+（3 波，$78\%$）反而更均匀。
+
+$BN$ 决定每字节 smem 的 MMA 次数（单 CTA 效率），波次量化决定 CTA 数的
+均匀性（全卡利用率），两者在 96\,KB 这块预算里相互制约，生产库按问题尺寸
+查表选 tile 就是这个原因。
 本教学案例的默认档是一个固定值，因此在 $2048^3$ 及更小的形状上它
 \emph{不是}最优：把模板实参换回 \texttt{Fp8GemmTraits<128,128,128,3>}
-即可复现 292.8\,T。这条反例也提醒读者：本章所有加速比都带形状前提，
+即可复现 292.8\,T。这条反例也提醒读者：所有加速比都带形状前提，
 读表先看形状。
 
 综合两条轴，\textbf{大形状上的最快档是 ws $128\times256\times128$/s2}：
@@ -914,14 +932,18 @@ $128^3$ tile + SW128 + 三级 mbarrier 流水（96\,KB smem；库默认档把同
 在标准 bench 链上对 cuBLAS BF16 取得 kernel-only $1.8\times\sim3.0\times$、
 E2E $0.6\times\sim1.9\times$（形状依赖）的成绩。而 35.8.1~节的基线
 剖析说明这个数字的两种读法：库现状口径 $2.70\times$，手写 bf16 上限口径
-$1.81\times$。35.8.3~节再把 E2E 路径补齐：权重 $B$ 离线量化后，每次前向
+$1.81\times$。
+
+35.8.3~节再把 E2E 路径补齐：权重 $B$ 离线量化后，每次前向
 只剩激活量化（$O(MK)$），E2E 回到 $1.64\times\sim2.63\times$：量化 GEMM
 从能跑赢 cuBLAS 走到部署里真的划算；激活侧残余的那点带宽开销，最后
-由并进上游 norm/rope 尾部的模型相关融合清零。最后 35.8.4$\sim$35.8.5
-~节把 tile 这件事从 $128^3$ 是惯例变成 $128^3$ 是折中：把 $BM,BN$
-与流水深度逐个实例化实测后，大形状上最快的档是 $128\times256$ 配 2 级流水
+由并进上游 norm/rope 尾部的模型相关融合清零。
+
+最后 35.8.4$\sim$35.8.5~节把 tile 这件事从 $128^3$ 是惯例变成 $128^3$ 是
+折中：把 $BM,BN$ 与流水深度逐个实例化实测后，大形状上最快的档是
+$128\times256$ 配 2 级流水
 （443.7/487.8~T，比 $128^3$/s3 再快 $7.7\%/5.9\%$），库默认实参取的就是
-它；而它成立的理由不在计时表里，在 NCU 读数里：$BN$ 决定\emph{每字节
+它。而它成立的理由不在计时表里，在 NCU 读数里：$BN$ 决定\emph{每字节
 smem 供给 tensor core 的 MMA 次数}，流水深度决定\emph{重叠}，两者都被
 99\,KB 的 smem 上限约束住。这条结论还带一个形状前提：$2048^3$ 上宽 tile
 只有 128 个 CTA，波次量化让它比 $128^3$/s3 慢 $17\%$。\emph{最优 tile 是
