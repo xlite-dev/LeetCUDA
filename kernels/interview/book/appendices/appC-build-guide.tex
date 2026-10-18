@@ -15,9 +15,9 @@
         公共 flags：\texttt{-std=\allowbreak{}c++20 -O3 --expt-relaxed-constexpr
         --use\_\allowbreak{}fast\_\allowbreak{}math} + cutlass/cudnn-frontend include。
   \item \texttt{book/\allowbreak{}tests/\allowbreak{}build\_\allowbreak{}tests.\allowbreak{}sh}——编译并运行每章最小正确性测试。
-        本书的作用是\textbf{取代集成辅助工具的正确性验证角色}：对拍一律
+        本书的作用是取代集成辅助工具的正确性验证角色：对拍一律
         CPU fp64，无 cuBLAS/cuDNN 依赖，可在任何机器复现；辅助工具保留为
-        集成 bench，现为多 TU：\texttt{bench/bench\_leetcuda.cu}（440 行）只剩 main 与
+        集成 bench：\texttt{bench/bench\_leetcuda.cu}（440 行）只剩 main 与
         CLI 解析，host 侧 test/bench 拆到 \texttt{bench/} 下 base/sgemv/sgemm/hgemm/
         fp8\_gemm/fp4\_gemm/flash\_attn/ffpa\_attn 八个模块 .cu 与
         \texttt{bench/utils.cu} 共享工具。

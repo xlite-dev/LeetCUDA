@@ -8,7 +8,7 @@
 指数位、三个尾数位。本章再往下走一档：\textbf{NVFP4}（e2m1 + ue4m3
 micro-scale），每元素只有 4 bit。这一步不是把 e4m3 的位数降一半那么
 简单：e4m3 有 8 个数值位，相邻码点的相对间距恒为 $2^{-3}/2$；e2m1 只有
-$1+2+1$ 位，\textbf{每个 2 的幂区间只放得下两个码点}，量化步长随量级成倍变化。
+$1+2+1$ 位，每个 2 的幂区间只放得下两个码点，量化步长随量级成倍变化。
 精度的损失不是线性缩小，而是结构改变，本章要讲清的就是这件事。
 
 而 NVFP4 能把这一档损失控制住的关键，是它的\textbf{两级 scale 结构}：数据侧每
@@ -18,7 +18,7 @@ $1+2+1$ 位，\textbf{每个 2 的幂区间只放得下两个码点}，量化步
 既省存储（16 元素 1 字节）又完全没有额外开销（由 MMA 硬件消费，不进寄存器算术）。
 
 本章的组织方式：先讲线格式（e2m1 与 ue4m3 的位域与码表），再讲量化算法与
-折叠恒等式，然后花整整一节把\textbf{误差模型}完整推导：这是全书对 NVFP4 唯一
+折叠恒等式，然后花整整一节把误差模型完整推导。这是全书对 NVFP4 唯一
 能讲深的定量部分，本节会给出逐格累加、饱和项、ue4m3 SF 舍入项三者的分别贡献，
 并用蒙特卡洛与 kernel 实测三方对齐（结论：单侧 10.2\%、GEMM 双侧
 $\sqrt{2}\times 10.2\% = 14.4\%$，与实测 14.4\% 吻合到小数点后两位）。最后
@@ -75,13 +75,13 @@ scale。这在 NVFP4 里的 \emph{level-2} 就是这个形态，但它单独使�
   \item \textbf{下溢归零}：ue4m3 的最小正数是次正规 $2^{-9} \approx
         0.001953$。若某组的 $\mathrm{amax} < 6\times 2^{-10} = 0.005859$，
         则 $\mathrm{amax}/6 < 2^{-10}$，编码直接舍到 0，整组 16 个元素全部
-        变成 0。这不是精度差，是\textbf{信息全部丢失}（相对误差 100\%）。
+        变成 0。这不是精度差，是信息全部丢失（相对误差 100\%）。
   \item \textbf{量程浪费}：ue4m3 的满量程是 448，而一次矩阵乘里各组的
         amax 通常只落在很窄的一段（比如激活值的行内 amax 都在 $1\sim3$），
         直接把 amax 当 scale 用，等于只用掉 ue4m3 码表的一小段。
 \end{itemize}
 
-\textbf{level-1 就是为了解决这两件事}：在 per-16 的 ue4m3 之上，再加一层
+level-1 就是为了解决这两件事：在 per-16 的 ue4m3 之上，再加一层
 fp32 的矩阵/行/列级 scale $s$，把数据先除到 amax 落在 $6\times 2^{-6}
 \sim 6\times 448$ 之间的理想区间（即 SF 落进 ue4m3 的正常数区，
 $2^{-6}\sim 448$），于是 level-2 的 SF 永远不会下溢。$s$ 的取值让一整行
@@ -116,7 +116,7 @@ $2^{-6}\sim 448$），于是 level-2 的 SF 永远不会下溢。$s$ 的取值�
 \end{equation}
 
 其中 $\hat{A}_{m,k} = \mathrm{SF}^A_{m,\lfloor k/16\rfloor}\,\tilde{A}_{m,k}$
-是 \textbf{level-2 已折回}的值，$\tilde{A}$ 才是真正存进 4-bit 的 e2m1
+是 level-2 已折回的值，$\tilde{A}$ 才是真正存进 4-bit 的 e2m1
 码。写清楚这条恒等式的三层含义：
 
 \begin{enumerate}[itemsep=2pt,topsep=3pt]
@@ -239,7 +239,7 @@ $[2^{-9},448]$，$0\text{x}7F$ 是 NaN）。}
 
 图~\ref{fig:36-bitfields} 的数轴把 e2m1 的非线性格画出来了：码点
 $0,0.5,1,1.5,2,3,4,6$ 之上的决策边界是相邻码点中点。最左格
-$[0,0.25]$ 与最右格 $[5,6]$ 特殊在这一点：$0$ 与 $6$ 都落在格的\textbf{边界}
+$[0,0.25]$ 与最右格 $[5,6]$ 特殊在这一点：$0$ 与 $6$ 都落在格的边界
 上，而不是格心。这一点在误差模型里是分量最大的一项。
 
 \subsection{硬件转换指令：平局取偶与 satfinite}
@@ -253,7 +253,7 @@ cvt.rn.satfinite.e2m1x2.f32   d, a, b;    // d 是 .b8，打包两个 4-bit
 两条语义细节必须严格确认，否则 CPU 参考实现永远无法与 kernel 输出对上：
 
 \begin{itemize}[itemsep=2pt,topsep=3pt]
-  \item \texttt{.rn} 是 round-to-nearest-\textbf{even}。e2m1 与 ue4m3 的平局
+  \item \texttt{.rn} 是 round-to-nearest-even。e2m1 与 ue4m3 的平局
         都取尾数为偶的那个码。实测（\texttt{ch36} 测试的 case~F，
         探针见 \texttt{.tmp/fp4bs/probe\_tie.cu}）：
         \texttt{e2m1(0.25)=0x0}（$0$ 与 $0.5$ 的中点取码 0）、
@@ -273,7 +273,7 @@ level-2 的 SF 在显存里不是按 (MN, K/16) 平铺的二维数组，而有�
 \textbf{128 行 $\times$ 4 个 SF = 512\,B 原子}（CUTLASS 的
 \texttt{Sm1xxBlockScaledConfig}，\texttt{Blk\_MN}=\texttt{\_128}、
 \texttt{Blk\_SF}=\texttt{\_4}）。一个原子覆盖 128 行 $\times$ 64 个 K 元素，
-原子内\textbf{全连续}，TMA 与 MMA 都适配这个形态：SF 的搬运和寻址都
+原子内全连续，TMA 与 MMA 都适配这个形态：SF 的搬运和寻址都
 是代价最低的连续访问。
 
 \begin{figure}[H]
@@ -339,7 +339,7 @@ atom 的官方搭配（第~\ref{ch:37}~章会看到 SF 的 smem 原子也来自�
 
 四个模式（\texttt{Fp4GemmScaleMode}）镜像第~\ref{ch:34}~章的 FP8 四粒度，
 但含义不完全一样：FP8 的四种是 $\delta$ 统计块的粒度组合；FP4 的
-\texttt{kSingleLevel} 与其余三种的差别是\textbf{有没有 level-1}，
+\texttt{kSingleLevel} 与其余三种的差别是有没有 level-1，
 而 \texttt{kLevel1A}/\texttt{kLevel1B}/\texttt{kTwoLevel} 是 level-1 作用在
 哪一侧。为什么两侧的 level-1 可以独立开关？因为
 式~\ref{eq:36-fold} 里 $s_{A,m}$ 与 $s_{B,n}$ 是相乘关系、互不耦合，这给
@@ -359,7 +359,7 @@ atom 的官方搭配（第~\ref{ch:37}~章会看到 SF 的 smem 原子也来自�
         与 8\,B 的写都天然满足合并访问（\texttt{Vec8BF16} 读两次拼 16 个
         元素，\texttt{uint2} 写一次落 16 个 nibble）。
   \item 补零行的 SF 必须显式写 0。A4 缓冲按 128 行向上取整，
-        超出 $M$ 的行不存在数据。TMA 装载越界行时会自动零填充\textbf{数据}，
+        超出 $M$ 的行不存在数据。TMA 装载越界行时会自动零填充数据，
         但\textbf{SF 缓冲区里的字节是量化 kernel 留下的}，若不清零，那些
         未初始化字节会被 MMA 当成 SF 乘进去（$0\times$NaN $=$ NaN），
         污染整条链。所以补零行要显式写 \texttt{bitcast(0)}。
@@ -391,7 +391,7 @@ bank 数（32）的整数倍，每读一次都是 32 路冲突。第~\ref{ch:37}
 
 \texttt{atomicMax} 本身只支持整数，这里用了一个小技巧：非负 IEEE754 浮点数的
 位模式与无符号整数序完全一致，所以对 $[0, +\infty)$ 的 amax 可以直接按
-\texttt{unsigned} 比大小。更关键的是\textbf{先除后取 max} 这一步：除以正常数
+\texttt{unsigned} 比大小。更关键的是先除后取 max 这一步：除以正常数
 是保序映射，所以 $\max_i(\mathrm{amax}_i/2688) = (\max_i \mathrm{amax}_i)/2688$
 在浮点下\textbf{逐位成立}，于是拆成 8 片后得到的 $s_B$ 与单块归约的旧版本
 bit 级一致。这类换并行划分但一个 bit 都不许变的约束，是量化 kernel
@@ -429,7 +429,7 @@ B4T 占 $4096^2/2 = 8$\,MB，SFB 占 $4096 \times 256 = 1$\,MB，即权重的
 
 \section{误差模型：从量化步长到 14.4\%}\label{sec:36-err}
 
-这是本章的核心一节。NVFP4 的误差不能沿用第~\ref{ch:34}~章相对步长恒定
+NVFP4 的误差不能沿用第~\ref{ch:34}~章相对步长恒定
 $2^{-3}$ 的模型：e2m1 的步长随量级变化，必须逐格算。
 
 \subsection{逐格累加：把 8 个格的误差贡献加起来}
@@ -448,7 +448,7 @@ amax 恰为 $6$ 时（归一化的目的），$y$ 在 $[-6,6]$ 上近似均匀�
 \end{equation}
 
 关键在于 $v_k$ 的两个形态。若码点在格心，$v_k = w_k^2/12$（均匀分布方差）；
-若码点在格\textbf{边}上（最外侧两格），$v_k = w_k^2/3$，是前者的
+若码点在格边上（最外侧两格），$v_k = w_k^2/3$，是前者的
 4 倍。逐格算出来：
 
 \begin{center}
@@ -520,13 +520,13 @@ $+$ 双侧（GEMM 里 A、B 都量化） & 两侧独立同分布，分子加倍�
         vs 模型 $14.38\%$，小数点后两位吻合。
   \item \textbf{实测对 level-1 几乎不敏感}：单级 14.37\%、A 侧 level-1
         14.48\%、B 侧 14.43\%、两级 14.54\%。这并不说明 level-1 没用：
-        \textbf{均匀随机数据里没有小幅度行}，level-1 的作用要到幅度分布
+        均匀随机数据里没有小幅度行，level-1 的作用要到幅度分布
         不均匀时才显现（下一小节）。
 \end{itemize}
 
 \paragraph{饱和项的符号是单向的} 组内最大值那个元素，若 SF 向下舍入
 （编码值小于 $\mathrm{amax}/6$），则 $x/\mathrm{SF} > 6$ 被 satfinite 压回
-$6$，元素被\textbf{系统性压低}；若 SF 向上舍入，则该元素误差正常。所以
+$6$，元素被系统性压低；若 SF 向上舍入，则该元素误差正常。所以
 NVFP4 的误差里有一个小的单边偏置项，它的量级是
 $|\Delta \mathrm{SF}/\mathrm{SF}| \approx 3.2\%$ 的幅度、但只作用在每组的
 一个元素上，折进 Frobenius 口径后为 $O(1\%)$，这也是 10.06\% 升到 10.17\%
@@ -605,14 +605,14 @@ level-2 $\times$ B 列 & 0.1443 \\
 \end{center}
 
 三点读法。四种组合的差异在 $1\%$ 以内，与误差模型一致（$U(-1,1)$ 数据下
-level-1 无从发挥作用）。WS 变体与 non-WS \textbf{数值完全一致}，
+level-1 无从发挥作用）。WS 变体与 non-WS 数值完全一致，
 第~\ref{ch:37}~章会说明这是设计使然（两条路走同一套量化产物与同一段
 epilogue 数学）。尾部 shape 与齐整 shape 一致，说明 M/N/K 的尾块处理
 （TMA 零填充 + store 裁剪 + K\%64 约束）没有引入额外误差。
 
 \texttt{book/\allowbreak tests/\allowbreak ch36\_fp4\_quantize.cu} 把上面的分析逐条落实为断言：
 SF 落点通式与 cute 权威布局全量枚举比对（13824 个落点）、A/B 两侧的 SF 与
-数据码点\textbf{逐 bit} 比对、补零行 SF 必须为 0、硬件平局取偶与 satfinite
+数据码点逐 bit 比对、补零行 SF 必须为 0、硬件平局取偶与 satfinite
 的行为，以及上面两个小幅度行的对照数值。这些断言的通过意味着
 第~\ref{ch:37}~章可以把全部注意力放在 MMA 与流水上，数值语义已经冻结。
 
@@ -622,13 +622,13 @@ SF 落点通式与 cute 权威布局全量枚举比对（13824 个落点）、A/
   \item NVFP4 $=$ e2m1（4-bit 数据）$+$ ue4m3（4-bit level-2 scale，每 16 个
         K 元素一个）$+$ fp32（level-1 scale，行/列级）。三个部件各自的位宽
         与量程决定了这套格式的能力边界。
-  \item e2m1 的步长\textbf{随量级翻倍}，最外侧两格的码点落在格边上
+  \item e2m1 的步长随量级翻倍，最外侧两格的码点落在格边上
         （格内二阶矩 $w^2/3$）。这两件事加起来把单侧误差推高到
         $\sqrt{0.14583/12}=11.02\%$；计入 max 归一与 ue4m3 SF 舍入后
         $10.2\%$；GEMM 双侧 $\sqrt2\times$ 得 $\mathbf{14.4\%}$，
         与 kernel 实测 $14.37\%$ 吻合。
   \item level-1 的唯一目的是把 level-2 的 SF 移出 ue4m3 的次正规区。
-        幅度小于 $6\times2^{-10}$ 的组在单级模式下会\textbf{整组归零}
+        幅度小于 $6\times2^{-10}$ 的组在单级模式下会整组归零
         （相对误差 100\%），实测复现。所以生产配置必须带 level-1。
   \item SF 在显存里是 128 行 $\times$ 4 SF 的 512\,B 连续原子，
         字节通式与 CUTLASS 的 \texttt{tile\_atom\_to\_shape\_SFA} 逐字节

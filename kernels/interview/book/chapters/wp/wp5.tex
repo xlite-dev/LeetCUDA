@@ -2,11 +2,11 @@
 \wph{布局代数（Layout Algebra）}
 \label{sec:layoutalgebra}
 
-尽管 \CuTe 布局只是所有可能函数空间中的一个子集，但与 {\tt BLAS}、{\tt torch.tensor} 和 {\tt numpy.ndarray} 等库中传统的扁平形状（flat-shape）与扁平步幅（flat-stride）表示相比，它能够表示严格更大的一组布局函数。
+\CuTe 布局只是所有可能函数空间中的一个子集，但相比 {\tt BLAS}、{\tt torch.tensor} 和 {\tt numpy.ndarray} 等库中传统的扁平形状（flat-shape）与扁平步幅（flat-stride）表示，它能表示严格更大的一组布局函数。
 
 除表示能力外，\CuTe 布局还可以被操作、组合，构造出新的布局。这是通过一组定义在布局上的核心代数运算实现的，这些运算还能进一步构造更高层的运算。
 
-在本节中，我们定义{\em 布局同态}（layout homomorphism），即接收一个或多个 \CuTe 布局、并产生一个满足某些函数性质的 \CuTe 布局的运算。
+本节定义{\em 布局同态}（layout homomorphism）：这类运算接收一个或多个 \CuTe 布局，产生满足某些函数性质的 \CuTe 布局。
 
 \wpsh{拼接（Concatenate）}
 \label{sec:concatenation}
@@ -25,7 +25,7 @@
 \end{align}
 要使拼接可行，函数性质~\eqref{eqn:concat} 蕴含所有子布局的陪域必须包含在同一个整数半模（integer-semimodule）之中。例如，任意两个具有整数步幅的布局都可以拼接，但布局 $4:2$ 与 $3:e_0$ 无法拼接。
 
-布局的每个子布局本身也是布局，于是任何操作布局的代数运算也都同样可以应用到任意单个子布局上。我们常称这类运算为“逐模运算（by-mode operation）”，本节定义的每一个运算（合并、复合、补、逻辑切分等）都可以逐模应用。这一方式用如下组合子（combinator）表达：
+布局的每个子布局本身也是布局，于是任何操作布局的代数运算都可以应用到任意单个子布局上。我们常称这类运算为“逐模运算（by-mode operation）”，本节定义的每一个运算（合并、复合、补、逻辑切分等）都可以逐模应用。这一方式用如下组合子（combinator）表达：
 \begin{align}
 \v{A} \star  \langle \v{B}, \v{C} \rangle = (\v{A}_0, \v{A}_1) \star  \langle \v{B}, \v{C} \rangle = (\v{A}_0 \star  \v{B}, \v{A}_1 \star  \v{C}),
 \label{eqn:layout_combinator}
@@ -42,7 +42,7 @@
 \text{一致的整型求值：} && \forall \bar{c} \in \Z_{\abs{\v{A}}}, \ \ \v{R}(\bar{c}) &= \v{A}(\bar{c}).
 \end{align}
 
-\texttt{coalesce} 运算通过把布局 $\v{A}$ 视作整数上的函数来“简化”它，并可能将其形状塌缩为更浅的表示。尽管这一过程可能丢失阶与层次信息、改变坐标集合、以及合并 $\v{A}$ 的多个模，但它保证布局作为整型坐标上的映射保持函数等价。
+\texttt{coalesce} 运算通过把布局 $\v{A}$ 视作整数上的函数来“简化”它，并可能将其形状塌缩为更浅的表示。尽管这一过程可能丢失阶与层次信息、改变坐标集合，以及合并 $\v{A}$ 的多个模，但它保证布局作为整型坐标上的映射保持函数等价。
 
 实践中说合并布局，通常指达到最小阶的那个。
 
@@ -67,7 +67,7 @@
 \text{函数复合性：} && \forall c \in \Z(\v{B}), \ \ \v{R}(c) &= \v{A}(\v{B}(c)).
 \end{align}
 
-在这个定义中，$\v{B}$ 通过定义 $\v{R}$ 的定义域来决定结果布局的形状与坐标集合，而 $\v{A}$ 决定 $\v{R}$ 的陪域。相容性条件保证 $\v{B}$ 的{\em 所有}坐标也都可用作 $\v{R}$ 的坐标。要使群复合与函数复合均可容许，$\v{B}$ 的陪域必须与 $\v{A}$ 的定义域相容，这通常意味着 $\v{B}$ 的陪域是一组与 $\Z(\v{A})$ 中某个坐标集合同余的坐标。
+其中，$\v{B}$ 通过定义 $\v{R}$ 的定义域来决定结果布局的形状与坐标集合，而 $\v{A}$ 决定 $\v{R}$ 的陪域。相容性条件保证 $\v{B}$ 的{\em 所有}坐标也都可用作 $\v{R}$ 的坐标。要使群复合与函数复合均可容许，$\v{B}$ 的陪域必须与 $\v{A}$ 的定义域相容，即 $\v{B}$ 的陪域是一组与 $\Z(\v{A})$ 中某个坐标集合同余的坐标。
 
 \wpssh{复合的性质（Composition Properties）}
 
@@ -76,7 +76,7 @@
 \begin{align*}
 \forall c \in \Z_S, \ \ \v{I}_S(c) = c.
 \end{align*}
-注意，只要 $S \preceq P$，$\v{I}_S$ 实际上可以取任意形状 $P$。例如，下面都是恒等布局 $\v{I}_{24}$，且对所有 $i \in \Z_{24}$ 满足 $\v{L}(i) = i$：
+注意，只要 $S \preceq P$，$\v{I}_S$ 可以取任意形状 $P$。例如，下面都是恒等布局 $\v{I}_{24}$，且对所有 $i \in \Z_{24}$ 满足 $\v{L}(i) = i$：
 \begin{align*}
 24 : 1, \quad (4,6) : (1,4), \quad (3,(4,2)) : (1,(3,12)).
 \end{align*}
@@ -108,16 +108,16 @@
 (5,3):(1,7) \ \circ \ [4:1 \ \circ \ 2:5] &&= (5,3):(1,7) \ \circ \ 2:5 &&= 2:7 \\
 [(5,3):(1,7) \ \circ \ 4:1] \ \circ \ 2:5 &&= 4:1 \ \circ \ 2:5 &&= 2:5
 \end{align*}
-会给出不同结果，因为 $2:5$ 的值域未包含在 $4:1$ 的定义域之中。不过，鉴于 {\tt idx2crd} 与 {\tt inner\_product} 的越界行为，两个表达式都能正确求值。
+两个表达式会给出不同结果，因为 $2:5$ 的值域未包含在 $4:1$ 的定义域之中。不过，鉴于 {\tt idx2crd} 与 {\tt inner\_product} 的越界行为，两者都能正确求值。
 
 \wpssh{求值与限制（Evaluation and Restrictions）}
 \label{sec:composition_impl}
 
-群复合的求值可以由式~\eqref{eqn:idx2crd} 与式~\eqref{eqn:innerprod} 中的布局求值运算构造性地推导出来。在本节中，我们确定布局 $\v{A}$ 与 $\v{B}$ 上的一组可容许性条件，它们是成功计算群复合所必需的。
+群复合的求值可以由式~\eqref{eqn:idx2crd} 与式~\eqref{eqn:innerprod} 中的布局求值运算构造性地推导出来。本节确定布局 $\v{A}$ 与 $\v{B}$ 上的一组可容许性条件。
 
 首先，我们要求 $\v{A}$ 与 $\v{B}$ 之间的函数相容性：$\v{B}$ 的陪域必须与 $\v{A}$ 的形状弱同余。最常见的情况是 $\v{B}$ 的陪域为整数，而由于所有布局 $\v{A}$ 都接受整型坐标，因此二者函数相容。更一般地，当 $\v{B}$ 产生坐标时，这些坐标必须与 $\Z(\v{A})$ 中的某个坐标同余。
 
-一般做法是令 $(\v{A} \circ \v{B})(i)$ 与 $\v{R}(i)$ 的求值相等。实践中我们发现，只需分析取最简形式 $\v{B} = s : d$ 的基础情形，并把其他求值归约到该情形即可。
+一般做法是令 $(\v{A} \circ \v{B})(i)$ 与 $\v{R}(i)$ 的求值相等。实践中只需分析取最简形式 $\v{B} = s : d$ 的基础情形，并把其他求值归约到该情形即可。
 
 \paragraph{基础情形（Base Case）。}
 
@@ -140,7 +140,7 @@
 
 首先，由于 $\v{B}$ 的陪域是整数，我们可以假设布局 $\v{A}$ 已经合并。根据定义，这不会改变复合的求值。
 
-其次，注意到若 $(s-1) \cdot d < \bar{S}_r$，则对所有 $i < s$ 与 $q > r$ 都有 $\floor{i \cdot d / \bar{S}_q} = 0$。也就是说，$\v{A}$ 的所有满足 $q > r$ 的模对结果没有贡献。不失一般性，我们在 $(s-1) \cdot d \geq \bar{S}_R$ 的假设下继续推导；这总可以通过对 $\v{A}$ 的形状做截断或延拓来实现。该假设不会改变式~\eqref{eqn:ABi}，却通过剔除冗余情形简化了分析。
+其次，注意到若 $(s-1) \cdot d < \bar{S}_r$，则对所有 $i < s$ 与 $q > r$ 都有 $\floor{i \cdot d / \bar{S}_q} = 0$。$\v{A}$ 的所有满足 $q > r$ 的模对结果没有贡献。不失一般性，我们在 $(s-1) \cdot d \geq \bar{S}_R$ 的假设下继续推导；这总可以通过对 $\v{A}$ 的形状做截断或延拓来实现。该假设不会改变式~\eqref{eqn:ABi}，却通过剔除冗余情形简化了分析。
 
 我们施加{\bf 步幅整除性条件}（stride divisibility condition）
 \begin{align}
@@ -185,7 +185,7 @@ D'_r &= D_r \cdot \delta_r,
 \end{align*}
 其中项 $s / \rho_R$ 用于将结果形状截断或延拓到大小 $s$。
 
-这样，只要 $\v{A}$ 与 $\v{B}$ 满足步幅整除性条件~\eqref{eqn:divis_stride} 与形状整除性条件~\eqref{eqn:divis_shape}，我们就求出了结果 $\v{R} = S':D'$ 的形状与步幅。
+这样，只要 $\v{A}$ 与 $\v{B}$ 满足步幅整除性条件~\eqref{eqn:divis_stride} 与形状整除性条件~\eqref{eqn:divis_shape}，就求出了结果 $\v{R} = S':D'$ 的形状与步幅。
 
 \paragraph{归约情形：分配律（Reductive Case: Distributive）。}
 
@@ -226,7 +226,7 @@ D'_r &= D_r \cdot \delta_r,
 
 \paragraph{归约情形：坐标（Reductive Case: Coordinate）。}
 
-当 $\v{B}$ 产生坐标时，这些坐标必须与 $\Z(\v{A})$ 中的某个坐标同余，且 $\v{B}$ 的每个步幅都必须是某个坐标整数半模的缩放基元素：$d = a \cdot e_i \in \Z^{S'}$，其中 $S' \preceq \v{A}$。当这些条件满足时，我们观察到
+当 $\v{B}$ 产生坐标时，这些坐标必须与 $\Z(\v{A})$ 中的某个坐标同余，且 $\v{B}$ 的每个步幅都必须是某个坐标整数半模的缩放基元素：$d = a \cdot e_i \in \Z^{S'}$，其中 $S' \preceq \v{A}$。当这些条件满足时，有
 \begin{align*}
 \v{A} \circ \v{B} = \v{A} \circ (a \cdot e_i) \circ s = \v{A}_i \circ a \circ s = \v{A}_i \circ \v{B}',
 \end{align*}
@@ -283,7 +283,7 @@ D'_r &= D_r \cdot \delta_r,
 \end{align*}
 违反了形状整除性条件~\eqref{eqn:divis_shape}，因为 $\left\lceil \frac{\bar{S}_1}{d} \right\rceil = \left\lceil \frac{4}{1} \right\rceil = 4$ 不能整除 $s = 6$。不存在能表示 $(4,6,8):(2,3,5)$ 的前 6 个元素的布局。
 
-归根结底，\CuTe 布局在群复合下并非严格封闭。然而实践中，违反整除性条件多半意味着概念用错了、布局与硬件不相容，或者程序员失误。这些错误大多能在编译期被捕获，程序因此更安全，开发也更快。
+\CuTe 布局在群复合下并非严格封闭。然而实践中，违反整除性条件多半意味着概念用错了、布局与硬件不相容，或者程序员失误。这些错误大多能在编译期被捕获，程序因此更安全，开发也更快。
 
 \paragraph{表面上的违反（Apparent Violations）。}
 
@@ -299,13 +299,13 @@ D'_r &= D_r \cdot \delta_r,
 \begin{align*}
 (4,2,8):(3,12,97) \ \circ \  4:3 && (4,2,8):(3,15,97) \ \circ \  3:3.
 \end{align*}
-左侧的例子无法被充分截断，而右侧的例子则无法被合并。
+左侧的例子无法充分截断，右侧的例子则无法合并。
 
 
 \wpssh{应用：划分示例（Application: Partitioning Example）}
 \label{sec:layouttv}
 
-复合位于 \CuTe 布局代数的核心，支撑着重塑形（reshaping）、重定步幅（restriding）、置换（permuting）、划分（partitioning）、分块（tiling）以及提取子布局等运算。本节演示如何利用复合、以任意的线程-值模式（thread-value pattern）对一个数据张量进行划分。
+复合是 \CuTe 布局代数的核心，支撑着重塑形（reshaping）、重定步幅（restriding）、置换（permuting）、划分（partitioning）、分块（tiling）以及提取子布局等运算。本节演示如何利用复合，以任意线程-值模式（thread-value pattern）划分一个数据张量。
 
 \begin{figure}[ht]
 \centering
@@ -398,13 +398,13 @@ D'_r &= D_r \cdot \delta_r,
 \label{fig:TVLayout}
 \end{figure}
 
-考察一个由形状 $(8,8)$ 细化而来的数据布局。我们的目标是使用图~\ref{fig:TVLayout} 所示的线程-值模式对该数据进行划分，该模式是某个特定 Ampere Tensor Core 的逻辑划分模式。这条指令的线程-值划分模式可以用布局
+考察一个由形状 $(8,8)$ 细化而来的数据布局。目标是用图~\ref{fig:TVLayout} 所示的线程-值模式划分该数据，该模式是某个特定 Ampere Tensor Core 的逻辑划分模式。这条指令的线程-值划分模式可以用布局
 \begin{align*}
 \texttt{ThrValLayoutC:} \quad ((4,8),2):((16,1),8),
 \end{align*}
-表示，它充当从 $(\texttt{thread\_idx}, \texttt{value\_idx})$ 到 $8 {\times} 8$ 矩阵内一维坐标的映射。如图所示，出于人类可读性的考虑，图~\ref{fig:TVLayout} 实际上画出的是其逆：它展示的是从 $8 {\times} 8$ 矩阵内的二维坐标到 $(\texttt{thread\_idx}, \texttt{value\_idx})$ 二元组的映射。这个 {\tt ThrValLayoutC} 被视为 Ampere Tensor Core 指令的静态元数据，它是指令与硬件功能的内在属性；在 \CuTe 出现之前，它只能以指令集体系结构（ISA）中类似图~\ref{fig:TVLayout} 的图像来描述。
+表示，它充当从 $(\texttt{thread\_idx}, \texttt{value\_idx})$ 到 $8 {\times} 8$ 矩阵内一维坐标的映射。出于人类可读性的考虑，图~\ref{fig:TVLayout} 画出的是其逆：它展示的是从 $8 {\times} 8$ 矩阵内的二维坐标到 $(\texttt{thread\_idx}, \texttt{value\_idx})$ 二元组的映射。这个 {\tt ThrValLayoutC} 是 Ampere Tensor Core 指令的静态元数据，属于指令与硬件功能的内在属性；在 \CuTe 出现之前，它只能以指令集体系结构（ISA）中类似图~\ref{fig:TVLayout} 的图像来描述。
 
-任意 $8 {\times} 8$ 数据布局都可以通过与线程-值布局 {\tt ThrValLayoutC} 复合来置换。每次复合都会产生一个与形状 $(32,2)$ 相容的布局，并定义 $(\texttt{thread\_idx}, \texttt{value\_idx})$ 与数据偏移之间的映射。例如，表~\ref{tab:TVLayoutExamples} 展示了若干数据布局经上述 {\tt ThrValLayoutC} 复合变换的例子。
+任意 $8 {\times} 8$ 数据布局都可以通过与线程-值布局 {\tt ThrValLayoutC} 复合来置换。每次复合都会产生一个与形状 $(32,2)$ 相容的布局，并定义 $(\texttt{thread\_idx}, \texttt{value\_idx})$ 与数据偏移之间的映射。表~\ref{tab:TVLayoutExamples} 给出了若干数据布局经 {\tt ThrValLayoutC} 复合变换的例子。
 
 \begin{table}[ht]
 \centering
@@ -429,12 +429,12 @@ smem_tv     = composition(smem_data, tv_layout) # 复合：(Thr,Val) -> Offset
 smem_v      = smem_tv[thr_id, None]             # 按线程切片得到子张量
 copy(smem_v, rmem_data)                         # 拷贝到寄存器张量/数组
 \end{python}
-这一模式在 SIMD 编程中很常见：每个处理元素接收某个父数据的一个对称划分。一般而言，\CuTe 把任意划分都定义为复合（置换和/或重塑形）之后再切片。如第~\ref{sec:slicing} 节所述，这种“复合-切片”模式把划分模式（{\tt ThrValLayoutC}）与实际切出的数据切片（以 {\tt thr\_id} 做的切片）分离开来。由于划分模式往往是指令或优化参数相关的编译期元数据，而切片是运行时的程序索引，这一模式更适合传播静态信息，运行时开销也更低。
+这一模式在 SIMD 编程中很常见：每个处理元素接收某个父数据的一个对称划分。一般而言，\CuTe 把任意划分都定义为复合（置换和/或重塑形）之后再切片。如第~\ref{sec:slicing} 节所述，这种“复合-切片”模式把划分模式（{\tt ThrValLayoutC}）与实际切出的数据切片（以 {\tt thr\_id} 做的切片）分开。由于划分模式往往是指令或优化参数相关的编译期元数据，而切片是运行时的程序索引，这一模式更适合传播静态信息，运行时开销也更低。
 
 \wpssh{逐模复合与分块器（By-mode Composition and Tilers）}
 \label{sec:tiler}
 
-群复合可以逐模应用，从而支持对布局的子定义域进行操作。例如，常常需要对矩阵的行与列独立地应用复合。我们使用式~\eqref{eqn:layout_combinator} 中的组合子，并把其中的 $\star$ 运算取为群复合 $\circ$，从而对布局的各个独立子布局分别应用复合。
+群复合可以逐模应用，从而支持对布局的子定义域进行操作。例如，常常需要对矩阵的行与列独立地应用复合。我们使用式~\eqref{eqn:layout_combinator} 中的组合子，并把其中的 $\star$ 运算取为群复合 $\circ$。
 
 我们把式~\eqref{eqn:layout_combinator} 中的布局元组称为{\em 分块器}（Tiler）。
 \begin{definition}
@@ -501,7 +501,7 @@ copy(smem_v, rmem_data)                         # 拷贝到寄存器张量/数�
 \label{fig:tilers}
 \end{figure}
 
-图~\ref{fig:tilers} 展示了分块器如何通过复合作用于任意布局。图中取一个与形状 $(8,16)$ 相容的任意布局，并应用各种分块器分别从列和行中提取元素，从而产生与形状 $(4,8)$ 相容的子布局。例如，分块器 $\langle 4:1, 8:1 \rangle$ 从每列提取前 4 个元素、从每行提取前 8 个元素，产生与形状 $(4,8)$ 相容的子布局。
+图~\ref{fig:tilers} 展示了分块器如何通过复合作用于任意布局。图中取一个与形状 $(8,16)$ 相容的任意布局，并应用各种分块器分别从列和行中提取元素，从而产生与形状 $(4,8)$ 相容的子布局。例如，分块器 $\langle 4:1, 8:1 \rangle$ 从每列提取前 4 个元素、从每行提取前 8 个元素，结果与形状 $(4,8)$ 相容。
 
 分块器的复合与坐标布局的复合之间还有等价关系。对布局 $\v{L} = (M,N) : (X,Y)$ 与分块器 $\v{T} = \langle \v{T}_0, \v{T}_1 \rangle$，我们注意到
 \begin{align*}

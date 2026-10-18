@@ -2,7 +2,7 @@
 
 \wph{布局表示（Layout Representation）}
 
-\CuTe 布局（layout）是一类功能多样的对象，能够表示范围广泛的数据排列与线程排列，在抽象物理地址、将迭代顺序与存储顺序相分离等方面很有实用价值。在本节中，我们定义形状（shape）、布局与张量（tensor）的 \CuTe 表示，并说明它们与坐标（coordinate）如何相互作用。\CuTe 布局使得泛型算法只需单一实现，便可应用于任何可折叠为该算法规范形式（canonical form）的复杂数据布局。此类算法及其应用广度的示例见第~\ref{sec:algorithms}~节。
+\CuTe 布局（layout）是一类功能多样的对象，能表示范围广泛的数据排列与线程排列，在抽象物理地址、分离迭代顺序与存储顺序上很实用。本节定义形状（shape）、布局与张量（tensor）的 \CuTe 表示，并说明它们与坐标（coordinate）如何相互作用。\CuTe 布局让泛型算法只需单一实现，就能用于任何可折叠成该算法规范形式（canonical form）的复杂数据布局。此类算法及其应用广度的示例见第~\ref{sec:algorithms}~节。
 
 \wpsh{元组与层次元组（Tuple 与 HTuple）}
 
@@ -38,7 +38,7 @@ $\texttt{HTuple}(\mathcal{T})$ 或者是集合 $\mathcal{T}$ 中的一个元素�
 %\texttt{op<$i_0$,$i_1$,...,$i_n$>(HTuple($T$))} \Longleftrightarrow %\texttt{op(get<$i_n$>(...get<$i_1$>(get<$i_0$>(HTuple($T$))...))}
 %\end{align*}
 
-在对 \texttt{HTuple} 进行推理时，定义{\em 同余}（congruence）与{\em 弱同余}（weak congruence）的概念会很有用。
+对 \texttt{HTuple} 推理时，引入{\em 同余}（congruence）与{\em 弱同余}（weak congruence）的概念很有用。
 %We say that congruent \texttt{HTuple}s have the same hierarchical {\em profile}, but the value and type of each leaf element may differ.
 \begin{definition}
 \emph{同余} $\sim$ 是 \texttt{HTuple} 上的一个等价关系。对于 $P \in \texttt{HTuple}(\mathcal{P})$ 与 $S \in \texttt{HTuple}(\mathcal{S})$，
@@ -78,13 +78,13 @@ P,S \in \texttt{Tuple} \text{ 且 } \text{rank}(P) = \text{rank}(S) \text{ 且 }
 \wpsh{形状（Shape）}
 \label{sec:shape}
 
-多维数组通常由其\emph{形状}（shape）来刻画：一列描述各个模（mode）规模的正整数。$M{\times}N$ 矩阵的二维形状表示为 $(M,N)$，并由坐标 $(m,n)$ 索引，其中 $0 \leq m < M$ 且 $0 \leq n < N$。对此的一个自然推广，是将形状表示为由正整数构成的层次元组。
+多维数组通常由其\emph{形状}（shape）来刻画：一列描述各个模（mode）规模的正整数。$M{\times}N$ 矩阵的二维形状表示为 $(M,N)$，并由坐标 $(m,n)$ 索引，其中 $0 \leq m < M$ 且 $0 \leq n < N$。自然推广是把形状表示成由正整数构成的层次元组。
 
 \begin{definition}
 \emph{形状}是一个 $\texttt{HTuple}(\Z^+)$，其中 $\Z^+ = \{1,2,3,\ldots\}$ 为正整数集合。形状 $S$ 的阶（rank）是该 \texttt{HTuple} 的阶。形状 $S$ 的大小（size）是其全部元素的乘积，记作 $\abs{S} = \prod_k \abs{S_k}$。
 \end{definition}
 
-层次化形状之所以特别有用，在于它们可以由多种坐标系索引。考虑不超过 $N$ 的整数集合
+层次化形状之所以有用，在于它能由多种坐标系索引。考虑不超过 $N$ 的整数集合
 \begin{align*}
 \Z_N = \{ 0, 1, 2, \ldots, N-1 \}.
 \end{align*}
@@ -100,14 +100,14 @@ S : \Z_M \times \Z_{NP} \longleftrightarrow \Z_M \times (\Z_N \times \Z_P)
 \end{align*}
 在二维坐标 $(m,q) \in \Z_M \times \Z_{NP}$ 与自然坐标 $(m,(n,p)) \in \Z_M \times (\Z_N \times \Z_P)$ 之间建立映射。
 
-层次形状与坐标的一个直接推论是：张量算法可以按照对它们而言最自然的形状来编写（第~\ref{sec:algorithms}~节）：{\tt COPY} 中的向量用一维形状，{\tt GEMM} 中的矩阵用二维形状，{\tt batched-GEMM} 中的张量用三维形状，等等，同时仍能接受被折叠（fold）成与算法的规范形式弱同余的层次化形状张量（第~\ref{sec:compatibility}~节）。数据张量的形状通常表示为一列扁平的整数，它可以任意折叠成泛型张量算法所接受的形状。另外，由于张量的每个模都关联着一个用于索引数据的步幅（stride）（第~\ref{sec:stride}~节），这种模的折叠使得我们能够表示远比 {\tt COPY} 中的简单连续数组或 {\tt BLAS GEMM} 中的行主序、列主序矩阵复杂得多的数据布局（第~\ref{sec:layout}~节）。
+层次形状与坐标的一个直接推论是：张量算法可以按对自己最自然的形状来编写（第~\ref{sec:algorithms}~节）：{\tt COPY} 中的向量用一维形状，{\tt GEMM} 中的矩阵用二维形状，{\tt batched-GEMM} 中的张量用三维形状，等等，同时仍能接受折叠（fold）后与算法规范形式弱同余的层次化形状张量（第~\ref{sec:compatibility}~节）。数据张量的形状通常是一列扁平整数，可任意折叠成泛型张量算法接受的形状。另外，张量的每个模都关联一个用于索引数据的步幅（stride）（第~\ref{sec:stride}~节），折叠模就能表示远比 {\tt COPY} 中的简单连续数组或 {\tt BLAS GEMM} 中的行主序、列主序矩阵复杂的数据布局（第~\ref{sec:layout}~节）。
 
-下一小节定义这种相容性（compatibility）的概念，以及形状内各坐标集合之间的这些关系。
+下一小节给出相容性（compatibility）的概念，以及形状内各坐标集合之间的关系。
 
 \wpssh{坐标集合与相容性（Coordinate Sets and Compatibility）}
 \label{sec:compatibility}
 
-层次形状支持由多种坐标系索引。这里，我们为特定形状定义坐标集合（coordinate set），并定义形状之间的相容性概念，以便在形状之间共享坐标集合。
+层次形状支持由多种坐标系索引。下面为特定形状定义坐标集合（coordinate set），以及形状之间的相容性概念，以便形状之间共享坐标集合。
 
 \begin{definition}
 \emph{坐标集合}是一个由非负整数构成的集合 $\Z_N = \{0, 1, 2, \ldots, N-1\}$，或坐标集合的笛卡尔积 $\Z_N \times \Z_M = \Z_{(N,M)}$。
@@ -119,7 +119,7 @@ S : \Z_M \times \Z_{NP} \longleftrightarrow \Z_M \times (\Z_N \times \Z_P)
 \Z_3 \times \Z_4 = \Z_{(3,4)} &= \{(0,0), (1,0), (2,0), (0,1), (1,1), (2,1), (0,2), (1,2), (2,2), (0,3), (1,3), (2,3) \} \\
 (\Z_2 \times \Z_1) \times \Z_3 = \Z_{((2,1),3)} &= \{((0,0),0), ((1,0),0), ((0,0),1), ((1,0),1), ((0,0),2), ((1,0),2) \}
 \end{align*}
-坐标集合 $\Z_S$ 恰好是形状 $S$ 的自然坐标集合。形状 $S$ 的其它坐标集合，是任何与 $S$ {\em 相容}（compatible）且{\em 粗化}（coarsens）$S$ 的形状的坐标集合。
+坐标集合 $\Z_S$ 恰好是形状 $S$ 的自然坐标集合。形状 $S$ 的其它坐标集合，来自任何与 $S$ {\em 相容}（compatible）且{\em 粗化}（coarsens）$S$ 的形状。
 
 \begin{definition}
 \emph{相容性} $\preceq$ 是形状集合上的一个偏序。对于形状 $P$ 与 $S$，
@@ -140,7 +140,7 @@ P,S \in \texttt{Tuple} \text{ 且 } \text{rank}(P) = \text{rank}(S) \text{ 且 }
 \end{align*}
 但 $(2,(3,5))$ 与 $((3,2),5)$ 尽管大小相同，却并不相容。不过，它们确实共享一个公共的相容形状 $30$。
 
-有了坐标集合与形状相容性的定义，我们便可以为任意给定形状定义全部相容坐标构成的集合。
+有了坐标集合与相容性的定义，便可为任意形状定义全部相容坐标构成的集合。
 
 \begin{definition}
 形状 $S$ 定义了一个{\em 相容坐标集合}的集合 $\Z(S)$，即所有粗化 $S$ 的形状的坐标集合。
@@ -172,10 +172,10 @@ P,S \in \texttt{Tuple} \text{ 且 } \text{rank}(P) = \text{rank}(S) \text{ 且 }
 
 \wpssh{坐标（Coordinates）}
 
-在本小节中，我们定义若干类坐标，在形状的各相容坐标集合之间定义双射，并给出这些坐标映射的示例。
+本小节定义若干类坐标，给出形状各相容坐标集合之间的双射，并举例说明这些坐标映射。
 
 \begin{definition}
-形状 $S$ 的\emph{界内坐标}（in-bounds coordinate），或简称{\em 坐标}，是其某个坐标集合中的一个元素，即 $c \in \Z_{S'} \in \Z(S)$。注意，坐标总是一个 $\texttt{HTuple}(\N)$。当意图明确时，我们将简写为 $c \in \Z(S)$。
+形状 $S$ 的\emph{界内坐标}（in-bounds coordinate），或简称{\em 坐标}，是其某个坐标集合中的一个元素，即 $c \in \Z_{S'} \in \Z(S)$。注意，坐标总是一个 $\texttt{HTuple}(\N)$。当意图明确时，简写为 $c \in \Z(S)$。
 \end{definition}
 
 \begin{definition}
@@ -186,7 +186,7 @@ P,S \in \texttt{Tuple} \text{ 且 } \text{rank}(P) = \text{rank}(S) \text{ 且 }
 形状 $S$ 的\emph{自然坐标}（natural coordinate）是坐标 $\tilde{c} \in \Z_S \in \Z(S)$。注意，自然坐标总是一个与形状同余的 $\texttt{HTuple}(\N)$，即 $\tilde{c} \sim S$。
 \end{definition}
 
-为了在界内坐标之间进行转换，我们在形状 $S$ 的各坐标集合上构造一个枚举，以定义{\em 坐标列表}（coordinate list）。在本工作中，我们选择坐标的余字典序（colexicographical ordering）$<$，其定义如下：
+为了在界内坐标之间转换，我们在形状 $S$ 的各坐标集合上构造一个枚举，以定义{\em 坐标列表}（coordinate list）。在本工作中，我们选择坐标的余字典序（colexicographical ordering）$<$，其定义如下：
 \begin{align*}
 (a_0, \ldots, a_n) < (b_0, \ldots, b_n)
 \quad \text{当且仅当} \quad
@@ -206,7 +206,7 @@ P,S \in \texttt{Tuple} \text{ 且 } \text{rank}(P) = \text{rank}(S) \text{ 且 }
 i &\mapsto \Bigl(i \bmod \abs{S_0}, \floor{\frac{i}{\abs{S_0}}} \bmod \abs{S_1}, \ldots, \floor{\frac{i}{\prod_{k=0}^{r-3} \abs{S_k}}} \bmod \abs{S_{r-2}}, \floor{\frac{i}{\prod_{k=0}^{r-2} \abs{S_k}}} \Bigr)
 \label{eqn:idx2crd}
 \end{align}
-将 $\Z_{\abs{S}}$ 的第 $i$ 个坐标（形状 $S$ 的第 $i$ 个整型坐标）映射为 $\Z_{(\abs{S_0}, \abs{S_1}, \ldots, \abs{S_{r-1}})}$ 的第 $i$ 个坐标（形状 $(\abs{S_0}, \abs{S_1}, \ldots, \abs{S_{r-1}})$ 的第 $i$ 个自然坐标）。其它双射，例如反向和/或镜像的字典序或余字典序，同样可以使用。
+将 $\Z_{\abs{S}}$ 的第 $i$ 个坐标（形状 $S$ 的第 $i$ 个整型坐标）映射为 $\Z_{(\abs{S_0}, \abs{S_1}, \ldots, \abs{S_{r-1}})}$ 的第 $i$ 个坐标（形状 $(\abs{S_0}, \abs{S_1}, \ldots, \abs{S_{r-1}})$ 的第 $i$ 个自然坐标）。其它双射，例如反向和/或镜像的字典序或余字典序，同样可用。
 
 \texttt{idx2crd} 的逆由下式给出
 \begin{align}
@@ -273,7 +273,7 @@ i &\mapsto \Bigl(i \bmod \abs{S_0}, \floor{\frac{i}{\abs{S_0}}} \bmod \abs{S_1},
 \label{fig:coordlists}
 \end{figure}
 
-\paragraph{越界坐标（Out-of-bounds Coordinates）}除已定义的坐标集合之外，定义一些可能不在形状坐标集合之内、具有特定轮廓的坐标也很有用。
+\paragraph{越界坐标（Out-of-bounds Coordinates）}除已定义的坐标集合之外，还需要定义可能落在形状坐标集合之外、轮廓特定的坐标。
 
 \begin{definition}
 形状 $S$ 的\emph{可容许坐标}（admissible coordinate）是任意与该形状弱同余的坐标 $c \in \texttt{HTuple}(\Z)$，即 $c \lesssim S$。
@@ -326,7 +326,7 @@ $\Z_S$ 是由形状 $S$ 界定的有限坐标集合，而 $\Z^S$ 是与 $S$ 同�
 不要求存在加法单位元与加法逆元，因此 $(M,+)$ 是一个半群（semigroup）。我们将整数半模记作 $(M,+,\cdot)$，用以表示集合 $M$、加法运算 $+$ 与标量乘法 $\cdot$。
 \end{definition}
 
-整数集 $\Z$ 是一个整数半模。有理数集 $\Q$ 是一个整数半模。由模 2 算术运算构成的域 $\mathbb{F}_2 = (\{0,1\},\text{XOR},\text{AND})$ 是一个整数半模。在逐元素加法与标量乘法之下，任意整数半模的笛卡尔积或 {\tt HTuple} 都是整数半模。
+整数集 $\Z$ 与有理数集 $\Q$ 都是整数半模。由模 2 算术运算构成的域 $\mathbb{F}_2 = (\{0,1\},\text{XOR},\text{AND})$ 是一个整数半模。在逐元素加法与标量乘法之下，任意整数半模的笛卡尔积或 {\tt HTuple} 都是整数半模。
 
 一个格外有用的整数半模是 $(\Z^S,+,\cdot)$，其中 $\Z^S$ 是与 $S$ 同余的全部 {\tt HTuple}($\Z$) 构成的集合。例如，2 阶算术元组的基元素构成一个整数半模：
 \begin{align*}

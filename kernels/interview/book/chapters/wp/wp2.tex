@@ -5,7 +5,7 @@
 
 \CuTe 使用形状（shape）$S$ 与步幅（stride）$D$ 来定义一个\emph{布局函数}（layout function），或简称\emph{布局}（layout）。形状 $S$ 定义布局函数的定义域（domain），而步幅 $D$ 定义布局函数的陪域（codomain）。
 
-对前文所述形状的另一种解释是：它是从所有坐标（coordinate）列表的集合到自然坐标的一个映射。该映射是双射，因此每个坐标都被映射到形状内一个唯一且等价的自然坐标。类似地，步幅是从某个形状的自然坐标到某个陪域的映射。
+前文所述形状还可解释为：从所有坐标（coordinate）列表的集合到自然坐标的映射。该映射是双射，每个坐标都映射到形状内唯一一个等价的自然坐标。类似地，步幅是从某个形状的自然坐标到某个陪域的映射。
 \begin{align*}
 S \ &\colon \ Z \leftrightarrow \Z_S, \ \forall Z \in \Z(S) \\
 D \ &\colon \ \Z_S \to \D
@@ -37,22 +37,22 @@ D \ &\colon \ \Z_S \to \D
 \item $\v{L} \preceq \v{U} \Leftrightarrow S \preceq X$：两个布局的相容性是其形状的相容性。
 \end{compactitem}
 
-作为布局求值的一个例子，考虑图~\ref{fig:layouts:mixed} 中的布局 $\v{L} = ((2,2),(4,2)):((1,8),(2,16))$ 以及整数坐标 $22 \in Z_{32} \in Z(\v{L})$，则
+作为布局求值的一例，取图~\ref{fig:layouts:mixed} 中的布局 $\v{L} = ((2,2),(4,2)):((1,8),(2,16))$ 与整数坐标 $22 \in Z_{32} \in Z(\v{L})$，则
 \begin{align*}
 \v{L}(22) = \v{L}(2,5) = \v{L}((0,1),(1,1)) = 26
 \end{align*}
-其中我们依次展示了整数坐标、等价的二维坐标、等价的自然坐标以及计算得到的偏移。
+其中依次是整数坐标、等价的二维坐标、等价的自然坐标与算出的偏移。
 
-布局的界内定义域是所有坐标 $c \in \Z(\v{L})$ 的集合。布局也可以在越界坐标上求值，这类似于可以在越界索引上求值但行为未定义的数组。因此，布局的定义域是有限集合 $\Z(\v{L})$，而\emph{扩展定义域}（extended domain）是与 $S$ 弱同余的所有 $\texttt{HTuple}(\Z)$ 构成的无穷集合 $\Z^\v{L}$。
+布局的界内定义域是所有坐标 $c \in \Z(\v{L})$ 的集合。布局也可以在越界坐标上求值，类似数组在越界索引上求值、行为未定义。因此，布局的定义域是有限集合 $\Z(\v{L})$，而\emph{扩展定义域}（extended domain）是与 $S$ 弱同余的所有 $\texttt{HTuple}(\Z)$ 构成的无穷集合 $\Z^\v{L}$。
 
-我们还区分布局的陪域与像集。布局的陪域是 $\D$，它通常是无穷的（例如 $\Z$ 或 $\Z^D$）。布局的像集是有限的，是布局对其定义域内所有坐标所产生的取值范围。
+我们还区分布局的陪域与像集。布局的陪域是 $\D$，通常是无穷的（例如 $\Z$ 或 $\Z^D$）。布局的像集有限，即布局对定义域内所有坐标求值所得的取值范围。
 \begin{align*}
 \text{像}(\v{L}) = \v{L}(\Z(\v{L})) = \v{L}(\Z_{\abs{\v{L}}}) \subseteq \text{陪域}(\v{L})
 \end{align*}
 
 \wpssh{布局示例}
 
-下面给出几个示例，说明 \CuTe 布局是对常见扁平 N 维布局的严格推广。
+以下示例说明 \CuTe 布局是对常见扁平 N 维布局的严格推广。
 
 \begin{figure}[ht]
 \centering
@@ -192,7 +192,7 @@ D \ &\colon \ \Z_S \to \D
 \label{fig:layouts}
 \end{figure}
 
-图~\ref{fig:layouts} 汇总了稠密线性代数库（如 CUTLASS）中常见的数据布局。每个布局都被表示为从逻辑坐标 $(m,n) \in \Z_{(4,8)}$ 到偏移 $k \in \Z$ 的映射。例如，这些偏移可用于索引数据数组中的元素。常见的行主序（row-major）、列主序（column-major）与填充（padded）布局都可以直接用 \CuTe 布局表示，而交错（interleaved）与混合（mixed）布局则表明：使用嵌套的形状与步幅可以严格扩大布局的表示集合。特别地，由数据块构成的网格（grids-of-tiles-of-data）可以直接用 \CuTe 布局表示。
+图~\ref{fig:layouts} 汇总了稠密线性代数库（如 CUTLASS）中常见的数据布局。每个布局都是从逻辑坐标 $(m,n) \in \Z_{(4,8)}$ 到偏移 $k \in \Z$ 的映射。例如，这些偏移可用于索引数据数组中的元素。常见的行主序（row-major）、列主序（column-major）与填充（padded）布局都可以直接用 \CuTe 布局表示，而交错（interleaved）与混合（mixed）布局则表明：使用嵌套的形状与步幅可以严格扩大布局的表示集合。特别地，由数据块构成的网格（grids-of-tiles-of-data）可以直接用 \CuTe 布局表示。
 
 \begin{figure}[ht]
 \centering
@@ -263,7 +263,7 @@ D \ &\colon \ \Z_S \to \D
 \label{fig:layouts2}
 \end{figure}
 
-图~\ref{fig:layouts2} 展示了用整数半模步幅而非整数步幅构造的布局示例。图~\ref{fig:layouts:coord0} 与图~\ref{fig:layouts:coord1} 演示了生成坐标的布局。在后续章节中我们将发现，这些坐标布局与其对应的数据布局对称地变换，并且常常作为检测数据张量越界访问并对其进行谓词化（predicating）的实用工具。另外，坐标张量对 Hopper 与 Blackwell 里的 TMA 这类以坐标而非地址作参数的指令也很有用。图~\ref{fig:layouts:swizzle} 使用了一个以二进制 XOR 替换群加法的整数半模。它可用于生成所谓的 swizzle 模式，这类模式有助于避免对共享内存读写访问模式中的 bank 冲突。这些例子说明 \CuTe 的布局概念是统一的，它能表示的函数范围也很广。
+图~\ref{fig:layouts2} 展示了用整数半模步幅而非整数步幅构造的布局示例。图~\ref{fig:layouts:coord0} 与图~\ref{fig:layouts:coord1} 演示了生成坐标的布局。后续章节会看到，这些坐标布局与其对应的数据布局对称地变换，也常用来检测数据张量越界访问并做谓词化（predicating）。另外，坐标张量对 Hopper 与 Blackwell 里的 TMA 这类以坐标而非地址作参数的指令也很有用。图~\ref{fig:layouts:swizzle} 使用了一个以二进制 XOR 替换群加法的整数半模，可用来生成所谓的 swizzle 模式，这类模式有助于避免共享内存读写访问中的 bank 冲突。这些例子说明 \CuTe 的布局概念是统一的，能表示的函数范围也很广。
 
 \wpssh{完备性}
 
@@ -271,7 +271,7 @@ D \ &\colon \ \Z_S \to \D
 \begin{align*}
 f &\equiv (2,2,2,\ldots):(f(1),f(2),f(3),\ldots) \ \circ \ (3,1):(1,4) \ \circ \ (4,1):(1,6) \ \circ \ \cdots \ \circ \ (N-1,1):(1,2(N-2)).
 \end{align*}
-对所有 $i \in \Z_N / \{0\}$，最右边的 $N-3$ 个布局将 $i \to 2^{i-1}$，而最左边的布局将 $2^{i-1} \to f(i)$。注意，我们在上面求值中间布局时使用的是扩展定义域 $\Z$，而不是界内定义域 $\Z_N$。
+对所有 $i \in \Z_N / \{0\}$，最右边的 $N-3$ 个布局将 $i \to 2^{i-1}$，而最左边的布局将 $2^{i-1} \to f(i)$。注意，上面求值中间布局时用的是扩展定义域 $\Z$，而不是界内定义域 $\Z_N$。
 
 \wpssh{半线性}
 
@@ -287,7 +287,7 @@ f &\equiv (2,2,2,\ldots):(f(1),f(2),f(3),\ldots) \ \circ \ (3,1):(1,4) \ \circ \
 \begin{align*}
 \tilde{c} = S(c_0 + c_1) \neq S(c_0) + S(c_1) = \tilde{c}_0 + \tilde{c}_1.
 \end{align*}
-因此，布局函数在自然坐标 $\tilde{c} \in \Z^S$ 下是线性的，但在任意坐标 $c \in \Z(S)$ 下是非线性的。
+因此，布局函数对自然坐标 $\tilde{c} \in \Z^S$ 是线性的，对任意坐标 $c \in \Z(S)$ 则是非线性的。
 
 在自然坐标下，$d \cdot \tilde{c}$ 可以解释为推广的矩阵—向量乘积（matrix-vector product），
 \begin{align*}
@@ -319,11 +319,11 @@ f &\equiv (2,2,2,\ldots):(f(1),f(2),f(3),\ldots) \ \circ \ (3,1):(1,4) \ \circ \
 \label{tab:linear_forms}
 \end{table}
 
-例如，表~\ref{tab:linear_forms} 展示了一个整数布局、一个坐标布局与一个二进制布局的线性形式。针对 $\mathbb{F}_2$ 线性形式已被充分研究的变换包括位排列补（Bit Permute Complement，BPC）与位矩阵乘补（Bit Matrix Multiply Complement，BMMC）变换（Edelman 等，1994；Cormen，1993；Bouverot-Dupuis 与 Sheeran，2023），它们近来在 SIMT GPU 编程中获得了重要的应用（Zhou 等，2025）。在这些工作中，所考虑的变换为
+例如，表~\ref{tab:linear_forms} 展示了一个整数布局、一个坐标布局与一个二进制布局的线性形式。对 $\mathbb{F}_2$ 线性形式，已有充分研究的变换包括位排列补（Bit Permute Complement，BPC）与位矩阵乘补（Bit Matrix Multiply Complement，BMMC）变换（Edelman 等，1994；Cormen，1993；Bouverot-Dupuis 与 Sheeran，2023），它们近来在 SIMT GPU 编程中得到重要应用（Zhou 等，2025）。在这些工作中，所考虑的变换为
 \begin{align}
 f(\v{v}) = \v{A} \v{v} + \v{b}
 \label{eqn:linear}
 \end{align}
 其中 $\v{A}$ 是一个 $m {\times} n$ 的二进制元素矩阵，$\v{v}$ 是长度为 $n$ 的二进制向量，$\v{b}$ 是长度为 $m$ 的二进制向量，且所有算术都以 2 为模（在只有两个元素的有限域 $\mathbb{F}_2$ 中）执行。
 
-本文的后续章节将定义 \CuTe 布局上的代数运算，这些运算是从线性代数推广而来的。\CuTe 布局上的群复合可以解释为矩阵乘法的推广。\CuTe 布局的右逆与左逆则对应线性代数中的 Moore-Penrose 伪逆。在 BPC 与 BMMC 分析中也可以找到类似的线性代数表达式（Edelman 等，1994；Cormen，1993；Bouverot-Dupuis 与 Sheeran，2023；Zhou 等，2025），它们都在算法分析中使用分解、逆与矩阵乘积。从这个角度看，\CuTe 布局代数是线性代数的 BPC 与 BMMC 运算向 $\mathbb{F}_2$ 域之外的推广。特别地，\CuTe 布局代数的主要动机来自张量异构数据布局中常见的一般整数步幅。在本工作中，我们旨在证明：这些运算更一般的函数式定义对 \CuTe 布局而言通常是可计算的，并且对广泛的分析与应用都是有用的。
+本文的后续章节将定义 \CuTe 布局上的代数运算，这些运算是从线性代数推广而来的。\CuTe 布局上的群复合可以解释为矩阵乘法的推广。\CuTe 布局的右逆与左逆则对应线性代数中的 Moore-Penrose 伪逆。在 BPC 与 BMMC 分析中也可以找到类似的线性代数表达式（Edelman 等，1994；Cormen，1993；Bouverot-Dupuis 与 Sheeran，2023；Zhou 等，2025），它们都在算法分析中使用分解、逆与矩阵乘积。从这个角度看，\CuTe 布局代数是线性代数的 BPC 与 BMMC 运算向 $\mathbb{F}_2$ 域之外的推广。特别地，\CuTe 布局代数的主要动机来自张量异构数据布局中常见的一般整数步幅。本文旨在证明：这些运算更一般的函数式定义对 \CuTe 布局而言通常是可计算的，并且对广泛的分析与应用有用。

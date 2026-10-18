@@ -246,7 +246,7 @@ Sk=2 即饱和、FA3 的 Sk=1 即饱和）——装载一旦退出关键路径�
 第~\ref{ch:17}~章在 attention 上复现同样的 +20\%。CuTe 把这套结构变成类型：
 layout/TiledCopy/TiledMMA 全部编译期折叠，SASS 与手写同构、寄存器 0 spill、
 代码量约减半——它不直接产生加速，但让 swizzle 档位、tile 形状、流水深度这些
-\textbf{真正带来加速的算法级决策}更容易被表达、被检查、被复用。
+真正带来加速的算法级决策更容易被表达、被检查、被复用。
 
 \textbf{主线四：量化（低位宽数据通路）。}\allowbreak{}Part V 先在矩阵乘上
 打通「量化数学 $\to$ 前处理 kernel $\to$ 主 kernel 折叠 $\to$ BF16 输出」

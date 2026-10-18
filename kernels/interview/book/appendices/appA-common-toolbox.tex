@@ -9,10 +9,10 @@
 正文的组织方式是「一章一个 kernel 家族，公共工具向 common.cuh 集中」：
 cp.async 协议宏、ldmatrix/HMMA 指令封装、XOR swizzle、TMA/mbarrier helpers、
 setmaxnreg 封装、WGMMA descriptor 编码——每一项都在某一章首次出现，
-之后被后续章节直接复用。本附录把这个头文件按工具族拆开，给出
-「地图 + 用法要点」：读正文时想确认某个宏的出处，或动手复现时想知道
-该 include 什么、能拿什么现成设施，都可以从这里查起。工具族与章节的
-对应关系见表~\ref{tab:appA-map}；逐段的 permalink 源码区间见附录~\ref{app:D}。
+之后被后续章节直接复用。本附录把这个头文件按工具族拆开：读正文时想确认
+某个宏的出处，或动手复现时想知道该 include 什么、能拿什么现成设施，都可以
+从这里查起。工具族与章节的对应关系见表~\ref{tab:appA-map}；逐段的 permalink
+源码区间见附录~\ref{app:D}。
 
 \begin{table}[htbp]
 \centering\small
@@ -153,7 +153,7 @@ layout\_type=1 匹配。
 
 \section{写一个新教学 kernel 的最小 checklist}
 
-从零加一个「正文可引用、测试可复现」的教学 kernel，按这条路径走：
+从零加一个「正文可引用、测试可复现」的教学 kernel：
 
 \begin{enumerate}
   \item \textbf{include}：kernel 头文件放 \texttt{kernels/\allowbreak{}interview/\allowbreak{}}，直接

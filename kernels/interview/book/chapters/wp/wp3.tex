@@ -2,7 +2,7 @@
 \wpsh{张量（Tensor）}
 \label{sec:tensor}
 
-最后来说 \CuTe 的核心对象张量（tensor）：把一个布局（layout）绑定到一个访问器（accessor）上，张量就定义出来了。访问器是面向布局、支持随机访问的类指针对象。
+最后一个核心对象是张量（tensor）：把一个布局（layout）绑定到一个访问器（accessor）上，张量就定义出来了。访问器是面向布局、支持随机访问的类指针对象。
 
 \begin{definition}
 {\em 访问器}（accessor）是支持偏移（offset）与解引用（dereference）操作的对象：
@@ -18,7 +18,7 @@ e[d] &\to *(e+d), &&\text{{\bf 下标}（subscript）算符，一种常用的便
 \texttt{thrust::\allowbreak{}transform\allowbreak\_iterator} 等）。当 $\D$ 是更为特殊的整数半模时，访问器必须与该半群的加法运算相容。
 
 \begin{definition}
-{\em 张量}（tensor）由访问器 $e$ 与布局 $\v{L}$ 的复合（Composition）所定义，记作 $T = e \circ \v{L}$。张量对布局求值的方式是：把坐标 $c \in \Z(\v{L})$ 映射到陪域 $\D$，据此对访问器做偏移，再对结果解引用，从而得到张量的值。形式化地，
+{\em 张量}（tensor）由访问器 $e$ 与布局 $\v{L}$ 的复合（Composition）所定义，记作 $T = e \circ \v{L}$。张量对布局求值的方式是：把坐标 $c \in \Z(\v{L})$ 映射到陪域 $\D$，据此对访问器做偏移，再对结果解引用，得到张量的值。形式化地，
 \begin{align}
 T(c) = (e \circ \v{L})(c) = *(e + \v{L}(c)) = e[\v{L}(c)],
 \label{eqn:tensor}
@@ -53,7 +53,7 @@ T &= \{(a,b)\} \circ \v{L}.
 \wpssh{切片（Slicing）}
 \label{sec:slicing}
 
-张量既可以被{\em 完全求值}，也可以通过{\em 切片}（slicing）进行{\em 部分求值}。\CuTe 的 Tensor 可以视为带偏移的 Layout，能沿自然坐标的任意一个或多个模任意切片。
+张量既可以被{\em 完全求值}，也可以通过{\em 切片}（slicing）做{\em 部分求值}。\CuTe 的 Tensor 可以视为带偏移的 Layout，能沿自然坐标的任一模或多个模切片。
 
 \begin{itemize}[itemsep=0pt,topsep=2pt]
 \item \textbf{完全求值}：用完整坐标 $c$ 应用式~\eqref{eqn:tensor}，得到一个值。
@@ -62,7 +62,7 @@ T &= \{(a,b)\} \circ \v{L}.
 T(c) = (e \circ \v{L})(c'+ c^*) = (e + \v{L}(c')) \circ \v{L}(c^*) = e' \circ \v{L}(c^*) = T'(c^*),
 \end{align}
 \end{itemize}
-其中 $\v{L}(c')$ 可以被完全求值并累加进 $e$，而 $\v{L}(c^*)$ 是 $\v{L}$ 中尚未求值的子布局。切片产生一个子张量，可对其进一步求值或操作。
+其中 $\v{L}(c')$ 可完全求值并累加进 $e$，而 $\v{L}(c^*)$ 是 $\v{L}$ 中尚未求值的子布局。切片产生一个子张量，可对其进一步求值或操作。
 
 \begin{figure}[p]
 \centering
@@ -679,7 +679,7 @@ $\v{A}((1,\_),((\_,0),\_))$ & $\{4\} \circ (2,(2,2)):(1,(2,100))$ &
 # 为每个 thr_id 提取 TILE_SIZE 大小的数据
 thr_data = my_data[thr_id*TILE_SIZE:(thr_id+1)*TILE_SIZE]
 \end{python}
-来获取每个线程局部的一块数据“块”（tile）。这种模式把 {\tt TILE\_SIZE}（通常正是要做优化的那个静态常量）与 {\tt thr\_id}（本质上是每个线程局部的动态索引）混为一谈。与之相反，\CuTe 采用两阶段的“重排—切片”方法，例如
+来取每个线程局部的一块数据（tile）。这种模式把 {\tt TILE\_SIZE}（通常正是要做优化的那个静态常量）与 {\tt thr\_id}（即每个线程局部的动态索引）混为一谈。与之相反，\CuTe 采用两阶段的“重排—切片”方法，例如
 \begin{python}
 # 将 my_data 张量重排并重塑为形状 (TILE_SIZE,NumTiles)
 # 这是对更一般的 composition(my_data, Transform_Layout) 的封装
@@ -688,6 +688,6 @@ assert size[1](tiled_data) == NumThrs            # 验证 NumTiles == NumThrs
 # 对分块后的张量切片，取 thr_id 局部的 TILE_SIZE 数据
 thr_data = thr_tile_data[None, thr_id]           # TILE_SIZE
 \end{python}
-它把 {\tt TILE\_SIZE} 与 {\tt thr\_id} 这两个性质不同的参数分开，更容易让编译器据此推理并传播静态信息（例如 {\tt thr\_data} 的大小为 {\tt TILE\_SIZE}），而且同样灵活。关于通用划分（partitioning）的细节与示例见第~\ref{sec:layouttv} 节，关于逻辑切分（logical divide）的细节与示例见第~\ref{sec:logical_divide} 节。
-\item 范围切片能够表达一些无法用 \CuTe 布局表示的切片。例如，取图~\ref{fig:slicing} 中的 $\v{A}$，切片 {\tt $\v{A}$(0,0:2:12)} 可以得到 $\{0\} \circ (3,2):(15,100)$，而切片 {\tt $\v{A}$(0:2:6,0)} 由于所请求的切片与 $\v{A}$ 的布局不相容而无法表示。这主要是由于所请求的块与张量布局不相容，因此我们更希望这一错误在“重排—重塑”阶段（{\tt composition}）就被检测并暴露出来，而不是留到切片阶段。关于布局群复合可容许性条件的细节与示例，见第~\ref{sec:composition_impl} 节。
+它把 {\tt TILE\_SIZE} 与 {\tt thr\_id} 这两个性质不同的参数分开，更容易让编译器据此推理并传播静态信息（例如 {\tt thr\_data} 的大小为 {\tt TILE\_SIZE}），而且同样灵活。通用划分（partitioning）与逻辑切分（logical divide）的细节与示例分别见第~\ref{sec:layouttv} 节与第~\ref{sec:logical_divide} 节。
+\item 范围切片能够表达一些无法用 \CuTe 布局表示的切片。例如，取图~\ref{fig:slicing} 中的 $\v{A}$，切片 {\tt $\v{A}$(0,0:2:12)} 可以得到 $\{0\} \circ (3,2):(15,100)$，而切片 {\tt $\v{A}$(0:2:6,0)} 由于所请求的切片与 $\v{A}$ 的布局不相容而无法表示。我们更希望这类错误在“重排—重塑”阶段（{\tt composition}）就被检测并暴露出来，而不是留到切片阶段。关于布局群复合可容许性条件的细节与示例，见第~\ref{sec:composition_impl} 节。
 \end{compactitem}
