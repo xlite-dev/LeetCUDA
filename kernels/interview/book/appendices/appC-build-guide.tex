@@ -16,7 +16,7 @@
         --use\_\allowbreak{}fast\_\allowbreak{}math} + cutlass/cudnn-frontend include。
   \item \texttt{book/\allowbreak{}tests/\allowbreak{}build\_\allowbreak{}tests.\allowbreak{}sh}——编译并运行每章最小正确性测试。
         本书的作用是取代集成辅助工具的正确性验证角色：对拍一律
-        CPU fp64，无 cuBLAS/cuDNN 依赖，可在任何机器复现；辅助工具保留为
+        CPU fp64，无 cuBLAS/cuDNN 依赖，可在任何机器复现。辅助工具保留为
         集成 bench：\texttt{bench/bench\_leetcuda.cu}（440 行）只剩 main 与
         CLI 解析，host 侧 test/bench 拆到 \texttt{bench/} 下 base/sgemv/sgemm/hgemm/
         fp8\_gemm/fp4\_gemm/flash\_attn/ffpa\_attn 八个模块 .cu 与
@@ -84,7 +84,7 @@ cd kernels/interview/book/tests
 行为细节（对应脚本 L13/L47--51/L58/L65）：\texttt{-{}-arch} 默认
 \texttt{sm\_120a}（验收机 RTX PRO 5000），\texttt{NVCC} 可用环境变量覆盖；
 ch13（WGMMA）在非 \texttt{sm\_90a} 目标下自动跳过并打印提示；每个测试用
-\texttt{-std=c++20 -O2} + cutlass include 单文件编译；全部成功时末行
+\texttt{-std=c++20 -O2} + cutlass include 单文件编译。全部成功时末行
 \texttt{ALL~OK}、退出码 0，任一编译或运行失败输出 \texttt{FAILURES~PRESENT}
 并返回非 0。生成物在 \texttt{.build/} 下：与源文件同名的可执行文件
 （无扩展名，如 \texttt{.\allowbreak{}build/\allowbreak{}ch01\_\allowbreak{}roofline}）与逐源的
@@ -95,9 +95,9 @@ ch13（WGMMA）在非 \texttt{sm\_90a} 目标下自动跳过并打印提示；�
 所有章测试共享 \texttt{book/\allowbreak{}tests/\allowbreak{}common\_\allowbreak{}test.\allowbreak{}h}（72 行）：
 三档容差 \texttt{TOL\_F32ACC}=1e-3 / \texttt{TOL\_F16ACC}=5e-2 /
 \texttt{TOL\_TF32}=1e-2（L14--16）；测试规模上限
-\texttt{BOOK\_\allowbreak{}TEST\_\allowbreak{}MAX\_\allowbreak{}N}=512（L19，CPU fp64 三重循环的时限约束）；
+\texttt{BOOK\_\allowbreak{}TEST\_\allowbreak{}MAX\_\allowbreak{}N}=512（L19，CPU fp64 三重循环的时限约束）。
 \texttt{book\_\allowbreak{}require\_\allowbreak{}sm}（L32）arch 不在位时打印 \texttt{SKIP(chNN)} 并
-正常退出；\texttt{BOOK\_\allowbreak{}CUDA\_\allowbreak{}CHECK}（L39）统一 CUDA 错误拦截；
+正常退出；\texttt{BOOK\_\allowbreak{}CUDA\_\allowbreak{}CHECK}（L39）统一 CUDA 错误拦截。
 \texttt{book\_check}（L51）打印 \texttt{max\_abs\_err} 与首个超差下标；
 \texttt{book\_\allowbreak{}fill\_\allowbreak{}rand}（L69）以固定种子 0xA5A5 造确定性输入。
 
