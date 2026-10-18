@@ -17,7 +17,7 @@ $B\sb M\times B\sb N\times B\sb K = 128\times128\times16$，block 256 线程）�
 无编译宏限定，\texttt{mma.\allowbreak{}m16n8k16} 要求 \texttt{sm\_80} 及以上；
 配套最小测试为 \texttt{ch11\_\allowbreak{}hgemm\_\allowbreak{}mma.\allowbreak{}cu}（\texttt{book/tests/}）。
 
-本章是全书\textbf{指令级细节最重}的一章：11.3~节把 \texttt{mma} 指令的每个
+本章是全书指令级细节最重的一章：11.3~节把 \texttt{mma} 指令的每个
 限定符逐字段对照 PTX ISA 讲解，把 A/B/C 三个 fragment 在 32 个 lane 上的
 寄存器分布逐格画出来；\texttt{ldmatrix} 的寻址协议（哪个线程提供哪个地址）
 也同样逐线程推导。第~\ref{ch:12}~章的 swizzle、
@@ -38,9 +38,8 @@ $B\sb M\times B\sb N\times B\sb K = 128\times128\times16$，block 256 线程）�
 T/N 来自 Fortran 的列主序约定：N（Normal）$=$ 列主序原生、
 T（Transposed）$=$ 行主序。于是 \textbf{TN} $=$ A 行主序 $+$ B 列主序，
 即 $C\sb {M\times N} = A\sb {M\times K}\times B\sb {K\times N}$，其中 B 以
-$B^{\top}\sb {N\times K}$ 行主序存放（源码头注释 hgemm.cuh~L10--22 对此有一段
-很好的辨析）。这个转置存储的好处：A 与 $B^{\top}$ \textbf{都是行主序、
-内维都是 K}，cp.async 搬运完全对称；而 mma 指令要求的
+$B^{\top}\sb {N\times K}$ 行主序存放（源码头注释 hgemm.cuh~L10--22）。这个转置存储
+的好处：A 与 $B^{\top}$ 都是行主序、内维都是 K，cp.async 搬运完全对称；而 mma 指令要求的
 \texttt{.row.col}（A 行、B 列）也不是问题：逐行装载 $B^{\top}$ 就是逐列装载 B，
 天然满足，\texttt{ldmatrix} 一个 \texttt{.trans} 都不用加（11.4.4）。
 
@@ -173,8 +172,8 @@ $\mathrm{tig} = \mathrm{lane} \bmod 4$）：元素 $a\sb i$（$i = 0..7$，每
   \mathrm{col}(a\sb i) = 2\,\mathrm{tig} + (i \bmod 2) + 8\cdot[i \ge 4].
   \label{eq:11-apos}
 \end{equation}
-翻译成直观表述：每个 lane 持 A 的\textbf{两行}（$\mathrm{g}$ 与 $\mathrm{g}{+}8$）、
-每行\textbf{两个相邻列对}（$k$ 半区的 $2\,\mathrm{tig}, 2\,\mathrm{tig}{+}1$）；
+翻译成直观表述：每个 lane 持 A 的两行（$\mathrm{g}$ 与 $\mathrm{g}{+}8$）、
+每行两个相邻列对（$k$ 半区的 $2\,\mathrm{tig}, 2\,\mathrm{tig}{+}1$）；
 四个寄存器恰好按 [左上, 左下, 右上, 右下] 四象限排布（图~\ref{fig:11-2a}）。
 一行 16 个元素由 4 个 lane（$\mathrm{tig} = 0..3$）拼成。
 
@@ -186,7 +185,7 @@ B 是 $k16 \times n8$，列主序参与。坐标公式：
   \qquad \mathrm{col}(b\sb i) = \mathrm{g}.
   \label{eq:11-bpos}
 \end{equation}
-即每 lane 持 B 的\textbf{一列}（第 $\mathrm{g}$ 列，8 行）中的两对：
+即每 lane 持 B 的一列（第 $\mathrm{g}$ 列，8 行）中的两对：
 $R0 = \{b\sb 0,b\sb 1\}$ 是 $k \in \{2\mathrm{tig}, 2\mathrm{tig}{+}1\}$（上半
 $k$ 区），$R1 = \{b\sb 2,b\sb 3\}$ 再加 8（下半 $k$ 区）。8 个 lane 组
 （$\mathrm{g} = 0..7$）拼齐 8 列。与 A 对照记忆：A 按行分、B 按列分，
@@ -547,7 +546,7 @@ CuTe 的 TiledMMA 与 Value Tile 概念（L180--183），
 
 加载坐标与第~\ref{ch:10}~章相同但搬 half：\texttt{tid/2} 定行（0--127）、
 \texttt{tid\%2} 选 16~B 半行（$k$ 的 0--7 或 8--15，恰 8 个 half $=$ 16~B）。
-注意两个 gmem 索引\textbf{形式对称}：A 用 \texttt{m*K + k}、B 用
+注意两个 gmem 索引形式对称：A 用 \texttt{m*K + k}、B 用
 \texttt{n*K + k}，后者就是 B 以 $B^{\top}$ 行主序存储的落点，
 也是 TN 布局在代码里的全部体现（L194 与 L197 的两行注释）。
 
@@ -602,8 +601,7 @@ $k$ 方向 2 对（式~\ref{eq:11-bpos}）。两者统一的方式：$B^{\top}$ 
 $8\times16 = 128$ 条指令 $\times 4096$ FLOP $= 524{,}288$ FLOP。
 累加器寄存器每 lane $4\times4\times2 = 32$ 个 \texttt{.b32}，
 加上 \texttt{RA} 16 个、\texttt{RB} 8 个与地址变量，
-\texttt{\_\allowbreak{}\_\allowbreak{}launch\_\allowbreak{}bounds\_\allowbreak{}\_\allowbreak{}(256)}（L129）下编译器仍有余量不溢出，
-这便是手写路径寄存器白盒的直接收益。
+\texttt{\_\allowbreak{}\_\allowbreak{}launch\_\allowbreak{}bounds\_\allowbreak{}\_\allowbreak{}(256)}（L129）下编译器仍有余量不溢出。
 
 \subsection{Epilogue：shuffle 收拢 C fragment}
 
@@ -723,10 +721,9 @@ HGEMM MMA (S=3, BLK\_SW=1) & 0.000e+00 & 127.3/246.9 (0.52x) \\
 \end{tabular}
 \end{table}
 
-三点读数：（1）mma.sync 基础实现仅达 cuBLAS 的约一半（0.48$\sim$0.52$\times$）：指令用对不等于流水编排到位，装载与计算的重叠窗口、epilogue 写回都还有可观浪费；（2）S=3 比 S=2 略好（同 BLK\_SW 下 +2.2\%），与 11.3.6 的判断一致：更深的缓冲摊薄 cp.async 的搬运抖动，但 smem 占用同步上涨，边际收益递减；（3）block swizzle（BLK\_SW 0 $\to$ 1）带来约 4\% 改善（119.7 $\to$ 124.6 TFLOPS），大形状下 CTA 的调度顺序对 gmem 局部性影响不可忽略。
+三点读数：（1）mma.sync 基础实现仅达 cuBLAS 的约一半（0.48$\sim$0.52$\times$）：指令用对不等于流水编排到位，装载与计算的重叠窗口、epilogue 写回都还有可观浪费。（2）S=3 比 S=2 略好（同 BLK\_SW 下 +2.2\%），与 11.3.6 的判断一致：更深的缓冲摊薄 cp.async 的搬运抖动，但 smem 占用同步上涨，边际收益递减。（3）block swizzle（BLK\_SW 0 $\to$ 1）带来约 4\% 改善（119.7 $\to$ 124.6 TFLOPS），大形状下 CTA 的调度顺序对 gmem 局部性影响不可忽略。
 
-最后回答一个实操问题：\textbf{怎么确认 kernel 真的跑在 Tensor Core 上？}
-两级证据：（1）SASS 级：对可执行文件
+怎么确认 kernel 真的跑在 Tensor Core 上？两级证据：（1）SASS 级：对可执行文件
 \texttt{cuobjdump -sass} 后检索 \texttt{HMMA.16816} 指令，
 本 kernel 主循环应出现成串的 \texttt{HMMA.16816.F16}（每 warp 每迭代 16 条）
 与 \texttt{LDSM}（ldmatrix 的 SASS 形态，x4 对应 \texttt{LDSM.128}）；
@@ -742,7 +739,7 @@ HGEMM MMA (S=3, BLK\_SW=1) & 0.000e+00 & 127.3/246.9 (0.52x) \\
   注释原文（\texttt{\_nn} 布局对比段）称 B 行主序时「需要 .trans」的理由是
   「ldmatrix 默认加载 col-major」。PTX ISA §9.7.14.5.15 原文：
   \emph{``Optional qualifier .trans indicates that the matrix is loaded in
-  column-major format''}，即\textbf{不加} \texttt{.trans} 是普通（行）装载，
+  column-major format''}，即不加 \texttt{.trans} 是普通（行）装载，
   加了才是列装载。结论方向恰好写反。本章 kernel 的实际用法（TN 布局、
   A/B 都用非 trans 装载）不受影响；但按该注释推理会在 NN 布局下
   选错 trans 与否。已记入 \texttt{book/\allowbreak{}CHECKLOG.\allowbreak{}md}，正文以 PTX 文档为准。
@@ -784,7 +781,7 @@ M/N 按 128 对齐时条件恒假这一前提才安全；若形状未对齐，
 改造 kernel 支持非对齐形状时必须先处理这里。
 
 \textbf{坑三：x2/x1 的高位 lane 地址。}\allowbreak{}PTX 允许 x2 时 lane 16--31 传
-复制低位的地址；但传\textbf{无效值}（未映射地址）在部分架构上仍会出错。
+复制低位的地址；但传无效值（未映射地址）在部分架构上仍会出错。
 本 kernel 的 \texttt{lane\%8} / \texttt{(lane/8)\%2} 天然循环复用合法行号，
 属安全写法；自己写 kernel 时建议保持这种地址周期化的习惯。
 
@@ -793,7 +790,7 @@ M/N 按 128 对齐时条件恒假这一前提才安全；若形状未对齐，
 读数据在迭代头，中间隔着 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads}（L303）。
 删掉它，warp 0 可能已经读到 warp 7 还没写完的 stage。
 另外注意 \texttt{if \allowbreak{}(k + k\allowbreak{}Stages - 1 \allowbreak{}< NUM\_\allowbreak{}K\_\allowbreak{}TILES)} 的条件加载分支：
-\textbf{wait\_group 在分支外}（L297--304 自适应版本），
+wait\_group 在分支外（L297--304 自适应版本），
 而 \texttt{commit\_\allowbreak{}group} 在分支内。尾部迭代不 commit 却 wait(0)，
 per-thread 组计数对不上会提前放行（好在上一次的 sync 兜底；
 本 kernel 尾部迭代 \texttt{wait\_\allowbreak{}group\allowbreak{}(0)} 等到的是「至多 0 组」，
@@ -807,7 +804,7 @@ $10^{-1}$ 量级并在个别元素上溢出 f16 范围（65504）。
 
 \textbf{坑六：改完模板参数忘了改 launch 侧。}$B\sb M/B\sb N/B\sb K$ 全由模板参数
 推导，但 smem 字节数（\texttt{kStages}$\times(B\sb M B\sb K + B\sb N B\sb K)\times2$）
-与 grid/blockDim 由\textbf{调用方}计算。改 \texttt{kStages} 或 tile 参数
+与 grid/blockDim 由调用方计算。改 \texttt{kStages} 或 tile 参数
 而不同步 launch 参数，轻则 launch 直接报 smem 超限错误，
 重则静默算错（blockDim 与 warp 排布假设不符）。本章测试把
 \texttt{smem\_bytes} 与 blockDim 都写死为 24576/256，

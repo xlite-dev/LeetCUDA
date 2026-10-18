@@ -31,25 +31,25 @@ bank conflict 与 swizzle 问题。
 \textbf{动机一：naive GEMM 的算术强度只有 0.25。}按定义直译，
 $C\sb{m,n} = \sum\sb{k} A\sb{m,k} B\sb{k,n}$：每个输出元素要读 $A$ 的一行片段
 （$K$ 个 float）和 $B$ 的一列片段（$K$ 个 float），做 $K$ 次乘加。
-算术强度 $\mathrm{AI} = 2K \text{ FLOP} / (8K \text{ B}) = 0.25$~FLOP/B，为
-\textbf{与 $K$ 无关的常数}，与第~\ref{ch:08}~章 GEMV 同一量级。$K$ 越大只是把
-流量按比例放大，AI 保持不变。在本机 roofline（拐点约 71.6 FLOP/B，见 9.6~节）下，
+算术强度 $\mathrm{AI} = 2K \text{ FLOP} / (8K \text{ B}) = 0.25$~FLOP/B，为与
+$K$ 无关的常数，与第~\ref{ch:08}~章 GEMV 同一量级。$K$ 越大只是把流量按比例
+放大，AI 保持不变。在本机 roofline（拐点约 71.6 FLOP/B，见 9.6~节）下，
 naive 的计算上限被限制在带宽 $\times 0.25$，离 fp32 峰值差近两个数量级。
 
 \textbf{动机二：复用一直存在，只是 naive 没有利用。}观察一：同一行块
 $A[m{:}m{+}B\sb{M},\ :]$ 上的所有输出共享同一段 $A$；同一列块
 $B[:,\ n{:}n{+}B\sb{N}]$ 上的所有输出共享同一段 $B$。把这两段搬进 shared memory，
-一次搬运、$B\sb{N}$ 次（对 $A$）与 $B\sb{M}$ 次（对 $B$）复用，这就是 \textbf{Block Tile}，
-金字塔第一级。观察二：进一步让\textbf{一个线程}负责多个输出，
-则它从 smem 取出的每个 $A$ 元素能服务 $T\sb{N}$ 个输出、每个 $B$ 元素能服务 $T\sb{M}$
-个输出，即 \textbf{Thread Tile}，复用从 smem 级下沉到寄存器级。观察三：搬运本身
-（gmem$\to$smem）可以用 \texttt{float4} 把指令数降到 1/4，即 \textbf{Vectorize}。
+一次搬运、$B\sb{N}$ 次（对 $A$）与 $B\sb{M}$ 次（对 $B$）复用，这就是 Block Tile，
+金字塔第一级。观察二：进一步让一个线程负责多个输出，则它从 smem 取出的每个
+$A$ 元素能服务 $T\sb{N}$ 个输出、每个 $B$ 元素能服务 $T\sb{M}$ 个输出，即
+Thread Tile，复用从 smem 级下沉到寄存器级。观察三：搬运本身（gmem$\to$smem）
+可以用 \texttt{float4} 把指令数降到 1/4，即 Vectorize。
 三级叠加后，本章的 \texttt{sgemm\_vec4} 在 $2048^3$ 上比 naive 快 $4.76\times$
 （9.6~节实测），而它使用的仍然只是 CUDA Core 与 shared memory。
 
 \textbf{动机三：金字塔的每一级解决一个不同的瓶颈。}\allowbreak{}Block Tile 解决
-\textbf{gmem 带宽}（AI 从 0.25 到 32）；Thread Tile 解决 \textbf{smem 带宽与指令数}
-（每 FMA 的 smem 读从 2 次降到 0.5 次）；再往上，剩下的瓶颈依次是访存延迟
+gmem 带宽（AI 从 0.25 到 32）；Thread Tile 解决 smem 带宽与指令数（每 FMA 的
+smem 读从 2 次降到 0.5 次）；再往上，剩下的瓶颈依次是访存延迟
 （$\to$ 双缓冲，第~\ref{ch:10}~章）、CUDA Core 吞吐本身
 （$\to$ Tensor Core，第~\ref{ch:10}--\ref{ch:11}~章）、生产者消费者同步
 （$\to$ Warp Specialization + TMA，第~\ref{ch:13}--\ref{ch:14}~章）。
@@ -85,7 +85,7 @@ $\mathrm{addr}(A\sb{m,k}) = mK + k$、$\mathrm{addr}(B\sb{k,n}) = kN + n$
   \;=\; \frac{B\sb{M} B\sb{N}}{2 \bigl( B\sb{M} + B\sb{N} \bigr)} ,
   \label{eq:9-ai-tile}
 \end{equation}
-$B\sb{K}$ 在分子分母间相消，\textbf{加深 $B\sb{K}$ 不提升 AI}，只增加 smem 驻留量与
+$B\sb{K}$ 在分子分母间相消，加深 $B\sb{K}$ 不提升 AI，只增加 smem 驻留量与
 单次同步覆盖的计算量；AI 由 $B\sb{M} \times B\sb{N}$ 这个输出面唯一决定。
 代入本章两个实现：$32 \times 32 \to \mathrm{AI} = 8$~FLOP/B；
 $128 \times 128 \to \mathrm{AI} = 32$~FLOP/B，恰好是三级递进（naive $0.25 \to 8 \to 32$）。
@@ -93,7 +93,7 @@ $128 \times 128 \to \mathrm{AI} = 32$~FLOP/B，恰好是三级递进（naive $0.
 
 \subsection{Thread Tile：换一层计数——smem 到寄存器}
 
-Thread tile \textbf{不改变} gmem 流量（那是 block tile 决定的），它优化的是
+Thread tile 不改变 gmem 流量（那是 block tile 决定的），它优化的是
 smem$\to$寄存器这一跳。每线程算 $T\sb{M} \times T\sb{N}$ 个输出，则沿 $k$ 每一步：
 从 smem 取 $T\sb{M}$ 个 $A$ 与 $T\sb{N}$ 个 $B$（$4(T\sb{M} + T\sb{N})$ 字节），
 做 $2 T\sb{M} T\sb{N}$ FLOPs：
@@ -127,7 +127,7 @@ naive（AI $0.25$）计算上限 $\approx 0.23$ TFLOPS；
 形式化之外，tiling 循环的正确性依赖两道栅栏，缺一不可：
 \begin{itemize}
   \item \textbf{第一道 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads}}（消费前）：保证本 k-slice 的
-        \texttt{s\_a}、\texttt{s\_b} 已被\textbf{全部}线程写完，才能开始读，
+        \texttt{s\_a}、\texttt{s\_b} 已被全部线程写完，才能开始读，
         否则会读到其他线程尚未写完的数据；
   \item \textbf{第二道 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads}}（覆写前）：保证所有线程已读完
         本 slice，才允许下一轮加载覆写同一块 smem，否则慢的线程读到的数据
@@ -176,8 +176,8 @@ naive（AI $0.25$）计算上限 $\approx 0.23$ TFLOPS；
 
 \subsection{五层金字塔总览}
 
-源码头部的金字塔注释是整个 Part II 的总纲：其优化路径是一张五层金字塔，各层的
-手段与计算密度递进见表~\ref{tab:9-pyramid}。
+源码头部的金字塔注释是整个 Part II 的总纲，各层的手段与计算密度递进见
+表~\ref{tab:9-pyramid}。
 
 \begin{table}[htbp]
 \centering
@@ -280,16 +280,16 @@ row-major）；$B\sb{M}=B\sb{N}=128$、$B\sb{K}=32$，block $(32,32)$ 共 1024 �
 每线程负责 $4\times4=16$ 个 $C$ 元素，$1024\times16=16384=128\times128$，恰好
 铺满；Grid $((N+127)/128,\ (M+127)/128,\ 1)$。边界假设与 Level 1 naive 版
 一致：$M$/$N$ 为 128 的倍数、$K$ 为 32 的倍数。线程到 $4\times4$ tile 的映射
-与加载映射\textbf{解耦}（独立计算更清晰）；注释还提示了计算阶段 \texttt{s\_b} 的
+与加载映射解耦（独立计算更清晰）；注释还提示了计算阶段 \texttt{s\_b} 的
 bank conflict（4-way，生产代码可用 \texttt{s\_b[BK][BN+1]} PAD 打散，这里保持
-最简布局便于讲解）。映射与提示下文逐一验算。
+最简布局便于讲解）。
 
-先独立验证注释里的两套映射（都能对上）：\textbf{加载映射}，$A$ 块 $128 \times 32$：
+先独立验证注释里的两套映射（都能对上）：加载映射，$A$ 块 $128 \times 32$：
 每线程 4 个元素，$8$ 线程铺满一行 32 列（$\mathrm{tid}/8$ 定行、$(\mathrm{tid}\%8) \cdot 4$ 定列组），
 $1024$ 线程恰好 $128 \times 32$；$B$ 块 $32 \times 128$：$32$ 线程铺满一行
 （$\mathrm{tid}/32$ 定行、$(\mathrm{tid}\%32) \cdot 4$ 定列组），$1024$ 线程恰好
 $32 \times 128$；row-major 下两条映射的 4 元素都连续，\texttt{float4} 合法。
-\textbf{计算映射}，与加载映射\textbf{完全解耦}（源码 L130--133 特意强调这一点）：
+计算映射，与加载映射完全解耦（源码 L130--133 特意强调这一点）：
 线程 $\mathrm{tid}$ 负责输出的 $4 \times 4$ 子块，行基址 $(\mathrm{tid}/32) \cdot 4$、
 列基址 $(\mathrm{tid}\%32) \cdot 4$；$32 \times 32$ 个线程 $\times$ 每人 16 个输出
 $= 16384 = 128 \times 128$，不重不漏（vec4 落点见图~\ref{fig:09-vec4-map}）。
@@ -408,9 +408,8 @@ $= 16384 = 128 \times 128$，不重不漏（vec4 落点见图~\ref{fig:09-vec4-m
   title={sgemm.cuh L138-167（Level 1+：float4 搬运、双栅栏与 4x4 FMA 内核）}]{../sgemm.cuh}
 
 计算内核逐行对照式~\ref{eq:9-ai-thread}：每个 $k$ 取 4 个 $A$、4 个 $B$ 进寄存器
-（\texttt{a\_vals}/\texttt{b\_vals}），做 $4 \times 4 = 16$ 次 FMA，
-\texttt{sum[4][4]} 是 16 条独立累加链，编译器可以充分乱序；
-16 次 FMA 只花 8 次 smem 读，这就是 Thread Tile 的全部含义。
+（\texttt{a\_vals}/\texttt{b\_vals}），做 $4 \times 4 = 16$ 次 FMA，\texttt{sum[4][4]}
+是 16 条独立累加链，编译器可以充分乱序；16 次 FMA 只花 8 次 smem 读。
 
 \lstinputlisting[linerange={168-182},firstnumber=auto,
   title={sgemm.cuh L168-182（Level 1+：4x4 写回，每行一条 float4 store）}]{../sgemm.cuh}
@@ -516,9 +515,9 @@ vec4  & 2048 & 256  & 0.661 & 25.97 & 38.8 & 813 \\
 $8 \times 934 \approx 7.5$ TFLOPS，实测拿到其中 73\%（差值来自同步空转与
 访存延迟未被隐藏）；模型带宽 683~GB/s 也印证带宽是上限。
 （3）vec4 到 25.97 TFLOPS：AI $=32$ 的上限是 29.9，实测 87\%，
-介于带宽上限与算力上限 66.9 之间，它已经把不带双缓冲、不用 Tensor Core 的
-CUDA Core 写法发挥到了该路径的较高水平。距峰值剩下的 61\% 缺口是后两章要解决的问题：
-访存延迟（cp.async 双缓冲）与算力（TF32/FP16 Tensor Core）。
+介于带宽上限与算力上限 66.9 之间（不带双缓冲、不用 Tensor Core）。距峰值
+剩下的 61\% 缺口是后两章要解决的问题：访存延迟（cp.async 双缓冲）与算力
+（TF32/FP16 Tensor Core）。
 （4）512 规模的 vec4 受并行度不足限制：$128^2$ 的 block tile 在 $512^2$ 上只切出
 $4 \times 4 = 16$ 个 block，110 个 SM 有 94 个空闲；naive 同形状有 256 个 block 反而
 铺得更满。tile 不是越大越好：block 数 $\ge$ SM 数的若干倍是形状适配的底线。
@@ -532,12 +531,12 @@ $4 \times 4 = 16$ 个 block，110 个 SM 有 94 个空闲；naive 同形状有 2
   注释原文给出「Level 1: \texttt{AI ≈ B\_\allowbreak{}K/\allowbreak{}(2×sizeof) ≈ 32/\allowbreak{}8=\allowbreak{}4}」与
   「Level 2: \texttt{AI ≈ TM×TN×B\_\allowbreak{}K/\allowbreak{}(2×sizeof) ≈ 8×8×8/\allowbreak{}8=\allowbreak{}64}」。
   问题一：正确的 block tile 推导（式~\ref{eq:9-ai-tile}）中 $B\sb{K}$ 在分子分母间
-  \textbf{相消}，AI 与 $B\sb{K}$ 无关，把 $B\sb{K}$ 放进分子会得出「加深 K 切片
+  相消，AI 与 $B\sb{K}$ 无关，把 $B\sb{K}$ 放进分子会得出「加深 K 切片
   就能提升 AI」的错误直觉；数值上 $32 \times 32$ tile 的 AI 是 8 而非 4。
   问题二：Level 2 公式代入 $T\sb{M}{=}T\sb{N}{=}B\sb{K}{=}8$ 得 64，与任何计数口径都对不上：
   thread tile 不改变 gmem AI（仍由 block tile 决定），它提升的是 smem 级计算密度
   （式~\ref{eq:9-ai-thread}，$1 \times 1$ 的 0.25 到 $4 \times 4$ 的 1.0，即 4 倍）。
-  两个公式的\textbf{定性结论}（Level 1 仍 memory-bound、Level 2 起向 compute-bound
+  两个公式的定性结论（Level 1 仍 memory-bound、Level 2 起向 compute-bound
   迈进）在本机 roofline 下均成立（9.6 节），但推导与数值应按本章 9.3 节修正。
 \end{kaogu}
 
@@ -573,7 +572,7 @@ $4 \times 4 = 16$ 个 block，110 个 SM 有 94 个空闲；naive 同形状有 2
 
 \textbf{坑二：边界约定由调用方保证。}两个 kernel 对 $M$、$N$、$K$ \textbf{均无守卫}：
 naive 要求三者都是 32 的倍数，vec4 要求 $M$、$N$ 是 128 的倍数、$K$ 是 32 的倍数。
-不满足时越界读\textbf{且越界写}，比第~\ref{ch:08}~章 GEMV 的只读越界更危险。
+不满足时越界读且越界写，比第~\ref{ch:08}~章 GEMV 的只读越界更危险。
 生产代码要么切尾块专用路径，要么在 tile 边界加条件读（写 0）。
 
 \textbf{坑三：\texttt{/} 与 \texttt{\%} 用反。}把合并维度（$K$/$N$，stride 1）交给
