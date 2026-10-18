@@ -232,7 +232,7 @@ $16\times8\times16$ 就是一条 \texttt{mma.sync}。}
 
 $B_N$ 随累加精度切换是寄存器预算的算术结果：F32 累加器每个元素占
 4 字节，寄存器压力翻倍，$128\times256$ 的 C tile 在 128 线程下是
-$128\cdot256/128=256$ 个 float 累加器，已经超过可用寄存器的一半，会溢出到
+$128\cdot256/128=256$ 个 float 累加器，恰好是可用寄存器的一半，会溢出到
 local memory。第~\ref{sec:24-step3b}~节把两种精度的寄存器占用摆开，并用
 \texttt{ptxas -v} 的实测数字核对（口径讨论见第~\ref{sec:24-kaogu}~节）。
 $B_K=32$ 与 $k_{\mathrm{stage}}=2$ 一起决定了 smem 占用：

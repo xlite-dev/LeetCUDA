@@ -609,12 +609,13 @@ L2196--3488 是三者的 CuTe 复刻对照（第~\ref{ch:25}~章）。
 
 \subsection{flash\_attn.cuh 的总体结构}
 
-flash\_attn.cuh 全文 $3490$ 行，按编译宏分成三段五族 kernel（行号见
+flash\_attn.cuh 全文 $4179$ 行，按编译宏分成四段六族 kernel（行号见
 BOOK\_PLAN \S 1.3 核验表）：FA2 MMA 版
 （\texttt{flash\_\allowbreak{}attn\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}split\_\allowbreak{}q}，L112 起）。\texttt{TMA\_MMA\_WS} 宏块
 （L791--2194）内含 FA2 TMA+WS 版（L889）与 FA3 版
 （\texttt{flash\_\allowbreak{}attn\_\allowbreak{}3\_\allowbreak{}tma\_\allowbreak{}ws\_\allowbreak{}stages\_\allowbreak{}split\_\allowbreak{}q}，L1516）。\texttt{CUTE} 宏块
-（L2196--3488）内含 FA2/FA3 的 CuTe traits 与三个复刻 kernel。本章只引用头部设计
+（L2196--3488）内含 FA2/FA3 的 CuTe traits 与三个复刻 kernel；最后一个 CUTE
+宏块（L3490--4177）是 Phase 8 的 persist-D 版，第~\ref{ch:26b}~章专讲。本章只引用头部设计
 注释（L5--110），五条要点逐一对应 15.3~节的推导。
 
 \subsection{头注释导读：五条要点}

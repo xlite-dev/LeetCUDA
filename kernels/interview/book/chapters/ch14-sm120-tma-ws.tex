@@ -808,8 +808,8 @@ cp.async.bulk.tensor.2d.shared::cta.global.mbarrier::complete_tx::bytes ...
 112/112 保留}。此前必须 family-specific 目标的结论是 cluster 形式下的
 假象：当时两组 kernel 一组（手写）用 cluster、一组（cute）用 cta，而保留
 的那组恰好以 120f 构建，两个变量混在一起，归因归错了列。验证侧：
-SASS \texttt{USETMAXREG}=112=PTX 计数，FA bench Max Err 与基线一致；
-\texttt{-{}-tma-mma-ws 4096} 全 0，sm\_90a/sm\_120a 默认构建无回归。
+SASS \texttt{USETMAXREG}=112=PTX 计数。FA bench Max Err 与基线一致。
+\texttt{-{}-tma-mma-ws 4096} 全 0。sm\_90a/sm\_120a 默认构建无回归。
 
 \paragraph{排查方法三条} （1）\textbf{SASS 助记符是 \texttt{USETMAXREG}，没有
 \texttt{n}}。\texttt{grep setmaxnreg} 在 SASS 上全程假阴性，本次调查一度据此

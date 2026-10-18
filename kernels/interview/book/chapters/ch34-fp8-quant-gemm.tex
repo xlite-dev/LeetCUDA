@@ -40,7 +40,7 @@ kernel——把 BF16 的 $A,B$ 变成 e4m3 的 $A_8,B_8^{\top}$ 外加两组 sca
 第~\ref{ch:02}~章（向量化 IO 与 warp 归约）、第~\ref{ch:03}~章（block 归约）。
 \textbf{源码区间}：\texttt{fp8\_gemm.cuh} L45--284（Phase 9.1/9.2），完整行号以
 附录~\ref{app:D}~的源码索引为准。
-\textbf{验证方式}：\texttt{notes\_v2\_sm120a.bin --fp8-gemm}（CPU fp64 参考全
+\textbf{验证方式}：\texttt{leetcuda\_bench\_sm120a.bin --fp8-gemm}（CPU fp64 参考全
 组合 + 尾部 shape），bench 数据在 34.6~节。
 
 \section{问题与动机}

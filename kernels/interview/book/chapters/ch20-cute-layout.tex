@@ -1510,8 +1510,8 @@ flash\_attn.cuh 的 \texttt{convert\_\allowbreak{}layout\_\allowbreak{}}\allowbr
 测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch20\_\allowbreak{}layout.\allowbreak{}cu}（host-only：不启动 kernel、
 不需要 GPU；main 不调用任何 CUDA API）。八个 case 覆盖本章全部代数结论：
 A 线性化（coord 与整数两种形式，128 断言）；B compose（14）；C right\_inverse
-（65）。D left\_inverse（64）；E product（24）；F zipped\_divide（76，含双射
-覆盖检查）。G tile\_to\_shape（261，含两条 \texttt{static\_\allowbreak{}assert} 编译期
+（65）；D left\_inverse（64）；E product（24）；F zipped\_divide（76，含双射
+覆盖检查）；G tile\_to\_shape（261，含两条 \texttt{static\_\allowbreak{}assert} 编译期
 折叠证明）；H Swizzle 复合（258，位公式逐点核对与 codomain 双射）。合计
 890 个断言。
 

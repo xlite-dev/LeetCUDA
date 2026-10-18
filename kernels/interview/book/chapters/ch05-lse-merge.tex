@@ -164,7 +164,7 @@ causal mask 等机制会产生空段：某分块内全部打分被 mask 成 $-\i
 \lstinputlisting[linerange={437-457},firstnumber=auto,
   title={base.cuh L437-457（merge\_attn\_states 签名与线程规划）}]{../base.cuh}
 
-接口与布局约定里有一处最容易犯错的\textbf{转置陷阱}：
+这里有本章最容易犯错的一处\textbf{转置陷阱}：
 \begin{itemize}
   \item $O$ 相关的三个数组（\texttt{output}/\texttt{prefix\_\allowbreak{}output}/
         \texttt{suffix\_\allowbreak{}output}）布局是 $[\text{num\_tokens}, \text{num\_heads},

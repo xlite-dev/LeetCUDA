@@ -30,7 +30,7 @@ $\sqrt{2}\times 10.2\% = 14.4\%$，与实测 14.4\% 吻合到小数点后两位�
 \textbf{源码区间}：\texttt{fp4\_gemm.cuh} L58--366（Phase 10.1--10.2）。
 \textbf{验证方式}：\texttt{book/tests} 的 \texttt{ch36\_fp4\_quantize.cu}
 （SF 字节通式全量枚举 + 量化逐 bit 比对 + 硬件码点事实），
-\texttt{notes\_v2\_sm120a.bin --fp4-gemm}（端到端精度）。
+\texttt{leetcuda\_bench\_sm120a.bin --fp4-gemm}（端到端精度）。
 \textbf{本章不展开 kernel}：blockscaled MMA 的发射、SF 片段分区、TMA 描述符
 与流水协议全部留给第~\ref{ch:37}~章。
 

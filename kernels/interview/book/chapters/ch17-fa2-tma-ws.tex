@@ -98,7 +98,7 @@ $B_r, B_c$ 为 Q/KV block 行数）。本章取 $B_r = 128$、$B_c = 64$（派�
 即 blockIdx.x 索引 Q tile（沿 seqlen 切块并行）、blockIdx.y 索引
 (batch, head)。每个 block 都要遍历完整的 KV seqlen（$T_c$ 个 tile），
 block 内的 online softmax 状态 $(m, \ell, O)$ 跨 $T_c$ 轮迭代持续更新。
-循环不变量与第~\ref{ch:16}~章完全一致（其中 $\gamma = 1/\sqrt{D}$）。
+循环不变量与第~\ref{ch:16}~章完全一致，其中 $\gamma = 1/\sqrt{D}$：
 \begin{equation}
   m^{\text{new}} = \max(m^{\text{old}},\, \mathrm{rowmax}(S_k \cdot \gamma)),
   \qquad
