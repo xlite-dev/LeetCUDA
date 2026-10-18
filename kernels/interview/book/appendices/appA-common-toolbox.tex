@@ -9,10 +9,10 @@
 正文的组织方式是「一章一个 kernel 家族，公共工具向 common.cuh 集中」：
 cp.async 协议宏、ldmatrix/HMMA 指令封装、XOR swizzle、TMA/mbarrier helpers、
 setmaxnreg 封装、WGMMA descriptor 编码——每一项都在某一章首次出现，
-之后被后续章节直接复用。本附录把这个头文件按工具族拆开，给出
-「地图 + 用法要点」：读正文时想确认某个宏的出处，或动手复现时想知道
-该 include 什么、能拿什么现成设施，都可以从这里查起。工具族与章节的
-对应关系见表~\ref{tab:appA-map}；逐段的 permalink 源码区间见附录~\ref{app:D}。
+之后被后续章节直接复用。本附录把这个头文件按工具族拆开：读正文时想确认
+某个宏的出处，或动手复现时想知道该 include 什么、能拿什么现成设施，都可以
+从这里查起。工具族与章节的对应关系见表~\ref{tab:appA-map}；逐段的 permalink
+源码区间见附录~\ref{app:D}。
 
 \begin{table}[htbp]
 \centering\small
@@ -89,7 +89,7 @@ ldmatrix + \texttt{HMMA16816\allowbreak{}F32}。
 
 族内四个实体的关系：\texttt{swizzle\_\allowbreak{}v1\_\allowbreak{}impl}（L235）就是
 \texttt{permuted\allowbreak{}<k\allowbreak{}Col\allowbreak{}Stride,\allowbreak{}8>} 的别名；\texttt{Swizzle\allowbreak{}BMS\allowbreak{}<B,\allowbreak{}M,\allowbreak{}S>}（L287）
-把 cute 的 \texttt{Swizzle\allowbreak{}<B,\allowbreak{}M,\allowbreak{}S>::\allowbreak{}apply} 位级公式独立实现（L287--320），
+把 cute 的 \texttt{Swizzle\allowbreak{}<B,\allowbreak{}M,\allowbreak{}S>::\allowbreak{}apply} 位级公式独立实现（L287--320）。
 \texttt{swizzle\_\allowbreak{}v2\_\allowbreak{}impl}（L326）用它统一表达 16/32/64 三档，与 v1
 bit-exact 等价（等价性证明注释在 L320--325，host 端
 \texttt{test\_\allowbreak{}swizzle\_\allowbreak{}equiv} 可验证）。第~\ref{ch:23}~章讲 CuTe swizzle
@@ -121,7 +121,7 @@ bit-exact 等价（等价性证明注释在 L320--325，host 端
 用法要点（完整事实链见第~\ref{ch:14}~章考据框与坑二取证）：两条指令都要求
 warpgroup 内全部 warp 同步执行，且 WS kernel 须声明
 \texttt{\_\allowbreak{}\_\allowbreak{}launch\_\allowbreak{}bounds\_\allowbreak{}\_\allowbreak{}(N,\allowbreak{}1)}（否则 PTX 无
-\texttt{.minnctapersm}，ptxas 以 C7508 丢弃）；sm\_120 上能否保留则取决于
+\texttt{.minnctapersm}，ptxas 以 C7508 丢弃）。sm\_120 上能否保留则取决于
 TMA 的目的地址空间——dst 为 \texttt{shared::cluster} 时 ptxas 把它当作
 隐式 call 边界、以 C7506 警告丢弃 setmaxnreg，dst 为 \texttt{shared::cta}
 （common.cuh 现行实现，cute 在 SM120 门控下同款）则 sm\_120a/sm\_120f 均
@@ -134,7 +134,7 @@ TMA 的目的地址空间——dst 为 \texttt{shared::cluster} 时 ptxas 把它
 WAIT\_\allowbreak{}GROUP}（L539--543）延续 cp.async 的分组-等待语义；
 \texttt{make\_\allowbreak{}smem\_\allowbreak{}desc}（L588）把 smem 指针编码成 64-bit 矩阵描述符
 （位域布局与 K-Major + 128B swizzle 的几何推导在第~\ref{ch:13}~章，
-不重复）；\texttt{WGMMA\_\allowbreak{}M64\allowbreak{}N128\allowbreak{}K16\_\allowbreak{}F16\allowbreak{}F16\allowbreak{}F16}（L644）封装
+不重复）。\texttt{WGMMA\_\allowbreak{}M64\allowbreak{}N128\allowbreak{}K16\_\allowbreak{}F16\allowbreak{}F16\allowbreak{}F16}（L644）封装
 \texttt{wgmma.\allowbreak{}mma\_\allowbreak{}async.\allowbreak{}m64n128k16}，一次发射计算 $64\times128\times16$。
 配套的 \texttt{WgmmaSMem}（L702）与 SM120 的 \texttt{Tma\allowbreak{}Mma\allowbreak{}WSSMem}（L717）
 只差 alignas：前者供 descriptor 硬件补偿 swizzle 相位，后者要求 consumer
@@ -153,7 +153,7 @@ layout\_type=1 匹配。
 
 \section{写一个新教学 kernel 的最小 checklist}
 
-从零加一个「正文可引用、测试可复现」的教学 kernel，按这条路径走：
+从零加一个「正文可引用、测试可复现」的教学 kernel：
 
 \begin{enumerate}
   \item \textbf{include}：kernel 头文件放 \texttt{kernels/\allowbreak{}interview/\allowbreak{}}，直接

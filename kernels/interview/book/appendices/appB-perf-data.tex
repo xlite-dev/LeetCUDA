@@ -154,9 +154,9 @@ swizzle 正确性 & v1/v2 30{,}720 点 bit-exact & \texttt{Swizzle\allowbreak{}<
 
 \section{Part V：FP8 GEMM 明细}
 
-Part V（第~\ref{ch:34}--\ref{ch:35}~章）是量化矩阵乘的教学链：基准是
-cuBLAS BF16 GEMM（\texttt{CUBLAS\_COMPUTE\_32F} 累加），数字为
-\texttt{notes\_v2\_sm120a.bin --bench --mnk M,N,K} 标准表复测
+Part V 的 fp8 部分（第~\ref{ch:34}--\ref{ch:35}~章）是量化矩阵乘的教学链：基准是
+cuBLAS BF16 GEMM（\texttt{CUBLAS\_\allowbreak{}COMPUTE\_\allowbreak{}32F} 累加），数字为
+\texttt{leetcuda\_bench\_sm120a.bin --bench --mnk M,N,K} 标准表复测
 （PRO 5000，2026-09-24；输入均匀随机 $[-1,1]$，warmup 2 / repeat 3）。
 kernel-only 行只循环 GEMM kernel，E2E 行含量化前处理（第~\ref{ch:34}~章
 三个 kernel）。四种 scale 粒度组合差异 $<4\%$（2048$^3$），表取 per-row$\times$
@@ -229,10 +229,10 @@ $\sim$15\%（fp8）/$\sim$35\%（fp4），形态结论可迁移、绝对数字�
 
 \textbf{主线一：带宽（合并访问与向量化）。}\allowbreak{}Part I 的全部算子 $AI \le 0.625$，
 成绩就是有效带宽。这条线的三个阶段：先把原子/同步移出关键路径（第~\ref{ch:02}~章
-42~$\mu$s 三行全同证明全局原子串行可以完全掩盖一切带宽优化）；再做合并访问与
-向量化（\texttt{sgemv} k128 拿到 934~GB/s 的全书带宽参照）；最后认清收益边界——
+42~$\mu$s 三行全同证明全局原子串行可以完全掩盖一切带宽优化）。再做合并访问与
+向量化（\texttt{sgemv} k128 拿到 934~GB/s 的全书带宽参照）。最后认清收益边界——
 vec4 只在 L2 口径显现（第~\ref{ch:06}~章 +16--24\%），HBM 口径下被 DRAM 带宽
-吸收（第~\ref{ch:03}、\ref{ch:07}~章）。\textbf{先定层级，再选方法。}
+吸收（第~\ref{ch:03}、\ref{ch:07}~章）。\textbf{先定层级，再选方法}。
 
 \textbf{主线二：计算（MMA 流水）。}\allowbreak{}GEMM 从 CUDA Core 的 25.97~T（vec4 已是
 该路径的 87\% 带宽上限）起步，换 HMMA 与 $B_K{=}16$ 后到 76.55~T，加深流水与
@@ -246,7 +246,7 @@ Sk=2 即饱和、FA3 的 Sk=1 即饱和）——装载一旦退出关键路径�
 第~\ref{ch:17}~章在 attention 上复现同样的 +20\%。CuTe 把这套结构变成类型：
 layout/TiledCopy/TiledMMA 全部编译期折叠，SASS 与手写同构、寄存器 0 spill、
 代码量约减半——它不直接产生加速，但让 swizzle 档位、tile 形状、流水深度这些
-\textbf{真正带来加速的算法级决策}更容易被表达、被检查、被复用。
+真正带来加速的算法级决策更容易被表达、被检查、被复用。
 
 \textbf{主线四：量化（低位宽数据通路）。}\allowbreak{}Part V 先在矩阵乘上
 打通「量化数学 $\to$ 前处理 kernel $\to$ 主 kernel 折叠 $\to$ BF16 输出」

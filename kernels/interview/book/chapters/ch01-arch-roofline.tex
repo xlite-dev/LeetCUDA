@@ -20,15 +20,15 @@ memory-bound 与 compute-bound、occupancy 与延迟隐藏。
 
 \section{问题与动机}
 
-先建立一个直觉：CPU 和 GPU 是两种设计哲学的产物。CPU 的目标是\textbf{尽快完成
-一个任务}（低延迟），于是它把晶体管花在大容量 cache、复杂的分支预测与乱序执行
-引擎上；GPU 的目标是\textbf{同时完成海量任务}（高吞吐），于是它把晶体管花在
+先建立一个直觉：CPU 和 GPU 是两种设计哲学的产物。CPU 的目标是尽快完成
+一个任务（低延迟），于是它把晶体管花在大容量 cache、复杂的分支预测与乱序执行
+引擎上。GPU 的目标是同时完成海量任务（高吞吐），于是它把晶体管花在
 成千上万个算术逻辑单元（ALU）上，寄存器文件巨大而 cache 相对很小，分支预测
-几乎不存在：GPU 根本不打算「预测」分支，它靠成千上万个线程之间的快速
+几乎不存在。GPU 根本不打算「预测」分支，它靠成千上万个线程之间的快速
 切换把内存延迟藏起来。
 
-直接后果是：\textbf{同一个算法在 GPU 上快慢与否，几乎完全由它的
-「访存-计算比例」决定}。一个向量加法（读两个数、加一次、写一个数）与一个
+直接后果是：同一个算法在 GPU 上快慢与否，几乎完全由它的访存-计算比例决定。
+一个向量加法（读两个数、加一次、写一个数）与一个
 矩阵乘法（读两个数要做几十上百次乘加）在 CPU 上差异不大，在 GPU 上差异
 极大：前者把大部分时间花在等数据上（memory-bound），后者才能让计算单元
 饱和（compute-bound）。base.cuh L22--30 把这种判断浓缩成三条判据，外加一条
@@ -47,11 +47,10 @@ occupancy 公式：
 受三类资源分别取下限：每线程寄存器数 $\to$ threads/SM；每 block 的
 shared memory $\to$ blocks/SM；block 大小 $\to$ blocks/SM。
 
-这三条判据就是本章的路线图。前两条给出判断标准，即比较算术强度与
-机器的「转折点」；第三条是容易被忽略的瓶颈：latency-bound，它甚至
-与算法无关，纯粹是并行度不够、延迟藏不住的问题。要把这三条判据看懂，我们
-需要先弄清两件事：机器的算力与带宽从哪里来（\S\ref{sec:ch01-sm}），以及
-「算术强度」怎么算（\S\ref{sec:ch01-math}）。
+前两条给出判断标准，即比较算术强度与机器的转折点；第三条是容易被忽略的瓶颈：
+latency-bound，它甚至与算法无关，纯粹是并行度不够、延迟藏不住的问题。要看懂
+这三条判据，需要先弄清两件事：机器的算力与带宽从哪里来
+（\S\ref{sec:ch01-sm}），以及算术强度怎么算（\S\ref{sec:ch01-math}）。
 
 \section{SM 内部结构与内存层级}\label{sec:ch01-sm}
 
@@ -82,7 +81,7 @@ L2 $\sim$12 TB/s、L1/SMEM $\sim$19 TB/s、Register $\sim$100+ TB/s），
 \begin{itemize}
 \item \textbf{Warp Scheduler $\times$ 4}：每个 SM 有 4 个 warp scheduler，
   每个每周期可以发射 1 条指令。这意味着一个 SM 每周期最多发出 4 条指令，
-  「发射带宽」本身就是一种资源。
+  发射带宽本身就是一种资源。
 \item \textbf{Register File}：每 SM $65536 \times 32$-bit $= 256$ KB。
   这是 GPU 上最快也最稀缺的存储：所有活跃线程的寄存器都从这里分配。寄存器
   分配以 warp 为粒度均分，若 kernel 每线程用 64 个寄存器，一个 256 线程的
@@ -100,8 +99,8 @@ L2 $\sim$12 TB/s、L1/SMEM $\sim$19 TB/s、Register $\sim$100+ TB/s），
   官方 ISV guide 为准」，本书 Part II--IV 的大量篇幅都在围绕
   如何充分利用这些 Tensor Core。
 \item \textbf{Warp = 32 threads}：warp 是\textbf{最小调度与指令发射单元}，
-  32 个线程锁步执行同一条指令（SIMT）。注意区分两个概念：线程是\textbf{执行}
-  的最小粒度，warp 是\textbf{调度与发射}的最小粒度。硬件把 32 条「线程通道」
+  32 个线程锁步执行同一条指令（SIMT）。注意区分两个概念：线程是执行
+  的最小粒度，warp 是调度与发射的最小粒度。硬件把 32 条线程通道
   捆绑成一个 warp，用一套取指-译码-发射逻辑服务 32 个计算 lane，控制逻辑
   的开销因此被摊薄，能以少量控制电路驱动大量 ALU。
 \end{itemize}
@@ -184,10 +183,10 @@ base.cuh L16--21 给出了 H100 参考下的带宽数量级：HBM3 约 3.35 TB/s
 \label{fig:1-1}
 \end{figure}
 
-这张图给出 GPU 编程的一条基本规律：\textbf{数据每上移一层，带宽就高一级；
-kernel 优化就是让数据尽量驻留在高层级}。ch02 让归约的中间量全部驻留寄存器
+这张图给出 GPU 编程的一条基本规律：数据每上移一层，带宽就高一级，kernel
+优化就是让数据尽量驻留在高层级。ch02 让归约的中间量全部驻留寄存器
 （warp shuffle），ch09--12 用 tiling 把矩阵块搬进 smem 复用，ch13--14 用
-TMA+Warp Specialization 把「搬运」与「计算」解耦成流水线，走的都是同一条路。
+TMA+Warp Specialization 把搬运与计算解耦成流水线，走的都是同一条路。
 
 \section{数学原理：Roofline 与算术强度}\label{sec:ch01-math}
 
@@ -199,11 +198,11 @@ TMA+Warp Specialization 把「搬运」与「计算」解耦成流水线，走�
   \label{eq:ch01-ai}
 \end{equation}
 其中 FLOPs 是算法需要的浮点运算次数（\textbf{总量}，单位 FLOP，不是每秒），
-Bytes 是它必然要在\textbf{最外层存储}（通常是 HBM）上搬运的字节数，口径是
-「每个数据读一次、写一次」。AI 的单位是 FLOP/Byte，物理含义是：\textbf{每
-搬运 1 字节，能换来多少次浮点运算}。
+Bytes 是它必然要在最外层存储（通常是 HBM）上搬运的字节数，口径是
+每个数据读一次、写一次。AI 的单位是 FLOP/Byte，物理含义是：每搬运 1 字节，
+能换来多少次浮点运算。
 
-三个注意点。第一，FLOPs 数「算法固有」的量：乘加各记 1 次，因此一个点积
+三个注意点。第一，FLOPs 数的是算法固有的量：乘加各记 1 次，因此一个点积
 $a\cdot b$（$N$ 项）是 $2N$ 次。第二，Bytes 是\textbf{不可再省的下界}：
 若算法要读一遍 $a$ 写一遍 $y$，无论 cache 命中率多高，HBM 流量都不会低于
 $4(|a|+|y|)$ 字节（fp32）。第三，中间量不算：softmax 的逐元素 max、exp、
@@ -211,13 +210,13 @@ sum 都在寄存器里完成，不出 HBM，所以不计入 Bytes。
 
 \subsection{三个典型算子的 AI 逐项推导}
 
-\textbf{GEMM（$C = AB$，尺寸 $M{\times}K$ 乘 $K{\times}N$）。}输出 $C$ 有
+GEMM（$C = AB$，尺寸 $M{\times}K$ 乘 $K{\times}N$）：输出 $C$ 有
 $M \times N$ 个元素，每个元素 $c\sb{ij} = \sum\sb{k} a\sb{ik} b\sb{kj}$ 需要
 $K$ 次乘与 $K$ 次加，共 $2K$ 次；所以
 \begin{equation}
   \mathrm{FLOPs} = 2MNK .
 \end{equation}
-Bytes 按「三个矩阵各读写一次」计：
+Bytes 按三个矩阵各读写一次计：
 \begin{equation}
   \mathrm{Bytes} = 4\,(MK + KN + MN).
 \end{equation}
@@ -226,44 +225,44 @@ Bytes 按「三个矩阵各读写一次」计：
   AI\sb{\mathrm{GEMM}} = \frac{2K^3}{3K^2 \cdot 4} = \frac{K}{6},
   \label{eq:ch01-gemm-ai}
 \end{equation}
-$K = 4096$ 时 $AI = 682.7$ FLOP/Byte，base.cuh L75--79 注释中
-「$\approx 685$」由此而来（注释取了 $137\mathrm{G}/200\mathrm{M}$ 的粗略值，
-精确值是 682.67，见 \S\ref{sec:ch01-kaogu}）。AI 随 $K$ \textbf{线性增长}：
-GEMM 天然是 compute-bound 算法，矩阵越大每字节访存对应的计算量越多，这也是它适合 GPU 与
-Tensor Core 的根本原因。
+$K = 4096$ 时 $AI = 682.7$ FLOP/Byte，base.cuh L75--79 注释里写的
+$\approx 685$ 由此而来（注释取了 $137\mathrm{G}/200\mathrm{M}$ 的粗略值，
+精确值是 682.67，见 \S\ref{sec:ch01-kaogu}）。AI 随 $K$ 线性增长：
+GEMM 天然是 compute-bound 算法，矩阵越大每字节访存对应的计算量越多，这也是它
+适合 GPU 与 Tensor Core 的根本原因。
 
-\textbf{GEMV（$y = Ax$）。}$A$ 是 $M{\times}K$，$x$ 是 $K$ 维向量，$y$ 是
+GEMV（$y = Ax$）：$A$ 是 $M{\times}K$，$x$ 是 $K$ 维向量，$y$ 是
 $M$ 维输出。$y$ 的每个元素要 $K$ 次乘 $K$ 次加，$\mathrm{FLOPs} = 2MK$；
 而 $\mathrm{Bytes} = 4(MK + K + M)$。大 $MK$ 主导下：
 \begin{equation}
   AI\sb{\mathrm{GEMV}} \approx \frac{2MK}{4MK} = 0.5 \ \mathrm{FLOP/Byte}.
 \end{equation}
-矩阵 $A$ 的每个元素只读取一次，没有任何复用，AI 被「读一次只用
-一次」固定在 0.5，比 GEMM 低三个数量级，是彻底的 memory-bound。ch08 将看到
-三种 warp 划分方式如何逼近这 0.5 对应的理论带宽。
+矩阵 $A$ 的每个元素只读取一次，没有任何复用，AI 就固定在 0.5，比 GEMM 低
+三个数量级，是彻底的 memory-bound。ch08 将看到三种 warp 划分方式如何逼近这
+0.5 对应的理论带宽。
 
-\textbf{Softmax（逐 token，宽度 $N$）。}对长度 $N$ 的行做 softmax：1 次 max
+Softmax（逐 token，宽度 $N$）：对长度 $N$ 的行做 softmax：1 次 max
 比较、$N$ 次减法与 exp（计 $2N$）、$N$ 次求和、$N$ 次除法，共约 $5N$
 FLOPs；访存是读入 $x$、写出 $y$ 各一次，$4 \times 2N$ 字节：
 \begin{equation}
   AI\sb{\mathrm{softmax}} = \frac{5N}{8N} = \frac{5}{8} = 0.625,
 \end{equation}
 与 base.cuh L85 的口径一致。ch04 的三级递进（naive $\to$ safe $\to$ online）
-优化的是访存\textbf{趟数}（3-pass $\to$ 1-pass），而 AI 的上限 0.625 告诉
-我们：无论怎么优化，它始终是 memory-bound，最终性能用「离理论带宽多近」来
+优化的是访存趟数（3-pass $\to$ 1-pass），而 AI 的上限 0.625 告诉
+我们：无论怎么优化，它始终是 memory-bound，最终性能用离理论带宽多近来
 衡量。
 
 \subsection{Roofline 模型与 ridge point}
 
 把峰值算力 $P\sb{peak}$（FLOP/s）与峰值带宽 $BW$（Byte/s）放在一起，
-Roofline 模型给出任意算子的可达性能上界：
+Roofline 模型给出任意算子的可达性能上界。
 \begin{equation}
   P \;=\; \min\bigl(P\sb{peak},\; AI \times BW\bigr).
   \label{eq:ch01-roofline}
 \end{equation}
-它的图像（图 ch01-2）是一整条「屋顶线」：左边是一段斜率为 $BW$ 的斜坡
-（强度每多 1 FLOP/Byte，性能就多 $BW$，带宽是瓶颈），右边是一段水平
-的「天花板」（$P\sb{peak}$，算力是瓶颈）。两段交点的横坐标叫
+它的图像（图 ch01-2）是一整条屋顶线：左边是一段斜率为 $BW$ 的斜坡
+（强度每多 1 FLOP/Byte，性能就多 $BW$，带宽是瓶颈），右边是一段水平的
+天花板（$P\sb{peak}$，算力是瓶颈）。两段交点的横坐标叫
 \textbf{ridge point}：
 \begin{equation}
   AI^{*} \;=\; \frac{P\sb{peak}}{BW}.
@@ -311,12 +310,14 @@ compute-bound。
 \label{fig:1-2}
 \end{figure}
 
-\textbf{同一个 GPU 有多条屋顶线}。FP32 CUDA core 与 FP16 Tensor Core 的
+同一个 GPU 上有多条屋顶线。FP32 CUDA core 与 FP16 Tensor Core 的
 $P\sb{peak}$ 相差约 15 倍，于是 ridge point 也相差 15 倍：在 H100 上，
 AI=100 的算子用 FP32 跑是 compute-bound（$100 > 20$），切到 FP16 TC 反而是
-memory-bound（$100 < 295$）。这解释了一个反直觉的现象：\textbf{把 kernel
-迁移到 Tensor Core 上未必变快}：如果它本是 memory-bound，算力提高 15 倍也
-无法提升性能。同理，把 ridge point 算错（比如把 sparse 峰值当 dense 用，见
+memory-bound（$100 < 295$）。这解释了一个反直觉的现象：把 kernel 迁移到
+Tensor Core 上未必变快。如果它本是 memory-bound，算力提高 15 倍也无法
+提升性能。
+
+同理，把 ridge point 算错（比如把 sparse 峰值当 dense 用，见
 \S\ref{sec:ch01-pitfall}）会把 bound 类别判反，整个优化方向就全错了。
 
 \begin{figure}[H]
@@ -364,12 +365,12 @@ memory-bound（$100 < 295$）。这解释了一个反直觉的现象：\textbf{�
 
 \subsection{Occupancy 与延迟隐藏}
 
-Roofline 描述「算法-机器」的匹配，occupancy 描述「实现」的并行度。
+Roofline 描述算法与机器的匹配，occupancy 描述实现的并行度。
 GPU 隐藏内存延迟靠的不是 cache（容量太小），而是\textbf{warp 切换}：当
 warp A 因等 HBM 数据而停顿时，scheduler 立刻切到 warp B 发射指令；等到
 A 的数据到了再切回来。设单次 HBM 访问约 $500 \sim 800$ 个时钟周期，若要
 发射口持续有指令可发，SM 上必须常驻足够多的活跃 warp。活跃 warp 数与硬件上限之比
-就是 occupancy（base.cuh L27--30）：
+就是 occupancy（base.cuh L27--30）。
 \begin{equation}
   \mathrm{occupancy} = \frac{\text{active warps / SM}}
                             {\text{max warps / SM}},
@@ -378,12 +379,12 @@ A 的数据到了再切回来。设单次 HBM 访问约 $500 \sim 800$ 个时钟
 用得越多，能驻留的 warp 越少）、每 block 的 smem 用量（smem 用得多，
 block 数就少）、block 大小（block 太小则凑不满 SM 的线程槽位）。本书后续
 反复出现这类权衡：ch12 的寄存器双缓冲用更多寄存器换流水线，ch14 的
-setmaxnreg 干脆在 producer/consumer 之间\textbf{动态重新分配}寄存器池，
+setmaxnreg 干脆在 producer/consumer 之间动态重新分配寄存器池，
 都是在 occupancy 这个维度上做取舍。
 
 \section{设计与实现}
 
-本章没有 device kernel，Phase 0 的资产是一张「速查表」，它的「实现」就是
+本章没有 device kernel，Phase 0 的资产是一张速查表，它的实现就是
 把 9 条优化手段清单（base.cuh L32--69）与全书章节对应起来，形成一张路线图。
 先把前三条摘出来：
 
@@ -401,8 +402,8 @@ setmaxnreg 干脆在 producer/consumer 之间\textbf{动态重新分配}寄存�
 vectorize 也在 ch03，tiling 的初级形态（warp/block reduce 中的两级结构）
 在 ch02 就能见到。第 4--6 条（thread tile、bank conflict、pipeline）在
 Part II GEMM 篇逐一兑现；第 7--9 条（Tensor Core、Warp Specialization、
-TMA）属于 Part II 后半与 Part III/IV。读到这里建议翻回本表：本书的章节
-顺序，就是这张清单逐条展开的顺序。
+TMA）属于 Part II 后半与 Part III/IV。本书的章节顺序，就是这张清单逐条
+展开的顺序。
 
 \begin{figure}[H]
 \centering
@@ -460,7 +461,7 @@ TMA）属于 Part II 后半与 Part III/IV。读到这里建议翻回本表：�
 
 图 ch01-1（内存层级金字塔）与图 ch01-2（Roofline 示意）已分别在
 \S\ref{sec:ch01-sm} 与 \S\ref{sec:ch01-math} 给出正式版。
-这里补充一张「一次 HBM 读的全程」，
+这里补充一张一次 HBM 读的全程，
 把本章的概念串成时间线：
 
 \begin{figure}[htbp]
@@ -510,7 +511,7 @@ TMA）属于 Part II 后半与 Part III/IV。读到这里建议翻回本表：�
 
 \section{性能分析}\label{sec:ch01-perf}
 
-本章无 kernel，性能分析给两张「标尺」表，供全书各章对照。
+本章无 kernel，性能分析给两张标尺表，供全书各章对照。
 
 \textbf{表 1：H100 SXM 参考口径}（取自 base.cuh L16--21 与 L84--86，
 官方 spec 与微基准口径混排，见 \S\ref{sec:ch01-kaogu}）：
@@ -537,11 +538,10 @@ ch01\_roofline.cu 属性查询）}：110 SM，L2 96 MB，smem/block opt-in 99 KB
 GDDR7 理论带宽 1344 GB/s（14 GHz $\times$ 384-bit $\times$ 2），FP32 峰值
 估算 66.9 TFLOPS（128 FMA/clk/SM 口径），ridge point $\approx 49.8$
 FLOP/Byte。后续各章 bench 都在这台机器上完成，请用这张表换算各章 kernel
-「达到了理论带宽的百分之几」。特别注意：ch03 的 bench（\S\ref{sec:ch03-perf}）
-会在\textbf{只有 16 MB 数据}的情况下测出 1862 GB/s，超过 HBM 理论值，
-原因是数据集装进了 96 MB 的 L2，实测反映的是 L2 带宽。这里得出一条硬约束：
-\textbf{roofline 里的 $BW$ 必须用「数据实际所在层级」的带宽}，小数据集的
-bench 对 HBM 口径失真。
+达到了理论带宽的百分之几。ch03 的 bench（\S\ref{sec:ch03-perf}）
+会在只有 16 MB 数据的情况下测出 1862 GB/s，超过 HBM 理论值，
+原因是数据集装进了 96 MB 的 L2，实测反映的是 L2 带宽。由此得出一条硬约束：
+roofline 里的 $BW$ 必须用数据实际所在层级的带宽。
 
 \section{实践经验}\label{sec:ch01-kaogu}
 
@@ -551,13 +551,13 @@ bench 对 HBM 口径失真。
 \begin{kaogu}[F4]{L16--21 内存层级带宽数量级}
 「L2 约 12 TB/s、L1/SMEM 约 19 TB/s」属于微基准口径的数量级估计，随测量
 方法（读/写比例、跨 SM 通信模式）浮动明显；HBM 3.35 TB/s 则是 H100 SXM 的
-官方 spec 值。混排时建议在正文口径中分别标注「官方 spec」与「微基准量级」，
+官方 spec 值。混排时建议在正文口径中分别标注官方 spec 与微基准量级，
 避免读者按同一精度理解这组数字。
 \end{kaogu}
 
 \begin{kaogu}[F3]{L89 GEMM 算例单位}
 注释「FLOPs $= 2 \times 4096^3 \approx 137$ GFLOPS」中单位应为
-GFLOP（运算\textbf{量}），FLOPS（每秒）是速率单位；该段实为 Roofline 的
+GFLOP（运算量），FLOPS（每秒）是速率单位；该段实为 Roofline 的
 静态算例，与时间无关。精确值 $2 \times 4096^3 / (3 \times 4096^2 \times 4)
 = 682.7$ FLOP/Byte，注释的 685 为四舍五入口径。
 \end{kaogu}
@@ -565,20 +565,20 @@ GFLOP（运算\textbf{量}），FLOPS（每秒）是速率单位；该段实为 
 \section{常见坑}\label{sec:ch01-pitfall}
 
 \begin{enumerate}
-\item \textbf{Bytes 漏算写回}。AI 分母必须包含输出写回（读 $a,b$ 写 $y$
+\item \textbf{Bytes 漏算写回}：AI 分母必须包含输出写回（读 $a,b$ 写 $y$
   是 $3 \times 4N$ 字节，不是 $2 \times 4N$）；漏算会把 memory-bound 算成
   compute-bound。
-\item \textbf{sparse 峰值当 dense 用}。NVIDIA 规格表上带 sparsity 的
+\item \textbf{sparse 峰值当 dense 用}：NVIDIA 规格表上带 sparsity 的
   TFLOPS 是稠密口径的两倍；ridge point 差一倍，bound 类别可能判反
   （H100 FP16 TC：1979 sparse vs 989 dense，对应 $AI^{*}$ 590 vs 295）。
-\item \textbf{把 occupancy 当唯一 KPI}。occupancy 上限 100\% 需要「少用
-  寄存器/少用 smem」，但 GEMM 类 kernel 恰恰要用大 thread tile 与多级
+\item \textbf{把 occupancy 当唯一 KPI}：occupancy 上限 100\% 需要少用
+  寄存器、少用 smem，但 GEMM 类 kernel 恰恰要用大 thread tile 与多级
   smem 流水换性能；低 occupancy + 高 ILP 常优于高 occupancy + 低 ILP。
   occupancy 是手段，roofline 位置才是目标。
-\item \textbf{用小数据集标定带宽}。16 MB 的输入永远命中 96 MB 的 L2，
-  测出的「带宽」是 L2 的（ch03 实测 1862 GB/s $>$ HBM 理论 1344 GB/s）。
+\item \textbf{用小数据集标定带宽}：16 MB 的输入永远命中 96 MB 的 L2，
+  测出的带宽是 L2 的（ch03 实测 1862 GB/s $>$ HBM 理论 1344 GB/s）。
   标定 HBM 带宽时数据集至少要数倍于 L2 容量。
-\item \textbf{混淆 FLOP 与 FLOPS}。AI 的分子是运算量（FLOP），roofline
+\item \textbf{混淆 FLOP 与 FLOPS}：AI 的分子是运算量（FLOP），roofline
   纵轴是速率（FLOP/s）；单位写错，量纲就全乱了（参见
   \S\ref{sec:ch01-kaogu} 第二条）。
 \end{enumerate}
@@ -601,7 +601,7 @@ GFLOP（运算\textbf{量}），FLOPS（每秒）是速率单位；该段实为 
 \item \textbf{Q：寄存器溢出（spill）是什么？}\\
   A：每线程寄存器需求超过分配上限时，编译器把局部变量挪到 local memory
   （实际在 HBM/L1），访存量大幅增加、延迟暴露。用
-  \texttt{-{}-ptxas-options=\allowbreak{}-v} 观察 spill 次数，出现即优先 reconsider
+  \texttt{-{}-ptxas-options=\allowbreak{}-v} 观察 spill 次数，出现即优先重估
   thread tile 大小。
 \item \textbf{Q：L1 与 shared memory 的关系？}\\
   A：同一块片上 SRAM 的两种角色，可配置划分。L1 对所有访存透明缓存；
@@ -632,7 +632,7 @@ L2、smem 上限、GDDR7 理论带宽与 FP32 峰值估算，是全书 bench 的
   ridge-point ~ 49.8 FLOP/Byte
 \end{lstlisting}
 
-\textbf{动手实验}：把 softmax 的 FLOPs 口径从 $5N$ 改成 $3N$（不含减法与
+动手实验：把 softmax 的 FLOPs 口径从 $5N$ 改成 $3N$（不含减法与
 除法的近似），观察 AI 变为 0.375，结论不变（仍然 memory-bound）：roofline
 对 FLOPs 计数的容错性很高，AI 相差一倍通常不会翻转 bound 类别，
 但把分母的 Bytes 算漏一项就可能翻转。
