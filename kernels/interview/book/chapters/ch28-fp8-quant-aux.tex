@@ -1018,7 +1018,7 @@ $V$ 不改 $O$、WHT 两端同乘正交阵；右侧的 outlier 幅度示意给�
 
 设 $B\cdot H = 32$、$N = 8192$、$D = 128$、fp16 输入。Q/K/V 总输入字节
 $3\times32\times8192\times128\times2\,\mathrm{B} \approx 192\,\mathrm{MB}$；量化
-输出（fp8 + scale）约 $96\,\mathrm{MB}$ 出 + $192\,\mathrm{MB}$（若物化 smooth
+输出（fp8 + scale）约 $96\,\mathrm{MB}$ 出 + $192\,\mathrm{MB}$ 入（若物化 smooth
 中间量则为再加一轮 192MB 读 + 192MB 写）。本机（RTX PRO 5000，理论带宽
 $\sim$1.34TB/s）实测 aux 链聚合有效带宽约 1.04TB/s，这是\textbf{纯带宽 kernel 的
 第一验收指标}。对比 attention 主 kernel（$N=8192$ 时 3.0ms，365T FLOPS）：aux 链

@@ -1,5 +1,5 @@
 % ch26b-cute-persist-d-flash-attn.tex — CuTe 应用（四）：sm_120 持久化 FlashAttention
-% ——超越 cuDNN（2026-09-22，源码 flash_attn.cuh Phase 8，L3490-4170）
+% ——超越 cuDNN（2026-09-22，源码 flash_attn.cuh Phase 8，L3490-4177）
 % 图：全 TikZ（用户指定）；代码段引用 ../flash_attn.cuh linerange。
 \chapter{CuTe 应用（四）：SM120 持久化 FlashAttention——超越 cuDNN}\label{ch:26b}
 
@@ -37,7 +37,7 @@ attention kernel。
 \textbf{前置章节}：第~\ref{ch:15}--\ref{ch:16}~章（attention 数学与 FA2 online
 softmax）、第~\ref{ch:17}~章（TMA 与 mbarrier 协议）、第~\ref{ch:21}--\ref{ch:22}~章
 （TiledCopy 与 TiledMMA）、第~\ref{ch:25}~章（CuTe FA 三实现对照：本章直接复用其
-五个工具函数）。\textbf{源码区间}：flash\_attn.cuh L3490--4170（Phase 8 宏块）。
+五个工具函数）。\textbf{源码区间}：flash\_attn.cuh L3490--4177（Phase 8 宏块）。
 \textbf{编译宏与架构}：\texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}CUTE}，
 编译目标 \texttt{sm\_120a} 与 \texttt{sm\_120f} 均可：\texttt{setmaxnreg} 的实际
 生效条件是 TMA 目的地址用 \texttt{shared::cta}，且 \texttt{\_\_launch\_\allowbreak{}bounds\_\allowbreak{}(384,~1)}

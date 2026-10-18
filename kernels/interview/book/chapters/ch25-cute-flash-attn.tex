@@ -731,7 +731,7 @@ S$\to$R 装载加多级 K 循环两件事：
         引用外部行号：L2519「对齐手写版 L4323-4765」、L2566 与 L2579「参考
         TMA 版 L6624」、L2599「复用 TMA 版 consumer L6696-6737」。这些行号
         属于这段代码尚在 notes-v2.cu 中的时期，在本文件的冻结版本中并不
-        存在（本文件共 3490 行）。按内容对应过来，它们指的是 FA2 手写版
+        存在（本文件共 4179 行）。按内容对应过来，它们指的是 FA2 手写版
         （L112--790）与 FA2 TMA+WS 手写版（L792--1440）。核对旧笔记、旧提交时
         以本文档给出的区间为准。
 \end{itemize}
@@ -1174,7 +1174,8 @@ ALL OK
 smem 增量的构成（V 仍单 buffer）；（3）把 case A 的模板参数从
 \texttt{<64, 2>} 改成 \texttt{<96, 2>}，观察 traits 的
 \texttt{static\_\allowbreak{}assert\allowbreak{}(k\allowbreak{}Head\allowbreak{}Dim =\allowbreak{}=\allowbreak{} 64 || =\allowbreak{}=\allowbreak{} 128)} 拒绝编译，
-再对照第~\ref{ch:26}~章 FFPA 的 \texttt{kHeadDim \% 64 == 0} 放宽条件；
+再对照第~\ref{ch:26}~章 FFPA split-D 的 \texttt{kHeadDim \% 64 == 0} 放宽条件
+（同族第~\ref{ch:26b}~章 persist-D 无此断言，$D{=}96$ 走 SW64 atom）；
 （4）把实现 2 的 \texttt{kStagesK} 从 1 调到 2，核对 smem 是否仍在
 sm\_120a 的 99\,KB optin 之内（$D{=}128$ 时 Q 一段就占 32\,KB）。
 

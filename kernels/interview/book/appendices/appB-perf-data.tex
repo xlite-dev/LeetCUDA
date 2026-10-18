@@ -154,8 +154,8 @@ swizzle 正确性 & v1/v2 30{,}720 点 bit-exact & \texttt{Swizzle\allowbreak{}<
 
 \section{Part V：FP8 GEMM 明细}
 
-Part V（第~\ref{ch:34}--\ref{ch:35}~章）是量化矩阵乘的教学链：基准是
-cuBLAS BF16 GEMM（\texttt{CUBLAS\_COMPUTE\_32F} 累加），数字为
+Part V 的 fp8 部分（第~\ref{ch:34}--\ref{ch:35}~章）是量化矩阵乘的教学链：基准是
+cuBLAS BF16 GEMM（\texttt{CUBLAS\_\allowbreak{}COMPUTE\_\allowbreak{}32F} 累加），数字为
 \texttt{notes\_v2\_sm120a.bin --bench --mnk M,N,K} 标准表复测
 （PRO 5000，2026-09-24；输入均匀随机 $[-1,1]$，warmup 2 / repeat 3）。
 kernel-only 行只循环 GEMM kernel，E2E 行含量化前处理（第~\ref{ch:34}~章

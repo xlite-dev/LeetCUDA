@@ -448,8 +448,9 @@ MXFP8 PV 付出 28--39\% 的代价：$V^\top$ 数据 8 bit 带宽翻倍、atom �
 历史对照（RFC/skill 记录口径，非本机当日）：attn kernel 本身 fp4 比
 fp8 快 $\sim$23\%：blockscale mxf4nvf4 吞吐与 fp8 dense 相当，收益
 全部来自带宽（K/V/SF 字节减半以上）；D=192 的 e2e 比值
-self 1.47x / causal 1.29x / gqa 1.50x。本机同日对照可复算：fp4
-D=192 self 3.48ms（表 31.2）对 fp8 persist-D 同 shape 的第~\ref{ch:29}~章 29.6 节实测表数据。
+self 1.47x / causal 1.29x / gqa 1.50x。本机同日对照可复算：fp4 D=192
+self 3.48ms（表 31.2）对 fp8 persist-D 同 shape 的第~\ref{ch:29}~章 29.6 节实测表
+数据（4.58\,ms）作比，得 1.32$\times$。
 
 \subsection{已落地与已证伪的微优化}
 

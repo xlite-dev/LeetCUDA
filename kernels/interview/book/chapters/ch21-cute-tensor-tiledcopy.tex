@@ -1120,7 +1120,7 @@ G$\to$S 一个 tile 一级切完，S$\to$R 需要 2 个 K 切片（实测
   \item \textbf{A TV 分解}：G$\to$S 的 \texttt{TiledNumThr}$=128$、
         \texttt{TiledNumVal}$=8$、Tiler$=(32,32)$（编译期
         \texttt{static\_\allowbreak{}assert}），并对 1024 个 $(t,v)$ 对核对手推公式
-        式~\eqref{eq:21-g2s-tv}；
+        式~\eqref{eq:21-g2s-tv}（连同 3 条形状断言共 1027 checks）；
   \item \textbf{B partition 形状与守恒}：$(128,32)$ 上逐线程
         $(8,4,1)$、每线程 32 个元素、全部线程合计 4096；并把 4096 个
         (线程, 元素) 覆盖点映射回坐标，验证双射（\texttt{once}$=4096$）；

@@ -688,8 +688,8 @@ ws & $128\times256$ & 48\,KB & \textbf{443.7\,/\,487.8} & ---\,(144) & --- \\
 \end{tabular}
 \caption{主 kernel 的 tile $\times$ 流水深度扫描（PRO 5000 sm\_120a，
 kernel-only，per-row $\times$ per-col，warmup 2 / repeat 3）。\textbf{加粗
-行即库默认档}（$128\times256$/s2），也是两档形状的实测最快档；CLI 扫描表
-里同一行标为 \texttt{<= lib default}。每格两个数字
+两格即库默认档}（$128\times256$/s2，non-WS 与 ws 各一格），也是两档形状的实测
+最快档；CLI 扫描表里同一行标为 \texttt{<= lib default}。每格两个数字
 = 4096$^3$ / 8192$^3$ 的 TFLOPS；cuBLAS BF16 基线分别为 163.1 / 163.4\,T。
 两档形状各跑两次，逐配置偏差 $\le0.2\%$。\texttt{---\,(x)} 表示该组合所需
 smem 为 $x$\,KB、超出本卡 99\,KB 的 opt-in 上限，故未实例化——这个门槛只由

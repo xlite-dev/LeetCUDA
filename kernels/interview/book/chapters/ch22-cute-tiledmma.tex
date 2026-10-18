@@ -1032,7 +1032,8 @@ partition 断言，不启动 kernel；直接 include
   \item \textbf{A 原子 fragment 公式}：对
         \texttt{SM80\_\allowbreak{}16x8x16\_\allowbreak{}F32\allowbreak{}F16\allowbreak{}F16\allowbreak{}F32\_\allowbreak{}TN} 的 A/B/C 三个 layout，
         逐 lane、逐值核对手推公式式~\eqref{eq:22-atom-a}--\eqref{eq:22-atom-c}
-        （$32\times8$、$32\times4$、$32\times4$ 个断言）；
+        （$32\times8$、$32\times4$、$32\times4$ 个逐值断言，另加 7 条形状/值数断言，
+        合计 519 checks）；
   \item \textbf{B tile\_size 与线程数}：QK/PV 的 \texttt{tile\_size} 为
         $(64,64,16)/(64,16,16)$、\texttt{size(mma)}$=128$；对象
         \texttt{FFPAAttn\allowbreak{}Split\allowbreak{}DCu\allowbreak{}Te\allowbreak{}Traits\allowbreak{}<512>}

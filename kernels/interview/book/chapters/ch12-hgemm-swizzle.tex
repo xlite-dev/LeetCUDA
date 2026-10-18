@@ -201,7 +201,7 @@ bit7 即 $i$ 的 bit2）。所以式~\ref{eq:12-xor-v1} 的净效果是
 chunk 1 搬去 $q=0{,}8{,}16{,}24$，phase 0 的 8 行四联组变为
 $\{0,8,16,24,4,12,20,28\}$：8 个互不相同，恰好铺满 32 个 bank，即 1-way、
 零冲突。源码注释「原来 n-way 的 bank conflict 降低到 1-way」说的正是这个 32\,B
-行宽布局（common.cuh~L185--235 的 bank 分布表即此布局，也是图~\ref{fig:12-1} 的蓝本）。
+行宽布局（common.cuh~L185--234 的 bank 分布表即此布局，也是图~\ref{fig:12-1} 的蓝本）。
 
 \subsection{可逆性：swizzle 是对合，写读同函数即互逆}
 
@@ -229,7 +229,7 @@ $[4,6)$、bit $[7,10)$ 对 $[4,7)$，均不相交）。
 
 CuTe 把这类 bit 级置换统一为 $\mathrm{Swizzle}\langle B,M,S\rangle$（记号沿用
 全书记号表）：把一维 byte offset 重新解释成二维逻辑空间，再做列置换：
-$2^M$ 个连续元素为一个基本元素（fp16 的 16\,B chunk $\Rightarrow M{=}4$），
+$2^M$ 字节为一个基本元素（fp16 的 16\,B chunk $\Rightarrow M{=}4$），
 每行 $2^S$ 个基本元素（8 chunk $\Rightarrow S{=}3$），共 $2^B$ 行参与置换。
 位级公式（common.cuh~L271--273，与 cutlass \texttt{swizzle.hpp} 一致）：
 \begin{equation}
@@ -430,9 +430,12 @@ $\mathit{zzz}$ 两段各占 $B$ 位（BBits，XOR 掩码位数）；$\mathit{yyy
   \item \textbf{B（BBits）}：二维逻辑空间的行数位 $= 2^B$ 行，即 swizzle 周期
         覆盖 $2^B$ 个 chunk（这些 chunk 互相置换）；同时是 TMA 硬件 swizzle
         模式 \texttt{SWIZZLE\_\{32,64,128\}B} 的位数（$B=1/2/3$）。
-  \item \textbf{M（MBase）}：基本元素宽度位 $= 2^M$ 个连续元素组成一个基本
-        元素。对 fp16 + 8-element chunk，基本元素 $= 16\,\mathrm{B} = 2^4$，故
-        $M=4$；地址 bit$[0..M{-}1]$ 在 apply 中保持不变（保留）。
+  \item \textbf{M（MBase）}：基本元素宽度位 $= 2^M$ 字节组成一个基本元素。
+        对 fp16 + 8-element chunk，基本元素 $= 16\,\mathrm{B} = 2^4$，故
+        $M=4$（第~\ref{ch:24}~章的
+        \texttt{Swizzle\allowbreak{}<3,\allowbreak{}3,\allowbreak{}3>} 以 half 元素计，
+        $M{=}3$ 是同一个 16\,B 基本元素）；地址 bit$[0..M{-}1]$ 在 apply 中
+        保持不变（保留）。
   \item \textbf{S（SShift）}：二维空间每行列数位 $= 2^S$ 个基本元素组成一行；
         同时是 $\mathit{yyy}$ 掩码相对 $\mathit{zzz}$ 掩码的位移。$S>0$ 表示
         $\mathit{yyy}$ 在更高位，向右移 $S$ 位到 $\mathit{zzz}$ 位置后 XOR。本
@@ -873,8 +876,9 @@ BK=64，swizzle（7b-3）    & 297{,}628 & 20.7 & 4-way；本章 kernel \\
 模型与实测的对齐度：BK=16 行逐次精确；BK=64 两行为模型 688{,}128 /
 294{,}912（$=98{,}304\times7$ 与 $98{,}304\times3$）对实测 691{,}067 / 297{,}628，
 误差 $<$1\%；比值 $691067/297628=2.32$ 对模型比值 $2.33$，12.3.7 节的 8-way$\to$4-way
-结论由此得到证实。同时注意：swizzle 版 kernel 耗时 30.2$\to$20.7\,$\mu$s（1.46$\times$），
-冲突并没有被全消，但寄存器双缓冲把残余 4-way 的重放延迟掩盖在 MMA 流水里。
+结论由此得到证实。同时注意：BK=64 档内耗时从无 swizzle 对照版的 30.2 降到 20.7\,$\mu$s
+（1.46$\times$），冲突并没有被全消，但寄存器双缓冲把残余 4-way 的重放延迟掩盖在
+MMA 流水里。
 
 端到端吞吐（cudaEvent，warmup 3 + 10 次均值）：
 
@@ -940,15 +944,15 @@ cuBLAS。F32Acc 各行对比 cuBLAS 的 f32 累加（164.2 TFLOPS）则大幅
 
 \section{实践经验}
 
-\begin{kaogu}[F3 + NCU 实证]{common.cuh L124-125：「降低到 1-way（fully conflict-free）」对本章 kernel 不成立}
+\begin{kaogu}[F3 + NCU 实证]{common.cuh L122--125：「降低到 1-way（fully conflict-free）」对本章 kernel 不成立}
   注释的 1-way 结论只在\textbf{swizzle 作用域 = 整行}（32\,B 行宽，BK=16 / FA 的
-  $[\ast][16]$ 布局，即 common.cuh L185--235 表格对应的布局）时成立。本章核心
+  $[\ast][16]$ 布局，即 common.cuh L185--234 表格对应的布局）时成立。本章核心
   kernel \texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn\_\allowbreak{}swizzle} 的统一 tile 行宽 128\,B（BK=64），
   swizzle 以 per-slice 方式作用于 16 列窗口：行 stride 128\,B 恰为 bank 计数环
   （128\,B）的一圈，行号位无法进入 bank 位，单个 XOR bit 最多把 phase 内
   8 lane 分到 2 个四联组，下界即 4-way。NCU 实测 297{,}628 次
   冲突/launch（无 swizzle 对照 691{,}067，BK=16 基线 98{,}304，
-  表~\ref{tab:12-bank}）。注释 L125--126 的「局限：要求 kColStride $\le$16
+  表~\ref{tab:12-bank}）。注释 L124--125 的「局限：要求 kColStride $\le$16
   （即 BK $\le$16）」其实已经预设了行宽前提，但 kernel 在 BK=64 下仍调用
   \texttt{swizzle<16>}，两处合读容易让人误以为本 kernel 已零冲突。修正表述：
   per-slice swizzle 把 8-way 降为 4-way；128\,B 行宽下零冲突需
