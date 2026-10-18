@@ -112,7 +112,7 @@ $s = q \cdot k = \sum_{i=1}^{d} q_i k_i$。均值为零：
   \label{eq:15-dot-var}
 \end{equation}
 即 $\mathrm{std}(s) = \sqrt{d}$。$d = 128$ 时 logit 的标准差约 $11.3$，softmax 会
-严重\textbf{饱和}：看两元素的最简情形，$p = \sigma(s_1 - s_2)$
+严重饱和：看两元素的最简情形，$p = \sigma(s_1 - s_2)$
 （$\sigma$ 为 sigmoid），对 logit 差 $\Delta$ 的梯度是
 \begin{equation}
   \frac{\partial p}{\partial \Delta} = \sigma(\Delta)\bigl(1 - \sigma(\Delta)\bigr)
@@ -197,7 +197,7 @@ $10^{-5}$ 量级（红点，恰在 $10^{-5}$ 网格线上方），softmax 近 on
 
 \subsection{朴素实现：FLOPs、显存与带宽三项开销}
 
-\textbf{FLOPs 量}（约定：一次乘法 + 一次加法计 2 FLOP，故 $M{\times}K$ 乘 $K{\times}N$
+FLOPs 量（约定：一次乘法 + 一次加法计 2 FLOP，故 $M{\times}K$ 乘 $K{\times}N$
 的 GEMM 为 $2MNK$ FLOP）。式~\ref{eq:15-attn-def} 的两个矩阵乘是对称的两大项：
 $S = QK^{\top}$ 为 $2N^{2}d$，$O = PV$ 为 $2N^{2}d$；softmax 本身只有指数与求和，
 是 $O(N^{2})$ 的非 matmul 项。合计每 (b,h)
@@ -210,14 +210,14 @@ $4 \times 4096^{2} \times 64 \times 32 \approx 137\,\mathrm{GFLOP}$；参照本�
 FlashAttention kernel 在同形状 SM120 上的实测 $166.6\,\mathrm{TFLOPS}$
 （flash\_attn.cuh~L68，头注释口径），纯计算时间下界约 $0.83\,\mathrm{ms}$。
 
-\textbf{显存占用}：$S$ 与 $P$ 各占 $N^{2}$ 元素，
+显存占用：$S$ 与 $P$ 各占 $N^{2}$ 元素，
 \begin{equation}
   \mathrm{mem} = \Theta(N^{2}) \;\text{每 (b,h)} ,
   \label{eq:15-naive-mem}
 \end{equation}
 上例中 $S$、$P$ 各 $\approx 1\,\mathrm{GiB}$。$N$ 翻倍它翻四倍，这就是长上下文的显存墙。
 
-\textbf{带宽需求}：朴素三 kernel 的 HBM 流量为
+带宽需求：朴素三 kernel 的 HBM 流量为
 读 $Q,K,V$（$3Nd$）$+$ 写 $S$、读 $S$、写 $P$、读 $P$（$4N^{2}$）$+$ 写 $O$（$Nd$），
 即 FA1 论文所述的 $\Theta(Nd + N^{2})$：
 \begin{equation}
@@ -324,7 +324,7 @@ $O_i \in \mathbb{R}^{1 \times d}$。处理第 $j$ 块时，逐项推导四步更
   \label{eq:15-upd-m}
 \end{equation}
 
-\textbf{第二步：块内概率}（尚缺分母，先记未归一化概率）。按行减去\textbf{新} max
+\textbf{第二步：块内概率}（尚缺分母，先记未归一化概率）。按行减去新 max
 （而非旧 max），指数参数非正、数值安全（第~\ref{ch:04}~章式~\ref{eq:4-safe} 的安全性
 论证原样适用）：
 \begin{equation}
@@ -380,7 +380,7 @@ v_k$，同样拆成旧块与新块并凑因子：
 \end{equation}
 （$\mathrm{diag}(e^{\,m^{\mathrm{old}}-m^{\mathrm{new}}})$ 左乘 = 逐行缩放 $O$ 的第
 $i$ 行乘 $e^{\,m^{\mathrm{old}}_i - m^{\mathrm{new}}_i}$；源码步骤 3e。）整列
-$T_c$ 块扫完后，做\textbf{唯一一次}最终归一化：
+$T_c$ 块扫完后，做唯一一次最终归一化：
 \begin{equation}
   O \;\leftarrow\; \mathrm{diag}\bigl(1/\ell\bigr)\,O
   \qquad\text{（源码步骤 8：\texttt{O\_final = (1/l\_final) * O\_final}）} .
@@ -397,7 +397,7 @@ $T_c$ 块扫完后，做\textbf{唯一一次}最终归一化：
   \quad m = \max(m^{A}, m^{B}) :
   \label{eq:15-merge-o}
 \end{equation}
-$\ell$ 与 $O$ 用\textbf{同一个} rescale 因子修正。与第~\ref{ch:05}~章的关系是同一
+$\ell$ 与 $O$ 用同一个 rescale 因子修正。与第~\ref{ch:05}~章的关系是同一
 套数学的 kernel 视角：定理~\ref{thm:merge-eq} 的凸组合
 $O = \alpha O^{A} + \beta O^{B}$（式~\ref{eq:5-convex}）里，$O^{A}, O^{B}$ 是
 \textbf{已归一化}的分块输出；把 $\alpha = W^{A}/(W^{A}{+}W^{B})$ 的分子分母同乘
@@ -488,14 +488,14 @@ split-KV），也可以按 $d$ 维切后再拼（第~\ref{ch:19}~章 FFPA Split-
 
 \subsection{复杂度总结与 IO 分析}
 
-\textbf{FLOPs 不变}：分块只是重排了计算顺序，两个 GEMM 的总工作量仍是
+FLOPs 不变：分块只是重排了计算顺序，两个 GEMM 的总工作量仍是
 $4N^{2}d$，FlashAttention 不省 FLOPs，省的是 HBM 流量与显存。
-\textbf{显存}：不再物化 $S, P$，每行只需标量 $(m_i, \ell_i)$ 与累加器行 $O_i \in
+显存：不再物化 $S, P$，每行只需标量 $(m_i, \ell_i)$ 与累加器行 $O_i \in
 \mathbb{R}^{d}$，加上 SRAM 里的 $B_r \times d$、$B_c \times d$ tile，激活显存从
 $\Theta(N^{2})$ 降到 $\Theta(Nd)$。名字里的 \emph{Flash}（不写中间矩阵到 HBM）
 由此而来。
 
-\textbf{IO}：每个 Q 块要把 $K, V$ 从头到尾读一遍。设 SRAM 容量为 $M$（元素数），
+IO：每个 Q 块要把 $K, V$ 从头到尾读一遍。设 SRAM 容量为 $M$（元素数），
 受 $B_r \cdot d + (\text{KV stage 数}) \cdot 2 B_c d \le M$ 约束，量级上
 $B_r \sim M/d$，于是 $K/V$ 的总读取量为
 \begin{equation}
@@ -517,7 +517,7 @@ $8$--$32\,\mathrm{KB}$，远小于十万元素量级的 SRAM）时，$\mathrm{IO
 \end{equation}
 $B_r = 128$ 时约 $128\,\mathrm{FLOP/B}$，跨过 roofline 拐点进入 compute-bound 区。
 一阶模型未计 L2 cache 跨 thread block 的 $K/V$ 复用（实际 HBM 流量更低），也未计
-softmax/归约的非 matmul 开销；compute-bound 也只是对\textbf{理想}实现的上界描述，
+softmax/归约的非 matmul 开销；compute-bound 也只是对理想实现的上界描述，
 真实 kernel 能达到的比例取决于流水线工程，FA2/FA3 两代论文的优化对象正是这一段
 （下一节）。
 
@@ -527,7 +527,7 @@ softmax/归约的非 matmul 开销；compute-bound 也只是对\textbf{理想}�
 
 \textbf{FA1（arXiv:2205.14135，NeurIPS 2022）}：Dao et al. 提出 IO-aware 的精确
 attention：tiling + online softmax（式~\ref{eq:15-upd-m}--\ref{eq:15-upd-o}），
-$S/P$ 从不落 HBM；反向传播用 \textbf{recomputation}，只存 $Q,K,V,O$ 与
+$S/P$ 从不落 HBM；反向传播用 recomputation，只存 $Q,K,V,O$ 与
 $\mathrm{LSE}$，反向时重算 $S, P$，以 $30\%$ 量级的重算换 $O(N^{2})$ 激活显存的
 节省；给出式~\ref{eq:15-io-fa} 的 IO 复杂度 $\Theta(N^{2}d^{2}/M)$。论文口径：
 BERT-large（$N{=}512$）训练比 MLPerf~1.1 纪录快 $15\%$，GPT-2（$N{=}1$K）端到端
@@ -542,18 +542,18 @@ $3\times$ 加速，激活显存省 $10$--$20\times$。
         只在式~\ref{eq:15-final} 除一次 $\ell$（FA1 每块维护已归一化 $O$，每步两次
         对角修正）。
   \item 并行度。FA1 只在 $(B, H)$ 维开 thread block，长序列小 batch 时 SM 占用
-        不足；FA2 把 \textbf{seqlen(Q) 维}也做成并行，query 序列切成多段，每段独立
+        不足；FA2 把 seqlen(Q) 维也做成并行，query 序列切成多段，每段独立
         一个 thread block（本仓库 \texttt{flash\_\allowbreak{}attn\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}split\_\allowbreak{}q}
         的 \texttt{grid = ((N+63)/64, B*H)}，第~\ref{ch:16}~章展开）。
   \item warp 分工。FA1 的 4 个 warp 沿 KV 维切分，各算部分分数后必须经 shared
-        memory 做跨 warp 归约合并；FA2 改为 warp 沿 \textbf{$Q$ 行}切分（split-Q）：
+        memory 做跨 warp 归约合并；FA2 改为 warp 沿 $Q$ 行切分（split-Q）：
         4 个 warp 共享同一块 $K, V$、各持独立 $(m, \ell, O)$，零跨 warp 归约、
         零额外 shuffle，$Q$ 只加载一次。
 \end{enumerate}
 论文口径：比 FA1 快约 $2\times$；A100 前向最高 $230\,\mathrm{TFLOPS}$（峰值的
 $73\%$）。
 
-\textbf{FA3（arXiv:2407.08608，2024）}：面向 Hopper（H100）的\textbf{异步化 + 低精度}：
+\textbf{FA3（arXiv:2407.08608，2024）}：面向 Hopper（H100）的异步化 + 低精度：
 \begin{enumerate}[itemsep=0pt,topsep=2pt]
   \item GEMM 与 softmax 的 overlap。softmax 在 CUDA core 上跑、GEMM 在 Tensor
         Core 上跑，二者本可并行。FA3 用 warp specialization：producer warp 发 TMA
@@ -598,8 +598,7 @@ $1.5$--$2\times$ vs FA2；H100 fp16 $740$ TFLOPS（$75\%$）\\
 对照本仓库：flash\_attn.cuh~L5--790 是 FA2 的手写 MMA 版（第~\ref{ch:16}~章），
 L792--1440 是 FA2 的 TMA + Warp Specialization 版（第~\ref{ch:17}~章），
 L1441--2192 是 FA3 的双 consumer warpgroup 版（第~\ref{ch:18}~章），
-L2196--3488 是三者的 CuTe 复刻对照（第~\ref{ch:25}~章），从 FA2 到 FA3 的
-每个演进点，都能在源码里找到对应的结构差异。
+L2196--3488 是三者的 CuTe 复刻对照（第~\ref{ch:25}~章）。
 
 \section{设计与实现}
 
@@ -611,7 +610,7 @@ BOOK\_PLAN \S 1.3 核验表）：FA2 MMA 版
 （L791--2194）内含 FA2 TMA+WS 版（L889）与 FA3 版
 （\texttt{flash\_\allowbreak{}attn\_\allowbreak{}3\_\allowbreak{}tma\_\allowbreak{}ws\_\allowbreak{}stages\_\allowbreak{}split\_\allowbreak{}q}，L1516）；\texttt{CUTE} 宏块
 （L2196--3488）内含 FA2/FA3 的 CuTe traits 与三个复刻 kernel。本章只引用头部设计
-注释（L5--110）：它是全文的算法说明书，五条要点恰好逐一对应 15.3~节的推导。
+注释（L5--110），五条要点逐一对应 15.3~节的推导。
 
 \subsection{头注释导读：五条要点}
 
@@ -987,7 +986,7 @@ $e^{m^{(0)} - m^{(1)}} = 0$ 恰好把零状态丢弃，是安全的；但若某�
 （全 $-\infty$），最终 $\ell = 0$，式~\ref{eq:15-final} 除零得 \texttt{NaN}，与
 ch04 坑二、ch05 坑四同源，由调用方保证行非空或显式兜底。
 
-\textbf{坑三：rescale 的时机。}必须\textbf{先}算出 $m^{\mathrm{new}}$、再同时用
+\textbf{坑三：rescale 的时机。}必须先算出 $m^{\mathrm{new}}$、再同时用
 $e^{m^{\mathrm{old}} - m^{\mathrm{new}}}$ 修正 $\ell$ 与 $O$、最后累加新块的
 $\mathrm{rowsum}(P^{[j]})$ 与 $P^{[j]}V^{[j]}$。顺序颠倒（例如先加 $PV$ 再 rescale）
 会把新块贡献也错误缩放。自查方法：对照不变量式~\ref{eq:15-invariant}，任何实现

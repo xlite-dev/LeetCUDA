@@ -45,19 +45,19 @@ $B_r\times B_c$ 的 tile 存在，配合 online softmax（第~\ref{ch:04}~章）
 LeetCUDA 的 FA1 式实现（\texttt{flash\_\allowbreak{}attn\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}split\_\allowbreak{}kv}）
 把 $B_r\times B_c$ 的 tile 同时按行列切给 warp：warp\_QP 分行、
 warp\_KV 分列（8-warp 版为 $2\times4$ warp 网格）。问题在列方向：行 $r$ 的 $S$ 值分布在多个 warp 上，
-每个 warp 只见到该行\textbf{部分} KV 的打分，它们各自维护的
+每个 warp 只见到该行部分 KV 的打分，它们各自维护的
 $(m,\ell,O)$ 都是部分状态。每个 KV tile 结束必须经 smem 中转、
 用第~\ref{ch:05}~章 \texttt{merge\_\allowbreak{}attn\_\allowbreak{}states} 的 LSE 合并语义跨
 warp 归并，通信与同步的开销随 tile 迭代次数 $T_c$ 线性重复。
 
 \textbf{动机三：split-Q 让 softmax 状态 warp 私有。}
-FA2 的观察（论文 §3.2）：既然 online softmax 的状态是\textbf{按行}的
+FA2 的观察（论文 §3.2）：既然 online softmax 的状态是按行的
 （每行一个 $m$、一个 $\ell$），那就按行切 warp，每个 warp 独占
 16 行 Q（一个 \texttt{m16} atom 的行数），KV tile 全 warp 共享
 （warp\_KV$\equiv$0）。行状态从头到尾留在本 warp 的寄存器里，
 跨 tile 迭代零归并、零 smem 中转。按独立 online softmax 状态数计并行度：
 split-KV 下列向分裂的状态终究要归并，行方向的有效并行单元是 warp\_QP 组；
-split-Q 下 8 个 warp 各持 16 行的\textbf{终态}，并行度从
+split-Q 下 8 个 warp 各持 16 行的终态，并行度从
 $B\cdot H\cdot\lceil N/B_r\rceil$（block 级）直接乘上 warp 数到
 $B\cdot H\cdot\lceil N/B_r\rceil\cdot 8$，且每个单元免通信。附带收益是
 Q tile 整个外循环只从 gmem 搬一次，K/V 分块流过 smem。
@@ -236,7 +236,7 @@ $\mathrm{tig}=0..3$ 各持 2 个），行 $r{+}8$ 同一组 lane 的第二个寄
 （覆盖 $B_c$ 列），再 \texttt{warp\_\allowbreak{}reduce\_\allowbreak{}max\allowbreak{}<4>} /
 \texttt{warp\_\allowbreak{}reduce\_\allowbreak{}sum\allowbreak{}<4>}（L500/L553），用 XOR 掩码 $\{2,1\}$ 两步
 蝶形（第~\ref{ch:02}~章），只在本 4-lane 组内交换。若误用整宽 32
-的归约，会把\textbf{不同行}的 max/sum 混在一起，结果静默错误。
+的归约，会把不同行的 max/sum 混在一起，结果静默错误。
 
 \begin{figure}[H]
 \centering
@@ -307,8 +307,8 @@ $\mathrm{tig}=0..3$ 各持 2 个），行 $r{+}8$ 同一组 lane 的第二个寄
 
 \section{设计与实现}
 
-先看源码头注释（L41--59）：它交代 tile 设计、warp 布局，再给出 9 步执行
-流程总览，后续各小节逐步展开。Q/K/V/O 的形状均为 $[B, H, N, d]$；tile 设计
+源码头注释（L41--59）交代 tile 设计、warp 布局，再给出 9 步执行流程
+总览。Q/K/V/O 的形状均为 $[B, H, N, d]$；tile 设计
 （以 \texttt{kHeadDim=64} 为例）：
 \begin{itemize}
   \item $B_r$：\texttt{kMmaAtomM} $\times$ \texttt{kMmaTileSeqLenQ} $\times$
@@ -746,7 +746,7 @@ F32Acc（kMmaAccF32$=$1） & 0.7814 & 175.88 & — \\
 这与第~\ref{ch:11}~章 GEMM 的直觉（f16 acc 更快）相反，直接体现了
 attention 的 mma 占比低于 GEMM、softmax 转换指令占比更高。
 
-\textbf{pad 与 XOR swizzle 的取舍}（源码注释 L61--71，SM120 同形状
+pad 与 XOR swizzle 的取舍（源码注释 L61--71，SM120 同形状
 profile 消融）：compact XOR swizzle（kPad$=$0，物理布局
 $[\mathrm{col}/16][\mathrm{row}][16]$）虽省 5~KiB smem 并消除了目标
 ldmatrix pattern 的 bank conflict，却把 cp.async（LDGSTS）的
@@ -841,7 +841,7 @@ half$\leftrightarrow$float 整簇转换指令的收益大于 f32 累加器的寄
 
 \textbf{坑一：$N$ 不是 $B_c$ 的倍数。}外循环
 $T_c=\lceil N/B_c\rceil$ 用了 ceil 写法，但 3a 的 K/V 加载没有任何
-尾 tile 边界处理，最后一个不完整 tile 会\textbf{越界读} gmem 并把
+尾 tile 边界处理，最后一个不完整 tile 会越界读 gmem 并把
 越界数据算进 softmax（L125--127 注释已自我声明「不等于当前实现已经完整
 处理了尾 tile」）。同理 store 侧要求 $N\%B_r=0$。正确用法：seqlen
 按 64/128 对齐，或在调用前 pad。
