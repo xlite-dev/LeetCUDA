@@ -102,7 +102,7 @@ ldmatrix 形态）；三件事都不再出现在 kernel 正文里。
 \begin{table}[htbp]
 \centering
 \caption{手写版与 CuTe 版的有效代码行数对照（flash\_attn.cuh，2026-09-11 统计）。
-「结构件」指 FA2/FA3 traits 与五个工具函数，它们被后四个实现共享。}
+\textbf{结构件}指 FA2/FA3 traits 与五个工具函数，它们被后四个实现共享。}
 \label{tab:25-code}
 \begin{tabular}{llrr}
 \toprule
@@ -145,7 +145,7 @@ D-chunk 的 \texttt{local\_tile} 语义，这些断言的真值直接来自
 
 \section{数学原理}
 
-\subsection{两个 traits：编译期布局的「配置表」}
+\subsection{两个 traits：编译期布局的配置表}
 
 CuTe 版 attention 的第一步是把 tile 几何与数据格式编译期化。
 \texttt{Flash\allowbreak{}Attn2\allowbreak{}Cu\allowbreak{}Te\allowbreak{}Traits}（L2200--2243）与 \texttt{Flash\allowbreak{}Attn3\allowbreak{}Cu\allowbreak{}Te\allowbreak{}Traits}
@@ -190,7 +190,7 @@ col-major 视图：逻辑坐标 $(d, j)$ 被解释为 V 的第 $j$ 行第 $d$ �
 \begin{remark}
   式~\eqref{eq:25-vt} 的 \texttt{composition} 与第~\ref{ch:12}~章手写版的
   V 用 \texttt{ldmatrix.\allowbreak{}trans} 转置加载解决的是同一个问题。手写版把
-  「转置」落在指令上（\texttt{.trans}），CuTe 版把「转置」落在
+  \textbf{转置}落在指令上（\texttt{.trans}），CuTe 版把\textbf{转置}落在
   布局上（\texttt{composition}），然后在 S2R copy 的 atom 里选择
   \texttt{SM75\_\allowbreak{}U16x8\_\allowbreak{}LDSM\_\allowbreak{}T}，两条路最终都编到
   \texttt{ldmatrix.\allowbreak{}sync.\allowbreak{}aligned.\allowbreak{}x2.trans}，但前者的地址算术消失了。
@@ -295,7 +295,7 @@ $\mathrm{ncol}=2\cdot \mathrm{MMA\_N}$。实测（$D{=}64$、$B_r{=}128$）：
 在 lane 内的宽度是 $2\times2=4$：$\mathrm{lane}/4$ 决定行号
 （寄存器对给 $+8$ 行），$\mathrm{lane}\bmod4$ 决定行内 4 个列片段
 之一，两次蝶形恰好把 4 条 lane 的行片段合并。图~\ref{fig:25-rowcol-shfl}
-把这次重排的两层分别画出：4 个寄存器怎么分成「行身份」与「列片段」，
+把这次重排的两层分别画出：4 个寄存器怎么分成\textbf{行身份}与\textbf{列片段}，
 以及两次 \texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor\_\allowbreak{}sync} 如何把 quad 的 4 个片段并成整行。
 
 \begin{figure}[H]
@@ -359,7 +359,7 @@ $\mathrm{ncol}=2\cdot \mathrm{MMA\_N}$。实测（$D{=}64$、$B_r{=}128$）：
 \end{tikzpicture}
 \caption{\texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}rowcol} 的两层拆解
 （式~\eqref{eq:25-rowcol}--\eqref{eq:25-rowcol-num}）。左：quad 内 4 条 lane 的 4 个寄存器
-$c_0..c_3$——两档灰度标出「行身份」：$c_0,c_1$ 属行 $r$、$c_2,c_3$ 属行 $r{+}8$；右侧标出该 lane
+$c_0..c_3$——两档灰度标出\textbf{行身份}：$c_0,c_1$ 属行 $r$、$c_2,c_3$ 属行 $r{+}8$；右侧标出该 lane
 覆盖的列片段（由 $\mathrm{lane}\bmod4$ 决定）。值编号的 bit0 是列偏移、bit1 是行 $+8$，所以
 同一行的 8 列散落在 quad 的 4 条 lane 上。右：两次 \texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor\_\allowbreak{}sync}
 的蝶形——第一轮并 $(0,1)$ 与 $(2,3)$（步长 1），第二轮并 $(0,2)$ 与 $(1,3)$（步长 2），
@@ -487,11 +487,11 @@ $(c_2,c_3)$ 行偏移 $+8$，即 bit0$=$列、bit1$=$行）；右图按 $k16$ A 
         $(\mathrm{MMA}{=}4,\ \mathrm{MMA\_M},\ \mathrm{MMA\_N})$ 在列方向
         做一次划分：令 $\mathrm{MMA\_N}=(2,\ \mathrm{MMA\_N}/2)$，再用
         \texttt{make\_layout} 把切出的分量按 A 的约定重新组合。@竹熙佳处
-        把它概括为「在几何层面上做一次重排」：思考单位是 shape 的拆分
+        把它概括为\textbf{在几何层面上做一次重排}：思考单位是 shape 的拆分
         与组合。
   \item \textbf{代数法（@reed 的 inverse $\circ$ compose）}：不碰 shape，
-        把变换写成函数复合：先取 layout 的「坐标 $\leftrightarrow$
-        offset」关系（\texttt{left\_\allowbreak{}inverse}），再把 A 坐标 $\to$ offset
+        把变换写成函数复合：先取 layout 的\textbf{坐标 $\leftrightarrow$
+        offset}关系（\texttt{left\_\allowbreak{}inverse}），再把 A 坐标 $\to$ offset
         $\to$ C 坐标 $\to$ C 寄存器编号串成一条链（\texttt{compose}），
         最后复合到原 tensor 上。教程用四行代码复刻了这条链，并指出它不
         需要人工判断哪一段对哪一段，对应关系由代数推导得出。
@@ -532,7 +532,7 @@ K 向连续 2 个元素。实测结果是 $((2,2),2),1,4$：仍是 32 个元素�
   式~\eqref{eq:25-aregs} 的成立依赖 $m16n8k16$ 的\textbf{特定} fragment
   约定，它不是通用性质。换成 $k8$ 的 atom 或 Hopper 的 wgmma（操作数在
   寄存器文件之外）就得另写。源码注释 L2360--2362 特意标注了这一点，
-  是本章「常见坑」第六条的规范来源。几何法与代数法都改不了这个前提：
+  是本章\textbf{常见坑}第六条的规范来源。几何法与代数法都改不了这个前提：
   布局代数能推导坐标，不能改变约定。
 \end{remark}
 
@@ -620,7 +620,7 @@ CuTe 的 \texttt{arrive\_\allowbreak{}and\_\allowbreak{}expect\_\allowbreak{}tx}
   nt/.style={font=\scriptsize,align=left,inner sep=1.5pt},
 ]
   % 上：cp.async 组栈
-  \node[axl,anchor=west] at (0,0.55) {\textbf{cp.async 组栈：数「未完成组数」}};
+  \node[axl,anchor=west] at (0,0.55) {\textbf{cp.async 组栈：数未完成组数}};
   \node[stk,draw=tkPurple,fill=tkFillPurple] at (0.85,-0.35) {$K[t{+}k{-}1]$};
   \node[stk,draw=tkPurple,fill=tkFillPurple] at (0.85,-0.95) {$\vdots$};
   \node[stk,draw=tkPurple,fill=tkFillPurple] at (0.85,-1.55) {$V[t]$};
@@ -629,30 +629,30 @@ CuTe 的 \texttt{arrive\_\allowbreak{}and\_\allowbreak{}expect\_\allowbreak{}tx}
   \draw[dashed,thick,tkPurple] (-0.05,-0.7) rectangle (1.75,-1.8);
   \node[axl,anchor=west] at (1.87,-1.25) {\texttt{wait}$<1>$ 的完成区：栈顶之外全部};
   \node[nt,anchor=north west,text width=10.9cm] at (4.9,0.3)
-    {\texttt{wait\_group N} 等「已完成组数 $\ge$ 总组数 $-N$」，故
-     \texttt{wait}$<1>$ 等价于「$V[t]$ 就绪、$K$ 仍在途」——实现 1 靠这条栈语义把
+    {\texttt{wait\_group N} 等\textbf{已完成组数 $\ge$ 总组数 $-N$}，故
+     \texttt{wait}$<1>$ 等价于\textbf{$V[t]$ 就绪、$K$ 仍在途}——实现 1 靠这条栈语义把
      V 与 K 的等待分开（L2743--2754）。\\[2pt]
      \textbf{坑五（尾部退化）}：$kStagesK{-}1$ 个尾部 tile 不预取 K，栈里只剩 V 组，
      PV 前必须退回 \texttt{wait}$<0>$——否则等的是不存在的组，
-     行为是「等很久后照样算完」，流水被拖成同步。\\[2pt]
+     行为是\textbf{等很久后照样算完}，流水被拖成同步。\\[2pt]
      \textbf{坑二（按线程独立计数）}：组编号按线程私有（PTX ISA
      §9.7.9.25.3.3），所以每处 \texttt{wait} 后都跟一次
      \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads()}，跨线程可见性靠它兜底，不是冗余。};
   % 中：TMA 事务屏障
-  \node[axl,anchor=west] at (0,-2.55) {\textbf{TMA 事务屏障：数「字节到齐 $+$ phase 翻转」}};
+  \node[axl,anchor=west] at (0,-2.55) {\textbf{TMA 事务屏障：数字节到齐 $+$ phase 翻转}};
   \node[stk,minimum width=2.6cm,draw=tkBlue,fill=tkFillBlue] at (1.3,-3.1) {$k\_full[s]$：事务屏障};
   \node[stk,minimum width=2.6cm,draw=tkBlue,fill=tkFillBlue] at (1.3,-3.7) {$k\_empty[s]$：普通屏障};
   \draw[thick,tkBlue] (-0.05,-2.82) rectangle (2.65,-3.98);
   \node[axl,anchor=north] at (1.3,-4.05) {每个 stage 一对（$s$ 环状复用）};
   \node[nt,anchor=north west,text width=11.7cm] at (3.3,-2.62)
     {\textbf{producer} 对 $k\_full[s]$：单线程 \texttt{arrive\_and\_expect\_tx(bytes)}
-     ——一次 arrive 加上「这批搬运将带来 bytes 字节」的声明；字节落盘后计数归零、phase 翻转，
+     ——一次 arrive 加上\textbf{这批搬运将带来 bytes 字节}的声明；字节落盘后计数归零、phase 翻转，
      consumer 只 wait 不 arrive。\\[2pt]
      \textbf{consumer} 对 $k\_empty[s]$：普通屏障，init 计数 $=$ \texttt{kConsumerThreads}，
-     每个消费者线程读完该 stage 各 arrive 一次（「我已读完」）。\\[2pt]
+     每个消费者线程读完该 stage 各 arrive 一次（\textbf{我已读完}）。\\[2pt]
      phase 每回绕一轮翻转：$\mathrm{phase}=\bigl(\lfloor t/S\rfloor\bigr)\bmod 2$
      （图~\ref{fig:25-proto}）。init$=1$ 与第~\ref{ch:17}~章手写版 257 的差别不在数字，
-     在「谁 arrive」——两者等价，改 init 前先看角色表。};
+     在\textbf{谁 arrive}——两者等价，改 init 前先看角色表。};
   % 下：协议链
   \node[axl,anchor=west] at (0,-5.4) {\textbf{producer}};
   \node[prt,draw=tkBlue,fill=tkFillBlue] at (3.8,-5.4) {\texttt{wait}$(k\_empty[s],\,phase)$};
@@ -673,7 +673,7 @@ CuTe 的 \texttt{arrive\_\allowbreak{}and\_\allowbreak{}expect\_\allowbreak{}tx}
 \end{tikzpicture}
 \caption{两种异步等待语义的时间线对照（\texttt{flash\_attn.cuh} 与
 \texttt{ffpa\_attn.cuh} 的 TMA 版）。上：cp.async 组栈——提交顺序
-$V[t]$（栈底）$\to K[t{+}k{-}1]$（栈顶），\texttt{wait}$<1>$ 停在「除栈顶 K 之外全部完成」，
+$V[t]$（栈底）$\to K[t{+}k{-}1]$（栈顶），\texttt{wait}$<1>$ 停在\textbf{除栈顶 K 之外全部完成}，
 尾部 $kStagesK{-}1$ 个 tile 必须退回 \texttt{wait}$<0>$（坑五）；每处 \texttt{wait} 后跟一次
 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads()}（坑二：组计数按线程私有）。中下：TMA 的
 事务计数——每个 stage 一对 $k\_full[s]$（事务屏障，producer 单线程
@@ -866,7 +866,7 @@ $(r,c)$ 反查寄存器编号，用来在 smem scratch 里定位对方的 partia
 \begin{table}[htbp]
 \centering
 \caption{四个 CuTe 实现的结构对照（源码：flash\_attn.cuh）。
-$kStages$ 列给出默认实例化；「共享」列标出手写版中被抽象层取代的部分。}
+$kStages$ 列给出默认实例化；\textbf{共享}列标出手写版中被抽象层取代的部分。}
 \label{tab:25-struct}
 \begin{tabular}{p{2.6cm}p{3.3cm}p{3.3cm}p{3.3cm}}
 \toprule
@@ -957,7 +957,7 @@ KV 划分 & 单流全遍历 & 单流全遍历 & 奇偶拆给两个 consumer \\
     font=\fontsize{4.2}{4.8}\selectfont, text width=13.9cm]
     at (7.25,-5.80)
     {\textbf{实现 4 smoke（42 行，L3447-3488）：TMA descriptor $+$ SW128 布局 $+$ mbarrier 事务屏障的最小闭环}\\
-     不计算 attention——只验证「搬运 $+$ 布局 $+$ 屏障」三件套本身；三个实现的公共底座照此自检};
+     不计算 attention——只验证\textbf{搬运 $+$ 布局 $+$ 屏障}三件套本身；三个实现的公共底座照此自检};
   \draw[->, dashed, tkOrange, semithick] (2.30,-5.04) -- (2.30,-5.42);
   \draw[->, dashed, tkOrange, semithick] (7.25,-5.04) -- (7.25,-5.42);
   \draw[->, dashed, tkOrange, semithick] (12.20,-5.04) -- (12.20,-5.42);

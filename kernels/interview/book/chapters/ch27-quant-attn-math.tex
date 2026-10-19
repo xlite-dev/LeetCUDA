@@ -55,7 +55,7 @@ RTX 5090 上 FP4 attention kernel 达到 1038 TOPS、约为该卡上最快 Flash
 GEMM 主导的算子，把 GEMM 降到低精度是 fp16 域内任何 tiling / 流水线优化都
 无法达到的收益量级。
 
-\subsection{attention 的三个量化点与「P 无法离线」困难}
+\subsection{attention 的三个量化点与 P 无法离线的困难}
 
 把式~\ref{eq:15-attn-def} 的计算链拆开，有三个可量化的对象：
 \begin{equation}
@@ -68,7 +68,7 @@ GEMM 主导的算子，把 GEMM 降到低精度是 fp16 域内任何 tiling / �
 $Q,K,V$ 是前向开始前就存在的静态张量，可以离线（进 kernel 前）量化好。
 连同 scale 一起送进 kernel，称为\textbf{离线校准}路径。而 $P$ 是 softmax 的输出，
 每个 forward、每个 tile 都不同，永远无法离线，必须在 kernel 内、在寄存器
-fragment 上完成量化。这一「在线量化」需求带来一系列独有问题：量化 scale 从哪来
+fragment 上完成量化。这一\textbf{在线量化}需求带来一系列独有问题：量化 scale 从哪来
 （27.3.4）、scale 如何在 MMA 间传递与消去（第~\ref{ch:29}~章）、发射域与 lazy
 rescale 的膨胀如何不超出格式量程上限（27.3.6）。
 
@@ -166,7 +166,7 @@ NVFP4 的 per-16 block scale 用无符号 e4m3（ue4m3，$2^{-6} \sim 448$），
 MXFP8 的 per-32 scale 用纯指数 ue8m0（$2^{\pm127}$）。scale 本身的量化同样服从
 定理~\ref{thm:27-relstep}，但 scale 是乘性作用于数据的：
 $\tilde{x} = \hat{x} \cdot \widetilde{\mathrm{SF}}$，两级相对误差相加。第~\ref{ch:31}~章
-「两级 P 量化」核算的就是这部分误差。
+\textbf{两级 P 量化}核算的就是这部分误差。
 
 \begin{table}[htbp]
   \centering
@@ -405,7 +405,7 @@ $p_{scale}$ 策略的发射域利用率摆在同一条量程轴上：差别就�
     {\textbf{fixed（ffpa 默认）}：$p_{scale}\equiv1/448$，平坦行（causal 三角顶部）$\max(P)\ll1$，
      发射值只落在左端几格（实心 $=$ 已用格点，浅带 $=$ 闲置的量程）。收益是单累加域：
      PV MMA 直接累加进 $o_{acc}$，epilogue 一步 $O=o_{acc}\cdot(1/448)/\ell$ 同时完成反量化与
-     归一化，且\textbf{可与 lazy rescale（27.3.6）组合}。};
+     归一化，且\textbf{可与 lazy rescale 组合}（27.3.6）。};
   % per-row 行：每行归一后铺满全量程
   \foreach \gi in {0,...,23} {
     \pgfmathsetmacro{\gx}{0.9+0.55*\gi}
@@ -419,12 +419,12 @@ $p_{scale}$ 策略的发射域利用率摆在同一条量程轴上：差别就�
      \texttt{FFPA\_FP8\_PQUANT\_PER\_ROW} 打开 per-row。};
   \node[nt,anchor=north west,text width=15.4cm] at (0.2,-3.5)
     {格点是 e4m3 可表示值的示意（真实格点非均匀：近 $0$ 更密、指数越大越疏），
-     两组各 24 格只为把「量程利用率」画出来；两种模式的乘积预算与溢出约束见
+     两组各 24 格只为把\textbf{量程利用率}画出来；两种模式的乘积预算与溢出约束见
      式~\eqref{eq:27-overflow} 与图~\ref{fig:27-lazy-rescale}。};
 \end{tikzpicture}
 \caption{fixed 与 per-row 两种 $p_{scale}$ 策略的发射域利用率（27.3.5 节）。
 上：fixed 的 $p_{scale}\equiv1/448$ 是编译期常数，平坦行的 $\max(P)\ll1$ 使发射值
-只占量程左端一小段，其余量程闲置——换来的是单累加域与「可与 lazy rescale 组合」；
+只占量程左端一小段，其余量程闲置——换来的是单累加域与\textbf{可与 lazy rescale 组合}；
 下：per-row 用 $\mathrm{rowmax}(P)/448$ 使每一行铺满量程，精度最优，代价是跨 lane rowmax
 归约与 64-float 的 $o_{tile}$ 暂存，且与 lazy rescale 互斥。}
 \label{fig:27-pscale-modes}
@@ -466,7 +466,7 @@ K 深度是 32，若逐元素乘积幅度均匀，则每个元素需满足 $P_r 
 （fixed 发射 $\tilde{P} = P v_s 448$），把约束全部落在 V 侧：per-channel V +
 f16 acc 时发射 $\hat{V} \in [-2.25, 2.25]$，检验 $448 \times 2.25 = 1008 \le 2047$
 同样成立（\texttt{cute/fp8/smooth\_v.cuh} 注释，第~\ref{ch:28}~章展开）。两种分配
-的乘积预算相同，差别在「牺牲 P 分辨率还是 V 分辨率」，ffpa 选择保 P（softmax
+的乘积预算相同，差别在\textbf{牺牲 P 分辨率还是 V 分辨率}，ffpa 选择保 P（softmax
 概率的相对结构更敏感）。图~\ref{fig:27-pvbudget} 在 $P_r$--$V_r$ 平面上把这两种
 分配画成同面积矩形：预算线之下是 f16 累加器的安全域。
 
@@ -649,7 +649,7 @@ $\mathrm{amax}(V)\le 28$；FA-4 BF16 kernel 的典型 $\tau=8$（$\times256$）�
   \mathrm{ESS}_i \;\mathrel{:=}\; \Big(\sum_j P_{ij}^2\Big)^{-1},
   \label{eq:27-ess}
 \end{equation}
-其中 $\mathrm{ESS}_i$ 是「有效样本数」：概率越集中（one-hot），ESS 越小、输出越像单个
+其中 $\mathrm{ESS}_i$ 是\textbf{有效样本数}：概率越集中（one-hot），ESS 越小、输出越像单个
 $V$ 行（幅度 $\sim \sigma_V\sqrt{2\ln D}$）。概率越平均，输出越像大量样本的均值
 （幅度 $\sim \sigma_V / \sqrt{N}$）。取 $D{=}128$、$\sigma_V{=}1$ 估算输出幅度
 $\approx \sigma_V \sqrt{2 \ln D} / \sqrt{\mathrm{ESS}} \approx 3.1/\sqrt{\mathrm{ESS}}$：
@@ -862,7 +862,7 @@ causal 早行的 $P$ 分布/误差对比，以及 $V>QK>P$ 的 per-stage 误差�
   \end{tikzpicture}
   \caption{四种量化格式的位域与值域对照（int8 / e4m3 / e2m1 / ue4m3）。e4m3 的
   指数全 1 时仅 $M{=}111$ 编码 NaN，故满量程 448；e2m1 全部 16 个码点在数轴上
-  标出，直观呈现「一个倍频程内只有两格」。}
+  标出，直观呈现\textbf{一个倍频程内只有两格}。}
   \label{fig:27-1}
 \end{figure}
 
@@ -1021,7 +1021,7 @@ causal 早行的 $P$ 分布/误差对比，以及 $V>QK>P$ 的 per-stage 误差�
     \node[draw=tkOrange, fill=tkFillOrange, align=left, inner sep=3pt,
       font=\fontsize{4.4}{5}\selectfont, text width=7.30cm] at (11.60,-3.30)
       {\textbf{\textcolor{tkOrange!70!black}{推论（hybrid 的理论依据）：}}\\
-       「早行只换 QK 回 fp16」无效——V 项不动；\\
+       \textbf{早行只换 QK 回 fp16}无效——V 项不动；\\
        早行必须全链 fp16（hybrid 行分割，ch29）\\
        或 per-channel V scale 压 V 相对误差（ch28）};
     \node[ax] at (7.85,-4.75) {n\_early 不需很大：ESS 极小的行集中在前段（前 256 行已覆盖）};
@@ -1031,7 +1031,7 @@ causal 早行的 $P$ 分布/误差对比，以及 $V>QK>P$ 的 per-stage 误差�
   \end{tikzpicture}
   \caption{ESS 误差模型与 per-stage 误差分解：左半为 dense 行与 causal 早行的
   $P$ 分布/ESS/幅度对比（表~\ref{tab:27-ess} 的图形化），右半为
-  V $>$ QK $>$ P 的误差贡献分解与「早行需全链 fp16」的结论。}
+  V $>$ QK $>$ P 的误差贡献分解与\textbf{早行需全链 fp16}的结论。}
   \label{fig:27-3}
 \end{figure}
 

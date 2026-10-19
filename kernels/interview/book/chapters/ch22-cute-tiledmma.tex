@@ -99,8 +99,8 @@ $S_{64\times64} = Q_{64\times64} K^T_{64\times64}$（每个 d-chunk），PV 步�
 CuTe 的答案是把这四件事压进一个类型：\texttt{Tiled\allowbreak{}MMA\allowbreak{}<MMA\_\allowbreak{}Atom,\allowbreak{}
 Atom\allowbreak{}Layout\allowbreak{}MNK,\allowbreak{} Permutation\allowbreak{}MNK>}。一个 TiledMMA 实例只回答两个问题：
 这个 tile 有哪些 (线程, 值) 位置；给定一个 Tensor 时，
-每个线程的 fragment 是什么形状。@竹熙佳处把动机总结成「给定任意一条
-mma 指令，都能方便地推导出每个线程该从 data tile 里取哪一部分」，与这里的
+每个线程的 fragment 是什么形状。@竹熙佳处把动机总结成\textbf{给定任意一条
+mma 指令，都能方便地推导出每个线程该从 data tile 里取哪一部分}，与这里的
 两个问题是同一件事的两种说法。本章要验证的，就是这两个回答在 FFPA 的
 具体配置下能否用手推公式复现，不能复现就说明没读懂。
 
@@ -491,7 +491,7 @@ tile 的 N 尺寸是 per-call C 视图与拷贝粒度的旋钮。
         是 128 线程（L73--78 注释）。实测 \texttt{size\allowbreak{}(Tiled\allowbreak{}Mma\allowbreak{}QK)}
         $= 128$，与 \texttt{Layout\allowbreak{}<4,\allowbreak{}1,\allowbreak{}1>}（$4\times32$）自洽。看到注释
         数字与实测不一致时，先问它描述的是哪个版本，再下结论。
-  \item \textbf{「EURepeat」有两种语境}。hgemm.cuh~L1290--1292 的
+  \item \textbf{EURepeat 有两种语境}。hgemm.cuh~L1290--1292 的
         \texttt{k\allowbreak{}Mma\allowbreak{}EURepeat\allowbreak{}M/\allowbreak{}N/\allowbreak{}K} 说的是 \emph{warp 排布}
         （\texttt{make\_\allowbreak{}tiled\_\allowbreak{}mma} 的第二个参数）；本章 FFPA 注释里的
         $\langle1,8,1\rangle$/$\langle1,2,1\rangle$ 说的是\emph{每线程原子
@@ -661,8 +661,8 @@ QK$\to$PV 这一步的两套寄存器坐标见图~\ref{fig:22-aregs-reuse}。
   \node[anchor=north west, align=left, text width=15.5cm] at (0,-4.7)
     {转换式 $(\mathrm{MMA}{=}4,\ \mathrm{MMA}_M,\ \mathrm{MMA}_N)\to
      ((\mathrm{MMA},2),\ \mathrm{MMA}_M,\ \mathrm{MMA}_N/2)$：
-     \texttt{logical\_divide} 把 $N$ 方向按 $2$ 切分，于是 C 的「相邻列对」成为
-     A 的「相邻 $k$ 对」，A 的 $K{=}16$ 由相邻两个 n8 atom 提供（$S$ 上相邻
+     \texttt{logical\_divide} 把 $N$ 方向按 $2$ 切分，于是 C 的\textbf{相邻列对}成为
+     A 的\textbf{相邻 $k$ 对}，A 的 $K{=}16$ 由相邻两个 n8 atom 提供（$S$ 上相邻
      的 $16$ 列）。两侧高亮的是\emph{同一个} lane 0 的同一批 $8$ 个逻辑
      元素：左边是 $8$ 个 f32 槽，右边折成 $4$ 个 u32（每槽 $2$ 个相邻 $k$ 的
      half）。全程零拷贝，且依赖 m16n8k16 的特定 fragment 约定——
@@ -675,7 +675,7 @@ $\times$ $2$ 相邻列），两个相邻 atom 共 $8$ 个；右（A 视角）：
 逻辑元素被解释成 $4$ 个 u32，每槽 $2$ 个相邻 $k$ 的 half，可直接作为
 \texttt{gemm\_rs} 的 \texttt{tCrA}。\texttt{convert\_type<half>}
 （fp32$\to$fp16，寄存器减半）$+$ \texttt{convert\_layout\_acc\_Aregs}
-（$N$ 方向按 $2$ 切分的索引重解释）就是这条「P 不写回 smem」路径的全部代价。}
+（$N$ 方向按 $2$ 切分的索引重解释）就是这条\textbf{P 不写回 smem}路径的全部代价。}
 \label{fig:22-aregs-reuse}
 \end{figure}
 

@@ -296,7 +296,7 @@ icache 与寄存器压力）内的 QK 相位：
 寄存器里切出本线程的 Q/K fragment，\texttt{gemm\_ss}（第~\ref{ch:25}~章
 工具）完成 LDSM + mma.sync 的 k-loop。10 个 chunk 循环下来
 $S = \sum_{d} Q_{[:,d]} K_{[:,d]}^\top$，正是第~\ref{ch:19}~章 19.3.2 节
-「精确、无权重」的分块分解在 CuTe 上的直接落地。
+\textbf{精确、无权重}的分块分解在 CuTe 上的直接落地。
 
 \textbf{L1066}：全线程 arrive \texttt{qk\_empty}，stage 归还。
 \textbf{L1072--1081}：\texttt{tid=0} 领先 $S_K$ 个 chunk 预取下一个
@@ -745,7 +745,7 @@ $(2,3)$）。
 $S_K$/$S_V$ 作为独立模板参数暴露，正是为了按 $D$ 分段选参；默认对称
 $(2,2)$ 只是保守起点。
 寄存器占用（第~\ref{ch:19}~章 19.4.6）在
-这里从「预算说明」变成「调优依据」：spill 出现的 $D$ 就是 stages
+这里从\textbf{预算说明}变成\textbf{调优依据}：spill 出现的 $D$ 就是 stages
 策略的切换点。
 
 \subsection{与 WS 版的逐项对照收尾}

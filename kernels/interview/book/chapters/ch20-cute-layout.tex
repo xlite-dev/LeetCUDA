@@ -177,7 +177,7 @@ layout，而 \texttt{cosize} 直接就是这块 smem 实际要占的元素数，
      offset，列步长 $16$ 使 $c_1+1$ 跳过 $2$ 个 offset（$c_1{=}0$ 的最后一格是
      $14$，下一格 $16$——中间的 $15$ 永远读不到）。最大 offset
      $=2\cdot7+16\cdot3=62$，于是 $\mathrm{size}=32$ 而
-     $\mathrm{cosize}=63$：\textbf{$\mathrm{cosize}>\mathrm{size}$ 即「孔洞」}。
+     $\mathrm{cosize}=63$：\textbf{$\mathrm{cosize}>\mathrm{size}$ 即孔洞}。
      声明布局的同时把 smem 用量也算了出来——padding 过的 smem 行就是这类布局。};
   \begin{scope}[shift={(0,-5.9)}]
     \foreach \br in {0,...,3}{
@@ -266,7 +266,7 @@ $c<\mathrm{size}(B)$ 断言 $R(c)=A(B(c))$），本章测试沿用同一手法�
 
 \section{设计与实现}
 
-\subsection{先看「类型即布局」：hgemm.cuh 的 CuTe 类型清单}
+\subsection{先看类型即布局：hgemm.cuh 的 CuTe 类型清单}
 
 第~\ref{ch:12}~章的手写 kernel 把布局知识藏在常量与宏里；CuTe 版则把它们
 全部提升为模板参数。hgemm.cuh L788--805 的头注释概括了 CuTe 版 kernel 的
@@ -351,7 +351,7 @@ launch wrapper 的类型推导完成。
 要把值真正取出来，还得再叠一层 $(m,n)\to$ 物理 offset 的 tensor 布局。
 两次映射的复合（$(t,v)\to(m,n)\to\mathrm{offset}$）才给出每个线程的访问地址。
 
-@竹熙佳处把这一点的价值概括为「变换 layout 时只关注坐标空间」：
+@竹熙佳处把这一点的价值概括为\textbf{变换 layout 时只关注坐标空间}：
 同一个 $(m,n)$ 复合不同的 tensor 布局，就能分别正确落到 global / shared /
 register 上，这是一份划分同时服务三种内存的关键。
 
@@ -612,7 +612,7 @@ tiler 下 tile 几何的正反例对照见图~\ref{fig:20-zd-tile-shape}。
     \node[anchor=north, font=\tiny, align=center] at (2,-4.6)
       {tile $=$ 16 个连续 offset $=$ 8 行 $\times$ 2 列条带\\（粗框 $=$ 条带 1：offset 16--31；灰度 $=$ 条带号）};
     \node[anchor=north, font=\tiny, align=center] at (2,-5.5)
-      {（「方块」语义被静默换掉、不报错——常见坑三）};
+      {（\textbf{方块}语义被静默换掉、不报错——常见坑三）};
   \end{scope}
   \draw[->, thick] (4.35,-2) -- (5.55,-2);
   \node[font=\tiny, align=center] at (4.95,-1.55) {只改 tiler\\stride};
@@ -621,8 +621,8 @@ tiler 下 tile 几何的正反例对照见图~\ref{fig:20-zd-tile-shape}。
 case~F）：格内数字为 $L=(8,8){:}(1,8)$ 的线性 offset（$=i_0+8i_1$，64 格
 逐格满足式~\eqref{eq:20-zd-coord}）。左：tiler 与 $L$ 同 stride 族时，tile
 是 $2\times2$ 个 $4\times4$ 方块（色块 $=$ tile 身份）；右：compact tiler
-$(4,4){:}(1,4)$ 的「tile」退化为 16 个连续 offset 的「8 行 $\times$ 2 列」
-列条带——结果仍是合法 layout、双射覆盖不变，但「方块」语义被静默换掉、
+$(4,4){:}(1,4)$ 的\textbf{tile}退化为 16 个连续 offset 的\textbf{8 行 $\times$ 2 列}
+列条带——结果仍是合法 layout、双射覆盖不变，但\textbf{方块}语义被静默换掉、
 不报错（常见坑三）。}
 \label{fig:20-zd-tile-shape}
 \end{figure}
@@ -877,11 +877,11 @@ $f(1,3)=11$——同一 shape，stride 决定读序。}
   % 底部结论条
   \node[draw=tkOrange!80, fill=tkFillOrange, text=tkOrange!75!black, align=center, inner sep=3pt,
     minimum height=0.70cm, minimum width=17.0cm] at (8.50, -4.45)
-    {kernel 里「fragment mode 与 rest mode 分离」就是一次投影；合并/展平把嵌套结构变成可直接索引的线性结构};
+    {kernel 里\textbf{fragment mode 与 rest mode 分离}就是一次投影；合并/展平把嵌套结构变成可直接索引的线性结构};
   % 标题
   \node at (8.50, 0.55) {mode 树与四种 mode 操作（$L_g = ((2,4),(3,2)){:}((1,2),(8,24))$）};
 \end{tikzpicture}
-\caption{mode 树与四种 mode 操作的结果。投影用于取子布局，合并/展平用于把嵌套结构变成可直接索引的线性结构，化简（coalesce）在编译期消除冗余 mode——kernel 里「fragment mode 与 rest mode 分离」就是一次投影。}
+\caption{mode 树与四种 mode 操作的结果。投影用于取子布局，合并/展平用于把嵌套结构变成可直接索引的线性结构，化简（coalesce）在编译期消除冗余 mode——kernel 里\textbf{fragment mode 与 rest mode 分离}就是一次投影。}
 \label{fig:20-2}
 \end{figure}
 
@@ -975,9 +975,9 @@ $f(1,3)=11$——同一 shape，stride 决定读序。}
   % 标题
   \node at (8.00, -0.19) {CuTe Tensor $=$ Layout $+$ Engine：坐标 $\to$ offset $\to$ 解引用取数};
   \node[text=black!60, font=\scriptsize] at (8.00, -0.60)
-    {Layout 只定义「坐标 $\to$ 偏移」的映射规则，Engine 提供可寻址的存储（base\_ptr）；二者相加才是一次真实的访存};
+    {Layout 只定义\textbf{坐标 $\to$ 偏移}的映射规则，Engine 提供可寻址的存储（base\_ptr）；二者相加才是一次真实的访存};
 \end{tikzpicture}
-\caption{CuTe Tensor 的寻址分工：Layout 负责「坐标 $\to$ offset」的代数——shape 限定输入范围、stride 决定各 mode 步长；Engine 只持有 \texttt{base\_ptr}。$(1,1)\to 5$，命中行主序（$(4,4){:}(4,1)$，列连续）第 5 号元素 \texttt{f}。重建自 @竹熙佳处《写给大家看的 CuTe 教程：Layout Compose \& Inverse》。}
+\caption{CuTe Tensor 的寻址分工：Layout 负责\textbf{坐标 $\to$ offset}的代数——shape 限定输入范围、stride 决定各 mode 步长；Engine 只持有 \texttt{base\_ptr}。$(1,1)\to 5$，命中行主序（$(4,4){:}(4,1)$，列连续）第 5 号元素 \texttt{f}。重建自 @竹熙佳处《写给大家看的 CuTe 教程：Layout Compose \& Inverse》。}
 \label{fig:20-4}
 \end{figure}
 
@@ -1064,7 +1064,7 @@ $f(1,3)=11$——同一 shape，stride 决定读序。}
   \node[text=tkOrange!90!black, font=\scriptsize] at (2.03, -5.87) {step(1)};
   \node[text=tkGreen, font=\scriptsize] at (8.90, -5.87) {step(3)};
   \node[text=tkPurple, font=\scriptsize] at (6.51, -10.43) {step(2)};
-  % 分隔线：上半为「待填/结果」，下半为三层求值细节
+  % 分隔线：上半为待填/结果，下半为三层求值细节
   \draw[gray!45, dashed] (0.24, -5.67) -- (15.91, -5.67);
   % 步骤箭头（折线绕行，避免穿越网格）
   \draw[tkOrange!90!black, semithick, dashed, -{Stealth[length=3.5pt]}]
@@ -1139,11 +1139,11 @@ $f(1,3)=11$——同一 shape，stride 决定读序。}
   % 标题
   \node at (8.00, -0.19) {inverse 与 with\_shape：先拉直成 1D，再按新 shape 重排};
   \node[anchor=west, text=black!60, font=\scriptsize] at (0.09, -0.58)
-    {inverse 把「值 $\to$ 坐标」倒过来查表；with\_shape 再把};
+    {inverse 把\textbf{值 $\to$ 坐标}倒过来查表；with\_shape 再把};
   \node[anchor=west, text=black!60, font=\scriptsize] at (0.09, -0.86)
     {1D 长条按 col-major 折回 2D——完成任意布局间的元素搬运};
 \end{tikzpicture}
-\caption{inverse 与 with\_shape：inverse 把「值 $\to$ 坐标」倒过来查表（$9\leftrightarrow 6$ 互逆），with\_shape 再把 1D 长条按新 shape $(8,2)$ 沿 col-major 折回 2D，得 $B(1,1)=6$。重建自同上文。}
+\caption{inverse 与 with\_shape：inverse 把\textbf{值 $\to$ 坐标}倒过来查表（$9\leftrightarrow 6$ 互逆），with\_shape 再把 1D 长条按新 shape $(8,2)$ 沿 col-major 折回 2D，得 $B(1,1)=6$。重建自同上文。}
 \label{fig:20-6}
 \end{figure}
 
@@ -1263,7 +1263,7 @@ $f(1,3)=11$——同一 shape，stride 决定读序。}
   \end{scope}
   \node[anchor=west, text=tkBlue] at (0.687, -6.72) {layoutB};
   \node[anchor=west, text=tkBlue] at (0.687, -7.05) {shape: $(2, 2)$, stride: $(2, 1)$};
-  % 「每格放一份 B」：外层 A 的四个坐标位各展开成一份 B
+  % 每格放一份 B：外层 A 的四个坐标位各展开成一份 B
   \draw[tkPurple, dashed, -{Stealth[length=3pt]}] (4.42, -2.45) -- (4.57, -5.73);
   \node[anchor=west, text=tkPurple, font=\scriptsize] at (4.75, -3.90) {每格放一份 B};
   % 右：layoutA (x) layoutB —— 四个 2x2 块按 A 的值序拼接
@@ -1300,7 +1300,7 @@ $f(1,3)=11$——同一 shape，stride 决定读序。}
   \node[anchor=west, text=black!60, font=\scriptsize] at (0.09, -0.60)
     {A 的每个坐标位放一份 B 的拷贝：块偏移 $=$ A 的求值结果 $\times$ size(B)，块内排布即 B};
 \end{tikzpicture}
-\caption{layout product：A 的每个坐标位放一份 B 的拷贝（块偏移 $=$ A 的线性序号 $\times$ size(B)），得到嵌套布局 $((2,2),(2,2)){:}((8,4),(2,1))$。行值 $0,1,4,5\,/\,2,3,6,7\,/\cdots$ 的「块拷贝拼接」排布即 product 的几何特征——它不是 row-major。重建自 @竹熙佳处《写给大家看的 CuTe 教程：Layout Product \& Divide》。}
+\caption{layout product：A 的每个坐标位放一份 B 的拷贝（块偏移 $=$ A 的线性序号 $\times$ size(B)），得到嵌套布局 $((2,2),(2,2)){:}((8,4),(2,1))$。行值 $0,1,4,5\,/\,2,3,6,7\,/\cdots$ 的\textbf{块拷贝拼接}排布即 product 的几何特征——它不是 row-major。重建自 @竹熙佳处《写给大家看的 CuTe 教程：Layout Product \& Divide》。}
 \label{fig:20-8}
 \end{figure}
 

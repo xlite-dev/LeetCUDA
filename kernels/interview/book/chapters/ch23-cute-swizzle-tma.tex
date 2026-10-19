@@ -19,7 +19,7 @@ stage 缓冲，同样的技巧就要同时回答三个新问题：它到底是�
 \textbf{前置章节}：第~\ref{ch:12}~章（XOR swizzle 的银行冲突推导与手写
 \texttt{swizzle<>} 家族）、第~\ref{ch:20}~章（Layout 代数与
 \texttt{composition}）、第~\ref{ch:21}~章（Tensor 与 TiledCopy）、
-第~\ref{ch:22}~章（TiledMMA）。本章是 Part~IV「CuTe 应用篇」的第二章，
+第~\ref{ch:22}~章（TiledMMA）。本章是 Part~IV\textbf{CuTe 应用篇}的第二章，
 不引入新的 CuTe 抽象，只把已有的 \texttt{Layout}/\texttt{Tensor} 用到
 swizzle 与 TMA 两个难点上。
 
@@ -105,13 +105,13 @@ warp 的 32 个线程如果同时访问落在同一 bank 的多个地址，硬�
 后面会看到，TMA 硬件只认标准形态，padding 方案无法用于 TMA。每次换元素类型或
 $B_K$ 都要重新推一遍补偿量。
 
-置换解法：XOR。保持行宽不动，把\emph{列块索引}换成「块索引 XOR
-行号」：第 $r$ 行的逻辑块 $j$ 搬到物理位置 $j\oplus r$。固定列块扫 8 行，
+置换解法：XOR。保持行宽不动，把\emph{列块索引}换成\textbf{块索引 XOR
+行号}：第 $r$ 行的逻辑块 $j$ 搬到物理位置 $j\oplus r$。固定列块扫 8 行，
 物理块取遍 $0..7$ 的 8 个不同值，8 根 $16$\,B 段各落一处 bank 组，冲突
 消失，容量零浪费。
 
-@reed《cute 之 Swizzle》正是从「逻辑矩阵位置与 bank 的
-对应关系」出发讲这件事的，并给出其硬件依据：\texttt{ldmatrix} 的地址通道
+@reed《cute 之 Swizzle》正是从\textbf{逻辑矩阵位置与 bank 的
+对应关系}出发讲这件事的，并给出其硬件依据：\texttt{ldmatrix} 的地址通道
 与 TMA 都原生支持这种置换，因为它的代价只有一次 XOR。成因与两种解法的
 三面板对照见图~\ref{fig:23-bank-conflict}。
 
@@ -266,7 +266,7 @@ $B$ & $M$ & $S$ & 周期（字节） & TMA descriptor 模式 & 第~\ref{ch:12}~�
 \end{tabular}
 \end{table}
 
-\subsection{从位模型到「chunk XOR 行号」}
+\subsection{从位模型到 chunk XOR 行号}
 
 表~\ref{tab:23-modes} 最后一个档位 \texttt{Swizzle\allowbreak{}<3,\allowbreak{}3,\allowbreak{}3>} 值得单独说：
 它在 CuTe 文档里最常出现（因为文档的例子用 fp32），但它与
@@ -459,8 +459,8 @@ $1024/4096$ 正是这条规则的命中率
     {结论：\texttt{Swizzle} 在 CuTe 里既能当\emph{位置无关}的布局
      （只作用在 offset 上）用，也会被硬件当\emph{位置相关}的置换
      （作用在绝对地址上）用。两条路径要一致，基址的低 $10$ 位就必须为零
-     ——这就是 hgemm.cuh L1899--1917 把「TMA 路径 smem 基址 $1024$\,B
-     对齐」写成硬约定的原因。WGMMA 一侧还有 descriptor 的
+     ——这就是 hgemm.cuh L1899--1917 把\textbf{TMA 路径 smem 基址 $1024$\,B
+     对齐}写成硬约定的原因。WGMMA 一侧还有 descriptor 的
      \texttt{base\_offset}（bit$[49,52)$）可以事后补偿相位，
      \texttt{ldmatrix} 的地址通道没有这个补偿位。};
 \end{tikzpicture}
@@ -792,7 +792,7 @@ $j\oplus r$。第~\ref{ch:12}~章的对角线置换在这里有了精确的
     {SW128 atom: 8$\times$64 half $=$ 8 rows $\times$ 128 B, 8 chunks of 16 B per row};
   \node[anchor=west, font=\scriptsize] at (30,50)
     {物理 chunk 位置 $= j \oplus (r \bmod 8)$：行长 128\,B 刚好翻 3 个地址位，
-     第~\ref{ch:12}~章的「对角线置换」在这里是位级精确的};
+     第~\ref{ch:12}~章的\textbf{对角线置换}在这里是位级精确的};
   \node[anchor=west, font=\tiny, text=gray!80] at (24,81) {logical chunk};
   \foreach \cc in {0,...,7}{
     \node[draw=gray!45, fill=gray!12, font=\tiny\bfseries, minimum width=0.79cm,

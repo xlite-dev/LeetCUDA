@@ -6,7 +6,7 @@
 
 \section{这个文件在全书的角色}
 
-正文的组织方式是「一章一个 kernel 家族，公共工具向 common.cuh 集中」：
+正文的组织方式是\textbf{一章一个 kernel 家族，公共工具向 common.cuh 集中}：
 cp.async 协议宏、ldmatrix/HMMA 指令封装、XOR swizzle、TMA/mbarrier helpers、
 setmaxnreg 封装、WGMMA descriptor 编码——每一项都在某一章首次出现，
 之后被后续章节直接复用。本附录把这个头文件按工具族拆开：读正文时想确认
@@ -43,7 +43,7 @@ setmaxnreg 封装、WGMMA descriptor 编码——每一项都在某一章首次�
 
 第 4--8 段整体由编译宏门控：不定义 \texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}WGMMA} 或
 \texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}TMA\_\allowbreak{}MA\_\allowbreak{}WS} 时，TMA/WGMMA 相关设施完全不参与编译——
-这是「基础章构建保持轻量」的机制保证（各宏与架构的组合见附录~\ref{app:C}）。
+这是\textbf{基础章构建保持轻量}的机制保证（各宏与架构的组合见附录~\ref{app:C}）。
 
 \section{搬运原语：向量化宏与 cp.async}
 
@@ -56,10 +56,10 @@ setmaxnreg 封装、WGMMA descriptor 编码——每一项都在某一章首次�
   title={common.cuh L41-49（cp.async 协议宏：commit/wait 语义与 cg 粒度）}]{../common.cuh}
 
 用法要点：\texttt{commit\_\allowbreak{}group} 把此前未提交的 \texttt{cp.async} 归入一个
-async-group（per-thread）；\texttt{wait\_\allowbreak{}group~N} 阻塞到「未完成 group 数
-$\le$ N」，N=0 即等全部落地——这与后面 WGMMA 的
+async-group（per-thread）；\texttt{wait\_\allowbreak{}group~N} 阻塞到\textbf{未完成 group 数
+$\le$ N}，N=0 即等全部落地——这与后面 WGMMA 的
 \texttt{wgmma.\allowbreak{}wait\_\allowbreak{}group}（L542）语义完全同构，是贯穿第~\ref{ch:10}~、
-\ref{ch:11}~、\ref{ch:13}~章的同一套「分组-等待」机制。
+\ref{ch:11}~、\ref{ch:13}~章的同一套\textbf{分组-等待}机制。
 \texttt{cg} 只支持 16 字节粒度（\texttt{ca} 支持 4/8/16），与 \texttt{FLOAT4}
 天然对齐。
 
@@ -93,7 +93,7 @@ ldmatrix + \texttt{HMMA16816\allowbreak{}F32}。
 \texttt{swizzle\_\allowbreak{}v2\_\allowbreak{}impl}（L326）用它统一表达 16/32/64 三档，与 v1
 bit-exact 等价（等价性证明注释在 L320--325，host 端
 \texttt{test\_\allowbreak{}swizzle\_\allowbreak{}equiv} 可验证）。第~\ref{ch:23}~章讲 CuTe swizzle
-时，\texttt{SwizzleBMS} 正是「脱离 cute 框架理解位级语义」的对照实现。
+时，\texttt{SwizzleBMS} 正是\textbf{脱离 cute 框架理解位级语义}的对照实现。
 一个容易踩的坑：L344--348 的派发器注释描述的
 \texttt{swizzle\allowbreak{}<k\allowbreak{}Col\allowbreak{}Stride>} 函数\textbf{实体在 hgemm.cuh}，common.cuh 只
 提供 v1/v2 两个实现与注释（第~\ref{ch:12}~章考据框有记录）。
@@ -153,7 +153,7 @@ layout\_type=1 匹配。
 
 \section{写一个新教学 kernel 的最小 checklist}
 
-从零加一个「正文可引用、测试可复现」的教学 kernel：
+从零加一个\textbf{正文可引用、测试可复现}的教学 kernel：
 
 \begin{enumerate}
   \item \textbf{include}：kernel 头文件放 \texttt{kernels/\allowbreak{}interview/\allowbreak{}}，直接
@@ -174,7 +174,7 @@ layout\_type=1 匹配。
         规模不超过 \texttt{BOOK\_\allowbreak{}TEST\_\allowbreak{}MAX\_\allowbreak{}N}。
   \item \textbf{arch 门控}：普通特性用 \texttt{book\_\allowbreak{}require\_\allowbreak{}sm} 打 SKIP；
         家族特性（如 WGMMA）必须精确判断家族——\texttt{>=} 挡不住
-        「sm\_120 $\ge$ sm\_90 但无 WGMMA」的假阳性（第~\ref{ch:13}~章教训）。
+        \textbf{sm\_120 $\ge$ sm\_90 但无 WGMMA}的假阳性（第~\ref{ch:13}~章教训）。
   \item \textbf{落盘验证}：单文件写 \texttt{book/\allowbreak{}tests/\allowbreak{}ch\allowbreak{}NN\_\allowbreak{}<slug>.\allowbreak{}cu}，
         \texttt{.\allowbreak{}/\allowbreak{}build\_\allowbreak{}tests.\allowbreak{}sh -{}-ch ch\allowbreak{}NN} 跑到尾行 \texttt{ALL OK}。
   \item \textbf{接回正文}：从 \texttt{chapters/\allowbreak{}\_\allowbreak{}template.\allowbreak{}tex} 起步写章稿，

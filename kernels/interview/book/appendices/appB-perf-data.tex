@@ -1,5 +1,5 @@
 % appB-perf-data.tex — 附录 B 性能数据汇总 v1（RFC-G / I.2）
-% 全部数字转录自正文各章「性能分析」节，原始 bench 数据落盘 .tmp/book-bench/chNN/。
+% 全部数字转录自正文各章性能分析节，原始 bench 数据落盘 .tmp/book-bench/chNN/。
 % 本地口径：RTX PRO 5000 72GB（sm_120a，110 SM，L2 96MB，CUDA 13.2，2026-09-11 复测）；
 % 非本地口径（README 5090 / 论文 A100）逐行单独标注，不与本地数字混排换算。
 \chapter{性能数据汇总}\label{app:B}
@@ -11,7 +11,7 @@ L2 96MB，CUDA 13.2），cudaEvent 计时，warmup 3--5 + 10--20 次取均值；
 取自第~\ref{ch:01}~章（GDDR7 理论带宽 1344~GB/s、FP32 峰值估算 66.9~TFLOPS、
 ridge point $\approx 49.8$~FLOP/B）。读表先记三件事：（1）带宽型算子分 L2/HBM
 两口径，工作集小于 96MB L2 时实测带宽可以超过 HBM 理论值（第~\ref{ch:03}~章
-1862~GB/s 的来源）；（2）TFLOPS 跨形状不可直接比较，「形状」列必须一起读；
+1862~GB/s 的来源）；（2）TFLOPS 跨形状不可直接比较，\textbf{形状}列必须一起读；
 （3）FLOPS 统一按 GEMM $2MNK$、attention $4BHN^2D$ 折算。
 
 \section{全书核心演进主线}
@@ -131,12 +131,12 @@ FA2 论文锚点 & A100 前向 & 230（73\% 峰值） & 论文口径，供量级
 \end{center}
 
 第~\ref{ch:18}~章的 FA2/FA3 对照不是受控 A/B（$B_r$、Sk、网格形状均不同），
-读作「两条路线在同一张卡上的量级对照」。
+读作\textbf{两条路线在同一张卡上的量级对照}。
 
 \section{Part IV：CuTe 对照口径}
 
 CuTe 篇的核心结论是\textbf{抽象零开销}，对照维度因此不是 TFLOPS 而是
-「同一份指令序列 + 更少的代码 + 可静态断言」（详见第~\ref{ch:24}~章）：
+\textbf{同一份指令序列 + 更少的代码 + 可静态断言}（详见第~\ref{ch:24}~章）：
 
 \begin{center}\small
 \begin{tabular}{llp{6.2cm}}
@@ -163,7 +163,7 @@ kernel-only 行只循环 GEMM kernel，E2E 行含量化前处理（第~\ref{ch:3
 per-col 代表，tile 取库默认档（$128\times256\times128$/s2，即 35.8.4 节的
 扫描最快档）。基线口径注意：cuBLAS 在 sm\_120 的 32F-acc 档只有 sm\_80
 旧 kernel（\texttt{nsys} 取证见第~\ref{ch:35}~章 35.8.1~节，cublasLt
-完整池遍历也只有 191.7~T），因此表中加速比是「库现状」口径；对手写
+完整池遍历也只有 191.7~T），因此表中加速比是\textbf{库现状}口径；对手写
 bf16 HGEMM 上限（$\approx$243~T）的口径为 1.81$\times$（4096$^3$）。
 
 \begingroup\small
@@ -249,7 +249,7 @@ layout/TiledCopy/TiledMMA 全部编译期折叠，SASS 与手写同构、寄存�
 真正带来加速的算法级决策更容易被表达、被检查、被复用。
 
 \textbf{主线四：量化（低位宽数据通路）。}\allowbreak{}Part V 先在矩阵乘上
-打通「量化数学 $\to$ 前处理 kernel $\to$ 主 kernel 折叠 $\to$ BF16 输出」
+打通\textbf{量化数学 $\to$ 前处理 kernel $\to$ 主 kernel 折叠 $\to$ BF16 输出}
 的完整链路（fp8 GEMM 对 cuBLAS BF16 最高 2.99$\times$），Part VI 把
 attention 的
 数据通路从 fp16 一路降到 fp8/fp4：fp8 persist-D 1.70$\times$（D=128）起步，

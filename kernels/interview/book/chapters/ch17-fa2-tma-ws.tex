@@ -44,8 +44,8 @@ sm\_120a 可编译运行；要求 CUDART $\ge$ 13.0（common.cuh L21--23 有 \#e
         发射窗口。FA 与 GEMM 不同，它的在线 softmax（max/exp/sum）本来就有大量
         非 Tensor Core 指令，装载指令再加入后，Tensor Core 指令的发射占比进一步
         被稀释。
-  \item 同步粒度粗。cp.async 的 commit/wait group 只能表达「我发出的这批搬运
-        完成了」，无法表达「stage $s$ 的数据到齐了、stage $s$ 可以被覆盖了」这类
+  \item 同步粒度粗。cp.async 的 commit/wait group 只能表达\textbf{我发出的这批搬运
+        完成了}，无法表达\textbf{stage $s$ 的数据到齐了、stage $s$ 可以被覆盖了}这类
         按 stage 的状态；装载与消费的衔接只能靠
         \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads} 加软件 stage 计数拼装。
   \item V 的装载深度不足。FA 每个 KV 迭代要依次用 K（算 $S = QK^\top$）和 V
@@ -150,8 +150,8 @@ PV 后释放。
 与第~\ref{ch:13}~章 WGMMA 版的 129（$128 + 1$）同构，但 consumer 端的含义不同：
 WGMMA 是 warpgroup 对齐指令，consumer 的最小单位是整个 128 线程
 warpgroup。consumer 用 warp 级的 \texttt{mma.sync} + ldmatrix，8 个 warp
-彼此独立推进，因此\textbf{每个线程}都必须在屏障上 arrive 一次，「数据到齐
-且全体 consumer 都已就位」才翻转。这是把 ws 协议从 Hopper 移植到 SM120 时最
+彼此独立推进，因此\textbf{每个线程}都必须在屏障上 arrive 一次，\textbf{数据到齐
+且全体 consumer 都已就位}才翻转。这是把 ws 协议从 Hopper 移植到 SM120 时最
 容易算错的数字（源码 L960--962 的 WARN 注释专门警告了另一个相关的除数错误，
 见 17.8~节坑一）。
 
@@ -245,7 +245,7 @@ producer arrive）。两边的 arrive 预算都是 257/轮，与 init 值精确�
   \node[anchor=north west, align=left, text=vscAccent] at (0.15,-6.55)
     {多算一次 arrive $\to$ 永不翻转：consumer 永远等不到 full（挂死）};
 \end{tikzpicture}
-\caption{固定 stage $s$ 上 full/empty 两张屏障的相位循环（式~\ref{eq:17-flip-full} 与式~\ref{eq:17-flip-empty} 的图形化）。每轮 KV 迭代：producer 提交 TMA 时用 \texttt{tma\_arrive\_expect\_tx} 一条指令完成「arrive $+1$」与「声明 $\Delta T$」两件事，TMA 硬件搬完后自动 complete-tx 计数；consumer 256 线程在 \texttt{full\_K[s].wait()} 时各贡献一份 arrive（$256+1+\text{tx}$ 构成翻转条件），读毕 K 再各 arrive 一次释放 \texttt{empty\_K[s]}，producer 下一轮写前补上第 257 份。两边的 arrive 预算都是 $257$/轮，与 init 值精确对齐——\textbf{多算一次挂死、少算一次静默错}。窄段为可读放大，实际只占 $1/257$。}
+\caption{固定 stage $s$ 上 full/empty 两张屏障的相位循环（式~\ref{eq:17-flip-full} 与式~\ref{eq:17-flip-empty} 的图形化）。每轮 KV 迭代：producer 提交 TMA 时用 \texttt{tma\_arrive\_expect\_tx} 一条指令完成\textbf{arrive $+1$}与\textbf{声明 $\Delta T$}两件事，TMA 硬件搬完后自动 complete-tx 计数；consumer 256 线程在 \texttt{full\_K[s].wait()} 时各贡献一份 arrive（$256+1+\text{tx}$ 构成翻转条件），读毕 K 再各 arrive 一次释放 \texttt{empty\_K[s]}，producer 下一轮写前补上第 257 份。两边的 arrive 预算都是 $257$/轮，与 init 值精确对齐——\textbf{多算一次挂死、少算一次静默错}。窄段为可读放大，实际只占 $1/257$。}
 \label{fig:17-arrive-cycle}
 \end{figure}
 
@@ -321,7 +321,7 @@ pipeline 深度足够隐藏 TMA 延迟）。另有 v1 限制：\texttt{kHeadDim}
 
 \section{设计与实现}
 
-\subsection{总体结构：从「warp 各自流水」到「角色分化」}
+\subsection{总体结构：从 warp 各自流水到角色分化}
 
 与第~\ref{ch:16}~章的逐点对照（warp 布局本身不变，变的是谁在搬运、
 怎么同步）：
@@ -913,8 +913,8 @@ K/V 每 tile $2 B_c D \times 2$ B 的字节对应 $2 \times 2 B_r B_c D$ FLOP �
 
 \textbf{Q8：ws kernel 的收尾为什么没有全局同步？}\\
 A：producer 尾部不再发预取、自然退出；consumer 算完最后一块做 epilogue
-退出。两支流通过 mbarrier 的相位闭合保证「consumer 读的一定是最后写入的
-数据」，无需 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads}，同步已按数据依赖局部化。
+退出。两支流通过 mbarrier 的相位闭合保证\textbf{consumer 读的一定是最后写入的
+数据}，无需 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads}，同步已按数据依赖局部化。
 
 \section{最小测试与动手实验}
 

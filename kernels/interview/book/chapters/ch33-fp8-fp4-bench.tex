@@ -39,8 +39,8 @@
         会把后一个测试压进降频区（实测 FFPA kernel 撞功耗墙
         2932$\to$2445MHz，-17\%）；A/B 两轮的 SDPA 参照必须吻合
         （$\pm1\%$），否则整轮作废。
-  \item \textbf{preset 隐藏成本}：对比双方的功能集不对齐时，「慢」
-        可能只是「多做了事」：hybrid（fp16 前缀行）与 smooth-V
+  \item \textbf{preset 隐藏成本}：对比双方的功能集不对齐时，\textbf{慢}
+        可能只是\textbf{多做了事}：hybrid（fp16 前缀行）与 smooth-V
         都是 FFPA 独有的精度功能，开着测速度对 Sage 不公平，对
         用户也是误导。
 \end{itemize}
@@ -99,9 +99,9 @@
     \node[anchor=south, font=\scriptsize\bfseries] at (2.2,7.7) {D=512 self 的 2.98$\times$ 归因};
   \end{scope}
   \node[anchor=north west, align=left, text width=14.5cm, font=\tiny] at (0,-1.20)
-    {「3$\times$」里一大半是 MATH 参照自身的低效，不是量化快（坑 6）——报告
+    {\textbf{3$\times$}里一大半是 MATH 参照自身的低效，不是量化快（坑 6）——报告
      $D{>}256$ 的 speedup 必须注明参照换挡。外推口径：D=256 同为 split-D 家族且参照是
-     FA2，实测 1.30$\times$ 用作「真加速」估计；$21.71\times1.30\approx28.2$ms，
+     FA2，实测 1.30$\times$ 用作\textbf{真加速}估计；$21.71\times1.30\approx28.2$ms，
      $64.74/28.2\approx2.29\times$。};
 \end{tikzpicture}
 \caption{参照系视角看表~\ref{tab:33-fp8-matrix} 的 self 行。左：SDPA 参照随 $D$
@@ -109,7 +109,7 @@
 $N_q\times N_{kv}$ 矩阵）；四个 speedup 点（1.26/1.70/1.30/2.98$\times$）落在换挡
 带上，D=512 的跳变与 kernel 无关。右：D=512 的 $2.98\times$ 归因——以 D=256 同
 家族（split-D、FA2 参照）实测 1.30$\times$ 为真加速估计，MATH 参照自身再慢
-$\times$2.29：「3$\times$」的大头是参照低效（坑 6）。}
+$\times$2.29：\textbf{3$\times$}的大头是参照低效（坑 6）。}
 \label{fig:33-sdpa-gear}
 \end{figure}
 

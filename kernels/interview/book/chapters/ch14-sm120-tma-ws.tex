@@ -1,13 +1,13 @@
 % ch14-sm120-tma-ws.tex — SM120：TMA + mma.sync + Warp Specialization（RFC D7，2026-09-11）
 % 源码冻结基线：hgemm.cuh L1859-2100（hgemm\_tma\_mma\_ws\_tn@L1874）/ common.cuh L467-517。
-% 本章是全书中第一个「本机 GPU（sm\_120a）可直接运行验证」的异步流水线章节。
+% 本章是全书中第一个本机 GPU（sm\_120a）可直接运行验证的异步流水线章节。
 % \url 由 book.tex 的 hyperref 提供；单章编译（无 hyperref）时退化为 \texttt。
 \providecommand{\url}[1]{\texttt{#1}}
 \chapter{SM120：TMA + mma.sync + Warp Specialization}\label{ch:14}
 
 \section{本章导读}
 
-第~\ref{ch:13}~章在 Hopper（sm\_90a）上把「TMA 搬运 + mbarrier 计数 + WGMMA 计算」
+第~\ref{ch:13}~章在 Hopper（sm\_90a）上把\textbf{TMA 搬运 + mbarrier 计数 + WGMMA 计算}
 组装成 producer/consumer 双 warpgroup 流水线。本章把同一套基础设施搬到
 SM120，即消费级与工作站 Blackwell（RTX 5090 / PRO 5000 / PRO 6000，
 compute capability 12.0）：TMA 与 mbarrier 原样保留，但 WGMMA
@@ -57,7 +57,7 @@ sm120 优化指南总结：sm120 在 warp 组织与 block 限制上更接近 Ada
 \end{itemize}
 
 但退化的计算层并不推翻 warp specialization 的价值：producer/consumer 分工
-消除的是「搬运与计算竞争发射槽」的结构性开销，这与计算指令是哪一代无关。
+消除的是\textbf{搬运与计算竞争发射槽}的结构性开销，这与计算指令是哪一代无关。
 SM120 的 \texttt{setmaxnreg}（寄存器池再分配）指令存在且可以生效，但存在
 一个隐蔽的工程陷阱：当 kernel 里的
 \texttt{cp.\allowbreak{}async.\allowbreak{}bulk.\allowbreak{}tensor} 把目的地址写成
@@ -139,16 +139,16 @@ $\pi = 1$ & C4：上一轮 128 个 consumer 读空该 stage 后 arrive & produce
 $\pi = 2$ & 同 $\pi = 1$，循环 & \ldots \\
 \bottomrule
 \end{tabular}
-\caption{\texttt{empty[s]} 的逐相位到达计数：consumer 的「读空信号」与 producer
-的「就位信号」在不同时间点到达，同一计数器把它们合并进同一相位。}
+\caption{\texttt{empty[s]} 的逐相位到达计数：consumer 的\textbf{读空信号}与 producer
+的\textbf{就位信号}在不同时间点到达，同一计数器把它们合并进同一相位。}
 \end{table}
 
 为什么漏掉 C0 预热会挂死：producer 首轮在 \texttt{empty[0]} 上只有自己
 1 次 arrive，$P = 129 - 1 = 128 \ne 0$ 且无 tx，相位永不翻转，GPU 上表现为
 kernel 永不返回。C0（hgemm.cuh~L1967--1969）把 $S$ 个 empty 各预存 128 次，
 producer 的 1 次补满即翻。这套计数规则与 ch13 完全一致，本章不再重复状态机图
-（见图~\ref{fig:13-3}），差异只在 consumer 的 128 线程从「WGMMA warpgroup 整体
-arrive」变成「4 个 warp 各自 arrive」，对 mbarrier 而言无区别。
+（见图~\ref{fig:13-3}），差异只在 consumer 的 128 线程从\textbf{WGMMA warpgroup 整体
+arrive}变成\textbf{4 个 warp 各自 arrive}，对 mbarrier 而言无区别。
 
 \subsection{setmaxnreg 池数学与满池死锁}
 
@@ -397,7 +397,7 @@ base\_offset $= (\mathrm{addr} \gg 7) \,\&\, 7$ 让硬件补偿任意相位，�
       {必须 \texttt{\_\_align\_\_(1024)}：基址只有 128B 对齐时，\\TMA 按非零相位写入而软件按零相位读出 $\to$ 地址整体错位（静默错误）};
   \end{scope}
 \end{tikzpicture}
-\caption{swizzle 的三代演化——写入端与读取端的「软件/硬件」分工（14.4.2 节）：
+\caption{swizzle 的三代演化——写入端与读取端的\textbf{软件/硬件}分工（14.4.2 节）：
 ch12 用 cp.async 手写 XOR 写入、ldmatrix 用同一个 swizzle 公式读出——软件写
 $\leftrightarrow$ 软件读，靠对合性（引理~\ref{lem:12-invol}）保证互逆；ch13 把两端都
 交给硬件——TMA 按 descriptor 声明的 SWIZZLE\_128B 直接写好重排布局，WGMMA 在
@@ -817,7 +817,7 @@ SASS \texttt{USETMAXREG}=112=PTX 计数。FA bench Max Err 与基线一致。
 （PTX \texttt{setmaxnreg} $\ne$ SASS \texttt{USETMAXREG}）。（2）ptxas 聚合
 的 C750x 警告打印在第一条「Compiling entry function」\textbf{之前}，不能按
 行号就近归属到相邻 kernel，逐 entry 单独用 ptxas 编译才是可靠口径。
-（3）「警告消失」$\ne$「指令回来了」：删 TMA 消警告的中间版本曾让人以为
+（3）\textbf{警告消失}$\ne$\textbf{指令回来了}：删 TMA 消警告的中间版本曾让人以为
 找到了解法，而 SASS 依旧为空，警告与 SASS 必须分别验证。
 
 \textbf{坑三：smem 基址只对齐 128B，输出全错但不越界。}\allowbreak{}ldmatrix + 手写

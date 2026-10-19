@@ -222,7 +222,7 @@ histogram 要维护 $y[a\sb i] \mathrel{+}= 1$：读 $y[a\sb i]$、加 1、写�
   \draw[ar] (5.8, 1.3) -- (5.8, -0.46);
   \draw[ar] (11.6, 1.3) -- (11.6, -0.24);
 \end{tikzpicture}
-\caption{256-bin 直方图的原子冲突热力图（bin 排成 $8\times32$ 网格示意）：4M 次 atomicAdd 从左侧注入；上格均匀分布时各 bin 等承压（灰 40），下格尖峰分布时少数 bin 形成深灰热点（灰 90）、其余近乎空转（灰 10）——bin 分布决定同址串行化程度。下方案框汇总实测：26.7 GB/s 比 elementwise\_add 的 2654 GB/s 低两个数量级，均摊 0.15 ns/op；按「256 bin 理想并行 + 同址 2.6 ns 串行」估算理想 42 $\mu$s，实测 0.63 ms（约 15 倍缺口来自 L1 侧原子路径排队）。}
+\caption{256-bin 直方图的原子冲突热力图（bin 排成 $8\times32$ 网格示意）：4M 次 atomicAdd 从左侧注入；上格均匀分布时各 bin 等承压（灰 40），下格尖峰分布时少数 bin 形成深灰热点（灰 90）、其余近乎空转（灰 10）——bin 分布决定同址串行化程度。下方案框汇总实测：26.7 GB/s 比 elementwise\_add 的 2654 GB/s 低两个数量级，均摊 0.15 ns/op；按\textbf{256 bin 理想并行 + 同址 2.6 ns 串行}估算理想 42 $\mu$s，实测 0.63 ms（约 15 倍缺口来自 L1 侧原子路径排队）。}
 \label{fig:3-3}
 \end{figure}
 
@@ -415,8 +415,8 @@ bin 数）。注意本配置 $T{=}B{=}256$ 时 $G \times B = N$，次数并不�
 向量化并不减少 sector 事务数；它减少的是\textbf{每线程 load/store 指令数}
 （4 条 32-bit $\to$ 1 条 128-bit）。无论按 32B sector 还是按 128B 事务计数，
 搬同样多字节就要同样多事务：向量化放大的是每条 warp 指令覆盖的字节数，
-指令数随之下降，事务总数不变。1/4 只对「访存指令数」成立（旧文档里的
-transaction 常被当作 warp 请求用），建议改为「访存指令数减为 1/4」。
+指令数随之下降，事务总数不变。1/4 只对\textbf{访存指令数}成立（旧文档里的
+transaction 常被当作 warp 请求用），建议改为\textbf{访存指令数减为 1/4}。
 \end{kaogu}
 
 \begin{kaogu}[F1]{L324--329 relu\_vec4 边界守卫不足（越界读隐患）}
@@ -431,7 +431,7 @@ elementwise\_add\_vec4（L358--374）的 \texttt{(idx + 3) < N} 主路径 + 标�
 「block(64)×4(float4)=256 元素/block，与基础版吞吐相同」：相同的是
 每 block 处理规模（256 元素）；吞吐（带宽利用率）两者通常不同，
 取决于瓶颈层级（本机 L2 口径下两者差异在 $\pm 2\%$ 噪声内，见
-\S\ref{sec:ch03-perf}）。建议改为「每 block 处理元素数相同」。
+\S\ref{sec:ch03-perf}）。建议改为\textbf{每 block 处理元素数相同}。
 \end{kaogu}
 
 \section{常见坑}
@@ -440,7 +440,7 @@ elementwise\_add\_vec4（L358--374）的 \texttt{(idx + 3) < N} 主路径 + 标�
 \item \textbf{float4 未对齐}：基址非 16B 对齐时（例如对子数组
   \texttt{a + 1} 做 FLOAT4）触发 CUDA misaligned address 运行时错误。
   约定：vec4 主路径的 idx 必须是 4 的倍数、指针必须来自整块分配的基址。
-\item \textbf{$N$ 非 4 倍数时用「浅守卫」vec4 kernel}：relu\_vec4 /
+\item \textbf{$N$ 非 4 倍数时用浅守卫 vec4 kernel}：relu\_vec4 /
   dot\_vec4 的 \texttt{idx < N} 不覆盖 4 元素读取的尾部（见
   \S\ref{sec:ch03-kaogu}）；生产代码应统一为 elementwise\_add\_vec4 的
   二段式守卫。用 compute-sanitizer memcheck 可以稳定复现越界。

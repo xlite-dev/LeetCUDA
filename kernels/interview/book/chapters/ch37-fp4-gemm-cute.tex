@@ -45,10 +45,10 @@ epilogue 的数学 & 反量化两步 & 只有 $s_{A,m}\cdot s_{B,n}$ 一步 \\
 \bottomrule
 \end{tabular}
 \caption{FP8 与 NVFP4 主 kernel 的逐项对照。两个固定值是本章的技术核心：
-$BK{=}64$ 让「一个 K-tile $=$ 一个 MMA 原子 $=$ 一个 SF 原子」，
+$BK{=}64$ 让\textbf{一个 K-tile $=$ 一个 MMA 原子 $=$ 一个 SF 原子}，
 $BM{=}128$ 让 SF 的 TMA box 恰好等于一个 512\,B 原子（37.4.3~节）。
-自由度换来的是约束，代价是 tile 空间的形状从「$BM\times BN\times BK$ 立方体」
-收缩成「$128\times BN\times 64$ 的一根柱子」。}
+自由度换来的是约束，代价是 tile 空间的形状从\textbf{$BM\times BN\times BK$ 立方体}
+收缩成\textbf{$128\times BN\times 64$ 的一根柱子}。}
 \label{tab:37-fp8-vs-fp4}
 \end{table}
 
@@ -91,7 +91,7 @@ $BM{=}128$ 让 SF 的 TMA box 恰好等于一个 512\,B 原子（37.4.3~节）�
 \caption{\texttt{fp4\_gemm\_bf16} 全链路。与第~\ref{ch:35}~章
 （图~\ref{fig:35-pipeline}）同构，唯一的结构差异是 workspace 里多出两份 SF：
 $A$ 侧的 SFA 是 $\lceil M/128\rceil\cdot(K/64)$ 个 512\,B 原子，$B$ 侧的 SFB
-同理。SF 不是「辅助数据」，它是 MMA 指令的操作数——主 kernel 必须为它单独
+同理。SF 不是\textbf{辅助数据}，它是 MMA 指令的操作数——主 kernel 必须为它单独
 开一条 TMA 通道、一块 smem、一个寄存器 fragment（37.4 与 37.5~节）。}
 \label{fig:37-pipeline}
 \end{figure}
@@ -187,7 +187,7 @@ $1/8$（每 16 个 4-bit $= 8$ 字节配 1 字节 SF），却与数据同等重�
 \end{tikzpicture}
 \caption{\texttt{SM120\_16x8x64\_TN\_VS} 一条指令的操作数明细。数据侧共
 $16+8 = 24$\,B/线程，SF 侧 8\,B/线程——SF 的字节数达到数据的 $1/3$。
-注意 SF 的「字节数/线程」与「SF 数/线程」是一回事（\texttt{ue4m3} 是
+注意 SF 的\textbf{字节数/线程}与\textbf{SF 数/线程}是一回事（\texttt{ue4m3} 是
 1\,字节），但\textbf{哪些 lane 的字节作数}由指令的
 \texttt{tidA}/\texttt{tidB} 选择器决定，这就是 SF 的寄存器 fragment
 必须由 CuTe 的 \texttt{partition\_fragment\_sfa} 从权威布局推导、
@@ -252,7 +252,7 @@ CUTLASS 给出了 smem 版本的原子，本书把它写成
 把它拆成 gmem 的 512\,B 原子是什么结构、smem 需要什么结构两句话，
 结构就清楚了。
 
-gmem 原子（第~\ref{ch:36}~章「SF 的 gmem 布局」小节，图~\ref{fig:36-sf-layout}）
+gmem 原子（第~\ref{ch:36}~章\textbf{SF 的 gmem 布局}小节，图~\ref{fig:36-sf-layout}）
 的行内偏移是 $16\,(m\bmod 32) + 4\,(\lfloor m/32\rfloor\bmod 4) + s$。
 把它读成一个嵌套布局：行方向 $\bigl((32,4){:}(16,4)\bigr)$ 先铺 32 行、
 步长 16，再铺 4 组、步长 4；K 方向 $(16,4){:}(0,1)$ 表示 16 个元素共享一个
@@ -267,7 +267,7 @@ smem 原子要满足的是 MMA 的取数需求：一条指令里，一个 warp �
 
 \subsection{一条可验证的结论：smem 原子与 gmem 原子逐字节同序}
 
-「换一种排序」听起来像是有 swizzle，实际不是（图~\ref{fig:37-sf-atom}）。
+\textbf{换一种排序}听起来像是有 swizzle，实际不是（图~\ref{fig:37-sf-atom}）。
 把两套式子写成
 \begin{align}
   \mathrm{off}_{\mathrm{gmem}}(m,s) &= 16\,(m\bmod 32) + 4\,(\lfloor m/32\rfloor\bmod 4) + s, \\
@@ -337,7 +337,7 @@ $128\times4 = 512$ 个 $(\text{行}, \mathrm{SF})$ 落点全部一致（mismatch
 \end{tikzpicture}
 \caption{SF 从显存到共享内存的完整通路：\textbf{没有任何变换}。
 512\,B 原子里的行内交错（同一 $s$ 的 128 行被切成 4 个 32 行块）
-本身就是「为 MMA 取数设计」的顺序，smem 只是它的一次原样拷贝。
+本身就是\textbf{为 MMA 取数设计}的顺序，smem 只是它的一次原样拷贝。
 这是 CUTLASS 把 \texttt{Blk\_MN} 定为 128 的原因，也是本章 kernel 里
 SF 的 TMA 描述符不带 swizzle 的原因。}
 \label{fig:37-sf-atom}
@@ -384,7 +384,7 @@ CUTLASS 口径，是因为它是 \texttt{SM120\_16x8x64\_TN\_VS} 的官方搭配
   \item SF 张量的形状不能用 \texttt{make\_shape(M, K)} 造，必须
         用 \texttt{shape(sf\_gmem\_layout(M,K))}，因为描述符的
         \texttt{g\_stride} 里含 \texttt{ScaledBasis}，\texttt{g\_shape}
-        必须与它同构。这是「布局即协议」的一个典型例子：布局不是给
+        必须与它同构。这是\textbf{布局即协议}的一个典型例子：布局不是给
         软件算偏移用的，是被写进硬件描述符的。
 \end{itemize}
 
@@ -531,7 +531,7 @@ WS 版本有一个 non-WS 版本不存在的死锁陷阱，具体如下：
 
 \begin{itemize}[itemsep=2pt,topsep=3pt]
   \item \texttt{empty[s]} 的 init 是 \texttt{kNumThreads}（256），
-        只有 consumer 会 arrive，因为只有 consumer 知道「我读完了」。
+        只有 consumer 会 arrive，因为只有 consumer 知道\textbf{我读完了}。
   \item 于是 producer 在发出第一个 TMA 之前，必须先等
         \texttt{empty[0]} 翻转；而 \texttt{empty[0]} 要翻转，
         必须等 256 个 consumer 各 arrive 一次；而 consumer 要 arrive
@@ -693,7 +693,7 @@ use\_wide\_tile}）：$MNK\ge4096$ 用宽档 $128{\times}256{\times}64$/s6，
 加速比一律以本表 cuBLAS 行的读数（4096$^3$: 163.5，
 8192$^3$: 163.3）与手写 HGEMM 行（242.8 / 241.7，均为 F32 累加）
 为分母；同一张表里 cuBLAS 会被重复计时，各行分母因此相差
-$\pm1\%$。「relFro 0.144 vs 0.145」的差别就是 \texttt{kSingleLevel}
+$\pm1\%$。\textbf{relFro 0.144 vs 0.145}的差别就是 \texttt{kSingleLevel}
 与两级量化的差别，$U(-1,1)$ 数据下 level-1 几乎无用，
 第~\ref{ch:36}~章的误差模型解释了为什么。
 

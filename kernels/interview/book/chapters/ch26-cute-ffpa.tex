@@ -206,7 +206,7 @@ $\mathrm{AtomLayout}=(4,1,1)$ 的 4 个 warp 分完，列维的 atom 数相差 4
     {两个 TiledMma 的 frag 相同：$\mathrm{frag}_S=\mathrm{frag}_O=((2,2),1,8)=32$ 值/线程
      （式~\eqref{eq:26-frag32}，第三 mode 的 8 来历不同）；行维同被 4 warp 分完，};
   \node[axl,anchor=north west,align=left,text width=11.6cm] at (1.1,-5.25)
-    {差别全在 $N$ 向：\textcolor{tkBlue}{QK} 的 $\mathrm{EURepeat}_N{=}8$ ——8 条 \texttt{mma.sync} 一次覆盖 $S$ 整个 64 列，「N-tile 循环」消失；
+    {差别全在 $N$ 向：\textcolor{tkBlue}{QK} 的 $\mathrm{EURepeat}_N{=}8$ ——8 条 \texttt{mma.sync} 一次覆盖 $S$ 整个 64 列，\textbf{N-tile 循环}消失；
      \textcolor{tkGreen!70!black}{PV} 的 $\mathrm{EURepeat}_N{=}2$ 只覆盖 $O$ 的 16 列，其余列由外层 V-chunk 循环驱动。};
 \end{tikzpicture}
 \caption{双 TiledMma 的 Tile 分工（式~\eqref{eq:26-qk}--\eqref{eq:26-pv}）。
@@ -266,7 +266,7 @@ $\bigl((2,\mathrm{MMA\_M}), (2,\mathrm{MMA\_N})\bigr)$。FFPA 用它推两个
   \label{eq:26-rowcol}
 \end{equation}
 
-$\mathrm{nrow}=2$ 的含义：\emph{每个线程只「拥有」2 行}，行内 16 列。
+$\mathrm{nrow}=2$ 的含义：\emph{每个线程只拥有 2 行}，行内 16 列。
 $n16$ 的 $C$ fragment 里，一个线程的 4 个值的一半（行偏移 $+8$ 的那对）
 属于另一行；4 个线程（lane 的 $\text{id}/4$ 相同、$\text{id}\bmod 4$ 不同）
 拼成完整的一行，源码里行归约只用 \texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor\_\allowbreak{}sync} 掩码 1 与 2
@@ -292,7 +292,7 @@ inverse$\circ$compose 代数法都在讲同一件事）。放到 Split-D 的语�
 补三点增量：
 
 \begin{itemize}[itemsep=2pt,topsep=2pt]
-  \item \textbf{为什么必须「就地」}：$S$ 的 32 个寄存器是 Phase 2 最紧张
+  \item \textbf{为什么必须就地}：$S$ 的 32 个寄存器是 Phase 2 最紧张
         的资源，$P$ 直接复用它们；若改走 $P$ 写回 smem 再 ldmatrix 这条路，
         每个 kv\_tile 多出一次 $64\times64$ 的 half 往返与一次同步，Split-D 的
         D-chunk 循环让这笔开销按 $C$ 倍累积。
@@ -321,7 +321,7 @@ inverse$\circ$compose 代数法都在讲同一件事）。放到 Split-D 的语�
 的 $A$ 映射里，$d_0$ 同样是 k 向相邻 2 值。于是 C 的 4 个值与
 A 的 4 个值在寄存器里一一对应：A 的 $k$ 向 2 值 $=$ C 的
 列向 2 值，A 的行维与 C 的行维本来就一致。第~\ref{ch:25}~章把这条性质
-记作「不是通用性质，换 atom 必须重推」（源码 L2360 附近的注释）；在 FFPA
+记作\textbf{不是通用性质，换 atom 必须重推}（源码 L2360 附近的注释）；在 FFPA
 里它的意义更重：$P$ 的 K 向就是 $S$ 的列向，而那一维正是 PV 的
 归约维，重解释的方向恰好对齐 MMA 的约定，所以不需要 shuffle、
 不需要过 smem。
@@ -401,7 +401,7 @@ A 的 4 个值在寄存器里一一对应：A 的 $k$ 向 2 值 $=$ C 的
 $v=d_0+2d_1$（在每个 atom 内循环 $0..3$）；右：$P$ 的 A 视图——同一个 $k16$ atom，
 lane 6 持有同样的 8 个格，值编号变成 $v=d_0+2d_1+4d_2$ 连续 $0..7$，其中
 $d_2{=}1$ 的 4 格来自 C 的第二个 $n8$ atom（虚线半块）。\textbf{两图高亮位置逐格相同、
-数据指针不换}：重解释只把「列向相邻 2 值」的约定换成「K 向相邻 2 值」，
+数据指针不换}：重解释只把\textbf{列向相邻 2 值}的约定换成\textbf{K 向相邻 2 值}，
 行维（$m$）的映射本来就一致。}
 \label{fig:26-camap}
 \end{figure}
@@ -409,8 +409,8 @@ $d_2{=}1$ 的 4 格来自 C 的第二个 $n8$ atom（虚线半块）。\textbf{�
 \begin{remark}
   如果 PV 的 atom 换成 $k8$（例如某些 f8 路径），式~\eqref{eq:26-amap}
   的 $d_2$ 项消失、K 向只剩 8 列，$S$ 的 16 列就要拆成两次 PV——布局重解释
-  的「零拷贝」前提随之失效。第~\ref{ch:19}~章讨论过的
-  「QK 与 PV 能不能共用一份 $P$」在类型层的判据，就是这两条映射的匹配。
+  的\textbf{零拷贝}前提随之失效。第~\ref{ch:19}~章讨论过的
+  \textbf{QK 与 PV 能不能共用一份 $P$}在类型层的判据，就是这两条映射的匹配。
 \end{remark}
 
 \subsection{D-chunk 循环的布局语义}
@@ -522,7 +522,7 @@ $d_2{=}1$ 的 4 格来自 C 的第二个 $n8$ atom（虚线半块）。\textbf{�
 \caption{Split-D 改变的是循环结构与归约树，不是 fragment 形状（26.3.4 节）。
 顶条：$D=512$ 切成 $C=8$ 个 64-wide chunk（灰度 8 档贯穿全图），每 chunk 内
 4 个 $k16$ atom 对应 \texttt{gemm\_ss} 的 K 循环。左：8 棵 QK 子树全部加进
-\textbf{同一个} \texttt{tCrS} fragment——「一个 fragment 多次迭代」，softmax 必须等
+\textbf{同一个} \texttt{tCrS} fragment——\textbf{一个 fragment 多次迭代}，softmax 必须等
 求和完成；右：每个 chunk 的 PV 结果各存一份 \texttt{o\_acc\_storage[c][32]}
 （每分量独立 rescale），Phase 4 才相加得 $O=\sum_c O_c$。$S$ 与 $O$ 的 32 值/线程
 形状完全相同，差别只在谁在跨迭代累加、谁在分份存储。}
@@ -664,7 +664,7 @@ PV 要在循环里反复构造 V 的 B 操作数。FFPA 的做法是把 fragment
         为什么要去掉？因为 \texttt{partition\_\allowbreak{}fragment\_\allowbreak{}B} 推的是
         哪个线程持有 B 的哪个逻辑元素，swizzle 只改变元素的\emph{地址}，
         不改变\emph{归属}；带着 swizzle 推会让 XOR 置换混进逻辑坐标，
-        得到的 fragment 布局与真值错位。这是第~\ref{ch:25}~章「常见坑」
+        得到的 fragment 布局与真值错位。这是第~\ref{ch:25}~章\textbf{常见坑}
         的同族问题的另一面（那里禁止拿带 swizzle 的视图推寄存器布局）；
   \item \texttt{tCrV\_layout}：把上面那份推导\emph{求值}成一个布局对象，
         循环里只需 \texttt{make\_\allowbreak{}tensor\allowbreak{}(数据指针,\allowbreak{} t\allowbreak{}Cr\allowbreak{}V\_\allowbreak{}layout)} 重新解释。
@@ -712,7 +712,7 @@ PV 要在循环里反复构造 V 的 B 操作数。FFPA 的做法是把 fragment
   \node[draw=tkGreen,rounded corners,fill=tkFillGreen,align=left,font=\scriptsize,
     text width=8.4cm,inner sep=3pt,anchor=west] at (6.8,-2.95)
     {\texttt{tCrV\_layout}——\textbf{nonswizzle portion}：管\emph{线程-值归属}。
-     「哪个线程持有哪些逻辑元素」与 XOR 无关，推导必须先去掉 swizzle。};
+     \textbf{哪个线程持有哪些逻辑元素}与 XOR 无关，推导必须先去掉 swizzle。};
   \node[draw,rounded corners,draw=red!70!black,text=red!70!black,align=left,
     font=\scriptsize,text width=8.4cm,inner sep=3pt,anchor=west] at (6.8,-4.15)
     {\textbf{坑一}：两份视图各管一半——拿带 swizzle 的视图推 fragment 布局，
@@ -721,12 +721,12 @@ PV 要在循环里反复构造 V 的 B 操作数。FFPA 的做法是把 fragment
   \node[nt,anchor=north west,text width=15.6cm] at (0,-4.85)
     {SW128 的位公式（第~\ref{ch:23}~章）：$\mathrm{phys}=64r+8\cdot\bigl((c/8)\oplus(r\bmod8)\bigr)+(c\bmod8)$
      ——行内 16\,B chunk 号与行号低 3 位异或（8 行一个周期）。格内数字是该槽实际承载的\emph{逻辑}
-     chunk（$c/8=p\oplus(r\bmod8)$），灰度跟随逻辑 chunk 身份，于是「对角线置换」清晰可见；
+     chunk（$c/8=p\oplus(r\bmod8)$），灰度跟随逻辑 chunk 身份，于是\textbf{对角线置换}清晰可见；
      实际 tile 是 $64\times64$（$8$ 个周期），此处只画一个周期。};
 \end{tikzpicture}
 \caption{V 的双视图分工。同一张 SW128 smem tile：
 \texttt{sV\_stg}（带 swizzle 的 storage 视图）负责把逻辑坐标换算成物理槽位、给数据指针用；
-\texttt{tCrV\_layout}（由 nonswizzle portion 推导）负责回答「哪个线程持有哪些逻辑元素」。
+\texttt{tCrV\_layout}（由 nonswizzle portion 推导）负责回答\textbf{哪个线程持有哪些逻辑元素}。
 SW128 的 XOR 只改地址、不改归属，所以推 fragment 布局时必须先去掉 swizzle——
 两份视图各管一半，混用即错（坑一）。}
 \label{fig:26-v-dualview}
@@ -735,7 +735,7 @@ SW128 的 XOR 只改地址、不改归属，所以推 fragment 布局时必须�
 还有一个容易忽略的点：B fragment 的布局对 4 个 M-warp 是\emph{重复}的
 （$K$ 向的 4 个 atom 都要被每个 warp 看到），所以 \texttt{partition\_\allowbreak{}fragment\_\allowbreak{}B}
 在 128 线程上给出的每线程元素数（$\ge$ 128）远大于 C 的 32。这部分寄存器
-是「共享副本」而非私有状态，读寄存器压力时不能把它算进 \texttt{exp2}
+是\textbf{共享副本}而非私有状态，读寄存器压力时不能把它算进 \texttt{exp2}
 这类逐元素操作的成本里。
 
 \subsection{寄存器占用：$32\times C$ 与两个行向量}
@@ -948,7 +948,7 @@ rescale 的操作对象是 \texttt{tCrO} 的 rowcol 视图：行方向乘
   \node[bx, draw=gray!60, fill=gray!12, text width=2.10cm] at (13.30,-4.55) {dup $\times$ M-warp};
   \node[tx] at (10.40,-4.92) {ns 视图按需取，不常驻全量};
   \node[tx, text width=15.0cm] at (0,-5.35)
-    {S、P、O 全程在寄存器：smem 只承载 Q/K/V 的 chunk 流水——这就是「split-D」把 softmax
+    {S、P、O 全程在寄存器：smem 只承载 Q/K/V 的 chunk 流水——这就是\textbf{split-D}把 softmax
      从两遍访存变成一遍寄存器更新的代价所在};
 \end{tikzpicture}
 \caption{双 TiledMma 的数据流：QK 沿 $D$ 累加成 $S$（32 寄存器跨 chunk
@@ -990,7 +990,7 @@ M-warp 重复——smem 只承载 Q/K/V 的 chunk 流水。}
         推导，编译产物里剩下的是少数 \texttt{mad} 与常量偏移。
   \item 实际的运行时成本在算法侧（chunk 循环的额外 barrier、V 的重复加载），
         与用不用 CuTe 无关。第~\ref{ch:19}~章对这两项开销的量化结论是
-        「Stage 上限压到 2--3，同步开销主导」。
+        \textbf{Stage 上限压到 2--3，同步开销主导}。
 \end{itemize}
 
 CuTe 在 Split-D 上的收益与代价都不在运行时，而在类型可断言：本章测试

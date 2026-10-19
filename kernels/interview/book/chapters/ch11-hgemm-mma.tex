@@ -315,7 +315,7 @@ ldmatrix.sync.aligned.m8n8.x2.shared.b16 {r0, r1},         [addr];
 \texttt{.shared} & 地址处于 shared 状态空间（.b16 版无 \texttt{.trans} 时按行装载）。 \\
 \texttt{.trans} & 可选：按\textbf{列}装载（转置）。PTX 原文：``.trans indicates that the matrix is loaded in column-major format''——即不加 \texttt{.trans} 就是普通行装载。 \\
 \texttt{.\allowbreak{}sync/\allowbreak{}.\allowbreak{}aligned} & 同 \texttt{mma}：warp 集体执行、禁止分歧。 \\
-对齐 & 「一组 4 个连续线程装载 16 字节」，地址须 16~B 自然对齐。 \\
+对齐 & \textbf{一组 4 个连续线程装载 16 字节}，地址须 16~B 自然对齐。 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -385,8 +385,8 @@ in-flight，即迭代 $k$ 结束时，tile $k{+}1$ 必须就位（供迭代 $k{+
 tile $k{+}2$ 的那组允许还没到。尾部（$k + \mathrm{kStages} - 1 \ge
 \mathrm{NUM\_K\_TILES}$，没有新 tile 可预取）切到 \texttt{wait\_\allowbreak{}group\allowbreak{}(0)}
 排空。与第~\ref{ch:10}~章对比：两级流水每个迭代都要 wait(0) 收口，
-三级流水稳态只 wait(1)。「组」这个计数单位让同步粒度从「每迭代全等」
-放松为「保持距离即可」。三级轮转的稳态与尾部时序见图~\ref{fig:11-kstages3}。
+三级流水稳态只 wait(1)。\textbf{组}这个计数单位让同步粒度从\textbf{每迭代全等}
+放松为\textbf{保持距离即可}。三级轮转的稳态与尾部时序见图~\ref{fig:11-kstages3}。
 
 \begin{figure}[H]
 \centering
@@ -443,10 +443,10 @@ tile $k{+}2$ 的那组允许还没到。尾部（$k + \mathrm{kStages} - 1 \ge
      深色段为就绪驻留；w(1)/w(0) $=$ 迭代末 \texttt{wait\_group(1)/(0)}。\\
      稳态 w(1)：tile $k{+}1$ 就位即可，tile $k{+}2$ 的搬运（load 泳道虚线尾）允许一组在途；
      尾部（$k\ge6$，无新 tile 可预取）切 w(0) 排空。\\
-     对照图~\ref{fig:10-1}（S$=$2）：每迭代 wait(0) 收口，同步粒度「每迭代全等」；
-     三级流水放宽为「保持距离即可」。};
+     对照图~\ref{fig:10-1}（S$=$2）：每迭代 wait(0) 收口，同步粒度\textbf{每迭代全等}；
+     三级流水放宽为\textbf{保持距离即可}。};
 \end{tikzpicture}
-\caption{kStages$=3$ 三级流水时序：迭代 $k$ 读 $S\sb{k\bmod3}$（tile $k$）、同时预取 $(k{+}2)\bmod3$（tile $k{+}2$），三个 stage 按 tile $\bmod 3$ 轮转。稳态迭代末 \texttt{wait\_group(1)} 允许一组搬运在途；尾部无 tile 可预取时切 \texttt{wait\_group(0)} 排空。与图~\ref{fig:10-1} 的两级流水（每迭代 wait(0)）相比，同步粒度从「每迭代全等」放松为「保持距离即可」。}
+\caption{kStages$=3$ 三级流水时序：迭代 $k$ 读 $S\sb{k\bmod3}$（tile $k$）、同时预取 $(k{+}2)\bmod3$（tile $k{+}2$），三个 stage 按 tile $\bmod 3$ 轮转。稳态迭代末 \texttt{wait\_group(1)} 允许一组搬运在途；尾部无 tile 可预取时切 \texttt{wait\_group(0)} 排空。与图~\ref{fig:10-1} 的两级流水（每迭代 wait(0)）相比，同步粒度从\textbf{每迭代全等}放松为\textbf{保持距离即可}。}
 \label{fig:11-kstages3}
 \end{figure}
 
@@ -750,7 +750,7 @@ HGEMM MMA (S=3, BLK\_SW=1) & 0.000e+00 & 127.3/246.9 (0.52x) \\
 \begin{kaogu}[F2 核校通过]{hgemm.cuh L6 与 L73-80：m16n8k16 形状与寄存器数}
   「$[16\times8] = [16\times16]\times[16\times8]$」与 PTX 的
   $M{\times}K \times K{\times}N$ 定义一致；HMMA16816 的
-  「2 输出寄存器 + 4 A + 2 B」「每线程 4 half」亦与
+  \textbf{2 输出寄存器 + 4 A + 2 B，每线程 4 half}亦与
   Figure 79/81/83 的 fragment 公式一致。
 \end{kaogu}
 
@@ -795,7 +795,7 @@ M/N 按 128 对齐时条件恒假这一前提才安全；若形状未对齐，
 wait\_group 在分支外（L297--304 自适应版本），
 而 \texttt{commit\_\allowbreak{}group} 在分支内。尾部迭代不 commit 却 wait(0)，
 per-thread 组计数对不上会提前放行（好在上一次的 sync 兜底；
-本 kernel 尾部迭代 \texttt{wait\_\allowbreak{}group\allowbreak{}(0)} 等到的是「至多 0 组」，
+本 kernel 尾部迭代 \texttt{wait\_\allowbreak{}group\allowbreak{}(0)} 等到的是\textbf{至多 0 组}，
 语义仍安全）。改造时保持 commit/wait 匹配的对称性。
 
 \textbf{坑五：f16 累加的精度陡降。}\texttt{f16.f16.f16.f16} 的累加

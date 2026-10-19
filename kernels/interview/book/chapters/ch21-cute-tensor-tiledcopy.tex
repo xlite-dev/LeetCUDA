@@ -153,7 +153,7 @@ $(m,n)$ 坐标能落到 gmem/smem/reg 三种内存的原因：换 engine，layou
     (194,386) -- (194,400) -- (944,400) -- (944,388);
   \draw[-{Stealth[length=2mm]}, tkBlue, dashed, thick] (730,358) -- (748,358);
 \end{tikzpicture}
-\caption{Tensor 的两段结构：layout 把坐标映成偏移，engine 把偏移映成数据。同一个 layout 换不同 engine（gmem/smem/rmem/identity）就得到服务不同内存的 Tensor——这是第~\ref{ch:20}~章「布局与内存解耦」在 Tensor 上的体现。}
+\caption{Tensor 的两段结构：layout 把坐标映成偏移，engine 把偏移映成数据。同一个 layout 换不同 engine（gmem/smem/rmem/identity）就得到服务不同内存的 Tensor——这是第~\ref{ch:20}~章\textbf{布局与内存解耦}在 Tensor 上的体现。}
 \label{fig:21-1}
 \end{figure}
 
@@ -211,7 +211,7 @@ ldmatrix 或 bank 冲突考虑，地址公式会迅速膨胀，而哪个数据�
 从这张表可以读出两件事：
 
 \begin{itemize}
-  \item \textbf{写代码用的是「反向」的那张表}：我们想的从来不是数据
+  \item \textbf{写代码用的是反向的那张表}：我们想的从来不是数据
         $(0,1)$ 归谁，而是\emph{线程 0 的值 1 去哪取}，把行列对调
         看一次，就是第~\ref{ch:20}~章 inverse 运算的内容。CuTe 的
         TV-layout 直接以 $(t,v)\to$ 坐标的形式存储，就是这张对调后的表。
@@ -270,9 +270,9 @@ ldmatrix 或 bank 冲突考虑，地址公式会迅速膨胀，而哪个数据�
         text width=7.7cm, minimum height=0.84cm, inner sep=2pt] at (889,358)
     {TV-layout（任务视角）：$m = t/2$，$n = 2(t \bmod 2) + v$};
   \node[anchor=west, font=\tiny] at (24,407)
-    {两种语言互为逆映射，分别服务「哪个线程拥有这个数据」与「这个线程该搬哪些数据」};
+    {两种语言互为逆映射，分别服务\textbf{哪个线程拥有这个数据}与\textbf{这个线程该搬哪些数据}};
 \end{tikzpicture}
-\caption{4 线程小例子的两种表格：左边是朴素 CUDA 手算的「线程 $\times$ 值 $\to$ 坐标」表（一轮覆盖 $2\times4$、两轮铺满 $(4,4)$），右边是 CuTe 的 \texttt{make\_\allowbreak{}tiled\_\allowbreak{}copy} 打印结果——\texttt{tvS} 的公式与手算逐格一致。MN-layout 与 TV-layout 互为逆映射，分别服务「数据视角」与「线程视角」。}
+\caption{4 线程小例子的两种表格：左边是朴素 CUDA 手算的\textbf{线程 $\times$ 值 $\to$ 坐标}表（一轮覆盖 $2\times4$、两轮铺满 $(4,4)$），右边是 CuTe 的 \texttt{make\_\allowbreak{}tiled\_\allowbreak{}copy} 打印结果——\texttt{tvS} 的公式与手算逐格一致。MN-layout 与 TV-layout 互为逆映射，分别服务\textbf{数据视角}与\textbf{线程视角}。}
 \label{fig:21-2}
 \end{figure}
 
@@ -491,7 +491,7 @@ G$\to$S 在 $(128,32)$ 上的实测（本章测试 case~B）：每个线程
 $(8,\ 4,\ 1)$，即 8 个值、M 方向 4 个 tile 重复、K 方向 1 个；$8\times4\times1
 = 32$ 个元素，$\times 128$ 线程 $= 4096$ 恰好是整块 tile（双射）。
 
-@竹熙佳处把这种结构概括成一句话：「\textbf{atom 之外，皆是循环}」。TV
+@竹熙佳处把这种结构概括成一句话：\textbf{atom 之外，皆是循环}。TV
 布局只描述\emph{一个}原子（一次 $P$ 线程 $\times V$ 值的搬运），原子之外
 的重复（$(F_V,F_X)$ 与 remainder mode）不需要新的映射，只是把原子划分
 重复若干次；kernel 里 \texttt{CPY\_M}/\texttt{CPY\_N} 两层循环就是这些
@@ -642,7 +642,7 @@ S$\to$R 的 K 方向重复更多？因为 copy 原子不同：G$\to$S 一次搬�
 
 \begin{equation}
   \mathrm{retile\_D}(\mathrm{tCrA}) = \text{同一块寄存器的
-  「(线程, 值) 顺序」视图},\qquad \mathrm{data()} \text{ 不变} .
+  \textbf{(线程, 值) 顺序}视图},\qquad \mathrm{data()} \text{ 不变} .
   \label{eq:21-retile-d}
 \end{equation}
 
@@ -652,8 +652,8 @@ S$\to$R 的 K 方向重复更多？因为 copy 原子不同：G$\to$S 一次搬�
 槽位。它\textbf{不搬数据、不转换类型、不 shuffle}，真正跨线程的重组发生在
 后面 epilogue 的 smem 往返里。
 
-顺带解决一个易混点：\texttt{retile\_S} 的 S 指「该 TiledCopy 的 source
-side」，不是 shared memory；\texttt{retile\_D} 的 D 指 destination side。
+顺带解决一个易混点：\texttt{retile\_S} 的 S 指\textbf{该 TiledCopy 的 source
+side}，不是 shared memory；\texttt{retile\_D} 的 D 指 destination side。
 主循环里对 A fragment 用 \texttt{retile\_D}（fragment 是目的端），epilogue 里
 对 C fragment 用 \texttt{retile\_S}（fragment 是源端），方向由数据流决定。
 
@@ -689,7 +689,7 @@ scratchpad 复用了当前 A stage 的空间，\texttt{sC}
 被搬运的 \texttt{tCrD} 是 TiledMMA 产生的 accumulator fragment，逻辑形状为
 \texttt{(MMA, MMA\_M, MMA\_N)}：寄存器元素已经就位，但该 layout 是为 MMA
 accumulator 服务的，并不直接按 R2S copy atom 的 source-value 顺序表达。
-\texttt{retile\_S}（S 指「这个 TiledCopy 的 source side」，不是 shared
+\texttt{retile\_S}（S 指\textbf{这个 TiledCopy 的 source side}，不是 shared
 memory）基于 \texttt{r2s\_tiled\_copy\_c} 的 reference layout 创建一个共享
 \texttt{tCrD.data()} 的 zero-copy layout view，把逻辑坐标从
 \texttt{(MMA, MMA\_M, MMA\_N)} 重新表示为 \texttt{(CPY, CPY\_M, CPY\_N)}
@@ -1042,7 +1042,7 @@ TiledCopy 只是把它如实反映到 partition 的形状里。
 对、划分错的 TiledCopy：它不报错，只是每个线程搬了不连续的元素。
 
 \textbf{坑二：\texttt{partition\_S}/\texttt{partition\_D} 的 S/D 不能用
-「gmem/smem」来记。}\allowbreak{}S 指 \emph{source side}、D 指 \emph{destination side}，
+gmem/smem 来记。}\allowbreak{}S 指 \emph{source side}、D 指 \emph{destination side}，
 而每个 side 有自己的原子布局（\texttt{Val\allowbreak{}Layout\allowbreak{}Src}/\texttt{Val\allowbreak{}Layout\allowbreak{}Dst}）。
 同一个 Tensor 既可能是 S 也可能是 D：\texttt{tAsA} 是 G$\to$S 的 D
 （\texttt{partition\_\allowbreak{}D\allowbreak{}(s\allowbreak{}A)}），同时也是 S$\to$R 的 S

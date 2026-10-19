@@ -55,7 +55,7 @@ LayerNorm（Ba et al., 2016）对一行输入 $x = (x_1, x_2, \dots, x_K)$ 定�
 
 \subsection{RMSNorm：去掉中心化的单归约形式}
 
-RMSNorm（Zhang \& Sennrich, 2019）只保留「缩放」而不做「中心化」。先定义均方根
+RMSNorm（Zhang \& Sennrich, 2019）只保留\textbf{缩放}而不做\textbf{中心化}。先定义均方根
 \begin{equation}
   \mathrm{RMS}(x) = \sqrt{\frac{1}{K}\sum_{k=1}^{K} x_k^2 + \epsilon},
 \end{equation}
@@ -102,10 +102,10 @@ RMSNorm（Zhang \& Sennrich, 2019）只保留「缩放」而不做「中心化�
   \draw (5.2,0) -- (5.2,0.7);
   \draw[thick, draw=tkGreen] (0,-0.3) -- (0,-0.55) -- (5.2,-0.55) -- (5.2,-0.3);
   \node[anchor=north, text=tkGreen] at (2.6,-0.72)
-    {LayerNorm 分母 $\sqrt{\sigma^2+\epsilon}$（式~\eqref{eq:ch06-ln}）：只除「波动」};
+    {LayerNorm 分母 $\sqrt{\sigma^2+\epsilon}$（式~\eqref{eq:ch06-ln}）：只除\textbf{波动}};
   \draw[thick, draw=tkPurple] (0,-1.45) -- (0,-1.7) -- (8.8,-1.7) -- (8.8,-1.45);
   \node[anchor=north, text=tkPurple] at (4.4,-1.87)
-    {RMSNorm 分母 $\sqrt{\sigma^2+\mu^2+\epsilon}$（式~\eqref{eq:ch06-rms}）：「波动 $+$ 直流」全除};
+    {RMSNorm 分母 $\sqrt{\sigma^2+\mu^2+\epsilon}$（式~\eqref{eq:ch06-rms}）：\textbf{波动 $+$ 直流}全除};
   \node[anchor=east] at (-0.25,-2.85) {$x+c$（平移）};
   \fill[tkBlue!70] (0,-3.2) rectangle (5.2,-2.5);
   \node[white] at (2.6,-2.85) {波动 $\sigma^2$（不变）};
@@ -121,7 +121,7 @@ RMSNorm（Zhang \& Sennrich, 2019）只保留「缩放」而不做「中心化�
   \node[anchor=north, align=center, text width=6.0cm, text=tkOrange!85!black] at (8.6,-4.5)
     {RMSNorm：分母变大 $\Rightarrow$ 不变式被破坏\\$\Rightarrow$ LLaMA 去 QKV 投影 bias};
 \end{tikzpicture}
-\caption{分母的能量分解（恒等式~\eqref{eq:ch06-var-identity}：$\frac{1}{K}\sum_k x_k^2 = \sigma^2 + \mu^2$）：LayerNorm 只除「波动」$\sigma^2$，RMSNorm 除「总能量（波动 $+$ 直流）」。平移 $x \to x+c$ 时 $\sigma^2$ 段宽度不变而 $\mu^2$ 段变长——LayerNorm 输出不变，RMSNorm 分母增大，这就是去 bias 的架构连锁（6.3.3 节第 3 条）。}
+\caption{分母的能量分解（恒等式~\eqref{eq:ch06-var-identity}：$\frac{1}{K}\sum_k x_k^2 = \sigma^2 + \mu^2$）：LayerNorm 只除\textbf{波动}$\sigma^2$，RMSNorm 除\textbf{总能量（波动 $+$ 直流）}。平移 $x \to x+c$ 时 $\sigma^2$ 段宽度不变而 $\mu^2$ 段变长——LayerNorm 输出不变，RMSNorm 分母增大，这就是去 bias 的架构连锁（6.3.3 节第 3 条）。}
 \label{fig:6-2}
 \end{figure}
 
@@ -398,7 +398,7 @@ $N = 524288$ 时读写流量 $512\,\mathrm{MB}$ 远超 L2，是 HBM 口径。两
 \end{kaogu}
 
 \begin{kaogu}[F1 | Llama 使用 RMSNorm 的陈述属实]
-「Llama 系列使用 RMS Norm」与公开实现一致（LLaMA/LLaMA 2/LLaMA 3 及 Mistral 等）。补充考据：这些模型同时移除了 RMSNorm 前线性投影的 bias，原因正是 RMSNorm 无平移不变性（本章第 3 节推导的 $\mu^2$ 项），bias 无归一化收益。
+\textbf{Llama 系列使用 RMS Norm}与公开实现一致（LLaMA/LLaMA 2/LLaMA 3 及 Mistral 等）。补充考据：这些模型同时移除了 RMSNorm 前线性投影的 bias，原因正是 RMSNorm 无平移不变性（本章第 3 节推导的 $\mu^2$ 项），bias 无归一化收益。
 \end{kaogu}
 
 \section{常见坑}

@@ -231,7 +231,7 @@ $6\times2^{-10}$ 的组会因为 ue4m3 舍入到 0 而整组归零。}
 \end{scope}
 \end{tikzpicture}
 \caption{NVFP4 的两个 4-bit 类型。上：e2m1 位域与数轴（步长随量级翻倍，
-最外侧两格「码点在格边」是误差模型里最大的一项贡献，见
+最外侧两格\textbf{码点在格边}是误差模型里最大的一项贡献，见
 \ref{sec:36-err} 节）；下：ue4m3 位域（scale 专用，量程
 $[2^{-9},448]$，$0\text{x}7F$ 是 NaN）。}
 \label{fig:36-bitfields}
@@ -314,7 +314,7 @@ level-2 的 SF 在显存里不是按 (MN, K/16) 平铺的二维数组，而有�
 \end{tikzpicture}
 \caption{SF 的显存布局。每个 512\,B 原子覆盖 128 行 $\times$ 64 个 K 元素
 （4 个 SF）。原子内部行优先：同一行的 4 个 SF 连续，故 SF 的 smem$\to$寄存器
-只需一条 4 字节加载。矩阵级平铺时「行块」是快变维、$K$ 方向次之，字节通式
+只需一条 4 字节加载。矩阵级平铺时\textbf{行块}是快变维、$K$ 方向次之，字节通式
 如框内所示。}
 \label{fig:36-sf-layout}
 \end{figure}

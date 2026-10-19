@@ -6,7 +6,7 @@
 GEMM（GEneral Matrix Multiply）是 GPU 上最重要的算子：大模型里除 norm/softmax 外
 几乎所有的线性层、attention 里的 $QK^{\top}$ 与 $PV$，最终都落到 GEMM 上。
 它决定了 GPU 硬件的诸多设计取向，也是 kernel 工程师面试的核心考点。
-本章是 Part II GEMM 篇的第一章，把教学源码 sgemm.cuh 头部的「优化五层金字塔」
+本章是 Part II GEMM 篇的第一章，把教学源码 sgemm.cuh 头部的\textbf{优化五层金字塔}
 里 CUDA Core 路径的前三级走完：
 
 \begin{itemize}
@@ -135,7 +135,7 @@ naive（AI $0.25$）计算上限 $\approx 0.23$ TFLOPS；
 \end{itemize}
 
 两道栅栏之间是计算窗口，之外是搬运窗口。本章两版 kernel 都是串行的
-「搬一算一」，空转时序见图~\ref{fig:09-single-barrier}；第~\ref{ch:10}~章的
+\textbf{搬一算一}，空转时序见图~\ref{fig:09-single-barrier}；第~\ref{ch:10}~章的
 双缓冲会让两个窗口重叠起来。
 
 \begin{figure}[H]
@@ -169,7 +169,7 @@ naive（AI $0.25$）计算上限 $\approx 0.23$ TFLOPS；
      load $k{+}1$ 与 compute $k$ 重叠，\\两类空转消失};
   \draw[->, dashed] (11.5,-2.6) -- (9.3,-1.25);
 \end{tikzpicture}
-\caption{单缓冲 k-slice 循环的双栅栏时序（3 个迭代）：load（蓝）$\to$ 栅栏 1（消费前）$\to$ compute（紫）$\to$ 栅栏 2（覆写前）。load 期间 CUDA Core 空转、compute 期间搬运单元空转——「搬一算一」串行使两个窗口无法重叠；双缓冲（图~\ref{fig:10-1}）正是为消除这两类空转而设计。}
+\caption{单缓冲 k-slice 循环的双栅栏时序（3 个迭代）：load（蓝）$\to$ 栅栏 1（消费前）$\to$ compute（紫）$\to$ 栅栏 2（覆写前）。load 期间 CUDA Core 空转、compute 期间搬运单元空转——\textbf{搬一算一}串行使两个窗口无法重叠；双缓冲（图~\ref{fig:10-1}）正是为消除这两类空转而设计。}
 \label{fig:09-single-barrier}
 \end{figure}
 
@@ -532,8 +532,8 @@ $4 \times 4 = 16$ 个 block，110 个 SM 有 94 个空闲；naive 同形状有 2
   注释原文给出「Level 1: \texttt{AI ≈ B\_\allowbreak{}K/\allowbreak{}(2×sizeof) ≈ 32/\allowbreak{}8=\allowbreak{}4}」与
   「Level 2: \texttt{AI ≈ TM×TN×B\_\allowbreak{}K/\allowbreak{}(2×sizeof) ≈ 8×8×8/\allowbreak{}8=\allowbreak{}64}」。
   问题一：正确的 block tile 推导（式~\ref{eq:9-ai-tile}）中 $B\sb{K}$ 在分子分母间
-  相消，AI 与 $B\sb{K}$ 无关，把 $B\sb{K}$ 放进分子会得出「加深 K 切片
-  就能提升 AI」的错误直觉；数值上 $32 \times 32$ tile 的 AI 是 8 而非 4。
+  相消，AI 与 $B\sb{K}$ 无关，把 $B\sb{K}$ 放进分子会得出\textbf{加深 K 切片
+  就能提升 AI}的错误直觉；数值上 $32 \times 32$ tile 的 AI 是 8 而非 4。
   问题二：Level 2 公式代入 $T\sb{M}{=}T\sb{N}{=}B\sb{K}{=}8$ 得 64，与任何计数口径都对不上：
   thread tile 不改变 gmem AI（仍由 block tile 决定），它提升的是 smem 级计算密度
   （式~\ref{eq:9-ai-thread}，$1 \times 1$ 的 0.25 到 $4 \times 4$ 的 1.0，即 4 倍）。
@@ -544,7 +544,7 @@ $4 \times 4 = 16$ 个 block，110 个 SM 有 94 个空闲；naive 同形状有 2
 \begin{kaogu}[F3]{sgemm.cuh L84-85：「AI 从 BK/2 提升到 TM*TN*BK/2」同族问题}
   \texttt{sgemm\_vec4} 头注释写「AI 从 \texttt{BK/2} $\approx$16 提升到
   \texttt{TM*TN*BK/2} $\approx 256$」，与勘误一同源的量纲问题（分子含 $B\sb{K}$、
-  分母是「2 个 float 的字节数」）。
+  分母是\textbf{2 个 float 的字节数}）。
   按本章口径改写应为：gmem AI 从 8（$32^2$ tile）升到 32（$128^2$ tile，来自
   block tile 放大）；smem 级计算密度从 0.25 升到 1.0（来自 $4 \times 4$ thread tile）；
   \texttt{float4} 不改 AI、只降指令数。三个数字各有归属，不宜混在一个公式里。

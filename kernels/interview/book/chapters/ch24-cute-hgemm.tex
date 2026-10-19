@@ -22,13 +22,13 @@ XOR 掩码、epilogue 的 \texttt{\_\_shfl\_sync} 编排，每一处都要人工
 \textbf{前置章节}：第~\ref{ch:11}~章（\texttt{mma.\allowbreak{}sync.\allowbreak{}m16n8k16} 与
 \texttt{ldmatrix}）、第~\ref{ch:12}~章（XOR swizzle 与寄存器双缓冲）、
 第~\ref{ch:20}--\ref{ch:23}~章（Layout 代数 / Tensor 与 TiledCopy / TiledMMA /
-Swizzle 与 TMA）。本章是 Part~IV 的第一章「应用篇」，只用到前四章已经介绍过的
+Swizzle 与 TMA）。本章是 Part~IV 的第一章\textbf{应用篇}，只用到前四章已经介绍过的
 四个抽象：\texttt{Layout}、\texttt{Tensor}、\texttt{TiledCopy}、
 \texttt{TiledMMA}。
 
 \textbf{阅读路线}：本章沿 @reed 的 CuTe GEMM 三部曲《cute 之 简单 GEMM
 实现》《cute 之 GEMM 流水线》《cute 之 高效 GEMM 实现》（链接见文末
-「延伸阅读」）的叙述顺序，按先跑通 $\to$ 再重叠 $\to$ 后提速三步渐进展开。
+\textbf{延伸阅读}）的叙述顺序，按先跑通 $\to$ 再重叠 $\to$ 后提速三步渐进展开。
 每一步开头先说明上一版留下了什么问题，再给出这一版的代码，以及读者必须
 自己守住的约束。凡是源码注释与实现不一致、或表述容易被误读的地方，不再集中
 堆在章末的勘误节，而是就地写成\textbf{实践须知}：这类提醒出现在使用现场比
@@ -124,8 +124,8 @@ $B^{\mathsf T}[N,K]$ 是同一块内存。这是本章第一个坑：调用方�
                          make_stride(k, Int<1>{}));  // Bt 是 (N,K)，K 连续
 \end{lstlisting}
 
-两行 \texttt{make\_tensor} 之后，后续所有分区与拷贝都在「$(shape,stride)$
-就是布局」这条约定上工作：$K$ 维连续意味着按 $K$ 切出来的片天然适合做
+两行 \texttt{make\_tensor} 之后，后续所有分区与拷贝都在\textbf{$(shape,stride)$
+就是布局}这条约定上工作：$K$ 维连续意味着按 $K$ 切出来的片天然适合做
 \texttt{cp.async} 的宽拷贝，而 \texttt{Int<1>\{\}} 这个编译期常量会让
 后面每一步的地址算术都在编译期折叠掉。
 
@@ -297,7 +297,7 @@ $B_K=32$ 相对 \texttt{kMmaPK}$=16$ 的倍数即 K 方向的切片数：
 
 一条 atom 只计算 $K$ 方向的 16 个元素，所以一个 $B_K=32$ 的 K-tile 要分两次
 才算完。kernel 里的 \texttt{num\_\allowbreak{}k\_\allowbreak{}steps =\allowbreak{} size\allowbreak{}<2>\allowbreak{}(t\allowbreak{}Cr\allowbreak{}A)} 不是 magic number，而是 CuTe 从
-类型里读出的 K-mode extent。两个语境下「EURepeat」的区别见
+类型里读出的 K-mode extent。两个语境下\textbf{EURepeat}的区别见
 图~\ref{fig:24-eurepeat-two-senses}。
 
 \begin{figure}[H]
@@ -334,7 +334,7 @@ $B_K=32$ 相对 \texttt{kMmaPK}$=16$ 的倍数即 K 方向的切片数：
      $\texttt{kMmaPN}=2\,(\mathrm{AtomLayout}_N)\times2\,(\mathrm{EURepeat}_N)
      \times8=32$；$\texttt{kMmaPK}=16$。};
   \node[anchor=north west, align=left, text width=5.9cm, eurRed] at (3.5,-1.4)
-    {\textbf{同名不同义}：源码常量名里的「EURepeat」是
+    {\textbf{同名不同义}：源码常量名里的\textbf{EURepeat}是
      \texttt{make\_tiled\_mma} 的第 $2$ 个参数，CuTe 叫
      \texttt{AtomLayout}；CuTe 语义下的真 EURepeat 由 Tile 推出，
      是 $(1,2,1)$。};
@@ -368,7 +368,7 @@ $B_K=32$ 相对 \texttt{kMmaPK}$=16$ 的倍数即 K 方向的切片数：
      （$1\times2\times1$）。二者相乘才得到逻辑 tile：
      $\texttt{kMmaPM}=2\times1\times16=32$、
      $\texttt{kMmaPN}=2\times2\times8=32$。读源码时按名字理解会把
-     $2/2/1$ 当成「每线程重复」，实际它是 warp 排布——本章配置下真
+     $2/2/1$ 当成\textbf{每线程重复}，实际它是 warp 排布——本章配置下真
      EURepeat 是 $(1,2,1)$。};
 \end{tikzpicture}
 \caption{EURepeat 的两种语境（式~\eqref{eq:24-tile-mma}）：左图是
@@ -660,7 +660,7 @@ $k_{\mathrm{stage}}$ 加到 3、4 时循环体几乎不用改：放行更多 inf
         \texttt{ldmatrix} 才读得到新 stage。
 \end{enumerate}
 
-\paragraph{实践须知：「CuTe 自动管理流水线」的说法不准确}
+\paragraph{实践须知：CuTe 自动管理流水线的说法不准确}
 
 Phase~7c 的头注释在列举 CuTe 五要素时，把第 5 条写成「Pipeline: cp.async $+$
 multistage, 由 cute::copy 自动管理」（hgemm.cuh L729--733）。读代码会发现这句
@@ -756,7 +756,7 @@ $\{1,8\}$ 的含义是每线程连续搬 8 个 half $=$ 128 位：4 个线程 $\
 铺满一行 $B_K=32$ 个 half，128 个线程每轮覆盖 32 行，一条 \texttt{cp.async}
 指令搬满 128 位，且不需要任何 predicate。
 
-\paragraph{S$\to$R：\texttt{ldmatrix} 与「从 TiledMMA 反推」}
+\paragraph{S$\to$R：\texttt{ldmatrix} 与从 TiledMMA 反推}
 
 S$\to$R 用 \texttt{SM75\_\allowbreak{}U32x4\_\allowbreak{}LDSM\_\allowbreak{}N}，即 \texttt{ldmatrix.x4}（一次
 装载 4 个 $8\times8$ 矩阵）。手写版在这里必须自己推 lane $\to$ (row, chunk)
@@ -1177,7 +1177,7 @@ R2S $\to$ sC $\to$ S2G，映射进类型 \\
   \item 注释第三句描述的组合在本 wrapper 里\textbf{不可达}：\texttt{kBN} 由
         \texttt{kAccF32} 单向决定，F32 累加永远配不到 $B_N=256$，属于手工改坏
         才会遇到的反例。测量值本身有效（它是 $B_N{=}256$ 那一档的
-        254\,reg），只是不该被读成「本 kernel 的第三种配置」；复现方法见
+        254\,reg），只是不该被读成\textbf{本 kernel 的第三种配置}；复现方法见
         第~\ref{sec:24-minitest}~节动手实验第 3 条。
   \item \textbf{代码量对照}（hgemm.cuh L803--805）：注释写「手写 $\sim$200 行 /
         CuTe $\sim$80 行」。按同口径实测（去注释、去空行）：手写 Phase~7b 为
@@ -1314,7 +1314,7 @@ ALL OK
 
 两组输入的随机数幅度缩到 $\pm0.25$：fp16\textbf{输出}的舍入误差量级是
 $|C|\cdot2^{-11}$，只有把 $|C|$ 压在 $2$ 附近，$10^{-3}$ 这条容差才是在
-检验「累加精度」而不是「输出量化」。带上 \texttt{bench} 参数还能跑一版
+检验\textbf{累加精度}而不是\textbf{输出量化}。带上 \texttt{bench} 参数还能跑一版
 吞吐计时（$K{=}64$ 的规模只有微秒级，被 launch 开销主导，不构成性能结论；
 端到端吞吐对照见第~\ref{sec:ch24-perf}~节）。
 
@@ -1338,7 +1338,7 @@ $|C|\cdot2^{-11}$，只有把 $|C|$ 压在 $2$ 附近，$10^{-3}$ 这条容差�
         （从零搭 CuTe GEMM 的三步骨架，本章第~\ref{sec:24-step1}~节按它展开）。
   \item @reed《cute 之 GEMM 流水线》，
         \url{https://zhuanlan.zhihu.com/p/665082713}
-        （multistage 流水的 CuTe 写法与「流水线不属于 cute」的结论，本章
+        （multistage 流水的 CuTe 写法与\textbf{流水线不属于 cute}的结论，本章
         第~\ref{sec:24-step2}~节按它展开）。
   \item @reed《cute 之 高效 GEMM 实现》，
         \url{https://zhuanlan.zhihu.com/p/675308830}
@@ -1346,7 +1346,7 @@ $|C|\cdot2^{-11}$，只有把 $|C|$ 压在 $2$ 附近，$10^{-3}$ 这条容差�
         第~\ref{sec:24-step3a}、\ref{sec:24-step3b}~节）。
   \item @竹熙佳处《写给大家看的 CuTe 教程：async pipeline》，
         \url{https://zhuanlan.zhihu.com/p/2024832248386528275}
-        （可对照本章「流水线仍要手写」的结论）；
+        （可对照本章\textbf{流水线仍要手写}的结论）；
   \item @进击的Killua《CUTLASS CuTe 实战（一）：基础》，
         \url{https://zhuanlan.zhihu.com/p/690703999}
         （Tensor 常用 API 速查，适合边看本章代码边查手册）。

@@ -299,7 +299,7 @@ epilogue 不需要任何尾部分支。唯一要 guard 的就是 scale 查表（
   {前两步在寄存器（f32 域）；后两步经 smem 中转，\\
    因为 TMA 只能从 shared memory 发射};
 \end{tikzpicture}
-\caption{epilogue 数据流。整个反量化只在「scale 查表乘回」一步发生——
+\caption{epilogue 数据流。整个反量化只在\textbf{scale 查表乘回}一步发生——
 这是式~\ref{eq:34-fold-rc} 把全部 scale 移出主循环的直接收益：MMA 循环
 跑的是纯 e4m3 语义，epilogue 每元素额外开销只有一次乘法加一次查表
 （per-block 时查表索引是一次 $128$ 整除，由编译器强度削减成移位）。}
@@ -508,8 +508,8 @@ $128\times256$ grid 只有 128 个 CTA（35.8.4~节末的波次量化）；
 \textbf{E2E} 的形状敏感度更陡：2048$^3$ 反而低于 cuBLAS（$0.55\times$），因为量化
 是 $O(MK{+}NK)$ 的带宽型工序，GEMM 变小时它的占比线性放大（35.8.2~节）；
 \textbf{WS} 全程略优于 non-WS（寄存器有余量、setmaxnreg 有释放空间，
-35.6~节），但差距远小于 attention 大 $D$ 场景。图中 E2E 柱是「全链路
-量化」的保守口径；权重 $B$ 离线量化后 E2E 回到 226/411/429~T
+35.6~节），但差距远小于 attention 大 $D$ 场景。图中 E2E 柱是\textbf{全链路
+量化}的保守口径；权重 $B$ 离线量化后 E2E 回到 226/411/429~T
 （35.8.3~节）。}
 \label{fig:35-perf}
 \end{figure}
@@ -764,7 +764,7 @@ $>64$\,K 寄存器文件，kernel 里用 \texttt{static\_assert} 拦截在编译
 \node[above, font=\scriptsize\bfseries] at (11.4, 5.72)
   {(b) 流水深度（同一 tile 换级数）};
 \end{tikzpicture}
-\caption{tile 几何与流水深度的两个「反直觉」方向（non-WS，4096$^3$，越高
+\caption{tile 几何与流水深度的两个\textbf{反直觉}方向（non-WS，4096$^3$，越高
 越好）。(a) $BM$ 与 $BN$ 不对称：$128\times256$ 比 $256\times128$ 快
 $8.3\%$，$64$ 行档两者打平——因为 M8N1 把 $B$ 的 fragment 复制到每个 warp，
 $BN$ 才是摊销 smem 读量的那个参数（35.8.5~节有实测波前数）。(b) 流水深度
@@ -772,7 +772,7 @@ $BN$ 才是摊销 smem 读量的那个参数（35.8.5~节有实测波前数）�
 每 SM 的 smem，加深只是多缓存数据、换不来 CTA 并发），$128^2$ 上 $s{=}2$ 略胜
 $s{=}3$；$s{=}4$ 的劣势在 8192$^3$ 上同样成立。本图用 4096$^3$ 作图，
 8192$^3$ 的整套数字见表~\ref{tab:35-sweep}（两档的形状依赖讨论见正文
-「其二」）。}
+\textbf{其二}）。}
 \label{fig:35-sweep}
 \end{figure}
 

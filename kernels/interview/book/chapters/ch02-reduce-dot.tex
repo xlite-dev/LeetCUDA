@@ -88,7 +88,7 @@ $\lceil \log\sb 2 N \rceil$，1024 个数只要 10 层。树形化也有代价�
   \node[font=\scriptsize, anchor=north] at (3.9, -0.45)
     {每层内加法全部并行（层间汇合一次）：深度 $10 \ll 1023$};
 \end{tikzpicture}
-\caption{串行依赖链与二叉归约树对照（$N=1024$）：上半为串行链——1023 次加法严格依序，无论启动多少线程延迟都无法隐藏；下半为两两相加的归约树——树高 $\lceil\log_2 N\rceil = 10$ 层，每层内加法全部并行（灰度自底向上随节点数减半渐浅）。深度从 $N-1$ 压缩到 $\log_2 N$，代价是「谁跟谁相加」成为必须显式约定的结构信息。}
+\caption{串行依赖链与二叉归约树对照（$N=1024$）：上半为串行链——1023 次加法严格依序，无论启动多少线程延迟都无法隐藏；下半为两两相加的归约树——树高 $\lceil\log_2 N\rceil = 10$ 层，每层内加法全部并行（灰度自底向上随节点数减半渐浅）。深度从 $N-1$ 压缩到 $\log_2 N$，代价是\textbf{谁跟谁相加}成为必须显式约定的结构信息。}
 \label{fig:2-4}
 \end{figure}
 
@@ -520,10 +520,10 @@ $\lceil G/K \rceil$，时间随之线性下降。
 面试要点注释写「block\_reduce: 两级归约（warp $\to$ shared memory $\to$
 warp0 broadcast）」。但 block\_reduce\_sum 的实现（L183--196）是\textbf{每个
 warp 都}从 smem 读入全部部分和并各自二次归约，再用
-\texttt{\_\_shfl\_sync} 从 lane0 广播回全员；「warp0 broadcast」更像
+\texttt{\_\_shfl\_sync} 从 lane0 广播回全员；\textbf{warp0 broadcast}更像
 block\_reduce\_all 的流程（仅 warp0 归约、tid0 写出）。同文件 L172--181 的
-五步详细注释与实现一致，两处口径建议统一为「warp $\to$ smem $\to$ 各 warp
-冗余二次归约 $\to$ lane0 经 shfl 广播」。
+五步详细注释与实现一致，两处口径建议统一为\textbf{warp $\to$ smem $\to$ 各 warp
+冗余二次归约 $\to$ lane0 经 shfl 广播}。
 \end{kaogu}
 
 \begin{kaogu}[F1]{L278--284 dot\_vec4 边界守卫不足（越界读隐患）}

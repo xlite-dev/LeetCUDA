@@ -725,7 +725,7 @@ ptxas 以 C7508 把指令全部丢弃：本章 kernel 因此声明
         \texttt{awk '/Function :/\{f=\$3\} /USETMAXREG/\{c[f]++\}'}；
         \texttt{-{}-function} 对 C++ mangled 模板名不匹配（报 not found，
         dump 为空，又一个假 0）。
-  \item 「编译通过零警告」$\neq$「指令保留」：C7506 是 info 级默认不打印，
+  \item \textbf{编译通过零警告}$\neq$\textbf{指令保留}：C7506 是 info 级默认不打印，
         验证必须加 \texttt{-Xptxas -v} 或直接数 SASS。
   \item nvcc 13.2 对每个 target 跑两个 device pass（generic 视角 +
         arch-specific 视角）：用 \texttt{\#pragma message} 探测
@@ -740,12 +740,12 @@ cta TMA + \texttt{(N,1)} 双条件）：\texttt{sm\_120a} 与 \texttt{sm\_120f} 
 警告；SASS 形如 \texttt{USETMAXREG.DEALLOC.CTAPOOL 0x20}。生产侧交叉印证：
 ffpa-attn 的 sm\_120f 构建产物中该指令同样生效。
 
-\begin{kaogu}[本章初版当日修正]{「必须 sm\_120f」三连误诊与推翻}
+\begin{kaogu}[本章初版当日修正]{必须 sm\_120f 三连误诊与推翻}
 本章初版注释与导读曾断言「编译目标必须 \texttt{sm\_120f}：\texttt{sm\_120a} 下
 ptxas 静默丢弃 setmaxnreg」。2026-09-22 当天三轮 probe 复核推翻该结论，
 误诊链值得原样记录。先是最小 probe 的裸 asm 复现出
 \emph{Instruction 'setmaxnreg' not supported on .target 'sm\_120'} 硬错误，
-被读作「sm\_120a 不支持」，实际是编译命令落到了 generic \texttt{sm\_120}
+被读作\textbf{sm\_120a 不支持}，实际是编译命令落到了 generic \texttt{sm\_120}
 （无 a/f 后缀），PTX ISA 本就不允许 generic 目标使用该指令，报错反而是
 工具链在正确工作。接着 probe kernel 没写 \texttt{\_\_launch\_\allowbreak{}bounds\_\allowbreak{}(N,1)}，
 ptxas 以 C7508 静默清零，又被读作 arch 问题。最后是宏探测的

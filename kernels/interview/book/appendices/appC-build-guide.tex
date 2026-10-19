@@ -161,7 +161,7 @@ ptxas error : Entry function '_Z1kPf' uses too much shared data (0x28000 bytes, 
 # -> 升级工具链，或改用 raw PTX 分支并降级宏组合
 \end{lstlisting}
 
-另一类「不报错但全错」的运行期坑（系统性错值而非随机数）见第~\ref{ch:14}~章
+另一类\textbf{不报错但全错}的运行期坑（系统性错值而非随机数）见第~\ref{ch:14}~章
 常见坑一节：smem 基址未对齐 1024B、swizzle 档位选错、期望字节数没传给
 mbarrier。
 
@@ -192,5 +192,5 @@ ALL OK
 \texttt{PASS/\allowbreak{}FAIL \allowbreak{}<name>: max\_\allowbreak{}abs\_\allowbreak{}err=\allowbreak{}<e> \allowbreak{}(tol=\allowbreak{}<e>)}，超差时追加
 \texttt{first\_\allowbreak{}bad\_\allowbreak{}index}；arch 不在位输出 \texttt{SKIP(chNN): requires
 sm\_XX, device is sm\_YY} 且退出码 0（不视为失败）。逐章测试的设计口径
-（规模、容差档、K-tile 回绕覆盖）见各章「最小测试与动手实验」节；
+（规模、容差档、K-tile 回绕覆盖）见各章\textbf{最小测试与动手实验}节；
 ch13 的 Hopper 复现命令见第~\ref{ch:13}~章 13.10 节。

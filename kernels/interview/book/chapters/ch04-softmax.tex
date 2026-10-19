@@ -531,7 +531,7 @@ launch 与同步的固定开销占比大；附录~B 的汇总口径会注明这�
   \draw[-{Latex}, dashed, draw=tkRed] (6.68,0.5) -- (7.75,0.5) -- (7.75,-1.35) -- (10.9,-1.35) -- (10.9,-0.88);
   \node[above, font=\tiny, text=tkRed] at (9.3,-1.33) {$\times$ 静默不写回};
 \end{tikzpicture}
-\caption{坑一「$N$ 传错语义」的静默丢输出：grid$(S{=}2)$、block$(H{=}256)$ 时正确应传 $N=S\times H=512$；若按「每 token 长度」错传 $N=256$，\texttt{idx < N} 守卫线落在 block 0/block 1 边界上，block 1 的全部线程（idx $256$–$511$，斜线格）被剪掉，token 1 的输出缓冲残留旧值——不报错、不崩溃（见 4.7~节勘误一）。}
+\caption{坑一\textbf{$N$ 传错语义}的静默丢输出：grid$(S{=}2)$、block$(H{=}256)$ 时正确应传 $N=S\times H=512$；若按\textbf{每 token 长度}错传 $N=256$，\texttt{idx < N} 守卫线落在 block 0/block 1 边界上，block 1 的全部线程（idx $256$–$511$，斜线格）被剪掉，token 1 的输出缓冲残留旧值——不报错、不崩溃（见 4.7~节勘误一）。}
 \label{fig:4-4}
 \end{figure}
 

@@ -408,8 +408,8 @@ $W^{A}{+}W^{B}$ 展开即可改写成\textbf{未归一化}形式
 $O = \bigl(W^{A} O^{A}_{\text{norm}}\ell^{A} + W^{B} O^{B}_{\text{norm}}\ell^{B}
 \bigr)/\ell$，正是式~\ref{eq:15-upd-o} 逐块折叠的形态。
 
-ch05 是「事后合并」（两块各自落盘 $O$ 与 LSE，再用一个 elementwise kernel 拼回，
-服务于 split-KV / FlashDecoding），本章是「在线合并」（寄存器里一份 $O$ 随 KV 循环
+ch05 是\textbf{事后合并}（两块各自落盘 $O$ 与 LSE，再用一个 elementwise kernel 拼回，
+服务于 split-KV / FlashDecoding），本章是\textbf{在线合并}（寄存器里一份 $O$ 随 KV 循环
 滚动更新，从不物化两份 $O$）。式~\ref{eq:15-merge-o} 的结合律由引理~\ref{lem:md-assoc}
 同样的全集唯一决定论证立刻推广到带 $O$ 的三元组。另注意一个精度口径：本仓库
 \texttt{merge\_\allowbreak{}attn\_\allowbreak{}states} 的接口要求输入 $O$ 已除过 $\ell$（ch05 坑一），而 FA
@@ -661,8 +661,8 @@ K/V tile，
         是 half 精度。
   \item 当前实现依赖 m16n8k16 这一路径下约定好的 fragment 布局，使 softmax
         后的 P 可以继续留在 \texttt{R\_S} 中，供后面的 $P@V$ 直接消费。
-  \item 这是此实现的寄存器布局复用技巧，不要推广成「所有 MMA A/C fragment
-        都天然同构」的通用结论。
+  \item 这是此实现的寄存器布局复用技巧，不要推广成\textbf{所有 MMA A/C fragment
+        都天然同构}的通用结论。
 \end{itemize}
 
 要点 1（L8--9）即 15.3.3~节的带宽需求：$O(N^{2})$ 中间矩阵必须过 HBM，而 HBM 是瓶颈。
@@ -977,7 +977,7 @@ smem 布局）继续展开。
   式~\ref{eq:15-dot-var} 的方差推导（点积方差 $= d$）是通行教科书写法，但
   Transformer 原论文（Vaswani et al., 2017）\S 3.2.1 只给了启发式陈述
   （"We suspect that for large values of $d_k$..."），未做方差计算。引述时应区分
-  「论文原文（启发式）」与「通行严格化解读（本节推导）」。
+  \textbf{论文原文（启发式）}与\textbf{通行严格化解读（本节推导）}。
 \end{kaogu}
 
 \section{常见坑}
@@ -1080,7 +1080,7 @@ fp16。
         测试（\texttt{tests/\allowbreak{}ch04\_\allowbreak{}softmax.\allowbreak{}cu}：case~A/B/C 覆盖递推正确性、边界
         线程、大 logit 溢出）。
   \item 分块状态的等价合并即第~\ref{ch:05}~章的 \texttt{tests/\allowbreak{}ch05\_\allowbreak{}merge\_\allowbreak{}attn.\allowbreak{}cu}
-        （「合并 == 整体 softmax 直接计算」，正是定理~\ref{thm:15-invariant} 的
+        （\textbf{合并 == 整体 softmax 直接计算}，正是定理~\ref{thm:15-invariant} 的
         数值版：任意切分 + 合并还原整体）。
 \end{itemize}
 kernel 层面的 FlashAttention 正确性入口在第~\ref{ch:16}~章的
