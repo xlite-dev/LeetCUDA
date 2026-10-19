@@ -35,6 +35,16 @@
 - **想换到「下一页」左边**：把 `breadcrumbs.html` / `footer.html` 里的那段锚点挪到 `{%- if next %}` **之前**即可（同为 `float-right` 时 DOM 在前的先占右缘）。
 - 构建后由 `convert/verify.py` 的「下载 PDF 按钮已渲染」逐页核对：按钮在，且链接与 README 解析值一致（`html.unescape` 后比对）——三处落位都算数。
 
+## 首页 Trendshift 徽章（标题右侧）
+
+首页标题右边放仓库 README 的 Trendshift 徽章（`#1 Repository Of The Day`，图由 trendshift.io 现画，排行榜每天变，所以引远程图、不落本地副本）。
+
+- **生成位置**：`convert/__main__.py` 的 `BOOK_BADGE`（HTML 片段照抄仓库根 `README.md` 的 `<a><img></a>`），`_assemble_site()` 把它写在首页标题**前面**。
+- **为什么用 raw HTML、为什么写在标题前**：MyST 图片语法独占一段、无法浮动；浮动元素只对**后面**出现的行生效，写在标题后徽章会落到副标题那一行。
+- **宽度按标题占位算，不要随手调大**：标题「LeetCUDA：CUDA Kernel 优化之路」实测 473px（28px 字号），正文栏只有 696px（视口 <1600px，`.wy-nav-content` 1048 档）与 856px（≥1600px，1208 档）两档，所以 `custom.css` 的 `.rtd-trendshift img` 默认 190px、≥1600px 给 300px。用 250px 那版实测标题断成两行（425px 可用宽 < 473px）。
+- **窄屏**（≤700px）取消浮动、徽章落到标题上方，避免压住标题。
+- 改完照例 `touch build/src/index.md` 再 `./build.sh`；验证看首页截图（`tools/visual_check --only index --width 1400` 与 `--width 1920` 各一张，标题必须仍是一行）。
+
 ## 中英切换按钮
 
 按钮是 `translate.js` 造的 `btn btn-neutral` 图标按钮，三种落位（`buildButton()`）：

@@ -32,6 +32,19 @@ BOOK_LINKS = (
   "- 本地构建 PDF：`cd kernels/interview/book && ./build.sh`"
 )
 
+#: 首页标题右侧的 Trendshift 徽章，片段照抄仓库根 README.md（徽章图由 trendshift.io 提供，
+#: 排行榜每天变，只引远程图、不落本地副本）。写成 raw HTML 是为了让它浮动在标题右边：
+#: MyST 的图片语法会独占一段，浮动样式只能靠 HTML 容器。CSS 见 `_static/custom.css`。
+BOOK_BADGE = (
+  '<div class="rtd-trendshift">'
+  '<a href="https://trendshift.io/repositories/83964?utm_source=trendshift-badge'
+  '&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-83964"'
+  ' target="_blank" rel="noopener noreferrer">'
+  '<img src="https://trendshift.io/api/badge/trendshift/repositories/83964/daily?language=Cuda"'
+  ' alt="xlite-dev/LeetCUDA | Trendshift" width="250" height="53">'
+  '</a></div>'
+)
+
 #: 默认 Git 分支（RTD 上用环境变量覆盖）。
 _DEFAULT_BRANCH = "main"
 
@@ -281,7 +294,8 @@ def _assemble_site(parts: list[booktree.Part], out_dir: Path, converted: set[str
     lines.append("```")
     (out_dir / f"{page}.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-  index = [f"# {BOOK_TITLE}", "", f"*{BOOK_SUBTITLE}*", "", BOOK_INTRO, ""]
+  # 徽章写在标题前面：浮动元素只对后出现的行生效，放标题后面会落到副标题那一行。
+  index = [BOOK_BADGE, "", f"# {BOOK_TITLE}", "", f"*{BOOK_SUBTITLE}*", "", BOOK_INTRO, ""]
   cover = _cover_image(out_dir)
   if cover:
     index.extend([f"![{BOOK_TITLE}]({cover})", ""])
