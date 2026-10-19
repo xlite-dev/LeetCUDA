@@ -27,6 +27,7 @@ argument-hint: '说明要改什么（书稿内容 / 转换器 / 版式 / 中英�
 | 转换器 `convert/*.py` | 改完必须跑全量 `./build.sh`（含 27 项核对）+ 浏览器验收 | `references/pipeline.md`、`references/acceptance.md` |
 | 版式 / 模板 / CSS / JS | 先 `touch build/src/index.md` 再 `./build.sh`，否则静态文件不重拷、预览还是旧样式 | `references/layout-frontend.md` |
 | 「下载 PDF」按钮（落位/样式）或其链接 | 按钮默认在「下一页」右边（顶部 + 页脚两行）；链接只改仓库根 `README.md` 的 `[leetcuda-pdf]` 一行，站点与核对都跟着变 | `references/layout-frontend.md` |
+| 首页标题右侧的 Trendshift 徽章 | 片段在 `convert/__main__.py` 的 `BOOK_BADGE`（照抄仓库根 `README.md`），落位与宽度在 `custom.css` 的 `.rtd-trendshift` | `references/layout-frontend.md` |
 | RTD 构建失败 | 先看 `pre_build`（apt 包 / pandoc 版本），再看 `post_build` 打印的核对项 | `references/sync-and-deploy.md` |
 | 核对项本身 | 新增/调整 `convert/verify.py` 的 `check_*`，接入 `verify()` 与 `main()` | `references/acceptance.md` |
 

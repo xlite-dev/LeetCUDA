@@ -390,3 +390,34 @@ body {
   display: block;
   margin: 0.3em auto;
 }
+
+/* 首页标题右侧的 Trendshift 徽章（`convert/__main__.py` 的 BOOK_BADGE 生成）：
+   浮动到标题右边，副标题在它左侧折行。
+
+   宽度按标题占位算：标题「LeetCUDA：CUDA Kernel 优化之路」实测 473px，正文栏只有
+   696px（视口 <1600px）与 856px（≥1600px）两档，所以默认 190px、宽屏 300px——
+   再宽标题就会被挤到第二行（250px 那版实测断成两行）。窄屏（移动端）取消浮动。 */
+.rst-content .rtd-trendshift {
+  float: right;
+  margin: -4px 0 12px 20px;
+}
+
+.rst-content .rtd-trendshift img {
+  display: block;
+  width: 190px;
+  max-width: 100%;
+  height: auto;
+}
+
+@media screen and (min-width: 1600px) {
+  .rst-content .rtd-trendshift img {
+    width: 300px;
+  }
+}
+
+@media screen and (max-width: 700px) {
+  .rst-content .rtd-trendshift {
+    float: none;
+    margin: 0 0 16px 0;
+  }
+}
