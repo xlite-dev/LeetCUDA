@@ -37,6 +37,8 @@
 
 ### 1.3 源码结构核验表（行号三点交叉验证：Phase 注释 / `#if` 宏边界 / `__global__` 行号）
 
+> **本表是 2026-09-11 开工基线快照**，行数随后续增补已变（现行：`common.cuh` 803、`flash_attn.cuh` 4179、`ffpa_attn.cuh` 1307、`fp4_gemm.cuh` 1298、`bench/fp4_gemm.cu` 594）。行号一律以 `scripts/anchors.yaml`（`frozen_at 2026-09-29`）与 `wc -l` 为准，本表只保留当时的块划分参考。
+
 | 文件 | 行数 | 功能块 → 行区间（kernel 名 @ 行号） |
 |---|---|---|
 | common.cuh | 773 | 基础宏/kWarpSize L1-31；MMA PTX 宏 L32-109（Phase 7b-1 L32）；XOR swizzle v1/v2 L110-348（`NOTES_V2_ENABLE_SWIZZLE_V2` 门控 L151、派发器 L344）；TMA/mbarrier helpers L350-489（`#if WGMMA‖TMA_MMA_WS` L350 起）；setmaxnreg L462-475（`NOTES_V2_ENABLE_SETMAXNREGS` L469）；WGMMA 宏 L490+（Phase 7d L492）；TMA descriptor 位域注释 L500-700；TensorMap helpers |
@@ -108,7 +110,7 @@
 
 ---
 
-## 3. 书稿结构：6 Part · 35 章 · 5 附录
+## 3. 书稿结构：6 Part · 41 章 · 5 附录
 
 > 每章卡片字段：**源码区间**（引用范围）/ **kernel** / **前置** / **公式** / **图** / **参考** / **测试**。行号以 §1.3 核验表为准；RFC-A 登记锚点断言。
 
@@ -147,7 +149,7 @@
 | 18 | FA3：双 Consumer Warpgroup | flash_attn.cuh L1441-2192 | 17 | 2 consumer WG 分工数学；softmax 与 MMA overlap；setmaxnreg 池数学（alloc/dealloc 和 <65536，留 ≥2048） | 双 consumer 角色图 | FA3 论文；setmaxnreg 满 pool 死锁案例（repo memory） |
 | 19 | FFPA Split-D：大 head_dim 分块注意力 | ffpa_attn.cuh L1-641 | 15,22 | $S=QK^\top=\sum_{d\text{-chunk}}Q_{:d}K_{:d}^\top$；PV 按 D-chunk 分块 + LSE 跨 chunk 合并 | D-chunk 切分图、两阶段合并图 | @DefTruth FFPA(Split-D)；ffpa-cuda-understand skill |
 
-### Part IV CuTe 篇：布局代数与现代化 Kernel 工程（原理 4 章 + 应用 3 章）
+### Part IV CuTe 篇：布局代数与现代化 Kernel 工程（原理 4 章 + 应用 5 章，含 26b/26c 增补）
 
 | 章 | 标题 | 源码区间 | 前置 | 核心公式/概念 | 关键图 | 主参考 |
 |---|---|---|---|---|---|---|
@@ -158,20 +160,24 @@
 | 24 | CuTe 应用(一)：HGEMM | hgemm.cuh L718-1427（宏块 L779-1427 内） | 11,12,21,22 | gemm_ss；SmemLayoutAtom+tile_to_shape；多级流水 CuTe 表达 | 与 ch11/12 手写版**对照表**（本章核心资产） | @reed 简单/高效 GEMM、GEMM 流水线；@朱小霖 cute 101；@进击的Killua 实战 |
 | 25 | CuTe 应用(二)：FlashAttention 三实现对照 | flash_attn.cuh L2196-3488（5 对宏块，见 §1.3） | 17,18,21-23 | fa_cute traits 复用结构；cp.async 版/TMA+WS 版/FA3 版演进 | 三实现结构对照图 | @66RING cute 复现 FA；@shengying.wei tiny-flash-attention；@Titus GEMM 流水线 |
 | 26 | CuTe 应用(三)：FFPA Split-D | ffpa_attn.cuh 全篇（重点 L31-79+两 kernel） | 19,22,23 | 双 TiledMma（QK Tile<64,64,16>/PV Tile<64,16,16>）；cp.async 与 TMA 两版对照 | 双 TiledMma 数据流图 | @DefTruth FFPA 文；ffpa-cuda-understand skill |
-| 26b | CuTe 应用(四)：超越 cuDNN 的 FlashAttention（sm_120 persist-D 压轴章，2026-09-22 增补） | flash_attn.cuh L3490-4158（Phase 8 块） | 17,18,22-26 | softmax scale·log2e 融合（$\exp2$ 域免乘）；persistent-CTA（dense min(tiles,SMs)/causal 全量 grid 策略）；WS 1P+1C setmaxnreg 128/232；TMA 预取协议（P1/P2 V-first）；V^T composition 零拷贝转置；swizzle atom 按行宽条件选；STSM+TMA epilogue；lazy rescale | scale 融合数据流、WS 架构、smem 布局、流水时序、persistent 调度、epilogue 共 6 张 TikZ inline | tmp/flash_cute_sm120.cu（PRO 5000 实测 236.9T vs cuDNN 227.5T=1.04x） |
+| 26b | CuTe 应用(四)：超越 cuDNN 的 FlashAttention（sm_120 persist-D 压轴章，2026-09-22 增补） | flash_attn.cuh L3490-4158（Phase 8 块） | 17,18,22-26 | softmax scale·log2e 融合（$\exp2$ 域免乘）；persistent-CTA（dense min(tiles,SMs)/causal 全量 grid 策略）；WS 1P+1C setmaxnreg 128/232；TMA 预取协议（P1/P2 V-first）；V^T composition 零拷贝转置；swizzle atom 按行宽条件选；STSM+TMA epilogue；lazy rescale | scale 融合数据流、WS 架构、smem 布局、流水时序、persistent 调度、epilogue 共 6 张 TikZ inline | `flash_attn.cuh` persist-D 块（PRO 5000 实测 240.1T vs cuDNN 230.2T = 1.04×，2026-09-22 同轮口径） |
+| 26c | CuTe 应用(五)：SM120 大 head_dim non-WS Split-D（ffpa-attn 同源移植，2026-09-23 增补） | ffpa_attn.cuh L643-1306（non-WS TMA split-D 教学集） | 19,22,23,26 | tile 128×128（Q 行翻倍提算术强度）；non-WS 256T 全员 MMA + tid=0 内联四路 TMA；QK/V 的 D chunk 解耦（32/64）与 K/V stages 解耦（最优 (3,2)）；跨 kv_tile 预取；STSM+TMA epilogue；FA-4 conditional rescale | tile 划分、TMA 流水、K/V stages 实验、寄存器压力、性能对照共 5 张 TikZ inline | ffpa-attn `csrc/cuffpa/cute/sm_120/split_d.cuh`（PRO 5000 实测 D320=204.1T=2.93× cuDNN） |
 
-### Part V FP8/FP4 HGEMM 篇：量化矩阵乘的数学与 Kernel 工程（2026-09-24 新增，RFC-N）
+### Part V FP8/FP4 HGEMM 篇：量化矩阵乘的数学与 Kernel 工程（2026-09-24 新增，RFC-N/O）
 
-> **代码链路**：LeetCUDA `kernels/interview/fp8_gemm.cuh`（958 行，新增冻结件）+ bench/ 多 TU 接线（`bench/fp8_gemm.cu` test/bench + `bench/bench_leetcuda.cu` CLI）。BF16→FP8 动态量化（per-block/per-row）→ CuTe FP8 GEMM（在线反量化 epilogue）→ BF16 输出，对标 cuBLAS BF16 GEMM（性能 + 精度）。
-> **验证方式**：`book/tests/ch34_*.cu`、`ch35_*.cu` + bench_leetcuda `--fp8-gemm` / `--bench --mnk 4096,4096,4096`（PRO 5000，CUDA_VISIBLE_DEVICES=7，warmup2/repeat3）。
+> **代码链路**：LeetCUDA `kernels/interview/fp8_gemm.cuh`（958 行）+ `fp4_gemm.cuh`（1298 行），两者均为新增冻结件（`anchors.yaml` frozen_at 2026-09-29）+ bench/ 多 TU 接线（`bench/{fp8_gemm,fp4_gemm}.cu` test/bench + `bench/bench_leetcuda.cu` CLI）。BF16→FP8/NVFP4 动态量化（per-block/per-row、NVFP4 两级）→ CuTe GEMM（在线反量化 epilogue）→ BF16 输出，对标 cuBLAS BF16 GEMM（性能 + 精度）。
+> **验证方式**：`book/tests/ch34_*.cu`、`ch35_*.cu`、`ch36_*.cu`、`ch37_*.cu` + bench_leetcuda `--fp8-gemm` / `--fp4-gemm` / `--fp4-gemm-sweep` / `--bench --mnk 4096,4096,4096`（PRO 5000，CUDA_VISIBLE_DEVICES=7，warmup2/repeat3）。
 > **性能基线**（PRO 5000 实测，**默认档 = 128×256×128/s2，2026-09-24 起**）：kernel-only 440.7 TFLOPS @4096³（2.70x vs cuBLAS BF16 163.5；手写 bf16 HGEMM 上限口径 1.81x）；ws 440.9；e2e 含量化 186.8（1.14x）；B 离线 e2e 411.2（2.52x）；tile 扫描最优档 443.7/487.8 T @4096³/8192³（比 128³/s3 快 7.7%/5.9%）——但 2048³ 上宽 tile 因波次量化反慢 17%（128³/s3 292.8 T vs 128×256/s2 243.6 T）；rel_fro=0.036 全粒度组合。
 
 | 章 | 标题 | 源码区间 | 前置 | 核心公式/概念 | 关键图 | 主参考 |
 |---|---|---|---|---|---|---|
 | 34 | FP8 量化 GEMM 的数学：per-block/per-row 量化与误差模型（新写） | fp8_gemm.cuh L45-284（量化数学+三个 aux kernel） | 10,11,27 | $\hat x=\mathrm{clamp}(\mathrm{round}(x\cdot 448/\mathrm{amax}))$；per-block $\delta=\mathrm{amax}(A_{tile})/448$ vs per-row；fold 进 exp/acc 的 scale 代数 $C=(\delta_a\delta_b)\cdot\sum\hat A\hat B$；误差模型（随机符号 $\sqrt2\sigma\varepsilon\approx5\%$ 上界、max_err 随 $\sqrt K$ 增长）；B^T 双朝向 staging（gmem tile→smem 散写+32B store） | e4m3 位域图、粒度谱系图、B^T staging 图（3 张 TikZ inline） | fp8_gemm.cuh 头注释；ffpa-cuda-understand 量化数学章 |
 | 35 | FP8 GEMM CuTe 实现：SM89 atom、多级流水与 WS ★ | fp8_gemm.cuh L346-860（traits+两 kernel+API） | 22,23,24,34 | SM89_16x8x32_F32E4M3E4M3_TN atom + M8N1 TiledMMA（acc 4×BN/8 f32/T）；默认 128×256×BK=128 SW128、kStages=2=96KB（讲解主线仍用 128³/s3）；O staging 复用整个 A+B 区；mbarrier full(TX)/empty(256)；epilogue rowcol 查表 $s_a[m]\cdot s_b[n]$→cvt→STSM r2s→TMA store；WS 384T（128P+256C）+ setmaxnreg 32/232 直调 cutlass::arch API（ffpa persist-D 同款） | pipeline 架构图、流水时序图、epilogue 四步图、性能柱状图（4 张 TikZ inline） | ffpa-attn persist_D.cuh WS 结构；ch26b/26c WS 框架 |
+| 36 | FP4 GEMM（一）：NVFP4 线格式、两级量化与误差模型（2026-09-24 增补，RFC-O） | fp4_gemm.cuh L55-393（Phase 10.1-10.2b：线格式工具 + A/B 量化 kernel） | 23,31,34 | e2m1 数据 + ue4m3 SF（`kSFVec=16`、每 128 行块）；两级折叠恒等式（与 ch34 的 fp8 单级 fold 同构）；512 B SF 原子 gmem 布局；量化步长推到 ≈14.4% 误差上界；B 侧 K 切 8 片整数 `atomicMax` + $128(n)\times64(k)$ tile 量化 | NVFP4 位域图、两级量化流水图、SF gmem 布局图（3 张 TikZ inline） | fp4_gemm.cuh Phase 10.1-10.2 头注释；ffpa-cuda-understand NVFP4 章 |
+| 37 | FP4 GEMM（二）：blockscaled MMA、SF 流水与 cuBLAS 对比（2026-09-24 增补，RFC-O） | fp4_gemm.cuh L395-1297（Phase 10.3-10.8：traits + non-WS/WS 双 kernel + API + B 离线） | 23,26b,26c,35,36 | `mma.sync.aligned.m16n8k64.kind::mxf4nvf4.scale_vec::4X`（TN_VS atom、AtomLayoutMNK=4×2×1）；SW32 数据 + 512 B SF smem 原子（四路 TMA）；workspace 六段；形状自适应 128×256/s6 与 128×128/s4；epilogue 只剩 $\delta$ 一次乘法；WS 变体的 SF 死锁 | 架构图、指令图、SF 原子图、non-WS 流水图、epilogue 图、性能对比图（6 张 TikZ inline） | fp4_gemm.cuh Phase 10.3-10.8；ffpa-attn fp4 CuTe 生产 kernel |
 
-> **Part V 特别约定**（区别于 Part I-IV）：fp8_gemm.cuh 为本仓新增冻结件（随本增补 commit 冻结进 anchors.yaml）；setmaxnreg 部分直接调 `cutlass::arch::warpgroup_reg_{de,}alloc`（不走 NOTES_V2_REG_* 宏，与 ffpa-attn 生产代码同款），教学上与附录 A 的本地 inline-asm 版互为对照。
+> **行号口径**：上表卡片的 L 区间是写作期估值，现行以 `scripts/anchors.yaml` 为准——ch34 = `fp8_gemm.cuh` L49-300、ch35 = L302-957、ch36 = `fp4_gemm.cuh` L55-393、ch37 = L395-1297。
+> **Part V 特别约定**（区别于 Part I-IV）：fp8_gemm.cuh / fp4_gemm.cuh 为本仓新增冻结件（随增补 commit 冻结进 anchors.yaml，frozen_at 2026-09-29）；setmaxnreg 部分直接调 `cutlass::arch::warpgroup_reg_{de,}alloc`（不走 NOTES_V2_REG_* 宏，与 ffpa-attn 生产代码同款），教学上与附录 A 的本地 inline-asm 版互为对照。
 
 ### Part VI FP8/FP4 Attention 篇：量化注意力的数学与 kernel 工程（2026-09-16 新增）
 

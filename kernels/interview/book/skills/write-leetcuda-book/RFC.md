@@ -14,7 +14,6 @@
 
 | 里程碑 | 内容 | 依赖 | 状态 |
 |---|---|---|---|
- |
 | RFC-A | 冻结件（记号表/模板/锚点脚本/源码冻结） | RFC-0 | 完成（2026-09-11）|
 | RFC-B | 知乎资料全集（专栏枚举+图片归档） | RFC-0 | 取消（2026-09-18：被附录 E 成表 + drawio 全量重建取代，详见 §4 注记）|
 | RFC-C | Part I 基础篇 ch1-7 | RFC-A（素材按需 RFC-B） | 完成（2026-09-11，91 页/42 PASS）|
@@ -29,7 +28,8 @@
 | RFC-L | ch26b 增补章：sm_120 persist-D FlashAttention（超越 cuDNN 压轴章） | RFC-F/K（ch20-26 前置） | 完成（2026-09-22：源码整合 flash_attn.cuh L3490-4170 + notes-v2 接入 + 6/6 测试 PASS + bench 复测 230.5T；6 张 TikZ inline 图，用户指定例外于 drawio 主路径）|
 | RFC-M | ch26c 增补章：SM120 大 head_dim non-WS Split-D（ffpa-attn 同源移植 + K/V stages 解耦实验） | RFC-F/K/L（ch26 前置） | 完成（2026-09-23：ffpa_attn.cuh L643-1306 整合 + tests 12/12 + K/V stages 实验 (3,2) D320=204.1T=2.93x cuDNN + 正文 4967 字 5 TikZ 图）|
 | RFC-N | Part V FP8/FP4 HGEMM 篇 ch34-35（fp8_gemm.cuh 新增冻结件 + 双口径加速比 + cuBLAS 基线剖析 + B 离线量化） | RFC-D/F/K（ch22-24、ch27 前置） | 完成（2026-09-24：fp8_gemm.cuh 943 行 + tests 28 条 PASS 断言（ch34 8 + ch35 20，含 6 条逐 bit 等价）+ 4096³ 400.5T=2.45x/上限 1.66x + B 离线量化 376.8T=2.30x + 8 TikZ 图 + 全书改号 Part V→VI）|
-依赖图（执行实况）：`RFC-0 → RFC-A → RFC-C → RFC-D → RFC-E → RFC-F → (RFC-G ∥ RFC-H ∥ RFC-I) → RFC-J`；RFC-B 于 2026-09-18 取消（素材职能被附录 E + drawio 全量重建接管）；`RFC-K 依赖 RFC-E/F 素材，与 RFC-G/H/I 并行，完成后并入 RFC-J 收口`
+| RFC-O | Part V FP8/FP4 HGEMM 篇 ch36-37（NVFP4 两级量化 + block-scaled MMA，fp4_gemm.cuh 新增冻结件） | RFC-D/F/N（ch22-24、ch34/35 前置） | 完成（2026-09-24：fp4_gemm.cuh 1298 行 + tests ch36/ch37 全 PASS（含 4 条逐 bit 等价）+ kernel 614.6/648.7T（128×256/s6 ws）+ e2e FP4 334.2/373.4T 反超 FP8 + 误差模型 14.4% 与实测 14.37% 吻合；ch36/ch37 共 9 张 TikZ 图）|
+依赖图（执行实况）：`RFC-0 → RFC-A → RFC-C → RFC-D → RFC-E → RFC-F → (RFC-G ∥ RFC-H ∥ RFC-I) → RFC-J`；RFC-B 于 2026-09-18 取消（素材职能被附录 E + drawio 全量重建接管）；`RFC-K 依赖 RFC-E/F 素材，与 RFC-G/H/I 并行，完成后并入 RFC-J 收口`；增补里程碑 RFC-L（ch26b）/RFC-M（ch26c）/RFC-N（ch34-35）/RFC-O（ch36-37）于 2026-09-22..24 依次完成并并入主线
 
 ## 2. RFC-0 脚手架
 

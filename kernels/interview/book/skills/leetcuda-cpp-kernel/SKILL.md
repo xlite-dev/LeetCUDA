@@ -48,7 +48,7 @@ skill 只负责把任务路由到正确的章节，**不重写、不复述书内
 
 | 路径（相对书根） | 内容 |
 |---|---|
-| `chapters/chNN-<slug>.tex` | 41 个章节文件：ch00–ch37 主线 38 章 + ch19b 白皮书导读 + ch26b/ch26c 增补章 + `_template.tex` 章模板（中文，XeLaTeX 源；含行号锚定的源码解析、踩坑记录、实测性能表） |
+| `chapters/chNN-<slug>.tex` | 42 个 tex（41 章正文 + `_template.tex` 章模板）：ch00–ch37 主线 38 章 + ch19b 白皮书导读 + ch26b/ch26c 增补章（中文，XeLaTeX 源；含行号锚定的源码解析、踩坑记录、实测性能表） |
 | `chapters/wp/wp0-7.tex` | ch19b 分节正文：CuTe 官方白皮书（Cris Cecka, arXiv:2603.02298）完整中文译注 |
 | `figures/drawio/fig-<chNN>-<n>-<slug>/` | **历史留档**：旧版 `.drawio`/`gen.py`/`*.png` 三件套（章内图已全部迁 TikZ inline，仅作旧版对照，勿当现行图源） |
 | `figures/ffpa/`、`figures/tikz/`、`figures/misc/` | ffpa bench 图留档 / wp6 白皮书 2 张官方架构截图 / 封面 `cover.pdf` 等杂项 |
@@ -56,7 +56,7 @@ skill 只负责把任务路由到正确的章节，**不重写、不复述书内
 | `cute-zhihu/` | 独立合集文档：reed（13 篇）+ 竹熙佳处（7 篇）CuTe 知乎系列忠实整理，源在 `cute-zhihu/chapters/`，成品 `cute-zhihu/cute-zhihu.pdf` |
 | `references/` | `zhihu-inventory.md`（附录 E 数据源）+ `fulltext/`（7 篇知乎全文 markdown，可直接 grep） |
 | `appendices/appA..appE` | 见下文附录路由 |
-| `tests/` | 每章最小正确性测试（CPU fp64 对拍，`build_tests.sh --arch sm_120a --all`） |
+| `tests/` | 31 个单章正确性测试（CPU fp64 对拍，`build_tests.sh --arch sm_120a --all`）；ch00（工具章）、ch15（原理章）、ch27-33（Part VI 改走 `ffpa_attn.bench` parity）没有 .cu |
 | `book.pdf` | 编译成品（584 页，可直接 pdftotext 按页抽取） |
 
 ## ⚠️ 第 1.5 步：强制约束——加载即读章节（优先级高于"按需读取纪律"）
@@ -86,8 +86,9 @@ skill 只负责把任务路由到正确的章节，**不重写、不复述书内
 ## 第二步：任务路由表
 
 先按任务关键词找到章，再读该章 tex（**先 `grep -n '\\\\section'` 看目录，再按行区间读**，
-不要整章全文读入）。**全书章内配图已 100% 迁为 TikZ inline**（2026-09-28 核实：
-ch00–ch37 每章 2-11 个 `tikzpicture`，`chapters/` 内 `\includegraphics` 全部为
+不要整章全文读入）。**全书章内配图已 100% 迁为 TikZ inline**（2026-10-19 复核：
+`chapters/*.tex` 194 处 + `chapters/wp/*.tex` 34 处 = 228 处 `tikzpicture`，
+ch00–ch37 每章 2-11 处；`chapters/` 内 `\includegraphics` 全部为
 `% was:` 历史注释；全书活跃图片引用仅 3 处——封面 `figures/misc/cover.pdf` +
 ch19b/wp6 的 2 张官方架构截图），现行图源都在章节 tex 内。
 
@@ -211,10 +212,11 @@ strided 通用）、量化数学与 scale 折叠、性能 RFC 与已证伪清单
 
 ### 代码文件 references（kernels/interview 源码直定位）
 
-按任务路由到章后，配套可参考源码直接按此表打开（行数为实测值；行号级
-冻结映射见 `appendices/appD-source-index.tex`，老文件基准 commit `6cd32de`；
-`fp8_gemm.cuh`/`fp4_gemm.cuh` 及 bench/ 下 10 个 `.cu`（bench_leetcuda.cu +
-9 模块 .cu，2026-09-29 迁入）的行号冻结以 `book/scripts/anchors.yaml` 为准）：
+按任务路由到章后，配套可参考源码直接按此表打开（行数为实测值，权威口径是
+`book/scripts/anchors.yaml`：`frozen_at 2026-09-29` / `repo_commit 3b52c5c`，含
+全部 `.cuh` 与 bench/ 下 10 个 `.cu`——bench_leetcuda.cu + 9 模块 .cu；
+行号级章节映射见 `appendices/appD-source-index.tex`，其 permalink 基准为老
+commit `6cd32de`，该 commit 里 `ffpa_attn.cuh` 只有前 641 行）：
 
 | 文件（相对 `<LeetCUDA_DIR>/kernels/interview/`） | 行数 | 内容 | 对应章 |
 |---|---|---|---|
@@ -223,9 +225,9 @@ strided 通用）、量化数学与 scale 折叠、性能 RFC 与已证伪清单
 | `sgemm.cuh` | 434 | SGEMM 阶梯（block-tile/Vec4/双缓冲 → TF32 WMMA） | ch09–10 |
 | `hgemm.cuh` | 2100 | mma.sync m16n8k16 与 ldmatrix、XOR swizzle、TMA/WGMMA/mbarrier、SM120 TMA+WS、CuTe 对照片段与 CuTe HGEMM 实战 | ch11–14、ch20–21、ch23–24 |
 | `flash_attn.cuh` | 4179 | FA 原理头注释、FA2 split-Q+MMA、FA2 TMA+WS、FA3 双 consumer、CuTe FA 三实现、persist-D（`flash_attn_cute_persist_d_sm120` L3635 起） | ch15–18、ch25、ch26b |
-| `ffpa_attn.cuh` | 641 | FFPA Split-D 全篇、双 TiledMMA/traits（M4N2 对照） | ch19、ch22、ch26 |
-| `fp8_gemm.cuh` | 958 | e4m3 量化前处理（per-row/per-block，L45-284）+ CuTe 主 GEMM、在线反量化（L303-955） | ch34-35 |
-| `fp4_gemm.cuh` | 1300 | NVFP4 在线量化 GEMM：A/B 两级量化 kernel 与误差模型（L58-366）+ block-scaled MMA 主 kernel、SF 流水、workspace（L395-1299）；形状自适应入口 `fp4_gemm_use_wide_tile`（MNK≥4096 用 128×256/s6，否则保守 128×128/s4） | ch36-37 |
+| `ffpa_attn.cuh` | 1307 | FFPA Split-D 全篇、双 TiledMMA/traits（M4N2 对照）；L643-1306 为 SM120 大 head_dim non-WS split-D TMA 教学集（ffpa-attn `split_d.cuh` 移植，与 ch26c 同源） | ch19、ch22、ch26、ch26c |
+| `fp8_gemm.cuh` | 958 | e4m3 量化前处理（per-row/per-block，L49-300）+ CuTe 主 GEMM、在线反量化（L302-957） | ch34-35 |
+| `fp4_gemm.cuh` | 1298 | NVFP4 在线量化 GEMM：A/B 两级量化 kernel 与误差模型（L55-393）+ block-scaled MMA 主 kernel、SF 流水、workspace（L395-1297）；形状自适应入口 `fp4_gemm_use_wide_tile`（MNK≥4096 用 128×256/s6，否则保守 128×128/s4） | ch36-37 |
 | `common.cuh` | 803 | TMA/mbarrier/setmaxnreg/WGMMA 宏封装与 swizzle 工具箱（逐段解析见 appA） | ch12–14、appA |
 | `bench/bench_leetcuda.cu` | 440 | main+CLI 总装（多 TU）：extern 声明 + 模板实例化 wrapper 调用；host test/bench 拆入 `bench/{base,sgemv,sgemm,hgemm,fp8_gemm,fp4_gemm,flash_attn,ffpa_attn}.cu` + `bench/utils.cu` 共享符号（~30 kernel 的 WHY+HOW 注释与 10 Phase 递进在 `.cuh` 内）；`--bench` 辅助工具与 `--fp8-gemm`/`--fp4-gemm`/`--fp4-gemm-sweep` GEMM 专项 bench CLI 不变（`bin/leetcuda_bench_*.bin` 源，`build.sh --arch sm_120a --jobs 8` 并行编译） | 全书总装、appC |
 | `bench/deprecated/bench_attn.cu` | — | （已弃用）FA2 CuTe TMA+MMA+WS vs cuDNN SDPA 专项 bench | ch00、ch17/25 |
@@ -282,7 +284,7 @@ Part VI（ch27–33，量化 attention）教学 kernel 源码在 `<FFPA_ATTN_DIR
 - **FP8/FP4 GEMM 基线（PRO 5000，cuBLAS BF16 参照 163.1/163.4 T @ 4096³/8192³）**：
   FP8 ws 128×256/s2 kernel-only 443.7/487.8 T（2.72×/2.99×），e2e 含量化
   186.5/314.6 T；NVFP4 形状自适应（MNK≥4096 宽档 128×256/s6，否则保守
-  128×128/s4）：4096³ kernel-only 603.4/614.1 T（3.69×/3.76×）、e2e 408.2/414.5 T
-  **反超 FP8 e2e**；8192³ 639.6/648.6 T、e2e 467.4/472.3；B 离线部署口径
+  128×128/s4）：4096³ kernel-only 603.4（NonWS）/614.1 T（WS）=3.69×/3.76×、
+  e2e 408.2 T **反超 FP8 e2e**；8192³ 639.6/648.6 T、e2e 467.4 T；4096³ B 离线
   550.5/561.2 T（= kernel 的 91-93%）。量化成本 109 µs 是加性的，宽档下占 e2e
   32%——占比上升是主 kernel 变快所致，不是量化变慢（ch37 有防误读句）。

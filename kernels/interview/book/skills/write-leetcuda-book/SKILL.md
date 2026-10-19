@@ -1,7 +1,7 @@
 ---
 name: write-leetcuda-book
 description: >-
-  把 LeetCUDA kernels/interview 教学源码（base/sgemv/sgemm/hgemm/flash_attn/ffpa_attn/fp8_gemm.cuh/fp4_gemm.cuh）+ ffpa-attn CuTe sm_120 源码（csrc/cuffpa/cute fp8/fp4，commit 861d75e）写成中文 CUDA 技术书（6 Part 38 章 + CuTe 白皮书导读 + 5 附录，XeLaTeX→PDF，终态 585 页零 error）。RFC-0..N 已全部完成（2026-09-24，Part V=FP8/FP4 HGEMM 篇 ch34-37 新增，原 FP8/FP4 Attention 篇顺延为第六部分），当前任务形态 = 增补章（RFC-L/M/N 模式）/复审/勘误/图重绘。当任务涉及：撰写或修改书稿章节（chapters/chNN*.tex）、每章最小测试（book/tests/chNN_*.cu）、ffpa_attn.bench 验证、知乎资料收集与提炼、TikZ inline 图新建（主路径）与存量 drawio 图维护、源码注释核查、勾选 RFC 进度、构建/审校 book.pdf 时使用。规范源=BOOK_PLAN.md（章节结构/每章 DoD 八条/源码冻结/容差表/图片管线），执行跟踪=RFC.md（RFC-0..N 里程碑 + 各章卡片 + 图清单 + 知乎参考种子表）。
+  把 LeetCUDA kernels/interview 教学源码（base/sgemv/sgemm/hgemm/flash_attn/ffpa_attn/fp8_gemm.cuh/fp4_gemm.cuh）+ ffpa-attn CuTe sm_120 源码（csrc/cuffpa/cute fp8/fp4，commit 861d75e）写成中文 CUDA 技术书（6 Part 41 章 = 38 主线 + CuTe 白皮书导读 + ch26b/ch26c 增补，5 附录；XeLaTeX→PDF，终态 584 页零 error）。RFC-0..O 已全部完成（2026-09-24，Part V=FP8/FP4 HGEMM 篇 ch34-37 新增，原 FP8/FP4 Attention 篇顺延为第六部分），当前任务形态 = 增补章（RFC-L/M/N/O 模式）/复审/勘误/图重绘。当任务涉及：撰写或修改书稿章节（chapters/chNN*.tex）、每章最小测试（book/tests/chNN_*.cu）、ffpa_attn.bench 验证、知乎资料收集与提炼、TikZ inline 图新建（主路径）与存量 drawio 图维护、源码注释核查、勾选 RFC 进度、构建/审校 book.pdf 时使用。规范源=BOOK_PLAN.md（章节结构/每章 DoD 八条/源码冻结/容差表/图片管线），执行跟踪=RFC.md（RFC-0..O 里程碑 + 各章卡片 + 图清单 + 知乎参考种子表）。
 user-invocable: true
 ---
 
@@ -11,14 +11,14 @@ user-invocable: true
 
 | 文件 | 角色 |
 |---|---|
-| `BOOK_PLAN.md` | **规范源**：5 Part 35 章+导读结构、每章模板与 DoD 八条（含 Part V 特化 DoD）、素材/测试/图表/公式工程、LaTeX 管线、风险与验收 |
-| `RFC.md` | **执行跟踪**：RFC-0..M 里程碑 checkbox（B 已取消）、每章执行卡片、图清单登记表、知乎参考种子表 |
+| `BOOK_PLAN.md` | **规范源**：6 Part 41 章（38 主线 + ch19b 导读 + ch26b/ch26c 增补）+ 5 附录、每章模板与 DoD 八条（含 Part V 特化 DoD）、素材/测试/图表/公式工程、LaTeX 管线、风险与验收 |
+| `RFC.md` | **执行跟踪**：RFC-0..O 里程碑 checkbox（B 已取消）、每章执行卡片、图清单登记表、知乎参考种子表 |
 
 绝对路径：`/workspace/dev/vipshop/LeetCUDA/kernels/interview/book/skills/write-leetcuda-book/`（已软链到 `/workspace/dev/vipshop/.github/skills/write-leetcuda-book`）。
 
 ## 工作流（每次任务）
 
-1. **领任务**：读 `RFC.md` 里程碑总览表 + 对应章节的执行卡片。RFC-0..M 已全部收口（RFC-B 于 2026-09-18 取消，职能归附录 E + drawio 全量重建），存量只剩零星复审项（如 B.5 RoPE 参考）；新需求 = 用户新点名的增补章/增强项，按 RFC-L/M 模式新开里程碑条目（源码整合→测试→bench→正文→接线→验收→code review→用户增强）逐项推进。
+1. **领任务**：读 `RFC.md` 里程碑总览表 + 对应章节的执行卡片。RFC-0..O 已全部收口（RFC-B 于 2026-09-18 取消，职能归附录 E + drawio 全量重建；RFC-O = ch36/ch37 NVFP4 量化 GEMM，2026-09-24），存量只剩零星复审项（如 B.5 RoPE 参考）；新需求 = 用户新点名的增补章/增强项，按 RFC-L/M/O 模式新开里程碑条目（源码整合→测试→bench→正文→接线→验收→code review→用户增强）逐项推进。
 2. **读规范**：`BOOK_PLAN.md` §3 章节卡片（源码区间/宏/公式/图/参考/测试映射）+ §4 模板与 DoD + 相关工程节。
 3. **执行**：章节任务四合一 = 正文 tex + 最小测试 .cu + 注释核查 + 增量 bench。
 4. **验收**：对照 §4.2 DoD 八条逐条自检（编译零 error / 锚点断言 / CHECKLOG / 测试 PASS / bench 落盘 / 图表登记 / 延伸阅读 / pdftotext 抽查）。**新章/增补章写完后，强制用 `remove-tech-ai-tone` skill 做文风自检**（八类 AI 味模式 + 词表逐词 grep，存疑保留；图内文字只做等宽替换），通过后才进入下一步。
@@ -30,12 +30,12 @@ user-invocable: true
 2. **正文形态**：原理讲解 + 关键代码段（每段 ≤40 行，`linerange` 多段裁剪，`firstnumber=auto`）；完整代码给附录 D 的 **GitHub commit permalink**；每章正文（非 listings）≥3500 字。
 3. **测试**：`book/tests/chNN_*.cu` 无 cuBLAS/cuDNN 依赖，CPU fp64 参考 + 容差三档（F32Acc 1e-3 / F16Acc 5e-2 / TF32 1e-2），规模 ≤512，arch 不在位输出 SKIP；行数 ≤300（基础章）/≤500（复杂章）。
 4. **知乎素材**：五步法（枚举→全文落 `zhihu-analysis/`→提炼→成文不照抄→附录 E 汇总）；**图片直接引用+出处标注**（作者/文章/链接/日期），原图归档 `book/figures/zhihu/`；水印/作者角标/平台 logo 一律标记为非内容元素，不得进入书内图。
-5. **图管线（TikZ 主路径）**：新图默认 **TikZ inline** 写在章节 tex 内，用 `tikz-diagrams` skill（模板/编译渲染/视觉 QA 工具链；ch26b 六图先例，上游 5be940f 亦将存量图大规模迁为 tikzpicture）。drawio 降为**存量维护**路径（ch20-32 仍 36 处 png 引用）：`drawio-reconstruction` skill 为主（inventory→重建→审查闭环），`drawio-diagram-builder`/`drawio-flow-forge` 辅助。**执行模式：主 agent 直接做，不派 task agent**（闭环子代理实测易卡死，用户 2026-09-11 拍板）。审查结论如实记 audit（自审需标注）。drawio 质量三查（XML well-formed + COVER=0 + 渲染宽不越界，见「drawio 制图铁律」）；`.drawio` 源文件必须入库（用户要求可手改，勿只提交 PNG）。
+5. **图管线（TikZ 主路径）**：新图默认 **TikZ inline** 写在章节 tex 内，用 `tikz-diagrams` skill（模板/编译渲染/视觉 QA 工具链；ch26b 六图先例，上游 5be940f 亦将存量图大规模迁为 tikzpicture）。drawio 已全部退役为**历史留档**（2026-09-28 迁移完成：`chapters/` 内 `\includegraphics` 全是 `% was:` 注释，41 章正文共 228 处 TikZ inline；`figures/drawio/` 的 64 套三件套只作旧版对照）。仅当用户点名改某张旧 drawio 图时才走存量维护：`drawio-reconstruction` skill 为主（inventory→重建→审查闭环），`drawio-diagram-builder`/`drawio-flow-forge` 辅助。**执行模式：主 agent 直接做，不派 task agent**（闭环子代理实测易卡死，用户 2026-09-11 拍板）。审查结论如实记 audit（自审需标注）。drawio 质量三查（XML well-formed + COVER=0 + 渲染宽不越界，见「drawio 制图铁律」）；`.drawio` 源文件必须入库（用户要求可手改，勿只提交 PNG）。
    **⚠️ TikZ 图强制视觉验收（2026-09-28 用户定为铁律）**：TikZ 图出现**文文重叠/图文重叠**极其常见（坐标估算的文字宽度与真实渲染字宽不符所致，N.19 七图 + O.18 六图全是此类）。任何新建/修改 tikzpicture 后，**必须**真实渲染并 view_image 逐角落检查确认无重叠后才算完成——只看代码/编译零 error **不算**验收。配方：抽图到 standalone（`border=8pt` + `\usepackage[UTF8,fontset=fandol]{ctex}`，fandol 失败则 `fontset=none` + `\setCJKmainfont{Noto Sans CJK SC}`，CJK 文本必须真实渲染、禁止用假文本代替——重叠取决于真实字宽）+ 从 `book/preamble.tex` 复制用到的颜色/样式定义 → `xelatex -interaction=nonstopmode` → `pdftoppm -r 150 -png` → view_image；修复优先级：平移节点/换 anchor/`text width`+`align` 换行/箭头改走线/竖排改横排（横排更宽，要挪到空白带）/字号降档（≥\scriptsize）。修法只动排版不动内容。foreach 标签里的循环变量（如 `16\i`）会被文本替换成数字，语义上想保留符号 i 必须改用显式值表（`{0/0/16,1/16/32,...}`）。
 6. **行文风格（作者基线）**：参考 @DefTruth《图解:从Online-Softmax到FlashAttention V1/V2/V3》与《WINT8/4》系列——**原理一定要讲细**：公式逐项展开、指令逐 bit/逐字段解释、先直觉后形式化再代码；中文叙述、术语保留英文。其余可自由发挥。
 7. **注释核查五类**：F1 架构事实（Prog Guide+cutlass skill arch guides）/ F2 PTX（本地 ptx-docs）/ F3 数学（独立推导）/ F4 性能断言（标来源）/ F5 历史陈述（对原论文）。
-8. **构建**：CWD=`book/`，`TEXMFCNF=../tex/: xelatex -interaction=nonstopmode book.tex` ×2（或 `./build.sh`）；本机已有 xelatex+ctexbook+Noto CJK（已验证）。TOC 全量装载报 `main_memory capacity exceeded`（PDF 目录丢失）时须 `fmtutil-sys --byfmt xelatex` 重建 fmt——`texmf.cnf` 的 main_memory 仅 fmt 生成期生效，改配置不重建无效（2026-09-22 L.9 根因）。
-9. **ReadTheDocs 同步检查（改了 book 内容后强制，2026-10-10 定）**：任何书稿改动（`chapters/*.tex`、TikZ 图、封面）完成后，**必须**按 `docs/readthedocs/README.md` 的「内容更新与自动同步（改书稿前必读）」一节核对站点能否自动更新：① 正文/公式/表格改动 → push 即自动更新（中英文均然）；② **改 TikZ 图内中文文字或新增含中文图 → 必须先跑 `python -m tools.translate_figures --proxy …` 补 `docs/readthedocs/i18n/figures-en.json` 词典并 commit**，否则 RTD `post_build` 的词典覆盖核对不过、构建红灯（改的是图布局、节点中文文字未动则不受影响）；③ **改封面文案 → 必须重编译 `figures/misc/cover.pdf` 并 commit，英文封面另跑 `tools/build_cover_en` commit `cover.png`**，否则站点封面停留旧版。跳过此检查 = RTD 构建挂或中英文档静默脱节。
+8. **构建**：CWD=`book/` 跑 `./build.sh`（两遍 `TEXMFCNF=../tex: xelatex -interaction=nonstopmode book.tex`，**尾部是冒号不是斜杠**——冒号表示追加系统默认配置，否则找不到 `xelatex.fmt`；`kernels/interview/tex/` 目录已不存在，实际靠系统 fmt 兜底）；本机已有 xelatex+ctexbook+Noto CJK（已验证）。TOC 全量装载报 `main_memory capacity exceeded`（PDF 目录丢失）时须 `fmtutil-sys --byfmt xelatex` 重建 fmt——`texmf.cnf` 的 main_memory 仅 fmt 生成期生效，改配置不重建无效（2026-09-22 L.9 根因）。
+9. **ReadTheDocs 同步检查（改了 book 内容后强制，2026-10-10 定）**：任何书稿改动（`chapters/*.tex`、TikZ 图、封面）完成后，**必须**加载 `leetcuda-tex-to-readthedocs` skill，按其 `references/sync-and-deploy.md` 的「内容更新与自动同步 / 改稿检查清单」核对站点能否自动更新（`docs/readthedocs/README.md` 已缩为纯入口，细节统一维护在 skill 里）：① 正文/公式/表格改动 → push 即自动更新（中英文均然）；② **改 TikZ 图内中文文字或新增含中文图 → 必须先跑 `python -m tools.translate_figures --proxy …` 补 `docs/readthedocs/i18n/figures-en.json` 词典并 commit**，否则 RTD `post_build` 的词典覆盖核对不过、构建红灯（改的是图布局、节点中文文字未动则不受影响）；③ **改封面文案 → 必须重编译 `figures/misc/cover.pdf` 并 commit，英文封面另跑 `tools/build_cover_en` commit `cover.png`**，否则站点封面停留旧版。跳过此检查 = RTD 构建挂或中英文档静默脱节。
 
 ## 工具链速查
 
@@ -80,7 +80,7 @@ python3 /workspace/dev/vipshop/LeetCUDA/kernels/interview/book/scripts/verify_an
 ```
 kernels/interview/book/
 ├── book.tex / preamble.tex / build.sh      # RFC-0 产出
-├── chapters/ch00-ch33 + ch19b/ch26b/ch26c 增补 + wp/ 白皮书导读 … appendices/  # RFC-C..M 产出
+├── chapters/ch00-ch37 + ch19b/ch26b/ch26c + wp/ 白皮书导读 … appendices/  # RFC-C..O 产出
 ├── figures/{ascii,zhihu,drawio,ffpa,misc,tikz}/
 ├── tests/{common_test.h, chNN_*.cu, build_tests.sh}
 ├── notes/ references/ scripts/ CHECKLOG.md
@@ -95,8 +95,8 @@ kernels/interview/book/
 ## 关联 skill
 
 - `remove-tech-ai-tone`（**文风自检（强制）**：新章/增补章完成、commit 前必跑——技术文去 AI 味八类模式 + 高频词表 + 保留词表 + 验证工作流；目标文风「精确、简洁、沉稳、直接」。全书 2026-09-28 四轮扫描（~305 处）沉淀的词表源于此 skill）
-- `tikz-diagrams`（**图主路径**：TikZ inline 写在章节 tex 内——全书 36 章已含 176 处 tikzpicture（ch26b/ch26c 全 TikZ 先例 + 上游 5be940f 大迁移）；提供模板/编译渲染/视觉 QA 工具链，产出 .tex+.pdf+.png）
-- `drawio-reconstruction`（drawio **存量图维护**：ch20-32 仍有 36 处 drawio png 引用，重建走 inventory→审查闭环）、`drawio-diagram-builder` / `drawio-flow-forge`（存量 drawio 修改/新建）
+- `tikz-diagrams`（**图主路径**：TikZ inline 写在章节 tex 内——2026-10-19 实测 41 章正文共 228 处 tikzpicture（`chapters/*.tex` 194 + `wp/` 34），ch26b/ch26c 全 TikZ 先例 + 上游 5be940f 大迁移；提供模板/编译渲染/视觉 QA 工具链，产出 .tex+.pdf+.png）
+- `drawio-reconstruction`（drawio **仅历史留档**：迁移已完成、无活跃 png 引用；用户点名改旧图时才走 inventory→审查闭环）、`drawio-diagram-builder` / `drawio-flow-forge`（存量 drawio 修改）
 - `zhihu`（资料五步法）
 - `cuda-cpp-kernel`（ptx-docs=F2 核查源）、`cutlass-cpp-kernel`（arch guides=F1 核查源）、`cuda-auto-tune`（bench 复测方法论）
 - `ffpa-cuda-understand`（ch19/26/26c 大 D split-D 背景）
