@@ -24,6 +24,12 @@ It covers **Tensor/CUDA Cores**, [200+ CUDA kernels](leetcuda-pdf), [HGEMM][leet
 
 Please also check out our production-ready **Kernel Library**: [**ffpa-attn**](https://github.com/vipshop/ffpa-attn) - Fast and Memory-Efficient Exact Attention (**BF16/FP16/FP8/FP4**) for Large Headdim, **1.5x~15x**🔥🔥 speedup over standard PyTorch SDPA.
 
+<div align="center">
+
+<a href="https://trendshift.io/repositories/83964?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-83964" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/83964/daily?language=Cuda" alt="xlite-dev%2FLeetCUDA | Trendshift" width="300"/></a>
+
+</div>
+
 ## 📖 Quick Start
 
 ```bash
