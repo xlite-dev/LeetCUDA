@@ -45,9 +45,9 @@
 - **窄屏**（≤700px）取消浮动、徽章落到标题上方，避免压住标题。
 - 改完照例 `touch build/src/index.md` 再 `./build.sh`；验证看首页截图（`tools/visual_check --only index --width 1400` 与 `--width 1920` 各一张，标题必须仍是一行）。
 
-## 右上角「Go to repository」按钮
+## 右上角仓库按钮（`xlite-dev/LeetCUDA`）
 
-每个文档页右上角（面包屑行右侧）的仓库入口，点击直达 <https://github.com/xlite-dev/LeetCUDA>。
+每个文档页右上角（面包屑行右侧）的仓库入口，按钮文字直接显示仓库名 `xlite-dev/LeetCUDA`（不用「Go to repository」这类动词短语——用户 2026-10-20 指定），点击直达 <https://github.com/xlite-dev/LeetCUDA>。
 
 - **落位**：`_templates/breadcrumbs.html` 的 `breadcrumbs_aside` 块。面包屑模板每页都渲染（含 `genindex` / `search`），所以按钮不用像「下载 PDF」那样再补侧栏兜底；它随页面滚动，不做固定悬浮。
 - **链接**：`conf.py` 的 `html_context["leetcuda_repo_url"]`，真值是 `convert/readme.py` 的 `REPO_URL` 常量。**不要从 README 解析**——README 里有十几个 GitHub 仓库链接（ffpa-attn / HGEMM / 第三方参考实现），挑第一条必错；仓库主页也不随版本变化，没有「唯一事实源」的必要。

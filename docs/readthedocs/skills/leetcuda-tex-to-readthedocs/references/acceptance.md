@@ -41,7 +41,7 @@ ch33/ch35/ch37 的表格、ch01 的丢图、ch00 的图内文字丢失都只有 
 | 公式 text 命令已规范化 | 产物必须是 `postprocess._normalize_mathjax_text` 的**不动点**：`\text{}`/`\texttt{}` 里的 `\_`、`\,`、嵌套 text 命令、`{\bf …}` 会被 MathJax 原样显示且不报错，书稿新增这类写法时这里报出第一处差异 |
 | 伪数学 span 无 LaTeX 残留 | 没有 `$`/`\(` 定界符的 `<span class="math inline">`（表格单元格产物，约 880 个）MathJax 不处理，混进 `\X` 会字面漏出且任何渲染检查都抓不到 |
 | 英译词典匹配产物 | 页面含中文的代码块/公式节点必须命中词典、词典 key 必须存在于页面（pandoc 版本漂移会让公式词典整体错配） |
-| 仓库按钮已渲染 | 每页右上角（面包屑行右侧）都有「Go to repository」，链接与 `convert/readme.py` 的 `REPO_URL` 一致 |
+| 仓库按钮已渲染 | 每页右上角（面包屑行右侧）都有 `xlite-dev/LeetCUDA` 仓库按钮，链接与 `convert/readme.py` 的 `REPO_URL` 一致 |
 | 下载 PDF 按钮已渲染 | 每页都有该按钮（默认挨着「下一页」，无按钮行的页面落侧栏），且链接与根 README 的 `[leetcuda-pdf]` 一致 |
 | TikZ 图保留文字 | 有文字的片段必须真的输出字形（防陈旧/残缺 SVG 留在页面上） |
 | 英文图集完整 | 词典覆盖、英文 SVG 数量与字形（`_static/figures-en/`） |

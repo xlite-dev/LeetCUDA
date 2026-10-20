@@ -41,10 +41,10 @@
     {%- endblock %}
     {%- block breadcrumbs_aside %}
       <li class="wy-breadcrumbs-aside">
-        {# 「Go to repository」：常驻每页右上角（面包屑行的 aside 位）。链接来自 conf.py 的
-           html_context["leetcuda_repo_url"]，不在页面里另写 URL。 #}
+        {# 仓库按钮：常驻每页右上角（面包屑行的 aside 位），按钮文字直接显示仓库名。
+           链接来自 conf.py 的 html_context["leetcuda_repo_url"]，不在页面里另写 URL。 #}
         {%- if leetcuda_repo_url %}
-          <a href="{{ leetcuda_repo_url }}" class="rtd-repo-link" target="_blank" rel="noopener" title="打开 LeetCUDA 的 GitHub 仓库"><span class="fa fa-github" aria-hidden="true"></span>Go to repository</a>
+          <a href="{{ leetcuda_repo_url }}" class="rtd-repo-link" target="_blank" rel="noopener" title="打开 GitHub 仓库：xlite-dev/LeetCUDA"><span class="fa fa-github" aria-hidden="true"></span>xlite-dev/LeetCUDA</a>
         {%- endif %}
         {%- if hasdoc(pagename) and display_vcs_links %}
           {%- if display_github %}
