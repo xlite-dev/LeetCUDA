@@ -383,7 +383,7 @@ k16  & $M{=}1048576,\ K{=}16$  & 0.1078 & 661.4 \\
   通过守卫、后 16 个 lane 不通过，\texttt{warp\_\allowbreak{}reduce\_\allowbreak{}sum\allowbreak{}<16>} 里的
   \texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor\_\allowbreak{}sync\allowbreak{}(0xffffffff,\allowbreak{} .\allowbreak{}.\allowbreak{}.\allowbreak{})} 把未执行该指令的 lane 命名进了掩码。
   按 CUDA C++ Programming Guide 的规定，「掩码中命名的所有线程必须都执行同一条
-  shuffle」，否则行为未定义。实践中当前硬件通常「碰巧」正确（分段宽度限制了实际交换
+  shuffle」，否则行为未定义。实践中当前硬件通常\textbf{碰巧}正确（分段宽度限制了实际交换
   范围），但这是不能依赖的语义。规避方式：保证 $M \% 8 = 0$（每 block 8 行，守卫
   warp 一致），或改用协同组、或让掩码与活跃 lane 精确匹配。本章测试固定
   $M \% 8 = 0$ 以避开该路径。
@@ -391,7 +391,7 @@ k16  & $M{=}1048576,\ K{=}16$  & 0.1078 & 661.4 \\
 
 \begin{kaogu}[F3 核校通过]{sgemv.cuh L7：「AI $\approx$ O(1)」的定性判断}
   精确推导见式~\ref{eq:8-ai-optimistic} 与式~\ref{eq:8-ai-pessimistic}：
-  AI 是与 $M$、$K$ 无关的常数（$0.25 \sim 0.5$ FLOP/B），「O(1)、瓶颈在带宽」
+  AI 是与 $M$、$K$ 无关的常数（$0.25 \sim 0.5$ FLOP/B），\textbf{O(1)、瓶颈在带宽}
   的定性结论成立。另 L10--12 的三种 $K$ 形态选型与三个 kernel 的实际设计一一对应。
 \end{kaogu}
 

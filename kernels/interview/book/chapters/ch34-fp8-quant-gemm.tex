@@ -45,7 +45,7 @@ kernel——把 BF16 的 $A,B$ 变成 e4m3 的 $A_8,B_8^{\top}$ 外加两组 sca
 
 \section{问题与动机}
 
-\subsection{为什么 GEMM 量化比 attention 量化「容易」}
+\subsection{为什么 GEMM 量化比 attention 量化容易}
 
 attention 的三量化点里，$P$（softmax 输出）必须在线量化，$Q,K,V$ 的 scale 又会
 经 softmax 混入归一化分母。所以第~\ref{ch:29}~章要在 kernel 里维护行最大值
@@ -411,7 +411,7 @@ gmem 都不 coalesced。解法是 smem staging 双朝向 tile：
    \texttt{samax} 原地改存 $\delta^{-1}$};
 \end{tikzpicture}
 \caption{B 转置量化的双朝向 staging。读路径（蓝）永远沿 B 的行（N 连续）；
-写路径（绿）永远沿 $B_8^{\top}$ 的行（K 连续）；两次「转置」都发生在 smem
+写路径（绿）永远沿 $B_8^{\top}$ 的行（K 连续）；两次\textbf{转置}都发生在 smem
 里（散写即转置），gmem 两侧全是 coalesced。对照第~\ref{ch:28}~章 ffpa 的
 \texttt{quantize\_fp8\_vt\_kernel}：那边输出要 pad 16 列对齐 cp.async 16B，
 这里 TMA 装载 OOB 自动零填、K 尾部由 store guard 裁剪，staging 免 pad。}

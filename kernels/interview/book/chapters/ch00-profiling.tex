@@ -483,7 +483,7 @@ fp16 GEMM 类 kernel 若 \texttt{pipe\_fma} 高而 \texttt{pipe\_tensor}
   \node[detl] (ld1) at (12.9, -0.6) {\texttt{wait} / \texttt{math\_pipe\_throttle} 主导\\$\to$ 拆链、增并行 warp};
   \node[detl] (ld2) at (12.9, -1.8) {\texttt{long\_scoreboard} 主导\\$\to$ 异步装载（TMA / cp.async）};
   \node[detl] (ld3) at (12.9, -3.0) {\texttt{sleeping} / \texttt{barrier} 主导\\$\to$ 重排 producer/consumer（WS）};
-  \node[detl, dashed, text width=5.5cm] (occ) at (7.9, -4.55) {先查 occupancy 限制源：\\limiter = regs/smem $\to$ 先解资源\\（缩 tile、降 stage、launch\_bounds）\\「增并行 warp」以有 warp 可增为前提};
+  \node[detl, dashed, text width=5.5cm] (occ) at (7.9, -4.55) {先查 occupancy 限制源：\\limiter = regs/smem $\to$ 先解资源\\（缩 tile、降 stage、launch\_bounds）\\\textbf{增并行 warp}以有 warp 可增为前提};
   \node[badge] at (occ.north west) {3};
   \node[balb] (dcond) at (3.8, -6.15) {双高\\（都 $>$60）};
   \node[balb] (dver) at (7.9, -6.15) {接近平衡上限\\$\to$ 停止优化};
@@ -661,7 +661,7 @@ nsys 定位（谁慢）$\to$ ncu 定性（为什么慢）$\to$ 单变量修改 $
   \href{https://developer.nvidia.com/nsight-systems}{developer.nvidia.com/nsight-systems}
 \item NVIDIA Nsight Compute 文档（含 Profiling Guide 的完整指标索引）：
   \href{https://developer.nvidia.com/nsight-compute}{developer.nvidia.com/nsight-compute}
-\item 本书各章「性能分析」节：ch09--14（GEMM/TMA/WS 的指标判读）、ch12
+\item 本书各章\textbf{性能分析}节：ch09--14（GEMM/TMA/WS 的指标判读）、ch12
   （bank conflict 计数器实战）、ch19（大 D 寄存器压力模型）、ch01
   （roofline 与 occupancy 的理论侧）。
 \end{itemize}

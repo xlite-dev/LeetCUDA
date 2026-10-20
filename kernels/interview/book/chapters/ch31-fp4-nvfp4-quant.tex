@@ -853,7 +853,7 @@ fp4 前处理与 prefill 阶段绑定，decode 回 fp8/fp16 路径。
   \item \textbf{masking 不 perm-aware}：置换存储后 causal 谓词忘了过
         $\pi^{-1}$，max\_abs 直接 3.3 级别（上游 SA3 的真实 bug）。
   \item \textbf{SF 写序不 match atom}：SF offset 公式与
-        \texttt{BlockScaledConfig} 不一致时数据看起来「差不多对」但
+        \texttt{BlockScaledConfig} 不一致时数据看起来\textbf{差不多对}但
         精度大幅劣化。SF 错位是尺度级错误，不是噪声级。
   \item \textbf{e2m1 的饱和语义}：\texttt{cvt.rn.satfinite.e2m1x2.f32}
         的 \texttt{.satfinite} 是 PTX 对 4 bit 目的端的强制修饰符（不

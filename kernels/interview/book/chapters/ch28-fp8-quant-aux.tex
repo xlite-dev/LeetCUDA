@@ -12,7 +12,7 @@ per-channel scale 统计。这些 kernel 单个都不复杂，但它们决定了
 \begin{enumerate}[itemsep=0pt,topsep=2pt]
   \item \textbf{精度上限}：量化前的 outlier 处理（smoothing / Hadamard 旋转）与
         量化粒度（per-block / per-thread / per-channel）直接决定进入 kernel 的量化
-        数据质量。28.3~节的三个「不变变换」是全部精度的来源；
+        数据质量。28.3~节的三个\textbf{不变变换}是全部精度的来源；
   \item \textbf{性能下界}：aux 链是一次额外的全量 DRAM 往返（读 fp16 写 fp8，
         字节量与主 kernel 同为 $O(BHND)$，但时间是 $O(N)$、主 kernel 是
         $O(N^2)$，占比随 $N$ 以 $1/N$ 衰减），在短序列 / 小批量场景会成为
@@ -76,7 +76,7 @@ kernel 的消费方式决定，这也是要与第~\ref{ch:29}~章对照阅读的
 依赖必须串行（不能用 stream 重叠消除）；跨泳道（Q/K/V 三路互相独立）理论上可
 多流重叠，当前实现使用单流，因此整链时间 $\approx$ 总搬运字节 / 有效带宽。
 
-\subsection{三条「不变变换」的设计哲学}
+\subsection{三条不变变换的设计哲学}
 
 aux 链里所有改数值的操作（smooth-K、smooth-V、Hadamard）共享同一个设计
 约束：变换必须保持 attention 输出精确不变，或在可控的标量修正下不变。
@@ -298,7 +298,7 @@ scale 的覆盖域，右侧放大一个 quad，看零 shuffle 是怎么来的。
 $\{r,r+8\}$ 分 8 档灰度（行 $r$ 与 $r{+}8$ 同色），每个色块就是一个 scale 的
 覆盖域；写入下标 $g=(\text{seg\_row}/16)\cdot 8+\text{seg\_row}\bmod 8$。右上：放大一个
 quad 的 $m16n8$ C-fragment——4 个 lane 持有相同的 2 行、各占一个列对，因此
-整块共享一个 scale，反量化变成「fragment 提升时直接乘一个寄存器标量」，
+整块共享一个 scale，反量化变成\textbf{fragment 提升时直接乘一个寄存器标量}，
 \textbf{零 shuffle}；代价是 amax 归约树跨行对组合（行内两半 \texttt{shfl\_xor} 1、
 行对 \texttt{shfl\_xor} 16）。下：谱系定位——per-thread 是 per-token（128）与
 per-block（1）之间的工程折中点。}

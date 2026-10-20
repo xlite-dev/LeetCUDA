@@ -364,7 +364,7 @@ TMA descriptor 在 host 侧由 driver API \texttt{cu\allowbreak{}Tensor\allowbre
         （NONE/zero fill；OOB-NaN 用于 fp16 场景的非法值标记）。
 \end{itemize}
 
-\begin{kaogu}[F2·社区考据]{TMA descriptor 的「隐藏第 21bit」}
+\begin{kaogu}[F2·社区考据]{TMA descriptor 的隐藏第 21bit}
   PTX ISA 把 tensorMap 当作\textbf{不透明对象}（"opaque tensor-map object"），
   对外只承诺 tiled 模式的 box/OOB 语义（zero/NaN fill，§5.5.3.3）；其 128B 内部
   位域布局并无官方文档。知乎 @reed 逆向 \texttt{cu\allowbreak{}Tensor\allowbreak{}Map\allowbreak{}Encode\allowbreak{}Tiled} 的输出
@@ -556,7 +556,7 @@ bits $[16,30)$ leading\_byte\_offset &
   \node[draw, rounded corners=3pt, fill=gray!6, font=\scriptsize, align=left,
         text width=6.3cm, anchor=north west] at (7.7,-0.1)
     {\textbf{descriptor 字段与 atom 几何}（位域图~\ref{fig:13-1}）\\[2pt]
-     SBO：「首个 8 行 $\to$ 下一个 8 行」的字节偏移 $=8\times64\times2$\,B$=1024$，
+     SBO：\textbf{首个 8 行 $\to$ 下一个 8 行}的字节偏移 $=8\times64\times2$\,B$=1024$，
      编码 $1024\gg4=64$；\\[2pt]
      LBO：K-major swizzle 下不使用，填 16\,B $\to$ 编码 1；\\[2pt]
      base\_offset $=(\mathrm{addr}\gg7)\,\&\,7$：tile 基址在 1024\,B 周期内的行相位，

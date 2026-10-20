@@ -1,7 +1,7 @@
 % ch18-fa3-dual-consumer.tex — FA3：双 Consumer Warpgroup（RFC E4，2026-09-11）
 % 源码冻结基线：flash_attn.cuh L1441-2192（kernel flash_attn_3_tma_ws_stages_split_q@L1516，
 % 头部设计注释自 L1441 起）。TMA/mbarrier 协议已在 ch13/ch17 讲透，本章聚焦
-% 「1 producer + 2 consumer」带来的三个结构性新问题：奇偶 tile 路由、per-WG
+% 1 producer + 2 consumer 带来的三个结构性新问题：奇偶 tile 路由、per-WG
 % 独立流水/屏障、split-KV 终态 merge 与三 warpgroup 的寄存器池再分配。
 \chapter{FA3：双 Consumer Warpgroup}\label{ch:18}
 
@@ -259,7 +259,7 @@ $136 \times 128 = 17408$ 与 $312 \times 128 = 39936$ 个寄存器），远离�
 \begin{figure}[H]
 \centering
 \begin{tikzpicture}[font=\tiny]
-  % 横轴标尺：512 个「每线程等效配额」= 65536/128，1 单位 = 0.0155 cm
+  % 横轴标尺：512 个每线程等效配额= 65536/128，1 单位 = 0.0155 cm
   \draw[dashed, thick, vscAccent] (7.936,0.45) -- (7.936,-3.30);
   \node[anchor=south, text=vscAccent] at (7.936,0.62) {$512 = 65536/128$（每线程等效上限）};
   % (a) 本章 D=128：40 + 2 x 168 = 376，余量 136
@@ -304,7 +304,7 @@ $136 \times 128 = 17408$ 与 $312 \times 128 = 39936$ 个寄存器），远离�
   \node[anchor=west, align=left, text width=13.3cm] at (-0.15,-3.72)
     {每段宽 $=$ 每线程等效配额（producer $r_p$ 浅 $\mid$ 两个 consumer 各 $r_c$ 中、深）；斜纹 $=$ 余量（slack）；横轴口径 $=$ 三个 warpgroup 各 128 线程};
 \end{tikzpicture}
-\caption{65536 个寄存器按角色分配的三种方案（式~\ref{eq:18-pool} 与 18.3.4 节事故分析的图形化）。横轴为每线程等效配额 $r_p + 2r_c \le 512 = 65536/128$：(a) 本章 $D{=}128$ 的 $40+2\times168=376$，余量 136/线程（$=17408$ 个寄存器），远离危险区；(b) 第~\ref{ch:14}~章那次事故的 $64+2\times224$ 恰好等于 512——驱动对寄存器文件另有保留份额，有效池小于 65536，于是 consumer 卡在 \texttt{setmaxnreg}、producer 卡在等 barrier arrive，\textbf{双向互等导致挂死}；(c) 修复版的 480 与 496 分别留出 32 与 16 的每线程余量，后者正是工程规则「$\ge 2048$ slack」除以 128 的下界。}
+\caption{65536 个寄存器按角色分配的三种方案（式~\ref{eq:18-pool} 与 18.3.4 节事故分析的图形化）。横轴为每线程等效配额 $r_p + 2r_c \le 512 = 65536/128$：(a) 本章 $D{=}128$ 的 $40+2\times168=376$，余量 136/线程（$=17408$ 个寄存器），远离危险区；(b) 第~\ref{ch:14}~章那次事故的 $64+2\times224$ 恰好等于 512——驱动对寄存器文件另有保留份额，有效池小于 65536，于是 consumer 卡在 \texttt{setmaxnreg}、producer 卡在等 barrier arrive，\textbf{双向互等导致挂死}；(c) 修复版的 480 与 496 分别留出 32 与 16 的每线程余量，后者正是工程规则\textbf{$\ge 2048$ slack}除以 128 的下界。}
 \label{fig:18-reg-pool}
 \end{figure}
 
@@ -632,7 +632,7 @@ softmax 也能重叠（intra-warpgroup overlapping），两个 WG 再交替执�
         minimum width=1.7cm, minimum height=0.30cm, inner sep=0pt] at (2.8,-6.75) {};
   \node[font=\tiny, text=tkRed] at (2.8,-7.12) {TC 空转};
 \end{tikzpicture}
-\caption{双 consumer 的相位交错时序（18.4.5 节统计性交错的图形化）。上：WG1/WG2 各按「QK MMA $\to$ softmax $\to$ PV MMA $\to$ rescale」四段推进自己的 KV tile 子序列，两 WG 相位差 $1/4$ 周期——WG1 处于 MMA 段时 WG2 大概率处于 softmax/rescale 段；producer 的 TMA 全程并行，完成即 arrive-tx 翻转 \texttt{full[s]}。中：Tensor Core 与 CUDA Core/SFU 两条资源条被两路计算交替填满（同步 \texttt{mma.sync} 做不到 WG 内重叠，靠两路独立流在硬件调度器上统计性交错）。下：单 consumer（第~\ref{ch:17}~章形态）的对照——softmax 段 Tensor Core 只能空转，这正是第二个 consumer 要填补的空档。}
+\caption{双 consumer 的相位交错时序（18.4.5 节统计性交错的图形化）。上：WG1/WG2 各按\textbf{QK MMA $\to$ softmax $\to$ PV MMA $\to$ rescale}四段推进自己的 KV tile 子序列，两 WG 相位差 $1/4$ 周期——WG1 处于 MMA 段时 WG2 大概率处于 softmax/rescale 段；producer 的 TMA 全程并行，完成即 arrive-tx 翻转 \texttt{full[s]}。中：Tensor Core 与 CUDA Core/SFU 两条资源条被两路计算交替填满（同步 \texttt{mma.sync} 做不到 WG 内重叠，靠两路独立流在硬件调度器上统计性交错）。下：单 consumer（第~\ref{ch:17}~章形态）的对照——softmax 段 Tensor Core 只能空转，这正是第二个 consumer 要填补的空档。}
 \label{fig:18-dual-phase}
 \end{figure}
 
@@ -785,12 +785,12 @@ F32Acc 是更合适的默认选择。两档对 cuDNN 均为 0.89x，说明剩余
   同一文件的另一处注释 L1643--1646 明确写着「K 优先于 V……先发 K
   让 consumer 尽早开始 QK, V 的 TMA 在 K 之后发出」，与代码一致。两处注释
   自相矛盾，L1606 是早期版本（V 先行）的残留。结论：以代码与 L1642--1646
-  为准，L1606 应读作「K first, then V」（结论以本框注为准）。
+  为准，L1606 应读作\textbf{K first, then V}（结论以本框注为准）。
 \end{kaogu}
 
 \begin{kaogu}[F3·论证链补强]{merge scratch 的 alias 安全前提}
   L2003--2011 列出三条前提，第一条写「producer 已退出 mainloop（所有 TMA 已
-  \texttt{arrive\_\allowbreak{}expect\_\allowbreak{}tx}）」。但「发出并声明事务量」不等于「数据已落盘」，
+  \texttt{arrive\_\allowbreak{}expect\_\allowbreak{}tx}）」。但\textbf{发出并声明事务量}不等于\textbf{数据已落盘}，
   若某笔 TMA 仍 in-flight，其目标写会与 scratch 写竞争。真正排除风险的是第二条
   （两个 consumer 都已 release 自己的 K/V stage）加上\textbf{full 屏障的
   语义}：每个 tile 的 K/V 都被某个 WG 在 \texttt{full\_K}/\texttt{full\_V}
@@ -821,7 +821,7 @@ F32Acc 是更合适的默认选择。两档对 cuDNN 均为 0.89x，说明剩余
   \texttt{cuda\allowbreak{}Dev\allowbreak{}Attr\allowbreak{}Max\allowbreak{}Shared\allowbreak{}Memory\allowbreak{}Per\allowbreak{}Block\allowbreak{}Optin} $= 101376$\,B
   $= 99.0$\,KB（18.10~节测试首行），注释写的「101KB」比实测大 $2\%$，
   属宽松表述，结论（超限 $\to$ 只支持 Sk$=$1）不受影响。第~\ref{ch:17}~章
-  对同一常量记为「$\sim$100KB 近似正确」，口径已统一为「实测 101376 B」。
+  对同一常量记为\textbf{$\sim$100KB 近似正确}，口径已统一为\textbf{实测 101376 B}。
 \end{kaogu}
 
 \begin{kaogu}[F1/F3 核校通过]{头注释的协议描述与代码逐条一致}
@@ -837,8 +837,8 @@ F32Acc 是更合适的默认选择。两档对 cuDNN 均为 0.89x，说明剩余
 
 \section{常见坑}
 
-\textbf{坑一：merge scratch 的安全前提是「无 in-flight TMA」，不是「producer 已发完
-TMA」。}\allowbreak{}producer 退出 mainloop 只说明事务已声明；保证搬运已
+\textbf{坑一：merge scratch 的安全前提是无 in-flight TMA，不是 producer 已发完
+TMA。}\allowbreak{}producer 退出 mainloop 只说明事务已声明；保证搬运已
 落盘的是 consumer 侧 \texttt{full\_K}/\texttt{full\_V} 的等待（tx-count 归零）。
 改动 scratch 布局或提前 merge 点时，必须重新确认这条链成立，否则会读到
 正被 TMA 覆盖的 scratch 数据，出间歇性错误，且只在大 $T_c$（流水深）
@@ -898,7 +898,7 @@ producer 用 TMA 异步搬运，两个 consumer warpgroup 让 softmax（CUDA Cor
 与 GEMM（Tensor Core）并行。本仓库的实现是 1 producer $+$ 2 consumer 的
 384 线程结构 $+$ KV 奇偶拆分 $+$ 终态归并（flash\_attn.cuh L1441--2192）。
 
-\textbf{Q2：为什么按「奇偶」拆 tile，而不是让两个 WG 各管前后半区？}\\
+\textbf{Q2：为什么按奇偶拆 tile，而不是让两个 WG 各管前后半区？}\\
 A：producer 必须按全局顺序 0,1,2,\dots 连续投递 TMA，而 bank 由
 $\mathrm{cid} = \mathrm{tile}\,\&\,1$ 静态路由（L1459、L1475）。奇偶拆分下
 两 WG 当前消费的 tile 永远相邻（$t$ 与 $t+1$），producer 的单一顺序流正好

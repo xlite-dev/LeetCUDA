@@ -140,8 +140,8 @@ $\mathrm{amax}(V)$（29.3.2），lazy 的安全条件是膨胀后不越 e4m3 上
 （\texttt{attn\_traits.cuh} L31--37）。注释给的理由是：跳过 rescale 会让发射 P
 以最高 $2^T$ 膨胀，而 per-channel V 路径（balanced narrowing）的发射
 $P\cdot448$ 已铺满量程、零 headroom，膨胀必然触发 satfinite 钳位、破坏 PV
-结果。f16 inst\_buf 路径则把 rescale 融进吸收 FFMA 后「立即 rescale 几乎零
-开销」，lazy 的动机（省 rescale pass）本身就消失了。\textbf{满量程发射与延迟 rescale
+结果。f16 inst\_buf 路径则把 rescale 融进吸收 FFMA 后\textbf{立即 rescale 几乎零
+开销}，lazy 的动机（省 rescale pass）本身就消失了。\textbf{满量程发射与延迟 rescale
 不可兼得}，这是发射域规则的第一条。
 
 \subsection{f16 PV 累加器的域约束}\label{sec:29-f16acc}
@@ -229,7 +229,7 @@ $kBc=128$ 时预算超限，kernel 侧的编译期自动收窄
      更松。f32 acc 无 f16 溢出界：V 侧取满 448、P 侧恒 448。};
 \end{tikzpicture}
 \caption{f16 PV 累加器的整 tile 域预算（式~\ref{eq:29-f16tile}）。条形为
-$kBc\times P_r\times V_r$：$k_{Bc}{=}64$ 与「$k_{Bc}{=}128$ + P 域自动收窄到 224」
+$kBc\times P_r\times V_r$：$k_{Bc}{=}64$ 与\textbf{$k_{Bc}{=}128$ + P 域自动收窄到 224}
 都恰为 64512，接近 65504 上限；$k_{Bc}{=}128$ 且 P 仍 448 则 129024 约 2 倍超限。
 右：SA2++ 按单条 MMA（$K{=}32$）核算的界 2047 更松（$P_r{=}224,V_r{=}4.5$ 双侧收窄）。
 f32 acc 路径无此约束。}

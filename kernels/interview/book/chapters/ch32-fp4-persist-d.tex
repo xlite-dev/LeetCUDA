@@ -385,7 +385,7 @@ PV 的 C fragment 每 lane 持数不同（头注释 L44--46）。
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries }] at (0.616,-7.3) {Q 寄存器驻留（per-work 常量）};% w=7.854
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{black!65} }] at (0.616,-7.823) {Q/SFQ s2r 一次进寄存器，跨整个 kv 循环；\\gemm\_ss\_fp4 当 A 侧寄存器操作数消费（恒开）};% w=7.854
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{black!65} }] at (0.616,-8.408) {lse dot 提前（kQSmemReuse 下 Q 区会被 V 复用）};% w=7.854
-    \node[draw=tkRed!45, fill=tkFillRed!60!white, line width=0.5pt, minimum width=7.85cm, minimum height=1.14cm, inner sep=1pt, align=center, text width=7.79cm, font={\fontsize{4.8}{6.0}\selectfont \color{tkRed} }] at (4.543,-9.225) {历史 bug：不驻留时 A/SFA asm 操作数未初始化，\\cicc 折成 0 $\to$ QK 退化为 $\Delta$S（rank-1 均值 attention），\\probe 容差曾掩盖------要用「输出对 K 敏感性」探针};
+    \node[draw=tkRed!45, fill=tkFillRed!60!white, line width=0.5pt, minimum width=7.85cm, minimum height=1.14cm, inner sep=1pt, align=center, text width=7.79cm, font={\fontsize{4.8}{6.0}\selectfont \color{tkRed} }] at (4.543,-9.225) {历史 bug：不驻留时 A/SFA asm 操作数未初始化，\\cicc 折成 0 $\to$ QK 退化为 $\Delta$S（rank-1 均值 attention），\\probe 容差曾掩盖------要用\textbf{输出对 K 敏感性}探针};
     \node[draw=gray!55, fill=black!2, line width=0.5pt, minimum width=8.44cm, minimum height=2.93cm, inner sep=1pt, align=center, text width=8.38cm, font={\fontsize{5.7}{7.1}\selectfont }] at (13.336,-8.485) {};
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries }] at (9.363,-7.3) {epilogue（kv 循环后）};% w=8.008
     \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=2.46cm, minimum height=0.62cm, inner sep=1pt, align=center, text width=2.40cm, font={\fontsize{4.8}{6.0}\selectfont \color{tkGreen!70!black} }] at (10.595,-7.823) {finalize\\$\div$ row\_sum（0 行守卫）};
@@ -475,7 +475,7 @@ SA3 的 fragment adapter 是一块经验锁定的整体。kv\_perm32、$\Delta S
 槽位算术、\texttt{LayoutP}/\texttt{LayoutSFP} 打包、$V^\top$ 转置存储：
 这些项相互补偿、自洽成体系（头注释 L25--37：empirical
 lock 在 \texttt{.tmp} 的对齐探针里逐项验证过，dense e2e 与 dequant 仿真
-一致）。逐字拷贝 + 只修 masking 是正确的移植方式；单独「改进」其中
+一致）。逐字拷贝 + 只修 masking 是正确的移植方式；单独\textbf{改进}其中
 一项会破坏补偿关系。
 
 e2m1 的相对量化误差（主区间 $\sim$20\%、
