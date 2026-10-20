@@ -45,6 +45,16 @@
 - **窄屏**（≤700px）取消浮动、徽章落到标题上方，避免压住标题。
 - 改完照例 `touch build/src/index.md` 再 `./build.sh`；验证看首页截图（`tools/visual_check --only index --width 1400` 与 `--width 1920` 各一张，标题必须仍是一行）。
 
+## 右上角「Go to repository」按钮
+
+每个文档页右上角（面包屑行右侧）的仓库入口，点击直达 <https://github.com/xlite-dev/LeetCUDA>。
+
+- **落位**：`_templates/breadcrumbs.html` 的 `breadcrumbs_aside` 块。面包屑模板每页都渲染（含 `genindex` / `search`），所以按钮不用像「下载 PDF」那样再补侧栏兜底；它随页面滚动，不做固定悬浮。
+- **链接**：`conf.py` 的 `html_context["leetcuda_repo_url"]`，真值是 `convert/readme.py` 的 `REPO_URL` 常量。**不要从 README 解析**——README 里有十几个 GitHub 仓库链接（ffpa-attn / HGEMM / 第三方参考实现），挑第一条必错；仓库主页也不随版本变化，没有「唯一事实源」的必要。
+- **样式**：`custom.css` 的 `.wy-breadcrumbs-aside .rtd-repo-link`（白底、1px 灰边、3px 圆角，对齐主题 `btn-neutral`）。图标与文字间距 4px **由 CSS 给**、不靠空格文本节点：英文模式下 Google 会重写链接文字，空格会被吞掉（同导航行按钮的处理）。
+- **核对**：`convert/verify.py` 的「仓库按钮已渲染」逐页比对 56 页的 `href` 与 `REPO_URL` 一致；主题升级顶掉模板、或链接写错，页面本身看不出异常，靠这项兜住。
+- **改动流程**：`touch build/src/index.md` 再 `./build.sh`；验收看 `tools/visual_check` 的 1400 / 1920 截图顶部。
+
 ## 中英切换按钮
 
 按钮是 `translate.js` 造的 `btn btn-neutral` 图标按钮，三种落位（`buildButton()`）：

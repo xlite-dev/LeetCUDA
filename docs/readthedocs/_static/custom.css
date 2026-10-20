@@ -17,6 +17,32 @@
   line-height: 24px;
 }
 
+/* 右上角「Go to repository」（`_templates/breadcrumbs.html` 的 `breadcrumbs_aside` 位）：
+   每个文档页都有（含 genindex / search），随面包屑行走、不做固定悬浮。样式对齐主题的
+   btn-neutral：白底、1px 灰边、3px 圆角；图标与文字间距 4px 与导航行按钮一致，且由
+   CSS 给而非空格文本节点——英文模式下 Google 翻译重写链接文字时不会塌成贴字。 */
+.wy-breadcrumbs-aside .rtd-repo-link {
+  display: inline-block;
+  padding: 2px 10px;
+  border: 1px solid #d9d9d9;
+  border-radius: 3px;
+  background: #fff;
+  font-size: 13px;
+  line-height: 18px;
+  color: #404040;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.wy-breadcrumbs-aside .rtd-repo-link .fa {
+  margin-right: 4px;
+}
+
+.wy-breadcrumbs-aside .rtd-repo-link:hover {
+  background: #f3f6f8;
+  color: #2980b9;
+}
+
 /* 「下载 PDF」按钮（`_templates/breadcrumbs.html` / `footer.html` 里的静态锚点）与
    「下一页」同一行：两者同为 `float-right`，浮动按 DOM 顺序从右往左排，所以它落在
    「下一页」右边、紧贴它。不给外边距——这一行的按钮要求挨在一起（挨着「下一页」、

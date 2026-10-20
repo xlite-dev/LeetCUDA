@@ -18,6 +18,10 @@ _EXPECTED = "[leetcuda-pdf]: https://…/leetcuda-YYYYMMDD.pdf"
 #: 仓库根 README.md（相对本文件：docs/readthedocs/convert/ → 仓库根）。
 REPO_README = Path(__file__).resolve().parents[3] / "README.md"
 
+#: 仓库主页：右上角「Go to repository」按钮指向这里。与 PDF 链接不同，它不随版本变化，
+#: 也不从 README 解析（README 里的 GitHub 链接有十几个仓库，挑第一条会挑错）。
+REPO_URL = "https://github.com/xlite-dev/LeetCUDA"
+
 
 def pdf_link(readme: str | Path = REPO_README) -> str:
   """解析 README 里 ``[leetcuda-pdf]`` 链接定义的 URL。

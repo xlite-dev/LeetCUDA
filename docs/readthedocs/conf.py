@@ -13,9 +13,12 @@ from pathlib import Path
 # （链接随版本发布变化）。构建期现读现用，解析失败即构建失败，不静默降级成「没有按钮」。
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from convert.readme import pdf_link  # noqa: E402
+from convert.readme import REPO_URL, pdf_link  # noqa: E402
 
 leetcuda_pdf_url = pdf_link()
+
+# 右上角「Go to repository」按钮的仓库地址（构建核对复用同一个常量）。
+leetcuda_repo_url = REPO_URL
 
 project = "LeetCUDA：CUDA Kernel 优化之路"
 author = "LeetCUDA Project"
@@ -71,7 +74,10 @@ templates_path = ["_templates"]
 html_js_files = ["math-en.js", "translate.js"]
 
 # 侧栏「下载 PDF」按钮的地址，模板（_templates/layout.html）据此渲染静态链接。
-html_context = {"leetcuda_pdf_url": leetcuda_pdf_url}
+html_context = {
+  "leetcuda_pdf_url": leetcuda_pdf_url,
+  "leetcuda_repo_url": leetcuda_repo_url,
+}
 
 mathjax_path = "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"
 

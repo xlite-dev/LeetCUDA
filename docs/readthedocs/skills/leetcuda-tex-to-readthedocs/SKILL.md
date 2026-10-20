@@ -24,10 +24,11 @@ argument-hint: '说明要改什么（书稿内容 / 转换器 / 版式 / 中英�
 | 中文正文 / 公式 / 表格 / 数学宏 | push 即可：构建期从 tex 现转，中英文自动同步 | — |
 | TikZ 图内中文文字、新增含中文的图 | 先补词典再 push，否则 RTD 的 `post_build`「英文图集完整」必红 | `references/english.md` |
 | 封面文案 | 重编译入库的 `figures/misc/cover.pdf` 并 commit；英文封面另跑 `tools.build_cover_en` 并 commit 产物 | `references/english.md` |
-| 转换器 `convert/*.py` | 改完必须跑全量 `./build.sh`（含 27 项核对）+ 浏览器验收 | `references/pipeline.md`、`references/acceptance.md` |
+| 转换器 `convert/*.py` | 改完必须跑全量 `./build.sh`（含 28 项核对）+ 浏览器验收 | `references/pipeline.md`、`references/acceptance.md` |
 | 版式 / 模板 / CSS / JS | 先 `touch build/src/index.md` 再 `./build.sh`，否则静态文件不重拷、预览还是旧样式 | `references/layout-frontend.md` |
 | 「下载 PDF」按钮（落位/样式）或其链接 | 按钮默认在「下一页」右边（顶部 + 页脚两行）；链接只改仓库根 `README.md` 的 `[leetcuda-pdf]` 一行，站点与核对都跟着变 | `references/layout-frontend.md` |
 | 首页标题右侧的 Trendshift 徽章 | 片段在 `convert/__main__.py` 的 `BOOK_BADGE`（照抄仓库根 `README.md`），落位与宽度在 `custom.css` 的 `.rtd-trendshift` | `references/layout-frontend.md` |
+| 右上角「Go to repository」按钮（落位/链接/样式） | 模板在 `_templates/breadcrumbs.html` 的 `breadcrumbs_aside`，链接取 `convert/readme.py` 的 `REPO_URL`，样式在 `custom.css` 的 `.rtd-repo-link`；`convert/verify.py` 逐页核对 | `references/layout-frontend.md` |
 | RTD 构建失败 | 先看 `pre_build`（apt 包 / pandoc 版本），再看 `post_build` 打印的核对项 | `references/sync-and-deploy.md` |
 | 核对项本身 | 新增/调整 `convert/verify.py` 的 `check_*`，接入 `verify()` 与 `main()` | `references/acceptance.md` |
 
@@ -55,7 +56,7 @@ python -m convert --skip-tikz --no-assemble     # 只跑 tex→md
 
 ## 验收：三层，缺一层就会漏
 
-1. **文件级**：`python -m convert.verify --src build/src --html build/html`（27 项，`build.sh` 已含）。
+1. **文件级**：`python -m convert.verify --src build/src --html build/html`（28 项，`build.sh` 已含）。
 2. **浏览器级**：`python -m tools.visual_check --html build/html --out build/shots/chapters` —— MathJax 报错、可见字面残迹、控制台报错、404 资源、整页截图。
 3. **版式几何**（已并进 visual_check）：图片/表格是否居中、有没有元素（过宽公式、宽表）撑出正文栏。
 
@@ -66,6 +67,6 @@ python -m convert --skip-tikz --no-assemble     # 只跑 tex→md
 - `references/pipeline.md` — 转换管线全貌（编排、章号/表格、TikZ→SVG、数学宏）、命令速查、目录结构、增量构建与 gitignore 陷阱。
 - `references/layout-frontend.md` — 三栏版式与居中、模板覆盖规则（page.html / layout.html / 两个整文件副本各管什么）、图片/表格/过宽公式、「下载 PDF」按钮的落位与兜底、中英切换按钮的落位。
 - `references/english.md` — Google 翻译切换机制与判定阈值、英文图集（词典/掩码/校验/换图）、英文封面离线生成。
-- `references/acceptance.md` — 三层验收细节、27 项核对清单、visual_check 参数、本地与远程（VS Code 端口转发）预览。
+- `references/acceptance.md` — 三层验收细节、28 项核对清单、visual_check 参数、本地与远程（VS Code 端口转发）预览。
 - `references/pitfalls.md` — 已证伪路线与踩坑（TikZ、公式、正文结构），附页面上可见的症状。
 - `references/sync-and-deploy.md` — 内容更新与自动同步对照表、改稿检查清单、RTD 建站步骤、已知边界。

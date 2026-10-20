@@ -40,6 +40,7 @@ _ANCHOR_RE = re.compile(r'<a id="([^"]+)"')
 #: 侧栏「下载 PDF」按钮（``_templates/layout.html`` 渲染的静态锚点，按类名认）。
 #: 先取整条 ``<a …>`` 开标签再取 ``href``，免得受属性顺序影响。
 _PDF_BUTTON_CLASS = "rtd-pdf-download"
+_REPO_BUTTON_CLASS = "rtd-repo-link"
 _ANCHOR_OPEN_RE = re.compile(r"<a\b[^>]*>", re.IGNORECASE)
 _HREF_RE = re.compile(r'\bhref="([^"]*)"', re.IGNORECASE)
 
@@ -364,20 +365,44 @@ def check_pdf_button(html_dir: Path, expected_url: str) -> tuple[bool, str]:
   :param expected_url: ``README.md`` 里 ``[leetcuda-pdf]`` 的地址。
   :returns: ``(是否通过, 说明)``。
   """
+  return _check_page_button(html_dir, _PDF_BUTTON_CLASS, expected_url, "按钮")
+
+
+def _button_hrefs(page: str, css_class: str) -> list[str]:
+  """取页面里带指定 class 的锚点 href。
+
+  :param page: 页面 HTML。
+  :param css_class: 锚点的 class 标记。
+  :returns: 反转义后的 href 列表（缺 href 记空串）。
+  """
+  found: list[str] = []
+  for tag in _ANCHOR_OPEN_RE.findall(page):
+    if css_class not in tag:
+      continue
+    href = _HREF_RE.search(tag)
+    # 上游若开了模板 autoescape，``&`` 会写成 ``&amp;``；比对前统一反转义（当前设置下
+    # 是无操作——Sphinx 7.4 的模板环境没开 autoescape，但别依赖这点）。
+    found.append(html.unescape(href.group(1)) if href else "")
+  return found
+
+
+def _check_page_button(html_dir: Path, css_class: str, expected_url: str,
+                       label: str) -> tuple[bool, str]:
+  """逐页核对常驻按钮存在且链接一致。
+
+  :param html_dir: Sphinx 输出目录。
+  :param css_class: 按钮锚点的 class 标记。
+  :param expected_url: 期望的链接。
+  :param label: 核对项里对按钮的称呼。
+  :returns: ``(是否通过, 说明)``。
+  """
   pages = sorted(html_dir.rglob("*.html"))
   missing: list[str] = []
   mismatch: list[str] = []
   for path in pages:
     page = path.read_text(encoding="utf-8", errors="replace")
     name = path.relative_to(html_dir).as_posix()
-    found: list[str] = []
-    for tag in _ANCHOR_OPEN_RE.findall(page):
-      if _PDF_BUTTON_CLASS not in tag:
-        continue
-      href = _HREF_RE.search(tag)
-      # 上游若开了模板 autoescape，``&`` 会写成 ``&amp;``；比对前统一反转义（当前设置下
-      # 是无操作——Sphinx 7.4 的模板环境没开 autoescape，但别依赖这点）。
-      found.append(html.unescape(href.group(1)) if href else "")
+    found = _button_hrefs(page, css_class)
     if not found:
       missing.append(name)
     elif any(url != expected_url for url in found):
@@ -386,10 +411,24 @@ def check_pdf_button(html_dir: Path, expected_url: str) -> tuple[bool, str]:
   if not pages:
     problems.append(f"{html_dir} 下没有页面")
   if missing:
-    problems.append(f"{len(missing)} 页没有按钮，例如 {missing[0]}")
+    problems.append(f"{len(missing)} 页没有{label}，例如 {missing[0]}")
   if mismatch:
-    problems.append(f"{len(mismatch)} 页链接不符（期望 {expected_url}），例如 {mismatch[0]}")
+    problems.append(f"{len(mismatch)} 页{label}链接不符（期望 {expected_url}），例如 {mismatch[0]}")
   return not problems, ("；".join(problems) if problems else f"{len(pages)} 页均指向同一链接")
+
+
+def check_repo_button(html_dir: Path, expected_url: str) -> tuple[bool, str]:
+  """检查每页右上角都渲染了「Go to repository」，且链接指向仓库主页。
+
+  按钮写在 ``_templates/breadcrumbs.html`` 的 ``breadcrumbs_aside`` 位（每页都有，
+  含 ``genindex`` / ``search``）。链接来自 ``convert.readme.REPO_URL``；主题升级后
+  模板被顶掉、或链接写错，页面本身看不出异常，这里逐页兜住。
+
+  :param html_dir: Sphinx 输出目录。
+  :param expected_url: 仓库主页地址。
+  :returns: ``(是否通过, 说明)``。
+  """
+  return _check_page_button(html_dir, _REPO_BUTTON_CLASS, expected_url, "仓库按钮")
 
 
 def check_english_figures(
@@ -872,6 +911,9 @@ def verify(src_dir: Path, html_dir: Path, book_dir: Path) -> Report:
     # 「下载 PDF」按钮的链接真值取自仓库根 README（解析失败会直接抛错中断核对）。
     ok, detail = check_pdf_button(html_dir, readme.pdf_link())
     report.add("下载 PDF 按钮已渲染", ok, detail)
+
+    ok, detail = check_repo_button(html_dir, readme.REPO_URL)
+    report.add("仓库按钮已渲染", ok, detail)
 
   work_dir = src_dir.parent / "tmp"
   if (work_dir / "tikz").is_dir():
