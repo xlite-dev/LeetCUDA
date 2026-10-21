@@ -310,8 +310,8 @@ SM120（RTX PRO 5000）的 optin smem 上限约 100 KB：$D{=}64$ 时
 $\mathrm{Sk} = 1/2/3/4$ 全部可行（32--56 KB）；$D{=}128$ 时
 $\mathrm{Sk} = 1/2/3$ 可行（64--96 KB），$\mathrm{Sk}{=}4$（112 KB）超出
 optin 上限，会被 \texttt{check\_smem\_feasible} 兜底判为 SMEM SKIP，
-$D{=}128$ 的推荐档位是 $\mathrm{Sk}{=}2$（最优平衡点：80 KB，2 blocks/SM，
-pipeline 深度足够隐藏 TMA 延迟）。另有 v1 限制：\texttt{kHeadDim} 只支持
+$D{=}128$ 的推荐档位是 $\mathrm{Sk}{=}2$（最优平衡点：80 KB，1 block/SM——
+99 KB 的 optin 上限装不下两份，pipeline 深度仍足够隐藏 TMA 延迟）。另有 v1 限制：\texttt{kHeadDim} 只支持
 64 或 128，且要求 seqlen $\%\, B_r = 0$、seqlen $\%\, B_c = 0$（不处理
 尾 tile）。
 
@@ -730,8 +730,8 @@ $D{=}64$，\;Sk$=$2，Sv$=$1，F16Acc & 141.8 & 151.8 \\
 
 Sk $=$ 2 即达饱和（Sk 2 $\to$ 3 收益 $<$ 0.5\%）：$B_r{=}128$ 的计算阶段
 足够长，两级 K 流水已把 TMA 延迟推出关键路径，更深的流水只多耗 smem
-（Sk$=$3 的 96 KB 使 2 blocks/SM 的驻留不再可行，头注释推荐 $D{=}128$ 用
-Sk$=$2 恰是两者的平衡点）。TMA+WS 相对 ch16 cp.async 版的稳定收益约
+（Sk$=$3 的 96 KB 已逼近 99 KB 的单 block 上限，只剩 1 block/SM 且不再有 smem 余量；
+头注释推荐 $D{=}128$ 用 Sk$=$2 恰是两者的平衡点）。TMA+WS 相对 ch16 cp.async 版的稳定收益约
 $+20\%$：同卡同时刻原版辅助工具对照
 （\texttt{leetcuda\_\allowbreak{}bench --bench --bhnd 1,\allowbreak{}32,\allowbreak{}16384,\allowbreak{}128}，warmup$=$2/repeat$=$3）
 测得 FA2 MMA Stages（Sk$=$2, Pad, F16Acc）158.7T $\to$ FA2 TMA WS（Sk$=$2）

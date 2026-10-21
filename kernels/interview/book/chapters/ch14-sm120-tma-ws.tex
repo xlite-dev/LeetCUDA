@@ -697,7 +697,8 @@ $8192^3$ 规模下 TMA+MMA+WS 组合把纯 MMA 基础实现（第~\ref{ch:11}~�
 \texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn} 约 127~TFLOPS 量级）提升
 57\%--82\%，搬运端与同步协议的升级在大矩阵上依然成立。开启 block swizzle
 （BLK\_SW=1）后 f16 累加路径从 0.81x 提升到 0.94x，L2 局部性的收益与上文
-2048$^3$ 的结论一致，且两配置 Max Err 均为 0，性能收益未付出精度代价。
+2048$^3$ 的结论一致，且两配置在该批输入下 Max Err 为 0；这不代表 f16 累加无精度损失
+（本章自述 $K{=}256$ 的 f16 累加误差 $1.9\times10^{-3}$，第~\ref{ch:11}~章同机为 $1.5\times10^{-2}$）。
 
 \section{实践经验与考据说明}
 

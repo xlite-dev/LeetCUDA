@@ -666,3 +666,17 @@
     的 stderr/stdout 交错伪影已论证）；5 arch 构建通过；verify_anchors ALL
     GREEN（anchors.yaml files 段 key 迁移 bench/ 前缀 + ch26c ref →
     bench/ffpa_attn.cu）。
+
+- [x] **R16 全章数理审核 · 波 1（2026-10-21）**
+  - 范围：G1 基础篇 ch00-07 / G2 GEMM 篇 ch08-14 / G3 Attention 篇 ch15-19 /
+    G4 量化注意力篇 ch27-33；4 个只读 task agent 分组审核，产物
+    `book/.tmp/math-audit/g1-base.md`、`g2-gemm.md`、`g3-attn.md`、`g4-quant-attn.md`。
+  - 结论：70 条发现（H 27 / M 27 / L 16）。H 全部按脚本复算后改正文，另采纳
+    5 条有确定性证据的 M；其余 38 条经用户 2026-10-21 裁定全部修改
+    （F-G4-12 复核驳回：listing 与 `861d75e` 逐字一致）；复核记录见
+    `review-wave1.md` 与 `low-confidence.md` 状态说明。
+  - 验收：584 页不变、0 error、0 undefined、Overfull ≥1pt 13（与基线逐条相同）、
+    缺字 0；改动页 150dpi 目检（p28/65/99/194/496/507）无重叠、无越界。
+  - RTD：ch04 图内中文改动补 5 条 `figures-en.json`，`translate_figures --report`
+    覆盖 1792/1792。
+  - 待办：波 2（G5 CuTe 全篇 wp0-7+ch19b+ch20-26c / G6 量化 GEMM ch34-37）未启动。

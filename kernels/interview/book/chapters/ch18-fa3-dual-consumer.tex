@@ -566,7 +566,7 @@ softmax 也能重叠（intra-warpgroup overlapping），两个 WG 再交替执�
     \draw[dashed, gray!60] ({\tk*\u},0.12) -- ({\tk*\u},-4.9);
     \node[anchor=south, font=\tiny] at ({\tk*\u},0.12) {\tk};
   }
-  \node[anchor=south, font=\scriptsize] at ({5*\u},0.42) {时间（一个 KV tile 的本 WG 工作量为 4 段；相位差 $= 1/4$ 周期）};
+  \node[anchor=south, font=\scriptsize] at ({5*\u},0.42) {时间（一个 KV tile 的本 WG 工作量为 4 段；两 WG 由争用自然错相，理想情况接近 $1/4$ 周期）};
   % WG1 泳道
   \node[anchor=east, font=\scriptsize] at (-0.15,-0.97) {WG1（偶数 tile）};
   \node[thin, draw=tkBlue, fill=tkBlue!45, minimum width=2.48cm, minimum height=\lh cm, inner sep=0pt, font=\tiny]
@@ -632,7 +632,7 @@ softmax 也能重叠（intra-warpgroup overlapping），两个 WG 再交替执�
         minimum width=1.7cm, minimum height=0.30cm, inner sep=0pt] at (2.8,-6.75) {};
   \node[font=\tiny, text=tkRed] at (2.8,-7.12) {TC 空转};
 \end{tikzpicture}
-\caption{双 consumer 的相位交错时序（18.4.5 节统计性交错的图形化）。上：WG1/WG2 各按\textbf{QK MMA $\to$ softmax $\to$ PV MMA $\to$ rescale}四段推进自己的 KV tile 子序列，两 WG 相位差 $1/4$ 周期——WG1 处于 MMA 段时 WG2 大概率处于 softmax/rescale 段；producer 的 TMA 全程并行，完成即 arrive-tx 翻转 \texttt{full[s]}。中：Tensor Core 与 CUDA Core/SFU 两条资源条被两路计算交替填满（同步 \texttt{mma.sync} 做不到 WG 内重叠，靠两路独立流在硬件调度器上统计性交错）。下：单 consumer（第~\ref{ch:17}~章形态）的对照——softmax 段 Tensor Core 只能空转，这正是第二个 consumer 要填补的空档。}
+\caption{双 consumer 的相位交错时序（18.4.5 节统计性交错的图形化）。上：WG1/WG2 各按\textbf{QK MMA $\to$ softmax $\to$ PV MMA $\to$ rescale}四段推进自己的 KV tile 子序列，两 WG 由 Tensor Core 争用自然错相（统计上接近 $1/4$ 周期，非设计约束）——WG1 处于 MMA 段时 WG2 大概率处于 softmax/rescale 段；producer 的 TMA 全程并行，完成即 arrive-tx 翻转 \texttt{full[s]}。中：Tensor Core 与 CUDA Core/SFU 两条资源条被两路计算交替填满（同步 \texttt{mma.sync} 做不到 WG 内重叠，靠两路独立流在硬件调度器上统计性交错）。下：单 consumer（第~\ref{ch:17}~章形态）的对照——softmax 段 Tensor Core 只能空转，这正是第二个 consumer 要填补的空档。}
 \label{fig:18-dual-phase}
 \end{figure}
 
@@ -948,9 +948,9 @@ WG1 看到 WG2 的写入）。
 
 测试文件：\texttt{book/\allowbreak{}tests/\allowbreak{}ch18\_\allowbreak{}fa3.cu}（逻辑抽取自 bench/flash\_attn.cu
 \texttt{test\_\allowbreak{}flash\_\allowbreak{}attn\_\allowbreak{}3\_\allowbreak{}tma\_\allowbreak{}ws\_\allowbreak{}impl}@L1085；参考实现由 cuDNN SDPA 换成
-CPU fp64，softmax 全程 double 累加）。覆盖 14 例：$D{=}64$（$\mathrm{Sk}
-\in \{1,2,3\}$，$N \in \{64, 128, 512\}$）与 $D{=}128$（$\mathrm{Sk}{=}1$，
-$N \in \{128, 512\}$），每例 F16Acc/F32Acc 双档，其中 $N{=}64$ 专门覆盖
+CPU fp64，softmax 全程 double 累加）。覆盖 7 组 $\times$ F16Acc/F32Acc 双档
+$=14$ 例：$(D{=}64,\mathrm{Sk}{=}1,N{=}64/128)$、$(64,2,128/512)$、$(64,3,512)$、
+$(D{=}128,\mathrm{Sk}{=}1,N{=}128/512)$，其中 $N{=}64$ 专门覆盖
 $T_c{=}1$ 的 merge 退化路径，
 $N{=}128$ 是两 WG 各一个 tile 的最小非退化形态，$N{=}512$（$T_c{=}8$）让每个
 WG 完成 4 个 tile 并触发 $\mathrm{Sk}{\ge}2$ 的 stage 回绕。判定用容差表：

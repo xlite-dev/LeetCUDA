@@ -151,7 +151,9 @@ FA 主循环里的 online rescale 与第~\ref{ch:19}~章跨 D-chunk 的两阶段
 \subsection{空段与 $\pm\infty$ 语义}
 
 causal mask 等机制会产生空段：某分块内全部打分被 mask 成 $-\infty$，
-此时 $\ell = 0$，LSE 依实现约定可能记为 $+\infty$ 或 $-\infty$。合并层的
+此时 $\ell = 0$，按定义 LSE $= -\infty$；FlashAttention 系实现习惯把空段写成
+$+\infty$ 作哨兵，两者\textbf{不可互换}（未清洗的 $+\infty$ 会让
+$L=\max(\mathrm{LSE})=+\infty$、$\mathrm{LSE}-L=\mathrm{NaN}$）。合并层的
 正确语义是空段权重必须为 0。源码的防御是：先把 $+\infty$ 的 LSE
 清洗成 $-\infty$（base.cuh~L484-485），此后 $w = e^{-\infty - L} = 0$，
 该块权重自然退化为 0（数学上严格成立，核校通过）。但要小心一个残留边界：

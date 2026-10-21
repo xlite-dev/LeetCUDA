@@ -425,7 +425,7 @@ $M$ & mat\_transpose (naive) & mat\_transpose\_padded & 加速比 \\
 
 \begin{enumerate}
   \item \textbf{L2 口径下收益放大到 2.4$\times$}：L2 延迟低、带宽高，事务数（而非 DRAM 流量）成为第一瓶颈。naive 的 32 次写事务在 L2 上全部计入开销；padded 的 float4 合并写加上 smem 读从 16-way 降到 2-way，两处共同压低了事务开销。$M = 2048$ 时 padded 有效带宽 2320 GB/s，这是 L2 量级的数字，不代表 HBM。
-  \item \textbf{HBM 口径下收益降至 1.11$\times$}：$M = 8192$ 时数据穿透 L2 落到 DRAM，L2 的 write-back 聚合会把 naive 分散的 4B 写在写回 DRAM 前重新拼成整段，非合并写的惩罚被部分吸收；此时两者都逼近 DRAM 带宽，剩余差距主要来自 smem 2-way 与调度差异。结论：\textbf{转置优化的收益必须按数据规模/L2 行为分口径报告}，拿 L2 口径的 2.4$\times$ 去外推大矩阵会严重高估。
+  \item \textbf{HBM 口径下收益降至 1.11$\times$}：$M = 8192$ 时数据穿透 L2 落到 DRAM，L2 会把命中同一 32B sector 的多次部分写在写回 DRAM 前合并（该机理未上 NCU 计数，属待证解释），非合并写的惩罚被部分吸收；此时两者都逼近 DRAM 带宽，剩余差距主要来自 smem 2-way 与调度差异。结论：\textbf{转置优化的收益必须按数据规模/L2 行为分口径报告}，拿 L2 口径的 2.4$\times$ 去外推大矩阵会严重高估。
 \end{enumerate}
 
 \section{实践经验}

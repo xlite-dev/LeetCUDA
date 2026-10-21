@@ -38,10 +38,10 @@ $e^{89}$ 就已经越界变成 \texttt{inf}。一旦分子或分母出现 \textt
 \texttt{inf}/\texttt{inf} 型的 \texttt{NaN}，模型输出错误结果。所以减 max 不是可选的优化技巧，
 而是正确性的底线。
 
-\textbf{动机二：每多一遍扫描，就多一遍代价。}教科书的 safe softmax 要对输入做三次遍历：
-求 max、求指数和、再除一遍写回。每次遍历在 GPU 上至少意味着一遍全局内存读取，或者
-一次 block 级同步归约。三版实现的差距就在全局扫描次数上
-（3-pass $\to$ 2-pass $\to$ 1-pass），图~\ref{fig:4-1} 给出三者的数据流对比。
+\textbf{动机二：每多一遍扫描，就多一遍代价。}教科书的 safe softmax 要读两遍输入
+（求 max、求指数和）再加一遍写回。每次扫描在 GPU 上至少意味着一遍全局内存读取，或者
+一次 block 级同步归约。本章三版实现的差距就在全局扫描次数上：naive 直译定义（1 遍）、
+safe 两次归约（2 遍）、online 融合成一遍，图~\ref{fig:4-1} 给出三者的数据流对比。
 
 \textbf{动机三：行内自足性。}\allowbreak{}softmax 沿一行（一个 token、一个 query）独立计算，
 行与行之间零依赖。这意味着一行数据可以完整驻留在一个 block 的寄存器/共享内存里，
@@ -379,21 +379,21 @@ block 级同步从 2 次降到 1 次；代价是归约算子从单个加法变�
     font=\footnotesize\bfseries},
   col/.style={anchor=west, inner sep=1pt}]
   \node[anchor=west, font=\small\bfseries] at (0.43, 5.35)
-    {Softmax 三级递进：3-pass $\to$ 2-pass $\to$ 1-pass（online）};
+    {Softmax 三级递进：naive 1-pass $\to$ safe 2-pass $\to$ online 1-pass};
   \node[card, draw=red!75!black, fill=white] at (3.00, 2.47) {};
   \node[card, draw=orange!75!black, fill=white] at (8.00, 2.47) {};
   \node[card, draw=green!45!black, fill=green!8] at (13.00, 2.47) {};
   \node[hdr, draw=red!75!black, fill=gray!12, text=red!75!black] at (3.00, 4.57)
-    {naive / textbook（3-pass）};
+    {naive / Level 1（1-pass，无 max）};
   \node[hdr, draw=orange!75!black, fill=gray!12, text=orange!75!black] at (8.00, 4.57)
     {safe / Level 2（2-pass）};
   \node[hdr, draw=green!45!black, fill=gray!12, text=green!45!black] at (13.00, 4.57)
     {online / Level 3（1-pass）};
-  \node[col] at (0.91, 3.90) {gmem x 第 1 遍: $m = \max(x)$};
-  \node[col] at (0.91, 3.41) {gmem x 第 2 遍: $s = \sum e^{x}$};
+  \node[col] at (0.91, 3.90) {gmem x $\to$ regs（唯一一次读）};
+  \node[col] at (0.91, 3.41) {$e^{x}$ 直接算（无 max 减法）};
   \node[col] at (0.91, 2.93) {$e^{x}$ 可能上溢 inf};
-  \node[col] at (0.91, 2.44) {gmem x 第 3 遍: $y = e^{x}/s$};
-  \node[col] at (0.91, 1.96) {3 次 gmem 全量读};
+  \node[col] at (0.91, 2.44) {reduce sum $\to s$；$y = e^{x}/s$};
+  \node[col] at (0.91, 1.96) {1 次 gmem 读 + 1 次写};
   \node[col] at (5.91, 3.90) {gmem x $\to$ regs（第 1 次读）};
   \node[col] at (5.91, 3.41) {block reduce max $\to$ $m$};
   \node[col] at (5.91, 2.93) {gmem x 第 2 次读（L1 命中）};
@@ -409,15 +409,16 @@ block 级同步从 2 次降到 1 次；代价是归约算子从单个加法变�
   \draw[-{Stealth}, black!60, line width=1.1pt] (5.43, 3.14) -- (5.74, 3.14);
   \draw[-{Stealth}, black!60, line width=1.1pt] (10.43, 3.14) -- (10.74, 3.14);
   \node[anchor=west, black!70] at (0.43, 0.26)
-    {箭头方向 = 演进：读 gmem 次数 $3 \to 2 \to 1$；溢出风险 $\to$ 无；block sync $3 \to 2 \to 1$（fast math：expf / \_\_fdividef）};
+    {箭头方向 = 演进：读 gmem 次数 $1 \to 2 \to 1$；溢出风险 naive 有、后两版无；block sync $1 \to 2 \to 1$（fast math：expf / \_\_fdividef）};
 \end{tikzpicture}}
-\caption{Softmax 三级递进的 3-pass $\to$ 2-pass $\to$ 1-pass 数据流：左为教科书三遍扫描（无 max 减法，$e^x$ 可能上溢）；中为 safe 版两次归约；右为 online 版 $(m,d)$ 状态一次融合归约。}
+\caption{Softmax 三级递进的数据流：左为 naive 版（式~\ref{eq:4-softmax-def} 的直译，无 max 减法、$e^x$ 可能上溢，1 读 1 写）；中为 safe 版两次归约（2 次读）；右为 online 版 $(m,d)$ 状态一次融合归约。}
 \label{fig:4-1}
 \end{figure}
 
 图~\ref{fig:4-1} 的三条泳道对应本章三级实现。读图的关键维度是全局扫描次数：
-3-pass 版本每遍历一次 $x$ 都要付一遍 DRAM 带宽；2-pass 版本把 $x$ 装进寄存器后只需
-两次 block 归约；1-pass 版本连归约都只剩一次：$(m, d)$ 在蝶形归约里同步更新。
+naive 版读 $x$ 一遍、$e^x$ 留在寄存器，归约只有一次，但输不起溢出；
+safe 版为求 max 与指数和各读一遍 $x$（第二遍通常 L1 命中），换来任意有限输入不溢出；
+online 版把 $(m, d)$ 放进蝶形归约，读一遍 $x$、一次同步完成。
 FlashAttention 把右列的 $(m,d)$ 再加一列 $O$，就是第~\ref{ch:15}~章的 online rescale。
 
 \section{性能分析}
@@ -540,8 +541,9 @@ launch 与同步的固定开销占比大；附录~B 的汇总口径会注明这�
 $\bigl(\texttt{-FLT\_MAX},\, 0\bigr)$。三者各自成对，混用（比如 max 归约填 0）
 会让 max 被钳在 0：基准被抬高，指数参数 $x - 0$ 比正确的 $x - m$ 整体
 偏小（$m$ 为真实行最大值；输出在不下溢时因平移不变性式~\ref{eq:4-shift}
-逐位不变），真正的风险
-是整行强负值（$x \lesssim -87$）时 $e^{x}$ 全部下溢为 0，得到 $0/0$ 的
+保持不变，差异仅在 fp32 舍入的量级），真正的风险
+是整行强负值（$x \lesssim -103.3$，即 $e^{x}$ 低于最小次正规数 $2^{-149}$）时整行 flush 为 0，
+得到 $0/0$ 的
 NaN（naive 上溢故障的镜像）。若整行全为边界线程（空行），$d = 0$ 会出现
 除零，per-token 场景下由调用方保证行非空。
 

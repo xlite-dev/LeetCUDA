@@ -79,7 +79,8 @@ consumer 线程均分，每线程 $B_r D / 128 = D/2$ 个寄存器。$D = 512$ �
 
 \begin{enumerate}[itemsep=2pt,topsep=2pt]
   \item \textbf{smem 容量瓶颈}：$[B_r, D]$ 与 $[B_c, D]$ 的整块 tile 随 $D$ 线性膨胀
-        （式~\ref{eq:19-smem}），$D \ge 256$ 时连\textbf{Q/K/V 各一份}都放不下，
+        （式~\ref{eq:19-smem}），$D \ge 512$ 时连\textbf{Q/K/V 各一份}都放不下
+        （$D{=}256$ 的 96\,KB 恰好只够各一份，留不出任何流水余量），
         更不用说多级流水要的多份。
   \item \textbf{寄存器瓶颈}：O 累加器的总量由输出 tile 的形状 $[B_r, D]$ 决定，
         与怎么切 chunk 无关（式~\ref{eq:19-oacc}）。$D = 512$ 时它是 256 个
@@ -137,8 +138,10 @@ split-D（切特征）。
 生产库中的对应形态：\texttt{ffpa-attn} 按 $D$ 分三个家族：$D \le 128$ 走
 persist-D（Q 常驻寄存器的 WS 结构），中段走 split-D（非 WS，即本章这版形态），
 $D \ge 768$ 换成 M4N2（\texttt{atom\_layout} $(4,2,1)$，4 个 M-warp $\times$ 2 个
-N-warp（共 8 warp）分摊，O 寄存器降到 $D/4$）。交叉点大约在 $D \approx 768$，与式~\ref{eq:19-oacc} 算出的
-寄存器占用一致（19.4.6~节）。本章的两个 kernel 是这条路线在教学仓库里的最小形态。
+N-warp（共 8 warp）分摊，O 寄存器降到 $D/4$）。交叉点分两档：寄存器硬上限给出
+$D \approx 512$（式~\ref{eq:19-oacc}，$R_O = D/2 \le 255$）；$D \ge 768$ 换 M4N2 则是
+生产库按 spill 后的吞吐代价选的经验门限（此时 $R_O = D/4 = 192$ 重回可控区，19.4.6~节）。
+本章的两个 kernel 是这条路线在教学仓库里的最小形态。
 
 \section{数学原理}
 
@@ -221,7 +224,7 @@ $\ell_t = \sum_{j<tB_c} e^{S_{ij}-m_t}$，最终 $O = O_{T_c}/\ell_{T_c}$。
 \texttt{row\_\allowbreak{}scale[row]}（L327--335）：rescaling 必须广播，不能由各 chunk
 独立处理。原因是一个不变量：
 
-\begin{theorem}[chunk 累加器的不变量]
+\begin{theorem}[chunk 累加器的不变量]\label{thm:19-invariant}
   若 $m_0 = -\infty,\ \ell_0 = 0,\ O^{(c)}_0 = 0$，且按式~\ref{eq:19-chunk} 更新，
   则对一切 $t$ 与一切 $c$：
   \begin{equation}
@@ -916,9 +919,9 @@ $\times$ 2 个 N-warp，$R_O$ 降到 $D/4$）的原因，也是本章这版 kern
   \node[draw=tGreen, fill=tkFillGreen, text=tGreen!70!black, font=\scriptsize\bfseries,
         align=center, text width=7.3cm, inner sep=1pt, minimum height=0.81cm]
         at (833,552)
-    {对比 split-D：无第二次 max —— $\rho$ 构造上被全部 chunk 共享（定理~\ref{eq:19-invariant} 的不变量）};
+    {对比 split-D：无第二次 max —— $\rho$ 构造上被全部 chunk 共享（定理~\ref{thm:19-invariant} 的不变量）};
 \end{tikzpicture}
-\caption{跨 chunk 的两阶段合并。第一阶段：QK${}^\top$ 的 chunk 求和是同一点积内部加数的分组，\textbf{精确且无需权重}；第二阶段：$PV$ 的每个 chunk 各持一个输出列段累加器，跨 KV tile 的在线 rescale 因子 $\rho_t$ \textbf{必须广播到全部 $C$ 个累加器}（定理~\ref{eq:19-invariant} 的不变量），$\ell$ 全程只有一份。}
+\caption{跨 chunk 的两阶段合并。第一阶段：QK${}^\top$ 的 chunk 求和是同一点积内部加数的分组，\textbf{精确且无需权重}；第二阶段：$PV$ 的每个 chunk 各持一个输出列段累加器，跨 KV tile 的在线 rescale 因子 $\rho_t$ \textbf{必须广播到全部 $C$ 个累加器}（定理~\ref{thm:19-invariant} 的不变量），$\ell$ 全程只有一份。}
 \label{fig:19-2}
 \end{figure}
 
@@ -1113,7 +1116,7 @@ A：因为它是同一个点积的加数分组（式~\ref{eq:19-dotsplit}），$
 $m$ 与缩放 $\gamma$ 都在求和之后才介入。浮点上只差求和顺序。
 
 \textbf{Q4：PV 的每个 chunk 有独立累加器，为什么 rescale 因子必须共享？}\\
-A：见定理~\ref{eq:19-invariant}：$O^{(c)}$ 的含义是以当前 max 为基准、
+A：见定理~\ref{thm:19-invariant}：$O^{(c)}$ 的含义是以当前 max 为基准、
 $e^{S-m}$ 为权重的 V 第 $c$ 段加权和。跨 KV tile 更新 max 时，所有 chunk 的
 基准都要一起改，因此必须乘同一个 $\rho_t$。若各 chunk 各用各的基准，尾部输出
 就等同于每个 chunk 的 softmax 归一化常数不同，而最终只能除一个 $\ell$，误差
@@ -1229,7 +1232,7 @@ ALL OK
         与本章 19.2--19.4~节逐条对照阅读）；
   \item @DefTruth《图解：从 Online-Softmax 到 FlashAttention V1/V2/V3》\\
         \url{https://zhuanlan.zhihu.com/p/668888063}\\
-        （$m/\ell/O$ 递推与 online rescale 的图示化推导；定理~\ref{eq:19-invariant}
+        （$m/\ell/O$ 递推与 online rescale 的图示化推导；定理~\ref{thm:19-invariant}
         的直观版本，第~\ref{ch:15}~章主参考）；
   \item @66RING《使用 cutlass cute 复现 flash attention》\\
         \url{https://zhuanlan.zhihu.com/p/696323042}\\

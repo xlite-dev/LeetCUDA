@@ -482,7 +482,7 @@ TMA）属于 Part II 后半与 Part III/IV。本书的章节顺序，就是这�
   \draw (0, 4.05) -- (0, 4.35);
   \draw (8.6, 4.05) -- (8.6, 4.35);
   \node[anchor=south, font=\scriptsize] at (4.3, 4.3)
-    {一次 HBM 读全程 $\approx 0.5\,\mu\mathrm{s}$（H100 参考）};
+    {一次 HBM 读全程 $\approx 0.25$--$0.40\,\mu\mathrm{s}$（H100，500--800 cycle）};
   \node[lab] at (-0.4, 1.45) {访存路径\\（三档延迟）};
   \node[bar, draw=tkGreen, fill=tkFillGreen, minimum width=0.9cm] at (1.6, 2.15) {};
   \node[tlab] at (2.25, 2.15) {L1 命中：$\sim$30 cycle（最快，就地结束）};
@@ -536,7 +536,8 @@ ridge point：FP16 TC dense $989/3.35 \approx 295$，FP32 $67/3.35 \approx 20$�
 \textbf{表 2：本机 RTX PRO 5000（sm\_120a，2026-09-11 实测，来自
 ch01\_roofline.cu 属性查询）}：110 SM，L2 96 MB，smem/block opt-in 99 KB，
 GDDR7 理论带宽 1344 GB/s（14 GHz $\times$ 384-bit $\times$ 2），FP32 峰值
-估算 66.9 TFLOPS（128 FMA/clk/SM 口径），ridge point $\approx 49.8$
+估算 66.9 TFLOPS（128 FMA/clk/SM $\times$ 110 SM $\times$ 2.376 GHz 峰值时钟口径），
+ridge point $\approx 49.8$
 FLOP/Byte。后续各章 bench 都在这台机器上完成，请用这张表换算各章 kernel
 达到了理论带宽的百分之几。ch03 的 bench（\S\ref{sec:ch03-perf}）
 会在只有 16 MB 数据的情况下测出 1862 GB/s，超过 HBM 理论值，

@@ -120,9 +120,9 @@ dequant 隐含在乘法里：
   \;=\;\text{逐块}\;\bigl(\hat A\,s_A\bigr)\bigl(\hat B\,s_B\bigr)
   \label{eq:31-blockscale}
 \end{equation}
-即 SM120 的 \texttt{m16n32k64 kind::mxf4nvf4 ue4m3 scale\_vec::4X}
-指令（\texttt{attn\_traits.cuh} L30--37 注释、L77 的
-\texttt{MMAAtom}）。MMA 读入的是 4 bit 数据 +
+即 SM120 的 \texttt{m16n8k64 kind::mxf4nvf4 ue4m3 scale\_vec::4X}
+指令；CuTe 侧把 4 条该指令拼成 \texttt{16x32x64} 的 \texttt{MMA\_Atom}
+（\texttt{attn\_traits.cuh} L30--37 注释、L77 的 \texttt{MMAAtom}）。MMA 读入的是 4 bit 数据 +
 SF 旁路，累加时按块乘回尺度。MXFP4（e2m1 + ue8m0/32 块）在 SA3
 Table 1 中精度低于 NVFP4（ue8m0 只有 8 bit 指数无尾数，SF 本身步长
 100\%），ffpa 未采用。
@@ -148,11 +148,14 @@ $\hat Q=\phi(Q-q_m)$、$\hat K=\phi(K^\top-\bar k)$，score 的精确重构
 \end{equation}
 直接展开有四项。SA3 的改写是把它压成残差 MMA 加一个 rank-1 修正项：
 \begin{equation}
-  S=\hat Q\hat K^\top+\Delta S,\qquad
+  S^{\dagger}=\hat Q\hat K^\top+\Delta S,\qquad
   \Delta S[b,h,m,n]=q_m[b,h,m,:]\cdot\bigl(K[b,h_{kv},n,:]-\bar k\bigr)
   \label{eq:31-deltas}
 \end{equation}
-（GQA 下 K/V 按 kv 头 $h_{kv}$ 索引，MHA 时退化为 $h_{kv}=h$。）
+（GQA 下 K/V 按 kv 头 $h_{kv}$ 索引，MHA 时退化为 $h_{kv}=h$。）这里
+$S^{\dagger}=q(k-\bar k)^\top$ 是 kernel 域分数；真值 $S=S^{\dagger}+q\bar k^\top$，
+$q\bar k^\top$ 与 $n$ 无关，只平移 lse（回加 $\mathrm{scale}\cdot\mathrm{dot}(q_{row},\bar k)$），
+不改变 $O$。
 
 而式~\ref{eq:31-deltas} 右边的 $K-\bar k$ 必须避免物化，它等于
 \begin{equation}
@@ -161,7 +164,7 @@ $\hat Q=\phi(Q-q_m)$、$\hat K=\phi(K^\top-\bar k)$，score 的精确重构
   \label{eq:31-deltas-id}
 \end{equation}
 \texttt{delta\_s.cuh} 头注释（L3--8）明确给出这个恒等式：
-kernel 的 $S=\hat Q\hat K^\top+\Delta S$ 恰好等于 $q(k-\bar k)^\top$。
+kernel 的 $S^{\dagger}=\hat Q\hat K^\top+\Delta S$ 恰好等于 $q(k-\bar k)^\top$。
 于是 lse 修正只需要 $scale\cdot\mathrm{dot}(q_{row},\bar k)$（任何多余
 的行常数会平移 lse 但不改变 $O$）。$\Delta S$ 在量化链里一次算好
 （fp32 物化，pad 列零填），主 kernel 每个 kv tile 加载即用。
@@ -804,7 +807,7 @@ MXFP8 PV 变体（$V^\top$ 走 e4m3 + ue8m0/32，精度更高）付出 37.7\%
     \toprule
     $D$ & self FFPA/SDPA (ms) & 吞吐 & causal FFPA/SDPA (ms) & 吞吐 & 加速比区间 \\
     \midrule
-    64  & 1.61 / 2.40 & 341T & 1.08 / 1.35 & 255T & 1.23--1.49x \\
+    64  & 1.61 / 2.40 & 341T & 1.08 / 1.35 & 255T & 1.25--1.49x \\
     128 & 2.52 / 5.11 & 437T & 1.67 / 2.68 & 330T & 1.61--2.03x \\
     192 & 3.48 / 7.14 & 474T & 2.40 / 3.81 & 344T & 1.59--2.05x \\
     256 & 4.97 / 10.46 & 443T & 3.54 / 5.27 & 311T & 1.49--2.11x \\
@@ -813,7 +816,7 @@ MXFP8 PV 变体（$V^\top$ 走 e4m3 + ue8m0/32，精度更高）付出 37.7\%
 \end{table}
 
 三个观察：(1) fp4 的 e2e 加速比区间（1.2--2.1x）整体高于同机 fp8
-persist-D（第~\ref{ch:29}~章 29.6 节实测表的 1.26--1.70x），来源不在 MMA
+persist-D（第~\ref{ch:29}~章 29.6 节实测表含 causal 的 1.16--1.70x），来源不在 MMA
 吞吐（blockscale mxf4nvf4 的吞吐只与 fp8 dense 相当），而在
 带宽：K/V/SF 的字节数减半以上，memory-bound 的 attention
 直接受益（skill §6.6：attn kernel 本身快 $\sim$23\%）。(2) D=192 的

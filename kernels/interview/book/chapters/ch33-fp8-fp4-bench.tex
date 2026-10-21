@@ -231,9 +231,10 @@ bench 输出三层指标，各有分工：
   \item \texttt{allclose(atol=tol, rtol=tol)}：CI 门禁布尔量，tol 按
         精度分档（\texttt{\_runner\_fwd.py} L413--419）：
         fp16/bf16-fp8 路径 5e-2，纯 fp16 2e-2。fp4 dense 0.15、
-        causal 0.70，依据是 e2m1 网格噪声（第~\ref{ch:27}~章
-        27.3.7 节仿真：dense 绝对误差 $\approx$0.003 级，0.15 留出
-        约 50 倍余量。causal 尖峰行天然 0.5--0.75 级（第~\ref{ch:31}~章
+        causal 0.70，依据是 e2m1 网格噪声（第~\ref{ch:27}~章 27.3.7 节的
+        ESS 模型按 $\varepsilon\approx25\%$ 外推得 dense 绝对误差 $\approx10^{-2}$ 级，
+        与第~\ref{ch:31}~章 31.7 节实测 mean\_abs 0.014--0.03 一致；0.15 留出
+        约 5--10 倍余量。causal 尖峰行天然 0.5--0.75 级（第~\ref{ch:31}~章
         31.7~节实测），0.70 按无 hybrid 抑制的地板量级取上界）。
 \end{itemize}
 
@@ -439,9 +440,9 @@ bench 脚本默认 preset，2026-09-21）：fp8 与 Sage2 总体打平、互有
 
 三个形态段：
 \begin{itemize}[itemsep=0pt,topsep=2pt]
-  \item \textbf{D$\le$128 优势区}：1.26x--1.83x。量化 kernel 占满
+  \item \textbf{D$\le$128 优势区}：1.01x--1.83x（self/gqa 为 1.26--1.83）。量化 kernel 占满
         tensor pipe，aux 链被主 kernel 遮蔽。
-  \item \textbf{D=256 交叉点区}：fp8 persist-D 掉到 1.14x--1.45x
+  \item \textbf{D=256 交叉点区}：fp8 split-D 掉到 1.12x--1.45x
         （smem 压力 + fp4 家族在此开始占优：同点 fp4 2.11x，见
         表~\ref{tab:33-fp4-matrix}；第~\ref{ch:30}~章的 dispatch
         三分在此切换）；cross 甚至 0.76x：Nq=1024 小 Q 场景下
@@ -526,8 +527,8 @@ smooth-v 略快（+1.0\%）是 V 值域压缩后 PV 溢出重缩放更少。knob
 \subsection{竞品对照}
 
 \texttt{bench\_fp4.py}（16K，fp16，H32/Hkv8）同场四backend：
-self 场景 FFPA-FP4 523T（2.45x）$>$ Sage3 410T（1.92x）$>$
-FFPA-FP8 377T（1.77x）$>$ SDPA 213T；causal 场景 Sage3 的
+self 场景 FFPA-FP4 528.7T（2.44x）$>$ Sage3 411.7T（1.90x）$>$
+FFPA-FP8 382.1T（1.76x）$>$ SDPA 216.6T；causal 场景 Sage3 的
 rel\_err 0.59/max 1.0（早期行 e2m1 噪声无 hybrid 抑制，
 \texttt{bench\_fp4.py} 头注释 L8--10 记录其量级 $\sim$1.2），FFPA
 的 fp4-hybrid 把 max 压到 0.28；GQA 场景 Sage3 未支持（无数据）。fp8 侧

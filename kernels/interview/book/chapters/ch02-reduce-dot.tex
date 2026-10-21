@@ -253,9 +253,9 @@ shfl 广播（见 \S\ref{sec:ch02-block}）。
   \;+\;
   \underbrace{\log\sb 2 W}\sb{\text{二次归约}}
   \;=\;
-  5 + \log\sb 2 W \ \text{轮},
+  6 + \log\sb 2 W \ \text{步},
 \end{equation}
-$T = 256$（$W = 8$）时共 8 轮，外加一次 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()}。
+$T = 256$（$W = 8$）时共 9 步：5 轮 warp shuffle + 1 次 smem 写/同步 + 3 轮二次归约。
 smem 流量只有 $W$ 次写 + $W$ 次读（各 4B）。对比所有中间量走 smem 的
 朴素树形归约（$\log\sb 2 T = 8$ 轮 smem 往返），两级结构把 smem 流量降了一个
 量级。这就是 ch01 图 ch01-1 那条规律的局部应用：\textbf{能在寄存器层完成的
@@ -462,9 +462,10 @@ dot\_vec4 & 0.04155 & 807.53 GB/s \\
 三行时间几乎完全相同（约 42 $\mu$s），说明瓶颈已经转移：
 32 MB 的 dot 数据流只要 $32\,\mathrm{MB} / 1344\,\mathrm{GB/s} \approx
 24\,\mu$s（HBM 口径）甚至更少（L2 口径）。实测 42 $\mu$s 由另一个因素决定：
-$G = N/256 = 16384$ 个 block 各做一次 \texttt{atomic\allowbreak{}Add\allowbreak{}(y)}，对同一地址的
-全局原子串行化按 $42\,\mu s / 16384 \approx 2.6\,\mathrm{ns/op}$ 计，16384 次合计约
-$42\,\mu s$，恰好等于实测总时长。结论：该实现的上限由全局原子的串行吞吐决定。
+$G = N/256 = 16384$ 个 block 各做一次 \texttt{atomic\allowbreak{}Add\allowbreak{}(y)}。把总时长按
+原子次数摊开，得到\textbf{等效}同址原子吞吐 $42\,\mu s / 16384 \approx 2.6\,\mathrm{ns/op}$；
+这个数由总时长反推，不能单独当因果证据。真正的判据是上面三行等时对比：流量差 2 倍
+而时间不变，说明上限已不在访存，而在每个 block 一次的全局原子串行化。
 dot\_vec4 把访存指令数降为 $1/4$（字节数不变），总时长却完全不变，正是因为访存
 早已不是短板。改进方向：把每 block 一次全局原子改成两级 kernel，先让
 每 block 写出自己的和（$G$ 个地址，无冲突），再起一个小 kernel 归约 $G$ 个数；
