@@ -102,10 +102,12 @@ $\mathcal{B}$（定义域见 27.3.3 的粒度谱系），量化与反量化算�
   \tilde{x} \;=\; \hat{x} \cdot \delta,
   \label{eq:27-quant-op}
 \end{equation}
-其中 $R$ 是目标格式的满量程整数（int8 取 127，e4m3 取 448，e2m1 取 6）。
+其中 $R$ 是目标格式的满量程（int8 取 127，e4m3 取 448，e2m1 取 6）；
+$\mathrm{round}(\cdot)$ 指\textbf{舍入到目标格式的可表示格点}（RNE）——int8 是等距整数格点，
+e4m3/e2m1 是非均匀浮点格点，$\delta$ 只承担「块 amax $\to$ 满量程」的缩放，不构成均匀网格。
 $\delta = \mathrm{amax}(\mathcal{B}) / R$ 是块步长（amax 为块内绝对值最大值）。
 
-$\tilde{x}$ 与 $x$ 的差就是量化误差；round 取最近邻（RN）。三点注意：
+$\tilde{x}$ 与 $x$ 的差就是量化误差；round 取最近邻且平局取偶（RNE）。三点注意：
 \begin{itemize}[itemsep=2pt,topsep=2pt]
   \item $\mathrm{amax}(\mathcal{B}) = 0$（全零块，如 padding 列）时 $\delta = 0$，
         式~\ref{eq:27-quant-op} 出现 $0/0$，工程上必须显式防护（ffpa 对 SF 域取
@@ -459,16 +461,20 @@ smooth-K/smoothing 不变式与 delta\_s 修正是第~\ref{ch:28}~章（fp8）�
 第~\ref{ch:31}~章（fp4）的主要内容；SA2++ 的 f16 累加域约束推导如下。
 
 \paragraph{SA2++ 的 f16 累加器域约束。}
-\texttt{mma.f16.f8.f8.f16} 的 fp16 累加器可表示 $\pm 65504$；\texttt{m16n8k32} 的
-K 深度是 32，若逐元素乘积幅度均匀，则每个元素需满足 $P_r \times V_r \le
-65504/32 \approx 2047$。SA2++ 论文两侧各收窄一半取 $P_r = 224$、$V_r = 4.5$
-（$224 \times 4.5 = 1008 \le 2047$）；ffpa 的分配不同：P 侧保持 448 满量程
-（fixed 发射 $\tilde{P} = P v_s 448$），把约束全部落在 V 侧：per-channel V +
-f16 acc 时发射 $\hat{V} \in [-2.25, 2.25]$，检验 $448 \times 2.25 = 1008 \le 2047$
-同样成立（\texttt{cute/fp8/smooth\_v.cuh} 注释，第~\ref{ch:28}~章展开）。两种分配
-的乘积预算相同，差别在\textbf{牺牲 P 分辨率还是 V 分辨率}，ffpa 选择保 P（softmax
-概率的相对结构更敏感）。图~\ref{fig:27-pvbudget} 在 $P_r$--$V_r$ 平面上把这两种
-分配画成同面积矩形：预算线之下是 f16 累加器的安全域。
+\texttt{mma.f16.f8.f8.f16} 的 fp16 累加器可表示 $\pm 65504$。单条 \texttt{m16n8k32}
+累加 32 项，若 32 项同时取到上限，逐元素乘积须满足 $P_r \times V_r \le
+65504/32 \approx 2047$——这是\textbf{单指令的必要条件}。但累加器跨 $K$ 迭代保留在
+f16 寄存器里，真正的约束按\textbf{块}结算：$B_c \cdot P_r \cdot V_r \le 65504$，
+即 $P_rV_r \le 65504/B_c$（源码 \texttt{persist\_d.cuh} 的 constexpr 判定同此，
+第~\ref{ch:29}~章 29.3.4~节）。$B_c{=}64$ 时可用满量程 448
+（$64\times448\times2.25=64{,}512$），$B_c{=}128$ 时 P 侧须降到 224
+（$128\times224\times2.25=64{,}512$）。SA2++ 论文两侧各收窄一半取
+$P_r = 224$、$V_r = 4.5$；ffpa 把约束全部落在 V 侧：P 侧保持 448 满量程
+（fixed 发射 $\tilde{P} = P v_s 448$），per-channel V + f16 acc 时发射
+$\hat{V} \in [-2.25, 2.25]$。两种分配的乘积 $P_rV_r = 1008$ 相同，差别在
+\textbf{牺牲 P 分辨率还是 V 分辨率}，ffpa 选择保 P（softmax 概率的相对结构更敏感）。
+图~\ref{fig:27-pvbudget} 在 $P_r$--$V_r$ 平面上把这两种分配画成同面积矩形：
+单指令预算线之下是必要条件，块级预算再按 $B_c$ 收紧。
 
 \begin{figure}[H]
 \centering
@@ -491,8 +497,8 @@ f16 acc 时发射 $\hat{V} \in [-2.25, 2.25]$，检验 $448 \times 2.25 = 1008 \
   \end{scope}
   \draw[dashed,thick,tkRed]
     plot[domain=341.2:486,samples=50] ({1.2+0.02*\x},{2047/\x});
-  \node[axl,anchor=east,text=tkRed] at (7.9,5.72) {预算线 $P_r V_r = 2047 = 65504/32$};
-  \node[axl,anchor=east,text=tkRed!80] at (7.9,5.38) {\tiny （$V_r = 2047/P_r$，超限区斜纹）};
+  \node[axl,anchor=east,text=tkRed] at (7.9,5.72) {单指令预算线 $P_r V_r = 2047 = 65504/32$};
+  \node[axl,anchor=east,text=tkRed!80] at (7.9,5.38) {\tiny （块级预算见正文）};
   % 448 满量程参考线
   \draw[dotted,thick] (10.16,0) -- (10.16,6.0);
   \node[axl,anchor=south] at (10.16,6.15) {P 满量程 448（e4m3）};
@@ -500,11 +506,11 @@ f16 acc 时发射 $\hat{V} \in [-2.25, 2.25]$，检验 $448 \times 2.25 = 1008 \
   \fill (5.68,4.5) circle (1.6pt);
   \node[axl,anchor=south] at (5.68,4.62) {$(224,\,4.5)$};
   \node[axl,anchor=north,align=center,text=tkOrange!85!black] at (3.4,4.2)
-    {SA2++\\$224\times4.5 = 1008 \le 2047$\\{\tiny 两侧各收窄一半}};
+    {SA2++\\$224\times4.5 = 1008 \le 1023.5$（$B_c{=}64$）\\{\tiny 两侧各收窄一半}};
   \fill (10.16,2.25) circle (1.6pt);
   \node[axl,anchor=south west] at (10.30,2.32) {$(448,\,2.25)$};
   \node[axl,anchor=north,align=center,text=tkBlue] at (7.92,2.02)
-    {ffpa：$448\times2.25 = 1008 \le 2047$\\{\tiny P 保满量程、约束全压 V 侧}\\{\tiny （$\hat V\in[-2.25,2.25]$）}};
+    {ffpa：$448\times2.25 = 1008 \le 1023.5$（$B_c{=}64$）\\{\tiny P 保满量程、约束全压 V 侧}\\{\tiny （$\hat V\in[-2.25,2.25]$）}};
   % 坐标轴（最后画，压在矩形之上）
   \draw[-{Stealth},thick] (1.2,0) -- (11.9,0);
   \draw[-{Stealth},thick] (1.2,0) -- (1.2,6.5);
@@ -520,13 +526,14 @@ f16 acc 时发射 $\hat{V} \in [-2.25, 2.25]$，检验 $448 \times 2.25 = 1008 \
   \node[axl,anchor=south,rotate=90] at (0.72,3.2) {$V_r$（V 侧发射幅度）};
   \node[axl,anchor=north west,align=left] at (1.2,-1.15)
     {约束来源：\texttt{mma.f16.f8.f8.f16} 的 f16 累加器 $\pm65504$、\texttt{m16n8k32} 的 K 深度 32
-     $\Rightarrow$ 逐元素 $P_r\times V_r \le 2047$。};
+     $\Rightarrow$ 逐元素 $P_r\times V_r \le 2047$（单指令口径）。};
   \node[axl,anchor=north west,align=left] at (1.2,-1.7)
     {两种分配面积相同（1008），差别在牺牲 P 还是 V 的分辨率——ffpa 保 P：
      softmax 概率的相对结构更敏感。};
 \end{tikzpicture}
 \caption{f16 累加器域的乘积预算（27.3.5 节）：横轴 $P_r$、纵轴 $V_r$，虚线为
-预算线 $P_r V_r = 2047$（$=65504/32$，$K$ 深度 32），线上方斜纹区为超限区。
+单条 \texttt{m16n8k32} 的 32 项乘积预算线 $P_r V_r = 2047$（$=65504/32=2046.375$，正文取整），线上方斜纹区为超限区；
+跨 $K$ 迭代的块级预算 $B_cP_rV_r \le 65504$ 更紧，见正文。
 SA2++ 取 $(224,4.5)$、ffpa 取 $(448,2.25)$，两者面积同为 $1008\le2047$——
 一个矩形高瘦（两侧各收窄一半），一个扁宽（P 保持 448 满量程、约束全部落在
 V 侧，per-channel V + f16 acc 时 $\hat V\in[-2.25,2.25]$）。点线为 e4m3 满量程
@@ -565,11 +572,13 @@ $\tilde{P}_{\max} = v_s \cdot 448 = \mathrm{amax}(V)$，溢出条件与安全域
   \mathrm{amax}(V) \le 448/2^{\tau}.
   \label{eq:27-overflow}
 \end{equation}
-ffpa 取 $T = \texttt{FFPA\_RESCALE\_THRESHOLD\_FP8} = 4$（FA-4 原文的 BF16
+ffpa 的常量取 $T = \texttt{FFPA\_RESCALE\_THRESHOLD\_FP8} = 4$（FA-4 原文的 BF16
 kernel 典型取 $\tau = 8$；fp8 发射域的上限更紧，按 e4m3 满量程反推出更小的
 4，源码注释把它归因为 "FA-4's fp8 choice"，但 FA-4 论文并无 fp8 $\tau$ 的
-表述）。适用域即 $\mathrm{amax}(V) \le 28$。残余超调由 \texttt{satfinite}
-钳位处理（27.8~节坑三）。
+表述）。\textbf{注意这是「若启用」时的上限}：fp8 的三个 traits 家族实际把
+\texttt{kLazyRescale} 置 \texttt{false}、阈值传 0，这条机制在 fp8 路径上并不启用
+（第~\ref{ch:29}~章 29.3.3~节；关掉的理由正是下面的安全域太窄）。适用域即
+$\mathrm{amax}(V) \le 28$，残余超调由 \texttt{satfinite} 钳位处理（27.8~节坑三）。
 
 27.3.4 的互斥断言也由此而来：per-row 满量程发射已经没有 headroom，任何 $2^{\tau}$
 膨胀都会直接溢出。图~\ref{fig:27-lazy-rescale}
@@ -998,7 +1007,7 @@ causal 早行的 $P$ 分布/误差对比，以及 $V>QK>P$ 的 per-stage 误差�
     \node[tl, text=gray!80!black] at (3.20,-4.30) {（max\_abs 实测 0.22）};
     \node[tl, text=gray!80!black] at (0.30,-4.88) {输出 $\approx$ 单个 V 行};
     \node[tl, font=\bfseries\fontsize{4.6}{5.2}\selectfont] at (0.25,-5.45)
-      {$15\times$ 的 abs 差距全部来自幅度；相对误差两者都是 $\sim$5\%};
+      {$15\times$ 的 abs 差距全部来自幅度；相对误差同量级（causal 5.5\% vs dense 9.1\%）};
     \node[tl, text=gray!80!black] at (0.25,-5.72)
       {（causal 5.5\% vs dense 9.1\%，PyTorch 仿真 B1H32N8192D128）};
     % 右半：per-stage 误差贡献（单级 ε × 幅度）

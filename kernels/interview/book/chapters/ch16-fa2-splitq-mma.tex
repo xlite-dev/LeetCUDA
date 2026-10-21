@@ -722,8 +722,10 @@ $\mathrm{g}{+}8$（L782--785），行号由 \texttt{Q\_tile\_id}、
 $4 B_r B_c D$ FLOP（$QK^\top$ 与 $PV$ 各 $2B_rB_cD$）；搬运量
 $(K_t + V_t) = 2 B_c D \cdot 2$~B（Q 已摊销到 $T_c$ 次迭代）。
 $AI = \frac{4 B_r B_c D}{4 B_c D} = B_r = 128$~FLOP/B（half 口径），
-与第~\ref{ch:11}~章 GEMM 的 $2B_K=32$~FLOP/B 相比高 4 倍，
-明确属于 compute-bound，优化重心在 mma 密度与流水，不在带宽。
+与第~\ref{ch:11}~章 $128\times128$ tile 的 smem 口径 $AI=64$~FLOP/B 相比是后者的 2 倍，
+相当于把 $K/V$ 流量摊薄到 $B_r$ 行上。$128$ 仍低于本机 fp16 Tensor 口径的拐点
+（$\approx300$ FLOP/B，见第~\ref{ch:17}~章）：单看 tile 流量仍偏 memory-bound 侧，
+compute-bound 要靠 L2 对 $K/V$ 的跨 block 复用把有效带宽压下来（第~\ref{ch:17}~章 17.3.3~节）。
 
 \textbf{本章复测}（RTX PRO 5000 72GB，sm\_120a，2026-09-11；
 \texttt{B=\allowbreak{}1,\allowbreak{}H=\allowbreak{}32,\allowbreak{}N=\allowbreak{}4096,\allowbreak{}D=\allowbreak{}64}，warmup 3 + 10 次均值，event 计时；

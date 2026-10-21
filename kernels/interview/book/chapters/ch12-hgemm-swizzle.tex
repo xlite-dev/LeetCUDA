@@ -176,7 +176,7 @@ Phase 7b-3 把 4 个 $k_{\mathrm{step}}$ slice 统一进 $[128][64]$ 的宽 tile
 四联组编号环同为 128\,B（$\lfloor a/16\rfloor \bmod 8$，周期 8 个 chunk）；
 行 stride 128\,B 恰为两者各一圈，任何一行的同一 (slice, chunk) 都映射到同一个
 起始 bank $q$。phase 0 的 8 个 lane（行 0--7、$c$ 固定）全部落在 $q=8s+4c$ 上，
-即 8-way 冲突。NCU 实测同形状下 691{,}067 次（把 kernel 中 8 处 swizzle
+即 8-way 冲突。NCU 实测同形状下 691{,}067 次（把 kernel 中 10 处 swizzle
 调用置 0 的对照版，见 12.6 节表~\ref{tab:12-bank}）。统一宽 tile 省了同步与
 寻址开销，却把 ldmatrix 的冲突度放大了 4 倍，必须引入 swizzle 才行。
 
@@ -449,9 +449,11 @@ $\mathit{zzz}$ 两段各占 $B$ 位（BBits，XOR 掩码位数）；$\mathit{yyy
         $i$ 的低 $B$ 位；$\mathit{zzz}$ 在 bit$[4..4{+}B{-}1]$，即列 chunk 索引）。
 \end{itemize}
 
-完整 swizzle 周期覆盖 $2^{M+S+B}$ 个元素（fp16 下 $2^{M+S+B+1}$ 字节）：
-$(B,M,S)=(1,4,3)$：256 elem / 512B（SWIZZLE\_32B）；$(2,4,3)$：512 elem /
-1024B（SWIZZLE\_64B）；$(3,4,3)$：1024 elem / 2048B（SWIZZLE\_128B）。
+完整 swizzle 周期覆盖 $2^{M+S+B}$ \textbf{字节}（$M$ 是字节地址位宽，fp16 下即
+$2^{M+S+B-1}$ 个元素）：$(B,M,S)=(1,4,3)$：256\,B / 128 elem（SWIZZLE\_32B）；
+$(2,4,3)$：512\,B / 256 elem（SWIZZLE\_64B）；$(3,4,3)$：1024\,B / 512 elem
+（SWIZZLE\_128B，$=8$ 行 $\times$128\,B）。注意 \texttt{SWIZZLE\_*B} 的数值是
+$2^{M+B}$（XOR 窗口宽），与周期 $2^{M+S+B}$ 不是同一个量。
 
 \lstinputlisting[linerange={288-316},firstnumber=auto,
   title={common.cuh L288-316（SwizzleBMS：cute::Swizzle 位级镜像，$\mathit{yyy}$ 掩码 + apply）}]{../common.cuh}
@@ -939,7 +941,9 @@ HGEMM CuTe Swizzle (S=3, BLK\_SW=1, F32Acc) & 0.000e+00 & 242.4/164.2 (1.48x) \\
 \end{tabular}
 \end{table}
 
-七个配置的 Max Err 全部为 $0$，即与 fp64 参考逐位一致，没有任何一行牺牲精度。
+七个配置在该批（低熵填充）输入下 Max Err 均为 $0$，说明三种流水走的是同一条数学路径；
+它不代表 f16 累加没有精度损失（第~\ref{ch:11}~章 $K{=}128$ 为 $1.5\times10^{-2}$，
+本章 case 的 $K{=}256$ 为 $2.5\times10^{-2}$）。
 F16Acc 各行对比 cuBLAS 的 f16 累加（246.5 TFLOPS）：最低 0.99x、
 S=3 + BLK\_SW=1 达 1.08x，CuTe Swizzle 流水整体达到并小幅超过
 cuBLAS。F32Acc 各行对比 cuBLAS 的 f32 累加（164.2 TFLOPS）则大幅
@@ -1055,7 +1059,7 @@ swizzle 快 1.46$\times$（$512^3$）。
 A：$B$ = 参与置换的行数位（$2^B$ 行，即 SWIZZLE\_32/64/128B 的 1/2/3）；
 $M$ = 基本元素位宽（16\,B chunk $\Rightarrow M{=}4$，低 $M$ 位不动）；
 $S$ = 每行 chunk 数位（8 chunk $\Rightarrow S{=}3$，也是源/目标 bit 域的位移）。
-完整周期覆盖 $2^{M+S+B}$ 元素。
+完整周期覆盖 $2^{M+S+B}$ 字节（$M$ 为字节地址位宽）。
 
 \section{最小测试与动手实验}
 
@@ -1092,7 +1096,7 @@ $K{=}512$ 实测 5.8$\times10^{-2}$ 超档，故 case~B 固定 $K{=}256$。
 
 动手实验：
 （1）把 case~B 的 3D grid 换成 $\lceil T_n/4\rceil\times T_m\times 4$ 验证
-kernel 对任意分组的正确性。（2）复制 kernel 把 8 处 \texttt{swizzle\allowbreak{}<k\allowbreak{}Mma\allowbreak{}K>}
+kernel 对任意分组的正确性。（2）复制 kernel 把 10 处 \texttt{swizzle\allowbreak{}<k\allowbreak{}Mma\allowbreak{}K>}
 换成 \texttt{swizzle<64>} 并把 slice 基址并入 $j$（SW128 方案，12.3.7 节），
 用 NCU 复测冲突计数是否归零、端到端是否超过 7b-1。（3）用
 bench\_leetcuda.cu bench 复跑 $2048\times16384\times4096$ 口径对照表~\ref{tab:12-tflops}。

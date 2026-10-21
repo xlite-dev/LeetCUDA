@@ -403,7 +403,8 @@ f32 $o\_acc$ 时用 FFMA 把 online-softmax 的 rescale 一起折进去：
 \mathrm{rowsum}$（fixed 单步反量化+归一化）；per-channel V 按 D 列查
 $v_{s,d}$ 逐列消去、smooth-V 加回 $\bar v_d$；lse $=$
 $(\mathrm{rowmax}+\log_2\mathrm{rowsum})\ln2$，smooth-K 的修正
-$+\mathrm{scale}\cdot q_s\cdot q_{km}$（28.4.2~节的点积在循环外预先计算）。
+$+\mathrm{scale}\cdot q_s\cdot q_{km}$（28.4.2~节的点积在循环外预先计算；
+$q_s \equiv \delta_Q$，$q_{km} = (\hat Q\cdot\bar k)_m$，与 28.3.1 的写法同源）。
 输出走 \textbf{STSM 进已释放的 smem（Q/K/V 全部消费完）再 TMA store}，
 一次合并写出；尾 tile（不满 128 行）退化为带行守卫的直接 R$\to$G 写。
 
@@ -788,7 +789,12 @@ fp16 家族同构；但 fp8 的 MMA 吞吐翻倍使 softmax/P 打包的相对占
 
 写本章的 bench 验证时发现 \texttt{--cuda-impl fp8 --D 192}
 allclose 失败（fp16/bf16 双双 $\times$），而 D=64/128 全绿。定位过程
-记在这里，可作为同类问题的排查参考：
+记在这里，可作为同类问题的排查参考。
+
+后续状态：该 bug 已由上游 \texttt{\#382} 修复（Q tile 区与 K stage 的 smem 复用
+竞态，影响整个 $D>128$ 窗口，即 $D{=}160/192/224$），\texttt{\#385} 随后撤销了
+警告，0.2.5 起不再复现。本节保留 861d75e 上的定位过程；下面「配置矩阵消去」
+停在三选一嫌疑，已确证的根因是复用竞态，不是 $D{=}192$ 特有。
 \begin{enumerate}[itemsep=1pt,topsep=2pt]
   \item \textbf{误差量级分类}：max\_abs=2.66 vs mean\_abs=0.011。均值是
         正常 fp8 精度，最大值远超正常量化误差 $\Rightarrow$ \textbf{正确性 bug}
@@ -893,8 +899,9 @@ sm120 的计算层（int8 QK / fixed p\_scale / f8f8f16 PV），256T non-WS。
         ESS$\approx$1、幅度 $3.1\sigma$，fp8 每级 $\sim$5\% 相对误差换算
         成 15$\times$ 于 dense 的绝对误差；早行 fp16 QK 不解决问题
         （V 量化是最大单项），hybrid 全链 fp16 才有效。
-  \item \textbf{D=192（$kBc{=}64$ 变体）当前有正确性 bug}：29.7.1~节的
-        定位记录；在修复前避免在生产使用该 headdim 的 fp8 persist-D。
+  \item \textbf{D=192（$kBc{=}64$ 变体）在 861d75e（$\le$0.2.4）上有正确性 bug}：
+        Q tile 区与 K stage 的 smem 复用竞态，影响 $D>128$ 的整个窗口；
+        0.2.5 起已修（上游 \texttt{\#382}/\texttt{\#385}），29.7.1~节记录的是旧版本现象。
 \end{enumerate}
 
 \section{面试要点速查}

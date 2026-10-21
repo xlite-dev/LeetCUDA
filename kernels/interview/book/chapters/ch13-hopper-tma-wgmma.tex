@@ -24,8 +24,9 @@ warp specialization 的完整协作协议。
 \textbf{源码区间}：hgemm.cuh~L1428--1857（\texttt{hgemm\_\allowbreak{}wgmma\_\allowbreak{}stages\_\allowbreak{}tn}@L1477）；
 common.cuh~L350--803（TMA/mbarrier helpers、\texttt{setmaxnreg}、WGMMA 宏、
 smem descriptor 位域注释 L545--587、TensorMap helpers）。
-\textbf{编译宏与架构限定}：\texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}WGMMA}，\textbf{仅 sm\_90a}，
-WGMMA/mbarrier/TMA 是 Hopper 专属指令族，不向前兼容 sm\_100/sm\_120（详见 13.8~节坑一）。
+\textbf{编译宏与架构限定}：\texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}WGMMA}，\textbf{仅 sm\_90a}；
+mbarrier 自 sm\_80、TMA（\texttt{cp.async.bulk.tensor}）自 sm\_90 起可用，Blackwell 同样支持，
+只有 WGMMA 是 sm\_90a 专属（详见 13.8~节坑一）。
 \textbf{前置}：第~\ref{ch:11}~章（mma.sync、ldmatrix、多级流水）与第~\ref{ch:12}~章
 （swizzle 与 bank conflict）；\textbf{后继}：第~\ref{ch:14}~章把 TMA+mbarrier 协议
 搬到 SM120 配 \texttt{mma.sync}，第~\ref{ch:17}--\ref{ch:18}~章把它搬进 FlashAttention。
@@ -466,7 +467,7 @@ bits $[0,14)$ start\_address &
   \texttt{SMEM\_\allowbreak{}DESC\_\allowbreak{}ENCODE(addr)}：右移 4 位
   （丢弃低 4 个恒为 0 的 bit），只保留 14 位 &
   硬件解码时左移 4 位恢复完整的 16B 对齐地址。可寻址范围
-  $2^{14+4} = 2^{18} = 256\mathrm{K}$ 个 half $= 512$\,KB 共享内存 \\
+  $2^{14+4} = 2^{18} = 256$\,KB（$=128$K 个 half）共享内存 \\
 bits $[16,30)$ leading\_byte\_offset &
   填 16（字节），编码 $(16 \,\&\, \mathrm{0x3FFFF}) \gg 4 = 1$，再
   \texttt{<< 16} 放进 bits $[16, 30)$ &
@@ -830,7 +831,7 @@ $(B\sb{M} B\sb{K} + B\sb{N} B\sb{K}) \times 2\,\mathrm{B} = 32$~KB，计算
 $2 B\sb{M} B\sb{N} B\sb{K} = 2.1\,\mathrm{M}$ FLOP，算术强度
 \begin{equation}
   AI \;=\; \frac{2 B\sb{M} B\sb{N} B\sb{K}}
-  {2\,(B\sb{M} B\sb{K} + B\sb{N} B\sb{K}) \cdot 2}
+  {(B\sb{M} B\sb{K} + B\sb{N} B\sb{K}) \cdot 2}
   \;=\; \frac{2 \times 128 \times 128 \times 64}{32768}
   \;=\; 64 \ \mathrm{FLOP/B} .
 \end{equation}
@@ -902,8 +903,10 @@ bench（对照 bench\_leetcuda.cu 的 bench 口径），数据落 \texttt{.\allo
 \section{常见坑}
 
 \textbf{坑一：WGMMA 只认 sm\_90a，且 CUDA 13.2 的 \texttt{-arch sm\_90a} 简写有坑。}
-WGMMA/mbarrier/TMA 是 sm\_90a 专属（PTX 文档 Target ISA Notes 明示
-\texttt{sm\_90a}），sm\_100/sm\_120 均不兼容，本机 sm\_120a 只能做编译级验证。
+只有 WGMMA 是 sm\_90a 专属（PTX 文档 Target ISA Notes 明示 \texttt{sm\_90a}）；
+mbarrier 自 sm\_80、\texttt{cp.async.bulk.tensor} 自 sm\_90 起可用，Blackwell 的
+sm\_100/sm\_120 同样支持（第~\ref{ch:14}~章就在 sm\_120a 上跑 TMA+mbarrier）。
+本机 sm\_120a 只能对本章做编译级验证，原因是本章用了 WGMMA，不是 TMA/mbarrier 不可用。
 实测 CUDA 13.2 完整编译时 \texttt{-arch sm\_90a} 会退化成 \texttt{compute\_90}
 （见 13.7~节末条勘误），必须改用
 \texttt{-gencode arch=\allowbreak{}compute\_\allowbreak{}90a,\allowbreak{}code=\allowbreak{}sm\_\allowbreak{}90a}。

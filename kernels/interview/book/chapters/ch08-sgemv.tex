@@ -82,7 +82,8 @@ $0.7\%$。kernel 写得再聪明，FLOPs 侧也毫无收益；能优化的只有
 
 \subsection{warp-per-row 的覆盖数学}
 
-三版共同的启动形状是 \texttt{block(32,4)}、\texttt{grid\allowbreak{}(ceil\allowbreak{}(M/\allowbreak{}4))}。CUDA 把 block 内线程
+k32/k128 的启动形状是 \texttt{block(32,4)}、\texttt{grid(ceil(M/4))}（每 block 4 行、每 warp 1 行）；
+k16 每 block 覆盖 4 warp $\times$ 2 行 $=8$ 行，对应 \texttt{grid(ceil(M/8))}（\texttt{sgemv.cuh} L80）。CUDA 把 block 内线程
 按 $x$ 最快线性化，于是每个 warp 恰好是 \texttt{threadIdx.x} $\in [0,32)$、
 \texttt{threadIdx.y} 固定的一组线程，一个 warp 天然对应一行：
 \begin{equation}

@@ -158,7 +158,7 @@ TF32 的乘法在 Tensor Core 内部以 fp32 精度执行（PTX 对 \texttt{.tf3
 $\hat b\sb j = fl(b\sb j)$，逐项展开：
 \begin{align}
   \hat a\sb j \hat b\sb j
-  &= a\sb j(1+\delta\sb j)\, b\sb j(\epsilon\sb j)
+  &= a\sb j(1+\delta\sb j)\, b\sb j(1+\epsilon\sb j)
    = a\sb j b\sb j \,(1+\delta\sb j)(1+\epsilon\sb j) \notag \\
   &\approx a\sb j b\sb j \,\bigl(1 + \delta\sb j + \epsilon\sb j\bigr),
   \qquad |\delta\sb j|,|\epsilon\sb j| \le u,
@@ -179,19 +179,21 @@ $K\mu$（$\mu$ 为 $|a\sb jb\sb j|$ 均值），比值 $\propto \sqrt{K}$：内�
 TF32 的相对误差越差，但 $\sqrt{K}$ 的增速远慢于 $K$。
 以 $[-1,1]$ 均匀随机输入、$K = 512$ 为例：$\sum|a\sb jb\sb j| \approx K/4 = 128$，
 式~\ref{eq:10-bound} 的界 $\approx 2 \times 4.88\times10^{-4} \times 128 \approx 0.125$，
-而输出自身量级 $\approx \sqrt{K/9} \approx 7.5$，相对误差界约 $1.7\%$，
-与 $\sim$3 位十进制有效数字的直觉一致。深度学习权重与激活的数值噪声通常
+而输出自身量级 $\approx \sqrt{K/9} \approx 7.5$，相对误差界约 $1.7\%$（最坏界，
+约 1.8 位十进制）。实际随机输入下舍入符号互抵，误差 std 只有
+$\sqrt{2u^2\Sigma(a\sb jb\sb j)^2/3}\approx 3.0\times10^{-3}$，相对 $\approx 4\times10^{-4}$
+——这才是「$\sim$3 位十进制有效数字」的来源。深度学习权重与激活的数值噪声通常
 远大于此，TF32 在生产环境被广泛接受。
 
 \subsection{双缓冲的时序数学}
 
 设搬运一个 k-tile（global$\to$shared）需要时间 $T\sb {\mathrm{ld}}$，计算一个
-k-tile 需要 $T\sb {\mathrm{cp}}$。无流水（单缓冲）时每步总代价是两者串行相加
-$T\sb {\mathrm{ld}} + T\sb {\mathrm{cp}}$。双缓冲提供两份 smem 缓冲 $S\sb 0, S\sb 1$，
+k-tile 需要 $T\sb {\mathrm{cmp}}$。无流水（单缓冲）时每步总代价是两者串行相加
+$T\sb {\mathrm{ld}} + T\sb {\mathrm{cmp}}$。双缓冲提供两份 smem 缓冲 $S\sb 0, S\sb 1$，
 稳态下第 $k$ 步一边用 $S\sb {k\bmod 2}$ 计算 tile $k$，一边向
 $S\sb {(k+1)\bmod 2}$ 发出 tile $k+1$ 的搬运，稳态周期收敛到
 \begin{equation}
-  T\sb {\mathrm{step}} \;=\; \max\!\bigl(T\sb {\mathrm{ld}},\, T\sb {\mathrm{cp}}\bigr),
+  T\sb {\mathrm{step}} \;=\; \max\!\bigl(T\sb {\mathrm{ld}},\, T\sb {\mathrm{cmp}}\bigr),
   \label{eq:10-pipe}
 \end{equation}
 即完全掩盖较短的一侧。图~\ref{fig:10-1} 画出了这个时序。
@@ -335,8 +337,8 @@ A tile（行距 12，$\mathrm{kPadA}=4$ 个 float），\texttt{s\_b} 是
 $\mathrm{kStages}\times 8\times(128+4)$ 的 B tile（行距 132，
 $\mathrm{kPadB}=4$），两段共 $2\times128\times12 + 2\times8\times132 = 5184$
 个 float $= 20736$~B。padding 的目的与第~\ref{ch:07}~章 transpose 的补列
-同理：bank 宽 4~B、32 个 bank 一轮，A 的行长恰好 32~B 时相邻行会映射到
-同一组 bank，补 16~B 打散行首的对齐关系，避免 \texttt{load\_\allowbreak{}matrix\_\allowbreak{}sync}
+同理：bank 宽 4~B、32 个 bank 一轮，A 的行长恰好 32~B 时每 4 行行首回到
+同一 bank（行首 bank $=8r \bmod 32$），补 16~B 打散行首的对齐关系，避免 \texttt{load\_\allowbreak{}matrix\_\allowbreak{}sync}
 内部按行取数时的 bank conflict。（注意 L238 与 L242--243 注释里写的
 「16384 bytes」「1024 floats」是陈旧数字，实际值见 10.7~节勘误一、二。）
 两段布局的 PAD 与行距见图~\ref{fig:10-smem-pad}。
@@ -438,7 +440,7 @@ $8\times32$ 个 4 元组（\texttt{tid/32} 定行、\texttt{tid\%32} 定列组�
 （\texttt{.cg} 表示只走 L2、不分配 L1，16~B 是 \texttt{.cg} 唯一合法宽度）。
 \texttt{cp.\allowbreak{}async.\allowbreak{}commit\_\allowbreak{}group} 把此前发出的未提交拷贝打包成一个
 per-thread 的组。\texttt{cp.\allowbreak{}async.\allowbreak{}wait\_\allowbreak{}group N} 阻塞直到最多剩 $N$ 个组
-未完成。预加载阶段发出 tile~0 的两组拷贝后 \texttt{wait\_\allowbreak{}group\allowbreak{}(0)}，
+未完成。预加载阶段发出 tile~0 的 A、B 两条 16~B 拷贝、commit 成一个组后 \texttt{wait\_\allowbreak{}group\allowbreak{}(0)}，
 因为第一次计算前必须保证数据就位。
 
 \lstinputlisting[linerange={307-330},firstnumber=auto,
@@ -527,11 +529,14 @@ L375 的条件等待被编译期剪掉。写回阶段每个 warp 把 8 个累加
 
 按 block 内 smem 复用口径算算术强度。每 k-step 从 global 搬入
 $(B\sb M B\sb K + B\sb K B\sb N)\times4$~B $= (128{\times}8{+}8{\times}128)\times4 = 8$~KB，
-完成 $2 B\sb M B\sb N B\sb K = 262{,}144$ FLOP。$AI \approx 32$ FLOP/B，远高于
+完成 $2 B\sb M B\sb N B\sb K = 262{,}144$ FLOP。$AI \approx 32$ FLOP/B，低于
 本机 roofline 拐点（PRO 5000 Blackwell：FP32 CUDA Core $\sim$60 TFLOPS 级、
 GDDR7 带宽 $\approx$1.34 TB/s（1344 GB/s）级，拐点 $\sim$45 FLOP/B 的量级，为标称口径；按
-8.3 与 9.3.6 节实测 66.9 TFLOPS / 934 GB/s 折算则为 71.6 FLOP/B）。判定
-\textbf{compute-bound}，优化重心在充分利用 Tensor Core 而非节省带宽。
+8.3 与 9.3.6 节实测 66.9 TFLOPS / 934 GB/s 折算则为 71.6 FLOP/B）。按 roofline 上限
+$32\times934 \approx 29.9$ TFLOPS 计，实测 28.19 已达其 94\%，说明 $1024^3$ 这一档仍贴着带宽线。
+要把 Tensor Core 变成瓶颈，须把 $AI$ 抬过拐点：换 f16 输入使字节减半（$AI \to 64$，
+已越过 45 的标称拐点；实测 71.6 口径下还需 f16 自身更高峰值配合，第~\ref{ch:11}~章）
+或加大 $B\sb M/B\sb N$。
 按全局口径（每个 C tile 读整条 A 行块与 B 列块），
 $AI = \frac{2MNK}{4(MK+KN)} = \frac{MN}{2(M+N)}$，$M{=}N{=}1024$ 时约 256 FLOP/B，
 更加 compute-bound。
@@ -633,7 +638,7 @@ $m16n16k8$ TF32 WMMA 拆成两条 $m16n8k8$ 的 \texttt{mma.sync} 指令。
 \textbf{Q3：双缓冲如何掩盖搬运延迟？}\\
 A：两级 smem 交替读/写，迭代 $k$ 向 $k\bmod2$ 级写入 tile $k$ 的同时从
 $(k{-}1)\bmod2$ 级计算 tile $k{-}1$；稳态周期从
-$T\sb {\mathrm{ld}}+T\sb {\mathrm{cp}}$ 降到 $\max$（式~\ref{eq:10-pipe}）。
+$T\sb {\mathrm{ld}}+T\sb {\mathrm{cmp}}$ 降到 $\max$（式~\ref{eq:10-pipe}）。
 协议三件套：\texttt{cp.async} 发起、\texttt{commit\_\allowbreak{}group} 打包、
 \texttt{wait\_group N} 等\textbf{至多剩 N 组未完成}。
 

@@ -20,7 +20,7 @@ split-Q + MMA 多级流水）、第~\ref{ch:17}~章（FA2 TMA + Warp Specializat
         除以 $\sqrt{d}$（15.3.2~节：点积方差 $=d$ 的推导与 softmax 饱和论证）；
   \item 朴素实现的 FLOPs、显存、HBM 流量三项开销（15.3.3~节：为什么显存带宽才是真瓶颈）；
   \item 分块计算 + online rescale 的逐块推导（15.3.4~节：核心更新式
-        $O \leftarrow O\,\mathrm{diag}\bigl(e^{\,m^{\mathrm{old}}-m^{\mathrm{new}}}\bigr)
+        $O \leftarrow \mathrm{diag}\bigl(e^{\,m^{\mathrm{old}}-m^{\mathrm{new}}}\bigr) O
         + PV$，与 ch04/ch05 显式衔接）；
   \item 分块循环不变量及其归纳法证明（15.3.5~节：任意 KV 分块遍历结束后，输出严格等于
         $\mathrm{Attn}(Q,K,V)$）；
@@ -210,7 +210,8 @@ $S = QK^{\top}$ 为 $2N^{2}d$，$O = PV$ 为 $2N^{2}d$；softmax 本身只有指
 乘上 $B \times H$ 个 (b,h)。仍取 $B{=}1, H{=}32, N{=}4096, d{=}64$：总 FLOPs 约
 $4 \times 4096^{2} \times 64 \times 32 \approx 137\,\mathrm{GFLOP}$；参照本仓库
 FlashAttention kernel 在同形状 SM120 上的实测 $166.6\,\mathrm{TFLOPS}$
-（flash\_attn.cuh~L68，头注释口径），纯计算时间下界约 $0.83\,\mathrm{ms}$。
+（flash\_attn.cuh~L68，头注释口径），折算的纯计算时间约 $0.83\,\mathrm{ms}$
+（按 fp16/f32acc 峰值 $209.5$ TFLOPS 计则 $0.66\,\mathrm{ms}$）。
 
 显存占用：$S$ 与 $P$ 各占 $N^{2}$ 元素，
 \begin{equation}
@@ -228,8 +229,9 @@ FlashAttention kernel 在同形状 SM120 上的实测 $166.6\,\mathrm{TFLOPS}$
   \label{eq:15-naive-io}
 \end{equation}
 上例的中间矩阵往返 $4.3\,\mathrm{GB}$：即使按 $2\,\mathrm{TB/s}$ 的乐观带宽假设
-（多数 GPU 的 HBM/显存带宽在数百 GB/s 到 $2$--$3\,\mathrm{TB/s}$ 量级）。仅搬运就要
-$\approx 2.2\,\mathrm{ms}$，已是 $0.83\,\mathrm{ms}$ 计算下界的 $2.6$ 倍以上。
+（多数 GPU 的 HBM/显存带宽在数百 GB/s 到 $2$--$3\,\mathrm{TB/s}$ 量级），仅搬运就要
+$\approx 2.2\,\mathrm{ms}$，是 $0.83\,\mathrm{ms}$ 折算计算时间的 $2.6$ 倍以上；
+按本机 1344 GB/s 口径则是 $3.2\,\mathrm{ms}$、约 $3.9$ 倍。
 而有效数据（$Q,K,V$ 读入 + $O$ 写出，$\approx 67\,\mathrm{MB}$）只占流量的 $1/64$。
 
 中间矩阵往返把算术强度压到极低。按主导项计，
@@ -376,7 +378,7 @@ v_k$，同样拆成旧块与新块并凑因子：
 \texttt{O\_\allowbreak{}new =\allowbreak{} diag\allowbreak{}(exp\allowbreak{}(m\_\allowbreak{}old - m\_\allowbreak{}new)) * O\_\allowbreak{}old + P\_\allowbreak{}cur @ V}）：
 \begin{equation}
   \boxed{\;
-  O \;\leftarrow\; O\;\mathrm{diag}\bigl(e^{\,m^{\mathrm{old}} - m^{\mathrm{new}}}\bigr)
+  O \;\leftarrow\; \mathrm{diag}\bigl(e^{\,m^{\mathrm{old}} - m^{\mathrm{new}}}\bigr)\, O
   \;+\; P^{[j]} V^{[j]}
   \;}
   \label{eq:15-upd-o}
@@ -520,11 +522,12 @@ $8$--$32\,\mathrm{KB}$，远小于十万元素量级的 SRAM）时，$\mathrm{IO
   \;=\; B_r\ \text{FLOP/B} ,
   \label{eq:15-ai-fa}
 \end{equation}
-$B_r = 128$ 时约 $128\,\mathrm{FLOP/B}$，跨过 roofline 拐点进入 compute-bound 区。
-一阶模型未计 L2 cache 跨 thread block 的 $K/V$ 复用（实际 HBM 流量更低），也未计
-softmax/归约的非 matmul 开销；compute-bound 也只是对理想实现的上界描述，
-真实 kernel 能达到的比例取决于流水线工程，FA2/FA3 两代论文的优化对象正是这一段
-（下一节）。
+$B_r = 128$ 时约 $128\,\mathrm{FLOP/B}$，仍低于本机 fp16 Tensor 口径的拐点
+（$\approx300$ FLOP/B，见第~\ref{ch:17}~章）：单看 tile 流量仍偏 memory-bound 侧，
+实际 kernel 靠 L2 对 $K/V$ 的跨 block 复用把有效带宽压下来，才进入 compute-bound 侧。
+一阶模型未计这项复用（实际 HBM 流量更低），也未计 softmax/归约的非 matmul 开销；
+compute-bound 只是对理想实现的上界描述，真实 kernel 能达到的比例取决于流水线工程，
+FA2/FA3 两代论文的优化对象正是这一段（下一节）。
 
 \subsection{FA1 $\to$ FA2 $\to$ FA3：三代演进}
 
@@ -549,10 +552,12 @@ $3\times$ 加速，激活显存省 $10$--$20\times$。
   \item 并行度。FA1 只在 $(B, H)$ 维开 thread block，长序列小 batch 时 SM 占用
         不足；FA2 把 seqlen(Q) 维也做成并行，query 序列切成多段，每段独立
         一个 thread block（本仓库 \texttt{flash\_\allowbreak{}attn\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}split\_\allowbreak{}q}
-        的 \texttt{grid = ((N+63)/64, B*H)}，第~\ref{ch:16}~章展开）。
+        的 \texttt{grid = ((N+127)/128, B*H)}（$B_r{=}128$；头注释的 $(N{+}63)/64$
+        是 4-warp 旧口径），第~\ref{ch:16}~章展开）。
   \item warp 分工。FA1 的 4 个 warp 沿 KV 维切分，各算部分分数后必须经 shared
         memory 做跨 warp 归约合并；FA2 改为 warp 沿 $Q$ 行切分（split-Q）：
-        4 个 warp 共享同一块 $K, V$、各持独立 $(m, \ell, O)$，零跨 warp 归约、
+        4 个 warp（FA2 论文 $d{=}64$ 示例；本仓库默认 8 warp）共享同一块 $K, V$、
+        各持独立 $(m, \ell, O)$，零跨 warp 归约、
         零额外 shuffle，$Q$ 只加载一次。
 \end{enumerate}
 论文口径：比 FA1 快约 $2\times$；A100 前向最高 $230\,\mathrm{TFLOPS}$（峰值的
@@ -590,7 +595,7 @@ $73\%$）。
 异步 overlap（warp spec.\ + pingpong）+ FP8 \\
 硬件口径 & A100 & A100 / H100 & H100 \\
 CTA 级并行 & $(B, H)$ & $(B, H) \times$ seqlen(Q)（split-Q） & 同 FA2 \\
-warp 级分工 & 4 warp 分 KV，跨 warp 归约 & 4 warp 分 $Q$ 行，无跨 warp 归约 &
+warp 级分工 & 4 warp 分 KV，跨 warp 归约 & 4--8 warp 分 $Q$ 行，无跨 warp 归约 &
 producer(TMA) + 2 consumer WG，GEMM/softmax 交替 \\
 精度 & fp16/bf16 & fp16/bf16 & fp16 + FP8（block 量化 + incoherent processing）\\
 代表指标 & GPT-2 $3\times$ 端到端；显存省 $10$--$20\times$ &
@@ -684,22 +689,26 @@ $P$ 直接写回 $S$ 的 fragment 寄存器 \texttt{R\_S} 供 $P@V$ 消费，省
 et al., arXiv:2307.08691），提取自 LeetCUDA
 \texttt{flash-attn/mma/basic/flash\_attn\_mma\_split\_q.cu}。张量形状：Q/K/V/O
 均为 \texttt{[batch\_size, num\_heads, seq\_len, head\_dim]}，简记 $[B, H, N, d]$。
-block 配置 $(128, 1, 1)$，线程数 \texttt{kNumThreads} $=$ \texttt{kWarpSize}
-$\times$ \texttt{kMmaTileSeqLenQ} $\times$ \texttt{kMmaTileSeqLenK} $= 128$。
+默认实例化（\texttt{kHeadDim=64}、\texttt{kStagesK=2}）的 block 配置是 $(256, 1, 1)$，
+线程数 \texttt{kNumThreads} $=$ \texttt{kWarpSize} $\times$ \texttt{kMmaTileSeqLenQ}
+$\times$ \texttt{kMmaTileSeqLenK} $= 32 \times 8 \times 1 = 256$。头注释 L31--46 以
+\texttt{kMmaTileSeqLenQ=4} 为例（128 线程、4 warp），那是旧口径；第~\ref{ch:16}~章
+16.7~节的勘误已说明 bench 与测试的唯一实例化是 $B_r{=}128$，本章按后者叙述。
 tile 设计（以 \texttt{kHeadDim=64} 为例）把两个块尺寸分解到 mma 原子：
 \begin{itemize}
   \item $B_r$：\texttt{kMmaAtomM} $\times$ \texttt{kMmaTileSeqLenQ} $\times$
-        \texttt{kValTileSeqLenQ}，即 $16 \times \{4, 8\} \times 1 = \{64, 128\}$；
+        \texttt{kValTileSeqLenQ}，即 $16 \times 8 \times 1 = 128$（模板允许
+        \texttt{kMmaTileSeqLenQ} 取 $\{4,8\}$，对应 $\{64,128\}$）；
   \item $B_c$：\texttt{kMmaAtomN} $\times$ \texttt{kMmaTileSeqLenK} $\times$
         \texttt{kValTileSeqLenK}，即 $8 \times 1 \times 8 = 64$；
-  \item warp 布局：4 个 warp，\texttt{warp\_QP} 取 $0 \sim 3$ 各处理 16 行
+  \item warp 布局：8 个 warp，\texttt{warp\_QP} 取 $0 \sim 7$ 各处理 16 行
         Q，\texttt{warp\_KV} $= 0$ 共享 K。
 \end{itemize}
 
-\texttt{Grid = ((N + 63)/64,\ B*H,\ 1)} 清楚展示了 FA2 的两层并行：
+\texttt{Grid = ((N + 127)/128,\ B*H,\ 1)} 清楚展示了 FA2 的两层并行：
 \texttt{gridDim.x} 是 seqlen(Q) 维的 split-Q 并行（15.3.7~节 FA2 改动 2），
-\texttt{gridDim.y} 是 $(B, H)$ 维；每个 thread block 负责连续 $B_r = 64$ 行 query。
-$B_r, B_c$ 不是随意取的：$B_r = 16 \times 4 = 64$ 来自 mma.sync.m16n8k16 原子
+\texttt{gridDim.y} 是 $(B, H)$ 维；每个 thread block 负责连续 $B_r = 128$ 行 query。
+$B_r, B_c$ 不是随意取的：$B_r = 16 \times 8 = 128$ 来自 mma.sync.m16n8k16 原子
 （第~\ref{ch:11}~章）在 $M$ 维的 $4$ 倍堆叠，$B_c = 8 \times 8 = 64$ 来自 $N$ 维原子的
 $8$ 倍堆叠，tile 尺寸被 Tensor Core 指令形状整除，这是分块参数化的硬约束。
 
@@ -1002,7 +1011,9 @@ $\mathrm{rowsum}(P^{[j]})$ 与 $P^{[j]}V^{[j]}$。顺序颠倒（例如先加 $P
 
 \textbf{坑四：$-\infty$ 参与运算的 inf$-$inf。}\allowbreak{}mask 位置填 $-\infty$ 时，若某行
 当前 $m$ 也是 $-\infty$（首块全 mask），$\exp(S - m)$ 计算出 $-\infty - (-\infty) =
-\mathrm{NaN}$。CPU 参考实现常用 \texttt{np.exp} 天然规避，CUDA 上 \texttt{\_\_expf}
+\mathrm{NaN}$。CPU 参考实现里 \texttt{np.exp(-inf)} 返回 0，看似安全，但
+\texttt{-inf-(-inf)} 在减法阶段已得 \texttt{NaN}（numpy 抛
+\texttt{invalid value encountered in subtract}），CUDA 上 \texttt{\_\_expf}
 同样要防：先把 mask 位置替换成极小有限值（ch05 勘误的 $+\infty$ 清洗同类），或保证
 块内至少一个非 mask 位置。
 
@@ -1061,7 +1072,8 @@ incoherent processing，H100 fp16 峰值 $75\%$、FP8 近 $1.2\,\mathrm{PFLOPS}$
 
 \textbf{Q8：FA2 的 warp 级 split-Q 为什么优于 FA1 的 split-KV？}\\
 A：split-KV 下各 warp 只拿到部分 key 的 $(m, \ell, O)$，必须经 shared memory 做
-跨 warp 合并（一次同步 + 一轮读写）；split-Q 下 4 个 warp 共享同一块 $K, V$、各持
+跨 warp 合并（一次同步 + 一轮读写）；split-Q 下 4 个 warp（论文示例口径；本仓库默认
+8 warp）共享同一块 $K, V$、各持
 $Q$ 的不同行片段，行间零依赖（行内自足性），各自独立跑完全程，零跨 warp 归约，
 $Q$ 也只加载一次。
 

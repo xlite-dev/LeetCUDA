@@ -693,9 +693,9 @@ $AI = 64$ FLOP/B，判定为 compute-bound。
 复测口径（RTX PRO 5000 72GB，sm\_120，2026-09-11；$M{=}N{=}K{=}1024$，
 warmup 3 + 10 次均值；\texttt{.\allowbreak{}tmp/\allowbreak{}book-bench/\allowbreak{}ch11/\allowbreak{}}）：
 \texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn} 76.55 TFLOPS（f16 累加）。
-同机同形状下第~\ref{ch:10}~章 TF32 WMMA 版为 28.19 TFLOPS，
-2.7 倍的差距来自三层：f16 数据通路本身快于 TF32、
-$B\sb K{=}16$ 的指令发射密度翻倍、三级流水的同步更松。
+同机同形状下第~\ref{ch:10}~章 TF32 WMMA 版为 28.19 TFLOPS。2.72 倍的差距里，
+2.0 倍来自输入从 4~B 变 2~B（$AI$ 从 32 翻到 64，带宽上限 $29.9 \to 59.8$ TFLOPS）；
+剩下 1.36 倍来自 $B\sb K{=}16$ 的指令发射密度翻倍与三级流水的同步更松。
 精度口径见 11.3.1：f16 累加在 K$=$1024 时误差还会放大
 （本章正确性测试 K$\le$128 实测 $1.5\times10^{-2}$），
 生产环境常用 \texttt{HMMA16816\allowbreak{}F32} 的 fp32 累加变体换精度。
@@ -800,8 +800,9 @@ per-thread 组计数对不上会提前放行（好在上一次的 sync 兜底；
 
 \textbf{坑五：f16 累加的精度陡降。}\texttt{f16.f16.f16.f16} 的累加
 至少半精度：每条 mma 边界舍回 f16。K$=$128 实测
-$1.5\times10^{-2}$；K 到千级、或输入幅值大于 1 时，误差进入
-$10^{-1}$ 量级并在个别元素上溢出 f16 范围（65504）。
+$1.5\times10^{-2}$；K 到千级时误差进入 $10^{-1}$ 量级。输入幅值大到
+$K\cdot\max|a|\cdot\max|b|$ 逼近 65504（f16 上限）时还会整片溢出成 inf——
+$K{=}1024$ 时 $\max|a|\max|b|$ 超过约 64 即触线。
 长 K / 大动态范围请换 \texttt{HMMA16816\allowbreak{}F32}（C 用 4 个 f32 寄存器）。
 
 \textbf{坑六：改完模板参数忘了改 launch 侧。}$B\sb M/B\sb N/B\sb K$ 全由模板参数
