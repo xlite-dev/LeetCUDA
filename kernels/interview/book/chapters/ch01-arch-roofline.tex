@@ -248,7 +248,7 @@ FLOPs；访存是读入 $x$、写出 $y$ 各一次，$4 \times 2N$ 字节：
   AI\sb{\mathrm{softmax}} = \frac{5N}{8N} = \frac{5}{8} = 0.625,
 \end{equation}
 与 base.cuh L85 的口径一致。ch04 的三级递进（naive $\to$ safe $\to$ online）
-优化的是访存趟数（3-pass $\to$ 1-pass），而 AI 的上限 0.625 告诉
+优化的是访存趟数与同步次数（全局扫描与 block 同步同为 1 $\to$ 2 $\to$ 1），而 AI 的上限 0.625 告诉
 我们：无论怎么优化，它始终是 memory-bound，最终性能用离理论带宽多近来
 衡量。
 

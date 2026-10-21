@@ -341,7 +341,7 @@ vec4 版的守卫值得逐行读：主路径 \texttt{(idx + 3) < N} 一次性保
   \draw[thick, fill=gray!15] (10.65, 0) rectangle (13.55, 4.7);
   \node[anchor=north, align=center, font=\scriptsize, text=white,
     text width=2.7cm] at (2.35, 1.55)
-    {级 1：朴素 stride 访存\\搬运 $8\times$ 数据\\有效 3\%--12.5\%};
+    {级 1：朴素 stride 访存\\搬运 $8\times$--$32\times$ 数据\\有效 3\%--12.5\%};
   \node[anchor=north, align=center, font=\scriptsize, text width=2.7cm]
     at (5.6, 2.55) {级 2：coalesced\\idx 连续映射\\$\eta = 100\%$，搬运字节最小化};
   \node[anchor=north, align=center, font=\scriptsize, text width=2.7cm]

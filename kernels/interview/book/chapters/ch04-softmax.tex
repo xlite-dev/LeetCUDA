@@ -34,8 +34,9 @@ online rescale。
 \textbf{动机一：$e^{x}$ 会溢出。}直觉上 softmax 的输入都是分数，量级应该有限，但
 attention 里，logit 是 $Q$、$K$ 行向量的内积，量级随训练状态与序列位置漂移；语言模型
 logits 在训练早期破百也不罕见。而 fp32 能表示的最大正规数约 $3.4\times 10^{38}$，
-$e^{89}$ 就已经越界变成 \texttt{inf}。一旦分子或分母出现 \texttt{inf}，输出就是
-\texttt{inf}/\texttt{inf} 型的 \texttt{NaN}，模型输出错误结果。所以减 max 不是可选的优化技巧，
+$e^{89}$ 就已经越界变成 \texttt{inf}。一旦有元素溢出，分母随之同归于 \texttt{inf}：
+溢出元素自身输出 \texttt{inf}/\texttt{inf} 型的 \texttt{NaN}，未溢出元素被压成 0，
+整行概率分布全毁。所以减 max 不是可选的优化技巧，
 而是正确性的底线。
 
 \textbf{动机二：每多一遍扫描，就多一遍代价。}教科书的 safe softmax 要读两遍输入
@@ -84,8 +85,11 @@ fp32 的最大正规数（\texttt{FLT\_MAX}）为
 （尚可表示），$e^{89} \approx 4.49\times 10^{38} > \mathrm{FLT\_MAX}$（已经是 \texttt{inf}）。
 源码注释 base.cuh~L556 写的「溢出阈值约 88.7」正是这个界（核校无误）。
 
-一旦有元素溢出：若分子为 \texttt{inf} 则 $y^{(i)} = \texttt{inf}/s$；若分母
-$s = \texttt{inf}$，则 $y^{(i)} = \texttt{inf}/\texttt{inf} = \texttt{NaN}$。本章测试
+一旦有元素溢出，分母 $s$ 也随之变成 \texttt{inf}（$s \ge e^{x^{(i)}}$）：
+溢出元素自身 $y^{(i)} = \texttt{inf}/\texttt{inf} = \texttt{NaN}$，未溢出元素
+$y^{(j)} = e^{x^{(j)}}/\texttt{inf} = 0$，该行输出已无有效概率。还有一种更隐蔽的
+形态：没有元素越界、仅指数和溢出（如整行取 $88$：$e^{88}$ 尚可表示，和越界）时，
+naive 输出是全 0 而没有 \texttt{NaN}。本章测试
 Case~C 用 $x \in [80, 120]$ 复现了这一点：naive 版输出 \texttt{NaN}，safe/online 版结果正常。
 
 利用平移不变性（式~\ref{eq:4-shift}），取 $c = m = \max\sb{j} x^{(j)}$，得到 safe softmax：
@@ -256,7 +260,8 @@ $2^{8}$ 个指数加起来（warp 内蝶形 + shared memory 二级 + 广播，�
 每线程做一次除法写回。访存上是每元素读 4~B 写 4~B，归约开销是 1 次
 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads} 级的 block 同步。它就是式~\ref{eq:4-softmax-def} 的直译，
 也因此继承了定义的全部缺陷：输入一旦有元素超过 $88.72$，$e^{x}$ 变
-\texttt{inf}，输出全行 \texttt{NaN}。它的存在价值是充当反面教材与归约骨架：
+\texttt{inf}，分母同归于 \texttt{inf}，溢出元素输出 \texttt{NaN}、其余元素被压成 0。
+它的存在价值是充当反面教材与归约骨架：
 后两版只改数据流，不改这套归约基建。
 
 \subsection{Level 2：safe——两遍扫描的工业标配}
