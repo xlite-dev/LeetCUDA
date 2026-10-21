@@ -37,7 +37,7 @@ TiledMMA tiled_mma = make_tiled_mma(SM80_8x8x4_F64F64F64F64_TN{},
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.9\textwidth]{figures/zhuxi-06-permmnk/fig-02.jpg}
-\caption{figure2. 常规调用 2 次 mma，thread0 拿到的 C 矩阵数据对应坐标为\{(0, 0), (0, 1), (0, 8), (0, 9)\}，无法作为连续的数据写出}
+\caption{Figure.2 常规调用 2 次 mma，thread0 拿到的 C 矩阵数据对应坐标为\{(0, 0), (0, 1), (0, 8), (0, 9)\}，无法作为连续的数据写出}
 \end{figure}
 
 如我们所预期的，每个 thread 拿到的数据在写出时是不连续的。原因即是我们遵循 mma 的标准做法：对 B 矩阵进行了连续的读取，并做了两次连续的 mma。
@@ -46,16 +46,16 @@ TiledMMA tiled_mma = make_tiled_mma(SM80_8x8x4_F64F64F64F64_TN{},
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.9\textwidth]{figures/zhuxi-06-permmnk/fig-03.jpg}
-\caption{figure2. 交错调用 2 次 mma，thread0 拿到的 C 矩阵数据对应坐标为 \{(0, 0), (0, 1), (0, 2), (0, 3)\}，可以作为连续的数据写出}
+\caption{Figure.3 交错调用 2 次 mma，thread0 拿到的 C 矩阵数据对应坐标为 \{(0, 0), (0, 1), (0, 2), (0, 3)\}，可以作为连续的数据写出}
 \end{figure}
 
-我们发现，通过这样计算出来的 C 矩阵，各个 thead 能够拿到连续的 4 个数，STG.128 就可以执行了！那么这个写法，对应到 permutationMNK 的参数如下，其就是在 N 维度做了重排：
+我们发现，通过这样计算出来的 C 矩阵，各个 thread 能够拿到连续的 4 个数，STG.128 就可以执行了！那么这个写法，对应到 permutationMNK 的参数如下，其就是在 N 维度做了重排：
 
 \begin{lstlisting}[language=C++]
 TiledMMA tiled_mma = make_tiled_mma(SM80_8x8x4_F64F64F64F64_TN{},
                                      Layout<Shape<_1,_1,_1>>{},     // AtomLayout
                                      Tile<_8,                       // Permutation on M, equivalent to 8:1, identity
-                                     Layout<Shape <_2,_4,_2>, 
+                                     Layout<Shape <_2,_4,_2>,
                                              Stride<_1,_4,_2>>, // Permutation on N, size 16
                                       _8>{});                   // Permutation on K, equivalent to 8:1, identity
 \end{lstlisting}
