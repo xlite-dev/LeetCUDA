@@ -689,7 +689,12 @@ WMMA 做不到这一点（对照第~\ref{ch:10}~章坑五）。收拢与写回�
 每条 \texttt{mma.\allowbreak{}m16n8k16} 4096 FLOP、每 warp 每迭代 16 条、
 每 block（8 warp）每 k-迭代 $2\times128\times128\times16 = 524{,}288$ FLOP、
 搬入 $(128{+}128)\times16\times2$~B $= 8$~KB，smem 口径
-$AI = 64$ FLOP/B，判定为 compute-bound。
+$AI = 64$ FLOP/B。它按每 block 的 gmem 流量计数：grid 同一行（列）的
+8 个 block 共享同一段
+A 行块（B 列块），L2 吸收后 DRAM 侧有效 AI 远高于 64——本节的实测
+76.55 TFLOPS 已越过 $64\times934 \approx 59.8$ TFLOPS 的带宽模型上限，
+直接证明瓶颈不在 DRAM 带宽，而在 TC 指令发射密度与流水编排。
+
 复测口径（RTX PRO 5000 72GB，sm\_120，2026-09-11；$M{=}N{=}K{=}1024$，
 warmup 3 + 10 次均值；\texttt{.\allowbreak{}tmp/\allowbreak{}book-bench/\allowbreak{}ch11/\allowbreak{}}）：
 \texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn} 76.55 TFLOPS（f16 累加）。

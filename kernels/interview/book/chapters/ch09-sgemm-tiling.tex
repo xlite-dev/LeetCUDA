@@ -88,8 +88,8 @@ $\mathrm{addr}(A\sb{m,k}) = mK + k$、$\mathrm{addr}(B\sb{k,n}) = kN + n$
 $B\sb{K}$ 在分子分母间相消，加深 $B\sb{K}$ 不提升 AI，只增加 smem 驻留量与
 单次同步覆盖的计算量。AI 由 $B\sb{M} \times B\sb{N}$ 这个输出面唯一决定——严格说
 上式还省略了 $C$ 的写回，计入后
-$\mathrm{AI}=2B_MB_NK/\bigl(4K(B_M+B_N)+4B_MB_N\bigr)$，$K\gg B_K$ 时退回上式
-（本章 $2048^3$ 实测下两者差 0.7\%）。
+$\mathrm{AI}=2B_MB_NK/\bigl(4K(B_M+B_N)+4B_MB_N\bigr)$，$B\sb{M}B\sb{N} \ll K(B\sb{M}+B\sb{N})$ 时退回上式
+（本章 $2048^3$ 下 $32^2$ tile 差 $0.8\%$、$128^2$ tile 差 $3.0\%$）。
 代入本章两个实现：$32 \times 32 \to \mathrm{AI} = 8$~FLOP/B；
 $128 \times 128 \to \mathrm{AI} = 32$~FLOP/B，恰好是三级递进（naive $0.25 \to 8 \to 32$）。
 方形 tile 时式~\ref{eq:9-ai-tile} 简化为 $B/4$：每边翻倍，AI 翻倍。

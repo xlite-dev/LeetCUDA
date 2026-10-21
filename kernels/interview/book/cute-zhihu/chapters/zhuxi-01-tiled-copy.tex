@@ -28,7 +28,7 @@ Triton，编程最简单，也能有比较好的功能扩展能力，然而其�
 
 然而，代价是什么？
 
-其伴随而来的的学习曲线实在过于陡峭，笔者在很长一段时间都对于很多基础概念都是一知半解，写相关的代码也只是在 @reed\footnote{\url{https://www.zhihu.com/people/2600b0313c76a175aa9e09a235382b79}} 大师以及 tri Dao 的代码上做一些修改，经过相当一段时间的摸索后总算有些粗浅的认知。在这个过程中，我逐渐意识到其这里面的难点很大一部分在于没有一个足够 junior 的教程能够让开发者能够对 CuTe 的基本能力有一个直白的认知：cutlass CuTe 官方的 tutorial ，只能说很难评；reed 大师的系列文章\footnote{\url{https://www.zhihu.com/people/reed-84-49}}写的很好，高屋建瓴，干货满满。然而我认为其对初步接触的 CuTe 的同学来说仍然有些复杂。
+其伴随而来的学习曲线实在过于陡峭，笔者在很长一段时间都对于很多基础概念都是一知半解，写相关的代码也只是在 @reed\footnote{\url{https://www.zhihu.com/people/2600b0313c76a175aa9e09a235382b79}} 大师以及 tri Dao 的代码上做一些修改，经过相当一段时间的摸索后总算有些粗浅的认知。在这个过程中，我逐渐意识到其这里面的难点很大一部分在于没有一个足够 junior 的教程能够让开发者能够对 CuTe 的基本能力有一个直白的认知：cutlass CuTe 官方的 tutorial ，只能说很难评；reed 大师的系列文章\footnote{\url{https://www.zhihu.com/people/reed-84-49}}写的很好，高屋建瓴，干货满满。然而我认为其对初步接触的 CuTe 的同学来说仍然有些复杂。
 
 我认为，有很多概念其实可以解释的更直观，也可以结合我们已有的 cuda 经验来更好的理解。还有就是很多变量的命名，一些辅助函数，本身也包含了很多的信息，也值得和大家分享下。接下来这篇文章，我们以 tiled copy 为例，共同探索一下 CuTe 的用法。
 
@@ -61,43 +61,43 @@ Triton，编程最简单，也能有比较好的功能扩展能力，然而其�
 template <int kTileM, int kTileN>
 __global__ void g2s_tiled_copy(float* global_data) {
     // 为画图方便，以 4x4 的 data tile 为例
-    
+
     __shared__ float shared_data[kTileM * kTileN];
-    
-    int n_threads_in_block = 4; 
+
+    int n_threads_in_block = 4;
     // 为画图方便，以 4 threads 为 1 block 为例
-    
+
     int tid = threadIdx.x;
-    
+
     int total_elements = kTileM * kTileN;
-    
-    int n_threads_along_TileN = kTileN / 2; 
+
+    int n_threads_along_TileN = kTileN / 2;
     // 在列方向上分配多少个 thread
-    int n_threads_along_TileM = n_threads_in_block / n_threads_along_TileN; 
+    int n_threads_along_TileM = n_threads_in_block / n_threads_along_TileN;
     // 在行方向上分配多少个 thread
-    
+
     int i_row_thread = tid / n_threads_along_TileN;
     // 在行方向上的 thread-id
     int i_col_thread = tid % n_threads_along_TileN;
     // 在列方向上的 thread-id
-    
+
     int n_elements_each_loop = n_threads_along_TileN * n_threads_along_TileM * 2;
     // 每次 copy 每个 thread 需要 copy 2 个 float
 
-    int n_copy_loops = total_elements / n_elements_each_loop; 
+    int n_copy_loops = total_elements / n_elements_each_loop;
     // 完成这次的 tiled copy 需要多少轮次
-    
+
     for (int i_loop = 0; i_loop < n_copy_loops; ++i_loop) {
-    
+
         float* shared_data_i_loop = shared_data + i_loop * n_elements_each_loop;
         float* global_data_i_loop = global_data + i_loop * n_elements_each_loop;
         // 按轮次整体偏移指针
-        
+
         // 实际执行 g2s copy，每个 thread 每次 copy 1 个 float2
         ((*float2)(&shared_data_i_loop[i_row_thread * kTileN + i_col_thread * 2]))[0]
-                = ((*float2)(&global_data_i_loop[i_row_thread * kTileN + i_col_thread * 2]))[0];    
+                = ((*float2)(&global_data_i_loop[i_row_thread * kTileN + i_col_thread * 2]))[0];
     }
-    __syncthreads(); 
+    __syncthreads();
  }
 \end{lstlisting}
 
@@ -131,19 +131,19 @@ __global__ void g2s_tiled_copy(const float *input) {
   // 为画图方便，以 4x4 的 data tile 为例，即，kTileM = 4，kTileN = 4
 
   int tid = threadIdx.x;
-  
+
   __shared__ float shm[kTileM * kTileN];
-  
-  Tensor g_input_tile = make_tensor(make_gmem_ptr((float *)input), 
-                               make_shape(Int<kTileM>{}, Int<kTileN>{}),
-                               make_stride(Int<kTileN>{}, Int<1>{})); 
-                               // (kTileM, kTileN)
-                               
-  Tensor s_tensor = make_tensor(make_smem_ptr((float *)shm), 
+
+  Tensor g_input_tile = make_tensor(make_gmem_ptr((float *)input),
                                make_shape(Int<kTileM>{}, Int<kTileN>{}),
                                make_stride(Int<kTileN>{}, Int<1>{}));
                                // (kTileM, kTileN)
-  
+
+  Tensor s_tensor = make_tensor(make_smem_ptr((float *)shm),
+                               make_shape(Int<kTileM>{}, Int<kTileN>{}),
+                               make_stride(Int<kTileN>{}, Int<1>{}));
+                               // (kTileM, kTileN)
+
   using g2s_copy_op = UniversalCopy<cute::uint64_t>;
   using g2s_copy_traits = Copy_Traits<g2s_copy_op>;
   using g2s_copy_atom = Copy_Atom<g2s_copy_traits, float>;
@@ -160,7 +160,7 @@ __global__ void g2s_tiled_copy(const float *input) {
   auto tsA_g2s = thr_copy_g2s.partition_D(s_tensor);
 
   copy(tiled_copy_g2s, tgA_g2s, tsA_g2s);
-  
+
   __syncthreads();
 }
 \end{lstlisting}
@@ -188,13 +188,13 @@ __global__ void g2s_tiled_copy(const float *input) {
 
 进一步的，我们不再考虑数据本身，而是用一个数据坐标指代其中每一个元素，这个数据坐标其实是原始 m 行 n 列 data tile 的坐标（m-id, n-id），我们约定一种方式将这个二维坐标映射成 1D 坐标 mn = func0(m-id，n-id）。这个过程是可以反向的，给定这样一个 mn，我们一定能反向找到 （m-id, n-id），进而拿到我们需要的数据。那么这个 func0 是如何实现的呢？实际上这是 CuTe 通过构造出的一种特殊变换来完成的（所谓的 raked\_product，我们先忽略细节，暂且认为其是由我们指定的 T-layout \& V-layout 决定的一个变换），并且保证其是可逆且一一映射的。
 
-具体的，针对我们目前的例子，这个函数会被定义为如下公式，其中 2 为 Fig3.  中的左图中橙色框圈出的部分的行数：
+具体的，针对我们目前的例子，这个函数会被定义为如下公式，其中 2 为 Fig.3 中的左图中橙色框圈出的部分的行数：
 
-$mn = \text{func0}(m\text{-id}, n\text{-id}) = 2 \times n\text{-}id   m\text{-}id$
+$mn = \text{func0}(m\text{-id}, n\text{-id}) = 2 \times n\text{-}id + m\text{-}id$
 
-同理，（t-id, v-id）也可以被映射为 1D 坐标，4 为 Fig3.  中的右图中橙色框圈出的部分的行数：
+同理，（t-id, v-id）也可以被映射为 1D 坐标，4 为一次 atom copy 中参与运算的 thread 数：
 
-$tv = \text{func1}(t\text{-id}, v\text{-id}) = 4 \times v\text{-}id   t\text{-id}$
+$tv = \text{func1}(t\text{-id}, v\text{-id}) = 4 \times v\text{-}id + t\text{-id}$
 
 我们无需记住上述的函数细节，只需要知道：
 

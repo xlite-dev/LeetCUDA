@@ -94,21 +94,21 @@ __global__ void my_tiled_mma(__half *Cptr, const __half *Aptr,
   using MMA = decltype(make_tiled_mma(mma_atom{}, MMA_EU_RepeatT{}, MMA_P_T{}));
 
   MMA tiled_mma;
-  
+
   // 1. tiled mma partition
   auto thr_mma = tiled_mma.get_slice(tid_in_block);
-  auto trA = thr_mma.partition_fragment_A(gA(_, _, 0)); 
-  auto tgA = thr_mma.partition_A(gA(_, _, 0)); 
-  
+  auto trA = thr_mma.partition_fragment_A(gA(_, _, 0));
+  auto tgA = thr_mma.partition_A(gA(_, _, 0));
+
   auto trB = thr_mma.partition_fragment_B(gB(_, _, 0));
-  auto tgB = thr_mma.partition_B(gB(_, _, 0)); 
+  auto tgB = thr_mma.partition_B(gB(_, _, 0));
 
-  auto trC = thr_mma.partition_fragment_C(gC);         
-  auto tgC = thr_mma.partition_C(gC);        
+  auto trC = thr_mma.partition_fragment_C(gC);
+  auto tgC = thr_mma.partition_C(gC);
 
-  cute::copy(tgA, trA); 
+  cute::copy(tgA, trA);
   cute::copy(tgB, trB);
-  
+
   // 2. gemm 执行
   cute::gemm(tiled_mma, trA, trB, trC);
 
@@ -145,7 +145,7 @@ mma\_atom：描述我们用什么 mma 指令（16x8x16 fp16，16x8x32 int8 等�
 
 EU-layout：EU 指的是 execute unit，根据架构不同，实际上是指 1/4-warp (sm70) / warp (sm80) / warp-group (sm90)。也就是执行一条 mma 指令所需要的执行器粒度。如果我们查看 tiled mma 的构造过程就可以看到， CuTe 实现时是把 EU\_layout 和 mma atom 中的 threads layout 做了一个 tiled\_product 的，也即是把执行器 layout 转换为具体的 thread layout 了。
 
-permutation：指定了一次 threadblock 能做的的 mma 块大小，tiled mma 其实就是把这 permutation 块在 M 和 N 维度上重复多次。而 permutation 内部由多个 mma op 结果组成，这些所有的结果是由两个层面上的重复完成的，里层是按照 EU-layout 并行分的，外层是把每一个 EU 串行重复执行多条指令。
+permutation：指定了一次 threadblock 能做的 mma 块大小，tiled mma 其实就是把这 permutation 块在 M 和 N 维度上重复多次。而 permutation 内部由多个 mma op 结果组成，这些所有的结果是由两个层面上的重复完成的，里层是按照 EU-layout 并行分的，外层是把每一个 EU 串行重复执行多条指令。
 
 具体的，我们可以将 Tile -$>$ permutation -$>$ atom 的关系可以展现为 Fig.3
 
@@ -154,11 +154,11 @@ permutation：指定了一次 threadblock 能做的的 mma 块大小，tiled mma
 \caption{Figure.3 Tiled mma 中 Tile / permutation / atom 三层切分关系。tileM * tileN 会被切分为多个 permutation，而 permutation 由多个 atom 组合，permutation 包含了 warp 的并行重复，也包含指令的串行重复}
 \end{figure}
 
-进一步的，我们借用 cute::print\_latex 函数将我们构造出来的 tiled mma 打印出来如 Fig.4 ，其打印的其实就是 MN-layout，即每个给定一个行列坐标（M-id, N-id），能找到对应的 T-id 和 V-id，对于我们理解 thread - data 的映射关系是比较直观的。Fig4. 可以进一步验证我们构造出来的切分模型是正确的。
+进一步的，我们借用 cute::print\_latex 函数将我们构造出来的 tiled mma 打印出来如 Fig.4，其打印的其实就是 MN-layout，即每个给定一个行列坐标（M-id, N-id），能找到对应的 T-id 和 V-id，对于我们理解 thread - data 的映射关系是比较直观的。Fig.4 可以进一步验证我们构造出来的切分模型是正确的。
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.9\textwidth]{figures/zhuxi-02-tiled-mma/fig-04.jpg}
-\caption{Figure.4 Tiled mma 中 Tile / permutation 对比 print\_latex 打印出来的 tiled mma。可知 tiled mma 是先并行排布 warp 构成一个 threadblock 32x16x16 的 mma，再串行排布指令完成一个 permutation 大小的 mma。在 CuTe 中默认排布是 col-major，因此 warp(0,1) 实际对应的是 thread 64\textasciitilde{} thread}
+\caption{Figure.4 Tiled mma 中 Tile / permutation 对比 print\_latex 打印出来的 tiled mma。可知 tiled mma 是先并行排布 warp 构成一个 threadblock 32x16x16 的 mma，再串行排布指令完成一个 permutation 大小的 mma。在 CuTe 中默认排布是 col-major，因此 warp(0,1) 实际对应的是 thread 64\textasciitilde{}95}
 \end{figure}
 
 另一个例子是 flash atten v2 中 QK 矩阵乘，其为了让同一行的数据都放在同一个 warp 里以达到 warp 内循环算 softmax 的效果，其设计 EU-layout 以及 permutation 把 warp 按竖着排列。
@@ -250,12 +250,12 @@ auto sC = make_tensor(make_smem_ptr(Cshm), SmemLayoutC{});
 using SmemLayoutC = decltype(make_shape(Int<32>{}, Int<32>{});
 using R2SCopyAtomC = Copy_Atom<UniversalCopy<int>, cute::half_t>;
 
-// 从 tiled mma 延伸出 r2s tiled copy 
+// 从 tiled mma 延伸出 r2s tiled copy
 auto r2s_tiled_copy_c = make_tiled_copy_C(R2SCopyAtomC{}, tiled_mma);
 auto r2s_thr_copy_c = r2s_tiled_copy_c.get_slice(idx);
-auto trC_r2s = r2s_thr_copy_c.retile_S(trC);   
-auto tsC_r2s = r2s_thr_copy_c.partition_D(sC);  
-  
+auto trC_r2s = r2s_thr_copy_c.retile_S(trC);
+auto tsC_r2s = r2s_thr_copy_c.partition_D(sC);
+
 cute::copy(r2s_tiled_copy_c, tCrC_r2s, tCsC_r2s);
 
 __syncthreads();
@@ -286,7 +286,7 @@ __syncthreads();
     auto thr_vmn = make_coord(get<0>(thr_vmnk_), make_coord(get<1>(thr_vmnk_), get<2>(thr_vmnk_)));
     return thr_tensor(thr_vmn, make_coord(_, repeat<rank<1,1>(thr_tensor)>(_)));
   }
-  
+
   // Tile a tensor or a layout from shape
   //   (M,N,...)
   // to shape
@@ -329,7 +329,7 @@ __syncthreads();
 
 在明白 tiled mma partition 的原理之后，我们对于一个 tensor partition 前后的 layout 是多少，相信也是非常自然的了。
 
-至于为什么先并行再串行的循环，我想是因为 thread 的连续排布肯定是对数据加载更友好的，虽然单 warp 做到连续排布就已经能够合并访存了，但是 threadblock 级别的连续排布可以更进一步提高 cache 属性。而且，考虑到 volta 架构并是以 1/4-warp 为执行器的，为了保证一个 warp 访问的数据连续，先并行执行器排布明显是更优的选择。
+至于为什么先并行再串行的循环，我想是因为 thread 的连续排布肯定是对数据加载更友好的，虽然单 warp 做到连续排布就已经能够合并访存了，但是 threadblock 级别的连续排布可以更进一步提高 cache 属性。而且，考虑到 volta 架构是以 1/4-warp 为执行器的，为了保证一个 warp 访问的数据连续，先并行执行器排布明显是更优的选择。
 
 最后，值得注意的是，tiled mma 的大小实际上可以不和 g2s/s2g tiled copy 一致，例如，我们定义一个 64x64x16 tiled mma，实际对应的 tiled copy 规格可能是 128x128x16 的，后续我们需要再在两个方向上进行循环。之所以这样设计，是因为在 mma 问题中寄存器通常是受限的稀缺资源，通过这种设计可以让我们更自由的控制寄存器的行为，例如，我们可以计算一部分 C （例如 64x64），然后先输出到 shm 中，然后再复用 64x64 的寄存器来计算下一块 C，从而大大降低寄存器的用量，进而把 tile size 开到更大。而且数据的写出以及 mma 的计算也可以并行起来。更特别的，tiled mma 定义时其实并不考虑 tileM/tileN/tileK，而是只考虑一个 threadblock 能处理的 mma，也就是我们例子中的 32x32x16，其他维度其实是在 tensor partition 过程中用 divide 得到的。
 

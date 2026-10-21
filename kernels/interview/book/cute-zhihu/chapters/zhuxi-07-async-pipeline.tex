@@ -45,8 +45,8 @@ Producer 和 Consumer 各自独立运行，天然就具备了数据搬运与计�
 \begin{lstlisting}[language=C++]
 // ===== 初始化 =====
 PipelineTmaAsync pipeline(shared_storage, params);
-PipelineState pipe_read;   
-PipelineState pipe_write; 
+PipelineState pipe_read;
+PipelineState pipe_write;
 
   // --- 生产者：搬数据 ---
   if (is_producer) {
@@ -87,7 +87,7 @@ struct SharedStorage {
 除了 barrier 变量本身，这个结构体还提供对 barrier 操作的一系列函数，包括：
 
 \begin{lstlisting}[language=C++]
-void producer_acquire(state); 
+void producer_acquire(state);
 // producer 等待当前 state 的 empty barrier 就位
 
 void producer_commit(state);
@@ -115,10 +115,10 @@ void consumer_release(state);
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.9\textwidth]{figures/zhuxi-07-async-pipeline/fig-01.jpg}
-\caption{Figure 1. Producer 与 Consumer 通过 AsyncPipline 交互示意图；每个 Stage 都配备一对 barrier，full \& empty，分别用来表示 tma 已经填满当前 stage 的 shared mem buffer \& mma 已经使用完当前 stage 的 shared mem buffer}
+\caption{Figure 1. Producer 与 Consumer 通过 AsyncPipeline 交互示意图；每个 Stage 都配备一对 barrier，full \& empty，分别用来表示 tma 已经填满当前 stage 的 shared mem buffer \& mma 已经使用完当前 stage 的 shared mem buffer}
 \end{figure}
 
-此外，由于一些指令如 tma copy，是由单 thread 发起的，而如 epilogue 或是 softmax 这样的指令，仍然由多条 thread 共同完成。
+此外，由于一些指令如 tma copy，是由单 thread 发起的，而如 epilogue 或是 softmax 这样的指令，仍然由多个 thread 共同完成。
 
 这涉及到我们对 mbarrier 初始化，以及实际 arrive 的时候区别对待（即，arrive 一次还是多次），因此这就要求我们的 pipeline 带有身份信息，例如， “当前 warp 是 producer 还是 consumer？” 或是“这个 thread 是用来发射 TMA 指令的 leader thread 吗？” 。那么这段身份标识，就需要在 Pipeline 初始化的时候以 param 的方式传递给 pipeline 结构体。其核心代码可以展示为如下：
 
@@ -136,9 +136,9 @@ enum class ThreadCategory {
     uint32_t is_leader = 0;
     uint32_t num_consumers = 0; // Number of consumer threads
     uint32_t num_producers = 1; // Number of producer threads
-    int initializing_warp = 0; 
+    int initializing_warp = 0;
   };
-  
+
 // PipelineTmaAsync constructor
   template<class ClusterShape, class InitBarriers, class InitMasks>
   CUTLASS_DEVICE
@@ -192,12 +192,12 @@ struct PipelineState {
 \begin{itemize}
   \item count\_：自流水线启动以来，总共经历的 k-tile id，这个值是一直增长的。
   \item index\_：当前 stage 的 id，如在 3-stage 设定下，其就是 0-$>$1-$>$2-$>$0-$>$1 … 的循环。
-  \item phase\_：当前 k-tile 下，我们等待的 mbarrier phase，只有 0 和 1 两个取值。若为 1，只有在 mbarrier phase 也会 1 的时候进行阻塞，mbarrier phase 为 0 的时候放行；反之则反。
+  \item phase\_：当前 k-tile 下，我们等待的 mbarrier phase，只有 0 和 1 两个取值。若为 1，只有在 mbarrier phase 也为 1 的时候进行阻塞，mbarrier phase 为 0 的时候放行；反之则反。
 \end{itemize}
 
 index\_ 和 count\_ 的语义是较平凡的，关键在于 phase\_。我们用一个 3-Stage 的 producer\_state 的例子，随着 k-tile 的递增，来观察它们的变化规律。
 
-这里我们需要提一下一个细节（感谢读者朋友 @最光阴\footnote{\url{https://www.zhihu.com/people/7bb7911bb19edeb4bacade3815513a47}} 的提醒），由于 empty barrier 在初始化时，phase 位为 0，而，而我们第一次发起 TMA 时，shared mem buffer 都是空的，也就是不需要阻塞，所以我们会将 producer\_state 的状态初始化为 \{ index\_ == 0, phase\_ == 1, count\_ == 0 \}，否则 Producer 会等待一个无法解锁的 empty barrier，一上来就 hang 住。这个phase\_ == 1在 prodcuer\_state 上是必要的，在 consumer\_state 中则不必要。
+这里我们需要提一下一个细节（感谢读者朋友 @最光阴\footnote{\url{https://www.zhihu.com/people/7bb7911bb19edeb4bacade3815513a47}} 的提醒），由于 empty barrier 在初始化时，phase 位为 0，而我们第一次发起 TMA 时，shared mem buffer 都是空的，也就是不需要阻塞，所以我们会将 producer\_state 的状态初始化为 \{ index\_ == 0, phase\_ == 1, count\_ == 0 \}，否则 Producer 会等待一个无法解锁的 empty barrier，一上来就 hang 住。这个 phase\_ == 1 在 producer\_state 上是必要的，在 consumer\_state 中则不必要。
 
 我们将时间线展开如 Fig.2 所示：
 

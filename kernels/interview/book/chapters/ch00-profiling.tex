@@ -313,14 +313,14 @@ KPI，GEMM 类 kernel 用大 tile + 低 occupancy + 高 ILP 换性能是常态�
     {(1.44,5.52) (1.92,5.52) (2.16,4.91) (2.52,4.21) (2.88,3.68) (3.24,3.27) (3.60,2.94)
      (4.32,2.45) (5.04,2.10) (5.76,1.84) (7.20,1.47) (8.64,1.23) (10.08,1.05)
      (11.52,0.92)};
-  \draw[tkOrange, semithick] (0.3, 3.68) -- (7.9, 3.68);
+  \draw[tkOrange, semithick] (0.3, 2.76) -- (7.9, 2.76);
   \draw[tkPurple, semithick] (0.3, 5.52) -- (11.8, 5.52);
   \draw[very thick]
-    (0.3,3.68) -- (2.88,3.68) -- (2.88,2.76) -- (3.83,2.76) -- (3.83,1.84)
+    (0.3,2.76) -- (3.83,2.76) -- (3.83,1.84)
     -- (5.76,1.84) -- (5.76,0.92) -- (11.52,0.92);
   \node[lab, anchor=south west, text=tkPurple] at (4.7, 5.72) {block/warp 槽位上限：48 warps};
-  \node[lab, anchor=south west, align=left, text=tkOrange] at (3.3, 3.9)
-    {smem 约束（示例：\\smem/block=32KB，T=256）\\$\to$ 上限 32 warps};
+  \node[lab, anchor=north west, align=left, text=tkOrange] at (0.4, 2.56)
+    {smem 约束（示例：\\smem/block=32KB，T=256）\\$\to$ 3 blocks = 24 warps};
   \node[lab, anchor=west, align=left, text=tkBlue] at (11.68, 0.92)
     {寄存器约束\\$65536/(32r)$};
   \node[lab, anchor=west, align=left] at (11.68, 2.35)
@@ -333,7 +333,7 @@ KPI，GEMM 类 kernel 用大 tile + 低 occupancy + 高 ILP 换性能是常态�
   \node[lab, anchor=north] at (6.65, -0.42) {每线程寄存器数 $r$（regs/thread）};
   \node[lab, rotate=90, anchor=south] at (-0.95, 3.3) {可驻留 warp/SM};
 \end{tikzpicture}
-\caption{理论 occupancy 的三限制源取 min（sm\_120，48 warp 槽位口径）：寄存器约束 $65536/(32r)$（warp 粒度简化）随每线程寄存器数 $r$ 下降；smem 与槽位为水平约束（示例：smem/block=32KB、T=256 $\to$ 32 warps）。粗黑阶梯为按整 block（T=256，8 warps/block）量化的 min 包络；实测点为 WS 结构（producer 32 / consumer 232 regs）1 CTA/SM = 12 warps（384T），理论 occupancy 25\%（12/48）。}
+\caption{理论 occupancy 的三限制源取 min（sm\_120，48 warp 槽位口径）：寄存器约束 $65536/(32r)$（warp 粒度简化）随每线程寄存器数 $r$ 下降；smem 与槽位为水平约束（示例：smem/block=32KB、T=256，sm\_120 的 100KB/SM $\to$ 3 blocks $=$ 24 warps）。粗黑阶梯为按整 block（T=256，8 warps/block）量化的 min 包络；实测点为 WS 结构（producer 32 / consumer 232 regs）1 CTA/SM = 12 warps（384T），理论 occupancy 25\%（12/48）。}
 \label{fig:0-3}
 \end{figure}
 

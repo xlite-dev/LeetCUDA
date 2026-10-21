@@ -666,7 +666,7 @@ slice $t$，tensor core 不必等 ldmatrix。右侧为自适应等待：满载�
     \node[c78, fill=gray!\gf] at (707,\ry) {$\qa$};
     \node[c78, fill=gray!\gf] at (789,\ry) {$\qb$};
   }
-  \foreach \ri/\qa/\qb/\hc/\hd in {4/0/4/0/4, 5/8/12/4/0, 6/16/20/0/4, 7/24/28/4/0}{
+  \foreach \ri/\qa/\qb/\hc/\hd in {4/0/4/0/4, 5/8/12/8/12, 6/16/20/16/20, 7/24/28/24/28}{
     \pgfmathsetmacro{\ry}{148 + (\ri+1.5)*34}
     \node[c64] at (112,\ry) {$\ri$};
     \node[c78, fill=gray!45, draw=figred, line width=0.7pt] at (187,\ry) {$\qa$};
@@ -687,12 +687,13 @@ slice $t$，tensor core 不必等 ldmatrix。右侧为自适应等待：满载�
     \pgfmathsetmacro{\qx}{80 + \ki*60}
     \node[q56, fill=white] at ({\qx+28},644) {$\cq$};
   }
-  \foreach \cq [count=\ki from 0] in {0,8,16,24,0,8,16,24}{
+  \foreach \cq [count=\ki from 4] in {0,8,16,24}{
     \pgfmathsetmacro{\qx}{80 + \ki*60}
-    \ifnum\ki>3
-      \node[q56, fill=gray!45, draw=figred, line width=0.7pt] at ({\qx+28},540) {$\cq$};
-      \node[q56, fill=gray!18, draw=figgreen, line width=0.7pt] at ({\qx+28},644) {$\cq$};
-    \fi
+    \node[q56, fill=gray!45, draw=figred, line width=0.7pt] at ({\qx+28},540) {$\cq$};
+  }
+  \foreach \cq [count=\ki from 4] in {4,12,20,28}{
+    \pgfmathsetmacro{\qx}{80 + \ki*60}
+    \node[q56, fill=gray!18, draw=figgreen, line width=0.7pt] at ({\qx+28},644) {$\cq$};
   }
   \foreach \lab [count=\ki from 0] in {row0,row1,row2,row3,row4,row5,row6,row7}{
     \pgfmathsetmacro{\qx}{80 + \ki*60}
@@ -823,9 +824,9 @@ $W{\times}H$ 宽条带（$W{=}\min(T_n,R)$），重排后折叠为组宽 16 的�
   \node[ttl] at (30,27) {XOR swizzle 位运算：Swizzle$=$B,M,S（fp16 tile 字节偏移）};
   \node[ph] at (50,66) {BK$=$16 tile 字节偏移 $a = 32i + 16c + w$ 的 bit 布局：};
   \node[bf, fill=gray!12, draw=figblue, minimum width={240*0.0158cm},
-    minimum height={40*0.0158cm}] at (180,104) {bit 9-7: $i$（行）};
+    minimum height={40*0.0158cm}] at (180,104) {bit 11-7: $i$（行）高位};
   \node[bf, fill=white, draw=black!45, minimum width={180*0.0158cm},
-    minimum height={40*0.0158cm}] at (394,104) {bit 6-5: ...};
+    minimum height={40*0.0158cm}] at (394,104) {bit 6-5: $i$ 低位};
   \node[bf, fill=gray!45, draw=figorange, minimum width={200*0.0158cm},
     minimum height={40*0.0158cm}] at (588,104) {bit 4: $c$（chunk）};
   \node[bf, fill=white, draw=black!45, minimum width={260*0.0158cm},

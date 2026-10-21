@@ -100,17 +100,17 @@ TMA copy descriptor 的构造如下代码：
 template <typename T, int CTA_M, int CTA_N>
 void host_fn(T* data, int M, int N) {
   using namespace cute;
- 
+
   // 1. Create the GMEM tensor
   auto gmem_layout = make_layout(make_shape(M, N), LayoutRight{});
   auto gmem_tensor = make_tensor(make_gmem_ptr(data), gmem_layout);
- 
+
   // 2. Create the SMEM layout (Atom layout for TMA)
   auto smem_layout = make_layout(make_shape(CTA_M, CTA_N), LayoutRight{});
- 
+
   // 3. Create the TMA object (contains the Tensor Map)
   auto tma_load = make_tma_copy(SM90_TMA_LOAD{}, gmem_tensor, smem_layout);
- 
+
   // 4. Invoke the kernel
   tma_load_kernel<T, CTA_M, CTA_N, decltype(tma_load),
                                            decltype(gmem_layout),
@@ -230,9 +230,9 @@ constexpr int tma_transaction_bytes = CTA_M * CTA_N * sizeof(T);
   __shared__ uint64_t tma_load_mbar;
   if (threadIdx.x == 0) {
     initialize_barrier(tma_load_mbar, /* arrival count */ 1);
- 
+
     set_barrier_transaction_bytes(tma_load_mbar, tma_transaction_bytes);
- 
+
     copy(tma_load.with(tma_load_mbar),
          tma_load_per_cta.partition_S(gmem_tensor_coord_cta),
          tma_load_per_cta.partition_D(smem_tensor));
@@ -299,7 +299,7 @@ TMA 在传输完成后，barrier 状态若同时满足：\textbf{Actual arrv\_cn
 既然硬件不支持 $>$5D 的 Box，那只有在代码层面来对高维数据进行合并；而且考虑到发起的 copy 越少越好，这个合并应该是一个贪心的过程，且在合并的过程中也要检查不能超出硬件对 Box Size 的 256 限制。其具体的逻辑涉及到非常多 CuTe 的代数变换以及多个辅助函数，我们总结其主要函数的调用逻辑为如下伪代码：
 
 \begin{lstlisting}
-#输入： 
+#输入：
 # copy_atom: SM90_TMA_LOAD / SM90_TMA_LOAD_MULTICAST / SM90_TMA_STORE;
 # global tensor，
 # shared layout，
@@ -308,34 +308,34 @@ TMA 在传输完成后，barrier 状态若同时满足：\textbf{Actual arrv\_cn
 def make_tma_copy(copy_atom, gtensor, slayout, ...):
     # 1. 去除 swizzle 逻辑，只取 shape
     smem_layout_pure = get_nonswizzle_portion(slayout)
-    
+
     # 2. 编译期合并维度 & 构建 TMA descriptor & 检查 256 限制
     def make_tma_copy_atom(gtensor, smem_layout_pure):
-        
+
         # 2.1 compile-time 合并维度: eg. ((_8,_16),(_64,_2)) -> ((_64,_128),_2)
         tma_gbasis = construct_tma_gbasis(gtensor, smem_layout_pure):
             # 尝试将 shm layout 映射回 global layout，方便下一步合并连续的维度
             tile_gstride = gtensor.compose(right_inverse(smem_layout_pure)).layout()
-            
+
             # 按规则合并维度，并检查合并后的维度 <= 256
             tma_gstride = coalesce_256(tile_gstride)
-            
+
             # 返回合并后的维度信息
-            return tma_gstride 
+            return tma_gstride
 
         # 2.2 按照合并好的维度构建 TMA descriptor & 必要时将超过 5d 的维度合并成 5d
         tma_desc = make_tma_copy_desc(gtensor, tma_gbasis):
-            
+
             # C. run-time 计算超过 5d 维度的 Stride 最大公约数 (GCD)，进而将其压缩成一个维度
             fill_tma_gmem_shape_stride(gtensor, tma_gbasis, output=tma_desc)
-            
+
             # D. 可选：根据 multicast 属性切分 tma box size
             if is_multicast:
                 smem_box_shape = ceil_div(smem_box_shape, multicast)
-            
-            # E. 调用 CUDA 驱动 API，生成 TMA descriptor 
+
+            # E. 调用 CUDA 驱动 API，生成 TMA descriptor
             cuTensorMapEncodeTiled(tma_desc, ...)
-            
+
             return tma_desc
 
         # 3. 返回封装好的 tiled copy 对象
@@ -352,6 +352,7 @@ def make_tma_copy(copy_atom, gtensor, slayout, ...):
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.9\textwidth]{figures/zhuxi-05-tma-copy/fig-04.png}
+\caption*{CUDA 官方文档对 TMA swizzle mode 的约束：使用 CU\_TENSOR\_MAP\_SWIZZLE\_32B/64B/128B 时，bounding box 内维（inner dimension）的字节数需分别不超过 32/64/128（原文此图无题注，为整理者所补）。}
 \end{figure}
 
 这个限制会体现在 SMEM Layout 上，并由此传递给了 make\_tma\_copy() 函数，最终生成了符合硬件约束的最优 Box Size。

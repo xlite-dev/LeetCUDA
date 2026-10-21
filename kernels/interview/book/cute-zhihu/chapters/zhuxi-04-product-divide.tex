@@ -4,9 +4,9 @@
 
 \section{动机}
 
-在之前的文章中，我们梳理了 Layout 的两种代数方法：\textbf{Compose}​ 与\textbf{Inverse }[1]。本文我们将继续介绍 Layout 代数中另外两个重要的代数变换：\textbf{Product}​ 与\textbf{Divide}。
+在之前的文章中，我们梳理了 Layout 的两种代数方法：\textbf{Compose} 与\textbf{Inverse }[1]。本文我们将继续介绍 Layout 代数中另外两个重要的代数变换：\textbf{Product} 与\textbf{Divide}。
 
-在介绍这两个操作之前，我们先思考一下 CuTe 引入Product​ 和Divide​ 的目的是什么。在介绍 Tiled Copy 的文章[2]中，我们提到了需要构建 Thread 与 Data 之间的映射关系。我们以 4 个 Thread 组成的 thread block 拷贝 4×4 数据块为例，如 Fig.1 所示：
+在介绍这两个操作之前，我们先思考一下 CuTe 引入 Product 和 Divide 的目的是什么。在介绍 Tiled Copy 的文章[2]中，我们提到了需要构建 Thread 与 Data 之间的映射关系。我们以 4 个 Thread 组成的 thread block 拷贝 4×4 数据块为例，如 Fig.1 所示：
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.9\textwidth]{figures/zhuxi-04-product-divide/fig-01.jpg}
@@ -19,7 +19,7 @@
 
 现在我们将“模式”与“重复”的理念引入到 CuTe Layout 中，就可以发现：我们可以指定一个小 Layout 作为一种模式，将这个模式\textbf{重复}多次可以形成更大的 Layout，这就是今天要介绍的\textbf{Layout Product}。
 
-除了将 Layout 扩大，自然的，我们也需要具备从一个大 Layout 中按照某种模式抽取出一个小 Layout 的能力。例如，在访问大数据块时，我们需要让每个 Thread Block 知道自己每一轮要访问的数据。也就是说，我们指定一个小 Layout 作为模式，将大 Layout \textbf{拆解}成若干部分，这即 \textbf{Layout Divide}​。
+除了将 Layout 扩大，自然的，我们也需要具备从一个大 Layout 中按照某种模式抽取出一个小 Layout 的能力。例如，在访问大数据块时，我们需要让每个 Thread Block 知道自己每一轮要访问的数据。也就是说，我们指定一个小 Layout 作为模式，将大 Layout \textbf{拆解}成若干部分，这即 \textbf{Layout Divide}。
 
 我们观察 CuTe 上层的函数，如 partition / local\_tile / tile\_to\_shape  等，其实都是 product 以及 divide 的变体。更进一步，make tiled copy / mma 等核心函数中，product \& divide 也是被反复用到，并配合我们在上一篇文章中提及的 compose \& inverse，构成了 CuTe 体系中千变万化的代数变换。
 
@@ -43,38 +43,38 @@ $\text{LayoutC} = \text{product}(\text{LayoutA}, \text{LayoutB})$
 
 例如，如果把每个$\text{A}$-like Layouts视为 $\text{C}$ 的一列，按顺序排列在一起，那么就是 CuTe 中的 \textbf{logical\_product}。
 
-我们以图形的方式解释 logical\_product 的过程，如 Fig.1 所示：
+我们以图形的方式解释 logical\_product 的过程，如 Fig.2 所示：
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.9\textwidth]{figures/zhuxi-04-product-divide/fig-02.jpg}
-\caption{Figure.1 logical\_product 计算过程：首先将 A 补全到紧密 layout，再从紧密 layout 中找出 A-like layouts，最后按照 B 的 col-major 顺序取 A-like layouts，按列排在一起。}
+\caption{Figure.2 logical\_product 计算过程：首先将 A 补全到紧密 layout，再从紧密 layout 中找出 A-like layouts，最后按照 B 的 col-major 顺序取 A-like layouts，按列排在一起。}
 \end{figure}
 
 其他 Product 变体函数的基本语义与 logical\_product 是一致的，各个函数的区别只是在最后形成 $\text{C}$ 时将 shape 以及 stride 维度给调换了。例如，除了 logical\_product，在 cutlass 中比较常见的 product 函数还有：
 
 \begin{itemize}
-  \item \textbf{blocked\_product}：其填充 $\text{A}$ 并提取 $\text{A}$-like Layouts 的过程和 logical\_product 的过程一致。最后构成 $\text{C}$ 时，不再将 $\text{A}$-like Layouts 排成一列，而是尝试把 $A$-like Layouts \textbf{作为一个 “block” 聚集在一起}，这个过程如 Fig.2 所示。事实上，这种排列方式也和我们直觉上的 layout 重复更契合，所以其在 cutlass 中被广泛使用。
+  \item \textbf{blocked\_product}：其填充 $\text{A}$ 并提取 $\text{A}$-like Layouts 的过程和 logical\_product 的过程一致。最后构成 $\text{C}$ 时，不再将 $\text{A}$-like Layouts 排成一列，而是尝试把 $A$-like Layouts \textbf{作为一个 “block” 聚集在一起}，这个过程如 Fig.3 所示。事实上，这种排列方式也和我们直觉上的 layout 重复更契合，所以其在 cutlass 中被广泛使用。
 \end{itemize}
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.9\textwidth]{figures/zhuxi-04-product-divide/fig-03.jpg}
-\caption{Figure.2 blocked\_product 计算过程：首先将 A 补全到紧密 layout，再从紧密 layout 中找出 A-like layouts，最后按照 B 的 col-major 顺序取 A-like layouts，按 block 形式排在一起。}
+\caption{Figure.3 blocked\_product 计算过程：首先将 A 补全到紧密 layout，再从紧密 layout 中找出 A-like layouts，最后按照 B 的 col-major 顺序取 A-like layouts，按 block 形式排在一起。}
 \end{figure}
 
 \begin{itemize}
-  \item \textbf{raked\_product}：其过程为 blocked\_product 类似，只是在最后按 “block” 聚集的时候，是优先排成类似 B 的形式。如 Fig3. 所示。
+  \item \textbf{raked\_product}：其过程与 blocked\_product 类似，只是在最后按 “block” 聚集的时候，是优先排成类似 B 的形式。如 Fig.4 所示。
 \end{itemize}
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.9\textwidth]{figures/zhuxi-04-product-divide/fig-04.jpg}
-\caption{Figure.3 raked\_product 计算过程：首先将 A 补全到紧密 layout 再从紧密 layout 中找出 A-like layouts，再按照 B 的 col-major 顺序取 A-like layouts，按 block 形式排在一起，最后进行一次重排，形成 raked 形状。}
+\caption{Figure.4 raked\_product 计算过程：首先将 A 补全到紧密 layout 再从紧密 layout 中找出 A-like layouts，再按照 B 的 col-major 顺序取 A-like layouts，按 block 形式排在一起，最后进行一次重排，形成 raked 形状。}
 \end{figure}
 
-直觉上，raked\_product类似在 blocked\_product 的基础上，把 $\text{C}$ 做了一次一个隔一个的排列（rake 中文即是耙子，类似耙钉的排列，还怪形象的）。当然归根溯源，Raked 这个命名，实际上是来源于并行计算理论中的 cyclic 分布，通常用来均衡各个处理器上的任务数，如 Fig.4 [4]。
+直觉上，raked\_product 类似在 blocked\_product 的基础上，把 $\text{C}$ 做了一次一个隔一个的排列（rake 中文即是耙子，类似耙钉的排列，还怪形象的）。当然归根溯源，Raked 这个命名，实际上是来源于并行计算理论中的 cyclic 分布，通常用来均衡各个处理器上的任务数，如 Fig.5 [4]。
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.9\textwidth]{figures/zhuxi-04-product-divide/fig-05.jpg}
-\caption{Figure.4 并行计算理论中 block 分布以及 cyclic 分布。}
+\caption{Figure.5 并行计算理论中 block 分布以及 cyclic 分布。}
 \end{figure}
 
 此外，product 还支持多维的形式，即：
@@ -160,11 +160,11 @@ $  \text{LayoutC = divide(LayoutA, LayoutB)}$
 
 代表我们通过在 $\text{A}$ 上去找 $\text{B}$\textbf{的 offset }决定的 $\text{B}$ \textbf{-like} \textbf{layouts}，最后再把这些 $\text{B}$-like layouts 组合在一起，得到 $\text{C}$，从而\textbf{确保原本的 }$\text{A}$\textbf{ 被不重不漏地拆分}。
 
-以 \textbf{logical\_divide} 为例，我们用图示来描述这个过程，如 Fig.4：
+以 \textbf{logical\_divide} 为例，我们用图示来描述这个过程，如 Fig.6：
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.9\textwidth]{figures/zhuxi-04-product-divide/fig-06.jpg}
-\caption{Figure.4  logical\_divide 计算过程：按照 B col-major 访问得到 offset，映射到 A 中找出 B-like layouts，然后将所有 B-like layouts 按列排在一起。}
+\caption{Figure.6  logical\_divide 计算过程：按照 B col-major 访问得到 offset，映射到 A 中找出 B-like layouts，然后将所有 B-like layouts 按列排在一起。}
 \end{figure}
 
 值得一提的是，对 $\text{A}$ 做 $\text{divide}$ 得到的 $\text{C}$ ，和 $\text{A}$ 的 Size 是一样的，只是映射关系发生了改变。这一点在直觉上和我们在初等数学中学到的 $\text{A / B}$ 是不同的。我们可以把它类比成整数除法，但是将商和除数都保留。如：$10 / 5 = (5, 2)$。
@@ -181,11 +181,11 @@ $\text{LayoutC} = \text{divide(LayoutA, (LayoutB}_0\text{, LayoutB}_1\text{, ...
 
 在一维的场景中，如果我们给定的 $\text{A}$ 的 shape 发生了改变，这时即使 $\text{B}$ 保持完全一致，我们按照 $\text{B}$ 的 offset 去找出来的 $\text{B}$-like Layouts 也会随之发生变化。而这，正是我们不希望看到的。
 
-我们以 $\text{divide}$ 操作中最常用的 $\text{zipped\_divide}$ 为例。当同一个 $\text{B}$ 分别作用在具有不同 $\text{shape}$ 的 $\text{A}$ 和 $\text{A}'$ 上时，其结果的差异性，如 Fig.5 中所展示的。
+我们以 $\text{divide}$ 操作中最常用的 $\text{zipped\_divide}$ 为例。当同一个 $\text{B}$ 分别作用在具有不同 $\text{shape}$ 的 $\text{A}$ 和 $\text{A}'$ 上时，其结果的差异性，如 Fig.7 中所展示的。
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.9\textwidth]{figures/zhuxi-04-product-divide/fig-07.jpg}
-\caption{Figure.5  一维 zipped\_divide 计算过程，相同 layoutB 作用在不同 shape layoutA 上的对比，我们选择的 “模式” 发生了改变。}
+\caption{Figure.7  一维 zipped\_divide 计算过程，相同 layoutB 作用在不同 shape layoutA 上的对比，我们选择的 “模式” 发生了改变。}
 \end{figure}
 
 作为对比，我们讨论二维场景下的情况。二维 divide 通常会被表达为以下形式：
@@ -194,15 +194,15 @@ $\text{LayoutC = divide(LayoutA, TilerB)}$
 
 其中 $\text{TilerB}$ 是一个由 2 个彼此独立的 $\text{Layout}$ 所构成的 $\text{tuple}$：
 
-$\text{TlerB} = \text{(LayoutB}_0\text{, LayoutB}_1\text{)}$
+$\text{TilerB} = \text{(LayoutB}_0\text{, LayoutB}_1\text{)}$
 
-在这种情况下，$\text{divide}$ 的过程随之调整为：将 $\text{A}$ 的每一个维度，分对这个 $\text{TilerB}$ 中的对应 $\text{LayoutB}_i$ 执行 $\text{divide}$ 操作，以完成数据的选取。
+在这种情况下，$\text{divide}$ 的过程随之调整为：将 $\text{A}$ 的每一个维度，分别对这个 $\text{TilerB}$ 中的对应 $\text{LayoutB}_i$ 执行 $\text{divide}$ 操作，以完成数据的选取。
 
-通过这种机制，我们可以确保对 $\text{TilerB}$ 的定义不受到 $\text{LayoutA}$ 的 $\text{shape}$ 影响。即，当保持 $\text{TilerB}$ 不变，并将其作用于两个具有不同 shape 的 $\text{LayoutA}$ 和 $\text{LayoutA}'$ 上时，其选择的模式便能保持一致。具体的计算过程，如 Fig.6 所示。
+通过这种机制，我们可以确保对 $\text{TilerB}$ 的定义不受到 $\text{LayoutA}$ 的 $\text{shape}$ 影响。即，当保持 $\text{TilerB}$ 不变，并将其作用于两个具有不同 shape 的 $\text{LayoutA}$ 和 $\text{LayoutA}'$ 上时，其选择的模式便能保持一致。具体的计算过程，如 Fig.8 所示。
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.9\textwidth]{figures/zhuxi-04-product-divide/fig-08.jpg}
-\caption{Figure.6 二维 zipped\_divide 计算过程，相同 layoutB 作用在不同 shape layoutA 上的对比，可以看到我们选择的 “模式” 具有一致性。}
+\caption{Figure.8 二维 zipped\_divide 计算过程，相同 layoutB 作用在不同 shape layoutA 上的对比，可以看到我们选择的 “模式” 具有一致性。}
 \end{figure}
 
 因此，我们可以总结一个使用上的惯例：$\text{divide}$\textbf{ 操作通常侧重于使用多维形式，其中以二维形式最为常见。而 }$\text{product}$\textbf{ 操作则多使用一维形式。}
@@ -227,11 +227,11 @@ flat_divide    : (TileM, TileN, RestM, RestN, L, ...)
 
 \section{Divide 用法案例：local\_partition \& local\_tile}
 
-我们注意到，如果我们将 Fig.6 中的 $\text{TilerB}$ 中的 $\text{(LayoutB}_0\text{, LayoutB}_1\text{)}$ 设定为两个紧密排列的 layout，那么我们就能发现 $\text{zipped\_divide}$ 之后的 $\text{layoutC}$，\textbf{每一列就是 }$\text{layoutA}$\textbf{ 中连续的小一块元素，每一行就是 }$\text{layoutA}$\textbf{  中块内相同位置的元素，}如 Fig.7 所示：
+我们注意到，如果我们将 Fig.8 中的 $\text{TilerB}$ 中的 $\text{(LayoutB}_0\text{, LayoutB}_1\text{)}$ 设定为两个紧密排列的 layout，那么我们就能发现 $\text{zipped\_divide}$ 之后的 $\text{layoutC}$，\textbf{每一列就是 }$\text{layoutA}$\textbf{ 中连续的小一块元素，每一行就是 }$\text{layoutA}$\textbf{  中块内相同位置的元素，}如 Fig.9 所示：
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.9\textwidth]{figures/zhuxi-04-product-divide/fig-09.jpg}
-\caption{Figure.7 zipped\_divide 的使用案例。可以看到对结果 layoutC 分别做行方向上的 slice，可以得到 A中连续的小一块元素；以做列方向上的 slice，可以得到每一块块内相同位置的元素。}
+\caption{Figure.9 zipped\_divide 的使用案例。可以看到对结果 layoutC 做 slice by col（取一列，固定块索引），可以得到 A 中连续的小一块元素；做 slice by row（取一行，固定块内位置），可以得到每一块块内相同位置的元素。}
 \end{figure}
 
 对于一些实际使用过 CuTe 的读者来说，可能立刻会联想到一个熟悉的场景：“这个功能，不就和我们在 $\text{tiled copy}$ 操作中用到的 $\text{local\_tile}$ 和 $\text{local\_partition}$ 的功能是一样的吗？”
@@ -277,7 +277,7 @@ outer_partition(Tensor    && tensor,
 {
   auto tensor_tiled = zipped_divide(static_cast<Tensor&&>(tensor), tiler);
   constexpr int R1 = decltype(rank<1>(tensor_tiled))::value;
-  // ... 
+  // ...
 
 }
 \end{lstlisting}
@@ -299,3 +299,13 @@ outer_partition(Tensor    && tensor,
 写给大家看的 CuTe 教程：tiled mma
 
 写给大家看的 CuTe 教程：Layout Compose \& Inverse
+
+\section{Reference}
+
+[1] 写给大家看的 CuTe 教程：Layout Compose \& Inverse\footnote{\url{https://zhuanlan.zhihu.com/p/1962625273636845008}}
+
+[2] 写给大家看的 CuTe 教程：tiled copy\footnote{\url{https://zhuanlan.zhihu.com/p/1930389542784964333}}
+
+[3] 写给大家看的 CuTe 教程：tiled mma\footnote{\url{https://zhuanlan.zhihu.com/p/1937145378446226159}}
+
+[4] 并行计算理论中 block/cyclic 数据分布的参考资料（原文未给出具体出处）
