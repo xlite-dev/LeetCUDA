@@ -14,7 +14,7 @@ $1+2+1$ 位，每个 2 的幂区间只放得下两个码点，量化步长随量
 而 NVFP4 能把这一档损失控制住的关键，是它的\textbf{两级 scale 结构}：数据侧每
 16 个元素共享一个 ue4m3 缩放因子（$2^{-3}$ 的步长变成 $2^{-3}$ 的
 \emph{scale} 步长），再叠一层 fp32 的矩阵/行/列级 scale 把这个 ue4m3 移到
-量程中央。两级结构加上硬件 blockscale MMA，使得 per-16 scale 在这套设计里
+量程中央。两级结构加上硬件 blockscale MMA，使得 per-group (16) scale 在这套设计里
 既省存储（16 元素 1 字节）又完全没有额外开销（由 MMA 硬件消费，不进寄存器算术）。
 
 本章的组织方式：先讲线格式（e2m1 与 ue4m3 的位域与码表），再讲量化算法与
@@ -81,7 +81,7 @@ scale。这在 NVFP4 里的 \emph{level-2} 就是这个形态，但它单独使�
         直接把 amax 当 scale 用，等于只用掉 ue4m3 码表的一小段。
 \end{itemize}
 
-level-1 就是为了解决这两件事：在 per-16 的 ue4m3 之上，再加一层
+level-1 就是为了解决这两件事：在 per-group (16) 的 ue4m3 之上，再加一层
 fp32 的矩阵/行/列级 scale $s$，把数据先除到 amax 落在 $6\times 2^{-6}
 \sim 6\times 448$ 之间的理想区间（即 SF 落进 ue4m3 的正常数区，
 $2^{-6}\sim 448$），于是 level-2 的 SF 永远不会下溢。$s$ 的取值让一整行
@@ -128,7 +128,7 @@ $2^{-6}\sim 448$），于是 level-2 的 SF 永远不会下溢。$s$ 的取值�
         fp32 张量，规模远超寄存器，只能在 epilogue 按 $(m,n)$ 查表乘回；
         这与第~\ref{ch:35}~章 FP8 epilogue 的形状完全相同，是同一段查表
         逻辑换了个数据源。
-  \item 两级的分工一边管精度、一边管量程。level-2 提供 per-16 的局部
+  \item 两级的分工一边管精度、一边管量程。level-2 提供 per-group (16) 的局部
         自适应步长（把 $[0,6]$ 的固定格变成每 16 个元素重新标定的格），
         level-1 提供量程自适应（让 level-2 永远工作在 ue4m3 的好区间）。
 \end{enumerate}
@@ -371,7 +371,7 @@ atom 的官方搭配（第~\ref{ch:37}~章会看到 SF 的 smem 原子也来自�
 \subsection{B 侧：列 amax 与转置量化分成两个 kernel}
 
 B 侧的量化要同时做三件事：转置（\texttt{B[K,N] $\to$ B4T[N,K]}）、level-1
-的逐列 amax、level-2 的 per-16 分组量化。三件事里只有中间那件需要跨 $K$
+的逐列 amax、level-2 的 per-group (16) 分组量化。三件事里只有中间那件需要跨 $K$
 的全局归约，另外两件都是元素进、元素出的局部操作，这个差别决定了
 B 侧应该切成两个 kernel，而不是像第~\ref{ch:34}~章的 FP8 版本那样合进
 同一个 kernel 的两个 pass。合并的写法（本书第一版就是这么写的）
@@ -398,7 +398,7 @@ bit 级一致。这类换并行划分但一个 bit 都不许变的约束，是�
 重构时最需要关注的对象。
 
 第二段是纯局部的转置量化：一个 block 只做一个 $128(n)\times64(k)$ 的 tile，
-per-16 组的 amax 完全落在块内，所以不需要任何跨块归约，grid 直接铺成
+per-group (16) 的 amax 完全落在块内，所以不需要任何跨块归约，grid 直接铺成
 $(N/128)\times(K/64)$（$4096^3$ 时 2048 个 CTA）。
 
 \begin{lstinputlisting}[linerange={287-365},firstnumber=auto,

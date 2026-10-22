@@ -165,7 +165,7 @@ $\le 2^{-2} = 25\%$。结论与 $e$ 无关：无论值大值小，误差都是�
 指数格式；已知幅度紧凑的整数域乘积（$\hat{Q}\hat{K}^{\top}$ 的 s32 累加）两者皆可。
 
 \paragraph{ue4m3 / ue8m0：无符号指数格式（scale 的格式）。}
-NVFP4 的 per-16 block scale 用无符号 e4m3（ue4m3，$2^{-6} \sim 448$），
+NVFP4 的 per-group (16) block scale 用无符号 e4m3（ue4m3，$2^{-6} \sim 448$），
 MXFP8 的 per-32 scale 用纯指数 ue8m0（$2^{\pm127}$）。scale 本身的量化同样服从
 定理~\ref{thm:27-relstep}，但 scale 是乘性作用于数据的：
 $\tilde{x} = \hat{x} \cdot \widetilde{\mathrm{SF}}$，两级相对误差相加。第~\ref{ch:31}~章
@@ -182,7 +182,7 @@ $\tilde{x} = \hat{x} \cdot \widetilde{\mathrm{SF}}$，两级相对误差相加�
     int8（对称） & $\pm127$，均匀 & — & 绝对 $\delta/\sqrt{12}$（RMS） & fp8 路径 QK（\texttt{int8} 变体） & SA1 \\
     e4m3 & $\pm448$，非均匀 & 3 & $\approx 2^{-4}$（6.25\%） & Q/K/V/P（fp8 路径） & SA2 \\
     e2m1 & $\pm 6$，非均匀 & 1 & $\approx 2^{-2}$（25\%） & NVFP4 数据（Q/K/V/P） & SA3 \\
-    ue4m3 & $2^{-6}\sim448$，无符号 & 3 & $\approx 2^{-4}$ & NVFP4 per-16 SF & SA3 \\
+    ue4m3 & $2^{-6}\sim448$，无符号 & 3 & $\approx 2^{-4}$ & NVFP4 per-group (16) SF & SA3 \\
     ue8m0 & $2^{\pm127}$，纯指数 & 0 & — & MXFP8 per-32 SF & MX 系列 \\
     \bottomrule
   \end{tabular}
@@ -218,7 +218,7 @@ shuffle} 使用（每 lane 持有的 8 个 A 元素共享一个 scale，scale �
 行常数）。粒度因此是精度与 fragment 布局的联合设计，不单是一个精度旋钮。
 
 谱系的两端各有失败模式：per-block 对 outlier 最脆弱（一个 outlier
-即影响一整块），per-row/per-16 的 scale 数量与数据同阶（SF 本身成为新的访存项，
+即影响一整块），per-row/per-group (16) 的 scale 数量与数据同阶（SF 本身成为新的访存项，
 第~\ref{ch:31}~章核算这笔开销）。图~\ref{fig:27-granularity} 用五个同形状微网格把
 整条谱系的共享域排成一行：色块划分越细，每个 scale 覆盖的元素越少。
 
@@ -278,7 +278,7 @@ shuffle} 使用（每 lane 持有的 8 个 A 元素共享一个 scale，scale �
     }
     \draw[thick] (0,0) rectangle (16,16);
   \end{scope}
-  % 5) per-16：每行一个 1x16 microblock（块界 + 细网格纹）
+  % 5) per-group (16)：每行一个 1x16 microblock（块界 + 细网格纹）
   \begin{scope}[shift={(12.56,0)},x=0.13cm,y=-0.13cm]
     \foreach \rr in {0,...,15} {
       \fill[gray!18] (0,\rr) rectangle (16,\rr+1);
@@ -311,13 +311,13 @@ shuffle} 使用（每 lane 持有的 8 个 A 元素共享一个 scale，scale �
     {读法（灰度 = 同一个 scale 的覆盖域）：per-thread 的行 $r$ 与 $r{+}8$ 同色——
      行对 $\{r,r{+}8\}$ 共享一个 scale，恰与 $m16n8$ C-fragment 的行对对齐
      （第~\ref{ch:28}~章 28.3.4 节展开的 64 槽位表）；per-row 为 16 档线性渐变示意
-     128 行；per-group (16) 每行一个 $1\times16$ microblock（细纹示意块内 16 元素共享一个 SF）。};
+     128 行；per-group (16) 每组一个 $1\times16$ microblock（细纹示意块内 16 元素共享一个 SF）。};
 \end{tikzpicture}
 \caption{量化粒度谱系五列网格（表~\ref{tab:27-granularity} 的视觉化，缩略网格为
 16 行 $\times$ 16 列）。从左到右：per-block 整块共享 1 个 scale；per-thread 按
 C-fragment 行对 $\{r,r+8\}$ 分档（128 行块共 $8\times8=64$ 个，零 shuffle 消费）；
 per-channel 沿 $D$ 每通道一个；per-row 每 softmax 行一个（128 个）；per-group (16)
-每行一个 $1\times16$ microblock（NVFP4 的 SF）。顶部双向轴是整条谱系的 trade-off：
+每组一个 $1\times16$ microblock（NVFP4 的 SF）。顶部双向轴是整条谱系的 trade-off：
 粒度越细精度越高，但 scale 的存储、传递与消去开销同步上涨，且必须与 MMA 的
 fragment 布局对齐——谱系两端的失败模式分别是对 outlier 的脆弱性与 SF 自身的
 访存开销。}
@@ -450,7 +450,7 @@ $p_{scale}$ 策略的发射域利用率摆在同一条量程轴上：差别就�
     SA1 & int8 / fp16（f16 acc） & per-block & smooth-K（softmax 平移不变）；fused RoPE+quant & {\footnotesize\texttt{qk\_mm\_type=int8}}、{\footnotesize\texttt{smooth\_k}} \\
     SA2 & int4（实现含 int8 变体）/ fp8 & per-thread（QK）、per-channel（V） & smoothing 系统化；per-thread 对齐 fragment & {\footnotesize\texttt{per\_thread}}、{\footnotesize\texttt{per\_channel}} \\
     SA2++ & 同 SA2 / fp8-f16acc & 同 SA2 & fp16 累加器域约束 $P_r V_r \le 2047$；吞吐翻倍 & {\footnotesize\texttt{pv\_acc\_type=f16}} \\
-    SA3 & FP4 / FP4（MXFP8 变体） & per-16 microscaling & 两级 P 量化；delta\_s rank-1 修正；RTX5090 1038 TOPS & {\footnotesize\texttt{cuda\_impl=fp4}} 全链 \\
+    SA3 & FP4 / FP4（MXFP8 变体） & per-group (16) microscaling & 两级 P 量化；delta\_s rank-1 修正；RTX5090 1038 TOPS & {\footnotesize\texttt{cuda\_impl=fp4}} 全链 \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -858,7 +858,7 @@ causal 早行的 $P$ 分布/误差对比，以及 $V>QK>P$ 的 per-stage 误差�
       \node[bc, draw=tkGreen, fill=tkFillGreen] at ({4.84+0.62*\bb},-3.59) {M};
     }
     \node[an] at (7.15,-3.59)
-      {无符号：$2^{-6} \sim 448$；用作 NVFP4 的 per-16 block scale（SF）\\
+      {无符号：$2^{-6} \sim 448$；用作 NVFP4 的 per-group (16) block scale（SF）\\
        \textcolor{tkOrange}{scale 乘性作用：两级相对误差相加（两级 P 量化核算见 ch31）}};
     \node[sa] at (14.00,-3.59) {SA3：SF};
     % 相对步长定理

@@ -34,7 +34,7 @@ Q/K/V 的量化无论多粗，都可以离线统计（smooth、per-block scale�
 \end{enumerate}
 
 两级量化的思路：先把整行线性拉伸到 NVFP4 的满量程（第一级，全局
-常数），块内再用 e2m1 域归一（第二级，per-16 组 ue4m3），让块的
+常数），块内再用 e2m1 域归一（第二级，per-group (16) ue4m3），让块的
 $\mathrm{amax}$ 恰好铺满 ue4m3 的域。
 
 硬件侧的约束来自 blockscale MMA
@@ -301,7 +301,7 @@ PV 的 C fragment 每 lane 持数不同（头注释 L44--46）。
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{6.1}{7.7}\selectfont \bfseries \color{tkRed} }] at (0.37,-0.862) {(1) 问题：直接块量化的 SF 窄域浪费（SA3 C2）};% w=8.316
     \node[draw=tkRed, fill=tkFillRed, line width=0.5pt, minimum width=7.70cm, minimum height=1.39cm, inner sep=1pt, align=center, text width=7.64cm, font={\fontsize{5.2}{6.6}\selectfont \color{tkRed} }] at (4.22,-1.802) {P $\in$ [0,1]，行内分布剧变：\\causal 早行近 one-hot / dense 行小而均匀\\$\to$ s = amax(块)/6 $\in$ [0, 0.167]\\ue4m3 在窄域的有效位数被浪费（SF 自身先损）};
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{6.1}{7.7}\selectfont \bfseries \color{tkGreen!70!black} }] at (9.394,-0.862) {(2) 方案：两级拉伸（SA3 \S{}3.2）};% w=8.162
-    \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=8.16cm, minimum height=1.39cm, inner sep=1pt, align=center, text width=8.10cm, font={\fontsize{5.2}{6.6}\selectfont \color{tkGreen!70!black} }] at (13.475,-1.802) {第一级：整行拉伸到满量程（s\_P1 = rowmax/2688）\\第二级：per-16 组 absmax 归一（s\_P2, ue4m3）\\$\to$ 组 amax 恰好铺满 ue4m3 域 [0, 448]\\2688 = 448（ue4m3 满）$\times$ 6（e2m1 满）};
+    \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=8.16cm, minimum height=1.39cm, inner sep=1pt, align=center, text width=8.10cm, font={\fontsize{5.2}{6.6}\selectfont \color{tkGreen!70!black} }] at (13.475,-1.802) {第一级：整行拉伸到满量程（s\_P1 = rowmax/2688）\\第二级：per-group (16) absmax 归一（s\_P2, ue4m3）\\$\to$ 组 amax 恰好铺满 ue4m3 域 [0, 448]\\2688 = 448（ue4m3 满）$\times$ 6（e2m1 满）};
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{6.1}{7.7}\selectfont \bfseries }] at (0.37,-3.018) {(3) 域拉伸链（三个域的端点）};% w=17.094
     \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=4.62cm, minimum height=0.71cm, inner sep=1pt, align=center, text width=4.56cm, font={\fontsize{5.2}{6.6}\selectfont }] at (2.68,-3.619) {softmax 输出（已减行 max）\\值域 [0, 1]};
     \node[draw=tkPurple, fill=tkFillPurple, line width=0.5pt, minimum width=4.93cm, minimum height=0.71cm, inner sep=1pt, align=center, text width=4.87cm, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkPurple} }] at (8.624,-3.619) {P$_2$ = $\tilde{P}$ $\times$ 2688\\值域 [0, 2688]（全局常数拉伸）};
@@ -340,7 +340,7 @@ PV 的 C fragment 每 lane 持数不同（头注释 L44--46）。
     \draw[black!75, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (11.042,-6.591) -- (11.042,-6.776);
   \end{tikzpicture}
   \caption{两级 P 量化的域拉伸：online softmax 使第一级退化为全局常数
-  $1/2688$ 并折进 exp2 shift；第二级 per-16 组 absmax 铺满 ue4m3 域，
+  $1/2688$ 并折进 exp2 shift；第二级 per-group (16) absmax 铺满 ue4m3 域，
   组归一化同样折进 exp2 参数。}
   \label{fig:32-1}
 \end{figure}
@@ -515,7 +515,7 @@ fp4 会全部不通过。hybrid（fp16 前 $n_{early}$ 行）是尖峰行的工�
 
 \begin{enumerate}[itemsep=2pt,topsep=2pt]
   \item 两级 P 量化：$s_{P1}=\mathrm{rowmax}/2688$、
-        $\tilde P_2\in[0,2688]$、$s_{P2}$ per-16 组 ue4m3；2688 =
+        $\tilde P_2\in[0,2688]$、$s_{P2}$ per-group (16) ue4m3；2688 =
         448（ue4m3 满）$\times$ 6（e2m1 满）。
   \item online softmax 的退化收益：行 max 恒 1 $\Rightarrow$ 第一级变
         全局常数折进 exp2 shift——两级量化在实现里只剩一组 absmax。
