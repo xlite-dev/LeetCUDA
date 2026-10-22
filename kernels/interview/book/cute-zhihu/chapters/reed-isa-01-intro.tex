@@ -4,7 +4,7 @@
 
 2017年的ACM图灵奖颁给了John L. Hennessy和David A. Patterson表彰他们在计算机架构开拓性的贡献。在他们共同撰写的文章“计算机架构的新黄金时代”中，详细介绍了指令集架构的发展和未来的机遇点。此处我们引用文中的指令集架构（Instruction Set Architecture）定义：“Software talks to hardware through a vocabulary called an instruction set architecture (ISA)“，和DSA（Domain Specific Architecture）的优势：1. 针对特定领域更高效的并行模式，2. 对内存层级更有效的利用，3. 某些场景可以使用更低的精度，4. DSL（Domain Specific Language）可以更好的暴露硬件能力。
 
-对于高性能计算（High Performance Computing）和以深度学习（Deep Learning）为核心承载的人工智能，NVidia GPU在算力输出方面扮演着极其重要的角色。NVida GPU可以认为是图形和深度学习领域的DSA架构，即Domain为Graphic和Deep Learning的Specific Architecture，自然地前文提到的DAS架构的优势NVidia GPU也都有享用。指令集是软件和硬件沟通的“词汇”，我们必须用这套语言体系来和计算机硬件进行沟通，将我们的算法逻辑变换成硬件可理解的“词汇”，硬件通过这套词汇便可以得到我们所需要的算法逻辑结果。如图1所示，指令集体现了硬件能力的暴露，通过指令集暴露了硬件提供的加法计算、减法计算和乘法计算能力，图中的硬件没有提供除法计算能力，则软件在遇到除法问题时需要用其他指令来模拟实现。
+对于高性能计算（High Performance Computing）和以深度学习（Deep Learning）为核心承载的人工智能，NVidia GPU在算力输出方面扮演着极其重要的角色。NVidia GPU可以认为是图形和深度学习领域的DSA架构，即Domain为Graphic和Deep Learning的Specific Architecture，自然地前文提到的DSA架构的优势NVidia GPU也都有享用。指令集是软件和硬件沟通的“词汇”，我们必须用这套语言体系来和计算机硬件进行沟通，将我们的算法逻辑变换成硬件可理解的“词汇”，硬件通过这套词汇便可以得到我们所需要的算法逻辑结果。如图1所示，指令集体现了硬件能力的暴露，通过指令集暴露了硬件提供的加法计算、减法计算和乘法计算能力，图中的硬件没有提供除法计算能力，则软件在遇到除法问题时需要用其他指令来模拟实现。
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.9\textwidth]{figures/reed-isa-01-intro/fig-01.jpg}
@@ -13,11 +13,11 @@
 
 指令集架构是硬件能力的暴露，了解指令集架构能够让我们更清楚的知晓硬件所提供的基础能力，更好的辅助我们选择硬件友好的算法，同时了解指令集架构可以让我们选择更高效的指令，继而提升软件运行效率。
 
-对于NVidia GPU而言，其软件部分的核心语言为CUDA，硬件架构的指令在不同代际是不同的（如Tesla，Fermi, Keper, Maxwell, Pascal, Volta, Turing, Ampere, Hopper，Blackwell），本文将基于Ampere架构进行介绍。图2展示了NVidia GPU由软件编程到硬件可执行的编译流程，其中CUDA是用户可编程语言，使用该语言编写的程序可以通过NVCC编译器编译成PTX指令，PTX指令是硬件无关的（实际上也有版本）用于屏蔽硬件差异，PTX指令通过PTXAS汇编工具可以汇编成SASS指令，SASS指令可以交由硬件执行，SASS指令是硬件相关的。我们所要研究的指令集则指SASS指令这一层次，因为该层次的指令直接能被硬件执行，是硬件能力的最基本抽象。
+对于NVidia GPU而言，其软件部分的核心语言为CUDA，硬件架构的指令在不同代际是不同的（如Tesla，Fermi, Kepler, Maxwell, Pascal, Volta, Turing, Ampere, Hopper，Blackwell），本文将基于Ampere架构进行介绍。图2展示了NVidia GPU由软件编程到硬件可执行的编译流程，其中CUDA是用户可编程语言，使用该语言编写的程序可以通过NVCC编译器编译成PTX指令，PTX指令是硬件无关的（实际上也有版本）用于屏蔽硬件差异，PTX指令通过PTXAS汇编工具可以汇编成SASS指令，SASS指令可以交由硬件执行，SASS指令是硬件相关的。我们所要研究的指令集则指SASS指令这一层次，因为该层次的指令直接能被硬件执行，是硬件能力的最基本抽象。
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.9\textwidth]{figures/reed-isa-01-intro/fig-02.jpg}
-\caption{Figure-2. NVidia GPU Complation and Execution Phase}
+\caption{Figure-2. NVidia GPU Compilation and Execution Phase}
 \end{figure}
 
 值得注意的是，NVidia并没有官方介绍SASS的文档，只在介绍cuda binary utilities的时候简要提及，本文内容多为利用cuobjdump反汇编libcublas、libcublasLt、libfft等官方库、利用ncu分析实际用例得到，同时和PTX文档相互对应印证，其中也不乏猜测和臆断的部分。

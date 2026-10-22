@@ -6,7 +6,7 @@
 
 \section{基本属性}
 
-如图1，展示了一个有层次的Layout，可以看到它的组成分为两个层级，其中小的Tensor采用同样的颜色表示，图中的左上角0到5展示了一个内层的Tensor，然后沿着纵向和横向重复该Tensor，其中行方向重复4次，列方向重复5次。得到的Heriarchy Tensor的shape: ((2, 4), (3, 5))，同样我们可以得到其stride: ((3, 6), (1, 24))。Layout的本质是函数其数学描述可以参考
+如图1，展示了一个有层次的Layout，可以看到它的组成分为两个层级，其中小的Tensor采用同样的颜色表示，图中的左上角0到5展示了一个内层的Tensor，然后沿着纵向和横向重复该Tensor，其中行方向重复4次，列方向重复5次。得到的Hierarchy Tensor的shape: ((2, 4), (3, 5))，同样我们可以得到其stride: ((3, 6), (1, 24))。Layout的本质是函数其数学描述可以参考
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.9\textwidth]{figures/reed-02-layout-algebra-geometry/fig-01.png}
@@ -94,7 +94,7 @@ raked & ((z, x), (w, y)) \\
 \end{tabular}
 \end{center}
 
-如图5所示，Layout乘法在集合上可以认为是按照图示的形式进行的，在Layout x Layout的计算中，首先将Layout1按照Layout2的顺序进行重复，原来Layout2中的位置被Layout1所占据，然后将其中的内层数据数据Layout1按照列优先的顺序排成一列，外层Layout按照列优先排列后表示为最终矩阵的列。
+如图5所示，Layout乘法在集合上可以认为是按照图示的形式进行的，在Layout x Layout的计算中，首先将Layout1按照Layout2的顺序进行重复，原来Layout2中的位置被Layout1所占据，然后将其中的内层数据Layout1按照列优先的顺序排成一列，外层Layout按照列优先排列后表示为最终矩阵的列。
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.9\textwidth]{figures/reed-02-layout-algebra-geometry/fig-06.jpg}

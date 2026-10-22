@@ -62,7 +62,7 @@ MOV R7, 0x1 ;
 SEL R7, R7, 0x2, P0 ;
 \end{lstlisting}
 
-其中P0为Predicate寄存器，其表达了\lstinline|c > 0| 这个条件，如果条件成立，则选择R7, 否则选择立即数 0x2 (即整数2)。SEL指令在SIMIT意义下可以避免跳转的开销，提升执行效率。
+其中P0为Predicate寄存器，其表达了\lstinline|c > 0| 这个条件，如果条件成立，则选择R7, 否则选择立即数 0x2 (即整数2)。SEL指令在SIMT意义下可以避免跳转的开销，提升执行效率。
 
 分支指令（BRA，BRX，BRXU）
 
@@ -85,11 +85,9 @@ branch分支指令可以实现指令的跳转，如CUDA代码中的for循环，
 /*00a0*/              @!P0 BRA 0x70 ;
 \end{lstlisting}
 
-其中IADD 语句表示整数加一，对应于CUDA中的i++; FADD语句表示浮点加法，对应于CUDA中的\lstinline|v += ff|;ISETP 语句表示根据整数比较结果来设置Predicate寄存器，其中比较的条件为GE(Greater than and Equal) ，对应于CUDAfor语句中的 \lstinline|i < n| 的取反条件表示。 \lstinline|@!P0 BRA 0x70 ;| 表示P0条件不成立时则跳转到0x70位置执行。通过BRA跳转语句实现了for的循环能力。
+其中IADD 语句表示整数加一，对应于CUDA中的i++; FADD语句表示浮点加法，对应于CUDA中的\lstinline|v += ff|;ISETP 语句表示根据整数比较结果来设置Predicate寄存器，其中比较的条件为GE(Greater than and Equal) ，对应于CUDA for语句中的 \lstinline|i < n| 的取反条件表示。 \lstinline|@!P0 BRA 0x70 ;| 表示P0条件不成立时则跳转到0x70位置执行。通过BRA跳转语句实现了for的循环能力。
 
-除了以上的给定地址的分支跳转，NVidia GPU指令集中还提提供了动态的跳转指令BRX，其指令实例为\lstinline|BRX R6 -0x7960|形式， 它根据寄存器的值进行更动态的分支跳转能力，在switch语句实现中有可能出现该指令。同时还提供了根据Warp Level的Uniform寄存器值进行动态跳转的指令BRXU，命令形式如 \lstinline|BRXU UR34 -0xb200|。
-
-执行Uniform执行
+除了以上的给定地址的分支跳转，NVidia GPU指令集中还提供了动态的跳转指令BRX，其指令实例为\lstinline|BRX R6 -0x7960|形式， 它根据寄存器的值进行更动态的分支跳转能力，在switch语句实现中有可能出现该指令。同时还提供了根据Warp Level的Uniform寄存器值进行动态跳转的指令BRXU，命令形式如 \lstinline|BRXU UR34 -0xb200|。
 
 函数调用和返回（CALL，RET）
 
@@ -151,7 +149,7 @@ LEPC R96;
 ATOM, ATOMS, ATOMG, RED
 \end{lstlisting}
 
-其中ATOMS和ATOMG分别是在Shared Memory空间和Global Memory空间上进行原子操作，ATOM指令没有具体的地址空间限定为generic的原子操作，如果编译器可以显式的推断出地址空间则使用对应的指令，如果不能推断出地址空间则可以使用通用的指令，这时硬件在运行时裁决是哪一个地址空间。NVidia GPU通过Modifer来实现不同的运算的，如加，最小，异或、与、CAS等（具体支持的操作可以参考图二AtomicALU部分），也通过Modifier来实现不同的作用Scope。常用的指令形式有
+其中ATOMS和ATOMG分别是在Shared Memory空间和Global Memory空间上进行原子操作，ATOM指令没有具体的地址空间限定为generic的原子操作，如果编译器可以显式的推断出地址空间则使用对应的指令，如果不能推断出地址空间则可以使用通用的指令，这时硬件在运行时裁决是哪一个地址空间。NVidia GPU通过Modifier来实现不同的运算的，如加，最小，异或、与、CAS等（具体支持的操作可以参考图二AtomicALU部分），也通过Modifier来实现不同的作用Scope。常用的指令形式有
 
 \begin{lstlisting}
 ATOMS.ADD  ATOMS.ARRIVE.64 ATOMS.MIN.S32 ATOMS.POPC.INC.32

@@ -158,7 +158,7 @@ $2^{-6}\sim 448$），于是 level-2 的 SF 永远不会下溢。$s$ 的取值�
   {以 $\mathrm{rowmax}=1.0$ 的行、某组 $\mathrm{amax}_{16}=0.30$ 为例：\\
    $s=1/2688=3.72\times10^{-4}$ \;$\Rightarrow$\;
    $x'=x/s\in[-2688,2688]$，该组 $x'_{\max}=806$\\
-   $\mathrm{SF}=\mathrm{ue4m3}(806/6=134.3)=128$（ue4m3 0x77）\\
+   $\mathrm{SF}=\mathrm{ue4m3}(806/6=134.3)=128$（ue4m3 0x70）\\
    $\Rightarrow$ 组内 $x'/\mathrm{SF}\in[-6.3,6.3]$：越界部分被
    \texttt{satfinite} 压到 $\pm6$};
 \node[draw=tkRed, thick, rounded corners=2pt, inner sep=4pt, align=left,

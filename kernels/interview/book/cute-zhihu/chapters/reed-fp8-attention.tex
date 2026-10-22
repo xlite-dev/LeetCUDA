@@ -2,7 +2,7 @@
 
 \begin{center}\small 作者：reed（知乎 @reed-84-49，专栏「CUDA高性能编程」）\quad 原文：\url{https://zhuanlan.zhihu.com/p/2038747362596737621}\end{center}
 
-LLM 模型规模的持续增长，低精度计算逐渐成为提升训练和推理吞吐的核心手段。Hopper 架构在 Tensor Core 上首次提供了对 FP8（包括 E4M3 与 E5M2）的原生支持，FlashAttention-3 在此基础上把 attention 算子的中间结果也整体下放到 FP8。但 FP8 与 BF16 / FP16 在数值表示上的差距是数量级的，E4M3 仅用 3 比特描述尾数，相对精度只有 $2^{-3} = 12.5\%$，比 FP16 差了一到两个数量级。FP16 / BF16 时代被认为无关紧要的实现细节，例如 KV block 的迭代方向、softmax 之后 P 的量化缩放因子取值，到了 FP8 下都会被显著放大并影响最终精度。
+随着 LLM 模型规模的持续增长，低精度计算逐渐成为提升训练和推理吞吐的核心手段。Hopper 架构在 Tensor Core 上首次提供了对 FP8（包括 E4M3 与 E5M2）的原生支持，FlashAttention-3 在此基础上把 attention 算子的中间结果也整体下放到 FP8。但 FP8 与 BF16 / FP16 在数值表示上的差距是数量级的，E4M3 仅用 3 比特描述尾数，相对精度只有 $2^{-3} = 12.5\%$，比 FP16 差了一到两个数量级。FP16 / BF16 时代被认为无关紧要的实现细节，例如 KV block 的迭代方向、softmax 之后 P 的量化缩放因子取值，到了 FP8 下都会被显著放大并影响最终精度。
 
 本文围绕 Hopper 上的主流 FP8 FlashAttention 布局（O 累加器全程 FP32、P 显式 cast 为 E4M3）讨论这两个问题，给出对应的工程修法：KV block 逆向迭代与$S = 256 = 2^8$ 的静态量化 scale。文章结构上，首先回顾 FP8 E4M3 的数值结构以及 Attention Sink 在正向迭代中如何使 P 矩阵塌陷到 subnormal 区域之下，从机理上引出逆向计算策略；然后从 IEEE 754 浮点数学与 E4M3 数轴几何两个角度证立 $S = 256$ 是最优解；最后对照主流 FP8 attention 实现的具体选择，并给出对照实验。
 
@@ -27,7 +27,7 @@ E4M3 的位宽布局为 1 位符号、4 位指数、3 位尾数；最大正值 $
 \caption{Figure 1. FP8 E4M3 Bit Fields Layout}
 \end{figure}
 
-3 位尾数意味着任意一段 binade $[2^n, 2^{n 1})$ 内只有 $2^3 = 8$ 个均匀分布的可表示值，相对精度 $2^{-3} = 12.5\%$。E4M3 的字段定义如图 1 所示，正半轴可表示值的分布如图 2 所示。
+3 位尾数意味着任意一段 binade $[2^n, 2^{n+1})$ 内只有 $2^3 = 8$ 个均匀分布的可表示值，相对精度 $2^{-3} = 12.5\%$。E4M3 的字段定义如图 1 所示，正半轴可表示值的分布如图 2 所示。
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.9\textwidth]{figures/reed-fp8-attention/fig-02.jpg}
@@ -54,7 +54,7 @@ binade & LSB & 半 LSB（最坏量化误差） \\
 
 Attention Sink 是经过充分训练的 Transformer 中一个被广泛观察到的现象，序列开头的若干 token 会获得异常高的注意力权重，对应到 logit 矩阵 $S = QK^T / \sqrt{d_k}$ 上则表现为序列首部若干列的 score 显著大于其他位置。多项实证研究表明，主流预训练 LLM 中的 sink 强度 $\Delta = S_{\text{sink}} - S_{\text{normal}}$ 在 context 长度数千量级时大致落在 $\Delta \in [6, 13]$ 区间内。
 
-下面分析 Online Softmax 在正向迭代时如何与 sink 相互作用。每处理一个新的 KV block 走五步：（i）算局部 score $S_{\text{local}}$；（ii）更新全局最大值 $m_{\text{new}} = \max(m_{\text{old}}, m_{\text{local}})$；（iii）算修正因子 $\alpha = \exp(m_{\text{old}} - m_{\text{new}})$；（iv）算局部概率 $P_{\text{local}} = \exp(S_{\text{local}} - m_{\text{new}})$ 并 cast 为 FP8 E4M3；（v）更新 FP32 累加器 $O_{\text{new}} = \alpha \cdot O_{\text{old}}   P_{\text{local}}^{\text{fp8}} \cdot V_{\text{local}}^{\text{fp8}}$。
+下面分析 Online Softmax 在正向迭代时如何与 sink 相互作用。每处理一个新的 KV block 走五步：（i）算局部 score $S_{\text{local}}$；（ii）更新全局最大值 $m_{\text{new}} = \max(m_{\text{old}}, m_{\text{local}})$；（iii）算修正因子 $\alpha = \exp(m_{\text{old}} - m_{\text{new}})$；（iv）算局部概率 $P_{\text{local}} = \exp(S_{\text{local}} - m_{\text{new}})$ 并 cast 为 FP8 E4M3；（v）更新 FP32 累加器 $O_{\text{new}} = \alpha \cdot O_{\text{old}} + P_{\text{local}}^{\text{fp8}} \cdot V_{\text{local}}^{\text{fp8}}$。
 
 在标准的正向迭代中，sink 位于 $\text{Block}_0$，第一步就把 $m_{\text{global}}$ 推到 $\Delta$ 量级。后续正常 block 的局部 score 大致分布在 $[-1, 1]$，因此从第二步开始 $P_{\text{local}} \sim \exp(-\Delta)$。只要 $\Delta \gtrsim 9$，$\exp(-\Delta) \lesssim 10^{-4}$ 已经低于 E4M3 subnormal 下界 $2 \times 10^{-3}$，P 中所有非 sink 位置的元素在 cast 时被舍入为零，最终 $P^{\text{fp8}} \cdot V$ 的结果只剩 sink token 一列的贡献，正常 token 的注意力信息在 cast 这一步整体丢失。
 
@@ -88,7 +88,7 @@ for j in range(num_kv_blocks - 1, -1, -1):  # n, n-1, ..., 1, 0
 O = \frac{\big(P \cdot S\big)_{\text{fp8}} \cdot V_{\text{fp8}}}{S}.
 \end{equation*}
 
-$S$ 的选择决定整条链路的精度上限。本节从 IEEE 754 浮点数学与 E4M3 数轴几何两个角度证立 $S = 256$ 是最优解，并就实现层面对前两条的具体落地做一点澄清。
+$S$ 的选择决定整条链路的精度上限。本节从 IEEE 754 浮点数学与 E4M3 数轴几何两个角度证立 $S = 256$ 是最优解，并就实现层面对第三条的具体落地做一点澄清。
 
 \subsection{二次幂缩放使乘除运算 bit-exact}
 
@@ -109,7 +109,7 @@ dp(S) = \frac{\max\limits_{x \in [0,\, \min(S,\, 448)]} \mathrm{LSB}_{\mathrm{E4
 \caption{Figure 3. FP8 Quantization Error Analysis}
 \end{figure}
 
-曲线的形状揭示了 $S$ 选取的全部几何结构：（i）每个 binade $[2^k, 2^{k 1})$ 内 $dp(S) = 2^{k-3} / S$ 单调下降，跨过二次幂边界后跳变并重新下降，形成锯齿波；（ii）每个二次幂边界 $S = 2^k$ 处 $dp(2^k) = 2^{-4} \approx 0.0625$，对所有 $k$ 都是同一个值，构成下包络，任意非二次幂 $S$ 的 $dp(S)$ 严格大于 $2^{-4}$、最坏可达 $2^{-3}$（一倍差距）；（iii）$S > 448$ 时 amax 越过 max\_normal 被 clamp，$dp(S) = 1 - 448 / S$ 随 $S$ 上升迅速劣化。
+曲线的形状揭示了 $S$ 选取的全部几何结构：（i）每个 binade $[2^k, 2^{k+1})$ 内 $dp(S) = 2^{k-3} / S$ 单调下降，跨过二次幂边界后跳变并重新下降，形成锯齿波；（ii）每个二次幂边界 $S = 2^k$ 处 $dp(2^k) = 2^{-4} \approx 0.0625$，对所有 $k$ 都是同一个值，构成下包络，任意非二次幂 $S$ 的 $dp(S)$ 严格大于 $2^{-4}$、最坏可达 $2^{-3}$（一倍差距）；（iii）$S > 448$ 时 amax 越过 max\_normal 被 clamp，$dp(S) = 1 - 448 / S$ 随 $S$ 上升迅速劣化。
 
 由此从图 3 可以读出 $S = 256$ 的最优性：在 $S \le 448$ 不溢出约束下，二次幂候选 $\{2, 4, \ldots, 128, 256\}$ 都给出最低的 $dp = 2^{-4}$，落在下包络上；主流实现采用的 $S = 448$ 落在 binade $[256, 512)$ 内部，$dp = 32 / 448 \approx 0.0714$，比 $S = 256$ 高约 14\%。落在下包络上的二次幂候选不止一个，最大的那个 $k$ 还附带一个额外好处：能落入 E4M3 normal 区的 P 小值范围最广。E4M3 normal 区下界为 $2^{-6}$，反映回原域为 $2^{-6-k}$，$S$ 越大该阈值越低。$S = 256$ 把该下界推到 $2^{-14} \approx 6.1 \times 10^{-5}$，比 $S = 128$ 的 $1.22 \times 10^{-4}$ 低一倍。
 

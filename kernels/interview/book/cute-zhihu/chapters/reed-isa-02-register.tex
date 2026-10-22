@@ -29,21 +29,21 @@ LDSM & Load & 寄存器 & 共享内存 \\
 Load-Store架构是一种在许多现代处理器设计中广泛采用的数据访问模型，特别是在精简指令集计算机（RISC）体系结构中。这种架构的主要优势包括：
 
 \begin{enumerate}
-\item 简化的指令集：- Load-Store架构通过限制指令集只对寄存器进行操作，大大简化了指令集的设计和编码。这使得处理器的设计更加直观，易于理解和实现。
+\item 简化的指令集：Load-Store架构通过限制指令集只对寄存器进行操作，大大简化了指令集的设计和编码。这使得处理器的设计更加直观，易于理解和实现。
 
-\item 高效的流水线设计：- 由于所有的内存访问都是通过Load和Store指令完成的，这使得处理器的流水线设计更加简单和高效。处理器可以独立地优化计算和内存访问操作，减少资源冲突和提高吞吐量。
+\item 高效的流水线设计：由于所有的内存访问都是通过Load和Store指令完成的，这使得处理器的流水线设计更加简单和高效。处理器可以独立地优化计算和内存访问操作，减少资源冲突和提高吞吐量。
 
-\item 编译器优化：- 显式的Load和Store指令使得编译器更容易进行优化，如指令重排、冗余消除等，以减少不必要的内存访问次数，从而提高程序的运行效率。
+\item 编译器优化：显式的Load和Store指令使得编译器更容易进行优化，如指令重排、冗余消除等，以减少不必要的内存访问次数，从而提高程序的运行效率。
 
-\item 提高内存访问效率：- 通过显式的Load和Store指令，可以更有效地管理内存访问，减少内存带宽的浪费，并提高内存访问的效率。
+\item 提高内存访问效率：通过显式的Load和Store指令，可以更有效地管理内存访问，减少内存带宽的浪费，并提高内存访问的效率。
 
-\item 寄存器的高效利用：- 由于Load-Store架构鼓励使用寄存器来存储数据，这有助于减少对慢速内存的访问，从而提高程序的执行速度。
+\item 寄存器的高效利用：由于Load-Store架构鼓励使用寄存器来存储数据，这有助于减少对慢速内存的访问，从而提高程序的执行速度。
 
-\item 清晰的指令格式：- Load-Store架构通常采用三地址格式，这意味着大多数指令只涉及三个操作数（源操作数、目标操作数和立即数），这使得指令格式更加一致和易于处理。
+\item 清晰的指令格式：Load-Store架构通常采用三地址格式，这意味着大多数指令只涉及三个操作数（源操作数、目标操作数和立即数），这使得指令格式更加一致和易于处理。
 
-\item 并行处理能力：- 由于Load-Store架构的简单性和高效的流水线设计，其特别适合于实现并行处理，这对于现代多核和众核处理器来说是一个重要的特性。
+\item 并行处理能力：由于Load-Store架构的简单性和高效的流水线设计，其特别适合于实现并行处理，这对于现代多核和众核处理器来说是一个重要的特性。
 
-\item 更好的错误隔离：- 在Load-Store架构中，由于内存访问和计算操作是分开的，这有助于在发生内存访问错误时更好地隔离错误，因为错误不会影响到计算操作。
+\item 更好的错误隔离：在Load-Store架构中，由于内存访问和计算操作是分开的，这有助于在发生内存访问错误时更好地隔离错误，因为错误不会影响到计算操作。
 \end{enumerate}
 
 总的来说，Load-Store架构通过其简单性、高效的流水线设计和编译器优化能力，为现代处理器提供了高性能和高能效的计算环境。这种架构在现代微处理器设计中非常流行。
@@ -57,7 +57,7 @@ Load-Store架构是一种在许多现代处理器设计中广泛采用的数据�
 \caption{Figure 1. Register File in Sub-Core of SM}
 \end{figure}
 
-图1为NVidia Ampere的SM（Stream Multiprocessor）的架构描述，可以看到一个SM包含4个Sub Core（或者成为Sub Partition），每个Sub Core中包含16,384个32bit的寄存器（通用寄存器）。我们知道CUDA GPU中的调度单位为一个warp，每个warp包含32个lane，这32个lane共享同样的代码，所以他们的寄存器在各自的线程看来也是同样的，将16,384个寄存器分配给32个lane我们可以得到512组寄存器。如图2-a所示，我们可以认为Sub core上的寄存器是一个二维结构横向为32个lane，纵向为512组。当SM执行某个kernel时，会将这些寄存器分配给不同的warp（warp组成block），图2-b展示了每个warp分配4个寄存器时，各个lane得到的本地的寄存器的名称和不同的warp组，对于每一个需要被执行的warp，寄存器文件按照kernel所需要的寄存器数目（分配粒度为4）分配给不同的warp，示例中对于每一个线程看到的寄存器为R0-R3（图中标示为thread-view）。
+图1为NVidia Ampere的SM（Stream Multiprocessor）的架构描述，可以看到一个SM包含4个Sub Core（或者称为Sub Partition），每个Sub Core中包含16,384个32bit的寄存器（通用寄存器）。我们知道CUDA GPU中的调度单位为一个warp，每个warp包含32个lane，这32个lane共享同样的代码，所以他们的寄存器在各自的线程看来也是同样的，将16,384个寄存器分配给32个lane我们可以得到512组寄存器。如图2-a所示，我们可以认为Sub core上的寄存器是一个二维结构横向为32个lane，纵向为512组。当SM执行某个kernel时，会将这些寄存器分配给不同的warp（warp组成block），图2-b展示了每个warp分配4个寄存器时，各个lane得到的本地的寄存器的名称和不同的warp组，对于每一个需要被执行的warp，寄存器文件按照kernel所需要的寄存器数目（分配粒度为4）分配给不同的warp，示例中对于每一个线程看到的寄存器为R0-R3（图中标示为thread-view）。
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.9\textwidth]{figures/reed-isa-02-register/fig-02.jpg}
@@ -93,7 +93,7 @@ SR_SMEMSZ
 
 \section{Predicate寄存器}
 
-Predication技术是GPU架构中用于实现分支预测（branch prediction）的一种技术。在GPU中，predication通常用于控制线程束（warp）中线程的执行流程，而不是传统CPU中的分支预测。Predicatie寄存器的优势主要体现在以下几个方面：
+Predication技术是GPU架构中用于实现分支预测（branch prediction）的一种技术。在GPU中，predication通常用于控制线程束（warp）中线程的执行流程，而不是传统CPU中的分支预测。Predicate寄存器的优势主要体现在以下几个方面：
 
 \begin{enumerate}
 \item 提高分支效率：在GPU中，predication寄存器允许整个线程束根据单一的预测结果来决定是继续执行还是跳过某些指令。这种方式可以减少每个线程单独进行分支决策的开销，从而提高分支处理的效率。
@@ -118,7 +118,7 @@ Predication技术是GPU架构中用于实现分支预测（branch prediction）�
 \caption{Figure 3. Predication avoid pipeline stall}
 \end{figure}
 
-具体地，Predicate寄存器主要有两个作用：一个是作为指令的执行条件放在指令的开始，如\lstinline|@P6 FADD R5 R5 R28;| 和\lstinline|@!P1 FADD R11 R11 R17;| 用以指示该条指令为条件指令，只有当@后的predicat运算结果为True时才会执行，反之为False时，该指令不产生执行副作用；二是predicate可以作为操作数参与特定指令的运算，如\lstinline|FMNMX R9 RZ R6 !PT;|。Predicate寄存器为每个线程私有，每个线程最多可使用8个，在SASS表示中名称以P为前缀，表示为P0-P7，其中P0-P6为常规的读写Predicate寄存，P7为常真寄存器，即它始终为True，SASS中标示为PT（Predicate True）：
+具体地，Predicate寄存器主要有两个作用：一个是作为指令的执行条件放在指令的开始，如\lstinline|@P6 FADD R5 R5 R28;| 和\lstinline|@!P1 FADD R11 R11 R17;| 用以指示该条指令为条件指令，只有当@后的predicate运算结果为True时才会执行，反之为False时，该指令不产生执行副作用；二是predicate可以作为操作数参与特定指令的运算，如\lstinline|FMNMX R9 RZ R6 !PT;|。Predicate寄存器为每个线程私有，每个线程最多可使用8个，在SASS表示中名称以P为前缀，表示为P0-P7，其中P0-P6为常规的读写Predicate寄存，P7为常真寄存器，即它始终为True，SASS中标示为PT（Predicate True）：
 
 \begin{lstlisting}
 P0, P1, P2, P3, P4, P5, P6, P7(PT)
@@ -142,7 +142,7 @@ UP0, UP1, UP2, UP3, UP4, UP5, UP6, UP7(UPT)
 
 \section{总结}
 
-寄存器是GPU中重要的存储结构，GPU通过提供大量的寄存器实现高并发的延迟隐藏模型，对于单线程而言使用较少的寄存器可以提升SM上能并发的Warp数，提升效率并发度，同时NV限制了单个线程能使用寄存器的上限为255个32bit；NV针对线程块索引等提供了特殊的寄存器用于获取逻辑坐标；Preicate寄存器可以实现小块代码段的更高效的流水线效果。Uniform寄存器可以实现warp level一致的计算逻辑和reduce功能，其可以减少通用寄存器的使用提升能效。
+寄存器是GPU中重要的存储结构，GPU通过提供大量的寄存器实现高并发的延迟隐藏模型，对于单线程而言使用较少的寄存器可以提升SM上能并发的Warp数，提升并发度，同时NV限制了单个线程能使用寄存器的上限为255个32bit；NV针对线程块索引等提供了特殊的寄存器用于获取逻辑坐标；Predicate寄存器可以实现小块代码段的更高效的流水线效果。Uniform寄存器可以实现warp level一致的计算逻辑和reduce功能，其可以减少通用寄存器的使用提升能效。
 
 \section{参考}
 

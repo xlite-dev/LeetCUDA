@@ -2,7 +2,7 @@
 
 \begin{center}\small 作者：reed（知乎 @reed-84-49，专栏「CUDA高性能编程」）\quad 原文：\url{https://zhuanlan.zhihu.com/p/663093816}\end{center}
 
-前面的章节介绍了cute Layout\footnote{\url{https://zhuanlan.zhihu.com/p/661182311}}以及Layout的代数和几何解释\footnote{\url{https://zhuanlan.zhihu.com/p/662089556}}，Layout描述了数据的排列和底层存储位置关系，但Layout并没有指定存储。Tensor就是在Layout的基础上包含了存储，即Tensor = Layout + storage，数据存储的具体表现上可以是指针表达的数据或则是栈上数据（GPU上表现为寄存器）。cute中的Tensor并不同于深度学习框架中的Tensor（如Pytorch、Tensorflow），深度学习框架中的Tensor更强调数据的表达实体，通过Tensor实体与实体之间的计算产生新的Tensor实体，即多份数据实体，cute中的Tensor更多的是对Tensor进行分解和组合等操作，而这些操作多是对Layout的变换（只是逻辑层面的数据组织形式），底层的数据实体一般不变更。也就是说深度学习框架中的Tensor是通过Tensor产生新Tensor，cute中是对数据表达形式的变换，底层数据一般不变更，指变更表达的形式，这个表达形式的变更是通过之前文章介绍的Layout上的运算实现的。之所以有这些差别是因为深度学习框架中的Tensor是用来表达数据实体，cute中的Tensor是偏向描述的实体。
+前面的章节介绍了cute Layout\footnote{\url{https://zhuanlan.zhihu.com/p/661182311}}以及Layout的代数和几何解释\footnote{\url{https://zhuanlan.zhihu.com/p/662089556}}，Layout描述了数据的排列和底层存储位置关系，但Layout并没有指定存储。Tensor就是在Layout的基础上包含了存储，即Tensor = Layout + storage，数据存储的具体表现上可以是指针表达的数据或则是栈上数据（GPU上表现为寄存器）。cute中的Tensor并不同于深度学习框架中的Tensor（如Pytorch、Tensorflow），深度学习框架中的Tensor更强调数据的表达实体，通过Tensor实体与实体之间的计算产生新的Tensor实体，即多份数据实体，cute中的Tensor更多的是对Tensor进行分解和组合等操作，而这些操作多是对Layout的变换（只是逻辑层面的数据组织形式），底层的数据实体一般不变更。也就是说深度学习框架中的Tensor是通过Tensor产生新Tensor，cute中是对数据表达形式的变换，底层数据一般不变更，只变更表达的形式，这个表达形式的变更是通过之前文章介绍的Layout上的运算实现的。之所以有这些差别是因为深度学习框架中的Tensor是用来表达数据实体，cute中的Tensor是偏向描述的实体。
 
 本文介绍了cute中Tensor的相关操作，通过阅读本文，开发者可以了解cute中Tensor的常用方法，熟悉Tensor方法的语义，为后续通过Tensor进行操作和变换提供基础知识。在文章结构方面，本文首先介绍cute中Tensor的常用函数，然后以一个向量求和的例子展示如何使用cute Tensor工具，最后文章对Tensor的特性和使用进行了总结。
 
@@ -29,8 +29,8 @@ Tensor make_fragment_like(Tensor tensor);
 \toprule
  & Static & Dynamic \\
 \midrule
-Heapnon-owning & make\_tensor(ptr, make\_shape(Int$<$M$>$\{\}, Int$<$N$>$\{\}));make\_tensor\_like(tensor);make\_fragment\_like(tensor); & make\_tensor(ptr, make\_shape(M, N)); \\
-Stackowning & make\_tensor(make\_shape(Int$<$M$>$, Int$<$N$>$\{\}));make\_tensor\_like(tensor);make\_fragment\_like(tensor); & NA \\
+Heap non-owning & make\_tensor(ptr, make\_shape(Int$<$M$>$\{\}, Int$<$N$>$\{\}));make\_tensor\_like(tensor);make\_fragment\_like(tensor); & make\_tensor(ptr, make\_shape(M, N)); \\
+Stack owning & make\_tensor(make\_shape(Int$<$M$>$, Int$<$N$>$\{\}));make\_tensor\_like(tensor);make\_fragment\_like(tensor); & NA \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -79,7 +79,7 @@ Tensor::data();
 可以通过\verb|_|来筛选（slice）特定轴，和Layout的表达形式一致，具体的代码如下：
 
 \begin{lstlisting}[language=C++]
-Tensor tensor = make_tensor(ptr, make_shape(M, N， K)); // MxNxK
+Tensor tensor = make_tensor(ptr, make_shape(M, N, K)); // MxNxK
 Tensor tensor1 = tensor(_, _, 3); // MxN,k =3
 \end{lstlisting}
 
@@ -150,7 +150,7 @@ Layout tensor5 = raked_product(layout, tile);
 
 \begin{lstlisting}[language=C++]
 Tensor tensor = make_tensor(ptr, make_shape(M, N, K));
-Tensor tensor1 = local_tile(tensor, make_shape(2, 3，4), make_coord(1, 2，3));
+Tensor tensor1 = local_tile(tensor, make_shape(2, 3, 4), make_coord(1, 2, 3));
 \end{lstlisting}
 
 \begin{figure}[htbp]\centering
@@ -162,7 +162,7 @@ Tensor tensor1 = local_tile(tensor, make_shape(2, 3，4), make_coord(1, 2，3));
 
 \section{Tensor的局部数据提取local\_partition}
 
-local  partition和local tile类似，现将大的Tensor按照tile大小进行分块，分块后每一块取出coordinate指定的元素形成新的块，代码形式和具体实例参考图2:
+local  partition和local tile类似，先将大的Tensor按照tile大小进行分块，分块后每一块取出coordinate指定的元素形成新的块，代码形式和具体实例参考图2:
 
 \begin{lstlisting}[language=C++]
 Tensor tensor = make_tensor(ptr, ...);
@@ -230,7 +230,7 @@ Tensor tensor = make_identity_tensor(shape);
 对于该向量类问题，如果有丰富的CUDA 开发的经验，我们可以通过如下优化手段提供高效的实现：
 
 \begin{itemize}
-  \item 单个线程处理多个数据，通过数据预取和指令并行，提升数据读取销量、提升执行单元的流水线效率；
+  \item 单个线程处理多个数据，通过数据预取和指令并行，提升数据读取效率、提升执行单元的流水线效率；
   \item 对global内存进行大字长读写，减少数据IO所需要的指令数目，减少调度开销，提升程序运行效率；
   \item 使用Half2类型，减少half类型引入的PRMT指令的转换和开销；
   \item 使用FMA（fused multiply accumulate）指令完成计算，减少FMUL、FADD指令数，提升计算精度；
@@ -311,7 +311,7 @@ pragma 及后续for行实现了多个元素的z = ax + by + c的计算，并且�
 
 最后我们将结果cast回来并通过copy接口将计算结果存储到全局内存；
 
-值得注意的是，Tensor tz; Tensor tzr; 行看似是生成Tensor但实际其并没有涉及到全局内存到读写（并没有Tensor被拷贝），只是利用Layout进行tensor的表达和变换数，数据实体没有移动，只有在copy的时候才有实际的数据读写。这也回应了文章开头的对cute中Tensor和深度学习框架中的Tensor不一样，大部分时间，我们在cute中使用Tensor只是使用Tensor的逻辑语义和变换，并没有实质的触发Tensor的搬运。同时我们也看到我们使用Tensor语义和工具能够更形象化的表达我们的逻辑，方便我们的思考，而CUDA的优化思路和技巧并不会因为Tensor的引入而变简单或困难。Tensor只是工具，可以方便我们的表达，至于深层次的优化思路那还是对经验的挑战。
+值得注意的是，Tensor tz; Tensor tzr; 行看似是生成Tensor但实际其并没有涉及到全局内存到读写（并没有Tensor被拷贝），只是利用Layout进行tensor的表达和变换，数据实体没有移动，只有在copy的时候才有实际的数据读写。这也回应了文章开头的对cute中Tensor和深度学习框架中的Tensor不一样，大部分时间，我们在cute中使用Tensor只是使用Tensor的逻辑语义和变换，并没有实质的触发Tensor的搬运。同时我们也看到我们使用Tensor语义和工具能够更形象化的表达我们的逻辑，方便我们的思考，而CUDA的优化思路和技巧并不会因为Tensor的引入而变简单或困难。Tensor只是工具，可以方便我们的表达，至于深层次的优化思路那还是对经验的挑战。
 
 \section{总结与讨论}
 

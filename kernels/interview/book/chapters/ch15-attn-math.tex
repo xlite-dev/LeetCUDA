@@ -709,7 +709,7 @@ tile 设计（以 \texttt{kHeadDim=64} 为例）把两个块尺寸分解到 mma 
 \texttt{gridDim.x} 是 seqlen(Q) 维的 split-Q 并行（15.3.7~节 FA2 改动 2），
 \texttt{gridDim.y} 是 $(B, H)$ 维；每个 thread block 负责连续 $B_r = 128$ 行 query。
 $B_r, B_c$ 不是随意取的：$B_r = 16 \times 8 = 128$ 来自 mma.sync.m16n8k16 原子
-（第~\ref{ch:11}~章）在 $M$ 维的 $4$ 倍堆叠，$B_c = 8 \times 8 = 64$ 来自 $N$ 维原子的
+（第~\ref{ch:11}~章）在 $M$ 维的 $8$ 倍堆叠，$B_c = 8 \times 8 = 64$ 来自 $N$ 维原子的
 $8$ 倍堆叠，tile 尺寸被 Tensor Core 指令形状整除，这是分块参数化的硬约束。
 
 \lstinputlisting[linerange={93-110},firstnumber=auto,
@@ -933,8 +933,9 @@ L61--71 的考据参数（SM120，$B{=}1, H{=}32, N{=}4096, D{=}64$）。机理�
         （$P_{\mathrm{peak}}/BW \sim 10^{2}\,\mathrm{FLOP/B}$）都把它压在
         memory-bound 区；且 $O(N^{2})$ 的显存开销在长序列下先于运行时间使方案不可行。
   \item \textbf{FlashAttention}：$AI \approx B_r = 64$--$128\,\mathrm{FLOP/B}$
-        （式~\ref{eq:15-ai-fa}，未计 L2 对 $K/V$ 的跨 block 复用），进入
-        compute-bound 区。两个外部锚点：FA2 论文在 A100 前向实测峰值利用
+        （式~\ref{eq:15-ai-fa}，未计 L2 对 $K/V$ 的跨 block 复用）。单看 tile
+        流量仍低于本机 fp16 口径的拐点（$\approx300$，15.3.6~节），要靠 L2 复用
+        把有效带宽压下来才进入 compute-bound 侧。两个外部锚点：FA2 论文在 A100 前向实测峰值利用
         $73\%$（$230\,\mathrm{TFLOPS}$）；本仓库手写 FA2 在 SM120
         （$B{=}1, H{=}32, N{=}4096, D{=}64$，\texttt{kPad=8}）实测
         $166.6\,\mathrm{TFLOPS}$（flash\_attn.cuh~L68 头注释口径，F4 类，完整
@@ -1062,7 +1063,8 @@ max / 指数和 / 指数加权和；归纳法证明不变量逐块保持（定�
 \textbf{Q6：FlashAttention 不减少 FLOPs，为什么快？}\\
 A：省的是 HBM 流量与显存：IO 从 $\Theta(Nd + N^{2})$ 降到 $\Theta(Nd + N^{2}d^{2}/M)$，
 激活显存从 $\Theta(N^{2})$ 降到 $\Theta(Nd)$；算术强度从 $d/2$ 升到 $B_r$ 量级，
-kernel 从 memory-bound 变 compute-bound，Tensor Core 才能达到高利用率。
+配合 L2 对 $K/V$ 的跨 block 复用，kernel 从 memory-bound 变 compute-bound，
+Tensor Core 才能达到高利用率。
 
 \textbf{Q7：FA1、FA2、FA3 各自的贡献？}\\
 A：FA1 = tiling + online softmax + 反向 recomputation（IO-aware，$\Theta(N^{2}d^{2}/M)$）；

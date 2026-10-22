@@ -41,7 +41,7 @@ Offset   Size    Field
 
 globalAddress (bytes 0-7): tensor 在 device global memory 中的起始地址。TMA 硬件以此为基地址，加上 coord $\times$ stride 计算每个 tile 的实际访问地址。这是 descriptor 中唯一的指针字段。
 
-globalStrides (bytes 12-29): 除最内层维度外的各维 stride，以字节为单位除以 16 后存储。采用 36-bit 编码（32-bit lower + 4-bit upper nibble），支持最大 64GB 的 stride 值。最内层维度的 stride 隐含为 elemSize，不编码在 descriptor 中。
+globalStrides (bytes 12-29): 除最内层维度外的各维 stride，以字节为单位除以 16 后存储。采用 36-bit 编码（32-bit lower + 4-bit upper nibble），支持最大 $2^{40}$\,B（约 1TB）的 stride 值。最内层维度的 stride 隐含为 elemSize，不编码在 descriptor 中。
 
 globalDim (bytes 32-51): 各维度大小减 1 后存储为 32-bit 值。TMA 硬件用此做越界判断——当 tile 的起始坐标超出此值时认为越界。这也是 \lstinline|tensormap.replace| 最常修改的字段。
 
@@ -105,7 +105,7 @@ dtype & dims & total bytes & bit21 (driver 580) \\
 UINT8(fp8) & [256, 511] & 130816 & 0 \\
 UINT8(fp8) & [256, 512] & 131072 & 1 \\
 FLOAT16 & [256, 256] & 131072 & 1 \\
-FLOAT32 & [128, 128] & 65535 & 0 \\
+FLOAT32 & [128, 128] & 65536 & 0 \\
 FLOAT32 & [128, 256] & 131072 & 1 \\
 FLOAT32 & [32, 32, 32] & 131072 & 1 \\
 FLOAT32 & [32, 32, 31] & 126976 & 0 \\
@@ -160,7 +160,7 @@ Kernel 2（load）: \lstinline|fence.proxy.tensormap| acquire $\rightarrow$ TMA 
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.9\textwidth]{figures/reed-10-tma-descriptor-21bit/fig-04.jpg}
-\caption{Figure 4. TMA OOB Path for 21th Bit in Control Word}
+\caption{Figure 4. TMA OOB Path for 21st Bit in Control Word}
 \end{figure}
 
 基于实验结果，我们得出 bit21 的硬件行为模型：

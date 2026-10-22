@@ -59,18 +59,18 @@ __global__ void my_tiled_mma(__half *Cptr, const __half *Aptr,
   int i_tile_n = blockIdx.x;
   int i_tile_m = blockIdx.y;
 
-  Tensor A = make_tensor(make_gmem_ptr(Aptr), make_shape(m, k),
+  auto A = make_tensor(make_gmem_ptr(Aptr), make_shape(m, k),
                          make_stride(k, Int<1>{}));
-  Tensor B = make_tensor(make_gmem_ptr(Bptr), make_shape(n, k),
+  auto B = make_tensor(make_gmem_ptr(Bptr), make_shape(n, k),
                          make_stride(k, Int<1>{}));
-  Tensor C = make_tensor(make_gmem_ptr(Cptr), make_shape(m, n),
+  auto C = make_tensor(make_gmem_ptr(Cptr), make_shape(m, n),
                          make_stride(n, Int<1>{}));
 
-  Tensor gA = local_tile(A, make_tile(Int<kTileM>{}, Int<kTileK>{}),
+  auto gA = local_tile(A, make_tile(Int<kTileM>{}, Int<kTileK>{}),
                          make_coord(i_tile_m, _));
-  Tensor gB = local_tile(B, make_tile(Int<kTileN>{}, Int<kTileK>{}),
+  auto gB = local_tile(B, make_tile(Int<kTileN>{}, Int<kTileK>{}),
                          make_coord(i_tile_n, _));
-  Tensor gC = local_tile(C, make_tile(Int<kTileM>{}, Int<kTileN>{}),
+  auto gC = local_tile(C, make_tile(Int<kTileM>{}, Int<kTileN>{}),
                          make_coord(i_tile_m, i_tile_n));
 
   // 0. 构造 tiled mma
@@ -110,7 +110,7 @@ __global__ void my_tiled_mma(__half *Cptr, const __half *Aptr,
   cute::copy(tgB, trB);
 
   // 2. gemm 执行
-  cute::gemm(tiled_mma, trA, trB, trC);
+  cute::gemm(tiled_mma, trC, trA, trB);
 
   cute::copy(trC, tgC);
 }
@@ -229,7 +229,7 @@ cute::gemm(tiled_mma, trA, trB, trC);
   for(auto i_m = 0; i_m < size<1>(trC); i_m += 1){
 #pragma unroll
     for(auto i_n = 0; i_n < size<2>(trC); i_n += 1){
-      cute::gemm(tiled_mma, trA(_, i_m, _), trB(_, i_n, _), trC(_, i_m, i_n));
+      cute::gemm(tiled_mma, trC(_, i_m, i_n), trA(_, i_m, _), trB(_, i_n, _));
     }
   }
 \end{lstlisting}
@@ -246,8 +246,8 @@ cute::gemm(tiled_mma, trA, trB, trC);
 extern __shared__ T shm_data[];
 
 T *Cshm = shm_data;
+using SmemLayoutC = decltype(make_layout(make_shape(Int<32>{}, Int<32>{})));
 auto sC = make_tensor(make_smem_ptr(Cshm), SmemLayoutC{});
-using SmemLayoutC = decltype(make_shape(Int<32>{}, Int<32>{});
 using R2SCopyAtomC = Copy_Atom<UniversalCopy<int>, cute::half_t>;
 
 // 从 tiled mma 延伸出 r2s tiled copy
@@ -256,7 +256,7 @@ auto r2s_thr_copy_c = r2s_tiled_copy_c.get_slice(idx);
 auto trC_r2s = r2s_thr_copy_c.retile_S(trC);
 auto tsC_r2s = r2s_thr_copy_c.partition_D(sC);
 
-cute::copy(r2s_tiled_copy_c, tCrC_r2s, tCsC_r2s);
+cute::copy(r2s_tiled_copy_c, trC_r2s, tsC_r2s);
 
 __syncthreads();
 \end{lstlisting}

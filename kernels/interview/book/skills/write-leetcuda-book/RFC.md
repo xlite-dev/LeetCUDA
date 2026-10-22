@@ -680,3 +680,44 @@
   - RTD：ch04 图内中文改动补 5 条 `figures-en.json`，`translate_figures --report`
     覆盖 1792/1792。
   - 待办：波 2（G5 CuTe 全篇 wp0-7+ch19b+ch20-26c / G6 量化 GEMM ch34-37）未启动。
+
+- [x] **R18 第三轮数理审核（2026-10-22，单人精读，不派 agent）**
+  - 范围：ch15-19、ch27-37、ch20-26c 逐章精读；wp0-7 与 ch19b 通读作语义基线但不审（译文）；
+    ch00-14 只做跨章口径回归（R16/R17 已修 49 处）。
+  - 结果：6 处 H 修复（ch15 B_r 堆叠倍数与 compute-bound 残留；ch17 两处「贴近拐点」；
+    ch27 int8 vs fp16/fp8 吞吐次序；ch36 图内 ue4m3 0x77→0x70）；其余章节逐式复算未发现错误，
+    台账 `.tmp/math-audit-r18/ledger.md`；5 条中低置信项 `.tmp/math-audit-r18/low-confidence.md`。
+  - 验收：0 error、0 undefined、Overfull ≥1pt 13（与基线逐条相同）、缺字 0、584 页；
+    RTD 全量 `./build.sh` 28 项全过（图集 196/196、词典 1793/1793），`visual_check` 56 页 0 问题；
+    改动页 198/229/240/466/493 150dpi 目检无重叠。
+
+- [x] **R18-zhihu-reed cute-zhihu 分册 reed 章节审核（2026-10-22，单人精读 23 章）**
+  - 范围：reed-01~13、reed-isa-01~08、reed-mem-01-proxy、reed-blackwell-dual-die、
+    reed-fp8-attention；zhuxi-01~07 已由 #569 审过，不重复。
+  - 结论：约 195 处修复（原文自带笔误为主，对照 `sources/*.md` 确认非翻译引入）。
+    事实/算术类 12 处：reed-01 外层 stride、reed-04 A100 L2=40MB、reed-05
+    mma.m16n8k16、reed-10 65536/2^40B、reed-isa-04 E4M3、reed-isa-05 补码示例与
+    表列序、reed-isa-06 8bit 指数与 LOP3 真值、reed-isa-07 DMMA D 维、
+    reed-fp8-attention 公式补 +/binade 上标、reed-mem-01 happens-before 并集、
+    reed-blackwell ncu 指标名。
+  - 中低置信 3 条未改（SA2++ 112 vs ch27 224、reed-11/13 实验口径、reed-06 措辞），
+    台账 `.tmp/math-audit-r18/reed-ledger.md`。
+  - 验收：cute-zhihu 247 页不变、0 error、0 undefined、Overfull 7 与基线逐条相同、
+    缺字 0；图文均为位图，无图内文字改动，RTD 词典不受影响。
+
+- [x] **R18-frankshi-swizzle frankshi swizzle 章审核（2026-10-22）**
+  - 5 处修复：矩阵大小 1028→1024、bank conflicts 2,032,616→2,031,616（×2）、
+    物理坐标举例 (2,1)→(1,2)（3⊕2=1）、§4.5 结论 y 值→x 值、Colased→Coalesced。
+  - 证明链（xor 性质、一一映射、值域保持、行列序列一致）与 kernel 代码逐行复算无误。
+  - 验收：cute-zhihu 247 页不变、0 error、Overfull 7 逐条相同。
+
+- [x] **R18-zhuxi-code zhuxi 代码示例修复（2026-10-22，用户要求修复代码类错误）**
+  - 范围：zhuxi-01~07 的 CuTe 代码示例（R16-W2 约定此类错误冻结待用户要求）。
+  - 修复：zhuxi-01 `*(float2*)` 转型；全 7 章 16 处裸 `Tensor`/`Layout` → `auto`；
+    zhuxi-02 两处 `cute::gemm` 实参顺序（cutlass gemm.hpp 重载核实，应为
+    `(mma, D, A, B)`）；r2s 例 `SmemLayoutC` 声明次序与缺括号；zhuxi-03
+    `tBrB_mma` ×3；zhuxi-04 `tilewowozzZZ`；zhuxi-05 launch 少传一个 `data`
+    （原文自认 bug）；zhuxi-07 struct 缺分号 ×2。
+  - 误判回退 2 处：`Tensor::compose` 实际存在于 `tensor_impl.hpp`，
+    zhuxi-03 reed 法与 zhuxi-05 伪代码原写法有效。
+  - 验收：cute-zhihu 247 页不变、0 error、Overfull 7 逐条相同、缺字 0。

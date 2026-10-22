@@ -8,12 +8,12 @@
 
 在计算机编程中，常用的整数数据类型有以下几种：
 
-\lstinline|int8_t|、\lstinline|int16_t|、\lstinline|int32_t|、\lstinline|int64_t|、\lstinline|uint8_t|、\lstinline|uint16_t|、\lstinline|uint32_t|、\lstinline|uint64_t|，他们的占用的字体节数和数据范围如下表：
+\lstinline|int8_t|、\lstinline|int16_t|、\lstinline|int32_t|、\lstinline|int64_t|、\lstinline|uint8_t|、\lstinline|uint16_t|、\lstinline|uint32_t|、\lstinline|uint64_t|，它们占用的字节数和数据范围如下表：
 
 \begin{table}[htbp]\centering
 \begin{tabular}{lllll}
 \toprule
-符号 & 类型 & 字节数 & 最大值 & 最小值 \\
+符号 & 类型 & 字节数 & 最小值 & 最大值 \\
 \midrule
 有符号 & \texttt{int8\_t} & 1 & -128 & 127 \\
 有符号 & \texttt{int16\_t} & 2 & -32768 & 32767 \\
@@ -42,7 +42,7 @@ NVidia GPU针对不同的计算精度需求提供了不同的整数精度和类�
 
 \section{有符号整数的补码表示和算术位移}
 
-在计算机中为了简化了计算机内部的运算过程，统一加法和减法的处理，统一有符号和无符号运算，提高计算效率，在表示有符号数据时采用了补码的形式。计算机体系中数据都是通过多bit的0、1来表示，GPU也不例外。为了更好的表达有符号数据，可以在加法的基础上引申出负数的表示。如一个有符号的8bit的整数123，则其用原码表示为0x11110011，如图2所示，我们在加法意义上可以定义-123，使得它和123加起来后可以得到0（有符号8bit表示为0x00000000），那么如何定义-123可以满足这种加法逻辑呢，那就是先让123 + ? = 0x11111111，然后两边同时加1即可以在向上溢出的意义下满足全0。为了能得到全1我们可以针对123的二进制表示每个bit取反，然后把后面的+1也作用在-123的二进制表示上即可，这也就是教科书上的"取反加一"。这种取反加一的表示码称为补码（Two's Complement），即能够补（相加）为0的表示码，这样符号位也可参与运算，如此便形成了高位第一位（Most Significant Bit）表示符号位0表示正数，1表示负数。
+在计算机中为了简化了计算机内部的运算过程，统一加法和减法的处理，统一有符号和无符号运算，提高计算效率，在表示有符号数据时采用了补码的形式。计算机体系中数据都是通过多bit的0、1来表示，GPU也不例外。为了更好的表达有符号数据，可以在加法的基础上引申出负数的表示。如一个有符号的8bit的整数123，则其用原码表示为0b01111011，如图2所示，我们在加法意义上可以定义-123，使得它和123加起来后可以得到0（有符号8bit表示为0b00000000），那么如何定义-123可以满足这种加法逻辑呢，那就是先让123 + ? = 0b11111111，然后两边同时加1即可以在向上溢出的意义下满足全0。为了能得到全1我们可以针对123的二进制表示每个bit取反，然后把后面的+1也作用在-123的二进制表示上即可，这也就是教科书上的"取反加一"。这种取反加一的表示码称为补码（Two's Complement），即能够补（相加）为0的表示码，这样符号位也可参与运算，如此便形成了高位第一位（Most Significant Bit）表示符号位0表示正数，1表示负数。
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.9\textwidth]{figures/reed-isa-05-integer/fig-02.jpg}
@@ -77,17 +77,17 @@ NVidia GPU指令集架构提供了针对整数的各种计算和操作，该章�
 
 \subsection{整数加法}
 
-整数加法通过\lstinline|IADD3|（Integer ADD 3 operand）实现（\lstinline|d = a + b + c|），一般形式如下, 其中8bit、16bit、32bit的加法共用如下形式1，针对64bit的加法，示例中P0为输出寄存器，类型为Predication Register，其功能如图1中的carry-0，用以输出低32bit计算时的进位情况，然后将这个进位带给高32bit的计算\lstinline|IADD3.X|，通过这两条指令实现64bit的加法。整数减法通过随路取符号实现，同时将b c都设置为0， 则实现取相反数的能力（negate）即 \lstinline|d = -a|。
+整数加法通过\lstinline|IADD3|（Integer ADD 3 operand）实现（\lstinline|d = a + b + c|），一般形式如下, 其中8bit、16bit、32bit的加法共用如下形式，针对64bit的加法，示例中P0为输出寄存器，类型为Predication Register，其功能如图1中的carry-0，用以输出低32bit计算时的进位情况，然后将这个进位带给高32bit的计算\lstinline|IADD3.X|，通过这两条指令实现64bit的加法。整数减法通过随路取符号实现，同时将b c都设置为0， 则实现取相反数的能力（negate）即 \lstinline|d = -a|。
 
 \begin{lstlisting}
 // 8bit, 16bit, 32bit
 IADD3 R7, R0, R7, RZ ; // R7 = R0 + R7 + RZ
 
-// substraction
+// subtraction
 IADD3 R7, R0, -R7, RZ ;
 
 // 64bit R6-7 = R4-5 + R6-7
-IADD3 R6, P0, R4, R6, RZ ;  // (R6, P0) = R4 + R6 + R0; P0 indicate carry
+IADD3 R6, P0, R4, R6, RZ ;  // (R6, P0) = R4 + R6 + RZ; P0 indicate carry
 IADD3.X R7, R5, R7, RZ, P0, !PT ; // R7 = R5 + R7 + RZ + P0;
 \end{lstlisting}
 
@@ -134,7 +134,7 @@ NVidia GPU指令集架构中并没有提供独立的整数除法指令，而是�
 
 \subsection{整数转浮点数}
 
-对于整数和浮点数类型的转换（Integer 2：to Float），默认为int32转换为float32，指令集也提供了相应的功能，通过Modifier提供更细节的修饰，涉及整数到float16（F16）、float64（F64）类型，同时源操作数也区分是有符号和无符号，和低精度(S8、S16、S64、U16、U32、U64)，以及Round Positive（RP）:
+对于整数和浮点数类型的转换（Integer to Float），默认为int32转换为float32，指令集也提供了相应的功能，通过Modifier提供更细节的修饰，涉及整数到float16（F16）、float64（F64）类型，同时源操作数也区分是有符号和无符号，和低精度(S8、S16、S64、U16、U32、U64)，以及Round Positive（RP）:
 
 \begin{lstlisting}
 I2F
@@ -156,7 +156,7 @@ I2F.U64.RP
 
 \subsection{整数转Packed整数}
 
-指令集除了提供整数和浮点数的转换，还提供了整数和packed整数的转换（Integer 2：to Integer Packed ）来避免使用更复杂的逻辑和位移实现，如下
+指令集除了提供整数和浮点数的转换，还提供了整数和packed整数的转换（Integer to Integer Packed）来避免使用更复杂的逻辑和位移实现，如下
 
 \begin{lstlisting}
 I2IP.S8.S32.SAT
@@ -164,7 +164,7 @@ I2IP.S8.S32.SAT
 
 \subsection{整数绝对值}
 
-原生提供了绝对值计算指令IADD（Integer ABSolute）
+原生提供了绝对值计算指令IABS（Integer ABSolute）
 
 \begin{lstlisting}
 IABS
@@ -181,7 +181,7 @@ IDP.4A.S8.S8
 
 \subsection{整数最大最小}
 
-指令集提供整数两个数据比较大小的操作（Integer MiNimum and MaXimum），同时选取出其中的大数据或小数，避免使用条件分支实现，同时提供了针对数据类型Unsigned Integer的Modifier，对于32bit及以下数据都可以使用该指令实现，对于64bit数据使用\lstinline|ISETP|实现：
+指令集提供整数两个数据比较大小的操作（Integer MiNimum and MaXimum），同时选取出其中的大数或小数，避免使用条件分支实现，同时提供了针对数据类型Unsigned Integer的Modifier，对于32bit及以下数据都可以使用该指令实现，对于64bit数据使用\lstinline|ISETP|实现：
 
 \begin{lstlisting}
 IMNMX R7, R0, R7, !PT ; // when PT return R7 = min(R0, R7), when !PT R7 = max(R0, R7)
