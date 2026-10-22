@@ -192,19 +192,19 @@ Layout compose 在很多地方都可以用到。例如，我们在之前的tiled
     template <typename T, int kTileM, int kTileN, int kTileK, typename TiledMMA>
     __global__ void simple_kernel(T *Cptr, const T *Aptr, const T *Bptr, int m,
                                   int n, int k) {
-      Tensor A = make_tensor(make_gmem_ptr(Aptr), make_shape(m, k),
+      auto A = make_tensor(make_gmem_ptr(Aptr), make_shape(m, k),
                              make_stride(k, Int<1>{}));
-      Tensor B = make_tensor(make_gmem_ptr(Bptr), make_shape(n, k),
+      auto B = make_tensor(make_gmem_ptr(Bptr), make_shape(n, k),
                              make_stride(k, Int<1>{}));
-      Tensor C = make_tensor(make_gmem_ptr(Cptr), make_shape(m, n),
+      auto C = make_tensor(make_gmem_ptr(Cptr), make_shape(m, n),
                              make_stride(n, Int<1>{}));
 
       int ix = blockIdx.x;
       int iy = blockIdx.y;
 
-      Tensor gA = local_tile(A, make_tile(Int<kTileM>{}, Int<kTileK>{}), make_coord(iy, _));
-      Tensor gB = local_tile(B, make_tile(Int<kTileN>{}, Int<kTileK>{}), make_coord(ix, _));
-      Tensor gC = local_tile(C, make_tile(Int<kTileM>{}, Int<kTileN>{}), make_coord(iy, ix));
+      auto gA = local_tile(A, make_tile(Int<kTileM>{}, Int<kTileK>{}), make_coord(iy, _));
+      auto gB = local_tile(B, make_tile(Int<kTileN>{}, Int<kTileK>{}), make_coord(ix, _));
+      auto gC = local_tile(C, make_tile(Int<kTileM>{}, Int<kTileN>{}), make_coord(iy, ix));
       //  gA(kTileM, kTileK, num_tile_k)
       //  gB(kTileN, kTileK, num_tile_k)
       //  gC(kTileM, kTileN)
@@ -240,7 +240,7 @@ Layout compose 在很多地方都可以用到。例如，我们在之前的tiled
         // how to convert layout?
 
         // therefore, we got compile error: layout not acceptable for cute::gemm
-        cute::gemm(tiled_mma, trD_mma, trC_as_A_mma, tBrB_mma, trD_mma);
+        cute::gemm(tiled_mma, trD_mma, trC_as_A_mma, trB_mma, trD_mma);
       }
     }
 \end{lstlisting}
@@ -261,7 +261,7 @@ Layout compose 在很多地方都可以用到。例如，我们在之前的tiled
         auto trC_as_A_mma = make_tensor(trC_mma.data(), a_layout);
 
         // result correct
-        cute::gemm(tiled_mma, trD_mma, trC_as_A_mma, tBrB_mma, trD_mma);
+        cute::gemm(tiled_mma, trD_mma, trC_as_A_mma, trB_mma, trD_mma);
 \end{lstlisting}
 
 然而，reed 大师早已看穿了一切。
@@ -291,7 +291,7 @@ Layout compose 在很多地方都可以用到。例如，我们在之前的tiled
         // (x_a, y_a) -> offset0 -> (x_acc, y_acc) -> offset1
 
         // result correct
-        cute::gemm(tiled_mma, trD_mma, trC_as_A_mma, tBrB_mma, trD_mma);
+        cute::gemm(tiled_mma, trD_mma, trC_as_A_mma, trB_mma, trD_mma);
 \end{lstlisting}
 
 我们建议感兴趣的读者可以尝试跑通这个例子，并验证一下 tri-dao 和 reed 两者方法的结果，并尝试在更多的 mma 规格上测试，来感受 layout 代数所带来的语义上的便利性。

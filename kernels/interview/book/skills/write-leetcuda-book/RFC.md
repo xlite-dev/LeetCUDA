@@ -704,3 +704,14 @@
     台账 `.tmp/math-audit-r18/reed-ledger.md`。
   - 验收：cute-zhihu 247 页不变、0 error、0 undefined、Overfull 7 与基线逐条相同、
     缺字 0；图文均为位图，无图内文字改动，RTD 词典不受影响。
+
+- [x] **R18-zhuxi-code zhuxi 代码示例修复（2026-10-22，用户要求修复代码类错误）**
+  - 范围：zhuxi-01~07 的 CuTe 代码示例（R16-W2 约定此类错误冻结待用户要求）。
+  - 修复：zhuxi-01 `*(float2*)` 转型；全 7 章 16 处裸 `Tensor`/`Layout` → `auto`；
+    zhuxi-02 两处 `cute::gemm` 实参顺序（cutlass gemm.hpp 重载核实，应为
+    `(mma, D, A, B)`）；r2s 例 `SmemLayoutC` 声明次序与缺括号；zhuxi-03
+    `tBrB_mma` ×3；zhuxi-04 `tilewowozzZZ`；zhuxi-05 launch 少传一个 `data`
+    （原文自认 bug）；zhuxi-07 struct 缺分号 ×2。
+  - 误判回退 2 处：`Tensor::compose` 实际存在于 `tensor_impl.hpp`，
+    zhuxi-03 reed 法与 zhuxi-05 伪代码原写法有效。
+  - 验收：cute-zhihu 247 页不变、0 error、Overfull 7 逐条相同、缺字 0。

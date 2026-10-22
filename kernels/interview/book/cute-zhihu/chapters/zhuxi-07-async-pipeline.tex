@@ -81,7 +81,7 @@ Async Pipeline 本质上是一个封装了 mbarrier 的结构体，并提供了�
 struct SharedStorage {
   FullBarrier  full_barrier_[Stages];
   EmptyBarrier empty_barrier_[Stages];
-}
+};
 \end{lstlisting}
 
 除了 barrier 变量本身，这个结构体还提供对 barrier 操作的一系列函数，包括：
@@ -184,7 +184,7 @@ struct PipelineState {
       }
     }
   }
-}
+};
 \end{lstlisting}
 
 具体来说，PipelineState 只是维护了三个变量：

@@ -241,7 +241,7 @@ flat_divide    : (TileM, TileN, RestM, RestN, L, ...)
 \begin{lstlisting}[language=C++]
 // ...
 local_tile(Tensor    && tensor,
-           Tiler const& tilewowozzZZ,   // tiler to apply
+           Tiler const& tiler,   // tiler to apply
            Coord const& coord)   // coord to slice into "remainder"
 {
   return inner_partition(static_cast<Tensor&&>(tensor),

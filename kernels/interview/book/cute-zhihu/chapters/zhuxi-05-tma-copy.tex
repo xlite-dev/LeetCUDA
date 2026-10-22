@@ -92,7 +92,7 @@ CUTE_HOST_DEVICE static void
   }
 \end{lstlisting}
 
-更简单的，CuTe 已经提供了足够简洁的上层函数如 make\_tma\_copy / get\_tma\_tensor / copy 函数来完成上述步骤，我们遵循 CuTe 的使用方法即可，在此我们引用 coflex 的经典文章[3]中的代码段（原代码竟然还有 bug，不过瑕不掩瑜，大体流程是正确的）来展示其用法。
+更简单的，CuTe 已经提供了足够简洁的上层函数如 make\_tma\_copy / get\_tma\_tensor / copy 函数来完成上述步骤，我们遵循 CuTe 的使用方法即可，在此我们引用 coflex 的经典文章[3]中的代码段（原代码有一处实参笔误，引用时已修正）来展示其用法。
 
 TMA copy descriptor 的构造如下代码：
 
@@ -114,7 +114,7 @@ void host_fn(T* data, int M, int N) {
   // 4. Invoke the kernel
   tma_load_kernel<T, CTA_M, CTA_N, decltype(tma_load),
                                            decltype(gmem_layout),
-                                           decltype(smem_layout)><<<dim3{M / CTA_M, N / CTA_N, 1}, 1>>>(data, tma_load, gmem_layout, smem_layout);
+                                           decltype(smem_layout)><<<dim3{M / CTA_M, N / CTA_N, 1}, 1>>>(data, data, tma_load, gmem_layout, smem_layout);
 }
 \end{lstlisting}
 
@@ -134,8 +134,8 @@ __global__ void tma_load_kernel(T* g_out, const T* g_in,
   __shared__ uint64_t tma_load_mbar;
 
   // Construct SMEM & GMEM tensor
-  Tensor smem_tensor = make_tensor(make_smem_ptr(smem_data), smem_layout);
-  Tensor gmem_tensor = make_tensor(make_gmem_ptr(g_in), gmem_layout);
+  auto smem_tensor = make_tensor(make_smem_ptr(smem_data), smem_layout);
+  auto gmem_tensor = make_tensor(make_gmem_ptr(g_in), gmem_layout);
 
   if (threadIdx.x == 0) {
     auto gmem_tensor_coord = tma_load.get_tma_tensor(shape(gmem_tensor));
@@ -176,7 +176,7 @@ auto get_tma_tensor(GShape const& g_shape) const {
 为此，CuTe 只能打个补丁，引入了一个新的概念来表示纯粹的坐标语义，此即 \textbf{arithTuple}。 我们先结合一个例子来理解 arithTuple 如何表示坐标：
 
 \begin{lstlisting}[language=C++]
-Tensor a = make_tensor(make_inttuple_iter(0,0),
+auto a = make_tensor(make_inttuple_iter(0,0),
                        make_shape (     4,      5),
                        make_stride(E<0>{}, E<1>{}));
 print_tensor(a);
@@ -196,7 +196,7 @@ ArithTuple(0,0) o (4,5):(_1@0,_1@1):
 具体的，这个 E$<$0$>$\{\} 代表的是“第 0 个位置为 1，其他位置为 0 ” 的 tuple；E$<$1$>$\{\} 代表的则是“ 第 1 个位置为 1，其他位置为 0”。从其 print 结果来看，(\_1@0, \_1@1) 其实就是在表达这样一个语义：\textbf{\_1@0 代表第 0 位置的 stride 为 1（@0 代表 at 0 维度），\_1@1 代表第 1 位置的 stride 为 1}。 E 可以乘以一个整数表示 stride 的扩大，如我们把例子中的 stride 改为 (5 * E$<$0$>$\{\}, 2 * E$<$1$>$\{\})，其打印结果如下：
 
 \begin{lstlisting}[language=C++]
-Tensor a = make_tensor(make_inttuple_iter(0,0),
+auto a = make_tensor(make_inttuple_iter(0,0),
                        make_shape (     4,      5),
                        make_stride(5 * E<0>{}, 2 * E<1>{}));
 print_tensor(a);

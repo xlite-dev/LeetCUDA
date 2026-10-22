@@ -94,8 +94,8 @@ __global__ void g2s_tiled_copy(float* global_data) {
         // 按轮次整体偏移指针
 
         // 实际执行 g2s copy，每个 thread 每次 copy 1 个 float2
-        ((*float2)(&shared_data_i_loop[i_row_thread * kTileN + i_col_thread * 2]))[0]
-                = ((*float2)(&global_data_i_loop[i_row_thread * kTileN + i_col_thread * 2]))[0];
+        *(float2*)(&shared_data_i_loop[i_row_thread * kTileN + i_col_thread * 2])
+                = *(float2*)(&global_data_i_loop[i_row_thread * kTileN + i_col_thread * 2]);
     }
     __syncthreads();
  }
@@ -134,12 +134,12 @@ __global__ void g2s_tiled_copy(const float *input) {
 
   __shared__ float shm[kTileM * kTileN];
 
-  Tensor g_input_tile = make_tensor(make_gmem_ptr((float *)input),
+  auto g_input_tile = make_tensor(make_gmem_ptr((float *)input),
                                make_shape(Int<kTileM>{}, Int<kTileN>{}),
                                make_stride(Int<kTileN>{}, Int<1>{}));
                                // (kTileM, kTileN)
 
-  Tensor s_tensor = make_tensor(make_smem_ptr((float *)shm),
+  auto s_tensor = make_tensor(make_smem_ptr((float *)shm),
                                make_shape(Int<kTileM>{}, Int<kTileN>{}),
                                make_stride(Int<kTileN>{}, Int<1>{}));
                                // (kTileM, kTileN)
@@ -148,9 +148,9 @@ __global__ void g2s_tiled_copy(const float *input) {
   using g2s_copy_traits = Copy_Traits<g2s_copy_op>;
   using g2s_copy_atom = Copy_Atom<g2s_copy_traits, float>;
 
-  Layout thr_layout = make_layout(make_shape(Int<2>{}, Int<2>{}),
+  auto thr_layout = make_layout(make_shape(Int<2>{}, Int<2>{}),
                                   make_stride(Int<2>{}, Int<1>{}));
-  Layout val_layout = make_layout(make_shape(Int<1>{}, Int<2>{}));
+  auto val_layout = make_layout(make_shape(Int<1>{}, Int<2>{}));
 
   auto tiled_copy_g2s =
       make_tiled_copy(g2s_copy_atom{}, thr_layout, val_layout);
