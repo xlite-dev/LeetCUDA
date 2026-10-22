@@ -690,3 +690,17 @@
   - 验收：0 error、0 undefined、Overfull ≥1pt 13（与基线逐条相同）、缺字 0、584 页；
     RTD 全量 `./build.sh` 28 项全过（图集 196/196、词典 1793/1793），`visual_check` 56 页 0 问题；
     改动页 198/229/240/466/493 150dpi 目检无重叠。
+
+- [x] **R18-zhihu-reed cute-zhihu 分册 reed 章节审核（2026-10-22，单人精读 23 章）**
+  - 范围：reed-01~13、reed-isa-01~08、reed-mem-01-proxy、reed-blackwell-dual-die、
+    reed-fp8-attention；zhuxi-01~07 已由 #569 审过，不重复。
+  - 结论：约 195 处修复（原文自带笔误为主，对照 `sources/*.md` 确认非翻译引入）。
+    事实/算术类 12 处：reed-01 外层 stride、reed-04 A100 L2=40MB、reed-05
+    mma.m16n8k16、reed-10 65536/2^40B、reed-isa-04 E4M3、reed-isa-05 补码示例与
+    表列序、reed-isa-06 8bit 指数与 LOP3 真值、reed-isa-07 DMMA D 维、
+    reed-fp8-attention 公式补 +/binade 上标、reed-mem-01 happens-before 并集、
+    reed-blackwell ncu 指标名。
+  - 中低置信 3 条未改（SA2++ 112 vs ch27 224、reed-11/13 实验口径、reed-06 措辞），
+    台账 `.tmp/math-audit-r18/reed-ledger.md`。
+  - 验收：cute-zhihu 247 页不变、0 error、0 undefined、Overfull 7 与基线逐条相同、
+    缺字 0；图文均为位图，无图内文字改动，RTD 词典不受影响。

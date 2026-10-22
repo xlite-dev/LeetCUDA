@@ -13,7 +13,7 @@ NVidia GPU体系结构提供了单指令多线程的执行模型（SIMT: Single 
 \item 使用CUDA中单个线程完成以上计算任务；
 \end{itemize}
 
-在该过程中，专注的是局部的、原子的单个线程的执行逻辑。通过配置Thread Block、Grid Block来实现单个线程计算逻辑的横向扩展，以便构成更大规模的计算逻辑。图一中Problem部分展示来原始问题划分成单个计算任务的过程，这些子任务在CUDA中体现为线程的执行任务，也是CUDA Kernel的核心逻辑，这些计算逻辑可以更近一步的组织成线程块（Thread Block），线程块有一定的局部性，其中的线程可以做必要的同步和数据交换，线程块间相互独立，多个线程块可以继续组织成计算网格（Grid Block）。线程网格中的线程块会被调度到硬件上执行，线程网格整体构成的规格可以比硬件规格大很多，这些任务可以分批次的利用有限的硬件单元来完成计算，使得有限的硬件单元可以处理逻辑上无限的任务。
+在该过程中，专注的是局部的、原子的单个线程的执行逻辑。通过配置Thread Block、Grid Block来实现单个线程计算逻辑的横向扩展，以便构成更大规模的计算逻辑。图一中Problem部分展示了原始问题划分成单个计算任务的过程，这些子任务在CUDA中体现为线程的执行任务，也是CUDA Kernel的核心逻辑，这些计算逻辑可以更近一步地组织成线程块（Thread Block），线程块有一定的局部性，其中的线程可以做必要的同步和数据交换，线程块间相互独立，多个线程块可以继续组织成计算网格（Grid Block）。线程网格中的线程块会被调度到硬件上执行，线程网格整体构成的规格可以比硬件规格大很多，这些任务可以分批次的利用有限的硬件单元来完成计算，使得有限的硬件单元可以处理逻辑上无限的任务。
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.9\textwidth]{figures/reed-isa-07-warp-uniform/fig-01.jpg}
@@ -50,7 +50,7 @@ DMMA， HMMA，IMMA
 
 \subsection{DMMA指令}
 
-其中DMMA表示Double Matrix Multiply Accumulate，其可以完成双精度（double）的矩阵乘累加运算，图三展示了DMMA指令计算的逻辑空间和，其中lane-10所提供的寄存器，Tensor Core可以完成如图中\lstinline|D = AB + C|的矩阵计算，其要求该矩阵的A来自于lane-0到lane-31，每一个lane中的寄存器在A中的排布如图所示，形成一个8x4的矩阵，其中lane-10提供的寄存器在A矩阵中为第2行，第2列（坐标从0开始），同样的lane-10提供了B矩阵的寄存器，在B中表示为第2行，第2列，经过Tensor Core计算，lane-10得到来计算结果为D矩阵的第2行，第4、5列。根据矩阵计算的定义我们知道D中T10的两个元素需要的数据为当前行和列，并不是完全来自于lane-10自己，而别的lane也参与来该计算。
+其中DMMA表示Double Matrix Multiply Accumulate，其可以完成双精度（double）的矩阵乘累加运算，图三展示了DMMA指令计算的逻辑空间，其中lane-10所提供的寄存器，Tensor Core可以完成如图中\lstinline|D = AB + C|的矩阵计算，其要求该矩阵的A来自于lane-0到lane-31，每一个lane中的寄存器在A中的排布如图所示，形成一个8x4的矩阵，其中lane-10提供的寄存器在A矩阵中为第2行，第2列（坐标从0开始），同样的lane-10提供了B矩阵的寄存器，在B中表示为第2行，第2列，经过Tensor Core计算，lane-10得到来计算结果为D矩阵的第2行，第4、5列。根据矩阵计算的定义我们知道D中T10的两个元素需要的数据为当前行和列，并不是完全来自于lane-10自己，而别的lane也参与来该计算。
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.9\textwidth]{figures/reed-isa-07-warp-uniform/fig-04.jpg}
@@ -63,7 +63,7 @@ DMMA， HMMA，IMMA
 DMMA.884 R64 R96 R90 R64
 \end{lstlisting}
 
-其中884表示矩阵指令实现的的矩阵乘法的mnk分别为8，8，4，即 $D_{8\times 4} = A_{8\times 4} B_{4\times 8}   C_{8\times 8}$ 。该指令中输出操作数R64表示输出矩阵D，同时约定R64, R65, R66, R67四个连续的寄存器表示两个输出的double数据，R96，R97两个连续的寄存器共同存储A矩阵中的一个double数据，R90, R91表示B矩阵中的double数据。另外常见的带有Modifier的指令还有如下，分别表示对A矩阵取负数，对B矩阵取负，对AB都取负；reuse表示寄存器复用减少寄存器io压力。
+其中884表示矩阵指令实现的的矩阵乘法的mnk分别为8，8，4，即 $D_{8\times 8} = A_{8\times 4} B_{4\times 8} + C_{8\times 8}$ 。该指令中输出操作数R64表示输出矩阵D，同时约定R64, R65, R66, R67四个连续的寄存器表示两个输出的double数据，R96，R97两个连续的寄存器共同存储A矩阵中的一个double数据，R90, R91表示B矩阵中的double数据。另外常见的带有Modifier的指令还有如下，分别表示对A矩阵取负数，对B矩阵取负，对AB都取负；reuse表示寄存器复用减少寄存器io压力。
 
 \begin{lstlisting}
 DMMA.884 R64 -R96 R90 R64
@@ -89,7 +89,7 @@ HMMA.1688.F32.BF16
 HMMA.1688.F32.TF32
 \end{lstlisting}
 
-其中16816和1688 Modifier表示Warp Level的指令所支持的矩阵的mnk规格，具体地，1688表示m为16，n为8，k为16，1688表示m为16，n为8，k为8。类型Modifier表示具体的类型，其中F16表示所有的矩阵（ABCD）都是Half类型，F32表示求和器（Accumulator）为float32类型，即C、D为float32类型，A、B矩阵为Half类型；F32.BF16表示C、D为float32类型，A、B为bfloat16类型；F32.TF32表示C、D为float32类型，A、B为tfloat32类型。具体的类型可以参考NVidia GPU指令集架构介绍的浮点数章节(\url{https://zhuanlan.zhihu.com/p/695667044})。具体的寄存器排布可以参考PTX手册中的相关章节(\url{https://docs.nvidia.com/cuda/parallel-thread-execution/#warp-level-matrix-multiply-accumulate-instructions})。
+其中16816和1688 Modifier表示Warp Level的指令所支持的矩阵的mnk规格，具体地，16816表示m为16，n为8，k为16，1688表示m为16，n为8，k为8。类型Modifier表示具体的类型，其中F16表示所有的矩阵（ABCD）都是Half类型，F32表示求和器（Accumulator）为float32类型，即C、D为float32类型，A、B矩阵为Half类型；F32.BF16表示C、D为float32类型，A、B为bfloat16类型；F32.TF32表示C、D为float32类型，A、B为tfloat32类型。具体的类型可以参考NVidia GPU指令集架构介绍的浮点数章节(\url{https://zhuanlan.zhihu.com/p/695667044})。具体的寄存器排布可以参考PTX手册中的相关章节(\url{https://docs.nvidia.com/cuda/parallel-thread-execution/#warp-level-matrix-multiply-accumulate-instructions})。
 
 \subsection{IMMA指令}
 
@@ -98,7 +98,7 @@ Integer Matrix Multiply Accumulate 整数类型的矩阵乘累加指令，常见
 \begin{lstlisting}
 IMMA.16816.S8.S8
 IMMA.16832.S8.S8.SAT
-IMMMA.8816.S8.S8.SAT
+IMMA.8816.S8.S8.SAT
 \end{lstlisting}
 
 和DMMA、HMMA类似，16816Modifier表示矩阵乘累加时的mnk的规格，整数类型的矩阵乘法指令Accumulator为int32类型。Modifier中的S8.S8表示A、B矩阵为Signed Int8，即有符号的8bit数据。SAT modifier表示饱和处理，即当accumulator加法溢出int32的表示范围时会使用int32的最大值（向上溢出时）和最小值表示（向下溢出时）。A、B除了有符号8bit数据类型，还可以是无符号的8bit数据、有符号的4bit数据、无符号的4bit数据以及1bit的数据，对应的mnk的规格也会有调整，具体的支持规格和数据排布要求可以参考PTX手册或cute中的MMA抽象(\url{https://github.com/NVIDIA/cutlass/blob/main/include/cute/arch/mma_sm80.hpp})。
@@ -143,24 +143,24 @@ for (ilane = 1; ilane < 32; ++ilane) {
 
 该指令在CUDA端可以通过\lstinline|__reduce_add_sync|类函数触发，也可以通过PTX中的\lstinline|redux.sync|指令触发，更多的类型和详细操作可以参考CUDA编程手册中的Warp Reduce函数章节(\url{https://docs.nvidia.com/cuda/cuda-c-programming-guide/#warp-reduce-functions})。
 
-从Volta开始lane可以分裂执行，其可以解决竞争情况下锁步造成的死锁问题，但是如果都以独立的形式运行，效率会受很打影响，所以NVidia GPU的指令集架构也提供了\lstinline|WARPSYNC|来实现warp内线程的同步，即该指令可以等待前面分裂执行的lane，使lane的执行对齐。提高后续指令的效率。
+从Volta开始lane可以分裂执行，其可以解决竞争情况下锁步造成的死锁问题，但是如果都以独立的形式运行，效率会受很大影响，所以NVidia GPU的指令集架构也提供了\lstinline|WARPSYNC|来实现warp内线程的同步，即该指令可以等待前面分裂执行的lane，使lane的执行对齐。提高后续指令的效率。
 
 \section{Uniform指令}
 
-在NVidia GPU介绍寄存器(\url{https://zhuanlan.zhihu.com/p/688616037})时，我们介绍了Uniform寄存器，该寄存器是Warp Level的，即所有的lane共享这些状态，不需要每一个lane独立存储。如图五，Uniform寄存器（如图示UR1，UR2等）被分配到不同的warp中，这些单元不同于lane级别的通用寄存器，Uniform寄存器表示warp的状态而非lane的状态，的warp内所有lane的公共状态，对于指令集而言，也提供了相应的操作指令来完成这些寄存器的操作，由于是warp level的，所以其表达的是控制和执行流而非核心计算，NVidia针对Uniform指令集只提供了整数和逻辑相关指令，并没有提供浮点等类型的指令，并且这部分指令用户无法通过CUDA/PTX编程来触发和控制。在AMD体系下该类型的寄存器称为Scalar寄存器，也明确表明了该类型的计算单元为Scalar计算单元，但在NVidia体系下对该部分没有暴露编程能力，而是保留给编译器。当代码执行流分析时，如果路径上有warp一致的公共计算和控制逻辑，编译器会自动决断该部分是否使用Uniform寄存器和Uniform指令控制。
+在NVidia GPU介绍寄存器(\url{https://zhuanlan.zhihu.com/p/688616037})时，我们介绍了Uniform寄存器，该寄存器是Warp Level的，即所有的lane共享这些状态，不需要每一个lane独立存储。如图五，Uniform寄存器（如图示UR1，UR2等）被分配到不同的warp中，这些单元不同于lane级别的通用寄存器，Uniform寄存器表示warp的状态而非lane的状态，是warp内所有lane的公共状态，对于指令集而言，也提供了相应的操作指令来完成这些寄存器的操作，由于是warp level的，所以其表达的是控制和执行流而非核心计算，NVidia针对Uniform指令集只提供了整数和逻辑相关指令，并没有提供浮点等类型的指令，并且这部分指令用户无法通过CUDA/PTX编程来触发和控制。在AMD体系下该类型的寄存器称为Scalar寄存器，也明确表明了该类型的计算单元为Scalar计算单元，但在NVidia体系下对该部分没有暴露编程能力，而是保留给编译器。当代码执行流分析时，如果路径上有warp一致的公共计算和控制逻辑，编译器会自动决断该部分是否使用Uniform寄存器和Uniform指令控制。
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.9\textwidth]{figures/reed-isa-07-warp-uniform/fig-05.jpg}
 \caption{Figure 5. Uniform Register and Uniform Instruction}
 \end{figure}
 
-使用Uniform寄存器和Uniform指令可以一定程度上减少通用寄存器的使用，继而提高kernel的Occupancy并发度，最终提高kernel的执行效率。经过编译器生成的常用地Uniform指令如下
+使用Uniform寄存器和Uniform指令可以一定程度上减少通用寄存器的使用，继而提高kernel的Occupancy并发度，最终提高kernel的执行效率。经过编译器生成的常用的Uniform指令如下
 
 \begin{lstlisting}
 UFLO UIADD3 UIMAD UISETP ULDC ULEA ULOP3 UMOV UPLOP3 UPOPC UPRMT USEL USGXT USHF
 \end{lstlisting}
 
-这些指令名称表现为整数指令、比特和逻辑指令之前添加来U前缀，具体的含义可以参考该系列文章之前介绍整数指令(\url{https://zhuanlan.zhihu.com/p/700921948})、比特和逻辑运算的部分(\url{https://zhuanlan.zhihu.com/p/712356884})。
+这些指令名称表现为整数指令、比特和逻辑指令之前添加U前缀，具体的含义可以参考该系列文章之前介绍整数指令(\url{https://zhuanlan.zhihu.com/p/700921948})、比特和逻辑运算的部分(\url{https://zhuanlan.zhihu.com/p/712356884})。
 
 \section{总结}
 

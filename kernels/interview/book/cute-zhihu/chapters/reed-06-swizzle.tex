@@ -25,7 +25,7 @@
 \caption{Figure 3. 两路冲突的共享内存访问模式}
 \end{figure}
 
-为了减少指令数，我们在进行kernel优化时会采用向量化的读写指令（也叫大字长读写），如以128bit的形式读写共享内存，此时线程需要访问的单位数据量为16byte，32个线程需要访问的数据量为16byte x 32 = 512byte。完整的512byte需要4个phase才能完成访问，第一phase，T0-T7无bank conflict的访问所有bank，第二phase，T8-T15无bank conflict的访问所有bank，第三phase，T16-T23无bank conflict的访问所有bank，第四phase，T24-T31无bank conflict的访问所有的bank。这种情况也可以看作是：shared memory基本单元为16byte，总bank数为8，冲突与否的分析不在是32线程，而变成4个phase中的不同线程。如果采用64bit的访问形式，则相应的基本单元可以看作是8byte，总bank数目为16，冲突与否的条件变成两个phase内的线程是否冲突。整体上shared memory空间可以看作二维存储空间，其中列方向表示bank情况，行方向表示自由定义的大小。值得注意但是冲突与否是通过内存访问事务级别来判定的，具体的可以参考NVidia开发者论坛的讨论\footnote{\url{https://forums.developer.nvidia.com/t/how-to-understand-the-bank-conflict-of-shared-mem/260900}}。
+为了减少指令数，我们在进行kernel优化时会采用向量化的读写指令（也叫大字长读写），如以128bit的形式读写共享内存，此时线程需要访问的单位数据量为16byte，32个线程需要访问的数据量为16byte x 32 = 512byte。完整的512byte需要4个phase才能完成访问，第一phase，T0-T7无bank conflict的访问所有bank，第二phase，T8-T15无bank conflict的访问所有bank，第三phase，T16-T23无bank conflict的访问所有bank，第四phase，T24-T31无bank conflict的访问所有的bank。这种情况也可以看作是：shared memory基本单元为16byte，总bank数为8，冲突与否的分析不再是32线程，而变成4个phase中的不同线程。如果采用64bit的访问形式，则相应的基本单元可以看作是8byte，总bank数目为16，冲突与否的条件变成两个phase内的线程是否冲突。整体上shared memory空间可以看作二维存储空间，其中列方向表示bank情况，行方向表示自由定义的大小。值得注意的是冲突与否是通过内存访问事务级别来判定的，具体的可以参考NVidia开发者论坛的讨论\footnote{\url{https://forums.developer.nvidia.com/t/how-to-understand-the-bank-conflict-of-shared-mem/260900}}。
 
 \section{共享内存读取（ldmatrix指令）}
 
@@ -34,7 +34,7 @@
 \caption{Figure 4. ldmatrix输入和输出数据}
 \end{figure}
 
-在GEMM流水线中，利用Tensor Core可以完成特定规格的矩阵计算乘计算（如 $D_{16\times8} = A_{16\times16} B_{16\times8}   C_{16\times8}$ ），其中矩阵数据A、B、C、D是通过warp内的所有线程提供一部分寄存器共同表示的。如图4中右侧的register file所示，其表示32个线程T0-T31每一个线程提供一个寄存器V0（4byte），共同表示形状为8x8 half类型的矩阵块多个8x8的块可以构成更大的16x16，16x8的块。前序文章已经介绍过，这部分数据可以利用ldmatrix指令通过warp level实现。针对一个8x8-half的寄存器表示的作为输出的矩阵块，ldmatrix其输入要求为8个shared memory地址，每个地址指向一个16byte共享内存中的数据，其中T0-Addr0指向的16byte数据经过ldmatrix会被分派到T0-T3的V0寄存器中。T1-Addr1指向的数据会被分派到T4-T7的V0寄存器中。通过ldmatrix指令便可以实现矩阵数据从共享内存到寄存器到加载，前面的介绍我们知道共享内存是有bank结构的，并且按照16byte的形式进行读取，所以T0-T7读取该数据时会被作为一个独立的phase，这就要求所有的16byte表示的8个数据必须分布在不同的bank，才能确保读取共享内存数据时不产生bank conflict。图5展示了一种ldmatrix时无bank conflict的布局形式。
+在GEMM流水线中，利用Tensor Core可以完成特定规格的矩阵计算乘计算（如 $D_{16\times8} = A_{16\times16} B_{16\times8} + C_{16\times8}$ ），其中矩阵数据A、B、C、D是通过warp内的所有线程提供一部分寄存器共同表示的。如图4中右侧的register file所示，其表示32个线程T0-T31每一个线程提供一个寄存器V0（4byte），共同表示形状为8x8 half类型的矩阵块，多个8x8的块可以构成更大的16x16，16x8的块。前序文章已经介绍过，这部分数据可以利用ldmatrix指令通过warp level实现。针对一个8x8-half的寄存器表示的作为输出的矩阵块，ldmatrix其输入要求为8个shared memory地址，每个地址指向一个16byte共享内存中的数据，其中T0-Addr0指向的16byte数据经过ldmatrix会被分派到T0-T3的V0寄存器中。T1-Addr1指向的数据会被分派到T4-T7的V0寄存器中。通过ldmatrix指令便可以实现矩阵数据从共享内存到寄存器到加载，前面的介绍我们知道共享内存是有bank结构的，并且按照16byte的形式进行读取，所以T0-T7读取该数据时会被作为一个独立的phase，这就要求所有的16byte表示的8个数据必须分布在不同的bank，才能确保读取共享内存数据时不产生bank conflict。图5展示了一种ldmatrix时无bank conflict的布局形式。
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.9\textwidth]{figures/reed-06-swizzle/fig-05.jpg}
@@ -54,7 +54,7 @@
 
 \section{异或运算的封闭性和双射性}
 
-计算机异或指令（符号表示为\textasciicircum{}）接收两个输入，对于1bit数据，如果输入的bit相同则输出0，如果bit不同则输出1。对于多bit数据，则针对各个位置进行1bit异或操作。如5\textasciicircum{}3 = b0101 \textasciicircum{} b0011 = b0110 = 6。异或计算满足交换律，结合率。同时对于集合 $S = \{ x, x \in[0, 2^n-1] \}$ 中的任意两个元素，异或所形成的输出满足封闭性。如图7，我们可以发现该结果满足双射性（bijective），以上这些性质可以通过集合理论来进行严谨的证明。
+计算机异或指令（符号表示为\textasciicircum{}）接收两个输入，对于1bit数据，如果输入的bit相同则输出0，如果bit不同则输出1。对于多bit数据，则针对各个位置进行1bit异或操作。如5\textasciicircum{}3 = b0101 \textasciicircum{} b0011 = b0110 = 6。异或计算满足交换律，结合律。同时对于集合 $S = \{ x, x \in[0, 2^n-1] \}$ 中的任意两个元素，异或所形成的输出满足封闭性。如图7，我们可以发现该结果满足双射性（bijective），以上这些性质可以通过集合理论来进行严谨的证明。
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.9\textwidth]{figures/reed-06-swizzle/fig-07.jpg}
@@ -72,9 +72,9 @@ cute中通过swizzle抽象来实现共享内存bank conflict的冲突解决。�
 \caption{Figure 8. Swizzle的计算逻辑}
 \end{figure}
 
-如图8所示，当B = 1, M= 1，S = 2时，M描述了一维坐标连续的两个元素构成一个二维空间的元素，S描述了形成二维空间后的元素的个数，B描述了形成二维空间的行数，如此我们便得到了图2-D(a)，其二维空间包含二行四列，基本单元包含两个元素。然后我们对二维空间中的列坐标和对应的行坐标进行异或得到新的列号(icol = irow \textasciicircum{} icol)，形成2-D(b)。如果一维坐标映射后超过出了 $2^B$ 的大小，则超出的部分的行号从0开始记，但是offset上要加上前面的所有的元素个数。
+如图8所示，当B = 1, M= 1，S = 2时，M描述了一维坐标连续的两个元素构成一个二维空间的元素，S描述了形成二维空间后的元素的个数，B描述了形成二维空间的行数，如此我们便得到了图2-D(a)，其二维空间包含二行四列，基本单元包含两个元素。然后我们对二维空间中的列坐标和对应的行坐标进行异或得到新的列号(icol = irow \textasciicircum{} icol)，形成2-D(b)。如果一维坐标映射后超过了 $2^B$ 的大小，则超出的部分的行号从0开始记，但是offset上要加上前面的所有的元素个数。
 
-在实际操作时，如我们有一块half类型，shape:(8, 32), stride: (32, 1)的共享内存，我们定义Swizzle$<$3, 3, 3$>$作用到该shared memory Layout上，形成 A = Composition(Swizzle$<$3, 3, 3$>$\{\}, Layout$<$Shape$<$8, 32$>$, Stirde$<$32, 1$>$$>$\{\}); 则Layout中有效的offset为0 - 256。Swizzle中M为3，所以8个元素形成一个新的最小的元素，即8x2byte = 16byte；Swizzle中S为3，所以2D空间中一行包含8个元素，则有8x16byte = 128byte，128byte为shared memory无conflict访问所有bank的最大宽度；Swizzle中B为3，则2D空间irow更新的间隔为8。如此则实现了将一个逻辑的空间向2D的shared memory空间的映射，其中列的宽度为128byte占满所有的bank，行列异或后得到新的列号，避免了在bank方向（亦即icol方向）的冲突。
+在实际操作时，如我们有一块half类型，shape:(8, 32), stride: (32, 1)的共享内存，我们定义Swizzle$<$3, 3, 3$>$作用到该shared memory Layout上，形成 A = Composition(Swizzle$<$3, 3, 3$>$\{\}, Layout$<$Shape$<$8, 32$>$, Stride$<$32, 1$>$$>$\{\}); 则Layout中有效的offset为0 - 256。Swizzle中M为3，所以8个元素形成一个新的最小的元素，即8x2byte = 16byte；Swizzle中S为3，所以2D空间中一行包含8个元素，则有8x16byte = 128byte，128byte为shared memory无conflict访问所有bank的最大宽度；Swizzle中B为3，则2D空间irow更新的间隔为8。如此则实现了将一个逻辑的空间向2D的shared memory空间的映射，其中列的宽度为128byte占满所有的bank，行列异或后得到新的列号，避免了在bank方向（亦即icol方向）的冲突。
 
 \section{Thread Block Swizzle}
 

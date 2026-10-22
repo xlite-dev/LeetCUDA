@@ -22,7 +22,7 @@ mbarrier 进一步把“事务完成”与“内存可见性”拆成两件相�
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.9\textwidth]{figures/reed-mem-01-proxy/fig-01.jpg}
-\caption{Figure 1. The contract and its three implemention}
+\caption{Figure 1. The contract and its three implementations}
 \end{figure}
 
 图中三根箭头指向的三张卡片，正是契约的三个实现者，卡片下方的红字标出各自管不到的部分——每一层都只兑现契约的一部分，任何一层都无法独力提供跨线程可见性。一致性协议维护单一地址的副本状态，但不规定不同地址写入的相对可见顺序，这一层顺序需要由 fence 建立；流水线可以约束本地发射顺序，却不能替代缓存一致性协议的传播职责。语言模型与硬件内存模型之间还隔着编译器翻译：目标指令序列提供的保证不得弱于语言契约，硬件模型越弱，编译器需要插入的真实同步指令越多。
@@ -38,7 +38,7 @@ mbarrier 进一步把“事务完成”与“内存可见性”拆成两件相�
 忽略本文不讨论的 \lstinline|memory_order_consume| 后，happens-before 可由两部分合成并取传递闭包：
 
 \begin{lstlisting}
-happens-before = (sequenced-before and synchronizes-with)
+happens-before = (sequenced-before or synchronizes-with) 的传递闭包
 \end{lstlisting}
 
 其中 sequenced-before 是单线程内的程序顺序，它指的是语义上的先后，而非指令发射的先后；synchronizes-with 则是跨线程的那条边，由 release 与 acquire 配对、mutex、thread join 等操作建立。

@@ -2,11 +2,11 @@
 
 \begin{center}\small 作者：reed（知乎 @reed-84-49，专栏「CUDA高性能编程」）\quad 原文：\url{https://zhuanlan.zhihu.com/p/692445145}\end{center}
 
-前文介绍了NVidia GPU指令集架构\footnote{\url{https://zhuanlan.zhihu.com/p/686198447}}中的寄存器部分\footnote{\url{https://zhuanlan.zhihu.com/p/688616037}}，对于一个GPU程序而言，这些寄存器数据最初来自于外部存储结构，如何将数据从外部存储结构搬运到寄存器，以及在搬运过程中经过哪些Cache对程序的效率有重要影响。本文将围绕数据搬运展开，重点介绍NVidia GPU的存储层次和Cache层级，以及这些存储层级之间的数据搬运指令和Cache控制指令。文章结构方面，首先介绍了NVidia GPU上的计算单元和存储存储，然后介绍了Cache和Shared Memory机构，再后介绍了Load和Cache相关的指令已经一些特殊的Cache和预取行为，最后对文章进行了总结。
+前文介绍了NVidia GPU指令集架构\footnote{\url{https://zhuanlan.zhihu.com/p/686198447}}中的寄存器部分\footnote{\url{https://zhuanlan.zhihu.com/p/688616037}}，对于一个GPU程序而言，这些寄存器数据最初来自于外部存储结构，如何将数据从外部存储结构搬运到寄存器，以及在搬运过程中经过哪些Cache对程序的效率有重要影响。本文将围绕数据搬运展开，重点介绍NVidia GPU的存储层次和Cache层级，以及这些存储层级之间的数据搬运指令和Cache控制指令。文章结构方面，首先介绍了NVidia GPU上的计算单元和存储层级，然后介绍了Cache和Shared Memory机构，再后介绍了Load和Cache相关的指令以及一些特殊的Cache和预取行为，最后对文章进行了总结。
 
 \section{NVidia GPU的计算单元和存储层级}
 
-GPU是一个高度并行的设备，其上装配了大量的计算单元，为了更好的组织这些计算单元，更充分的利用数据局部性（Spatial Locality）和支持数据规约和同步能力，GPU采用层次化的组织形式。整体而言，在Ampere及其之前的架构在计算单元组织方面可以分为三个层次：最小的计算机构为SubCore其负责线程束（warp）的执行，4个SubCore组成一个SM（Stream Multiprocessor），多个SM组织成GPU设备（device），根据设备设计规格的不同SM数目是其最直观的区别，如数据中心级A100和消费级GeForce RTX3080、GeForce RTX3090卡都是Ampere架构，在计算单元层面的最大区别就是所装配的SM数目。就计算单元具体而言（如图1），SubCore中包含有核心计算单元Tensor Core用以完成矩阵计算、CUDA Core用以完成向量化的浮点数和整数的乘加运算、SFU（special function unit）特殊函数单元用以完成sin、exp2、sqrt、rcp等超越函数，同时SubCore内有程序状态核心存储机构寄存器文件（Register File），还有具有广播语义的常量内存（图中标记为constant cache），SubCore内还有用于外部数据加载和存储用的Load Store Unit。SubCore中还有warp scheduler、branch unit、FP64等单元（他们对于理解指令集架构没有特别明显的作用，我们就没有单独标出）。对于存储层次而言，SubCore内有寄存器和Constant Cache，SM内有4个SubCore共享的L1 Cache和 Shared Memory。所有的SM通过交叉开关（CrossBar）共享L2 Cache。分Slice的L2 Cache通过Memory Controller和外部存储（独立的Die）HBM（high bandwidth memory）或则GDDR（Graphic DDR SDRAM）相连。数据中心级卡A100和消费级GeForce RTX 3080的另一个重要不同则是内存介质技术（HBM vs GDDR）。
+GPU是一个高度并行的设备，其上装配了大量的计算单元，为了更好的组织这些计算单元，更充分的利用数据局部性（Spatial Locality）和支持数据规约和同步能力，GPU采用层次化的组织形式。整体而言，在Ampere及其之前的架构在计算单元组织方面可以分为三个层次：最小的计算机构为SubCore其负责线程束（warp）的执行，4个SubCore组成一个SM（Stream Multiprocessor），多个SM组织成GPU设备（device），根据设备设计规格的不同SM数目是其最直观的区别，如数据中心级A100和消费级GeForce RTX3080、GeForce RTX3090卡都是Ampere架构，在计算单元层面的最大区别就是所装配的SM数目。就计算单元具体而言（如图1），SubCore中包含有核心计算单元Tensor Core用以完成矩阵计算、CUDA Core用以完成向量化的浮点数和整数的乘加运算、SFU（special function unit）特殊函数单元用以完成sin、exp2、sqrt、rcp等超越函数，同时SubCore内有程序状态核心存储机构寄存器文件（Register File），还有具有广播语义的常量内存（图中标记为constant cache），SubCore内还有用于外部数据加载和存储用的Load Store Unit。SubCore中还有warp scheduler、branch unit、FP64等单元（他们对于理解指令集架构没有特别明显的作用，我们就没有单独标出）。对于存储层次而言，SubCore内有寄存器和Constant Cache，SM内有4个SubCore共享的L1 Cache和 Shared Memory。所有的SM通过交叉开关（CrossBar）共享L2 Cache。分Slice的L2 Cache通过Memory Controller和外部存储（独立的Die）HBM（high bandwidth memory）或者GDDR（Graphic DDR SDRAM）相连。数据中心级卡A100和消费级GeForce RTX 3080的另一个重要不同则是内存介质技术（HBM vs GDDR）。
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.9\textwidth]{figures/reed-isa-03-load-cache/fig-01.jpg}
@@ -70,7 +70,7 @@ LDGSTS, LDGDEPBAR, DEPBAR.LE SB0, 0x1
 LDS.类型.向量化，LDSM.块.转置
 \end{lstlisting}
 
-LDS的modifer可以设置数据位宽信息，和LDG类似高位宽的指令可以减少warp指令的调度数减少MIO queue中的事务数目，防止queue满引起的阻塞。LDSM为warp级协作指令，完成共享内存到寄存器的数据加载，进而将这些寄存器feed给Tensor Core指令完成矩阵计算，更细节的介绍可以参考cute之Copy抽象\footnote{\url{https://zhuanlan.zhihu.com/p/666232173}}和ldmatrix指令优势介绍\footnote{\url{https://www.zhihu.com/question/600927104/answer/3029266372}}。
+LDS的modifier可以设置数据位宽信息，和LDG类似高位宽的指令可以减少warp指令的调度数减少MIO queue中的事务数目，防止queue满引起的阻塞。LDSM为warp级协作指令，完成共享内存到寄存器的数据加载，进而将这些寄存器feed给Tensor Core指令完成矩阵计算，更细节的介绍可以参考cute之Copy抽象\footnote{\url{https://zhuanlan.zhihu.com/p/666232173}}和ldmatrix指令优势介绍\footnote{\url{https://www.zhihu.com/question/600927104/answer/3029266372}}。
 
 局部数组和寄存器溢出：
 
@@ -82,7 +82,7 @@ LDL
 
 \section{广播语义的常量Cache}
 
-除了Load全局内存和共享内存，我们提到了SubCore中有constant cache机构，虽然它的名字是cache，但其本质是有名对象（通过地址标识）和寄存器更类似，它提供了一种广播语义，即warp内的所有线程都访问同一个数据时，它的访问速度和寄存器一样快，所以其可以被直接编码在指令操作数中。同时我们知道kernel的参数需要广播给所有的执行线程，所以其也是使用constant cache实现，可以实现高效的广播语义。另外我们可以实现device端的可编程常量（\lstinline|__constant__ __device_ int a;|）。当warp内的线程访问同一个constant位置时，其是确定的latency的（和访问寄存器一样），但是当不同的线程访问的位置不同时，则是串行效果，是一个变Latency指令，所以SASS层级提供了LDC指令，用以实现不同线程访问不同的constant位置。
+除了Load全局内存和共享内存，我们提到了SubCore中有constant cache机构，虽然它的名字是cache，但其本质是有名对象（通过地址标识）和寄存器更类似，它提供了一种广播语义，即warp内的所有线程都访问同一个数据时，它的访问速度和寄存器一样快，所以其可以被直接编码在指令操作数中。同时我们知道kernel的参数需要广播给所有的执行线程，所以其也是使用constant cache实现，可以实现高效的广播语义。另外我们可以实现device端的可编程常量（\lstinline|__constant__ __device__ int a;|）。当warp内的线程访问同一个constant位置时，其是确定的latency的（和访问寄存器一样），但是当不同的线程访问的位置不同时，则是串行效果，是一个变Latency指令，所以SASS层级提供了LDC指令，用以实现不同线程访问不同的constant位置。
 
 \section{寄存器reuse和Prefetch}
 

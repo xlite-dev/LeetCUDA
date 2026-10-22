@@ -2,13 +2,13 @@
 
 \begin{center}\small 作者：reed（知乎 @reed-84-49，专栏「CUDA高性能编程」）\quad 原文：\url{https://zhuanlan.zhihu.com/p/695667044}\end{center}
 
-计算机算数\footnote{\url{https://ieeexplore.ieee.org/xpl/conhome/1000125/all-proceedings}}是计算机工程的一个重要分支，现代计算类的软件多是构造在浮点运算之上的。了解浮点数和浮点运算对于我们理计算类任务，提升计算精度和效率有很大的帮助。NVidia GPU上Tensor Core和CUDA Core都提供了浮点计算能力，本文只专注CUDA Core部分（后续有专门章节介绍Tensor Core指令集），重点介绍了计算机上的浮点数相关知识和NVidia GPU上的浮点数相关指令。文章结构方面，首先介绍了浮点数的表示：浮点数基础、圆整、特殊值、denormal信息；然后介绍了NVidia GPU上的浮点数相关指令：加法和乘法、乘加运算、随路取负和绝对值、低精度指令、超越函数、除法。
+计算机算数\footnote{\url{https://ieeexplore.ieee.org/xpl/conhome/1000125/all-proceedings}}是计算机工程的一个重要分支，现代计算类的软件多是构造在浮点运算之上的。了解浮点数和浮点运算对于我们理解计算类任务，提升计算精度和效率有很大的帮助。NVidia GPU上Tensor Core和CUDA Core都提供了浮点计算能力，本文只专注CUDA Core部分（后续有专门章节介绍Tensor Core指令集），重点介绍了计算机上的浮点数相关知识和NVidia GPU上的浮点数相关指令。文章结构方面，首先介绍了浮点数的表示：浮点数基础、圆整、特殊值、denormal信息；然后介绍了NVidia GPU上的浮点数相关指令：加法和乘法、乘加运算、随路取负和绝对值、低精度指令、超越函数、除法。
 
 \section{浮点数的表示}
 
 \subsection{浮点数基础}
 
-计算机中数据的存储采用的是二进制形式，这决定了在有限位数的表示情况下，其只能表示有限的、离散的数据。对于整数而言，这种离散是自然的，如图1中的整数（Integer），我们可以用二进制的 b00000101表示十进制的数字5。对于计算机中表示实数（Real Number）而言，我们也可以使用图1中定点数的表示形式，即固定小数点位置（Fixed Point），这样小数点（图示箭头）左侧的部分表示整数部分，右侧部分表示小数部分。图中的定点数表示 ${1\over 2}   {1\over8} = 0.625$, 单这种定点表示等价于将数轴均匀的划分，精度确定但是数据范围有限。计算机科学家们在此基础之上提出了浮点数的表示方法，通过浮动小数点（floating point），提高数据表示范围。
+计算机中数据的存储采用的是二进制形式，这决定了在有限位数的表示情况下，其只能表示有限的、离散的数据。对于整数而言，这种离散是自然的，如图1中的整数（Integer），我们可以用二进制的 b00000101表示十进制的数字5。对于计算机中表示实数（Real Number）而言，我们也可以使用图1中定点数的表示形式，即固定小数点位置（Fixed Point），这样小数点（图示箭头）左侧的部分表示整数部分，右侧部分表示小数部分。图中的定点数表示 ${1\over 2} + {1\over8} = 0.625$, 但这种定点表示等价于将数轴均匀的划分，精度确定但是数据范围有限。计算机科学家们在此基础之上提出了浮点数的表示方法，通过浮动小数点（floating point），提高数据表示范围。
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.9\textwidth]{figures/reed-isa-04-float/fig-01.jpg}
@@ -29,19 +29,19 @@
 \caption{Figure 3. various floating point with various sign exponents significands bits}
 \end{figure}
 
-通过上面的描述我们知道浮点数中通过E指数来调整小数点的位置，通过尾数来表示数据的有效数值。E的容量越大则表示的数据范围约到，尾数的容量越大则表示有效位数越大，数据精度越高。针对不同场景所需求的的数据范围和精度的平衡，Ampere中支持五种类型的浮点数：float32、half（也叫float16）、bfloat16、tfloat32和double精度，hopper中添加了float8类型，根据指数和尾数的多少分为E5M2和E3M4子类型，blackwell架构中添加了fp4类型，具体的各类型的指数和尾数的位数如图3中所示。
+通过上面的描述我们知道浮点数中通过E指数来调整小数点的位置，通过尾数来表示数据的有效数值。E的容量越大则表示的数据范围越大，尾数的容量越大则表示有效位数越大，数据精度越高。针对不同场景所需求的的数据范围和精度的平衡，Ampere中支持五种类型的浮点数：float32、half（也叫float16）、bfloat16、tfloat32和double精度，hopper中添加了float8类型，根据指数和尾数的多少分为E5M2和E4M3子类型，blackwell架构中添加了fp4类型，具体的各类型的指数和尾数的位数如图3中所示。
 
 \subsection{浮点数的圆整}
 
-由于浮点数是实数的近似表示，IEEE-745标准在定义浮点数上的的四则运算（加减乘除）时为了获得更高的精度则定义了圆整方案，其中有：向最近圆整，向零圆整，向正无穷圆整（up）和向负无穷圆整（down）。一般情况下，四则运算采用最近圆整其能满足标准约束的ULP误差。将浮点数向整数转换时，应用向正无穷圆整则实际为ceiling函数，向负无穷圆整则为floor函数。在一些高精度除法等计算时，需要对数据做特殊的修正，此时也会使用到特定的圆整方式。
+由于浮点数是实数的近似表示，IEEE-754标准在定义浮点数上的四则运算（加减乘除）时为了获得更高的精度则定义了圆整方案，其中有：向最近圆整，向零圆整，向正无穷圆整（up）和向负无穷圆整（down）。一般情况下，四则运算采用最近圆整其能满足标准约束的ULP误差。将浮点数向整数转换时，应用向正无穷圆整则实际为ceiling函数，向负无穷圆整则为floor函数。在一些高精度除法等计算时，需要对数据做特殊的修正，此时也会使用到特定的圆整方式。
 
 \subsection{浮点数特殊值}
 
-在介绍浮点数的指数表示是，其中全0和全1是被保留的。其中指数全1（尾数非全0）的浮点数被解释为NaN（Not A Number），它是浮点数中一类特殊的数值。如零除以零在数学上是无意义的，但是我们必须能用浮点数表示这种无意义，这时候这个计算结果即可以表示为NaN（有些编程语言则实现为异常，对于GPU而言，作为异步设备计算不产生异常），类似地对负数开平方在实数解空间下也是无意义的，其结果也表示为NaN，还有其他类似的指数等运算也可以产生NaN结果。同时NaN有一定的传递性，如过某个计算中间产生了NaN很容易使得后续的结果也为NaN，如NaN + 1.0 = NaN，NaN x 0.0 = NaN。这也是编程中对浮点数表示不熟悉而容易犯的错误，认为一个未初始化的数据乘以0就一定可以可以得到0。其实不然，因为这个未初始化的数据如果是NaN其结果就不是0了。NaN具体的还可以分为Quiet和Signaling，在此我们不再赘述，有兴趣的可以参考IEEE-754标准的介绍。
+在介绍浮点数的指数表示时，其中全0和全1是被保留的。其中指数全1（尾数非全0）的浮点数被解释为NaN（Not A Number），它是浮点数中一类特殊的数值。如零除以零在数学上是无意义的，但是我们必须能用浮点数表示这种无意义，这时候这个计算结果即可以表示为NaN（有些编程语言则实现为异常，对于GPU而言，作为异步设备计算不产生异常），类似地对负数开平方在实数解空间下也是无意义的，其结果也表示为NaN，还有其他类似的指数等运算也可以产生NaN结果。同时NaN有一定的传递性，如果某个计算中间产生了NaN很容易使得后续的结果也为NaN，如NaN + 1.0 = NaN，NaN x 0.0 = NaN。这也是编程中对浮点数表示不熟悉而容易犯的错误，认为一个未初始化的数据乘以0就一定可以可以得到0。其实不然，因为这个未初始化的数据如果是NaN其结果就不是0了。NaN具体的还可以分为Quiet和Signaling，在此我们不再赘述，有兴趣的可以参考IEEE-754标准的介绍。
 
-当指数全1，尾数为全零时，根据符号位的不正负则定义了正无穷（+infinity）和负无穷（-infinity）。正负无穷也是一种相对特殊的表示，但是定义在这上面的数学计算则满足数学规则，如exp(-infinity) = 0。
+当指数全1，尾数为全零时，根据符号位的不同则定义了正无穷（+infinity）和负无穷（-infinity）。正负无穷也是一种相对特殊的表示，但是定义在这上面的数学计算则满足数学规则，如exp(-infinity) = 0。
 
-恰当的使用NaN 和 +Infinity，-Infintiy可以简化和unify一些数学计算而避免一些分支结构。
+恰当的使用NaN 和 +Infinity，-Infinity可以简化和unify一些数学计算而避免一些分支结构。
 
 \subsection{浮点数的denormal}
 
@@ -88,17 +88,17 @@ FMUL.FTZ R3, R4, R5 ;
 
 \subsection{乘加FMA（Fused Multiply Add）}
 
-对于乘加运算而言，可以采用两条指令实现，如上面提到的FMUL，然后对乘法的结果调用FADD进行累加，IEEE-754-2008标准提出了FMA的计算标准（Fused Multiply Add）,即可以一条指令完成d = a x b + c的运算，同时中间计算结果的精度是无限精度的，只在最后环节进行圆整操作，其可以提供相较于FMUL + FADD组合指令更高的精度。同时FMA指令的latency和FMUL或FADD是一样的，所以单条FMA指令的是FADD和或FADD吞吐的两倍，具体地，单精度浮点指令为FFMA（Float Fused Multiply Add）,双精度浮点指令为DFMA（Double Fused Multiply Add）它们各自的不同圆整Modifier如下，
+对于乘加运算而言，可以采用两条指令实现，如上面提到的FMUL，然后对乘法的结果调用FADD进行累加，IEEE-754-2008标准提出了FMA的计算标准（Fused Multiply Add）,即可以一条指令完成d = a x b + c的运算，同时中间计算结果的精度是无限精度的，只在最后环节进行圆整操作，其可以提供相较于FMUL + FADD组合指令更高的精度。同时FMA指令的latency和FMUL或FADD是一样的，所以单条FMA指令的吞吐是FADD或FMUL吞吐的两倍，具体地，单精度浮点指令为FFMA（Float Fused Multiply Add）,双精度浮点指令为DFMA（Double Fused Multiply Add）它们各自的不同圆整Modifier如下，
 
 \begin{lstlisting}
 FFMA R0, R1, R2, R3;  // R0 = R1 * R2 + R3 with round to NEAREST
 FFMA.RZ R0, R1, R2, R3;  // R0 = R1 * R2 + R3 with round to ZERO
-FFMA RP R0, R1, R2, R3;  // R0 = R1 * R2 + R3 with round to POSITIVE
+FFMA.RP R0, R1, R2, R3;  // R0 = R1 * R2 + R3 with round to POSITIVE
 FFMA.RM R0, R1, R2, R3;  // R0 = R1 * R2 + R3 with round to MINUS
 
 DFMA R0, R2, R4, R6;  // R0 = R2 * R4 + R6 with round to NEAREST
 DFMA.RZ R0, R2, R4, R6;  // R0 = R2 * R4 + R6 with round to ZERO
-DFMA RP R0, R2, R4, R6;  // R0 = R2 * R4 + R6 with round to POSITIVE
+DFMA.RP R0, R2, R4, R6;  // R0 = R2 * R4 + R6 with round to POSITIVE
 DFMA.RM R0, R2, R4, R6;  // R0 = R2 * R4 + R6 with round to MINUS
 \end{lstlisting}
 
@@ -113,7 +113,7 @@ FADD.RP R0 R1 -R2;  // R0 = R1 - R2 with round to POSITIVE(+Infinity)
 FADD.RM R0 R1 -R2;  // R0 = R1 - R2 with round to MINUS(-Infinity)
 \end{lstlisting}
 
-如此在FADD指令上附加对操作数取负能力，单个指令即可以实现浮点数的加法和减法功能，并且圆整能力保持不变。除了对第二个操作数取负号，NVidia的浮点运算指令集基本上可以实现对任意操作数取负。形如 $d = \pm a \pm \pm b$ ， $d = \pm a \times \pm b$ ， $d = \pm a \times \pm b   \pm c$ 的形式的操作都可以通过FADD、FMUL、FFMA指令随路对操作数取负而单指令完成。甚至NVidia指令集中没直接提供取负的指令，而是通过 d = -d - 0来unify的实现；除了对操作数随路取负，这些浮点指令也可以随路取绝对值操作。如\lstinline|d = abs(a) * abs(b) - abs(c);|可以通过单条FMA指令实现，如下
+如此在FADD指令上附加对操作数取负能力，单个指令即可以实现浮点数的加法和减法功能，并且圆整能力保持不变。除了对第二个操作数取负号，NVidia的浮点运算指令集基本上可以实现对任意操作数取负。形如 $d = \pm a \pm \pm b$ ， $d = \pm a \times \pm b$ ， $d = \pm a \times \pm b   \pm c$ 的形式的操作都可以通过FADD、FMUL、FFMA指令随路对操作数取负而单指令完成。甚至NVidia指令集中没有直接提供取负的指令，而是通过 d = 0 - d 来unify的实现；除了对操作数随路取负，这些浮点指令也可以随路取绝对值操作。如\lstinline|d = abs(a) * abs(b) - abs(c);|可以通过单条FMA指令实现，如下
 
 \begin{lstlisting}
 FFMA R7, |R0|, |R7|, -|R6|;
@@ -121,7 +121,7 @@ FFMA R7, |R0|, |R7|, -|R6|;
 
 \subsection{低精度浮点指令}
 
-half、bfloat16是NVidia提供的16bit的浮点数类型，连续的两个16bit数据可以合并成一个32bit的数据（寄存器宽度），该连续的两个half数形成packed类型half2 和 bfloat162类型。因为寄存器宽度是32bit的，所以NVidia的计算指令是针对packed类型而提供的，即便是操作单个half数，也会使用针对packed类型的指令，只是会在操作数上做重复和选择。具体的针对packed half即half2，提供了加法、乘法和乘加指令（HADD2，HMUL2，HFMA2.MMA）,这些指令就不再提供不同的round mode（只有round nearest），而是提供了如饱（SAT，最终结果截断到[0.0, 1.0]）和整流（RELU）的Modifier，同时该指令也提供了随路abs和取负能力。对于packed bfloat16 即bfloat162，没有提供ADD和MUL指令，只提供了\lstinline|HFMA2.BF16_V2|指令，加法乘法等都是使用该FMA实现的，同时该指令支持必要的随路取负和abs能力，modifier方面不如half2类型支持的丰富，只提供了RELU能力。
+half、bfloat16是NVidia提供的16bit的浮点数类型，连续的两个16bit数据可以合并成一个32bit的数据（寄存器宽度），该连续的两个half数形成packed类型half2 和 bfloat162类型。因为寄存器宽度是32bit的，所以NVidia的计算指令是针对packed类型而提供的，即便是操作单个half数，也会使用针对packed类型的指令，只是会在操作数上做重复和选择。具体的针对packed half即half2，提供了加法、乘法和乘加指令（HADD2，HMUL2，HFMA2.MMA）,这些指令就不再提供不同的round mode（只有round nearest），而是提供了饱和（SAT，最终结果截断到[0.0, 1.0]）和整流（RELU）的Modifier，同时该指令也提供了随路abs和取负能力。对于packed bfloat16 即bfloat162，没有提供ADD和MUL指令，只提供了\lstinline|HFMA2.BF16_V2|指令，加法乘法等都是使用该FMA实现的，同时该指令支持必要的随路取负和abs能力，modifier方面不如half2类型支持的丰富，只提供了RELU能力。
 
 \begin{lstlisting}
 HADD2 R7, R0, R7;
@@ -147,7 +147,7 @@ HFMA2.BF16_V2 R7, R7, -1, -1, R0;
 
 \subsection{类型转换}
 
-对于类型转换方面各个类型相互转换的指令如下表格，有些类型直接没有单指令转换的能力，需要借助中间类型类实现，在表格中表现为Multi-Instr(多条指令)
+对于类型转换方面各个类型相互转换的指令如下表格，有些类型直接没有单指令转换的能力，需要借助中间类型来实现，在表格中表现为Multi-Instr(多条指令)
 
 \begin{table}[htbp]
 \centering

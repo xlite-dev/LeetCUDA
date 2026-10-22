@@ -77,12 +77,12 @@ Figure 6. shape = (3, 4) stride = (4, 1)的逻辑空间和物理空间的映射�
 二维矩阵的描述和一维类似，shape表示其逻辑形状，stride表示具体的某个元素和物理空间的映射时的间隔量。逻辑空间到物理空间的映射通过点积来完成。从二维空间我们可以很容易的扩展到高维空间，如深度学习常用的（N，H，W， C），其映射关系依然利用点积公式：
 
 \begin{equation*}
-index_{physical} = coordinate * stride = \sum_{i}{coordinate_{i} . stride_{i} }
+index_{physical} = coordinate * stride = \sum_{i}{coordinate_{i} \cdot stride_{i} }
 \end{equation*}
 
-\section{有层次的Layout（Heriarchy Layout）}
+\section{有层次的Layout（Hierarchy Layout）}
 
-以上介绍的一维向量和二维矩阵描述描述被深度学习框架所广泛采用，在torch中我们可以访问tensor的shape属性和stride方法（注意方法调用需要使用带括号形式，即stride()）来获取对应的信息。我们不难发现，上面的shape和stride描述其限制了Tensor的每一个轴只能有一个stride值，也就是说，整个tensor在某一个维度上的连续性关系是不能变的，更形象地描述则为：Tensor不可以分块。我们将这样轴的连续性不可变更，体现为Tensor不可以分块的描述称为单调Tensor描述。而当我们处理复杂的Tensor计算问题时，尤其是如NVidia硬件引入的指令计算时，这种表示是不充分的。由此则引入了有层次的Tensor描述，即Heriarchy Layout。简单地理解，有层次的Tensor（或者Layout）就是以原有的单调Tensor所描述的小块作为基础单元，将其组成Tensor。这样原有的小块是Tensor，小块作为单元的外部组织也是Tensor，实现了Tensor套Tensor，这就是所谓的有层级的Tensor了。而其坐标到实际物理位置的映射关系则就是其Layout，Tensor有了层次，Layout也就有层次了。
+以上介绍的一维向量和二维矩阵描述描述被深度学习框架所广泛采用，在torch中我们可以访问tensor的shape属性和stride方法（注意方法调用需要使用带括号形式，即stride()）来获取对应的信息。我们不难发现，上面的shape和stride描述其限制了Tensor的每一个轴只能有一个stride值，也就是说，整个tensor在某一个维度上的连续性关系是不能变的，更形象地描述则为：Tensor不可以分块。我们将这样轴的连续性不可变更，体现为Tensor不可以分块的描述称为单调Tensor描述。而当我们处理复杂的Tensor计算问题时，尤其是如NVidia硬件引入的指令计算时，这种表示是不充分的。由此则引入了有层次的Tensor描述，即Hierarchy Layout。简单地理解，有层次的Tensor（或者Layout）就是以原有的单调Tensor所描述的小块作为基础单元，将其组成Tensor。这样原有的小块是Tensor，小块作为单元的外部组织也是Tensor，实现了Tensor套Tensor，这就是所谓的有层级的Tensor了。而其坐标到实际物理位置的映射关系则就是其Layout，Tensor有了层次，Layout也就有层次了。
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.9\textwidth]{figures/reed-01-layout/fig-07.jpg}
@@ -90,7 +90,7 @@ index_{physical} = coordinate * stride = \sum_{i}{coordinate_{i} . stride_{i} }
 
 Figure 7. 有层次的逻辑空间和其offset计算（引用自ASPLOS23 Graphene IR）
 
-如图7-a/b，它们表示了传统的列优先和行优先的Layout，可以认为它们是一层的Tensor；而图7-c/d用之前的shape和stride描述没有办法表示如此复杂的情况（存在不单调的轴）。此时，我们可以将图7-c图看作两个层级的Tensor，如图8所示，其中内层Tensor为红框所标注的部分，外层Tensor为以红框作为元素的外层Tensor，内层Tensor的shape和stride描述可以表示为shape: (4, 2), stride: (2, 1)，外层Tensor的Layout可以表示为 shape: (1, 4), stride: (4, 1). 两层Tensor合并后，表示整体表示为 4行，8列，其中列方向为两个层次，即 8=2x4列，表示为(2, 4)列，其中2表示内层的Tensor维度为2，4表示列方向上外层Tensor有4个元素。即层级的shape 表示为 （4，(2, 4)）第一个4表示有4行，第二个4表示外层Tensor重复4列，2表示内层Tensor为2列。我们清楚了shape中的各个元素的含义后，stride的形式要与性状保持一致，即stride 要满足 (x, (y, z))的形式，根据x位置对应的含义，表示内层（红框内矩阵）矩阵的行方向的间隔，则有 x = 2；y为内层红框内列方向的间隔，有y = 1；z 则表示红框和红框之间横向的间隔，可以用第二个红框的左上角元素8和第一个红框对应的左上角元素0相减得到，即 z = 8 - 0 = 8, 这样我们得到有层次的Tensor的shape和stride描述：shape: (4, (2, 4)), stride: (2, (1, 8))。
+如图7-a/b，它们表示了传统的列优先和行优先的Layout，可以认为它们是一层的Tensor；而图7-c/d用之前的shape和stride描述没有办法表示如此复杂的情况（存在不单调的轴）。此时，我们可以将图7-c图看作两个层级的Tensor，如图8所示，其中内层Tensor为红框所标注的部分，外层Tensor为以红框作为元素的外层Tensor，内层Tensor的shape和stride描述可以表示为shape: (4, 2), stride: (2, 1)，外层Tensor的Layout（以元素为单位）可以表示为 shape: (1, 4), stride: (0, 8). 两层Tensor合并后，表示整体表示为 4行，8列，其中列方向为两个层次，即 8=2x4列，表示为(2, 4)列，其中2表示内层的Tensor维度为2，4表示列方向上外层Tensor有4个元素。即层级的shape 表示为 （4，(2, 4)）第一个4表示有4行，第二个4表示外层Tensor重复4列，2表示内层Tensor为2列。我们清楚了shape中的各个元素的含义后，stride的形式要与性状保持一致，即stride 要满足 (x, (y, z))的形式，根据x位置对应的含义，表示内层（红框内矩阵）矩阵的行方向的间隔，则有 x = 2；y为内层红框内列方向的间隔，有y = 1；z 则表示红框和红框之间横向的间隔，可以用第二个红框的左上角元素8和第一个红框对应的左上角元素0相减得到，即 z = 8 - 0 = 8, 这样我们得到有层次的Tensor的shape和stride描述：shape: (4, (2, 4)), stride: (2, (1, 8))。
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.9\textwidth]{figures/reed-01-layout/fig-08.jpg}
@@ -106,7 +106,7 @@ Figure 8. 图7-c Tensor的层次分解
 
 Figure 9. 图7-d Tensor的层次分解
 
-shape和stride给出了Tensor的逻辑空间描述和映射到物理空间时的间隔描述，当根据逻辑空间的位置获得物理空间位置时，依然和传统的Tensor计算规则一样，采用coordinate和stride点积即可，只不过坐标也采用heriarchy表达即可。
+shape和stride给出了Tensor的逻辑空间描述和映射到物理空间时的间隔描述，当根据逻辑空间的位置获得物理空间位置时，依然和传统的Tensor计算规则一样，采用coordinate和stride点积即可，只不过坐标也采用hierarchy表达即可。
 
 通过以上两个有层次Tensor的shape和stride的分解和组合，我们可以完成有层次的Tensor的组合，其突破了传统的Tensor轴只能有一个stride的限制，可以表达更丰富的Tensor（有层次的Tensor）。
 
@@ -143,10 +143,4 @@ offset = Layout^{shape}_{stride}(coordinate)
 \begin{itemize}
   \item \url{https://dl.acm.org/doi/abs/10.1145/3582016.3582018}
   \item \url{https://github.com/NVIDIA/cutlass/tree/main/media/docs/cute}
-\end{itemize}
-
-\section{参考}
-
-\begin{itemize}
-  \item \url{https://dl.acm.org/doi/abs/10.1145/3582016.3582018}
 \end{itemize}
