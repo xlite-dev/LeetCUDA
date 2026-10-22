@@ -316,7 +316,7 @@ $D{=}128$ 的推荐档位是 $\mathrm{Sk}{=}2$（最优平衡点：80 KB，1 blo
 尾 tile）。
 
 本机实测 optin 上限 $101376\,\mathrm{B} = 99.0$ KB（17.10~节测试首行输出），
-注释「$\sim$100KB」为近似正确的口径；$\mathrm{Sk}{=}4, D{=}128$ 的 112 KB
+注释\textbf{$\sim$100KB}为近似正确的口径；$\mathrm{Sk}{=}4, D{=}128$ 的 112 KB
 超限 $\to$ 运行时 SMEM SKIP 的兜底逻辑在辅助工具中同样可观察。
 
 \section{设计与实现}
@@ -787,13 +787,13 @@ Sk $=$ 2 较 Sk $=$ 1 提升约 $+20\%$（156.9 $\to$ 188.6），两级 K 流水
 \begin{kaogu}[F2/F3 核校通过]{mbarrier 257 协议注释 vs 实际代码（L808 起）}
   逐条核验：（1）arrive\_count $=$ 257 $=$ 256 $+$ 1，与 L968--975 的
   \texttt{init\allowbreak{}(\&full/\allowbreak{}empty\_\allowbreak{}\{Q,\allowbreak{}K,\allowbreak{}V\},\allowbreak{} k\allowbreak{}Consumer\allowbreak{}Threads + 1)} 一致（256
-  consumer 每线程 arrive $+$ producer 1 次）；（2）「Q：full\_Q——Producer
-  发 arrive\_tx，Consumer 在主循环前 wait 一次」与 P0（L987--998，TMA $+$
+  consumer 每线程 arrive $+$ producer 1 次）；（2）\textbf{Q：full\_Q——Producer
+  发 arrive\_tx，Consumer 在主循环前 wait 一次}与 P0（L987--998，TMA $+$
   arrive\_tx 一次）及 L1096 的单次 \texttt{full\_Q.wait} 一致，无 empty\_Q
-  $\to$ Q 一次装载语义一致；（3）「K：full\_K[kStagesK]/empty\_K[kStagesK]
-  多 stage pipeline」与声明（L951--952）、P1 预取 Sk$-$1、P2 稳态预取一致；
-  （4）「V：单 buffer 串行（QK 前发 TMA $\to$ QK 重叠 $\to$ PV 前等 $\to$
-  PV 后释放）」与 P2 的 V 先发（L1035--1048）、3d 前才 wait（L1264）、PV 后
+  $\to$ Q 一次装载语义一致；（3）\textbf{K：full\_K[kStagesK]/empty\_K[kStagesK]
+  多 stage pipeline}与声明（L951--952）、P1 预取 Sk$-$1、P2 稳态预取一致；
+  （4）\textbf{V：单 buffer 串行（QK 前发 TMA $\to$ QK 重叠 $\to$ PV 前等 $\to$
+  PV 后释放）}与 P2 的 V 先发（L1035--1048）、3d 前才 wait（L1264）、PV 后
   释放（L1311）逐点一致；（5）D$=$128 多次 TMA 共享 barrier 的计数描述
   （L980--983）与 P0/P1/P2 的 \texttt{kTmaChunks} 次装载 $+$ 单次
   expect\_tx 一致。协议注释整体与代码一致。
@@ -807,19 +807,19 @@ Sk $=$ 2 较 Sk $=$ 1 提升约 $+20\%$（156.9 $\to$ 188.6），两级 K 流水
   本书（warmup$=$5/iters$=$20 两轮复现）不可比。正文一律标注复测口径。
 \end{kaogu}
 
-\begin{kaogu}[F1·注释过时]{L873 模板参数注释「head dim: v1 only 64」}
+\begin{kaogu}[F1·注释过时]{L873 模板参数注释\textbf{head dim: v1 only 64}}
   模板注释写 \texttt{kHeadDim // head dim: v1 only 64}，但同 kernel 的
   static\_assert（L895--896）明确接受 64 与 128，swizzle\_fa（L859--870）、
   smem 占用表（L826--834 的 D$=$128 列）、P0/P1/P2 的 kTmaChunks 分支与
   bench/flash\_attn.cu 的 D$=$128 测试全部支持 128。该注释是 D$=$128 支持加入前的
-  残留，与 L842「v1 限制：kHeadDim=64 or 128」自相矛盾（结论以本框注为准）。
+  残留，与 L842\textbf{v1 限制：kHeadDim=64 or 128}自相矛盾（结论以本框注为准）。
 \end{kaogu}
 
-\begin{kaogu}[F1 核校通过]{「SM120 optin $\sim$100KB」与 smem 占用表}
+\begin{kaogu}[F1 核校通过]{\textbf{SM120 optin $\sim$100KB}与 smem 占用表}
   本机实测 \texttt{cuda\allowbreak{}Dev\allowbreak{}Attr\allowbreak{}Max\allowbreak{}Shared\allowbreak{}Memory\allowbreak{}Per\allowbreak{}Block\allowbreak{}Optin} $=$ 101376 B
-  $=$ 99.0 KB（17.10~节首行输出），注释「$\sim$100KB」近似正确；占用表
+  $=$ 99.0 KB（17.10~节首行输出），注释\textbf{$\sim$100KB}近似正确；占用表
   六个组合（32/40/48/56 KB 与 64/80/96/112 KB）逐格复算与式~\ref{eq:17-qbytes}
-  一致；「D$=$128 推荐 S$=$2（80 KB 甜点）」的判断与 17.6~节复测的
+  一致；\textbf{D$=$128 推荐 S$=$2（80 KB 甜点）}的判断与 17.6~节复测的
   Sk$=$2 饱和现象互相印证。
 \end{kaogu}
 

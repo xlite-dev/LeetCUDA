@@ -213,7 +213,7 @@ Level 1/2 两行的 AI 公式经核校存在量纲问题（AI 实际与 $B\sb{K}
   title={sgemm.cuh L26-54（Level 1：设计注释、线程到 smem 的索引映射）}]{../sgemm.cuh}
 
 索引映射就是这个 kernel 的全部设计。注释 L45--48 给出一条经验法则：
-「\texttt{/} 表示线程在该维不连续排布，\texttt{\%} 表示连续排布」，
+\textbf{\texttt{/} 表示线程在该维不连续排布，\texttt{\%} 表示连续排布}，
 要把连续的 tid 映射到需要合并访问的维度（$K$ 维，stride 1）就用 \texttt{\%}，
 映射到跨步维度（$M$、$N$ 维）就用 \texttt{/}。于是
 $\mathrm{tid} \to (\mathrm{tid}/32,\ \mathrm{tid}\%32)$ 同时服务 $A$ 的 $(m, k)$ 与
@@ -534,8 +534,8 @@ $4 \times 4 = 16$ 个 block，110 个 SM 有 94 个空闲；naive 同形状有 2
 \section{实践经验}
 
 \begin{kaogu}[F3]{sgemm.cuh L18-19：金字塔注释的两个 AI 公式量纲不一致}
-  注释原文给出「Level 1: \texttt{AI ≈ B\_\allowbreak{}K/\allowbreak{}(2×sizeof) ≈ 32/\allowbreak{}8=\allowbreak{}4}」与
-  「Level 2: \texttt{AI ≈ TM×TN×B\_\allowbreak{}K/\allowbreak{}(2×sizeof) ≈ 8×8×8/\allowbreak{}8=\allowbreak{}64}」。
+  注释原文给出\textbf{Level 1: \texttt{AI ≈ B\_\allowbreak{}K/\allowbreak{}(2×sizeof) ≈ 32/\allowbreak{}8=\allowbreak{}4}}与
+  \textbf{Level 2: \texttt{AI ≈ TM×TN×B\_\allowbreak{}K/\allowbreak{}(2×sizeof) ≈ 8×8×8/\allowbreak{}8=\allowbreak{}64}}。
   问题一：正确的 block tile 推导（式~\ref{eq:9-ai-tile}）中 $B\sb{K}$ 在分子分母间
   相消，AI 与 $B\sb{K}$ 无关，把 $B\sb{K}$ 放进分子会得出\textbf{加深 K 切片
   就能提升 AI}的错误直觉；数值上 $32 \times 32$ tile 的 AI 是 8 而非 4。
@@ -546,9 +546,9 @@ $4 \times 4 = 16$ 个 block，110 个 SM 有 94 个空闲；naive 同形状有 2
   迈进）在本机 roofline 下均成立（9.6 节），但推导与数值应按本章 9.3 节修正。
 \end{kaogu}
 
-\begin{kaogu}[F3]{sgemm.cuh L84-85：「AI 从 BK/2 提升到 TM*TN*BK/2」同族问题}
-  \texttt{sgemm\_vec4} 头注释写「AI 从 \texttt{BK/2} $\approx$16 提升到
-  \texttt{TM*TN*BK/2} $\approx 256$」，与勘误一同源的量纲问题（分子含 $B\sb{K}$、
+\begin{kaogu}[F3]{sgemm.cuh L84-85：\textbf{AI 从 BK/2 提升到 TM*TN*BK/2}同族问题}
+  \texttt{sgemm\_vec4} 头注释写\textbf{AI 从 \texttt{BK/2} $\approx$16 提升到
+  \texttt{TM*TN*BK/2} $\approx 256$}，与勘误一同源的量纲问题（分子含 $B\sb{K}$、
   分母是\textbf{2 个 float 的字节数}）。
   按本章口径改写应为：gmem AI 从 8（$32^2$ tile）升到 32（$128^2$ tile，来自
   block tile 放大）；smem 级计算密度从 0.25 升到 1.0（来自 $4 \times 4$ thread tile）；
@@ -557,7 +557,7 @@ $4 \times 4 = 16$ 个 block，110 个 SM 有 94 个空闲；naive 同形状有 2
 
 \begin{kaogu}[F5 排版]{sgemm.cuh L11-15：金字塔注释换行错位}
   L11--15 的物理换行把 Level 2 的描述与 Level 3/4/5 的内容挤在同一行
-  （如「提高计算密度 Level 3 — Vectorize」），阅读时需按 Level 关键字自行断句。
+  （如\textbf{提高计算密度 Level 3 — Vectorize}），阅读时需按 Level 关键字自行断句。
   源码冻结不改，仅提示读者。
 \end{kaogu}
 

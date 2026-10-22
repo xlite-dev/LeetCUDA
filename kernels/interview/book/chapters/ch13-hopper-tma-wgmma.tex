@@ -321,8 +321,8 @@ row $=16w+\lfloor\mathrm{lane}/4\rfloor$、col $=16g+2(\mathrm{lane}\bmod4)$ 使
 
 \subsection{warpgroup：Hopper 的最小执行单元}
 
-PTX ISA §9.7.15.1 定义 warpgroup 为「4 个连续 warp 的集合，且首 warp 的 warp-rank
-是 4 的倍数」，warp-rank 由线程线性序号 $\mathrm{tid} = x + y \cdot n\sb{x} +
+PTX ISA §9.7.15.1 定义 warpgroup 为\textbf{4 个连续 warp 的集合，且首 warp 的 warp-rank
+是 4 的倍数}，warp-rank 由线程线性序号 $\mathrm{tid} = x + y \cdot n\sb{x} +
 z \cdot n\sb{x} n\sb{y}$ 除以 32 得出。本 kernel 启动 256 线程 $=$ 2 个 warpgroup：
 WG0（线程 0--127）做 producer，WG1（线程 128--255）做 consumer；
 \texttt{\_\allowbreak{}\_\allowbreak{}launch\_\allowbreak{}bounds\_\allowbreak{}(256,\allowbreak{} 1)} 为 \texttt{setmaxnreg} 寄存器再分配
@@ -866,7 +866,7 @@ bench（对照 bench\_leetcuda.cu 的 bench 口径），数据落 \texttt{.\allo
   源码注释与指令集文档\textbf{完全一致}，无需勘误。
 \end{kaogu}
 
-\begin{kaogu}[F2 核校通过]{「K-major swizzle 下 LBO assumed 为 1」的表述}
+\begin{kaogu}[F2 核校通过]{\textbf{K-major swizzle 下 LBO assumed 为 1}的表述}
   PTX ISA §9.7.15.5.1.2.1.1 对 K-major swizzled 布局的 LBO 定义即
   "not used, assumed to be 1"；SBO 定义 "offset from the first 8 rows to the
   next 8 rows"（§9.7.15.5.1.2.1.2），源码的 $1024 = 8 \times 64 \times 2$
@@ -884,7 +884,7 @@ bench（对照 bench\_leetcuda.cu 的 bench 口径），数据落 \texttt{.\allo
   arrive-on 使 pending $-=$ count（默认 1）、expect-tx 使 tx $+=$ 期望值、
   complete-tx 使 tx $-=$ 完成值、相位翻转条件为双归零，hgemm.cuh 的
   barrier 速查注释（L1516 起）与 PTX ISA §9.7.13.15.5--.7 逐条一致；
-  「\texttt{mbarrier.\allowbreak{}arrive.\allowbreak{}expect\_\allowbreak{}tx} 合并指令的 arrive count 固定为 1」的
+  \textbf{\texttt{mbarrier.\allowbreak{}arrive.\allowbreak{}expect\_\allowbreak{}tx} 合并指令的 arrive count 固定为 1}的
   细节与 §9.7.13.15.13 一致。
 \end{kaogu}
 

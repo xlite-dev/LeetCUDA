@@ -332,7 +332,7 @@ CuTe 两个方向都提供，并且用同一个 layout 表示：
 而不是把 tile 先按线程切成大块、再在线程内切小块（回看 3.2 节的小例子：
 Thr \texttt{(2,2):(2,1)} 与 Val \texttt{(1,2)} 按同样方式合成出来的，正是
 那张手画的表）。式~\eqref{eq:21-raked} 的最简版本就是 kernel 注释里的
-「128 个线程，每线程搬运 1$\times$8=8 个 half」（hgemm.cuh~L1308--1309）。
+\textbf{128 个线程，每线程搬运 1$\times$8=8 个 half}（hgemm.cuh~L1308--1309）。
 
 把式~\eqref{eq:21-raked} 按坐标写开：坐标 $(i,j')$
 （$i\in[0,32)$、$j'\in[0,32)$）满足 $j' = 8j+v$，于是

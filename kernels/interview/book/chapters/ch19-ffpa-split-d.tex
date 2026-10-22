@@ -439,7 +439,7 @@ $D$ & $C = D/64$ & $\mathrm{Sk}$ & 相位周期（KV tile 数） & 形态 \\
         V-chunk 循环显式驱动。
 \end{itemize}
 
-头注释 L13 写「PV 保持小 tile 控制 acc\_O 寄存器」，这句话容易误读。严格说，
+头注释 L13 写\textbf{PV 保持小 tile 控制 acc\_O 寄存器}，这句话容易误读。严格说，
 $O$ 累加器的总量由输出 tile 形状 $[64,64]\times C$ 决定
 （式~\ref{eq:19-oacc}），与 tile 怎么切无关。\texttt{Tile\allowbreak{}<64,\allowbreak{}16,\allowbreak{}16>} 影响的是单次
 TiledMMA 调用覆盖的输出块大小以及寄存器生存期的切分粒度，让 chunk 边界成为
@@ -457,8 +457,8 @@ TiledMMA 调用覆盖的输出块大小以及寄存器生存期的切分粒度�
 
 注意 \texttt{k\allowbreak{}QChunk\allowbreak{}Elements =\allowbreak{} cosize\allowbreak{}(Smem\allowbreak{}Layout\allowbreak{}Q\{\})}。池的大小来自
 layout 自身的 cosize，而非手写 $64\times64$。这是 CuTe 工程的一个好习惯：
-layout 一改，池大小与偏移自动跟着改（第~\ref{ch:20}~章）。注释里特意写了「不使用
-stride-0 的 stage-mode layout」，意思是：与其把一个 stage 维并入 tensor 的 layout
+layout 一改，池大小与偏移自动跟着改（第~\ref{ch:20}~章）。注释里特意写了\textbf{不使用
+stride-0 的 stage-mode layout}，意思是：与其把一个 stage 维并入 tensor 的 layout
 （产生 stride-0 的伪维），不如直接做指针加法，索引更直观、生成的地址计算也更便宜。
 
 由此得到 smem 预算：每 stage 的 QK 槽位是 Q chunk 与 K chunk 两块 8\,KB，
@@ -487,8 +487,8 @@ smem 预算吃紧（见 19.6~节）。
 头注释 L71--77 交代了为什么是 128 线程而不是别的数目：
 
 \begin{quote}\small
-「128 线程：与 TiledMmaQK/PV 的 \texttt{Layout\allowbreak{}<4,\allowbreak{}1,\allowbreak{}1>} 一致，每个线程在 G2S 和
-S2R/MMA 中有唯一分区，消除 256-thread G2S 与 128-thread MMA 之间的映射不匹配。」
+\textbf{128 线程：与 TiledMmaQK/PV 的 \texttt{Layout\allowbreak{}<4,\allowbreak{}1,\allowbreak{}1>} 一致，每个线程在 G2S 和
+S2R/MMA 中有唯一分区，消除 256-thread G2S 与 128-thread MMA 之间的映射不匹配。}
 \end{quote}
 
 搬运侧的 copy 定义如下（L120--128）：128\,bit 的 \texttt{cp.async}（一线程一次
@@ -932,8 +932,8 @@ $\times$ 2 个 N-warp，$R_O$ 降到 $D/4$）的原因，也是本章这版 kern
 
 \begin{itemize}[itemsep=2pt,topsep=2pt]
   \item \textbf{头注释口径（PRO 5000）}：ffpa\_attn.cuh L16--18 声明
-        「\texttt{B=\allowbreak{}1,\allowbreak{}H=\allowbreak{}32,\allowbreak{}N=\allowbreak{}8192,\allowbreak{}D=\allowbreak{}512,\allowbreak{} SM120a RTX PRO 5000}：cuDNN SDPA
-        57.2 TFLOPS $|$ FFPA TMA WS 110.7 TFLOPS（$1.94\times$）」。这是源码作者
+        \textbf{\texttt{B=\allowbreak{}1,\allowbreak{}H=\allowbreak{}32,\allowbreak{}N=\allowbreak{}8192,\allowbreak{}D=\allowbreak{}512,\allowbreak{} SM120a RTX PRO 5000}：cuDNN SDPA
+        57.2 TFLOPS $|$ FFPA TMA WS 110.7 TFLOPS（$1.94\times$）}。这是源码作者
         在 RTX PRO 5000（本机同型号）上的测量，形状是 $N{=}8192$、
         $D{=}512$、$\mathrm{Sk}=\mathrm{Sv}=2$。本书本章\textbf{未复测}该口径
         （bench 需独占 GPU 且耗时，留给后续增量复测），引用时一律标注
@@ -1004,8 +1004,8 @@ $\mathrm{Sk}{=}5$ 会直接超预算。数据请落
   正文一律双标注，不复测不给绝对结论。
 \end{kaogu}
 
-\begin{kaogu}[F1/F3·表述澄清]{L12-13「PV 保持小 tile 控制 acc\_O 寄存器」}
-  注释把「控制 acc\_O 寄存器」归因于 PV 的 tile 形状
+\begin{kaogu}[F1/F3·表述澄清]{L12-13\textbf{PV 保持小 tile 控制 acc\_O 寄存器}}
+  注释把\textbf{控制 acc\_O 寄存器}归因于 PV 的 tile 形状
   \texttt{Tile\allowbreak{}<64,\allowbreak{}16,\allowbreak{}16>}。按式~\ref{eq:19-oacc} 复算：$O$ 累加器总量由输出
   tile 的完整形状 $[64,64] \times C$ 决定，$= D/2$ 个 f32/线程，与 tile 形状
   无关。tile 形状决定的是单次 TiledMMA 调用覆盖的输出块大小、
@@ -1029,8 +1029,8 @@ $\mathrm{Sk}{=}5$ 会直接超预算。数据请落
 \begin{kaogu}[F2/F3·协议计数核校通过]{mbarrier 到达数与 TMA 事务字节数}
   逐条核验：（1）线程数与角色：L380 \texttt{\_\_launch\_}\allowbreak\texttt{bounds\_\allowbreak{}\_\allowbreak{}(256,\allowbreak{}1)}、
   L399--400 \texttt{k\allowbreak{}Producer\allowbreak{}Threads}$=$\texttt{k\allowbreak{}Consumer\allowbreak{}Threads}$=$128，
-  与头注释 L14/L28「128 producer $+$ 128 consumer $=$ 256 total threads
-  (vs 原始 384)」一致（\textbf{原始 384}指第~\ref{ch:17}~章的 FA2 TMA WS：
+  与头注释 L14/L28\textbf{128 producer $+$ 128 consumer $=$ 256 total threads
+  (vs 原始 384)}一致（\textbf{原始 384}指第~\ref{ch:17}~章的 FA2 TMA WS：
   128 producer $+$ 256 consumer）；（2）full 屏障初始到达数 1（L421/L425）、
   empty 屏障 128（L422/L426），与消费者侧\textbf{每线程消费完 arrive 一次}
   （L555、L616）以及生产者侧 \texttt{arrive\_\allowbreak{}and\_\allowbreak{}expect\_\allowbreak{}tx}
@@ -1130,7 +1130,7 @@ A：因为 SW128 swizzle atom 的行宽是 128\,B $=$ 64 个 f16，且 \texttt{l
 swizzle 那么简单，所以这版代码用 \texttt{static\_\allowbreak{}assert} 强制固定宽度。
 
 \textbf{Q6：两版实现的差别在哪一层？}\\
-A：算法层没有差别（头注释 L70--73 明确「消费者逻辑完全一致」），差别全在
+A：算法层没有差别（头注释 L70--73 明确\textbf{消费者逻辑完全一致}），差别全在
 数据怎么来、什么时候到：cp.async 版 128 线程全员搬、用每线程私有的组 FIFO
 计数、每 KV tile 排空；TMA+WS 版 256 线程分工、单线程发起 TMA、用共享 mbarrier 的
 (stage, phase) 计数、跨 KV tile 连续不排空。同步原语的性质（私有 FIFO vs 共享

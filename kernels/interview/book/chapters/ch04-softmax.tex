@@ -83,7 +83,7 @@ fp32 的最大正规数（\texttt{FLT\_MAX}）为
 \end{equation}
 因此 $e^{t}$ 不溢出的充要条件是 $t \lesssim 88.72$。两个锚点数字：$e^{88} \approx 1.65\times 10^{38}$
 （尚可表示），$e^{89} \approx 4.49\times 10^{38} > \mathrm{FLT\_MAX}$（已经是 \texttt{inf}）。
-源码注释 base.cuh~L556 写的「溢出阈值约 88.7」正是这个界（核校无误）。
+源码注释 base.cuh~L556 写的\textbf{溢出阈值约 88.7}正是这个界（核校无误）。
 
 一旦有元素溢出，分母 $s$ 也随之变成 \texttt{inf}（$s \ge e^{x^{(i)}}$）：
 溢出元素自身 $y^{(i)} = \texttt{inf}/\texttt{inf} = \texttt{NaN}$，未溢出元素
@@ -362,7 +362,7 @@ max 用单位元，$d$ 用加法单位元 0，这样它们参与归约但不污�
 （2）第一级：warp 内 5 步 \texttt{warp\_\allowbreak{}reduce\_\allowbreak{}md} 蝶形。
 （3）warp leader 把 warp 状态写入 shared memory，\texttt{\_\allowbreak{}\_\allowbreak{}syncthreads} 一次。
 （4）第二级：每个 warp 的所有 lane 重新读出 8 个 warp 状态再做一次
-\texttt{warp\_\allowbreak{}reduce\_\allowbreak{}md}，注释里「用 kWarpSize 确保每个 lane 都拿到最终结果」的用意是：
+\texttt{warp\_\allowbreak{}reduce\_\allowbreak{}md}，注释里\textbf{用 kWarpSize 确保每个 lane 都拿到最终结果}的用意是：
 第二级不只在 warp 0 做，而是\textbf{每个 warp 都独立算一遍}，免去了第二次
 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads} 加广播。
 （5）写回 $y^{(i)} = e^{x^{(i)} - m} \cdot d^{-1}$，除法用近似倒数
@@ -465,7 +465,7 @@ launch 与同步的固定开销占比大；附录~B 的汇总口径会注明这�
 \section{实践经验}
 
 \begin{kaogu}[F3]{base.cuh L538-539 与 L541-542：启动配置注释的两处含混}
-  L538 的「grid(S*h/h, h), block(h)」中 $S h / h$ 化简后就是 $S$，写法混乱；
+  L538 的\textbf{grid(S*h/h, h), block(h)}中 $S h / h$ 化简后就是 $S$，写法混乱；
   实际启动为 grid$(S,1,1)$、block$(H,1,1)$，与 L541-542 一致。
   更实质的问题是：三版 kernel 内的边界守卫都是全局索引 \texttt{idx < N}，
   但注释没有说明 $N$ 的语义是总元素数 $S \times H$（原始工程

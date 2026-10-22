@@ -258,7 +258,7 @@ $\mu$ 与 $M_2 \equiv \sum_k (x_k-\bar{x})^2$，分块结果可用合并公式�
   \item 输出 \texttt{y = ((value - s\_mean) * s\_variance) * g + b}，与式~\eqref{eq:ch06-ln} 逐项对应。
 \end{itemize}
 
-同步开销精确计数：layer\_norm 全程 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()} 共 4 次（两次 block reduce 内部各 1 次 + 显式 2 次），rms\_norm 只有 2 次。源码注释说「比 Layer Norm 少 1 次同步」，指的是\textbf{显式}同步（2 次 vs 1 次）；按总数计则是 4 次 vs 2 次，差额来自那一次多余的归约（连带其内部同步）。$K = 128$ 时每次块级同步的绝对延迟在微秒以下，但归一化算子本身访存量极小（一行 $128 \times 4\mathrm{B} \times 2$ 的访存在 $\sim\mathrm{TB/s}$ 带宽下不足 $1\,\mu s$），相对占比可观，本章第 6 节的实测数据会量化这一点。
+同步开销精确计数：layer\_norm 全程 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()} 共 4 次（两次 block reduce 内部各 1 次 + 显式 2 次），rms\_norm 只有 2 次。源码注释说\textbf{比 Layer Norm 少 1 次同步}，指的是\textbf{显式}同步（2 次 vs 1 次）；按总数计则是 4 次 vs 2 次，差额来自那一次多余的归约（连带其内部同步）。$K = 128$ 时每次块级同步的绝对延迟在微秒以下，但归一化算子本身访存量极小（一行 $128 \times 4\mathrm{B} \times 2$ 的访存在 $\sim\mathrm{TB/s}$ 带宽下不足 $1\,\mu s$），相对占比可观，本章第 6 节的实测数据会量化这一点。
 
 \subsection{layer\_norm\_vec4：寄存器复用的两遍结构}
 
@@ -390,7 +390,7 @@ $N = 524288$ 时读写流量 $512\,\mathrm{MB}$ 远超 L2，是 HBM 口径。两
 \section{实践经验}
 
 \begin{kaogu}[F3 | 模板参数与 K 的隐含约定]
-源码注释只提示「kNumThreads=K=128（K>128 时调整模板参数）」，但 $K < 128$ 且不改模板参数同样出错：网格按 \texttt{idx =\allowbreak{} block\allowbreak{}Idx*128 + tid} 线性展开，一个 block 会覆盖到相邻行的数据，行归约被跨行污染（\texttt{idx < N*K} 只防全局越界，不防跨行）。正确约定是 $K$ 必须等于模板参数；支持任意 $K$ 需要行内 padding 或行内循环分块，当前实现未包含。
+源码注释只提示\textbf{kNumThreads=K=128（K>128 时调整模板参数）}，但 $K < 128$ 且不改模板参数同样出错：网格按 \texttt{idx =\allowbreak{} block\allowbreak{}Idx*128 + tid} 线性展开，一个 block 会覆盖到相邻行的数据，行归约被跨行污染（\texttt{idx < N*K} 只防全局越界，不防跨行）。正确约定是 $K$ 必须等于模板参数；支持任意 $K$ 需要行内 padding 或行内循环分块，当前实现未包含。
 \end{kaogu}
 
 \begin{kaogu}[F3 | $\epsilon$ 的语义未在注释中写明]

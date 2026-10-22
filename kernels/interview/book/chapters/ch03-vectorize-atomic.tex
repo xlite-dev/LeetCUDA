@@ -138,8 +138,8 @@ sector 数。三种典型情形（图 ch03-1）：
 
 一维排布的逐元素算子天然满足连续性：线程 $t$ 处理元素
 $\mathrm{idx} = \mathrm{blockIdx} \times T + t$，warp 内 32 个连续 idx
-对应连续 4B 地址。这就是源码注释「grid/block 维度设计：grid(N/threads),
-block(threads)，一维即可」背后的全部数学：只要 idx 映射是线性的，
+对应连续 4B 地址。这就是源码注释\textbf{grid/block 维度设计：grid(N/threads),
+block(threads)，一维即可}背后的全部数学：只要 idx 映射是线性的，
 coalescing 是免费的；它昂贵的时候，是高维张量的维度交错（ch07 转置、
 ch16 的 BHND 布局）。
 
@@ -409,8 +409,8 @@ bin 数）。注意本配置 $T{=}B{=}256$ 时 $G \times B = N$，次数并不�
 
 \section{实践经验}\label{sec:ch03-kaogu}
 
-\begin{kaogu}[F1]{L311「内存事务数减为 1/4」口径过时}
-注释称「float4 向量化可将内存事务数减为 1/4」。Volta 起访存以 32B sector
+\begin{kaogu}[F1]{L311\textbf{内存事务数减为 1/4}口径过时}
+注释称\textbf{float4 向量化可将内存事务数减为 1/4}。Volta 起访存以 32B sector
 为粒度：coalesced 场景下搬运的 sector 数由总数据量决定（每元素都要搬一次），
 向量化并不减少 sector 事务数；它减少的是\textbf{每线程 load/store 指令数}
 （4 条 32-bit $\to$ 1 条 128-bit）。无论按 32B sector 还是按 128B 事务计数，
@@ -422,13 +422,13 @@ transaction 常被当作 warp 请求用），建议改为\textbf{访存指令数
 \begin{kaogu}[F1]{L324--329 relu\_vec4 边界守卫不足（越界读隐患）}
 与 ch02 的 dot\_vec4 有同样问题：守卫只有 \texttt{idx < N}，而 FLOAT4 一次读 4
 元素，$N$ 非 4 倍数时最后一个线程越界读 \texttt{x[idx.\allowbreak{}.\allowbreak{}idx+3]}。注释
-「最适合 N 按 4 对齐的场景」是隐含免责，未明示越界后果。同文件
+\textbf{最适合 N 按 4 对齐的场景}是隐含免责，未明示越界后果。同文件
 elementwise\_add\_vec4（L358--374）的 \texttt{(idx + 3) < N} 主路径 + 标量
 尾部是安全范式，建议统一。
 \end{kaogu}
 
-\begin{kaogu}[F4]{L325「与基础版吞吐相同」表述不准}
-「block(64)×4(float4)=256 元素/block，与基础版吞吐相同」：相同的是
+\begin{kaogu}[F4]{L325\textbf{与基础版吞吐相同}表述不准}
+\textbf{block(64)×4(float4)=256 元素/block，与基础版吞吐相同}：相同的是
 每 block 处理规模（256 元素）；吞吐（带宽利用率）两者通常不同，
 取决于瓶颈层级（本机 L2 口径下两者差异在 $\pm 2\%$ 噪声内，见
 \S\ref{sec:ch03-perf}）。建议改为\textbf{每 block 处理元素数相同}。

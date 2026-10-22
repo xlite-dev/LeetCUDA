@@ -662,8 +662,8 @@ $k_{\mathrm{stage}}$ 加到 3、4 时循环体几乎不用改：放行更多 inf
 
 \paragraph{实践须知：CuTe 自动管理流水线的说法不准确}
 
-Phase~7c 的头注释在列举 CuTe 五要素时，把第 5 条写成「Pipeline: cp.async $+$
-multistage, 由 cute::copy 自动管理」（hgemm.cuh L729--733）。读代码会发现这句
+Phase~7c 的头注释在列举 CuTe 五要素时，把第 5 条写成\textbf{Pipeline: cp.async $+$
+multistage, 由 cute::copy 自动管理}（hgemm.cuh L729--733）。读代码会发现这句
 表述不准确，面试时如果原样复述，很容易被追问：
 
 \begin{itemize}
@@ -686,7 +686,7 @@ multistage, 由 cute::copy 自动管理」（hgemm.cuh L729--733）。读代码�
 流水线解决了等，但没有解决搬运的形态。第二步里 smem 只是一块能放下 tile 的
 地方；要真把它用起来，还得定三件事：smem 里的数据怎么排（否则 \texttt{ldmatrix}
 会产生 bank conflict）、S$\to$R 用哪条指令装、G$\to$S 一次搬多少字节。@reed 在
-《cute 之 高效 GEMM 实现》里把这几件事归在「访存高效」名下，本章 kernel 的
+《cute 之 高效 GEMM 实现》里把这几件事归在\textbf{访存高效}名下，本章 kernel 的
 取舍与之一致。
 
 \paragraph{smem 布局：一条声明，代替散落各处的 XOR}
@@ -769,8 +769,8 @@ S$\to$R 的线程映射必须与 MMA 的 A fragment 逐点对齐，否则装进�
 既然 TiledMMA 已经精确描述了谁算哪块，以它为目标的拷贝就不需要用户再指定
 一遍线程布局，从而避免两处独立配置不一致。
 
-@reed 在《cute 之 高效 GEMM 实现》里对这一步的总结是「不再是大块到小块的
-\texttt{partition}，而是对已声明的寄存器做线程级 \texttt{retile}」。
+@reed 在《cute 之 高效 GEMM 实现》里对这一步的总结是\textbf{不再是大块到小块的
+\texttt{partition}，而是对已声明的寄存器做线程级 \texttt{retile}}。
 \texttt{retile\_\allowbreak{}D\allowbreak{}(t\allowbreak{}Cr\allowbreak{}A)}
 做的就是这件事：不搬运数据，只改视图。
 
@@ -810,7 +810,7 @@ $B_N{=}128$/F32 用 226 个，两者 stack frame 均为 0 字节（0 spill）；
 epilogue 的路径是寄存器 $\to$ smem scratchpad $\to$ gmem，中间需要一次
 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()}：S$\to$G 读的是别的线程刚写进 smem 的
 数据，必须有一次 CTA 级汇合。选这条路线的理由与 @reed 在《cute 之 高效 GEMM
-实现》「尾阶段高效」一节一致：累加器 fragment 的寄存器分布在 gmem 上是
+实现》\textbf{尾阶段高效}一节一致：累加器 fragment 的寄存器分布在 gmem 上是
 不连续的，直接写会产生大量零散事务、也谈不上向量化；经 smem 做一次
 CTA 范围的重组之后，S$\to$G 就能用 128 位宽写。
 
@@ -1044,8 +1044,8 @@ R2S $\to$ sC $\to$ S2G，映射进类型 \\
   small/.style={align=center, inner sep=1pt, font=\fontsize{4}{4.5}\selectfont},
 ]
   % 面板标题与 API 徽章（local_tile / local_partition 为所属层 API）
-  \node[api] at (5.65,0.22) {local\_tile};
-  \node[api] at (10.15,0.22) {local\_partition};
+  \node[api] at (5.65,0.34) {local\_tile};
+  \node[api] at (10.15,0.34) {local\_partition};
   \node[pnl, anchor=west] at (0.55,0.02) {gmem 矩阵 C (M, N)};
   \node[pnl, anchor=west] at (4.35,0.02) {CTA tile (128, 128)};
   \node[pnl, anchor=west] at (8.25,0.02) {warp tile (64, 64)};
@@ -1155,7 +1155,7 @@ R2S $\to$ sC $\to$ S2G，映射进类型 \\
         \texttt{TOL\_F16ACC}$=5\times10^{-2}$、\texttt{TOL\_F32ACC}$=10^{-3}$
         判定通过（第~\ref{sec:24-minitest}~节给出实测 \texttt{max\_abs\_err}）。
   \item \textbf{寄存器压力}：\texttt{ptxas -v} 实测两种配置的寄存器数与 stack
-        使用（实测值见本节的实践须知），核对源码注释里「均 0 spill」的说法。
+        使用（实测值见本节的实践须知），核对源码注释里\textbf{均 0 spill}的说法。
   \item \textbf{smem 占用}：式~\eqref{eq:24-smem} 的 48\,KiB 由
         \texttt{cosize\allowbreak{}(Smem\allowbreak{}Layout\allowbreak{}A) + cosize\allowbreak{}(Smem\allowbreak{}Layout\allowbreak{}B)} 在
         编译期算出。同一个常量既决定 \texttt{cuda\allowbreak{}Func\allowbreak{}Set\allowbreak{}Attribute} 的实参，也决定
@@ -1167,9 +1167,9 @@ R2S $\to$ sC $\to$ S2G，映射进类型 \\
 
 \begin{itemize}
   \item \textbf{$B_N$ 随累加精度切换的寄存器断言}（hgemm.cuh L1229--1230）：
-        注释称「F16 acc 用 256（$128\times256$ tile，0 spill）；F32 acc 用 128
+        注释称\textbf{F16 acc 用 256（$128\times256$ tile，0 spill）；F32 acc 用 128
         （$128\times128$ tile，0 spill）。F32 $+$ $B_N{=}256$ 会产生
-        $\sim$1\,KB spill（254 reg），性能下降 3--8 倍」。用
+        $\sim$1\,KB spill（254 reg），性能下降 3--8 倍}。用
         \texttt{nvcc -Xptxas -v} 编译本 wrapper 的两种实例化（与本章测试同源）
         实测：$B_N{=}256$/F16 用 254 个寄存器、$B_N{=}128$/F32 用 226 个，
         \textbf{两者 stack frame 均为 0 字节}（0 spill stores / 0 spill loads），
@@ -1179,11 +1179,11 @@ R2S $\to$ sC $\to$ S2G，映射进类型 \\
         才会遇到的反例。测量值本身有效（它是 $B_N{=}256$ 那一档的
         254\,reg），只是不该被读成\textbf{本 kernel 的第三种配置}；复现方法见
         第~\ref{sec:24-minitest}~节动手实验第 3 条。
-  \item \textbf{代码量对照}（hgemm.cuh L803--805）：注释写「手写 $\sim$200 行 /
-        CuTe $\sim$80 行」。按同口径实测（去注释、去空行）：手写 Phase~7b 为
+  \item \textbf{代码量对照}（hgemm.cuh L803--805）：注释写\textbf{手写 $\sim$200 行 /
+        CuTe $\sim$80 行}。按同口径实测（去注释、去空行）：手写 Phase~7b 为
         147 行、Phase~7b-3 为 231 行，CuTe kernel 本体为 118 行（另有 launch
         wrapper 86 行）。注释给的是量级估计，方向正确（CuTe 版确实更短），但
-        「$\sim$80 行」低估了约三成；本章一律以实测数字为准
+        \textbf{$\sim$80 行}低估了约三成；本章一律以实测数字为准
         （图~\ref{fig:24-1}）。
 \end{itemize}
 
@@ -1296,7 +1296,7 @@ L192 的 \texttt{test\_\allowbreak{}hgemm\_\allowbreak{}cute}，但按本书测�
 \end{itemize}
 
 规模约束来自 kernel 的整除要求（$M\%128=0$、$N\%B_N=0$、$K\%32=0$），同时满足
-BOOK\_PLAN §6「CPU 参考规模 $\le 512$」的时限约束。编译与运行：
+BOOK\_PLAN §6\textbf{CPU 参考规模 $\le 512$}的时限约束。编译与运行：
 
 \begin{lstlisting}[style=console]
 cd kernels/interview/book/tests

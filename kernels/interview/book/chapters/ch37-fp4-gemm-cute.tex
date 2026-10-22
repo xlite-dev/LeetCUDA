@@ -130,8 +130,8 @@ mma.sync.aligned.m16n8k64.row.col.kind::mxf4nvf4.block_scale.scale_vec::4X
 \texttt{.stype = .ue4m3} 时，\texttt{.scale\_vec\_size} 只能是
 \texttt{.scale\_vec::4X}，也就是 NVFP4 的线格式：$A$ 的每一行被切成
 \texttt{SFA\_N}$=4$ 段（$K{=}64$ 除以 16），每段一个 SF。文档里那句
-「for \texttt{.kind::mxf4nvf4}, it is mandatory to provide valid
-\texttt{.scale\_vec\_size}」翻译成工程语言就是：\emph{这条指令必须提供合法
+\textbf{for \texttt{.kind::mxf4nvf4}, it is mandatory to provide valid
+\texttt{.scale\_vec\_size}}翻译成工程语言就是：\emph{这条指令必须提供合法
 的 scale}，SF 是操作数而不是可选项。
 
 \textbf{第二，SF 也是寄存器操作数，而且每个 SF 只由 4 个线程里的 1 个提供。}
@@ -379,7 +379,7 @@ CUTLASS 口径，是因为它是 \texttt{SM120\_16x8x64\_TN\_VS} 的官方搭配
         这个 16 字节共享 1 字节的模式 TMA 描述符无法直接表达；
         换用一个 2 字节的内部元素类型后，广播维变成 8 个可步进的
         \texttt{u16} 单元，描述符的 \texttt{ScaledBasis} 就能装下它
-        （源码注释里那句「g\_shape 必须与它嵌套同构」说的就是这件事，
+        （源码注释里那句\textbf{g\_shape 必须与它嵌套同构}说的就是这件事，
         CUTLASS 的 collective 用的是同一种做法）。
   \item SF 张量的形状不能用 \texttt{make\_shape(M, K)} 造，必须
         用 \texttt{shape(sf\_gmem\_layout(M,K))}，因为描述符的
@@ -855,7 +855,7 @@ FP8 每个量化值 1\,B，FP4 只有 0.5\,B。这与本卡实测带宽相符
         \texttt{unsigned} 比大小）；
         \emph{转置量化}按 $128(n)\times64(k)$ 一个 tile 铺
         $(N/128)\times(K/64)$ 个 CTA（4096$^2$ 时 2048 个），
-        per-16 组的 amax 完全落在块内，不需要任何跨块归约，
+        per-group (16) 的 amax 完全落在块内，不需要任何跨块归约，
         smem 里的转置缓冲加 1 列 padding（$128{\times}65$）消除
         写回时的 bank 冲突。
   \item \textbf{一个 bit 都不许变}是这个重构的硬约束。列 amax 拆成

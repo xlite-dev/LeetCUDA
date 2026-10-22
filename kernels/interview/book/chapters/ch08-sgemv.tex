@@ -69,7 +69,7 @@ $4MK$ 字节，读 $x$、写 $y$ 各 $4K$、$4M$ 字节。关键在 $x$ 怎么�
   \label{eq:8-ai-pessimistic}
 \end{align}
 两个口径都与 $M$、$K$ 无关，GEMV 的 AI 是常数，这就是源码头注释
-「AI $\approx$ O(1)，瓶颈在内存带宽」（sgemv.cuh~L7）的精确含义（定性核校通过）。
+\textbf{AI $\approx$ O(1)，瓶颈在内存带宽}（sgemv.cuh~L7）的精确含义（定性核校通过）。
 
 放进第~\ref{ch:01}~章的 roofline：$P \le \min(P\sb{peak},\ \mathrm{AI} \cdot \mathrm{BW})$。
 以本章实测口径（RTX PRO 5000，fp32 峰值按运行时查询折算约 $66.9$ TFLOPS；
@@ -112,7 +112,7 @@ k128 把每 lane 每轮的工作量从 1 个元素提到 4 个：
 累入同一个 \texttt{sum}。对齐需要三个条件同时成立：（1）$K$ 是 128 的倍数，这同时保证
 每一行的起点 $a + mK$ 也是 16B 对齐；（2）基址本身 16B 对齐（\texttt{cudaMalloc}
 返回 256B 对齐，天然满足）；（3）步进恒为 4 个 float（式~\ref{eq:8-k128-cover} 保证）。
-三个条件的交集就是源码注释「最适合 K 按 128 对齐」（L51）。
+三个条件的交集就是源码注释\textbf{最适合 K 按 128 对齐}（L51）。
 
 \subsection{K=16：双行复用与分段蝶形归约}
 
@@ -370,8 +370,8 @@ k16  & $M{=}1048576,\ K{=}16$  & 0.1078 & 661.4 \\
 
 \section{实践经验}
 
-\begin{kaogu}[F3]{sgemv.cuh L17：「否则内层循环 kNumWarps 次」表述错误}
-  该行注释描述 k32 在 $K$ 非 32 倍数时的行为，写「否则内层循环 kNumWarps 次」。
+\begin{kaogu}[F3]{sgemv.cuh L17：\textbf{否则内层循环 kNumWarps 次}表述错误}
+  该行注释描述 k32 在 $K$ 非 32 倍数时的行为，写\textbf{否则内层循环 kNumWarps 次}。
   首先 \texttt{kNumWarps} 这个名字在本文件中不存在（block 内 warp 数实为 4，见 L21）；
   其次内层循环次数是 \texttt{NUM\_ITERS} $= \lceil K/32 \rceil$（L33），与 warp 数无关，
   仅当 $K = 128$ 时 $\lceil K/32 \rceil = 4$ 与 warp 数巧合相等。建议按 L31--33 的
@@ -383,14 +383,14 @@ k16  & $M{=}1048576,\ K{=}16$  & 0.1078 & 661.4 \\
   （式~\ref{eq:8-k16-map}），当 $M$ 为奇数且该 warp 恰好覆盖最后一行时，前 16 个 lane
   通过守卫、后 16 个 lane 不通过，\texttt{warp\_\allowbreak{}reduce\_\allowbreak{}sum\allowbreak{}<16>} 里的
   \texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor\_\allowbreak{}sync\allowbreak{}(0xffffffff,\allowbreak{} .\allowbreak{}.\allowbreak{}.\allowbreak{})} 把未执行该指令的 lane 命名进了掩码。
-  按 CUDA C++ Programming Guide 的规定，「掩码中命名的所有线程必须都执行同一条
-  shuffle」，否则行为未定义。实践中当前硬件通常\textbf{碰巧}正确（分段宽度限制了实际交换
+  按 CUDA C++ Programming Guide 的规定，\textbf{掩码中命名的所有线程必须都执行同一条
+  shuffle}，否则行为未定义。实践中当前硬件通常\textbf{碰巧}正确（分段宽度限制了实际交换
   范围），但这是不能依赖的语义。规避方式：保证 $M \% 8 = 0$（每 block 8 行，守卫
   warp 一致），或改用协同组、或让掩码与活跃 lane 精确匹配。本章测试固定
   $M \% 8 = 0$ 以避开该路径。
 \end{kaogu}
 
-\begin{kaogu}[F3 核校通过]{sgemv.cuh L7：「AI $\approx$ O(1)」的定性判断}
+\begin{kaogu}[F3 核校通过]{sgemv.cuh L7：\textbf{AI $\approx$ O(1)}的定性判断}
   精确推导见式~\ref{eq:8-ai-optimistic} 与式~\ref{eq:8-ai-pessimistic}：
   AI 是与 $M$、$K$ 无关的常数（$0.25 \sim 0.5$ FLOP/B），\textbf{O(1)、瓶颈在带宽}
   的定性结论成立。另 L10--12 的三种 $K$ 形态选型与三个 kernel 的实际设计一一对应。

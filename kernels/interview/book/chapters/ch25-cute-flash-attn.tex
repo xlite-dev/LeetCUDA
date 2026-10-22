@@ -157,7 +157,7 @@ CuTe 版 attention 的第一步是把 tile 几何与数据格式编译期化。
 逐字段读。\texttt{Smem\allowbreak{}Layout\allowbreak{}Atom =\allowbreak{} GMMA::\allowbreak{}Layout\_\allowbreak{}K\_\allowbreak{}SW128\_\allowbreak{}Atom\allowbreak{}<Element>}
 是一个原子：$8\times64$ 个 half（每行 64 half $=$ 128\,B）加
 \texttt{Swizzle\allowbreak{}<3,\allowbreak{}4,\allowbreak{}3>}。一个 swizzle 周期是 8 行 $=$ 1024\,B
-（traits 头注释把它写成「$8\times8$ atom」是笔误，原子实际是 8 行、
+（traits 头注释把它写成\textbf{$8\times8$ atom}是笔误，原子实际是 8 行、
 行宽 128\,B，half 下即 $8\times64$；第~\ref{ch:23}~章会展开它与
 \texttt{CU\_\allowbreak{}TENSOR\_\allowbreak{}MAP\_\allowbreak{}SWIZZLE\_\allowbreak{}128B} 的对应）；\texttt{tile\_\allowbreak{}to\_\allowbreak{}shape}
 把原子铺满目标形状：Q 是 $B_r\times D$、K/V 是 $B_c\times D$。于是
@@ -179,7 +179,7 @@ V 的转置视图是第一个要细讲的细节：
 物理布局（row-major 的 $[64,D]$ 加 swizzle），\texttt{B} 是逻辑上的
 row-major $(D,64)$。两者复合后的结果才是 $V^\top$ 访问接口的
 col-major 视图：逻辑坐标 $(d, j)$ 被解释为 V 的第 $j$ 行第 $d$ 列
-（源码 L2213/L2263/L2266 三处注释把这个 B 写作「col-major $(D,64)$」
+（源码 L2213/L2263/L2266 三处注释把这个 B 写作\textbf{col-major $(D,64)$}
 是笔误，\texttt{GenRowMajor} 明示 B 实为 row-major，col-major 的是
 复合后的结果视图）。它的实测类型是
 \texttt{Sw\allowbreak{}<3,\allowbreak{}4,\allowbreak{}3> o \allowbreak{}(64,\allowbreak{}64):\allowbreak{}(1,\allowbreak{}64)}，即 $V^\top(d,j) \mapsto d + 64j$
@@ -727,14 +727,14 @@ S$\to$R 装载加多级 K 循环两件事：
         \texttt{tile\_\allowbreak{}size\_\allowbreak{}mnk}（FA2 $(128,16,16)$、FA3 $(64,16,16)$）
         与每个线程的 fragment 元素数（都是 32）；
   \item 块注释不整齐是既有事实。实现 1 的注释块
-        （L2493--2529）从「是 \texttt{flash\_\allowbreak{}attn\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}split\_\allowbreak{}q\_\allowbreak{}cute} 的
-        简化版」直接开头，不写主语行；实现 2/3 的 \texttt{\#if} 块里直接是
+        （L2493--2529）从\textbf{是 \texttt{flash\_\allowbreak{}attn\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}split\_\allowbreak{}q\_\allowbreak{}cute} 的
+        简化版}直接开头，不写主语行；实现 2/3 的 \texttt{\#if} 块里直接是
         \texttt{template}。对照之下，手写三代都有 Phase 头注释（L5、L792、
         L1441）。读的时候别按块注释目录找入口，用 25.4.6 节的结构对照表
         （表~\ref{tab:25-struct}）当导读；
   \item 跨文件行号引用是早期迁移的遗留。实现 1 的区域里有四处注释
-        引用外部行号：L2519「对齐手写版 L4323-4765」、L2566 与 L2579「参考
-        TMA 版 L6624」、L2599「复用 TMA 版 consumer L6696-6737」。这些行号
+        引用外部行号：L2519\textbf{对齐手写版 L4323-4765}、L2566 与 L2579\textbf{参考
+        TMA 版 L6624}、L2599\textbf{复用 TMA 版 consumer L6696-6737}。这些行号
         属于这段代码尚在 notes-v2.cu 中的时期，在本文件的冻结版本中并不
         存在（本文件共 4179 行）。按内容对应过来，它们指的是 FA2 手写版
         （L112--790）与 FA2 TMA+WS 手写版（L792--1440）。核对旧笔记、旧提交时
@@ -753,7 +753,7 @@ K 提前一步、softmax 填 V 的延迟。
   title={flash\_attn.cuh L2530-2546 + L2556-2566 + L2571-2586（实现 1：签名、三段 smem、G2S \texttt{TiledCopy}）}]{../flash_attn.cuh}
 
 注意 \texttt{kStagesK} 是模板参数而 \texttt{kStagesV} 不存在；
-源码注释（L2499--2501）写明「V 固定单 buffer」，理由是 V 的搬运窗口恰好
+源码注释（L2499--2501）写明\textbf{V 固定单 buffer}，理由是 V 的搬运窗口恰好
 被 QK + softmax 覆盖，再加深只是浪费 smem 与屏障。这与第~\ref{ch:16}~章
 手写版 K 双缓冲、V 单级的结论完全一致，但在这里是\emph{一个模板参数的
 缺省值}而不是一段手工维护的代码。
@@ -979,8 +979,8 @@ KV 划分 & 单流全遍历 & 单流全遍历 & 奇偶拆给两个 consumer \\
 
 本章区间（L2196--3488）内\textbf{没有}任何 TFLOPS/加速比断言：四个实现
 都是能跑对的对照样本，性能数字在相邻章节。第~\ref{ch:16}~章区间内的
-L61--71 注释给出 pad 与 XOR swizzle 的对照（「约 120.0 TFLOPS，显著低于
-Q/K/V kPad$=$8 的 166.6 TFLOPS」），第~\ref{ch:17}~、\ref{ch:18}~章的性能节
+L61--71 注释给出 pad 与 XOR swizzle 的对照（\textbf{约 120.0 TFLOPS，显著低于
+Q/K/V kPad$=$8 的 166.6 TFLOPS}），第~\ref{ch:17}~、\ref{ch:18}~章的性能节
 给出同机同批复测（RTX PRO 5000 sm\_120a、CUDA 13.2）。读这些数字时必须
 注意口径：$B{=}1,H{=}32$、warmup$\ge$5、iters$\ge$20 取均值，
 FLOPS $=4BHN^2D$；CuTe 版与手写版在\emph{同一口径}下才可比。
@@ -1044,8 +1044,8 @@ $H{=}1$ 的正确性测试全绿，$H{>}1$ 的精度却差两个量级（源码 
 （写入 smem 的线程与读取的线程不同）。
 
 \textbf{坑三：V 是单 buffer，PV 之后必须同步才能进入下一轮。}
-L2769 的 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()} 注释写明「ldmatrix V 完成后才能覆盖
-V smem」。删掉它，下一轮 3a 的 V cp.async 可能覆盖本轮尚未读完的 sV，
+L2769 的 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()} 注释写明\textbf{ldmatrix V 完成后才能覆盖
+V smem}。删掉它，下一轮 3a 的 V cp.async 可能覆盖本轮尚未读完的 sV，
 表现是间歇性数值错误，且只在 $D$ 大（ldmatrix 更多）时暴露。
 
 \textbf{坑四：推导 B fragment 的寄存器布局时要用 nonswizzle 视图。}
@@ -1065,8 +1065,8 @@ $kStagesK{-}1$ 个 tile 不预取；此时栈里只剩 V 组，PV 前的 \texttt
 
 \textbf{坑六：\texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}Aregs} 依赖 $m16n8k16$ 约定。}
 式~\eqref{eq:25-aregs} 的 C 的后 2 值 $\leftrightarrow$ A 的 K 向连续 2 值
-是 $m16n8k16$ 的 fragment 约定的推论，源码 L2360--2362 特意标注「不是通用
-性质」。换 atom（如 $k8$ 或 wgmma）必须重推；照抄会得到静默错数据。
+是 $m16n8k16$ 的 fragment 约定的推论，源码 L2360--2362 特意标注\textbf{不是通用
+性质}。换 atom（如 $k8$ 或 wgmma）必须重推；照抄会得到静默错数据。
 
 \textbf{坑七：P 的类型转换与布局重解释的先后顺序。}
 正确顺序是 \texttt{convert\_\allowbreak{}type\allowbreak{}<Element>\allowbreak{}(t\allowbreak{}Cr\allowbreak{}S)} 再做

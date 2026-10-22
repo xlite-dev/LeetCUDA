@@ -596,8 +596,8 @@ R$\to$G 128-bit 写回在寄存器直写路径下的实现（不经过 smem 中�
   \node[ttl] at (30,27) {producer/consumer 时序（kStages $=$ 2，单 CTA）};
   \draw[-{Stealth}, black!45, line width=0.7pt] (80,56) -- (1080,56);
   \node[font=\tiny, text=black!55, anchor=west] at (1010,44) {time};
-  \node[side, text=tkBlue, font=\scriptsize\bfseries] at (30,94) {WG0 producer};
-  \node[font=\tiny, text=black!55, anchor=west] at (30,122) {（1 线程活跃）};
+  \node[side, text=tkBlue, font=\scriptsize\bfseries, anchor=east] at (88,94) {WG0 producer};
+  \node[font=\tiny, text=black!55, anchor=east] at (88,122) {（1 线程活跃）};
   \node[slot, fill=tkFillBlue, draw=tkBlue, text=tkBlue, font=\tiny\bfseries,
     minimum width={230*0.0155cm}, minimum height={40*0.0155cm}] at (255,102)
     {P1(s0) P2 P3};
@@ -607,8 +607,8 @@ R$\to$G 128-bit 写回在寄存器直写路径下的实现（不经过 smem 中�
   \node[slot, fill=tkFillBlue, draw=tkBlue, text=tkBlue, font=\tiny\bfseries,
     minimum width={230*0.0155cm}, minimum height={40*0.0155cm}] at (775,102)
     {P1(s0) ...};
-  \node[side, text=tkGreen, font=\scriptsize\bfseries] at (30,174) {WG1 consumers};
-  \node[font=\tiny, text=black!55, anchor=west] at (30,202) {（128 线程 $=$ 4 warp）};
+  \node[side, text=tkGreen, font=\scriptsize\bfseries, anchor=east] at (88,174) {WG1 consumers};
+  \node[font=\tiny, text=black!55, anchor=east] at (88,202) {（128 线程 $=$ 4 warp）};
   \node[slot, fill=gray!22, draw=black!40, font=\scriptsize\bfseries,
     minimum width={80*0.0155cm}, minimum height={44*0.0155cm}] at (180,180) {C0};
   \node[slot, fill=tkFillGreen, draw=tkGreen, text=tkGreen, font=\tiny\bfseries,
@@ -702,7 +702,7 @@ $8192^3$ 规模下 TMA+MMA+WS 组合把纯 MMA 基础实现（第~\ref{ch:11}~�
 
 \section{实践经验与考据说明}
 
-\begin{kaogu}[F2 核校通过]{「SWIZZLE\_128B 要求 smem 基地址 1024 字节对齐」的表述}
+\begin{kaogu}[F2 核校通过]{\textbf{SWIZZLE\_128B 要求 smem 基地址 1024 字节对齐}的表述}
   hgemm.cuh L1898 起的注释如此声明，并区分了 WGMMA（base\_offset 硬件补偿，
   128B 即可）与 ldmatrix（软件公式假设相位 0，须 1024B）两条路径。对照 PTX
   ISA：\texttt{cp.\allowbreak{}async.\allowbreak{}bulk.\allowbreak{}tensor} 对目的地址的硬性要求是对齐到 swizzle
@@ -712,7 +712,7 @@ $8192^3$ 规模下 TMA+MMA+WS 组合把纯 MMA 基础实现（第~\ref{ch:11}~�
   消费端）宜读作后者。
 \end{kaogu}
 
-\begin{kaogu}[F2·文档 vs 实践]{cuda.h 注释「tensorRank must be 3, 4, or 5」}
+\begin{kaogu}[F2·文档 vs 实践]{cuda.h 注释\textbf{tensorRank must be 3, 4, or 5}}
   CUDA 13.2 的 \texttt{cu\allowbreak{}Tensor\allowbreak{}Map\allowbreak{}Encode\allowbreak{}Tiled} 头文件注释称 tensorRank 只能
   是 3/4/5，而 common.cuh 与本章测试都用 rank$=$2（2D tile），实测编码成功、
   kernel 数值正确。驱动实践接受 rank 2（CUTLASS 同样大量使用），头文件注释
@@ -720,9 +720,9 @@ $8192^3$ 规模下 TMA+MMA+WS 组合把纯 MMA 基础实现（第~\ref{ch:11}~�
 \end{kaogu}
 
 \begin{kaogu}[F1·2026-09-17 修正]{setmaxnreg 丢失的归因：地址空间，非目标后缀}
-  旧版注释（common.cuh L467--517）断言「sm\_120a 上 ptxas 把
+  旧版注释（common.cuh L467--517）断言\textbf{sm\_120a 上 ptxas 把
   \texttt{cp.\allowbreak{}async.\allowbreak{}bulk.\allowbreak{}tensor} 的使用当作隐式 extern-call 边界丢弃
-  setmaxnreg，改用 \texttt{-arch sm\_120f} 则保留」。该结论后被 PTX 级
+  setmaxnreg，改用 \texttt{-arch sm\_120f} 则保留}。该结论后被 PTX 级
   取证推翻：真正的触发条件是 TMA 的目的状态空间 \texttt{shared::cluster}
   （两个 arch 目标下都丢），\texttt{shared::cta} 则两个目标下都保留
   （各 112/112）。旧结论是 cluster 写法 + 存活 kernel 恰好用 120f 构建
@@ -732,15 +732,15 @@ $8192^3$ 规模下 TMA+MMA+WS 组合把纯 MMA 基础实现（第~\ref{ch:11}~�
   修正（commit f4b759f）。
 \end{kaogu}
 
-\begin{kaogu}[F2·已修正]{注释「require \_\_launch\_bounds\_\_(N, 1)」与实现不一致}
+\begin{kaogu}[F2·已修正]{注释\textbf{require \_\_launch\_bounds\_\_(N, 1)}与实现不一致}
   common.cuh 注释称 setmaxnreg 需要 \texttt{\_\allowbreak{}\_\allowbreak{}launch\_\allowbreak{}bounds\_\allowbreak{}\_\allowbreak{}(N,\allowbreak{} 1)}
   （每 SM 1 block，给满每线程 256 regs 的编译许可），而
   \texttt{hgemm\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}tn} 当时只写
   \texttt{\_\allowbreak{}\_\allowbreak{}launch\_\allowbreak{}bounds\_\allowbreak{}\_\allowbreak{}\allowbreak{}(k\allowbreak{}Num\allowbreak{}Threads)}。2026-09-17
   实证了后果：缺第二参数时 PTX 不带 \texttt{.minnctapersm}，ptxas 以 C7508
   （"unable to determine register count at entry"）丢弃 setmaxnreg，与
-  PTX ISA §9.7.19.5「须以编译期选项/调优指令声明每线程最大寄存器数，否则
-  可能无效」的措辞吻合。该 kernel 已补 \texttt{, 1}（f4b759f），与其余 WS
+  PTX ISA §9.7.19.5\textbf{须以编译期选项/调优指令声明每线程最大寄存器数，否则
+  可能无效}的措辞吻合。该 kernel 已补 \texttt{, 1}（f4b759f），与其余 WS
   kernel 声明一致。
 \end{kaogu}
 
@@ -816,7 +816,7 @@ SASS \texttt{USETMAXREG}=112=PTX 计数。FA bench Max Err 与基线一致。
 \texttt{n}}。\texttt{grep setmaxnreg} 在 SASS 上全程假阴性，本次调查一度据此
 得出连最小 PTX 都被丢弃的错误结论；跨层数指令先核对两层的助记符拼写
 （PTX \texttt{setmaxnreg} $\ne$ SASS \texttt{USETMAXREG}）。（2）ptxas 聚合
-的 C750x 警告打印在第一条「Compiling entry function」\textbf{之前}，不能按
+的 C750x 警告打印在第一条\textbf{Compiling entry function}\textbf{之前}，不能按
 行号就近归属到相邻 kernel，逐 entry 单独用 ptxas 编译才是可靠口径。
 （3）\textbf{警告消失}$\ne$\textbf{指令回来了}：删 TMA 消警告的中间版本曾让人以为
 找到了解法，而 SASS 依旧为空，警告与 SASS 必须分别验证。

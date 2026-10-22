@@ -184,10 +184,9 @@ chunk 循环各自把 $P V^{\top}_{\mathcal{D}_c}$ 加进
   \draw[->, tkOrange] (9.35,-2.55) -- (12.45,-2.7);
   \node[anchor=north, font=\tiny, align=center] at (13.2,-3.15)
     {$O=[\,O_{:,\mathcal{D}_0}\mid O_{:,\mathcal{D}_1}\,]$：输出列维\\各 chunk 独立累加（式~\ref{eq:30-pv-split}）};
-  \draw[tkPurple, fill=white, thick] (1.8,-4.95) rectangle (12.6,-4.45);
-  \node[align=center] at (7.2,-4.7)
-    {行统计 $(m_r,\ell_r)$：\textbf{KV 行维的量}——与 $D$ 切分完全无关，所有 chunk
-     共享同一组（不产生 per-chunk 统计），rescale 因子天然一致};
+  \draw[tkPurple, fill=white, thick] (1.8,-5.30) rectangle (12.6,-4.46);
+  \node[align=center] at (7.2,-4.88)
+    {行统计 $(m_r,\ell_r)$：\textbf{KV 行维的量}——与 $D$ 切分完全无关\\所有 chunk 共享同一组（不产生 per-chunk 统计），rescale 因子天然一致};
   \draw[tkPurple, densely dashed] (7.3,-2.3) -- (7.3,-4.45);
   \draw[tkPurple, densely dashed] (8.95,-1.35) -- (8.95,-4.45);
   \draw[tkPurple, densely dashed] (8.95,-2.95) -- (8.95,-4.45);
@@ -729,8 +728,8 @@ D=512（fp16）。
         mean $\sim$0.007；
   \item dense 对照：self-attn 六格全绿 $\Rightarrow$ 排除
         kernel 结构性错误（chunk 流水、mask、epilogue 都对）；
-  \item 对照头注释。L40--43 声明的「causal 早期行
-        attend 少、误差不被平均」与实测模式吻合：早期行
+  \item 对照头注释。L40--43 声明的\textbf{causal 早期行
+        attend 少、误差不被平均}与实测模式吻合：早期行
         $P$ 分布尖，e4m3 的 $2^{-4}$（半格）相对舍入直接进 $O$；行号
         过半后 $P$ 足够平，误差被平均掉；
   \item \textbf{结论}：已知精度特性，非回归 bug。需要严格

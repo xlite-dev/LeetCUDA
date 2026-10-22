@@ -202,7 +202,7 @@ bit7 即 $i$ 的 bit2）。所以式~\ref{eq:12-xor-v1} 的净效果是
 代入式~\ref{eq:12-q16}（BK=16）：行 4--7 的 chunk 0 被搬去 $q=4{,}12{,}20{,}28$，
 chunk 1 搬去 $q=0{,}8{,}16{,}24$，phase 0 的 8 行四联组变为
 $\{0,8,16,24,4,12,20,28\}$：8 个互不相同，恰好铺满 32 个 bank，即 1-way、
-零冲突。源码注释「原来 n-way 的 bank conflict 降低到 1-way」说的正是这个 32\,B
+零冲突。源码注释\textbf{原来 n-way 的 bank conflict 降低到 1-way}说的正是这个 32\,B
 行宽布局（common.cuh~L185--234 的 bank 分布表即此布局，也是图~\ref{fig:12-1} 的蓝本）。
 
 \subsection{可逆性：swizzle 是对合，写读同函数即互逆}
@@ -298,23 +298,23 @@ BK=16 基线 98{,}304 次；两版比值 $691067/297628=2.32$，与模型预测�
       0/0/10/0/10/0/10, 1/0/10/0/10/4/19, 2/0/10/0/10/8/29,
       3/0/10/0/10/12/38, 4/0/10/4/19/16/48, 5/0/10/4/19/20/57,
       6/0/10/4/19/24/66, 7/0/10/4/19/28/76}{
-    \node[font=\scriptsize, anchor=east] at (-0.22, -0.62*\i) {$i=\i$};
-    \node[cell, fill=gray!\ga] at (1.02, -0.62*\i) {$q{=}\qa$};
-    \node[cell, fill=gray!\gb] at (3.32, -0.62*\i) {$q{=}\qb$};
-    \node[cell, fill=gray!\gc] at (5.62, -0.62*\i) {$q{=}\qc$};
+    \node[font=\scriptsize, anchor=east] at (-0.22, -0.62*\i-0.45) {$i=\i$};
+    \node[cell, fill=gray!\ga] at (1.02, -0.62*\i-0.45) {$q{=}\qa$};
+    \node[cell, fill=gray!\gb] at (3.32, -0.62*\i-0.45) {$q{=}\qb$};
+    \node[cell, fill=gray!\gc] at (5.62, -0.62*\i-0.45) {$q{=}\qc$};
   }
   \foreach \xa/\xc in {0/tkRed!55, 2.3/tkOrange!55, 4.6/tkGreen!55}{
-    \draw[thick, \xc] (\xa, 0.32) rectangle (\xa+2.04, -4.66);
+    \draw[thick, \xc] (\xa, -0.13) rectangle (\xa+2.04, -5.11);
   }
   \node[pttl, text=tkRed] at (1.02, 1.05) {(a) 无 swizzle};
-  \node[psub, text=tkRed] at (1.02, 0.5) {8 行同 quad：\textbf{8-way}};
+  \node[psub, text=tkRed, anchor=north] at (1.02, 0.58) {8 行同 quad\\\textbf{8-way}};
   \node[pttl, text=tkOrange] at (3.32, 1.05) {(b) per-slice\\\texttt{swizzle<16>}};
-  \node[psub, text=tkOrange] at (3.32, 0.5) {两组 quad：\textbf{4-way}};
+  \node[psub, text=tkOrange, anchor=north] at (3.32, 0.58) {两组 quad\\\textbf{4-way}};
   \node[pttl, text=tkGreen] at (5.62, 1.05) {(c) \texttt{swizzle<64>}\\（SW128）};
-  \node[psub, text=tkGreen] at (5.62, 0.5) {铺满 32 bank：\textbf{1-way}};
-  \node[pncu] at (1.02, -5.15) {NCU 实测\\691{,}067 次/launch};
-  \node[pncu] at (3.32, -5.15) {NCU 实测\\297{,}628 次/launch};
-  \node[pncu] at (5.62, -5.15) {模型 1-way\\BK=16 基线 98{,}304 次\\（2-way 参照）};
+  \node[psub, text=tkGreen, anchor=north] at (5.62, 0.58) {铺满 32 bank\\\textbf{1-way}};
+  \node[pncu, anchor=north] at (1.02, -5.25) {NCU 实测\\691{,}067 次\\每 launch};
+  \node[pncu, anchor=north] at (3.32, -5.25) {NCU 实测\\297{,}628 次\\每 launch};
+  \node[pncu, anchor=north] at (5.62, -5.25) {模型 1-way\\BK=16 基线\\98{,}304 次（2-way）};
   \node[font=\scriptsize\bfseries] at (8.35, 1.0) {起始 bank 号 $q$};
   \foreach \q/\g [count=\r from 0] in {0/10, 4/19, 8/29, 12/38, 16/48, 20/57, 24/66, 28/76}{
     \node[fill=gray!\g, minimum width=0.62cm, minimum height=0.38cm, inner sep=0pt] at (7.55, 0.55-0.46*\r) {};
@@ -322,9 +322,9 @@ BK=16 基线 98{,}304 次；两版比值 $691067/297628=2.32$，与模型预测�
   }
   \node[font=\scriptsize, anchor=north, align=center] at (8.35, -3.3)
     {每格 = 一个 16\,B chunk\\（占 4 个连续 bank）\\同色 = 同 quad = 同 phase 冲突};
-  \node[font=\scriptsize, anchor=north west] at (0, -6.0)
+  \node[font=\scriptsize, anchor=north west] at (0, -6.45)
     {$q(i,s,c)=(8s+4c)\bmod 32$（式~\ref{eq:12-q64}）；phase~0 = lanes 0--7 = 行 $i{=}0$--7、$s{=}0$、chunk $c$ 固定；};
-  \node[font=\scriptsize, anchor=north west] at (0, -6.42)
+  \node[font=\scriptsize, anchor=north west] at (0, -6.87)
     {(b) 行 0--3 落 $q{=}8s$、行 4--7 落 $q{=}8s{+}4$；(c) $c'=c\oplus(i\,\&\,7)$，行 0--7 铺满 $q=0,4,\dots,28$。};
 \end{tikzpicture}
 \caption{BK=64（128\,B 行宽）下三档 swizzle 的 phase-0 quad 映射对比（12.3.7 节）：
@@ -354,7 +354,7 @@ BK=16 基线 98{,}304 次；两版比值 $691067/297628=2.32$，与模型预测�
 即把 $T_n$ 个 N-tile 顺序切成 $S$ 组、每组 $\lceil T_n/S\rceil\approx16$ 个，
 组号记录在 blockIdx.z 里。$k_{\mathrm{BS}}{=}0$ 时式~\ref{eq:12-bs} 退化为
 $bx=\mathrm{blockIdx.x}$，与默认完全一致，开关零成本。注意 kernel 只使用
-「$z\cdot\mathrm{gridDim.x}+x$」这个线性式，$S$ 取多少组由启动方决定
+\textbf{$z\cdot\mathrm{gridDim.x}+x$}这个线性式，$S$ 取多少组由启动方决定
 （源码注释的 $S{=}\lceil N/2048\rceil$ 是推荐值：每组 16 个 tile $\approx$
 $\sqrt{R}$，$R$ 为常驻 block 数）。
 
@@ -581,7 +581,7 @@ warp shuffle 拼出 128-bit 向量写回 C，思路与第~\ref{ch:11}~章一致�
   \node[rotate=90, font=\scriptsize\bfseries] at (-0.85, 1.86) {cp.async 预取};
   \node[blk, fill=tkFillBlue, draw=tkBlue, minimum width=1.5cm] at (0.9, 1.86) {tile 0 $\to$ S$_0$};
   \node[blk, fill=tkFillBlue, draw=tkBlue, minimum width=3.5cm] at (3.8, 1.86)
-    {cp.async：tile $k{+}S{-}1$ $\to$ stage $(k{+}S{-}1)\bmod S$\\（tile 1 $\to$ S$_1$，$S{=}$kStages$=2$）};
+    {cp.async：tile $k{+}S{-}1$\\$\to$ stage $(k{+}S{-}1)\bmod S$\\（tile 1 $\to$ S$_1$，$S{=}$kStages$=2$）};
   \node[blk, fill=tkFillBlue, draw=tkBlue, minimum width=3.5cm] at (7.8, 1.86) {tile 2 $\to$ S$_0$};
   \node[blk, fill=tkFillBlue, draw=tkBlue, minimum width=1.3cm] at (10.85, 1.86) {tile 3 $\to$ S$_1~\cdots$};
   \node[rotate=90, font=\scriptsize\bfseries] at (-0.85, 0.0) {k\_step 乒乓};
@@ -955,7 +955,7 @@ cuBLAS。F32Acc 各行对比 cuBLAS 的 f32 累加（164.2 TFLOPS）则大幅
 
 \section{实践经验}
 
-\begin{kaogu}[F3 + NCU 实证]{common.cuh L122--125：「降低到 1-way（fully conflict-free）」对本章 kernel 不成立}
+\begin{kaogu}[F3 + NCU 实证]{common.cuh L122--125：\textbf{降低到 1-way（fully conflict-free）}对本章 kernel 不成立}
   注释的 1-way 结论只在\textbf{swizzle 作用域 = 整行}（32\,B 行宽，BK=16 / FA 的
   $[\ast][16]$ 布局，即 common.cuh L185--234 表格对应的布局）时成立。本章核心
   kernel \texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn\_\allowbreak{}swizzle} 的统一 tile 行宽 128\,B（BK=64），
@@ -963,8 +963,8 @@ cuBLAS。F32Acc 各行对比 cuBLAS 的 f32 累加（164.2 TFLOPS）则大幅
   （128\,B）的一圈，行号位无法进入 bank 位，单个 XOR bit 最多把 phase 内
   8 lane 分到 2 个四联组，下界即 4-way。NCU 实测 297{,}628 次
   冲突/launch（无 swizzle 对照 691{,}067，BK=16 基线 98{,}304，
-  表~\ref{tab:12-bank}）。注释 L124--125 的「局限：要求 kColStride $\le$16
-  （即 BK $\le$16）」其实已经预设了行宽前提，但 kernel 在 BK=64 下仍调用
+  表~\ref{tab:12-bank}）。注释 L124--125 的\textbf{局限：要求 kColStride $\le$16
+  （即 BK $\le$16）}其实已经预设了行宽前提，但 kernel 在 BK=64 下仍调用
   \texttt{swizzle<16>}，两处合读容易让人误以为本 kernel 已零冲突。修正表述：
   per-slice swizzle 把 8-way 降为 4-way；128\,B 行宽下零冲突需
   \texttt{swizzle<64>}（SWIZZLE\_128B，$B{=}3$）。
@@ -987,7 +987,7 @@ cuBLAS。F32Acc 各行对比 cuBLAS 的 f32 累加（164.2 TFLOPS）则大幅
 \end{kaogu}
 
 \begin{kaogu}[位置考据]{common.cuh L344-347 注释悬置}
-  「swizzle: 公开派发器……」这条注释紧接在 \texttt{swizzle\_\allowbreak{}v2\_\allowbreak{}impl} 之后，
+  \textbf{swizzle: 公开派发器……}这条注释紧接在 \texttt{swizzle\_\allowbreak{}v2\_\allowbreak{}impl} 之后，
   但 common.cuh 内\textbf{并没有}它描述的 \texttt{swizzle\allowbreak{}<k\allowbreak{}Col\allowbreak{}Stride>} 函数，
   派发器实际定义在 hgemm.cuh~L388--396（各 kernel 的 include 链上游）。
   阅读时按注释在 common.cuh、实体在 hgemm.cuh 来理解即可，行为无影响。
