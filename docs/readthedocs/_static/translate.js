@@ -98,6 +98,11 @@
       if (!match) {
         return;
       }
+      // 英文图集只覆盖 TikZ 编译出的 SVG；原书插图（jpg/png）与子集合的知乎原图没有
+      // 英文版，放进来只会每个都发一次注定 404 的请求再回退。
+      if (!/\.svg$/i.test(match[1])) {
+        return;
+      }
       var original = source;
       image.addEventListener('error', function () {
         // 没有英文版的图（未全部命中词典）继续用中文原图。

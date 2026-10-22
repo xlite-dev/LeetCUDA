@@ -4,17 +4,17 @@
 
 | 层 | 手段 | 能发现 |
 | --- | --- | --- |
-| ① 文件级 | `python -m convert.verify --src build/src --html build/html` | 章号、表格数、字面残迹、悬空锚点、未解析属性（23 项） |
-| ② 浏览器级 | `python -m tools.visual_check --html build/html --out build/shots/chapters` | MathJax 报错、页面上可见的字面残迹、控制台报错、404 资源 |
+| ① 文件级 | `python -m convert.verify --src build/src --html build/html` | 章号、表格数、字面残迹、悬空锚点、未解析属性（通用项逐页 + 每本书一套 + 集合装配） |
+| ② 浏览器级 | `python tools/visual_check.py --html build/html --out build/shots/chapters` | MathJax 报错、页面上可见的字面残迹、控制台报错、404 资源 |
 | ③ 版式几何 | 已并进 `visual_check` | 图片/表格是否居中、有没有元素（过宽公式、宽表）撑出正文栏 |
 
 ch33/ch35/ch37 的表格、ch01 的丢图、ch00 的图内文字丢失都只有 ②③ 层能发现；只看 `sphinx-build` 的告警数会漏掉大量内容错误（**0 警告 ≠ 页面正确**）。
 
 **总数阈值会掩盖单点丢失**：表格数 126 → 125 时「≥90%」照样通过，ch37 的量化开销表就是这么漏掉的；改成逐章比对后立刻暴露。
 
-## 核对清单（28 项，任一不过即以非零码退出）
+## 核对清单（任一不过即以非零码退出）
 
-`build.sh` 在 Sphinx 之后跑一次，RTD 的 `post_build` 同样会跑：
+`build.sh` 在 Sphinx 之后跑一次，RTD 的 `post_build` 同样会跑。**数量随书数增长**：通用项覆盖站点每一页（含子集合子目录，页面键用 docname），章号/表格/多行表头/书目录这四项**每本书各跑一套**（集合那套带「（CuTe文章集合）」后缀），最后再核一次集合装配。
 
 | 检查项 | 说明 |
 | --- | --- |
@@ -45,17 +45,22 @@ ch33/ch35/ch37 的表格、ch01 的丢图、ch00 的图内文字丢失都只有 
 | 下载 PDF 按钮已渲染 | 每页都有该按钮（默认挨着「下一页」，无按钮行的页面落侧栏），且链接与根 README 的 `[leetcuda-pdf]` 一致 |
 | TikZ 图保留文字 | 有文字的片段必须真的输出字形（防陈旧/残缺 SVG 留在页面上） |
 | 英文图集完整 | 词典覆盖、英文 SVG 数量与字形（`_static/figures-en/`） |
-| 书目录编号核对 | 本地有 `book.toc` 时，逐章比对书目录真值（章号 + 标题） |
+| 书目录编号核对 | 本地有 `<书>.toc`（主书 `book.toc`、集合 `cute-zhihu.toc`）时，逐章比对章号 + 标题 |
+| 集合已装配且入口在附录之后 | 按 `build/collections.json` 核对集合首页/篇页/章节页齐全，且主书侧栏里的入口排在所有 `part-N` 之后 |
 
 ## 浏览器验收（visual_check）
 
 ```bash
 pip install playwright && python -m playwright install chromium   # 一次性
-python -m tools.visual_check --html build/html --out build/shots/chapters \
+python tools/visual_check.py --html build/html --out build/shots/chapters \
     --proxy http://localhost:7890          # 无代理时省略 --proxy
-python -m tools.visual_check --only index,ch00-profiling --out build/shots   # 只验几页
+python tools/visual_check.py --only index,cute-zhihu/index,ch00-profiling --out build/shots  # 只验几页
     --sheet build/shots/sheet.png          # 把截图拼成接触表，便于肉眼过一遍排版
 ```
+
+用 `python tools/visual_check.py` 而不是 `python -m tools.visual_check`：cdit 环境的 site-packages 里有个同名的 `tools` 包，`-m` 会命中它并报 `No module named tools.visual_check`。
+
+页面枚举是递归的（`rglob`），主书与子集合的所有页面一起验（当前 93 页）；页面标识用 docname（`cute-zhihu/reed-01-layout`），截图名把 `/` 换成 `__`，`--only` 同时接受 docname 与裸文件名。
 
 流程：逐页打开、等 MathJax 渲染完，然后统计公式报错（`mjx-merror` 的 TeX 报错原文）、**公式渲染文本里的反斜杠残迹**（取 `mjx-assistive-mml` 的文本扫 `\X`——text mode 里 MathJax 不认的写法会原样显示且不报错，只能在这里兜底）、可见的字面残迹（排除代码块与公式容器）、控制台报错、404 资源，并量一遍版式几何，最后整页截图留档。公式与字体走 CDN，验收机需要能出网（否则用 `--proxy`）。
 

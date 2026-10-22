@@ -286,6 +286,7 @@ def normalize(
   """
   builder = _Builder(chap, book_dir, work_dir, src_dir, registry)
   text = flatten_inputs(chap.tex, book_dir)
+  text = _expand_urldef(text)
   text = _extract_input_listings(text, builder)
   text = _extract_code_envs(text, builder)
   text = _convert_verb(text)
@@ -589,6 +590,37 @@ _VERB_ESCAPE = {
 
 #: ``\verb<delim>...<delim>``。
 _VERB_RE = re.compile(r"\\verb\*?([^A-Za-z\s])([^\n]*?)\1")
+
+#: ``\urldef\name\url{…}``：把含 ``%`` 编码的跳转链接预定义成宏。
+_URLDEF_RE = re.compile(r"\\urldef\s*\\?([A-Za-z@]+)\s*\\url\s*\{")
+
+
+def _expand_urldef(text: str) -> str:
+  """展开 ``\\urldef\\name\\url{…}`` 定义。
+
+  ``\\urldef`` 是 LaTeX2e 预定义 URL 宏的写法（``\\url`` 的逐字读取在 ``\\footnote``
+  参数里会失效，原文用它绕过）。pandoc 不认识：定义行会漏成页面顶部一条裸链接，
+  ``\\footnote{\\name}`` 变成空脚注。这里按 TeX 的展开语义把引用换成 ``\\url{…}``、
+  删掉定义本身——和 PDF 上的呈现一致。
+
+  :param text: 章节 tex。
+  :returns: 展开后的文本。
+  """
+  urls: dict[str, str] = {}
+  while True:
+    match = _URLDEF_RE.search(text)
+    if match is None:
+      break
+    try:
+      url, end = read_group(text, match.end() - 1)
+    except ValueError:
+      break
+    urls[match.group(1)] = url
+    text = text[:match.start()] + text[end:]
+  for name, url in urls.items():
+    text = re.sub(r"\\" + name + r"(?![A-Za-z@])",
+                  lambda _match, value=url: f"\\url{{{value}}}", text)
+  return text
 
 
 def _convert_verb(text: str) -> str:

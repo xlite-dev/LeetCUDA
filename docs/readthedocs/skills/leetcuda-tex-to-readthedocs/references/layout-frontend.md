@@ -4,7 +4,8 @@
 
 ## 三栏版式与居中
 
-- **三栏：左「篇 → 章」+ 正文 + 右「本页目录」**：左栏只到章节级（`conf.py` 的 `navigation_depth = 2`），小节级目录放右栏，两处不重复。
+- **三栏：左「篇 → 章」+ 正文 + 右「本页目录」**：左栏只到章节级（`conf.py` 的 `navigation_depth = 3` + `titles_only = True`），小节级目录放右栏，两处不重复。三层是给子集合用的（集合首页 → 系列 → 文章）；`titles_only` 必须为 True，否则 depth=3 会把主书每章的 `\section` 也塞进左栏（实测 58 → 542 条）。
+- **集合与主书同一套折叠交互，不要额外加 CSS**：主题的 `theme.js` 给每个有子 `<ul>` 的 `<a>` 前插 `<button class="toctree-expand">`，点击 `toggleCurrent` 切 `li.current`；CSS 只在 `.current` 链上展开一层。所以集合的 4 个系列默认是「+」收起，点开才展开章节，当前系列随页面自动展开——**不要去写 `display: block` 强制展开**：那会让「+」变成点了没反应的死控件（曾这么试过，用户要的是主书那种点开展开）。
 - **整体居中**：rtd 主题把 `.wy-nav-content` 的 `margin` 归零，三栏整体贴左（2560px 屏右侧空 1460px）。`custom.css` 把「侧栏 + 正文」当作一组：侧栏 `left` 与正文容器 `margin-left` 用同一个 `calc()` 偏移，两者紧贴、空白均分到两侧。三栏需要 300 + 800 + 28 + 220 = 1348px，窄于此宽度隐藏右栏；≥1600px 正文放宽到 960px。
 - **图片与表格居中**：书里插图多包在 `\begin{center}` 里（那层排版环境在转换时剥掉了），表格是 pandoc 直出的 HTML，两者默认都靠左。CSS 里给 `p > img:only-child` 与表格设了居中——只处理独立成段和表格单元格里的图，正文中夹在句子里的图不动；窄表按内容宽度居中，宽表被 `max-width: 100%` 截到栏宽后在表内横向滚动。
 - **过宽公式**：`mjx-container[display="true"]` 用 `min-width: 0 !important` 覆盖 MathJax 的内联 `min-width`，让它在容器内滚动，而不是撑出整页横向滚动条。
