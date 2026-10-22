@@ -1063,7 +1063,8 @@ max / 指数和 / 指数加权和；归纳法证明不变量逐块保持（定�
 \textbf{Q6：FlashAttention 不减少 FLOPs，为什么快？}\\
 A：省的是 HBM 流量与显存：IO 从 $\Theta(Nd + N^{2})$ 降到 $\Theta(Nd + N^{2}d^{2}/M)$，
 激活显存从 $\Theta(N^{2})$ 降到 $\Theta(Nd)$；算术强度从 $d/2$ 升到 $B_r$ 量级，
-kernel 从 memory-bound 变 compute-bound，Tensor Core 才能达到高利用率。
+配合 L2 对 $K/V$ 的跨 block 复用，kernel 从 memory-bound 变 compute-bound，
+Tensor Core 才能达到高利用率。
 
 \textbf{Q7：FA1、FA2、FA3 各自的贡献？}\\
 A：FA1 = tiling + online softmax + 反向 recomputation（IO-aware，$\Theta(N^{2}d^{2}/M)$）；
