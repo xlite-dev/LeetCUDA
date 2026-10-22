@@ -95,8 +95,8 @@ L2 $\sim$12 TB/s、L1/SMEM $\sim$19 TB/s、Register $\sim$100+ TB/s），
   靠的就是它，后续章节 bank conflict（ch07）、swizzle（ch12）也都在这块
   SRAM 上展开。
 \item \textbf{Tensor Cores}：Hopper 每 SM 4 个第四代 Tensor Core，专门执行
-  矩阵乘加（MMA）；Blackwell 的数量与形态随型号有差异，源码注释提醒「以
-  官方 ISV guide 为准」，本书 Part II--IV 的大量篇幅都在围绕
+  矩阵乘加（MMA）；Blackwell 的数量与形态随型号有差异，源码注释提醒\textbf{以
+  官方 ISV guide 为准}，本书 Part II--IV 的大量篇幅都在围绕
   如何充分利用这些 Tensor Core。
 \item \textbf{Warp = 32 threads}：warp 是\textbf{最小调度与指令发射单元}，
   32 个线程锁步执行同一条指令（SIMT）。注意区分两个概念：线程是执行
@@ -550,14 +550,14 @@ roofline 里的 $BW$ 必须用数据实际所在层级的带宽。
 以下两条记在此处，全量记录见 book/CHECKLOG.md：
 
 \begin{kaogu}[F4]{L16--21 内存层级带宽数量级}
-「L2 约 12 TB/s、L1/SMEM 约 19 TB/s」属于微基准口径的数量级估计，随测量
+\textbf{L2 约 12 TB/s、L1/SMEM 约 19 TB/s}属于微基准口径的数量级估计，随测量
 方法（读/写比例、跨 SM 通信模式）浮动明显；HBM 3.35 TB/s 则是 H100 SXM 的
 官方 spec 值。混排时建议在正文口径中分别标注官方 spec 与微基准量级，
 避免读者按同一精度理解这组数字。
 \end{kaogu}
 
 \begin{kaogu}[F3]{L89 GEMM 算例单位}
-注释「FLOPs $= 2 \times 4096^3 \approx 137$ GFLOPS」中单位应为
+注释\textbf{FLOPs $= 2 \times 4096^3 \approx 137$ GFLOPS}中单位应为
 GFLOP（运算量），FLOPS（每秒）是速率单位；该段实为 Roofline 的
 静态算例，与时间无关。精确值 $2 \times 4096^3 / (3 \times 4096^2 \times 4)
 = 682.7$ FLOP/Byte，注释的 685 为四舍五入口径。

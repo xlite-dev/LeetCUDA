@@ -208,7 +208,7 @@ $+8$。两者逐 lane 对照：
   \node[anchor=west, font=\scriptsize, align=left] at (3.55,{-16*\chd-0.62})
     {浅 = 行 0--7（\texttt{reg[0]}，$R\_S[i][w][0]$）\\深 = 行 8--15（\texttt{reg[1]}，$R\_S[i][w][1]$）};
   % 底部横条：Bc=64 的 4 段 tile_V_Bc 消费表
-  \node[anchor=south, font=\scriptsize] at ({\px+8*\cwd},{-16*\chd-0.22})
+  \node[anchor=north, font=\scriptsize] at ({\px+8*\cwd},{-16*\chd-0.20})
     {$B_c{=}64$：4 段 \texttt{tile\_V\_Bc} 覆盖全部列（$w=2t$，源码注释 L612--616）};
   \node[very thick, draw=tkOrange!80!black, fill=tkOrange!30, minimum width=1.78cm, minimum height=0.60cm, align=center]
     at ({\px+0.89},{-16*\chd-0.85}) {\texttt{tile\_V\_Bc=0}\\$w{=}0$，列 0:16};
@@ -480,8 +480,8 @@ $V_t$（当前）与 $K_{t+1}$（预取，写 \texttt{smem\_\allowbreak{}sel\_\a
 CUDA Core/SFU 上跑，掩盖了 V 的搬运延迟；$K_{t+1}$ 则有整整一个迭代的
 余量。这与第~\ref{ch:11}~章 GEMM 的 kStages 全操作数统一多级不同：
 attention 的两段 mma 中间夹了一段非 mma 计算，天然提供了第二级的隐藏
-窗口，所以 \texttt{kStagesK}$=$2 就够（源码注释 L281「one stage is enough
-for V」）。
+窗口，所以 \texttt{kStagesK}$=$2 就够（源码注释 L281\textbf{one stage is enough
+for V}）。
 
 \texttt{\#pragma unroll 1}（L272）刻意不展开外循环：$T_c$ 是运行期
 值，展开只会膨胀代码。$kStagesK{=}1$ 的退化分支（L341--374）每轮
@@ -544,7 +544,7 @@ for V」）。
   \node[anchor=east, font=\scriptsize, text=tkBlue!80!black] at (-0.12,-1.10) {搬运 $V$（3a）};
   \node[anchor=east, font=\scriptsize, text=tkGreen!80!black] at (-0.12,-1.70) {搬运 $K$（3a 预取）};
 \end{tikzpicture}
-\caption{\textbf{K 双缓冲、V 单级}的流水时序（16.4.4 节 3a 步）。三个稳态迭代 $t{-}1/t/t{+}1$：每个迭代内 3a 依次提交两组搬运——$V_t$（实心圆，写当前 V buffer）与 $K_{t+1}$（空心方，写 \texttt{smem\_sel\_next}）。$V_t$ 的在途窗口（蓝条）恰好覆盖同迭代的 3b（QK mma）与 3c（softmax）——softmax 全在 CUDA Core/SFU 上跑，掩盖了 V 的搬运延迟；$K_{t+1}$ 则有整整一个迭代的余量。两处等待：(1) 3d 前的 \texttt{wait\_group(1)} 只等 $V_t$，把 $K_{t+1}$ 留在途；(2) 迭代末（3e 之后）的 \texttt{wait\_group(0)} 等 $K_{t+1}$ 到齐才进下一轮 3b。与第~\ref{ch:11}~章 GEMM 的\textbf{kStages 全操作数统一多级}不同——attention 两段 mma 之间夹着一段非 mma 计算，天然提供了第二级的隐藏窗口，所以 \texttt{kStagesK}$=$2 就够（「one stage is enough for V」）。}
+\caption{\textbf{K 双缓冲、V 单级}的流水时序（16.4.4 节 3a 步）。三个稳态迭代 $t{-}1/t/t{+}1$：每个迭代内 3a 依次提交两组搬运——$V_t$（实心圆，写当前 V buffer）与 $K_{t+1}$（空心方，写 \texttt{smem\_sel\_next}）。$V_t$ 的在途窗口（蓝条）恰好覆盖同迭代的 3b（QK mma）与 3c（softmax）——softmax 全在 CUDA Core/SFU 上跑，掩盖了 V 的搬运延迟；$K_{t+1}$ 则有整整一个迭代的余量。两处等待：(1) 3d 前的 \texttt{wait\_group(1)} 只等 $V_t$，把 $K_{t+1}$ 留在途；(2) 迭代末（3e 之后）的 \texttt{wait\_group(0)} 等 $K_{t+1}$ 到齐才进下一轮 3b。与第~\ref{ch:11}~章 GEMM 的\textbf{kStages 全操作数统一多级}不同——attention 两段 mma 之间夹着一段非 mma 计算，天然提供了第二级的隐藏窗口，所以 \texttt{kStagesK}$=$2 就够（\textbf{one stage is enough for V}）。}
 \label{fig:16-kv-pipeline}
 \end{figure}
 
@@ -804,7 +804,7 @@ half$\leftrightarrow$float 整簇转换指令的收益大于 f32 累加器的寄
 
 \section{实践经验与考据说明}
 
-\begin{kaogu}[F5 配置口径]{头注释 L33--37「Br=64 / Block(128,1,1) / 4 warps」与默认实例化不符}
+\begin{kaogu}[F5 配置口径]{头注释 L33--37\textbf{Br=64 / Block(128,1,1) / 4 warps}与默认实例化不符}
   头注释的 grid/block 描述取 $kMmaTileSeqLenQ{=}4$（$B_r{=}64$、
   4 warp、128 线程）配置，而 L44--45 的 tile 公式又写
   $B_r = 16\cdot\{4,8\}\cdot1 = \{64,128\}$；leetcuda bench 与本章测试的
@@ -814,10 +814,10 @@ half$\leftrightarrow$float 整簇转换指令的收益大于 f32 累加器的寄
   的默认配置为准。
 \end{kaogu}
 
-\begin{kaogu}[F5 陈旧注释]{L575--576「Bc=kMmaAtomK=16 $\to$ 1 iteration for kHeadDim$\le$64」}
+\begin{kaogu}[F5 陈旧注释]{L575--576\textbf{Bc=kMmaAtomK=16 $\to$ 1 iteration for kHeadDim$\le$64}}
   3d 步的循环上界是 \texttt{Bc / kMmaAtomK}，默认配置 $B_c{=}64$
   应迭代 4 次；该注释描述的是 $B_c{=}16$（$kValTileSeqLenK{=}2$）的
-  非默认配置，且「for kHeadDim$\le$64」的条件与 $B_c$ 无关，易误导
+  非默认配置，且\textbf{for kHeadDim$\le$64}的条件与 $B_c$ 无关，易误导
   读者以为默认只迭代一次。已记 CHECKLOG。
 \end{kaogu}
 
@@ -834,13 +834,13 @@ half$\leftrightarrow$float 整簇转换指令的收益大于 f32 累加器的寄
 \begin{kaogu}[F3 核校通过]{L17--24 online rescaling 公式注释}
   注释的五步递推（$S\to m^{\text{new}}\to P\to \ell^{\text{new}}\to O$
   rescale）与 FA2 论文 Eq.(2)(3) 及第~\ref{ch:15}~章推导一致；
-  「P 写回 R\_S」的前提条件在 L52--58 有专门 caveat（布局约定，非
+  \textbf{P 写回 R\_S}的前提条件在 L52--58 有专门 caveat（布局约定，非
   通用结论），表述严谨。
 \end{kaogu}
 
 \begin{kaogu}[F2 核校通过]{L459--470 C fragment 行/lane 分布注释}
-  「lane 0--3 持 row 0、lane 4--7 持 row 1、\ldots、reg[1] 对应
-  rows 8--15」与 PTX Figure 83 的坐标公式（式~\ref{eq:11-cpos}）
+  \textbf{lane 0--3 持 row 0、lane 4--7 持 row 1、\ldots、reg[1] 对应
+  rows 8--15}与 PTX Figure 83 的坐标公式（式~\ref{eq:11-cpos}）
   逐条一致，是 \texttt{warp\_\allowbreak{}reduce\allowbreak{}<4>} 宽度选择的直接依据。
 \end{kaogu}
 
@@ -849,8 +849,8 @@ half$\leftrightarrow$float 整簇转换指令的收益大于 f32 累加器的寄
 \textbf{坑一：$N$ 不是 $B_c$ 的倍数。}外循环
 $T_c=\lceil N/B_c\rceil$ 用了 ceil 写法，但 3a 的 K/V 加载没有任何
 尾 tile 边界处理，最后一个不完整 tile 会越界读 gmem 并把
-越界数据算进 softmax（L125--127 注释已自我声明「不等于当前实现已经完整
-处理了尾 tile」）。同理 store 侧要求 $N\%B_r=0$。正确用法：seqlen
+越界数据算进 softmax（L125--127 注释已自我声明\textbf{不等于当前实现已经完整
+处理了尾 tile}）。同理 store 侧要求 $N\%B_r=0$。正确用法：seqlen
 按 64/128 对齐，或在调用前 pad。
 
 \textbf{坑二：smem 45~KiB 逼近上限。}默认配置

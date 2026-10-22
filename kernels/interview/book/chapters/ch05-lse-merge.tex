@@ -291,7 +291,7 @@ LSE 读取只有每 (token, head) 2 次标量加载（\texttt{p\_lse}、\texttt{
   \item \textbf{Step 4（凸组合）}：$O = \alpha O^{A} + \beta O^{B}$，
         见下一段。
 \end{itemize}
-源码头注释写「Step 1--4」而概括为「5 步推导」，本书按
+源码头注释写\textbf{Step 1--4}而概括为\textbf{5 步推导}，本书按
 \textbf{清洗 + Step 1--4}共 5 步展开（见 5.7~节勘误一）。
 另外 Step 0--3 由覆盖每个 (token, head) 对的全部线程各自冗余执行
 （输入相同、结果一致；LSE 同址加载经合并后实际流量仍为每对 8B），
@@ -399,19 +399,19 @@ ch04 的 softmax 小形状只有数百 GB/s，差距主要来自形状规模
 
 \section{实践经验}
 
-\begin{kaogu}[F3]{base.cuh L393：「5 步推导」只列了 Step 1--4}
-  头注释称「数学公式（5 步推导）」，随后仅列出 Step 1（max 归一）、Step 2（指数还原）、
+\begin{kaogu}[F3]{base.cuh L393：\textbf{5 步推导}只列了 Step 1--4}
+  头注释称\textbf{数学公式（5 步推导）}，随后仅列出 Step 1（max 归一）、Step 2（指数还原）、
   Step 3（归一化混合比例）、Step 4（加权合并）四步。按实现数，第 5 步应是
   L484-485 的 $+\infty \to -\infty$ 清洗（或把\textbf{$w\sb{1} + w\sb{2}$ 归一化}与
   \textbf{逐元素加权}拆开计数）。本章 5.4~节按\textbf{清洗 + Step 1--4}共 5 步展开，
   与代码行一一对应；建议后续修订注释时明确第 5 步所指。
 \end{kaogu}
 
-\begin{kaogu}[F4]{base.cuh L412：「AI $\approx$ 3 FLOP / 20 bytes $\approx$ 0.15」口径需注明}
+\begin{kaogu}[F4]{base.cuh L412：\textbf{AI $\approx$ 3 FLOP / 20 bytes $\approx$ 0.15}口径需注明}
   20~B 的口径把两次 LSE 读（8~B）按每个输出元素计入，仅在
   $D = 1$ 量级成立；LSE 是每 (token, head) 一份的标量，摊销后每元素流量为
-  $12 + 8/D$~B（$D = 128$ 时约 12.06~B，$AI \approx 0.25$）。「severely
-  memory-bound」的定性结论不受影响，数值口径建议标注为「LSE 不摊销的上界」。
+  $12 + 8/D$~B（$D = 128$ 时约 12.06~B，$AI \approx 0.25$）。\textbf{severely
+  memory-bound}的定性结论不受影响，数值口径建议标注为\textbf{LSE 不摊销的上界}。
 \end{kaogu}
 
 \begin{kaogu}[F3]{base.cuh L450 与 L501：head\_size 须为 4 的倍数是隐含约定}

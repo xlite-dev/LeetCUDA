@@ -224,7 +224,7 @@ $32$ 个灰格是命中（$=2c_0+16c_1$ 的全部取值）、$31$ 个斜线格�
 把 layout 当函数以后，kernel 里的布局操作就全部变成函数运算。CuTe 提供
 五个运算族，每一族都对应 kernel 里的一类实际问题。本节按
 问题 $\to$ 运算的顺序梳理一遍（@竹熙佳处在教程里指出过 CuTe 官方
-文档「没有前后联系地抛出一堆概念和代数运算」；本章刻意反向组织：先让每个
+文档\textbf{没有前后联系地抛出一堆概念和代数运算}；本章刻意反向组织：先让每个
 运算有具体的应用场景，再在下一节给出定义与公式）：
 
 \begin{enumerate}
@@ -578,7 +578,7 @@ tiler 下 tile 几何的正反例对照见图~\ref{fig:20-zd-tile-shape}。
   \node[anchor=south] at (3,0.3) {$r_1{=}1$};
   \node[anchor=east] at (-0.55,-1) {$r_0{=}0$};
   \node[anchor=east] at (-0.55,-3) {$r_0{=}1$};
-  \node[anchor=east, font=\tiny, rotate=90] at (-1.05,-2) {行 $i_0$（mode 0）};
+  \node[anchor=east, font=\tiny, rotate=90] at (-1.45,-2) {行 $i_0$（mode 0）};
   \node[anchor=south, font=\scriptsize\bfseries] at (2,0.92)
     {左：$T=(4,4){:}(1,8)$（与 $L$ 同 stride 族）};
   \node[anchor=north, font=\tiny] at (2,-4.15)
@@ -759,7 +759,7 @@ $\mathrm{MMA}_N$ 拆成 $(2,\mathrm{MMA}_N/2)$，再把后 2 个与 MMA mode 重
 \texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}Aregs}（L2341--2372）就是路线一：
 \texttt{logical\_\allowbreak{}divide} 拆 mode $+$ \texttt{make\_layout} 重组四个碎片；
 ffpa\_attn.cuh 的 P 转换（L300--305、L584--588）直接复用这个函数，注释
-写明「与 TMA WS kernel 一致」。两个文件的 P 路径都走 tri-dao 的
+写明\textbf{与 TMA WS kernel 一致}。两个文件的 P 路径都走 tri-dao 的
 几何法。选它的理由很实际：这是一次纯 mode 重排，6 行代码就能写完、效果
 可直接验证。路线二的代数法把 C$\to$A 表达成逆 $+$ 两次复合，
 更通用（换任意两个 fragment 布局都能推，例如量化 gemm 里

@@ -47,8 +47,8 @@ Aregs）的通用讲法在第~\ref{ch:25}~章 25.3.4 节已经展开，本章只
 \section{问题与动机}
 
 Split-D 的动机在源头注释里写得很直白（\texttt{ffpa\_\allowbreak{}attn.\allowbreak{}cuh} L7--8）：
-「支持 head\_dim $>128$ 的 large head-dim attention，通过 64-wide Split-D
-chunks 处理」。第~\ref{ch:19}~章量化了为什么必须分：smem 容量、以及
+\textbf{支持 head\_dim $>128$ 的 large head-dim attention，通过 64-wide Split-D
+chunks 处理}。第~\ref{ch:19}~章量化了为什么必须分：smem 容量、以及
 $\mathrm{softmax}$ 的结构性位置。本节只关心分完之后抽象层多出的四个问题。
 
 先从第~\ref{ch:25}~章的结论出发。FA2 的三个 CuTe 实现里，attention 的
@@ -604,13 +604,13 @@ chunk 有多大的全部依赖固定在编译期：
 
 \begin{itemize}[itemsep=2pt,topsep=2pt]
   \item 头注释的 kernel 清单不全。\texttt{ffpa\_\allowbreak{}attn.\allowbreak{}cuh} L5--6 写
-        「仅定义……\texttt{ffpa\_\allowbreak{}attn\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}split\_\allowbreak{}d\_\allowbreak{}cute} kernel」，
+        \textbf{仅定义……\texttt{ffpa\_\allowbreak{}attn\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}split\_\allowbreak{}d\_\allowbreak{}cute} kernel}，
         但文件里实际有两个 kernel：本节精读的
         \texttt{ffpa\_\allowbreak{}split\_\allowbreak{}d\_\allowbreak{}cute}（cp.async 版，L82）与
         \texttt{ffpa\_\allowbreak{}attn\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}split\_\allowbreak{}d\_\allowbreak{}cute}（TMA+WS 版，
         L378 起）。读文件时以实际代码为准；
   \item 256 线程只对 TMA+WS 版成立。L14 与 L28 的
-        「128 producer $+$ 128 consumer $=$ 256 total threads」说的是
+        \textbf{128 producer $+$ 128 consumer $=$ 256 total threads}说的是
         TMA+WS 版（与第~\ref{ch:19}~章 TMA+WS 版的划分一致）；
         cp.async 版是
         \textbf{单角色 128 线程}（L73--78 的注释自己写明了）。按 256 去数

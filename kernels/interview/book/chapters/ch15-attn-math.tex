@@ -126,8 +126,8 @@ $s = q \cdot k = \sum_{i=1}^{d} q_i k_i$。均值为零：
 梯度从峰值 $0.25$ 跌到 $10^{-5}$ 量级，softmax 输出近似 one-hot，反向传播梯度近乎消失。
 除以 $\sqrt{d}$ 后 $\mathrm{Var}(s/\sqrt{d}) = 1$，logit 回到 $O(1)$ 量级，
 softmax 处于梯度健康的敏感区。两点考据说明：（1）Transformer 原论文
-（Vaswani et al., 2017, \S 3.2.1）给出的其实是启发式陈述：「我们怀疑 $d_k$ 较大时
-点积量级变大，把 softmax 推进极小梯度区，故除以 $\sqrt{d_k}$」；式~\ref{eq:15-dot-var}
+（Vaswani et al., 2017, \S 3.2.1）给出的其实是启发式陈述：\textbf{我们怀疑 $d_k$ 较大时
+点积量级变大，把 softmax 推进极小梯度区，故除以 $\sqrt{d_k}$}；式~\ref{eq:15-dot-var}
 的方差推导是后续文献的通行严格化解读，并非原文内容（考据框注见 15.7~节）。
 （2）训练后的真实分布并不满足 i.i.d. 假设（Q/K 各维方差不等、存在 outlier），
 $1/\sqrt{d}$ 仍是事实标准，方差更不均匀的情形由量化方案处理
@@ -625,7 +625,7 @@ BOOK\_PLAN \S 1.3 核验表）：FA2 MMA 版
 
 \subsection{头注释导读：五条要点}
 
-头注释 L5--30 以「面试要点（FlashAttention-2 算法）」为题，共五条。
+头注释 L5--30 以\textbf{面试要点（FlashAttention-2 算法）}为题，共五条。
 
 \textbf{要点 1，核心问题}：标准 Attention 的 $O(N^{2})$ 中间矩阵
 （$S = QK^{\top}$）必须写入 HBM，但 HBM 带宽是瓶颈，FlashAttention-2 用
@@ -952,7 +952,7 @@ smem 布局）继续展开。
 \section{实践经验与考据说明}
 
 \begin{kaogu}[F5]{flash\_attn.cuh L7--13：三项机制的代际归属}
-  头注释以「面试要点（FlashAttention-2算法）」为题列出三项机制：tiling、online
+  头注释以\textbf{面试要点（FlashAttention-2算法）}为题列出三项机制：tiling、online
   softmax、recomputation。按论文口径，这三项是 \textbf{FA1}（arXiv:2205.14135）的
   算法贡献；FA2（arXiv:2307.08691）的主题是削减非 matmul FLOPs、seqlen 维并行与
   warp 级 split-Q 分工，其算法内核（online rescale）与 FA1 相同。注释把两代贡献

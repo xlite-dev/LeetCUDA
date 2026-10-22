@@ -177,7 +177,7 @@ lane $i + m\sb r$，越界 lane 读自己（复制）。$R$ 轮后只有 lane 0 
 其余 lane 持有的是被越界复制污染的错误部分和；且每轮真正有效的 lane
 数逐轮减半（第一轮只有一半 lane 的加法是有意义的），硬件却仍为全 warp 执行这些指令。
 xor 模式所有 lane 每轮都做有效加法、结束时全员拿到结果，正如 base.cuh
-L95 注释所说「xor 模式所有线程做相同工作量，更均衡」。后文 block 归约的
+L95 注释所说\textbf{xor 模式所有线程做相同工作量，更均衡}。后文 block 归约的
 广播步骤也因此免费：所有 lane 已经都有结果（sum 场景），或只需一次
 shfl 广播（见 \S\ref{sec:ch02-block}）。
 
@@ -344,8 +344,8 @@ warp 0 独自做二次归约，而是每个 warp 的前 $W$ 个 lane 都读入�
 部分和、各自再归约一遍。多余的 $W-1$ 份计算是冗余的（只是寄存器加法），
 换来的是不需要第二次 smem 往返与第二次同步。第 4 步
 \texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}sync\allowbreak{}(0xffffffff,\allowbreak{} value,\allowbreak{} 0,\allowbreak{} 32)} 把 lane 0 的结果广播给
-所有 256 个线程。源码注释「关键！否则每个 warp 只有 lane 小于
-kNumWarps 知道结果」说的就是这一步：归约函数的约定是 block 内全员可见，
+所有 256 个线程。源码注释\textbf{关键！否则每个 warp 只有 lane 小于
+kNumWarps 知道结果}说的就是这一步：归约函数的约定是 block 内全员可见，
 后续 softmax 除以 $\ell$、norm 除以 $\sigma$ 都依赖它。block reduce max
 （L198--214）同构，初值从 0 换成 \texttt{-FLT\_MAX}。
 
@@ -363,8 +363,8 @@ kNumWarps 知道结果」说的就是这一步：归约函数的约定是 block 
 二次归约 $\to$ 单个线程写全局。与 block\_reduce\_sum 有两处差异：
 二次归约只留给 warp 0（\texttt{if (warp == 0)}），因为这里的结果只需被写出、
 不必广播全员。写出者是
-\texttt{tid == 0}，源码注释特意强调「tid == 0, not lane 0. 只有 block
-内的一个线程负责写回全局结果，避免重复累加」：lane 0 是每个 warp 的第 0
+\texttt{tid == 0}，源码注释特意强调\textbf{tid == 0, not lane 0. 只有 block
+内的一个线程负责写回全局结果，避免重复累加}：lane 0 是每个 warp 的第 0
 线程（一个 block 里有 $W$ 个），tid 0 才是全 block 唯一。多 block 之间
 则靠 \texttt{atomicAdd} 汇合，如 \S\ref{sec:ch02-math} 所述。
 
@@ -518,8 +518,8 @@ $\lceil G/K \rceil$，时间随之线性下降。
 \section{实践经验}\label{sec:ch02-kaogu}
 
 \begin{kaogu}[F1]{L93--94 两级归约流程注释与实现不一致}
-面试要点注释写「block\_reduce: 两级归约（warp $\to$ shared memory $\to$
-warp0 broadcast）」。但 block\_reduce\_sum 的实现（L183--196）是\textbf{每个
+面试要点注释写\textbf{block\_reduce: 两级归约（warp $\to$ shared memory $\to$
+warp0 broadcast）}。但 block\_reduce\_sum 的实现（L183--196）是\textbf{每个
 warp 都}从 smem 读入全部部分和并各自二次归约，再用
 \texttt{\_\_shfl\_sync} 从 lane0 广播回全员；\textbf{warp0 broadcast}更像
 block\_reduce\_all 的流程（仅 warp0 归约、tid0 写出）。同文件 L172--181 的
@@ -528,7 +528,7 @@ block\_reduce\_all 的流程（仅 warp0 归约、tid0 写出）。同文件 L17
 \end{kaogu}
 
 \begin{kaogu}[F1]{L278--284 dot\_vec4 边界守卫不足（越界读隐患）}
-注释「该版本默认输入地址满足 float4 对齐；最适合 N 按 4 对齐的场景」，但
+注释\textbf{该版本默认输入地址满足 float4 对齐；最适合 N 按 4 对齐的场景}，但
 实现守卫只有 \texttt{idx < N}，而 \texttt{FLOAT4\allowbreak{}(a[idx])} 一次读 4 元素：
 $N$ 非 4 倍数时最后一个线程读取 \texttt{a[idx.\allowbreak{}.\allowbreak{}idx+3]} 的尾部越界（本测试
 $N = 512$ 恰为 4 倍数故 PASS）。同文件 elementwise\_add\_vec4（L358--374）
@@ -547,8 +547,8 @@ vec4 kernel（dot/relu/eadd）统一。relu\_vec4 有同样问题，详见 ch03�
   后续全员除以 sum 的代码会读到错误结果，而且这种错在小例子里可能
   不触发（warp0 的 lane 恰好是对的）。
 \item \textbf{把 lane0 当 tid0 用}：跨 block 写出时用 lane0，一个 block
-  会写出 $W$ 次，结果系统性偏大 $W$ 倍（sum），源码注释专门用「tid == 0,
-  not lane 0」提醒。
+  会写出 $W$ 次，结果系统性偏大 $W$ 倍（sum），源码注释专门用\textbf{tid == 0,
+  not lane 0}提醒。
 \item \textbf{二次归约的 width 传错}：第二次 warp\_reduce 的模板参数是
   \texttt{kNumWarps} 不是 \texttt{kWarpSize}；传错不会算错结果：smem 读取
   带 \texttt{lane < kNumWarps} 守卫，越界 lane 持单位元，但会多做

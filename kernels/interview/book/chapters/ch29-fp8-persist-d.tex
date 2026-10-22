@@ -300,7 +300,7 @@ $D>128$ 用 64（smem 预算）。
 \texttt{\_\_launch\_bounds\_\_(384,1)}；寄存器经 \texttt{setmaxnreg}
 重分配：producer 释放到 32，consumer 得到 232。fp8 路径的 consumer
 无条件使用 232（fp16 版在 D=128 时只需 170）：P 量化 + row-sum + rescale
-状态推高了寄存器压力，注释记录「静态 170 上限会 spill 约 60 个寄存器」。
+状态推高了寄存器压力，注释记录\textbf{静态 170 上限会 spill 约 60 个寄存器}。
 
 \begin{lstlisting}[
   caption={Q smem 复用与槽位轮转（\texttt{persist\_d.cuh} L193--215，节选）},
@@ -412,7 +412,7 @@ $q_s \equiv \delta_Q$，$q_{km} = (\hat Q\cdot\bar k)_m$，与 28.3.1 的写法�
 
 \texttt{reg2reg\_8b.cuh} L14--34 的头注释先回答 C$\to$A 重排为什么必要：
 QK 的 C-fragment 与 PV 的 A-fragment 把同一个 16$\times$32 tile 分给 warp 的
-方式不同（PTX ISA「Matrix Fragments for mma.m16n8k32」，记 $g=$ lane$\gg$2、
+方式不同（PTX ISA\textbf{Matrix Fragments for mma.m16n8k32}，记 $g=$ lane$\gg$2、
 $t=$ lane$\&$3）。C fragment 有 4 个寄存器 $c_0..c_3$，每寄存器 1 个值、每行
 2 列：$c_0,c_1$ 落在行 $g$ 的列 $\{2t,2t{+}1\}$，$c_2,c_3$ 落在行 $g{+}8$ 的
 同一列对。A fragment 有 4 个寄存器 $a_0..a_3$，每寄存器 4 个 8-bit 元素、
@@ -793,7 +793,7 @@ allclose 失败（fp16/bf16 双双 $\times$），而 D=64/128 全绿。定位过
 
 后续状态：该 bug 已由上游 \texttt{\#382} 修复（Q tile 区与 K stage 的 smem 复用
 竞态，影响整个 $D>128$ 窗口，即 $D{=}160/192/224$），\texttt{\#385} 随后撤销了
-警告，0.2.5 起不再复现。本节保留 861d75e 上的定位过程；下面「配置矩阵消去」
+警告，0.2.5 起不再复现。本节保留 861d75e 上的定位过程；下面\textbf{配置矩阵消去}
 停在三选一嫌疑，已确证的根因是复用竞态，不是 $D{=}192$ 特有。
 \begin{enumerate}[itemsep=1pt,topsep=2pt]
   \item \textbf{误差量级分类}：max\_abs=2.66 vs mean\_abs=0.011。均值是

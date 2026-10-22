@@ -590,7 +590,7 @@ lane 16--31 传的重复地址被硬件忽略（PTX 允许；sm\_75 以下才强
 \textbf{按行}装载 $8\times8$ 的 $B^{\top}$ 子块，即按 $n$ 行取 $k$ 方向
 8 个 half；而 mma 的 \texttt{.col} B fragment 恰好要每 lane 一列 $n$、
 $k$ 方向 2 对（式~\ref{eq:11-bpos}）。两者统一的方式：$B^{\top}$ 的行
-就是 B 的列。源码 L267--268 注释「为什么不用 .trans」说的正是这件事。
+就是 B 的列。源码 L267--268 注释\textbf{为什么不用 .trans}说的正是这件事。
 
 \subsection{计算核：每 warp 每迭代 16 条 mma}
 
@@ -742,9 +742,9 @@ HGEMM MMA (S=3, BLK\_SW=1) & 0.000e+00 & 127.3/246.9 (0.52x) \\
 
 \section{实践经验}
 
-\begin{kaogu}[F2]{hgemm.cuh L35：「ldmatrix 默认加载 col-major」与 PTX 文档相反}
-  注释原文（\texttt{\_nn} 布局对比段）称 B 行主序时「需要 .trans」的理由是
-  「ldmatrix 默认加载 col-major」。PTX ISA §9.7.14.5.15 原文：
+\begin{kaogu}[F2]{hgemm.cuh L35：\textbf{ldmatrix 默认加载 col-major}与 PTX 文档相反}
+  注释原文（\texttt{\_nn} 布局对比段）称 B 行主序时\textbf{需要 .trans}的理由是
+  \textbf{ldmatrix 默认加载 col-major}。PTX ISA §9.7.14.5.15 原文：
   \emph{``Optional qualifier .trans indicates that the matrix is loaded in
   column-major format''}，即不加 \texttt{.trans} 是普通（行）装载，
   加了才是列装载。结论方向恰好写反。本章 kernel 的实际用法（TN 布局、
@@ -753,7 +753,7 @@ HGEMM MMA (S=3, BLK\_SW=1) & 0.000e+00 & 127.3/246.9 (0.52x) \\
 \end{kaogu}
 
 \begin{kaogu}[F2 核校通过]{hgemm.cuh L6 与 L73-80：m16n8k16 形状与寄存器数}
-  「$[16\times8] = [16\times16]\times[16\times8]$」与 PTX 的
+  \textbf{$[16\times8] = [16\times16]\times[16\times8]$}与 PTX 的
   $M{\times}K \times K{\times}N$ 定义一致；HMMA16816 的
   \textbf{2 输出寄存器 + 4 A + 2 B，每线程 4 half}亦与
   Figure 79/81/83 的 fragment 公式一致。
@@ -766,8 +766,8 @@ HGEMM MMA (S=3, BLK\_SW=1) & 0.000e+00 & 127.3/246.9 (0.52x) \\
 \end{kaogu}
 
 \begin{kaogu}[F3 核校通过]{common.cuh L46-53：commit/wait 语义注释}
-  「commit\_group 归组、wait\_group N 等 pending $\le$ N、wait\_all $=$
-  commit + wait 0」与 PTX §9.7.9.25.3 的描述一致
+  \textbf{commit\_group 归组、wait\_group N 等 pending $\le$ N、wait\_all $=$
+  commit + wait 0}与 PTX §9.7.9.25.3 的描述一致
   （第~\ref{ch:10}~章 10.4.6 已展开）。
 \end{kaogu}
 

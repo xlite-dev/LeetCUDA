@@ -69,7 +69,7 @@ fp16 & 1 & 5 & 10 & 11 & $\approx 3.3$ \\
 \bottomrule
 \end{tabular}
 \end{table}
-源码注释（sgemm.cuh~L188）写「TF32 精度：mantissa 10bit，$\sim$3 位十进制有效数字」，
+源码注释（sgemm.cuh~L188）写\textbf{TF32 精度：mantissa 10bit，$\sim$3 位十进制有效数字}，
 对照表~\ref{tab:10-fmt}：$p=11$ 位二进制有效位对应 $11 \log\sb {10} 2 \approx 3.31$
 位十进制，注释核校通过。注意 TF32 与 fp16 的尾数完全相同（10 位），
 差别全在指数：TF32 用 fp32 的 8 位指数换来与 fp32 相同的动态范围，
@@ -152,7 +152,7 @@ fp16 & 1 & 5 & 10 & 11 & $\approx 3.3$ \\
   \label{eq:10-round}
 \end{equation}
 TF32 的乘法在 Tensor Core 内部以 fp32 精度执行（PTX 对 \texttt{.tf32} MMA 的
-规定是「元素乘按指明精度执行，累加至少单精度」，见第~\ref{ch:11}~章
+规定是\textbf{元素乘按指明精度执行，累加至少单精度}，见第~\ref{ch:11}~章
 11.3.1~节的原文引述），因此误差只在输入舍入这一步发生。
 对内积 $s = \sum\sb {j=1}^{K} a\sb j b\sb j$，设 $\hat a\sb j = fl(a\sb j)$、
 $\hat b\sb j = fl(b\sb j)$，逐项展开：
@@ -182,7 +182,7 @@ TF32 的相对误差越差，但 $\sqrt{K}$ 的增速远慢于 $K$。
 而输出自身量级 $\approx \sqrt{K/9} \approx 7.5$，相对误差界约 $1.7\%$（最坏界，
 约 1.8 位十进制）。实际随机输入下舍入符号互抵，误差 std 只有
 $\sqrt{2u^2\Sigma(a\sb jb\sb j)^2/3}\approx 3.0\times10^{-3}$，相对 $\approx 4\times10^{-4}$
-——这才是「$\sim$3 位十进制有效数字」的来源。深度学习权重与激活的数值噪声通常
+——这才是\textbf{$\sim$3 位十进制有效数字}的来源。深度学习权重与激活的数值噪声通常
 远大于此，TF32 在生产环境被广泛接受。
 
 \subsection{双缓冲的时序数学}
@@ -340,7 +340,7 @@ $\mathrm{kPadB}=4$），两段共 $2\times128\times12 + 2\times8\times132 = 5184
 同理：bank 宽 4~B、32 个 bank 一轮，A 的行长恰好 32~B 时每 4 行行首回到
 同一 bank（行首 bank $=8r \bmod 32$），补 16~B 打散行首的对齐关系，避免 \texttt{load\_\allowbreak{}matrix\_\allowbreak{}sync}
 内部按行取数时的 bank conflict。（注意 L238 与 L242--243 注释里写的
-「16384 bytes」「1024 floats」是陈旧数字，实际值见 10.7~节勘误一、二。）
+\textbf{16384 bytes}\textbf{1024 floats}是陈旧数字，实际值见 10.7~节勘误一、二。）
 两段布局的 PAD 与行距见图~\ref{fig:10-smem-pad}。
 
 \begin{figure}[htbp]
@@ -553,30 +553,30 @@ k-tile（MMA 指令发射密度低）与每迭代一次的迭代末同步。第~
 \section{实践经验}
 
 \begin{kaogu}[F4]{sgemm.cuh L193 与 L238：dynamic smem 大小注释前后矛盾}
-  L193 头注释写「Dynamic SMEM：16KB（s\_a 8KB + s\_b 8KB）」、L238 又写
-  「调用时指定大小：16384 bytes」，但 L222 的注释（20736 bytes）与实际
+  L193 头注释写\textbf{Dynamic SMEM：16KB（s\_a 8KB + s\_b 8KB）}、L238 又写
+  \textbf{调用时指定大小：16384 bytes}，但 L222 的注释（20736 bytes）与实际
   模板参数才是自洽的：$2\times128\times12\times4 + 2\times8\times132\times4
   = 20736$~B（bench/sgemm.cu 的 \texttt{tf32\_\allowbreak{}smem\_\allowbreak{}bytes} 同为 20736）。
   L193/L238 是早期无 padding 版本（$2\times128\times8\times4\times2=16$KB）
   的陈旧数字，已记入 \texttt{book/\allowbreak{}CHECKLOG.\allowbreak{}md}，正文以 20736 为准。
 \end{kaogu}
 
-\begin{kaogu}[F3]{sgemm.cuh L242-243：stage offset 注释「1024 floats」错误}
+\begin{kaogu}[F3]{sgemm.cuh L242-243：stage offset 注释\textbf{1024 floats}错误}
   实际 $s\_a\_stage\_offset = 128\times12 = 1536$、
-  $s\_b\_stage\_offset = 8\times132 = 1056$；「1024」是无 padding 的
+  $s\_b\_stage\_offset = 8\times132 = 1056$；\textbf{1024}是无 padding 的
   $128\times8$ 旧值。代码取值正确，仅注释陈旧。
 \end{kaogu}
 
 \begin{kaogu}[F4]{sgemm.cuh L196-198：计算密度注释的 MAC 数错误}
-  注释称「64 个 MMA/block，每个 MMA 64 个 TF32 MAC，总计 4096 个
-  MAC/cycle/block」。核对：$m16n16k8$ 的一个 WMMA tile 是
+  注释称\textbf{64 个 MMA/block，每个 MMA 64 个 TF32 MAC，总计 4096 个
+  MAC/cycle/block}。核对：$m16n16k8$ 的一个 WMMA tile 是
   $16\times16\times8 = 2048$ 个 MAC；每 warp $2\times4=8$ 个 tile、
   8 warp 共 64 tile $= 131{,}072$ MAC（每 k-step，即 $262{,}144$ FLOP）。
-  「每个 MMA 64 个 MAC」与「4096 MAC/cycle」两个数字均不能由配置推出
-  （且「每 cycle」的断言无依据），应按上述口径理解；注释问题已记录。
+  \textbf{每个 MMA 64 个 MAC}与\textbf{4096 MAC/cycle}两个数字均不能由配置推出
+  （且\textbf{每 cycle}的断言无依据），应按上述口径理解；注释问题已记录。
 \end{kaogu}
 
-\begin{kaogu}[F3 核校通过]{sgemm.cuh L188：TF32「mantissa 10bit、约 3 位十进制」}
+\begin{kaogu}[F3 核校通过]{sgemm.cuh L188：TF32\textbf{mantissa 10bit、约 3 位十进制}}
   $p=11$ 位二进制有效位 $\approx 3.31$ 位十进制（表~\ref{tab:10-fmt}），
   注释数字与独立推导一致。
 \end{kaogu}

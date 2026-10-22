@@ -339,8 +339,8 @@ smem 原子就是这一步的实例：
   title={hgemm.cuh L1244-1266（swizzle 语义注释 $+$ SmemLayoutAtom 与布局三件套）}]{../hgemm.cuh}
 
 这段注释里有两处要带着式~\eqref{eq:23-chunk} 去读：一是它把 $S=3$ 解释成
-「$2^3=8$ 个基本元素组成一行，即 128 bytes」，二是它声称「$8\times32$ 的
-逻辑 tile 正好对应 8 行 $\times$ 128\,B」。结论（chunk XOR 行号）没错，
+\textbf{$2^3=8$ 个基本元素组成一行，即 128 bytes}，二是它声称\textbf{$8\times32$ 的
+逻辑 tile 正好对应 8 行 $\times$ 128\,B}。结论（chunk XOR 行号）没错，
 但它描述的行宽与紧随其后的 base layout \texttt{\allowbreak{}(8,\allowbreak{}32):\allowbreak{}(32,\allowbreak{}1)} 并不一致：
 32 个 fp16 只有 64\,B。行宽不足会让 swizzle 的实际强度降低，
 4.1 节的实践须知给出实测。
@@ -532,7 +532,7 @@ $256\times32\times2=16384$ 个 half。这两个别名随后被
         低位落在源字段之外，真正参与 XOR 的只有 $r$ 的高两位，等价于
         $\text{chunk}'=\text{chunk}\oplus(r\gg1)$。XOR 值集合只有
         $\{0,8,16,24\}$ 四种、2 行一循环（理想 SW128 是 8 行一循环，强度
-        减半）。注释宣称的「8 行 $\times$ 128\,B、覆盖 32 bank」描述的是
+        减半）。注释宣称的\textbf{8 行 $\times$ 128\,B、覆盖 32 bank}描述的是
         \texttt{Swizzle\allowbreak{}<3,\allowbreak{}3,\allowbreak{}3>} 配 $B_K=64$ 的形态。\textbf{该差异不影响
         正确性}，读写两侧用的是同一个布局别名，只是 bank 收益比注释口径
         小一半；本章测试 case F 逐点验证了这个退化形态
@@ -744,8 +744,8 @@ slice 边界，取决于 slice 宽度是否整除 swizzle 周期。
 \subsection{对齐与 phase}
 
 TMA 路径最后一条工程约束写在 kernel 的开头（hgemm.cuh~L1903--1920）：
-注释先问「为什么 \texttt{hgemm\_\allowbreak{}wgmma\_\allowbreak{}stages\_\allowbreak{}tn} 只需要 128\,B 对齐，
-而本 kernel 必须 1024\,B 对齐」，然后给出结论：\texttt{extern}
+注释先问\textbf{为什么 \texttt{hgemm\_\allowbreak{}wgmma\_\allowbreak{}stages\_\allowbreak{}tn} 只需要 128\,B 对齐，
+而本 kernel 必须 1024\,B 对齐}，然后给出结论：\texttt{extern}
 \texttt{\_\_shared\_\_} 声明上必须写 \texttt{\_\allowbreak{}\_\allowbreak{}align\_\allowbreak{}\_\allowbreak{}(1024)}，
 类型是 \texttt{uint8\_t}，名字是 \texttt{smem\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws}。
 
@@ -1000,7 +1000,7 @@ SASS 里表现为原有的地址计算多一条 \texttt{LOP3}；没有任何一�
 只有 1 个线程发指令（式~\eqref{eq:23-tx} 的字节数由硬件事务计数保证），
 256 个线程不再参与 G$\to$S 的地址计算，也不再需要
 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads}，hgemm.cuh~L1990--2012 的注释把这一点总结为
-「barrier $+$ proxy fence 取代了 CTA 级同步」。对本章而言，快是
+\textbf{barrier $+$ proxy fence 取代了 CTA 级同步}。对本章而言，快是
 次要的；谁算地址、谁保证一致这两个问题的答案变得唯一，
 才是 TMA 对 kernel 工程的主要贡献。
 
