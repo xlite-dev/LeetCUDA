@@ -19,12 +19,14 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import posixpath
 import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import booktree, figtext, labels, postprocess, preprocess, readme, texutil
+from .collections import COLLECTIONS
 
 #: ``第 N 章：`` / ``附录 A：`` 前缀。
 _CHAPTER_PREFIX_RE = re.compile(r"^第\s*(\d+)\s*章：")
@@ -33,8 +35,8 @@ _APPENDIX_PREFIX_RE = re.compile(r"^附录\s*([A-Z])\s*：")
 #: 原书里真正的表格环境（``table`` 只是浮动壳，里面还是 ``tabular``）。
 _TABLE_ENV_RE = re.compile(r"\\begin\{(?:tabular|tabularx|longtable)\}")
 
-#: 站内链接。
-_LINK_RE = re.compile(r"\]\(([A-Za-z0-9_.-]+)\.html#([^)\s]+)")
+#: 站内链接（页名可带子目录，如集合页里的 ``cute-zhihu/x.html#…``）。
+_LINK_RE = re.compile(r"\]\(([A-Za-z0-9_./-]+)\.html#([^)\s]+)")
 _ANCHOR_RE = re.compile(r'<a id="([^"]+)"')
 
 #: 侧栏「下载 PDF」按钮（``_templates/layout.html`` 渲染的静态锚点，按类名认）。
@@ -137,24 +139,26 @@ def check_book_toc(
   book_dir: Path,
   registry: labels.Registry,
   chapters: list[booktree.Chapter],
+  book_tex: str = "book.tex",
 ) -> tuple[bool, str, int]:
-  """拿 ``book.toc``（xelatex 产出的真实目录）核对章号与标题顺序。
+  """拿 ``<书>.toc``（xelatex 产出的真实目录）核对章号与标题顺序。
 
-  ``book.toc`` 只在本地构建过书之后才存在，RTD 上没有——存在时用它做真值，不存在
-  就跳过。它同时校验两件事：章号（中文数字 ↔ 我们的数字/字母）与章顺序。
+  ``.toc`` 只在本地构建过书之后才存在，RTD 上没有——存在时用它做真值，不存在就跳过。
+  它同时校验两件事：章号（中文数字 ↔ 我们的数字/字母）与章顺序。
 
   :param book_dir: 书根目录。
   :param registry: 全书注册表。
   :param chapters: 按书序排列的章节。
+  :param book_tex: 根 tex 文件名（目录文件名跟它同名，如 ``cute-zhihu.toc``）。
   :returns: ``(是否通过, 说明, 核对条数)``。
   """
-  toc = book_dir / "book.toc"
+  toc = book_dir / Path(book_tex).with_suffix(".toc")
   if not toc.is_file():
-    return True, "跳过（本地无 book.toc）", 0
+    return True, f"跳过（本地无 {toc.name}）", 0
 
   entries = _TOC_RE.findall(toc.read_text(encoding="utf-8", errors="replace"))
   if not entries:
-    return True, "跳过（book.toc 无可解析章条目）", 0
+    return True, f"跳过（{toc.name} 无可解析章条目）", 0
 
   # 目录只收录有编号的章（ch19b 是 \chapter*，不在目录里），按同序对齐。
   numbered_pages = [
@@ -327,26 +331,28 @@ def check_table_inline_markdown(md_texts: dict[str, str]) -> tuple[bool, str]:
   return ok, f"{len(problems)} 页命中，例如 {problems[0]}" if problems else ""
 
 
-#: 页面里的图片引用。
-_IMAGE_SRC_RE = re.compile(r'src="\.?/?((?:_images|figures-gen)/[^"]+)"')
+#: 页面里的图片引用：子目录页面写成 ``../_images/x.jpg``，前缀要一起捕获。
+_IMAGE_SRC_RE = re.compile(r'src="((?:\.\./)*)((?:figures-gen|_images)/[^"]+)"')
 
 
 def check_images_present(html_dir: Path) -> tuple[bool, str]:
   """检查页面引用的图片文件确实存在。
 
   raw HTML 里的 ``<img>`` 不会被 Sphinx 搬运，少了隐藏引用就会 404（表格里的图曾如此）。
+  路径按**页面所在目录**解析：集合页在子目录，Sphinx 输出的前缀是 ``../_images/``。
 
   :param html_dir: Sphinx 输出目录。
   :returns: ``(是否通过, 说明)``。
   """
   problems: list[str] = []
   checked = 0
-  for path in sorted(html_dir.glob("*.html")):
+  for path in sorted(html_dir.rglob("*.html")):
     text = path.read_text(encoding="utf-8", errors="replace")
     for match in _IMAGE_SRC_RE.finditer(text):
       checked += 1
-      if not (html_dir / match.group(1)).is_file():
-        problems.append(f"{path.stem}: {match.group(1)}")
+      source = match.group(1) + match.group(2)
+      if not (path.parent / source).resolve().is_file():
+        problems.append(f"{path.relative_to(html_dir).as_posix()}: {source}")
   ok = not problems
   return ok, (f"共 {checked} 张图" if ok
               else f"{len(problems)} 张缺失，例如 {problems[0]}")
@@ -561,11 +567,11 @@ def check_stray_attributes(html_dir: Path) -> tuple[bool, str]:
   :returns: ``(是否通过, 说明)``。
   """
   problems: list[str] = []
-  for path in sorted(html_dir.glob("*.html")):
+  for path in sorted(html_dir.rglob("*.html")):
     page = path.read_text(encoding="utf-8", errors="replace")
     match = _STRAY_ATTR_RE.search(page)
     if match is not None:
-      problems.append(f"{path.stem}: {match.group(0)[:30]}")
+      problems.append(f"{path.relative_to(html_dir).as_posix()}: {match.group(0)[:30]}")
   ok = not problems
   return ok, f"{len(problems)} 页命中，例如 {problems[0]}" if problems else ""
 
@@ -721,6 +727,9 @@ def check_translation_dicts(html_dir: Path, root: Path,
   静默残留中文——典型来源是转换链换了 pandoc 版本，公式 tex 源的形态（如
   ``align`` / ``aligned``）发生漂移，词典 key 与页面 DOM 对不上。
 
+  只统计**主书**（站点根下的页面）：子集合（``<slug>/``）不参与英译词典，纳入统计
+  会把它的代码注释与图注全算成未命中，直接判红。
+
   :param html_dir: Sphinx 输出目录。
   :param root: ``docs/readthedocs`` 根（词典所在）。
   :param full_build: 是否全量构建。
@@ -734,6 +743,7 @@ def check_translation_dicts(html_dir: Path, root: Path,
 
   def page_nodes(collector_cls) -> set[str]:
     found: set[str] = set()
+    # 非递归 glob：集合页在子目录，天然被排除在外。
     for path in sorted(html_dir.glob("*.html")):
       collector = collector_cls()
       collector.feed(path.read_text(encoding="utf-8"))
@@ -758,8 +768,216 @@ def check_translation_dicts(html_dir: Path, root: Path,
   return ok_all, "；".join(details)
 
 
+@dataclass
+class BookContext:
+  """一本书在站点树里的位置与真值。
+
+  :param slug: 站点子目录名（主书为空串）。
+  :param title: 书名（核对项后缀用）。
+  :param book_dir: 书根目录。
+  :param book_tex: 根 tex 文件名。
+  :param src_dir: 该书的站点源树目录。
+  :param html_dir: 该书的 HTML 输出目录。
+  :param work_dir: 该书的转换临时目录。
+  :param parts: 篇结构。
+  :param registry: label 注册表。
+  """
+  slug: str
+  title: str
+  book_dir: Path
+  book_tex: str
+  src_dir: Path
+  html_dir: Path
+  work_dir: Path
+  parts: list[booktree.Part]
+  registry: labels.Registry
+
+  def texts(self) -> dict[str, str]:
+    """该书各页的 markdown，按 ``chap_id`` 索引。
+
+    :returns: ``chap_id → markdown``。
+    """
+    return {path.stem: path.read_text(encoding="utf-8")
+            for path in sorted(self.src_dir.glob("*.md"))}
+
+
+def _book_contexts(src_dir: Path, html_dir: Path, book_dir: Path) -> list[BookContext]:
+  """按「主书 + 已装配的集合」构造核对上下文。
+
+  集合是否参与由转换器写的装配清单 ``build/collections.json`` 决定：清单里列出才核对，
+  ``--no-collections`` / ``--only`` 这类局部构建不会因此变红。
+
+  :param src_dir: 站点源树根。
+  :param html_dir: HTML 输出根。
+  :param book_dir: 主书根目录。
+  :returns: 上下文列表（主书在首位）。
+  """
+  main_parts = booktree.parse(book_dir / "book.tex")
+  contexts = [BookContext(
+    slug="", title="主书", book_dir=book_dir, book_tex="book.tex",
+    src_dir=src_dir, html_dir=html_dir, work_dir=src_dir.parent / "tmp",
+    parts=main_parts, registry=labels.build(main_parts, book_dir))]
+
+  manifest = src_dir.parent / "collections.json"
+  if not manifest.is_file():
+    return contexts
+  entries = json.loads(manifest.read_text(encoding="utf-8")).get("collections", [])
+  for entry in entries:
+    collection = next((item for item in COLLECTIONS if item.slug == entry.get("slug")), None)
+    if collection is None:
+      continue
+    # 优先用清单里的 book_tex（转换器实际读的那本），注册表只作兜底：两处不一致时
+    # 按实际产物核对，别拿注册表去猜。
+    root_tex = book_dir / (entry.get("book_tex") or collection.book_tex)
+    if not root_tex.is_file():
+      continue
+    parts = booktree.parse(root_tex)
+    contexts.append(BookContext(
+      slug=collection.slug, title=collection.title,
+      book_dir=root_tex.parent, book_tex=root_tex.name,
+      src_dir=src_dir / collection.slug, html_dir=html_dir / collection.slug,
+      work_dir=src_dir.parent / "tmp" / collection.slug,
+      parts=parts, registry=labels.build(parts, root_tex.parent)))
+  return contexts
+
+
+def _count_rendered_tables(html_dir: Path) -> int:
+  """统计一本书页面里的 ``<table>`` 数量（只数本书自己的页面）。
+
+  :param html_dir: 该书的 HTML 目录。
+  :returns: ``<table`` 出现次数。
+  """
+  if not html_dir.is_dir():
+    return 0
+  return sum(path.read_text(encoding="utf-8", errors="replace").count("<table")
+             for path in html_dir.glob("*.html"))
+
+
+def _nav_hrefs(page: str) -> list[str]:
+  """取左侧栏导航里的链接顺序。
+
+  :param page: 页面 HTML。
+  :returns: href 列表（无侧栏时为空）。
+  """
+  start = page.find("wy-menu-vertical")
+  if start == -1:
+    return []
+  end = page.find("</nav>", start)
+  return re.findall(r'href="([^"]+)"', page[start:end if end != -1 else len(page)])
+
+
+def check_collections(manifest: Path, html_dir: Path) -> tuple[bool, str]:
+  """核对集合页面齐全、主书侧栏入口排在全书各篇之后。
+
+  只认转换器写的装配清单：清单里没有的集合（``--no-collections``、``--only`` 的局部
+  构建）一律跳过，避免调试构建被判定失败；清单里的集合缺页则是真问题。
+
+  :param manifest: 装配清单（``build/collections.json``）。
+  :param html_dir: HTML 输出根目录。
+  :returns: ``(是否通过, 说明)``。
+  """
+  if not manifest.is_file():
+    return True, "无装配清单，跳过"
+  entries = json.loads(manifest.read_text(encoding="utf-8")).get("collections", [])
+  if not entries:
+    return True, "本次构建未装配集合"
+
+  index_page = html_dir / "index.html"
+  hrefs = _nav_hrefs(index_page.read_text(encoding="utf-8", errors="replace")) \
+    if index_page.is_file() else []
+  part_positions = [index for index, href in enumerate(hrefs)
+                    if re.fullmatch(r"part-\d+\.html", href)]
+
+  problems: list[str] = []
+  checked = 0
+  for entry in entries:
+    slug = entry.get("slug", "")
+    for page in entry.get("pages", []) + entry.get("chapters", []):
+      checked += 1
+      if not (html_dir / slug / f"{page}.html").is_file():
+        problems.append(f"{slug}/{page}.html 缺失")
+    target = f"{slug}/index.html"
+    if target not in hrefs:
+      problems.append(f"主书侧栏没有 {target} 入口")
+    elif part_positions and hrefs.index(target) < max(part_positions):
+      problems.append(f"{target} 排在篇页之前（应在附录之后）")
+    # 清单只说明"转换器写了哪些页"，不代表首页把它们链出来了：``_assemble_collection``
+    # 在某篇一章都没转时会跳过整篇，章节页仍在磁盘上、清单里也在，读者却点不进去。
+    index_html = html_dir / slug / "index.html"
+    if index_html.is_file():
+      body = index_html.read_text(encoding="utf-8", errors="replace")
+      linked = set(re.findall(r'href="([a-z0-9-]+)\.html"', body))
+      missing = [chapter for chapter in entry.get("chapters", []) if chapter not in linked]
+      if missing:
+        problems.append(f"{slug} 首页没链到 {len(missing)} 章（如 {missing[0]}）")
+  ok = not problems
+  detail = (f"{len(entries)} 个集合、{checked} 页齐全" if ok
+            else f"{len(problems)} 处问题，例如 {problems[0]}")
+  return ok, detail
+
+
+def _verify_book(report: Report, book: BookContext) -> None:
+  """跑一本书专属的核对（章号、表格、目录编号、图内文字）。
+
+  :param report: 核对汇总。
+  :param book: 书籍上下文。
+  """
+  texts = book.texts()
+  suffix = f"（{book.title}）" if book.slug else ""
+  chapters = [chapter for part in book.parts for chapter in part.chapters]
+  full_build = all(chapter.chap_id in texts for chapter in chapters)
+
+  mismatch: list[str] = []
+  for part in book.parts:
+    for chapter in part.chapters:
+      text = texts.get(chapter.chap_id)
+      if text is None:
+        continue
+      raw_heading = next((line for line in text.split("\n") if line.startswith("# ")), "")
+      heading = re.sub(r"^#\s+", "", raw_heading)
+      number = book.registry.chapter_numbers.get(chapter.chap_id, "")
+      if chapter.kind == "appendix":
+        expected = f"附录 {number}：" if number else ""
+      elif chapter.chap_id in book.registry.numbered:
+        expected = f"第 {number} 章：" if number else ""
+      else:
+        expected = ""
+      if expected and not heading.startswith(expected):
+        mismatch.append(f"{chapter.chap_id}: 期望 “{expected}”，实际 “{heading[:24]}”")
+  report.add(f"H1 章号与注册表一致{suffix}", not mismatch,
+             f"{len(mismatch)} 处，例如 {mismatch[0]}" if mismatch else "")
+
+  # 表格相关的三项都以「原书全部表格环境」为真值，局部构建时必须跳过——否则
+  # ``--only-collection`` 打样会拿全书表格数去比几页的产物，必然判红。
+  expected_tables = count_source_tables(book.parts)
+  if not full_build:
+    for name in ("表格已渲染", "逐章表格数不缺", "多行表头已收进 thead", "书目录编号核对"):
+      report.add(f"{name}{suffix}", True, "跳过（只转换了部分章节）")
+  else:
+    rendered = _count_rendered_tables(book.html_dir)
+    report.add(f"表格已渲染{suffix}", rendered >= expected_tables * 0.9,
+               f"原书表格环境 {expected_tables}，页面 <table> {rendered}")
+
+    ok, detail = check_table_counts_per_chapter(book.parts, book.html_dir)
+    report.add(f"逐章表格数不缺{suffix}", ok, detail)
+
+    ok, detail = check_multirow_headers(book.parts, texts)
+    report.add(f"多行表头已收进 thead{suffix}", ok, detail)
+
+    ok, detail, _ = check_book_toc(book.book_dir, book.registry, chapters, book.book_tex)
+    report.add(f"书目录编号核对{suffix}", ok, detail)
+
+  if (book.work_dir / "tikz").is_dir():
+    ok, detail = check_tikz_glyphs(book.work_dir, book.src_dir)
+    report.add(f"TikZ 图保留文字{suffix}", ok, detail)
+
+
 def verify(src_dir: Path, html_dir: Path, book_dir: Path) -> Report:
   """执行全部核对。
+
+  通用项（残留 token、公式、表格单元格、图片、按钮）覆盖站点里的每一页，页面键用
+  **docname**（``cute-zhihu/reed-01-layout``）而不是文件名——主书与集合都有 ``index``、
+  ``part-1``，按 stem 作键会互相覆盖、静默漏页。书籍相关项按书分别核对。
 
   :param src_dir: 站点源树（``build/src``）。
   :param html_dir: Sphinx 输出（``build/html``）。
@@ -767,8 +985,9 @@ def verify(src_dir: Path, html_dir: Path, book_dir: Path) -> Report:
   :returns: 核对结果。
   """
   report = Report()
-  src_files = sorted(src_dir.glob("*.md"))
-  texts = {path.stem: path.read_text(encoding="utf-8") for path in src_files}
+  books = _book_contexts(src_dir, html_dir, book_dir)
+  texts = {path.relative_to(src_dir).with_suffix("").as_posix(): path.read_text(encoding="utf-8")
+           for path in sorted(src_dir.rglob("*.md"))}
 
   leftovers = [(name, text.count("@@RTD;")) for name, text in texts.items() if "@@" in text]
   report.add("源树无残留 token", not leftovers,
@@ -778,53 +997,22 @@ def verify(src_dir: Path, html_dir: Path, book_dir: Path) -> Report:
   report.add("标题无 pandoc 属性泄漏", not attrs,
              f"{len(attrs)} 页命中，例如 {attrs[0]}" if attrs else "")
 
-  registry = labels.build(booktree.parse(book_dir / "book.tex"), book_dir)
-  mismatch: list[str] = []
-  seen_prefixes: dict[str, str] = {}
-  for part in booktree.parse(book_dir / "book.tex"):
-    for chapter in part.chapters:
-      text = texts.get(chapter.chap_id)
-      if text is None:
-        continue
-      raw_heading = next((line for line in text.split("\n") if line.startswith("# ")), "")
-      heading = re.sub(r"^#\s+", "", raw_heading)
-      number = registry.chapter_numbers.get(chapter.chap_id, "")
-      if chapter.kind == "appendix":
-        expected = f"附录 {number}：" if number else ""
-        seen_prefixes[chapter.chap_id] = f"附录 {number}" if number else ""
-      elif chapter.chap_id in registry.numbered:
-        expected = f"第 {number} 章：" if number else ""
-        seen_prefixes[chapter.chap_id] = f"第 {number} 章" if number else ""
-      else:
-        expected = ""
-        seen_prefixes[chapter.chap_id] = ""
-      if expected and not heading.startswith(expected):
-        mismatch.append(f"{chapter.chap_id}: 期望 “{expected}”，实际 “{heading[:24]}”")
-  report.add("H1 章号与注册表一致", not mismatch,
-             f"{len(mismatch)} 处，例如 {mismatch[0]}" if mismatch else "")
-
-  chapter_ref_texts = set(re.findall(r"\[([^\]]+)\]\([a-z0-9-]+\.html#ch-[0-9a-z-]+", "\n".join(texts.values())))
+  main_texts = books[0].texts()
+  chapter_ref_texts = set(re.findall(r"\[([^\]]+)\]\([a-z0-9-]+\.html#ch-[0-9a-z-]+",
+                                     "\n".join(main_texts.values())))
   collapsed = chapter_ref_texts - {"1"} if chapter_ref_texts == {"1"} else set()
   report.add("章引用编号未坍缩", not collapsed,
              f"所有章引用都是 {chapter_ref_texts}" if collapsed else "")
-
-  expected_tables = count_source_tables(booktree.parse(book_dir / "book.tex"))
-  if html_dir.is_dir():
-    rendered = sum(
-      path.read_text(encoding="utf-8", errors="replace").count("<table")
-      for path in html_dir.glob("*.html"))
-  else:
-    rendered = 0
-  report.add("表格已渲染", rendered >= expected_tables * 0.9,
-             f"原书表格环境 {expected_tables}，页面 <table> {rendered}")
 
   anchors: dict[str, set[str]] = {
     name: set(_ANCHOR_RE.findall(text)) for name, text in texts.items()
   }
   dangling: list[str] = []
   for name, text in texts.items():
+    base = posixpath.dirname(name)
     for page, anchor in _LINK_RE.findall(text):
-      if page not in anchors or anchor not in anchors[page]:
+      target = posixpath.normpath(posixpath.join(base, page)) if base else page
+      if target not in anchors or anchor not in anchors[target]:
         dangling.append(f"{name} → {page}.html#{anchor}")
   report.add("站内锚点无悬空", not dangling,
              f"{len(dangling)} 条，例如 {dangling[0]}" if dangling else "")
@@ -834,7 +1022,7 @@ def verify(src_dir: Path, html_dir: Path, book_dir: Path) -> Report:
   if html_dir.is_dir():
     html_raw = sum(
       path.read_text(encoding="utf-8", errors="replace").count("{=html}")
-      for path in html_dir.glob("*.html"))
+      for path in html_dir.rglob("*.html"))
   report.add("无 pandoc 原始 HTML 残迹", not raw_html and html_raw == 0,
              f"{len(raw_html)} 页残留，例如 {raw_html[0]}" if raw_html
              else (f"页面可见 {html_raw} 处" if html_raw else ""))
@@ -863,11 +1051,11 @@ def verify(src_dir: Path, html_dir: Path, book_dir: Path) -> Report:
   display_env_only = r"equation|align|gather|multline|eqnarray|displaymath"
   broken_display: list[str] = []
   if html_dir.is_dir():
-    for path in sorted(html_dir.glob("*.html")):
+    for path in sorted(html_dir.rglob("*.html")):
       page = path.read_text(encoding="utf-8", errors="replace")
       if re.search(r"\$<span class=\"math", page) or re.search(
           r'class="math[^"]*">\\\(\\begin\{(?:' + display_env_only + r')', page):
-        broken_display.append(path.stem)
+        broken_display.append(path.relative_to(html_dir).as_posix())
   report.add("显示公式未被拆成字面 $", not broken_display,
              f"{len(broken_display)} 页，例如 {broken_display[0]}" if broken_display else "")
 
@@ -896,12 +1084,6 @@ def verify(src_dir: Path, html_dir: Path, book_dir: Path) -> Report:
   report.add("伪数学 span 无 LaTeX 残留", ok, detail)
 
   if html_dir.is_dir():
-    ok, detail = check_table_counts_per_chapter(booktree.parse(book_dir / "book.tex"), html_dir)
-    report.add("逐章表格数不缺", ok, detail)
-
-    ok, detail = check_multirow_headers(booktree.parse(book_dir / "book.tex"), texts)
-    report.add("多行表头已收进 thead", ok, detail)
-
     ok, detail = check_images_present(html_dir)
     report.add("页面图片均存在", ok, detail)
 
@@ -915,28 +1097,25 @@ def verify(src_dir: Path, html_dir: Path, book_dir: Path) -> Report:
     ok, detail = check_repo_button(html_dir, readme.REPO_URL)
     report.add("仓库按钮已渲染", ok, detail)
 
-  work_dir = src_dir.parent / "tmp"
-  if (work_dir / "tikz").is_dir():
-    ok, detail = check_tikz_glyphs(work_dir, src_dir)
-    report.add("TikZ 图保留文字", ok, detail)
+  for book in books:
+    _verify_book(report, book)
 
+  main_book = books[0]
+  if (main_book.work_dir / "tikz").is_dir():
+    # 「TikZ 图保留文字」由 _verify_book 按书跑；英文图集只覆盖主书（词典按主书生成）。
     ok, detail = check_english_figures(
-      work_dir / "tikz", src_dir.parent.parent / "_static" / "figures-en",
+      main_book.work_dir / "tikz", src_dir.parent.parent / "_static" / "figures-en",
       src_dir.parent.parent / "i18n" / "figures-en.json")
     report.add("英文图集完整", ok, detail)
 
-  parts = booktree.parse(book_dir / "book.tex")
-  chapters = [chapter for part in parts for chapter in part.chapters]
-  full_build = all(chapter.chap_id in texts for chapter in chapters)
-  if not full_build:
-    report.add("书目录编号核对", True, "跳过（只转换了部分章节）")
-  else:
-    ok, detail, _ = check_book_toc(book_dir, registry, chapters)
-    report.add("书目录编号核对", ok, detail)
-
+  chapters = [chapter for part in main_book.parts for chapter in part.chapters]
+  full_build = all(chapter.chap_id in main_texts for chapter in chapters)
   ok, detail = check_translation_dicts(html_dir, Path(__file__).resolve().parent.parent,
                                        full_build=full_build)
   report.add("英译词典匹配产物", ok, detail)
+
+  ok, detail = check_collections(src_dir.parent / "collections.json", html_dir)
+  report.add("集合已装配且入口在附录之后", ok, detail)
 
   return report
 

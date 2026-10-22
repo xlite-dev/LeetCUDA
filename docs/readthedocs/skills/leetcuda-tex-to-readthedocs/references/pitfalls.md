@@ -50,6 +50,19 @@
 
     两个配套坑：判定与正文扫描必须共用 `texutil.math_spans`——自己数 `$$` 会把相邻行内公式 `$a$$b$` 当成显示公式定界符，配对一错位就撑出几千字的「保护区间」，把后面整段正文误判成公式而漏改；嵌套同族命令 `\textbf{A\textbf{B}}` 由预处理压平成 `\textbf{AB}`（pandoc 会输出 `**A**B****`，那个 `****` 无法解析）。
 
+24. **注释剥离不认 verbatim 参数（2026-10-22 修）**：`%(?<!\\)[^\n]*` 一刀切会把 `\url{https://…%3A//…}`、`\lstinline|i16 % 8|` 从 `%` 处截断，留下半个花括号，pandoc 直接报 `unexpected end of input` 或把后续正文吞进巨型 URL。现在 `texutil.strip_comments` 逐字扫描，跳过 `\url`/`\path`/`\nolinkurl`/`\href` 第一参数、`\lstinline`/`\verb` 的任意分隔符内容。主书 0 处这类写法，所以以前没暴露；cute-zhihu 的 reed-08/09、reed-isa-02、frankshi-01、reed-blackwell-dual-die 五章必踩。
+25. **`\urldef` 不展开 → 页首裸链接 + 空脚注**：`\urldef\name\url{…%23…}` + 正文 `\footnote{\name}` 让 pandoc 输出页面顶部一条独立链接、脚注体为空。转换器现在先把定义展开成 `\url{…}` 再删定义（TeX 的展开语义），reed-08/09 的 9 条定义、16 处引用恢复成正常脚注。
+26. **admonition 标题里自带 `\textbf` → 页面上 `****`**：标题先渲染成 `**…**`，`_render_admonition` 又整体包一层 `**`，成了嵌套强调，CommonMark 配不上对，字面 `****` 漏到正文（ch10/ch14/ch16/ch17/ch18/ch19 六处「实践经验」标题）。修法：标题整体已是粗体，包之前把内层 `**` 去掉。`convert.verify` 抓不到（它只看 `check_emphasis_flanking` 的配对判定），只有 `visual_check` 的「未渲染的强调标记」会红。
+27. **多书（主书 + 子集合）装配的五个坑**：
+    - `macros.write()` 每次运行都重写 `build/mathjax-macros.json`，而 `extract()` 只认书根的 `preamble.tex`/`book.tex`；对子集合调用会写成空表、主书公式静默变形。**只对主书写**。
+    - 页面键必须用 docname（`cute-zhihu/reed-01-layout`），用 `path.stem` 会让主书与集合的 `index`、`part-1..4` 互相覆盖，通用核对静默漏页。
+    - raw HTML 表格里的 `<img src="_images/…">` 由转换器硬编码，子目录页面要写 `../_images/…`；`check_images_present` 的正则也必须能匹配 `../` 前缀，否则 173 张图零覆盖还报「共 0 张图」。
+    - `check_translation_dicts` 只能统计站点根页面：集合页面（201 段代码 + 68 个脚注 + 图注的中文）不在词典里，递归就会全算未命中、必红。
+    - 集合的「书目录编号核对」读的是 `<slug>.toc`（cute-zhihu 是 `cute-zhihu.toc`），写死 `book.toc` 会静默跳过。
+    另：`conda run -n cdit python -m tools.visual_check` 会命中 site-packages 里同名的 `tools` 包（`No module named tools.visual_check`），直接跑 `python tools/visual_check.py`。
+
+28. **别用 CSS 强制展开侧栏**：集合的三层目录一开始用 `.toctree-l1.current .toctree-l2 > ul { display: block }` 强开，结果系列前的「+」变成点了没反应的死控件（主题的 `theme.js` 靠切 `li.current` 控制显隐，被 CSS 覆盖后就不生效了）。正解是只调 `navigation_depth: 3` + `titles_only: True`，折叠/展开交给主题：默认「+」收起、点开展开、当前系列自动展开——与主书「篇 → 章」完全一致。
+
 ## 验收方法（方法论）
 
 - **三层验收，缺一层就会漏**（见 `acceptance.md`）。

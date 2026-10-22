@@ -23,6 +23,9 @@ from .preprocess import ADMON_KINDS, Manifest
 #: 图片 alt 文本（正文图注由 caption 段落承担）。
 _DEFAULT_ALT = "插图"
 
+#: 原文图注里自带的编号（``Figure 1.`` / ``Fig. 2.`` / ``图 3.``）。
+_CAPTION_NUMBERED_RE = re.compile(r"^(?:figure|fig\.?|图)\s*\d", re.IGNORECASE)
+
 #: 页脚样式类名。
 _FOOTER_CLASS = "rtd-footer"
 
@@ -38,6 +41,7 @@ class RenderContext:
   :param work_dir: 临时目录（代码载荷所在处）。
   :param tikz_failed: 编译失败的 image_id。
   :param source_url: 原书 tex 的 GitHub 链接前缀。
+  :param image_prefix: raw HTML 里图片的路径前缀（子集合页面在子目录，需 ``../``）。
   """
   chap: Chapter
   parts: list[Part]
@@ -46,6 +50,7 @@ class RenderContext:
   work_dir: Path
   tikz_failed: set[str] = field(default_factory=set)
   source_url: str = ""
+  image_prefix: str = "_images/"
 
 
 @dataclass
@@ -97,7 +102,7 @@ class _Renderer:
       self.pending = []
     body = _normalize_display_math(body)
     body = _strip_raw_inline_html(body)
-    body, table_images = _htmlify_table_inlines(body)
+    body, table_images = _htmlify_table_inlines(body, self.ctx.image_prefix)
     hidden = _hidden_image_refs(table_images, body)
     if hidden:
       body = f"{body}\n\n{hidden}"
@@ -252,8 +257,16 @@ class _Renderer:
     blocks = [block for block in sub_blocks if block.strip()]
     blocks.extend(self._render_items(content))
     if caption.strip():
-      prefix = f"图 {number}：" if number else "图："
-      blocks.append(f"{{.rtd-caption}}\n{prefix}{caption.strip()}")
+      text = caption.strip()
+      # 原文图注常常自带编号（``\caption{Figure 1. …}``），再补「图：」就成了
+      # 「图：Figure 1. …」重影。有 label 时用书里的图号，没有就看原文是否已编号。
+      if number:
+        prefix = f"图 {number}："
+      elif _CAPTION_NUMBERED_RE.match(text):
+        prefix = ""
+      else:
+        prefix = "图："
+      blocks.append(f"{{.rtd-caption}}\n{prefix}{text}")
     anchors = self._anchors(labels)
     if anchors:
       blocks.insert(0, anchors)
@@ -318,7 +331,11 @@ class _Renderer:
     heading = f"{label} {self._admon_number(kind, numbered)}".strip()
     lines = [f"```{{admonition}} {heading}", f":class: rtd-admon rtd-{css}"]
     if title.strip():
-      lines.extend(["", f"**{title.strip()}**"])
+      # 标题里自带的 ``\textbf{}`` 已经渲染成 ``**…**``，再整体包一层就成了嵌套强调，
+      # CommonMark 配不上对，页面上会漏出字面 ``****``（ch10/ch14/ch16/ch19 等六处
+      # 实践经验标题）。内层改写成 HTML，两层都是粗体且不影响配对。
+      text = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", title.strip())
+      lines.extend(["", f"**{text}**"])
     content = "\n\n".join(block for block in body_blocks if block.strip())
     if content:
       lines.extend(["", content])
@@ -1178,7 +1195,7 @@ _INLINE_IMAGE_RE = re.compile(r"!\[([^\]\n]*)\]\(([^)\s]+)(?:\s+[\"“]([^\"”]
 _HTML_TABLE_RE = re.compile(r"<table\b.*?</table>", re.S)
 
 
-def _htmlify_table_inlines(md_text: str) -> tuple[str, list[str]]:
+def _htmlify_table_inlines(md_text: str, image_prefix: str = "_images/") -> tuple[str, list[str]]:
   """把 raw HTML 表格里的 Markdown 行内语法转成 HTML。
 
   pandoc 直出的 ``<table>`` 由 MyST 原样透传，单元格里的 Markdown 不会被解析：
@@ -1186,6 +1203,8 @@ def _htmlify_table_inlines(md_text: str) -> tuple[str, list[str]]:
   强调都会漏成字面文本（ch37 的 FP8/FP4 对照表、ch19b 的视图对照表都中招）。
 
   :param md_text: markdown 文本。
+  :param image_prefix: 图片路径前缀——Sphinx 只改写 docutils 图片节点的路径，raw HTML 里
+    的 ``src`` 要按页面所在目录自己补 ``../``（子集合页面在子目录）。
   :returns: ``(处理后的文本, 表格里用到的图片源路径)``。
   """
   used_images: list[str] = []
@@ -1199,7 +1218,7 @@ def _htmlify_table_inlines(md_text: str) -> tuple[str, list[str]]:
       # Sphinx 只搬运 docutils 图片节点引用的文件，所以指向 _images 之余，
       # 还要在页尾补一个隐藏的图片节点让 Sphinx 真去拷（见 _hidden_image_refs）。
       name = source.rsplit("/", 1)[-1]
-      return (f'<img src="_images/{_escape_attr(name)}"'
+      return (f'<img src="{image_prefix}{_escape_attr(name)}"'
               f' alt="{_escape_attr(alt or _DEFAULT_ALT)}" style="max-width: 100%;">')
 
     def to_anchor(link: re.Match[str]) -> str:

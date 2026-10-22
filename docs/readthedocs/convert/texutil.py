@@ -8,8 +8,13 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-#: 未转义的 ``%`` 到行尾即注释。
-_COMMENT_RE = re.compile(r"(?<!\\)%[^\n]*")
+#: 参数按 verbatim 语义读取的命令：``\url{…%3A…}`` 里的 ``%`` 是 URL 编码，不是注释。
+_VERBATIM_GROUP_RE = re.compile(r"\\(?:url|path|nolinkurl|href)\s*\{")
+
+#: 用任意分隔符读取内容的行内 verbatim 命令：``\lstinline|a % b|``。
+#: ``(?![A-Za-z])`` 挡掉 ``\verbatiminput{…}`` 这类同前缀命令——否则会把后面的字母
+#: 当分隔符，一路找下去吞掉大段正文。
+_VERBATIM_DELIM_RE = re.compile(r"\\(?:lstinline|verb)(?![A-Za-z])\*?\s*(?:\[[^\]]*\]\s*)?")
 
 #: ``\input`` / ``\include`` 引用。
 _INPUT_RE = re.compile(r"\\(?:input|include)\s*\{([^}]*)\}")
@@ -61,10 +66,59 @@ _PLAIN_GREEK = {
 def strip_comments(text: str) -> str:
   """删除 LaTeX 注释（未转义的 ``%`` 至行尾）。
 
+  ``\\url{}`` / ``\\href{}`` / ``\\lstinline|…|`` / ``\\verb|…|`` 的参数是逐字语义，
+  里面的 ``%`` 是 URL 编码或取模运算符，不是注释。逐字扫描跳过这些区间：按正则一刀切
+  会把 ``…%3A//…`` 连同行尾一起删掉，留下半个花括号，pandoc 直接报错（cute-zhihu
+  的 reed-08/09 有五条这种带 ``%`` 编码的跳转链接）。
+
   :param text: tex 文本。
   :returns: 去注释后的文本。
   """
-  return _COMMENT_RE.sub("", text)
+  out: list[str] = []
+  index = 0
+  length = len(text)
+  while index < length:
+    char = text[index]
+    if char == "\\":
+      end = _verbatim_end(text, index)
+      if end > index:
+        out.append(text[index:end])
+        index = end
+        continue
+      out.append(text[index:index + 2])
+      index += 2
+      continue
+    if char == "%":
+      newline = text.find("\n", index)
+      if newline == -1:
+        break
+      index = newline
+      continue
+    out.append(char)
+    index += 1
+  return "".join(out)
+
+
+def _verbatim_end(text: str, pos: int) -> int:
+  """找 ``pos`` 处 verbatim 命令的结束下标。
+
+  :param text: tex 文本。
+  :param pos: 反斜杠所在下标。
+  :returns: 命令结束后的下标；不是 verbatim 命令（或参数不闭合）时返回 ``pos``。
+  """
+  group = _VERBATIM_GROUP_RE.match(text, pos)
+  if group is not None:
+    end = text.find("}", group.end())
+    return end + 1 if end != -1 else pos
+  delim = _VERBATIM_DELIM_RE.match(text, pos)
+  if delim is None:
+    return pos
+  opener = text[delim.end():delim.end() + 1]
+  if not opener or opener == "\n":
+    return pos
+  closer = "}" if opener == "{" else opener
+  end = text.find(closer, delim.end() + 1)
+  return end + 1 if end != -1 else pos
 
 
 def read_group(text: str, pos: int, opener: str = "{", closer: str = "}") -> tuple[str, int]:

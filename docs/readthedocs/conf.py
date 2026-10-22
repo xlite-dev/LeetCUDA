@@ -56,12 +56,14 @@ html_css_files = ["custom.css"]
 html_last_updated_fmt = ""
 html_title = project
 html_theme_options = {
-  # 左栏只到「篇 → 章」两层：小节级目录放在右栏（见 _templates/page.html 的 `body` 块），
-  # 两处重复会让左栏过长。
-  "navigation_depth": 2,
+  # 三层：主书是「篇 → 章」两层（章内小节放在右栏，见 _templates/page.html 的 `body` 块），
+  # 子集合多一层「集合首页 → 系列 → 文章」，要三层才能像主书那样把章节名列在系列下面。
+  # ``titles_only`` 必须为 True：否则 depth=3 会把主书每一章的 ``\section`` 也列进左栏
+  # （实测条目从 58 条涨到 542 条）。小节目录本来就在右栏，左栏只要标题。
+  "navigation_depth": 3,
   "collapse_navigation": False,
   "sticky_navigation": True,
-  "titles_only": False,
+  "titles_only": True,
   "prev_next_buttons_location": "both",
 }
 

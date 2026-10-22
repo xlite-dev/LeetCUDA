@@ -156,7 +156,7 @@ LAYOUT_JS = """
 class PageReport:
   """单页验收结果。
 
-  :param name: 页面名（不含扩展名）。
+  :param name: 页面标识（docname，不含扩展名，子集合页带目录前缀）。
   :param math_containers: 渲染出的公式个数。
   :param math_display: 其中显示公式个数。
   :param math_errors: MathJax 报错原文。
@@ -213,6 +213,16 @@ def serve(directory: Path) -> tuple[str, socketserver.TCPServer]:
   return f"http://{host}:{port}", httpd
 
 
+def _docname(path: Path, html_dir: Path) -> str:
+  """页面在站点树里的 docname（相对路径去扩展名）。
+
+  :param path: HTML 文件路径。
+  :param html_dir: 站点根目录。
+  :returns: 如 ``cute-zhihu/reed-01-layout``。
+  """
+  return path.relative_to(html_dir).with_suffix("").as_posix()
+
+
 def check_pages(
   html_dir: Path,
   out_dir: Path,
@@ -234,9 +244,11 @@ def check_pages(
   from playwright.sync_api import sync_playwright
 
   out_dir.mkdir(parents=True, exist_ok=True)
-  pages = sorted(path for path in html_dir.glob("*.html"))
+  pages = sorted(path for path in html_dir.rglob("*.html"))
   if only:
-    pages = [path for path in pages if path.stem in set(only)]
+    wanted = set(only)
+    pages = [path for path in pages
+             if _docname(path, html_dir) in wanted or path.stem in wanted]
 
   launch_args = ["--no-sandbox"]
   if proxy:
@@ -249,6 +261,7 @@ def check_pages(
       browser = playwright.chromium.launch(args=launch_args)
       context = browser.new_context(viewport={"width": width, "height": 1000})
       for path in pages:
+        docname = _docname(path, html_dir)
         page = context.new_page()
         console_errors: list[str] = []
         failed_requests: list[str] = []
@@ -257,7 +270,7 @@ def check_pages(
         page.on("requestfailed",
                 lambda request: failed_requests.append(f"{request.url} {request.failure}"))
         started = time.monotonic()
-        page.goto(f"{base}/{path.name}", wait_until="load", timeout=timeout_ms)
+        page.goto(f"{base}/{docname}.html", wait_until="load", timeout=timeout_ms)
         # 页面本身没有公式时 Sphinx 不会加载 MathJax，这不算问题。
         needs_math = page.evaluate("() => !!document.querySelector('.math')")
         mathjax_loaded = page.evaluate("() => !!window.MathJax") or not needs_math
@@ -271,10 +284,10 @@ def check_pages(
         math_artifacts = page.evaluate(MATH_ARTIFACT_JS) or []
         text = page.evaluate(VISIBLE_TEXT_JS)
         layout = page.evaluate(LAYOUT_JS) or {}
-        shot = out_dir / f"{path.stem}.png"
+        shot = out_dir / f"{docname.replace('/', '__')}.png"
         page.screenshot(path=str(shot), full_page=True)
         report = PageReport(
-          name=path.stem,
+          name=docname,
           math_containers=state["containers"],
           math_display=state["display"],
           math_errors=[error for error in state["errors"] if error],
@@ -325,7 +338,7 @@ def contact_sheet(screenshots: list[Path], target: Path, columns: int = 3, scale
   for path in screenshots:
     image = Image.open(path).convert("RGB")
     size = (max(1, int(image.width * scale)), max(1, int(image.height * scale)))
-    thumbs.append((path.stem, image.resize(size)))
+    thumbs.append((path.stem.replace("__", "/"), image.resize(size)))
   if not thumbs:
     raise ValueError("没有截图可拼")
   cell_w = max(thumb.width for _, thumb in thumbs)
@@ -361,6 +374,9 @@ def main() -> int:
   only = [item.strip() for item in args.only.split(",") if item.strip()]
   reports = check_pages(Path(args.html).resolve(), Path(args.out).resolve(), args.width, only,
                         proxy=args.proxy)
+  if only and not reports:
+    print(f"错误：--only 没有匹配到任何页面：{only}")
+    return 1
   failed = [report for report in reports if not report.ok]
   print(f"\n合计 {len(reports)} 页，需处理 {len(failed)} 页：{[report.name for report in failed]}")
 
