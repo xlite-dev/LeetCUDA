@@ -705,6 +705,12 @@
   - 验收：cute-zhihu 247 页不变、0 error、0 undefined、Overfull 7 与基线逐条相同、
     缺字 0；图文均为位图，无图内文字改动，RTD 词典不受影响。
 
+- [x] **R18-frankshi-swizzle frankshi swizzle 章审核（2026-10-22）**
+  - 5 处修复：矩阵大小 1028→1024、bank conflicts 2,032,616→2,031,616（×2）、
+    物理坐标举例 (2,1)→(1,2)（3⊕2=1）、§4.5 结论 y 值→x 值、Colased→Coalesced。
+  - 证明链（xor 性质、一一映射、值域保持、行列序列一致）与 kernel 代码逐行复算无误。
+  - 验收：cute-zhihu 247 页不变、0 error、Overfull 7 逐条相同。
+
 - [x] **R18-zhuxi-code zhuxi 代码示例修复（2026-10-22，用户要求修复代码类错误）**
   - 范围：zhuxi-01~07 的 CuTe 代码示例（R16-W2 约定此类错误冻结待用户要求）。
   - 修复：zhuxi-01 `*(float2*)` 转型；全 7 章 16 处裸 `Tensor`/`Layout` → `auto`；
