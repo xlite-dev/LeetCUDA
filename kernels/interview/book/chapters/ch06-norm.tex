@@ -111,17 +111,17 @@ RMSNorm（Zhang \& Sennrich, 2019）只保留\textbf{缩放}而不做\textbf{中
   \node[white] at (2.6,-2.85) {波动 $\sigma^2$（不变）};
   \fill[tkFillOrange] (5.2,-3.2) rectangle (11.6,-2.5);
   \fill[pattern=north east lines, pattern color=tkOrange!55] (5.2,-3.2) rectangle (11.6,-2.5);
-  \node at (8.4,-2.85) {直流 $(\mu+c)^2$（变长）};
+  \node at (8.4,-2.85) {直流 $(\mu+c)^2$（改变）};
   \draw[thick] (0,-3.2) rectangle (11.6,-2.5);
   \draw (5.2,-3.2) -- (5.2,-2.5);
   \draw[-{Latex}] (8.8,-3.75) -- (11.6,-3.75);
-  \node[anchor=north] at (10.2,-3.9) {$(\mu+c)^2 > \mu^2$：直流段增长};
+  \node[anchor=north] at (10.2,-3.9) {$(\mu+c)^2 \ne \mu^2$：直流段改变};
   \node[anchor=north, align=center, text width=5.0cm, text=tkGreen] at (2.5,-4.5)
     {LayerNorm：$\sigma^2$ 段不变\\$\Rightarrow$ \textbf{输出不变}（平移不变性）};
   \node[anchor=north, align=center, text width=6.0cm, text=tkOrange!85!black] at (8.6,-4.5)
-    {RMSNorm：分母变大 $\Rightarrow$ 不变式被破坏\\$\Rightarrow$ LLaMA 去 QKV 投影 bias};
+    {RMSNorm：分母改变 $\Rightarrow$ 不变式被破坏\\$\Rightarrow$ LLaMA 去 QKV 投影 bias};
 \end{tikzpicture}
-\caption{分母的能量分解（恒等式~\eqref{eq:ch06-var-identity}：$\frac{1}{K}\sum_k x_k^2 = \sigma^2 + \mu^2$）：LayerNorm 只除\textbf{波动}$\sigma^2$，RMSNorm 除\textbf{总能量（波动 $+$ 直流）}。平移 $x \to x+c$ 时 $\sigma^2$ 段宽度不变而 $\mu^2$ 段变长——LayerNorm 输出不变，RMSNorm 分母增大，这就是去 bias 的架构连锁（6.3.3 节第 3 条）。}
+\caption{分母的能量分解（恒等式~\eqref{eq:ch06-var-identity}：$\frac{1}{K}\sum_k x_k^2 = \sigma^2 + \mu^2$）：LayerNorm 只除\textbf{波动}$\sigma^2$，RMSNorm 除\textbf{总能量（波动 $+$ 直流）}。平移 $x \to x+c$ 时 $\sigma^2$ 段宽度不变而 $\mu^2$ 段改变——LayerNorm 输出不变，RMSNorm 分母改变，这就是去 bias 的架构连锁（6.3.3 节第 3 条）。}
 \label{fig:6-2}
 \end{figure}
 

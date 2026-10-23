@@ -155,7 +155,7 @@ $[-448,448]$ 恰好被两侧同时铺满。
 launcher 把 $v_{scale\_max}$ 整个收紧为 2.25。量化后的 $V_8$ 幅度被压进
 $[-2.25, 2.25]$、$v_s = \mathrm{amax}/2.25$，为 f16 累加域（$\pm 65504$）在
 $kBc$ 块求和下留足裕量，防止长块累加溢出（kernel 侧有编译期检查
-$kBc\cdot 448\cdot 2.25 \le 65504$；per-block 路径固定 amax/448，无此参数）。
+$kBc\cdot 448\cdot 2.25 \le 65504$，超限时把 P 域收窄到 224（第~\ref{ch:29}~章）；per-block 路径固定 amax/448，无此参数）。
 
 \subsection{Hadamard 旋转：正交不变量与 outlier 扩散}\label{sec:28-wht}
 
@@ -198,7 +198,7 @@ $\sum_{d<kHeadDim} (Q\hat H)_{:,d}(K\hat H)_{:,d} = \sum_{d<d_{og}} Q_d K_d$
 
 第~\ref{ch:27}~章的表~\ref{tab:27-granularity} 列了粒度谱系；本节回答一个工程
 问题：ffpa-attn 为什么在 Q 上选 per-thread（64 scale / 128 行）这个非常规粒度。
-答案在 MMA 的 C-fragment 布局里（第~\ref{ch:11}~章图~\ref{fig:11-2a}）：
+答案在 MMA 的 C-fragment 布局里（第~\ref{ch:11}~章图~\ref{fig:11-c-fragment}）：
 $m16n8k16$ 的 fp32 累加 fragment 中，\textbf{每个线程持有 2 行 $\times$ 1 个
 列对（2 个相邻列元素）}，quad 内 4 个 lane 分摊 $n{=}8$ 列且持有相同的
 2 行。反量化时若 scale 按行组织，同一线程的两行就要两个 scale；若 scale 按

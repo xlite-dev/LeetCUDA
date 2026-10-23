@@ -571,10 +571,10 @@ $d$ 从 $0$ 滚到 $\mathrm{Sk}{-}1$）；smem 侧每轮把 \texttt{q\_base} 加
 
 \subsection{traits 与 chunk 常量}
 
-traits 的核心六行（L50--61）如下，它们的类型推导在 26.3.1 节已经算过：
+traits 的核心六行（L48--62）如下，它们的类型推导在 26.3.1 节已经算过：
 
-\lstinputlisting[linerange={50-61},firstnumber=auto,
-  title={ffpa\_attn.cuh L50-61（MmaAtom、双 TiledMma、两个 copy atom）}]{../ffpa_attn.cuh}
+\lstinputlisting[linerange={48-62},firstnumber=auto,
+  title={ffpa\_attn.cuh L48-62（MmaAtom、双 TiledMma、两个 copy atom）}]{../ffpa_attn.cuh}
 
 kernel 的入口与 chunk 常量在 L80--97。这一段值得逐行读，因为它把一个
 chunk 有多大的全部依赖固定在编译期：
@@ -794,8 +794,8 @@ QK 段（L217--270）是整个 kernel 最能体现循环结构与类型之分的
 
 \subsection{Phase 2：softmax 与 $P$ 的生成}
 
-\lstinputlisting[linerange={273-303},firstnumber=auto,
-  title={ffpa\_attn.cuh L273-303（Phase 2：rowcol 视图上的 online softmax + \texttt{convert\_\allowbreak{}type} 与 \texttt{Aregs}）}]{../ffpa_attn.cuh}
+\lstinputlisting[linerange={273-299},firstnumber=auto,
+  title={ffpa\_attn.cuh L273-299（Phase 2：rowcol 视图上的 online softmax + \texttt{convert\_\allowbreak{}type} 与 \texttt{Aregs}）}]{../ffpa_attn.cuh}
 
 这段的每一行都值得对照第~\ref{ch:25}~章实现 1 的 softmax 段读：两者
 几乎逐字相同，因为 FFPA 复用同一套 rowcol 视图加 4-lane \texttt{shfl\_xor}
@@ -821,8 +821,8 @@ QK 段（L217--270）是整个 kernel 最能体现循环结构与类型之分的
 
 PV 段（L307--353）分两半。前半是 chunk 流水与 $O$ 的 rescale：
 
-\lstinputlisting[linerange={307-331},firstnumber=auto,
-  title={ffpa\_attn.cuh L307-331（Phase 3 前半：\texttt{v\_write\_pv} 与 Phase 0 对接；$O_c$ 的 rescale）}]{../ffpa_attn.cuh}
+\lstinputlisting[linerange={307-329},firstnumber=auto,
+  title={ffpa\_attn.cuh L307-329（Phase 3 前半：\texttt{v\_write\_pv} 与 Phase 0 对接；$O_c$ 的 rescale）}]{../ffpa_attn.cuh}
 
 注意 \texttt{v\_write\_pv = (kStagesV > 1) ? (kStagesV - 1) : 0} 这个初值：
 Phase 0 已经预取了 $\mathrm{Sv}-1$ 个 chunk，PV 循环延续同一套环状槽位，

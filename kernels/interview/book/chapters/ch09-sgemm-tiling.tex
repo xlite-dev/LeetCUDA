@@ -33,7 +33,7 @@ $C\sb{m,n} = \sum\sb{k} A\sb{m,k} B\sb{k,n}$：每个输出元素要读 $A$ 的�
 （$K$ 个 float）和 $B$ 的一列片段（$K$ 个 float），做 $K$ 次乘加。
 算术强度 $\mathrm{AI} = 2K \text{ FLOP} / (8K \text{ B}) = 0.25$~FLOP/B，为与
 $K$ 无关的常数，与第~\ref{ch:08}~章 GEMV 同一量级。$K$ 越大只是把流量按比例
-放大，AI 保持不变。在本机 roofline（拐点约 71.6 FLOP/B，见 9.6~节）下，
+放大，AI 保持不变。在本机 roofline（拐点约 71.6 FLOP/B，见 9.3.6~节）下，
 naive 的计算上限被限制在带宽 $\times 0.25$，离 fp32 峰值差近两个数量级。
 
 \textbf{动机二：复用一直存在，只是 naive 没有利用。}观察一：同一行块

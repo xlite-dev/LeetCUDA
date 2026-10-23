@@ -242,7 +242,7 @@ $M$ 维输出。$y$ 的每个元素要 $K$ 次乘 $K$ 次加，$\mathrm{FLOPs} =
 0.5 对应的理论带宽。
 
 Softmax（逐 token，宽度 $N$）：对长度 $N$ 的行做 softmax：1 次 max
-比较、$N$ 次减法与 exp（计 $2N$）、$N$ 次求和、$N$ 次除法，共约 $5N$
+比较、$N$ 次减法、$N$ 次 exp（每条计 2 FLOP，共 $2N$）、$N$ 次求和、$N$ 次除法，共约 $5N$
 FLOPs；访存是读入 $x$、写出 $y$ 各一次，$4 \times 2N$ 字节：
 \begin{equation}
   AI\sb{\mathrm{softmax}} = \frac{5N}{8N} = \frac{5}{8} = 0.625,
@@ -302,7 +302,7 @@ compute-bound。
     {softmax $\mathrm{AI}{=}0.625$ 远低于 $\mathrm{AI}^*{=}20$
      $\to$ 严重 memory-bound};
   \node[note] at (0.62, 0.20)
-    {例：H100 SXM（base.cuh L84--86 口径）FP16 TC dense $P_{\mathrm{peak}}$ 约 989 TFLOPS，BW${=}3.35$ TB/s $\to$ $\mathrm{AI}^*$ 约 295；};
+    {例：H100 SXM（BW 与 ridge 取自 base.cuh L16--21、L75--79，989 TFLOPS 取官方 spec）FP16 TC dense $P_{\mathrm{peak}}$ 约 989 TFLOPS，BW${=}3.35$ TB/s $\to$ $\mathrm{AI}^*$ 约 295；};
   \node[note] at (0.62, -0.10)
     {FP32 CUDA core 约 67 TFLOPS $\to$ $\mathrm{AI}^*$ 约 20};
 \end{tikzpicture}}
@@ -513,7 +513,7 @@ TMA）属于 Part II 后半与 Part III/IV。本书的章节顺序，就是这�
 
 本章无 kernel，性能分析给两张标尺表，供全书各章对照。
 
-\textbf{表 1：H100 SXM 参考口径}（取自 base.cuh L16--21 与 L84--86，
+\textbf{表 1：H100 SXM 参考口径}（取自 base.cuh L16--21 与 L75--79，
 官方 spec 与微基准口径混排，见 \S\ref{sec:ch01-kaogu}）：
 
 \begin{center}

@@ -204,7 +204,7 @@ mbarrier 维护；后 256 线程（8 个 warp，2 个 warpgroup）是\textbf{ co
 full/empty mbarrier 对解耦（协议见 \S\ref{sec:26b-tma}）。
 
 关键在寄存器：producer 只发 TMA（不使用 tensor core），128 个寄存器足够；
-consumer 的 O 累加器（$128\times D$ f32/tile，每线程 $D/2{\times}4$ 个）+ P/S
+consumer 的 O 累加器（$128\times D$ f32/tile，每线程 $D/2$ 个，每 atom 4 个）+ P/S
 fragment + softmax 状态却是寄存器压力的主要来源。\texttt{setmaxnreg} 让两者在
 SM 寄存器池（sm\_120 为 64K/SM）里重新分配：
 
@@ -429,7 +429,7 @@ TMA 完成时 mbarrier 校验的正是这个数，少一个字节都会让 consu
 wait 永远不满足（挂死而非出错）。consumer 侧对应的是初始 arrive 只做一次
 这条铁律的落地：
 
-\begin{lstinputlisting}[linerange={3866-3881},firstnumber=auto,
+\begin{lstinputlisting}[linerange={3864-3881},firstnumber=auto,
   title={flash\_attn.cuh L3866-3881（consumer：首轮一次性标记全部 stage 为 empty）}]{../flash_attn.cuh}
 \end{lstinputlisting}
 
@@ -482,7 +482,7 @@ tile max 与蝶形归约在前 6 行：每行先在本地
 
 softmax 之前还有两道逐元素 mask，与式~\eqref{eq:26b-fa4} 同在 KV 主循环内：
 
-\begin{lstinputlisting}[linerange={3940-3967},firstnumber=auto,
+\begin{lstinputlisting}[linerange={3934-3967},firstnumber=auto,
   title={flash\_attn.cuh L3940-3967（双 mask：KV 尾部越界列 + causal 滑窗）}]{../flash_attn.cuh}
 \end{lstinputlisting}
 

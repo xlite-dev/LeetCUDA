@@ -410,8 +410,8 @@ swizzle 计算；ch14 折中——TMA 硬件写 $+$ 软件公式 \texttt{swizzle
 
 \subsection{barrier 初始化}
 
-\lstinputlisting[linerange={1934-1945},firstnumber=auto,breakatwhitespace=true,
-  title={hgemm.cuh L1934-1945（单线程初始化 129 计数 + proxy fence + syncthreads）}]{../hgemm.cuh}
+\lstinputlisting[linerange={1934-1942},firstnumber=auto,breakatwhitespace=true,
+  title={hgemm.cuh L1934-1942（单线程初始化 129 计数 + proxy fence + syncthreads）}]{../hgemm.cuh}
 
 初始化要做三件事。cuda::barrier 的 \texttt{init\allowbreak{}(\&full[s],\allowbreak{} 129)}
 展开为 \texttt{mbarrier.\allowbreak{}init.\allowbreak{}shared::\allowbreak{}cta.\allowbreak{}b64}

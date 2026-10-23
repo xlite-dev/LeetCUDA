@@ -161,8 +161,8 @@ $\mathrm{acc}$ 从 64 变 128 个 f32、流水从 3 级变 2 级，结构与协�
 就绪；\texttt{empty[stage]}（普通屏障，init$=$256，每个消费线程 arrive
 一次）标记消费完毕、stage 可覆写。装载发射的 lambda：
 
-\begin{lstinputlisting}[linerange={486-512},firstnumber=auto,
-  title={fp8\_gemm.cuh L486-512（issue\_tma：单 barrier 覆盖 A+B 双字段 + 初始 release）}]{../fp8_gemm.cuh}
+\begin{lstinputlisting}[linerange={486-514},firstnumber=auto,
+  title={fp8\_gemm.cuh L486-514（issue\_tma：单 barrier 覆盖 A+B 双字段 + 初始 release）}]{../fp8_gemm.cuh}
 \end{lstinputlisting}
 
 与 attention 版的一个差异：这里 A 与 B 的同一个 stage 由同一次
@@ -174,8 +174,8 @@ $\mathrm{size}(A)+\mathrm{size}(B)$ 的字节数，两条 \texttt{copy} 挂在�
 初始 release 段先由全体线程把三对 \texttt{empty} 各 arrive 一次预先凑满计数
 （阶段 0），\texttt{tid=0} 再逐级发射首批 TMA。
 
-\begin{lstinputlisting}[linerange={514-543},firstnumber=auto,
-  title={fp8\_gemm.cuh L514-543（主循环：wait full $\to$ gemm\_ss $\to$ arrive empty $\to$ 预取）}]{../fp8_gemm.cuh}
+\begin{lstinputlisting}[linerange={516-543},firstnumber=auto,
+  title={fp8\_gemm.cuh L516-543（主循环：wait full $\to$ gemm\_ss $\to$ arrive empty $\to$ 预取）}]{../fp8_gemm.cuh}
 \end{lstinputlisting}
 
 主循环体与第~\ref{ch:26c}~章逐行同构，只保留了 GEMM 必要项：
@@ -308,8 +308,8 @@ epilogue 不需要任何尾部分支。唯一要 guard 的就是 scale 查表（
 
 \section{WS 进阶变体与 setmaxnreg}\label{sec:35-ws}
 
-\begin{lstinputlisting}[linerange={667-697},firstnumber=auto,
-  title={fp8\_gemm.cuh L667-697（WS：producer 专职发 TMA，consumer 全员 MMA）}]{../fp8_gemm.cuh}
+\begin{lstinputlisting}[linerange={667-698},firstnumber=auto,
+  title={fp8\_gemm.cuh L667-698（WS：producer 专职发 TMA，consumer 全员 MMA）}]{../fp8_gemm.cuh}
 \end{lstinputlisting}
 
 WS 版与 non-WS 的\textbf{数学逐 bit 相同}（MMA 序列不变），差异全在执行

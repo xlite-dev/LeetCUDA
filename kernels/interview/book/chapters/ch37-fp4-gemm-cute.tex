@@ -396,8 +396,8 @@ CUTLASS 口径，是因为它是 \texttt{SM120\_16x8x64\_TN\_VS} 的官方搭配
 init$=$256）标记 stage 可覆写。差异集中在循环体里的四行拷贝与一次
 \texttt{gemm}：
 
-\begin{lstinputlisting}[linerange={794-810},firstnumber=auto,
-  title={fp4\_gemm.cuh L794-810（主循环：四路 s2r + zip 张量 + 一跳一 stage）}]{../fp4_gemm.cuh}
+\begin{lstinputlisting}[linerange={794-817},firstnumber=auto,
+  title={fp4\_gemm.cuh L794-817（主循环：四路 s2r + zip 张量 + 一跳一 stage）}]{../fp4_gemm.cuh}
 \end{lstinputlisting}
 
 数据走 LDSM，SF 走 32-bit LDS。$A/B$ 用
@@ -487,8 +487,8 @@ MMA 块相对 TMA 块更窄，这意味着\textbf{流水线对 TMA 延迟的容�
 
 \section{Epilogue：只剩一项乘法}\label{sec:37-epilogue}
 
-\begin{lstinputlisting}[linerange={820-852},firstnumber=auto,
-  title={fp4\_gemm.cuh L820-852（epilogue：level-1 折回 $\to$ bf16 $\to$ STSM $\to$ TMA store）}]{../fp4_gemm.cuh}
+\begin{lstinputlisting}[linerange={820-853},firstnumber=auto,
+  title={fp4\_gemm.cuh L820-853（epilogue：level-1 折回 $\to$ bf16 $\to$ STSM $\to$ TMA store）}]{../fp4_gemm.cuh}
 \end{lstinputlisting}
 
 与第~\ref{ch:35}~章 FP8 的 epilogue（四步、含按块查 $\delta$）相比，
