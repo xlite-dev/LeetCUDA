@@ -433,9 +433,10 @@ tile 维遍历。
 一跳一 stage：K 方向没有内层循环。$BK{=}64$ 等于原子的 K 宽，
 所以每个 stage 的 K 方向只对应一次 atom 调用；\texttt{gemm} 里
 剩下的展开只是 tile 维：\texttt{AtomLayoutMNK}$=(4,2,1)$ 把
-$128\times BN$ 的输出切成每 warp $16\times BN/2$ 的块，$BN{=}128$ 时
-每个 warp 要做 $8$ 条 \texttt{m16n8k64}（$N$ 方向切 8 次），
-一个 CTA 每 stage 共 $8\,\text{warp}\times8 = 64$ 条。第~\ref{ch:35}~章
+$128\times BN$ 的输出切成每 warp $32\times BN/2$ 的块，$BN{=}128$ 时
+每个 warp 要做 $16$ 条 \texttt{m16n8k64}（$M$ 方向 2 个 m16 atom
+$\times$ $N$ 方向 8 个 n8 atom），
+一个 CTA 每 stage 共 $8\,\text{warp}\times16 = 128$ 条。第~\ref{ch:35}~章
 FP8 的一个 stage 要跑 $BK/32 = 4$ 个 k-slice、每个 k-slice 里还有
 tile 维展开；FP4 把 k-slice 这一层直接删掉了（图~\ref{fig:37-pipeline-timing}
 的对比）。

@@ -143,8 +143,8 @@ CuTe 篇的核心结论是\textbf{抽象零开销}，对照维度因此不是 TF
 \toprule
 维度 & 手写 & CuTe \\
 \midrule
-swizzle kernel 代码量 & 235 行 & 118 行 + wrapper 88 行 \\
-HGEMM kernel 代码量 & 147（7b）/ 231（7b-3）行 & 118 行 + wrapper 86 行 \\
+swizzle kernel 代码量 & 235 行 & 118 行 + wrapper 86 行 \\
+HGEMM kernel 代码量 & 151（7b）/ 235（7b-3）行 & 118 行 + wrapper 86 行 \\
 寄存器（\texttt{ptxas -v}） & — & 254（$B_N{=}256$/F16）/ 226（$B_N{=}128$/F32），均 0 spill \\
 SASS 指令序列 & LDGSTS + LDSM + HMMA & 同左；kernel 内联汇编 0 条 \\
 swizzle 正确性 & v1/v2 30{,}720 点 bit-exact & \texttt{Swizzle\allowbreak{}<3,\allowbreak{}3,\allowbreak{}3>} 256 点 0 差异 \\
@@ -215,7 +215,7 @@ fp8 5e-2 / fp4 dense 0.15、causal 0.70）。speedup 一律对 SDPA 同形状。
 第30 & fp8 split-D / M4N2 & D=320 self / causal & 3.76$\times$ / 3.31$\times$ & D=512 2.98$\times$（参照换 MATH，见 33.6.1 归因）；causal 大 D allclose 临界失败为已知 ESS 特性（hybrid 解法） \\
 第31 & fp4 量化链（fused） & D=128 N=8192 & fused 单 launch 1.4$\to$0.3~ms & hadamard 零开销（bitwise 一致） \\
 第32 & fp4 persist-D & self D$\in$[64,256] & 1.49--2.11$\times$ & 同点 D=256 比 fp8 快 1.64$\times$（对照见 33.6.2）；mxfp8 PV 变体时间代价 +28--39\%（精度兜底） \\
-第33 & bench 矩阵与 knob & D=128 self & fp4 523~T（2.45$\times$） & fp4 vs fp8 1.39$\times$；粒度 knob 代价 1.7--2.7\%；Sage3 对照 causal rel\_err 0.59 vs hybrid 0.14（523T 为 \texttt{bench\_fp4.py} 16K 口径，非 CLI N=8192） \\
+第33 & bench 矩阵与 knob & D=128 self & fp4 528.7~T（2.44$\times$） & fp4 vs fp8 1.38$\times$；粒度 knob 代价 1.7--2.7\%；Sage3 对照 causal rel\_err 0.59 vs hybrid 0.14（528.7T 为 \texttt{bench\_fp4.py} 16K 口径，非 CLI N=8192） \\
 \end{longtable}
 \endgroup
 
@@ -253,7 +253,7 @@ layout/TiledCopy/TiledMMA 全部编译期折叠，SASS 与手写同构、寄存�
 的完整链路（fp8 GEMM 对 cuBLAS BF16 最高 2.99$\times$），Part VI 把
 attention 的
 数据通路从 fp16 一路降到 fp8/fp4：fp8 persist-D 1.70$\times$（D=128）起步，
-fp4 同点 2.04$\times$、大 D 靠 split-D/M4N2 3$\times$ 级。这条线的规律与
+fp4 同点 2.03$\times$、大 D 靠 split-D/M4N2 3$\times$ 级。这条线的规律与
 前三条不同——收益不来自新结构，而来自\textbf{同样的数学量换更宽的通路}
 （blockscale MMA）；代价是精度管理（smooth、两级 P、hybrid），而度量本身
 也需要专门处理（第~\ref{ch:33}~章）。

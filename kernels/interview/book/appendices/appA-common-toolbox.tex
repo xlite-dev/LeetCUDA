@@ -23,7 +23,7 @@ setmaxnreg 封装、WGMMA descriptor 编码——每一项都在某一章首次�
 \midrule
 1 & L4--29 & 头文件、CUDART $\ge$13.0 门控（L21--23）、
   \texttt{INT4}/\texttt{FLOAT4}/\texttt{HALF2}（L25--27）、\texttt{kWarpSize} & 3、8、9 \\
-2 & L31--105 & cp.async 宏（L41--49）、ldmatrix 宏（L56--72）、
+2 & L31--105 & cp.async 宏（L41--50）、ldmatrix 宏（L56--72）、
   \texttt{HMMA16816}/\texttt{F32}（L81/L92）、\texttt{div\_ceil} & 9--12、16--18 \\
 3 & L110--348 & swizzle 家族：\texttt{permuted}（L158）、
   \texttt{swizzle\_\allowbreak{}v1\_\allowbreak{}impl}（L235）、\texttt{SwizzleBMS}（L287）、
@@ -52,8 +52,8 @@ setmaxnreg 封装、WGMMA descriptor 编码——每一项都在某一章首次�
 第~\ref{ch:08}~章 GEMV 的核心手段。Ampere 时代的异步全局到共享内存搬运则由
 四个宏构成完整协议（第~\ref{ch:10}~章双缓冲首次使用）：
 
-\lstinputlisting[linerange={41-49},firstnumber=auto,
-  title={common.cuh L41-49（cp.async 协议宏：commit/wait 语义与 cg 粒度）}]{../common.cuh}
+\lstinputlisting[linerange={41-50},firstnumber=auto,
+  title={common.cuh L41-50（cp.async 协议宏：commit/wait 语义与 cg 粒度）}]{../common.cuh}
 
 用法要点：\texttt{commit\_\allowbreak{}group} 把此前未提交的 \texttt{cp.async} 归入一个
 async-group（per-thread）；\texttt{wait\_\allowbreak{}group~N} 阻塞到\textbf{未完成 group 数

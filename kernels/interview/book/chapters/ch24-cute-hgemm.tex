@@ -54,15 +54,15 @@ fp64 参考做正确性判定；本章的实测数字全部来自该测试与 \t
 
 \begin{itemize}
   \item Phase~7b \texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn}（hgemm.cuh~L129--397）：
-        147 行；
+        151 行；
   \item Phase~7b-3 \texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn\_\allowbreak{}swizzle}
-        （hgemm.cuh~L434--716）：231 行；
+        （hgemm.cuh~L434--716）：235 行；
   \item Phase~7c \texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn\_\allowbreak{}cute}
         （hgemm.cuh~L821--1196）：118 行，再加 launch wrapper
         （L1216--1427）86 行。
 \end{itemize}
 
-手写版与 CuTe 版的行数比并不悬殊（231 对 204），但代码的性质变了。
+手写版与 CuTe 版的行数比并不悬殊（235 对 204），但代码的性质变了。
 手写版里出现的是地址表达式与内联 PTX：
 
 \begin{lstlisting}
@@ -934,7 +934,7 @@ grid/block 配置与动态 smem 大小：
 \toprule
 维度 & 手写 MMA（第~\ref{ch:11}/\ref{ch:12}~章） & CuTe（本章） \\
 \midrule
-代码量 & L129--397：147 行；L434--716：231 行 &
+代码量 & L129--397：151 行；L434--716：235 行 &
 kernel 本体 118 行 $+$ wrapper 86 行 \\
 \addlinespace
 smem 地址 & 每处显式算 \texttt{stage*BM*BK + row*BK + swizzle\allowbreak{}(i,\allowbreak{}j)} &
@@ -1181,7 +1181,7 @@ R2S $\to$ sC $\to$ S2G，映射进类型 \\
         第~\ref{sec:24-minitest}~节动手实验第 3 条。
   \item \textbf{代码量对照}（hgemm.cuh L803--805）：注释写\textbf{手写 $\sim$200 行 /
         CuTe $\sim$80 行}。按同口径实测（去注释、去空行）：手写 Phase~7b 为
-        147 行、Phase~7b-3 为 231 行，CuTe kernel 本体为 118 行（另有 launch
+        151 行、Phase~7b-3 为 235 行，CuTe kernel 本体为 118 行（另有 launch
         wrapper 86 行）。注释给的是量级估计，方向正确（CuTe 版确实更短），但
         \textbf{$\sim$80 行}低估了约三成；本章一律以实测数字为准
         （图~\ref{fig:24-1}）。
@@ -1191,7 +1191,7 @@ R2S $\to$ sC $\to$ S2G，映射进类型 \\
 
 前面几条验证的都是本章自己给的数字，再给一组对外的对照：第~\ref{ch:20}--\ref{ch:23}~章
 铺垫的 layout 代数、\texttt{TiledCopy}、\texttt{TiledMMA}、swizzle 组合子落到
-真实负载上究竟值多少？用 \texttt{notes\_\allowbreak{}v2\_\allowbreak{}sm120a.\allowbreak{}bin} 的
+真实负载上究竟值多少？用 \texttt{leetcuda\_\allowbreak{}bench\_\allowbreak{}sm120a.\allowbreak{}bin} 的
 \texttt{--bench --bench-all} 在 RTX PRO 5000（sm\_120，110 SM，CUDA 13.2）上实测
 $M{=}N{=}K{=}8192$ 的 fp16 HGEMM，CuTe Swizzle 家族七个配置见
 表~\ref{tab:ch24-perf}：F16Acc 档追平乃至超越 cuBLAS f16（分母为同轮 cuBLAS

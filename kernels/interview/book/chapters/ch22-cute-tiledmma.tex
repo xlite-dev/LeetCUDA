@@ -745,8 +745,8 @@ $\times$ $2$ 相邻列），两个相邻 atom 共 $8$ 个；右（A 视角）：
     {合计 $= 256$ 寄存器};
   \draw[tkRed, very thick] (708,414) -- (708,474);
   \node[anchor=west, font=\tiny, text=tkRed] at (40,511)
-    {注意：PV 的 N tile 取 64 $\to$ 每 chunk 128 float $\to$ $8\times$ 超支，
-     寄存器不可能常驻（红线上即不可行）};
+    {注意：acc\_O $=8$ chunk $\times$ 32 float $=256$ 寄存器，第 8 个（chunk 7）
+     越过 232 配额（第 19 章；红线右侧不可行，大 D 转 split-D）};
   \node[anchor=west, font=\tiny] at (40,535)
     {PV tile $(64,16,16)$：MMA\_N $= 2$（$16/8$），N 方向只重复 2 个原子——用吞吐换
      acc\_O 可控，这是 FFPA 的核心权衡};
@@ -757,8 +757,8 @@ $\times$ $2$ 相邻列），两个相邻 atom 共 $8$ 个；右（A 视角）：
 16 行，warp 内 N 方向重复 8 个原子；A/B/C 三种 fragment 的每线程形状与
 重复因子（式~\eqref{eq:22-dup}）。下半部分是 PV 的 $(64,16,16)$ tile：
 N 方向只重复 2 个原子，代价换来 per-call C 视图与拷贝粒度可控（8 个
-d-chunk 各自拷回，常驻 acc\_O 256 寄存器不变；N tile 取 64 只是单次
-调用的 C fragment 临时 4 倍）。}
+d-chunk 各自拷回，acc\_O 总量只由 $D$ 决定——$8\times32=256$ 寄存器，
+与 N tile 无关；N tile 取 64 只是单次调用的 C fragment 临时 4 倍）。}
 \label{fig:22-1}
 \end{figure}
 
@@ -911,8 +911,8 @@ $=8\times4\times1\times2\times4=256$。PV 的
 $\mathrm{MMA}_N = 2$（$16/8$）时每个 $64\times64$ d-chunk 每线程是 32 个
 float；$D=512$ 时 $8$ 个 chunk 共 256 个寄存器。tile N=64 时单次 gemm 调用
 的 C fragment 从 8 值涨到 32 值（4 倍），常驻 acc\_O（8 chunk $\times$ 32
-$=$ 256 float）不变，超支的是每次调用的临时视图与 B fragment，不是
-累加器。FFPA 注释里 PV 保持小 tile 的算术依据正在于此：压的是每次调用的
+$=$ 256 float）不变，N tile 带来的增量超支在每次调用的临时视图与 B
+fragment，不在累加器。FFPA 注释里 PV 保持小 tile 的算术依据正在于此：压的是每次调用的
 临时开销，而非 acc\_O。
 
 \textbf{指标二（重复因子）}：B 的 fragment 按 M-warp 数重复（式~\eqref{eq:22-dup}）。

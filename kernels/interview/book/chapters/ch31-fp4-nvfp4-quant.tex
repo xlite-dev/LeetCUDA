@@ -94,7 +94,7 @@ ffpa 的答案是把三种尺度手段全部用上：
         的 fp32 旁路（$\Delta S$ 修正项与 lse/epilogue 加回），不占
         量化预算。
   \item \textbf{hadamard 旋转}（可选）：行内 WHT 把通道间 outlier 方差
-        摊平（第~\ref{ch:28}~章 §11.9 同机制，fp4 把它 fused 进量化
+        摊平（第~\ref{ch:28}~章 \S\ref{sec:28-wht} 同机制，fp4 把它 fused 进量化
         kernel）。
 \end{enumerate}
 

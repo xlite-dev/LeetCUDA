@@ -173,8 +173,8 @@ layout，而 \texttt{cosize} 直接就是这块 smem 实际要占的元素数，
        行 $c_0$（mode 0）向下、列 $c_1$（mode 1）向右};
   \end{scope}
   \node[anchor=north west, align=left, text width=8.2cm] at (3.2,0.05)
-    {\textbf{$64$ 个坐标只落到 $32$ 个 offset 上}：行步长 $2$ 使 $c_0+1$ 跳过奇数
-     offset，列步长 $16$ 使 $c_1+1$ 跳过 $2$ 个 offset（$c_1{=}0$ 的最后一格是
+    {\textbf{$32$ 个坐标只落到偶数 offset 上}：行步长 $2$ 使 $c_0+1$ 跳过奇数
+     offset，列步长 $16$ 使 $c_1+1$ 跳过 $1$ 个 offset（$c_1{=}0$ 的最后一格是
      $14$，下一格 $16$——中间的 $15$ 永远读不到）。最大 offset
      $=2\cdot7+16\cdot3=62$，于是 $\mathrm{size}=32$ 而
      $\mathrm{cosize}=63$：\textbf{$\mathrm{cosize}>\mathrm{size}$ 即孔洞}。
@@ -211,8 +211,8 @@ layout，而 \texttt{cosize} 直接就是这块 smem 实际要占的元素数，
   \end{scope}
 \end{tikzpicture}
 \caption{带孔洞布局的 size 与 cosize（例~3，$L=(8,4){:}(2,16)$）：
-上面板把 $64$ 个坐标的值列出来，行步长 $2$、列步长 $16$ 使值域只取偶数，
-同一行的 8 个值跨 $16$ 个 offset；下面板把 offset 轴 $0$–$62$ 铺开——
+上面板把 $32$ 个坐标的值列出来，行步长 $2$、列步长 $16$ 使值域只取偶数，
+同一列的 8 个值跨 $16$ 个 offset；下面板把 offset 轴 $0$–$62$ 铺开——
 $32$ 个灰格是命中（$=2c_0+16c_1$ 的全部取值）、$31$ 个斜线格是永远读不到
 的孔洞，虚线的第 $63$ 格已越界。$\mathrm{cosize}=1+\sum_i d_i(s_i-1)=63$
 即最大偏移加一，也是这块 smem 实际要占的元素数。}
@@ -1412,7 +1412,7 @@ $\bigl(\mathrm{shape}(A),$ $\mathrm{shape}(B)\bigr)$），
 编译错误。
 
 \textbf{坑二：\texttt{make\_\allowbreak{}layout\allowbreak{}(Shape)} 默认 column-major。}它按
-\texttt{LayoutLeft} 生成 stride（最后一个 mode 变得最快），与 C 数组的
+\texttt{LayoutLeft} 生成 stride（第一个 mode 变得最快），与 C 数组的
 row-major 直觉相反。要 row-major 得写 \texttt{make\_\allowbreak{}layout\allowbreak{}(shape,\allowbreak{}
 Layout\allowbreak{}Right\{\})} 或显式给 stride。
 
