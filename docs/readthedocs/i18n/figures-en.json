@@ -1202,7 +1202,7 @@
   "位段重组（式~(35.8)）：槽位低 4 位 ⟦0⟧，bit4 原样保留——": "Bit segment reorganization (Formula\\textasciitilde{}(35.8)): The lower 4 bits of the slot are ⟦0⟧, bit4 is retained as it is——",
   "位置无关：布局求值": "Position independent: layout evaluation",
   "位置相关：硬件相位": "Position dependent: hardware phase",
-  "例：H100 SXM（base.cuh L84--86 口径）FP16 TC dense ⟦0⟧ 约 989 TFLOPS，BW⟦1⟧ TB/s ⟦2⟧ ⟦3⟧ 约 295；": "Example: H100 SXM (base.cuh L84--86 caliber) FP16 TC dense ⟦0⟧ About 989 TFLOPS, BW⟦1⟧ TB/s ⟦2⟧ ⟦3⟧ About 295;",
+  "例：H100 SXM（BW 与 ridge 取自 base.cuh L16--21、L75--79，989 TFLOPS 取官方 spec）FP16 TC dense ⟦0⟧ 约 989 TFLOPS，BW⟦1⟧ TB/s ⟦2⟧ ⟦3⟧ 约 295；": "Example: H100 SXM (BW and ridge from base.cuh L16--21, L75--79; 989 TFLOPS per official spec) FP16 TC dense ⟦0⟧ About 989 TFLOPS, BW⟦1⟧ TB/s ⟦2⟧ ⟦3⟧ About 295;",
   "修正⟦0⟧alloc⟦1⟧⟦2⟧⟦3⟧": "correction ⟦0⟧alloc⟦1⟧⟦2⟧⟦3⟧",
   "值剥离）}},\n                            {-5.05/{Hadamard 旋转}}} {": "Value Stripping)\\}\\},\n                            \\{-5.05/\\{Hadamard Rotation\\}\\}\\} \\{",
   "值域 [0, 448]；SF 自身舍入 6.25⟦0⟧ 整体作用于 16 个元素": "Range [0, 448]; SF self-rounding 6.25⟦0⟧ Acts on 16 elements overall",
