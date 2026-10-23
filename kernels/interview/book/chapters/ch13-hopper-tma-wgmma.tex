@@ -307,7 +307,7 @@ $k{=}1\to4$ 灰度渐深），2 个 M-atom 各持独立累加器 $d[0]/d[1]$。}
         anchor=north west] at (10.15, -2.85)
     {\textbf{epilogue}：每线程 4 次写覆盖\\4 个 8$\times$8 象限——每象限 1 条\\uint32（f16x2），分别写\\(row, col)、(row+8, col)、\\(row, col+8)、(row+8, col+8)\\（hgemm.cuh L1843--1856）};
 \end{tikzpicture}
-\caption{WGMMA m64n128k16 输出 $D$ 的寄存器分布（13.3.4 节，式~\ref{eq:13-d-layout}）：
+\caption{WGMMA m64n128k16 输出 $D$ 的寄存器分布（13.3.3 节，式~\ref{eq:13-d-layout}）：
 左为 $64\times128$ 全局缩略（4 warp $\times$ 8 组 $g$，每块 16 行 $\times$ 16 列）；
 右侧放大 warp $w{=}0$ 的 16 行切片（$g{=}0,1$ 两组，每格一条 f16x2 = 相邻 2 列），
 格内数字为持有该输出的线程号、灰度按行带 $\lfloor\mathrm{lane}/4\rfloor$ 区分。索引律
@@ -420,8 +420,8 @@ consumer 的 C1 完全对称，语义留到本节末统一拆解：
 \lstinputlisting[linerange={1621-1628},firstnumber=auto,breakatwhitespace=true,
   title={hgemm.cuh L1621-1628（P1 骨架：producer 循环与 stage 轮转）}]{../hgemm.cuh}
 
-\lstinputlisting[linerange={1653-1672},firstnumber=auto,breakatwhitespace=true,
-  title={hgemm.cuh L1653-1672（P2/P3：提交两次 TMA + arrive.expect\_tx 32KB）}]{../hgemm.cuh}
+\lstinputlisting[linerange={1655-1673},firstnumber=auto,breakatwhitespace=true,
+  title={hgemm.cuh L1655-1673（P2/P3：提交两次 TMA + arrive.expect\_tx 32KB）}]{../hgemm.cuh}
 
 P1 的 \texttt{empty[stage].\allowbreak{}wait\allowbreak{}(empty[stage].\allowbreak{}arrive\allowbreak{}())} 模式（L1651，骨架后续）
 逐句看：
@@ -637,8 +637,8 @@ $m$ 个 $64 \times B\sb{K}$ 子块，K-step 每次前进 \texttt{kWgmmaK=16} 个
 \lstinputlisting[linerange={1775-1788},firstnumber=auto,breakatwhitespace=true,
   title={hgemm.cuh L1775-1788（C3/C4：commit+wait 全收，arrive empty 释放 stage）}]{../hgemm.cuh}
 
-\lstinputlisting[linerange={1822-1841},firstnumber=auto,breakatwhitespace=true,
-  title={hgemm.cuh L1822-1841（epilogue 前半：row/col 映射计算）}]{../hgemm.cuh}
+\lstinputlisting[linerange={1822-1842},firstnumber=auto,breakatwhitespace=true,
+  title={hgemm.cuh L1822-1842（epilogue 前半：row/col 映射计算）}]{../hgemm.cuh}
 
 写回按式~\ref{eq:13-d-layout} 的映射展开（写回四象限的双层循环见 L1843--1856）：
 每线程持 $d[2][8][4]$ 共 64 个

@@ -119,8 +119,8 @@ non-WS 版把 QK 与 V 拆成两套互不相交的 barrier 集，下一 tile 的
 
 协议全部参数集中在 traits 里，取值如下：
 
-\begin{lstinputlisting}[linerange={699-721},firstnumber=auto,
-  title={ffpa\_attn.cuh L699-721（traits：协议参数与 smem 公式）}]{../ffpa_attn.cuh}
+\begin{lstinputlisting}[linerange={701-722},firstnumber=auto,
+  title={ffpa\_attn.cuh L701-722（traits：协议参数与 smem 公式）}]{../ffpa_attn.cuh}
 \end{lstinputlisting}
 
 四组参数的分工如下。tile 几何：$k_{Br}{=}k_{Bc}{=}128$，
@@ -143,7 +143,7 @@ chunk 宽度还决定 swizzle atom 的选择，规则与第~\ref{ch:23}~章一�
 （行字节数 $\times$ 2B 对 128/64 的整除性），但这里按 chunk 而不是按
 $D$ 选：
 
-\begin{lstinputlisting}[linerange={736-756},firstnumber=auto,
+\begin{lstinputlisting}[linerange={735-756},firstnumber=auto,
   title={ffpa\_attn.cuh L736-756（chunk 尺寸决定 swizzle；M8N1 双 TiledMma；装载/写回 atom）}]{../ffpa_attn.cuh}
 \end{lstinputlisting}
 

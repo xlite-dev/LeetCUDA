@@ -351,11 +351,11 @@ kNumWarps 知道结果}说的就是这一步：归约函数的约定是 block �
 
 \subsection{第三层：跨 block 全局归约与点积}\label{sec:ch02-global}
 
-\lstinputlisting[linerange={216-247},firstnumber=auto,
-  title={base.cuh L216-247（block reduce all：多 block 求和 + atomicAdd）}]{../base.cuh}
+\lstinputlisting[linerange={216-243},firstnumber=auto,
+  title={base.cuh L216-243（block reduce all：多 block 求和 + atomicAdd）}]{../base.cuh}
 
-\lstinputlisting[linerange={248-277},firstnumber=auto,
-  title={base.cuh L248-277（dot：elementwise 乘法 + block reduce + atomicAdd）}]{../base.cuh}
+\lstinputlisting[linerange={245-271},firstnumber=auto,
+  title={base.cuh L245-271（dot：elementwise 乘法 + block reduce + atomicAdd）}]{../base.cuh}
 
 两个 kernel 共享同一骨架：守卫式加载（\texttt{idx < N} 时取数、否则取
 加法单位元 0，这保证不满的最后一个 block 不污染求和；max 版对应
@@ -371,12 +371,12 @@ kNumWarps 知道结果}说的就是这一步：归约函数的约定是 block �
 dot 把逐元素乘并入加载阶段（\texttt{prod = a[idx] * b[idx]}），归约
 骨架保持不变。这也是本源码库反复出现的设计范式：算子 = 元素级
 预变换 + 归约 + 后处理，ch04 的 softmax（预变换 exp、后处理除法）与
-ch06 的 norm（预变换平方）都是这个模板的具体实例。dot\_vec4（L278--305）则
+ch06 的 norm（预变换平方）都是这个模板的具体实例。dot\_vec4（L273--303）则
 把加载换成 \texttt{FLOAT4} 一次取 4 元素、每线程先局部乘加 4 项再进归约
 （ch03 详述向量化原理），线程数降为 $T/4$：
 
-\lstinputlisting[linerange={278-305},firstnumber=auto,
-  title={base.cuh L278-305（dot vec4：向量化加载版点积）}]{../base.cuh}
+\lstinputlisting[linerange={273-303},firstnumber=auto,
+  title={base.cuh L273-303（dot vec4：向量化加载版点积）}]{../base.cuh}
 
 注意它的守卫只有 \texttt{idx < N} 而 FLOAT4 一次读 4 个元素，$N$ 不是
 4 的倍数时最后一个线程会越界读，这一隐患与处理策略见

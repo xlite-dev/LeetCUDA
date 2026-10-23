@@ -519,8 +519,8 @@ $\bigl((2,\mathrm{MMA}_M),(2,\mathrm{MMA}_N)\bigr) = (2,16)$ 的行 $\times$
 
 QK 的三行（L257--264）：
 
-\lstinputlisting[linerange={257-264},firstnumber=auto,breakatwhitespace=true,
-  title={ffpa\_attn.cuh L257-264（QK：A/B fragment + gemm\_ss）}]{../ffpa_attn.cuh}
+\lstinputlisting[linerange={256-264},firstnumber=auto,breakatwhitespace=true,
+  title={ffpa\_attn.cuh L256-264（QK：A/B fragment + gemm\_ss）}]{../ffpa_attn.cuh}
 
 \begin{sloppypar}
 \texttt{partition\_\allowbreak{}fragment\_\allowbreak{}A\allowbreak{}(sQ\_\allowbreak{}stg)} 的输入是 $(64,64)$ 的一个
@@ -552,8 +552,8 @@ flash\_attn.cuh~L2341--2372 明确写了这一点，第~\ref{ch:25}~章会再展
 PV 一侧的使用（L339--345）：
 \end{sloppypar}
 
-\lstinputlisting[linerange={339-345},firstnumber=auto,breakatwhitespace=true,
-  title={ffpa\_attn.cuh L339-345（PV：B fragment 的转置视图 + gemm\_rs）}]{../ffpa_attn.cuh}
+\lstinputlisting[linerange={338-345},firstnumber=auto,breakatwhitespace=true,
+  title={ffpa\_attn.cuh L338-345（PV：B fragment 的转置视图 + gemm\_rs）}]{../ffpa_attn.cuh}
 
 \texttt{tCrVStorage} 是按 KV 布局的 V 的 B fragment，
 \texttt{tCrV} 用 \texttt{tCrV\_layout}（在循环外用 \texttt{Smem\allowbreak{}Layout\allowbreak{}Vt}

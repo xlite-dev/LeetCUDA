@@ -529,8 +529,8 @@ PV 的 A 操作数）也原样继承。主循环五个阶段：
 \lstinputlisting[linerange={1113-1145},firstnumber=auto,breakatwhitespace=true,
   title={flash\_attn.cuh L1113-1145（阶段一：等 K 就绪 $+$ 3b 前半：ldmatrix Q/K）}]{../flash_attn.cuh}
 
-\lstinputlisting[linerange={1147-1183},firstnumber=auto,breakatwhitespace=true,
-  title={flash\_attn.cuh L1147-1183（3b 后半：HMMA 累加 $+$ 尽早释放 K stage）}]{../flash_attn.cuh}
+\lstinputlisting[linerange={1146-1183},firstnumber=auto,breakatwhitespace=true,
+  title={flash\_attn.cuh L1146-1183（3b 后半：HMMA 累加 $+$ 尽早释放 K stage）}]{../flash_attn.cuh}
 
 阶段一的核心是 wait 与 arrive 合并为一条调用（\texttt{full\_\allowbreak{}K[stage].\allowbreak{}wait\allowbreak{}(
 full\_\allowbreak{}K[stage].\allowbreak{}arrive\allowbreak{}())}）与随后的 \texttt{fence.\allowbreak{}proxy.\allowbreak{}async}（TMA 写入对
@@ -542,8 +542,8 @@ PV 只读 V），立刻 arrive \texttt{empty\_K}，producer 最早可在 consume
 softmax 阶段就开始覆盖该 stage。ch16 用 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads} 在整轮末尾
 统一释放，这里把 K 的 stage 周期压缩了 softmax $+$ PV 两段的长度。
 
-\lstinputlisting[linerange={1185-1214},firstnumber=auto,breakatwhitespace=true,
-  title={flash\_attn.cuh L1185-1214（阶段三 3c：online safe softmax，只碰寄存器）}]{../flash_attn.cuh}
+\lstinputlisting[linerange={1185-1216},firstnumber=auto,breakatwhitespace=true,
+  title={flash\_attn.cuh L1185-1216（阶段三 3c：online safe softmax，只碰寄存器）}]{../flash_attn.cuh}
 
 阶段三的 online safe softmax（max pass $+$ exp pass，式~\ref{eq:17-online}）
 \textbf{只读写寄存器}。这正是 V 通道 TMA 的重叠窗口：V[$k$] 的搬运与整段

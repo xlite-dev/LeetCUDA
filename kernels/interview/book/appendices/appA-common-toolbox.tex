@@ -23,7 +23,7 @@ setmaxnreg 封装、WGMMA descriptor 编码——每一项都在某一章首次�
 \midrule
 1 & L4--29 & 头文件、CUDART $\ge$13.0 门控（L21--23）、
   \texttt{INT4}/\texttt{FLOAT4}/\texttt{HALF2}（L25--27）、\texttt{kWarpSize} & 3、8、9 \\
-2 & L31--105 & cp.async 宏（L41--50）、ldmatrix 宏（L56--72）、
+2 & L31--105 & cp.async 宏（L41--50）、ldmatrix 宏（L56--73）、
   \texttt{HMMA16816}/\texttt{F32}（L81/L92）、\texttt{div\_ceil} & 9--12、16--18 \\
 3 & L110--348 & swizzle 家族：\texttt{permuted}（L158）、
   \texttt{swizzle\_\allowbreak{}v1\_\allowbreak{}impl}（L235）、\texttt{SwizzleBMS}（L287）、
@@ -65,7 +65,7 @@ $\le$ N}，N=0 即等全部落地——这与后面 WGMMA 的
 
 \section{Tensor Core 入口：ldmatrix 与 HMMA 宏}
 
-ldmatrix 家族（L56--72）把 smem 中 8$\times$8 的矩阵片段按 Tensor Core
+ldmatrix 家族（L56--73）把 smem 中 8$\times$8 的矩阵片段按 Tensor Core
 fragment 布局装进寄存器：\texttt{LDMATRIX\_X4} 一次装 4 个片段，
 \texttt{LDMATRIX\_\allowbreak{}X2\_\allowbreak{}T} 的 \texttt{.trans} 后缀做转置加载——FA 里 P@V 的
 B 矩阵需要 col-major，而 V 在 smem 是 row-major，转置在这一步完成
@@ -141,7 +141,7 @@ WAIT\_\allowbreak{}GROUP}（L539--543）延续 cp.async 的分组-等待语义�
 （ldmatrix）用软件公式感知相位（第~\ref{ch:14}~章 14.4.2 节）。
 host 侧创建 TMA descriptor 的入口：
 
-\lstinputlisting[linerange={765-785},firstnumber=auto,
+\lstinputlisting[linerange={764-785},firstnumber=auto,
   title={common.cuh L765-785（create\_tensor\_map 核心：shape/stride/box 的 (minor,major) 顺序）}]{../common.cuh}
 
 两个高频易错点（第~\ref{ch:13}~章展开）：TMA 的 shape 与 box 都按

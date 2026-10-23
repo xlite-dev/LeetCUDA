@@ -400,7 +400,7 @@ gmem 都不 coalesced。解法是 smem staging 双朝向 tile：
 \node[box, draw=tkGreen, minimum width=3.2cm] (stt) at (5.2,-2.6)
   {smem \texttt{tile\_t[128][64]}\\{\scriptsize 输出朝向 8\,KB（e4m3）}\\{\scriptsize 量化散写（转置在此发生）}};
 \node[box, draw=tkBlue, minimum width=3.0cm] (out) at (0,-2.6)
-  {gmem $B_8^{\top}[N,K]$\\{\scriptsize 行主序（K 内维）}\\{\scriptsize 写：32 lane 各写 32B 连续}};
+  {gmem $B_8^{\top}[N,K]$\\{\scriptsize 行主序（K 内维）}\\{\scriptsize 写：32 lane 各写 1B，拼 32B}};
 \draw[arr, tkBlue] (gmem.east) -- node[above, font=\tiny] {coalesced load} (st.west);
 \draw[arr, tkPurple] (st.south) -- node[right, font=\tiny, align=left] {pass 2 重读\\$Q(\cdot)$ 散写} (stt.north);
 \draw[arr, tkGreen] (stt.west) -- node[above, font=\tiny] {coalesced store} (out.east);
@@ -435,8 +435,8 @@ $\delta_b[n]$ 之后立刻原地覆写成 $448/\mathrm{amax}$，pass 2 查表零
 关闭时（kPerCol=false），block 级再把 128 个列 amax 归约成单值写
 $\delta_b[n_0/128]$，同样原地放进 \texttt{samax[0]}。
 
-\begin{lstinputlisting}[linerange={266-288},firstnumber=auto,
-  title={fp8\_gemm.cuh L266-288（pass 2：量化散写 tile\_t + 32B coalesced 写出）}]{../fp8_gemm.cuh}
+\begin{lstinputlisting}[linerange={263-288},firstnumber=auto,
+  title={fp8\_gemm.cuh L263-288（pass 2：量化散写 tile\_t + 32B coalesced 写出）}]{../fp8_gemm.cuh}
 \end{lstinputlisting}
 
 pass 2 的散写循环：每个线程按 chunk 索引读 \texttt{tile[r][c8..c8+8]}，量化后
@@ -502,7 +502,7 @@ $(BM,BK)$/$(BN,BK)$ tile。
 \addcontentsline{toc}{section}{延伸阅读}
 
 \begin{itemize}[itemsep=1pt,topsep=2pt]
-  \item 第~\ref{ch:27}~章：e4m3/e5m2 编码细节、量化算子的完整数学。
+  \item 第~\ref{ch:27}~章：e4m3 编码细节、量化算子的完整数学。
   \item 第~\ref{ch:28}~章：ffpa 的量化前处理链（per-block QK、$V^{\top}$
         转置、smoothing）——与本章对照，attention 场景的量化为什么更重
         分布整形。
