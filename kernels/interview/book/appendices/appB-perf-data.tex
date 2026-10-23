@@ -144,7 +144,7 @@ CuTe 篇的核心结论是\textbf{抽象零开销}，对照维度因此不是 TF
 维度 & 手写 & CuTe \\
 \midrule
 swizzle kernel 代码量 & 235 行 & 118 行 + wrapper 86 行 \\
-HGEMM kernel 代码量 & 147（7b）/ 231（7b-3）行 & 118 行 + wrapper 86 行 \\
+HGEMM kernel 代码量 & 151（7b）/ 235（7b-3）行 & 118 行 + wrapper 86 行 \\
 寄存器（\texttt{ptxas -v}） & — & 254（$B_N{=}256$/F16）/ 226（$B_N{=}128$/F32），均 0 spill \\
 SASS 指令序列 & LDGSTS + LDSM + HMMA & 同左；kernel 内联汇编 0 条 \\
 swizzle 正确性 & v1/v2 30{,}720 点 bit-exact & \texttt{Swizzle\allowbreak{}<3,\allowbreak{}3,\allowbreak{}3>} 256 点 0 差异 \\

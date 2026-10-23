@@ -473,8 +473,8 @@ bits $[16,30)$ leading\_byte\_offset &
   \texttt{<< 16} 放进 bits $[16, 30)$ &
   K-major + 128B swizzle 下该字段硬件未使用（assumed 为 1，PTX ISA
   §9.7.15.5.1.2.1.1），填 16 仅为占位、使编码值为 1 满足硬件预期。若为
-  MN-major 或 INTERLEAVE 布局，LBO 有实际含义：INTERLEAVE 布局是同一
-  $8\times2$ brick 内第一列到第二列的字节偏移；MN-major swizzle 是首
+  MN-major 布局（interleave / swizzle 两档），LBO 有实际含义：INTERLEAVE 布局是前
+  8 列到后 8 列的字节偏移；MN-major swizzle 是首
   $(\text{swizzle-byte-size}/16)$ 行到下一组行的偏移 \\
 \bottomrule
 \end{tabular}
@@ -495,7 +495,7 @@ bits $[16,30)$ leading\_byte\_offset &
   \item bits $[16, 30)$：leading\_byte\_offset（LBO）。K-major + swizzle
         布局下硬件不使用该字段（assumed 为 1），源码填 16B 使编码值恰为 1；
         在 MN-major swizzle 布局下它表示首组 swizzle-byte-size/16 行到下一组行的
-        偏移，interleave 布局下是 $8 \times 2$ brick 内两列的偏移；
+        偏移，interleave 布局下是前 8 列到后 8 列的偏移；
   \item bits $[32, 46)$：stride\_byte\_offset（SBO）。K-major 下定义为
         首个 8 行到下一个 8 行的字节偏移。128B swizzle 的原子是
         $8\,\text{行} \times 64\,\text{half}$（以 128-bit 元素为单位是 $8 \times 8$，

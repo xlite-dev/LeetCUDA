@@ -153,7 +153,7 @@ arrive}变成\textbf{4 个 warp 各自 arrive}，对 mbarrier 而言无区别。
 \subsection{setmaxnreg 池数学与满池死锁}
 
 warp specialization 的配套机制是\textbf{寄存器池再分配}：producer 只提交 TMA、
-几乎不需要寄存器，consumer 持有 32 个 f16x2 累加器碎片
+几乎不需要寄存器，consumer 持有 64 个 f16x2 累加器碎片
 （$4 \times 8 \times 2$ 个 \texttt{uint32}/线程）需要更多寄存器。
 \texttt{setmaxnreg.\allowbreak{}dec} 把本 warp 的寄存器上限降到 $N$ 并把差额还给
 CTA 级寄存器池，\texttt{setmaxnreg.\allowbreak{}inc} 从池里请求补足到 $N$。
@@ -675,7 +675,7 @@ cp.async 提交指令，发射槽全部留给 ldmatrix 与 mma。（2）TMA 单�
 不再相互等待。
 
 大矩阵实测（RTX PRO 5000，sm\_120，CUDA 13.2，
-\texttt{notes\_\allowbreak{}v2\_\allowbreak{}sm120a.\allowbreak{}bin\allowbreak{} --bench\allowbreak{} --bench-all}，f16 累加，
+\texttt{leetcuda\_\allowbreak{}bench\_\allowbreak{}sm120a.\allowbreak{}bin\allowbreak{} --bench\allowbreak{} --bench-all}，f16 累加，
 cuBLAS f16 参照 246.6~TFLOPS）：
 
 \begin{table}[H]
@@ -922,7 +922,7 @@ bench 子命令输出 14.6~节的对照表（\texttt{CUDA\_\allowbreak{}VISIBLE\
 归零）。（2）删掉 C0 预热循环，复现首轮 empty 永不翻转。（3）把
 \texttt{\_\allowbreak{}\_\allowbreak{}align\_\allowbreak{}\_\allowbreak{}(1024)} 改成 128，观察系统性错位输出（坑三）。（4）用
 \texttt{build.sh -{}-arch sm\_120f} 构建并跑
-\texttt{cuobjdump --dump-sass notes\_v2\_sm120f.bin | grep -c USETMAXREG}
+\texttt{cuobjdump --dump-sass leetcuda\_bench\_sm120f.bin | grep -c USETMAXREG}
 （应为 112；注意 SASS 助记符没有字母 n），再对照把 common.cuh 的
 \texttt{shared::cta} 临时改回 \texttt{shared::cluster} 重编，计数掉到 32，
 复现坑二的静默丢弃与取证过程。

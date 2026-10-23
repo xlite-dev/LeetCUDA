@@ -380,7 +380,9 @@ bench 脚本默认 preset，2026-09-21）：fp8 与 Sage2 总体打平、互有
   \caption{本机 PRO 5000 fp4 复测（D=128，\texttt{bench\_fp4.py}，
   2026-09-21，TFLOPS；Sage3 不支持 gqa，该行无数据，其 causal 类行
   rel\_err 达 0.57--0.59（早期行 e2m1 噪声无 hybrid 抑制），FFPA-FP4
-  为 0.14--0.15）}\label{tab:33-pro5000-fp4}
+  为 0.14--0.15；FFPA-FP8 列为同轮 \texttt{bench\_fp4.py} 内的参照，
+  与表~\ref{tab:33-pro5000-fp8} 的 \texttt{bench\_fp8.py} 独立复测互差
+  最高约 4.1\%（仅 Nq${=}16384$ 七行可比））}\label{tab:33-pro5000-fp4}
   \begin{tabular}{lccccccc}
     \toprule
     场景 & Nq & FFPA-FP4 & FFPA-FP8 & Sage3 & SDPA-FA2 & FP4/SDPA & FP4/FP8 \\

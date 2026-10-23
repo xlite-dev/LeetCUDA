@@ -651,7 +651,7 @@ warp group（128T，专职 TMA）+ 1 个 consumer（256T，全计算），用
 
 \section{小结}
 
-本章没有写一行 kernel，却给出了全书其余 26 章共同的工作流程：
+本章没有写一行 kernel，却给出了全书其余 40 章共同的工作流程：
 nsys 定位（谁慢）$\to$ ncu 定性（为什么慢）$\to$ 单变量修改 $\to$
 复测 diff $\to$ 指标闭环。指标字典里最值得带走的三句话：SOL 双低不等于
 没有问题，而是 latency-bound，答案在 stall 剖析结果里；stall 分好坏，

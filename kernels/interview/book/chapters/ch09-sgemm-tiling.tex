@@ -124,8 +124,9 @@ $1 \times 1$（naive，每线程一个输出）时 $= 0.25$；$4 \times 4$ 时 $
 （运行时查询折算），拐点 $\approx 71.6$~FLOP/B。于是：
 naive（AI $0.25$）计算上限 $\approx 0.23$ TFLOPS；
 \texttt{sgemm}（AI $8$）上限 $\approx 7.5$ TFLOPS，仍在 memory-bound 区；
-\texttt{sgemm\_vec4}（AI $32$）上限 $\approx 29.9$ TFLOPS，逼近拐点，
-进入带宽与算力都吃紧的过渡区，这也是要引入阶梯二（双缓冲 + Tensor Core）的原因。
+\texttt{sgemm\_vec4}（AI $32$）上限 $\approx 29.9$ TFLOPS，仍低于拐点
+$71.6$、尚在带宽受限区，但实测 $25.97$~T 已达该上限的 $87\%$，纯带宽优化的
+收益见顶——这也是要引入阶梯二（双缓冲 + Tensor Core）的原因。
 
 形式化之外，tiling 循环的正确性依赖两道栅栏，缺一不可。
 \begin{itemize}

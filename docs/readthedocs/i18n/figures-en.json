@@ -1568,7 +1568,7 @@
   "池剩余": "Pool surplus",
   "波动 ⟦0⟧（不变）": "Fluctuation ⟦0⟧ (unchanged)",
   "波动 ⟦0⟧（中心化后）": "Volatility ⟦0⟧ (after centralization)",
-  "注意：PV 的 N tile 取 64 ⟦0⟧ 每 chunk 128 float ⟦1⟧ ⟦2⟧ 超支，\n     寄存器不可能常驻（红线上即不可行）": "Note: N tile of PV is 64 ⟦0⟧ per chunk 128 float ⟦1⟧ ⟦2⟧ Overspending,\n     The register cannot be resident (the red line is not feasible)",
+  "注意：acc⟦0⟧O ⟦1⟧ chunk ⟦2⟧ 32 float ⟦3⟧ 寄存器，第 8 个（chunk 7）\n     越过 232 配额（第 19 章；红线右侧不可行，大 D 转 split-D）": "Note: acc⟦0⟧O ⟦1⟧ chunk ⟦2⟧ 32 float ⟦3⟧ registers; the 8th (chunk 7) exceeds\n     the 232-register quota (Chapter 19; right of the red line is infeasible, large D moves to split-D)",
   "注释原话加感叹号：this pack must NEVER run against an unpermuted V\\^{}T ------ 错配 = 静默错值（allclose 才能抓到）": "Comment on the original words with an exclamation mark: this pack must NEVER run against an unpermuted V\\^{}T ------ mismatch = silent error value (allclose can only be caught)",
   "流水槽位（TMA 版，⟦0⟧）：": "Sink level (TMA version, ⟦0⟧):",
   "流过全部 ⟦0⟧ 个元素": "flows through all ⟦0⟧ elements",

@@ -1109,7 +1109,7 @@ A：\texttt{group<B,E>} 作用于 \emph{layout}，\texttt{group\_\allowbreak{}mo
 
 \textbf{Q8：S$\to$R 的 K 方向为什么比 G$\to$S 多一层重复？}\\
 A：原子不同。G$\to$S 的原子一次覆盖连续的 128-bit（8 half），而
-\texttt{ldmatrix.x4} 一次只覆盖 $16\times16$ 的 K 切片；$B_K=16$ 时
+\texttt{ldmatrix.x4} 一次只覆盖 $16\times16$ 的 K 切片；$B_K=32$ 时
 G$\to$S 一个 tile 一级切完，S$\to$R 需要 2 个 K 切片（实测
 \texttt{tAsA\_copy} 与 \texttt{tAsA} 的第三 mode 分别为 1 和 2）。
 

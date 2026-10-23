@@ -441,8 +441,8 @@ $\delta_b[n_0/128]$，同样原地放进 \texttt{samax[0]}。
 
 pass 2 的散写循环：每个线程按 chunk 索引读 \texttt{tile[r][c8..c8+8]}，量化后
 写 \texttt{tile\_t[n][r]}：下标对调即转置。写出段换成 warp 视角：一个 warp
-负责一行 $n$，32 个 lane 各写 32 个连续 k 字节（\texttt{kBk t}=64 分两个
-half），恰好 32B 事务；\texttt{k0+kk<K} 的 guard 处理 K 尾（该行末尾的
+负责一行 $n$，每笔迭代 32 个 lane 各写 1 个字节、拼成 32 B 连续事务
+（\texttt{kBKt}$=64$ 分两笔迭代写完，每 lane 共 2 B）；\texttt{k0+kk<K} 的 guard 处理 K 尾（该行末尾的
 越界字节不写出）。两个 \texttt{\_\_syncthreads} 分别保护
 tile$\to$tile\_t 的读写依赖与 tile\_t$\to$gmem 的下 chunk 覆写。
 

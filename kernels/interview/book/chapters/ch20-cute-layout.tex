@@ -1412,7 +1412,7 @@ $\bigl(\mathrm{shape}(A),$ $\mathrm{shape}(B)\bigr)$），
 编译错误。
 
 \textbf{坑二：\texttt{make\_\allowbreak{}layout\allowbreak{}(Shape)} 默认 column-major。}它按
-\texttt{LayoutLeft} 生成 stride（最后一个 mode 变得最快），与 C 数组的
+\texttt{LayoutLeft} 生成 stride（第一个 mode 变得最快），与 C 数组的
 row-major 直觉相反。要 row-major 得写 \texttt{make\_\allowbreak{}layout\allowbreak{}(shape,\allowbreak{}
 Layout\allowbreak{}Right\{\})} 或显式给 stride。
 

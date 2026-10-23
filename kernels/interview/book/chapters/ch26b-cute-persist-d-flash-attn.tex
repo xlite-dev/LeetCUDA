@@ -209,8 +209,8 @@ fragment + softmax 状态却是寄存器压力的主要来源。\texttt{setmaxnr
 SM 寄存器池（sm\_120 为 64K/SM）里重新分配：
 
 \begin{equation}\label{eq:26b-regpool}
-  \underbrace{4\,\text{warp}\times 32\,\text{T}\times 32}_{\text{producer }400}
-  + \underbrace{8\,\text{warp}\times 32\,\text{T}\times 232}_{\text{consumer }2}
+  \underbrace{4\,\text{warp}\times 32\,\text{T}\times 32}_{\text{producer }4096}
+  + \underbrace{8\,\text{warp}\times 32\,\text{T}\times 232}_{\text{consumer }59392}
   = 4096 + 59392 = 63488 < 65536 .
 \end{equation}
 
