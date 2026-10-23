@@ -84,8 +84,8 @@ ldmatrix + \texttt{HMMA16816\allowbreak{}F32}。
 接口速览。核心是按列宽模板化的 \texttt{permuted}——三档 TMA 硬件 swizzle
 模式的手写 XOR 展开：
 
-\lstinputlisting[linerange={171-183},firstnumber=auto,
-  title={common.cuh L171-183（permuted：SWIZZLE\_32B/64B/128B 三档 XOR 分支）}]{../common.cuh}
+\lstinputlisting[linerange={168-183},firstnumber=auto,
+  title={common.cuh L168-183（permuted：SWIZZLE\_32B/64B/128B 三档 XOR 分支）}]{../common.cuh}
 
 族内四个实体的关系：\texttt{swizzle\_\allowbreak{}v1\_\allowbreak{}impl}（L235）就是
 \texttt{permuted\allowbreak{}<k\allowbreak{}Col\allowbreak{}Stride,\allowbreak{}8>} 的别名；\texttt{Swizzle\allowbreak{}BMS\allowbreak{}<B,\allowbreak{}M,\allowbreak{}S>}（L287）

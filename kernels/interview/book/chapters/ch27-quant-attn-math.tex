@@ -730,8 +730,8 @@ $2^{T}\,\mathrm{amax}(V) \le 448$ 对 $\mathrm{amax}(V) \le 28$ 成立，残余�
 
 \subsection{两种 $p_{scale}$ 模式的发射路径}
 
-\lstinputlisting[linerange={111-138},firstnumber=auto,
-  title={ffpa-attn cute/fp8/fp8\_pscale.cuh L111-138（quantize\_p\_frag：per-row / fixed 双模式 + 就地 downcast）}]
+\lstinputlisting[linerange={109-139},firstnumber=auto,
+  title={ffpa-attn cute/fp8/fp8\_pscale.cuh L109-139（quantize\_p\_frag：per-row / fixed 双模式 + 就地 downcast）}]
   {../../../../ffpa-attn/csrc/cuffpa/cute/fp8/fp8_pscale.cuh}
 
 三处实现细节：
@@ -767,8 +767,8 @@ asm("cvt.rn.satfinite.e4m3x2.f32 %0, %1, %2;" : "=h"(packed)
 \texttt{softmax.cuh} 的 \texttt{online\_safe\_softmax} 是全家族（fp16/fp8/fp4）共享
 的 softmax 内核，FA-4 条件重缩放的核心 20 行：
 
-\lstinputlisting[linerange={44-63},firstnumber=auto,
-  title={ffpa-attn cute/softmax.cuh L44-63（lazy rescale：skip 判定与 stale max 发射）}]
+\lstinputlisting[linerange={45-67},firstnumber=auto,
+  title={ffpa-attn cute/softmax.cuh L45-67（lazy rescale：skip 判定与 stale max 发射）}]
   {../../../../ffpa-attn/csrc/cuffpa/cute/softmax.cuh}
 
 逐行对照式~\ref{eq:27-lazy}：前两行计算 $m_{\mathrm{new}}$ 与 log2 域差值
