@@ -104,11 +104,11 @@ attention 的三量化点里，$P$（softmax 输出）必须在线量化，$Q,K,
 \node[lbl] at (6*0.95, 0.62) {尾数 $M$（3 bit）};
 \node[font=\scriptsize, anchor=north west, align=left] at (-0.55,-0.62)
   {数值 $=(-1)^s\times 2^{E-7}\times (1{+}M/8)$\\
-   规格化域 $2^{-6}\sim 448$，相对步长 $2^{-3}$（半步舍入误差 $\le 2^{-4}$）\\
+   规格化域 $2^{-6}\sim 448$，相对 ULP：下沿 $2^{-3}$、上沿 $2^{-4}$；RN 误差上界 $2^{-4}$\\
    饱和上界 $R=448$：\texttt{cvt.rn.satfinite} 越界饱和不产生 NaN};
 \end{tikzpicture}
-\caption{e4m3 位布局与 GEMM 工程三要素：相对步长固定 $2^{-3}$（尾数 3 位），
-决定量化噪声的下限；满量程 448 决定 scale 公式 $\delta=\mathrm{amax}/448$；
+\caption{e4m3 位布局与 GEMM 工程三要素：相对 ULP 在 binade 下沿为 $2^{-3}$、
+上沿为 $2^{-4}$（尾数 3 位），RN 误差上界 $2^{-4}$；满量程 448 决定 scale 公式 $\delta=\mathrm{amax}/448$；
 \texttt{SATFINITE} 语义决定量化 kernel 可以直接写 $x\cdot\delta^{-1}$ 而不用
 先 clamp——越界饱和由硬件完成。}
 \label{fig:34-e4m3}
@@ -116,9 +116,9 @@ attention 的三量化点里，$P$（softmax 输出）必须在线量化，$Q,K,
 
 三个事实：
 \begin{enumerate}[itemsep=0pt,topsep=2pt]
-  \item \textbf{相对步长 $2^{-3}$}：规格化域内相邻可表示值的间距是值本身的
-        $1/8$，round-to-nearest 的单元素相对误差上界 $2^{-4}=6.25\%$。这决定了
-        34.4~节的统计误差模型；
+  \item \textbf{相对 ULP $2^{-3}$（下沿）}：规格化域内相邻可表示值的间距在
+        binade 下沿是值本身的 $1/8$、上沿是 $1/16$；round-to-nearest 的单元素
+        相对误差上界 $2^{-4}=6.25\%$。这决定了 34.4~节的统计误差模型；
   \item \textbf{满量程 $R=448$}：对称量化的 scale 定义为
         $\delta = \mathrm{amax}/448$，让块内最大绝对值恰好映到编码域边缘，
         步长利用率最大；
@@ -236,12 +236,12 @@ scale 折成单标量；对 GEMM 的权重矩阵（分布沿行/列明显不均�
 \subsection{误差模型：能差到多少}\label{sec:34-err}
 
 单元素量化噪声：设块内元素落在同一二进区间，$\mathrm{rn}$ 的误差均匀分布于
-$[-\frac{u}{2}, \frac{u}{2}]$（$u=2^{-3}$ 为相对步长），故单元素相对误差
+$[-\frac{u}{2}, \frac{u}{2}]$（$u=2^{-3}$ 为 binade 下沿的保守相对 ULP），故单元素相对误差
 $\varepsilon$ 满足 $|\varepsilon|\le 2^{-4}$，方差 $\sigma_\varepsilon^2 = u^2/12$。
 
 scale 折叠之后，误差只来自编码舍入一个源头。把单元素量化写成乘性形式
 $\hat{x} = x(1+\varepsilon)$：相对舍入误差 $\varepsilon$ 在
-$[-2^{-4}, 2^{-4}]$ 上近似均匀分布（相对步长 $u = 2^{-3}$，见上文），故
+$[-2^{-4}, 2^{-4}]$ 上近似均匀分布（相对 ULP 取保守下沿 $u = 2^{-3}$，见上文），故
 $\mathrm{E}[\varepsilon] \approx 0$，方差 $\sigma_\varepsilon^2 = u^2/12
 \approx 1.30\times 10^{-3}$，即 $\sigma_\varepsilon \approx 3.6\%$。
 对 $C_{m,n}=\sum_k a_k b_k$，两个量化点的误差一阶展开。
@@ -483,7 +483,7 @@ per-block $\times$ per-block（WS） & 0.036 & WS 数值等价 \\
 
 随机数据下四种粒度重合：均匀分布没有 outlier，粗粒度没有精度损失。真实
 权重/激活的分布差异才会拉开组合间的差距（教学实现选随机数据并未回避这一
-局限，这也是 34.4.3~节误差模型的印证：噪声由步长 $2^{-3}$ 决定，不由粒度
+局限，这也是 34.4.3~节误差模型的印证：噪声由 binade 下沿的相对 ULP $2^{-3}$ 决定，不由粒度
 决定，粒度决定的是最坏块的表现）。WS 与非 WS 则逐 bit 数值等价：两者的
 MMA 序列相同（第~\ref{ch:35}~章），差异纯粹在执行协议。$0.036$ 落在
 34.4.3~节上界 $\sqrt{2}\,\sigma_\varepsilon\approx5\%$ 之内，与模型一致。

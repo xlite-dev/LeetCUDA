@@ -158,7 +158,7 @@ using SmemLayoutA = decltype(
 
 $  \text{LayoutC = divide(LayoutA, LayoutB)}$
 
-代表我们通过在 $\text{A}$ 上去找 $\text{B}$\textbf{的 offset }决定的 $\text{B}$ \textbf{-like} \textbf{layouts}，最后再把这些 $\text{B}$-like layouts 组合在一起，得到 $\text{C}$，从而\textbf{确保原本的 }$\text{A}$\textbf{ 被不重不漏地拆分}。
+代表我们通过在 $\text{A}$ 上去找 $\text{B}$\textbf{的 offset }决定的 $\text{B}$ \textbf{-like} \textbf{layouts}，最后再把这些 $\text{B}$-like layouts 组合在一起，得到 $\text{C}$。当 tiler 整除 $\text{A}$ 各维时，这\textbf{确保原本的 }$\text{A}$\textbf{ 被不重不漏地拆分}；不整除时 Rest 维取 ceil，末块会覆盖到 $\text{A}$ 之外。
 
 以 \textbf{logical\_divide} 为例，我们用图示来描述这个过程，如 Fig.6：
 
@@ -167,7 +167,8 @@ $  \text{LayoutC = divide(LayoutA, LayoutB)}$
 \caption{Figure.6  logical\_divide 计算过程：按照 B col-major 访问得到 offset，映射到 A 中找出 B-like layouts，然后将所有 B-like layouts 按列排在一起。}
 \end{figure}
 
-值得一提的是，对 $\text{A}$ 做 $\text{divide}$ 得到的 $\text{C}$ ，和 $\text{A}$ 的 Size 是一样的，只是映射关系发生了改变。这一点在直觉上和我们在初等数学中学到的 $\text{A / B}$ 是不同的。我们可以把它类比成整数除法，但是将商和除数都保留。如：$10 / 5 = (5, 2)$。
+值得一提的是，当 tiler 整除 $\text{A}$ 各维时，对 $\text{A}$ 做 $\text{divide}$ 得到的 $\text{C}$ 与 $\text{A}$ 的 Size 相同，只是映射关系改变。不整除时，Rest 维取 ceil，例如
+$\mathrm{logical\_divide}((10){:}(1),(4){:}(1))$ 得到 $(4,3)$，Size 为 $12>10$，多出的位置是越界元素；\texttt{local\_tile} 的尾部 tile 正是靠这个 ceil 覆盖工作。这一点在直觉上和初等数学的 $\text{A / B}$ 不同，可以类比成保留商和除数的整数除法，如 $10 / 5 = (5, 2)$，但余数不为零时结果会向上取整。
 
 与 Product 类似，CuTe 中也定义了多种不同的 divide 函数，包括 logical\_divide、zipped\_divide、flat\_divide、tile\_divide。它们之间的区别仍然在于：最如何选择和排列那些被拆解出来的 $\text{B}$\textbf{-like} \textbf{Layouts}。
 

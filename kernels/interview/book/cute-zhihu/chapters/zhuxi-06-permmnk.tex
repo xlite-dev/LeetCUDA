@@ -25,7 +25,7 @@
 
 \section{如何使用 PermMNK}
 
-在 issue [2] 中，Cris Cecka\footnote{\url{https://link.zhihu.com/?target=https\%3A//github.com/ccecka}}以 fp64 mma 来作为实例以方便可视化，与上述我们给的例子本质是一样的。为展示方便，我们仍然以其在该 issue 中例子上进行分析。首先，在常规的用法中，我们指定 permMNK 为一个普通的 tile 时，对应代码如下：
+在 issue [2] 中，Cris Cecka\footnote{\url{https://link.zhihu.com/?target=https\%3A//github.com/ccecka}}以 fp64 mma 来作为实例以方便可视化，与上述我们给的例子本质是一样的。为展示方便，我们仍然以其在该 issue 中例子上进行分析。注意 fp64 只用于可视化：其 C fragment 里 thread0 本来就有两个连续的 double（16\,B），置换并不增加它的 store 字长；store 字长的收益属于 4 字节累加器（STG.64 $\to$ STG.128）。首先，在常规的用法中，我们指定 permMNK 为一个普通的 tile 时，对应代码如下：
 
 \begin{lstlisting}[language=C++]
 TiledMMA tiled_mma = make_tiled_mma(SM80_8x8x4_F64F64F64F64_TN{},
@@ -49,7 +49,7 @@ TiledMMA tiled_mma = make_tiled_mma(SM80_8x8x4_F64F64F64F64_TN{},
 \caption{Figure.3 交错调用 2 次 mma，thread0 拿到的 C 矩阵数据对应坐标为 \{(0, 0), (0, 1), (0, 2), (0, 3)\}，可以作为连续的数据写出}
 \end{figure}
 
-我们发现，通过这样计算出来的 C 矩阵，各个 thread 能够拿到连续的 4 个数，STG.128 就可以执行了！那么这个写法，对应到 permutationMNK 的参数如下，其就是在 N 维度做了重排：
+我们发现，通过这样计算出来的 C 矩阵，各个 thread 能够拿到连续的 4 个数。以本节 fp64 画图为例，$4\times8$\,B $=32$\,B，需要两次 STG.128；换成 fp32 累加器，$4\times4$\,B $=16$\,B 正好一次 STG.128（fp16 的 4 个值只有 8\,B，对应 STG.64）。那么这个写法，对应到 permutationMNK 的参数如下，其就是在 N 维度做了重排：
 
 \begin{lstlisting}[language=C++]
 TiledMMA tiled_mma = make_tiled_mma(SM80_8x8x4_F64F64F64F64_TN{},

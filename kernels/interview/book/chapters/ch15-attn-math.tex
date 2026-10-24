@@ -435,20 +435,30 @@ ch05 是\textbf{事后合并}（两块各自落盘 $O$ 与 LSE，再用一个 el
 
 \begin{theorem}[分块 online 计算的正确性]\label{thm:15-invariant}
   设初始状态 $m^{(0)}_i = -\infty$、$\ell^{(0)}_i = 0$、$O^{(0)}_i = \mathbf{0}$，
-  每步按式~\ref{eq:15-upd-m}--\ref{eq:15-upd-o} 更新，则对一切
+  并假设每个考察的行至少有一个有限分数（非空行），且按给定处理顺序
+  首个被处理的 KV 块在该行至少有一个有限分数（首块非空）。若首块全
+  mask，实现必须跳过该块或用有限哨兵清洗，否则首轮 rescale 会产生
+  NaN（见本节 remark 第 (3) 条）。每步按
+  式~\ref{eq:15-upd-m}--\ref{eq:15-upd-o} 更新，则对一切
   $j \in \{1, \dots, T_c\}$ 不变量 $\mathrm{I}(j)$ 成立，且最终输出
   \begin{equation}
     \frac{O^{(T_c)}_i}{\ell^{(T_c)}_i}
     \;=\; \sum_{k=1}^{N} \frac{e^{\,s_{ik}}}{\sum_{k'} e^{\,s_{ik'}}}\, v_k
     \;=\; \mathrm{Attn}(Q,K,V)_i ,
   \end{equation}
-  与 KV 的分块方式（$B_c$ 大小、块边界）及处理顺序无关。
+  与 KV 的分块方式（$B_c$ 大小、块边界）及处理顺序无关——前提是上述
+  “首块非空”条件对所选处理顺序成立。
 \end{theorem}
 
 \begin{proof}
   对 $j$ 归纳。\textbf{基础}：$j = 0$ 时已见集合为空，$\max$ 取 $-\infty$、
-  空和为 $0$，$\mathrm{I}(0)$ 成立（$e^{-\infty - m^{(1)}} = 0$ 与
-  $e^{m^{(0)} - m^{(1)}} = 0$ 一致，首轮 rescale 因子恰为 $0$，旧零状态被安全丢弃）。
+  空和为 $0$，$\mathrm{I}(0)$ 成立。对非空行，首个被处理的块提供有限
+  $m^{(1)}$，于是 $e^{-\infty - m^{(1)}} = 0$ 与
+  $e^{m^{(0)} - m^{(1)}} = 0$ 一致，首轮 rescale 因子恰为 $0$，旧零状态被安全
+  丢弃。  若首个被处理的块整块为 $-\infty$，则 $m^{(1)} = -\infty$，
+  $e^{-\infty-(-\infty)}$ 是 NaN；这正是定理要额外要求“首块非空”的原因——
+  一行可以整体非空，只是首个块恰好全 mask，这种情形不是“全 mask 行”。
+  remark 第 (3) 条把它与整行全 mask 的情形一起覆盖。
 
   \textbf{归纳步}：设 $\mathrm{I}(j{-}1)$ 成立。先看 $m$：$m^{(j)} = \max\bigl(
   m^{(j-1)}, \mathrm{rowmax}(S^{[j]})\bigr) = \max_{k \le jB_c} s_{ik}$，即
@@ -482,14 +492,18 @@ ch05 是\textbf{事后合并}（两块各自落盘 $O$ 与 LSE，再用一个 el
 \end{proof}
 
 \begin{remark}[不变量的三个直接推论]
-（1）\textbf{mask 无损}：causal/变长 mask 把非法位置置 $-\infty$，则
-$e^{-\infty - m} = 0$，该项从 $\ell$ 与 $O$ 的求和中自然消失，不变量与定理不受影响。
+（1）\textbf{mask 无损}：causal/变长 mask 把非法位置置 $-\infty$，当该行的
+运行 max 仍有限时，$e^{-\infty - m} = 0$，该项从 $\ell$ 与 $O$ 的求和中自然消失，
+不变量与定理不受影响。
 （2）\textbf{任意切分合法}：KV 可以按序列切（FlashAttention、FlashDecoding 的
 split-KV），也可以按 $d$ 维切后再拼（第~\ref{ch:19}~章 FFPA Split-D 跨 D-chunk 用
 同一族公式合并），只要每块给出自己的 $(m, \ell, O)$ 状态。
-（3）\textbf{空行防护}：若某行所有位置都被 mask，$\ell = 0$，最终除法产生
-\texttt{NaN}，与第~\ref{ch:04}~章坑二、第~\ref{ch:05}~章坑四同源，工程上由调用方
-保证行非空或显式兜底。
+（3）\textbf{空行/空前缀防护}：若某行所有位置都被 mask，或某个非空行的
+首个被处理块整块被 mask，首个块就可能让 $m = -\infty$，
+$e^{-\infty-(-\infty)}$ 立即产生 \texttt{NaN}，不必等到最终除法；即便后续块有
+有限分数，这个 NaN 也会被 $0\times\texttt{NaN}$ 带到输出。因此工程上必须由
+调用方保证行非空，或在首个全 mask 块处初始化有限哨兵/显式清洗状态；只靠
+最终除法的 $0/0$ 判断是不够的。与第~\ref{ch:04}~章坑二、第~\ref{ch:05}~章坑四同源。
 \end{remark}
 
 \subsection{复杂度总结与 IO 分析}
@@ -998,11 +1012,14 @@ smem 布局）继续展开。
 $\ell$ 的 $O$ 再按式~\ref{eq:15-upd-o} 累加，等于漏乘旧块的 $\ell$；反之亦然。
 写任何分块再合并的 attention 代码前，先在纸上写清楚每个 $O$ 的口径。
 
-\textbf{坑二：初始化与空行除零。}$m$ 初始化 $-\infty$（工程上 \texttt{-FLT\_MAX}）、
-$\ell = 0$、$O = \mathbf{0}$。首个有效块的 rescale 因子
-$e^{m^{(0)} - m^{(1)}} = 0$ 恰好把零状态丢弃，是安全的；但若某行所有块都被 mask
-（全 $-\infty$），最终 $\ell = 0$，式~\ref{eq:15-final} 除零得 \texttt{NaN}，与
-ch04 坑二、ch05 坑四同源，由调用方保证行非空或显式兜底。
+\textbf{坑二：初始化与空行/空前缀。}$m$ 初始化 $-\infty$（工程上 \texttt{-FLT\_MAX}）、
+$\ell = 0$、$O = \mathbf{0}$。首个非空块的 rescale 因子
+$e^{m^{(0)} - m^{(1)}} = 0$ 恰好把零状态丢弃，是安全的。但若首个被处理的块
+整块被 mask（可能是全 mask 行，也可能是非空行的空前缀），用 $-\infty$ 哨兵时
+$e^{-\infty-(-\infty)}$ 在首轮 rescale 就产生 \texttt{NaN}；若工程改用
+\texttt{-FLT\_MAX}，首轮不产生 NaN，但全 mask 行最终仍有 $\ell = 0$，式~\ref{eq:15-final}
+的 $0/0$ 仍要由调用方兜底。两条路径都不能只靠“最终除法再判断”，见坑四与
+remark 第 (3) 条。
 
 \textbf{坑三：rescale 的时机。}必须先算出 $m^{\mathrm{new}}$、再同时用
 $e^{m^{\mathrm{old}} - m^{\mathrm{new}}}$ 修正 $\ell$ 与 $O$、最后累加新块的

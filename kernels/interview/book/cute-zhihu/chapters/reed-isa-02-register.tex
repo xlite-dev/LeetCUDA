@@ -57,7 +57,7 @@ Load-Store架构是一种在许多现代处理器设计中广泛采用的数据�
 \caption{Figure 1. Register File in Sub-Core of SM}
 \end{figure}
 
-图1为NVidia Ampere的SM（Stream Multiprocessor）的架构描述，可以看到一个SM包含4个Sub Core（或者称为Sub Partition），每个Sub Core中包含16,384个32bit的寄存器（通用寄存器）。我们知道CUDA GPU中的调度单位为一个warp，每个warp包含32个lane，这32个lane共享同样的代码，所以他们的寄存器在各自的线程看来也是同样的，将16,384个寄存器分配给32个lane我们可以得到512组寄存器。如图2-a所示，我们可以认为Sub core上的寄存器是一个二维结构横向为32个lane，纵向为512组。当SM执行某个kernel时，会将这些寄存器分配给不同的warp（warp组成block），图2-b展示了每个warp分配4个寄存器时，各个lane得到的本地的寄存器的名称和不同的warp组，对于每一个需要被执行的warp，寄存器文件按照kernel所需要的寄存器数目（分配粒度为4）分配给不同的warp，示例中对于每一个线程看到的寄存器为R0-R3（图中标示为thread-view）。
+图1为NVidia Ampere的SM（Stream Multiprocessor）的架构描述，可以看到一个SM包含4个Sub Core（或者称为Sub Partition），每个Sub Core中包含16,384个32bit的寄存器（通用寄存器）。我们知道CUDA GPU中的调度单位为一个warp，每个warp包含32个lane，这32个lane共享同样的代码，所以他们的寄存器在各自的线程看来也是同样的，将16,384个寄存器分配给32个lane我们可以得到512组寄存器。如图2-a所示，我们可以认为Sub core上的寄存器是一个二维结构横向为32个lane，纵向为512组。当SM执行某个kernel时，会将这些寄存器分配给不同的warp（warp组成block），图2-b展示了每个warp分配4个寄存器时，各个lane得到的本地的寄存器的名称和不同的warp组，对于每一个需要被执行的warp，寄存器文件按照kernel所需要的寄存器数目分配给不同的warp。sm\_70 及以后按每 warp 256 个 32-bit 寄存器分配，即每线程 8 个（老架构可能按 4 个）；示例中每个线程看到 R0-R3，是图 2-b 为讲解画的 4 寄存器小例子，不是架构粒度。
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.9\textwidth]{figures/reed-isa-02-register/fig-02.jpg}

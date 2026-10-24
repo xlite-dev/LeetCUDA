@@ -256,9 +256,10 @@ shfl 广播（见 \S\ref{sec:ch02-block}）。
   6 + \log\sb 2 W \ \text{步},
 \end{equation}
 $T = 256$（$W = 8$）时共 9 步：5 轮 warp shuffle + 1 次 smem 写/同步 + 3 轮二次归约。
-smem 流量只有 $W$ 次写 + $W$ 次读（各 4B）。对比所有中间量走 smem 的
-朴素树形归约（$\log\sb 2 T = 8$ 轮 smem 往返），两级结构把 smem 流量降了一个
-量级。这就是 ch01 图 ch01-1 那条规律的局部应用：\textbf{能在寄存器层完成的
+smem 流量是 $W$ 次写（$W$ 个 float）加 $W$ 条读事务（每个 warp 一条，
+合计 $W^2$ 个 float）。对比所有中间量走 smem 的朴素树形归约
+（$\log\sb 2 T = 8$ 轮 smem 往返），两级结构把 smem 流量降了一个量级。
+这就是 ch01 图 ch01-1 那条规律的局部应用：\textbf{能在寄存器层完成的
 （warp 内 5 轮），绝不下放到 smem 层}。
 
 \subsection{跨 block 求和与浮点非结合性}

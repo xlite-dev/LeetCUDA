@@ -29,7 +29,7 @@ Tensor make_fragment_like(Tensor tensor);
 \toprule
  & Static & Dynamic \\
 \midrule
-Heap non-owning & make\_tensor(ptr, make\_shape(Int$<$M$>$\{\}, Int$<$N$>$\{\}));make\_tensor\_like(tensor);make\_fragment\_like(tensor); & make\_tensor(ptr, make\_shape(M, N)); \\
+Heap non-owning & make\_tensor(ptr, make\_shape(Int$<$M$>$\{\}, Int$<$N$>$\{\})); & make\_tensor(ptr, make\_shape(M, N)); \\
 Stack owning & make\_tensor(make\_shape(Int$<$M$>$, Int$<$N$>$\{\}));make\_tensor\_like(tensor);make\_fragment\_like(tensor); & NA \\
 \bottomrule
 \end{tabular}
@@ -121,7 +121,7 @@ Tensor tensor1 = group_modes<B, E>(tensor); // B=1,E=3 => 1, <2, 3>, 4
 
 \section{Tensor的划分logical\_divide/tiled\_divide/zipped\_divide}
 
-divide是将tensor进行按照tile参数的大小进行划分，具体的可以参考前序文章“cute Layout代数和几何解释”中的除法的解释：
+divide是将tensor进行按照tile参数的大小进行划分，具体的可以参考前序文章"cute Layout代数和几何解释"中的除法的解释：
 
 \begin{lstlisting}[language=C++]
 Tensor tensor = ...;
@@ -317,6 +317,6 @@ pragma 及后续for行实现了多个元素的z = ax + by + c的计算，并且�
 
 本文介绍cute中Tensor常用的方法，并通过该Tensor工具完成了向量乘加法运算。Tensor是对数据表达的一种很好的抽象，我们可以利用这些抽象简化我们的思考模型（使我们的思考可以更抽象），降低编程困难，cute中提供的Tensor更多的是对Tensor的表达和变换，由Tensor生成Tensor只是Layout表达的变换并不产生数据实体的搬运（如local\_tile）。Tensor表达虽然提供了很多方便，但也只限于表达的高效和便捷，如何对程序进行优化，Tensor表达的引入并没有提供额外帮助，它仍然需要我们从别的途径来获得。
 
-即便如此，“表达和抽象”依然无比重要，那正如：伽罗瓦如果没有群这一表达工具，就难以解决多项式根的问题；杨振宁没有群这一工具就难以构思举世的杨-米尔斯理论。
+即便如此，"表达和抽象"依然无比重要，那正如：伽罗瓦如果没有群这一表达工具，就难以解决多项式根的问题；杨振宁没有群这一工具就难以构思举世的杨-米尔斯理论。
 
 抽象和工具让我们可以在更高的维度上思考。在后续文章中我们将基于Tensor（Layout）这种抽象进行MMA（matrix multiply accumulate）和COPY的介绍。

@@ -121,18 +121,22 @@ $0,3,1,4,2,5$，row-major 的 $(4,8){:}(8,1)$ 也有 $f(3)=24>f(4)=8$；只有
 可一次遍历的索引空间，后面所有遍历式断言（以及 \texttt{cosize}）依赖的
 只是 shape 分解 $[0,\mathrm{size})\to Z(S)$ 的双射性，与单调性无关。
 
-配套两个规模量：\textbf{size}（定义域基数）与 \textbf{cosize}（值域上界）
+配套两个规模量：\textbf{size}（定义域基数）与 \textbf{cosize}（值域跨度）
 \begin{equation}
   \mathrm{size}(f) = \prod_i s_i , \qquad
-  \mathrm{cosize}(f) = 1 + \sum_i d_i (s_i - 1) .
+  \mathrm{cosize}(f) = 1 + \sum_i |d_i|\,(s_i - 1) .
   \label{eq:20-size-cosize}
 \end{equation}
-其中 size 是定义域的元素个数，cosize 是值域的上界，$1+\sum
-d_i(s_i-1)$ 恰为最大偏移加一。当 $\mathrm{cosize}=\mathrm{size}$ 时称
-布局是 \textbf{compact}（无空洞、双射）；否则有孔洞（padding/skip）。
-这个区分在 kernel 里很重要：CuTe 里 padding 后的一行 smem 就是一个带孔洞的
-layout，而 \texttt{cosize} 直接就是这块 smem 实际要占的元素数，声明布局的
-同时把 smem 用量也算出来了。
+其中 size 是定义域的元素个数，cosize 是 CuTe 按 \texttt{coshape} 计算的值域
+跨度。对非负 stride，它就是最大偏移加一；含混合符号 stride 时，不能再把它
+直接解释为实际最大偏移加一，实际寻址还要结合基准指针。对本书常见的单射、
+非负 stride 布局，若值域连续且为双射（下文称这种布局为 compact），则
+$\mathrm{cosize}=\mathrm{size}$；反过来却不成立：
+两个规模量相等并不能推出无空洞或双射。反例 $(2,2,2){:}(1,1,5)$ 的
+$\mathrm{size}=\mathrm{cosize}=8$，但像只有 $\{0,1,2,5,6,7\}$，既有重复，
+又缺 $3,4$。因此，padding/skip 常使 $\mathrm{cosize}>\mathrm{size}$，但不能把
+不等或相等当成双射的充要条件。对常用非负 stride 的 smem 布局，
+\texttt{cosize} 仍直接给出所需存储元素数。
 
 \begin{itemize}
   \item 例 1（compact col-major）：$S=(4,8),D=(1,4)$：$f(c_0,c_1)=c_0+4c_1$，
@@ -239,8 +243,9 @@ $32$ 个灰格是命中（$=2c_0+16c_1$ 的全部取值）、$31$ 个斜线格�
         （4.1 节的 \texttt{SmemLayoutA} 就是 \texttt{Swizzle}$\circ$atom
         的一次复合）。
         (c) FA2 的 P 矩阵转换：给 QK 的 accumulator 布局复合一次
-        列拆半变换，P 就能原地重解释为 $PV$ 的 A 操作数
-        （4.8 节完整推一遍）。
+        列拆半变换，$P$ 的布局就能原地重解释为 $PV$ 的 A 布局；
+        若还要把 f32 累加器转成 f16 操作数，数值转换由
+        \texttt{convert\_type} 另做（4.8 节完整推一遍）。
   \item \textbf{Inverse（逆）：解决从 offset 反查坐标。}给定一个 offset
         反查它的坐标：copy 的地址反解、\texttt{max\_\allowbreak{}common\_\allowbreak{}layout}
         （求两个布局的最大公共连续块）都以它为基础；4.8 节的代数法更是把它
@@ -366,8 +371,10 @@ $(m,n)\to\mathrm{offset}\to\mathrm{offset}'$：这相当于在原函数
 第~\ref{ch:12}~章手写版要人工维护的那套 XOR 公式，在这里收缩成一次复合。
 
 \textbf{场景三：FA2 的 P 矩阵转换（4.8 节完整展开）。}\allowbreak{}QK 累加器与 PV 左
-操作数是同一批寄存器的两种索引方式，两个索引方式之间差一次
-列拆半 $+$ 重组的复合，这就是 4.8 节两条路线要解的题。
+操作数是同一片 $P$ 元素的两种索引方式，两个索引方式之间差一次
+列拆半 $+$ 重组的复合，这就是 4.8 节两条路线要解的题；若还要把 f32
+累加器转成 f16 操作数，\texttt{convert\_type} 的数值转换另算，不属于这次
+布局复合。
 
 \textbf{定义 20.1（composition）}。给定 layout $A$（任意 rank）与 $B$，若 $B$ 的
 值域以整除方式落在 $A$ 的 mode 结构里（CuTe 称 divisibility 条件），则
@@ -394,10 +401,12 @@ $B$ 的像落在 $A$ 的 mode-0 上，斜率就是 9。
 $\{0,1,2,3\}\subset[0,4)$，而 $A$ 在 $[0,4)$ 上恒等，故 $R=B$ 逐点成立。
 本章测试对这两个例子累计 14 个断言，全部通过。
 
-教训（也是常见坑）：compose 不是无条件的函数复合。当 $B$ 的 stride
-结构与 $A$ 的 mode 结构不整除时，CuTe 会先按 $A$ 的 colex 结构重解释 $B$
-（\texttt{coalesce\_x}），结果依然是一个合法 layout，但语义不再是几何
-意义上的先 $B$ 后 $A$，4.5 节的 tile 反例会给出实例。
+教训（也是常见坑）：composition 的函数语义始终是 $R(c)=A(B(c))$，但能否
+把结果化简成预期的普通 layout，取决于 $A$ 与 $B$ 的 shape/stride 是否可表示、
+是否满足整除关系。CuTe 会用 \texttt{coalesce\_x} 处理左操作数 $A$，使其适配
+$B$ 的 coordinate profile；相关静态检查只对静态布局可靠，动态 shape/stride
+仍需调用者保证前提。即使化简成功，几何 tile 也未必是调用者直觉中的方块，
+4.5 节的反例会说明这一点。
 
 \subsection{Inverse：右逆与左逆}
 
@@ -457,24 +466,19 @@ offset$\to$坐标，再把目标 A 布局复合上来；输入输出对调是这
 
 右逆负责值域中连续的那一段，左逆负责整个陪域（含多对一的情形）。
 
-\subsection{Product：乘积}
+\subsection{Concatenation：mode 拼接}
 
-product 解决的是小布局怎么铺成大布局：smem 上一块 $8\times B_K$ 的
-swizzle atom 只是基本单元，kernel 真正要声明的是整块
-$(B_M,B_K,k_{\mathrm{Stage}})$ 的 A tile 布局（4.1 节的 \texttt{SmemLayoutA}
-就是这么拼出来的）。product 族的语义很直观，把两块布局在 mode 上相乘
-（拼接），坐标各自输入、offset 相加：
-
-\textbf{定义 20.4（concatenation）}。$P=\mathrm{make\_layout}(A,B)$
-（即 \texttt{product}）把两个 layout 相乘：
+concatenation 解决的是怎样把两块布局的 mode 并到同一个索引对象里：
+$P=\mathrm{make\_layout}(A,B)$ 把两个 layout 的 mode 直接拼接，不做
+网格复制或 stride 缩放：
 \begin{equation}
   \mathrm{shape}(P)=\bigl(\mathrm{shape}(A),\mathrm{shape}(B)\bigr),\quad
   \mathrm{stride}(P)=\bigl(\mathrm{stride}(A),\mathrm{stride}(B)\bigr),
-  \label{eq:20-product-shape}
+  \label{eq:20-concat-shape}
 \end{equation}
 \begin{equation}
   P(\mathbf{c}_A,\mathbf{c}_B) = A(\mathbf{c}_A) + B(\mathbf{c}_B) .
-  \label{eq:20-product}
+  \label{eq:20-concat}
 \end{equation}
 实测：$\mathrm{make\_layout}\bigl((4,8){:}(1,4),\,(8,4){:}(2,16)\bigr)
 = \bigl((4,8),(8,4)\bigr){:}\bigl((1,4),(2,16)\bigr)$。注意 mode 的折叠方式：
@@ -482,11 +486,11 @@ $A$ 的\emph{整棵} shape 成为 $P$ 的第一个 mode，所以 $2$ 个 rank-2 
 \textbf{外层是 rank 2}（shape 为 $\bigl((4,8),(8,4)\bigr)$），不是 rank 4。
 测试对 $P(\mathrm{make\_coord}(a_0,a_1),b)=A(a_0,a_1)+B(b)$ 逐点核对 24 个断言。
 
-Product 家族还有几个更贴近 kernel 的成员，本章只简要介绍、第~\ref{ch:24}~章展开：
+Product 家族是另一组运算，不要与上述 concatenation 混同：
 \texttt{logical\_\allowbreak{}product}（把 block 铺在 tiler 上）、\texttt{blocked\_\allowbreak{}product}
 （按 tiler 重复 block）、\texttt{raked\_\allowbreak{}product}（交错重复）、
 \texttt{tile\_\allowbreak{}to\_\allowbreak{}shape}（按目标 shape 铺 atom，最小测试 case~G 的实测
-用到它）。
+用到它）。图~\ref{fig:20-8} 给出 \texttt{logical\_product} 的逐坐标例子。
 
 \subsection{Divide：tile 的数学}
 
@@ -629,21 +633,22 @@ $(4,4){:}(1,4)$ 的\textbf{tile}退化为 16 个连续 offset 的\textbf{8 行 $
 
 \paragraph{实践须知}
 \begin{itemize}
-  \item \textbf{tile 的 stride 必须与目标 layout 同族。}\allowbreak{}divide 的语义完全
-        取决于 $T$ 的 stride 是否与 $L$ 的 stride 结构相容：把上面的 $T$
-        换成 compact col-major 的 $4\times4$，即 $(4,4){:}(1,4)$，结果是
-        $\bigl((4,4),(4)\bigr){:}\bigl((1,4),(16)\bigr)$：tile 变成
+  \item \textbf{用二维 Layout tiler 切几何块时，stride 要与目标 layout 同族。}
+        本例把 $T$ 换成 compact col-major 的 $4\times4$，即 $(4,4){:}(1,4)$，
+        会得到 $\bigl((4,4),(4)\bigr){:}\bigl((1,4),(16)\bigr)$：tile 变成
         16 个\emph{连续 offset}（在 col-major 的 $8\times8$ 里就是
         8 行 $\times$ 2 列的列条带），不再是 $4\times4$ 方块。同理
         row-major 全体（$L=(8,8){:}(8,1)$、$T=(4,4){:}(4,1)$）会得到
         $\bigl(((2,2),4),4\bigr){:}\bigl(((32,1),8),2\bigr)$ 这种被 colex
         结构重排的结果。
-  \item \textbf{正确写法}：tiler 用 $(B_M,B_K){:}(d_M,d_K)$，stride 从目标
-        layout 派生（hgemm 的 \texttt{local\_tile} 与 \texttt{SmemLayoutA}
-        都是这么写的）；不要为省事写 compact tile。
-  \item \textbf{判别法}：检查 $T$ 的 stride 是否等于 $L$ 在对应方向上的
-        stride（本章案例应为 $(1,8)$）。不相等时结果仍是合法 layout，
-        只是语义被默默换掉，不报错（另见常见坑三）。
+  \item \textbf{两种合法写法要分清}：构造上述二维 Layout tiler 时，可取
+        $(B_M,B_K){:}(d_M,d_K)$ 并让 stride 与目标相容；使用
+        \texttt{make\_tile}/shape-only tiler 时，CuTe 则按 mode 分别切分，
+        不需要构造这种二维 Layout。hgemm 的 \texttt{local\_tile} 用的是后者，
+        \texttt{SmemLayoutA} 则只描述 smem 布局，并不是它的 gmem tiler。
+  \item \textbf{判别法}：对前一种写法，检查 $T$ 的 stride 是否等于 $L$ 在
+        对应方向上的 stride（本章案例应为 $(1,8)$）。不相等时结果仍可能是
+        合法 layout，只是几何语义被换掉（另见常见坑三）。
 \end{itemize}
 
 \subsection{Mode 操作：投影、合并、展平、化简}
@@ -696,7 +701,9 @@ hgemm.cuh~L1073 的 \texttt{group\_\allowbreak{}modes\allowbreak{}<1,\allowbreak
     & \texttt{Smem\allowbreak{}Layout\allowbreak{}Atom} $=$ \texttt{Swizzle}\,$\circ$\,atom \\
   inverse & $A(R(i))=i$（准逆见正文） & \texttt{right\_\allowbreak{}inverse} / \texttt{left\_\allowbreak{}inverse}
     & 公共连续块、坐标反查（第~\ref{ch:21}~章） \\
-  product & $P(c_A,c_B)=A(c_A)+B(c_B)$ & \texttt{make\_\allowbreak{}layout\allowbreak{}(A,\allowbreak{}B)}、
+  concat & $P(c_A,c_B)=A(c_A)+B(c_B)$ & \texttt{make\_\allowbreak{}layout\allowbreak{}(A,\allowbreak{}B)}
+    & fragment 的 mode 拼接 \\
+  product & 图~\ref{fig:20-8} & \texttt{logical\_\allowbreak{}product}、
     \texttt{blocked\_\allowbreak{}product}、\texttt{raked\_\allowbreak{}product}、\texttt{tile\_\allowbreak{}to\_\allowbreak{}shape}
     & $8\times B_K$ atom $\to(B_M,B_K,k_{\mathrm{Stage}})$ \\
   divide & 式~\eqref{eq:20-logical-divide}、\eqref{eq:20-zipped-divide}
@@ -713,7 +720,10 @@ hgemm.cuh~L1073 的 \texttt{group\_\allowbreak{}modes\allowbreak{}<1,\allowbreak
 \subsection{Compose \& Inverse 实战：FA2 的 P 矩阵布局转换}
 
 本节把 compose 与 inverse 两个运算用在 FlashAttention 的经典难题上：
-同一批寄存器，在上一个 mma 里是输出，在下一个 mma 里要作为输入。
+同一片 $P$ 元素，在上一个 mma 的 C fragment 里是输出，在下一个 mma 的
+A fragment 里要作为输入。这里先只讨论布局重解释；若累加器是 f32、PV 的 A
+操作数是 f16，二者之间还有一次 \texttt{convert\_type} 数值转换（产生新
+fragment），不属于零拷贝，详见第~\ref{ch:25}~章坑七。
 
 \textbf{问题。}\allowbreak{}FA2 的核心是两连乘 $P=QK^{\top}$ 与 $O=PV$（为聚焦布局问题，先忽略 softmax）。
 
@@ -728,15 +738,18 @@ $(\mathrm{MMA}=4,\ \mathrm{MMA}_M,\ \mathrm{MMA}_N)$；第二段 mma 的
 layout 变换。
 
 \textbf{路线一（tri-dao 的 logical\_divide 法：几何重排）。}把
-$\mathrm{MMA}_N$ 拆成 $(2,\mathrm{MMA}_N/2)$，再把后 2 个与 MMA mode 重组。
+$\mathrm{MMA}_N$ 按模 $2$ 交错拆成 $(2,\mathrm{MMA}_N/2)$，再把前一个因子
+$2$ 与 MMA mode 重组。
 \begin{equation}
   (\mathrm{MMA},\ \mathrm{MMA}_M,\ (2,\mathrm{MMA}_N/2))
   \;\longrightarrow\;
   \bigl((\mathrm{MMA},2),\ \mathrm{MMA}_M,\ \mathrm{MMA}_N/2\bigr) .
   \label{eq:20-fa2-tri}
 \end{equation}
-用映射语言说：先把 $S$ 的列方向拆成两半，再把后一半拼进 MMA mode，
-于是 C 的相邻两列在 A 的坐标系里成了 K 向相邻两个元素。
+用映射语言说：先把 $S$ 的列方向按模 $2$ 交错拆成
+$(2,\mathrm{MMA}_N/2)$（tile 分量是 $n\bmod 2$，rest 是 $\lfloor n/2\rfloor$），
+再把该 $2$ 分量拼进 MMA mode，于是 C 的相邻两列在 A 的坐标系里成了
+K 向相邻两个元素。
 
 \textbf{路线二（reed 的 layout-algebra 法：代数复合）。}构造一条三步的
 映射链：先求 C 布局的逆（offset 拉回 C 的坐标），再复合 A 布局（把 A 的
@@ -917,7 +930,7 @@ $f(1,3)=11$——同一 shape，stride 决定读序。}
     {映射语言：$(x_a, y_a)$ \texttt{--Layout\_A-->} offset0 \texttt{--inv-->} $(x_c, y_c)$ \texttt{--Layout\_C-->} offset1（compose 1/2 对应 \texttt{eq.\ 20-fa2-reed2/reed3}）};
   \node[draw=tkGreen, fill=tkFillGreen, text=tkGreen!80!black, align=center, inner sep=3pt,
     minimum width=16.60cm, minimum height=0.66cm] at (8.30, -5.91)
-    {两条路线结果等价：zero-copy——同一批寄存器，只是索引语言不同};
+    {两条路线结果等价：Aregs 布局重解释是布局层 zero-copy；f32$\to$f16 另经 \texttt{convert\_type}};
   % 竖箭头：S -> 路线 a 首步；P -> regroup；两条路线各向下汇入
   \draw[tkBlue, semithick, -{Stealth[length=3.5pt]}] (2.24, -1.49) -- (2.24, -2.69);
   \draw[tkBlue, semithick, -{Stealth[length=3.5pt]}] (8.00, -2.985) -- (8.54, -2.985);
@@ -927,9 +940,9 @@ $f(1,3)=11$——同一 shape，stride 决定读序。}
   \draw[tkGreen, semithick, -{Stealth[length=3.5pt]}] (5.31, -4.60) -- (5.61, -4.60);
   \draw[tkGreen, semithick, -{Stealth[length=3.5pt]}] (10.69, -4.60) -- (10.99, -4.60);
   % 标题
-  \node at (8.30, -0.21) {FA2 $P$ 矩阵布局转换：两条路线（zero-copy）};
+  \node at (8.30, -0.21) {FA2 $P$ 矩阵布局转换：两条路线（布局层 zero-copy）};
 \end{tikzpicture}
-\caption{FA2 的 P 矩阵布局转换：tri-dao 的几何重排与 reed 的代数复合两条路线，结果等价。本书 flash\_attn.cuh 的 \texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}Aregs}（被 ffpa\_attn.cuh 复用）采用的是几何路线。}
+\caption{FA2 的 P 矩阵布局转换：tri-dao 的几何重排与 reed 的代数复合两条路线，布局层结果等价。图中 S 为 f32 累加器、P 为 f16 操作数时，P 的数值转换由 \texttt{convert\_type} 产生新 fragment，不属于 Aregs 的布局重解释；本书 flash\_attn.cuh 的 \texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}Aregs}（被 ffpa\_attn.cuh 复用）采用的是几何路线。}
 \label{fig:20-3}
 \end{figure}
 
@@ -1075,7 +1088,7 @@ $f(1,3)=11$——同一 shape，stride 决定读序。}
   % 标题
   \node at (8.00, -0.19) {compose(layoutA, layoutB)：三步求 layoutC 的 coord $(4, 1)$};
   \node[text=black!60, font=\scriptsize] at (8.00, -0.60)
-    {$C(p, q) = A(B(p, q))$：先在内层 $B$ 上查 offset，再按行主序换算成 $A$ 的坐标，最后在 $A$ 上取值回填};
+    {$C(p, q) = A(B(p, q))$：先在内层 $B$ 上查 offset，再按 $A$ 的 shape 作 colex 分解，最后在 $A$ 上取值回填};
 \end{tikzpicture}
 \caption{compose(A, B) 的三步求值：先查内层 B 得 offset，再按外层 A 的 shape 把 offset 换算回坐标，最后查 A 得最终值。例：$C(4,1)\to B(4,1)=9\to(9\bmod 4,\,9\div 4)=(1,2)\to A(1,2)=6$ 回填 $C$。重建自同上文。}
 \label{fig:20-5}
@@ -1196,7 +1209,7 @@ $f(1,3)=11$——同一 shape，stride 决定读序。}
   \end{scope}
   \node[anchor=west, text=tkRed] at (8.90, -4.55) {layoutA};
   \node[anchor=west, text=tkBlue] at (8.90, -4.86) {shape: $(4, 2)$, stride: $(4, 1)$};
-  % (b) 的两逆：均为 layoutA 自身（对合）
+  % (b) 左逆是 4x4 映射，右逆只覆盖值域起始的连续两项
   \begin{scope}[shift={(12.40, -1.10)}]
     \foreach \c in {0,...,3}{\foreach \r in {0,...,3}{%
       \pgfmathsetmacro\val{int(4*\r+\c)}%
@@ -1204,18 +1217,18 @@ $f(1,3)=11$——同一 shape，stride 决定读序。}
       \node at ({\c*0.725+0.3625}, {-\r*0.60-0.30}) {\val};}}
   \end{scope}
   \begin{scope}[shift={(12.40, -5.20)}]
-    \foreach \c in {0,...,3}{\foreach \r in {0,...,3}{%
-      \pgfmathsetmacro\val{int(4*\r+\c)}%
-      \draw[tkBlue, fill=white] ({\c*0.725}, {-\r*0.60}) rectangle ({\c*0.725+0.725}, {-\r*0.60-0.60});
-      \node at ({\c*0.725+0.3625}, {-\r*0.60-0.30}) {\val};}}
+    \draw[tkBlue, fill=white] (0, 0) rectangle (0.75, -0.50);
+    \draw[tkBlue, fill=white] (0, -0.50) rectangle (0.75, -1.00);
+    \node at (0.375, -0.25) {0};
+    \node at (0.375, -0.75) {4};
   \end{scope}
   \node[anchor=west, text=tkOrange!90!black, font=\scriptsize] at (11.60, -0.95) {left\_inverse(layoutA)};
   \node[anchor=west, text=tkOrange!90!black, font=\scriptsize] at (15.55, -1.30) {left\_inv};
   \node[anchor=west, text=tkOrange!90!black, font=\scriptsize] at (15.55, -1.60) {shape: $(4,4)$};
   \node[anchor=west, text=tkOrange!90!black, font=\scriptsize] at (15.55, -1.90) {stride: $(4,1)$};
   \node[anchor=west, text=tkBlue, font=\scriptsize] at (12.30, -4.95) {right\_inverse(layoutA)};
-  \node[anchor=west, text=tkBlue, font=\scriptsize] at (12.40, -7.90) {right\_inv $=$ layoutA 自身};
-  \node[anchor=west, text=tkBlue, font=\scriptsize] at (12.40, -8.20) {shape: $(4, 4)$, stride: $(4, 1)$};
+  \node[anchor=west, text=tkBlue, font=\scriptsize] at (12.40, -7.90) {right\_inv：$(2){:}(4)$};
+  \node[anchor=west, text=tkBlue, font=\scriptsize] at (12.40, -8.20) {$R(0)=0,\quad R(1)=4$};
   % 求逆箭头（折线绕开文字）
   \draw[tkOrange!90!black, dashed, -{Stealth[length=3pt]}] (2.12, -2.20) -- (4.70, -1.69);
   \draw[tkBlue, dashed, -{Stealth[length=3pt]}]
@@ -1226,81 +1239,36 @@ $f(1,3)=11$——同一 shape，stride 决定读序。}
   % 标题与脚注
   \node at (8.00, -0.19) {left\_inverse 与 right\_inverse：两种典型 layoutA 的求逆结果};
   \node[anchor=west, text=black!60, font=\scriptsize] at (0.30, -0.60)
-    {左逆对 $M$ 模式（行）求逆，右逆对 $N$ 模式（列）求逆；stride 出现 0（broadcast）与普通跨步两种情形的结果形状完全不同};
+    {左右逆由 $A\circ R$ 与 $R\circ A$ 的复合方向区分，不按 $M/N$ 模式分工；stride 为 0 与普通跨步会得到不同的定义域};
   \node[anchor=west, text=black!60, font=\scriptsize] at (0.30, -8.55)
-    {CuTe v4.6.1 实测：stride 0 广播布局的两逆相同——去重投影 $(4){:}(1)$；双射且对合的布局，两逆均为其自身};
+    {CuTe v4.6.1 实测：广播布局的两逆均为 $(4){:}(1)$；跨步布局的左逆为 $(4,4){:}(4,1)$，右逆仅为 $(2){:}(4)$};
   \node[anchor=west, font=\scriptsize] at (0.30, -1.12) {(a) broadcast access case};
   \node[anchor=west, font=\scriptsize] at (8.90, -1.12) {(b) stride access case};
 \end{tikzpicture}
-\caption{left\_inverse / right\_inverse 的两种情形（CuTe v4.6.1 实测）：stride $(1,0)$ 广播布局两逆相同，均为去重投影 $(4){:}(1)$——stride 为 0 的维度被投影掉，每行只保留代表坐标 $m$；stride $(4,1)$ 的双射布局两逆均为其自身 $(4,4){:}(4,1)$（该布局是对合，$f\circ f=\mathrm{id}$）。重建自 @竹熙佳处《写给大家看的 CuTe 教程：Layout Compose \& Inverse》（数值按 CuTe v4.6.1 实测校正）。}
+\caption{left\_inverse / right\_inverse 的两种情形（CuTe v4.6.1 实测）：stride $(1,0)$ 广播布局的两逆相同，均为去重投影 $(4){:}(1)$。对 $A=(4,2){:}(4,1)$，左逆是 $(4,4){:}(4,1)$，而右逆只覆盖值域开头的连续两项，为 $(2){:}(4)$，即 $R(0)=0,R(1)=4$ 且 $A(R(i))=i$。左右逆由复合方向定义，不能按矩阵的 $M/N$ 模式理解。}
 \label{fig:20-7}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
-% was: \includegraphics[width=0.95\textwidth]{figures/drawio/fig-20-8-layout-product/fig-20-8.png}
-\begin{tikzpicture}[font=\footnotesize, x=1cm, y=1cm]
-  % 左：layoutA（外层，块位）
-  \begin{scope}[shift={(0.687, -1.76)}]
-    \foreach \c in {0,1}{\foreach \r in {0,1}{%
-      \pgfmathsetmacro\val{int(2*\r+\c)}%
-      \draw[tkRed, fill=white] ({\c*0.836}, {-\r*0.687}) rectangle ({\c*0.836+0.836}, {-\r*0.687-0.687});
-      \node at ({\c*0.836+0.418}, {-\r*0.687-0.3435}) {\val};}}
-    \node[anchor=west, text=black!55, font=\scriptsize] at (1.94, -0.34) {$m$};
-    \node[anchor=east, text=black!55, font=\scriptsize] at (-0.17, -1.03) {$n$};
-  \end{scope}
-  \node[anchor=west, text=tkRed] at (0.687, -3.42) {layoutA};
-  \node[anchor=west, text=tkBlue] at (0.687, -3.75) {shape: $(2, 2)$, stride: $(2, 1)$};
-  \node[anchor=center, text=black!60] at (1.90, -4.30) {product};
-  % 左下：layoutB（内层，块内）
-  \begin{scope}[shift={(0.687, -5.04)}]
-    \foreach \c in {0,1}{\foreach \r in {0,1}{%
-      \pgfmathsetmacro\val{int(2*\r+\c)}%
-      \draw[tkBlue, fill=white] ({\c*0.836}, {-\r*0.687}) rectangle ({\c*0.836+0.836}, {-\r*0.687-0.687});
-      \node at ({\c*0.836+0.418}, {-\r*0.687-0.3435}) {\val};}}
-    \node[anchor=west, text=black!55, font=\scriptsize] at (1.94, -0.34) {$p$};
-    \node[anchor=east, text=black!55, font=\scriptsize] at (-0.17, -1.03) {$q$};
-  \end{scope}
-  \node[anchor=west, text=tkBlue] at (0.687, -6.72) {layoutB};
-  \node[anchor=west, text=tkBlue] at (0.687, -7.05) {shape: $(2, 2)$, stride: $(2, 1)$};
-  % 每格放一份 B：外层 A 的四个坐标位各展开成一份 B
-  \draw[tkPurple, dashed, -{Stealth[length=3pt]}] (4.42, -2.45) -- (4.57, -5.73);
-  \node[anchor=west, text=tkPurple, font=\scriptsize] at (4.75, -3.90) {每格放一份 B};
-  % 右：layoutA (x) layoutB —— 四个 2x2 块按 A 的值序拼接
-  \begin{scope}[shift={(8.00, -1.46)}]
-    \fill[colorx1!20] (0, 0) rectangle ({2*1.045}, {-2*0.746});
-    \fill[colorx3!20] ({2*1.045}, 0) rectangle ({4*1.045}, {-2*0.746});
-    \fill[colorx5!20] (0, {-2*0.746}) rectangle ({2*1.045}, {-4*0.746});
-    \fill[colorx7!20] ({2*1.045}, {-2*0.746}) rectangle ({4*1.045}, {-4*0.746});
-    \foreach \c in {0,...,3}{\foreach \r in {0,...,3}{%
-      \pgfmathsetmacro\val{int(8*floor(\r/2)+4*floor(\c/2)+2*mod(\r,2)+mod(\c,2))}%
-      \draw[gray!50] ({\c*1.045}, {-\r*0.746}) rectangle ({\c*1.045+1.045}, {-\r*0.746-0.746});
-      \node at ({\c*1.045+0.5225}, {-\r*0.746-0.373}) {\val};}}
-    \fill[tkFillGreen] (1.045, {-3*0.746}) rectangle ({2*1.045}, {-4*0.746});
-    \draw[tkGreen, semithick] (1.045, {-3*0.746}) rectangle ({2*1.045}, {-4*0.746});
-    \draw[colorx1, semithick] (0, 0) rectangle ({2*1.045}, {-2*0.746});
-    \draw[colorx3, semithick] ({2*1.045}, 0) rectangle ({4*1.045}, {-2*0.746});
-    \draw[colorx5, semithick] (0, {-2*0.746}) rectangle ({2*1.045}, {-4*0.746});
-    \draw[colorx7, semithick] ({2*1.045}, {-2*0.746}) rectangle ({4*1.045}, {-4*0.746});
-  \end{scope}
-  \node[anchor=west, text=tkRed] at (8.00, -4.78) {layoutA (x) layoutB};
-  \node[anchor=west, text=tkBlue] at (8.00, -5.14) {shape: $((2,2), (2,2))$,  stride: $((8,4), (2,1))$};
-  \node[anchor=west, text=black!60, font=\scriptsize] at (8.00, -5.49) {块序 $=$ A 的值序（row-major 扫描）：左上 $\to$ 右上 $\to$ 左下 $\to$ 右下};
-  % 右侧：求值样例（(m,n)=(1,0)、(p,q)=(1,1) 命中 11）
-  \node[anchor=west, text=black!60, font=\scriptsize] at (13.62, -1.97) {value $= 8m + 4n$};
-  \node[anchor=west, text=black!60, font=\scriptsize] at (13.62, -2.33) {\qquad $+ 2p + 1q$};
-  \node[anchor=west, text=tkGreen, font=\scriptsize] at (13.62, -2.98) {e.g. $(m,n)=(1,0)$};
-  \node[anchor=west, text=tkGreen, font=\scriptsize] at (13.62, -3.25) {$(p,q)=(1,1)$};
-  \node[anchor=west, text=tkGreen, font=\scriptsize] at (13.62, -3.85) {$8+0+2+1 = 11$};
-  \node[anchor=west, text=black!60, font=\scriptsize] at (13.62, -4.55) {flatten 后仍合法;};
-  \node[anchor=west, text=black!60, font=\scriptsize] at (13.62, -4.80) {TiledCopy / TiledMMA};
-  \node[anchor=west, text=black!60, font=\scriptsize] at (13.62, -5.05) {的层级结构由 product 搭出};
-  % 标题
-  \node at (8.00, -0.19) {layout product：外层定块位、内层定块内，size 相乘成嵌套布局};
-  \node[anchor=west, text=black!60, font=\scriptsize] at (0.09, -0.60)
-    {A 的每个坐标位放一份 B 的拷贝：块偏移 $=$ A 的求值结果 $\times$ size(B)，块内排布即 B};
-\end{tikzpicture}
-\caption{layout product：A 的每个坐标位放一份 B 的拷贝（块偏移 $=$ A 的线性序号 $\times$ size(B)），得到嵌套布局 $((2,2),(2,2)){:}((8,4),(2,1))$。行值 $0,1,4,5\,/\,2,3,6,7\,/\cdots$ 的\textbf{块拷贝拼接}排布即 product 的几何特征——它不是 row-major。重建自 @竹熙佳处《写给大家看的 CuTe 教程：Layout Product \& Divide》。}
+\footnotesize
+取 $A=B=(2,2){:}(2,1)$，则 CuTe 的 \texttt{logical\_product(A,B)} 为
+\[
+  P=((2,2),(2,2)){:}((2,1),(8,4)),\qquad
+  P((a_0,a_1),(b_0,b_1))=2a_0+a_1+8b_0+4b_1 .
+\]
+\medskip
+\begin{tabular}{c|rrrr}
+\toprule
+块坐标 $A$ / 网格坐标 $B$ & $(0,0)$ & $(1,0)$ & $(0,1)$ & $(1,1)$ \\
+\midrule
+$(0,0)$ & 0 & 8 & 4 & 12 \\
+$(1,0)$ & 2 & 10 & 6 & 14 \\
+$(0,1)$ & 1 & 9 & 5 & 13 \\
+$(1,1)$ & 3 & 11 & 7 & 15 \\
+\bottomrule
+\end{tabular}
+\caption{\texttt{logical\_product(A,B)} 的逐坐标求值：mode-0 是块 $A$，stride 为 $(2,1)$；mode-1 是网格 $B$，stride 为 $(8,4)$。它与 \texttt{make\_layout(A,B)} 的直接拼接 $((2,2),(2,2)){:}((2,1),(8,4))$ 不同，也不应按 $4A(c_A)+B(c_B)$ 解释。}
 \label{fig:20-8}
 \end{figure}
 
@@ -1352,13 +1320,13 @@ $f(1,3)=11$——同一 shape，stride 决定读序。}
   \node[anchor=west, text=tkGreen, font=\scriptsize] at (8.90, -5.68)
     {e.g. 同格 $(3,1)$: 块$(1,0)$ 内$(1,1)$ $\to$ $8\times1 + 2\times0 + 4\times1 + 1 = 13$};
   \node[anchor=west, text=black!60, font=\scriptsize] at (8.90, -6.04)
-    {对比 product：其同格值为 11——product 生成新排布；divide 只改分组};
+    {对比 product：product 铺展生成新布局；divide 只重排已有布局的分组};
   % 标题
   \node at (8.00, -0.19) {logical\_divide：按 2x2 子块重组为嵌套布局（值排布不变）};
   \node[anchor=west, text=black!60, font=\scriptsize] at (0.09, -0.60)
-    {divide 是 product 的逆：外层 $(2,2){:}(8,2)$ 索引块、内层 $(2,2){:}(4,1)$ 索引块内——同一网格换一种分组解释};
+    {外层 $(2,2){:}(8,2)$ 索引块、内层 $(2,2){:}(4,1)$ 索引块内；product 与 divide 并不互为逆运算};
 \end{tikzpicture}
-\caption{logical\_divide：按 $2\times2$ 子块把 $(4,4){:}(4,1)$ 重组为 $((2,2),(2,2)){:}((4,1),(8,2))$（CuTe 实测的 zipped 形式：块内 mode 在前、块位 mode 在后）——值排布不变（仍 row-major），改变的只是索引方式（一组 $(4,1)$ 索引块内、一组 $(8,2)$ 索引块位）。与上图对比：同物理格 $(3,1)$ 的 product 值为 11（新排布），divide 后仍为 13（原排布）。重建自同上文。}
+\caption{logical\_divide：按 $2\times2$ 子块把 $(4,4){:}(4,1)$ 重组为 $((2,2),(2,2)){:}((4,1),(8,2))$（CuTe 实测的 zipped 形式：块内 mode 在前、块位 mode 在后）——值排布不变（仍 row-major），改变的只是索引方式（一组 $(4,1)$ 索引块内、一组 $(8,2)$ 索引块位）。product 用块和网格生成新布局，divide 则重排已有布局，二者不能笼统称为互逆。}
 \label{fig:20-9}
 \end{figure}
 
@@ -1416,9 +1384,10 @@ $\bigl(\mathrm{shape}(A),$ $\mathrm{shape}(B)\bigr)$），
 row-major 直觉相反。要 row-major 得写 \texttt{make\_\allowbreak{}layout\allowbreak{}(shape,\allowbreak{}
 Layout\allowbreak{}Right\{\})} 或显式给 stride。
 
-\textbf{坑三：divide 的 tile 必须与目标 layout 同 stride 族。}
+\textbf{坑三：用二维 Layout tiler 切几何块时，stride 必须与目标 layout 相容。}
 $L=(8,8){:}(1,8)$ 上用 compact tile $(4,4){:}(1,4)$，得到的不是 $4\times4$
-方块而是 16 个连续 offset 的条带。判别法与反例见 4.5 节实践须知。
+方块而是 16 个连续 offset 的条带。判别法与反例见 4.5 节实践须知；
+shape-only 的 by-mode tiler 不走这条二维 Layout 路径。
 
 \textbf{坑四：\texttt{right\_\allowbreak{}inverse} 对非满值域 layout 会静默退化。}
 值域含空洞（如 stride 2）时返回平凡右逆 $(1){:}(0)$，不报错。判断标准：
@@ -1457,10 +1426,11 @@ $f(x)$ 对 $x$ 一般不单调（row-major 即反例），仅当各 mode 的 str
 colex 排序（如 compact col-major，$f(x)=x$）时才单调不减。
 
 \textbf{Q3：compose 的定义与前提？}\\
-A：$R=\mathrm{composition}(A,B)$ 满足 $R(c)=A(B(c))$，且 $R$ 的顶层 shape 与
-$B$ 一致（\texttt{compatible}）。前提是 divisibility：$B$ 的值域必须以整除
-方式落在 $A$ 的 mode 结构里；否则结果仍是合法 layout，但语义变成按 $A$ 的
-colex 结构重解释 $B$。例：$(6,2){:}(9,2)\circ(4){:}(1)=(4){:}(9)$。
+A：$R=\mathrm{composition}(A,B)$ 满足 $R(c)=A(B(c))$，结果的 shape 与 $B$
+相容（\texttt{compatible}，不要求逐字相同）。若要把结果化简为预期的普通
+layout，还需满足 divisibility 和可表示性；静态布局不满足时通常触发编译期
+断言，动态布局则仍需调用者保证。\texttt{coalesce\_x} 调整的是左操作数 $A$
+的表示，并不改变 $A(B(c))$ 的函数语义。例：$(6,2){:}(9,2)\circ(4){:}(1)=(4){:}(9)$。
 
 \textbf{Q4：右逆与左逆的区别？何时退化？}\\
 A：右逆满足 $A(R(i))=i$（从 offset 找坐标），值域不满时退化为 $(1){:}(0)$；
@@ -1478,11 +1448,12 @@ tile 分量取 $T$、rest 分量取补空间；\texttt{zipped\_\allowbreak{}divi
 $\mathrm{size}(L)/\mathrm{size}(T)$ 块。
 \end{sloppypar}
 
-\textbf{Q6：product 家族有几种？}\\
-A：乘积（\texttt{make\_\allowbreak{}layout\allowbreak{}(A,\allowbreak{}B)}：mode 拼接、坐标分量相加）、\texttt{logical\_\allowbreak{}product}
+\textbf{Q6：concatenation 与 product 家族有什么区别？}\\
+A：\texttt{make\_\allowbreak{}layout(A,B)} 是 concatenation：直接拼接 mode，
+坐标分量相加，不复制网格。product 家族包括 \texttt{logical\_\allowbreak{}product}
 （block 铺在 tiler 上）、\texttt{blocked\_\allowbreak{}product}（重复 block）、
-\texttt{raked\_\allowbreak{}product}（交错重复）与 \texttt{tile\_\allowbreak{}to\_\allowbreak{}shape}（按目标 shape
-铺 atom，最常用于 smem 布局）。区别在 block 之间怎么排。
+\texttt{raked\_\allowbreak{}product}（交错重复）与 \texttt{tile\_\allowbreak{}to\_\allowbreak{}shape}
+（按目标 shape 铺 atom），区别在 block 之间怎么排。
 
 \textbf{Q7：为什么说 CuTe 是零成本抽象？}\\
 A：三点：static layout 的全部运算在编译期折叠（\texttt{static\_\allowbreak{}assert} 可证）；
@@ -1490,9 +1461,11 @@ A：三点：static layout 的全部运算在编译期折叠（\texttt{static\_\
 代价转移到编译时间与类型系统的复杂度。
 
 \textbf{Q8：size 与 cosize 什么时候不等？}\\
-A：layout 有孔洞（stride 跳跃、padding）时 $\mathrm{cosize}>\mathrm{size}$。
-对 kernel 的意义：\texttt{cosize} 就是这块布局实际占用的元素数（smem 分配
-依据），而 \texttt{size} 是有效元素数，两者之差即 padding 的开销。
+A：对本书常见的单射、非负 stride 布局，stride 跳跃或 padding 引入空洞时
+$\mathrm{cosize}>\mathrm{size}$，两者之差可表示额外的存储跨度。但这不是
+双射或孔洞的充要条件：$(2,2,2){:}(1,1,5)$ 在
+$\mathrm{size}=\mathrm{cosize}=8$ 时仍有重复和空洞。对常用非负 stride 的
+smem 布局，\texttt{cosize} 是分配存储的依据，\texttt{size} 是逻辑坐标数。
 
 \begin{sloppypar}
 \textbf{Q9：FA2 里 C fragment 转 A fragment 需要什么样的 layout 变换？}\\

@@ -21,7 +21,7 @@ user-invocable: true
 1. **领任务**：读 `RFC.md` 里程碑总览表 + 对应章节的执行卡片。RFC-0..O 已全部收口（RFC-B 于 2026-09-18 取消，职能归附录 E + drawio 全量重建；RFC-O = ch36/ch37 NVFP4 量化 GEMM，2026-09-24），存量只剩零星复审项（如 B.5 RoPE 参考）；新需求 = 用户新点名的增补章/增强项，按 RFC-L/M/O 模式新开里程碑条目（源码整合→测试→bench→正文→接线→验收→code review→用户增强）逐项推进。
 2. **读规范**：`BOOK_PLAN.md` §3 章节卡片（源码区间/宏/公式/图/参考/测试映射）+ §4 模板与 DoD + 相关工程节。
 3. **执行**：章节任务四合一 = 正文 tex + 最小测试 .cu + 注释核查 + 增量 bench。
-4. **验收**：对照 §4.2 DoD 八条逐条自检（编译零 error / 锚点断言 / CHECKLOG / 测试 PASS / bench 落盘 / 图表登记 / 延伸阅读 / pdftotext 抽查）。**新章/增补章写完后，强制用 `remove-tech-ai-tone` skill 做文风自检**（八类 AI 味模式 + 词表逐词 grep，存疑保留；图内文字只做等宽替换），通过后才进入下一步。
+4. **验收**：对照 §4.2 DoD 八条逐条自检（编译零 error / 锚点断言 / CHECKLOG / 测试 PASS / bench 落盘 / 图表登记 / 延伸阅读 / pdftotext 抽查）。**内容改动后先加载 `leetcuda-correctness-review` 按“第零层（数理逻辑）+ 四层”自审**（先查推导链/量词/反例，再查定义/指称、API/硬件契约、资源/类型计数、表达一致性；图注、表、问答一并审），再**强制用 `remove-tech-ai-tone` skill 做文风自检**（八类 AI 味模式 + 词表逐词 grep，存疑保留；图内文字只做等宽替换）。**本轮只要产生书稿改动，随后必须按该 skill §5.0 构建矩阵编译所有受影响 PDF（主 `book` 与 `cute-zhihu` 等，不能只编主 book），再执行 ReadTheDocs 三层验收，不能跳过；全部通过后，才把每个 PDF 与 RTD 结果追加到该 skill 的 `references/audit-history.md` 并进入下一步。**
 5. **回写**：RFC.md 勾选 `- [x]` + 追加日期；发现问题记 CHECKLOG / RFC 对应位置。
 
 ## 硬规则速查（违反必返工）
@@ -35,7 +35,7 @@ user-invocable: true
 6. **行文风格（作者基线）**：参考 @DefTruth《图解:从Online-Softmax到FlashAttention V1/V2/V3》与《WINT8/4》系列——**原理一定要讲细**：公式逐项展开、指令逐 bit/逐字段解释、先直觉后形式化再代码；中文叙述、术语保留英文。其余可自由发挥。
 7. **注释核查五类**：F1 架构事实（Prog Guide+cutlass skill arch guides）/ F2 PTX（本地 ptx-docs）/ F3 数学（独立推导）/ F4 性能断言（标来源）/ F5 历史陈述（对原论文）。
 8. **构建**：CWD=`book/` 跑 `./build.sh`（两遍 `TEXMFCNF=../tex: xelatex -interaction=nonstopmode book.tex`，**尾部是冒号不是斜杠**——冒号表示追加系统默认配置，否则找不到 `xelatex.fmt`；`kernels/interview/tex/` 目录已不存在，实际靠系统 fmt 兜底）；本机已有 xelatex+ctexbook+Noto CJK（已验证）。TOC 全量装载报 `main_memory capacity exceeded`（PDF 目录丢失）时须 `fmtutil-sys --byfmt xelatex` 重建 fmt——`texmf.cnf` 的 main_memory 仅 fmt 生成期生效，改配置不重建无效（2026-09-22 L.9 根因）。
-9. **ReadTheDocs 同步检查（改了 book 内容后强制，2026-10-10 定）**：任何书稿改动（`chapters/*.tex`、TikZ 图、封面）完成后，**必须**加载 `leetcuda-tex-to-readthedocs` skill，按其 `references/sync-and-deploy.md` 的「内容更新与自动同步 / 改稿检查清单」核对站点能否自动更新（`docs/readthedocs/README.md` 已缩为纯入口，细节统一维护在 skill 里）：① 正文/公式/表格改动 → push 即自动更新（中英文均然）；② **改 TikZ 图内中文文字或新增含中文图 → 必须先跑 `python -m tools.translate_figures --proxy …` 补 `docs/readthedocs/i18n/figures-en.json` 词典并 commit**，否则 RTD `post_build` 的词典覆盖核对不过、构建红灯（改的是图布局、节点中文文字未动则不受影响）；③ **改封面文案 → 必须重编译 `figures/misc/cover.pdf` 并 commit，英文封面另跑 `tools/build_cover_en` commit `cover.png`**，否则站点封面停留旧版。跳过此检查 = RTD 构建挂或中英文档静默脱节。
+9. **ReadTheDocs 同步检查（改了 book 内容后强制，2026-10-10 定）**：任何书稿改动（`chapters/*.tex`、TikZ 图、封面）完成后，**必须**加载 `leetcuda-tex-to-readthedocs` skill，按其 `references/sync-and-deploy.md` 的「内容更新与自动同步 / 改稿检查清单」核对站点能否自动更新（`docs/readthedocs/README.md` 已缩为纯入口，细节统一维护在 skill 里）：① 正文/公式/表格改动 → push 即自动更新（中英文均然）；② **改 TikZ 图内中文文字或新增含中文图 → 必须先跑 `python -m tools.translate_figures --proxy …` 补 `docs/readthedocs/i18n/figures-en.json` 词典并 commit**，否则 RTD `post_build` 的词典覆盖核对不过、构建红灯（改的是图布局、节点中文文字未动则不受影响）；③ **改封面文案 → 必须重编译 `figures/misc/cover.pdf` 并 commit，英文封面另跑 `tools/build_cover_en` commit `cover.png`**，否则站点封面停留旧版。跳过此检查 = RTD 构建挂或中英文档静默脱节。**本地还必须先跑全量 `docs/readthedocs/build.sh` + `tools/visual_check.py` 三层验收；push 后 RTD 的远端构建只是复核，不能替代本地验收。**
 
 ## 工具链速查
 
@@ -94,6 +94,7 @@ kernels/interview/book/
 
 ## 关联 skill
 
+- `leetcuda-correctness-review`（**内容正确性自审（强制）**：书稿改动后、文风自检前加载——第零层先查数理逻辑/推导链，再查定义/指称、API/硬件契约、资源/类型计数、表达一致性；产出 claim ledger、边界矩阵、回修清单与残余风险；书稿改动后按 §5.0 构建矩阵编译所有受影响 PDF（主 `book` 与 `cute-zhihu` 等）并跑 ReadTheDocs 三层验收）
 - `remove-tech-ai-tone`（**文风自检（强制）**：新章/增补章完成、commit 前必跑——技术文去 AI 味八类模式 + 高频词表 + 保留词表 + 验证工作流；目标文风「精确、简洁、沉稳、直接」。全书 2026-09-28 四轮扫描（~305 处）沉淀的词表源于此 skill）
 - `tikz-diagrams`（**图主路径**：TikZ inline 写在章节 tex 内——2026-10-19 实测 41 章正文共 228 处 tikzpicture（`chapters/*.tex` 194 + `wp/` 34），ch26b/ch26c 全 TikZ 先例 + 上游 5be940f 大迁移；提供模板/编译渲染/视觉 QA 工具链，产出 .tex+.pdf+.png）
 - `drawio-reconstruction`（drawio **仅历史留档**：迁移已完成、无活跃 png 引用；用户点名改旧图时才走 inventory→审查闭环）、`drawio-diagram-builder` / `drawio-flow-forge`（存量 drawio 修改）

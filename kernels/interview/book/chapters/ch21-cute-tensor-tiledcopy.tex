@@ -238,7 +238,7 @@ ldmatrix 或 bank 冲突考虑，地址公式会迅速膨胀，而哪个数据�
           inner sep=0pt] at (109,{132+46*\rr}) {$\rr$};
     \foreach \cc in {0,1}{
       \pgfmathtruncatemacro{\nn}{\nb+\cc}
-      \ifnum\rr<2
+      \ifnum\rr<4
         \node[draw=tkBlue, fill=tkFillBlue, minimum width=1.5cm, minimum height=0.6cm,
               inner sep=0pt] at ({196+108*\cc},{132+46*\rr}) {$(\mm,\nn)$};
       \else
@@ -248,7 +248,7 @@ ldmatrix 或 bank 冲突考虑，地址公式会迅速膨胀，而哪个数据�
     }
   }
   \node[anchor=west, font=\tiny] at (24,311)
-    {蓝色两行 $=$ 第 1 轮（rows 0--1）；第 2 轮覆盖 rows 2--3，两轮铺满 $(4,4)$};
+    {蓝色四行 $=$ 4 个线程全体；第 1 轮共同覆盖数据行 $m=0,1$，第 2 轮覆盖 $m=2,3$};
   \draw[gray!60, thin] (580,52) rectangle (1136,302);
   \node[anchor=west, font=\tiny\bfseries] at (596,71)
     {CuTe printout（\texttt{make\_tiled\_copy} 实测）};
@@ -435,12 +435,12 @@ $4096/2$），与式~\eqref{eq:21-dup} 完全一致。该覆盖结构的网格�
      右上（m$<$16, k$\ge$8）：$t=16{+}\ell$ $\parallel$ $80{+}\ell$（w0 $\parallel$ w2）\\
      左下（m$\ge$16, k$<$8）：$t=32{+}\ell$ $\parallel$ $96{+}\ell$（w1 $\parallel$ w3）\\
      右下（m$\ge$16, k$\ge$8）：$t=48{+}\ell$ $\parallel$ $112{+}\ell$（w1 $\parallel$ w3）\\[2pt]
-     $\ell$ = 格内数字（warp 内 lane $=m\bmod16$）；每线程持\\
-     所在行块内 8 个连续 k（$v=0..7$，即 rA[0..7]）};
+     $\ell$ = 格内数字（warp 内 lane $=m\bmod16$）；source 视图中，\\
+     每 lane 对应行块内 8 个连续 k；这不是 rA[0..7] 的顺序};
   \node[draw, fill=gray!32, font=\tiny, align=center, minimum width=3.0cm] (tA) at (10.5,-4.6)
-    {T5：rA[0..7] $\leftarrow$ (m=5, k=0..7)\\（warp 0--1 组，thrN=0）};
+    {T5：source 读 $(m=5,k=0..7)$\\rA 由 MMA ALayout 重排（warp 0--1）};
   \node[draw, fill=gray!78, font=\tiny, align=center, minimum width=3.0cm] (tB) at (10.5,-5.9)
-    {T69：rA[0..7] $\leftarrow$ 同一份 A\\（warp 2--3 组，thrN=1）};
+    {T69：同一 source 地址与目的布局\\（warp 2--3 组，thrN=1）};
   \draw[->, thick] (0.5,-1.8) .. controls (4.5,-3.0) .. (tA.west);
   \draw[->, thick] (0.5,-1.8) .. controls (4.5,-3.6) .. (tB.west);
   \node[font=\tiny, align=left, anchor=north west] at (8.7,-6.8)
@@ -453,8 +453,10 @@ case~D/E）：tiler $(32,16)$ 的 A tile（M $\times$ K）上，每格标 warp �
 lane 号 $\ell=m\bmod16$，格子的实际覆盖线程对为（基址 $+\ell$，基址
 $+64+\ell$），四块的基址见右上表（w0--w3 即 warp 0--3）。每个元素恰被
 2 个 (thread, value) 对覆盖：$t$ 与 $t{+}64$（两个 N 方向 warp，thrN
-$=0/1$）各持同一行块 8 个连续 k 的一份寄存器拷贝——TV 布局第 4 个线程
-模式 stride 为 0 的几何含义，守恒 $128\times8=2\times512$。对照
+$=0/1$）在 source 视图中对应同一行块的 8 个连续 k。目的端 \texttt{rA}
+则按 MMA 的 \texttt{ALayout} 重排，涉及两行与多个 K 片段，不能把这 8 个值
+直接写成 \texttt{rA[0..7]} 的连续 K 顺序。TV 布局第 4 个线程模式 stride
+为 0 的几何含义，守恒 $128\times8=2\times512$。对照
 图~\ref{fig:21-3} 的 G$\to$S 双射网格（每格恰一线程）。}
 \label{fig:21-s2r-dup}
 \end{figure}
@@ -682,8 +684,11 @@ scratchpad 复用了当前 A stage 的空间，\texttt{sC}
 由 \texttt{make\_\allowbreak{}tensor\allowbreak{}(sA(\_,\allowbreak{}\_,\allowbreak{}ismem\_\allowbreak{}read).\allowbreak{}data\allowbreak{}(),\allowbreak{} SmemLayoutC\{\})}
 构造（L1001，下文展开）。R$\to$S 用的 \texttt{R2SCopyAtomC} 是
 \texttt{Copy\_Atom<UniversalCopy<int>,\allowbreak{} T>}：以 32-bit 粒度搬运
-\texttt{T} 数据，用 \texttt{UniversalCopy} 顺带完成类型转换，再经
-\texttt{make\_tiled\_copy\_C} 包装成 \texttt{r2s\_tiled\_copy\_c}。
+\texttt{T} 数据；真正的 dtype 转换发生在更前面的 R2R staging
+（\texttt{make\_tensor\_like<T>} + 普通 \texttt{cute::copy}），
+\texttt{UniversalCopy<int>} 只负责把 thread-local payload 写入 smem，
+再经 \texttt{make\_tiled\_copy\_C} 包装成 \texttt{r2s\_tiled\_copy\_c}。
+本 kernel 默认 F16 acc 且 \texttt{T=half} 时，那次 cast 退化为 no-op。
 
 \begin{sloppypar}
 被搬运的 \texttt{tCrD} 是 TiledMMA 产生的 accumulator fragment，逻辑形状为
@@ -1014,10 +1019,11 @@ kernel 的流水线里。所以本节回答的是这套抽象的代价结构，�
 测试把 TiledCopy 的 Tiler/线程数/每线程值数也做成了静态断言。
 
 \textbf{结论二（搬运划分影响访存质量）}：式~\eqref{eq:21-g2s-tv} 保证每个线程
-的 8 个值是连续的，所以一条 128-bit 指令就够了；如果 Thr/Val 写反（比如
-\texttt{Val\allowbreak{}Layout=\allowbreak{}(8,\allowbreak{}1)}），每个线程的 8 个值会跨行分布，128-bit 拷贝会退化成
-8 条 16-bit 访问。这不是性能调优技巧。它是\textbf{类型写错就直接产生 8 倍
-访存指令}的硬约束。第~\ref{ch:12}~章的合并访问分析在这里变成了类型选择。
+的 8 个值连续，所以一个 128-bit Copy Atom 可以完成搬运。若把 Thr/Val 写错，
+并不能指望 CuTe 自动把它降成 8 条 16-bit 访问：显式 Copy Atom 的
+\texttt{copy\_unpack} 会尝试把输入重铸为原子访问类型，不满足布局和向量宽度
+约束时会触发静态断言，错误配置也可能改变 tiler 与数据对应关系。正确做法是
+先从 TV layout 核对每个 atom 的连续性和形状，再谈指令数量。
 
 \textbf{结论三（epilogue 的额外成本）}：CuTe 版 epilogue 走
 寄存器$\to$smem$\to$gmem 的 scratchpad 路线，比手写版的 shuffle $+$ 直接
@@ -1028,11 +1034,12 @@ S$\to$G 后各一次，L1116 与 L1184 附近）与一次 smem 往返。代价�
 R$\to$S/R$\to$G 各约 8 条指令，与主循环的 mma 数量相比是次要项，但它解释
 了为什么 CuTe 版在极端配置下需要 \texttt{kSmemLayoutCBatch} 这类旋钮。
 
-\textbf{结论四（重复因子是寄存器成本）}：式~\eqref{eq:21-dup} 的 A 重复因子
-$=2$、B 重复因子 $=2$（hgemm 的 $2\times2$ warp 排布），意味着每个线程的
-A/B fragment 数量按重复因子放大。这不是 TiledCopy 引入的，而是 MMA 本身
-要求的（第~\ref{ch:22}~章会从 \texttt{partition\_\allowbreak{}fragment\_\allowbreak{}A} 再算一遍），
-TiledCopy 只是把它如实反映到 partition 的形状里。
+\textbf{结论四（重复因子放大的是 CTA 范围的副本数）}：式~\eqref{eq:21-dup} 的
+A/B 重复因子为 $2$（hgemm 的 $2\times2$ warp 排布），表示不同 warp 需要
+同一数据的寄存器副本，因而增加跨线程的覆盖点数和 CTA 总寄存器成本。它不是
+每个线程的 fragment 元素数也乘上该因子；每线程仍按自己的
+\texttt{partition\_\allowbreak{}fragment\_\allowbreak{}A/B} 持有固定数量的值。TiledCopy 只是
+把这种跨线程重复如实体现在 partition 中。
 
 \section{常见坑}
 

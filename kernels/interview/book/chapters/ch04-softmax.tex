@@ -430,7 +430,7 @@ FlashAttention 把右列的 $(m,d)$ 再加一列 $O$，就是第~\ref{ch:15}~章
 
 算术强度：per-token softmax 每个元素的有效访存是读 4~B + 写 4~B = 8~B；
 计算上除一次超越函数 $e^{x}$（SFU 指令，不占 FMA 流水）外只有 $O(1)$ 次乘加。
-按每元素 2 FLOP 的乐观口径，$AI \approx 2/8 = 0.25$ FLOP/B，远低于现代 GPU
+按每元素 2 FLOP 的最省 FLOP 口径，$AI \approx 2/8 = 0.25$ FLOP/B，远低于现代 GPU
 数十至上百 FLOP/B 的 roofline 拐点，softmax 是典型的 \textbf{memory-bound} 算子，
 优化重心在扫描遍数与同步次数，而不是 FLOP。
 
@@ -554,8 +554,10 @@ NaN（naive 上溢故障的镜像）。若整行全为边界线程（空行）�
 
 \textbf{坑三：\texttt{\_\_expf}/\texttt{\_\_fdividef} 的精度语义。}\texttt{\_\_expf}
 是 SFU 硬件指数，最大误差约 $2+\lfloor|1.16x|\rfloor$ ulp（小参数下约 2 ulp）；
-\texttt{expf} 是软件精确版。推理路径用快速数学通常无损
-（softmax 输出本就有 fp32 舍入），但参考实现、精度回归、数值实验必须用 \texttt{expf}。
+\texttt{expf} 是软件精确版。推理路径用快速数学通常精度足够（softmax 输出本身
+已有 fp32 舍入），但\textbf{不是无损}：\texttt{\_\_expf} 有 2+ ulp 误差，
+\texttt{\_\_fdividef} 也是近似除法；参考实现、精度回归、数值实验必须用
+\texttt{expf}。
 同理 online 版写回的 \texttt{\_\_fdividef} 是近似除法。第~\ref{ch:19}~章量化注意力对
 LSE 的精度更敏感，届时这类选择要重新评估。
 

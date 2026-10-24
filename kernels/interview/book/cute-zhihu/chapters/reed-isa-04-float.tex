@@ -88,7 +88,7 @@ FMUL.FTZ R3, R4, R5 ;
 
 \subsection{乘加FMA（Fused Multiply Add）}
 
-对于乘加运算而言，可以采用两条指令实现，如上面提到的FMUL，然后对乘法的结果调用FADD进行累加，IEEE-754-2008标准提出了FMA的计算标准（Fused Multiply Add）,即可以一条指令完成d = a x b + c的运算，同时中间计算结果的精度是无限精度的，只在最后环节进行圆整操作，其可以提供相较于FMUL + FADD组合指令更高的精度。同时FMA指令的latency和FMUL或FADD是一样的，所以单条FMA指令的吞吐是FADD或FMUL吞吐的两倍，具体地，单精度浮点指令为FFMA（Float Fused Multiply Add）,双精度浮点指令为DFMA（Double Fused Multiply Add）它们各自的不同圆整Modifier如下，
+对于乘加运算而言，可以采用两条指令实现，如上面提到的FMUL，然后对乘法的结果调用FADD进行累加，IEEE-754-2008标准提出了FMA的计算标准（Fused Multiply Add）,即可以一条指令完成d = a x b + c的运算，同时中间计算结果的精度是无限精度的，只在最后环节进行圆整操作，其可以提供相较于FMUL + FADD组合指令更高的精度。同时FMA指令的latency和FMUL或FADD是一样的，所以单条FMA指令的 FLOP 吞吐是FADD或FMUL的两倍，但指令吞吐相同（每周期仍只发射一条 FP32 指令），具体地，单精度浮点指令为FFMA（Float Fused Multiply Add）,双精度浮点指令为DFMA（Double Fused Multiply Add）它们各自的不同圆整Modifier如下，
 
 \begin{lstlisting}
 FFMA R0, R1, R2, R3;  // R0 = R1 * R2 + R3 with round to NEAREST
