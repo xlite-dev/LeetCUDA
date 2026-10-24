@@ -854,10 +854,10 @@ $\times$ 2 个 N-warp，$R_O$ 降到 $D/4$）的原因，也是本章这版 kern
     {$\mathrm{idx} = \mathrm{kv\_tile} \cdot C + c$；$\mathrm{stage} = \mathrm{idx} \bmod \mathrm{Sk}$；$\mathrm{phase} = (\mathrm{idx}/\mathrm{Sk})\,\&\,1$};
   \node[draw=tBlue, fill=white, align=center, text width=4.7cm, inner sep=1pt,
         minimum height=0.64cm, font=\tiny] at (922,479)
-    {$D{=}128$（$C{=}2$）：phase 周期 1 个 kv\_tile};
+    {$D{=}128$（$C{=}2$）：phase 周期 2 个 kv\_tile（每 tile 翻转）};
   \node[draw=tGreen, fill=white, align=center, text width=4.7cm, inner sep=1pt,
         minimum height=0.64cm, font=\tiny] at (922,533)
-    {$D{=}192$（$C{=}3$）：周期 2（$\gcd(C, \mathrm{Sk}) = 1$）};
+    {$D{=}192$（$C{=}3$）：周期 4（$\gcd(C, \mathrm{Sk}) = 1$）};
 \end{tikzpicture}
 \caption{Split-D 的 D 维切分：Q/K/V 各切成 $C = D/64$ 个 64 宽 chunk（一个 chunk 等于一个 SW128 swizzle atom 宽）。QK 的 chunk 累加写进同一块 $S[64,64]$；PV 的每个 chunk 写进自己的 $O_c[64,64]$，共用同一个 $\rho$ 与 $\ell$；流水槽位由扁平计数器 $\mathrm{idx}$ 导出。}
 \label{fig:19-1}

@@ -19,7 +19,7 @@ $PV$），得到 Tensor Core 吞吐的成倍提升。代码链路是 ffpa-attn �
 \begin{enumerate}[itemsep=0pt,topsep=2pt]
   \item 量化算子的形式，四种主要格式（int8 / e4m3 / e2m1 / ue4m3）加 scale
         专用 ue8m0 的位域，以及各自的
-        量化误差下界（27.3.1--27.3.2~节：相对步长
+        量化误差下界（27.3.1--27.3.2~节：相对误差上界
         $\approx 2^{-(m+1)}$ 的逐 bit 推导）；
   \item attention 有哪几个可量化的对象？各自适合什么粒度（27.3.3~节：per-block /
         per-thread / per-channel / per-row / $1\times16$ 谱系表）；
@@ -132,13 +132,13 @@ int8/fp8 差距是 4 倍）；精度上，Q/K 分数分布集中时，int8
 的 254 个均匀码点密度高于 fp8 每倍频程 $2^m=8$ 个码点，量化精度更高
 （arXiv:2410.02367）。
 
-\paragraph{e4m3 / e2m1：指数格式与相对步长。}
+\paragraph{e4m3 / e2m1：指数格式与相对误差上界。}
 e4m3 用 1 位符号、4 位指数（bias 7）、3 位尾数；最大有限值是
 $1.75 \times 2^{8} = 448$（指数全 1 时仅 $M=111$ 编码 NaN，其余可用）。e2m1 只有
 1 位尾数，全部正值集合是 $\{0.5, 1, 1.5, 2, 3, 4, 6\}$，总共 16 个码点，动态
 范围仍横跨约 3.6 个二进制倍频程。指数格式的量化误差有明确的上界：
 
-\begin{theorem}[指数格式的相对步长]\label{thm:27-relstep}
+\begin{theorem}[指数格式的相对误差上界]\label{thm:27-relstep}
 设格式有 $m$ 位尾数、规格化数 $x \in [2^{e}, 2^{e+1})$。则 $x$ 所在的 ULP
 （相邻可表示值间距）为 $2^{e-m}$，最近邻舍入误差 $\le \tfrac{1}{2}\,\mathrm{ULP}$，
 故相对误差上界为
@@ -157,6 +157,10 @@ $2^{e-m}$（$m$ 位尾数把该倍频程切成 $2^{m}$ 格）。最近邻舍入�
 $2^{e-m}/2 = 2^{e-m-1}$。除以区间下界 $2^{e}$（区间内最小可能幅度，取最坏
 情况）即得式~\ref{eq:27-relstep}。
 \end{proof}
+
+注意：若把“相对步长”定义为 ULP 与值之比，它在 binade 下沿为
+$2^{-m}$、上沿为 $2^{-(m+1)}$，并非常数；表~\ref{tab:27-formats} 列的是
+舍入相对误差上界 $2^{-(m+1)}$，两者不要混用。
 
 代入 $m$：e4m3（$m{=}3$）相对误差 $\le 2^{-4} = 6.25\%$，e2m1（$m{=}1$）
 $\le 2^{-2} = 25\%$。结论与 $e$ 无关：无论值大值小，误差都是自身幅度的
@@ -177,7 +181,7 @@ $\tilde{x} = \hat{x} \cdot \widetilde{\mathrm{SF}}$，两级相对误差相加�
   \label{tab:27-formats}
   \begin{tabular}{llllll}
     \toprule
-    格式 & 表示范围 & $m$ & 相对步长 & 典型用途 & 出处 \\
+    格式 & 表示范围 & $m$ & 相对误差上界 & 典型用途 & 出处 \\
     \midrule
     int8（对称） & $\pm127$，均匀 & — & 绝对 $\delta/\sqrt{12}$（RMS） & fp8 路径 QK（\texttt{int8} 变体） & SA1 \\
     e4m3 & $\pm448$，非均匀 & 3 & $\approx 2^{-4}$（6.25\%） & Q/K/V/P（fp8 路径） & SA2 \\
@@ -376,8 +380,9 @@ $p_{scale}$ 的取值策略决定整个 kernel 的寄存器开销结构：
 \end{itemize}
 ffpa 默认 fixed（\texttt{FFPA\_FP8\_PQUANT\_PER\_ROW} 可开 per-row）；发射域
 $\tilde{P} = P \cdot v_s \cdot 448$ 与溢出约束的完整推导见第~\ref{ch:29}~章。结论是
-scale 折叠之后，fp8 路径除量化本身的 round() 外没有额外数学误差源，所有反量化
-都是精确代数操作。图~\ref{fig:27-pscale-modes} 把两种
+在实数代数模型下，scale 折叠之后 fp8 路径除量化本身的 round() 外没有额外
+代数误差源，所有反量化都是精确代数操作；浮点执行仍有 exp2、乘加与低精度累加
+带来的舍入。图~\ref{fig:27-pscale-modes} 把两种
 $p_{scale}$ 策略的发射域利用率摆在同一条量程轴上：差别就在平坦行用了多少格点。
 
 \begin{figure}[H]
@@ -470,9 +475,13 @@ f16 寄存器里，真正的约束按\textbf{块}结算：$B_c \cdot P_r \cdot V
 第~\ref{ch:29}~章 29.3.4~节）。$B_c{=}64$ 时可用满量程 448
 （$64\times448\times2.25=64{,}512$），$B_c{=}128$ 时 P 侧须降到 224
 （$128\times224\times2.25=64{,}512$）。SA2++ 论文两侧各收窄一半取
-$P_r = 224$、$V_r = 4.5$；ffpa 把约束全部落在 V 侧：P 侧保持 448 满量程
-（fixed 发射 $\tilde{P} = P v_s 448$），per-channel V + f16 acc 时发射
-$\hat{V} \in [-2.25, 2.25]$。两种分配的乘积 $P_rV_r = 1008$ 相同，差别在
+$P_r = 224$、$V_r = 4.5$。ffpa 的分配随 $B_c$ 分档：$B_c\le64$ 时把约束
+落在 V 侧，P 保持 448 满量程（fixed 发射 $\tilde{P} = P v_s 448$），
+per-channel V + f16 acc 时发射 $\hat{V} \in [-2.25, 2.25]$，与 SA2++ 的
+乘积同为 $P_rV_r = 1008$；$B_c{=}128$ 时 P 也收到 224（V 仍 $2.25$，
+乘积 $504$），两侧同时收窄。默认 $B_c$ 由 $D$ 决定（$D\le128$ 取 128，
+否则取 64，见第~\ref{ch:29}~章），因此主场景 $D\le128$ 并不存在
+“保 P 弃 V”的分配；只有在 $B_c\le64$ 档，差别才是
 \textbf{牺牲 P 分辨率还是 V 分辨率}，ffpa 选择保 P（softmax 概率的相对结构更敏感）。
 图~\ref{fig:27-pvbudget} 在 $P_r$--$V_r$ 平面上把这两种分配画成同面积矩形：
 单指令预算线之下是必要条件，块级预算再按 $B_c$ 收紧。
@@ -556,10 +565,10 @@ FA-4（arXiv:2603.05451）观察到 max 的增长通常很小，重缩放可以�
   \ge -\tau .
   \label{eq:27-lazy}
 \end{equation}
-端到端无损：$O$ 与 $\ell$ 用同一个 stale max。epilogue 的 $O/\ell$ 把所有迟到的
-缩放一并消去（等价性见 27.4~节代码注释）。fp16 域中 lazy rescale 是纯粹的
-省指令优化。量化域中它多了一层含义：发射值被 $2^{\tau}$ 膨胀，必须核算
-格式上限。
+实数代数下等价：$O$ 与 $\ell$ 用同一个 stale max，epilogue 的 $O/\ell$ 把所有
+迟到的缩放一并消去（等价性见 27.4~节代码注释）。浮点执行与逐 tile rescale
+仍有舍入差异；fp16 域中它主要是省指令优化。量化域中它多了一层含义：
+发射值被 $2^{\tau}$ 膨胀，必须核算格式上限。
 
 fixed 模式发射 $\tilde{P} = P \cdot v_s \cdot 448$，而 per-block V
 量化有 $v_s = \mathrm{amax}(V)/448$。故发射峰值
@@ -782,7 +791,7 @@ $O$ 与 $\ell$ 全程共享同一 stale 域，$O/\ell$ 消去全部迟到缩放�
 \section{图示}
 
 三张大图对应本章的三条主线。图~\ref{fig:27-1} 是精度阶梯的位域对照：
-int8 的均匀网格与 e4m3/e2m1/ue4m3 的浮点结构并排展开，相对步长定理说明
+int8 的均匀网格与 e4m3/e2m1/ue4m3 的浮点结构并排展开，相对误差上界定理说明
 尾数位决定相对误差。图~\ref{fig:27-2} 把全章的 scale 流向画进一张
 数据流图：$\delta_Q\delta_K$ 折进 exp2 系数、$v_s$ 在 P 的发射域消去、
 $p_{scale}$ 收在 epilogue。图~\ref{fig:27-3} 是 ESS 误差模型：dense 行与
@@ -821,7 +830,7 @@ causal 早行的 $P$ 分布/误差对比，以及 $V>QK>P$ 的 per-stage 误差�
     }
     \node[an] at (7.15,-1.16)
       {bias$=7$；max finite $=1.75\times 2^8=448$（E 全 1 时仅 M$=111$ 为 NaN）\\
-       相对步长 $2^{-(m+1)}=2^{-4}=6.25\%$（相对误差恒定）};
+       相对误差上界 $2^{-(m+1)}=2^{-4}=6.25\%$};
     \node[sa] at (14.00,-1.16) {SA2：Q/K/V/P};
     % e2m1：1 符号 + 2 指数 + 1 尾数
     \node[rl] at (1.85,-2.03) {e2m1（FP4）};
@@ -832,7 +841,7 @@ causal 早行的 $P$ 分布/误差对比，以及 $V>QK>P$ 的 per-stage 误差�
     \node[bc, draw=tkRed, fill=tkFillRed] at (4.22,-2.03) {M};
     \node[an] at (7.15,-2.03)
       {仅 16 个码点；正值 $\{0.5, 1, 1.5, 2, 3, 4, 6\}$——一个倍频程只有两格\\
-       \textcolor{tkRed}{相对步长 $2^{-2}=25\%$；动态范围最窄 $\to$ smoothing 强制}};
+       \textcolor{tkRed}{相对误差上界 $2^{-2}=25\%$；动态范围最窄 $\to$ smoothing 强制}};
     % e2m1 全部正值格点（等距排列；注明非等比）
     \draw[gray!70, thin] (2.05,-2.75) -- (14.40,-2.75);
     \foreach \bb in {0,...,7} {
@@ -864,15 +873,16 @@ causal 早行的 $P$ 分布/误差对比，以及 $V>QK>P$ 的 per-stage 误差�
     % 相对步长定理
     \node[draw=gray!60, fill=gray!10, align=left, inner sep=3pt,
       font=\fontsize{4.6}{5.2}\selectfont, text width=15.2cm] at (7.80,-4.85)
-      {\textbf{相对步长定理：规格化数 $x \in [2^e, 2^{e+1})$，$m$ 位尾数 $\Rightarrow$
+      {\textbf{相对误差上界定理：规格化数 $x \in [2^e, 2^{e+1})$，$m$ 位尾数 $\Rightarrow$
         ULP $= 2^{e-m}$，RN 误差 $\le$ ULP$/2$}\\
        相对误差 $\le 2^{e-m-1}/2^e = 2^{-(m+1)}$：与 $e$ 无关——%
        \textcolor{tkGreen}{e4m3 $\approx 6.25\%$}，\textcolor{tkRed}{e2m1 $\approx 25\%$}；%
        int8 无此性质（均匀网格）};
   \end{tikzpicture}
   \caption{四种量化格式的位域与值域对照（int8 / e4m3 / e2m1 / ue4m3）。e4m3 的
-  指数全 1 时仅 $M{=}111$ 编码 NaN，故满量程 448；e2m1 全部 16 个码点在数轴上
-  标出，直观呈现\textbf{一个倍频程内只有两格}。}
+  指数全 1 时仅 $M{=}111$ 编码 NaN，故满量程 448；e2m1 正半轴的 8 个码点
+  （0 与 7 个正值）在数轴上标出，负半轴镜像，共 16 个，直观呈现
+  \textbf{一个倍频程内只有两格}。}
   \label{fig:27-1}
 \end{figure}
 
@@ -945,7 +955,7 @@ causal 早行的 $P$ 分布/误差对比，以及 $V>QK>P$ 的 per-stage 误差�
       font=\fontsize{4.4}{5}\selectfont, text width=14.8cm] at (7.60,-3.90)
       {要点 1：$\delta_Q\delta_K$ 折进 exp2 系数（softmax 前一次乘入，kMaxScaleAfter 再省 $B_c$ 次 FMUL）\\
        要点 2：$v_s$ 在 P 侧精确消去 $\to$ gmem 的 $\hat{V}$ 不动；$p_s$ 只在 epilogue 出现一次\\
-       \textbf{\textcolor{tkGreen}{结论：除量化本身 round() 外无任何额外数学误差源——所有反量化都是精确代数操作}}};
+       \textbf{\textcolor{tkGreen}{结论：实数代数下除 round() 外无额外误差源；浮点执行仍有乘加、exp2 与累加舍入}}};
     \node[note, text=tkRed] at (0.10,-4.72)
       {溢出约束（fixed $+$ FA-4 lazy rescale）：$2^T\cdot\mathrm{amax}(V) \le 448$，%
        $T=4 \Rightarrow \mathrm{amax}(V) \le 28$，残余超调 satfinite 兜底};

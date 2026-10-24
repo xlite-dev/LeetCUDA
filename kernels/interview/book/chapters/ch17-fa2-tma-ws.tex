@@ -552,8 +552,8 @@ softmax 并行，因此 \texttt{full\_V} 的 wait 被刻意推迟到 3d 之前
 行归约用 \texttt{warp\_\allowbreak{}reduce\_\allowbreak{}max/\allowbreak{}sum\allowbreak{}<4>}（每线程持 2 行、4 线程组归约，
 第~\ref{ch:02}~章），与 ch16 相同。
 
-\lstinputlisting[linerange={1260-1306},firstnumber=auto,breakatwhitespace=true,
-  title={flash\_attn.cuh L1260-1306（阶段四 3d：PV 前 wait full\_V $+$ R\_S 复用 $+$ 释放 V）}]{../flash_attn.cuh}
+\lstinputlisting[linerange={1260-1312},firstnumber=auto,breakatwhitespace=true,
+  title={flash\_attn.cuh L1260-1312（阶段四 3d：PV 前 wait full\_V $+$ R\_S 复用 $+$ 释放 V）}]{../flash_attn.cuh}
 
 阶段四的 PV 沿 $B_c$ 的 4 个 k-slice 推进：V 用 \texttt{LDMATRIX\_\allowbreak{}X2\_\allowbreak{}T}
 （转置装载，正确性见 17.4.3 节引用的论证），A 操作数直接取

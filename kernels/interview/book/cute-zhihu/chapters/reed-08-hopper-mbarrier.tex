@@ -76,7 +76,7 @@ mbarrier使用SM上的共享内存作为存储后端，为了提高其操作效�
 \caption{Figure-5. MBarrier fields}
 \end{figure}
 
-mbarrier在数据表示上表达为一个64bit的整数类型数据，其内部各个域的定义如图4所示，整体分为六个域，分别是最低位的一比特的保留域，第一比特到第二十比特的Expected Arrive Count域，第二十一比特到第四十一比特的Transaction Count域，第四十二比特位置的Lock域，第四十三比特到第六十二比特的Arrive Count域和第六十三比特位置的Phase域。
+mbarrier在数据表示上表达为一个64bit的整数类型数据，其内部各个域的定义如图5所示，整体分为六个域，分别是最低位的一比特的保留域，第一比特到第二十比特的Expected Arrive Count域，第二十一比特到第四十一比特的Transaction Count域，第四十二比特位置的Lock域，第四十三比特到第六十二比特的Arrive Count域和第六十三比特位置的Phase域。
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.9\textwidth]{figures/reed-08-hopper-mbarrier/fig-06.jpg}

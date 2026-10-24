@@ -362,10 +362,10 @@ TMA：Tensor Memory Accelerator，参考\href{https://docs.nvidia.com/cuda/hoppe
   \item 通过对segment内的chunk进行swizzling，来实现不同segment间的bank conflict free。
 \end{itemize}
 
-TMA 假设使用的shared memory的数组的形式是\lstinline|T array[][NX]|（T可以是1/2/4Bytes的数据类型），并且满足：
+TMA 假设使用的shared memory的数组的形式是\lstinline|T array[][NX]|（T可以是1/2/4Bytes的数据类型）。硬件要求行字节数不超过 swizzle 宽度，本章为简化后续映射，取等号：
 
 \begin{itemize}
-  \item \lstinline|NX * sizeof(T) == SWIZZLE_SIZE|。
+  \item \lstinline|NX * sizeof(T) <= SWIZZLE_SIZE|；下面的推导假设取等号。
   \item \lstinline|SWIZZLE_SIZE| 必须是32，64或者128三个值之一。
 \end{itemize}
 

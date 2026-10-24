@@ -90,8 +90,8 @@ struct SharedStorage {
 void producer_acquire(state);
 // producer 等待当前 state 的 empty barrier 就位
 
-void producer_commit(state);
-// producer 在发出当前 state 的数据生产任务后 arrive 对应的 full barrier，TMA load 场景下为 NOP
+void producer_commit(state, uint32_t bytes);
+// 非 TMA pipeline 用于提交 full barrier；TMA load 场景下为 NOP（full barrier 由 expect_tx/complete 推进）
 
 void consumer_wait(state);
 // consumer 等待当前 state 的 full barrier 就位

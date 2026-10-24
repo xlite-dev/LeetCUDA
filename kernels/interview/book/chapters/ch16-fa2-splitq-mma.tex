@@ -117,7 +117,9 @@ $\exp$ 的输入（\texttt{\_\allowbreak{}\_\allowbreak{}fmaf\_\allowbreak{}rn\a
 之后取（L484/L491），与数学上 $\max(sS)=s\max(S)$ 等价（$s>0$）。
 （2）$O$ 的 rescale 与累加融合为一次 FMA（3e 步），且首个 tile 用
 $m^{\text{new}}$ 直接顶替 $-\infty$ 的旧值（L661--664 的三元判断），
-避免 $e^{-\infty}$ 与 $0\cdot\infty$ 型边界把 $\ell$/$O$ 污染成 NaN。
+避免首轮乘 $0$ 的空操作。本 kernel 是 dense、无 mask 的，$\mathrm{rowmax}$
+恒有限，本来不会产生 NaN；只有带 mask 或空行的变体才需要额外防
+$e^{-\infty-(-\infty)}$。
 
 \subsection{$S$ 的 C fragment 如何变成 $P@V$ 的 A fragment}
 
@@ -434,9 +436,9 @@ padding 分析、第~\ref{ch:12}~章的 swizzle 是同一主题的三种解法�
 
 加载映射：256 线程协作搬 $B_r{=}128$ 行 Q，每线程负责半行
 （\texttt{load\_\allowbreak{}smem\_\allowbreak{}Q\_\allowbreak{}Br =\allowbreak{} tid/\allowbreak{}2}，$d$ 向 64 个 half 分给 2 线程
-$\times$ 4 段 16~B）；K/V 按 $B_c{=}64$ 行、每线程管 4 行的起点
-（\texttt{tid/4}）。\texttt{CP\_ASYNC\_CG} 每次 16~B，与
-第~\ref{ch:11}~章的搬运粒度一致。
+$\times$ 4 段 16~B）；K/V 按 $B_c{=}64$ 行、每 4 个线程管一行
+（\texttt{tid/4} 定行、\texttt{tid\%4} 定列段，每线程 2 段 16~B）。
+\texttt{CP\_ASYNC\_CG} 每次 16~B，与第~\ref{ch:11}~章的搬运粒度一致。
 
 \subsection{寄存器工作集：状态、操作数与累加器}
 

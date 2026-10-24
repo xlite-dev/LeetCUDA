@@ -7,7 +7,7 @@
 第~\ref{ch:27}--\ref{ch:29}~章建立了量化注意力的数学与 fp8 实现链。
 本章把数据格式降到 4 bit。NVFP4 不是把 fp8 的量化代码换个 dtype：
 e2m1 只有 2 bit 指数 + 1 bit 尾数，可表示值只有
-$\{0,\pm0.5,\pm1,\pm1.5,\pm2,\pm3,\pm4,\pm6\}$，相对步长约 25\%（fp8 e4m3
+$\{0,\pm0.5,\pm1,\pm1.5,\pm2,\pm3,\pm4,\pm6\}$，相对误差上界约 25\%（fp8 e4m3
 是 6.25\%）。在这样的格式上做出可用的 attention，靠的不是数据格式本身，
 而是围绕它的一整套尺度处理：microscaling 块尺度（scale
 factor）、强制 smoothing、rank-1 修正、列置换、以及把所有这些步骤
@@ -35,7 +35,7 @@ fused 进尽量少的 kernel。
   }
   \node[anchor=west, font=\tiny] at ({6*\us+0.55},0.02) {$\to\ \cdots\ 448$（满量程）};
   \node[anchor=south, font=\tiny, align=center] at ({3*\us},0.58)
-    {格点密（每 binade 8 点），相对步长 6.25\%；\\无 $\pm\infty$（\texttt{0x7F}=\texttt{NaN}），越界 \texttt{satfinite} 饱和};
+    {格点密（每 binade 8 点），相对误差上界 6.25\%；\\无 $\pm\infty$（\texttt{0x7F}=\texttt{NaN}），越界 \texttt{satfinite} 饱和};
   \begin{scope}[yshift=-2.4cm]
     \node[anchor=east, align=right, text=tkRed] at (-0.35,0.30) {e2m1\\{\tiny 2E+1M}};
     \draw[thick] (0,0) -- ({6*\us},0);
@@ -45,7 +45,7 @@ fused 进尽量少的 kernel。
       \node[above, font=\tiny, inner sep=1pt] at (\xx,0.64) {\vl};
     }
     \node[anchor=south, font=\tiny, align=center] at ({3*\us},0.78)
-      {16 个码点中正半轴（含 0）仅 8 个，相对步长 $\approx$25\%\\格距 0.5/0.5/0.5/0.5/1/1/2 逐级加倍};
+      {16 个码点中正半轴（含 0）仅 8 个，相对误差上界 $\approx$25\%\\格距 0.5/0.5/0.5/0.5/1/1/2 逐级加倍};
     \foreach \gx/\gl in {0.55/0.5,1.65/0.5,2.75/0.5,3.85/0.5,5.5/1,7.7/1,11.0/2}{
       \node[below, font=\tiny, inner sep=1pt] at (\gx,-0.16) {\gl};
     }
@@ -60,8 +60,8 @@ fused 进尽量少的 kernel。
      （第~\ref{ch:33}~章 33.3.3~节的 tol 分档依据）。};
 \end{tikzpicture}
 \caption{e2m1 vs e4m3 的格点数轴（同一 $[0,6]$ 区间）。上：e4m3 每个 binade 8 个
-格点、相对步长 6.25\%，满量程 $\pm448$；下：e2m1 正半轴全部格点仅
-$\{0,0.5,1,1.5,2,3,4,6\}$、相对步长约 25\%，$[4,6]$ 段相对间距最大（+50\%）。
+格点、相对误差上界 6.25\%，满量程 $\pm448$；下：e2m1 正半轴全部格点仅
+$\{0,0.5,1,1.5,2,3,4,6\}$、相对误差上界约 25\%，$[4,6]$ 段相对间距最大（+50\%）。
 fp4 的容差天然比 fp8 宽一个量级的格式层根源。}
 \label{fig:31-e2m1-grid}
 \end{figure}
@@ -76,7 +76,7 @@ ffpa-attn 的 fp4 路径移植自 SageAttention3 的 Blackwell kernel
 \section{问题与动机}
 
 e2m1 的动态范围限制分两层。fp8 路径里 per-block/per-thread scale 已经把
-相对步长压到 6.25\%；e2m1 再把尾数从 3 位压到 1 位、指数从 4 位压到 2 位后，单块内
+相对误差上界压到 6.25\%；e2m1 再把尾数从 3 位压到 1 位、指数从 4 位压到 2 位后，单块内
 $\mathrm{amax}$ 与其余元素的分辨率差距被放大到无法忽略。更关键的是
 分布中心：attention 的 Q/K 行向量常带系统性均值偏移（randn 输
 入下均值不为零，真实模型里更明显），若直接量化
@@ -545,7 +545,7 @@ NVFP4 的 $1\times16$ microscaling 块如何配平 e2m1 与 ue4m3 两级尺度�
     \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=0.52cm, minimum height=0.49cm, inner sep=1pt, align=center, text width=0.46cm, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkGreen!70!black} }] at (12.181,-1.725) {e};
     \node[draw=tkBlue, fill=tkFillBlue, line width=0.5pt, minimum width=0.52cm, minimum height=0.49cm, inner sep=1pt, align=center, text width=0.46cm, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkBlue} }] at (12.751,-1.725) {m};
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (9.394,-2.218) {值域 {0, $\pm$0.5, $\pm$1, $\pm$1.5, $\pm$2, $\pm$3, $\pm$4, $\pm$6}$\times$2\^{}e，满量程 6};% w=8.008
-    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkRed} }] at (9.394,-2.526) {相对步长 $\approx$ 25\%（fp8 e4m3 为 6.25\%）};% w=8.008
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkRed} }] at (9.394,-2.526) {相对误差上界 $\approx$ 25\%（fp8 e4m3 为 6.25\%）};% w=8.008
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkPurple} }] at (9.394,-2.972) {ue4m3 尺度（8 bit）：4 指数 + 3 尾数（无符号）};% w=8.008
     \node[draw=tkPurple, fill=tkFillPurple, line width=0.5pt, minimum width=0.46cm, minimum height=0.49cm, inner sep=1pt, align=center, text width=0.40cm, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkPurple} }] at (11.011,-3.45) {e};
     \node[draw=tkPurple, fill=tkFillPurple, line width=0.5pt, minimum width=0.46cm, minimum height=0.49cm, inner sep=1pt, align=center, text width=0.40cm, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkPurple} }] at (11.519,-3.45) {e};

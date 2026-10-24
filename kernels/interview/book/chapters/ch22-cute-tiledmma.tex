@@ -92,8 +92,8 @@ $S_{64\times64} = Q_{64\times64} K^T_{64\times64}$（每个 d-chunk），PV 步�
   \item \textbf{K 方向怎么切}：tile 的 K 长度是 64，而原子是 16，于是 fragment
         多出一个 $\mathrm{MMA}_K$ mode。
   \item \textbf{两个不同形状的 tile 怎么并存}：QK 要大 tile（省循环、提高
-        计算密度），PV 要小 N tile（控制 acc\_O 寄存器），它们必须共享
-        同一套线程/值编号。
+        计算密度），PV 要小 N tile（控制 per-call 视图与临时开销），它们
+        必须共享同一套线程/值编号。
 \end{itemize}
 
 CuTe 的答案是把这四件事压进一个类型：\texttt{Tiled\allowbreak{}MMA\allowbreak{}<MMA\_\allowbreak{}Atom,\allowbreak{}
@@ -461,7 +461,8 @@ $[0,64)$，这就是 $\mathrm{ThrM}=4$、$\mathrm{atom}_M=16$ 的直接推论。
         沿 N 铺的 $8$ 列原子数是 $\mathrm{MMA}_N = 8$，与置换参数的
         $(64,64,16)$ 不是同一层级；
   \item \texttt{TiledMmaPV}：同样的 warp 排布，tile 换成 $(64,16,16)$：
-        N 方向只留 16，因为 acc\_O 要常驻寄存器；
+        N 方向只留 16，以缩小单次调用的 C fragment 与临时量；跨 chunk 的
+        acc\_O 总量仍由输出形状 $B_rD$ 与线程数决定；
   \item 两个 \texttt{Copy\_Atom}：\texttt{LDSM\_N}（正常读）与
         \texttt{LDSM\_T}（转置读 V），它们是第~\ref{ch:21}~章
         \texttt{make\_\allowbreak{}tiled\_\allowbreak{}copy\_\allowbreak{}B} 的原子参数。
@@ -473,15 +474,17 @@ $\mathrm{MMA}_N = 8$（$8$ 个 $8$ 列的原子），全部落在同一个 warp 
 同一批寄存器里；这对应注释里的\textbf{EURepeat$=<1,8,1>$}。
 
 为什么 PV 用 $64\times16$？因为 acc\_O 是 $64\times D$-chunk $\times$
-$D$ 方向 chunk 数的大数组。每线程每个 chunk 32 个 float，
-$D=512$ 时 $8$ 个 chunk 共 256 个寄存器，这已经逼近寄存器文件的上限
-（第~\ref{ch:19}~章的寄存器压力讨论）。
+$D$ 方向 chunk 数的大数组。每线程每个 chunk 有 32 个 f32 逻辑累加值，
+$D=512$ 时 $8$ 个 chunk 共 256 个，已超过每线程 255 个 32-bit 寄存器的
+硬上限；再计入其他临时量后必然需要 spill（第~\ref{ch:19}~章的寄存器
+压力讨论）。
 
 反过来，若把 PV 的 N 也取 64，单次 gemm 调用的 C 视图会从 8 涨到 32、
-B fragment 随之线性增长，S$\to$R 拷贝粒度变粗，常驻 acc\_O 并不变。
+B fragment 随之线性增长，S$\to$R 拷贝粒度变粗，acc\_O 的总量并不变。
 实测 PV 在 $(64,16)$ 的 C 上
 每线程 $(4,1,2) = 8$ 个 float，与注释\textbf{EURepeat$=<1,2,1>$}一致。
-tile 的 N 尺寸是 per-call C 视图与拷贝粒度的旋钮。
+tile 的 N 尺寸控制的是 per-call C 视图、B fragment 与拷贝粒度，而不是
+常驻 acc\_O 的大小。
 
 \paragraph{实践须知}（读 FFPA traits 注释时容易踩的两处）
 \begin{itemize}
@@ -532,7 +535,7 @@ $=(4,1,8)=32$），所有 d-chunk 的 QK 结果累加到同一份 $S$ 寄存器�
 Split-D 的数学 $S=\sum_{d} Q_d K_d^T$ 用累加器直接表达。
 \end{sloppypar}
 
-\subsection{QK$\to$PV：fragment 的原地复用}
+\subsection{QK$\to$PV：fragment 的类型转换与布局复用}
 
 softmax 之后，$S$ 要变成 PV 的 A 矩阵 $P$。FFPA 不把 $P$ 写回 smem，而是
 原地重解释（L300--305）：
@@ -541,11 +544,14 @@ softmax 之后，$S$ 要变成 PV 的 A 矩阵 $P$。FFPA 不把 $P$ 写回 smem
   title={ffpa\_attn.cuh L300-305（把 QK 的 C fragment 重解释为 PV 的 A fragment）}]{../ffpa_attn.cuh}
 
 \begin{sloppypar}
-\texttt{convert\_\allowbreak{}type\allowbreak{}<half>} 做 fp32$\to$fp16 的类型转换（零拷贝，只改元素
-类型解释）；\texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}Aregs\allowbreak{}<}\allowbreak
-\texttt{TiledMmaPV>} 把 C 的寄存器排布（4 个 float 按 2 行 $\times$ 2 列）
-重排成 A 的排布（2 行 $\times$ 2 个 K 元素）。这一步之所以可行，是两个
-fragment 的寄存器\emph{物理}布局恰好兼容：m16n8k16 的 C 与 A 在同一个 lane
+\texttt{convert\_\allowbreak{}type\allowbreak{}<half>} 用
+\texttt{NumericArrayConverter} 做 fp32$\to$fp16 的数值转换并产生新的
+f16 fragment，不是对原 f32 数据的零拷贝重解释；
+\texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}Aregs\allowbreak{}<}\allowbreak
+\texttt{TiledMmaPV>} 随后只做布局重解释：C 的 4 个 float 按
+2 行 $\times$ 2 列组织，A 的 4 个 u32 则按 2 行 $\times$ 2 个 K 向切片
+组织，每片含 2 个 half，共 8 个 half。这一步之所以可行，是两个
+fragment 的逻辑线程--值映射恰好兼容：m16n8k16 的 C 与 A 在同一个 lane
 上都持有 2 个相邻列 $+$ 2 个相隔 8 的行，所以只需重新映射索引。
 \textbf{这是依赖具体 atom 的优化，不是 TiledMMA 的通用性质}（源码注释在
 flash\_attn.cuh~L2341--2372 明确写了这一点，第~\ref{ch:25}~章会再展开）。
@@ -665,17 +671,19 @@ QK$\to$PV 这一步的两套寄存器坐标见图~\ref{fig:22-aregs-reuse}。
      A 的\textbf{相邻 $k$ 对}，A 的 $K{=}16$ 由相邻两个 n8 atom 提供（$S$ 上相邻
      的 $16$ 列）。两侧高亮的是\emph{同一个} lane 0 的同一批 $8$ 个逻辑
      元素：左边是 $8$ 个 f32 槽，右边折成 $4$ 个 u32（每槽 $2$ 个相邻 $k$ 的
-     half）。全程零拷贝，且依赖 m16n8k16 的特定 fragment 约定——
+     half）。f32$\to$f16 会产生新的 fragment；不搬数据的只是随后的 Aregs
+     布局重解释。两者都依赖 m16n8k16 的特定 fragment 约定——
      不是 TiledMMA 的通用性质。};
 \end{tikzpicture}
-\caption{QK$\to$PV 的寄存器原地复用：两侧网格是同一个 $16\times16$ 坐标空间
-（$S$ 的列 $=$ $P$ 的 $K$），高亮的是 lane 0 在同一批元素上的两套坐标。
-左（C 视角）：每个 n8 atom 给 lane 0 留下 $4$ 个 f32 累加器（$2$ 行
-$\times$ $2$ 相邻列），两个相邻 atom 共 $8$ 个；右（A 视角）：同样 $8$ 个
-逻辑元素被解释成 $4$ 个 u32，每槽 $2$ 个相邻 $k$ 的 half，可直接作为
-\texttt{gemm\_rs} 的 \texttt{tCrA}。\texttt{convert\_type<half>}
-（fp32$\to$fp16，寄存器减半）$+$ \texttt{convert\_layout\_acc\_Aregs}
-（$N$ 方向按 $2$ 切分的索引重解释）就是这条\textbf{P 不写回 smem}路径的全部代价。}
+\caption{QK$\to$PV 的逻辑元素复用与布局重解释：两侧网格是同一个
+$16\times16$ 坐标空间（$S$ 的列 $=$ $P$ 的 $K$），高亮的是 lane 0 在
+同一批逻辑元素上的两套坐标。左（C 视角）：每个 n8 atom 给 lane 0 留下
+$4$ 个 f32 累加器（$2$ 行 $\times$ $2$ 相邻列），两个相邻 atom 共 $8$ 个；
+右（A 视角）：同样 $8$ 个逻辑元素被解释成 $4$ 个 u32，每槽 $2$ 个相邻 $k$
+的 half，可直接作为 \texttt{gemm\_rs} 的 \texttt{tCrA}。
+\texttt{convert\_type<half>} 负责 fp32$\to$fp16 的数值转换并产生新 fragment，
+\texttt{convert\_layout\_acc\_Aregs} 再把索引重解释为 A 布局；两步都不需要
+把 P 写回 smem。}
 \label{fig:22-aregs-reuse}
 \end{figure}
 
@@ -688,7 +696,7 @@ $\times$ $2$ 相邻列），两个相邻 atom 共 $8$ 个；右（A 视角）：
   \node[anchor=west, font=\footnotesize\bfseries] at (40,29)
     {TiledMMA partition —— QK $(64,64,64)$ \& PV $(64,16,16)$ on 128 threads (4 warps)};
   \node[anchor=west, font=\scriptsize] at (40,52)
-    {同组线程承载两个 tile：QK 大 tile 达吞吐上限，PV 小 tile 控制 acc\_O 寄存器};
+    {同组线程承载两个 tile：QK 大 tile 达吞吐上限，PV 小 tile 控制 per-call 视图与临时开销};
   \node[anchor=west, font=\scriptsize, text=tkBlue] at (40,88)
     {\textcircled{1} 线程划分：QK tile $(64\times64)$，4 个 warp 各覆盖 16 行};
   \foreach \rr/\wr in {0/{warp 0: rows [0, 16)}, 1/{warp 1: rows [16, 32)},
@@ -742,14 +750,14 @@ $\times$ $2$ 相邻列），两个相邻 atom 共 $8$ 个；右（A 视角）：
     \node[font=\tiny, text=gray!90] at ({84+96*\k},491) {32 float};
   }
   \node[anchor=west, font=\scriptsize\bfseries, text=tkOrange!80!black] at (846,443)
-    {合计 $= 256$ 寄存器};
+    {合计 $=256$ 个 f32 逻辑值};
   \draw[tkRed, very thick] (708,414) -- (708,474);
   \node[anchor=west, font=\tiny, text=tkRed] at (40,511)
-    {注意：acc\_O $=8$ chunk $\times$ 32 float $=256$ 寄存器，第 8 个（chunk 7）
-     越过 232 配额（第 19 章；红线右侧不可行，大 D 转 split-D）};
+    {注意：232 的 WS 配额会更早触及；总量 256 也已超过 255 硬上限，必须 spill，
+     Split-D 本身并不降低 acc\_O 总量};
   \node[anchor=west, font=\tiny] at (40,535)
-    {PV tile $(64,16,16)$：MMA\_N $= 2$（$16/8$），N 方向只重复 2 个原子——用吞吐换
-     acc\_O 可控，这是 FFPA 的核心权衡};
+    {PV tile $(64,16,16)$：MMA\_N $= 2$（$16/8$），N 方向只重复 2 个原子，
+     控制 per-call C 视图与 B fragment 的临时开销};
   \node[anchor=west, font=\tiny, text=gray!90] at (40,559)
     {实测：本章 case~C--F 对上述全部形状与覆盖逐点核对（\texttt{static\_assert} $+$ 打印）};
 \end{tikzpicture}
@@ -757,8 +765,9 @@ $\times$ $2$ 相邻列），两个相邻 atom 共 $8$ 个；右（A 视角）：
 16 行，warp 内 N 方向重复 8 个原子；A/B/C 三种 fragment 的每线程形状与
 重复因子（式~\eqref{eq:22-dup}）。下半部分是 PV 的 $(64,16,16)$ tile：
 N 方向只重复 2 个原子，代价换来 per-call C 视图与拷贝粒度可控（8 个
-d-chunk 各自拷回，acc\_O 总量只由 $D$ 决定——$8\times32=256$ 寄存器，
-与 N tile 无关；N tile 取 64 只是单次调用的 C fragment 临时 4 倍）。}
+d-chunk 各自拷回，acc\_O 总量只由 $D$ 决定——$8\times32=256$ 个 f32
+逻辑值，与 N tile 无关；这些逻辑值超过 255 个寄存器的硬上限时需要 spill，
+N tile 取 64 只是单次调用的 C fragment 临时 4 倍）。}
 \label{fig:22-1}
 \end{figure}
 
@@ -909,11 +918,12 @@ d-chunk 各自拷回，acc\_O 总量只由 $D$ 决定——$8\times32=256$ 寄�
 atom 每线程的 C 值数 $4$，Nrep 是 chunk 内 N 方向的重复数 $64/16=4$）
 $=8\times4\times1\times2\times4=256$。PV 的
 $\mathrm{MMA}_N = 2$（$16/8$）时每个 $64\times64$ d-chunk 每线程是 32 个
-float；$D=512$ 时 $8$ 个 chunk 共 256 个寄存器。tile N=64 时单次 gemm 调用
-的 C fragment 从 8 值涨到 32 值（4 倍），常驻 acc\_O（8 chunk $\times$ 32
-$=$ 256 float）不变，N tile 带来的增量超支在每次调用的临时视图与 B
-fragment，不在累加器。FFPA 注释里 PV 保持小 tile 的算术依据正在于此：压的是每次调用的
-临时开销，而非 acc\_O。
+f32 逻辑累加值；$D=512$ 时 $8$ 个 chunk 共 256 个，已超过 255 个寄存器的
+硬上限，需要 spill。tile N=64 时单次 gemm 调用的 C fragment 从 8 值涨到
+32 值（4 倍），acc\_O 的逻辑总量（8 chunk $\times$ 32 $=$ 256 float）不变，
+N tile 带来的增量超支在每次调用的临时视图与 B fragment，不在累加器。
+FFPA 注释里 PV 保持小 tile 的算术依据正在于此：压的是每次调用的
+临时开销，而非 acc\_O 的总量。
 
 \textbf{指标二（重复因子）}：B 的 fragment 按 M-warp 数重复（式~\eqref{eq:22-dup}）。
 QK 用 $(4,1,1)$ 排布时 B 重复 4 倍（$4\times32=128$ 个 half/线程），
@@ -1011,8 +1021,9 @@ $(\mathrm{ThrV},(\mathrm{ThrM},\mathrm{ThrN}),\mathrm{ThrK})$，得到一个
 只属于该线程的 ThrMMA，后续 partition 都基于它。
 
 \textbf{Q6：QK 与 PV 为什么要用两个 TiledMMA？}\\
-A：目标不同。QK 要一次覆盖整个 $S$（N $=64$）省循环；PV 的 N 直接决定
-acc\_O 的寄存器数，必须小。两者共享同一套 128 线程排布，fragment 通过
+A：目标不同。QK 要一次覆盖整个 $S$（N $=64$）省循环；PV 的 N 控制单次
+调用的 C 视图、B fragment 与拷贝粒度，而 acc\_O 的逻辑总量由输出形状和
+线程数决定，不随 N tile 缩小。两者共享同一套 128 线程排布，fragment 通过
 类型转换 $+$ 布局重解释衔接。
 
 \textbf{Q7：\texttt{tile\_\allowbreak{}size\allowbreak{}<I>\allowbreak{}(mma)} 有什么用？}\\
@@ -1024,8 +1035,9 @@ TiledMMA 与 TiledCopy 通过它解耦：改 tile 不影响拷贝代码。
 A：单次调用 C fragment 每线程元素数 $=\mathrm{MMA}\times\mathrm{MMA}_M\times
 \mathrm{MMA}_N$，而 $\mathrm{MMA}_N = \mathrm{tile}_N/\mathrm{atom}_N$：
 tile N 增大时 per-call C 视图与 B fragment 随之线性增长，S$\to$R 拷贝
-粒度变粗；常驻 acc\_O（$D=512$ 时 256 个寄存器）不变，PV 因此取
-$\mathrm{tile}_N=16$（$64\times16\times16$）。
+粒度变粗；acc\_O 的逻辑总量（$D=512$ 时为 256 个 f32 值）不变，超过
+255 个寄存器时需要 spill。PV 因此取 $\mathrm{tile}_N=16$
+（$64\times16\times16$）来控制单次调用的临时开销。
 
 \section{最小测试与动手实验}
 

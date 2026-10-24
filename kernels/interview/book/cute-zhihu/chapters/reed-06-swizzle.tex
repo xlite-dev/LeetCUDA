@@ -74,7 +74,7 @@ cute中通过swizzle抽象来实现共享内存bank conflict的冲突解决。�
 
 如图8所示，当B = 1, M= 1，S = 2时，M描述了一维坐标连续的两个元素构成一个二维空间的元素，S描述了形成二维空间后的元素的个数，B描述了形成二维空间的行数，如此我们便得到了图2-D(a)，其二维空间包含二行四列，基本单元包含两个元素。然后我们对二维空间中的列坐标和对应的行坐标进行异或得到新的列号(icol = irow \textasciicircum{} icol)，形成2-D(b)。如果一维坐标映射后超过了 $2^B$ 的大小，则超出的部分的行号从0开始记，但是offset上要加上前面的所有的元素个数。
 
-在实际操作时，如我们有一块half类型，shape:(8, 32), stride: (32, 1)的共享内存，我们定义Swizzle$<$3, 3, 3$>$作用到该shared memory Layout上，形成 A = Composition(Swizzle$<$3, 3, 3$>$\{\}, Layout$<$Shape$<$8, 32$>$, Stride$<$32, 1$>$$>$\{\}); 则Layout中有效的offset为0 - 256。Swizzle中M为3，所以8个元素形成一个新的最小的元素，即8x2byte = 16byte；Swizzle中S为3，所以2D空间中一行包含8个元素，则有8x16byte = 128byte，128byte为shared memory无conflict访问所有bank的最大宽度；Swizzle中B为3，则2D空间irow更新的间隔为8。如此则实现了将一个逻辑的空间向2D的shared memory空间的映射，其中列的宽度为128byte占满所有的bank，行列异或后得到新的列号，避免了在bank方向（亦即icol方向）的冲突。
+在实际操作时，如我们有一块half类型，shape:(8, 32), stride: (32, 1)的共享内存，我们定义Swizzle$<$3, 3, 3$>$作用到该shared memory Layout上，形成 A = Composition(Swizzle$<$3, 3, 3$>$\{\}, Layout$<$Shape$<$8, 32$>$, Stride$<$32, 1$>$$>$\{\}); 则Layout中有效的offset为0--255（cosize = 256）。Swizzle中M为3，所以8个元素形成一个新的最小的元素，即8x2byte = 16byte；Swizzle中S为3，所以2D空间中一行包含8个元素，则有8x16byte = 128byte，128byte为shared memory无conflict访问所有bank的最大宽度；Swizzle中B为3，则2D空间irow更新的间隔为8。如此则实现了将一个逻辑的空间向2D的shared memory空间的映射，其中列的宽度为128byte占满所有的bank，行列异或后得到新的列号，避免了在bank方向（亦即icol方向）的冲突。
 
 \section{Thread Block Swizzle}
 

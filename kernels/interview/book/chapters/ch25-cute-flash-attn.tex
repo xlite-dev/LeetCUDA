@@ -276,7 +276,7 @@ online softmax 需要按行操作 S（行 max、行内 exp、行和）。但
 看 $m16n8$ 的 C fragment 约定：4 个寄存器 $(c_0,c_1,c_2,c_3)$ 中
 $(c_0,c_1)$ 是同一行、相邻两列（列偏移 $+1$），$(c_2,c_3)$ 是行偏移 $+8$ 的
 另一组两列。即寄存器编号的 bit0 = 列、bit1 = 行（$+8$），对应
-$\mathrm{MMA}=4 \to (2_{\text{行}},2_{\text{列}})$ 的
+$\mathrm{MMA}=4 \to (2_{\text{列}},2_{\text{行}})$ 的
 \texttt{logical\_\allowbreak{}divide} 分解；再与 $\mathrm{MMA\_M}/\mathrm{MMA\_N}$
 里的 rest 段对应后，$\mathrm{nrow}=2\cdot \mathrm{MMA\_M}$、
 $\mathrm{ncol}=2\cdot \mathrm{MMA\_N}$。实测（$D{=}64$、$B_r{=}128$）：
@@ -290,11 +290,11 @@ $\mathrm{ncol}=2\cdot \mathrm{MMA\_N}$。实测（$D{=}64$、$B_r{=}128$）：
 变换后的 tensor 与原 tensor 共享数据指针（同一组寄存器），
 只是索引语义变了：\texttt{scores(r, c)} 的 $r$ 是行、$c$ 是列，
 于是行归约可以写成 \texttt{for c: max}，再对 4-lane 子组做两次
-\texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor\_\allowbreak{}sync}（步长 1、2）。为什么是 4-lane？因为
-式~\eqref{eq:25-rowcol-num} 里 $r$ 的第二个 mode（$\mathrm{MMA\_M}$ 的 rest）
-在 lane 内的宽度是 $2\times2=4$：$\mathrm{lane}/4$ 决定行号
-（寄存器对给 $+8$ 行），$\mathrm{lane}\bmod4$ 决定行内 4 个列片段
-之一，两次蝶形恰好把 4 条 lane 的行片段合并。图~\ref{fig:25-rowcol-shfl}
+\texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor\_\allowbreak{}sync}（步长 1、2）。4-lane 来自
+C fragment 的 lane 排布，而不是式~\eqref{eq:25-rowcol-num} 的
+$\mathrm{MMA\_M}=1$：$\mathrm{lane}/4$ 决定行组，寄存器对再给 $+8$ 行；
+$\mathrm{lane}\bmod4$ 决定行内 4 个列片段。每 lane 先归约自己持有的
+\texttt{ncol} 个值，两次蝶形再把 quad 的 4 个片段合并。图~\ref{fig:25-rowcol-shfl}
 把这次重排的两层分别画出：4 个寄存器怎么分成\textbf{行身份}与\textbf{列片段}，
 以及两次 \texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor\_\allowbreak{}sync} 如何把 quad 的 4 个片段并成整行。
 
@@ -524,14 +524,17 @@ $(c_2,c_3)$ 行偏移 $+8$，即 bit0$=$列、bit1$=$行）；右图按 $k16$ A 
 \end{equation}
 
 式子的物理含义即前文那句话：$S$ 的列方向两个值（$+0$ 与 $+1$ 列）成为 A 的
-K 向连续 2 个元素。实测结果是 $((2,2),2),1,4$：仍是 32 个元素、原寄存器，
-只是 type 从 f32 转换为 f16；\texttt{convert\_\allowbreak{}type}（L2375--2395）按当前
-布局的连续段做一次向量化批量转换。
+K 向连续 2 个元素。Aregs 重解释后的布局含 32 个逻辑元素，不搬动底层数组；
+\texttt{convert\_\allowbreak{}type}（L2375--2395）则把这 32 个值从 f32 数值转换为
+f16 并产生新的 fragment。两步合起来不需要 smem 往返，但不能把 f16 结果
+称为原 f32 寄存器，也不能说转换器按当前 layout 的连续段分组。
 
 \begin{remark}
   式~\eqref{eq:25-aregs} 的成立依赖 $m16n8k16$ 的\textbf{特定} fragment
-  约定，它不是通用性质。换成 $k8$ 的 atom 或 Hopper 的 wgmma（操作数在
-  寄存器文件之外）就得另写。源码注释 L2360--2362 特意标注了这一点，
+  约定，它不是通用性质。换 atom 必须重推线程--值映射：SM80 的 $k8$ atom
+  与 C 使用相同的 \texttt{SM80\_16x8\_Row}，可以把 16 列拆成两次 $k8$ PV
+  并继续复用布局；Hopper wgmma 的操作数约定不同，则需另写。源码注释
+  L2360--2362 特意标注了这一前提，
   是本章\textbf{常见坑}第六条的规范来源。几何法与代数法都改不了这个前提：
   布局代数能推导坐标，不能改变约定。
 \end{remark}
@@ -541,10 +544,10 @@ K 向连续 2 个元素。实测结果是 $((2,2),2),1,4$：仍是 32 个元素�
 四个实现里有两种异步机制，它们的等待语义需要在数学上对齐。
 
 cp.async 的组栈：\texttt{cp.\allowbreak{}async.\allowbreak{}commit\_\allowbreak{}group} 把当前在途的搬运
-压栈，\texttt{cp.\allowbreak{}async.\allowbreak{}wait\_\allowbreak{}group N} 等的是栈顶往下恰好 $N$ 组未完成，
-即已完成组数 $\ge$ 总组数 $-N$。对深度 $k$ 的 software pipeline，提交顺序是
-V[tile]（栈底）→ K[tile+k-1]（栈顶），于是 \texttt{wait\_group 1} 的含义是
-除栈顶的 K 之外全部完成，也就是 V[tile] 已就绪、K[next] 还 inflight。实现 1
+压栈，\texttt{cp.\allowbreak{}async.\allowbreak{}wait\_\allowbreak{}group N} 等待到\emph{最多只有最近 $N$ 组}
+仍未完成；较早提交的组已完成。对深度 $k$ 的 software pipeline，提交顺序是
+V[tile]（栈底）→ K[tile+k-1]（栈顶），于是 \texttt{wait\_group 1} 保证
+V[tile] 已就绪，并允许 K[next] 仍在途（它也可能已经完成）。实现 1
 靠这条栈语义把 V 与 K 的等待分开（L2743--2754）：$kStagesK>1$ 且非尾部时用 \texttt{cp\_\allowbreak{}async\_\allowbreak{}wait\allowbreak{}<1>}，
 尾部退回 \texttt{wait<0>}。注意组编号是按线程独立计数的
 （PTX ISA §9.7.9.25.3.3：wait 只保证\emph{本线程}提交的组完成），所以实现 1
@@ -629,12 +632,13 @@ CuTe 的 \texttt{arrive\_\allowbreak{}and\_\allowbreak{}expect\_\allowbreak{}tx}
   \draw[dashed,thick,tkPurple] (-0.05,-0.7) rectangle (1.75,-1.8);
   \node[axl,anchor=west] at (1.87,-1.25) {\texttt{wait}$<1>$ 的完成区：栈顶之外全部};
   \node[nt,anchor=north west,text width=10.9cm] at (4.9,0.3)
-    {\texttt{wait\_group N} 等\textbf{已完成组数 $\ge$ 总组数 $-N$}，故
-     \texttt{wait}$<1>$ 等价于\textbf{$V[t]$ 就绪、$K$ 仍在途}——实现 1 靠这条栈语义把
-     V 与 K 的等待分开（L2743--2754）。\\[2pt]
+    {\texttt{wait\_group N} 等待到\textbf{最多只有最近 $N$ 组未完成}，故
+     \texttt{wait}$<1>$ 保证\textbf{$V[t]$ 就绪}，并允许 $K$ 在途
+     （$K$ 也可能已完成）。实现 1 靠这条栈语义分开 V 与 K 的等待
+     （L2743--2754）。\\[2pt]
      \textbf{坑五（尾部退化）}：$kStagesK{-}1$ 个尾部 tile 不预取 K，栈里只剩 V 组，
-     PV 前必须退回 \texttt{wait}$<0>$——否则等的是不存在的组，
-     行为是\textbf{等很久后照样算完}，流水被拖成同步。\\[2pt]
+     PV 前必须退回 \texttt{wait}$<0>$。若误用 \texttt{wait}$<1>$，它允许这一组
+     V 仍未完成，可能立即放行并造成 V 未就绪的竞态，而不是等待不存在的组。\\[2pt]
      \textbf{坑二（按线程独立计数）}：组编号按线程私有（PTX ISA
      §9.7.9.25.3.3），所以每处 \texttt{wait} 后都跟一次
      \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads()}，跨线程可见性靠它兜底，不是冗余。};
@@ -774,14 +778,14 @@ $(32,8){:}(8,1)$ 铺满 256 个线程，值布局 $(1,8)$ 表示每线程一次�
 
 主循环的等待策略是这个 kernel 最需要理解的一段：
 
-\lstinputlisting[linerange={2694-2706,2724-2741,2786-2798},firstnumber=auto,
-  title={flash\_attn.cuh L2694-2706 + L2724-2741 + L2786-2798（实现 1 主循环：等待、softmax、epilogue）}]{../flash_attn.cuh}
+\lstinputlisting[linerange={2694-2706,2724-2741,2786-2803},firstnumber=auto,
+  title={flash\_attn.cuh L2694-2706 + L2724-2741 + L2786-2803（实现 1 主循环：等待、softmax、epilogue）}]{../flash_attn.cuh}
 
 $kStagesK>1$ 时 QK 前不等待，因为 K[tile] 在上一轮循环末尾的
 \texttt{wait<0>} 里已经等过（图~\ref{fig:25-proto} 生产者流程的 cp.async 版本）。
 $PV$ 前的等待则要区分栈顶是否还有 K：还有 K 时用 \texttt{wait<1>}，
-尾部没有 K 时\textbf{必须}退回 \texttt{wait<0>}（否则等的是不存在的
-组，V 可能未就绪）。
+尾部没有 K 时\textbf{必须}退回 \texttt{wait<0>}；否则 \texttt{wait<1>}
+会允许 V 组仍未完成，可能直接放行并读到未就绪的 V。
 
 这类栈深度随循环位置变化的推理靠 6 个同步点逐点注释维持。这 6 步注释
 就在源码块开头（L2516--2528），与代码逐点核对一一对应：
@@ -792,7 +796,7 @@ PV 前的分支、循环末尾的 \texttt{wait<0>} $+$ 同步。读这段代码�
 理清依赖关系。
 
 softmax 段与 epilogue 段没有地址算术，样本就是上面代码块的二、三段
-（L2724--2741 与 L2786--2798）。$kRows$、
+（L2724--2741 与 L2786--2803）。$kRows$、
 \texttt{size\allowbreak{}<1>\allowbreak{}(scores)} 都是布局推导出的常量；epilogue 用
 \texttt{partition\_\allowbreak{}C\allowbreak{}(g\allowbreak{}O)} 得到寄存器与 gmem 的对应，\texttt{copy()} 直接
 R$\to$G。对照第~\ref{ch:16}~章手写版的 epilogue：那里要手工处理
@@ -944,7 +948,7 @@ KV 划分 & 单流全遍历 & 单流全遍历 & 奇偶拆给两个 consumer \\
   \node[sub] at (5.10,-4.18) {V-first, K-after};
   \node[sub] at (5.10,-4.44) {早释放 K};
   \node[sub] at (10.05,-3.66) {\textbf{384 = 128P + 2$\times$128C}};
-  \node[sub] at (10.05,-3.92) {cid = tile XOR 1 路由};
+  \node[sub] at (10.05,-3.92) {cid = tile \& 1 路由};
   \node[sub] at (10.05,-4.18) {每 C 独立 bank 屏障};
   \node[sub] at (10.05,-4.44) {收尾 smem scratch $+$ 归并};
   \node[sub] at (10.05,-4.70) {(max pivot)};
@@ -1059,20 +1063,22 @@ CuTe 推导 \texttt{ldmatrix.\allowbreak{}trans} 的线程-数据映射时会与
 \textbf{坑五：\texttt{K} 的预取深度与尾部退化。}
 $kStagesK>1$ 时 K 的预取位置是 \texttt{tile + kStagesK - 1}，尾部
 $kStagesK{-}1$ 个 tile 不预取；此时栈里只剩 V 组，PV 前的 \texttt{wait<1>}
-必须退化为 \texttt{wait<0>}（L2748--2753）。漏掉这个分支，尾部两个 tile
-会等一个不存在的组，行为是等很久后照样算完（组计数不会变负），
-但流水被拖成同步。
+必须退化为 \texttt{wait<0>}（L2748--2753）。漏掉这个分支，
+\texttt{wait<1>} 会允许这一组 V 仍未完成，可能立即返回并读取未就绪的 V。
+它是正确性竞态，不是“等一个不存在的组、等很久后仍能算完”。
 
 \textbf{坑六：\texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}Aregs} 依赖 $m16n8k16$ 约定。}
 式~\eqref{eq:25-aregs} 的 C 的后 2 值 $\leftrightarrow$ A 的 K 向连续 2 值
 是 $m16n8k16$ 的 fragment 约定的推论，源码 L2360--2362 特意标注\textbf{不是通用
-性质}。换 atom（如 $k8$ 或 wgmma）必须重推；照抄会得到静默错数据。
+性质}。换 atom 必须重推；SM80 $k8$ 的 A/C 布局相同，可拆两次 PV，
+而 wgmma 等不同约定需要另写，照抄才可能得到静默错数据。
 
-\textbf{坑七：P 的类型转换与布局重解释的先后顺序。}
-正确顺序是 \texttt{convert\_\allowbreak{}type\allowbreak{}<Element>\allowbreak{}(t\allowbreak{}Cr\allowbreak{}S)} 再做
-\texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}Aregs}（实现 1 的 L2762--2766）：
-\texttt{convert\_\allowbreak{}type} 用 \texttt{Numeric\allowbreak{}Array\allowbreak{}Converter} 按\emph{当前}
-layout 的连续段做向量化转换，先改布局会让转换作用于错误的元素分组。
+\textbf{坑七：区分 P 的类型转换与布局重解释。}
+当前源码顺序是 \texttt{convert\_\allowbreak{}type\allowbreak{}<Element>\allowbreak{}(t\allowbreak{}Cr\allowbreak{}S)} 再做
+\texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}Aregs}（实现 1 的 L2762--2766）。
+但 \texttt{convert\_\allowbreak{}type} 的 \texttt{NumericArrayConverter} 只看底层平坦
+数组，不按当前 layout 的连续段分组；Aregs 则只重解释索引。不能用
+“反序会转换错误元素分组”解释这段代码，也不能把数值转换称为原数据零拷贝。
 
 \textbf{坑八：f32 累加与 exp2 的缩放折叠。}
 三处实现都写 \texttt{scale = rsqrtf(D) * M\_LOG2E}、用
@@ -1098,21 +1104,23 @@ $\langle4,1,1\rangle$ 的 $M$ 是 64。若 warp 数与 tile 不匹配，
 （静默低效）。
 
 \textbf{Q3：\texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}rowcol} 之后为什么是 4-lane 归约？}\\
-A：$m16n8$ 的 C fragment 里，同一行的 2 个片段分布在 lane $\bmod 4$ 的
-不同值上（式~\eqref{eq:25-rowcol-num} 的 $(2,1)$ 结构）；两次
-\texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor\_\allowbreak{}sync}（步长 1、2）把宽度 4 的子组归约完，
-再乘以每线程的列数即可。宽了会重复计数、窄了会漏行。
+A：$m16n8$ 的 C fragment 里，同一行的列片段分布在 lane $\bmod 4$ 的
+4 条 lane 上。每 lane 先归约自己持有的 \texttt{ncol} 个值，再用两次
+\texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor\_\allowbreak{}sync}（步长 1、2）合并 quad 的 4 个片段；
+宽了会混入其他行，窄了会漏掉列片段。
 
-\textbf{Q4：P 为什么会零拷贝地变成 A 操作数？}\\
+\textbf{Q4：P 为什么不需要经 smem 就变成 A 操作数？}\\
 A：因为 $B_c$（S 的列）与 $PV$ 的 K 维是同一个物理维度，$m16n8k16$ 的
-C 与 A 在该维度上的 2 元素的对应方式恰好兼容（式~\eqref{eq:25-aregs}）。
-这是寄存器复用的经典技巧，CuTe 用一次 \texttt{logical\_\allowbreak{}divide} 表达，
-代价是把它从技巧变成了有条件的等式，条件写在注释 L2360--2362。
+C 与 A 在该维度上的线程--值映射恰好兼容（式~\eqref{eq:25-aregs}）。
+CuTe 用 \texttt{convert\_layout\_acc\_Aregs} 重解释布局；若 accumulator
+是 f32，还需先用 \texttt{convert\_type} 做数值转换并产生 f16 fragment。
+免掉的是 smem 往返，不是把转换全过程都称为零拷贝。
 
 \textbf{Q5：实现 2 的 V 为什么在 K 之前发 TMA？}\\
 A：等待顺序是先 K 后 V（QK 需要 K、PV 需要 V），但\emph{发射}顺序是
-V 先：V 的落盘窗口要横跨 QK+softmax 两段计算。这与实现 1 的
-V 最后发、等 wait<1> 形异实同：都是让 V 的延迟藏在 softmax 里。
+V 先：V 的落盘窗口要横跨 QK+softmax 两段计算。实现 1 同样是 V 先发、
+K 后发，只是用 cp.async 的 \texttt{wait<1>} 留下较新的 K 组；
+两者的目标都是让 V 的延迟藏在计算里。
 
 \textbf{Q6：四个实现里哪个最快？}\\
 A：本章不做这个断言（25.6 节）：四者的 tile、线程、流水深度都不同，

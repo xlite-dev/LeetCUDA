@@ -241,16 +241,17 @@ $M$ 维输出。$y$ 的每个元素要 $K$ 次乘 $K$ 次加，$\mathrm{FLOPs} =
 三个数量级，是彻底的 memory-bound。ch08 将看到三种 warp 划分方式如何逼近这
 0.5 对应的理论带宽。
 
-Softmax（逐 token，宽度 $N$）：对长度 $N$ 的行做 softmax：1 次 max
-比较、$N$ 次减法、$N$ 次 exp（每条计 2 FLOP，共 $2N$）、$N$ 次求和、$N$ 次除法，共约 $5N$
-FLOPs；访存是读入 $x$、写出 $y$ 各一次，$4 \times 2N$ 字节：
+Softmax（逐 token，宽度 $N$）：对长度 $N$ 的行做 softmax：$N$ 次减法、
+$N$ 次 exp（每条计 2 FLOP，共 $2N$）、$N$ 次求和、$N$ 次除法，共约 $5N$
+FLOPs（max 比较不计 FLOP）；访存是读入 $x$、写出 $y$ 各一次，$4 \times 2N$ 字节：
 \begin{equation}
   AI\sb{\mathrm{softmax}} = \frac{5N}{8N} = \frac{5}{8} = 0.625,
 \end{equation}
 与 base.cuh L85 的口径一致。ch04 的三级递进（naive $\to$ safe $\to$ online）
-优化的是访存趟数与同步次数（全局扫描与 block 同步同为 1 $\to$ 2 $\to$ 1），而 AI 的上限 0.625 告诉
-我们：无论怎么优化，它始终是 memory-bound，最终性能用离理论带宽多近来
-衡量。
+优化的是访存趟数与同步次数（全局扫描与 block 同步同为 1 $\to$ 2 $\to$ 1），而该口径下
+AI $=0.625$ 告诉我们：无论怎么优化，它始终是 memory-bound，最终性能用离理论带宽多近来
+衡量。（第~\ref{ch:04}~章按每元素 2 FLOP 的省算口径得 $0.25$，两者都远低于
+$AI^*$，bound 类别不变。）
 
 \subsection{Roofline 模型与 ridge point}
 

@@ -159,8 +159,9 @@ warp specialization 的配套机制是\textbf{寄存器池再分配}：producer 
 CTA 级寄存器池，\texttt{setmaxnreg.\allowbreak{}inc} 从池里请求补足到 $N$。
 
 PTX ISA §9.7.19.5 给出四条硬约束：立即数 $N \in [24, 256]$ 且为 8 的倍数。
-warpgroup 内 4 个 warp 必须\textbf{对齐执行同一条}指令（.aligned）。.dec 的目标值
-不得超过当前值、.inc 不得超过（否则未定义行为）。最关键的一条是
+warpgroup 内 4 个 warp 必须\textbf{对齐执行同一条}指令（.aligned）。.dec 的
+目标值不得高于当前值（当前 $\ge$ 目标），.inc 的目标值不得低于当前值
+（当前 $\le$ 目标）；方向反了就是未定义行为。最关键的一条是
 \texttt{setmaxnreg.\allowbreak{}inc} 的\textbf{阻塞语义}：池中寄存器不够时 warp 停在原地，
 不报错、不超时、永不返回。
 

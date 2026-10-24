@@ -23,7 +23,8 @@ attention kernel。
 \begin{itemize}[itemsep=1pt,topsep=2pt]
   \item \textbf{WS 双角色}（\S\ref{sec:26b-arch}）：128 线程 producer（只发 TMA）+
         256 线程 consumer（只做 MMA），\texttt{setmaxnreg} 把 producer 的寄存器
-        划给 consumer，这是 sm\_120 上把搬运与计算物理解耦的唯一手段；
+        划给 consumer。它是本设计控制寄存器压力的关键手段，不是
+        warp specialization 的必要条件；其他 WS kernel 可以不用它；
   \item \textbf{Q 寄存器持久化}（\S\ref{sec:26b-persistq}）：Q tile 对整个 KV 循环
         不变，smem$\to$寄存器只搬一次，之后每次 $QK^\top$ 都是 A-operand 常驻的
         \texttt{gemm\_rs}；
@@ -31,7 +32,9 @@ attention kernel。
         $s=\text{scale}\cdot\log_2 e$ 一次性乘进 Q fragment，softmax 的 max/exp
         两个循环里的逐元素乘法全部消失；
   \item \textbf{persistent CTA}（\S\ref{sec:26b-persistent}）：dense 场景 grid
-        收缩到 SM 数，每个 CTA 串行处理多个 q-tile，消除 wave 量化尾损。
+        收缩到 SM 数，每个 CTA 串行处理多个 q-tile。它降低 launch/CTA 调度
+        开销并复用 CTA 内的屏障与流水状态；对等时 tile，静态认领本身不会
+        消除 wave 量化尾损，最大 tile 数仍决定 makespan。
 \end{itemize}
 
 \textbf{前置章节}：第~\ref{ch:15}--\ref{ch:16}~章（attention 数学与 FA2 online
@@ -76,7 +79,8 @@ cuDNN SDPA（\texttt{CUDNN\_ATTENTION} 后端） & 230.2 & 1.00$\times$ \\
 \texttt{exp2f} 替代 \texttt{expf}（\texttt{-{}-use\_\allowbreak{}fast\_\allowbreak{}math}，
 +2\%\textasciitilde4\%）、softmax scale 融合（+3\%\textasciitilde4\%）、persistent CTA
 （dense 中等序列 +2\%\textasciitilde6\%）、FA-4 条件重缩放（长序列收益，复用
-第~\ref{ch:16}~章结论）。四项都是把协议里的一次浪费换成零开销，没有一项依赖复杂技巧。
+第~\ref{ch:16}~章结论）。前三项直接减少重复指令或搬运；persistent 的收益
+来自调度开销与状态复用，而不是把等时 tile 的 wave 尾损消成零。
 
 还有一个工程动机：厂商库的 SDPA 对\textbf{非标准形状}（GQA 折叠、滑窗 causal、
 head\_dim=96 这类非 2 的幂）经常落入慢速 fallback；专用 kernel 按自己的 tile 几何
@@ -275,9 +279,11 @@ smem 按 \texttt{[Q persist | K stages | V stages]} 一维排布，总量编译�
 
 三个要点。第一，swizzle atom 按 $D\times 2$\,B 对 128/64 的整除性选 SW128/SW64，
 保证 LDSM 读的每个 16\,B 段不跨 swizzle 周期。第二，\texttt{Smem\allowbreak{}Layout\allowbreak{}KVt}
-不是新的存储，而是 \texttt{SmemLayoutKV} 与 col-major $(D, B_c)$ layout 的
-\textbf{复合}（composition）：V 物理上仍按行存，PV GEMM 的 B-operand 却以转置
-视图装载（\texttt{LDSM\_T}），免去 kernel 外物化 $V^\top$。第三，Q/K/V 共用
+不是新的存储，而是 \texttt{SmemLayoutKV} 与一个逻辑 $(D, B_c)$
+\texttt{GenRowMajor} layout 的\textbf{复合}（composition）。源码内层并不是
+\texttt{GenColMajor}；复合之后，按该逻辑布局访问原 tile 才等价于“按列主序
+读 V”。V 物理上仍按行存，PV GEMM 的 B-operand 以转置视图装载
+（\texttt{LDSM\_T}），免去 kernel 外物化 $V^\top$。第三，Q/K/V 共用
 atom 但 tile 形状不同：Q 是 $128\times D$（持久），K/V 是 $B_c\times D$
 （stage 轮转），$B_c$ 按 $D$ 反推 smem 预算（D=64 时 $B_c{=}128$、
 D=128 时 $B_c{=}64$，注释里给出了计算）。
@@ -338,15 +344,18 @@ descriptor、opt-in 动态 smem：
 四个 tensor 的 shape 都是 \texttt{(total\_rows, D)}、stride 是
 \texttt{(D, 1)}：$B/H/N$ 三个逻辑维全部折叠进行坐标，batch/head 的行偏移
 (\texttt{q\_\allowbreak{}row\_\allowbreak{}offset}/\texttt{kv\_\allowbreak{}row\_\allowbreak{}offset}) 留给 kernel 内的
-\texttt{domain\_\allowbreak{}offset} 动态叠加。box 形状第五个模板参 \texttt{\_1\{\}}
-声明沿 minor 维（$D$）一次搬满：这正对应 Q 一次性全 $D$、K/V 整 tile
-进 stage 的协议。V 与 K 共用 \texttt{SmemLayoutKV} 与同一 box 几何，差别只在
-kernel 侧装载时用转置视图（\S\ref{sec:26b-smem}）。
+\texttt{domain\_\allowbreak{}offset} 动态叠加。box 几何由 \texttt{make\_tma\_copy}
+的 \texttt{Shape<Int<kBr>, Int<kHeadDim>>}（K/V 为
+\texttt{Shape<Int<kBc>, Int<kHeadDim>>}）给出，已经覆盖完整的 $D$。
+最后一个参数 \texttt{\_1\{\}} 是 TMA 的 \textbf{cluster size}，此处等于 1，
+不是“沿 minor 维一次搬满”的声明。V 与 K 共用 \texttt{SmemLayoutKV} 与同一
+box 几何，差别只在 kernel 侧装载时用转置视图（\S\ref{sec:26b-smem}）。
 
 细看 producer 的发射时序：Q 先发（一次性全 $D$），然后
 K/V 各预取 $S{-}1$ 个 tile 填满流水，主循环里每个 tile 领先 $S{-}1$ 发射下一个。
-注意 V-first-then-K 的顺序：V 的消费点（PV GEMM）晚于 K 的消费点
-（QK GEMM）整整一段 softmax，先发 V 让 K 的 TMA 传输填进 QK 计算的空隙：
+注意\emph{进入主循环后} V-first-then-K 的顺序：V 的消费点（PV GEMM）
+晚于 K 的消费点（QK GEMM）整整一段 softmax，先发 V 让 K 的 TMA 传输
+填进 QK 计算的空隙：
 
 \begin{figure}[H]
 \centering
@@ -355,42 +364,40 @@ K/V 各预取 $S{-}1$ 个 tile 填满流水，主循环里每个 tile 领先 $S{
   lane/.style={minimum width=1.0cm, minimum height=0.55cm, inner sep=1pt, align=center},
   arr/.style={-{Stealth[length=1.8mm]}, thick},
 ]
-\def\lw{7.6}
-% time axis
-\draw[-{Stealth}] (0,1.1) -- (\lw+2.2,1.1) node[right, font=\tiny] {时间};
-\foreach \t/\lab in {0.6/$t_0$, 2.6/$t_1$, 4.6/$t_2$, 6.6/$t_3$}
-  \draw (\t,1.0) -- (\t,1.2) node[above, font=\tiny] {\lab};
-% producer lane
-\node[anchor=east, font=\scriptsize\bfseries] at (-0.2,0.35) {producer};
-\node[lane, draw=tkBlue, fill=tkFillBlue, minimum width=2.0cm] at (1.6,0.35) {Q TMA};
-\node[lane, draw=tkBlue, fill=tkFillBlue] at (3.1,0.35) {K0};
-\node[lane, draw=tkBlue, fill=tkFillBlue] at (4.15,0.35) {K1};
-\node[lane, draw=tkPurple, fill=tkPurple!8] at (5.2,0.35) {V0};
-\node[lane, draw=tkPurple, fill=tkPurple!8] at (6.25,0.35) {V1};
-\node[lane, draw=tkBlue, fill=tkFillBlue] at (7.3,0.35) {K2};
-\node[lane, draw=tkPurple, fill=tkPurple!8] at (8.35,0.35) {V2};
-\node[lane, draw=tkBlue, fill=tkFillBlue] at (9.4,0.35) {K3};
-% consumer lanes
-\node[anchor=east, font=\scriptsize\bfseries] at (-0.2,-0.55) {consumer};
-\node[lane, draw=tkGreen, fill=tkGreen!10] at (1.6,-0.55) {Q s2r $+\,s$ 折叠};
-\node[lane, draw=tkOrange, fill=orange!10, minimum width=1.4cm] at (3.0,-0.55) {QK$_0$};
-\node[lane, draw=gray, fill=gray!10, minimum width=0.8cm] at (4.0,-0.55) {SM$_0$};
-\node[lane, draw=tkOrange, fill=orange!10, minimum width=1.4cm] at (5.0,-0.55) {QK$_1$};
-\node[lane, draw=gray, fill=gray!10, minimum width=0.8cm] at (6.0,-0.55) {SM$_1$};
-\node[lane, draw=orange!20, draw=tkOrange] at (7.2,-0.55) {PV$_0$};
-\node[lane, draw=orange!20, draw=tkOrange] at (8.3,-0.55) {PV$_1$};
-% dependency arrows
-\draw[arr, tkBlue, dashed] (3.1,0.08) -- (3.0,-0.26) node[midway, right, font=\tiny] {k\_full[0]};
-\draw[arr, tkPurple, dashed] (5.2,0.08) -- (7.2,-0.26);
-\draw[arr, tkOrange, dashed] (3.75,-0.55) -- (3.75,-0.9) -- (4.35,-0.9) node[midway, below, font=\tiny] {k\_empty[0]：K1 的 TMA 可以复写 stage 0};
+% producer：Q 先发；prefill 先 K0 后 V0；稳态每 tile 先 V 后 K
+\node[anchor=east, font=\scriptsize\bfseries] at (-0.2,1.0) {producer};
+\node[lane, draw=tkBlue, fill=tkFillBlue, minimum width=1.5cm] (Q) at (1.1,1.0) {Q TMA};
+\node[lane, draw=tkBlue, fill=tkFillBlue] (K0) at (2.8,1.0) {K0};
+\node[lane, draw=tkPurple, fill=tkPurple!8] (V0) at (4.1,1.0) {V0};
+\node[lane, draw=tkPurple, fill=tkPurple!8] (V1) at (5.4,1.0) {V1};
+\node[lane, draw=tkBlue, fill=tkFillBlue] (K1) at (6.7,1.0) {K1};
+\node[lane, draw=tkPurple, fill=tkPurple!8] (V2) at (8.0,1.0) {V2};
+\node[lane, draw=tkBlue, fill=tkFillBlue] (K2) at (9.3,1.0) {K2};
+\node[font=\tiny, anchor=south] at (3.45,1.35) {prefill：K0 后 V0};
+\node[font=\tiny, anchor=south] at (6.75,1.35) {稳态：每 tile 先 V 后 K};
+% consumer：每 tile 内 QK -> softmax -> PV
+\node[anchor=east, font=\scriptsize\bfseries] at (-0.2,0) {consumer};
+\node[lane, draw=tkGreen, fill=tkGreen!10] (Qf) at (1.1,0) {Q s2r};
+\node[lane, draw=tkOrange, fill=orange!10, minimum width=1.2cm] (QK0) at (2.8,0) {QK$_0$};
+\node[lane, draw=gray, fill=gray!10] (SM0) at (4.1,0) {SM$_0$};
+\node[lane, draw=orange!20, draw=tkOrange] (PV0) at (5.4,0) {PV$_0$};
+\node[lane, draw=tkOrange, fill=orange!10, minimum width=1.2cm] (QK1) at (6.7,0) {QK$_1$};
+\node[lane, draw=gray, fill=gray!10] (SM1) at (8.0,0) {SM$_1$};
+\node[lane, draw=orange!20, draw=tkOrange] (PV1) at (9.3,0) {PV$_1$};
+% 依赖：K0/QK0、K1/QK1；V0/V1 按同色节点对应到 PV0/PV1
+\draw[arr, tkBlue, dashed] (K0) -- (QK0);
+\draw[arr, tkBlue, dashed] (K1) -- (QK1);
+\draw[arr, tkOrange, dashed] (QK0.south) -- ++(0,-0.55) -| (10.3,-0.55)
+  -- (10.3,1.0) -- (K2.east);
+\node[font=\tiny, anchor=north west, text=tkOrange, align=left] at (10.05,-0.60)
+  {k\_empty[0]：QK0 完成后\\K2 才可复写 stage 0};
 \end{tikzpicture}
-\caption{producer/consumer 流水时序（$S_K{=}S_V{=}2$ 示意）。producer 每个 KV tile
-领先 $S{-}1$ 发射下一个 tile 的 TMA，且 V 先于 K 发射（V 的消费点更晚，
-K 的传输得以填进 QK 计算窗口）。虚线箭头是 mbarrier 握手：\texttt{k\_full[s]}
-（事务屏障，TMA 完成 + expect\_tx 校验）放行 consumer 读取；
-\texttt{k\_empty[s]}（consumer 每线程 arrive）放行 producer 复写该 stage。
-S tile 的 softmax（SM$_i$）与下一 tile 的 QK 在 consumer 侧串行，但与
-producer 侧的 TMA 完全重叠。}
+\caption{producer/consumer 流水时序（$S_K{=}S_V{=}2$）。源码顺序是 Q 先发，
+prefill 先 K0 后 V0；进入主循环后每个 tile 先发 V 再发 K（V 的消费点更晚，
+让 K 的传输填进 QK 计算窗口）。consumer 每个 tile 内依次 QK、softmax、PV。
+$S{=}2$ 时复写 stage 0 的是 K2/V2，而且必须等 QK0/PV0 的 empty 信号，
+不是 K1。蓝色虚线标 K full 的放行，橙色虚线标 stage 0 的 empty 复用；
+V 与 PV 的对应由同色节点给出。}
 \label{fig:26b-pipeline}
 \end{figure}
 
@@ -430,7 +437,7 @@ wait 永远不满足（挂死而非出错）。consumer 侧对应的是初始 ar
 这条铁律的落地：
 
 \begin{lstinputlisting}[linerange={3864-3881},firstnumber=auto,
-  title={flash\_attn.cuh L3866-3881（consumer：首轮一次性标记全部 stage 为 empty）}]{../flash_attn.cuh}
+  title={flash\_attn.cuh L3864-3881（consumer：首轮一次性标记全部 stage 为 empty）}]{../flash_attn.cuh}
 \end{lstinputlisting}
 
 \texttt{if (iter == 0)} 把全部 $S_K{+}S_V$ 个 stage 的 empty 各 arrive 一次
@@ -491,14 +498,20 @@ identity tensor 经 TiledMMA 的 C-partition 再行列重解释得来的每线�
 分数的 $(q, k)$ 坐标：布局问题被 CuTe 类型系统解决后，mask 只剩坐标
 比较。causal mask 的 \texttt{q\_pos} 带 \texttt{kv\_offset}（$=N_{kv}-N_q$）
 偏移，正是 bottom-right 对齐滑窗：$k_{pos} > q_{pos} + (N_{kv}-N_q)$ 的元素
-置 $-\infty$，\texttt{exp2f} 后自然归零；整行全 mask 时 \texttt{row\_sum = 0}，
-epilogue 的 \texttt{inv\_sum} 钳成 0（而非 $1/0$=NaN）：这就是
-\S\ref{sec:26b-test} 里 $N_{kv}{<}N_q$ causal case 输出全 0 的机制。
+置 $-\infty$，\texttt{exp2f} 后自然归零。这里不能把末尾的
+\texttt{row\_sum > 0 ? 1/row\_sum : 0} 当成全 mask 行的安全机制：
+若某行所有 score 都是 $-\infty$ 且仍进入 \texttt{online\_safe\_softmax\_fa4}，
+则 \texttt{row\_max} 与 \texttt{tile\_max} 同为 $-\infty$，
+\texttt{log2\_diff}=$(-\infty)-(-\infty)$ 产生 NaN，随后 P、\texttt{row\_sum}
+与 O 都会成为 NaN；末尾再乘 0 也无法清除。只有整个 q-tile 的
+\texttt{Tc\_eff}=0、KV 循环被跳过时，才会直接得到全 0 输出。当前实现没有
+逐行 all-mask 保护，因此不能声称所有 $N_{kv}{<}N_q$ 的全 mask 行都必然输出 0。
 
 PV 的 A-operand 复用第~\ref{ch:25}~章讲透的寄存器重解释技巧：
-softmax 后的 P（f32 累加器 fragment）经 \texttt{convert\_\allowbreak{}type}
-压成 fp16，再经 \texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}Aregs<TiledMmaPV>}
-原地重排成 PV 的 A-operand 布局：P 不落 smem，寄存器直通下一个 MMA。
+softmax 后的 f32 \(S\) 经 \texttt{convert\_\allowbreak{}type} 做数值转换并产生
+f16 \(P\)，再经 \texttt{convert\_\allowbreak{}layout\_\allowbreak{}acc\_\allowbreak{}Aregs<TiledMmaPV>}
+重解释成 PV 的 A-operand 布局。Aregs 不搬数据，整个过程不落 smem；
+但不能把 f32$\to$f16 的数值转换也说成原寄存器零拷贝。
 V 侧则用 \S\ref{sec:26b-smem} 的转置视图 + \texttt{LDSM\_T} 装载。
 
 \subsection{persistent CTA：wave 量化尾损与线性分配}\label{sec:26b-persistent}
@@ -511,7 +524,11 @@ $N{=}8192$、$k_B{=}128$ 时 tile 数 $= 32\times 64 = 2048 = 18\times 110 + 68$
 
 persistent CTA 的做法：grid 收缩到 $\min(\text{tiles},\ \text{SM 数})$，
 每个 CTA 用 \texttt{for (cta = blockIdx.x; cta < total; cta += gridDim.x)}
-线性认领多个 q-tile。尾损变成每个 CTA 多承担一小段，均匀分摊。
+线性认领多个 q-tile。但这不自动消除上面的尾损：在 2048 个等时 tile、
+110 个 CTA 的静态认领下，68 个 CTA 拿 19 个、42 个拿 18 个，makespan
+仍是 19 个 tile 时间，与非 persistent 的 19 个 wave 相同。persistent 的
+收益主要来自减少 launch/CTA 调度开销、复用 CTA 内的屏障与流水状态；
+若实测有 +2\%\textasciitilde6\%，不能把它全部归因于“消除 wave 量化”。
 
 与此对应，协议上有两个配套改动。一个是 \S\ref{sec:26b-tma} 的全局 kv 计数相位
 （式~\eqref{eq:26b-phase}），另一个是 \texttt{epi\_\allowbreak{}done} 屏障：
@@ -537,48 +554,52 @@ mask）。\texttt{q\_full} 的 wait 相位是 \texttt{iter \& 1}：q-tile 计数
 
 \begin{figure}[H]
 \centering
-\begin{tikzpicture}[font=\scriptsize, scale=0.9]
-% non-persistent
-\begin{scope}
-  \foreach \w in {0,...,4}{
-    \foreach \s in {0,...,9}{
-      \pgfmathtruncatemacro{\last}{\w==4 ? 3 : 9}
-      \ifnum\s>\last\fill[gray!8] (\s*0.62,\w*0.5) rectangle (\s*0.62+0.62,\w*0.5+0.5);
-      \else\fill[tkBlue!30] (\s*0.62,\w*0.5) rectangle (\s*0.62+0.62,\w*0.5+0.5);
+\begin{tikzpicture}[font=\scriptsize, x=0.42cm, y=0.42cm]
+% 非 persistent：5 wave，最后一 wave 只有 4 个 SM 有 tile
+\foreach \w in {0,...,4}{
+  \foreach \s in {0,...,9}{
+    \ifnum\w<4
+      \fill[tkBlue!30] (\s,\w) rectangle ++(1,1);
+    \else
+      \ifnum\s<4
+        \fill[tkBlue!30] (\s,\w) rectangle ++(1,1);
+      \else
+        \fill[gray!10] (\s,\w) rectangle ++(1,1);
+      \fi
+    \fi
+  }
+}
+\draw[thick] (0,0) rectangle (10,5);
+\node[font=\scriptsize\bfseries, above] at (5,5.15) {非 persistent：5 个 wave};
+\node[align=center] at (5,2.5) {44 tile / 10 SM\\makespan $=5$};
+% persistent：10 个 CTA，4 个拿 5 个 tile，6 个拿 4 个
+\begin{scope}[shift={(12.5,0)}]
+  \foreach \c in {0,...,9}{
+    \foreach \t in {0,...,4}{
+      \ifnum\c<4
+        \fill[tkGreen!25] (\c,\t) rectangle ++(1,1);
+      \else
+        \ifnum\t<4
+          \fill[tkGreen!25] (\c,\t) rectangle ++(1,1);
+        \else
+          \fill[gray!10] (\c,\t) rectangle ++(1,1);
+        \fi
       \fi
     }
   }
-  \draw[very thick] (0,0) rectangle (6.2,2.5);
-  \draw[tkRed, very thick, dashed] (2.48,2.0) rectangle (6.2,2.5);
-  \node[font=\tiny, anchor=north] at (3.1,2.55) {wave 1（10 tile/CTA）};
-  \node[font=\tiny, anchor=north] at (3.1,-0.08) {wave 3};
-  \node[font=\tiny, tkRed, align=center, anchor=west] at (6.4,2.25)
-    {wave 4：只有 4 个\\SM 在算\\{\bfseries 尾损 $\tfrac{6}{44}\approx 14\%$}};
+  \draw[thick] (0,0) rectangle (10,5);
+  \node[font=\scriptsize\bfseries, above] at (5,5.15) {persistent：10 个 CTA};
+  \node[align=center] at (5,2.5) {4 CTA $\times5$\\$+$ 6 CTA $\times4$};
+  \node[align=center, tkRed, below] at (5,-0.1) {makespan 仍 $=5$};
 \end{scope}
-% persistent
-\begin{scope}[shift={(9.0,0)}]
-  \foreach \w in {0,...,3}{
-    \foreach \s in {0,...,9}{
-      \pgfmathtruncatemacro{\tail}{\w==3 ? 4 : 9}
-      \ifnum\s>\tail\fill[gray!8] (\s*0.62,\w*0.5) rectangle (\s*0.62+0.62,\w*0.5+0.5);
-      \else\fill[tkGreen!25] (\s*0.62,\w*0.5) rectangle (\s*0.62+0.62,\w*0.5+0.5);
-      \fi
-    }
-  }
-  \draw[very thick] (0,0) rectangle (6.2,2.0);
-  \node[font=\tiny, anchor=north] at (3.1,2.05) {每 CTA 4.4 个 tile：尾损 $\tfrac{0.4}{17.6}\approx 2\%$};
-\end{scope}
-\node[font=\footnotesize\bfseries, anchor=south] at (3.1,2.85) {非 persistent：grid = 44 tile};
-\node[font=\footnotesize\bfseries, anchor=south] at (12.1,2.85) {persistent：grid = 10 SM};
 \end{tikzpicture}
-\caption{wave 量化尾损示意（10 个 SM、44 个 tile 的缩小模型）。左：非
-persistent launch 按整 wave 调度，最后一个 wave 只有 4 个 SM 在算，其余
-空转满一个 tile 时长；右：persistent CTA 把 grid 收缩到 SM 数，每个 CTA
-串行处理 $\lceil 44/10\rceil$ 或 $\lfloor 44/10\rfloor$ 个 tile，不均衡被压缩到
-最后一个 tile 的零头。真实场景（110 SM，$H{=}32$/$N{=}8192$）dense 收益
-+2\%\textasciitilde6\%；\textbf{causal 反向}——tile 负载前轻后重，线性分配会把
-重 tile 固定在同一批 CTA 上（实测 $-9\%\sim-21\%$），此时必须回退全量 grid
-让硬件调度器自然均衡。}
+\caption{10 SM、44 个等时 tile 的缩小模型。左：非 persistent 需 5 个 wave，
+最后一 wave 只有 4 个 SM 有 tile；右：静态 persistent 把 grid 收缩到 10 个
+CTA，但 4 个 CTA 拿 5 个 tile、6 个拿 4 个，makespan 仍为 5。故静态认领
+不能消除等时 tile 的 wave 量化尾损；dense 实测 +2\%\textasciitilde6\% 应归因于
+launch/CTA 调度开销下降与 CTA 内流水状态复用等，而非“尾损消失”。
+\textbf{causal 反向}——tile 负载前轻后重，线性分配会把重 tile 固定在同一批
+CTA 上（实测 $-9\%\sim-21\%$），此时必须回退全量 grid 让硬件调度器均衡。}
 \label{fig:26b-persistent}
 \end{figure}
 
@@ -670,15 +691,17 @@ persistent CTA dense 中等序列 +2\%\textasciitilde6\%、causal $-9\%\sim-21\%
 
 和第~\ref{ch:25}~章的三个实现纵向一比，协议设计的价值更清楚：
 实现 1（cp.async 统一流水）受限于装载与计算串行；实现 2（TMA+WS 单 consumer）
-解耦了搬运但 Q 每 tile 重装、softmax 带逐元素乘法、wave 尾损未作处理。
+解耦了搬运但 Q 每 tile 重装、softmax 带逐元素乘法，也没有使用 persistent
+调度来复用状态、降低 CTA 启动开销。
 本章在实现 2 的骨架上叠加全部四项优化，同一块 GPU 上从勉强追平 SDPA
 推进到稳定 +4\%。
 
 \section{专论：SM120 上 \texttt{setmaxnreg} 的生效条件}\label{sec:26b-setmaxnreg}
 
-本章 1.03$\sim$1.04$\times$ 的领先里，\texttt{setmaxnreg} 是 WS 双角色的物理前提
-（\S\ref{sec:26b-arch}）：没有它，consumer 被编译器均分到 168 寄存器，O 累加器
-溢出 local memory，性能直接降低一半。但这条指令在 SM120 工具链上是否被保留，曾被
+本章 1.03$\sim$1.04$\times$ 的领先里，\texttt{setmaxnreg} 是本设计控制寄存器
+压力的关键手段（\S\ref{sec:26b-arch}）：没有它，consumer 会被编译器均分到
+168 个寄存器，O 累加器更容易溢出 local memory。它不是 WS 的必要条件，
+但没有这次寄存器再分配，本 kernel 的 232/线程配置无法成立。但这条指令在 SM120 工具链上是否被保留，曾被
 本书两次误诊（第~\ref{ch:14}~章坑二、本节末考据框），值得用专节把全部变量
 摊开。指令是否保留由\textbf{三个独立变量}决定，而 arch 后缀是其中
 唯一不影响保留的一个：
@@ -809,8 +832,9 @@ cluster 形式 TMA 与缺 \texttt{\_\_launch\_\allowbreak{}bounds\_\allowbreak{}
 \begin{itemize}[itemsep=1pt]
   \item \textbf{Q：为什么你的 kernel 能赢 cuDNN？}\\
         A：sm\_120 没有 WGMMA/TMEM，双方都只能用 mma.sync；差距全在协议：
-        Q 持久化省装载、scale 融合省 softmax 指令、persistent 省 wave 尾损、
-        WS+TMA 流水掩盖延迟。四项合计 +4\%。
+        Q 持久化省装载、scale 融合省 softmax 指令、persistent 降低 CTA
+        调度开销并复用 CTA 内屏障/流水状态、WS+TMA 流水掩盖延迟。四项合计 +4\%。
+        persistent 不改变等时 tile 的最大 batch 数，不能说它消除了尾损。
   \item \textbf{Q：scale 融合的数学依据与代价？}\\
         A：$\max(sx)=s\max(x)$（$s>0$）与 exp2 线性平移；$S_{\text{fused}}=(sQ)K^\top$。
         代价是 $s\odot Q$ 一次 fp16 重舍入（尾数 11 bit）；收益是每 tile 每
@@ -835,8 +859,10 @@ CPU fp64 参考对照，容差 \texttt{TOL\_F16ACC}（$5\times 10^{-2}$），十
 dense / causal / GQA / Q 尾部 tile（$N_q{=}300$ 的 R$\to$G 路径）/
 persistent 多迭代（$H{=}32$、$N{=}512$ 时 128 个 tile $>$ 110 SM，触发
 \texttt{epi\_done} 与全局 kv 计数路径）/ KV 尾 mask（$N_{kv}{=}300$ 非
-$k_{Bc}$ 倍数）/ causal 正反滑窗（$N_{kv}{>}N_q$ 与 $N_{kv}{<}N_q$，后者
-前段 q 行全 mask，验证 $T_c^{eff}$ 钳零与 $L{=}0$ 行输出 0）/ $D{=}96$：
+$k_{Bc}$ 倍数）/ causal 正反滑窗（$N_{kv}{>}N_q$ 与 $N_{kv}{<}N_q$；后者
+覆盖前段 q 行全 mask 的输入，能测 $T_c^{eff}$ 钳零，但当前 kernel 对
+“整行 $-\infty$ 仍进入在线 softmax”没有逐行保护，历史 PASS 不能证明
+这些行的数值正确性，见 \S\ref{sec:26b-test} 末注）/ $D{=}96$：
 
 \begin{lstlisting}[style=console]
 nvcc -std=c++20 -O2 -gencode arch=compute_120f,code=sm_120f \
@@ -854,6 +880,11 @@ nvcc -std=c++20 -O2 -gencode arch=compute_120f,code=sm_120f \
 # PASS fa persist-D dense   D=96  B=1 H=2/2   Nq=256 Nkv=256 ...
 # ALL OK
 \end{lstlisting}
+
+上述日志是历史运行结果，只能说明当轮脚本没有报错，不能据此推导
+$N_{kv}{<}N_q$ 的全 mask 行一定输出 0。要验证这一点，需要在测试中显式
+检查这些行的有限性与零值；在 kernel 增加逐行 all-mask 保护前，不能把
+旧 PASS 当作该语义的证明。
 
 集成入口在 bench/flash\_attn.cu（\texttt{test\_\allowbreak{}flash\_\allowbreak{}attn\_\allowbreak{}cute\_\allowbreak{}persist\_\allowbreak{}d\_\allowbreak{}sm120}，
 含 $N_q{=}2048$/$H{=}8$ 的多 q-tile 大 case）。参考实现用 \textbf{cuDNN SDPA}

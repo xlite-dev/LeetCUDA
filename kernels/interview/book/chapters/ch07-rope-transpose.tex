@@ -341,11 +341,11 @@ shared memory 被切成 32 个 bank（对应一个 warp 的 32 线程），每�
   \draw[thin] (7.4,-3.6) -- (13.8,-3.6);
   \foreach \bk in {0,8,16,24,31}
     \node[anchor=north, font=\tiny] at ({7.4+\bk*0.2+0.08},-3.66) {\bk};
-  \node[anchor=north] at (10.6,-4.28) {\textbf{2-way}：$16$ bank $\times$ 2 线程（吞吐 $\times 8$）};
+  \node[anchor=north] at (10.6,-4.28) {\textbf{2-way}：$8$ bank $\times$ 2 线程（吞吐 $\times 8$）};
   \node[anchor=north, align=center] at (6.9,-5.0)
     {写侧 PAD 前后均为 2-way（无改善）；读侧 16-way $\to$ 2-way，读 smem 吞吐 $\times 8$（与图~\ref{fig:7-1} 及本章思考题衔接）};
 \end{tikzpicture}
-\caption{bank 占用直方图（2 指令 $\times$ 2 配置，每格为 32 bank 的线程计数，取 $i=j=0$ 的一条指令）：写侧（ST）PAD=0 与 PAD=1 都是每 bank 至多 2 线程——写侧 PAD 前后无改善；读侧（LD）PAD=0 时 32 线程落在 2 个 bank（16-way，深灰柱），PAD=1 后 $tx$ 每加 1 bank 前进 4，16 个 bank 各 2 线程（2-way）。图~\ref{fig:7-1} 讲\textbf{步长 64B$\to$68B 为何打破对齐}，本图给出两指令两配置的完整占用结果。}
+\caption{bank 占用直方图（2 指令 $\times$ 2 配置，每格为 32 bank 的线程计数，取 $i=j=0$ 的一条指令）：写侧（ST）PAD=0 与 PAD=1 都是每 bank 至多 2 线程——写侧 PAD 前后无改善；读侧（LD）PAD=0 时 32 线程落在 2 个 bank（16-way，深灰柱），PAD=1 后 $tx$ 每加 1 bank 前进 4，16 个线程落在 8 个 bank、每个 bank 2 线程（2-way）。图~\ref{fig:7-1} 讲\textbf{步长 64B$\to$68B 为何打破对齐}，本图给出两指令两配置的完整占用结果。}
 \label{fig:7-5}
 \end{figure}
 

@@ -110,7 +110,7 @@ __global__ void my_tiled_mma(__half *Cptr, const __half *Aptr,
   cute::copy(tgB, trB);
 
   // 2. gemm 执行
-  cute::gemm(tiled_mma, trC, trA, trB);
+  cute::gemm(tiled_mma, trA, trB, trC);
 
   cute::copy(trC, tgC);
 }
@@ -229,7 +229,7 @@ cute::gemm(tiled_mma, trA, trB, trC);
   for(auto i_m = 0; i_m < size<1>(trC); i_m += 1){
 #pragma unroll
     for(auto i_n = 0; i_n < size<2>(trC); i_n += 1){
-      cute::gemm(tiled_mma, trC(_, i_m, i_n), trA(_, i_m, _), trB(_, i_n, _));
+      cute::gemm(tiled_mma, trA(_, i_m, _), trB(_, i_n, _), trC(_, i_m, i_n));
     }
   }
 \end{lstlisting}

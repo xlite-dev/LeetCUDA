@@ -152,13 +152,18 @@ $\mu$ 与 $M_2 \equiv \sum_k (x_k-\bar{x})^2$，分块结果可用合并公式�
 \begin{equation}
   s = \frac{1}{\sqrt{v + \epsilon}} = \mathrm{rsqrtf}(v + \epsilon),
 \end{equation}
-其中 $v$ 是行内归约量。CUDA 的 \texttt{rsqrtf} 映射到 MUFU.RSQ 硬件近似指令，最大相对误差约 2 ulp；对归一化这种得到 $s$ 后还要乘一个 $O(1)$ 量级元素值的场景，2 ulp 的相对误差远低于 fp32 输出的可分辨精度，是无损加速。对比手写 $1.0f\,/\,\texttt{sqrtf}(v)$（\texttt{sqrtf} 加一次除法，两条慢指令），\texttt{rsqrtf} 一条指令完成。
+其中 $v$ 是行内归约量。CUDA 的 \texttt{rsqrtf} 映射到 MUFU.RSQ 硬件近似指令，最大相对误差约 2 ulp；对归一化这种得到 $s$ 后还要乘一个 $O(1)$ 量级元素值的场景，2 ulp 的相对误差远低于 fp32 输出的可分辨精度，工程上可视为精度代价可忽略的\textbf{近似加速}，但不能称为无损。对比手写 $1.0f\,/\,\texttt{sqrtf}(v)$（\texttt{sqrtf} 加一次除法，两条慢指令），\texttt{rsqrtf} 一条指令完成。
 
 \section{设计与实现}
 
 \subsection{行划分：one-row-one-block}
 
-四个 kernel 采用同一网格设计：\texttt{grid(N)}, \texttt{block\allowbreak{}(k\allowbreak{}Num\allowbreak{}Threads=\allowbreak{}128)}，$N$ 是行数（$\text{batch} \times \text{seq\_len}$），$K = 128$ 是列数。一个 block 恰好负责一行的归约，行内 $K$ 个元素由 block 内 $K$ 个线程一一对应，天然 coalesced（warp 内 32 线程读连续 32 个 float）。
+四个 kernel 的 grid 相同（\texttt{grid(N)}，一行一个 block；$N$ 是行数，
+$K = 128$ 是列数），但 block 线程数分两档：标量版
+\texttt{block\allowbreak{}(k\allowbreak{}Num\allowbreak{}Threads=\allowbreak{}128)}，
+每线程一列；vec4 版
+\texttt{block\allowbreak{}(32)}，每线程处理一条 \texttt{float4}（4 列）。
+两种划分都保证 warp 内相邻线程读连续地址，天然 coalesced。
 
 \begin{figure}[H]
 \centering
