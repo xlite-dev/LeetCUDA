@@ -142,7 +142,7 @@ WAIT\_\allowbreak{}GROUP}（L539--543）延续 cp.async 的分组-等待语义�
 host 侧创建 TMA descriptor 的入口：
 
 \lstinputlisting[linerange={764-785},firstnumber=auto,
-  title={common.cuh L765-785（create\_tensor\_map 核心：shape/stride/box 的 (minor,major) 顺序）}]{../common.cuh}
+  title={common.cuh L764-785（create\_tensor\_map 核心：shape/stride/box 的 (minor,major) 顺序）}]{../common.cuh}
 
 两个高频易错点（第~\ref{ch:13}~章展开）：TMA 的 shape 与 box 都按
 (minor, major) 排列，row-major $[M,K]$ 矩阵要传 $(K,M)$；

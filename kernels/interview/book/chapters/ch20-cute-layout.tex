@@ -17,7 +17,7 @@ smem 上做 XOR swizzle、拼 ldmatrix 的 lane 地址、epilogue 里用 \texttt
 换一种做法：把 (Shape, Stride) 提升为一等的数学对象，用代数运算（复合、逆、
 乘积、切分）代替手写公式，把想要的布局与怎么算地址两件事分开。
 
-本章是 Part~IV 的原理篇开篇，也是全书唯一一章不写任何 GPU kernel：
+本章是 Part~IV 的原理篇开篇，本章与后续 ch21/ch22 都只讲原理与工具、不写新的 GPU kernel：
 我们只研究 layout 本身。四章路线：本章（layout 代数）$\to$ 第~\ref{ch:21}~章
 （Tensor 与 TiledCopy：把 layout 用在数据上）$\to$ 第~\ref{ch:22}~章（TiledMMA：
 把 layout 用在计算上）$\to$ 第~\ref{ch:23}~章（Swizzle 与 TMA：把 layout 用在
@@ -115,7 +115,7 @@ $f$ 作用在坐标上与作用在线性索引上是同一个函数，线性索�
 注意 $f(x)$ 一般\emph{不}单调：colex 进位时
 $x\to x+1$ 同时改变两个坐标（低位复位、高位 $+1$），offset 增量
 $d_{i+1}-d_i(s_i-1)$ 可为负：$(2,3){:}(3,1)$ 的 offset 序列是
-$0,3,1,4,2,5$，row-major 的 $(4,8){:}(8,1)$ 也有 $f(3)=24>f(4)=8$；只有
+$0,3,1,4,2,5$，row-major 的 $(4,8){:}(8,1)$ 也有 $f(3)=24>f(4)=1$；只有
 当各 mode 的 stride 按 colex 排序（如 compact col-major，此时 $f(x)=x$）
 时才单调不减。这条单调性并非后续结论的前提：layout 的整数域本身就是一个
 可一次遍历的索引空间，后面所有遍历式断言（以及 \texttt{cosize}）依赖的
@@ -501,8 +501,8 @@ divide 是 kernel 里用得最多的一条：\texttt{local\_tile} 把大 Tensor 
 
 \textbf{第一步：complement。}对 tile layout $T$，
 $\mathrm{complement}\bigl(T,\mathrm{shape}(L)\bigr)$ 返回补空间的
-layout：把 $T$ 的 codomain 之外的地址空间按最小可用 stride 依次填满，直到
-覆盖 $L$ 的 codomain。它回答 tile 之外的剩下那些 offset 怎么编号。
+layout：按最小可用 stride 依次填满 $\mathrm{image}(T)$ 尚未覆盖、而 $L$ 需要的 offset，
+直到能拼出 $L$。它回答 tile 之外的剩下那些 offset 怎么编号，而不是补 codomain 之外的空间。
 
 \textbf{第二步：logical\_divide 与 zipped\_divide。}
 \begin{align}
@@ -1268,7 +1268,7 @@ $(0,1)$ & 1 & 9 & 5 & 13 \\
 $(1,1)$ & 3 & 11 & 7 & 15 \\
 \bottomrule
 \end{tabular}
-\caption{\texttt{logical\_product(A,B)} 的逐坐标求值：mode-0 是块 $A$，stride 为 $(2,1)$；mode-1 是网格 $B$，stride 为 $(8,4)$。它与 \texttt{make\_layout(A,B)} 的直接拼接 $((2,2),(2,2)){:}((2,1),(8,4))$ 不同，也不应按 $4A(c_A)+B(c_B)$ 解释。}
+\caption{\texttt{logical\_product(A,B)} 的逐坐标求值：mode-0 是块 $A$，stride 为 $(2,1)$；mode-1 是网格 $B$，stride 为 $(8,4)$。它不同于直接拼接 \texttt{make\_layout(A,B)}（后者的 B 尚未按 $A$ 的 codomain 平移，不能把这里的 $(8,4)$ 直接当作拼接 stride），也不应按 $4A(c_A)+B(c_B)$ 解释。}
 \label{fig:20-8}
 \end{figure}
 
@@ -1521,8 +1521,8 @@ ALL OK
 \begin{enumerate}
   \item 把 case F 的 $T$ 从 $(4,4){:}(1,8)$ 换成 compact 的 $(4,4){:}(1,4)$，
         观察结果变成 $\bigl((4,4),(4)\bigr){:}\bigl((1,4),(16)\bigr)$，
-        理解 tile 语义依赖 stride 族（此时坐标公式与双射检查会 FAIL，
-        这便是要看的现象）。
+        理解 tile 语义依赖 stride 族。此时硬编码的坐标公式会 FAIL，但 compact
+        结果仍是合法 layout，双射覆盖本身不应失败；这正是要区分的现象。
   \item 把 case B 的 $B$ 换成动态 shape（\texttt{int} 变量构造），观察
         \texttt{composition} 结果退化为运行期计算，理解静态/动态分水岭。
   \item 把 case H 的 \texttt{Swizzle\allowbreak{}<3,\allowbreak{}3,\allowbreak{}3>} 换成 \texttt{Swizzle\allowbreak{}<2,\allowbreak{}4,\allowbreak{}3>}

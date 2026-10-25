@@ -22,7 +22,7 @@ kernel——把 BF16 的 $A,B$ 变成 e4m3 的 $A_8,B_8^{\top}$ 外加两组 sca
 离开主循环。attention 的量化输出要参与 softmax，scale 必须在 kernel 内部按行
 修正（第~\ref{ch:29}~章的 $s_{dequant}=q_s k_s$ 折叠也要挂在每个 epilogue 上）；
 而 GEMM 是双线性运算，两组 scale 可以推迟到 epilogue 一次乘回，主循环
-里跑的是纯整数域（e4m3 编码值）的 MMA。这个差异是 34.4~节的核心恒等式，也是
+里跑的是 e4m3 浮点值的 MMA（f32 累加；只有 int8 路径才是整数累加）。这个差异是 34.4~节的核心恒等式，也是
 第~\ref{ch:35}~章 epilogue 设计的全部依据。
 
 前处理链本身是三个读一遍、写一遍的流式 kernel（带宽型，不是算力型），工程
@@ -53,8 +53,8 @@ attention 的三量化点里，$P$（softmax 输出）必须在线量化，$Q,K,
 量化的 scale 是纯标量因子，可以直接提到括号外。于是：
 
 \begin{itemize}[itemsep=1pt,topsep=2pt]
-  \item 主 kernel 的 MMA 循环里\textbf{不需要处理任何 scale}，跑的就是 e4m3 编码
-        值的整数语义乘累加（f32 累加器）。
+  \item 主 kernel 的 MMA 循环里\textbf{不需要处理任何 scale}，跑的就是 e4m3
+        浮点值的乘累加（f32 累加器；e4m3 不是整数格式）。
   \item 反量化只在 epilogue 出现一次：$C = (A_8 B_8^{\top})\odot(\delta_a\delta_b)$，
         $\odot$ 在 per-block 粒度下退化为块级（128 行/列）标量乘（第~\ref{ch:35}~章）。
   \item 前处理全部离线于主 kernel：量化 kernel 写完 workspace，主 kernel 才开始执行。
@@ -158,7 +158,7 @@ $B \approx \delta_b \hat{B}$（$\delta_a,\delta_b$ 为逐行/逐列/逐块的 sc
           = \delta_{a,m}\,\delta_{b,n}\,(\hat{A}\hat{B}^{\top})_{m,n}.
   \label{eq:34-fold-rc}
 \end{equation}
-即\textbf{scale 完全出括号}：整数域（e4m3 编码值）MMA 之后，epilogue 按
+即\textbf{scale 完全出括号}：e4m3 浮点 MMA（f32 累加）之后，epilogue 按
 $(m,n)$ 查 $\delta_{a,m}\delta_{b,n}$ 一次乘回。per-block 粒度时块宽固定 128
 （与 tile 尺寸无关），tile 内 $\delta_a,\delta_b$ 是分段常数：$k_{BM}{=}128$
 的 A 侧一个 tile 恰一块，$k_{BN}{=}256$ 的 B 侧一个 tile 横跨两块，故查表索引
@@ -198,7 +198,7 @@ scale 张量的形状与 epilogue 的查表方式：
     \foreach \c in {0,...,7}
       \node[cell] at (\c*0.30, -\r*0.30) {};
   \draw[grpA, rounded corners=1pt] (-0.21, 0.21) rectangle (2.31, -1.71);
-  \node[note, anchor=north] at (1.2, -1.85) {A per-block：$\delta_a[m/128]$，$M/128$ 个\\{\tiny 整块单一 amax（ffpa Q/K 同构），outlier 影响大}};
+  \node[note, anchor=north] at (1.2, -1.85) {A per-block：$\delta_a[m/128]$，$\lceil M/128\rceil$ 个\\{\tiny 整块单一 amax（ffpa Q/K 同构），outlier 影响大}};
 \end{scope}
 % --- B: per-col(列方向框) ---
 \begin{scope}[shift={(0,-4.3)}]
@@ -215,12 +215,12 @@ scale 张量的形状与 epilogue 的查表方式：
     \foreach \c in {0,...,7}
       \node[cell] at (\c*0.30, -\r*0.30) {};
   \draw[grpB, rounded corners=1pt] (-0.21, 0.21) rectangle (2.31, -1.71);
-  \node[note, anchor=north] at (1.2, -1.85) {B per-block：$\delta_b[n/128]$，$N/128$ 个\\{\tiny 128 列共用一个 amax}};
+  \node[note, anchor=north] at (1.2, -1.85) {B per-block：$\delta_b[n/128]$，$\lceil N/128\rceil$ 个\\{\tiny 128 列共用一个 amax}};
 \end{scope}
 \end{tikzpicture}
 \caption{四种 scale 粒度组合（上排 A，下排 B）。蓝框=A 侧 scale 统计范围，
-绿框=B 侧。粒度越粗，scale 存储/查表越省（per$\times$per-block 每 tile 只查
-两个标量），但 outlier 的影响越大——一个大值会放大整块的量化步长，
+绿框=B 侧。粒度越粗，scale 存储/查表越省（per-row$\times$per-block 每 tile 查 1 个
+A 块 scale 和 $\lceil B_N/128\rceil$ 个 B 块 scale；$B_N=256$ 时为 3 个），但 outlier 的影响越大——一个大值会放大整块的量化步长，
 其余小值全部落入低精度区间。四种组合在 API 里是一个枚举，主 kernel 用
 \texttt{if constexpr} 编译期剔除，运行时零分支开销。}
 \label{fig:34-granularity}
@@ -229,8 +229,8 @@ scale 张量的形状与 epilogue 的查表方式：
 为什么 GEMM 里 per-row$\times$per-col 是精度最优：scale 的统计块越小，块内
 分布越均匀、步长越贴合该组数据的动态范围。极端的反例是全矩阵单 scale（per-tensor）：一个 outlier
 可以让普通元素的相对量化误差放大若干个数量级。Per-block 是 attention 领域
-（SageAttention/ffpa）的主流选择，因为它与 128 的 tile 尺寸天然对齐、kernel 内
-scale 折成单标量；对 GEMM 的权重矩阵（分布沿行/列明显不均），per-row/per-col
+（SageAttention/ffpa）的主流选择，因为它与 128 的 tile 尺寸天然对齐；但 $B_N=256$
+的 tile 仍横跨两个 B scale 块，epilogue 必须按块索引而非整 tile 单标量。对 GEMM 的权重矩阵（分布沿行/列明显不均），per-row/per-col
 通常明显更准。34.6~节会给四种组合的同机实测。
 
 \subsection{误差模型：能差到多少}\label{sec:34-err}
@@ -266,9 +266,10 @@ $\sigma_\varepsilon$ 因子，下文只保留一阶。
         34.6~节；舍入误差并非全程满幅均匀，实测略低于上界）。
         注意相对误差\textbf{与 $K$ 无关}：误差与信号都以 $\sqrt{K}$
         增长，抵消掉了；
-  \item \textbf{同号数据}（全正矩阵、经 ReLU 的激活）：误差项同号不相消，
-        累加是线性增长，最坏相对误差停在单元素上界 $2^{-4}$ 量级附近
-        （不随累加长度收敛）。这就是量化 GEMM 在真实模型上仍需
+  \item \textbf{同号数据}（全正矩阵、经 ReLU 的激活）：信号项同号累加，
+        最坏情况下量化误差也可同向叠加，因此相对误差保持在单元素上界
+        $2^{-4}$ 量级附近而不随累加长度继续下降；但 RNE 误差本身通常仍有正负，
+        不能断言每项误差必然同号。
         per-row/per-channel 粒度与离线校准（如 GPTQ/平滑旋转，
         第~\ref{ch:28}~章同源思想）的原因。
 \end{itemize}
@@ -308,8 +309,8 @@ randn $(\pm 0.25)$，4096$^3$ & 0.0227 & 0.090 & 4.0$\sigma$ \\
 \end{center}
 
 三组均匀 shape 的 Max Err/$\sigma_{\text{err}}$ 停在同一个 $4.1\sigma$：
-样本量从 $4\text{M}$ 增到 $67\text{M}$，比值不漂移，证明误差是零均值随机
-游走而非系统性偏差。randn 组把输入取为 $\sigma_x = 0.25/3$ 的截断正态
+样本量从 $4\text{M}$ 增到 $67\text{M}$，比值不漂移，与零均值随机游走模型一致；
+但这只是相容性证据，不能仅凭极值倍数证明误差严格零均值或无系统偏差。randn 组把输入取为 $\sigma_x = 0.25/3$ 的截断正态
 （幅值缩 $s \approx 6.9$ 倍）：$\mathrm{E}[(ab)^2]$ 缩 $s^4$，
 $\sigma_{\text{err}}$ 随之缩 $s^2 \approx 48$ 倍，$4.50/48 \approx 0.094$
 与实测 0.090 相符，比值仍落在 $4\sigma$。注意两组的相对误差

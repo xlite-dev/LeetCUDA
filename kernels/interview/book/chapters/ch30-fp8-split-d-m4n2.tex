@@ -262,8 +262,8 @@ O_{\text{acc}}
 每 thread 压力只取决于该 warp 分到的列数 $D/N_w$。
 
 但真正的判据是 per-SM 寄存器池。每 SM 65536 个寄存器，CTA 内
-$32M_wN_w$ 个 thread，每 thread 上限 $65536/(32M_wN_w)$。$O$ 累加器对
-这个上限的占比是
+$32M_wN_w$ 个 thread，单 CTA 独占 SM 时平均每线程预算为 $65536/(32M_wN_w)$
+（这是占用估算，不是硬件 255 寄存器/线程的硬上限）。$O$ 累加器对这个预算的占比是
 \begin{equation}\label{eq:30-smpool}
 \frac{D/(2N_w)}{65536/(32M_wN_w)}=\frac{D\cdot M_w}{4096}.
 \end{equation}

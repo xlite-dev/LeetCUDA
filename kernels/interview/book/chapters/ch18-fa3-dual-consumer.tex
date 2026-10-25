@@ -745,7 +745,7 @@ $O(\mathrm{Sk})$ 项翻倍（式~\ref{eq:18-smem}），而装载早已不在关�
 这组数字\textbf{不是受控 A/B}：两个 kernel 的 $B_r$ 不同（128 vs 64）、Sk 不同，
 网格形状（$N/B_r$ 与 $B_c$ 的块数）也不同，只能读作两条路线在同一张卡上的
 量级对照，不能当作 FA3 比 FA2 快 $x\%$ 的结论。真正受控的对照需要固定 tile
-与流水深度，留给附录 B 的复测表。
+与流水深度；附录 B 目前只汇总现有非同构口径，不能替代这项 A/B 实验。
 
 另一条数据线来自 \texttt{leetcuda\_\allowbreak{}bench\_\allowbreak{}sm120a.bin --bench --bench-all} 的
 FA 基准（$B{=}1$、$H{=}32$、$N{=}8192$、$D{=}128$，dense，同机 RTX PRO 5000
@@ -900,9 +900,9 @@ producer 用 TMA 异步搬运，两个 consumer warpgroup 让 softmax（CUDA Cor
 
 \textbf{Q2：为什么按奇偶拆 tile，而不是让两个 WG 各管前后半区？}\\
 A：producer 必须按全局顺序 0,1,2,\dots 连续投递 TMA，而 bank 由
-$\mathrm{cid} = \mathrm{tile}\,\&\,1$ 静态路由（L1459、L1475）。奇偶拆分下
-两 WG 当前消费的 tile 永远相邻（$t$ 与 $t+1$），producer 的单一顺序流正好
-按 1:1 供给两个 bank；若改成前后半区，过渡期两个 WG 的需求会同时压向同一个
+$\mathrm{cid} = \mathrm{tile}\,\&\,1$ 静态路由（L1459、L1475）。奇偶拆分让
+两个 bank 在整个 tile 序列上交替被服务；producer 仍按全局顺序投递，但两个独立 WG
+的瞬时进度并不保证始终相邻，只要求各自消费的 tile 与自己的 bank 对应。若改成前后半区，过渡期两个 WG 的需求会同时压向同一个
 cid，另一个 bank 空转，且远端 tile 的数据可能还没被搬运到（注释 L1479--1480）。
 
 \textbf{Q3：per-WG 独立 stage 带来什么？}\\
@@ -981,8 +981,8 @@ bench 子命令输出 18.6~节的复测表（\texttt{.\allowbreak{}/\allowbreak{
 2/1 个 tile），验证 18.3.2 节不对称划分无需特判的结论；（2）把 producer 的
 prefetch 目标从 $t+2$ 改成 $t+1$（Sk$=$2 时），观察数值立刻出错（坑三），
 这是两处 \texttt{local\_*} 索引错位的直接演示。（3）把 consumer 的
-\texttt{empty\_K} early release 上移到 HMMA 之前，观察挂死或读脏数据
-（第~\ref{ch:17}~章坑五的相同问题）；（4）给测试补一行 $D{=}128$、$\mathrm{Sk}{=}2$
+\texttt{empty\_K} early release 提前到最后一组 \texttt{ldmatrix} 之前，观察挂死或读脏数据
+（当前位置已在 HMMA 前、最后一个 ldmatrix 后，继续前移才会破坏依赖）；（4）给测试补一行 $D{=}128$、$\mathrm{Sk}{=}2$
 的实例化，确认辅助工具打出
 \texttt{SKIP(ch18): smem 114688 B > optin 101376 B}（坑六）。
 

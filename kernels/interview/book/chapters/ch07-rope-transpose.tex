@@ -273,7 +273,7 @@ attention/elementwise 链。这个 kernel 保留每线程重算的教学形态�
 
 两个坐标换算：$y$ 的行号 $= x$ 的列号，故 \texttt{y\_r = blockIdx.x * TILE + ty}；$y$ 的列号 $= x$ 的行号 $\times 1$，但每线程覆盖 4 个连续行，故 \texttt{y\_c = (blockIdx.y * TILE + tx) * 4}。\texttt{FLOAT4} 写回要求 \texttt{y\_c} 起 4 个元素 16B 对齐，即 $x$ 的行号是 4 的倍数，这由 \texttt{y\_c} 的构造天然保证。
 
-smem tile 的形状是 \texttt{[TILE*4][TILE+PAD]} $= [64][17]$：第二维多出的 \texttt{PAD = 1} 不是防越界，而是\textbf{消除 bank conflict} 的关键，下一节就讲它。
+smem tile 的形状是 \texttt{[TILE*4][TILE+PAD]} $= [64][17]$：第二维多出的 \texttt{PAD = 1} 不是防越界，而是\textbf{大幅降低 bank conflict} 的关键，下一节就讲它。
 
 \section{图示：Bank Conflict 专题}
 
@@ -430,7 +430,7 @@ $M$ & mat\_transpose (naive) & mat\_transpose\_padded & 加速比 \\
 
 \section{实践经验}
 
-\begin{kaogu}[F3 | \textbf{PAD 消除 bank conflict}在本 kernel 中是大幅降低而非消除]
+\begin{kaogu}[F3 | PAD 在本 kernel 中是\textbf{大幅降低}而非消除 bank conflict]
 源码注释把 PAD 表述为\textbf{Bank conflict fix：每行多 1 个元素，打破 32-bank 对齐}与\textbf{解决方案：PAD……打破地址对齐}。按本章第 5 节的逐指令 bank 直方图：PAD=1 把 Step 2 转置读从 16-way 降到 2-way（主要收益），Step 1 写侧 PAD 前后均为 2-way。即注释的结论在数量级上成立（读事务 16 $\to$ 2），但\textbf{消除}并不准确，要彻底消除需要第 \ref{ch:12} 章的 swizzle 或改变每线程 4 行的分工。经典的一线程一元素 + $32\times33$ tile 布局才是 PAD 完全消除冲突的形态。
 \end{kaogu}
 
@@ -449,7 +449,7 @@ rope 的参数 $N$ 是每 token 的对数（$d/2$），而非 hidden size；频�
   \item \textbf{warp 到 $(tx,ty)$ 的映射想当然}：bank 分析第一步就是确认映射，\texttt{(16,16)} block 是 \texttt{tid = tx + 16*ty}（x 优先）。映射记错，直方图全错，冲突度结论随之全错。
   \item \textbf{同地址是 broadcast 不是 conflict}：同 bank 同地址（全 warp 读同一标量）一个周期完成；先判地址是否相同，再判 bank 是否相同。
   \item \textbf{grid 尺寸复制粘贴}：naive 的 $y$ 向是 $(row+15)/16$，padded 是 $(row+63)/64$，每线程覆盖行数变了 4 倍，漏改 grid 会让输出一半是旧值（本测试刻意先清零 $y$ 再启动 padded kernel，防止读到残值也算对的假阳性）。
-  \item \textbf{超越函数精度}：\texttt{powf} 相对误差 $\sim 10^{-6}$，经 $m\theta_i$ 放大后（$m = 512, \theta_0 = 1$ 时角度绝对误差 $\sim 5 \times 10^{-4}$）仍在本章容差内；长序列（$m$ 上万）时误差线性放大，生产实现用 fp64 预计算或查表规避。
+  \item \textbf{超越函数精度}：\texttt{powf} 相对误差 $\sim 10^{-6}$，经 $m\theta_i$ 放大后，若 $|m\theta_i|\approx512$（不取 $\theta_0=1$ 这一精确锚点），角度绝对误差约为 $5\times10^{-4}$；长序列（$m$ 上万）时误差线性放大，生产实现用 fp64 预计算或查表规避。
   \item \textbf{转置 kernel 的写侧假阳性}：若不清零输出缓冲，未覆盖区域的旧值可能与参考碰巧一致，掩盖 grid 覆盖不全的 bug。
 \end{enumerate}
 

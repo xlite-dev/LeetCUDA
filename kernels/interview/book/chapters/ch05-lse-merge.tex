@@ -55,7 +55,7 @@ attention 后持有四个量：
 \end{equation}
 分块 $B$ 同理（上标 $A$ 换 $B$）。$O^{A}$ 是已归一化的分块输出
 （除过自己的 $\ell^{A}$），这正是 FlashAttention kernel 落盘的形态；
-$\mathrm{LSE}^{A}$ 是对数求和指数（log-sum-exp），它是 $m$ 与 $\ell$ 的可逆打包：
+$\mathrm{LSE}^{A}$ 是对数求和指数（log-sum-exp）。它不是对 $(m,\ell)$ 两个分量的可逆打包，而是足以还原任意基准下未归一化指数和的标量：
 
 \begin{definition}[LSE]\label{def:lse}
   对集合 $S$ 上的分数 $\{s^{(j)}\}$，
@@ -67,8 +67,8 @@ $\mathrm{LSE}^{A}$ 是对数求和指数（log-sum-exp），它是 $m$ 与 $\ell
   \end{equation}
   而对任意基准 $\tilde m$，$e^{\mathrm{LSE} - \tilde m}
   = \sum\sb{j \in S} e^{s^{(j)} - \tilde m}$ 都成立（取 $\tilde m = m$ 时
-  即 $\ell$）。LSE 单个标量即可还原任意基准下的指数和，无损携带
-  $(m, \ell)$ 状态的全部信息。
+  即 $\ell$）。因此 LSE 对合并而言是充分状态：它保留的是指数和这一标量信息，
+  而不是分别恢复 $m$ 与 $\ell$；不同的 $(m,\ell)$ 组合可以有相同的 LSE。
 \end{definition}
 
 \subsection{合并公式：从真值形式到 LSE 形式}

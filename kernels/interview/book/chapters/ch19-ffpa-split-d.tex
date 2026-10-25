@@ -247,10 +247,9 @@ $\ell_t = \sum_{j<tB_c} e^{S_{ij}-m_t}$，最终 $O = O_{T_c}/\ell_{T_c}$。
   即得式~\ref{eq:19-invariant}。证毕。
 \end{proof}
 
-由此可得三个推论。先看终值，它仍是先合并、后归一化：
+由此可得三个推论。先看终值：各 chunk 的结果按输出列拼接，再统一除以 $\ell$：
 \begin{equation}
-  O_{i,\,64c+d} = \frac{\bigl(\sum_{c'} O^{(c')}_{T_c}\bigr)_{i,\,64c+d}}{\ell_{T_c}}
-  = \frac{O^{(c)}_{T_c}\big|_{i,d}}{\ell_{T_c}} ,
+  O_{i,\,64c+d} = \frac{O^{(c)}_{T_c}\big|_{i,d}}{\ell_{T_c}} ,
   \label{eq:19-final}
 \end{equation}
 即累加器全程未归一化、epilogue 只除一次 $\ell$（L364）。这与第~\ref{ch:15}/\ref{ch:18}~章

@@ -275,8 +275,8 @@ FA tile 级算术强度恰好等于 $B_r$，与 $D$ 无关（$D$ 同时放大分
 128 FLOP/B 在 SM120 上低于 roofline 拐点（fp16 Tensor $\sim$ 400 TFLOPS
 量级对 GDDR7 $\approx$ 1.34 TB/s（1344 GB/s）量级，拐点 $\approx$ 300 FLOP/B），
 单看 tile 流量偏 memory-bound 侧，所以装载效率直接决定 FA 性能。这个 kernel 把装载交给专职的 TMA 执行流，并用 Sk 流水
-把它移出关键路径；相邻 block 共享 K/V tile 的 L2 复用（grid.y 方向同 (b,h) 的
-$N/B_r$ 个 block 读同一份 K/V）进一步抬升有效 AI。
+把它移出关键路径；相邻 block 共享 K/V tile 的 L2 复用（固定 grid.y 所标识的 (b,h)，
+沿 grid.x 的 $N/B_r$ 个 Q-tile block 读同一份 K/V）进一步抬升有效 AI。
 
 \subsection{smem 占用与 stage 上限}
 
@@ -337,7 +337,7 @@ $D{=}128$ 的推荐档位是 $\mathrm{Sk}{=}2$（最优平衡点：80 KB，1 blo
 swizzle & 软件手动（pad 或 XOR） & TMA descriptor 128B 硬件 swizzle \\
 Q 装载 & 一次 & 一次（full\_Q 单屏障） \\
 K 流水 & kStagesK（cp.async group） & kStagesK（empty/full 屏障对） \\
-V 流水 & 与 K 同 buffer 轮换 & 独立通道 kStagesV（$\ge$ 2 真流水） \\
+V 流水 & 独立单 buffer，与 K 通道分开 & 独立通道 kStagesV（$\ge$ 2 真流水） \\
 consumer 计算体 & ldmatrix $+$ mma $+$ softmax & 同左（逐行相同） \\
 寄存器 & 全员同额 & REG\_DEALLOC(40)/REG\_ALLOC(80/168) \\
 \bottomrule
@@ -844,9 +844,9 @@ Sk $=$ 2 较 Sk $=$ 1 提升约 $+20\%$（156.9 $\to$ 188.6），两级 K 流水
 
 \textbf{坑三：expect-tx 字节数按 chunk 计数。}\allowbreak{}D $=$ 128 时一个 tile 的 TMA
 拆成 2 次（box 内维 $\le$ 128B 硬约束），\texttt{expect\_tx} 却只发一次、
-声明总量。漏乘 kTmaChunks 则 tx 永不归零（挂死），多算则提前翻转
-（读半新半旧数据，静默错误）。少报挂死、多报静默，后者更危险（ch13 坑三
-相同）。
+声明总量。漏乘 kTmaChunks 会把声明值减半，第一个 chunk 完成即令 tx 归零，
+consumer 提前放行并可能读到第二个 chunk 尚未写完的数据；多算则留下正的 tx-count，
+使 wait 永不满足（ch13 坑三同此计数方向）。
 
 \textbf{坑四：TMA 坐标忘了 major\_base。}\allowbreak{}descriptor 覆盖 $[BHN, D]$ 全量
 2D 矩阵，(batch, head) 的偏移 $(N_b H + N_h) N$ 必须折进
@@ -922,7 +922,7 @@ A：producer 尾部不再发预取、自然退出；consumer 算完最后一块�
 \texttt{test\_\allowbreak{}flash\_\allowbreak{}attn\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}impl}@L808，参考实现由 cuDNN SDPA
 换成 CPU fp64，softmax 全程 double 累加）。覆盖 $D \in \{64, 128\}$ $\times$
 seqlen $\in \{128, 512\}$ $\times$ F16Acc/F32Acc 共 8 例：seqlen $=$ 128 时
-$T_c{=}2$ 触发 stage 回绕（Sk$=$2 的 0$\to$1$\to$0）；512 时 8 轮迭代覆盖
+$T_c{=}2$ 只覆盖两个 stage 的首轮使用；512 时 8 轮迭代覆盖 stage 回绕与
 流水排空；$D{=}128$ 走 \texttt{swizzle\_fa} 的 chunk-major 双 TMA 路径。
 两档精度分别按容差表 F16Acc $5 \times 10^{-2}$ / F32Acc $10^{-3}$ 判定。
 一个工程细节：\texttt{cu\allowbreak{}Tensor\allowbreak{}Map\allowbreak{}Encode\allowbreak{}Tiled} 是 driver API 而
@@ -947,7 +947,8 @@ bench 子命令输出 17.6~节复测表（\texttt{.\allowbreak{}/\allowbreak{}.\
 差距如何变化（体会 wait 位置对重叠窗口的影响，坑五）；（2）删掉 C0 的
 \texttt{empty\_V} 预热循环，观察挂死（坑二）。（3）\texttt{expect\_tx} 的
 \texttt{kVTileBytes} 故意少乘 \texttt{kTmaChunks}（D$=$128 例），观察
-挂死与静默错的分界（坑三）；（4）把测试 seqlen 换成 192（$\%$ 128 $\ne$ 0），
+第一个 chunk 完成后的提前放行与静默错；再把声明值改大，观察挂死（坑三）；
+（4）把测试 seqlen 换成 192（$\%$ 128 $\ne$ 0），
 确认 unaligned SKIP 分支。
 
 \section*{延伸阅读}

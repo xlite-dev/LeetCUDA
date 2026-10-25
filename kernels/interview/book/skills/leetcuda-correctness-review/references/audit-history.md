@@ -881,3 +881,104 @@ git diff --check：通过
   若未来发现译文与官方源/头文件冲突，仍按“下游与基线冲突”记录，不静默改。
 - 白皮书仍参与 PDF/RTD 编译与排版检查；这并不把它重新变成技术审核对象。
 - 后续审 CuTe 章节时如果没读白皮书，不能声称“已按基线审过”。
+
+## R31–R37（2026-10-25）：六轮全量自审 + 定点勘误
+
+- 范围：主 book 38 章 + ch19b（纯翻译通读豁免）+ 附录 5 + cute-zhihu 32 章（约 4.4 万行）。
+- 方法：主 agent 逐章审核（不派 task agent），R31 全量 L0–L4 → R32 量词/推导专轮 → R33 源码锚点与 PTX 契约轮 → R34 图注/跨章一致轮 → R35 独立脚本数值复算轮 → R36 收敛复核 → R37 定点修复与验收。
+- 发现：18 处观察（3 数值笔误 + 15 表述口径），无 blocking 错误；2 处初判经复核为误报并撤回（ch17 “Sk 最优/饱和”实有复测表 Sk=3 支撑；ch22 三元组为 gemm (M,N,K) 口径非 tile_size）。
+- 修复（commit `4506dff`，14 文件 +32/−26）：ch20 f(4)=1；ch27 预算线 2047 精确值（图/图注/正文）+ SA1 按论文改 2 倍并注明 FA3 仅 Hopper（papers/SageAttention1.txt L62-64/L76-78/L382）；ch32 加速比 1.55x/1.47x + 硬编码表号改 \ref{tab:31-bench}（3 处）；ch02 归纳步类切分方向；ch03 T=B 持平/T<B 增至 B/T；ch04 二级归约 lane 守卫（base.cuh L654-656）+ 实数域/fp32 舍入限定；ch09 图注节选口径；ch16 图注 lane 公式 mod 8；ch22 gemm 维度标注；ch15 前置条件；ch26b 独立 A/B 不可相加；ch00 mpt 与 pipe_tensor 交叉验证；figures-en.json 换键并删旧键。
+- 证据：主 book 两遍 xelatex 零 error、588 页（与 HEAD 基线 worktree 构建同页数）、Overfull 17 与基线一致、0 缺字、无未定义引用；RTD ./build.sh 全绿（英文图集 196/196）；tools.visual_check 93 页 0 问题；成品 pdftotext 抽检旧错文本归零、ch32 引用渲染为表 38.2。
+- 流程教训：同一文件多处编辑须顺序执行（并行编辑丢过 ch04 一处，复核 grep 才暴露）；硬编码“表 X.Y”会随章号漂移错引，一律 \ref；Review Plan/Code Review 各拦下一处误改（ch17 误删有据句、ch32 错表号），保留其拦截价值；图内中文标签改动必须同步 figures-en.json 否则英文图集必红。
+- 台账：book/.tmp/math-audit-r31/ledger.md（R31–R36 逐章结论与复算记录）。
+
+## R38–R42（2026-10-25）：R37 修复后五轮深度复审（每轮轮末独立复审）
+
+- 范围：主 book 38 章 + 附录 5；不改书稿，每轮结果经 Step 3.5 深度复审后才进入下一轮。
+- 五轮视角与结论：R38 修复回归轮（12 被改章全文/精读，16/16 修复验证正确、零回归；新发现 ch00 小结传播缺口 1 HIGH + 表格单元 1 LOW 经复审降级）；R39 L0 深化轮（9 条核心形式化链独立重推全对 + 180 处量词命中抽样核语境，零新发现）；R40 L1/L2 轮（源码锚点 48 处全量核对 + PTX 契约 3 组 + persist_d.cuh 跨仓 constexpr 判定逐字吻合，零新发现；2 处提取疑点系正则截断误报）；R41 L3/L4 轮（修复主题全表面传播扫描仅余 ch00 一处、资源计数表独立复算全对、Q&A/小结抽样全对）；R42 数值+收敛轮（舍入带区间相交判据，ch32 五格与 ch31 争议格全带内，确认 R37"带内不动"处置正确）。
+- 复审实证：Step 3.5 规则 5 两次拦截脚本假阳性（R41 ch17 smem 六格=脚本 pad 口径错；R42 首版判据错被锚点自审当场拦截）；规则 2 拦截 1 处 medium 误判（ch00 表格单元反向自辩成立，降级 LOW）。
+- 章节裁定：33 章 + appA/B/C/E 正确；带观察：ch00（HIGH 小结传播缺口待回修 + LOW）、ch15/ch07/ch06（LOW/ultra-low 措辞）、ch27/appD（MEDIUM 未验证，不改）。
+- 本轮无书稿改动，未触发任何 PDF/RTD 闸门。台账追加于 book/.tmp/math-audit-r31/ledger.md。
+
+## R43（2026-10-25）：high/low 发现逐条复审 + 确证修复
+
+- 范围：R38–R42 收敛出的 5 项 high/low 发现（ch00×2、ch15、ch07、ch06）逐条深度复审（扩大回读 + 反向自辩），确证才改。
+- 复审结论：**确证 3 项**（ch00 小结"mpt 高说明 TC 已饱和"与例三直接矛盾；ch00 表格"计算饱和→减 FLOPs"行动指导口径不完整；ch15 交叉项拿 E[q_iq_j] 当理由属"真命题+错对象"）；**撤回 2 项**（ch07 复数等式在复数域严格成立、Re 已在括号注明，非隐含；ch06 "约 2-3 次"与"约 3/5 FLOP"口径相容，AI 0.3/0.6 与 3/8、5/8 自洽）。
+- 修复：ch00 小结与表格改"数学管线排队/饱和 + pipe_tensor 交叉验证"口径；ch15 交叉项改为 E[q_ik_iq_jk_j]=E[q_ik_i]E[q_jk_j]=0 因子化。
+- Code Review（可提交）6 项 🟢 建议经回读原文复核后采纳 5 项：表格补"未确认饱和→拆链增并行 warp"分支（决策树第 2 步）、"TC"展开为 Tensor Core、正文拆句（not_selected 健康 vs mpt 排队）、小结例三数据标 sm_89、ch15 假设句显式补 q⊥k（E[s] 与因子化的承重前提）；≠ 的 ToUnicode 提取异常为非本次引入的字体问题，不在本轮范围。
+- 验收：主 book 两遍 xelatex，589 页（+1，新增 3 行文字顺延）、0 error、0 缺字、Overfull 17 与基线一致、0 undefined；pdftotext 抽检三处新句在、旧错句（"TC 已饱和"/"好信号：计算饱和"/"在正常工作"）归零；RTD build.sh 34 项 OK（英文图集 196/196）；visual_check 93 页 0 问题。cute-zhihu 无改动，未触发其 PDF 闸门。
+- 流程记录：本轮再次出现"复审推翻审核结论"两例（ch07/ch06），印证 Step 3.5 的必要性；Code Review 建议同样先回读原文再采纳。
+
+## R44–R48（2026-10-25）：第二轮五视角深度审核（每轮轮末独立复审）
+
+- 范围：主 book 38 章 + 附录 5（R43 修复后状态，基线 8d92a8b）；只审不改。
+- 五轮视角与结论：R44 叙事因果链（因/所以/导致 逐章核链路，含 ch37 25 条）——零确证，1 LOW 观察（ch37 图注"容忍度更低"相对 FP8 kBK=128 基准 vs 正文"不是等数据"绝对实测，可并存，自辩撤回）；R45 L1 术语指称（逻辑值/私有副本/原地/stage/chunk/Phase/atom/per-call）——零确证，1 LOW（per-call 首现未定义但上下文自足，撤回）；R46 图内/表注数字（ch30/31/36/37 图内数字与表内数据独立复算）——零新发现；R47 listing 端点（174 个 listing 标题行号 100% 一致，10 处端点告警全为分支边界/连续分段/说明性裁剪/正则误报）——零新发现；R48 问答/小结/标题计数 + 收敛——计数声明全对，小结数字全复算吻合（含 ch37 91–93% 分母口径）。
+- 章节裁定：33 章 + appA/B/C/E 正确；2 条 LOW 观察（ch37/ch22，不改）；既有 medium 维持（ch17/ch18 arrive 计数、ch26c STSM 计数、ch27 四个误差源/254 码点、ch33 归因、ch36 合成口径、appD 双基准）。
+- 本轮无书稿改动，未触发任何 PDF/RTD 闸门；台账追加于 book/.tmp/math-audit-r31/ledger.md。
+
+## R49–R53（2026-10-25）：第二轮全文逐章通读（每轮 8 章 + 附录，轮末复审）
+
+- 覆盖：R49 ch00–ch07+appA；R50 ch08–ch15+appB；R51 ch16–ch23+appC；R52 ch24–ch29+appD；R53 ch30–ch37+appE。主 agent 逐章全文（仅滤 TikZ 绘图指令，保留节点文字/图注/表格/问答/listing 标题）。
+- 发现：仅 1 处 LOW——appA `create_tensor_map` listing 标题 `L765-785` 与区间 `764-785` 差 1 行（已改 764-785）。同时暴露 R47 的覆盖缺口：其 174 个 listing 只扫 `chapters/`、未扫 `appendices/`；补扫附录 5 个 listing 后确认仅此 1 处不一致。
+- 复核口径：所有章节的数值表/公式/资源账均现场复算（AI/ridge、smem/寄存器池、加速比、误差界、descriptor 位域、swizzle 周期、barrier 计数），与既有台账一致；ch12/ch13/ch14/ch16/ch17 等长章采用"两遍分段读全"。
+- 验收：主 book 589 页 / 0 error / 0 缺字 / Overfull 17 与基线一致 / 0 undefined；`pdftotext` 命中新标题；RTD `build.sh` 34 项 OK、无 FAIL；visual_check 93 页 0 问题。cute-zhihu 无改动未触发。
+- 结论：五轮零新确证问题（除上述 1 处 LOW），全书维持"结构正确、可发布候选"状态。
+
+## R49–R58（2026-10-25）：cute-zhihu 专项十轮深度审核（只审不改）
+
+- 范围：`cute-zhihu/chapters/` 32 章 7179 行全量；主 book 不动；不派 sub agent，主 agent 逐章审核；
+  用户明确"只审核总结，不改任何内容"，全程只读。
+- 十轮视角：R49 全量通读 L0–L4 → R50 L0 量词/边界 → R51 L1 术语指称 → R52 L2 源码/PTX 实证
+  （12 锚点）→ R53 L3 计数 → R54 L4 一致性 → R55 独立脚本数值复算 → R56 scan_risky_claims →
+  R57 源码摘录逐行核对 → R58 收敛裁定。每轮结果先过 Step 3.5 深度复审再进下一轮。
+- 实证证据（本地）：cute int_tuple.hpp:196（depth）、copy_sm90_desc.hpp:83
+  （set_barrier_transaction_bytes=mbarrier.arrive.expect_tx）、copy_sm100_tma.hpp:45
+  （Sm100MmaPeerBitMask=0xFEFFFFFF）、cutlass/arch/barrier.h:907（umma_arrive_2x1SM_sm0）、
+  copy_atom.hpp:495（make_tiled_copy）、layout.hpp:1798/1324/206（tile_to_shape/left_inverse/
+  with_shape）、copy_traits.hpp:66（UniversalCopy）、copy_traits_sm75.hpp:42（LDSM_N）、
+  mma_sm75.hpp:52（SM75_16x8x8）、PTX 9-instruction-set 12237-12282（fence.proxy 方向）、
+  PTX 13510-13512（mbarrier 远端支持矩阵）。
+- 确证发现 7 组（不改，记录）：①reed-02 depth=2 vs cute depth()=3（HIGH，L1/L2 口径冲突）；
+  ②reed-isa-02 "predication=分支预测"术语错误+流水线清空归因（MEDIUM-HIGH）；
+  ③reed-04 路径2 "L1→smem" 通路（MEDIUM）；④reed-11 求和上限 off-by-one（LOW-MEDIUM）；
+  ⑤reed-mem-01 barrier.h:912 行号漂移（LOW）；⑥LOW 措辞 6 处；⑦未验证 8 组。
+- 撤回 5 条误报：zhuxi-05 "缺 arrive"（expect_tx 自带 arrive 实证）、R55 脚本 3 条 MISMATCH
+  （舍入带内）、及 R49 初判 1 处降级。既有 medium 4 条维持（reed-02 product logical 行、
+  zhuxi-03 一一映射/单射、zhuxi-04 tiled_product 版本断言、zhuxi-05 8-bit/≤256）。
+- 章节裁定：22 章正确、10 章带确证观察、0 blocking；维持"概念正确性中高、参考级"判断。
+- 数值复算：24 项独立复算全对（含 frankshi 2031616/2097152、reed-10 bit21 表 7 行、
+  blackwell 带宽表、fp8 dp(S) 全链、-7 的 20-bit 补码）。
+- 本轮无书稿改动，未触发任何 PDF/RTD 闸门。台账：book/.tmp/cute-zhihu-audit/ledger.md。
+
+## R59（2026-10-25）：cute-zhihu 问题条目复审 + 确证修复（11 文件 18 行）
+
+- 复审推翻 3 条原判：reed-02 depth=2（HIGH 误报，cute depth leaf=0，书中正确）、
+  reed-02 product logical 行（medium 误报）、reed-04 路径2（cp.async.cg/.ca 真实硬件区分）。
+- 修复 13 处：isa-02 predication×5、reed-11 求和上限+TileB^T、isa-04 偏置指数×2+denormal、
+  isa-05 negate 条件、isa-03 local memory 澄清、mem-01 去行号、zhuxi-04 tiled_product 证伪改写、
+  reed-01 反向访问、reed-03 Int<M> 补{}、reed-10 标题[2]、声明页同步"最小订正"口径。
+- 教训：①LaTeX 转义形态（Int$<$M$>$）会让字面 grep 漏检，撤回结论前必须按 tex 形态复核；
+  ②Review Plan 纠出 2 条漏检+1 条同错第二处（isa-04 L25）+1 条改法新错（zhuxi-04"作者写作时"）；
+  ③CUTLASS 升 v4.8.1 后全锚点复核，barrier.h 907→966 证明"引用文件路径不写行号"是对的。
+- 验收：PDF 248 页/0 error/Overfull 6 同基线；pdftotext 旧句 0 新句全中；RTD 全量+verify 全 OK；
+  visual_check 12 页全 OK。未 commit。
+
+## R54–R58（2026-10-25）：第三轮五视角深度审核（每轮轮末独立复审）
+
+- 范围：主 book 38 章 + 附录 5（基线 279e364）；只审不改；主 agent 逐项核验，未派 sub agent。
+- 五轮视角与结论：R54 交叉引用指称（815 处 \ref{ch:NN} + 全部 N.M[.K] 节号 + 39 处命名指称 + 6 条公式指称抽样）——节号 0 越界、命名 39/39 匹配、抽样全在位；R55 数值复算（41 处比值断言带舍入带判定）——40 精确吻合，1 处（ch26c 2.71x）带内不动且四源一致；R56 图注-正文-表三角（括号平衡解析 caption，孤立数字 19 逐条判读 + 同量词冲突扫描）——零矛盾，2 冲突候选经操作数复算自辩（ch26c 580/88=6.6 倍、ch00 100KB/32KB=3 blocks）；R57 测试声明（31 个 tests/*.cu 对照书内容差/case/PASS 数字）——容差三档逐字一致、case 字符串与形状全对、编译级通过；本机无 CUDA 设备，PASS 误差数字标"运行期未复测"；R58 高风险词（scan_risky_claims ~1100 候选，聚焦 L4-figure 10 + L2-wait 21 全量判读）——30/31 与 PTX/源码一致，1 LOW 观察（ch29 考据段 wait<2S-1> 简写，源码实为 2kS-1/2kS-2 双常量，指路段合理简写）。
+- 方法论记录：Step 3.5 规则 5 本轮四批拦截脚本假阳性（ch19b stem 抢 ch19 计数键、grep 反斜杠转义、ulp 精度过严、caption 正则吞嵌套表）；未有一条流入结论。
+- 章节裁定：全部维持"正确"（38 章 + 5 附录）；1 LOW 观察不改；既有 medium 6 项原样保留。
+- 本轮无书稿改动，未触发任何 PDF/RTD 闸门。
+
+## R60（2026-10-25）：全量逐章证据链审核 + 63 项修复 + 三 PDF/RTD 全验收
+
+- 范围：主 book 41 个 chapter input（含 ch19b、ch26b、ch26c）+ 8 个白皮书子文件 + 附录 A–E，共 54 个 TeX、40487 行；基线 `1932ac2`，开工工作树 clean。`ch19b`/wp 只通读作术语基线，不做逐条技术审核。
+- 与历史轮次的差别：不是看 diff 或旧 ledger，而是把审核单位从“章节”改成“claim 表面”。逐章全文覆盖正文/公式、TikZ 节点、图注、表/表注、面试问答/小结/标题、listing、tests/bench、CLI/backend、附录 permalink、RTD 三套词典。旧 PASS 只用于防误报，不作为本轮证明。
+- 机械校验：226 个外部 listing（178 command + 48 environment）检查 `.cu/.cuh` 路径与单段/多段 linerange，无效 0；53 条附录 permalink 按各自 commit 逐条核验，发现 2 条 pinned 快照无效并修复；重算 AI/ridge、ceil、SF 字节、寄存器池、加速比；发现 ch04 bench 启动参数只传 `N` 而非 `S*N`；核对 861d75e 的 CLI choices 与 backend assert，确认 Q/K per-channel 是“CLI 可传、CUDA 后端拒绝”的假可运行档。
+- 候选与裁决：67 条候选；撤回 4 条（C-20 TMA 完成时序图省略、C-32 kBlockSwizzle 误读为组数、C-56 WHT 归一化折叠、C-59 旧 bug 复现未写 checkout）；保留并修复 63 条（HIGH 3：ch04 bench、ch13/14/17 expect-tx、ch32 P2 图内符号；MEDIUM 33；LOW 27）。C-14 经 PTX tx-count 复核后收窄：多报残留正值挂死；少报若命中 0 提前放行、跨到负值也挂死；ch26b 单 bulk 少 1 字节原句正确，撤回该处误判。
+- 主要修复类型：图内符号/图注与正文冲突；LSE“可逆打包”与 Split-D“LSE 合并”语义；bias 与 RMSNorm 的因果；128-bit/sector 与 request/sector 口径；全局 AI 漏 C；PAD 无法消除固定 k 冲突；expect-tx/phase 协议；ceil 与 per-block SF 数；fp16/bf16 基线；e4m3/e2m1 数值语义；level-1 不能保证所有组不下溢；13824→8704 落点；P2 图内符号；sm_120f 仅 SM12x family；两条 permalink；CLI per-channel。
+- 修复与词典：36 个 TeX/测试文件 + 2 个 RTD 词典 + 3 个重建 PDF，共 41 文件（213 insertions / 185 deletions）。改图内中文后 RTD 图集词典少 8 条，用 `python -m tools.translate_figures --limit 8` 补齐；改 appC 的 sm_120f 文案后 code-en 词典漂移 1 条，同步 key/value；强制 TikZ 重建后全部命中。
+- 验收：主 book 589 页 / 0 error / 0 missing / Overfull 16；cute-zhihu 248 页 / 0 error / 0 missing / Overfull 6；colfax 204 页 / 0 error / 0 missing / Overfull 0（原环境缺 biblatex/logreq，装用户 TeX 树并用 TL2023 临时 biber）。RTD `./build.sh --force-tikz` 全绿：英文图集 1883 条覆盖 1792/1792、英文图 196/196、code 771/771、math 121/121；`visual_check` 93 页全部 `[OK]`，需处理 0。未运行 GPU 测试/bench；ch04 新 bench 数据标未复测。
+- 方法论结论：多查出的原因主要是覆盖面、证据标准和反向自辩三者叠加，不是书稿突然变差。63 项中 HIGH 仅 3 项，27 项是 LOW 表述/图表/测试覆盖问题；同时有 4 项误报，说明“查得多”必须配套 confidence/severity 分层，不能把候选数当错误数。该模式已沉淀到 `references/full-book-claim-audit-playbook.md` 和 SKILL §2.2。
+- 本轮 skill 更新本身无书稿改动，未额外触发 PDF/RTD；上述验收对应本轮书稿修复。未 commit。

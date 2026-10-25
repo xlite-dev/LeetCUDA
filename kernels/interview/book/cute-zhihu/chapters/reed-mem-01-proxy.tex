@@ -329,7 +329,7 @@ TMA 向本 CTA 的 SMEM 写入、且消费者也在本 CTA 时，\lstinline|.acq
 
 mbarrier 对象可以位于远端 CTA 的 SMEM（\lstinline|.shared::cluster|），但 wait 只能作用于本地 mbarrier 对象——PTX 的远端地址支持矩阵中，\lstinline|.shared::cluster| 只支持 \lstinline|arrive / arrive_drop / expect_tx / complete_tx|，其余（含 init / \lstinline|test_wait| / \lstinline|try_wait|）一律 Not supported，对远端对象执行 wait 不被 PTX 支持、行为未定义（PTX ISA，§9.7.14.16.11 mbarrier Instructions）。scope 是否升级，取决于是否通过 mbarrier 在跨 CTA 的执行端点之间交接普通内存效应；只传递计数、phase 或资源状态时不需要 cluster 级 release/acquire。
 
-在 2SM empty barrier 中，MMA 消费完成后 producer 复用 SMEM buffer，odd CTA 远程 arrive 到 even CTA 的 barrier（CUTLASS \lstinline|umma_arrive_2x1SM_sm0|，barrier.h:912）：
+在 2SM empty barrier 中，MMA 消费完成后 producer 复用 SMEM buffer，odd CTA 远程 arrive 到 even CTA 的 barrier（CUTLASS \lstinline|umma_arrive_2x1SM_sm0|，\lstinline|cutlass/arch/barrier.h|）：
 
 \begin{lstlisting}
 // (i) MMA 的完成跟踪：由 commit 直接登记到 empty barrier，同时带生产侧 ordering

@@ -294,10 +294,11 @@ smooth-V、V 换 per-channel），
   \item fp8 数值通路：\texttt{--fp8-qk-mm-type} $\in$
         \{fp8, int8\}（e4m3 vs s8xs8$\to$s32）、
         \texttt{--fp8-pv-acc-type} $\in$ \{f32, f16\}（PV 累加精度）。
-  \item 量化粒度：\texttt{--fp8-\{q,k\}-quant-method} $\in$
-        \{per-block, per-channel, per-thread\}、
-        \texttt{--fp8-v-quant-method} $\in$ \{per-block,
-        per-channel\}（per-channel 即 Sage 式 per-D scale）。
+  \item 量化粒度：CUDA 后端可运行 \texttt{--fp8-\{q,k\}-quant-method} $\in$
+        \{per-block, per-thread\}；CLI choices 虽还列 per-channel，但 861d75e 的
+        \texttt{functional.py} 对 Q/K 明确断言只接受前两者。
+        \texttt{--fp8-v-quant-method} $\in$ \{per-block, per-channel\}
+        （per-channel 即 Sage 式 per-D scale）。
   \item hybrid：\texttt{--fp8-hybrid}/\texttt{--fp4-hybrid} 让 fp16
         persist-D 算前 \texttt{n\_early} 行、量化 kernel 算余下
         （零冗余拼接，\texttt{q\_start\_row} 偏移实现）；causal 下
@@ -482,8 +483,8 @@ bench 脚本默认 preset，2026-09-21）：fp8 与 Sage2 总体打平、互有
   未随书归档。\par}
 \end{table}
 
-与 fp8 对照，差别集中在三处：D$\ge$128 后 fp4 稳定 2x 级且随 D
-单调上升（blockscale MMA 无 fp8 的 smem 交叉点问题）；D=256 同点
+与 fp8 对照，差别集中在三处：D$\ge$128 后 self/gqa 的 fp4 稳定在 2x 级并随 D
+上升，causal 与 cross 则分别回落（blockscale MMA 无 fp8 的 smem 交叉点问题）；D=256 同点
 fp4 比 fp8 快 1.64x（4.96 vs 8.13ms），对应第~\ref{ch:30}~章 dispatch
 表；cross 小 Q 场景两者受同样限制（aux 链占比），fp4 也只有 0.99x--1.21x。
 
@@ -615,8 +616,8 @@ fp4，精度损失只在最敏感的位置修正。README 引用的 NeMo Automod
         拼接）；优势区数值通路 knob 中性（$\pm2.3\%$）、粒度升级
         1.7--2.7\%，杠杆在 dispatch
         与 hybrid；
-  \item fp4 vs fp8 的性能形态差：blockscale MMA 让 fp4 无 smem
-        交叉点、全 D 段 2x 级；fp8 在 D=256 有交叉点、大 D 靠
+  \item fp4 vs fp8 的性能形态差：blockscale MMA 让 fp4 无 fp8 式 smem
+        交叉点，self/gqa 在 D$\ge$128 保持 2x 级（causal/cross 另有回落）；fp8 在 D=256 有交叉点、大 D 靠
         split-D；
   \item 竞品对照的公平性：preset 对齐（hybrid/smooth-v 是功能
         不是负担）、Sage3 对 GQA 未支持与 causal 噪声地板；

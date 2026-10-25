@@ -162,8 +162,8 @@ $\min(total\_work, SMs)$（persistent，流水 fill/drain 每 CTA 摊一次，
 producer 可在 consumer 跑 epilogue 时预取下一个 work 的 K/V）；causal
 用 \texttt{total\_work}（经典 block-per-work，短 work 早完早释放 SM，
 HW 调度器负载均衡：多数 work 的 $T_{c,eff}\ll T_c$，persistent 的
-每 work 固定开销会占主导）。barrier 协议对任意 gridDim 都成立，
-non-persistent 只是每 barrier 只翻第一个 phase 的退化情形。
+每 work 固定开销会占主导）。barrier 协议对任意 gridDim 都成立；
+non-persistent 少的是跨 work 的相位延续，单个 work 内仍会随多个 KV tile/stage 反复翻相。
 
 \begin{figure}[H]
 \centering
@@ -218,7 +218,7 @@ non-persistent 只是每 barrier 只翻第一个 phase 的退化情形。
      block-per-work（短 work $T_{c,eff}\ll T_c$ 时 persistent 的每 work 固定开销占主导）。
      barrier phase 由 per-CTA 全局 kv-tile 计数器驱动、永不 re-init（PTX ISA
      9.7.13.15.9 对活跃 mbarrier 的 re-init 是 UB），non-persistent 只是每 barrier
-     只翻第一个 phase 的退化情形。};
+     没有跨 work 相位延续；单个 work 内仍随多个 KV tile/stage 翻相。};
 \end{tikzpicture}
 \caption{dense persistent 与 causal block-per-work 的 grid 调度对比（同一
 kernel、同一代码路径，runtime grid 定风格）。上：$\min(total\_work,SMs)$ 个 CTA
@@ -312,7 +312,7 @@ PV 的 C fragment 每 lane 持数不同（头注释 L44--46）。
     \node[draw=gray!55, fill=black!2, line width=0.5pt, minimum width=8.32cm, minimum height=3.39cm, inner sep=1pt, align=center, text width=8.25cm, font={\fontsize{5.7}{7.1}\selectfont }] at (4.528,-6.314) {};
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries }] at (0.616,-4.897) {(4) 实现的收益：第一级退化成常数};% w=7.854
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkPurple} }] at (0.616,-5.452) {online softmax 先减运行行 max $\Rightarrow$\\rowmax($\tilde{P}$) $\equiv$ 1 $\Rightarrow$ s\_P1 $\equiv$ 1/(448$\times$6)};% w=7.854
-    \node[draw=black!30, fill=black!2, line width=0.5pt, minimum width=7.85cm, minimum height=0.92cm, inner sep=1pt, align=center, text width=7.79cm, font={\fontsize{4.8}{6.0}\selectfont \color{black!65} }] at (4.543,-6.376) {P$_2$ = exp2(S$\cdot$L $-$ m$\cdot$L + log2(1/2688)) $\in$ [0, 2688]\\s\_P2 = exp2(a$\cdot$L $-$ m\_sc + log2(1/6)) $\in$ (0, 448]\\（L = scale$\cdot$log2e；编译期常数 $-$11.392 / $-$2.585）};
+    \node[draw=black!30, fill=black!2, line width=0.5pt, minimum width=7.85cm, minimum height=0.92cm, inner sep=1pt, align=center, text width=7.79cm, font={\fontsize{4.8}{6.0}\selectfont \color{black!65} }] at (4.543,-6.376) {P$_2$ = exp2(S$\cdot$L $-$ m$\cdot$L $-$ log2(1/2688)) $\in$ [0, 2688]\\s\_P2 = exp2(a$\cdot$L $-$ m\_sc + log2(1/6)) $\in$ (0, 448]\\（L = scale$\cdot$log2e；编译期常数 $-$11.392 / $-$2.585）};
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkGreen!70!black} }] at (0.616,-7.115) {逐行的 s\_P1 存储与乘回全部消失};% w=7.854
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (0.616,-7.484) {组归一也折进 exp2：q = exp2((s$-$a)$\cdot$L + log2 6)};% w=7.854
     \node[draw=gray!55, fill=black!2, line width=0.5pt, minimum width=3.85cm, minimum height=3.39cm, inner sep=1pt, align=center, text width=3.79cm, font={\fontsize{5.7}{7.1}\selectfont }] at (11.042,-6.314) {};
@@ -423,13 +423,14 @@ PV 的 C fragment 每 lane 持数不同（头注释 L44--46）。
 
 表~\ref{tab:32-mxfp8} 汇总 \texttt{--fp4-pv-mm-type fp8} 变体（数据落
 盘 \texttt{.tmp/book-bench/ch32/}）；fp4 基线表见
-第~\ref{ch:31}~章表 31.2（self 1.49--2.11x、causal 1.25--1.61x，
+第~\ref{ch:31}~章表~\ref{tab:31-bench}（self 1.49--2.11x、causal 1.25--1.61x，
 16 格全绿）。
 
 \begin{table}[H]
   \centering
   \caption{MXFP8 PV 变体 vs fp4 基线（PRO 5000，$B{=}1,H{=}32,N{=}8192$，
-  fp16 口径，allclose 全绿）}
+  fp16 口径，allclose 全绿；末列加速比为对 SDPA 的 $T_{\mathrm{SDPA}}/T_{\mathrm{mxfp8}}$，
+  SDPA 时间见第~\ref{ch:31}~章表~\ref{tab:31-bench}）}
   \label{tab:32-mxfp8}
   \begin{tabular}{@{}rlllll@{}}
     \toprule
@@ -437,8 +438,8 @@ PV 的 C fragment 每 lane 持数不同（头注释 L44--46）。
     (self/causal) \\
     \midrule
     64  & 2.24 & $+39\%$ & 1.41 & $+31\%$ & 1.07x / 0.96x \\
-    128 & 3.47 & $+38\%$ & 2.17 & $+30\%$ & 1.48x / 1.24x \\
-    192 & 4.62 & $+33\%$ & 3.06 & $+28\%$ & 1.56x / 1.25x \\
+    128 & 3.47 & $+38\%$ & 2.17 & $+30\%$ & 1.47x / 1.24x \\
+    192 & 4.62 & $+33\%$ & 3.06 & $+28\%$ & 1.55x / 1.25x \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -454,7 +455,7 @@ MXFP8 PV 付出 28--39\% 的代价：$V^\top$ 数据 8 bit 带宽翻倍、atom �
 fp8 快 $\sim$23\%：blockscale mxf4nvf4 吞吐与 fp8 dense 相当，收益
 全部来自带宽（K/V/SF 字节减半以上）；D=192 的 e2e 比值
 self 1.47x / causal 1.29x / gqa 1.50x。本机同日对照可复算：fp4 D=192
-self 3.48ms（表 31.2）对 fp8 persist-D 同 shape 的第~\ref{ch:29}~章 29.6 节实测表
+self 3.48ms（表~\ref{tab:31-bench}）对 fp8 persist-D 同 shape 的第~\ref{ch:29}~章 29.6 节实测表
 数据（4.58\,ms）作比，得 1.32$\times$（该 shape 在 861d75e 上有正确性 bug、
 速度仅供参考，见 29.7.1）。
 

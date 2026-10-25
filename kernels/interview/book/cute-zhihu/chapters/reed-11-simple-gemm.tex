@@ -24,7 +24,7 @@ $\boldsymbol{D^{T}} = \alpha \boldsymbol{B^TA^T} + \beta \boldsymbol{C^{T}}$ ，
 // op can be 'N'ormal or 'T'ranspose
 // output:
 //    D(m, n) column major
-// input: 
+// input:
 //    A(m, k) column major
 //    B(k, n) column major
 //    C(m, n) column major
@@ -79,7 +79,7 @@ template <typename T>
 __global__ void gemm_simple(T *Cptr, const T *Aptr, const T *Bptr, int m, int n, int k) {
   Tensor A = make_tensor(make_gmem_ptr(Aptr), make_shape(m, k), make_stride(k, Int<1>{}));
   Tensor B = make_tensor(make_gmem_ptr(Bptr), make_shape(n, k), make_stride(k, Int<1>{}));
-  Tensor C = make_tensor(make_gmem_ptr(Cptr), make_shape(m, n), make_stride(n, Int<1>{})); 
+  Tensor C = make_tensor(make_gmem_ptr(Cptr), make_shape(m, n), make_stride(n, Int<1>{}));
 }
 \end{lstlisting}
 
@@ -87,10 +87,10 @@ __global__ void gemm_simple(T *Cptr, const T *Aptr, const T *Bptr, int m, int n,
 
 \section{以C矩阵为中心的任务划分策略}
 
-GPU中有多个SM（Stream Multiprocessor）我们编程时以grid、block的软件层级进行编程来利用这些SM，在矩阵计算中，我们以输出矩阵C作为划分thread block的单元进行任务拆分，也就是说一个thread block完成C矩阵中的一个小块（TileC）的计算任务，如图3所示，我们定义矩阵TileC的大小为kTileM、kTileN，分别表示小块矩阵包含元素的行数目和列数目，根据块状矩阵乘法的公式完成TileC的计算需要A矩阵中的绿色高亮部分和B矩阵的黄色高亮部分，它们的形状分别为(kTileM, k)和(kTileN, k)。我们对AB矩阵的k轴按照kTileK的大小进行分块，则可以将TileC矩阵表达为AB矩阵块的点积运算
+GPU中有多个SM（Stream Multiprocessor）我们编程时以grid、block的软件层级进行编程来利用这些SM，在矩阵计算中，我们以输出矩阵C作为划分thread block的单元进行任务拆分，也就是说一个thread block完成C矩阵中的一个小块（TileC）的计算任务，如图3所示，我们定义矩阵TileC的大小为kTileM、kTileN，分别表示小块矩阵包含元素的行数目和列数目，根据块状矩阵乘法的公式完成TileC的计算需要A矩阵中的绿色高亮部分和B矩阵的黄色高亮部分，它们的形状分别为(kTileM, k)和(kTileN, k)。我们对AB矩阵的k轴按照kTileK的大小进行分块，则可以将TileC矩阵表达为AB矩阵块的点积运算（其中 $num\_tile\_k = k / kTileK$ 为 k 轴的分块数）
 
 \begin{equation*}
-TileC = \sum_{itile = 0}^{num\_tile}{TileA_{itile} TileB_{itile}}
+TileC = \sum_{itile = 0}^{num\_tile\_k - 1}{TileA_{itile} TileB_{itile}^{T}}
 \end{equation*}
 
 \begin{figure}[htbp]\centering
@@ -170,7 +170,7 @@ __global__ void gemm_simple(T *Cptr, const T *Aptr, const T *Bptr, int m, int n,
   Tensor gC = local_tile(C, make_tile(Int<kTileM>{}, Int<kTileN>{}), make_coord(iy, ix));
   //  gA(kTileM, kTileK, num_tile_k)
   //  gB(kTileN, kTileK, num_tile_k)
-  //  gC(kTileM, kTileN) 
+  //  gC(kTileM, kTileN)
 
   TiledMMA tiled_mma;
   auto thr_mma = tiled_mma.get_slice(threadIdx.x);
@@ -181,8 +181,8 @@ __global__ void gemm_simple(T *Cptr, const T *Aptr, const T *Bptr, int m, int n,
   auto tArA = thr_mma.partition_fragment_A(gA(_, _, 0));  // (MMA, MMA_M, MMA_K)
   auto tBrB = thr_mma.partition_fragment_B(gB(_, _, 0));  // (MMA, MMA_N, MMA_K)
   auto tCrC = thr_mma.partition_fragment_C(gC(_, _));     // (MMA, MMA_M, MMA_N)
- 
-  clear(tCrC); 
+
+  clear(tCrC);
 }
 
 int main() {
@@ -191,8 +191,8 @@ int main() {
   using mma_traits = MMA_Traits<mma_op>;
   using mma_atom = MMA_Atom<mma_traits>;
 
-  auto MMA = decltype(make_tiled_mma(mma_atom{}, 
-                      make_layout(Shape<_2, _2, _1>{}), 
+  auto MMA = decltype(make_tiled_mma(mma_atom{},
+                      make_layout(Shape<_2, _2, _1>{}),
                       make_layout(Shape<_1, _2, _1>{})));
   dim3 block(size(MMA{}));
   dim3 grid(n / kTileN, m / kTileM);
@@ -223,7 +223,7 @@ __global__ void gemm_simple(T *Cptr, const T *Aptr, const T *Bptr, int m, int n,
   Tensor gC = local_tile(C, make_tile(Int<kTileM>{}, Int<kTileN>{}), make_coord(iy, ix));
   //  gA(kTileM, kTileK, num_tile_k)
   //  gB(kTileN, kTileK, num_tile_k)
-  //  gC(kTileM, kTileN) 
+  //  gC(kTileM, kTileN)
 
   TiledMMA tiled_mma;
   auto thr_mma = tiled_mma.get_slice(threadIdx.x);
@@ -234,9 +234,9 @@ __global__ void gemm_simple(T *Cptr, const T *Aptr, const T *Bptr, int m, int n,
   auto tArA = thr_mma.partition_fragment_A(gA(_, _, 0));  // (MMA, MMA_M, MMA_K)
   auto tBrB = thr_mma.partition_fragment_B(gB(_, _, 0));  // (MMA, MMA_N, MMA_K)
   auto tCrC = thr_mma.partition_fragment_C(gC(_, _));     // (MMA, MMA_M, MMA_N)
- 
+
   clear(tCrC);
-  
+
   int num_tile_k = size<2>(gA);
 #pragma unroll 1
   for(int itile = 0; itile < num_tile_k; ++itile) {
@@ -246,7 +246,7 @@ __global__ void gemm_simple(T *Cptr, const T *Aptr, const T *Bptr, int m, int n,
     cute::gemm(tiled_mma, tCrC, tArA, tBrB, tCrC);
   }
 
-  cute::copy(tCrC, tCgC); 
+  cute::copy(tCrC, tCgC);
 }
 
 int main() {
@@ -255,8 +255,8 @@ int main() {
   using mma_traits = MMA_Traits<mma_op>;
   using mma_atom = MMA_Atom<mma_traits>;
 
-  auto MMA = decltype(make_tiled_mma(mma_atom{}, 
-                      make_layout(Shape<_2, _2, _1>{}), 
+  auto MMA = decltype(make_tiled_mma(mma_atom{},
+                      make_layout(Shape<_2, _2, _1>{}),
                       make_layout(Shape<_1, _2, _1>{})));
   dim3 block(size(MMA{}));
   dim3 grid(n / kTileN, m / kTileM);

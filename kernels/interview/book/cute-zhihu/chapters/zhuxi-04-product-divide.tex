@@ -83,7 +83,7 @@ $\text{LayoutC} = \text{product(LayoutA, (LayoutB}_0\text{, LayoutB}_1\text{, ..
 
 其中 $ \text{(LayoutB}_0,  \text{LayoutB}_1 \text{, ...)}$ 不再是一个单独的 layout，而是一个多个 layout 组成的 tuple，通常被称为 \textbf{Tiler}。
 
-借助这种 Tiler 形式，可以做到 $\text{B}_i$ 之间不相互耦合。笔者感觉这类场景对于 product 来说其实没有实际应用的场景，在 divide 部分用的比较多。因此，我们看到CuTe 文档中虽然提到了几种 tiler 相关的 product 函数，其实在 cutlass 并没有被用到。出于严谨，我们列出各函数对应的区别，读者有个印象即可：
+借助这种 Tiler 形式，可以做到 $\text{B}_i$ 之间不相互耦合。笔者感觉这类场景对于 product 来说其实没有实际应用的场景，在 divide 部分用的比较多。因此，我们看到CuTe 文档中虽然提到了几种 tiler 相关的 product 函数，但它们在 cutlass 中较少被直接调用；实际上 cute 内部就在使用，例如 make\_fragment\_like 与 TiledMMA 的 thr\_layout\_vmnk 均基于 tiled\_product。出于严谨，我们列出各函数对应的区别，读者有个印象即可：
 
 \begin{lstlisting}
 Layout Shape : (M, N, L, ...)

@@ -384,7 +384,7 @@ TFLOPS（+4.2\%）。形状越宽（$T_n\gg T_m$）收益越大；$T_n\le\lceil 
 \subsection{swizzle 函数族：v1、v2 与派发器}
 
 Phase 7b-3 的 kernel 是 \texttt{m16n8k16} + multistage pipeline + TN
-布局 + XOR swizzle 消除 smem bank conflict 的统一循环版，其头部注释把
+布局 + XOR swizzle 降低 smem bank conflict 的统一循环版，其头部注释把
 swizzle 原理（smem Bank Conflict 消除）总结为五点：
 
 \begin{itemize}
@@ -1011,8 +1011,8 @@ $k_{\mathrm{ValTileK}}{=}4$、$S{=}2$ 恰好 64\,KB，不调
 
 \textbf{坑四：block swizzle 的冗余 CTA。}$\lceil T_n/S\rceil\cdot S\ge T_n$，
 多出来的 block（$bx\ge T_n$）靠入口守卫整体返回。守卫在所有 cp.async 之前，
-因此是安全的；但若把守卫下移到预取之后，冗余 block 会破坏其它 block 的 stage，
-改动本 kernel 时务必保持守卫在最前。
+因此是安全的；若把守卫下移到预取之后，冗余 block 会发出越界 cp.async 并可能触发非法访问，
+改动本 kernel 时务必保持守卫在最前。stage 是 CTA 私有资源，不会被其它 block 写入。
 
 \textbf{坑五：v1/v2 与 \texttt{swizzle<8>} legacy 档。}$k_{\mathrm{cs}}{=}8$
 （kStep=4）无 TMA 对应模式，v2 显式回退 v1；该路径当前无 kernel 使用，

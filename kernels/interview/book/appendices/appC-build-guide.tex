@@ -52,7 +52,7 @@ Part VI（第~\ref{ch:27}--\ref{ch:33}~章）的源码在独立仓库
 pip uninstall ffpa-attn -y && pip install -e . --no-build-isolation
 
 # 完整 CUDA kernel 编译（本地 PRO 5000 是 sm_120a，用 sm_120f family 目标
-# 构建以覆盖整个 Blackwell 家族；setmaxnreg 的保留条件是 TMA dst 用
+# 构建以覆盖 SM12x family（sm_120/sm_121），不覆盖 SM100/SM103；setmaxnreg 的保留条件是 TMA dst 用
 # shared::cta（cute 在 SM120 下即如此），见第~\ref{ch:14}~章坑二取证）
 bash ./build.sh --arch sm_120f --headdim default --ext all --jobs 64
 \end{lstlisting}
@@ -122,8 +122,8 @@ sm\_120f & family-specific 目标（CUDA 13.2+），build.sh 的 setmaxnreg
   raw-PTX/cta TMA 路径）。\textbf{保留 setmaxnreg 的真正条件是 TMA dst 用
   \texttt{shared::cta}}：dst 为 \texttt{shared::cluster} 时 ptxas 以 C7506
   静默丢弃（与 arch 后缀无关，sm\_120a/sm\_120f 都丢；修复后两者都 112/112
-  保留，第~\ref{ch:14}~章坑二取证）。sm\_120f 额外的好处是整个 Blackwell
-  家族二进制兼容。 \\
+  保留，第~\ref{ch:14}~章坑二取证）。sm\_120f 额外的好处是同一 SM12x
+  family（sm\_120/sm\_121）内二进制兼容；它不覆盖 SM100/SM103 等其它 Blackwell 计算能力。 \\
 \bottomrule
 \end{tabular}
 \end{table}

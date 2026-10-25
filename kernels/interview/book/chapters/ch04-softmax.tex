@@ -225,7 +225,7 @@ $\ell = \ell^{(1)} + \ell^{(2)} e^{m^{(2)} - m^{(1)}}$，只有较小者需要 r
   \end{equation*}
   不变量保持。有了不变量，
   三个状态无论先结合哪两个，结果都是全集上的 $(\max, \text{指数和})$，由全集唯一决定，
-  故任意归约树（结合顺序）给出同一结果。
+  故任意归约树（结合顺序）在实数域给出同一结果（浮点求和的舍入与结合顺序相关）。
 \end{proof}
 
 引理~\ref{lem:md-assoc} 是本章实现能直接套用第~\ref{ch:02}~章 XOR 蝶形归约的合法性证明：
@@ -361,7 +361,8 @@ $\bigl(x^{(i)}, 1\bigr)$（边界线程填 $\bigl(\texttt{-FLT\_MAX}, 0\bigr)$�
 max 用单位元，$d$ 用加法单位元 0，这样它们参与归约但不污染结果）。
 （2）第一级：warp 内 5 步 \texttt{warp\_\allowbreak{}reduce\_\allowbreak{}md} 蝶形。
 （3）warp leader 把 warp 状态写入 shared memory，\texttt{\_\allowbreak{}\_\allowbreak{}syncthreads} 一次。
-（4）第二级：每个 warp 的所有 lane 重新读出 8 个 warp 状态再做一次
+（4）第二级：每个 warp 的前 \texttt{kNumWarps}（本配置 8）个 lane 各读一个 warp 状态、
+其余 lane 填中性元 $(-\mathrm{FLT\_MAX}, 0)$，随后 32 个 lane 做一次
 \texttt{warp\_\allowbreak{}reduce\_\allowbreak{}md}，注释里\textbf{用 kWarpSize 确保每个 lane 都拿到最终结果}的用意是：
 第二级不只在 warp 0 做，而是\textbf{每个 warp 都独立算一遍}，免去了第二次
 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads} 加广播。
@@ -434,12 +435,14 @@ FlashAttention 把右列的 $(m,d)$ 再加一列 $O$，就是第~\ref{ch:15}~章
 数十至上百 FLOP/B 的 roofline 拐点，softmax 是典型的 \textbf{memory-bound} 算子，
 优化重心在扫描遍数与同步次数，而不是 FLOP。
 
-本章 bench 复测（RTX PRO 5000 72GB Blackwell，sm\_120，2026-09-11；
-$S = 4096$ 个 token、每 token $H = 256$、block = 256；warmup 3 次 + 10 次取均值）：
+以下为历史性能记录（RTX PRO 5000 72GB Blackwell，sm\_120，2026-09-11；
+$S = 4096$ 个 token、每 token $H = 256$、block = 256）。审核发现旧
+\texttt{book/tests} bench 曾把每 token 的 $N$ 误作总元素数，已改为传 $S\cdot N$；
+本表数字尚未按修复后的 bench 复测，只作历史参考，不作为修复后的实测结论。
 
 \begin{table}[htbp]
 \centering
-\caption{ch04 三版 softmax 耗时对比（10 次均值，带宽按每元素 8~B 有效流量计）}
+\caption{ch04 三版 softmax 历史耗时记录（10 次均值，带宽按每元素 8~B 流量计；旧 bench 参数已修正，尚未复测）}
 \label{tab:4-bench}
 \begin{tabular}{lrr}
 \toprule
@@ -583,7 +586,7 @@ A：一次额外的 block 归约（一次全局同步点），以及写回阶段
 
 \textbf{Q3：online softmax 的不变量是什么？为什么能套 XOR 蝶形归约？}\\
 A：不变量是式~\ref{eq:4-invariant}；二元合并满足结合律（引理~\ref{lem:md-assoc}），
-所以任意归约树结果唯一，XOR 蝶形 5 步即可全 warp 收敛。
+所以任意归约树结果唯一（数学意义下；fp32 求和逐位可能不同），XOR 蝶形 5 步即可全 warp 收敛。
 
 \textbf{Q4：单元素更新和二元合并两套公式什么关系？}\\
 A：后者是前者的一般化：单元素 $x$ 等价于状态 $(x, 1)$。$m^{(1)} \ge m^{(2)}$ 时合并退化为
@@ -600,7 +603,7 @@ softmax 依附在 KV 分块循环上流式完成，$S$ 从不被完整物化，�
 test\_softmax，L359，对照改为 CPU fp64 参考）。三个 case：
 A（$S=2$、$N=256$，$x \in [-5,5]$，三版正确性 + 两两一致性）；
 B（$S=1$、$N=100$、block=128，边界线程守卫路径）；
-C（$x \in [80,120]$，naive 必然溢出 vs safe/online 稳定的演示）。
+C（$x \in [80,120]$，naive 溢出 vs safe/online 稳定的演示）。
 
 在 \texttt{book/tests/} 目录、\texttt{CUDA\_\allowbreak{}VISIBLE\_\allowbreak{}DEVICES=\allowbreak{}7} 下执行
 \texttt{.\allowbreak{}/\allowbreak{}build\_\allowbreak{}tests.\allowbreak{}sh --ch ch04}（编译 + 运行一体）。本机运行输出
@@ -638,9 +641,10 @@ C & softmax online          & 8.146e-09 & 1.0e-03 \\
 
 判据：三版对 CPU fp64 参考的误差都在 $10^{-8}$ 量级（远小于 F32Acc 档 $10^{-3}$）；
 case~C 中 naive 输出 \texttt{NaN} 而 safe/online 与参考吻合，直观展示了 4.3~节的溢出界。
-动手实验建议：（1）把 Case~A 的 scale 从 5 逐步调到 30，观察 naive 从正确到溢出的
-临界点；（2）把 launch 改成 $S=2$ 但只传 $N=256$，复现勘误一的静默丢输出；
-（3）bench 用 \texttt{.\allowbreak{}/\allowbreak{}build/\allowbreak{}ch04\_\allowbreak{}softmax bench} 自行复现表~\ref{tab:4-bench} 的数据。
+动手实验建议：（1）把 Case~A 的 scale 逐步增大到 90 以上，观察 naive 从正确到
+fp32 指数溢出的临界点；（2）把 launch 改成 $S=2$ 但只传 $N=256$，复现勘误一的静默丢输出；
+（3）bench 用 \texttt{.\allowbreak{}/\allowbreak{}build/\allowbreak{}ch04\_\allowbreak{}softmax bench} 运行修复后的 $S\cdot N$ 口径；
+表~\ref{tab:4-bench} 的数字尚未按新 bench 复测，不能直接作为复现目标。
 
 \section*{延伸阅读}
 

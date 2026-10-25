@@ -223,7 +223,7 @@ $+8$。两者逐 lane 对照：
   \node[anchor=north, font=\tiny, align=center] at (\gx,{-16*\chd-1.75})
     {\texttt{C layout: 8 x (16 x 8) layout -> A layout: 4 x (16 x 16) layout}\\（flash\_attn.cuh L620--621 注释原文）};
 \end{tikzpicture}
-\caption{P 如何不出寄存器直接变成 PV 的 A fragment——两个 $16\times 16$ 网格的逐 lane 对照（16.3.3 节式的图形化）。左：softmax 后 P 在 \texttt{R\_S} 里的 C fragment 视角，两个列相邻 \texttt{m16n8} tile（列 $c_0{+}0..7$ 与 $c_0{+}8..15$），cell 填持有该元素的 lane 号 $=4(r\bmod 8)+\lfloor c/2\rfloor$；右：同一条 mma 需要的 \texttt{m16k16} A fragment，cell 填寄存器号 $a_0..a_7$（四象限：行 $\times$ 列半区）。灰度编码 lane 组 $\mathrm{g}=r\bmod 8$（8 档）、深浅区分 \texttt{reg[0]}/\texttt{reg[1]}——两面板同色格子即同 lane 同数据，只是换一种解读、不需要数据搬运。中缝箭头：左 tile（\texttt{R\_S[i][2t]}）供 $a_0..a_3$、右 tile（\texttt{R\_S[i][2t+1]}）供 $a_4..a_7$。底部：$B_c{=}64$ 共 4 段 \texttt{tile\_V\_Bc}，每段消费两个 \texttt{m16n8} tile（$w=2t$），高亮段即上图所示的 16 列。}
+\caption{P 如何不出寄存器直接变成 PV 的 A fragment——两个 $16\times 16$ 网格的逐 lane 对照（16.3.3 节式的图形化）。左：softmax 后 P 在 \texttt{R\_S} 里的 C fragment 视角，两个列相邻 \texttt{m16n8} tile（列 $c_0{+}0..7$ 与 $c_0{+}8..15$），cell 填持有该元素的 lane 号 $=4(r\bmod 8)+\lfloor (c\bmod 8)/2\rfloor$；右：同一条 mma 需要的 \texttt{m16k16} A fragment，cell 填寄存器号 $a_0..a_7$（四象限：行 $\times$ 列半区）。灰度编码 lane 组 $\mathrm{g}=r\bmod 8$（8 档）、深浅区分 \texttt{reg[0]}/\texttt{reg[1]}——两面板同色格子即同 lane 同数据，只是换一种解读、不需要数据搬运。中缝箭头：左 tile（\texttt{R\_S[i][2t]}）供 $a_0..a_3$、右 tile（\texttt{R\_S[i][2t+1]}）供 $a_4..a_7$。底部：$B_c{=}64$ 共 4 段 \texttt{tile\_V\_Bc}，每段消费两个 \texttt{m16n8} tile（$w=2t$），高亮段即上图所示的 16 列。}
 \label{fig:16-pa-fragment}
 \end{figure}
 

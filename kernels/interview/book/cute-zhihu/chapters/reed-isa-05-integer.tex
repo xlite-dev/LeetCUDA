@@ -77,7 +77,7 @@ NVidia GPU指令集架构提供了针对整数的各种计算和操作，该章�
 
 \subsection{整数加法}
 
-整数加法通过\lstinline|IADD3|（Integer ADD 3 operand）实现（\lstinline|d = a + b + c|），一般形式如下, 其中8bit、16bit、32bit的加法共用如下形式，针对64bit的加法，示例中P0为输出寄存器，类型为Predication Register，其功能如图1中的carry-0，用以输出低32bit计算时的进位情况，然后将这个进位带给高32bit的计算\lstinline|IADD3.X|，通过这两条指令实现64bit的加法。整数减法通过随路取符号实现，同时将b c都设置为0， 则实现取相反数的能力（negate）即 \lstinline|d = -a|。
+整数加法通过\lstinline|IADD3|（Integer ADD 3 operand）实现（\lstinline|d = a + b + c|），一般形式如下, 其中8bit、16bit、32bit的加法共用如下形式，针对64bit的加法，示例中P0为输出寄存器，类型为Predication Register，其功能如图1中的carry-0，用以输出低32bit计算时的进位情况，然后将这个进位带给高32bit的计算\lstinline|IADD3.X|，通过这两条指令实现64bit的加法。整数减法通过随路取符号实现；将某个加数随路取负、其余加数置零（如 \lstinline|IADD3 R7, RZ, -R0, RZ|），即可实现取相反数的能力（negate）\lstinline|d = -a|。
 
 \begin{lstlisting}
 // 8bit, 16bit, 32bit

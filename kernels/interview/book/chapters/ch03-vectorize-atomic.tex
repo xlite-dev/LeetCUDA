@@ -159,7 +159,7 @@ $1/2$（线程数与总指令数降为 1/4，每线程仍是 1 条 128-bit load 
 计算输入，ILP（指令级并行）翻两番。地址也依然连续：vec4 线程 $t$ 处理
 $[4t, 4t+3]$，warp 的 32 个线程覆盖连续 512B $= 16$ 个 sector，$\eta$ 仍
 是 100\%。可见向量化与 coalescing 正交：前者减指令，后者减无效字节；
-最好的情况是两者兼得：一条 128-bit load 恰好铺满 4 个整 sector。
+最好的情况是两者兼得：标量 warp 的一次 32-bit load 覆盖 128 B（4 个 sector），vec4 warp 的一次 128-bit load 覆盖 512 B（16 个 sector），两者的 sector 利用率都可达到 100\%。
 
 向量化的代价是对齐约束。float4 类型要求 16B 对齐：cudaMalloc
 返回的基址满足 256B 对齐，因此只要\textbf{元素偏移 idx 是 4 的倍数}
@@ -185,8 +185,8 @@ histogram 要维护 $y[a\sb i] \mathrel{+}= 1$：读 $y[a\sb i]$、加 1、写�
 这也解释了为什么生产级实现都要做 smem 私有化：先在 block 内用 smem 直方图
 （冲突域缩小到 block 内、且 smem 原子远快于全局），最后每个 block 对全局
 做 $B$ 次合并写。全局原子总次数变为 $G \times B$（$G = N/T$ 为 block
-数），仅当 $T > B$ 时才低于 $N$；$T \le B$ 时次数不变，收益来自 smem
-原子远快于全局原子与写模式去热点。
+数），仅当 $T > B$ 时才低于 $N$；$T = B$ 时持平、$T < B$ 时增至 $B/T$ 倍；
+当全局原子次数不下降时，收益来自 smem 原子远快于全局原子与写模式去热点。
 
 \begin{figure}[H]
 \centering
@@ -453,8 +453,8 @@ elementwise\_add\_vec4（L358--374）的 \texttt{(idx + 3) < N} 主路径 + 标�
   顺序不定 $\Rightarrow$ 累加型原子的结果 run-to-run 抖动；int 计数
   （histogram）无此问题，浮点累加要留意。
 \item \textbf{grid 尺寸截断}：grid 计算要向上取整
-  \texttt{(N + T - 1) / T}，配合 kernel 内 \texttt{idx < N} 守卫；漏守卫
-  或漏取整都会越界。
+  \texttt{(N + T - 1) / T}，配合 kernel 内 \texttt{idx < N} 守卫；向上取整后漏守卫会越界，
+  漏向上取整则会漏处理尾部元素，二者不能混为一谈。
 \end{enumerate}
 
 \section{面试要点速查}

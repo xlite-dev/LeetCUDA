@@ -43,7 +43,7 @@ A & common.cuh 工具箱 & \href{https://github.com/xlite-dev/LeetCUDA/blob/6cd3
 第23 & CuTe SW128 atom 对照 & \href{https://github.com/xlite-dev/LeetCUDA/blob/6cd32deca683d6c4aae2011988c9f4a35bc5f528/kernels/interview/hgemm.cuh#L1232-L1270}{hgemm.cuh L1232--L1270} \\
 第24 & CuTe HGEMM & \href{https://github.com/xlite-dev/LeetCUDA/blob/6cd32deca683d6c4aae2011988c9f4a35bc5f528/kernels/interview/hgemm.cuh#L718-L1427}{hgemm.cuh L718--L1427} \\
 第25 & CuTe FA 三实现 & \href{https://github.com/xlite-dev/LeetCUDA/blob/6cd32deca683d6c4aae2011988c9f4a35bc5f528/kernels/interview/flash_attn.cuh#L2196-L3488}{flash\_attn.cuh L2196--L3488} \\
-第26 & CuTe FFPA 双 TiledMMA & \href{https://github.com/xlite-dev/LeetCUDA/blob/6cd32deca683d6c4aae2011988c9f4a35bc5f528/kernels/interview/ffpa_attn.cuh#L30-L65}{ffpa\_attn.cuh L30--L65}, \href{https://github.com/xlite-dev/LeetCUDA/blob/6cd32deca683d6c4aae2011988c9f4a35bc5f528/kernels/interview/ffpa_attn.cuh#L79-L375}{ffpa\_attn.cuh L79--L375}, \href{https://github.com/xlite-dev/LeetCUDA/blob/6cd32deca683d6c4aae2011988c9f4a35bc5f528/kernels/interview/ffpa_attn.cuh#L377-L640}{ffpa\_attn.cuh L377--L640}, \href{https://github.com/xlite-dev/LeetCUDA/blob/6cd32deca683d6c4aae2011988c9f4a35bc5f528/kernels/interview/flash_attn.cuh#L3490-L4177}{flash\_attn.cuh L3490--L4177}（第 26b 章）, \href{https://github.com/xlite-dev/LeetCUDA/blob/6cd32deca683d6c4aae2011988c9f4a35bc5f528/kernels/interview/bench/ffpa_attn.cu#L136-L268}{bench/ffpa\_attn.cu L136--L268}（第 26c 章 bench） \\
+第26 & CuTe FFPA 双 TiledMMA & \href{https://github.com/xlite-dev/LeetCUDA/blob/6cd32deca683d6c4aae2011988c9f4a35bc5f528/kernels/interview/ffpa_attn.cuh#L30-L65}{ffpa\_attn.cuh L30--L65}, \href{https://github.com/xlite-dev/LeetCUDA/blob/6cd32deca683d6c4aae2011988c9f4a35bc5f528/kernels/interview/ffpa_attn.cuh#L79-L375}{ffpa\_attn.cuh L79--L375}, \href{https://github.com/xlite-dev/LeetCUDA/blob/6cd32deca683d6c4aae2011988c9f4a35bc5f528/kernels/interview/ffpa_attn.cuh#L377-L640}{ffpa\_attn.cuh L377--L640}, \href{https://github.com/xlite-dev/LeetCUDA/blob/1932ac2972a71abdde7d9a36a3687485f2a7944b/kernels/interview/flash_attn.cuh#L3490-L4177}{flash\_attn.cuh L3490--L4177}（第 26b 章，1932ac2）, \href{https://github.com/xlite-dev/LeetCUDA/blob/1932ac2972a71abdde7d9a36a3687485f2a7944b/kernels/interview/bench/ffpa_attn.cu#L136-L268}{bench/ffpa\_attn.cu L136--L268}（第 26c 章 bench，1932ac2） \\
 \multicolumn{3}{l}{\footnotesize 集成辅助工具多 TU 拆分（host 侧 test/bench 接线，源码在 \texttt{bench/} 子目录；kernel 与 host 封装仍在上方各 .cuh，构建与角色见附录~\ref{app:C}）：} \\
 H & main $+$ CLI 总装 & bench/bench\_leetcuda.cu L1--L440 \\
 H & 基础算子 test 家族 & bench/base.cu L1--L730 \\
@@ -65,7 +65,8 @@ H & 跨模块共享 check/bench 参照工具 & bench/utils.cu L1--L83 \\
 \bottomrule
 \end{longtable}
 
-基准 commit：LeetCUDA \texttt{6cd32de}（v4.0.0，2026-09-17 冻结）；\texttt{anchors.yaml} 现为 repo\_commit \texttt{3b52c5c}、frozen\_at 2026-09-29；
+基准 commit：LeetCUDA \texttt{6cd32de}（v4.0.0，2026-09-17 冻结）；第 26b/26c 两条增补章链接改用
+\texttt{1932ac2}，因为对应文件/行区间在该快照尚不存在。\texttt{anchors.yaml} 现为 repo\_commit \texttt{3b52c5c}、frozen\_at 2026-09-29；
 Part VI 各章 ffpa-attn \texttt{861d75e}（2026-09-16 锚定）；Part V 四章
 （第~\ref{ch:34}--\ref{ch:37}）与增补章（ch26b/ch26c）为本仓新增区间，
 随增补 commit 在 \texttt{anchors.yaml} 冻结。行号漂移由
