@@ -13,6 +13,7 @@ user-invocable: true
 |---|---|
 | `BOOK_PLAN.md` | **规范源**：6 Part 41 章（38 主线 + ch19b 导读 + ch26b/ch26c 增补）+ 5 附录、每章模板与 DoD 八条（含 Part V 特化 DoD）、素材/测试/图表/公式工程、LaTeX 管线、风险与验收 |
 | `RFC.md` | **执行跟踪**：RFC-0..O 里程碑 checkbox（B 已取消）、每章执行卡片、图清单登记表、知乎参考种子表 |
+| `references/quality-assessment.md` | **质量评估快照（2026-10-25）**：六维评分口径 + 45 个评分单元（41 章 + 5 附录，ch19b 免评）+ 教学书质量判断 + 提分 backlog。基于 R31–R53 共 23 轮审核证据；书稿再改或补到新证据后**在原文件更新**（不新建），分数变化 ≥2 分须在 `leetcuda-correctness-review/references/audit-history.md` 记原因 |
 
 绝对路径：`/workspace/dev/vipshop/LeetCUDA/kernels/interview/book/skills/write-leetcuda-book/`（已软链到 `/workspace/dev/vipshop/.github/skills/write-leetcuda-book`）。
 
@@ -22,7 +23,7 @@ user-invocable: true
 2. **读规范**：`BOOK_PLAN.md` §3 章节卡片（源码区间/宏/公式/图/参考/测试映射）+ §4 模板与 DoD + 相关工程节。
 3. **执行**：章节任务四合一 = 正文 tex + 最小测试 .cu + 注释核查 + 增量 bench。
 4. **验收**：对照 §4.2 DoD 八条逐条自检（编译零 error / 锚点断言 / CHECKLOG / 测试 PASS / bench 落盘 / 图表登记 / 延伸阅读 / pdftotext 抽查）。**内容改动后先加载 `leetcuda-correctness-review` 按“第零层（数理逻辑）+ 四层”自审**（先查推导链/量词/反例，再查定义/指称、API/硬件契约、资源/类型计数、表达一致性；图注、表、问答一并审），再**强制用 `remove-tech-ai-tone` skill 做文风自检**（八类 AI 味模式 + 词表逐词 grep，存疑保留；图内文字只做等宽替换）。**本轮只要产生书稿改动，随后必须按该 skill §5.0 构建矩阵编译所有受影响 PDF（主 `book` 与 `cute-zhihu` 等，不能只编主 book），再执行 ReadTheDocs 三层验收，不能跳过；全部通过后，才把每个 PDF 与 RTD 结果追加到该 skill 的 `references/audit-history.md` 并进入下一步。**
-5. **回写**：RFC.md 勾选 `- [x]` + 追加日期；发现问题记 CHECKLOG / RFC 对应位置。
+5. **回写**：RFC.md 勾选 `- [x]` + 追加日期；发现问题记 CHECKLOG / RFC 对应位置。复审/评分类任务完成后，按 `references/quality-assessment.md` §6 更新受影响章节的分数与扣分点（同一文件内更新，不新建）。
 
 ## 硬规则速查（违反必返工）
 
