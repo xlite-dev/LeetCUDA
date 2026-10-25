@@ -127,8 +127,9 @@ $\delta/\sqrt{12}$，与 $x$ 的幅度无关。这带来一个与指数格式相
 绝对误差有均匀上界（小值区域如 $|S|$ 接近零的分数区，误差绝对值小）。
 
 SageAttention 1 选择 int8 而非 fp8 做 QK，首要理由是速度（RTX 4090 上
-int8 660 TOPS 对 fp16 330 TFLOPS，约 2 倍；Ada 无原生 fp8 通路，论文给出的
-int8/fp8 差距是 4 倍）；精度上，Q/K 分数分布集中时，int8
+int8 660 TOPS 对 fp16 330 TFLOPS，规格约 2 倍；论文另报 INT8 Matmul 比 FP16
+快 4 倍、比 FP8 快 2 倍的实测口径）。论文还指出当时 FA3 的 FP8 实现仅支持
+Hopper、适用范围受限；精度上，Q/K 分数分布集中时，int8
 的 254 个均匀码点密度高于 fp8 每倍频程 $2^m=8$ 个码点，量化精度更高
 （arXiv:2410.02367）。
 
@@ -469,7 +470,7 @@ smooth-K/smoothing 不变式与 delta\_s 修正是第~\ref{ch:28}~章（fp8）�
 \paragraph{SA2++ 的 f16 累加器域约束。}
 \texttt{mma.f16.f8.f8.f16} 的 fp16 累加器可表示 $\pm 65504$。单条 \texttt{m16n8k32}
 累加 32 项，若 32 项同时取到上限，逐元素乘积须满足 $P_r \times V_r \le
-65504/32 \approx 2047$——这是\textbf{单指令的必要条件}。但累加器跨 $K$ 迭代保留在
+65504/32 = 2047$——这是\textbf{单指令的必要条件}。但累加器跨 $K$ 迭代保留在
 f16 寄存器里，真正的约束按\textbf{块}结算：$B_c \cdot P_r \cdot V_r \le 65504$，
 即 $P_rV_r \le 65504/B_c$（源码 \texttt{persist\_d.cuh} 的 constexpr 判定同此，
 第~\ref{ch:29}~章 29.3.4~节）。$B_c{=}64$ 时可用满量程 448
@@ -507,7 +508,7 @@ per-channel V + f16 acc 时发射 $\hat{V} \in [-2.25, 2.25]$，与 SA2++ 的
   \end{scope}
   \draw[dashed,thick,tkRed]
     plot[domain=341.2:486,samples=50] ({1.2+0.02*\x},{2047/\x});
-  \node[axl,anchor=east,text=tkRed] at (7.9,5.72) {单指令预算线 $P_r V_r \approx 2046.4$（取整 2047）};
+  \node[axl,anchor=east,text=tkRed] at (7.9,5.72) {单指令预算线 $P_r V_r = 2047$};
   \node[axl,anchor=east,text=tkRed!80] at (7.9,5.38) {\tiny （块级预算见正文）};
   % 448 满量程参考线
   \draw[dotted,thick] (10.16,0) -- (10.16,6.0);
@@ -542,7 +543,7 @@ per-channel V + f16 acc 时发射 $\hat{V} \in [-2.25, 2.25]$，与 SA2++ 的
      softmax 概率的相对结构更敏感。};
 \end{tikzpicture}
 \caption{f16 累加器域的乘积预算（27.3.5 节）：横轴 $P_r$、纵轴 $V_r$，虚线为
-单条 \texttt{m16n8k32} 的 32 项乘积预算线 $P_r V_r = 2047$（$=65504/32=2046.375$，正文取整），线上方斜纹区为超限区；
+单条 \texttt{m16n8k32} 的 32 项乘积预算线 $P_r V_r = 2047$（$=65504/32$，恰为整数），线上方斜纹区为超限区；
 跨 $K$ 迭代的块级预算 $B_cP_rV_r \le 65504$ 更紧，见正文。
 SA2++ 取 $(224,4.5)$、ffpa 取 $(448,2.25)$，两者面积同为 $1008\le2047$——
 一个矩形高瘦（两侧各收窄一半），一个扁宽（P 保持 448 满量程、约束全部落在

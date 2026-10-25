@@ -881,3 +881,13 @@ git diff --check：通过
   若未来发现译文与官方源/头文件冲突，仍按“下游与基线冲突”记录，不静默改。
 - 白皮书仍参与 PDF/RTD 编译与排版检查；这并不把它重新变成技术审核对象。
 - 后续审 CuTe 章节时如果没读白皮书，不能声称“已按基线审过”。
+
+## R31–R37（2026-10-25）：六轮全量自审 + 定点勘误
+
+- 范围：主 book 38 章 + ch19b（纯翻译通读豁免）+ 附录 5 + cute-zhihu 32 章（约 4.4 万行）。
+- 方法：主 agent 逐章审核（不派 task agent），R31 全量 L0–L4 → R32 量词/推导专轮 → R33 源码锚点与 PTX 契约轮 → R34 图注/跨章一致轮 → R35 独立脚本数值复算轮 → R36 收敛复核 → R37 定点修复与验收。
+- 发现：18 处观察（3 数值笔误 + 15 表述口径），无 blocking 错误；2 处初判经复核为误报并撤回（ch17 “Sk 最优/饱和”实有复测表 Sk=3 支撑；ch22 三元组为 gemm (M,N,K) 口径非 tile_size）。
+- 修复（commit `4506dff`，14 文件 +32/−26）：ch20 f(4)=1；ch27 预算线 2047 精确值（图/图注/正文）+ SA1 按论文改 2 倍并注明 FA3 仅 Hopper（papers/SageAttention1.txt L62-64/L76-78/L382）；ch32 加速比 1.55x/1.47x + 硬编码表号改 \ref{tab:31-bench}（3 处）；ch02 归纳步类切分方向；ch03 T=B 持平/T<B 增至 B/T；ch04 二级归约 lane 守卫（base.cuh L654-656）+ 实数域/fp32 舍入限定；ch09 图注节选口径；ch16 图注 lane 公式 mod 8；ch22 gemm 维度标注；ch15 前置条件；ch26b 独立 A/B 不可相加；ch00 mpt 与 pipe_tensor 交叉验证；figures-en.json 换键并删旧键。
+- 证据：主 book 两遍 xelatex 零 error、588 页（与 HEAD 基线 worktree 构建同页数）、Overfull 17 与基线一致、0 缺字、无未定义引用；RTD ./build.sh 全绿（英文图集 196/196）；tools.visual_check 93 页 0 问题；成品 pdftotext 抽检旧错文本归零、ch32 引用渲染为表 38.2。
+- 流程教训：同一文件多处编辑须顺序执行（并行编辑丢过 ch04 一处，复核 grep 才暴露）；硬编码“表 X.Y”会随章号漂移错引，一律 \ref；Review Plan/Code Review 各拦下一处误改（ch17 误删有据句、ch32 错表号），保留其拦截价值；图内中文标签改动必须同步 figures-en.json 否则英文图集必红。
+- 台账：book/.tmp/math-audit-r31/ledger.md（R31–R36 逐章结论与复算记录）。

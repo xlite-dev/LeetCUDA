@@ -259,7 +259,7 @@ $B$ 的 $(k, n)$：一个 warp 的 32 个 lane 读 \texttt{a} 的一行连续 32
      \textcolor{tkBlue}{\texttt{/}} $\to$ 跨步维：线程\textbf{不}连续（$M$、$N$ 维）\\
      \textcolor{tkGreen}{\texttt{\%}} $\to$ stride-1 维：线程连续（$K$ 维）};
 \end{tikzpicture}
-\caption{Level 1 的 tid$\to$(m,k)/(k,n) 映射双网格（格内数字为 tid 0--255，行 $=\mathrm{tid}/32$、列 $=\mathrm{tid}\%32$，8 行即 8 个 warp，行间同色系深浅相间）。上：$s_a[m][k]$（蓝）；下：$s_b[k][n]$（紫）——两图数字排布完全相同，一条映射同时服务 A 与 B；warp 内 32 个列地址连续，构成 128B 合并事务。}
+\caption{Level 1 的 tid$\to$(m,k)/(k,n) 映射双网格（格内数字为 tid 0--255，行 $=\mathrm{tid}/32$、列 $=\mathrm{tid}\%32$；图示前 8 个 warp，实际 Level 1 为 1024 线程 / 32 个 warp，行间同色系深浅相间）。上：$s_a[m][k]$（蓝）；下：$s_b[k][n]$（紫）——两图数字排布完全相同，一条映射同时服务 A 与 B；warp 内 32 个列地址连续，构成 128B 合并事务。}
 \label{fig:09-tid-map}
 \end{figure}
 

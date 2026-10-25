@@ -423,13 +423,14 @@ PV 的 C fragment 每 lane 持数不同（头注释 L44--46）。
 
 表~\ref{tab:32-mxfp8} 汇总 \texttt{--fp4-pv-mm-type fp8} 变体（数据落
 盘 \texttt{.tmp/book-bench/ch32/}）；fp4 基线表见
-第~\ref{ch:31}~章表 31.2（self 1.49--2.11x、causal 1.25--1.61x，
+第~\ref{ch:31}~章表~\ref{tab:31-bench}（self 1.49--2.11x、causal 1.25--1.61x，
 16 格全绿）。
 
 \begin{table}[H]
   \centering
   \caption{MXFP8 PV 变体 vs fp4 基线（PRO 5000，$B{=}1,H{=}32,N{=}8192$，
-  fp16 口径，allclose 全绿）}
+  fp16 口径，allclose 全绿；末列加速比为对 SDPA 的 $T_{\mathrm{SDPA}}/T_{\mathrm{mxfp8}}$，
+  SDPA 时间见第~\ref{ch:31}~章表~\ref{tab:31-bench}）}
   \label{tab:32-mxfp8}
   \begin{tabular}{@{}rlllll@{}}
     \toprule
@@ -437,8 +438,8 @@ PV 的 C fragment 每 lane 持数不同（头注释 L44--46）。
     (self/causal) \\
     \midrule
     64  & 2.24 & $+39\%$ & 1.41 & $+31\%$ & 1.07x / 0.96x \\
-    128 & 3.47 & $+38\%$ & 2.17 & $+30\%$ & 1.48x / 1.24x \\
-    192 & 4.62 & $+33\%$ & 3.06 & $+28\%$ & 1.56x / 1.25x \\
+    128 & 3.47 & $+38\%$ & 2.17 & $+30\%$ & 1.47x / 1.24x \\
+    192 & 4.62 & $+33\%$ & 3.06 & $+28\%$ & 1.55x / 1.25x \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -454,7 +455,7 @@ MXFP8 PV 付出 28--39\% 的代价：$V^\top$ 数据 8 bit 带宽翻倍、atom �
 fp8 快 $\sim$23\%：blockscale mxf4nvf4 吞吐与 fp8 dense 相当，收益
 全部来自带宽（K/V/SF 字节减半以上）；D=192 的 e2e 比值
 self 1.47x / causal 1.29x / gqa 1.50x。本机同日对照可复算：fp4 D=192
-self 3.48ms（表 31.2）对 fp8 persist-D 同 shape 的第~\ref{ch:29}~章 29.6 节实测表
+self 3.48ms（表~\ref{tab:31-bench}）对 fp8 persist-D 同 shape 的第~\ref{ch:29}~章 29.6 节实测表
 数据（4.58\,ms）作比，得 1.32$\times$（该 shape 在 861d75e 上有正确性 bug、
 速度仅供参考，见 29.7.1）。
 

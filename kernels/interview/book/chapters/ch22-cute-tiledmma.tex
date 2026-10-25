@@ -694,7 +694,7 @@ $4$ 个 f32 累加器（$2$ 行 $\times$ $2$ 相邻列），两个相邻 atom �
 % was: \includegraphics[width=0.92\textwidth]{figures/drawio/fig-22-1-tiledmma/fig-22-1.png}
 \begin{tikzpicture}[font=\tiny, x=0.016cm, y=-0.016cm]
   \node[anchor=west, font=\footnotesize\bfseries] at (40,29)
-    {TiledMMA partition —— QK $(64,64,64)$ \& PV $(64,16,16)$ on 128 threads (4 warps)};
+    {TiledMMA partition —— QK $(M,N,K)=(64,64,64)$ \& PV $(M,N,K)=(64,16,16)$ on 128 threads (4 warps)};
   \node[anchor=west, font=\scriptsize] at (40,52)
     {同组线程承载两个 tile：QK 大 tile 达吞吐上限，PV 小 tile 控制 per-call 视图与临时开销};
   \node[anchor=west, font=\scriptsize, text=tkBlue] at (40,88)

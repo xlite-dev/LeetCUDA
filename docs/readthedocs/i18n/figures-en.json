@@ -1298,7 +1298,7 @@
   "单 warp 块放大": "Single warp block amplification",
   "单个 warp 子块（⟦0⟧）放大：": "Single warp sub-block (⟦0⟧) enlargement:",
   "单变量修改⟦0⟧每次只改一处": "Single variable modification⟦0⟧Only one change at a time",
-  "单指令预算线 ⟦0⟧（取整 2047）": "Single-instruction budget line ⟦0⟧ (rounded to 2047)",
+  "单指令预算线 ⟦0⟧": "Single-instruction budget line ⟦0⟧",
   "单级贡献（早行幅度 ⟦0⟧1.3 下）": "Single-level contribution (early travel amplitude ⟦0⟧1.3 lower)",
   "占比：aux 链 ⟦0⟧0.3ms vs 主 kernel 3.0ms（N=8192）⟦1⟧10⟦2⟧；\n       N 翻倍时 O(N) vs O(N⟦3⟧) ⟦4⟧ 占比衰减": "Proportion: aux chain ⟦0⟧0.3ms vs main kernel 3.0ms (N=8192) ⟦1⟧10⟦2⟧;\n       When N doubles O(N) vs O(N⟦3⟧) ⟦4⟧ proportional attenuation",
   "即左图布局：m 行: c0 c1，m⟦0⟧8 行: c2 c3": "That is, the layout in the left picture: m rows: c0 c1, m⟦0⟧8 rows: c2 c3",

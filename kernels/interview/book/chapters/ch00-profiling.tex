@@ -386,7 +386,9 @@ warp 每个周期若不能发射，必有一个停滞原因。sm\_120 上的口�
 \end{table}
 
 读 stall 剖析结果的关键是分好坏：\texttt{math\_\allowbreak{}pipe\_\allowbreak{}throttle} 与
-\texttt{not\_\allowbreak{}selected} 高说明计算与调度资源在正常工作；\texttt{sleeping} 高几乎总是结构
+\texttt{not\_\allowbreak{}selected} 高说明计算与调度资源在正常工作（但
+\texttt{math\_\allowbreak{}pipe\_\allowbreak{}throttle} 高还须与 \texttt{pipe\_\allowbreak{}tensor} 交叉验证：
+例三中 mpt $=1.32$ 而 tensor pipe 仅 $49\%$，并非 Tensor Core 饱和）；\texttt{sleeping} 高几乎总是结构
 问题；\texttt{wait} 与 \texttt{long\_\allowbreak{}scoreboard} 的相对大小直接
 区分依赖链受限与装载受限，例见 \S\ref{sec:ch00-cases} 例三。
 

@@ -225,7 +225,7 @@ $\ell = \ell^{(1)} + \ell^{(2)} e^{m^{(2)} - m^{(1)}}$，只有较小者需要 r
   \end{equation*}
   不变量保持。有了不变量，
   三个状态无论先结合哪两个，结果都是全集上的 $(\max, \text{指数和})$，由全集唯一决定，
-  故任意归约树（结合顺序）给出同一结果。
+  故任意归约树（结合顺序）在实数域给出同一结果（浮点求和的舍入与结合顺序相关）。
 \end{proof}
 
 引理~\ref{lem:md-assoc} 是本章实现能直接套用第~\ref{ch:02}~章 XOR 蝶形归约的合法性证明：
@@ -361,7 +361,8 @@ $\bigl(x^{(i)}, 1\bigr)$（边界线程填 $\bigl(\texttt{-FLT\_MAX}, 0\bigr)$�
 max 用单位元，$d$ 用加法单位元 0，这样它们参与归约但不污染结果）。
 （2）第一级：warp 内 5 步 \texttt{warp\_\allowbreak{}reduce\_\allowbreak{}md} 蝶形。
 （3）warp leader 把 warp 状态写入 shared memory，\texttt{\_\allowbreak{}\_\allowbreak{}syncthreads} 一次。
-（4）第二级：每个 warp 的所有 lane 重新读出 8 个 warp 状态再做一次
+（4）第二级：每个 warp 的前 \texttt{kNumWarps}（本配置 8）个 lane 各读一个 warp 状态、
+其余 lane 填中性元 $(-\mathrm{FLT\_MAX}, 0)$，随后 32 个 lane 做一次
 \texttt{warp\_\allowbreak{}reduce\_\allowbreak{}md}，注释里\textbf{用 kWarpSize 确保每个 lane 都拿到最终结果}的用意是：
 第二级不只在 warp 0 做，而是\textbf{每个 warp 都独立算一遍}，免去了第二次
 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads} 加广播。
@@ -583,7 +584,7 @@ A：一次额外的 block 归约（一次全局同步点），以及写回阶段
 
 \textbf{Q3：online softmax 的不变量是什么？为什么能套 XOR 蝶形归约？}\\
 A：不变量是式~\ref{eq:4-invariant}；二元合并满足结合律（引理~\ref{lem:md-assoc}），
-所以任意归约树结果唯一，XOR 蝶形 5 步即可全 warp 收敛。
+所以任意归约树结果唯一（数学意义下；fp32 求和逐位可能不同），XOR 蝶形 5 步即可全 warp 收敛。
 
 \textbf{Q4：单元素更新和二元合并两套公式什么关系？}\\
 A：后者是前者的一般化：单元素 $x$ 等价于状态 $(x, 1)$。$m^{(1)} \ge m^{(2)}$ 时合并退化为
@@ -600,7 +601,7 @@ softmax 依附在 KV 分块循环上流式完成，$S$ 从不被完整物化，�
 test\_softmax，L359，对照改为 CPU fp64 参考）。三个 case：
 A（$S=2$、$N=256$，$x \in [-5,5]$，三版正确性 + 两两一致性）；
 B（$S=1$、$N=100$、block=128，边界线程守卫路径）；
-C（$x \in [80,120]$，naive 必然溢出 vs safe/online 稳定的演示）。
+C（$x \in [80,120]$，naive 溢出 vs safe/online 稳定的演示）。
 
 在 \texttt{book/tests/} 目录、\texttt{CUDA\_\allowbreak{}VISIBLE\_\allowbreak{}DEVICES=\allowbreak{}7} 下执行
 \texttt{.\allowbreak{}/\allowbreak{}build\_\allowbreak{}tests.\allowbreak{}sh --ch ch04}（编译 + 运行一体）。本机运行输出

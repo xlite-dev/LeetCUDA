@@ -185,8 +185,8 @@ histogram 要维护 $y[a\sb i] \mathrel{+}= 1$：读 $y[a\sb i]$、加 1、写�
 这也解释了为什么生产级实现都要做 smem 私有化：先在 block 内用 smem 直方图
 （冲突域缩小到 block 内、且 smem 原子远快于全局），最后每个 block 对全局
 做 $B$ 次合并写。全局原子总次数变为 $G \times B$（$G = N/T$ 为 block
-数），仅当 $T > B$ 时才低于 $N$；$T \le B$ 时次数不变，收益来自 smem
-原子远快于全局原子与写模式去热点。
+数），仅当 $T > B$ 时才低于 $N$；$T = B$ 时持平、$T < B$ 时增至 $B/T$ 倍；
+当全局原子次数不下降时，收益来自 smem 原子远快于全局原子与写模式去热点。
 
 \begin{figure}[H]
 \centering
