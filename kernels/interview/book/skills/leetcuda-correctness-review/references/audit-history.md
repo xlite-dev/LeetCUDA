@@ -915,3 +915,11 @@ git diff --check：通过
 - 五轮视角与结论：R44 叙事因果链（因/所以/导致 逐章核链路，含 ch37 25 条）——零确证，1 LOW 观察（ch37 图注"容忍度更低"相对 FP8 kBK=128 基准 vs 正文"不是等数据"绝对实测，可并存，自辩撤回）；R45 L1 术语指称（逻辑值/私有副本/原地/stage/chunk/Phase/atom/per-call）——零确证，1 LOW（per-call 首现未定义但上下文自足，撤回）；R46 图内/表注数字（ch30/31/36/37 图内数字与表内数据独立复算）——零新发现；R47 listing 端点（174 个 listing 标题行号 100% 一致，10 处端点告警全为分支边界/连续分段/说明性裁剪/正则误报）——零新发现；R48 问答/小结/标题计数 + 收敛——计数声明全对，小结数字全复算吻合（含 ch37 91–93% 分母口径）。
 - 章节裁定：33 章 + appA/B/C/E 正确；2 条 LOW 观察（ch37/ch22，不改）；既有 medium 维持（ch17/ch18 arrive 计数、ch26c STSM 计数、ch27 四个误差源/254 码点、ch33 归因、ch36 合成口径、appD 双基准）。
 - 本轮无书稿改动，未触发任何 PDF/RTD 闸门；台账追加于 book/.tmp/math-audit-r31/ledger.md。
+
+## R49–R53（2026-10-25）：第二轮全文逐章通读（每轮 8 章 + 附录，轮末复审）
+
+- 覆盖：R49 ch00–ch07+appA；R50 ch08–ch15+appB；R51 ch16–ch23+appC；R52 ch24–ch29+appD；R53 ch30–ch37+appE。主 agent 逐章全文（仅滤 TikZ 绘图指令，保留节点文字/图注/表格/问答/listing 标题）。
+- 发现：仅 1 处 LOW——appA `create_tensor_map` listing 标题 `L765-785` 与区间 `764-785` 差 1 行（已改 764-785）。同时暴露 R47 的覆盖缺口：其 174 个 listing 只扫 `chapters/`、未扫 `appendices/`；补扫附录 5 个 listing 后确认仅此 1 处不一致。
+- 复核口径：所有章节的数值表/公式/资源账均现场复算（AI/ridge、smem/寄存器池、加速比、误差界、descriptor 位域、swizzle 周期、barrier 计数），与既有台账一致；ch12/ch13/ch14/ch16/ch17 等长章采用"两遍分段读全"。
+- 验收：主 book 589 页 / 0 error / 0 缺字 / Overfull 17 与基线一致 / 0 undefined；`pdftotext` 命中新标题；RTD `build.sh` 34 项 OK、无 FAIL；visual_check 93 页 0 问题。cute-zhihu 无改动未触发。
+- 结论：五轮零新确证问题（除上述 1 处 LOW），全书维持"结构正确、可发布候选"状态。
