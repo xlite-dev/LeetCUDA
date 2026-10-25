@@ -607,7 +607,7 @@ GFLOP（运算量），FLOPS（每秒）是速率单位；该段实为 Roofline 
   thread tile 大小。
 \item \textbf{Q：L1 与 shared memory 的关系？}\\
   A：同一块片上 SRAM 的两种角色，可配置划分。L1 对所有访存透明缓存；
-  smem 由程序员显式管理、block 内共享。Hopper 起 smem 上限约 228 KB/SM。
+  smem 由程序员显式管理、block 内共享。Hopper 上 smem 上限约 228 KB/SM；后续架构须另查，SM120 的本机 per-block opt-in 上限为 99 KB。
 \end{itemize}
 
 \section{最小测试与动手实验}\label{sec:ch01-test}

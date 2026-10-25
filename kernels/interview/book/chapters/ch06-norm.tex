@@ -86,7 +86,7 @@ RMSNorm（Zhang \& Sennrich, 2019）只保留\textbf{缩放}而不做\textbf{中
 \begin{enumerate}
   \item 当输入近似零中心（$\mu \approx 0$）时，$\mathrm{RMS}(x) \approx \sqrt{\sigma^2+\epsilon}$，RMSNorm 与 LayerNorm 几乎重合；神经网络中间激活的均值通常远小于二阶矩，这直观解释了 RMSNorm 去掉中心化后精度几乎不受影响。
   \item RMSNorm 分母比 LayerNorm 分母多出 $\mu^2$ 项：LayerNorm 只除波动幅度，RMSNorm 除总能量（波动 + 直流）。
-  \item 由此产生一个重要差别：LayerNorm 具备\textbf{平移不变性}，$x \to x + c$ 时 $\mu \to \mu + c$、$\sigma^2$ 不变，输出不变；RMSNorm 不具备（$\mu^2$ 项改变）。所以 LLaMA 系列把 RMSNorm 前面的 QKV 线性投影的 bias 直接去掉（bias 只会给分母注入无信息的 $\mu^2$），这是架构层面的连锁设计。
+  \item 由此产生一个重要差别：LayerNorm 具备\textbf{平移不变性}，$x \to x + c$ 时 $\mu \to \mu + c$、$\sigma^2$ 不变，输出不变；RMSNorm 不具备（$\mu^2$ 项改变）。LLaMA 系列许多线性层同时省略 bias，但这是独立的架构与实现选择，不能由上述性质推出 bias 无收益：bias 会同时改变 RMSNorm 的分子和分母，逐通道 bias 还会改变 $\sigma^2$。
 \end{enumerate}
 
 \begin{figure}[H]
@@ -402,8 +402,8 @@ $N = 524288$ 时读写流量 $512\,\mathrm{MB}$ 远超 L2，是 HBM 口径。两
 源码 \texttt{rsqrtf\allowbreak{}(variance /\allowbreak{} (float)K + epsilon)} 的 $\epsilon$ 加在均值之后、根号之内，与 PyTorch LayerNorm/RMSNorm 的 $\sqrt{v + \epsilon}$ 口径一致；个别实现把 $\epsilon$ 加在根号外或除在 $K$ 上（\texttt{variance/\allowbreak{}(K+eps)}），语义不同。本章正文式~\eqref{eq:ch06-rms} 已固定记号。
 \end{kaogu}
 
-\begin{kaogu}[F1 | Llama 使用 RMSNorm 的陈述属实]
-\textbf{Llama 系列使用 RMS Norm}与公开实现一致（LLaMA/LLaMA 2/LLaMA 3 及 Mistral 等）。补充考据：这些模型同时移除了 RMSNorm 前线性投影的 bias，原因正是 RMSNorm 无平移不变性（本章第 3 节推导的 $\mu^2$ 项），bias 无归一化收益。
+\begin{kaogu}[F1 | Llama 使用 RMSNorm 且常省略 bias]
+\textbf{Llama 系列使用 RMS Norm}与公开实现一致（LLaMA/LLaMA 2/LLaMA 3 及 Mistral 等），许多线性层也确实省略 bias。但这是独立的架构选择，不能用 RMSNorm 无平移不变性证明 bias 无收益；后者会改变归一化表达的分子与分母，不能只看 $\mu^2$ 项。
 \end{kaogu}
 
 \section{常见坑}

@@ -7,7 +7,8 @@
 \section{口径与标尺}
 
 除单独标注外，本附录所有数字都是本书复测：RTX PRO 5000 72GB（sm\_120a，110 SM，
-L2 96MB，CUDA 13.2），cudaEvent 计时，warmup 3--5 + 10--20 次取均值；roofline 标尺
+L2 96MB，CUDA 13.2），cudaEvent 计时，warmup 3--5 + 10--20 次取均值；第 04 章两行是
+旧 bench 历史记录（修复 $S\cdot N$ 参数后未复测），不作为当前口径；roofline 标尺
 取自第~\ref{ch:01}~章（GDDR7 理论带宽 1344~GB/s、FP32 峰值估算 66.9~TFLOPS、
 ridge point $\approx 49.8$~FLOP/B）。读表先记三件事：（1）带宽型算子分 L2/HBM
 两口径，工作集小于 96MB L2 时实测带宽可以超过 HBM 理论值（第~\ref{ch:03}~章
@@ -30,7 +31,7 @@ ridge point $\approx 49.8$~FLOP/B）。读表先记三件事：（1）带宽型�
 \bottomrule
 \endlastfoot
 第02 & \texttt{dot} / \texttt{dot\_vec4} & $N{=}4.19\,$M & 0.042~ms；806 / 808 GB/s & 三版同为 42~$\mu$s：瓶颈是全局原子串行 \\
-第04 & \texttt{softmax}（online） & $S{=}4096$，$N{=}256$ & 0.0142~ms；591.6 GB/s & naive 0.0121~ms 最快但数值不安全 \\
+第04 & \texttt{softmax}（online） & $S{=}4096$，$N{=}256$ & 0.0142~ms；591.6 GB/s & 历史旧 bench 口径；修复 S*N 后未复测 \\
 第05 & \texttt{merge\_\allowbreak{}attn\_\allowbreak{}states} & $T{=}16384$，$H{=}32$，$D{=}128$ & 0.785~ms；1031.4 GB/s & HBM 理论带宽的 77\% \\
 第07 & \texttt{mat\_\allowbreak{}transpose\_\allowbreak{}padded} & $2048^2$ & 0.0145~ms；2320 GB/s & 2.40$\times$ vs naive（L2 口径） \\
 第08 & \texttt{sgemv} k128 & $M{=}8192$，$K{=}4096$ & 0.144~ms；934.2 GB/s & 全书实测带宽参照；较 k32 +5.2\% \\
@@ -68,7 +69,7 @@ ridge point $\approx 49.8$~FLOP/B）。读表先记三件事：（1）带宽型�
 第03 & \texttt{relu}（\_vec4） & $N{=}4.19\,$M & 0.0180 & 1862 / 1866 & L2 口径（16~MB 工作集） \\
 第03 & \texttt{elementwise\_\allowbreak{}add}（\_vec4） & 同上 & 0.0190 & 2653.7 / 2611.9 & L2 口径 \\
 第03 & \texttt{histogram} 256 bins & 同上 & 0.6286 & 26.7 & 原子争用，慢两个数量级 \\
-第04 & softmax naive / safe / online & $S{=}4096$，$N{=}256$ & 0.0121 / 0.0146 / 0.0142 & 690.6 / 572.9 / 591.6 & 短 kernel，launch 开销占比大 \\
+第04 & softmax naive / safe / online & $S{=}4096$，$N{=}256$ & 0.0121 / 0.0146 / 0.0142 & 690.6 / 572.9 / 591.6 & 历史旧 bench 口径；修复 S*N 后未复测 \\
 第05 & \texttt{merge\_\allowbreak{}attn\_\allowbreak{}states} & $T{=}16384$，$H{=}32$，$D{=}128$ & 0.7849 & 1031.4 & HBM 口径 \\
 第06 & \texttt{rms\_norm}（\_vec4） & $N{=}131072$，$K{=}128$ & 0.1289 / 0.1107 & 1041 / 1212 & L2 口径，vec4 +16\% \\
 第06 & \texttt{layer\_norm}（\_vec4） & 同上 & 0.1384 / 0.1118 & 970 / 1201 & 1-pass 稳定省约 7\% \\
@@ -100,7 +101,7 @@ $2048{\times}16384{\times}4096$ & 7b-3 BS=1 vs BS=0 & 122.9 vs 117.9 T & 宽 N �
 \end{tabular}
 \end{center}
 
-swizzle 消除 bank conflict 的微观证据（第~\ref{ch:12}~章 NCU 计数器，
+swizzle 降低 bank conflict 的微观证据（第~\ref{ch:12}~章 NCU 计数器，
 $M{=}N{=}K{=}512$）：BK=16 基线 98{,}304 次冲突/launch、17.6~$\mu$s；BK=64 无
 swizzle 691{,}067 次、30.2~$\mu$s；BK=64 + swizzle 297{,}628 次、20.7~$\mu$s
 （8-way 降 4-way，1.46$\times$）。
@@ -164,7 +165,7 @@ per-col 代表，tile 取库默认档（$128\times256\times128$/s2，即 35.8.4 
 扫描最快档）。基线口径注意：cuBLAS 在 sm\_120 的 32F-acc 档只有 sm\_80
 旧 kernel（\texttt{nsys} 取证见第~\ref{ch:35}~章 35.8.1~节，cublasLt
 完整池遍历也只有 191.7~T），因此表中加速比是\textbf{库现状}口径；对手写
-bf16 HGEMM 上限（$\approx$243~T）的口径为 1.81$\times$（4096$^3$）。
+fp16 HGEMM 同吞吐 proxy（$\approx$243~T；不是 bf16 kernel）的口径为 1.81$\times$（4096$^3$）。
 
 \begingroup\small
 \begin{longtable}{p{1.6cm}p{3.4cm}p{2.4cm}p{3.2cm}p{3.0cm}}

@@ -1122,7 +1122,7 @@ L281--282 与 L291--292）。多加一层掩码 4 会把\emph{另一个 warp 段
 
 \begin{itemize}[itemsep=2pt,topsep=2pt]
   \item case E：$D=192$（3 个 chunk，且与 $\mathrm{Sk}{=}3$ 相等，用来测
-        chunk 数 $=$ 预取数的边界）、$N=128$、$H=2$、
+        chunk 数 $=$ stage 数的边界；实际预取深度为 $\mathrm{Sk}-1=2$）、$N=128$、$H=2$、
         $\mathrm{Sk}{=}3,\mathrm{Sv}{=}2$；
   \item case F：$D=128$（2 个 chunk，$\mathrm{Sk}{=}2$）、$N=128$、$H=2$。
 \end{itemize}

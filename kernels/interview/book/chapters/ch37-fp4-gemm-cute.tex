@@ -36,7 +36,7 @@ swizzle（\texttt{Layout\_K\_SW32\_Atom}，第~\ref{ch:23}~章）、mbarrier
 MMA 指令 & \texttt{SM89\_16x8x32}（$K{=}32$） & \texttt{SM120\_16x8x64\_TN\_VS}（$K{=}64$） \\
 scale 的消费方式 & epilogue 里两次 fp32 查表乘 & level-2 由 MMA 硬件乘；level-1 在 epilogue 乘 \\
 每 stage 的 A/B smem & $BK{=}128$：16\,KB + $BN{\cdot}128$\,B & $BK{=}64$：4\,KB + $BN{\cdot}64/2$\,B \\
-每 stage 的 SF smem & 无 & $512\,\mathrm{B}\times 2$（SFA + SFB） \\
+每 stage 的 SF smem & 无 & $(1+BN/128)\cdot512\,\mathrm{B}$（SFA + SFB） \\
 TMA 通道 & 2（A、B） & 4（A、B、SFA、SFB） \\
 O staging 约束 & $\le$ 整个 A+B 区 & $\le$ 整个 A+B+SF 区 \\
 $BK$ 的自由度 & 可调（SW128 限定为 128） & \textbf{固定 64}（= MMA 原子 K 宽 + 一个 SF 原子） \\
@@ -376,8 +376,8 @@ CUTLASS 口径，是因为它是 \texttt{SM120\_16x8x64\_TN\_VS} 的官方搭配
 \begin{itemize}[itemsep=2pt,topsep=3pt]
   \item \texttt{make\_tma\_copy} 的模板实参是 \texttt{uint16\_t}，
         而张量的元素类型是 \texttt{float\_ue4m3\_t}。原因是 SF 布局在 K
-        方向有一个 $16{:}0$ 的广播维（16 个元素共享一个 SF），
-        这个 16 字节共享 1 字节的模式 TMA 描述符无法直接表达；
+        方向有一个 $16{:}0$ 的广播维（16 个 4-bit 元素共 8 字节数据共享 1 字节 SF），
+        这种 8 字节共享 1 字节的模式 TMA 描述符无法直接表达；
         换用一个 2 字节的内部元素类型后，广播维变成 8 个可步进的
         \texttt{u16} 单元，描述符的 \texttt{ScaledBasis} 就能装下它
         （源码注释里那句\textbf{g\_shape 必须与它嵌套同构}说的就是这件事，
@@ -508,8 +508,8 @@ $B\cdot\mathrm{SF}_B$。
         $(m,n)$ 查 $s_A[m]$/$s_B[n]$。这个工具从第~\ref{ch:24}~章起
         就在用，FP4 版本一字不改。
   \item \textbf{尾块保护}：$m\ge M$ 或 $n\ge N$ 的 fragment 元素取
-        $s=0$。TMA store 会自动裁掉越界行列，但 acc 里的越界
-        元素在裁掉之前不得成为 NaN/Inf。乘 0 是最省的保护。
+        $s=0$，直接作用是避免越界读取 $s_A/s_B$；TMA store 随后会裁掉越界行列。
+        这个 guard 不是非有限值清洗：若 acc 已经是 NaN，$0\times\mathrm{NaN}$ 仍为 NaN。
   \item \textbf{O staging 复用整个 A/B/SF 区}：$BM\times BN$ 的 bf16
         结果（$BN{=}128$ 时 32\,KB、$BN{=}256$ 时 64\,KB）不能放在
         单个 stage 里（一个 stage 只有 9\,KB / 13.5\,KB），
@@ -767,8 +767,8 @@ FP8}（4096$^3$: 408 vs 187\,T；8192$^3$: 467 vs 315\,T）——量化的
 能跑 246\,T，它的 heuristic 把 BF16 输入降级到了非最优的 kernel。
 这并不是本书的 kernel 特别强，而是基线本身偏弱。为了把 FP4
 到底有多快这件事说清楚，本章的标准表同时给出三个参照系：
-cuBLAS BF16（2.9$\sim$3.7$\times$）、本书手写 bf16 HGEMM
-（$1.8\sim2.5\times$）、以及第~\ref{ch:35}~章的 FP8 版本
+cuBLAS BF16（2.9$\sim$3.7$\times$）、本书手写 fp16 HGEMM
+（作为 bf16 同吞吐 proxy，$1.8\sim2.5\times$）、以及第~\ref{ch:35}~章的 FP8 版本
 （$1.07\sim1.38\times$）。做量化 GEMM 的性能声明时，相对谁比多少倍
 重要得多。
 
@@ -791,8 +791,8 @@ $0.1448$、level-2$\times$B 列 $0.1443$、两级（非 WS/WS）$0.1454$、
         （网格在 M 方向多一整行 tile）只从 414.0 降到 408.2\,T
         （$-1.4\%$），$M$ 从 8192 改成 8193 只从 471.2 降到 467.6\,T
         （$-0.8\%$；NonWS 同口径 407.3/402.1 与 466.0/464.4）；
-        多算的只是一个 $128{\times}256$ 的输出行带，浪费的 FLOP
-        不到 $0.03\%$。这一条不在 \texttt{--bench} 表里
+        多算的是一个 $128{\times}256$ 的输出行带；相对原网格，多一个 M-tile 行带约为
+        $1/32=3.1\%$ 的 padding FLOP，而不是 $0.03\%$。这一条不在 \texttt{--bench} 表里
         （\texttt{--mnk} 只接受方形形状），数字由同一条
         \texttt{fp4\_gemm\_bf16} 入口（宽档）用 CUDA event 单独计时得到。
   \item \textbf{$B$ 离线量化与全链路逐位一致}
@@ -858,8 +858,8 @@ FP8 每个量化值 1\,B，FP4 只有 0.5\,B。这与本卡实测带宽相符
         \emph{转置量化}按 $128(n)\times64(k)$ 一个 tile 铺
         $(N/128)\times(K/64)$ 个 CTA（4096$^2$ 时 2048 个），
         per-group (16) 的 amax 完全落在块内，不需要任何跨块归约，
-        smem 里的转置缓冲加 1 列 padding（$128{\times}65$）消除
-        写回时的 bank 冲突。
+        smem 里的转置缓冲加 1 列 padding（$128{\times}65$）把写回 bank 冲突从
+        16-way 降到 2-way，仍未完全消除。
   \item \textbf{一个 bit 都不许变}是这个重构的硬约束。列 amax 拆成
         8 片后要用 \texttt{atomicMax} 合并，而原子操作只支持整数，
         这里靠两步做到逐位等价：第一，先除以 2688 再取 max 与
@@ -869,7 +869,7 @@ FP8 每个量化值 1\,B，FP4 只有 0.5\,B。这与本卡实测带宽相符
         浮点 $0$ 的位模式正是 \texttt{atomicMax} 的单位元）。
         转置量化的写法改动（tile 从 128 列 $\times$ 全 K 变成
         128 列 $\times$ 64 K）不改变任何中间值。
-        \texttt{book/\allowbreak tests/\allowbreak ch36\_fp4\_quantize.cu} 的 13824 个 SF 落点
+        \texttt{book/\allowbreak tests/\allowbreak ch36\_fp4\_quantize.cu} 的 8704 个 SF 落点
         与逐 bit 数据比对、以及 ch37 的
         \texttt{bit-exact=YES} 断言，就是这条约束的验证手段。
   \item \textbf{收益}：$B$ 侧量化的反推吞吐从 194\,GB/s 提到
@@ -928,9 +928,10 @@ $BN$ & $k_{Stages}$ & smem & NonWS TFLOPS & WS TFLOPS & 结论 \\
   \item \textbf{$BN$ 从 128 翻到 256 带来 $+31\%$（461 $\to$ 603\,T）。}
         这一项远超其他所有旋钮。机制是 MMA 与 TMA 的比值：
         $BN$ 翻倍让每 stage 的 $B$ 区（$BN{\cdot}64/2$ 字节）与 SFB
-        （512\,B）跟着涨，但 $A$ 区与 SFA 完全不变；而 MMA 的工作量
-        随 $BN$ 线性翻倍。于是每字节 smem 数据摊到的
-        MMA 翻倍，这就是算术强度在 tile 几何层面的直接体现。
+        （$BN/128\cdot512$\,B）跟着涨，但 $A$ 区与 SFA 完全不变；而 MMA 的工作量
+        随 $BN$ 线性翻倍。$BN:128\to256$ 时总 stage 字节约 $9\to13.5$\,KB，
+        每字节 smem 数据摊到的 MMA 增约 $(256/13.5)/(128/9)=1.33\times$，而非翻倍；
+        这与实测约 $+31\%$ 同量级。
         代价是 O staging 翻倍（64\,KB），要求 $k_{Stages}\ge5$。
   \item \textbf{WS 的价值随 $BN$ 变大而显现。}
         $BN{=}128$ 时 WS 比 NonWS 快 $3.0\%$（474.5 vs 460.7），
@@ -981,7 +982,7 @@ $128\times256$/s6，其余回落 $128^2$/s4，\texttt{--bench} 的 FP4 标准
         拆开，流水线的初始条件必须重新核对。
   \item \textbf{性能结论}：宽档 $128\times256$/s6 的 WS 变体在 4096$^3$
         跑 614.1\,T（8192$^3$: 648.6\,T），是 cuBLAS BF16 的
-        $3.76\times$、本书手写 bf16 HGEMM 的 $2.53\times$、FP8 版本的
+        $3.76\times$、本书手写 fp16 HGEMM（bf16 同吞吐 proxy）的 $2.53\times$、FP8 版本的
         $1.39\times$。\texttt{--bench} 标准行自 2026-09-28 起按
         $MNK\ge4096$ 自适应取宽档、其余回落 $128^2$/s4。比特数减半
         只换来 $1.4\times$：\textbf{存储收益与算力收益不是一回事}，

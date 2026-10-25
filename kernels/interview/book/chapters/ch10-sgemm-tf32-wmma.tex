@@ -537,9 +537,9 @@ $32\times934 \approx 29.9$ TFLOPS 计，实测 28.19 已达其 94\%，说明 $10
 要把 Tensor Core 变成瓶颈，须把 $AI$ 抬过拐点：换 f16 输入使字节减半（$AI \to 64$，
 已越过 45 的标称拐点；实测 71.6 口径下还需 f16 自身更高峰值配合，第~\ref{ch:11}~章）
 或加大 $B\sb M/B\sb N$。
-按全局口径（每个 C tile 读整条 A 行块与 B 列块），
-$AI = \frac{2MNK}{4(MK+KN)} = \frac{MN}{2(M+N)}$，$M{=}N{=}1024$ 时约 256 FLOP/B，
-更加 compute-bound。
+按全局口径（每个 C tile 读整条 A 行块与 B 列块，并把 C 写回计入流量），
+$AI = \frac{2MNK}{4(MK+KN+MN)} = \frac{MNK}{2(MK+KN+MN)}$，$M{=}N{=}K{=}1024$ 时
+$AI=K/6\approx170.7$ FLOP/B，仍更加 compute-bound；若只统计输入流量才得到 256 FLOP/B。
 
 复测口径（RTX PRO 5000 72GB，sm\_120，2026-09-11；$M{=}N{=}K{=}1024$，
 warmup 3 + 10 次均值）：

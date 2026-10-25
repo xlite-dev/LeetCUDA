@@ -170,7 +170,8 @@ $\le 2^{-2} = 25\%$。结论与 $e$ 无关：无论值大值小，误差都是�
 指数格式；已知幅度紧凑的整数域乘积（$\hat{Q}\hat{K}^{\top}$ 的 s32 累加）两者皆可。
 
 \paragraph{ue4m3 / ue8m0：无符号指数格式（scale 的格式）。}
-NVFP4 的 per-group (16) block scale 用无符号 e4m3（ue4m3，$2^{-6} \sim 448$），
+NVFP4 的 per-group (16) block scale 用无符号 e4m3（ue4m3，规格化正数区
+$2^{-6} \sim 448$，另有最低到 $2^{-9}$ 的次正规），
 MXFP8 的 per-32 scale 用纯指数 ue8m0（$2^{\pm127}$）。scale 本身的量化同样服从
 定理~\ref{thm:27-relstep}，但 scale 是乘性作用于数据的：
 $\tilde{x} = \hat{x} \cdot \widetilde{\mathrm{SF}}$，两级相对误差相加。第~\ref{ch:31}~章
@@ -470,7 +471,8 @@ smooth-K/smoothing 不变式与 delta\_s 修正是第~\ref{ch:28}~章（fp8）�
 \paragraph{SA2++ 的 f16 累加器域约束。}
 \texttt{mma.f16.f8.f8.f16} 的 fp16 累加器可表示 $\pm 65504$。单条 \texttt{m16n8k32}
 累加 32 项，若 32 项同时取到上限，逐元素乘积须满足 $P_r \times V_r \le
-65504/32 = 2047$——这是\textbf{单指令的必要条件}。但累加器跨 $K$ 迭代保留在
+65504/32 = 2047$——这是保证任意符号组合都不溢出的\textbf{最坏情况充分条件}，
+不是单次实际求和不溢出的必要条件。累加器跨 $K$ 迭代保留在
 f16 寄存器里，真正的约束按\textbf{块}结算：$B_c \cdot P_r \cdot V_r \le 65504$，
 即 $P_rV_r \le 65504/B_c$（源码 \texttt{persist\_d.cuh} 的 constexpr 判定同此，
 第~\ref{ch:29}~章 29.3.4~节）。$B_c{=}64$ 时可用满量程 448
@@ -692,8 +694,8 @@ $\approx \sigma_V \sqrt{2 \ln D} / \sqrt{\mathrm{ESS}} \approx 3.1/\sqrt{\mathrm
 因果掩码把序列前几行变成近 one-hot：row[0] 只能看自己。ffpa 的 PyTorch 数值仿真
 （$B1H32N8192D128$，randn）实测 causal \texttt{max\_abs} $= 0.22$ vs dense
 $0.015$，相差 15 倍，而\textbf{相对误差两者同量级}（causal 5.5\% vs dense
-9.1\%，口径为 max\_abs / 输出行幅度中位数）。结论是早行放大的只是幅度，
-相对误差各行一致。
+9.1\%，口径为 max\_abs / 输出行幅度中位数）。主要放大来自早行输出幅度变小，
+但 5.5\% 与 9.1\% 并不相等，不能用“相对误差各行一致”概括；需分别看幅度与相对层。
 推论直接决定工程路线：降低幅度没有意义（输出本来就该大）；要么全链降 $\varepsilon$
 （fp16），要么对早行整体用 fp16，这构成 hybrid 行分割（第~\ref{ch:29}~章）
 的理论依据，且 $n_{early}$ 不需要很大（ESS 极小的行集中在前段）。
@@ -1019,7 +1021,7 @@ causal 早行的 $P$ 分布/误差对比，以及 $V>QK>P$ 的 per-stage 误差�
     \node[tl, text=gray!80!black] at (3.20,-4.30) {（max\_abs 实测 0.22）};
     \node[tl, text=gray!80!black] at (0.30,-4.88) {输出 $\approx$ 单个 V 行};
     \node[tl, font=\bfseries\fontsize{4.6}{5.2}\selectfont] at (0.25,-5.45)
-      {$15\times$ 的 abs 差距全部来自幅度；相对误差同量级（causal 5.5\% vs dense 9.1\%）};
+      {$15\times$ 的 abs 差距主要来自早行幅度；相对误差同量级（causal 5.5\% vs dense 9.1\%，并不相等）};
     \node[tl, text=gray!80!black] at (0.25,-5.72)
       {（causal 5.5\% vs dense 9.1\%，PyTorch 仿真 B1H32N8192D128）};
     % 右半：per-stage 误差贡献（单级 ε × 幅度）
@@ -1129,8 +1131,8 @@ fp8 全链（含前处理）相对 SDPA fp16 加速 $1.70\times$，折合 365 TF
         每行满量程精度最优，但要 rowmax 归约 + $o_{tile}$ 暂存 + 与 lazy rescale
         互斥（27.3.4）。
   \item Q：causal 前几行精度差 15 倍，是误差放大吗？\\
-        A：不是。相对误差 $\sim$5\% 全行一致；绝对误差 $= \varepsilon \times$
-        幅度，早行 ESS 小、幅度大（式~\ref{eq:27-ess}）。解法是 hybrid 全链
+        A：不是。相对误差仍在同一量级（5.5\% vs 9.1\%，并非全行一致）；绝对误差
+        $= \varepsilon \times$ 幅度，早行 ESS 小、幅度大（式~\ref{eq:27-ess}）。解法是 hybrid 全链
         fp16 或降低 V 的相对误差，单换 QK 无效（V 0.19 是最大单项）。
   \item Q：FA-4 lazy rescale 在量化域要额外考虑什么？\\
         A：发射值被 $2^{\tau}$ 膨胀，需核算格式上限

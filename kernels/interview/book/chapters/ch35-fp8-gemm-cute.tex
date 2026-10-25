@@ -19,8 +19,8 @@
 （输入输出 BF16、内部 FP8、一个 API 调用、一条 stream、workspace 复用、
 约束自检），都写在 35.7~节的 \texttt{fp8\_gemm\_bf16} 里。35.8~节给出 PRO 5000
 上的完整实测：FP8 kernel 相对 cuBLAS BF16 在 4096$^3$/8192$^3$ 上拿到
-$2.7\times\sim3.0\times$（对手写 bf16 HGEMM 上限的口径则是
-$1.81\times$，两个基线的差距本身就是一个基线 sanity check 案例，
+$2.7\times\sim3.0\times$（对手写 fp16 HGEMM 的同吞吐 proxy 上限口径则是
+$1.81\times$；该 kernel 是 fp16 输入，不是 bf16 kernel，两个基线的差距本身就是一个基线 sanity check 案例，
 35.8.1~节专门拆解）。量化前处理的开销（E2E 视角）与形状缩放规律
 一并给出，并指出部署时该走的路：权重 $B$ 离线量化（35.8.3~节）。
 权重只量化一次、随 checkpoint 落盘，运行时只承担激活量化的
@@ -446,9 +446,9 @@ $128^3$/s3 的数字见 35.8.4~节扫描表）。
 
 （rc = per-row $\times$ per-col；所有 FP8 行均为库默认档
 $128\times256\times128$/s2，CLI 行标已带该后缀；Ours' CuTE HGEMM = 第~\ref{ch:24}~章手写
-bf16 HGEMM（S=3、BLK\_SW 取该形状较优者、F32 acc）同平台复测，其
-Max Err $\approx 0$：
-手写与 cuBLAS 同为 $k$ 顺序 f32 累加，bf16 输出 bit 级一致。四种粒度组合的
+fp16 HGEMM（S=3、BLK\_SW 取该形状较优者、F32 acc）同平台复测。它是与 bf16
+同 dense 吞吐的 proxy，不是 bf16 输入/输出 kernel；其 Max Err 相对同口径参照约为 0，
+不能表述成 bf16 位级一致。四种粒度组合的
 TFLOPS 在同 shape 下差异 $<4\%$（2048$^3$ 实测 rc 243.6 / rb 247.5 /
 bc 240.9 / bb 248.6，极差 3.2\%），表格取 rc 代表，
 完整 4 组合数据见 \texttt{--bench --verbose}。randn $(\pm 0.25)$ 输入的
@@ -568,10 +568,10 @@ heuristic 偏保守：库在这张卡上收录的 32F-acc kernel 只有这些。
         这是直接替换的真实收益：用户直接把
         \texttt{fp8\_gemm\_bf16} 替换掉 \texttt{cublasGemmEx} 调用就能
         拿到的数字，bench 口径与本表一致。
-  \item \textbf{vs 手写 bf16 HGEMM 上限（$\approx$243~T）}：$1.81\times$
-        （440.7 / 243.1）。这是 FP8 量化本身的物理收益上限。
-        假如 NVIDIA 明天把 32F-acc 池补齐，FP8 相对最优 bf16 kernel
-        剩下的加速就只有这一点，它才是量化数学（34.4~节）能给出的全部收益。
+  \item \textbf{vs 手写 fp16 HGEMM 的同吞吐 proxy（$\approx$243~T）}：$1.81\times$
+        （440.7 / 243.1）。bf16 与 fp16 的 dense 吞吐相同，因此可把这个 fp16
+        kernel 当作上限 proxy，但它不是 bf16 数值实现。这是 FP8 量化本身的物理收益上限：
+        假如 NVIDIA 明天把 32F-acc 池补齐，FP8 相对这一吞吐上限只剩该加速比。
 \end{itemize}
 
 两个口径相差 0.9 个点。跑赢一个慢基线不等于达到硬件上限，这个教训是通用
@@ -931,8 +931,8 @@ $128^3$ tile + SW128 + 三级 mbarrier 流水（96\,KB smem；库默认档把同
 收尾。C++ API \texttt{fp8\_gemm\_bf16} 把量化与 GEMM 封成一次调用，
 在标准 bench 链上对 cuBLAS BF16 取得 kernel-only $1.8\times\sim3.0\times$、
 E2E $0.6\times\sim1.9\times$（形状依赖）的成绩。而 35.8.1~节的基线
-剖析说明这个数字的两种读法：库现状口径 $2.70\times$，手写 bf16 上限口径
-$1.81\times$。
+剖析说明这个数字的两种读法：库现状口径 $2.70\times$，手写 fp16 同吞吐 proxy 口径
+$1.81\times$（不是 bf16 kernel 对照）。
 
 35.8.3~节再把 E2E 路径补齐：权重 $B$ 离线量化后，每次前向
 只剩激活量化（$O(MK)$），E2E 回到 $1.64\times\sim2.63\times$：量化 GEMM

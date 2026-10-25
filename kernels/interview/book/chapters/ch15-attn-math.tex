@@ -409,8 +409,8 @@ $\ell$ 与 $O$ 用同一个 rescale 因子修正。与第~\ref{ch:05}~章的关�
 $O = \alpha O^{A} + \beta O^{B}$（式~\ref{eq:5-convex}）里，$O^{A}, O^{B}$ 是
 \textbf{已归一化}的分块输出。把 $\alpha = W^{A}/(W^{A}{+}W^{B})$ 的分子分母同乘
 $W^{A}{+}W^{B}$ 展开即可改写成\textbf{未归一化}形式
-$O = \bigl(W^{A} O^{A}_{\text{norm}}\ell^{A} + W^{B} O^{B}_{\text{norm}}\ell^{B}
-\bigr)/\ell$，正是式~\ref{eq:15-upd-o} 逐块折叠的形态。
+$O = \bigl(W^{A} O^{A}_{\text{norm}} + W^{B} O^{B}_{\text{norm}}\bigr)/\ell$
+（其中 $W^{A}=e^{m^{A}-m}\ell^{A}$ 已含 $\ell^{A}$），正是式~\ref{eq:15-upd-o} 逐块折叠的形态。
 
 ch05 是\textbf{事后合并}（两块各自落盘 $O$ 与 LSE，再用一个 elementwise kernel 拼回，
 服务于 split-KV / FlashDecoding），本章是\textbf{在线合并}（寄存器里一份 $O$ 随 KV 循环
@@ -498,8 +498,8 @@ ch05 是\textbf{事后合并}（两块各自落盘 $O$ 与 LSE，再用一个 el
 运行 max 仍有限时，$e^{-\infty - m} = 0$，该项从 $\ell$ 与 $O$ 的求和中自然消失，
 不变量与定理不受影响。
 （2）\textbf{任意切分合法}：KV 可以按序列切（FlashAttention、FlashDecoding 的
-split-KV），也可以按 $d$ 维切后再拼（第~\ref{ch:19}~章 FFPA Split-D 跨 D-chunk 用
-同一族公式合并），只要每块给出自己的 $(m, \ell, O)$ 状态。
+split-KV）；按 $d$ 维切分则不同（第~\ref{ch:19}~章 FFPA Split-D）：所有 D-chunk 共享同一
+$(m,\ell)$，PV 结果按输出列拼接，不做 split-KV 式的 LSE 合并。
 （3）\textbf{空行/空前缀防护}：若某行所有位置都被 mask，或某个非空行的
 首个被处理块整块被 mask，首个块就可能让 $m = -\infty$，
 $e^{-\infty-(-\infty)}$ 立即产生 \texttt{NaN}，不必等到最终除法；即便后续块有
@@ -1149,8 +1149,8 @@ print(abs(attn_online(Q, K, V) - attn_ref(Q, K, V)).max())  # ~1e-13
   \item \textbf{次序不变性}：把 \texttt{attn\_online} 的循环改为倒序或随机打乱块序，
         输出应逐元素不变（定理~\ref{thm:15-invariant} 的次序无关性）。
   \item \textbf{不变量逐块自检}：在循环内断言 $\ell_i \ge e^{0}$ 当
-        $\max$ 恰在本块、以及 $O/\ell$ 随块数增加单调收敛到参考值，直观感受
-        每一步都是部分 softmax 的严格等价物。
+        $\max$ 恰在本块，以及 $O/\ell$ 最终收敛到参考值；部分输出不保证随块数单调变化
+        （等权标量例子可先升后降），但每一步都与部分 softmax 严格等价。
 \end{enumerate}
 
 \section*{延伸阅读}

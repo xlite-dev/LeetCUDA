@@ -56,7 +56,7 @@ scale（布局随粒度）、smooth-K 的 fp32 均值（lse 修正用）。主 k
 
 \subsection{为什么 scale 消去是核心矛盾}
 
-低精度 MMA 只会算 $\hat P\hat V$ 这样的整数/半字节域乘累加，而 attention 的
+低精度 MMA 对 e4m3/int8 等低位宽数值做乘累加（e4m3 仍是浮点语义，累加器可为 f32；int8 路径才是整数累加），而 attention 的
 数学在实数域。朴素的每个操作数先乘回 scale 方案意味着每 tile 数千次
 额外 FMUL 与中间张量往返，fp8 MMA 吞吐翻倍的收益会被反量化开销抵消大半。
 第~\ref{ch:27}~章 27.3.4~节给过 scale 流向总览；本章把它们逐一落到代码：
@@ -75,7 +75,7 @@ split-D（M8N1，$224<D<768$）与 M4N2（$D\ge768$）：见第~\ref{ch:30}~章�
 
 \subsection{QK 反量化折进 log2 域 softmax}\label{sec:29-qk-fold}
 
-$\hat S=\hat Q\hat K^{\top}$ 是量化域（e4m3 或 int8）的整数累加，真实
+$\hat S=\hat Q\hat K^{\top}$ 是量化域乘加：int8 路径为整数累加，e4m3 路径为浮点乘加以 f32 累加，真实
 $S=\hat S\cdot\delta_Q\delta_K$。softmax 需要的是
 $\exp(\mathrm{scale}\cdot S)$。把 $\delta_Q\delta_K$ 与 softmax scale、
 $\log_2 e$ 融成单个 fp32 系数：

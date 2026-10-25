@@ -141,8 +141,9 @@ $(\pi, E, P, T)$ 置为 $(0, N, N, 0)$。三类操作各改一个计数器：
 +1 个到达并声明预期事务量：一个 K-tile 的 A+B 共
 $(B\sb{M} B\sb{K} + B\sb{N} B\sb{K}) \times 2\,\mathrm{B} = (128 \cdot 64 + 128 \cdot 64)
 \times 2 = 32768$~B。于是 \texttt{full[s]} 的相位翻转条件被精确地表述为：
-129 个 arrive \emph{且} 32768~B 全部落入 smem。数字对不上，流水线要么挂死
-（少报了字节或到达数），要么提前放行（多报了字节，读到半新半旧的数据）。
+129 个 arrive \emph{且} 32768~B 全部落入 smem。多报字节会留下正的 tx-count，
+使相位无法完成；少报则取决于 complete-tx 的落点：计数恰好经过 0 时会提前放行并可能读到
+半新半旧数据，跨过 0 变为负值时相位同样无法完成。
 
 \subsection{WGMMA 的形状与寄存器分布}
 
@@ -916,10 +917,11 @@ sm\_100/sm\_120 同样支持（第~\ref{ch:14}~章就在 sm\_120a 上跑 TMA+mba
 只是 GPU 上的 kernel 永不返回（watchdog 超时）。同理，任何 barrier 的
 arrive count 与实际参与线程数不匹配，都会表现为挂死或数据竞争。
 
-\textbf{坑三：expect-tx 字节数必须与 TMA 实际搬运量严格相等。}少报：tx-count
-永不归零，相位不翻转，consumer 挂死；多报：tx-count 提前归零，相位在数据写完前
-翻转，consumer 读到半新半旧的数据，静默错误比挂死更危险。本 kernel
-两次 TMA 之和为 $(128 \cdot 64 + 128 \cdot 64) \times 2 = 32768$~B。
+\textbf{坑三：expect-tx 字节数必须与 TMA 实际搬运量严格相等。}多报会留下正的
+tx-count，使 consumer 永远等不到相位完成。少报若让某次 complete-tx 恰好把计数减到 0，
+相位会提前翻转，consumer 可能读到半新半旧的数据；若 complete-tx 跨过 0 使计数变负，
+则同样表现为挂死。本 kernel 两次 TMA 之和为
+$(128 \cdot 64 + 128 \cdot 64) \times 2 = 32768$~B。
 
 \textbf{坑四：三类 fence 必须齐全。}\allowbreak{}smem 供异步引擎读前的
 \texttt{fence.\allowbreak{}proxy.\allowbreak{}async.\allowbreak{}shared::\allowbreak{}cta}（proxy 序）、发射 WGMMA 前的
@@ -1022,9 +1024,10 @@ $ CUDA_VISIBLE_DEVICES=7 .build/ch13_hgemm_wgmma
 在 $10\sp{-3}$ 量级（f16 累加、$K = 256$、输入 $\pm 0.25$），以 \texttt{ALL OK}
 收尾。
 
-动手实验建议：（1）把 expect-tx 字节数故意减半，观察 consumer 挂死（坑三）。
+动手实验建议：（1）把 expect-tx 字节数故意减半，观察第一笔 TMA 完成后的提前放行与潜在错值；
+再改成多报，观察 consumer 挂死（坑三）。
 （2）删掉 C0 预热循环复现坑二。（3）\texttt{k\allowbreak{}Block\allowbreak{}Swizzle} 置 1 观察网格形态变化。
-（4）把 K 改成 192（3 个 K-tile），覆盖 stage 回绕路径未被整周期覆盖的场景，检验回绕正确性。
+（4）把 K 改成 320（5 个 K-tile），在 kStages=3 下覆盖 $0\to1\to2\to0\to1$ 的 stage 回绕路径。
 
 \section*{延伸阅读}
 

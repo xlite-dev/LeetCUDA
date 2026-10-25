@@ -927,9 +927,9 @@ FFPA 注释里 PV 保持小 tile 的算术依据正在于此：压的是每次�
 
 \textbf{指标二（重复因子）}：B 的 fragment 按 M-warp 数重复（式~\eqref{eq:22-dup}）。
 QK 用 $(4,1,1)$ 排布时 B 重复 4 倍（$4\times32=128$ 个 half/线程），
-A 不重复；若改成 $(2,2,1)$（各方向 2 个 warp），A 与 B 各重复 2 倍，
-总寄存器开销几乎不变，但 warp 覆盖的行会从 16 行变成 32 行。warp 排布的选择
-因此是谁重复的问题，而不是重复多少的问题。
+A 不重复，A+B 共 160 half/线程；若改成 $(2,2,1)$（各方向 2 个 warp），A 与 B
+各重复 2 倍，A+B 变为 $64+64=128$ half/线程（降约 20\%），warp 覆盖的行也从
+16 行变成 32 行。warp 排布同时改变“谁重复”和重复总量，需要按两者共同权衡。
 
 \textbf{指标三（指令数）}：一次 TiledMMA 调用的指令数
 $=\mathrm{MMA}_M\times\mathrm{MMA}_N\times\mathrm{MMA}_K$，注意这是

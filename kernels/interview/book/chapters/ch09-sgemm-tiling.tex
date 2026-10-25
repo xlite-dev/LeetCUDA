@@ -112,10 +112,10 @@ $1 \times 1$（naive，每线程一个输出）时 $= 0.25$；$4 \times 4$ 时 $
 但 smem 的可用带宽比 DRAM 高一个数量级以上，瓶颈的上限完全不同；
 另外 $4 \times 4 = 16$ 个输出给出 16 条互相独立的 FMA 链，ILP 充分。
 
-\subsection{Vectorize：不改字节数，改指令数与事务}
+\subsection{Vectorize：不改字节数，改指令数与请求数}
 
-\texttt{float4} 把 4 次 32-bit 访问合并成 1 次 128-bit 访问：load/store 指令数 1/4，
-内存管线事务利用率更高（一个 warp 一条指令发起 512B 连续请求）。它对
+\texttt{float4} 把 4 次 32-bit 访问合并成 1 次 128-bit 访问：load/store 指令数与 warp 级
+内存请求数降为 1/4（一个 warp 一条指令发起 512B 连续请求）；两种访问的 sector 利用率均已为 100\%。它对
 式~\ref{eq:9-ai-tile} 的分子分母都不动，AI 不变，但带宽更容易达到上限。
 对第~\ref{ch:08}~章的 GEMV 实测是 $+5\%$；对 GEMM 的 gmem$\to$smem 搬运同样成立。
 
@@ -290,8 +290,8 @@ row-major）；$B\sb{M}=B\sb{N}=128$、$B\sb{K}=32$，block $(32,32)$ 共 1024 �
 $32{\times}32$ \texttt{sgemm} 版
 一致：$M$/$N$ 为 128 的倍数、$K$ 为 32 的倍数。线程到 $4\times4$ tile 的映射
 与加载映射解耦（独立计算更清晰）；注释还提示了计算阶段 \texttt{s\_b} 的
-bank conflict（4-way，生产代码可用 \texttt{s\_b[BK][BN+1]} PAD 打散，这里保持
-最简布局便于讲解）。
+bank conflict（4-way；固定 $k$ 时给行加一列 PAD 只增加与 lane 无关的偏移，仍为 4-way，
+这里保持最简布局便于讲解，系统解法是 swizzle/改变 fragment 布局）。
 
 先独立验证注释里的两套映射（都能对上）。加载映射，$A$ 块 $128 \times 32$：
 每线程 4 个元素，$8$ 线程铺满一行 32 列（$\mathrm{tid}/8$ 定行、$(\mathrm{tid}\%8) \cdot 4$ 定列组），
@@ -364,8 +364,8 @@ $= 16384 = 128 \times 128$，不重不漏（vec4 落点见图~\ref{fig:09-vec4-m
 
 注释 L99--102 的 bank conflict 提示也经推导属实。计算阶段读 \texttt{s\_b[k][n]}
 时，warp 内列地址步进 4 个 float（16B），32 个 lane 只命中 8 个 bank，
-4-way conflict；生产代码用 \texttt{s\_\allowbreak{}b[BK][BN+1]} 加一列 PAD 打散，
-本章保持最简布局，把系统解法（swizzle）留给第~\ref{ch:12}~章
+4-way conflict；固定 $k$ 时给行加一列 PAD 只改变与 lane 无关的偏移，仍是 4-way。
+本章保持最简布局，把真正的系统解法（swizzle/改变 fragment 布局）留给第~\ref{ch:12}~章
 （bank 命中模式见图~\ref{fig:09-bank-conflict}）。
 
 \begin{figure}[H]
@@ -402,7 +402,7 @@ $= 16384 = 128 \times 128$，不重不漏（vec4 落点见图~\ref{fig:09-vec4-m
   \node[draw, align=left, anchor=north west, text width=14.2cm] at (0,{-4*\bh-0.95})
     {同一列的 4 个 lane（如 L0/L8/L16/L24 $\to$ bank 0）同时命中同一 bank 的不同地址——4-way conflict，
      一次 warp 访问被拆成 4 个串行事务；其余 24 个 bank 本轮空闲（灰度 $=$ bank$/4$ 分组，8 档循环）。
-     生产代码用 \texttt{s\_b[BK][BN+1]} 补 1 列 PAD 打散；系统解法 XOR swizzle 见第~\ref{ch:12}~章。};
+     固定 $k$ 时行内补 1 列 PAD 只增加与 lane 无关的偏移，仍是 4-way；系统解法需改 swizzle 或 fragment 布局，见第~\ref{ch:12}~章。};
 \end{tikzpicture}
 \caption{$s\_b$ 计算访问的 4-way bank conflict：warp 内 32 lane 按 $n=4\cdot\mathrm{lane}$ 步进 4 个 float（16B），$\mathrm{bank}=(4\cdot\mathrm{lane})\bmod32$ 只命中 $0/4/8/\dots/28$ 共 8 个 bank——每列 4 个 lane（L$j$/L$j{+}8$/L$j{+}16$/L$j{+}24$）同 bank 不同地址，一次访问拆成 4 个事务。}
 \label{fig:09-bank-conflict}

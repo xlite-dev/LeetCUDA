@@ -919,8 +919,8 @@ bench 子命令输出 14.6~节的对照表（\texttt{CUDA\_\allowbreak{}VISIBLE\
 .\allowbreak{}build/\allowbreak{}ch14\_\allowbreak{}hgemm\_\allowbreak{}tma\_\allowbreak{}ws bench}）。
 
 动手实验建议：（1）把
-\texttt{tma\_\allowbreak{}arrive\_\allowbreak{}expect\_\allowbreak{}tx} 的字节数减半，观察 consumer 挂死（tx 永不
-归零）。（2）删掉 C0 预热循环，复现首轮 empty 永不翻转。（3）把
+\texttt{tma\_\allowbreak{}arrive\_\allowbreak{}expect\_\allowbreak{}tx} 的字节数减半，观察第一笔 TMA 完成即令 tx 归零、
+consumer 提前放行并可能读到半新半旧数据；改大多报则会挂死。（2）删掉 C0 预热循环，复现首轮 empty 永不翻转。（3）把
 \texttt{\_\allowbreak{}\_\allowbreak{}align\_\allowbreak{}\_\allowbreak{}(1024)} 改成 128，观察系统性错位输出（坑三）。（4）用
 \texttt{build.sh -{}-arch sm\_120f} 构建并跑
 \texttt{cuobjdump --dump-sass leetcuda\_bench\_sm120f.bin | grep -c USETMAXREG}

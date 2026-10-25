@@ -7,7 +7,8 @@
 第~\ref{ch:34}~章与第~\ref{ch:35}~章把 BF16 矩阵压到 e4m3：一个符号位、四个
 指数位、三个尾数位。本章再往下走一档：\textbf{NVFP4}（e2m1 + ue4m3
 micro-scale），每元素只有 4 bit。这一步不是把 e4m3 的位数降一半那么
-简单：e4m3 有 8 个数值位，相邻码点的相对间距恒为 $2^{-3}/2$；e2m1 只有
+简单：e4m3 有 8 个编码位，相邻码点的相对间距并不恒定，而是在约 $1/8$ 到 $1/16$
+之间随有效数字位置变化；e2m1 只有
 $1+2+1$ 位，每个 2 的幂区间只放得下两个码点，量化步长随量级成倍变化。
 精度的损失不是线性缩小，而是结构改变，本章要讲清的就是这件事。
 
@@ -83,10 +84,11 @@ scale。这在 NVFP4 里的 \emph{level-2} 就是这个形态，但它单独使�
         直接把 amax 当 scale 用，等于只用掉 ue4m3 码表的一小段。
 \end{itemize}
 
-level-1 就是为了解决这两件事：在 per-group (16) 的 ue4m3 之上，再加一层
-fp32 的矩阵/行/列级 scale $s$，把数据先除到 amax 落在 $6\times 2^{-6}
-\sim 6\times 448$ 之间的理想区间（即 SF 落进 ue4m3 的正常数区，
-$2^{-6}\sim 448$），于是 level-2 的 SF 永远不会下溢。$s$ 的取值让一整行
+level-1 缓解这两件事：在 per-group (16) 的 ue4m3 之上，再加一层
+fp32 的矩阵/行/列级 scale $s$，把整行/整列 amax 归一到约 2688，使主要组的 SF
+落入 ue4m3 正常区（$2^{-6}\sim 448$）。但 level-1 只约束行/列最大值，不能保证
+每个 16 元素组都同幅值：行内极小或全零的组仍可能让 level-2 SF 落入次正规甚至舍入为 0，
+因此不存在“任意输入 SF 永不下溢”的保证。$s$ 的取值让一整行
 （或一整列）的 amax 除以它之后恰好逼近满量程 2688 $= 6 \times 448$：
 
 \begin{equation}
@@ -283,7 +285,7 @@ level-2 的 SF 在显存里不是按 (MN, K/16) 平铺的二维数组，而有�
 \begin{tikzpicture}[font=\scriptsize, x=1cm, y=1cm]
 % 512B 原子内部结构
 \node[anchor=west, font=\footnotesize] at (0, 3.05)
-  {\textbf{一个 SF 原子 = 128 行 $\times$ 64 个 K 元素 $\times$ 4 bit = 512\,B}};
+  {\textbf{一个 SF 原子 = 128 行 $\times$ 4 个 SF $\times$ 1\,B = 512\,B}（覆盖 128 行 $\times$ 64 个 K 元素）};
 \foreach \i/\ka/\kb in {0/0/16, 1/16/32, 2/32/48, 3/48/64} {
   \draw[thick, fill=tkFillBlue] (\i*2.4, 2.0) rectangle (\i*2.4+2.2, 2.55);
   \node at (\i*2.4+1.1, 2.27) {$k\in[\ka,\kb)$};
@@ -304,7 +306,7 @@ level-2 的 SF 在显存里不是按 (MN, K/16) 平铺的二维数组，而有�
 }
 \draw[tkRed, very thick, rounded corners=2pt] (0.05,-0.32) rectangle (1.55,-0.93);
 \node[tkRed, anchor=west, font=\tiny, align=left] at (7.3,-0.62)
-  {行块 $mn/128$ 沿 $K$ 快变\\（行块之间 +$NB_K\cdot512$）};
+  {K atom $(s/4)\cdot512$ 的 stride 最小、为快变维\\（行块 $mn/128$ 的 stride 是 $NB_K\cdot512$）};
 \node[anchor=north west, font=\tiny, align=left] at (0,-2.35)
   {\textbf{字节通式}（$NB_K = K/64$，$s$ 为全局 K 组号 $=\lfloor k/16
    \rfloor$）：\\
@@ -312,11 +314,11 @@ level-2 的 SF 在显存里不是按 (MN, K/16) 平铺的二维数组，而有�
    \;+\;(mn\%32)\cdot16\;+\;((mn/32)\%4)\cdot4\;+\;(s\%4)$\\
    该式与 cute 的 \texttt{tile\_atom\_to\_shape\_SFA} 逐字节一致
    （\texttt{ch36} 测试 case~A 全量枚举核对：$M{=}256/300$、$K{=}256/192$
-   两组共 13824 个落点全部命中）};
+   两组共 8704 个落点全部命中）};
 \end{tikzpicture}
 \caption{SF 的显存布局。每个 512\,B 原子覆盖 128 行 $\times$ 64 个 K 元素
 （4 个 SF）。原子内部行优先：同一行的 4 个 SF 连续，故 SF 的 smem$\to$寄存器
-只需一条 4 字节加载。矩阵级平铺时\textbf{行块}是快变维、$K$ 方向次之，字节通式
+只需一条 4 字节加载。矩阵级平铺时 $K$ atom 的 stride 最小、是快变维，行块次之，字节通式
 如框内所示。}
 \label{fig:36-sf-layout}
 \end{figure}
@@ -613,7 +615,7 @@ epilogue 数学）。尾部 shape 与齐整 shape 一致，说明 M/N/K 的尾�
 （TMA 零填充 + store 裁剪 + K\%64 约束）没有引入额外误差。
 
 \texttt{book/\allowbreak tests/\allowbreak ch36\_fp4\_quantize.cu} 把上面的分析逐条落实为断言：
-SF 落点通式与 cute 权威布局全量枚举比对（13824 个落点）、A/B 两侧的 SF 与
+SF 落点通式与 cute 权威布局全量枚举比对（8704 个落点）、A/B 两侧的 SF 与
 数据码点逐 bit 比对、补零行 SF 必须为 0、硬件平局取偶与 satfinite
 的行为，以及上面两个小幅度行的对照数值。这些断言的通过意味着
 第~\ref{ch:37}~章可以把全部注意力放在 MMA 与流水上，数值语义已经冻结。
@@ -621,7 +623,7 @@ SF 落点通式与 cute 权威布局全量枚举比对（13824 个落点）、A/
 \section{小结}
 
 \begin{itemize}[itemsep=2pt,topsep=3pt]
-  \item NVFP4 $=$ e2m1（4-bit 数据）$+$ ue4m3（4-bit level-2 scale，每 16 个
+  \item NVFP4 $=$ e2m1（4-bit 数据）$+$ ue4m3（8-bit level-2 scale，每 16 个
         K 元素一个）$+$ fp32（level-1 scale，行/列级）。三个部件各自的位宽
         与量程决定了这套格式的能力边界。
   \item e2m1 的步长随量级翻倍，最外侧两格的码点落在格边上
@@ -629,9 +631,10 @@ SF 落点通式与 cute 权威布局全量枚举比对（13824 个落点）、A/
         $\sqrt{0.14583/12}=11.02\%$；计入 max 归一与 ue4m3 SF 舍入后
         $10.2\%$；GEMM 双侧 $\sqrt2\times$ 得 $\mathbf{14.4\%}$，
         与 kernel 实测 $14.37\%$ 吻合。
-  \item level-1 的唯一目的是把 level-2 的 SF 移出 ue4m3 的次正规区。
-        幅度小于 $6\times2^{-10}$ 的组在单级模式下会整组归零
-        （相对误差 100\%），实测复现。所以生产配置必须带 level-1。
+  \item level-1 的主要目的是把整行/整列量级归一到 level-2 SF 的可用区，缓解
+        （但不能保证消除）小组落到次正规或归零。幅度小于 $6\times2^{-10}$ 的组在
+        单级模式下会整组归零（相对误差 100\%），实测复现；行内仍可能出现极小分组，
+        所以生产配置通常带 level-1。
   \item SF 在显存里是 128 行 $\times$ 4 SF 的 512\,B 连续原子，
         字节通式与 CUTLASS 的 \texttt{tile\_atom\_to\_shape\_SFA} 逐字节
         一致。这个布局是第~\ref{ch:37}~章 TMA 与 blockscaled MMA 能直接适配
