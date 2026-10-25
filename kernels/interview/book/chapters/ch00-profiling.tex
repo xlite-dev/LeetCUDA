@@ -376,7 +376,7 @@ warp 每个周期若不能发射，必有一个停滞原因。sm\_120 上的口�
 \texttt{wait} & 固定延迟依赖（寄存器/ALU 结果未就绪） & 依赖链问题：拆链、增并行 warp、重排指令；attention 的 softmax$\to$PV 串行链是典型来源 \\
 \texttt{long\_\allowbreak{}scoreboard} & 等 gmem/TMA 数据 & 装载不足：\texttt{cp.async}/TMA、加深 stage、prefetch \\
 \texttt{short\_\allowbreak{}scoreboard} & 等 smem（MIO 队列） & LDS 链太长：swizzle 布局、减少 smem 往返 \\
-\texttt{math\_\allowbreak{}pipe\_\allowbreak{}throttle} & 数学管线排队满 & \textbf{好信号}：计算饱和。保持或进一步减 FLOPs \\
+\texttt{math\_\allowbreak{}pipe\_\allowbreak{}throttle} & 数学管线排队满 & 数学管线饱和；是否 Tensor Core 饱和须看 \texttt{pipe\_\allowbreak{}tensor}：确认则保持/减 FLOPs，否则拆链、增并行 warp（例三） \\
 \texttt{sleeping} & warp 休眠（mbarrier 退避） & \textbf{纯浪费}：producer/consumer 失衡或空转自旋，查 WS 结构 \\
 \texttt{barrier} & 等显式栅栏 & 同步过频：减少 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads} 点、缩 block \\
 \texttt{not\_\allowbreak{}selected} & 就绪但调度器选中了其他 warp & \textbf{健康}：有冗余并行度可隐藏延迟 \\
@@ -385,10 +385,10 @@ warp 每个周期若不能发射，必有一个停滞原因。sm\_120 上的口�
 \end{tabular}
 \end{table}
 
-读 stall 剖析结果的关键是分好坏：\texttt{math\_\allowbreak{}pipe\_\allowbreak{}throttle} 与
-\texttt{not\_\allowbreak{}selected} 高说明计算与调度资源在正常工作（但
-\texttt{math\_\allowbreak{}pipe\_\allowbreak{}throttle} 高还须与 \texttt{pipe\_\allowbreak{}tensor} 交叉验证：
-例三中 mpt $=1.32$ 而 tensor pipe 仅 $49\%$，并非 Tensor Core 饱和）；\texttt{sleeping} 高几乎总是结构
+读 stall 剖析结果的关键是分好坏：\texttt{not\_\allowbreak{}selected} 高说明调度资源健康；
+\texttt{math\_\allowbreak{}pipe\_\allowbreak{}throttle} 高说明数学管线在排队，是否计算饱和还须与
+\texttt{pipe\_\allowbreak{}tensor} 交叉验证（例三中 mpt $=1.32$ 而 tensor pipe 仅 $49\%$，
+并非 Tensor Core 饱和）；\texttt{sleeping} 高几乎总是结构
 问题；\texttt{wait} 与 \texttt{long\_\allowbreak{}scoreboard} 的相对大小直接
 区分依赖链受限与装载受限，例见 \S\ref{sec:ch00-cases} 例三。
 
@@ -657,8 +657,9 @@ warp group（128T，专职 TMA）+ 1 个 consumer（256T，全计算），用
 nsys 定位（谁慢）$\to$ ncu 定性（为什么慢）$\to$ 单变量修改 $\to$
 复测 diff $\to$ 指标闭环。指标字典里最值得带走的三句话：SOL 双低不等于
 没有问题，而是 latency-bound，答案在 stall 剖析结果里；stall 分好坏，
-\texttt{math\_\allowbreak{}pipe\_\allowbreak{}throttle} 高说明 Tensor Core 已饱和，\texttt{sleeping}
-高是结构问题的信号；寄存器 255 墙、spill 与 occupancy 由同一份资源预算
+\texttt{math\_\allowbreak{}pipe\_\allowbreak{}throttle} 高只说明数学管线在排队，是否 Tensor Core
+饱和还须与 \texttt{pipe\_\allowbreak{}tensor} 交叉验证（例三，sm\_89：mpt $=1.32$ 而 tensor pipe 仅 $49\%$），
+\texttt{sleeping} 高是结构问题的信号；寄存器 255 墙、spill 与 occupancy 由同一份资源预算
 决定，读数时要一起读。工具路径：ncu/nsys 随 CUDA Toolkit 安装（通常在
 \texttt{/\allowbreak{}usr/\allowbreak{}local/\allowbreak{}cuda/\allowbreak{}bin}），不在 PATH 时用绝对路径调用。
 
