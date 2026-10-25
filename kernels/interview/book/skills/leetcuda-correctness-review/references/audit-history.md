@@ -923,3 +923,42 @@ git diff --check：通过
 - 复核口径：所有章节的数值表/公式/资源账均现场复算（AI/ridge、smem/寄存器池、加速比、误差界、descriptor 位域、swizzle 周期、barrier 计数），与既有台账一致；ch12/ch13/ch14/ch16/ch17 等长章采用"两遍分段读全"。
 - 验收：主 book 589 页 / 0 error / 0 缺字 / Overfull 17 与基线一致 / 0 undefined；`pdftotext` 命中新标题；RTD `build.sh` 34 项 OK、无 FAIL；visual_check 93 页 0 问题。cute-zhihu 无改动未触发。
 - 结论：五轮零新确证问题（除上述 1 处 LOW），全书维持"结构正确、可发布候选"状态。
+
+## R49–R58（2026-10-25）：cute-zhihu 专项十轮深度审核（只审不改）
+
+- 范围：`cute-zhihu/chapters/` 32 章 7179 行全量；主 book 不动；不派 sub agent，主 agent 逐章审核；
+  用户明确"只审核总结，不改任何内容"，全程只读。
+- 十轮视角：R49 全量通读 L0–L4 → R50 L0 量词/边界 → R51 L1 术语指称 → R52 L2 源码/PTX 实证
+  （12 锚点）→ R53 L3 计数 → R54 L4 一致性 → R55 独立脚本数值复算 → R56 scan_risky_claims →
+  R57 源码摘录逐行核对 → R58 收敛裁定。每轮结果先过 Step 3.5 深度复审再进下一轮。
+- 实证证据（本地）：cute int_tuple.hpp:196（depth）、copy_sm90_desc.hpp:83
+  （set_barrier_transaction_bytes=mbarrier.arrive.expect_tx）、copy_sm100_tma.hpp:45
+  （Sm100MmaPeerBitMask=0xFEFFFFFF）、cutlass/arch/barrier.h:907（umma_arrive_2x1SM_sm0）、
+  copy_atom.hpp:495（make_tiled_copy）、layout.hpp:1798/1324/206（tile_to_shape/left_inverse/
+  with_shape）、copy_traits.hpp:66（UniversalCopy）、copy_traits_sm75.hpp:42（LDSM_N）、
+  mma_sm75.hpp:52（SM75_16x8x8）、PTX 9-instruction-set 12237-12282（fence.proxy 方向）、
+  PTX 13510-13512（mbarrier 远端支持矩阵）。
+- 确证发现 7 组（不改，记录）：①reed-02 depth=2 vs cute depth()=3（HIGH，L1/L2 口径冲突）；
+  ②reed-isa-02 "predication=分支预测"术语错误+流水线清空归因（MEDIUM-HIGH）；
+  ③reed-04 路径2 "L1→smem" 通路（MEDIUM）；④reed-11 求和上限 off-by-one（LOW-MEDIUM）；
+  ⑤reed-mem-01 barrier.h:912 行号漂移（LOW）；⑥LOW 措辞 6 处；⑦未验证 8 组。
+- 撤回 5 条误报：zhuxi-05 "缺 arrive"（expect_tx 自带 arrive 实证）、R55 脚本 3 条 MISMATCH
+  （舍入带内）、及 R49 初判 1 处降级。既有 medium 4 条维持（reed-02 product logical 行、
+  zhuxi-03 一一映射/单射、zhuxi-04 tiled_product 版本断言、zhuxi-05 8-bit/≤256）。
+- 章节裁定：22 章正确、10 章带确证观察、0 blocking；维持"概念正确性中高、参考级"判断。
+- 数值复算：24 项独立复算全对（含 frankshi 2031616/2097152、reed-10 bit21 表 7 行、
+  blackwell 带宽表、fp8 dp(S) 全链、-7 的 20-bit 补码）。
+- 本轮无书稿改动，未触发任何 PDF/RTD 闸门。台账：book/.tmp/cute-zhihu-audit/ledger.md。
+
+## R59（2026-10-25）：cute-zhihu 问题条目复审 + 确证修复（11 文件 18 行）
+
+- 复审推翻 3 条原判：reed-02 depth=2（HIGH 误报，cute depth leaf=0，书中正确）、
+  reed-02 product logical 行（medium 误报）、reed-04 路径2（cp.async.cg/.ca 真实硬件区分）。
+- 修复 13 处：isa-02 predication×5、reed-11 求和上限+TileB^T、isa-04 偏置指数×2+denormal、
+  isa-05 negate 条件、isa-03 local memory 澄清、mem-01 去行号、zhuxi-04 tiled_product 证伪改写、
+  reed-01 反向访问、reed-03 Int<M> 补{}、reed-10 标题[2]、声明页同步"最小订正"口径。
+- 教训：①LaTeX 转义形态（Int$<$M$>$）会让字面 grep 漏检，撤回结论前必须按 tex 形态复核；
+  ②Review Plan 纠出 2 条漏检+1 条同错第二处（isa-04 L25）+1 条改法新错（zhuxi-04"作者写作时"）；
+  ③CUTLASS 升 v4.8.1 后全锚点复核，barrier.h 907→966 证明"引用文件路径不写行号"是对的。
+- 验收：PDF 248 页/0 error/Overfull 6 同基线；pdftotext 旧句 0 新句全中；RTD 全量+verify 全 OK；
+  visual_check 12 页全 OK。未 commit。

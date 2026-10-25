@@ -30,7 +30,7 @@ Tensor make_fragment_like(Tensor tensor);
  & Static & Dynamic \\
 \midrule
 Heap non-owning & make\_tensor(ptr, make\_shape(Int$<$M$>$\{\}, Int$<$N$>$\{\})); & make\_tensor(ptr, make\_shape(M, N)); \\
-Stack owning & make\_tensor(make\_shape(Int$<$M$>$, Int$<$N$>$\{\}));make\_tensor\_like(tensor);make\_fragment\_like(tensor); & NA \\
+Stack owning & make\_tensor(make\_shape(Int$<$M$>$\{\}, Int$<$N$>$\{\}));make\_tensor\_like(tensor);make\_fragment\_like(tensor); & NA \\
 \bottomrule
 \end{tabular}
 \end{center}

@@ -93,25 +93,25 @@ SR_SMEMSZ
 
 \section{Predicate寄存器}
 
-Predication技术是GPU架构中用于实现分支预测（branch prediction）的一种技术。在GPU中，predication通常用于控制线程束（warp）中线程的执行流程，而不是传统CPU中的分支预测。Predicate寄存器的优势主要体现在以下几个方面：
+Predication（谓词化执行）是GPU架构中用于消除和控制分支的一种技术，与CPU中的分支预测（branch prediction）不同。在GPU中，predication通常用于控制线程束（warp）中线程的执行流程。Predicate寄存器的优势主要体现在以下几个方面：
 
 \begin{enumerate}
-\item 提高分支效率：在GPU中，predication寄存器允许整个线程束根据单一的预测结果来决定是继续执行还是跳过某些指令。这种方式可以减少每个线程单独进行分支决策的开销，从而提高分支处理的效率。
+\item 提高分支效率：在GPU中，Predicate寄存器允许线程束中的各线程根据谓词取值来决定是执行还是跳过某些指令。这种方式可以减少每个线程单独进行分支决策的开销，从而提高分支处理的效率。
 
-\item 减少分支开销：由于predication寄存器的存在，GPU可以在一个统一的控制下管理线程束的执行路径，这减少了每个线程单独处理分支的需要，从而降低了分支操作的总体开销。
+\item 减少分支开销：由于Predicate寄存器的存在，GPU可以在一个统一的控制下管理线程束的执行路径，这减少了每个线程单独处理分支的需要，从而降低了分支操作的总体开销。
 
-\item 优化指令流水线：通过predication，GPU可以更好地管理指令流水线，减少由于分支预测错误导致的流水线清空（pipeline flush）和重新取指令（instruction fetching）的需要。
+\item 优化指令流水线：通过predication，GPU可以更好地管理指令流水线，减少分支指令及其控制开销（如分歧管理指令（如 BSSY/BSYNC）的派发与额外的取指（instruction fetching））。
 
 \item 提升并行执行效率：在GPU的并行计算中，线程束中的线程通常会执行相同的指令流。Predication寄存器允许线程束作为一个整体来响应分支指令，这样可以保持线程束内部的同步性，减少由于分支分叉导致的执行效率下降。
 
-\item 简化编程模型：对于程序员来说，predication寄存器提供了一种更为简单的方法来控制线程束的行为，而不需要在代码中显式地处理复杂的同步和分支逻辑。
+\item 简化编程模型：对于程序员来说，Predicate寄存器提供了一种更为简单的方法来控制线程束的行为，而不需要在代码中显式地处理复杂的同步和分支逻辑。
 
-\item 增强硬件的灵活性：通过使用predication寄存器，GPU的硬件设计可以更加灵活地处理分支密集型的程序，特别是在处理大量并行线程时，可以有效地管理线程束的执行状态。
+\item 增强硬件的灵活性：通过使用Predicate寄存器，GPU的硬件设计可以更加灵活地处理分支密集型的程序，特别是在处理大量并行线程时，可以有效地管理线程束的执行状态。
 
-\item 减少能耗：由于减少了分支预测错误和相关的流水线清空，predication寄存器有助于降低能耗，这对于功耗敏感的移动和嵌入式设备尤为重要。
+\item 减少能耗：由于减少了分支控制与分歧管理的开销，Predicate寄存器有助于降低能耗，这对于功耗敏感的移动和嵌入式设备尤为重要。
 \end{enumerate}
 
-总的来说，predication寄存器是GPU架构中用于提高分支处理效率和优化线程束执行的关键技术。它通过简化分支控制逻辑，减少了分支预测的开销，并提高了GPU在执行并行计算任务时的性能和能效。具体的一个分支代码在不使用predicate和使用predicate寄存器后的效果如图3所示：
+总的来说，Predicate寄存器是GPU架构中用于提高分支处理效率和优化线程束执行的关键技术。它通过简化分支控制逻辑，减少了分支控制的开销，并提高了GPU在执行并行计算任务时的性能和能效。具体的一个分支代码在不使用predicate和使用predicate寄存器后的效果如图3所示：
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.9\textwidth]{figures/reed-isa-02-register/fig-03.jpg}

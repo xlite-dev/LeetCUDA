@@ -209,7 +209,7 @@ memcpy((uint8_t*)&tmap + 8, &control, 4);
 
 这种方法简单直接，代价是大 tensor 可能损失一点 TMA 前端性能（需要逐 tile 检查边界）。对于绝大多数应用场景，这个开销可以忽略。
 
-\section{方法二：在 \texttt{tensormap.replace}[2] 修改 shape 时联动处理 bit21}
+\section{方法二：在 \texttt{tensormap.replace} 修改 shape 时联动处理 bit21}
 
 如果需要保留 bit21 的性能优化（大 tensor 跳过检查），可以在每次 replace dim 后根据新的实际 tensor 大小重新决策 bit21。由于 tensormap.replace 不支持直接修改 control word，需要在 shared memory 中手动 patch 对应字节后再通过 \lstinline|tensormap.cp_fenceproxy| 写回：
 
