@@ -78,7 +78,7 @@ user-invocable: true
 
 ## 2.1 当前正确性状态与审核者校准（2026-10-25 快照）
 
-**这不是永久结论，也不是“零错误”证明。** 它只描述当前工作树（R28）在
+**这不是永久结论，也不是“零错误”证明。** 它只描述当前工作树（R60）在
 第零层 + 四层审查下的置信状态；书稿再改、源码/版本变化后必须重审。
 
 | 文档 | 总体判断 | 最强 | 最弱 | 不能宣称 |
@@ -92,9 +92,10 @@ user-invocable: true
 当前构建状态（只证明“产物能生成/页面可渲染”，不证明内容正确）：
 
 ```text
-book.pdf：588 页，0 error / 0 missing，Overfull 16
+book.pdf：589 页，0 error / 0 missing，Overfull 16
 cute-zhihu.pdf：248 页，0 error / 0 missing，Overfull 6
-RTD：英文图集 1875 条 / 1792 单元，代码 771/771，公式 121/121
+colfax-cute-zh.pdf：204 页，0 error / 0 missing，Overfull 0（2026-10-25 本地补依赖后）
+RTD：英文图集 1883 条 / 1792 单元 / 英文图 196/196，代码 771/771，公式 121/121
 visual_check：93 页，需处理 0
 ```
 
@@ -133,15 +134,54 @@ visual_check：93 页，需处理 0
 
 ### 当前残余 medium（不要重复当 high 报）
 
-- 主 book：ch17/ch18 的 129/257 arrive 计数归因；ch26c 的 VCPB STSM 指令
-  计数；ch27 “四个误差源”只展开三项；ch33 smooth-v +1.0% 的机制归因；
-  ch36 误差预算表的 3.24%/10.17% 合成口径。
+- 主 book：ch26c 的 VCPB STSM 指令计数；ch27 “四个误差源”只展开三项与
+  内部仿真未归档；ch33 smooth-v +1.0% 的机制归因；ch36 误差预算表的
+  3.24%/10.17% 合成口径；ch29 `wait<2S-1>` 考据段仍属合理简写。
+- 已关闭：ch17/ch18/ch25 的 129/257 arrive 计数经 R60 复审关闭——当前文本
+  已明确区分“数据就绪等价”与 arrive 语义，不列为错误；但不得扩写成
+  “协议逐事件完全相同”。
 - cute-zhihu：`reed-02` product 表的 logical 行读法；`zhuxi-04`
   “tiled_product 在 cutlass 没被用到”的版本相关断言；`zhuxi-05` 8-bit
   字段与 ≤256 的口径；`zhuxi-03` “一一映射/单射”术语。
 
 这些是“证据不足/口径未定”，不是“已确认错误”。下一轮要么补证据改，
 要么继续保留 medium；不能为了清零而强行改。
+
+## 2.2 全量逐章证据链审核模式（R60 推荐）
+
+当目标是“尽量找隐藏错误”而不是“只看本次 diff”时，强制先读
+`references/full-book-claim-audit-playbook.md`。这是 R60 全书审核沉淀出的固定模式，
+与本 SKILL 的 L0–L4 叠加使用，不替代任何一层。
+
+**与常规 diff 审核的区别：**
+
+1. **范围从章节变成全部 claim 表面**：正文/公式、TikZ 节点、图注、表/表注、
+   面试问答、小结与标题、listing 源码、tests/bench、CLI/backend、附录
+   permalink、RTD 三套词典。图注和问答不能当“附属品”跳过。
+2. **旧 PASS 不能作为新文本的证明**：历史 ledger 只用来避免重复误报；
+   本轮必须回读现行句子并重新取证。
+3. **机械校验先做**：全量 listing 路径/linerange、每条 permalink 自己的
+   commit、源码 anchors、独立算术、bench 启动参数、CLI choices 与 backend
+   assert、RTD figures/code/math 词典。人工阅读负责语义，机械检查负责覆盖。
+4. **同一 root cause 合并**：按断言合并多个章节/图表/问答，不按文件重复计数。
+5. **候选必须反向自辩**：先尝试证明原句成立；扩大回读、换口径、过舍入带、
+   回原文。确认不了才保留。置信度（confidence）与严重度（severity）分开记。
+6. **多查出来通常来自覆盖面变宽，不代表书突然多出几十个 blocking 错误**：
+   R60 的 63 项里 HIGH 3、MEDIUM 33、LOW 27，另有 4 项误报撤回；报告必须
+   分层，不能把 LOW 表述问题冒充核心错误。
+
+**R60 的典型隐藏错误类型（下一轮优先扫）：**
+
+- 图内公式/图注仍写旧符号（正文已改）；
+- Q&A 公式沿用旧结论，和正文多/少一个因子；
+- 全量 bench 启动参数仍按单 token，性能表无法复现；
+- CLI `choices` 接受但 backend assert 拒绝的“假可运行档”；
+- ceil/floor、per-block SF 原子数、bit/byte、request/sector 口径；
+- 附录 permalink 用当前工作树验证旧 commit 的行区间；
+- 改图内中文/代码注释后只改 tex，不同步 RTD 三套词典。
+
+**本轮只改 skill、没有书稿改动**时，说明“不触发 PDF/RTD 闸门”，不要假装跑过；
+下一轮真正动书稿时仍按 §5 的构建矩阵执行。
 
 ## 3. 标准工作流
 
@@ -587,6 +627,11 @@ push/PR 仍由用户决定，但本地 build + RTD 验收不能因此省略。
    Overfull、error/undefined/missing）；
 6. RTD `build.sh` + `visual_check` 结果（verify 项、MathJax/console/404/版式）。
 
+如果本轮是全量逐章审核，报告还要额外列出：
+`coverage`（章节/附录/白皮书/listing/permalink 数）、`candidates`、
+`retractions`、`fixed H/M/L`、`no-issue` 章节、`unverified` 项；不要只给总数。
+方法细节按 `references/full-book-claim-audit-playbook.md` 执行。
+
 然后把本轮记录**追加**到 `references/audit-history.md`（不要覆盖旧轮次），
 写清日期、范围、方法、发现、修正、证据、所有受影响 PDF 与 RTD 的验收结果。
 若本轮确实没有书稿改动（例如只改 skill 文档），必须明确写
@@ -661,6 +706,9 @@ agent 候选（如有）：
 
 ## 8. 参考资源
 
+- `references/full-book-claim-audit-playbook.md`：R60 全量逐章证据链审核的完整
+  playbook（覆盖矩阵、机械校验、反向自辩、误报案例与输出模板）。做“全书找隐藏错误”
+  时先读它。
 - `references/claim-ledger-template.md`：claim ledger、边界矩阵、自审报告模板。
 - `references/casebook.md`：实际抓出的错误案例（含 R25/R26 增补），每条有坏句、
   真值、证据、修法；覆盖 layout、API、listing、表标签、phase、GMMA、R2S、

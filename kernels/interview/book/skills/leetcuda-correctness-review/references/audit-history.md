@@ -970,3 +970,15 @@ git diff --check：通过
 - 方法论记录：Step 3.5 规则 5 本轮四批拦截脚本假阳性（ch19b stem 抢 ch19 计数键、grep 反斜杠转义、ulp 精度过严、caption 正则吞嵌套表）；未有一条流入结论。
 - 章节裁定：全部维持"正确"（38 章 + 5 附录）；1 LOW 观察不改；既有 medium 6 项原样保留。
 - 本轮无书稿改动，未触发任何 PDF/RTD 闸门。
+
+## R60（2026-10-25）：全量逐章证据链审核 + 63 项修复 + 三 PDF/RTD 全验收
+
+- 范围：主 book 41 个 chapter input（含 ch19b、ch26b、ch26c）+ 8 个白皮书子文件 + 附录 A–E，共 54 个 TeX、40487 行；基线 `1932ac2`，开工工作树 clean。`ch19b`/wp 只通读作术语基线，不做逐条技术审核。
+- 与历史轮次的差别：不是看 diff 或旧 ledger，而是把审核单位从“章节”改成“claim 表面”。逐章全文覆盖正文/公式、TikZ 节点、图注、表/表注、面试问答/小结/标题、listing、tests/bench、CLI/backend、附录 permalink、RTD 三套词典。旧 PASS 只用于防误报，不作为本轮证明。
+- 机械校验：226 个外部 listing（178 command + 48 environment）检查 `.cu/.cuh` 路径与单段/多段 linerange，无效 0；53 条附录 permalink 按各自 commit 逐条核验，发现 2 条 pinned 快照无效并修复；重算 AI/ridge、ceil、SF 字节、寄存器池、加速比；发现 ch04 bench 启动参数只传 `N` 而非 `S*N`；核对 861d75e 的 CLI choices 与 backend assert，确认 Q/K per-channel 是“CLI 可传、CUDA 后端拒绝”的假可运行档。
+- 候选与裁决：67 条候选；撤回 4 条（C-20 TMA 完成时序图省略、C-32 kBlockSwizzle 误读为组数、C-56 WHT 归一化折叠、C-59 旧 bug 复现未写 checkout）；保留并修复 63 条（HIGH 3：ch04 bench、ch13/14/17 expect-tx、ch32 P2 图内符号；MEDIUM 33；LOW 27）。C-14 经 PTX tx-count 复核后收窄：多报残留正值挂死；少报若命中 0 提前放行、跨到负值也挂死；ch26b 单 bulk 少 1 字节原句正确，撤回该处误判。
+- 主要修复类型：图内符号/图注与正文冲突；LSE“可逆打包”与 Split-D“LSE 合并”语义；bias 与 RMSNorm 的因果；128-bit/sector 与 request/sector 口径；全局 AI 漏 C；PAD 无法消除固定 k 冲突；expect-tx/phase 协议；ceil 与 per-block SF 数；fp16/bf16 基线；e4m3/e2m1 数值语义；level-1 不能保证所有组不下溢；13824→8704 落点；P2 图内符号；sm_120f 仅 SM12x family；两条 permalink；CLI per-channel。
+- 修复与词典：36 个 TeX/测试文件 + 2 个 RTD 词典 + 3 个重建 PDF，共 41 文件（213 insertions / 185 deletions）。改图内中文后 RTD 图集词典少 8 条，用 `python -m tools.translate_figures --limit 8` 补齐；改 appC 的 sm_120f 文案后 code-en 词典漂移 1 条，同步 key/value；强制 TikZ 重建后全部命中。
+- 验收：主 book 589 页 / 0 error / 0 missing / Overfull 16；cute-zhihu 248 页 / 0 error / 0 missing / Overfull 6；colfax 204 页 / 0 error / 0 missing / Overfull 0（原环境缺 biblatex/logreq，装用户 TeX 树并用 TL2023 临时 biber）。RTD `./build.sh --force-tikz` 全绿：英文图集 1883 条覆盖 1792/1792、英文图 196/196、code 771/771、math 121/121；`visual_check` 93 页全部 `[OK]`，需处理 0。未运行 GPU 测试/bench；ch04 新 bench 数据标未复测。
+- 方法论结论：多查出的原因主要是覆盖面、证据标准和反向自辩三者叠加，不是书稿突然变差。63 项中 HIGH 仅 3 项，27 项是 LOW 表述/图表/测试覆盖问题；同时有 4 项误报，说明“查得多”必须配套 confidence/severity 分层，不能把候选数当错误数。该模式已沉淀到 `references/full-book-claim-audit-playbook.md` 和 SKILL §2.2。
+- 本轮 skill 更新本身无书稿改动，未额外触发 PDF/RTD；上述验收对应本轮书稿修复。未 commit。
