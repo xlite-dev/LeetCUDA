@@ -538,9 +538,10 @@ $256\times32\times2=16384$ 个 half。这两个别名随后被
         偏移）代入 \texttt{Swizzle\allowbreak{}<3,\allowbreak{}3,\allowbreak{}3>} 的位公式：掩码落在
         bit$\,[6,9)$，而 $32r$ 只贡献到 bit$\,5$ 起的位：行号的最
         低位落在源字段之外，真正参与 XOR 的只有 $r$ 的高两位，等价于
-        $\text{chunk}'=\text{chunk}\oplus(r\gg1)$。XOR 值集合只有
-        $\{0,8,16,24\}$ 四种；相邻两行共享同一图样，8 行一周期，共 4 种
-        图样（理想 SW128 是逐行变化的 8 种图样，强度减半）。注释宣称的\textbf{8 行 $\times$ 128\,B、覆盖 32 bank}描述的是
+        $\text{chunk}'=\text{chunk}\oplus(r\gg1)$。前 8 行的 XOR 值集合只有
+        $\{0,8,16,24\}$ 四种，相邻两行共享图样，共 4 种图样；
+        完整序列则是 16 行一周期，因为 $r=8,9$ 开始会出现 XOR$=4,4$ 的新图样
+        （理想 SW128 是逐行变化的 8 种图样，强度减半）。注释宣称的\textbf{8 行 $\times$ 128\,B、覆盖 32 bank}描述的是
         \texttt{Swizzle\allowbreak{}<3,\allowbreak{}3,\allowbreak{}3>} 配 $B_K=64$ 的形态。\textbf{该差异不影响
         正确性}，读写两侧用的是同一个布局别名，只是 bank 收益比注释口径
         小一半；本章测试 case F 逐点验证了这个退化形态
@@ -594,7 +595,7 @@ $256\times32\times2=16384$ 个 half。这两个别名随后被
       {本章的 $8\times32$ 原子：$8$ 行 $\times$ $4$ 个 chunk，行宽 $64$\,B};
     \node[anchor=north west, align=left, text width=6.1cm] at (3.2,0.2)
       {格内 $=$ 物理 chunk 号 $j\oplus(r\gg1)$：同一列的相邻两行共享图样，
-       \textbf{8 行一周期、共 4 种图样}。XOR 值为元素口径
+       \textbf{图示前 8 行共 4 种图样；完整序列 16 行一周期}。前 8 行 XOR 值为元素口径
        $\{0,8,16,24\}$，chunk 口径 $\{0,1,2,3\}$（左侧括号）。};
   \end{scope}
   \begin{scope}[shift={(10.1,0)}]
@@ -628,8 +629,8 @@ $256\times32\times2=16384$ 个 half。这两个别名随后被
 case~F）：$B_K=32$、行宽 $64$\,B 时把一个 $8\times32$ 的逻辑 tile 交给
 \texttt{Swizzle<3,3,3>}，行号最低位落在源字段 bit$[6,9)$ 之外，XOR 只用到
 $r$ 的高两位——物理 chunk 号退化为 $j\oplus(r\gg1)$，XOR 值集合从理想
-SW128 的 $8$ 种降到 $4$ 种。相邻两行共享图样，但整个序列仍是 $8$ 行
-一周期，不是 $2$ 行一周期（右：理想 SW128 的 $8\times8$ chunk 表作对照）。}
+SW128 的 $8$ 种降到前 8 行的 $4$ 种。相邻两行共享图样，但完整序列是 $16$ 行
+一周期：$r=8,9$ 起会出现新的 XOR 图样（右：理想 SW128 的 $8\times8$ chunk 表作对照）。}
 \label{fig:23-sw-degenerate}
 \end{figure}
 
@@ -1001,7 +1002,7 @@ bank（128 B $=$ 32 个 4 B bank）。式~\eqref{eq:23-chunk} 保证同一列块
 \ref{sec:23-minitest}~节的 case C 把它写成固定 chunk、行扫描得 8 个
 不同值，case F 则验证 $8\times32$ 原子的退化形态
 （\texttt{chunk'} $=$ \texttt{chunk} $\oplus$ $(\text{row}\gg1)$，
-XOR 值只有 $\{0,8,16,24\}$ 四种，相邻两行共享图样，8 行一周期）。
+前 8 行 XOR 值只有 $\{0,8,16,24\}$ 四种，相邻两行共享图样；完整序列 16 行一周期）。
 
 \textbf{(2) swizzle 不需要独立的数据重排指令。} 软件
 \texttt{ldmatrix} 路径把 XOR 折叠进地址表达式，SASS 里可能多出一条
@@ -1047,8 +1048,8 @@ chunk 会跨 slice 交叉。
 \item \textbf{预期 swizzle 能消除所有 bank conflict。} 它保证的是
 \textbf{同一个 16 B 块列在 8 行内落到 8 个不同块}；跨 32 行、或以
 4 B 为粒度的模式（例如标量表查）它不保证。强度由 $B$ 与行宽共同决定：
-hgemm 路径的 $8\times32$ 原子实际强度只有 2 bit（4 个 XOR 图样，
-相邻两行共享图样、8 行一周期，4.1 节实践须知）。
+hgemm 路径的 $8\times32$ 原子实际强度只有 2 bit（前 8 行 4 个 XOR 图样，
+相邻两行共享图样；完整序列 16 行一周期，4.1 节实践须知）。
 \item \textbf{忘记 swizzle 是地址函数。} 想让按 (\texttt{row,col}) 求值
 的布局与按 flat 偏移求值的公式一致，前提是行宽恰好等于
 $2^{M+S}$ 字节。行宽不匹配时（例如 $B_K$ 取 48），两者不等。

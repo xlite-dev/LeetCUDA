@@ -77,12 +77,13 @@ $S_{ik} = \gamma\, q_i^\top k_k$。本章 kernel 把 tile 集合按奇偶分成
   \label{eq:18-split}
 \end{equation}
 $\mathcal{T}_0$ 交给 \texttt{consumer\_id}$=0$（线程 128--255），$\mathcal{T}_1$
-交给 \texttt{consumer\_id}$=1$（线程 256--383）。两流各自维护一套
+交给 \texttt{consumer\_id}$=1$（线程 256--383）。令 $\mathcal K_c=\bigcup_{t\in\mathcal T_c}\{tB_c,\dots,\min((t+1)B_c,N)-1\}$
+表示对应 tile 内的 key 下标集合，两流各自维护一套
 \textbf{未归一化}的 online-softmax 状态：
 \begin{equation}
-  m_0 = \max_{k \in \mathcal{T}_0} S_{ik}, \qquad
-  \ell_0 = \sum_{k \in \mathcal{T}_0} e^{S_{ik} - m_0}, \qquad
-  O_0 = \sum_{k \in \mathcal{T}_0} e^{S_{ik} - m_0}\, v_k ,
+  m_0 = \max_{k \in \mathcal K_0} S_{ik}, \qquad
+  \ell_0 = \sum_{k \in \mathcal K_0} e^{S_{ik} - m_0}, \qquad
+  O_0 = \sum_{k \in \mathcal K_0} e^{S_{ik} - m_0}\, v_k ,
   \label{eq:18-partial}
 \end{equation}
 $m_1, \ell_1, O_1$ 对 $\mathcal{T}_1$ 同构。因为

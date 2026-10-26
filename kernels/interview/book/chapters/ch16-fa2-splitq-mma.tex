@@ -37,8 +37,9 @@ materialize $S=QK^\top$ 与 $P=\mathrm{softmax}(S)$，序列长 $N$ 时
 注意力计算被内存读写而非计算本身支配。FA 的答案是分块：$Q$ 按
 $B_r$ 行一块、K/V 按 $B_c$ 行一块，$S$/$P$ 只在寄存器/smem 里以
 $B_r\times B_c$ 的 tile 存在，配合 online softmax（第~\ref{ch:04}~章）
-跨 tile 维护 $(m,\ell)$ 状态：$O(N^2 d)$ 的 FLOPs 一个不少，但 HBM
-读写降为 $O(Nd)$。这套推导在第~\ref{ch:15}~章已完成，本章不再重复。
+跨 tile 维护 $(m,\ell)$ 状态：$O(N^2 d)$ 的 FLOPs 一个不少，但不再产生 $O(N^2)$ 的
+$S/P$ 中间矩阵 HBM 流量。K/V 仍会随 Q block 重读，总 IO 仍含第~\ref{ch:15}~章的
+$\Theta(N^2d^2/M)$ 项，不能直接写成 $O(Nd)$。
 
 \textbf{动机二：split-KV 的 warp 划分使 softmax 状态分裂到多个 warp。}
 分块之后，\textbf{block 内 warp 怎么分工}是 FA1 到 FA2 的关键差异。
@@ -373,7 +374,8 @@ V 一段（L165--172）。行距 \texttt{k\allowbreak{}Smem\allowbreak{}Stride\a
 （L167--169），默认 pad$=$8 个 half：行距 $72$ half $=144$~B
 $=36$ 个 bank 字，相邻行错开 $36 \bmod 32 = 4$ 个 bank。ldmatrix 的
 每个 $8\times8$ 矩阵相位读 8 行 $\times$ 16~B：8 行的起始 bank
-$\{4r{+}4h\}_{r=0}^{7}$ 恰好铺满 32 个 bank 各一次，conflict-free；
+$\{4r{+}4h\}_{r=0}^{7}$ 相隔 4 个 bank，每段 16~B 覆盖连续 4 个 bank，
+8 段合起来恰好铺满 32 个 bank 各一次，conflict-free；
 若不 pad（行距 128~B），8 行起始 bank 全相同，同一相位的 8 段 16~B
 全部压在 4 个 bank 上串行化。这与第~\ref{ch:07}~章 transpose 的
 padding 分析、第~\ref{ch:12}~章的 swizzle 是同一主题的三种解法；

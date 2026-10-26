@@ -522,8 +522,8 @@ tile M $= 32$）、\texttt{kMmaTileN}$=4$（warps along N，warp tile N $= 32$�
 $B_K=16\,k_{\mathrm{ValTileK}}$）与 \texttt{k\allowbreak{}Block\allowbreak{}Swizzle}。smem 侧是经典的
 kStages 级双缓冲：$S$ 个 stage 轮转，cp.async 预取 $k{+}S{-}1$、MMA 消费 $k$。
 \texttt{kValTileK}{=}4 时每 stage $128{\times}64$ half，$S{=}2$ 共 64\,KB，
-上文 \texttt{kStages}{=}2 推荐 64\,KB smem 的说法由此而来（$S{=}3$ 需 96\,KB，sm\_120 可容
-但常驻 block 数下降）。
+上文 \texttt{kStages}{=}2 推荐 64\,KB smem 的说法由此而来（$S{=}3$ 需 96\,KB，sm\_120 可容；
+在 100KB/SM 预算下两档 smem 都只容 1 个 block，不会仅因 64$\to$96KB 再降低 CTA 数）。
 
 \subsection{G$\to$S：swizzle 进地址的 cp.async}
 

@@ -174,10 +174,10 @@ $71.6$、尚在带宽受限区，但实测 $25.97$~T 已达该上限的 $87\%$�
      2：覆写前 \texttt{\_\_syncthreads}——tile $k$ 全部读完才准覆写};
   \node[draw, align=left, anchor=north west, font=\tiny] at (10.9,-2.6)
     {对照第~\ref{ch:10}~章图~\ref{fig:10-1}（S$=$2 双缓冲）：\\
-     load $k{+}1$ 与 compute $k$ 重叠，\\两类空转消失};
+     load $k{+}1$ 与 compute $k$ 重叠，\\理想负载下两类空转可被消去};
   \draw[->, dashed] (11.5,-2.6) -- (9.3,-1.25);
 \end{tikzpicture}
-\caption{单缓冲 k-slice 循环的双栅栏时序（3 个迭代）：load（蓝）$\to$ 栅栏 1（消费前）$\to$ compute（紫）$\to$ 栅栏 2（覆写前）。load 期间 CUDA Core 空转、compute 期间搬运单元空转——\textbf{搬一算一}串行使两个窗口无法重叠；双缓冲（图~\ref{fig:10-1}）正是为消除这两类空转而设计。}
+\caption{单缓冲 k-slice 循环的双栅栏时序（3 个迭代）：load（蓝）$\to$ 栅栏 1（消费前）$\to$ compute（紫）$\to$ 栅栏 2（覆写前）。load 期间 CUDA Core 空转、compute 期间搬运单元空转——\textbf{搬一算一}串行使两个窗口无法重叠；双缓冲（图~\ref{fig:10-1}）正是为重叠这两类空转而设计；负载不均或首尾阶段仍可能有残余等待。}
 \label{fig:09-single-barrier}
 \end{figure}
 

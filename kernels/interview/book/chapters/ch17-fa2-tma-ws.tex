@@ -147,11 +147,11 @@ PV 后释放。
   \;+\; \underbrace{1}_{\text{producer 提交线程}} \;=\; 257 ,
   \label{eq:17-257}
 \end{equation}
-与第~\ref{ch:13}~章 WGMMA 版的 129（$128 + 1$）同构，但 consumer 端的含义不同：
-WGMMA 是 warpgroup 对齐指令，consumer 的最小单位是整个 128 线程
-warpgroup。consumer 用 warp 级的 \texttt{mma.sync} + ldmatrix，8 个 warp
-彼此独立推进，因此\textbf{每个线程}都必须在屏障上 arrive 一次，\textbf{数据到齐
-且全体 consumer 都已就位}才翻转。这是把 ws 协议从 Hopper 移植到 SM120 时最
+与第~\ref{ch:13}~章 WGMMA 版的 129（$128 + 1$）同构，但数字由软件协议的参与线程数决定，
+不是 mma.sync 或 WGMMA 指令强制。当前实现让 256 个 consumer 线程分别 arrive，
+用“数据到齐且全体 consumer 都已就位”作为翻转条件；producer 的 expect\_tx 再贡献 1 次。
+WGMMA 版则按 128 个 consumer 线程加 1 设计。理论上也可按 warp/warpgroup 聚合并相应改 init，
+只要完成追踪与计数一致。这是把 ws 协议从 Hopper 移植到 SM120 时最
 容易算错的数字（源码 L960--962 的 WARN 注释专门警告了另一个相关的除数错误，
 见 17.8~节坑一）。
 
@@ -189,8 +189,8 @@ warpgroup。consumer 用 warp 级的 \texttt{mma.sync} + ldmatrix，8 个 warp
 每轮 KV 迭代消耗 full 相位 1 次（256 consumer arrive $+$ 1 producer
 arrive\_tx $+$ 字节落盘）、empty 相位 1 次（256 consumer arrive $+$ 1
 producer arrive）。两边的 arrive 预算都是 257/轮，与 init 值精确对齐。
-任何一边多算或少算一次，循环就会在几轮后错位：少算则屏障提前翻转
-（读到半新半旧数据，静默错误），多算则永不翻转（挂死）。这套计数循环与第~\ref{ch:13}~章
+若 expected-count 配少，屏障会提前翻转（读到半新半旧数据）；配多则永不翻转（挂死）。
+若指实际 arrive 调用，少来会因计数不足而挂死，多来则破坏后续相位，两个“多少”不能混用。这套计数循环与第~\ref{ch:13}~章
 图~13-3 的 mbarrier 状态机完全同构，只是参与方从 $128+1$ 换成了 $256+1$。
 
 \begin{figure}[H]
@@ -882,9 +882,9 @@ A：三次 GEMM 结构差异。HGEMM 一次 GEMM、K 维迭代、A/B 都 staged�
 单一屏障对变成 Q 单屏障加 K/V 两对通道。
 
 \textbf{Q2：arrive count 为何是 257 而不是 129？}\\
-A：consumer 是 256 线程（8 warp \texttt{mma.sync}，warp 级指令无 warpgroup
-对齐约束，逐线程 arrive）$+$ producer 1 线程。WGMMA 版是 128 $+$ 1 $=$ 129
-（warpgroup 为最小单位）。数字差别的根源是计算指令的对齐粒度。
+A：当前协议让 256 个 consumer 线程逐线程 arrive，再加 producer 的 1 次 arrive，所以是 257；
+WGMMA 版按 128 个 consumer 线程加 1，所以是 129。差别来自软件选择的参与者与完成追踪方式，
+不是计算指令的对齐粒度；改成按 warp/warpgroup 聚合并同步调整 init 也可以成立。
 
 \textbf{Q3：full 与 empty 各在什么时机翻转？}\\
 A：full[s]：256 consumer arrive（wait 时）$+$ producer arrive\_tx（1 次）$+$

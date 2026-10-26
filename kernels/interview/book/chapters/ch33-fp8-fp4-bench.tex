@@ -559,7 +559,7 @@ PRO 5000（sm\_120）实测——\textbf{形态结论（谁快谁慢、随 D 怎
 \begin{enumerate}[itemsep=0pt,topsep=2pt]
   \item D$\le$192 且精度预算允许 $\Rightarrow$ fp4（2x 级 + tol
         0.15 内）；精度敏感行（早期行/高对比度）开 fp4-hybrid。
-  \item D=256 区间 $\Rightarrow$ fp4（fp8 persist-D 在此有 smem
+  \item D=256 区间 $\Rightarrow$ fp4（fp8 split-D 在此有 smem
         交叉点，1.3x vs fp4 的 2.1x）。
   \item D$>$256 $\Rightarrow$ fp8 split-D/M4N2（fp4 大 D 依赖
         split-D 家族，按第~\ref{ch:30}~章 dispatch 表选）。

@@ -4,8 +4,8 @@
 \section{本章导读}
 
 第~\ref{ch:10}~章用 WMMA 用上了 Tensor Core，但 WMMA 是一层
-厚抽象：fragment 布局是黑盒、寄存器数量不可控、没有寄存器双缓冲、
-流水线只能两级。本章把这层抽象整个去掉，直接用 PTX 内联汇编写
+厚抽象：fragment 布局是黑盒、寄存器数量与寄存器级双缓冲难以显式控制；
+前章实现只做了两级 smem 流水，这不是 WMMA 对 stage 数的限制。本章把这层抽象整个去掉，直接用 PTX 内联汇编写
 HGEMM：\texttt{mma.\allowbreak{}sync.\allowbreak{}aligned.\allowbreak{}m16n8k16} 矩阵指令 + \texttt{ldmatrix}
 碎片装载 + \texttt{cp.async} 三级流水（kStages$=$3）。本章的教学源码是
 \texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn}（hgemm.cuh~L129，TN 布局，
@@ -155,7 +155,7 @@ C 的 $16\times8$。每个 lane 持多少、在矩阵的什么位置，就是 fr
     {每 lane 4 条 \texttt{.b32}：R0 取行 $g$ 的列 $(2\,\mathrm{tig},\,2\,\mathrm{tig}{+}1)$；R1 取行 $g{+}8$ 同列；R2/R3 再取列 $+8$。\\
      每格为 1 个 f16（底色 $=$ lane 组 $g$）：一行 16 个元素由 $\mathrm{tig}=0..3$ 的 4 个 lane 拼成，列对 $(2\mathrm{tig},2\mathrm{tig}{+}1)$ 归同一 lane。};
 \end{tikzpicture}
-\caption{A fragment 寄存器布局（依据 PTX ISA Figure 79 的行/列公式绘制；T$n$ 表示 lane $n$ 持有该元素，每格 2 个相邻 f16 装一条 \texttt{.b32}；四象限 $R0/R1/R2/R3$ 分别对应 UL/LL/UR/LR）。}
+\caption{A fragment 寄存器布局（依据 PTX ISA Figure 79 的行/列公式绘制；T$n$ 表示 lane $n$ 持有该元素，每格 1 个 f16，相邻两格装一条 \texttt{.b32}；四象限 $R0/R1/R2/R3$ 分别对应 UL/LL/UR/LR）。}
 \label{fig:11-2a}
 \end{figure}
 
@@ -356,7 +356,7 @@ lane $4r + \mathrm{tig}$ 的寄存器 $r\sb i$ 的 $\mathrm{tig}$ 列对，
     minimum width=8.0cm, minimum height=0.5cm] at (4.0,-4.0)
     {象限序 [UL, LL, UR, LR] $=$ mma 期望序（Eq 11.1），无需重排};
   \node[anchor=west, fill=tkFillGreen, draw=tkGreen, inner sep=2.5pt, font=\scriptsize\bfseries] at (8.8,-0.62)
-    {B $k16n8$（存成 $B^{\top}$ 的 $n16k16$ 行主序）$\to$ two $8{\times}8$（x2）};
+    {B $k16n8$（存成 $B^{\top}$ 的 $n8k16$ 行主序）$\to$ two $8{\times}8$（x2）};
   \node[draw=colorx4!70!black, fill=colorx4!12, align=center, font=\tiny,
     minimum width=3.6cm, minimum height=0.82cm] at (10.9,-1.85)
     {\textbf{matrix0}\ \ $n$ 0--7, $k$ 0--7\\rows $= t \bmod 8$\\cols $= ((t/8) \bmod 2)\times 8$};

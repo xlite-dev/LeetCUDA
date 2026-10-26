@@ -64,8 +64,8 @@ $4MK$ 字节，读 $x$、写 $y$ 各 $4K$、$4M$ 字节。关键在 $x$ 怎么�
   \text{AI}\sb{\text{乐观}} &\approx \frac{2MK}{4MK + 4K + 4M} \;\approx\; \frac{1}{2}
   && \text{（$x$ 只读一次：$M$ 大时 $x$ 常驻 L2，边际成本趋零），}
   \label{eq:8-ai-optimistic}\\
-  \text{AI}\sb{\text{悲观}} &= \frac{2MK}{4MK + 4MK} \;=\; \frac{1}{4}
-  && \text{（每个行 warp 都从显存重读一遍 $x$）。}
+  \text{AI}\sb{\text{悲观}} &\approx \frac{2MK}{4MK + 4MK + 4M} \;\approx\; \frac{1}{4}
+  && \text{（每个行 warp 都从显存重读一遍 $x$，并计入 $y$ 写回）。}
   \label{eq:8-ai-pessimistic}
 \end{align}
 两个口径都与 $M$、$K$ 无关，GEMV 的 AI 是常数，这就是源码头注释
@@ -388,9 +388,9 @@ load 的 warp 指令数降为 1/4（128B 请求数与 sector 数不变），而�
   \texttt{\_\allowbreak{}\_\allowbreak{}shfl\_\allowbreak{}xor\_\allowbreak{}sync\allowbreak{}(0xffffffff,\allowbreak{} .\allowbreak{}.\allowbreak{}.\allowbreak{})} 把未执行该指令的 lane 命名进了掩码。
   按 CUDA C++ Programming Guide 的规定，\textbf{掩码中命名的所有线程必须都执行同一条
   shuffle}，否则行为未定义。实践中当前硬件通常\textbf{碰巧}正确（分段宽度限制了实际交换
-  范围），但这是不能依赖的语义。规避方式：保证 $M \% 8 = 0$（每 block 8 行，守卫
-  warp 一致），或改用协同组、或让掩码与活跃 lane 精确匹配。本章测试固定
-  $M \% 8 = 0$ 以避开该路径。
+  范围），但这是不能依赖的语义。对当前行守卫，$M$ 为偶数就足以保证每个 warp 的两行同有效性；
+  取 $M \% 8 = 0$ 则进一步保证所有 block 都是完整 8 行。也可改用协同组、让掩码与活跃 lane
+  精确匹配，或让无效行仍以中性值参与归约。本章测试固定 $M \% 8 = 0$ 以避开该路径。
 \end{kaogu}
 
 \begin{kaogu}[F3 核校通过]{sgemv.cuh L7：\textbf{AI $\approx$ O(1)}的定性判断}
@@ -414,8 +414,8 @@ load 的 warp 指令数降为 1/4（128B 请求数与 sector 数不变），而�
 而不是 misaligned access。若 $K$ 是 4 的倍数但不是 128 的倍数，地址仍对齐，最后
 一轮越界；若 $K$ 不是 4 的倍数，行起点才可能 misaligned。
 
-\textbf{坑三：k16 的 $M$ 必须是 8 的倍数。}不是正确性一定会坏，而是 8.7~节勘误二所述的
-掩码语义约束。另外：k32/k128 只要求调用方处理 $M \% 4$（守卫内消化），
+\textbf{坑三：k16 要求每 warp 的两行同有效性；$M \% 8 = 0$ 只是充分条件。}不是正确性一定会坏，而是 8.7~节勘误二所述的
+掩码语义约束。当前守卫下 $M$ 为偶数即可避免半 warp 分叉，本书测试进一步取 $M \% 8 = 0$。另外：k32/k128 只要求调用方处理 $M \% 4$（守卫内消化），
 两个 kernel 的边界约定粒度不同，混用时要分开记。
 
 \textbf{坑四：写回条件 \texttt{lane==0} 与 \texttt{k==0} 不可互换。}\allowbreak{}k32/k128 每 warp

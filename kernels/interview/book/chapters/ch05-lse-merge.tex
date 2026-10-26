@@ -463,8 +463,8 @@ rescale，从不物化两份 $O$。两者数学同源（定理~\ref{thm:merge-eq
 
 \textbf{Q1：LSE 是什么？为什么它能代替 $(m, \ell)$ 两个状态？}\\
 A：$\mathrm{LSE} = m + \log \ell$（定义~\ref{def:lse}）。给定任意 shift 基准
-$L$，$e^{\mathrm{LSE} - L}$ 同时还原出以 $L$ 为基准的未归一化指数和，
-即 $(m, \ell)$ 的全部信息；一个 float 就够，这是分块方案接口极窄的原因。
+$L$，$e^{\mathrm{LSE} - L}$ 给出以 $L$ 为基准的未归一化指数和，这正是合并所需的充分状态；
+它不能分别恢复 $m$ 与 $\ell$，不是二者的可逆打包。一个 float 就够，这是分块方案接口极窄的原因。
 
 \textbf{Q2：写出两块合并的完整流程。}\\
 A：五步：清洗（$+\infty \to -\infty$）$\to L = \max(\mathrm{LSE}^{A},

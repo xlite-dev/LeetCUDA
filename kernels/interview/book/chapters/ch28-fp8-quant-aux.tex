@@ -747,7 +747,7 @@ $D$ 维 WHT 的 $\log_2 D$ 轮蝶形按\textbf{蝶形距离}二分：距离 $\ge
 发生在同一线程的寄存器槽位间（距离位属于 $j$ 的 bit）；距离 $<32$ 时落在 lane id
 的 bit 上，用 \texttt{\_\_shfl\_xor\_sync} 跨 lane 交换。一个 warp 恰好持有
 $kWhtWidth$ 列（lane $\times$ $kVec$），无需跨 warp 通信；$1/\sqrt{n}$ 归一化
-折进 store 避免额外一轮乘法。launcher（\texttt{apply\_wht\_qk\_sm120}）按宽度规则
+折进 store，省掉独立归一化 pass 及其读写/kernel 开销，但 store 前仍需逐元素完成这次乘法。launcher（\texttt{apply\_wht\_qk\_sm120}）按宽度规则
 选 $kWhtWidth \in \{D, 64\}$，输出 $kHeadDim$ 宽的旋转副本，含旋转后的 pad 列
 （28.3.3~节）。图~\ref{fig:28-wht-butterfly} 把 $D{=}128$ 的列归属与七轮蝶形的
 距离二分画在一起。

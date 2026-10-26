@@ -225,7 +225,7 @@ attention/elementwise 链。这个 kernel 保留每线程重算的教学形态�
 
 读侧：两段各 16 个连续 float（64B），段内连续、两段都满载，sector 利用率 100\%；代价是它被拆成 2 个 64B 事务，而不是 1 个 128B 事务。
 
-写侧：$c$ 每加 1，地址跳一整行（\texttt{row} 个 float）。warp 的 16 个不同 $c$ 落在 $y$ 的 16 个不同行上，每行只写 $r$ 与 $r{+}1$ 两个相邻 float（8B），而这两个 float 同处一个 32B sector（$r_0 = 16\cdot\text{blockIdx.y}$ 恒为 8 的倍数，8B 不跨界）。于是 32 个线程只命中 16 个互不相邻的 sector：搬 $16 \times 32\mathrm{B} = 512\mathrm{B}$ 的流量只运 128B 有效数据。源码注释\textbf{非合并写入 $\to$ 32 次内存事务}沿用“一行 32 列”的旧口径，与它自己写的 \texttt{block(16,16)} 不符（见第 7 节的考据框）。
+写侧：$c$ 每加 1，地址跳一整行（\texttt{row} 个 float）。以下 sector 计数采用本书对齐矩阵前提：基址 32B 对齐且 $row$ 为 8 的倍数。warp 的 16 个不同 $c$ 落在 $y$ 的 16 个不同行上，每行只写 $r$ 与 $r{+}1$ 两个相邻 float（8B），而这两个 float 同处一个 32B sector（$r_0 = 16\cdot\text{blockIdx.y}$ 恒为 8 的倍数，8B 不跨界）。于是 32 个线程只命中 16 个互不相邻的 sector：搬 $16 \times 32\mathrm{B} = 512\mathrm{B}$ 的流量只运 128B 有效数据。源码注释\textbf{非合并写入 $\to$ 32 次内存事务}沿用“一行 32 列”的旧口径，与它自己写的 \texttt{block(16,16)} 不符（见第 7 节的考据框）。
 
 读侧利用率 100\%，写侧仅 $1/4$（32B sector 口径；按 128B cache line 口径则 $1/16$），总带宽主要受写侧限制（本章第 6 节实测 512 规模只有 $\sim 350\,\mathrm{GB/s}$，是 padded 版的 69\%）。
 
@@ -298,7 +298,7 @@ shared memory 被切成 32 个 bank（对应一个 warp 的 32 线程），每�
 \textbf{Step 2 转置读}（每条 LD 指令，$j$ 固定）：地址 $(4\,tx + j)\,W + ty$。
 \begin{itemize}
   \item 无 PAD（$W = 16$）：$64\,tx + 16j + ty$，对 32 取模后 $tx$ 项整体消失（$64 \equiv 0 \pmod{32}$），bank 号 $= (16j + ty) \bmod 32$ 与 $tx$ 无关，32 个线程全部落在 2 个 bank，每个 bank 16 线程等待，16-way conflict，读 shared memory 的吞吐降为 $1/16$。
-  \item PAD=1（$W = 17$）：地址 $68\,tx + 17j + ty$，而 $68 \equiv 4 \pmod{32}$：$tx$ 每加 1，bank 号前进 4。16 个线程的 bank 号构成 $\{b, b{+}4, b{+}8, \dots, b{+}60\} \bmod 32$，恰好覆盖 8 个 bank、每个 bank 2 线程，16-way 降到 2-way，事务数从 16 降到 2（读吞吐 $\times 8$）。
+  \item PAD=1（$W = 17$）：地址 $68\,tx + 17j + ty$，而 $68 \equiv 4 \pmod{32}$：$tx$ 每加 1，bank 号前进 4。$ty=0$ 的 16 个线程覆盖 8 个偶数 bank、每个 bank 2 线程；$ty=1$ 的另一组覆盖 8 个奇数 bank。完整 warp 因而落在 16 个 bank、每个 bank 2 线程，16-way 降到 2-way（读吞吐 $\times 8$）。
 \end{itemize}
 
 \textbf{Step 1 写 smem}（每条 ST 指令，$i$ 固定）：地址 $(4\,ty + i)\,W + tx$。无 PAD 时 bank 号 $= (16i + tx) \bmod 32$ 与 $ty$ 无关：warp 的两排 $ty$ 并行写相同 bank 序列，每 bank 2 线程，2-way；PAD=1 时行距变为 $68 \equiv 4 \pmod{32}$，两排 bank 序列错开 4，仍有部分重叠，模拟结果仍是 2-way（写侧 PAD 前后无改善）。
@@ -347,11 +347,11 @@ shared memory 被切成 32 个 bank（对应一个 warp 的 32 线程），每�
   \draw[thin] (7.4,-3.6) -- (13.8,-3.6);
   \foreach \bk in {0,8,16,24,31}
     \node[anchor=north, font=\tiny] at ({7.4+\bk*0.2+0.08},-3.66) {\bk};
-  \node[anchor=north] at (10.6,-4.28) {\textbf{2-way}：$8$ bank $\times$ 2 线程（吞吐 $\times 8$）};
+  \node[anchor=north] at (10.6,-4.28) {\textbf{2-way}：$16$ bank $\times$ 2 线程（吞吐 $\times 8$）};
   \node[anchor=north, align=center] at (6.9,-5.0)
     {写侧 PAD 前后均为 2-way（无改善）；读侧 16-way $\to$ 2-way，读 smem 吞吐 $\times 8$（与图~\ref{fig:7-1} 及本章思考题衔接）};
 \end{tikzpicture}
-\caption{bank 占用直方图（2 指令 $\times$ 2 配置，每格为 32 bank 的线程计数，取 $i=j=0$ 的一条指令）：写侧（ST）PAD=0 与 PAD=1 都是每 bank 至多 2 线程——写侧 PAD 前后无改善；读侧（LD）PAD=0 时 32 线程落在 2 个 bank（16-way，深灰柱），PAD=1 后 $tx$ 每加 1 bank 前进 4，16 个线程落在 8 个 bank、每个 bank 2 线程（2-way）。图~\ref{fig:7-1} 讲\textbf{步长 64B$\to$68B 为何打破对齐}，本图给出两指令两配置的完整占用结果。}
+\caption{bank 占用直方图（2 指令 $\times$ 2 配置，每格为 32 bank 的线程计数，取 $i=j=0$ 的一条指令）：写侧（ST）PAD=0 与 PAD=1 都是每 bank 至多 2 线程——写侧 PAD 前后无改善；读侧（LD）PAD=0 时 32 线程落在 2 个 bank（16-way，深灰柱），PAD=1 后 $tx$ 每加 1 bank 前进 4，$ty=0/1$ 两组分别落在 8 个偶数/奇数 bank，完整 warp 合计 16 个 bank、每个 bank 2 线程（2-way）。图~\ref{fig:7-1} 讲\textbf{步长 64B$\to$68B 为何打破对齐}，本图给出两指令两配置的完整占用结果。}
 \label{fig:7-5}
 \end{figure}
 
@@ -377,7 +377,7 @@ shared memory 被切成 32 个 bank（对应一个 warp 的 32 线程），每�
   \node[anchor=west, font=\scriptsize\bfseries, text=vscKeyword] at (9.4,-0.75)
     {[PAD=1] \texttt{tile[64][17]}：\texttt{addr = 68*tx + 17*j + ty}};
   \node[anchor=west, font=\tiny, text=gray!80] at (9.4,-1.18)
-    {$tx$ 步进 $+4$：8 个 bank 各 2 线程（$tx{=}0$ 与 $tx{=}8$ 同 bank）};
+    {$ty{=}0$ 的 16 线程：8 个偶数 bank 各 2 线程；$ty{=}1$ 另占 8 个奇数 bank};
   \foreach \fmi/\bv in {0/0, 1/4, 2/8, 3/12, 4/16, 5/20, 6/24, 7/28} {
     \pgfmathsetmacro{\bx}{9.4+\fmi*0.78}
     \node[draw=vscKeyword!75, fill=gray!12, text=vscKeyword, font=\tiny\bfseries,

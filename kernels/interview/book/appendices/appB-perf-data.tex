@@ -30,7 +30,7 @@ ridge point $\approx 49.8$~FLOP/B）。读表先记三件事：（1）带宽型�
 \endfoot
 \bottomrule
 \endlastfoot
-第02 & \texttt{dot} / \texttt{dot\_vec4} & $N{=}4.19\,$M & 0.042~ms；806 / 808 GB/s & 三版同为 42~$\mu$s：瓶颈是全局原子串行 \\
+第02 & \texttt{dot} / \texttt{dot\_vec4} & $N{=}4.19\,$M & 0.042~ms；806 / 808 GB/s & 三版同为 42~$\mu$s：排除纯带宽模型；原子归因需减少 $G$ 的 A/B \\
 第04 & \texttt{softmax}（online） & $S{=}4096$，$N{=}256$ & 0.0142~ms；591.6 GB/s & 历史旧 bench 口径；修复 S*N 后未复测 \\
 第05 & \texttt{merge\_\allowbreak{}attn\_\allowbreak{}states} & $T{=}16384$，$H{=}32$，$D{=}128$ & 0.785~ms；1031.4 GB/s & HBM 理论带宽的 77\% \\
 第07 & \texttt{mat\_\allowbreak{}transpose\_\allowbreak{}padded} & $2048^2$ & 0.0145~ms；2320 GB/s & 2.40$\times$ vs naive（L2 口径） \\
@@ -164,7 +164,7 @@ kernel-only 行只循环 GEMM kernel，E2E 行含量化前处理（第~\ref{ch:3
 per-col 代表，tile 取库默认档（$128\times256\times128$/s2，即 35.8.4 节的
 扫描最快档）。基线口径注意：cuBLAS 在 sm\_120 的 32F-acc 档只有 sm\_80
 旧 kernel（\texttt{nsys} 取证见第~\ref{ch:35}~章 35.8.1~节，cublasLt
-完整池遍历也只有 191.7~T），因此表中加速比是\textbf{库现状}口径；对手写
+heuristic top-8 最快也只有 191.7~T，未做完整算法池枚举），因此表中加速比是\textbf{库现状}口径；对手写
 fp16 HGEMM 同吞吐 proxy（$\approx$243~T；不是 bf16 kernel）的口径为 1.81$\times$（4096$^3$）。
 
 \begingroup\small
@@ -215,7 +215,7 @@ fp8 5e-2 / fp4 dense 0.15、causal 0.70）。speedup 一律对 SDPA 同形状。
 第28 & fp8 aux 链（quantize/smooth） & D=128, N=8192 & 聚合带宽 $\approx$1.04~TB/s & 纯带宽接近峰值（HBM 78\%）；smk/smv 零开销 \\
 第29 & fp8 persist-D & self D$\in$[64,224] & 1.26--1.70$\times$ & D=192 正确性 bug 见 29.7.1；tensor pipe 77\% \\
 第30 & fp8 split-D / M4N2 & D=320 self / causal & 3.76$\times$ / 3.31$\times$ & D=320/D=512 参照均换 MATH（本 bench auto，归因见 33.6.1）；causal 大 D allclose 临界失败为已知 ESS 特性（hybrid 解法） \\
-第31 & fp4 量化链（fused） & D=128 N=8192 & fused 单 launch 1.4$\to$0.3~ms & hadamard 零开销（bitwise 一致） \\
+第31 & fp4 量化链（fused） & D=128 N=8192 & fused 单 launch 1.4$\to$0.3~ms & hadamard 零开销（本轮 A/B 耗时一致；不据此主张输出 bitwise 一致） \\
 第32 & fp4 persist-D & self D$\in$[64,256] & 1.49--2.11$\times$ & 同点 D=256 比 fp8 快 1.64$\times$（对照见 33.6.2）；mxfp8 PV 变体时间代价 +28--39\%（精度兜底） \\
 第33 & bench 矩阵与 knob & D=128 self & fp4 528.7~T（2.44$\times$） & fp4 vs fp8 1.38$\times$；粒度 knob 代价 1.7--2.7\%；Sage3 对照 causal rel\_err 0.59 vs hybrid 0.14（528.7T 为 \texttt{bench\_fp4.py} 16K 口径，非 CLI N=8192） \\
 \end{longtable}
@@ -231,7 +231,7 @@ $\sim$15\%（fp8）/$\sim$35\%（fp4），形态结论可迁移、绝对数字�
 
 \textbf{主线一：带宽（合并访问与向量化）。}\allowbreak{}Part I 的全部算子 $AI \le 0.625$，
 成绩就是有效带宽。这条线的三个阶段：先把原子/同步移出关键路径（第~\ref{ch:02}~章
-42~$\mu$s 三行全同证明全局原子串行可以完全掩盖一切带宽优化）。再做合并访问与
+42~$\mu$s 三行全同排除纯带宽模型；全局原子归因还需减少 $G$ 的 A/B 闭合）。再做合并访问与
 向量化（\texttt{sgemv} k128 拿到 934~GB/s 的全书带宽参照）。最后认清收益边界——
 vec4 只在 L2 口径显现（第~\ref{ch:06}~章 +16--24\%），HBM 口径下被 DRAM 带宽
 吸收（第~\ref{ch:03}、\ref{ch:07}~章）。\textbf{先定层级，再选方法}。
@@ -244,7 +244,7 @@ Sk=2 即饱和、FA3 的 Sk=1 即饱和）——装载一旦退出关键路径�
 结构上找。
 
 \textbf{主线三：结构（warp specialization 与 CuTe 抽象零开销）。}第~\ref{ch:14}~章
-把搬运端换成 TMA + mbarrier + 双角色 warp（计算指令一条不动）即得 1.57$\times$；
+把搬运端换成 TMA + mbarrier + 双角色 warp，保持同一 mma 指令族并同时调整 BK/stage/warp 组织，整体得 1.57$\times$；
 第~\ref{ch:17}~章在 attention 上复现同样的 +20\%。CuTe 把这套结构变成类型：
 layout/TiledCopy/TiledMMA 全部编译期折叠，SASS 与手写同构、寄存器 0 spill、
 代码量约减半——它不直接产生加速，但让 swizzle 档位、tile 形状、流水深度这些

@@ -119,9 +119,9 @@ RMSNorm（Zhang \& Sennrich, 2019）只保留\textbf{缩放}而不做\textbf{中
   \node[anchor=north, align=center, text width=5.0cm, text=tkGreen] at (2.5,-4.5)
     {LayerNorm：$\sigma^2$ 段不变\\$\Rightarrow$ \textbf{输出不变}（平移不变性）};
   \node[anchor=north, align=center, text width=6.0cm, text=tkOrange!85!black] at (8.6,-4.5)
-    {RMSNorm：分母改变 $\Rightarrow$ 不变式被破坏\\$\Rightarrow$ LLaMA 去 QKV 投影 bias};
+    {RMSNorm：分母改变 $\Rightarrow$ 平移不变性被破坏\\（是否保留 bias 是独立架构选择）};
 \end{tikzpicture}
-\caption{分母的能量分解（恒等式~\eqref{eq:ch06-var-identity}：$\frac{1}{K}\sum_k x_k^2 = \sigma^2 + \mu^2$）：LayerNorm 只除\textbf{波动}$\sigma^2$，RMSNorm 除\textbf{总能量（波动 $+$ 直流）}。平移 $x \to x+c$ 时 $\sigma^2$ 段宽度不变而 $\mu^2$ 段改变——LayerNorm 输出不变，RMSNorm 分母改变，这就是去 bias 的架构连锁（6.3.3 节第 3 条）。}
+\caption{分母的能量分解（恒等式~\eqref{eq:ch06-var-identity}：$\frac{1}{K}\sum_k x_k^2 = \sigma^2 + \mu^2$）：LayerNorm 只除\textbf{波动}$\sigma^2$，RMSNorm 除\textbf{总能量（波动 $+$ 直流）}。平移 $x \to x+c$ 时 $\sigma^2$ 段宽度不变而 $\mu^2$ 段改变——LayerNorm 输出不变，RMSNorm 分母改变；这一性质本身不能推出模型应省略 bias。}
 \label{fig:6-2}
 \end{figure}
 
@@ -152,7 +152,7 @@ $\mu$ 与 $M_2 \equiv \sum_k (x_k-\bar{x})^2$，分块结果可用合并公式�
 \begin{equation}
   s = \frac{1}{\sqrt{v + \epsilon}} = \mathrm{rsqrtf}(v + \epsilon),
 \end{equation}
-其中 $v$ 是行内归约量。CUDA 的 \texttt{rsqrtf} 映射到 MUFU.RSQ 硬件近似指令，最大相对误差约 2 ulp；对归一化这种得到 $s$ 后还要乘一个 $O(1)$ 量级元素值的场景，2 ulp 的相对误差远低于 fp32 输出的可分辨精度，工程上可视为精度代价可忽略的\textbf{近似加速}，但不能称为无损。对比手写 $1.0f\,/\,\texttt{sqrtf}(v)$（\texttt{sqrtf} 加一次除法，两条慢指令），\texttt{rsqrtf} 一条指令完成。
+其中 $v$ 是行内归约量。CUDA 的 \texttt{rsqrtf} 映射到 MUFU.RSQ 硬件近似指令，最大相对误差约 2 ulp；对归一化这种得到 $s$ 后还要乘一个 $O(1)$ 量级元素值的场景，该误差与 fp32 输出精度同阶，通常小于下游容差，工程上可视为精度代价可忽略的\textbf{近似加速}，但不能称为无损或低于 1 ulp 的可分辨精度。对比手写 $1.0f\,/\,\texttt{sqrtf}(v)$（\texttt{sqrtf} 加一次除法，两条慢指令），\texttt{rsqrtf} 一条指令完成。
 
 \section{设计与实现}
 
@@ -388,7 +388,7 @@ $N = 131072$ 时输入合计约 $128\,\mathrm{MB}$ 已超出 L2：输入数组�
 $N = 524288$ 时读写流量 $512\,\mathrm{MB}$ 远超 L2，是 HBM 口径。两个结构性结论：
 
 \begin{enumerate}
-  \item \textbf{vec4 的收益出现在输入基本驻留 L2 的中等规模档}：$N = 131072$ 行时 rms\_norm $1041 \to 1212\,\mathrm{GB/s}$（$+16\%$），layer\_norm $970 \to 1201\,\mathrm{GB/s}$（$+24\%$）。这一档输入数组（64MB）基本驻留 L2、写集引起部分逐出，标量版的瓶颈已从 DRAM 转到\textbf{指令发射压力}，向量化把 warp 访存指令数压到 1/4 后带宽随之上升（sector 数与字节数都不变，见第~\ref{ch:03}~章）。$N = 8192$ 的纯 L2 小规模档只有 $+1.6\%\sim+2.8\%$：工作集仅 8MB、kernel 时长约 $10\,\mu$s，启动开销与并行度不足掩盖了这部分收益。而 HBM 口径（$N = 524288$）下四个 kernel 全部收敛到 $1000\text{-}1070\,\mathrm{GB/s}$，上限由 DRAM 决定，标量版也能达到同一水平，vec4 的收益被吸收。
+  \item \textbf{vec4 的收益出现在输入基本驻留 L2 的中等规模档}：$N = 131072$ 行时 rms\_norm $1041 \to 1212\,\mathrm{GB/s}$（$+16\%$），layer\_norm $970 \to 1201\,\mathrm{GB/s}$（$+24\%$）。这一档输入数组（64MB）基本驻留 L2、写集引起部分逐出，向量化把 warp 访存指令数压到 1/4 后带宽随之上升（sector 数与字节数都不变，见第~\ref{ch:03}~章）。这说明减少访存指令/请求在该档有效，但仅凭这组 A/B 不能把收益唯一归因于指令发射，L1TEX 请求与 wavefront 开销也需区分。$N = 8192$ 的纯 L2 小规模档只有 $+1.6\%\sim+2.8\%$：工作集仅 8MB、kernel 时长约 $10\,\mu$s，启动开销与并行度不足掩盖了这部分收益。而 HBM 口径（$N = 524288$）下四个 kernel 全部收敛到 $1000\text{-}1070\,\mathrm{GB/s}$，上限由 DRAM 决定，标量版也能达到同一水平，vec4 的收益被吸收。
   \item \textbf{1-pass 收益在两种口径下都稳定约 $7\%$}：同精度对比标量版 rms\_norm vs layer\_norm：$0.1289$ vs $0.1384\,\mathrm{ms}$（L2 口径，$-6.9\%$）；$0.5019$ vs $0.5369\,\mathrm{ms}$（HBM 口径，$-6.5\%$）。减少的那一次 block reduce 与两次同步在两种口径下都没有被访存完全掩盖：归一化算子的访存量太小，结构开销始终在关键路径上。这正是 LLaMA 选择 RMSNorm 在 kernel 层面的直接收益。
 \end{enumerate}
 
