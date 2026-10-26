@@ -111,6 +111,70 @@ def collect(manifests: list, work_dir: Path, src_dir: Path) -> list[Snippet]:
   return snippets
 
 
+def prune_stale(
+  snippets: list[Snippet],
+  work_dir: Path,
+  chapters: list[str],
+) -> list[str]:
+  """删掉本次已不存在的陈旧片段。
+
+  章里的图被合并或删掉后，旧片段会留在 ``work/tikz``：``verify`` 的「TikZ 图保留文字」
+  按目录枚举，会把它当成丢字的图误报（ch20 的 ``-t011`` 就是这么来的）。这里按
+  ``<chap_id>-t<序号>`` 归属清理，只动本次转换到的章，不波及其它书或其它章。
+
+  :param snippets: 本次实际产出的片段。
+  :param work_dir: 临时目录（片段在 ``tikz/`` 下）。
+  :param chapters: 本次转换的章标识。
+  :returns: 被删掉的片段名。
+  """
+  keep = {snippet.source.stem for snippet in snippets}
+  removed: list[str] = []
+  for path in sorted((work_dir / "tikz").glob("*.tex")):
+    if path.stem in keep:
+      continue
+    if not any(belongs(path.stem, chapter) for chapter in chapters):
+      continue
+    path.unlink()
+    removed.append(path.stem)
+  return removed
+
+
+def belongs(stem: str, chap_id: str) -> bool:
+  """判断片段名是否属于某一章。
+
+  :param stem: 片段名（``<chap_id>-t003``）。
+  :param chap_id: 章标识。
+  :returns: 是否属于该章。
+  """
+  prefix = f"{chap_id}-t"
+  return stem.startswith(prefix) and stem[len(prefix):].isdigit()
+
+
+def prune_atlas(dest_dir: Path, tasks: list[Snippet], chapters: list[str]) -> list[str]:
+  """删掉英文图集里本次已不存在的成品。
+
+  图被删掉后旧的英文 SVG 会留在 ``_static/figures-en``，核对会数出「英文图 196/195」
+  这种多于预期张数的结果。这里按章归属清理，只动本次转换到的章。
+
+  :param dest_dir: 图集目录（``_static/figures-en``）。
+  :param tasks: 本次产出的英文片段。
+  :param chapters: 本次转换的章标识。
+  :returns: 被删掉的文件名。
+  """
+  keep = {task.dest.name for task in tasks}
+  removed: list[str] = []
+  if not dest_dir.is_dir():
+    return removed
+  for path in sorted(dest_dir.glob("*.svg")):
+    if path.name in keep:
+      continue
+    if not any(belongs(path.stem, chapter) for chapter in chapters):
+      continue
+    path.unlink()
+    removed.append(path.name)
+  return removed
+
+
 def collect_translated(
   snippets: list[Snippet],
   work_dir: Path,

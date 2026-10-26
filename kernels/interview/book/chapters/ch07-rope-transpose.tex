@@ -20,8 +20,8 @@ RoPE 是当前 LLM 位置编码的事实标准（LLaMA、Qwen、PaLM、Mistral �
 \textit{按行读就是合并的，那么按列写必然是跨步的。}
 \end{center}
 
-naive 转置一半访存（写）退化到 $1/8$ 的有效利用率（32B sector 口径；若按
-L1$\leftrightarrow$L2 的 128B cache line 口径则 $1/32$）；引入 shared memory 中转可以
+naive 转置一半访存（写）退化到 $1/4$ 的有效利用率（32B sector 口径；若按
+L1$\leftrightarrow$L2 的 128B cache line 口径则 $1/16$）；引入 shared memory 中转可以
 两边都合并，但按列读 shared memory 又会撞上 shared memory 的物理结构限制：32 个 bank。
 
 \section{数学原理}
@@ -221,42 +221,48 @@ attention/elementwise 链。这个 kernel 保留每线程重算的教学形态�
 \lstinputlisting[linerange={839-865},firstnumber=auto,
   title={base.cuh L839-865（mat\_transpose：naive 转置及其访存注释）}]{../base.cuh}
 
-每线程搬运一个元素：\texttt{y[c * row + r] = x[r * col + c]}。读侧：warp 内 32 线程的 $r$ 固定、$c$ 连续，读 128B 连续段，合并。写侧：$c$ 每加 1，地址跳一整行（\texttt{row} 个 float），32 线程写到 32 个互不相邻的 4B，每个 4B 落在各自的内存事务里，产生 32 次写事务（$32 \times 32\mathrm{B} = 1024\mathrm{B}$），只运了 128B 有效数据。源码注释\textbf{非合并写入 $\to$ 32 次内存事务}说的正是这个。
+每线程搬运一个元素：\texttt{y[c * row + r] = x[r * col + c]}。block 是 $(16,16)$，所以一个 warp 并不是“一行 32 列”，而是 $ty\in\{0,1\}$、$tx\in[0,16)$ 的两行 16 列（与 5.2~节 bank 分析用的是同一个映射）。
 
-读侧利用率 100\%，写侧仅 $1/8$（32B sector 口径；按 128B cache line 口径则 $1/32$），总带宽主要受写侧限制（本章第 6 节实测 512 规模只有 $\sim 350\,\mathrm{GB/s}$，是 padded 版的 69\%）。
+读侧：两段各 16 个连续 float（64B），段内连续、两段都满载，sector 利用率 100\%；代价是它被拆成 2 个 64B 事务，而不是 1 个 128B 事务。
+
+写侧：$c$ 每加 1，地址跳一整行（\texttt{row} 个 float）。warp 的 16 个不同 $c$ 落在 $y$ 的 16 个不同行上，每行只写 $r$ 与 $r{+}1$ 两个相邻 float（8B），而这两个 float 同处一个 32B sector（$r_0 = 16\cdot\text{blockIdx.y}$ 恒为 8 的倍数，8B 不跨界）。于是 32 个线程只命中 16 个互不相邻的 sector：搬 $16 \times 32\mathrm{B} = 512\mathrm{B}$ 的流量只运 128B 有效数据。源码注释\textbf{非合并写入 $\to$ 32 次内存事务}沿用“一行 32 列”的旧口径，与它自己写的 \texttt{block(16,16)} 不符（见第 7 节的考据框）。
+
+读侧利用率 100\%，写侧仅 $1/4$（32B sector 口径；按 128B cache line 口径则 $1/16$），总带宽主要受写侧限制（本章第 6 节实测 512 规模只有 $\sim 350\,\mathrm{GB/s}$，是 padded 版的 69\%）。
 
 \begin{figure}[htbp]
 \centering
 \begin{tikzpicture}[font=\scriptsize]
-  % 左面板：读 x —— 32 线程连续 32 格，单事务 128B
-  \node[anchor=west, font=\small\bfseries, text=tkGreen!65!black] at (0,0.97) {读 $x$：$r$ 固定、$c$ 连续——合并};
-  \foreach \c in {0,...,31}
-    \node[fill=tkGreen!45, minimum size=0.3cm, inner sep=0pt] at ({\c*0.3+0.15},0) {\phantom{0}};
-  \draw[very thick, draw=tkGreen!65!black] (0,-0.15) rectangle (9.6,0.15);
-  \node[anchor=south] at (4.8,0.22) {1 个 128B 事务（32 线程 $\times$ 4B 连续段）};
-  \foreach \c in {0,8,16,24,31}
-    \node[below=1pt, font=\tiny] at ({\c*0.3+0.15},-0.15) {t\c};
-  \node at (4.8,-0.85) {32 线程 / 1 事务 / 128B，\textbf{利用率 100\%}};
-  \node[font=\tiny] at (4.8,-1.28) {线程 $c$ → 地址 $r\cdot\mathrm{col}+c$：$c{+}1$ 步长 4B（连续）};
-  % 右面板：写 y —— 32 行同列各 1 有效格，每格独占一个 32B sector
-  \begin{scope}[shift={(10.8,0)}]
-    \node[anchor=west, font=\small\bfseries, text=tkOrange!85!black] at (-0.3,0.97) {写 $y$：$c$ 连续、行号跨步——非合并};
-    \foreach \r in {0,...,31} {
-      \foreach \cc in {0,1,3,4,5,6,7}
+  % 左面板：读 x —— 一个 warp = 2 个 ty 行 × 16 线程，每行 64B
+  \node[anchor=west, font=\small\bfseries, text=tkGreen!65!black] at (0,1.05) {读 $x$：合并（$2\times$64B）};
+  \foreach \r in {0,1}{
+    \foreach \c in {0,...,15}
+      \node[fill=tkGreen!45, minimum size=0.3cm, inner sep=0pt] at ({\c*0.3+0.15},{-\r*0.48}) {\phantom{0}};
+    \draw[very thick, draw=tkGreen!65!black] (0,{-\r*0.48-0.15}) rectangle (4.8,{-\r*0.48+0.15});
+    \node[anchor=east, font=\tiny] at (-0.08,{-\r*0.48}) {$ty{=}\r$};
+  }
+  \node[anchor=north, font=\tiny] at (2.4,-0.72) {每行 16 线程 $\times$ 4B $=$ 64B（2 sector）};
+  \node[anchor=north] at (2.4,-1.18) {2 个 64B 事务 $=$ 128B，\textbf{利用率 100\%}};
+  \node[anchor=north, font=\tiny] at (2.4,-1.62) {$\mathrm{tid}=tx+16\,ty$ → 地址 $(r_0{+}ty)\cdot\mathrm{col}+c_0{+}tx$};
+  % 右面板：写 y —— 16 个 c 各占一行，r 与 r+1 挤在同一 32B sector
+  \begin{scope}[shift={(6.3,0)}]
+    \node[anchor=west, font=\small\bfseries, text=tkOrange!85!black] at (-0.55,1.05) {写 $y$：非合并（16 sector）};
+    \foreach \r in {0,...,15}{
+      \foreach \cc in {0,1}
+        \node[fill=gray!60, minimum size=0.3cm, inner sep=0pt] at ({\cc*0.3+0.15},{-\r*0.3}) {\phantom{0}};
+      \foreach \cc in {2,...,7}
         \node[pattern=north east lines, pattern color=tkRed!55, minimum size=0.3cm, inner sep=0pt]
-          at ({\cc*0.3+0.15},{-\r*0.3+0.15}) {\phantom{0}};
-      \node[fill=gray!60, minimum size=0.3cm, inner sep=0pt] at (0.75,{-\r*0.3+0.15}) {\phantom{0}};
-      \draw[thick] (0,{-\r*0.3}) rectangle (2.4,{-\r*0.3+0.3});
+          at ({\cc*0.3+0.15},{-\r*0.3}) {\phantom{0}};
+      \draw[thick] (0,{-\r*0.3-0.15}) rectangle (2.4,{-\r*0.3+0.15});
     }
-    \foreach \r in {0,8,16,24,31}
-      \node[anchor=east, font=\tiny] at (-0.12,{-\r*0.3+0.15}) {c=\r};
-    \node[anchor=west, font=\tiny, align=left] at (2.6,-4.4)
-      {每格 4B；深灰 = 线程有效写\\斜纹 = 同一 32B sector\\\phantom{斜纹 =}内浪费的 28B};
-    \node at (1.2,-10.15) {32 线程 / 32 事务 $\times$ 32B $= 1024$B，\textbf{利用率 $1/8$}};
-    \node[font=\tiny] at (1.2,-10.58) {线程 $c$ → 地址 $c\cdot\mathrm{row}+r$：$c{+}1$ 步长 \texttt{row} 个 float};
+    \foreach \r in {0,4,8,12,15}
+      \node[anchor=east, font=\tiny] at (-0.08,{-\r*0.3}) {$c{=}\r$};
+    \node[anchor=west, font=\tiny, align=left] at (2.65,-2.1)
+      {每格 4B：深灰 $=$ 有效写（$r$ 与 $r{+}1$ 同 sector）\\斜纹 $=$ 该 32B sector 内浪费的 24B};
+    \node[anchor=north] at (1.2,-5.05) {16 行 $\times$ 32B $=$ 512B 流量 / 128B 有效，\textbf{利用率 $1/4$}};
+    \node[anchor=north, font=\tiny] at (1.2,-5.50) {线程 $c$ → 地址 $c\cdot\mathrm{row}+r$：$c{+}1$ 步长 \texttt{row} 个 float};
   \end{scope}
 \end{tikzpicture}
-\caption{naive 转置（一线程一元素）的访存矛盾：读侧 warp 32 线程（$r$ 固定、$c$ 连续）合并为 1 个 128B 事务、利用率 100\%（左）；写侧 32 个 4B 写分散到 $y$ 的 32 行（$c$ 固定列位置），各自命中独立的 32B sector，32 次事务共搬运 1024B 却只有 128B 有效，利用率 $1/8$（右，斜纹为浪费字节）。}
+\caption{naive 转置（一线程一元素，\texttt{block(16,16)}）的访存矛盾。左：一个 warp 覆盖 $ty\in\{0,1\}$、$tx\in[0,16)$，读侧每行 16 个连续 float，拆成 2 个 64B 事务、4 个 sector 全部有用，利用率 100\%。右：写侧 $c$ 每加 1 跳一整行，warp 的 16 个 $c$ 落在 $y$ 的 16 个不同行上；每行只写 $r$ 与 $r{+}1$ 两个相邻 float（8B），同处一个 32B sector，于是 32 个线程只命中 16 个 sector——搬 512B 的流量只运 128B 有效数据，利用率 $1/4$（右，斜纹为浪费字节）。}
 \label{fig:7-3}
 \end{figure}
 
@@ -404,7 +410,7 @@ tile[64][17] (PAD=1):  Step1 write: 2-way   Step2 read:  2-way
 
 \section{性能分析}
 
-转置是零计算算子（$AI \approx 0$），性能上限 $=$ 带宽上限，优化就是把事务数降到理论最小：读 $M^2/32$ 个事务 + 写 $M^2/32$ 个事务（每 warp 每向一个 128B 段）。
+转置是零计算算子（$AI \approx 0$），性能上限 $=$ 带宽上限，优化就是把事务数降到理论最小：读 $M^2/32$ 个 128B 事务 + 写 $M^2/32$ 个 128B 事务（$M^2$ 个 float 共 $4M^2$ B 数据，按 128B 一段计的段数；本 kernel 的一个 warp 会把它拆成 2 段 64B，段数翻倍但搬运字节数不变）。
 
 测试环境与口径：NVIDIA RTX PRO 5000 72GB（Blackwell，sm\_120a，L2 96MB），cudaEvent 取 20 次 min；$M \times M$ fp32 方阵；有效带宽按读 + 写 $2M^2 \cdot 4\,\mathrm{B}$ 计：
 
@@ -424,7 +430,7 @@ $M$ & mat\_transpose (naive) & mat\_transpose\_padded & 加速比 \\
 口径划分：$M \le 2048$ 时数据（最大 34MB）完全落在 96MB L2 工作集内，测的是 L2 口径；$M = 8192$ 时读写流量 512MB 远超 L2，是 HBM 口径。
 
 \begin{enumerate}
-  \item \textbf{L2 口径下收益放大到 2.4$\times$}：L2 延迟低、带宽高，事务数（而非 DRAM 流量）成为第一瓶颈。naive 的 32 次写事务在 L2 上全部计入开销；padded 的 float4 合并写加上 smem 读从 16-way 降到 2-way，两处共同压低了事务开销。$M = 2048$ 时 padded 有效带宽 2320 GB/s，这是 L2 量级的数字，不代表 HBM。
+  \item \textbf{L2 口径下收益放大到 2.4$\times$}：L2 延迟低、带宽高，事务数（而非 DRAM 流量）成为第一瓶颈。naive 的写侧把 128B 有效数据摊成 16 个 32B sector（4 倍写放大），这份开销在 L2 上全部计入；padded 的 float4 合并写加上 smem 读从 16-way 降到 2-way，两处共同压低了事务开销。$M = 2048$ 时 padded 有效带宽 2320 GB/s，这是 L2 量级的数字，不代表 HBM。
   \item \textbf{HBM 口径下收益降至 1.11$\times$}：$M = 8192$ 时数据穿透 L2 落到 DRAM，L2 会把命中同一 32B sector 的多次部分写在写回 DRAM 前合并（该机理未上 NCU 计数，属待证解释），非合并写的惩罚被部分吸收；此时两者都逼近 DRAM 带宽，剩余差距主要来自 smem 2-way 与调度差异。结论：\textbf{转置优化的收益必须按数据规模/L2 行为分口径报告}，拿 L2 口径的 2.4$\times$ 去外推大矩阵会严重高估。
 \end{enumerate}
 
@@ -440,6 +446,10 @@ $M$ & mat\_transpose (naive) & mat\_transpose\_padded & 加速比 \\
 
 \begin{kaogu}[F3 | 参数 N 的语义易误读]
 rope 的参数 $N$ 是每 token 的对数（$d/2$），而非 hidden size；频率分母用的是 $N \times 2$。与第 \ref{ch:06} 章中 $N$ 表示行数、本章 transpose 中 $N$ 无出现等用法对照，读多文件时需逐处确认参数语义。
+\end{kaogu}
+
+\begin{kaogu}[F3 | naive 转置的“32 线程 / 32 事务”是旧口径]
+\texttt{base.cuh} L852--856 的同一段注释里既写 \texttt{block(16,16)}，又写“warp 的 32 线程访问 32 个连续地址”、“非合并写入 $\to$ 32 次内存事务”，两者互斥：\texttt{(16,16)} 下 \texttt{tid = tx + 16*ty}，一个 warp 只覆盖 $ty\in\{0,1\}$、$tx\in[0,16)$，读是两段 64B，写只命中 16 个 32B sector（512B 流量 / 128B 有效，利用率 $1/4$）。本章 4.2、5.2 节与图~\ref{fig:7-3} 一律按 \texttt{(16,16)} 的真实映射；“32”只在“一行 32 列”的旧口径（\texttt{block(32,32)} 或一线程一整列）下才成立，按它算出的 $1/8$、$1/32$ 也随之失效。
 \end{kaogu}
 
 \section{常见坑}

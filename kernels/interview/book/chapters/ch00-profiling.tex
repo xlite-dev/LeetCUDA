@@ -284,9 +284,10 @@ smem、block/warp 上限三类限制源钳制）与\textbf{达到 occupancy}
 拖累）。NCU 的 Occupancy section 会明确指出 \texttt{launch\_\allowbreak{}\_\allowbreak{}occupancy\_\allowbreak{}limit\_\allowbreak{}registers} /
 \texttt{\_\allowbreak{}\_\allowbreak{}shared\_\allowbreak{}mem} / \texttt{\_\_blocks} 哪个是当前限制源。一个
 fp8 attention kernel 的实例：WS 结构（4 producer + 8 consumer，共 384 线程）的
-launch 配置按 $65536/384$ 把静态寄存器压到 168，\texttt{Block Limit Registers} 因此恒为 1；
-稳态再按 \texttt{setmaxnreg} 分成 $128\times32 + 256\times232 = 63{,}488$ 个，占满寄存器池，
-第二个 CTA 需要 126{,}976，故 1 CTA/SM、12 warps，理论 occupancy
+launch 配置按 $65536/384$ 把静态寄存器限制到 168，\texttt{Block Limit Registers} 因此恒为 1；
+稳态再按 \texttt{setmaxnreg} 分成 $128\times32 + 256\times232 = 63{,}488$ 个（占 65536 的 96.9\%，
+余下的 2048 恰是第~\ref{ch:18}~章所述 slack 下限），第二个 CTA 需要 126{,}976，故
+1 CTA/SM、12 warps，理论 occupancy
 25\%（12/48），此时想提并行度只有降寄存器或换结构
 （见 \S\ref{sec:ch00-cases} 例二）。注意 ch01 的告诫：occupancy 是手段不是
 KPI，GEMM 类 kernel 用大 tile + 低 occupancy + 高 ILP 换性能是常态。

@@ -200,6 +200,13 @@ $e^{S - m_t}$ 原地写回 $S$ 的碎片（L290--292），$m/\ell$ 只保留每�
 已证：对任意 $t$ 都有 $O_t = \sum_{j < t B_c} e^{S_{ij} - m_t} v_j$，
 $\ell_t = \sum_{j<tB_c} e^{S_{ij}-m_t}$，最终 $O = O_{T_c}/\ell_{T_c}$。
 
+一处口径差别要记牢：源码把 $\log_2 e$ 折进了缩放因子（\texttt{scale = rsqrtf(kHeadDim) * M\_LOG2E}，
+L168 与 L517），softmax 全程走 \texttt{exp2f}。于是代码里的 $m$、$\rho$ 与 $\ell$ 都落在
+$\log_2$ 域，权重写成 $2^{(\log_2 e)\,S - m}$ 而不是 $e^{S-m}$；本章公式一律按 $e$ 记，
+两者只差一次基准换算（$m_{\log_2} = m_{\ln}\cdot\log_2 e$，代入即 $2^{-m_{\log_2}} = e^{-m_{\ln}}$），
+归一化后完全等价。读代码时不要按“$e$ 的指数 + 自然对数 $\gamma$”心算，否则会误判
+温度差了一个 $\ln 2$。
+
 \subsection{把 $O$ 拆成 $C$ 个 chunk 分量}
 
 关键在输出维：$PV$ 的输出维是 $D$，而 softmax 的权重 $p_j = e^{S_{ij}-m}$
@@ -475,7 +482,7 @@ V 槽位是 8\,KB，合计
 \end{equation}
 
 这也解释了本章测试辅助工具为什么必须做 smem 可行性检查（\texttt{SKIP(ch19)} 分支）：
-$D$ 一涨，$C$ 跟着涨，而\textbf{stage 数是独立旋钮}，两者消耗的是同一份 99\,KB 预算。
+$D$ 一涨，$C$ 跟着涨，而\textbf{stage 数是独立的可调量}，两者消耗的是同一份 99\,KB 预算。
 生产库在 sm120 上把 stage 上限限制在 2--3，理由正是快速 MMA 下同步开销主导、
 smem 预算吃紧（见 19.6~节）。
 

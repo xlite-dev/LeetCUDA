@@ -244,7 +244,7 @@ bench 输出三层指标，各有分工：
 \end{itemize}
 
 读数规则：\textbf{速度看 min、能量看 rel\_err、结构看 max\_abs、
-门禁看 allclose}，四者缺一不可。第~\ref{ch:29}~章 29.7.1 的正确性
+门禁看 allclose}。四项都要看。第~\ref{ch:29}~章 29.7.1 的正确性
 bug 就是速度正常 + 均值正常 + max\_abs 结构性坏行的组合。
 
 \section{设计与实现}
@@ -530,12 +530,12 @@ fp4 比 fp8 快 1.64x（4.96 vs 8.13ms），对应第~\ref{ch:30}~章 dispatch
 （量化 kernel 的向量化收益，第~\ref{ch:28}~章），升到 per-thread
 （Q/K）或 per-channel（V），粒度升级的净代价即这 1.7--2.7\%。
 smooth-v 的 $+1.0\%$ 只是本轮测量结果；没有重缩放计数或 NCU 对照，
-不能据此归因为 PV 溢出重缩放减少。knob 真正的杠杆在两端：causal 精度
+不能据此归因为 PV 溢出重缩放减少。knob 的杠杆在两端：causal 精度
 （hybrid）与大 D dispatch（第~\ref{ch:30}~章），不在优势区的数值通路。
 
 \subsection{竞品对照}
 
-\texttt{bench\_fp4.py}（16K，fp16，H32/Hkv8）同场四backend：
+\texttt{bench\_fp4.py}（16K，fp16，H32/Hkv8）同场四个 backend：
 self 场景 FFPA-FP4 528.7T（2.44x）$>$ Sage3 411.7T（1.90x）$>$
 FFPA-FP8 382.1T（1.76x）$>$ SDPA 216.6T；causal 场景 Sage3 的
 rel\_err 0.59/max 1.0（早期行 e2m1 噪声无 hybrid 抑制，
@@ -543,7 +543,7 @@ rel\_err 0.59/max 1.0（早期行 e2m1 噪声无 hybrid 抑制，
 的 fp4-hybrid 把 max 压到 0.28；GQA 场景 Sage3 未支持（无数据）。fp8 侧
 \texttt{bench\_fp8.py} 与 Sage2 总体打平互有胜负（多数 $\pm$1.5\% 内，
 最差 non-aligned-dense 8K FFPA 快 2.6\%），
-这正是 preset 公平化的结果：2026-08 之前 cachedit preset 默认开
+这是 preset 公平化的结果：2026-08 之前 cachedit preset 默认开
 hybrid+smooth-v，dense 场景慢 3--8.7\% 全是功能成本，对齐后
 反超。除表~\ref{tab:33-5090} 的 5090 引用外，本章数字均出自本机
 PRO 5000（sm\_120）实测——\textbf{形态结论（谁快谁慢、随 D 怎么

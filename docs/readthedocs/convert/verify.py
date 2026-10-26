@@ -207,6 +207,24 @@ def _display_math_balanced(text: str) -> bool:
 #: 片段里出现这些才算「图里有文字」：中文标签，或 ``\node … {非空内容}``。
 _TEXT_HINT_RE = re.compile(r"[\u4e00-\u9fff]|\\node\b[^;]*?\{[^{}]{2,}\}")
 
+#: 页面里引用 TikZ 产物的写法：``figures-gen/<image_id>.svg``。
+_FIGURE_REF_RE = re.compile(r"figures-gen/([A-Za-z0-9_\-]+)\.svg")
+
+
+def referenced_figures(src_dir: Path) -> set[str]:
+  """页面实际引用的 TikZ 产物名。
+
+  以页面引用为准，而不是以 ``build/tmp/tikz`` 目录为准：缓存里可能留着已删图的旧片段，
+  按目录枚举会把它们算进核对（ch20 的 ``-t011`` 曾让「TikZ 图保留文字」误报）。
+
+  :param src_dir: 站点源树（``build/src``）。
+  :returns: image_id 集合。
+  """
+  names: set[str] = set()
+  for page in src_dir.rglob("*.md"):
+    names |= set(_FIGURE_REF_RE.findall(page.read_text(encoding="utf-8", errors="replace")))
+  return names
+
 
 def check_table_counts_per_chapter(
   parts: list[booktree.Part],
@@ -264,13 +282,19 @@ def check_tikz_glyphs(work_dir: Path, src_dir: Path) -> tuple[bool, str]:
   ``--no-fonts`` 模式下文字会变成 ``<use>``（或 ``<text>``）；两者都没有，说明
   SVG 里没有文字，页面上的表现就是图注文字全丢（ch00 的 occupancy 图曾如此）。
 
+  只核对页面实际引用的图：缓存里可能留着已删图的旧片段（``tikz2svg.prune_stale``
+  之外的遗留），那不能说明页面有问题。
+
   :param work_dir: 临时目录（``build/tmp``）。
   :param src_dir: 站点源树（``build/src``）。
   :returns: ``(是否通过, 说明)``。
   """
+  referenced = referenced_figures(src_dir)
   problems: list[str] = []
   checked = 0
   for snippet in sorted((work_dir / "tikz").glob("*.tex")):
+    if snippet.stem not in referenced:
+      continue
     body = re.sub(r"(?<!\\)%[^\n]*", "", snippet.read_text(encoding="utf-8", errors="replace"))
     if not _TEXT_HINT_RE.search(body):
       continue
@@ -441,6 +465,7 @@ def check_english_figures(
   snippet_dir: Path,
   en_dir: Path,
   dictionary_path: Path,
+  referenced: set[str] | None = None,
 ) -> tuple[bool, str]:
   """检查英文图集：词典覆盖、成品数量与字形。
 
@@ -451,12 +476,15 @@ def check_english_figures(
   :param snippet_dir: TikZ 片段目录（``build/tmp/tikz``）。
   :param en_dir: 英文图集目录。
   :param dictionary_path: 词典路径。
+  :param referenced: 页面实际引用的图；给出时只核对它们，忽略缓存里的陈旧片段。
   :returns: ``(是否通过, 说明)``。
   """
   dictionary = figtext.load_dictionary(dictionary_path)
   if not dictionary:
     return True, "无词典，跳过"
   snippets = sorted(snippet_dir.glob("*.tex"))
+  if referenced is not None:
+    snippets = [path for path in snippets if path.stem in referenced]
   if not snippets:
     return True, "无片段，跳过"
   covered, total, _missing = figtext.coverage(snippets, dictionary)
@@ -1105,7 +1133,7 @@ def verify(src_dir: Path, html_dir: Path, book_dir: Path) -> Report:
     # 「TikZ 图保留文字」由 _verify_book 按书跑；英文图集只覆盖主书（词典按主书生成）。
     ok, detail = check_english_figures(
       main_book.work_dir / "tikz", src_dir.parent.parent / "_static" / "figures-en",
-      src_dir.parent.parent / "i18n" / "figures-en.json")
+      src_dir.parent.parent / "i18n" / "figures-en.json", referenced_figures(src_dir))
     report.add("英文图集完整", ok, detail)
 
   chapters = [chapter for part in main_book.parts for chapter in part.chapters]

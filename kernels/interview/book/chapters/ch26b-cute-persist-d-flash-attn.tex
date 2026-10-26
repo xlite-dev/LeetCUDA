@@ -328,7 +328,7 @@ CTA（\S\ref{sec:26b-persistent}）与普通版协议兼容的关键。}
 
 Q/K/V/O 四个方向的 gmem 访问全部走 TMA。BHND packed 的张量被压平成
 $(B\cdot H\cdot N, D)$ 的 2D 坐标空间，batch/head 的行偏移用
-\texttt{domain\_\allowbreak{}offset} 在 kernel 内动态叠加，这样四个方向只需要
+\texttt{domain\_\allowbreak{}offset} 在 kernel 内动态叠加。这样四个方向只需要
 各一个 TMA descriptor（\texttt{make\_\allowbreak{}tma\_\allowbreak{}copy} 在
 launcher 里构建一次，\texttt{CUTLASS\_\allowbreak{}GRID\_\allowbreak{}CONSTANT}
 放进 constant memory），无论 $B/H$ 多少都不用重建。GQA 的 head 映射
@@ -434,7 +434,7 @@ TMA 先于 \texttt{k\_g}：V 的消费点（PV GEMM）在 K 的消费点（QK GE
 声明的字节数必须精确等于该 stage 的元素数 $\times$\,\texttt{sizeof(Element)}。
 TMA 完成时 mbarrier 校验的正是这个数，少一个字节都会让 consumer 的
 wait 永远不满足（挂死而非出错）。consumer 侧对应的是初始 arrive 只做一次
-这条铁律的落地：
+这条铁律的实现：
 
 \begin{lstinputlisting}[linerange={3864-3881},firstnumber=auto,
   title={flash\_attn.cuh L3864-3881（consumer：首轮一次性标记全部 stage 为 empty）}]{../flash_attn.cuh}
@@ -482,7 +482,7 @@ tile max 与蝶形归约在前 6 行：每行先在本地
 则 \texttt{row\_scale = 1} 且 \texttt{row\_max} 保持 stale 值：本 tile 完全
 跳过对 $O$/$\ell$ 的历史修正；否则 \texttt{row\_scale = exp2f(log2\_diff)}
 供调用方批量重缩放。注意判定是 per-row 的，调用方用
-\texttt{\_\_any\_sync} 聚合整个 warp 的是否有任一行需要重缩放，再统一
+\texttt{\_\_any\_sync} 聚合整个 warp 内是否有任一行需要重缩放，再统一
 分支：warp 内分歧统一到整条 warp 粒度（L3963--3967）。exp 与求和在尾段：
 \texttt{exp2f} 单条 \texttt{MUFU.EX2}，P 直接写回 scores 原地
 （复用寄存器），\texttt{tile\_sum} 供 \texttt{row\_sum} 增量。
@@ -735,7 +735,7 @@ TMA dst 状态空间 & \texttt{shared::cluster} & C7506：ptxas 视作隐式 ext
 第~\ref{ch:14}~章坑二的 PTX 修改（\texttt{cluster} 全局替换 \texttt{cta} 后指令恢复保留）
 已给出完整取证；CUTLASS 的 \texttt{cute/arch/copy\_sm90\_tma.hpp} 在
 \texttt{CUTE\_\allowbreak{}ARCH\_\allowbreak{}TMA\_\allowbreak{}SM120\_\allowbreak{}ENABLED} 门控下专门切到
-\texttt{shared::cta}，上游早已知道这个差别。本 kernel 无 cluster launch、无
+\texttt{shared::cta}，上游早已处理这个差别。本 kernel 无 cluster launch、无
 分布式 smem，dst 恒为 CTA 本地，两种写法语义等价，只是形式不同、保留与否不同。
 
 \textbf{C7508（缺 launch\_bounds 第二参数）}：setmaxnreg 改变的是 per-warp
@@ -772,7 +772,7 @@ ffpa-attn 的 sm\_120f 构建产物中该指令同样生效。
 \begin{kaogu}[本章初版当日修正]{必须 sm\_120f 三连误诊与推翻}
 本章初版注释与导读曾断言\textbf{编译目标必须 \texttt{sm\_120f}：\texttt{sm\_120a} 下
 ptxas 静默丢弃 setmaxnreg}。2026-09-22 当天三轮 probe 复核推翻该结论，
-误诊链值得原样记录。先是最小 probe 的裸 asm 复现出
+误诊链如下。先是最小 probe 的裸 asm 复现出
 \emph{Instruction 'setmaxnreg' not supported on .target 'sm\_120'} 硬错误，
 被读作\textbf{sm\_120a 不支持}，实际是编译命令落到了 generic \texttt{sm\_120}
 （无 a/f 后缀），PTX ISA 本就不允许 generic 目标使用该指令，报错反而是

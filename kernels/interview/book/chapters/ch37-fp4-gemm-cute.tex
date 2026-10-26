@@ -9,7 +9,7 @@
 本章写主 GEMM kernel：把 $A_4,B_4^{\top}$ 与两组 SF 送入 sm\_120 的
 \textbf{blockscaled \texttt{mma.sync}}，由硬件消费 level-2 的 scale。
 
-整章可以概括为：FP4 GEMM 的主 kernel 比 FP8 的更简单，也更难
+整章的主线是：FP4 GEMM 的主 kernel 比 FP8 的更简单，也更难
 写。简单是因为 epilogue 只剩一个乘法（SF 由 MMA 硬件消费，不需要按块查表），
 难是因为多出来一条 SF 数据流：4 条 TMA、两套 smem 原子、一个把数据与 SF
 成对的 zip 张量，以及一类 FP8 版本里不存在的死锁陷阱
@@ -225,7 +225,7 @@ $16+8 = 24$\,B/线程，SF 侧 8\,B/线程——SF 的字节数达到数据的 $
 \end{itemize}
 
 于是 tile 空间被固定成两个常数维度加一个自由维度：
-$128 \times BN \times 64$，$BN$ 成了唯一可扫的旋钮：37.9.4~节的
+$128 \times BN \times 64$，$BN$ 成了唯一可扫的参数：37.9.4~节的
 扫描表明，把 $BN$ 从 128 翻到 256 是本章最大的单项性能发现（读数见
 该节）。
 
@@ -926,7 +926,7 @@ $BN$ & $k_{Stages}$ & smem & NonWS TFLOPS & WS TFLOPS & 结论 \\
         只有一跳 MMA，MMA 块窄、TMA 块相对粗，瓶颈不是等下一块数据，
         所以加深流水没有收益。
   \item \textbf{$BN$ 从 128 翻到 256 带来 $+31\%$（461 $\to$ 603\,T）。}
-        这一项远超其他所有旋钮。机制是 MMA 与 TMA 的比值：
+        这一项远超其他所有可调项。机制是 MMA 与 TMA 的比值：
         $BN$ 翻倍让每 stage 的 $B$ 区（$BN{\cdot}64/2$ 字节）与 SFB
         （$BN/128\cdot512$\,B）跟着涨，但 $A$ 区与 SFA 完全不变；而 MMA 的工作量
         随 $BN$ 线性翻倍。$BN:128\to256$ 时总 stage 字节约 $9\to13.5$\,KB，
@@ -969,7 +969,7 @@ $128\times256$/s6，其余回落 $128^2$/s4，\texttt{--bench} 的 FP4 标准
   \item \textbf{$BM{=}128$、$BK{=}64$ 不是调参，是唯一合法解}：
         二者分别等于 SF 原子的行块与 K 覆盖范围，也就是 SF 的
         TMA box 的尺寸。tile 空间因此被固定成
-        $128\times BN\times64$，$BN$ 成了唯一旋钮，
+        $128\times BN\times64$，$BN$ 成了唯一参数，
         而它恰好是收益最大的那个（$+31\%$）。
   \item \textbf{epilogue 只剩一个乘法}：level-2 的 SF 由 MMA 硬件消费，
         level-1 按 $(m,n)$ 折回。反量化的复杂度从按块查表

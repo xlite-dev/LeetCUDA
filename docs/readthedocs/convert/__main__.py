@@ -288,6 +288,10 @@ def _convert_book(
   stage = time.monotonic()
   tikz_report = tikz2svg.Report()
   snippets = tikz2svg.collect(manifests, spec.work_dir, spec.out_dir)
+  pruned = tikz2svg.prune_stale(snippets, spec.work_dir, [chapter.chap_id for chapter in selected])
+  if pruned:
+    print(f"[{label}] [2/4] 清理陈旧片段 {len(pruned)} 个：{', '.join(pruned[:3])}"
+          f"{' …' if len(pruned) > 3 else ''}")
   if args.skip_tikz:
     print(f"[{label}] [2/4] 跳过 TikZ 编译（--skip-tikz）")
   elif snippets:
@@ -298,7 +302,7 @@ def _convert_book(
           f"缓存 {len(tikz_report.skipped)}，失败 {len(tikz_report.failed)}，"
           f"模式 {tikz_report.mode}，{tikz_report.seconds}s")
     if not spec.slug:
-      _build_english_atlas(root, spec, snippets, args)
+      _build_english_atlas(root, spec, snippets, [chapter.chap_id for chapter in selected], args)
   stages["TikZ"] = round(time.monotonic() - stage, 1)
 
   stage = time.monotonic()
@@ -338,6 +342,7 @@ def _build_english_atlas(
   root: Path,
   spec: BookSpec,
   snippets: list,
+  chapters: list[str],
   args: argparse.Namespace,
 ) -> None:
   """编译英文图集（只对主书做：词典按主书的图 id 建）。
@@ -345,6 +350,7 @@ def _build_english_atlas(
   :param root: ``docs/readthedocs`` 目录。
   :param spec: 书籍规格。
   :param snippets: TikZ 片段。
+  :param chapters: 本次转换的章标识。
   :param args: 命令行参数。
   """
   dictionary = figtext.load_dictionary(root / "i18n" / "figures-en.json")
@@ -353,6 +359,10 @@ def _build_english_atlas(
   en_work = spec.work_dir / "tikz-en"
   en_tasks, hit, miss = tikz2svg.collect_translated(
     snippets, en_work, root / "_static" / "figures-en", dictionary)
+  pruned = tikz2svg.prune_atlas(root / "_static" / "figures-en", en_tasks, chapters)
+  if pruned:
+    print(f"[2/4] 清理陈旧英文图 {len(pruned)} 张：{', '.join(pruned[:3])}"
+          f"{' …' if len(pruned) > 3 else ''}")
   en_report = tikz2svg.build(
     en_tasks, spec.book_dir, en_work, force=args.force_tikz,
     font_mode=args.tikz_fonts, jobs=args.jobs)

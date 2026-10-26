@@ -81,9 +81,9 @@ e2m1 的动态范围限制分两层。fp8 路径里 per-block/per-thread scale �
 $\mathrm{amax}$ 与其余元素的分辨率差距被放大到无法忽略。更关键的是
 分布中心：attention 的 Q/K 行向量常带系统性均值偏移（randn 输
 入下均值不为零，真实模型里更明显），若直接量化
-$Q\to\hat Q$，均值占据 $\mathrm{amax}$ 预算，把有效信息压进 1--2 个
-码点。fp8 的 smooth-K 是可选旋钮（第~\ref{ch:28}~章），fp4 的
-smooth-Q/K 是\textbf{强制开启，不是选项}（skill §6.2）：e2m1 的 ±6
+$Q\to\hat Q$，均值占据 $\mathrm{amax}$ 预算，把有效信息收进 1--2 个
+码点。fp8 的 smooth-K 是可选参数（第~\ref{ch:28}~章），fp4 的
+smooth-Q/K 是\textbf{强制开启，不是选项}：e2m1 的 ±6
 动态范围使均值平滑成为精度必需。
 
 ffpa 的答案是把三种尺度手段全部用上：
@@ -288,7 +288,7 @@ SF 字节的写序不是朴素行主序，而是 \textbf{SfAtom 分块序}：MMA
 \texttt{BlockScaledConfig} 逐字节一致（头注释 L13--14、
 L414 的 \texttt{sf\_col\_offset} 与 L482--485 的
 \texttt{offset\_local} 公式）。
-这同 fp8 的 VTPerm 是同一类问题：消费端的寄存器/smem 布局决
+这与 fp8 的 VTPerm 是同一类问题：消费端的寄存器/smem 布局决
 定生产端的写序，两头任一侧改动都要同步。
 
 smooth-V 也 fused 在这里：$v_m$ 按 $d$ 减除发生在 smem 读出转 fp32
@@ -490,7 +490,7 @@ $t\to t$ 直接对齐（\texttt{fp4\_pscale.cuh} L523--524）；置换补偿只
   \item \textbf{masking}：causal/kv-tail 谓词必须用
         $pos=kv\_tile\cdot B_c+kv\_perm32(col)$ 判定。上游 SA3 对原始
         列 index 做 mask，causal 直接算错（$N{=}512$ 时 max\_abs
-        3.3）；ffpa 修复为 perm-aware（skill §11.11(b)）。
+        3.3）；ffpa 修复为 perm-aware。
   \item \textbf{attn\_bias 注入}：bias 列同样要过 $kv\_perm32(j)$
         （\texttt{fp4\_gemm.cuh} L55--60），gmem 与 smem 两个变体同样处理。
 \end{itemize}
@@ -825,7 +825,7 @@ MXFP8 PV 变体（$V^\top$ 走 e4m3 + ue8m0/32，精度更高）付出 37.7\%
 persist-D（第~\ref{ch:29}~章 29.6 节实测表含 causal 的 1.16--1.70x），来源不在 MMA
 吞吐（blockscale mxf4nvf4 的吞吐只与 fp8 dense 相当），而在
 带宽：K/V/SF 的字节数减半以上，memory-bound 的 attention
-直接受益（skill §6.6：attn kernel 本身快 $\sim$23\%）。(2) D=192 的
+直接受益（attn kernel 本身快 $\sim$23\%）。(2) D=192 的
 474T 是全家族峰值，D=256 回落（kStages 从 3 降 2，L51--56）。(3)
 $\sim$1ms 量级的前处理链意味着\textbf{小 $N_q$（cross/decode）结构
 性不划算}：以 $D{=}192$（e2e 3.48ms）计占比约 30\%；$N_q$ 缩小

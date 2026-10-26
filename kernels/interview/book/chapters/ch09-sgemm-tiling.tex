@@ -112,11 +112,14 @@ $1 \times 1$（naive，每线程一个输出）时 $= 0.25$；$4 \times 4$ 时 $
 但 smem 的可用带宽比 DRAM 高一个数量级以上，瓶颈的上限完全不同；
 另外 $4 \times 4 = 16$ 个输出给出 16 条互相独立的 FMA 链，ILP 充分。
 
-\subsection{Vectorize：不改字节数，改指令数与请求数}
+\subsection{Vectorize：不改字节数，只减指令数}
 
-\texttt{float4} 把 4 次 32-bit 访问合并成 1 次 128-bit 访问：load/store 指令数与 warp 级
-内存请求数降为 1/4（一个 warp 一条指令发起 512B 连续请求）；两种访问的 sector 利用率均已为 100\%。它对
-式~\ref{eq:9-ai-tile} 的分子分母都不动，AI 不变，但带宽更容易达到上限。
+\texttt{float4} 把 4 次 32-bit 访存合并成 1 次 128-bit 访存：load/store 的 warp 级
+\textbf{指令数}降为 1/4（一个 warp 一条指令覆盖 512B 连续数据）。但按第~\ref{ch:01}~章的
+128B 请求口径，这条指令会被拆成 4 个请求、16 个 sector，与 4 条 32-bit 指令产生的
+4 个请求、16 个 sector 完全相同——\textbf{请求数与 sector 数都不动}，两种访问的
+sector 利用率也都已是 100\%。它对式~\ref{eq:9-ai-tile} 的分子分母都不动，AI 不变，
+收益来自发射压力下降，带宽因此更容易达到上限。
 对第~\ref{ch:08}~章的 GEMV 实测是 $+5\%$；对 GEMM 的 gmem$\to$smem 搬运同样成立。
 
 \subsection{roofline 定位与两级同步的正确性}
@@ -518,7 +521,7 @@ vec4  & 2048 & 256  & 0.661 & 25.97 & 38.8 & 813 \\
 \end{table}
 
 五个观察：
-（1）$2048^3$ 上 vec4 快 $4.76\times$（$3.144 \to 0.661$~ms），且形状越大差距越
+（1）$2048^3$ 上 vec4 快 $4.76\times$（$3.145 \to 0.661$~ms），且形状越大差距越
 稳定，小形状下两版都未达到各自的瓶颈。
 （2）$32{\times}32$ 版 \texttt{sgemm} 被带宽限制在 $\approx 5.5$ TFLOPS：AI $=8$ 对应的带宽隐含上限
 $8 \times 934 \approx 7.5$ TFLOPS，实测拿到其中 73\%（差值来自同步空转与

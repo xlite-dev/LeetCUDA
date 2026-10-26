@@ -17,7 +17,7 @@ smem 上做 XOR swizzle、拼 ldmatrix 的 lane 地址、epilogue 里用 \texttt
 换一种做法：把 (Shape, Stride) 提升为一等的数学对象，用代数运算（复合、逆、
 乘积、切分）代替手写公式，把想要的布局与怎么算地址两件事分开。
 
-本章是 Part~IV 的原理篇开篇，本章与后续 ch21/ch22 都只讲原理与工具、不写新的 GPU kernel：
+本章是 Part~IV 的原理篇开篇，它与后续 ch21/ch22 都只讲原理与工具、不写新的 GPU kernel：
 我们只研究 layout 本身。四章路线：本章（layout 代数）$\to$ 第~\ref{ch:21}~章
 （Tensor 与 TiledCopy：把 layout 用在数据上）$\to$ 第~\ref{ch:22}~章（TiledMMA：
 把 layout 用在计算上）$\to$ 第~\ref{ch:23}~章（Swizzle 与 TMA：把 layout 用在
@@ -52,7 +52,7 @@ $B_M\times B_K = 128\times64$ 的 A tile 从 gmem 搬到寄存器，同一组形
   \item \textbf{epilogue}：C fragment 的 lane 分布、shuffle 拼接、128-bit 写回。
 \end{enumerate}
 
-五处公式必须彼此一致。任何一处写错都不会报错，只会静默地错数据。更麻烦的是
+五处公式必须彼此一致。任何一处写错都不会报错，只会静默地算错数据。更麻烦的是
 它们的联动：把 $B_K$ 从 64 改成 32，五处里至少三处要跟着改；把 mma atom 从
 m16n8k16 换成别的，第 3、5 处重算。第~\ref{ch:12}~章末尾的结论随行宽变，
 讲的就是这个现象：\textbf{bank 冲突度不是 kernel 的属性，而是 layout 的属性}，
@@ -71,7 +71,7 @@ hgemm 的手写版（235 行去注释代码）变成 CuTe 版 kernel 本体 118 
 
 在 CUDA 里访问一个元素，最终都要落到基址 $+$ 偏移：拿到一段内存的
 起始指针后，真正决定 $(m,k)$ 在哪里的，是一个从坐标到偏移的映射。
-第~\ref{ch:11}、\ref{ch:12}~章手写 HGEMM 时，这个映射以五种面貌
+第~\ref{ch:11}、\ref{ch:12}~章手写 HGEMM 时，这个映射以五种形式
 出现（gmem 寻址、cp.async 地址、ldmatrix lane 映射、XOR swizzle、
 epilogue 拼接），每种写一遍、彼此还要对齐。@竹熙佳处在《写给大家看的
 CuTe 教程：Layout Compose \& Inverse》里给出的视角是：把这些映射统一看成
@@ -1333,7 +1333,7 @@ $(1,1)$ & 3 & 11 & 7 & 15 \\
 \section{性能分析}
 
 本章没有 kernel，性能一节只回答一个问题：这套代数要付多少代价？
-答案是三句话：编译期全折叠、运行期只剩加法与位运算、代价转移到编译时间。
+答案是三点：编译期全折叠、运行期只剩加法与位运算、代价转移到编译时间。
 
 \textbf{证据一（编译期折叠）}：static layout（所有 shape/stride 都是
 \texttt{Int<N>}）上，\texttt{cosize}/\texttt{shape}/\texttt{compose}/

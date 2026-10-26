@@ -742,14 +742,16 @@ HGEMM MMA (S=3, BLK\_SW=1) & 0.000e+00 & 127.3/246.9 (0.52x) \\
 
 \section{实践经验}
 
-\begin{kaogu}[F2]{hgemm.cuh L35：\textbf{ldmatrix 默认加载 col-major}与 PTX 文档相反}
+\begin{kaogu}[F2]{hgemm.cuh L35：\textbf{ldmatrix 默认加载 col-major}的前提与 PTX 文档相反}
   注释原文（\texttt{\_nn} 布局对比段）称 B 行主序时\textbf{需要 .trans}的理由是
   \textbf{ldmatrix 默认加载 col-major}。PTX ISA §9.7.14.5.15 原文：
   \emph{``Optional qualifier .trans indicates that the matrix is loaded in
   column-major format''}，即不加 \texttt{.trans} 是普通（行）装载，
-  加了才是列装载。结论方向恰好写反。本章 kernel 的实际用法（TN 布局、
-  A/B 都用非 trans 装载）不受影响；但按该注释推理会在 NN 布局下
-  选错 trans 与否。已记入 \texttt{book/\allowbreak{}CHECKLOG.\allowbreak{}md}，正文以 PTX 文档为准。
+  加了才是列装载。\textbf{写反的是前提，不是结论}：NN 布局下 B 以 $[K,N]$
+  行主序存放时确实要 \texttt{.trans}（本章 kernel 走 TN 布局、A/B 都用非
+  trans 装载，不受影响）；但若照这个前提去推别的布局——例如 A 行主序该不该
+  加 \texttt{.trans}——结论就会反。已记入 \texttt{book/\allowbreak{}CHECKLOG.\allowbreak{}md}，
+  正文以 PTX 文档为准。
 \end{kaogu}
 
 \begin{kaogu}[F2 核校通过]{hgemm.cuh L6 与 L73-80：m16n8k16 形状与寄存器数}

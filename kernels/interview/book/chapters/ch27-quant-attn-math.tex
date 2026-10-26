@@ -86,7 +86,7 @@ rescale 的膨胀如何不超出格式量程上限（27.3.6）。
         显式设计（27.3.4--27.3.6），否则不是精度差，而是直接溢出。
 \end{itemize}
 
-理想目标是\textbf{即插即用的无损量化}（plug-and-play PTQ）：不改模型权重、不需要
+理想目标是\textbf{可直接套用的无损量化}（plug-and-play PTQ）：不改模型权重、不需要
 校准数据集，attention 输出与 fp16 基线在端到端指标上不可区分。
 
 \section{数学原理}
@@ -104,7 +104,7 @@ $\mathcal{B}$（定义域见 27.3.3 的粒度谱系），量化与反量化算�
 其中 $R$ 是目标格式的满量程（int8 取 127，e4m3 取 448，e2m1 取 6）；
 $\mathrm{round}(\cdot)$ 指\textbf{舍入到目标格式的可表示格点}（RNE）——int8 是等距整数格点，
 e4m3/e2m1 是非均匀浮点格点，$\delta$ 只承担\textbf{块 amax $\to$ 满量程}的缩放，不构成均匀网格。
-$\delta = \mathrm{amax}(\mathcal{B}) / R$ 是块步长（amax 为块内绝对值最大值）。
+$\delta = \mathrm{amax}(\mathcal{B}) / R$ 是块量化步长（amax 为块内绝对值最大值）。
 
 $\tilde{x}$ 与 $x$ 的差就是量化误差；round 取最近邻且平局取偶（RNE）。三点注意：
 \begin{itemize}[itemsep=2pt,topsep=2pt]
@@ -220,7 +220,7 @@ $\delta$ 的定义域 $\mathcal{B}$（式~\ref{eq:27-quant-op}）就是粒度。
 两条工程要点贯穿 Part VI。per-thread 粒度之所以存在，是因为 SA2 观察到
 scale 与 \texttt{mma.m16n8k16} fragment 的 thread-data 映射对齐后可以\textbf{零
 shuffle} 使用（每 lane 持有的 8 个 A 元素共享一个 scale，scale 直接乘进 exp2 的
-行常数）。粒度因此是精度与 fragment 布局的联合设计，不单是一个精度旋钮。
+行常数）。粒度因此是精度与 fragment 布局的联合设计，不单是一个精度参数。
 
 谱系的两端各有失败模式：per-block 对 outlier 最脆弱（一个 outlier
 即影响一整块），per-row/per-group (16) 的 scale 数量与数据同阶（SF 本身成为新的访存项，

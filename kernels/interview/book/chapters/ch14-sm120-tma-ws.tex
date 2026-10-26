@@ -699,7 +699,9 @@ $8192^3$ 规模下 TMA+MMA+WS 组合把纯 MMA 基础实现（第~\ref{ch:11}~�
 57\%--82\%，搬运端与同步协议的升级在大矩阵上依然成立。开启 block swizzle
 （BLK\_SW=1）后 f16 累加路径从 0.81x 提升到 0.94x，L2 局部性的收益与上文
 2048$^3$ 的结论一致，且两配置在该批输入下 Max Err 为 0；这不代表 f16 累加无精度损失
-（本章自述 $K{=}256$ 的 f16 累加误差 $1.9\times10^{-3}$，第~\ref{ch:11}~章同机为 $1.5\times10^{-2}$）。
+（本章自述 $K{=}256$ 的 f16 累加误差 $1.9\times10^{-3}$，第~\ref{ch:11}~章同机为
+$1.5\times10^{-2}$——两章的输入幅值差 64 倍（本章压到 $[-0.25,0.25]$），这两个数只能
+各自按本章口径读，不能用来比较两个 kernel 谁更准）。
 
 \section{实践经验与考据说明}
 
@@ -713,11 +715,16 @@ $8192^3$ 规模下 TMA+MMA+WS 组合把纯 MMA 基础实现（第~\ref{ch:11}~�
   消费端）宜读作后者。
 \end{kaogu}
 
-\begin{kaogu}[F2·文档 vs 实践]{cuda.h 注释\textbf{tensorRank must be 3, 4, or 5}}
-  CUDA 13.2 的 \texttt{cu\allowbreak{}Tensor\allowbreak{}Map\allowbreak{}Encode\allowbreak{}Tiled} 头文件注释称 tensorRank 只能
-  是 3/4/5，而 common.cuh 与本章测试都用 rank$=$2（2D tile），实测编码成功、
-  kernel 数值正确。驱动实践接受 rank 2（CUTLASS 同样大量使用），头文件注释
-  与实现不一致，写 2D TMA 时以实践为准，但升级 CUDA 版本时此处值得回归。
+\begin{kaogu}[F2·API 约束]{cuda.h 对 tensorRank 的真实约束：rank 2 本就合法}
+  CUDA 13.2 的 \texttt{cu\allowbreak{}Tensor\allowbreak{}Map\allowbreak{}Encode\allowbreak{}Tiled} 头文件原话（\texttt{cuda.h} L24095--24096）是
+  \emph{\texttt{tensorRank must be non-zero and less than or equal to the maximum
+  supported dimensionality of 5. If interleave is not
+  CU\_TENSOR\_MAP\_INTERLEAVE\_NONE, then tensorRank must additionally be greater
+  than or equal to 3.}}——即 rank 取 $1\sim5$ 都合法，只有开启 interleave 时才要求
+  rank $\ge 3$。common.cuh 与本章测试用 rank$=$2 且 interleave 为
+  \texttt{CU\_TENSOR\_MAP\_INTERLEAVE\_NONE}，与注释完全一致，\textbf{不存在}“文档与
+  实现不一致”，升级 CUDA 时也不需要为这条额外回归。初版考据把 interleave 分支的
+  条件读成了全局约束（“只能是 3/4/5”），本版更正。
 \end{kaogu}
 
 \begin{kaogu}[F1·2026-09-17 修正]{setmaxnreg 丢失的归因：地址空间，非目标后缀}

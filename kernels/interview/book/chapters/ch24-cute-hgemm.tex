@@ -231,7 +231,7 @@ $16\times8\times16$ 就是一条 \texttt{mma.sync}。}
 \end{figure}
 
 $B_N$ 随累加精度切换是寄存器预算的算术结果：F32 累加器每个元素占
-4 字节，寄存器压力翻倍，$128\times256$ 的 C tile 在 128 线程下是
+4 字节，寄存器压力翻倍。$128\times256$ 的 C tile 在 128 线程下是
 $128\cdot256/128=256$ 个 f32 逻辑累加值，已经超过每线程 255 个 32-bit
 寄存器的硬上限；再计入地址、流水与临时寄存器后必然溢出到 local memory。第~\ref{sec:24-step3b}~节把两种精度的寄存器占用摆开，并用
 \texttt{ptxas -v} 的实测数字核对（口径讨论见第~\ref{sec:24-kaogu}~节）。
@@ -685,7 +685,7 @@ multistage, 由 cute::copy 自动管理}（hgemm.cuh L729--733）。读代码会
 
 \subsection{第三步之一：swizzle 布局与 \texttt{ldmatrix} 装载}\label{sec:24-step3a}
 
-流水线解决了等，但没有解决搬运的形态。第二步里 smem 只是一块能放下 tile 的
+流水线解决了等待，但没有解决搬运的形态。第二步里 smem 只是一块能放下 tile 的
 地方；要真把它用起来，还得定三件事：smem 里的数据怎么排（否则 \texttt{ldmatrix}
 会产生 bank conflict）、S$\to$R 用哪条指令装、G$\to$S 一次搬多少字节。@reed 在
 《cute 之 高效 GEMM 实现》里把这几件事归在\textbf{访存高效}名下，本章 kernel 的
@@ -728,7 +728,7 @@ $\langle B,M,S\rangle=\langle3,3,3\rangle$：对 fp16 而言 16\,B 一个基本�
 相邻 2 行才凑足 128\,B 的 XOR 源位跨度；相邻两行共享图样，8 行一周期，
 共 4 种图样。它与第~\ref{ch:12}~章的 SWIZZLE\_128B 参数同名，实际图样
 不能按“每行 8 个基本块、逐行 8 种”理解。@reed 在《cute 之 高效 GEMM 实现》
-里同样取 $\langle3,3,3\rangle$ 配 $8\times B_K$ 原子，具体强度仍要由行宽复算。
+里同样取 $\langle3,3,3\rangle$ 配 $8\times B_K$ 原子，具体参数仍要由行宽复算。
 
 \paragraph{实践须知：swizzle 参数怎么自查}
 

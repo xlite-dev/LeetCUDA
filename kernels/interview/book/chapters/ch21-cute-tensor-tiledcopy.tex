@@ -81,7 +81,7 @@ TiledCopy 就是这个二元组的类型；\texttt{partition\_S} 与
 \subsection{Tensor：engine 与 layout}
 
 第~\ref{ch:20}~章的 layout 只回答坐标 $\to$ offset，它不知道 offset 要加到
-哪块内存上。访问数据的完整动作其实是两步：先算偏移，再把偏移加到基址上。
+哪块内存上。访问数据的完整动作是两步：先算偏移，再把偏移加到基址上。
 
 CuTe 把第二半的基址抽象成 Engine。@竹熙佳处给了一个好记的
 类比：engine 之于 CuTe，相当于 iterator 之于 C++ 标准库，凡是
@@ -202,7 +202,7 @@ src/dst 地址；让连续线程读连续地址（合并访存）；让每线程
 \end{lstlisting}
 
 \textbf{问题在哪。}这段代码很短，但它把谁搬哪块\emph{算在了}
-\texttt{r}/\texttt{c}/\texttt{loop} 三个变量里，一旦引入 swizzle、
+\texttt{r}/\texttt{c}/\texttt{loop} 三个变量里。一旦引入 swizzle、
 ldmatrix 或 bank 冲突考虑，地址公式会迅速膨胀，而哪个数据在哪个线程
 手里会彻底看不清。@竹熙佳处建议先把映射从代码里抽出来画成一张
 表：行是线程号 $t$，列是线程内的值号 $v$，格子填数据坐标 $(m,n)$，
@@ -215,7 +215,7 @@ ldmatrix 或 bank 冲突考虑，地址公式会迅速膨胀，而哪个数据�
         $(0,1)$ 归谁，而是\emph{线程 0 的值 1 去哪取}，把行列对调
         看一次，就是第~\ref{ch:20}~章 inverse 运算的内容。CuTe 的
         TV-layout 直接以 $(t,v)\to$ 坐标的形式存储，就是这张对调后的表。
-  \item \textbf{引入更多优化后，表仍然存在}（只是格子里要额外绕 swizzle、
+  \item \textbf{引入更多优化后，表仍然存在}（只是格子里要额外多经一层 swizzle、
         ldmatrix 的地址映射）。表画得出来，说明这个映射是独立于循环
         代码的对象，把它变成 layout，地址计算就交给编译器推导。
 \end{itemize}
@@ -525,11 +525,11 @@ MMA 的 accumulator fragment $C$ 的逻辑形状是 $(\mathrm{MMA}, \mathrm{MMA}
   \label{eq:21-upcast}
 \end{equation}
 
-即连续方向的 extent 除以 $N$、其余 stride 除以 $N$（实测见本章测试 case~F）。
-它还有一条很好的性质，即对复合布局也成立：
+即连续方向的 extent 除以 $N$、其余 stride 除以 $N$（见本章测试 case~F）。
+它对复合布局也成立：
 $\mathrm{upcast}_2\bigl(\mathrm{Swizzle}_{3,3,3}\circ L\bigr) =
 \mathrm{Swizzle}_{3,2,3}\circ \mathrm{upcast}_2(L)$
-（实测：\texttt{Sw\allowbreak{}<3,\allowbreak{}2,\allowbreak{}3> o \_\allowbreak{}0 o \allowbreak{}(32,\allowbreak{}16):\allowbreak{}(16,\allowbreak{}1)}），这也解释了为什么
+（实测：\texttt{Sw\allowbreak{}<3,\allowbreak{}2,\allowbreak{}3> o \_\allowbreak{}0 o \allowbreak{}(32,\allowbreak{}16):\allowbreak{}(16,\allowbreak{}1)}），这也解释了
 128-bit 拷贝的 smem 布局可以写成 half 版布局的 upcast。
 
 \section{设计与实现}
@@ -577,7 +577,7 @@ smem 搬到寄存器而已（第~\ref{ch:22}~章会看到 \texttt{get\_\allowbre
 $\mathrm{tile\_size} = (32,32,16)$，于是 A/B 拷贝的 Tiler $=(32,16)$、
 C 拷贝的 Tiler $=(32,32)$；后者等于 SmemLayoutC 的
 $(k_{\mathrm{MmaPM}}, k_{\mathrm{MmaPN}}) = (32,32)$，与 kernel 注释
-（hgemm.cuh~L1355--1356）声称的恰好匹配，逐项核对成立。
+（hgemm.cuh~L1355--1356）的声明一致，逐项核对成立。
 
 \paragraph{实践须知}
 \begin{itemize}
@@ -710,7 +710,7 @@ source/destination 角色，而不是另一次 memory transfer。
 \begin{sloppypar}
 注意 L1001 的写法：\texttt{sC} 拿的是 \texttt{s\allowbreak{}A\allowbreak{}(\_\allowbreak{},\allowbreak{}\_\allowbreak{},\allowbreak{}ismem\_\allowbreak{}read).\allowbreak{}data\allowbreak{}()}
 （一个裸指针），再\emph{重新}用 SmemLayoutC 解释同一段地址。这里没有 Tensor
-类型转换，只是同一块 smem、两种布局视图，A 的 pipe 布局是
+类型转换，只是同一块 smem、两种布局视图。A 的 pipe 布局是
 $8\times32$ atom，C 的是 $32\times32$ atom，二者都含 \texttt{Swizzle\allowbreak{}<3,\allowbreak{}3,\allowbreak{}3>}
 但不可互换读取。容量上：一个 A stage 是 $128\times32=4096$ 个 half，
 C scratchpad 是 $32\times32\times4=4096$ 个 half，正好放得下（launch wrapper
@@ -799,7 +799,7 @@ step 整除，当前静态布局下这是编译期保证的。
 
 \begin{sloppypar}
 那么为什么要对 \texttt{tCrC\_r2s} 与 \texttt{tCgC\_s2g} 同时 group
-（真代码就两行：\texttt{tCgC\_s2gx = group\_modes<1, 3>(tCgC\_s2g)}、
+（实际代码只有两行：\texttt{tCgC\_s2gx = group\_modes<1, 3>(tCgC\_s2g)}、
 \texttt{tCrC\_r2sx = group\_modes<1, 3>(tCrC\_r2s)}）？\texttt{tCrC\_r2s} 是
 每线程持有的寄存器 C fragment，原始形状 \texttt{(CPY, CPY\_M, CPY\_N)}；
 \texttt{tCgC\_s2g} 是该线程对应的 global-memory C 输出位置，形状与源
@@ -1009,7 +1009,7 @@ Tensor 的 grouped layout 计算。代码未对 $i{+}j$ 做尾部 predication，
 \section{性能分析}
 
 本章没有独立的 kernel bench：TiledCopy 的开销无法单独测，它总是嵌在某个
-kernel 的流水线里。所以本节回答的是这套抽象的代价结构，端到端数字留给
+kernel 的流水线里。所以本节回答的是这套抽象的开销构成，端到端数字留给
 第~\ref{ch:24}~章（CuTe HGEMM 与手写版对照）。
 
 \textbf{结论一（编译期零成本）}：Tiler、TV 布局、每个线程的地址全部是静态
@@ -1032,14 +1032,14 @@ S$\to$G 后各一次，L1116 与 L1184 附近）与一次 smem 往返。代价�
 \textbf{不写 shuffle 编排}：跨 lane 重组交给 sC 的布局做。对 $B_M\times B_N
 =128\times256$ 的 tile，scratchpad 每轮搬 4 个 pipe slot（step $=4$），
 R$\to$S/R$\to$G 各约 8 条指令，与主循环的 mma 数量相比是次要项，但它解释
-了为什么 CuTe 版在极端配置下需要 \texttt{kSmemLayoutCBatch} 这类旋钮。
+了为什么 CuTe 版在极端配置下需要 \texttt{kSmemLayoutCBatch} 这类可调参数。
 
 \textbf{结论四（重复因子放大的是 CTA 范围的副本数）}：式~\eqref{eq:21-dup} 的
 A/B 重复因子为 $2$（hgemm 的 $2\times2$ warp 排布），表示不同 warp 需要
 同一数据的寄存器副本，因而增加跨线程的覆盖点数和 CTA 总寄存器成本。它不是
 每个线程的 fragment 元素数也乘上该因子；每线程仍按自己的
 \texttt{partition\_\allowbreak{}fragment\_\allowbreak{}A/B} 持有固定数量的值。TiledCopy 只是
-把这种跨线程重复如实体现在 partition 中。
+把这种跨线程重复原样体现在 partition 中。
 
 \section{常见坑}
 
