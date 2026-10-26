@@ -1,0 +1,7 @@
+# lint_allow.yaml — 引文白名单（lint_book.py citations 用）
+#
+# 只允许登记“本来就不在源码里”的引文：编译器诊断、外部规范原文、命令行回显。
+# 登进白名单等于放弃这道检查，所以每条都要写清理由；能用正文改写消除的不要加。
+quotes:
+  # ch16：这是 nvcc 的编译诊断（单独 include flash_attn.cuh 时触发），不是源码文本。
+  - identifier swizzle is undefined
