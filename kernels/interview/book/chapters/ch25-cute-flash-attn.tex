@@ -352,7 +352,8 @@ $\mathrm{lane}\bmod4$ 决定行内 4 个列片段。每 lane 先归约自己持�
      可以直接计算};
   % 底部注记
   \node[nt,anchor=north west,text width=15.6cm] at (0,-2.86)
-    {bit0 $=$ 列（$d_0$，列 $+1$）、bit1 $=$ 行（$d_1$，行 $+8$）——\textbf{行身份只由值编号决定，与 lane 无关}；
+    {bit0 $=$ 列（$d_0$，列 $+1$）、bit1 $=$ 行（$d_1$，行 $+8$）——quad 内 $\mathrm{lane}\bmod4$ 不决定行；
+     完整行号还由 $\mathrm{lane}/4$ 决定行组，不能概括为与 lane 无关。
      $\mathrm{lane}\bmod4$ 决定的是列片段（每条 lane 2 列，4 条 lane 覆盖一个 $n8$ atom 的 8 列）。
      rowcol 视图实测 $\mathrm{nrow}=2$、$\mathrm{ncol}=16$（$D{=}64$、$B_r{=}128$，式~\eqref{eq:25-rowcol-num}）：
      寄存器内先做 16 列归约，再由此处两次蝶形补上跨 lane 的 4 个片段。};

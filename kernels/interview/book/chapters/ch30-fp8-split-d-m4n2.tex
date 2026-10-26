@@ -646,7 +646,7 @@ m4n2 的 occupancy 已被 255 寄存器上限限制在 1 CTA，加深 stage 没�
     \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=10.96cm, minimum height=1.48cm, inner sep=1pt, align=center, text width=10.90cm, font={\fontsize{5.7}{7.1}\selectfont }] at (11.95,-9.302) {};
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkGreen!70!black} }] at (6.653,-8.824) {step 3 $\cdot$ 复用 P roundtrip barrier};% w=10.595
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (6.653,-9.163) {P 写读 SMEM roundtrip 自带的 syncthreads 顺带发布 sum 写};% w=10.595
-    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (6.653,-9.502) {finalize\_row\_sum\_m4n2：$\ell$ = $\ell$$\cdot$scale + $\Sigma$(自己, peer)------省 2 次 barrier};% w=10.595
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (6.653,-9.502) {finalize\_row\_sum\_m4n2：$\ell$ = $\ell$$\cdot$scale + $\Sigma$(自己, peer)------复用后净省 1 次 barrier};% w=10.595
     \draw[tkPurple, line width=0.8pt, dashed, -{Stealth[length=2.2pt,width=1.8pt]}] (1.078,-1.786) -- (1.54,-1.848) -- (1.54,-1.91);
     \draw[black!75, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (10.01,-1.54) -- (10.626,-1.54);
     \draw[black!75, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (13.552,-1.54) -- (14.168,-1.54);

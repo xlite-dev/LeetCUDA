@@ -18,9 +18,9 @@ thread block cluster；它的 Tensor Core 退回 warp 级同步指令
 \texttt{hgemm\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}tn} 组合了新旧两代机制：搬运用 Hopper 的 TMA 协议，
 计算用 Ampere 时代的 mma.sync + ldmatrix，两者靠 mbarrier 的 full/empty 双屏障
 阵列解耦。这个组合恰好回答了一个面试高频问题：warp specialization 的收益
-到底来自搬运端还是计算端？本章实测（14.6~节）给出答案，仅升级搬运端与同步协议、
-计算指令一条不动，2048$^3$ HGEMM 即从 104.66 提升到 164.64 TFLOPS
-（PRO 5000，$1.57\times$）。
+到底来自搬运端还是计算端？本章实测（14.6~节）显示，保持同一 mma 指令族并升级搬运端与同步协议后，
+2048$^3$ HGEMM 从 104.66 提升到 164.64 TFLOPS（PRO 5000，$1.57\times$）。
+对照同时调整了 BK、stage 数与 warp 组织，因此该比值属于整体方案，不是严格的单变量因果分解。
 
 \textbf{源码区间}：kernel 主体 \texttt{hgemm\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}tn}@L1874 位于
 hgemm.cuh L1859--2100；common.cuh L467--517
@@ -667,8 +667,8 @@ kernel & ms/iter & TFLOPS \\
 \end{tabular}
 \end{center}
 
-同一颗 GPU、同一个 mma 指令、同规模 tile（128$\times$128），仅把搬运端换成
-TMA + mbarrier + warp specialization，即得 $1.57\times$。加速来源分解：
+同一颗 GPU、同一个 mma 指令族、同规模 tile（128$\times$128），采用 TMA + mbarrier + warp specialization 后得 $1.57\times$。
+由于 BK、stage 数与 warp 组织也随实现改变，该比值是整体方案收益；其中与搬运/同步直接相关的机制包括：
 （1）producer/consumer 分工后，consumer 循环里不再有 gmem 地址算术与
 cp.async 提交指令，发射槽全部留给 ldmatrix 与 mma。（2）TMA 单线程提交
 替代 256 线程的逐线程搬运，地址/OOB 全部在 descriptor 里预计算。
@@ -700,7 +700,7 @@ $8192^3$ 规模下 TMA+MMA+WS 组合把纯 MMA 基础实现（第~\ref{ch:11}~�
 （BLK\_SW=1）后 f16 累加路径从 0.81x 提升到 0.94x，L2 局部性的收益与上文
 2048$^3$ 的结论一致，且两配置在该批输入下 Max Err 为 0；这不代表 f16 累加无精度损失
 （本章自述 $K{=}256$ 的 f16 累加误差 $1.9\times10^{-3}$，第~\ref{ch:11}~章同机为
-$1.5\times10^{-2}$——两章的输入幅值差 64 倍（本章压到 $[-0.25,0.25]$），这两个数只能
+$1.5\times10^{-2}$——两章测试输入幅值相差 4 倍（ch11 为 $[-1,1]$，本章为 $[-0.25,0.25]$，单个乘积的幅值尺度相差约 16 倍），这两个数只能
 各自按本章口径读，不能用来比较两个 kernel 谁更准）。
 
 \section{实践经验与考据说明}

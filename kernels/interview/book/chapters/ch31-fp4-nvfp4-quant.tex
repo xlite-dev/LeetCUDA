@@ -484,8 +484,8 @@ $\pi(j)=(j\&\sim31)+(\mathrm{loc}/8)\cdot2+((\mathrm{loc}\%8)/2)\cdot8+
 $t\to t$ 直接对齐（\texttt{fp4\_pscale.cuh} L523--524）；置换补偿只
 发生在 K 与 P 两侧。
 
-置换只改存储位置，不改逻辑语义。但有两类操作按列位置取语义，必须
-过一遍 $\pi^{-1}$：
+置换只改存储位置，不改逻辑语义。按本章定义，$\pi(j)$ 就是存储列 $j$ 对应的原 token；
+因此 mask/bias 要经 $\pi$ 恢复原 token 位置，而不是 $\pi^{-1}$：
 \begin{itemize}[itemsep=0pt,topsep=2pt]
   \item \textbf{masking}：causal/kv-tail 谓词必须用
         $pos=kv\_tile\cdot B_c+kv\_perm32(col)$ 判定。上游 SA3 对原始
@@ -761,8 +761,8 @@ NVFP4 的 $1\times16$ microscaling 块如何配平 e2m1 与 ue4m3 两级尺度�
     \draw[black!75, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (11.612,-9.071) -- (12.32,-9.071);
   \end{tikzpicture}
   \caption{kv\_perm32 的 32 列窗口双射与 perm-aware masking。置换让
-  QK 的 C fragment 列直接匹配 PV 的 A 操作数布局；mask/bias 必须经
-  $\pi^{-1}$ 回到原始 token 位置判定。\label{fig:31-3}}
+  QK 的 C fragment 列直接匹配 PV 的 A 操作数布局；按本章“存储列 $j$ 对应原 token $\pi(j)$”的定义，
+  mask/bias 必须经 $\pi$ 回到原始 token 位置判定。\label{fig:31-3}}
 \end{figure}
 
 \FloatBarrier
@@ -859,8 +859,8 @@ fp4 前处理与 prefill 阶段绑定，decode 回 fp8/fp16 路径。
         stage$\ge$1 才出现，必须 \texttt{make\_smem\_ptr}（31.4.6 节）。
   \item \textbf{0/0 NaN}：全零块 $s=0$，除法前必须特判倒数取 0
         （L293/L460）；全 masked 组、pad 列都会触发。
-  \item \textbf{masking 不 perm-aware}：置换存储后 causal 谓词忘了过
-        $\pi^{-1}$，max\_abs 直接 3.3 级别（上游 SA3 的真实 bug）。
+  \item \textbf{masking 不 perm-aware}：置换存储后 causal 谓词把存储列 $j$ 直接当原 token，
+        而不是按本章定义经 $\pi(j)$ 恢复，max\_abs 直接 3.3 级别（上游 SA3 的真实 bug）。
   \item \textbf{SF 写序不 match atom}：SF offset 公式与
         \texttt{BlockScaledConfig} 不一致时数据看起来\textbf{差不多对}但
         精度大幅劣化。SF 错位是尺度级错误，不是噪声级。

@@ -467,13 +467,13 @@ dot\_vec4 & 0.04155 & 807.53 GB/s \\
 24\,\mu$s（HBM 口径）甚至更少（L2 口径）。实测 42 $\mu$s 由另一个因素决定：
 $G = N/256 = 16384$ 个 block 各做一次 \texttt{atomic\allowbreak{}Add\allowbreak{}(y)}。把总时长按
 原子次数摊开，得到\textbf{等效}同址原子吞吐 $42\,\mu s / 16384 \approx 2.6\,\mathrm{ns/op}$；
-这个数由总时长反推，不能单独当因果证据。真正的判据是上面三行等时对比：流量差 2 倍
-而时间不变，说明上限已不在访存，而在每个 block 一次的全局原子串行化。
-dot\_vec4 把访存指令数降为 $1/4$（字节数不变），总时长却完全不变，正是因为访存
-早已不是短板。改进方向：把每 block 一次全局原子改成两级 kernel，先让
+这个数由总时长反推，不能单独当因果证据。三行等时对比说明流量差 2 倍而时间不变，
+可排除 DRAM 带宽是唯一瓶颈，并与同址原子瓶颈一致；但共同的固定开销或发射限制也可造成等时，
+仍需用减少 $G$ 的 A/B 实验闭合归因。dot\_vec4 把访存指令数降为 $1/4$（字节数不变），
+总时长却完全不变，同样只说明访存指令优化没有触及当前限制。改进方向：把每 block 一次全局原子改成两级 kernel，先让
 每 block 写出自己的和（$G$ 个地址，无冲突），再起一个小 kernel 归约 $G$ 个数；
 或 block 内先 smem 累积再少次原子，atomic 次数从 $G$ 降到
-$\lceil G/K \rceil$，时间随之线性下降。
+$\lceil G/K \rceil$；若原子确为瓶颈，耗时应随原子数下降。
 
 \begin{figure}[H]
 \centering
@@ -512,9 +512,9 @@ $\lceil G/K \rceil$，时间随之线性下降。
   \node[anchor=west, font=\scriptsize] at (7.05, -2.1) {时间};
   \node[note, anchor=north west] at (0.4, -2.35)
     {同一时间里数据搬运只需 24 $\mu\mathrm{s}$ $<$ 42 $\mu\mathrm{s}$
-     $\Rightarrow$ 瓶颈是同址原子的串行吞吐，不是带宽};
+     $\Rightarrow$ 可排除纯带宽模型；原子归因仍需 A/B};
 \end{tikzpicture}
-\caption{全局原子串行化的量化证据：$G=16384$ 个 block 的 atomicAdd 全部汇入同一地址 y 的 L2 原子单元窄队列逐格串行（2.6 ns/op，共约 42 $\mu$s），长于 dot 本身的数据流时间（约 24 $\mu$s）。}
+\caption{全局原子开销的等效量化口径：$G=16384$ 个 block 的 atomicAdd 全部汇入同一地址 y。把总耗时按 $G$ 均摊为 2.6 ns/op，长于 dot 本身的数据流时间（约 24 $\mu$s）；等时结果排除纯带宽模型，但原子队列的因果归因仍需减少 $G$ 的 A/B 实验。}
 \label{fig:2-3}
 \end{figure}
 

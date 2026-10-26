@@ -258,7 +258,7 @@ scale 的寻址依据。
 逐行查（$m<M$ guard 处理尾 tile），per-block 时按全局 $m/128$、
 $n/128$ 取块级 scale：$k_{BN}{=}256$ 的 tile 横跨两个 B 块，
 整 tile 一个标量的写法会取错 scale 块（34.5.2~节）。
-B 侧对称。\texttt{if constexpr} 保证未选中的分支完全不占运行时指令。
+B 侧对称，$n<N$ guard 同样必需，M/N 尾部都不能越界读 scale。\texttt{if constexpr} 保证未选中的分支完全不占运行时指令。
 
 \textbf{第三步，f32$\to$bf16 转换。}\texttt{convert\_type} 用
 \texttt{NumericArrayConverter} 把 64 个 f32 整块转 bf16，全程寄存器内完成，
@@ -268,7 +268,7 @@ B 侧对称。\texttt{if constexpr} 保证未选中的分支完全不占运行�
 \texttt{SM90\_U32x4\_STSM\_N}（\texttt{stmatrix}）从寄存器直写 O staging
 smem，\texttt{fence\_view\_async\_shared} + \texttt{\_\_syncthreads} 之后
 \texttt{tid=0} 发 TMA store。M/N 尾 tile 靠 TMA store 的 OOB 行裁剪，
-epilogue 不需要任何尾部分支。唯一要 guard 的就是 scale 查表（第一步），
+epilogue 不需要任何尾部分支。唯一要 guard 的就是 scale 查表（第二步），
 因为 scale 数组本身没有 padding。
 
 \begin{figure}[H]
@@ -301,8 +301,8 @@ epilogue 不需要任何尾部分支。唯一要 guard 的就是 scale 查表（
 \end{tikzpicture}
 \caption{epilogue 数据流。整个反量化只在\textbf{scale 查表乘回}一步发生——
 这是式~\ref{eq:34-fold-rc} 把全部 scale 移出主循环的直接收益：MMA 循环
-跑的是纯 e4m3 语义，epilogue 每元素额外开销只有一次乘法加一次查表
-（per-block 时查表索引是一次 $128$ 整除，由编译器强度削减成移位）。}
+跑的是纯 e4m3 语义，epilogue 每元素需查 $\delta_{a,m}$ 与 $\delta_{b,n}$ 两组 scale，
+可先算其乘积再乘 $C$，共两次查表和两次乘法（per-block 时索引进制整除可由编译器强度削减成移位）。}
 \label{fig:35-epilogue}
 \end{figure}
 
@@ -351,8 +351,8 @@ $128^3$/s3 上 WS 稳定快 $2.6\%\sim2.9\%$（412.1 vs 400.4 @4096$^3$、
 $74\%$ 提到 $81\%$，WS 换来的重叠不再构成瓶颈。
 
 收益不像 attention 场景那样单边。判断仍然成立：WS 的收益来自发射与消费的
-重叠度，加上寄存器再分配的空间；GEMM 的发射路径本来就短（每 tile 只有
-4 个 K-tile 的 TMA），重叠收益有限。
+重叠度，加上寄存器再分配的空间；GEMM 的发射路径本来就短（每个 $BK{=}128$ stage 含 4 个 k-slice，
+TMA 按 stage 装载，K-tile 数为 $K/BK$ 而非固定 4），重叠收益有限。
 
 \section{C++ API 与 bench 接线}\label{sec:35-api}
 
@@ -549,11 +549,11 @@ kernel，而 bf16 没有 f16 累加这个档位（bf16 输入只能 F32 累加�
 64$\times$64、128$\times$64 这类小 tile 里选择，选中 128$\times$64 一档
 （832~$\mu$s，是 256$\times$128 快 kernel 的 1.4 倍耗时）。
 
-换调用方式也改变不了结果：用 \texttt{cublasLtMatmulAlgoGetHeuristic} 遍历
-完整算法池（top-8，64~MB workspace），bf16/F32acc 最快只有 191.7~T
+换调用方式也改变不了结果：用 \texttt{cublasLtMatmulAlgoGetHeuristic} 取回
+top-8 候选（64~MB workspace），bf16/F32acc 最快只有 191.7~T
 （256$\times$64 tile），fp16/F32acc 最快 193.1~T，八条候选全部
-是 \texttt{cutlass\_80\_*}。这不是 legacy \texttt{cublasGemmEx} 的
-heuristic 偏保守：库在这张卡上收录的 32F-acc kernel 只有这些。
+是 \texttt{cutlass\_80\_*}。这说明当前 heuristic 返回的最快候选没有 Blackwell 专用路径；
+top-8 不是完整算法池枚举，不能据此进一步断言库中绝无其它实现。
 
 硬件本身没有瓶颈。本书第~\ref{ch:24}~章的 CuTe HGEMM 用 F32 累加在
 同一张卡、同一 shape 实测 243~T（fp16 输入；Blackwell tensor core

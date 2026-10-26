@@ -518,8 +518,9 @@ $\ell$ 转 f16 后，STSM 把每个 $128\times64$ 分量暂存进复用的 QKV s
 的约束：下一批的 STSM 要覆写同一段 smem，必须等 in-flight TMA 读完
 （\texttt{tma\_store\_wait<0>} 只对发射线程有意义，配套
 \texttt{\_\_syncthreads} 让全 CTA 对齐；末批免等直接收尾）。对比 WS
-教学版的逐元素寄存器直写 gmem：指令数从每线程 $32C$ 次标量 store
-降到 VCPB 次 STSM + 一次 bulk 提交。}
+教学版的逐元素寄存器直写 gmem：每个 $128\times64$ half 输出 chunk 每线程有 32 half（64B），
+需要 4 条 STSM（每条 16B/thread），故指令数从每线程 $32C$ 次标量 store
+降到 $4C$ 次 STSM；TMA store 则按 VCPB 批次合并提交。}
 \label{fig:26c-epilogue}
 \end{figure}
 
@@ -663,8 +664,8 @@ $D\ge384$：最优回落到 $(2,2)/(2,3)$，$(3,3)$ 在 $D{=}384$ 降至 136.0
 
 \subsection{机理：寄存器 spill 决定 stages 的最优值}
 
-stages 影响性能的通道不是 smem（式~\eqref{eq:26c-smem} 的 64--96\,KB
-离上限都远），而是寄存器溢出。用
+stages 影响性能的主要通道不是 smem 驻留数（式~\eqref{eq:26c-smem} 的 64--96\,KB
+都未超 99KB，且这些档位本就只能驻留 1 个 CTA；其中 96KB 已接近上限），而是寄存器溢出。用
 \texttt{nvcc -Xptxas -v} 对各组合显式实例化取证：
 
 \begin{center}

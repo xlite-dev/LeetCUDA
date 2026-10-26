@@ -306,7 +306,7 @@ $k{=}1\to4$ 灰度渐深），2 个 M-atom 各持独立累加器 $d[0]/d[1]$。}
      $= 32$ 个 f16x2 $= 64$ half};
   \node[draw, rounded corners=2pt, fill=gray!8, font=\scriptsize, align=left,
         anchor=north west] at (10.15, -2.85)
-    {\textbf{epilogue}：每线程 4 次写覆盖\\4 个 8$\times$8 象限——每象限 1 条\\uint32（f16x2），分别写\\(row, col)、(row+8, col)、\\(row, col+8)、(row+8, col+8)\\（hgemm.cuh L1843--1856）};
+    {\textbf{epilogue}：每个 $(m,g)$ 内 4 次写覆盖\\4 个 8$\times$8 象限——每象限 1 条\\uint32（f16x2），分别写\\(row, col)、(row+8, col)、\\(row, col+8)、(row+8, col+8)\\（每线程另有 $2\times8$ 组循环）};
 \end{tikzpicture}
 \caption{WGMMA m64n128k16 输出 $D$ 的寄存器分布（13.3.3 节，式~\ref{eq:13-d-layout}）：
 左为 $64\times128$ 全局缩略（4 warp $\times$ 8 组 $g$，每块 16 行 $\times$ 16 列）；
@@ -631,9 +631,9 @@ $m$ 个 $64 \times B\sb{K}$ 子块，K-step 每次前进 \texttt{kWgmmaK=16} 个
 由于 TMA 已把 tile 按 128B swizzle 写好、descriptor 声明了同一档 swizzle，
 这里没有任何软件 swizzle 计算。对比第~\ref{ch:12}~章手工 XOR 的
 \texttt{swizzle\allowbreak{}<64>\allowbreak{}()} 调用，swizzle 从软件层下沉到 descriptor 层的
-收益直接体现在这里。B 的物理存储是 $[B\sb{N}, B\sb{K}]$ row-major（TMA 直写形态），WGMMA
-以 K-major 逻辑视图 $[B\sb{K}, B\sb{N}]$ 读取，转置由 128B swizzle 的地址
-重映射在硬件层完成，无需软件搬运。
+收益直接体现在这里。B 的物理存储是 $[B\sb{N}, B\sb{K}]$ row-major（TMA 直写形态），
+其第 $n$ 行就是逻辑 $B$ 的第 $n$ 列；WGMMA 以 K-major descriptor 直接读取该布局，
+不需要转置。128B swizzle 只负责行内 16B chunk 的地址置换，与主序/转置语义无关。
 
 \lstinputlisting[linerange={1775-1788},firstnumber=auto,breakatwhitespace=true,
   title={hgemm.cuh L1775-1788（C3/C4：commit+wait 全收，arrive empty 释放 stage）}]{../hgemm.cuh}
@@ -643,8 +643,8 @@ $m$ 个 $64 \times B\sb{K}$ 子块，K-step 每次前进 \texttt{kWgmmaK=16} 个
 
 写回按式~\ref{eq:13-d-layout} 的映射展开（写回四象限的双层循环见 L1843--1856）：
 每线程持 $d[2][8][4]$ 共 64 个
-\texttt{uint32}，4 次写覆盖 4 个 $8 \times 8$ 象限，每次写一个
-\texttt{uint32} $=$ 2 个相邻列的 half。128 线程 $\times$ 128 half $= 16384 =
+\texttt{uint32}；在每个 $(m,g)$ 内用 4 次写覆盖 4 个 $8 \times 8$ 象限，每次写一个
+\texttt{uint32} $=$ 2 个相邻列的 half，故每线程合计 64 次写。128 线程 $\times$ 128 half $= 16384 =
 128 \times 128$，恰好铺满一个 C tile。源码 NOTE 处提示了进一步优化方向
 （R$\to$S$\to$G 走 128-bit 写回），第~\ref{ch:14}~章会看到它的实现。
 

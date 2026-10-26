@@ -182,7 +182,7 @@ histogram 要维护 $y[a\sb i] \mathrel{+}= 1$：读 $y[a\sb i]$、加 1、写�
 串行化的代价可以直接建模：设一次全局原子延迟约 $\tau$（ch02 实测约
 2.6 ns），若全部 $N$ 次插入都落在同一个 bin，吞吐上限为 $1/\tau$；
 若 $B$ 个 bin 均匀承压，理论上限约 $B/\tau$ op/s。真实情形介于两者之间，
-且 L1 侧的 atomic 路径与请求排队会进一步压低实测值：
+且 atomic 路径与请求排队会进一步压低实测值；具体到 L1 队列或 L2 slice 的归因需要 NCU 证据：
 \S\ref{sec:ch03-perf} 的 bench 会看到，4M 次 256-bin 插入实测有效带宽只有
 26.7 GB/s，比相邻的 elementwise\_add（2654 GB/s）低两个数量级。
 这也解释了为什么生产级实现都要做 smem 私有化：先在 block 内用 smem 直方图
@@ -221,11 +221,11 @@ histogram 要维护 $y[a\sb i] \mathrel{+}= 1$：读 $y[a\sb i]$、加 1、写�
   \node[box, text width=5.2cm, draw=tkRed, fill=tkFillRed] (key) at (11.6, -0.95)
     {实测 26.7 GB/s（vs elementwise\_add 2654，低两个数量级）\\
      均摊 0.15 ns/op；理想 42 $\mu$s vs 实测 0.63 ms\\
-     （$\approx$ 15$\times$ 缺口：L1 侧原子路径排队）};
+     （$\approx$ 15$\times$ 缺口：原子路径与排队，层级待 NCU 核验）};
   \draw[ar] (5.8, 1.3) -- (5.8, -0.46);
   \draw[ar] (11.6, 1.3) -- (11.6, -0.24);
 \end{tikzpicture}
-\caption{256-bin 直方图的原子冲突热力图（bin 排成 $8\times32$ 网格示意）：4M 次 atomicAdd 从左侧注入；上格均匀分布时各 bin 等承压（灰 40），下格尖峰分布时少数 bin 形成深灰热点（灰 90）、其余近乎空转（灰 10）——bin 分布决定同址串行化程度。下方案框汇总实测：26.7 GB/s 比 elementwise\_add 的 2654 GB/s 低两个数量级，均摊 0.15 ns/op；按\textbf{256 bin 理想并行 + 同址 2.6 ns 串行}估算理想 42 $\mu$s，实测 0.63 ms（约 15 倍缺口来自 L1 侧原子路径排队）。}
+\caption{256-bin 直方图的原子冲突热力图（bin 排成 $8\times32$ 网格示意）：4M 次 atomicAdd 从左侧注入；上格均匀分布时各 bin 等承压（灰 40），下格尖峰分布时少数 bin 形成深灰热点（灰 90）、其余近乎空转（灰 10）——bin 分布决定同址串行化程度。下方案框汇总实测：26.7 GB/s 比 elementwise\_add 的 2654 GB/s 低两个数量级，均摊 0.15 ns/op；按\textbf{256 bin 理想并行 + 同址 2.6 ns 串行}估算理想 42 $\mu$s，实测 0.63 ms。约 15 倍缺口说明理想模型遗漏了原子路径与排队成本，具体归因到 L1 队列或 L2 slice 仍需 NCU 证据。}
 \label{fig:3-3}
 \end{figure}
 
@@ -259,8 +259,8 @@ rsqrt 中反复出现。
 
 \texttt{FLOAT4\allowbreak{}(x[idx])} 是 common.cuh 的宏：把任意标量引用重解释为
 float4 引用，编译为一条 \texttt{LDG.E.128}；\texttt{FLOAT4\allowbreak{}(y[idx]) =\allowbreak{} reg\_\allowbreak{}y}
-同理是一条 \texttt{STG.E.128}。四个 fmaxf 是 4 条独立的寄存器指令，它们
-与 load/store 的比例说明：向量化后指令瓶颈从访存侧转移到了计算侧。
+同理是一条 \texttt{STG.E.128}。四个 fmaxf 是 4 条独立的寄存器指令。向量化改变了指令构成，
+但指令条数或占比本身不能判定 kernel 瓶颈已转向计算；本章实测仍主要受 L2/互联搬运能力限制。
 
 \begin{figure}[H]
 \centering
@@ -388,23 +388,24 @@ histogram (256 bins) & 0.62860 & 26.69 GB/s & 按读 4B/元素计，原子另计
 （以上为与 ch02 相同口径的 bench 复测结果。）三条观察：
 
 L2 命中让实测超过 HBM 理论值。1862 GB/s $>$ 本机 GDDR7 理论 1344 GB/s：
-数据 16 MB 从未离开 96 MB 的 L2，实测是 L2 到 SM 的带宽。ch01 提醒过 $BW$
+数据 16 MB 可装入 96 MB 的 L2；在本 bench 的 warmup 与稳定工作集下保持高命中，
+实测是 L2 到 SM 的带宽。ch01 提醒过 $BW$
 要用数据实际所在层级的带宽，这里是它的实证；若要测 HBM 口径，应把 $N$
-放大到数倍于 L2。
+放大到数倍于 L2。容量关系本身并不保证数据永不换出。
 
 vec4 与标量在 L2 口径下几乎打平（1862 vs 1866、2654 vs 2612，差异在
 $\pm 2\%$ 噪声内）。因为此时瓶颈在 L2/互联的搬运能力而非指令发射：
-4 倍的指令缩减没有释放空间。但不要据此断言 vec4 无用：当数据集大于 L2
-（HBM 直读）、或 block 数受 grid 限制（指令发射成为瓶颈）时，vec4 的
-1/4 指令量与 4 倍 ILP 优势才会显现。工程结论是先看清瓶颈层级，再选优化手段。
+4 倍的指令缩减没有释放空间。但不要据此断言 vec4 无用：当指令发射或请求吞吐成为瓶颈时，
+vec4 的 1/4 指令量与 4 倍 ILP 可能带来收益；工作集大于 L2 并不单独保证这一点，
+仍需按层级实测。工程结论是先看清瓶颈层级，再选优化手段。
 
 histogram 比 elementwise 慢两个数量级（26.7 vs 2654 GB/s，
 0.63 ms vs 0.019 ms）。4M 次原子均摊每次约 $0.63\,\mathrm{ms}/4.2\mathrm{M}
 \approx 0.15\,\mathrm{ns}$，单看均摊延迟并不差（256 个 bin 提供了并行度，
 反而低于 ch02 同址全局求和的 2.6 ns/op）。慢在总量：按 256 bin 理想并行
 + 同址 2.6 ns 串行的模型，理想耗时约 $4.2\mathrm{M}/256 \times 2.6\,\mathrm{ns}
-\approx 42\,\mu$s，实测 0.63 ms 慢了约 15 倍，缺口来自 4M 个原子请求在
-L1 侧 atomic 路径的排队与串行化。优化方向即 \S\ref{sec:ch03-math} 的 smem
+\approx 42\,\mu$s，实测 0.63 ms 慢了约 15 倍，说明理想模型遗漏了原子路径与排队成本；
+具体到 L1 队列或 L2 slice 的归因仍需 NCU 证据。优化方向即 \S\ref{sec:ch03-math} 的 smem
 私有化：全局原子次数 $N \to G \times B$（$G$ 为 block 数、$B$ 为
 bin 数）。注意本配置 $T{=}B{=}256$ 时 $G \times B = N$，次数并不下降，
 收益来自 smem 原子远快于全局原子与写热点消除，预期可把 0.63 ms 压低一个

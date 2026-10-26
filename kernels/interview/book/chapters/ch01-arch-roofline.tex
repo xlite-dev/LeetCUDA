@@ -48,8 +48,8 @@ occupancy 公式：
 shared memory $\to$ blocks/SM；block 大小 $\to$ blocks/SM。
 
 前两条给出判断标准，即比较算术强度与机器的转折点；第三条是容易被忽略的瓶颈：
-latency-bound，它甚至与算法无关，纯粹是并行度不够、延迟藏不住的问题。要看懂
-这三条判据，需要先弄清两件事：机器的算力与带宽从哪里来
+latency-bound，即并行度不足或依赖链过长，使访存与指令延迟无法被隐藏；它并非与算法无关。
+要看懂这三条判据，需要先弄清两件事：机器的算力与带宽从哪里来
 （\S\ref{sec:ch01-sm}），以及算术强度怎么算（\S\ref{sec:ch01-math}）。
 
 \section{SM 内部结构与内存层级}\label{sec:ch01-sm}
@@ -578,8 +578,8 @@ GFLOP（运算量），FLOPS（每秒）是速率单位；该段实为 Roofline 
   寄存器、少用 smem，但 GEMM 类 kernel 恰恰要用大 thread tile 与多级
   smem 流水换性能；低 occupancy + 高 ILP 常优于高 occupancy + 低 ILP。
   occupancy 是手段，roofline 位置才是目标。
-\item \textbf{用小数据集标定带宽}：16 MB 的输入永远命中 96 MB 的 L2，
-  测出的带宽是 L2 的（ch03 实测 1862 GB/s $>$ HBM 理论 1344 GB/s）。
+\item \textbf{用小数据集标定带宽}：16 MB 的输入可装入 96 MB 的 L2；在本 bench 的 warmup 与稳定工作集下可保持高 L2 命中，
+  测出的带宽是 L2 的（ch03 实测 1862 GB/s $>$ HBM 理论 1344 GB/s），但容量关系本身不保证永不换出。
   标定 HBM 带宽时数据集至少要数倍于 L2 容量。
 \item \textbf{混淆 FLOP 与 FLOPS}：AI 的分子是运算量（FLOP），roofline
   纵轴是速率（FLOP/s）；单位写错，量纲就全乱了（参见

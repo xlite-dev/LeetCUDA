@@ -5,12 +5,13 @@
 \section{本章导读}
 
 第~\ref{ch:36}~章把 NVFP4 的数值语义冻结了：e2m1 的格、ue4m3 的 SF、
-512\,B 原子布局、14.4\% 的误差界，以及两侧量化 kernel 的逐 bit 行为。
+512\,B 原子布局、14.4\% 的 RMS 误差估计，以及两侧量化 kernel 的逐 bit 行为。
 本章写主 GEMM kernel：把 $A_4,B_4^{\top}$ 与两组 SF 送入 sm\_120 的
 \textbf{blockscaled \texttt{mma.sync}}，由硬件消费 level-2 的 scale。
 
 整章的主线是：FP4 GEMM 的主 kernel 比 FP8 的更简单，也更难
-写。简单是因为 epilogue 只剩一个乘法（SF 由 MMA 硬件消费，不需要按块查表），
+写。简单是因为 epilogue 只剩一级 scale 折回（level-2 的 SF 由 MMA 硬件消费，不需要按块查表；
+level-1 的 $s_A,s_B$ 仍需按坐标读取并乘回），
 难是因为多出来一条 SF 数据流：4 条 TMA、两套 smem 原子、一个把数据与 SF
 成对的 zip 张量，以及一类 FP8 版本里不存在的死锁陷阱
 （37.7~节）。
@@ -39,9 +40,9 @@ scale 的消费方式 & epilogue 里两次 fp32 查表乘 & level-2 由 MMA 硬�
 每 stage 的 SF smem & 无 & $(1+BN/128)\cdot512\,\mathrm{B}$（SFA + SFB） \\
 TMA 通道 & 2（A、B） & 4（A、B、SFA、SFB） \\
 O staging 约束 & $\le$ 整个 A+B 区 & $\le$ 整个 A+B+SF 区 \\
-$BK$ 的自由度 & 可调（SW128 限定为 128） & \textbf{固定 64}（= MMA 原子 K 宽 + 一个 SF 原子） \\
-$BM$ 的自由度 & 可调（16 的倍数） & \textbf{固定 128}（= SF 原子的行块） \\
-epilogue 的数学 & 反量化两步 & 只有 $s_{A,m}\cdot s_{B,n}$ 一步 \\
+$BK$ 的自由度 & 可调（SW128 限定为 128） & \textbf{本书固定 64}（教学简化；CuTe/硬件也支持其它 BK） \\
+$BM$ 的自由度 & 可调（16 的倍数） & \textbf{本书固定 128}（对齐单个 SF 原子的行块） \\
+epilogue 的数学 & 反量化两步 & level-1 的 $s_{A,m},s_{B,n}$ 折回 \\
 \bottomrule
 \end{tabular}
 \caption{FP8 与 NVFP4 主 kernel 的逐项对照。两个固定值是本章的技术核心：
@@ -210,10 +211,10 @@ $16+8 = 24$\,B/线程，SF 侧 8\,B/线程——SF 的字节数达到数据的 $
         K 方向切 4 个 k-slice（原子 $K{=}32$），$BK$ 加大只是让
         k-slice 变多；而 FP4 的 SF 语义要求 K 以 16 为一组，
         \texttt{.scale\_vec::4X} 要求一条指令恰好消费 4 组，即 $K{=}64$。
-        $BK$ 一旦大于 64，同一个 stage 里就会出现多个 SF 块，
-        SF 的 smem 原子与 TMA box 的对齐关系立即被破坏。所以
-        \textbf{FP4 的 K-tile 只能等于 MMA 的 K 宽}：一个 K-tile
-        一步 MMA，没有 k-slice 内层循环（37.5~节）。
+        本书教学实现把 $BK$ 固定为 64，让每个 stage 只含一个 SF 块，
+        从而简化 SF 的 smem 原子与 TMA box 对齐，并消去 k-slice 内层循环（37.5~节）。
+        这不是 CuTe/硬件的唯一合法组合：官方 CuTe DSL 的 FP4 tile 列表还包含 $BK{=}128/256$，
+        可由多个 SF 原子组成更宽的 stage。
   \item $BM \equiv 128$：等于 SF 原子的行块（\texttt{Blk\_MN}）。
         SF 的 TMA box 必须与 smem 原子的顶层 size 相等，$BM<128$ 时
         box 填不满一个行块，CuTe 在编译期直接报 TMA size 不等价，
@@ -431,7 +432,7 @@ gemm(tiled_mma,
 一条 MMA 的完整 A 操作数（数据 $+$ 局部的 scale），然后沿着 K 与
 tile 维遍历。
 
-一跳一 stage：K 方向没有内层循环。$BK{=}64$ 等于原子的 K 宽，
+本书采用一跳一 stage：K 方向没有内层循环。$BK{=}64$ 等于原子的 K 宽，
 所以每个 stage 的 K 方向只对应一次 atom 调用；\texttt{gemm} 里
 剩下的展开只是 tile 维：\texttt{AtomLayoutMNK}$=(4,2,1)$ 把
 $128\times BN$ 的输出切成每 warp $32\times BN/2$ 的块，$BN{=}128$ 时
@@ -486,16 +487,17 @@ MMA 块相对 TMA 块更窄，这意味着\textbf{流水线对 TMA 延迟的容�
 \label{fig:37-pipeline-timing}
 \end{figure}
 
-\section{Epilogue：只剩一项乘法}\label{sec:37-epilogue}
+\section{Epilogue：只剩一级 scale 折回}\label{sec:37-epilogue}
 
 \begin{lstinputlisting}[linerange={820-853},firstnumber=auto,
   title={fp4\_gemm.cuh L820-853（epilogue：level-1 折回 $\to$ bf16 $\to$ STSM $\to$ TMA store）}]{../fp4_gemm.cuh}
 \end{lstinputlisting}
 
 与第~\ref{ch:35}~章 FP8 的 epilogue（四步、含按块查 $\delta$）相比，
-这里的反量化只剩一个乘法：$C_{m,n} \leftarrow C_{m,n}\cdot
+这里只剩一级 scale 折回：$C_{m,n} \leftarrow C_{m,n}\cdot
 s_{A,m}\cdot s_{B,n}$，其中 $s_A,s_B$ 是量化阶段算好的行/列级 fp32 数组
-（式~\ref{eq:36-fold}）。level-2 的 SF 已经在 MMA 里乘掉了。
+（式~\ref{eq:36-fold}）。仍需两次查表和两次乘法（可先合并 $s_As_B$ 再乘 $C$），
+简化的是少了一级按块 scale，而不是只需一次乘法。level-2 的 SF 已经在 MMA 里乘掉了。
 这不是软件省掉的，是由硬件完成的：一条
 \texttt{m16n8k64} 内部完成了 4 个 K 组各一次的 $A\cdot\mathrm{SF}_A$ 与
 $B\cdot\mathrm{SF}_B$。
@@ -645,7 +647,7 @@ kernel-only 行直接调 \texttt{fp4\_gemm\_tma\_fwd}（跳过量化），
 $A_4/B_4^{\top}$/SFA/SFB 全是量化 kernel 的产物。
 
 本轮实测遇到过：kernel-only 行第一次跑出
-\texttt{relFro}$=49$（相对误差 4900\%）这种物理上不可能的读数，
+\texttt{relFro}$=49$（相对误差 4900\%）这种远超合理量化噪声、明确指向实现错误的读数，
 原因就是它读了一整块未初始化的显存。修复是在
 \texttt{FP4\_RUN\_KERNEL} 宏的第一行先跑一次完整的
 \texttt{fp4\_gemm\_bf16} 把 workspace 填好，之后才计时纯 kernel。
@@ -749,8 +751,8 @@ $6\sim40\%$}——库默认档（$128^2$/s4，柱取口径：4096$^3$ 取扫描�
 8192$^3$ 取默认档实测 476\,T）
 只快 $6\%$，宽 tile 档才快 $40\%$，
 远不是比特数暗示的 $2\times$；原因是本 kernel 走 bf16 输出、f32
-累加，且 $BK{=}64$ 让 K 方向的算术强度下降（表~\ref{tab:37-fp8-vs-fp4}
-的两条固定约束）；其二，\textbf{宽 tile（$128{\times}256$）是本章最大
+累加，且 $BK{=}64$ 使每 stage 计算量与搬运掩蔽窗口缩短、循环和 SF 开销占比上升；
+GEMM 的 FLOPs/byte 中 BK 本身会约掉，不能把它说成算术强度下降；其二，\textbf{宽 tile（$128{\times}256$）是本章最大
 的单项收益}（$+31\%$，37.9.4~节），也是 \texttt{--bench} 标准行在
 $MNK\ge4096$ 上的自适应选择；其三，\textbf{E2E 口径下 FP4 反超
 FP8}（4096$^3$: 408 vs 187\,T；8192$^3$: 467 vs 315\,T）——量化的
@@ -966,15 +968,13 @@ $128\times256$/s6，其余回落 $128^2$/s4，\texttt{--bench} 的 FP4 标准
         这一条消除了 SF 是否需要 swizzle 的疑问：
         512\,B 原子本身就是为一次 32-bit LDS 取 4 个 SF 设计的，
         smem 只是原样拷贝。
-  \item \textbf{$BM{=}128$、$BK{=}64$ 不是调参，是唯一合法解}：
-        二者分别等于 SF 原子的行块与 K 覆盖范围，也就是 SF 的
-        TMA box 的尺寸。tile 空间因此被固定成
-        $128\times BN\times64$，$BN$ 成了唯一参数，
-        而它恰好是收益最大的那个（$+31\%$）。
-  \item \textbf{epilogue 只剩一个乘法}：level-2 的 SF 由 MMA 硬件消费，
-        level-1 按 $(m,n)$ 折回。反量化的复杂度从按块查表
-        （FP8）降到一次标量乘（FP4），代价全部前移到指令形态与
-        数据通路上。
+  \item \textbf{$BM{=}128$、$BK{=}64$ 是本书教学实现的固定选择，不是 CuTe/硬件的唯一合法解}：
+        二者分别对齐单个 SF 原子的行块与 K 覆盖范围，使 TMA box 与 stage 最简单。
+        官方 CuTe DSL 还支持 $BK{=}128/256$ 的多 SF 原子 stage；本书把 tile 空间固定成
+        $128\times BN\times64$，$BN$ 成了唯一参数，而它恰好是收益最大的那个（$+31\%$）。
+  \item \textbf{epilogue 只剩一级 scale 折回}：level-2 的 SF 由 MMA 硬件消费，
+        level-1 按 $(m,n)$ 折回。反量化从按块查表（FP8）简化为一级 scale，
+        但 $s_A,s_B$ 的读取与乘回仍在，不能计成只有一次乘法。
   \item \textbf{死锁教训}：WS 版本里 \texttt{empty} 的 init 是
         消费者线程数，而消费者的第一次 arrive 依赖 producer 的第一次
         TMA，环闭合。修复是让消费者在进入循环前把 \texttt{empty}
@@ -986,7 +986,8 @@ $128\times256$/s6，其余回落 $128^2$/s4，\texttt{--bench} 的 FP4 标准
         $1.39\times$。\texttt{--bench} 标准行自 2026-09-28 起按
         $MNK\ge4096$ 自适应取宽档、其余回落 $128^2$/s4。比特数减半
         只换来 $1.4\times$：\textbf{存储收益与算力收益不是一回事}，
-        $BK$ 被固定在 64 让 K 方向的算术强度下降是主要原因。
+        $BK$ 被固定在 64 主要缩短每 stage 的计算与掩蔽窗口、提高循环和 SF 开销占比；
+        GEMM 的 FLOPs/byte 中 BK 会约掉，不能归因于算术强度下降。
   \item \textbf{量化开销}：重构后 $B$ 侧量化从 194\,GB/s 提到
         792\,GB/s；量化成本 109\,$\mu$s（4096$^3$）是加性的、不随
         tile 档变化，保守档下占 E2E 的 26\%，宽档下占 32\%。

@@ -263,7 +263,7 @@ $\sigma_\varepsilon$ 因子，下文只保留一阶。
         2\sigma_\varepsilon^2$，而 $C$ 自身能量
         $\mathrm{Var}[C] = K\cdot\mathrm{E}[(ab)^2]$，相对误差
         $\sqrt{2}\,\sigma_\varepsilon \approx 5\%$（实测 3.6\%，
-        34.6~节；舍入误差并非全程满幅均匀，实测略低于上界）。
+        34.6~节；这是独立均匀模型的 RMS 估计而非确定上界，舍入误差也并非全程满幅均匀）。
         注意相对误差\textbf{与 $K$ 无关}：误差与信号都以 $\sqrt{K}$
         增长，抵消掉了；
   \item \textbf{同号数据}（全正矩阵、经 ReLU 的激活）：信号项同号累加，
@@ -487,7 +487,7 @@ per-block $\times$ per-block（WS） & 0.036 & WS 数值等价 \\
 局限，这也是 34.4.3~节误差模型的印证：噪声由 binade 下沿的相对 ULP $2^{-3}$ 决定，不由粒度
 决定，粒度决定的是最坏块的表现）。WS 与非 WS 则逐 bit 数值等价：两者的
 MMA 序列相同（第~\ref{ch:35}~章），差异纯粹在执行协议。$0.036$ 落在
-34.4.3~节上界 $\sqrt{2}\,\sigma_\varepsilon\approx5\%$ 之内，与模型一致。
+34.4.3~节 RMS 估计 $\sqrt{2}\,\sigma_\varepsilon\approx5\%$ 之下，与模型一致。
 
 \section{小结}
 
