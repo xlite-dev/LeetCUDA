@@ -27,6 +27,9 @@ echo "Missing characters: 0"
 PAGES=$(pdfinfo book.pdf 2>/dev/null | awk '/^Pages:/{print $2}')
 echo "OK: book.pdf (${PAGES:-?} pages)"
 
+echo "== 跨文件 lint（kaogu 引文 / 跨章串表 / 图-码索引）"
+python3 scripts/lint_book.py || { echo "LINT FAILED（见上，修完再提交）"; exit 1; }
+
 # 中间文件清理（.tex/.pdf 由 .gitignore 规则管理）
 rm -f book.aux book.log book.out book.toc
 echo "cleaned intermediates"

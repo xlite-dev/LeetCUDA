@@ -807,7 +807,7 @@ Sk $=$ 2 较 Sk $=$ 1 提升约 $+20\%$（156.9 $\to$ 188.6），两级 K 流水
   本书（warmup$=$5/iters$=$20 两轮复现）不可比。正文一律标注复测口径。
 \end{kaogu}
 
-\begin{kaogu}[F1·注释过时]{L873 模板参数注释\textbf{head dim: v1 only 64}}
+\begin{kaogu}[F1·注释过时]{flash\_attn.cuh L873 模板参数注释\textbf{head dim: v1 only 64}}
   模板注释写 \texttt{kHeadDim // head dim: v1 only 64}，但同 kernel 的
   static\_assert（L895--896）明确接受 64 与 128，swizzle\_fa（L859--870）、
   smem 占用表（L826--834 的 D$=$128 列）、P0/P1/P2 的 kTmaChunks 分支与
