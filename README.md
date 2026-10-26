@@ -11,7 +11,7 @@
   </div>
 </div>
 
-[leetcuda-pdf]: https://github.com/xlite-dev/LeetCUDA/releases/download/v4.1.2/leetcuda-20261023.pdf
+[leetcuda-pdf]: https://github.com/xlite-dev/LeetCUDA/releases/download/v4.1.3/leetcuda-20261026.pdf
 [leetcuda-readthedocs]: https://leetcuda.readthedocs.io/en/latest/
 
 It covers **Tensor/CUDA Cores**, [200+ CUDA kernels](leetcuda-pdf), [HGEMM][leetcuda-pdf] achieving `98%~100%` of cuBLAS TFLOPS, [FP8 & FP4 GEMM][leetcuda-pdf], and [Flash-Attention][leetcuda-pdf] built on Tensor Cores with pure MMA PTX. The LeetCUDA's open-source book is now available at [©️LeetCUDA.pdf][leetcuda-pdf] (600+ pages) and online docs at [leetcuda.io (zh, en)][leetcuda-readthedocs]. 🔥🔥🔥
