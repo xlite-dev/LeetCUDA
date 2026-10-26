@@ -193,8 +193,9 @@ fp16 HGEMM 同吞吐 proxy（$\approx$243~T；不是 bf16 kernel）的口径为 
 \section{Part VI：FP8/FP4 量化 attention 明细}
 
 Part VI（第~\ref{ch:27}--\ref{ch:33}~章）的性能口径与前三篇不同：基准是
-PyTorch SDPA（FA2 后端，$D>256$ 自动落 MATH），数字为 \texttt{ffpa\_attn.bench}
-CLI 复测（B1 H32 Hkv8 N=8192，fp16，PRO 5000，2026-09-16；tol 分档
+PyTorch SDPA；本 bench 的 \texttt{--sdpa-backend auto} 在 $D\le256$ 时选择
+FA2，更大 $D$ 选择 MATH。数字为 \texttt{ffpa\_attn.bench} CLI 复测
+（B1 H32 Hkv8 N=8192，fp16，PRO 5000，2026-09-16；tol 分档
 fp8 5e-2 / fp4 dense 0.15、causal 0.70）。speedup 一律对 SDPA 同形状。
 列内数字取自各自所在章节的原始记录，跨章对比时注意口径。
 
@@ -213,7 +214,7 @@ fp8 5e-2 / fp4 dense 0.15、causal 0.70）。speedup 一律对 SDPA 同形状。
 \endlastfoot
 第28 & fp8 aux 链（quantize/smooth） & D=128, N=8192 & 聚合带宽 $\approx$1.04~TB/s & 纯带宽接近峰值（HBM 78\%）；smk/smv 零开销 \\
 第29 & fp8 persist-D & self D$\in$[64,224] & 1.26--1.70$\times$ & D=192 正确性 bug 见 29.7.1；tensor pipe 77\% \\
-第30 & fp8 split-D / M4N2 & D=320 self / causal & 3.76$\times$ / 3.31$\times$ & D=512 2.98$\times$（参照换 MATH，见 33.6.1 归因）；causal 大 D allclose 临界失败为已知 ESS 特性（hybrid 解法） \\
+第30 & fp8 split-D / M4N2 & D=320 self / causal & 3.76$\times$ / 3.31$\times$ & D=320/D=512 参照均换 MATH（本 bench auto，归因见 33.6.1）；causal 大 D allclose 临界失败为已知 ESS 特性（hybrid 解法） \\
 第31 & fp4 量化链（fused） & D=128 N=8192 & fused 单 launch 1.4$\to$0.3~ms & hadamard 零开销（bitwise 一致） \\
 第32 & fp4 persist-D & self D$\in$[64,256] & 1.49--2.11$\times$ & 同点 D=256 比 fp8 快 1.64$\times$（对照见 33.6.2）；mxfp8 PV 变体时间代价 +28--39\%（精度兜底） \\
 第33 & bench 矩阵与 knob & D=128 self & fp4 528.7~T（2.44$\times$） & fp4 vs fp8 1.38$\times$；粒度 knob 代价 1.7--2.7\%；Sage3 对照 causal rel\_err 0.59 vs hybrid 0.14（528.7T 为 \texttt{bench\_fp4.py} 16K 口径，非 CLI N=8192） \\

@@ -54,9 +54,11 @@ attention 的完整调用形态是：
 
 aux 链的输出是一套按主 kernel 的消费方式预先排布的 workspace，与 $Q,K,V$ 的
 数值质量无关：$Q_8/K_8$ 保持 $(N,D)$ 行主序（TMA 按行块加载）；$V$ 被量化成
-$(D,N)$ 列主序的 $V_8^{\top}$（PV MMA 的 B 操作数直接要列数据）；scale 张量按
-kernel 内的 fragment 寻址模式排布（28.3.4~节）。前处理链的输出布局由主
-kernel 的消费方式决定，这也是要与第~\ref{ch:29}~章对照阅读的原因。
+逻辑 $(D,N)$ 行主序的 $V_8^{\top}$，即 $N$ 维连续，元素序与原 $V(N,D)$ 按列主序
+存放一致（但这里是量化输出，不是零拷贝视图；PV MMA 的 B 操作数直接要列数据）；
+scale 张量按 kernel 内的 fragment 寻址模式排布
+（28.3.4~节）。前处理链的输出布局由主 kernel 的消费方式决定，这也是要与
+第~\ref{ch:29}~章对照阅读的原因。
 
 \subsection{一次 forward 的 aux kernel 清单}
 
@@ -146,8 +148,10 @@ softmax 输出的行和恒为 1：$P\mathbf{1} = \mathbf{1}$。于是
   \mathrm{amax} = \max\!\big(|\mathrm{max}-\mathrm{mean}|,\ |\mathrm{min}-\mathrm{mean}|\big),
   \label{eq:28-smv-amax}
 \end{equation}
-中心化后的残差近似对称分布，取双侧残差最大值能让 e4m3 的对称编码域
-$[-448,448]$ 恰好被两侧同时铺满。
+中心化把残差移到零附近，取双侧残差绝对值的最大值可保证两侧都不被裁切。
+量化后至少一侧触到 $\pm v_{scale\_max}$（默认 448）；只有两侧绝对值上限
+相等时才同时触到，否则另一侧按自身幅度占比使用编码域。均值化并不保证
+残差分布对称，因此不能说 $[-v_{scale\_max},v_{scale\_max}]$ 总被两侧同时铺满。
 
 发射域系数 $v_s = \mathrm{amax}/v_{scale\_max}$ 中的 $v_{scale\_max}$ 默认
 448（e4m3 满量程）。当 V 采用 per-channel 粒度且 PV 累加在 f16 域
@@ -556,8 +560,10 @@ K 侧的 per-thread 变体（\texttt{quantize\_fp8\_perthread\_k\_kernel}，L778
 
 \subsection{$V^{\top}$ 转置量化：smem staging}\label{sec:28-quant-vt}
 
-V 的量化 kernel 多一个转置职责：读 $(N,D)$ 行主序、写 $(D,N)$ 列主序。若直接
-全局转置，两侧必有一侧非合并访存。解法是经典 smem staging：
+V 的量化 kernel 多一个转置职责：读原 $V(N,D)$ 行主序、写逻辑
+$V^{\top}(D,N)$ 行主序（$N$ 连续；元素序与原 $V$ 按列主序存放一致，
+但这里是物化转置，不是零拷贝视图）。若直接全局转置，两侧必有一侧
+非合并访存。解法是经典 smem staging：
 
 \begin{lstlisting}[
   caption={$V^{\top}$ 转置量化的 staging 结构（\texttt{quantize\_fp8.cuh} L173--207）},
@@ -601,8 +607,8 @@ __global__ void quantize_fp8_vt_kernel(
 层面检查这对开关必须同开同关（注释：launcher-enforced pairing），错配即静默数值
 错误。per-channel 变体（\texttt{quantize\_fp8\_vt\_perchannel\_kernel}，L555 起）
 在同一框架下改用 28.3.2~节的 $(bh, D)$ scale 与均值剥离。图~\ref{fig:28-vt-staging}
-把这条行主序读 $\to$ smem 转置 $\to$ 列主序写的数据通路画出来，
-并标出两个同名却不同源的 16。
+把这条原 $V$ 行主序读 $\to$ smem 转置 $\to$ 逻辑 $V^{\top}$ 行主序写
+（$N$ 连续）的数据通路画出来，并标出两个同名却不同源的 16。
 
 \begin{figure}[H]
 \centering
@@ -639,7 +645,7 @@ __global__ void quantize_fp8_vt_kernel(
   \node[axl,anchor=south] at (7.575,0.06) {smem staging $(kBlockRows,\ kDChunk{+}kPad)$};
   \node[axl,anchor=north,text width=4.4cm,align=center] at (7.575,-2.85)
     {写按行、读按列（转置落在 smem）；斜纹 $=kPad{=}16$ 的 16\,B 行内边距};
-  % 右：gmem (D, N_{kv,pad}) 列主序（绿青 = 输出 gmem）
+  % 右：gmem (D, N_{kv,pad}) 行主序，N 连续（绿青 = 输出 gmem）
   \foreach \rr in {0,...,4} {
     \foreach \cc in {0,...,4} {
       \fill[colorx4!12] (11.9+\cc*0.55,-\rr*0.55) rectangle (11.9+\cc*0.55+0.54,-\rr*0.55-0.54);
@@ -654,9 +660,9 @@ __global__ void quantize_fp8_vt_kernel(
   \foreach \cc in {0,2,4} {
     \draw[-{Stealth},thick] (11.98+\cc*0.55,-0.08) -- (11.98+\cc*0.55,-2.67);
   }
-  \node[axl,anchor=south] at (13.425,0.06) {gmem $(D,\,N_{kv,pad})$ 列主序};
+  \node[axl,anchor=south] at (13.425,0.06) {gmem $(D,\,N_{kv,pad})$ 行主序（$N$ 连续）};
   \node[axl,anchor=north,text width=4.4cm,align=center] at (13.425,-2.85)
-    {列向量写出（$V^{\top}$ 的 fp8 列）；尾列 pad 供 TMA 16\,B 对齐};
+    {按原 $V$ 列（即 $V^{\top}$ 行）写出 fp8；尾列 pad 供 TMA 16\,B 对齐};
   % 段间箭头（tkBlue = 数据流）
   \draw[-{Stealth},thick,tkBlue] (3.42,-1.375) -- (5.78,-1.375);
   \node[axl,anchor=south,align=center] at (4.6,-1.32) {128\,B 行 $\to$ 槽\\（含 pad 列）};
@@ -676,7 +682,8 @@ __global__ void quantize_fp8_vt_kernel(
 \texttt{quantize\_fp8\_vt\_kernel}）。左：gmem 上的 $(N,D)$ 行主序 tile 按 128-bit
 向量载入；中：smem staging tile 写按行、读按列——转置只在 smem 内发生，两侧
 gmem 访存都保持合并；斜纹是 $kPad{=}16$ 的行内边距，让转置读出的 32-bit 组
-错开 bank；右：$(D,N_{kv,pad})$ 列主序写出，尾列 pad 为 TMA 16\,B 对齐服务。
+错开 bank；右：逻辑 $(D,N_{kv,pad})$ 按行主序写出（$N$ 连续，元素序与原 $V$
+按列主序存放一致，但这里是物化转置），尾列 pad 为 TMA 16\,B 对齐服务。
 \textbf{$kPad$ 与 $N_{kv,pad}$ 的 16 来源不同}：前者是 smem 侧的 bank 考量，
 后者是 gmem 侧的对齐要求，恰好同值而非同一个量。}
 \label{fig:28-vt-staging}
@@ -960,9 +967,9 @@ $V$ 不改 $O$、WHT 两端同乘正交阵；右侧的 outlier 幅度示意给�
     \node[tl, text=tkGreen!80!black, font=\bfseries\fontsize{4.6}{5.2}\selectfont] at (0.35,-4.32)
       {$\Rightarrow$ 输出每行减同一均值，最后加回 $\bar{v}$ 即精确还原};
     \node[ib, text width=3.85cm] at (8.00,-3.70)
-      {\textbf{\textcolor{tkBlue}{残差对称化（sage recipe）}}\\
+      {\textbf{\textcolor{tkBlue}{对称 amax（sage recipe）}}\\
        amax $=$ max$(|$max$-\mu|, |$min$-\mu|)$\\
-       中心化后对称 $\to$ e4m3 域两侧同时铺满\\
+       双侧不裁切；amax 对应点触到 $\pm v_{scale\_max}$\\
        \textcolor{gray!80!black}{f16 PV 累加路径：v\_scale\_max 压缩留裕量}};
     \draw[mi] (10.45,-3.13) rectangle (15.30,-4.70);
     \node[mn, text=gray!85!black] at (10.55,-3.26) {减均值前后残差分布（示意）};
@@ -1115,7 +1122,8 @@ knob 化设计建立在这个落差上：精度敏感场景上调粒度，几乎
         （C-fragment 行对 $\{r,r+8\}$ 在 128 行块内的 $8\times8$ 索引；
         零 shuffle 反量化，28.3.4~节。）
   \item $V^{\top}$ 量化为什么要 smem staging？pad 16 列起什么作用？
-        （读行主序写列主序，两侧都要合并；TMA 16B 对齐 + bank 错开。）
+        （读原 $V$ 行主序、写逻辑 $V^{\top}$ 行主序且 $N$ 连续，两侧都要合并；
+        TMA 16B 对齐 + bank 错开。）
   \item NHD 布局怎么零拷贝进量化 kernel？（布局描述符 + 平面基址式
         \ref{eq:28-plane-base}；输出统一 BHND。）
   \item 两阶段列均值相比 atomics 方案牺牲了什么、换来了什么？
