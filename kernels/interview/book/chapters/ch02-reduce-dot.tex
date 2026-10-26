@@ -379,9 +379,11 @@ ch06 的 norm（预变换平方）都是这个模板的具体实例。dot\_vec4�
 \lstinputlisting[linerange={273-303},firstnumber=auto,
   title={base.cuh L273-303（dot vec4：向量化加载版点积）}]{../base.cuh}
 
-注意它的守卫只有 \texttt{idx < N} 而 FLOAT4 一次读 4 个元素，$N$ 不是
-4 的倍数时最后一个线程会越界读，这一隐患与处理策略见
-\S\ref{sec:ch02-kaogu} 与 ch03。
+注意这里的 \texttt{FLOAT4(a[idx])} 是\textbf{无条件}执行的：\texttt{idx < N} 只写在三元
+表达式里把乘积清零，并不覆盖这次读。grid 为 $(N+255)/256$、每个 block 覆盖 256 个
+元素，所以\textbf{$N$ 不是 256 的倍数时}$\texttt{idx} \ge N$ 的那些线程会整段越界读；
+$N$ 是 4 的倍数并不够（例如 $N = 520$ 仍会读到 \texttt{a[520..767]}）。这一隐患与
+处理策略见 \S\ref{sec:ch02-kaogu} 与 ch03。
 
 \section{图示}
 
@@ -528,13 +530,16 @@ block\_reduce\_all 的流程（仅 warp0 归约、tid0 写出）。同文件 L17
 冗余二次归约 $\to$ lane0 经 shfl 广播}。
 \end{kaogu}
 
-\begin{kaogu}[F1]{L278--284 dot\_vec4 边界守卫不足（越界读隐患）}
+\begin{kaogu}[F1]{L285--289 dot\_vec4 边界守卫不足（越界读隐患）}
 注释\textbf{该版本默认输入地址满足 float4 对齐；最适合 N 按 4 对齐的场景}，但
-实现守卫只有 \texttt{idx < N}，而 \texttt{FLOAT4\allowbreak{}(a[idx])} 一次读 4 元素：
-$N$ 非 4 倍数时最后一个线程读取 \texttt{a[idx.\allowbreak{}.\allowbreak{}idx+3]} 的尾部越界（本测试
-$N = 512$ 恰为 4 倍数故 PASS）。同文件 elementwise\_add\_vec4（L358--374）
-用 \texttt{(idx + 3) < N} 主路径 + 标量尾部处理，是安全范式，建议三处
-vec4 kernel（dot/relu/eadd）统一。relu\_vec4 有同样问题，详见 ch03。
+实现把两次 \texttt{FLOAT4} 读放在守卫之外（L285--286），\texttt{idx < N} 的三元只作用于
+乘积（L287--289）。grid 为 $(N+255)/256$、block 64，每 block 覆盖 $64\times4=256$
+个元素，因此\textbf{$N$ 不是 256 的倍数时}尾部线程整段越界读；$N$ 是 4 的倍数
+并不足够（$N = 520$ 即为一例）。本测试 $N = 512$ 之所以 PASS，是因为 512
+同时是 256 的倍数、grid 恰好铺满，而不是“4 的倍数”这一条。同文件
+elementwise\_add\_vec4（L358--374）用 \texttt{(idx + 3) < N} 主路径 + 标量尾部
+处理，是安全范式，建议三处 vec4 kernel（dot/relu/eadd）统一。relu\_vec4 的读
+在守卫之内（L332--334），只有 4 元素跨尾问题，比本条窄，详见 ch03。
 \end{kaogu}
 
 \section{常见坑}

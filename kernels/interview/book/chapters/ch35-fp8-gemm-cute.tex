@@ -83,13 +83,13 @@ $B^{\top}$ 行主序就是 $B$ 列主序：量化阶段已经完成转置
   title={fp8\_gemm.cuh L366-400（Fp8GemmTraits：tile/smem/MMA 全参数）}]{../fp8_gemm.cuh}
 \end{lstinputlisting}
 
-四个设计决定，每个都有讲究（前三项在 tile 参数化后都变成了约束而不是
+四个设计决定（前三项在 tile 参数化后都变成了约束而不是
 常数，见本节末）：
 
 \textbf{第一，$BK{=}128$ 是固定的，$BM/BN$ 可选，默认 $128\times256$/s2。}
 fp8 是 1 字节元素，$BK{=}128$ 的行恰好 128\,B：\texttt{Layout\_K\_SW128\_Atom}
 的一个 swizzle 周期铺满整行，Bank 冲突分析与第~\ref{ch:23}~章完全一致，
-只是行宽 $\times$ 元素字节里的元素字节从 2 变 1。这也是 fp8 tile 与
+只是行宽（$BK\times$ 元素字节）恒为 128\,B，变的只是元素字节（2$\to$1）。这也是 fp8 tile 与
 fp16 tile 的本质差异：同样 128\,B 行宽，fp8 的 $BK$ 是 fp16 的两倍，K 方向
 每 tile 覆盖 128 个元素：MMA 单次装载的 K 维更深，k-slice 数更少。$BM,BN$ 与流水
 深度则是可调的：35.8.4~节的扫描给出 $128\times256$ 配 2 级流水是本卡最快档，
@@ -101,7 +101,7 @@ fp16 tile 的本质差异：同样 128\,B 行宽，fp8 的 $BK$ 是 fp16 的两�
 48\,KB，launcher 里 \texttt{cudaFuncSetAttribute} opt-in
 （第~\ref{ch:26b}~章同款）。PRO 5000 的 opt-in 上限是 99\,KB（不是 Hopper 的
 227\,KB）：$128\times256$ 几何下 96\,KB 已是极限，3 级要 144\,KB 装不下；
-换回 $128\times128$ 则每 stage 32\,KB、需要 3 级才用满同一笔预算。
+换回 $128\times128$ 则每 stage 32\,KB、需要 3 级才用满同一份预算。
 几何 $\times$ 深度共用一块 smem，两者此消彼长，35.8.4~节那张扫描表量的
 就是这件事。
 
@@ -519,7 +519,7 @@ $128\times256$ grid 只有 128 个 CTA（35.8.4~节末的波次量化）；
 上面实测表的参照系 cuBLAS BF16 只有 163.5~T（4096$^3$），对一张
 fp16 HGEMM 实测能跑 246~T 的卡来说明显偏低。按硬件能力，
 240~T 才是正常预期。用 \texttt{nsys} 抓同一条 bench 的 kernel 名，
-答案一目了然（下表读数取自 nsys 会话，与 35.8~节表格差 $<1\%$）：
+答案就在 kernel 名里（下表读数取自 nsys 会话，与 35.8~节表格差 $<1\%$）：
 
 \begin{center}
 \footnotesize
@@ -534,7 +534,7 @@ bf16 + \texttt{COMPUTE\_32F} & 161.8 & \texttt{cutlass\_80\_tensorop\_bf16\_s168
 \end{tabular}
 \end{center}
 
-三个事实链。第一，三条路径都确实在跑 tensor core（\texttt{s16816gemm}
+三个事实。第一，三条路径都确实在跑 tensor core（\texttt{s16816gemm}
 即 \texttt{mma.sync.m16n8k16}，163~T 也远超 CUDA core 上限），bf16 的
 F32 累加语义没有被打折执行。第二，慢的瓶颈是\textbf{精度档}而不是数据
 类型：fp16 只要切到 \texttt{COMPUTE\_32F} 就从 235.6 降到 163.9，与 bf16
@@ -649,7 +649,7 @@ $B_8^{\top}$ 布局落盘的，运行时只做激活量化：\texttt{\_b\_offlin
 $A_8+\delta_a$；RoPE 之后再量化也是同理。上游那个写回动作被复用，bf16
 激活的物化与独立的量化 kernel 一起消失，这段开销理论上可以降到零。
 
-代价是这种融合没有通用写法：每层的前置算子组合因模型而异：有的是
+代价是这种融合没有通用写法：每层的前置算子组合因模型而异，有的是
 \texttt{norm}$\to$qkv，有的是 \texttt{norm}$\to$rope$\to$qkv，有的
 把 qkv 与 gate/up 的输入合并成一次 fused MLP，还有的用 QK-Norm（量化点
 要挪到 norm 之后）。融合位置、amax 的归约域、甚至量化粒度都要跟着
@@ -661,7 +661,7 @@ kernel 的东西，本教学案例因此只把 GEMM 侧（本部分）做到生�
 
 $128^3$/s3 是最自然的一档：tile 与 smem 上限对齐、三级流水是能
 容纳的最大整数级数、SW128 恰好铺满一行。但 tile 几何与流水深度共用同一块
-99\,KB 的 smem：$BN$ 每加一倍，每 stage 就多 16\,KB，能塞的级数随之下降。
+99\,KB 的 smem：$BN$ 每加一倍，每 stage 就多 16\,KB，能容纳的级数随之下降。
 哪一头收益更大只能实测，而扫描的结论正是 35.3~节里那个默认档
 （$128\times256$/s2）。扫描表既给出它的证据，也给出它并非普适的那个反例。
 

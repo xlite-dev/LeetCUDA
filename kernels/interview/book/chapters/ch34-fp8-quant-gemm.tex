@@ -270,8 +270,8 @@ $\sigma_\varepsilon$ 因子，下文只保留一阶。
         最坏情况下量化误差也可同向叠加，因此相对误差保持在单元素上界
         $2^{-4}$ 量级附近而不随累加长度继续下降；但 RNE 误差本身通常仍有正负，
         不能断言每项误差必然同号。
-        per-row/per-channel 粒度与离线校准（如 GPTQ/平滑旋转，
-        第~\ref{ch:28}~章同源思想）的原因。
+        这也是同号数据需要 per-row/per-channel 粒度与离线校准
+        （如 GPTQ/平滑旋转，第~\ref{ch:28}~章同源思想）的原因。
 \end{itemize}
 
 \paragraph{Max Err 是极值统计，不是误差上界} 单个 $C_{m,n}$ 接近零（正负
@@ -361,7 +361,7 @@ $K$ 是运行时 GEMM 维度，寄存器数组无法定长。两遍读的代价�
 
 写侧同样关键：量化输出是 8 个 e4m3 = 8\,B，用 \texttt{uint2} 一次写。注意
 这里\textbf{不能}凑成 16\,B（e4m3 是 1\,B 元素，8 元素只有 8\,B；要 16\,B 需要凑足
-16 个元素跨 lane 拼接，教学版不值得）。读 16\,B 写 8\,B，字节收缩 $2\times$，
+16 个元素跨 lane 拼接，教学版不这么做）。读 16\,B 写 8\,B，字节收缩 $2\times$，
 写带宽不是瓶颈。
 
 \subsection{A 的 per-block 量化：block 二级归约}
@@ -429,7 +429,7 @@ kernel 不走 TMA，越界补零必须自己做，但只要 amax 统计正确、
 零值不污染任何东西。pass 1 对每个 $n$（tid 步进 256，实际 128 个 $n$ 生效）
 扫 64 行累积 \texttt{samax[n]}，跨全部 K chunk 完成整列统计。
 
-scale 落盘段有一个微技巧，即 \texttt{samax} 原地改存 $\delta^{-1}$：
+scale 落盘段有一个小技巧，即 \texttt{samax} 原地改存 $\delta^{-1}$：
 pass 1 结束时 \texttt{samax[n]} 存的是 amax，写出
 $\delta_b[n]$ 之后立刻原地覆写成 $448/\mathrm{amax}$，pass 2 查表零成本，
 省一个 \texttt{inv\_s[128]} 数组与一次 \texttt{\_\_syncthreads}。per-col
@@ -442,8 +442,8 @@ $\delta_b[n_0/128]$，同样原地放进 \texttt{samax[0]}。
 
 pass 2 的散写循环：每个线程按 chunk 索引读 \texttt{tile[r][c8..c8+8]}，量化后
 写 \texttt{tile\_t[n][r]}：下标对调即转置。写出段换成 warp 视角：一个 warp
-负责一行 $n$，每笔迭代 32 个 lane 各写 1 个字节、拼成 32 B 连续事务
-（\texttt{kBKt}$=64$ 分两笔迭代写完，每 lane 共 2 B）；\texttt{k0+kk<K} 的 guard 处理 K 尾（该行末尾的
+负责一行 $n$，每次迭代 32 个 lane 各写 1 个字节、拼成 32 B 连续事务
+（\texttt{kBKt}$=64$ 分两次迭代写完，每 lane 共 2 B）；\texttt{k0+kk<K} 的 guard 处理 K 尾（该行末尾的
 越界字节不写出）。两个 \texttt{\_\_syncthreads} 分别保护
 tile$\to$tile\_t 的读写依赖与 tile\_t$\to$gmem 的下 chunk 覆写。
 

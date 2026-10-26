@@ -916,14 +916,17 @@ MMA 流水里。
 （3）绝对值口径为 fp16 累加（\texttt{f16.f16.f16.f16}）+ 本机 PRO 5000，与
 README 的 5090 口径不可直接比较。
 
-上述对照只覆盖手写版的三个配置；把 stage 数 $S$、block swizzle（BLK\_SW）与
-累加精度（F16Acc/F32Acc）全部扫开的全参数实测（
-\texttt{leetcuda\_\allowbreak{}bench\_\allowbreak{}sm120a.bin --bench --bench-all}，
-$M{=}N{=}K{=}8192$，fp16）：
+上述对照只覆盖手写版的三个配置。把 stage 数 $S$、block swizzle（BLK\_SW）与
+累加精度（F16Acc/F32Acc）全部扫开的那组数据属于第~\ref{ch:24}~章的 \textbf{CuTe
+实现}（\texttt{leetcuda\_\allowbreak{}bench\_\allowbreak{}sm120a.bin --bench --bench-all}，
+$M{=}N{=}K{=}8192$，fp16），列在这里只作同机同形状的参照，\textbf{不是本章这个
+手写 kernel 的数字}：本章 kernel 的三档配置在 $8192^3$ 上是
+119.7/124.6/127.3 TFLOPS（表~\ref{tab:ch11-perf}），量级约为 CuTe 版的一半，
+差距来自 pipeline 深度与寄存器编排，与 swizzle 本身无关，不要把两章的读数混用。
 
 \begin{table}[H]
 \centering
-\caption{HGEMM CuTe Swizzle 实测（RTX PRO 5000，M=N=K=8192，fp16）}
+\caption{第~\ref{ch:24}~章 CuTe 实现的 HGEMM 全参数实测（RTX PRO 5000，M=N=K=8192，fp16；\textbf{非本章手写 kernel}）}
 \label{tab:ch12-perf}
 \small
 \setlength{\tabcolsep}{4pt}
@@ -949,7 +952,7 @@ F16Acc 各行对比 cuBLAS 的 f16 累加（246.5 TFLOPS）：最低 0.99x、
 S=3 + BLK\_SW=1 达 1.08x，CuTe Swizzle 流水整体达到并小幅超过
 cuBLAS。F32Acc 各行对比 cuBLAS 的 f32 累加（164.2 TFLOPS）则大幅
 超越，最高 1.48x：同样的双缓冲与 swizzle 骨架，换成 f32 累加后
-相对 cuBLAS f32 的优势远大于 f16 档位。两个旋钮的收益方向一致：$S$ 从 2
+相对 cuBLAS f32 的优势远大于 f16 档位。两个可调参数的收益方向一致：$S$ 从 2
 加到 3、BLK\_SW 从 0 开到 1 都带来正收益（如 F16Acc 下 243.0$\to$250.2$\to$
 257.2$\to$265.9 TFLOPS 单调上行）。
 

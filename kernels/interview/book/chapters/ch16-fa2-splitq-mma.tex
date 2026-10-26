@@ -801,7 +801,7 @@ half$\leftrightarrow$float 整簇转换指令的收益大于 f32 累加器的寄
 开销。（3）SwizzleQ 相对 Pad 的边际改善很小（163.8 vs 163.5，$+0.2\%$），
 大 $N$ 下 swizzle 只微调 bank/wavefront 分布，不改变 compute-bound 本质。
 整体上该教学 kernel 为可读性牺牲了不少优化（约为 cuDNN 的
-0.55--0.71x），但 stages 流水、累加精度两个旋钮的收益方向与
+0.55--0.71x），但 stages 流水、累加精度两个可调参数的收益方向与
 生产级 FA 实现一致。
 
 \section{实践经验与考据说明}

@@ -8,7 +8,7 @@
 第~\ref{ch:28}~章把 fp16 输入变成了量化 workspace（$Q_8,K_8,V_8^{\top}$ 与
 scale 张量）；本章进入主 kernel，即文件 \texttt{sm\_120/persist\_d.cuh} 里的
 \texttt{persist\_d\_ws\_fwd\allowbreak{}\_cute\_fp8\allowbreak{}\_sm120}（sm\_120 warp-specialized
-persist-D，全文件 1036 行）。它是 ffpa-attn 全仓库工程密度最高的单个文件，
+persist-D，全文件 1036 行）。它是 ffpa-attn 全仓库实现最密集的单个文件，
 也是 Part VI 的核心章：第~\ref{ch:30}~章的 split-D / M4N2 与
 第~\ref{ch:31}--\ref{ch:32}~章的 fp4 家族都建立在它引入的机制之上。
 
@@ -242,7 +242,7 @@ f32 acc 路径无此约束。}
 \subsection{归约轴置换不变性与 reorg-free 打包}\label{sec:29-perm}
 
 softmax 产出的 $P$ fragment（QK MMA 的 C 布局）与 PV MMA 的 A 操作数布局
-不一致（29.4.4~节有完整布局推导）。传统解法按每 128 列 tile、每线程计为
+不一致（29.4.4~节有完整布局推导）。传统解法是按每 128 列 tile、每线程
 16 SHFL + 32 PRMT 的跨 lane 重排。
 
 数学出路是归约轴双射不变性。
@@ -258,7 +258,7 @@ A 操作数携带一个置换的 k 索引 $\pi$。V 侧
 两侧槽位对应同一真实 kv 位置即可。
 
 row-sum MMA（B 为全 1）在双射下也
-精确。这条原则在实现上就是一条数学等价：kernel 内的 16 次跨 lane shuffle
+精确。这条原则落到实现上就是一次等价替换：kernel 内的 16 次跨 lane shuffle
 换成了量化期的列置换。
 
 \section{设计与实现}
@@ -870,7 +870,7 @@ allclose 失败（fp16/bf16 双双 $\times$），而 D=64/128 全绿。定位过
 sm120 的计算层（int8 QK / fixed p\_scale / f8f8f16 PV），256T non-WS。
 其 NCU 结论（依赖链/发射受限，\texttt{math\_pipe\_throttle} 1.32 $\gg$
 \texttt{wait} 0.82）与深流水零收益的证伪记录，正好构成同一算法在不同
-装载协议下瓶颈漂移的对照。本节不展开，读者按需查阅仓库优化 RFC
+装载协议下瓶颈迁移的对照。本节不展开，读者按需查阅仓库优化 RFC
 （PC-16、附录 \#22）。
 
 \section{常见坑}

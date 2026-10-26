@@ -316,7 +316,7 @@ per-block（1）之间的工程折中点。}
 $V_8^{\top}$ 的存储布局是 flat $[B\cdot H_{kv}\cdot kD,\ N_{kv,pad}]$：行是
 $(bh, d)$、列是 kv 位置，尾列 pad 到 $N_{kv,pad}$ 以满足 TMA 16B 对齐（gmem
 列对齐与 28.4.5~节 smem staging 的 \texttt{kPad}=16 行内边距是两个独立的
-常数，只是恰好都取 16）。persist-D / split-D 家族还默认开启一个更深度的
+常数，只是恰好都取 16）。persist-D / split-D 家族还默认开启一个更深一层的
 变换：\textbf{列置换}（M4N2 家族默认关）。动机简述
 （完整推导在第~\ref{ch:30}~章）：attention kernel 需要把 softmax 的 P 字节
 \textbf{不经任何跨 lane shuffle} 直接打包进 PV MMA 的 A 操作数，代价是 A 操作数
@@ -547,9 +547,9 @@ $\{r,\,r{+}8\}$（2 行），行对经 \texttt{shfl\_xor}(amax, 16) 合并（行
 对照：per-token 要 128 个 scale（每行一个），per-block 只要 1 个；这个中间档
 换来 zero-shuffle 反量化（每线程 C-frag 的两行共享一个 scale），代价是 amax
 跨多行共享。行内再一分为二，每行两个线程各管半行，网格因此翻倍，冷输入的
-DRAM 延迟靠更多 in-flight warp 隐藏；行内两半与行对分别用 \texttt{shfl\_xor}
+DRAM 延迟靠更多 in-flight warp 隐藏。行内两半与行对分别用 \texttt{shfl\_xor}
 1 与 16 合并成组 amax，组 amax 与每个量化字节都和 1-thread/row 形态逐 bit
-一致，粒度变更不能隐式改变数值。
+一致。粒度变更不能隐式改变数值。
 
 还有一个实现细节是 scale 的写入下标：
 $g = (\text{seg\_row}/16)\cdot 8 + \text{seg\_row}\bmod 8$

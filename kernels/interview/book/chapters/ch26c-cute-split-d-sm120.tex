@@ -87,7 +87,7 @@ WS 教学版 (2,2) & 140.2 & 2.01$\times$ & 1.00$\times$ \\
 \texttt{setmaxnreg} 的寄存器再分配，收益大于成本。但 Split-D 的 O 累加器
 （$32 \times C$ 个 f32/线程，第~\ref{ch:19}~章寄存器占用）本来就把寄存器
 预算占用到 255 上限附近，
-\texttt{setmaxnreg} 腾不出多少寄存器，WS 的收益侧消失、成本侧全留，
+\texttt{setmaxnreg} 腾不出多少寄存器，WS 的收益消失、成本全留。
 这是大 $D$ 路线选 non-WS 的根本理由。
 
 \textbf{第二，tile 64$\times$64 的算术强度太低。}K/V 的一个
@@ -223,7 +223,7 @@ V 用 \texttt{U16x8\_LDSM\_T}（转置装载），O 写回用
 consumer，\texttt{tid=0} 在消费循环内联发射 TMA（发射指令本身不占独立
 warp 的时间片，只占少量指令槽）；tile 同步升到 128$\times$128，MMA warp
 数从 4 增至 8，算术强度随之提高。大 $D$ 下 O 累加器占满寄存器预算，
-\texttt{setmaxnreg} 腾不出寄存器，WS 的收益侧消失——non-WS 成为唯一选择。}
+\texttt{setmaxnreg} 腾不出寄存器，WS 的收益消失——non-WS 成为唯一选择。}
 \label{fig:26c-arch}
 \end{figure}
 
@@ -304,7 +304,7 @@ icache 与寄存器压力）内的 QK 相位：
 寄存器里切出本线程的 Q/K fragment，\texttt{gemm\_ss}（第~\ref{ch:25}~章
 工具）完成 LDSM + mma.sync 的 k-loop。10 个 chunk 循环下来
 $S = \sum_{d} Q_{[:,d]} K_{[:,d]}^\top$，正是第~\ref{ch:19}~章 19.3.2 节
-\textbf{精确、无权重}的分块分解在 CuTe 上的直接落地。
+\textbf{精确、无权重}的分块分解在 CuTe 上的直接实现。
 
 \textbf{L1066}：全线程 arrive \texttt{qk\_empty}，stage 归还。
 \textbf{L1072--1081}：\texttt{tid=0} 领先 $S_K$ 个 chunk 预取下一个
@@ -821,8 +821,8 @@ stages 实验的口径给出，消融矩阵留给 \S\ref{sec:26c-test} 的动手
 \begin{itemize}[itemsep=1pt]
   \item \textbf{Q：大 head\_dim 为什么选 non-WS 而不是 WS？}\\
         A：Split-D 的 O 累加器（$32{\times}C$ f32/线程）把寄存器占用到
-        255 上限，\texttt{setmaxnreg} 腾不出寄存器，WS 的收益侧（寄存器
-        再分配）消失、成本侧（producer 不产 FLOPs，MMA warp 数降低一半）
+        255 上限，\texttt{setmaxnreg} 腾不出寄存器，WS 的收益（寄存器
+        再分配）消失、成本（producer 不产 FLOPs，MMA warp 数降低一半）
         全留。D=128 场景两者性能相当（第~\ref{ch:26b}~章），大 $D$
         只剩 non-WS。
   \item \textbf{Q：$S_K{=}3,S_V{=}2$ 为什么不对称？}\\

@@ -607,14 +607,14 @@ L1374--1399），Step 5 的写回是 ch16 的原版方案，warp 内 shuffle 收
     {C0：256$\times$ arrive empty\_K[0..1]；256$\times$ arrive empty\_V[0]};
   \node[draw=tBlue, fill=white, align=center, text width=7.0cm, inner sep=1pt,
         minimum height=0.52cm] at (294,157)
-    {P1：TMA K[0]$\to$st0；TMA K[1]$\to$st1（预取 $\mathrm{Sk}{-}1=1$ 个 tile）};
+    {P1：TMA K[0]$\to$st0（只预取 $\mathrm{Sk}{-}1=1$ 个 tile；K[1] 由 P2 首轮补上）};
   \node[draw=tGreen, fill=white, align=center, text width=7.0cm, inner sep=1pt,
         minimum height=0.47cm] at (886,155) {wait full\_Q（一次，Q 就位）};
   \node[anchor=west, text=tGreen, font=\tiny\bfseries] at (616,189)
     {---- iter $k = 0$ ----};
   \node[draw=tBlue, fill=white, align=center, text width=7.0cm, inner sep=1pt,
         minimum height=0.82cm] at (294,214)
-    {P2（每轮 $k$）：TMA V[k]$\to$v0，随后 TMA K[k+2]$\to$st（覆盖已被 consumer 释放的空槽）};
+    {P2（每轮 $k$）：TMA V[k]$\to$v0，随后 TMA K[k+1]$\to$st（覆盖已被 consumer 释放的空槽）};
   \node[draw=tBlue, fill=tkFillBlue, align=center, text width=7.0cm, inner sep=1pt,
         minimum height=0.60cm] at (294,276)
     {producer 领先 consumer 至多 $\mathrm{Sk}{-}1$ 个 K tile / $S_v$ 个 V tile};
@@ -640,10 +640,10 @@ L1374--1399），Step 5 的写回是 ch16 的原版方案，warp 内 shuffle 收
     {overlap：计算 tile $k$ 与搬运 tile $k{+}1$ 完全重叠 —— 搬运延迟被计算掩盖};
   \node[draw=tBlue, fill=white, align=center, text width=15.2cm, inner sep=1pt,
         minimum height=0.58cm] at (590,535)
-    {K[2] 装载窗口 $=$ QK[0] $+$ softmax[0] $+$ PV[0]（empty\_K[0] 在 QK[0] 结束即释放）};
+    {K[k+1] 装载窗口 $=$ 整轮 $k$（首轮 st1 由 C0 预热放行，之后由 empty\_K 在 QK 末释放）};
   \node[draw=tGreen, fill=white, align=center, text width=15.2cm, inner sep=1pt,
         minimum height=0.58cm] at (590,583)
-    {V[1] 装载窗口 $=$ QK[0] $+$ softmax[0]（empty\_V[0] 在 PV[0] 结束才释放，$S_v{=}1$ 窗口更窄）};
+    {V[k] 装载窗口 $=$ 本轮 QK $+$ softmax（要等 PV[k$-$1] 释放 empty\_V[0]，$S_v{=}1$ 时窗口比 K 窄）};
 \end{tikzpicture}
 \caption{FA2 TMA + WS 的 producer/consumer 双流水时序（$\mathrm{Sk}{=}2$、$S_v{=}1$、$D{=}64$）。producer 的 P2 每轮先发 V 再预取 K；consumer 的 empty 释放点（K 在 QK 后、V 在 PV 后）决定了每个 stage 的可覆盖窗口。}
 \label{fig:17-1}
