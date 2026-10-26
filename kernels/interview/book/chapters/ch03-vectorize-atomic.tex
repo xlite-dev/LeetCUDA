@@ -300,10 +300,10 @@ float4 引用，编译为一条 \texttt{LDG.E.128}；\texttt{FLOAT4\allowbreak{}
     {STG.E.128};
   \node[anchor=west, align=left, text width=6.6cm] at (6.7,-2.7)
     {4 条 \texttt{fmaxf} 相互独立：ILP $\times4$，与 2 条访存指令之比 $2:1$\\
-     于是\textbf{指令瓶颈从访存侧转移到计算侧}——计算指令占比
-     $33\% \to 67\%$};
+     计算指令占比 $33\% \to 67\%$；但占比变化\textbf{不等于瓶颈转移}——\\
+     本章实测仍受 L2/互联搬运能力限制};
 \end{tikzpicture}
-\caption{标量与 vec4 的指令流对照（relu，以 4 个元素为例）：标量版每元素 $3$ 条指令（\texttt{LDG.E.32} $\to$ \texttt{fmaxf} $\to$ \texttt{STG.E.32}），4 元素共 $12$ 条、其中访存 $8$ 条；vec4 版用一条 \texttt{LDG.E.128} 取回 4 个元素，4 条 \texttt{fmaxf} 互不依赖（ILP $\times4$）后由一条 \texttt{STG.E.128} 写回，总数降到 $6$ 条、访存只剩 $2$ 条。访存 $:$ 计算从 $8:4$ 变为 $2:4$，指令瓶颈因此从访存侧移到计算侧。}
+\caption{标量与 vec4 的指令流对照（relu，以 4 个元素为例）：标量版每元素 $3$ 条指令（\texttt{LDG.E.32} $\to$ \texttt{fmaxf} $\to$ \texttt{STG.E.32}），4 元素共 $12$ 条、其中访存 $8$ 条；vec4 版用一条 \texttt{LDG.E.128} 取回 4 个元素，4 条 \texttt{fmaxf} 互不依赖（ILP $\times4$）后由一条 \texttt{STG.E.128} 写回，总数降到 $6$ 条、访存只剩 $2$ 条。访存 $:$ 计算从 $8:4$ 变为 $2:4$，指令构成随之改变；但指令条数或占比本身不能判定瓶颈转移（本章实测仍受 L2/互联搬运能力限制）。}
 \label{fig:3-4}
 \end{figure}
 
@@ -472,7 +472,7 @@ dot\_vec4 不是同一类问题：dot 的两次读落在守卫之外，只要 $N
 \item \textbf{Q：float4 向量化的收益来源？}\\
   A：访存指令数减为 1/4（单条 128-bit load/store）、每线程 ILP 增至 4；
   前提是 16B 对齐。收益大小取决于当前瓶颈是发射带宽还是数据搬运带宽
-  （本机 L2 口径下收益不足 2\%，HBM 直读场景更大）。
+  （本机 L2 口径下收益不足 2\%；工作集大于 L2 能否放大收益须按层级实测，不能直接外推）。
 \item \textbf{Q：histogram 为什么慢？如何优化？}\\
   A：RMW 原子在冲突 bin 上串行化。优化：smem 私有直方图（冲突域缩到
   block 内）+ 全局合并（每 block 每 bin 一次合并写，总次数 $(N/T) \times B$，

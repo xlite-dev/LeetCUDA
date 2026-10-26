@@ -147,8 +147,8 @@ chunk 宽度还决定 swizzle atom 的选择，规则与第~\ref{ch:23}~章一�
 （行字节数 $\times$ 2B 对 128/64 的整除性），但这里按 chunk 而不是按
 $D$ 选：
 
-\begin{lstinputlisting}[linerange={735-756},firstnumber=auto,
-  title={ffpa\_attn.cuh L736-756（chunk 尺寸决定 swizzle；M8N1 双 TiledMma；装载/写回 atom）}]{../ffpa_attn.cuh}
+\begin{lstinputlisting}[linerange={730-756},firstnumber=auto,
+  title={ffpa\_attn.cuh L730-756（chunk 尺寸决定 swizzle；M8N1 双 TiledMma；装载/写回 atom）}]{../ffpa_attn.cuh}
 \end{lstinputlisting}
 
 Q/K chunk 行宽 32$\times$2$=$64\,B，SW64 的模式跨度与单行匹配；但

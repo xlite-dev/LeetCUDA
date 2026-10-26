@@ -769,5 +769,6 @@
  "// mode 决定 level-1 的有无与作用侧；use_ws 走 warp-specialized 变体。": "// mode controls whether level-1 exists and on which side it acts; use_ws takes the warp-specialized variant.",
  "// Traits 默认保守档 128x128/s4；大形状可显式传 Fp4GemmTraits<256, 6>": "// Traits default to the conservative 128x128/s4; for large shapes pass Fp4GemmTraits<256, 6> explicitly",
  "// （形状判定的阈值见 fp4_gemm_use_wide_tile）。": "// (see fp4_gemm_use_wide_tile for the shape-decision thresholds).",
- "// 一线程一 (行, 16-K 组)：总工作量 = 补齐行数 x (K/16)": "// One thread per (row, 16-K group): total work = padded row count x (K/16)"
+ "// 一线程一 (行, 16-K 组)：总工作量 = 补齐行数 x (K/16)": "// One thread per (row, 16-K group): total work = padded row count x (K/16)",
+ "// KV 尾部 tile 越界列 mask": "// mask out-of-range columns of the tail KV tile"
 }

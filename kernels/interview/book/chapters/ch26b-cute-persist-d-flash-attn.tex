@@ -489,8 +489,8 @@ tile max 与蝶形归约在前 6 行：每行先在本地
 
 softmax 之前还有两道逐元素 mask，与式~\eqref{eq:26b-fa4} 同在 KV 主循环内：
 
-\begin{lstinputlisting}[linerange={3934-3967},firstnumber=auto,
-  title={flash\_attn.cuh L3940-3967（双 mask：KV 尾部越界列 + causal 滑窗）}]{../flash_attn.cuh}
+\begin{lstinputlisting}[linerange={3932-3967},firstnumber=auto,
+  title={flash\_attn.cuh L3932-3967（双 mask：KV 尾部越界列 + causal 滑窗）}]{../flash_attn.cuh}
 \end{lstinputlisting}
 
 KV 尾 mask 用 \texttt{tScS\_rc(row, col)} 的坐标视图取列号：坐标 tensor 是

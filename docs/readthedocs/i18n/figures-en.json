@@ -110,7 +110,7 @@
   "4 个 lane 持有⟦0⟧相同的 2 行⟦1⟧（灰度 = lane）⟦2⟧⟦3⟧ 整块共享 1 个 scale⟦4⟧⟦5⟧ 反量化 ⟦6⟧ 提升时乘一个寄存器标量，零 shuffle": "4 lanes holding ⟦0⟧the same 2 Row ⟦1⟧ (grayscale = lane) ⟦2⟧⟦3⟧ The whole block shares 1 scale ⟦4⟧⟦5⟧ Inverse quantization ⟦6⟧ Multiply by a register scalar when boosting, zero shuffle",
   "4 个元素逐元素处理：⟦0⟧ 条指令（访存 8、计算 4）": "4 elements per element processing: ⟦0⟧ instructions (fetch 8, compute 4)",
   "4 值 ⟦0⟧ 该 thread 的 fragment": "4 values ⟦0⟧ fragment of this thread",
-  "4 条 ⟦0⟧ 相互独立：ILP ⟦1⟧，与 2 条访存指令之比 ⟦2⟧⟦3⟧\n     于是⟦4⟧指令瓶颈从访存侧转移到计算侧⟦5⟧——计算指令占比\n     ⟦6⟧": "4 items ⟦0⟧ Independent of each other: ILP ⟦1⟧, ratio to 2 access instructions ⟦2⟧⟦3⟧\n     So the ⟦4⟧ instruction bottleneck shifts from the memory access side to the computing side ⟦5⟧ - the proportion of computing instructions\n     ⟦6⟧",
+  "4 条 ⟦0⟧ 相互独立：ILP ⟦1⟧，与 2 条访存指令之比 ⟦2⟧⟦3⟧\n     计算指令占比 ⟦4⟧；但占比变化⟦5⟧不等于瓶颈转移⟦6⟧——⟦7⟧\n     本章实测仍受 L2/互联搬运能力限制": "4 ⟦0⟧ ops are independent: ILP ⟦1⟧, ratio to the 2 memory ops ⟦2⟧⟦3⟧\n     compute-op share ⟦4⟧; but a share change ⟦5⟧does not mean the bottleneck has moved⟦6⟧——⟦7⟧\n     this chapter still measures an L2/interconnect-bound kernel",
   "4 线程 ⟦0⟧ ⟦1⟧ 小例：手算表 vs CuTe 打印（v4.6.1 实测）": "4 threads ⟦0⟧ ⟦1⟧ Small example: hand calculation table vs CuTe printing (v4.6.1 actual measurement)",
   "4-lane 组": "4-lane group",
   "4.3 GB（全部往返）": "4.3 GB (all round trip)",

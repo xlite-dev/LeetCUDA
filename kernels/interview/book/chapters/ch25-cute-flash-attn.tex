@@ -847,8 +847,8 @@ producer 可以立刻开始搬运下一个 K stage，而 softmax 与 PV 继续�
 结果归并，与第~\ref{ch:18}~章手写 FA3 的角色图完全同构（代码块的三段依次是：
 角色划分、Split-KV 归并、以及实现 4 的 TMA copy smoke）：
 
-\lstinputlisting[linerange={3148-3163,3406-3431,3462-3482},firstnumber=auto,
-  title={flash\_attn.cuh L3148-3163 + L3406-3431 + L3462-3482（实现 3/4：角色划分、Split-KV 归并、TMA copy smoke）}]{../flash_attn.cuh}
+\lstinputlisting[linerange={3148-3163,3406-3431,3462-3486},firstnumber=auto,
+  title={flash\_attn.cuh L3148-3163 + L3406-3431 + L3462-3486（实现 3/4：角色划分、Split-KV 归并、TMA copy smoke）}]{../flash_attn.cuh}
 
 归并段是 FA3 结构里唯一带算法性的代码（其余都是流水），它的语义与
 第~\ref{ch:18}~章式~\ref{eq:18-merge} 等价，但用 CuTe 的 rowcol 视图
@@ -861,7 +861,7 @@ $(r,c)$ 反查寄存器编号，用来在 smem scratch 里定位对方的 partia
 \subsection{实现 4：42 行的 TMA 自检}
 
 第四个实现（L3447--3488）只有 42 行，是一次 TMA 搬运与 swizzle 往返的最小
-闭环，即上面代码块的第三段（L3462--3482）。它的价值在调试方法上：当 attention
+闭环，即上面代码块的第三段（L3462--3486）。它的价值在调试方法上：当 attention
 结果不对时，先用 smoke 确认 TMA descriptor + SW128 swizzle 布局 + 事务屏障
 这条链本身是通的，再往 kernel 里查；把 42 行的搬运闭环从 300 行的 kernel 里
 隔离出来。

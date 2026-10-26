@@ -547,8 +547,8 @@ WS 版本有一个 non-WS 版本不存在的死锁陷阱，具体如下：
 
 修复只有一行，放在 K 循环之前、producer/consumer 分支之前：
 
-\begin{lstinputlisting}[linerange={958-964},firstnumber=auto,
-  title={fp4\_gemm.cuh L958-964（WS 的 empty 预置：consumer 先行 arrive）}]{../fp4_gemm.cuh}
+\begin{lstinputlisting}[linerange={958-963},firstnumber=auto,
+  title={fp4\_gemm.cuh L958-963（WS 的 empty 预置：consumer 先行 arrive）}]{../fp4_gemm.cuh}
 \end{lstinputlisting}
 
 即 consumer 在进入循环前先把所有 empty arrive 一遍，构造出
