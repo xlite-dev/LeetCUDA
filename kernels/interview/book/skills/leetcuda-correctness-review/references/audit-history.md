@@ -982,3 +982,38 @@ git diff --check：通过
 - 验收：主 book 589 页 / 0 error / 0 missing / Overfull 16；cute-zhihu 248 页 / 0 error / 0 missing / Overfull 6；colfax 204 页 / 0 error / 0 missing / Overfull 0（原环境缺 biblatex/logreq，装用户 TeX 树并用 TL2023 临时 biber）。RTD `./build.sh --force-tikz` 全绿：英文图集 1883 条覆盖 1792/1792、英文图 196/196、code 771/771、math 121/121；`visual_check` 93 页全部 `[OK]`，需处理 0。未运行 GPU 测试/bench；ch04 新 bench 数据标未复测。
 - 方法论结论：多查出的原因主要是覆盖面、证据标准和反向自辩三者叠加，不是书稿突然变差。63 项中 HIGH 仅 3 项，27 项是 LOW 表述/图表/测试覆盖问题；同时有 4 项误报，说明“查得多”必须配套 confidence/severity 分层，不能把候选数当错误数。该模式已沉淀到 `references/full-book-claim-audit-playbook.md` 和 SKILL §2.2。
 - 本轮 skill 更新本身无书稿改动，未额外触发 PDF/RTD；上述验收对应本轮书稿修复。未 commit。
+
+## R61（2026-10-26）：全量逐章再审视（只读，无书稿改动）
+
+- 基线 `e749510`（R60 修复后），开工工作树 clean。方法：主 agent 逐章通读/定点核查，不派 subagent；先读 R60 全量 diff 做回归面挑选，再按章复算数字与推导。
+- 覆盖：主 book 41 个 chapter input（含 ch19b）+ 附录 B 数值交叉复算；ch20–ch26c、ch29–ch32、ch35–ch37 以性能/寄存器/误差节定点核查，ch19b 与 wp/ 只作术语基线。
+- 候选 7 条 → 保留 6 条（MEDIUM 1 / LOW 5），撤回 1 条。无 blocking 级错误。
+  - MEDIUM：ch03 图 3-4 的 TikZ 节点与图注、以及 Q3 仍写“指令瓶颈从访存侧转移到计算侧 / HBM 直读收益更大”，与 R60 修正后的正文（“占比本身不能判定瓶颈转移”“工作集大于 L2 不单独保证收益”）同页冲突——R60 的 L4 传播缺口。
+  - LOW：ch04 Q2 仍以“实测”口吻给 21%，而表 4-bench 已标“未复测/历史记录”；ch28 性能节“±2%”vs ch33 同测量 −2.7%；ch31 把 ue8m0 的**相对步长 100%** 与 ue4m3 的**RN 误差上界 6.25%** 并置（两数各自对，同口径应为 12.5%/100% 或 6.25%/50%）；appB 转录漂移（3.144 vs 正文 3.145、2.71× vs 2.72×）；ch07 硬编码“第 7 节/5.2 节”缺“本章”前缀。
+  - 撤回：ch16 K/V 加载映射的线程数疑点（源码 L147-176 复核为 `tid/4` 定行，与 B_c=64 自洽）。
+- 复算锚点（全部自洽）：ch01 六算子 AI 与测试输出；ch02 98304×(7,3)=691067/297628；ch09 3.145 ms→5.46 T、683 GB/s；ch11 76.55/28.19；ch19 384D 字节与 AI 42.7→64；ch27/28/31/34/36 的 2^{-(m+1)}、11.02/10.06/10.17/14.38、σ_ε 表与 s²=48；ch29/30/32/33 的 4BHN²D 折算与加速比。
+- 本轮**无书稿改动**，未触发任何 PDF / RTD 闸门（未构建、未跑 visual_check）。台账：`book/.tmp/math-audit-r61/ledger.md`。
+
+### R61 定点修复（同日）：P-1
+
+- 改 `chapters/ch03-vectorize-atomic.tex` 三处（图 3-4 TikZ 节点、图注、Q3），把 R60 只改到正文的结论同步到图与问答：由“指令瓶颈从访存侧转移到计算侧”改为“占比变化不等于瓶颈转移，本章实测仍受 L2/互联限制”；Q3 的“HBM 直读场景更大”改为“须按层级实测，不能直接外推”。
+- 图内中文换键 → `i18n/figures-en.json` 删旧键补新键（单行 diff，占位符 ⟦0⟧–⟦7⟧ 对齐，value 的反斜杠-n 换行标记与 key 同型）；`build.sh` 复跑后英文图集 195/195、verify 全绿。
+- 验收：book.pdf 589 页 / 0 error / 0 missing char / Overfull 16（=基线）/ lint 三面 0 fail；pdftotext 三处新句落地；第 55 页 160dpi 目检图内文本不压图元；RTD `build.sh` 全项 OK；`visual_check` 93 页需处理 0。
+- P-2…P-6（ch04 21% 口径、ch28/ch33 ±2% vs −2.7%、ch31 SF 步长/误差上界并置、appB 两处转录漂移、ch07 节号缺“本章”）经用户确认本轮不改。
+
+## R62（2026-10-26）：机械面全量一次（收尾轮，含 5 处修复）
+
+- 手段：脚本化复核四张机械面（脚本 `book/.tmp/r62/check_mech.py`），不再靠通读：227 处 listing 的路径/linerange/title 行号、53 条附录 permalink（按各自 commit 用 `git cat-file`+`git show` 核行数）、9 处 tests 文件名引用、appB 74 个三位以上有效数字回指正文；配合仓库既有 `scripts/verify_anchors.py`（33 章 SHA 冻结 + 首末行文本比对）与 RTD `convert.verify` 三套词典。
+- 结果：4 条真缺陷（全为「行号引用/代码块截断」，R60 同一类），已修；机械面其余全绿。
+  - ch26b:492 title `L3940-3967` 与 `linerange={3934-3967}` 差 6 行，且起始行截在 `{` 之后 → 改为 `3932-3967`（含注释与 `{`，括号配平），title 同步 `L3932-3967`。
+  - ch26c:150 title `L736-756` 与 `linerange={735-756}` 差 1 行，起始行截在 `using SmemLayoutV =` 的续行 → 改为 `730-756`，title 同步 `L730-756`。
+  - ch37:550 `linerange={958-964}` 末行是 producer 分支的 `if (tid < kProducerThreads) {`（孤立开括号，且在「修复只有一行」的语义之外）→ 改为 `958-963`，title 同步。
+  - ch25:850 三段式第三段 `3462-3482` 末行是 `for (...; linear += blockDim.x) {` 循环头，循环体被切掉 → 改为 `3462-3486`，title 与正文 ch25:864 的 `L3462--3482` 一并同步。
+- 假阳性清单（已逐条判读，不改）：`_template.tex` 2 条（模板文件，不进 book.pdf）；ch13:332 只列 kernel 签名（title 明示）；ch13:405 `======` 分隔注释；ch14:313 `#endif`；ch17:529 切在 for 头但其后紧跟续列（阶段一/3b 后半拆两段）；ch35:311 `} else {` 是 producer/consumer 分支切换点；appB 11 处数字未命中里 9 处是显示取整（0.042/0.785/0.144/0.0190/0.54/4.19）或跨章归属（appB:219 的 1.64× 归第 33 章）。
+- 顺带：extend ch26b 段引入了一行新中文注释 → `_static/code-en.json` 补 1 条英译，`convert.verify` 代码块词典回到 772/772。
+- 验收：book.pdf 589 页 / 0 error / 0 missing char / Overfull 16（=基线）/ lint 三面 0 fail；`verify_anchors` 33 章 ALL GREEN；RTD `build.sh` 全项 OK（英文图 195/195、代码块 772/772、公式 121/121）；`visual_check` 93 页需处理 0。
+- 未改（用户已定）：P-2 ch04 21% 口径、P-3 ch28 vs ch33 ±2%、P-4 ch31 SF 步长/误差上界、P-5 appB 转录漂移（3.144 vs 3.145、2.71 vs 2.72，本轮机械面再次确认为真）、P-6 ch07 节号缺「本章」。
+
+### 收尾结论
+
+机械面与通读面前后两轮（R61 通读 + R62 机械）合计只产出 1 MEDIUM（已修）+ 9 LOW，其中 4 条 LOW 是行号/代码块截断（已修）。**正确性自审到此收账**：后续只按「改哪章审哪章」做定点复核，全书通读与全书机械扫描都不再例行；残余风险已转为性能数字复测（ch04/ch13/ch19/ch32）与 6 条已知 medium，均需 GPU 或补证据，不属审稿可解。
