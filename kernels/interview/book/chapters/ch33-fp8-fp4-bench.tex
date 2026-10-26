@@ -30,11 +30,13 @@
 结论就作废。三个具体来源：
 
 \begin{itemize}[itemsep=0pt,topsep=2pt]
-  \item \textbf{SDPA 后端随 D 换挡}：FA2 只覆盖 $D\le256$，更大 D
-        静默落到 MATH（materialize 整个 $N_q\times N_{kv}$ 矩阵），
-        参照时间膨胀数倍：D=512 的 3x 加速里有一大半是 MATH
-        慢，不是量化快（\texttt{bench\_fp8.py} L153--160 的
-        \texttt{resolve\_sdpa\_backend} 把这个换挡显式化）。
+  \item \textbf{本 bench 的 \texttt{auto} 参照随 D 换挡}：脚本在
+        $D\le256$ 时选择 FA2，更大 D 选择 MATH（materialize 整个
+        $N_q\times N_{kv}$ 矩阵），参照时间膨胀数倍：D=512 的 3x
+        加速里有一大半是 MATH 慢，不是量化快（\texttt{bench\_fp8.py}
+        L153--160 的 \texttt{resolve\_sdpa\_backend}）。这是
+        \texttt{--sdpa-backend auto} 的显式解析规则，不是 PyTorch
+        SDPA 的通用回退规则。
   \item \textbf{GPU 状态污染}：5090 类高功耗卡上，前一个高功耗负载
         会把后一个测试压进降频区（实测 FFPA kernel 撞功耗墙
         2932$\to$2445MHz，-17\%）；A/B 两轮的 SDPA 参照必须吻合
@@ -80,7 +82,7 @@
   \node[gearred, align=center, font=\tiny] at (6.35,2.1)
     {同为 split-D 家族（D=256/512）\\1.30$\to$2.98 的跳变主要来自\\参照换挡（右图分解）};
   \node[anchor=south, font=\scriptsize\bfseries] at (4.8,5.45)
-    {SDPA 参照后端换挡带（表~\ref{tab:33-fp8-matrix} self 行）};
+    {本 bench \texttt{auto} 的 SDPA 参照换挡带（表~\ref{tab:33-fp8-matrix} self 行）};
   \begin{scope}[xshift=10.5cm]
     \draw[->] (0,0) -- (4.4,0);
     \draw[->] (0,0) -- (0,7.4);
@@ -99,17 +101,18 @@
     \node[anchor=south, font=\scriptsize\bfseries] at (2.2,7.7) {D=512 self 的 2.98$\times$ 归因};
   \end{scope}
   \node[anchor=north west, align=left, text width=14.5cm, font=\tiny] at (0,-1.20)
-    {\textbf{3$\times$}里一大半是 MATH 参照自身的低效，不是量化快（坑 6）——报告
-     $D{>}256$ 的 speedup 必须注明参照换挡。外推口径：D=256 同为 split-D 家族且参照是
-     FA2，实测 1.30$\times$ 用作\textbf{真加速}估计；$21.71\times1.30\approx28.2$ms，
-     $64.74/28.2\approx2.29\times$。};
+    {本 bench \texttt{auto} 口径下，\textbf{3$\times$}里一大半是 MATH 参照自身的低效，
+     不是量化快（坑 6）——报告 $D{>}256$ 的 speedup 必须注明该参照换挡。外推口径：
+     D=256 同为 split-D 家族且参照是 FA2，实测 1.30$\times$ 用作\textbf{真加速}估计；
+     $21.71\times1.30\approx28.2$ms，$64.74/28.2\approx2.29\times$。};
 \end{tikzpicture}
-\caption{参照系视角看表~\ref{tab:33-fp8-matrix} 的 self 行。左：SDPA 参照随 $D$
-换挡——FA2 只覆盖 $D\le256$，更大 $D$ 静默落到 MATH（materialize
-$N_q\times N_{kv}$ 矩阵）；四个 speedup 点（1.26/1.70/1.30/2.98$\times$）落在换挡
-带上，D=512 的跳变与 kernel 无关。右：D=512 的 $2.98\times$ 归因——以 D=256 同
-家族（split-D、FA2 参照）实测 1.30$\times$ 为真加速估计，MATH 参照自身再慢
-$\times$2.29：\textbf{3$\times$}的大头是参照低效（坑 6）。}
+\caption{参照系视角看表~\ref{tab:33-fp8-matrix} 的 self 行。左：本 bench 的
+\texttt{--sdpa-backend auto} 在 $D\le256$ 时选择 FA2，更大 $D$ 选择 MATH
+（materialize $N_q\times N_{kv}$ 矩阵）；四个 speedup 点
+（1.26/1.70/1.30/2.98$\times$）落在换挡带上，D=512 的跳变包含参照换挡的贡献。
+右：D=512 的 $2.98\times$ 归因——以 D=256 同家族（split-D、FA2 参照）实测
+1.30$\times$ 为真加速估计，MATH 参照自身再慢 $\times$2.29：
+\textbf{3$\times$}的大头是参照低效（坑 6）。}
 \label{fig:33-sdpa-gear}
 \end{figure}
 
@@ -140,8 +143,9 @@ kernel 级 speedup 定义为同形状下参照与被测的耗时比。
   S=\frac{T_{\mathrm{SDPA}}}{T_{\mathrm{FFPA}}},\qquad
   T=\min_{i\in[1,N]}\;t_i\;\;(\text{min-of-}N,\ N\ge5)
 \end{equation}
-min-of-N 而非均值：推理延迟的合同口径是最好情况下可稳定达到的
-水平，毛刺（时钟迁移、后台进程）只应抬高均值，不应进入分子。
+本章用 min-of-N 而非均值做 kernel 对比，取较少受时钟迁移、后台进程等
+毛刺影响的一次计时，估计当前形状下的可达耗时下界。它不是通用推理延迟
+合同，也不能替代 median、p95 等稳态或尾延迟指标。
 
 有效算力用 attention 前向 FLOPS 归一。
 \begin{equation}
@@ -149,10 +153,11 @@ min-of-N 而非均值：推理延迟的合同口径是最好情况下可稳定�
   \delta_{\mathrm{causal}}=
   \begin{cases}1 & \text{dense}\\[2pt] \tfrac{1}{2}+\tfrac{1}{2N_{kv}} & \text{causal}\end{cases}
 \end{equation}
-（QK$^\top$ 与 PV 各占 $2N_qN_{kv}DH_q$；causal 按三角mask 减半。
+（QK$^\top$ 与 PV 各占 $2N_qN_{kv}DH_q$；causal 按三角 mask 减半。
 此因子在方阵 $N_q=N_{kv}$ 下与 \texttt{\_flops.py} 的精确 tail 对齐
-计数一致，非方阵 causal 的精确计数为
-$1-(N_q-1)/(2N_{kv})$，本章 bench 的 causal 均为方阵。）
+计数一致。FFPA 的非方阵 causal 将 query 行对齐 KV 尾部（mask 右下角对齐）；
+当 $N_q\le N_{kv}$ 时，第 $i$ 行（从 0 开始）有 $N_{kv}-N_q+i+1$ 个有效位置，
+故精确因子为 $1-(N_q-1)/(2N_{kv})$。本章 bench 的 causal 均为方阵。）
 注意这是\textbf{数学} FLOPS：量化 kernel 实际吞吐的是低位宽 MMA，
 $S>1$ 的来源是同样的数学量改由快得多的数据通路完成。
 
@@ -434,8 +439,8 @@ bench 脚本默认 preset，2026-09-21）：fp8 与 Sage2 总体打平、互有
   \end{tabular}
 
   \par\vspace{4pt}
-  {\footnotesize $\dagger$ D=512 参照为 SDPA-MATH（FA2 只覆盖
-  $D\le256$）；$\ast$ fp16 因已知 ESS causal 特性临界失败，bf16
+  {\footnotesize $\dagger$ D=512 的本 bench \texttt{auto} 参照为
+  SDPA-MATH；$\ast$ fp16 因已知 ESS causal 特性临界失败，bf16
   2.56x 通过（第~\ref{ch:30}~章 30.7.1 节定性）。self/causal 行与
   第~\ref{ch:29}--\ref{ch:30}~章同一轮 bench（第~\ref{ch:29}~章 29.6 节实测表）；gqa/cross 行为本机补充实测
   （2026-08，单卡 PRO 5000），原始 stdout 未随书归档。\par}
@@ -452,7 +457,8 @@ bench 脚本默认 preset，2026-09-21）：fp8 与 Sage2 总体打平、互有
         \textbf{aux 链占比}反超主 kernel（整条前处理链的聚合
         吞吐上限 $\approx$1.04TB/s，第~\ref{ch:28}~章 28.6 节）。
 
-  \item \textbf{D=512 大 D 区}：参照换 SDPA-MATH，2.98x--3.16x。
+  \item \textbf{D=512 大 D 区}：本 bench \texttt{auto} 参照换
+        SDPA-MATH，2.98x--3.16x。
         数字大但要正确归因：一半来自 FFPA split-D 真加速
         （第~\ref{ch:30}~章），一半来自 MATH 参照自身的低效。
 \end{itemize}
@@ -523,9 +529,9 @@ fp4 比 fp8 快 1.64x（4.96 vs 8.13ms），对应第~\ref{ch:30}~章 dispatch
 多一层）。粒度 knob 则有真实方向：默认的 per-block 恰是最快档
 （量化 kernel 的向量化收益，第~\ref{ch:28}~章），升到 per-thread
 （Q/K）或 per-channel（V），粒度升级的净代价即这 1.7--2.7\%。
-smooth-v 略快（+1.0\%）是 V 值域压缩后 PV 溢出重缩放更少。knob 真正
-的杠杆在两端：causal 精度（hybrid）与大 D dispatch（第~\ref{ch:30}~
-章），不在优势区的数值通路。
+smooth-v 的 $+1.0\%$ 只是本轮测量结果；没有重缩放计数或 NCU 对照，
+不能据此归因为 PV 溢出重缩放减少。knob 真正的杠杆在两端：causal 精度
+（hybrid）与大 D dispatch（第~\ref{ch:30}~章），不在优势区的数值通路。
 
 \subsection{竞品对照}
 
@@ -596,9 +602,9 @@ fp4，精度损失只在最敏感的位置修正。README 引用的 NeMo Automod
         反过来 fp8 用 0.7 会让真 bug（坏行、读错布局）漏检，
         tol 必须按 impl 分档（\texttt{\_runner\_fwd.py} L413--419 的
         分流就是为此）；
-  \item \textbf{D=512 speedup 的参照陷阱}：MATH 后端 materialize
-        $N_q\times N_{kv}$ 矩阵，报告里必须注明参照换挡，否则
-        3x 里近半是参照自身的低效。
+  \item \textbf{D=512 speedup 的参照陷阱}：本 bench \texttt{auto}
+        选择的 MATH 后端 materialize $N_q\times N_{kv}$ 矩阵，报告里
+        必须注明参照换挡，否则 3x 里近半是参照自身的低效。
 \end{enumerate}
 
 \section{面试要点速查}
@@ -606,8 +612,9 @@ fp4，精度损失只在最敏感的位置修正。README 引用的 NeMo Automod
 \begin{enumerate}[itemsep=0pt,topsep=2pt]
   \item min-of-N + no\_grad + pre-heat + 固定顺序：推理 bench 四
         条规则，各自防什么坑；
-  \item speedup 口径三要素：参照后端（FA2/MATH 随 D 换挡）、
-        min-of-N、E2E 摊销公式（占比 $\alpha$ 决定上界）；
+  \item speedup 口径三要素：本 bench \texttt{auto} 的参照后端
+        （FA2/MATH 随 D 换挡）、min-of-N、E2E 摊销公式（占比
+        $\alpha$ 决定上界）；
   \item 精度四指标：rel\_err（能量）/max\_abs（结构）/allclose
         （门禁）/tol 分档（fp8 5e-2、fp4 0.15/0.7，依据 e2m1
         噪声地板）；
@@ -634,7 +641,7 @@ for D in 64 128 256 512; do
   python -m ffpa_attn.bench --fwd-backend cuda --cuda-impl fp8 \
     --tasks self-attn,causal,gqa,cross-attn --D $D --no-bwd --show-allclose
 done
-# 预期：D=128 self 1.70x；D=512 参照为 MATH（注意归因）
+# 预期：D=128 self 1.70x；D=512 默认 auto 参照为 MATH（注意归因）
 
 # 实验 2：fp4 全 D 矩阵（表 33.5 口径）
 for D in 64 128 192 256; do

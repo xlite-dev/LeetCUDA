@@ -7,8 +7,8 @@
 第~\ref{ch:27}--\ref{ch:29}~章建立了量化注意力的数学与 fp8 实现链。
 本章把数据格式降到 4 bit。NVFP4 不是把 fp8 的量化代码换个 dtype：
 e2m1 只有 2 bit 指数 + 1 bit 尾数，可表示值只有
-$\{0,\pm0.5,\pm1,\pm1.5,\pm2,\pm3,\pm4,\pm6\}$，相对误差上界约 25\%（fp8 e4m3
-是 6.25\%）。在这样的格式上做出可用的 attention，靠的不是数据格式本身，
+$\{0,\pm0.5,\pm1,\pm1.5,\pm2,\pm3,\pm4,\pm6\}$，正规数范围的相对误差通用上界约
+25\%（fp8 e4m3 为 6.25\%；次正规与下溢不适用该相对误差模型）。在这样的格式上做出可用的 attention，靠的不是数据格式本身，
 而是围绕它的一整套尺度处理：microscaling 块尺度（scale
 factor）、强制 smoothing、rank-1 修正、列置换、以及把所有这些步骤
 fused 进尽量少的 kernel。
@@ -45,12 +45,12 @@ fused 进尽量少的 kernel。
       \node[above, font=\tiny, inner sep=1pt] at (\xx,0.64) {\vl};
     }
     \node[anchor=south, font=\tiny, align=center] at ({3*\us},0.78)
-      {16 个码点中正半轴（含 0）仅 8 个，相对误差上界 $\approx$25\%\\格距 0.5/0.5/0.5/0.5/1/1/2 逐级加倍};
+      {16 个码点中正半轴（含 0）仅 8 个，正规数相对误差通用上界 $\approx$25\%\\格距 0.5 连续 4 段、1 连续 2 段、最后为 2，并非逐段加倍};
     \foreach \gx/\gl in {0.55/0.5,1.65/0.5,2.75/0.5,3.85/0.5,5.5/1,7.7/1,11.0/2}{
       \node[below, font=\tiny, inner sep=1pt] at (\gx,-0.16) {\gl};
     }
-    \draw[thick] (8.8,-0.74) -- (8.8,-0.90) -- (13.2,-0.90) -- (13.2,-0.74);
-    \node[below, font=\tiny, inner sep=1pt] at (11.0,-0.92) {最大相对间距（4$\to$6，+50\%）};
+    \draw[thick] (1.1,-0.74) -- (1.1,-0.90) -- (2.2,-0.90) -- (2.2,-0.74);
+    \node[below, font=\tiny, inner sep=1pt] at (1.65,-0.92) {最大相对间距（0.5$\to$1，+100\%）};
   \end{scope}
   \node[anchor=north west, align=left, text width=15.2cm, font=\tiny] at (0,-4.15)
     {两格式均有 $\pm0$，负半轴镜像对称（图示正半轴 $[0,6]$）。e2m1 无
@@ -61,8 +61,9 @@ fused 进尽量少的 kernel。
 \end{tikzpicture}
 \caption{e2m1 vs e4m3 的格点数轴（同一 $[0,6]$ 区间）。上：e4m3 每个 binade 8 个
 格点、相对误差上界 6.25\%，满量程 $\pm448$；下：e2m1 正半轴全部格点仅
-$\{0,0.5,1,1.5,2,3,4,6\}$、相对误差上界约 25\%，$[4,6]$ 段相对间距最大（+50\%）。
-fp4 的容差天然比 fp8 宽一个量级的格式层根源。}
+$\{0,0.5,1,1.5,2,3,4,6\}$，正规数范围的相对误差通用上界约 25\%。全码点的最大
+相对间距是 $0.5\to1$（+100\%）；若只看正规数，+50\% 在多个区间并列。
+格式更稀疏意味着 fp4 通常需要更宽容差，具体阈值仍由数值分布与实测决定。}
 \label{fig:31-e2m1-grid}
 \end{figure}
 ffpa-attn 的 fp4 路径移植自 SageAttention3 的 Blackwell kernel
@@ -132,30 +133,32 @@ $s_{block}$ 有双重身份：既是量化除数又是 dequant 乘数，
 16 个元素：若块 $\mathrm{amax}$ 落在 ue4m3 的窄域之外，或行内动态范围
 极端（causal 早行 $P$ 近 one-hot），SF 编码误差就会放大。两级 P 量化
 （下一章）正是 SA3 对 C2 挑战（$P$ 以小值为主的分布使块
-$\mathrm{amax}$ 难铺满 SF 域）的回答：把块的 $\mathrm{amax}$ 铺满
-ue4m3 的域。
+$\mathrm{amax}$ 难利用组合数值域）的回答：先用全行尺度覆盖 $[0,448]\times[0,6]$，
+再让各组按自身 $\mathrm{amax}$ 归一；并非每个 SF 都达到 448。
 
 \subsection{smooth-Q/K 强制与 delta\_s 的 rank-1 恒等式}
 
 Q 的中心化按 128 行块取均值：$q_m[b,h,m_b,:]=\mathrm{mean}(Q)$
 （\texttt{fp4\_q\_block\_mean\_kernel}，L667--701）；K 平滑按序列均
 值 $\bar k[b,h,:]=\mathrm{mean}(K)$。量化对象是残差
-$\hat Q=\phi(Q-q_m)$、$\hat K=\phi(K^\top-\bar k)$，score 的精确重构
-需要补上均值项：
+$\hat Q=\phi(Q-q_m)$、$\hat K=\phi(K^\top-\bar k)$，score 的量化重构
+需要补上均值项。先在未量化实数域展开：
 \begin{equation}
   S=q\,k^\top=(q-q_m)\,(k-\bar k)^\top+q_m k^\top+q\bar k^\top
   -q_m\bar k^\top
 \end{equation}
 直接展开有四项。SA3 的改写是把它压成残差 MMA 加一个 rank-1 修正项：
 \begin{equation}
-  S^{\dagger}=\hat Q\hat K^\top+\Delta S,\qquad
+  S^{\dagger}=\hat Q\hat K^\top+\Delta S\approx q(k-\bar k)^\top,\qquad
   \Delta S[b,h,m,n]=q_m[b,h,m,:]\cdot\bigl(K[b,h_{kv},n,:]-\bar k\bigr)
   \label{eq:31-deltas}
 \end{equation}
-（GQA 下 K/V 按 kv 头 $h_{kv}$ 索引，MHA 时退化为 $h_{kv}=h$。）这里
-$S^{\dagger}=q(k-\bar k)^\top$ 是 kernel 域分数；真值 $S=S^{\dagger}+q\bar k^\top$，
-$q\bar k^\top$ 与 $n$ 无关，只平移 lse（回加 $\mathrm{scale}\cdot\mathrm{dot}(q_{row},\bar k)$），
-不改变 $O$。
+（GQA 下 K/V 按 kv 头 $h_{kv}$ 索引，MHA 时退化为 $h_{kv}=h$。）记未量化
+实数分解为 $S^{\dagger}_{\mathrm{ideal}}=q(k-\bar k)^\top$，则
+$S=S^{\dagger}_{\mathrm{ideal}}+q\bar k^\top$ 精确成立；实际 $S^\dagger$
+还含 $\hat Q,\hat K$ 的量化误差。对理想分解，$q\bar k^\top$ 与 $n$ 无关，
+只平移 lse、不改变 $O$；实际 kernel 的 lse 修正须与量化域 Q 的重构一致
+（32.3.4~节）。
 
 而式~\ref{eq:31-deltas} 右边的 $K-\bar k$ 必须避免物化，它等于
 \begin{equation}
@@ -179,8 +182,8 @@ kernel 的 $S^{\dagger}=\hat Q\hat K^\top+\Delta S$ 恰好等于 $q(k-\bar k)^\t
      {\tiny 逐项展开：$K-\bar k$ 中间项要求把平滑后的 K 物化出来}};
   \node[draw=tkBlue, thick, rounded corners=1pt, fill=tkFillBlue, align=center,
         text width=7.0cm, inner sep=3pt] (fold) at (0,-1.90)
-    {$S=\hat Q\hat K^{\top}+\Delta S$，\quad $\hat Q=\phi(Q-q_m)$、$\hat K=\phi(K^{\top}-\bar k)$\\[1pt]
-     {\tiny 残差 MMA（主 kernel 的 QK）$+$ 一次算好的修正项}};
+    {$S^{\dagger}=\hat Q\hat K^{\top}+\Delta S\approx q(k-\bar k)^{\top}$\\[1pt]
+     {\tiny 残差 MMA（主 kernel 的 QK）$+$ 一次算好的修正项；近似源于量化舍入}};
   \draw[->, thick,tkBlue] (exp) -- (fold)
     node[midway, fill=white, inner sep=1.5pt, font=\tiny] {SA3 改写：消掉 $K-\bar k$};
   \node[draw=tkGreen, thick, rounded corners=1pt, fill=tkFillGreen, align=center,
@@ -190,7 +193,7 @@ kernel 的 $S^{\dagger}=\hat Q\hat K^\top+\Delta S$ 恰好等于 $q(k-\bar k)^\t
       右支 $\to$ epilogue 逐元素减一次，不改变 $O$}};
   \draw[->, thick,tkBlue] (fold) -- (ds);
   \node[anchor=north, align=center, font=\tiny, text width=7.4cm] at (0,-4.72)
-    {lse 修正只需 $scale\cdot\mathrm{dot}(q_{row},\bar k)$；主 kernel 每个 kv tile 把
+    {lse 修正与量化域 Q 的重构匹配（32.3.4~节）；主 kernel 每个 kv tile 把
      $\Delta S$ 预载进 C 累加器即用};
   \node[draw, dashed, thick, align=left, text width=4.9cm, inner sep=3pt, font=\tiny]
     at (6.78,-1.66)
@@ -201,7 +204,7 @@ kernel 的 $S^{\dagger}=\hat Q\hat K^\top+\Delta S$ 恰好等于 $q(k-\bar k)^\t
 \end{tikzpicture}
 \caption{$\Delta S$ 的 rank-1 恒等式。四项展开折叠为残差 MMA 加一个修正项：
 $\Delta S$ 由低秩 GEMM $q_mK^{\top}$ 与每行常数 $q_m\bar k$ 两支等价构成，
-$K-\bar k$ 永不物化；行常数只平移 lse。}
+$K-\bar k$ 永不物化；实数分解的行常数只平移 lse，实际残差 MMA 仍含量化误差。}
 \label{fig:31-deltas}
 \end{figure}
 
@@ -253,9 +256,9 @@ k^{rot}$（L101--108 注释）。于是 WHT 旋转可以 fused 进量化 kernel
 \texttt{kSubKm}（bias 减除在 group max 之前原位完成）、
 \texttt{kHadamard}（fused WHT，31.4.3 节）。
 
-fp32$\to$e2m1 的打包用一条 PTX：\texttt{cvt.rn.satfinite.e2m1x2.f32}
-把相邻两个 float 转成一对 4 bit 码点（L32--56 的
-\texttt{fp32\_vec\_to\_e2m1}，8 float $\to$ 1 \texttt{uint32}）；
+fp32$\to$e2m1 的打包以 \texttt{cvt.rn.satfinite.e2m1x2.f32} 为基本指令：
+每条把相邻两个 float 转成一对 4 bit 码点；L32--56 的
+\texttt{fp32\_vec\_to\_e2m1} 用 4 条该指令完成 8 float $\to$ 1 \texttt{uint32}；
 \texttt{satfinite} 保证越界饱和到 ±6 而不是 NaN。SF 的编码同样走
 饱和转换：NVFP4 的 SF 用 \texttt{\_\_nv\_fp8\_e4m3} 构造（L291、
 L457），mxfp8 数据路径才用
@@ -368,8 +371,10 @@ fused WHT 的蝶形拆分记在这里（L195--235）：token 的 4 个线程连�
 每线程 $k_E=kHeadDim/4$ 个元素，距离 $<k_E$ 的蝶形对全在
 thread-local 数组里原地做（\texttt{dist} 从 $k_E/2$ 递减到 1）。
 只剩距离 $k_E$ 与 $2k_E$ 的两级跨线程交换用
-\texttt{shfl\_xor(1)}/\texttt{shfl\_xor(2)} 完成，整行 WHT 零
-smem、零额外寄存器数组。最后乘 $rsqrt(kHeadDim)$ 归一。
+\texttt{shfl\_xor(1)}/\texttt{shfl\_xor(2)} 完成。源码对每级的
+$j=0,\dots,k_E-1$ 都执行一次 shuffle，即每级 $k_E$ 次、两级共 $2k_E$ 次
+（不是每级一次）。整行 WHT 零 smem、零额外寄存器数组。最后乘
+$rsqrt(kHeadDim)$ 归一。
 
 \begin{figure}[H]
 \centering
@@ -412,18 +417,19 @@ smem、零额外寄存器数组。最后乘 $rsqrt(kHeadDim)$ 归一。
        同一格内};
     \node[anchor=north west, align=left, text width=3.6cm, font=\tiny] at ({16*\gw+0.45},0.34)
       {dist $\le k_E/2$ 的 6 级蝶形全部 thread-local 原地做；\\
-       只有 dist $k_E$/$2k_E$ 两级跨线程（每级一次 \texttt{shfl\_xor}）。};
+       dist $k_E$/$2k_E$ 两级跨线程，每级每线程 $k_E$ 次 \texttt{shfl\_xor}。};
   \end{scope}
   \node[anchor=north west, align=left, text width=16.0cm, font=\tiny] at (0.0,-4.30)
     {蝶形对 $(j,\,j\oplus\mathrm{dist})$ 的加减在 $k_E{=}kHeadDim/4$ 个元素内完成：
      6 级 thread-local（源码 \texttt{quantize\_fp4.cuh} L195--235 的 \texttt{dist} 循环）
-     $+$ 2 级 \texttt{shfl\_xor}；invalid token 装零，全 warp 在 shuffle 中保持收敛；
-     末端统一乘 $rsqrt(kHeadDim)$ 归一。整行 WHT 零 smem、零额外寄存器数组。};
+     $+$ 2 级 \texttt{shfl\_xor}，每级每线程 $k_E$ 次；invalid token 装零，
+     全 warp 在 shuffle 中保持收敛；末端统一乘 $rsqrt(kHeadDim)$ 归一。
+     整行 WHT 零 smem、零额外寄存器数组。};
 \end{tikzpicture}
 \caption{fused WHT 的蝶形距离分层（$D{=}256$，4 线程一 token、每线程 $k_E{=}64$
 连续元素）。距离 $<k_E$ 的 6 级蝶形全在 thread-local 数组内；dist $k_E$ 与
-$2k_E$ 两级各用一次 \texttt{shfl\_xor(1)}/\texttt{shfl\_xor(2)} 跨 slice 交换——
-零 smem、零额外寄存器数组。}
+$2k_E$ 两级分别以 \texttt{shfl\_xor(1)}/\texttt{shfl\_xor(2)} 跨 slice 交换，
+每级每线程 $k_E$ 次，共 $2k_E$ 次——零 smem、零额外寄存器数组。}
 \label{fig:31-wht-butterfly}
 \end{figure}
 
@@ -544,8 +550,8 @@ NVFP4 的 $1\times16$ microscaling 块如何配平 e2m1 与 ue4m3 两级尺度�
     \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=0.52cm, minimum height=0.49cm, inner sep=1pt, align=center, text width=0.46cm, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkGreen!70!black} }] at (11.612,-1.725) {e};
     \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=0.52cm, minimum height=0.49cm, inner sep=1pt, align=center, text width=0.46cm, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkGreen!70!black} }] at (12.181,-1.725) {e};
     \node[draw=tkBlue, fill=tkFillBlue, line width=0.5pt, minimum width=0.52cm, minimum height=0.49cm, inner sep=1pt, align=center, text width=0.46cm, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkBlue} }] at (12.751,-1.725) {m};
-    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (9.394,-2.218) {值域 {0, $\pm$0.5, $\pm$1, $\pm$1.5, $\pm$2, $\pm$3, $\pm$4, $\pm$6}$\times$2\^{}e，满量程 6};% w=8.008
-    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkRed} }] at (9.394,-2.526) {相对误差上界 $\approx$ 25\%（fp8 e4m3 为 6.25\%）};% w=8.008
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (9.394,-2.218) {值域 $\{0,\pm0.5,\pm1,\pm1.5,\pm2,\pm3,\pm4,\pm6\}$，满量程 6};% w=8.008
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkRed} }] at (9.394,-2.526) {正规数相对误差通用上界 $\approx$25\%（e4m3 为 6.25\%）};% w=8.008
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkPurple} }] at (9.394,-2.972) {ue4m3 尺度（8 bit）：4 指数 + 3 尾数（无符号）};% w=8.008
     \node[draw=tkPurple, fill=tkFillPurple, line width=0.5pt, minimum width=0.46cm, minimum height=0.49cm, inner sep=1pt, align=center, text width=0.40cm, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkPurple} }] at (11.011,-3.45) {e};
     \node[draw=tkPurple, fill=tkFillPurple, line width=0.5pt, minimum width=0.46cm, minimum height=0.49cm, inner sep=1pt, align=center, text width=0.40cm, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkPurple} }] at (11.519,-3.45) {e};

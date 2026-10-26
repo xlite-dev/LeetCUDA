@@ -100,9 +100,10 @@ S=QK^{\top}=\sum_{c}Q_{:,\mathcal{D}_c}\,K^{\top}_{:,\mathcal{D}_c},
 \end{equation}
 每个 chunk 一次 MMA 累加进同一个 $S$ fragment。fp8 路径 f32
 累加；int8 路径 s32 累加（精确，$\ll 2^{31}$）后一次性 cast（L495--503），
-split 不引入任何新的舍入点。PV 侧 $D$ 是\textbf{输出列维}：
+split 不引入任何新的舍入点。PV 侧 $D$ 是\textbf{输出列维}。用原始 $V(N,D)$ 写：
 \begin{equation}\label{eq:30-pv-split}
-O_{:,\mathcal{D}_c}=P\,V^{\top}_{\mathcal{D}_c,:},
+O_{:,\mathcal{D}_c}=P\,V_{:,\mathcal{D}_c}
+ =P\bigl(V^{\top}_{\mathcal{D}_c,:}\bigr)^{\top},
 \end{equation}
 各 chunk 的 $O$ 段\textbf{独立累加}，互不干扰。
 
@@ -111,7 +112,7 @@ O_{:,\mathcal{D}_c}=P\,V^{\top}_{\mathcal{D}_c,:},
 row max/row sum，所有 chunk 共享同一组 $(m,\ell)$，rescale 因子天然
 一致。这就是 \texttt{split\_d.cuh} 的结构（L440--443 注释）：QK chunk
 循环在 softmax 之前全部完成（L446--483），softmax 之后 V
-chunk 循环各自把 $P V^{\top}_{\mathcal{D}_c}$ 加进
+chunk 循环各自把 $P V_{:,\mathcal{D}_c}$ 加进
 \texttt{o\_acc\_storage[c]}（L678--756）。
 
 \begin{figure}[H]
@@ -170,10 +171,10 @@ chunk 循环各自把 $P V^{\top}_{\mathcal{D}_c}$ 加进
   \draw[fill=gray!55] (10.3,-3.5) rectangle (11.8,-2.9);
   \draw[tkOrange, thick] (10.3,-0.85) rectangle (11.8,-0.25);
   \draw[tkOrange, thick] (10.3,-3.5) rectangle (11.8,-2.9);
-  \node at (11.05,-0.55) {$V^{\top}_{\mathcal{D}_0,:}$};
-  \node at (11.05,-3.2) {$V^{\top}_{\mathcal{D}_1,:}$};
-  \node[anchor=west, font=\tiny] at (11.92,-0.55) {$V^{\top}$};
-  \node[anchor=west, font=\tiny] at (11.92,-3.2) {（$D{\times}B_c$）};
+  \node at (11.05,-0.55) {$V_{:,\mathcal{D}_0}$};
+  \node at (11.05,-3.2) {$V_{:,\mathcal{D}_1}$};
+  \node[anchor=west, font=\tiny] at (11.92,-0.55) {原 $V$};
+  \node[anchor=west, font=\tiny] at (11.92,-3.2) {（$B_c{\times}D$）};
   \draw[->, tkOrange] (10.25,-0.55) -- (9.38,-0.9);
   \draw[->, tkOrange] (10.25,-3.2) -- (9.38,-2.6);
   \draw[tkOrange, fill=white, thick] (12.5,-1.25) rectangle (13.9,-0.65);
@@ -416,8 +417,9 @@ $128\times448\times2.25>65504$
 M8N1 相同（\texttt{split\_d.cuh} 头注释 L28--29 明言沿其 M8N1 设计），
 差异集中在三处：
 
-P 的 SMEM roundtrip（L685--707）。M8N1 里 P fragment 在寄存器
-里原地重排（16 SHFL + 32 PRMT，29.4.4~节）；M4N2 每 N-warp 只持半行
+P 的 SMEM roundtrip（L685--707）。M8N1 的 fallback 路径里 P fragment
+在寄存器原地重排（16 SHFL + 32 PRMT，29.4.4~节）；reorg-free 路径则按
+29.3.5~节就地置换打包。M4N2 每 N-warp 只持半行
 $B_c$ 列，warp 内无法重建完整 A-operand，必须经 SMEM 中转
 （stmatrix$\to$SMEM$\to$\texttt{LDSM\_N} 的骨架）。注意写侧用的是
 \texttt{DefaultCopy}（向量化 store）而不是 \texttt{stmatrix}：
@@ -510,9 +512,9 @@ reorg-free：reorg-free
 $-0.3\sim-0.4\%$，输出 bitwise 一致），现在 launcher 默认
 \texttt{reorg\_free=true}（\texttt{cute\_fp8\_split\_d.cuh} L105--124）；
 只有 fused-rescale 对保持关闭（\texttt{split\_d.cuh} L609--618 与
-\texttt{split\_d\_m4n2.cuh} L638--641 的缩略注释）。机理：split-D
-单 CTA/SM（256 线程）掩盖不了 FADD$\to$FFMA 多出来的 tensor pipe 压力，
-而 persist-D 是 384 线程 WS 能掩盖。
+\texttt{split\_d\_m4n2.cuh} L638--641 的缩略注释）。这组 A/B 证明收益依赖配置，
+但不能据此把差异归因于某一执行 pipe。split-D 单 CTA/SM（256 线程）与
+persist-D 的 384 线程 WS 结构不同，具体瓶颈需分别用 NCU 取证。
 
 stage 数的教训方向相反（PC-8）：m4n2 每级仅 12KB，99KB 容得下 7 级，
 但实测 s2$\to$s3 e2e 快 $9\sim13\%$（D=768、N=4096$\sim$16384，
@@ -709,8 +711,9 @@ fp8 split-D 在 $D=512$ 的 203T 大约是 fp8 persist-D 峰值（365T，
 第~\ref{ch:29}~章 29.6 节实测表）的 56\%。差距的构成：$O$ 累加器随 $D$ 翻倍的寄存器开销
 （occupancy 1 CTA）、chunk 循环多出的 barrier 握手、以及 epilogue
 批量 staging 的 smem 往返。这并不构成 split-D 的失败：绝对吞吐仍高于
-fp16 家族同 $D$ 量级，带宽侧（1B/元素）更是 3.76x speedup 的直接
-来源。
+fp16 家族同 $D$ 量级，1B/元素也确实降低搬运压力。但表中 $D{=}320$ 的
+3.76x 是相对本 bench 在该形状选择 SDPA-MATH 的端到端比值，不能全部归因于
+FP8 带宽优势。
 
 \section{实践经验}
 
@@ -726,26 +729,29 @@ D=512（fp16）。
         causal，逐 512-行块统计超阈行占比：三者模式完全一致，
         前 $\sim$30\% 块 100\% 超阈、后段 0\%，max $\sim$2、
         mean $\sim$0.007；
-  \item dense 对照：self-attn 六格全绿 $\Rightarrow$ 排除
-        kernel 结构性错误（chunk 流水、mask、epilogue 都对）；
+  \item dense 对照：self-attn 六格全绿 $\Rightarrow$ 公共 chunk 流水与
+        epilogue 未见结构性错误；dense 不执行 causal mask，因此不能据此
+        排除 mask 错位，mask 仍需独立边界用例；
   \item 对照头注释。L40--43 声明的\textbf{causal 早期行
         attend 少、误差不被平均}与实测模式吻合：早期行
         $P$ 分布尖，e4m3 的 $2^{-4}$（半格）相对舍入直接进 $O$；行号
         过半后 $P$ 足够平，误差被平均掉；
-  \item \textbf{结论}：已知精度特性，非回归 bug。需要严格
-        causal 精度的场景走 hybrid（前若干行 fp16 stage-1）。
+  \item \textbf{结论}：现象与该实现的已知 ESS 精度特性一致，但 dense
+        对照本身不构成“非回归 bug”的证明。需要严格 causal 精度的场景可走
+        hybrid（前若干行 fp16 stage-1）；要排除回归，先补 mask 单元测试。
 \end{enumerate}
 
 这套流程（模式 $\to$ dense 对照 $\to$ 对照声明 $\to$ 定性）与
-29.7.1~节 D=192 的定位流程同构：先证明不是 bug 再决定要不要修。
+29.7.1~节 D=192 的定位流程同构：先区分 mask 回归与已知数值特性，再决定
+修 kernel 还是采用 hybrid。
 
 \subsection{什么时候不该学本章}
 
 split-D/M4N2 是 $D>224$ 的\textbf{被迫选择}，不是普适更优。三条负面
 证据：WS 版 split-D 被 setmaxnreg 232 上限否决；QK/PV 混合 atom 布局
-被 M 维一致性否决；fused-rescale 在 split-D 域被单 CTA 掩盖不了的
-tensor pipe 压力否决。三条都是在 persist-D 域成立的优化不能照搬
-的实例，迁移优化前先核对 occupancy 与寄存器结构是否相同。
+被 M 维一致性否决；fused-rescale 在 split-D 域实测为负收益。三条都是
+在 persist-D 域成立的优化不能照搬的实例，迁移优化前先核对 occupancy
+与寄存器结构是否相同；进一步定位 fused-rescale 的执行瓶颈需另做 NCU。
 
 \section{常见坑}
 

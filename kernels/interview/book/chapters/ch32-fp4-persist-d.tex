@@ -33,9 +33,10 @@ Q/K/V 的量化无论多粗，都可以离线统计（smooth、per-block scale�
         个元素。
 \end{enumerate}
 
-两级量化的思路：先把整行线性拉伸到 NVFP4 的满量程（第一级，全局
-常数），块内再用 e2m1 域归一（第二级，per-group (16) ue4m3），让块的
-$\mathrm{amax}$ 恰好铺满 ue4m3 的域。
+两级量化的思路：先用整行尺度让全行最大值触达 NVFP4 的组合域上限
+$448\times6$（第一级，全局常数），再把每个 16 元素组的最大值归一到
+e2m1 的 6（第二级，per-group ue4m3）。组 SF 满足 $s_{P2}\le448$，
+只有组最大值等于当前运行行最大值时才取等，并非每组都铺满 SF 域。
 
 硬件侧的约束来自 blockscale MMA
 （\texttt{m16n32k64 kind::mxf4nvf4}，\texttt{attn\_traits.cuh} L77）要
@@ -47,16 +48,18 @@ pack 注释）。这套约束决定了 P 量化必须发生在寄存器里、紧
 
 \subsection{两级 P 量化：SA3 §3.2 的方案}
 
-对 softmax 输出 $\tilde P$（已减行 max、未归一），两级量化定义为：
+对 softmax 输出 $\tilde P$（以全行最终 max 为参考、未归一），两级量化定义为：
 \begin{equation}
-  s_{P1}[row]=\frac{\mathrm{rowmax}(\tilde P)}{448\times6},\qquad
+  R=\mathrm{rowmax}_{\mathrm{full}}(\tilde P),\qquad
+  s_{P1}[row]=\frac{R}{448\times6},\qquad
   \tilde P_2=\frac{\tilde P}{s_{P1}}\in[0,\,2688],\qquad
   \hat P_2,s_{P2}=\phi(\tilde P_2)
   \label{eq:32-two-level}
 \end{equation}
-$2688=448\times6$：448 是 ue4m3 满量程（SF 域上限）、6 是 e2m1 满量程
-（数据域上限）。乘积 2688 是 SF$\times$数据的乘积极限域，第一级把
-行拉伸到这个域。dequant 端
+这里的 $R$ 是全行最终最大值，不是任意当前 tile 的最大值；因此全行
+$\tilde P_2$ 的最大值为 2688，而单个 tile 可以小于 2688。$2688=448\times6$：
+448 是 ue4m3 满量程（SF 域上限）、6 是 e2m1 满量程（数据域上限）。
+乘积 2688 是 SF$\times$数据的乘积极限域。dequant 端
 $O=\mathrm{FP4MM}(\hat P_2,s_{P2},\hat V,s_V)\times s_{P1}$，常数
 $s_{P1}$ 在 $O$ 与 row\_sum 中\textbf{同现同消}，finalize 相除后精确
 抵消（\texttt{fp4\_pscale.cuh} L327--330 注释）。
@@ -64,23 +67,28 @@ $s_{P1}$ 在 $O$ 与 row\_sum 中\textbf{同现同消}，finalize 相除后精�
 \subsection{online softmax 下的退化：第一级变成常数}
 
 ffpa 实现利用了 online softmax 的一条性质（\texttt{fp4\_pscale.cuh}
-头注释 L2--5）：它对当前 tile 已经减去运行行 max，所以
-$\mathrm{rowmax}(\tilde P)\equiv1$，逐行的 $s_{P1}$ \textbf{退化为全
-局常数} $1/(448\times6)$，可以直接折进 \texttt{exp2} 的 shift。
+头注释 L2--5）：当前 tile 减去运行行 max $m$，所以当前 tile 的
+$\mathrm{rowmax}(\tilde P)\le1$，不恒等于 1；只有包含当前运行最大值的
+元素才取 1。max 更新时旧累加量同步 rescale，处理完一行后全行最大值为 1，
+故逐行的 $s_{P1}$ \textbf{退化为全局常数} $1/(448\times6)$，可以直接折进
+\texttt{exp2} 的 shift。
 \begin{equation}
   P_2=\exp_2\!\bigl(S\cdot L-m\cdot L+\log_2(448\cdot6)\bigr)
-  \in[0,\,2688],\qquad
-  s_{P2}=\exp_2\!\bigl(a\cdot L-m_{sc}+\log_2\tfrac{1}{6}\bigr)\in(0,\,448]
+  \in[0,\,2688],
   \label{eq:32-p2-domain}
 \end{equation}
-其中 $L=\mathrm{scale}\cdot\log_2 e$，$a$ 是 16 元素组 absmax，$m_{sc}$
-是含第一级常数的行 max（L117--119 注释与 L126--128 的三个编译期
+\begin{equation}
+  s_{P2}=\exp_2\!\bigl(a\cdot L-m_{sc}+\log_2\tfrac{1}{6}\bigr)
+  =448\exp_2\!\bigl((a-m)L\bigr)\le448,
+  \qquad m_{sc}=mL+\log_2\tfrac1{2688}.
+\end{equation}
+其中 $L=\mathrm{scale}\cdot\log_2 e$，$a$ 是该 16 元素组在 $S$ 域的
+最大值（源码的 \texttt{AbsMaxP} 实际用 \texttt{fmaxf} 归约）；
+$s_{P2}=448$ 只在 $a=m$ 时成立（L117--119 注释与 L126--128 的三个编译期
 常数：$\log_2(1/2688)=-11.3923$、$\log_2(1/6)=-2.5850$）。第一级量化
-的除法、$s_{P1}$ 的存储与乘回全部消失。常数符号容易看错：
-$m_{sc}=m\cdot L+\log_2\frac{1}{2688}$，减去它等效加上
-$\log_2 2688$，所以 $s=m$ 时 $P_2$ 恰达 $2688$（源码注释 L118 把
-shift 写作 $+\log_2(1/(448\cdot6))$，是同一类符号笔误，以代码与值域为
-准）。
+的除法、$s_{P1}$ 的存储与乘回全部消失。同理，$s=m$ 时 $P_2$ 恰达 2688
+（源码注释 L118 把 shift 写作 $+\log_2(1/(448\cdot6))$，是符号笔误，
+以代码与值域为准）。
 
 \subsection{归一化也折进 exp2}
 
@@ -89,7 +97,7 @@ shift 写作 $+\log_2(1/(448\cdot6))$，是同一类符号笔误，以代码与�
 \begin{equation}
   q=\exp_2\!\bigl((s-a)\cdot L+\log_2 6\bigr)\in(0,\,6]
 \end{equation}
-组 absmax 归一化在 \texttt{exp2} 参数里完成，rcp 与逐元素
+组 max 归一化在 \texttt{exp2} 参数里完成，rcp 与逐元素
 FMUL 在 softmax 与 pack 之间整段消失；row\_sum 用 FMA 吸收 $s_{P2}$
 因子（\texttt{row\_sum = fmaf(q, sfp2, row\_sum)}，L195）。硬件只要
 一条 MUFU.EX2：\texttt{ex2.approx.ftz.f32} 的 \texttt{.ftz} 让 ptxas
@@ -97,7 +105,7 @@ FMUL 在 softmax 与 pack 之间整段消失；row\_sum 用 FMA 吸收 $s_{P2}$
 FSEL/FMUL 链，实测 -5.9\%）。
 
 同一条 shuffle 链做两个归约：C fragment 每 lane 持 8 元素，
-$\texttt{shfl\_xor}(1)$ 合成 16 元素组 absmax，$\texttt{shfl\_xor}(2)$
+$\texttt{shfl\_xor}(1)$ 合成 16 元素组 max，$\texttt{shfl\_xor}(2)$
 完成 quad 内行 max（L160--167），组尺度和行 max 的冗余
 归约减半。
 
@@ -118,18 +126,23 @@ causal 左上角（L169--175、L219--221 的 \texttt{scores\_max\_cur} 守卫）
 \texttt{kLazyRescale} 恒 \texttt{false}，fp4 的\textbf{lazy}只指 $O$ 的补乘，
 指数值域本身必须 eager。
 
-lse 的复合公式（每项都有出处）：
+记 $\widetilde Q_i^{\mathrm{deq}}$ 为 kernel 内反量化的中心化 Q 残差，
+$q_m$ 为对应块均值，并定义
+$c_{\mathrm{lse},i}=(\widetilde Q_i^{\mathrm{deq}}+q_m)\cdot\bar k$；
+所有量都位于与 kernel 一致的（可选旋转）坐标域。lse 的复合公式为：
 \begin{equation}
-  \mathrm{lse}=\bigl(m\cdot L+\log_2(\mathrm{row\_sum})+
-  \log_2\tfrac{1}{2688}\bigr)\ln 2+\mathrm{scale}\cdot q_{km}
+  \mathrm{lse}_i=\bigl(m\cdot L+\log_2(\mathrm{row\_sum})+
+  \log_2\tfrac{1}{2688}\bigr)\ln 2+\mathrm{scale}\cdot c_{\mathrm{lse},i}
   \label{eq:32-lse}
 \end{equation}
-第一项是 log2 域行 max 与 row\_sum，第三项是两级量化的 $1/2688$ 因子
-（行和处于 $P\cdot2688$ 域，要除回来）。最后一项是 smooth-K 的修正
-$\mathrm{dot}(q_{row},\bar k)$（第~\ref{ch:31}~章
-式~\eqref{eq:31-deltas} 的对应项；\texttt{lse\_qkm\_dot} 在 Q 寄存器拷贝后、kv
-循环之前算好，L583--591 与 \texttt{persist\_d.cuh} L757--758：Q 的
-smem 在 \texttt{kQSmemReuse} 下会被 V stage 复用，点积必须提前）。
+括号内三项依次为 log2 域行 max、$\log_2(\mathrm{row\_sum})$ 与两级量化的
+$1/2688$ 因子（行和处于 $P\cdot2688$ 域，要除回来）。最后一项对应源码
+\texttt{lse\_qkm\_dot} 累加的\textbf{两个点积}：
+$\mathrm{dot}(\widetilde Q_i^{\mathrm{deq}},\bar k)$ 与
+$\mathrm{dot}(q_m,\bar k)$（L583--591），不是第~\ref{ch:31}~章
+$\Delta S$ 中的 $q_{km}=q_m\bar k$。该值在 Q 寄存器拷贝后、kv 循环之前算好
+（\texttt{persist\_d.cuh} L757--758）：Q 的 smem 在 \texttt{kQSmemReuse}
+下会被 V stage 复用，点积必须提前。
 
 \subsection{MXFP8 PV 变体的数值约定}
 
@@ -301,7 +314,7 @@ PV 的 C fragment 每 lane 持数不同（头注释 L44--46）。
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{6.1}{7.7}\selectfont \bfseries \color{tkRed} }] at (0.37,-0.862) {(1) 问题：直接块量化的 SF 窄域浪费（SA3 C2）};% w=8.316
     \node[draw=tkRed, fill=tkFillRed, line width=0.5pt, minimum width=7.70cm, minimum height=1.39cm, inner sep=1pt, align=center, text width=7.64cm, font={\fontsize{5.2}{6.6}\selectfont \color{tkRed} }] at (4.22,-1.802) {P $\in$ [0,1]，行内分布剧变：\\causal 早行近 one-hot / dense 行小而均匀\\$\to$ s = amax(块)/6 $\in$ [0, 0.167]\\ue4m3 在窄域的有效位数被浪费（SF 自身先损）};
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{6.1}{7.7}\selectfont \bfseries \color{tkGreen!70!black} }] at (9.394,-0.862) {(2) 方案：两级拉伸（SA3 \S{}3.2）};% w=8.162
-    \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=8.16cm, minimum height=1.39cm, inner sep=1pt, align=center, text width=8.10cm, font={\fontsize{5.2}{6.6}\selectfont \color{tkGreen!70!black} }] at (13.475,-1.802) {第一级：整行拉伸到满量程（s\_P1 = rowmax/2688）\\第二级：per-group (16) absmax 归一（s\_P2, ue4m3）\\$\to$ 组 amax 恰好铺满 ue4m3 域 [0, 448]\\2688 = 448（ue4m3 满）$\times$ 6（e2m1 满）};
+    \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=8.16cm, minimum height=1.39cm, inner sep=1pt, align=center, text width=8.10cm, font={\fontsize{5.2}{6.6}\selectfont \color{tkGreen!70!black} }] at (13.475,-1.802) {第一级：全行最大值触达组合域上限（s\_P1 = rowmax/2688）\\第二级：每组最大值归一到 e2m1 的 6\\$\to$ s\_P2 $\le$ 448，仅组 max $=$ 运行行 max 时取等\\2688 = 448（ue4m3 满）$\times$ 6（e2m1 满）};
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{6.1}{7.7}\selectfont \bfseries }] at (0.37,-3.018) {(3) 域拉伸链（三个域的端点）};% w=17.094
     \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=4.62cm, minimum height=0.71cm, inner sep=1pt, align=center, text width=4.56cm, font={\fontsize{5.2}{6.6}\selectfont }] at (2.68,-3.619) {softmax 输出（已减行 max）\\值域 [0, 1]};
     \node[draw=tkPurple, fill=tkFillPurple, line width=0.5pt, minimum width=4.93cm, minimum height=0.71cm, inner sep=1pt, align=center, text width=4.87cm, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkPurple} }] at (8.624,-3.619) {P$_2$ = $\tilde{P}$ $\times$ 2688\\值域 [0, 2688]（全局常数拉伸）};
@@ -311,14 +324,14 @@ PV 的 C fragment 每 lane 持数不同（头注释 L44--46）。
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!65} }] at (0.37,-4.25) {还原：O = FP4MM($\hat{P}$$_2$, s\_P2, $\hat{V}$, s\_V) ------ 2688 在 O 与 row\_sum 同现，finalize 相除精确消去};% w=17.094
     \node[draw=gray!55, fill=black!2, line width=0.5pt, minimum width=8.32cm, minimum height=3.39cm, inner sep=1pt, align=center, text width=8.25cm, font={\fontsize{5.7}{7.1}\selectfont }] at (4.528,-6.314) {};
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries }] at (0.616,-4.897) {(4) 实现的收益：第一级退化成常数};% w=7.854
-    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkPurple} }] at (0.616,-5.452) {online softmax 先减运行行 max $\Rightarrow$\\rowmax($\tilde{P}$) $\equiv$ 1 $\Rightarrow$ s\_P1 $\equiv$ 1/(448$\times$6)};% w=7.854
-    \node[draw=black!30, fill=black!2, line width=0.5pt, minimum width=7.85cm, minimum height=0.92cm, inner sep=1pt, align=center, text width=7.79cm, font={\fontsize{4.8}{6.0}\selectfont \color{black!65} }] at (4.543,-6.376) {P$_2$ = exp2(S$\cdot$L $-$ m$\cdot$L $-$ log2(1/2688)) $\in$ [0, 2688]\\s\_P2 = exp2(a$\cdot$L $-$ m\_sc + log2(1/6)) $\in$ (0, 448]\\（L = scale$\cdot$log2e；编译期常数 $-$11.392 / $-$2.585）};
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkPurple} }] at (0.616,-5.452) {当前 tile：rowmax($\tilde{P}$) $\le$ 1（不恒为 1）\\全行最终 max $=$ 1 $\Rightarrow$ s\_P1 $\equiv$ 1/(448$\times$6)};% w=7.854
+    \node[draw=black!30, fill=black!2, line width=0.5pt, minimum width=7.85cm, minimum height=0.92cm, inner sep=1pt, align=center, text width=7.79cm, font={\fontsize{4.8}{6.0}\selectfont \color{black!65} }] at (4.543,-6.376) {P$_2$ = exp2(S$\cdot$L $-$ m$\cdot$L $-$ log2(1/2688)) $\in$ [0, 2688]\\s\_P2 = exp2(a$\cdot$L $-$ m\_sc + log2(1/6)) $\le$ 448（a $=$ m 取等）\\（L = scale$\cdot$log2e；编译期常数 $-$11.392 / $-$2.585）};
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkGreen!70!black} }] at (0.616,-7.115) {逐行的 s\_P1 存储与乘回全部消失};% w=7.854
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (0.616,-7.484) {组归一也折进 exp2：q = exp2((s$-$a)$\cdot$L + log2 6)};% w=7.854
     \node[draw=gray!55, fill=black!2, line width=0.5pt, minimum width=3.85cm, minimum height=3.39cm, inner sep=1pt, align=center, text width=3.79cm, font={\fontsize{5.7}{7.1}\selectfont }] at (11.042,-6.314) {};
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries }] at (9.363,-4.897) {(5) 同链双归约};% w=3.388
     \node[draw=gray!55, fill=none, line width=0.5pt, minimum width=3.36cm, minimum height=0.62cm, inner sep=1pt, align=center, text width=3.30cm, font={\fontsize{4.8}{6.0}\selectfont }] at (11.042,-5.482) {lane 持 8 元素\\组 = 2 lane $\times$ 8};
-    \node[draw=tkBlue, fill=tkFillBlue, line width=0.5pt, minimum width=3.36cm, minimum height=0.62cm, inner sep=1pt, align=center, text width=3.30cm, font={\fontsize{4.8}{6.0}\selectfont \bfseries \color{tkBlue} }] at (11.042,-6.283) {shfl\_xor(1)\\$\to$ 16 元素组 absmax};
+    \node[draw=tkBlue, fill=tkFillBlue, line width=0.5pt, minimum width=3.36cm, minimum height=0.62cm, inner sep=1pt, align=center, text width=3.30cm, font={\fontsize{4.8}{6.0}\selectfont \bfseries \color{tkBlue} }] at (11.042,-6.283) {shfl\_xor(1)\\$\to$ 16 元素组 max};
     \node[draw=tkOrange, fill=tkFillOrange, line width=0.5pt, minimum width=3.36cm, minimum height=0.62cm, inner sep=1pt, align=center, text width=3.30cm, font={\fontsize{4.8}{6.0}\selectfont \bfseries \color{tkOrange!75!black} }] at (11.042,-7.084) {shfl\_xor(2)\\$\to$ quad 内行 max};
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{black!65} }] at (9.363,-7.669) {组尺度+行 max 冗余减半};% w=3.388
     \node[draw=gray!55, fill=black!2, line width=0.5pt, minimum width=4.16cm, minimum height=3.39cm, inner sep=1pt, align=center, text width=4.10cm, font={\fontsize{5.7}{7.1}\selectfont }] at (15.477,-6.314) {};
@@ -333,15 +346,15 @@ PV 的 C fragment 每 lane 持数不同（头注释 L44--46）。
     \node[draw=gray!55, fill=black!2, line width=0.5pt, minimum width=8.44cm, minimum height=1.54cm, inner sep=1pt, align=center, text width=8.38cm, font={\fontsize{5.7}{7.1}\selectfont }] at (13.336,-9.178) {};
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries }] at (9.363,-8.655) {(8) MXFP8 PV 变体的域常量切换};% w=8.008
     \node[draw=black!30, fill=black!2, line width=0.5pt, minimum width=8.01cm, minimum height=0.92cm, inner sep=1pt, align=center, text width=7.95cm, font={\fontsize{4.8}{6.0}\selectfont \color{black!65} }] at (13.367,-9.332) {V$^{\top}$ 换 e4m3 + ue8m0（32 组）时：P 侧同换 32 粒度，\\域常量 2688 $\to$ 448（无 e2m1 因子）、SF 取 2 的幂；\\历史 latent bug：lse 无条件沿用 2688（差 ln 6）};
-    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkPurple} }] at (0.37,-10.349) {口诀：两级量化在实现里只剩一组组 absmax------第一级被 online softmax 折成常数，第二级的除法被 exp2 参数吸收。};% w=17.094
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkPurple} }] at (0.37,-10.349) {口诀：第一级被 online softmax 折成常数；第二级只需逐组 max 归约，除法由 exp2 参数吸收。};% w=17.094
     \draw[tkPurple, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (4.99,-3.619) -- (6.16,-3.619);
     \draw[tkGreen, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (11.088,-3.619) -- (12.32,-3.619);
     \draw[black!75, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (11.042,-5.79) -- (11.042,-5.975);
     \draw[black!75, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (11.042,-6.591) -- (11.042,-6.776);
   \end{tikzpicture}
   \caption{两级 P 量化的域拉伸：online softmax 使第一级退化为全局常数
-  $1/2688$ 并折进 exp2 shift；第二级 per-group (16) absmax 铺满 ue4m3 域，
-  组归一化同样折进 exp2 参数。}
+  $1/2688$ 并折进 exp2 shift；第二级 per-group (16) max 把数据最大值归一到
+  e2m1 的 6，组 SF 满足 $s_{P2}\le448$，仅组最大值等于运行行最大值时取等。}
   \label{fig:32-1}
 \end{figure}
 
@@ -379,7 +392,7 @@ PV 的 C fragment 每 lane 持数不同（头注释 L44--46）。
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.1}{5.1}\selectfont }] at (10.78,-4.404) {kv-tail + causal：pos = kv\_tile$\cdot$Bc + $\pi$(j)（perm-aware）；bias 注入同过 $\pi$};% w=6.314
     \node[draw=tkGreen, fill=tkFillGreen, line width=0.5pt, minimum width=9.09cm, minimum height=0.68cm, inner sep=1pt, align=center, text width=9.02cm, font={\fontsize{5.7}{7.1}\selectfont }] at (12.613,-5.174) {};
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.4}{5.5}\selectfont \bfseries \color{tkGreen!70!black} }] at (8.193,-5.02) {(4) softmax\_with\_quant};% w=2.618
-    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.4}{5.5}\selectfont }] at (10.78,-5.174) {P$_2$ 域融合：组 absmax + 行 max 同链；出寄存器即 $\hat{P}$$_2$/s\_P2};% w=6.314
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.4}{5.5}\selectfont }] at (10.78,-5.174) {P$_2$ 域融合：组 max + 行 max 同链；出寄存器即 $\hat{P}$$_2$/s\_P2};% w=6.314
     \node[draw=tkOrange, fill=tkFillOrange, line width=0.5pt, minimum width=9.09cm, minimum height=0.68cm, inner sep=1pt, align=center, text width=9.02cm, font={\fontsize{5.7}{7.1}\selectfont }] at (12.613,-5.944) {};
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \bfseries \color{tkOrange} }] at (8.193,-5.79) {(5) gemm\_rs\_fp4};% w=2.618
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.4}{5.5}\selectfont }] at (10.78,-5.944) {O += ($\hat{P}$$_2$$\cdot$s\_P2)($\hat{V}$$\cdot$s\_V)：P 现场打包不过 smem；v\_full 在(4)后才等};% w=6.314
@@ -502,7 +515,7 @@ fp4 会全部不通过。hybrid（fp16 前 $n_{early}$ 行）是尖峰行的工�
   \item \textbf{mbarrier re-init 是 UB}：跨 work 循环里对活跃 barrier
         re-initialize 行为未定义（PTX ISA 9.7.13.15.9），用全局 tile
         计数器驱动 phase。
-  \item \textbf{stale AbsMaxP}：组 absmax 寄存器跨 tile/跨 work 复用，
+  \item \textbf{stale AbsMaxP}：组 max 寄存器跨 tile/跨 work 复用，
         每 FirstTile 必须从 $-\infty$ 重新起步（L151--154 注释），
         否则上个 work 的尺度泄漏进当前行。
   \item \textbf{未初始化 asm 操作数被折叠}：Q 不驻留寄存器时 cicc 把
@@ -518,8 +531,8 @@ fp4 会全部不通过。hybrid（fp16 前 $n_{early}$ 行）是尖峰行的工�
   \item 两级 P 量化：$s_{P1}=\mathrm{rowmax}/2688$、
         $\tilde P_2\in[0,2688]$、$s_{P2}$ per-group (16) ue4m3；2688 =
         448（ue4m3 满）$\times$ 6（e2m1 满）。
-  \item online softmax 的退化收益：行 max 恒 1 $\Rightarrow$ 第一级变
-        全局常数折进 exp2 shift——两级量化在实现里只剩一组 absmax。
+  \item online softmax 的退化收益：当前 tile max $\le1$、全行最终 max $=1$，
+        故第一级变全局常数折进 exp2 shift；第二级只需逐组 max 归约。
   \item 组归一化折进 exp2 参数：$q=\exp_2((s-a)L+\log_2 6)$，rcp 与
         FMUL 段消失；row\_sum 用 FMA 吸收 $s_{P2}$。
   \item 2688 的消去：$O$ 与 row\_sum 同带常数，finalize 相除精确抵消。
@@ -547,8 +560,8 @@ python -m ffpa_attn.bench --fwd-backend cuda --cuda-impl fp4 \
 \begin{enumerate}[itemsep=2pt,topsep=2pt]
   \item \textbf{两级域验证}：读 \texttt{fp4\_pscale.cuh} L117--128 的
         三个编译期常数，手推
-        式~\ref{eq:32-p2-domain} 的两个值域端点（$P_2=2688$ 当
-        $s=m$；$s_{P2}=448$ 当组 absmax $=$ 行 max）。
+        式~\ref{eq:32-p2-domain} 及其后一式的两个值域端点（$P_2=2688$ 当
+        $s=m$；$s_{P2}=448$ 当组 max $=$ 行 max）。
   \item \textbf{mxfp8 A/B}：复现表~\ref{tab:32-mxfp8} 的三档 D，验证
         $D{=}256$ 被 traits 的 smem 断言拒绝。
   \item \textbf{causal 风格对照}：读 \texttt{launch/cute\_fp4\_persist\_d.cuh} 的
