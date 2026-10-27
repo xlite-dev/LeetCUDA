@@ -483,7 +483,8 @@ V 槽位是 8\,KB，合计
 \end{equation}
 
 这也解释了本章测试辅助工具为什么必须做 smem 可行性检查（\texttt{SKIP(ch19)} 分支）：
-$D$ 一涨，$C$ 跟着涨，而\textbf{stage 数是独立的可调量}，两者消耗的是同一份 99\,KB 预算。
+占用同一份 99\,KB 预算的可调量是 $\mathrm{Sk}$ 与 $\mathrm{Sv}$；$C$ 只影响
+chunk 迭代次数与 O 累加器的寄存器总量，不进入 chunk 池的 smem 公式。
 生产库在 sm120 上把 stage 上限限制在 2--3，理由正是快速 MMA 下同步开销主导、
 smem 预算吃紧（见 19.6~节）。
 
@@ -509,8 +510,10 @@ $\times$ 4 次 = 4096 个元素，恰好铺满一个 $[64,64]$ 的 chunk。
 
 \begin{enumerate}[itemsep=2pt,topsep=2pt]
   \item \textbf{Phase 0：V 预取}（L204--215）。先把前 $\mathrm{Sv}-1$ 个 V chunk
-        发出去；V 要到 Phase 3 才用，所以这几组 \texttt{cp.async} 可以整段
-        overlap 在 QK 与 softmax 上。这是\textbf{提前发射}而非\textbf{提前等待}。
+        发出去，随后立即执行 \texttt{cp\_\allowbreak{}async\_\allowbreak{}wait<Sv-2>}。
+        本章默认 $\mathrm{Sv}=2$，等价于 \texttt{wait\_all}。即使 $\mathrm{Sv}\ge3$，
+        后续 QK 的等待也会按统一的 cp.async 组 FIFO 等完更早的 V 组，因此不存在
+        V 横跨整段 QK/softmax 的在途窗口；$\mathrm{Sv}\ge3$ 的重叠只可能留在 Phase 3 内。
   \item \textbf{Phase 1：QK${}^\top$ 的 chunk 流水}（L217--271）。每个 chunk
         一对 (Q, K)，一次 \texttt{cp.\allowbreak{}async\_\allowbreak{}fence\allowbreak{}()} 提交为一组；
         \texttt{gemm\_ss} 内部做流水化的 \texttt{ldmatrix} + \texttt{mma.sync}，
@@ -534,10 +537,12 @@ Phase 1 的内层是这个 kernel 的核心循环，包含两个易错点：chun
   title={ffpa\_attn.cuh L237-267（QK chunk 主循环：预取 $d+\mathrm{Sk}-1$、等待、gemm\_ss 累加）}]{../ffpa_attn.cuh}
 
 \texttt{cp\_\allowbreak{}async\_\allowbreak{}wait\allowbreak{}<N>} 的语义是等到未完成的组数 $\le N$。
-\texttt{kStagesQK} $=2$ 时 \texttt{wait<0>} 意味着把刚发出的预取也一并等到
-，这一档没有循环内重叠，重叠主要来自 Phase 0 的 V 预取与整段 QK/softmax 的
-并行；$\mathrm{Sk} \ge 3$ 时 \texttt{wait<Sk-2>} 才允许 $\mathrm{Sk}-2$ 组仍 in-flight，
-循环内重叠才真正建立。这个细节在 19.6~节解释性能差异时会用到。
+\texttt{kStagesQK} $=2$ 时 \texttt{wait<0>} 会把刚发出的预取也一并等到，因此
+QK 循环内没有重叠。QK 与 V 共用一个按提交先后排序的组 FIFO，并不是两条独立
+等待队列：QK 的 \texttt{wait} 也会等完更早提交的 V 组，所以 Phase 0 的早发射
+不能解释成 V 与整段 QK/softmax 重叠。本章默认 $\mathrm{Sk}=\mathrm{Sv}=2$ 时，
+两侧都在 \texttt{wait<0>} 后落地；$\mathrm{Sk}\ge3$ 可建立 QK 循环内重叠，
+$\mathrm{Sv}\ge3$ 则只能在 Phase 3 内保留下一块 V 与当前 PV 的重叠。
 
 \begin{figure}[H]
 \centering
@@ -573,21 +578,21 @@ Phase 1 的内层是这个 kernel 的核心循环，包含两个易错点：chun
   \node[anchor=east, font=\scriptsize] at (-0.15,-2.20) {PV chunk 流水};
   \node[anchor=north west, align=left, text width=9.9cm, fill=white] at ({1.33},-2.55)
     {每个 $v$ chunk：先乘 $\rho_t$ 再 \texttt{gemm\_rs}（P 在寄存器、V 走 \texttt{ldmatrix.trans}）};
-  % V 在途窗口：Phase 0 发射，横跨 Phase 1 与 Phase 2
+  % V 早发射与晚消费的逻辑间隔，不等于 DMA 在途窗口
   \draw[thin, dashed, fill=gray!18] (0,-3.57) rectangle ({7.2*0.95},-3.15);
-  \node[fill=gray!18] at ({3.6*0.95},-3.36) {$V$ 的 $S_v$ 个 chunk：Phase 0 发射、Phase 3 才消费};
+  \node[fill=gray!18] at ({3.6*0.95},-3.36) {$V$ 的前 $S_v{-}1$ 个 chunk：Phase 0 发射、Phase 3 消费};
   \node[anchor=east, font=\scriptsize] at (-0.15,-3.36) {$V$ 预取};
   \draw[-{Stealth}, dashed, thin] ({7.2*0.95},-3.36) -- ({7.9*0.95},-3.36) -- ({7.9*0.95},-2.95);
   \node[anchor=west] at (7.75,-3.11) {Phase 3 才用};
   \node[anchor=north west, align=left, text width=9.9cm] at ({1.33},-3.82)
-    {灰底 $=$ $V$ 的在途窗口：\textbf{横跨整段 QK chunk 流水与 softmax}——这就是\textbf{提前发射}而非\textbf{提前等待}};
-  % Sk=2 与 Sk>=3 的差别
+    {灰底 $=$ 早发射到晚消费的\textbf{逻辑间隔}，不是 DMA 在途窗口；后续 QK 的 \texttt{wait} 会按 FIFO 等完更早的 V 组};
+  % 默认两级与更深流水的差别
   \node[anchor=north west, align=left, text width=9.9cm, text=vscAccent] at ({1.33},-4.35)
-    {$\mathrm{Sk}{=}2$：\texttt{wait<0>} 把刚发出的预取也一并等到 $\to$ 循环内无重叠（重叠全靠 $V$ 预取与 Phase 2）};
+    {$\mathrm{Sk}{=}\mathrm{Sv}{=}2$：两侧均 \texttt{wait<0>}，QK 与 V 都没有跨计算在途重叠};
   \node[anchor=north west, align=left, text width=9.9cm] at ({1.33},-4.80)
-    {$\mathrm{Sk}{\ge}3$：\texttt{wait<Sk-2>} 允许 $\mathrm{Sk}{-}2$ 组仍在途 $\to$ 循环内重叠才真正建立};
+    {$\mathrm{Sk}\ge3$：QK 可建立循环内重叠；$\mathrm{Sv}\ge3$：V 的重叠只可能在 Phase 3 内};
 \end{tikzpicture}
-\caption{cp.async 版的四阶段流水（19.4.3 节主循环，任取一轮 KV tile 周期）。Phase 0 先把 $S_v{-}1$ 个 V chunk 发出去（提前发射）；Phase 1 沿 head\_dim 逐个 chunk 走\textbf{预取 $d{+}\mathrm{Sk}{-}1$ $\to$ \texttt{wait<Sk-2>} $\to$ \texttt{gemm\_ss}}，三次累加到同一块 $S[64,64]$；Phase 2 在 chunk 循环结束之后对完整的 $S$ 一次算完在线 softmax；Phase 3 每个 chunk 先乘 $\rho_t$ 再 \texttt{gemm\_rs}。灰底为 V 的在途窗口：从 Phase 0 发射一直横跨整个 Phase 1 与 Phase 2，直到 Phase 3 才被消费——这是本 kernel 唯一在循环内建立的重叠。$\mathrm{Sk}{=}2$ 与 $\mathrm{Sk}{\ge}3$ 的差别只落在 Phase 1 的 \texttt{wait} 口径上（19.6 节的性能差异来源）。}
+\caption{cp.async 版的四阶段流水（19.4.3 节主循环，任取一轮 KV tile 周期）。Phase 0 先把 $S_v{-}1$ 个 V chunk 发出去；Phase 1 沿 head\_dim 逐个 chunk 走\textbf{预取 $d{+}\mathrm{Sk}{-}1$ $\to$ \texttt{wait<Sk-2>} $\to$ \texttt{gemm\_ss}}，三次累加到同一块 $S[64,64]$；Phase 2 在 chunk 循环结束之后对完整的 $S$ 一次算完在线 softmax；Phase 3 每个 chunk 先乘 $\rho_t$ 再 \texttt{gemm\_rs}。灰底只表示 V 早发射与晚消费的逻辑间隔，不是在途窗口：cp.async 组 FIFO 使后续 QK 的等待也会等完更早的 V 组。默认 $\mathrm{Sk}=\mathrm{Sv}=2$ 时两侧都无跨计算在途重叠；$\mathrm{Sv}\ge3$ 的 V 重叠仅限 Phase 3 内，$\mathrm{Sk}\ge3$ 则对应 QK 循环内重叠。}
 \label{fig:19-four-phase}
 \end{figure}
 
@@ -955,10 +960,10 @@ $\times$ 2 个 N-warp，$R_O$ 降到 $D/4$）的原因，也是本章这版 kern
 两组的 GPU（PRO 5000 vs 5090）、形状（$D{=}512/N{=}8192$ vs
 $D{=}320/N{=}16384$）与流水深度都不同，\textbf{不可互换、不可换算}；正文凡引用
 数字必须带 GPU 名与形状。二者一致的定性结论只有一条：在 $D \gg 128$ 上，
-Split-D 相对 cuDNN SDPA 的收益在 $1.5\times$--$2.2\times$ 量级，把流水从
-$\mathrm{Sk}{=}\mathrm{Sv}{=}1$ 加到 $2$ 是主要增益来源（5090 口径下
-$1.53\times \to 2.20\times$）。这条结论与 19.6~节关于 stage 数与 smem 预算互相
-挤压的定性分析方向一致。
+Split-D 相对 cuDNN SDPA 的收益在 $1.5\times$--$2.2\times$ 量级。5090 口径下，
+$\mathrm{Sk}{=}\mathrm{Sv}{=}1\to2$ 的配置对照对应 $1.53\times \to 2.20\times$；
+这只是结果对照，不能归因于 V 横跨 QK/softmax 的在途重叠，本书未复测其性能机制。
+可以确定的是，继续加深 stage 会受到式~\ref{eq:19-smemtable} 的 smem 预算约束。
 
 再看结构层面的算术强度。按每轮 KV tile 统计（每轮装载 Q、K、V 各 $C$ 个 chunk）：
 

@@ -136,8 +136,9 @@ $\mathrm{Tile}_N/8$：QK 是 8，PV 是 2。
 \begin{quote}
   $\mathrm{EURepeat}_N$ 就是每个线程每个 k-step 发射的
   \texttt{mma.sync} 条数。\allowbreak{}QK 的 8 条一次覆盖 $S$ 的整个 64 列
-  （$8\times n8$），于是 N-tile 循环整个消失；PV 的 2 条只覆盖
-  $O$ 的 16 列，$O$ 的其余列由外层 V-chunk 循环驱动。
+  （$8\times n8$），于是 N-tile 循环整个消失；PV 的 2 条覆盖单次调用的
+  16 列。一个完整 O chunk 为 64 列，chunk 内先由 4 个 N-tile 覆盖，
+  外层 V-chunk 循环再遍历后续各个 64 列 chunk。
 \end{quote}
 
 图~\ref{fig:26-dual-mma} 把这条对比摆成两个 tile 网格：行维同样被
@@ -170,7 +171,7 @@ $\mathrm{AtomLayout}=(4,1,1)$ 的 4 个 warp 分完，列维的 atom 数相差 4
   \foreach \aa in {1,...,7} {
     \draw[thin] (1.1+\aa*1.05,0) -- (1.1+\aa*1.05,-3.44);
   }
-  % 右网格：O 的一个 chunk 分量 64x16（4 warp 行块 x 2 个 n8 atom 列块）
+  % 右网格：O 的单次 PV 调用视图 64x16（4 warp 行块 x 2 个 n8 atom 列块）
   \foreach \wr in {0,...,3} {
     \foreach \aa in {0,...,1} {
       \pgfmathtruncatemacro{\gra}{18+30*\aa}
@@ -190,7 +191,7 @@ $\mathrm{AtomLayout}=(4,1,1)$ 的 4 个 warp 分完，列维的 atom 数相差 4
   \node[font=\scriptsize\bfseries,align=center,text=tkGreen!70!black] at (11.95,0.85)
     {PV TiledMma：Tile $=(64,16,16)$\\$\mathrm{EURepeat}=\langle 1,2,1\rangle$};
   \node[axl,anchor=south,text=tkBlue] at (5.3,0.22) {$S$（每块 = 一个 $n8$ atom，格内数字 = 该 warp 本 k-step 发射的第几条 \texttt{mma.sync}）};
-  \node[axl,anchor=south,text=tkGreen!70!black] at (11.95,0.22) {$O$ 的 chunk $c$ 分量};
+  \node[axl,anchor=south,text=tkGreen!70!black] at (11.95,0.22) {$O$ 的单次 PV 调用视图};
   \foreach \aa in {0,...,7} {
     \node[axl,anchor=north] at (1.1+\aa*1.05+0.525,-3.52) {\aa};
   }
@@ -198,24 +199,25 @@ $\mathrm{AtomLayout}=(4,1,1)$ 的 4 个 warp 分完，列维的 atom 数相差 4
     \node[axl,anchor=north] at (11.0+\aa*0.95+0.475,-3.52) {\aa};
   }
   \node[axl,anchor=north] at (5.3,-3.95) {atom 列序（$N$ 向，每块 8 列：QK 共 $8{\times}8{=}64$ 列）};
-  \node[axl,anchor=north] at (11.95,-3.95) {共 16 列};
+  \node[axl,anchor=north] at (11.95,-3.95) {单视图共 16 列};
   % 交接箭头
   \draw[-{Stealth},thick,tkPurple] (9.72,-1.72) -- (10.78,-1.72);
   \node[font=\scriptsize,anchor=south,text=tkPurple] at (10.25,-1.66) {$P$};
   \node[font=\tiny,align=center,anchor=north,text=tkPurple] at (10.25,-1.78) {softmax\\Aregs 交接};
   % 底部两行注记
   \node[axl,anchor=north west,align=left,text width=11.6cm] at (1.1,-4.35)
-    {两个 TiledMma 的 frag 相同：$\mathrm{frag}_S=\mathrm{frag}_O=((2,2),1,8)=32$ 值/线程
-     （式~\eqref{eq:26-frag32}，第三 mode 的 8 来历不同）；行维同被 4 warp 分完，};
+    {两个完整输出的 frag 相同：$\mathrm{frag}_S=\mathrm{frag}_O=((2,2),1,8)=32$ 值/线程
+     （式~\eqref{eq:26-frag32}，第三 mode 的 8 来历不同）；右侧仅画 O chunk 的一个 N-tile，};
   \node[axl,anchor=north west,align=left,text width=11.6cm] at (1.1,-5.25)
     {差别全在 $N$ 向：\textcolor{tkBlue}{QK} 的 $\mathrm{EURepeat}_N{=}8$ ——8 条 \texttt{mma.sync} 一次覆盖 $S$ 整个 64 列，\textbf{N-tile 循环}消失；
-     \textcolor{tkGreen!70!black}{PV} 的 $\mathrm{EURepeat}_N{=}2$ 只覆盖 $O$ 的 16 列，其余列由外层 V-chunk 循环驱动。};
+     \textcolor{tkGreen!70!black}{PV} 的 $\mathrm{EURepeat}_N{=}2$ 覆盖单视图的 16 列，完整 O chunk 内需 4 个 N-tile，外层 V-chunk 再推进 64 列。};
 \end{tikzpicture}
 \caption{双 TiledMma 的 Tile 分工（式~\eqref{eq:26-qk}--\eqref{eq:26-pv}）。
 左：QK 的输出 $S[64,64]$——4 个 warp 各占 16 行（$\mathrm{AtomLayout}$ 的 $M$ 分量 4），
 列向 8 个 $n8$ atom 由\textbf{同一线程}在一个 k-step 里连发 8 条 \texttt{mma.sync} 覆盖
-（蓝深浅 8 档标识 atom 身份，格内数字为发射序）；右：PV 的输出 $O$ 只有一个
-chunk 分量 $[64,16]$（绿 2 档、2 个 atom、2 条 \texttt{mma.sync}）。中间箭头是 26.3.3 节的
+（蓝深浅 8 档标识 atom 身份，格内数字为发射序）；右：PV 单次调用的输出视图为
+$[64,16]$（绿 2 档、2 个 atom、2 条 \texttt{mma.sync}），完整 O chunk 为 $[64,64]$，
+由 4 个这样的 N-tile 组成。中间箭头是 26.3.3 节的
 交接：$S$ 经 softmax 后由 \texttt{convert\_type} 转成 f16 fragment，
 \texttt{Aregs} 再重解释其布局作为 PV 的 A 操作数；全程不经过 smem。}
 \label{fig:26-dual-mma}
@@ -939,7 +941,7 @@ nonswizzle 布局重解释同一批寄存器。S2R 的 smem 地址则完全由
     {O[$v$] $+=$ P @ V[$v$]（ns 视图）};
   \node[bx, draw=tkGreen, fill=white, text=tkGreen, text width=3.90cm,
     font=\bfseries\fontsize{4.2}{4.8}\selectfont] at (12.30,-2.27)
-    {O：$C \times$ [64,16] 分量独立累加};
+    {O：$C \times$ [64,64] 分量独立累加（每块 4 个 N-tile）};
   % 主数据流箭头：S -> Phase 2 -> P -> PV
   \draw[->, tkOrange, semithick] (4.28,-1.45) -- (5.02,-1.45);
   \node[tx, text=tkOrange] at (4.35,-1.28) {S (32)};
@@ -1063,9 +1065,10 @@ L281--282 与 L291--292）。多加一层掩码 4 会把\emph{另一个 warp 段
   \item \textbf{为什么 QK 的 TiledMma 要 Tile$\langle64,64,16\rangle$，
         而 PV 只要 $\langle64,16,16\rangle$？}
         QK 的 N 向 EURepeat 变成 8，一次覆盖 $S[64,64]$，省掉 N-tile
-        循环（提升计算密度）；PV 的累加器 $O$ 要与 chunk 循环的边界对齐，
-        小 tile 让 chunk 边界成为寄存器域的边界。两者的 C fragment 大小
-        相同（$32$），因为输出形状与线程数相同。
+        循环（提升计算密度）；PV 的单次调用视图是 $[64,16]$，完整 O chunk
+        则由 4 个 N-tile 组成 $[64,64]$，外层 V-chunk 再遍历其它 chunk。
+        小 tile 控制单次调用的寄存器视图；两者的完整 C fragment 大小相同
+        （$32$），因为完整输出形状与线程数相同。
   \item \textbf{Split-D 不改变 fragment 形状是什么意思？}
         $S$ 的 fragment 在 chunk 循环前后都是 $((2,2),1,8)=32$ 个 f32；
         chunk 循环表达的是同一个数组跨迭代累加。变的只是循环结构与

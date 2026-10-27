@@ -357,9 +357,10 @@ CuTe 在 \texttt{make\_tma\_copy} 里报错，或者让 TMA 写出错误字节�
 $$ BM = 128,\qquad BK = 64 \quad\Longleftrightarrow\quad
    \text{TMA box} = \text{一个 512\,B SF 原子}.$$
 
-这不是选一个好数字，而是唯一的合法组合。$BM>128$ 时 box 要跨
-两个原子（TMA 的 box 是矩形，跨原子意味着 K 方向必须同时前进，做不到）；
-$BK>64$ 同理（一个 box 里出现第二个 512\,B 原子而 box 的行宽还是 128）。
+这是本书让单个 TMA box 恰好对应一个 SF 原子的教学选择，不是
+CuTe/硬件的唯一合法组合。更大的 tile 可以由多个 SF 原子组成 stage；
+官方 CuTe DSL 已支持 $BK=128/256$ 的多原子形式。当前实现固定
+$BM=128$、$BK=64$，是为了简化描述符与 fragment 组织，并消去 k-slice 内层循环。
 第~\ref{ch:36}~章提到 ffpa/SA3 用的是 \texttt{Blk\_MN}$=$\texttt{\_64}
 （256\,B 原子）的另一种口径，那种口径下 $BM$ 会被固定在 64。本书选
 CUTLASS 口径，是因为它是 \texttt{SM120\_16x8x64\_TN\_VS} 的官方搭配。
@@ -564,11 +565,11 @@ arrive 了一次（第~\ref{ch:26c}~章的那三行初始 release），
 
 \subsection{命名屏障}
 
-WS 版本的 epilogue 里 sync 用的是 \texttt{NamedBarrier::arrive\_and\_wait(256, 0)}
-而不是 \texttt{\_\_syncthreads()}，因为 CTA 里有 384 个线程，
-\texttt{\_\_syncthreads()} 会把已经退出的 producer 也算进去，
-而命名屏障只同步注册了 256 个 consumer。（producer 发完最后一个 TMA
-就直接结束，不再参与后续任何屏障。）
+WS 版本的 epilogue 使用 \texttt{NamedBarrier::arrive\_and\_wait(256, 0)}
+把同步域明确限定为 256 个 consumer。CUDA 的 \texttt{\_\_syncthreads()}
+只等待尚未退出的线程，已经退出的 producer 不会被计入；若 producer 仍在运行
+却不到达同一个 CTA 同步点，才会形成死锁。这里的 NamedBarrier 不依赖
+producer 的生命周期，语义更直接。（producer 发完最后一个 TMA 后直接结束。）
 
 \section{C++ API 与 bench 接线}\label{sec:37-api}
 

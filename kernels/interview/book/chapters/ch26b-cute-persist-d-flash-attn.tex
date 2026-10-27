@@ -613,11 +613,12 @@ dense 与 causal 的分派就在 launcher 里一行：
 KV 循环结束后，O 累加器除以 $\ell$（FA-4 的膨胀在此全部抵消），然后按 tile
 形状分两条写出路径。整 tile：寄存器 $\to$ smem（\texttt{STSM}，复用 Q 段；
 此时 Q 段已闲置）$\to$ TMA store；尾部 tile（$N_q \bmod 128 \ne 0$）：
-逐元素行 guard 直接 R$\to$G 写 gmem。这里有一个关键细节：producer 已经
-\texttt{return} 退出，任何 \texttt{\_\_syncthreads} 都会死锁：CTA 级同步必须
-换成 \texttt{Named\allowbreak{}Barrier::\allowbreak{}sync(256,~0)}（仅 consumer 参与）。
-写完 O 才 \texttt{arrive} \texttt{epi\_\allowbreak{}done}，producer 由此获准复写
-Q smem 装下一个 q-tile。
+逐元素行 guard 直接 R$\to$G 写 gmem。这里选择
+\texttt{Named\allowbreak{}Barrier::\allowbreak{}sync(256,~0)} 把同步域明确限定为
+consumer。CUDA 的 \texttt{\_\_syncthreads} 只等待尚未退出的线程，producer 已经
+\texttt{return} 并不会使它仍按 384 个线程等待；若 producer 仍在运行却不到达
+同一个 CTA 同步点，才会形成死锁。写完 O 才 \texttt{arrive}
+\texttt{epi\_\allowbreak{}done}，producer 由此获准复写 Q smem 装下一个 q-tile。
 
 \begin{figure}[H]
 \centering
@@ -644,7 +645,7 @@ Q smem 装下一个 q-tile。
 \end{scope}
 % barrier note
 \node[draw=tkRed, thick, rounded corners=2pt, font=\scriptsize, align=center, anchor=west] at (7.6,-1.1)
-  {producer 已退出\\$\Rightarrow$ \texttt{\_\_syncthreads} 死锁\\$\Rightarrow$ \texttt{NamedBarrier(256)}\\写完 \texttt{arrive(epi\_done)}};
+  {producer 已退出\\不参与 \texttt{\_\_syncthreads}\\本书仍用 \texttt{NamedBarrier(256)}\\写完 \texttt{arrive(epi\_done)}};
 \end{tikzpicture}
 \caption{Epilogue 双路径。整 tile 走 R$\to$S$\to$G：STSM 把 O fragment 写进
 （已闲置的）Q smem 段，NamedBarrier 后由一个线程发射 TMA store——
@@ -814,9 +815,10 @@ cluster 形式 TMA 与缺 \texttt{\_\_launch\_\allowbreak{}bounds\_\allowbreak{}
         wait 奇偶错位（compute-sanitizer synccheck 报 \emph{Missing wait}）。
         相位改由全局计数 $g$ 决定（式~\eqref{eq:26b-phase}）后，空信号由
         消费 arrive 自持。
-  \item \textbf{producer 退出后禁用 \texttt{\_\_syncthreads}}：CTA 内任何
-        barrier 都必须换成仅 consumer 参与的
-        \texttt{NamedBarrier}（256 线程），否则 epilogue 死锁。
+  \item \textbf{同步域要与实际参与者对齐}：\texttt{\_\_syncthreads} 只等待
+        尚未退出的线程，producer 退出本身不会导致死锁；若 producer 仍在运行
+        却不参与 epilogue 同步，则不能对它使用全 CTA barrier。本书统一使用
+        \texttt{NamedBarrier}（256 线程），不依赖 producer 的生命周期。
   \item \textbf{gridDim 携带大数超过 65535 上限}：早期版本把
         $B\cdot H\cdot N$ 放进 \texttt{gridDim.z}，$N_q{=}4096$、$H{=}16$ 时
         恰好 $65536 > 65535$ 报 \texttt{cudaErrorInvalidValue}，于是行数改走
