@@ -50,8 +50,8 @@ sm120 优化指南总结：sm120 在 warp 组织与 block 限制上更接近 Ada
   \item 计算层（退化）。WGMMA 不可用，consumer 只能改用
         \texttt{mma.\allowbreak{}sync.\allowbreak{}m16n8k16} + \texttt{ldmatrix}。代价有两处：
         smem$\to$寄存器的搬运重新变成显式指令，且\textbf{软件必须自己感知 TMA
-        写入 smem 时的 128B swizzle 相位}：WGMMA 靠 descriptor 的
-        base\_offset 字段让硬件补偿相位，ldmatrix 路径没有等价机制（14.4.2~节）。
+        写入 smem 时的 128B swizzle 相位}：WGMMA 的 descriptor 提供
+        base\_offset 补偿通道，但非零相位必须由软件显式写入；ldmatrix 路径没有等价机制（14.4.2~节）。
         同时 warp 级指令的发射开销回到第~\ref{ch:11}~章的口径，每个
         K-tile 要发射 128 条 HMMA 而不是 8 条 WGMMA。
 \end{itemize}
@@ -318,18 +318,20 @@ $8 \times 8 = 64$ 列。
 
 注意结构体本身只有两个 plain half 数组，没有软件 swizzle 的写入端：
 TMA 在搬运时按 descriptor 声明的 SWIZZLE\_128B 模式直接写好重排后的布局，swizzle
-从软件写、软件读下沉为硬件写、软件读。而 \texttt{\_\allowbreak{}\_\allowbreak{}align\_\allowbreak{}\_\allowbreak{}(1024)}
-划分了本章与 ch13 的界线：128B swizzle 的重排模式以 1024B（8 行
-$\times$ 128B）为周期，硬件按 smem 目的地址相对 1024B 边界的相位决定
-从周期的哪一步开始。WGMMA 消费端在 smem descriptor 里显式编码
-base\_offset $= (\mathrm{addr} \gg 7) \,\&\, 7$ 让硬件补偿任意相位，因此 ch13
-只要求 128B 对齐。本章的 ldmatrix 消费端用纯软件公式 \texttt{swizzle\allowbreak{}<64>\allowbreak{}()}
-算物理地址，它\textbf{默认相位为 0}，基址只有 128B 对齐时 TMA 以非零相位
-写入而软件按零相位读出，物理地址整体错位，输出全错（不越界、不报错，完全静默
-的错误）。
+从软件写、软件读下沉为硬件写、软件读。本章的
+\texttt{\_\allowbreak{}\_\allowbreak{}align\_\allowbreak{}\_\allowbreak{}(1024)} 是零相位软件读法的必要前提：
+128B swizzle 的重排模式以 1024B（8 行 $\times$ 128B）为周期，硬件按 smem
+目的地址相对 1024B 边界的相位决定从周期的哪一步开始。WGMMA 的 smem descriptor
+提供 base\_offset 补偿通道，但非零相位必须由软件显式写入；当前 ch13 的
+\texttt{make\_\allowbreak{}smem\_\allowbreak{}desc} 同样把它置为 0 并配合 1024B 对齐，
+并非只需 128B 对齐。本章的 ldmatrix 消费端用纯软件公式
+\texttt{swizzle\allowbreak{}<64>\allowbreak{}()} 算物理地址，它\textbf{默认相位为 0}，
+基址只有 128B 对齐时 TMA 以非零相位写入而软件按零相位读出，物理地址整体错位，
+输出全错（不越界、不报错，完全静默的错误）。
 
 所以要么 1024B 对齐（本章做法），要么在软件公式里把基址相位加上
-（更繁琐且易错）。源码 L1898--1919 的注释对这段取舍有完整展开。
+（更繁琐且易错）。源码 L1898--1919 的旧注释虽展开过这段取舍，但其中
+WGMMA 只需 128B 的说法与当前实现及 PTX 契约不符，以 14.7~节的勘误为准。
 
 \begin{figure}[H]
 \centering
@@ -401,11 +403,12 @@ base\_offset $= (\mathrm{addr} \gg 7) \,\&\, 7$ 让硬件补偿任意相位，�
 \caption{swizzle 的三代演化——写入端与读取端的\textbf{软件/硬件}分工（14.4.2 节）：
 ch12 用 cp.async 手写 XOR 写入、ldmatrix 用同一个 swizzle 公式读出——软件写
 $\leftrightarrow$ 软件读，靠对合性（引理~\ref{lem:12-invol}）保证互逆；ch13 把两端都
-交给硬件——TMA 按 descriptor 声明的 SWIZZLE\_128B 直接写好重排布局，WGMMA 在
-smem descriptor 里编码 layout\_type 与 base\_offset 由硬件补偿任意相位，零软件
-swizzle 计算；ch14 折中——TMA 硬件写 $+$ 软件公式 \texttt{swizzle<64>} 零相位读，
-此时 smem 基址必须 \texttt{\_\_align\_\_(1024)}（红框）：否则 TMA 以非零相位写入而
-软件按零相位读出，物理地址整体错位，输出全错且不报错。}
+交给硬件——TMA 按 descriptor 声明的 SWIZZLE\_128B 直接写好重排布局，WGMMA 的
+smem descriptor 提供 layout\_type 与 base\_offset 补偿通道，但非零 base\_offset
+必须由软件显式编码；本仓实现把它置为 0，仍配合 1024B 对齐。ch14 折中——TMA 硬件写
+$+$ 软件公式 \texttt{swizzle<64>} 零相位读，此时 smem 基址必须
+\texttt{\_\_align\_\_(1024)}（红框）：否则 TMA 以非零相位写入而软件按零相位读出，
+物理地址整体错位，输出全错且不报错。}
 \label{fig:14-swizzle-evolution}
 \end{figure}
 
@@ -705,14 +708,14 @@ $1.5\times10^{-2}$——两章测试输入幅值相差 4 倍（ch11 为 $[-1,1]$
 
 \section{实践经验与考据说明}
 
-\begin{kaogu}[F2 核校通过]{\textbf{SWIZZLE\_128B 要求 smem 基地址 1024 字节对齐}的表述}
-  hgemm.cuh L1898 起的注释如此声明，并区分了 WGMMA（base\_offset 硬件补偿，
-  128B 即可）与 ldmatrix（软件公式假设相位 0，须 1024B）两条路径。对照 PTX
-  ISA：\texttt{cp.\allowbreak{}async.\allowbreak{}bulk.\allowbreak{}tensor} 对目的地址的硬性要求是对齐到 swizzle
-  模式宽度（128B），\textbf{1024B 并非指令集要求}，而是让 consumer 的零相位
-  软件公式成立的充分条件，与 CUTLASS 对 Sw$\langle$3,4,3$\rangle$ tile 的
-  对齐实践一致。注释逻辑自洽、结论正确，仅要求二字的归属（指令集 vs 软件
-  消费端）宜读作后者。
+\begin{kaogu}[F2·2026-10-27 修正]{\textbf{SWIZZLE\_128B 要求 smem 基地址 1024 字节对齐}的表述}
+  \texttt{cp.\allowbreak{}async.\allowbreak{}bulk.\allowbreak{}tensor} 对目的地址的硬性要求是对齐到
+  swizzle 模式宽度（128B），1024B 不是 TMA 的指令集对齐门槛。WGMMA descriptor
+  虽有 base\_offset 补偿通道，但 PTX 要求非 1024B 边界必须显式写入非零值；
+  当前 \texttt{make\_\allowbreak{}smem\_\allowbreak{}desc} 把它置为 0，WGMMA kernel 也声明
+  \texttt{\_\allowbreak{}\_\allowbreak{}align\_\allowbreak{}\_\allowbreak{}(1024)}。因此旧注释中
+  “start\_address 自动补偿、WGMMA 只需 128B”的说法不成立。对本章 ldmatrix
+  零相位软件公式而言，1024B 对齐仍是必要前提。
 \end{kaogu}
 
 \begin{kaogu}[F2·API 约束]{cuda.h 对 tensorRank 的真实约束：rank 2 本就合法}
@@ -869,9 +872,11 @@ A：完成性由 barrier 保证（wait 返回即数据落盘）、内存序由
 \texttt{fence.\allowbreak{}proxy.\allowbreak{}async} 保证（async proxy 写对 generic proxy 读可见）、
 warp 间无共享数据（2$\times$2 warp grid 读写互不重叠的子块）。
 
-\textbf{Q4：为什么必须 \_\_align\_\_(1024) 而 WGMMA 版只要 128？}\\
-A：128B swizzle 周期 1024B；WGMMA 的 smem descriptor 有 base\_offset 字段
-硬件补偿相位，ldmatrix+软件 swizzle 没有，只能用对齐将相位固定为 0。
+\textbf{Q4：为什么本章与本仓 WGMMA 实现都用 \_\_align\_\_(1024)？}\\
+A：两者的 base\_offset 都为 0，必须把 128B swizzle 的相位固定在 1024B 边界。
+WGMMA 指令允许软件显式写入非零 base\_offset 来补偿其它相位，但当前
+\texttt{make\_\allowbreak{}smem\_\allowbreak{}desc} 没有这条路径；ldmatrix+软件 swizzle
+则没有该补偿通道。
 
 \textbf{Q5：setmaxnreg 的池数学与死锁边界？}\\
 A：$\sum\sb{warp} 32 \times r\sb{w} < 65536$，工程上留 $\ge$ 2048 slack；

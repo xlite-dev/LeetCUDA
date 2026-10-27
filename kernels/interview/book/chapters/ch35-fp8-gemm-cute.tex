@@ -325,9 +325,11 @@ WS 版与 non-WS 的\textbf{数学逐 bit 相同}（MMA 序列不变），差异
         \texttt{gemm\_ss} 循环；
         \texttt{empty} 的 init count 是 256（只数 consumer）。
 
-  \item \textbf{epilogue 换 NamedBarrier}：producer 已经跑完退出，CTA 级
-        \texttt{\_\_syncthreads()} 会数 384 个线程、永远无法满足，换成
-        \texttt{NamedBarrier::arrive\_and\_wait(256)} 只同步 consumer。
+  \item \textbf{epilogue 换 NamedBarrier}：本书用
+        \texttt{NamedBarrier::arrive\_and\_wait(256)} 只同步 consumer，使同步域
+        与实际参与者一致。CUDA 的 \texttt{\_\_syncthreads()} 只等待尚未退出的
+        线程，已退出的 producer 不会使它仍按 384 个线程等待；若 producer 仍在
+        运行却不到达同一个同步点，才有死锁风险。
   \item \textbf{setmaxnreg 直接调 cutlass API}：不走 LeetCUDA 的
         \texttt{NOTES\_V2\_REG\_*} 宏封装，直接调用
         \texttt{cutlass::arch::}\allowbreak\texttt{warpgroup\_reg\_}\allowbreak

@@ -1445,8 +1445,11 @@ $\mathrm{complement}(T,\mathrm{shape}(L))\bigr)$：
 \begin{sloppypar}
 tile 分量取 $T$、rest 分量取补空间；\texttt{zipped\_\allowbreak{}divide} 把结果整理成
 (tile, rest) 两个 mode；\texttt{tiled} / \texttt{flat\_divide} 是展平变体。
-语义上就是按 $T$ 的 stride 结构把 $L$ 的地址空间切成
-$\mathrm{size}(L)/\mathrm{size}(T)$ 块。
+当 $T$ 是连续单位 stride 块且整除时，可以把 $L$ 的地址空间写成
+$\mathrm{size}(L)/\mathrm{size}(T)$ 块。一般情况下，rest 由
+$\mathrm{complement}(T,\mathrm{shape}(L))$ 决定，不能笼统写成这个比值；
+不整除时，结果 size 可能向上扩展，末块可能包含越界坐标。例如
+$10{:}1$ 按 $4{:}1$ 分块得到 shape $(4,3)$、stride $(1,4)$，size 为 $12$。
 \end{sloppypar}
 
 \textbf{Q6：concatenation 与 product 家族有什么区别？}\\

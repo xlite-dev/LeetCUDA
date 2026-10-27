@@ -507,9 +507,9 @@ bits $[16,30)$ leading\_byte\_offset &
         相位差：128B swizzle 的重复模式以 1024B 为周期，tile 起点恰在 1024B
         边界时为 0；否则按 $(\mathrm{addr} \gg 7) \,\&\, 7$ 计算 3-bit 偏移
         （该公式对 32B/64B/128B 三档 swizzle 通用，no-swizzle 模式下字段无效）。
-        本 kernel 填 0 并配合 \texttt{\_\allowbreak{}\_\allowbreak{}align\_\allowbreak{}\_\allowbreak{}(1024)} 的声明；源码注释同时给出
-        另一种做法：start\_address 全量编码绝对地址后，硬件可自行推导相位补偿，
-        \texttt{\_\allowbreak{}\_\allowbreak{}align\_\allowbreak{}\_\allowbreak{}(128)} 也能跑（健壮性取舍见 13.8~节坑五）；
+        本 kernel 填 0 并配合 \texttt{\_\allowbreak{}\_\allowbreak{}align\_\allowbreak{}\_\allowbreak{}(1024)} 的声明。
+        若 tile 基址只在 128B 边界上，必须在 descriptor 中显式写入上述非零偏移；
+        start\_address 的全量编码不能代替 base\_offset，硬件不会从该字段反推相位补偿；
   \item bits $[62, 64)$：layout\_type。0 = 无 swizzle、1 = 128B、2 = 64B、
         3 = 32B。填 1 与 TMA descriptor 的 \texttt{CU\_\allowbreak{}TENSOR\_\allowbreak{}MAP\_\allowbreak{}SWIZZLE\_\allowbreak{}128\allowbreak{}B}
         严格对应，\textbf{写入端与读取端必须声明同一档 swizzle}，否则读到的是
@@ -930,10 +930,11 @@ $(128 \cdot 64 + 128 \cdot 64) \times 2 = 32768$~B。
 未定义行为，ptxas 不检查，运行时也不一定立即报错，属最难排查的一类错误。
 
 \textbf{坑五：swizzle 对齐与 base\_offset。}\allowbreak{}128B swizzle 的周期是 1024B：tile
-基址不在 1024B 边界时，要么按 $(\mathrm{addr} \gg 7) \,\&\, 7$ 显式计算
-base\_offset，要么依赖 start\_address 全量编码让硬件自行补偿（本 kernel 的
-做法，源码注释明确了这条取舍）。而第~\ref{ch:14}~章的 ldmatrix 消费者路径没有
-这种硬件补偿，必须显式声明 \texttt{\_\allowbreak{}\_\allowbreak{}align\_\allowbreak{}\_\allowbreak{}(1024)}。
+基址不在 1024B 边界时，必须按 $(\mathrm{addr} \gg 7) \,\&\, 7$ 显式计算并写入
+base\_offset，start\_address 的全量编码不能代替这个字段。本 kernel 选择
+base\_offset $=0$ 配合 \texttt{\_\allowbreak{}\_\allowbreak{}align\_\allowbreak{}\_\allowbreak{}(1024)}，并非只按 128B 对齐。
+第~\ref{ch:14}~章的 ldmatrix 消费者路径没有这种硬件补偿通道，也必须显式声明
+\texttt{\_\allowbreak{}\_\allowbreak{}align\_\allowbreak{}\_\allowbreak{}(1024)}。
 
 \textbf{坑六：96KB 动态 smem 要 opt-in。}\allowbreak{}kStages=3 共 96KB，超过 48KB 默认上限，
 launch 前必须 \texttt{cuda\allowbreak{}Func\allowbreak{}Set\allowbreak{}Attribute} 声明，否则 launch 直接失败。

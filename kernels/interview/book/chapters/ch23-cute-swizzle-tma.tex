@@ -755,18 +755,17 @@ slice 边界，取决于 slice 宽度是否整除 swizzle 周期。
 
 \subsection{对齐与 phase}
 
-TMA 路径最后一条工程约束写在 kernel 的开头（hgemm.cuh~L1903--1920）：
-注释先问\textbf{为什么 \texttt{hgemm\_\allowbreak{}wgmma\_\allowbreak{}stages\_\allowbreak{}tn} 只需要 128\,B 对齐，
-而本 kernel 必须 1024\,B 对齐}，然后给出结论：\texttt{extern}
-\texttt{\_\_shared\_\_} 声明上必须写 \texttt{\_\allowbreak{}\_\allowbreak{}align\_\allowbreak{}\_\allowbreak{}(1024)}，
+TMA 路径最后一条工程约束写在 kernel 的开头（hgemm.cuh~L1903--1920）。
+这里要区分 WGMMA 的指令能力与本仓实现：本 kernel 的 \texttt{extern}
+\texttt{\_\_shared\_\_} 声明必须写 \texttt{\_\allowbreak{}\_\allowbreak{}align\_\allowbreak{}\_\allowbreak{}(1024)}，
 类型是 \texttt{uint8\_t}，名字是 \texttt{smem\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws}。
 
-同样是 TMA $+$ swizzle，WGMMA 的 smem 基址只要 128 B 对齐，而 ldmatrix
-路径必须 1024 B 对齐。原因不在 TMA，而在消费者：WGMMA 走的是 64-bit smem
-descriptor，里面 bit[49,52) 的 \texttt{base\_offset} 字段记录了基址相对
-1024 B 边界的偏移（$(\text{addr}\gg7)\wedge7$），硬件读 smem 时会自动
-补偿 phase；\texttt{ldmatrix} 只有软件公式，没有补偿通道，只能要求
-phase 恰好为零。
+WGMMA 的 64-bit smem descriptor 在 bit[49,52) 提供 \texttt{base\_offset}
+补偿通道；基址不在 1024B 边界时，软件必须显式写入
+$(\mathrm{addr}\gg7)\,\&\,7$，硬件读 smem 时才能补偿 phase。\texttt{ldmatrix}
+只有软件公式，没有这一补偿通道。当前 \texttt{make\_\allowbreak{}smem\_\allowbreak{}desc}
+把 base\_offset 置为 0，因此本仓 WGMMA 实现同样要求 1024B 对齐；只有另行
+显式写入正确的非零 base\_offset，才可利用 128B 对齐。
 
 \paragraph{实践须知}（两个容易被模式名误解的量）
 \begin{itemize}
