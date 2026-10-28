@@ -1017,3 +1017,24 @@ git diff --check：通过
 ### 收尾结论
 
 机械面与通读面前后两轮（R61 通读 + R62 机械）合计只产出 1 MEDIUM（已修）+ 9 LOW，其中 4 条 LOW 是行号/代码块截断（已修）。**正确性自审到此收账**：后续只按「改哪章审哪章」做定点复核，全书通读与全书机械扫描都不再例行；残余风险已转为性能数字复测（ch04/ch13/ch19/ch32）与 6 条已知 medium，均需 GPU 或补证据，不属审稿可解。
+
+## R63（2026-10-27）：ch00–19b + 附录严重问题定点修复
+
+- 范围：静态审核确认的 4 项问题，按用户要求全部修复；只改书稿、RTD 词典与验收记录，不改冻结 CUDA 源码。
+- WGMMA descriptor：ch13/ch14/ch23 统一改为「非 1024B 边界必须显式写非零 `base_offset`；当前 `make_smem_desc` 置 0 并配合 1024B 对齐」，删除 `start_address` 自动补偿和当前 WGMMA 实现只需 128B 的说法。ch14 旧「核校通过」改为带 PTX 证据的勘误。
+- ch19 cp.async：修正 V 预取与 smem 两处资源/流水断言。关键反向复核结论：QK/V 不是两条独立等待队列，`cp.async.wait_group N` 只保留最近 N 组并要求所有更早组完成，所以即使 `Sv>=3`，Phase 0 的 V 也不能横跨后续 QK/softmax；`Sv>=3` 的真实 V 重叠只在 Phase 3 内。图 19-4 灰底改为逻辑间隔，默认 `Sk=Sv=2` 明确无跨计算重叠，同时删除对应性能机制归因。smem 改为只由 `Sk/Sv` 决定，`C` 只影响迭代与 O 寄存器。
+- appB：`1.4→0.3ms` 从 fused 单 launch / `N=8192` 改为 ΔS WMMA 替换 torch 链 / `N=16384`；为消除新增表格 Overfull，将不可断行的 `bmm+transpose+cast` 改为可断行列举。
+- 同源传播：`ch23-cute-swizzle-tma.tex` 一并修正；图 19-4 的 4 个 `figures-en.json` 词条同步换 key/value，未改 listing，代码块与公式词典无需变更。
+- 验证：主 `book.pdf` 589 页 / 0 error / 0 missing char / Overfull 16（基线一致），跨文件 lint 0 fail；`verify_anchors.py` 33 章 ALL GREEN。RTD 全量 `build.sh` 全项 OK（英文图 195/195、图词典 1922、代码块 772/772、公式 121/121）；`visual_check` 93 页 MathJax/残迹/console/资源失败/page_overflow 均 0。图 19-4 以 180dpi 渲染并放大检查，无文字或箭头重叠。
+- 未验证：未重跑性能 benchmark；历史性能数字只修正归属，不视为复测。ch13 不做 sm_90a 运行验收。cute-zhihu 源未改，不触发其独立 PDF 构建；RTD 已包含该集合的全量核对。
+
+## R64（2026-10-27）：ch20–37 技术问题与 CuTe 白皮书翻译修复
+
+- 范围：按用户要求修复审核报告一、二中的全部问题；主 agent 完成，不使用 subagent，不改 CUDA 源码。
+- 主书 6 项：ch20 将块数比例限定为连续单位 stride 且整除，一般 rest 由 complement 决定；主机端 static_assert 验证 `logical_divide(10:1,4:1)` 为 shape `(4,3)`、size `12`。ch26 统一 PV 单次视图 `[64,16]`、完整 O chunk `[64,64]` 与 chunk 内 4 个 N-tile。ch27 把相对误差上界限定到规格化域，补 E2M1 的 0.75/0.25 反例。ch34 改正 E4M3 仅 `E=1111,M=111` 为 NaN。ch37 将 `BK=64` 归为教学实现选择，官方 SM120 CuTe DSL 的 BK=128/256 作为反证。ch26b/ch35/ch37 按 CUDA non-exited 线程语义重写 NamedBarrier 理由，保留实现。
+- 白皮书：修复 `up to N`、`typically means`、`enables the weak congruence condition` 三处误译；补回结论漏句。新增 `wp7-references.tex`，按官方英文 PDF 实际列出的 29 条及原顺序补齐参考文献（不是把含 35 条的原始 .bib 全量照搬）。
+- RTD 图词典同步替换 7 个 key/value，覆盖率恢复 1791/1791；代码块与公式词典无需变更。
+- 验收自审：ch20 初版曾把 ceil(size ratio) 推广到任意 stride，复核后收紧。ch36 UE4M3 的 134.3→128 候选经码点复算撤回：该 binade 步长为 16，邻点是 128/144，原书正确。
+- RTD 特殊问题：`enumerate` 带 label 选项被 Pandoc/MyST 转成字面 `::: enumerate`，文件级 verify 未捕获；直接检查 HTML 后改为显式 `[1]`–`[29]` 编号段落。最终 HTML 编号序列完整且无指令残迹。这提醒我们：新增列表结构除全量构建外还要检查实际 HTML 呈现。
+- 验证：主 `book.pdf` 591 页 / 0 error / 0 undefined / 缺字 0 / Overfull 15；4 张修改图 180dpi 渲染并放大无重叠。RTD 全量全项 OK（英文图 195/195、图词典 1922、code 772/772、math 121/121）；visual_check 93 页 MathJax/残迹/console/资源失败/page_overflow 均 0；anchors 33 章 ALL GREEN。
+- 未验证：未重跑性能 benchmark，未做 sm_90a 运行验收；本轮为书稿与翻译修复。
