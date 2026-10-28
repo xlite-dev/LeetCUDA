@@ -1038,3 +1038,14 @@ git diff --check：通过
 - RTD 特殊问题：`enumerate` 带 label 选项被 Pandoc/MyST 转成字面 `::: enumerate`，文件级 verify 未捕获；直接检查 HTML 后改为显式 `[1]`–`[29]` 编号段落。最终 HTML 编号序列完整且无指令残迹。这提醒我们：新增列表结构除全量构建外还要检查实际 HTML 呈现。
 - 验证：主 `book.pdf` 591 页 / 0 error / 0 undefined / 缺字 0 / Overfull 15；4 张修改图 180dpi 渲染并放大无重叠。RTD 全量全项 OK（英文图 195/195、图词典 1922、code 772/772、math 121/121）；visual_check 93 页 MathJax/残迹/console/资源失败/page_overflow 均 0；anchors 33 章 ALL GREEN。
 - 未验证：未重跑性能 benchmark，未做 sm_90a 运行验收；本轮为书稿与翻译修复。
+
+## R65（2026-10-28 起 / 2026-10-29 补完）：主 book 第四轮全量正确性复核（用户要求「没问题就收账」）
+
+- 触发：用户在 R63/R64 之后要求对主 book 再做一轮全量阅读审核，用于决定是否停止例行全书审核。主 agent 独立完成（不使用 subagent）。
+- 范围：`book.tex` 实际 input 的 41 个 chapter（含 ch19b 白皮书，仅作术语基线）+ 附录 A–E；`cute-zhihu` 不在本轮范围。
+- 方法（含一次返工）：先跑机械面（`lint_book.py` citations/tables/figures、`verify_anchors.py`、listing 路径与 linerange、permalink 按各自 commit 校验、tests 引用、appB 数字回指），再按章做 L0–L4。**首轮 ch00–ch15 逐章全文通读、ch16–ch37 与附录改用 claim 表面抽取，被用户当场质问「为什么不通读全文」；随后补读 ch16–ch37 + 附录 A–E 全文（分 20 余次 read_file），并据此修正台账与结论。** 教训已固化在 `memory/feedback_leetcuda_full_read.md`：说「全量」就必须逐章 `read_file` 读全文，不得用抽取代替，也不得只靠「报告里写明覆盖范围」免责。
+- 结果：机械面零 FAIL；逐章复算零 HIGH/MEDIUM，**新增 3 项 LOW**：① ch25:166 用 D=64 的 cosize（相加仅 32 KB）去解释 80 KB（实为 D=128 + Sk=2 的 40960 half）；② ch34:224 图注「$\lceil B_N/128\rceil$ … $B_N{=}256$ 时为 3 个」与同句算术（=2）及 §34.4.1「横跨两块」矛盾；③ ch37:995 的 186.5/314.6 与 ch35 表 186.8/315.1 属转录漂移。**三项 LOW 于 2026-10-29 按用户指示全部回修**（ch25 保留 D=64 实测并补 case C 的 D=128+K 两级算式；ch34 改「2 个，n 起始未按 128 对齐时最多 3 个」；ch37 统一 186.8/315.1）。补读段复算自洽的例子：ch16 AI=B_r=128 与 45 KB smem、ch17 158.7→190.4 +20%、ch18 129 arrive 与池 376≤512、ch19 AI=42.7 与 33792≤65536、ch20 cosize/compose/zd 双射、ch22 512 守恒与 acc_O=256、ch23 三档周期与 8×32 退化、ch24 48 KiB 与两套累加 128 regs、ch26 EURepeat 与 256>255、ch26b 2048=18×110+68、ch26c 16(S_K+S_V) KB 与 spill 表、ch28 192/96 MiB 与 π⁻¹、ch29 64512 与 π/π⁻¹ 双向、ch30 D/(2N_w) 与 D·M_w/4096、ch31 4.5 bit 与 π 32 列表、ch32 −11.3923/−2.585、ch33 全表比值与 1.22×、ch34 σ_ε 与 4σ 指纹、ch35 441.9/443.7 与 4.83→4.56 GB、ch36 0.145833→11.02%→14.38%、ch37 9216 B 与 +31%。
+- 撤回/维持：R62 已列的 P-5 appB 转录漂移（3.144 vs 3.145、2.71 vs 2.72）本轮再次复算——3.1445 属 tie 在舍入带内，2.7155 应落 2.72；两项均按用户 R62「不改」裁定维持，不计为新增缺陷。
+- 已知残余（不属审稿可解）：6 条 medium（ch26c VCPB STSM 计数、ch27「四个误差源」只列三项且内部仿真未归档、ch33 smooth-v +1.0% 机制、ch36 3.24%/10.17% 合成口径、ch17 Sk 饱和、ch29 wait 考据）仍需 GPU 复测或补证据；ch13/ch19/ch32 的性能数字未复测。
+- 验收：**回修后跑满三层闸门**——`book/build.sh` 591 页 / 0 error / 0 undefined / 缺字 0 / Overfull 15（与 R64 基线一致）；`lint_book.py` citations 0 fail（1 白名单 WARN）、tables 0、figures 0；RTD 全量 `./build.sh`（含 TikZ，未用 `--skip-tikz`）+ `convert.verify` 全项 OK + `tools.visual_check` 93 页 / 需处理 0；三页新文本在 HTML 中逐条命中。`CHECKLOG.md` 共 6 行记录（2 行 P-5 复核 + 汇总 + ch25 + ch34 + ch37 + 回修验收），逐章台账在 `book/.tmp/r65/ledger-shardA.md`。
+- 结论：主 book 结构性正确性高，可作为发布候选；**建议停止例行全书通读**，后续改为「改哪章审哪章」的定点复核 + 发布前三层构建验收。
