@@ -163,8 +163,9 @@ CuTe 版 attention 的第一步是把 tile 几何与数据格式编译期化。
 把原子铺满目标形状：Q 是 $B_r\times D$、K/V 是 $B_c\times D$。于是
 smem 里 Q/K/V 的布局不再是散落在 kernel 里的 stride 变量，而是
 两个类型的 \texttt{cosize}（实测：$B_r{=}128,D{=}64$ 时 Q 占 8192 个
-half，K/V 各占 4096 个，25.9 节 case C 的 smem 80\,KB 核算正是这批
-\texttt{cosize} 的直接应用）。
+half，K/V 各占 4096 个；25.9 节 case C 换到 $D{=}128$、K 两级，
+Q 16384 $+$ K 2$\times$8192 $+$ V 8192 $=$ 40960 个 half $=$ 80\,KB，
+正是这批 \texttt{cosize} 的直接应用）。
 
 V 的转置视图是第一个要细讲的细节：
 

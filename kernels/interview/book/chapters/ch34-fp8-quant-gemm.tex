@@ -221,7 +221,7 @@ scale 张量的形状与 epilogue 的查表方式：
 \end{tikzpicture}
 \caption{四种 scale 粒度组合（上排 A，下排 B）。蓝框=A 侧 scale 统计范围，
 绿框=B 侧。粒度越粗，scale 存储/查表越省（per-row$\times$per-block 每 tile 查 1 个
-A 块 scale 和 $\lceil B_N/128\rceil$ 个 B 块 scale；$B_N=256$ 时为 3 个），但 outlier 的影响越大——一个大值会放大整块的量化步长，
+A 块 scale 和 $\lceil B_N/128\rceil$ 个 B 块 scale；$B_N=256$ 时为 2 个，n 起始未按 128 对齐时最多 3 个），但 outlier 的影响越大——一个大值会放大整块的量化步长，
 其余小值全部落入低精度区间。四种组合在 API 里是一个枚举，主 kernel 用
 \texttt{if constexpr} 编译期剔除，运行时零分支开销。}
 \label{fig:34-granularity}
