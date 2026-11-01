@@ -15,16 +15,16 @@ description: >-
   PTX/SASS 取证（含 setmaxnreg 与 shared::cluster/cta 陷阱）、CUDA 面试题时使用。
   生产级 attention 算子参考首选 ffpa-attn（sm_120 CuTe fp16/fp8/fp4 峰值性能：
   fp16 超 FA-2、fp8 持平略优 Sage2、fp4 明显优于 Sage3，含 large head_dim 专门
-  优化）。本 skill 不复述书的内容，只做"任务 → 章节/图"的路由，agent 按需读取
-  书源文件。
+  优化）。ch00 profiling 与 ch01 架构/Roofline 的总体指导精编内嵌，加载即读；
+  其余章节只做"任务 → 章节/图"的路由，agent 按需读取书源文件。
 user-invocable: true
 ---
 
-# leetcuda-cpp-kernel — LeetCUDA 书按需查阅（薄转发层）
+# leetcuda-cpp-kernel — ch00/ch01 内嵌 + LeetCUDA 按需路由
 
-本 skill 是 **LeetCUDA 开源技术书** 的路由层：书本身就是参考资源（chapters/*.tex
-正文 + figures 配图 + appendices 附录 + colfax/cute-zhihu 两份独立深度参考文档），
-skill 只负责把任务路由到正确的章节，**不重写、不复述书内已有内容**。
+本 skill 是 **LeetCUDA 开源技术书** 的总体指导与路由层：ch00 profiling 和
+ch01 架构/Roofline 的可操作内容已精编内嵌在文末，加载本文件即完成前置阅读；
+其余书稿（chapters/*.tex + figures + appendices + colfax/cute-zhihu）仍按需读取。
 
 ## 第一步：解析 <LeetCUDA_DIR>
 
@@ -59,15 +59,14 @@ skill 只负责把任务路由到正确的章节，**不重写、不复述书内
 | `tests/` | 31 个单章正确性测试（CPU fp64 对拍，`build_tests.sh --arch sm_120a --all`）；ch00（工具章）、ch15（原理章）、ch27-33（Part VI 改走 `ffpa_attn.bench` parity）没有 .cu |
 | `book.pdf` | 编译成品（584 页，可直接 pdftotext 按页抽取） |
 
-## ⚠️ 第 1.5 步：强制约束——加载即读章节（优先级高于"按需读取纪律"）
+## ⚠️ 第 1.5 步：强制约束——加载即读（优先级高于"按需读取纪律"）
 
-以下两类内容在 **skill 加载后、开始任务分析/动手前必须先读**，不得等路由命中才读：
+以下两类内容在 **skill 加载后、开始任务分析/动手前必须已经阅读**，不得等路由命中才读：
 
-1. **ch00 profiling 章——所有任务无条件必读**：无论任务是写 kernel、优化、
-   调试、review 还是性能分析，定位到 `<LeetCUDA_DIR>` 后必须先读
-   `chapters/ch00-profiling.tex`（先 nsys 后 ncu 的方法论、bench 口径、
-   warmup/repeat 规范）。这是全书优化工作的前置方法论；跳过 ch00 直接
-   上手优化属于违规操作。
+1. **ch00 + ch01——所有任务无条件内嵌已读**：两章的可操作内容已精编内嵌于文末
+   “内嵌总体指导”两节，加载 `SKILL.md` 即完成阅读，覆盖先 nsys 后 ncu、
+   bench 口径、warmup/repeat、GPU 执行模型、Roofline 与 occupancy。不要再
+   求 agent 重复外部读取这两个 `.tex`；只有需要完整案例叙述或核对同步时才回读源文件。
 2. **Part IV CuTe 全部章节——涉及 CuTe 开发的任务必读**：任务涉及 CuTe
    开发的任一形态（写/改/优化/调试 CuTe C++ kernel，CuTe DSL，或出现
    CuTe/CUTLASS/CuTe Layout/Tensor/TiledCopy/TiledMMA/Swizzle 等关键词）
@@ -96,8 +95,8 @@ ch19b/wp6 的 2 张官方架构截图），现行图源都在章节 tex 内。
 
 | 任务/症状 | 章 |
 |---|---|
-| 优化前方法论：先 nsys 后 ncu、torch.profiler、warmup/repeat 口径 | `ch00-profiling.tex` |
-| 架构/执行模型/warp 调度/Roofline/Occupancy、寄存器与 255 墙 | `ch01-arch-roofline.tex` |
+| 优化前方法论：先 nsys 后 ncu、torch.profiler、warmup/repeat 口径 | **已内嵌**：文末“ch00-profiling” |
+| 架构/执行模型/warp 调度/Roofline/Occupancy、寄存器与 255 墙 | **已内嵌**：文末“ch01-arch-roofline” |
 | warp shuffle 蝴蝶归约、block reduce、dot product | `ch02-reduce-dot.tex` |
 | 向量化（f32x4/f16x8 pack）、coalescing、原子操作 | `ch03-vectorize-atomic.tex` |
 | softmax 三级递进（naive→safe→online） | `ch04-softmax.tex` |
@@ -244,8 +243,8 @@ Part VI（ch27–33，量化 attention）教学 kernel 源码在 `<FFPA_ATTN_DIR
 
 1. **先路由后读取**：一次只读任务相关的 1-2 章；章内先看 `\section/\subsection`
    目录再定位行区间（每章 500-900 行，全文读入浪费上下文）。
-   **例外**："第 1.5 步：强制约束"列出的必读章节（ch00 及 CuTe 任务的
-   Part IV 全部章节）必须加载即读，不受本条 1-2 章限制。
+   **例外**：ch00/ch01 已在文末内嵌，无需外部读取；CuTe 任务的 Part IV
+   全部章节仍必须加载即读，不受本条 1-2 章限制。
 2. **源码交叉**：书按行号引用 `<LeetCUDA_DIR>/kernels/interview/*.cuh` 冻结基线
    （common/sgemv/sgemm/hgemm/flash_attn/ffpa_attn/fp8_gemm/fp4_gemm.cuh），需要完整实现时用
    `appendices/appD-source-index.tex` 定位再读源文件。
@@ -288,3 +287,189 @@ Part VI（ch27–33，量化 attention）教学 kernel 源码在 `<FFPA_ATTN_DIR
   e2e 408.2 T **反超 FP8 e2e**；8192³ 639.6/648.6 T、e2e 467.4 T；4096³ B 离线
   550.5/561.2 T（= kernel 的 91-93%）。量化成本 109 µs 是加性的，宽档下占 e2e
   32%——占比上升是主 kernel 变快所致，不是量化变慢（ch37 有防误读句）。
+
+## 内嵌总体指导：ch00-profiling（正文精编）
+
+> 来源：`chapters/ch00-profiling.tex`。保留算子开发必须立即执行的规则、命令、
+> 指标与判据；完整案例叙述和 TikZ 图仍可按需回读源文件。
+
+### 1. 优化闭环与三个反例
+
+**profile 永远都是最重要的。没有 NCU 数据，不改 kernel。** 正确循环是：
+
+```
+nsys 定位谁慢 → ncu 解释为什么慢 → 单变量修改 → 复测 diff → 指标闭环
+```
+
+- 感觉是装载瓶颈，实际 `math_pipe_throttle=1.32`、`wait=0.82`、
+  `long_scoreboard=0.04`：瓶颈是 softmax→PV 依赖链；加深流水/减指令/缩 tile
+  均无效，拆成 2 CTA/SM 才得到约 5% 收益。
+- 主 kernel 已占 e2e 86–92%，辅助链的优化上限只有 8–14%；先做 nsys 可避免
+  在非关键 kernel 上浪费 ncu 时间。
+- 融合 bias 注入反而慢 4.2 ms：LDS 进入 consumer 关键路径，`sleeping` 从
+  3.5% 升到 22.3%。指标能否决直觉优化。
+
+### 2. nsys 先行，ncu 跟进
+
+- **nsys** 是 trace：看 kernel 占比、launch gap、CPU 是否供不上、流是否重叠、
+  fallback。开销低，报告时间可解释真实时间线。
+- **ncu** 是 counter replay：看单 kernel 的 SOL、occupancy、stall、cache、
+  指令 mix。锁频、多遍回放、串行化，**报告耗时不能当 bench 时间**。
+- 只对 nsys 排名前 1–2 的 kernel 做 `ncu --set full`；每次只改一处，无效或
+  负优化立即回退。
+
+```bash
+nsys profile -t cuda --sample=none --cpuctxsw=none \
+  -o .tmp/ch00/report.nsys-rep python bench.py
+nsys stats -r cuda_gpu_kern_sum report.nsys-rep  # 优化谁
+nsys stats -r cuda_gpu_trace   report.nsys-rep  # gap / overlap
+
+ncu --set full -o .tmp/ch00/report_v1 --target-processes all ./kernel_app
+ncu --import report_v1.ncu-rep --page raw --csv > report_v1.csv
+ncu --set full -o rep --kernel-name regex:persist_d_ws_fwd_cute_fp8 \
+  --target-processes all ./app
+ncu --import rep.ncu-rep --page raw 2>&1 | \
+  grep -A3 "warps_issue_stalled_\(wait\|math_pipe_throttle\|sleeping\)"
+```
+
+采集纪律：
+
+- 只采需要域和最短窗口；大模型 e2e 不加限制采集曾写满 `/tmp`（500 GiB+）。
+  `TMPDIR` 和输出放项目 `.tmp/`，单域、最小 repeat、事后清理；路径过长会撞
+  Unix socket 107 字节限制。
+- 只要 kernel 时间表优先 `torch.profiler`；窗口化用
+  `--capture-range=cudaProfilerApi` 配合 `torch.cuda.profiler.start()/stop()`。
+- `--kernel-name` 前缀过滤必须写 `regex:`；具体计数器必须 `--page raw`，
+  不要把 rule-based CSV 当原始 metric。
+- 计数器权限不足可在同微架构代理 GPU 上分析架构级结论；绝对性能必须回目标
+  硬件重测。
+- A/B 先校验公共参照（通常 ±1%）；抖动大用 min-of-N，profiling 配置与 bench
+  逐 flag 对齐。GPU 干扰会让两轮共同膨胀，不能直接算加速比。
+
+### 3. 指标字典与瓶颈决策
+
+| 维度 | 读法与行动 |
+|---|---|
+| SOL `SM% / MEM%` | SM 高 MEM 低 = compute-bound；反之 memory-bound；双低是 latency-bound，继续查 stall；双高接近上限 |
+| occupancy | 区分理论/达到值；限制源看 registers、smem、block/warp slots。occupancy 是手段，不是 KPI |
+| 寄存器/spill | 每线程上限 255；看 ptxas `-v`、cuobjdump STACK、SASS LDL/STL 与 local bytes。主要代价常是延迟暴露和指令增多，不只是带宽 |
+| `wait` | 固定延迟依赖；拆依赖链、增并行 warp、重排指令 |
+| `long_scoreboard` | 等 gmem/TMA；cp.async/TMA、prefetch、加深 stage |
+| `short_scoreboard` | 等 smem/MIO；优化布局、减少 smem 往返 |
+| `math_pipe_throttle` | 数学管线排队；必须与 `pipe_tensor` 交叉验证，不能直接断言 Tensor Core 饱和 |
+| `sleeping/barrier` | 休眠/栅栏；结合忙闲比判断 WS 失衡、退避和同步结构 |
+| `not_selected` | 就绪但未被选，通常是健康冗余并行度 |
+| L1/L2/DRAM | 同时看命中率、吞吐和合并度。DRAM 高先查 L2 miss；L2 高而 L1 低查 smem/L1 复用 |
+| bank conflict | 先看占比和每 warp/cycle 重放，绝对次数大不等于值得修 |
+| pipe mix | `pipe_fma/alu` 高而 `pipe_tensor` 低，考虑 MMA；tensor 高且排队下降才支持 TC 利用改善 |
+
+经验阈值不是硬边界：SOL 相差 >20 可分流，双低 <40 查 latency，双高 >60
+接近平衡；DRAM >70% 偏带宽墙，L2 hit <50% 且 DRAM >40% 查工作集/局部性，
+L1 hit <20% 且 L2 高查 smem 复用。连续 32-bit warp 访问理想为 4 个 32B sector；
+明显超标说明流量被访问模式放大。
+
+资源预算实例：384T WS 启动静态上限约 168 regs/thread；稳态
+`128×32 + 256×232 = 63488` regs，第二个 CTA 需 126976 > 65536，故只能
+1 CTA/SM、12/48 warps，理论 occupancy 25%。M8N1 的 O 累加器约为
+`kBr×D/256` regs/thread；`kBr=128,D=512` 已达 256，必须换 M4N2 等结构。
+
+### 4. 实战判据
+
+- 主 kernel 占 86–92%，aux 已达约 1.04 TB/s 时，融合 aux 只省 launch、不减流量；
+  大 N wall 差 <0.2%，应转向主 kernel 或引擎 overlap。
+- spill 总量大但 local 带宽低时，真正问题可能是 warp 太少、LDL 延迟藏不住。
+- `setmaxnreg` 是否保留与 `sm_120a/f` 后缀无关；TMA 目的地址写
+  `shared::cluster` 会触发 C7506，写 `shared::cta` 才保留；缺
+  `__launch_bounds__(N,1)` 可触发 C7508。
+- 最终结论必须标 GPU/架构/日期和计时口径；ncu 时间、不同卡数字、fallback
+  kernel、不同 bench 配置都不能混作同一性能口径。
+
+## 内嵌总体指导：ch01-arch-roofline（正文精编）
+
+> 来源：`chapters/ch01-arch-roofline.tex`。保留架构、AI、Roofline、occupancy
+> 的公式与使用边界；图示和完整问答可按需回读源文件。
+
+### 1. 执行模型与资源层级
+
+CPU 追求单任务低延迟，GPU 追求海量任务高吞吐，靠 warp 切换而非复杂分支预测
+隐藏延迟。同一算法在 GPU 上的主要分类是：
+
+- **memory-bound**：AI 低于机器 ridge point；
+- **compute-bound**：AI 高于 ridge point；
+- **latency-bound**：并行度不足或依赖链过长，延迟无法隐藏。
+
+SM 速查：warp = 32 threads，是调度/指令发射单元；典型 SM 有 4 个 scheduler，
+每个每周期最多发射 1 条指令。寄存器文件每 SM 为 65536×32-bit = 256 KB；
+寄存器、smem、block/warp 槽位共同限制驻留量。smem/L1 是片上 SRAM 的不同角色，
+block 用 smem 显式交换数据，L1 是透明缓存。
+
+资源例子：64 regs/thread × 256T = 64 KB/block，因此 256 KB 寄存器文件最多
+驻留 4 个这种 block。SM120 本机 per-block smem opt-in 上限为 99 KB；不要把
+Hopper 的 228 KB 或其他架构上限直接搬用。
+
+内存层级趋势是越靠近 SM，带宽越高、容量越小。H100 数量级参考：寄存器
+100+ TB/s、L1/SMEM 约 19 TB/s、L2 约 12 TB/s、HBM3 理论 3.35 TB/s。
+L1/L2 数字是微基准量级，不是与 HBM 官方 spec 同精度的常数。优化的共同方向是
+让复用数据驻留更高层：寄存器 shuffle、smem tiling、TMA/WS 流水都服务于此。
+
+### 2. 算术强度与 Roofline
+
+\[
+AI=\frac{\mathrm{FLOPs}}{\mathrm{Bytes}},\qquad
+P=\min(P_{peak},AI\times BW),\qquad AI^*=\frac{P_{peak}}{BW}.
+\]
+
+- FLOPs 是运算总量，不是 FLOP/s；乘加各记 1 次。Bytes 是目标存储层级不可再
+  省的读写下界，必须包含输出写回；寄存器中间量不计入 HBM Bytes。
+- `AI < AI*` 为 memory-bound，`AI > AI*` 为 compute-bound。比较低前必须统一
+  dense/sparse、数据精度和实际存储层级口径。
+
+典型推导：
+
+| 算子 | FLOPs / Bytes（fp32） | AI |
+|---|---|---:|
+| GEMM，M=N=K | `2K³ / [4(MK+KN+MN)]` | `K/6`；K=4096 时 682.67 |
+| GEMV | `2MK / [4(MK+K+M)]` | 大 MK 时约 0.5 |
+| softmax（本章口径） | 约 `5N / 8N` | 0.625；其他章节可用不同省算口径 |
+
+H100 示例：FP16 TC dense `989/3.35≈295`，FP32 `67/3.35≈20`。AI=100 在
+FP32 屋顶是 compute-bound，在 FP16 TC 屋顶仍是 memory-bound；所以迁移到
+Tensor Core 不保证更快，若带宽没变，memory-bound 仍受带宽限制。
+
+### 3. Occupancy 与延迟隐藏
+
+\[
+\mathrm{occupancy}=\frac{\text{active warps / SM}}{\text{max warps / SM}}.
+\]
+
+warp A 等 HBM 时 scheduler 切到 B/C，发射口才不空转。HBM 常见数量级约
+500–800 cycles。实际 occupancy 取寄存器、smem、block/warp 槽位约束的最小值，
+并受 tail 和负载不均影响。大 thread tile、双缓冲、setmaxnreg 都是在寄存器/
+smem/并行度之间换工作点；**低 occupancy + 高 ILP 可优于高 occupancy + 低 ILP**。
+
+### 4. 优化路线与本机标尺
+
+基础路线：coalescing → tiling/复用 → vectorize → thread tile → bank/swizzle →
+pipeline → Tensor Core → warp specialization → TMA。不要跳步用高级特性掩盖
+算法或访存问题；先用 ch00 的指标证明瓶颈，再选择对应层级。
+
+RTX PRO 5000（sm_120a，2026-09-11 实测）：110 SM、L2 96 MB、smem/block
+opt-in 99 KB；GDDR7 理论带宽 `14 GHz×384 bit×2 = 1344 GB/s`；FP32 峰值估算
+`128 FMA/clk/SM×110×2.376 GHz×2 = 66.9 TFLOPS`，ridge≈49.8 FLOP/B。
+本机复测以此卡为默认口径，其他 GPU/归档数据必须另标。
+
+16 MB 数据可装进 96 MB L2，ch03 因而测得 1862 GB/s > HBM 理论 1344 GB/s：
+这里测到的是 L2 而不是 HBM。标定 HBM 时工作集应明显大于 L2，并确认稳定
+命中状态；Roofline 的 BW 必须用数据实际所在层级的带宽。
+
+### 5. 高频错误与测试锚点
+
+- Bytes 漏写回：会把 memory-bound 错算成 compute-bound。
+- sparse 峰值当 dense：ridge 差 2 倍，bound 类别可能翻转。
+- occupancy 当唯一 KPI：忽略 ILP、tile 和流水收益。
+- FLOP 与 FLOPS 混用：AI 分子是运算量，Roofline 纵轴是速率。
+- 小数据标 HBM：可能实际测到 L2；容量能装下也不等于永不换出。
+
+`book/tests/ch01_roofline.cu` 是 host 侧标尺测试，检查 GEMM/GEMV/softmax/
+eadd/relu/dot 的 AI 和本机资源。参考值依次为 682.67、0.5、0.625、1/12、
+1/8、0.25。运行方式：`cd book/tests && ./build_tests.sh --ch ch01`。
