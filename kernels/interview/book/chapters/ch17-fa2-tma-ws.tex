@@ -737,9 +737,10 @@ $+20\%$：同卡同时刻原版辅助工具对照
 测得 FA2 MMA Stages（Sk$=$2, Pad, F16Acc）158.7T $\to$ FA2 TMA WS（Sk$=$2）
 190.4T；这 $+20\%$ 的收益来自装载专职化加 stage 级同步。F32Acc 反而快于 F16Acc
 （195 vs 184）：F16Acc 路径的 softmax 需要在 f32 计算与 f16 写回 R\_S 之间
-反复转换（\texttt{\_\allowbreak{}\_\allowbreak{}float22half2\_\allowbreak{}rn}），F32Acc 的 R\_S 直接以 f32 存储、省掉
-双向转换。在 attention 这种 softmax 指令占比高的算子里，累加精度档位同时
-影响数值与速度。
+反复转换（\texttt{\_\allowbreak{}\_\allowbreak{}float22half2\_\allowbreak{}rn}）；F32Acc 在 softmax
+计算及 R\_O/R\_D rescale 中直接保持 f32，减少多条 half$\leftrightarrow$float 转换。
+但 R\_S 在 PV MMA 前仍须转成 half，两条路径的 $P$ 操作数精度相同。在 attention
+这种 softmax 指令占比高的算子里，累加精度档位同时影响数值与速度。
 
 README 口径勘误（F4）：README 的 SM120a 表给出 FA2 TMA WS
 （Sk$=$2, F16Acc）292.0 TFLOPS（1.31x vs cuDNN），与本书复测（183.8T）

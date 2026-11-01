@@ -1103,9 +1103,9 @@ L281--282 与 L291--292）。多加一层掩码 4 会把\emph{另一个 warp 段
 \section{最小测试与动手实验}
 
 本章测试（\texttt{tests/\allowbreak{}ch26\_\allowbreak{}ffpa\_\allowbreak{}cute.\allowbreak{}cu}）与前几章的不同之处是
-以 host 端类型断言为主：不启动 kernel，只对 traits 与 fragment
-做静态/运行时断言，全部来自 26.3 节的代数。下文的实测都指该测试或等价 probe
-的 host 端输出：
+以 host 端类型断言为主：这部分不启动 kernel，只对 traits 与 fragment
+做静态/运行时断言，全部来自 26.3 节的代数。下文先列这部分输出，再列 device
+probe 与小规模 kernel case：
 
 \begin{enumerate}[itemsep=2pt,topsep=2pt]
   \item \textbf{D-chunk 常量}：对 $D\in\{64,128,192,512\}$ 断言

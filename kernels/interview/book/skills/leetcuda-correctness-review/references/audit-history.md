@@ -1061,3 +1061,19 @@ git diff --check：通过
 - 验收（三层闸门全绿）：主 `book/build.sh` 591 页 / 0 error / 0 undefined / 缺字 0 / Overfull 15（与 R65 基线一致）；`lint_book.py` citations 0 fail（1 白名单 WARN）、tables 0、figures 0；RTD 全量 `./build.sh` + `convert.verify` 全项 OK（英文图 195/195、图词典 1922、代码块 772/772、公式 121/121）；`visual_check` 93 页 / 需处理 0。
 - 未验证：未重跑性能 benchmark；ch03 实测数字（26.7 GB/s、0.63 ms、2.6 ns/op）沿用既有口径，不视为复测。cute-zhihu 源未改，不触发其独立 PDF 构建。
 - 结论：主 book 维持 R65「发布候选」判定；本轮 2 项 B/C 已修，未推翻收账结论，但印证「改哪章审哪章」定点复核仍有低级别产出。
+
+## R67（2026-11-01）：用户重开主 book 全量审核，17 个根因回修
+
+- 触发与范围：用户明确要求继续全量审核，不能沿用 R65「收账」跳过。主 agent 独立完成，不使用 subagent。按当前 `book.tex` 实际输入全文阅读 54 个 `.tex`：主章 40（ch00–ch37 + ch26b/ch26c）、白皮书 9（ch19b+wp0–wp7，只作翻译基线）、附录 5。图、图注、表、Q&A、listing 与测试说明均纳入阅读。
+- 结果：确认并回修 17 个根因，涉及 ch01/ch06/ch15/ch17/ch18/ch20/ch22/ch26/ch26c/ch30/ch31/ch34/ch35/appB。主要是数学量词与维度、API 边界、图注/Q&A 与正文/表格脱节：LN/RMSNorm bias 前提、相近大数 cancellation、FA2 仍保留 online rescale、F32Acc 的 P 在 PV 前转 half、setmaxnreg 暂时不足只等待、CuTe 单调性看进位增量而非 stride 排序、MMA_N 补 ThrN、D=448 stages 例外、大 D 下 O(Bc) 占比方向、NVFP4 K 方向与 π、误差分布前提、s4 扫描结论和 appB min-of-N 口径。
+- 同源传播：ch15 图注与 ch18 正文、ch06/ch20/ch26c Q&A、ch35 与 appB 同步；ch31 图内 `π^{-1}→π` 使英文图 key 的数学占位符由两个减为一个，`figures-en.json` 已同步。未改 CUDA 源码、`book.tex` 结构、listing 或性能原始数字。
+- 撤回：TF32 随机误差候选经独立复算为 0.0030070，原书正确；128B 单事务与 32B sector 是本书并存的两种口径；Part V/VI 结构候选由旧目录快照造成，重读当前 `book.tex` 后撤回且未改主文件。
+- 验收：anchors 与 lint 全绿，permalinks 53 个、测试引用和 appB 回指通过；主 PDF 591 页 / 0 error / 0 undefined / 缺字 0 / Overfull 15；RTD 全量 build（未跳 TikZ）2518/2518 source blocks、英文图 1791/1791，其余全项 OK；浏览器 visual_check 93/93 页需处理 0。逐章与撤回台账在 `book/.tmp/r67/`。
+- 未验证：未重跑 GPU 性能 benchmark；ch13/sm_90a 仍仅静态核验。cute-zhihu 源未改，不触发独立 PDF；RTD 全量已覆盖其页面。
+
+## R68（2026-11-01）：快速全量自审，零新增确证错误
+
+- 范围：按用户要求只做快速全量，不再逐字重读 54 个输入。主 agent 对当前 chapters+appendices 跑机械检查和高风险扫描，并逐 hunk 复审 R67 当前技术 diff；白皮书仍只作翻译基线。
+- 覆盖与结果：扫描 1115 条候选，人工复核其中 311 条高优先级命中（数理逻辑/图注/wait 106 条，全称/双射/整除/零拷贝等 205 条）。lint 0 fail、anchors 33 章全绿、permalinks 53 与 tests refs 9 均为 FAIL 0；listing/appB 告警均为既有脚本口径，无新增失败。新增确证书稿错误 0，书稿回修 0。
+- R67 公式反证：对 ch20 单调性充要条件穷举 rank 1–3、shape 1–4、stride 0–8 共 47988 个 flat 非负 stride 布局，单调性与条件全部一致。脚本首轮 5820 个 mismatch 是把 size-1 维的不存在进位也纳入条件；按原文“实际发生的进位”修正脚本量词后 mismatch=0，候选撤回，不改书稿。
+- 验证边界：本轮无书稿改动，未触发 PDF/RTD 闸门；R67 的 PDF/RTD/visual_check 结果只作既有基线，不冒充本轮新跑。GPU benchmark 与 sm_90a 运行仍未验证。台账在 `book/.tmp/r68/summary.md`。

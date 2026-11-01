@@ -636,7 +636,7 @@
   "m16n8k32 的两个布局（g = lane⟦0⟧⟦1⟧2 组行，t = lane⟦2⟧3 组内）：C 持列对 {2t,2t+1}，A 要列 {4t..4t+3} ------ 跨 lane": "Two layouts of m16n8k32 (g = lane⟦0⟧⟦1⟧2 group row, t = lane⟦2⟧3 within group): C holds column pair {2t,2t+1}, A wants column {4t..4t+3} ------ across lane",
   "mainloop 退出⟦0⟧（TMA 全部完成）": "mainloop exits ⟦0⟧ (TMA is all completed)",
   "makespan 仍 ⟦0⟧": "makespan still ⟦0⟧",
-  "mask/bias 必须⟦0⟧perm-aware（⟦1⟧⟦2⟧）": "mask/bias must be ⟦0⟧perm-aware (⟦1⟧⟦2⟧)",
+  "mask/bias 必须⟦0⟧perm-aware（⟦1⟧）": "mask/bias must be ⟦0⟧perm-aware (⟦1⟧)",
   "max 合并：m = max(m⟦0⟧C0, m⟦1⟧C1)（顺序无关）": "max merge: m = max(m⟦0⟧C0, m⟦1⟧C1) (order independent)",
   "max 段 [8 warps][16 rows]": "max segment [8 warps][16 rows]",
   "mbarrier 事务计数": "mbarrier transaction count",

@@ -124,7 +124,7 @@ $\ell = 1 \cdot \ell_0 + 0 \cdot 0 = \ell_0$，$O = O_0$，
 结论）。
 
 这里有一个数值陷阱，也是未归一化累加这一约定的第二个理由（第一个是
-第~\ref{ch:15}~章 FA2 省掉每块对角修正）：如果 $O$ 以已归一化形态
+第~\ref{ch:15}~章 FA2 把归一化推迟到末尾、减少每块对角修正次数）：如果 $O$ 以已归一化形态
 参与合并，就必须算 $O_1/\ell_1$，$0/0$ 直接产 NaN 并污染整个输出。而
 式~\ref{eq:18-merge} 只做乘加（$0 \times 0 = 0$，$e^{-\infty} = 0$ 由硬件
 \texttt{ex2.approx} 精确给出），NaN 无从产生。$O$ 全程未归一化、只在
@@ -234,7 +234,8 @@ WG 释放 slot 的耦合。
 第~\ref{ch:14}~章已给出池不等式：每 SM 寄存器文件 65536 个 32-bit 寄存器，
 CTA 池按 warp 配额回收/发放，任意配置须满足
 $\sum_{w} 32\,r_w < 65536$ 并留 $\ge 2048$ 的 slack；同时
-\texttt{setmaxnreg.\allowbreak{}inc} 是\textbf{阻塞语义}，池中寄存器不足时永久阻塞
+\texttt{setmaxnreg.\allowbreak{}inc} 是\textbf{阻塞语义}，池中寄存器暂时不足时
+阻塞等待；若所需额度始终不可满足，才永久挂起
 （PTX ISA §9.7.19.5，本地镜像 ptx-docs）。这个 kernel 的配置是三个 warpgroup：
 producer 128 线程 \texttt{dealloc(40)}、两个 consumer 各 128 线程
 \texttt{alloc(168)}（$D{=}128$）或 \texttt{alloc(80)}（$D{=}64$），见

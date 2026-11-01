@@ -84,7 +84,7 @@ RMSNorm（Zhang \& Sennrich, 2019）只保留\textbf{缩放}而不做\textbf{中
 \end{equation}
 对照式~\eqref{eq:ch06-ln} 可以读出三层关系：
 \begin{enumerate}
-  \item 当输入近似零中心（$\mu \approx 0$）时，$\mathrm{RMS}(x) \approx \sqrt{\sigma^2+\epsilon}$，RMSNorm 与 LayerNorm 几乎重合；神经网络中间激活的均值通常远小于二阶矩，这直观解释了 RMSNorm 去掉中心化后精度几乎不受影响。
+  \item 当输入近似零中心（$\mu \approx 0$）时，$\mathrm{RMS}(x) \approx \sqrt{\sigma^2+\epsilon}$；在两者 gain 相同且 LayerNorm 的 bias 为零或可忽略时，RMSNorm 与 LayerNorm 的输出才几乎重合。神经网络中间激活的均值通常远小于二阶矩，这直观解释了 RMSNorm 去掉中心化后精度几乎不受影响。
   \item RMSNorm 分母比 LayerNorm 分母多出 $\mu^2$ 项：LayerNorm 只除波动幅度，RMSNorm 除总能量（波动 + 直流）。
   \item 由此产生一个重要差别：LayerNorm 具备\textbf{平移不变性}，$x \to x + c$ 时 $\mu \to \mu + c$、$\sigma^2$ 不变，输出不变；RMSNorm 不具备（$\mu^2$ 项改变）。LLaMA 系列许多线性层同时省略 bias，但这是独立的架构与实现选择，不能由上述性质推出 bias 无收益：bias 会同时改变 RMSNorm 的分子和分母，逐通道 bias 还会改变 $\sigma^2$。
 \end{enumerate}
@@ -136,9 +136,9 @@ RMSNorm（Zhang \& Sennrich, 2019）只保留\textbf{缩放}而不做\textbf{中
 LayerNorm 能否也做成 1-pass？利用恒等式~\eqref{eq:ch06-var-identity}，
 $\sigma^2 = S_2/K - \mu^2$，可以在一次归约中同时求 $S_1$ 与 $S_2$（warp shuffle 时打包
 两个 float，或在同一线程内做两次独立归约），从而把 LayerNorm 压成 1-pass。代价是数值
-风险：$S_2/K - \mu^2$ 是大数减小数，当 $|\mu| \gg \sigma$（分布整体远离零点，且数据
-动态范围大）时，两个相近的浮点数相减发生 catastrophic cancellation，fp32 精度下方差
-可能出现明显误差甚至为负。
+风险：$S_2/K - \mu^2$ 在 $|\mu| \gg \sigma$（分布整体远离零点，且数据
+动态范围大）时变成两个相近大数相减，发生 catastrophic cancellation，fp32 精度下
+方差可能出现明显误差甚至为负。
 
 数值稳定且仍只过一遍数据的方案是 Welford 递推（增量维护
 $\mu$ 与 $M_2 \equiv \sum_k (x_k-\bar{x})^2$，分块结果可用合并公式汇总），但它的归约
@@ -420,9 +420,9 @@ $N = 524288$ 时读写流量 $512\,\mathrm{MB}$ 远超 L2，是 HBM 口径。两
 \section{面试要点速查}
 
 \begin{enumerate}
-  \item \textbf{Q：LayerNorm 与 RMSNorm 的数学关系？} A：恒等式 $\frac{1}{K}\sum x_k^2 = \sigma^2 + \mu^2$；RMSNorm 等价于 LayerNorm 去掉中心化、分母换成 $\sqrt{\sigma^2+\mu^2+\epsilon}$；$\mu \approx 0$ 时两者近似相等。
+  \item \textbf{Q：LayerNorm 与 RMSNorm 的数学关系？} A：恒等式 $\frac{1}{K}\sum x_k^2 = \sigma^2 + \mu^2$；RMSNorm 等价于 LayerNorm 去掉中心化、分母换成 $\sqrt{\sigma^2+\mu^2+\epsilon}$；在 gain 相同且 LayerNorm 的 bias 为零或可忽略时，$\mu \approx 0$ 才使两者输出近似相等。
   \item \textbf{Q：为什么 RMSNorm 更快？} A：归约量从两个（依赖链）降到一个：1 次 block reduce + 2 次同步 vs 2 次 + 4 次；实测 fp32 下快约 $7\%$（本章第 6 节）。
-  \item \textbf{Q：LayerNorm 能做 1-pass 吗？} A：可以（$\sigma^2 = S_2/K - \mu^2$ 或 Welford），但大数减小数有 catastrophic cancellation 风险；fp32 且 $|\mu| \ll \sigma$ 时可安全使用，否则 Welford。
+  \item \textbf{Q：LayerNorm 能做 1-pass 吗？} A：可以（$\sigma^2 = S_2/K - \mu^2$ 或 Welford），但两个相近大数相减有 catastrophic cancellation 风险；fp32 且 $|\mu| \ll \sigma$ 时可安全使用，否则 Welford。
   \item \textbf{Q：GPU 上实现行归一化的标准结构？} A：one-row-one-block；block reduce 求统计量；tid 0 写 shared 标量；\texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()} 后全块读出广播；最后逐元素缩放。
   \item \textbf{Q：为什么写 \texttt{s\_variance} 后还需要一次 \texttt{\_\allowbreak{}\_\allowbreak{}syncthreads\allowbreak{}()}？} A：reduce 内部的同步只覆盖 reduce 自己的 shared 数组；新共享变量的写读对必须另行建立块级可见性。
   \item \textbf{Q：vec4 化的前提？} A：$K \% 4 = 0$、基址与行首 16B 对齐；越界线程的 padding 值必须与归约量语义一致。

@@ -7,7 +7,8 @@
 \section{口径与标尺}
 
 除单独标注外，本附录所有数字都是本书复测：RTX PRO 5000 72GB（sm\_120a，110 SM，
-L2 96MB，CUDA 13.2），cudaEvent 计时，warmup 3--5 + 10--20 次取均值；第 04 章两行是
+L2 96MB，CUDA 13.2），计时与聚合方式以各章口径为准（基础复测多为 cudaEvent
+取均值，FFPA bench 按第~\ref{ch:33}~章的 pre-heat 与 min-of-N）；第 04 章两行是
 旧 bench 历史记录（修复 $S\cdot N$ 参数后未复测），不作为当前口径；roofline 标尺
 取自第~\ref{ch:01}~章（GDDR7 理论带宽 1344~GB/s、FP32 峰值估算 66.9~TFLOPS、
 ridge point $\approx 49.8$~FLOP/B）。读表先记三件事：（1）带宽型算子分 L2/HBM
@@ -185,7 +186,7 @@ fp16 HGEMM 同吞吐 proxy（$\approx$243~T；不是 bf16 kernel）的口径为 
 第35 & fp8 GEMM+Quant E2E & 同上 & 76/187/315~T（0.55/1.14/1.93$\times$） & 量化开销随 shape 缩小占比放大；2048$^3$ 反而更慢 \\
 第35 & fp8 GEMM+A-Quant E2E（$B$ 离线） & 同上 & 226/411/429~T（1.64/2.52/2.63$\times$） & 权重量化一次后落盘，每步只量化 A（$O(MK)$）；数值与全链路逐 bit 一致（35.8.3 节）；WS 版 +0.5$\sim$1.1\% \\
 第35 & fp8 WS + setmaxnreg & 4096$^3$ & 440.9~T（2.70$\times$） & 直调 cutlass::arch API；SASS 4 实例 $\times$ 2 条 USETMAXREG 实证；sm\_120a/f 均可 \\
-第35 & fp8 tile/深度扫描（non-WS） & 4096$^3$/8192$^3$ & 219$\sim$442 / 240$\sim$485~T & tile $\{64,128,256\}^2\times$ stages $\{2,3,4\}$：$BN$ 比 $BM$ 更有效（$128\times256$ vs $256\times128$ 两档都 $\approx+8.5\%$），s2/s3 差 $\le2\%$、s4 无收益，$256\times256$ 超 99\,KB 装不下（35.8.4 节）\\
+第35 & fp8 tile/深度扫描（non-WS） & 4096$^3$/8192$^3$ & 219$\sim$442 / 240$\sim$485~T & tile $\{64,128,256\}^2\times$ stages $\{2,3,4\}$：$BN$ 比 $BM$ 更有效（$128\times256$ vs $256\times128$ 两档都 $\approx+8.5\%$），s2/s3 在多数几何接近、$64\times128$ 等配置有例外，s4 无稳定收益，$256\times256$ 超 99\,KB 装不下（35.8.4 节）\\
 第35 & fp8 最优 tile（ws 128$\times$256/s2） & 4096$^3$/8192$^3$ & 443.7/487.8~T（2.72/2.99$\times$） & 即库默认档（同时是大形状全场最优）；比 128$^3$/s3 快 7.7\%/5.9\%；$2048^3$ 上因波次量化反慢 17\%；NCU：pipe\_tensor 80.9\%（elapsed）、寄存器 168/线程、bank conflict 0、smem 读波前 $-5.6\%$（35.8.5 节） \\
 \end{longtable}
 \endgroup

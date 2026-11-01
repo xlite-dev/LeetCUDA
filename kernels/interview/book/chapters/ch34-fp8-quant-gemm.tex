@@ -288,7 +288,8 @@ $M{=}N{=}4096$ 时 $\sqrt{2\ln(MN)} \approx 5.8$。误差分布是有限支撑�
 
 健康判据是\textbf{Max Err 在 $4\sigma_{\text{err}}$ 量级}，而不是要求它趋零。绝对
 口径的 Max Err 自然随 $\sqrt{K}$ 增长（$\sigma_{\text{err}} \propto
-\sqrt{K}$），换算到相对口径才是与 $K$、与分布都无关的常数。
+\sqrt{K}$）；在前述零均值、独立随机符号模型下，换算到相对口径才与 $K$ 及输入
+二阶尺度无关。同号或相关数据不满足这条分布无关性。
 
 \paragraph{实测指纹} 四组数据逐一验证了上面每个环节（$\sigma_{\text{err}}
 = \sqrt{K\,\mathrm{E}[(ab)^2]\,2\sigma_\varepsilon^2}$，均匀输入
@@ -314,9 +315,10 @@ randn $(\pm 0.25)$，4096$^3$ & 0.0227 & 0.090 & 4.0$\sigma$ \\
 但这只是相容性证据，不能仅凭极值倍数证明误差严格零均值或无系统偏差。randn 组把输入取为 $\sigma_x = 0.25/3$ 的截断正态
 （幅值缩 $s \approx 6.9$ 倍）：$\mathrm{E}[(ab)^2]$ 缩 $s^4$，
 $\sigma_{\text{err}}$ 随之缩 $s^2 \approx 48$ 倍，$4.50/48 \approx 0.094$
-与实测 0.090 相符，比值仍落在 $4\sigma$。注意两组的相对误差
-$\sigma_{\text{err}}/\sigma_C = \sqrt{2}\,\sigma_\varepsilon$ 相同：换分布
-只缩放绝对口径，34.6~节实测的 rel-Frobenius 0.036 与分布无关。
+与实测 0.090 相符，比值仍落在 $4\sigma$。在上述模型下，两组的相对误差
+$\sigma_{\text{err}}/\sigma_C = \sqrt{2}\,\sigma_\varepsilon$ 相同：这两类零均值
+随机分布之间只缩放绝对口径，34.6~节实测的 rel-Frobenius 0.036 也落在同一量级；
+该现象不能推广到同号或相关数据。
 
 \paragraph{与 fp8 attention 的误差为什么不可直接比} 同是 fp8 对 bf16，
 量化 attention 的绝对误差看起来小得多，差异全在算子形态与度量口径。其一，

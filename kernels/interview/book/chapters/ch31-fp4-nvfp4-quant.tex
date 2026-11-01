@@ -141,7 +141,7 @@ $\mathrm{amax}$ 难利用组合数值域）的回答：先用全行尺度覆盖 
 Q 的中心化按 128 行块取均值：$q_m[b,h,m_b,:]=\mathrm{mean}(Q)$
 （\texttt{fp4\_q\_block\_mean\_kernel}，L667--701）；K 平滑按序列均
 值 $\bar k[b,h,:]=\mathrm{mean}(K)$。量化对象是残差
-$\hat Q=\phi(Q-q_m)$、$\hat K=\phi(K^\top-\bar k)$，score 的量化重构
+$\hat Q=\phi(Q-q_m)$、$\hat K=\phi(K-\bar k)$，score 的量化重构
 需要补上均值项。先在未量化实数域展开：
 \begin{equation}
   S=q\,k^\top=(q-q_m)\,(k-\bar k)^\top+q_m k^\top+q\bar k^\top
@@ -166,8 +166,9 @@ $S=S^{\dagger}_{\mathrm{ideal}}+q\bar k^\top$ 精确成立；实际 $S^\dagger$
   -\underbrace{q_m\bar k}_{\text{每行常数 }q_{km}}
   \label{eq:31-deltas-id}
 \end{equation}
-\texttt{delta\_s.cuh} 头注释（L3--8）明确给出这个恒等式：
-kernel 的 $S^{\dagger}=\hat Q\hat K^\top+\Delta S$ 恰好等于 $q(k-\bar k)^\top$。
+\texttt{delta\_s.cuh} 头注释（L3--8）明确给出这个恒等式；在未量化实数分解中，
+$S^{\dagger}_{\mathrm{ideal}}=q(k-\bar k)^\top$ 精确成立，实际 kernel 的
+$S^{\dagger}=\hat Q\hat K^\top+\Delta S$ 只是其量化近似，量化误差仍然保留。
 于是 lse 修正只需要 $scale\cdot\mathrm{dot}(q_{row},\bar k)$（任何多余
 的行常数会平移 lse 但不改变 $O$）。$\Delta S$ 在量化链里一次算好
 （fp32 物化，pad 列零填），主 kernel 每个 kv tile 加载即用。
@@ -618,7 +619,7 @@ NVFP4 的 $1\times16$ microscaling 块如何配平 e2m1 与 ue4m3 两级尺度�
     \node[draw=tkPurple, fill=none, line width=0.5pt, minimum width=3.39cm, minimum height=0.55cm, inner sep=1pt, align=center, text width=3.33cm, font={\fontsize{4.8}{6.0}\selectfont \color{tkPurple} }] at (6.314,-9.733) {O epilogue：+ v\_m（可选，恒等）};
     \node[draw=tkBlue, fill=none, line width=0.5pt, minimum width=3.85cm, minimum height=0.55cm, inner sep=1pt, align=center, text width=3.79cm, font={\fontsize{4.8}{6.0}\selectfont \color{tkBlue} }] at (10.549,-9.733) {O pad 后切回 d\_og 宽度输出};
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \color{black!65} }] at (14.045,-4.066) {三不变性见正文\\（旁路 / WHT / pad）};% w=3.388
-    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \bfseries \color{tkRed} }] at (14.045,-7.731) {mask/bias 必须\\perm-aware（$\pi$$^{-1}$）};% w=3.388
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{4.8}{6.0}\selectfont \bfseries \color{tkRed} }] at (14.045,-7.731) {mask/bias 必须\\perm-aware（$\pi$）};% w=3.388
     \draw[tkPurple, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (1.848,-1.54) -- (1.848,-2.125);
     \draw[tkPurple, line width=0.8pt, -{Stealth[length=2.2pt,width=1.8pt]}] (5.313,-1.54) -- (5.313,-2.125);
     \draw[tkPurple, line width=0.8pt, dashed, -{Stealth[length=2.2pt,width=1.8pt]}] (8.624,-1.54) -- (8.624,-2.125);
