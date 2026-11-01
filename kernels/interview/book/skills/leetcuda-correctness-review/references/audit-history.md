@@ -1049,3 +1049,15 @@ git diff --check：通过
 - 已知残余（不属审稿可解）：6 条 medium（ch26c VCPB STSM 计数、ch27「四个误差源」只列三项且内部仿真未归档、ch33 smooth-v +1.0% 机制、ch36 3.24%/10.17% 合成口径、ch17 Sk 饱和、ch29 wait 考据）仍需 GPU 复测或补证据；ch13/ch19/ch32 的性能数字未复测。
 - 验收：**回修后跑满三层闸门**——`book/build.sh` 591 页 / 0 error / 0 undefined / 缺字 0 / Overfull 15（与 R64 基线一致）；`lint_book.py` citations 0 fail（1 白名单 WARN）、tables 0、figures 0；RTD 全量 `./build.sh`（含 TikZ，未用 `--skip-tikz`）+ `convert.verify` 全项 OK + `tools.visual_check` 93 页 / 需处理 0；三页新文本在 HTML 中逐条命中。`CHECKLOG.md` 共 6 行记录（2 行 P-5 复核 + 汇总 + ch25 + ch34 + ch37 + 回修验收），逐章台账在 `book/.tmp/r65/ledger-shardA.md`。
 - 结论：主 book 结构性正确性高，可作为发布候选；**建议停止例行全书通读**，后续改为「改哪章审哪章」的定点复核 + 发布前三层构建验收。
+
+## R66（2026-11-01）：ch03 histogram 锚点定点复核与 2 处回修
+
+- 触发：用户 @ `base.cuh:381`（histogram kernel）要求评估主 book 当前正确性，随后要求复审并修复发现的问题。主 agent 独立完成，不使用 subagent。
+- 范围：`chapters/ch03-vectorize-atomic.tex` 全章 L0–L4 定点复核（histogram 所在章），非全书通读；`cute-zhihu` 不在范围。
+- 发现 2 项（1 B + 1 C），经反向自辩确认真问题后回修：
+  - **F1（B，L3 资源/类型计数）**：ch03:152–154 向量化公式把 grid 的 block 数误标为「线程」——「标量版 `N/T` 线程、vec4 版 `N/(4T)` 线程 × 2 条访存指令」。证据：`base.cuh` L315–316（relu 标量版 Block 256 → 共 N 线程）、L326–327（relu_vec4 Block 64 → 共 N/4 线程）；同章 L190/L478 明确 `N/T` 为 block 数；且与 L156「warp 级 `N/32`」（隐含标量版 N 线程）矛盾。回修为「`N` 线程 / `N/4` 线程」，与下文「线程数降 1/4」「warp 级 N/32→N/128」自洽。
+  - **F2（C，L4 表达一致性）**：ch03:402「histogram 比 elementwise 慢两个数量级（26.7 vs 2654 GB/s，0.63 ms vs 0.019 ms）」把时间口径（0.63/0.019≈33×）与「两个数量级」（100×）混用。回修为「慢约 33 倍（0.63 vs 0.019 ms）、有效带宽低约两个数量级（26.7 vs 2654 GB/s）」。同章 L187/L222/L228 的「低两个数量级」均修饰带宽（99×），本就正确，未动。
+- 同源传播：F1 公式改动使 RTD `_static/math-en.js` 旧公式 key 成死条目（convert.verify 报「公式 121 命中 120 + 死条目 1」）；已同步替换该条 key/value（`\frac{N}{T}`→`N`、`\frac{N}{4T}`→`\frac{N}{4}`），恢复 121/121。未改图/TikZ，figures-en/code-en 无需变更。
+- 验收（三层闸门全绿）：主 `book/build.sh` 591 页 / 0 error / 0 undefined / 缺字 0 / Overfull 15（与 R65 基线一致）；`lint_book.py` citations 0 fail（1 白名单 WARN）、tables 0、figures 0；RTD 全量 `./build.sh` + `convert.verify` 全项 OK（英文图 195/195、图词典 1922、代码块 772/772、公式 121/121）；`visual_check` 93 页 / 需处理 0。
+- 未验证：未重跑性能 benchmark；ch03 实测数字（26.7 GB/s、0.63 ms、2.6 ns/op）沿用既有口径，不视为复测。cute-zhihu 源未改，不触发其独立 PDF 构建。
+- 结论：主 book 维持 R65「发布候选」判定；本轮 2 项 B/C 已修，未推翻收账结论，但印证「改哪章审哪章」定点复核仍有低级别产出。
