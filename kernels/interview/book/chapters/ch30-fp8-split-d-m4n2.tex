@@ -688,9 +688,9 @@ $D$ & task & FFPA ms & SDPA ms & TFLOPS & speedup \\
 self-attn 的 speedup 从 $D=256$ 的 1.30x 跳到
 $D=320$ 的 3.76x，拐点不在 kernel 而在参照系：SDPA 在
 $D\notin\{64,128\}$ 时不再命中最优 kernel，fp8 的 1B 元素带宽优势
-立即显现。TFLOPS 随 $D$ 单调下降（271$\to$203T），$D$ 越大
-softmax 与 P 量化等 $O(B_c)$ 项占比越高、$O$ 寄存器压力越大，这是
-split-D 无法消除的固有开销。causal 的 allclose 在 D=320 bf16 与
+立即显现。TFLOPS 随 $D$ 单调下降（271$\to$203T），主要对应 $O$ 寄存器压力、
+chunk 握手与 epilogue staging 开销。softmax 与 P 量化等 $O(B_c)$ 项成本不随
+$D$ 增长，其相对占比反而下降，不能用来解释这一趋势。causal 的 allclose 在 D=320 bf16 与
 D=512 fp16 两格临界失败（见 30.2.3~节的已知边界说明），dense 六格
 全绿，数据落盘 \texttt{.tmp/book-bench/ch30/}。
 

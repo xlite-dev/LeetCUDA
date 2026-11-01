@@ -1033,7 +1033,8 @@ TiledMMA 与 TiledCopy 通过它解耦：改 tile 不影响拷贝代码。
 
 \textbf{Q8：tile 的 N 尺寸调节什么？}\\
 A：单次调用 C fragment 每线程元素数 $=\mathrm{MMA}\times\mathrm{MMA}_M\times
-\mathrm{MMA}_N$，而 $\mathrm{MMA}_N = \mathrm{tile}_N/\mathrm{atom}_N$：
+\mathrm{MMA}_N$，而 $\mathrm{MMA}_N = \mathrm{tile}_N/(\mathrm{atom}_N\,\mathrm{ThrN})$
+（本章 FFPA 的 $\mathrm{ThrN}=1$，故可简写为 $\mathrm{tile}_N/\mathrm{atom}_N$）：
 tile N 增大时 per-call C 视图与 B fragment 随之线性增长，S$\to$R 拷贝
 粒度变粗；acc\_O 的逻辑总量（$D=512$ 时为 256 个 f32 值）不变，超过
 255 个寄存器时需要 spill。PV 因此取 $\mathrm{tile}_N=16$

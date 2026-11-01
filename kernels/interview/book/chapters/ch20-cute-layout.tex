@@ -115,9 +115,10 @@ $f$ 作用在坐标上与作用在线性索引上是同一个函数，线性索�
 注意 $f(x)$ 一般\emph{不}单调：colex 进位时
 $x\to x+1$ 同时改变两个坐标（低位复位、高位 $+1$），offset 增量
 $d_{i+1}-d_i(s_i-1)$ 可为负：$(2,3){:}(3,1)$ 的 offset 序列是
-$0,3,1,4,2,5$，row-major 的 $(4,8){:}(8,1)$ 也有 $f(3)=24>f(4)=1$；只有
-当各 mode 的 stride 按 colex 排序（如 compact col-major，此时 $f(x)=x$）
-时才单调不减。这条单调性并非后续结论的前提：layout 的整数域本身就是一个
+$0,3,1,4,2,5$，row-major 的 $(4,8){:}(8,1)$ 也有 $f(3)=24>f(4)=1$。
+对 flat、非负 stride 的布局，$f(x)$ 单调不减的充要条件是 mode-0 步进与各次
+colex 进位的 offset 增量都非负；compact col-major（此时 $f(x)=x$）只是特例。
+这条单调性并非后续结论的前提：layout 的整数域本身就是一个
 可一次遍历的索引空间，后面所有遍历式断言（以及 \texttt{cosize}）依赖的
 只是 shape 分解 $[0,\mathrm{size})\to Z(S)$ 的双射性，与单调性无关。
 
@@ -1422,8 +1423,9 @@ $\mathrm{idx}=\sum_i d_i c_i$。默认 column-major（\texttt{LayoutLeft}）意�
 A：colex $=$ 坐标按最左 mode 最快的字典序枚举。把整数 $x$ 传给 layout 时，
 CuTe 先用式~\eqref{eq:20-colex-decomp} 把 $x$ 分解回坐标，再算
 $\sum d_i c_i$，所以线性索引与坐标是同一个函数的两种输入形式；
-$f(x)$ 对 $x$ 一般不单调（row-major 即反例），仅当各 mode 的 stride 按
-colex 排序（如 compact col-major，$f(x)=x$）时才单调不减。
+$f(x)$ 对 $x$ 一般不单调（row-major 即反例）。对 flat、非负 stride 的布局，
+单调不减的充要条件是 mode-0 步进与各次 colex 进位的 offset 增量都非负；
+compact col-major（$f(x)=x$）只是其中一个特例。
 
 \textbf{Q3：compose 的定义与前提？}\\
 A：$R=\mathrm{composition}(A,B)$ 满足 $R(c)=A(B(c))$，结果的 shape 与 $B$
