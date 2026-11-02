@@ -1190,3 +1190,14 @@ git diff --check：通过
 - 回修：只改 `chapters/ch26c-cute-split-d-sm120.tex` 两处。图注限定为 D=384 实测点并补 D=512 spill 反例；正文分别列出 D=384 的 15.5%/27.4% 与 D=512 的 4.4%。表格、TikZ 数据、其他章节、冻结源码和 RTD 词典不改。
 - 验收：`git diff --check` 通过，anchors 33 章 ALL GREEN，lint 三类 0 fail（1 条既有 WARN）；主 PDF 591 页 / 0 error / 0 undefined / 缺字 0 / Overfull 15；RTD 全量 build 全项 OK（英文图 195/195、代码 772/772、公式 121/121）；`visual_check` 93 页需处理 0。`check_mech` 的模板 listing FAIL 仍为已知假阳性，permalinks 53/tests refs 9 FAIL 0。
 - 边界：未重跑 GPU benchmark；未找到可推翻书内表格/图数据的原始实验日志；未提交 commit。台账 `book/.tmp/r100/report.md`。
+
+## R101–R110（2026-11-02）：十轮深度审核，新增 ch19 的 smem 阈值区间错误 + 附录 B 三处漂移
+
+- 触发：用户在 R100 后要求“再做 10 轮深度审核，尽量发现隐藏错误”。按十个证据面推进（Part III 数学 / 大 D 阈值 / CuTe 布局与位模型 / TiledMMA 计数 / ch26c 协议 / 量化数学 / 量化性能表 / 附录 B 回指 / 机械面 / 高风险词与图注独有数字）。主 agent 独立完成，不使用 subagent。
+- **N-1（MEDIUM，L1/L4 区间）**：`ch19:82` 写“$D\ge512$ 时连 Q/K/V 各一份都放不下”，但同段公式 $3\cdot64\cdot D\cdot2$ B 给出 $D{=}320\to120$ KB、$D{=}384\to144$ KB，均超 99 KB；书中又写明 $D{=}256$ 的 96 KB「恰好只够各一份」，越界点应是 **320**（$D$ 取 64 的倍数）。D=320 正是 Part V 反复使用的形状。修法：改 `D≥320` 并补「D=320 已到 120 KB」；表 19-walls 与 Q1 举例（D=512）不动。
+- **N-2/N-3/N-4（LOW，附录 B 转录）**：① 424 μs/次的 fp8 量化链被标为「第34」，该数字只出现在 ch35 §8.2（736−312），ch34 无性能节，按附录 B 自述的“转录自各章性能分析节”改为「第35」；② 2.71×→2.72×（76.55/28.19=2.7155，ch11 正文即 2.72）；③ 3.144→3.145 ms（与 ch09 表一致）。
+- **N-5（LOW，同章漂移）**：`ch33:494` 的「4.96 vs 8.13ms」与本章 `tab:33-fp4-matrix`/`tab:33-fp8-matrix` 的 4.97/8.12 不一致，统一到表值并加表引用。
+- **N-6（LOW，交叉引用）**：`ch21:69` 导读把“Tensor 是什么”指向 4.1 节（kernel 骨架），定义实际在 3.1 节（标题即「Tensor：engine 与 layout」），改为「3.1 节；4.1 节是它的 kernel 实例」。
+- **未改观察**：① `ch30:50` 把「D≤224」归因于 smem（Q 槽位复用），但按 `ch29` 的 `kSmemElems`（复用后 smem=(Sk+Sv)·kBc·D，D>128 时 kBc=64），D=224 只有 42 KB、D=512 也仅 96 KB，公式给不出 224；缺 `persist_d.cuh` 完整 traits，不硬改。② `ch27:486`「SA2++ 两侧各收窄一半」在“相对可行点集两端 (448,2.25)/(112,9) 取中点”的读法下成立，保留。
+- **不重复报**：节号体例（252 处文件序号 vs 印刷 1-based，R21 已登记不改；本轮只记录 6 处反而写成印刷号：ch10:156、ch13:858、ch15:711、ch16:732、ch31:161/197）；ch26c VCPB、ch27 四误差源、ch33 smooth-v、ch36 3.24/10.17、ch29 wait 考据仍为残余 medium。
+- 验收：`git diff --check` 通过；lint 三类 0 fail（1 条既有 WARN）；anchors 33 章 ALL GREEN；主 PDF **591 页 / 0 error / 0 undefined / 缺字 0 / Overfull 15**（与基线一致），`pdftotext` 逐条命中 5 处新文本；RTD 全量 build（未跳 TikZ）`convert.verify` 全 OK（英文图 195/195、代码 772/772、公式 121/121、词典 1922）；`visual_check` 93 页需处理 0。未重跑 GPU benchmark，性能数字只做书内一致性核对。台账 `book/.tmp/r101-110/report.md`。

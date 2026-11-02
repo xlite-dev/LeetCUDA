@@ -36,9 +36,9 @@ ridge point $\approx 49.8$~FLOP/B）。读表先记三件事：（1）带宽型�
 第05 & \texttt{merge\_\allowbreak{}attn\_\allowbreak{}states} & $T{=}16384$，$H{=}32$，$D{=}128$ & 0.785~ms；1031.4 GB/s & HBM 理论带宽的 77\% \\
 第07 & \texttt{mat\_\allowbreak{}transpose\_\allowbreak{}padded} & $2048^2$ & 0.0145~ms；2320 GB/s & 2.40$\times$ vs naive（L2 口径） \\
 第08 & \texttt{sgemv} k128 & $M{=}8192$，$K{=}4096$ & 0.144~ms；934.2 GB/s & 全书实测带宽参照；较 k32 +5.2\% \\
-第09 & \texttt{sgemm\_vec4} & $2048^3$ & 0.661~ms；25.97 T & 4.76$\times$ vs naive（3.144~ms，5.46 T） \\
+第09 & \texttt{sgemm\_vec4} & $2048^3$ & 0.661~ms；25.97 T & 4.76$\times$ vs naive（3.145~ms，5.46 T） \\
 第10 & \texttt{sgemm\_tf32} & $1024^3$ & 28.19 T & 换 Tensor Core 的第一步 \\
-第11 & \texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn} & $1024^3$ & 76.55 T（f16 acc） & 2.71$\times$ vs 第10章 TF32 \\
+第11 & \texttt{hgemm\_\allowbreak{}mma\_\allowbreak{}stages\_\allowbreak{}tn} & $1024^3$ & 76.55 T（f16 acc） & 2.72$\times$ vs 第10章 TF32 \\
 第12 & 7b-1（BK=16） & $4096^3$ & 124.7 T & 7b-3 反而 118.6--119.0 T \\
 第14 & \texttt{hgemm\_\allowbreak{}tma\_\allowbreak{}mma\_\allowbreak{}ws\_\allowbreak{}tn} & $2048^3$ & 0.104~ms；164.64 T & 1.57$\times$ vs 第11章同形状 104.66 T \\
 第16 & FA2 split-Q（F32Acc） & $B{=}1$，$H{=}32$，$N{=}4096$，$D{=}64$ & 0.781~ms；175.88 T & F16Acc 166.56 T（F32 反快 +5.6\%） \\
@@ -181,7 +181,7 @@ fp16 HGEMM 同吞吐 proxy（$\approx$243~T；不是 bf16 kernel）的口径为 
 \endfoot
 \bottomrule
 \endlastfoot
-第34 & fp8 量化前处理链 & $4096^3$（E2E 与 kernel-only 之差） & $\approx$424~$\mu$s/次 & 纯带宽工序；两遍读+staging 有 $\sim$2$\times$ 优化空间（35.8.2 习题） \\
+第35 & fp8 量化前处理链 & $4096^3$（E2E 与 kernel-only 之差） & $\approx$424~$\mu$s/次 & 纯带宽工序；两遍读+staging 有 $\sim$2$\times$ 优化空间（35.8.2 习题） \\
 第35 & fp8 GEMM CuTe NonWS & 2048$^3$/4096$^3$/8192$^3$ & 244/441/484~T（1.77/2.70/2.96$\times$） & kernel-only vs cuBLAS BF16；上限口径 1.81$\times$（4096$^3$）；WS 版 +0$\sim$0.9\% \\
 第35 & fp8 GEMM+Quant E2E & 同上 & 76/187/315~T（0.55/1.14/1.93$\times$） & 量化开销随 shape 缩小占比放大；2048$^3$ 反而更慢 \\
 第35 & fp8 GEMM+A-Quant E2E（$B$ 离线） & 同上 & 226/411/429~T（1.64/2.52/2.63$\times$） & 权重量化一次后落盘，每步只量化 A（$O(MK)$）；数值与全链路逐 bit 一致（35.8.3 节）；WS 版 +0.5$\sim$1.1\% \\

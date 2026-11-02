@@ -491,7 +491,8 @@ bench 脚本默认 preset，2026-09-21）：fp8 与 Sage2 总体打平、互有
 
 与 fp8 对照，差别集中在三处：D$\ge$128 后 self/gqa 的 fp4 稳定在 2x 级并随 D
 上升，causal 与 cross 则分别回落（blockscale MMA 无 fp8 的 smem 交叉点问题）；D=256 同点
-fp4 比 fp8 快 1.64x（4.96 vs 8.13ms），对应第~\ref{ch:30}~章 dispatch
+fp4 比 fp8 快 1.64x（4.97 vs 8.12ms，即表~\ref{tab:33-fp4-matrix} 与
+表~\ref{tab:33-fp8-matrix} 的 D=256 self 两格），对应第~\ref{ch:30}~章 dispatch
 表；cross 小 Q 场景两者受同样限制（aux 链占比），fp4 也只有 0.99x--1.21x。
 
 \subsection{knob 矩阵：数值通路中性，粒度有代价}

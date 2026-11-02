@@ -79,8 +79,9 @@ consumer 线程均分，每线程 $B_r D / 128 = D/2$ 个寄存器。$D = 512$ �
 
 \begin{enumerate}[itemsep=2pt,topsep=2pt]
   \item \textbf{smem 容量瓶颈}：$[B_r, D]$ 与 $[B_c, D]$ 的整块 tile 随 $D$ 线性膨胀
-        （式~\ref{eq:19-smem}），$D \ge 512$ 时连\textbf{Q/K/V 各一份}都放不下
-        （$D{=}256$ 的 96\,KB 恰好只够各一份，留不出任何流水余量），
+        （式~\ref{eq:19-smem}），$D \ge 320$ 时连\textbf{Q/K/V 各一份}都放不下
+        （$D{=}256$ 的 96\,KB 恰好只够各一份，留不出任何流水余量；$D{=}320$ 已到
+        120\,KB），
         更不用说多级流水要的多份。
   \item \textbf{寄存器瓶颈}：O 累加器的总量由输出 tile 的形状 $[B_r, D]$ 决定，
         与怎么切 chunk 无关（式~\ref{eq:19-oacc}）。$D = 512$ 时它是 256 个
