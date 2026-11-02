@@ -143,7 +143,7 @@
     \[
     \squeeze(L) = (s_1,\dots,s_m):(d_1,\dots,d_m).
     \]
-    首先设 $L$ 紧凑，于是存在置换 $\sigma \in \Sigma_m$ 使得对每个 $1 \leq i \leq m$ 都有 $d_{\sigma(i)} = s_{\sigma(1)} \cdots s_{\sigma(i-1)}$。若记 $S^\sigma = (s_{\sigma(1)},\dots,s_{\sigma(m)})$，则可以把 $\Phi_L^{\cosize(L)}$ 写成复合
+    首先设存在置换 $\sigma \in \Sigma_m$ 使得对每个 $1 \leq i \leq m$ 都有 $d_{\sigma(i)} = s_{\sigma(1)} \cdots s_{\sigma(i-1)}$。若记 $S^\sigma = (s_{\sigma(1)},\dots,s_{\sigma(m)})$，则可以把 $\Phi_L^{\cosize(L)}$ 写成复合
     \[ \begin{tikzcd} [column sep = 12]
     {[}0,\size(L){)} \ar[rr,"\colex_S^{-1}"] & & {[}0,S{)} \ar[rr,"\cong"] & & {[}0,S^\sigma{)}\ar[rr,"\colex_{S^\sigma}"] & & {[}0,\cosize(L){)}\\
     & & (x_1,\dots,x_m) \ar[rr,mapsto] & & (x_{\sigma(1)},\dots,x_{\sigma(m)})
@@ -278,7 +278,7 @@ A \star B = (3,5):(5,1)
 \end{example}
 
 \begin{example}
-    若 $A$ 是扁平布局且 $E = ():()$ 是空布局，则 $A \perp A$ 当且仅当 $A$ 是紧凑的，因为
+    若 $A$ 是扁平布局且 $E = ():()$ 是空布局，则 $A \perp E$ 当且仅当 $A$ 是紧凑的，因为
     \[
     A \star E = A.
     \]
@@ -351,7 +351,7 @@ B_3 & = (5,2,2,1):(256,1,16,0)
     设 $A$ 与 $B$ 是扁平布局。则
     \begin{enumerate}
         \item $\squeeze(A\star B) = \squeeze(A)\star\squeeze(B)$，
-        \item $\sort(A \star B) = \sort(L \star \sort(B))$，以及
+        \item $\sort(A \star B) = \sort(A \star \sort(B))$，以及
         \item $\coalesce^\flat(A\star B) = \coalesce^\flat(A \star \coalesce^\flat(B))$。
     \end{enumerate}
 \end{lemma}
@@ -447,6 +447,7 @@ B_3 & = (5,2,2,1):(256,1,16,0)
     其中
     \[C = \Bigl(d_1 , \dfrac{d_2}{s_1d_1} , \dfrac{d_3}{s_2d_2} , \dots ,\dfrac{d_m}{s_{m-1}d_{m-1}} \Bigr) : \Bigl(1 , s_1d_1 , s_2d_2, \dots ,s_{m-1}d_{m-1}\Bigr).
     \]
+    当 $m=0$ 时约定 $C=():()$，于是 $\comp^\flat(A)=():()$。
 \end{construction}
 
 \begin{example}
@@ -501,14 +502,14 @@ B_3 & = (5,2,2,1):(256,1,16,0)
 \begin{proof}
     若 $A$ 可求补，则由引理~\ref{complementsarecomplements}，布局 $B = \comp^\flat(A)$ 是 $A$ 的补。反之，设 $A$ 有补 $B$，并考虑扁平布局
     \begin{align*} L & = \sort\bigl(\squeeze(A)\star \squeeze(B)\bigr) \\
-    & = (s_1,\dots,s_m):(d_1,\dots,d_n).
+    & = (s_1,\dots,s_m):(d_1,\dots,d_m).
     \end{align*}
     由于 $\Phi_L(0) = 0$ 且 $\Phi_L$ 是单射，可知 $d_1 \neq 0$。我们将论证 $d_i = s_1 \cdots s_{i-1}$，即 $L$ 是列主序的。由于
     \[\Phi_L^{\cosize(L)} : [0,\size(L)) \to [0,\cosize(L))
     \]
     是双射，可知 $1$ 在 $\Phi_L$ 的像中，从而 $d_1 = 1$。设 $1 < i \leq m$，并设对所有 $j < i$ 已证 $d_j = s_1 \cdots s_{j-1}$。考虑步长 $d_{i}$。我们知道不存在 $(x_1,\dots,x_{i-1},0,\dots,0)$ 使得 $(x_1,\dots,x_{i-1},0,\dots,0) \cdot (d_1,\dots,d_m) = s_1\cdots s_{i-1}$，因为这类表达式的最大可能值为
     \[
-    \sum_{j = 1}^{i-1} (s_j-1)(s_1\cdots s_{j-1}) = s_1 \cdots s_i - 1.
+    \sum_{j = 1}^{i-1} (s_j-1)(s_1\cdots s_{j-1}) = s_1 \cdots s_{i-1} - 1.
     \]
     由于 $\Phi_L$ 是满射，且 $d_i \leq  d_{i+1} \leq  \cdots \leq  d_m$，可知 $\Phi_L$ 接下来能取到的值就是 $d_i$，故必有 $d_i = s_1\cdots s_{i-1}$，即证。
 
@@ -546,7 +547,7 @@ B_3 & = (5,2,2,1):(256,1,16,0)
     \]
     当 $k = 1$ 时该式空真（vacuously）成立，而对 $k$ 作归纳，有
     \begin{align*}
-        d_1(s_1-1) + \cdots + d_{k-2}(s_{k-2}-1) + d_{k-1}(s_{k-1}-1) & \leq d_{k-1} + d_{k-1}(s_k-1)\\
+        d_1(s_1-1) + \cdots + d_{k-2}(s_{k-2}-1) + d_{k-1}(s_{k-1}-1) & \leq d_{k-1} + d_{k-1}(s_{k-1}-1)\\
         & = d_{k-1}s_{k-1}\\
         & \leq d_k.
     \end{align*}
@@ -560,7 +561,7 @@ B_3 & = (5,2,2,1):(256,1,16,0)
     & \leq d_k + d_kx_k + d_{k+1}y_{k+1} + \cdots + d_m y_m\\
     & = d_k(x_k+1) + d_{k+1}y_{k+1} + \cdots + d_m y_m\\
     & \leq d_ky_k +  d_{k+1}y_{k+1} + \cdots + d_m y_m\\
-    & \leq d_1y_1 + \dots d_my_m\\
+    & \leq d_1y_1 + \cdots + d_my_m\\
     & = \Phi_A(y).
     \end{align*}
 \end{proof}
@@ -636,6 +637,7 @@ B_3 & = (5,2,2,1):(256,1,16,0)
     其中
     \[C = \Bigl(d_1 , \dfrac{d_2}{s_1d_1} , \dfrac{d_3}{s_2d_2} , \dots ,\dfrac{N}{s_md_m} \Bigr) : \Bigl(1 , s_1d_1 , s_2d_2, \dots ,s_md_m \Bigr).
     \]
+    当 $m=0$ 时约定 $C=(N):(1)$。
 \end{construction}
 
 \begin{example}
@@ -654,7 +656,7 @@ B_3 & = (5,2,2,1):(256,1,16,0)
 \begin{proof}
     记
     \[\sort(\squeeze(A)) = (s_1,\dots,s_m):(d_1,\dots,d_m),\]
-    于是 $\comp^\flat(A,N) = \coalesce^\flat(C)$，其中
+    记 $B\coloneq \comp^\flat(A,N) = \coalesce^\flat(C)$，其中
     \begin{align*}
     C
     & = \left(d_1 , \dfrac{d_2}{s_1d_1} , \dfrac{d_3}{s_2d_2} , \dots ,\dfrac{N}{s_md_m} \right) : \left(1 , s_1d_1 , s_2d_2, \dots ,s_md_m \right).
@@ -685,18 +687,18 @@ B_3 & = (5,2,2,1):(256,1,16,0)
 \end{proposition}
 
 \begin{proof}
-    若 $A$ 是 $N$-可求补的，则由引理~\ref{Ncomplementsarecomplements}，布局 $B = \comp^\flat(L,N)$
+    若 $A$ 是 $N$-可求补的，则由引理~\ref{Ncomplementsarecomplements}，布局 $B = \comp^\flat(A,N)$
     是 $A$ 的 $N$-补。
 
     另一方面，设存在 $A$ 的 $N$-补 $B$。考虑扁平布局
     \begin{align*} L & \coloneq \sort\bigl(\squeeze(A)\star \squeeze(B)\bigr) \\
-    & = (s_1,\dots,s_m):(d_1,\dots,d_n).
+    & = (s_1,\dots,s_m):(d_1,\dots,d_m).
     \end{align*}
     由于 $\Phi_L(0) = 0$ 且 $\Phi_L$ 是单射，可知 $d_1 \neq 0$。我们将论证 $d_i = s_1 \cdots s_{i-1}$，即 $L$ 是列主序的。由于
     \[\Phi_L^{N} : [0,N) \to [0,N)\]
     是双射，可知 $1$ 在 $\Phi_L$ 的像中，从而 $d_1 = 1$。设 $1 < i \leq m$，并设对所有 $j < i$ 已证 $d_j = s_1 \cdots s_{j-1}$。考虑步长 $d_{i}$。我们知道不存在 $(x_1,\dots,x_{i-1},0,\dots,0)$ 使得 $(x_1,\dots,x_{i-1},0,\dots,0) \cdot (d_1,\dots,d_m) = s_1\cdots s_{i-1}$，因为这类表达式的最大可能值为
     \[
-    \sum_{j = 1}^{i-1} (s_j-1)(s_1\cdots s_{j-1}) = s_1 \cdots s_i - 1.
+    \sum_{j = 1}^{i-1} (s_j-1)(s_1\cdots s_{j-1}) = s_1 \cdots s_{i-1} - 1.
     \]
     由于 $\Phi_L$ 是满射，且 $d_i \leq  d_{i+1} \leq  \cdots \leq  d_m$，可知 $\Phi_L$ 接下来能取到的值就是 $d_i$，故必有 $d_i = s_1\cdots s_{i-1}$，即证。
 
@@ -724,7 +726,7 @@ B_3 & = (5,2,2,1):(256,1,16,0)
 \begin{proposition}\label{characterizationofflatNcomplement}
     设 $N$ 是正整数，$A$ 是 $N$-可求补的扁平布局。若扁平布局 $B$ 满足
     \begin{enumerate}
-        \item $B$ 是 $L$ 的 $N$-补，
+        \item $B$ 是 $A$ 的 $N$-补，
         \item $B$ 已合并，且
         \item $B$ 已排序，
     \end{enumerate}
@@ -732,7 +734,7 @@ B_3 & = (5,2,2,1):(256,1,16,0)
 \end{proposition}
 
 \begin{proof}
-    条件 1 与 2 蕴含 $\Phi_{B}$ 与 $\Phi_{\comp^\flat(A,N)}$ 有相同的像。由于 $B$ 与 $\comp^\flat(A,N)$ 都已排序，由引理~\ref{sortedcomplementablelayoutsareincreasing} 可知 $\Phi_{B}$ 与 $\Phi_{\comp^\flat(A,N)}$ 都是递增的。综合这两点，即得 $\Phi_{B} = \Phi_{\comp^\flat(A,N)}$。再由命题~\ref{coalesceproposition} 与条件 3 可得
+    条件 1 蕴含 $\Phi_{B}$ 与 $\Phi_{\comp^\flat(A,N)}$ 有相同的像。由于 $B$ 与 $\comp^\flat(A,N)$ 都已排序，由引理~\ref{sortedcomplementablelayoutsareincreasing} 可知 $\Phi_{B}$ 与 $\Phi_{\comp^\flat(A,N)}$ 都是递增的。综合这两点，即得 $\Phi_{B} = \Phi_{\comp^\flat(A,N)}$。再由命题~\ref{coalesceproposition} 与条件 2 可得
     \[
     B = \coalesce^\flat(B) = \coalesce^\flat(\comp^\flat(A,N)) = \comp^\flat(A,N).
     \]
@@ -742,12 +744,12 @@ B_3 & = (5,2,2,1):(256,1,16,0)
 \begin{lemma}\label{compatibilityofNcomplements}
     设 $A$ 是扁平布局。若 $N_1 \leq N_2$ 是正整数，且 $A$ 是 $N_1$-可求补的、$A$ 是 $N_2$-可求补的，则
     \[
-    \Phi_{\comp^\flat(A,N_2)} \mid_{[0,N_1)} = \Phi_{\comp^\flat(A,N_1)}.
+    \Phi_{\comp^\flat(A,N_2)} \mid_{[0,\size(\comp^\flat(A,N_1)))} = \Phi_{\comp^\flat(A,N_1)}.
     \]
 \end{lemma}
 
 \begin{proof}
-    记
+    若 $m=0$，则两侧分别为 $N_2:1$ 与 $N_1:1$ 在 $[0,N_1)$ 上的限制，结论直接成立。以下设 $m>0$。记
     \begin{align*}
     \sort(\squeeze(A)) & = (s_1,\dots,s_m):(d_1,\dots,d_m), \\
     C & = \Bigl(d_1 , \dfrac{d_2}{s_1d_1} , \dfrac{d_3}{s_2d_2} , \dots ,\dfrac{d_m}{s_{m-1}d_{m-1}} \Bigr) : \Bigl(1 , s_1d_1 , s_2d_2, \dots ,s_{m-1}d_{m-1}\Bigr)
@@ -767,10 +769,10 @@ B_3 & = (5,2,2,1):(256,1,16,0)
     \end{align*}
     我们有一个交换图（commutative diagram）
     \[\begin{tikzcd}[column sep=0.8em]  % 原图略超版心 5pt，微调列距（内容不变）
-    {[}0,\size(C_1){)}\ar[rrr,"\text{colex}_{(\size(C),N_1)}^{-1}"] \ar[d,"\subseteq"] & & & {[}0,\size(C){)} \times {[}0,N_1 {)} \ar[rrr,"\Phi_C \times s_md_m "] \ar[d,"\id \times \subseteq"] & & & \mathbb{Z} \times \mathbb{Z} \ar[r,"+"] \ar[d,"\id" ] & \mathbb{Z} \ar[d,"\id"] \\
-    {[}0,\size(C_2){)}\ar[rrr,"\text{colex}_{(\size(C),N_2)}^{-1}"] & & & {[}0,\size(C){)} \times {[}0,N_2 {)} \ar[rrr,"\Phi_C \times s_md_m "] & & & \mathbb{Z} \times \mathbb{Z} \ar[r,"+"] & \mathbb{Z} \\
+    {[}0,\size(C_1){)}\ar[rrr,"\text{colex}_{(\size(C),\size(E_1))}^{-1}"] \ar[d,"\subseteq"] & & & {[}0,\size(C){)} \times {[}0,\size(E_1) {)} \ar[rrr,"\Phi_C \times s_md_m "] \ar[d,"\id \times \subseteq"] & & & \mathbb{Z} \times \mathbb{Z} \ar[r,"+"] \ar[d,"\id" ] & \mathbb{Z} \ar[d,"\id"] \\
+    {[}0,\size(C_2){)}\ar[rrr,"\text{colex}_{(\size(C),\size(E_2))}^{-1}"] & & & {[}0,\size(C){)} \times {[}0,\size(E_2) {)} \ar[rrr,"\Phi_C \times s_md_m "] & & & \mathbb{Z} \times \mathbb{Z} \ar[r,"+"] & \mathbb{Z} \\
     \end{tikzcd} \]
-    其中，由命题~\ref{layoutfunctionofconcatenatedlayout}，上行的复合是 $C_1 = C \star E_1$ 的布局函数，下行的复合是 $C_2 = C \star E_2$ 的布局函数。这告诉我们 $\Phi_{C_2}$ 在 $[0,\size(C_2))$ 上的限制就是 $\Phi_{C_1}$，再由
+    其中，由命题~\ref{layoutfunctionofconcatenatedlayout}，上行的复合是 $C_1 = C \star E_1$ 的布局函数，下行的复合是 $C_2 = C \star E_2$ 的布局函数。这告诉我们 $\Phi_{C_2}$ 在 $[0,\size(C_1))$ 上的限制就是 $\Phi_{C_1}$，再由
     \begin{align*}
     \Phi_{\comp^\flat (A,N_1)}&  = \Phi_{C_1}\\
     \Phi_{\comp^\flat (A,N_2)}&  = \Phi_{C_2}.
@@ -791,8 +793,8 @@ B_3 & = (5,2,2,1):(256,1,16,0)
 \begin{definition}\label{definitionofflatlayoutcomposition} 设 $A$ 与 $B$ 是扁平布局。若
     \begin{enumerate}
     \item $C$ 是非退化（non-degenerate）的，
-    \item $\shape(A) = \shape(R)$，
-    \item $\Phi_R = \Phi_B \circ \Phi_A^{\size(B)}$，
+    \item $\shape(A) = \shape(C)$，
+    \item $\Phi_C = \Phi_B \circ \Phi_A^{\size(B)}$，
     \end{enumerate}
 则称扁平布局 $C$ 是 $A$ 与 $B$ 的{\it 复合}，记作 $C = B \circ A$。
 \end{definition}
@@ -816,7 +818,7 @@ B = (t):(e)
 \]
 是满足 $t \geq \cosize(A)$ 的秩（rank）$1$ 扁平布局，则 $A$ 与 $B$ 可复合（composable），且
 \[
-B \circ A = (s_1,\dots,s_m):(td_1,\dots,td_m).
+B \circ A = (s_1,\dots,s_m):(ed_1,\dots,ed_m).
 \]
 \end{example}
 
@@ -833,7 +835,7 @@ B \circ A = (s_1,\dots,s_m):(td_1,\dots,td_m).
     \[
     B \circ A = (64,32):(2,256).
     \]
-    更一般地，若 $A$ 是任意扁平布局，$B$ 是满足 $\cosize(A) \leq \size(B)$ 的列主序扁平布局，则 $B \circ A = A$。
+    更一般地，若 $A$ 是非退化扁平布局，$B$ 是满足 $\cosize(A) \leq \size(B)$ 的列主序扁平布局，则 $B \circ A = A$。
 \end{example}
 
 \begin{example}\label{flatcompositionexample2}

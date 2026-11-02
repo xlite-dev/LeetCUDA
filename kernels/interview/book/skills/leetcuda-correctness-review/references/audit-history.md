@@ -1201,3 +1201,12 @@ git diff --check：通过
 - **未改观察**：① `ch30:50` 把「D≤224」归因于 smem（Q 槽位复用），但按 `ch29` 的 `kSmemElems`（复用后 smem=(Sk+Sv)·kBc·D，D>128 时 kBc=64），D=224 只有 42 KB、D=512 也仅 96 KB，公式给不出 224；缺 `persist_d.cuh` 完整 traits，不硬改。② `ch27:486`「SA2++ 两侧各收窄一半」在“相对可行点集两端 (448,2.25)/(112,9) 取中点”的读法下成立，保留。
 - **不重复报**：节号体例（252 处文件序号 vs 印刷 1-based，R21 已登记不改；本轮只记录 6 处反而写成印刷号：ch10:156、ch13:858、ch15:711、ch16:732、ch31:161/197）；ch26c VCPB、ch27 四误差源、ch33 smooth-v、ch36 3.24/10.17、ch29 wait 考据仍为残余 medium。
 - 验收：`git diff --check` 通过；lint 三类 0 fail（1 条既有 WARN）；anchors 33 章 ALL GREEN；主 PDF **591 页 / 0 error / 0 undefined / 缺字 0 / Overfull 15**（与基线一致），`pdftotext` 逐条命中 5 处新文本；RTD 全量 build（未跳 TikZ）`convert.verify` 全 OK（英文图 195/195、代码 772/772、公式 121/121、词典 1922）；`visual_check` 93 页需处理 0。未重跑 GPU benchmark，性能数字只做书内一致性核对。台账 `book/.tmp/r101-110/report.md`。
+
+## R112（2026-11-02）：colfax 中文译注分册首轮正确性审核
+
+- 触发：用户要求按 `leetcuda-correctness-review` 对 `book/colfax` 做正确性审核。主 agent 独立完成，不使用 subagent。
+- 范围：`colfax-cute-zh.tex` 实际 input 的 16 个 TeX 文件、11,906 行；全文阅读正文、证明、例子、TikZ 图注、标签与引用。外部对照：arXiv:2601.05972 官方 `FinalVersion.tex` 与 NVlabs/CuTe（PyCuTe `d8e31a7`）。
+- 结论：翻译本身总体忠实，但原文/译文含多处数理与转录错误。确认并回修约 68 组内容问题，另消除 12 处活跃 label 冲突；重点包括：ch2b “Φ 非减⇒已排序”缺正步长前提（反例 `(3,2):(0,0)`）、全零步长已合并判据 `m≤1` 错、ch2c N-补兼容性把定义域写成 `[0,N1)`、秩 1 复合 `td_i→ed_i`、ch2d Q-代入切分指标与 `P_r/P_m`、ch2e 非退化定义缺谓词、ch2f 紧凑例子 stride 8→9、ch3a `α≠1→≠*`、ch3b/ch3e 切分未要求 g 可求补、ch3e m=1 合并漏 `α(1)=*` 与例子陪域、ch4a 相互加细算法尾部漏 X/末项、ch4b 逻辑切分结果 `((2,2),(2,2))→((2,2),(2,8))`。
+- 反向自辩：ch4a 四个复合例题经 PyCuTe 复算全部正确，撤回；ch3d “行首冒号”是 read_file 行号前缀误判；逻辑乘积证明的 `cosize(g)≤size(codomain g)` 对 tuple morphism 成立，撤回。
+- 验收：`colfax/build.sh`（临时 biber）205 页 / 0 error / 0 undefined / 缺字 0 / Overfull≥1pt 0；活跃 label 重复 0、悬空 0；`git diff --check` 通过；PyCuTe 复算复合/切分/乘积/N-补/紧凑性示例与修订文本一致。colfax 不在 RTD 源集合，未触发 RTD；未改主 book / cute-zhihu。
+- 残余：ch2f 两个只给形状、未给步长的逻辑切分例子无法唯一还原，保留 observation。报告与台账 `book/.tmp/colfax-audit/`。

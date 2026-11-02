@@ -3,7 +3,7 @@
 
 作为一个启发性例子，设我们要把 $4 \times 8$ 矩阵
 \[
-A = 
+A =
 \begin{bmatrix}
 12.47 & 87.21 & 34.08 & 56.93 & 45.65 &  9.17 & 73.02 & 21.39 \\
 64.88 & 30.41 &  1.72 & 88.04 & 92.55 & 17.06 & 50.91 & 68.77 \\
@@ -11,7 +11,7 @@ A =
 91.40 & 26.12 &  6.97 & 53.03 & 58.66 & 33.79 & 11.20 & 70.55
 \end{bmatrix}
 \]
-存入内存。为此，我们需要为 $A$ 的每个元素（entry）指定一个内存地址。做法是：为 $A$ 的第 $(0,0)$ 个元素选定某个地址，并为 $A$ 的其余每个元素指定一个{\bf 偏移}（offset）。一种常见的选择是{\bf 行主序}（row-major）布局\\ 
+存入内存。为此，我们需要为 $A$ 的每个元素（entry）指定一个内存地址。做法是：为 $A$ 的第 $(0,0)$ 个元素选定某个地址，并为 $A$ 的其余每个元素指定一个{\bf 偏移}（offset）。一种常见的选择是{\bf 行主序}（row-major）布局\\
 
 \begin{centering}
 
@@ -60,7 +60,7 @@ A =
 
 \noindent 记号 $L^\row = (4,8):(8,1)$ 表示矩阵第 $(i,j)$ 个元素的偏移为
 \[
-(i,j) \cdot (8,1) = 8i + j. 
+(i,j) \cdot (8,1) = 8i + j.
 \]
 
 \noindent 另一种常见的选择是{\bf 列主序}（column-major）布局 \\
@@ -106,7 +106,7 @@ A =
 \node[anchor=east] at (1.5,-1) {$L^\col = (4,8):(1,4) = $};
 \end{tikzpicture}
 
-\end{centering} 
+\end{centering}
 \bigskip
 
 \noindent 同样，记号 $L^\col = (4,8):(1,4)$ 表示矩阵第 $(i,j)$ 个元素的偏移为
@@ -125,12 +125,12 @@ A =
 A = \left[\begin{array}{cccc}
 \begin{bmatrix}
 12.47 & 87.21 \\
-64.88 & 30.41 
+64.88 & 30.41
 \end{bmatrix}
 &
-\begin{bmatrix} 
+\begin{bmatrix}
 34.08 & 56.93 \\
-1.72 & 88.04 
+1.72 & 88.04
 \end{bmatrix}
 &
 \begin{bmatrix}
@@ -138,33 +138,33 @@ A = \left[\begin{array}{cccc}
 92.55 & 17.06
 \end{bmatrix}
 &
-\begin{bmatrix} 
+\begin{bmatrix}
 73.02 & 21.39 \\
 50.91 & 68.77
-\end{bmatrix} 
+\end{bmatrix}
 \\[2ex]
 \begin{bmatrix}
  3.33 & 77.19 \\
  91.40 & 26.12
-\end{bmatrix} 
-&
-\begin{bmatrix} 
- 61.58 & 29.46 \\
-6.97 & 53.03 
 \end{bmatrix}
 &
-\begin{bmatrix} 
+\begin{bmatrix}
+ 61.58 & 29.46 \\
+6.97 & 53.03
+\end{bmatrix}
+&
+\begin{bmatrix}
  15.82 & 80.75 \\
 58.66 & 33.79
-\end{bmatrix} 
+\end{bmatrix}
 &
-\begin{bmatrix} 
+\begin{bmatrix}
  44.62 & 39.28 \\
 11.20 & 70.55
-\end{bmatrix} 
+\end{bmatrix}
 \end{array}\right]
 \]
-% \noindent We can consider $A^\tiled$ as a tensor of shape $((2,2),(2,4))$, where 
+% \noindent We can consider $A^\tiled$ as a tensor of shape $((2,2),(2,4))$, where
 % \[
 % A^\tiled_{(i,j),(k,\ell)} = \begin{matrix}
 %     \text{the }(i,j)\text{th entry of} \\
@@ -453,18 +453,18 @@ L^\tiled = L^\col \oslash T
  % Conversely, if $L$ is a tractable layout, then there exists a nested tuple morphism $f_L$ which encodes $L$. The nested tuple morphism which encodes $L$ is not unique. However, we introduce a notion of {\it standard form} for nested tuple morphisms (Definition \ref{definitionofnestedstandardform}), and prove the following correspondence theorem.
 \begin{mainthm}(参见 \ref{nestedonetoonecorrespondence})
 存在一一对应
-    \[ \begin{tikzcd} 
+    \[ \begin{tikzcd}
     \begin{Bmatrix}
     \text{非退化}\\
         \text{可处理布局}
-    \end{Bmatrix} 
-    \ar[r] & \ar[l] 
+    \end{Bmatrix}
+    \ar[r] & \ar[l]
         \begin{Bmatrix}
         \text{非退化}\\
         \catstyle{Nest}\text{-态射}\\
         \text{（标准形式）}
     \end{Bmatrix}
-    \end{tikzcd} 
+    \end{tikzcd}
     \]
 \end{mainthm}
 
@@ -482,7 +482,7 @@ S \ar[r,"g \circ f"] &  U
 % \[\begin{tikzcd}
 % (2,2) \ar[rr,"f"] \ar[rr,swap,"(2{,}1)"] & & (2,2) \ar[rr,"g"] \ar[rr,swap,"(2{,}3)"] & & (5,(2,2))
 % \end{tikzcd}\]
-% is 
+% is
 % \[\begin{tikzcd}
 % (2,2) \ar[rr,"g \circ f"] \ar[rr,swap,"(3{,}2)"] & &  (5,(2,2))
 % \end{tikzcd}\]
@@ -491,7 +491,7 @@ S \ar[r,"g \circ f"] &  U
  & &   & & 2 & & & & & & 2\\
 2 \ar[drr,mapsto]  & & 2 \ar[urr,mapsto] & & 2 & & \rightsquigarrow & & 2 \ar[rr,mapsto]  & & 2\\
 2 \ar[urr,mapsto] & & 2 \ar[urr,mapsto] & & 5 & & & & 2 \ar[uurr,mapsto] & & 5\\
- & f & & g & & & & & & \mathclap{g \circ f} & 
+ & f & & g & & & & & & \mathclap{g \circ f} &
 \end{tikzcd}\]
 我们证明 $\catstyle{Nest}$ 中的复合与布局复合相容。
 \begin{mainthm}(参见 \ref{compatibilityofcompositioninD}) 若 $f$ 与 $g$ 是非退化的、可复合的 $\catstyle{Nest}$-态射，则
@@ -499,7 +499,7 @@ S \ar[r,"g \circ f"] &  U
 L_{g \circ f} = L_g \circ L_f.
 \]
 \end{mainthm}
-% For example, if $f$ and $g$ are the morphisms above, then 
+% For example, if $f$ and $g$ are the morphisms above, then
 % \begin{align*}
 %     L_f & =(2,2):(2,1) \\
 %     L_g & = (2,2):(5,10)\\
@@ -509,15 +509,15 @@ L_{g \circ f} = L_g \circ L_f.
 
 我们可以通过折叠相邻的箭头来合并（coalesce）$\catstyle{Nest}$-态射 $f$。例如，
 % on nested tuple morphisms.
-% For example if $f$ is the morphism 
+% For example if $f$ is the morphism
 % \[
-% \begin{tikzcd} 
+% \begin{tikzcd}
 % ((2,2),(10,10)) \ar[rr,"f"] \ar[rr,swap,"(1{,}2{,}4{,}5)"] & & (2,2,2,10,10)
 % \end{tikzcd}
 % \]
-% then $\coalesce(f)$ is the morphism 
+% then $\coalesce(f)$ is the morphism
 % \[
-% \begin{tikzcd} 
+% \begin{tikzcd}
 % (4,100) \ar[rr,"\coalesce(f)"] \ar[rr,swap,"(1{,}3)"] & & (4,2,100)
 % \end{tikzcd}
 % \]
@@ -528,7 +528,7 @@ L_{g \circ f} = L_g \circ L_f.
  10 \ar[urr,mapsto] & & 2 & & & & & & 100\\
  2 \ar[rr,mapsto] & & 2 & & \rightsquigarrow & & 100 \ar[urr,mapsto] & & 2\\
  2 \ar[rr,mapsto] & & 2 & & & & 4 \ar[rr,mapsto] & & 4\\
-    & f & & & & & & \mathclap{\coalesce(f)} & 
+    & f & & & & & & \mathclap{\coalesce(f)} &
 \end{tikzcd}\]
 我们证明该运算与布局的合并运算相容。
 \begin{mainthm}(参见 \ref{coalesceagreement}) 若 $f$ 是 $\catstyle{Nest}$-态射，则
@@ -536,7 +536,7 @@ L_{g \circ f} = L_g \circ L_f.
 L_{\coalesce(f)} = \coalesce(L_f).
 \]
 \end{mainthm}
-% For example, if $f$ is the morphism above, then 
+% For example, if $f$ is the morphism above, then
 % \begin{align*}
 %     L_f & = ((2,2),(10,10)):((1,2),(8,80))\\
 %     L_{\coalesce(f)} & = (4,100):(1,8)\\
@@ -544,15 +544,15 @@ L_{\coalesce(f)} = \coalesce(L_f).
 % \end{align*}
 
 $\catstyle{Nest}$-态射 $f$ 的补是未被 $f$ 命中的元素所构成的包含映射（inclusion）。例如，
-% if $f$ is the morphism 
+% if $f$ is the morphism
 % \[
-% \begin{tikzcd} 
+% \begin{tikzcd}
 % (2,2) \ar[rr,"f"] \ar[rr,swap,"(1{,}3)"] & & (2,5,2,5)
 % \end{tikzcd}
 % \]
-% then $f^c$ is the morphism 
+% then $f^c$ is the morphism
 % \[
-% \begin{tikzcd} 
+% \begin{tikzcd}
 % (5,5) \ar[rr,"f^c"] \ar[rr,swap,"(2{,}4)"] & & (2,5,2,5)
 % \end{tikzcd}
 % \]
@@ -562,15 +562,15 @@ $\catstyle{Nest}$-态射 $f$ 的补是未被 $f$ 命中的元素所构成的包�
  & & 2 & & & & & & 2\\
  2 \ar[urr,mapsto] & & 5 & & \rightsquigarrow &  & 5 \ar[uurr,mapsto] & & 5\\
  2 \ar[rr,mapsto] & & 2 & & & &  5 \ar[urr,mapsto]  & & 2\\
-    & f & & & & & &  f^c & 
+    & f & & & & & &  f^c &
 \end{tikzcd}\]
 我们证明 $\catstyle{Nest}$ 中的补与布局的补相容。
-\begin{mainthm}(参见 \ref{coalescedlayoutoftuplemorphismcomplement}) 若 $f:S \to T$ 是单射的 $\catstyle{Nest}$-态射且 $N = \size(T)$，则
+\begin{mainthm}(参见 \ref{coalescedlayoutofnestedtuplemorphismcomplement}) 若 $f:S \to T$ 是单射的 $\catstyle{Nest}$-态射且 $N = \size(T)$，则
 \[
 \coalesce(L_{f^c}) = \comp(L_f,N).
 \]
-\end{mainthm} 
-% For example, if $f$ is the morphism above, then 
+\end{mainthm}
+% For example, if $f$ is the morphism above, then
 % \begin{align*}
 % L_f & = (2,2):(1,10)\\
 % L_{f^c} & = (5,5):(2,20)\\
@@ -582,12 +582,12 @@ $\catstyle{Nest}$-态射 $f$ 的补是未被 $f$ 命中的元素所构成的包�
 f,g \mapsto f \oslash g
 \]
 例如，
-% if $f$ and $g$ are the morphisms 
+% if $f$ and $g$ are the morphisms
 % \[\begin{tikzcd}
 %     ((4,8),(4,8)) \ar[rr,"f"] \ar[rr,swap,"(1{,}2{,}3{,}4)"] & & ((4,8),(4,8))\\
 %     (4,4) \ar[rr,"g"] \ar[rr,swap,"(1{,}3)"] & & ((4,8),(4,8))
 % \end{tikzcd}\]
-% then $g$ divides $f$, and $f \oslash g$ is the morphism 
+% then $g$ divides $f$, and $f \oslash g$ is the morphism
 % \[\begin{tikzcd}
 %     ((4,4),(8,8)) \ar[rr,"f\oslash g"] \ar[rr,swap,"(1{,}3{,}2{,}4)"] & & ((4,8),(4,8))
 % \end{tikzcd}\]
@@ -597,7 +597,7 @@ f,g \mapsto f \oslash g
   & & 4 \ar[rr,mapsto] & & 4 & & & & 64 \ar[rr,-] \ar[urr,-]& &  8 \ar[drr,mapsto] & & 4\\
 4 \ar[urr,mapsto] & & 8 \ar[rr,mapsto] & & 8 & & \rightsquigarrow & &  & &  4 \ar[urr,mapsto] & & 8\\
 4 \ar[rr,mapsto] & & 4 \ar[rr,mapsto] & & 4 & & & & 16 \ar[rr,-] \ar[urr,-]& & 4 \ar[rr,mapsto] & & 4\\
-  & g &  & f & & & & & & & & \mathclap{f \oslash g} & 
+  & g &  & f & & & & & & & & \mathclap{f \oslash g} &
 \end{tikzcd}\]
 
 我们证明 $\catstyle{Nest}$ 中的逻辑切分与布局的逻辑切分相容。
@@ -606,7 +606,7 @@ f,g \mapsto f \oslash g
 \coalesce(L_{f \oslash g}) = \coalesce(L_f \oslash L_g).
 \]
 \end{mainthm}
-% For example, if $f$ and $g$ are the morphisms above, then 
+% For example, if $f$ and $g$ are the morphisms above, then
 % \begin{align*}
 %     L_f & = (4,8,4,8):(1,4,32,128)\\
 %     L_g & = (4,4):(1,32)\\
@@ -619,12 +619,12 @@ f,g \mapsto f \oslash g
 f,g \mapsto f \otimes g
 \]
 例如，
-% if $f$ and $g$ are the nested tuple morphisms 
+% if $f$ and $g$ are the nested tuple morphisms
 % \[\begin{tikzcd}
 %     (2,2) \ar[rr,"f"] \ar[rr,swap,"(1{,}2)"] & & (2,2,5,5)\\
 %     (5,5) \ar[rr,"g"] \ar[rr,swap,"(2{,}1)"] & & (5,5)
 % \end{tikzcd}\]
-% then $f$ and $g$ are product admissible, and $f \otimes g$ is the morphism 
+% then $f$ and $g$ are product admissible, and $f \otimes g$ is the morphism
 % \[\begin{tikzcd}
 %     ((2,2),(5,5)) \ar[rr,"f\oslash g"] \ar[rr,swap,"(1{,}2{,}4{,}3)"] & & (2,2,5,5)
 % \end{tikzcd}\]
@@ -634,8 +634,8 @@ f,g \mapsto f \otimes g
   & & 5 & &   & & & & & & 25 \ar[rr,-] \ar[urr,-] & & 5 \ar[urr,mapsto] & & 5\\
 2  \ar[rr,mapsto] & & 2 & & 5  \ar[drr,mapsto] & & 5 & & \rightsquigarrow & & &  & 2 \ar[rr,mapsto] & & 2\\
 2 \ar[rr,mapsto] & & 2 & & 5 \ar[urr,mapsto]  & & 5 & & & & 4 \ar[rr,-] \ar[urr,-] & & 2 \ar[rr,mapsto] & & 2\\
-  & f & & &  & g & & & & & & & & \mathclap{f \otimes g} & 
-\end{tikzcd}\] 
+  & f & & &  & g & & & & & & & & \mathclap{f \otimes g} &
+\end{tikzcd}\]
 
 
 我们证明 $\catstyle{Nest}$ 中的逻辑乘积与布局的逻辑乘积相容。
@@ -644,7 +644,7 @@ f,g \mapsto f \otimes g
 L_{f \otimes g} = L_f \otimes L_g.
 \]
 \end{mainthm}
-% For example, if $f$ and $g$ are the morphisms above, then 
+% For example, if $f$ and $g$ are the morphisms above, then
 % \begin{align*}
 %     L_f & = (2,2):(1,2)\\
 %     L_g & = (5,5):(5,1) \\
@@ -660,13 +660,13 @@ B \circ A = L_{g \circ f}.
 
 \section{结构安排}
 
-本文的组织结构如下。 
+本文的组织结构如下。
 
 在 \ref{implementationsection} 节中，我们给出布局的 $\texttt{cute}$ 实现的相关细节。我们以模块 $\texttt{tract}$ 的形式提供了范畴 $\catstyle{Nest}$ 的一个 Python 实现，并演示 $\texttt{tract}$ 与 $\texttt{cute}$ 的相容性。我们的 Python 实现可在我们的 git 仓库 \url{https://github.com/ColfaxResearch/layout-categories} 找到。
 
-第 \ref{layoutschapter} 章是关于布局及其代数的全面参考。该章给出布局及其所支持运算的严格定义，并建立这些运算的基本性质。该章富含例子，对一线程序员也可能颇有助益。 
+第 \ref{layoutschapter} 章是关于布局及其代数的全面参考。该章给出布局及其所支持运算的严格定义，并建立这些运算的基本性质。该章富含例子，对一线程序员也可能颇有助益。
 
-在第 \ref{categorieschapter} 章中，我们提出一个处理可处理布局的新数学框架。特别地，我们把布局及其代数与{\bf 范畴}和 {\bf operad} 的理论联系起来。该章内容具有独立的数学趣味，同时也有实用价值：它为可视化布局以及计算布局的各种运算提供了一个新框架。  
+在第 \ref{categorieschapter} 章中，我们提出一个处理可处理布局的新数学框架。特别地，我们把布局及其代数与{\bf 范畴}和 {\bf operad} 的理论联系起来。该章内容具有独立的数学趣味，同时也有实用价值：它为可视化布局以及计算布局的各种运算提供了一个新框架。
 
 在第 \ref{computationschapter} 章中，我们利用第 \ref{categorieschapter} 章发展的框架，给出一个计算可处理布局 $A$ 与 $B$ 的复合的算法。我们用大量例子演示该复合算法。
 
@@ -680,9 +680,9 @@ B \circ A = L_{g \circ f}.
     \item {\bf CUTLASS 的应用。}CUTLASS 的最先进应用包括 FlashAttention \cite{dao2023flashattention2, shah2024flashattention3}、EVT \cite{chen2024evt} 与 SonicMoE \cite{sonic}。对于希望更深入地理解 CUTLASS 与 CuTe 实际应用的读者，我们推荐 NVIDIA~\cite{cecka2024cutlass, sun2025cutlass, thakkar2025cutlass} 与 Colfax Research~\cite{shah2024cutlass_streamk, shah2025cutlass_blackwell_tensor_memory, shah2025cutlass_blackwell_clusters, shah2025cutlass_blackwell_subbyte} 关于用这些库进行 GPU 编程的系列综合教程。
     \item {\bf 数据布局优化} 数据布局优化技术通过仔细考量张量在内存中的存储方式，来改善缓存局部性与内存访问模式 \cite{xu2023alt, bacon1994compiler, raman2007structure, ju1992reduction}，\cite{sharma2015data}。选择高效的内存存储与访问模式对 GPU 性能至关重要，因为内存带宽往往正是瓶颈所在。
     \item {\bf 现代布局系统} CuTe \cite{cutedocumentation, cutedsldocumentation, shah2024layout} 与 Triton Linear Layouts \cite{tritonlinearlayouts, zhou2026linear} 等布局系统已成为张量计算中管理内存存储与访问的行业标准。Triton 线性布局基于 $\mathbb{F}_2$-线性代数，并从 $\mathbb{F}_2$-线性算子的复合继承复合结构。它们还与布局 swizzle 自然相容，而后者一般无法表示为 CuTe 布局。另一方面，这些布局不如 CuTe 布局富有表达力，因为它们的大小与余大小必须等于 $2$ 的幂，而且无法表达诸如乘以非 $2$ 的幂整数之类的变换。最近的研究表明，这两种布局系统都可以用整数集合关系来表达 \cite{bhaskaracharya2025}。这为统一处理 CuTe 布局、Triton 线性布局以及更一般的布局（例如具有非矩形形状的布局）提供了共同基础。
-    
+
     \item {\bf 多面体编译} 多面体模型（polyhedral model）\cite{verdoolaege2010isl}，\cite{verdoolaege2021presburger}，\cite{thangamani2024survey} 为分析与变换具有仿射边界和数组访问的循环嵌套提供了数学框架。该模型的主要抽象，是把迭代空间表示为某个多面体中整点的集合。这一形式化方法允许进行复杂的循环变换，在优化局部性与并行性的同时保持程序语义。Pluto \cite{bondhugula2008pluto}、Polly \cite{grosser2012polly} 与 Tensor Comprehensions \cite{vasilache2018tensor} 等工具利用多面体技术自动生成优化代码。
-    \item {\bf 张量缩并/分解} 张量缩并（tensor contraction）\cite{ShiNiranjanAnandkumarCecka2016, zhao2022polyhedral, KoldaBader2009} 把矩阵乘法推广到更高秩的张量，在机器学习与科学计算中无处不在。张量缩并的高效实现依赖于缩并次序与中间张量布局的最优选择。  
+    \item {\bf 张量缩并/分解} 张量缩并（tensor contraction）\cite{ShiNiranjanAnandkumarCecka2016, zhao2022polyhedral, KoldaBader2009} 把矩阵乘法推广到更高秩的张量，在机器学习与科学计算中无处不在。张量缩并的高效实现依赖于缩并次序与中间张量布局的最优选择。
 \end{itemize}
 
 \clearpage
@@ -691,7 +691,7 @@ B \circ A = L_{g \circ f}.
 本节演示如何在 NVIDIA 的 CuTe DSL（我们将其记作 $\texttt{cute}$）中使用布局。我们在 git 仓库 \url{https://github.com/ColfaxResearch/layout-categories} 中以 $\texttt{Python}$ 模块 $\texttt{tract}$ 的形式给出了我们范畴框架的一个实现。这里我们展示 $\texttt{cute}$ 与 $\texttt{tract}$ 的相容性。
 
 \begin{enumerate}[left=0pt]
-\item {\bf 构造元组与嵌套元组：}我们在 \texttt{Python} 中如下构造元组（tuple）与嵌套元组。 
+\item {\bf 构造元组与嵌套元组：}我们在 \texttt{Python} 中如下构造元组（tuple）与嵌套元组。
 \begin{lstlisting}[language=cutedsl]
 S = (2,2,2)
 T = ((2,2),(5,5))
@@ -728,7 +728,7 @@ B = (8,64):(64,1)
 C = 100:2
 \end{lstlisting}
 我们在 $\texttt{tract}$ 中如下构造嵌套元组态射
-\[\begin{tikzcd} 
+\[\begin{tikzcd}
 S \ar[r,"f"] \ar[r,swap,"\alpha"] & T
 \end{tikzcd} \]
 ：
@@ -897,7 +897,7 @@ comp_f = tract.complement(f)
 返回
 \begin{lstlisting}[language=cutedsl]
 f = (2,2)--(1,3)-->(2,5,2,5)
-comp_A = (5,5)--(2,4)-->(2,5,2,5)
+comp_f = (5,5)--(2,4)-->(2,5,2,5)
 \end{lstlisting}
 \item {\bf 逻辑切分}：当有定义时，该运算从一对布局 $A$ 与 $B$ 产生布局 $A \oslash B$。详见定义 \ref{definitionoflogicaldivide}。我们在 $\texttt{cute}$ 中如下计算 $A \oslash B$：
 \begin{lstlisting}[language=cutedsl]

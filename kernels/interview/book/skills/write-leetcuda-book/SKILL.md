@@ -22,7 +22,7 @@ user-invocable: true
 1. **领任务**：读 `RFC.md` 里程碑总览表 + 对应章节的执行卡片。RFC-0..O 已全部收口（RFC-B 于 2026-09-18 取消，职能归附录 E + drawio 全量重建；RFC-O = ch36/ch37 NVFP4 量化 GEMM，2026-09-24），存量只剩零星复审项（如 B.5 RoPE 参考）；新需求 = 用户新点名的增补章/增强项，按 RFC-L/M/O 模式新开里程碑条目（源码整合→测试→bench→正文→接线→验收→code review→用户增强）逐项推进。
 2. **读规范**：`BOOK_PLAN.md` §3 章节卡片（源码区间/宏/公式/图/参考/测试映射）+ §4 模板与 DoD + 相关工程节。
 3. **执行**：章节任务四合一 = 正文 tex + 最小测试 .cu + 注释核查 + 增量 bench。
-4. **验收**：对照 §4.2 DoD 八条逐条自检（编译零 error / 锚点断言 / CHECKLOG / 测试 PASS / bench 落盘 / 图表登记 / 延伸阅读 / pdftotext 抽查）。**内容改动后先加载 `leetcuda-correctness-review` 按“第零层（数理逻辑）+ 四层”自审**（先查推导链/量词/反例，再查定义/指称、API/硬件契约、资源/类型计数、表达一致性；图注、表、问答一并审），再**强制用 `remove-tech-ai-tone` skill 做文风自检**（八类 AI 味模式 + 词表逐词 grep，存疑保留；图内文字只做等宽替换）。**本轮只要产生书稿改动，随后必须按该 skill §5.0 构建矩阵编译所有受影响 PDF（主 `book` 与 `cute-zhihu` 等，不能只编主 book），再执行 ReadTheDocs 三层验收，不能跳过；全部通过后，才把每个 PDF 与 RTD 结果追加到该 skill 的 `references/audit-history.md` 并进入下一步。**
+4. **验收**：对照 §4.2 DoD 八条逐条自检（编译零 error / 锚点断言 / CHECKLOG / 测试 PASS / bench 落盘 / 图表登记 / 延伸阅读 / pdftotext 抽查）。**内容改动后先加载 `leetcuda-correctness-review` 按“第零层（数理逻辑）+ 四层”自审**（先查推导链/量词/反例，再查定义/指称、API/硬件契约、资源/类型计数、表达一致性；图注、表、问答一并审）；其中 CuTe 布局代数断言先按硬规则 10 用 PyCuTe 纯 host 复算，再**强制用 `remove-tech-ai-tone` skill 做文风自检**（八类 AI 味模式 + 词表逐词 grep，存疑保留；图内文字只做等宽替换）。**本轮只要产生书稿改动，随后必须按该 skill §5.0 构建矩阵编译所有受影响 PDF（主 `book` 与 `cute-zhihu` 等，不能只编主 book），再执行 ReadTheDocs 三层验收，不能跳过；全部通过后，才把每个 PDF 与 RTD 结果追加到该 skill 的 `references/audit-history.md` 并进入下一步。**
 5. **回写**：RFC.md 勾选 `- [x]` + 追加日期；发现问题记 CHECKLOG / RFC 对应位置。复审/评分类任务完成后，按 `references/quality-assessment.md` §6 更新受影响章节的分数与扣分点（同一文件内更新，不新建）。
 
 ## 硬规则速查（违反必返工）
@@ -37,6 +37,7 @@ user-invocable: true
 7. **注释核查五类**：F1 架构事实（Prog Guide+cutlass skill arch guides）/ F2 PTX（本地 ptx-docs）/ F3 数学（独立推导）/ F4 性能断言（标来源）/ F5 历史陈述（对原论文）。
 8. **构建**：CWD=`book/` 跑 `./build.sh`（两遍 `TEXMFCNF=../tex: xelatex -interaction=nonstopmode book.tex`，**尾部是冒号不是斜杠**——冒号表示追加系统默认配置，否则找不到 `xelatex.fmt`；`kernels/interview/tex/` 目录已不存在，实际靠系统 fmt 兜底）；本机已有 xelatex+ctexbook+Noto CJK（已验证）。TOC 全量装载报 `main_memory capacity exceeded`（PDF 目录丢失）时须 `fmtutil-sys --byfmt xelatex` 重建 fmt——`texmf.cnf` 的 main_memory 仅 fmt 生成期生效，改配置不重建无效（2026-09-22 L.9 根因）。
 9. **ReadTheDocs 同步检查（改了 book 内容后强制，2026-10-10 定）**：任何书稿改动（`chapters/*.tex`、TikZ 图、封面）完成后，**必须**加载 `leetcuda-tex-to-readthedocs` skill，按其 `references/sync-and-deploy.md` 的「内容更新与自动同步 / 改稿检查清单」核对站点能否自动更新（`docs/readthedocs/README.md` 已缩为纯入口，细节统一维护在 skill 里）：① 正文/公式/表格改动 → push 即自动更新（中英文均然）；② **改 TikZ 图内中文文字或新增含中文图 → 必须先跑 `python -m tools.translate_figures --proxy …` 补 `docs/readthedocs/i18n/figures-en.json` 词典并 commit**，否则 RTD `post_build` 的词典覆盖核对不过、构建红灯（改的是图布局、节点中文文字未动则不受影响）；③ **改封面文案 → 必须重编译 `figures/misc/cover.pdf` 并 commit，英文封面另跑 `tools/build_cover_en` commit `cover.png`**，否则站点封面停留旧版。跳过此检查 = RTD 构建挂或中英文档静默脱节。**本地还必须先跑全量 `docs/readthedocs/build.sh` + `tools/visual_check.py` 三层验收；push 后 RTD 的远端构建只是复核，不能替代本地验收。**
+10. **CuTe 布局断言先做 PyCuTe 纯 host 复算（2026-11-02）**：书中 `Layout`、`size`、`cosize`、`coalesce`、`composition`、`complement`、`logical_divide`、`logical_product` 等布局代数断言，除手工推导外必须用 [NVlabs/PyCuTe](https://github.com/NVlabs/CuTe) 再跑一遍。PyCuTe 是纯 Python 参考实现，**不需要 GPU、torch 或 CUDA runtime**；先 `git clone` 到 `$HOME/develop/CuTe`（可用 `CUTE_SRC` 覆盖），`python3 -m venv .venv && .venv/bin/pip install -e .`。脚本用书内原始 shape/stride，落盘 `book/.tmp/<task>/`，并记录 `git rev-parse --short HEAD`。它只证明布局代数，不证明 PTX/指令语义、资源计数或性能；当前未导出 `cosize`，需按像的 `max+1` 或独立公式计算。详细探针与边界见 `leetcuda-correctness-review` 的 Step 2.5。
 
 ## 工具链速查
 
@@ -58,6 +59,14 @@ python3 /workspace/dev/vipshop/.github/skills/zhihu/scripts/fetch_column_fulltex
 
 # 源码锚点断言（RFC-A 后可用）
 python3 /workspace/dev/vipshop/LeetCUDA/kernels/interview/book/scripts/verify_anchors.py --ch chNN
+
+# PyCuTe 布局代数纯 host 复算（无需 GPU / torch / CUDA runtime）
+CUTE_SRC=${CUTE_SRC:-$HOME/develop/CuTe}
+[ -d "$CUTE_SRC" ] || git clone https://github.com/NVlabs/CuTe.git "$CUTE_SRC"
+python3 -m venv "$CUTE_SRC/.venv"
+"$CUTE_SRC/.venv/bin/pip" install -e "$CUTE_SRC"
+git -C "$CUTE_SRC" rev-parse --short HEAD          # 记录复算所用版本
+"$CUTE_SRC/.venv/bin/python" .tmp/<task>/check_layout.py   # 在 book/ 下运行
 ```
 
 ## drawio 制图铁律（存量图维护适用；2026-09 全书返工沉淀）
