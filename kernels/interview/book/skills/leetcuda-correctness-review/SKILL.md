@@ -229,11 +229,72 @@ ID | 文件:行 | 断言 | 层级 | 类型 | 证据 | 判定 | 处置
 1. 定义/定理与反例；
 2. CUTLASS/CuTe 头文件、PTX ISA、CUDA 文档的具体段落；
 3. 被审源码的调用点；
-4. host-only 编译探针 / `static_assert`；
-5. GPU 测试日志（只能证明该 case 跑通，不能证明解释正确）；
-6. 无证据（标 `未验证`）。
+4. **PyCuTe 纯 host 复算**（布局代数，见 Step 2.5；不需要 GPU）；
+5. host-only 编译探针 / `static_assert`；
+6. GPU 测试日志（只能证明该 case 跑通，不能证明解释正确）；
+7. 无证据（标 `未验证`）。
 
 没有证据的断言不能写成“已确认”。
+
+### Step 2.5：CuTe 布局断言的 PyCuTe 纯 host 复算
+
+NVlabs 的 [PyCuTe](https://github.com/NVlabs/CuTe) 是 CuTe 布局代数的
+**纯 Python 参考实现**，不需要 GPU、torch 或 CUDA runtime。凡是书中涉及
+`Layout` / `size` / `cosize` / `coalesce` / `composition` / `complement` /
+`logical_divide` / `logical_product` / `right_inverse` / `nullspace` 的
+具体数值或结构断言，除了手工推导，优先再跑一遍 PyCuTe，作为 L0/L1 的独立
+证据。
+
+**安装（首次，或换机器后）：**
+
+```bash
+CUTE_SRC=${CUTE_SRC:-$HOME/develop/CuTe}
+git clone https://github.com/NVlabs/CuTe.git "$CUTE_SRC"
+python3 -m venv "$CUTE_SRC/.venv"
+"$CUTE_SRC/.venv/bin/pip" install -e "$CUTE_SRC"
+git -C "$CUTE_SRC" rev-parse --short HEAD   # 记录版本，例如 d8e31a7
+```
+
+Python 3.10+ 即可；核心布局代数没有第三方依赖。已安装的 venv 直接调用：
+
+```bash
+"$CUTE_SRC/.venv/bin/python" .tmp/<task>/check_layout.py   # 在 book/ 下运行
+```
+
+**典型探针：**
+
+```python
+from pycute import Layout, coalesce, composition, complement, logical_divide, logical_product, size
+
+A = Layout((8, 8), (8, 1))
+B = Layout((16, 16), (16, 1))
+C = composition(B, A)
+print(C)
+assert C == Layout(((2, 4), 8), ((128, 1), 16))
+
+# 检查 size/是否双射（只对可枚举的小布局）
+vals = {A(i) for i in range(size(A))}
+assert len(vals) == size(A) and max(vals) + 1 == size(A)
+
+print(complement(Layout((3, 10), (80, 4)), 2400))
+print(logical_divide(Layout((8, 8), (8, 1)), Layout((2, 2), (1, 4))))
+print(logical_product(Layout((2, 2), (1, 2)), Layout((5, 5), (5, 1))))
+```
+
+注意：当前 PyCuTe 未导出 `cosize`；需要它时按定义用
+`max({L(i) for i in range(size(L))}) + 1` 或独立公式计算，不能误用 `size`。
+
+**判定纪律：**
+
+- 复算必须用书内**原始 shape/stride/参数**，不要先“修正”再验；把脚本与
+  输出落盘到 `book/.tmp/<task>/`，并在 ledger 证据列写 PyCuTe + 版本。
+- 比较布局时优先比较规范化 `Layout` 或逐坐标 `A(i)` 的值，不要只比打印
+  字符串的括号/空格。
+- PyCuTe 只覆盖布局代数；**不能**用它证明 PTX/指令语义、寄存器/smem 计数、
+  TMA/mbarrier 协议或性能数字。这些仍按 L2/L3 回 CUTLASS 头文件、PTX 与
+  源码；发生冲突时以被审版本的头文件/PTX 为准。
+- PyCuTe 自身也是参考实现；若它与书稿、C++ CuTe 三方不一致，先缩小到
+  最小 shape/stride，再判定是哪一方的口径或版本问题。
 
 ### Step 3：第零层 + 四层审查
 
@@ -707,7 +768,8 @@ agent 候选（如有）：
 - 受影响 PDF：book.pdf / cute-zhihu.pdf（逐个列 exit / pages / Overfull / error / undefined / missing）
 - RTD build.sh + convert.verify：<pass/fail，失败项>
 - visual_check：<MathJax / console / 404 / 版式>
-- GPU：未做/已做（与 PDF/RTD 验收分开记）
+- PyCuTe host 复算：<脚本路径 / 版本 / pass-fail>
+- GPU：未做/已做（与 PDF/RTD、PyCuTe 验收分开记）
 残余风险：...
 ```
 
@@ -724,6 +786,8 @@ agent 候选（如有）：
   范围、发现、修正、验证与残余风险；每轮自审结束后追加。
 - `scripts/scan_risky_claims.py`：书稿高风险断言候选扫描；只做候选列表，
   不能替代人工判定。
+- [NVlabs/CuTe](https://github.com/NVlabs/CuTe)：PyCuTe 纯 Python 布局代数
+  参考实现；按 Step 2.5 用于 host-only 复算，不需要 GPU。
 
 ## 9. 禁止事项
 
