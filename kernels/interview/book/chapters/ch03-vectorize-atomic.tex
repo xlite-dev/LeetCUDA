@@ -451,7 +451,7 @@ dot\_vec4 不是同一类问题：dot 的两次读落在守卫之外，只要 $N
 \item \textbf{histogram 忘记清零}：atomicAdd 是加在旧值上，复用缓冲区
   时若不 memset，两轮结果会叠加，本测试每轮 bench 前显式 memset。
 \item \textbf{把原子当免费}：全局原子吞吐有上限（同址串行化），热点地址
-  会让 kernel 慢百倍（\S\ref{sec:ch03-perf} 实测 99 倍差）。先问冲突域
+  会显著拖慢 kernel（\S\ref{sec:ch03-perf} 实测耗时约 33 倍、有效带宽仅约 1/99）。先问冲突域
   能不能缩小：smem 私有化、分桶、thread-warp 内先归约再提交。
 \item \textbf{原子还破坏确定性}：与 ch02 的浮点 atomicAdd 同理，冲突
   顺序不定 $\Rightarrow$ 累加型原子的结果 run-to-run 抖动；int 计数

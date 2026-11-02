@@ -376,8 +376,10 @@ $F=(1{\cdot}128+110{\cdot}128)K\cdot2\,\mathrm{B}=14208K\cdot2\,\mathrm{B}$。
 $F'=(7{\cdot}128+16{\cdot}128)K\cdot2\,\mathrm{B}=2944K\cdot2\,\mathrm{B}$，
 \textbf{缩小 4.8 倍}：条带被折成了近似方块（$\sqrt{R}\times\sqrt{R}$ 量级）。
 实测（同形状）：L2 sector 命中率 64.45\%$\to$96.15\%，端到端 117.9$\to$122.9
-TFLOPS（+4.2\%）。形状越宽（$T_n\gg T_m$）收益越大；$T_n\le\lceil R/T_m\rceil$
-时条带本就近似方形，收益趋零（$4096^3$ 实测仅 +0.3\%）。
+TFLOPS（+4.2\%）。收益取决于默认排布的常驻条带是否已经造成 L2 容量压力，
+而不只取决于 $T_n/T_m$。$4096^3$ 时默认与重排后的 footprint 分别约
+$37.7$ 与 $24.1$\,MB，均小于本机 96\,MB L2，故实测仅 $+0.3\%$；上例则从约
+$116.4$\,MB 降到 $24.1$\,MB，重排才真正消除了容量性 miss。
 
 \section{设计与实现}
 
@@ -1051,7 +1053,9 @@ ldmatrix 延迟，让加载下一 slice 与 MMA 上一 slice 同周期发射。
 A：默认光栅常驻集合是 $T_n\times\lceil R/T_n\rceil$ 宽条带，footprint
 $(H B_M+W B_N)K$ 被 $W$ 撑大；3D grid 重排（$bx=z\cdot\mathrm{gridDim.x}+x$）
 把条带折成 $\sqrt{R}\times\sqrt{R}$ 级方块，实测 L2 命中 64.45\%$\to$96.15\%、
-宽 N 形状 +4.2\%。收益取决于 $T_n$ 是否超过 $\approx\sqrt{R}$。
+宽 N 形状 +4.2\%。收益取决于常驻条带的 footprint 是否超过 L2 容量：
+$4096^3$ 的 37.7/24.1\,MB 均小于本机 96\,MB L2，故仅 +0.3\%；上例则从
+116.4\,MB 降到 24.1\,MB，重排才真正消除了容量性 miss。
 
 \textbf{Q6：这个 kernel swizzle 之后还有 bank conflict 吗？}\\
 A：有，4-way/phase（NCU 实测 29.8 万次/launch）。128\,B 行宽下 per-slice 的

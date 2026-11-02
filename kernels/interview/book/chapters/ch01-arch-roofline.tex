@@ -400,7 +400,7 @@ setmaxnreg 干脆在 producer/consumer 之间动态重新分配寄存器池，
   128-bit，单条指令加载 16 bytes。
 \end{itemize}
 
-清单的第 1--3 条构成 Part I 前三章的骨架：coalescing 是 ch03 的主题，
+清单的第 1--3 条构成 Part I 中 ch02/ch03 的骨架：coalescing 是 ch03 的主题，
 vectorize 也在 ch03，tiling 的初级形态（warp/block reduce 中的两级结构）
 在 ch02 就能见到。第 4--6 条（thread tile、bank conflict、pipeline）在
 Part II GEMM 篇逐一兑现；第 7--9 条（Tensor Core、Warp Specialization、
@@ -452,10 +452,10 @@ TMA）属于 Part II 后半与 Part III/IV。本书的章节顺序，就是这�
   \draw[ar] (i9) -- (t9);
   \node[font=\scriptsize, anchor=north west, align=left, text width=13.5cm]
     at (0.75, -0.35)
-    {行分组沿用 base.cuh 清单 1--3 / 4--6 / 7--9：第 1--3 条是 Part I 前三章
-     骨架；第 7--9 条的兑现章节横跨 Part II 后半（ch13--14）与 Part III/IV};
+    {行分组沿用 base.cuh 清单 1--3 / 4--6 / 7--9：第 1--3 条落在 Part I 的 ch02/ch03；
+     第 7--9 条的兑现章节横跨 Part II 后半（ch13--14）与 Part III/IV};
 \end{tikzpicture}
-\caption{base.cuh 九条优化手段与全书章节路线图：第 1--3 条构成 Part I 前三章的骨架（coalescing 与 vectorize 在 ch03，tiling 的初级形态在 ch02）；第 4--6 条在 Part II GEMM 篇兑现；第 7--9 条横跨 Part II 后半与 Part III/IV。泳道灰度随 Part 递增（15\%/40\%/65\%）。}
+\caption{base.cuh 九条优化手段与全书章节路线图：第 1--3 条构成 Part I 中 ch02/ch03 的骨架（coalescing 与 vectorize 在 ch03，tiling 的初级形态在 ch02）；第 4--6 条在 Part II GEMM 篇兑现；第 7--9 条横跨 Part II 后半与 Part III/IV。泳道灰度随 Part 递增（15\%/40\%/65\%）。}
 \label{fig:1-6}
 \end{figure}
 

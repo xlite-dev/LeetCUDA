@@ -269,7 +269,7 @@ $G$ 个 block 的和汇成一个的最后一步。base.cuh 用
 \texttt{atomic\allowbreak{}Add\allowbreak{}(y,\allowbreak{} val)}：$G$ 次全局原子累加直接打进同一个地址 $y$。
 原子性保证结果正确，但有两个代价：$G$ 次原子操作在 L2 的
 原子单元上是\textbf{串行化}的（对同一地址的 read-modify-write 无法并行），
-\S\ref{sec:ch02-perf} 的 bench 显示这就是该 kernel 的真瓶颈。此外浮点
+\S\ref{sec:ch02-perf} 的 bench 结果与同址原子瓶颈一致，但归因尚未闭合。此外浮点
 加法不满足结合律，$G$ 个部分和的累加顺序取决于 block 完成顺序，
 run-to-run 不确定。这就是 ch02 测试用 CPU fp64 参考 + 容差
 （TOL\_F32ACC）而不是 bitwise 比对的原因，也是所有 atomic 求和型 kernel
@@ -420,8 +420,6 @@ $N$ 是 4 的倍数并不够（例如 $N = 520$ 仍会读到 \texttt{a[520..767]
   \end{scope}
   \draw[thick, shift={(-0.5,-0.5)}] (0.6,4.2) grid (8.1,4.2);
   \node[anchor=west, font=\scriptsize, align=left] at (8.6, 4.2) {smem[0..7]\\灰度渐深};
-  \draw[dashed, black!60] (-0.15, 3.45) -- (8.45, 3.45);
-  \node[sl] at (-0.35, 3.45) {\_\_syncthreads()};
   \draw[ar, thick] (4.3, 3.41) -- (4.3, 2.72);
   \node[anchor=west, font=\scriptsize, align=left] at (4.55, 3.06)
     {每 warp 前 8 lane\\读入全部 s0--s7};

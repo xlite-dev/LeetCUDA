@@ -542,7 +542,8 @@ rel\_err 0.59/max 1.0（早期行 e2m1 噪声无 hybrid 抑制，
 \texttt{bench\_fp4.py} 头注释 L8--10 记录其量级 $\sim$1.2），FFPA
 的 fp4-hybrid 把 max 压到 0.28；GQA 场景 Sage3 未支持（无数据）。fp8 侧
 \texttt{bench\_fp8.py} 与 Sage2 总体打平互有胜负（多数 $\pm$1.5\% 内，
-最差 non-aligned-dense 8K FFPA 快 2.6\%），
+表内最大胜差为 cross-dense 8K 的 $+4.0\%$；non-aligned-dense
+两档 FFPA 分别慢 0.4\%/1.2\%），
 这是 preset 公平化的结果：2026-08 之前 cachedit preset 默认开
 hybrid+smooth-v，dense 场景慢 3--8.7\% 全是功能成本，对齐后
 反超。除表~\ref{tab:33-5090} 的 5090 引用外，本章数字均出自本机

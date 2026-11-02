@@ -212,8 +212,7 @@ $S = QK^{\top}$ 为 $2N^{2}d$，$O = PV$ 为 $2N^{2}d$；softmax 本身只有指
 乘上 $B \times H$ 个 (b,h)。仍取 $B{=}1, H{=}32, N{=}4096, d{=}64$：总 FLOPs 约
 $4 \times 4096^{2} \times 64 \times 32 \approx 137\,\mathrm{GFLOP}$；参照本仓库
 FlashAttention kernel 在同形状 SM120 上的实测 $166.6\,\mathrm{TFLOPS}$
-（flash\_attn.cuh~L68，头注释口径），折算的纯计算时间约 $0.83\,\mathrm{ms}$
-（按 fp16/f32acc 峰值 $209.5$ TFLOPS 计则 $0.66\,\mathrm{ms}$）。
+（flash\_attn.cuh~L68，头注释口径），折算的纯计算时间约 $0.83\,\mathrm{ms}$。
 
 显存占用：$S$ 与 $P$ 各占 $N^{2}$ 元素，
 \begin{equation}
