@@ -491,7 +491,8 @@ bench 脚本默认 preset，2026-09-21）：fp8 与 Sage2 总体打平、互有
 
 与 fp8 对照，差别集中在三处：D$\ge$128 后 self/gqa 的 fp4 稳定在 2x 级并随 D
 上升，causal 与 cross 则分别回落（blockscale MMA 无 fp8 的 smem 交叉点问题）；D=256 同点
-fp4 比 fp8 快 1.64x（4.96 vs 8.13ms），对应第~\ref{ch:30}~章 dispatch
+fp4 比 fp8 快 1.64x（4.97 vs 8.12ms，即表~\ref{tab:33-fp4-matrix} 与
+表~\ref{tab:33-fp8-matrix} 的 D=256 self 两格），对应第~\ref{ch:30}~章 dispatch
 表；cross 小 Q 场景两者受同样限制（aux 链占比），fp4 也只有 0.99x--1.21x。
 
 \subsection{knob 矩阵：数值通路中性，粒度有代价}
@@ -542,7 +543,8 @@ rel\_err 0.59/max 1.0（早期行 e2m1 噪声无 hybrid 抑制，
 \texttt{bench\_fp4.py} 头注释 L8--10 记录其量级 $\sim$1.2），FFPA
 的 fp4-hybrid 把 max 压到 0.28；GQA 场景 Sage3 未支持（无数据）。fp8 侧
 \texttt{bench\_fp8.py} 与 Sage2 总体打平互有胜负（多数 $\pm$1.5\% 内，
-最差 non-aligned-dense 8K FFPA 快 2.6\%），
+表内最大胜差为 cross-dense 8K 的 $+4.0\%$；non-aligned-dense
+两档 FFPA 分别慢 0.4\%/1.2\%），
 这是 preset 公平化的结果：2026-08 之前 cachedit preset 默认开
 hybrid+smooth-v，dense 场景慢 3--8.7\% 全是功能成本，对齐后
 反超。除表~\ref{tab:33-5090} 的 5090 引用外，本章数字均出自本机

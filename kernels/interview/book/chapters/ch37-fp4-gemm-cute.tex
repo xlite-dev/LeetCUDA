@@ -747,10 +747,9 @@ $\pm1\%$。\textbf{relFro 0.144 vs 0.145}的差别就是 \texttt{kSingleLevel}
 }
 \end{tikzpicture}
 \caption{NVFP4 GEMM vs cuBLAS BF16（PRO 5000，越高越好）。
-三条读法：其一，\textbf{kernel-only 口径下 FP4 只比 FP8 快
-$6\sim40\%$}——库默认档（$128^2$/s4，柱取口径：4096$^3$ 取扫描表 461\,T，
-8192$^3$ 取默认档实测 476\,T）
-只快 $6\%$，宽 tile 档才快 $40\%$，
+三条读法：其一，\textbf{kernel-only 口径下 FP4 的收益强依赖 tile}——
+库默认档（$128^2$/s4）与 FP8 基本持平（4096$^3$ 快约 $5\%$、8192$^3$ 慢约 $1\%$；
+FP4 取 461/476\,T，FP8 取 439/479\,T），宽 tile 档才快约 $35\%\sim40\%$，
 远不是比特数暗示的 $2\times$；原因是本 kernel 走 bf16 输出、f32
 累加，且 $BK{=}64$ 使每 stage 计算量与搬运掩蔽窗口缩短、循环和 SF 开销占比上升；
 GEMM 的 FLOPs/byte 中 BK 本身会约掉，不能把它说成算术强度下降；其二，\textbf{宽 tile（$128{\times}256$）是本章最大
@@ -923,7 +922,9 @@ $BN$ & $k_{Stages}$ & smem & NonWS TFLOPS & WS TFLOPS & 结论 \\
   \item \textbf{流水深度在这个 kernel 上几乎不影响性能。}
         $BN{=}128$ 时 $k_{Stages}$ 从 4 加到 8（36\,KB $\to$ 72\,KB，
         smem 预算翻倍）只换来 $\pm1\%$；$BN{=}256$ 时 5/6/7 级也持平。
-        与第~\ref{ch:35}~章 FP8 版本（2 级 $>$ 3 级，$+7.7\%$）不同，
+        与第~\ref{ch:35}~章 FP8 版本相比，需把 tile 与深度拆开：$+7.7\%$
+        是 ws $128\times256$/s2 对 ws $128^2$/s3 的混合差；同几何纯深度差为
+        $128^2$ 的 $+2.8\%$ 与 $64\times128$ 的 $+8.3\%$。
         FP4 的结论是流水深度够用就行。
         原因见图~\ref{fig:37-pipeline-timing}：FP4 的一个 stage
         只有一跳 MMA，MMA 块窄、TMA 块相对粗，瓶颈不是等下一块数据，

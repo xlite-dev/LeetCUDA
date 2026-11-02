@@ -719,7 +719,7 @@ STSM + TMA 输出。图~\ref{fig:29-reorg-free} 则是 epilogue 侧的布局技�
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont }] at (9.486,-4.466) {数学：$\Sigma$\_k P[m,k]V[k,n] 对任意双射 $\pi$ 不变 ------ P 不动，V 换列};% w=7.762
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont }] at (9.486,-4.836) {每 K32 组 4$\times$ \_\_byte\_perm；128 列共 16 次};% w=7.762
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont }] at (9.486,-5.205) {selector 与 lane 无关：无构造器状态、无分支};% w=7.762
-    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkGreen!70!black} }] at (9.486,-5.683) {A 槽位：$\pi$(s)=8(r$>$$>$1)+2t+(r\&1)（s$<$16）；$\pi$(s+16)=16+$\pi$(s)};% w=7.762
+    \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.7}{7.1}\selectfont \bfseries \color{tkGreen!70!black} }] at (9.486,-5.683) {A 槽位：$\pi$(s)=8((s$>$$>$1)\&1)+2(s$>$$>$2)+(s\&1)（s$<$16）；$\pi$(s+16)=16+$\pi$(s)};% w=7.762
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont }] at (9.486,-6.068) {V\^{}T 预置换：$\pi$$^{-1}$(j)=16*((j$>$$>$4)\&1)\\$+$4*((j$>$$>$1)\&3)+2*((j$>$$>$3)\&1)+(j\&1)};% w=7.762
     \node[anchor=west, inner sep=0pt, align=left, font={\fontsize{5.2}{6.6}\selectfont \color{black!55} }] at (9.486,-6.622) {置换不跨 32 列组 $\to$ V\^{}T 写仍同一 32B sector（quantize +0.5\%）};% w=7.762
     \node[draw=tkPurple, fill=tkFillPurple, line width=0.5pt, minimum width=17.12cm, minimum height=1.48cm, inner sep=1pt, align=center, text width=17.06cm, font={\fontsize{5.7}{7.1}\selectfont }] at (8.932,-8.562) {};
