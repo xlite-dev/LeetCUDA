@@ -174,7 +174,7 @@ $T = (4, 2, 2, 32)$ 与 $U = (32, 32)$ 的一个相互加细由
 \end{example}
 
 \begin{example}
-    若 $T$ 与 $U$ 是满足 $\size(T) = 2^k$ 与 $\size(L) = 2^\ell$（其中 $k \leq \ell$）的元组，则存在 $T$ 与 $U$ 的相互加细。更一般地，若 $T$ 与 $U$ 是元组，且 $\size(T) \leq \size(U)$ 均为某个固定整数的幂，则存在 $T$ 与 $U$ 的相互加细。
+    若 $T$ 与 $U$ 是满足 $\size(T) = 2^k$ 与 $\size(U) = 2^\ell$（其中 $k \leq \ell$）的元组，则存在 $T$ 与 $U$ 的相互加细。更一般地，若 $T$ 与 $U$ 是元组，且 $\size(T) \leq \size(U)$ 均为某个固定整数的幂，则存在 $T$ 与 $U$ 的相互加细。
 \end{example}
 
 \begin{observation} 在前面的每个例子中，我们考虑的都是{\it 扁平}（flat）元组 $T$ 与 $U$ 的相互加细。不过，相互加细的定义允许 $T$ 与 $U$ 是任意{\it 嵌套}元组。无论如何，限制到扁平情形并不损失一般性，因为一对嵌套元组 $(T,U)$ 的相互加细与它们的扁平化（flattening）$(T^\flat,U^\flat)$ 的相互加细之间存在一一对应（见引理 \ref{mutualrefinementsofflattenings}）。特别地，$(T,U)$ 存在相互加细，当且仅当 $(T^\flat,U^\flat)$ 存在相互加细。
@@ -221,12 +221,28 @@ $T = (4, 2, 2, 32)$ 与 $U = (32, 32)$ 的一个相互加细由
   \EndIf
 \EndWhile
 
-\If{$Y_{\mode} \neq ()$}
-  \State 将 $\entry_j(Y)$ 追加到 $Y_{\mode}$;
-  \State 将 $Y_{\mode}$ 追加到 $Y'$;
-  \State $j \gets j+1$
+\If{$X_{\mode} \neq ()$}
+  \If{$i \le \len(X)$}
+    \State 将 $\entry_i(X)$ 追加到 $X_{\mode}$;
+    \State $i \gets i+1$
+  \EndIf
+  \State 将 $X_{\mode}$ 追加到 $X'$;
+  \State $X_{\mode}\gets()$
 \EndIf
-\While{$j < \len(Y)$}
+\While{$i \le \len(X)$}
+  \State 将 $\entry_i(X)$ 追加到 $X'$;
+  \State $i \gets i+1$
+\EndWhile
+
+\If{$Y_{\mode} \neq ()$}
+  \If{$j \le \len(Y)$}
+    \State 将 $\entry_j(Y)$ 追加到 $Y_{\mode}$;
+    \State $j \gets j+1$
+  \EndIf
+  \State 将 $Y_{\mode}$ 追加到 $Y'$;
+  \State $Y_{\mode}\gets()$
+\EndIf
+\While{$j \le \len(Y)$}
   \State 将 $\entry_j(Y)$ 追加到 $Y'$;
   \State $j \gets j+1$
 \EndWhile
@@ -398,7 +414,7 @@ C = L_{g' \circ f'}
     \[\Phi_{L_{f'}} = \Phi_{L_f}  = \Phi_A.\]
     于是定理 \ref{compatibilityofcompositioninD} 蕴含
     \begin{align*}
-    \Phi_C = \Phi_{L_{g' \circ f'}} & = \Phi_{g'} \circ \Phi_{f'}^{\size(U')}\\
+    \Phi_C = \Phi_{L_{g' \circ f'}} & = \Phi_{L_{g'}} \circ \Phi_{L_{f'}}^{\size(U')}\\
     & = \Phi_B \circ \Phi_A^{\size(B)}.
     \end{align*}
     按构造，$L_{f'}$ 的形状 $S'$ 加细 $A$ 的形状 $S$，因此我们断定 $C$ 是 $A$ 与 $B$ 的一个弱复合。

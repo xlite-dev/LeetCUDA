@@ -450,7 +450,7 @@ L_4 & = (5,32,16):(1,5,5)
 
 扁平布局 $L$ 是否已排序，与 $L$ 的布局函数 $\Phi_L$ 的性态密切相关，如下述引理所述。
 \begin{lemma}
-    设 $L$ 是扁平布局。若 $\Phi_L$ 非减（non-decreasing），则 $L$ 已排序。
+    设 $L$ 是步长均为正的扁平布局。若 $\Phi_L$ 非减（non-decreasing），则 $L$ 已排序。
 \end{lemma}
 \begin{proof}
 我们证明逆否命题（contrapositive）。设 $L$ 未排序。我们将证明在 $\Phi_L$ 的定义域（domain）中存在某个 $x \leq y$，使得 $\Phi_L(x)>\Phi_L(y)$。若存在某个 $1 \leq i < m$ 使得 $d_i > d_{i+1}$，则可取
@@ -468,8 +468,8 @@ L_4 & = (5,32,16):(1,5,5)
     另一方面，若存在某个 $1 \leq i < m$ 使得 $d_i = d_{i+1}$ 且 $s_i > s_{i+1}$，则可设
     \begin{align*}
     x & = (s_i-1)\left(\prod_{j<i} s_j\right),\hspace{0.2in} \text{ and } \hspace{0.2in}y = (s_{i+1} - 1)\left( \prod_{j<i+1}s_j\right),
-    \end{align*}
-    此时 $x < y$，但
+\end{align*}
+    此时 $x < y$；又因所有步长为正，$d_i=d_{i+1}>0$，但
     \begin{align*}
     \Phi_L(x) & = (0,\dots,s_i-1,0,\dots,0) \cdot (d_1,\dots,d_i,d_{i+1},\dots,d_m) \\
     & = (s_i-1)d_i\\
@@ -544,7 +544,7 @@ L_4 & = (5,32,16):(1,5,5)
     \[
     x_{\sigma(1)}d_{\sigma(1)} + \cdots + x_{\sigma(m)}d_{\sigma(m)} = n.
     \]
-    这就证明了 $\Image(\Phi_\sort(L)) \subseteq \Image(\Phi_L)$，反向包含同理可证。
+    这就证明了 $\Image(\Phi_L) \subseteq \Image(\Phi_{\sort(L)})$，反向包含同理可证。
 \end{observation}
 
 \subsubsection{拼接}
@@ -639,7 +639,7 @@ L_4 & = (5,32,16):(1,5,5)
 
     对第二条断言，我们论证下图
     \[\begin{tikzcd} [row sep = 20]
-    {[}0,N_1 {)} \times \cdots \times {[}0,N_1 {)} \ar[rrrr,"\colex_{S_1}^{-1} \times \cdots \times \colex_{S_k}^{-1} "] & & & & {[}0,S_1 {)} \times \cdots \times {[}0,S_1 {)} \ar[drr,"\varphi_{L_1} + \cdots + \varphi_{L_k}"] & & \\
+    {[}0,N_1 {)} \times \cdots \times {[}0,N_k {)} \ar[rrrr,"\colex_{S_1}^{-1} \times \cdots \times \colex_{S_k}^{-1} "] & & & & {[}0,S_1 {)} \times \cdots \times {[}0,S_k {)} \ar[drr,"\varphi_{L_1} + \cdots + \varphi_{L_k}"] & & \\
     {[}0,N_1 \cdots N_k {)} \ar[u,"\colex_{(N_1,\dots,N_k)}^{-1}"] \ar[rrrr,swap,"\colex_{S_1\star \cdots \star S_k}^{-1}"] & & & & {[}0,S_1 \star \cdots \star S_k{)} \ar[rr,swap,"\varphi_{L_1 \star \cdots \star L_k}"] \ar[u,"\cong"] & & \mathbb{Z}
     \end{tikzcd} \]
     交换。左侧的正方形交换，因为余字典序（colexicographic）同构满足结合律；右侧的三角形由第一条断言知其交换。
@@ -671,7 +671,7 @@ L_4 & = (5,32,16):(1,5,5)
     \begin{align*}
     \cosize(L_1 \star \cdots \star L_k)  & = 1 + \max(\Phi_{L_1 \star \cdots \star L_k})\\
     & = 1 + \sum_{i=1}^k\max(\Phi_{L_i})\\
-    & = 1 - k + \left( 1 + \max(\Phi_{L_1}) \right) + \cdots + \left( 1 + \max(\Phi_{L_1}) \right)\\
+    & = 1 - k + \left( 1 + \max(\Phi_{L_1}) \right) + \cdots + \left( 1 + \max(\Phi_{L_k}) \right)\\
     & = 1 - k + \cosize(L_1) + \cdots + \cosize(L_k).
     \end{align*}
     其中我们用到了命题 \ref{layoutfunctionofconcatenatedlayout} 对 $\Phi_{L_1 \star \cdots \star L_k}$ 的等同。
@@ -731,7 +731,7 @@ L_4 & = (5,32,16):(1,5,5)
 \begin{example}
     形如
     \[L = (s_1,\dots,s_m):(0,\dots,0)\]
-    的扁平布局是已合并的当且仅当 $m \leq 1$。
+    的扁平布局是已合并的当且仅当 $m=0$，或 $m=1$ 且 $s_1>1$。
 \end{example}
 
 若 $L$ 是扁平布局，则我们可以通过移除满足 $s_i = 1$ 的模式、并合并满足 $s_id_i = d_{i+1}$ 的模式，得到一个与 $L$ 具有相同布局函数的已合并布局 $\coalesce^\flat(L)$。更确切地说，我们给出如下构造（construction）。
@@ -913,9 +913,9 @@ L = (s_1,\dots,s_m):(d_1,\dots,d_m)
     \noindent 反之，设 $\coalesce^\flat(A) \neq \coalesce^\flat(B)$。我们论证 $\Phi_A \neq \Phi_B$。记
     \begin{align*}
     \coalesce^\flat(A) & = (s_1,\dots,s_m) : (d_1,\dots,d_m)\text{,} \\
-    \coalesce^\flat(B) & = (t_1,\dots,t_n) : (e_1,\dots,e_m).
+    \coalesce^\flat(B) & = (t_1,\dots,t_n) : (e_1,\dots,e_n).
     \end{align*}
-    若 $m,n$ 中一个非零而另一个为 $0$，则显然 $\Phi_A \neq \Phi_B$，故可设 $m,n\geq 1$。令 $i$ 为使得 $(s_i,d_i) \neq (t_i,e_i)$ 的最小整数。于是特别地，对任意 $j < i$ 有 $s_1 \cdots s_j = t_1 \cdots t_j$。分两种情形考虑：\\
+    若 $\size(A)\neq \size(B)$，则两个布局函数的定义域不同，故 $\Phi_A\neq\Phi_B$。以下设 $\size(A)=\size(B)$；若一个已合并布局是另一个的真前缀，则较长者多出的形状元素都大于 $1$，其大小将严格更大，矛盾。因此存在首个 $i$ 使 $(s_i,d_i)\neq(t_i,e_i)$，且 $i<m$、$i<n$。于是对任意 $j < i$ 有 $s_1 \cdots s_j = t_1 \cdots t_j$。分两种情形考虑：\\
 
     \begin{itemize}
     \item （情形 1）：设 $d_i \neq e_i$。令 $N = s_1 \cdots s_{i-1} = t_1 \cdots t_{i-1}$。则

@@ -227,7 +227,7 @@ S = (s_1,\dots,s_m)
     \catstyle{Tuple} \subset \catstyle{E}_0^\otimes \times_{\catstyle{Comm}^\otimes}(\mathbb{Z}_{>0}^{\mathterm{div}})^\otimes\]
     中由满足
     \[
-    \alpha(i) \neq 1 \quad \Rightarrow \quad  s_i = t_{\alpha(i)}.
+    \alpha(i) \neq * \quad \Rightarrow \quad  s_i = t_{\alpha(i)}.
     \]
     的态射
     \[\begin{tikzcd} (s_1,\dots,s_m) \ar[r,"f"] \ar[r,swap,"\alpha"] & (t_1,\dots,t_n)
@@ -669,7 +669,7 @@ L_f = (8,1,1):(1,8,8) = L_g.
         0 = d_i = t_1 \cdots t_{\beta(i)-1},
         \]
         矛盾。情形 $\alpha(i) \neq * = \beta(i)$ 类似。
-        \item 若 $\alpha(i) \neq * \neq \beta(i)$，则不失一般性可设 $\alpha(i) < \beta(j)$，此时
+        \item 若 $\alpha(i) \neq * \neq \beta(i)$，则不失一般性可设 $\alpha(i) < \beta(i)$，此时
         \[
         d_i = t_1 \cdots t_{\alpha(i)-1} < t_1 \cdots t_{\beta(i)-1} = d_i,
         \]
@@ -951,7 +951,7 @@ d_i' = \dfrac{d_i}{\left(\displaystyle\prod_{ k < \alpha(i)\text{ and } k \notin
 F:\catstyle{Tuple} \to \catstyle{FinSet}
 \]
 它将在我们的构造中使用。
-\begin{construction}\label{constructionofrealizationfunctoronC} 我们定义函子
+\begin{construction}\label{constructionofauxiliaryfunctoronC} 我们定义函子
 \[F:\catstyle{Tuple} \to \catstyle{FinSet}\]
 如下。
 \begin{itemize}

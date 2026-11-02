@@ -220,7 +220,7 @@ L = L_P
 \begin{example}
     若 $L = (8,8,8):(1,64,8)$ 且 $P = (*,(*,*))$，则
     \[
-    L_P = (8,(8,8)),(1,(64,8)).
+    L_P = (8,(8,8)):(1,(64,8)).
     \]
 \end{example}
 
@@ -241,7 +241,7 @@ L = L_P
 
 \begin{observation}
     上一命题告诉我们，我们有如下拉回（pullback）方块
-    \[ \begin{tikzcd} 
+    \[ \begin{tikzcd}
     \mathterm{Layout}\ar[rr,"\profile(-)"] \ar[d,swap,"(-)^\flat"] \arrow[drr, phantom, "\lrcorner", very near start] & & \mathterm{Profile}\ar[d,"\len(-)"] \\
     \mathterm{FlatLayout} \ar[rr,swap,"\len(-)"] & & \mathbb{N}
     \end{tikzcd} \]
@@ -252,7 +252,7 @@ L = L_P
 \begin{definition}\label{definitionofnondegeneratelayout}
     设 $L$ 是布局。若对所有 $1 \leq i\leq \len(L)$，下列条件成立：
     \[
-    \entry_i(\shape(L)) \quad \Rightarrow \quad \entry_i(\stride(L))
+    \entry_i(\shape(L)) = 1 \quad \Rightarrow \quad \entry_i(\stride(L)) = 0
     \]
     则称 $L$ 是{\it 非退化}的。
 \end{definition}
@@ -278,7 +278,7 @@ L = L_P
 % \begin{definition}
 %     Suppose $s_1,\dots,s_m$ are positive integers, where each $s_i = 2^{r_i}$ is some positive power of $2$. Let $r = r_1 + \cdots + r_m$, so the size of $(s_1,\dots,s_m)$ is $2^r$. If $M$ is a $\ell \times r$ matrix with entries in $\mathbb{F}_2$, we may construct a layout $L_M$ whose coordinate function is the composite
 %     \[ \begin{tikzcd}
-%     {[}0,s_1{)} \times \cdots \times {[}0,s_m{)} \ar[dd,swap,"\colex^{-1} \times \cdots \times \colex^{-1}"] & & & & \\ 
+%     {[}0,s_1{)} \times \cdots \times {[}0,s_m{)} \ar[dd,swap,"\colex^{-1} \times \cdots \times \colex^{-1}"] & & & & \\
 %      & & & & \\
 %     {[}0,2{)}^{\times r_1}  \times \cdots \times  {[}0,2{)}^{\times r_m} \cong \mathbb{F}_2^{\times r} \ar[rr,"M"] & & \mathbb{F}_2^{\times \ell} \cong {[}0,2{)}^{\times \ell} \ar[rr,"\colex"] & & {[}0,2^\ell{)}.
 %     \end{tikzcd} \]
@@ -648,18 +648,18 @@ L = L_P
 \end{lemma}
 
 \begin{proof}
-    如上，设
+    设 $\bar{S}$ 的轮廓为 $P$，并记
     \[
-    L_i = \mode_i(L,S)
+    L_i = \mode_i(L,\bar{S})
     \]
-    表示 $L$ 相对于 $S$ 的第 $i$ 个模式，并记 $\bar{L}_i = \coalesce(L_i)$。则
+    表示 $L$ 相对于 $\bar{S}$ 的第 $i$ 个模式；再记 $\bar{L}_i = \coalesce(L_i)$。则
     \begin{align*}
-    \Phi_{\coalesce(L,\bar{S})} & = \Phi_{(\bar{L}_1,\dots,\bar{L}_m)_{\bar{S}}}\\
+    \Phi_{\coalesce(L,\bar{S})} & = \Phi_{(\bar{L}_1,\dots,\bar{L}_m)_P}\\
     & = \Phi_{(\bar{L}_1,\dots,\bar{L}_m)}\\
     & = \Phi_{\coalesce((\bar{L}_1,\dots,\bar{L}_m))}\\
     & = \Phi_{\coalesce((L_1,\dots,L_m))}\\
     & = \Phi_{(L_1,\dots,L_m)}\\
-    & = \Phi_{(L_1,\dots,L_m)_{\bar{S}}}\\
+    & = \Phi_{(L_1,\dots,L_m)_P}\\
     & = \Phi_L.
     \end{align*}
 \end{proof}
@@ -692,15 +692,15 @@ L = L_P
     \]
     只需证明对所有 $1 \leq i \leq m$ 都有 $\coalesce(A_i) = \coalesce(B_i)$。由余字典序同构的结合律，$A$ 的布局函数 $\Phi_A$ 可以写成
     \[
-    \begin{tikzcd} 
-    {[}0,\size(A){)} \ar[rr,"\colex^{-1}"] & & \prod_{j=1}^m {[}0,\size(A_j) {)} \ar[rr,"\prod \Phi_{A_j}"] & & \prod_{j=1}^m \mathbb{Z} \ar[rr,"+"] & & \mathbb{Z} 
-    \end{tikzcd} 
+    \begin{tikzcd}
+    {[}0,\size(A){)} \ar[rr,"\colex^{-1}"] & & \prod_{j=1}^m {[}0,\size(A_j) {)} \ar[rr,"\prod \Phi_{A_j}"] & & \prod_{j=1}^m \mathbb{Z} \ar[rr,"+"] & & \mathbb{Z}
+    \end{tikzcd}
     \]
     而 $B$ 的布局函数 $\Phi_B$ 可以写成
     \[
-    \begin{tikzcd} 
-    {[}0,\size(B){)} \ar[rr,"\colex^{-1}"] & & \prod_{j=1}^m {[}0,\size(B_j) {)} \ar[rr,"\prod \Phi_{B_j}"] & & \prod_{j=1}^m \mathbb{Z} \ar[rr,"+"] & & \mathbb{Z} 
-    \end{tikzcd} 
+    \begin{tikzcd}
+    {[}0,\size(B){)} \ar[rr,"\colex^{-1}"] & & \prod_{j=1}^m {[}0,\size(B_j) {)} \ar[rr,"\prod \Phi_{B_j}"] & & \prod_{j=1}^m \mathbb{Z} \ar[rr,"+"] & & \mathbb{Z}
+    \end{tikzcd}
     \]
     对固定的 $1 \leq i \leq m$，考虑子集
     \[
@@ -712,7 +712,7 @@ L = L_P
     \]
     由于对所有 $1 \leq j \leq m$ 有 $\size(A_j) = \size(B_j)$，它等同于像
     \[
-    \colex([0,\size(B_j))) \subset [0,\size(B)) = [0,\size(B)).
+    \colex([0,\size(B_i))) \subset [0,\size(B)).
     \]
     $\Phi_A$ 在该子集上的限制为 $\Phi_{A_i}$，而 $B$ 在该子集上的限制为 $\Phi_{B_i}$，由此可得 $\Phi_{A_i} = \Phi_{B_i}$，再由命题~\ref{nestedcoalesceproposition}，有 $\coalesce(A_i) = \coalesce(B_i)$。于是我们推出
     \[

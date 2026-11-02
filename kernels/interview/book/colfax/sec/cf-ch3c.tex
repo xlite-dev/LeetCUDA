@@ -97,7 +97,7 @@
 
 范畴 $\catstyle{Nest}$ 的关键特征在于：若 $f:S \to T$ 是嵌套元组态射，则 $f$ 编码一个布局 $L_f$。这个布局是通过给扁平布局 $L_{f^\flat}$ 配备 $S$ 的嵌套轮廓（profile）而得到的。更精确地说，我们有如下构造。
 
-\begin{construction}\label{layoutfromnestedtuplemorphism}
+\begin{construction}\label{layoutfromnestedtuplemorphismprofile}
     设
     \[
     f:S \to T
@@ -215,14 +215,14 @@
 \begin{example}
     嵌套元组态射
     \[\begin{tikzcd}
-    ((2,2),(3,3)) \ar[rr,"f"] \ar[rr,swap,"(4{,}6{,}2{,}3"] & & (10,3,3,2,10,2)
+    ((2,2),(3,3)) \ar[rr,"f"] \ar[rr,swap,"(4{,}6{,}2{,}3)"] & & (10,3,3,2,10,2)
     \end{tikzcd} \]
     具有标准形式。
 \end{example}
 \begin{example}
 嵌套元组态射
     \[\begin{tikzcd}
-    ((2,2),(3,3)) \ar[rr,"f"] \ar[rr,swap,"(4{,}6{,}2{,}3"] & & ((10,3,3),(2,10,2))
+    ((2,2),(3,3)) \ar[rr,"f"] \ar[rr,swap,"(4{,}6{,}2{,}3)"] & & ((10,3,3),(2,10,2))
     \end{tikzcd} \]
     不具有标准形式，因为 $g$ 的陪域不是扁平的。
 \end{example}
@@ -274,7 +274,7 @@ S \ar[rr,"f"] \ar[rr,swap,"\alpha"] & & T
     f_L & \ar[l,mapsto] L
     \end{tikzcd}
     \]
-    在具有标准形式的嵌套元组态射与可处理布局之间建立了一一对应。
+    在具有标准形式的非退化嵌套元组态射与非退化可处理布局之间建立了一一对应。
 \end{proposition}
 
 \begin{proof}
@@ -326,7 +326,7 @@ S \ar[rr,"f"] \ar[rr,swap,"\alpha"] & & T
 \end{example}
 
 \begin{observation}
-    若 $f:S \to T$ 是一个嵌套元组，则 $f$ 等于复合
+    若 $f:S \to T$ 是一个嵌套元组态射，则 $f$ 等于复合
     \[ \begin{tikzcd}
     S \ar[r,"\id_S^{S^\flat}"] \ar[rrr,swap,bend right = 30, "f"] & S^\flat \ar[r,"f^\flat"] & T^\flat \ar[r,"\id_{T^\flat}^T"] & T.
     \end{tikzcd} \]

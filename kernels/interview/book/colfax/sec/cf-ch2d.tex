@@ -139,10 +139,10 @@
 \]
 \end{example}
 我们来定义轮廓的一些重要属性。
-\begin{definition}\label{definitionofnestedtupleattributes}
+\begin{definition}\label{definitionofprofileattributes}
     设 $P$ 是轮廓。
-    \begin{itemize} 
-    \item $X$ 的{\it 秩}为
+    \begin{itemize}
+    \item $P$ 的{\it 秩}为
     \[
     \rank(P) = \begin{cases}
         1 & P = *\\
@@ -151,7 +151,7 @@
     \]
     \item $P$ 的{\it 长度}（length）为
     \[
-    \len(P) = 
+    \len(P) =
     \begin{cases}
         1 & P = *\\
         \sum_{i=1}^r\len(P_i) & P = (P_1,\dots,P_r) \text{ 是一个由轮廓组成的元组。}
@@ -159,7 +159,7 @@
     \]
     \item $P$ 的{\it 深度}（depth）为
     \[
-    \depth(P) = 
+    \depth(P) =
     \begin{cases}
         0 & P = *\\
         1 + \displaystyle\max_{1 \leq i \leq r} (\depth(P_i)) & P = (P_1,\dots,P_r) \text{ 为轮廓元组。}
@@ -180,7 +180,7 @@ P &= (((),()),(*,(*,*))), & \quad \rank(P) &= 2, \quad \len(P)  = 3, & \depth(P)
 \]
 \end{example}
 
-\begin{definition}\label{definitionofmodeofnestedtuple}
+\begin{definition}\label{definitionofprofilemode}
 设 $P$ 是满足 $\rank(P) = r$ 的轮廓。若 $1 \leq i \leq r$，则 $P$ 的第 $i$ 个{\it 模式}（mode）为
 \[
 \mode_i(P) = \begin{cases}
@@ -204,9 +204,9 @@ P &= (((),()),(*,(*,*))), & \quad \rank(P) &= 2, \quad \len(P)  = 3, & \depth(P)
 \begin{notation}
     设 $P$ 是深度 $>0$ 的轮廓。对任意 $1 \leq j \leq \rank(P)$，我们记
     \begin{align*}
-        \len_j(X) & = \len(\mode_j(P))\text{, } \\
-        \len_{<j}(P) & = \sum_{i=1}^{j-1} \len_i(X)\text{,}\\
-        \len_{\leq j}(X) & = \len_{<j}(P) + \len_j(P)\\
+        \len_j(P) & = \len(\mode_j(P))\text{, } \\
+        \len_{<j}(P) & = \sum_{i=1}^{j-1} \len_i(P)\text{,}\\
+        \len_{\leq j}(P) & = \len_{<j}(P) + \len_j(P)\\
     \end{align*}
 \end{notation}
 
@@ -228,10 +228,10 @@ P &= (((),()),(*,(*,*))), & \quad \rank(P) &= 2, \quad \len(P)  = 3, & \depth(P)
     Q = (Q_1,\dots, Q_r)
     \]
     其中每个模式 $Q_i = \mode_i(Q)$ 的深度均 $< d$。若对每个 $1 \leq i \leq r$，令
-    \[\ell_i = \len(P_1) + \cdots + \len(P_{i-1}),\] 
+    \[\ell_i = \len(Q_1) + \cdots + \len(Q_{i-1}),\qquad \ell_{r+1}=m,\]
     则我们定义
     \[
-    (P_1,\dots,P_r)_Q = ((P_{1},\dots,P_{\ell_2})_{Q_1},\dots,(P_{\ell_r +1},\dots,P_{\ell_{r+1}})_{Q_r}).
+    (P_1,\dots,P_m)_Q = ((P_{1},\dots,P_{\ell_2})_{Q_1},\dots,(P_{\ell_r +1},\dots,P_{\ell_{r+1}})_{Q_r}).
     \]
     \end{itemize}
 \end{definition}
@@ -255,7 +255,7 @@ P &= (((),()),(*,(*,*))), & \quad \rank(P) &= 2, \quad \len(P)  = 3, & \depth(P)
     \mathterm{Profile}(n) = \{P \in \mathterm{Profile} \mid \len(P) = n\}
     \]
     构成 $\mathterm{Profile}$ 的 $n$ 元运算的全体，且若 $n = m_1 + \cdots + m_r$，则结构映射
-    \[ \begin{tikzcd} 
+    \[ \begin{tikzcd}
      \mathterm{Profile}(m_1)\times \dots \times \mathterm{Profile}(m_r) \times \mathterm{Profile}(n) \ar[rr] & &  \mathterm{Profile}(m_1 + \cdots + m_r)\\
     (P_1,\dots,P_r),Q \ar[rr,mapsto] & & (P_1,\dots,P_r)_Q
     \end{tikzcd}\]
@@ -283,7 +283,7 @@ P &= (((),()),(*,(*,*))), & \quad \rank(P) &= 2, \quad \len(P)  = 3, & \depth(P)
 \begin{aligned}
 X &= (2,(2,2)) \quad & X^\flat &= (2,2,2) \quad & \profile(X) & = (*,(*,*)) \\
 X & = 25 \quad & X^\flat & = (25) \quad & \profile(X) & = * \\
-X & = (((2,2,2),8),64) \quad & X^\flat & = (2,2,2,8,26) \quad & \profile(X) & = (((*,*,*),*),*)\\
+X & = (((2,2,2),8),64) \quad & X^\flat & = (2,2,2,8,64) \quad & \profile(X) & = (((*,*,*),*),*)\\
 X & = ((),(32,()),(4,8)) \quad & X^\flat & = (32,4,8) \quad & \profile(X) & = ((),(*,()),(*,*))
 \end{aligned}
 \]
@@ -297,7 +297,7 @@ X & = ((),(32,()),(4,8)) \quad & X^\flat & = (32,4,8) \quad & \profile(X) & = ((
 
 \begin{observation}\label{nesttuplepullbacksquare}
     若 $V$ 是任意集合，则按定义，我们有一个拉回方块（pullback square）
-    \[ \begin{tikzcd} 
+    \[ \begin{tikzcd}
     \mathterm{Nest}(V) \ar[rr,"\profile(-)"] \ar[d,swap,"(-)^\flat"] \arrow[drr, phantom, "\lrcorner", very near start] & & \mathterm{Profile} \ar[d,"\len(-)"] \\
     \mathterm{Tuple}(V) \ar[rr,swap,"\len(-)"] & & \mathbb{N}.
     \end{tikzcd} \]
@@ -316,7 +316,7 @@ X & = ((),(32,()),(4,8)) \quad & X^\flat & = (32,4,8) \quad & \profile(X) & = ((
 
 \begin{definition}\label{definitionofnestedtupleattributes}
     设 $X$ 是以 $V$ 中元素为元素的嵌套元组。
-    \begin{itemize} 
+    \begin{itemize}
     \item $X$ 的{\it 秩}为
     \[
     \rank(X) = \rank(P)
@@ -397,7 +397,7 @@ X &= (((),()),(2,(5,5))), & \rank(X) &= 2, \len(X)  = 3, & \depth(X) &= 3, \mspa
     类似地，我们记
     \begin{align*}
         \size_j(X) & = \size(\mode_j(X))\text{, }\\
-        \size_{< j} (X) & = \prod_{i=1}^{j-1} \size_j(X)\text{, and}\\
+        \size_{< j} (X) & = \prod_{i=1}^{j-1} \size_i(X)\text{, and}\\
         \size_{\leq j} (X) & = \size_{<j}(X)\cdot\size_j(X).
     \end{align*}
 \end{notation}
@@ -417,7 +417,7 @@ X &= (((),()),(2,(5,5))), & \rank(X) &= 2, \len(X)  = 3, & \depth(X) &= 3, \mspa
 %     X &  \depth(X) = 0 \text{ (hence }i=\ell=1\text{)}\\
 %  \entry_{i - N}(\mode_j(X)) & \begin{matrix} j \text{ is the largest integer such that }\\
 %  N \coloneqq \len_{<j}(X) < i. \\
-%  \end{matrix} 
+%  \end{matrix}
 % \end{cases}
 % \]
 % \end{definition}
@@ -466,7 +466,7 @@ X &= (((),()),(2,(5,5))), & \rank(X) &= 2, \len(X)  = 3, & \depth(X) &= 3, \mspa
 %     Suppose $X_1$ and $X_2$ are nested tuples. We say $X_1$ and $X_2$ are {\it congruent}, and write $X_1 \cong X_2$, if
 %     \begin{enumerate}
 %         \item $X_1$ and $X_2$ have depth $0$, or
-%         \item $X_1$ and $X_2$ have depth $\geq 1$, and 
+%         \item $X_1$ and $X_2$ have depth $\geq 1$, and
 %         \[
 %         \mode_i(X_1) \cong \mode_i(X_2)
 %         \]
@@ -499,7 +499,7 @@ X_1 &= ((4,8),(4,8)) \quad & X_2 &= (((1,1),(5,10))) \quad & \text{不同余}\\
 
 
 % \begin{definition}
-%     A {\it profile} is a nested tuple with entries in the set $\{*\}$. We write 
+%     A {\it profile} is a nested tuple with entries in the set $\{*\}$. We write
 %     \[
 %     \mathterm{Profile} = \mathterm{Nest}(\{*\})
 %     \]
@@ -519,12 +519,12 @@ X_1 &= ((4,8),(4,8)) \quad & X_2 &= (((1,1),(5,10))) \quad & \text{不同余}\\
 % If $X$ is a nested tuple, then we can obtain a profile $\profile(X)$ by replacing each entry of $X$ with the symbol ``$*$". In order to make this precise, we make the following construction.
 
 
-% \begin{construction} 
-% If $V$ is a set, let $\mathterm{Nest}(V)$ denote the collection of nested tuples with entries in $V$. If $V_1$ and $V_2$ are sets, and $f: V_1 \to V_2$ is a function, then we can define a function 
+% \begin{construction}
+% If $V$ is a set, let $\mathterm{Nest}(V)$ denote the collection of nested tuples with entries in $V$. If $V_1$ and $V_2$ are sets, and $f: V_1 \to V_2$ is a function, then we can define a function
 % \[
 % f_*:\mathterm{Nest}(V_1) \to \mathterm{Nest}(V_2)
 % \]
-% recursively by 
+% recursively by
 % \[
 % f_*(X) = \begin{cases}
 %     f(X) & \text{depth}(X) = 0 \text{, so } X \in V_1\\
@@ -546,7 +546,7 @@ X_1 &= ((4,8),(4,8)) \quad & X_2 &= (((1,1),(5,10))) \quad & \text{不同余}\\
 % \end{example}
 
 % \begin{definition}
-%     If $X$ is a nested tuple (of integers), we define the {\it profile of} $X$ to be  
+%     If $X$ is a nested tuple (of integers), we define the {\it profile of} $X$ to be
 %     \[
 %     \profile(X) = p_*(X).
 %     \]
@@ -569,10 +569,10 @@ X_1 &= ((4,8),(4,8)) \quad & X_2 &= (((1,1),(5,10))) \quad & \text{不同余}\\
 
 
 % \begin{lemma}
-%     If $X_1$ and $X_2$ are nested tuples, then $X_1 \cong X_2$ if and only if $\profile(X_1) = \profile(X_2)$. 
+%     If $X_1$ and $X_2$ are nested tuples, then $X_1 \cong X_2$ if and only if $\profile(X_1) = \profile(X_2)$.
 % \end{lemma}
 % \begin{proof}
-%     Suppose first that $X_1 \cong X_2$. We prove the implication by induction on $\depth(X_1) = \depth(X_2)$. 
+%     Suppose first that $X_1 \cong X_2$. We prove the implication by induction on $\depth(X_1) = \depth(X_2)$.
 % \end{proof}
 
 
@@ -580,7 +580,7 @@ X_1 &= ((4,8),(4,8)) \quad & X_2 &= (((1,1),(5,10))) \quad & \text{不同余}\\
 % We have shown that every nested tuple $X$ determines a tuple $X^\flat$ and a profile $\profile(X)$. Conversely, if $Y$ is a tuple and $P$ is a profile with $\len(Y) = \len(P)$, then we can construct a nested tuple $X$ whose flattening is $Y$ and whose profile is $P$ as follows.
 
 % \begin{proposition}\label{nestedtuplesdeterminedbyflatteningandprofile}
-%     Suppose $Y = (y_1,\dots,y_m)$ is a tuple and suppose $P$ is a profile of length $m$. Then there exists a unique nested tuple $X$ with flattening 
+%     Suppose $Y = (y_1,\dots,y_m)$ is a tuple and suppose $P$ is a profile of length $m$. Then there exists a unique nested tuple $X$ with flattening
 %     \[
 %     X^\flat = Y\quad \text{and} \quad \profile(X) = P.
 %     \]
@@ -590,17 +590,17 @@ X_1 &= ((4,8),(4,8)) \quad & X_2 &= (((1,1),(5,10))) \quad & \text{不同余}\\
 %     Lets write $d = \depth(P)$ and $r = \rank(P)$. There are two cases to consider.
 %     \begin{itemize}[left=0pt]
 %     \item ($m=0$): In this case, $Y = ()$, and $P$ is a profile of length $0$. It follows that $X = P$ is the unique nested tuple satisfying the desired properties, since any nested tuple $X$ of length $0$ has $X^\flat = ()$ and $\profile(X) = X$.
-%     \item ($m \geq 1$): In this case, we prove the claim by induction on $d$. If $d = 0$, then $Y = (y_1)$ and $P = *$, and it follows that $X = y_1$ is the unique nested tuple satisfying the desired properties, since any nested tuple $X$ of depth $0$ has $X^\flat = (X)$. Suppose next that $d > 0$, and that we have proved the claim for all depths $< d$. Then we can write 
+%     \item ($m \geq 1$): In this case, we prove the claim by induction on $d$. If $d = 0$, then $Y = (y_1)$ and $P = *$, and it follows that $X = y_1$ is the unique nested tuple satisfying the desired properties, since any nested tuple $X$ of depth $0$ has $X^\flat = (X)$. Suppose next that $d > 0$, and that we have proved the claim for all depths $< d$. Then we can write
 %     \[
 %     P = (P_1,\dots,P_r)
 %     \]
-%     where each mode $P_i = \mode_i(P)$ has depth $< d$. If for each $1 \leq i \leq r$, we set $\ell_i = \len_{<i}(P)$, then we can write 
+%     where each mode $P_i = \mode_i(P)$ has depth $< d$. If for each $1 \leq i \leq r$, we set $\ell_i = \len_{<i}(P)$, then we can write
 %     \[
 %     Y = Y_1 \star \cdots \star Y_r
 %     \]
-%     where $Y_i = (y_{\ell_i+1},\dots,y_{\ell_{i+1}})$. By our inductive hypothesis, there exist unique nested tuples $X_1,\dots,X_r$ with 
+%     where $Y_i = (y_{\ell_i+1},\dots,y_{\ell_{i+1}})$. By our inductive hypothesis, there exist unique nested tuples $X_1,\dots,X_r$ with
 %     \[X_i^\flat = Y_i \quad \text{and}\quad \profile(X_i) = P_i \]
-%     in which case 
+%     in which case
 %     \[
 %     X = (X_1,\dots,X_r)
 %     \]
@@ -611,7 +611,7 @@ X_1 &= ((4,8),(4,8)) \quad & X_2 &= (((1,1),(5,10))) \quad & \text{不同余}\\
 
 
 % \begin{notation}
-% If $X$ is a nested tuple with flattening $X^\flat = (x_1,\dots,x_m)$ and profile $\profile(X) = P$, we sometimes write 
+% If $X$ is a nested tuple with flattening $X^\flat = (x_1,\dots,x_m)$ and profile $\profile(X) = P$, we sometimes write
 % \[
 % X = (x_1,\dots,x_m)_P
 % \]
@@ -638,7 +638,7 @@ X_1 &= ((4,8),(4,8)) \quad & X_2 &= (((1,1),(5,10))) \quad & \text{不同余}\\
     \]
     与轮廓
     \[
-    (P_1,\dots,P_m)_Q. 
+    (P_1,\dots,P_m)_Q.
     \]
     的嵌套元组。更一般地，若 $X_1,\dots,X_m$ 是嵌套元组且 $Y$ 是长度为 $m$ 的嵌套元组，我们定义
     \[
@@ -648,20 +648,20 @@ X_1 &= ((4,8),(4,8)) \quad & X_2 &= (((1,1),(5,10))) \quad & \text{不同余}\\
 
 
 % \begin{definition}[Concatenation]\label{definitionofconcatenationofnestedtuples}
-%     If $X_1,\dots,X_k$ are nested tuples, then the {\it concatenation} of $X_1,\dots,X_k$ is the nested tuple 
+%     If $X_1,\dots,X_k$ are nested tuples, then the {\it concatenation} of $X_1,\dots,X_k$ is the nested tuple
 %     \[(X_1,\dots,X_k)\]
 %     of rank $k$ whose $i$th mode is $X_i$.
 % \end{definition}
 
 % \begin{example}\label{exampleofconcatenation}
-%     If $X_1 = (2,2)$, $X_2 = (5,(10,11))$, and $X_3 = 100$, then 
+%     If $X_1 = (2,2)$, $X_2 = (5,(10,11))$, and $X_3 = 100$, then
 %     \[
 %     (X_1,X_2,X_3) = ((2,2),\bigl(5,(10,11)\bigr),100).
 %     \]
 % \end{example}
 
 % \begin{remark}\label{concatenationofnestedtuplesisnotassociative}
-%     Concatenation of nested tuples is not associative. For example, take $X_1 = 2$, $X_2 = 5$, and $X_3 = 11$. Then 
+%     Concatenation of nested tuples is not associative. For example, take $X_1 = 2$, $X_2 = 5$, and $X_3 = 11$. Then
 %     \[(X_1, (X_2, X_3)) = (2, (5,11)) \neq ((2, 5), 11) = ((X_1, X_2), X_3). \]
 %     Moreover, neither of these layouts is equal to the ``three-fold" concatenation $(X_1,X_2,X_3) = (2,5,11)$.
 % \end{remark}
@@ -676,22 +676,22 @@ X_1 &= ((4,8),(4,8)) \quad & X_2 &= (((1,1),(5,10))) \quad & \text{不同余}\\
 % Next, we define the most important operations on nested tuples, namely $P$-{\it concatenations}. These operations generalize concatenation, and are parametrized by profiles $P$.
 
 % \begin{definition}\label{definitionofPconcatenation}
-%     Suppose $X_1,\dots,X_k$ are nested tuples, and $P$ is a profile of length $k$. Then we define the $P$-substitution of $X_1,\dots,X_k$ to be the nested tuple 
+%     Suppose $X_1,\dots,X_k$ are nested tuples, and $P$ is a profile of length $k$. Then we define the $P$-substitution of $X_1,\dots,X_k$ to be the nested tuple
 %     \[
 %     (X_1,\dots,X_k)_P
 %     \]
-%     defined as follows. Write $\depth(P) = d$ and $\rank(P) = r$. 
+%     defined as follows. Write $\depth(P) = d$ and $\rank(P) = r$.
 %     \begin{itemize}[left = 0pt]
-%         \item If $d = 0$, then $k = 1$, and we define 
+%         \item If $d = 0$, then $k = 1$, and we define
 %         \[
 %         (X_1)_P = X_1.
 %         \]
-%         \item Suppose next that $d > 0$, and that we have defined $Q$-concatenation  for all profiles $Q$ of depth $<d$. We can write 
+%         \item Suppose next that $d > 0$, and that we have defined $Q$-concatenation  for all profiles $Q$ of depth $<d$. We can write
 %     \[
 %     P = (P_1,\dots,P_r)
 %     \]
-%     where each mode $P_i$ has depth $< d$. If for each $1 \leq i \leq r$, we set 
-%     \[\ell_i = \len_{<i}(P) = \len(P_1) + \cdots + \len(P_{i-1}),\] 
+%     where each mode $P_i$ has depth $< d$. If for each $1 \leq i \leq r$, we set
+%     \[\ell_i = \len_{<i}(P) = \len(P_1) + \cdots + \len(P_{i-1}),\]
 %     then we define
 %     \[
 %     (X,\dots,X_k)_P = ((X_{1},\dots,X_{\ell_2})_{P_1},\dots,(X_{\ell_r +1},\dots,X_{\ell_{r+1}})_{P_r}).
@@ -735,7 +735,7 @@ X_1 &= ((4,8),(4,8)) \quad & X_2 &= (((1,1),(5,10))) \quad & \text{不同余}\\
 
 \begin{aside}
     嵌套元组的代入有一种 {\it operad 式}的解释。整数嵌套元组的集合 $\mathterm{Nest}(\mathbb{Z})$ 是 operad $\mathterm{Profile}$ 上的一个{\it 代数}（algebra），其结构映射由 $Q$-代入给出：
-    \[ \begin{tikzcd} 
+    \[ \begin{tikzcd}
     \mathterm{Nest}(\mathbb{Z})\times \dots \times \mathterm{Nest}(\mathbb{Z})\times \mathterm{Profile}(n) \ar[rr] & & \mathterm{Nest}(\mathbb{Z})\\
     (X_1,\dots,X_m),Q \ar[rr,mapsto] & & (X_1,\dots,X_m)_Q.
     \end{tikzcd}\]
@@ -743,18 +743,18 @@ X_1 &= ((4,8),(4,8)) \quad & X_2 &= (((1,1),(5,10))) \quad & \text{不同余}\\
 
 
 
-% Next, we define the substitution operation, which replaces a given entry of a nested tuple with some other nested tuple. 
+% Next, we define the substitution operation, which replaces a given entry of a nested tuple with some other nested tuple.
 
 % \begin{definition}[Substitution]\label{definitionofsubstitution}
 %     Suppose $X$ is a nested tuple of length $\len(X) = \ell$ and $\rank(X) = r$. Suppose $Y$ is some other nested tuple and $1 \leq i \leq \ell$. We define a nested tuple $\sub_i(X,Y)$ as follows:
 %     \begin{enumerate}
-%         \item If $\depth(X) = 0$, so $i = 1$, we set 
-%         \[\sub_i(X,Y) = Y.\] 
-%         \item If $\text{depth(X)} > 0$, and $j$ is the largest integer such that 
+%         \item If $\depth(X) = 0$, so $i = 1$, we set
+%         \[\sub_i(X,Y) = Y.\]
+%         \item If $\text{depth(X)} > 0$, and $j$ is the largest integer such that
 %         \[ N \coloneq \len_{<j}(X) < i,\]
-%         we define $\sub_i(X,Y)$ to be the nested tuple of rank $r$ with 
+%         we define $\sub_i(X,Y)$ to be the nested tuple of rank $r$ with
 %         \[
-%         \mode_{i'}(\sub_i(X,Y)) = 
+%         \mode_{i'}(\sub_i(X,Y)) =
 %         \begin{cases}
 %             \mode_{i'}(X) & i' \neq j\\
 %             \sub_{i-N}(\mode_j(X),Y) & i' = j.
@@ -764,7 +764,7 @@ X_1 &= ((4,8),(4,8)) \quad & X_2 &= (((1,1),(5,10))) \quad & \text{不同余}\\
 % \end{definition}
 
 % \begin{example}\label{exampleofsubstitution1}
-%     If $X = (2,2,2)$ and $Y = (5,5)$, then 
+%     If $X = (2,2,2)$ and $Y = (5,5)$, then
 %     \begin{align*}
 %         \sub_1(X,Y) & = \bigl((5,5),2,2\bigr),\\
 %         \sub_2(X,Y) & = \bigl(2,(5,5),2\bigr),\\
@@ -773,7 +773,7 @@ X_1 &= ((4,8),(4,8)) \quad & X_2 &= (((1,1),(5,10))) \quad & \text{不同余}\\
 % \end{example}
 
 % \begin{example}\label{exampleofsubstitution2}
-% If $X = ((2,(3,3)),5)$ and $Y = (10,(12,14))$, then 
+% If $X = ((2,(3,3)),5)$ and $Y = (10,(12,14))$, then
 %     \begin{align*}
 %         \sub_1(X,Y) & = (((10,(12,14)),(3,3)),5).
 %     \end{align*}
@@ -790,29 +790,29 @@ X_1 &= ((4,8),(4,8)) \quad & X_2 &= (((1,1),(5,10))) \quad & \text{不同余}\\
 % \end{definition}
 
 % \begin{example}
-%     If $X = (3,4)$ and $Y = (7,8)$ then 
+%     If $X = (3,4)$ and $Y = (7,8)$ then
 %     \[
 %     \sub(X,Y) = (7,8)
 %     \]
-%     More generally, if $X$ and $Y$ have depth $1$ and $\len(X) = \rank(Y)$, then $\sub(X,Y) = Y$. 
+%     More generally, if $X$ and $Y$ have depth $1$ and $\len(X) = \rank(Y)$, then $\sub(X,Y) = Y$.
 % \end{example}
 
 
 % \begin{example}\label{exampleofmultiplesubstitution1}
-%     If $X = ((2,2),2)$,  and $Y = ((100),5,(4,(4,7)))$, then 
+%     If $X = ((2,2),2)$,  and $Y = ((100),5,(4,(4,7)))$, then
 %     \begin{align*}
 %         \sub(X,Y) & = (((100),5),(4,(4,7))).
 %     \end{align*}
 % \end{example}
 
 % \begin{lemma}\label{flatteningofcompositionofnestedtuples}
-%     Suppose $X$ is a nested tuple with $\len(X) = \ell > 0$, and suppose $Y$ is a nested tuple with $\rank(Y) = \ell$. Then 
+%     Suppose $X$ is a nested tuple with $\len(X) = \ell > 0$, and suppose $Y$ is a nested tuple with $\rank(Y) = \ell$. Then
 %     \[\sub(X,Y)^\flat = Y^\flat\]
 % \end{lemma}
 % \begin{proof}
 %     This follows from the observation that for a nested tuple $X$ of length $\ell$, a nested tuple $Z$, and an integer $1 \leq i \leq r$, if we write $X_i = \entry_i(X)$ and $Z_i = \entry_i(Z)$, then we have
 %     \[
-%     \sub_i(X,Z)^\flat = \Bigl(X_1 , \dots ,X_{i-1} , Z_1 , \dots , Z_{\len(Z)}, X_{i+1} , \dots, X_\ell \Bigr) 
+%     \sub_i(X,Z)^\flat = \Bigl(X_1 , \dots ,X_{i-1} , Z_1 , \dots , Z_{\len(Z)}, X_{i+1} , \dots, X_\ell \Bigr)
 %     \]
 % \end{proof}
 
@@ -824,13 +824,13 @@ X_1 &= ((4,8),(4,8)) \quad & X_2 &= (((1,1),(5,10))) \quad & \text{不同余}\\
 若 $X'$ 与 $X$ 是嵌套元组，则我们称 $X'$ {\it 加细} $X$，如果下列之一成立
     \begin{enumerate}
     \item $X = \size(X')$；或
-    \item 
+    \item
     \begin{enumerate}
     \item $\depth(X'),\depth(X) > 0$，
     \item $\rank(X') = \rank(X)$，且
     \item 对每个 $1 \leq i \leq \rank(X)$，$\mode_i(X')$ 加细 $\mode_i(X)$。
     \end{enumerate}
-    \end{enumerate} 
+    \end{enumerate}
 \end{definition}
 
 \begin{notation}
@@ -859,7 +859,7 @@ X_1 &= ((4,8),(4,8)) \quad & X_2 &= (((1,1),(5,10))) \quad & \text{不同余}\\
 %     \begin{enumerate}
 %     \item If $d \geq \depth(X)$, we define $\red_{\leq d}(X) = X$.
 %     \item If $\depth(X) > d$ and $d = 0$, we define $\red_{\leq 0}(X) = \size(X)$.
-%         \item If $\depth(X) > d$ and $d > 0 $, we set 
+%         \item If $\depth(X) > d$ and $d > 0 $, we set
 %         \[
 %         \red_{\leq d}(X) = (\red_{\leq d-1}(\mode_1(X)),\dots, \red_{\leq d-1}(\mode_r(X))).
 %         \]
@@ -867,7 +867,7 @@ X_1 &= ((4,8),(4,8)) \quad & X_2 &= (((1,1),(5,10))) \quad & \text{不同余}\\
 % \end{definition}
 
 % \begin{example}
-%     If $X = (((25)))$, then $\depth(X)= 3$, and 
+%     If $X = (((25)))$, then $\depth(X)= 3$, and
 %         \begin{align*}
 %         \red_{\leq 0}(X) & = 25\\
 %         \red_{\leq 1}(X) & = (25)\\
@@ -877,9 +877,9 @@ X_1 &= ((4,8),(4,8)) \quad & X_2 &= (((1,1),(5,10))) \quad & \text{不同余}\\
 % \end{example}
 
 % \begin{example}
-%     If  
+%     If
 %     \[X = (((2,(2,2)),5),3,(10,2)),\]
-%     then $\depth(X) = 4$, and 
+%     then $\depth(X) = 4$, and
 %     \begin{align*}
 %         \red_{\leq 0}(X) & = 2400\\
 %         \red_{\leq 1}(X) & = (40,3,20)\\
@@ -890,7 +890,7 @@ X_1 &= ((4,8),(4,8)) \quad & X_2 &= (((1,1),(5,10))) \quad & \text{不同余}\\
 % \end{example}
 
 % \begin{example}
-%     If $\depth(X) > 0$, and $\rank(X) = r$, then the depth $\leq 1$ reduction of $X$ is the tuple 
+%     If $\depth(X) > 0$, and $\rank(X) = r$, then the depth $\leq 1$ reduction of $X$ is the tuple
 %     \[
 %     \red_{\leq 1}(X) = \Bigl(\size_1(X),\dots, \size_r(X)\Bigr).
 %     \]
@@ -909,7 +909,7 @@ X_1 &= ((4,8),(4,8)) \quad & X_2 &= (((1,1),(5,10))) \quad & \text{不同余}\\
     X' &  \depth(X) = 0 \text{ (从而 }i=\ell=1\text{)}\\
  \mode_{i - N}(\mode_j(X'),\mode_j(X)) & \begin{matrix} j \text{ 是满足如下条件的最大整数：}\\
  N \coloneqq \len_{<j}(X) < i. \\
- \end{matrix} 
+ \end{matrix}
 \end{cases}
 \]
 \end{construction}
@@ -941,7 +941,7 @@ X_1 &= ((4,8),(4,8)) \quad & X_2 &= (((1,1),(5,10))) \quad & \text{不同余}\\
 \begin{example}
     若 $X'$ 是满足 $\size(X') = N$ 的嵌套元组，则 $X'$ 加细 $N$，且 $X'$ 相对于 $N$ 的唯一模式为
     \[
-    \mode_1(X',N) = X'. 
+    \mode_1(X',N) = X'.
     \]
 \end{example}
 
@@ -960,11 +960,11 @@ X_1 &= ((4,8),(4,8)) \quad & X_2 &= (((1,1),(5,10))) \quad & \text{不同余}\\
 
 
 % \begin{proposition}
-%     Suppose $X'$ and $X$ are nested tuples. Then $X'$ refines $X$ if and only if 
+%     Suppose $X'$ and $X$ are nested tuples. Then $X'$ refines $X$ if and only if
 %     \[
 %     X' = \sub(X,(X_1',\dots,X_m')).
 %     \]
-%     for some uniquely determined nested tuples $X_1',\dots,X_m'$, namely 
+%     for some uniquely determined nested tuples $X_1',\dots,X_m'$, namely
 %     \[
 %     X_i' = \mode_i(X',X).
 %     \]
@@ -981,7 +981,7 @@ X_1 &= ((4,8),(4,8)) \quad & X_2 &= (((1,1),(5,10))) \quad & \text{不同余}\\
     \]
 \end{definition}
 
-\begin{example} 
+\begin{example}
 若 $X' = (((2,2),(3,3)),((5,5),(7,7)))$ 且 $X = ((4,9),(25,49))$，则
 \[
 \flatten(X',X) = ((2,2),(3,3),(5,5),(7,7)).
@@ -998,34 +998,34 @@ X_1 &= ((4,8),(4,8)) \quad & X_2 &= (((1,1),(5,10))) \quad & \text{不同余}\\
 \begin{example}
     若 $X = X^\flat$ 是元组，且 $X'$ 加细 $X$，则 $X'$ 相对于 $X$ 的扁平化为
     \[
-    \flatten(X',X) = X'. 
+    \flatten(X',X) = X'.
     \]
 \end{example}
 
 \begin{example}
     若 $X'$ 是满足 $\size(X') = N$ 的嵌套元组，则 $X'$ 加细 $N$，且 $X'$ 相对于 $N$ 的扁平化为
     \[
-    \flatten(X',N) = (N). 
+    \flatten(X',N) = (X').
     \]
 \end{example}
 
 \begin{observation}
-    若 $X'$ 加细 $X$，则 $\flatten(X',X)$ 加细 $X^\flat$。 
+    若 $X'$ 加细 $X$，则 $\flatten(X',X)$ 加细 $X^\flat$。
 \end{observation}
 
 
-% Every refinement $X' \twoheadrightarrow X$ encodes a generalized colexicographic isomorphism. In order to make this precise, we introduce some notation. 
+% Every refinement $X' \twoheadrightarrow X$ encodes a generalized colexicographic isomorphism. In order to make this precise, we introduce some notation.
 
 % \begin{definition}
 %     If $X$ is a nested tuple, then we define $[0,X)$ to be the finite set whose elements are nested tuples $Y$ of non-negative integers such that
 %     \begin{enumerate}
-%         \item $Y$ is congruent to $X$, and 
+%         \item $Y$ is congruent to $X$, and
 %         \item if $1 \leq i \leq \text{length}(X)$, then $0 \leq \text{entry}_i(Y)  < \text{entry}_i(X)$.
 %     \end{enumerate}
 % \end{definition}
 
 % \begin{example}
-%     If $X = (8,(3,5))$, then 
+%     If $X = (8,(3,5))$, then
 %     \[
 %     [0,X) =  [0,8) \times \left([0,3) \times [0,5) \right).
 %     \]
@@ -1035,11 +1035,11 @@ X_1 &= ((4,8),(4,8)) \quad & X_2 &= (((1,1),(5,10))) \quad & \text{不同余}\\
 % \begin{observation}
 %     We can give a recursive description of $[0,X)$. If we choose $\{()\}$ for our model of the empty product of sets, i.e.
 %     \[\prod_{\varnothing} = \{()\},\]
-%     then  
+%     then
 %     \[
 %     [0,X) = \begin{cases}
 % \{0,\dots,X-1\} & \text{depth}(X) = 0\\
-% \prod_{i=1}^{\text{rank}(X)} [0,\text{mode}_i(X)) & \text{depth}(X) > 0. 
+% \prod_{i=1}^{\text{rank}(X)} [0,\text{mode}_i(X)) & \text{depth}(X) > 0.
 %     \end{cases}
 %     \]
 % \end{observation}
@@ -1050,9 +1050,9 @@ X_1 &= ((4,8),(4,8)) \quad & X_2 &= (((1,1),(5,10))) \quad & \text{不同余}\\
 %     \[
 %     \colex_{X'}^{X}:[0,X') \to [0,X)
 %     \]
-%     as follows. 
+%     as follows.
 %     \begin{itemize}
-%         \item If $\depth(X) = 0$, we define 
+%         \item If $\depth(X) = 0$, we define
 %         \[
 %         \colex_{X'}^X = \colex_X
 %         \]
@@ -1061,10 +1061,7 @@ X_1 &= ((4,8),(4,8)) \quad & X_2 &= (((1,1),(5,10))) \quad & \text{不同余}\\
 
 
 
-\newpage 
+\newpage
 
 
-\newpage 
-
-
-
+\newpage

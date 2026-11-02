@@ -39,7 +39,7 @@ S_i' = \mode_i(S',S)
 \]
 记为 $S'$ 相对于 $S$ 的各模式（mode）。$S'$ 与 $(S_1',\dots,S_m')$ 有相同的扁平化，于是我们有一个重新加括号同构（reparenthesization isomorphism）
 \[
-\begin{tikzcd} 
+\begin{tikzcd}
 \id_{(S_1',\dots,S_m')}^{S'}:(S_1',\dots,S_m') \ar[r,"\cong"] & S'
 \end{tikzcd}
 \]
@@ -49,15 +49,15 @@ S_i' = \mode_i(S',S)
 \]
 为 $(S_1',\dots,S_m')$ 的第 $i$ 个模式包含映射与重新加括号同构 $(S_1',\dots,S_m') \cong S'$ 复合（composite）而成的态射
 \[
-\begin{tikzcd} 
+\begin{tikzcd}
 S_i' \ar[rrr,"\incl_i((S_1'{,}\dots{,}S_m'))"] & & & (S_1',\dots,S_m') \ar[rr,"\id_{(S_1',\dots,S_m')}^{S'}"] & & S'
-\end{tikzcd} 
+\end{tikzcd}
 \]
 \end{construction}
 
 \begin{example}
     若 $S = (4,(9,25))$ 且 $S' = ((2,2),((3,3),25))$，则 $S'$ 加细 $S$，且 $\incl_2(S',S)$ 是嵌套元组态射（nested tuple morphism）
-    \[ \begin{tikzcd} 
+    \[ \begin{tikzcd}
     (3,3) \ar[rr,"\incl_2(S'{,}S)"] \ar[rr,swap,"(3{,}4)"] & & ((2,2),((3,3),25)).
     \end{tikzcd} \]
 \end{example}
@@ -70,7 +70,7 @@ S_i' \ar[rrr,"\incl_i((S_1'{,}\dots{,}S_m'))"] & & & (S_1',\dots,S_m') \ar[rr,"\
     它是复合
     \[
     \begin{tikzcd} S_i' \ar[rr ,"\incl_i(S'{,}S)"] & & S' \ar[r,"f'"] &  T'
-    \end{tikzcd} 
+    \end{tikzcd}
     \]
     特别地，我们有
     \[
@@ -80,11 +80,11 @@ S_i' \ar[rrr,"\incl_i((S_1'{,}\dots{,}S_m'))"] & & & (S_1',\dots,S_m') \ar[rr,"\
 
 \begin{example}
     设 $S = (4,(9,25))$ 且 $S' = ((2,2),((3,3),25))$，于是 $S'$ 加细 $S$。若 $f'$ 是嵌套元组态射
-    \[ \begin{tikzcd} 
+    \[ \begin{tikzcd}
     ((2,2),((3,3),25)) \ar[rr,"f'"] \ar[rr,swap,"(1{,}3{,}2{,}*{,}4)"] & & (2,3,2,25).
     \end{tikzcd} \]
     则 $\mode_2(f',S)$ 是嵌套元组态射
-    \[ \begin{tikzcd} 
+    \[ \begin{tikzcd}
     (3,3) \ar[rr,"\mode_2(f'{,}S)"] \ar[rr,swap,"(2{,}*)"] & & (2,3,2,25).
     \end{tikzcd} \]
 \end{example}
@@ -100,12 +100,12 @@ S_i' \ar[rrr,"\incl_i((S_1'{,}\dots{,}S_m'))"] & & & (S_1',\dots,S_m') \ar[rr,"\
     \]
     表示 $T'$ 相对于 $T$ 的第 $j$ 个模式，且对任意 $1 \leq i \leq \len(S)$，规定
     \[
-    S_i' = 
-    \begin{cases} 
+    S_i' =
+    \begin{cases}
     \entry_i(S) & \alpha(i) = *\\
     T'_j & \alpha(i) = j.
     \end{cases}
-    \] 
+    \]
     我们定义 $T'$ {\it 沿} $f$ 的{\it 拉回}（pullback）为嵌套元组
     \[
     S' = f^*T' = \sub(S,(S_1',\dots,S_m')).
@@ -127,7 +127,7 @@ S_i' \ar[rrr,"\incl_i((S_1'{,}\dots{,}S_m'))"] & & & (S_1',\dots,S_m') \ar[rr,"\
     S' \ar[rrr,"\id_{S'}^{(S_1'{,}\dots{,}S_m')}"] & & &  (S_1',\dots,S_m') \ar[rr,"(f_1'{,}\dots{,}f_m')"] & & T'.
     \end{tikzcd} \]
     我们把 $f'$ 称为 $f$ 沿 $T$ 的拉回，并把这样的拉回描绘为一个方块
-    \[ \begin{tikzcd} 
+    \[ \begin{tikzcd}
     S' \ar[r,"f'"] \ar[d, two heads] \arrow[dr, phantom, "\lrcorner", very near start] & T' \ar[d,two heads] \\
     S \ar[r,swap,"f"] & T.
     \end{tikzcd} \]
@@ -135,9 +135,9 @@ S_i' \ar[rrr,"\incl_i((S_1'{,}\dots{,}S_m'))"] & & & (S_1',\dots,S_m') \ar[rr,"\
 
 \begin{example}
     设 $f:(64,32) \to (4,64,4,32)$ 位于 $\alpha = (2,4)$ 之上。则我们有一个拉回方块（pullback square）
-    \[ \begin{tikzcd} 
+    \[ \begin{tikzcd}
     ((16,4),(16,2)) \ar[d,two heads] \ar[r,"f'"] \arrow[dr, phantom, "\lrcorner", very near start] & ((2,2),(16,4),(2,2),(16,2)) \ar[d, two heads] \\
-    (64,32) \ar[r,swap,"f"] & (4,64,4,32) 
+    (64,32) \ar[r,swap,"f"] & (4,64,4,32)
     \end{tikzcd} \]
     其中 $f'$ 位于 $\alpha' = (3,4,7,8)$ 之上。
 \end{example}
@@ -153,10 +153,10 @@ S_i' \ar[rrr,"\incl_i((S_1'{,}\dots{,}S_m'))"] & & & (S_1',\dots,S_m') \ar[rr,"\
     \]
     则 $S' \twoheadrightarrow S$ 沿去扁平化同构（unflattening isomorphism）
     \[
-    \id_{(s_1,\dots,s_m)}^S :(s_1,\dots,s_m) \to S 
+    \id_{(s_1,\dots,s_m)}^S :(s_1,\dots,s_m) \to S
     \]
     的拉回是重新加括号同构
-    \[ \begin{tikzcd} 
+    \[ \begin{tikzcd}
     (S_1',\dots,S_m') \ar[rr,"\id_{(S_1'{,}\dots{,}S_m')}^{S'}"] \ar[d, two heads] \arrow[drr, phantom, "\lrcorner", very near start] & & S' \ar[d,two heads] \\
     (s_1,\dots,s_m) \ar[rr,swap,"\id_{(s_1{,}\dots{,}s_m)}^S"] & & S.
     \end{tikzcd}
@@ -169,7 +169,7 @@ S_i' \ar[rrr,"\incl_i((S_1'{,}\dots{,}S_m'))"] & & & (S_1',\dots,S_m') \ar[rr,"\
     s_i \to S.
     \]
     则 $S' \twoheadrightarrow S$ 沿 $s_i \to S$ 的拉回是第 $i$ 个相对模式包含映射
-        \[ \begin{tikzcd} 
+        \[ \begin{tikzcd}
     S_i' \ar[rr,"\incl_i(S'{,}S)"] \ar[d, two heads] \arrow[drr, phantom, "\lrcorner", very near start] & & S' \ar[d,two heads] \\
     s_i \ar[rr,swap] & & S.
     \end{tikzcd}
@@ -178,10 +178,10 @@ S_i' \ar[rrr,"\incl_i((S_1'{,}\dots{,}S_m'))"] & & & (S_1',\dots,S_m') \ar[rr,"\
 
 \begin{observation}
     上面的拉回构造给出了一个反变函子（contravariant functor）
-    \[ \begin{tikzcd} 
+    \[ \begin{tikzcd}
 \catstyle{Nest}^\text{op} \ar[r] & \catstyle{Cat} \\
     S \ar[r,mapsto] \ar[d,swap,"f"] & \catstyle{Ref}(S)  & f^*T' \leftarrow f^*T'' \\
-    T \ar[r,mapsto]  & \catstyle{Ref}(T) \ar[u,swap,"f^*"] & T' \leftarrow T'' \ar[u,mapsto] 
+    T \ar[r,mapsto]  & \catstyle{Ref}(T) \ar[u,swap,"f^*"] & T' \leftarrow T'' \ar[u,mapsto]
     \end{tikzcd} \]
 \end{observation}
 
@@ -189,7 +189,7 @@ S_i' \ar[rrr,"\incl_i((S_1'{,}\dots{,}S_m'))"] & & & (S_1',\dots,S_m') \ar[rr,"\
 
 \begin{lemma}\label{pullbacklemma}
     设
-    \[ \begin{tikzcd} 
+    \[ \begin{tikzcd}
     S' \ar[r,"f'"] \ar[d, two heads] \arrow[dr, phantom, "\lrcorner", very near start] & T' \ar[d,two heads] \\
     S \ar[r,swap,"f"] & T
     \end{tikzcd} \]
@@ -227,7 +227,7 @@ S_i' \ar[rrr,"\incl_i((S_1'{,}\dots{,}S_m'))"] & & & (S_1',\dots,S_m') \ar[rr,"\
 
 \begin{proposition}\label{pullbackproposition}
     若
-    \[ \begin{tikzcd} 
+    \[ \begin{tikzcd}
     S' \ar[r,"f'"] \ar[d, two heads] \arrow[dr, phantom, "\lrcorner", very near start] & T' \ar[d,two heads] \\
     S \ar[r,swap,"f"] & T
     \end{tikzcd} \]
@@ -268,8 +268,8 @@ S_i' \ar[rrr,"\incl_i((S_1'{,}\dots{,}S_m'))"] & & & (S_1',\dots,S_m') \ar[rr,"\
     \]
     表示 $S'$ 相对于 $S$ 的第 $i$ 个模式，且对任意 $1 \leq j \leq \len(T)$，规定
     \[
-    T_j' = 
-    \begin{cases} 
+    T_j' =
+    \begin{cases}
     \entry_j(T) & j \notin \Image(\alpha) \\
     S'_i & \alpha(i) = j.
     \end{cases}
@@ -280,7 +280,7 @@ S_i' \ar[rrr,"\incl_i((S_1'{,}\dots{,}S_m'))"] & & & (S_1',\dots,S_m') \ar[rr,"\
     \]
     对任意 $1 \leq i \leq m$，令
     \[
-    f_i':S_i' \to T' 
+    f_i':S_i' \to T'
     \]
     在 $\alpha(i) = *$ 时为平凡映射，在 $\alpha(i) = j$ 时为相对模式包含映射
     \[
@@ -295,7 +295,7 @@ S_i' \ar[rrr,"\incl_i((S_1'{,}\dots{,}S_m'))"] & & & (S_1',\dots,S_m') \ar[rr,"\
     S' \ar[rrr,"\id_{S'}^{(S_1'{,}\dots{,}S_m')}"] & & &  (S_1',\dots,S_m') \ar[rr,"(f_1'{,}\dots{,}f_m')"] & & T'.
     \end{tikzcd} \]
     我们把 $f'$ 称为 $f$ 沿 $T$ 的前推。我们把这样的前推描绘为
-    \[ \begin{tikzcd} 
+    \[ \begin{tikzcd}
     S' \ar[r,"f'"] \ar[d,two heads] & \arrow[dl, phantom, "\llcorner", very near start]T' \ar[d,two heads] \\
     S \ar[r,swap,"f"] & T\\
     \end{tikzcd} \]
@@ -303,7 +303,7 @@ S_i' \ar[rrr,"\incl_i((S_1'{,}\dots{,}S_m'))"] & & & (S_1',\dots,S_m') \ar[rr,"\
 
 \begin{example}
     若 $f:(64,32) \to (4,64,4,32)$ 位于 $\alpha = (2,4)$ 之上，则我们有一个前推方块（pushforward square）
-    \[ \begin{tikzcd} 
+    \[ \begin{tikzcd}
     ((16,4),(16,2)) \ar[r,"f'"] \ar[d,two heads] & \arrow[dl, phantom, "\llcorner", very near start](4,(16,4),4,(16,2)) \ar[d, two heads] \\
     (64,32) \ar[r,swap,"f"] & (4,64,4,32)\\
     \end{tikzcd} \]
@@ -315,12 +315,12 @@ S_i' \ar[rrr,"\incl_i((S_1'{,}\dots{,}S_m'))"] & & & (S_1',\dots,S_m') \ar[rr,"\
 
 \begin{lemma}\label{pushforwardlemma}
     设
-    \[ \begin{tikzcd} 
+    \[ \begin{tikzcd}
     S' \ar[r,"f'"] \ar[d, two heads] & T' \ar[d,two heads]\arrow[dl, phantom, "\llcorner", very near start] \\
     S \ar[r,swap,"f"] & T
     \end{tikzcd} \]
     是一个前推方块，其中 $f$ 位于 $\alpha$ 之上。令
-    \[f_i' : S_i' \to T\]
+    \[f_i' : S_i' \to T'\]
     表示 $f'$ 相对于 $S$ 的第 $i$ 个模式，
     并令
     \[(L_f)^\flat = (s_1,\dots,s_m):(d_1,\dots,d_m).\]
@@ -336,7 +336,7 @@ S_i' \ar[rrr,"\incl_i((S_1'{,}\dots{,}S_m'))"] & & & (S_1',\dots,S_m') \ar[rr,"\
 
 \begin{proposition}\label{pushforwardproposition}
     若
-    \[ \begin{tikzcd} 
+    \[ \begin{tikzcd}
     S' \ar[r,"f'"] \ar[d, two heads]  & T' \ar[d,two heads]\arrow[dl, phantom, "\llcorner", very near start] \\
     S \ar[r,swap,"f"] & T
     \end{tikzcd} \]
@@ -351,10 +351,10 @@ S_i' \ar[rrr,"\incl_i((S_1'{,}\dots{,}S_m'))"] & & & (S_1',\dots,S_m') \ar[rr,"\
 
 \begin{observation}
     上面定义的前推构造给出了一个协变函子（covariant functor）
-    \[ \begin{tikzcd} 
+    \[ \begin{tikzcd}
     \catstyle{Nest} \ar[r] & \catstyle{Cat} \\
     S \ar[r,mapsto] \ar[d,swap,"f"] & \catstyle{Ref}(S) \ar[d,"f_*"] & S'' \rightarrow S'\ar[d,mapsto]  \\
-    T \ar[r,mapsto]  & \catstyle{Ref}(T)  & f_*S'' \rightarrow f_*S'   
+    T \ar[r,mapsto]  & \catstyle{Ref}(T)  & f_*S'' \rightarrow f_*S'
     \end{tikzcd} \]
 \end{observation}
 
@@ -386,40 +386,40 @@ S_i' \ar[rrr,"\incl_i((S_1'{,}\dots{,}S_m'))"] & & & (S_1',\dots,S_m') \ar[rr,"\
 
 \begin{definition}
 设 $T$ 与 $U$ 是嵌套元组。$(T,U)$ 的一个{\it 相互加细}是形如
-\[ \begin{tikzcd} 
+\[ \begin{tikzcd}
 T' \ar[r,rightarrowtail] \ar[d, two heads] & U' \ar[d,two heads] \\
 T & U
 \end{tikzcd} \]
 的图。确切地说，这是一对嵌套元组 $(T',U')$，满足\begin{enumerate}
     \item $T'$ 加细 $T$，
     \item $U'$ 加细 $U$，且
-    \item $T'$ 整除（divides）$U'$。 
+    \item $T'$ 整除（divides）$U'$。
 \end{enumerate}
 \end{definition}
 
 除相互加细的定义之外，我们还需要下面的事实。
 
 \begin{lemma}\label{mutualrefinementsofflattenings}
-    设 $T$ 与 $U$ 是嵌套元组。则 $(T,U)$ 的相互加细与 $(T^\flat,U^\flat)$ 的相互加细之间存在一一对应。 
+    设 $T$ 与 $U$ 是嵌套元组。则 $(T,U)$ 的相互加细与 $(T^\flat,U^\flat)$ 的相互加细之间存在一一对应。
 \end{lemma}
 \begin{proof}
     若 $(T',U')$ 是 $(T,U)$ 的一个相互加细，则沿去扁平化同构 $\id_{T^\flat}^T$ 与 $\id_{U^\flat}^U$ 作拉回，得到 $(T^\flat, U^\flat)$ 的一个相互加细
-    \[ \begin{tikzcd} 
+    \[ \begin{tikzcd}
  (\id_{T^\flat}^T)^*T' \ar[r,rightarrowtail] \ar[d, two heads] & (\id_{U^\flat}^U)^*U' \ar[d,two heads] \\
 T^\flat & U^\flat
 \end{tikzcd} \]
-    反之，若 $((T^\flat)',(U^\flat)')$ 是 $T^\flat,U^\flat$ 的一个相互加细，则沿扁平化同构（flattening isomorphism）$\id^{T^\flat}_T$ 与 $\id^{U^\flat}_U$ 作拉回，得到 $(T^\flat, U^\flat)$ 的一个相互加细
-    \[ \begin{tikzcd} 
+    反之，若 $((T^\flat)',(U^\flat)')$ 是 $T^\flat,U^\flat$ 的一个相互加细，则沿扁平化同构（flattening isomorphism）$\id^{T^\flat}_T$ 与 $\id^{U^\flat}_U$ 作拉回，得到 $(T, U)$ 的一个相互加细
+    \[ \begin{tikzcd}
  (\id^{T^\flat}_T)^*(T^\flat)' \ar[r,rightarrowtail] \ar[d, two heads] & (\id^{U^\flat}_U)^*(U^\flat)' \ar[d,two heads] \\
 T & U
 \end{tikzcd} \]
 \end{proof}
 % \begin{construction}
-%     Suppose $S'$ is a refinement of $S$, and suppose $\len(S') = m'$ and $\len(S) = m$. We may define a pointed map 
+%     Suppose $S'$ is a refinement of $S$, and suppose $\len(S') = m'$ and $\len(S) = m$. We may define a pointed map
 %     \[
 %     \mu:\langle m' \rangle_* \to \langle m \rangle_*
 %     \]
-%     by the formula 
+%     by the formula
 %     \[
 %     \mu(i') = \text{max}\{i \in \langle m \rangle \mid \len_i(S',S) < i' \}.
 %     \]
@@ -433,4 +433,4 @@ T & U
 
 
 
-\newpage 
+\newpage

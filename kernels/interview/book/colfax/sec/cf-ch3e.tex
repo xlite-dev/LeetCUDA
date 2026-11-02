@@ -212,10 +212,12 @@ f_i:S_i \to T.
     \end{align*}
     \item （情形 2）：设 $m = 1$。则
     \begin{align*}
-        L_{\coalesce(f)} & = s_1:t_1 \dots,t_{\alpha(1)-1}\\
-        & = \coalesce((s_1):(t_1\cdots
-        t_{\alpha(1)-1}))\\
-        &= \coalesce(L_{\coalesce^\flat(f^\flat)})\\
+        L_{\coalesce(f)} & =
+        \begin{cases}
+          s_1:0, & \alpha(1)=*,\\
+          s_1:t_1\cdots t_{\alpha(1)-1}, & \alpha(1)\neq *,
+        \end{cases}\\
+        & = \coalesce(L_{\coalesce^\flat(f^\flat)})\\
         & = \coalesce(\coal^\flat(L_{f^\flat}))\\
         & = \coalesce((L_f)^\flat)\\
         & = \coalesce(L_f).
@@ -423,7 +425,7 @@ f_i:S_i \to T.
 \end{proof}
 
 
-\begin{proposition}\label{coalescedlayoutoftuplemorphismcomplement}
+\begin{proposition}\label{coalescedlayoutofnestedtuplemorphismcomplement}
     若 $f:S \to T$ 是单射嵌套元组态射，则
     \[
     \coalesce(L_{f^c}) = \comp(L_f,\size(T)).
@@ -433,7 +435,7 @@ f_i:S_i \to T.
 \[
 L_{f^c} = L_{(f^\flat)^c}
 \]
-故由命题 \ref{coalescedlayoutoftuplemorphismcomplement} 可得
+故由命题 \ref{coalescedlayoutofnestedtuplemorphismcomplement} 可得
 \[
 \coal^\flat(L_{f^c})  = \comp^\flat(L_f,\size(T)).
 \]
@@ -512,7 +514,7 @@ L_{f^c} = L_{(f^\flat)^c}
 % \end{remark}
 
 \begin{definition}\label{definitionoflogicaldivisionofnestedtuplemorphisms}
-    设 $g:S \to T$ 与 $f:T \to U$ 是嵌套元组态射。我们把 $f$ 除以 $g$ 的逻辑切分定义为嵌套元组态射
+    设 $g:S \to T$ 与 $f:T \to U$ 是嵌套元组态射，且 $g$ 可求补（即 $g^\flat$ 位于单射映射之上）。我们把 $f$ 除以 $g$ 的逻辑切分定义为嵌套元组态射
     \[
     f \oslash g = f \circ (g,g^c).
     \]
@@ -534,20 +536,20 @@ L_{f^c} = L_{(f^\flat)^c}
     除以
     \[ \begin{tikzcd} (8,512) \ar[rr,"g"] \ar[rr,swap,"(1{,}5)"] & &  (8,8,512,512,512) \end{tikzcd} \]
     所得的逻辑切分是
-    \[ \begin{tikzcd} ((8,512),(8,512,512)) \ar[rr,"f \oslash g"] \ar[rr,swap,"(*{,}1{,}*{,}2{,}3)"] & &  ((4,2),(4,2)). \end{tikzcd} \]
+    \[ \begin{tikzcd} ((8,512),(8,512,512)) \ar[rr,"f \oslash g"] \ar[rr,swap,"(*{,}1{,}*{,}2{,}3)"] & &  (512,512,512). \end{tikzcd} \]
 \end{example}
 
 
 
 \begin{proposition}\label{coalesceoflogicaldivision}
-    若 $g:S \to T$ 与 $f:T \to U$ 是非退化嵌套元组态射，则
+    若 $g:S \to T$ 与 $f:T \to U$ 是非退化嵌套元组态射，且 $g$ 可求补，则
     \[
     \coalesce(L_{f \oslash g}) = \coalesce(L_f \oslash L_g).
     \]
 \end{proposition}
 
 \begin{proof}
-由命题 \ref{coalescedlayoutoftuplemorphismcomplement}，我们有
+由命题 \ref{coalescedlayoutofnestedtuplemorphismcomplement}，我们有
 \[
 \coalesce(\comp(L_g,\size(L_f))) = \coalesce(L_{g^c})
 \]
@@ -656,4 +658,3 @@ f \otimes g = (f , f^c \circ g).
 \end{proof}
 
 \newpage
-
