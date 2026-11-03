@@ -552,7 +552,7 @@ PRO 5000（sm\_120）实测——\textbf{形态结论（谁快谁慢、随 D 怎
 走）跨设备可迁移，绝对数字不可}，引用这类比值时必须带上设备名。
 
 \noindent{\footnotesize 注：本节 Sage3 对照的 rel\_err/max\_abs（0.59/1.0
-与 0.28/0.14）为本机补充实测（2026-08，单卡 PRO 5000），原始 stdout
+与 0.14/0.28）为本机补充实测（2026-08，单卡 PRO 5000），原始 stdout
 未随书归档。\par}
 
 \section{实践经验}
@@ -663,7 +663,7 @@ python -m ffpa_attn.bench --fwd-backend cuda --cuda-impl fp8 \
 # 实验 4：竞品对照 + plot 落盘（表 33.2/33.3 口径）
 python bench/bench_fp8.py --dtype fp16   # 输出 bench/.tmp/*.png
 python bench/bench_fp4.py --dtype fp16
-# 预期：FFPA vs Sage 总体打平（最差差 2.6%）；fp4 causal 行
+# 预期：FFPA vs Sage 总体打平（最大胜差 +4.0%、最大落后 1.2%）；fp4 causal 行
 # Sage3 rel_err ~0.59 vs FFPA 0.14（hybrid 的作用）
 \end{lstlisting}
 

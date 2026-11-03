@@ -922,7 +922,7 @@ README 的 5090 口径不可直接比较。
 累加精度（F16Acc/F32Acc）全部扫开的那组数据属于第~\ref{ch:24}~章的 \textbf{CuTe
 实现}（\texttt{leetcuda\_\allowbreak{}bench\_\allowbreak{}sm120a.bin --bench --bench-all}，
 $M{=}N{=}K{=}8192$，fp16），列在这里只作同机同形状的参照，\textbf{不是本章这个
-手写 kernel 的数字}：本章 kernel 的三档配置在 $8192^3$ 上是
+手写 kernel 的数字}：第~\ref{ch:11}~章手写 kernel 的三档配置在 $8192^3$ 上是
 119.7/124.6/127.3 TFLOPS（表~\ref{tab:ch11-perf}），量级约为 CuTe 版的一半，
 差距来自 pipeline 深度与寄存器编排，与 swizzle 本身无关，不要把两章的读数混用。
 

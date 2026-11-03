@@ -122,12 +122,16 @@ thread-data 对照表就是原子的全部内容。CuTe 用一个 traits 类把�
   \midrule
   \texttt{Shape\_MNK} & $(16,8,16)$ & 原子覆盖的 $M\times N\times K$ \\
   \texttt{ThrID} & $\mathrm{Layout}\_32$ & 原子用 32 个线程（一个 warp） \\
-  \texttt{LayoutA\_TV} & $((4,8),(2,2,2)){:}((32,1),(16,8,128))$ & $(\mathrm{thr},\mathrm{val})\to$ A 的扁平坐标 \\
-  \texttt{LayoutB\_TV} & $((4,8),(2,2)){:}((16,1),(8,64))$ & $(\mathrm{thr},\mathrm{val})\to$ B 的扁平坐标 \\
-  \texttt{LayoutC\_TV} & $((4,8),(2,2)){:}((32,1),(16,8))$ & $(\mathrm{thr},\mathrm{val})\to$ C 的扁平坐标 \\
+  \texttt{ALayout} & $((4,8),(2,2,2)){:}((32,1),(16,8,128))$ & $(\mathrm{thr},\mathrm{val})\to$ A 的扁平坐标 \\
+  \texttt{BLayout} & $((4,8),(2,2)){:}((16,1),(8,64))$ & $(\mathrm{thr},\mathrm{val})\to$ B 的扁平坐标 \\
+  \texttt{CLayout} & $((4,8),(2,2)){:}((32,1),(16,8))$ & $(\mathrm{thr},\mathrm{val})\to$ C 的扁平坐标 \\
   \bottomrule
 \end{tabular}
 \end{center}
+
+成员名以 \texttt{MMA\_Traits} 为准（\texttt{ALayout}/\texttt{BLayout}/\texttt{CLayout}）；
+\texttt{MMA\_Atom<Traits>} 把它们重导出为 \texttt{LayoutA\_TV}/\texttt{B\_TV}/\texttt{C\_TV}
+（\texttt{cute/atom/mma\_atom.hpp}），后文用重导出名指代这三份映射。
 
 这些 layout 的 codomain 是\textbf{扁平坐标}：A 的扁平量是 $m + 16k$（M 最快），
 B 是 $n + 8k$，C 是 $m + 16n$，三者都按第一个 mode 最快的 colex 约定

@@ -5,8 +5,9 @@
 
 \section{本章导读}
 
-第~\ref{ch:26}~章结束的时候，Split-D 的 CuTe 版实测 140.2 TFLOPS：
-64$\times$64 tile、TMA + warp specialization、单 consumer warpgroup。它把
+第~\ref{ch:26}~章收尾的 Split-D CuTe WS 教学版（
+64$\times$64 tile、TMA + warp specialization、单 consumer warpgroup）在本章
+最小测试口径（$D{=}320$，$N{=}8192$）下实测 140.2 TFLOPS。它把
 大 $D$ 分块的类型代数讲清楚了，但执行协议还是教学级的。本章
 把 ffpa-attn 的 non-WS CuTe TMA kernel（\texttt{csrc/cuffpa/cute/sm\_120/split\_d.cuh}）
 以最小教学集移植进本书源码（ffpa\_attn.cuh L642--1307，\texttt{NOTES\_\allowbreak{}V2\_\allowbreak{}ENABLE\_\allowbreak{}CUTE}
@@ -14,7 +15,7 @@
 双宏块）。本实现与 ffpa-attn 的 cute sm\_120 split\_d \textbf{同源}，
 在 RTX PRO 5000 上把 $B{=}1$/$H{=}32$/$N{=}8192$/$D{=}320$
 dense 场景做到 \textbf{204.1 TFLOPS}——cuDNN SDPA（69.7）的 2.93 倍、
-上一章 WS 教学版（140.2）的 1.46 倍。这一性能是全书大 head\_dim 路线的最高值。
+第~\ref{ch:26}~章 WS 教学版（140.2）的 1.46 倍。这一性能是全书大 head\_dim 路线的最高值。
 
 本章的四条主线，每一条都是对 WS 教学版某个具体弱点的回应：
 

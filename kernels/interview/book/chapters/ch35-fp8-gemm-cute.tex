@@ -706,7 +706,9 @@ kernel-only，per-row $\times$ per-col，warmup 2 / repeat 3）。\textbf{加粗
 两格即库默认档}（$128\times256$/s2，non-WS 与 ws 各一格），也是两档形状的实测
 最快档；CLI 扫描表里同一行标为 \texttt{<= lib default}。每格两个数字
 = 4096$^3$ / 8192$^3$ 的 TFLOPS；cuBLAS BF16 基线分别为 163.1 / 163.4\,T。
-两档形状各跑两次，逐配置偏差 $\le0.2\%$。\texttt{---\,(x)} 表示该组合所需
+两档形状各跑两次，逐配置偏差 $\le0.2\%$。加粗默认档与 35.6~节所引
+$440.7/440.9$ 为不同轮 bench（本表 warmup 2/repeat 3，主表为另一轮），同配置互差
+$\le0.7\%$——导读、小结与本表同口径。\texttt{---\,(x)} 表示该组合所需
 smem 为 $x$\,KB、超出本卡 99\,KB 的 opt-in 上限，故未实例化——这个门槛只由
 tile 几何决定，与形状无关。WS 变体只扫 $BM\le128$（$k_{BM}{=}256$ 时 512 个
 consumer 线程按 \texttt{setmaxnreg} 的 32/232 分配需要 122\,K 寄存器

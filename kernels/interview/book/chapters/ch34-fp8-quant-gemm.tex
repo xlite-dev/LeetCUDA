@@ -236,15 +236,17 @@ A 块 scale 和 $\lceil B_N/128\rceil$ 个 B 块 scale；$B_N=256$ 时为 2 个�
 
 \subsection{误差模型：能差到多少}\label{sec:34-err}
 
-单元素量化噪声：设块内元素落在同一二进区间，$\mathrm{rn}$ 的误差均匀分布于
-$[-\frac{u}{2}, \frac{u}{2}]$（$u=2^{-3}$ 为 binade 下沿的保守相对 ULP），故单元素相对误差
-$\varepsilon$ 满足 $|\varepsilon|\le 2^{-4}$，方差 $\sigma_\varepsilon^2 = u^2/12$。
+单元素量化噪声：设块内元素落在同一二进区间（binade），$\mathrm{rn}$ 的绝对误差均匀分布于
+$[-\frac{u'}{2}, \frac{u'}{2}]$（$u' = 2^{e-3}$ 为该 binade 的绝对 ULP，$e$ 为 binade
+指数；相对下沿 $u = 2^{-3}$），故单元素相对误差 $\varepsilon$ 满足 $|\varepsilon|\le 2^{-4}$
+（binade 下沿取到）。
 
 scale 折叠之后，误差只来自编码舍入一个源头。把单元素量化写成乘性形式
-$\hat{x} = x(1+\varepsilon)$：相对舍入误差 $\varepsilon$ 在
-$[-2^{-4}, 2^{-4}]$ 上近似均匀分布（相对 ULP 取保守下沿 $u = 2^{-3}$，见上文），故
-$\mathrm{E}[\varepsilon] \approx 0$，方差 $\sigma_\varepsilon^2 = u^2/12
-\approx 1.30\times 10^{-3}$，即 $\sigma_\varepsilon \approx 3.6\%$。
+$\hat{x} = x(1+\varepsilon)$：binade 内幅值近似均匀时 $\mathrm{E}[\varepsilon] \approx 0$，
+且 $\sigma_\varepsilon^2 = \mathrm{E}[\varepsilon_{\mathrm{abs}}^2]\cdot\mathrm{E}[x^{-2}]
+= \frac{u'^2}{12}\cdot 2^{-2e-1} = \frac{u^2}{24} \approx 6.5\times 10^{-4}$，即
+$\sigma_\varepsilon = u/\sqrt{24} \approx 2.6\%$（全体元素贴 binade 下沿的保守
+口径为 $u^2/12$，即 $3.6\%$）。
 对 $C_{m,n}=\sum_k a_k b_k$，两个量化点的误差一阶展开。
 \begin{equation}\label{eq:34-err-expand}
   \tilde{C}_{m,n} - C_{m,n}
@@ -263,8 +265,8 @@ $\sigma_\varepsilon$ 因子，下文只保留一阶。
         $\mathrm{Var}[\tilde{C}-C] = K\cdot\mathrm{E}[(ab)^2]\cdot
         2\sigma_\varepsilon^2$，而 $C$ 自身能量
         $\mathrm{Var}[C] = K\cdot\mathrm{E}[(ab)^2]$，相对误差
-        $\sqrt{2}\,\sigma_\varepsilon \approx 5\%$（实测 3.6\%，
-        34.6~节；这是独立均匀模型的 RMS 估计而非确定上界，舍入误差也并非全程满幅均匀）。
+        $\sqrt{2}\,\sigma_\varepsilon \approx 3.6\%$（与 34.6~节实测
+        $0.036$ 定量吻合；这是独立均匀模型的 RMS 估计而非确定上界）。
         注意相对误差\textbf{与 $K$ 无关}：误差与信号都以 $\sqrt{K}$
         增长，抵消掉了；
   \item \textbf{同号数据}（全正矩阵、经 ReLU 的激活）：信号项同号累加，
@@ -283,10 +285,10 @@ $\sigma_\varepsilon$ 因子，下文只保留一阶。
   \mathrm{E}\bigl[\max_{m,n} |\tilde{C}-C|\bigr]
   \;\approx\; \sigma_{\text{err}}\sqrt{2\ln(MN)},
 \end{equation}
-$M{=}N{=}4096$ 时 $\sqrt{2\ln(MN)} \approx 5.8$。误差分布是有限支撑的和
-分布，尾部比高斯分布薄，实测极值落在 $4\sigma_{\text{err}}$ 一带。
+$M{=}N{=}4096$ 时 $\sqrt{2\ln(MN)} \approx 5.8$，与下表实测极值的
+$5.5$--$5.8\sigma_{\text{err}}$ 一致。
 
-健康判据是\textbf{Max Err 在 $4\sigma_{\text{err}}$ 量级}，而不是要求它趋零。绝对
+健康判据是\textbf{Max Err 在 $5$--$6\sigma_{\text{err}}$ 一带}，而不是要求它趋零。绝对
 口径的 Max Err 自然随 $\sqrt{K}$ 增长（$\sigma_{\text{err}} \propto
 \sqrt{K}$）；在前述零均值、独立随机符号模型下，换算到相对口径才与 $K$ 及输入
 二阶尺度无关。同号或相关数据不满足这条分布无关性。
@@ -302,20 +304,20 @@ $\sigma_x = 0.25/3$）：
 \toprule
 数据形态（vs cuBLAS BF16） & $\sigma_{\text{err}}$ 理论 & Max Err 实测 & 比值 \\
 \midrule
-均匀 $[-1,1]$，2048$^3$ & 0.77 & 3.00 & 3.9$\sigma$ \\
-均匀 $[-1,1]$，4096$^3$ & 1.09 & 4.50 & 4.1$\sigma$ \\
-均匀 $[-1,1]$，8192$^3$ & 1.54 & 6.25 & 4.1$\sigma$ \\
-randn $(\pm 0.25)$，4096$^3$ & 0.0227 & 0.090 & 4.0$\sigma$ \\
+均匀 $[-1,1]$，2048$^3$ & 0.54 & 3.00 & 5.5$\sigma$ \\
+均匀 $[-1,1]$，4096$^3$ & 0.77 & 4.50 & 5.8$\sigma$ \\
+均匀 $[-1,1]$，8192$^3$ & 1.09 & 6.25 & 5.7$\sigma$ \\
+randn $(\pm 0.25)$，4096$^3$ & 0.016 & 0.090 & 5.6$\sigma$ \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-三组均匀 shape 的 Max Err/$\sigma_{\text{err}}$ 停在同一个 $4.1\sigma$：
+三组均匀 shape 的 Max Err/$\sigma_{\text{err}}$ 停在 $5.5$--$5.8\sigma$ 的同一窄带：
 样本量从 $4\text{M}$ 增到 $67\text{M}$，比值不漂移，与零均值随机游走模型一致；
 但这只是相容性证据，不能仅凭极值倍数证明误差严格零均值或无系统偏差。randn 组把输入取为 $\sigma_x = 0.25/3$ 的截断正态
 （幅值缩 $s \approx 6.9$ 倍）：$\mathrm{E}[(ab)^2]$ 缩 $s^4$，
 $\sigma_{\text{err}}$ 随之缩 $s^2 \approx 48$ 倍，$4.50/48 \approx 0.094$
-与实测 0.090 相符，比值仍落在 $4\sigma$。在上述模型下，两组的相对误差
+与实测 0.090 相符，比值仍在同一窄带（$5.6\sigma$）。在上述模型下，两组的相对误差
 $\sigma_{\text{err}}/\sigma_C = \sqrt{2}\,\sigma_\varepsilon$ 相同：这两类零均值
 随机分布之间只缩放绝对口径，34.6~节实测的 rel-Frobenius 0.036 也落在同一量级；
 该现象不能推广到同号或相关数据。
@@ -489,8 +491,8 @@ per-block $\times$ per-block（WS） & 0.036 & WS 数值等价 \\
 权重/激活的分布差异才会拉开组合间的差距（教学实现选随机数据并未回避这一
 局限，这也是 34.4.3~节误差模型的印证：噪声由 binade 下沿的相对 ULP $2^{-3}$ 决定，不由粒度
 决定，粒度决定的是最坏块的表现）。WS 与非 WS 则逐 bit 数值等价：两者的
-MMA 序列相同（第~\ref{ch:35}~章），差异纯粹在执行协议。$0.036$ 落在
-34.4.3~节 RMS 估计 $\sqrt{2}\,\sigma_\varepsilon\approx5\%$ 之下，与模型一致。
+MMA 序列相同（第~\ref{ch:35}~章），差异纯粹在执行协议。$0.036$ 与
+34.4.3~节 RMS 估计 $\sqrt{2}\,\sigma_\varepsilon\approx3.6\%$ 定量吻合。
 
 \section{小结}
 
