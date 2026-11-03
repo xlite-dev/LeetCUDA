@@ -28,16 +28,18 @@ build:
     pre_build:
       # 书稿 tex → MyST + TikZ → SVG，全部落在 docs/readthedocs/build/。
       # 每进程一份 xelatex，RTD 是 7GB 内存 + 2 并发构建，取 4 较稳。
-      # 每条命令前后打时间戳（echo 无缓冲）：构建被超时杀掉时，日志最后一行就是卡点。
-      # 不给这行时 sphinx/verify 的输出会被块缓冲吞掉，看起来像「convert 之后再无日志」。
-      # 这里只能有单层双引号：RTD 用 sh -c 执行，$() 里再嵌一对 "" 会把外层引号提前闭合。
-      - echo "== env nproc=$(nproc) mem=$(cat /sys/fs/cgroup/memory.max 2>/dev/null || free -m | awk '/Mem:/{print $2}') start=$(date -u +%H:%M:%S)"
+      # 每条命令前后打时间戳：构建被超时杀掉时，日志最后一行就是卡点。不给这行时
+      # sphinx/verify 的输出会被块缓冲吞掉，看起来像「convert 之后再无日志」。
+      # 这里一律用 `date +格式` 而不是 `echo "...$(date)"`：RTD 的 jobs 执行链路会把
+      # 命令里的引号吃掉（`awk '/Mem:/{print $2}'` 的闭合单引号丢失后 `$(` 永不闭合，
+      # 整条 exit 2）。date 的格式串不需要引号，也没有命令替换，绕开这个坑。
+      - date -u +pre_build_start:%H:%M:%S
       - cd docs/readthedocs && PYTHONUNBUFFERED=1 python -u -m convert --jobs 4
-      - echo "== pre_build done $(date -u +%H:%M:%S)"
+      - date -u +pre_build_done:%H:%M:%S
     build:
       # 覆盖默认 html 构建：显式指定 srcdir/confdir，避免 srcdir 被当成 conf.py 所在目录
       html:
-        - echo "== build start $(date -u +%H:%M:%S)"
+        - date -u +build_start:%H:%M:%S
         - mkdir -p $READTHEDOCS_OUTPUT/html
         - >-
           PYTHONUNBUFFERED=1 sphinx-build -T -b html
@@ -45,14 +47,14 @@ build:
           -c docs/readthedocs
           docs/readthedocs/build/src
           $READTHEDOCS_OUTPUT/html
-        - echo "== build done $(date -u +%H:%M:%S) html=$(du -sh $READTHEDOCS_OUTPUT/html | cut -f1)"
+        - date -u +build_done:%H:%M:%S
     post_build:
       # 内容核对（章号、表格、属性泄漏、锚点）；不过就让构建失败，避免静默交付错页
-      - echo "== post_build start $(date -u +%H:%M:%S)"
+      - date -u +post_build_start:%H:%M:%S
       - >-
         cd docs/readthedocs && PYTHONUNBUFFERED=1 python -u -m convert.verify
         --src build/src --html $READTHEDOCS_OUTPUT/html
-      - echo "== post_build done $(date -u +%H:%M:%S)"
+      - date -u +post_build_done:%H:%M:%S
 
 python:
   install:
