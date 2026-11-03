@@ -27,23 +27,31 @@ build:
   jobs:
     pre_build:
       # 书稿 tex → MyST + TikZ → SVG，全部落在 docs/readthedocs/build/。
-      # 每进程一份 xelatex，RTD 是 7GB 内存 + 2 并发构建，取 4 较稳
-      - cd docs/readthedocs && python -m convert --jobs 4
+      # 每进程一份 xelatex，RTD 是 7GB 内存 + 2 并发构建，取 4 较稳。
+      # 每条命令前后打时间戳（echo 无缓冲）：构建被超时杀掉时，日志最后一行就是卡点。
+      # 不给这行时 sphinx/verify 的输出会被块缓冲吞掉，看起来像「convert 之后再无日志」。
+      - echo "== env nproc=$(nproc) mem=$(cat /sys/fs/cgroup/memory.max 2>/dev/null || free -m | awk '/Mem:/{print $2"MB"}') start=$(date -u +%H:%M:%S)"
+      - cd docs/readthedocs && PYTHONUNBUFFERED=1 python -u -m convert --jobs 4
+      - echo "== pre_build done $(date -u +%H:%M:%S)"
     build:
       # 覆盖默认 html 构建：显式指定 srcdir/confdir，避免 srcdir 被当成 conf.py 所在目录
       html:
+        - echo "== build start $(date -u +%H:%M:%S)"
         - mkdir -p $READTHEDOCS_OUTPUT/html
         - >-
-          sphinx-build -T -b html
+          PYTHONUNBUFFERED=1 sphinx-build -T -b html
           -d docs/readthedocs/build/doctrees
           -c docs/readthedocs
           docs/readthedocs/build/src
           $READTHEDOCS_OUTPUT/html
+        - echo "== build done $(date -u +%H:%M:%S) html=$(du -sh $READTHEDOCS_OUTPUT/html | cut -f1)"
     post_build:
       # 内容核对（章号、表格、属性泄漏、锚点）；不过就让构建失败，避免静默交付错页
+      - echo "== post_build start $(date -u +%H:%M:%S)"
       - >-
-        cd docs/readthedocs && python -m convert.verify
+        cd docs/readthedocs && PYTHONUNBUFFERED=1 python -u -m convert.verify
         --src build/src --html $READTHEDOCS_OUTPUT/html
+      - echo "== post_build done $(date -u +%H:%M:%S)"
 
 python:
   install:

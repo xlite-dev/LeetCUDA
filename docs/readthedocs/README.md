@@ -25,4 +25,4 @@ pip install -r requirements.txt          # sphinx / myst-parser / sphinx-rtd-the
 python -m http.server -d build/html 8000 # 预览
 ```
 
-TikZ 全量编译约 3–5 分钟；调试时用 `./build.sh --skip-tikz` 复用已有 SVG。其余参数与注意事项见 skill 的 `references/pipeline.md`。
+TikZ 全量编译（421 张，批量拼文档摊薄导言区）本机约 30 秒；调试时用 `./build.sh --skip-tikz` 复用已有 SVG。其余参数与注意事项见 skill 的 `references/pipeline.md`。

@@ -43,7 +43,7 @@ pip install -r requirements.txt          # 首次或依赖变更后
 python -m http.server -d build/html 8000 # 本机浏览器看 build/html/index.html
 ```
 
-TikZ 全量编译约 3–5 分钟，调试时务必缩短：
+TikZ 全量编译（批量拼文档）本机约 30 秒，调试大改时仍用下面这些缩短手段：
 
 ```bash
 ./build.sh --skip-tikz                          # 复用已有 SVG，只重跑文本转换 + 构建 + 核对

@@ -1,13 +1,18 @@
-"""TikZ 片段 → SVG（standalone 文档，多进程并行）。
+"""TikZ 片段 → SVG（standalone 文档，多进程并行 + 批量摊薄导言区）。
 
-每个片段单独起一个 ``standalone`` 文档：xelatex 出的 PDF 页宽高就等于图形外接框，
-天然紧致裁剪，dvisvgm 再读这个 PDF 出 SVG。两条被实测否定的近路记在这里，避免以后
-再走一遍：
+xelatex 出 PDF、dvisvgm 再读这个 PDF 出 SVG：standalone 的页宽高就等于图形外接框，
+天然紧致裁剪。两条被实测否定的近路记在这里，避免以后再走一遍：
 
 1. **不要直接让 dvisvgm 读 xelatex 的 XDV**：字形推进量解析不可靠，CJK 文本会互相
    重叠（ch00/ch01 的图全乱），而同一份内容转成 PDF 再读就完全正确。
-2. **不要用一个多页文档批量编译再按页导出**：PDF 输入的 ``--bbox`` 选项无效，每张
-   SVG 都会是整页（737pt）大小，图形缩在左上角。
+2. **不要直接让 dvisvgm 读多页 PDF**：PDF 输入的 ``--bbox`` 选项无效，每张 SVG 都会
+   是整页（737pt）大小，图形缩在左上角。
+
+批量编译走的是「多页 PDF → 拆单页 → 逐页 dvisvgm」：单张编译有 99% 的时间花在导言区
+（fontspec/ctex/Noto 字体加载），一个 ``multi=tikzpicture`` 文档顺序拼 N 个片段只付一次
+导言区成本；``pdfseparate`` 拆出的单页 PDF 页尺寸仍是各自图形的外接框，逐页转 SVG 与
+单片编译逐字节相同（全量 md5 对比验证）。整批失败（xelatex 报错、页数不符、进程池崩溃）
+时回退成逐片编译，错误仍能定位到具体片段。
 
 颜色与 tikz 库从 ``book/preamble.tex`` 程序化抽取，单一样本不漂移。
 """
@@ -15,12 +20,14 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
+import math
 import re
+import shutil
 import subprocess
 import time
 import zlib
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -42,11 +49,26 @@ FONT_WOFF2 = "woff2"
 #: 可选的字号模式。
 FONT_MODES = (FONT_PATHS, FONT_WOFF2)
 
-#: 缓存版本：编译链路变化时递增，强制全部重编。
-_CACHE_VERSION = "standalone-pdf-1"
+#: 缓存版本：编译链路变化时递增，强制全部重编。**批大小不影响产物，不要写进键**。
+_CACHE_VERSION = "standalone-batch-2"
 
 #: 默认并行进程数（受 CPU 与内存限制，见 README）。
 DEFAULT_JOBS = 8
+
+#: 单个 xelatex 文档里最多拼多少个片段（``--tikz-batch`` 默认值；1 = 逐片编译）。
+DEFAULT_BATCH = 32
+
+#: 批编译的超时基数（秒）：单张挂住不能吃掉整站构建预算。
+_BATCH_TIMEOUT = 120
+
+#: 批路径里 ``pdfinfo`` / ``dvisvgm`` 的单步超时（秒）。逐片路径仍是 600s，
+#: 这两个只在批路径收紧，避免「某一页挂住」把整批拖到平台超时。
+_PAGE_TIMEOUT = 30
+_SVG_TIMEOUT = 60
+
+#: 整批失败后逐片回退的时间预算（秒）。预算耗尽就把剩余片段直接标失败——宁可
+#: 快速红在内容核对里，也不要拖到平台 900s 被杀、连一句错误都留不下。
+_FALLBACK_BUDGET = 240
 
 
 @dataclass
@@ -71,7 +93,8 @@ class Report:
   :param ok: 成功的 image_id。
   :param failed: 失败的 image_id → 错误摘要。
   :param skipped: 命中缓存、未重编的 image_id。
-  :param mode: 编译模式（当前只有 ``parallel``）。
+  :param mode: 实际走的编译路径：``parallel``（逐片）、``batch29``（这里写的是**有效批
+    大小**，不是 ``--tikz-batch`` 的上限）、``batch29+fallback3``（含逐片回退）。
   :param seconds: 编译耗时。
   :param font_mode: 字号处理方式（``paths`` / ``woff2``）。
   """
@@ -252,6 +275,7 @@ def build(
   force: bool = False,
   font_mode: str = FONT_PATHS,
   jobs: int = DEFAULT_JOBS,
+  batch: int = DEFAULT_BATCH,
 ) -> Report:
   """编译全部片段。
 
@@ -261,6 +285,7 @@ def build(
   :param force: 忽略缓存全部重编。
   :param font_mode: 字号处理方式，见 :func:`font_args`。
   :param jobs: 并行编译进程数。
+  :param batch: 单个 xelatex 文档拼多少个片段；``1`` 表示逐片编译（回退开关）。
   :returns: 编译报告。
   """
   started = time.monotonic()
@@ -276,20 +301,182 @@ def build(
     head = _preamble_head(book_dir)
     build_dir = work_dir / "tikz-build"
     build_dir.mkdir(parents=True, exist_ok=True)
-    report.mode = "parallel"
-    tasks = [(snippet, head, build_dir, font_mode) for snippet in staged]
-    workers = max(1, min(jobs, len(tasks)))
-    with ProcessPoolExecutor(max_workers=workers) as pool:
-      for image_id, ok, message in pool.map(_compile_worker, tasks):
-        if ok:
-          report.ok.append(image_id)
-        else:
-          report.failed[image_id] = message
+    workers = max(1, min(jobs, len(staged)))
+    results, report.mode = _compile_all(staged, head, build_dir, font_mode, workers, batch)
+    for image_id, ok, message in results:
+      if ok:
+        report.ok.append(image_id)
+      else:
+        report.failed[image_id] = message
 
   report.seconds = round(time.monotonic() - started, 1)
   _save_cache(work_dir, snippets, font_mode, report.failed)
   (work_dir / "tikz-report.json").write_text(report.to_json(), encoding="utf-8")
   return report
+
+
+def _compile_all(
+  snippets: list[Snippet],
+  head: str,
+  build_dir: Path,
+  font_mode: str,
+  workers: int,
+  batch: int,
+) -> tuple[list[tuple[str, bool, str]], str]:
+  """编译待编片段：批编译为主，整批失败时在主进程逐片重编。
+
+  回退放在主进程而不是 worker 内：worker 里串行重编 N 张会让它独占而其余 worker 空转，
+  且进程池崩溃时回退代码本身也没了。
+
+  :param snippets: 待编译片段（保持原顺序）。
+  :param head: 模板定义。
+  :param build_dir: 编译工作目录。
+  :param font_mode: 字号处理方式。
+  :param workers: 并行进程数。
+  :param batch: 单文档片段上限；``1`` 走逐片编译。
+  :returns: ``(逐片段结果, 模式标签)``，结果顺序与 ``snippets`` 一致。
+  """
+  if batch <= 1 or len(snippets) == 1:
+    return _compile_parallel([(snippet, head, build_dir, font_mode) for snippet in snippets],
+                             workers), "parallel"
+  missing = [name for name in ("pdfseparate", "pdfinfo") if not shutil.which(name)]
+  if missing:
+    print(f"[TikZ] 缺少 {'、'.join(missing)}（poppler-utils），退回逐片编译")
+    return _compile_parallel([(snippet, head, build_dir, font_mode) for snippet in snippets],
+                             workers), "parallel"
+
+  # 批量文档要求每个片段恰好一个 tikzpicture：多一个就多一页，而页数校验只拦得住
+  # 「总数不符」，拦不住「A 出 2 页 + B 出 0 页」这种整批静默错位。这类片段先挑出来。
+  odd_ids = {snippet.image_id for snippet in snippets if _picture_count(snippet) != 1}
+  batched = [snippet for snippet in snippets if snippet.image_id not in odd_ids]
+  odd = [snippet for snippet in snippets if snippet.image_id in odd_ids]
+  if odd:
+    print(f"[TikZ] {len(odd)} 个片段不是单个 tikzpicture，改逐片编译："
+          f"{', '.join(snippet.image_id for snippet in odd[:3])}")
+
+  chunks = _plan_batches(batched, batch, workers) if batched else []
+  finished: dict[int, tuple] = {}
+  broken = ""
+  if chunks:
+    args = [(index, chunk, head, build_dir, font_mode) for index, chunk in enumerate(chunks)]
+    finished, broken = _run_batches(args, min(workers, len(args)))
+  if broken:
+    print(f"[TikZ] 进程池异常（{broken}），未回报的批次改逐片重编")
+
+  entries: list[tuple[str, bool, str]] = []
+  retry: list[list[Snippet]] = []
+  for index, chunk in enumerate(chunks):
+    result = finished.get(index)
+    if result is None or result[2]:
+      retry.append(chunk)
+      continue
+    entries.extend(result[1])
+  if retry:
+    print(f"[TikZ] 整批回退逐片重编：{len(retry)} 批、"
+          f"{sum(len(chunk) for chunk in retry)} 个片段")
+  serial = [snippet for chunk in retry for snippet in chunk] + odd
+  if serial:
+    deadline = time.monotonic() + _FALLBACK_BUDGET
+    expired = 0
+    for snippet in serial:
+      if time.monotonic() > deadline:
+        # 预算耗尽：清旧产物并标失败，让内容核对直接红，而不是拖到平台整体超时。
+        snippet.dest.unlink(missing_ok=True)
+        entries.append((snippet.image_id, False, "回退预算耗尽：批编译系统性失败"))
+        expired += 1
+        continue
+      entries.append(_compile_worker((snippet, head, build_dir, font_mode)))
+    if expired:
+      print(f"[TikZ] 回退预算 {_FALLBACK_BUDGET}s 耗尽，{expired} 个片段标记失败")
+  mode = f"batch{len(chunks[0])}" if chunks else "parallel"
+  if broken or retry:
+    mode += f"+fallback{len(retry)}"
+  return _in_order(snippets, entries), mode
+
+
+def _compile_parallel(
+  tasks: list[tuple[Snippet, str, Path, str]],
+  workers: int,
+) -> list[tuple[str, bool, str]]:
+  """逐片并行编译；进程池崩溃时全部标失败，不把异常抛给调用方。
+
+  :param tasks: 逐片段任务参数。
+  :param workers: 并行进程数。
+  :returns: ``(image_id, 是否成功, 错误摘要)`` 列表。
+  """
+  try:
+    with ProcessPoolExecutor(max_workers=workers) as pool:
+      return list(pool.map(_compile_worker, tasks))
+  except BrokenProcessPool as exc:
+    print(f"[TikZ] 进程池崩溃（{type(exc).__name__}: {exc}），{len(tasks)} 个片段标失败")
+    return [(snippet.image_id, False, f"进程池崩溃：{exc}") for snippet, _, _, _ in tasks]
+
+
+def _picture_count(snippet: Snippet) -> int:
+  """片段里 ``tikzpicture`` 环境的个数（批量编译要求恰好一个）。
+
+  :param snippet: 片段。
+  :returns: 个数。
+  """
+  return snippet.source.read_text(encoding="utf-8").count("\\begin{tikzpicture}")
+
+
+def _plan_batches(snippets: list[Snippet], batch: int, workers: int) -> list[list[Snippet]]:
+  """按原顺序切块。
+
+  批数取「``batch`` 上限所需的批数」与 worker 数的较大者：只按上限切会让「40 个片段 +
+  8 个 worker」塌成 2 个 worker，本地增量构建反而更慢。
+
+  :param snippets: 片段列表。
+  :param batch: 单批片段上限。
+  :param workers: 并行进程数。
+  :returns: 批次列表（顺序拼接后等于原列表）。
+  """
+  needed = max(1, math.ceil(len(snippets) / batch))
+  count = min(len(snippets), max(needed, workers))
+  size = math.ceil(len(snippets) / count)
+  return [snippets[index:index + size] for index in range(0, len(snippets), size)]
+
+
+def _in_order(
+  snippets: list[Snippet],
+  entries: list[tuple[str, bool, str]],
+) -> list[tuple[str, bool, str]]:
+  """把（可能乱序、含回退追加的）结果按片段原顺序重排。
+
+  :param snippets: 片段列表。
+  :param entries: 逐片段结果。
+  :returns: 与 ``snippets`` 同序的结果列表。
+  """
+  by_id = {entry[0]: entry for entry in entries}
+  return [by_id.get(snippet.image_id, (snippet.image_id, False, "编译结果缺失"))
+          for snippet in snippets]
+
+
+def _run_batches(
+  tasks: list[tuple],
+  workers: int,
+) -> tuple[dict[int, tuple], str]:
+  """并行执行批次任务，进程池崩溃时不抛出、交由调用方回退。
+
+  :param tasks: 批次任务参数。
+  :param workers: 并行进程数。
+  :returns: ``({批序号: 批结果}, 崩溃信息)``；未回报的批序号不在字典里。
+  """
+  finished: dict[int, tuple] = {}
+  broken = ""
+  try:
+    with ProcessPoolExecutor(max_workers=workers) as pool:
+      futures = {pool.submit(_compile_batch, task): task[0] for task in tasks}
+      for future in as_completed(futures):
+        index = futures[future]
+        try:
+          finished[index] = future.result()
+        except Exception as exc:
+          broken = f"{type(exc).__name__}: {exc}"
+  except BrokenProcessPool as exc:
+    broken = f"{type(exc).__name__}: {exc}"
+  return finished, broken
 
 
 def _cached(work_dir: Path, snippet: Snippet, font_mode: str) -> bool:
@@ -356,13 +543,15 @@ def _preamble_head(book_dir: Path) -> str:
   return "\n".join(lines)
 
 
-def _template(head: str) -> str:
+def _template(head: str, multi: bool = False) -> str:
   """生成编译模板头部（standalone 文档）。
 
   :param head: 从 preamble 抽取的定义。
+  :param multi: 是否每个 ``tikzpicture`` 独立成页（批量编译用）。
   :returns: 模板头（不含正文）。
   """
-  document_class = "\\documentclass[border=6pt]{standalone}"
+  options = "border=6pt,multi=tikzpicture" if multi else "border=6pt"
+  document_class = f"\\documentclass[{options}]{{standalone}}"
   fonts = (
     "\\IfFontExistsTF{Noto Sans CJK SC}{%\n"
     "  \\setCJKmainfont{Noto Sans CJK SC}%\n"
@@ -403,6 +592,86 @@ def _compile_worker(args: tuple[Snippet, str, Path, str]) -> tuple[str, bool, st
   return snippet.image_id, ok, message
 
 
+def _compile_batch(args: tuple) -> tuple[int, list[tuple[str, bool, str]], bool]:
+  """多进程工作函数：一个多页文档编译一批片段（必须模块级，才能被 pickle）。
+
+  :param args: ``(批序号, 片段列表, 模板定义, 编译工作目录, 字号模式)``。
+  :returns: ``(批序号, 逐片段结果, 是否整批失败需回退)``。
+  """
+  index, chunk, head, build_dir, mode = args
+  work = build_dir / f"batch-{index:03d}"
+  try:
+    # 每批独立子目录：``tikz-build`` 是持久目录，同名 page-*.pdf 会串到上一轮。
+    shutil.rmtree(work, ignore_errors=True)
+    work.mkdir(parents=True, exist_ok=True)
+    body = "\n".join(snippet.source.read_text(encoding="utf-8").rstrip() for snippet in chunk)
+    (work / "batch.tex").write_text(
+      _template(head, multi=True) + body + "\n\\end{document}\n", encoding="utf-8")
+    timeout = _BATCH_TIMEOUT + 3 * len(chunk)
+    code, log = _run(
+      ["xelatex", "-interaction=nonstopmode", "-halt-on-error", "batch.tex"], work, timeout)
+    if code != 0:
+      print(f"[TikZ] 批 {index}（{_span(chunk)}）xelatex 失败，回退逐片：{_tail(log)}")
+      return index, [], True
+    pdf = work / "batch.pdf"
+    # 页数校验是必要非充分条件：能挡住「总数与片段数不符」，挡不住 A 出 2 页 B 出 0 页。
+    # 靠 ``_picture_count`` 前置挑出非单图片段来堵这个口子，产物正确性最终由视觉验收兜底。
+    pages = _pdf_pages(pdf, work)
+    if pages != len(chunk):
+      print(f"[TikZ] 批 {index}（{_span(chunk)}）页数 {pages} != 片段数 {len(chunk)}，回退逐片")
+      return index, [], True
+    code, log = _run(["pdfseparate", "batch.pdf", "page-%03d.pdf"], work, timeout)
+    if code != 0:
+      print(f"[TikZ] 批 {index}（{_span(chunk)}）拆页失败，回退逐片：{_tail(log)}")
+      return index, [], True
+    entries: list[tuple[str, bool, str]] = []
+    for number, snippet in enumerate(chunk, start=1):
+      page = work / f"page-{number:03d}.pdf"
+      if not page.is_file():
+        snippet.dest.unlink(missing_ok=True)
+        entries.append((snippet.image_id, False, f"拆页缺页：{page.name}"))
+        continue
+      ok, message = _pdf_to_svg(page, snippet.dest, work, mode, _SVG_TIMEOUT)
+      if not ok:
+        snippet.dest.unlink(missing_ok=True)
+      entries.append((snippet.image_id, ok, message))
+    return index, entries, False
+  except KeyboardInterrupt:
+    raise
+  except Exception as exc:
+    print(f"[TikZ] 批 {index}（{_span(chunk)}）异常，回退逐片：{type(exc).__name__}: {exc}")
+    return index, [], True
+
+
+def _span(chunk: list[Snippet]) -> str:
+  """批的片段范围（日志用，省得去数 batch.tex 的行号）。
+
+  :param chunk: 片段列表。
+  :returns: ``首片段 … 末片段`` 形式的描述。
+  """
+  return f"{chunk[0].image_id} … {chunk[-1].image_id}（{len(chunk)} 个）"
+
+
+def _pdf_pages(pdf: Path, cwd: Path, timeout: int = _PAGE_TIMEOUT) -> int:
+  """读 PDF 页数（``pdfinfo``，来自 poppler-utils）。
+
+  :param pdf: PDF 文件。
+  :param cwd: 命令工作目录。
+  :param timeout: 超时秒数。
+  :returns: 页数；读不到返回 0。
+  """
+  code, log = _run(["pdfinfo", str(pdf)], cwd, timeout)
+  if code != 0:
+    return 0
+  for line in log.splitlines():
+    if line.startswith("Pages:"):
+      try:
+        return int(line.split()[1])
+      except (IndexError, ValueError):
+        return 0
+  return 0
+
+
 def _safe_name(image_id: str) -> str:
   """把 image_id 变成安全的文件名。
 
@@ -438,23 +707,41 @@ def _compile_one(
   pdf = build_dir / f"{name}.pdf"
   if not pdf.is_file():
     return False, f"未生成 PDF：{_tail(log)}"
-  snippet.dest.parent.mkdir(parents=True, exist_ok=True)
-  code, log = _run(
-    ["dvisvgm", "--pdf", *font_args(mode), "--no-styles", "-o", str(snippet.dest), pdf.name],
-    build_dir)
-  if code != 0 or not snippet.dest.is_file():
+  return _pdf_to_svg(pdf, snippet.dest, build_dir, mode)
+
+
+def _pdf_to_svg(
+  pdf: Path,
+  dest: Path,
+  work: Path,
+  mode: str,
+  timeout: int = _COMPILE_TIMEOUT,
+) -> tuple[bool, str]:
+  """单页 PDF → SVG，并交叉核对是否真的输出了字形。
+
+  dvisvgm 偶尔「成功」却没写出任何字形（PDF 里有文字、SVG 里没有对应输出），页面上
+  的表现就是图里文字全丢。这里做一次交叉核对；偶发失败允许重试一次（并行编译时曾
+  出现读到未写完 SVG 的情况）。**``pdf`` 必须是单页**：多页 PDF 里只要任意一页有字，
+  ``_pdf_has_text`` 就恒为真，这道防线会失效。
+
+  :param pdf: 单页 PDF。
+  :param dest: 目标 SVG。
+  :param work: 编译工作目录（同时也是 dvisvgm 的相对路径基准）。
+  :param mode: 字号处理方式。
+  :param timeout: 单次 dvisvgm 的超时秒数（批路径传更短的值）。
+  :returns: ``(是否成功, 错误摘要)``。
+  """
+  dest.parent.mkdir(parents=True, exist_ok=True)
+  command = ["dvisvgm", "--pdf", *font_args(mode), "--no-styles", "-o", str(dest), pdf.name]
+  code, log = _run(command, work, timeout)
+  if code != 0 or not dest.is_file():
     return False, f"dvisvgm 失败：{_tail(log)}"
-  # dvisvgm 偶尔「成功」却没写出任何字形（PDF 里有文字、SVG 里没有对应输出），
-  # 页面上的表现就是图里文字全丢。这里做一次交叉核对；偶发失败允许重试一次
-  # （并行编译时曾出现读到未写完 SVG 的情况）。
-  if _pdf_has_text(pdf) and not _svg_has_glyphs(snippet.dest):
-    snippet.dest.unlink(missing_ok=True)
-    code, log = _run(
-      ["dvisvgm", "--pdf", *font_args(mode), "--no-styles", "-o", str(snippet.dest), pdf.name],
-      build_dir)
-    if code != 0 or not snippet.dest.is_file():
+  if _pdf_has_text(pdf) and not _svg_has_glyphs(dest):
+    dest.unlink(missing_ok=True)
+    code, log = _run(command, work, timeout)
+    if code != 0 or not dest.is_file():
       return False, f"dvisvgm 重试失败：{_tail(log)}"
-    if not _svg_has_glyphs(snippet.dest):
+    if not _svg_has_glyphs(dest):
       return False, "SVG 缺少字形输出（PDF 有文字但 SVG 里没有 use/text）"
   return True, ""
 
@@ -501,15 +788,16 @@ def _svg_has_glyphs(svg: Path) -> bool:
   return "<use" in text or "<text" in text
 
 
-def _run(command: list[str], cwd: Path) -> tuple[int, str]:
+def _run(command: list[str], cwd: Path, timeout: int = _COMPILE_TIMEOUT) -> tuple[int, str]:
   """执行外部命令。
 
   :param command: 命令与参数。
   :param cwd: 工作目录。
+  :param timeout: 超时秒数（批任务用更短的独立超时，避免单张挂住吃掉整站预算）。
   :returns: ``(退出码, 标准输出与标准错误合并文本)``。
   """
   try:
-    proc = subprocess.run(command, cwd=cwd, capture_output=True, text=True, timeout=_COMPILE_TIMEOUT, check=False)
+    proc = subprocess.run(command, cwd=cwd, capture_output=True, text=True, timeout=timeout, check=False)
   except (OSError, subprocess.TimeoutExpired) as exc:
     return 1, f"{type(exc).__name__}: {exc}"
   return proc.returncode, (proc.stdout or "") + (proc.stderr or "")

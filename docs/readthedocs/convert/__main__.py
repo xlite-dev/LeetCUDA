@@ -132,6 +132,8 @@ def main(argv: list[str] | None = None) -> int:
   parser.add_argument("--force-tikz", action="store_true", help="忽略缓存重编全部 TikZ")
   parser.add_argument("--jobs", type=int, default=tikz2svg.DEFAULT_JOBS,
                       help="TikZ 并行编译进程数（每进程一份 xelatex，受内存限制）")
+  parser.add_argument("--tikz-batch", type=int, default=tikz2svg.DEFAULT_BATCH,
+                      help="单个 xelatex 文档拼多少个片段（摊薄导言区；1 = 逐片编译）")
   parser.add_argument("--pandoc", default="", help="pandoc 可执行文件路径")
   parser.add_argument("--tikz-fonts", choices=list(tikz2svg.FONT_MODES),
                       default=tikz2svg.FONT_PATHS,
@@ -297,7 +299,7 @@ def _convert_book(
   elif snippets:
     tikz_report = tikz2svg.build(
       snippets, spec.book_dir, spec.work_dir, force=args.force_tikz,
-      font_mode=args.tikz_fonts, jobs=args.jobs)
+      font_mode=args.tikz_fonts, jobs=args.jobs, batch=args.tikz_batch)
     print(f"[{label}] [2/4] TikZ：{len(snippets)} 个片段，新编 {len(tikz_report.ok)}，"
           f"缓存 {len(tikz_report.skipped)}，失败 {len(tikz_report.failed)}，"
           f"模式 {tikz_report.mode}，{tikz_report.seconds}s")
@@ -365,10 +367,10 @@ def _build_english_atlas(
           f"{' …' if len(pruned) > 3 else ''}")
   en_report = tikz2svg.build(
     en_tasks, spec.book_dir, en_work, force=args.force_tikz,
-    font_mode=args.tikz_fonts, jobs=args.jobs)
+    font_mode=args.tikz_fonts, jobs=args.jobs, batch=args.tikz_batch)
   print(f"[2/4] 英文图集：{len(en_tasks)} 张（词典命中 {hit} 处、未命中 {miss} 处），"
         f"新编 {len(en_report.ok)}，缓存 {len(en_report.skipped)}，"
-        f"失败 {len(en_report.failed)}，{en_report.seconds}s")
+        f"失败 {len(en_report.failed)}，模式 {en_report.mode}，{en_report.seconds}s")
 
 
 def _converted(book: BookResult) -> set[str]:

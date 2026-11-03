@@ -29,7 +29,7 @@ docs/readthedocs/
     ├── readme.py           根 README 的 [leetcuda-pdf] 链接（下载按钮唯一事实源）
     ├── figtext.py          图内文字掩码 / 还原 / 词典匹配
     ├── preprocess.py       tex 归一化 + 抽离 tikz/代码 + 镜像图片
-    ├── tikz2svg.py         TikZ → SVG（并行、增量缓存）
+    ├── tikz2svg.py         TikZ → SVG（批量编译、并行、增量缓存）
     ├── postprocess.py      markdown → MyST（锚点、链接、提示块、代码块）
     └── verify.py           内容核对（通用项递归全站 + 每本书专属项 + 集合装配）
 ```
@@ -58,7 +58,7 @@ docs/readthedocs/
 - **装配清单**：转换期写 `build/collections.json`（slug / 页面 / 章节），`verify` 据此核对页面齐全与入口位置；`--no-collections`、`--only`、`--max-chapters` 的局部构建写空清单，核对自动跳过。
 - **英文边界**：子集合不参与 `code-en.json` / `math-en.js` 词典（`check_translation_dicts` 只取站点根页面）；`translate.js` 的换图只对 `_images/*.svg`（TikZ 产物）生效，集合的 jpg 不受影响、也不会打出 404。
 
-TikZ 独立成链：每个片段套 standalone 文档编译成 PDF，再让 dvisvgm 读 PDF 出 SVG，按内容哈希增量缓存，多进程并行（227 张约 45 秒 / 8 进程）。
+TikZ 独立成链：片段按 `--tikz-batch`（默认 32）拼进 `multi=tikzpicture` 的 standalone 文档，一次 xelatex 出多页 PDF → `pdfseparate` 拆单页 → 逐页 `dvisvgm --pdf` 出 SVG，按内容哈希增量缓存，多进程并行。单片编译 99% 的时间是导言区字体加载，拼批把它摊薄：全量 421 张（中文 226 + 英文图集 195）本机 123s → 32s，RTD 上约 388s → 60s。整批失败（xelatex 报错 / 页数与片段数不符 / 进程池崩溃）由主进程逐片重编，且总时长受 `_FALLBACK_BUDGET`（240s）约束——系统级批失败时宁可把剩余片段标失败（构建快速红在核对里），也不拖到平台 900s 超时。`report.mode` 记录实际路径：`batch29` 里的数字是**有效批大小**（不是 `--tikz-batch` 上限，它按 worker 数反算），发生回退时为 `batch29+fallback3`。`--tikz-batch 1` 是行为级回退开关；缺 `pdfseparate`/`pdfinfo` 时也会自动退回逐片编译并打一行告警。
 
 报告按书分文件：主书 `build/report.md` + `report.json`，集合 `build/report-<slug>.md` + `.json`（TikZ 失败清单、未解析引用、悬空锚点、残留 LaTeX、各阶段耗时、pandoc 警告）。
 
@@ -74,6 +74,7 @@ python -m convert --no-collections             # 只转主书，跳过子集合�
 python -m convert --collection cute-zhihu      # 只转指定集合（逗号分隔可多选）
 python -m convert --collection cute-zhihu --only-collection reed-08-hopper-mbarrier   # 集合单章打样
 python -m convert --jobs 8                     # TikZ 并行度
+python -m convert --tikz-batch 64              # 单文档拼多少片段（默认 32；1 = 逐片编译）
 python -m convert --force-tikz                 # 忽略缓存重编全部 TikZ
 python -m convert --tikz-fonts woff2           # 图内嵌字体（更小，见 pitfalls）
 python -m convert --png                        # 额外导出 PNG 便于查看（需 cairosvg）
@@ -81,7 +82,7 @@ python -m convert --skip-tikz --no-assemble    # 只跑 tex→md，调试用
 python -m convert.verify --src build/src --html build/html    # 只跑内容核对
 ```
 
-外部依赖：`pandoc`、`xelatex`（TeX Live，含 ctex/中文）、`dvisvgm`；可选 `cairosvg`（仅 `--png`）。
+外部依赖：`pandoc`、`xelatex`（TeX Live，含 ctex/中文）、`dvisvgm`、`pdfseparate`/`pdfinfo`（poppler-utils，批量编译拆页与页数校验）；可选 `cairosvg`（仅 `--png`）。
 
 ## 编号与表格
 
