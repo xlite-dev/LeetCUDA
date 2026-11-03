@@ -30,7 +30,8 @@ build:
       # 每进程一份 xelatex，RTD 是 7GB 内存 + 2 并发构建，取 4 较稳。
       # 每条命令前后打时间戳（echo 无缓冲）：构建被超时杀掉时，日志最后一行就是卡点。
       # 不给这行时 sphinx/verify 的输出会被块缓冲吞掉，看起来像「convert 之后再无日志」。
-      - echo "== env nproc=$(nproc) mem=$(cat /sys/fs/cgroup/memory.max 2>/dev/null || free -m | awk '/Mem:/{print $2"MB"}') start=$(date -u +%H:%M:%S)"
+      # 这里只能有单层双引号：RTD 用 sh -c 执行，$() 里再嵌一对 "" 会把外层引号提前闭合。
+      - echo "== env nproc=$(nproc) mem=$(cat /sys/fs/cgroup/memory.max 2>/dev/null || free -m | awk '/Mem:/{print $2}') start=$(date -u +%H:%M:%S)"
       - cd docs/readthedocs && PYTHONUNBUFFERED=1 python -u -m convert --jobs 4
       - echo "== pre_build done $(date -u +%H:%M:%S)"
     build:
