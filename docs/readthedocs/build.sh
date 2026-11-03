@@ -23,6 +23,8 @@ require() {
 require python "conda activate cdit"
 require xelatex "texlive-xetex"
 require dvisvgm "dvisvgm 包"
+require pdfseparate "poppler-utils（批量 TikZ 编译拆页）"
+require pdfinfo "poppler-utils（批量 TikZ 编译校验页数）"
 PANDOC_BIN="$(command -v pandoc || true)"
 if [ -z "$PANDOC_BIN" ]; then
   python - <<'PY' || { echo "缺少 pandoc：pip install pypandoc-binary 或 apt install pandoc" >&2; exit 1; }

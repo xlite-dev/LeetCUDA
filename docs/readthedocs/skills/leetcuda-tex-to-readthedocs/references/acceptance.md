@@ -48,6 +48,30 @@ ch33/ch35/ch37 的表格、ch01 的丢图、ch00 的图内文字丢失都只有 
 | 书目录编号核对 | 本地有 `<书>.toc`（主书 `book.toc`、集合 `cute-zhihu.toc`）时，逐章比对章号 + 标题 |
 | 集合已装配且入口在附录之后 | 按 `build/collections.json` 核对集合首页/篇页/章节页齐全，且主书侧栏里的入口排在所有 `part-N` 之后 |
 
+## 改 TikZ 编译路径时的等价验收
+
+`convert.verify` 的「TikZ 图保留文字」只判断「SVG 里有没有字形」，图张三李四互换它照样全绿；`visual_check` 只抓 MathJax 报错与版式溢出，也不比对图形。**动过 `tikz2svg.py` 的编译路径（模板、批量、dvisvgm 参数、拆页方式）后，唯一能证明产物没变的是下面这套结构等价比对**，别只看核对全绿。
+
+```bash
+# 1. 先用改动前的代码留一份参考产物（约定：改代码前先跑，否则基线不可信）
+python -m convert --force-tikz --jobs 4
+cp build/src/figures-gen/*.svg /tmp/svg-old-zh/ && cp _static/figures-en/*.svg /tmp/svg-old-en/
+# 2. 改完再全量编一次，然后比对
+python -m convert --force-tikz --jobs 4
+```
+
+判定口径（**不能拿 md5 判**：`<defs>` 里的 glyph 编号随字形出现顺序变，`id='g3-1'` 会变成 `id='g3-4'`，路径与坐标不变）：
+
+| 维度 | 要求 |
+| --- | --- |
+| 文件名集合与数量 | 完全一致（主书 226、英文图集 195） |
+| `width` / `height` / `viewBox` | 三元组完全相同 |
+| `<path d='…'>` 的几何数据集合（排序后） | 相同 |
+| `<use x= y=>` 的放置坐标集合（排序后） | 相同 |
+| 元素数量 | 相同 |
+
+配套再做一次**回退演练**：临时在 `_template(head, multi=True)` 里注入 `\undefinedcmd`，跑 `--only` 几章，预期日志逐批报出 `! Undefined control sequence.`、`report.mode` 变成 `batchN+fallbackM`、最终 `失败 0`（逐片重编救回来了），然后撤销注入。这一条验的是「批失败不会把整站搞挂」。
+
 ## 浏览器验收（visual_check）
 
 ```bash
