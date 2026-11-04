@@ -129,9 +129,10 @@ thread-data 对照表就是原子的全部内容。CuTe 用一个 traits 类把�
 \end{tabular}
 \end{center}
 
-成员名以 \texttt{MMA\_Traits} 为准（\texttt{ALayout}/\texttt{BLayout}/\texttt{CLayout}）；
-\texttt{MMA\_Atom<Traits>} 把它们重导出为 \texttt{LayoutA\_TV}/\texttt{B\_TV}/\texttt{C\_TV}
-（\texttt{cute/atom/mma\_atom.hpp}），后文用重导出名指代这三份映射。
+成员名以 \texttt{MMA\_Traits} 为准（\texttt{ALayout}/\texttt{BLayout}/\texttt{CLayout}）。
+\texttt{MMA\_Atom<Traits>} 的重导出名是 \texttt{LayoutA\_TV}、
+\texttt{LayoutB\_TV}、\texttt{LayoutC\_TV}（\texttt{cute/atom/mma\_atom.hpp}）。
+后文用重导出名指代这三份映射。
 
 这些 layout 的 codomain 是\textbf{扁平坐标}：A 的扁平量是 $m + 16k$（M 最快），
 B 是 $n + 8k$，C 是 $m + 16n$，三者都按第一个 mode 最快的 colex 约定

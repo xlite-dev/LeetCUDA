@@ -242,10 +242,11 @@ $[-\frac{u'}{2}, \frac{u'}{2}]$（$u' = 2^{e-3}$ 为该 binade 的绝对 ULP，$
 （binade 下沿取到）。
 
 scale 折叠之后，误差只来自编码舍入一个源头。把单元素量化写成乘性形式
-$\hat{x} = x(1+\varepsilon)$：binade 内幅值近似均匀时 $\mathrm{E}[\varepsilon] \approx 0$，
-且 $\sigma_\varepsilon^2 = \mathrm{E}[\varepsilon_{\mathrm{abs}}^2]\cdot\mathrm{E}[x^{-2}]
-= \frac{u'^2}{12}\cdot 2^{-2e-1} = \frac{u^2}{24} \approx 6.5\times 10^{-4}$，即
-$\sigma_\varepsilon = u/\sqrt{24} \approx 2.6\%$（全体元素贴 binade 下沿的保守
+$\hat{x} = x(1+\varepsilon)$：binade 内幅值近似均匀，并将格内舍入相位与幅值
+近似解耦时 $\mathrm{E}[\varepsilon] \approx 0$，且
+$\sigma_\varepsilon^2 \approx \mathrm{E}[\varepsilon_{\mathrm{abs}}^2]\cdot\mathrm{E}[x^{-2}]
+\approx \frac{u'^2}{12}\cdot 2^{-2e-1} = \frac{u^2}{24} \approx 6.5\times 10^{-4}$，即
+$\sigma_\varepsilon \approx u/\sqrt{24} \approx 2.6\%$（全体元素贴 binade 下沿的保守
 口径为 $u^2/12$，即 $3.6\%$）。
 对 $C_{m,n}=\sum_k a_k b_k$，两个量化点的误差一阶展开。
 \begin{equation}\label{eq:34-err-expand}
