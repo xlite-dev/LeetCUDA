@@ -88,9 +88,10 @@ fp32 的最大正规数（\texttt{FLT\_MAX}）为
 一旦有元素溢出，分母 $s$ 也随之变成 \texttt{inf}（$s \ge e^{x^{(i)}}$）：
 溢出元素自身 $y^{(i)} = \texttt{inf}/\texttt{inf} = \texttt{NaN}$，未溢出元素
 $y^{(j)} = e^{x^{(j)}}/\texttt{inf} = 0$，该行输出已无有效概率。还有一种更隐蔽的
-形态：没有元素越界、仅指数和溢出（如整行取 $88$：$e^{88}$ 尚可表示，和越界）时，
-naive 输出是全 0 而没有 \texttt{NaN}。本章测试
-Case~C 用 $x \in [80, 120]$ 复现了这一点：naive 版输出 \texttt{NaN}，safe/online 版结果正常。
+形态：没有元素越界、仅指数和溢出（例如长度至少为 $3$ 的整行取 $88$：
+$e^{88}$ 尚可表示，和越界）时，naive 输出是全 0 而没有 \texttt{NaN}。本章测试
+Case~C 用 $x \in [80, 120]$（含越过 $88.72$ 的元素）复现的是前一种形态：naive 版输出
+\texttt{NaN}，safe/online 版结果正常；``全 0 无 NaN''形态需另行构造。
 
 利用平移不变性（式~\ref{eq:4-shift}），取 $c = m = \max\sb{j} x^{(j)}$，得到 safe softmax：
 \begin{equation}

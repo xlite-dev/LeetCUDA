@@ -538,7 +538,7 @@ $8$--$32\,\mathrm{KB}$，远小于十万元素量级的 SRAM）时，$\mathrm{IO
   \label{eq:15-ai-fa}
 \end{equation}
 $B_r = 128$ 时约 $128\,\mathrm{FLOP/B}$，仍低于本机 fp16 Tensor 口径的拐点
-（$\approx300$ FLOP/B，见第~\ref{ch:17}~章）：单看 tile 流量仍偏 memory-bound 侧，
+（见第~\ref{ch:17}~章）：单看 tile 流量仍偏 memory-bound 侧，
 实际 kernel 靠 L2 对 $K/V$ 的跨 block 复用把有效带宽压下来，才进入 compute-bound 侧。
 一阶模型未计这项复用（实际 HBM 流量更低），也未计 softmax/归约的非 matmul 开销；
 compute-bound 只是对理想实现的上界描述，真实 kernel 能达到的比例取决于流水线工程，
@@ -949,7 +949,7 @@ L61--71 的考据参数（SM120，$B{=}1, H{=}32, N{=}4096, D{=}64$）。机理�
         memory-bound 区；且 $O(N^{2})$ 的显存开销在长序列下先于运行时间使方案不可行。
   \item \textbf{FlashAttention}：$AI \approx B_r = 64$--$128\,\mathrm{FLOP/B}$
         （式~\ref{eq:15-ai-fa}，未计 L2 对 $K/V$ 的跨 block 复用）。单看 tile
-        流量仍低于本机 fp16 口径的拐点（$\approx300$，15.3.6~节），要靠 L2 复用
+        流量仍低于本机 fp16 口径的拐点（15.3.6~节），要靠 L2 复用
         把有效带宽压下来才进入 compute-bound 侧。两个外部锚点：FA2 论文在 A100 前向实测峰值利用
         $73\%$（$230\,\mathrm{TFLOPS}$）；本仓库手写 FA2 在 SM120
         （$B{=}1, H{=}32, N{=}4096, D{=}64$，\texttt{kPad=8}）实测
@@ -995,7 +995,8 @@ smem 布局）继续展开。
   指标（FA1：BERT-large 比 MLPerf~1.1 快 $15\%$、GPT-2 端到端 $3\times$、显存省
   $10$--$20\times$；FA2：约 $2\times$ vs FA1、A100 $230\,\mathrm{TFLOPS}$（$73\%$）；
   FA3：$1.5$--$2\times$ vs FA2、H100 fp16 $740\,\mathrm{TFLOPS}$（$75\%$）、FP8
-  前向近 $1.2\,\mathrm{PFLOPS}$）均与三篇论文摘要一致。
+  前向近 $1.2\,\mathrm{PFLOPS}$）与三篇论文一致：FA2/FA3 各项出自摘要；FA1 的
+  $15\%$/$3\times$ 出自摘要，显存 $10$--$20\times$ 为正文口径。
 \end{kaogu}
 
 \begin{kaogu}[F3/F5 考据]{$1/\sqrt{d}$ 的论证出处}
