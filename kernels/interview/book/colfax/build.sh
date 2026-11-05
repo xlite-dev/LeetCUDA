@@ -11,6 +11,12 @@ if [ "${1:-}" = "--draft" ]; then STRICT=0; fi
 
 MAIN=colfax-cute-zh
 
+# 封面含编译当月的动态日期，每次构建都重编 standalone PDF，
+# 否则跨月后封面日期会停留在旧月份（write-leetcuda-book 硬规则 11）
+echo "== cover-tikz.pdf (standalone, 成书日期 $(date '+%Y 年 %-m 月'))"
+xelatex -interaction=nonstopmode cover-tikz.tex >/dev/null 2>&1 || {
+  echo "COVER BUILD FAILED, last 40 lines of cover-tikz.log:"; tail -40 cover-tikz.log; exit 1; }
+
 echo "== xelatex pass 1/3"
 xelatex -interaction=nonstopmode $MAIN.tex >/dev/null 2>&1 || { echo "BUILD FAILED, last 40 lines of $MAIN.log:"; tail -40 $MAIN.log; exit 1; }
 echo "== biber"
@@ -42,5 +48,5 @@ echo "Missing characters: 0"
 PAGES=$(pdfinfo $MAIN.pdf 2>/dev/null | awk '/^Pages:/{print $2}')
 echo "OK: $MAIN.pdf (${PAGES:-?} pages)"
 
-rm -f $MAIN.aux $MAIN.log $MAIN.out $MAIN.toc $MAIN.bbl $MAIN.bcf $MAIN.run.xml $MAIN.blg
+rm -f $MAIN.aux $MAIN.log $MAIN.out $MAIN.toc $MAIN.bbl $MAIN.bcf $MAIN.run.xml $MAIN.blg cover-tikz.aux cover-tikz.log
 echo "cleaned intermediates"

@@ -9,11 +9,18 @@
 \date{%
   \begin{tabular}{c}
     Colfax Research\\[0.5em]
-    2026 年 1 月（原文）\quad 中文译注版 2026-09
+    2026 年 1 月（原文）\quad 中文译注版 \the\year-\the\month
   \end{tabular}%
 }
 
 \begin{document}
+
+% 封面：shipout 背景钩子满幅铺图（源 cover-tikz.tex，standalone letterpaper 手绘风矢量）
+\AddToHookNext{shipout/background}{%
+  \put(0,-\dimexpr\paperheight\relax){\includegraphics[width=\paperwidth,height=\paperheight]{cover-tikz.pdf}}}
+\thispagestyle{empty}
+\null
+\clearpage
 
 \maketitle
 
