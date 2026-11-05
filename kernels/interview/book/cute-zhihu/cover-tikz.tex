@@ -26,6 +26,9 @@
 \definecolor{coral}{RGB}{213,84,76}
 \definecolor{mint}{RGB}{76,182,149}
 
+% 成书日期取编译当月，勿写死（write-leetcuda-book 硬规则 11）
+\newcommand{\builddate}{\the\year 年 \the\month 月}
+
 \begin{document}
 \begin{tikzpicture}
 % ===== A4 背景: 暖纸白 -> 极淡知乎蓝 =====
@@ -113,7 +116,7 @@
 \node[text=zhInk!85, font=\fontsize{15}{18}\selectfont\bfseries] at (10.5,4.35)
   {忠实整理 $\cdot$ 图文完整 $\cdot$ 仅用于开源学习};
 \node[text=zhMuted, font=\small] at (10.5,3.3) {整理：LeetCUDA Project};
-\node[text=zhMuted, font=\small] at (10.5,2.7) {2026 年 9 月};
+\node[text=zhMuted, font=\small] at (10.5,2.7) {\builddate};
 
 \end{tikzpicture}
 \end{document}

@@ -51,8 +51,8 @@ REPLACEMENTS: tuple[tuple[str, str], ...] = (
    "{\\bfseries Disclaimer\\\\\n"
    "   \\mdseries This book is for open-source learning and technical exchange only.\\\\\n"
    "   Any commercial use without the author's permission is prohibited.};"),
-  ("{LeetCUDA Project (Own by DefTruth) $\\cdot$ 2026 年 9 月};",
-   "{LeetCUDA Project (Own by DefTruth) $\\cdot$ September 2026};"),
+  ("\\newcommand{\\builddate}{\\the\\year 年 \\the\\month 月}",
+   "\\newcommand{\\builddate}{\\the\\year-\\the\\month}"),
 )
 
 #: 英文版不加载 xeCJK，只留 fontspec（``\\setmainfont`` 由它提供）+ 三个拉丁字体。

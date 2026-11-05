@@ -5,6 +5,14 @@ set -euo pipefail
 cd "$(dirname "$0")"
 export TEXMFCNF=../tex:  # 尾部冒号=追加系统默认配置；纯 ../tex/ 会找不到 xelatex.fmt
 
+# 封面含编译当月的动态日期：每次构建都重编，保证 PDF 首页日期与当月一致
+# （write-leetcuda-book 硬规则 11；figures/misc/cover.pdf 入库，RTD 站点也读它）
+echo "== cover.pdf (standalone, 成书日期 $(date '+%Y 年 %-m 月'))"
+(cd figures/misc && xelatex -interaction=nonstopmode cover-tikz.tex >/dev/null 2>&1 \
+  && cp cover-tikz.pdf cover.pdf) || {
+  echo "COVER BUILD FAILED, last 40 lines of figures/misc/cover-tikz.log:"
+  tail -40 figures/misc/cover-tikz.log; exit 1; }
+
 echo "== xelatex pass 1/2"
 xelatex -interaction=nonstopmode book.tex >/dev/null 2>&1 || { echo "BUILD FAILED, last 40 lines of book.log:"; tail -40 book.log; exit 1; }
 echo "== xelatex pass 2/2"
@@ -31,5 +39,5 @@ echo "== 跨文件 lint（kaogu 引文 / 跨章串表 / 图-码索引）"
 python3 scripts/lint_book.py || { echo "LINT FAILED（见上，修完再提交）"; exit 1; }
 
 # 中间文件清理（.tex/.pdf 由 .gitignore 规则管理）
-rm -f book.aux book.log book.out book.toc
+rm -f book.aux book.log book.out book.toc figures/misc/cover-tikz.aux figures/misc/cover-tikz.log
 echo "cleaned intermediates"

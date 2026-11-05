@@ -30,7 +30,12 @@
 \definecolor{colorx7}{RGB}{126,99,184}
 \definecolor{colorx8}{RGB}{194,88,158}
 
+% 成书日期取编译当月，勿写死（write-leetcuda-book 硬规则 11）
+\newcommand{\builddate}{\the\year 年 \the\month 月}
+
 \begin{document}
+% 固定 random steps 种子，保证每次重编封面像素一致（整行注释，英文封面工具会忽略）
+\pgfmathsetseed{20261009}
 \begin{tikzpicture}
 % ===== A4 背景 (cm), 极淡冷灰渐变 =====
 \shade[top color=coverBg, bottom color=coverBg!94!accentBlue] (0,0) rectangle (21,29.7);
@@ -226,6 +231,6 @@
   {\CJKfamily{zhsans}\bfseries 郑重声明\\
    \mdseries\CJKfamily{zhsong} 本书仅用于开源学习与技术交流，\\未经作者本人同意，不得用于任何商业用途。};
 \node[text=coverMuted, font=\small] at (10.5,2.85)
-  {LeetCUDA Project (Own by DefTruth) $\cdot$ 2026 年 9 月};
+  {LeetCUDA Project (Own by DefTruth) $\cdot$ \builddate};
 \end{tikzpicture}
 \end{document}
