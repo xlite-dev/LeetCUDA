@@ -127,7 +127,7 @@ auto make_tiled_copy_A(Copy_Atom<Args...> const& copy_atom,
 
 \section{ThrCopy}
 
-thread copy是线程级别的拷贝的抽象，其通过TiledCopy调用\verb|get_slice|方法而得到，其核心函数为\verb|partition_S/D|和\verb|retile_S/D|,其中S和D分别表示source和destination，partition表示对一个大的逻辑Tensor进行划分得到当前线程的拷贝所需要的源Tensor和目标Tensor， 而retile系列的函数表示其输入的数据已经是当前的线程的私有的数据了，但是其可能不满足拷贝所要求的形状，需要将其变换到拷贝所支持的形状，形式如下代码：
+thread copy是线程级别的拷贝的抽象，其通过TiledCopy调用\verb|get_slice|方法而得到，其核心函数为\verb|partition_|\allowbreak\verb|S/|\allowbreak\verb|D|和\verb|retile_|\allowbreak\verb|S/|\allowbreak\verb|D|,其中S和D分别表示source和destination，partition表示对一个大的逻辑Tensor进行划分得到当前线程的拷贝所需要的源Tensor和目标Tensor， 而retile系列的函数表示其输入的数据已经是当前的线程的私有的数据了，但是其可能不满足拷贝所要求的形状，需要将其变换到拷贝所支持的形状，形式如下代码：
 
 \begin{lstlisting}[language=C++]
 template <class TiledCopy, class ThrIdx>
