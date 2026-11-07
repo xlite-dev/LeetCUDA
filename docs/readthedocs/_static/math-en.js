@@ -123,5 +123,7 @@ window.LEETCUDA_MATH_EN = {
  "] = 行 max/2688 ≈ 3.7 × 10": "] = row max/2688 ≈ 3.7 × 10",
  "\\((\\text{行}, \\mathrm{SF})\\)": "\\((\\text{row}, \\mathrm{SF})\\)",
  "\\((\\text{行}, K)\\)": "\\((\\text{row}, K)\\)",
- "\\[\nBM = 128,\\qquad BK = 64 \\quad\\Longleftrightarrow\\quad\n\\text{TMA box} = \\text{一个 512}\\,\\text{B SF 原子}.\n\\]": "\\[\nBM = 128,\\qquad BK = 64 \\quad\\Longleftrightarrow\\quad\n\\text{TMA box} = \\text{one 512}\\,\\text{B SF atom}.\n\\]"
+ "\\[\nBM = 128,\\qquad BK = 64 \\quad\\Longleftrightarrow\\quad\n\\text{TMA box} = \\text{一个 512}\\,\\text{B SF 原子}.\n\\]": "\\[\nBM = 128,\\qquad BK = 64 \\quad\\Longleftrightarrow\\quad\n\\text{TMA box} = \\text{one 512}\\,\\text{B SF atom}.\n\\]",
+ "\\[\n\\begin{equation}\n  Y=XW^{\\top}\n   =\\widehat X\\widehat W^{\\top}\n   =\\underbrace{\\widehat XL_2^{\\top}L_1^{\\top}}_{\\text{16-bit 低秩分支}}\n   +\\underbrace{\\widehat XR^{\\top}}_{\\text{残差分支}}.\n\\end{equation}\n\\]": "\\[\n\\begin{equation}\n  Y=XW^{\\top}\n   =\\widehat X\\widehat W^{\\top}\n   =\\underbrace{\\widehat XL_2^{\\top}L_1^{\\top}}_{\\text{16-bit low-rank branch}}\n   +\\underbrace{\\widehat XR^{\\top}}_{\\text{residual branch}}.\n\\end{equation}\n\\]",
+ "\\[\n\\begin{equation}\n  \\Delta_{block}=\\min\\!\\left(\\frac{\\mathrm{amax}(16\\text{ 元素块})}{6},\\;448\\right),\n  \\qquad \\bar q=\\mathrm{round}\\!\\left(x\\cdot\\mathrm{rcp\\_approx}(\\Delta)\\right),\n\\end{equation}\n\\]": "\\[\n\\begin{equation}\n  \\Delta_{block}=\\min\\!\\left(\\frac{\\mathrm{amax}(16\\text{-element block})}{6},\\;448\\right),\n  \\qquad \\bar q=\\mathrm{round}\\!\\left(x\\cdot\\mathrm{rcp\\_approx}(\\Delta)\\right),\n\\end{equation}\n\\]"
 };

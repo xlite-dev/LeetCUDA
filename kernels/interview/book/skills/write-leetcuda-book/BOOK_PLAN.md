@@ -243,6 +243,8 @@
 > **Part VI 特化（ch27-33，2026-09-16 用户指定）**：第 2 条锚点改为「ffpa-attn commit `861d75e` + linerange 首末行文本匹配」（不冻结 SHA256）；第 4 条测试替换为 `python -m ffpa_attn.bench --fwd-backend cuda --cuda-impl <fp8|fp4> --tasks <相关> --no-bwd` 跑通 + parity 输出（max_abs/tol）记录；第 5 条 bench 数据源 = bench CLI / `bench/bench_{fp8,fp4}.py`（PRO 5000，CUDA_VISIBLE_DEVICES=7）。其余各条不变。
 >
 > **Part V 特化（ch34/35，2026-09-24）**：fp8_gemm.cuh 为本仓新增冻结件，随本增补 commit 冻结进 anchors.yaml；WS 变体的 setmaxnreg 直接调 `cutlass::arch::warpgroup_reg_{de,}alloc`（不走 NOTES_V2_REG_* 宏）；加速比双口径（vs cuBLAS 库现状 163.5 T / vs 手写 bf16 HGEMM 上限 ≈243 T，ch35 35.8.1 专节拆解基线）。库默认 tile 取扫描最快档 128×256×128/s2（35.8.4 节），但该结论带形状前提（2048³ 反慢 17%）。其余各条照常。
+>
+> **SVDQuant 篇特化（ch38-40，2026-11-07 用户指定，RFC-P）**：三章讲解 cache-dit 外部公开仓库（commit `3295dc6`），源码只读引用 `\lstinputlisting{../../../../cache-dit/...}`（构建前置条件 = 同级 checkout，见附录 C「cache-dit 同级 checkout」节）。第 2 条锚点 =「cache-dit commit `3295dc6` + anchors.yaml 只登记 chapters 的 linerange 首末行文本匹配，**不冻结 SHA256**」（冻结权在 cache-dit 仓库自身；`files` 段不含其条目）；第 4 条测试特化为「读者执行 cache-dit `tests/kernels/test_svdquant_{cute,runtime}.py`（SM120 门控 skip；本书未复跑——用户指定本任务不跑任何 GPU kernel）」；第 5 条 bench 数据源 = cache-dit 开发记录（`bench/kernels/bench_svdquant_kernels.py` + 优化记录，各表注明来源/日期/口径；appB 已声明无本书复测）；第 7 条知乎参考例外登记见 RFC.md §15。ch38 为纯数学章：无源码锚点、无 kernel 测试（同 ch15 先例），数学验证以推导复核代替。其余各条照常（编译零 error、CHECKLOG、自审、文风、RTD 三层验收不豁免）。
 
 ### 4.3 行文风格（作者风格基线，2026-09-11 用户定）
 

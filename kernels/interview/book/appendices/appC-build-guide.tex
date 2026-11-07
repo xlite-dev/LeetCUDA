@@ -72,6 +72,31 @@ python bench/bench_fp8.py --dtype fp16    # 输出 bench/.tmp/*.png
 python bench/bench_fp4.py --dtype fp16
 \end{lstlisting}
 
+\section{cache-dit（Part VII 源码仓）同级 checkout}
+
+Part VII（第~\ref{ch:38}--\ref{ch:40}~章）的源码在独立仓库
+\texttt{cache-dit}（锚定 commit \texttt{3295dc6}，与 LeetCUDA 同级
+checkout 于本工作区）。\textbf{构建本书的前置条件}：与 LeetCUDA 同级
+存在 \texttt{cache-dit/} checkout 且检出该 commit——三章正文的
+\texttt{\textbackslash lstinputlisting} 以
+\texttt{../../../../cache-dit/...} 相对路径引用源文件（与
+第~\ref{ch:27}~章引用 ffpa-attn 的先例同构），缺失时构建会在对应
+代码段处报 \texttt{! LaTeX Error}。
+
+\begin{lstlisting}[style=console]
+git clone https://github.com/vipshop/cache-dit.git
+cd cache-dit && git checkout 3295dc6
+\end{lstlisting}
+
+\noindent 第~\ref{ch:39}--\ref{ch:40}~章的读者侧验证与性能复测在
+cache-dit 仓库内执行（SM120 门控，非 SM120 自动 skip）：
+
+\begin{lstlisting}[style=console]
+python -m pytest tests/kernels/test_svdquant_cute.py \
+                 tests/kernels/test_svdquant_runtime.py -q
+python bench/kernels/bench_svdquant_kernels.py   # 性能复测入口
+\end{lstlisting}
+
 \section{book/tests/build\_tests.sh 用法}
 
 \begin{lstlisting}[style=console]
