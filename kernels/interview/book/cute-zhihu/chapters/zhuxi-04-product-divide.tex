@@ -287,7 +287,7 @@ outer_partition(Tensor    && tensor,
 
 至此，我们已经完整地介绍了 $\text{layout}$ 代数中的核心操作：$\text{product}$ 和 $\text{divide}$。结合我们在上一篇中讨论的：$\text{compose}$ 和 $\text{inverse}$，事实上，这四个基本操作就构成了$\text{CuTe layout}$ 代数的核心骨架。
 
-阅读 Cutlass 代码的过程中，你会发现 $\text{layout}$ 代数会以各种变体形式反复出现。除了我们本文中提到的 $\text{tile\_to\_shape}$、$\text{local\_partition}$、$\text{local\_tile}$ 等，更常见的情况是，一个实际的功能函数，往往是多个代数变换步骤的组合。
+阅读 Cutlass 代码的过程中，你会发现 $\text{layout}$ 代数会以各种变体形式反复出现。除了我们本文中提到的 $\text{tile\_to\_}$\allowbreak$\text{shape}$、$\text{local\_}$\allowbreak$\text{partition}$、$\text{local\_tile}$ 等，更常见的情况是，一个实际的功能函数，往往是多个代数变换步骤的组合。
 
 例如，在 $\text{tiled copy}$ 中，我们能看到 $\text{raked\_product}$、$\text{inverse}$ 和 $\text{compose}$ 的联合使用。在 $\text{tiled mma}$ 中，则用到了多次的 $\text{logical\_divide}$、$\text{zipped\_divide}$ 和 $\text{compose}$ 等操作。
 

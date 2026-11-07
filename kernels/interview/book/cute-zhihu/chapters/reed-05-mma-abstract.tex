@@ -112,7 +112,7 @@ cutlass3.4版本中更新了该接口去掉了ValLayoutMNK，具体的参数解�
 
 \section{ThrMMA}
 
-该结构由TiledMMA根据具体的线程id分解而来（ThrMMA即Thread MMA），其描述了线程级实现\verb|D = A x B + C|任务时的功能抽象，主要是如下\verb|partition|类函数和\verb|partition_fragment|类函数。其中\verb|partition|函数完成对逻辑Tensor针对该线程的划分，即Tensor参数提供大块的逻辑矩阵单元，其返回值返回该线程需要进行的任务的Tensor描述。如Tensor C为BLK\_M x BLK\_N，则partition\_C可以得到线程级别的任务，维度为（MMA, MMA\_M, MMA\_N）, MMA表达了TiledMMA一次能计算的单元，MMA\_M, MMA\_N表达了M方向和N方向需要分块数量。\verb|partition_fragment|类函数是按照\verb|partition|类函数返回的Tensor形状生成的对应的寄存器表示。
+该结构由TiledMMA根据具体的线程id分解而来（ThrMMA即Thread MMA），其描述了线程级实现\verb|D = A x B |\allowbreak\verb|+ C|任务时的功能抽象，主要是如下\verb|partition|类函数和\verb|partition_|\allowbreak\verb|fragment|类函数。其中\verb|partition|函数完成对逻辑Tensor针对该线程的划分，即Tensor参数提供大块的逻辑矩阵单元，其返回值返回该线程需要进行的任务的Tensor描述。如Tensor C为BLK\_M x BLK\_N，则partition\_C可以得到线程级别的任务，维度为（MMA, MMA\_M, MMA\_N）, MMA表达了TiledMMA一次能计算的单元，MMA\_M, MMA\_N表达了M方向和N方向需要分块数量。\verb|partition_|\allowbreak\verb|fragment|类函数是按照\verb|partition|类函数返回的Tensor形状生成的对应的寄存器表示。
 
 \begin{lstlisting}[language=C++]
 ThrMMA {

@@ -1570,12 +1570,39 @@ def _table_header_rows(body: str) -> int:
   return len(headers) if len(headers) >= 2 else 0
 
 
+def _merge_break_parts(text: str) -> str:
+  """合并被 ``\\allowbreak`` 拆开的内联代码片段。
+
+  PDF 端靠 ``\\allowbreak`` 在长标识符内部换行；网页端不需要断点，
+  相邻片段若直接留下会渲染成字面双反引号，因此先合并回单个片段。
+
+  :param text: 章节 tex。
+  :returns: 合并后的文本。
+  """
+  patterns = (
+    (r"\\texttt\{([^{}\n]*)\}\\allowbreak\\texttt\{([^{}\n]*)\}",
+     r"\\texttt{\1\2}"),
+    (r"\\verb\|([^|\n]*)\|\\allowbreak\\verb\|([^|\n]*)\|", r"\\verb|\1\2|"),
+    (r"\\lstinline\|([^|\n]*)\|\\allowbreak\\lstinline\|([^|\n]*)\|",
+     r"\\lstinline|\1\2|"),
+    (r"\$([^$\n]*)\$\\allowbreak\$([^$\n]*)\$", r"$\1\2$"),
+  )
+  for pattern, repl in patterns:
+    while True:
+      merged = re.sub(pattern, repl, text)
+      if merged == text:
+        break
+      text = merged
+  return text
+
+
 def _drop_noise(text: str) -> str:
   """清掉网页上无意义的排版命令。
 
   :param text: 章节 tex。
   :returns: 清理后的文本。
   """
+  text = _merge_break_parts(text)
   text = _drop_providecommands(text)
   for pattern in _PARTIAL_RULES:
     text = re.sub(pattern, "", text)
