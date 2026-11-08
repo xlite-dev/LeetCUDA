@@ -167,8 +167,8 @@ $0.75$；正确做法是按模型、按层校准。
     \fill[\c] (0.52*\j,0) rectangle ++(0.36,\h);
   }
   \draw[dashed,tkOrange,thick] (0,1.98) -- (4.2,1.98)
-    node[pos=0.5, above=2pt, font=\tiny, text=tkOrange]
-      {$m=\max_j m_j$，$\Delta\propto m$};
+    node[pos=1.0, above=1pt, anchor=south east, font=\tiny, text=tkOrange]
+      {$m=\max_j m_j$};
   \node[font=\tiny, text=tkRed, anchor=west] at (1.98,1.3) {$j^{\ast}$};
   \node[anchor=west, font=\tiny] at (0,-0.5) {普通通道只剩 1--2 个有效码点};
   % (b) 平滑后激活
@@ -189,8 +189,8 @@ $0.75$；正确做法是按模型、按层校准。
       \fill[tkOrange!85] (0.52*\j,0) rectangle ++(0.36,\h);
     }
     \draw[dashed,tkRed,thick] (0,1.92) -- (4.2,1.92)
-      node[pos=0.5, above=2pt, font=\tiny, text=tkRed]
-        {$\max|\widehat W_{j^{\ast}}|$ 变大};
+      node[pos=1.0, above=1pt, anchor=south east, font=\tiny, text=tkRed]
+        {$\max|\widehat W_{j^{\ast}}|$};
     \node[anchor=west, font=\tiny] at (0,-0.5) {继承 $s_j$：W4A4 下吸收不了};
   \end{scope}
   % 总注记

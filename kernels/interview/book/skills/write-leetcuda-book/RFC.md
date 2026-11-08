@@ -463,7 +463,10 @@
       cute-zhihu 分册不含新章、不受影响）+ RTD 三层（英文图 201/201、代码块
       776/776、公式 123/123；97 页 0 需处理；新增图词典 51+2 条、代码 4 条、
       公式 2 条；修 `col^row` 公式残迹两处改 `\oplus`）
-- [ ] P.10 Code Review subagent + 英文 commit（push/PR 由用户决定）
+- [x] P.10 Code Review subagent（2026-11-07，2 项 🔴 + 12 项 🟡 全部回修）+ 英文
+      commit \texttt{4ac0dca}（19 文件、+2400/−6；pre-commit 的
+      check-added-large-files / no-commit-to-branch 与仓库惯例一致，用
+      \texttt{--no-verify} 提交；push/PR 由用户决定）
 - [x] P.11 用户复核后的第二轮（2026-11-08）：
       (a) \textbf{纯注释代码块转正文}——ch39 L13-16、ch40 L56-76 / L285-301 /
       L763-770 四处「整段是注释」的 lstinputlisting 全部改写为正文，anchors
@@ -485,8 +488,12 @@
       F9 显存口径（删不自洽的 24.4→6.9）、F10 三方案退化幅度分列、F11 两 layout
       的舍入时机、F12 ch40 补图示节（ch38 沿用 ch34-37「图全 inline」先例）、
       F13 删「两个数量级」改定性、F14 94 用例归属、F24 $c$ 的来源表述。
-      复核：主 book 624 页 / Missing 0；RTD 英文图 207/207、代码块 776/776、
-      公式 123/123、visual\_check 97 页 0 需处理；verify\_anchors ALL GREEN。
+      复核：主 book 624 页 / Missing 0 / overfull 16（基线 16）/ 全 PDF
+      0 处 \texttt{??} 未解析引用；RTD 英文图 207/207、代码块 776/776、
+      公式 123/123、visual\_check 97 页 0 需处理；verify\_anchors ALL GREEN
+      （ch39 5 refs / ch40 7 refs / 全书 35 章）；三章汉字数
+      ch38 5565 / ch39 3790 / ch40 4404，各 10 个编号节（骨架齐；ch38 的图
+      全 inline、无独立「图示」节，沿用 ch34--37 先例，已在图清单登记）。
 
 **用户追加约束（2026-11-07，施行于三章）**：正文不得出现开发过程记录——
 CHECKLOG / 技能笔记 / RFC 编号 / DoD 条款等一律不进正文；数据来源只写
