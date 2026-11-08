@@ -1210,3 +1210,13 @@ git diff --check：通过
 - 反向自辩：ch4a 四个复合例题经 PyCuTe 复算全部正确，撤回；ch3d “行首冒号”是 read_file 行号前缀误判；逻辑乘积证明的 `cosize(g)≤size(codomain g)` 对 tuple morphism 成立，撤回。
 - 验收：`colfax/build.sh`（临时 biber）205 页 / 0 error / 0 undefined / 缺字 0 / Overfull≥1pt 0；活跃 label 重复 0、悬空 0；`git diff --check` 通过；PyCuTe 复算复合/切分/乘积/N-补/紧凑性示例与修订文本一致。colfax 不在 RTD 源集合，未触发 RTD；未改主 book / cute-zhihu。
 - 残余：ch2f 两个只给形状、未给步长的逻辑切分例子无法唯一还原，保留 observation。报告与台账 `book/.tmp/colfax-audit/`。
+
+## R113（2026-11-08）：SVDQuant 三章第五轮快速增量复核
+
+- 触发：用户在 P.13 合入后要求“继续快速审核 svdq 三章”。三个 Task 只读并行提出候选，主 agent 逐条回读原文、`cache-dit@3295dc6` 源码、论文 LaTeX/图源并反向自辩，确认 21 项后回修。
+- ch38（8 项）：奇异值谱图号 Fig. 2→Fig. 5（`method.tex` 的五张 wrapfigure 顺序）；`3.5×` 是 DiT 推理显存 24.4→6.9 GiB（`efficiency.tex` 图注，Fig. 8(b)），`3.6×` 是模型体积 22.2→6.1 GiB，删“同一口径四舍五入”；`‖X̂‖_F` 不守恒，改给 `Σ‖X_{:,j}‖²/s_j²` 并按层判断；`57%` 对无低秩分支的 4-bit 基线、`1.43×` 对未融合/融合，正文/图注/误读同步；`lora_up` 首现第 40 章；归约轴约束改指 `eq:38-reduce`；“10 档”改为量程与有效量化级；实验 3 分开截断误差、`R` 的 4-bit 量化误差与 `L1,L2` 的 bf16 存储舍入。
+- ch39（5 项）：一条 `ldmatrix.x4` 只取一个 16×16 fragment（PTX 语义），四条约取四个 `b16` 矩阵，正文/图同改；pack 图行轴是 `base` 中的面板号 `p`、`local` 只选面板内槽位，补每格 1 KiB 与 base 的 `p` 项；第 36 章的真实映射是“每线程一个 16 元素组”（K=256 时 warp 覆盖两行）；B fragment 引用改到 `sec:39-lora-b`、删硬编码 42.3；`common.h` 的 nunchaku 出处不能证明 producer 移植，删“同源/移植源头”，改为与 native producer 逐字节对齐（L209–212）。
+- ch40（8 项）：B/SFB 与 D/L1 共用同一组 `full[s]/empty[s]`，A/SFA 不入 barrier，`O` 覆盖由 epilogue 的 `__syncthreads()` 保证（R106 旧说法“三条数据路径互不共享”错）；B 走 LDSM、SFB 是 `UniversalCopy` 标量 LDS（L839–854、L1084–1097）；TiledMMA 是三条 `static_assert`（L348–355）；`16384²` rank32 相对 FlashInfer 慢 1.9%、相对 native 快 1.2%；rank128 的 e2e 不是一律被 native 反超，8K 例 cute+native-D 437.76 μs 优于 native 459.30 与 row-major 450.94，16K 例 native 2102.94 μs 最优；`cosize(O)` 断言补 `sizeof(BF16)`；两个高层入口与两个测试文件的真实门控分开。
+- 反向自辩后不改：平滑等价变换、QJL 常数与 `1/d`、输出 overlay 字节算术、性能表 15 格、rank ≤64 的 8/8 最优格、图注中 `s_X/s_R` 与题注归属。R106 的 P.13 修正未回退。
+- 回修与验收：3 个章 `.tex`、`book.pdf`、`cover.pdf`、`figures-en.json`（2062 条）、`code-en.json`（776 条）。主 book **626 页 / 0 error / 0 undefined / Missing 0 / Overfull ≥1pt 15**，lint 三类 0 fail；RTD 全量 build 英文图 209/209、代码 776/776、公式 123/123；`visual_check` 97 页需处理 0。图目检 5 页，pack 图注“每列一行 vs 每格 32 行”的矛盾在看图后回修。
+- 测试边界：未重跑 GPU benchmark，性能与端到端数字仍为论文/上游记录转录；rank128 的 dispatch 是“按 shape 选择”的结论，不是实测 default。构建期间不要打开 `book.pdf`：浏览器会读到写了一半的 xref/trailer（本轮用户遇到的 “Invalid or corrupted PDF”），构建结束后 `pdfinfo` 626 页与 `pdftotext` 均正常。逐条证据见本条与 RFC P.14；ch38 图号最小复现留在 `book/.tmp/ch38-audit/`。
