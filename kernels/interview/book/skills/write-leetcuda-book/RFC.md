@@ -29,7 +29,8 @@
 | RFC-M | ch26c 增补章：SM120 大 head_dim non-WS Split-D（ffpa-attn 同源移植 + K/V stages 解耦实验） | RFC-F/K/L（ch26 前置） | 完成（2026-09-23：ffpa_attn.cuh L643-1306 整合 + tests 12/12 + K/V stages 实验 (3,2) D320=204.1T=2.93x cuDNN + 正文 4967 字 5 TikZ 图）|
 | RFC-N | Part V FP8/FP4 HGEMM 篇 ch34-35（fp8_gemm.cuh 新增冻结件 + 双口径加速比 + cuBLAS 基线剖析 + B 离线量化） | RFC-D/F/K（ch22-24、ch27 前置） | 完成（2026-09-24：fp8_gemm.cuh 943 行 + tests 28 条 PASS 断言（ch34 8 + ch35 20，含 6 条逐 bit 等价）+ 4096³ 400.5T=2.45x/上限 1.66x + B 离线量化 376.8T=2.30x + 8 TikZ 图 + 全书改号 Part V→VI）|
 | RFC-O | Part V FP8/FP4 HGEMM 篇 ch36-37（NVFP4 两级量化 + block-scaled MMA，fp4_gemm.cuh 新增冻结件） | RFC-D/F/N（ch22-24、ch34/35 前置） | 完成（2026-09-24：fp4_gemm.cuh 1298 行 + tests ch36/ch37 全 PASS（含 4 条逐 bit 等价）+ kernel 614.6/648.7T（128×256/s6 ws）+ e2e FP4 334.2/373.4T 反超 FP8 + 误差模型 14.4% 与实测 14.37% 吻合；ch36/ch37 共 9 张 TikZ 图）|
-依赖图（执行实况）：`RFC-0 → RFC-A → RFC-C → RFC-D → RFC-E → RFC-F → (RFC-G ∥ RFC-H ∥ RFC-I) → RFC-J`；RFC-B 于 2026-09-18 取消（素材职能被附录 E + drawio 全量重建接管）；`RFC-K 依赖 RFC-E/F 素材，与 RFC-G/H/I 并行，完成后并入 RFC-J 收口`；增补里程碑 RFC-L（ch26b）/RFC-M（ch26c）/RFC-N（ch34-35）/RFC-O（ch36-37）于 2026-09-22..24 依次完成并并入主线
+| RFC-P | Part VI SVDQuant 篇 ch38-40（cache-dit svdq cute/fp4 源码讲解：数学原理 + quantize producer + W4A4 GEMM；纯书稿，不改 cache-dit、不跑 kernel） | RFC-K/N/O（ch27/31/34-37 前置）+ cache-dit@3295dc6（公开仓） | 执行中（2026-11-07 登记）|
+依赖图（执行实况）：`RFC-0 → RFC-A → RFC-C → RFC-D → RFC-E → RFC-F → (RFC-G ∥ RFC-H ∥ RFC-I) → RFC-J`；RFC-B 于 2026-09-18 取消（素材职能被附录 E + drawio 全量重建接管）；`RFC-K 依赖 RFC-E/F 素材，与 RFC-G/H/I 并行，完成后并入 RFC-J 收口`；增补里程碑 RFC-L（ch26b）/RFC-M（ch26c）/RFC-N（ch34-35）/RFC-O（ch36-37）于 2026-09-22..24 依次完成并并入主线；RFC-P（ch38-40，SVDQuant 篇）于 2026-11-07 登记为**Part VII**（插在 attention 篇之后、附录之前；attention 篇保持 Part VI、旧章打印章号零副作用——P.0 审核的路线 B；新章打印章号 41--43，正文硬编码节号按打印值书写）
 
 ## 2. RFC-0 脚手架
 
@@ -423,6 +424,156 @@
   ch36 另修 1 处 `36.6→32.5`）；**ch30$\sim$ch35 仍有同类硬编号**（ch34 6 处 / ch35 21 处 /
   ch30 6 处 / ch31 1 处），需用户确认后再做一次机械全改（会触碰「不再改动」的 ch34/ch35）
 
+## 12-P. RFC-P Part VI SVDQuant 篇：ch38-40（2026-11-07）
+
+> 用户指定增补，**纯书稿任务**：不修改任何 cache-dit 代码、不运行任何 GPU kernel，
+> 只做逻辑讲解与章节撰写。源码只读引用 cache-dit 公开仓库（commit \texttt{3295dc6}，
+> 附录 D permalink；构建前置条件 = 同级 checkout，见附录 C 新增节）。
+
+- [x] P.0 计划审核（Review Plan agent，2026-11-07：三章划分成立；ch39 范围窄化为
+      row-major producer + kNative 仅契约层对比；Part 重编号 16 处清单化；DoD 从
+      N/A 升级为"特化"范式）
+- [ ] P1 ch38 SVDQuant 数学原理（SmoothQuant→SVDQuant 主线 + TurboQuant/DVD-Quant
+      扩展阅读；术语消歧：通道缩放平滑 vs ch28 softmax 平移；转置陷阱 L1/L2 角色）
+- [ ] P2 ch39 量化 producer（quantize\_w4a4\_row\_major：fuse LoRA-down、v1 pack
+      写出映射、两种 lora layout 契约对比；sm\_120a 限定 + 5 条能力边界）
+- [ ] P3 ch40 W4A4 GEMM（gemm\_w4a4：hybrid G2R/TMA、双 MMA 共享 accumulator、
+      stage overlay、WS 统一流水环、LoRA-first 代数补偿、host 契约与 dispatch）
+- [x] P.4 book.tex 接线（新 Part VII + 三章 \input，置于 attention 篇之后、
+      附录之前）+ 章号口径核定：新章**打印章号 41--43**（ch38/39/40），正文
+      硬编码节号按打印值书写（41.x/42.x/43.x）；attention 篇保持 Part VI 与
+      打印 34--40 不变（曾评估"插 Part V 后"的路线 A，会把 attention 篇硬编码
+      节号偏差从既有 +7 恶化到 +10，弃）+ appB/appC/appD/appE 同步
+- [x] P.5 anchors.yaml 登记 ch39（6 refs）/ch40（10 refs）linerange 锚点
+      （file 前缀 `../../../cache-dit/`，**不冻结 SHA256**；ch38 纯数学章无 refs，
+      同 ch15 先例）；`verify_anchors.py --ch ch39,ch40` ALL GREEN，全书 35 章回归绿
+- [x] P.6 BOOK\_PLAN §4.2 新增「SVDQuant 篇特化」条目
+- [x] P.7 自审（第零层公式逐条复核：平滑等价性、α 乘积不变量、Prop 4.1 证明、
+      Prop 4.2 推导、Eckart--Young 尾谱、refine 重锚定、TurboQuant 三式、DVD
+      BGR 闭式；发现并修正 ch39 五处硬编码节号语义错——把自身节号误写为 41.x，
+      已改 42.5/42.2/42.2.3/42.8/42.3）+ remove-tech-ai-tone 文风自检（拍→阶段、
+      喂/账/人肉/玄学→中性、契约→约定、悄悄→静默、幅值预算→幅值范围、
+      设计宣言→声明、例证化→被实现证实；词表清零）
+- [x] P.8 TikZ 图视觉验收（6 幅 standalone + 书内抽页复核，修 6 处：fig-38-1
+      上下半间距/红虚线穿条、fig-38-2 重画为三块结构、fig-39-1 `\bfseries`
+      脚本字号 CJK 行距塌陷、fig-39-2 框内文字溢出、fig-40-1 框重叠重画三列
+      四行、fig-40-2 相邻格文字相连；用户复核后 fig-39-1 的 CTA→staging 折线
+      箭头改为一条直线）
+- [x] P.9 构建矩阵（主 book 622 页 / Missing 0 / overfull 17 与基线 16 基本持平；
+      cute-zhihu 分册不含新章、不受影响）+ RTD 三层（英文图 201/201、代码块
+      776/776、公式 123/123；97 页 0 需处理；新增图词典 51+2 条、代码 4 条、
+      公式 2 条；修 `col^row` 公式残迹两处改 `\oplus`）
+- [x] P.10 Code Review subagent（2026-11-07，2 项 🔴 + 12 项 🟡 全部回修）+ 英文
+      commit \texttt{4ac0dca}（19 文件、+2400/−6；pre-commit 的
+      check-added-large-files / no-commit-to-branch 与仓库惯例一致，用
+      \texttt{--no-verify} 提交；push/PR 由用户决定）
+- [x] P.11 用户复核后的第二轮（2026-11-08）：
+      (a) \textbf{纯注释代码块转正文}——ch39 L13-16、ch40 L56-76 / L285-301 /
+      L763-770 四处「整段是注释」的 lstinputlisting 全部改写为正文，anchors
+      同步删条目（ch39 5 refs / ch40 7 refs）；
+      (b) \textbf{开发过程记录清出正文}——删 CHECKLOG/技能笔记/DoD/「优化记录」
+      /「记录在案」等表述，来源只留「cache-dit 的测量（日期/GPU/口径）」；
+      (c) \textbf{图示增补}——fig-38-1 改为一行三栏（原 \& 用户否决的两栏堆叠版），
+      新增 6 幅（FIG-38-3/38-4/39-3/40-3/40-4/40-5），全图 12 幅；
+      (d) \textbf{PRO 6000 四方性能表}——按 cache-dit
+      \texttt{docs/user\_guide/QUANTIZATION.md} 的 PR \#1259 数据补
+      native / cute(native $D$) / cute(row-major $D$) / FlashInfer cute-dsl
+      的 15 格 kernel-only 表（tab:40-pro6000）；
+      (e) \textbf{Code Review 必改项修复}——F1 口径错述（ch34-37 已是
+      $A_8B_8$/$A_4B_4$）、F2 NVFP4 反量化语义（量化用 $1/\Delta_{\rm float}$、
+      反量化用 e4m3 舍入后的 $\Delta$）、F3 43.10 悬空节号（ch40 补「图示」节
+      后自洽）、F4 41.10→42.10、F5 staging tile 16 行×72 列（mt0/mt1 复用）、
+      F6 \texttt{lora\_scales} 为 \texttt{float[64]}、F7 \texttt{\_\_CUDA\_ARCH\_\_}
+      宏名、F8 LoRA-first 代价（每列 1 除 + 每元素 1 乘）与缺失零保护入常见坑、
+      F9 显存口径（删不自洽的 24.4→6.9）、F10 三方案退化幅度分列、F11 两 layout
+      的舍入时机、F12 ch40 补图示节（ch38 沿用 ch34-37「图全 inline」先例）、
+      F13 删「两个数量级」改定性、F14 94 用例归属、F24 $c$ 的来源表述。
+      复核：主 book 624 页 / Missing 0 / overfull 16（基线 16）/ 全 PDF
+      0 处 \texttt{??} 未解析引用；RTD 英文图 207/207、代码块 776/776、
+      公式 123/123、visual\_check 97 页 0 需处理；verify\_anchors ALL GREEN
+      （ch39 5 refs / ch40 7 refs / 全书 35 章）；三章汉字数
+      ch38 5565 / ch39 3790 / ch40 4404，各 10 个编号节（骨架齐；ch38 的图
+      全 inline、无独立「图示」节，沿用 ch34--37 先例，已在图清单登记）。
+
+- [x] P.12 论文源码对齐（2026-11-08 第三轮）：下载 arXiv:2411.05007 的 LaTeX
+      源码（`sections/method.tex` + `sections/appendix.tex` + `figure_texts/`），
+      按原论文补细原理并复刻插图：
+      (a) \textbf{原理补细}——$r\in\{16,32\}$ 的经验取值与「前 32 个奇异值陡降、
+      截断点落在肘部」的依据（论文 Fig. 2）；refine「迭代固定轮数后取误差最小
+      的那一轮」；Prop. 3.2 的 $c$ 口径（正态分布下 $c=\sqrt{\pi\log\mathcal
+      N/\mathcal N}$，$\mathcal N=\text{size}(R)$）；融合必要性的两条成因——
+      down projection 多读 16-bit 输入、up projection 多写 16-bit 输出，rank 小时
+      张量尺寸不随 $r$ 缩小使瓶颈从计算转向访存，且激活超出 L2 时打到 DRAM；
+      融合后开销 $5\%$--$10\%$、kernel 调用次数减半；
+      (b) \textbf{四幅图}——FIG-38-1 换成论文分布图风格的三段式量化级数图
+      （(a) 原始 / (b) 平滑迁移 / (c) SVDQuant，每组双面板 + 绿/粉区 + 逐通道柱）、
+      FIG-38-4 改三条谱、新增 FIG-38-5（延迟分解 $1.43\times$）与
+      FIG-38-6（kernel 融合两边界）；
+      (c) \textbf{口径修正}——删「$3.5\times$ 是 memory usage、$3.6\times$ 是模型
+      体积」的错分（两者是同一显存口径的四舍五入差），改按 teaser 图注的
+      「$8.7\times$ 相对 16-bit（消除 CPU offloading）/ $3.0\times$ 相对 NF4
+      W4A16」双基线写法；
+      复核：主 book 625 页 / Missing 0 / overfull 16；RTD 英文图 209/209、代码
+      776/776、公式 123/123、visual\_check 0 页需处理。
+- [x] P.13 svdq 三章第四轮深入审核（2026-11-08，源码 \texttt{3295dc6} + 论文源码 +
+      测试三方对齐，13 项）：
+      (a) \textbf{ch38 符号方向错}——\texttt{fig:38-fusion} 的 \texttt{Down Proj}
+      $L_1$ / \texttt{Up Proj} $L_2$ 沿用论文「$L_1$=down」约定，与本章
+      $L_1\in\mathbb R^{N\times r}$（up）、$L_2\in\mathbb R^{r\times K}$（down）
+      自相矛盾；图内节点、两个输出标签（补 $^{\top}$）与 caption 一并改口，
+      caption 另补图内出现但正文未定义的 $s_X$/$s_R$（激活/残差量化尺度）；
+      (b) \textbf{ch38 QJL 推导跳步}——补「逐坐标期望对 $d$ 个坐标求和、
+      $1/d$ 正好抵掉求和因子 $d$」，消除差 $d$ 倍的误读；
+      (c) \textbf{ch39 并行度口径}——「一个 warp 拥有 32 行」改「一个 CTA」，
+      并标注源码头注释 L13--15 的 one-warp 说法是初版单 warp 调度残留
+      （现行 L283--286：CTA 32 行 + warp 切 K）；
+      (d) \textbf{ch39 \texttt{quantize\_group} 处理量}——「4 个 K16 组（K64 的
+      四分之一）」易读成只处理 1/4，改「16 行 $\times$ K64（每行 4 个 K16 组）」；
+      (e) \textbf{ch39 第三阶段归并语义}——两轮 \texttt{shfl\_xor} 把 4 个字节
+      \textbf{或}成一个 u32（K8 码字），lane 四元组各得完整副本；原文「每个 lane
+      最终持有完整的 32 元素 K32 码字的四分之一」自相矛盾，\texttt{fig:39-v1-pack}
+      的「K32 码字」标注同步改 K8；
+      (f) \textbf{ch39 性能表版本错位}——「qact 每行两个 16B store」对应 qact 仍为
+      行主序 $[M,K/2]$ 的版本（git \texttt{32e38bd} 的 \texttt{uint4} store），
+      现行 v1 交织 pack 每行 4 个字、字距 16 B，16 B 连续 store 不成立；加脚注标明；
+      (g) \textbf{ch39 测试覆盖}——去掉 rank 0（\texttt{test\_svdquant\_cute.py}
+      只参数化 32/64/128），补 \texttt{torch.equal} / sorted 比对 / M 非 256 被拒；
+      (h) \textbf{ch39 导读 114.23pt overfull}——长路径拆成两个 \texttt{texttt} 并把
+      括号后移（实测该句式在本版式下整段不可断行）；
+      (i) \textbf{ch40 D/L1 「swizzle-free」错}——L375 的注释与 L385--389 的代码
+      （\texttt{K\_SW64\_Atom}/\texttt{K\_SW32\_Atom}）矛盾，正文与
+      \texttt{fig:40-overlay} 改按代码读并标明该句过时；
+      (j) \textbf{ch40 smem 预算单位错}——按静态断言复算：每 stage 27 KiB
+      （A 8 + B 16 + SFA 1 + SFB 2），S=2/3/4 = 54/81/108 KiB；原文 55.3/110.6
+      是把 kB 当 KiB（实际 55296/110592 B），正文、图注、面试三处统一；
+      (k) \textbf{ch40 断言条数}——「三个 static\_assert（L439--445）」改为群
+      （实为 5 条，其中 3 条讲 overlay）；
+      (l) \textbf{ch40 \texttt{fig:40-g2r-map} 公式错}——原 \texttt{old\_warp}$=\lfloor m/32\rfloor$、
+      \texttt{old\_block}$=m/64$ 与 L626--645 不符，按源码重写为
+      $m_0/256$、$(m'/16)\bmod2$、$(m_0\bmod256)/32+m'/32+2\,\mathrm{mt}$、
+      $\mathrm{lane}\oplus2\,\mathrm{old\_mt}$，字节地址
+      $=\mathrm{block\_base}\cdot1024+\mathrm{old\_mt}\cdot512+\mathrm{lane}\cdot16$；
+      (m) \textbf{ch40 测试覆盖}——rank 0/32/64/128 改 32/64/128。
+      已核不改：Prop.~4.1/4.2 编号与 Appendix A/D/E 归属、\texttt{calibrate\_precision}
+      默认 \texttt{"low"}→\texttt{svd\_lowrank}、require 链 L414--433 与 L67--137、
+      派发表 L447--474 与 L146--163、十二处 \texttt{lstinputlisting} 区间、
+      \texttt{load\_act\_A\_g2r} L626--645、L1172--1173 警告、\texttt{apply\_inverse\_scale}
+      L790--801、\texttt{setmaxnreg} L1130/L1155、性能表 15 格与「14/15 格最快、
+      11 格最慢、$-0.02\%$--$-9.9\%$」统计。
+      复核：主 book 626 页 / 0 error / 0 undefined / Missing 0 / Overfull $\ge1$pt 15
+      （改前 16）；lint 三类 0 fail；RTD 全量 build（含 TikZ）英文图 209/209、
+      代码 776/776（含同步重写 2 条 \texttt{code-en}）、公式 123/123；
+      \texttt{visual\_check} 97 页需处理 0。
+
+**用户追加约束（2026-11-07，施行于三章）**：正文不得出现开发过程记录——
+CHECKLOG / 技能笔记 / RFC 编号 / DoD 条款等一律不进正文；数据来源只写
+「cache-dit 的测量（日期、GPU、口径）」与「本书未复跑」这类口径声明。
+
+**DoD 特化摘要**（全文见 BOOK_PLAN §4.2）：第 4 条测试 = 读者执行 cache-dit
+`tests/kernels/test_svdquant_{cute,runtime}.py`（SM120 门控 skip；本书未复跑，
+用户指定不跑 kernel）；第 5 条 bench 数据源 = cache-dit 开发记录（各表注明
+来源/日期/口径；appB 已声明无复测）；第 7 条知乎参考见 §15 种子表。
+
 ## 13. 图清单登记表（写作期持续更新）
 
 > **2026-09-27 全量核实**：chapters 中全部 36 处 `\includegraphics` 均已是 `% was:` 历史注释——全书章内图（ch00–ch35，含增补章）现为 **100% TikZ inline**。下表登记 `figures/drawio/` 的 64 条均为历史制作记录，其状态列「正式」一律读作「留档（已迁 TikZ）」；`figures/drawio/` 下 `.drawio`/`gen.py`/`.png` 三件套按用户决定留档保留（不删除）。各图现行 TikZ 源位于对应章节 tex 内。
@@ -517,6 +668,20 @@
 | FIG-35-3 | 35 | epilogue | C1 新建（2026-09-24，TikZ inline：rowcol 查表→cvt→STSM→TMA store 四步） | 正式 | 同上 |
 | FIG-35-4 | 35 | perf | C1 新建（2026-09-24，TikZ inline 柱状图：2048/4096/8192³ cuBLAS/nonws/ws/e2e 四系列） | 正式 | 同上 |
 | FIG-35-5 | 35 | sweep | C1 新建（2026-09-24，TikZ inline 双面板柱状图：(a) 8 个可行 tile 几何 s2 吞吐 + 256×256「装不下」占位；(b) 两个 tile 的 s2/s3/s4 深度对比） | 正式 | 同上（35.8.4 节） |
+| FIG-38-1 | 38 | smq-shift | C1 新建（2026-11-07，TikZ inline：通道缩放平滑的幅值迁移直觉，原始通道幅值+per-tensor 网格 vs 平滑后激活/权重两侧） | 正式 | chapters/ch38-svdq-math.tex（图 inline 于数学原理节，无独立图示节，同 ch34-37 先例） |
+| FIG-38-2 | 38 | svdq-flow | C1 新建（2026-11-07，TikZ inline：SVDQuant 数据流总览，离线平滑/SVD/残差量化 + 在线量化/D/GEMM 三分支） | 正式 | 同上 |
+| FIG-39-1 | 39 | producer-flow | C1 新建（2026-11-07，TikZ inline：融合 producer 数据流，CTA/warp 划分 + staging→ldmatrix→量化/LoRA 双支路 + shared 归约） | 正式 | chapters/ch39-svdq-quant-producer.tex |
+| FIG-39-2 | 39 | lora-layout | C1 新建（2026-11-07，TikZ inline：kNative vs kRowMajor 两种 D 形态与下游消费路径对比） | 正式 | 同上（39.5 图示节） |
+| FIG-40-1 | 40 | hybrid-flow | C1 新建（2026-11-07，TikZ inline：G2R/TMA hybrid 数据流，producer WG + 8 consumer warp + D/L1 overlay + O 复用） | 正式 | chapters/ch40-svdq-gemm-w4a4.tex |
+| FIG-40-2 | 40 | ws-timeline | C1 新建（2026-11-07，TikZ inline：统一流水环 LoRA-first 时序，full/empty barrier 双泳道 + LoRA 阶段提前入环） | 正式 | 同上 |
+| FIG-38-3 | 38 | error-split | C1 新建（2026-11-08，TikZ inline：误差再分配，激活项/权重项/W8A8 虚线/总误差 U 形） | 正式 | chapters/ch38-svdq-math.tex |
+| FIG-38-4 | 38 | tail | C1 改版（2026-11-08 第二轮：按论文 Fig. 2 改成三条谱 $W$/$\widehat W$/$R$，$r{=}32$ 落在肘部，替换原「两条谱 + 量化误差平坦线」版） | 正式 | 同上 |
+| FIG-38-5 | 38 | latency | C1 新建（2026-11-08，TikZ inline：QKV projection 延迟分解，naive 7+17+287+150 与 Nunchaku 22+300 堆叠柱，$1.43\times$ 标注） | 正式 | 同上（41.6 性能分析） |
+| FIG-38-6 | 38 | fusion | C1 新建（2026-11-08，TikZ inline：kernel 融合的两个边界，Fused Kernel 1 共享输入 / Fused Kernel 2 共享输出） | 正式 | 同上 |
+| FIG-39-3 | 39 | v1-pack | C1 新建（2026-11-08，TikZ inline：v1 pack 两级结构，256 行 8 面板 + K16 组在 4 lane 的归并） | 正式 | chapters/ch39-svdq-quant-producer.tex |
+| FIG-40-3 | 40 | overlay | C1 新建（2026-11-08，TikZ inline：一块 smem 的三次用途，A/SFA→D、B/SFB→L1→O tile 覆盖） | 正式 | chapters/ch40-svdq-gemm-w4a4.tex |
+| FIG-40-4 | 40 | lora-schedule | C1 新建（2026-11-08，TikZ inline：main-first vs LoRA-first 两行时间线对比） | 正式 | 同上 |
+| FIG-40-5 | 40 | g2r-map | C1 新建（2026-11-08，TikZ inline：G2R 逆映射三段式，CuTe 下标→换坐标系→v1 字节地址） | 正式 | 同上（43.5 图示节） |
 
 ## 14. CHECKLOG 摘要镜像（明细在 book/CHECKLOG.md）
 
@@ -592,6 +757,14 @@
 | DefTruth | vLLM Triton Merge Attention States Kernel 详解 | 1904937907703243110 | 5 |
 | DefTruth | LeetCUDA v3.0 大升级（项目自述） | 19862356369 | 1,附录C |
 | DefTruth | WINT8/4-(00)~(03) 快速反量化系列 | 657072856 / 657070837 / 657073159 / 657073857 | **全书行文风格基线**（BOOK_PLAN §4.3，与图解 FA 系列同为风格样本） |
+
+> **SVDQuant 篇（ch38-40，RFC-P）知乎参考例外登记（2026-11-07）**：本任务
+> 登记时本机知乎 CLI 未安装（`run.sh status` → `installed=false`，按 skill
+> 规范未装 consent 即停止），无法执行 `search zhihu` 检索；三章延伸阅读
+> 暂以一手论文（SmoothQuant/SVDQuant/TurboQuant/DVD-Quant，附录 E 已录）+
+> nunchaku/cache-dit 仓库为参考。DoD 第 7 条对本三章记**例外待补**：待用户
+> 安装知乎 CLI 后按五步法补 2--5 篇 SVDQuant/SmoothQuant 系知乎参考并回写
+> zhihu-inventory.md 与本表。
 
 ## 15. 未来任务（论文翻译/导读，2026-09-18 登记）
 

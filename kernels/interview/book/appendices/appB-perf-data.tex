@@ -200,6 +200,12 @@ FA2，更大 $D$ 选择 MATH。数字为 \texttt{ffpa\_attn.bench} CLI 复测
 fp8 5e-2 / fp4 dense 0.15、causal 0.70）。speedup 一律对 SDPA 同形状。
 列内数字取自各自所在章节的原始记录，跨章对比时注意口径。
 
+第七部分（第~\ref{ch:38}--\ref{ch:40}~章，SVDQuant 篇）\textbf{无本书复测
+数据}：该三章讲解 cache-dit 仓库的外部 kernel，其性能数字全部转述自
+cache-dit 开发记录（各表已注明来源/日期/口径，CUDA Event 或 nsys，
+RTX PRO 5000/PRO 6000），本书未执行复测；读者侧复测入口见
+第~\ref{ch:40}~章 43.10~节与附录~\ref{app:C}。
+
 \begingroup\small
 \begin{longtable}{p{1.6cm}p{3.6cm}p{2.6cm}p{3.0cm}p{3.0cm}}
 \toprule

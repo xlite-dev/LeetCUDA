@@ -34,6 +34,11 @@
         SageAttention 2/3 思想的 CuTe 高效复现：fp8/fp4 量化前处理链
         + persist-D/split-D/M4N2 kernel 家族
         （第~\ref{ch:19}、\ref{ch:26}、\ref{ch:27}--\ref{ch:33}~章）；
+  \item cache-dit 仓库（Part VII 代码链路，源码索引锚定 commit
+        \texttt{3295dc6}，permalink 见附录~\ref{app:D}）\\
+        \url{https://github.com/vipshop/cache-dit}\\
+        SVDQuant W4A4 的独立 CuTe 实现：fuse LoRA-down 的量化
+        producer + G2R/TMA hybrid GEMM（第~\ref{ch:38}--\ref{ch:40}~章）；
   \item Nsight Compute 文档\\
         \url{https://docs.nvidia.com/nsight-compute/}\\
         bank conflict 计数器与 stall 指标（第~\ref{ch:12}、\ref{ch:16}~章
@@ -84,7 +89,21 @@
   \item J. Su, Y. Lu, S. Pan, A. Murtadha, B. Wen, Y. Liu. RoFormer:
         Enhanced Transformer with Rotary Position Embedding.
         arXiv:2104.09864, 2021（RoPE 旋转位置编码的原始出处，
-        第~\ref{ch:07}~章）。
+        第~\ref{ch:07}~章）；
+  \item G. Xiao et al. SmoothQuant: Accurate and Efficient Post-Training
+        Quantization for Large Language Models. ICML 2023,
+        arXiv:2211.10438（通道缩放平滑与迁移强度 $\alpha$ 的原始出处，
+        第~\ref{ch:38}~章）；
+  \item M. Li et al. SVDQuant: Absorbing Outliers by Low-Rank Components
+        for 4-Bit Diffusion Models. ICLR 2025, arXiv:2411.05007
+        （W4A4 + 低秩残差分解与融合 kernel 的原始出处，
+        第~\ref{ch:38}--\ref{ch:40}~章）；
+  \item A. Zandieh et al. TurboQuant: Online Vector Quantization with
+        Near-optimal Distortion Rate. arXiv:2504.19874, 2025（随机旋转 +
+        Lloyd--Max + QJL 残差修正，第~\ref{ch:38}~章扩展阅读）；
+  \item Z. Li et al. DVD-Quant: Data-free Video Diffusion Transformers
+        Quantization. arXiv:2505.18663, 2025（BGR 网格精修 / ARQ 在线
+        旋转缩放 / $\delta$-GBS 位宽切换，第~\ref{ch:38}~章扩展阅读）。
 \end{itemize}
 
 \section{知乎系列（按主题）}
