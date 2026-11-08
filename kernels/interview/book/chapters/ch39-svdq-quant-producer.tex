@@ -16,9 +16,10 @@ finalize），多三次全量 DRAM 往返。本章讲 cache-dit 的
 \textbf{源码区间}：cache-dit 仓库 commit \texttt{3295dc6} 的
 \texttt{csrc/kernels/svdq/cute/fp4/}\texttt{quantize\_w4a4.cu}（478 行；
 公开仓库，完整代码入口见附录~\ref{app:D}）；两种 LoRA 输入 layout 的
-约定注释在同目录 \texttt{gemm\_w4a4.h} L9--51。实现移植自 nunchaku 的
-对应 kernel（\texttt{common.h} L1 的头注释写着 \texttt{Copied from
-nunchaku/src/common.h}），但输出端改成了本仓库 GEMM 直接消费的形态。
+约定注释在同目录 \texttt{gemm\_w4a4.h} L9--51；通用工具头
+\texttt{common.h} 来自 nunchaku（其 L1 注明 \texttt{Copied from
+nunchaku/src/common.h}）。producer 本体按本仓库 GEMM 的消费约定实现，
+并与 native producer 的输出逐字节对齐（L209--212）。
 
 \textbf{架构限定}：\textbf{sm\_120a 及以上}。kernel 体内
 \texttt{\#if defined(\_\_CUDA\_ARCH\_\_) \&\& \_\_CUDA\_ARCH\_\_ >= 1200} 分支之外只有
@@ -159,8 +160,9 @@ host 侧 \texttt{lora\_scales.size()==max(1,rank/16)} 的校验对上。
 
 \subsection{总体结构：一 CTA 32 行，warp 切 K}\label{sec:39-structure}
 
-kernel 的并行划分与第~\ref{ch:36}~章量化 kernel 的"每线程一行"哲学
-相反，选的是\textbf{CTA 级行块 + warp 级 K 切分}：
+kernel 的并行划分不同于第~\ref{ch:36}~章量化 kernel 的"每线程一个
+16 元素组"（$K=256$ 时一个 warp 覆盖两行），选的是
+\textbf{CTA 级行块 + warp 级 K 切分}：
 grid 为 $M/32$ 个 CTA，每个 CTA 负责 32 行；CTA 内
 \texttt{kWarps} 个 warp（rank $\le64$ 时 8 个，rank $>64$ 时 4 个，
 L447--474 的派发表）各自覆盖不相交的 K64 切片，沿 K 循环步进
@@ -175,7 +177,7 @@ LoRA 部分积，最后经 shared memory 归约出 $D$。
   \node[box, fill=tkFillBlue] (in) at (0,1.6) {$X\ [M,K]$ BF16\\（gmem）};
   \node[box, fill=tkBlue!18, text width=1.8cm] (cta) at (3.1,1.6) {CTA $=32$ 行\\$M/32$ 个};
   \node[box, fill=tkFillGreen] (stg) at (6.3,2.9) {gmem$\to$smem staging\\16$\times$72，mt0/mt1 复用};
-  \node[box, fill=tkFillGreen] (ldm) at (6.3,1.6) {\texttt{ldmatrix.x4}\\4 个 16$\times$16 fragment};
+  \node[box, fill=tkFillGreen] (ldm) at (6.3,1.6) {\texttt{ldmatrix.x4} $\times4$\\4 个 16$\times$16 fragment};
   \node[box, fill=tkFillBlue] (raw) at (9.3,1.6) {\texttt{raw\_all}\ [2][4]\\原始 $X$ fragment};
   \draw[arr] (in) -- (cta);
   \draw[arr] (cta.north east) -- (stg.south west);
@@ -233,8 +235,9 @@ L29）：两个 16 行半（mt0/mt1）\textbf{复用同一块缓冲}，各写一
 staging tile 的尺寸是 \texttt{kAStride}$=64+8$ 列——\textbf{64 数据列加
 8 列 padding}（L68--70 的注释说明这是为了匹配 native 的 ldmatrix 布局
 并避开 shared memory bank conflict）。加载端每行 8 个 lane 各搬 16 字节
-（\texttt{uint4}），一个指令周期内 4 行在飞；读出端用
-\texttt{ldmatrix.x4} 一次抓 4 个 16$\times$16 fragment。对比"每 lane
+（\texttt{uint4}），一个指令周期内 4 行在飞；读出端用 4 条
+\texttt{ldmatrix.x4}，每条抓一个 16$\times$16 fragment（4 个 8$\times$8
+b16 matrix），合计 4 个。对比"每 lane
 4 字节直接读 gmem"的写法，staging 把全局访问从四个半 sector 的 4B load
 变成整行的 128B 事务，实测 global excess sectors 从约 $47\%$ 降到
 约 $32\%$；staging 自身的 store 也从每 K64 的 32 条 4B 压到 8 条 16B。
@@ -298,7 +301,7 @@ shared memory}——pack 的交织方式就是为 fragment 直读设计的。
   \foreach \c/\lab in {0/{k 块 0}, 1/{k 块 1}, 2/{$\cdots$}}
     \node[font=\tiny] at ({1.4+1.78*\c},3.92) {\lab};
   \foreach \r in {0,1,2,3,4,5,6,7}{
-    \node[font=\tiny, anchor=east] at (-0.08,{3.45-0.48*\r}) {local \r};
+    \node[font=\tiny, anchor=east] at (-0.08,{3.45-0.48*\r}) {panel \r};
     \foreach \c in {0,1,2}
       \node[cell, fill=tkGreen!22, minimum width=1.58cm]
         at ({1.4+1.78*\c},{3.45-0.48*\r}) {32 行};
@@ -318,22 +321,24 @@ shared memory}——pack 的交织方式就是为 fragment 直读设计的。
     {4 个 lane 各持 K16 组的四分之一，\texttt{shfl\_xor} 归并成 K8 码字};
   % 注记
   \node[anchor=north west, align=left, text width=15.8cm, font=\tiny] at (0,-0.25)
-    {(a) 的列是 $K/64$ 个 32 B 码块，行按
-     \texttt{local}$=16(\mathrm{row}\bmod 8)+\lfloor(\mathrm{row}\bmod 16)/8\rfloor
-     +128\lfloor(\mathrm{row}\bmod 32)/16\rfloor$ 交织成 8 个面板，
-     块基址 \texttt{base} 再按 $\lfloor\mathrm{row}/256\rfloor$ 与 k 块号推进
-     （源码 L218--220）；顺序与 SM120 MMA 的 A-operand fragment 位置一致，
-     所以第~\ref{ch:40}~章的 G2R 能逐字直读。(b) 是第三阶段（\texttt{e2m1}
-     量化）的跨 lane 归并：两轮 \texttt{shfl\_xor}（mask 1、2）把 4 片字节或成
-     一个 u32（K8 码字），每个 lane 各得一份完整副本；每行 8 个 u32 拼满
-     K64，即 (a) 里的一个 32 B 码块。};
+    {(a) 每一列是一个 K64 块（每行占其中 32 B 码），每格是 32 行
+     $\times$ 32 B $=1$ KiB；行是 8 个 32 行面板，面板号
+     $p=\lfloor(\mathrm{row}\bmod256)/32\rfloor$ 进入 \texttt{base}，不在
+     \texttt{local}。面板内再由 \texttt{local}$=16(\mathrm{row}\bmod 8)
+     +\lfloor(\mathrm{row}\bmod 16)/8\rfloor+128\lfloor(\mathrm{row}\bmod 32)/16\rfloor$
+     交织出 32 个槽位；\texttt{base} 同时按 $\lfloor\mathrm{row}/256\rfloor$、
+     k 块号与 $p$ 推进（源码 L218--220）。顺序与 SM120 MMA 的 A-operand fragment
+     位置一致，所以第~\ref{ch:40}~章的 G2R 能逐字直读。(b) 是第三阶段
+     （\texttt{e2m1} 量化）的跨 lane 归并：两轮 \texttt{shfl\_xor}（mask 1、2）
+     把 4 片字节或成一个 u32（K8 码字），每个 lane 各得一份完整副本；每行
+     8 个 u32 拼满 K64，即一行在一个 K64 块里的 32 B 码。};
 \end{tikzpicture}
 \caption{v1 激活 pack 的两级结构。(a) 行维：256 行一块、8 个 warp 面板；
 (b) 列维：K16 组在 4 个 lane 间的分布与归并。两者共同决定编码的落笔位置。}
 \label{fig:39-v1-pack}
 \end{figure}
 
-\subsection{LoRA 支路：B fragment 的标量加载陷阱}
+\subsection{LoRA 支路：B fragment 的标量加载陷阱}\label{sec:39-lora-b}
 
 LoRA 支路用 \texttt{mma\_lora}（L116--135）把 \texttt{raw\_all}（注意：
 原始 $X$，不是 $\widehat X$）与 \texttt{lora\_down} 的 B fragment 累乘
@@ -504,7 +509,7 @@ $16.3\%$（$133.8$ vs $115.1\,\mu s$）——producer 追平而 GEMM 掉队，
         \texttt{lora\_down} 是否又被离线除了一次 $S$。
   \item \textbf{B fragment 的 even/odd 置换}：row-major $[K,R]$ 权重
         送入 MMA 的 TN B-layout 时，"相邻 K"不是"相邻内存"
-        （\ref{sec:39-structure}~节 load\_lora\_pair）；数值不报错、
+        （\ref{sec:39-lora-b}~节 load\_lora\_pair）；数值不报错、
         布局静默错。
   \item \textbf{v1 pack 的行映射不是行主序}：写出端的
         \texttt{local/base} 两级偏移按 256 行块交织；想直接按
@@ -555,7 +560,7 @@ $ python -m pytest tests/kernels/test_svdquant_cute.py -q
 #       （torch.equal）、ascales 值集合一致（sorted 后比对）、量化 Linear 的
 #       native/cute 端到端 parity、M 非 256 倍数被拒
 
-# CPU 侧观察实验（42.3~节映射的复算，numpy）：
+# CPU 侧观察实验（v1 pack 映射的复算，numpy）：
 # v1 pack 写出的两层偏移（local/base）用 numpy 索引模拟一遍，
 # 确认"按 256 行块交织"的 qact 展开后与按 [M,K/2] 行主序重排的
 # E2M1 码逐元素一致（不需要 GPU）。
@@ -564,8 +569,7 @@ $ python -m pytest tests/kernels/test_svdquant_cute.py -q
 \section*{延伸阅读}
 
 \begin{itemize}[itemsep=1pt,topsep=2pt]
-  \item nunchaku 的对应 producer（cache-dit 实现移植的源头）：
-        同一融合形态在 SVDQuant 官方引擎里的写法；
+  \item nunchaku 的对应 producer：同一融合形态在 SVDQuant 官方引擎里的写法；
   \item SVDQuant 论文（arXiv:2411.05007）Fig.~6：融合原则与
         未融合低秩分支的 57\% 开销测量；
   \item 本部分另两章：第~\ref{ch:38}~章（数学主线）、第~\ref{ch:40}~章

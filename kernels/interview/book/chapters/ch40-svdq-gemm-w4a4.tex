@@ -40,8 +40,9 @@ $M\equiv0\pmod{256}$（v1 激活 pack）、$N\equiv0\pmod{128}$（CUTLASS
 FP32 还是 BF16）；\texttt{kNative} 要求 rank $\le128$（定长
 \texttt{float[8]} scale 表）。
 
-\textbf{验证方式}：cache-dit 的 \texttt{tests/kernels/test\_svdquant\_cute.py}
-与 \texttt{test\_svdquant\_runtime.py}（SM120 门控；本书未复跑）。
+\textbf{验证方式}：cache-dit 的 \texttt{tests/kernels/} 下两个文件：
+\texttt{test\_svdquant\_cute.py}（SM120 门控）；\newline
+\texttt{test\_svdquant\_runtime.py}（CUDA + extension 门控；本书未复跑）。
 
 \section{问题与动机}
 
@@ -151,9 +152,9 @@ D/L1（低秩两项） & row-major BF16 $\to$ TMA $\to$ overlay & 复用 A/B 字
   \node[box, fill=tkBlue!18, text width=4.1cm] (sb) at (7.9,4.2)
     {stage ring：$sB+sSFB$\\（S3/S4 轮转）};
   \node[box, fill=tkGreen!25, text width=4.1cm] (ldsm) at (13.2,4.2)
-    {LDSM $\to$ $tCrB$/$tCrSFB$};
+    {LDSM（B）+ 标量 LDS（SFB）\\$\to$ $tCrB$/$tCrSFB$};
   \draw[arr] (b) -- node[above,font=\tiny]{TMA} (sb);
-  \draw[arr] (sb) -- node[above,font=\tiny]{LDSM} (ldsm);
+  \draw[arr] (sb) -- node[above,font=\tiny]{LDSM/LDS} (ldsm);
   % 行 2：A/SFA
   \node[box, fill=tkOrange!22, text width=3.3cm] (a) at (2.3,2.7)
     {A/SFA：v1 256 行\\MMA-fragment pack};
@@ -177,8 +178,9 @@ D/L1（低秩两项） & row-major BF16 $\to$ TMA $\to$ overlay & 复用 A/B 字
   \draw[arr] (mma) -- (o);
   % 注记
   \node[anchor=north west, align=left, text width=15.6cm, font=\tiny] at (0,-0.55)
-    {三条数据路径互不共享 barrier：主阶段 full 只对 B+SFB 布防（A/SFA 无 TMA 事务），
-     LoRA 阶段换成 D+L1 字节数；D/L1 与 $O$ 的复用安全性由 empty 先行到达保证
+    {A/SFA 不进 barrier；B/SFB 与 D/L1 共用同一组 \texttt{full[s]}/\texttt{empty[s]}，
+     只按阶段切换 TMA 事务字节数。D/L1 覆盖前由 producer 等待 \texttt{empty[s]}；
+     $O$ 覆盖则另由 epilogue 开头的 \texttt{\_\_syncthreads()} 保证
      （第~\ref{ch:39}~章图~\ref{fig:39-lora-layout} 给出两种 $D$ 形态的对照）。};
 \end{tikzpicture}
 \caption{gemm\_w4a4 的 hybrid 数据流。B/SFB 与 D/L1 由 producer warpgroup
@@ -226,9 +228,9 @@ accumulator 存储。下面这段把上述布局固化成编译期常量：
 \end{lstinputlisting}
 
 \texttt{scale\_vec::4X} 的作用是让一条 MMA 指令消费 4 个 FP8 scale
-（$4\times16=64$ 个 K），与 BK=64 对齐。两个 \texttt{static\_assert}
-（L348--353）把"rank tile 由整数个 BF16 atom 拼成"与"两个 MMA 的 C
-partition 一致"在编译期钉死。运行时体现为
+（$4\times16=64$ 个 K），与 BK=64 对齐。三个 \texttt{static\_assert}
+（L348--355）把"两个 MMA 的线程数相同、C partition 一致、rank tile 由整数个
+BF16 atom 拼成"在编译期钉死。运行时体现为
 \texttt{cute::gemm(lora\_mma, tCrD, tCrL1, tCrC)} 与
 \texttt{cute::gemm(tiled\_mma, zip(A,SFA), zip(B,SFB), tCrC)} 写的是
 \textbf{同一个} \texttt{tCrC}，无 retile、无 smem 中转、无跨
@@ -260,7 +262,7 @@ proves all consumer warps finished it before L1 overwrites that stage"，
 即复用 B 区的安全性由 empty barrier 的先行到达保证。输出 tile
 $O$（BF16 SW128 atom）则在 mainloop 与 LoRA MMA 全部结束后整片
 覆盖 ring（L443--444 的 static\_assert 要求
-$\mathrm{cosize}(O)\le kSmemBytes$）。
+$\mathrm{cosize}(O)\cdot\operatorname{sizeof}(\mathrm{BF16})\le kSmemBytes$）。
 
 代价同样写进了静态断言：BN=256/BK=128 时每 stage 27 KiB（A 8 + B 16 +
 SFA 1 + SFB 2），于是 S=2 被输出 overlay（64 KiB $>$ 54 KiB pipeline）
@@ -303,7 +305,7 @@ SFA 1 + SFB 2），于是 S=2 被输出 overlay（64 KiB $>$ 54 KiB pipeline）
   \node[anchor=north west, align=left, text width=15.8cm, font=\tiny] at (0,0.35)
     {三条 \texttt{static\_assert} 就是这张图：$\mathrm{kDStageBytes}=\mathrm{kAStageBytes}$、
      $\mathrm{kL1StageBytes}=\mathrm{kBStageBytes}$（BF16 每元素 2 B、E2M1 每元素 0.5 B，
-     rank tile 取 BK/4 列，字节数恰好相等）、$\mathrm{cosize}(O)\le\mathrm{kSmemBytes}$。
+     rank tile 取 BK/4 列，字节数恰好相等）、$\mathrm{cosize}(O)\cdot\operatorname{sizeof}(\mathrm{BF16})\le\mathrm{kSmemBytes}$。
      D/L1 用自己的 SW64/SW32 atom 与独立 TMA 描述符，只共享地址与 stage 步长；复用安全性
      由 empty barrier 先行到达保证。预算：每 stage 27 KiB，S=4 整环 108 KiB 超 99 KiB 上限；
      S=2 的 ring 只有 54 KiB，装不下 64 KiB 的输出 tile——这正是 S=3（81 KiB）成为唯一
@@ -380,7 +382,7 @@ WS 结构（L481--495 注释）：384 线程 = 128 producer + 256 consumer；
     {LoRA-first 时序（\texttt{kLoRAFirst=true}）：$g$ 从 0 到 $\mathrm{gTotal}{-}1$ 单调推进，
      producer 在 $g<\mathrm{nRt}$ 时装 D/L1、之后装 B/SFB；consumer 先跑 LoRA MMA（此前已预取
      K tile 0 的 A/SFA，故主循环首格跳过重复 load），中间用式~\ref{eq:40-lorafirst} 除 $s$，
-     主循环逐 K tile 等待 full[s] 后 G2R A/SFA、LDSM B/SFB、MMA，末段乘回 $s$ 加 bias 并一次性
+     主循环逐 K tile 等待 full[s] 后 G2R A/SFA、LDSM B + 标量 copy SFB、MMA，末段乘回 $s$ 加 bias 并一次性
      转 BF16。rank tile 最多提前 kStages 步进入 ring，消除串行的 LoRA 装载尾巴。};
 \end{tikzpicture}
 \caption{统一流水环的时序（LoRA-first）。stage 索引与 parity 在 LoRA
@@ -407,7 +409,8 @@ LoRA 项排在哪里有两种合法选择（\texttt{gemm\_w4a4.cu} L34--40 的
 \texttt{main-first} 把 rank tile 排在全部 K tile 之后，LoRA 的时间
 是一段串行尾巴；\texttt{LoRA-first} 把它排在最前，于是 LoRA 的 TMA
 可以与 K tile 0 的 A/SFA 预取重叠。后者需要第~\ref{eq:40-lorafirst}
-式的代数补偿，代价只是每列一次乘法。
+式的代数补偿，代价是每列一次除法，再加每个 accumulator 元素一次乘法
+（L790--801）。
 
 \begin{figure}[H]
 \centering
@@ -452,7 +455,7 @@ LoRA 项排在哪里有两种合法选择（\texttt{gemm\_w4a4.cu} L34--40 的
 \subsection{A/SFA 的 G2R 逆映射}
 
 consumer 侧每 K tile 先 \texttt{wait(full)}，随后逐 BK64 子块执行
-"G2R A/SFA $\to$ LDSM B/SFB $\to$ MMA"（L839--858 的主循环）：
+"G2R A/SFA $\to$ LDSM B + 标量 copy SFB $\to$ MMA"（L839--858 的主循环）：
 
 \begin{lstinputlisting}[linerange={839-858},firstnumber=auto,
   title={gemm\_w4a4.cuh L839-858（主循环：wait + 逐 k-block 交错）}]{../../../../cache-dit/csrc/kernels/svdq/cute/fp4/gemm_w4a4.cuh}
@@ -516,7 +519,7 @@ SM120 能力（L137），然后按几何选 tile 配置——
   title={gemm\_w4a4.cu L146-163（两套 tile 配置的派发）}]{../../../../cache-dit/csrc/kernels/svdq/cute/fp4/gemm_w4a4.cu}
 \end{lstinputlisting}
 
-运行时维度上，Python 侧只有两个公共入口
+运行时维度上，本章使用的两个高层公共入口是
 \texttt{svdq\_gemm\_w4a4} 与 \texttt{svdq\_quantize\_w4a4}，用
 \textbf{runtime（native/cute）$\times$ lora\_layout（native/row\_major）}
 两个正交维度选择（cache-dit PR \#1259 之后）。配对纪律是硬约束：
@@ -664,8 +667,8 @@ $16384,8192,8192$  & 32  & 1590.74 & 1634.34 & 1600.50 & \textbf{1571.23} \\
 
 读表三条。其一，\texttt{kRowMajor} 的 $D$ 在 15 格中 14 格最快
 （相对 native $-0.02\%$--$-9.9\%$），原因是 $D$ 走 TMA 而非 FP32
-gather；唯一失手的是 $16384^2$ 的 rank32，被 FlashInfer 以 $1.2\%$
-反超，同一格上 cute 的两种 $D$ 都慢于 native。其二，FlashInfer 的
+gather；唯一失手的是 $16384^2$ 的 rank32，被 FlashInfer 以 $1.9\%$
+反超（相对 native 则快 $1.2\%$），同一格上 cute 的两种 $D$ 都慢于 native。其二，FlashInfer 的
 cute-dsl kernel 在 11 格中最慢（$+2.3\%$--$+26.3\%$），说明同一硬件上
 "W4A4 算子"的实现差异远大于算法差异——它用的是自己的 $128\times4$
 pack，不能与 cache-dit 的 pack 互换。其三，三条 cache-dit 路径数值
@@ -674,11 +677,14 @@ $3.1$--$3.3\times10^{-3}$（kernel-only 与 e2e 同口径）。
 
 e2e 侧（producer + GEMM）：rank $\le64$ 时
 \texttt{cute}+\texttt{row\_major} 8/8 格最优（$-3.7\%$--$-12.6\%$）；
-rank $=128$ 时 CuTe producer 退化 $22\%$--$45\%$，e2e 反被 native
-反超。dispatch 结论因此是：rank $\le64$ 走
-\texttt{cute}+\texttt{row\_major}，rank $=128$ 回退
-\texttt{cute}+\texttt{native}。\textbf{该 dispatch 未写成默认}：
-PRO 5000 的标定与 6000 有差异，crossover 不能当全局常量。
+rank $=128$ 时 row-major 的 CuTe producer 退化 $22\%$--$45\%$，但 e2e
+并非一律被 native 反超：8K 例中 \texttt{cute}+native-$D$ 的
+$437.76\,\mu s$ 优于 native 的 $459.30\,\mu s$ 与 row-major 的
+$450.94\,\mu s$，16K 例则由 native 的 $2102.94\,\mu s$ 最优。dispatch
+结论因此是：rank $\le64$ 走 \texttt{cute}+\texttt{row\_major}；rank $=128$
+不用 row-major，按 shape 在 \texttt{cute}+native-$D$ 与 native 间选择。
+\textbf{该 dispatch 未写成默认}：PRO 5000 的标定与 6000 有差异，crossover
+不能当全局常量。
 
 \textbf{LoRA-first 的收益边界}（2026-11-06，相对 main-first）：
 $M\le4096$ 全部受益（rank32--128 约 $-0.5\%$--$-2.6\%$），

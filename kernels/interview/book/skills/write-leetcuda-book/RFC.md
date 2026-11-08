@@ -564,6 +564,39 @@
       （改前 16）；lint 三类 0 fail；RTD 全量 build（含 TikZ）英文图 209/209、
       代码 776/776（含同步重写 2 条 \texttt{code-en}）、公式 123/123；
       \texttt{visual\_check} 97 页需处理 0。
+- [x] P.14 svdq 三章第五轮增量复核（2026-11-08，源码 \texttt{3295dc6} +
+      论文 LaTeX/图源，确认 21 项）：
+      \textbf{ch38}(a) 奇异值谱图号 Fig.~2→Fig.~5（3 处）；(b) $3.5\times$ 与
+      $3.6\times$ 不是同一显存口径——前者是 DiT 推理显存 $24.4\to6.9$ GiB
+      （Fig.~8(b)），后者是模型体积 $22.2\to6.1$ GiB，正文/常见误读同步；
+      (c) $\|\widehat X\|_F$ 不守恒，补 $\sum_j\|X_{:,j}\|_2^2/s_j^2$ 并按层判断；
+      (d) $57\%$ 的分母是无低秩分支的 4-bit 基线，$1.43\times$ 是未融合/融合
+      之比，正文、图注与误读条目拆开；(e) \texttt{lora\_up} 首现于第 40 章；
+      (f) 逐输入通道 scale 的归约轴约束改指 \texttt{eq:38-reduce}；
+      (g) 「10 档」改为量程与有效量化级；(h) 实验 3 分开截断误差、$R$ 的 4-bit
+      量化误差与 $L_1,L_2$ 的 bf16 存储舍入。
+      \textbf{ch39}(i) 一条 \texttt{ldmatrix.x4} 只取一个 $16\times16$ fragment，
+      四条约取四个（正文、图同步）；(j) pack 图的行轴是 base 中的面板号，
+      \texttt{local} 只选面板内槽位，补每格 1 KiB 与 base 的 $p$ 项；
+      (k) 第 36 章量化 kernel 的真实映射是「每线程一个 16 元素组」；
+      (l) B fragment 引用改到 \texttt{sec:39-lora-b}，删硬编码 42.3；
+      (m) \texttt{common.h} 的 nunchaku 出处不能证明 producer 移植，删「同源」
+      与「移植源头」，改述为与 native producer 逐字节对齐。
+      \textbf{ch40}(n) B/SFB 与 D/L1 共用同一组 full/empty，A/SFA 不入 barrier，
+      $O$ 覆盖由 epilogue 的 \texttt{\_\_syncthreads()} 保证；
+      (o) B 走 LDSM、SFB 是标量 LDS，正文与图同改；
+      (p) TiledMMA 三条 \texttt{static\_assert}（L348--355）补齐线程数断言；
+      (q) $16384^2$ rank32 是相对 FlashInfer 慢 $1.9\%$、相对 native 快 $1.2\%$；
+      (r) rank128 的 e2e 不是一律被 native 反超，按 shape 在 cute+native-$D$
+      与 native 间选择，row-major 不再可取；(s) \texttt{cosize} 断言补
+      $\operatorname{sizeof}(\mathrm{BF16})$；(t) 两个高层入口与两个测试文件的
+      门控条件按实际代码分开。
+      已核不改：平滑等价变换、QJL 常数、输出 overlay 的字节算术、性能表 15 格、
+      rank $\le64$ 的 8/8 最优格、题注与附录归属。
+      复核：主 book 626 页 / 0 error / 0 undefined / Missing 0 / Overfull $\ge1$pt
+      15；lint 三类 0 fail；RTD 全量 build（含 TikZ）英文图 209/209、代码 776/776、
+      公式 123/123；\texttt{visual\_check} 97 页需处理 0。图目检 5 页，
+      pack 图注「每列一行 vs 每格 32 行」矛盾已回修。
 
 **用户追加约束（2026-11-07，施行于三章）**：正文不得出现开发过程记录——
 CHECKLOG / 技能笔记 / RFC 编号 / DoD 条款等一律不进正文；数据来源只写

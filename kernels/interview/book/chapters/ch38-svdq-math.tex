@@ -26,9 +26,9 @@ $Y=XW$；本书全篇采用 PyTorch 权重方向（与第~\ref{ch:27}~章一致�
 \end{equation}
 一个必须提前交代的陷阱：原文的低秩因子 $L_1$ 是 down 投影、$L_2$ 是 up 投影；
 按式~\ref{eq:38-direction} 转置后角色对调，本书的 $L_1\in\mathbb{R}^{N\times r}$
-是 up 因子、$L_2\in\mathbb{R}^{r\times K}$ 是 down 因子。后文
-第~\ref{ch:39}~章代码里的 \texttt{lora\_up}/\texttt{lora\_down} 命名与本书记号
-一致，但与论文原文交叉阅读时不能只换矩阵形状、不换因子角色。
+是 up 因子、$L_2\in\mathbb{R}^{r\times K}$ 是 down 因子。后文第~\ref{ch:39}--\ref{ch:40}~章代码里的
+\texttt{lora\_down}/\texttt{lora\_up} 命名与本书记号一致，但与论文原文
+交叉阅读时不能只换矩阵形状、不换因子角色。
 
 \textbf{（2）术语消歧}。本书已出现过两个"平滑"：第~\ref{ch:28}~章的
 smooth-K/smooth-V 利用 softmax 的\textbf{行平移不变性}与\textbf{行和恒为 1}，
@@ -283,12 +283,12 @@ $0.75$；正确做法是按模型、按层校准。
   \node[anchor=north west, align=left, text width=15.8cm, font=\tiny] at (0,-0.80)
     {柱高为逐通道幅值（示意，不按真实比例）；绿色背景是当前量化步长能覆盖的范围，
      柱顶冲出绿区的通道就是 outlier（红色）。左起三组面板：(a) 激活与权重各自带
-     outlier，$|X|$ 的 per-tensor 级数被 outlier 抬到 10 档、普通通道只剩个位数；
-     (b) 平滑把激活的 outlier 压进绿区，代价是权重的 outlier 更尖（y 轴从 2 抬到
-     4.5）；(c) SVD 把权重的尖峰整体搬进 16-bit 低秩分支，残差 $|R|$ 的幅值范围
-     从 $|\widehat W|$ 的 4.5 压到 0.05，整段落回绿区。逐输入通道 scale 本可拆掉
-     (a) 的 outlier，但它落在 GEMM 归约轴 $K$ 上（\ref{sec:38-notation}~节），
-     这正是平滑必须存在的理由。};
+     outlier，$|X|$ 的 per-tensor 量程被 outlier 抬到约 10、普通通道只剩个位数
+     有效量化级；(b) 平滑把激活的 outlier 压进绿区，代价是权重的 outlier 更尖
+     （y 轴从 2 抬到 4.5）；(c) SVD 把权重的尖峰整体搬进 16-bit 低秩分支，残差
+     $|R|$ 的幅值范围从 $|\widehat W|$ 的 4.5 压到 0.05，整段落回绿区。逐输入通道
+     scale 本可拆掉 (a) 的 outlier，但它落在 GEMM 归约轴 $K$ 上
+     （式~\ref{eq:38-reduce}），这正是平滑必须存在的理由。};
 \end{tikzpicture}
 \caption{量化难度在激活与权重之间的两次迁移（示意复刻 SVDQuant 论文的分布图）。
 (a) 两侧都难；(b) 平滑把难度搬到权重侧、激活归一；(c) SVD 把权重侧最难的尖峰
@@ -335,7 +335,8 @@ $\|\widehat X-\mathcal Q(\widehat X)\|_F$ 因通道归一而下降，但权重�
 \end{equation}
 可能上升——$\widehat W$ 的异常通道幅值被 $s_j$ 放大（图~\ref{fig:38-smq-shift}
 的 (b) 段右面板：$|\widehat W|$ 的尖峰比 (a) 段的 $|W|$ 更高），而
-$\|\widehat X\|_F$ 大体不变（缩放只重分配、不消灭能量）。
+$\|\widehat X\|_F$ 并不守恒（其平方为 $\sum_j\|X_{:,j}\|_2^2/s_j^2$）；
+它是否足以抵消权重项的增长取决于具体层。
 W8A8 里权重还有 256 个码点，多出的幅值余量吸收得起；W4A4 里权重只有
 8 个正码值（e2m1），权重侧自己的异常值同样会拉大量化步长，式~\ref{eq:38-wterm}
 成为主导项。这解释了 SVDQuant 的下一步：\textbf{不是继续加大 $\alpha$ 把难度
@@ -425,7 +426,7 @@ $\|R-\mathcal Q(R)\|_F$ 都尽可能小——大幅值方向由 16-bit 低秩分
 \end{equation}
 与低秩参数占权重参数的比例相同。论文的经验取值是 $r\in\{16,32\}$
 （$r\ll\min(N,K)$），取 $K=N=3072$、$r=32$ 时乘加量约占 $2.08\%$。
-$r=32$ 不是玄学：论文 Fig.~2 观测到平滑后权重的前 32 个奇异值明显陡降、
+$r=32$ 不是玄学：论文 Fig.~5 观测到平滑后权重的前 32 个奇异值明显陡降、
 其余平缓，截断点落在"肘部"（图~\ref{fig:38-tail} 画的是同一现象）。也要
 注意这只是乘加量（未计位宽差）的比例，不是打包字节比例，更不是延迟比例：
 小秩 GEMM 的额外输入读取、输出写入和 kernel launch 完全可能主导实际开销
@@ -497,14 +498,14 @@ $\|R\|_F$ 不再是原矩阵的尾奇异值和。图~\ref{fig:38-tail} 把这条
   \node[font=\tiny, text=tkOrange!70!black, align=center] at (9.6,2.9)
     {尾谱：$\|R\|_F=\sqrt{\sum_{i>r}\sigma_i^{2}}$};
   \node[anchor=north west, align=left, text width=15.8cm, font=\tiny] at (0,-0.85)
-    {曲线为示意（对应论文 Fig.~2 的实测形态）。原始权重 $W$ 的奇异值本就不均衡；
+    {曲线为示意（对应论文 Fig.~5 的实测形态）。原始权重 $W$ 的奇异值本就不均衡；
      平滑之后 $\widehat W$ 的前 32 个奇异值出现明显陡降、其余平缓，截断点就落在
      这个"肘部"（$r=32$ 的经验来源）。去掉主导奇异值后，残差 $R$ 的谱整条压到
      很低——$\|R\|_F$ 由式~\ref{eq:38-tail} 只剩尾谱能量。反过来若先量化、再用
      低秩去补偿量化误差，面对的是一条平坦的谱，低秩只能砍掉很小的能量，所以
      "先平滑、再 SVD、最后量化"的顺序不可交换。};
 \end{tikzpicture}
-\caption{三条奇异值谱的对比（复刻论文 Fig.~2 的读数方式）。$W$ 平缓、$\widehat W$
+\caption{三条奇异值谱的对比（复刻论文 Fig.~5 的读数方式）。$W$ 平缓、$\widehat W$
 前 32 个陡降、$R$ 整体压到很低；$r=32$ 取在肘部。}
 \label{fig:38-tail}
 \end{figure}
@@ -655,15 +656,16 @@ kernel、重新标定阈值、与缓存复用策略分别验收，不能直接�
 
 \section{性能分析}
 
-本章全部数字转述自 SVDQuant 论文（arXiv:2411.05007，Table 4 与 Fig.~6），
+本章全部数字转述自 SVDQuant 论文（arXiv:2411.05007，Table 4 与 Fig.~6/8），
 \textbf{本书未复测}。
 
 \textbf{（1）为什么必须融合 kernel}。低秩分支的算力只占
 $r(K+N)/(KN)$（式~\ref{eq:38-flops}），但算力不等于延迟。论文 Fig.~6(a)
-把 QKV projection 的延迟拆成四段（图~\ref{fig:38-latency}）：把
-down projection 与 up projection 当作独立 kernel 跑，rank-32 的低秩分支
-给这个算子带来 $57\%$ 的额外延迟（$461\,\mu s$ vs $322\,\mu s$，
-$1.43\times$）。原因不在算力而在访存——down projection 要\textbf{额外读
+把 QKV projection 的延迟拆成四段（图~\ref{fig:38-latency}）：down/up
+projection 作为独立 kernel 时，图注按\textbf{不含低秩分支的 4-bit 基线}
+报告 rank-32 分支带来 $57\%$ 额外延迟；图中两根柱则是未融合
+$461\,\mu s$ 与融合后 $322\,\mu s$，二者之比为 $1.43\times$，并不是
+$57\%$ 的分母。原因不在算力而在访存——down projection 要\textbf{额外读
 一遍 16-bit 输入}，up projection 要\textbf{额外写一遍 16-bit 输出}，而
 rank 很小时这两个张量的尺寸并不随 $r$ 缩小，瓶颈于是从计算转到访存；
 激活放不进 L2 cache 时更糟：DiT 块里 QKV 的 up projection 输出超过
@@ -711,8 +713,9 @@ L2 容量，额外读写直接打到 DRAM。
      compute 从 287 涨到 300、quantize 从 17 涨到 22——多出来的部分是融合
      kernel 内部承担低秩分支的代价，合计仅 $+18\,\mu s$。};
 \end{tikzpicture}
-\caption{QKV projection 的延迟分解（$1.43\times$）。未融合时低秩分支带来
-$57\%$ 额外延迟；融合后两段独立的 16-bit 读写整段消失。}
+\caption{QKV projection 的延迟分解（$1.43\times$ 是未融合/融合之比）。
+论文图注另按不含低秩分支的 4-bit 基线报告未融合开销 $57\%$；融合后两段
+独立的 16-bit 读写整段消失。}
 \label{fig:38-latency}
 \end{figure}
 
@@ -783,16 +786,18 @@ FLUX 单步（RTX 4090） & BF16 & naive INT4 & SVDQuant+Nunchaku \\
 \end{center}
 
 SVDQuant 的 218 ms 相对 naive INT4 的 212 ms 只差 $3\%$——这是融合后的
-端到端代价。注意与图~\ref{fig:38-latency} 的 $57\%$ 不是一个层次：那里是
-算子内的延迟分解，这里是整步端到端，两者共同说明
-\textbf{FLOPs 占比 $2\%$ 不等于免费，融合才是答案}。
+端到端代价。图~\ref{fig:38-latency} 里 $57\%$ 与 $1.43\times$ 的分母也不同：
+前者对无低秩分支的 4-bit 基线，后者对未融合版本；这里则是整步端到端，
+三者共同说明\textbf{FLOPs 占比 $2\%$ 不等于免费，融合才是答案}。
 
 \textbf{（4）显存与加速口径}。FLUX 的模型体积从 $22.2$ GiB 降到 $6.1$ GiB
-（低秩分支额外约 $0.3$ GiB，ratio $3.6\times$）；摘要写的 $3.5\times$ 与
-teaser 图注的 $3.6\times$ 是同一个显存口径的四舍五入差异，不要当成两个
-指标。"相对 16-bit 模型 $8.7\times$"的前提是\textbf{消除 CPU offloading}
-（16 GB 的 4090 上 BF16 放不下，必须 offload），"相对 NF4 W4A16 基线
-$3.0\times$"是另一条基线——引用任何一组都必须带基线。
+（低秩分支额外约 $0.3$ GiB，ratio $3.6\times$）；摘要与正文的 $3.5\times$
+对应另一个指标：DiT 推理显存从 $24.4$ GiB 降到 $6.9$ GiB（Fig.~8(b)，
+$24.4/6.9\approx3.54$）。两者都相对 BF16，但一个是模型体积、一个是推理
+显存，不能按四舍五入合并。"相对 16-bit 模型 $8.7\times$"的前提是
+\textbf{消除 CPU offloading}（16 GB 的 4090 上 BF16 放不下，必须 offload），
+"相对 NF4 W4A16 基线 $3.0\times$"是另一条延迟基线——引用任何一组都必须
+带指标与基线。
 \textbf{（5）配置一致性}：论文 4-bit 主结果的残差量化用了 GPTQ 而非纯 RTN；
 拿纯 RTN 实现对比论文主表属于配置不一致。cache-dit 默认路径
 （第~\ref{ch:39}~章）是 RTN 加可选 refine，与论文主表的差异在对比数字时
@@ -808,13 +813,14 @@ $3.0\times$"是另一条基线——引用任何一组都必须带基线。
         rank-$r$ 最优（式~\ref{eq:38-tail}），不含激活加权与量化器；
   \item "尾奇异值的几何平均"——是尾奇异值平方和开根；
   \item "refine 后残差仍等于原矩阵尾谱"——尾谱恒等式只属于精确初始截断；
-  \item "低秩分支几乎无开销"——未融合时论文实测 $57\%$ 延迟开销；
+  \item "低秩分支几乎无开销"——未融合时论文实测 $57\%$ 延迟开销（相对无
+        低秩分支的 4-bit 基线）；
   \item "论文主结果就是纯 RTN"——主结果含 GPTQ；
   \item "TurboQuant 的误差界可直接用于 SVDQ"——其界依赖 QJL 条件无偏性；
   \item "DVD-Quant 的 data-free $=$ 运行时无统计"——ARQ/$\delta$-GBS 都用
         运行时统计；
-  \item "$3.6\times$/$3\times$ 加速可脱离基线引用"——三组数字对应三个不同
-        基线，详见性能分析节。
+  \item "$3.6\times$/$3.5\times$/$3\times$ 可脱离口径引用"——前两者分别是
+        模型体积与推理显存，第三者是相对 NF4 W4A16 的延迟，详见性能分析节。
 \end{itemize}
 \end{kaogu}
 
@@ -882,12 +888,15 @@ $3.0\times$"是另一条基线——引用任何一组都必须带基线。
 # 实验 3：低秩吸收。对随机 W 做 SVD 截断 r=32：
 #   ||W - L1 @ L2||_F == sqrt(sum(sigma[r:]**2))（尾谱恒等式一节）
 #   再叠加 4-bit RTN：量化 R 的 rel-L2 明显小于量化 W 本身
+#   另将 L1,L2 转为 bf16，单独记录低秩分支的存储舍入 rel-L2
 \end{lstlisting}
 
-观察点：实验 3 里 $R$ 经 4-bit 量化后的 rel-L2 明显大于 16-bit 低秩分支的
-截断误差（前者由 4 bit 码点决定、在百分之一量级，后者由 bf16 表示精度决定、
-小得多）——这正是"残差分支必须配 W4A4 专用 kernel、低秩分支必须高精度"的
-数值动机。具体倍数随权重谱与 rank 变化，读者可用自己的模型复算。
+观察点：实验 3 要把三种误差分开：截断误差 $\|R\|_F/\|W\|_F$ 由式
+\ref{eq:38-tail} 的尾谱决定；$R$ 的 4-bit 量化 rel-L2 由码点与分组决定；
+$L_1,L_2$ 的 bf16 存储则只引入另一个舍入项。通常第三项明显小于第二项，
+这才是"残差分支必须配 W4A4 专用 kernel、低秩分支必须高精度"的数值动机；
+不能把截断误差说成由 bf16 精度决定。具体倍数随权重谱与 rank 变化，
+读者可用自己的模型复算。
 
 \section*{延伸阅读}
 
@@ -896,7 +905,7 @@ $3.0\times$"是另一条基线——引用任何一组都必须带基线。
   \item SVDQuant（arXiv:2411.05007）：Prop.~4.1/4.2 证明见 Appendix A，
         逐层配置见 Appendix D，论文数字口径见 Appendix E；
   \item nunchaku（SVDQuant 官方引擎）：producer/GEMM 融合形态的一手实现，
-        cache-dit 的 kernel 与之同源（第~\ref{ch:39}~章导读对照）；
+        可与第~\ref{ch:39}~章的 cache-dit 实现对照；
   \item TurboQuant（arXiv:2504.19874）Theorem 1--2 与 DVD-Quant
         （arXiv:2505.18663）Algorithm 1：两节扩展阅读的一手出处。
 \end{itemize}
