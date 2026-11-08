@@ -236,7 +236,8 @@ warpgroup 归约。
 
 \subsection{stage overlay 的内存经济学}\label{sec:40-overlay}
 
-smem 预算的三个 static\_assert（L439--445）是本章最浓缩的工程设计：
+smem 预算的 static\_assert 群（L439--445，其中三条讲 overlay、两条讲
+对齐与总预算）是本章最浓缩的工程设计：
 
 \begin{lstinputlisting}[linerange={375-393},firstnumber=auto,
   title={gemm\_w4a4.cuh L375-393（overlay 的字节论证与 D/L1 布局）}]{../../../../cache-dit/csrc/kernels/svdq/cute/fp4/gemm_w4a4.cuh}
@@ -251,18 +252,22 @@ overlay 的合法性来自位宽的精确互补：BF16 每元素 2 字节，pack
 BM$\times$BK 的 E2M1 stage \textbf{字节数相等}（$BM\cdot BK/4\cdot2
 =BM\cdot BK/2$），于是 \texttt{kRankTile = BK/4}（BK=128 时 32 列，
 正好一个 SW64 atom 行）。注意 L383--384 的警告：\textbf{字节数匹配
-不等于可以复用 A 的 swizzle 布局}——D/L1 用的是独立的 swizzle-free
-TMA 描述符，只共享存储地址与 stage 步长；"the empty-stage barrier
+不等于可以复用 A 的 swizzle 布局}——D/L1 有\textbf{自己}的 swizzle
+atom（$kRankTile\ge32$ 用 SW64，否则 SW32，L385--389）与独立的 TMA
+描述符，只共享存储地址与 stage 步长（L375 与 \texttt{gemm\_w4a4.h} L55
+的 "swizzle-free" 是过时注释，按 L385--389 的代码读）；"the empty-stage barrier
 proves all consumer warps finished it before L1 overwrites that stage"，
 即复用 B 区的安全性由 empty barrier 的先行到达保证。输出 tile
 $O$（BF16 SW128 atom）则在 mainloop 与 LoRA MMA 全部结束后整片
 覆盖 ring（L443--444 的 static\_assert 要求
 $\mathrm{cosize}(O)\le kSmemBytes$）。
 
-代价同样写进了静态断言：BN=256/BK=128 时 S=2 被输出 overlay（64 KiB
-$>$ pipeline 55.3 KiB）拒绝、S=4 总字节 110.6 KiB 超 99 KiB 预算——
-\textbf{stage 数与 overlay 深度是同一个 99 KiB 配额的两端}，想加 stage 必须
-先解耦 overlay（把 D/L1/O 挪去独立缓冲），这也是该实现后续的改造方向。
+代价同样写进了静态断言：BN=256/BK=128 时每 stage 27 KiB（A 8 + B 16 +
+SFA 1 + SFB 2），于是 S=2 被输出 overlay（64 KiB $>$ 54 KiB pipeline）
+拒绝、S=4 总字节 108 KiB 超 99 KiB 预算——\textbf{stage 数与 overlay 深度
+是同一个 99 KiB 配额的两端}，S=3 的 81 KiB 是唯一同时过三条断言的深度；
+想加 stage 必须先把 overlay 解耦（把 D/L1/O 挪去独立缓冲），这也是该实现
+后续的改造方向。
 
 \begin{figure}[H]
 \centering
@@ -299,9 +304,10 @@ $>$ pipeline 55.3 KiB）拒绝、S=4 总字节 110.6 KiB 超 99 KiB 预算——
     {三条 \texttt{static\_assert} 就是这张图：$\mathrm{kDStageBytes}=\mathrm{kAStageBytes}$、
      $\mathrm{kL1StageBytes}=\mathrm{kBStageBytes}$（BF16 每元素 2 B、E2M1 每元素 0.5 B，
      rank tile 取 BK/4 列，字节数恰好相等）、$\mathrm{cosize}(O)\le\mathrm{kSmemBytes}$。
-     D/L1 用独立的 swizzle-free TMA 描述符，只共享地址与 stage 步长；复用安全性由 empty
-     barrier 先行到达保证（\ref{sec:40-ws}~节）。预算：S=4 整环 110.6 KiB 超 99 KiB 上限；
-     S=2 的 ring 只有 55.3 KiB，装不下 64 KiB 的输出 tile——这正是 S=3 成为唯一可行深度的原因。};
+     D/L1 用自己的 SW64/SW32 atom 与独立 TMA 描述符，只共享地址与 stage 步长；复用安全性
+     由 empty barrier 先行到达保证。预算：每 stage 27 KiB，S=4 整环 108 KiB 超 99 KiB 上限；
+     S=2 的 ring 只有 54 KiB，装不下 64 KiB 的输出 tile——这正是 S=3（81 KiB）成为唯一
+     可行深度的原因。};
 \end{tikzpicture}
 \caption{stage ring 的三次复用。主阶段存 A/SFA 与 B/SFB；LoRA 阶段用同字节数的 D/L1
 覆盖；输出阶段整片覆盖为 $O$ tile。复用靠字节等式与 barrier 顺序，不靠额外缓冲。}
@@ -564,19 +570,20 @@ A/SFA 直读、B/SFB 与 D/L1 走 TMA）、放在\textbf{哪里}（图~\ref{fig:
   arr/.style={->, thick}]
   \node[box, fill=tkGreen!18] (cute) at (2.4,1.6)
     {\textbf{CuTe 的 fragment 下标}\\[2pt]
-     $tCrA$ 分区给出 $(m,\mathrm{mt})$\\
-     $m\in[0,64)$，$\mathrm{mt}\in\{0,1\}$\\
-     即两个 16 行半之一};
-  \node[box, fill=tkOrange!18, text width=4.6cm] (inv) at (7.9,1.6)
+     每个 consumer warp 持 32 行 atom\\
+     $\mathrm{mt}\in\{0,1\}$ 是两个 16 行半\\
+     $\mathrm{tid}$ 给出 16 行组偏移 $m'$};
+  \node[box, fill=tkOrange!18, text width=5.4cm] (inv) at (7.9,1.6)
     {\textbf{逆映射（源码 L626--645）}\\[2pt]
-     $\mathrm{old\_warp}=\lfloor m/32\rfloor$\\
-     $\mathrm{old\_block}=m/64$\\
-     $\mathrm{lane}'=\mathrm{lane}\oplus(2\,\mathrm{mt})$};
+     $\mathrm{old\_block}=m_0/256$，$\mathrm{old\_mt}=(m'/16)\bmod2$\\
+     $\mathrm{old\_warp}=(m_0\bmod256)/32$\\
+     $\qquad+\,m'/32+2\,\mathrm{mt}$\\
+     $\mathrm{lane}'=\mathrm{lane}\oplus(2\,\mathrm{old\_mt})$};
   \node[box, fill=tkBlue!18] (v1) at (13.3,1.6)
     {\textbf{v1 pack 的字节地址}\\[2pt]
-     $\mathrm{local}=16(\mathrm{row}\bmod 8)$\\
-     $\quad+\lfloor(\mathrm{row}\bmod 16)/8\rfloor+128\lfloor\cdot/16\rfloor$\\
-     地址 $= (\mathrm{base}+\mathrm{local})\times32$ B};
+     $\mathrm{block\_base}\times1024+\mathrm{old\_mt}\times512$\\
+     $\quad+\mathrm{lane}\times16$（字节）\\
+     每 lane 一次 \texttt{\_\_ldg} 读 16 B};
   \draw[arr] (cute) -- (inv);
   \draw[arr] (inv) -- (v1);
   \node[font=\tiny, text=tkGreen!55!black, anchor=north] at (2.4,0.35)
@@ -586,15 +593,20 @@ A/SFA 直读、B/SFB 与 D/L1 走 TMA）、放在\textbf{哪里}（图~\ref{fig:
   \node[font=\tiny, text=tkBlue!70!black, anchor=north] at (13.3,0.35)
     {生产者视角};
   \node[anchor=north west, align=left, text width=15.6cm, font=\tiny] at (0,-0.5)
-    {三段式的每一段都必须精确对齐：\texttt{old\_warp}/\texttt{old\_mt} 负责
-     "这个 fragment 属于哪个 32 行 warp 面板、哪个 16 行半"，$\mathrm{lane}\oplus(2\,\mathrm{mt})$
-     负责修正第二半的 lane 交叉。源码 L1172--1173 的警告是这条链上最贵的一句：
-     省略这个 XOR 交换，\textbf{形状仍然对、数学静默错}——错误的数值不会崩溃，
-     只会让结果在 PSNR 上静默掉几个 dB。};
+    {三段式的每一段都必须精确对齐（记 $m_0$ 为 CTA 的 128 行块首行、
+     $m'=(\mathrm{tid}\bmod128)/32\cdot16$ 为该线程的 16 行组偏移）：
+     \texttt{old\_warp} 决定"这个 fragment 属于哪个 32 行面板"，
+     \texttt{old\_mt} 决定"面板里哪个 16 行半"，$\mathrm{lane}\oplus(2\,\mathrm{old\_mt})$
+     负责修正第二半的 scale lane 交叉。右框的
+     $\mathrm{block\_base}=(\lfloor m_0/256\rfloor\cdot K/64+\mathrm{old\_kt})\cdot8+\mathrm{old\_warp}$
+     （$\mathrm{old\_kt}$ 为 K64 块号），一个 $\mathrm{block\_base}$ 步进即一块 32 行面板
+     （1 KiB）。源码 L1172--1173 的警告是
+     这条链上最贵的一句：省略这个 XOR 交换，\textbf{形状仍然对、数学静默错}——错误的数值
+     不会崩溃，只会让结果在 PSNR 上静默掉几个 dB。};
 \end{tikzpicture}
-\caption{A/SFA 的 G2R 逆映射三段式。CuTe 的 $(m,\mathrm{mt})$ 先换成
-producer 的 warp 面板与 16 行半，再用 lane 的 XOR 修正交叉，最后落到 v1 pack
-的字节地址。}
+\caption{A/SFA 的 G2R 逆映射三段式。CuTe 的线程坐标（$\mathrm{tid}$、$\mathrm{mt}$）
+先换成 producer 的 warp 面板与 16 行半，再用 lane 的 XOR 修正交叉，最后落到 v1
+pack 的字节地址。}
 \label{fig:40-g2r-map}
 \end{figure}
 
@@ -746,9 +758,8 @@ shared 指令 $-22\%$、wavefront $-18\%$、bank conflict $-29\%$、
         A：FP32 fragment + gather + 在线 scale，且强制 main-first；
         vs BF16 行主序 + TMA + 可 LoRA-first（图~\ref{fig:39-lora-layout}）。
   \item Q：这个 kernel 的 stage 数为什么卡在 3？\\
-        A：99 KiB 预算内，S=4 总字节 110.6 KiB 超限，S=2 被输出
-        overlay（64 KiB $>$ 55.3 KiB pipeline）拒绝；加 stage 须先
-        解耦 overlay。
+        A：99 KiB 预算内，S=4 总字节 108 KiB 超限，S=2 的 54 KiB ring
+        装不下 64 KiB 的输出 tile；加 stage 须先解耦 overlay。
   \item Q：producer 与 layout 配对的坑？\\
         A：\texttt{row\_major} $D$ 只配 \texttt{\_cute\_proj\_down}/
         \texttt{\_cute\_smooth}，混用静默错 $30$--$54\%$，用端到端
@@ -761,7 +772,7 @@ shared 指令 $-22\%$、wavefront $-18\%$、bank conflict $-29\%$、
 # 读者侧验证（cache-dit 仓库，SM120 卡；本书未复跑）：
 $ python -m pytest tests/kernels/test_svdquant_cute.py \
                    tests/kernels/test_svdquant_runtime.py -q
-# 上面两个文件覆盖 producer 数值、rank 0/32/64/128 的 GEMM parity、
+# 上面两个文件覆盖 producer 数值、rank 32/64/128 的 GEMM parity、
 #   runtime x lora_layout 四组合与 INT4 隔离回归；cache-dit 记录的
 #   94 个用例是 5 个测试文件的合计（另含 ops 派发、source manifest、
 #   quantize config）

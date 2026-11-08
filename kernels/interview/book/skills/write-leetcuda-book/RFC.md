@@ -515,6 +515,55 @@
       W4A16」双基线写法；
       复核：主 book 625 页 / Missing 0 / overfull 16；RTD 英文图 209/209、代码
       776/776、公式 123/123、visual\_check 0 页需处理。
+- [x] P.13 svdq 三章第四轮深入审核（2026-11-08，源码 \texttt{3295dc6} + 论文源码 +
+      测试三方对齐，13 项）：
+      (a) \textbf{ch38 符号方向错}——\texttt{fig:38-fusion} 的 \texttt{Down Proj}
+      $L_1$ / \texttt{Up Proj} $L_2$ 沿用论文「$L_1$=down」约定，与本章
+      $L_1\in\mathbb R^{N\times r}$（up）、$L_2\in\mathbb R^{r\times K}$（down）
+      自相矛盾；图内节点、两个输出标签（补 $^{\top}$）与 caption 一并改口，
+      caption 另补图内出现但正文未定义的 $s_X$/$s_R$（激活/残差量化尺度）；
+      (b) \textbf{ch38 QJL 推导跳步}——补「逐坐标期望对 $d$ 个坐标求和、
+      $1/d$ 正好抵掉求和因子 $d$」，消除差 $d$ 倍的误读；
+      (c) \textbf{ch39 并行度口径}——「一个 warp 拥有 32 行」改「一个 CTA」，
+      并标注源码头注释 L13--15 的 one-warp 说法是初版单 warp 调度残留
+      （现行 L283--286：CTA 32 行 + warp 切 K）；
+      (d) \textbf{ch39 \texttt{quantize\_group} 处理量}——「4 个 K16 组（K64 的
+      四分之一）」易读成只处理 1/4，改「16 行 $\times$ K64（每行 4 个 K16 组）」；
+      (e) \textbf{ch39 第三阶段归并语义}——两轮 \texttt{shfl\_xor} 把 4 个字节
+      \textbf{或}成一个 u32（K8 码字），lane 四元组各得完整副本；原文「每个 lane
+      最终持有完整的 32 元素 K32 码字的四分之一」自相矛盾，\texttt{fig:39-v1-pack}
+      的「K32 码字」标注同步改 K8；
+      (f) \textbf{ch39 性能表版本错位}——「qact 每行两个 16B store」对应 qact 仍为
+      行主序 $[M,K/2]$ 的版本（git \texttt{32e38bd} 的 \texttt{uint4} store），
+      现行 v1 交织 pack 每行 4 个字、字距 16 B，16 B 连续 store 不成立；加脚注标明；
+      (g) \textbf{ch39 测试覆盖}——去掉 rank 0（\texttt{test\_svdquant\_cute.py}
+      只参数化 32/64/128），补 \texttt{torch.equal} / sorted 比对 / M 非 256 被拒；
+      (h) \textbf{ch39 导读 114.23pt overfull}——长路径拆成两个 \texttt{texttt} 并把
+      括号后移（实测该句式在本版式下整段不可断行）；
+      (i) \textbf{ch40 D/L1 「swizzle-free」错}——L375 的注释与 L385--389 的代码
+      （\texttt{K\_SW64\_Atom}/\texttt{K\_SW32\_Atom}）矛盾，正文与
+      \texttt{fig:40-overlay} 改按代码读并标明该句过时；
+      (j) \textbf{ch40 smem 预算单位错}——按静态断言复算：每 stage 27 KiB
+      （A 8 + B 16 + SFA 1 + SFB 2），S=2/3/4 = 54/81/108 KiB；原文 55.3/110.6
+      是把 kB 当 KiB（实际 55296/110592 B），正文、图注、面试三处统一；
+      (k) \textbf{ch40 断言条数}——「三个 static\_assert（L439--445）」改为群
+      （实为 5 条，其中 3 条讲 overlay）；
+      (l) \textbf{ch40 \texttt{fig:40-g2r-map} 公式错}——原 \texttt{old\_warp}$=\lfloor m/32\rfloor$、
+      \texttt{old\_block}$=m/64$ 与 L626--645 不符，按源码重写为
+      $m_0/256$、$(m'/16)\bmod2$、$(m_0\bmod256)/32+m'/32+2\,\mathrm{mt}$、
+      $\mathrm{lane}\oplus2\,\mathrm{old\_mt}$，字节地址
+      $=\mathrm{block\_base}\cdot1024+\mathrm{old\_mt}\cdot512+\mathrm{lane}\cdot16$；
+      (m) \textbf{ch40 测试覆盖}——rank 0/32/64/128 改 32/64/128。
+      已核不改：Prop.~4.1/4.2 编号与 Appendix A/D/E 归属、\texttt{calibrate\_precision}
+      默认 \texttt{"low"}→\texttt{svd\_lowrank}、require 链 L414--433 与 L67--137、
+      派发表 L447--474 与 L146--163、十二处 \texttt{lstinputlisting} 区间、
+      \texttt{load\_act\_A\_g2r} L626--645、L1172--1173 警告、\texttt{apply\_inverse\_scale}
+      L790--801、\texttt{setmaxnreg} L1130/L1155、性能表 15 格与「14/15 格最快、
+      11 格最慢、$-0.02\%$--$-9.9\%$」统计。
+      复核：主 book 626 页 / 0 error / 0 undefined / Missing 0 / Overfull $\ge1$pt 15
+      （改前 16）；lint 三类 0 fail；RTD 全量 build（含 TikZ）英文图 209/209、
+      代码 776/776（含同步重写 2 条 \texttt{code-en}）、公式 123/123；
+      \texttt{visual\_check} 97 页需处理 0。
 
 **用户追加约束（2026-11-07，施行于三章）**：正文不得出现开发过程记录——
 CHECKLOG / 技能笔记 / RFC 编号 / DoD 条款等一律不进正文；数据来源只写

@@ -600,8 +600,9 @@ MSE 最优不等于内积无偏}：1-bit 高维极限下码点 $c_{\pm}=\pm\sqrt
 存在 $2/\pi$ 乘性偏置。\textbf{（3）QJL 残差补无偏性}：对残差方向
 $r=x-\widetilde x_{mse}$ 做 1-bit 随机投影量化
 $Q_{qjl}(u)=\mathrm{sign}(Su)$、$Q_{qjl}^{-1}(v)=\frac{\sqrt{\pi/2}}{d}S^{\top}v$
-（$S$ 的元素 i.i.d.\ $\mathcal N(0,1)$），由
-$\mathbb E[s_i\,\mathrm{sign}(s_i^{\top}u)]=\sqrt{2/\pi}\,u$ 得无条件无偏，
+（$S$ 的元素 i.i.d.\ $\mathcal N(0,1)$），由逐坐标的
+$\mathbb E[s_i\,\mathrm{sign}(s_i^{\top}u)]=\sqrt{2/\pi}\,u$（$\|u\|_2=1$）对
+$d$ 个坐标求和（$1/d$ 正好抵掉求和产生的因子 $d$）得无条件无偏，
 $\mathrm{Var}\le\frac{\pi}{2d}\|y\|_2^2$。两阶段总预算 $b$ bit/坐标：
 $b{-}1$ bit Lloyd--Max 加 1-bit QJL 残差，内积失真
 $D_{prod}\le\frac{\pi}{2d}\|y\|_2^2\,D_{mse}^{(b-1)}$。
@@ -732,11 +733,11 @@ $\widehat X$，同时产出低秩中间量与 4-bit 量化码），后两者合�
   \node[blk, fill=tkFillGreen, minimum width=2.4cm] (in) at (2.2,1.5)
     {$\widehat X$（bf16）};
   \node[blk, fill=tkRed!30, text width=2.0cm] (down) at (5.6,2.4)
-    {Down Proj\\$\boldsymbol{L_1}$};
+    {Down Proj\\$\boldsymbol{L_2}$};
   \node[blk, fill=black!15, text width=1.8cm] (quant) at (5.6,0.6)
     {Quantize};
   \node[blk, fill=tkFillBlue, minimum width=1.9cm] (o1) at (8.9,2.4)
-    {$\widehat X\boldsymbol{L_1}$};
+    {$\widehat X\boldsymbol{L_2}^{\top}$};
   \node[blk, fill=tkFillBlue, minimum width=1.9cm] (o2) at (8.9,0.6)
     {$\mathcal Q(\widehat X)\,s_X$};
   \draw[-{Stealth}, thick] (in.east) -- (down.west);
@@ -747,11 +748,11 @@ $\widehat X$，同时产出低秩中间量与 4-bit 量化码），后两者合�
   \node[font=\tiny, text=tkRed, anchor=north] at (2.2,0.95) {shared input};
   % Fused Kernel 2
   \node[blk, fill=tkFillBlue, minimum width=1.9cm] (i1) at (12.0,2.4)
-    {$\widehat X\boldsymbol{L_1}$};
+    {$\widehat X\boldsymbol{L_2}^{\top}$};
   \node[blk, fill=tkFillBlue, minimum width=1.9cm] (i2) at (12.0,0.6)
     {$\mathcal Q(\widehat X)\,s_X$};
   \node[blk, fill=tkOrange!35, text width=2.0cm] (up) at (15.2,2.4)
-    {Up Proj\\$\boldsymbol{L_2}$};
+    {Up Proj\\$\boldsymbol{L_1}$};
   \node[blk, fill=tkGreen!35, text width=2.0cm] (comp) at (15.2,0.6)
     {4-Bit 乘加\\$\mathcal Q_R s_R$};
   \node[blk, fill=tkFillGreen, minimum width=1.0cm] (add) at (17.6,1.5) {$\oplus$};
@@ -762,9 +763,10 @@ $\widehat X$，同时产出低秩中间量与 4-bit 量化码），后两者合�
   \node[grp, fit=(up)(comp)(add), label={[font=\tiny, text=tkGreen!45!black]above:Fused Kernel 2（共享输出）}] {};
   \node[font=\tiny, text=tkRed, anchor=north] at (17.6,0.75) {shared output};
 \end{tikzpicture}
-\caption{kernel 融合的两个边界（复刻论文 Fig.~6(b)）。左：$L_1$ 与量化共享
-输入 $\widehat X$；右：$L_2$ 与 4-bit 乘加共享输出。融合把低秩分支的额外
-16-bit 读写整段消掉。}
+\caption{kernel 融合的两个边界（复刻论文 Fig.~6(b)；标号按本书约定，论文以
+$L_1$ 为 down）。左：$L_2$（down）与量化共享输入 $\widehat X$；右：$L_1$（up）
+与 4-bit 乘加共享输出。图中 $s_X$、$s_R$ 分别为激活与残差权重的量化尺度，
+码乘尺度即反量化。融合把低秩分支的额外 16-bit 读写整段消掉。}
 \label{fig:38-fusion}
 \end{figure}
 

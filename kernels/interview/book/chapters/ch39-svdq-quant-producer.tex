@@ -13,12 +13,11 @@ finalize），多三次全量 DRAM 往返。本章讲 cache-dit 的
 \textbf{融合 producer}：一次 kernel 同时产出 GEMM 的全部激活侧输入。
 按模板交代四件事：
 
-\textbf{源码区间}：cache-dit 仓库 commit \texttt{3295dc6}（公开仓库，
-完整代码入口见附录~\ref{app:D}）的
-\texttt{csrc/kernels/svdq/cute/fp4/quantize\_w4a4.cu}（478 行）；
-两种 LoRA 输入 layout 的约定注释在
-同目录 \texttt{gemm\_w4a4.h} L9--51。实现移植自 nunchaku 的对应
-kernel（\texttt{common.h} L1 的头注释写着 \texttt{Copied from
+\textbf{源码区间}：cache-dit 仓库 commit \texttt{3295dc6} 的
+\texttt{csrc/kernels/svdq/cute/fp4/}\texttt{quantize\_w4a4.cu}（478 行；
+公开仓库，完整代码入口见附录~\ref{app:D}）；两种 LoRA 输入 layout 的
+约定注释在同目录 \texttt{gemm\_w4a4.h} L9--51。实现移植自 nunchaku 的
+对应 kernel（\texttt{common.h} L1 的头注释写着 \texttt{Copied from
 nunchaku/src/common.h}），但输出端改成了本仓库 GEMM 直接消费的形态。
 
 \textbf{架构限定}：\textbf{sm\_120a 及以上}。kernel 体内
@@ -246,8 +245,8 @@ staging tile 的尺寸是 \texttt{kAStride}$=64+8$ 列——\textbf{64 数据列
 
 量化支路的核心是 \texttt{quantize\_group}（L141--241），输入是
 \texttt{raw\_all} 经"除 \texttt{smooth}"得到的 $\widehat X$ fragment
-（L323--333 的 \texttt{div\_bf16x2}）。它一次处理 4 个 K16 组（K64
-的四分之一），分四个阶段。
+（L323--333 的 \texttt{div\_bf16x2}）。它一次处理 16 行 $\times$ K64 的
+fragment（每行 4 个 K16 组，每组是 K64 的四分之一），分四个阶段。
 
 \textbf{第一阶段：寄存器重排与 amax 归约}（L144--172）。fragment 寄存器
 里的元素顺序是 MMA 布局而非行布局，先把 8 个 \texttt{bf16x2} 按
@@ -262,11 +261,13 @@ staging tile 的尺寸是 \texttt{kAStride}$=64+8$ 列——\textbf{64 数据列
 $\Delta$，同时算出近似倒数 \texttt{rscale} 供量化乘用；4 个 K16 组的
 $\Delta$ 用两条 \texttt{cvt.rn.satfinite.e4m3x2.f32} 打成 4 字节的
 FP8 scale 字。\textbf{第三阶段：e2m1 量化与跨 lane 归并}（L187--207）。
-每组 8 个 \texttt{float2} 各自乘 \texttt{rscale} 后用
-\texttt{cvt.rn.satfinite.e2m1x2.f32} 转码，向左移位到本 lane 的 nibble
-位置；因为 4 个 lane 各持 K16 组的一个四分之一，两轮
-\texttt{shfl\_xor}（mask 1、2）把 4 片码或在一起，每个 lane 最终持有
-完整的 32 元素 K32 码字的四分之一。
+每行的 8 个 \texttt{bf16x2} 各自乘 \texttt{rscale} 后用
+\texttt{cvt.rn.satfinite.e2m1x2.f32} 转成一个字节（2 个 e2m1），再左移
+$(\mathrm{lane}\bmod 4)\times8$ 位落进本 lane 的字节槽；4 个 lane 各持
+K16 组的一个四分之一，两轮 \texttt{shfl\_xor}（mask 1、2）把这 4 个字节
+\textbf{或}成一个 u32——即 8 个 e2m1 的完整码字（K8）。归并后同一个
+lane 四元组里的 4 个 lane 各拿一份完整副本；每行的 8 个 u32 拼满该行
+的 K64，两行共 16 个。
 
 \textbf{第四阶段：写 v1 交织 pack}（L209--241）。这是全 kernel 最难用
 行列坐标直接解释的一段，值得单独给出代码与注释：
@@ -314,7 +315,7 @@ shared memory}——pack 的交织方式就是为 fragment 直读设计的。
         at ({9.5+2.15*\c},{3.45-0.62*\l}) {2 个 K16 组};
   }
   \node[font=\tiny, anchor=west, text=tkOrange!75!black] at (8.3,0.55)
-    {4 个 lane 各持 K16 组的四分之一，\texttt{shfl\_xor} 归并成 K32 码字};
+    {4 个 lane 各持 K16 组的四分之一，\texttt{shfl\_xor} 归并成 K8 码字};
   % 注记
   \node[anchor=north west, align=left, text width=15.8cm, font=\tiny] at (0,-0.25)
     {(a) 的列是 $K/64$ 个 32 B 码块，行按
@@ -323,8 +324,9 @@ shared memory}——pack 的交织方式就是为 fragment 直读设计的。
      块基址 \texttt{base} 再按 $\lfloor\mathrm{row}/256\rfloor$ 与 k 块号推进
      （源码 L218--220）；顺序与 SM120 MMA 的 A-operand fragment 位置一致，
      所以第~\ref{ch:40}~章的 G2R 能逐字直读。(b) 是第三阶段（\texttt{e2m1}
-     量化）的跨 lane 归并：两轮 \texttt{shfl\_xor}（mask 1、2）把 4 片码或成
-     完整 K32 码字，再拼成 K64。};
+     量化）的跨 lane 归并：两轮 \texttt{shfl\_xor}（mask 1、2）把 4 片字节或成
+     一个 u32（K8 码字），每个 lane 各得一份完整副本；每行 8 个 u32 拼满
+     K64，即 (a) 里的一个 32 B 码块。};
 \end{tikzpicture}
 \caption{v1 激活 pack 的两级结构。(a) 行维：256 行一块、8 个 warp 面板；
 (b) 列维：K16 组在 4 个 lane 间的分布与归并。两者共同决定编码的落笔位置。}
@@ -384,8 +386,11 @@ FP32 累加、结果只向 BF16 舍入一次。若在归约中途提前转 BF16�
 这个 kernel 的头注释（L13--16）把"融合"定义成了四条被实现证实的
 否定句：\textbf{没有} FP32 LoRA scratch、\textbf{没有} atomic、
 \textbf{没有} finalize kernel、\textbf{没有}额外的激活 repack。
-与这四条否定配套的正面约定是：一个 warp 拥有 32 行的行块、$D$ 在
-寄存器里累加、按 row-major BF16 一次写出。对照 42.2~节的朴素方案，
+与这四条否定配套的正面约定是：一个 CTA 拥有 32 行的行块、$D$ 在
+寄存器里累加、按 row-major BF16 一次写出。注意同一段注释开头的
+"One warp owns 32 rows and the whole K reduction"是初版单 warp 调度的
+残留——现行实现改成 CTA 32 行、warp 沿 K 切分（L283--286 的注释与
+\ref{sec:39-structure}~节），读注释要按代码校正。对照 42.2~节的朴素方案，
 四条否定句恰好覆盖朴素方案会引入的四个额外 kernel 或缓冲区。
 判断一个融合 kernel 的设计是否到位，可以先问：它把哪些"本来要有的
 东西"变成了\textbf{不存在}？
@@ -449,11 +454,17 @@ cache-dit 的测量（2026-11-05，RTX PRO 5000，\textbf{本书未复测}）：
 \midrule
 单 warp 全 K（初版） & nsys & $\sim204\,\mu s$，waves $0.07$ & 并行度不足 \\
 8 warps 切 K + shared 归约 & Event & $195.7\to43.3\,\mu s$ & 消除动态索引 \\
-qact 每行两个 16B store & Event & $43.3\to40.4\,\mu s$ & 写合并 \\
+qact 每行两个 16B store & Event & $43.3\to40.4\,\mu s$ & 写合并$^{a}$ \\
 staging + \texttt{ldmatrix} & NCU & excess sectors $47\%\to32\%$ & 读端合并 \\
 B fragment / smooth 复用 & nsys median & $34.78\to33.31\,\mu s$ & 读流量减半 \\
 \bottomrule
 \end{tabular}
+
+\vspace{2pt}
+\parbox{0.92\textwidth}{\footnotesize $^{a}$ 这一行对应 qact 仍为行主序
+$[M,K/2]$ 的版本（每行两段 16 B 连续字节）；后来为 G2R 直读改成正文展示的
+v1 交织 pack，每行的 4 个字字距 16 B，16 B 连续 store 不再成立——引用这条
+优化前先核对布局版本。}
 \end{center}
 
 稳态结果（nsys，warmup=3、iters=15）：fused producer CuTe median
@@ -540,8 +551,9 @@ $16.3\%$（$133.8$ vs $115.1\,\mu s$）——producer 追平而 GEMM 掉队，
 # 读者侧验证（cache-dit 仓库，SM120 卡；本书未复跑）：
 $ python -m pytest tests/kernels/test_svdquant_cute.py -q
 # _require_sm120() 门控：非 SM120 自动 skip（输出 SKIP）
-# 覆盖：rank 0/32/64/128 的 producer 数值、v1 qact 与 native 逐字节一致、
-#       ascales 值集合一致、量化 Linear 的 native/hybrid parity
+# 覆盖：rank 32/64/128 的 producer 数值、v1 qact 与 native 逐字节一致
+#       （torch.equal）、ascales 值集合一致（sorted 后比对）、量化 Linear 的
+#       native/cute 端到端 parity、M 非 256 倍数被拒
 
 # CPU 侧观察实验（42.3~节映射的复算，numpy）：
 # v1 pack 写出的两层偏移（local/base）用 numpy 索引模拟一遍，
