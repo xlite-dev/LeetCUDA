@@ -495,6 +495,27 @@
       ch38 5565 / ch39 3790 / ch40 4404，各 10 个编号节（骨架齐；ch38 的图
       全 inline、无独立「图示」节，沿用 ch34--37 先例，已在图清单登记）。
 
+- [x] P.12 论文源码对齐（2026-11-08 第三轮）：下载 arXiv:2411.05007 的 LaTeX
+      源码（`sections/method.tex` + `sections/appendix.tex` + `figure_texts/`），
+      按原论文补细原理并复刻插图：
+      (a) \textbf{原理补细}——$r\in\{16,32\}$ 的经验取值与「前 32 个奇异值陡降、
+      截断点落在肘部」的依据（论文 Fig. 2）；refine「迭代固定轮数后取误差最小
+      的那一轮」；Prop. 3.2 的 $c$ 口径（正态分布下 $c=\sqrt{\pi\log\mathcal
+      N/\mathcal N}$，$\mathcal N=\text{size}(R)$）；融合必要性的两条成因——
+      down projection 多读 16-bit 输入、up projection 多写 16-bit 输出，rank 小时
+      张量尺寸不随 $r$ 缩小使瓶颈从计算转向访存，且激活超出 L2 时打到 DRAM；
+      融合后开销 $5\%$--$10\%$、kernel 调用次数减半；
+      (b) \textbf{四幅图}——FIG-38-1 换成论文分布图风格的三段式量化级数图
+      （(a) 原始 / (b) 平滑迁移 / (c) SVDQuant，每组双面板 + 绿/粉区 + 逐通道柱）、
+      FIG-38-4 改三条谱、新增 FIG-38-5（延迟分解 $1.43\times$）与
+      FIG-38-6（kernel 融合两边界）；
+      (c) \textbf{口径修正}——删「$3.5\times$ 是 memory usage、$3.6\times$ 是模型
+      体积」的错分（两者是同一显存口径的四舍五入差），改按 teaser 图注的
+      「$8.7\times$ 相对 16-bit（消除 CPU offloading）/ $3.0\times$ 相对 NF4
+      W4A16」双基线写法；
+      复核：主 book 625 页 / Missing 0 / overfull 16；RTD 英文图 209/209、代码
+      776/776、公式 123/123、visual\_check 0 页需处理。
+
 **用户追加约束（2026-11-07，施行于三章）**：正文不得出现开发过程记录——
 CHECKLOG / 技能笔记 / RFC 编号 / DoD 条款等一律不进正文；数据来源只写
 「cache-dit 的测量（日期、GPU、口径）」与「本书未复跑」这类口径声明。
@@ -605,7 +626,9 @@ CHECKLOG / 技能笔记 / RFC 编号 / DoD 条款等一律不进正文；数据�
 | FIG-40-1 | 40 | hybrid-flow | C1 新建（2026-11-07，TikZ inline：G2R/TMA hybrid 数据流，producer WG + 8 consumer warp + D/L1 overlay + O 复用） | 正式 | chapters/ch40-svdq-gemm-w4a4.tex |
 | FIG-40-2 | 40 | ws-timeline | C1 新建（2026-11-07，TikZ inline：统一流水环 LoRA-first 时序，full/empty barrier 双泳道 + LoRA 阶段提前入环） | 正式 | 同上 |
 | FIG-38-3 | 38 | error-split | C1 新建（2026-11-08，TikZ inline：误差再分配，激活项/权重项/W8A8 虚线/总误差 U 形） | 正式 | chapters/ch38-svdq-math.tex |
-| FIG-38-4 | 38 | tail | C1 新建（2026-11-08，TikZ inline：两条奇异值谱对比，权重快速衰减 vs 量化误差平坦，r 处截断 + 尾谱阴影） | 正式 | 同上 |
+| FIG-38-4 | 38 | tail | C1 改版（2026-11-08 第二轮：按论文 Fig. 2 改成三条谱 $W$/$\widehat W$/$R$，$r{=}32$ 落在肘部，替换原「两条谱 + 量化误差平坦线」版） | 正式 | 同上 |
+| FIG-38-5 | 38 | latency | C1 新建（2026-11-08，TikZ inline：QKV projection 延迟分解，naive 7+17+287+150 与 Nunchaku 22+300 堆叠柱，$1.43\times$ 标注） | 正式 | 同上（41.6 性能分析） |
+| FIG-38-6 | 38 | fusion | C1 新建（2026-11-08，TikZ inline：kernel 融合的两个边界，Fused Kernel 1 共享输入 / Fused Kernel 2 共享输出） | 正式 | 同上 |
 | FIG-39-3 | 39 | v1-pack | C1 新建（2026-11-08，TikZ inline：v1 pack 两级结构，256 行 8 面板 + K16 组在 4 lane 的归并） | 正式 | chapters/ch39-svdq-quant-producer.tex |
 | FIG-40-3 | 40 | overlay | C1 新建（2026-11-08，TikZ inline：一块 smem 的三次用途，A/SFA→D、B/SFB→L1→O tile 覆盖） | 正式 | chapters/ch40-svdq-gemm-w4a4.tex |
 | FIG-40-4 | 40 | lora-schedule | C1 新建（2026-11-08，TikZ inline：main-first vs LoRA-first 两行时间线对比） | 正式 | 同上 |

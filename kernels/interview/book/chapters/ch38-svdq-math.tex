@@ -160,49 +160,139 @@ $0.75$；正确做法是按模型、按层校准。
 
 \begin{figure}[H]
 \centering
-\begin{tikzpicture}[font=\scriptsize]
-  % (a) 原始 X
-  \node[anchor=west, font=\small\bfseries] at (0,2.95) {(a) 原始 $X$：通道幅值不均};
-  \foreach \j/\h/\c in {0/0.55/tkBlue!70, 1/0.35/tkBlue!70, 2/0.5/tkBlue!70, 3/1.75/tkRed, 4/0.4/tkBlue!70, 5/0.6/tkBlue!70, 6/0.3/tkBlue!70, 7/0.45/tkBlue!70}{
-    \fill[\c] (0.52*\j,0) rectangle ++(0.36,\h);
-  }
-  \draw[dashed,tkOrange,thick] (0,1.98) -- (4.2,1.98)
-    node[pos=1.0, above=1pt, anchor=south east, font=\tiny, text=tkOrange]
-      {$m=\max_j m_j$};
-  \node[font=\tiny, text=tkRed, anchor=west] at (1.98,1.3) {$j^{\ast}$};
-  \node[anchor=west, font=\tiny] at (0,-0.5) {普通通道只剩 1--2 个有效码点};
-  % (b) 平滑后激活
-  \begin{scope}[xshift=5.6cm]
-    \node[anchor=west, font=\small\bfseries] at (0,2.95)
-      {(b) 平滑后激活 $\widehat X=XS^{-1}$};
-    \foreach \j/\h in {0/0.82, 1/0.75, 2/0.80, 3/0.85, 4/0.74, 5/0.83, 6/0.72, 7/0.79}{
-      \fill[tkGreen!75] (0.52*\j,0) rectangle ++(0.36,\h);
+\begin{tikzpicture}[font=\scriptsize,
+  panel/.style={draw=black!35, line width=0.3pt}]
+  % ============ (a) 原始 ============
+  % (a1) |X|：per-tensor 步长小，一根 outlier 冲出
+  \begin{scope}[xshift=0.5cm]
+    \fill[tkGreen!20] (0,0) rectangle (1.65,0.38);
+    \fill[tkRed!10]   (0,0.38) rectangle (1.65,2.0);
+    \draw[panel] (0,0) rectangle (1.65,2.0);
+    \foreach \i in {0,...,29}{
+      \pgfmathsetmacro{\h}{0.07+0.11*abs(sin(\i*47.3+5))}
+      \fill[tkBlue!65] ({0.055*\i},0) rectangle ++(0.047,\h);
     }
-    \node[anchor=west, font=\tiny] at (0,-0.5)
-      {逐通道归一：$\max|\widehat X_j|$ 拉平};
+    \fill[tkRed] ({0.055*6},0) rectangle ++(0.047,1.80);
+    \node[font=\tiny, anchor=north east] at (1.60,1.97) {10};
+    \node[font=\tiny, anchor=north east] at (1.60,0.10) {0};
+    \node[font=\tiny, anchor=south] at (0.82,2.09) {$|X|$};
+    \node[font=\tiny, text=tkRed, anchor=west] at (1.08,1.55) {outlier};
+    \draw[-{Stealth}, tkRed, thick] (1.06,1.55) -- (0.44,1.55);
+    \node[font=\tiny, text=tkRed, anchor=north] at (0.82,-0.16) {Very Hard};
   \end{scope}
-  % (c) 平滑后权重
-  \begin{scope}[xshift=11.2cm]
-    \node[anchor=west, font=\small\bfseries] at (0,2.95)
-      {(c) 平滑后权重 $\widehat W=WS$};
-    \foreach \j/\h in {0/0.5, 1/0.22, 2/0.4, 3/1.7, 4/0.32, 5/0.55, 6/0.25, 7/0.38}{
-      \fill[tkOrange!85] (0.52*\j,0) rectangle ++(0.36,\h);
+  % (a2) |W|
+  \begin{scope}[xshift=2.45cm]
+    \fill[tkGreen!20] (0,0) rectangle (1.65,0.72);
+    \fill[tkRed!10]   (0,0.72) rectangle (1.65,2.0);
+    \draw[panel] (0,0) rectangle (1.65,2.0);
+    \foreach \i in {0,...,29}{
+      \pgfmathsetmacro{\h}{0.42+0.20*abs(sin(\i*31.7+11))}
+      \fill[tkBlue!65] ({0.055*\i},0) rectangle ++(0.047,\h);
     }
-    \draw[dashed,tkRed,thick] (0,1.92) -- (4.2,1.92)
-      node[pos=1.0, above=1pt, anchor=south east, font=\tiny, text=tkRed]
-        {$\max|\widehat W_{j^{\ast}}|$};
-    \node[anchor=west, font=\tiny] at (0,-0.5) {继承 $s_j$：W4A4 下吸收不了};
+    \foreach \i in {3,22}{
+      \fill[tkRed] ({0.055*\i},0) rectangle ++(0.047,1.40);
+    }
+    \node[font=\tiny, anchor=north east] at (1.60,1.97) {2};
+    \node[font=\tiny, anchor=north east] at (1.60,0.10) {0};
+    \node[font=\tiny, anchor=south] at (0.82,2.09) {$|W|$};
+    \node[font=\tiny, text=tkRed, anchor=north] at (0.82,-0.16) {Hard};
   \end{scope}
-  % 总注记
-  \node[anchor=north west, align=left, text width=15.8cm, font=\tiny] at (0,-1.15)
-    {条形高度为示意，不按真实比例。$j^{\ast}$ 抬高 per-tensor 步长 $\Delta$，普通通道有效级数按
-     式~\ref{eq:38-levels} 掉到个位——逐输入通道 scale 能拆掉它，但该 scale 落在 GEMM 归约轴 $K$
-     上（\ref{sec:38-notation}~节）。(c) 中 $S$ 按式~\ref{eq:38-split} 把幅值从激活侧搬到权重侧：
-     激活侧归一（b），代价是权重侧 $j^{\ast}$ 通道幅值变大（红线），这正是 \ref{sec:38-error}~节
-     权重项恶化的来源。};
+  % 迁移箭头 1
+  \draw[-{Stealth}, thick, tkOrange] (4.30,1.35) -- (5.05,1.35)
+    node[midway, below=1pt, font=\tiny, text=tkOrange] {$S$};
+  % ============ (b) 平滑后 ============
+  % (b1) |X̂|：整段落进绿区
+  \begin{scope}[xshift=5.05cm]
+    \fill[tkGreen!20] (0,0) rectangle (1.65,2.0);
+    \draw[panel] (0,0) rectangle (1.65,2.0);
+    \foreach \i in {0,...,29}{
+      \pgfmathsetmacro{\h}{1.16+0.24*abs(sin(\i*29.3+7))}
+      \fill[tkGreen!65!black] ({0.055*\i},0) rectangle ++(0.047,\h);
+    }
+    \node[font=\tiny, anchor=north east] at (1.60,1.97) {2};
+    \node[font=\tiny, anchor=north east] at (1.60,0.10) {0};
+    \node[font=\tiny, anchor=south] at (0.82,2.09) {$|\widehat X|$};
+    \node[font=\tiny, text=tkGreen!45!black, anchor=north] at (0.82,-0.16) {Easy};
+  \end{scope}
+  % (b2) |Ŵ|：outlier 更尖
+  \begin{scope}[xshift=7.00cm]
+    \fill[tkGreen!20] (0,0) rectangle (1.65,0.72);
+    \fill[tkRed!10]   (0,0.72) rectangle (1.65,2.0);
+    \draw[panel] (0,0) rectangle (1.65,2.0);
+    \foreach \i in {0,...,29}{
+      \pgfmathsetmacro{\h}{0.46+0.18*abs(sin(\i*37.9+13))}
+      \fill[tkBlue!65] ({0.055*\i},0) rectangle ++(0.047,\h);
+    }
+    \fill[tkRed] ({0.055*9},0) rectangle ++(0.047,1.80);
+    \node[font=\tiny, anchor=north east] at (1.60,1.97) {4.5};
+    \node[font=\tiny, anchor=north east] at (1.60,0.10) {0};
+    \node[font=\tiny, anchor=south] at (0.82,2.09) {$|\widehat W|$};
+    \node[font=\tiny, text=tkRed, anchor=north] at (0.82,-0.16) {Harder};
+  \end{scope}
+  % 迁移箭头 2
+  \draw[-{Stealth}, thick, tkOrange] (8.95,1.35) -- (9.70,1.35)
+    node[midway, below=1pt, font=\tiny, text=tkOrange] {$r{=}32$};
+  % ============ (c) SVDQuant ============
+  % (c1) |X̂| 同 (b1)
+  \begin{scope}[xshift=9.70cm]
+    \fill[tkGreen!20] (0,0) rectangle (1.65,2.0);
+    \draw[panel] (0,0) rectangle (1.65,2.0);
+    \foreach \i in {0,...,29}{
+      \pgfmathsetmacro{\h}{1.16+0.24*abs(sin(\i*29.3+7))}
+      \fill[tkGreen!65!black] ({0.055*\i},0) rectangle ++(0.047,\h);
+    }
+    \node[font=\tiny, anchor=north east] at (1.60,1.97) {2};
+    \node[font=\tiny, anchor=north east] at (1.60,0.10) {0};
+    \node[font=\tiny, anchor=south] at (0.82,2.09) {$|\widehat X|$};
+    \node[font=\tiny, text=tkGreen!45!black, anchor=north] at (0.82,-0.16) {Easy};
+  \end{scope}
+  % (c2) |R|：无 outlier、幅值范围压缩
+  \begin{scope}[xshift=11.55cm]
+    \fill[tkGreen!20] (0,0) rectangle (1.65,2.0);
+    \draw[panel] (0,0) rectangle (1.65,2.0);
+    \foreach \i in {0,...,29}{
+      \pgfmathsetmacro{\h}{1.02+0.22*abs(sin(\i*41.3+3))}
+      \fill[tkGreen!65!black] ({0.055*\i},0) rectangle ++(0.047,\h);
+    }
+    \node[font=\tiny, anchor=north east] at (1.60,1.97) {0.05};
+    \node[font=\tiny, anchor=north east] at (1.60,0.10) {0};
+    \node[font=\tiny, anchor=south] at (0.82,2.09) {$|R|$};
+    \node[font=\tiny, text=tkGreen!45!black, anchor=north] at (0.82,-0.16) {Easy};
+  \end{scope}
+  % (c3) 低秩分支：16-bit，无需量化
+  \begin{scope}[xshift=13.40cm]
+    \fill[tkPurple!12] (0,0) rectangle (1.65,2.0);
+    \draw[panel] (0,0) rectangle (1.65,2.0);
+    \filldraw[fill=tkPurple!35, draw=tkPurple] (0.25,1.15) -- (1.4,1.15)
+      -- (1.05,1.72) -- (0.6,1.72) -- cycle;
+    \filldraw[fill=tkPurple!55, draw=tkPurple] (0.6,0.28) -- (1.05,0.28)
+      -- (1.4,0.85) -- (0.25,0.85) -- cycle;
+    \node[font=\tiny] at (0.82,1.40) {$\boldsymbol{L_1}$};
+    \node[font=\tiny] at (0.82,0.57) {$\boldsymbol{L_2}$};
+    \node[font=\tiny, anchor=south] at (0.82,2.09) {16-bit};
+    \node[font=\tiny] at (0.82,1.0) {\textbf{+}};
+    \node[font=\tiny, text=tkGreen!45!black, anchor=north, align=center]
+      at (0.82,-0.16) {No Need to\\Quantize};
+  \end{scope}
+  % 段标题
+  \node[font=\small\bfseries, anchor=north] at (1.85,2.98) {(a) 原始};
+  \node[font=\small\bfseries, anchor=north] at (6.85,2.98) {(b) 平滑：难度迁到权重};
+  \node[font=\small\bfseries, anchor=north] at (12.25,2.98)
+    {(c) SVDQuant：难度交给低秩分支};
+  % 注记
+  \node[anchor=north west, align=left, text width=15.8cm, font=\tiny] at (0,-0.80)
+    {柱高为逐通道幅值（示意，不按真实比例）；绿色背景是当前量化步长能覆盖的范围，
+     柱顶冲出绿区的通道就是 outlier（红色）。左起三组面板：(a) 激活与权重各自带
+     outlier，$|X|$ 的 per-tensor 级数被 outlier 抬到 10 档、普通通道只剩个位数；
+     (b) 平滑把激活的 outlier 压进绿区，代价是权重的 outlier 更尖（y 轴从 2 抬到
+     4.5）；(c) SVD 把权重的尖峰整体搬进 16-bit 低秩分支，残差 $|R|$ 的幅值范围
+     从 $|\widehat W|$ 的 4.5 压到 0.05，整段落回绿区。逐输入通道 scale 本可拆掉
+     (a) 的 outlier，但它落在 GEMM 归约轴 $K$ 上（\ref{sec:38-notation}~节），
+     这正是平滑必须存在的理由。};
 \end{tikzpicture}
-\caption{通道缩放平滑的幅值迁移直觉。(a) 原始激活的通道幅值不均与 per-tensor 步长；
-(b) 平滑后激活逐通道归一；(c) 代价转移到权重侧，$j^{\ast}$ 通道幅值变大。}
+\caption{量化难度在激活与权重之间的两次迁移（示意复刻 SVDQuant 论文的分布图）。
+(a) 两侧都难；(b) 平滑把难度搬到权重侧、激活归一；(c) SVD 把权重侧最难的尖峰
+交给 16-bit 低秩分支，只剩幅值范围极窄的残差落 4 bit。}
 \label{fig:38-smq-shift}
 \end{figure}
 
@@ -243,8 +333,9 @@ $\|\widehat X-\mathcal Q(\widehat X)\|_F$ 因通道归一而下降，但权重�
   \|\widehat X\|_F\,\|\widehat W-\mathcal Q(\widehat W)\|_F
   \label{eq:38-wterm}
 \end{equation}
-可能上升——$\widehat W$ 的异常通道幅值被 $s_j$ 放大（图~\ref{fig:38-smq-shift}c
-的橙条与红线），而 $\|\widehat X\|_F$ 大体不变（缩放只重分配、不消灭能量）。
+可能上升——$\widehat W$ 的异常通道幅值被 $s_j$ 放大（图~\ref{fig:38-smq-shift}
+的 (b) 段右面板：$|\widehat W|$ 的尖峰比 (a) 段的 $|W|$ 更高），而
+$\|\widehat X\|_F$ 大体不变（缩放只重分配、不消灭能量）。
 W8A8 里权重还有 256 个码点，多出的幅值余量吸收得起；W4A4 里权重只有
 8 个正码值（e2m1），权重侧自己的异常值同样会拉大量化步长，式~\ref{eq:38-wterm}
 成为主导项。这解释了 SVDQuant 的下一步：\textbf{不是继续加大 $\alpha$ 把难度
@@ -332,8 +423,11 @@ $\|R-\mathcal Q(R)\|_F$ 都尽可能小——大幅值方向由 16-bit 低秩分
   \frac{MKr+MrN}{MKN}=\frac{r(K+N)}{KN},
   \label{eq:38-flops}
 \end{equation}
-与低秩参数占权重参数的比例相同。取 $K=N=3072$、$r=32$ 时约为 $2.08\%$。
-这只是乘加量（未计位宽差）的比例，不是打包字节比例，更不是延迟比例：
+与低秩参数占权重参数的比例相同。论文的经验取值是 $r\in\{16,32\}$
+（$r\ll\min(N,K)$），取 $K=N=3072$、$r=32$ 时乘加量约占 $2.08\%$。
+$r=32$ 不是玄学：论文 Fig.~2 观测到平滑后权重的前 32 个奇异值明显陡降、
+其余平缓，截断点落在"肘部"（图~\ref{fig:38-tail} 画的是同一现象）。也要
+注意这只是乘加量（未计位宽差）的比例，不是打包字节比例，更不是延迟比例：
 小秩 GEMM 的额外输入读取、输出写入和 kernel launch 完全可能主导实际开销
 （第~\ref{ch:40}~章性能节会给出融合前后的实测对比）。
 
@@ -350,8 +444,10 @@ $\mathbb E[\max|R|]\le c\,\mathbb E[\|R\|_F]$（正则性条件），则
 一个 LSB 的宽松估计，
 $\|R-\mathcal Q(R)\|_F\le\Delta_R\sqrt{\mathcal N}
 =\frac{\sqrt{\mathcal N}}{q_{\max}}\max|R|$；两边取期望代入正则性条件即得。
-独立同分布高斯下，按论文的两条不等式反解可得
-$c=\sqrt{\pi\log\mathcal N/\mathcal N}$。适用边界必须
+若 $R$ 的元素服从正态分布，论文取
+$c=\sqrt{\pi\log\mathcal N/\mathcal N}$（$\mathcal N=\text{size}(R)$）。
+注意 $c$ 不是常数而是随张量大小缓慢变化的量，这也是"上界只给趋势、
+不给具体误差"的原因之一。适用边界必须
 原样保留：per-group scale 要按组重新分析；GPTQ 的误差反馈使 $\mathcal Q(R)$
 不再是逐元素舍入结果，不能直接套；$c$ 依赖分布，改 rank 同时改变 $\|R\|_F$
 与残差分布，不保证上界严格单调。
@@ -375,36 +471,41 @@ $\|R\|_F$ 不再是原矩阵的尾奇异值和。图~\ref{fig:38-tail} 把这条
 \begin{figure}[H]
 \centering
 \begin{tikzpicture}[font=\scriptsize]
-  \draw[->, thick] (0,0) -- (12.4,0) node[anchor=west, font=\tiny]
-    {奇异值序号 $i$};
-  \draw[->, thick] (0,0) -- (0,3.35) node[anchor=south, font=\tiny]
+  \draw[->, thick] (0,0) -- (12.6,0) node[anchor=west, font=\tiny]
+    {奇异值序号 $i$（前 64 个）};
+  \draw[->, thick] (0,0) -- (0,3.4) node[anchor=south, font=\tiny]
     {$\sigma_i$（示意）};
-  % 平滑后权重的谱：快速衰减
-  \foreach \i/\h in {%
-      0/2.95, 1/2.6, 2/2.3, 3/2.0, 4/0.95, 5/0.80, 6/0.66, 7/0.54,
-      8/0.44, 9/0.36, 10/0.28, 11/0.22, 12/0.17}{
-    \fill[tkBlue!70] (0.5+0.92*\i,0) rectangle ++(0.62,\h);
-  }
-  % 截断位置 r
-  \draw[dashed, very thick, tkOrange] (4.24,0) -- (4.24,3.2)
-    node[anchor=south, font=\tiny, text=tkOrange] {$r$};
-  \fill[tkOrange!12] (4.24,0) rectangle (12.2,3.15);
-  \node[font=\tiny, text=tkOrange!75!black, align=center] at (8.3,2.9)
+  % 尾谱区
+  \fill[tkOrange!10] (6.0,0) rectangle (12.4,3.25);
+  % 原始权重 W：平缓衰减
+  \draw[thick, tkBlue!65] plot[smooth, tension=0.5]
+    coordinates {(0.3,2.55) (2,2.3) (4,2.12) (6,1.96) (8,1.82) (10,1.70) (12,1.60)};
+  \node[font=\tiny, text=tkBlue!65, anchor=south] at (10.6,1.72) {$W$};
+  % 平滑后权重 Ŵ：前 32 陡降
+  \draw[very thick, tkOrange] plot[smooth, tension=0.5]
+    coordinates {(0.3,3.10) (1,2.75) (2,2.30) (3,1.72) (4,1.15) (5,0.70)
+                 (6,0.50) (7,0.44) (8,0.40) (9,0.36) (10,0.32) (11,0.29) (12,0.26)};
+  \node[font=\tiny, text=tkOrange, anchor=south west] at (0.4,3.12) {$\widehat W$};
+  % 残差 R：整体很低
+  \draw[thick, tkGreen!55!black] plot[smooth, tension=0.5]
+    coordinates {(0.3,0.09) (2,0.08) (4,0.07) (6,0.06) (8,0.05) (10,0.04) (12,0.032)};
+  \node[font=\tiny, text=tkGreen!45!black, anchor=north west] at (6.6,0.095)
+    {$R=\widehat W-L_1L_2$};
+  % 截断位置 r=32（x=6 对应第 32 个）
+  \draw[dashed, very thick, tkRed] (6.0,0) -- (6.0,3.3)
+    node[anchor=south, font=\tiny, text=tkRed] {$r{=}32$};
+  \node[font=\tiny, text=tkOrange!70!black, align=center] at (9.6,2.9)
     {尾谱：$\|R\|_F=\sqrt{\sum_{i>r}\sigma_i^{2}}$};
-  % 量化误差的谱：平坦（红线）
-  \draw[thick, tkRed] (0.5,0.78) -- (12.05,0.66)
-    node[anchor=north west, pos=0.42, font=\tiny, text=tkRed]
-      {量化误差的谱：平坦，低秩抓不住};
   \node[anchor=north west, align=left, text width=15.8cm, font=\tiny] at (0,-0.85)
-    {蓝柱为平滑后权重的奇异值谱（快速衰减），红线为量化误差的奇异值谱（近似平坦）。
-     前 $r$ 个奇异三元组交给高精度低秩分支后，残差 $R$ 只剩尾谱能量（橙色区），
-     这就是式~\ref{eq:38-tail} 的含义；尾谱区里柱高很快穿过红线——残差能量
-     掉到量化噪声量级以下，再加大 $r$ 也换不回精度。
-     若反过来先量化、再用低秩去补偿量化误差，面对的是一条平坦的谱——低秩只能
-     砍掉很小的能量，所以"先平滑、再 SVD、最后量化"的顺序不可交换。};
+    {曲线为示意（对应论文 Fig.~2 的实测形态）。原始权重 $W$ 的奇异值本就不均衡；
+     平滑之后 $\widehat W$ 的前 32 个奇异值出现明显陡降、其余平缓，截断点就落在
+     这个"肘部"（$r=32$ 的经验来源）。去掉主导奇异值后，残差 $R$ 的谱整条压到
+     很低——$\|R\|_F$ 由式~\ref{eq:38-tail} 只剩尾谱能量。反过来若先量化、再用
+     低秩去补偿量化误差，面对的是一条平坦的谱，低秩只能砍掉很小的能量，所以
+     "先平滑、再 SVD、最后量化"的顺序不可交换。};
 \end{tikzpicture}
-\caption{两条奇异值谱的对比。权重谱衰减快，低秩截断能拿走主要能量；量化误差谱
-平坦，低秩补偿收效甚微。这是 SVDQuant 必须先分解后量化的原因。}
+\caption{三条奇异值谱的对比（复刻论文 Fig.~2 的读数方式）。$W$ 平缓、$\widehat W$
+前 32 个陡降、$R$ 整体压到很低；$r=32$ 取在肘部。}
 \label{fig:38-tail}
 \end{figure}
 
@@ -419,8 +520,11 @@ $\|R\|_F$ 不再是原矩阵的尾奇异值和。图~\ref{fig:38-tail} 把这条
 \end{equation}
 关键是最后的残差\textbf{始终相对原始 $\widehat W$ 重新锚定}，而不是相对
 $Z^{(t)}$；否则量化误差会被重复扣除。运行时计算的是
-$L^{(t+1)}+\mathcal Q(R^{(t+1)})$。这说明"闭式 SVD 就是完整 SVDQuant"并不
-准确：refine 让低秩分支进一步吸收残差量化留下的误差结构。
+$L^{(t+1)}+\mathcal Q(R^{(t+1)})$。论文的做法是迭代固定的小轮数，然后
+\textbf{取误差最小的那一轮}作为最终权重——因为每轮都从 $\widehat W$ 重新
+锚定，各轮结果互不污染，直接挑最优即可（不需要"最后一轮一定更好"的假设）。
+这说明"闭式 SVD 就是完整 SVDQuant"并不准确：refine 让低秩分支进一步吸收
+残差量化留下的误差结构。
 
 \textbf{顺序的意义}。先平滑，把激活的持续通道异常值迁入权重，使高精度低秩
 分支有机会同时承接两侧的量化难度；再 SVD，提取平滑后权重的主导奇异方向，
@@ -551,7 +655,120 @@ kernel、重新标定阈值、与缓存复用策略分别验收，不能直接�
 \section{性能分析}
 
 本章全部数字转述自 SVDQuant 论文（arXiv:2411.05007，Table 4 与 Fig.~6），
-\textbf{本书未复测}，口径与基线必须一起读：
+\textbf{本书未复测}。
+
+\textbf{（1）为什么必须融合 kernel}。低秩分支的算力只占
+$r(K+N)/(KN)$（式~\ref{eq:38-flops}），但算力不等于延迟。论文 Fig.~6(a)
+把 QKV projection 的延迟拆成四段（图~\ref{fig:38-latency}）：把
+down projection 与 up projection 当作独立 kernel 跑，rank-32 的低秩分支
+给这个算子带来 $57\%$ 的额外延迟（$461\,\mu s$ vs $322\,\mu s$，
+$1.43\times$）。原因不在算力而在访存——down projection 要\textbf{额外读
+一遍 16-bit 输入}，up projection 要\textbf{额外写一遍 16-bit 输出}，而
+rank 很小时这两个张量的尺寸并不随 $r$ 缩小，瓶颈于是从计算转到访存；
+激活放不进 L2 cache 时更糟：DiT 块里 QKV 的 up projection 输出超过
+L2 容量，额外读写直接打到 DRAM。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize]
+  \draw[->, thick] (0,0) -- (0,4.35);
+  \node[font=\tiny, anchor=south west] at (0.1,3.95) {延迟（$\mu$s）};
+  \draw[thick] (0,0) -- (5.7,0);
+  % naive 柱
+  \fill[tkRed!75]    (1.1,0)     rectangle ++(1.15,0.06);
+  \fill[black!30]   (1.1,0.06)  rectangle ++(1.15,0.14);
+  \fill[tkGreen!60]  (1.1,0.20)  rectangle ++(1.15,2.41);
+  \fill[tkOrange!70] (1.1,2.61)  rectangle ++(1.15,1.26);
+  \node[font=\tiny, text=tkRed!80!black, anchor=west] at (2.3,0.28) {7};
+  \node[font=\tiny, text=black!70, anchor=west] at (2.3,0.62) {17};
+  \node[font=\tiny, text=tkGreen!35!black, anchor=west] at (2.3,1.5) {287};
+  \node[font=\tiny, text=tkOrange!45!black, anchor=west] at (2.3,3.35) {150};
+  \node[font=\tiny, anchor=south] at (1.67,3.92) {461};
+  % nunchaku 柱
+  \fill[black!30]   (4.4,0)    rectangle ++(1.15,0.185);
+  \fill[tkGreen!60]  (4.4,0.185) rectangle ++(1.15,2.52);
+  \node[font=\tiny, text=black!70, anchor=west] at (5.6,0.55) {22};
+  \node[font=\tiny, text=tkGreen!35!black, anchor=west] at (5.6,1.6) {300};
+  \node[font=\tiny, anchor=south east] at (4.85,2.73) {322};
+  % 1.43x 标注
+  \draw[dashed, thick, tkPurple] (1.67,4.02) -- (4.97,4.02);
+  \draw[dashed, thick, tkPurple] (4.97,2.76) -- (4.97,4.02);
+  \node[font=\tiny, text=tkPurple!85!black, anchor=south] at (3.32,4.04)
+    {$1.43\times$};
+  % 轴标签
+  \node[font=\tiny, anchor=north] at (1.67,-0.08) {naive（独立 kernel）};
+  \node[font=\tiny, anchor=north] at (4.97,-0.08) {Nunchaku（融合后）};
+  % 图例（右侧空白区，竖排）
+  \foreach \y/\c/\t in {3.55/tkRed!75/{Down Proj}, 3.18/tkOrange!70/{Up Proj},
+                        2.81/tkGreen!60/{4-Bit Compute}, 2.44/black!30/{Quantize}}{
+    \fill[\c] (6.4,\y) rectangle ++(0.22,0.16);
+    \node[font=\tiny, anchor=west] at (6.7,\y+0.08) {\t};
+  }
+  \node[anchor=north west, align=left, text width=15.8cm, font=\tiny] at (0,-0.42)
+    {数值取自论文 Fig.~6(a) 的延迟分解（rank 32，$1.43\times$ 标注为原文）。
+     融合后 up projection（150）与 down projection（7）两段整段消失，4-bit
+     compute 从 287 涨到 300、quantize 从 17 涨到 22——多出来的部分是融合
+     kernel 内部承担低秩分支的代价，合计仅 $+18\,\mu s$。};
+\end{tikzpicture}
+\caption{QKV projection 的延迟分解（$1.43\times$）。未融合时低秩分支带来
+$57\%$ 额外延迟；融合后两段独立的 16-bit 读写整段消失。}
+\label{fig:38-latency}
+\end{figure}
+
+\textbf{（2）融合沿"共享张量"的边界切}。图~\ref{fig:38-fusion} 是论文给出的
+分界：down projection 与 quantize 共享同一个输入 $\widehat X$，up projection
+与 4-bit compute 共享同一个输出。于是前两者可以合成一个 kernel（读一遍
+$\widehat X$，同时产出低秩中间量与 4-bit 量化码），后两者合成另一个 kernel
+（低秩 up 结果与 4-bit 结果在片上直接相加，只写一遍输出）。这样低秩分支
+只增加 $5\%$--$10\%$ 的延迟，kernel 调用次数也减半。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize,
+  blk/.style={draw, rounded corners=2pt, align=center, inner sep=3pt,
+              minimum height=0.7cm},
+  grp/.style={draw, dashed, rounded corners=4pt, inner sep=6pt}]
+  % Fused Kernel 1
+  \node[blk, fill=tkFillGreen, minimum width=2.4cm] (in) at (2.2,1.5)
+    {$\widehat X$（bf16）};
+  \node[blk, fill=tkRed!30, text width=2.0cm] (down) at (5.6,2.4)
+    {Down Proj\\$\boldsymbol{L_1}$};
+  \node[blk, fill=black!15, text width=1.8cm] (quant) at (5.6,0.6)
+    {Quantize};
+  \node[blk, fill=tkFillBlue, minimum width=1.9cm] (o1) at (8.9,2.4)
+    {$\widehat X\boldsymbol{L_1}$};
+  \node[blk, fill=tkFillBlue, minimum width=1.9cm] (o2) at (8.9,0.6)
+    {$\mathcal Q(\widehat X)\,s_X$};
+  \draw[-{Stealth}, thick] (in.east) -- (down.west);
+  \draw[-{Stealth}, thick] (in.east) -- (quant.west);
+  \draw[-{Stealth}, thick] (down) -- (o1);
+  \draw[-{Stealth}, thick] (quant) -- (o2);
+  \node[grp, fit=(down)(quant)(o1)(o2), label={[font=\tiny, text=tkGreen!45!black]above:Fused Kernel 1（共享输入）}] {};
+  \node[font=\tiny, text=tkRed, anchor=north] at (2.2,0.95) {shared input};
+  % Fused Kernel 2
+  \node[blk, fill=tkFillBlue, minimum width=1.9cm] (i1) at (12.0,2.4)
+    {$\widehat X\boldsymbol{L_1}$};
+  \node[blk, fill=tkFillBlue, minimum width=1.9cm] (i2) at (12.0,0.6)
+    {$\mathcal Q(\widehat X)\,s_X$};
+  \node[blk, fill=tkOrange!35, text width=2.0cm] (up) at (15.2,2.4)
+    {Up Proj\\$\boldsymbol{L_2}$};
+  \node[blk, fill=tkGreen!35, text width=2.0cm] (comp) at (15.2,0.6)
+    {4-Bit 乘加\\$\mathcal Q_R s_R$};
+  \node[blk, fill=tkFillGreen, minimum width=1.0cm] (add) at (17.6,1.5) {$\oplus$};
+  \draw[-{Stealth}, thick] (i1) -- (up);
+  \draw[-{Stealth}, thick] (i2) -- (comp);
+  \draw[-{Stealth}, thick] (up.east) -- (add.north west);
+  \draw[-{Stealth}, thick] (comp.east) -- (add.south west);
+  \node[grp, fit=(up)(comp)(add), label={[font=\tiny, text=tkGreen!45!black]above:Fused Kernel 2（共享输出）}] {};
+  \node[font=\tiny, text=tkRed, anchor=north] at (17.6,0.75) {shared output};
+\end{tikzpicture}
+\caption{kernel 融合的两个边界（复刻论文 Fig.~6(b)）。左：$L_1$ 与量化共享
+输入 $\widehat X$；右：$L_2$ 与 4-bit 乘加共享输出。融合把低秩分支的额外
+16-bit 读写整段消掉。}
+\label{fig:38-fusion}
+\end{figure}
+
+\textbf{（3）端到端数字}。FLUX 单步（RTX 4090）：
 
 \begin{center}\small
 \begin{tabular}{@{}lccc@{}}
@@ -563,19 +780,21 @@ FLUX 单步（RTX 4090） & BF16 & naive INT4 & SVDQuant+Nunchaku \\
 \end{tabular}
 \end{center}
 
-三个读法。（1）SVDQuant 的 218 ms 相对 naive INT4 的 212 ms 只差 $3\%$，
-即低秩分支融合后\textbf{几乎免费}；同一篇论文 Fig.~6 里，未融合的朴素
-rank-32 低秩分支在 QKV projection 上带来 $57\%$ 延迟开销——两组数字层次
-不同（一个是算子内测量、一个是端到端），不能混写，但共同说明
-\textbf{FLOPs 占比 $2\%$ 不等于免费}，融合才是答案。（2）显存：FLUX 的模型
-体积从 $22.2$ GiB 降到 $6.1$ GiB（低秩分支额外约 $0.3$ GiB）；摘要里的
-$3.5\times$ 是 \textbf{memory usage} 口径，正文与 Fig.~8 的 $3.6\times$ 是
-上述\textbf{模型体积}口径——两个倍数对应两个不同基线，不能互换。而
-"相对 BF16 加速 $8.7\times$""相对 W4A16 加速 $3.0\times$"是端到端延迟口径，
-引用任何一组都必须带基线。（3）论文 4-bit 主结果的残差量化
-用了 GPTQ，不是纯 RTN；拿纯 RTN 实现对比论文主表属于配置不一致。当前
-cache-dit 默认路径（第~\ref{ch:39}~章）是 RTN 加可选 refine，与论文主表
-的配置差异在对比数字时要显式声明。
+SVDQuant 的 218 ms 相对 naive INT4 的 212 ms 只差 $3\%$——这是融合后的
+端到端代价。注意与图~\ref{fig:38-latency} 的 $57\%$ 不是一个层次：那里是
+算子内的延迟分解，这里是整步端到端，两者共同说明
+\textbf{FLOPs 占比 $2\%$ 不等于免费，融合才是答案}。
+
+\textbf{（4）显存与加速口径}。FLUX 的模型体积从 $22.2$ GiB 降到 $6.1$ GiB
+（低秩分支额外约 $0.3$ GiB，ratio $3.6\times$）；摘要写的 $3.5\times$ 与
+teaser 图注的 $3.6\times$ 是同一个显存口径的四舍五入差异，不要当成两个
+指标。"相对 16-bit 模型 $8.7\times$"的前提是\textbf{消除 CPU offloading}
+（16 GB 的 4090 上 BF16 放不下，必须 offload），"相对 NF4 W4A16 基线
+$3.0\times$"是另一条基线——引用任何一组都必须带基线。
+\textbf{（5）配置一致性}：论文 4-bit 主结果的残差量化用了 GPTQ 而非纯 RTN；
+拿纯 RTN 实现对比论文主表属于配置不一致。cache-dit 默认路径
+（第~\ref{ch:39}~章）是 RTN 加可选 refine，与论文主表的差异在对比数字时
+要显式声明。
 
 \section{实践经验}
 
