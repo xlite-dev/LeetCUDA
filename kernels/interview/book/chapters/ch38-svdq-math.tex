@@ -820,29 +820,29 @@ $D_{prod}\ge\|y\|_2^2 4^{-b}/d$（单位查询时 $\|y\|_2=1$）。
   box/.style={draw, rounded corners=2pt, align=center, inner sep=4pt,
               text width=3.5cm, minimum height=1.3cm},
   arr/.style={->, thick}]
-  \node[box, fill=tkFillBlue] (x) at (1.8,3.0) {$x$（单位向量）};
-  \node[box, fill=tkGreen!22] (mse) at (5.6,4.7)
+  \node[box, fill=tkFillBlue] (x) at (1.55,2.45) {$x$（单位向量）};
+  \node[box, fill=tkGreen!22] (mse) at (5.75,4.35)
     {Lloyd--Max 主项\\$b-1$ bit/坐标};
-  \node[box, fill=tkGreen!22] (xm) at (9.2,4.7)
+  \node[box, fill=tkGreen!22] (xm) at (9.85,4.35)
     {$\widetilde x_{mse}$\\查表 + $\Pi^{\top}$};
-  \node[box, fill=tkOrange!22] (res) at (5.9,1.65)
+  \node[box, fill=tkOrange!22] (res) at (5.75,0.65)
     {$r=x-\widetilde x_{mse}$\\$\gamma=\|r\|_2$};
-  \node[box, fill=tkOrange!22] (qjl) at (11.5,1.65)
+  \node[box, fill=tkOrange!22] (qjl) at (9.85,0.65)
     {QJL 残差项\\$\operatorname{sign}(Sr)$，1 bit/坐标};
-  \node[box, fill=tkPurple!18, text width=2.7cm] (sum) at (14.5,3.55)
+  \node[box, fill=tkPurple!18, text width=2.7cm] (sum) at (14.25,2.50)
     {$\widetilde x$\\主项 + $\gamma$·QJL};
-  \draw[arr] (x) -- (mse);
-  \draw[arr] (mse) -- (xm);
-  \draw[arr] (x.south) |- (5.9,0) -| (res.west);
-  \draw[arr] (xm.south) -- ++(0,-1.1) -| (res.north);
-  \draw[arr] (res) -- (qjl);
+  \draw[arr] (x.east) -- (mse.west);
+  \draw[arr] (x.east) -- (res.west);
+  \draw[arr] (mse.east) -- (xm.west);
+  \draw[arr] (xm.south) -- ++(0,-0.9) -| (res.north);
+  \draw[arr] (res.east) -- (qjl.west);
   \draw[arr] (qjl.east) -- (sum.south west);
   \draw[arr] (xm.east) -- (sum.north west);
-  \node[font=\tiny, text=tkGreen!45!black, anchor=north] at (7.8,5.65)
+  \node[font=\tiny, text=tkGreen!45!black, anchor=south] at (7.80,5.30)
     {压低 $\mathbb E\|r\|_2^2$};
-  \node[font=\tiny, text=tkOrange!75!black, anchor=south] at (9.1,0.55)
+  \node[font=\tiny, text=tkOrange!75!black, anchor=north] at (7.80,-0.25)
     {对残差方向无偏，$\gamma$ 恢复残差长度};
-  \node[anchor=north west, align=left, text width=15.8cm, font=\tiny] at (0,-0.05)
+  \node[anchor=north west, align=left, text width=15.8cm, font=\tiny] at (0,-0.85)
     {存储为 $b-1$ bit 索引 + 1 bit 符号 + 浮点 $\gamma$；若非单位输入还要保存输入范数。
      共享的 $\Pi$、$S$ 与码本不计入单向量位数，但端到端压缩率必须把 $\gamma$ 与输入范数计入。
      第一阶段只负责减小残差能量，第二阶段负责消除内积偏置，两者不能互换目标。};
@@ -997,24 +997,25 @@ $(0.1)^2+(0.1)^2+(-0.2)^2=0.06$；闭式更新给
     \draw[tkOrange, thick] (\x,0.50) -- (\x,1.00);
   \node[font=\tiny, text=black!60] at (1.0,0.15) {MinMax：网格被尾部拉宽};
   \node[font=\tiny, text=tkOrange!75!black] at (4.0,0.15) {bounded init：主体更密};
-  \draw[tkRed, thick] (5.25,0.95) -- (5.25,1.65);
-  \node[font=\tiny, text=tkRed, anchor=south east] at (5.15,1.75) {少量尾部值};
+  \fill[tkRed] (5.65,1.06) circle (1.2pt);
+  \node[font=\tiny, text=tkRed, anchor=south east] at (5.55,1.32) {少量尾部值};
 
   \node[font=\tiny, anchor=west] at (7.2,4.35)
     {(b) 内层：交替精修并保留最优};
-  \node[box, fill=tkFillBlue] (init) at (9.0,3.0)
+  \node[box, fill=tkFillBlue] (init) at (9.1,3.05)
     {$\Delta^{(0)},z^{(0)},q^{(0)}$};
-  \node[box, fill=tkGreen!22] (delta) at (13.1,3.65)
+  \node[box, fill=tkGreen!22] (delta) at (13.2,3.70)
     {固定 $q,z$\\最小二乘求 $\Delta'$};
-  \node[box, fill=tkGreen!22] (zero) at (13.1,1.95)
+  \node[box, fill=tkGreen!22] (zero) at (13.2,1.95)
     {固定 $\Delta,q$\\均值近似求 $z'$};
-  \node[box, fill=tkOrange!22] (code) at (9.0,1.25)
+  \node[box, fill=tkOrange!22] (code) at (9.1,1.15)
     {重算 $q'$\\按原始 $W$ 评分};
-  \draw[arr] (init.east) -- ++(0.45,0) |- (delta.west);
-  \draw[arr] (delta) -- (zero);
-  \draw[arr] (zero) -- (code);
-  \draw[arr] (code.west) -- ++(-0.55,0) |- (delta.west);
-  \node[font=\tiny, text=tkPurple!70!black] at (9.0,2.05)
+  \draw[arr] (init.east) -- (11.20,3.05) |- (delta.west);
+  \draw[arr] (delta.south) -- (zero.north);
+  \draw[arr] (zero.west) -- (11.20,1.95) |- (code.east);
+  \draw[arr] (code.south) -- (9.10,0.35) -- (15.45,0.35) --
+    (15.45,4.70) -- (13.20,4.70) -- (delta.north);
+  \node[font=\tiny, text=tkPurple!70!black] at (9.10,2.10)
     {$\mathcal E^*\gets\min$ 候选误差};
   \node[anchor=north west, align=left, text width=15.8cm, font=\tiny] at (0,-0.55)
     {外层每次收紧边界都重新进入右侧循环；原始 $W$ 始终用于取码与评分。
