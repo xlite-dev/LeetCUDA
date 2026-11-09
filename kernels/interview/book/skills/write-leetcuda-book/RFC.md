@@ -597,6 +597,13 @@
       15；lint 三类 0 fail；RTD 全量 build（含 TikZ）英文图 209/209、代码 776/776、
       公式 123/123；\texttt{visual\_check} 97 页需处理 0。图目检 5 页，
       pack 图注「每列一行 vs 每格 32 行」矛盾已回修。
+- [ ] P.15 TurboQuant / DVD-Quant 扩展阅读深化（2026-11-09，用户要求详细、清晰、图文并茂）：
+      TurboQuant 按随机旋转、Lloyd--Max 连续 k-means、Panter--Dite 上界、1-bit 内积偏置、
+      QJL 无偏残差与信息论下界展开；修正上界常数为 $\sqrt3\,\pi/2$，补浮点范数存储与
+      $b=1..4$ 数值表。DVD-Quant 展开 BGR 外层有界初始化与内层 $\Delta,z,q$ 坐标更新、
+      ARQ 在线 $\Lambda$ 与 block-wise 实现边界、$\delta$-GBS 的因果累计/重置/平均位宽；
+      补 5 幅 TikZ（FIG-38-7..11）、BGR/GBS 数值例与 4 个 CPU 实验。单章 15 页、
+      0 error / 缺字 0 / Overfull 0，五图书内页目检通过；全书与 RTD 验收待本轮收尾。
 
 **用户追加约束（2026-11-07，施行于三章）**：正文不得出现开发过程记录——
 CHECKLOG / 技能笔记 / RFC 编号 / DoD 条款等一律不进正文；数据来源只写
@@ -711,6 +718,11 @@ CHECKLOG / 技能笔记 / RFC 编号 / DoD 条款等一律不进正文；数据�
 | FIG-38-4 | 38 | tail | C1 改版（2026-11-08 第二轮：按论文 Fig. 2 改成三条谱 $W$/$\widehat W$/$R$，$r{=}32$ 落在肘部，替换原「两条谱 + 量化误差平坦线」版） | 正式 | 同上 |
 | FIG-38-5 | 38 | latency | C1 新建（2026-11-08，TikZ inline：QKV projection 延迟分解，naive 7+17+287+150 与 Nunchaku 22+300 堆叠柱，$1.43\times$ 标注） | 正式 | 同上（41.6 性能分析） |
 | FIG-38-6 | 38 | fusion | C1 新建（2026-11-08，TikZ inline：kernel 融合的两个边界，Fused Kernel 1 共享输入 / Fused Kernel 2 共享输出） | 正式 | 同上 |
+| FIG-38-7 | 38 | tq-rotation | C1 新建（2026-11-09，TikZ inline：Haar 旋转、Beta/高维正态坐标密度与 Lloyd--Max 对称码点） | 正式 | 同上 |
+| FIG-38-8 | 38 | tq-two-stage | C1 新建（2026-11-09，TikZ inline：$b-1$ bit MSE 主项 + 1 bit QJL 残差 + 浮点范数） | 正式 | 同上 |
+| FIG-38-9 | 38 | dvd-bgr | C1 新建（2026-11-09，TikZ inline：BGR 有界初始化与 $\Delta,z,q$ 交替精修闭环） | 正式 | 同上 |
+| FIG-38-10 | 38 | dvd-arq | C1 新建（2026-11-09，TikZ inline：Hadamard 旋转、在线 $\Lambda$、BGR 权重与反量化回乘） | 正式 | 同上 |
+| FIG-38-11 | 38 | dvd-gbs | C1 新建（2026-11-09，TikZ inline：$\delta=0.20$ 的累计、切到 8 bit、重置与平均 4.8 bit 示例） | 正式 | 同上 |
 | FIG-39-3 | 39 | v1-pack | C1 新建（2026-11-08，TikZ inline：v1 pack 两级结构，256 行 8 面板 + K16 组在 4 lane 的归并） | 正式 | chapters/ch39-svdq-quant-producer.tex |
 | FIG-40-3 | 40 | overlay | C1 新建（2026-11-08，TikZ inline：一块 smem 的三次用途，A/SFA→D、B/SFB→L1→O tile 覆盖） | 正式 | chapters/ch40-svdq-gemm-w4a4.tex |
 | FIG-40-4 | 40 | lora-schedule | C1 新建（2026-11-08，TikZ inline：main-first vs LoRA-first 两行时间线对比） | 正式 | 同上 |

@@ -9,7 +9,7 @@
 激活量化 $\mathcal Q(\widehat X)$ 与低秩 down 投影
 $D=\widehat XL_2^{\top}=X(L_2S^{-1})^{\top}$。两者读的是同一份输入
 $X$，朴素写法会把它变成四条独立的 kernel 链（平滑、量化、LoRA-down、
-finalize），多三次全量 DRAM 往返。本章讲 cache-dit 的
+finalize），引入额外中间张量的 DRAM 读写。本章讲 cache-dit 的
 \textbf{融合 producer}：一次 kernel 同时产出 GEMM 的全部激活侧输入。
 按模板交代四件事：
 
@@ -235,7 +235,7 @@ L29）：两个 16 行半（mt0/mt1）\textbf{复用同一块缓冲}，各写一
 staging tile 的尺寸是 \texttt{kAStride}$=64+8$ 列——\textbf{64 数据列加
 8 列 padding}（L68--70 的注释说明这是为了匹配 native 的 ldmatrix 布局
 并避开 shared memory bank conflict）。加载端每行 8 个 lane 各搬 16 字节
-（\texttt{uint4}），一个指令周期内 4 行在飞；读出端用 4 条
+（\texttt{uint4}），每条 warp-wide load/store 覆盖 4 行；读出端用 4 条
 \texttt{ldmatrix.x4}，每条抓一个 16$\times$16 fragment（4 个 8$\times$8
 b16 matrix），合计 4 个。对比"每 lane
 4 字节直接读 gmem"的写法，staging 把全局访问从四个半 sector 的 4B load
@@ -252,8 +252,9 @@ b16 matrix），合计 4 个。对比"每 lane
 fragment（每行 4 个 K16 组，每组是 K64 的四分之一），分四个阶段。
 
 \textbf{第一阶段：寄存器重排与 amax 归约}（L144--172）。fragment 寄存器
-里的元素顺序是 MMA 布局而非行布局，先把 8 个 \texttt{bf16x2} 按
-"两个 K32 半"各 8 元素展开，再求每 K16 组的绝对值最大值；K16 组跨
+里的元素顺序是 MMA 布局而非行布局。\texttt{tmp[4]} 共有 16 个
+\texttt{bf16x2}，先重排成 \texttt{input[2][8]}：两个 K32 半各有 8 个
+\texttt{bf16x2}（16 个 BF16 标量），再求每 K16 组的绝对值最大值；K16 组跨
 4 个 lane，用两轮 \texttt{shfl\_xor}（mask 2、1）归约出组 amax。
 
 \begin{lstinputlisting}[linerange={174-207},firstnumber=auto,
@@ -264,13 +265,14 @@ fragment（每行 4 个 K16 组，每组是 K64 的四分之一），分四个�
 $\Delta$，同时算出近似倒数 \texttt{rscale} 供量化乘用；4 个 K16 组的
 $\Delta$ 用两条 \texttt{cvt.rn.satfinite.e4m3x2.f32} 打成 4 字节的
 FP8 scale 字。\textbf{第三阶段：e2m1 量化与跨 lane 归并}（L187--207）。
-每行的 8 个 \texttt{bf16x2} 各自乘 \texttt{rscale} 后用
+每个 lane 对两个 K32 半各自的 8 个 \texttt{bf16x2} 乘 \texttt{rscale}，用
 \texttt{cvt.rn.satfinite.e2m1x2.f32} 转成一个字节（2 个 e2m1），再左移
 $(\mathrm{lane}\bmod 4)\times8$ 位落进本 lane 的字节槽；4 个 lane 各持
 K16 组的一个四分之一，两轮 \texttt{shfl\_xor}（mask 1、2）把这 4 个字节
 \textbf{或}成一个 u32——即 8 个 e2m1 的完整码字（K8）。归并后同一个
-lane 四元组里的 4 个 lane 各拿一份完整副本；每行的 8 个 u32 拼满该行
-的 K64，两行共 16 个。
+lane 四元组里的 4 个 lane 各拿一份完整副本。每个 K32 半的有效写回是
+4 个 u32，两个半合计每行 8 个 u32（K64）；实际落笔只选
+$\mathrm{lane}\bmod4<2$ 的 lane，不让四份副本重复写。
 
 \textbf{第四阶段：写 v1 交织 pack}（L209--241）。这是全 kernel 最难用
 行列坐标直接解释的一段，值得单独给出代码与注释：
@@ -545,9 +547,9 @@ $16.3\%$（$133.8$ vs $115.1\,\mu s$）——producer 追平而 GEMM 掉队，
         bank，写与整行读都不冲突；rank$=32$ 特化（36 列 + XOR）。
   \item Q：两种 lora layout 怎么选？\\
         A：\texttt{kRowMajor}（BF16 + TMA）允许 LoRA 项在 mainloop 前
-        起，短中序列占优且 rank 无 128 上限；\texttt{kNative}（FP32
-        fragment + gather）省一次转置但 LoRA 项被挤到 mainloop 后
-        （第~\ref{ch:40}~章有 dispatch 数据）。
+        起，短中序列占优且 rank 无 128 上限；\texttt{kNative} 直接消费既有的
+        FP32 fragment checkpoint，无需改写成 row-major，但 LoRA 项被挤到
+        mainloop 后（第~\ref{ch:40}~章有 dispatch 数据）。
 \end{itemize}
 
 \section{最小测试与动手实验}

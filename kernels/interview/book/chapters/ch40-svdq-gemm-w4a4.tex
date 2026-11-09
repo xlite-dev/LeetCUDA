@@ -88,11 +88,11 @@ v1 pack（低 nibble 存偶数 K 元素）、wgt 是 $[N,K/2]$ 行主序 pack、
 ascales/wscales 都是 FP8\_E4M3。
 
 两条约定决定了后文所有设计。其一，\texttt{alpha} 与 \texttt{wcscales}
-\textbf{不能碰 LoRA 项}——低秩分支是高精度修正，乘上量化侧的动态
+\textbf{不能碰 LoRA 项}——低秩分支是高精度修正，乘上残差量化侧的
 scale 就破坏了第~\ref{ch:38}~章"低秩分支免费承接大幅值方向"的前提。
 其二，两个乘积在同一个 FP32 C fragment 里累加、最后\textbf{统一转
 BF16 一次}；这与第~\ref{ch:39}~章 producer 里 $D$ 的单次舍入配对，
-构成全链路"每分支一次"的舍入预算。数据流方面的约定同样写在这段
+构成在线路径中 $D$ 与最终输出各一次 BF16 舍入的预算。数据流方面的约定同样写在这段
 注释里：A/SFA 保持在 producer 输出的 v1 布局里直读，避免运行期转置
 或 repack；B 走 shared memory，消除旧实现中每个 warp 重复读权重的
 开销；两个 CuTe TiledMMA 的输入类型与 K 长度不同，但 C partition
@@ -190,10 +190,11 @@ D/L1（低秩两项） & row-major BF16 $\to$ TMA $\to$ overlay & 复用 A/B 字
 \label{fig:40-hybrid-flow}
 \end{figure}
 
-\textbf{为什么是 hybrid 而不是全 TMA}？全 TMA 版本（A/SFB 也走 smem）
+\textbf{为什么是 hybrid 而不是全 TMA}？全 TMA 版本（A/SFA 也走 smem）
 在同 shape 的 NCU 对照里 shared 指令多 $22\%$、bank conflict 多
 $29\%$、\texttt{math\_pipe\_throttle} 更高（cache-dit 的 NCU 归因，
-2026-11-05）；拆掉 A/SFA 的 smem 中转后这些税全部消失。代价是 A 的
+2026-11-05）；拆掉 A/SFA 的 smem 中转后，相关指令与冲突开销随之下降。
+代价是 A 的
 \textbf{重复全局 load}：每个 CTA、每个 MMA 线程都按 fragment 位置直读
 v1 pack，global 请求是全 TMA 的 4 倍——但这些流量 $87\%$ 命中 L2、
 DRAM 吞吐不变，且总量仍只有 native（每 warp 直读全部 fragment）的
@@ -280,7 +281,8 @@ SFA 1 + SFB 2），于是 S=2 被输出 overlay（64 KiB $>$ 54 KiB pipeline）
     {同一块 smem 的三次用途};
   % 主阶段
   \node[font=\tiny, anchor=east] at (1.32,3.62) {主阶段};
-  \node[seg, fill=tkBlue!22, minimum width=3.9cm] at (3.35,3.62) {A/SFA};
+  \node[seg, fill=tkBlue!22, minimum width=3.9cm] at (3.35,3.62)
+    {A 配额 + SFA 预留};
   \node[seg, fill=tkBlue!42, minimum width=5.55cm] at (8.2,3.62) {B/SFB};
   \node[font=\tiny, anchor=west] at (11.15,3.62) {$\times$\,\texttt{kStages}};
   % LoRA 阶段
@@ -290,7 +292,7 @@ SFA 1 + SFB 2），于是 S=2 被输出 overlay（64 KiB $>$ 54 KiB pipeline）
   \node[seg, fill=tkPurple!42, minimum width=5.55cm] at (8.2,2.32)
     {L1（BF16 rank tile）};
   \node[font=\tiny, anchor=west, text width=4.3cm] at (11.15,2.32)
-    {字节数分别等于 A/SFA 与 B/SFB};
+    {D=A、L1=B；SFA/SFB 另计};
   % 输出
   \node[font=\tiny, anchor=east] at (1.32,1.02) {输出};
   \node[seg, fill=tkGreen!28, minimum width=8.9cm] at (6.05,1.02)
@@ -306,13 +308,15 @@ SFA 1 + SFB 2），于是 S=2 被输出 overlay（64 KiB $>$ 54 KiB pipeline）
     {三条 \texttt{static\_assert} 就是这张图：$\mathrm{kDStageBytes}=\mathrm{kAStageBytes}$、
      $\mathrm{kL1StageBytes}=\mathrm{kBStageBytes}$（BF16 每元素 2 B、E2M1 每元素 0.5 B，
      rank tile 取 BK/4 列，字节数恰好相等）、$\mathrm{cosize}(O)\cdot\operatorname{sizeof}(\mathrm{BF16})\le\mathrm{kSmemBytes}$。
+     A/SFA 主值走 G2R，图中 A/SFA 区域只是供 D/O 复用的地址配额；B/SFB 才真正在主阶段写入。
      D/L1 用自己的 SW64/SW32 atom 与独立 TMA 描述符，只共享地址与 stage 步长；复用安全性
      由 empty barrier 先行到达保证。预算：每 stage 27 KiB，S=4 整环 108 KiB 超 99 KiB 上限；
      S=2 的 ring 只有 54 KiB，装不下 64 KiB 的输出 tile——这正是 S=3（81 KiB）成为唯一
      可行深度的原因。};
 \end{tikzpicture}
-\caption{stage ring 的三次复用。主阶段存 A/SFA 与 B/SFB；LoRA 阶段用同字节数的 D/L1
-覆盖；输出阶段整片覆盖为 $O$ tile。复用靠字节等式与 barrier 顺序，不靠额外缓冲。}
+\caption{stage ring 的三次复用。主阶段实际写入 B/SFB，A/SFA 配额为后续
+D/O 预留；LoRA 阶段用同字节数的 D/L1 覆盖 A/B；输出阶段整片覆盖为 $O$ tile。
+复用靠字节等式与 barrier 顺序，不靠额外缓冲。}
 \label{fig:40-overlay}
 \end{figure}
 
@@ -394,9 +398,11 @@ warp leader 到达。}
 调度上最关键的决定是\textbf{让 LoRA 与主循环共享同一个 step 计数器
 g}（L492--495）：nKt 个主 K tile 与 nRt 个 rank tile 排成一个
 $[0,\mathrm{nKt+nRt})$ 的全局步序列，stage 索引 $g\bmod kStages$、
-parity $(g/kStages)\&1$ 在 LoRA 边界\textbf{不重置}，于是 LoRA 的
-TMA 最多可以提前 $kStages$ 步进 ring，与主循环尾部重叠（main-first
-模式同理，只是把 rank tile 排在主循环后面）。事务字节数按阶段类型
+parity $(g/kStages)\&1$ 在 LoRA 边界\textbf{不重置}，ring 因而最多容纳
+$kStages$ 个在途 step。两种顺序的重叠位置不同：main-first 把 rank tile
+排在主 K tile 后，D/L1 可随主循环尾部 stage 释放提前进 ring，缩短串行
+尾巴；LoRA-first 把 rank tile 放在最前，与 K tile 0 的 A/SFA 预取重叠。
+事务字节数按阶段类型
 精确区分（L447--454）：主阶段
 \texttt{kTxBytesMain = BN*BK/2 + SFB}（A/SFA 无 TMA 事务），LoRA 阶段
 \texttt{kTxBytesLora = D+L1}（\texttt{kNative} 时只有 L1，因为 FP32
@@ -552,9 +558,11 @@ fragment-packed 的 \texttt{proj\_down}/\texttt{smooth\_factor}）。
 cache-dit 的量化链路（SVDQ PTQ 校准/DQ 无校准、\texttt{runtime\_kernel}
 选择、\texttt{cache-dit-convert} 转换 CLI）负责离线产出本链路的权重侧
 输入并包装成 \texttt{SVDQW4A4Linear} 模块；本书不展开配置项枚举，
-只强调调用形态本身：\textbf{两个 kernel、三次 DRAM 往返以内的在线
-侧}（读 $X$、读权重侧、写 $Y$；$D$ 与 pack 驻留显存），就是
-第~\ref{ch:38}~章式~\ref{eq:38-svdq} 的全部运行时代价。
+只强调调用形态本身：\textbf{两个 kernel}。producer 读 $X$ 与
+\texttt{lora\_down}，写 qact/ascales/$D$；GEMM 再读这些中间张量和其余权重侧
+输入，最后写 $Y$。$D$ 与 pack 驻留显存，所以跨 kernel 的中间写出与读回仍然存在；
+融合消除的是额外算子及重复的全精度激活读写，不能把它们漏算成“读 $X$、读权重、
+写 $Y$”三次 DRAM 往返。
 
 \section{图示}
 
@@ -701,8 +709,8 @@ shared 指令 $-22\%$、wavefront $-18\%$、bank conflict $-29\%$、
 
 \begin{kaogu}[F4]{gemm\_w4a4 的已证伪路线（cache-dit 的调优结论）}
 \begin{itemize}[itemsep=0.5pt,topsep=1pt]
-  \item 三方案主循环：A/SFA 前移最大退化仅 $+0.41\%$（未达 $+0.5\%$
-        收益门槛）；双缓冲跨 stage 预取 $+1.9\%$--$6.1\%$；BK64 的
+  \item 三方案主循环：A/SFA 前移有 9/12 格退化、最大 $+0.41\%$，改善格
+        也不足 $0.5\%$，未达收益门槛；双缓冲跨 stage 预取 $+1.9\%$--$6.1\%$；BK64 的
         S5--S7 在 2048 上 $+4.6\%$--$7.1\%$、16K 上 $+26\%$--$27\%$。
         并集 $+0.4\%$--$27\%$，全部回退，勿重试；
   \item persistent CTA（grid-stride + epilogue 串行 store）：12 格慢
@@ -710,9 +718,9 @@ shared 指令 $-22\%$、wavefront $-18\%$、bank conflict $-29\%$、
         兼容（setmaxnreg 死锁），均已回退；
   \item 盲目扫描 stages/tile 已经试过并确认\textbf{无效}：S2 被输出 overlay
         静态拒绝、S4 超 99 KiB；不重测 BN128 小 tile 的旧结论；
-  \item direct G2R（全部操作数不过 smem）：对 native pack 仍不可行，
-        对 v1 pack 即当前 hybrid——pack 布局决定路线，不是 copy atom
-        问题。
+  \item direct G2R（全部操作数不过 smem）：对 native pack 仍不可行；
+        当前 hybrid 只让 v1 A/SFA 走 G2R，B/SFB/D/L1 仍走 TMA+smem。
+        pack 布局决定路线，不是 copy atom 问题。
 \end{itemize}
 \end{kaogu}
 
@@ -721,8 +729,10 @@ shared 指令 $-22\%$、wavefront $-18\%$、bank conflict $-29\%$、
 \begin{itemize}[itemsep=1pt,topsep=2pt]
   \item \textbf{full barrier 字节数混配}：主阶段与 LoRA 阶段的
         \texttt{expect\_tx} 字节数不同，混用会死等或提前放行；
-  \item \textbf{overlay 复用布局而非仅字节}：BF16 D/L1 不能套 A/B 的
-        SW32 swizzle 布局，只能共享地址与 stage 步长（L383--384）；
+  \item \textbf{overlay 复用布局而非仅字节}：BF16 D/L1 不能直接复用
+        A/B 的完整 \texttt{SmemLayout} 或 TMA 描述符，只能共享地址与 stage
+        步长；fallback 的 D/L1 也用 SW32，但元素类型、逻辑 shape 与描述符仍独立
+        （L357--393）；
   \item \textbf{G2R 逆映射的 lane XOR}：SFA 的第二 m-tile 需要
         \texttt{lane\^{}2}，省略则形状对、数值错；
   \item \textbf{SF stage 步长的 filter\_zeros}：stride-0 广播模式下
@@ -779,14 +789,16 @@ shared 指令 $-22\%$、wavefront $-18\%$、bank conflict $-29\%$、
 $ python -m pytest tests/kernels/test_svdquant_cute.py \
                    tests/kernels/test_svdquant_runtime.py -q
 # 上面两个文件覆盖 producer 数值、rank 32/64/128 的 GEMM parity、
-#   runtime x lora_layout 四组合与 INT4 隔离回归；cache-dit 记录的
+#   三种合法 runtime x lora_layout 组合、native x row_major 拒绝用例与
+#   INT4 隔离回归；cache-dit 记录的
 #   94 个用例是 5 个测试文件的合计（另含 ops 派发、source manifest、
 #   quantize config）
 
 # CPU 侧观察（layout 代数复算，PyCuTe 纯 host）：
-# 用 PyCuTe 复算 SmemLayoutA(SW32 atom, (BM,BK,stages)) 与 SmemLayoutD
-# (SW64 atom, (BM,BK/4,stages)) 的 cosize，验证
+# 用 PyCuTe 复算单 stage SmemLayoutA(SW32 atom, (BM,BK)) 与 SmemLayoutD
+# (SW64 atom, (BM,BK/4)) 的 cosize，验证
 #   cosize(D)*2B == cosize(A)/2*1B == kAStageBytes   （overlay 字节恒等式）
+# 若布局保留 stages，右侧应为 kStages*kAStageBytes，而不是单 stage 字节数。
 # 以及 sf_gmem_layout 的 512B atom 内偏移公式（L89-98）。
 \end{lstlisting}
 
