@@ -40,7 +40,7 @@ smooth-K/smooth-V 利用 softmax 的\textbf{行平移不变性}与\textbf{行和
 \textbf{（3）素材与验证方式}。本章是纯数学章，无源码区间；实现讲解拆成两章：
 第~\ref{ch:39}~章讲 cache-dit 的量化 producer（fuse LoRA-down 的激活量化），
 第~\ref{ch:40}~章讲 W4A4 GEMM（NVFP4 MMA 与 BF16 LoRA-up 融合）。源码锚定
-cache-dit commit \texttt{3295dc6}，完整代码入口见附录~\ref{app:D}。
+cache-dit commit \texttt{db125215}，完整代码入口见附录~\ref{app:D}。
 \textbf{前置章节}：第~\ref{ch:27}~章（量化数学，必须）、第~\ref{ch:31}~章
 （NVFP4 格式与两级 scale，第~\ref{ch:39}~章直接复用其记号）、第~\ref{ch:34}~章
 （量化 GEMM 的误差模型）。预计篇幅：数学主线四节，扩展阅读两节。
@@ -552,7 +552,7 @@ GPTQ 或 refine）。这与"先量化、再用低秩补偿量化误差"的 LoRC 
   \node[stagebox, fill=tkOrange!10] (on) at (4.1,1.9)
     {\textbf{在线（每个 forward，第~\ref{ch:39}~章的 producer）}\\[2pt]
      $X\xrightarrow{\ \times S^{-1}\ }$ 平滑 $\to$ NVFP4 量化\\
-     $\Rightarrow\ \mathcal Q(\widehat X)$：e2m1 码 + v1 pack SFA\\
+     $\Rightarrow\ \mathcal Q(\widehat X)$：e2m1 码 + native pack SFA\\
      $\Rightarrow\ D=\widehat XL_2^{\top}$（低秩 down，寄存器累加）};
   % 融合 GEMM
   \node[stagebox, fill=tkGreen!14, text width=5.0cm, minimum height=2.7cm] (gemm) at (12.4,3.3)
@@ -1106,7 +1106,7 @@ $O(K^2)$ 降为 $O(K\log K)$，但 absmax 仍需 $O(MK)$ 读取；$\Lambda$ 位�
 $K$ 上，必须在反量化或分组 MMA 的明确位置回乘；零幅值通道还要定义保护规则。
 论文也明确说明，理论节展示 per-channel 形式，实际性能与精度实验使用
 hardware-aligned 的 block-wise ARQ。因此“代数上可乘回”不等于第~\ref{ch:40}~章
-的现有 v1 pack 与 block-scaled MMA 无需修改即可消费。
+的现有 native pack 与 block-scaled MMA 无需修改即可消费。
 
 \subsection{$\delta$-GBS：按特征变化分配时间步位宽}
 

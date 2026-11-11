@@ -35,10 +35,11 @@
         + persist-D/split-D/M4N2 kernel 家族
         （第~\ref{ch:19}、\ref{ch:26}、\ref{ch:27}--\ref{ch:33}~章）；
   \item cache-dit 仓库（Part VII 代码链路，源码索引锚定 commit
-        \texttt{3295dc6}，permalink 见附录~\ref{app:D}）\\
+        \texttt{db125215}，permalink 见附录~\ref{app:D}）\\
         \url{https://github.com/vipshop/cache-dit}\\
-        SVDQuant W4A4 的独立 CuTe 实现：fuse LoRA-down 的量化
-        producer + G2R/TMA hybrid GEMM（第~\ref{ch:38}--\ref{ch:40}~章）；
+        SVDQuant W4A4 的独立 CuTe 实现：native pack + rank 特化
+        TiledMMA/TiledCopy producer（fused/split-K）+ G2R/TMA hybrid GEMM
+        （第~\ref{ch:38}--\ref{ch:40}~章）；
   \item Nsight Compute 文档\\
         \url{https://docs.nvidia.com/nsight-compute/}\\
         bank conflict 计数器与 stall 指标（第~\ref{ch:12}、\ref{ch:16}~章

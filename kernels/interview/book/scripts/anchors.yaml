@@ -312,66 +312,81 @@ chapters:
         last_anchor: "}"
   ch39:
     refs:
-      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp4/quantize_w4a4.cu
-        start: 77
-        end: 103
+      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp4/quantize/quantize_impl.cuh
+        start: 62
+        end: 100
+        first_anchor: "struct QuantizeTraits {"
+        last_anchor: "using S2RCopyB = Copy_Atom<SM75_U16x8_LDSM_T, Element>;"
+      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp4/quantize/quantize_impl.cuh
+        start: 280
+        end: 306
+        first_anchor: "template <class TiledMma, class CopyA>"
+        last_anchor: "}"
+      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp4/quantize/quantize_impl.cuh
+        start: 185
+        end: 223
+        first_anchor: "static __device__ __forceinline__ void quantize_group(PackedBF16 tmp0, PackedBF16 tmp1,"
+        last_anchor: "quantize_float4_fp8(make_float4(scale[0], scale[1], scale[2], scale[3]));"
+      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp4/quantize/quantize_impl.cuh
+        start: 224
+        end: 263
+        first_anchor: "// Each lane first places its E2M1 pair in one of four byte positions. XOR shuffles then OR"
+        last_anchor: "}"
+      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp4/quantize/quantize_uni.cu
+        start: 87
+        end: 113
         first_anchor: "// SM80_16x8x16_F32BF16BF16F32_TN has BLayout"
         last_anchor: "}"
-      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp4/quantize_w4a4.cu
-        start: 174
-        end: 207
-        first_anchor: "float rscale[2][4];"
+      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp4/quantize/quantize_impl.cuh
+        start: 405
+        end: 423
+        first_anchor: "template <class TiledMma, class RawA, class Acc>"
         last_anchor: "}"
-      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp4/quantize_w4a4.cu
-        start: 209
-        end: 241
-        first_anchor: "// Redistribute each K32 word into the v1 256-row interleaved activation pack. Each lane still"
+      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp4/quantize/quantize_impl.cuh
+        start: 730
+        end: 745
+        first_anchor: "// Cooperative epilogue. Each thread sums the declared buffers for one logical D element, converts"
         last_anchor: "}"
-      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp4/quantize_w4a4.cu
-        start: 287
-        end: 312
-        first_anchor: "for (int k0 = warp * 64; k0 < K; k0 += kWarps * 64) {"
-        last_anchor: "}"
-      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp4/quantize_w4a4.cu
-        start: 370
-        end: 384
-        first_anchor: "// All threads cooperate on the 32xR reduction. Each output element is rounded once, after"
+      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp4/quantize/quantize_impl.cuh
+        start: 821
+        end: 845
+        first_anchor: "template <int kRankTiles, int kWarps = 8, int kMaxSlices = 2, bool kAsyncA = true>"
         last_anchor: "}"
   ch40:
     refs:
-      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp4/gemm_w4a4.cuh
+      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp4/gemm/gemm_w4a4.cuh
         start: 332
         end: 355
         first_anchor: "using MmaAtom ="
         last_anchor: "\"one rank tile must be a whole number of BF16 MMA atoms\");"
-      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp4/gemm_w4a4.cuh
+      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp4/gemm/gemm_w4a4.cuh
         start: 375
         end: 393
         first_anchor: "// D/L1 use swizzle-free row-major linear layouts and independent TMA descriptors. They share"
         last_anchor: "LoraSmemAtom{}, make_shape(Int<kBN>{}, Int<kRankTile>{}, Int<kStages>{})));"
-      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp4/gemm_w4a4.cuh
+      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp4/gemm/gemm_w4a4.cuh
         start: 439
         end: 454
         first_anchor: "static_assert(kDStageBytes == kAStageBytes, \"a D rank tile must overlay one A stage\");"
         last_anchor: ": static_cast<uint32_t>(kDStageBytes + kL1StageBytes);"
-      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp4/gemm_w4a4.cuh
+      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp4/gemm/gemm_w4a4.cuh
+        start: 838
+        end: 857
+        first_anchor: "#pragma unroll 1"
+        last_anchor: "}"
+      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp4/gemm/gemm_w4a4.cuh
         start: 685
         end: 698
         first_anchor: "for (int i = 0; i < size(tCrD); ++i) {"
         last_anchor: "}"
-      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp4/gemm_w4a4.cuh
-        start: 839
-        end: 858
-        first_anchor: "#pragma unroll 1"
-        last_anchor: "}"
-      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp4/gemm_w4a4.cuh
-        start: 932
-        end: 957
+      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp4/gemm/gemm_w4a4.cuh
+        start: 931
+        end: 956
         first_anchor: "template <class GmemC, class CSlice, class TiledMma, class Acc>"
         last_anchor: "}"
-      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp4/gemm_w4a4.cu
-        start: 146
-        end: 163
+      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp4/gemm/gemm_w4a4.cu
+        start: 156
+        end: 173
         first_anchor: "if (N % 256 == 0 && K % 128 == 0) {"
         last_anchor: "}"
   ch37:
