@@ -63,6 +63,8 @@
 
 28. **别用 CSS 强制展开侧栏**：集合的三层目录一开始用 `.toctree-l1.current .toctree-l2 > ul { display: block }` 强开，结果系列前的「+」变成点了没反应的死控件（主题的 `theme.js` 靠切 `li.current` 控制显隐，被 CSS 覆盖后就不生效了）。正解是只调 `navigation_depth: 3` + `titles_only: True`，折叠/展开交给主题：默认「+」收起、点开展开、当前系列自动展开——与主书「篇 → 章」完全一致。
 
+29. **tex 里写字面冒号围栏，pandoc 一定吃掉**：`\lstinputlisting` 找不到文件时，旧实现直接在预处理阶段（**pandoc 之前**）插 ````{admonition} 代码清单未内联```` + `:class: rtd-admon rtd-source-missing`。pandoc 把它当围栏代码块，`:class:` 与首尾弯引号原样漏成正文——线上 ch39 看到的就是这串乱码。更糟的是 `verify` 里按「原书此处引用 `…`」文案匹配的核对项因此恒真（弯引号 + 反引号失配），承诺的「缺快照必红」从未生效。结论：**任何 markdown 结构都必须在 postprocess 阶段用 token 生成**（现在走 `KIND_SOURCE_MISSING` + manifest 的 `missing` 记录，由 `_render_source_missing` 渲染）；核对项一律匹配渲染后的 CSS 类（`rtd-source-missing`），不要匹配正文文案。
+
 ## 验收方法（方法论）
 
 - **三层验收，缺一层就会漏**（见 `acceptance.md`）。

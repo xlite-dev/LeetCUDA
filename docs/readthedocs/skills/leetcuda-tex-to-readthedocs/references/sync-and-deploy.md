@@ -51,7 +51,7 @@
 
 ## 已知边界
 
-- **仓库外的代码清单**：`ch27` 有两处 `\lstinputlisting` 指向同级仓库 `ffpa-attn/`，本地能读到、RTD 上只检出本仓库。RTD 构建时这两处显示成提示块并给出原路径。
+- **仓库外的代码清单**：书上用 `\lstinputlisting{../../../../cache-dit/...}`（ch39/ch40）与 `../../../../ffpa-attn/...`（ch27）引用同级 checkout，xelatex 编 PDF 需要读者本地检出这两个仓库，RTD 只检出 LeetCUDA。站点侧靠 `sources/<repo>/<path>` 的冻结快照内联（锚定 commit：cache-dit `db125215`、ffpa-attn `861d75e`，清单与 sha256 见 `sources/README.md`）；转换器对越界引用**只读快照、不回退本地 checkout**，缺快照就出提示块并由 `convert.verify` 的「跨仓库清单已内联」判红。新增这类引用时必须先补快照。
 - **子集合不参与英译词典**：`cute-zhihu` 的 201 段代码块的注释、公式内文字、图内中文在英文模式下保持中文（正文由 Google 翻译）。`check_translation_dicts` 只统计站点根页面，把集合纳入会全算未命中。`translate.js` 的换图只对 `_images/*.svg`（TikZ 产物）生效，集合的 173 张 jpg 不受影响。
 - **图注是普通段落**：`postprocess` 输出的 `{.rtd-caption}` 属性行会被 `_clean_heading_attributes` 当 pandoc 残迹清掉，所以图注只有「图 N：…」的文字、没有 `custom.css` 里的居中/灰字样式——主书 41 章一直如此，子集合沿用同一行为。要启用需单独改那处清理逻辑，会同时改变主书的既有版式。
 - **集合没有 PDF 下载**：`cute-zhihu.pdf` 是 gitignore 的构建产物，站点只呈现网页；「下载 PDF」按钮始终指向主书 PDF。

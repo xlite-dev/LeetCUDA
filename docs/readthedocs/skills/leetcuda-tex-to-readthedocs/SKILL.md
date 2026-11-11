@@ -31,6 +31,7 @@ argument-hint: '说明要改什么（书稿内容 / 转换器 / 版式 / 中英�
 | 首页标题右侧的 Trendshift 徽章 | 片段在 `convert/__main__.py` 的 `BOOK_BADGE`（照抄仓库根 `README.md`），落位与宽度在 `custom.css` 的 `.rtd-trendshift` | `references/layout-frontend.md` |
 | 右上角仓库按钮（显示 `xlite-dev/LeetCUDA`，落位/链接/样式） | 模板在 `_templates/breadcrumbs.html` 的 `breadcrumbs_aside`，链接取 `convert/readme.py` 的 `REPO_URL`，样式在 `custom.css` 的 `.rtd-repo-link`；`convert/verify.py` 逐页核对 | `references/layout-frontend.md` |
 | RTD 构建失败 | 先看 `pre_build`（apt 包 / pandoc 版本），再看 `post_build` 打印的核对项 | `references/sync-and-deploy.md` |
+| 书稿引用仓库外的源码（`\lstinputlisting{../../../../<repo>/...}`） | 从锚定 commit 导冻结快照到 `sources/<repo>/<path>`，并更新 `sources/README.md` 的清单与 sha256；缺快照页面出提示块、`post_build` 判红 | `references/sync-and-deploy.md`「已知边界」 |
 | 核对项本身 | 新增/调整 `convert/verify.py` 的 `check_*`，接入 `verify()` 与 `main()` | `references/acceptance.md` |
 
 ## 本地构建与预览
