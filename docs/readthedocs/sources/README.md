@@ -42,3 +42,11 @@ sha256sum sources/<repo>/<path>   # 与上表对齐
 
 需要重导的时机：书稿新增或改动跨仓库清单引用、上游锚定 commit 变更。缺快照的
 跨仓库引用会让 `convert.verify` 的「跨仓库清单已内联」判红，不会静默放过。
+
+## 提交注意
+
+本目录是上游源码的逐字节副本，**任何格式化钩子都不能碰**：仓库根的 `.pre-commit-config.yaml`
+里 `clang-format`、`trailing-whitespace`、`end-of-file-fixer` 默认会改写 `.cu`/`.cuh`，
+实测一次提交就把 4 个快照的 sha256 改掉（与锚定 commit 不再一致）。提交时要么用
+`git commit --no-verify`（本仓库 2 空格缩进与 black 的既有约定同此），要么把本目录加进
+钩子顶层 `exclude: ^docs/readthedocs/sources/`。改完用 `sha256sum` 复核上表。
