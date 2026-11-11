@@ -29,7 +29,7 @@
 | RFC-M | ch26c 增补章：SM120 大 head_dim non-WS Split-D（ffpa-attn 同源移植 + K/V stages 解耦实验） | RFC-F/K/L（ch26 前置） | 完成（2026-09-23：ffpa_attn.cuh L643-1306 整合 + tests 12/12 + K/V stages 实验 (3,2) D320=204.1T=2.93x cuDNN + 正文 4967 字 5 TikZ 图）|
 | RFC-N | Part V FP8/FP4 HGEMM 篇 ch34-35（fp8_gemm.cuh 新增冻结件 + 双口径加速比 + cuBLAS 基线剖析 + B 离线量化） | RFC-D/F/K（ch22-24、ch27 前置） | 完成（2026-09-24：fp8_gemm.cuh 943 行 + tests 28 条 PASS 断言（ch34 8 + ch35 20，含 6 条逐 bit 等价）+ 4096³ 400.5T=2.45x/上限 1.66x + B 离线量化 376.8T=2.30x + 8 TikZ 图 + 全书改号 Part V→VI）|
 | RFC-O | Part V FP8/FP4 HGEMM 篇 ch36-37（NVFP4 两级量化 + block-scaled MMA，fp4_gemm.cuh 新增冻结件） | RFC-D/F/N（ch22-24、ch34/35 前置） | 完成（2026-09-24：fp4_gemm.cuh 1298 行 + tests ch36/ch37 全 PASS（含 4 条逐 bit 等价）+ kernel 614.6/648.7T（128×256/s6 ws）+ e2e FP4 334.2/373.4T 反超 FP8 + 误差模型 14.4% 与实测 14.37% 吻合；ch36/ch37 共 9 张 TikZ 图）|
-| RFC-P | Part VI SVDQuant 篇 ch38-40（cache-dit svdq cute/fp4 源码讲解：数学原理 + quantize producer + W4A4 GEMM；纯书稿，不改 cache-dit、不跑 kernel） | RFC-K/N/O（ch27/31/34-37 前置）+ cache-dit@3295dc6（公开仓） | 执行中（2026-11-07 登记）|
+| RFC-P | Part VII SVDQuant 篇 ch38-40（cache-dit svdq cute/fp4 源码讲解：数学原理 + quantize producer + W4A4 GEMM；纯书稿，不改 cache-dit、不跑 kernel） | RFC-K/N/O（ch27/31/34-37 前置）+ cache-dit@db125215（公开仓） | 完成（2026-11-11 当前源码迁移与验收）|
 依赖图（执行实况）：`RFC-0 → RFC-A → RFC-C → RFC-D → RFC-E → RFC-F → (RFC-G ∥ RFC-H ∥ RFC-I) → RFC-J`；RFC-B 于 2026-09-18 取消（素材职能被附录 E + drawio 全量重建接管）；`RFC-K 依赖 RFC-E/F 素材，与 RFC-G/H/I 并行，完成后并入 RFC-J 收口`；增补里程碑 RFC-L（ch26b）/RFC-M（ch26c）/RFC-N（ch34-35）/RFC-O（ch36-37）于 2026-09-22..24 依次完成并并入主线；RFC-P（ch38-40，SVDQuant 篇）于 2026-11-07 登记为**Part VII**（插在 attention 篇之后、附录之前；attention 篇保持 Part VI、旧章打印章号零副作用——P.0 审核的路线 B；新章打印章号 41--43，正文硬编码节号按打印值书写）
 
 ## 2. RFC-0 脚手架
@@ -604,6 +604,16 @@
       ARQ 在线 $\Lambda$ 与 block-wise 实现边界、$\delta$-GBS 的因果累计/重置/平均位宽；
       补 5 幅 TikZ（FIG-38-7..11）、BGR/GBS 数值例与 4 个 CPU 实验。单章 15 页、
       0 error / 缺字 0 / Overfull 0，五图书内页目检通过；全书与 RTD 验收待本轮收尾。
+- [x] P.16 SVDQ 当前源码迁移（2026-11-11，cache-dit `3295dc6`→`db125215`；
+      只改书稿，不执行 cache-dit/GPU）：ch39 按 `quantize/` 模块重写 uni 与
+      rank 特化 TiledMMA/TiledCopy、实际 ops dispatch、fused/split-K、native pack、
+      FP32 scratch/relaxed atomics/finalize 与 per-16 scale；ch40 迁移 `gemm/`、
+      更新 kt mainloop、8K+宽 N main-first、当前性能与 rank128 旧结论；ch38 仅同步
+      版本与 native pack 术语。ch39/ch40 分别重建 8/7 条 anchors，全书 35 章 ALL GREEN；
+      appB/C/D/E 与 BOOK_PLAN 同步。当前性能只转述 2026-11-11 PRO 5000 单会话记录，
+      本书未复测。主 book 636 页 / 0 error / 缺字 0 / Overfull 15（均为既有项），
+      7 页受影响图目检通过；RTD 英文图 214/214、代码 776/776、公式 123/123，
+      `visual_check` 97 页需处理 0。
 
 **用户追加约束（2026-11-07，施行于三章）**：正文不得出现开发过程记录——
 CHECKLOG / 技能笔记 / RFC 编号 / DoD 条款等一律不进正文；数据来源只写
@@ -710,7 +720,7 @@ CHECKLOG / 技能笔记 / RFC 编号 / DoD 条款等一律不进正文；数据�
 | FIG-35-5 | 35 | sweep | C1 新建（2026-09-24，TikZ inline 双面板柱状图：(a) 8 个可行 tile 几何 s2 吞吐 + 256×256「装不下」占位；(b) 两个 tile 的 s2/s3/s4 深度对比） | 正式 | 同上（35.8.4 节） |
 | FIG-38-1 | 38 | smq-shift | C1 新建（2026-11-07，TikZ inline：通道缩放平滑的幅值迁移直觉，原始通道幅值+per-tensor 网格 vs 平滑后激活/权重两侧） | 正式 | chapters/ch38-svdq-math.tex（图 inline 于数学原理节，无独立图示节，同 ch34-37 先例） |
 | FIG-38-2 | 38 | svdq-flow | C1 新建（2026-11-07，TikZ inline：SVDQuant 数据流总览，离线平滑/SVD/残差量化 + 在线量化/D/GEMM 三分支） | 正式 | 同上 |
-| FIG-39-1 | 39 | producer-flow | C1 新建（2026-11-07，TikZ inline：融合 producer 数据流，CTA/warp 划分 + staging→ldmatrix→量化/LoRA 双支路 + shared 归约） | 正式 | chapters/ch39-svdq-quant-producer.tex |
+| FIG-39-1 | 39 | producer-flow | C1 改版（2026-11-11，TikZ inline：rank 特化 TiledCopy/LDSM + 量化/LoRA 双支路 + fused shared 归约 vs split-K scratch/finalize） | 正式 | chapters/ch39-svdq-quant-producer.tex |
 | FIG-39-2 | 39 | lora-layout | C1 新建（2026-11-07，TikZ inline：kNative vs kRowMajor 两种 D 形态与下游消费路径对比） | 正式 | 同上（39.5 图示节） |
 | FIG-40-1 | 40 | hybrid-flow | C1 新建（2026-11-07，TikZ inline：G2R/TMA hybrid 数据流，producer WG + 8 consumer warp + D/L1 overlay + O 复用） | 正式 | chapters/ch40-svdq-gemm-w4a4.tex |
 | FIG-40-2 | 40 | ws-timeline | C1 新建（2026-11-07，TikZ inline：统一流水环 LoRA-first 时序，full/empty barrier 双泳道 + LoRA 阶段提前入环） | 正式 | 同上 |
@@ -723,10 +733,10 @@ CHECKLOG / 技能笔记 / RFC 编号 / DoD 条款等一律不进正文；数据�
 | FIG-38-9 | 38 | dvd-bgr | C1 新建（2026-11-09，TikZ inline：BGR 有界初始化与 $\Delta,z,q$ 交替精修闭环） | 正式 | 同上 |
 | FIG-38-10 | 38 | dvd-arq | C1 新建（2026-11-09，TikZ inline：Hadamard 旋转、在线 $\Lambda$、BGR 权重与反量化回乘） | 正式 | 同上 |
 | FIG-38-11 | 38 | dvd-gbs | C1 新建（2026-11-09，TikZ inline：$\delta=0.20$ 的累计、切到 8 bit、重置与平均 4.8 bit 示例） | 正式 | 同上 |
-| FIG-39-3 | 39 | v1-pack | C1 新建（2026-11-08，TikZ inline：v1 pack 两级结构，256 行 8 面板 + K16 组在 4 lane 的归并） | 正式 | chapters/ch39-svdq-quant-producer.tex |
+| FIG-39-3 | 39 | native-pack | C1 改版（2026-11-11，TikZ inline：native pack 两级结构，256 行 8 面板 + K8 码字副本与 writer lane） | 正式 | chapters/ch39-svdq-quant-producer.tex |
 | FIG-40-3 | 40 | overlay | C1 新建（2026-11-08，TikZ inline：一块 smem 的三次用途，A/SFA→D、B/SFB→L1→O tile 覆盖） | 正式 | chapters/ch40-svdq-gemm-w4a4.tex |
 | FIG-40-4 | 40 | lora-schedule | C1 新建（2026-11-08，TikZ inline：main-first vs LoRA-first 两行时间线对比） | 正式 | 同上 |
-| FIG-40-5 | 40 | g2r-map | C1 新建（2026-11-08，TikZ inline：G2R 逆映射三段式，CuTe 下标→换坐标系→v1 字节地址） | 正式 | 同上（43.5 图示节） |
+| FIG-40-5 | 40 | g2r-map | C1 改版（2026-11-11，TikZ inline：G2R 逆映射三段式，CuTe 下标→换坐标系→native pack 字节地址） | 正式 | 同上 |
 
 ## 14. CHECKLOG 摘要镜像（明细在 book/CHECKLOG.md）
 

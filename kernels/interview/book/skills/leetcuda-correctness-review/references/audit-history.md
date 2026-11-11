@@ -1220,3 +1220,11 @@ git diff --check：通过
 - 反向自辩后不改：平滑等价变换、QJL 常数与 `1/d`、输出 overlay 字节算术、性能表 15 格、rank ≤64 的 8/8 最优格、图注中 `s_X/s_R` 与题注归属。R106 的 P.13 修正未回退。
 - 回修与验收：3 个章 `.tex`、`book.pdf`、`cover.pdf`、`figures-en.json`（2062 条）、`code-en.json`（776 条）。主 book **626 页 / 0 error / 0 undefined / Missing 0 / Overfull ≥1pt 15**，lint 三类 0 fail；RTD 全量 build 英文图 209/209、代码 776/776、公式 123/123；`visual_check` 97 页需处理 0。图目检 5 页，pack 图注“每列一行 vs 每格 32 行”的矛盾在看图后回修。
 - 测试边界：未重跑 GPU benchmark，性能与端到端数字仍为论文/上游记录转录；rank128 的 dispatch 是“按 shape 选择”的结论，不是实测 default。构建期间不要打开 `book.pdf`：浏览器会读到写了一半的 xref/trailer（本轮用户遇到的 “Invalid or corrupted PDF”），构建结束后 `pdfinfo` 626 页与 `pdftotext` 均正常。逐条证据见本条与 RFC P.14；ch38 图号最小复现留在 `book/.tmp/ch38-audit/`。
+
+## R114（2026-11-11）：SVDQ 三章迁移到当前 quantize/gemm 源码
+
+- 触发与边界：按用户要求把 Part VII 从 `cache-dit@3295dc6` 迁移到 `db125215`，重点覆盖 producer 新实现与已有更优性能；cache-dit 全程只读，未运行其构建、测试、benchmark 或任何 GPU 代码。两个 Explorer 与 Review Plan 先形成 dispatch、旧断言退役、性能口径与逐图处置表，主 agent 再回读源码。
+- L0–L4 定点审核：ch39 的 uni/rank 特化分工、K/M 实际 dispatch、TiledMMA/TiledCopy、SW128/SW32、LDSM、native qact/ascales pack、fused shared 归约与 split-K FP32 scratch/relaxed atomics/finalize 均逐项对源码；ch40 复核 kt mainloop、LoRA-first/main-first、hybrid/overlay/双 MMA/epilogue。B 视图 `[16,64]:(1,R)` 另用 PyCuTe `56cc3d0` 做 host-only 复算，rank 32/64/128 全过。
+- 发现与处置：正文、图注、问答与测试统一使用 native pack，删除 SVDQ 三章的 v1 表述；旧 rank128 禁用 row-major 结论降为 rank 特化前历史；补齐 split-K 的 scratch 清零/finalize 与 D 非逐位确定性。新增 10 条 Overfull 全部回修至基线 15。`CHECKLOG` 登记 per-K32 注释和 no-finalize 旧注释；claim ledger 与边界矩阵在 `book/.tmp/svdq-current-source-update/claim-ledger.md`，无未解决 H/M 项。
+- 性能口径：2026-11-11 PRO 5000 单会话的 producer 1.1088× 明确为混合 dispatch 的 op-level Event geomean；GEMM 1.0248×、row-major e2e 1.0553× 保留回退格，不把 isolated kernel 结果当 e2e。旧 PRO 6000 四方表只作历史对照，本书未复测。
+- 验收：全书 anchors 35 章 ALL GREEN，`diff --check` 通过；主 book **636 页 / 0 error / 0 undefined / 缺字 0 / Overfull ≥1pt 15（均为既有项）**，7 页受影响图渲染目检通过；RTD 全量 build 未跳 TikZ，英文图 214/214、代码 776/776、公式 123/123，逐项内容核对全 OK；`visual_check` 97 页需处理 0。

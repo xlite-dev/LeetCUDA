@@ -1,5 +1,5 @@
 % ch39-svdq-quant-producer.tex — SVDQuant(二)：量化 producer（RFC-P2）
-% 源码：cache-dit(3295dc6) csrc/kernels/svdq/cute/fp4/quantize_w4a4.cu + gemm_w4a4.h(LoraLayout 约定)
+% 源码：cache-dit(db125215) csrc/kernels/svdq/cute/fp4/quantize/ + gemm/ + ops.h
 % 公式锚点一律回指 ch38（sec:38-*），本章不重推。
 \chapter{SVDQuant（二）：量化 producer——融合 LoRA-down 的激活量化}\label{ch:39}
 
@@ -8,34 +8,42 @@
 第~\ref{ch:38}~章的式~\ref{eq:38-svdq} 说，SVDQuant 在线侧要做两次计算：
 激活量化 $\mathcal Q(\widehat X)$ 与低秩 down 投影
 $D=\widehat XL_2^{\top}=X(L_2S^{-1})^{\top}$。两者读的是同一份输入
-$X$，朴素写法会把它变成四条独立的 kernel 链（平滑、量化、LoRA-down、
-finalize），引入额外中间张量的 DRAM 读写。本章讲 cache-dit 的
-\textbf{融合 producer}：一次 kernel 同时产出 GEMM 的全部激活侧输入。
-按模板交代四件事：
+$X$，朴素写法会把它变成多条独立的 kernel 链，引入额外中间张量的 DRAM
+读写。本章讲 cache-dit 的\textbf{融合 producer}：在同一个公共算子内共享
+激活装载，同时产出 GEMM 的激活码、scale 与 LoRA-down 结果。当前实现有
+fused 与 split-K 两种调度；前者用单个 kernel 完成，后者还需要一次 BF16
+finalize，不能再把整条链概括成“永远只有一个 kernel”。
 
-\textbf{源码区间}：cache-dit 仓库 commit \texttt{3295dc6} 的
-\texttt{csrc/kernels/svdq/cute/fp4/}\texttt{quantize\_w4a4.cu}（478 行；
-公开仓库，完整代码入口见附录~\ref{app:D}）；两种 LoRA 输入 layout 的
-约定注释在同目录 \texttt{gemm\_w4a4.h} L9--51；通用工具头
-\texttt{common.h} 来自 nunchaku（其 L1 注明 \texttt{Copied from
-nunchaku/src/common.h}）。producer 本体按本仓库 GEMM 的消费约定实现，
-并与 native producer 的输出逐字节对齐（L209--212）。
+\textbf{源码区间}：cache-dit 仓库 commit \texttt{db125215} 的
+\texttt{csrc/}\allowbreak\texttt{kernels/}\allowbreak\texttt{svdq/}%
+\allowbreak\texttt{cute/}\allowbreak\texttt{fp4/}\allowbreak\texttt{quantize/}。
 
-\textbf{架构限定}：\textbf{sm\_120a 及以上}。kernel 体内
-\texttt{\#if defined(\_\_CUDA\_ARCH\_\_) \&\& \_\_CUDA\_ARCH\_\_ >= 1200} 分支之外只有
-\texttt{asm volatile("trap;")} 兜底（L386--388），非 SM120 编译产物一运行
-就挂——这与 FP4 量化指令（\texttt{cvt.rn.satfinite.e2m1x2.f32}）的硬件
-门槛一致（第~\ref{ch:31}~章）。
+\texttt{quantize\_uni.cu} 是通用实现；\texttt{quantize\_impl.cuh} 是 rank
+特化的 CuTe \texttt{TiledMMA}/\allowbreak\texttt{TiledCopy} 实现。
+\texttt{quantize\_r32.cu}、\texttt{quantize\_r64.cu} 与
+\texttt{quantize\_r128.cu} 分别只实例化一个 rank；公共声明在
+\texttt{quantize.h}。实际选择还取决于
+\texttt{csrc/kernels/svdq/}\allowbreak\texttt{ops.h}，不能仅凭文件存在就推断
+默认路径。GEMM 的消费约定在
+\texttt{cute/fp4/gemm/}\allowbreak\texttt{gemm\_w4a4.h}，\texttt{LoraLayout}
+枚举统一放在 \texttt{svdq/runtime.h}。完整代码入口见附录~\ref{app:D}。
 
-\textbf{能力边界}（host 侧 \texttt{require} 链，L414--433）：输入与
-\texttt{smooth} 必须 BF16 且 contiguous；\texttt{qact} 必须 INT8、
-\texttt{ascales} 必须 FP8\_E4M3；$M\equiv 0\pmod{256}$（v1 激活 pack 的
-行块粒度）、$K\equiv0\pmod{64}$；rank $\in\{0,16,\ldots,128\}$；
-\texttt{lora\_scales} 长度 $=\max(1,\mathrm{rank}/16)$。
+\textbf{架构限定}：device 分支要求
+\texttt{\_\_CUDA\_ARCH\_\_ >= 1200}，否则落入 \texttt{asm volatile("trap;")}。
+这与 FP4 量化指令 \texttt{cvt.rn.satfinite.e2m1x2.f32} 的硬件门槛一致
+（第~\ref{ch:31}~章）。producer 的 host \texttt{require} 链本身不查询设备，
+能力检查不能靠这段校验代替。
+
+\textbf{能力边界}：输入与 \texttt{smooth} 必须 BF16 且 contiguous；
+\texttt{qact} 必须 INT8、\texttt{ascales} 必须 FP8\_E4M3；
+$M\equiv0\pmod{256}$，$K\equiv0\pmod{64}$。通用实现接受 rank 0 或不超过
+128 的 16 的倍数，\texttt{lora\_scales} 长度为 $\max(1,\mathrm{rank}/16)$；
+rank 特化入口只接受与 TU 相符的 32/64/128，scale 数分别为 2/4/8。
+split-K 还要求至少 $M\times R$ 个元素的 FP32 scratch。
 
 \textbf{验证方式}：cache-dit 的 \texttt{tests/kernels/test\_svdquant\_cute.py}
-（SM120 门控，非 SM120 自动 skip；本书未复跑），42.10~节的数值实验给出
-CPU 侧的验证思路。
+（SM120 门控，非 SM120 自动 skip；本书未复跑），本章最小测试节另给出
+CPU 侧的 pack 复算思路。
 
 \section{问题与动机}
 
@@ -53,64 +61,61 @@ SFA），另一路乘低秩 down 因子得到 $D$（$M\times r$ 的 bf16）。
   \label{eq:39-d}
 \end{equation}
 LoRA 路径可以直接消费\textbf{原始} $X$，与理论式完全一致。这正是
-第~\ref{ch:38}~章"常见坑"里"S 最容易重复乘除"的地方在本 kernel 的
-体现：量化路径在线除 \texttt{smooth}（L329--332），LoRA 路径用的是
-\texttt{raw\_all}（L345--346），两边各自正确、互为镜像。
+第~\ref{ch:38}~章“常见坑”里“S 最容易重复乘除”的具体体现：量化路径只对
+临时副本除 \texttt{smooth}，LoRA 路径继续使用原始 A fragment，两边各自
+正确、互为镜像。
 
 \subsection{朴素方案与融合方案}
 
 朴素方案按算子逐个实现：smooth kernel 读 $X$ 写 $\widehat X$；量化
 kernel 读 $\widehat X$ 写码与 SFA；LoRA-down GEMM 读 $X$（或
 $\widehat X$）写 $D$；如果 GEMM 要的 D 布局与 GEMM 的输入布局不一致，
-再来一个 finalize/repack kernel。四遍读写里 $X$ 被读了两到三次。
-SVDQuant 论文 Fig.~6 的融合原则（第~\ref{ch:38}~章性能节引用过）说：
-down projection 与 activation quantize \textbf{共享同一份输入}，避免
-重读。融合后的形态是一个 kernel、读一遍 $X$、同时产出三样东西：
+再来一个 finalize/repack kernel。SVDQuant 论文 Fig.~6 的融合原则
+（第~\ref{ch:38}~章性能节引用过）要求 down projection 与 activation
+quantize \textbf{共享同一份输入}。当前 fused 调度用一个 kernel 产出三项
+输出；split-K 也让量化与 LoRA-down 共享 A 装载，只是额外经过内部 FP32
+scratch 和 finalize：
 \begin{center}\small
 \begin{tabular}{@{}lll@{}}
 \toprule
 输出 & 形状/格式 & 消费者 \\
 \midrule
-\texttt{qact} & $[M,K/2]$ INT8，v1 256 行交织 E2M1 pack & GEMM 的 A 操作数（G2R）\\
-\texttt{ascales} & 与 v1 pack 对齐的 ue4m3 SFA & GEMM 的 SFA（G2R）\\
+\texttt{qact} & $[M,K/2]$ INT8，native 256 行交织 E2M1 pack & GEMM 的 A 操作数（G2R）\\
+\texttt{ascales} & 与 native pack 对齐的 ue4m3 SFA & GEMM 的 SFA（G2R）\\
 \texttt{lora\_act}（即 $D$） & $[M,R]$ row-major BF16，scale 已折入 & GEMM 的 LoRA 输入（TMA）\\
 \bottomrule
 \end{tabular}
 \end{center}
-第三样的布局选择就是下一节的主角：\texttt{LoraLayout}。
+scratch 是 split-K 的内部中间态，不是公共输出。第三项输出的布局选择就是
+下一节的主角：\texttt{LoraLayout}。
 
 \subsection{两种 LoRA 输入 layout（约定层对比）}
 
-GEMM 的入口头文件 \texttt{gemm\_w4a4.h} 定义了
-\texttt{LoraLayout\{kNative, kRowMajor\}}，描述的是
-\textbf{$D$ 以什么形态到达 GEMM}（L9--17 的注释是本章最重要的八行字）：
+\texttt{svdq/runtime.h} 定义 \texttt{LoraLayout\{kNative,kRowMajor\}}，
+描述的是\textbf{$D$ 以什么形态到达 GEMM}；\texttt{gemm/gemm\_w4a4.h}
+L32--42 进一步给出两条消费路径：
 
 \begin{itemize}[itemsep=1pt,topsep=2pt]
   \item \texttt{kNative}：$D$ 是 native producer 输出的 \textbf{FP32
-        MMA-fragment pack}；GEMM 把它从 gmem \textbf{gather 进寄存器}，
-        并在读取时在线施加 \texttt{lora\_scales[i]}（每 16 rank 一组）。
-        $D$ 是 FP32、\textbf{不进 TMA stage}，这一事实反过来强制 LoRA 项
-        必须在 NVFP4 mainloop 跑完之后执行（第~\ref{ch:40}~章细讲）。
+        MMA-fragment pack}；GEMM 把它从 gmem gather 进寄存器，并在读取时
+        施加 \texttt{lora\_scales[i]}（每 16 rank 一组）。$D$ 不进 TMA
+        stage，LoRA 项只能在 NVFP4 mainloop 后执行（第~\ref{ch:40}~章细讲）。
   \item \texttt{kRowMajor}：$D$ 是\textbf{普通 row-major BF16}
-        $[M,R]$，per-rank scale 已在 producer 里折入；GEMM 用
-        \textbf{TMA} 像加载权重 tile 一样加载它，可以复用 A/B 的 stage
-        存储。因为进了流水，LoRA 项\textbf{可以在 mainloop 之前}执行
-        （短中序列的收益，第~\ref{ch:40}~章性能节有数据）。
+        $[M,R]$，per-rank scale 已在 producer 里折入；GEMM 用 TMA 加载它，
+        复用 A/B 的 stage 存储，因此 LoRA 项可以在 mainloop 前执行。
 \end{itemize}
 
-两个 layout 算的是同一个数学对象（\texttt{gemm\_w4a4.h} L41 明说
-\texttt{Both LoRA layouts compute exactly the same math}），差别在
-\textbf{$D$ 怎么进 MMA}，以及\textbf{一次 BF16 舍入发生在哪里}：
-\texttt{kRowMajor} 在 producer 折 \texttt{lora\_scales} 时就把结果舍入成
-BF16（L383），\texttt{kNative} 则把 FP32 的 $D$ 一路留到 GEMM 侧，
-gather 时乘完 \texttt{lora\_scales} 才转 BF16（第~\ref{ch:40}~章
-43.4.6~节）。所以"数学等价"指代数结构相同，等价到浮点层面则是
-"同一处舍入、不同时机"。本章的 producer 输出的是
-\texttt{kRowMajor} 形态——注意源文件名与函数名
-\texttt{quantize\_w4a4\_row\_major} 里的 \texttt{row\_major} 指的就是
-这个语义。native producer 在另一个代码族
-（\texttt{csrc/kernels/svdq/native/}），本章不展开其源码，只在这一节
-使用它的约定。42.5~节的图~\ref{fig:39-lora-layout} 把两种形态画在一起。
+两个 layout 算的是同一个数学对象，但浮点舍入路径不同。
+\texttt{kRowMajor} 在 producer 折入 \texttt{lora\_scales} 后把结果舍入成
+BF16；\texttt{kNative} 把 FP32 的 $D$ 留到 GEMM 侧，gather 时乘完
+\texttt{lora\_scales} 再转 BF16。因此“数学等价”不等于两条路径逐位相同。
+
+本章讨论的是 \texttt{kRowMajor} 输出。公共 Python 入口仍是
+\texttt{svdq\_}\allowbreak\texttt{quantize\_}\allowbreak\texttt{w4a4}，传入
+\texttt{lora\_layout=}\allowbreak\texttt{"row\_major"} 后，\texttt{ops.h}
+再选择 \texttt{quantize\_uni} 或某个 rank 特化入口。native producer 在
+\texttt{csrc/kernels/svdq/}\allowbreak\texttt{native/}，本章只使用它的输出约定。
+图~\ref{fig:39-lora-layout} 把两种形态画在一起。
 
 \section{数学原理到变量的映射}
 
@@ -120,178 +125,219 @@ gather 时乘完 \texttt{lora\_scales} 才转 BF16（第~\ref{ch:40}~章
 \begin{center}\small
 \begin{tabular}{@{}llll@{}}
 \toprule
-数学量 & kernel 变量 & 形状/类型 & 代码位置 \\
+数学量 & kernel 变量 & 形状/类型 & 当前代码位置 \\
 \midrule
-$X$ & \texttt{input} & $[M,K]$ BF16 & 参数 L248--254 \\
-$S$ & \texttt{smooth} & $[K]$ BF16 & 参数；L314--321 加载 \\
-$\widehat X=X/S$ & \texttt{quant[n]} & fragment & L323--333 \\
+$X$ & \texttt{input} & $[M,K]$ BF16 & \texttt{quantize\_cute}/\texttt{quantize\_uni} 参数 \\
+$S$ & \texttt{smooth} & $[K]$ BF16 & \texttt{smooth\_fragment} 的输入 \\
+$\widehat X=X/S$ & 临时 \texttt{PackedBF16} & fragment & 只改临时副本，保留原始 A \\
 $\bar q,\Delta$（e2m1 码 + SFA） & \texttt{qact}/\texttt{ascales} & INT8 / ue4m3 & \texttt{quantize\_group} \\
-$\widetilde L_2=L_2S^{-1}$ & \texttt{lora\_down} & $[K,R]$ BF16 & L344 加载 \\
-$D$ & \texttt{lora\_act} & $[M,R]$ BF16 & L382 写出 \\
-per-16-rank 折叠系数 & \texttt{lora\_scales} & \texttt{float[64]}（用前 $\le8$ 项） & L373--384 \\
+$\widetilde L_2=L_2S^{-1}$ & \texttt{lora\_down} & $[K,R]$ BF16 & 逻辑 B 视图 stride $(1,R)$ \\
+$D$ & \texttt{lora\_act} & $[M,R]$ BF16 & fused epilogue 或 split-K finalize \\
+per-16-rank 折叠系数 & \texttt{lora\_scales} & 每 R16 一个 FP32 & 特化 \texttt{float[8]}；通用 \texttt{float[64]} \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-两处值得停一下。第一，量化步长按第~\ref{ch:31}~章的 NVFP4 语义
-（L181--182）：
+两处值得停一下。第一，量化步长按第~\ref{ch:31}~章的 NVFP4 语义：
 \begin{equation}
   \Delta_{block}=\min\!\left(\frac{\mathrm{amax}(16\text{ 元素块})}{6},\;448\right),
   \qquad \bar q=\mathrm{round}\!\left(x\cdot\mathrm{rcp\_approx}(\Delta)\right),
   \label{eq:39-scale}
 \end{equation}
-除以 6 是 e2m1 满量程，clamp 到 448 是 ue4m3（无符号 e4m3）的值域上限
-（与第~\ref{ch:31}~章式一致；448 这个数在第~\ref{ch:31}~章的格点图里
-出现过）。这里有两处舍入要分清：量化侧乘的是浮点 $\Delta$ 的\textbf{近似
-倒数}（\texttt{rcp\_approx}，\texttt{rcp.approx.ftz.f32}），反量化侧乘的是
-\textbf{打包进 SFA 的 e4m3 舍入之后的 $\Delta$}（
-\texttt{cvt.rn.satfinite.e4m3x2.f32} 写出的那个 4 字节 scale 字，
-第~\ref{ch:40}~章的反量化语义 \texttt{E2M1(code)*FP8\_E4M3(scale)} 用的
-正是它）。也就是说 $\bar q$ 的落点按 $1/\Delta_{\text{float}}$ 算、
-回读时按 $\Delta_{\text{e4m3}}$ 乘，两者相差一次 e4m3 舍入（相对误差量级
-$2^{-4}$）。这是 NVFP4 语义的固有部分，不是 kernel 的宽容；把它当成
-"$\Delta$ 的精确倒数 + 精确原值"会在配平误差预算时少算这一项。
-第二，\texttt{lora\_scales} 在 L383 折入：
-$D\leftarrow\mathrm{bf16}(\,\mathrm{fp32}(D)\cdot s_{\text{lora}}[\lfloor
-\mathrm{col}/16\rfloor])$，即每 16 个 rank 列共享一个折叠系数，与
-host 侧 \texttt{lora\_scales.size()==max(1,rank/16)} 的校验对上。
+除以 6 是 e2m1 满量程，clamp 到 448 是 ue4m3（无符号 e4m3）的值域上限。
+当前 producer 的若干注释写“per-K32 scale”，但 host 校验要求
+\texttt{ascales} 至少容纳 $MK/16$ 字节，GEMM 约定也明确每 16 个 K 元素
+共享一个 FP8\_E4M3 scale。本文按实现与消费约定采用 \textbf{per-16}，不把
+寄存器重组时的 K32 面板误当成 scale 粒度。
+
+这里还有两处舍入要分清：量化侧乘浮点 $\Delta$ 的\textbf{近似倒数}
+（\texttt{rcp.approx.ftz.f32}），反量化侧乘\textbf{打包进 SFA 的 e4m3
+舍入之后的 $\Delta$}。$\bar q$ 的落点按 $1/\Delta_{\text{float}}$ 算，
+回读时按 $\Delta_{\text{e4m3}}$ 乘，两者相差一次 e4m3 舍入（相对误差
+量级 $2^{-4}$）。这是 NVFP4 语义的固有部分，不是 kernel 的宽容。
+第二，\texttt{lora\_scales} 在每 16 个 rank 列上共享一个折叠系数：
+$D\leftarrow\mathrm{bf16}(\mathrm{fp32}(D)\cdot
+s_{\text{lora}}[\lfloor\mathrm{col}/16\rfloor])$。fused 在协作 epilogue
+中执行这一步；split-K 把它推迟到 finalize，二者都只在最终写 $D$ 时转
+BF16。
 
 \section{设计与实现}
 
-\subsection{总体结构：一 CTA 32 行，warp 切 K}\label{sec:39-structure}
+\subsection{两套实现、两种调度与实际 dispatch}\label{sec:39-structure}
 
-kernel 的并行划分不同于第~\ref{ch:36}~章量化 kernel 的"每线程一个
-16 元素组"（$K=256$ 时一个 warp 覆盖两行），选的是
-\textbf{CTA 级行块 + warp 级 K 切分}：
-grid 为 $M/32$ 个 CTA，每个 CTA 负责 32 行；CTA 内
-\texttt{kWarps} 个 warp（rank $\le64$ 时 8 个，rank $>64$ 时 4 个，
-L447--474 的派发表）各自覆盖不相交的 K64 切片，沿 K 循环步进
-\texttt{kWarps}$\times64$。每个 warp 完整做完自己那份 K 的量化与
-LoRA 部分积，最后经 shared memory 归约出 $D$。
+当前 producer 不是一份 kernel 的局部改版，而是两套实现共享一套输出约定。
+\texttt{quantize\_uni.cu} 保留手写 \texttt{ldmatrix/mma} 的通用路径，覆盖
+rank 0、非特化 rank，以及 $R=32,K\le3072$；\texttt{quantize\_impl.cuh}
+用 CuTe 描述 rank 32/64/128 的特化路径。三个很短的
+\texttt{quantize\_r32/64/128.cu} 分别调用 \texttt{quantize\_cute<2/4/8>}，
+让每个 TU 只实例化一个 rank，编译可以并行，调参也不会把另外两个 rank 的
+模板实例一起拖进来。
+
+\texttt{ops.h} L161--189 先做两级选择。第一级按 rank 与 $K$ 选实现；第二级
+用是否分配 \texttt{lora\_scratch} 选调度。有效 scratch 是 split-K 的显式
+选择器，不是可随意忽略的优化提示。当前默认规则如下：
+
+\begin{center}\small
+\begin{tabular}{@{}lllll@{}}
+\toprule
+rank & 形状条件 & 实现 & 调度 & K chunk / A copy \\
+\midrule
+0 或非特化 rank & 任意 & \texttt{quantize\_uni} & fused & warp 切 K64 \\
+32 & $K\le3072,M\le8192$ & \texttt{quantize\_uni} & split-K & K128，同步 \\
+32 & $K\le3072,M>8192$ & \texttt{quantize\_uni} & fused & warp 切 K64 \\
+32 & $K>3072,M\le8192$ & \texttt{quantize\_r32} & split-K & K128，双 stage 异步 A \\
+32 & $K>3072,M>8192$ & \texttt{quantize\_r32} & fused & warp 切 K64 \\
+64 & $K\le3072$ & \texttt{quantize\_r64} & split-K & K256，同步 A \\
+64 & $K>3072$ & \texttt{quantize\_r64} & split-K & K128，双 stage 异步 A \\
+128 & 任意 & \texttt{quantize\_r128} & split-K & K256，同步 A \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+这些阈值是当前 PRO 5000 上调好的工程选择，不是由 CuTe 或硬件推导出的
+普遍定律。直接调用 rank 入口时仍能选择 rank64/128 的 fused 实例；只是当前
+\texttt{ops} 对它们总是提供 scratch，所以默认进入 split-K。还要区分两种
+“split”：fused 内部的 \texttt{kRankSplits} 把 rank 列分给不同 CTA，以增加
+小 $M$ 下的 grid 并行度；split-K 则把归约轴 $K$ 分给不同 CTA，并用全局
+scratch 合并部分积。前者只让 \texttt{blockIdx.y==0} 写 qact/ascales，后者
+的每个 $(\text{row panel},K64)$ 也只有一个激活写者。
 
 \begin{figure}[H]
 \centering
 \begin{tikzpicture}[font=\scriptsize,
   box/.style={draw, rounded corners=2pt, align=center, inner sep=3pt},
   arr/.style={->, thick}]
-  \node[box, fill=tkFillBlue] (in) at (0,1.6) {$X\ [M,K]$ BF16\\（gmem）};
-  \node[box, fill=tkBlue!18, text width=1.8cm] (cta) at (3.1,1.6) {CTA $=32$ 行\\$M/32$ 个};
-  \node[box, fill=tkFillGreen] (stg) at (6.3,2.9) {gmem$\to$smem staging\\16$\times$72，mt0/mt1 复用};
-  \node[box, fill=tkFillGreen] (ldm) at (6.3,1.6) {\texttt{ldmatrix.x4} $\times4$\\4 个 16$\times$16 fragment};
-  \node[box, fill=tkFillBlue] (raw) at (9.3,1.6) {\texttt{raw\_all}\ [2][4]\\原始 $X$ fragment};
-  \draw[arr] (in) -- (cta);
-  \draw[arr] (cta.north east) -- (stg.south west);
-  \draw[arr] (stg) -- (ldm);
-  \draw[arr] (ldm) -- (raw);
-  % 量化支路
-  \node[box, fill=tkOrange!22] (div) at (12.3,2.9) {$\div\text{\texttt{smooth}}$\\得 $\widehat X$};
-  \node[box, fill=tkGreen!25] (qg) at (15.2,2.9) {\texttt{quantize\_group}\\amax/6$\to$SFA\\e2m1 码 pack};
-  \node[box, fill=tkGreen!40, text width=2.5cm] (qout) at (15.2,1.5) {qact + ascales\\v1 256 行 pack};
-  \draw[arr] (raw.north) ++(0.1,0) |- (div.west);
-  \draw[arr] (div) -- (qg);
-  \draw[arr] (qg) -- (qout);
-  % LoRA 支路
-  \node[box, fill=tkPurple!18] (ld) at (12.3,0.5) {\texttt{lora\_down}\ $[K,R]$\\B fragment 标量加载};
-  \node[box, fill=tkPurple!25] (mma) at (15.2,0.3) {\texttt{mma\_lora}\\fp32 累加 $acc[2][\cdot]$};
-  \draw[arr] (raw.south) ++(0.1,0) |- (ld.west);
-  \draw[arr] (ld) -- (mma);
-  % 归约
-  \node[box, fill=tkFillBlue] (red) at (15.2,-1.1) {shared 归约\\warp partial 求和\\$\times$ \texttt{lora\_scales}};
-  \node[box, fill=tkBlue!30, text width=2.3cm] (D) at (15.2,-2.2) {$D$ [32,R] BF16\\一次 round};
-  \draw[arr] (mma) -- (red);
-  \draw[arr] (red) -- (D);
-  % warp 切分注释
-  \node[anchor=west, align=left, text width=4.6cm, font=\tiny] at (0,-1.3)
-    {warp $w$ 负责 $k_0=w{\cdot}64$ 起、步长 \texttt{kWarps}$\times$64 的
-     K64 切片；归约时把各 warp 的 partial 按行相加。};
+  \node[box, fill=tkFillBlue] (in) at (0,2.0) {$X\ [M,K]$ BF16};
+  \node[box, fill=tkFillGreen, text width=3.1cm] (copya) at (3.5,3.1)
+    {A：TiledCopy / cp.async\\SW128 smem $\to$ LDSM\_N};
+  \node[box, fill=tkFillGreen, text width=3.1cm] (copyb) at (3.5,0.9)
+    {B：TiledCopy / cp.async\\SW32 smem $\to$ LDSM\_T};
+  \node[box, fill=tkBlue!18] (raw) at (7.0,3.1) {原始 A fragment};
+  \node[box, fill=tkPurple!18] (bf) at (7.0,0.9) {B fragment};
+  \draw[arr] (in.north east) -- (copya.west);
+  \draw[arr] (in.south east) -- (copyb.west);
+  \draw[arr] (copya) -- (raw);
+  \draw[arr] (copyb) -- (bf);
+  \node[box, fill=tkOrange!22, text width=2.6cm] (quant) at (10.3,4.0)
+    {临时副本除 \texttt{smooth}\\\texttt{quantize\_group}};
+  \node[box, fill=tkGreen!30, text width=2.6cm] (qout) at (14.1,4.0)
+    {qact + ascales\\native 256 行 pack};
+  \draw[arr] (raw) -- (quant);
+  \draw[arr] (quant) -- (qout);
+  \node[box, fill=tkPurple!25] (mma) at (10.3,1.4)
+    {TiledMMA\\$32{\times}16$ / R16 chunk\\FP32 累加};
+  \draw[arr] (raw.south) -- (mma.north west);
+  \draw[arr] (bf) -- (mma);
+  \node[box, fill=tkFillBlue, text width=2.6cm] (fused) at (8.3,-0.6)
+    {fused\\warp 切 K\\shared 归约};
+  \node[box, fill=tkFillBlue, text width=3.0cm] (split) at (13.0,-0.6)
+    {split-K\\K CTA $\to$ FP32 scratch\\relaxed atomic + finalize};
+  \draw[arr] (mma.south west) -- (fused.north);
+  \draw[arr] (mma.south east) -- (split.north);
+  \node[box, fill=tkBlue!30] (D) at (10.7,-2.1)
+    {$D\ [M,R]$ row-major BF16\\最终一次舍入};
+  \draw[arr] (fused.south) -- (D.north west);
+  \draw[arr] (split.south) -- (D.north east);
+  \node[anchor=north west, align=left, text width=15.8cm, font=\tiny] at (-0.8,-3.0)
+    {量化支路只修改 A 的临时副本，LoRA 支路继续消费原始 A。fused 在 CTA 内
+     归约；split-K 跨 K CTA 累加 FP32 scratch，再由同一 stream 上的 finalize
+     折入 R16 scale 并写 BF16。};
 \end{tikzpicture}
-\caption{融合 producer 数据流。一次读 $X$，两条支路共享同一批
-\texttt{raw\_all} fragment：上路量化出 v1 pack，下路用原始 $X$ 累加
-LoRA-down 部分积；$D$ 在 CTA 内经 shared memory 归约、折入
-\texttt{lora\_scales} 后一次性舍入 BF16。}
+\caption{rank 特化 producer 的数据通路。TiledMMA/TiledCopy 改变的是装载与
+LoRA 计算的组织方式，qact/ascales 的 native pack 和 $D$ 的 row-major BF16
+约定保持不变；fused 与 split-K 的差别集中在 $D$ 的归约位置。}
 \label{fig:39-producer-flow}
 \end{figure}
 
-这个划分不是第一版就有。cache-dit 的实现演进中，初版是"单 warp 负责
-32 行完整 K"（warp 私有全归约，grid 只有 $M/32$ 个 CTA），在
-$M=4096$ 时 waves 仅 $0.07$、occupancy $2.44\%$、局部内存访问显著，
-producer 约 $204\,\mu s$；改成 8 warps 切 K 加 shared 归约后 waves 升到
-$1.16$、occupancy 约 $16.7\%$，Event 口径从 $195.7\,\mu s$ 降到
-$43.3\,\mu s$。教训与第~\ref{ch:09}~章的 occupancy 讨论同源：
-\textbf{并行度先靠切分开出来，再谈指令级优化}。
+\subsection{rank 特化路径：用 TiledMMA/TiledCopy 组织装载}
 
-\subsection{为什么先 staging 再 \texttt{ldmatrix}}
+\texttt{QuantizeTraits} 把 fused 与 split-K 共用的 CuTe 几何集中在一处。
+下面 39 行是理解当前实现的入口：
 
-主循环的第一步不是直接量化，而是把原始数据从 gmem 搬进 warp 私有的
-shared staging tile（L287--312）。注意 tile 是 \textbf{16 行 $\times$ 72 列}
-（K64 加 8 列 padding，\texttt{kAStageFloats}$=16\times(64+8)/2$，
-L29）：两个 16 行半（mt0/mt1）\textbf{复用同一块缓冲}，各写一次、
-\texttt{ldmatrix} 各读一次，而不是同时驻留 32 行。
-
-\begin{lstinputlisting}[linerange={287-312},firstnumber=auto,
-  title={quantize\_w4a4.cu L287-312（主循环：staging + ldmatrix）}]{../../../../cache-dit/csrc/kernels/svdq/cute/fp4/quantize_w4a4.cu}
+\begin{lstinputlisting}[linerange={62-100},firstnumber=auto,
+  title={quantize\_impl.cuh L62-100（MMA、shared layout 与 Copy atom）}]{../../../../cache-dit/csrc/kernels/svdq/cute/fp4/quantize/quantize_impl.cuh}
 \end{lstinputlisting}
 
-staging tile 的尺寸是 \texttt{kAStride}$=64+8$ 列——\textbf{64 数据列加
-8 列 padding}（L68--70 的注释说明这是为了匹配 native 的 ldmatrix 布局
-并避开 shared memory bank conflict）。加载端每行 8 个 lane 各搬 16 字节
-（\texttt{uint4}），每条 warp-wide load/store 覆盖 4 行；读出端用 4 条
-\texttt{ldmatrix.x4}，每条抓一个 16$\times$16 fragment（4 个 8$\times$8
-b16 matrix），合计 4 个。对比"每 lane
-4 字节直接读 gmem"的写法，staging 把全局访问从四个半 sector 的 4B load
-变成整行的 128B 事务，实测 global excess sectors 从约 $47\%$ 降到
-约 $32\%$；staging 自身的 store 也从每 K64 的 32 条 4B 压到 8 条 16B。
-这是第~\ref{ch:03}~章 coalescing 原则的教科书应用：\textbf{先把访问
-模式整理成整齐的行列事务，再谈计算}。
+MMA 使用 \texttt{SM80\_16x8x16\_F32BF16BF16F32\_TN}，
+\texttt{Tile<\_32,\_16,\_16>} 把逻辑计算面扩到 $32\times16$。这里的
+atom 布局是 $(1,1,1)$，线程切片按 \texttt{threadIdx.x\%32} 取得，因此它是
+\textbf{单 warp} 的计算描述，不是四个 warp 拼出一个 tile。一个 K64 切片
+拆成四个 K16 atom；split-K 每次只保留一个 R16 的 FP32 accumulator，避免
+rank128 常驻完整的 $32\times128$ 寄存器累加面。
+
+A 的逻辑 tile 是 $32\times64$，K 维连续，shared 使用
+\texttt{Layout\_K\_SW128\_Atom}；B 虽在 gmem 中是 row-major $[K,R]$，逻辑上
+却按 $[N=16,K=64]$ 建立 stride $(1,R)$ 的视图，shared 使用
+\texttt{Layout\_MN\_SW32\_Atom}。G2S 的 Copy atom 都是 128-bit；S2R 则分别选
+\texttt{LDSM\_N} 与转置形式 \texttt{LDSM\_T}。B 的转置 copy 直接生成 BF16
+MMA 所需的 K-paired fragment，不再逐标量拼凑。
+
+同步 A 装载把 TiledCopy 的分区、shared 写、LDSM 读串成一条明确顺序：
+
+\begin{lstinputlisting}[linerange={280-306},firstnumber=auto,
+  title={quantize\_impl.cuh L280-306（A 的 G2S、LDSM 与 warp 同步）}]{../../../../cache-dit/csrc/kernels/svdq/cute/fp4/quantize/quantize_impl.cuh}
+\end{lstinputlisting}
+
+第一个 \texttt{\_\_syncwarp} 发布 shared 写，第二个防止下一轮复用 stage
+时覆盖尚未读完的数据。split-K 的异步变体为 A 准备双 stage：
+\texttt{cp\_async\_wait<1>} 只等待较早的 A 组，让后发射的 B 组仍在飞行；
+量化完成后才用 \texttt{cp\_async\_wait<0>} 与 \texttt{\_\_syncthreads}
+发布全部 B tile。$K256$ 配置使用同步 A；源码的 \texttt{static\_assert}
+要求双 stage 异步 A 只用于 $kMaxSlices\le2$，即最多两个 K64 切片。
+
+通用 \texttt{quantize\_uni.cu} 仍是另一套结构：$16\times72$ 手写 staging、
+显式 \texttt{ldmatrix.x4} 与手写 \texttt{mma}。它没有被这些 Traits 替换；
+当前 dispatch 之所以保留它，是因为 rank32、$K\le3072$ 的实测仍由它占优。
 
 \subsection{量化支路：\texttt{quantize\_group} 的四个阶段}
 
-量化支路的核心是 \texttt{quantize\_group}（L141--241），输入是
-\texttt{raw\_all} 经"除 \texttt{smooth}"得到的 $\widehat X$ fragment
-（L323--333 的 \texttt{div\_bf16x2}）。它一次处理 16 行 $\times$ K64 的
-fragment（每行 4 个 K16 组，每组是 K64 的四分之一），分四个阶段。
+量化支路的核心仍是一个共享的 \texttt{quantize\_group}。rank 特化路径把
+\texttt{smooth\_fragment} 作用于 A 的临时副本，再将四个 K16 fragment 传入；
+LoRA MMA 继续持有未经 smooth 的原始 A。一次调用覆盖 M16$\times$K64，外层
+$j=0,1$ 选择两个 8 行半，每行有四个 K16 组。
 
-\textbf{第一阶段：寄存器重排与 amax 归约}（L144--172）。fragment 寄存器
-里的元素顺序是 MMA 布局而非行布局。\texttt{tmp[4]} 共有 16 个
-\texttt{bf16x2}，先重排成 \texttt{input[2][8]}：两个 K32 半各有 8 个
-\texttt{bf16x2}（16 个 BF16 标量），再求每 K16 组的绝对值最大值；K16 组跨
-4 个 lane，用两轮 \texttt{shfl\_xor}（mask 2、1）归约出组 amax。
+\textbf{第一阶段：寄存器重排与 amax 归约}。fragment 寄存器顺序是 MMA 布局，
+不是普通行布局。代码先把四个 \texttt{PackedBF16} 重组为 \texttt{input[8]}，
+再对每个 K16 组求绝对值最大值；同一行组跨四个 lane，用两轮
+\texttt{shfl\_xor}（mask 2、1）得到共同 amax，不需要 shared 归约。
 
-\begin{lstinputlisting}[linerange={174-207},firstnumber=auto,
-  title={quantize\_w4a4.cu L174-207（步长、FP8 scale 打包、e2m1 量化与 shuffle 归并）}]{../../../../cache-dit/csrc/kernels/svdq/cute/fp4/quantize_w4a4.cu}
+\begin{lstinputlisting}[linerange={185-223},firstnumber=auto,
+  title={quantize\_impl.cuh L185-223（寄存器重排、amax 与四个 per-16 scale）}]{../../../../cache-dit/csrc/kernels/svdq/cute/fp4/quantize/quantize_impl.cuh}
 \end{lstinputlisting}
 
-\textbf{第二阶段：步长与 SFA}（L174--185）。按式~\ref{eq:39-scale} 求
-$\Delta$，同时算出近似倒数 \texttt{rscale} 供量化乘用；4 个 K16 组的
-$\Delta$ 用两条 \texttt{cvt.rn.satfinite.e4m3x2.f32} 打成 4 字节的
-FP8 scale 字。\textbf{第三阶段：e2m1 量化与跨 lane 归并}（L187--207）。
-每个 lane 对两个 K32 半各自的 8 个 \texttt{bf16x2} 乘 \texttt{rscale}，用
-\texttt{cvt.rn.satfinite.e2m1x2.f32} 转成一个字节（2 个 e2m1），再左移
-$(\mathrm{lane}\bmod 4)\times8$ 位落进本 lane 的字节槽；4 个 lane 各持
-K16 组的一个四分之一，两轮 \texttt{shfl\_xor}（mask 1、2）把这 4 个字节
-\textbf{或}成一个 u32——即 8 个 e2m1 的完整码字（K8）。归并后同一个
-lane 四元组里的 4 个 lane 各拿一份完整副本。每个 K32 半的有效写回是
-4 个 u32，两个半合计每行 8 个 u32（K64）；实际落笔只选
-$\mathrm{lane}\bmod4<2$ 的 lane，不让四份副本重复写。
+这里还要校正一处注释：L173--175 把 $j$ 称为“K32 panel”，但 L247 的
+行号只随 $j$ 增加 8，两个 $j$ 的 \texttt{dst[0/4/8/12]} 写地址相同；
+$j$ 实际选择行半，不是新的 K32 面板。
 
-\textbf{第四阶段：写 v1 交织 pack}（L209--241）。这是全 kernel 最难用
-行列坐标直接解释的一段，值得单独给出代码与注释：
+\textbf{第二阶段：步长与 SFA}。按式~\ref{eq:39-scale} 求 $\Delta$ 与近似
+倒数 \texttt{rscale}；四个 K16 组的 $\Delta$ 经两条
+\texttt{cvt.rn.satfinite.}\allowbreak\texttt{e4m3x2.f32} 打成一个
+4 字节 scale 字。这里再次看到
+per-16 粒度：一个 scale 字正好对应当前 K64 的四个组。
 
-\begin{lstinputlisting}[linerange={209-241},firstnumber=auto,
-  title={quantize\_w4a4.cu L209-241（v1 256 行交织 pack 的写出映射）}]{../../../../cache-dit/csrc/kernels/svdq/cute/fp4/quantize_w4a4.cu}
+\textbf{第三阶段：e2m1 量化与跨 lane 归并}。每个 lane 把本地 BF16 对乘上
+\texttt{rscale}，用 \texttt{cvt.rn.satfinite.}\allowbreak\texttt{e2m1x2.f32}
+转成字节，再左移
+$(\mathrm{lane}\bmod4)\times8$ 位落入字节槽。两轮 \texttt{shfl\_xor}
+（mask 1、2）把四份字节贡献或在一起，得到完整的 u32；一个 u32 装 8 个
+e2m1，所以它是 \textbf{K8 码字}。归并后四 lane 都有副本，实际写回只让
+$\mathrm{lane}\bmod4<2$ 的两个 lane 落笔。
+
+\begin{lstinputlisting}[linerange={224-263},firstnumber=auto,
+  title={quantize\_impl.cuh L224-263（E2M1 归并与 native pack 的 qact 写出）}]{../../../../cache-dit/csrc/kernels/svdq/cute/fp4/quantize/quantize_impl.cuh}
 \end{lstinputlisting}
 
-目标布局是\textbf{v1 256 行交织激活 pack}：\texttt{qact} 不是行主序
-的 $[M,K/2]$，而是把 256 行当作一个块、按 SM120 MMA 的 A-operand
-fragment 位置交织排布（\texttt{local} 与 \texttt{base} 两层偏移，
-L218--220）。注释（L209--212）说这份映射是\textbf{从 native producer
-的输出逐字反推、并对 qact 与 ascales 都做了逐字验证}的——也就是说
-CuTe 路径复用了 native 路径的 GEMM 消费端，producer 端用"输出
-逐字节一致"作为等价性定义。SFA 的写出同理（L231--240）：v1 的一个
-scale 字是一行的 4 个 FP8 因子，写入位置按 \texttt{scale\_lane}
-在行面板内的 lane 编号计算。这个 pack 被第~\ref{ch:40}~章的 GEMM 用
-G2R（gmem$\to$register）直接装进 fragment，\textbf{不经过 TMA 或
-shared memory}——pack 的交织方式就是为 fragment 直读设计的。
+\textbf{第四阶段：写 native 256 行交织 pack}。\texttt{qact} 不是普通行主序
+$[M,K/2]$，而是把 256 行作为块，按 SM120 MMA 的 A-operand fragment 位置，
+用 \texttt{base}、\texttt{local} 与 writer lane 的 \texttt{i*2} 三层偏移
+排布。每个 lane 在归并后持有 8 个 u32 的副本，writer lane 0/1 分别写其中
+4 个，\texttt{dst[0/4/8/12]} 对应四个 K16 组。
+
+SFA 由 $\mathrm{lane}\bmod4=0$ 的 lane 写出：\texttt{base*32+scale\_lane}
+选中与 qact 对应的位置，一个 u32 装四个 per-16 FP8 scale。通用与 rank 特化
+producer 都遵守这份布局；qact 与 native 逐字节一致，ascales 也按同一映射
+写出，但现有测试仅比较排序后的值集合，不能把它当作顺序逐位断言。第~\ref{ch:40}~章的 GEMM 因而不需要激活 repack，
+直接用 G2R 将 A/SFA 装进寄存器，不经过 TMA 或 shared staging。
 
 \begin{figure}[H]
 \centering
@@ -308,19 +354,16 @@ shared memory}——pack 的交织方式就是为 fragment 直读设计的。
       \node[cell, fill=tkGreen!22, minimum width=1.58cm]
         at ({1.4+1.78*\c},{3.45-0.48*\r}) {32 行};
   }
-  % (b) lane 分布
+  % (b) lane 归并与写回
   \node[anchor=west, font=\small\bfseries] at (8.5,4.3)
-    {(b) 一个 32$\times$K64 tile 的码分布};
-  \foreach \c/\lab in {0/{K32 前半}, 1/{K32 后半}}
-    \node[font=\tiny] at ({9.5+2.15*\c},3.92) {\lab};
+    {(b) 一个 M16$\times$K64 量化组的写回};
   \foreach \l in {0,1,2,3}{
     \node[font=\tiny, anchor=east] at (8.25,{3.45-0.62*\l}) {lane \l};
-    \foreach \c in {0,1}
-      \node[cell, fill=tkOrange!22, minimum width=2.1cm]
-        at ({9.5+2.15*\c},{3.45-0.62*\l}) {2 个 K16 组};
+    \node[cell, fill=tkOrange!22, minimum width=5.4cm]
+      at (12.1,{3.45-0.62*\l}) {8 个 K8 码字的完整副本};
   }
-  \node[font=\tiny, anchor=west, text=tkOrange!75!black] at (8.3,0.55)
-    {4 个 lane 各持 K16 组的四分之一，\texttt{shfl\_xor} 归并成 K8 码字};
+  \node[font=\tiny, anchor=west, text=tkOrange!75!black, text width=6.6cm] at (8.3,0.42)
+    {仅 lane 0/1 各写 4 个 u32；lane 2/3 保留归并副本但不落笔};
   % 注记
   \node[anchor=north west, align=left, text width=15.8cm, font=\tiny] at (0,-0.25)
     {(a) 每一列是一个 K64 块（每行占其中 32 B 码），每格是 32 行
@@ -329,78 +372,97 @@ shared memory}——pack 的交织方式就是为 fragment 直读设计的。
      \texttt{local}。面板内再由 \texttt{local}$=16(\mathrm{row}\bmod 8)
      +\lfloor(\mathrm{row}\bmod 16)/8\rfloor+128\lfloor(\mathrm{row}\bmod 32)/16\rfloor$
      交织出 32 个槽位；\texttt{base} 同时按 $\lfloor\mathrm{row}/256\rfloor$、
-     k 块号与 $p$ 推进（源码 L218--220）。顺序与 SM120 MMA 的 A-operand fragment
-     位置一致，所以第~\ref{ch:40}~章的 G2R 能逐字直读。(b) 是第三阶段
-     （\texttt{e2m1} 量化）的跨 lane 归并：两轮 \texttt{shfl\_xor}（mask 1、2）
-     把 4 片字节或成一个 u32（K8 码字），每个 lane 各得一份完整副本；每行
-     8 个 u32 拼满 K64，即一行在一个 K64 块里的 32 B 码。};
+     k 块号与 $p$ 推进（\texttt{quantize\_impl.cuh} L249--252）。顺序与 SM120
+     MMA 的 A-operand fragment 位置一致，所以第~\ref{ch:40}~章的 G2R 能逐字
+     直读。(b) 的两轮 \texttt{shfl\_xor}（mask 1、2）把四片字节或成 u32
+     （K8 码字）；每行 8 个 u32 拼满 K64，即 32 B 码。};
 \end{tikzpicture}
-\caption{v1 激活 pack 的两级结构。(a) 行维：256 行一块、8 个 warp 面板；
-(b) 列维：K16 组在 4 个 lane 间的分布与归并。两者共同决定编码的落笔位置。}
-\label{fig:39-v1-pack}
+\caption{native 激活 pack 的两级结构。(a) 行维：256 行一块、8 个 32 行面板；
+(b) 写回：四个 lane 先获得相同的 K8 码字副本，再由其中两个 lane 落笔。}
+\label{fig:39-native-pack}
 \end{figure}
 
-\subsection{LoRA 支路：B fragment 的标量加载陷阱}\label{sec:39-lora-b}
+\subsection{LoRA 支路：从标量 B 加载到 \texttt{LDSM\_T}}\label{sec:39-lora-b}
 
-LoRA 支路用 \texttt{mma\_lora}（L116--135）把 \texttt{raw\_all}（注意：
-原始 $X$，不是 $\widehat X$）与 \texttt{lora\_down} 的 B fragment 累乘
-进 \texttt{acc}。B fragment 的加载（L77--103）有一个被注释完整记录的
-陷阱：
+通用实现最能说明 B 操作数的布局陷阱。它用 \texttt{load\_lora\_frags}
+把原始 $X$ 与 \texttt{lora\_down} 累乘进 FP32 \texttt{acc}，其中
+\texttt{load\_lora\_pair} 必须显式跨行取值：
 
-\begin{lstinputlisting}[linerange={77-103},firstnumber=auto,
-  title={quantize\_w4a4.cu L77-103（SM80 BLayout 与 load\_lora\_fragment）}]{../../../../cache-dit/csrc/kernels/svdq/cute/fp4/quantize_w4a4.cu}
+\begin{lstinputlisting}[linerange={87-113},firstnumber=auto,
+  title={quantize\_uni.cu L87-113（通用路径的 BLayout 与标量加载）}]{../../../../cache-dit/csrc/kernels/svdq/cute/fp4/quantize/quantize_uni.cu}
 \end{lstinputlisting}
 
 \texttt{SM80\_16x8x16\_F32BF16BF16F32\_TN} 的 BLayout 是
-$((4,8),(2,2)):((16,1),(8,64))$：每个 32-bit 寄存器装的是"同一 N/rank
-列、K 上相邻"的两个 BF16。而 \texttt{lora\_down} 是 row-major
-$[K,R]$——K 上相邻的两个值在内存里隔了 $R$ 个元素。若图省事读
-\texttt{ptr[0],ptr[1]}，拿到的是\textbf{相邻 rank 列}的同 K 值，产生
-注释里说的 even/odd 列置换（数值不会报错、布局静默错位）。
-\texttt{load\_lora\_pair} 用两条标量 load 显式取
-\texttt{lora[k*R+r]} 与 \texttt{lora[(k+1)*R+r]}，既对上布局，也顺带
-避开奇数 rank 列的 4 字节对齐假设。这个坑的普遍形态是：
-\textbf{fragment 布局与内存布局不一致时，编译器不会报错，只会给错数}。
+$((4,8),(2,2)):((16,1),(8,64))$：每个 32-bit 寄存器装的是同一 N/rank
+列上、K 方向相邻的两个 BF16。而 \texttt{lora\_down} 是 row-major
+$[K,R]$，这两个值在内存里相隔 $R$ 个元素。若直接读
+\texttt{ptr[0],ptr[1]}，拿到的是相邻 rank 列的同 K 值，会产生静默的
+even/odd 列置换。通用路径的两条标量 load 既对上布局，也避开奇数 rank
+列的 4 字节对齐假设。uni 的 rank128 是例外：L459--468 改用四次对齐
+32-bit load 加 \texttt{movmatrix.trans}，得到的 K-paired 寄存器顺序与标量
+版本相同；rank 不超过 64 时仍保留标量路径。
 
-另一个减少读取量的细节在 L337--349（正文引用见结构图）：两个 16 行半
-（\texttt{mt0/mt1}）的 B fragment 完全相同，\texttt{lora\_down} 的
-gmem 读因此减半——实测 median 从约 $34.78\,\mu s$ 降到
-$33.31\,\mu s$。\texttt{smooth} fragment 同样在 \texttt{mt0/mt1} 间
-复用，每 K64 的 smooth 加载减半。
+rank 特化路径不再复制这套标量过程。\texttt{issue\_b\_warp} 或
+\texttt{issue\_b\_cta} 先用 TiledCopy 把逻辑 $[N,K]$ 视图放进 SW32 shared
+布局；随后 \texttt{mma\_b\_chunk} 通过 \texttt{LDSM\_T} 形成四个 K16 的
+B fragment，并逐个调用 \texttt{cute::gemm}：
 
-\subsection{$D$ 的 CTA 归约与一次性舍入}
-
-K 循环结束后，每个 warp 持有一份"自己那段 K"的部分积
-\texttt{acc}（寄存器）。归约分两级（L352--384）：先把 fragment 写进
-warp 私有的 shared 区（rank $=32$ 时用 \texttt{col\^{}row} 的 XOR
-swizzle 加 4 列 padding 铺满 32 个 bank，L353--354 注释说该布局对
-fragment 写与整行归约读都验证过），\texttt{\_\_syncthreads()} 之后
-CTA 全部线程协作做 32$\times R$ 的归约——每个输出元素把
-\texttt{kWarps} 份 partial 相加，乘 \texttt{lora\_scales}，然后
-\textbf{只做一次} \texttt{\_\_float2bfloat16\_rn} 写出。
-
-\begin{lstinputlisting}[linerange={370-384},firstnumber=auto,
-  title={quantize\_w4a4.cu L370-384（跨 warp 归约 + lora\_scales 折入 + 单次舍入）}]{../../../../cache-dit/csrc/kernels/svdq/cute/fp4/quantize_w4a4.cu}
+\begin{lstinputlisting}[linerange={405-423},firstnumber=auto,
+  title={quantize\_impl.cuh L405-423（LDSM\_T 形成 B fragment 并交给 TiledMMA）}]{../../../../cache-dit/csrc/kernels/svdq/cute/fp4/quantize/quantize_impl.cuh}
 \end{lstinputlisting}
 
-这一段的数值约定与 \texttt{gemm\_w4a4.h} L26--27 呼应：两个乘积都是
-FP32 累加、结果只向 BF16 舍入一次。若在归约中途提前转 BF16，等于给
-低秩分支额外引入一次量化噪声——对"低秩分支必须高精度"的设计目标
-（第~\ref{ch:38}~章）是直接破坏。
+这里的改进不只是少了几次 load 指令。布局转换由 shared layout、Copy atom
+与 MMA partition 共同表达，B 的坐标映射不再需要散落在手写索引公式里。
+fused 在 warp 内双缓冲 B stage；split-K 则由 128 线程 copy team 预取 CTA
+所需的全部 R16$\times$K64 tile，量化完成后再统一进入 LoRA MMA。
 
-\subsection{头注释里的设计声明}
+\subsection{fused：CTA 内归约与一次性舍入}
 
-这个 kernel 的头注释（L13--16）把"融合"定义成了四条被实现证实的
-否定句：\textbf{没有} FP32 LoRA scratch、\textbf{没有} atomic、
-\textbf{没有} finalize kernel、\textbf{没有}额外的激活 repack。
-与这四条否定配套的正面约定是：一个 CTA 拥有 32 行的行块、$D$ 在
-寄存器里累加、按 row-major BF16 一次写出。注意同一段注释开头的
-"One warp owns 32 rows and the whole K reduction"是初版单 warp 调度的
-残留——现行实现改成 CTA 32 行、warp 沿 K 切分（L283--286 的注释与
-\ref{sec:39-structure}~节），读注释要按代码校正。对照 42.2~节的朴素方案，
-四条否定句恰好覆盖朴素方案会引入的四个额外 kernel 或缓冲区。
-判断一个融合 kernel 的设计是否到位，可以先问：它把哪些"本来要有的
-东西"变成了\textbf{不存在}？
+fused 调度中，一个 CTA 拥有 32 行，warp 沿 K64 切片循环。K 循环结束后，
+每个 warp 持有自己那段 K 的 FP32 \texttt{acc}。
+\texttt{convert\_acc\_rowcol} 只做布局代数，把 MMA accumulator 重解释为
+逻辑 $(\text{row},\text{col})$ 视图；数值仍留在原 fragment 中。
+
+归约写入 \texttt{kReductionBuffers} 个 shared buffer。buffer 少于 warp 时，
+各组通过 CTA barrier 串行复用；buffer 与 warp 等数时，每个 warp 直接写一份。
+rank32 使用 \texttt{col\^{}row} 与 4 列附加间距，其他 rank 使用一列保护间距。
+最后的协作 epilogue 才跨 buffer 求和、折入 R16 scale 并转 BF16：
+
+\begin{lstinputlisting}[linerange={730-745},firstnumber=auto,
+  title={quantize\_impl.cuh L730-745（fused epilogue：归约、scale 与单次 BF16 舍入）}]{../../../../cache-dit/csrc/kernels/svdq/cute/fp4/quantize/quantize_impl.cuh}
+\end{lstinputlisting}
+
+因此 fused 仍然满足四条简化：没有全局 FP32 LoRA scratch、没有跨 K CTA
+atomic、没有 finalize kernel、没有额外激活 repack。$D$ 只在最终写出时
+舍入一次，符合低秩分支保持高精度累加的设计目标。
+
+\subsection{split-K：FP32 scratch、relaxed atomics 与 finalize}
+
+split-K 改变的是 $D$ 的归约位置。一个 CTA 覆盖 \texttt{kWarps*32} 行和一个
+K128/K256 chunk；当前 \texttt{kWarps=8}，所以行块是 256 行。grid.x 为
+$M/256$，grid.y 为 $\lceil K/(64\cdot\texttt{kMaxSlices})\rceil$。每个 warp
+仍计算 32 行，但 rank 按 R16 流式处理，只保留一个 R16 的 FP32 accumulator。
+
+部分积按 fragment-major 顺序写入 scratch：
+$(\text{row block},\text{rank tile},\text{warp},\text{atom})$ 之后是 32 个
+lane，每个 lane 再用 \texttt{red.relaxed.gpu.global.add.v2.f32} 累加相邻两列。
+launch 的三个阶段在同一 stream 上依次排列：
+
+\begin{lstinputlisting}[linerange={821-845},firstnumber=auto,
+  title={quantize\_impl.cuh L821-845（split-K 的清零、producer 与 finalize）}]{../../../../cache-dit/csrc/kernels/svdq/cute/fp4/quantize/quantize_impl.cuh}
+\end{lstinputlisting}
+
+先清零 $M\times R$ 个 FP32 元素，再启动 producer，最后由
+\texttt{finalize\_lora\_bf16\_kernel} 解码 scratch。finalize 每线程处理 8 个
+相邻 rank 列，用两次 \texttt{float4} 读和一次 \texttt{uint4} 写；R16 scale
+在此时折入，每个输出元素只做一次 BF16 舍入。K64 尾部由 predicate 处理，
+不要求 $K$ 是 128 或 256 的倍数，只要求公共约定中的 $K\equiv0\pmod{64}$。
+
+数值边界也随之改变：qact/ascales 的每个位置仍只有一个写者，可以保持确定性；
+不同 K CTA 对 $D$ 的 relaxed FP32 加法次序不固定，因此 split-K 的 $D$
+不保证逐次运行逐位相同，比较时应使用数值误差门槛。于是“无 scratch、
+atomic、finalize”只能用于 fused；split-K 有意引入前三者，但仍不需要
+额外的激活 repack。
 
 \section{图示}
 
@@ -422,7 +484,7 @@ FP32 累加、结果只向 BF16 舍入一次。若在归约中途提前转 BF16�
   \draw[arr] (nsc) -- (nep);
   % kRowMajor
   \node[anchor=west, font=\small\bfseries] at (0,-0.9) {(b) \texttt{kRowMajor}：row-major BF16（本章 producer）};
-  \node[box, fill=tkGreen!25, text width=2.7cm] (rprod) at (1.7,-2.3) {本章 producer\\（\texttt{quantize\_}\\\texttt{w4a4\_row\_major}）};
+  \node[box, fill=tkGreen!25, text width=2.7cm] (rprod) at (1.7,-2.3) {CuTe producer\\uni / r32 / r64 / r128};
   \node[box, fill=tkGreen!25, text width=2.4cm] (rd) at (5.2,-2.3) {$D$：[M,R] BF16\\scale 已折入};
   \node[box, fill=tkFillGreen] (rtma) at (8.6,-2.2) {TMA 加载\\复用 A/B stage};
   \node[box, fill=tkFillGreen] (rep) at (11.9,-2.2) {LoRA-up MMA\\可 mainloop 之前};
@@ -434,7 +496,7 @@ FP32 累加、结果只向 BF16 舍入一次。若在归约中途提前转 BF16�
     {(a) 的 $D$ 不进 TMA stage，gather 直读 gmem，主循环结束后才能起 LoRA 项；
      (b) 的 $D$ 是普通行主序张量，与权重 tile 一样走 TMA 流水线，stage 复用
      使 LoRA 项可与 NVFP4 主积重叠（第~\ref{ch:40}~章）。两者数学等价
-     （\texttt{gemm\_w4a4.h} L41），差别只在 $D$ 到达 MMA 的路径。};
+     （\texttt{gemm/gemm\_w4a4.h} L32），差别只在 $D$ 到达 MMA 的路径。};
 \end{tikzpicture}
 \caption{两种 LoRA 输入 layout 及其下游消费方式。(a) native：FP32 fragment
 pack + gmem gather + 在线 scale；(b) row-major：BF16 普通张量 + TMA +
@@ -442,114 +504,128 @@ stage 复用。}
 \label{fig:39-lora-layout}
 \end{figure}
 
-图~\ref{fig:39-lora-layout} 是 42.2.3~节约定的文字化：选择 layout
-时实际在选择 \textbf{$D$ 的精度、搬运路径与 LoRA 项的调度位置}。
-另外两条隐含的边界来自 \texttt{gemm\_w4a4.h} L47--51：\texttt{kNative}
-的 per-group scale 折在定长 \texttt{float[8]} 表里，rank 上限 128；
-\texttt{kRowMajor} 无此限。本章 producer 为 \texttt{kRowMajor} 形态，
-rank 上限来自别处的 shared memory 预算（见 42.8~节）。
+图~\ref{fig:39-lora-layout} 说明，选择 layout 时实际在选择
+\textbf{$D$ 的精度、搬运路径与 LoRA 项的调度位置}。\texttt{kNative} 的
+per-group scale 使用定长 \texttt{float[8]} 表，因此限 $R\le128$；
+\texttt{kRowMajor} 不受这张表限制。不过当前 producer 自身仍只接受到 128
+的特定 rank，默认 BN=256/BK=128 GEMM tile 还要求 $R\equiv0\pmod{32}$。
+“没有 \texttt{float[8]} 限制”不能扩写成“任意 rank 都可运行”。
 
 \section{性能分析}
 
-producer 的优化过程分三个阶段——先并行度、后访存、再复用，数字全部取自
-cache-dit 的测量（2026-11-05，RTX PRO 5000，\textbf{本书未复测}）：
+当前记录来自 cache-dit 在 2026-11-11 的 RTX PRO 5000 单会话测量。
+复测入口为 \texttt{bench/kernels/}\allowbreak\texttt{bench\_svdquant.py}；
+5 个 shape 与 rank32/64/128 组成 15 格，warmup 10、iters 50、median，
+同机三轮再取 median-of-3。\textbf{本书未复测}，这些数字也不能替代
+跨会话稳定验收。
 
 \begin{center}\small
-\begin{tabular}{@{}llll@{}}
+\begin{tabular}{@{}lll@{}}
 \toprule
-改动 & 口径 & 效果 & 备注 \\
+观察层 & 当前记录 & 正确读法 \\
 \midrule
-单 warp 全 K（初版） & nsys & $\sim204\,\mu s$，waves $0.07$ & 并行度不足 \\
-8 warps 切 K + shared 归约 & Event & $195.7\to43.3\,\mu s$ & 消除动态索引 \\
-qact 每行两个 16B store & Event & $43.3\to40.4\,\mu s$ & 写合并$^{a}$ \\
-staging + \texttt{ldmatrix} & NCU & excess sectors $47\%\to32\%$ & 读端合并 \\
-B fragment / smooth 复用 & nsys median & $34.78\to33.31\,\mu s$ & 读流量减半 \\
+producer 算子级 Event & geomean $1.1088\times$ & native/CuTe 延迟比，15/15 快 \\
+15 格范围 & $1.037\times$--$1.213\times$ & 不是每种 shape 都获得相同收益 \\
+NCU：uni split-K（4 格） & kernel 约 $1.17\times$ & 仍是手写实现 \\
+NCU：特化 fused（1 格） & kernel 约 $1.30\times$ & rank32、16K，接近 DRAM 带宽墙 \\
+NCU：特化 split-K（10 格） & kernel 约 $1.08\times$ & rank64/128，仍有 shared 冲突 \\
+split-K e2e 的 producer 段 & native $94.4\,\mu s$ / CuTe $101.0\,\mu s$ & kernel 更快不保证整段更快 \\
 \bottomrule
 \end{tabular}
-
-\vspace{2pt}
-\parbox{0.92\textwidth}{\footnotesize $^{a}$ 这一行对应 qact 仍为行主序
-$[M,K/2]$ 的版本（每行两段 16 B 连续字节）；后来为 G2R 直读改成正文展示的
-v1 交织 pack，每行的 4 个字字距 16 B，16 B 连续 store 不再成立——引用这条
-优化前先核对布局版本。}
 \end{center}
 
-稳态结果（nsys，warmup=3、iters=15）：fused producer CuTe median
-$32.19\,\mu s$ vs native $31.94\,\mu s$，差 $0.8\%$，结论记为
-\textbf{接近持平}，不宣称稳定领先。同口径下 GEMM 侧 CuTe 尚慢
-$16.3\%$（$133.8$ vs $115.1\,\mu s$）——producer 追平而 GEMM 掉队，
-说明\textbf{量化链里更贵的常常是 GEMM}，这也预告了第~\ref{ch:40}~章
-的重心。占比上，producer 占完整 W4A4 Linear 层 e2e 的 $14\%$--$31\%$
-且随 rank 上升，单看 GEMM kernel-only 的数字会系统性高估收益。
+这里不能把 $1.1088\times$ 全部归因于 TiledMMA/TiledCopy。15 格中有 4 格仍走
+uni split-K，1 格走特化 fused，10 格走特化 split-K；rank 特化主要扭转了
+rank64/128 的旧回退。NCU 行用于解释路径差异，Event 行用于报告算子延迟，
+两类指标不能拼接成同一条时间线。split-K 的 finalize 中位约 $2\,\mu s$，
+但 e2e 还包括 scratch 分配、清零、launch 与 allocator 上下文，所以最后一行
+特意保留了“kernel 快、producer 段总时间反而慢”的反例。
+
+作为历史对照，2026-11-05 的旧手写 fused 实现曾在
+$M=4096,N=K=3072,R=32$ 上记录 CuTe $32.19\,\mu s$、native
+$31.94\,\mu s$（nsys kernel-only），只能称为当时接近持平。它既不代表当前
+split-K 调度，也不能与上面的 Event geomean 逐格比较。早期从单 warp 全 K 到
+多 warp 切 K 的优化仍说明并行度的重要性，但旧行主序 qact 写回等数据已不再
+对应当前 native pack，本文不再用它们解释现行实现。
 
 \section{实践经验}
 
-\begin{kaogu}[F4]{producer 的已证伪优化（cache-dit 的调优结论）}
+\begin{kaogu}[F4]{当前 producer 的优化边界（cache-dit 的调优结论）}
 \begin{itemize}[itemsep=0.5pt,topsep=1pt]
-  \item 只给 D partial 加 shared padding：bank-conflict 指标基本不变，
-        stride padding 不再是主要矛盾；
-  \item rank$=32$ 的 XOR swizzle（$36+(\mathrm{col}\oplus\mathrm{row})$）：正确但
-        在噪声内，不为无收益的复杂性投入；
-  \item 保留 \texttt{lora\_act\_to\_bf16} 适配层：launch/流量抵消
-        GEMM 收益，已删除且不得恢复；
-  \item 用单 GEMM 的 NCU 局部结果推断 e2e：被 layer/e2e 数据否定。
+  \item 不要为了“统一实现”替换 uni：rank32、$K\le3072$ 的四格仍由它占优；
+  \item 不要恢复 \texttt{lora\_act\_to\_bf16} 适配层：当前 producer 直接输出
+        row-major BF16 D，额外 launch 与流量只会抵消收益；
+  \item 不要把 rank32 fused 的 \texttt{col\^{}row} 归约布局推广到 split-K：
+        后者根本不经 shared D buffer；
+  \item 不要用 isolated kernel 推断 e2e：scratch、清零、finalize 和 allocator
+        上下文必须进入同一条 trace。
 \end{itemize}
-重新尝试这些方案前，需要先给出新的瓶颈证据。
 \end{kaogu}
 
-另一个规划级经验：kernel 尾部留有 TODO（L243--246）——将来用 CuTe
-\texttt{TiledMMA/TiledCopy} 重写同一份 tile/归约/输出计划，但
-\textbf{v1 A/SFA 与 row-major BF16 D 的约定不变}。约定先行、实现可换，
-是外部消费端存在时的正确工程顺序。
+旧源码曾把 CuTe \texttt{TiledMMA/TiledCopy} 重写列为 TODO；当前
+\texttt{quantize\_impl.cuh} 已经落地，而 \textbf{native A/SFA pack 与
+row-major BF16 D 的约定没有改变}。稳定的外部约定让实现可以替换，也让
+qact bitwise 校验成为回归门。
+
+当前尚未解决的主矛盾转移到特化 split-K：2026-11-11 的 NCU 记录给出约
+380.9K 次 shared bank conflict、16.6\% occupancy、198 registers 与
+91 KiB smem；native 对照的 conflict 约 1.9K。与此同时，特化 fused 的
+DRAM 利用已到 90.2\%。因此后续优化应先定位 split-K 的具体冲突指令，
+而不是重新扫描已定下的 rank/M 阈值；这些是 cache-dit 的单会话记录，
+本书未复测。
 
 \section{常见坑}
 
 \begin{itemize}[itemsep=1pt,topsep=2pt]
-  \item \textbf{S 重复乘除}：量化路径除 \texttt{smooth}、LoRA 路径用
-        原始 \texttt{raw\_all}——因为 \texttt{lora\_down} 已含
-        $S^{-1}$（式~\ref{eq:39-d}）。改动任一路径前先确认
-        \texttt{lora\_down} 是否又被离线除了一次 $S$。
-  \item \textbf{B fragment 的 even/odd 置换}：row-major $[K,R]$ 权重
-        送入 MMA 的 TN B-layout 时，"相邻 K"不是"相邻内存"
-        （\ref{sec:39-lora-b}~节 load\_lora\_pair）；数值不报错、
-        布局静默错。
-  \item \textbf{v1 pack 的行映射不是行主序}：写出端的
-        \texttt{local/base} 两级偏移按 256 行块交织；想直接按
-        $[M,K/2]$ 索引 \texttt{qact} 读数会全错。
-  \item \textbf{SFA 写不能简单合并成 16B}：一个 32 行 CTA 只拥有
-        128 行 SF atom 的一个 row quarter，每行只有 4B 可写；强转
-        \texttt{uint4} 会覆盖相邻 row group。优化要改 CTA 覆盖，
-        不是改 store 指令。
-  \item \textbf{rank 档位与 warp 数联动}：rank $\le64$ 用 8 warps、
-        $>64$ 用 4 warps（shared 预算换 K 并行度）；新增 rank 档要
-        同时核算 \texttt{kSharedFloats} 与 48KiB 属性设置（L400--405）。
-  \item \textbf{非 SM120 不报错只 trap}：\texttt{\#else} 分支是
-        运行期 trap，编译期不拦截；host 侧要先做能力检查再 dispatch。
+  \item \textbf{S 重复乘除}：量化路径除 \texttt{smooth}，LoRA 路径用原始
+        A fragment，因为 \texttt{lora\_down} 已含 $S^{-1}$
+        （式~\ref{eq:39-d}）。改动前先确认离线 pack 是否又除了一次 $S$。
+  \item \textbf{B fragment 的 even/odd 置换}：通用路径的
+        \texttt{load\_lora\_pair} 明示了“相邻 K 不是相邻内存”；特化路径用
+        SW32 shared layout 与 \texttt{LDSM\_T} 表达同一转换，不能混用两者的
+        索引推导。
+  \item \textbf{native pack 不是行主序}：\texttt{local/base} 按 256 行块交织；
+        直接按 $[M,K/2]$ 索引 \texttt{qact} 会读错。
+  \item \textbf{scale 粒度不是 per-K32}：尽管部分注释这样写，存储大小和 GEMM
+        消费约定都是每 16 个 K 元素一个 SFA。
+  \item \textbf{SFA 写不能简单合并成 16B}：当前映射每行每个 K64 只写一个
+        u32 scale 字；split-K 虽让 CTA 覆盖 256 行，也不会把交织地址变成
+        普通连续行。强转 \texttt{uint4} 会写到其他逻辑位置。
+  \item \textbf{scratch 就是调度开关}：给 rank 特化入口传有效 FP32 scratch
+        必然选择 split-K；要 fused 必须传无效 tensor。只改 grid 或 rank 参数
+        不能绕过这条约定。
+  \item \textbf{split-K 的 D 不做 bitwise 断言}：跨 K CTA 的 relaxed FP32
+        加法次序不固定；qact/ascales 的确定性与 D 的误差门槛要分开验收。
+  \item \textbf{shared 与架构边界}：特化 launch 静态限制
+        \texttt{kSmemBytes<=101376}，超过默认 48 KiB 时还要 opt-in；producer
+        的 host 校验不检查设备，非 SM120 的 device 兜底是 trap。
 \end{itemize}
 
 \section{面试要点速查}
 
 \begin{itemize}[itemsep=1pt,topsep=2pt]
   \item Q：为什么量化 producer 里会出现 LoRA-down 的 GEMM？\\
-        A：两者共享输入 $X$（论文融合原则），一次读入同时产出
-        $\mathcal Q(\widehat X)$ 与 $D$；分开做要多两三遍 DRAM 往返。
+        A：两者共享输入 $X$，同一批原始 A fragment 同时服务
+        $\mathcal Q(\widehat X)$ 与 $D$；分开做会增加输入读取和中间张量往返。
   \item Q：LoRA 路径为什么能用原始 $X$ 而不是 $\widehat X$？\\
         A：离线打包时 $\widetilde L_2=L_2S^{-1}$，数学上
         $X\widetilde L_2^{\top}=\widehat XL_2^{\top}$（式~\ref{eq:39-d}）。
-  \item Q：v1 pack 为什么长成那个样子？\\
-        A：它按 SM120 MMA 的 A-operand fragment 位置交织，让 GEMM 可以
-        G2R 直读、不过 TMA/smem；布局是"消费者驱动"的设计。
-  \item Q：staging + ldmatrix 相比直接 gmem 读收益来自哪里？\\
-        A：gmem 访问模式从 4B 半 sector 变 128B 整行事务
-        （excess sectors $47\%\to32\%$），smem 端配合 pad 防 bank conflict。
-  \item Q：$D$ 归约为什么要 XOR swizzle？\\
-        A：fragment 写 shared 时按 $\mathrm{col}\oplus\mathrm{row}$ 散布到 32 个
-        bank，写与整行读都不冲突；rank$=32$ 特化（36 列 + XOR）。
+  \item Q：为什么有了 rank 特化实现还保留 uni？\\
+        A：uni 覆盖 rank 0 与非特化 rank，并在 rank32、$K\le3072$ 的当前
+        测量中仍更快；“存在特化实现”不等于“所有 shape 都应选它”。
+  \item Q：TiledMMA/TiledCopy 改版改变了哪些约定？\\
+        A：改变 A/B 的 shared layout、G2S/S2R copy 与 LoRA fragment 生成方式；
+        native qact/ascales pack、原始 A 供 LoRA、row-major BF16 D 都没变。
+  \item Q：fused 与 split-K 的核心差别是什么？\\
+        A：fused 在 CTA 内用 shared 归约；split-K 跨 K CTA 写 FP32 scratch，
+        再 finalize。后者增加中间态与原子累加，也失去 D 的逐位可复现性。
+  \item Q：native pack 为什么长成那个样子？\\
+        A：它按 SM120 MMA 的 A/SFA fragment 位置交织，让 GEMM 可以 G2R
+        直读而不过 TMA/smem；布局由消费者决定。
   \item Q：两种 lora layout 怎么选？\\
-        A：\texttt{kRowMajor}（BF16 + TMA）允许 LoRA 项在 mainloop 前
-        起，短中序列占优且 rank 无 128 上限；\texttt{kNative} 直接消费既有的
-        FP32 fragment checkpoint，无需改写成 row-major，但 LoRA 项被挤到
-        mainloop 后（第~\ref{ch:40}~章有 dispatch 数据）。
+        A：row-major BF16 D 可走 TMA 并允许 LoRA-first，是当前 CuTe 默认形态；
+        native FP32 fragment D 适合复用既有 native 输出，但只能 main-first。
+        具体性能仍按 GPU、shape 与 rank 实测，不能沿用旧 rank128 禁令。
 \end{itemize}
 
 \section{最小测试与动手实验}
@@ -558,14 +634,14 @@ $16.3\%$（$133.8$ vs $115.1\,\mu s$）——producer 追平而 GEMM 掉队，
 # 读者侧验证（cache-dit 仓库，SM120 卡；本书未复跑）：
 $ python -m pytest tests/kernels/test_svdquant_cute.py -q
 # _require_sm120() 门控：非 SM120 自动 skip（输出 SKIP）
-# 覆盖：rank 32/64/128 的 producer 数值、v1 qact 与 native 逐字节一致
-#       （torch.equal）、ascales 值集合一致（sorted 后比对）、量化 Linear 的
-#       native/cute 端到端 parity、M 非 256 倍数被拒
+# 覆盖：rank 32/64/128 的 producer 数值、native qact 逐字节一致
+#       （torch.equal）、ascales 校验、uni/特化与 fused/split-K 分派、
+#       K64 尾块、量化 Linear 的 native/cute parity、非法 M 被拒绝
 
-# CPU 侧观察实验（v1 pack 映射的复算，numpy）：
-# v1 pack 写出的两层偏移（local/base）用 numpy 索引模拟一遍，
-# 确认"按 256 行块交织"的 qact 展开后与按 [M,K/2] 行主序重排的
-# E2M1 码逐元素一致（不需要 GPU）。
+# CPU 侧观察实验（native pack 映射的复算，numpy）：
+# 用 numpy 模拟 base/local 与 writer-lane 偏移，确认按 256 行块交织的
+# qact 展开后与 [M,K/2] 行主序重排的 E2M1 码逐元素一致（不需要 GPU）。
+# 另用同一组输入比较 fused 与 split-K：qact/ascales 可逐位比，D 用误差门槛。
 \end{lstlisting}
 
 \section*{延伸阅读}
@@ -574,6 +650,8 @@ $ python -m pytest tests/kernels/test_svdquant_cute.py -q
   \item nunchaku 的对应 producer：同一融合形态在 SVDQuant 官方引擎里的写法；
   \item SVDQuant 论文（arXiv:2411.05007）Fig.~6：融合原则与
         未融合低秩分支的 57\% 开销测量；
+  \item cache-dit \texttt{docs/user\_guide/QUANTIZATION.md}：独立 CuTe 工作流、
+        当前 producer dispatch 与读者侧 benchmark 入口；
   \item 本部分另两章：第~\ref{ch:38}~章（数学主线）、第~\ref{ch:40}~章
         （消费本章三种输出的 GEMM）。
 \end{itemize}
