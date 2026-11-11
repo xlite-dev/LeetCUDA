@@ -17,6 +17,7 @@ docs/readthedocs/
 ├── _templates/footer.html       同上，页脚按钮行（两处都要跟主题版本对齐）
 ├── _templates/layout.html       侧栏兜底行：「下载 PDF」+「English」（仅无按钮行的页面）
 ├── i18n/figures-en.json    英文图集词典（1793 条，人工工具生成）
+├── sources/                跨仓库清单的冻结快照（`sources/<repo>/<path>`，入库）
 ├── tools/                  build_cover_en.py / translate_figures.py / visual_check.py / code_dict.py
 └── convert/                转换包
     ├── __main__.py         编排 + 「主书 + 子集合」多书转换 + 站点装配 + 分书报告
@@ -37,6 +38,8 @@ docs/readthedocs/
 ## 数据流
 
 主链：书根 tex → 逐章归一化（展平 `\input`、展开 `\urldef`、剥离注释、抽离 TikZ 与代码载荷、把 `\label`/`\ref`/定理环境替换成占位 token）→ pandoc 转 MyST markdown → 还原 token（锚点、站内链接、admonition、代码块、图注）→ Sphinx 构建 → 内容核对。
+
+代码清单有两条来源：仓库内路径按 `book_dir / raw_path` 直接读；越出仓库根的引用（书中 `../../../../cache-dit/...`、`../../../../ffpa-attn/...` 这类同级 checkout）一律读 `sources/<repo>/<path>` 冻结快照，**不回退本地 checkout**——本地全绿、线上缺码的差异只有在部署后才暴露，见 `sync-and-deploy.md`「已知边界」。
 
 ## 主书 + 子集合（多书装配）
 

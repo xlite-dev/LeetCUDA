@@ -182,6 +182,11 @@ class _Renderer:
         blocks.append(self._take_pending(self._render_code(tok)))
         index += 1
         continue
+      if tok.kind == tokens.KIND_SOURCE_MISSING:
+        flush()
+        blocks.append(self._take_pending(self._render_source_missing(tok)))
+        index += 1
+        continue
       buffer.append(items[index])
       index += 1
     flush()
@@ -571,6 +576,31 @@ class _Renderer:
       f"原图 `{image_id}` 的 TikZ 代码编译失败，以下为原始代码：\n\n"
       f"{fence}tex\n{code.rstrip()}\n{fence}\n"
       "```"
+    )
+
+  def _render_source_missing(self, tok: tokens.Token) -> str:
+    """渲染「代码清单未内联」提示块。
+
+    块必须在这一步（pandoc 之后）生成：直接在 tex 里写冒号围栏会被 pandoc 当代码块，
+    ``:class:`` 与弯引号会漏成可见正文。
+
+    :param tok: 缺失清单 token。
+    :returns: MyST admonition 块。
+    """
+    record = self.ctx.manifest.missing.get(tok.fields[0]) if tok.fields else None
+    if record is None:
+      self.notes.append(f"未登记的清单缺失 token：{tok.raw}")
+      return ""
+    if record.reason == "repo":
+      why = "原书引用的文件在书稿仓库中不存在（可能已改名或删除）"
+    else:
+      why = "该文件属于书稿仓库之外的上游源码，站点未随附对应的冻结快照"
+    title = f"：{record.title}" if record.title else ""
+    return (
+      "```{admonition} 代码清单未内联\n"
+      ":class: rtd-admon rtd-source-missing\n\n"
+      f"原书此处引用 `{record.raw_path}`{title}。{why}，本页无法内联；"
+      "请对照原书或上游仓库查看该行区间。\n```"
     )
 
   def _render_code(self, tok: tokens.Token) -> str:

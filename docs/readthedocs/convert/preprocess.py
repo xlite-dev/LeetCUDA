@@ -20,6 +20,7 @@ pandoc 读取。抽出的内容分三类落盘：``tikz/`` 待编译的图片段
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -137,18 +138,35 @@ class ImageRef:
 
 
 @dataclass
+class MissingSource:
+  """一处没有内联的代码清单。
+
+  :param missing_id: token 载荷标识。
+  :param raw_path: 引用原文。
+  :param title: 清单标题（listings 的 ``title`` 选项）。
+  :param reason: 缺失原因，``external``（仓库外且无冻结快照）或 ``repo``（书稿仓库内缺失）。
+  """
+  missing_id: str
+  raw_path: str
+  title: str
+  reason: str
+
+
+@dataclass
 class Manifest:
   """单章转换清单，供后处理还原 token。
 
   :param chap_id: 章节标识。
   :param codes: 代码载荷。
   :param images: 图片。
+  :param missing: 未内联的代码清单（后处理渲染成提示块）。
   :param stats: 统计计数（tikz / code / image / 各类环境）。
   :param notes: 需要写进 report 的提示。
   """
   chap_id: str
   codes: dict[str, CodeBlock] = field(default_factory=dict)
   images: dict[str, ImageRef] = field(default_factory=dict)
+  missing: dict[str, MissingSource] = field(default_factory=dict)
   stats: dict[str, int] = field(default_factory=dict)
   notes: list[str] = field(default_factory=list)
 
@@ -161,6 +179,7 @@ class Manifest:
       "chap_id": self.chap_id,
       "codes": {key: asdict(value) for key, value in self.codes.items()},
       "images": {key: asdict(value) for key, value in self.images.items()},
+      "missing": {key: asdict(value) for key, value in self.missing.items()},
       "stats": self.stats,
       "notes": self.notes,
     }, ensure_ascii=False, indent=2)
@@ -191,10 +210,11 @@ class _Builder:
     self.src_dir = src_dir
     self.registry = registry
     self.manifest = Manifest(chap_id=chap.chap_id)
-    self.repo_root = _find_repo_root(book_dir)
+    self.repo_root = repo_root_of(book_dir)
     self._tikz_index = 0
     self._code_index = 0
     self._image_index = 0
+    self._missing_index = 0
 
   def note(self, message: str) -> None:
     """记录一条需要进 report 的提示。
@@ -229,6 +249,20 @@ class _Builder:
     self.manifest.codes[code_id] = CodeBlock(code_id, lang, first_line, source, rel)
     self.bump("code")
     return code_id
+
+  def new_missing(self, raw_path: str, title: str, reason: str) -> str:
+    """登记一处未内联的代码清单（后处理渲染成提示块）。
+
+    :param raw_path: 引用原文。
+    :param title: 清单标题。
+    :param reason: 缺失原因，``external`` 或 ``repo``。
+    :returns: missing_id。
+    """
+    self._missing_index += 1
+    missing_id = f"{self.chap.chap_id}-m{self._missing_index:03d}"
+    self.manifest.missing[missing_id] = MissingSource(missing_id, raw_path, title, reason)
+    self.bump("missing")
+    return missing_id
 
   def new_tikz(self, source: str) -> str:
     """落盘一个 tikz 片段并登记为图片。
@@ -377,41 +411,75 @@ def _read_inline_options(body: str) -> tuple[str | None, int]:
   return None, 0
 
 
-def _find_repo_root(book_dir: Path) -> Path:
+#: 书稿仓库根（``docs/readthedocs/convert`` 上溯三级）。没有 ``.git`` 元数据的检出
+#: 方式下用它兜底，保证快照键不随探测失败而错位。
+_FALLBACK_ROOT = Path(__file__).resolve().parents[3]
+
+#: 跨仓库清单的冻结快照根。键是「相对书稿仓库根父目录」的路径，
+#: 即 ``sources/cache-dit/csrc/...`` 对应同级 checkout 的 ``cache-dit/csrc/...``。
+SNAPSHOT_ROOT = Path(__file__).resolve().parent.parent / "sources"
+
+
+def repo_root_of(book_dir: Path) -> Path:
   """向上找到含 ``.git`` 的仓库根目录。
 
   :param book_dir: 书根目录。
-  :returns: 仓库根目录（找不到时返回书根目录）。
+  :returns: 仓库根目录（找不到时返回 :data:`_FALLBACK_ROOT`）。
   """
   for candidate in [book_dir, *book_dir.parents]:
     if (candidate / ".git").exists():
       return candidate
-  return book_dir
+  return _FALLBACK_ROOT
 
 
-def _resolve_source(builder: _Builder, raw_path: str) -> Path | None:
+def snapshot_key(repo_root: Path, book_dir: Path, raw_path: str) -> Path | None:
+  """把仓库外的清单引用映射成 ``sources/`` 下的快照键。
+
+  书中用 ``../../../../cache-dit/csrc/...`` 这类相对路径引用与书稿同级的 checkout
+  （见 appC），越出仓库根的那一段就是快照键（``cache-dit/csrc/...``）。仓库内引用
+  返回 ``None``；越出两级以上的引用也返回 ``None``（快照只镜像同级仓库）。
+
+  :param repo_root: 书稿仓库根目录。
+  :param book_dir: 书根目录（``book/``）。
+  :param raw_path: 引用原文。
+  :returns: 快照键或 ``None``。
+  """
+  rel = Path(os.path.relpath(book_dir / raw_path, repo_root))
+  if not rel.parts or rel.parts[0] != "..":
+    return None
+  outside = Path(*rel.parts[1:])
+  if not outside.parts or outside.parts[0] == "..":
+    return None
+  return outside
+
+
+def _resolve_source(builder: _Builder, raw_path: str) -> tuple[Path | None, str]:
   """解析代码清单引用的源码路径（相对书根目录）。
 
-  书中有两处清单指向同级仓库（``../../../../ffpa-attn/...``）。本地开发时该路径
-  存在、RTD 上只检出本仓库而不存在，所以这里给出提示，让本地预览与 RTD 构建的
-  差异在报告里可见。
+  仓库内引用直接读源文件；越出仓库的引用一律读 ``sources/`` 下的冻结快照：RTD 只
+  检出本仓库，本地 checkout 也会随上游演进漂移，快照才是本地预览与线上共同的事实源。
+  快照缺失时不回退到本地 checkout——否则本地全绿、线上缺码，差异要到部署后才暴露。
 
   :param builder: 构建状态。
   :param raw_path: 引用原文。
-  :returns: 存在的路径或 None。
+  :returns: ``(存在的路径或 None, 缺失原因)``；原因取 ``external``（仓库外且无快照）
+    或 ``repo``（书稿仓库内缺失），命中时为空串。
   """
+  key = snapshot_key(builder.repo_root, builder.book_dir, raw_path)
+  if key is not None:
+    snapshot = SNAPSHOT_ROOT / key
+    if snapshot.is_file():
+      return snapshot, ""
+    builder.note(
+      f"{builder.chap.chap_id}: 跨仓库清单缺少冻结快照 sources/{key.as_posix()}"
+      f"（原书引用 {raw_path}），页面将显示提示块")
+    return None, "external"
   candidates = [builder.book_dir / raw_path, builder.chap.tex.parent / raw_path]
   for candidate in candidates:
     if candidate.is_file():
-      try:
-        candidate.resolve().relative_to(builder.repo_root)
-      except ValueError:
-        builder.note(
-          f"{builder.chap.chap_id}: 清单引用位于本仓库之外（{raw_path}），"
-          "RTD 构建时将显示提示块而非代码")
-      return candidate
+      return candidate, ""
   builder.note(f"{builder.chap.chap_id}: 代码清单引用缺失 {raw_path}")
-  return None
+  return None, "repo"
 
 
 def _language_for(options: dict[str, str], path: Path | None) -> tuple[str, bool]:
@@ -454,23 +522,23 @@ def _parse_ranges(spec: str) -> list[tuple[int, int]]:
   return ranges
 
 
-def _emit_listing(builder: _Builder, path: Path | None, options: dict[str, str], raw_path: str) -> str:
+def _emit_listing(builder: _Builder, path: Path | None, options: dict[str, str], raw_path: str,
+                  reason: str = "") -> str:
   """按 listings 选项生成代码载荷 token 文本。
 
   :param builder: 构建状态。
   :param path: 源码路径（None 表示引用缺失）。
   :param options: listings 选项。
   :param raw_path: 引用原文（用于兜底标题）。
+  :param reason: 缺失原因（``external`` / ``repo``），渲染成对应提示块。
   :returns: 替换用的 token 文本。
   """
   if path is None:
-    title = options.get("title", "").strip()
-    detail = f"：{title}" if title else ""
-    return (
-      "\n\n```{admonition} 代码清单未内联\n"
-      ":class: rtd-admon rtd-source-missing\n\n"
-      f"原书此处引用 `{raw_path}`{detail}。该文件不在本仓库内（属外部仓库，"
-      "如 ffpa-attn），站点无法取证内联，请到对应仓库查看。\n```\n\n")
+    # 提示块必须走 token：这里还在 pandoc 之前，字面冒号围栏会被 pandoc 转成代码块，
+    # `:class:` 与弯引号会漏成正文（旧实现的线上症状）。
+    missing_id = builder.new_missing(
+      raw_path, options.get("title", "").strip(), reason or "external")
+    return f"\n\n{tokens.make(tokens.KIND_SOURCE_MISSING, missing_id)}\n\n"
   lang, numbering = _language_for(options, path)
   lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
   ranges = _parse_ranges(options.get("linerange", "")) or [(1, len(lines))]
@@ -479,6 +547,10 @@ def _emit_listing(builder: _Builder, path: Path | None, options: dict[str, str],
 
   blocks: list[str] = []
   for start, stop in ranges:
+    if stop > len(lines):
+      builder.note(
+        f"{builder.chap.chap_id}: 清单 {path.name} L{start}-{stop} 超出行数 {len(lines)}，"
+        "冻结快照与书稿锚定的 commit 可能不一致")
     snippet = "\n".join(lines[max(start - 1, 0):stop])
     # firstnumber 取值为 auto/空时跟随源码行号；显式数字则用它；last/continue 等
     # listings 合法但本书未用的取值回落到 start，避免整条管线被一个 ValueError 打断。
@@ -526,7 +598,8 @@ def _extract_input_listings(text: str, builder: _Builder) -> str:
       builder.note(f"{builder.chap.chap_id}: lstinputlisting 环境缺少源文件参数")
       continue
     options = split_options(options_text)
-    replacement = _emit_listing(builder, _resolve_source(builder, raw_path), options, raw_path)
+    source, reason = _resolve_source(builder, raw_path)
+    replacement = _emit_listing(builder, source, options, raw_path, reason)
     edits.append((start, end, replacement))
 
   text = _apply_edits(text, edits)
@@ -542,7 +615,8 @@ def _extract_input_listings(text: str, builder: _Builder) -> str:
       builder.note(f"{builder.chap.chap_id}: lstinputlisting 缺少源文件参数")
       continue
     options = split_options(options_text or "")
-    replacement = _emit_listing(builder, _resolve_source(builder, raw_path), options, raw_path)
+    source, reason = _resolve_source(builder, raw_path)
+    replacement = _emit_listing(builder, source, options, raw_path, reason)
     edits.append((match.start(), end, replacement))
   return _apply_edits(text, edits)
 

@@ -944,6 +944,25 @@ def check_collections(manifest: Path, html_dir: Path) -> tuple[bool, str]:
   return ok, detail
 
 
+def check_source_listings(texts: dict[str, str]) -> tuple[bool, str]:
+  """跨仓库清单必须内联。
+
+  页面出现「代码清单未内联」提示块（``rtd-source-missing``），说明本章引用了书稿
+  仓库之外的源码而 ``sources/`` 下没有对应的冻结快照：本地 checkout 看得见、RTD
+  看不见，属于只在线上暴露的静默丢失，必须判红倒逼补快照。
+
+  判据用渲染后的 CSS 类而不是提示文案：文案会改，类名是渲染分支的稳定标识（提示块
+  由 ``postprocess._render_source_missing`` 在 pandoc 之后生成，此前的字面围栏版本
+  会被 pandoc 吃掉，任何文案正则都命中不了）。
+
+  :param texts: 该书页面文本（docname → 内容）。
+  :returns: ``(是否通过, 说明)``。
+  """
+  missing = sorted(name for name, text in texts.items() if "rtd-source-missing" in text)
+  detail = f"{len(missing)} 页，例如 {missing[0]}" if missing else ""
+  return not missing, detail
+
+
 def _verify_book(report: Report, book: BookContext) -> None:
   """跑一本书专属的核对（章号、表格、目录编号、图内文字）。
 
@@ -974,6 +993,9 @@ def _verify_book(report: Report, book: BookContext) -> None:
         mismatch.append(f"{chapter.chap_id}: 期望 “{expected}”，实际 “{heading[:24]}”")
   report.add(f"H1 章号与注册表一致{suffix}", not mismatch,
              f"{len(mismatch)} 处，例如 {mismatch[0]}" if mismatch else "")
+
+  ok, detail = check_source_listings(texts)
+  report.add(f"跨仓库清单已内联{suffix}", ok, detail)
 
   # 表格相关的三项都以「原书全部表格环境」为真值，局部构建时必须跳过——否则
   # ``--only-collection`` 打样会拿全书表格数去比几页的产物，必然判红。
