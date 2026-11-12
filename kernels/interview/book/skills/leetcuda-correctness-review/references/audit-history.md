@@ -1228,3 +1228,10 @@ git diff --check：通过
 - 发现与处置：正文、图注、问答与测试统一使用 native pack，删除 SVDQ 三章的 v1 表述；旧 rank128 禁用 row-major 结论降为 rank 特化前历史；补齐 split-K 的 scratch 清零/finalize 与 D 非逐位确定性。新增 10 条 Overfull 全部回修至基线 15。`CHECKLOG` 登记 per-K32 注释和 no-finalize 旧注释；claim ledger 与边界矩阵在 `book/.tmp/svdq-current-source-update/claim-ledger.md`，无未解决 H/M 项。
 - 性能口径：2026-11-11 PRO 5000 单会话的 producer 1.1088× 明确为混合 dispatch 的 op-level Event geomean；GEMM 1.0248×、row-major e2e 1.0553× 保留回退格，不把 isolated kernel 结果当 e2e。旧 PRO 6000 四方表只作历史对照，本书未复测。
 - 验收：全书 anchors 35 章 ALL GREEN，`diff --check` 通过；主 book **636 页 / 0 error / 0 undefined / 缺字 0 / Overfull ≥1pt 15（均为既有项）**，7 页受影响图渲染目检通过；RTD 全量 build 未跳 TikZ，英文图 214/214、代码 776/776、公式 123/123，逐项内容核对全 OK；`visual_check` 97 页需处理 0。
+## R115（2026-11-12）：cute-zhihu 分册 reed 系列按专栏原编排重排章节顺序
+
+- 触发：用户要求把 `cute-zhihu.tex` 的 reed 13 篇恢复为专栏原编排——MMA 提到 Copy 之前、Swizzle 落到「cute 之简单GEMM实现」之后、3 篇 Hopper + 1 篇 TMA（第 21bit descriptor）整体移到「cute 之高效GEMM实现」之后；其余部分不动。
+- 改动面：只动 `cute-zhihu/cute-zhihu.tex` 两处——Part I 的 13 条 `\input` 顺序（并加一行顺序说明注释）、「整理说明」的 reed 13 行对照表章节号随之重编（01→13）。章文件、图目录、`sources/*.md` 一律不改名，站点 docname（`cute-zhihu/reed-XX-*`）与图路径保持稳定。
+- 顺序依据：章内跨文引用自洽（Copy 篇开头「前面文章介绍了 cute 中的 MMA 抽象」；简单GEMM 篇开头列 Layout/Tensor/MMA/Copy；GEMM流水线 篇开头「基于这些抽象我们进行了简单的GEMM实现」；高效GEMM 篇开头列 Swizzle 与流水线）。Swizzle 篇开头把「GEMM流水线」写作前文，重排后成为唯一前向指代，按用户「其他不用变」保留原文。
+- 验收：`cute-zhihu/build.sh` 两遍编译 **248 页 / 0 error / 0 undefined / 缺字 0 / Overfull 0**，与基线条目数一致（`git show HEAD:` 基线同为 248 页）；目录逐章核对为 Layout→代数和几何→Tensor→MMA→Copy→简单GEMM→Swizzle→GEMM流水线→高效GEMM→Hopper前言→MBarrier→Hopper TMA→TMA Descriptor，各章页数（7/8/7/6/7/9/7/5/9/1/6/10/6）与重排前一一对应；`pdftotext` 抽查标题页「2026 年 11 月」与整理说明表一致。RTD 全量 `build.sh`（未跳 TikZ）逐项 OK（英文图 214/214、代码 776/776、公式 123/123、集合 37 页、书目录编号核对 32 条）；`visual_check` 97 页需处理 0；`build/src/cute-zhihu/part-1.md` 的 toctree 顺序与 PDF 一致。
+- 边界：只编 cute-zhihu 分册（主 book 与 colfax 不含该合集内容，未编）；正文文字零改动，故未跑文风自检与数理审核；未提交 commit。
