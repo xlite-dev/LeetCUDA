@@ -1235,3 +1235,15 @@ git diff --check：通过
 - 顺序依据：章内跨文引用自洽（Copy 篇开头「前面文章介绍了 cute 中的 MMA 抽象」；简单GEMM 篇开头列 Layout/Tensor/MMA/Copy；GEMM流水线 篇开头「基于这些抽象我们进行了简单的GEMM实现」；高效GEMM 篇开头列 Swizzle 与流水线）。Swizzle 篇开头把「GEMM流水线」写作前文，重排后成为唯一前向指代，按用户「其他不用变」保留原文。
 - 验收：`cute-zhihu/build.sh` 两遍编译 **248 页 / 0 error / 0 undefined / 缺字 0 / Overfull 0**，与基线条目数一致（`git show HEAD:` 基线同为 248 页）；目录逐章核对为 Layout→代数和几何→Tensor→MMA→Copy→简单GEMM→Swizzle→GEMM流水线→高效GEMM→Hopper前言→MBarrier→Hopper TMA→TMA Descriptor，各章页数（7/8/7/6/7/9/7/5/9/1/6/10/6）与重排前一一对应；`pdftotext` 抽查标题页「2026 年 11 月」与整理说明表一致。RTD 全量 `build.sh`（未跳 TikZ）逐项 OK（英文图 214/214、代码 776/776、公式 123/123、集合 37 页、书目录编号核对 32 条）；`visual_check` 97 页需处理 0；`build/src/cute-zhihu/part-1.md` 的 toctree 顺序与 PDF 一致。
 - 边界：只编 cute-zhihu 分册（主 book 与 colfax 不含该合集内容，未编）；正文文字零改动，故未跑文风自检与数理审核；未提交 commit。
+
+## R116（2026-11-16）：新增 ch41 CUTLASS Collective API 与 SVDQuant 统一源码版本
+
+- 触发：用户要求主 book 新增 Collective API 章，以 cache-dit FP8/FP4 为例；随后指定本仓新增 `collective_gemm.cuh` 承载 BF16、SVDQuant 引用统一到 cache-dit 最新，并重编 PDF/跑通 RTD。ch41 追加为独立 Part VIII（打印第44章），既有章号不变；cache-dit 全部锚定 `eced0158`。
+- 实现与证据：BF16 新头文件 93 行 + 73 行 CPU FP64 测试，SM90A 编译 ALL OK，SM120A fallback 编译成功并设备 SKIP；FP8/FP4 81 pytest passed。正文 10 节、10 段 listing、3 张 TikZ，覆盖 Builder、EVT、FP8 row/tensor/block、NVFP4 两级 scale、workspace/stream 和性能边界。anchors 36 章 ALL GREEN（ch41 10 refs）。
+- L0–L4 自审：claim ledger 与边界矩阵在 `book/.tmp/ch41/claim-ledger.md`。PyCuTe `56cc3d0` 逐坐标验证 SFA `mG+g`、SFB `nbG+g` 和 NVFP4 512B atom；探针自身的 size/嵌套坐标错误已修正，未传入书稿。独立 Code Review 确认公式、EVT 行列、deduce/runtime layout 与 24+4 个性能数字均可复算，无 blocking 错误。
+- 回修：异步 workspace 改 `cudaMallocAsync/cudaFreeAsync` 并检查释放错误；beta=0 改为数学不依赖 C；补 EpilogueTile、ScaleConfig 完整参数和 FP4 1x/2x 定义；SM120A 改为真实编译烟测+设备 SKIP；FP4 eager 明确 `chain_native`，补 scaled_mm 对照 0.872；anchors frozen_at/repo_commit 改为 2026-11-16/PENDING_COMMIT；SVDQuant host 文件名更新为 `svdq.cpp` 并修正 dispatch 顺序描述；独立评审其余文档项同步完成。
+- 性能口径：六组 FLUX shape，PRO 5000、warmup 3/iters 10、FP4 两轮，eager 与 compiled Linear 分开。72 个旧 use_ws 臂和 13 个独立量化 compile 失败臂按 JSON error 排除，不作为性能数据。BF16 仅编译验证，未列性能。
+- 图与文风：3 张 TikZ standalone 真渲染逐图目检，无重叠/裁切；去 AI 味扫描完成。英文图词典手工补齐 12 条，最终英文图 217/217；代码词典 778/778、公式词典 123/123。
+- 验收：主 `book/build.sh` **650 页 / 0 error / 0 undefined / 缺字 0 / Overfull≥1pt 15（既有）**；`git diff --check` 通过。RTD 全量 build 与 convert.verify 全过（目录编号 49 条、跨仓清单全部内联、表格 141/141），`visual_check` **99 页需处理 0**，ch41 长页截图分段目检通过。并行构建曾造成 book.toc 竞争，最终保留最新 toc 顺序重跑，目录核对未跳过。
+- SVDQuant：ch38–40、appC/D/E、BOOK_PLAN 与 RTD sources 统一到 `eced0158`；7 个 FP8/FP4/SVDQ 快照逐字节与 commit 一致，9 条 SHA256 复核通过。历史 RFC/CHECKLOG 保留旧版本事实，不改写。
+- 残余：BF16 无 SM90 运行设备，未执行 kernel；性能仅限本次六形状与环境；本仓新文件固定 permalink 与 anchors repo_commit 已在交付提交 \texttt{5b618f2} 回填。RTD `build/report.json` 的 12 条 broken_refs 全在未改动的 ch19b，属既有基线，非本次新增失败。未提交 commit。

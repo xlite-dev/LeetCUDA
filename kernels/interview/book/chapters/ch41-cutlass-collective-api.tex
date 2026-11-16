@@ -1,0 +1,640 @@
+% ch41-cutlass-collective-api.tex — CUTLASS Collective API：从常规 GEMM 到 FP8/FP4（RFC-Q）
+% BF16：kernels/interview/collective_gemm.cuh（SM90 最小实现，新增后纳入 anchors）
+% FP8/FP4：cache-dit(eced0158) csrc/kernels/{fp8,fp4}/，CUTLASS v4.8.1
+\chapter{CUTLASS Collective API：从常规 GEMM 到 FP8/FP4}\label{ch:41}
+
+\section{本章导读}
+
+前面的 GEMM 章节把一条高性能路径拆到了很细：TMA descriptor、shared-memory
+layout、stage ring、mbarrier、MMA atom、寄存器 fragment 和输出写回都要由调用者
+逐项对齐。第~\ref{ch:24}~章说明 CuTe 如何复用这些构件，第~\ref{ch:35}~章与
+第~\ref{ch:37}~章又分别给出了 FP8、NVFP4 的手写实现。本章换一个层次，直接
+使用 CUTLASS 3.x 的 \textbf{Collective API}：调用者描述矩阵类型、布局、tile、
+stage 策略和 epilogue 数学，库负责选出相匹配的 mainloop 与 epilogue。
+
+这条路径不是把性能调优变成一句模板实例化。它把可复用的主流水收敛到库内，
+同时把算子约定留给调用者。常规 GEMM 只需较少声明就能得到一条合理的 Tensor
+Core 路径；量化 GEMM 还要说明 scale 的粒度、存放布局和施加位置。layout 或
+scale 约定写错时，Builder 不会替调用者修正数学。
+
+本章按四种复杂度递进：
+\begin{enumerate}[itemsep=1pt,topsep=2pt]
+  \item \textbf{BF16 常规 GEMM}：新增 \texttt{collective\_}\allowbreak\texttt{gemm.cuh}，用两个
+        Builder 完成 $D=\alpha AB^{\top}+\beta C$。这是最小的 Collective API
+        使用案例，目标架构为 SM90。
+  \item \textbf{FP8 per-row/per-tensor}：普通 FP8 mainloop 先得到未缩放的
+        FP32 accumulator，再在 EVT 中施加 activation/weight scale 和 bias。
+  \item \textbf{FP8 per-block}：blockwise mainloop 在每个 K128 块内施加
+        $1\times128$ activation scale 与 $128\times128$ weight scale，epilogue
+        只加 bias。
+  \item \textbf{NVFP4 两级量化}：block-scaled mainloop 消费 e2m1 数据与
+        ue4m3 micro-scale，EVT 再折回两侧的 FP32 global scale 和 bias。
+\end{enumerate}
+
+\textbf{源码与版本}：BF16 示例位于本仓
+\texttt{kernels/interview/collective\_gemm.cuh}；FP8/FP4 示例锚定 cache-dit
+commit \texttt{eced0158} 的
+\texttt{csrc/kernels/fp8/gemm/gemm.cuh}、
+\texttt{csrc/kernels/fp4/gemm.cuh} 与
+\texttt{csrc/kernels/fp4/quantize.cuh}。cache-dit 使用 CUTLASS v4.8.1。
+完整代码入口见附录~\ref{app:D}。
+
+\textbf{架构边界}：BF16 示例采用 \texttt{arch::Sm90}。CUTLASS 4.8.1 的 SM120
+dense CollectiveBuilder 只支持 F8F6F4 TensorOp，因此不能把同一组 BF16 模板参数
+机械地改为 \texttt{arch::Sm120}。本章 SM120 内容限定为 cache-dit 的 FP8/FP4
+路径。测试与性能复测使用 RTX PRO 5000（SM120）、CUDA Event；BF16 示例另做
+SM90A 编译验证，本机不执行 SM90 kernel。
+
+\section{问题与动机：手写主循环与库主循环的分工}
+
+一个 GEMM  kernel 可以粗略分成两层。第一层是数学约定：输入是什么 dtype，
+$B$ 的物理布局是什么，是否量化，scale 属于哪个块，输出是否带 bias。第二层是
+执行机制：怎样把 tile 从 global memory 搬到 shared memory，怎样让搬运与 MMA
+重叠，怎样分配寄存器 fragment，怎样把 accumulator 写回。手写教学 kernel 需要
+同时维护两层，因此一处 layout 改动往往会沿整条流水传播。
+
+Collective API 把第二层的主要决策交给 Builder。调用者仍需理解第一层，也需要
+给第二层足够的约束，例如 \texttt{TileShape} 和 alignment；但不必再为每一种
+常规 GEMM 重写一套 TMA/mbarrier 代码。图~\ref{fig:41-api-stack} 展示了实际
+调用链。两个 Builder 分别产生 mainloop 与 epilogue 类型，
+\texttt{GemmUniversal} 把二者组合成 kernel，
+\texttt{GemmUniversalAdapter} 再提供 host 侧的 \texttt{Arguments}、
+\texttt{initialize}、workspace 和 \texttt{run} 接口。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize,
+  box/.style={draw, rounded corners=2pt, align=center, inner sep=4pt,
+              minimum width=3.0cm, minimum height=1.25cm},
+  arr/.style={-{Stealth[length=2mm]}, thick, draw=tkBlue}]
+\node[box, draw=tkBlue] (builders) at (0,0)
+  {两个 CollectiveBuilder\\mainloop + epilogue};
+\node[box, draw=tkGreen] (kernel) at (3.55,0)
+  {GemmUniversal\\组合 kernel 类型};
+\node[box, draw=tkPurple] (adapter) at (7.10,0)
+  {GemmUniversalAdapter\\host 调用接口};
+\node[box, draw=tkOrange] (run) at (10.65,0)
+  {Arguments + workspace\\initialize / run};
+\draw[arr] (builders) -- (kernel);
+\draw[arr] (kernel) -- (adapter);
+\draw[arr] (adapter) -- (run);
+\node[align=center, text=tkBlue!75!black] at (5.3,-1.55)
+  {调用者保留：dtype / layout / tile / scale / bias / stream};
+\end{tikzpicture}
+\caption{Collective API 的四个层次。Builder 生成执行构件，Adapter 负责 host
+调用；矩阵与量化约定并没有从调用代码中消失。}
+\label{fig:41-api-stack}
+\end{figure}
+
+这种分工有三个直接收益。其一，常规 GEMM 的默认路径已经足够完整，适合先做
+正确且具备良好执行机制的基线。其二，tile、stage 与 epilogue schedule 成为
+集中参数，后续调优不必改动一整套手写协议。其三，量化路径可以只替换需要的
+部分：FP8 row/tensor 共用 mainloop，只改 EVT 的广播 stride；FP4 的 1x/2x
+也共用 mainloop，只改 global-scale epilogue。
+
+收益不等于无条件最优。库默认配置仍受架构、shared-memory 容量、tile 波次、
+量化 rescale 成本和 host 封装开销影响。尤其在本章的 SM120 案例中，低精度
+Builder 使用 warp 级 \texttt{mma.sync}，不是 SM100 的 tcgen05/TMEM 路径；
+blockwise FP8 还需要每个 K128 块结束后 rescale。更准确的结论是：
+\textbf{Collective API 提供的是一条高质量、可继续测量的实现起点，而不是
+免测量的性能证明。}
+
+\section{数学原理：把 GEMM 与 scale 放在正确的位置}
+
+\subsection{常规 GEMM 与 K-tile 分解}
+
+设 $A\in\mathbb R^{M\times K}$，物理 weight 为 $B\in\mathbb R^{N\times K}$，
+$C,D\in\mathbb R^{M\times N}$。本章计算
+\begin{equation}
+  D=\alpha AB^{\top}+\beta C
+   =\alpha\sum_{g=0}^{G-1}A_{:,\,gK_t:(g+1)K_t}
+       B_{:,\,gK_t:(g+1)K_t}^{\top}+\beta C,
+  \label{eq:41-gemm}
+\end{equation}
+其中 $K_t$ 是 mainloop 的 K-tile 宽度，$G=\lceil K/K_t\rceil$。Builder 管理
+的是这个求和过程的执行方式。调用者提供的是矩阵元素的寻址方式与最终
+$\alpha,\beta$ 的语义，不需要显式写出式~\ref{eq:41-gemm} 的循环。
+
+$B$ 的布局最容易误读。\texttt{torch.nn.Linear.weight} 和普通 row-major
+weight 都是 $[N,K]$。同一段内存若按 $[K,N]$ 的 column-major 解释，其
+$(k,n)$ 元素仍位于 $nK+k$，恰好就是数学上的 $B^{\top}$。因此示例把
+\texttt{LayoutB} 写成 \texttt{ColumnMajor}，但并没有做任何转置拷贝。
+
+\subsection{FP8：单级 FP32 scale 的两种施加位置}
+
+对一个量化单元 $U$，本章 FP8 约定为
+\begin{equation}
+  s_U=\frac{\max_{i\in U}|x_i|}{448},\qquad
+  q_i=\operatorname{satfinite\_e4m3}(x_i/s_U),\qquad
+  \hat x_i=s_Uq_i.
+  \label{eq:41-fp8-quant}
+\end{equation}
+scale 是反量化乘子，不是量化时使用的倒数。per-row 对 activation 的每一行
+和 weight 的每一个输出通道各给一个 FP32 scale；per-tensor 则整个矩阵共用一个
+标量。未缩放 mainloop 先得到
+$P_{m,n}=\sum_k q_A[m,k]q_B[n,k]$，EVT 再计算
+\begin{equation}
+  D_{m,n}=\operatorname{BF16}\!\left(
+    s_B[n]\,(s_A[m]P_{m,n})+\mathrm{bias}[n]\right).
+  \label{eq:41-fp8-evt}
+\end{equation}
+per-tensor 不需要把标量扩展成长度为 $M,N$ 的数组，只要把对应广播 stride
+置零即可。
+
+per-block 的 scale 依赖 K 块，不能等到完整 $P$ 算完后只乘一次。令第 $g$
+个 K128 块的部分积为 $P^{(g)}$，则
+\begin{equation}
+  D_{m,n}=\operatorname{BF16}\!\left(
+    \sum_g s_A[m,g]\,s_B[\lfloor n/128\rfloor,g]\,P^{(g)}_{m,n}
+    +\mathrm{bias}[n]\right).
+  \label{eq:41-fp8-block}
+\end{equation}
+这里 $s_A$ 是 $[M,K/128]$ 的 $1\times128$ scale 表，$s_B$ 是
+$[N/128,K/128]$ 的 $128\times128$ scale 表。缩放发生在 mainloop 的块边界；
+若 epilogue 再乘一次 $s_As_B$，就重复施加了 scale。
+
+\subsection{NVFP4：micro-scale 与 global-scale 是两级对象}
+
+NVFP4 不是把 FP8 的 e4m3 换成 e2m1。生产路径先按行求 FP32 global scale，
+再对归一化后的每 16 个元素求 ue4m3 micro-scale。对一行 $r$，可写为
+\begin{align}
+  g_r &= \frac{\max_k|x_{r,k}|}{448\times6},\qquad x'_{r,k}=x_{r,k}/g_r,\\
+  s_{r,u} &= \operatorname{UE4M3}\!\left(
+    \frac{\max_{k\in u}|x'_{r,k}|}{6}\right),\qquad
+  q_{r,k}=\operatorname{E2M1}\!\left(
+    \frac{x'_{r,k}}{\operatorname{FP32}(s_{r,u})}\right).
+  \label{eq:41-fp4-quant}
+\end{align}
+block-scaled MMA 消费 $q$ 与 $s$，得到已含 micro-scale 的 accumulator $P$；
+EVT 再完成
+\begin{equation}
+  D_{m,n}=\operatorname{BF16}\!\left(
+    g_B[n]\,(g_A[m]P_{m,n})+\mathrm{bias}[n]\right).
+  \label{eq:41-fp4-evt}
+\end{equation}
+式~\ref{eq:41-fp8-evt} 与式~\ref{eq:41-fp4-evt} 形式相同，但 $P$ 的含义
+不同：FP8 row/tensor 的 $P$ 是未缩放 FP8 点积，NVFP4 的 $P$ 已经过硬件
+block-scaled MMA 的 micro-scale 处理。把两者混为一谈，就会漏乘或重乘一级
+scale。
+
+\section{设计与实现}
+
+\subsection{常规 BF16：两个 Builder 就够启动一条 GEMM 路径}
+
+本仓示例先声明
+$128\times128\times64$ 的 CTA tile、$1\times1\times1$ cluster 和默认
+\texttt{LinearCombination}。epilogue Builder 的参数顺序依次是 EpilogueTile、
+accumulator、compute、C 类型与布局、D 类型与布局、schedule、fusion operation。alignment
+以\textbf{元素数}计：BF16 的 8 个元素和 FP32 的 4 个元素都是 16\,B。
+
+\begin{lstinputlisting}[linerange={31-53},firstnumber=auto,
+  title={collective\_gemm.cuh L31--53（BF16 的两个 Builder）}]{../collective_gemm.cuh}
+\end{lstinputlisting}
+
+这里先构造 \texttt{CollectiveEpilogue}，再构造 mainloop。
+\texttt{StageCountAuto}\allowbreak\texttt{Carveout} 接收的是需要从 shared-memory 预算中扣除的
+epilogue 存储大小，\textbf{不是 stage 数}。Builder 在剩余预算内选择合法
+stage 数。\texttt{KernelSchedule}\allowbreak\texttt{Auto} 与
+\texttt{EpilogueSchedule}\allowbreak\texttt{Auto} 表示让库选择调度标签；它们是明确的配置输入，
+不是跳过 schedule 设计审查的理由。
+
+\texttt{GemmUniversal} 把 mainloop、epilogue 和 tile scheduler 组合为
+kernel 类型，最后的 \texttt{void} 使用默认 scheduler 选择。
+\texttt{GemmUniversalAdapter} 是 host 侧入口，负责参数、初始化和 launch。
+调用者没有写 TMA descriptor、MMA atom、pipeline 或 mbarrier。
+
+host 包装只需生成 packed stride、填充参数并处理 workspace。示例的 C 与 D
+是不同缓冲区，$\beta=0$ 表示数学上不依赖 C 的值，是否发起读取由
+epilogue 实现决定；cache-dit 的量化案例则让 C、D
+指向同一输出，因为它们的语义是 $D=AB^{\top}+\mathrm{bias}$，不是
+$D\leftarrow C+D$。
+
+\begin{lstinputlisting}[linerange={65-89},firstnumber=auto,
+  title={collective\_gemm.cuh L65--89（packed stride 与 Adapter launch）}]{../collective_gemm.cuh}
+\end{lstinputlisting}
+
+最小测试把输入先舍入到 BF16，再用这些已舍入值计算 FP64 参考，最后检查
+FP32 输出。该测试的设计目标是核对 collective 的计算与 launch，不把“原始
+FP32 输入到 BF16 输入的量化误差”误算成 GEMM 误差；本次只完成编译验证。
+
+\subsection{FP8 row/tensor：把 scale 写成一棵 EVT}
+
+EVT 是 \textbf{Epilogue Visitor Tree}。叶节点读取 accumulator 或广播输入，
+内部节点执行乘加等逐元素操作，根节点产生输出 tile。它描述的是输出元素的
+计算图，不是另一份手写 mainloop。cache-dit 的 FP8 row/tensor EVT 如下：
+
+\begin{lstinputlisting}[linerange={111-121},firstnumber=auto,
+  title={cache-dit fp8/gemm/gemm.cuh L111--121（scale + bias 的 EVT）}]{../../../../cache-dit/csrc/kernels/fp8/gemm/gemm.cuh}
+\end{lstinputlisting}
+
+按代码中的节点类型，\texttt{Sm90ColBroadcast} 读取随输出行 $m$ 变化的
+$s_A[m]$，\texttt{Sm90RowBroadcast} 读取随输出列 $n$ 变化的 $s_B[n]$ 与
+bias。内层 \texttt{multiplies} 先算 $s_A[m]P_{m,n}$，外层
+\texttt{homogeneous\_multiply\_add} 再算
+$s_B[n]\,(s_A[m]P_{m,n})+\mathrm{bias}[n]$，与式~\ref{eq:41-fp8-evt} 一致。
+所有中间计算使用 FP32，最后才转 BF16。
+
+mainloop 仍是普通 FP8 GEMM。A/B 都是 e4m3，alignment 为 16 个元素，即
+16\,B；accumulator 是 FP32，CTA tile 为 $128\times128\times128$。
+
+\begin{lstinputlisting}[linerange={214-227},firstnumber=auto,
+  title={cache-dit fp8/gemm/gemm.cuh L214--227（FP8 row/tensor Builder）}]{../../../../cache-dit/csrc/kernels/fp8/gemm/gemm.cuh}
+\end{lstinputlisting}
+
+per-row 与 per-tensor 共用这份编译结果。per-tensor 仅在 host 侧把 scale
+stride 改为零：同一地址上的标量被所有输出坐标复用，不需要分配两个向量。
+
+\begin{lstinputlisting}[linerange={303-317},firstnumber=auto,
+  title={cache-dit fp8/gemm/gemm.cuh L303--317（零 stride 广播与参数组装）}]{../../../../cache-dit/csrc/kernels/fp8/gemm/gemm.cuh}
+\end{lstinputlisting}
+
+这也是 Collective API 很有价值的一点：变化停留在参数层。库不需要为
+“A scalar/B vector”“A vector/B scalar”等组合分别生成四份 kernel。
+
+\subsection{FP8 per-block：scale layout 是 mainloop 的输入类型}
+
+per-block 不能只改 EVT。A/B 的布局模板参数变为数据 layout 与 scale-factor
+layout 的 \texttt{tuple}。这里把
+\texttt{Sm120Blockwise}\allowbreak\texttt{ScaleConfig<1,128,128>} 作为简写；
+完整模板还用两个 \texttt{UMMA::Major::K} 指定双方的 scale 主序。前三个数
+描述 A 的 M 粒度 1、B 的 N 粒度 128、双方共同的 K 粒度 128。
+
+\begin{lstinputlisting}[linerange={263-283},firstnumber=auto,
+  title={cache-dit fp8/gemm/gemm.cuh L263--283（blockwise scale config 与 Builder）}]{../../../../cache-dit/csrc/kernels/fp8/gemm/gemm.cuh}
+\end{lstinputlisting}
+
+\texttt{deduce\_layoutSFA()} 出现在 \texttt{decltype} 中。它不会被运行时
+执行，也不计算 scale，只产出一个包含静态粒度与动态占位的 layout
+\textbf{类型}。Builder 从该类型读出 scale granularity，并检查 tile 是否
+相容。对当前配置，K-tile 必须等于 128，而不只是“128 的倍数”。
+
+实际的运行时布局由 \texttt{tile\_atom\_to\_shape\_SFA/SFB} 生成。设
+$G=K/128$，cache-dit 的 SFA 是普通 row-major $[M,G]$，所以
+\begin{equation}
+  \operatorname{offset}_{SFA}(m,g)=mG+g;
+  \label{eq:41-sfa-offset}
+\end{equation}
+SFB 是 row-major $[N/128,G]$，所以
+$\operatorname{offset}_{SFB}(n_b,g)=n_bG+g$。这两个函数把实际的 $M,N,K$
+填进动态 extent 和 stride，得到可寻址的 layout \textbf{值}。
+
+\begin{lstinputlisting}[linerange={346-368},firstnumber=auto,
+  title={cache-dit fp8/gemm/gemm.cuh L346--368（运行时 SFA/SFB layout 与 mainloop 参数）}]{../../../../cache-dit/csrc/kernels/fp8/gemm/gemm.cuh}
+\end{lstinputlisting}
+
+scale 表的生产者必须服从同一映射。若量化器按 $[G,M]$ 写出，而 GEMM
+按 $[M,G]$ 读取，模板仍然可以编译，结果却会系统地读错 scale。Collective
+API 能把布局检查提前到类型层，但不能替一段错误内存赋予正确语义。
+
+\subsection{NVFP4：换 mainloop 类型，保留清晰的 EVT 分工}
+
+FP4 路径使用 \texttt{OpClassBlockScaledTensorOp} 和
+\texttt{nv\_float4\_t<float\_e2m1\_t>}。每个打包字节含两个 FP4 值，因此
+alignment 取 32 个 FP4 元素，仍为 16\,B。K-tile 为 256，覆盖 16 个 K16
+micro-scale 组。cache-dit 用 1x 表示只保留 micro-scale 的单级路径，用 2x
+表示 micro-scale 再叠加 global-scale 的两级路径；生产 Linear 使用后者。
+2x 版本的 Builder 如下：
+
+\begin{lstinputlisting}[linerange={214-239},firstnumber=auto,
+  title={cache-dit fp4/gemm.cuh L214--239（NVFP4 两级 collective）}]{../../../../cache-dit/csrc/kernels/fp4/gemm.cuh}
+\end{lstinputlisting}
+
+host 侧从打包字节宽恢复逻辑 $K=2\times\texttt{a.size(1)}$，通过
+\texttt{Sm1xxBlkScaledConfig} 生成 SFA/SFB layout，并把 global-scale 指针
+交给 EVT。micro-scale 指针进入 mainloop，global-scale 指针进入 epilogue，
+两个对象不能交换。
+
+\begin{lstinputlisting}[linerange={287-320},firstnumber=auto,
+  title={cache-dit fp4/gemm.cuh L287--320（打包 K、scale layout 与 EVT 参数）}]{../../../../cache-dit/csrc/kernels/fp4/gemm.cuh}
+\end{lstinputlisting}
+
+NVFP4 的 canonical scale 存储也不是普通 $[M,K/16]$ 数组。一个 512\,B
+原子覆盖 128 行和连续四个 K16 组，原子内按 32 行子块交错。cache-dit 用
+下面的公式定位 scale 字节；padding 行的 scale 必须置零。
+
+\begin{lstinputlisting}[linerange={69-82},firstnumber=auto,
+  title={cache-dit fp4/quantize.cuh L69--82（NVFP4 的 512 B scale 原子）}]{../../../../cache-dit/csrc/kernels/fp4/quantize.cuh}
+\end{lstinputlisting}
+
+这段布局同时解释了为什么不能把量化输出直接当作普通矩阵传给另一个
+block-scaled GEMM：双方不仅需要相同的 FP4 数值格式，还需要相同的 scale
+atom、atom 遍历顺序和 padding 约定。
+
+\subsection{workspace、stream 与 host ABI}
+
+三种实现都遵循同一 launch 顺序：构造 problem shape 与 stride，生成运行时
+scale layout，填充 mainloop/epilogue 参数，查询 workspace，初始化 Adapter，
+最后在调用者的 stream 上 \texttt{run}。workspace 是否存在由
+\texttt{get\_workspace\_size} 决定，不能凭经验假定恒为零。生产 runner 应
+复用非零 workspace；本章 BF16 头文件为保持单函数示例，只在库显式请求时
+临时分配。
+
+cache-dit 还用 \texttt{gemm.h} 的 \texttt{void*} launch ABI 隔离 Torch
+扩展入口与 CUTLASS/CuTe 头文件。实际的模板实例化留在
+\texttt{gemm/per\_row.cu}、\texttt{per\_tensor.cu} 和
+\texttt{per\_block.cu}。这种拆分不改变算法，却减少了 Torch TU 对大型模板
+头文件的依赖，也避免多个 TU 重复实例化同一份 collective。
+
+\section{图示：scale 的位置与 layout 的两个阶段}
+
+图~\ref{fig:41-scale-placement} 把三种量化路径放在一起。判断 scale 该写在
+mainloop 还是 epilogue，先看它是否随 K 块变化：row/tensor 可以等完整点积
+结束后乘回；blockwise 必须在每个 K 块内折回；NVFP4 则同时存在 mainloop
+micro-scale 与 epilogue global-scale。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize,
+  box/.style={draw, rounded corners=2pt, align=center, inner sep=3pt,
+              minimum height=0.95cm},
+  arr/.style={-{Stealth[length=1.8mm]}, thick}]
+\node[box, draw=tkBlue, minimum width=2.7cm] (r1a) at (0,2.4) {FP8 row/tensor\\未缩放 mainloop};
+\node[box, draw=tkGreen, minimum width=3.5cm] (r1b) at (4.0,2.4) {EVT：$s_A,s_B$ + bias};
+\node[box, draw=tkPurple, minimum width=2.0cm] (r1c) at (8.1,2.4) {BF16 D};
+\draw[arr] (r1a) -- (r1b);
+\draw[arr] (r1b) -- (r1c);
+
+\node[box, draw=tkBlue, minimum width=2.7cm] (r2a) at (0,0.7) {FP8 blockwise\\K128 内施加 SFA/SFB};
+\node[box, draw=tkGreen, minimum width=3.5cm] (r2b) at (4.0,0.7) {EVT：只加 bias};
+\node[box, draw=tkPurple, minimum width=2.0cm] (r2c) at (8.1,0.7) {BF16 D};
+\draw[arr] (r2a) -- (r2b);
+\draw[arr] (r2b) -- (r2c);
+
+\node[box, draw=tkBlue, minimum width=2.7cm] (r3a) at (0,-1.0) {NVFP4 MMA\\消费 micro-scale};
+\node[box, draw=tkGreen, minimum width=3.5cm] (r3b) at (4.0,-1.0) {EVT：global-scale + bias};
+\node[box, draw=tkPurple, minimum width=2.0cm] (r3c) at (8.1,-1.0) {BF16 D};
+\draw[arr] (r3a) -- (r3b);
+\draw[arr] (r3b) -- (r3c);
+\end{tikzpicture}
+\caption{三种量化 GEMM 的 scale 位置。中间的绿色 EVT 看似相似，输入
+accumulator 已经经历的计算并不相同。}
+\label{fig:41-scale-placement}
+\end{figure}
+
+图~\ref{fig:41-layout-types} 进一步区分 blockwise 中最容易混淆的两个函数。
+左侧是类型系统，右侧是运行时内存寻址。二者必须来自同一个
+\texttt{ScaleConfig}，但承担的工作完全不同。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize,
+  panel/.style={draw, rounded corners=3pt, align=left, inner sep=5pt,
+                minimum width=5.4cm, minimum height=3.2cm},
+  lab/.style={font=\scriptsize\bfseries, text=tkBlue!80!black}]
+\node[panel, draw=tkBlue] (left) at (0,0) {
+  \textbf{编译期：deduce\_layoutSFA()}\\[3pt]
+  \quad 只用于 decltype\\
+  \quad 给出 $1\times128$ 粒度类型\\
+  \quad Builder 检查 tile 约束\\[4pt]
+  \quad 不读 scale、不分配内存};
+\node[panel, draw=tkGreen] (right) at (6.7,0) {
+  \textbf{运行期：tile\_atom\_to\_shape\_SFA()}\\[3pt]
+  \quad 输入实际 $M,N,K$\\
+  \quad 例：$M=256,K=512\Rightarrow G=4$\\
+  \quad 得到 $[256,4]$ row-major layout\\[4pt]
+  \quad offset$(m,g)=4m+g$};
+\node[lab] at (0,-2.15) {类型 $\longrightarrow$ mainloop 选择};
+\node[lab, text=tkGreen!70!black] at (6.7,-2.15) {值 $\longrightarrow$ scale 地址计算};
+\end{tikzpicture}
+\caption{SFA layout 的类型推导与运行时实例化。把 \texttt{deduce\_layoutSFA}
+当成 scale 计算函数，会把整个调用链解释错。}
+\label{fig:41-layout-types}
+\end{figure}
+
+\section{性能分析：默认配置之后还要看什么}
+
+本章性能表区分两类入口。FP8 eager 取 \texttt{chain\_default}，FP4 eager 取
+\texttt{chain\_native}（native collective 链），二者都包括在线 activation
+量化、GEMM 和 scale/bias 处理，并分别对 TorchAO 的 \texttt{chain}。
+\texttt{compile\_linear} 是完整 Linear 经 \texttt{torch.compile} 后的时延。
+
+FP4 另有 \texttt{cache\_dit\_chain}（\texttt{use\_native=False} 的
+\texttt{torch.\_scaled\_mm} 链），其六形状相对 TorchAO 的几何均值为 0.872，
+作为非 collective 对照保留在 JSON 中。比值统一写成
+$\texttt{cache\_dit}/\texttt{torchao}$，小于 1 表示 cache-dit 更快。
+测试使用 RTX PRO 5000、六组 FLUX Linear 形状、CUDA Event median，warmup 3、
+计时 10 次；FP4 另跑两轮取中位数。软件为 PyTorch 2.15.0+cu132、TorchAO
+0.18.0，cache-dit commit \texttt{eced0158}。每个数字都来自本章复测日志。
+
+\begin{table}[H]
+\centering\small
+\begin{tabular}{lccc}
+\toprule
+模式 & eager chain 几何均值 & compiled Linear 几何均值 & double\_attn 时延（ms） \\
+\midrule
+FP8 per-row    & 0.541 & 0.736 & 0.223 / 0.219 \\
+FP8 per-tensor & 0.569 & 0.724 & 0.230 / 0.227 \\
+FP8 per-block  & 0.385 & 0.457 & 0.239 / 0.315 \\
+NVFP4 2x       & 0.539 & 0.710 & 0.153 / 0.227 \\
+\bottomrule
+\end{tabular}
+\caption{cache-dit collective 相对 TorchAO 的时延比值。double\_attn 一列
+保留两个实现的原始中位数，其余列为六形状几何均值。}
+\label{tab:41-perf-summary}
+\end{table}
+
+表~\ref{tab:41-perf-summary} 同时给出支持与限制。eager 量化链在四种模式下
+都体现出明显收益；compiled Linear 的 per-row/per-tensor 在第一个形状上则
+与 TorchAO 接近，分别为 $1.020\times$ 和 $1.016\times$。这正说明不能从
+eager chain 直接外推编译路径。per-block 与 NVFP4 在本组形状上的整体比值
+更低，但也不能据此宣称所有模型、所有 shape 都占优。
+
+\begin{table}[H]
+\centering\small
+\begin{tabular}{lcccc}
+\toprule
+形状（$M\times N\times K$） & per-row & per-tensor & per-block & NVFP4 \\
+\midrule
+$4096\times3072\times3072$   & 1.020 & 1.016 & 0.760 & 0.674 \\
+$4096\times12288\times3072$  & 1.004 & 1.025 & 0.701 & 0.737 \\
+$4096\times3072\times12288$  & 0.988 & 0.742 & 0.286 & 0.814 \\
+$4608\times3072\times3072$   & 0.526 & 0.572 & 0.375 & 0.640 \\
+$4608\times3072\times15360$  & 0.373 & 0.389 & 0.299 & 0.696 \\
+$4608\times12288\times3072$  & 0.797 & 0.834 & 0.535 & 0.713 \\
+\bottomrule
+\end{tabular}
+\caption{六组 FLUX 形状的 compiled Linear 时延比值（cache-dit/TorchAO）。}
+\label{tab:41-perf-shapes}
+\end{table}
+
+复测还暴露了两类无效臂，均未进入表格：benchmark 中 72 个旧
+\texttt{use\_ws} 臂在参数删除后报 \texttt{TypeError}；13 个独立量化 compile
+臂触发 \texttt{FailOnRecompileLimitHit}。有效的 \texttt{chain\_default} 与
+\texttt{compile\_linear} 覆盖全部表项。这里不能把脚本返回码 0 解读为
+“所有臂都成功”，必须逐行检查 JSON 的 \texttt{error} 字段。
+
+常规 BF16 示例没有在本机 SM120 上伪装成可运行配置，因此这里不列 BF16
+性能数字。它证明的是常规 Collective API 的代码结构与 SM90A 可编译性。
+FP8/FP4 表证明的是 SM120 低精度 collective 在真实量化链中的表现，三类
+证据不能混写。
+
+阅读结果时至少保留四个边界。第一，TorchAO 与 cache-dit 的量化粒度和
+融合方式不完全相同，性能接近不意味着逐 bit 等价。第二，完整 Linear 还含
+activation 量化与 Inductor 融合，不能只用 GEMM kernel 的峰值解释。第三，
+blockwise FP8 需要按 K128 块 rescale，寄存器压力与额外计算可能抵消部分
+主循环收益。第四，非对齐 shape 的 zero-pad/depad 保证数学有效区域不变，
+但会增加拷贝和无效计算；原生对齐的 Linear 在性能上更有利。
+
+因此，“直接使用 Collective API 获得合理性能基线”应落实为一套工作方法：先用默认
+collective 建立正确基线，再分别测量量化、GEMM、epilogue 与 host 开销，
+最后才调整 tile、stage 或融合边界。只比较一个孤立的 4096 立方 GEMM，不能
+推出整条模型路径的收益。
+
+\section{实践经验}
+
+\begin{kaogu}[F3]{cache-dit 两处 EVT 注释把 row/column 写反}
+cache-dit \texttt{fp8/gemm/gemm.cuh} 与 \texttt{fp4/gemm.cuh} 的局部注释
+在 \texttt{eced0158} 处仍把 \texttt{ColBroadcast} 说成输出列 scale、把 \texttt{RowBroadcast}
+说成输出行 scale。实际代码恰好相反：\texttt{ColBroadcast} 读取随 $m$
+变化的 activation global scale，\texttt{RowBroadcast} 读取随 $n$ 变化的
+weight global scale 与 bias。本章按节点类型和参数 stride 解释，不照抄
+该注释；完整记录见 \texttt{book/CHECKLOG.md}。
+\end{kaogu}
+
+\begin{kaogu}[F2]{Auto 标签仍然具有具体语义}
+\texttt{StageCountAuto}\allowbreak\texttt{Carveout} 是 shared-memory 预算扣除策略，
+\texttt{EpilogueTile}\allowbreak\texttt{Auto} 是 epilogue 子 tile 的自动选择，
+\texttt{KernelSchedule}\allowbreak\texttt{Auto} 则进入架构相关的 schedule 分派。把 Auto 读成
+“参数不存在”会错过实际的性能旋钮。相反，看到 Auto 就宣称库已完成全局
+最优搜索也没有依据；它选择合法且合理的实现，不负责证明当前模型与 shape
+下的最优性。
+\end{kaogu}
+
+\section{常见坑}
+
+\begin{enumerate}[itemsep=1pt,topsep=2pt]
+  \item \textbf{把 SM90 BF16 配方直接改成 SM120}。CUTLASS 4.8.1 的 SM120
+        dense Builder 只支持 F8F6F4，修改 \texttt{arch} 标签不会自动获得
+        BF16 collective。
+  \item \textbf{把 \texttt{ColumnMajor} 理解成一次转置拷贝}。本章的 B 仍是
+        物理 row-major $[N,K]$；column-major 只是同一内存的数学 $[K,N]$
+        解释。
+  \item \textbf{alignment 写成字节数}。模板参数以元素数计。BF16=8、FP32=4、
+        FP8=16、打包 FP4=32，在这些案例中都对应 16\,B。
+  \item \textbf{epilogue 模板参数错位}。accumulator 与 compute 之后才是
+        ElementC；把第三个 float 一概读成 C 类型，会误解整个 Builder。
+  \item \textbf{blockwise 又在 EVT 乘 scale}。K 相关 scale 已在 mainloop
+        施加，epilogue 只能加 bias，否则重复缩放。
+  \item \textbf{把 \texttt{deduce\_}\allowbreak\texttt{layoutSFA} 当运行时函数}。
+        它用于 \texttt{decltype} 的类型推导；实际寻址需要
+        \texttt{tile\_atom\_to\_shape\_}\allowbreak\texttt{SFA} 的运行时 layout 值。
+  \item \textbf{忽略量化 producer 的 scale 布局}。Builder 接受 layout 类型，
+        却不能修正已经写错的 scale 表。SFA/SFB 必须与量化器共同审查。
+  \item \textbf{把 zero-pad 当成零成本兼容}。零 qdata、零 scale 和零 bias
+        让有效输出区域不变，但 pad/depad 仍有拷贝与额外 tile 开销。
+  \item \textbf{忘记 workspace 与 stream}。\texttt{run} 必须进入调用者的
+        stream；非零 workspace 必须在同一设备上有效，并活到 kernel 完成。
+\end{enumerate}
+
+\section{面试要点速查}
+
+\textbf{Q1：CollectiveBuilder 与 GemmUniversalAdapter 各负责什么？}
+
+Builder 在编译期生成 mainloop/epilogue 类型，决定数据搬运、MMA、流水和
+输出构件。Adapter 在 host 侧接收 problem shape、指针、stride、fusion 参数
+和 workspace，并执行 initialize/run。前者是类型构造，后者是调用接口。
+
+\textbf{Q2：为什么常规 GEMM 用 Collective API 能显著减少代码？}
+
+TMA、stage ring、MMA atom、寄存器 fragment 和默认 epilogue 都已有库实现。
+调用者只需声明数学类型、布局、tile、alignment 与 schedule。减少的是执行
+机制代码，不是数学约定和验证工作。
+
+\textbf{Q3：per-row 与 per-tensor 为什么可以共用一份 kernel？}
+
+两者的数学差别只是 scale 广播方式。per-row 的 scale stride 随 M/N 前进，
+per-tensor 把 stride 置零，同一标量在所有坐标复用。mainloop 与 EVT 类型
+不变，只改运行时参数。
+
+\textbf{Q4：FP8 per-block 为什么不能沿用 rowwise epilogue？}
+
+per-block scale 随 K 块变化。只有先对每个 K128 部分积施加对应 scale，再
+累加，才能得到正确结果。完整 accumulator 形成后已无法恢复每个 K 块各自
+的 scale 乘积。
+
+\textbf{Q5：\texttt{deduce\_layoutSFA} 与
+\texttt{tile\_atom\_to\_shape\_SFA} 有何区别？}
+
+前者提供编译期 layout 类型，供 Builder 选择 mainloop 并检查 scale
+granularity；后者用真实 M/N/K 生成运行时 layout 值，供 mainloop 计算
+scale 地址。前者不求值、不读数据，后者才描述实际内存映射。
+
+\textbf{Q6：NVFP4 的两级 scale 分别在哪里处理？}
+
+每 16 元素的 ue4m3 micro-scale 由 block-scaled mainloop/MMA 消费；每行
+activation 与每个输出通道 weight 的 FP32 global scale 由 EVT 折回，并在
+同一 epilogue 中加 bias。两级 scale 的类型、粒度和消费者都不同。
+
+\textbf{Q7：使用 Collective API 后还需要 NCU 吗？}
+
+需要。Builder 能选择合理实现，却不能证明当前 shape 的最优 tile、stage 和
+融合边界。NCU 用来判断 tensor pipe、DRAM/L2、shared memory、寄存器与
+occupancy 的瓶颈；是否改配置应由测量决定。
+
+\section{最小测试与动手实验}
+
+\subsection{BF16 头文件测试}
+
+测试文件 \texttt{book/tests/ch41\_cutlass\_collective.cu} 调用
+\texttt{collective\_}\allowbreak\texttt{gemm.cuh}，输入规模 $M=N=K=128$，CPU FP64 参考直接使用
+已经舍入到 BF16 的输入，输出保持 FP32，容差为 $10^{-3}$。SM90A 编译命令为：
+
+\begin{lstlisting}[style=console]
+cd kernels/interview/book/tests
+mkdir -p .build/ch41
+CUTLASS_HOME=${CUTLASS_HOME:-../../../../third-party/cutlass}
+nvcc -gencode arch=compute_90a,code=sm_90a -std=c++20 -O2 \
+  -I"$CUTLASS_HOME/include" -I../.. \
+  -o .build/ch41/ch41_cutlass_collective_sm90a \
+  ch41_cutlass_collective.cu
+./.build/ch41/ch41_cutlass_collective_sm90a
+# 也可将 CUTLASS_HOME 指向同级 cache-dit 的 CUTLASS 4.8.1；两版均已编译验证
+\end{lstlisting}
+
+本章构建环境没有 SM90 设备，因此完成 SM90A 编译验证但不执行该 kernel。
+相同源码以 SM120A 构建后按约定输出 \texttt{SKIP(ch41)}。FP8/FP4 的真实
+数值回归在 cache-dit 中运行：
+
+\begin{lstlisting}[style=console]
+cd ../../../../../cache-dit
+python -m pytest -q \
+  tests/kernels/test_fp8_ops.py tests/quantization/test_fp8_backend.py \
+  tests/kernels/test_fp4_ops.py tests/quantization/test_fp4_backend.py
+\end{lstlisting}
+
+本次共 81 项通过。它覆盖三种 FP8 模式、FP4 1x/2x、非对齐形状的
+pad/depad、fake/fullgraph 与 CUDA Graph 等路径；单个 BF16 示例的架构 SKIP
+不计入这 81 项。
+
+\subsection{动手实验}
+
+\begin{enumerate}[itemsep=1pt,topsep=2pt]
+  \item 把 BF16 的 \texttt{TileShape} 从 $128\times128\times64$ 改为
+        $64\times128\times64$，比较编译期选择的 mainloop 与大 shape 下的
+        CTA 波次，不预设较小 tile 一定更快。
+  \item 将 per-tensor 的零 stride 改回 per-row stride，并传入全相同元素的
+        scale 向量，检查输出是否一致，再解释为什么内存访问方式不同。
+  \item 固定 $M=256,K=512$，用式~\ref{eq:41-sfa-offset} 手工计算
+        $(m,g)=(17,3)$ 的 SFA offset，并与量化器的写入下标对照。
+  \item 在 FP4 1x/2x 两条路径间只替换 epilogue，观察 mainloop 类型不变；
+        再把 global scale 错传给 mainloop，分析为何类型系统已经阻止这种
+        接法。
+  \item 对一个非 128 对齐的 Linear 测量 pad/depad 前后的有效输出与总时延，
+        将“结果数学等价”和“性能零开销”分开记录。
+\end{enumerate}
+
+\subsection{延伸阅读}
+
+\begin{itemize}[itemsep=1pt,topsep=2pt]
+  \item @BBuf《CUTLASS 2.x \& 3.x Intro 学习笔记》：模板参数与 GEMM 结构，
+        \url{https://zhuanlan.zhihu.com/p/710516489}。
+  \item @reed《cute 之 简单 GEMM 实现》：从 CuTe 构件手写 GEMM 的对照路径，
+        \url{https://zhuanlan.zhihu.com/p/667521327}。
+  \item @reed《cute 之 GEMM 流水线》：流水与数据搬运背景，
+        \url{https://zhuanlan.zhihu.com/p/665082713}。
+  \item @Titus《GEMM 流水线：single/multi-stage、pipeline》：stage 与调度
+        概念，\url{https://zhuanlan.zhihu.com/p/712451053}。
+  \item NVIDIA CUTLASS 4.8.x 文档与示例 49/79/87：CollectiveBuilder、
+        Blackwell GeForce GEMM 与 blockwise GEMM，
+        \url{https://github.com/NVIDIA/cutlass/tree/v4.8.1/examples}。
+\end{itemize}

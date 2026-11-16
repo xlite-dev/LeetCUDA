@@ -19,8 +19,12 @@ cd kernels/interview/book/tests
 ./build_tests.sh --arch sm_120a --all   # 构建运行全部已存在测试
 ./build_tests.sh --ch ch04              # 单章
 ./build_tests.sh --ch ch13 --no-run     # 只编译（如远端无 H800 时的 ch13）
+./build_tests.sh --ch ch41 --arch sm_90a --no-run  # BF16 CollectiveBuilder 同理
 ```
 
 ## 进度
 
 随 RFC-C/D/E/F 各章任务逐个落地；执行卡片中的「测试 ← notes-v2.cu 抽取源」行号见 `book/skills/write-leetcuda-book/RFC.md`。
+
+ch41 的 BF16 CollectiveBuilder 当前以 SM90A 编译验证为主；在 SM120A 下也保留
+fallback 编译烟测，运行时输出 SKIP。长期无 SM90 设备时，不把该 SKIP 记作运行 PASS。

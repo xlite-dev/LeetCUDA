@@ -234,6 +234,34 @@ FFPA-FP4 804~T（2.60$\times$）。同 sm\_120 微架构下 PRO 5000 绝对值�
 $\sim$15\%（fp8）/$\sim$35\%（fp4），形态结论可迁移、绝对数字不可
 （第~\ref{ch:33}~章 33.6.4）。
 
+\section{Part VIII：CUTLASS Collective API 明细}
+
+第~\ref{ch:41}~章在 2026-11-16 使用 RTX PRO 5000、cache-dit
+\texttt{eced0158}、PyTorch 2.15.0+cu132 与 TorchAO 0.18.0 复测六组 FLUX
+Linear 形状。下表为 cache-dit/TorchAO 的时延几何均值，小于 1 表示
+cache-dit 更快；eager chain 与 compiled Linear 分开，不与本书其它章节
+的 TFLOPS 直接比较。FP8 的旧 \texttt{use\_ws} 臂与触发重编译上限的独立
+量化 compile 臂已排除，所有表项均有有效时延。
+
+\begin{center}\small
+\begin{tabular}{lcc}
+\toprule
+模式 & eager chain & compiled Linear \\
+\midrule
+FP8 per-row & 0.541 & 0.736 \\
+FP8 per-tensor & 0.569 & 0.724 \\
+FP8 per-block & 0.385 & 0.457 \\
+NVFP4 2x & 0.539 & 0.710 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+FP8 eager 使用 \texttt{chain\_default}，FP4 eager 使用
+\texttt{chain\_native}；后者另有 \texttt{cache\_dit\_chain}（scaled\_mm）
+对照臂，几何均值 0.872，未混入表中的 collective 数据。常规 BF16 示例只完成
+SM90A 编译验证，本机无 SM90 设备，未列性能数字。逐形状比值、
+warmup/iterations 与无效臂说明见第~\ref{ch:41}~章性能节。
+
 \section{四条性能主线}
 
 \textbf{主线一：带宽（合并访问与向量化）。}\allowbreak{}Part I 的全部算子 $AI \le 0.625$，

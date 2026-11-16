@@ -192,6 +192,10 @@
     __nv_bfloat16,__float2bfloat16,__bfloat162float,__nv_fp8_e4m3,
     __nv_cvt_float2_to_fp8x2,make_uint4,float_e4m3_t,bfloat16_t,
     cutlass::arch::ClusterTransactionBarrier,cutlass::arch::ClusterBarrier,
+    cutlass::gemm::collective::CollectiveBuilder,cutlass::epilogue::collective::CollectiveBuilder,
+    KernelScheduleAuto,EpilogueScheduleAuto,StageCountAutoCarveout,
+    GemmUniversalAdapter,make_internal_packed_stride,
+    Sm90EVT,Sm90AccFetch,Sm90RowBroadcast,Sm90ColBroadcast,
     fence_view_async_shared,SM89_16x8x32_F32E4M3E4M3F32_TN,
     % 辅助
     fill_2D_regs,fill_3D_regs,div_ceil,make_smem_desc,test_hgemm_cute,
