@@ -1246,4 +1246,4 @@ git diff --check：通过
 - 图与文风：3 张 TikZ standalone 真渲染逐图目检，无重叠/裁切；去 AI 味扫描完成。英文图词典手工补齐 12 条，最终英文图 217/217；代码词典 778/778、公式词典 123/123。
 - 验收：主 `book/build.sh` **650 页 / 0 error / 0 undefined / 缺字 0 / Overfull≥1pt 15（既有）**；`git diff --check` 通过。RTD 全量 build 与 convert.verify 全过（目录编号 49 条、跨仓清单全部内联、表格 141/141），`visual_check` **99 页需处理 0**，ch41 长页截图分段目检通过。并行构建曾造成 book.toc 竞争，最终保留最新 toc 顺序重跑，目录核对未跳过。
 - SVDQuant：ch38–40、appC/D/E、BOOK_PLAN 与 RTD sources 统一到 `eced0158`；7 个 FP8/FP4/SVDQ 快照逐字节与 commit 一致，9 条 SHA256 复核通过。历史 RFC/CHECKLOG 保留旧版本事实，不改写。
-- 残余：BF16 无 SM90 运行设备，未执行 kernel；性能仅限本次六形状与环境；本仓新文件固定 permalink 与 anchors repo_commit 待用户明确要求提交后回填。RTD `build/report.json` 的 12 条 broken_refs 全在未改动的 ch19b，属既有基线，非本次新增失败。未提交 commit。
+- 残余：BF16 无 SM90 运行设备，未执行 kernel；性能仅限本次六形状与环境；本仓新文件固定 permalink 与 anchors repo_commit 已在交付提交 \texttt{5b618f2} 回填。RTD `build/report.json` 的 12 条 broken_refs 全在未改动的 ch19b，属既有基线，非本次新增失败。未提交 commit。

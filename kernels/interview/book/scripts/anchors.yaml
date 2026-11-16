@@ -1,7 +1,7 @@
 # anchors.yaml — LeetCUDA 成书源码冻结登记（RFC-A.3）
 # 登记后源文件零改动（BOOK_PLAN §5.3）；校验脚本 verify_anchors.py
 frozen_at: "2026-11-16"
-repo_commit: "PENDING_COMMIT"
+repo_commit: "5b618f24651d764fb6cd9d162f1ecf75318aeece"
 files:
   base.cuh:
     sha256: cda419930ad0a0670f0695372a8599f398ac7b48479e5fcb317262b5dc232ac0
