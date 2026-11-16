@@ -17,17 +17,20 @@ checkout——本地 checkout 会随上游演进漂移，快照才是本地预�
 
 | 仓库 | commit | 依据 |
 | --- | --- | --- |
-| cache-dit | `db125215` | ch39/ch40 头注释、appC |
+| cache-dit | `eced0158` | ch39/ch40/ch41 头注释、appC |
 | ffpa-attn | `861d75e` | ch27 头注释、appC |
 
 ## 内容
 
 | 文件 | 引用章 | sha256 |
 | --- | --- | --- |
-| `cache-dit/csrc/kernels/svdq/cute/fp4/quantize/quantize_impl.cuh` | ch39 | `d7e703efdf49116ac9f16cc1e0b02e102c7b01a564a167990b60443340a96ad4` |
+| `cache-dit/csrc/kernels/svdq/cute/fp4/quantize/quantize_impl.cuh` | ch39 | `a768a022b3c59607654b7225f2d0898f45d043f926c78b5b5afbc84fe815dc11` |
 | `cache-dit/csrc/kernels/svdq/cute/fp4/quantize/quantize_uni.cu` | ch39 | `fee86eaf82d80c5bc69b7ba8822964e99101d1670458013f8d43b8c5b6be073e` |
 | `cache-dit/csrc/kernels/svdq/cute/fp4/gemm/gemm_w4a4.cuh` | ch40 | `e6a9074b45ed75b6a5e741e54aeb816ae6693b6b79c62dbe9f985f248647e962` |
 | `cache-dit/csrc/kernels/svdq/cute/fp4/gemm/gemm_w4a4.cu` | ch40 | `f2c81066d4a6b7d99ce2d3973762ad5f004f531529786b46e1f8cc09a098eef7` |
+| `cache-dit/csrc/kernels/fp8/gemm/gemm.cuh` | ch41 | `c555d9d9f45be081ce60492a0065a2a2bbf6375bca970a5137b868119c8ee053` |
+| `cache-dit/csrc/kernels/fp4/gemm.cuh` | ch41 | `a787ee0d5b4ede351543e1d910e853f340e099fa7b627497d2f7fe5a0ca37979` |
+| `cache-dit/csrc/kernels/fp4/quantize.cuh` | ch41 | `2bdd6c71e47c6b70b92cae9e6edd77fda5cc3767443a73601adf076643db38eb` |
 | `ffpa-attn/csrc/cuffpa/cute/fp8/fp8_pscale.cuh` | ch27 | `3cb88c6b044b8c81bfde1a625495be7ae9394c8b4971c6604ca459f47918fe56` |
 | `ffpa-attn/csrc/cuffpa/cute/softmax.cuh` | ch27 | `72c339e36dcbfc218964fed0e653d74da111951ac0ce9670eb05bae1901d784c` |
 
@@ -35,7 +38,7 @@ checkout——本地 checkout 会随上游演进漂移，快照才是本地预�
 
 ```bash
 cd docs/readthedocs
-git -C ../../../cache-dit show db125215:<path> > sources/cache-dit/<path>
+git -C ../../../cache-dit show eced0158:<path> > sources/cache-dit/<path>
 git -C ../../../ffpa-attn show 861d75e:<path> > sources/ffpa-attn/<path>
 sha256sum sources/<repo>/<path>   # 与上表对齐
 ```

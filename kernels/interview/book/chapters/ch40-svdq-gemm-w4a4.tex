@@ -1,5 +1,5 @@
 % ch40-svdq-gemm-w4a4.tex — SVDQuant(三)：W4A4 GEMM（RFC-P3）
-% 源码：cache-dit(db125215) csrc/kernels/svdq/cute/fp4/gemm/gemm_w4a4.{cuh,cu,h}
+% 源码：cache-dit(eced0158) csrc/kernels/svdq/cute/fp4/gemm/gemm_w4a4.{cuh,cu,h}
 % 与 ch37 分工：ch37 = LeetCUDA 自研 fp4_gemm.cuh（attention 内外积，non-WS/WS 双路径）；
 % 本章 = cache-dit gemm_w4a4（Linear W4A4 + 低秩修正，G2R/TMA hybrid + overlay + LoRA 调度）。
 \chapter{SVDQuant（三）：W4A4 GEMM——FP4 MMA 与 BF16 LoRA-up 融合}\label{ch:40}
@@ -20,7 +20,7 @@ W4A4 GEMM，\textbf{hybrid 搬运}（A/SFA 走 G2R、B/SFB/D/L1 走 TMA）、
 \textbf{LoRA 项调度}（LoRA-first/main-first 两种合法时序及其代数补偿），
 重点是“一个 accumulator 装两个不同 MMA 的积”。
 
-\textbf{源码区间}：cache-dit commit \texttt{db125215} 的
+\textbf{源码区间}：cache-dit commit \texttt{eced0158} 的
 \texttt{csrc/kernels/svdq/cute/fp4/gemm/}\texttt{gemm\_w4a4.cuh}（1331 行，
 kernel 主体）、\texttt{gemm\_w4a4.cu}（177 行，host 约定与派发）、
 \texttt{gemm\_w4a4.h}（55 行，公共约定）；\texttt{LoraLayout} 的枚举定义已
@@ -534,7 +534,7 @@ SM120 能力（L147），然后按几何选 tile 配置——
 lora\_layout（native/row\_major）选择三种合法组合；\texttt{native+row\_major}
 会被拒绝。布局匹配是硬约束：\texttt{row\_major} 的 $D$ 必须由公共 producer
 入口在 \texttt{lora\_layout="row\_major"} 下产出，使用行主序的
-\texttt{\_cute\_proj\_down} 与 \texttt{\_cute\_smooth}，再由 \texttt{ops.h}
+\texttt{\_cute\_proj\_down} 与 \texttt{\_cute\_smooth}，再由 \texttt{svdq.cpp}
 选择 uni 或 rank 特化实现；\texttt{native} 的 $D$ 必须由 native producer
 产出，使用 checkpoint 里 fragment-packed 的
 \texttt{proj\_down}/\texttt{smooth\_factor}。既有实测中，混用曾造成

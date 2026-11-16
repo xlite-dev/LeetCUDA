@@ -110,7 +110,7 @@
 
 ---
 
-## 3. 书稿结构：6 Part · 41 章 · 5 附录
+## 3. 书稿结构：正文 8 Part · 45 章（44 编号 + 1 不编号）· 5 附录
 
 > 每章卡片字段：**源码区间**（引用范围）/ **kernel** / **前置** / **公式** / **图** / **参考** / **测试**。行号以 §1.3 核验表为准；RFC-A 登记锚点断言。
 
@@ -202,6 +202,19 @@
 > 3. 行号引用基准：`861d75e` 工作树行号（§1.3 表不覆盖 ffpa-attn，各章卡片行号在 RFC-K 执行时以 wc/grep 复核）。
 > 4. sm_89 fp8 persist-D 路径**不讲**（只在 ch29 用一个考据框提「无 TMA/WS 的 cp.async 变体存在」即可）。
 
+### Part VII SVDQuant 篇（ch38-40，2026-11-11 完成）
+
+SVDQuant 三章的源码区间、公式与图清单见 RFC-P；当前源码与 Part VIII 统一锚定
+cache-dit `eced0158`，沿用外部仓只读引用、RTD 冻结快照与附录 D permalink 范式。
+
+### Part VIII CUTLASS Collective API 篇（ch41，2026-11-16 新增，RFC-Q）
+
+| 章 | 标题 | 源码区间 | 前置 | 核心公式/概念 | 关键图 | 主参考 |
+|---|---|---|---|---|---|---|
+| 41 | CUTLASS Collective API：从常规 GEMM 到 FP8/FP4 | 本仓 `collective_gemm.cuh` L31-87；cache-dit `fp8/gemm/gemm.cuh` L111-121/L214-227/L263-283/L303-317/L346-368，`fp4/gemm.cuh` L214-239/L287-320，`fp4/quantize.cuh` L69-82 | 24,35,37,40 | $D=\alpha AB^T+\beta C$；FP8 row/tensor 的 EVT scale+bias；FP8 blockwise 的逐 K128 rescale；NVFP4 micro-scale/mainloop 与 global-scale/EVT 分工；`deduce_layoutSFA` 类型 vs `tile_atom_to_shape_SFA` 运行时值 | API 分层图、scale 位置图、SFA 类型/值图（3 张 TikZ inline） | CUTLASS v4.8.1 examples 49/79/87；cache-dit `eced0158` |
+
+> **Part VIII 特别约定**：BF16 示例为本仓新增冻结件，目标 SM90，做 SM90A 编译验证，非 SM90 设备输出 SKIP；FP8/FP4 为 cache-dit 外部只读引用，不进入 anchors.yaml 的 `files` SHA256 段。第 4 条测试 = 本仓 `ch41_cutlass_collective.cu` 的 SM90A 编译/SKIP + cache-dit FP8/FP4 81 项回归；第 5 条 bench = 本书在 PRO 5000 上实际复测六组 FLUX Linear，区分 eager chain 与 compiled Linear，并逐项排除 JSON 中的 error 臂。正文不把 SM90 BF16 配置写成可直接迁移到 SM120，不把默认 collective 宣称为无条件最优。
+
 ### 附录
 
 | 附录 | 内容 | 源 |
@@ -244,7 +257,9 @@
 >
 > **Part V 特化（ch34/35，2026-09-24）**：fp8_gemm.cuh 为本仓新增冻结件，随本增补 commit 冻结进 anchors.yaml；WS 变体的 setmaxnreg 直接调 `cutlass::arch::warpgroup_reg_{de,}alloc`（不走 NOTES_V2_REG_* 宏）；加速比双口径（vs cuBLAS 库现状 163.5 T / vs 手写 bf16 HGEMM 上限 ≈243 T，ch35 35.8.1 专节拆解基线）。库默认 tile 取扫描最快档 128×256×128/s2（35.8.4 节），但该结论带形状前提（2048³ 反慢 17%）。其余各条照常。
 >
-> **SVDQuant 篇特化（ch38-40，2026-11-07 用户指定，RFC-P）**：三章讲解 cache-dit 外部公开仓库（commit `db125215`），源码只读引用 `\lstinputlisting{../../../../cache-dit/...}`（构建前置条件 = 同级 checkout，见附录 C「cache-dit 同级 checkout」节）。第 2 条锚点 =「cache-dit commit `db125215` + anchors.yaml 只登记 chapters 的 linerange 首末行文本匹配，**不冻结 SHA256**」（冻结权在 cache-dit 仓库自身；`files` 段不含其条目）；第 4 条测试特化为「读者执行 cache-dit `tests/kernels/test_svdquant_{cute,runtime}.py`（SM120 门控 skip；本书未复跑——用户指定本任务不跑任何 GPU kernel）」；第 5 条 bench 数据源 = cache-dit 开发记录（`bench/kernels/bench_svdquant.py` + 优化记录，各表注明来源/日期/口径；appB 已声明无本书复测）；第 7 条知乎参考例外登记见 RFC.md §15。ch38 为纯数学章：无源码锚点、无 kernel 测试（同 ch15 先例），数学验证以推导复核代替。其余各条照常（编译零 error、CHECKLOG、自审、文风、RTD 三层验收不豁免）。
+> **SVDQuant 篇特化（ch38-40，2026-11-07 用户指定，RFC-P）**：三章讲解 cache-dit 外部公开仓库（commit `eced0158`），源码只读引用 `\lstinputlisting{../../../../cache-dit/...}`（构建前置条件 = 同级 checkout，见附录 C「cache-dit 同级 checkout」节）。第 2 条锚点 =「cache-dit commit `eced0158` + anchors.yaml 只登记 chapters 的 linerange 首末行文本匹配，**不冻结 SHA256**」（冻结权在 cache-dit 仓库自身；`files` 段不含其条目）；第 4 条测试特化为「读者执行 cache-dit `tests/kernels/test_svdquant_{cute,runtime}.py`（SM120 门控 skip；本书未复跑——用户指定本任务不跑任何 GPU kernel）」；第 5 条 bench 数据源 = cache-dit 开发记录（`bench/kernels/bench_svdquant.py` + 优化记录，各表注明来源/日期/口径；appB 已声明无本书复测）；第 7 条知乎参考例外登记见 RFC.md §15。ch38 为纯数学章：无源码锚点、无 kernel 测试（同 ch15 先例），数学验证以推导复核代替。其余各条照常（编译零 error、CHECKLOG、自审、文风、RTD 三层验收不豁免）。
+>
+> **Collective API 篇特化（ch41，2026-11-16，RFC-Q）**：BF16 新头文件 `collective_gemm.cuh` 纳入 anchors.yaml `files` SHA256 冻结；cache-dit `eced0158` 的 FP8/FP4 文件只登记 chapters 行锚点并保存 RTD 快照。第 4 条测试分为本仓 BF16 SM90A 编译/非 SM90 SKIP 与 cache-dit 81 项 FP8/FP4 回归，BF16 不在本机 SM120 上强行运行。第 5 条 bench 必须实际执行 `bench_fp8.py --suite flux` 与 `bench_fp4.py`，数据落 `.tmp/book-bench/ch41/`；只使用无 error 的 chain_default/compile_linear 行，所有性能表注明 eager/compile、GPU、软件版本与无效臂。其余各条照常。
 
 ### 4.3 行文风格（作者风格基线，2026-09-11 用户定）
 
@@ -309,7 +324,7 @@
 kernels/interview/book/tests/
 ├── common_test.h        # 共享：CPU fp64 参考、容差判定、PASS/FAIL 输出、arch SKIP 宏
 ├── build_tests.sh       # --arch sm_120a [--ch ch04] [--all]；带 -I ../../third-party/cutlass/include
-├── ch01_arch.cu … ch26_ffpa_split_d_cute.cu   # 每章一个（见 RFC.md 执行卡片）
+├── ch01_arch.cu … ch41_cutlass_collective.cu   # 每章一个（见 RFC.md 执行卡片）
 └── README.md
 ```
 
@@ -433,7 +448,7 @@ kernels/interview/book/
 ├── book.tex            # ctexbook[9pt,openany] + \tableofcontents + part/chapter 骨架
 ├── preamble.tex        # 从 tex/notes-v2.tex 抽取：8 色调色板/字体/lstset；+graphicx/amsthm/booktabs
 ├── build.sh            # 两遍 xelatex（TEXMFCNF=../tex/）+ 清理
-├── chapters/ch01-….tex … ch26-….tex
+├── chapters/ch00-….tex … ch41-….tex（含 ch19b/ch26b/ch26c 增补）
 ├── appendices/appA-….tex … appE-….tex
 ├── figures/{ascii/,zhihu/,drawio/,tikz/}
 ├── tests/  notes/  references/  scripts/verify_anchors.py
@@ -501,7 +516,7 @@ CWD 必须是 `book/`；源码引用写 `../base.cuh` 形式。
 
 ## 11. 验收标准
 
-**全书级**：`book.pdf` ≥280 页；TOC 含 26 章+5 附录，页码正确，PDF 书签可用；每章正文 ≥3500 字；逐章 grep 引文文本 `#if/#endif` 成对；pdftotext 抽查无豆腐块；代码行号与源文件一致；每章标注编译宏与架构；引用图 100% 有出处标注；编译日志无 `! LaTeX Error`、Overfull hbox 可控。
+**全书级**：`book.pdf` ≥280 页；TOC 含 45 章（44 编号 + 1 不编号）+5 附录，页码正确，PDF 书签可用；每章正文 ≥3500 字；逐章 grep 引文文本 `#if/#endif` 成对；pdftotext 抽查无豆腐块；代码行号与源文件一致；每章标注编译宏与架构；引用图 100% 有出处标注；编译日志无 `! LaTeX Error`、Overfull hbox 可控。
 
 **每章级**：§4.2 DoD 八条。
 

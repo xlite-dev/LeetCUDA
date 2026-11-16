@@ -5,6 +5,8 @@
 
 | 日期 | 位置 | 原文摘要 | 类别 | 证据 | 建议 | 状态 |
 |---|---|---|---|---|---|---|
+| 2026-11-16 | cache-dit fp8/gemm/gemm.cuh L83-84；fp4/gemm.cuh L115-120 | 局部注释把 ColBroadcast 指为输出列 scale、RowBroadcast 指为输出行 scale；真实代码是 ColBroadcast 读取随 m 变化的 activation scale，RowBroadcast 读取随 n 变化的 weight scale/bias | F3 | 两个文件 EVT L111-121/L123-132 与 stride 类型交叉核对 | ch41 按代码节点解释；不回写 cache-dit | 已入正文 |
+| 2026-11-16 | cache-dit bench/kernels/bench_fp8.py 的旧 WS/non-WS 与独立量化 compile 臂 | FP8 复测有 72 个 use_ws 臂报 TypeError、13 个独立量化 compile 臂触发 FailOnRecompileLimitHit；脚本仍返回 0，不能据此宣称全部臂通过 | F5 | ch41 fp8.json 的 error 字段逐行统计；有效 chain_default/compile_linear 六形状均齐 | 性能表排除无效臂并披露；建议后续清理 benchmark 旧参数 | 仅登记 |
 | 2026-11-11 | cache-dit quantize.h L12 / quantize_impl.cuh L23,173-184 | 注释写 per-K32 scale，但实现要求 ascales 至少 M*K/16 字节，gemm/gemm_w4a4.h L15 也明确每 16 个 K 元素一个 SFA；K32 不是 scale 粒度；L173-175 的“j selects one K32 panel”也与地址算术不符，j 实际选择 8 行半 | F3 | quantize_impl.cuh L247/L249-263/L906-909 + quantize_uni.cu L943-946 + GEMM 消费约定交叉核对 | ch39 按 per-16 写正文与常见坑；不回写 cache-dit | 已入正文 |
 | 2026-11-11 | cache-dit quantize_uni.cu 头注释 / gemm/gemm_w4a4.cu L52-58 | 旧注释的“无 FP32 scratch/atomic/finalize”与“neither workflow needs a LoRA finalize”只对 fused 或旧 producer 成立；当前 split-K 明确包含 scratch 清零、relaxed FP32 atomics 与同 stream finalize | F5 | ops.h L167-189 + quantize_impl.cuh L426-442/L821-845 | ch39/40 按 fused/split-K 分开表述；不回写 cache-dit | 已入正文 |
 | 2026-11-07 | cache-dit gemm_w4a4.h L41 | 「Both LoRA layouts compute exactly the same math」：代数结构成立，但数值路径不同——kRowMajor 的 D 在 producer 折 `lora_scales` 时已舍入 BF16（quantize_w4a4.cu L383），kNative 的 D 是 FP32、gather 时乘 scale 后才转 BF16（gemm_w4a4.cuh L697） | F3 | 两条消费路径逐行对照 | ch39/40 正文按「数学等价 + 舍入时机不同」表述（39.2.3/40.4.6）；不回写 cache-dit（本任务只读） | 已入正文 |

@@ -1,5 +1,5 @@
 % ch39-svdq-quant-producer.tex — SVDQuant(二)：量化 producer（RFC-P2）
-% 源码：cache-dit(db125215) csrc/kernels/svdq/cute/fp4/quantize/ + gemm/ + ops.h
+% 源码：cache-dit(eced0158) csrc/kernels/svdq/cute/fp4/quantize/ + gemm/ + svdq.cpp
 % 公式锚点一律回指 ch38（sec:38-*），本章不重推。
 \chapter{SVDQuant（二）：量化 producer——融合 LoRA-down 的激活量化}\label{ch:39}
 
@@ -14,7 +14,7 @@ $X$，朴素写法会把它变成多条独立的 kernel 链，引入额外中间
 fused 与 split-K 两种调度；前者用单个 kernel 完成，后者还需要一次 BF16
 finalize，不能再把整条链概括成“永远只有一个 kernel”。
 
-\textbf{源码区间}：cache-dit 仓库 commit \texttt{db125215} 的
+\textbf{源码区间}：cache-dit 仓库 commit \texttt{eced0158} 的
 \texttt{csrc/}\allowbreak\texttt{kernels/}\allowbreak\texttt{svdq/}%
 \allowbreak\texttt{cute/}\allowbreak\texttt{fp4/}\allowbreak\texttt{quantize/}。
 
@@ -23,7 +23,7 @@ finalize，不能再把整条链概括成“永远只有一个 kernel”。
 \texttt{quantize\_r32.cu}、\texttt{quantize\_r64.cu} 与
 \texttt{quantize\_r128.cu} 分别只实例化一个 rank；公共声明在
 \texttt{quantize.h}。实际选择还取决于
-\texttt{csrc/kernels/svdq/}\allowbreak\texttt{ops.h}，不能仅凭文件存在就推断
+\texttt{csrc/kernels/svdq/}\allowbreak\texttt{svdq.cpp}，不能仅凭文件存在就推断
 默认路径。GEMM 的消费约定在
 \texttt{cute/fp4/gemm/}\allowbreak\texttt{gemm\_w4a4.h}，\texttt{LoraLayout}
 枚举统一放在 \texttt{svdq/runtime.h}。完整代码入口见附录~\ref{app:D}。
@@ -112,8 +112,8 @@ BF16；\texttt{kNative} 把 FP32 的 $D$ 留到 GEMM 侧，gather 时乘完
 
 本章讨论的是 \texttt{kRowMajor} 输出。公共 Python 入口仍是
 \texttt{svdq\_}\allowbreak\texttt{quantize\_}\allowbreak\texttt{w4a4}，传入
-\texttt{lora\_layout=}\allowbreak\texttt{"row\_major"} 后，\texttt{ops.h}
-再选择 \texttt{quantize\_uni} 或某个 rank 特化入口。native producer 在
+\texttt{lora\_layout=}\allowbreak\texttt{"row\_major"} 后，host 入口
+再选择 \texttt{quantize\_uni} 或某个 rank 特化实现。native producer 在
 \texttt{csrc/kernels/svdq/}\allowbreak\texttt{native/}，本章只使用它的输出约定。
 图~\ref{fig:39-lora-layout} 把两种形态画在一起。
 
@@ -173,8 +173,8 @@ rank 0、非特化 rank，以及 $R=32,K\le3072$；\texttt{quantize\_impl.cuh}
 让每个 TU 只实例化一个 rank，编译可以并行，调参也不会把另外两个 rank 的
 模板实例一起拖进来。
 
-\texttt{ops.h} L161--189 先做两级选择。第一级按 rank 与 $K$ 选实现；第二级
-用是否分配 \texttt{lora\_scratch} 选调度。有效 scratch 是 split-K 的显式
+\texttt{svdq.cpp} L120--160 汇集实现与调度选择。rank 与 $K$ 决定实现，
+是否分配 \texttt{lora\_scratch} 决定调度；源码先计算 scratch，再选择具体入口。有效 scratch 是 split-K 的显式
 选择器，不是可随意忽略的优化提示。当前默认规则如下：
 
 \begin{center}\small

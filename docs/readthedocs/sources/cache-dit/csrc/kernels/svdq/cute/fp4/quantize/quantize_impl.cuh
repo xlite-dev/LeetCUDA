@@ -939,9 +939,9 @@ void quantize_cute(svdq::Tensor input, svdq::Tensor output, svdq::Tensor ascales
       lora_scratch.dtype() == svdq::Tensor::FP32 &&
         lora_scratch.numel() >= static_cast<size_t>(M) * rank,
       "split-K quantize_cute requires an FP32 scratch of at least M*rank elements");
-    // K256 wins rank128 across the measured matrix and rank64 at K=3072. Long-K rank64 and
-    // rank32 benefit from the K128 double-A async pipeline; small-K rank32 uses the synchronous
-    // path.
+    // K256 wins rank128 except at M<=256/K<=3072, where K128 doubles CTA parallelism. Long-K
+    // rank64/rank32 and small rank128 use the K128 double-A async pipeline; small-K rank32 uses
+    // the synchronous path.
     if constexpr (kRankTiles == 2) {
       if (K > 3072) {
         launch_quantize_split_k<2, 8, 2, true>(args, lora_scratch.data_ptr<float>());
@@ -955,16 +955,20 @@ void quantize_cute(svdq::Tensor input, svdq::Tensor output, svdq::Tensor ascales
         launch_quantize_split_k<4, 8, 4, false>(args, lora_scratch.data_ptr<float>());
       }
     } else {
-      launch_quantize_split_k<8, 8, 4, false>(args, lora_scratch.data_ptr<float>());
+      if (M <= 256 && K <= 3072) {
+        launch_quantize_split_k<8, 8, 2, true>(args, lora_scratch.data_ptr<float>());
+      } else {
+        launch_quantize_split_k<8, 8, 4, false>(args, lora_scratch.data_ptr<float>());
+      }
     }
     checkCUDA(cudaGetLastError());
     return;
   }
 
   // Fused dispatch template arguments are [R16 tiles, warps/CTA, D buffers, rank CTAs].
-  // Current ops dispatch reaches this path for rank32/M>8192. rank64/128 fused configurations
-  // remain available through the direct rank entry points and have separate numerical validation,
-  // but ops currently selects split-K for those ranks across the production matrix.
+  // Current ops dispatch reaches this path for rank32/M>8192 and for rank64 with padded M<=512
+  // and K<=3072. Other rank64/128 shapes use split-K; direct rank entry points can still select
+  // the remaining fused configurations for independent numerical validation.
   // These M buckets are measured tuning points on RTX PRO 5000 (SM120), not shape predicates:
   //   - small M benefits from more CTAs (rank splitting) and more independent K streams;
   //   - medium M can trade K parallelism for smaller CTAs and lower resource pressure;

@@ -34,12 +34,11 @@
         SageAttention 2/3 思想的 CuTe 高效复现：fp8/fp4 量化前处理链
         + persist-D/split-D/M4N2 kernel 家族
         （第~\ref{ch:19}、\ref{ch:26}、\ref{ch:27}--\ref{ch:33}~章）；
-  \item cache-dit 仓库（Part VII 代码链路，源码索引锚定 commit
-        \texttt{db125215}，permalink 见附录~\ref{app:D}）\\
+  \item cache-dit 仓库（Part VII/VIII 代码链路，统一锚定
+        \texttt{eced0158}，permalink 见附录~\ref{app:D}）\\
         \url{https://github.com/vipshop/cache-dit}\\
-        SVDQuant W4A4 的独立 CuTe 实现：native pack + rank 特化
-        TiledMMA/TiledCopy producer（fused/split-K）+ G2R/TMA hybrid GEMM
-        （第~\ref{ch:38}--\ref{ch:40}~章）；
+        SVDQuant W4A4 的独立 CuTe 实现，以及 FP8/FP4 的 CUTLASS
+        CollectiveBuilder 实现（第~\ref{ch:38}--\ref{ch:41}~章）；
   \item Nsight Compute 文档\\
         \url{https://docs.nvidia.com/nsight-compute/}\\
         bank conflict 计数器与 stall 指标（第~\ref{ch:12}、\ref{ch:16}~章
