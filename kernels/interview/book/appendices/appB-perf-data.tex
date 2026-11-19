@@ -262,6 +262,28 @@ FP8 eager 使用 \texttt{chain\_default}，FP4 eager 使用
 SM90A 编译验证，本机无 SM90 设备，未列性能数字。逐形状比值、
 warmup/iterations 与无效臂说明见第~\ref{ch:41}~章性能节。
 
+融合 MLP 的两组数字单列。它们取自 cache-dit PR \#1371 的验收记录，口径同为
+RTX PRO 5000、CUDA Event（warmup 10、计时 50 次取中位数）与
+PyTorch 2.15.0+cu132，但\textbf{本书修订环境没有 SM120 设备与 FP8 扩展，未
+复测}。
+
+\begin{center}\small
+\begin{tabular}{lcccc}
+\toprule
+链路（$4096\times12288\times3072$） & unfused & fused & 加速比 & rel-L2 \\
+\midrule
+GELU MLP   & 1.7031 ms & 1.5420 ms & $1.10\times$ & $5.547\times10^{-4}$ \\
+SwiGLU MLP & 2.7356 ms & 2.3862 ms & $1.15\times$ & $0$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+FLUX.1-dev 端到端（1024$\times$1024、28 步、seed 42）依次为 BF16、FP8
+unfused、FP8 fused：eager 16.88/9.53/9.27\,s，compile 14.82/7.18/7.11\,s。
+融合在整条模型上只有 1\%--3\%，因为 GEMM 与 attention 仍占主要时间。GELU 一行
+的 rel-L2 不是零，SwiGLU 是零，两条链的等价强度不同，不能合并成一句
+「融合前后逐 bit 相同」。
+
 \section{四条性能主线}
 
 \textbf{主线一：带宽（合并访问与向量化）。}\allowbreak{}Part I 的全部算子 $AI \le 0.625$，

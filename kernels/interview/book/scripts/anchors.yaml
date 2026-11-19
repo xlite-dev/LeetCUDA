@@ -412,30 +412,70 @@ chapters:
         first_anchor: "using StrideA = typename Gemm::GemmKernel::StrideA;"
         last_anchor: "return status;"
       - file: ../../../cache-dit/csrc/kernels/fp8/gemm/gemm.cuh
-        start: 111
-        end: 121
+        start: 145
+        end: 155
         first_anchor: "template <class CtaTileShapeMNK, class ElementOutput, class ElementCompute, class ElementBias>"
         last_anchor: "128 / cute::sizeof_bits_v<ElementBias>>>;"
       - file: ../../../cache-dit/csrc/kernels/fp8/gemm/gemm.cuh
-        start: 214
-        end: 227
+        start: 363
+        end: 376
         first_anchor: "using Fp8RowEpilogue = typename cutlass::epilogue::collective::CollectiveBuilder<"
         last_anchor: "using Fp8RowGemm = cutlass::gemm::device::GemmUniversalAdapter<Fp8RowGemmKernel>;"
       - file: ../../../cache-dit/csrc/kernels/fp8/gemm/gemm.cuh
-        start: 263
-        end: 283
+        start: 438
+        end: 458
         first_anchor: "using Fp8BlockScaleConfig ="
         last_anchor: "using Fp8BlockGemm = cutlass::gemm::device::GemmUniversalAdapter<Fp8BlockGemmKernel>;"
       - file: ../../../cache-dit/csrc/kernels/fp8/gemm/gemm.cuh
-        start: 303
-        end: 317
+        start: 504
+        end: 518
         first_anchor: "FusionArguments fusion_args{};"
         last_anchor: "};"
       - file: ../../../cache-dit/csrc/kernels/fp8/gemm/gemm.cuh
-        start: 346
-        end: 368
+        start: 547
+        end: 569
         first_anchor: "auto stride_a = cutlass::make_internal_packed_stride(StrideA{}, {M, K, 1});"
         last_anchor: "{fusion_args, out_ptr, stride_c, out_ptr, stride_d},"
+      - file: ../../../cache-dit/csrc/kernels/fp8/gemm/gemm.cuh
+        start: 94
+        end: 122
+        first_anchor: "// PyTorch's approximate=\"tanh\" GELU, including its operation order."
+        last_anchor: "};"
+      - file: ../../../cache-dit/csrc/kernels/fp8/gemm/gemm.cuh
+        start: 192
+        end: 214
+        first_anchor: "// D = activation(bias + b_scale * (a_scale * accumulator)). The inner tree still"
+        last_anchor: "Sm90Fp8RowColScaleBias<CtaTileShapeMNK, ElementOutput, ElementCompute, ElementBias>>;"
+      - file: ../../../cache-dit/csrc/kernels/fp8/gemm/gemm.cuh
+        start: 378
+        end: 402
+        first_anchor: "template <template <class> class ActivationFn>"
+        last_anchor: "cutlass::gemm::device::GemmUniversalAdapter<Fp8RowActivationGemmKernel<ActivationFn>>;"
+      - file: ../../../cache-dit/csrc/kernels/fp8/gemm/per_row.cu
+        start: 14
+        end: 27
+        first_anchor: "void launch_fp8_gemm_per_row_activation(const void* a, const void* b, const float* a_scale,"
+        last_anchor: "}"
+      - file: ../../../cache-dit/csrc/kernels/fp8/quantize.cu
+        start: 382
+        end: 404
+        first_anchor: "struct SwigluInput {"
+        last_anchor: "};"
+      - file: ../../../cache-dit/csrc/kernels/fp8/quantize.cu
+        start: 406
+        end: 434
+        first_anchor: "template <bool kCacheInput>"
+        last_anchor: "}"
+      - file: ../../../cache-dit/csrc/kernels/fp8/quantize.cu
+        start: 448
+        end: 463
+        first_anchor: "const float safe_scale = amax == 0.0f ? 1.0f : amax / kE4M3Max;"
+        last_anchor: "}"
+      - file: ../../../cache-dit/src/cache_dit/quantization/fp8/fused.py
+        start: 73
+        end: 104
+        first_anchor: "def fused_swiglu_mlp("
+        last_anchor: "return down.forward_quant(qx, sx, x.shape[:-1])"
       - file: ../../../cache-dit/csrc/kernels/fp4/gemm.cuh
         start: 214
         end: 239

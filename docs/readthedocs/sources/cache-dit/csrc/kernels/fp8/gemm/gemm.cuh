@@ -89,6 +89,40 @@
 // strides, not byte strides: the default scale strides advance by one FP32 element; per-tensor
 // overrides them with zeros. Null bias uses the operation's default zero value.
 
+namespace cutlass::epilogue::thread {
+
+// PyTorch's approximate="tanh" GELU, including its operation order.
+template <typename T>
+struct Fp8GeluTanh {
+  static const bool kIsHeavy = true;
+
+  CUTLASS_HOST_DEVICE
+  T operator()(T const& value) const {
+    float x = static_cast<float>(value);
+    float x3 = x * x * x;
+    float inner = 0.7978845608028654f * (x + 0.044715f * x3);
+    return static_cast<T>(0.5f * x * (1.0f + tanhf(inner)));
+  }
+};
+
+template <typename T, int N>
+struct Fp8GeluTanh<Array<T, N>> {
+  static const bool kIsHeavy = true;
+
+  CUTLASS_HOST_DEVICE
+  Array<T, N> operator()(Array<T, N> const& value) const {
+    Array<T, N> result;
+    Fp8GeluTanh<T> op;
+    CUTLASS_PRAGMA_UNROLL
+    for (int i = 0; i < N; ++i) {
+      result[i] = op(value[i]);
+    }
+    return result;
+  }
+};
+
+}  // namespace cutlass::epilogue::thread
+
 namespace cutlass::epilogue::fusion {
 
 // EVT (Epilogue Visitor Tree) for per-row/per-tensor FP8 GEMM:
@@ -155,6 +189,70 @@ struct FusionCallbacks<
   using Impl::Impl;
 };
 
+// D = activation(bias + b_scale * (a_scale * accumulator)). The inner tree still
+// writes BF16 before the activation, matching the unfused GEMM -> GELU chain.
+template <template <class> class ActivationFn_, class ElementOutput_, class ElementCompute_,
+          class ElementBias_>
+struct Fp8RowColScaleBiasActivation : FusionOperation {
+  using ElementOutput = ElementOutput_;
+  using ElementCompute = ElementCompute_;
+  using ElementScalar = ElementCompute_;
+  using ElementBias = ElementBias_;
+  using ActivationFn = ActivationFn_<ElementCompute_>;
+  static constexpr int AlignmentScalar = 1;
+  static constexpr int AlignmentBias = 128 / cute::sizeof_bits_v<ElementBias>;
+  static constexpr bool IsPerRowScaleSupported = true;
+  static constexpr bool IsPerColScaleSupported = true;
+  static constexpr bool IsPerColBiasSupported = true;
+  static constexpr bool IsEltActSupported = true;
+};
+
+template <template <class> class ActivationFn, class CtaTileShapeMNK, class ElementOutput,
+          class ElementCompute, class ElementBias>
+using Sm90Fp8RowColScaleBiasActivation = Sm90EVT<
+  Sm90Compute<ActivationFn, ElementOutput, ElementCompute, FloatRoundStyle::round_to_nearest>,
+  Sm90Fp8RowColScaleBias<CtaTileShapeMNK, ElementOutput, ElementCompute, ElementBias>>;
+
+template <int StagesC, int StagesD, int FragmentSize, bool ReuseSmemC, bool DelayTmaStore,
+          template <class> class ActivationFn, class ElementOutput, class ElementCompute,
+          class ElementBias, class CtaTileShapeMNK, class EpilogueTile>
+struct FusionCallbacks<
+  epilogue::Sm90TmaWarpSpecialized<StagesC, StagesD, FragmentSize, ReuseSmemC, DelayTmaStore>,
+  Fp8RowColScaleBiasActivation<ActivationFn, ElementOutput, ElementCompute, ElementBias>,
+  CtaTileShapeMNK, EpilogueTile>
+    : Sm90Fp8RowColScaleBiasActivation<ActivationFn, CtaTileShapeMNK, ElementOutput, ElementCompute,
+                                       ElementBias> {
+  using Impl = Sm90Fp8RowColScaleBiasActivation<ActivationFn, CtaTileShapeMNK, ElementOutput,
+                                                ElementCompute, ElementBias>;
+  using Operation =
+    Fp8RowColScaleBiasActivation<ActivationFn, ElementOutput, ElementCompute, ElementBias>;
+
+  struct Arguments {
+    float const* a_scale_ptr = nullptr;
+    float const* b_scale_ptr = nullptr;
+    ElementBias const* bias_ptr = nullptr;
+    Stride<bool, _0, int64_t> dAScale = {bool(1), _0{}, 0};
+    Stride<_0, bool, int64_t> dBScale = {_0{}, bool(1), 0};
+    Stride<_0, _1, int64_t> dBias = {};
+    using ActivationArguments = typename Sm90Compute<ActivationFn, ElementCompute, ElementCompute,
+                                                     FloatRoundStyle::round_to_nearest>::Arguments;
+    ActivationArguments activation = ActivationArguments();
+
+    operator typename Impl::Arguments() const {
+      typename Sm90Fp8RowColScaleBias<CtaTileShapeMNK, ElementOutput, ElementCompute,
+                                      ElementBias>::Arguments scale_args = {
+        {b_scale_ptr, 1.0f, dBScale},
+        {{a_scale_ptr, 1.0f, dAScale}, {}, {}},
+        {bias_ptr, ElementBias(0), dBias},
+        {},
+      };
+      return {scale_args, activation};
+    }
+  };
+
+  using Impl::Impl;
+};
+
 // Bias-only EVT for the blockwise mainloop, which already rescaled every K128
 // block before producing the final accumulator.
 template <class ElementOutput_, class ElementCompute_, class ElementBias_>
@@ -195,6 +293,57 @@ struct FusionCallbacks<
   using Impl::Impl;
 };
 
+template <template <class> class ActivationFn_, class ElementOutput_, class ElementCompute_,
+          class ElementBias_>
+struct Fp8BiasOnlyActivation : FusionOperation {
+  using ElementOutput = ElementOutput_;
+  using ElementCompute = ElementCompute_;
+  using ElementBias = ElementBias_;
+  using ActivationFn = ActivationFn_<ElementCompute_>;
+  static constexpr int AlignmentBias = 128 / cute::sizeof_bits_v<ElementBias>;
+  static constexpr bool IsPerColBiasSupported = true;
+  static constexpr bool IsEltActSupported = true;
+};
+
+template <template <class> class ActivationFn, class CtaTileShapeMNK, class ElementOutput,
+          class ElementCompute, class ElementBias>
+using Sm90Fp8BiasOnlyActivation = Sm90EVT<
+  Sm90Compute<ActivationFn, ElementOutput, ElementCompute, FloatRoundStyle::round_to_nearest>,
+  Sm90Fp8BiasOnly<CtaTileShapeMNK, ElementOutput, ElementCompute, ElementBias>>;
+
+template <int StagesC, int StagesD, int FragmentSize, bool ReuseSmemC, bool DelayTmaStore,
+          template <class> class ActivationFn, class ElementOutput, class ElementCompute,
+          class ElementBias, class CtaTileShapeMNK, class EpilogueTile>
+struct FusionCallbacks<
+  epilogue::Sm90TmaWarpSpecialized<StagesC, StagesD, FragmentSize, ReuseSmemC, DelayTmaStore>,
+  Fp8BiasOnlyActivation<ActivationFn, ElementOutput, ElementCompute, ElementBias>, CtaTileShapeMNK,
+  EpilogueTile> : Sm90Fp8BiasOnlyActivation<ActivationFn, CtaTileShapeMNK, ElementOutput,
+                                            ElementCompute, ElementBias> {
+  using Impl = Sm90Fp8BiasOnlyActivation<ActivationFn, CtaTileShapeMNK, ElementOutput,
+                                         ElementCompute, ElementBias>;
+  using Operation = Fp8BiasOnlyActivation<ActivationFn, ElementOutput, ElementCompute, ElementBias>;
+
+  struct Arguments {
+    ElementBias const* bias_ptr = nullptr;
+    Stride<_0, _1, int64_t> dBias = {};
+    using ActivationArguments = typename Sm90Compute<ActivationFn, ElementCompute, ElementCompute,
+                                                     FloatRoundStyle::round_to_nearest>::Arguments;
+    ActivationArguments activation = ActivationArguments();
+
+    operator typename Impl::Arguments() const {
+      typename Sm90Fp8BiasOnly<CtaTileShapeMNK, ElementOutput, ElementCompute,
+                               ElementBias>::Arguments bias_args = {
+        {},
+        {bias_ptr, ElementBias(0), dBias},
+        {},
+      };
+      return {bias_args, activation};
+    }
+  };
+
+  using Impl::Impl;
+};
+
 }  // namespace cutlass::epilogue::fusion
 
 namespace cache_dit::fp8 {
@@ -225,6 +374,32 @@ using Fp8RowMainloop = typename cutlass::gemm::collective::CollectiveBuilder<
 using Fp8RowGemmKernel = cutlass::gemm::kernel::GemmUniversal<cute::Shape<int, int, int, int>,
                                                               Fp8RowMainloop, Fp8RowEpilogue, void>;
 using Fp8RowGemm = cutlass::gemm::device::GemmUniversalAdapter<Fp8RowGemmKernel>;
+
+template <template <class> class ActivationFn>
+using Fp8RowActivationFusion =
+  cutlass::epilogue::fusion::Fp8RowColScaleBiasActivation<ActivationFn, Fp8ElementD, float,
+                                                          Fp8ElementD>;
+template <template <class> class ActivationFn>
+using Fp8RowActivationEpilogue = typename cutlass::epilogue::collective::CollectiveBuilder<
+  cutlass::arch::Sm120, cutlass::arch::OpClassTensorOp, Fp8TileShape, Fp8ClusterShape,
+  Fp8EpilogueTile, float, float, Fp8ElementD, cutlass::layout::RowMajor, 8, Fp8ElementD,
+  cutlass::layout::RowMajor, 8, cutlass::epilogue::collective::EpilogueScheduleAuto,
+  Fp8RowActivationFusion<ActivationFn>>::CollectiveOp;
+template <template <class> class ActivationFn>
+using Fp8RowActivationMainloop = typename cutlass::gemm::collective::CollectiveBuilder<
+  cutlass::arch::Sm120, cutlass::arch::OpClassTensorOp, Fp8ElementA, cutlass::layout::RowMajor, 16,
+  Fp8ElementB, cutlass::layout::ColumnMajor, 16, float, Fp8TileShape, Fp8ClusterShape,
+  cutlass::gemm::collective::StageCountAutoCarveout<static_cast<int>(
+    sizeof(typename Fp8RowActivationEpilogue<ActivationFn>::SharedStorage))>,
+  cutlass::gemm::collective::KernelScheduleAuto>::CollectiveOp;
+template <template <class> class ActivationFn>
+using Fp8RowActivationGemmKernel =
+  cutlass::gemm::kernel::GemmUniversal<cute::Shape<int, int, int, int>,
+                                       Fp8RowActivationMainloop<ActivationFn>,
+                                       Fp8RowActivationEpilogue<ActivationFn>, void>;
+template <template <class> class ActivationFn>
+using Fp8RowActivationGemm =
+  cutlass::gemm::device::GemmUniversalAdapter<Fp8RowActivationGemmKernel<ActivationFn>>;
 
 // Scale-factor layout types: what `deduce_layoutSFA/SFB` actually does
 // ---------------------------------------------------------------------
@@ -281,6 +456,32 @@ using Fp8BlockGemmKernel =
   cutlass::gemm::kernel::GemmUniversal<cute::Shape<int, int, int, int>, Fp8BlockMainloop,
                                        Fp8BlockEpilogue, void>;
 using Fp8BlockGemm = cutlass::gemm::device::GemmUniversalAdapter<Fp8BlockGemmKernel>;
+
+template <template <class> class ActivationFn>
+using Fp8BlockActivationFusion =
+  cutlass::epilogue::fusion::Fp8BiasOnlyActivation<ActivationFn, Fp8ElementD, float, Fp8ElementD>;
+template <template <class> class ActivationFn>
+using Fp8BlockActivationEpilogue = typename cutlass::epilogue::collective::CollectiveBuilder<
+  cutlass::arch::Sm120, cutlass::arch::OpClassTensorOp, Fp8TileShape, Fp8ClusterShape,
+  Fp8EpilogueTile, float, float, Fp8ElementD, cutlass::layout::RowMajor, 8, Fp8ElementD,
+  cutlass::layout::RowMajor, 8, cutlass::epilogue::collective::EpilogueScheduleAuto,
+  Fp8BlockActivationFusion<ActivationFn>>::CollectiveOp;
+template <template <class> class ActivationFn>
+using Fp8BlockActivationMainloop = typename cutlass::gemm::collective::CollectiveBuilder<
+  cutlass::arch::Sm120, cutlass::arch::OpClassTensorOp, Fp8ElementA,
+  cute::tuple<cutlass::layout::RowMajor, Fp8LayoutSFA>, 16, Fp8ElementB,
+  cute::tuple<cutlass::layout::ColumnMajor, Fp8LayoutSFB>, 16, float, Fp8TileShape, Fp8ClusterShape,
+  cutlass::gemm::collective::StageCountAutoCarveout<static_cast<int>(
+    sizeof(typename Fp8BlockActivationEpilogue<ActivationFn>::SharedStorage))>,
+  cutlass::gemm::collective::KernelScheduleAuto>::CollectiveOp;
+template <template <class> class ActivationFn>
+using Fp8BlockActivationGemmKernel =
+  cutlass::gemm::kernel::GemmUniversal<cute::Shape<int, int, int, int>,
+                                       Fp8BlockActivationMainloop<ActivationFn>,
+                                       Fp8BlockActivationEpilogue<ActivationFn>, void>;
+template <template <class> class ActivationFn>
+using Fp8BlockActivationGemm =
+  cutlass::gemm::device::GemmUniversalAdapter<Fp8BlockActivationGemmKernel<ActivationFn>>;
 
 template <bool kPerTensor>
 inline void fp8_gemm_cutlass_rowwise(const void* a, const void* b, const float* a_scale,
@@ -384,6 +585,112 @@ inline void fp8_gemm_cutlass_blockwise(const void* a, const void* b, const float
   status = gemm.run(stream);
   TORCH_CHECK(status == cutlass::Status::kSuccess,
               "CUTLASS SM120 FP8 blockwise GEMM launch failed: ", static_cast<int>(status));
+}
+
+template <bool kPerTensor, template <class> class ActivationFn>
+inline void fp8_gemm_cutlass_rowwise_activation(const void* a, const void* b, const float* a_scale,
+                                                const float* b_scale, const void* bias, void* out,
+                                                int M, int N, int K, cudaStream_t stream) {
+  using Gemm = Fp8RowActivationGemm<ActivationFn>;
+  using StrideA = typename Gemm::GemmKernel::StrideA;
+  using StrideB = typename Gemm::GemmKernel::StrideB;
+  using StrideC = typename Gemm::GemmKernel::StrideC;
+  using StrideD = typename Gemm::GemmKernel::StrideD;
+  using FusionArguments = typename Gemm::GemmKernel::CollectiveEpilogue::FusionCallbacks::Arguments;
+
+  auto stride_a = cutlass::make_internal_packed_stride(StrideA{}, {M, K, 1});
+  auto stride_b = cutlass::make_internal_packed_stride(StrideB{}, {N, K, 1});
+  auto stride_c = cutlass::make_internal_packed_stride(StrideC{}, {M, N, 1});
+  auto stride_d = cutlass::make_internal_packed_stride(StrideD{}, {M, N, 1});
+  FusionArguments fusion_args{};
+  fusion_args.a_scale_ptr = a_scale;
+  fusion_args.b_scale_ptr = b_scale;
+  fusion_args.bias_ptr = static_cast<const Fp8ElementD*>(bias);
+  if constexpr (kPerTensor) {
+    fusion_args.dAScale = {bool(0), cute::_0{}, 0};
+    fusion_args.dBScale = {cute::_0{}, bool(0), 0};
+  }
+  auto* out_ptr = static_cast<Fp8ElementD*>(out);
+  typename Gemm::Arguments arguments{
+    cutlass::gemm::GemmUniversalMode::kGemm,
+    {M, N, K, 1},
+    {static_cast<const Fp8ElementA*>(a), stride_a, static_cast<const Fp8ElementB*>(b), stride_b},
+    {fusion_args, out_ptr, stride_c, out_ptr, stride_d},
+  };
+
+  Gemm gemm;
+  const size_t workspace_size = Gemm::get_workspace_size(arguments);
+  at::Tensor workspace;
+  void* workspace_ptr = nullptr;
+  if (workspace_size != 0) {
+    workspace = at::empty({static_cast<int64_t>(workspace_size)},
+                          at::TensorOptions().device(at::kCUDA).dtype(at::kByte));
+    workspace_ptr = workspace.data_ptr();
+  }
+  auto status = gemm.initialize(arguments, workspace_ptr, stream);
+  TORCH_CHECK(
+    status == cutlass::Status::kSuccess,
+    "CUTLASS SM120 FP8 activation GEMM initialization failed: ", static_cast<int>(status));
+  status = gemm.run(stream);
+  TORCH_CHECK(status == cutlass::Status::kSuccess,
+              "CUTLASS SM120 FP8 activation GEMM launch failed: ", static_cast<int>(status));
+}
+
+template <template <class> class ActivationFn>
+inline void fp8_gemm_cutlass_blockwise_activation(const void* a, const void* b,
+                                                  const float* a_scale, const float* b_scale,
+                                                  const void* bias, void* out, int M, int N, int K,
+                                                  int num_k_blocks, cudaStream_t stream) {
+  using Gemm = Fp8BlockActivationGemm<ActivationFn>;
+  using StrideA = typename Gemm::GemmKernel::StrideA;
+  using StrideB = typename Gemm::GemmKernel::StrideB;
+  using StrideC = typename Gemm::GemmKernel::StrideC;
+  using StrideD = typename Gemm::GemmKernel::StrideD;
+  using FusionArguments = typename Gemm::GemmKernel::CollectiveEpilogue::FusionCallbacks::Arguments;
+
+  auto stride_a = cutlass::make_internal_packed_stride(StrideA{}, {M, K, 1});
+  auto stride_b = cutlass::make_internal_packed_stride(StrideB{}, {N, K, 1});
+  auto stride_c = cutlass::make_internal_packed_stride(StrideC{}, {M, N, 1});
+  auto stride_d = cutlass::make_internal_packed_stride(StrideD{}, {M, N, 1});
+  auto layout_sfa = Fp8BlockScaleConfig::tile_atom_to_shape_SFA(cute::make_shape(M, N, K, 1));
+  auto layout_sfb = Fp8BlockScaleConfig::tile_atom_to_shape_SFB(cute::make_shape(M, N, K, 1));
+  FusionArguments fusion_args{};
+  fusion_args.bias_ptr = static_cast<const Fp8ElementD*>(bias);
+  auto* out_ptr = static_cast<Fp8ElementD*>(out);
+  typename Gemm::Arguments arguments{
+    cutlass::gemm::GemmUniversalMode::kGemm,
+    {M, N, K, 1},
+    {
+      static_cast<const Fp8ElementA*>(a),
+      stride_a,
+      static_cast<const Fp8ElementB*>(b),
+      stride_b,
+      a_scale,
+      layout_sfa,
+      b_scale,
+      layout_sfb,
+    },
+    {fusion_args, out_ptr, stride_c, out_ptr, stride_d},
+  };
+  (void)num_k_blocks;
+
+  Gemm gemm;
+  const size_t workspace_size = Gemm::get_workspace_size(arguments);
+  at::Tensor workspace;
+  void* workspace_ptr = nullptr;
+  if (workspace_size != 0) {
+    workspace = at::empty({static_cast<int64_t>(workspace_size)},
+                          at::TensorOptions().device(at::kCUDA).dtype(at::kByte));
+    workspace_ptr = workspace.data_ptr();
+  }
+  auto status = gemm.initialize(arguments, workspace_ptr, stream);
+  TORCH_CHECK(status == cutlass::Status::kSuccess,
+              "CUTLASS SM120 FP8 blockwise activation GEMM initialization failed: ",
+              static_cast<int>(status));
+  status = gemm.run(stream);
+  TORCH_CHECK(
+    status == cutlass::Status::kSuccess,
+    "CUTLASS SM120 FP8 blockwise activation GEMM launch failed: ", static_cast<int>(status));
 }
 
 }  // namespace cache_dit::fp8

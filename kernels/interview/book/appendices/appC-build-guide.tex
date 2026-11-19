@@ -75,15 +75,20 @@ python bench/bench_fp4.py --dtype fp16
 \section{cache-dit（Part VII/VIII 源码仓）同级 checkout}
 
 Part VII（第~\ref{ch:38}--\ref{ch:40}~章）与 Part VIII（第~\ref{ch:41}~章）
-都引用独立仓库 \texttt{cache-dit}，并统一锚定 \texttt{eced0158}；
-附录~\ref{app:D} 的 permalink 固定到该 commit。\textbf{构建本书的前置条件}：与 LeetCUDA 同级存在
+都引用独立仓库 \texttt{cache-dit}。SVDQuant 与 FP4 部分锚定
+\texttt{eced0158}，第~\ref{ch:41}~章的 FP8 部分（含融合 MLP 一节）锚定
+\texttt{453c1b05}，即 PR \#1371 的合并提交；该 PR 未改动
+\texttt{csrc/kernels/fp4/} 与 \texttt{csrc/kernels/svdq/}。
+附录~\ref{app:D} 的 permalink 固定到各自 commit。\textbf{构建本书的前置条件}：与 LeetCUDA 同级存在
 \texttt{cache-dit/} checkout，正文的
-\texttt{\textbackslash lstinputlisting} 会从该目录读取源文件。当前全书行锚点
-已在 \texttt{eced0158} 下复核通过，可按下面命令准备同级 checkout：
+\texttt{\textbackslash lstinputlisting} 会从该目录读取源文件。两处行锚点均已
+复核通过，可按下面命令准备同级 checkout（FP8 清单需要
+\texttt{453c1b05}）：
 
 \begin{lstlisting}[style=console]
 git clone https://github.com/vipshop/cache-dit.git
-cd cache-dit && git checkout eced0158
+cd cache-dit && git checkout 453c1b05
+# 若只复核 Part VII 与 FP4：git checkout eced0158 亦可
 \end{lstlisting}
 
 \noindent 第~\ref{ch:39}--\ref{ch:40}~章的 SVDQuant 验证入口为：
@@ -104,6 +109,23 @@ python bench/kernels/bench_fp8.py --suite flux \
   --modes per_row per_tensor per_block --warmup 3 --iters 10
 python bench/kernels/bench_fp4.py --warmup 3 --iters 10 --rounds 2
 \end{lstlisting}
+
+\noindent 融合 MLP 一节另有一组入口。算子链基准用
+\texttt{--fused-mlp} 与 \texttt{--fused-swiglu} 两个互斥开关；结构化 pass 的
+用例在量化测试目录里：
+
+\begin{lstlisting}[style=console]
+python -m pytest -q tests/quantization/test_fp8_backend.py \
+  tests/quantization/test_fp8_cli.py tests/quantization/test_quantize_config.py
+python bench/kernels/bench_fp8.py --fused-mlp \
+  --shapes 4096:12288:3072:ff_up --modes per_row --warmup 10 --iters 50
+python bench/kernels/bench_fp8.py --fused-swiglu \
+  --shapes 4096:12288:3072:ff_up --modes per_row --warmup 10 --iters 50
+\end{lstlisting}
+
+这组用例要求 SM100 以上的设备与已编译的 \texttt{\_C\_ops}，否则整组
+\texttt{skip}。第~\ref{ch:41}~章的融合 MLP 数据取自 PR \#1371 的验收记录，
+本书未在无 SM120 的环境里复跑。
 
 \section{book/tests/build\_tests.sh 用法}
 

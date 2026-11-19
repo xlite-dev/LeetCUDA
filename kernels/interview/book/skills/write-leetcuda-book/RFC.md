@@ -31,6 +31,7 @@
 | RFC-O | Part V FP8/FP4 HGEMM 篇 ch36-37（NVFP4 两级量化 + block-scaled MMA，fp4_gemm.cuh 新增冻结件） | RFC-D/F/N（ch22-24、ch34/35 前置） | 完成（2026-09-24：fp4_gemm.cuh 1298 行 + tests ch36/ch37 全 PASS（含 4 条逐 bit 等价）+ kernel 614.6/648.7T（128×256/s6 ws）+ e2e FP4 334.2/373.4T 反超 FP8 + 误差模型 14.4% 与实测 14.37% 吻合；ch36/ch37 共 9 张 TikZ 图）|
 | RFC-P | Part VII SVDQuant 篇 ch38-40（cache-dit svdq cute/fp4 源码讲解：数学原理 + quantize producer + W4A4 GEMM；纯书稿，不改 cache-dit、不跑 kernel） | RFC-K/N/O（ch27/31/34-37 前置）+ cache-dit@db125215（公开仓） | 完成（2026-11-11 当前源码迁移与验收）|
 | RFC-Q | Part VIII CUTLASS Collective API 篇 ch41（本仓 BF16 最小头文件 + cache-dit FP8/FP4 collective；正文、测试、六形状复测与站点快照） | RFC-D/F/N/O/P + cache-dit@eced0158 | 完成（2026-11-16：ch41 + BF16 头文件 + 81 项回归 + 六形状复测；主 PDF 650 页与 RTD 三层验收通过）|
+| RFC-R | ch41 增补节：融合 MLP（GELU epilogue + SwiGLU producer；引用 cache-dit PR #1371） | RFC-Q + cache-dit@453c1b05 | 完成（2026-11-19：5 处旧行锚点重挂 + 13 处新增、4 张图、性能表标注未复测） |
 依赖图（执行实况）：`RFC-0 → RFC-A → RFC-C → RFC-D → RFC-E → RFC-F → (RFC-G ∥ RFC-H ∥ RFC-I) → RFC-J`；RFC-B 于 2026-09-18 取消（素材职能被附录 E + drawio 全量重建接管）；`RFC-K 依赖 RFC-E/F 素材，与 RFC-G/H/I 并行，完成后并入 RFC-J 收口`；增补里程碑 RFC-L（ch26b）/RFC-M（ch26c）/RFC-N（ch34-35）/RFC-O（ch36-37）于 2026-09-22..24 依次完成并并入主线；RFC-P（ch38-40，SVDQuant 篇）于 2026-11-07 登记为**Part VII**（插在 attention 篇之后、附录之前；attention 篇保持 Part VI、旧章打印章号零副作用——P.0 审核的路线 B；新章打印章号 41--43，正文硬编码节号按打印值书写）
 
 ## 2. RFC-0 脚手架
@@ -641,6 +642,19 @@ CHECKLOG / 技能笔记 / RFC 编号 / DoD 条款等一律不进正文；数据�
 - [x] Q.9 构建验收：主 book 650 页、0 error/undefined/missing、Overfull 15=既有；RTD 全量 build/convert.verify 全过（目录 49 条、跨仓清单内联），visual_check 99 页需处理 0；audit-history 与质量评估已记录。
 - [x] Q.10 最终复核：独立 Code Review 的 SM120A 口径、FP4 eager 臂名、冻结元数据及文档细节全部回修；7 个 cache-dit 快照逐字节对齐 eced0158，permalink/无效臂/未验证项披露完整；未提交 commit。
 
+## 12-R. RFC-R ch41 增补节：融合 MLP（2026-11-19）
+
+> 用户点名在 Part VIII 增加一节，讲 cache-dit 原生 FP8 的 fused MLP 用法，参考本仓最新 `csrc/kernels/fp8` 与 PR #1371。该 PR 已合入本地 `dev`（`453c1b05`），同时把 `gemm.cuh` 的既有行号整体推移，因此本里程碑必须连带重挂 ch41 的全部 FP8 锚点。修订环境为 SM86 WSL，无 FP8 扩展，不跑 kernel、不复测性能。
+
+- [x] R.0 源码核查：确认本地 `dev` HEAD 即 PR #1371 合并提交 `453c1b05`；`git diff eced0158..453c1b05 -- csrc/kernels/{fp8,fp4}` 显示只有 `csrc/kernels/fp8/**` 变动，FP4/SVDQ 文件零改动。
+- [x] R.1 行锚点重挂：5 处旧 listing 由 `eced0158` 行号改到 `453c1b05`（111-121→145-155、214-227→363-376、263-283→438-458、303-317→504-518、346-368→547-569），逐处核对首末行文本。
+- [x] R.2 新增 listing：`gemm.cuh` 94-122（tanh GELU functor）、192-214（activation EVT）、378-402（activation collective 家族）、`per_row.cu` 14-27（activation id 分派）、`quantize.cu` 382-404/406-434/448-463（SwiGLU 读取、两遍求 amax、复用缓存）、`fused.py` 73-104（Python 入口）。
+- [x] R.3 正文：新增 §3.4（融合边界与整行 amax 的非局部性、式 41-mlp..41-swiglu-round）、§4.6（五层入口表、EVT 根节点、逐 TU 实例化、producer 两遍与缓存、结构化 pass 与两条硬边界）、§6.1（两张性能表 + 字节账）、§7 两个考据框、§8 四条坑、§9 Q8/Q9、§10 用例与三条实验。
+- [x] R.4 图：`fig:41-fused-mlp`（TikZ inline，两条链并排）；standalone 渲染 150 dpi 逐项目检，无文文/图文重叠，宽 15.95 cm。
+- [x] R.5 接线：BOOK_PLAN 章节卡片与 DoD、RFC 里程碑、anchors.yaml（ch41 refs 由 10 增至 18，ALL GREEN）、preamble 关键字、appB/appC/appD、RTD `sources/README.md` 与快照。
+- [x] R.6 数据口径：性能数字取自 PR #1371（RTX PRO 5000、CUDA Event、PyTorch 2.15.0+cu132），正文与 appB 均写明本书未复测；GELU 融合标注为 $10^{-4}$ 量级一致而非逐 bit，SwiGLU 标注为逐 bit（PR `torch.equal` 用例）。
+- [x] R.7 验收：verify_anchors ch41 ALL GREEN；主 book 构建零 error；RTD 全量 build/convert.verify/visual_check；正确性自审与去 AI 味；Code Review 回修。
+
 ## 13. 图清单登记表（写作期持续更新）
 
 > **2026-09-27 全量核实**：chapters 中全部 36 处 `\includegraphics` 均已是 `% was:` 历史注释——全书章内图（ch00–ch35，含增补章）现为 **100% TikZ inline**。下表登记 `figures/drawio/` 的 64 条均为历史制作记录，其状态列「正式」一律读作「留档（已迁 TikZ）」；`figures/drawio/` 下 `.drawio`/`gen.py`/`.png` 三件套按用户决定留档保留（不删除）。各图现行 TikZ 源位于对应章节 tex 内。
@@ -757,6 +771,7 @@ CHECKLOG / 技能笔记 / RFC 编号 / DoD 条款等一律不进正文；数据�
 | FIG-41-1 | 41 | api-stack | C1 新建（2026-11-16，TikZ inline：两个 Builder→GemmUniversal→Adapter→Arguments/run） | 正式 | chapters/ch41-cutlass-collective-api.tex |
 | FIG-41-2 | 41 | scale-placement | C1 新建（2026-11-16，TikZ inline：FP8 row/tensor、FP8 blockwise、NVFP4 的 mainloop/EVT scale 分工） | 正式 | 同上 |
 | FIG-41-3 | 41 | layout-types | C1 新建（2026-11-16，TikZ inline：deduce_layoutSFA 编译期类型 vs tile_atom_to_shape_SFA 运行时布局值） | 正式 | 同上 |
+| FIG-41-4 | 41 | fused-mlp | C1 新建（2026-11-19，TikZ inline：GELU 链与 SwiGLU 链并排，标出融合点与保留的整行 amax） | 正式 | chapters/ch41-cutlass-collective-api.tex |
 
 ## 14. CHECKLOG 摘要镜像（明细在 book/CHECKLOG.md）
 

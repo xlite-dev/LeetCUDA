@@ -204,16 +204,17 @@
 
 ### Part VII SVDQuant 篇（ch38-40，2026-11-11 完成）
 
-SVDQuant 三章的源码区间、公式与图清单见 RFC-P；当前源码与 Part VIII 统一锚定
-cache-dit `eced0158`，沿用外部仓只读引用、RTD 冻结快照与附录 D permalink 范式。
+SVDQuant 三章的源码区间、公式与图清单见 RFC-P；三章锚定 cache-dit
+`eced0158`（该 commit 之后 `svdq/` 未改动）。Part VIII 的 FP8 部分在 RFC-R 中
+前移到 `453c1b05`，沿用外部仓只读引用、RTD 冻结快照与附录 D permalink 范式。
 
 ### Part VIII CUTLASS Collective API 篇（ch41，2026-11-16 新增，RFC-Q）
 
 | 章 | 标题 | 源码区间 | 前置 | 核心公式/概念 | 关键图 | 主参考 |
 |---|---|---|---|---|---|---|
-| 41 | CUTLASS Collective API：从常规 GEMM 到 FP8/FP4 | 本仓 `collective_gemm.cuh` L31-87；cache-dit `fp8/gemm/gemm.cuh` L111-121/L214-227/L263-283/L303-317/L346-368，`fp4/gemm.cuh` L214-239/L287-320，`fp4/quantize.cuh` L69-82 | 24,35,37,40 | $D=\alpha AB^T+\beta C$；FP8 row/tensor 的 EVT scale+bias；FP8 blockwise 的逐 K128 rescale；NVFP4 micro-scale/mainloop 与 global-scale/EVT 分工；`deduce_layoutSFA` 类型 vs `tile_atom_to_shape_SFA` 运行时值 | API 分层图、scale 位置图、SFA 类型/值图（3 张 TikZ inline） | CUTLASS v4.8.1 examples 49/79/87；cache-dit `eced0158` |
+| 41 | CUTLASS Collective API：从常规 GEMM 到 FP8/FP4 | 本仓 `collective_gemm.cuh` L31-87；cache-dit `fp8/gemm/gemm.cuh` L145-155/L363-376/L438-458/L504-518/L547-569/L94-122/L192-214/L378-402、`fp8/gemm/per_row.cu` L14-27、`fp8/quantize.cu` L382-404/L406-434/L448-463、`quantization/fp8/fused.py` L73-104（FP8 锚 `453c1b05`）；`fp4/gemm.cuh` L214-239/L287-320，`fp4/quantize.cuh` L69-82（锚 `eced0158`，该 PR 未改动） | 24,35,37,40 | $D=\alpha AB^T+\beta C$；FP8 row/tensor 的 EVT scale+bias；FP8 blockwise 的逐 K128 rescale；NVFP4 micro-scale/mainloop 与 global-scale/EVT 分工；`deduce_layoutSFA` 类型 vs `tile_atom_to_shape_SFA` 运行时值；融合 MLP 的 GELU epilogue 与 SwiGLU producer（整行 amax 非局部） | API 分层图、scale 位置图、SFA 类型/值图、融合 MLP 两条链图（4 张 TikZ inline） | CUTLASS v4.8.1 examples 49/79/87；cache-dit PR #1371 |
 
-> **Part VIII 特别约定**：BF16 示例为本仓新增冻结件，目标 SM90，做 SM90A 编译验证，非 SM90 设备输出 SKIP；FP8/FP4 为 cache-dit 外部只读引用，不进入 anchors.yaml 的 `files` SHA256 段。第 4 条测试 = 本仓 `ch41_cutlass_collective.cu` 的 SM90A 编译/SKIP + cache-dit FP8/FP4 81 项回归；第 5 条 bench = 本书在 PRO 5000 上实际复测六组 FLUX Linear，区分 eager chain 与 compiled Linear，并逐项排除 JSON 中的 error 臂。正文不把 SM90 BF16 配置写成可直接迁移到 SM120，不把默认 collective 宣称为无条件最优。
+> **Part VIII 特别约定**：BF16 示例为本仓新增冻结件，目标 SM90，做 SM90A 编译验证，非 SM90 设备输出 SKIP；FP8/FP4 为 cache-dit 外部只读引用，不进入 anchors.yaml 的 `files` SHA256 段。第 4 条测试 = 本仓 `ch41_cutlass_collective.cu` 的 SM90A 编译/SKIP + cache-dit FP8/FP4 回归（RFC-Q 81 项；RFC-R 增补融合 MLP 用例口径，PR #1371 矩阵 259 项）；第 5 条 bench = 本书在 PRO 5000 上实际复测六组 FLUX Linear，区分 eager chain 与 compiled Linear，并逐项排除 JSON 中的 error 臂；**融合 MLP 小节例外**：该组数字取自 PR #1371 的 PRO 5000 验收记录，修订环境无 SM120 设备与 FP8 扩展，正文必须显式写明「未复测」并给出几何、软件版本与统计口径。正文不把 SM90 BF16 配置写成可直接迁移到 SM120，不把默认 collective 宣称为无条件最优，也不把 GELU 融合写成逐 bit 等价。
 
 ### 附录
 
@@ -260,6 +261,8 @@ cache-dit `eced0158`，沿用外部仓只读引用、RTD 冻结快照与附录 D
 > **SVDQuant 篇特化（ch38-40，2026-11-07 用户指定，RFC-P）**：三章讲解 cache-dit 外部公开仓库（commit `eced0158`），源码只读引用 `\lstinputlisting{../../../../cache-dit/...}`（构建前置条件 = 同级 checkout，见附录 C「cache-dit 同级 checkout」节）。第 2 条锚点 =「cache-dit commit `eced0158` + anchors.yaml 只登记 chapters 的 linerange 首末行文本匹配，**不冻结 SHA256**」（冻结权在 cache-dit 仓库自身；`files` 段不含其条目）；第 4 条测试特化为「读者执行 cache-dit `tests/kernels/test_svdquant_{cute,runtime}.py`（SM120 门控 skip；本书未复跑——用户指定本任务不跑任何 GPU kernel）」；第 5 条 bench 数据源 = cache-dit 开发记录（`bench/kernels/bench_svdquant.py` + 优化记录，各表注明来源/日期/口径；appB 已声明无本书复测）；第 7 条知乎参考例外登记见 RFC.md §15。ch38 为纯数学章：无源码锚点、无 kernel 测试（同 ch15 先例），数学验证以推导复核代替。其余各条照常（编译零 error、CHECKLOG、自审、文风、RTD 三层验收不豁免）。
 >
 > **Collective API 篇特化（ch41，2026-11-16，RFC-Q）**：BF16 新头文件 `collective_gemm.cuh` 纳入 anchors.yaml `files` SHA256 冻结；cache-dit `eced0158` 的 FP8/FP4 文件只登记 chapters 行锚点并保存 RTD 快照。第 4 条测试分为本仓 BF16 SM90A 编译/非 SM90 SKIP 与 cache-dit 81 项 FP8/FP4 回归，BF16 不在本机 SM120 上强行运行。第 5 条 bench 必须实际执行 `bench_fp8.py --suite flux` 与 `bench_fp4.py`，数据落 `.tmp/book-bench/ch41/`；只使用无 error 的 chain_default/compile_linear 行，所有性能表注明 eager/compile、GPU、软件版本与无效臂。其余各条照常。
+>
+> **融合 MLP 增补（RFC-R，2026-11-19）**：FP8 引用前移到 `453c1b05`（PR #1371），5 处旧行锚点重挂并新增 13 处（`gemm.cuh` 3 + `per_row.cu` 1 + `quantize.cu` 3 + `fused.py` 1，另有 5 处旧区间更新）。第 4 条测试改为核对 cache-dit 用例覆盖与断言口径（三种粒度 × 四种结构、$H=500$ 逐 bit、无目标报错），修订环境无 SM120/FP8 扩展，正文须写明未复跑。第 5 条 bench 以 PR #1371 的验收表为源并显式标注「未复测」；不得把 1.10×/1.15× 外推到其它形状。
 
 ### 4.3 行文风格（作者风格基线，2026-09-11 用户定）
 
