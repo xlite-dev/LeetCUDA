@@ -17,7 +17,8 @@ checkout——本地 checkout 会随上游演进漂移，快照才是本地预�
 
 | 仓库 | commit | 依据 |
 | --- | --- | --- |
-| cache-dit | `eced0158` | ch39/ch40/ch41 头注释、appC |
+| cache-dit（FP8，ch41） | `453c1b05` | ch41 头注释、appC（PR #1371） |
+| cache-dit（FP4/SVDQ） | `eced0158` | ch39/ch40/ch41 头注释、appC（该 PR 未改动） |
 | ffpa-attn | `861d75e` | ch27 头注释、appC |
 
 ## 内容
@@ -28,7 +29,10 @@ checkout——本地 checkout 会随上游演进漂移，快照才是本地预�
 | `cache-dit/csrc/kernels/svdq/cute/fp4/quantize/quantize_uni.cu` | ch39 | `fee86eaf82d80c5bc69b7ba8822964e99101d1670458013f8d43b8c5b6be073e` |
 | `cache-dit/csrc/kernels/svdq/cute/fp4/gemm/gemm_w4a4.cuh` | ch40 | `e6a9074b45ed75b6a5e741e54aeb816ae6693b6b79c62dbe9f985f248647e962` |
 | `cache-dit/csrc/kernels/svdq/cute/fp4/gemm/gemm_w4a4.cu` | ch40 | `f2c81066d4a6b7d99ce2d3973762ad5f004f531529786b46e1f8cc09a098eef7` |
-| `cache-dit/csrc/kernels/fp8/gemm/gemm.cuh` | ch41 | `c555d9d9f45be081ce60492a0065a2a2bbf6375bca970a5137b868119c8ee053` |
+| `cache-dit/csrc/kernels/fp8/gemm/gemm.cuh` | ch41 | `c1e6d5224cf92e7e078895c2e11666b79e9bddb17e2f50d5d1b2ed7645d593f0` |
+| `cache-dit/csrc/kernels/fp8/quantize.cu` | ch41 | `a549d2ab06a11c2d36a1c710067d252705a4d3f483bfa55fa8f7f5e3caa5e52a` |
+| `cache-dit/csrc/kernels/fp8/gemm/per_row.cu` | ch41 | `639340ad52ae420f42b564766ccdcd46f0f5d8c450b48e67c4acd8a645c29602` |
+| `cache-dit/src/cache_dit/quantization/fp8/fused.py` | ch41 | `710e2a333c72941c33fd701d307bfb6ccdb330ee04351d062fa0d67190ec512e` |
 | `cache-dit/csrc/kernels/fp4/gemm.cuh` | ch41 | `a787ee0d5b4ede351543e1d910e853f340e099fa7b627497d2f7fe5a0ca37979` |
 | `cache-dit/csrc/kernels/fp4/quantize.cuh` | ch41 | `2bdd6c71e47c6b70b92cae9e6edd77fda5cc3767443a73601adf076643db38eb` |
 | `ffpa-attn/csrc/cuffpa/cute/fp8/fp8_pscale.cuh` | ch27 | `3cb88c6b044b8c81bfde1a625495be7ae9394c8b4971c6604ca459f47918fe56` |
@@ -38,6 +42,9 @@ checkout——本地 checkout 会随上游演进漂移，快照才是本地预�
 
 ```bash
 cd docs/readthedocs
+# FP8（ch41，含融合 MLP 一节）
+git -C ../../../cache-dit show 453c1b05:<path> > sources/cache-dit/<path>
+# FP4 与 SVDQuant
 git -C ../../../cache-dit show eced0158:<path> > sources/cache-dit/<path>
 git -C ../../../ffpa-attn show 861d75e:<path> > sources/ffpa-attn/<path>
 sha256sum sources/<repo>/<path>   # 与上表对齐
