@@ -118,9 +118,9 @@ python bench/kernels/bench_fp4.py --warmup 3 --iters 10 --rounds 2
 python -m pytest -q tests/quantization/test_fp8_backend.py \
   tests/quantization/test_fp8_cli.py tests/quantization/test_quantize_config.py
 python bench/kernels/bench_fp8.py --fused-mlp \
-  --shapes 4096:12288:3072:ff_up --modes per_row --warmup 10 --iters 50
+  --shapes 4096x12288x3072:ff_up --modes per_row --warmup 10 --iters 50
 python bench/kernels/bench_fp8.py --fused-swiglu \
-  --shapes 4096:12288:3072:ff_up --modes per_row --warmup 10 --iters 50
+  --shapes 4096x12288x3072:ff_up --modes per_row --warmup 10 --iters 50
 \end{lstlisting}
 
 这组用例要求 SM100 以上的设备与已编译的 \texttt{\_C\_ops}，否则整组

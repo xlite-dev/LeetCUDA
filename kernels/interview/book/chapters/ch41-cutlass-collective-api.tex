@@ -47,8 +47,9 @@ commit \texttt{453c1b05}（PR \#1371 合并提交）的
 \textbf{架构边界}：BF16 示例采用 \texttt{arch::Sm90}。CUTLASS 4.8.1 的 SM120
 dense CollectiveBuilder 只支持 F8F6F4 TensorOp，因此不能把同一组 BF16 模板参数
 机械地改为 \texttt{arch::Sm120}。本章 SM120 内容限定为 cache-dit 的 FP8/FP4
-路径。测试与性能复测使用 RTX PRO 5000（SM120）、CUDA Event；BF16 示例另做
-SM90A 编译验证，本机不执行 SM90 kernel。
+路径。测试与性能复测使用 RTX PRO 5000（SM120）、CUDA Event；融合 MLP 一节的
+数字取自 cache-dit PR \#1371，本书未复测，见 \S6.1。BF16 示例另做 SM90A 编译
+验证，本机不执行 SM90 kernel。
 
 \section{问题与动机：手写主循环与库主循环的分工}
 
@@ -207,7 +208,9 @@ epilogue；若它需要一整行或一整列，就不能。
   q_{m,j}=\operatorname{satfinite\_e4m3}\!\left(H_{m,j}/s_m\right).
   \label{eq:41-mlp-quant}
 \end{equation}
-$s_m$ 依赖第 $m$ 行的全部 $N$ 个元素。epilogue 的 tile 只有 $64\times64$，
+$s_m$ 依赖第 $m$ 行的全部 $N$ 个元素。实现上另有一条零行约定：$s_m=0$ 时
+除数取 $1$，并存下 $s_m=0$；这样全零行的输出是 $q=0$ 而不是 $0/0$。
+epilogue 的 tile 只有 $64\times64$，
 一个 CTA 只拥有 $128\times128$ 的输出块，写回时没有任何一个线程能看到完整
 一行。要在这里得到 $s_m$，必须跨 tile、跨 CTA 归约，再把输出重写一遍。所以
 \textbf{第二层的动态量化不能并入第一层的 epilogue}；融合 MLP 能把边界推到
@@ -252,7 +255,9 @@ SwiGLU 的边界不同。它的隐藏状态是两路投影的逐元素门控：
 \end{equation}
 即 silu 先舍入到 BF16，再与 BF16 的 value 相乘并再次舍入。少一次、或多一次，
 amax 就可能不同，整行的 scale 随之改变。式~\ref{eq:41-swiglu-round} 是后面
-逐 bit 一致的依据，不是实现细节。
+逐 bit 一致的依据，不是实现细节。不过它固定的只是舍入位置：silu 本身仍用
+\texttt{\_\_expf} 计算、扩展整体以 \texttt{--use\_fast\_math} 构建，逐 bit
+相同仍要靠实测确认（§6.1）。
 
 \section{设计与实现}
 
@@ -414,7 +419,8 @@ cache-dit 还用 \texttt{gemm.h} 的 \texttt{void*} launch ABI 隔离 Torch
 
 \subsection{融合 MLP：EVT 加根节点，producer 加门控}
 
-融合 MLP 的用法分五层，从配置文件一直到内核，见表~\ref{tab:41-fused-entry}。
+式~\ref{eq:41-mlp} 的两层 MLP 在代码里分五层入口，从配置文件一直到内核，
+见表~\ref{tab:41-fused-entry}。
 日常使用只需要前两层；后三层解释了「融合」在代码里到底是什么。
 
 \begin{table}[H]
@@ -424,7 +430,7 @@ cache-dit 还用 \texttt{gemm.h} 的 \texttt{void*} launch ABI 隔离 Torch
 层 & 入口 & 作用 \\
 \midrule
 配置 / CLI & \texttt{fp8\_fused\_mlp}、\texttt{--fp8-fused-mlp} & 启用结构化 pass \\
-Python 助手 & \texttt{fused\_gelu\_mlp}、\texttt{fused\_swiglu\_mlp} & 单块显式调用 \\
+Python 助手 & \texttt{fused\_gelu\_mlp}、\texttt{fused\_gelu\_proj}、\texttt{fused\_swiglu\_mlp} & 单块 / 单投影显式调用 \\
 Linear & \texttt{QW8A8Linear.forward(x, activation=...)} & 单层 GELU epilogue \\
 自定义算子 & \texttt{fp8\_gemm\_activation}、\texttt{fp8\_quantize\_swiglu} & 图内可编译 \\
 C++ / kernel & \texttt{fp8\_gemm\_activation(...)}、\texttt{Fp8*ActivationGemm} & pybind 与模板 \\
@@ -496,13 +502,18 @@ mainloop 仍是带 \texttt{\{data layout, scale layout\}} tuple 的那一份。
   title={cache-dit fp8/gemm/per\_row.cu L14--27（activation id 到模板实参）}]{../../../../cache-dit/csrc/kernels/fp8/gemm/per_row.cu}
 \end{lstinputlisting}
 
-per-row 与 per-tensor 共用带 \texttt{kPerTensor} 的同一个模板，因此两种粒度
-各实例化两个 GELU 变体，blockwise 再两个，合计 6 个新的 kernel 实例。未知
-activation id 直接报错，不会退化成「先 GEMM 再单独算 GELU」。
+per-row 与 per-tensor 共用带 \texttt{kPerTensor} 的同一个模板：模板实参只由
+activation 类型决定，\texttt{kPerTensor} 只改运行期 EVT 的 stride，源码注释
+写明不这么做会多出四次实例化。因此编译产物是 4 个 kernel 家族（row 两个变体、
+block 两个变体），dispatch 侧则是 6 个 launch 实例——三种粒度各两个 activation
+（erf 版与 tanh 版）。未知 activation id 直接报错，不会退化成
+「先 GEMM 再单独算 GELU」。
 
 \paragraph{SwiGLU：把门控搬进 producer}
 
-SwiGLU 的融合点在下一层的量化 producer。\texttt{fp8\_quantize\_swiglu} 需要
+SwiGLU（式~\ref{eq:41-swiglu}）的融合点在下一层的量化 producer：门控、amax
+与量化合并成式~\ref{eq:41-swiglu-producer} 的一次调用。
+\texttt{fp8\_quantize\_swiglu} 需要
 同时支持两种写法：分离的 value/gate 两个张量，以及一次投影出 $2H$ 再切半的
 half-split。区别只在指针算术，所以先用一个小结构统一：
 
@@ -514,18 +525,22 @@ half-split。区别只在指针算术，所以先用一个小结构统一：
 指到 value 同一行的后半段，即 half-split；否则读独立张量。循环体按
 式~\ref{eq:41-swiglu-round} 显式写两次舍入：先
 \texttt{\_\_float2bfloat16\_rn} 得到 BF16 的 silu，再与 BF16 的 value 相乘并
-再次舍入。这是逐 bit 一致的全部原因；少一次舍入，amax 就可能不同。
+再次舍入。舍入位置因此由代码钉死，不依赖编译器的融合策略；少一次舍入，
+amax 就可能不同。
 
 producer 的 per-row 版本把 CTA 组织成「256 个 lane 一行」，并在 shared memory
 里缓存门控结果：
 
 \begin{lstinputlisting}[linerange={406-434},firstnumber=auto,
-  title={cache-dit fp8/quantize.cu L406--434（per-row SwiGLU：第一遍求 amax 并缓存）}]{../../../../cache-dit/csrc/kernels/fp8/quantize.cu}
+  title={cache-dit fp8/quantize.cu L406--434（per-row SwiGLU：第一遍逐 lane 求 amax 并缓存）}]{../../../../cache-dit/csrc/kernels/fp8/quantize.cu}
 \end{lstinputlisting}
 
 \texttt{kWarpsPerRow = 8} 让一个 CTA 恰好覆盖一行（$8\times32=256$ 个 lane），
-每个 lane 每次前进 8 个元素。第一遍既求 amax，又在
-\texttt{kCacheInput} 为真时把门控结果写进 smem；第二遍直接从 smem 取值量化：
+每个 lane 每次迭代读 8 个连续 BF16（16\,B），跨迭代步进 $256\times8=2048$
+个元素。第一遍既求 amax，又在
+\texttt{kCacheInput} 为真时把门控结果写进 smem。第一遍之后还差两级归约：
+\texttt{warp\_max} 在 warp 内取最大值，再由 \texttt{warp\_amax[]} 跨 8 个 warp
+取一次（这两段在 listing 区间外）。第二遍直接从 smem 取值量化：
 
 \begin{lstinputlisting}[linerange={448-463},firstnumber=auto,
   title={cache-dit fp8/quantize.cu L448--463（第二遍复用缓存并写出 scale/qdata）}]{../../../../cache-dit/csrc/kernels/fp8/quantize.cu}
@@ -698,7 +713,8 @@ FP4 另有 \texttt{cache\_dit\_chain}（\texttt{use\_native=False} 的
 $\texttt{cache\_dit}/\texttt{torchao}$，小于 1 表示 cache-dit 更快。
 测试使用 RTX PRO 5000、六组 FLUX Linear 形状、CUDA Event median，warmup 3、
 计时 10 次；FP4 另跑两轮取中位数。软件为 PyTorch 2.15.0+cu132、TorchAO
-0.18.0，cache-dit commit \texttt{eced0158}。每个数字都来自本章复测日志。
+0.18.0，cache-dit commit \texttt{eced0158}。以上两张表的每个数字都来自复测
+日志；融合 MLP 一节的两张表另属一套口径，见 \S6.1。
 
 \begin{table}[H]
 \centering\small
@@ -822,7 +838,8 @@ NCU 归因。可以确定的只有一点：chain 里两次 GEMM 的时间不变�
 VAE 解码。整条链只快 1\%--3\%，与「算子链 1.10--1.15 倍」并不矛盾。PR 同时
 给出同一模式内 fused 与 unfused 的图像一致性：eager 为 PSNR 36.50、SSIM
 0.989，compile 为 33.70、0.988。这是「融合前后差多少」的一致性度量，不是
-「FP8 相对 BF16 的精度」；两组数不能混用。
+「FP8 相对 BF16 的精度」；两组数也不能横向比较——36.50 与 33.70 各自对的是
+eager 与 compile 模式内的未融合链。
 
 \section{实践经验}
 
@@ -852,8 +869,11 @@ activation。但实测 chain 级 rel-L2 为 $5.547\times10^{-4}$，不是零。�
 来自 activation 的实现：cache-dit 的扩展在 \texttt{setup.py} 里带
 \texttt{--use\_fast\_math} 构建，ATen 的 GELU 不带，tanh 的快速实现在个别输入
 上会跨过 BF16 的舍入边界。本书没有逐位定位来源，只把结论写清：GELU 融合与
-未融合链在 $10^{-4}$ 量级上一致，不是逐 bit。SwiGLU 侧的零差异另有原因——
-式~\ref{eq:41-swiglu-round} 的两次舍入由代码显式写出，与编译选项无关。
+未融合链在 $10^{-4}$ 量级上一致，不是逐 bit。SwiGLU 侧的零差异来自另一处：
+式~\ref{eq:41-swiglu-round} 的两次舍入由代码显式写出，不依赖 ATen 的 epilogue
+实现。它固定的仍是舍入位置——producer 的 silu 用 \texttt{\_\_expf}，扩展整体
+带 \texttt{--use\_fast\_math}；逐 bit 相同是 PR 用例在对应规模上的实测结果
+（含 $H=500$ 的非对齐形状），不是任意输入的构造性保证。
 \end{kaogu}
 
 \begin{kaogu}[F2]{\texttt{\_scaled\_mm} 的 schema 没有 activation 位置}
@@ -1006,7 +1026,8 @@ python -m pytest -q tests/kernels/test_fp8_ops.py \
   tests/quantization/test_quantize_config.py
 \end{lstlisting}
 
-PR \#1371 的回归矩阵共 259 项通过。其中与本节直接相关的是三类断言。第一，
+PR \#1371 的回归矩阵共 259 项通过（PR 验收记录，2026-11-19；本书未复跑）。
+其中与本节直接相关的是三类断言。第一，
 三种粒度乘四种结构（标准 GELU、单流 GELU、分离 gate SwiGLU、half-split
 SwiGLU）在 eager 与 \texttt{fullgraph} 编译下，与未融合链的 rel-L2 都小于
 $2\times10^{-3}$。第二，$H=500$ 这类非 128 对齐的 SwiGLU 在 eager 与 compile

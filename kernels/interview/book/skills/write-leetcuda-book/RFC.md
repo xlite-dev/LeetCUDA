@@ -646,14 +646,14 @@ CHECKLOG / 技能笔记 / RFC 编号 / DoD 条款等一律不进正文；数据�
 
 > 用户点名在 Part VIII 增加一节，讲 cache-dit 原生 FP8 的 fused MLP 用法，参考本仓最新 `csrc/kernels/fp8` 与 PR #1371。该 PR 已合入本地 `dev`（`453c1b05`），同时把 `gemm.cuh` 的既有行号整体推移，因此本里程碑必须连带重挂 ch41 的全部 FP8 锚点。修订环境为 SM86 WSL，无 FP8 扩展，不跑 kernel、不复测性能。
 
-- [x] R.0 源码核查：确认本地 `dev` HEAD 即 PR #1371 合并提交 `453c1b05`；`git diff eced0158..453c1b05 -- csrc/kernels/{fp8,fp4}` 显示只有 `csrc/kernels/fp8/**` 变动，FP4/SVDQ 文件零改动。
+- [x] R.0 源码核查：确认本地 `dev` HEAD 即 PR #1371 合并提交 `453c1b05`；`git diff eced0158..453c1b05 -- csrc/kernels/{fp8,fp4}` 显示只有 `csrc/kernels/fp8/**` 变动，FP4 零改动。`svdq/` 在同一区间被其它 PR 改过（20 文件），故 Part VII 锚点原地保留 `eced0158`，构建时按 `453c1b05` + `svdq@eced0158` 组合快照取源。
 - [x] R.1 行锚点重挂：5 处旧 listing 由 `eced0158` 行号改到 `453c1b05`（111-121→145-155、214-227→363-376、263-283→438-458、303-317→504-518、346-368→547-569），逐处核对首末行文本。
 - [x] R.2 新增 listing：`gemm.cuh` 94-122（tanh GELU functor）、192-214（activation EVT）、378-402（activation collective 家族）、`per_row.cu` 14-27（activation id 分派）、`quantize.cu` 382-404/406-434/448-463（SwiGLU 读取、两遍求 amax、复用缓存）、`fused.py` 73-104（Python 入口）。
 - [x] R.3 正文：新增 §3.4（融合边界与整行 amax 的非局部性、式 41-mlp..41-swiglu-round）、§4.6（五层入口表、EVT 根节点、逐 TU 实例化、producer 两遍与缓存、结构化 pass 与两条硬边界）、§6.1（两张性能表 + 字节账）、§7 两个考据框、§8 四条坑、§9 Q8/Q9、§10 用例与三条实验。
 - [x] R.4 图：`fig:41-fused-mlp`（TikZ inline，两条链并排）；standalone 渲染 150 dpi 逐项目检，无文文/图文重叠，宽 15.95 cm。
 - [x] R.5 接线：BOOK_PLAN 章节卡片与 DoD、RFC 里程碑、anchors.yaml（ch41 refs 由 10 增至 18，ALL GREEN）、preamble 关键字、appB/appC/appD、RTD `sources/README.md` 与快照。
 - [x] R.6 数据口径：性能数字取自 PR #1371（RTX PRO 5000、CUDA Event、PyTorch 2.15.0+cu132），正文与 appB 均写明本书未复测；GELU 融合标注为 $10^{-4}$ 量级一致而非逐 bit，SwiGLU 标注为逐 bit（PR `torch.equal` 用例）。
-- [x] R.7 验收：verify_anchors ch41 ALL GREEN；主 book 构建零 error；RTD 全量 build/convert.verify/visual_check；正确性自审与去 AI 味；Code Review 回修。
+- [x] R.7 验收：verify_anchors ch41 ALL GREEN（组合快照 36 章 ALL GREEN）；主 book 658 页 / 0 error / 0 undefined / 缺字 0 / Overfull≥1pt 15（基线不变），cute-zhihu 248 页 / 0 error / Overfull 0；RTD 全量 build 全项 OK（英文图 218/218、代码 779/779、公式 123/123、词典 2135），`visual_check` 99 页需处理 0；Code Review（2026-11-20）回修 A1–A3 + B1–B6 + C1–C8，图词典补 fig:41-fused-mlp 五条并逐目检中英双版。
 
 ## 13. 图清单登记表（写作期持续更新）
 

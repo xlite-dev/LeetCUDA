@@ -205,7 +205,8 @@
 ### Part VII SVDQuant 篇（ch38-40，2026-11-11 完成）
 
 SVDQuant 三章的源码区间、公式与图清单见 RFC-P；三章锚定 cache-dit
-`eced0158`（该 commit 之后 `svdq/` 未改动）。Part VIII 的 FP8 部分在 RFC-R 中
+`eced0158`（PR #1371 未改动 `csrc/kernels/svdq/`；该 commit 之后的 `svdq/`
+变更来自其它 PR，不在本书引用范围）。Part VIII 的 FP8 部分在 RFC-R 中
 前移到 `453c1b05`，沿用外部仓只读引用、RTD 冻结快照与附录 D permalink 范式。
 
 ### Part VIII CUTLASS Collective API 篇（ch41，2026-11-16 新增，RFC-Q）
@@ -262,7 +263,7 @@ SVDQuant 三章的源码区间、公式与图清单见 RFC-P；三章锚定 cach
 >
 > **Collective API 篇特化（ch41，2026-11-16，RFC-Q）**：BF16 新头文件 `collective_gemm.cuh` 纳入 anchors.yaml `files` SHA256 冻结；cache-dit `eced0158` 的 FP8/FP4 文件只登记 chapters 行锚点并保存 RTD 快照。第 4 条测试分为本仓 BF16 SM90A 编译/非 SM90 SKIP 与 cache-dit 81 项 FP8/FP4 回归，BF16 不在本机 SM120 上强行运行。第 5 条 bench 必须实际执行 `bench_fp8.py --suite flux` 与 `bench_fp4.py`，数据落 `.tmp/book-bench/ch41/`；只使用无 error 的 chain_default/compile_linear 行，所有性能表注明 eager/compile、GPU、软件版本与无效臂。其余各条照常。
 >
-> **融合 MLP 增补（RFC-R，2026-11-19）**：FP8 引用前移到 `453c1b05`（PR #1371），5 处旧行锚点重挂并新增 13 处（`gemm.cuh` 3 + `per_row.cu` 1 + `quantize.cu` 3 + `fused.py` 1，另有 5 处旧区间更新）。第 4 条测试改为核对 cache-dit 用例覆盖与断言口径（三种粒度 × 四种结构、$H=500$ 逐 bit、无目标报错），修订环境无 SM120/FP8 扩展，正文须写明未复跑。第 5 条 bench 以 PR #1371 的验收表为源并显式标注「未复测」；不得把 1.10×/1.15× 外推到其它形状。
+> **融合 MLP 增补（RFC-R，2026-11-19）**：FP8 引用前移到 `453c1b05`（PR #1371），共 13 处锚点改动 = 新增 8 处（`gemm.cuh` 3 + `per_row.cu` 1 + `quantize.cu` 3 + `fused.py` 1）+ 重挂 5 处旧区间。第 4 条测试改为核对 cache-dit 用例覆盖与断言口径（三种粒度 × 四种结构、$H=500$ 逐 bit、无目标报错），修订环境无 SM120/FP8 扩展，正文须写明未复跑。第 5 条 bench 以 PR #1371 的验收表为源并显式标注「未复测」；不得把 1.10×/1.15× 外推到其它形状。
 
 ### 4.3 行文风格（作者风格基线，2026-09-11 用户定）
 
