@@ -36,9 +36,12 @@
         （第~\ref{ch:19}、\ref{ch:26}、\ref{ch:27}--\ref{ch:33}~章）；
   \item cache-dit 仓库（Part VII 与 Part VIII 的 FP4 链路锚定
         \texttt{eced0158}；Part VIII 的 FP8 链路（含融合 MLP 一节）锚定
-        \texttt{453c1b05}，permalink 见附录~\ref{app:D}）\\
+        \texttt{453c1b05}；Part VII 的 SVDQuant-FP8（W8A8）链路锚定
+        \texttt{fdf42708}，即 PR \#1384 的合并提交，permalink 见
+        附录~\ref{app:D}）\\
         \url{https://github.com/vipshop/cache-dit}\\
-        SVDQuant W4A4 的独立 CuTe 实现，以及 FP8/FP4 的 CUTLASS
+        SVDQuant W4A4 的独立 CuTe 实现、W8A8（per-token E4M3 残差加低秩
+        分支）的融合 CuTe 实现，以及 FP8/FP4 的 CUTLASS
         CollectiveBuilder 实现（第~\ref{ch:38}--\ref{ch:41}~章）；
   \item Nsight Compute 文档\\
         \url{https://docs.nvidia.com/nsight-compute/}\\

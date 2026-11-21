@@ -19,6 +19,7 @@ checkout——本地 checkout 会随上游演进漂移，快照才是本地预�
 | --- | --- | --- |
 | cache-dit（FP8，ch41） | `453c1b05` | ch41 头注释、appC（PR #1371） |
 | cache-dit（FP4/SVDQ） | `eced0158` | ch39/ch40/ch41 头注释、appC（该 PR 未改动） |
+| cache-dit（SVDQuant-FP8，ch40b） | `fdf42708` | ch40b 头注释、appC（PR #1384） |
 | ffpa-attn | `861d75e` | ch27 头注释、appC |
 
 ## 内容
@@ -35,6 +36,12 @@ checkout——本地 checkout 会随上游演进漂移，快照才是本地预�
 | `cache-dit/src/cache_dit/quantization/fp8/fused.py` | ch41 | `710e2a333c72941c33fd701d307bfb6ccdb330ee04351d062fa0d67190ec512e` |
 | `cache-dit/csrc/kernels/fp4/gemm.cuh` | ch41 | `a787ee0d5b4ede351543e1d910e853f340e099fa7b627497d2f7fe5a0ca37979` |
 | `cache-dit/csrc/kernels/fp4/quantize.cuh` | ch41 | `2bdd6c71e47c6b70b92cae9e6edd77fda5cc3767443a73601adf076643db38eb` |
+| `cache-dit/csrc/kernels/svdq/cute/fp8/gemm/gemm_w8a8.cuh` | ch40b | `c99639a742bbbc8e56ad574b1da87a7a5181e4271737c7381947606c885a3e46` |
+| `cache-dit/csrc/kernels/svdq/cute/fp8/gemm/gemm_w8a8.cu` | ch40b | `829d860a5e9b76403c2092f41d507084a3f99244be9663c1882fa884fa083f4b` |
+| `cache-dit/csrc/kernels/svdq/cute/fp8/quantize/quantize_w8a8.cuh` | ch40b | `f2d6cf0e4398228d7cc9da16189debf4f6286752e2ce8b43e9de72a37b9d67b5` |
+| `cache-dit/csrc/kernels/svdq/cute/fp8/quantize/quantize_w8a8.cu` | ch40b | `a38598f5f549e9aa7d7441a04cf8164ce9252dd7feef5bf24ffd553130071a03` |
+| `cache-dit/src/cache_dit/kernels/svdquant_fp8.py` | ch40b | `13ca040ef72b150d56ddbaef179f0c61f988f32f7c56a3dbca5e26c8efa27050` |
+| `cache-dit/src/cache_dit/quantization/svdquant/fp8.py` | ch40b | `febc68425ef1262b05ce6d5110af2a13144c1837809ab23354b6820d452533be` |
 | `ffpa-attn/csrc/cuffpa/cute/fp8/fp8_pscale.cuh` | ch27 | `3cb88c6b044b8c81bfde1a625495be7ae9394c8b4971c6604ca459f47918fe56` |
 | `ffpa-attn/csrc/cuffpa/cute/softmax.cuh` | ch27 | `72c339e36dcbfc218964fed0e653d74da111951ac0ce9670eb05bae1901d784c` |
 

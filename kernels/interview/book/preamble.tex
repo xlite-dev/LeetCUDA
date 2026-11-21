@@ -203,6 +203,13 @@
     fused_gelu_mlp,fused_gelu_proj,fused_swiglu_mlp,apply_fused_mlp_passes,
     fp8_fused_mlp,QW8A8Linear,forward_quant,
     fence_view_async_shared,SM89_16x8x32_F32E4M3E4M3F32_TN,
+    % SVDQuant-FP8（ch40b，RFC-S）
+    SM120_16x8x32_TN,SM80_16x8x16_F32BF16BF16F32_TN,
+    w8a8_acc_rowcol,W8A8CuteTraits,W8A8GemmKernel,gemm_fp8_main,apply_scales,
+    gemm_bf16_lora,fill_lora_stage,stage_output_tile,
+    warpgroup_reg_alloc,warpgroup_reg_dealloc,
+    as_position_independent_swizzle_tensor,
+    quantize_w8a8,gemm_w8a8,w8a8_quant_k_splits,
     % 辅助
     fill_2D_regs,fill_3D_regs,div_ceil,make_smem_desc,test_hgemm_cute,
     expf,fmaxf,sinf,cosf,powf,sqrtf,rsqrtf,

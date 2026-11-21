@@ -1,0 +1,952 @@
+% ch40b-svdq-fp8.tex — SVDQuant(四)：W8A8——per-token E4M3 与低秩残差的融合 GEMM（RFC-S）
+% 纯书稿章（不改 cache-dit、不跑 kernel）；源码引用 cache-dit commit fdf42708（PR #1384）。
+% 图：全 TikZ inline；listing 走 anchors.yaml 登记的 linerange。
+\chapter{SVDQuant（四）：W8A8——per-token E4M3 与低秩残差的融合 GEMM}\label{ch:40b}
+
+\section{本章导读}
+
+第~\ref{ch:38}~章建立了 SVDQuant 的数学主线：通道缩放平滑把激活异常值迁进权重、
+低秩分支把平滑后权重里的大奇异方向搬进 BF16、残差只留低比特码；第~\ref{ch:39}~
+与~\ref{ch:40}~章把这套机制落到 NVFP4 的 W4A4 实现上。本章回答一个自然的问题：
+\textbf{残差码点从 4 bit 换成 8 bit（E4M3），同一套机制还成立吗}？cache-dit 在
+PR \#1384（合并提交 \texttt{fdf42708}）里给出的答案是肯定的——SVDQuant-FP8
+（W8A8，权重与激活同为 E4M3 加 per-token/per-row 标量尺度）在 SM120 上以两个
+融合算子（producer 与 GEMM）落地，且 low-rank 分支的收益结构发生了有趣的变化：rank 128
+时 PSNR 相对纯 FP8 提升超过 $5\,\mathrm{dB}$，而 rank 32/64 反而略有回退。
+
+四条主线：
+
+\begin{itemize}[itemsep=1pt,topsep=2pt]
+  \item \textbf{扩展的数学条件}（\S\ref{sec:40b-motivation}）：SVDQuant 的分解
+        与误差上界对\textbf{任意}反量化映射 $\mathcal Q$ 成立，把 $\mathcal Q$
+        从 NVFP4 两级映射换成 per-row E4M3 映射后命题链原样有效；这是"能扩展"
+        的全部数学前提，剩下的都是工程。
+  \item \textbf{scale 的 K 不变性}（\S\ref{sec:40b-math}）：per-token 激活尺度
+        与 per-row 权重尺度都沿归约轴 $K$ 恒定，可以把 scale 完全提出 GEMM
+        归约（式~\ref{eq:34-fold-rc} 的特例），因此 W8A8 \textbf{不需要}
+        block-scaled mainloop——这是它与 W4A4 在 kernel 结构上更简单的根因；
+        但"更简单"不等于"没有新约束"，scale 的施加次序成为一个必须证明的性质。
+  \item \textbf{两个融合 kernel}（\S\ref{sec:40b-design}）：producer 在
+        一次对激活 tile 的读取里同时产出量化码与 LoRA-down 项 $D$；GEMM 把
+        E4M3 主积与 BF16 LoRA-up 修正累进\textbf{同一个} FP32 accumulator，
+        全链路没有独立的 BF16 GEMM，也没有对 $[M,N]$ dense 输出的第二次扫描。
+  \item \textbf{性能与精度是 trade-off}（\S\ref{sec:40b-perf}）：W8A8 权重
+        8 bit、无体积收益，它的定位是\textbf{精度档}：用 $11\%$--$24\%$ 的
+        算子级耗时换 rank 128 时 $+5.6\,\mathrm{dB}$ 的 PSNR。
+\end{itemize}
+
+\textbf{前置章节}：第~\ref{ch:38}~章（数学主线与记号，必须）、第~\ref{ch:39}~章
+（W4A4 的 producer 先例）、第~\ref{ch:40}~章（W4A4 GEMM 与 LoRA 融合先例）、
+第~\ref{ch:31}~章（NVFP4 两级 scale 的格式定义）、第~\ref{ch:34}~章（量化 GEMM
+的 scale 提出推导）。后续第~\ref{ch:41}~章讲原生 FP8（无低秩分支）的 CUTLASS
+Collective 实现，可与本章对照阅读。
+
+\textbf{源码区间与验证方式}：本章讲解 cache-dit 公开仓库 commit
+\texttt{fdf42708} 新增的 \texttt{csrc/kernels/svdq/cute/fp8/}（GEMM
+\texttt{gemm\_w8a8.*} 与 producer \texttt{quantize\_w8a8.*}）、
+\texttt{src/cache\_dit/quantization/svdquant/fp8.py} 与
+\texttt{src/cache\_dit/kernels/svdquant\_fp8.py}。纯书稿任务：不改 cache-dit
+代码、不运行任何 kernel；数值断言以源码注释与 PR \#1384 的验收记录为准，
+\textbf{本书未复测}。完整代码入口见附录~\ref{app:D}。
+
+\section{问题与动机：命题与 $\mathcal Q$ 无关，FP8 残差合法}\label{sec:40b-motivation}
+
+\subsection{从 W4A4 到 W8A8 只差一步映射替换}
+
+回顾第~\ref{ch:38}~章的分解。给定通道缩放 $s\in\mathbb{R}_{>0}^{K}$，
+平滑后权重 $\widetilde W = W\cdot\mathrm{diag}(s)$ 被拆成
+\begin{equation}
+  \widetilde W = L_1 L_2 + R,
+  \qquad
+  L_1\in\mathbb{R}^{N\times r},\quad L_2\in\mathbb{R}^{r\times K},
+  \label{eq:40b-split}
+\end{equation}
+低秩因子 $L_1$（up）与 $L_2$（down）保留 BF16，残差 $R$ 交给低比特量化器。
+第~\ref{ch:38}~章的 Proposition~4.1（转述）给出的误差上界对任意 $X,W$ 与
+\textbf{任意}反量化映射 $\mathcal Q$ 成立：W4A4 里 $\mathcal Q$ 是 NVFP4 的
+两级映射（E2M1 码字加 16 元素一组的 FP8 micro-scale，第~\ref{ch:31}~章），
+W8A8 里它换成
+\begin{equation}
+  \mathcal Q_{\mathrm{fp8}}(R)_{n,k}
+    = \mathrm{wscales}[n]\cdot\bar q_B[n,k],
+  \qquad
+  \mathrm{wscales}[n]=\frac{\max_k |R[n,:]|}{448},
+  \label{eq:40b-wq}
+\end{equation}
+即每输出通道一个 FP32 尺度的 E4M3 对称量化（空行以 $10^{-12}$ 兜底，
+避免零尺度）。映射换了，分解
+\eqref{eq:40b-split}、低秩分支对大奇异方向的吸收、
+Proposition~4.1 的上界结构\textbf{全部不变}。这就是"能扩展到 FP8"的数学
+内容：它不需要新定理，只需要确认既有定理的量词确实覆盖新的 $\mathcal Q$。
+
+工程上真正变化的是两件事，也正是本章的两条技术主线：其一，per-row 权重尺度
+与 per-token 激活尺度都沿 $K$ 恒定，scale 可以完全退出 GEMM 归约
+（\S\ref{sec:40b-math}）；其二，E4M3 是 8-bit 码点，残差占的字节数是 NVFP4
+的约 $1.8$ 倍，W8A8 \textbf{不是压缩方案}——它不省权重显存，定位是花钱买
+精度的档位（\S\ref{sec:40b-perf}）。
+
+\subsection{FP8 已经很准，为什么还要低秩分支}\label{sec:40b-why-lora}
+
+这是本章最该想明白的问题。E4M3 的最大有限值是 $448$（$127$ 个正码点），
+RN 相对误差上界 $2^{-4}$（第~\ref{ch:27}~章的术语口径：这是误差上界，
+binade 下沿的相对 ULP 是 $2^{-3}$），比 E2M1 的 RN 上界 $2^{-2}$ 小
+$4$ 倍；看起来 per-token FP8 已经"够用了"。第~\ref{ch:38}~章的通道异常值
+分析在这里仍然适用，区别只是打折的程度：激活的异常值固定在少数输入通道上，
+per-token 的行 absmax 归一化只是把整行除以同一个数，行内元素之间的
+\textbf{相对动态范围}不变，异常通道仍会抬高整行的量化步长、压缩普通通道的
+有效级数。位宽从 4 提到 8 只是把"有效级数"的公式
+\eqref{eq:38-levels} 里的 $2^b$ 乘了 $16$ 倍（把 $m_j,m$ 取成行内口径
+即得行级版本），行内通道悬殊的结构没有变。
+
+更直接的证据来自 PR \#1384 的精度表（\S\ref{sec:40b-perf}，本书未复测）：
+rank 32/64 的 PSNR 在 eager 与 compile 四组比较里\textbf{全部}略低于纯 FP8
+（$-0.4$--$-1.0\,\mathrm{dB}$），rank 128 才拉开 $+5.2$--$+5.6\,\mathrm{dB}$。
+这个排序说明低秩分支要吸收的不是随机码点噪声（那种误差加低秩项只会更差），
+而是 per-token FP8 残差里的\textbf{方向性成分}——按 Eckart--Young
+（第~\ref{ch:38}~章），吸收方向性残差所需的秩就是残差谱的有效秩。本书的
+推测是该有效秩落在百量级（可用 $\mathrm{diag}(\Sigma)$ 的参与比检验），
+所以 rank 32/64 只吸走一小部分能量、抵不过码点噪声，rank 128 才跨过门槛；
+PR 只给出“rank 128 是精度档”的结论，没有给出这一解释。W8A8 与 W4A4
+在低秩分支的用法上由此出现
+一个实用分野：W4A4 里 rank 32 是性价比档，W8A8 里 \textbf{rank 128 才是卖点}。
+
+\subsection{W8A8 在 FP8 家族中的位置}
+
+cache-dit 的原生 FP8（第~\ref{ch:41}~章，\texttt{csrc/kernels/fp8/} 族）已经
+提供 per-row/per-tensor 粒度的 FP8 GEMM，数学形态是
+$\mathrm{out}=(q_Aq_B^{\top})\cdot(\delta_a\delta_b)+\mathrm{bias}$。
+W8A8 在它之上只多两样东西：离线阶段的低秩分解 \eqref{eq:40b-split}，与在线
+阶段的两条低秩数据通路（$D=X\,(L_2/s)^{\top}$ 与 $D\,L_1^{\top}$）。把它
+理解成"带低秩残差修正的 per-token FP8"，比理解成"另一种 FP8 格式"更接近
+实现：scale、码点、MMA 全部沿用 FP8 的既有件，新增的只是 producer 里的
+LoRA-down 累加与 GEMM 里的 LoRA-up 累加。
+
+\section{数学原理：per-token 量化、scale 的 $K$ 不变性与施加次序}\label{sec:40b-math}
+
+\subsection{记号与量化三式}
+
+沿用第~\ref{ch:38}~章的符号方向：$X\in\mathbb{R}^{M\times K}$、
+$W\in\mathbb{R}^{N\times K}$、$Y=XW^{\top}$；$L_1\in\mathbb{R}^{N\times r}$
+是 up 因子、$L_2\in\mathbb{R}^{r\times K}$ 是 down 因子
+（注意与论文原文的转置约定，第~\ref{ch:38}~章已交代）。实现里
+\texttt{lora\_down} 存的是 $L_2/s$（已折入逆平滑）、\texttt{lora\_up} 存的
+是 $L_1$，与本书记号一致。
+
+\textbf{离线权重侧}。分解 \eqref{eq:40b-split} 之后，残差按
+\eqref{eq:40b-wq} 量化；低秩因子里 $L_2$ 要除以平滑向量折回原始量纲：
+\begin{equation}
+  \texttt{lora\_down} = L_2 / s,
+  \qquad
+  \texttt{lora\_up} = L_1,
+  \label{eq:40b-offline}
+\end{equation}
+这个除法在导出时用 float64 完成（与 W4A4 导出器同一约定），漏掉它整个低秩
+分支会差一个因子 $s$。
+
+\textbf{在线 producer 侧}。对每一行激活 $X_{m,:}$，先做逐输入通道平滑
+$X/s$，再取行 absmax 定 per-token 尺度，量化码用 satfinite 舍入（溢出钉在
+E4M3 最大有限值而不是刷成 inf）：
+\begin{equation}
+  \mathrm{sa}[m]
+    = \frac{\max\bigl(\mathrm{amax}_k |X[m,k]/s[k]|,\ \varepsilon\bigr)}{448},
+  \qquad
+  \bar q_A[m,k]
+    = \mathrm{satfinite\_e4m3}\!\left(\frac{X[m,k]/s[k]}{\mathrm{sa}[m]}\right),
+  \label{eq:40b-aq}
+\end{equation}
+$\varepsilon=10^{-12}$ 防止全零行产生零尺度。同一趟对激活 tile 的读取还要
+产出低秩 down 项：
+\begin{equation}
+  D[m,r] = \mathrm{BF16}\Bigl(\sum_{k} X[m,k]\cdot\texttt{lora\_down}[r,k]\Bigr),
+  \label{eq:40b-d}
+\end{equation}
+\textbf{$D$ 消耗的是原始激活 $X$ 而不是平滑后的 $X/s$}。因为
+\texttt{lora\_down} 里已经带着 $1/s$，乘积
+$X\,(L_2/s)^{\top}=(X/s)\,L_2^{\top}=X\,\mathrm{diag}(1/s)\,L_2^{\top}$
+直接就是低秩分支在原始量纲下的结果。这是本章
+最容易写错的一处数据流：量化链与低秩链\textbf{消费的不是同一份数值}，只是
+共用同一次访存。
+
+\textbf{GEMM 侧}。两个乘积共用同一个 FP32 累加器，scale 与 bias 在它们之间
+施加，最后只舍入一次：
+\begin{equation}
+  \mathrm{out}[m,n]
+    = \mathrm{BF16}\Bigl(
+        \underbrace{\Bigl(\sum_k \bar q_A[m,k]\,\bar q_B[n,k]\Bigr)}_{P_{m,n}}
+        \cdot \mathrm{sa}[m]\,\mathrm{wscales}[n]
+        + \mathrm{bias}[n]
+        + \underbrace{\sum_r D[m,r]\,L_1[n,r]}_{G_{m,n}}
+      \Bigr).
+  \label{eq:40b-gemm}
+\end{equation}
+
+\subsection{scale 可以提出，但次序不能乱}
+
+式~\eqref{eq:40b-gemm} 里 $\mathrm{sa}[m]$ 只随行、$\mathrm{wscales}[n]$ 只
+随列，两者都沿 $K$ 恒定，于是
+\begin{equation}
+  \sum_k (\bar q_A\cdot\mathrm{sa})(\bar q_B\cdot\mathrm{wscales})
+    = \mathrm{sa}\cdot\mathrm{wscales}\sum_k \bar q_A\,\bar q_B,
+  \label{eq:40b-fold}
+\end{equation}
+这正是第~\ref{ch:34}~章式~\ref{eq:34-fold-rc} 的"scale 完全出括号"与
+第~\ref{ch:41}~章式~\ref{eq:41-fp8-evt} 的 EVT 施加在 W8A8 语境下的重述：
+$\mathrm{sa}$/$\mathrm{wscales}$ 就是那两个式子里的 $s_A$/$s_B$（亦即
+第~\ref{ch:34}~章的 $\delta_{a,m}$/$\delta_{b,n}$）。
+由此得到与 W4A4 的结构对照：NVFP4 的 micro-scale 是 16 元素一组、\textbf{沿
+$K$ 变化}，提不出归约，只能在 mainloop 里逐 block 乘（block-scaled MMA，
+第~\ref{ch:40}~章）；W8A8 的 scale 是行/列级、\textbf{沿 $K$ 不变}，整个
+GEMM mainloop 是普通的 FP8 MMA，scale 全部推迟到 epilogue。这是 FP8 扩展在
+kernel 上更简单的根因，也是图~\ref{fig:40b-format} 想传达的本质：
+\textbf{差别的本质不是 scale 的层数，而是 scale 是否沿归约轴变化}。
+
+出括号之后还剩一个 W4A4 没有的问题：式~\eqref{eq:40b-gemm} 里 scale 乘在
+主积 $P$ 上，却\textbf{不能}乘到低秩项 $G$ 上。验证只差一行代数：若把次序
+换一下、先累加再统一乘尺度，得到的会是
+\begin{equation}
+  \mathrm{sa}\cdot\mathrm{wscales}\cdot(P+G)
+    \;=\; \underbrace{\mathrm{sa}\,\mathrm{wscales}\,P}_{\text{想要的}}
+      + \underbrace{\mathrm{sa}\,\mathrm{wscales}\,G}_{\text{多出来的}},
+  \label{eq:40b-leak}
+\end{equation}
+误差项是 $(\mathrm{sa}\cdot\mathrm{wscales}-1)\,G$。$\mathrm{sa}$ 与
+$\mathrm{wscales}$ 都是 absmax 除以 448 的量级：残差 amax 远小于 448 是
+常态（低秩分支刚把大奇异方向搬走），于是 $\mathrm{sa}\cdot\mathrm{wscales}$
+通常\textbf{远小于} 1，后乘会把低秩项整体压到接近零，效果上等于丢掉 $G$、
+退化为纯 FP8；只有两侧 amax 都接近 448 的极端情形才可能大于 1 而放大。
+W4A4 没有这个问题是因为它的低秩项通过 LoRA-first 的代数补偿在
+\textbf{同一个尺度约定}里归一（第~\ref{ch:40}~章式~\ref{eq:40-lorafirst}）；
+在本 kernel 的单累加器设计下，W8A8 的低秩项直接以原始量纲参与，次序因此
+固定为先乘 scale 再累加；等价的绕法是先把 $G$ 预除 $1/(\mathrm{sa}\cdot
+\mathrm{wscales})$、最后再乘回，代价是每元素一次除法。实现里这条约束由
+函数调用顺序固化：
+\texttt{apply\_scales}（源码 gemm\_w8a8.cuh L261--286）就地改写 FP32
+fragment，\texttt{gemm\_bf16\_lora}（L343--378）随后把 LoRA-up 积累进
+\textbf{同一个} fragment：两个 MMA 的 C partition 在编译期被
+static\_assert 锁成逐元素一致（L97--102），所以"累进同一累加器"在布局层面
+是定理而不是巧合。
+
+\subsection{与 W4A4 的三点区别}\label{sec:40b-compare}
+
+\begin{table}[H]
+\centering\small
+\caption{SVDQuant 的两种残差格式对照。W4A4 列为第~\ref{ch:39}--\ref{ch:40}~章的
+现状；W8A8 列为本章（cache-dit \texttt{fdf42708}）。}
+\label{tab:40b-compare}
+\begin{tabular}{@{}p{2.6cm}p{5.2cm}p{5.2cm}@{}}
+\toprule
+ & W4A4（NVFP4） & W8A8（E4M3） \\
+\midrule
+残差码点 & E2M1，4 bit，两码点 packed 一字节 & E4M3，8 bit，一码点一字节 \\
+scale 结构 & UE4M3 micro（16 元素一组）+ FP32 标量 $\alpha$，
+             视 runtime 另加逐列 \texttt{wcscales} & 每行（激活）/每输出通道
+             （权重）一个 FP32 尺度，共一层 \\
+\textbf{scale 是否沿 $K$ 变化} & \textbf{是}（micro-scale 按组沿 $K$ 分布） &
+             \textbf{否}（行/列级标量） \\
+scale 施加位置 & mainloop 内逐 block（block-scaled MMA） &
+             epilogue，就地在 FP32 fragment 上 \texttt{fmaf} \\
+激活量化 & NVFP4 per-token 两级（第~\ref{ch:39}~章） & E4M3 per-token 单级
+             （式~\eqref{eq:40b-aq}） \\
+权重视显存 & 约 $4.5$ bit/元素（码点 4 bit 加 scale 分摊） & $8$ bit/元素
+             （加 scale 可忽略） \\
+低秩分支收益档 & rank 32 即性价比档 & rank 128 才是精度档 \\
+checkpoint 序列化 & 支持（native pack 格式） & 显式拒绝（格式未定型） \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+三点区别按重要性排序。第一，\textbf{scale 与 $K$ 的关系}：这是 kernel 结构
+差异的总开关——沿 $K$ 不变的 scale 可以退出 mainloop，沿 $K$ 变化的必须
+留在 mainloop。第二，\textbf{量化粒度与格式复杂度}：W4A4 要维护两级 scale
+的 pack 布局、SFA/SFB 的 smem atom 与 block-scaled MMA 指令（第~\ref{ch:40}~章
+的大半篇幅）；W8A8 的 producer 与 GEMM  layouts 都是教科书式的行主序
+E4M3，尺度是两个长度 $M$/$N$ 的 FP32 向量。第三，\textbf{经济模型}：W4A4 的
+卖点是 $4.5$ bit/元素的权重视显存，W8A8 权重视显存约为其 $1.8$ 倍、没有
+体积收益，它存在的理由是精度表上 rank 128 的那一列（\S\ref{sec:40b-perf}）。
+换言之，W4A4 回答"怎么把 Linear 变便宜"，W8A8 回答"per-token FP8 还不够
+准时怎么修"。
+
+图~\ref{fig:40b-format} 把两个格式的位布局画在一起。读图注意：NVFP4 侧
+画的是 micro 层（16 元素一组的 E4M3 尺度）与 global 层两层，W8A8 侧只有
+per-row 一层；但本节的论点不依赖"几层"，而依赖"沿 $K$ 是否变化"；即便
+把 W4A4 的 global 层去掉只剩 micro 层，它的 scale 依旧沿 $K$ 变化、依旧
+需要 block-scaled mainloop。
+
+\section{设计与实现}\label{sec:40b-design}
+
+\subsection{fused producer：一次读取，两种产物}\label{sec:40b-producer}
+
+producer 的数学契约是式~\eqref{eq:40b-aq} 与~\eqref{eq:40b-d}：从 BF16
+激活 $X$ 产出 E4M3 码 $\bar q_A$、FP32 per-token 尺度 sa、BF16 低秩项 $D$。
+cache-dit 把它拆成两个 kernel 共享一个入口（quantize\_w8a8.cuh），拆分的
+理由是并行度：
+
+\begin{itemize}[itemsep=1pt,topsep=2pt]
+  \item \textbf{amax kernel}（L96--125）：\textbf{每行一个 CTA}，CTA 内 8 个
+        warp 切 $K$，每个线程以 16 B（8 个 BF16）为单位向量化读取，先做
+        逐通道平滑 $X/s$ 再取绝对值，warp 内 \texttt{shfl\_xor} 归约出行
+        amax，最后 $\mathrm{sa}=\max(\mathrm{amax},\varepsilon)/448$ 写入
+        gmem。行级 grid 提供足够多的独立 load 流来掩 HBM 延迟，
+        128 行一 tile 的 CTA 自己做不到这一点（源码注释 L93--95 明说这是在
+        镜像 cache-dit 原生 FP8 producer 的并行分解）。
+  \item \textbf{主 kernel}（L127--292）：CTA 拥有 128 行与 $K$ 的一个连续
+        分片（grid.y 是 split 维，分片大小由
+        \texttt{w8a8\_\allowbreak{}quant\_\allowbreak{}k\_\allowbreak{}splits}
+        决定，目标让总 CTA 数 $\ge256$），
+        内部按 64 宽的 K tile 流水：先把当前 tile 从寄存器写进 smem，
+        随即发起 tile $kt{+}1$ 的寄存器预取（\texttt{x\_regs}/\texttt{l\_regs}，
+        各两份），屏障之后 LDSM 读出做 BF16 MMA 累加 $D$、再在
+        \textbf{同一份寄存器副本}上逐元素 $X/s$、乘预计算的
+        $\mathrm{sa}^{-1}$、satfinite 转成 E4M3 写回 gmem——预取与
+        MMA、量化两步重叠。
+\end{itemize}
+
+amax kernel 本体（L96--125）：向量化的 8 元素读取、平滑后取绝对值、warp
+内 \texttt{shfl\_xor} 归约、最后一行除以 448 得 sa。
+
+\begin{lstinputlisting}[linerange={96-125},firstnumber=auto,
+  title={quantize\_w8a8.cuh L96--125（amax kernel：每行一 CTA 的 per-token 尺度）}]{../../../../cache-dit/csrc/kernels/svdq/cute/fp8/quantize/quantize_w8a8.cuh}
+\end{lstinputlisting}
+
+量化与 $D$ 的累加共用同一批寄存器副本，是这段代码的关键安排：$X$ 从
+gmem 只读一次（16 B 向量化），smem 只作 MMA 的暂存，E4M3 写回按
+8 码点 8 B 一次写出、与读取同构地 coalesced。per-token 尺度用
+\textbf{预计算倒数}（CTA 开头把 128 行的 $1/\mathrm{sa}$ 放进 smem，
+L154--155），量化循环里对 sa 的除法因此变成乘法；逐输入通道的平滑
+（$X/s[k]$）仍是一次除法。源码注释（L59--60）特意交代：倒数乘法与
+fast-math 除法可能让 E4M3 翻一个 ULP，所以转换指令固定用 RTN 加 satfinite 的
+\texttt{\_\_nv\_cvt\_float2\_to\_fp8x2}，与 \texttt{csrc/kernels/fp8} 的
+producer 逐指令一致。
+
+$D$ 的累加是 SM80 的 \texttt{16x8x16} BF16 MMA（E4M3 化之前先算出低秩项，
+两者都以 BF16/FP32 语义工作），全 $K$ 循环只在 FP32 累加器里转，最后
+\textbf{单次}舍入到 BF16；若 $K$ 被切成多个 split，各 split 的 FP32
+partial fragment 用 relaxed 语义的 \texttt{atomicAdd} 归并进 scratch，
+由一个 finalize kernel 做那次唯一的舍入（L275--303）。这套"并行度换
+可复现性"的取舍与第~\ref{ch:40}~章 split-K 的约定一致：原子加不保证
+逐位可复现，$D$ 的等价性判断用误差门槛而不是 bitwise。scratch 不在
+Python 签名里——pybind 层（svdq.cpp 的 \texttt{quantize\_w8a8}，见
+\texttt{fdf42708} 的 L214--235）检测到 $\mathrm{rank}>0$ 且 splits $>1$ 时用
+\texttt{at::zeros} 分配 $[M,\mathrm{rank}]$ 的 FP32 缓冲，Python 侧完全不可见。
+（附录~\ref{app:C} 的混合 checkout 里 \texttt{svdq.cpp} 取自
+\texttt{eced0158}，不含该函数；查这段请直接看 \texttt{fdf42708}。）
+
+两段关键代码。先是主 kernel 的处理核（process\_tile 上半，L213--246）：
+寄存器到 smem 的 staging、下一片的预取、LDSM 与 BF16 MMA 都发生在这里。
+
+\begin{lstinputlisting}[linerange={213-246},firstnumber=auto,
+  title={quantize\_w8a8.cuh L213--246（process\_tile 上段：ST smem、双缓冲预取与 $D$ 的 MMA）}]{../../../../cache-dit/csrc/kernels/svdq/cute/fp8/quantize/quantize_w8a8.cuh}
+\end{lstinputlisting}
+
+再是量化写回（process\_tile 下半，L247--266）：同一份
+\texttt{x\_regs} 副本上完成 $X/s$、乘倒数、satfinite 转换。
+
+\begin{lstinputlisting}[linerange={247-266},firstnumber=auto,
+  title={quantize\_w8a8.cuh L247--266（process\_tile 下段：量化写回）}]{../../../../cache-dit/csrc/kernels/svdq/cute/fp8/quantize/quantize_w8a8.cuh}
+\end{lstinputlisting}
+
+split-K 的写回与调度函数（L275--312）：
+
+\begin{lstinputlisting}[linerange={275-312},firstnumber=auto,
+  title={quantize\_w8a8.cuh L275--312（split-K 原子写回、finalize 与 k\_splits 目标）}]{../../../../cache-dit/csrc/kernels/svdq/cute/fp8/quantize/quantize_w8a8.cuh}
+\end{lstinputlisting}
+
+注意 \texttt{w8a8\_quant\_k\_splits} 的目标公式（L307--312）：以
+$256$ 个 CTA 为目标反推 split 数，且不超过 K tile 总数；rank 0 没有
+$D$ 要归约，总是按该目标选 split（L332--334 在 dispatcher 处决定；
+K 很小时 split 退化为 1）。host 入口
+的校验与 rank 分派（quantize\_w8a8.cu）：$M$ 是 128 的倍数、$K$ 是 64 的
+倍数、rank $\in\{0,32,64,128\}$，rank 32/64/128 各一个实例化 TU 以并行
+编译。
+
+\begin{lstinputlisting}[linerange={52-64},firstnumber=auto,
+  title={quantize\_w8a8.cu L52--64（host 几何与 dtype 约束）}]{../../../../cache-dit/csrc/kernels/svdq/cute/fp8/quantize/quantize_w8a8.cu}
+\end{lstinputlisting}
+
+\subsection{W8A8 GEMM：双乘积单累加器}\label{sec:40b-gemm}
+
+GEMM 的数学契约是式~\eqref{eq:40b-gemm}。结构上它把第~\ref{ch:40}~章
+W4A4 GEMM 的两条原则原样继承下来——\textbf{没有任何独立 BF16 GEMM、
+没有对 dense 输出的二次扫描、FP32$\to$BF16 全 kernel 只发生一次}——
+但 mainloop 本身反而\textbf{更常规}：没有 block-scaled MMA、没有 SFA/SFB
+布局、没有 G2R 逆映射，只有 TMA 加 LDSM 加 SM120 FP8 MMA 的标准流水。
+新增的复杂度全部集中在 LoRA 分支与它的调度上。
+
+\textbf{traits 与双 MMA 布局契约}（gemm\_w8a8.cuh L84--102）。FP8 主积用
+SM120 的 \texttt{16x8x32} E4M3 MMA atom，AtomLayout $4\times2\times1$、
+Permutation $128\times32\times32$；LoRA-up 用 SM80 的
+\texttt{16x8x16} BF16 MMA atom，M/N 完全相同、只有 K 维换成
+\texttt{kRankTile}$=32$。两个 tiled MMA 的线程数与 C partition 被两条
+static\_assert 锁死成逐类型相等：这就是两个乘积能共享
+\texttt{tCrC} 的布局前提，第~\ref{ch:40}~章在 W4A4 里建立过同一结论。
+
+\begin{lstinputlisting}[linerange={84-102},firstnumber=auto,
+  title={gemm\_w8a8.cuh L84--102（E4M3/BF16 双 MMA atom 与共享累加器的 static\_assert）}]{../../../../cache-dit/csrc/kernels/svdq/cute/fp8/gemm/gemm_w8a8.cuh}
+\end{lstinputlisting}
+
+\textbf{smem 预算}（L127--144）。主流水两 stage，每 stage A（$128\times128$
+E4M3）16 KiB 加 B 16 KiB；LoRA 专用 ring 也是两 stage，每 stage D
+（$128\times32$ BF16）8 KiB 加 $L_1$ 8 KiB；合计 96 KiB，被
+\texttt{kSmemBytes} $\le 99$ KiB 的静态断言守住。输出 staging tile
+（$128\times128$ BF16，32 KiB）不复用 LoRA ring，而是叠在主流水的存储上
+（断言 L138--139 要求 \texttt{SmemLayoutO} 字节数不超过主流水总量）；
+epilogue 跑时主流水已排空，这是第~\ref{ch:40}~章 overlay 手法的简化版。
+\textbf{注意实例化参数}：cuh 的模板形参默认 \texttt{kStages\_=3}，但 host
+只实例化 \texttt{launch\_gemm\_w8a8<128,2,128>}（gemm\_w8a8.cu L76）；
+smem 的账只按两 stage 成立，读代码以实例化为准。
+
+\begin{lstinputlisting}[linerange={127-144},firstnumber=auto,
+  title={gemm\_w8a8.cuh L127--144（两 stage 主流水加 LoRA ring 的 96 KiB 预算与 overlay 断言）}]{../../../../cache-dit/csrc/kernels/svdq/cute/fp8/gemm/gemm_w8a8.cuh}
+\end{lstinputlisting}
+
+\textbf{主循环}（L226--246）没有任何 scale：TMA barrier 等到 stage 满，
+LDSM 逐 32 宽 k-block 读 fragment，MMA 写 \texttt{tCrC}，warp leader
+释放 stage。
+
+\begin{lstinputlisting}[linerange={226-246},firstnumber=auto,
+  title={gemm\_w8a8.cuh L226--246（gemm\_fp8\_main：无 scale 的 E4M3 主循环）}]{../../../../cache-dit/csrc/kernels/svdq/cute/fp8/gemm/gemm_w8a8.cuh}
+\end{lstinputlisting}
+
+\textbf{scale 施加}（L261--286）是 §\ref{sec:40b-math} 那条次序约束的代码
+形态：\texttt{acc = fmaf(acc * sa[m], sw[n], bias[n])} 就地改写
+fragment，发生在 LoRA 累加\textbf{之前}。scale 的寻址依赖一个 regroup
+助手 \texttt{w8a8\_acc\_rowcol}（L32--40）：SM120 atom 的 C 布局把两行
+交错进一对寄存器，先把 fragment 重排成 (row, col) 两个独立 mode，才能
+按行取 sa、按列取 sw 与 bias。
+
+\begin{lstinputlisting}[linerange={261-286},firstnumber=auto,
+  title={gemm\_w8a8.cuh L261--286（apply\_scales：先乘 sa 再 LoRA 累加的次序固化）}]{../../../../cache-dit/csrc/kernels/svdq/cute/fp8/gemm/gemm_w8a8.cuh}
+\end{lstinputlisting}
+
+\textbf{LoRA-up 累加}（L343--378）按 32 宽的 rank 切片循环（与 FP4 kernel
+同粒度，每切片 $D$ 8 KiB、$L_1$ 8 KiB）。调度上做一个低开销重叠：
+consumer 的第一个 warp（相对编号 \texttt{tid<32}）在 mainloop 开始前
+用 \texttt{cp.async} 预取前 $\min(\mathrm{nRt},2)$ 个切片填 LoRA ring，
+与主循环并行；rank 128 时 $\mathrm{nRt}=4$，超出预取 ring 的下标 2、3
+（第 3、4 片）
+在循环内用 NamedBarrier 保护按需 refill（L363--373）。SW64 的 smem atom
+让 LDSM 读 32 宽 BF16 切片零 bank conflict（源码注释 L111--113：每行
+64 B 恰是一个 atom）。
+
+\begin{lstinputlisting}[linerange={343-378},firstnumber=auto,
+  title={gemm\_w8a8.cuh L343--378（gemm\_bf16\_lora：rank 切片累加与 rank 128 的按需 refill）}]{../../../../cache-dit/csrc/kernels/svdq/cute/fp8/gemm/gemm_w8a8.cuh}
+\end{lstinputlisting}
+
+\textbf{warp specialization 与 epilogue}。kernel 共 384 线程：
+\texttt{tid}<128 是 producer（\texttt{warpgroup\_reg\_dealloc<32>} 让出
+寄存器，只有 tid 0 发 TMA，发完即 return）；其余 256 线程是 consumer
+（\texttt{warpgroup\_reg\_alloc<224>}）。consumer 的调用链一句话：
+预取 LoRA 切片 $\to$ \texttt{gemm\_fp8\_main} $\to$ \texttt{apply\_scales}
+$\to$ \texttt{gemm\_bf16\_lora} $\to$ 单次 FP32$\to$BF16 $\to$ STSM 进
+smem $\to$ TMA store。
+
+\begin{lstinputlisting}[linerange={507-518},firstnumber=auto,
+  title={gemm\_w8a8.cuh L507--518（producer 分派：reg\_dealloc 与 TMA 发射环）}]{../../../../cache-dit/csrc/kernels/svdq/cute/fp8/gemm/gemm_w8a8.cuh}
+\end{lstinputlisting}
+
+\begin{lstinputlisting}[linerange={520-545},firstnumber=auto,
+  title={gemm\_w8a8.cuh L520--545（consumer 调用链：LoRA 预取到 TMA store 的五步）}]{../../../../cache-dit/csrc/kernels/svdq/cute/fp8/gemm/gemm_w8a8.cuh}
+\end{lstinputlisting}
+
+单次舍入的证据在 \texttt{stage\_output\_tile}（L388--405）：
+\texttt{NumericArrayConverter} 对整个 fragment 只做一次
+FP32$\to$BF16，之后的 STSM 与 TMA store 都搬的是 BF16。
+
+\begin{lstinputlisting}[linerange={388-405},firstnumber=auto,
+  title={gemm\_w8a8.cuh L388--405（stage\_output\_tile：全 kernel 唯一一次 FP32 到 BF16 转换）}]{../../../../cache-dit/csrc/kernels/svdq/cute/fp8/gemm/gemm_w8a8.cuh}
+\end{lstinputlisting}
+
+host 侧（gemm\_w8a8.cu）先做完整校验（E4M3 码、BF16 输出与 LoRA 张量、
+FP32 尺度、$M/N/K$ 皆 128 的倍数、rank $\in\{0,32,64,128\}$），再取
+实例化 \texttt{launch\_gemm\_w8a8<128,2,128>}；TMA 描述符按
+"指针 $+$ shape $+$ rank" 作 key 缓存（上限 32 条，超出清空），因为描述符
+只是拷贝配方。
+
+\begin{lstinputlisting}[linerange={59-83},firstnumber=auto,
+  title={gemm\_w8a8.cu L59--83（host 几何约束与 $<$128,2,128$>$ 实例化）}]{../../../../cache-dit/csrc/kernels/svdq/cute/fp8/gemm/gemm_w8a8.cu}
+\end{lstinputlisting}
+
+\subsection{Python 量化流程与显式拒绝}\label{sec:40b-python}
+
+算子层之上，cache-dit 提供与 W4A4 平行的打包模块
+\texttt{SVDQW8A8Linear}（文件 \texttt{fp8.py}，在
+\texttt{src/cache\_dit/} 下的 \texttt{quantization/svdquant/} 中）。
+buffers 按 kernel 的 128 宽几何 pad（输入与输出宽度各向上取 128 的
+倍数，即 \texttt{quantized\_in\_features} 与
+\texttt{quantized\_out\_features} 两个量），保留原始宽度供 forward
+切片回去；\texttt{dequantize\_weight} 按 $(R+L_1L_2)/s$（即
+$R/s+L_1(L_2/s)$）重建权重，是核对残差、尺度与低秩因子三者约定
+没有互相拧的现成钩子。
+
+\begin{lstinputlisting}[linerange={139-147},firstnumber=auto,
+  title={fp8.py L139--147（残差 per-row 量化与 proj\_down 折逆平滑）}]{../../../../cache-dit/src/cache_dit/quantization/svdquant/fp8.py}
+\end{lstinputlisting}
+
+forward 走完整融合链：pad 到 128 行 $\to$ \texttt{svdq\_quantize\_w8a8}
+（producer，\texttt{pad\_rows=True} 时保留 pad 供 GEMM 直接消费）
+$\to$ \texttt{svdq\_gemm\_w8a8} $\to$ 切回 \texttt{out\_features}。
+两个算子在 \texttt{svdquant\_fp8.py} 里注册成
+\texttt{cache\_dit\_cuda\_ops} 下的 torch.library 算子，CUDA impl 与
+fake 成对出现，fake 的 shape/dtype 与 impl 完全一致，这是
+torch.compile 全图追踪不被打断的前提。
+
+\begin{lstinputlisting}[linerange={48-71},firstnumber=auto,
+  title={svdquant\_fp8.py L48--71（GEMM 算子的 define / CUDA impl / register\_fake）}]{../../../../cache-dit/src/cache_dit/kernels/svdquant_fp8.py}
+\end{lstinputlisting}
+
+\begin{lstinputlisting}[linerange={178-204},firstnumber=auto,
+  title={fp8.py L178--204（SVDQW8A8Linear.forward：pad、融合 producer+GEMM、切片返回）}]{../../../../cache-dit/src/cache_dit/quantization/svdquant/fp8.py}
+\end{lstinputlisting}
+
+PTQ 入口 \texttt{quantize\_svdq\_fp8} 与 W4A4 共用校准框架：非 DQ 路径
+要求 \texttt{calibrate\_fn} 并通过 forward pre-hook 捕获逐层激活 span，
+\texttt{smooth\_strategy} 四分支（\texttt{activation} 用校准数据算
+SmoothQuant 因子，\texttt{identity} 不平滑，\texttt{weight}/\texttt{
+weight\_inv} 是无数据的 DQ 导出）。
+
+\textbf{显式拒绝清单}（比"支持什么"更能说明设计边界）：
+\begin{itemize}[itemsep=1pt,topsep=2pt]
+  \item checkpoint 序列化：\texttt{serialize\_to} 非 None 即
+        \texttt{NotImplementedError}：W4A4 的 save/load 格式描述的是
+        NVFP4 pack 布局，与 E4M3 残差不兼容，宁可拒绝也不静默写错；
+  \item \texttt{few\_shot} 平滑策略：显式 \texttt{ValueError}；
+  \item SVDQ 通用校验（config.py）：\texttt{components\_to\_quantize}、
+        \texttt{precision\_plan}、\texttt{per\_tensor\_fallback} 三项不支持；
+        FP8 精度分支另要求 \texttt{svdq\_kwargs} 里\textbf{保持默认值}的恰有
+        11 个键：\texttt{runtime\_kernel}、\texttt{lora\_layout}、
+        \texttt{fused\_mlp}、\texttt{layerwise\_offload}、
+        \path{offload_quantized_layers_to_cpu}、
+        \path{defer_move_to_execution_device}、
+        \path{few_shot_auto_compile}、
+        \texttt{svd\_refine\_iters}、\texttt{streaming}、
+        \path{activation_buffer_flush_sample_count}、
+        \path{activation_buffer_flush_cpu_bytes}，
+        任一取非默认值即 \texttt{ValueError}；其余键
+        （\texttt{calibrate\_precision}、\texttt{quantize\_device}、
+        \texttt{smooth\_strategy} 等）仍按通用校验生效；
+  \item 非 BF16 的 \texttt{torch\_dtype}：模块构造即拒绝。
+\end{itemize}
+PR \#1384 的说明文字还把 tensor parallel 列入"不支持"，但代码层没有对应
+校验（\texttt{svdquant/dtensor.py} 提供的是 W4A4 的 TP 包装）；按"每条
+断言有代码锚点"的纪律，本章不把它写成代码断言，只记为 PR 文档的口径。
+
+\section{图示}
+
+本章设计图按四个问题读：数据\textbf{从哪来}（图~\ref{fig:40b-pipeline}：
+一次读取双产物）、\textbf{格式差在哪}（图~\ref{fig:40b-format}：scale
+是否沿 $K$ 变化）、\textbf{什么时候施加 scale}（图~\ref{fig:40b-acc-fusion}
+的 accumulator 时序）、\textbf{代价是什么}（图~\ref{fig:40b-tradeoff}的
+精度--耗时平面）。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize,
+  box/.style={draw, rounded corners=2pt, align=center, inner sep=4pt},
+  wide/.style={box, text width=5.0cm, minimum height=3.6cm},
+  narr/.style={box, text width=1.7cm, minimum height=1.1cm},
+  arr/.style={->, thick}]
+  \node[narr, fill=tkGreen!18] (x) at (0.55,2.4) {$X$ $[M,K]$\\BF16};
+  \node[wide, fill=tkOrange!18] (prod) at (4.7,2.4)
+    {\textbf{fused producer（两个 launch）}\\[3pt]
+     \texttt{amax} kernel：每行一 CTA，行 absmax $\to$ sa\\
+     主 kernel：CTA $=$ 128 行 $\times$ $K$ 分片（split-K）\\[2pt]
+     smem 写入 $\to$ 预取 tile $kt{+}1$ $\to$ LDSM\\
+     \quad$\circ$ BF16 MMA 累加 $D$（FP32，单次舍入）\\
+     \quad$\circ$ 同一份 \texttt{x\_regs}：$X/s\to\times\,\mathrm{sa}^{-1}$\\
+     \qquad$\to$ satfinite E4M3 写回（8 码点 8 B）};
+  \node[wide, fill=tkBlue!18] (gemm) at (11.2,2.4)
+    {\textbf{W8A8 GEMM（一个 launch，384 线程）}\\[3pt]
+     producer 128T：TMA 发射 A/B（tid 0，reg\_dealloc 32）\\
+     consumer 256T（reg\_alloc 224）：\\[2pt]
+     \quad$\circ$ E4M3 mainloop：TMA$\to$LDSM$\to$MMA $\to$ $P$\\
+     \quad$\circ$ \texttt{apply\_scales}：$P\!\to\!\mathrm{sa}\!\cdot\!\mathrm{sw}P{+}\mathrm{bias}$\\
+     \quad$\circ$ LoRA 切片（32 宽）BF16 MMA 累加 $G$\\
+     \quad$\circ$ 单次 FP32$\to$BF16 $\to$ STSM $\to$ TMA store};
+  \node[narr, fill=tkRed!18] (out) at (15.05,2.4) {out $[M,N]$\\BF16};
+  \draw[arr] (x) -- (prod);
+  \draw[arr] (prod) -- (gemm)
+    node[midway, above=2pt, font=\tiny] {$\bar q_A$, sa, $D$};
+  \draw[arr] (gemm) -- (out);
+  \node[anchor=north west, align=left, text width=15.6cm, font=\tiny] at (-0.45,-0.6)
+    {贯穿全链的三条不变量：量化链与低秩链消费\textbf{不同的数值}（$X/s$ 与 $X$，
+     靠 lora\_down 里的 $1/s$ 对齐量纲）但共用同一次访存；$D$ 与 $\bar q_A$ 同kernel产出，
+     \textbf{没有独立 BF16 GEMM}；LoRA 修正累进同一 FP32 fragment、输出只舍入一次，
+     \textbf{没有对 $[M,N]$ dense 输出的二次扫描}。};
+\end{tikzpicture}
+\caption{W8A8 端到端数据流。producer 一次读取产出三种产物；GEMM 把 E4M3 主积、
+scale、bias 与低秩修正排进同一个 FP32 累加器的生命周期的四段。}
+\label{fig:40b-pipeline}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize,
+  byte/.style={draw, minimum height=0.62cm, inner sep=1.5pt, align=center},
+  brace/.style={decorate,decoration={brace,amplitude=4pt}}]
+  % NVFP4 行
+  \node[byte, fill=tkOrange!18, minimum width=9.2cm, anchor=west] (codes)
+    at (0.2,2.6) {E2M1 码点流：两码点 packed 一字节，$4$ bit/元素};
+  \node[byte, fill=tkOrange!35, minimum width=3.1cm, anchor=west] (micro)
+    at (9.9,2.6) {UE4M3 micro-scale，每 16 元素一个（沿 $K$ 分布）};
+  \node[byte, fill=tkOrange!50, minimum width=2.2cm, anchor=west] (glob)
+    at (13.6,2.6) {FP32 global/逐列层};
+  \node[anchor=west, font=\scriptsize\bfseries] at (0.2,3.35) {W4A4（NVFP4，两级至三级）};
+  \draw[tkOrange!75!black, thick]
+    (9.9,2.24) -- (15.8,2.24) node[midway, below=3pt, font=\tiny, text=tkOrange!75!black]
+    {scale 沿 $K$ 变化 $\Rightarrow$ 提不出归约，留在 block-scaled mainloop};
+  % W8A8 行
+  \node[byte, fill=tkBlue!18, minimum width=9.2cm, anchor=west] (acodes)
+    at (0.2,0.9) {E4M3 码点流：一码点一字节，$8$ bit/元素};
+  \node[byte, fill=tkBlue!35, minimum width=6.2cm, anchor=west] (as)
+    at (9.95,0.9) {FP32 sa$[m]$（每 token）与 sw$[n]$（每输出通道）};
+  \node[anchor=west, font=\scriptsize\bfseries] at (0.2,1.65) {W8A8（E4M3，一层）};
+  \draw[tkBlue!70!black, thick]
+    (9.95,0.54) -- (16.15,0.54) node[midway, below=3pt, font=\tiny, text=tkBlue!70!black]
+    {scale 沿 $K$ 不变 $\Rightarrow$ 提出归约，epilogue 一次 fmaf};
+\end{tikzpicture}
+\caption{两种残差格式的位布局对照。W4A4 侧画出 micro 层与 global/逐列层
+（两级，另加 runtime 可选的逐列层）
+（W4A4 的 runtime 差异见第~\ref{ch:40}~章）；W8A8 侧只有行/列级一层。
+本图只对照 micro 层与 per-row 层的粒度差异；层数不是本质，scale 是否沿
+$K$ 变化才是。}
+\label{fig:40b-format}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize,
+  stage/.style={draw, rounded corners=2pt, align=center, inner sep=3pt,
+                minimum height=1.5cm, text width=3.2cm},
+  arr/.style={->, thick}]
+  \node[stage, fill=tkGreen!18] (main) at (1.85,1.4)
+    {\textbf{(1) E4M3 mainloop}\\ $tCrC \mathrel{+}= \bar q_A\bar q_B^{\top}$\\
+     两 stage TMA 流水\\（无任何 scale）};
+  \node[stage, fill=tkOrange!25] (scale) at (5.55,1.4)
+    {\textbf{(2) apply\_scales}\\ $tCrC \leftarrow \mathrm{fmaf}(tCrC\cdot\mathrm{sa}[m],$\\
+     $\mathrm{sw}[n],\mathrm{bias}[n])$\\ 先乘 scale 的次序在此固化};
+  \node[stage, fill=tkBlue!18] (lora) at (9.25,1.4)
+    {\textbf{(3) gemm\_bf16\_lora}\\ $tCrC \mathrel{+}= D\,L_1^{\top}$，rank 切片 32 宽\\
+     tid$<$32 预取前 2 片；rank 128 按需 refill};
+  \node[stage, fill=tkRed!18] (out) at (12.95,1.4)
+    {\textbf{(4) 单次舍入与写回}\\ NumericArrayConverter 一次\\
+     FP32$\to$BF16 $\to$ STSM $\to$ TMA store};
+  \draw[arr] (main) -- (scale);
+  \draw[arr] (scale) -- (lora);
+  \draw[arr] (lora) -- (out);
+  \node[anchor=north west, align=left, text width=15.2cm, font=\tiny] at (0,-0.15)
+    {四段共用同一个 \texttt{tCrC}（FP32 fragment）：(1)(3) 的两个 MMA 的 C partition
+     被 static\_assert（gemm\_w8a8.cuh L97--102）锁成逐元素一致，跨乘积累加不需要
+     retile；(2) 若挪到 (3) 之后，按式~\eqref{eq:40b-leak}，scale 会整体乘进低秩项
+     $G$。(4) 是全 kernel 唯一一次 FP32 到 BF16 转换（L388--405）。};
+\end{tikzpicture}
+\caption{FP32 accumulator 的四段生命周期。scale 施加夹在两个乘积之间，
+是这个 kernel 与普通 FP8 GEMM 唯一不能调换次序的地方。}
+\label{fig:40b-acc-fusion}
+\end{figure}
+
+\section{性能分析}\label{sec:40b-perf}
+
+本节数字全部取自 cache-dit PR \#1384 的验收记录（RTX PRO 5000，SM120，
+2026-11-20；CUDA Event median），\textbf{本书未复测}。复测入口为
+\texttt{bench/kernels/bench\_svdquant\_fp8.py}（默认 warmup 10、iters 30）。
+\textbf{比值口径提醒}：下文所有"相对纯 FP8"的比值 $>1$ 表示\textbf{更慢}
+（与第~\ref{ch:40}~章"相对 native 更快"的表相反，读表先看表头）。
+
+\subsection{算子级：rank 越高越慢，且慢得有规律}
+
+\begin{table}[H]
+\centering\small
+\caption{SVDQ-FP8 算子级耗时（$M{=}4096,N{=}12288,K{=}3072$，median CUDA
+Event，含 producer 与 GEMM；数据取自 PR \#1384，本书未复测）。最后一列为
+相对纯 FP8 的比值，$>1$ 表示更慢。}
+\label{tab:40b-op}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+配置 & producer (ms) & GEMM (ms) & total (ms) & 相对纯 FP8 \\
+\midrule
+纯 FP8 per-row & --- & --- & 0.746 & $1.000\times$ \\
+SVDQ-FP8 r32  & 0.046 & 0.781 & 0.827 & $1.108\times$ \\
+SVDQ-FP8 r64  & 0.057 & 0.817 & 0.874 & $1.171\times$ \\
+SVDQ-FP8 r128 & 0.074 & 0.851 & 0.925 & $1.239\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+三个读表点。其一，开销大头在 GEMM 侧不在 producer：producer 只占
+$0.046$--$0.074\,\mathrm{ms}$（含 pybind 层为 split-K $D$ 分配的
+\texttt{at::zeros} scratch），随 rank 增长缓慢（amax 与量化写回与 rank
+无关，随 rank 增长的只有 LoRA-down 分支：\texttt{lora\_down} 的装载与
+BF16 MMA）。其二，GEMM 侧的增量是 LoRA-up：$\mathrm{nRt}=\mathrm{rank}/32$
+在 rank 32/64/128 上取 1/2/4，BF16 MMA 累加与 cp.async 填环的字节量随
+rank 线性增长，$0.781\to0.851\,\mathrm{ms}$ 的 $9\%$ 斜率与之吻合。
+其三，"慢"是设计内代价——这张表买的是
+表~\ref{tab:40b-acc} 的精度列。
+
+\subsection{端到端：FLUX.1-dev}
+
+\begin{table}[H]
+\centering\small
+\caption{FLUX.1-dev 端到端（默认 prompt/seed 与生成设置；SVDQ 预处理用
+\texttt{--svdq-quantize-device cuda}，只计推理时间；数据取自 PR \#1384，
+本书未复测）。最后一列为相对纯 FP8 的比值，$>1$ 表示更慢。}
+\label{tab:40b-e2e}
+\begin{tabular}{@{}llrrr@{}}
+\toprule
+模式 & 配置 & 推理 (s) & 相对 BF16 & 相对纯 FP8 \\
+\midrule
+eager   & BF16         & 17.00 & $1.00\times$ & --- \\
+eager   & FP8 per-row  &  9.49 & $1.79\times$ & $1.00\times$ \\
+eager   & SVDQ-FP8 r32 & 10.07 & $1.69\times$ & $1.06\times$ \\
+eager   & SVDQ-FP8 r64 & 10.26 & $1.66\times$ & $1.08\times$ \\
+eager   & SVDQ-FP8 r128& 10.62 & $1.60\times$ & $1.12\times$ \\
+compile & BF16         & 14.85 & $1.00\times$ & --- \\
+compile & FP8 per-row  &  7.14 & $2.08\times$ & $1.00\times$ \\
+compile & SVDQ-FP8 r32 &  8.08 & $1.84\times$ & $1.13\times$ \\
+compile & SVDQ-FP8 r64 &  8.29 & $1.79\times$ & $1.16\times$ \\
+compile & SVDQ-FP8 r128&  8.65 & $1.72\times$ & $1.21\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+e2e 把算子级的百分比稀释了约一半（Linear 之外的时间摊薄）：算子级慢
+$11\%$--$24\%$，到 e2e 只剩 $6\%$--$21\%$；相对 BF16 仍保持
+$1.60$--$1.84\times$ 的加速。也就是说，W8A8 落在"比 BF16 快近
+一倍、比纯 FP8 慢一成"的窄带里，它的价值完全由精度表决定。
+
+\subsection{精度：rank 128 才拉开差距}
+
+\begin{table}[H]
+\centering\small
+\caption{FLUX.1-dev 精度（PSNR/SSIM 对各自 BF16 参考图；单 prompt/seed
+参考测量，非统计质量门；数据取自 PR \#1384，本书未复测）。}
+\label{tab:40b-acc}
+\begin{tabular}{@{}llrr@{}}
+\toprule
+模式 & 配置 & PSNR (dB) & SSIM \\
+\midrule
+eager   & FP8 per-row  & 23.06 & 0.9215 \\
+eager   & SVDQ-FP8 r32 & 22.18 & 0.9175 \\
+eager   & SVDQ-FP8 r64 & 22.33 & 0.9202 \\
+eager   & SVDQ-FP8 r128& \textbf{28.66} & \textbf{0.9713} \\
+compile & FP8 per-row  & 22.07 & 0.9218 \\
+compile & SVDQ-FP8 r32 & 21.63 & 0.9172 \\
+compile & SVDQ-FP8 r64 & 21.05 & 0.9057 \\
+compile & SVDQ-FP8 r128& \textbf{27.23} & \textbf{0.9645} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+结论分三层，每层都带上 PR 的限定语。第一，\textbf{rank 128 是唯一的
+精度档}：eager $+5.60\,\mathrm{dB}$、compile $+5.16\,\mathrm{dB}$，SSIM
+同步抬升约 $0.04$--$0.05$，PR 的目视检查（无结构损坏、无幻影物体、无
+文字丢失）也指向 r128 最接近 BF16 参考。这个量级的差距远大于表内其它
+任何两组之间的差，方向性可信。第二，\textbf{rank 32/64 不是精度档}：
+四组比较全部略低于纯 FP8（$-0.44$--$-1.02\,\mathrm{dB}$），与作者
+"The smaller ranks are not claimed to improve every end-to-end sample over
+plain FP8" 一致；这两档只能理解为"为更高 rank 探路"或显存受限的妥协。
+第三，\textbf{小于 $1\,\mathrm{dB}$ 的差距不下结论}：PR 声明 randomized
+SVD 与 split-K 原子累加会造成 run-to-run 轨迹漂移，本书也未建立 SVDQ
+的 PSNR 噪声带，r32/r64 与纯 FP8 之间的零点几分贝既可能是实现噪声、
+也可能是真实小劣化。图~\ref{fig:40b-tradeoff} 把"花多少、买多少"画在
+一张平面上：横轴向右是 rank 升高带来的耗时增加，纵轴向上是 PSNR，只有
+r128 的点真正抬出了精度的台阶。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize,
+  axis/.style={->, thick},
+  bar/.style={draw, fill=tkBlue!25},
+  dot/.style={circle, draw=tkRed!75!black, fill=tkRed!40, inner sep=1.6pt}]
+  % 坐标轴：横轴 x=(t-9.4)*8.15（9.4..10.7 s -> 0..10.6），纵轴 y=(PSNR-21.5)/2
+  \draw[axis] (0,0) -- (10.6,0);
+  \node[below, font=\tiny] at (5.3,-1.05) {eager 推理耗时 (s) $\to$ 更慢};
+  \draw[axis] (0,0) -- (0,4.4);
+  \node[rotate=90, font=\tiny] at (-0.85,2.2) {PSNR (dB) $\to$ 更高};
+  \foreach \x/\t in {0.73/9.49, 5.46/10.07, 7.01/10.26, 9.94/10.62}
+    \node[below, font=\tiny] at (\x,0) {\t};
+  \foreach \y/\t in {0.25/22, 1.25/24, 2.25/26, 3.25/28}
+    \node[left, font=\tiny] at (0,\y) {\t};
+  % 柱高 = (PSNR-21.5)/2：23.06 22.18 22.33 28.66 -> 0.78 0.34 0.415 3.58
+  \draw[bar] (0.38,0) rectangle (1.08,0.78);
+  \draw[bar] (5.11,0) rectangle (5.81,0.34);
+  \draw[bar] (6.66,0) rectangle (7.36,0.415);
+  \draw[bar] (9.59,0) rectangle (10.29,3.58);
+  % 点（PSNR 值）
+  \node[dot] (p0) at (0.73,0.78) {};
+  \node[dot] (p1) at (5.46,0.34) {};
+  \node[dot] (p2) at (7.01,0.415) {};
+  \node[dot] (p3) at (9.94,3.58) {};
+  \node[right=2pt, font=\tiny, text=tkRed!75!black] at (p0) {23.06};
+  \node[right=2pt, font=\tiny, text=tkRed!75!black] at (p1) {22.18};
+  \node[right=2pt, font=\tiny, text=tkRed!75!black] at (p2) {22.33};
+  \node[left=2pt, font=\tiny, text=tkRed!75!black] at (p3) {28.66};
+  % 配置标签
+  \node[below, font=\tiny, align=center] at (0.73,-0.62) {纯 FP8\\per-row};
+  \node[below, font=\tiny] at (5.46,-0.50) {r32};
+  \node[below, font=\tiny] at (7.01,-0.50) {r64};
+  \node[below, font=\tiny] at (9.94,-0.50) {r128};
+\end{tikzpicture}
+\caption{W8A8 的精度--耗时平面（eager 档；数据取自 PR \#1384，本书未复测）。
+柱高与红点都是 PSNR（左轴刻度），横轴按表~\ref{tab:40b-e2e} 的耗时线性
+摆放；纵轴自 $21.5\,\mathrm{dB}$ 起，柱高是截断后的差值。r32/r64 的点贴在
+纯 FP8 之下，只有 r128 用 $+1.13\,\mathrm{s}$（相对纯 FP8）的耗时换来了
+$+5.6\,\mathrm{dB}$ 的台阶。}
+\label{fig:40b-tradeoff}
+\end{figure}
+
+与第~\ref{ch:40}~章 W4A4 的口径关系：W4A4 的性能叙事是"量化把 Linear
+变便宜"（权重视显存 $4.5$ bit/元素，GEMM 两端吃低比特码），W8A8 没有
+这条叙事，它只有"相对纯 FP8 多花 $11\%$--$24\%$ 算子时间、相对 BF16
+仍快 $1.6$--$1.8\times$"的窄带——两章的加速比口径不可互相推导，也不
+可拼接。
+
+\section{实践经验}
+
+\begin{itemize}[itemsep=1pt,topsep=2pt]
+  \item \textbf{复用面比新增面大}。分解、平滑、LoRA 双分支数据流、
+        epilogue 单次舍入协议，全部沿用 W4A4 的既有件；W8A8 真正新增的
+        只有 amax kernel、split-K 的 $D$ 归约、以及 GEMM 里的 LoRA
+        预取/refill 调度。从 W4A4 扩展到 FP8 的工作量主要花在
+        \emph{删掉} block-scaled 那套布局上，而不是加新东西。
+  \item \textbf{per-token 尺度的两个精度细节}。其一是 satfinite：E4M3
+        转换溢出时钉在最大有限值，不刷 inf，下游 FP32 累加不会被污染；
+        其二是倒数预计算：CTA 开头把 128 行的 $1/\mathrm{sa}$ 放进 smem，
+        量化循环里对 sa 的除法变成乘法（逐输入通道的平滑仍是一次除法）；
+        源码注释（quantize\_w8a8.cuh L59--60）特意
+        交代，倒数乘法与 fast-math 除法可能让 E4M3 翻一个 ULP，所以转换
+        指令固定为 RTN 加 satfinite 的
+        \texttt{\_\_nv\_cvt\_float2\_to\_fp8x2}，与原生 FP8 producer 逐
+        指令一致；想跨实现对拍数值时，这一条比任何容差都先决。
+  \item \textbf{两档几何约束并存的原因}：producer 的 K tile 是 64
+        （\texttt{kW8A8QuantBK}），所以 $K$ 只需 64 的倍数；GEMM 的
+        K tile 是 128，所以合成链要求 $K$ 是 128 的倍数。模块路径下
+        非 128 整数倍的几何由 buffer pad 与 \texttt{F.pad} 静默吸收，直调
+        算子才会吃到 \texttt{ValueError}——排错时先确认走的是哪条路径。
+  \item \textbf{rank 0 是合法的退化档}：低秩张量传 None 即退化为纯
+        per-token FP8，producer 总是按 split 目标调度（没有 $D$ 需要归约，
+        split 只为多造 CTA 掩延迟）。这给"同一 kernel 家族覆盖纯 FP8 与
+        SVDQ"留下了一个开关位。
+  \item \textbf{TMA 描述符缓存的 key 是}指针 $+$ shape $+$ rank
+        （上限 32 条，超出整体清空）。描述符只是拷贝配方、不含数据，
+        缓存它没有任何数值风险；但这也意味着换张量不换指针的复用
+        场景通常会命中，排障时不要把它当成副作用怀疑对象。
+  \item \textbf{显式拒绝优于静默回退}：序列化、few\_shot、非默认
+        svdq\_kwargs、非 BF16 dtype 全部硬报错。W8A8 是精度档，用它
+        的人对"配置没有生效"最敏感：静默忽略一个 knob 比直接报错
+        的代价高得多。
+\end{itemize}
+
+\section{常见坑}
+
+\begin{itemize}[itemsep=1pt,topsep=2pt]
+  \item \textbf{把 W8A8 当压缩方案}：权重 8 bit/元素，权重视显存约为
+        NVFP4 pack 的 $1.8$ 倍；它没有体积收益，只有精度收益。
+  \item \textbf{用 W4A4 的格式存 FP8 artifact}：W4A4 的 save/load 描述
+        的是 NVFP4 pack 布局，与 E4M3 残差互不兼容，代码已用
+        \texttt{NotImplementedError} 焊死；自己写序列化前先想清楚要存
+        的是哪一套约定。
+  \item \textbf{把 scale 后乘到 dense 输出}：式~\eqref{eq:40b-leak} 的
+        泄漏项是 $(\mathrm{sa}\cdot\mathrm{sw}-1)\,G$，量纲上 sa、sw 都
+        是 absmax/448 量级，低秩项会被整体放大；\texttt{apply\_scales}
+        必须先于 \texttt{gemm\_bf16\_lora}，这是次序约束不是风格偏好。
+  \item \textbf{混淆两条消费链}：$\bar q_A$ 吃 $X/s$、$D$ 吃原始 $X$
+        （lora\_down 自带 $1/s$）。两边都"碰一次 s"但位置不同，
+        想重排任何一边前先按式~\eqref{eq:40b-offline} 核对量纲。
+  \item \textbf{拿 cuh 模板默认值推 smem}：\texttt{kStages\_} 的默认是
+        3，实际实例化是 \texttt{<128,2,128>}；96 KiB 的预算只按两
+        stage 成立；改 stage 数前先重算这条静态断言。
+  \item \textbf{读 r32/r64 的 PSNR}：PR 表里小 rank 略低于纯 FP8 是
+        数据本身如此，不是实现坏了；$1\,\mathrm{dB}$ 以内的差距在
+        run-to-run 漂移面前不下结论。
+  \item \textbf{把 refill 的条件记成 rank $\ge$ 64}：触发条件是
+        $\mathrm{rt}\ge\mathrm{kLoraStages}=2$，即 $\mathrm{nRt}>2$，
+        \textbf{只有 rank 128}（nRt $=4$ 的下标 2、3，即第 3、4 片）会走到
+        NamedBarrier 保护的按需补片路径。
+  \item \textbf{E4M3 转换的 1 ULP 分歧}：普通转换路径与
+        RTN$+$satfinite 路径在个别值上差一个码点；producer 为此固定
+        用后者。任何"先除再转"的重写都可能引入跨实现的 1 ULP 级
+        不一致。
+\end{itemize}
+
+\section{面试要点速查}
+
+\begin{itemize}[itemsep=1pt,topsep=2pt]
+  \item Q：SVDQuant 扩展到 FP8 需要什么数学条件？\\
+        A：分解 $W s=L_1L_2+R$ 与误差上界对任意反量化映射 $\mathcal Q$
+        成立（第~\ref{ch:38}~章 Proposition~4.1），把 $\mathcal Q$ 换成
+        per-row E4M3 映射后命题链原样有效（\S\ref{sec:40b-motivation}~节）。
+  \item Q：W8A8 与 W4A4 在 mainloop 上的本质差异是什么？\\
+        A：不是码点位宽，而是 \textbf{scale 是否沿 $K$ 变化}：W4A4 的
+        micro-scale 沿 $K$ 分布、提不出归约，必须 block-scaled MMA；
+        W8A8 的行/列尺度沿 $K$ 不变，scale 全推到 epilogue 一次
+        \texttt{fmaf}（式~\eqref{eq:40b-fold}，
+        表~\ref{tab:40b-compare}）。
+  \item Q：两个不同 MMA 怎么共享一个 FP32 accumulator？\\
+        A：AtomLayout 与 M/N permutation 同构使 C partition 逐类型相等
+        （gemm\_w8a8.cuh L97--102 的 static\_assert），两个
+        \texttt{cute::gemm} 直接写同一个 \texttt{tCrC}，无需 retile
+        （\S\ref{sec:40b-gemm}~节）。
+  \item Q：为什么 scale 必须先乘再 LoRA 累加？\\
+        A：后乘会把 sa$\cdot$sw 乘进低秩项，误差
+        $(\mathrm{sa}\cdot\mathrm{sw}-1)\,G$（式~\eqref{eq:40b-leak}）；
+        W4A4 靠 LoRA-first 的代数补偿规避，W8A8 的低秩项是原始量纲，
+        只能由调用顺序保证。
+  \item Q：producer 为什么拆成 amax 与主 kernel 两个 launch？\\
+        A：per-token 尺度要等整行 amax，行级 grid（每行一 CTA）才有
+        足够的独立 load 流掩 HBM 延迟；128 行一 tile 的 CTA 自己做
+        不到（\S\ref{sec:40b-producer}~节）。
+  \item Q：split-K 的 $D$ 为什么用 relaxed atomic 加 finalize？\\
+        A：并行度换可复现性：多个 K 分片的 FP32 partial 原子归进
+        scratch，finalize kernel 做唯一的 BF16 舍入；单次舍入保住了，
+        逐位可复现放弃，等价性用误差门槛判。
+  \item Q：rank 0 是干什么的？\\
+        A：退化档：低秩张量传 None 即纯 per-token FP8，同一份 kernel 家族
+        覆盖"无低秩修正"的基线。
+\end{itemize}
+
+\section{最小测试与动手实验}
+
+下面的入口要在完整的 \texttt{fdf42708} 树上执行（附录~\ref{app:C} 的混合
+checkout 只服务源码引用）。跑之前先重编扩展：
+
+\begin{lstlisting}[style=console]
+CACHE_DIT_BUILD_CUDA=1 CACHE_DIT_CUDA_ARCH_LIST=120a \
+  bash tools/build_fast.sh install -e . --no-build-isolation --no-deps
+\end{lstlisting}
+
+\noindent PR \#1384 另报既有 SVDQ 回归 255 passed / 6 skipped。
+
+\begin{lstlisting}[style=console]
+# 读者侧验证（cache-dit 仓库，SM120 卡；本书未复跑）：
+$ python -m pytest tests/kernels/test_svdquant_fp8.py \
+                   tests/kernels/test_ops_dispatch.py \
+                   tests/quantization/test_quantize_config.py -q
+# PR #1384 自报这三个文件合计 164 passed；test_svdquant_fp8.py 单文件
+# 含 18 个 test 函数（rank 0/32/64/128 x 多种 shape 参数化），覆盖数值
+# 契约、split-K 路径、fake/compile 与拒绝用例。
+
+# 性能复测（RTX PRO 5000，SM120）：
+$ python bench/kernels/bench_svdquant_fp8.py        # 默认 warmup 10 / iters 30
+
+# 动手实验：
+# 1) rank 扫描：固定模型与 prompt，rank = 0/32/64/128 出精度-耗时曲线，
+#    验证"只有 r128 抬出台阶"是否在你的模型上复现；
+# 2) 关 LoRA：把 rank=0 的退化档与纯 FP8 对拍，分离"低秩分支"与
+#    "per-token 量化本身"的贡献。
+\end{lstlisting}
+
+\section*{延伸阅读}
+
+\begin{itemize}[itemsep=1pt,topsep=2pt]
+  \item cache-dit PR \#1384（\texttt{vipshop/cache-dit}）：本章全部性能与
+        精度数字的出处，含 eager/compile 两组对比图；
+  \item 第~\ref{ch:38}~章：SVDQuant 数学主线（Proposition~4.1 与
+        Eckart--Young 是 \S\ref{sec:40b-motivation} 的两处引用）；
+  \item 第~\ref{ch:39}--\ref{ch:40}~章：W4A4 的 producer 与 GEMM，本章
+        的对照基线；
+  \item 第~\ref{ch:41}~章：原生 FP8（无低秩分支）的 CUTLASS Collective
+        实现，式~\ref{eq:41-fp8-evt} 的 EVT 形态可与
+        式~\eqref{eq:40b-fold} 对照；
+  \item 第~\ref{ch:31}~章：NVFP4 两级 scale 的格式定义，理解
+        表~\ref{tab:40b-compare} 的 scale 列的前提。
+\end{itemize}

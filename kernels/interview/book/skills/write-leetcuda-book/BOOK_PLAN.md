@@ -202,12 +202,21 @@
 > 3. 行号引用基准：`861d75e` 工作树行号（§1.3 表不覆盖 ffpa-attn，各章卡片行号在 RFC-K 执行时以 wc/grep 复核）。
 > 4. sm_89 fp8 persist-D 路径**不讲**（只在 ch29 用一个考据框提「无 TMA/WS 的 cp.async 变体存在」即可）。
 
-### Part VII SVDQuant 篇（ch38-40，2026-11-11 完成）
+### Part VII SVDQuant 篇（ch38-40，2026-11-11 完成；ch40b 增补 2026-11-21，RFC-S）
 
-SVDQuant 三章的源码区间、公式与图清单见 RFC-P；三章锚定 cache-dit
+SVDQuant 三章（ch38-40）的源码区间、公式与图清单见 RFC-P；三章锚定 cache-dit
 `eced0158`（PR #1371 未改动 `csrc/kernels/svdq/`；该 commit 之后的 `svdq/`
 变更来自其它 PR，不在本书引用范围）。Part VIII 的 FP8 部分在 RFC-R 中
 前移到 `453c1b05`，沿用外部仓只读引用、RTD 冻结快照与附录 D permalink 范式。
+
+**ch40b（计数增补章，打印第 44 章，RFC-S）** 讲 SVDQuant-FP8（W8A8，
+cache-dit PR #1384 / `fdf42708`）：10 节骨架（设计与实现下单节三子节）、
+4 幅 TikZ 图、19 段 anchors 行锚点（不冻结 SHA256，`commit: fdf42708`
+文档字段）。ch41 顺延打印第 45 章（全书引用为 `\ref` 自动吸收；appD 表内
+硬编码「打印第44章」已同步改 45）。**构建前置条件升级为三档混合 checkout**：
+`453c1b05` 基底 + `eced0158` 的 `csrc/kernels/svdq/` + `fdf42708` 的
+`csrc/kernels/svdq/cute/fp8/` 与两份 Python 文件，配方见附录 C。数据全部
+取自 PR #1384（本书未复测），比值口径「>1 = 相对纯 FP8 更慢」。
 
 ### Part VIII CUTLASS Collective API 篇（ch41，2026-11-16 新增，RFC-Q）
 
@@ -264,6 +273,8 @@ SVDQuant 三章的源码区间、公式与图清单见 RFC-P；三章锚定 cach
 > **Collective API 篇特化（ch41，2026-11-16，RFC-Q）**：BF16 新头文件 `collective_gemm.cuh` 纳入 anchors.yaml `files` SHA256 冻结；cache-dit `eced0158` 的 FP8/FP4 文件只登记 chapters 行锚点并保存 RTD 快照。第 4 条测试分为本仓 BF16 SM90A 编译/非 SM90 SKIP 与 cache-dit 81 项 FP8/FP4 回归，BF16 不在本机 SM120 上强行运行。第 5 条 bench 必须实际执行 `bench_fp8.py --suite flux` 与 `bench_fp4.py`，数据落 `.tmp/book-bench/ch41/`；只使用无 error 的 chain_default/compile_linear 行，所有性能表注明 eager/compile、GPU、软件版本与无效臂。其余各条照常。
 >
 > **融合 MLP 增补（RFC-R，2026-11-19）**：FP8 引用前移到 `453c1b05`（PR #1371），共 13 处锚点改动 = 新增 8 处（`gemm.cuh` 3 + `per_row.cu` 1 + `quantize.cu` 3 + `fused.py` 1）+ 重挂 5 处旧区间。第 4 条测试改为核对 cache-dit 用例覆盖与断言口径（三种粒度 × 四种结构、$H=500$ 逐 bit、无目标报错），修订环境无 SM120/FP8 扩展，正文须写明未复跑。第 5 条 bench 以 PR #1371 的验收表为源并显式标注「未复测」；不得把 1.10×/1.15× 外推到其它形状。
+>
+> **SVDQuant-FP8 增补（RFC-S，2026-11-21）**：ch40b 讲 cache-dit PR #1384（`fdf42708`）的 W8A8，源码只读引用 `csrc/kernels/svdq/cute/fp8/**` 与两份 Python 文件，19 处 anchors 行锚点 + `commit: fdf42708` 文档字段（仍不冻结 SHA256）。**构建前置条件升级为三档混合 checkout**（`453c1b05` 基底 + `eced0158` 的 `svdq/` + `fdf42708` 的 `fp8/` 与 Python 文件），配方写死在附录 C；`verify_anchors` 分账要求 ch39/40/41 既有项与 ch40b 新增项同时 ALL GREEN。第 4 条测试 = 读者执行 `test_svdquant_fp8.py` 等三文件（PR 自报合计 164 passed，本书未复跑）。第 5 条 bench 以 PR #1384 两表为源，**比值口径「>1 = 相对纯 FP8 更慢」必须在表头注明**（与 ch40 相反），r32/r64 的 PSNR 四组全负不得写成"互有胜负"，<1 dB 差异不下结论。
 
 ### 4.3 行文风格（作者风格基线，2026-09-11 用户定）
 

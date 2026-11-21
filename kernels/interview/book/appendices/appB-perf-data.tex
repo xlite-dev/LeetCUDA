@@ -200,11 +200,13 @@ FA2，更大 $D$ 选择 MATH。数字为 \texttt{ffpa\_attn.bench} CLI 复测
 fp8 5e-2 / fp4 dense 0.15、causal 0.70）。speedup 一律对 SDPA 同形状。
 列内数字取自各自所在章节的原始记录，跨章对比时注意口径。
 
-第七部分（第~\ref{ch:38}--\ref{ch:40}~章，SVDQuant 篇）\textbf{无本书复测
-数据}：该三章讲解 cache-dit 仓库的外部 kernel，其性能数字全部转述自
+第七部分（第~\ref{ch:38}--\ref{ch:40}、\ref{ch:40b}~章，SVDQuant 篇）\textbf{无本书复测
+数据}：该四章讲解 cache-dit 仓库的外部 kernel，其性能数字全部转述自
 cache-dit 开发记录（各表已注明来源/日期/口径，CUDA Event 或 nsys，
 RTX PRO 5000/PRO 6000），本书未执行复测；读者侧复测入口见
-第~\ref{ch:40}~章的最小测试节与附录~\ref{app:C}。
+第~\ref{ch:40}、\ref{ch:40b}~章的最小测试节与附录~\ref{app:C}。
+第~\ref{ch:40b}~章的 SVDQuant-FP8（W8A8）明细单列在本附录后面的
+「Part VII 增补」节。
 
 \begingroup\small
 \begin{longtable}{p{1.6cm}p{3.6cm}p{2.6cm}p{3.0cm}p{3.0cm}}
@@ -233,6 +235,54 @@ D=128 FFPA-FP8 441~T vs Sage2 394~T vs SDPA 291~T；fp4 D=128
 FFPA-FP4 804~T（2.60$\times$）。同 sm\_120 微架构下 PRO 5000 绝对值低
 $\sim$15\%（fp8）/$\sim$35\%（fp4），形态结论可迁移、绝对数字不可
 （第~\ref{ch:33}~章 33.6.4）。
+
+\section{Part VII 增补：SVDQuant-FP8 明细}
+
+第~\ref{ch:40b}~章（cache-dit PR \#1384，commit \texttt{fdf42708}）的数字
+取自 cache-dit 的验收记录（RTX PRO 5000、SM120、2026-11-20、CUDA Event
+median），\textbf{本书未复测}。下表算子级口径为 $M{=}4096$、$N{=}12288$、
+$K{=}3072$，含 producer 与 GEMM；比值列 $>1$ 表示相对纯 FP8 更慢。
+
+\begin{center}\small
+\begin{tabular}{lrrrr}
+\toprule
+配置 & producer (ms) & GEMM (ms) & total (ms) & 相对纯 FP8 \\
+\midrule
+纯 FP8 per-row & --- & --- & 0.746 & $1.000\times$ \\
+SVDQ-FP8 r32 & 0.046 & 0.781 & 0.827 & $1.108\times$ \\
+SVDQ-FP8 r64 & 0.057 & 0.817 & 0.874 & $1.171\times$ \\
+SVDQ-FP8 r128 & 0.074 & 0.851 & 0.925 & $1.239\times$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+FLUX.1-dev 端到端（默认 prompt/seed 与生成设置，只计推理时间）与精度
+（PSNR/SSIM 对 BF16 参考图，单 prompt 参考测量，非统计质量门）：
+
+\begin{center}\small
+\begin{tabular}{llrrrr}
+\toprule
+模式 & 配置 & 推理 (s) & PSNR (dB) & SSIM & 相对纯 FP8 \\
+\midrule
+eager & BF16 & 17.00 & --- & --- & --- \\
+eager & FP8 per-row & 9.49 & 23.06 & 0.9215 & $1.00\times$ \\
+eager & SVDQ-FP8 r32 & 10.07 & 22.18 & 0.9175 & $1.06\times$ \\
+eager & SVDQ-FP8 r64 & 10.26 & 22.33 & 0.9202 & $1.08\times$ \\
+eager & SVDQ-FP8 r128 & 10.62 & 28.66 & 0.9713 & $1.12\times$ \\
+compile & BF16 & 14.85 & --- & --- & --- \\
+compile & FP8 per-row & 7.14 & 22.07 & 0.9218 & $1.00\times$ \\
+compile & SVDQ-FP8 r32 & 8.08 & 21.63 & 0.9172 & $1.13\times$ \\
+compile & SVDQ-FP8 r64 & 8.29 & 21.05 & 0.9057 & $1.16\times$ \\
+compile & SVDQ-FP8 r128 & 8.65 & 27.23 & 0.9645 & $1.21\times$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+r32/r64 的 PSNR 在四组比较中均略低于纯 FP8，只有 r128 抬出
+$+5.2$--$+5.6\,\mathrm{dB}$ 的台阶；小于 $1\,\mathrm{dB}$ 的差异在
+run-to-run 漂移（randomized SVD 与 split-K 原子累加）面前不作优劣结论。
+PR 未列明分辨率与采样步数，本表与后面 Part VIII 明细表（$1024\times1024$、
+28 步）不是同一批测量，数字不可混用。逐项说明见第~\ref{ch:40b}~章。
 
 \section{Part VIII：CUTLASS Collective API 明细}
 
