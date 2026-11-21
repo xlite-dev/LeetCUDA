@@ -74,23 +74,33 @@ python bench/bench_fp4.py --dtype fp16
 
 \section{cache-dit（Part VII/VIII 源码仓）同级 checkout}
 
-Part VII（第~\ref{ch:38}--\ref{ch:40}~章）与 Part VIII（第~\ref{ch:41}~章）
-都引用独立仓库 \texttt{cache-dit}。SVDQuant 与 FP4 部分锚定
-\texttt{eced0158}，第~\ref{ch:41}~章的 FP8 部分（含融合 MLP 一节）锚定
-\texttt{453c1b05}，即 PR \#1371 的合并提交；该 PR 未改动
-\texttt{csrc/kernels/fp4/} 与 \texttt{csrc/kernels/svdq/}。但 \texttt{svdq/}
+Part VII（第~\ref{ch:38}--\ref{ch:40}、\ref{ch:40b}~章）与 Part VIII（第~\ref{ch:41}~章）
+都引用独立仓库 \texttt{cache-dit}，共三个源码锚点：SVDQuant W4A4 与 FP4
+部分锚定 \texttt{eced0158}；第~\ref{ch:41}~章的 FP8 部分（含融合 MLP 一节）
+锚定 \texttt{453c1b05}，即 PR \#1371 的合并提交（该 PR 未改动
+\texttt{csrc/kernels/fp4/} 与 \texttt{csrc/kernels/svdq/}）；第~\ref{ch:40b}~章的
+SVDQuant-FP8（W8A8）锚定 \texttt{fdf42708}，即 PR \#1384 的合并提交
+（新增 \texttt{csrc/kernels/svdq/cute/fp8/} 与两份 Python 文件）。但 \texttt{svdq/}
 在 \texttt{eced0158} 之后被其它 PR 改过，同时复核 Part VII 时需要把该目录
 退回 \texttt{eced0158} 的内容。
 附录~\ref{app:D} 的 permalink 固定到各自 commit。\textbf{构建本书的前置条件}：与 LeetCUDA 同级存在
 \texttt{cache-dit/} checkout，正文的
-\texttt{\textbackslash lstinputlisting} 会从该目录读取源文件。两处行锚点均已
-复核通过，可按下面命令准备同级 checkout（FP8 清单需要
-\texttt{453c1b05}）：
+\texttt{\textbackslash lstinputlisting} 会从该目录读取源文件。三档行锚点均已
+复核通过，可按下面命令准备混合 checkout（以 \texttt{453c1b05} 为基底，
+再按路径覆盖另外两档；\texttt{git checkout <rev> -- <path>} 只覆盖不删除，
+按此顺序执行必然正确）。\textbf{混合树只服务书稿的源码引用}；要复现
+PR \#1384 的测试与 bench，需另开一份完整的 \texttt{fdf42708} 树——
+\texttt{tests/}、\texttt{bench/} 的新文件与 pybind 层的
+\texttt{quantize\_w8a8} 只存在于该 commit，可用
+\texttt{git worktree add ../cache-dit-fp8 fdf42708} 取得：
 
 \begin{lstlisting}[style=console]
 git clone https://github.com/vipshop/cache-dit.git
 cd cache-dit && git checkout 453c1b05
-# 若只复核 Part VII 与 FP4：git checkout eced0158 亦可
+git checkout eced0158 -- csrc/kernels/svdq           # ch39/ch40 (W4A4)
+git checkout fdf42708 -- csrc/kernels/svdq/cute/fp8  # ch40b (W8A8) kernel
+git checkout fdf42708 -- src/cache_dit/quantization/svdquant/fp8.py \
+                          src/cache_dit/kernels/svdquant_fp8.py  # 同上, Python
 \end{lstlisting}
 
 \noindent 第~\ref{ch:39}--\ref{ch:40}~章的 SVDQuant 验证入口为：
@@ -99,6 +109,18 @@ cd cache-dit && git checkout 453c1b05
 python -m pytest tests/kernels/test_svdquant_cute.py \
                  tests/kernels/test_svdquant_runtime.py -q
 python bench/kernels/bench_svdquant.py
+\end{lstlisting}
+
+\noindent 第~\ref{ch:40b}~章的 SVDQuant-FP8 验证入口为（在上一段的
+\texttt{../cache-dit-fp8} worktree 中执行；跑之前需
+\texttt{CACHE\_DIT\_BUILD\_CUDA=1 CACHE\_DIT\_CUDA\_ARCH\_LIST=120a}
+重编扩展，PR \#1384 另报既有 SVDQ 回归 255 passed / 6 skipped）：
+
+\begin{lstlisting}[style=console]
+python -m pytest tests/kernels/test_svdquant_fp8.py \
+                 tests/kernels/test_ops_dispatch.py \
+                 tests/quantization/test_quantize_config.py -q
+python bench/kernels/bench_svdquant_fp8.py
 \end{lstlisting}
 
 \noindent 第~\ref{ch:41}~章的 FP8/FP4 验证与六形状复测入口为：

@@ -655,6 +655,47 @@ CHECKLOG / 技能笔记 / RFC 编号 / DoD 条款等一律不进正文；数据�
 - [x] R.6 数据口径：性能数字取自 PR #1371（RTX PRO 5000、CUDA Event、PyTorch 2.15.0+cu132），正文与 appB 均写明本书未复测；GELU 融合标注为 $10^{-4}$ 量级一致而非逐 bit，SwiGLU 标注为逐 bit（PR `torch.equal` 用例）。
 - [x] R.7 验收：verify_anchors ch41 ALL GREEN（组合快照 36 章 ALL GREEN）；主 book 658 页 / 0 error / 0 undefined / 缺字 0 / Overfull≥1pt 15（基线不变），cute-zhihu 248 页 / 0 error / Overfull 0；RTD 全量 build 全项 OK（英文图 218/218、代码 779/779、公式 123/123、词典 2135），`visual_check` 99 页需处理 0；Code Review（2026-11-20）回修 A1–A3 + B1–B6 + C1–C8，图词典补 fig:41-fused-mlp 五条并逐目检中英双版。
 
+## 12-S. RFC-S Part VII 增补章 ch40b：SVDQuant-FP8 W8A8（2026-11-21）
+
+> 用户点名在 Part VII 增加一篇 SVDQuant-FP8（W8A8）文章：为什么能扩展到 FP8、
+> 工程实践怎么做、与 FP4（NVFP4 两级 block-scaled）量化的区别、性能与精度
+> （rank 128 时 PSNR 比纯 FP8 提升巨大）。参考 cache-dit PR \#1384（已合入 main，
+> 合并提交 \texttt{fdf42708}，本地 dev HEAD 即此提交；新增
+> \texttt{csrc/kernels/svdq/cute/fp8/**}、\texttt{svdquant/fp8.py} 等 25 文件）。
+> **纯书稿任务**：不改 cache-dit、不跑 kernel（本地无 FP8 环境）、沿用 Part VII
+> 纯书稿模式（无本仓 .cu 测试）。新章为**计数增补章** ch40b（打印第 44 章，
+> ch41 顺延为第 45 章；已验证全书引用全为 \texttt{\textbackslash ref} 自动吸收、
+> ch41 内无硬编码 44.x；ch26b 计数增补章先例）。章节大纲见
+> \texttt{book/.tmp/rfc-s/outline.md}。
+
+- [x] S.0 章节大纲与章号口径审核（Review Plan agent，2026-11-21：14 节收敛为
+      10 节骨架 + 设计与实现三子节；P0×3 = 混合源码树配方（453c1b05 基底 +
+      eced0158 的 svdq/ + fdf42708 的 svdq/cute/fp8/，解决单树三锚点冲突）、
+      删「噪声带 23.7–28.5 dB」误引并把 r32/r64 改为「4/4 组低于纯 FP8」、
+      process_tile 行段拆 213-246+247-266 与 acc_rowcol 改 L32-40；P1×10 含
+      NVFP4 口径改「scale 是否沿 K 变化」、拒绝清单删 TP、appD L74 打印号等
+      全部采纳；大纲 v2 在 book/.tmp/rfc-s/outline.md）
+- [x] S.1 ch40b 正文撰写（10 节骨架 + 设计与实现三子节 + 4 幅 TikZ + 17 段 listing，
+      6667 汉字）+ book.tex 接线（Part VII 标题改 W4A4/W8A8）
+- [x] S.2 anchors.yaml 登记 ch40b 19 条 refs（commit: fdf42708 文档字段）+
+      verify_anchors：ch39 8/8、ch40 7/7、ch40b 19/19、ch41 18/18，全书 37 章 ALL GREEN
+      （混合树：453c1b05 基底 + eced0158 的 svdq/ + fdf42708 的 fp8/ 与 Python 侧两文件）
+- [x] S.3 附录同步（appB 新增 Part VII FP8 明细节含口径隔离注/appC 三档 mixing 配方与
+      worktree 说明/appD ch40b permalink 与 44→45 打印号/appE PR \#1384 出处）
+      + BOOK\_PLAN §3 卡片 + preamble 关键字 + RTD sources 快照与 README 表
+- [x] S.4 自审（leetcuda-correctness-review L0 数理 + remove-tech-ai-tone 文风）：
+      逐节核 8 个编号公式与 7 组源码契约，修 8 处（eps 兜底、8 码点 8 B、split 目标、
+      nRt 表述、e2e 稀释、dequantize_weight 公式、拒绝清单措辞、图坐标/框宽）；
+      破折号 0.37‰（低于 ch40 0.46 基线）、AI 味词表 0 命中
+- [x] S.5 构建与验收：主 book 两遍 678 页 / 0 error / 0 undefined / 缺字 0 /
+      Overfull≥1pt 15（基线持平）+ 4 幅 TikZ standalone 150dpi 目检与成品抽页 +
+      RTD 全量三层（图词典 1962/1962、代码 780/780、公式 124/124、visual\_check
+      100 页需处理 0；cute-zhihu 目录核对因 toc 过期已重编修复 248 页）+
+      Code Review（2026-11-21：7 项 P0 + 7 项 P1，全部回修：44.1 维度式、
+      泄漏项方向、11%–24% 区间、FP8 11 键默认值语义、tradeoff 横轴真实比例、
+      混合树/ worktree 验证入口、图词典 4 处误译 + 4 处英文润色）+
+      本地 commit（push 由用户决定）
+
 ## 13. 图清单登记表（写作期持续更新）
 
 > **2026-09-27 全量核实**：chapters 中全部 36 处 `\includegraphics` 均已是 `% was:` 历史注释——全书章内图（ch00–ch35，含增补章）现为 **100% TikZ inline**。下表登记 `figures/drawio/` 的 64 条均为历史制作记录，其状态列「正式」一律读作「留档（已迁 TikZ）」；`figures/drawio/` 下 `.drawio`/`gen.py`/`.png` 三件套按用户决定留档保留（不删除）。各图现行 TikZ 源位于对应章节 tex 内。
@@ -768,6 +809,10 @@ CHECKLOG / 技能笔记 / RFC 编号 / DoD 条款等一律不进正文；数据�
 | FIG-40-3 | 40 | overlay | C1 新建（2026-11-08，TikZ inline：一块 smem 的三次用途，A/SFA→D、B/SFB→L1→O tile 覆盖） | 正式 | chapters/ch40-svdq-gemm-w4a4.tex |
 | FIG-40-4 | 40 | lora-schedule | C1 新建（2026-11-08，TikZ inline：main-first vs LoRA-first 两行时间线对比） | 正式 | 同上 |
 | FIG-40-5 | 40 | g2r-map | C1 改版（2026-11-11，TikZ inline：G2R 逆映射三段式，CuTe 下标→换坐标系→native pack 字节地址） | 正式 | 同上 |
+| FIG-40b-1 | 40b | w8a8-pipeline | C1 新建（2026-11-21，TikZ inline：W8A8 端到端数据流，producer 双 kernel 与 GEMM 四段生命周期 + 三条不变量注解） | 正式 | chapters/ch40b-svdq-fp8.tex（图示节） |
+| FIG-40b-2 | 40b | w8a8-format | C1 新建（2026-11-21，TikZ inline：NVFP4 两级 vs W8A8 一层位布局，scale 是否沿 K 变化为本质） | 正式 | 同上 |
+| FIG-40b-3 | 40b | w8a8-acc-fusion | C1 新建（2026-11-21，TikZ inline：FP32 accumulator 四段生命周期，apply_scales 先于 LoRA 累加的次序） | 正式 | 同上 |
+| FIG-40b-4 | 40b | w8a8-tradeoff | C1 新建（2026-11-21，TikZ inline：eager 档 PSNR-耗时平面，只有 r128 抬出台阶；置于性能节） | 正式 | 同上（性能分析节） |
 | FIG-41-1 | 41 | api-stack | C1 新建（2026-11-16，TikZ inline：两个 Builder→GemmUniversal→Adapter→Arguments/run） | 正式 | chapters/ch41-cutlass-collective-api.tex |
 | FIG-41-2 | 41 | scale-placement | C1 新建（2026-11-16，TikZ inline：FP8 row/tensor、FP8 blockwise、NVFP4 的 mainloop/EVT scale 分工） | 正式 | 同上 |
 | FIG-41-3 | 41 | layout-types | C1 新建（2026-11-16，TikZ inline：deduce_layoutSFA 编译期类型 vs tile_atom_to_shape_SFA 运行时布局值） | 正式 | 同上 |

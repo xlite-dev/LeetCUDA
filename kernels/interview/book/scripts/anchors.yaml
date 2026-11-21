@@ -392,6 +392,106 @@ chapters:
         end: 173
         first_anchor: "if (N % 256 == 0 && K % 128 == 0) {"
         last_anchor: "}"
+  ch40b:
+    # SVDQ-FP8 (W8A8)，cache-dit PR #1384 合并提交 fdf42708 新增文件；
+    # 与 ch39/ch40 的 eced0158、ch41 的 453c1b05 通过混合 checkout 共存（见 appC）。
+    commit: fdf42708
+    refs:
+      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp8/gemm/gemm_w8a8.cuh
+        start: 32
+        end: 40
+        first_anchor: "// Reinterpret the per-thread accumulator fragment as (row, column) coordinates. The atom's C layout"
+        last_anchor: "}"
+      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp8/gemm/gemm_w8a8.cuh
+        start: 84
+        end: 102
+        first_anchor: "// Dense SM120 FP8 MMA. The permutation matches the dense (non block-scaled) SM120 builder:"
+        last_anchor: "\"the LoRA MMA accumulator partition must match the FP8 MMA one\");"
+      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp8/gemm/gemm_w8a8.cuh
+        start: 127
+        end: 144
+        first_anchor: "static constexpr int kAStageBytes = kBM * kBK;"
+        last_anchor: "static constexpr uint32_t kTxBytesMain = kAStageBytes + kBStageBytes;"
+      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp8/gemm/gemm_w8a8.cuh
+        start: 226
+        end: 246
+        first_anchor: "template <class TiledMma, class CopyA, class CopyB, class SrcA, class SrcB, class DstA,"
+        last_anchor: "}"
+      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp8/gemm/gemm_w8a8.cuh
+        start: 261
+        end: 286
+        first_anchor: "template <class CoordC, class Acc>"
+        last_anchor: "}"
+      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp8/gemm/gemm_w8a8.cuh
+        start: 343
+        end: 378
+        first_anchor: "template <class SmemD, class SmemL1, class Acc>"
+        last_anchor: "}"
+      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp8/gemm/gemm_w8a8.cuh
+        start: 388
+        end: 405
+        first_anchor: "template <class TiledMma, class Acc>"
+        last_anchor: "__syncthreads();"
+      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp8/gemm/gemm_w8a8.cuh
+        start: 507
+        end: 518
+        first_anchor: "if (is_producer) {"
+        last_anchor: "}"
+      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp8/gemm/gemm_w8a8.cuh
+        start: 520
+        end: 545
+        first_anchor: "cutlass::arch::warpgroup_reg_alloc<224>();"
+        last_anchor: "Gemm::tma_store_O(tma, mC, c_slice, shm, tid);"
+      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp8/gemm/gemm_w8a8.cu
+        start: 59
+        end: 83
+        first_anchor: "require(M % 128 == 0 && N % 128 == 0 && K % 128 == 0, \"M, N and K must all be multiples of 128\");"
+        last_anchor: "checkCUDA(cudaGetLastError());"
+      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp8/quantize/quantize_w8a8.cuh
+        start: 96
+        end: 125
+        first_anchor: "static __global__ void __launch_bounds__(kW8A8QuantThreads, 1)"
+        last_anchor: "}"
+      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp8/quantize/quantize_w8a8.cuh
+        start: 213
+        end: 246
+        first_anchor: "auto process_tile = [&](int kt, auto buf_tag) {"
+        last_anchor: "}"
+      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp8/quantize/quantize_w8a8.cuh
+        start: 247
+        end: 266
+        first_anchor: "#pragma unroll"
+        last_anchor: "__syncthreads();"
+      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp8/quantize/quantize_w8a8.cuh
+        start: 275
+        end: 312
+        first_anchor: "if constexpr (kRank > 0) {"
+        last_anchor: "}"
+      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp8/quantize/quantize_w8a8.cuh
+        start: 327
+        end: 353
+        first_anchor: "template <int kRank>"
+        last_anchor: "}"
+      - file: ../../../cache-dit/csrc/kernels/svdq/cute/fp8/quantize/quantize_w8a8.cu
+        start: 52
+        end: 64
+        first_anchor: "require(M % 128 == 0, \"M must be a multiple of 128\");"
+        last_anchor: "}"
+      - file: ../../../cache-dit/src/cache_dit/kernels/svdquant_fp8.py
+        start: 48
+        end: 71
+        first_anchor: "torch.library.define("
+        last_anchor: "return act.new_empty((act.shape[0], wgt.shape[0]), dtype=torch.bfloat16)"
+      - file: ../../../cache-dit/src/cache_dit/quantization/svdquant/fp8.py
+        start: 139
+        end: 147
+        first_anchor: "smoothed = weight * smooth.unsqueeze(0)"
+        last_anchor: "proj_down = (down.to(torch.float64) / smooth.to(torch.float64).unsqueeze(0)).to(torch_dtype)"
+      - file: ../../../cache-dit/src/cache_dit/quantization/svdquant/fp8.py
+        start: 178
+        end: 204
+        first_anchor: "def forward(self, x: torch.Tensor) -> torch.Tensor:"
+        last_anchor: "return out.reshape(*shape[:-1], self.out_features)"
   ch37:
     refs:
       - file: fp4_gemm.cuh
