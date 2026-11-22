@@ -460,9 +460,11 @@ CJK 一律禁 bold/italic（字体 fallback 缺字形=方框）；value 禁 `&#1
 ```
 kernels/interview/book/
 ├── BOOK_PLAN.md / RFC.md / CHECKLOG.md
-├── book.tex            # ctexbook[9pt,openany] + \tableofcontents + part/chapter 骨架
+├── book.tex            # 全一册：ctexbook[9pt,openany] + \tableofcontents + part/chapter 骨架
+├── book-vol1.tex       # 上册：第一～四部分（第 1--29 章），封面 cover-vol1.pdf
+├── book-vol2.tex       # 下册：第五～九部分 + 附录 A--E，\setcounter{part}{4}/{chapter}{29} 接续
 ├── preamble.tex        # 从 tex/notes-v2.tex 抽取：8 色调色板/字体/lstset；+graphicx/amsthm/booktabs
-├── build.sh            # 两遍 xelatex（TEXMFCNF=../tex/）+ 清理
+├── build.sh            # 三本构建（上下册含 xr 跨册引用）+ 验收 + 清理
 ├── chapters/ch00-….tex … ch41-….tex（含 ch19b/ch26b/ch26c 增补）
 ├── appendices/appA-….tex … appE-….tex
 ├── figures/{ascii/,zhihu/,drawio/,tikz/}
@@ -480,23 +482,39 @@ kernels/interview/book/
 ```gitignore
 !kernels/interview/book/**/*.tex
 kernels/interview/book/**/*.pdf
+# 上下两册的成品与封面与主 book.pdf / cover.pdf 一样入库
+!kernels/interview/book/book-vol1.pdf
+!kernels/interview/book/book-vol2.pdf
+!kernels/interview/book/figures/misc/cover-vol1.pdf
+!kernels/interview/book/figures/misc/cover-vol2.pdf
 kernels/interview/book/**/*.aux
 kernels/interview/book/**/*.toc
 kernels/interview/book/**/*.out
 kernels/interview/book/**/*.log
 ```
 
-（不要写 `!kernels/interview/book/**`——会把 PDF/aux 一并解禁。）
+（不要写 `!kernels/interview/book/**`——会把 PDF/aux 一并解禁。`!` 例外必须排在
+`**/*.pdf` 之后，否则新产物被忽略、`git add` 拒绝入库。）
 
 ### 8.4 构建
 
 ```bash
 cd kernels/interview/book
-TEXMFCNF=../tex/: xelatex -interaction=nonstopmode book.tex   # ×2 遍
-# 或 ./build.sh
+./build.sh                  # 全量：三份封面 + 上下册 + 全一册（约 10 分钟）
+./build.sh --only vols      # 只重编上下册（先 v2p1，再 v1 三轮，再 v2p2/p3）
+./build.sh --only book      # 只重编全一册（约 5 分钟）
+./build.sh --cover-only     # 只重编三份封面（主封面 + 上册 + 下册）
 ```
 
+每本 3 遍 xelatex：首遍 aux 不存在时本册 `\ref` 全出 `??`，分页比稳定态短，第二遍写出的
+`.toc` 页码因此过期（实测全一册 24 处、上册 8 处差 1 页），第三遍才用稳定 aux 收目录。
 CWD 必须是 `book/`；源码引用写 `../base.cuh` 形式。
+
+分册机制：上册末章印「第二十九章」，下册 `\setcounter{part}{4}` / `\setcounter{chapter}{29}`
+后首章印「第三十章」、首部分印「第五部分」，`\appendix` 自然回到 A--E；图/表/公式/定理
+按 chapter 编号，随章号连续。两册各用 `xr-hyper` 的 `\externaldocument` 读对侧 `.aux`，
+所以**跨册 `\ref` 依赖对侧先编译过一次**，`scripts/check_volume_split.py` 会断言章表、
+`\setcounter` 与实际计数，并在三本齐编后逐条比对 882 条 `\newlabel` 编号。
 
 ---
 

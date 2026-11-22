@@ -29,6 +29,11 @@ __pycache__
 !interview/book/tests/*.h
 !interview/book/references/**
 interview/book/**/*.pdf
+# 上下两册的成品与封面（与主 book.pdf / cover.pdf 一样入库，便于分发）
+!interview/book/book-vol1.pdf
+!interview/book/book-vol2.pdf
+!interview/book/figures/misc/cover-vol1.pdf
+!interview/book/figures/misc/cover-vol2.pdf
 interview/book/**/*.aux
 interview/book/**/*.toc
 interview/book/**/*.out

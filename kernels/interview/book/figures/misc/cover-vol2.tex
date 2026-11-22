@@ -1,0 +1,8 @@
+% cover-vol2.tex — 下册封面：与主封面同一套设计，仅多一枚卷标
+% 构建：cd figures/misc && xelatex cover-vol2.tex → cover-vol2.pdf（build.sh 自动执行）
+% 卷标文案（含中文）只能写在本 wrapper 里：cover-tikz.tex 必须保持纯 ASCII，
+% 否则 docs/readthedocs/tools/build_cover_en.py 的中文残留检查会失败。
+\def\leetvol{2}
+\def\leetvoltext{下\hspace{.35em}册}
+\def\leetvolsub{VOLUME II}
+\input{cover-tikz.tex}
