@@ -6,6 +6,7 @@
 \usepackage{xurl}
 \usepackage{float}
 \usepackage{placeins}
+\usepackage{pifont} % \ding{51}/\ding{55}：原文表格里的 ✅/❌
 
 % 压缩章标题前后距（默认 50/40pt），减少 20 篇文章式章节的章首/章末空白
 \ctexset{chapter/beforeskip=6pt, chapter/afterskip=16pt}
@@ -33,7 +34,7 @@
     {\Large\bfseries 郑重声明}\\[1em]
     {\large
     本书收录知乎多位作者（\textbf{reed}（专栏「CUDA高性能编程」）、\textbf{竹熙佳处}（CuTe 教程系列）、
-    \textbf{frankshi} 等）的 CUDA/CuTe 系列优秀文章，进行\textbf{忠实整理，除修正原文中明显的公式、图号与拼写笔误，对确证的技术性错误做最小订正，补全缺失的图注与参考文献外，不对原文内容做任何修改}；
+    \textbf{赵尚春}（专栏「CUDA-365」）、\textbf{CalebDu}、\textbf{frankshi} 等）的 CUDA/CuTe 系列优秀文章，进行\textbf{忠实整理，除修正原文中明显的公式、图号与拼写笔误，对确证的技术性错误做最小订正，补全缺失的参考文献外，不对原文内容做任何修改}；
     各章章首均标注作者与原文出处。}\\[0.8em]
     {\large 本书\textbf{仅用于开源学习}，\textbf{不得用于任何商业用途}。}\\[0.8em]
     {\normalsize 全部文章著作权归原作者所有，转载请注明原文出处。}
@@ -46,12 +47,13 @@
 \chapter*{整理说明}
 \addcontentsline{toc}{chapter}{整理说明}
 
-本书系统整理了知乎上多位作者的 CUDA/CuTe 系列优秀文章，共 32 篇，按系列与主题分四个部分编排：
+本书系统整理了知乎上多位作者的 CUDA/CuTe 系列优秀文章，共 36 篇，按系列与主题分五个部分编排：
 reed 的 CuTe 系列（13 篇）、竹熙佳处的 CuTe 教程系列（7 篇）、reed 的「NVidia GPU指令集架构」
-系列（8 篇），以及 GPU 架构·内存·Attention 精度主题单篇（4 篇，reed 3 篇与 frankshi 1 篇），
+系列（8 篇）、GPU 架构·内存·Attention 精度主题单篇（4 篇，reed 3 篇与 frankshi 1 篇），
+以及 Blackwell（B200/B300）CUTLASS 编程主题（4 篇，赵尚春 3 篇与 CalebDu 1 篇），
 同一部分内按系列依赖/发表顺序编排。
-整理过程中\textbf{忠实保留原文内容与图片}；除修正原文中明显的公式、图号与拼写笔误，对确证的技术性错误做最小订正，补全缺失的图注与参考文献外，不对原文内容做任何修改，仅做 Markdown 到 \LaTeX{}
-的排版映射（标题层级、代码块、公式、图片位置与图注均与原文一致）；各章章首标注作者与原文链接。
+整理过程中\textbf{忠实保留原文内容与图片}；除修正原文中明显的公式、图号与拼写笔误，对确证的技术性错误做最小订正，补全缺失的参考文献外，不对原文内容做任何修改，仅做 Markdown 到 \LaTeX{}
+的排版映射（标题层级、代码块、公式、图片位置与图注均与原文一致，原文无图注者不另加图注）；各章章首标注作者与原文链接。
 
 本书仅用于开源学习，不得用于任何商业用途。
 
@@ -127,6 +129,30 @@ reed 的 CuTe 系列（13 篇）、竹熙佳处的 CuTe 教程系列（7 篇）�
 \end{tabular}
 \endgroup
 
+\section*{赵尚春「CUDA-365」Blackwell CUTLASS 系列（3 篇）}
+\begingroup\small
+\begin{tabular}{@{}c>{\raggedright\arraybackslash}p{0.78\textwidth}@{}}
+  \toprule
+  章节 & 原文 \\
+  \midrule
+  01 & 基于CuTe和CUTLASS的Blackwell Tensor Core编程\newline\url{https://zhuanlan.zhihu.com/p/2008547341972574634} \\
+  02 & CUTLASS 教程：Blackwell GEMM-使用线程块cluster\newline\url{https://zhuanlan.zhihu.com/p/2007758781354897660} \\
+  03 & GTC 2026 技术分析：通过 CUTLASS Python 在 Blackwell GPU 上实现 GEMM 峰值 Tensor Core 性能\newline\url{https://zhuanlan.zhihu.com/p/2052843307584295385} \\
+  \bottomrule
+\end{tabular}
+\endgroup
+
+\section*{CalebDu Blackwell WarpSpecialization（1 篇）}
+\begingroup\small
+\begin{tabular}{@{}c>{\raggedright\arraybackslash}p{0.78\textwidth}@{}}
+  \toprule
+  章节 & 原文 \\
+  \midrule
+  01 & WarpSpecialization for Blackwell\newline\url{https://zhuanlan.zhihu.com/p/1941232816185644696} \\
+  \bottomrule
+\end{tabular}
+\endgroup
+
 \clearpage
 
 % ============ 目录 ============
@@ -180,5 +206,15 @@ reed 的 CuTe 系列（13 篇）、竹熙佳处的 CuTe 教程系列（7 篇）�
 \input{chapters/reed-blackwell-dual-die.tex}
 \input{chapters/reed-fp8-attention.tex}
 \input{chapters/frankshi-01-swizzle.tex}
+
+% ============ Part V: Blackwell（B200/B300）CUTLASS 编程 ============
+% 顺序：总览（CuTe/CUTLASS 全貌）→ 完整 GEMM 例子（cluster 与 2-SM UMMA）→ 机制细节（WASP pipeline）
+%       → CUTLASS Python 的 tutorial 优化阶梯（2CTA / WS / persistent / CLC / PDL）
+\part{Blackwell（B200/B300）CUTLASS 编程}
+
+\input{chapters/zhaoshangchun-01-tensor-core-programming.tex}
+\input{chapters/zhaoshangchun-02-cluster-gemm.tex}
+\input{chapters/calebdu-01-warp-specialization.tex}
+\input{chapters/zhaoshangchun-03-cutlass-python.tex}
 
 \end{document}
