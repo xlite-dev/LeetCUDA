@@ -1,0 +1,94 @@
+% book-vol2.tex — LeetCUDA 技术书下册（第五～九部分，第 30--45 章 + 附录 A--E）
+% 构建：cd book/ && ./build.sh（全量，默认）或 ./build.sh --only v2
+% 全一册版仍是 book.tex；本文件与 book-vol1.tex 是它的两段切分，章号/图号/表号/公式号连续。
+\documentclass[9pt,openany]{ctexbook}
+\input{preamble.tex}
+% 跨册引用：本册有 128 处指向上册的 \ref/\eqref，读上册 aux 解析；
+% xr-hyper 必须在 hyperref 之前加载，\externaldocument 放在 hyperref 之后。
+\usepackage{xr-hyper}
+\usepackage[unicode,bookmarksnumbered,colorlinks,linkcolor=vscKeyword,citecolor=vscKeyword,urlcolor=vscEmphasis]{hyperref}
+\externaldocument{book-vol1}[book-vol1.pdf]
+\usepackage{xurl}  % 参考文献长 URL 任意位置断行，压制脚注/itemize 行溢出
+% 全书没有 \maketitle（封面走 shipout hook），\title 不会进 PDF 元数据，这里显式写
+\hypersetup{pdftitle={LeetCUDA：CUDA Kernel 优化之路（下册）},pdfsubject={从编程模型到 CuTe 与 FlashAttention}}
+\usepackage{float}  % [H] 强制图就地放置
+\usepackage{placeins}  % \FloatBarrier：图示节末尾设屏障
+
+\title{LeetCUDA：CUDA Kernel 优化之路（下册）\\{\large 从编程模型到 CuTe 与 FlashAttention}}
+\author{LeetCUDA Project}
+\date{\the\year 年 \the\month 月}
+
+\begin{document}
+
+% 封面：cover-vol2.pdf 与主封面同一套设计，仅多一枚「下册」卷标
+\AddToHookNext{shipout/background}{%
+  \put(0,-\dimexpr\paperheight\relax){\includegraphics[width=\paperwidth,height=\paperheight]{figures/misc/cover-vol2.pdf}}}
+\thispagestyle{empty}
+\null
+\clearpage
+
+% 分册说明（主书不含此页）
+\thispagestyle{empty}
+\vspace*{0.18\textheight}
+\begin{center}
+  {\Large\bfseries 分册说明}\\[1.6em]
+  \begin{minipage}{0.76\textwidth}
+    \normalsize\linespread{1.4}\selectfont
+    本书分上下两册。本册为\mbox{\textbf{下册}}，收录第五～九部分（第 30--45 章）与附录 A--E：
+    FP8/FP4 GEMM 篇、FP8/FP4 Attention 篇、SVDQuant 篇、CUTLASS Collective API 与附录。
+    \mbox{\textbf{上册}}收录第一～四部分（第 1--29 章）。\par\vspace{1em}
+    两册沿用全一册版的章号、图号、表号与公式编号，正文中的交叉引用可跨册对照。
+  \end{minipage}
+\end{center}
+\clearpage
+
+% 消除 frontmatter 的奇数开页空页，目录紧跟封面/说明
+\begingroup
+\let\cleardoublepage\clearpage
+\frontmatter
+\tableofcontents
+\endgroup
+
+% openany 电子书不强制右页起始：否则目录尾后 \mainmatter 的 \cleardoublepage 会补一页空白
+\let\cleardoublepage\clearpage
+\mainmatter
+
+% 章号/部分号接续上册（上册含 29 个编号章、4 个部分；ch19b 为不编号导读）
+\setcounter{part}{4}
+\setcounter{chapter}{29}
+
+\part{FP8/FP4 HGEMM 篇：量化矩阵乘的数学与 Kernel 工程}
+\input{chapters/ch34-fp8-quant-gemm}
+\input{chapters/ch35-fp8-gemm-cute}
+\input{chapters/ch36-fp4-gemm-quant}
+\input{chapters/ch37-fp4-gemm-cute}
+
+\part{FP8/FP4 Attention 篇：量化注意力的数学与 Kernel 工程}
+\input{chapters/ch27-quant-attn-math}
+\input{chapters/ch28-fp8-quant-aux}
+\input{chapters/ch29-fp8-persist-d}
+\input{chapters/ch30-fp8-split-d-m4n2}
+\input{chapters/ch31-fp4-nvfp4-quant}
+\input{chapters/ch32-fp4-persist-d}
+\input{chapters/ch33-fp8-fp4-bench}
+
+\part{SVDQuant 篇：W4A4/W8A8 低秩残差量化的数学与 Kernel 工程}
+\input{chapters/ch38-svdq-math}
+\input{chapters/ch39-svdq-quant-producer}
+\input{chapters/ch40-svdq-gemm-w4a4}
+\input{chapters/ch40b-svdq-fp8}
+
+\part{CUTLASS Collective API：从常规 GEMM 到量化 GEMM}
+\input{chapters/ch41-cutlass-collective-api}
+
+% 附录独立成第九部分：与正文八个部分并列，附录 A--E 挂在同一 part 下
+\part{附录}
+\appendix
+\input{appendices/appA-common-toolbox}
+\input{appendices/appB-perf-data}
+\input{appendices/appC-build-guide}
+\input{appendices/appD-source-index}
+\input{appendices/appE-references}
+
+\backmatter
+\end{document}

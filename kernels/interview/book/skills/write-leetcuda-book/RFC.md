@@ -32,6 +32,7 @@
 | RFC-P | Part VII SVDQuant 篇 ch38-40（cache-dit svdq cute/fp4 源码讲解：数学原理 + quantize producer + W4A4 GEMM；纯书稿，不改 cache-dit、不跑 kernel） | RFC-K/N/O（ch27/31/34-37 前置）+ cache-dit@db125215（公开仓） | 完成（2026-11-11 当前源码迁移与验收）|
 | RFC-Q | Part VIII CUTLASS Collective API 篇 ch41（本仓 BF16 最小头文件 + cache-dit FP8/FP4 collective；正文、测试、六形状复测与站点快照） | RFC-D/F/N/O/P + cache-dit@eced0158 | 完成（2026-11-16：ch41 + BF16 头文件 + 81 项回归 + 六形状复测；主 PDF 650 页与 RTD 三层验收通过）|
 | RFC-R | ch41 增补节：融合 MLP（GELU epilogue + SwiGLU producer；引用 cache-dit PR #1371） | RFC-Q + cache-dit@453c1b05 | 完成（2026-11-19：5 处旧行锚点重挂 + 13 处新增、4 张图、性能表标注未复测） |
+| RFC-T | 全一册拆成上下两册（`book-vol1/2.tex` + 同源封面卷标 + 跨册 xr 引用 + 构建脚本三目标） | RFC-0/Q/R + §12-S | 完成（2026-11-22：上册 438 页 / 下册 243 页 / 全一册 678 页；882 条 `\newlabel` 与部分号序列逐条一致；主封面像素零差异；目录页码偏差 0；RTD 三层全绿） |
 依赖图（执行实况）：`RFC-0 → RFC-A → RFC-C → RFC-D → RFC-E → RFC-F → (RFC-G ∥ RFC-H ∥ RFC-I) → RFC-J`；RFC-B 于 2026-09-18 取消（素材职能被附录 E + drawio 全量重建接管）；`RFC-K 依赖 RFC-E/F 素材，与 RFC-G/H/I 并行，完成后并入 RFC-J 收口`；增补里程碑 RFC-L（ch26b）/RFC-M（ch26c）/RFC-N（ch34-35）/RFC-O（ch36-37）于 2026-09-22..24 依次完成并并入主线；RFC-P（ch38-40，SVDQuant 篇）于 2026-11-07 登记为**Part VII**（插在 attention 篇之后、附录之前；attention 篇保持 Part VI、旧章打印章号零副作用——P.0 审核的路线 B；新章打印章号 41--43，正文硬编码节号按打印值书写）
 
 ## 2. RFC-0 脚手架
@@ -695,6 +696,44 @@ CHECKLOG / 技能笔记 / RFC 编号 / DoD 条款等一律不进正文；数据�
       泄漏项方向、11%–24% 区间、FP8 11 键默认值语义、tradeoff 横轴真实比例、
       混合树/ worktree 验证入口、图词典 4 处误译 + 4 处英文润色）+
       本地 commit（push 由用户决定）
+
+## 12-T. RFC-T 主书拆分为上下两册（2026-11-22）
+
+> 用户点名：保留全一册 `book.tex`，新增上册与下册，两册共用同一套封面但标明上册/下册。
+> 切点按 part：上册 = 第一～四部分（ch00…ch26c，第 1--29 章）；下册 = 第五～九部分
+> （ch34…ch41 + 附录 A--E，第 30--45 章）。章号接续靠下册 `\setcounter{part}{4}` /
+> `\setcounter{chapter}{29}`，图号/表号/公式号随章号自动连续，与全一册版逐条相同。
+
+- [x] T.0 计划与审核（Review Plan，2026-11-22）：提前否掉三项硬伤——双向 xr 会让上册
+      「?? → 章号」重排而目录留旧页码、封面中文写进 `cover-tikz.tex` 会打挂
+      `build_cover_en.py` 的中文残留检查、新增 PDF 被 `kernels/.gitignore` 吞掉
+- [x] T.1 封面：`cover-tikz.tex` 加纯 ASCII 开关 `\leetvol/\leetvoltext/\leetvolsub`
+      （`\providecommand` 默认 0）；卷标画在 `\end{tikzpicture}` 前，不扰动随机装饰流；
+      `cover-vol1.tex` / `cover-vol2.tex` 两个 wrapper 传中文文案与 VOLUME I/II
+- [x] T.2 主文件：`book-vol1.tex`（30 个 input，含不编号的 ch19b）/ `book-vol2.tex`
+      （21 个 input，含 5 个附录）；每册 frontmatter 加一页「分册说明」（目录之前，
+      消解上册 5 处硬编码「附录 A/B」的悬空指向）；两处
+      `\let\cleardoublepage\clearpage` 逐字照抄
+- [x] T.3 跨册引用：`xr-hyper` 双向 `\externaldocument`（下册 128 处指向上册、上册 1 处
+      指向下册 `ch:33`→第四十章）；构建顺序固定 v2p1 → v1p1 → v1p2 → v2p2
+- [x] T.4 校验：`scripts/check_volume_split.py` 断言 input 序列（集合 + 顺序）、
+      `\setcounter` 与上册实际计数（含 `\chapter*` 不计入）、部分总数相加；
+      `--compare-aux` 比三本 aux 的 `\contentsline {part}` 部分号序列（`\part` 没有 label，
+      单靠 `\newlabel` 覆盖不到）与 882 条 `\newlabel` 编号
+- [x] T.5 构建：`build.sh` 重构为 `--only book|v1|v2|vols` + `--cover-only`；日志门禁抽成
+      函数；校验卷标参数（`LEETCOVER volume=N`）、封面缺字与 standalone 页面尺寸；
+      保留 `.aux` 供单册迭代（`.gitignore` 已覆盖）。**每本 3 遍**：首遍 aux 缺失使本册
+      `\ref` 全出 `??`、分页偏短，第二遍写出的 `.toc` 页码因此过期（实测全一册 24 处、
+      上册 8 处差 1 页），第三遍才收正
+- [x] T.6 验收：上册 438 页 / 下册 243 页 / 全一册 678 页；三本 0 error / 0 undefined /
+      0 缺字，目录页码偏差 0（逐章比对 aux page）；上册目录止于第二十九章、下册第三十章
+      起至第四十五章 + 附录 A--E；两册 PDF 文本 `??` 计数 0；两册 `pdfinfo` 有 Title
+      （上册/下册），主封面与改动前 `ImageChops` bbox=None；RTD 全量 build 全项 OK +
+      `visual_check` 100 页需处理 0；`build_cover_en.py` 用新旧 `cover-tikz.tex` 产出字节
+      相同（`b4604a70`，与入库旧图的差异是环境漂移，非本次改动）
+- [x] T.7 已知限制：`xr-hyper` 的 `\externaldocument` 只接一个基础 URL（原样写进
+      `\r@label` 第 5 项），无法按 label 拼 `#chapter.N` 锚点（实测传 `[x.pdf:]` 只得到
+      `x.pdf:`），跨册链接只能落到对侧 PDF 起始页，读者需在对侧目录里再定位
 
 ## 13. 图清单登记表（写作期持续更新）
 

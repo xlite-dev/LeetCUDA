@@ -33,6 +33,15 @@
 % 成书日期取编译当月，勿写死（write-leetcuda-book 硬规则 11）
 \newcommand{\builddate}{\the\year 年 \the\month 月}
 
+% 卷标开关：cover-vol1.tex / cover-vol2.tex 在 \input 本文件前用 \def 传入。
+% 直接编本文件（主书封面）时取默认 0，不画卷标，输出与旧版逐像素一致。
+% 卷标文案（含中文）一律放 wrapper：本文件**去注释后的正文**必须保持 ASCII——
+% docs/readthedocs/tools/build_cover_en.py 只剥整行 % 注释再做中文残留检查，
+% 行尾注释里的中文同样会打挂它。
+\providecommand{\leetvol}{0}
+\providecommand{\leetvoltext}{}
+\providecommand{\leetvolsub}{}
+
 \begin{document}
 % 固定 random steps 种子，保证每次重编封面像素一致（整行注释，英文封面工具会忽略）
 \pgfmathsetseed{20261009}
@@ -232,5 +241,14 @@
    \mdseries\CJKfamily{zhsong} 本书仅用于开源学习与技术交流，\\未经作者本人同意，不得用于任何商业用途。};
 \node[text=coverMuted, font=\small] at (10.5,2.85)
   {LeetCUDA Project (Own by DefTruth) $\cdot$ \builddate};
+
+% ===== 卷标（上册/下册；主书 \leetvol=0 时整块跳过）=====
+% 画在最后：不影响前面各图消耗的随机装饰流，两册手绘抖动与主书一致
+\ifnum\leetvol=0\relax\else
+  \node[draw=accentBlue!45, sketch, rounded corners=2pt, inner xsep=9pt, inner ysep=4pt,
+    text=accentBlue, font=\CJKfamily{zhsans}\bfseries\small] at (10.5,25.35)
+    {\leetvoltext\nobreakspace{\normalfont\ttfamily\footnotesize\color{coverMuted}\leetvolsub}};
+\fi
+\typeout{LEETCOVER volume=\leetvol}
 \end{tikzpicture}
 \end{document}
