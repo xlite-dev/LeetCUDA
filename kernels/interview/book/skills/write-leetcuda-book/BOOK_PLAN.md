@@ -516,6 +516,11 @@ CWD 必须是 `book/`；源码引用写 `../base.cuh` 形式。
 所以**跨册 `\ref` 依赖对侧先编译过一次**，`scripts/check_volume_split.py` 会断言章表、
 `\setcounter` 与实际计数，并在三本齐编后逐条比对 882 条 `\newlabel` 编号。
 
+**增删章/part/附录时三份清单必须同步**（详见 SKILL.md 硬规则 12）：新章落上册要同时改
+`\setcounter{chapter}`（上册每多一个编号章，下册起始章号后移一位），落下册只改两处
+`\input`；在上册新增 part 还要改 `\setcounter{part}`。改完先跑
+`python3 scripts/check_volume_split.py`（秒级）再进构建，三本都要重编。
+
 ---
 
 ## 9. 页数与工作量预算

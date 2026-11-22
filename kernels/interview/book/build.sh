@@ -146,6 +146,10 @@ case "$ONLY" in
   book)
     build_passes book
     build_target book
+    # 只编全一册时上下册不一定重编，若本次动过章/part 集合会在这里暴露（不中止）
+    python3 scripts/check_volume_split.py || {
+      echo "WARN: 分册清单未同步（见上）；提交前须同步 book-vol1/2.tex 与 \\setcounter 并跑全量 ./build.sh"
+    }
     ;;
   *) echo "--only 只接受 book | v1 | v2 | vols"; exit 2 ;;
 esac
