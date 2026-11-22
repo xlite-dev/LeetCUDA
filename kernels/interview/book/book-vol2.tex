@@ -1,4 +1,4 @@
-% book-vol2.tex — LeetCUDA 技术书下册（第五～九部分，第 30--45 章 + 附录 A--E）
+% book-vol2.tex — LeetCUDA 技术书下册（第四部分后半 + 第五～九部分，第 24--45 章 + 附录 A--E）
 % 构建：cd book/ && ./build.sh（全量，默认）或 ./build.sh --only v2
 % 全一册版仍是 book.tex；本文件与 book-vol1.tex 是它的两段切分，章号/图号/表号/公式号连续。
 \documentclass[9pt,openany]{ctexbook}
@@ -34,9 +34,9 @@
   {\Large\bfseries 分册说明}\\[1.6em]
   \begin{minipage}{0.76\textwidth}
     \normalsize\linespread{1.4}\selectfont
-    本书分上下两册。本册为\mbox{\textbf{下册}}，收录第五～九部分（第 30--45 章）与附录 A--E：
-    FP8/FP4 GEMM 篇、FP8/FP4 Attention 篇、SVDQuant 篇、CUTLASS Collective API 与附录。
-    \mbox{\textbf{上册}}收录第一～四部分（第 1--29 章）。\par\vspace{1em}
+    本书分上下两册。本册为\mbox{\textbf{下册}}，自 CuTe 篇后半起，收录第 24--45 章
+    与附录 A--E：CuTe 篇后半、FP8/FP4 GEMM 篇、FP8/FP4 Attention 篇、SVDQuant 篇、
+    CUTLASS Collective API 与附录。\mbox{\textbf{上册}}收录第 1--23 章。\par\vspace{1em}
     两册沿用全一册版的章号、图号、表号与公式编号，正文中的交叉引用可跨册对照。
   \end{minipage}
 \end{center}
@@ -53,9 +53,23 @@
 \let\cleardoublepage\clearpage
 \mainmatter
 
-% 章号/部分号接续上册（上册含 29 个编号章、4 个部分；ch19b 为不编号导读）
+% 章号/部分号接续上册（上册含 23 个编号章、4 个部分；ch19b 为不编号导读）。
+% 切点取「第二十四章」之前（两册各 341 页，实测），第四部分因此被切开：它的标题页在上册，
+% 这里补一页不带编号的「第四部分（续）」并写进目录。\part* 自己不进目录、也不动 part 计数器，
+% 所以 \addcontentsline 必须手写，且要放在 \clearpage 之后——页码才落在续页本身。
 \setcounter{part}{4}
-\setcounter{chapter}{29}
+\setcounter{chapter}{23}
+
+\clearpage
+\phantomsection
+\addcontentsline{toc}{part}{第四部分（续）：CuTe 篇}
+\part*{第四部分（续）\\CuTe 篇：布局代数与现代化 Kernel 工程}
+\input{chapters/ch23-cute-swizzle-tma}
+\input{chapters/ch24-cute-hgemm}
+\input{chapters/ch25-cute-flash-attn}
+\input{chapters/ch26-cute-ffpa}
+\input{chapters/ch26b-cute-persist-d-flash-attn}
+\input{chapters/ch26c-cute-split-d-sm120}
 
 \part{FP8/FP4 HGEMM 篇：量化矩阵乘的数学与 Kernel 工程}
 \input{chapters/ch34-fp8-quant-gemm}

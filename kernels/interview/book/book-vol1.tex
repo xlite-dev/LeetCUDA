@@ -1,4 +1,4 @@
-% book-vol1.tex — LeetCUDA 技术书上册（第一～四部分，第 1--29 章）
+% book-vol1.tex — LeetCUDA 技术书上册（第一～四部分，第 1--23 章）
 % 构建：cd book/ && ./build.sh（全量，默认）或 ./build.sh --only v1
 % 全一册版仍是 book.tex；本文件与 book-vol2.tex 是它的两段切分，章号/图号/表号/公式号连续。
 \documentclass[9pt,openany]{ctexbook}
@@ -34,9 +34,9 @@
   {\Large\bfseries 分册说明}\\[1.6em]
   \begin{minipage}{0.76\textwidth}
     \normalsize\linespread{1.4}\selectfont
-    本书分上下两册。本册为\mbox{\textbf{上册}}，收录第一～四部分（第 1--29 章）：
-    基础篇、GEMM 篇、Attention 篇与 CuTe 篇。\mbox{\textbf{下册}}收录第五～九部分
-    （第 30--45 章）与附录 A--E。\par\vspace{1em}
+    本书分上下两册。本册为\mbox{\textbf{上册}}，收录第 1--23 章：基础篇、GEMM 篇、
+    Attention 篇，以及 CuTe 篇的前三章。\mbox{\textbf{下册}}自 CuTe 篇后半起，
+    收录第 24--45 章与附录 A--E。\par\vspace{1em}
     两册沿用全一册版的章号、图号、表号与公式编号，正文中的交叉引用可跨册对照；
     上册正文提到的附录 A、附录 B 均在下册。
   \end{minipage}
@@ -85,13 +85,9 @@
 \input{chapters/ch20-cute-layout}
 \input{chapters/ch21-cute-tensor-tiledcopy}
 \input{chapters/ch22-cute-tiledmma}
-\input{chapters/ch23-cute-swizzle-tma}
-\input{chapters/ch24-cute-hgemm}
-\input{chapters/ch25-cute-flash-attn}
-\input{chapters/ch26-cute-ffpa}
-\input{chapters/ch26b-cute-persist-d-flash-attn}
-\input{chapters/ch26c-cute-split-d-sm120}
+% 切点取「第二十四章」之前（上册 341 页 / 下册 341 页，实测）：第四部分在此处断开，
+% 续页由 book-vol2.tex 用 \part* 补
 
-% 与 book.tex 对齐：上册末章即全书第四部分收尾，后面没有索引/后记可挂，语义上仍收尾
+% 与 book.tex 对齐：上册收在第四部分中段，后面没有索引/后记可挂，语义上仍收尾
 \backmatter
 \end{document}

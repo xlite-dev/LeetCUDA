@@ -90,12 +90,13 @@ check_log() {  # $1=jobname
   fi
 }
 
-# 单册 aux 缺失时提示先编对侧：跨册引用靠 xr 读对侧 .aux，缺了会静默出 ??
+# 单册 aux 缺失时只提示不中止：缺 aux 只影响跨册 \ref（退化成 ??），由 check_log 的
+# undefined 门禁兜底；册内引用不依赖对侧，单册迭代不该被对侧 aux 挡住。
 require_aux() {  # $1=对侧 jobname $2=对侧册名
   if [ ! -f "$1.aux" ]; then
-    echo "缺 $1.aux：跨册引用需要在 $1 编译之后才能解析。"
-    echo "先跑 ./build.sh（全量）或 ./build.sh --only ${2}。"
-    exit 1
+    echo "WARN: 缺 $1.aux —— 若本册有跨册 \\ref 会退化成 ?? 并被 check_log 判失败；"
+    echo "      需要跨册引用时先跑 ./build.sh（全量）或 ./build.sh --only ${2}。"
+    return 0
   fi
   newest=$(find chapters appendices figures book-vol1.tex book-vol2.tex preamble.tex \
              -newer "$1.aux" \( -name '*.tex' -o -name '*.pdf' \) -print -quit 2>/dev/null || true)

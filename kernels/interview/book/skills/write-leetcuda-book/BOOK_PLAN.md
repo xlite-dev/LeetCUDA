@@ -461,8 +461,8 @@ CJK 一律禁 bold/italic（字体 fallback 缺字形=方框）；value 禁 `&#1
 kernels/interview/book/
 ├── BOOK_PLAN.md / RFC.md / CHECKLOG.md
 ├── book.tex            # 全一册：ctexbook[9pt,openany] + \tableofcontents + part/chapter 骨架
-├── book-vol1.tex       # 上册：第一～四部分（第 1--29 章），封面 cover-vol1.pdf
-├── book-vol2.tex       # 下册：第五～九部分 + 附录 A--E，\setcounter{part}{4}/{chapter}{29} 接续
+├── book-vol1.tex       # 上册：第 1--23 章（第一～四部分，第四部分到第二十三章）
+├── book-vol2.tex       # 下册：第 24--45 章 + 附录 A--E（\setcounter{part}{4}/{chapter}{23} 接续）
 ├── preamble.tex        # 从 tex/notes-v2.tex 抽取：8 色调色板/字体/lstset；+graphicx/amsthm/booktabs
 ├── build.sh            # 三本构建（上下册含 xr 跨册引用）+ 验收 + 清理
 ├── chapters/ch00-….tex … ch41-….tex（含 ch19b/ch26b/ch26c 增补）
@@ -510,9 +510,12 @@ cd kernels/interview/book
 `.toc` 页码因此过期（实测全一册 24 处、上册 8 处差 1 页），第三遍才用稳定 aux 收目录。
 CWD 必须是 `book/`；源码引用写 `../base.cuh` 形式。
 
-分册机制：上册末章印「第二十九章」，下册 `\setcounter{part}{4}` / `\setcounter{chapter}{29}`
-后首章印「第三十章」、首部分印「第五部分」，`\appendix` 自然回到 A--E；图/表/公式/定理
-按 chapter 编号，随章号连续。两册各用 `xr-hyper` 的 `\externaldocument` 读对侧 `.aux`，
+分册机制：按页数均衡切在「第二十四章」之前（实测 341 / 342 页）。上册末章印「第二十三章」；
+下册 `\setcounter{part}{4}` / `\setcounter{chapter}{23}` 后首章印「第二十四章」，并在前面用
+`\part*` + 手写 `\addcontentsline` 补一页「第四部分（续）」（`\part*` 不进目录、不动 part
+计数器；`\addcontentsline` 必须放在 `\clearpage` 之后，页码才落在续页本身）。第四部分因此
+跨册，它的标题页只在上册。`\appendix` 自然回到 A--E；图/表/公式/定理按 chapter 编号，
+随章号连续。两册各用 `xr-hyper` 的 `\externaldocument` 读对侧 `.aux`，
 所以**跨册 `\ref` 依赖对侧先编译过一次**，`scripts/check_volume_split.py` 会断言章表、
 `\setcounter` 与实际计数，并在三本齐编后逐条比对 882 条 `\newlabel` 编号。
 
