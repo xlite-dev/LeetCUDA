@@ -89,15 +89,16 @@ user-invocable: true
 **例外**：`chapters/ch19b-cute-whitepaper-zh.tex` 是 CuTe 官方白皮书的纯翻译，
 不参与上表的 L0–L4 逐条审核；只通读一遍作为 CuTe 术语/概念基线（见 §1.1）。
 
-当前构建状态（只证明“产物能生成/页面可渲染”，不证明内容正确）。R65 复核未改
-书稿，下列数字是 R64 末次构建的基线：
+当前构建状态（只证明“产物能生成/页面可渲染”，不证明内容正确）。cute-zhihu 与 RTD 三行是
+R117（2026-11-23，cute-zhihu 新增 Part V）实测；主书与 colfax 仍是各自末次构建的基线
+（R117 只改 cute-zhihu，主书未重建）：
 
 ```text
 book.pdf：591 页，0 error / 0 undefined / 缺字 0，Overfull 15（R64）
-cute-zhihu.pdf：248 页，0 error / 0 missing，Overfull 6（2026-10-25）
+cute-zhihu.pdf：360 页，0 error / 0 missing / 0 overfull / 11 underfull（R117）
 colfax-cute-zh.pdf：204 页，0 error / 0 missing，Overfull 0（2026-10-25 本地补依赖后）
-RTD：英文图 195/195、图词典 1922、代码 772/772、公式 121/121
-visual_check：93 页，需处理 0
+RTD：英文图 222/222、图词典 2157、代码 780/780、公式 124/124（R117）
+visual_check：105 个 .html（内容页 103），需处理 0（R117）
 ```
 
 **R65 结论**：主 book 全量复核零 H/M 新增，3 项 LOW（ch25:166 smem 口径、ch34:224
@@ -519,7 +520,7 @@ print(logical_product(Layout((2, 2), (1, 2)), Layout((5, 5), (5, 1))))
 但**判定权必须留在主 agent**：
 
 1. **分片**：主书按 `ch00–14 / ch15–19b+附录 / ch20–26c / ch27–37` 四片；
-   cute-zhihu 按 `reed-* / zhuxi-* + frankshi` 两片。
+   cute-zhihu 按 `reed-* / zhuxi-* + frankshi / zhaoshangchun-* + calebdu-*` 三片。
 2. **给 agent 的约束**：只读、不改文件；先跑 `scan_risky_claims.py`；逐章覆盖
    正文、图注、表、问答、listing；每条 high 必须带 `文件:行 + 外部证据 +
    最小修法`；预先告知旧轮已修项，避免把旧账当新发现。

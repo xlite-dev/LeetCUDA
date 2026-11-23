@@ -54,7 +54,7 @@ docs/readthedocs/
 
 - **入口位置**：主书 `index.md` 的 toctree 在全部 `part-N` 之后追加 `<slug>/index`，即侧栏「附录」之后的最后一项。集合是三层结构（集合首页 → 5 个 `part` 页 → 36 章），所以 `conf.py` 用 `navigation_depth: 3` + `titles_only: True`（否则主书每章的 `\section` 也会进左栏）。展开/收起用主题自带机制：系列前有「+」，点开才列出章节，当前系列随页面自动展开，与主书「篇 → 章」完全一致——**不要再加 CSS 强制展开**。细节见 `layout-frontend.md`。
 - **集合首页**：H1 = `Collection.title`，正文 = `Collection.intro` 段落 + raw HTML `<a href="../index.html">返回…主书</a>`（用 Markdown 链接会被 MyST 当文档引用解析，退化成 `href="#…"` 死链）+ `:maxdepth: 2` 的 toctree（5 个系列 + 36 篇标题直接列出）。
-- **章号**：集合用自己那份 `labels` 注册表重放计数器，输出与 PDF 一致的「第 N 章：」前缀（cute-zhihu 是 1..32 连续编号，跨 `\part` 不重置）。
+- **章号**：集合用自己那份 `labels` 注册表重放计数器，输出与 PDF 一致的「第 N 章：」前缀（cute-zhihu 是 1..36 连续编号，跨 `\part` 不重置）。
 - **宏表只写一次**：`macros.extract` 只认书根的 `preamble.tex` / `book.tex`，对子集合调用会得到空表并覆盖 `build/mathjax-macros.json`，主书公式静默变形。`_convert_book` 只在 `macro_target` 非空（主书）时写。
 - **路径**：图片按「相对书根」镜像进 `<slug>/figures/…`，页面内的 `figures/…` 相对链接天然成立；raw HTML 表格里的 `<img>` 不走 Sphinx 改写，`RenderContext.image_prefix` 按页面层数补 `../_images/`。
 - **源码溯源**：集合页脚链接是 `…/kernels/interview/book/<slug>/chapters/x.tex`（`BookSpec.relative_dir` 拼在 `source_url` 后）。

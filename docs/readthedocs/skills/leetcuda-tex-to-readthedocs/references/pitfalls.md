@@ -55,9 +55,9 @@
 26. **admonition 标题里自带 `\textbf` → 页面上 `****`**：标题先渲染成 `**…**`，`_render_admonition` 又整体包一层 `**`，成了嵌套强调，CommonMark 配不上对，字面 `****` 漏到正文（ch10/ch14/ch16/ch17/ch18/ch19 六处「实践经验」标题）。修法：标题整体已是粗体，包之前把内层 `**` 去掉。`convert.verify` 抓不到（它只看 `check_emphasis_flanking` 的配对判定），只有 `visual_check` 的「未渲染的强调标记」会红。
 27. **多书（主书 + 子集合）装配的五个坑**：
     - `macros.write()` 每次运行都重写 `build/mathjax-macros.json`，而 `extract()` 只认书根的 `preamble.tex`/`book.tex`；对子集合调用会写成空表、主书公式静默变形。**只对主书写**。
-    - 页面键必须用 docname（`cute-zhihu/reed-01-layout`），用 `path.stem` 会让主书与集合的 `index`、`part-1..4` 互相覆盖，通用核对静默漏页。
-    - raw HTML 表格里的 `<img src="_images/…">` 由转换器硬编码，子目录页面要写 `../_images/…`；`check_images_present` 的正则也必须能匹配 `../` 前缀，否则 173 张图零覆盖还报「共 0 张图」。
-    - `check_translation_dicts` 只能统计站点根页面：集合页面（201 段代码 + 68 个脚注 + 图注的中文）不在词典里，递归就会全算未命中、必红。
+    - 页面键必须用 docname（`cute-zhihu/reed-01-layout`），用 `path.stem` 会让主书与集合的 `index`、`part-1..5` 互相覆盖，通用核对静默漏页。
+    - raw HTML 表格里的 `<img src="_images/…">` 由转换器硬编码，子目录页面要写 `../_images/…`；`check_images_present` 的正则也必须能匹配 `../` 前缀，否则 317 张图零覆盖还报「共 0 张图」。
+    - `check_translation_dicts` 只能统计站点根页面：集合页面（209 段代码 + 68 个脚注 + 图注的中文）不在词典里，递归就会全算未命中、必红。
     - 集合的「书目录编号核对」读的是 `<slug>.toc`（cute-zhihu 是 `cute-zhihu.toc`），写死 `book.toc` 会静默跳过。
     另：`conda run -n cdit python -m tools.visual_check` 会命中 site-packages 里同名的 `tools` 包（`No module named tools.visual_check`），直接跑 `python tools/visual_check.py`。
 

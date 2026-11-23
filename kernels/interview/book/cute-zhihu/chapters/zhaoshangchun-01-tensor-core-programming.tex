@@ -85,7 +85,7 @@ CUTLASS目前是开源的，且社区非常的活跃。
 
 在 Hopper 上，MMA (Matrix Multiply-Accumulate) 指令的输入 A 矩阵可以来自寄存器（Register File）或共享内存（Shared Memory），累加结果 D 则存放在寄存器中。
 
-而在 Blackwell 中，\textbf{输入 A 和累加结果 D 的主要存储位置都变成了新引入的 Tensor Memory (TMEM)}。这一改变意义深远，TMEM 作为一块专为张量操作设计的内存，能够更高效地暂存和流转数据，\textbf{减少对通用寄存器的压力}，为更大规模的异步计算铺平了道路。
+而在 Blackwell 中，\textbf{输入 A 可以来自 SMEM 或新引入的 Tensor Memory (TMEM)，累加结果 D 则固定放在 TMEM}。这一改变意义深远，TMEM 作为一块专为张量操作设计的内存，能够更高效地暂存和流转数据，\textbf{减少对通用寄存器的压力}，为更大规模的异步计算铺平了道路。
 
 表格中还指出了另一个关键点：\textbf{异步执行模型的扩展}。
 
@@ -101,7 +101,7 @@ Hopper 的异步 MMA 主要局限于计算阶段，\textbf{而 Blackwell 将其�
 
 这张图进一步揭示了 Blackwell 如何实现 Tensor Core 性能翻倍的秘密：\textbf{将 Tensor Core 指令的执行范围从单个 SM 扩展到了两个 SM}。在 Hopper 架构中，一个 CTA (Cooperative Thread Array) 内的 warpgroup 独立在其所在的 SM 上完成 MMA 计算。而在 Blackwell 中，引入了\textbf{跨 SM 的 MMA 执行机制}。一对位于 2x1 物理集群（Cluster）中的 CTAs 可以协同执行一个 MMA 指令。其中一个 CTA（leader CTA）里的某个线程负责下发指令，但计算任务（包括 A、B 矩阵的读取和累加器的计算）则\textbf{平均分配到两个 SM 上并行处理}。
 
-这意味着单个 MMA 指令能够调用的计算资源和片上内存（SMEM/\allowbreak{}TMEM）都直接翻倍，\textbf{从而支撑起更大的 MMA M 维度（例如从 Hopper 的 128 扩展到 Blackwell 的 256），这是实现 2 倍吞吐量的直接原因}。这种 \textbf{2-SM-MMA} 的设计，要求编程模型必须能够感知和管理跨 SM 的数据和同步，这也是 Cu\allowbreak{}Te 和 CUTLASS 4.0 中引入\texttt{2\allowbreak{}SM}相关抽象的根本原因。开发者需要适应这种新的 CTA-Pair 协作模式，以编写出能够充分利用 Blackwell 硬件能力的核函数。
+这意味着单个 MMA 指令能够调用的计算资源和片上内存（SMEM/\allowbreak{}TMEM）都直接翻倍，\textbf{从而支撑起更大的 MMA M 维度（Hopper 单条 \texttt{wgmma} 指令的 M 固定为 64，Blackwell 单 SM 的单条指令 M 翻倍到 128，2-SM 协作的指令再翻倍到 256），这是实现 2 倍吞吐量的直接原因}。这种 \textbf{2-SM-MMA} 的设计，要求编程模型必须能够感知和管理跨 SM 的数据和同步，这也是 Cu\allowbreak{}Te 和 CUTLASS 4.0 中引入\texttt{2\allowbreak{}SM}相关抽象的根本原因。开发者需要适应这种新的 CTA-Pair 协作模式，以编写出能够充分利用 Blackwell 硬件能力的核函数。
 
 \textbf{第 7 页：新增的block-scale数据类型支持}
 
@@ -347,7 +347,7 @@ Cu\allowbreak{}Te 使用 \texttt{make\_\allowbreak{}tensor} 函数，传入一�
 \includegraphics[width=0.9\textwidth]{figures/zhaoshangchun-01-tensor-core-programming/fig-29.jpg}
 \end{figure}
 
-本页开始进入异步数据加载部分。前面的 \texttt{cooperative\_\allowbreak{}copy} 是同步操作，会阻塞计算。而 TMA (Tensor Memory Access) 作为 Blackwell 的硬件加速器，允许我们在计算进行的同时，在后台异步地从全局内存预取下一个数据块，从而隐藏访存延迟。
+本页开始进入异步数据加载部分。前面的 \texttt{cooperative\_\allowbreak{}copy} 是同步操作，会阻塞计算。而 TMA (Tensor Memory Accelerator；Hopper 引入，Blackwell 沿用并增加 CTA 对变体) 作为硬件拷贝引擎，允许我们在计算进行的同时，在后台异步地从全局内存预取下一个数据块，从而隐藏访存延迟。
 
 掌握 TMA 是实现高性能核函数的关键一步。它要求我们以流水线（pipeline）的思维来组织代码，将数据流和计算流解耦。接下来，我们将看到 Cu\allowbreak{}Te 是如何帮助我们轻松实现这一点的。
 
@@ -520,7 +520,7 @@ Cu\allowbreak{}Te 将这些复杂的 PTX 指令封装在 \texttt{TMA Atom} 中�
 \begin{itemize}
 \item \textbf{寻址方式}：TMEM 是“字寻址（word-addressed）”的，地址由 128 个 \texttt{lane} 和 512 个 \texttt{column} 组成。一个 warpgroup（4个 warp）可以访问所有 lane，而单个 warp 只能访问 32 个 lane。
 \item \textbf{分配/\allowbreak{}释放}：需要使用 \texttt{tcgen05.\allowbreak{}alloc} 和 \texttt{tcgen05.\allowbreak{}dealloc} PTX 指令进行显式管理。分配的粒度是 16 KB（128 lanes x 32 columns）。
-\item \textbf{warp-local 地址}：\texttt{alloc} 指令返回的是一个 warp-local 的地址，这意味着不同 warp 获取的地址值可能不同，但它们指向同一个分配的 TMEM 块。
+\item \textbf{地址不是线性指针}：\texttt{alloc} 把分配到的 TMEM 基址写进 SMEM，由 CTA 内各 warp 共同读取；地址本身是 (lane, column) 编码，不能做指针算术。
 \end{itemize}
 
 TMEM 的这些底层细节决定了它的使用方式和编程模型的复杂性。
@@ -528,7 +528,7 @@ TMEM 的这些底层细节决定了它的使用方式和编程模型的复杂性
 \begin{itemize}
 \item \textbf{非传统内存}：TMEM 不是我们熟悉的线性地址空间。它的地址编码 (\texttt{lane}, \texttt{column}) 意味着我们不能用简单的指针算术来访问数据。必须使用专门的指令和预定义的布局。
 \item \textbf{手动内存管理的回归}：在高级语言中，我们已经习惯了自动内存管理。但在追求极致性能的 GPU 内核编程中，手动管理 TMEM 这样的关键资源是必要的。这要求开发者对内核的生命周期有精确的控制。
-\item \textbf{集合操作的必要性}：由于地址是 warp-local 的，且单个 warp 无法访问全部 TMEM，所有对 TMEM 的操作都必须是 warpgroup 范围内的集体操作。这再次强调了在 Blackwell 编程中，\texttt{warpgroup} 是基本的操作单元。
+\item \textbf{操作粒度}：单个 warp 只能访问自己那 32 个 lane，所以要把累加器整体搬出 TMEM 的 \texttt{tcgen05.\allowbreak{}ld}/\allowbreak{}\texttt{st} 必须由 4 个 warp（一个 \texttt{warpgroup}）共同完成；\texttt{tcgen05.\allowbreak{}mma}/\allowbreak{}\texttt{commit}/\allowbreak{}\texttt{cp} 是单线程指令，\texttt{alloc}/\allowbreak{}\texttt{dealloc} 则是单 warp 指令。数据进出 TMEM 的主要通路仍以 \texttt{warpgroup} 为基本操作单元。
 \end{itemize}
 
 \textbf{第 42 页：Blackwell TMEM Tensors and Ops}
@@ -621,7 +621,7 @@ Cu\allowbreak{}Te 在这里扮演了“翻译官”的角色，将程序员的�
 图示非常直观地展示了这个数据流：
 
 \begin{enumerate}
-\item \textbf{数据加载}：通过 \texttt{copy(tma\_\allowbreak{}atom.\allowbreak{}.\allowbreak{}.\allowbreak{})}，Tensor Memory Access (TMA) 单元异步地将 A 和 B 的 Tile 从全局内存搬运到 SMEM 中，形成 \texttt{A buffer} 和 \texttt{B buffer}。
+\item \textbf{数据加载}：通过 \texttt{copy(tma\_\allowbreak{}atom.\allowbreak{}.\allowbreak{}.\allowbreak{})}，Tensor Memory Accelerator (TMA) 单元异步地将 A 和 B 的 Tile 从全局内存搬运到 SMEM 中，形成 \texttt{A buffer} 和 \texttt{B buffer}。
 \item \textbf{计算}：\texttt{gemm} 函数（底层是 MMA 指令）消费 SMEM 中的数据。
 \item \textbf{累加}：计算结果被直接累加到 \textbf{TMEM Accumulator} (\texttt{t\allowbreak{}Ct\allowbreak{}C}) 中。
 \end{enumerate}
@@ -837,7 +837,7 @@ CUTLASS Kernel 这个例子充分体现了 CUTLASS 3.x/\allowbreak{}4.x 声明�
 
 这一页介绍了 CUTLASS 中\texttt{Collective\allowbreak{}Builder} 与 \texttt{Collective\allowbreak{}Mainloop}。其核心思想是\textbf{将复杂的高性能 GEMM（通用矩阵乘）主循环 (Mainloop) 的构建过程自动化、模板化}，让开发者从手动拼凑和调试复杂的 CUDA C++ 模板代码中解脱出来。以往，开发者需要像搭积木一样，手动选择数据加载、线程协作、MMA 指令等数十个模板参数来组成一个完整的 GEMM 内核，过程繁琐且极易出错。现在，\texttt{Collective\allowbreak{}Builder} 如同一个智能工厂，你只需要提供高级别的“规格需求”，它就能自动为你生成一个经过高度优化的 \texttt{Collective\allowbreak{}Mainloop} 实例。
 
-深入来看 \texttt{Collective\allowbreak{}Builder} 的模板参数列表，这就像是在填写一张精密的“内核订单”。\texttt{cutlass::\allowbreak{}arch::\allowbreak{}Sm100} 明确了目标硬件是 Blackwell 架构，这使得 Builder 能够选用该架构专属的最新指令集和硬件单元，如第五代 Tensor Core (TCGen05)。数据类型（如 \texttt{float\_\allowbreak{}e4m3\_\allowbreak{}t}）和布局（\texttt{Row\allowbreak{}Major}）的指定，让 Builder 可以优化内存访问模式以最大化带宽。而 \texttt{MMA Shape}（如 \texttt{\_\allowbreak{}256,\allowbreak{}\_\allowbreak{}128,\allowbreak{}\_\allowbreak{}64}）和 \texttt{Cluster Shape}（如 \texttt{\_\allowbreak{}2,\allowbreak{}\_\allowbreak{}2,\allowbreak{}\_\allowbreak{}1}）则定义了内核的并行粒度，前者是单个线程块（Thread Block）处理的瓦块（Tile）大小，后者则利用 Blackwell 新增的\textbf{线程块集群 (Thread Block Cluster)} 特性，让多个线程块协同处理一个更大的计算任务，从而更好地摊分数据加载开销、提升算力利用率。最后，\texttt{Kernel\allowbreak{}Schedule\allowbreak{}Auto} 则将调度策略的选择权完全交给 CUTLASS，它会根据其他参数在 TMA（Tensor Memory Accelerator）和 \texttt{cp.\allowbreak{}async}、Warp-Specialized (WS) 和非 WS 之间做出最优选择，实现开箱即用的高性能。
+深入来看 \texttt{Collective\allowbreak{}Builder} 的模板参数列表，这就像是在填写一张精密的“内核订单”。\texttt{cutlass::\allowbreak{}arch::\allowbreak{}Sm100} 明确了目标硬件是 Blackwell 架构，这使得 Builder 能够选用该架构专属的最新指令集和硬件单元，如第五代 Tensor Core (TCGen05)。数据类型（如 \texttt{float\_\allowbreak{}e4m3\_\allowbreak{}t}）和布局（\texttt{Row\allowbreak{}Major}）的指定，让 Builder 可以优化内存访问模式以最大化带宽。而 \texttt{MMA Shape}（如 \texttt{\_\allowbreak{}256,\allowbreak{}\_\allowbreak{}128,\allowbreak{}\_\allowbreak{}64}）和 \texttt{Cluster Shape}（如 \texttt{\_\allowbreak{}2,\allowbreak{}\_\allowbreak{}2,\allowbreak{}\_\allowbreak{}1}）则定义了内核的并行粒度，前者是 tcgen05 MMA 计算的瓦块（Tile）大小（Cluster Shape 的 M 方向为偶数时可跨 2 个 SM），后者则利用 Blackwell 新增的\textbf{线程块集群 (Thread Block Cluster)} 特性，让多个线程块协同处理一个更大的计算任务，从而更好地摊分数据加载开销、提升算力利用率。最后，\texttt{Kernel\allowbreak{}Schedule\allowbreak{}Auto} 则将调度策略的选择权完全交给 CUTLASS，它会根据其他参数在 TMA（Tensor Memory Accelerator）和 \texttt{cp.\allowbreak{}async}、Warp-Specialized (WS) 和非 WS 之间做出最优选择，实现开箱即用的高性能。
 
 \texttt{Collective\allowbreak{}Mma} 接口本身则是 CUTLASS 模块化设计的集中体现。它背后是由一系列遵循 Cu\allowbreak{}Te（CUDA Templates for Expressing Tensor Computations）编程模型的组件构成的“配方 (recipe)”。这些组件包括负责全局内存到共享内存数据搬运的 \texttt{Gmem\allowbreak{}Tiled\allowbreak{}Copy}、定义共享内存数据布局以避免 bank conflict 的 \texttt{Smem\allowbreak{}Layout\allowbreak{}Atom}、以及执行实际矩阵乘加运算的 \texttt{Tiled\allowbreak{}Mma} 等。整个 \texttt{Collective\allowbreak{}Mainloop} 通过精密的\textbf{软件流水线 (Software Pipelining)} 将数据加载 (load) 与计算 (compute) 深度重叠，有效隐藏了访存延迟。特别是在 Blackwell 架构上，新的同步原语 \texttt{tcgen05.\allowbreak{}wait/\allowbreak{}commit} 和支持多达 8 个 CTA 协作的 \texttt{mbarrier} 机制，让这种流水线可以扩展到整个 Cluster 层面，实现了前所未有的并行效率和性能。
 
@@ -1012,7 +1012,7 @@ PPT 中再次高亮了 \texttt{Gemm\allowbreak{}Universal} 的第四个模板参
 
 \begin{itemize}
 \item \textbf{Persistent (持久化)}：这意味着一旦一个线程块被启动，它不会在完成一个 Tile 后就立即退出，而是会继续向调度器请求下一个 Tile 进行计算，直到所有 Tile 都被处理完毕。这种方式避免了反复启动和销毁线程块的开销，对于包含大量 Tile 的大矩阵尤其高效。
-\item \textbf{Dynamic (动态)}：与静态调度（在编译时就确定好每个 CTA 的任务）不同，动态调度是在运行时进行的。每个持久化的 CTA 就像一个工作线程，完成任务后会去“任务队列”里领取新任务。这使得它能很好地适应不规则的矩阵尺寸和动态变化的工作负载，实现更好的负载均衡。Blackwell 架构中的 CLC（Compute-Local Cache，可能是某种用于快速同步或任务分发的硬件机制）可能为此提供了硬件层面的支持。
+\item \textbf{Dynamic (动态)}：与静态调度（在编译时就确定好每个 CTA 的任务）不同，动态调度是在运行时进行的。每个持久化的 CTA 就像一个工作线程，完成任务后会去“任务队列”里领取新任务。这使得它能很好地适应不规则的矩阵尺寸和动态变化的工作负载，实现更好的负载均衡。Blackwell 的 CLC（Cluster Launch Control，PTX 指令 \texttt{clusterlaunchcontrol.\allowbreak{}try\_\allowbreak{}cancel}）就是为这种调度提供的硬件支持：持久化的 CTA 用它取消尚未启动的 cluster，把该 cluster 的 tile 转给自己处理，CUTLASS 的 \texttt{PersistentTileSchedulerSm100} 就是基于它实现的。
 \end{itemize}
 
 对于开发者而言，Kernel Layer 的设计意味着他们可以站在一个更高的维度上思考性能优化。

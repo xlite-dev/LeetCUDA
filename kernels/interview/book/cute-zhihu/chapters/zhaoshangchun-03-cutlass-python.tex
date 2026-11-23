@@ -17,7 +17,7 @@
 
 \textbf{达到 SOL（Speed of Light）性能的挑战：}
 
-要在现代 GPU 上达到 SOL 性能，开发者需要使用更低层级的抽象来精细控制硬件特性。特别是 Blackwell 架构引入的 \textbf{PDL（Programmatic Dependent Launch）} 等高级特性，需要细粒度的控制才能充分发挥其潜力。
+要在现代 GPU 上达到 SOL 性能，开发者需要使用更低层级的抽象来精细控制硬件特性。特别是 \textbf{PDL（Programmatic Dependent Launch，即 \texttt{griddepcontrol}，sm\_\allowbreak{}90 起可用）} 等高级特性，需要细粒度的控制才能充分发挥其潜力。
 
 \textbf{为什么选择 CUTLASS：}
 
@@ -46,7 +46,7 @@
 CUTLASS Python 相较于传统方式实现了令人印象深刻的优势：
 
 \begin{itemize}
-\item \textbf{性能方面：} 在 8\allowbreak{}K×8\allowbreak{}K×8\allowbreak{}K GEMM 场景下达到了极高的 TFLOPS 吞吐量（图中 "Higher is better" 方向）
+\item \textbf{性能方面：} 在 8\allowbreak{}K×8\allowbreak{}K×8\allowbreak{}K GEMM 场景下两者都接近 \textbf{100\% SOL}（C++ 约 100\%、Python 约 99\%，图中 "Higher is better" 方向）
 \item \textbf{编译速度：} 编译时间相较 C++ 实现缩短超过 \textbf{100 倍}（图中 "Lower is better" 方向）
 \end{itemize}
 
@@ -151,15 +151,15 @@ CUTLASS Python 基于 \textbf{Cu\allowbreak{}Te DSL（Domain Specific Language�
 \textbf{可并行性（Parallelizable）：}
 
 \begin{itemize}
-\item 输出矩阵 C 的每个元素 \$\$C\_\allowbreak{}\{i,j\$\$ 可以独立计算
+\item 输出矩阵 C 的每个元素 $C_{i,j}$ 可以独立计算
 \item 有助于充分利用 GPU 中的所有 SM（Streaming Multiprocessor）
 \end{itemize}
 
 \textbf{数据可复用性（Data-reusable）：}
 
 \begin{itemize}
-\item C 的第 i 行需要 A 矩阵的第 i 行 \$\$A\_\allowbreak{}\$\$ 的相同数据
-\item C 的第 j 列需要 B 矩阵的第 j 列 \$\$B\_\allowbreak{}\$\$ 的相同数据
+\item C 的第 i 行需要 A 矩阵的第 i 行 $A_i$ 的相同数据
+\item C 的第 j 列需要 B 矩阵的第 j 列 $B_j$ 的相同数据
 \item 这为减轻 IO 压力提供了可能性
 \end{itemize}
 
@@ -186,7 +186,7 @@ CUTLASS Python 基于 \textbf{Cu\allowbreak{}Te DSL（Domain Specific Language�
 
 \textbf{Tutorial GEMM 系列的主要贡献：}
 
-提供了一系列渐进式优化的教程，每个仅需 200-300 行代码：
+提供了一系列渐进式优化的教程：起点是一个 200-300 行的基础 GEMM，之后每一级只在这一版上叠加一项优化：
 
 \begin{table}[htbp]\centering\small
 \begin{adjustbox}{max width=\textwidth}
@@ -199,8 +199,8 @@ fp16gemm1.py & 启用 tcgen05.2cta & 延迟隐藏能力不足 \\
 fp16gemm2.py & Warp Specialization + TMA Store & 波内优化 \\
 fp16gemm3/\allowbreak{}3\_\allowbreak{}1.py & Static/\allowbreak{}Dynamic Persistent & 波间切换优化 \\
 fp16gemm4.py & Preferred/\allowbreak{}Fallback Clusters & 充分利用 SM \\
-fp16gemm5.py & PDL & 内核重叠 \\
-fp16gemm6.py & TMA L2 Prefetch & DRAM 延迟 \\
+fp16gemm5.py & TMA L2 Prefetch & DRAM 延迟 \\
+fp16gemm6.py & PDL & 内核重叠 \\
 \bottomrule
 \end{tabular}
 \end{adjustbox}
@@ -230,7 +230,7 @@ fp16gemm6.py & TMA L2 Prefetch & DRAM 延迟 \\
 
 \textbf{Step 3 - 为 TMA 分区 SMEM/\allowbreak{}GMEM（\texttt{tma\_\allowbreak{}partition()}）：}
 
-Tensor Memory Accelerator（TMA）是 Blackwell 架构的硬件加速器，负责高效地在全局内存和共享内存之间传输数据。这一步为 TMA 操作准备好源和目标的内存分区。
+Tensor Memory Accelerator（TMA）是 Hopper 引入、Blackwell 沿用的硬件拷贝引擎，负责高效地在全局内存和共享内存之间传输数据。这一步为 TMA 操作准备好源和目标的内存分区。
 
 \textbf{Step 4 - TMA 从 GMEM 拷贝到 SMEM（\texttt{cute.\allowbreak{}copy()}）：}
 
@@ -314,11 +314,12 @@ Random Float（随机浮点） & \textasciitilde{}1.35 GHz & \textasciitilde{}1.
 \begin{itemize}
 \item 2\allowbreak{}K×2\allowbreak{}K×2\allowbreak{}K：相对较低，受 kernel launch 开销影响
 \item 4\allowbreak{}K×4\allowbreak{}K×4\allowbreak{}K：逐步提升
-\item 8\allowbreak{}K×8\allowbreak{}K×8\allowbreak{}K：约 1200+ TFLOPS
-\item 16\allowbreak{}K×16\allowbreak{}K×16\allowbreak{}K：约 1300+ TFLOPS
+\item 8\allowbreak{}K×8\allowbreak{}K×8\allowbreak{}K：约 1300+ TFLOPS（图中最高点）
+\item 16\allowbreak{}K×16\allowbreak{}K×16\allowbreak{}K：约 1200 TFLOPS
 \end{itemize}
 
-基线性能为 \textbf{1.64 peta\allowbreak{}FLOPS（1640 TFLOPS）}，这为后续优化提供了起点。
+基线性能在 8\allowbreak{}K 规模上约为 \textbf{1.3 peta\allowbreak{}FLOPS（1300 TFLOPS）}；图中的 1.64 peta\allowbreak{}FLOPS
+是 B200 在随机浮点输入下的可达峰值，二者不是同一个口径。这为后续优化提供了起点。
 
 \section{第三章：渐进式 GEMM 优化——计算密集型场景}
 
@@ -442,7 +443,7 @@ Blackwell 架构引入了一项重要的硬件创新——\textbf{将 Tensor Cor
 
 \begin{itemize}
 \item SM 0 和 SM 1 各持有 A 矩阵的一半（SMEM 或 TMEM）
-\item B 矩阵在两个 SM 之间共享（关键优化点！）
+\item B 矩阵沿 N 方向平均切分到两个 SM（本教程的 CuTe DSL 配置，每个 SM 各持一半列）——关键优化点！
 \item 累加器分别存储在两个 SM 的 TMEM 中
 \item MMA 维度：M=256（跨 2 个 SM），K 和 N 维度在两个 SM 内处理
 \end{itemize}
@@ -465,7 +466,7 @@ Blackwell 架构引入了一项重要的硬件创新——\textbf{将 Tensor Cor
 
 \textbf{SMEM 节省的关键原因：}
 
-由于 \textbf{B 矩阵在 2 个 SM 之间共享}，每个 SM 只需要存储一半的 B 数据：
+由于 \textbf{A、B 与累加器都在 2 个 SM 之间平均切分}，每个 SM 只需要存储一半的 B 数据：
 
 \begin{table}[htbp]\centering\small
 \begin{adjustbox}{max width=\textwidth}
@@ -602,8 +603,8 @@ if warp_idx == tma_warp_id:
     ...  # 负责所有 TMA 加载操作
 if warp_idx == mma_warp_id:
     ...  # 负责所有 MMA 计算操作
-if warp_idx < epilogue_warp_ids:
-    ...  # 负责结果写回操作
+if warp_idx < mma_warp_id:
+    ...  # 负责结果写回操作（warp 0-3，即 epilogue_warp_ids）
 \end{lstlisting}
 
 \subsection{3.10 Tutorial 2：性能提升}
@@ -667,9 +668,9 @@ if warp_idx < epilogue_warp_ids:
 \item \textbf{Wave i-1 的 epilogue 与 Wave i 的 MMA 重叠：} Warp Specialization 使得上一个 wave 的结果写回可以与下一个 wave 的计算同时进行
 \end{itemize}
 
-\textbf{关键约束：}
+\textbf{关键搭配：}
 
-Warp Specialization 和 Persistent Kernel \textbf{必须配合使用}：
+Warp Specialization 和 Persistent Kernel \textbf{配合使用收益最大}（二者也可各自单独使用，只是重叠不完整）：
 
 \begin{itemize}
 \item \textbf{仅 Warp Specialization：} prologue 和 epilogue 仍然暴露（如 Tutorial 2）

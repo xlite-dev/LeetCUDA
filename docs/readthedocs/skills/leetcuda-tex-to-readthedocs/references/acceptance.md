@@ -85,7 +85,7 @@ python tools/visual_check.py --only index,cute-zhihu/index,ch00-profiling --out 
 
 用 `python tools/visual_check.py` 而不是 `python -m tools.visual_check`：cdit 环境的 site-packages 里有个同名的 `tools` 包，`-m` 会命中它并报 `No module named tools.visual_check`。
 
-页面枚举是递归的（`rglob`），主书与子集合的所有页面一起验（当前 93 页）；页面标识用 docname（`cute-zhihu/reed-01-layout`），截图名把 `/` 换成 `__`，`--only` 同时接受 docname 与裸文件名。
+页面枚举是递归的（`rglob`），主书与子集合的所有页面一起验（当前 105 个 `.html`，其中内容页 103、`genindex`/`search` 两个生成页）；页面标识用 docname（`cute-zhihu/reed-01-layout`），截图名把 `/` 换成 `__`，`--only` 同时接受 docname 与裸文件名。
 
 流程：逐页打开、等 MathJax 渲染完，然后统计公式报错（`mjx-merror` 的 TeX 报错原文）、**公式渲染文本里的反斜杠残迹**（取 `mjx-assistive-mml` 的文本扫 `\X`——text mode 里 MathJax 不认的写法会原样显示且不报错，只能在这里兜底）、可见的字面残迹（排除代码块与公式容器）、控制台报错、404 资源，并量一遍版式几何，最后整页截图留档。公式与字体走 CDN，验收机需要能出网（否则用 `--proxy`）。
 
