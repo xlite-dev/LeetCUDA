@@ -19,7 +19,7 @@
 1. 只改正文 / 公式 / 表格：push 即可，中英文自动同步。
 2. 改 TikZ 图内中文文字、新增含中文的图：先跑 `python -m tools.translate_figures --proxy …` 补词条并 commit `i18n/figures-en.json`，再 push。跳过这步，`post_build` 的「英文图集完整」核对（`convert/verify.py` 的 `check_english_figures`，查词典覆盖率）不过，RTD 构建必红。只重排、节点中文文字未动的图不受影响——词典匹配的是掩码后的节点文字单元，不是整段源码。
 3. 改封面文案：站点不重编封面 tex，只把入库的 `figures/misc/cover.pdf` 光栅化（`convert._cover_image()`），须重新编译 cover.pdf 并 commit；英文封面另跑 `python -m tools.build_cover_en`，commit `_static/figures-en/cover.png`。
-4. 改子集合（`kernels/interview/book/cute-zhihu/`）：push 即可。集合没有 TikZ，不涉及英文图集；`post_build` 会按 `build/collections.json` 核对 37 个页面齐全、主书侧栏入口仍在「附录」之后。新增一本集合改 `convert/collections.py` 的 `COLLECTIONS` 一处（slug / title / 根 tex / 首页说明），主书 toctree 会自动追加。
+4. 改子集合（`kernels/interview/book/cute-zhihu/`）：push 即可。集合没有 TikZ，不涉及英文图集；`post_build` 会按 `build/collections.json` 核对 42 个页面齐全、主书侧栏入口仍在「附录」之后。新增一本集合改 `convert/collections.py` 的 `COLLECTIONS` 一处（slug / title / 根 tex / 首页说明），主书 toctree 会自动追加。
 5. push 后看 RTD 构建结果：内容核对任一项不过构建即失败，这是质量护栏，**修 tex，不要绕过核对**。
 
 ### 本地 commit 的坑：pre-commit 的 black 会重排缩进
@@ -52,10 +52,10 @@
 ## 已知边界
 
 - **仓库外的代码清单**：书上用 `\lstinputlisting{../../../../cache-dit/...}`（ch39/ch40/ch41）与 `../../../../ffpa-attn/...`（ch27）引用同级 checkout，xelatex 编 PDF 需要读者本地检出这两个仓库，RTD 只检出 LeetCUDA。站点侧靠 `sources/<repo>/<path>` 的冻结快照内联（锚定 commit：cache-dit `eced0158`、ffpa-attn `861d75e`，清单与 sha256 见 `sources/README.md`）；转换器对越界引用**只读快照、不回退本地 checkout**，缺快照就出提示块并由 `convert.verify` 的「跨仓库清单已内联」判红。新增这类引用时必须先补快照。
-- **子集合不参与英译词典**：`cute-zhihu` 的 201 段代码块的注释、公式内文字、图内中文在英文模式下保持中文（正文由 Google 翻译）。`check_translation_dicts` 只统计站点根页面，把集合纳入会全算未命中。`translate.js` 的换图只对 `_images/*.svg`（TikZ 产物）生效，集合的 173 张 jpg 不受影响。
+- **子集合不参与英译词典**：`cute-zhihu` 的 209 段代码块的注释、公式内文字、图内中文在英文模式下保持中文（正文由 Google 翻译）。`check_translation_dicts` 只统计站点根页面，把集合纳入会全算未命中。`translate.js` 的换图只对 `_images/*.svg`（TikZ 产物）生效，集合的 317 张位图不受影响。
 - **图注是普通段落**：`postprocess` 输出的 `{.rtd-caption}` 属性行会被 `_clean_heading_attributes` 当 pandoc 残迹清掉，所以图注只有「图 N：…」的文字、没有 `custom.css` 里的居中/灰字样式——主书 41 章一直如此，子集合沿用同一行为。要启用需单独改那处清理逻辑，会同时改变主书的既有版式。
-- **集合没有 PDF 下载**：`cute-zhihu.pdf` 是 gitignore 的构建产物，站点只呈现网页；「下载 PDF」按钮始终指向主书 PDF。
-- **体积与耗时**：集合带入 173 张图（43 MB）与 36 个页面，转换 +2 s、Sphinx 多约 20 s；`build/html/_images` 从 22 MB 涨到约 65 MB（RTD 限额内）。
+- **集合没有 PDF 下载**：`cute-zhihu.pdf` 虽已随仓库入库（`cute-zhihu/.gitignore` 里有同名条目，但文件早被跟踪），站点只呈现网页；「下载 PDF」按钮始终指向主书 PDF。
+- **体积与耗时**：集合带入 317 张图（71 MB）与 42 个页面（集合首页 + 5 个系列页 + 36 章），转换 +2 s、Sphinx 多约 20 s；`build/html/_images` 从 22 MB 涨到约 95 MB（RTD 限额内）。
 - **书稿自身的悬空引用**：`ch19b`（CuTe 白皮书导读）有 12 条 `\ref` 指向未收录的公式/章节/表格 label，书稿本身也解析不到，页面降级成 code 形式并记入报告。
 - **图形内部文字**：`paths` 模式下是矢量轮廓，不能选中；正文文字不受影响。
 - **表格样式**：`<table>` 是 pandoc 直出的 HTML，样式由 `_static/custom.css` 补齐（边框、表头底色、斑马纹、窄表居中、宽表在表内横向滚动）；单元格内的 Markdown 语法不生效（HTML 原文透传），转换器会把表格里的链接/图片/强调转成 HTML。

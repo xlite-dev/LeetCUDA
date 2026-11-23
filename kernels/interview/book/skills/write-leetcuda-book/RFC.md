@@ -33,6 +33,7 @@
 | RFC-Q | Part VIII CUTLASS Collective API 篇 ch41（本仓 BF16 最小头文件 + cache-dit FP8/FP4 collective；正文、测试、六形状复测与站点快照） | RFC-D/F/N/O/P + cache-dit@eced0158 | 完成（2026-11-16：ch41 + BF16 头文件 + 81 项回归 + 六形状复测；主 PDF 650 页与 RTD 三层验收通过）|
 | RFC-R | ch41 增补节：融合 MLP（GELU epilogue + SwiGLU producer；引用 cache-dit PR #1371） | RFC-Q + cache-dit@453c1b05 | 完成（2026-11-19：5 处旧行锚点重挂 + 13 处新增、4 张图、性能表标注未复测） |
 | RFC-T | 全一册拆成上下两册（`book-vol1/2.tex` + 同源封面卷标 + 跨册 xr 引用 + 构建脚本三目标） | RFC-0/Q/R + §12-S | 完成（2026-11-22：按页数均衡切在第二十四章前，上册 341 页 / 下册 342 页 / 全一册 678 页；882 条 `\newlabel` 与部分号序列逐条一致；主封面像素零差异；目录页码偏差 0；RTD 三层全绿） |
+| RFC-U | cute-zhihu 新增 Part V「Blackwell（B200/B300）CUTLASS 编程」（4 篇知乎文章转录 + 事实抽查 + 站点同步；合订本独立，不动主书） | RFC-T + PR #610 | 完成（2026-11-23：32 → 36 篇 / 4 → 5 部分 / 248 → 360 页；0 error / 0 missing / 0 overfull；RTD 集合 42 页 + verify 全绿 + visual_check 105 个 html 需处理 0）|
 依赖图（执行实况）：`RFC-0 → RFC-A → RFC-C → RFC-D → RFC-E → RFC-F → (RFC-G ∥ RFC-H ∥ RFC-I) → RFC-J`；RFC-B 于 2026-09-18 取消（素材职能被附录 E + drawio 全量重建接管）；`RFC-K 依赖 RFC-E/F 素材，与 RFC-G/H/I 并行，完成后并入 RFC-J 收口`；增补里程碑 RFC-L（ch26b）/RFC-M（ch26c）/RFC-N（ch34-35）/RFC-O（ch36-37）于 2026-09-22..24 依次完成并并入主线；RFC-P（ch38-40，SVDQuant 篇）于 2026-11-07 登记为**Part VII**（插在 attention 篇之后、附录之前；attention 篇保持 Part VI、旧章打印章号零副作用——P.0 审核的路线 B；新章打印章号 41--43，正文硬编码节号按打印值书写）
 
 ## 2. RFC-0 脚手架
@@ -737,6 +738,50 @@ CHECKLOG / 技能笔记 / RFC 编号 / DoD 条款等一律不进正文；数据�
 - [x] T.7 已知限制：`xr-hyper` 的 `\externaldocument` 只接一个基础 URL（原样写进
       `\r@label` 第 5 项），无法按 label 拼 `#chapter.N` 锚点（实测传 `[x.pdf:]` 只得到
       `x.pdf:`），跨册链接只能落到对侧 PDF 起始页，读者需在对侧目录里再定位
+
+## 12-U. RFC-U cute-zhihu 新增 Part V（2026-11-23）
+
+> 用户点名：把 PR #610 未完成的工作做完并转 ready for review。该 PR 已把 4 篇知乎文章
+> 转录为第 33–36 章（新增第五部分「Blackwell（B200/B300）CUTLASS 编程」，144 张图 / 29 MB），
+> 但留了 6 项 outstanding：字面 `$$` 残渣、事实抽查、审校、PDF 体积/拆册决策、水印决策、
+> underfull 噪声。合订本与主书无 `\input` 交集，故本轮**只编 cute-zhihu**，主书/上下册不动。
+
+- [x] U.0 复核转录与图片归一：4 章（ch33 赵尚春/74 图、ch34 赵尚春/27 图、ch35 CalebDu/7 图、
+      ch36 赵尚春/36 图）；幻灯片 1890 px/q90、代码截图原始像素；逐图来源 URL 记在
+      `figures/<slug>/meta.md`（2026-11-23 复核）
+- [x] U.1 字面 `$$` 残渣（原文作者的行内公式定界符残缺）：按同页配图 `fig-06.jpg` 订正为
+      `$C_{i,j}$` / `$A_i$` / `$B_j$`，**不改 `sources/*.md`**（原文对照物必须保留残缺原貌）；
+      `visual_check` 该页残迹归零（2026-11-23）
+- [x] U.2 事实抽查（40+ 条断言，证据 = 本地 CUTLASS 4.8.1 头文件/示例 + PTX 文档 + 章内配图）：
+      硬件/API 层几乎全对（TMEM 512×128×32bit、CTA 对配对、`Sm100MmaPeerBitMask=0xFEFFFFFF`、
+      `PipelineUmmaAsync`/`PipelineTmaUmmaAsync` 的重载关系、掩码 0x1111/0x0005/0x333f 与 7/5 计数）；
+      回修 **23 处**（按 diff hunk 计：ch33 8、ch34 1、ch36 14）：A/D 存储位置层级、`wgmma` M=64 与
+      单 SM 128 / 2-SM 256 的区分、TMA 全称与代际（Hopper 引入）、TMEM 地址语义、TMEM 操作粒度
+      （只有 `tcgen05.ld/st` 需 warpgroup）、CLC = Cluster Launch Control（并补上它对应的
+      `clusterlaunchcontrol.try_cancel` 与 `PersistentTileSchedulerSm100`）、MMA Shape 是 MMA tile
+      不是 CTA tile、`tcgen05.commit` 只追踪同一 `cta_group`、PDL 自 sm_90、`%SOL` 不是 TFLOPS、
+      「每个教程 200–300 行」只是起点、WS×Persistent 非「必须」、pair-UMMA 的 B 沿 N 切分（限本教程
+      配置）、8K/16K 柱高互换、1.64 PFLOPS 是 B200 随机浮点可达峰值（非 Tutorial 0 基线）、
+      伪代码改 `warp_idx < mma_warp_id`（2026-11-23）
+- [x] U.3 不订正 6 项（逐条记理由）：① §1.5「每个示例超过 2000 行」（幻灯片原文如此）；
+      ② §4.8 的 16K（幻灯片原文如此，与本仓 `fp16_gemm_6.py:74` 注释的 8192 不同，以幻灯片为准）；
+      ③ `16dp256b1x` 用途（本地材料无法证伪）；④ ch33「每 GPC 6 个 SM」（PPT 示意值）；
+      ⑤ ch36「L2 120MB / 18 SM」（PPT 举例值）；⑥ ch34 opt-in cluster 16（机制正确，数值无本地出处）
+      （2026-11-23）
+- [x] U.4 构建：`cute-zhihu/build.sh` **360 页**，0 error / 0 missing character / 0 overfull；
+      underfull 11 条（8 条是老章既有，3 条在 ch33，`\emergencystretch` + 长标识符的松行，无版式缺陷）；
+      封面副标题补 `Blackwell CUTLASS`（standalone 渲染 + 目视无重叠），落款 `\the\year 年 \the\month 月`
+      与构建当刻一致（2026-11-23）
+- [x] U.5 站点：`docs/readthedocs/build.sh` 全量（未跳 TikZ）+ `convert.verify` **全项 OK**
+      （集合 42 页齐全、书目录编号核对 36 条、表格 24/24、逐章 36 页）+ `visual_check`
+      105 个 `.html`（内容页 103）需处理 0；
+      同步 `collections.py`（36 篇/五部分 + 整理授权措辞与 `cute-zhihu.tex` 对齐 + 恢复 2 空格缩进）、
+      `pipeline.md`/`pitfalls.md`/`layout-frontend.md`/`sync-and-deploy.md`/`acceptance.md` 的
+      派生数字（1..36、5 系列、317 图、209 代码块、42 页、105 页）（2026-11-23）
+- [x] U.6 两个决策项：**不拆册**（360 页 / 75 MB 单册，与主书 341/342 页的单册粒度同档；合订本无跨册
+      引用，拆册只会新增 `xr-hyper` 双向 aux 与固定构建顺序的维护面，且总下载量不减）；**保留知乎水印**
+      （`BOOK_PLAN.md` 的水印禁令限定在 drawio 重建路径，直接引用图的治理手段是出处标注 + 逐图 URL；
+      与既有 32 章先例一致，去掉会削掉作者署名字段）（2026-11-23）
 
 ## 13. 图清单登记表（写作期持续更新）
 

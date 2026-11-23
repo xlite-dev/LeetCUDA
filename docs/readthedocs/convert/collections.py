@@ -17,6 +17,7 @@ class Collection:
   :param book_tex: 相对主书根目录的集合根 tex，如 ``cute-zhihu/cute-zhihu.tex``。
   :param intro: 首页说明段落（markdown 原文）。
   """
+
   slug: str
   title: str
   book_tex: str
@@ -29,12 +30,14 @@ COLLECTIONS: tuple[Collection, ...] = (
     title="CuTe文章集合",
     book_tex="cute-zhihu/cute-zhihu.tex",
     intro=(
-      "本集合忠实整理知乎上多位作者的 CUDA/CuTe 系列文章，共 32 篇，按系列与主题分四部分编排："
+      "本集合忠实整理知乎上多位作者的 CUDA/CuTe 系列文章，共 36 篇，按系列与主题分五部分编排："
       "reed 的 CuTe 系列（13 篇）、竹熙佳处的 CuTe 教程系列（7 篇）、reed 的"
-      "「NVidia GPU 指令集架构」系列（8 篇），以及 GPU 架构·内存·Attention 精度主题的 4 篇。"
+      "「NVidia GPU 指令集架构」系列（8 篇）、GPU 架构·内存·Attention 精度主题的 4 篇，"
+      "以及 Blackwell（B200/B300）CUTLASS 编程主题的 4 篇（赵尚春 3 篇与 CalebDu 1 篇）。"
       "同一部分内按系列依赖与发表顺序编排，每章章首标注作者与原文链接。",
-      "整理过程中忠实保留原文内容与图片，除修正明显的公式、图号与拼写笔误、补全缺失的图注外"
-      "不对原文作改动。全部文章著作权归原作者所有，本集合仅用于开源学习，不得用于任何商业用途。",
+      "整理过程中忠实保留原文内容与图片，除修正原文中明显的公式、图号与拼写笔误，"
+      "对确证的技术性错误做最小订正，补全缺失的参考文献外，不对原文内容做任何修改。"
+      "全部文章著作权归原作者所有，本集合仅用于开源学习，不得用于任何商业用途。",
     ),
   ),
 )
