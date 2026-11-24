@@ -1,7 +1,7 @@
 ---
 name: write-leetcuda-book
 description: >-
-  把 LeetCUDA kernels/interview 教学源码（base/sgemv/sgemm/hgemm/flash_attn/ffpa_attn/fp8_gemm/fp4_gemm/collective_gemm.cuh）+ ffpa-attn CuTe sm_120 源码（csrc/cuffpa/cute fp8/fp4，commit 861d75e）+ cache-dit SVDQuant/FP8/FP4 源码（csrc/kernels/{svdq,fp8,fp4}，commit eced0158）写成中文 CUDA 技术书（8 Part 45 章 = 44 编号 + ch19b 不编号，5 附录；XeLaTeX→PDF，终态 650 页零 error）。RFC-0..Q 已全部完成（RFC-P/Q = Part VII SVDQuant ch38-40 与 Part VIII CUTLASS Collective API ch41，2026-11-16 收口），当前任务形态 = 增补章（RFC-L/M/N/O/P/Q 模式）/复审/勘误/图重绘。当任务涉及：撰写或修改书稿章节（chapters/chNN*.tex）、每章最小测试（book/tests/chNN_*.cu）、ffpa_attn.bench 与 cache-dit pytest/bench 验证、知乎资料收集与提炼、TikZ inline 图新建（主路径）与存量 drawio 图维护、源码注释核查、勾选 RFC 进度、构建/审校 book.pdf 时使用。规范源=BOOK_PLAN.md（章节结构/每章 DoD 八条/源码冻结/容差表/图片管线），执行跟踪=RFC.md（RFC-0..Q 里程碑 + 各章卡片 + 图清单 + 知乎参考种子表）。
+  把 LeetCUDA kernels/interview 教学源码（base/sgemv/sgemm/hgemm/flash_attn/ffpa_attn/fp8_gemm/fp4_gemm/collective_gemm.cuh）+ ffpa-attn CuTe sm_120 源码（csrc/cuffpa/cute fp8/fp4，commit 861d75e）+ cache-dit SVDQuant/FP8/FP4 源码（csrc/kernels/{svdq,fp8,fp4}；三档锚点 eced0158 / 453c1b05 / fdf42708）写成中文 CUDA 技术书（8 Part 46 章 = 45 编号 + ch19b 不编号，5 附录；XeLaTeX→PDF，全一册 678 页 + 上下册 341/342 页零 error）。RFC-0..U 已全部完成（RFC-P/Q = Part VII SVDQuant ch38-40 与 Part VIII CUTLASS Collective API ch41，2026-11-16 收口；RFC-R = ch41 融合 MLP，11-19；RFC-S = ch40b SVDQuant-FP8/W8A8 增补章，11-21；RFC-T = 上下分册，11-22；RFC-U = cute-zhihu Blackwell CUTLASS 篇，11-23），当前任务形态 = 增补章（RFC-L/M/N/O/P/Q/R/S 模式）/复审/勘误/图重绘。当任务涉及：撰写或修改书稿章节（chapters/chNN*.tex）、每章最小测试（book/tests/chNN_*.cu）、ffpa_attn.bench 与 cache-dit pytest/bench 验证、知乎资料收集与提炼、TikZ inline 图新建（主路径）与存量 drawio 图维护、源码注释核查、勾选 RFC 进度、构建/审校 book.pdf 时使用。规范源=BOOK_PLAN.md（章节结构/每章 DoD 八条/源码冻结/容差表/图片管线），执行跟踪=RFC.md（RFC-0..U 里程碑 + 各章卡片 + 图清单 + 知乎参考种子表）。
 user-invocable: true
 ---
 
@@ -11,15 +11,15 @@ user-invocable: true
 
 | 文件 | 角色 |
 |---|---|
-| `BOOK_PLAN.md` | **规范源**：8 Part 45 章（44 编号 + ch19b 导读 + ch26b/ch26c 增补）+ 5 附录、每章模板与 DoD 八条（含 Part V/VII/VIII 特化 DoD）、素材/测试/图表/公式工程、LaTeX 管线、风险与验收 |
-| `RFC.md` | **执行跟踪**：RFC-0..Q 里程碑 checkbox（B 已取消）、每章执行卡片、图清单登记表、知乎参考种子表 |
-| `references/quality-assessment.md` | **质量评估快照（2026-10-25 基线，2026-11-16 增 ch41）**：六维评分口径 + 原有 45 个评分单元（41 章 + 5 附录，ch19b 免评）+ ch41=99 单列（ch38–ch40 待补）+ 教学书质量判断 + 提分 backlog。基于 R31–R53 共 23 轮审核证据；书稿再改或补到新证据后**在原文件更新**（不新建），分数变化 ≥2 分须在 `leetcuda-correctness-review/references/audit-history.md` 记原因 |
+| `BOOK_PLAN.md` | **规范源**：8 Part 46 章（45 编号 + ch19b 导读，含 ch26b/ch26c/ch40b 增补）+ 5 附录、每章模板与 DoD 八条（含 Part V/VII/VIII 特化 DoD）、素材/测试/图表/公式工程、LaTeX 管线、风险与验收 |
+| `RFC.md` | **执行跟踪**：RFC-0..U 里程碑 checkbox（B 已取消）、每章执行卡片、图清单登记表、知乎参考种子表 |
+| `references/quality-assessment.md` | **质量评估快照（2026-10-25 基线，2026-11-16 增 ch41，2026-11-21 增 ch40b 未评分）**：六维评分口径 + 原有 45 个评分单元（41 章 + 5 附录，ch19b 免评）+ ch41=99 单列（ch38–ch40 与 ch40b 待补）+ 教学书质量判断 + 提分 backlog。基于 R31–R53 共 23 轮审核证据；书稿再改或补到新证据后**在原文件更新**（不新建），分数变化 ≥2 分须在 `leetcuda-correctness-review/references/audit-history.md` 记原因 |
 
 本 skill 实体在 `<LeetCUDA_DIR>/kernels/interview/book/skills/write-leetcuda-book/`，已软链到工作区 `.agents/skills/write-leetcuda-book`（`.codebuddy/skills/` 同指）。
 
 ## 工作流（每次任务）
 
-1. **领任务**：读 `RFC.md` 里程碑总览表 + 对应章节的执行卡片。RFC-0..Q 已全部收口（RFC-B 于 2026-09-18 取消，职能归附录 E + drawio 全量重建；RFC-O = ch36/ch37 NVFP4 量化 GEMM，2026-09-24；RFC-P = ch38–ch40 SVDQuant，2026-11-11；RFC-Q = ch41 CUTLASS Collective API，2026-11-16），存量只剩零星复审项（如 B.5 RoPE 参考）；新需求 = 用户新点名的增补章/增强项，按 RFC-L/M/O/P/Q 模式新开里程碑条目（源码整合→测试→bench→正文→接线→验收→code review→用户增强）逐项推进。
+1. **领任务**：读 `RFC.md` 里程碑总览表 + 对应章节的执行卡片。RFC-0..U 已全部收口（RFC-B 于 2026-09-18 取消，职能归附录 E + drawio 全量重建；RFC-O = ch36/ch37 NVFP4 量化 GEMM，2026-09-24；RFC-P = ch38–ch40 SVDQuant，2026-11-11；RFC-Q = ch41 CUTLASS Collective API，2026-11-16；RFC-R = ch41 融合 MLP，2026-11-19；RFC-S = ch40b SVDQuant-FP8/W8A8，2026-11-21；RFC-T = 上下分册，2026-11-22；RFC-U = cute-zhihu Blackwell CUTLASS 篇，2026-11-23），存量只剩零星复审项（如 B.5 RoPE 参考）；新需求 = 用户新点名的增补章/增强项，按 RFC-L/M/O/P/Q/R/S 模式新开里程碑条目（源码整合→测试→bench→正文→接线→验收→code review→用户增强）逐项推进。
 2. **读规范**：`BOOK_PLAN.md` §3 章节卡片（源码区间/宏/公式/图/参考/测试映射）+ §4 模板与 DoD + 相关工程节。
 3. **执行**：章节任务四合一 = 正文 tex + 最小测试 .cu + 注释核查 + 增量 bench。
 4. **验收**：对照 §4.2 DoD 八条逐条自检（编译零 error / 锚点断言 / CHECKLOG / 测试 PASS / bench 落盘 / 图表登记 / 延伸阅读 / pdftotext 抽查）。**内容改动后先加载 `leetcuda-correctness-review` 按“第零层（数理逻辑）+ 四层”自审**（先查推导链/量词/反例，再查定义/指称、API/硬件契约、资源/类型计数、表达一致性；图注、表、问答一并审）；其中 CuTe 布局代数断言先按硬规则 10 用 PyCuTe 纯 host 复算，再**强制用 `remove-tech-ai-tone` skill 做文风自检**（八类 AI 味模式 + 词表逐词 grep，存疑保留；图内文字只做等宽替换）。**本轮只要产生书稿改动，随后必须按该 skill §5.0 构建矩阵编译所有受影响 PDF（主 `book` 与 `cute-zhihu` 等，不能只编主 book），再执行 ReadTheDocs 三层验收，不能跳过；全部通过后，才把每个 PDF 与 RTD 结果追加到该 skill 的 `references/audit-history.md` 并进入下一步。**
@@ -27,11 +27,11 @@ user-invocable: true
 
 ## 硬规则速查（违反必返工）
 
-1. **源码冻结**：anchors.yaml（现 `frozen_at 2026-11-16` / `repo_commit 5b618f2`）登记的全部源文件——10 个 `.cuh`（base/common/sgemv/sgemm/hgemm/flash_attn/ffpa_attn/fp8_gemm/fp4_gemm/collective_gemm）+ bench/ 下 10 个 .cu（`bench/bench_leetcuda.cu` 与 9 个模块 .cu：`bench/{base,sgemv,sgemm,hgemm,fp8_gemm,fp4_gemm,flash_attn,ffpa_attn,utils}.cu`）——登记 SHA256 后**零改动**。注释错误只记 `book/CHECKLOG.md` + 正文「勘误与考据」，不回写源码。Part VII/VIII 的 cache-dit 源码不冻结 SHA256，只登记 chapters 行锚点（`files` 段不含其条目）。
+1. **源码冻结**：anchors.yaml（现 `frozen_at 2026-11-16` / `repo_commit 5b618f2`）登记的全部源文件——10 个 `.cuh`（base/common/sgemv/sgemm/hgemm/flash_attn/ffpa_attn/fp8_gemm/fp4_gemm/collective_gemm）+ bench/ 下 10 个 .cu（`bench/bench_leetcuda.cu` 与 9 个模块 .cu：`bench/{base,sgemv,sgemm,hgemm,fp8_gemm,fp4_gemm,flash_attn,ffpa_attn,utils}.cu`）——登记 SHA256 后**零改动**。注释错误只记 `book/CHECKLOG.md` + 正文「勘误与考据」，不回写源码。Part VII/VIII 的 cache-dit 源码不冻结 SHA256，只登记 chapters 行锚点（`files` 段不含其条目）；**三个锚点按子路径共存**——`eced0158`（ch39/ch40 的 W4A4 + ch41 的 FP4）、`453c1b05`（ch41 的 FP8，混合树基底）、`fdf42708`（ch40b 的 `csrc/kernels/svdq/cute/fp8/` 与两份 Python），配方与内容级校验见附录 C 与 `leetcuda-cpp-kernel` skill 第一步。
 2. **正文形态**：原理讲解 + 关键代码段（每段 ≤40 行，`linerange` 多段裁剪，`firstnumber=auto`）；完整代码给附录 D 的 **GitHub commit permalink**；每章正文（非 listings）≥3500 字。
 3. **测试**：`book/tests/chNN_*.cu` 无 cuBLAS/cuDNN 依赖，CPU fp64 参考 + 容差三档（F32Acc 1e-3 / F16Acc 5e-2 / TF32 1e-2），规模 ≤512，arch 不在位输出 SKIP；行数 ≤300（基础章）/≤500（复杂章）。
 4. **知乎素材**：五步法（枚举→全文落 `zhihu-analysis/`→提炼→成文不照抄→附录 E 汇总）；**图片直接引用+出处标注**（作者/文章/链接/日期），原图归档 `book/figures/zhihu/`；水印/作者角标/平台 logo 一律标记为非内容元素，不得进入书内图。
-5. **图管线（TikZ 主路径）**：新图默认 **TikZ inline** 写在章节 tex 内，用 `tikz-diagrams` skill（模板/编译渲染/视觉 QA 工具链；ch26b 六图先例，上游 5be940f 亦将存量图大规模迁为 tikzpicture）。drawio 已全部退役为**历史留档**（2026-09-28 迁移完成：`chapters/` 内 `\includegraphics` 全是 `% was:` 注释，45 章正文共 249 处 TikZ inline（`chapters/*.tex` 215 + `wp/` 34）；`figures/drawio/` 的 64 套三件套只作旧版对照）。仅当用户点名改某张旧 drawio 图时才走存量维护：`drawio-reconstruction` skill 为主（inventory→重建→审查闭环），`drawio-diagram-builder`/`drawio-flow-forge` 辅助。**执行模式：主 agent 直接做，不派 task agent**（闭环子代理实测易卡死，用户 2026-09-11 拍板）。审查结论如实记 audit（自审需标注）。drawio 质量三查（XML well-formed + COVER=0 + 渲染宽不越界，见「drawio 制图铁律」）；`.drawio` 源文件必须入库（用户要求可手改，勿只提交 PNG）。
+5. **图管线（TikZ 主路径）**：新图默认 **TikZ inline** 写在章节 tex 内，用 `tikz-diagrams` skill（模板/编译渲染/视觉 QA 工具链；ch26b 六图先例，上游 5be940f 亦将存量图大规模迁为 tikzpicture）。drawio 已全部退役为**历史留档**（2026-09-28 迁移完成：`chapters/` 内 `\includegraphics` 全是 `% was:` 注释，46 章正文共 254 处 TikZ inline（`chapters/*.tex` 220 + `wp/` 34）；`figures/drawio/` 的 64 套三件套只作旧版对照）。仅当用户点名改某张旧 drawio 图时才走存量维护：`drawio-reconstruction` skill 为主（inventory→重建→审查闭环），`drawio-diagram-builder`/`drawio-flow-forge` 辅助。**执行模式：主 agent 直接做，不派 task agent**（闭环子代理实测易卡死，用户 2026-09-11 拍板）。审查结论如实记 audit（自审需标注）。drawio 质量三查（XML well-formed + COVER=0 + 渲染宽不越界，见「drawio 制图铁律」）；`.drawio` 源文件必须入库（用户要求可手改，勿只提交 PNG）。
    **⚠️ TikZ 图强制视觉验收（2026-09-28 用户定为铁律）**：TikZ 图出现**文文重叠/图文重叠**极其常见（坐标估算的文字宽度与真实渲染字宽不符所致，N.19 七图 + O.18 六图全是此类）。任何新建/修改 tikzpicture 后，**必须**真实渲染并 view_image 逐角落检查确认无重叠后才算完成——只看代码/编译零 error **不算**验收。配方：抽图到 standalone（`border=8pt` + `\usepackage[UTF8,fontset=fandol]{ctex}`，fandol 失败则 `fontset=none` + `\setCJKmainfont{Noto Sans CJK SC}`，CJK 文本必须真实渲染、禁止用假文本代替——重叠取决于真实字宽）+ 从 `book/preamble.tex` 复制用到的颜色/样式定义 → `xelatex -interaction=nonstopmode` → `pdftoppm -r 150 -png` → view_image；修复优先级：平移节点/换 anchor/`text width`+`align` 换行/箭头改走线/竖排改横排（横排更宽，要挪到空白带）/字号降档（≥\scriptsize）。修法只动排版不动内容。foreach 标签里的循环变量（如 `16\i`）会被文本替换成数字，语义上想保留符号 i 必须改用显式值表（`{0/0/16,1/16/32,...}`）。
 6. **行文风格（作者基线）**：参考 @DefTruth《图解:从Online-Softmax到FlashAttention V1/V2/V3》与《WINT8/4》系列——**原理一定要讲细**：公式逐项展开、指令逐 bit/逐字段解释、先直觉后形式化再代码；中文叙述、术语保留英文。其余可自由发挥。
 7. **注释核查五类**：F1 架构事实（Prog Guide+cutlass skill arch guides）/ F2 PTX（本地 ptx-docs）/ F3 数学（独立推导）/ F4 性能断言（标来源）/ F5 历史陈述（对原论文）。
@@ -44,10 +44,13 @@ user-invocable: true
 ## 工具链速查
 
 ```bash
+# 工作区 skills 实体在 <workspace>/.agents/skills（.codebuddy/skills 为软链）
+WS_SKILLS=${WS_SKILLS:-$HOME/develop/.agents/skills}
+
 # drawio headless 导出（已装 v31.4.5 deb + xvfb；Ubuntu noble 无 apt 包，须用 GitHub releases deb）
 DRAWIO_PATH=/usr/local/bin/drawio-headless \
-  python3 /workspace/dev/vipshop/.github/skills/drawio-reconstruction/scripts/export_drawio.py in.drawio out.png
-python3 /workspace/dev/vipshop/.github/skills/drawio-reconstruction/scripts/check_drawio.py in.drawio
+  python3 "$WS_SKILLS/drawio-reconstruction/scripts/export_drawio.py" in.drawio out.png
+python3 "$WS_SKILLS/drawio-reconstruction/scripts/check_drawio.py" in.drawio
 # 也可直接：/usr/local/bin/drawio-headless -x -s 3 -o out.png in.drawio
 # VS Code drawio 插件（用户已装）：用于人工查看/微调 .drawio；自动导出仍走上面 CLI
 
@@ -56,11 +59,12 @@ python3 scripts/check_overlap.py figures/drawio/*/*.drawio   # 文字覆盖（CO
 python3 scripts/check_text_fit.py figures/drawio/*/*.drawio  # 渲染宽 vs geometry 宽 + 页宽越界
 
 # 知乎 CLI（已授权；--count 上限 10）
-/root/.local/share/zhihu-cli/current/zhihu-cli search zhihu --query "..." --count 10
-python3 /workspace/dev/vipshop/.github/skills/zhihu/scripts/fetch_column_fulltext.py <专栏URL>   # 枚举/取全文
+"${ZHIHU_CLI:-$HOME/.local/share/zhihu-cli/current}/zhihu-cli" search zhihu --query "..." --count 10
+python3 "$WS_SKILLS/zhihu/scripts/fetch_column_fulltext.py" <专栏URL>   # 枚举/取全文
 
-# 源码锚点断言（RFC-A 后可用）
-python3 /workspace/dev/vipshop/LeetCUDA/kernels/interview/book/scripts/verify_anchors.py --ch chNN
+# 源码锚点断言（RFC-A 后可用；混合 checkout 时用于内容级校验）
+python3 "${LEETCUDA_DIR:-$HOME/develop/LeetCUDA}/kernels/interview/book/scripts/verify_anchors.py" \
+  --ch chNN[,chMM]
 
 # PyCuTe 布局代数纯 host 复算（无需 GPU / torch / CUDA runtime）
 CUTE_SRC=${CUTE_SRC:-$HOME/develop/CuTe}
@@ -92,7 +96,7 @@ git -C "$CUTE_SRC" rev-parse --short HEAD          # 记录复算所用版本
 ```
 kernels/interview/book/
 ├── book.tex / book-vol1.tex / book-vol2.tex / preamble.tex / build.sh   # 全一册 + 上下两册
-├── chapters/ch00-ch41 + ch19b/ch26b/ch26c + wp/ 白皮书导读 … appendices/  # RFC-C..Q 产出
+├── chapters/ch00-ch41 + ch19b/ch26b/ch26c/ch40b + wp/ 白皮书导读 … appendices/  # RFC-C..U 产出
 ├── figures/{ascii,zhihu,drawio,ffpa,misc,tikz}/
 ├── tests/{common_test.h, chNN_*.cu, build_tests.sh}
 ├── notes/ references/ scripts/ CHECKLOG.md
@@ -108,7 +112,7 @@ kernels/interview/book/
 
 - `leetcuda-correctness-review`（**内容正确性自审（强制）**：书稿改动后、文风自检前加载——第零层先查数理逻辑/推导链，再查定义/指称、API/硬件契约、资源/类型计数、表达一致性；产出 claim ledger、边界矩阵、回修清单与残余风险；书稿改动后按 §5.0 构建矩阵编译所有受影响 PDF（主 `book` 与 `cute-zhihu` 等）并跑 ReadTheDocs 三层验收）
 - `remove-tech-ai-tone`（**文风自检（强制）**：新章/增补章完成、commit 前必跑——技术文去 AI 味八类模式 + 高频词表 + 保留词表 + 验证工作流；目标文风「精确、简洁、沉稳、直接」。全书 2026-09-28 四轮扫描（~305 处）沉淀的词表源于此 skill）
-- `tikz-diagrams`（**图主路径**：TikZ inline 写在章节 tex 内——2026-11-16 实测 45 章正文共 249 处 tikzpicture（`chapters/*.tex` 215 + `wp/` 34），ch26b/ch26c 全 TikZ 先例 + 上游 5be940f 大迁移；提供模板/编译渲染/视觉 QA 工具链，产出 .tex+.pdf+.png）
+- `tikz-diagrams`（**图主路径**：TikZ inline 写在章节 tex 内——2026-11-24 实测 46 章正文共 254 处 tikzpicture（`chapters/*.tex` 220 + `wp/` 34），ch26b/ch26c/ch40b 全 TikZ 先例 + 上游 5be940f 大迁移；提供模板/编译渲染/视觉 QA 工具链，产出 .tex+.pdf+.png）
 - `drawio-reconstruction`（drawio **仅历史留档**：迁移已完成、无活跃 png 引用；用户点名改旧图时才走 inventory→审查闭环）、`drawio-diagram-builder` / `drawio-flow-forge`（存量 drawio 修改）
 - `zhihu`（资料五步法）
 - `cuda-cpp-kernel`（ptx-docs=F2 核查源）、`cutlass-cpp-kernel`（arch guides=F1 核查源）、`cuda-auto-tune`（bench 复测方法论）

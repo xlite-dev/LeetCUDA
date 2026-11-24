@@ -1,19 +1,21 @@
 ---
 name: leetcuda-cpp-kernel
 description: >-
-  LeetCUDA 中文技术书（650 页，XeLaTeX 源）按需查阅 skill——写、优化、调试或
-  review CUDA C++/PTX kernel 时的权威参考路由层。当任务涉及：GPU 架构/Roofline/
-  occupancy、向量化与 coalescing、warp/block reduce、softmax（online/LSE merge）、
+  LeetCUDA 中文技术书（678 页，另有 341/342 页上下分册；XeLaTeX 源）按需查阅
+  skill——写、优化、调试或 review CUDA C++/PTX kernel 时的权威参考路由层。
+  当任务涉及：GPU 架构/Roofline/occupancy、向量化与 coalescing、warp/block
+  reduce、softmax（online/LSE merge）、
   SGEMV/SGEMM/HGEMM 阶梯优化、mma.sync/ldmatrix/WMMA、XOR/block swizzle、cp.async
   多级流水、TMA/mbarrier/WGMMA（Hopper）、SM120 TMA+warp specialization、
   FlashAttention FA1/FA2/FA3、SM120 持久化 FA（persist-D 超越 cuDNN）、split-D 大
   head_dim、CuTe Layout/Tensor/TiledCopy/TiledMMA（含白皮书译注、colfax 范畴论、
-  cute-zhihu 合集）、FP8/FP4 量化 GEMM（e4m3 per-row/per-block、NVFP4 两级量化、
-  block-scaled MMA m16n8k64.kind::mxf4nvf4 与 SF 流水）、量化注意力、SVDQuant
-  W4A4（通道平滑/低秩残差、融合 LoRA 的 producer 与 W4A4 GEMM、TurboQuant/
-  DVD-Quant）、CUTLASS Collective API（Builder/EVT、blockwise 与 block-scaled
-  mainloop）、nsys/ncu、cuobjdump/PTX/SASS 取证（setmaxnreg 与
-  shared::cluster/cta 陷阱）、CUDA 面试题时使用。生产级 attention 算子参考首选
+  cute-zhihu 合集，含 Blackwell CUTLASS 篇）、FP8/FP4 量化 GEMM（e4m3 per-row/
+  per-block、NVFP4 两级量化、block-scaled MMA m16n8k64.kind::mxf4nvf4 与 SF
+  流水）、量化注意力、SVDQuant W4A4/W8A8（通道平滑/低秩残差、融合 LoRA 的
+  producer、W4A4 与 per-token FP8 GEMM、TurboQuant/DVD-Quant）、CUTLASS
+  Collective API（Builder/EVT、blockwise 与 block-scaled mainloop、融合 MLP）、
+  nsys/ncu、cuobjdump/PTX/SASS 取证（setmaxnreg 与 shared::cluster/cta 陷阱）、
+  CUDA 面试题时使用。生产级 attention 算子参考首选
   ffpa-attn（sm_120 CuTe fp16/fp8/fp4 对标或超越 FA-2/Sage2/Sage3，含 large
   head_dim 优化）。ch00 profiling 与 ch01 架构/Roofline 精编内嵌，加载即读；
   其余章节只做"任务 → 章节/图"的路由，agent 按需读取书源文件。
@@ -44,36 +46,74 @@ ch01 架构/Roofline 的可操作内容已精编内嵌在文末，加载本文�
 <LeetCUDA_DIR>/kernels/interview/book
 ```
 
-Part VII/VIII（ch39–ch41；ch38 是纯数学章、没有 listing，ch41 的 BF16 示例读
-本仓 `collective_gemm.cuh`）的正文用 `\lstinputlisting` 读**同级 cache-dit
-checkout** 的源文件，行区间硬编码在 tex 里（`../../../../cache-dit/...`，相对
-书根即"与 LeetCUDA 同级"），统一锚定 commit `eced0158`。只做行号核对也要能打开
-这份 checkout（记为 `<CACHE_DIT_DIR>`）：
+Part VII/VIII（ch39–ch41 与 ch40b；ch38 是纯数学章、没有 listing，ch41 的 BF16
+示例读本仓 `collective_gemm.cuh`，ch40b 读 `csrc/kernels/svdq/cute/fp8/`）的正文用
+`\lstinputlisting` 读**同级 cache-dit checkout** 的源文件，行区间硬编码在 tex 里
+（`../../../../cache-dit/...`，相对书根即"与 LeetCUDA 同级"）。行区间**分三档
+锚定**（`scripts/anchors.yaml` 的 `chapters:` 段逐条登记，ch40b 那条另带
+`commit:`）：
 
-1. 环境变量 `CACHE_DIT_DIR`（只对本 skill 的阅读/核对生效，编译期路径仍按上句硬编码）
+| 章节 | cache-dit commit | 覆盖路径 |
+|---|---|---|
+| ch39/ch40（W4A4） | `eced0158` | `csrc/kernels/svdq/cute/fp4/` + `runtime.h` |
+| ch40b（W8A8，PR #1384） | `fdf42708` | `csrc/kernels/svdq/cute/fp8/` + `src/cache_dit/quantization/svdquant/fp8.py`、`src/cache_dit/kernels/svdquant_fp8.py` |
+| ch41（collective） | FP8 段 `453c1b05`（PR #1371）、FP4 段 `eced0158` | `csrc/kernels/fp8/`、`src/cache_dit/quantization/fp8/fused.py`、`csrc/kernels/fp4/` |
+
+`svdq/` 在 `eced0158` 之后被别的 PR 改过，同一目录两档 commit 只能**按子路径
+覆盖**，不要整目录 `git checkout fdf42708 -- csrc/kernels/svdq`（会把 W4A4 换成
+新版）。定位这份 checkout（记为 `<CACHE_DIT_DIR>`；三档都是历史 commit，必须
+完整 clone，`--depth 1` 拿不到）：
+
+1. 环境变量 `CACHE_DIT_DIR`（grep/阅读时用它；编译期路径与 `verify_anchors.py` 都不读，
+   仍按同级 `cache-dit/`）
 2. `<LeetCUDA_DIR>` 同级目录 `cache-dit/`
 3. `~/cache-dit`
-4. 均无则 `git clone https://github.com/vipshop/cache-dit.git && cd cache-dit && git checkout eced0158`
+4. 均无则 `git clone https://github.com/vipshop/cache-dit.git`
 
-拿到 checkout 后先验 revision：`git -C <CACHE_DIT_DIR> rev-parse --short HEAD`
-应为 `eced0158`，否则 `git -C <CACHE_DIT_DIR> checkout eced0158`——行区间是
-硬编码的，读错 revision 会静默拿到错误的代码段。
+混合 checkout（以 `453c1b05` 为基底再按路径覆盖；`git checkout <rev> -- <path>`
+只覆盖不删除，按此顺序必然正确。它会让该树 `git status` 变脏；事后
+`git reset --hard` / `git checkout -f` 会冲掉混合态，要按上面四行重来）：
+
+```bash
+cd <CACHE_DIT_DIR> && git checkout 453c1b05
+git checkout eced0158 -- csrc/kernels/svdq               # ch39/ch40 (W4A4)
+git checkout fdf42708 -- csrc/kernels/svdq/cute/fp8      # ch40b (W8A8) kernel
+git checkout fdf42708 -- src/cache_dit/quantization/svdquant/fp8.py \
+                          src/cache_dit/kernels/svdquant_fp8.py   # 同上, Python
+```
+
+**校验必须按内容做**：`git checkout -- <path>` 不移动 HEAD，`rev-parse` 只能证明
+基底是 `453c1b05`，漏做任一覆盖查不出来。书自带内容级校验（逐条比对
+`first_anchor`/`last_anchor`；行漂移打印 `FAIL [chNN]`，缺文件直接抛
+`FileNotFoundError`，只看退出码即可）：
+
+```bash
+python3 <LeetCUDA_DIR>/kernels/interview/book/scripts/verify_anchors.py \
+  --ch ch39,ch40,ch40b,ch41
+# 相对 eced0158 只允许"新增"（3 个 fp4 新文件 + cute/fp8/**），出现 M/D 就是 W4A4 被盖了
+git -C <CACHE_DIT_DIR> diff --name-status eced0158 -- csrc/kernels/svdq | grep -v '^A'
+```
+
+注意该脚本把路径写死为 `<LeetCUDA_DIR>/../cache-dit`，用别的路径时先建软链或
+手工比对。要复现 PR #1384 的测试与 bench 需另开完整 `fdf42708` 树
+（`git worktree add ../cache-dit-fp8 fdf42708`）——`tests/`、`bench/` 的新文件与
+pybind 的 `quantize_w8a8` 只存在于该 commit。
 
 目录结构：
 
 | 路径（相对书根） | 内容 |
 |---|---|
-| `chapters/chNN-<slug>.tex` | 46 个 tex（45 章正文 + `_template.tex` 章模板）：ch00–ch41 主线 42 章 + ch19b 白皮书导读 + ch26b/ch26c 增补章（中文，XeLaTeX 源；含行号锚定的源码解析、踩坑记录、实测性能表） |
+| `chapters/chNN-<slug>.tex` | 47 个 tex（46 章正文 + `_template.tex` 章模板）：ch00–ch41 主线 42 章 + ch19b 白皮书导读 + ch26b/ch26c/ch40b 增补章（中文，XeLaTeX 源；含行号锚定的源码解析、踩坑记录、实测性能表） |
 | `chapters/wp/wp0-7.tex` | ch19b 分节正文：CuTe 官方白皮书（Cris Cecka, arXiv:2603.02298）完整中文译注 |
 | `figures/drawio/fig-<chNN>-<n>-<slug>/` | **历史留档**：旧版 `.drawio`/`gen.py`/`*.png` 三件套（章内图已全部迁 TikZ inline，仅作旧版对照，勿当现行图源） |
-| `figures/ffpa/`、`figures/tikz/`、`figures/misc/` | ffpa bench 图留档 / wp6 白皮书 2 张官方架构截图 / 封面 `cover.pdf` 等杂项 |
+| `figures/ffpa/`、`figures/tikz/`、`figures/misc/` | ffpa bench 图留档 / wp6 白皮书 2 张官方架构截图 / 封面 `cover.pdf` + 分册封面 `cover-vol1.pdf`、`cover-vol2.pdf` 等杂项 |
 | `colfax/` | 独立译注文档：Colfax《Categorical Foundations for CuTe Layouts》（arXiv:2601.05972）中译，源在 `colfax/sec/`，成品 `colfax/colfax-cute-zh.pdf` |
-| `cute-zhihu/` | 独立合集文档：reed（13 篇）+ 竹熙佳处（7 篇）CuTe 知乎系列忠实整理，源在 `cute-zhihu/chapters/`，成品 `cute-zhihu/cute-zhihu.pdf` |
+| `cute-zhihu/` | 独立合集文档（5 Part / 36 篇 / 360 页）：reed 13 篇 + 竹熙佳处 7 篇 + reed GPU 指令集架构 8 篇 + GPU 架构·内存·Attention 精度 4 篇 + Blackwell（B200/B300）CUTLASS 编程 4 篇，源在 `cute-zhihu/chapters/`，成品 `cute-zhihu/cute-zhihu.pdf` |
 | `references/` | `zhihu-inventory.md`（附录 E 数据源）+ `fulltext/`（7 篇知乎全文 markdown，可直接 grep） |
 | `appendices/appA..appE` | 见下文附录路由 |
-| `tests/` | 32 个单章正确性测试（CPU fp64 对拍，`build_tests.sh --arch sm_120a --all`）；ch00（工具章）、ch15（原理章）、ch27-33（Part VI 改走 `ffpa_attn.bench` parity）、ch38（纯数学章）、ch39/ch40（Part VII 改走 cache-dit pytest + `bench_svdquant.py`）没有 .cu；ch41 是 SM90A 头文件烟测（SM120A 下按约定输出 `SKIP(ch41)`） |
-| `scripts/` | `anchors.yaml`（源码区间冻结登记，现为 `frozen_at 2026-11-16` / `repo_commit 5b618f2`）、`verify_anchors.py`（校验 SHA256/区间首末行/`#if` 配对）、`lint_book.py`、`check_overlap.py`、`check_text_fit.py` |
-| `book.pdf` | 编译成品（650 页，可直接 pdftotext 按页抽取） |
+| `tests/` | 32 个单章正确性测试（CPU fp64 对拍，`build_tests.sh --arch sm_120a --all`）；ch00（工具章）、ch15（原理章）、ch27-33（Part VI 改走 `ffpa_attn.bench` parity）、ch38（纯数学章）、ch39/ch40/ch40b（Part VII 改走 cache-dit pytest + `bench_svdquant*.py`）没有 .cu；ch41 是 SM90A 头文件烟测（SM120A 下按约定输出 `SKIP(ch41)`） |
+| `scripts/` | `anchors.yaml`（源码区间冻结登记，现为 `frozen_at 2026-11-16` / `repo_commit 5b618f2`；`chapters:` 段另按章登记 cache-dit 行锚点，ch40b 带 `commit: fdf42708`）、`verify_anchors.py`（校验 SHA256/区间首末行/`#if` 配对，`--ch chNN` 可校验混合 checkout）、`lint_book.py`、`check_overlap.py`、`check_text_fit.py`、`check_volume_split.py`（分册章表与 `setcounter` 接续） |
+| `book.pdf` / `book-vol1.pdf` / `book-vol2.pdf` | 编译成品：全一册 678 页 / 上册 341 页（第 1–23 章，文件止于 ch22）/ 下册 342 页（从 ch23 起，含全部附录），可直接 pdftotext 按页抽取。分册由 `book-vol1.tex` / `book-vol2.tex`（`\setcounter{part}{4}` / `\setcounter{chapter}{23}` 接续）驱动，`./build.sh` 默认出三本、`--only book`（或 `v1`/`v2`/`vols`，单本/上下两册）构建；每本 3 遍 xelatex（`PASSES=3`）才收正目录页码 |
 
 ## ⚠️ 第 1.5 步：强制约束——加载即读（优先级高于"按需读取纪律"）
 
@@ -105,13 +145,13 @@ checkout** 的源文件，行区间硬编码在 tex 里（`../../../../cache-dit
 ## 第二步：任务路由表
 
 先按任务关键词找到章，再读该章 tex（**先 `grep -n '\\\\section'` 看目录，再按行区间读**，
-不要整章全文读入）。**全书章内配图已 100% 迁为 TikZ inline**（2026-11-16 复核：
-`chapters/*.tex` 215 处 + `chapters/wp/*.tex` 34 处 = 249 处 `tikzpicture`，
+不要整章全文读入）。**全书章内配图已 100% 迁为 TikZ inline**（2026-11-24 复核：
+`chapters/*.tex` 220 处（其中 ch40b 4 处、ch41 融合 MLP 1 处为新增）+
+`chapters/wp/*.tex` 34 处 = 254 处 `tikzpicture`，
 ch00–ch41 各编号章 2–11 处（最多是 ch38 的 11 处；ch19b 自身 0 处，它的图在
 `chapters/wp/` 内、已计入上面 34 处）；`chapters/` 内
-`\includegraphics` 全部为 `% was:` 历史注释；全书活跃图片引用仍只有 3 处——
-封面 `figures/misc/cover.pdf` + ch19b/wp6 的 2 张官方架构截图），现行图源都在
-章节 tex 内。
+`\includegraphics` 全部为 `% was:` 历史注释；每条构建入口的活跃图片引用各 3 处
+（本册封面 + ch19b/wp6 的 2 张官方架构截图），现行图源都在章节 tex 内。
 
 ### Part I-II：CUDA 基础与 GEMM 阶梯（配图全部 TikZ 内联在各章 tex 内）
 
@@ -158,20 +198,26 @@ ch00–ch41 各编号章 2–11 处（最多是 ch38 的 11 处；ch19b 自身 0
 | **SM120 持久化 FlashAttention**（persist-D、WS 1+1、persistent CTA、scale 融合；全书唯一超越 cuDNN SDPA 的 attention kernel，240.1/230.2 = 1.04×） | `ch26b-cute-persist-d-flash-attn.tex`（书内第 28 章） |
 | **SM120 大 head_dim non-WS Split-D**（tile 128×128、256T 全员 MMA + tid=0 内联 TMA、K/V stages 解耦：(3,2) D320=204.1T=2.93× cuDNN；ffpa-attn split_d 同源教学集，含寄存器 spill 机理） | `ch26c-cute-split-d-sm120.tex`（书内第 29 章） |
 
-### CuTe 进阶深度参考（colfax / cute-zhihu，独立文档）
+### 独立文档深度参考（colfax / cute-zhihu）
 
-当 ch20-26 的讲解不够用时，按问题深度依次下钻：
+当 ch20-26 的讲解不够用时按问题深度下钻；cute-zhihu 是 5 Part / 36 篇合集，
+CuTe 之外的 ISA、架构与 Blackwell 专题也在里面，按问题类型选行：
 
 | 需求 | 位置 |
 |---|---|
 | 布局代数的第一手定义与动机（NVIDIA 官方白皮书，含 PyCuTe 参考实现） | 主书 `ch19b`（`chapters/wp/wp0-7.tex`） |
 | 布局代数的数学严格化：范畴论视角（Tuple/Nest 范畴、可处理布局、复合/逻辑乘积/逻辑切分定理）+ 范畴论入门 | `colfax/sec/cf-ch2*.tex`、`cf-ch3*.tex`、`cf-ch4*.tex`、`cf-appa.tex` |
-| reed 系列 13 篇：Layout → 代数与几何解释 → Tensor → Copy/MMA 抽象 → Swizzle → Hopper/mbarrier/TMA → 21bit TMA descriptor → simple/pipeline/efficient GEMM | `cute-zhihu/chapters/reed-01~13-*.tex` |
+| reed 系列 13 篇（CuTe 主线）：Layout → 代数与几何解释 → Tensor → Copy/MMA 抽象 → Swizzle → Hopper/mbarrier/TMA → 21bit TMA descriptor → simple/pipeline/efficient GEMM | `cute-zhihu/chapters/reed-01~13-*.tex` |
 | 竹熙佳处系列 7 篇：tiled copy / tiled mma / compose & inverse / product & divide / TMA copy / permutationMNK / async pipeline | `cute-zhihu/chapters/zhuxi-01~07-*.tex` |
+| reed GPU 指令集架构 8 篇（PTX 语义级问题）：寄存器 → load/cache → 浮点 → 整数 → 位运算 → warp-uniform → 控制流与原子 | `cute-zhihu/chapters/reed-isa-01~08-*.tex` |
+| GPU 架构·内存·Attention 精度 4 篇：memory proxy、Blackwell 双 die、FP8 attention 精度、Swizzle 再谈 | `cute-zhihu/chapters/reed-mem-01-proxy.tex`、`reed-blackwell-dual-die.tex`、`reed-fp8-attention.tex`、`frankshi-01-swizzle.tex` |
+| Blackwell（B200/B300）CUTLASS 编程 4 篇：CuTe/CUTLASS 全貌 → cluster + 2-SM UMMA GEMM → WASP pipeline → CUTLASS Python 优化阶梯（2CTA/WS/persistent/CLC/PDL） | `cute-zhihu/chapters/zhaoshangchun-01~03-*.tex`、`calebdu-01-warp-specialization.tex` |
 | 知乎文章全文快速 grep（7 篇已落 markdown） | `references/fulltext/*.md` |
 
 查阅顺序建议：概念不清先读主书章 → 定义有疑义查 `ch19b` 白皮书 → 需要数学
-严格性（定理证明/范畴论）查 colfax → 想看教学式推导与作者视角查 cute-zhihu。
+严格性（定理证明/范畴论）查 colfax → 想看教学式推导与作者视角查 cute-zhihu →
+PTX/架构级疑问查 reed-isa 与架构篇 → B200 编程与主书 ch41 对照（前者
+Python/CuTe 视角、后者 C++ CollectiveBuilder）。
 
 ### Part V：FP8/FP4 HGEMM 篇（量化矩阵乘，PDF 打印章号 30-33；配图全部 TikZ 内联）
 
@@ -221,45 +267,67 @@ strided 通用）、量化数学与 scale 折叠、性能 RFC 与已证伪清单
   量化数学原理、RFC 进度与验证方法论），与本书的 Part V/VI 章节互补——书讲
   原理推导与教学实现，ffpa-cuda-understand 讲生产实现与工程决策。
 
-### Part VII：SVDQuant 篇（W4A4 低秩残差量化，PDF 打印章号 41–43，文件名 ch38–ch40；配图全部 TikZ 内联）
+### Part VII：SVDQuant 篇（W4A4/W8A8 低秩残差量化，PDF 打印章号 41–44，文件名 ch38–ch40b；配图全部 TikZ 内联）
 
 前置：ch27（量化数学）、ch31（NVFP4 两级 scale）、ch34–ch37（量化 GEMM 误差模型与
-FP4 主 kernel）。源码全部在 `<CACHE_DIT_DIR>/csrc/kernels/svdq/`（commit
-`eced0158`），本仓没有对应 `.cuh`；ch38 是纯数学章（无源码），ch39/ch40 的公式
-编号以它为准。
+FP4 主 kernel）。源码在 `<CACHE_DIT_DIR>/csrc/kernels/svdq/`，**同一目录两档
+commit**（ch39/ch40→`eced0158`，ch40b→`fdf42708`），按子路径覆盖的配方与内容级
+校验见第一步。本仓没有对应 `.cuh`；ch38 是纯数学章（无源码），ch39/ch40/ch40b 的
+公式编号以它为准。
 
 | 任务/症状 | 章 |
 |---|---|
 | SmoothQuant 通道缩放（逐输入通道对角缩放、α 乘积不变量）、4-bit 误差视角、SVDQuant 低秩分支 + 残差码、Prop. 4.1 上界、融合必要性（461→322 µs 的延迟分解与访存归因）；扩展阅读 TurboQuant（随机旋转/Lloyd–Max/QJL/两阶段）与 DVD-Quant（BGR/ARQ/δ-GBS） | `ch38-svdq-math.tex` |
 | 融合 LoRA-down 的激活量化 producer：通用 `quantize_uni` vs rank 特化 `quantize_impl`（TiledMMA/TiledCopy）、`quantize_group` 四阶段、LoRA 支路 `LDSM_T`、两种 LoRA layout（`kNative` 的 FP32 fragment pack vs `kRowMajor`）、fused vs split-K（FP32 scratch + relaxed atomics + finalize）、native pack 约定 | `ch39-svdq-quant-producer.tex` |
 | W4A4 GEMM：hybrid G2R + TMA、FP4 MMA 与 BF16 LoRA-up 共用 accumulator、stage overlay 字节恒等式、WS 统一流水环、A/SFA 的 G2R 逆映射、两条 LoRA 消费路径、epilogue 一次舍入 + TMA store；**LoRA-first 的 1/s 无零保护（wcscales 零列 → inf/NaN 污染整个 FP32 acc）** | `ch40-svdq-gemm-w4a4.tex` |
+| W8A8 精度档（r128 换 +5.2~+5.6 dB、代价 11%–24% 算子时延）：命题与反量化映射无关 → per-token/per-row scale 沿 K 不变、可全推到 epilogue（故不需要 block-scaled mainloop）→ **`apply_scales` 必须先于 `gemm_bf16_lora`**，否则泄漏 `(sa·sw−1)G`；双 MMA 同构 C partition 共用 FP32 acc；rank 0 是纯 FP8 退化档；refill 只在 rank 128（nRt>2）触发 | `ch40b-svdq-fp8.tex` |
 
-验证入口在 cache-dit 仓（本书未复跑）：
+验证入口在 cache-dit 仓（本书未复跑）：ch39/ch40 用
 `python -m pytest tests/kernels/test_svdquant_cute.py tests/kernels/test_svdquant_runtime.py -q`
-与 `python bench/kernels/bench_svdquant.py`。
++ `python bench/kernels/bench_svdquant.py`；**ch40b 必须在完整 `fdf42708` 树
+（`git worktree add ../cache-dit-fp8 fdf42708`）里跑**，先重编扩展（`quantize_w8a8`
+的 pybind 只有该 commit 有，混合 checkout 树里没有）：
 
-### Part VIII：CUTLASS Collective API（PDF 打印章号 44，文件名 ch41；配图全部 TikZ 内联）
+```bash
+CACHE_DIT_BUILD_CUDA=1 CACHE_DIT_CUDA_ARCH_LIST=120a \
+  python3 -m pip install -e . --no-build-isolation
+python -m pytest tests/kernels/test_svdquant_fp8.py \
+                 tests/kernels/test_ops_dispatch.py \
+                 tests/quantization/test_quantize_config.py -q
+python bench/kernels/bench_svdquant_fp8.py   # 默认 warmup 10 / iters 30
+```
+
+PR #1384 另报既有 SVDQ 回归 255 passed / 6 skipped。
+
+### Part VIII：CUTLASS Collective API（PDF 打印章号 45，文件名 ch41；配图全部 TikZ 内联）
 
 | 任务/症状 | 章 |
 |---|---|
 | CollectiveBuilder 分工（mainloop/epilogue 类型 + `GemmUniversal`）、BF16 最小 GEMM（SM90）、FP8 per-row/per-tensor 的 EVT scale+bias、FP8 per-block 的 blockwise mainloop、NVFP4 两级 scale（block-scaled mainloop + EVT global scale）、workspace/stream/host ABI、SM120 架构边界 | `ch41-cutlass-collective-api.tex` |
+| 融合 MLP（GELU / SwiGLU）：EVT 加根节点、producer 加门控、融合边界；算子链 GELU 1.10×（rel-L2 5.5e-4）/ SwiGLU 1.15×（rel-L2 = 0，逐 bit 相同），e2e 只剩 1%–3%（数字取自 PR #1371，**本书未复测**） | `ch41-cutlass-collective-api.tex` §6.1 |
 
 教学源码：BF16 示例在本仓 `collective_gemm.cuh`（93 行，SM90 最小实现）；
-FP8/FP4 示例在 `<CACHE_DIT_DIR>/csrc/kernels/{fp8,fp4}/`（CUTLASS v4.8.1）。
+FP8/FP4 示例在 `<CACHE_DIT_DIR>/csrc/kernels/{fp8,fp4}/`（CUTLASS v4.8.1），
+listing 锚点为 FP8→`453c1b05`、FP4→`eced0158`；**时延比值是 2026-11-16 在
+`eced0158` 上复测的**，与 listing 快照不是同一份代码（#1371 只加融合 MLP，
+但 FP8 主 GEMM 文件内容已变）。
 **架构边界**：CUTLASS 4.8.1 的 SM120 dense CollectiveBuilder 只支持 F8F6F4
 TensorOp，BF16 collective 只能走 `arch::Sm90`，不能把同一组模板参数机械改成
 `arch::Sm120`。FP8/FP4 验证入口：
 `python -m pytest -q tests/kernels/test_fp8_ops.py tests/quantization/test_fp8_backend.py tests/kernels/test_fp4_ops.py tests/quantization/test_fp4_backend.py`
-与 `python bench/kernels/bench_fp8.py --suite flux` / `bench_fp4.py`。
+与 `python bench/kernels/bench_fp8.py --suite flux` / `bench_fp4.py`。融合 MLP
+另有一组：`bench_fp8.py --fused-mlp`/`--fused-swiglu`（互斥）+
+`test_fp8_backend.py`/`test_fp8_cli.py`/`test_quantize_config.py`；要求 SM100+
+与已编译 `_C_ops`，否则整组 skip。
 
 ### 附录（快速事实查询）
 
 | 需求 | 附录 |
 |---|---|
 | common.cuh 逐段解析（TMA/mbarrier/setmaxnreg/WGMMA 宏封装、swizzle） | `appendices/appA-common-toolbox.tex` |
-| 全书性能数据汇总（各卡 TFLOPS 基线表；ch11/12/14/16/17/18/24/25 章内另有 `tab:chNN-perf` 实测表；**Part VII 是转述 cache-dit 记录、无本书复测数据；Part VIII 是本书复测的 cache-dit/TorchAO 时延比值——两者都不与 TFLOPS 混比**） | `appendices/appB-perf-data.tex` |
-| 构建指南：build.sh 架构×宏矩阵、-arch 目标选择、book/tests 用法、**setmaxnreg 保留条件**、**cache-dit 同级 checkout（Part VII/VIII 构建前置）** | `appendices/appC-build-guide.tex` |
-| 源码索引：kernel 源文件+行号定位表（含 Part VII/VIII 的 cache-dit `eced0158` permalink） | `appendices/appD-source-index.tex` |
+| 全书性能数据汇总（各卡 TFLOPS 基线表；ch11/12/14/16/17/18/24/25 章内另有 `tab:chNN-perf` 实测表；**Part VII 与「Part VII 增补」（ch40b）是转述 cache-dit 记录、本书未复测；Part VIII 的 eager/compiled 时延比值是本书复测，融合 MLP 一节转述 PR #1371 未复测；都不与 TFLOPS 混比**） | `appendices/appB-perf-data.tex` |
+| 构建指南：build.sh 架构×宏矩阵、-arch 目标选择、book/tests 与分册用法、**setmaxnreg 保留条件**、**cache-dit 同级三档混合 checkout（Part VII/VIII 构建前置）与各组验证入口** | `appendices/appC-build-guide.tex` |
+| 源码索引：kernel 源文件+行号定位表（六档 permalink：本仓老章 `6cd32de`、ch26b/26c `1932ac2`、ch41-BF16 `5b618f2`、cache-dit W4A4/FP4 `eced0158`、ch41-FP8 `453c1b05`、ch40b `fdf42708`） | `appendices/appD-source-index.tex` |
 | 参考文献与延伸阅读（含 PTX ISA 章节映射） | `appendices/appE-references.tex` |
 
 ### 代码文件 references（kernels/interview 源码直定位）
@@ -268,8 +336,9 @@ TensorOp，BF16 collective 只能走 `arch::Sm90`，不能把同一组模板参�
 `book/scripts/anchors.yaml`：现为 `frozen_at 2026-11-16` / `repo_commit 5b618f2`，
 覆盖 10 个 `.cuh` + bench/ 下 10 个 `.cu`——bench_leetcuda.cu + 9 模块 .cu。
 行号级章节映射见 `appendices/appD-source-index.tex`：老章行的 permalink 基准是
-`6cd32de`（该 commit 里 `ffpa_attn.cuh` 只有前 641 行），ch41（打印第 44 章）用
-`5b618f2`，Part VII/VIII 的 cache-dit 源码固定 `eced0158`）：
+`6cd32de`（该 commit 里 `ffpa_attn.cuh` 只有前 641 行），ch26b/ch26c 用 `1932ac2`，
+ch41 的 BF16 示例（打印第 45 章）用 `5b618f2`；cache-dit 侧分三档：W4A4 与 FP4
+`eced0158`、ch41-FP8 `453c1b05`、ch40b `fdf42708`）：
 
 | 文件（相对 `<LeetCUDA_DIR>/kernels/interview/`） | 行数 | 内容 | 对应章 |
 |---|---|---|---|
@@ -292,23 +361,24 @@ TensorOp，BF16 collective 只能走 `arch::Sm90`，不能把同一组模板参�
 
 Part VI（ch27–33，量化 attention）教学 kernel 源码在 `<FFPA_ATTN_DIR>/csrc/cuffpa/`
 （appD 内附逐章 GitHub permalink）；Part V（ch34–37，量化 GEMM）教学 kernel 源码在
-本仓 `kernels/interview/fp8_gemm.cuh` 与 `fp4_gemm.cuh`。Part VII（ch38–40，
-SVDQuant）与 Part VIII 的 FP8/FP4 示例在 `<CACHE_DIT_DIR>/csrc/kernels/svdq/`
-（`cute/fp4/quantize/`、`cute/fp4/gemm/gemm_w4a4.cuh`、`runtime.h`）与
-`csrc/kernels/{fp8,fp4}/`（commit `eced0158`）。
+本仓 `kernels/interview/fp8_gemm.cuh` 与 `fp4_gemm.cuh`。Part VII（ch38–ch40）与
+Part VIII 的 FP4 示例锚 `eced0158`（`csrc/kernels/svdq/cute/fp4/quantize/`、
+`cute/fp4/gemm/gemm_w4a4.cuh`、`runtime.h`、`csrc/kernels/fp4/`）；ch40b 锚
+`fdf42708`（`csrc/kernels/svdq/cute/fp8/` + 两份 python）；Part VIII 的 FP8 锚
+`453c1b05`（`csrc/kernels/fp8/`）——三档按子路径覆盖，配方见第一步。
 
 ## 第三步：按需读取纪律
 
 1. **先路由后读取**：一次只读任务相关的 1-2 章；章内先看 `\section/\subsection`
-   目录再定位行区间（每章 450–1560 行，ch20/ch38 已近 1500 行，全文读入浪费上下文）。
+   目录再定位行区间（每章约 450–1600 行，最长 ch20 1557 / ch38 1489，全文读入浪费上下文）。
    **例外**：ch00/ch01 已在文末内嵌，无需外部读取；CuTe 任务的 Part IV
    全部章节仍必须加载即读，不受本条 1-2 章限制。
 2. **源码交叉**：书按行号引用 `<LeetCUDA_DIR>/kernels/interview/*.cuh` 冻结基线
    （base/common/sgemv/sgemm/hgemm/flash_attn/ffpa_attn/fp8_gemm/fp4_gemm/
    collective_gemm.cuh，共 10 个），需要完整实现时用
    `appendices/appD-source-index.tex` 定位再读源文件；Part VII/VIII 的 cache-dit
-   源码（ch39/ch40 与 ch41 的 FP8/FP4 部分）按第一步的 `<CACHE_DIT_DIR>` 交叉
-   （见上表末段）。
+   源码按第一步的三档锚点交叉：ch39/ch40→`eced0158`、ch40b→`fdf42708`、
+   ch41 的 FP8→`453c1b05` / FP4→`eced0158`（见上表末段）。
 3. **图**：章内图全部为 TikZ inline（`tikzpicture` 就在章节 tex 内）。看图：
    `pdftotext book.pdf -` 按图题关键词定位页码 → `pdftoppm -r 150 -png` 整页
    渲染 → view 工具目检。改图：直接改 tex 内 `tikzpicture`，**改后必须真实渲染
@@ -321,13 +391,17 @@ SVDQuant）与 Part VIII 的 FP8/FP4 示例在 `<CACHE_DIT_DIR>/csrc/kernels/svd
    `--fp4-gemm <N>`（形状自适应行）/ `--fp4-gemm-sweep <N>`（tile 档位扫描）
    （产物落 `bin/`，bench 辅助工具源在
    `kernels/interview/bench/`；构建细节见 appC）。
-   **Part VII/VIII 不在 book/tests 里**：SVDQuant 走 `<CACHE_DIT_DIR>` 的
-   `tests/kernels/test_svdquant_*.py` + `bench/kernels/bench_svdquant.py`；
+   **Part VII/VIII 不在 book/tests 里**：SVDQuant W4A4 走 `<CACHE_DIT_DIR>` 的
+   `test_svdquant_cute.py`/`test_svdquant_runtime.py` + `bench_svdquant.py`；
+   ch40b 另需完整 `fdf42708` 树（`../cache-dit-fp8`）、重编扩展后跑
+   `test_svdquant_fp8.py` + `bench_svdquant_fp8.py`（详见 Part VII 节）；
    FP8/FP4 collective 走 `test_fp8_ops.py`/`test_fp4_ops.py` +
    `bench_fp8.py`/`bench_fp4.py`。ch41 的 BF16 是 SM90A 编译验证 + SM120A
    下 `SKIP(ch41)`，不能把 SKIP 记成运行通过。
 5. **PDF 兜底**：tex 源不适合读时（如只要结论），`pdftotext book.pdf -` 按页抽取；
-   colfax 与 cute-zhihu 两份独立文档同理（`pdftotext colfax/colfax-cute-zh.pdf -`、
+   分册同理 `book-vol1.pdf`（Part I–IV，第 1–23 章）/ `book-vol2.pdf`（ch23 起 +
+   全部附录）。**三本分页不通用**：先按章标题关键词定位，再取页码；查附录一律去
+   vol2。colfax 与 cute-zhihu 两份独立文档同理（`pdftotext colfax/colfax-cute-zh.pdf -`、
    `pdftotext cute-zhihu/cute-zhihu.pdf -`）。
 6. 不要修改书的内容除非任务明确要求；本 skill 与书保持同步演进。
 
@@ -353,8 +427,9 @@ SVDQuant）与 Part VIII 的 FP8/FP4 示例在 `<CACHE_DIT_DIR>/csrc/kernels/svd
   e2e 408.2 T **反超 FP8 e2e**；8192³ 639.6/648.6 T、e2e 467.4 T；4096³ B 离线
   550.5/561.2 T（= kernel 的 91-93%）。量化成本 109 µs 是加性的，宽档下占 e2e
   32%——占比上升是主 kernel 变快所致，不是量化变慢（ch37 有防误读句）。
-- **SVDQuant 的融合边界（ch38–ch40 的共同前提）**：低秩分支按"共享张量"切——
-  down projection 与 quantize 共用同一个输入，合成一个 producer kernel；up
+- **SVDQuant 的融合边界（ch38–ch40b 的共同前提，W8A8 同样按共享张量切）**：
+  低秩分支按"共享张量"切——down projection 与 quantize 共用同一个输入，合成一个
+  producer kernel；up
   projection 与 4-bit compute 共用同一个输出，合成一个 GEMM epilogue。论文 QKV
   例：未融合 461 µs → 融合 322 µs（1.43×，低秩分支只增 5–10% 延迟）；图注里的
   57% 是相对"无低秩分支的 4-bit 基线"这另一个分母，两个数不能混用。数学方向：
@@ -377,15 +452,29 @@ SVDQuant）与 Part VIII 的 FP8/FP4 示例在 `<CACHE_DIT_DIR>/csrc/kernels/svd
   策略而非"参数不存在"，但也不保证当前模型与 shape 最优。benchmark 返回码 0
   不等于所有臂成功（旧 `use_ws` 臂 72 个 TypeError、13 个独立量化 compile 臂撞
   重编译上限），必须逐行查 JSON 的 `error` 字段。
-- **Part VII/VIII 的数字口径（两章来源不同，别混）**：ch39/ch40 的数字是转述
-  cache-dit 的单会话记录（producer geomean 1.1088×、row-major e2e 1.0553×、
-  native-D e2e 1.0462×），**本书未复测**；ch41 的 cache-dit/TorchAO 时延比值
-  则是**本书 2026-11-16 在 PRO 5000 上复测**的（eager chain 几何均值：FP8
-  per-row 0.541、per-tensor 0.569、per-block 0.385、NVFP4 0.539；compiled
-  Linear 另有 0.736/0.724/0.457/0.710）。两者都是比值口径，且 ch41 的
-  warmup 3 / iters 10 偏轻量，所以不能与本书 TFLOPS 表拼接、也不能当跨会话
-  验收基线。ch40 的 PRO 6000 历史表还有"rank128 改 native-D"的过时结论，
-  已被 rank 特化 producer 推翻。
+- **ch41 融合 MLP 的边界**：GELU 与 SwiGLU 各有一条融合链（EVT 加根节点 +
+  producer 加门控），算子链 GELU 1.10×（rel-L2 5.5e-4，**非**逐 bit）/ SwiGLU
+  1.15×（rel-L2 = 0，逐 bit 相同），但 e2e 只快 1%–3%——链里两次 GEMM 的时间
+  不变，字节账只能给方向，不能按流量比例外推加速比。融合前后一致性
+  （eager 36.50 dB / compile 33.70 dB）是"融合前后差多少"，不是"FP8 相对 BF16
+  的精度"，两组不可横向比。
+- **Part VII/VIII 的数字口径（三档来源不同，别混）**：ch39/ch40 与 ch40b 都是
+  转述 cache-dit 的单会话/PR 记录，**本书未复测**——ch39/ch40 报 producer
+  geomean 1.1088×、row-major e2e 1.0553×、native-D e2e 1.0462×（相对 native
+  更快）；ch40b 报 r32/r64/r128 相对纯 FP8 的 total 1.108/1.171/1.239×
+  （**>1 表示更慢**，方向与 ch39/ch40 相反；1.108 与 ch39 的 1.1088 指标不同，
+  别互引）。ch41 的 eager/compiled 时延比值是**本书 2026-11-16 在 PRO 5000 上
+  复测**（相对 TorchAO，<1 更快：eager chain FP8 per-row 0.541、per-tensor
+  0.569、per-block 0.385、NVFP4 0.539；compiled Linear 0.736/0.724/0.457/0.710），
+  但融合 MLP 一节转述 PR #1371、本书未复测。三者都是比值口径，但计时协议各不
+  相同——ch39/ch40 `warmup 10 / iters 50`（ch40 另取 median-of-3）、ch40b
+  `warmup 10 / iters 30`、ch41 六形状复测 `warmup 3 / iters 10`（§6.1 融合表
+  `10 / 50`、e2e `warmup 1 / repeat 3`），都不能与本书 TFLOPS 表拼接、也不能当
+  跨会话验收基线。ch40b 的精度只有 r128 抬出台阶（eager +5.60 dB / compile
+  +5.16 dB），r32/r64 略低于纯 FP8，**<1 dB 的差异在 run-to-run 漂移面前不下
+  结论**；ch40b 表未列分辨率与步数（Part VIII 明写 1024×1024 / 28 步 / seed 42），
+  不能确认两者同一批测量。ch40 的 PRO 6000 历史表还有"rank128 改 native-D"的
+  过时结论，已被 rank 特化 producer 推翻。
 
 ## 内嵌总体指导：ch00-profiling（正文精编）
 
